@@ -1166,6 +1166,29 @@ const FALLBACK_KEYS = [
   ok(k.liveMeeting('probe-pm-2') !== null && still && typeof still.close === 'function',
     '★ 正：未关闭的会议仍在 live（修复没有把整张表清空）', k.liveList().meetings)
 }
+// ── A SIDE-EFFECT POLICY ON `control/idle` IS REPORTED, AND "NO EPISODE" IS NOT "DID NOTHING" ──────────────────
+// ★ MEASURED on a live host: the beat receipt said `idle.emitted: true` and a stall policy had convened a meeting, while
+// the same receipt said `middleware: 0` — because that counter describes `control/heartbeat` and the policy is hooked on
+// `control/idle`, whose emit result `idleState()` DROPPED. `idleState()` stays synchronous (many sync callers) and hands
+// back the pending promise as `emitSettled`; beat() is async and awaits it.
+{
+  let now = 1000
+  const k = m.createKernel({ settings: { 'vmu.control.idleAfterMs': 1000 }, clock: () => now })
+  await k.start()
+  let fired = 0
+  k.bus.on({ id: 'probe-side-effect', kind: 'module', order: 10, on: ['control/idle'], failure: 'open', capabilities: ['read-args'], scope: ['member'] },
+    async () => { fired += 1; return undefined })
+  const b0 = await k.beat()
+  ok(b0 && b0.idle && b0.idle.emitted === false && b0.idle.middlewareRan === null,
+    '★ 反：没有跨过空闲边缘 ⇒ idle.middlewareRan 为 null（"没有这一集"，不是"这一集什么也没做"）', { emitted: b0 && b0.idle && b0.idle.emitted, ran: b0 && b0.idle && b0.idle.middlewareRan })
+  now = 3000
+  const b1 = await k.beat()
+  ok(fired === 1, '★ 副作用策略确实被调用了一次（前提）', fired)
+  ok(b1 && b1.idle && b1.idle.emitted === true && b1.idle.middlewareRan === 1 && b1.idle.middleware === 0,
+    '★★ 正：idle.middlewareRan=1 而 idle.middleware=0 —— 回执现在能说"它跑了，但没有返回决策"', { ran: b1 && b1.idle && b1.idle.middlewareRan, dec: b1 && b1.idle && b1.idle.middleware })
+  ok(b1 && b1.middlewareRan === 0,
+    '★ 对照：外层 middlewareRan 是 control/heartbeat 的，仍为 0（两个钩子不再混为一谈）', b1 && b1.middlewareRan)
+}
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

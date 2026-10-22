@@ -777,6 +777,13 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
       const traceId = opts.traceId || ('t' + (++seq) + '-' + hook.replace(/[^a-z]+/gi, '-'))
       const ctx = { member: opts.member, role: opts.role, phase: opts.phase }
       const decisions = []
+      // ★★ `ran` COUNTS THE ENTRIES THAT ACTUALLY EXECUTED, which is NOT the same as the entries that returned a
+      // decision. MEASURED on a live host: a stall policy hooked on `control/idle` convened a meeting, the beat receipt
+      // said `emitted: true` — and `middleware: 0`, because the receipt counted `decisions` and a policy that ACTS BY
+      // SIDE EFFECT (trigger-workflow, record, notify) returns nothing. The diagnostic surface was therefore blind to
+      // exactly the middleware whose effect matters most. `ran` is reported alongside `decisions` so a caller can see
+      // the difference instead of reading "0" as "nothing happened".
+      let ran = 0
       for (const entry of sortedFor(hook)) {
         if (!scopeMatches(entry.scope, ctx)) continue
         if (typeof entry.handler !== 'function') {
@@ -784,6 +791,7 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
           continue
         }
         let decision
+        ran += 1
         try {
           // ★ CHAIN-LOCAL: the marker lives only while THIS handler runs, so a sibling emit() in another async chain
           // (two overlapping events, e.g. two back-to-back `emit()` calls without awaiting the first) is unaffected
@@ -805,6 +813,12 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
         }
         if (decision === undefined || decision === null) {
           failures.set(entry.id, 0)
+          // ★ AN ENTRY THAT RAN AND RETURNED NOTHING LEAVES A TRACE ROW. It used to leave NONE — `remember` was only
+          // reached for `failed`, `capability-violation` and `decided` — so `bus.trace(traceId)` could not show the one
+          // kind of middleware whose effect is entirely a SIDE EFFECT (a policy that convenes a meeting, records, or
+          // notifies returns nothing by contract). The live run's `middleware: 0` while a stall meeting opened was the
+          // receipt half of this; this is the trace half. `observed` says "it ran; the effect is not in this receipt".
+          remember(traceId, { hook, entry: entry.id, outcome: 'observed', sideEffect: true })
           continue
         }
         // A capability violation is a configuration DEFECT, not a policy matter: it is always treated
@@ -836,7 +850,7 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
       // able to see `ask`, `rewriteArgs`, `replaceResult`, `record` and friends. A bus that surfaced only
       // denials left those actions silently unusable - a gap the host-hook scenario exposed.
       const last = decisions.length > 0 ? decisions[decisions.length - 1].decision : null
-      return { ok: true, decisions, traceId, decision: last }
+      return { ok: true, decisions, ran, traceId, decision: last }
     },
 
     /**

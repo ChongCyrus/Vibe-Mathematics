@@ -335,6 +335,25 @@ if (SELF_PROBE) {
   }
 }
 
+// ── AN ENTRY THAT ACTS BY SIDE EFFECT IS VISIBLE: ran counts it, decisions does not ─────────────────────────
+// ★ MEASURED on a live host: a stall policy hooked on `control/idle` convened a meeting, the beat receipt said
+// `emitted: true` — and `middleware: 0`, because the receipt counted DECISIONS and a policy that acts by side effect
+// (trigger-workflow / record / notify) returns nothing. `ran` now reports the invocations so the difference is visible.
+{
+  const bs = m.createBus({ log: () => {} })
+  bs.on({ id: 'side-effect-only', kind: 'module', order: 10, on: ['control/idle'], failure: 'open', capabilities: ['read-args'], scope: ['member'] },
+    async () => undefined)
+  const rs = await bs.emit('control/idle', {})
+  ok(rs && rs.ran === 1 && Array.isArray(rs.decisions) && rs.decisions.length === 0,
+    '★★ 副作用型条目：ran=1 而 decisions=0（回执可以区分"跑了但没返回决策"与"什么都没跑"）', { ran: rs && rs.ran, decisions: rs && rs.decisions && rs.decisions.length })
+  const tr = bs.trace(rs.traceId) || []
+  ok(tr.length === 1 && tr[0].outcome === 'observed' && tr[0].entry === 'side-effect-only',
+    '★★ 且 trace 里有 observed 行（旧行为：它一行都不留 —— trace 对副作用型中间件完全盲）', tr.map((x) => x.outcome))
+  // 对照：没有任何条目的钩子 ⇒ ran=0（不是恒为 1）
+  const rs2 = await bs.emit('meeting/motion', {})
+  ok(rs2 && rs2.ran === 0 && rs2.decisions.length === 0,
+    '★ 对照：没有条目匹配的钩子 ⇒ ran=0（ran 不是恒同值）', { ran: rs2 && rs2.ran })
+}
 console.log('=== VMU BUS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

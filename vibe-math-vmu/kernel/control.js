@@ -80,7 +80,14 @@ export function createControl({ clock = () => 0, log = null, settings = {}, bus 
   let dropped = 0
   // ROUND 10 / task-74 (B): the idle EPISODE's edge — `armed` means this idle episode has already been published, so
   // the hook fires once per episode rather than on every poll (see `idleState()` below).
-  const idleEdge = { armed: false, since: null }
+  const idleEdge = { armed: false, since: null, lastEmit: null }
+  // ★ `idleEdge.lastEmit` HOLDS THE `control/idle` EMIT RESULT, and it exists because DROPPING IT MADE A REAL EFFECT
+  // INVISIBLE. MEASURED on a live host: `beat()` returned `idle: { emitted: true }` and a stall policy had convened a
+  // meeting — while the same receipt said `middleware: 0`, because the beat reports `control/heartbeat`'s decisions and
+  // this emit belongs to `control/idle`, whose result was thrown away. `idleState()` must stay SYNCHRONOUS (it has many
+  // sync callers, including a documented read face and the stall-policy suite), so it does not await: it STORES the
+  // emit's promise here and returns it as `emitSettled`, and the ALREADY-ASYNC `beat()` awaits it before building its
+  // receipt. A synchronous caller simply ignores the field; nothing about the existing shape changes.
 
   /** Pause a surface. `canPauseRoles` decides who may, `pauseScope` decides what may be paused at all. */
   function pause({ scope = null, byRole = null, reason = null } = {}) {
@@ -239,10 +246,17 @@ export function createControl({ clock = () => 0, log = null, settings = {}, bus 
       idleEdge.armed = true
       idleEdge.since = now
       emitted = true
-      emit('control/idle', { at: now, elapsedMs: elapsed, afterMs: c.idleAfterMs, action: act })
+      // ★ KEEP THE RESULT (see `idleEdge.lastEmit`): a policy that acts by side effect returns no decision, so the ONLY
+      // evidence it ran is this emit's `ran` counter and trace. Dropping the promise is what made the live receipt say
+      // `middleware: 0` about a middleware that had just convened a meeting.
+      const pending = emit('control/idle', { at: now, elapsedMs: elapsed, afterMs: c.idleAfterMs, action: act })
+      idleEdge.lastEmit = pending && typeof pending.then === 'function' ? pending : Promise.resolve(pending)
     }
     return { ok: true, idle: true, elapsedMs: elapsed, afterMs: c.idleAfterMs, action: act,
       emitted, emittedAt: idleEdge.since,
+      // ★ The async caller (`beat()`) awaits this to report what the `control/idle` middleware actually DID. Absent when
+      // this call did not cross the edge, so a reader cannot confuse "no new episode" with "the episode did nothing".
+      emitSettled: idleEdge.armed && idleEdge.lastEmit ? idleEdge.lastEmit : null,
       notice: act === 'notice' ? 'idle for ' + elapsed + 'ms; this is a NOTICE only - nothing is recessed automatically (vmu.control.idleAction)' : null,
       recessed: false,
       note: act === 'recess' ? 'the declaration asks for a recess, but this face RECORDS the decision and does not end a meeting: that belongs to the meeting face' : (act === 'none' ? 'the declaration asks for nothing' : 'notice only'),

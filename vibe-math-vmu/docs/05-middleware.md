@@ -117,6 +117,27 @@
 ★★ **那个"嵌套被拒"的拒发生在【内层】**；★ **外层是否报错取决于该条目的 `failure` 策略** —— `failure:'open'` 记审计后继续，`failure:'abort'` 向上传播。★ 这是策略，不是吞掉。
 ★★ 而 `index.js` 里那句只覆盖 `rewriteOf` 的安全论证也已改写为**覆盖实际授权**（整套 bus：加/启停/读/发事件/接管 waterfall）。
 
+★★★★ **副作用型中间件曾经是【诊断面看不见】的 —— 真机抓到的，读这一节要记住它**：
+
+★ **实测**：★ 一条挂在 **`control/idle`** 上的策略（`v5r.stall-meeting`）**真的开了会**，★ 而 `beat()` 回执里 **`middleware: 0`**。★ 三个原因叠在一起：
+1. ★ **回执里的 `middleware` 数的是【决策】（`decisions.length`），不是【被调用的条目】** —— ★ 而**靠副作用办事的策略按契约返回 `undefined`**（`trigger-workflow`／`record`／`notify` 都不是决策）
+2. ★ **`beat()` 报的 `middleware` 属于 `control/heartbeat`**，★ 而策略挂在 **`control/idle`** 上 —— ★ 两个不同的钩子，★ 回执把它们的数混成一个
+3. ★ **`control.idleState()` 把 `control/idle` 的 emit 结果丢掉了**（★ 它必须保持**同步**，★ 而 emit 是 async）
+
+★★★ **修后的可观测面**（★ "诊断面本身就是被测系统"那条纪律的兑现）：
+
+| ★ 字段 | ★ 含义 |
+|---|---|
+| ★ `bus.emit(...).ran` | ★ **实际执行了的条目数**（★ 含返回 `undefined` 的） |
+| ★ `bus.emit(...).decisions` | ★ 返回了决策的条目数（★ 原义不变） |
+| ★ **`bus.trace(traceId)`** | ★ **新增 `outcome:'observed'` 行** —— ★ "跑了但没有决策，效果在回执之外" |
+| ★ `beat().middlewareRan` | ★ `control/heartbeat` 上**跑了几个** |
+| ★ `beat().middleware` | ★ `control/heartbeat` 上**有几个返回了决策**（原义） |
+| ★★ **`beat().idle.middlewareRan`／`.middleware`** | ★★ **`control/idle` 上的同一对数** —— ★ 这才是 stall 策略的去处 |
+| ★★ **`beat().idle.middlewareRan === null`** | ★★ **"这一拍没有跨过空闲边缘"**，★ **不是"这一集什么也没做"** —— ★ 这个区分是故意做的 |
+
+★ **写 pack 的人要记住**：★ **靠副作用办事的中间件不会出现在 `decisions` 里** —— ★ 去看 **`ran`** 与 **`trace` 的 `observed` 行**；★ **不要因为 `decisions` 为空就以为它没跑** ✓
+
 **② pack 文件夹里的 `middleware/` **不是**类别判据。**
 
 ★ 一个 pack 的条目在 **`index.js` 里分两级声明**，★ **读声明，不读目录名**：

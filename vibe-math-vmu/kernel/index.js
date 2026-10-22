@@ -2100,7 +2100,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       await writePhase('stopped', controlState.stoppedReason || 'stop')
       const decided = await bus.emit('control/paused', { reason: 'stopped', at: clock() }, {})
       return { ok: true, stopped: true, state: controlState.state, reason: controlState.stoppedReason,
-        middleware: decided && decided.decisions ? decided.decisions.length : 0 }
+        middleware: decided && decided.decisions ? decided.decisions.length : 0,
+        middlewareRan: decided && typeof decided.ran === 'number' ? decided.ran : 0 }
     },
 
     /** The capability seams, refused by name when they are missing (docs/11 搂4.1). ONE home for each refusal:
@@ -2760,7 +2761,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       await writePhase('paused', controlState.pausedReason)
       const decided = await bus.emit('control/paused', { reason: controlState.pausedReason, at: controlState.pausedAt }, {})
       return { ok: true, state: controlState.state, reason: controlState.pausedReason, at: controlState.pausedAt,
-        middleware: decided && decided.decisions ? decided.decisions.length : 0 }
+        middleware: decided && decided.decisions ? decided.decisions.length : 0,
+        middlewareRan: decided && typeof decided.ran === 'number' ? decided.ran : 0 }
     },
     async resume(reason = null) {
       if (controlState.state !== 'paused') throw refuse('VMU_STATE', 'the kernel is not paused (state: ' + controlState.state + ')')
@@ -2772,7 +2774,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       await writePhase('running', reason ? String(reason) : 'resumed')
       const decided = await bus.emit('control/resumed', { pausedFor: wasReason, reason: reason ? String(reason) : null, at: clock() }, {})
       return { ok: true, state: controlState.state, resumedFrom: wasReason,
-        middleware: decided && decided.decisions ? decided.decisions.length : 0 }
+        middleware: decided && decided.decisions ? decided.decisions.length : 0,
+        middlewareRan: decided && typeof decided.ran === 'number' ? decided.ran : 0 }
     },
     async beat(note = null) {
       // ROUND 10 / task-74 (B): THE EXISTING TICK IS THE POLLING POINT. `beat()` is what answers "is anyone actually
@@ -2783,14 +2786,26 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // NO timer — a stalled system with nobody beating cannot wake itself, which is stated in docs/03 §2.
       const prevBeatAt = controlState.lastBeatAt
       const idle = control.idleState({ lastActivityAt: prevBeatAt, at: clock() })
+      // ★ AND THE `control/idle` MIDDLEWARE IS REPORTED. This receipt's `middleware`/`middlewareRan` describe
+      // `control/heartbeat`, but the interesting policy — a stall that convenes a meeting — is hooked on `control/idle`,
+      // which `idleState()` emits internally. Its result used to be DROPPED, so a live beat said `middleware: 0` while a
+      // meeting had just opened. `idleState()` stays synchronous and hands back the pending promise as `emitSettled`;
+      // beat() is async, so it awaits it here and reports the two numbers under the `idle` block where they belong.
+      let idleEmitted = null
+      try { idleEmitted = idle.emitSettled ? await idle.emitSettled : null } catch { idleEmitted = null }
       controlState.beats += 1
       controlState.lastBeatAt = clock()
       const decided = await bus.emit('control/heartbeat', { beats: controlState.beats, at: controlState.lastBeatAt, note: note ? String(note) : null }, {})
       return { ok: true, beats: controlState.beats, at: controlState.lastBeatAt,
         // The idle verdict travels in the beat receipt, so a caller can see WHY middleware was (or was not) woken.
         idle: { idle: idle.idle, action: idle.action, elapsedMs: idle.elapsedMs === undefined ? null : idle.elapsedMs,
-          afterMs: idle.afterMs === undefined ? null : idle.afterMs, emitted: idle.emitted === true, note: idle.note || null },
-        middleware: decided && decided.decisions ? decided.decisions.length : 0 }
+          afterMs: idle.afterMs === undefined ? null : idle.afterMs, emitted: idle.emitted === true, note: idle.note || null,
+          // ★ null means "no episode crossed on this beat", NOT "an episode did nothing" — the distinction the old
+          // receipt could not express at all.
+          middleware: idleEmitted && idleEmitted.decisions ? idleEmitted.decisions.length : (idle.emitted === true ? 0 : null),
+          middlewareRan: idleEmitted && typeof idleEmitted.ran === 'number' ? idleEmitted.ran : (idle.emitted === true ? 0 : null) },
+        middleware: decided && decided.decisions ? decided.decisions.length : 0,
+        middlewareRan: decided && typeof decided.ran === 'number' ? decided.ran : 0 }
     },
 
     /**
