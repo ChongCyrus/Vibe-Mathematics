@@ -1577,3 +1577,25 @@ ok,id,meeting,kind,state,reason,chair,secretary,motions,votes,closedAt
 **★ 实测**：★ `=== VMU V5R TOOLS: 334 passed, 0 failed ===` ✓
 **★★ 不做**：★ **不从 exec 上下文猜成员** —— ★ 猜错比 `null` 更糟；★ **要归属就显式传 `member`**（★ 这正是"拒绝要具名、不许静默"的口径）。
 **★★ 仍未结案的一半**：★ **"两条记录"**（★ 需要成员 transcript）—— ★ **如实留在未覆盖清单里。**
+﻿
+### §6.98 ★★★★★ T1 在【本轮全部修改之后】仍然全绿：**402/402，0 FAIL，exit=0**
+
+**完整日志**：`D:\_tmp\t1-r91.log`（★ 全程无并发）
+```
+run-tests: scope=vmu  jobs=402  concurrency=2
+concurrency 2 · wall 540.7s · sum of suite times 1018.5s · speed-up x1.88
+TOTAL 402  PASS 402  FAIL 0  (suites 338 · probes 64)
+exit=0
+```
+**★ 本轮改动过的面，逐个确认 PASS**：
+| ★ 套件 | ★ 结果 |
+|---|---|
+| `vmu-v5r-tools.test.mjs` | ★ **334 passed, 0 failed** |
+| `vmu-motion-box.test.mjs` | ★ **28 passed, 0 failed** |
+| `vmu-meetings.test.mjs` | ★ **195 passed, 0 failed** |
+| `audit-declaration-criterion.test.mjs` | ★ **89 passed, 0 failed**（★ RULE E） |
+| `audit-declaration-publishes-face.test.mjs` | ★ **28 passed, 0 failed** |
+
+**★★ 无一行 `FAIL`**（★ 全日志 grep 过，★ 唯一的匹配是 `FAIL 0` 那个汇总数字本身）。
+
+**★★★ 至此本轮的代码改动全部落在绿树上**：★ `kit/handlers.js`（作者诚实）、★ `packs/v5r/tools.js`（#15 发现性指引）、★ `kernel/meetings.js`（计票来源具名）、★ `kernel/turn/index.js`（`window` 诚实）、★ `packs/v5r/prompts/v5r-charter.js` ＋ `v5r-core.js` ＋ `middleware/prompt-switches.js`（E：无领头人变体可选中）。
