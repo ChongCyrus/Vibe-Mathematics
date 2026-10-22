@@ -20,6 +20,7 @@
  * 2. An unrecognised state is REFUSED by name rather than guessed. Guessing would put words into
  *    the prompt that the caller never asked for.
  */
+import { CHARTER_LEADER_PAIRS } from '../prompts/v5r-charter.js'
 
 /** The three blocks the source gates. Absent settings mean ON. */
 export const OFF_SWITCHES = Object.freeze([
@@ -63,6 +64,7 @@ export const V5R_PROMPT_SWITCH_STATES = Object.freeze({
  * Pure by construction: no pipeline, no kernel, no clock, no I/O.
  */
 export function decideSections({ settings = {}, turn = {} } = {}) {
+  const LEADER_PAIRS = CHARTER_LEADER_PAIRS
   const s = settings || {}
   const decisions = []
   const errors = []
@@ -92,6 +94,28 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
   const catalogue = s['vmu.turn.replyCatalogue'] === 'full' ? 'full' : 'compact'
   for (const [which, section] of Object.entries(CATALOGUES)) {
     decisions.push({ name: section, enabled: which === catalogue })
+  }
+
+  // (4) ★★★ THE LEADER PAIR: exactly one of {with-leader, -leaderless} per pair. Measured on a full live run: the agent read a
+  // charter that said 「本所的领头人是**院士 」—— the with-leader sentence with an empty {{ setting:vmu.turn.leaderId }} — and reported
+  // "charter fields unresolved". The leaderless texts already existed but nothing could select them, because the manifest getter is
+  // no-arg and both variants shared one section name. They now have distinct names (v5r-charter.js CHARTER_LEADERLESS_SECTIONS), so
+  // this is where the choice actually happens - in the pack's POLICY, which is where a policy belongs.
+  //
+  // WHICH SIDE IS THE SAFE DEFAULT: leaderless. The charter's own rule 1 (v5r-charter.js:21) is that a charter must NEVER name a
+  // leader who is not on staff, so when this policy cannot PROVE the leader is on staff it must not emit the naming sentence. A
+  // false "no leader" costs a less personal organisational paragraph; a false "leader is X" tells the whole institute to report to
+  // someone who may not exist. Unknowable therefore resolves to leaderless, deliberately.
+  const leaderId = typeof s['vmu.turn.leaderId'] === 'string' ? s['vmu.turn.leaderId'] : ''
+  const rosterIds = Array.isArray(turn && turn.roster)
+    ? turn.roster.map((m) => String(m && m.id !== undefined ? m.id : m))
+    : null
+  const leaderOnStaff = typeof turn.leaderOnStaff === 'boolean'
+    ? turn.leaderOnStaff
+    : (rosterIds !== null && leaderId !== '' && rosterIds.includes(leaderId))
+  for (const [withName, leaderlessName] of LEADER_PAIRS) {
+    decisions.push({ name: withName, enabled: leaderOnStaff })
+    decisions.push({ name: leaderlessName, enabled: !leaderOnStaff })
   }
 
   // (3) The meeting speaker states: exactly one inside the meeting phase, none outside it, and an

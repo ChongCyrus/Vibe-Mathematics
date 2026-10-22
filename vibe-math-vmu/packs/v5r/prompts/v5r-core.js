@@ -387,7 +387,7 @@ const v5rPersonaBindingsGlobal = () => PERSONA_BINDINGS
 // ROUND 374: the RUNTIME declaration is the hand-written charter, not the captured persona. See the comment on the
 // manifest's `sections` getter. Both persona helpers stay exported because a consumer may still want the raw capture;
 // only the charter is declared. The import is hoisted like the persona one above, so the getters resolve at access time.
-import { CHARTER_SECTIONS, CHARTER_BINDINGS } from './v5r-charter.js'
+import { CHARTER_SECTIONS, CHARTER_BINDINGS, CHARTER_LEADERLESS_SECTIONS } from './v5r-charter.js'
 // GOAL 6 (ruling D-09): the assistant's PER-ROUND surface. The root/system-prompt half of the same assistant surface is
 // `./assistant.json`, which the plugin reads by folder name before the kernel exists; this half is registered through
 // the manifest because it is rendered by the prompt pipeline on every member round. Two readers, two files, no copy.
@@ -399,7 +399,7 @@ import { V5R_ASSISTANT_TURN_SECTIONS } from './v5r-assistant.js'
  * the one section that simply NAMES the phase, which the charter headings do not. PLUS the assistant's reporting duty,
  * which is what turns "主动向院士汇报" from persona prose into a duty a member is told every round.
  */
-const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, v5rRoleSection,
+const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, ...CHARTER_LEADERLESS_SECTIONS, v5rRoleSection,
   // ★ PHASE 7 round 10: BOTH fixture variants are DECLARED here; `decideSections` (the pack's prompt policy) enables
   // exactly one per assembly, according to `vmu.v5r.fixtureMode`. Declaring both is what makes the switch possible at
   // CALL time; the mutual exclusion lives in the policy, not in which sections exist.

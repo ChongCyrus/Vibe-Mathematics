@@ -118,6 +118,31 @@ export const CHARTER_LEADERLESS_OMISSIONS = Object.freeze(CHARTER_BLOCKS
   .map((b) => b.name))
 
 /**
+ * ★★★ THE LEADERLESS VARIANTS AS SECTIONS OF THEIR OWN. Measured on a full live run: the agent reported "charter fields unresolved"
+ * because the charter always emitted the with-leader sentence and {{ setting:vmu.turn.leaderId }} defaults to '' - so a leaderless
+ * institute was told 「本所的领头人是**院士 」。 The two texts already existed in `texts.leaderless`, and charterSections({hasLeader:false})
+ * could already choose them, but NOTHING could ever pass false: the manifest's `sections` getter is no-arg (v5r-core.js:340), the frozen
+ * CHARTER_SECTIONS hardcodes true (:148), and the section policy can only enable/disable by NAME (pack.js:330-332) while both variants
+ * share one name. Declaring the leaderless text under its OWN name is what makes the pair switchable - the same shape the fixture pair
+ * (v5r-blocks-a.js "BOTH fixture variants are DECLARED here; decideSections enables exactly one") already uses.
+ * `CHARTER_SECTIONS` is unchanged, so the default (with-leader) reading stays byte for byte.
+ */
+export const CHARTER_LEADERLESS_SECTIONS = Object.freeze(CHARTER_BLOCKS
+  .filter((b) => b.kind === 'leader-conditional')
+  .map((b) => ({
+    name: b.name + '-leaderless',
+    order: b.order,
+    range: b.range,
+    source: 'v5r-charter:source-derived',
+    text: (CHARTER_LEADER_VARIANTS[b.name] || {}).leaderless || CHARTER_LEADERLESS_MISSING_TEXT,
+  })))
+
+/** The pairs the policy switches between: [withLeaderName, leaderlessName] (docs/26 section 3.10). */
+export const CHARTER_LEADER_PAIRS = Object.freeze(CHARTER_BLOCKS
+  .filter((b) => b.kind === 'leader-conditional')
+  .map((b) => [b.name, b.name + '-leaderless']))
+
+/**
  * The sections as the pipeline wants them: the shared text is the default, bindings override per role or phase.
  * `hasLeader: true` reproduces the historical (leader-assuming) reading byte for byte; `hasLeader: false` swaps every
  * leader-conditional block to its `leaderless` variant.

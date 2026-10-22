@@ -1350,3 +1350,28 @@ node tests/vmu-assistant-host-slice.test.mjs  ⇒ exit=0
 ★★ **⇒ 那个 T1 失败消失了**，★ 且 6 条未跑是**具名的**（★ 符合本仓「不得把没测写成没问题」）。
 
 **★ 这条修改在仓库之外**（scoop 的 bin 目录），★ 所以记在这里：★ **它是环境状态，不是仓内代码**；★ 任何人重装 node／清 scoop 都可能让 `dsh` 再次变成悬空指针 —— ★ **识别方法就是 `dsh --version` 是否报出 `0.2.1-rc.2`**。
+﻿
+### §6.87 ★★★★★ 缺陷 **E 已修**：无院士研究所不再被点名"院士"
+
+**改动（三处，加法为主）**：
+1. `v5r-charter.js` 新增两个导出：
+   - `CHARTER_LEADERLESS_SECTIONS` —— 把 5 个 `leader-conditional` 块的 `leaderless` 文本**以独立段名**（`<name>-leaderless`）声明出来；
+   - `CHARTER_LEADER_PAIRS` —— `[withLeaderName, leaderlessName]` 配对表，供策略切换。
+   - `CHARTER_SECTIONS` **原样不动** ⇒ 默认（有领头人）读数逐字节不变。
+2. `v5r-core.js:390/402` —— 两段**都**声明进 `sections`（照 fixture 双段范式："BOTH variants are DECLARED here; the policy enables exactly one"）。
+3. `prompt-switches.js` 新增决策 (4)：**每对恰启一个** ——
+   `leaderOnStaff` 优先取 `turn.leaderOnStaff`（布尔），否则由 `turn.roster` 是否含 `settings['vmu.turn.leaderId']` 推出。
+
+**★★ 安全默认是「无领头人」，而且是刻意的**：章程规则 1（`v5r-charter.js:21`）要求**绝不可点名不在册的领头人** ⇒ 当策略**证明不了**领头人在册时，**不得发出点名句**。假"无领头人"代价是一段较平的组织描述；假"领头人是 X"会让全所向一个可能不存在的人汇报。
+
+**★ 实测（四种输入，全对）**：
+```
+空 leaderId            => with-leader=false  leaderless=true   errors=0
+领头人在册 m1          => with-leader=true   leaderless=false  errors=0
+领头人不在册 m9        => with-leader=false  leaderless=true   errors=0   \u2605 \u5b89\u5168\u4fa7
+turn.leaderOnStaff=true => with-leader=true  leaderless=false  errors=0
+```
+**★ 套件**：`vmu-turn 186/0` ✓、`vmu-v5r-tools 334/0` ✓
+
+**★★ 这一刻，`CHARTER_LEADER_VARIANTS` / `CHARTER_LEADERLESS_MISSING_TEXT` / `CHARTER_LEADERLESS_OMISSIONS` 这套机制第一次真正有了【读点】**（§6.82 说它一个都没有）。
+**★ 仍待补**：一条断言（无领头人时 out 里不含 `本所的领头人是` 且不含 `院士 ` 空槽）—— ★ 下一轮。
