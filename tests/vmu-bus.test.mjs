@@ -289,6 +289,52 @@ if (SELF_PROBE) {
   ok(lost.length === 0, '★ hooks with a real refusing consumer remain blockable:true', lost)
 }
 
+// ── RE-ENTRANT EMIT OF THE SAME HOOK IS REFUSED BY NAME (and nesting a DIFFERENT hook still works) ───────────
+// ★ MEASURED before the guard existed: an entry hooked on a hook that emitted THAT SAME hook from inside its own
+// handler re-entered the bus — a probe reached 31 nested invocations and was still going, and only the probe's own
+// cap stopped it — while the receipt still said ok:true, decisions:0. `vmu.turn` carries `VMU_TURN_REENTRANT` for
+// the same hazard; the bus, reachable as `vmu.middleware` by any module holding `trigger-workflow`, had no guard.
+{
+  const b = m.createBus ? m.createBus({ log: () => {} }) : null
+  ok(b !== null, '★ the bus is constructible for the re-entrancy checks', b === null)
+  if (b) {
+    // 反：同一钩子在自己 handler 内 emit 自身 ⇒ 具名拒，且 handler 只跑一次（旧行为：无限嵌套）
+    let sameRuns = 0
+    let sameCode = null
+    b.on({ id: 'reent-same', kind: 'module', order: 10, on: ['control/idle'], failure: 'open', capabilities: ['read-args'], scope: ['member'] },
+      async () => { sameRuns += 1; try { await b.emit('control/idle', { nested: true }) } catch (e) { sameCode = e && e.code } return undefined })
+    const outer = await b.emit('control/idle', { first: true })
+    ok(sameCode === 'VMU_MIDDLEWARE_REENTRANT' && sameRuns === 1 && outer && outer.ok === true,
+      '★ 反：同一钩子重入 ⇒ VMU_MIDDLEWARE_REENTRANT，handler 只跑一次（外层被 failure:open 吸收，这是有意的失败策略语义）',
+      { sameCode, sameRuns, outerOk: outer && outer.ok })
+    // 正：不同钩子嵌套是合法的（v5r stall-meeting 的路径）
+    let crossOk = null
+    let crossRuns = 0
+    b.on({ id: 'reent-cross', kind: 'module', order: 10, on: ['meeting/motion'], failure: 'open', capabilities: ['read-args'], scope: ['member'] },
+      async () => { crossRuns += 1; try { const r = await b.emit('control/idle', { from: 'cross' }); crossOk = r && r.ok } catch (e) { crossOk = 'THREW ' + (e && e.code) } return undefined })
+    const outer2 = await b.emit('meeting/motion', {})
+    ok(crossOk === true && outer2 && outer2.ok === true,
+      '★ 正：嵌套【不同】钩子仍允许（拒绝一刀切嵌套会打断已在使用中的模式）', { crossOk, outer2Ok: outer2 && outer2.ok })
+    // 正：守卫在每条路径上释放（否则下一次合法 emit 会被误拒 —— 比它修的 bug 更糟）
+    const outer3 = await b.emit('meeting/motion', {})
+    ok(outer3 && outer3.ok === true && crossRuns === 2,
+      '★ 正：守卫在每条路径上释放 —— 下一次合法 emit 仍能跑', { outer3Ok: outer3 && outer3.ok, crossRuns })
+    // ★★ 正：两次【并发】的同钩子 emit（第二次不等第一次 await）是两个独立事件，不是递归 —— 必须允许。
+    // 这条是被 `vmu-metrics-counter` 抓出来的：模块级 Set 会拒掉第二次，把合法并发误判成递归。
+    {
+      const b2 = m.createBus({ log: () => {} })
+      let runs = 0
+      b2.on({ id: 'concurrent', kind: 'module', order: 10, on: ['math/job-settled'], failure: 'open', capabilities: ['read-args'], scope: ['member'] },
+        async () => { runs += 1; return undefined })
+      const pa = b2.emit('math/job-settled', { jobId: 'j-1', engine: 'probe' })
+      const pb = b2.emit('math/job-settled', { jobId: 'j-2', engine: 'probe' })
+      const [ra, rb] = await Promise.all([pa, pb])
+      ok(runs === 2 && ra && ra.ok === true && rb && rb.ok === true,
+        '★★ 正：同钩子的两次【并发】emit 都执行（并发 ≠ 重入 —— 守卫必须按异步链而不是全局判）', { runs, raOk: ra && ra.ok, rbOk: rb && rb.ok })
+    }
+  }
+}
+
 console.log('=== VMU BUS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

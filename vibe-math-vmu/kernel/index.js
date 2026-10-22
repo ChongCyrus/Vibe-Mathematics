@@ -1632,9 +1632,18 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     'vmu.status': statusService,
     // ★ PHASE 6 / goal-3 audit P2: `vmu.middleware` was REGISTERED (the M4 contract lists it and docs/03 documents
     // `rewriteOf`) but absent from this capability-gated catalogue, so an M2 module could declare `requires` and still
-    // get `VMU_NO_SUCH_OBJECT` on get(). Added here so the documented surface is reachable. It is safe: `rewriteOf` only
-    // READS the decisions of an already-completed emit and returns a string // null - it executes nothing and emits
-    // nothing, so no recursion is possible (unlike `vmu.turn`, which needed the re-entrancy guard).
+    // get `VMU_NO_SUCH_OBJECT` on get(). Added here so the documented surface is reachable.
+    // ★★ AND THE SAFETY ARGUMENT IS NOW WRITTEN AGAINST WHAT IS ACTUALLY GRANTED. It used to say "It is safe:
+    // `rewriteOf` only READS … it executes nothing and emits nothing, so no recursion is possible" — but the
+    // value granted is the WHOLE BUS, not `rewriteOf`: it carries `on`/`add` (add entries), `disable`/`enable`,
+    // `status`/`entries`/`trace`, `declareTopic`/`retractTopic`, `wrapHostWaterfall`, and **`emit`**. An argument
+    // about one read-only method does not justify a grant that includes emitting.
+    // ★ THE RECURSION CONCERN IS ANSWERED BY A GUARD, NOT BY THE ABSENCE OF THE CAPABILITY: `emit` now refuses a
+    // re-entrant emit of the hook whose handler is already running (`VMU_MIDDLEWARE_REENTRANT`, same shape as
+    // `VMU_TURN_REENTRANT`), while nesting a DIFFERENT hook stays legal — v5r's stall-meeting is hooked on
+    // `control/idle` and convenes a meeting, whose service emits other hooks.
+    // ★ WHAT A `trigger-workflow` MODULE CAN THEREFORE DO, said plainly: add, enable/disable and inspect middleware
+    // entries, declare and retract event topics, wrap the host waterfall, and originate events (other hooks only).
     'vmu.middleware': bus,
     // PHASE 6 / P1-5: the reporting face (declare/tick/emit) is documented and published, but a pack could not reach
     // it through the capability-gated catalogue. It never drives anything (`drives:false` on every receipt); `emit`

@@ -21,6 +21,7 @@ export const apiVersion = 1
 // handlers; it now uses the same declared-default reader as the kernel, so an unconfigured key reads as its schema
 // default on every door instead of as `undefined` on this one.
 import { readSetting } from './settings-defaults.js'
+import { AsyncLocalStorage } from 'node:async_hooks'
 
 /** Failure policies (docs/05 §7). */
 export const FAILURE = Object.freeze({ OPEN: 'open', CLOSED: 'closed', ABORT: 'abort' })
@@ -562,6 +563,12 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
   let seq = 0
   // Topics a deployment declared EXPLICITLY (docs/05 §6 protocol extension). The frozen VU_HOOKS set is the
   // contract; anything else must be declared before it can be emitted - zero mechanism, nothing implicit.
+  // ★ HOOKS WHOSE HANDLER IS CURRENTLY RUNNING **IN THIS ASYNC CHAIN**. AsyncLocalStorage, not a module-level Set,
+  // and the difference was measured: a Set refused the SECOND of two `emit()` calls issued back-to-back without
+  // awaiting the first (`k.bus.emit('math/job-settled', …)` twice) — those are two INDEPENDENT events that happen to
+  // overlap, not recursion. Chain-local state keeps exactly the distinction that matters: re-entering from inside a
+  // handler of the same hook is unbounded recursion, so it is refused; a sibling emit in another chain is legal.
+  const handlerChain = new AsyncLocalStorage()
   const customTopics = new Set()
 
   const audit = (record) => {
@@ -751,6 +758,22 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
           'unknown vmu hook: ' + String(hook) + ' (' + VU_HOOKS.length + ' declared + ' + customTopics.size + ' custom)',
           'declared: ' + VU_HOOKS.join(', ') + ' — declare a NEW topic with bus.declareTopic(name)')
       }
+      // ★ A RE-ENTRANT EMIT OF THE SAME HOOK IS REFUSED BY NAME. MEASURED before this guard existed: an entry
+      // hooked on a hook that called `emit` for THAT SAME hook from inside its own handler re-entered the bus -
+      // a probe reached 31 nested invocations and was still going, and only the probe's own cap stopped it -
+      // while the emit receipt still said `ok:true, decisions:0`, so nothing anywhere reported that it had
+      // recursed. `vmu.turn` carries exactly this guard (`VMU_TURN_REENTRANT`) for the same hazard, added when
+      // the turn loop became reachable from a module; the bus, which is reachable as `vmu.middleware` by any
+      // module holding `trigger-workflow`, did not.
+      // ★ NESTING A DIFFERENT HOOK STAYS LEGAL on purpose: v5r's stall-meeting is hooked on `control/idle` and
+      // convenes a meeting, whose service emits other hooks - refusing that would break a pattern already in use.
+      const chain = handlerChain.getStore() || []
+      if (chain.includes(hook)) {
+        throw refuse('VMU_MIDDLEWARE_REENTRANT',
+          'emit(' + String(hook) + ') was called from inside a handler that is already running for that same hook',
+          'a hook may emit OTHER hooks (services do this routinely), but re-emitting ITSELF has no base case — ' +
+          'return a decision from the handler, or move the nested work to a handler for a different hook')
+      }
       const traceId = opts.traceId || ('t' + (++seq) + '-' + hook.replace(/[^a-z]+/gi, '-'))
       const ctx = { member: opts.member, role: opts.role, phase: opts.phase }
       const decisions = []
@@ -762,7 +785,10 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
         }
         let decision
         try {
-          decision = await withTimeout(entry.handler, { hook, payload, ctx, dryRun, traceId, setting: (k) => readSetting(settings, k) })
+          // ★ CHAIN-LOCAL: the marker lives only while THIS handler runs, so a sibling emit() in another async chain
+          // (two overlapping events, e.g. two back-to-back `emit()` calls without awaiting the first) is unaffected
+          // — that distinction is exactly what a module-level Set got wrong and the metrics counter caught.
+          decision = await handlerChain.run([...chain, hook], () => withTimeout(entry.handler, { hook, payload, ctx, dryRun, traceId, setting: (k) => readSetting(settings, k) }))
         } catch (error) {
           recordFailure(entry, error)
           const policy = entry.failure

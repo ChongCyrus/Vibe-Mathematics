@@ -113,7 +113,9 @@
 
 ★ **`emit` 没有重入守卫。** ★ 实测：一个挂在某钩子上的条目，在自己的 handler 里 `emit` **同一个钩子** ⇒ **总线会重入**，★ handler 重复执行（探针里嵌套到 **31 层**仍然继续，★ 只因为探针自己设了上限才停），★ 而 `emit` 的回执仍是 `ok:true, decisions:0` —— ★ **没有任何地方说"你递归了"**。
 ★★ 对照：`vmu.turn` 对同一类风险是有守卫的（`VMU_TURN_REENTRANT`，`kernel/index.js` 里那段注释解释了为什么要加）。★ **`vmu.middleware` 暴露的是整套 bus（含 `emit`），而 `index.js` 里那句安全论证只覆盖 `rewriteOf`**（"it emits nothing, so no recursion is possible"）—— ★ **论证比授权窄**。
-★★ **现状**：这是**已验证的缺口，尚未修**（修法要决定"哪些钩子允许嵌套"，属总线语义决策）；★ **任何持有 `trigger-workflow` 的模块都可以碰到它**。
+★★ **状态：已修（本轮）** —— `emit` 现在对【同一钩子在自己 handler 内重入】具名拒 `VMU_MIDDLEWARE_REENTRANT`，★ **而嵌套【不同】钩子仍合法**（`v5r.stall-meeting` 挂在 `control/idle` 上、它去开会、会议服务会 emit 别的钩子 —— 一刀切禁止会打断已在使用中的模式）。★ 守卫在 `finally` 释放，所以下一次合法 emit 不受影响。
+★★ **那个"嵌套被拒"的拒发生在【内层】**；★ **外层是否报错取决于该条目的 `failure` 策略** —— `failure:'open'` 记审计后继续，`failure:'abort'` 向上传播。★ 这是策略，不是吞掉。
+★★ 而 `index.js` 里那句只覆盖 `rewriteOf` 的安全论证也已改写为**覆盖实际授权**（整套 bus：加/启停/读/发事件/接管 waterfall）。
 
 **② pack 文件夹里的 `middleware/` **不是**类别判据。**
 
@@ -576,7 +578,7 @@
 | `panel/written` | `open` | `panel.js` |
 | `panel/viewed` | `open` | `panel.js` |
 | `math/job-submitted` | `open` | `mathjobs.js` |
-| `math/job-settled` | `open` | `mathjobs.js` |
+| `math/job-settled` | `open` | `bus.js`、`mathjobs.js` |
 | `math/job-failed` | `open` | `mathjobs.js` |
 | `math/job-timeout` | `open` | `mathjobs.js` |
 | `math/job-cancelled` | `open` | `mathjobs.js` |
