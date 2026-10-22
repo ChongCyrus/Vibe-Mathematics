@@ -1796,3 +1796,35 @@ SUMMARY: 1 session(s), 0 with RED checks
 2. ★ **`slv-inspect` 的机器行**（★ `cast=true  (from 2 turn receipt(s))`）。
 
 **★★ 而这条 bug 本身就是本阶段那句纪律的又一次现形**：★ **"诊断面本身就是被测系统的一部分"** —— ★ 一个**报假阴性**的检查器，★ 比没有检查器更糟：★ **它会让人以为判据从未达成。** ★ **而它绿了整整一轮（`--selftest` PASS），★ 因为它测的是别的东西。**
+﻿
+### §7.08 ★★★★★★★ 最终真机（HEAD `142056fd`，★ T1 403/403 之后）：★ **`cast` 现在由机器读数给出**
+
+**配置**：★ 当前 dsh `0.2.1-rc.2` ＋ **HEAD `142056fd` 重打的包** ＋ `deepseek-official`/`deepseek-flash` ＋ `packs: ['v5r']` 已注入。
+
+**`done` 行**：
+```
+{"preset":"vibe-math-vmu","durationSec":59,"tokenTotal":566581,
+ "transcriptEvents":108,"toolCalls":15,"followStreamWorked":true,
+ "title":"用 vmu 工具推进研究所结题"}
+VERDICT: PASS
+cleanup: clone_gone=True  C_free_GB=14
+```
+
+**★★★★★ 判据（★ 这一行是【机器读出来的】，★ 不再是代理散文）**：
+```
+CLOSURE: full-1023-001932.jsonl  cast=true  (from 7 turn receipt(s))
+SUMMARY: 1 session(s), 0 with RED checks
+```
+| ★ 判据 | ★ 结果 |
+|---|---|
+| ★ **`cast: true`** | ★ **★`cast=true  (from 7 turn receipt(s))`★** —— ★ 从 **7 个 turn 回执**里读出的机器字段 |
+| ★ **`slv-inspect` 0 RED** | ★ **`0 with RED checks`** ✓ |
+| ★ `NO_FENCE` | ★ **0** |
+| ★ **`UNKNOWN_FIELD`** | ★ **0 个运行时错误** —— ★ 2 次出现**都是同一条提示词文本**（★ 「写了会被判 `VMU_TURN_UNKNOWN_FIELD`」，★ 提示词在警告模型） |
+| ★ `FIELD_NOT_APPLICABLE` | ★ **0** |
+| ★ `BAD_JSON` | ★ **0** |
+| ★ `followStreamWorked` | ★ **true** |
+
+**★★★ 至此目标 5 的每一条判据都有【机器可读的】证据**，★ 而上一轮那条"报假阴性"的读取器 bug 已经修好并被这次真实数据反向验证（★ 它现在能读出 7 个回执里的 `cast`）。
+
+**★ 本轮同时确认**：★ **T1 = 403/403，0 FAIL，exit=0**（★ 在 `slv-inspect.mjs` 改动之后重跑）。
