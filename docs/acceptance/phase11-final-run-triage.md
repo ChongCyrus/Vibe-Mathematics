@@ -417,3 +417,25 @@ for (let i = 1; i < SECTIONS.length; i += 1) {          // ★ 每个顶层节
 ### §6.39 ★ #31 第三条**不是缺陷**（★ 已读代码确认）
 
 ★ `state.editor` 是**真实值**；★ `editorDefault = 'academician'`（`:115`）只是**默认**。★ 真机显示 "编辑：academician" **因为它确实是**。★ **未改。**
+### §6.40 ★★ 真机复验第 42 轮：★ **跑起来了，★ 而模型 0 token —— 状态全部记录**
+
+**已打通的基础设施（★ 四个 ABORT 逐个修掉）**：
+1. ★ `缺 TaskFile` ⇒ ★ 传 `-TaskFile vmu-final-task.txt`
+2. ★ `clone exists` ⇒ ★ 传 `-CloneName`
+3. ★ **`$DRIVE` 与 `$OUT` 都是【乱码路径】**（★ `vibemath寮€鍙` 应为 `vibemath开发`，★ 脚本被以错误编码保存）⇒ ★ 生成 `slv-r41-run.ps1` 修正 `$DRIVE`
+4. ★ `port in use`（★ 19389 被上次失败的 server 占着）⇒ ★ 终止 PID 9436
+
+**跑起来之后的状态（★ 有 jsonl 为证）**：
+- ★ `session/create` OK ★ `agentPreset: vibe-math-vmu`、★ `agentAvailable: true`、★ `mux: open` ✓
+- ★ `follow-item` 有 **`turn 1, step 1`** 的 `system/message` 与 `user/message` ⇒ ★ **任务确实投递了** ✓
+- ★★★ **而 705 行 jsonl 里 `running:true` 出现 0 次、★ `totalTokens>0` 出现 0 次** ⇒ ★ **模型从未产出任何 token** ✗
+- ★ `srv.err` **只有** `dshmarket` peer 依赖不兼容那一条（★ 与运行无关）⇒ ★ **server 侧没有 provider 错误**
+
+★★★ **⇒ 会话建好、★ 任务送达、★ 然后静默 —— 没有报错，★ 也没有产出。**
+
+**下一轮的第一件事（★ 按顺序）**：
+1. ★ **直接查 `dsh-opencode-go` 这个 provider 在这个 clone 里是否真能出 token** —— ★ 用一个**最小会话**（★ 不投 vmu 任务）★ **单独验一次** ⇒ ★ 这能立即区分"provider 不通"与"preset 出问题"。
+2. ★ 若 provider 通 ⇒ ★ 查 **delivery mode**：★ `AGENTS.md §4` 说 `caller` 模式下**成员回合由调用会话扮演** ⇒ ★ **可能整个任务在等一个永远不会来的 `reply`**。
+3. ★ 检查 **`$OUT` 的乱码路径**是否让 **drive 的 log 文件全是 0 字节**（★ 实测 `*.run.log` **确实是 0 字节**）⇒ ★ **修编码**（★ 把脚本以 UTF-8 重存）。
+
+★ **本轮没有产生任何代码改动**；★ 仓内 `HEAD = db4a8371`，★ `dirty = 0`。
