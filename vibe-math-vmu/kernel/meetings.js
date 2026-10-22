@@ -362,7 +362,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     WIRED_KEYS, UNWIRED_REASONS,
 
     /** Open a meeting. `type`/`size`/`materials` are checked against `typeCatalog` / `committeeMax` / `materialsRequired`. */
-    open({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null } = {}) {
+    // ★★ `reason` IS A PARAMETER BECAUSE A MEETING CONVENED BY A POLICY MUST SAY WHY. Measured on a live host:
+    // `v5r.stall-meeting` computed "idle for 400000ms >= stall threshold 360000ms (v5r stallAutoMeetingMs)", returned it
+    // in its decision, then called `open({ type, kind, at })` — and the reason was DROPPED, because this signature had
+    // nowhere to put it. So overview / status / summary could not answer "why was this meeting opened" for exactly the
+    // kind of meeting that most needs the answer. Optional, so every existing caller is unchanged.
+    open({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null } = {}) {
       const enforced = []
       const ms = at === null ? clock() : at
       // GAP-MTG-02: a CONTRADICTORY tier declaration is refused BEFORE any state is created. Same predicate as
@@ -403,6 +408,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         recess: null, previousConfirmed: false, minutes: { entries: [], refused: [], actions: [] },
         transcript: [], confidentiality: K.confidentialityDefault, motions: [], appeals: [], closedAt: null,
         committeeReport: null, dissent: [],
+        // ★ WHY this meeting was convened (null when the caller did not say). Until now this was computed by the
+        // caller and discarded here, so a reader of summary()/meetingView() could see a "stall" meeting with no
+        // statement of what stalled.
+        reason: reason === null || reason === undefined ? null : String(reason),
       }
       live.set(mid, m)
       markState(m, 'open')
@@ -1153,7 +1162,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         }
       })
       return {
-        ok: true, id: m.id, meeting: m.id, kind: m.kind, state: m.state,
+        ok: true, id: m.id, meeting: m.id, kind: m.kind, state: m.state, reason: m.reason === undefined ? null : m.reason,
         chair: m.chair || null, secretary: m.secretary || null,
         motions, votes: (m.minutes && Array.isArray(m.minutes.entries)) ? m.minutes.entries.filter((e) => e && e.kind === 'vote').length : 0,
         closedAt: m.closedAt || null,
@@ -1162,7 +1171,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
 
     meetingView({ meeting = null } = {}) {
       const m = requireMeeting(meeting, { readOnly: true })
-      return { ok: true, meeting: m.id, state: m.state, chair: m.chair || null, secretary: m.secretary || null,
+      return { ok: true, meeting: m.id, state: m.state, reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,
         motions: m.motions.map((x) => ({ id: x.id, by: x.by, kind: x.kind, status: x.status, secondedBy: x.secondedBy || null, withdrawnAt: x.withdrawnAt || null })) }
     },
     /** READ-ONLY self-report: WIRED list, the declared-but-unwired list (per key + reason), counters, values. */

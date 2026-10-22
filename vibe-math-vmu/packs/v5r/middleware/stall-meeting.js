@@ -53,7 +53,10 @@ export const V5R_STALL_MEETING = Object.freeze({
       // The seam is capability-gated: with no `trigger-workflow` this throws a NAMED refusal, and an unpublished
       // name throws VMU_NO_SUCH_OBJECT listing what IS published - never a silent null.
       const meetings = flat.api.services.get('vmu.meetings')
-      const opened = await meetings.open({ type: 'ordinary', kind: 'stall', at: flat.at === undefined ? null : flat.at })
+      // ★ THE REASON GOES WITH THE MEETING, not only into this handler's return value. It used to be computed here and
+      // returned to the bus while the meeting itself recorded nothing, so `summary`/`status` could show a "stall" meeting
+      // with no statement of what stalled — measured on a live host, and the reader had no way to tell why it was opened.
+      const opened = await meetings.open({ type: 'ordinary', kind: 'stall', at: flat.at === undefined ? null : flat.at, reason: decision.reason })
       return { ok: true, convened: true, stallAfterMs: decision.stallAfterMs,
         meetingId: opened && (opened.meetingId || opened.id) ? (opened.meetingId || opened.id) : null, reason: decision.reason }
     },

@@ -119,8 +119,8 @@
 
 ★★★★ **副作用型中间件曾经是【诊断面看不见】的 —— 真机抓到的，读这一节要记住它**：
 
-★ **实测**：★ 一条挂在 **`control/idle`** 上的策略（`v5r.stall-meeting`）**真的开了会**，★ 而 `beat()` 回执里 **`middleware: 0`**。★ 三个原因叠在一起：
-1. ★ **回执里的 `middleware` 数的是【决策】（`decisions.length`），不是【被调用的条目】** —— ★ 而**靠副作用办事的策略按契约返回 `undefined`**（`trigger-workflow`／`record`／`notify` 都不是决策）
+★ **实测**：★ 一条挂在 **`control/idle`** 上的策略（`v5r.stall-meeting`）**真的开了会**，★ 而 `beat()` 回执里 **`middleware: 0`**。★ 三个机制叠加在一起：
+1. ★ **回执里的 `middleware` 数的是【决策】（`decisions.length`），不是【被调用的条目】** —— ★ 凡是不返回决策的条目（返回 `undefined`、纯副作用）都会被它漏掉。★★★ **但要更正一处：本阶段最初把观测到的那一次归因于这一条，实测是错的** —— ★ `v5r.stall-meeting` **返回的是一个决策对象**（`{ok:true, convened:true, stallAfterMs, meetingId, reason}`）⇒ ★ **它本来就会被数到**。★ 真正让那一次消失的是下面两条。
 2. ★ **`beat()` 报的 `middleware` 属于 `control/heartbeat`**，★ 而策略挂在 **`control/idle`** 上 —— ★ 两个不同的钩子，★ 回执把它们的数混成一个
 3. ★ **`control.idleState()` 把 `control/idle` 的 emit 结果丢掉了**（★ 它必须保持**同步**，★ 而 emit 是 async）
 

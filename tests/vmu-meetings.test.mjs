@@ -792,6 +792,28 @@ const err = (fn) => errOf(fn)
     '★ A1⑤: an ARCHIVED meeting is still summarizable (close moves it out of the live map)', { state: closed.state, motions: closed.motions.length })
 }
 
+// ── A POLICY-CONVENED MEETING RECORDS WHY IT WAS CONVENED ────────────────────────────────────────────────────────
+// ★ MEASURED on a live host: `v5r.stall-meeting` computed "idle for 400000ms >= stall threshold 360000ms" and returned it
+// in its decision, then called `open({ type, kind, at })` — and the reason was DROPPED because `open()` had nowhere to
+// put it. So summary()/meetingView() could show a "stall" meeting with no statement of what stalled.
+{
+  const svc = createMeetings({ clock: () => 0, settings: {}, log: () => {} })
+  if (svc) {
+    const opened = svc.open ? svc.open({ type: 'ordinary', kind: 'stall', reason: 'idle for 400000ms >= threshold 360000ms' }) : null
+    const id = opened && (opened.id || opened.meeting)
+    const sum = svc.summary ? svc.summary({ meeting: id }) : null
+    ok(sum && sum.reason === 'idle for 400000ms >= threshold 360000ms',
+      '★★ 正：open({reason}) ⇒ summary.reason 是那句原因（旧行为：这条信息在调用方与记录之间被丢掉）', sum && sum.reason)
+    const view = svc.meetingView ? svc.meetingView({ meeting: id }) : null
+    ok(view && view.reason === 'idle for 400000ms >= threshold 360000ms',
+      '★★ 正：meetingView.reason 同样带出来', view && view.reason)
+    const plain = svc.open ? svc.open({ type: 'ordinary' }) : null
+    const id2 = plain && (plain.id || plain.meeting)
+    const sum2 = svc.summary ? svc.summary({ meeting: id2 }) : null
+    ok(sum2 && sum2.reason === null,
+      '★ 反：不传 reason ⇒ 回 null，不是 undefined（"没有说明"是一个明确的事实）', sum2 && sum2.reason)
+  }
+}
 console.log('=== VMU MEETINGS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL - ' + f)
 process.exit(failed ? 1 : 0)
