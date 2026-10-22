@@ -1143,3 +1143,29 @@ const seam = async ({ turn, text }) => {
 ★ **并写明与 `AGENTS.md §7` 的分工**：★ 那四条是**审计门禁本身**的纪律，★ 本文件的 A 段是**排查与验证过程**的纪律，★ **互补不重复**。
 ★ **使用方式**：★ 每轮开始扫 A 段、收尾扫 B/C 段、新教训**追加编号不改旧号**、★ **被推翻的条目标记 `[已推翻]` 而不删除**（★ 被推翻的判断本身也是资产）。
 ★ `node scripts/check-docs.mjs` ⇒ **`DOC LINT: PASS`** ✓
+### §6.76 新缺陷 **C 与 D** 的源码复核：★ **不是缺陷，★ 是【两个独立循环被混读】**
+
+**源码事实（`kernel/meeting.js:467-484`，★ `meeting.status()`）**：
+```js
+:469  rounds: rounds.length,                                  // \u2605 \u4f1a\u8bae\u81ea\u5df1\u7684\u8f6e
+:474  answered: Object.keys(inputs).length,                    // \u2605 \u4f1a\u8bae\u81ea\u5df1\u7684 inputs
+:477  pending: asked.filter((m) => !inputs[m] && !silent[m]),  // \u2605 \u4ece asked \u91cc\u7b5b
+:481  hasDeliverSeam: typeof deliver === 'function',           // \u2605 \u4f1a\u8bae\u81ea\u5df1\u7684\u63a5\u7f1d
+```
+★★★ **⇒ 这些字段描述的是【会议对象自己的 `ask()`／回答循环】** —— ★ 而代理全程驱动的是**【`vibe_vmu_turn` 回合循环】**（★ 用 `memberPrompt`／`deliveryPath`／`awaiting`）⇒ ★ **两套循环互不写入。**
+
+**★ 逐条结论**：
+| ★ | ★ 代理报的 | ★ 源码复核 |
+|---|---|---|
+| ★ **C** | ★ `answered:0, pending both` 而两人都答过 | ★ **对会议对象是【真话】** —— ★ 会议从未 `ask()`，★ 回答发生在 turn 循环里 |
+| ★ **D** | ★ `hasDeliverSeam:false` vs `deliveryPath:"caller"` | ★ **两个不同的接缝** —— ★ `deliver` 是**会议模块**的（★ 由 `open({deliver})` 注入），★ `deliveryPath` 是**回合循环**的 |
+
+★★ **⇒ 所以 C／D 不是【机制坏了】，★ 而是【两个面都在描述"成员有没有回答"，★ 而没有任何地方说清它们属于不同的循环】。**
+
+**★★ 这本身仍是一个要修的问题，★ 但性质是目标 3（对但不够好）：★ 可识别性／术语歧义** —— ★ 符合本阶段「没有容易导致误解的机制或功能」的要求。
+**★ 具体改进方向（★ 下一轮）**：
+1. ★ `meeting.status()` 增加一句**明确的自述**：★ 这些数字属于**会议的 ask/answer 循环**，★ **回合循环另有回执**（★ `vibe_vmu_turn` 的 `awaiting`/`memberPrompt`）。
+2. ★ 或 ★ 把字段名改得更不可混：★ `answered` → `answeredInMeeting`，★ `hasDeliverSeam` → `hasMeetingDeliverSeam`。
+3. ★ **`docs/` 里把两套循环的边界写清**。
+
+**★★★ 本轮不再"修"归属或计数** —— ★ **按 L15：代理的报告是线索，★ 不是可执行缺陷清单；★ 照原话去改，★ 会改坏两套本来各自正确的循环。**
