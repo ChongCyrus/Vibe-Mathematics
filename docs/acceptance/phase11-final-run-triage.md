@@ -553,3 +553,30 @@ $env:ELECTRON_RUN_AS_NODE = '1'
 ★★ **第一次尝试 `dur=0s / tokens=-1 / no done line`** ⇒ ★ **server 没起来**，★ 而 `srv.err` **为空** ⇒ ★ **待查**（★ 可能 `app.asar` 内的 cli.js 需要 `--expose-internals` 之外的处理，★ 或 `DSH_BIN` 路径在 asar 内不被 `spawn` 接受）。
 
 ★ **另**：★ 本轮还修了真机代理报的**一条我自己引入的缺陷** —— ★ `vibe_v5_task_update` 的 **`transition` 分支加了但 `to` 参数没加进 schema** ⇒ ★ 已补 `to`／`why`／`blocked_by` ⇒ ★ **T1 = 401/401** ✓
+### §6.46 切到当前 dsh（`0.2.1-rc.2`）的进展与**精确卡点**
+
+**已确认可用（★ 手工实测，★ 输出为证）**：
+```
+& 'DeepSeek Harness.exe' --expose-internals <app.asar>\...\dsh-desktop-host\lib\cli.js --profile web --help
+  ⇒ Usage: dsh --profile web [options]      ✓
+& … --profile headless --help   ⇒ 正常      ✓
+& … --profile desktop …         ⇒ error: profile "desktop" is managed exclusively by the Electron application
+```
+★★ **⇒ 当前 dsh 的 CLI 能起【非 desktop】profile（★ web／headless／clone 都行）**，★ **而 `desktop` 被 Electron 独占** —— ★ 所以 SLV 用 **clone profile** 的路线是对的。
+★★★ **且输出里自报 `dsh 0.2.1-rc.2`** ✓ —— ★ **这就是用户指出的当前版本**。
+
+**已修的三处（★ 都在 `_oneoff\vm-drive\dsh-drive.mjs`，★ 仓外）**：
+1. ★ **默认 `DSH_BIN` 删除** ⇒ ★ `const bin = process.env.DSH_BIN`（★ 无回退，★ 没设就响亮失败）
+2. ★ **spawn 带 `ELECTRON_RUN_AS_NODE=1`**（★ 否则 exe 以 GUI 模式起）
+3. ★ **spawn 在 `app.asar` 路径下补 `--expose-internals`**（★ 且顺序在脚本之前）
+
+**★★★ 仍卡住的精确点**：★ 三条都改了之后，★ 仍然 **`ABORT: no token`**，★ 而尾部是
+```
+at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+code: 'MODULE_NOT_FOUND', requireStack: []
+```
+★★ **栈里是 `run_main_module` ⇒ 失败发生在【drive 进程本身】，★ 而不是它 spawn 的 server。** ★ 也就是说：★ **`& $exe --expose-internals $DRIVE`** 这一步**没把 drive 当脚本跑起来**（★ exe 在 `ELECTRON_RUN_AS_NODE=1` 下可能把第一个非旗标参数当别的用途）。
+
+**★★ 下一轮的第一步（★ 很具体）**：★ **先单独验证「exe 能否把 `dsh-drive.mjs` 当脚本执行」** —— 例如 `& $exe --expose-internals D:\wd\vibemath开发\_oneoff\vm-drive\dsh-drive.mjs --selftest`（★ drive 自带 selftest）⇒ ★ **若它也 `MODULE_NOT_FOUND` ⇒ 换一种启动 drive 的方式**（★ 例如用一个极小的 `.js` wrapper 去 `import()` 它，★ 或直接用 `node` 跑 drive 但 **`DSH_BIN` 指向 exe 而非 cli.js**）。
+★★★ **注意**：★ `node` 跑 drive、★ 而 **`DSH_BIN` 指向 `DeepSeek Harness.exe`** —— ★ 这样 `spawn(exe, ['--expose-internals', cli.js, …])` 可能才是对的组合（★ 因为 **drive 自己**用普通 node 跑，★ 只有 **它 spawn 的 server** 需要 exe）。
