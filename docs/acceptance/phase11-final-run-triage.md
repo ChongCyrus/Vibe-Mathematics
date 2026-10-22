@@ -847,3 +847,32 @@ session/prompt {args:{request:{requestId, sessionId, mode:'queue', content:[{typ
 session/list   {args:{_request:{}}}        \u2190 \u2605 \u6ce8\u610f\u4e0b\u5212\u7ebf
 ```
 ★ **读 `items[].projections.values.tokenUsage` 与 `items[].running`** ⇒ ★ **A（带 vmu preset）vs B（不带）** ⇒ ★ **这一步就能判定"是 preset 装载问题还是 dsh 与 drive 的更深差异"。**
+### §6.62 ★★★★★ 结论翻转：★ **drive、当前 dsh、vmu preset —— 三者全都没问题**
+
+**小探针（★ 40 秒）发【真实任务文本】的结果**：
+```
+poll 1 (5s):  running=true total=9092   out=331
+poll 5 (25s): running=true total=154701 out=5054
+```
+★★★ **⇒ 当前 dsh（`0.2.1-rc.2`）能跑 `vibe-math-vmu` 的完整任务、★ 出 token ✓**
+
+**而 drive 对同一个活 server 的 A/B（★ 各 70 秒）**：
+| ★ 模式 | ★ 结果 |
+|---|---|
+| ★ **不带** `--follow-stream/--follow-members` | ★ **`running:true`、★ total 20,448 → 63,134** ✓ |
+| ★ **带** 两个 follow 旗标 | ★ **`running:true`、★ total 10,339** ✓ |
+★★★ **⇒ drive 在当前 dsh 上也完全正常。**
+
+★★★★ **⇒ 于是【不是 dsh、★ 不是 preset、★ 不是 drive、★ 不是 RPC payload】** —— ★ **问题只在 `slv-*.ps1` 那一层包装**（★ 它起的 server 与 drive 之间丢了什么）。
+
+**★ 本轮唯一剩下的未解点，★ 非常小**：★ **ps1 起的 server 与 ps1 起的 drive 组合起来出 0 token，★ 而【手工起 server ＋ 手工跑 drive】完全正常** ⇒ ★ **差异在 ps1 的 `Start-Process` 参数或工作目录**。
+
+### §6.63 ★★★ 回答"clone 到底是什么"
+
+★ **clone ＝ 一个【临时的 dsh profile 目录】**，★ 位于 `~/.dsh/profiles/<CloneName>/`。
+★★ **它包含**：★ `package.json`（★ `dsh.profile.bundles` 列表）、★ **`node_modules/`（★ 装好的插件：★ `dsh-vibe-math`、★ provider bundle、★ 以及它们的依赖）**、★ `cordis.yml` 等。
+★★★ **为什么要它**：★ **SLV 必须把【我们自己的 vmu 包（tarball）】装进一个 profile 才能跑**，★ 而**不能污染用户的 `desktop`／`web`** ⇒ ★ **所以脚本从 `web` 复制一份到 `~/.dsh/profiles/<CloneName>`，★ 装上 tarball，★ 跑完再删。**
+★★★★ **⇒ 它是【一次性的插件安装沙盒】，★ 天生就该用完即删** —— ★ **而我没删，★ 19 个堆了 12.6 GB。**
+★★★★★ **★ 另外我把它从 143 MB 弄成 1.3 GB 的，★ 是我那段 `cpSync(desktop/node_modules)` 补丁**（★ 已删）。
+
+★ **关于"以前没有 clone"**：★ **很可能以前也有**（★ 只是 143–150 MB × 少量，★ 不显眼），★ **或者早先直接对 `web` 跑**。★ **无论如何：★ 现在的正确做法是【每次跑完立即删 clone】，★ 而 clone 本身是这套 SLV 的正常设计。**
