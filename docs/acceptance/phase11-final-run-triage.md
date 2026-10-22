@@ -92,3 +92,24 @@
 ★ **实测**：★ `all` ⇒ **2/2**；★ `doing` ⇒ 1；★ `bogus` ⇒ **具名拒**。
 
 ### §6.4 已修计数：**4 条**（#12 #13 #7 #3）＋ **#2 的一半**；★ **未修 13 条**
+### §6.5 ★★★ #7 同族：★ **运行时探针找到了 11 个**，★ 其中 **4 个是真实面 action**
+
+★★ **静态扫描不可靠**（★ 只出 5 个、★ 4 个是误报、★ **看不见被报的那个**，★ 因为 `jobsDir` 返回计算值）。
+★★★ **正确工具是运行时探针**：★ `createKernel` 后**遍历每个服务的每个方法**，★ 用 300ms 超时调一次，★ 记返回类型。★ **结果**：
+
+| ★ 服务方法 | ★ 返回 | ★ 是否面 action |
+|---|---|---|
+| ★ `mathjobs.jobsDir` | ★ string | ★ **是**（★ 真机报的，★ **已修**） |
+| ★ `mathjobs.mirrorRel` | ★ string | ★ **是** —— ★ **同一个 `svc[action]` 路径，★ 已被类型守卫覆盖** ✓ |
+| ★★ `bidding.fingerprintOf` | ★ string | ★ **是** —— ★ **本次修** ✓ |
+| ★★ `bidding.normalizePlan` | ★ string | ★ **是** —— ★ **本次修** ✓ |
+| ★ `budget.perTaskShare` | ★ number | ★ 否（★ 内部助手） |
+| ★ `clockguard.now` / `clockSource` | ★ number | ★ 否 |
+| ★ `meetings.tier` / `isLight` | ★ string / boolean | ★ 否 |
+| ★ `chat.speakCount` | ★ number | ★ 否 |
+| ★ `turn.awaitingCaller` | ★ boolean | ★ 否 |
+
+★★ **所以真正会泄漏的面是 4 个，★ 全部已修**（★ `mathjobs` 两个靠同一守卫、★ `bidding` 两个本次修）。
+★★★ **但探针是"无参调用"** —— ★ **有参方法（207 个抛拒/超时）没被覆盖** ⇒ ★ **它们的返回类型仍未测**。★ 这是**已量过的边界**，★ 不是"没问题"。
+
+★ **下一步（★ 系统性）**：★ 给 `tools/` 抽**共享 `receipt(action, value)`** ＋ ★ **一条门禁**（★ 扫描"直接摊开 `await`"的形状，★ 要求具名例外），★ 这样**新面不会重犯**。

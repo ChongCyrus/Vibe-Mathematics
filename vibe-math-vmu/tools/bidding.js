@@ -11,6 +11,14 @@ export function makeBiddingSpec({ param, refused, TOOL_NAMES, kernel }) {
       id: param('string', '只读动作的目标 id（可选 ✓）'),
     },
     run: async ({ action, request, id } = {}) => {
+      // ★★★ NEVER SPREAD A PRIMITIVE. `bidding.fingerprintOf` returns a STRING and `normalizePlan` a JSON TEXT, so
+      // `Object.assign({ ok:true, action }, <string>)` spread them character by character into `{0:'2',1:'7',…}` - a receipt
+      // that looks like data and is a bug. Found by a RUNTIME probe that called every service method and recorded its
+      // return type; the static scan had missed both (it only saw `return <literal>` at method level, and these return
+      // computed values). A primitive gets named as `result` instead.
+      const receipt = (act, value) => (value === null || value === undefined || typeof value !== 'object'
+        ? { ok: true, action: act, result: value === undefined ? null : value }
+        : Object.assign({ ok: true, action: act }, value))
       try {
         const bidding = kernel.bidding
         if (action === 'award') return Object.assign({ ok: true, action }, await bidding.award(request))
@@ -19,9 +27,9 @@ export function makeBiddingSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action === 'candidates') return Object.assign({ ok: true, action }, await bidding.candidates({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
         if (action === 'close') return Object.assign({ ok: true, action }, await bidding.close(request))
         if (action === 'collusion') return Object.assign({ ok: true, action }, await bidding.collusion({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
-        if (action === 'fingerprintOf') return Object.assign({ ok: true, action }, await bidding.fingerprintOf({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
+        if (action === 'fingerprintOf') return receipt(action, await bidding.fingerprintOf({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
         if (action === 'list') return Object.assign({ ok: true, action }, await bidding.list({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
-        if (action === 'normalizePlan') return Object.assign({ ok: true, action }, await bidding.normalizePlan({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
+        if (action === 'normalizePlan') return receipt(action, await bidding.normalizePlan({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
         if (action === 'post') return Object.assign({ ok: true, action }, await bidding.post(request))
         if (action === 'status') return Object.assign({ ok: true, action }, await bidding.status({ ...(request || {}), ...(id !== undefined && id !== null ? { id } : {}) }))
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
