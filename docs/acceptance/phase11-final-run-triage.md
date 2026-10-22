@@ -464,3 +464,22 @@ for (let i = 1; i < SECTIONS.length; i += 1) {          // ★ 每个顶层节
 ★ **下一轮顺序**：★ ① **先只验证 provider**（★ 用一个**不含 vmu 任务的最小会话**，★ 看是否同样 `NO_ADAPTER`）⇒ ★ **一步区分"环境坏了"与"vmu 坏了"**；★ ② 若环境坏 ⇒ ★ 修装配（★ `dsh plugin` 启用 / ★ 版本对齐）；★ ③ **环境好了之后再跑一次完整 SLV** —— ★ **那一次才是目标 5 的判据**。
 
 ★ **本轮零代码改动**；★ `HEAD = c987f159`（★ 上一轮留下的文档 commit），★ `dirty = 0`。
+### §6.42 `NO_ADAPTER` 的排查结果（★ 四步测量，★ 每步有输出）
+
+1. ★ **桌面 profile 能它** ✓：★ `~/.dsh/profiles/desktop/package.json` 的 `dsh.profile.bundles` =
+   `[…, dsh-opencode-go, …, @mars-sea/dsh-commandcode-provider]` ⇒ ★ **桌面 DSH 侧是启用的**。
+2. ★ **bundle 的注册方式是 Cordis patch** ✓：★ `dsh-opencode-go@0.1.21` 的 `dsh.bundle.patch = ./cordis.patch.yml`，★ 内容只有一条
+   `- insert: [{ id: opencode-go, name: dsh-opencode-go }]` ⇒ ★ **适配器就是这个插件行**。
+3. ★ **clone 里【两者都在】** ✓：★ `~/.dsh/profiles/slvr41/package.json` 的 bundles 含 `dsh-opencode-go`，
+   ★ 且 `node_modules/dsh-opencode-go` **存在** ⇒ ★ **不是"没装"、★ 不是"没登记"**。
+4. ★★★ **而两边的 node_modules 规模差异很大**：★ **clone 63 个顶层项 vs desktop 99 个** ⇒ ★ **clone 的 profile 薄得多**
+   （★ 缺 `@anthropic-ai`／`@aws-sdk`／`@mars-sea`／`@puppeteer`／`@univerjs-pro` 等一大批）⇒ ★ **插件行加载所需的某个东西没进去**，★ 于是 ★ **provider 注册表里没有适配器** ⇒ ★ `NO_ADAPTER`。
+
+★★★ **⇒ 结论：★ 这是【SLV clone 的装配缺口】，★ 不是 vmu、★ 不是 provider 本身、★ 也不是 preset。**
+
+**下一轮的两条路（★ 明确）**：
+- ★ **A（推荐，最快）**：★ **不新建薄 clone，★ 而是复制桌面 profile 的 `node_modules`**（★ 或直接以 `-Profile desktop` 起 server，★ 用**另一个端口**）⇒ ★ **桌面侧已验证能用这个 provider**。
+- ★ **B**：★ 逐个补 clone 缺的 84 项 —— ★ 慢且不必，★ 因为**桌面那份是现成的、已知能用的**。
+
+★ **而无论哪条路，★ 判据不变**：★ **最小会话（不含 vmu 任务）能出 token** ⇒ ★ **才去跑完整 SLV**。
+★ **本轮零代码改动**；★ `dirty = 0`。
