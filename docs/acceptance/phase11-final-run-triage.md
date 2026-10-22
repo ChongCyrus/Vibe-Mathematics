@@ -964,3 +964,25 @@ VERDICT: PASS
 1. ★ **读 `kernel/*.js` 里 `status` 的实现** ⇒ ★ 看它返回什么字段（★ 有没有 `next` / `nextAction` / `hint`）
 2. ★ **读 v5r 的提示词** ⇒ ★ 看它对"从零开始"有没有明确指令
 3. ★★★ **如果 status 缺 `next` ⇒ 这是 `docs/03` 契约与消费者（代理）之间的真实缺口**，★ **应当补**（★ 且符合哲学：★ **能力在内核、★ 但"下一步"是政策 —— ★ 所以 `next` 应由 pack 给、★ 内核只给事实**）
+### §6.68 ★★★★★ 三次"模型不动"的**真因**：★ **是我自己写的 runner 漏了 pack 注入**
+
+**源码链（★ 每步有行号）**：
+1. ★ `host.js:1051`：★ `appendPackToolSpecs(specs, kernel.packTools(), …)` ⇒ ★ **包工具来自 `kernel.packTools()`**。
+2. ★ `pack.js:739`：★ **`kernel.declarePackTools`** 由**包加载器**调用 ⇒ ★ **只有 pack 被加载时才有 `vibe_v5_*` 工具**。
+3. ★ **`pack.js:102-108`（★ 旧脚本）** 在插件的 `config` 里注入：
+   ```yaml
+   config:
+     packs: ['v5r']
+     root: '<WS>/VibeMath'
+     vmu:
+       deliverMode: 'caller'
+   ```
+4. ★★★ **而我为了快速迭代写的 `slv-min2-run.ps1`【没有这一步】** —— ★ 它只做了 clone 复制、`npm i`、起 server、跑 drive。
+
+★★★★ **⇒ 于是那三次跑里 v5r 包【根本没加载】** ⇒ ★ **模型能看到的只有【内核面】**（`vibe_vmu_status` 等）⇒ ★ **它反复查 status、然后停手** —— ★ **这正是三次跑的同一表现**（★ 7 次 / 2 次 / 4 次）。
+★★★★★ **⇒ 所以"模型不动"不是 vmu 的缺陷、★ 不是 `deepseek-flash` 的能力问题、★ 不是 status 缺 `next`** —— ★ **是我的 runner 少了一行配置。**
+
+**★★★ 教训（★ 又一条）**：★ **为了"提高效率"而重写的极简 runner，★ 把原脚本里一个【关键配置步骤】静默丢了** —— ★ 而**它丢得毫无声响**：★ server 起来了、token 出了、会话跑完了、`VERDICT: PASS`，★ **只是 pack 不在。**
+★★ **⇒ 极简重写必须【逐段对照原脚本】，★ 而不是凭记忆挑几步。**
+
+**★ 下一轮**：★ **在 `slv-min2-run.ps1` 里补回 pack 注入**（★ 从 `slv-r58` 的 `:102-108` 原样搬），★ **重跑** ⇒ ★ **那才是有 v5r 包的完整流程**。
