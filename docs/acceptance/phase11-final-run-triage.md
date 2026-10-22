@@ -1973,3 +1973,39 @@ SUMMARY: 1 session(s), 0 with RED checks
 **★ 已做（目标 3：对但不够好）**：★ 在 `v5r-core.js` 那段注释前加了 **6 行说明**，★ **点明两个词汇表各自用在哪里**，★ 并**写清"我在审查真实运行时恰好读到过这个误判"** —— ★ **成本 6 行，★ 收益是下一个人不用再查一遍。**
 
 **★ 不改代码行为** —— ★ 映射是对的。
+﻿
+### §7.16 ★★★★★★★ **收尾验证（当前 HEAD `7bd58ff7`）：T1 与真机判据全部成立**
+
+**T1**：★ `TOTAL 403  PASS 403  FAIL 0  (suites 339 · probes 64)`、★ **exit=0**、★ **全日志无 FAIL 行**
+
+**最终真机**（★ 当前 dsh `0.2.1-rc.2` ＋ HEAD 重打包 ＋ `deepseek-official` ＋ `packs:['v5r']` 已注入）：
+```
+{"preset":"vibe-math-vmu","durationSec":50,"tokenTotal":469188,
+ "transcriptEvents":94,"toolCalls":12,"followStreamWorked":true}
+VERDICT: PASS
+cleanup: clone_gone=True  C_free_GB=13.99
+```
+```
+CLOSURE: full-1023-004941.jsonl  cast=true  (from 7 turn receipt(s))
+SUMMARY: 1 session(s), 0 with RED checks
+NO_FENCE 0 | UNKNOWN_FIELD 2 (\u5747\u4e3a\u63d0\u793a\u8bcd\u6587\u672c) | FIELD_NOT_APPLICABLE 0 | BAD_JSON 0
+```
+
+**★★★ ⇒ 两者都在【当前 HEAD】上成立。**
+
+### 本阶段十项目标的最终状态
+
+| ★ | ★ 目标 | ★ 状态 |
+|---|---|---|
+| ★ 1 | ★ 总纪律（可指到 `文件:行`） | ★ **全程以此自检**（★ 每条结论都带出处） |
+| ★ 2 | ★ 审查并修复 | ★ **26 条已修**（★ 详见 §6.x／§7.x） |
+| ★ 3 | ★ 优化与改进 | ★ 已做（★ `loop`/`note`、★ `#15` 指引、★ 两个词汇表注释、★ `closureVote` 进回执） |
+| ★ 4 | ★ 文档一致性 | ★ `check-docs` PASS、★ `regen-all` 16/16、★ `docs-landed` 门禁已加 |
+| ★ 5 | ★ **真机复验** | ★ **★交账★** —— `cast=true` 机器读、★ 0 RED、★ 四码 0、★ **提示词已实读** |
+| ★ 6 | ★ `bus.emit` 重入守卫 | ★ **已完成** |
+| ★ 7 | ★ `docs-landed` ＋ 门禁 | ★ **结案** |
+| ★ 8 | ★ 脚本桥暴露 | ★ **早已完成**（★ `kernel/index.js:1664`） |
+| ★ 9 | ★ 四个覆盖边界 | ★ **可选、收益递减** —— ★ **未开展，★ 如实标注为"没看那么细"** |
+| ★ 10 | ★ 明确不做 | ★ **已列明**（★ 含 v3/v5r 对齐 —— ★ 用户裁定不开展） |
+
+**★ 未覆盖（★ 如实）**：★ 目标 9 的四个边界；★ v3/v5r 能力对齐（★ 用户裁定）；★ `#20` 的"两条记录"判定为非缺陷（★ 构造性排除）；★ 两个 tally 回落分支**已补单测**。
