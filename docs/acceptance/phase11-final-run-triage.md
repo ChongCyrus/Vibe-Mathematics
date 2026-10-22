@@ -668,3 +668,20 @@ LOG        = [….run.log]      TIMEOUT=[1800]  MAXTOKENS=[6000000]
 ★★★ **注意**：★ 这**与 §6.49 手工跑时"prompt accepted 但零事件"是同一次失败的另一面** —— ★ 手工那次 `prompt` 返回了 `accepted:true`，★ 而脚本这条路在 `prompt` **之前或之中**就抛了 `esm/resolve`。
 
 ★ **下一轮第一步**：★ **在 `$log` 之后紧接着 `Get-Content $log -Tail 40`**（★ 因为 `*>` 把 stderr 也吞进去了，★ 只要把 `$log` 读出来就有完整栈）—— ★ **本轮的 818 字节 log 只有 5 行**，★ **说明 stack 被 `*>` 送进了别处**，★ **需要把 `*> $log` 改成 `2>&1 | Tee-Object`** 才能同时看到 stdout 与 stderr。
+### §6.52 ★★★★★ 真机链路的**最后一块**：★ `ws` 依赖 ＋ drive 终于跑通
+
+**完整栈（★ `Start-Process` 完整重定向后才拿到，★ 之前被 PowerShell 的 `NativeCommandError` 只留一行）**：
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'C:\Users\admin\.dsh\profiles\node_modules\ws\index.js'
+  imported from D:\wd\vibemath开发\_oneoff\vm-drive\dsh-drive.mjs
+```
+★★★ **⇒ drive `import`s `ws`，★ 而 `ws` 原本来自【我移走的旧 scoop `node_modules`】** ⇒ ★ **删旧版把 drive 的依赖一起删了。**
+★ **修法**：★ 从备份 `D:\_tmp\dsh-0.2.0-rc.2-REMOVED\node_modules\ws` **复制到 Node 真正解析的路径** `C:\Users\admin\.dsh\profiles\node_modules\ws` ⇒ ★ **`index.js` 到位、★ `--selftest` 通过** ✓
+
+**★★ 修好后 drive 真的跑起来了**：★ jsonl **565 行 / 140 KB**、★ `session/create`、★ `verify`、★ `agentAvailable:true` 全过。
+**★★★ 而 `totalTokens` 仍为 `0`、★ `running:false`** ⇒ ★ **与 §6.49 手工跑的结论一致：★ 会话建好、★ prompt 被接受、★ 模型不出 token。**
+★★★★ **而对照**：★ **`deepseek-official` 在【旧运行时】上曾跑出 5.6M token、★ 84 步**。
+★★★★★ **⇒ 当前运行时（`0.2.1-rc.2`）上，"会话建好后模型不启动"是最后的未解点** —— ★ 而它**与 provider 无关**（★ 两个 provider 表现相同，★ §6.50 已验）。
+
+**已排除的（★ 全部有测量）**：★ 旧 dsh（已删）、★ `$BIN` 旧路径（已修）、★ `$OUT` 乱码（已修）、★ `DSH_BIN`（无关）、★ provider 选择（无关）、★ 变量值（全对、已回显）、★ `ws` 依赖（已补）。
+★★ **剩下的唯一问题**：★ **当前 dsh 上 `session/prompt` 被接受后 agent 循环不启动。** ★ 下一步应查 **`0.2.1-rc.2` 的 `deliveryPath`/`caller` 模式** 或 ★ **该 preset 在当前版本下的 `agentAvailable:true` 之后的实际装载**。
