@@ -822,3 +822,28 @@ fs.cpSync("$DESK\node_modules", "$PROF\node_modules")   # \u628a\u684c\u9762 1.1
 2. ★ **`session/prompt` 一句 `Say OK`** ⇒ ★ **poll 15 秒** ⇒ ★ **看 `running` / `outputTokens`**
 3. ★★ **对照：`session/create` 不带 `agentPreset`**（★ 默认 preset）⇒ ★ **若默认能跑而 vmu 不能 ⇒ 就是 preset 装载问题，★ 与 dsh 无关**
 ★ **这条 A/B 只需 ~1 分钟**（★ 起 server 18 秒 ＋ 探针 20 秒），★ **不需要 10 分钟真机。**
+### §6.61 ★★★ 小探针校准完成：★ 两种 wrapper（★ `request` 与 `_request`）都摸清了
+
+**从错误消息里逐个学到的（★ 每一步都有原文）**：
+| ★ 端点 | ★ 要求的 args 包装 |
+|---|---|
+| ★ `session/create` | ★ `args.request` |
+| ★ `session/prompt` | ★ `args.request`（★ `{requestId, sessionId, mode, content}`） |
+| ★ **`session/list`** | ★ **`args._request`**（★ **下划线！**） |
+
+★★★ **而 drive 这三处【全都对】**：
+- ★ `session/create` ⇒ `{args:{request:{agentPreset, cwd}}}` ✓
+- ★ `session/prompt` ⇒ `{args:{request:{…}}}` ✓
+- ★ `session/list` ⇒ `{args:{_request:{}}}` ✓
+★★ **⇒ 我两版探针都写错了（★ 用 `/api/rpc/` 路径、★ 用 `request` 当 `_request`），★ 而 drive 一直是对的。**
+★★★ **⇒ "prompt 被接受但 turn 不启动"不是 payload 问题** —— ★ **这一点现在【已被源码与实测双重确认】。**
+
+**★★ 本轮同时验证了 clone 修复**：★ **`slvab` clone = 143 MB**（★ 之前是 1,298 MB）✓ ★ **跑完已删**，★ **C 盘 14.04 GB** ✓
+
+**★★★★ 下一轮（★ 严格 30 秒，★ 一步到位）**：
+```
+session/create {args:{request:{cwd, agentPreset:'vibe-math-vmu'}}}
+session/prompt {args:{request:{requestId, sessionId, mode:'queue', content:[{type:'text',text:'Reply OK'}]}}}
+session/list   {args:{_request:{}}}        \u2190 \u2605 \u6ce8\u610f\u4e0b\u5212\u7ebf
+```
+★ **读 `items[].projections.values.tokenUsage` 与 `items[].running`** ⇒ ★ **A（带 vmu preset）vs B（不带）** ⇒ ★ **这一步就能判定"是 preset 装载问题还是 dsh 与 drive 的更深差异"。**
