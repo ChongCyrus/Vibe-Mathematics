@@ -73,9 +73,25 @@ export function createMeetingMarker({ clock = () => 0, live = new Map(), archive
         message: lastError, note: 'the durable domain seam could not be read: refusing to guess which meeting is open' }
     }
     const list = (Array.isArray(rows) ? rows : []).filter((r) => r && typeof r.id === 'string')
+    // ★★★ "WHICH MEETING IS STILL OPEN" MUST NOT INCLUDE CLOSED ONES. This function's own name and doc promise OPEN meetings, and
+    // the filter only checked that `id` is a string - so a closed meeting was reported as still open. Measured on a full live run:
+    // `vibe_v5_report` said "会议：开着的 2 场" while `m1` was closed and only `m2` was open, and the agent could see the
+    // contradiction in the same receipt.
+    // ★ AND THE EXCLUSION IS COUNTED, not silently dropped: `closedCount` says how many rows were read back and left out, so a
+    // reader can tell "one meeting open" from "one open and one closed".
+    // ★ EXCLUDE `closed` ONLY - NOT `lapsed`. The domain has three states (open|lapsed|closed); a LAPSED meeting is still a
+    // meeting that needs attention (it can be revived), and `vmu-resume-e2e:14b` asserts that lapsed and open stay
+    // DISTINGUISHABLE through this view. What must not appear is a meeting that is OVER. My first cut filtered to 'open' only,
+    // which broke that distinction - the test was right and the filter was too broad.
+    const openRows = list.filter((r) => domainOf(r.state) !== 'closed')
     return { ok: true, durableMarker: true, source: 'durable-seam',
-      meetings: list.map((r) => ({ id: String(r.id), state: domainOf(r.state) })),
-      note: list.length ? 'read back from the durable domain seam' : 'the durable seam reports no meeting at all (an empty institute is not a failed read)' }
+      meetings: openRows.map((r) => ({ id: String(r.id), state: domainOf(r.state) })),
+      readBack: list.length, closedCount: list.length - openRows.length,
+      note: openRows.length
+        ? 'read back from the durable domain seam'
+        : (list.length
+          ? 'the durable seam reports ' + list.length + ' meeting(s), none of them still open'
+          : 'the durable seam reports no meeting at all (an empty institute is not a failed read)') }
   }
 
   /** Self-disclosure, the G7 `status().durableLog.bound` shape: `bound:false` claims nothing about a past process. */
