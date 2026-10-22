@@ -1330,3 +1330,23 @@ FAILED: vmu-assistant-host-slice.test.mjs [suite] (exit 1)
 - ★ **处置待定**：★ 要么 ① **让 `dsh` 指向当前 dsh**（★ 用 `dsh-current.mjs` 那套 adapter 做成同签名的 shim）；★ 要么 ② **把这个用例改成"没有 dsh 时 SKIP 并具名说明"** —— ★ **按本仓「不得把没测写成没问题」的口径，★ ② 更诚实**（★ 它本来就是 route FACT，★ 而不是核心断言）。
 
 **★ 结论**：★ **399/401，★ 0 个是代码缺陷** —— ★ 一个是我的并发，★ 一个是我的环境删除留下的悬空 shim。
+﻿
+### §6.86 悬空的 `dsh` shim 已修好：**PATH 上的 `dsh` 现在就是当前运行时**
+
+**问题（§6.85 的失败 ②）**：`dsh` 仍在 PATH（`C:\Users\admin\scoop\apps\nodejs-lts\current\bin\dsh.ps1`），但 scoop 的 shim 跑的是 `node node_modules/@deepseek-ai/dsh/lib/bin.js` —— 而那个包（0.2.0-rc.2）为满足「正式 SLV 只用当前 dsh」已被我移出 ⇒ **`dsh --version` 直接抛 MODULE_NOT_FOUND 栈**。
+
+**修法（方向按用户裁定）**：不恢复旧包，而是**让 `dsh` 指向当前运行时**。
+- 新建 `…\scoop\…\bin\node_modules\@deepseek-ai\dsh\lib\bin.js`：一个**薄委托**，与 `dsh-current.mjs` 同一套（`DeepSeek Harness.exe --expose-internals <cli.js>` ＋ `ELECTRON_RUN_AS_NODE=1`）；
+- 同目录 `package.json` 标 `version: "0.2.1-rc.2-delegating"`、`private: true`；
+- **失败时打印具名错误**（缺 exe／缺 CLI 各说一句），**不再是一段莫名的模块解析栈**。
+
+**★ 实测（读回确认，非"设了值"）**：
+```
+& dsh --version  ⇒  0.2.1-rc.2          ★ 当前运行时 ✓
+node tests/vmu-assistant-host-slice.test.mjs  ⇒ exit=0
+  === VMU ASSISTANT HOST SLICE: 8 passed, 0 failed, 6 not-run ===
+  HOST SLICE: NOT RUN — 6 host-only assertions pending (named above)
+```
+★★ **⇒ 那个 T1 失败消失了**，★ 且 6 条未跑是**具名的**（★ 符合本仓「不得把没测写成没问题」）。
+
+**★ 这条修改在仓库之外**（scoop 的 bin 目录），★ 所以记在这里：★ **它是环境状态，不是仓内代码**；★ 任何人重装 node／清 scoop 都可能让 `dsh` 再次变成悬空指针 —— ★ **识别方法就是 `dsh --version` 是否报出 `0.2.1-rc.2`**。
