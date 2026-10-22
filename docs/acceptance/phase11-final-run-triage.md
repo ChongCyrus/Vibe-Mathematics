@@ -1287,7 +1287,7 @@ const seam = async ({ turn, text }) => {
 > ★ *"BOTH fixture variants are DECLARED here; `decideSections` enables exactly one per assembly"*
 
 ⇒ ★ **把每个 `leader-conditional` 块拆成【两个独立声明】、用不同 section 名**（例如 `…-with-leader` / `…-leaderless`），★ **由 `decideSections` 按「是否有在册领头人」启停一个**。
-★ **这样**：★ ① 不需要新变量（不动内核白名单）；② 不需要 getter 传参；③ **决策落在策略层，正是 pack 该做的事**；④ **`CHARTER_LEADER_VARIANTS`/`OMISSIONS`/`MISSING_TEXT` 这套机制第一次真正有消费者**。
+★ **这样**：★ ① 不需要新变量（不动内核白名单）；② 不需要 getter 传参；③ **决策落在策略层，正是 pack 该做的事**；④ **`CHARTER_LEADER_VARIANTS`/`OMISSIONS`/`MISSING_TEXT` 这套机制第一次真正有读点（reader）**。
 
 **★ 工作量（估计 1–2 轮）**：
 1. ★ `v5r-blocks-a.js`/`v5r-blocks-b.js`：★ 5 个 `leader-conditional` 块各拆成两段（`-with-leader` / `-leaderless`），★ 名字进 `CHARTER_BLOCKS`；
@@ -1296,3 +1296,15 @@ const seam = async ({ turn, text }) => {
 4. ★ **断言**：★ 无领头人时 out 里**不含** `本所的领头人是` 那句、★ 且**不含** `{{ setting:vmu.turn.leaderId }}` 的空槽；★ 有领头人时**恰有一段**在。
 5. ★ `docs/26` 与 `docs/04` 相应更新。
 **★★ 在完成之前，E 维持"已定位、未修"** —— ★ 不半做（§1.4.4）。
+﻿
+### §6.84 ★★★★★ 用户第二次纠正同一个词 —— 而我在 §6.83 又用错了一次
+
+**用户原话**：「你这个消费者是什么意思？我记得我 vmu/docs 中是指**真实用户**」—— ★ **完全正确**，出处 `01-philosophy.md:46`：
+> ★★ **本仓的"消费者" ＝【使用者可能的需求】，★ 不是【仓内代码对它的引用】**
+
+**★ 而我在 §6.83 写的是**：「`CHARTER_LEADER_VARIANTS`/`OMISSIONS`/`MISSING_TEXT` 这套机制第一次真正有**消费者**」—— ★ **错**：我问的是「有没有代码读它」，那是【**读点（reader）**】。
+★ **已改为「第一次真正有读点（reader）」** ✓
+
+**★★★ 这是同一错误的第二次**（第一次在 §6.78，已写入 lessons 的 L27）。★ **说明 L27 写得不够可执行** —— 它讲了原理，**没给一个下笔前必须做的动作**。
+**★ 已强化 L27**：加一条**下笔前的一句自问** —— 「我要问的是『有没有代码读它』，还是『用户需不需要它』？」
+★ 前者 ⇒ 写**读点**；★ 后者 ⇒ 写**消费者**。**写完必须回头念一遍那句话通不通**。
