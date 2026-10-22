@@ -799,6 +799,17 @@ try {
   const halfIn = turnMod.closureVoteOf({ votes: half, roster: ['r-1', 'r-2'] })
   ok(allIn.cast === true && allIn.missing.length === 0 && halfIn.cast === false && halfIn.missing.filter((m) => m === 'r-2').length === 1,
     '★★ the closure predicate: all-true ⇒ cast:true (missing empty); one silent member ⇒ cast:false with `missing` naming them — this is what the fixture tells root to drain', { all: allIn.cast, half: halfIn.cast, missing: halfIn.missing })
+  // ★★★ THE WINDOW LABEL MUST MATCH THE ACTUAL SEMANTICS. A full live run recorded m1 voting in round 2 and m2 in round 6 and
+  // then cast:true, and the agent reported it as "closureVote.window is round yet votes from different rounds aggregated". The
+  // votes map carries no round, so nothing can expire an old vote; the truthful label is the meeting, not the round. This asserts
+  // BOTH halves: the label, and the fact that an old vote really does still count (so the label can never drift back to 'round'
+  // without this failing).
+  const staleVote = new Map([['r-1', true], ['r-2', true]])
+  const withStale = turnMod.closureVoteOf({ votes: staleVote, roster: ['r-1', 'r-2'] })
+  ok(allIn.window === 'meeting' && withStale.window === 'meeting',
+    '★★ closureVote.window is the MEETING (the true window), not ‘round’ - votes carry no round, so a per-round label would promise expiry that does not exist', { window: allIn.window })
+  ok(withStale.cast === true,
+    '★★ votes cast in a previous round still count (this is the behaviour the meeting label now declares truthfully instead of hiding behind ‘round’)', { cast: withStale.cast })
   // and the prompt teaches exactly that contract (no drift between the text a member reads and the proof above)
   const contractText = [...PACK.sections].filter((s) => String(s.text || '').includes('顶层只允许这四个字段'))
   ok(contractText.length >= 1 && contractText.filter((s) => String(s.text).includes('{"vote_solved": true}')).length >= 1,

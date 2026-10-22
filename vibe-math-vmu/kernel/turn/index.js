@@ -112,8 +112,15 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     else against.push(id)
   }
   const cast = enfranchised.length > 0 && missing.length === 0 && against.length === 0
+  // ★★★ THE WINDOW LABEL MUST DESCRIBE WHAT THIS FUNCTION ACTUALLY DOES. Measured on a full live run: m1 voted in round 2,
+  // m2 in round 6, and `cast` became true - the agent reported it as "closureVote.window is round yet votes from different rounds
+  // aggregated". It was right: `votes` is a Map<id, boolean> with no round on it, so nothing here can expire a round-2 vote, and
+  // the label said 'round' anyway. A receipt that promises per-round semantics it does not implement is the "misleading mechanism"
+  // this pack's own rules forbid, and the previous phase's diagnosis already allows either value ('round' | 'meeting').
+  // The true window is the meeting: the map lives for as long as the orchestrator does. If per-round expiry is ever wanted, the
+  // vote records must carry their round first - that is a data-model change, not a label change.
   return {
-    window: 'round',
+    window: 'meeting',
     cast,
     for: forIt,
     against,
