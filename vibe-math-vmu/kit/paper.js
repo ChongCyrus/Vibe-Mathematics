@@ -324,9 +324,17 @@ export function createPaperFlow({
       present[name] = !!found && !!rowByTitle(recordName(str(target), name))
     }
     const missing = PAPER_ARTIFACTS.filter((n) => present[n] !== true)
+    // ★★★ AN ARTEFACT INVENTORY IS NOT AN ERROR REPORT. This branch used to carry `code: PDF_NEEDS_KERNEL` and a `why` that
+    // ASSERTED "this kernel has no xelatex/pdflatex/latexmk face (measured: kernel/ has no such spawn caller)" - a one-time
+    // measurement hardcoded into a string, about something decided at RENDER time. Measured on a full live run: `env probe` FOUND
+    // xelatex, the agent rendered, got a PDF code it could not interpret, and could not tell whether the engine was missing or the
+    // COMPILE had failed (item #23). The ambiguity was manufactured here.
+    // ★ So this view reports only what is in the archive: `produced: false`. It deliberately carries NO code - a code names a
+    // FAILURE, and "the pdf is not written yet" is not a failure. Only render() can name PDF_NEEDS_KERNEL (it looked and found no
+    // engine) versus PDF_FAILED (an engine ran and failed).
     const pdf = missing.includes('pdf')
-      ? { missing: 'pdf', needsKernel: 'LaTeX 编译执行器', code: CODES.PDF_NEEDS_KERNEL,
-        why: 'this kernel has no xelatex/pdflatex/latexmk face (measured: kernel/ has no such spawn caller; only sympy\'s latex string exists in mathadapters)' }
+      ? { missing: 'pdf', produced: false,
+        why: 'the pdf artefact is not in the archive yet. Whether a LaTeX executor EXISTS is decided by render(): it names PDF_NEEDS_KERNEL when it finds no engine and PDF_FAILED when an engine runs and fails. `env probe` reports what the host has; this view reports what the archive holds, and it carries no error code because a missing artefact is not an error.' }
       : null
     return { ok: missing.length === 0, target: str(target), present, missing, complete: missing.length === 0, pdf,
       note: missing.length === 0 ? 'all four artefacts are present' : 'INCOMPLETE: ' + missing.join(', ') + ' — this receipt does NOT claim completion' }

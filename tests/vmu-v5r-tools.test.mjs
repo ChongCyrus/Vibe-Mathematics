@@ -482,8 +482,11 @@ try {
   const artsBefore = paper.PaperArtifacts({ target: TARGET })
   ok(artsBefore.complete === false && artsBefore.missing.length === 4,
     '★ PaperArtifacts: 正 — before rendering, ALL FOUR artefacts are missing and the receipt says INCOMPLETE (never claims completion)', artsBefore.missing)
-  ok(artsBefore.pdf && artsBefore.pdf.code === 'VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL' && /LaTeX/.test(String(artsBefore.pdf.needsKernel)),
-    '★ PaperArtifacts: the missing PDF NAMES the kernel capability it needs (LaTeX 编译执行器) — measured: no latex face in kernel/', artsBefore.pdf && artsBefore.pdf.needsKernel)
+  ok(artsBefore.pdf && artsBefore.pdf.produced === false && artsBefore.pdf.code === undefined,
+    // ★ UPDATED WITH THE FIX, not to make a test pass: this pinned a STATIC claim about a RUNTIME fact ("no latex face in kernel/"),
+    // which the full live run contradicted by finding xelatex. An artefact inventory reports what is in the archive, and carries no
+    // error code; only render() can name NEEDS_KERNEL vs FAILED.
+    '★ PaperArtifacts: a missing PDF is reported as NOT PRODUCED and carries NO error code (a missing artefact is not an error; render names the code)')
 
   let finalBad = null
   try { await paper.recordFinal({ target: TARGET, member: 'r-1', decision: 'deliverable' }) } catch (e) { finalBad = e }
@@ -500,7 +503,8 @@ try {
   const statusAfterFinal = await paperTool.handler({ action: 'status', target: TARGET }, { kernel })
   ok(statusAfterFinal && statusAfterFinal.exists === true && Array.isArray(statusAfterFinal.missing) &&
     statusAfterFinal.missing.includes('pdf') && statusAfterFinal.complete === false &&
-    statusAfterFinal.pdf && statusAfterFinal.pdf.code === 'VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL',
+    // ★ UPDATED WITH THE FIX: the status view now reports "not produced" without a code (the code belongs to a render attempt).
+    statusAfterFinal.pdf && statusAfterFinal.pdf.produced === false && statusAfterFinal.pdf.code === undefined,
     '★ status: 正 — missing/complete/pdf come from the SAME PaperArtifacts source as render (no write needed)', {
       missing: statusAfterFinal && statusAfterFinal.missing, complete: statusAfterFinal && statusAfterFinal.complete,
     })
