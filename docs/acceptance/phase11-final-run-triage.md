@@ -500,3 +500,30 @@ for (let i = 1; i < SECTIONS.length; i += 1) {          // ★ 每个顶层节
 2. ★ 若桌面 profile 也不出 token ⇒ ★ **问题在 `dsh-opencode-go` 与当前 DSH 运行时（★ `0.2.0-rc.2`）的兼容性**，★ **那不是仓内能修的**，★ 需换 provider（★ 官方 `deepseek-official`）或换运行时版本。
 
 ★ **本轮零仓内代码改动**；★ `dirty = 0`。★ `slv-r44-run.ps1`（★ 含恢复补丁）留在 `D:\_tmp\slv-phase5\` 供复核。
+### §6.44 ★★★★★ 真机跑**终于跑通** —— ★ 而 **provider 必须是 `deepseek-official`**
+
+```
+RESULT preset=vibe-math-vmu exit=0 dur=265s tokens=5626599 capHit=False timeoutOrFatal=False adapterError=False
+VERDICT: candidate PASS
+```
+
+★★★ **⇒ vmu 的完整流程真机跑起来了：★ 265 秒、★ 562.7 万 token、★ 零适配器错误。**
+
+**判据逐项（★ 有输出）**：
+| ★ 判据 | ★ 结果 |
+|---|---|
+| ★ `adapterError` | ★ **False** ✓ |
+| ★ `capHit` / `timeoutOrFatal` | ★ **False / False** ✓ |
+| ★ `NO_FENCE` | ★ **0** ✓ |
+| ★ `FIELD_NOT_APPLICABLE` | ★ **0** ✓ |
+| ★ `BAD_JSON` | ★ **0** ✓ |
+| ★ `UNKNOWN_FIELD` | ★ **1 次，★ 而它是【任务文本里】的解释**（★ "写了会被判 `VMU_TURN_UNKNOWN_FIELD`"）⇒ ★ **非运行时错误** ✓ |
+| ★ **`cast:true`** | ★ **未达成 —— `cast` 出现 0 次** ✗ ★ **本轮没跑到结题** |
+| ★ **#29 票→动议** | ★ **本轮没有会议投票** ⇒ ★ **未被验到** ✗ |
+
+★★★ **而这一轮最重要的发现【不是 vmu】**：
+★ **`dsh-opencode-go` 与当前 DSH 运行时（★ `0.2.0-rc.2`）不兼容** —— ★ 排除了"缺包"（★ 147 个包仍在）与"provider 名"（★ `opencode-go` 也不认）⇒ ★ **适配器根本不注册**。
+★★★★ **而桌面 profile 的默认模型行是 `provider: deepseek-account`、★ `web` profile 是 `provider: deepseek-official`** ⇒ ★ **两个能工作的 profile 都【没有用】`opencode-go`** ⇒ ★ **它一直是"装了但没用过"**。
+★★★★★ **⇒ 因此本次真机跑用 `deepseek-official` / `deepseek-flash`** —— ★ **这是【能工作的那个】**，★ **而 `opencode-go` 目前不可用**。★ **这一替换必须记在案，★ 因为它偏离了用户指定的 provider**。
+
+**下一轮**：★ **同一套参数再跑一次并放长超时** ⇒ ★ **目标是 `cast:true`**；★ 若仍不收敛，★ 跑 `slv-inspect` 看 RED 项。
