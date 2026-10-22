@@ -483,3 +483,20 @@ for (let i = 1; i < SECTIONS.length; i += 1) {          // ★ 每个顶层节
 
 ★ **而无论哪条路，★ 判据不变**：★ **最小会话（不含 vmu 任务）能出 token** ⇒ ★ **才去跑完整 SLV**。
 ★ **本轮零代码改动**；★ `dirty = 0`。
+### §6.43 ★★★ `NO_ADAPTER` 的两次排除（★ 都排除了，★ 问题还在）
+
+**尝试 1：恢复被 prune 的包** —— ★ 发现脚本 `:44` 用 `cpSync` 克隆桌面 profile，★ 而 `:46` 的 `npm i <tarball>` **把不在依赖树里的包全部剪掉**（★ clone 63 vs 桌面 99）。★ **补丁**：★ `npm i` 之后把桌面 `node_modules` 覆盖回来 ⇒ ★ **实测 `clone packages=147`**（★ 从 63 升到 147）✓
+★★ **结果：★ 仍然 `NO_ADAPTER`、★ 仍然 0 token。** ⇒ ★ **不是包缺失。**
+
+**尝试 2：provider 名** —— ★ 从 `dsh-opencode-go/lib/index.js` 读到**适配器注册的名字是 `opencode-go`**（★ `:931 provider: "opencode-go"`、★ `:1121 var SDK_PROVIDER_ID = "opencode-go"`），★ 而脚本按**包名**设成 `provider: dsh-opencode-go`。★ **改用 `-Provider opencode-go`** ⇒ ★ **`MODEL SET: provider=opencode-go`** ✓
+★★ **结果：★ 仍然 `NO_ADAPTER`、★ 仍然 0 token。** ⇒ ★ **不是名字。**
+
+★★★ **⇒ 两个最可能的解释都被排除，★ 而适配器在 clone 里就是不注册。**
+
+**而唯一确定的事实是**：★ **桌面 profile 侧它是好的**（★ 用户 GUI 在用、★ bundles 含它、★ 99 个包）⇒ ★ **所以差异在【clone 这个运行实例】而不是在配置。**
+
+★ **未测的下一步（★ 下一轮，★ 按优先级）**：
+1. ★★ **不再用 clone** —— ★ **直接对【桌面 profile】起一个 server（★ 独立端口、★ 独立 key）**，★ 用**最小会话**（★ 不含 vmu 任务）★ 发一句话 ⇒ ★ **若它出 token ⇒ 环境侧完全可用，★ 剩下的只是把 vmu 任务投进去**。
+2. ★ 若桌面 profile 也不出 token ⇒ ★ **问题在 `dsh-opencode-go` 与当前 DSH 运行时（★ `0.2.0-rc.2`）的兼容性**，★ **那不是仓内能修的**，★ 需换 provider（★ 官方 `deepseek-official`）或换运行时版本。
+
+★ **本轮零仓内代码改动**；★ `dirty = 0`。★ `slv-r44-run.ps1`（★ 含恢复补丁）留在 `D:\_tmp\slv-phase5\` 供复核。
