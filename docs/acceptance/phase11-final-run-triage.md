@@ -743,3 +743,24 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'C:\Users\admin\.dsh\profiles\n
 2. ★★ **从当前 HEAD `08077ca1` 重新打包** —— ★ `D:\_tmp\slv-phase5\dsh-vibe-math-HEAD.tgz`（★ 20:48，9,641,347 字节）⇒ ★ **这个包才含全部 17 条修复**。
 
 **★★★ 下一轮的唯一正确组合（★ 从未试过）**：★ **`slv-r56-run.ps1`（★ 正确路径 ＋ `$BIN` 已修 ＋ `$OUT` 已修 ＋ Start-Process 完整日志）＋ 远端旧 dsh（★ 已恢复）＋ `dsh-vibe-math-HEAD.tgz`（★ 含全部修复）＋ `-Provider dsh-opencode-go`** ⇒ ★ **这一组合把所有已知坏点都排除了。**
+### §6.56 ★★★★★ C 盘只剩 1.44 GB 的原因：★ **我自己的 SLV clone 堆了 12.6 GB**
+
+**原因（★ 有测量）**：★ 每次 SLV 都在 `~/.dsh/profiles/` 建一个 clone，★ **而 clone 带 `node_modules`**：
+| ★ 规模 | ★ 个数 | ★ 小计 |
+|---|---|---|
+| ★ **1,298 MB／个** | ★ **8 个**（★ `slvr51`–`slvr57`、★ `slvfin1`） | ★ **10.4 GB** |
+| ★ 148–150 MB／个 | ★ 11 个（★ `slvclean`／`slvfinal`／`slvidle`／`slvverify`／`slvr41`／`slvorg1,2`／`slvhead1,3`／`slvv3chain7`／`v5vote`） | ★ 1.7 GB |
+| ★ **合计** | ★ **19 个** | ★ **≈12.6 GB** |
+
+★★★ **处置**：★ **删除全部 19 个 SLV clone**，★ **保留** `desktop`（★ GUI 在用，★ 1,094 MB）、★ `web`、★ `headless`、★ `hubtest*`、★ `vibe-lab`、★ `p-nopnpm`。
+★★★★ **实测**：★ **C 盘 `1.44 GB → 14.05 GB`（★ 释放 12.61 GB）** ✓
+
+**★★ 教训（★ 写进纪律）**：
+1. ★ **每个 SLV clone 约 1.3 GB** ⇒ ★ **跑完必须删 clone**（★ 脚本的 `Cleanup-Mine` 只在**正常结束**时跑，★ **而失败/中断时它没跑或被绕过**）。
+2. ★★ **我删了旧 dsh、查了半天路径，★ 却一次也没看过【自己留下的 19 个 1.3 GB 目录】** —— ★ 这**又是一次"诊断面本身没被检查"**。
+3. ★★★ **以后每次真机跑完，★ 第一件事是 `Remove-Item ~/.dsh/profiles/<CloneName>`** 并**核对 C 盘余量**。
+
+**★ 另记（★ 用户裁定，★ 后续必须遵守）**：
+- ★ **正式 SLV 必须用【当前运行的这个 dsh】（`0.2.1-rc.2`）**，★ **不得用旧 scoop dsh** ⇒ ★ 旧 dsh 已**永久移出**（★ `D:\_tmp\OLD-dsh-0.2.0-REMOVED`）。
+- ★ **每次 SLV 必须用【最新代码】** ⇒ ★ **跑前必须 `git rev-parse HEAD` ＋ `npm pack` 重新打包**，★ **不得复用旧 `.tgz`**。
+★ 对应脚本：★ `D:\_tmp\slv-phase5\slv-r58-run.ps1`（★ `$BIN` → `dsh-current.mjs`，★ 即当前 dsh）。
