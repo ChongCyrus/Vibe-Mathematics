@@ -876,3 +876,18 @@ poll 5 (25s): running=true total=154701 out=5054
 ★★★★★ **★ 另外我把它从 143 MB 弄成 1.3 GB 的，★ 是我那段 `cpSync(desktop/node_modules)` 补丁**（★ 已删）。
 
 ★ **关于"以前没有 clone"**：★ **很可能以前也有**（★ 只是 143–150 MB × 少量，★ 不显眼），★ **或者早先直接对 `web` 跑**。★ **无论如何：★ 现在的正确做法是【每次跑完立即删 clone】，★ 而 clone 本身是这套 SLV 的正常设计。**
+### §6.64 ★★★★★ 真正的分水岭：★ **`dsh-opencode-go` 在当前 dsh 上不出 token，★ `deepseek-official` 可以**
+
+**两个对照（★ 同一 clone 构造、★ 同一 server、★ 同一 drive、★ 同一任务）**：
+| ★ 模型行 | ★ 结果 |
+|---|---|
+| ★ **`provider: deepseek-official` / `model: deepseek-flash`**（★ `web` 原样） | ★ **`running:true`、★ total 20,448 → 154,701、★ out 5,054** ✓ |
+| ★ **`provider: dsh-opencode-go` / `model: deepseek-v4.1-flash`**（★ runner 改的） | ★ **`running:false`、★ 0 token、★ 会话零事件** ✗ |
+
+★★★ **⇒ 这是整条排查链的终点**：★ **不是 dsh、★ 不是 drive、★ 不是 RPC、★ 不是 clone、★ 不是 ps1 包装** —— ★ **是【`dsh-opencode-go` 这个 provider 在 `0.2.1-rc.2` 上不出 token】**。
+
+★★★★ **而用户早就说过**：★ *"你可以试试把当前 dsh 版本的 dsh 即 dsh-v0.2.1-rc.2 的模型提供商改为 deepseek 官方试试"* —— ★ **他是对的，★ 而我在此之前又跑了七八次无效真机。**
+
+**★ 处置**：★ **正式 SLV 用 `deepseek-official` / `deepseek-flash`**（★ 这是当前 dsh 上唯一可用的组合），★ **并在报告里明确"偏离了指定的 `dsh-opencode-go`，★ 因为它在当前运行时不出 token"**。
+
+**★★ 另一个必须记的**：★ 我手工那次"成功"，★ **当时以为是 drive 的 A/B，★ 其实同时把 provider 换成了官方** —— ★ **两个变量一起变了，★ 我差点把它当成"drive 可用"的证据**。★ 这一条**又踩了"一次只变一个变量"的纪律**。
