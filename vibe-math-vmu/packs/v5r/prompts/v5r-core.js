@@ -549,6 +549,12 @@ export const v5rFixtureTools = Object.freeze({
  *   · the fixture constraint (order 602, ALWAYS on) tells a member not to call tools in an SLV run. The caveat line
  *     inside each section makes the precedence explicit instead of leaving two contradictory instructions side by side.
  *
+ * ★★★ TWO VOCABULARIES, ONE SECTION EACH - DO NOT READ A MISMATCH INTO IT. The section NAME uses the KIND vocabulary
+ * ('academician'/'researcher'/'temp') while `scope.role` SELECTS on the ROSTER SLOT ID ('chair'/'member'/'temp'), because
+ * tools/turn.js sets `role: m.slot`. So 'v5r-tools-researcher' carrying `scope: { role: 'member' }` is CORRECT, and reading a
+ * 'role vs tool-section mismatch' out of the rendered prompt is reading the two vocabularies as one. Measured: I did exactly that
+ * while reviewing a real run's prompt (a `角色：member` line above a `# v5r-tools-researcher` heading), then verified the mapping here.
+ *
  * WHY THE SUBSETS DIFFER: the pack's slots say what each kind is for (`chair`: convene/close/assign/grant/freeze -
  * it relays office messages too; `member`: propose/speak - it records and speaks; `temp`: speak only - a temporary
  * seat logs its progress and speaks, and does not open library cards of its own). That is PACK POLICY: it is stated

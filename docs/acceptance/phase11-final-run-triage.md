@@ -1954,3 +1954,22 @@ SUMMARY: 1 session(s), 0 with RED checks
 4. `# v5r-tools-researcher` —— ★ **研究员工具清单**
 
 **★★ 待查的一处（★ 如实记为观察，★ 不是结论）**：★ 第 2 段说**角色 `member`**，★ 而第 4 段是 **`v5r-tools-researcher`**。★ 两者可能**本来就该不同**（★ `member` 是**席位**，★ `researcher` 是**成员种类**），★ 但**我没有验证过 `member` 席位 ⇒ `researcher` 种类这条映射**是不是设计如此。★ **下一轮第一步：★ 查 pack 里 slot→kind 的映射，★ 确认它不是错位。**
+﻿
+### §7.15 ★★★★ "角色/工具段错位" 的核查结论：★ **不是错位，★ 是两个词汇表**
+
+**我上一轮观察到的**：★ 真实提示词里 ★ 第 2 段写 **`角色：member`**，★ 第 4 段是 **`# v5r-tools-researcher`**。
+
+**★ 核查（`packs/v5r/prompts/v5r-core.js`）**：
+| ★ 段名（★ **种类词汇**） | ★ `scope.role`（★ **席位 id**） |
+|---|---|
+| ★ `v5r-tools-academician` | ★ `chair` |
+| ★ `v5r-tools-researcher` | ★ **`member`** |
+| ★ `v5r-tools-temp` | ★ `temp` |
+
+★★★ **⇒ `角色：member` ＋ `v5r-tools-researcher` 是【完全正确】的**：★ **段名用种类词汇、★ `scope.role` 用席位 id**（★ 因为 `tools/turn.js` 把 `role` 设为 `m.slot`）。
+
+**★★ 所以我上一轮的"错位"是【我读错了】** —— ★ 和 `L13`（字段名≠含义）同一类。
+
+**★ 已做（目标 3：对但不够好）**：★ 在 `v5r-core.js` 那段注释前加了 **6 行说明**，★ **点明两个词汇表各自用在哪里**，★ 并**写清"我在审查真实运行时恰好读到过这个误判"** —— ★ **成本 6 行，★ 收益是下一个人不用再查一遍。**
+
+**★ 不改代码行为** —— ★ 映射是对的。
