@@ -340,3 +340,16 @@ return kernel.toolsView({ member, agent })
 
 ★ ★ **仍未改**：★ 需要**确认 `ballot` 的读方法名与其入参**（★ `ballotbox.js:461` 那个形状在哪个方法里，★ 尚未读到），★ 并把**两处 tally** 改成同一策略。★ 预算不足以**改完并验证**，★ **故不动代码**。
 ★★ **下一轮第一步**：★ 读 `ballotbox.js` **`:440-470` 附近**，★ 拿到那个返回 `{cast,votes,abstain,absent,floor,ranked}` 的方法名 ★ **再改 `:774`/`:1160`**，★ **断言**：★ 投票后 `summary()` 的 `for > 0`。
+### §6.33 #29 —— ★ **读侧修法差最后一块：`ballot.status()` 不暴露逐项计数**
+
+★ 本轮把最后一块读清了（★ 都有行号）：
+- ★ `kernel/ballotbox.js:634` 导出的面是 **`{ open, cast, markAbsent, close, reopen, lapseDue, lapse, revokeLapse, status, keysUsed, partition, config, refusals, snap }`** ⇒ ★ **有 `status`** ✓
+- ★★ 而 `status({boxId})` 返回 **`{ ok, boxId, round, sealed, state, reopenCount, votes, abstain, … }`** —— ★ 其中 **`votes` 是 `box.votes.size`（总票数）**，★ **不是逐选项计数** ✗
+- ★★ 逐项计数只在 **`close()`** 里出现（`ballotbox.js:461` 的 `tally: { cast, votes, abstain, absent, floor, floorBase, ranked }`）★ —— ★ **而箱子没关时拿不到**。
+
+★★ **⇒ 所以读侧修法差【一个字段】**：★ 给 `status({boxId})` 补 **逐选项计数**（★ 例如 `byChoice: { '1': n, '0': m }`，★ 直接由 `box.votes` 聚合），★ 然后 `meetings.js:774`/`:1160` 才能在有箱子时用它算 `for`/`against`。
+
+★★★ **这条发现本身值得记**：★ **我上一轮以为"只差一个方法名"**，★ **实际差的是【那个方法没有暴露所需的粒度】** —— ★ **接口存在 ≠ 接口够用**。★ 这是本阶段第 N 次"以为只差一步"，★ **而每一步都要实测才敢说**。
+
+★ **本轮不改代码**：★ 需要 ① 给 `status` 加 `byChoice`、★ ② 改两处 tally、★ ③ 同步 `vmu-ballot*` 套件的断言 ⇒ ★ **三站点，★ 预算不足**。
+★★ **下一轮顺序（已定）**：★ ① `ballotbox.js` 的 `status({boxId})` 加 `byChoice`（★ 正反断言：★ 空箱全 0、★ 投两票后正确分项）；★ ② `meetings.js` 两处 tally 读它；★ ③ 断言 **投票后 `summary()` 的 `for > 0`**。
