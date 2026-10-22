@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as entryMod from '../vibe-math-vmu/vibe-math-vmu.js'
 import { MOTION_BOX_OPTIONS, motionBoxQuestion, boxForMeetingMotion, V5R_MOTION_BOX } from '../vibe-math-vmu/packs/v5r/middleware/motion-box.js'
+import * as meetingsMod from '../vibe-math-vmu/kernel/meetings.js'
 
 let passed = 0
 let failed = 0
@@ -159,6 +160,34 @@ ok(nv.receipt.ballot.mirrored === false && nv.receipt.ballot.reason === 'no-bind
   'R3. and its vote is reported as unbound BY NAME (no silent success)', nv.receipt.ballot)
 await cleanup(bare)
 
+// ★★★ THE FOUR FALLBACK BRANCHES OF THE MOTION TALLY, UNIT-LEVEL (docs §7.11). Through the PUBLIC face these are unreachable:
+// the pack's motion-box middleware lazily rebinds on every motion, so a hand-set binding to a bogus box id was overwritten before the
+// tally ran (measured). So the logic was exported as `tallyOfMotion` and is driven here with fakes - one case per branch, and the happy
+// path too, so "always falls back" cannot pass either.
+{
+  const mo = { id: 'mo-x', votes: new Map([['m1', 1]]), abstain: new Set() }
+  const noBallot = null
+  const unreadable = { status: () => ({ ok: false }) }
+  const emptyBox = { status: () => ({ ok: true, byChoice: { '1': 0, '0': 0 }, abstain: 0 }) }
+  const fullBox = { status: () => ({ ok: true, byChoice: { '1': 2, '0': 1 }, abstain: 3 }) }
+  const cases = [
+    ['no box seam at all', { meetingId: 'm', mo, boxFor: null, ballot: noBallot }, 'no-box-binding'],
+    ['the seam answers no box id', { meetingId: 'm', mo, boxFor: () => null, ballot: unreadable }, 'motion-has-no-box'],
+    ['the box id is unreadable', { meetingId: 'm', mo, boxFor: () => 'bx-gone', ballot: unreadable }, 'box-status-unreadable'],
+    ['the box is readable but holds no votes', { meetingId: 'm', mo, boxFor: () => 'bx-empty', ballot: emptyBox }, 'box-empty'],
+  ]
+  for (const [label, args, want] of cases) {
+    const r = meetingsMod.tallyOfMotion(args)
+    ok(r && r.source === 'meeting' && r.fallback === want,
+      '★★ ' + label + ' ⇒ source:"meeting" + fallback:"' + want + '" (named, never a bare tally)', r)
+    ok(r && r.for === 1,
+      '★ ' + label + ' ⇒ the fallback still carries the meeting\'s own count (for:1), so naming did not lose the vote', r)
+  }
+  // ★ THE HAPPY PATH: a readable box with votes must be USED, not fallen back to. Without this, "always report a fallback" would pass.
+  const used = meetingsMod.tallyOfMotion({ meetingId: 'm', mo, boxFor: () => 'bx-full', ballot: fullBox })
+  ok(used && used.source === 'box' && used.boxId === 'bx-full' && used.for === 2 && used.against === 1 && used.abstain === 3,
+    '★★ a READABLE box with votes is used (source:"box", the box\'s own counts) - the fallbacks are a last resort, not the default', used)
+}
 console.log('=== VMU MOTION BOX: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

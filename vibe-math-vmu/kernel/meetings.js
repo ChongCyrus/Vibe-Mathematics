@@ -357,26 +357,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   // `mo.votes` only when no box is bound.
   // ★ ONE SOURCE OF TRUTH: the box holds the votes and this tally is a VIEW of it. Writing box counts back into `mo.votes` would
   // create two counts that can drift - the shape this repository keeps removing.
-  const tallyOf = (meetingId, mo) => {
-    // ★★★ EVERY TALLY MUST NAME ITS SOURCE, INCLUDING WHEN IT FALLS BACK. Measured while auditing the ballot vote-right enforcement (#29):
-    // this function returns the meeting's own `mo.votes` tally whenever the bound box is missing, unusable, OR EMPTY - and it used to return
-    // that with NO `source` at all, while the box path carried `source:'box'`. So a reader could not tell "the box was consulted and had
-    // nothing" from "there is no box". That matters exactly for the enforcement: when the vote-right test REFUSES a ballot, the vote never
-    // reaches the box, the box stays empty, and the tally silently reports the meeting's own count - the enforcement is bypassed with no
-    // trace. Naming the fallback makes that visible instead of silent.
-    const base = { for: [...mo.votes.values()].filter((v) => v === 1).length, against: [...mo.votes.values()].filter((v) => v === 0).length, abstain: mo.abstain.size, source: 'meeting' }
-    const boxFor = boxBinding.resolve()
-    if (typeof boxFor !== 'function' || !ballot || typeof ballot.status !== 'function') return Object.assign(base, { fallback: 'no-box-binding' })
-    const ans = boxFor({ meeting: meetingId, motion: mo.id })
-    const boxId = ans && typeof ans === 'object' ? ans.boxId : ans
-    if (!boxId) return Object.assign(base, { fallback: 'motion-has-no-box' })
-    const st = ballot.status({ boxId })
-    if (!st || st.ok !== true || !st.byChoice) return Object.assign(base, { fallback: 'box-status-unreadable' })
-    const f = Number(st.byChoice['1'] || 0)
-    const a = Number(st.byChoice['0'] || 0)
-    if (f + a === 0) return Object.assign(base, { fallback: 'box-empty', boxId: String(boxId) })
-    return { for: f, against: a, abstain: Number(st.abstain || 0), source: 'box', boxId: String(boxId) }
-  }
+  // ★ THE LOGIC LIVES IN THE EXPORTED PURE FUNCTION `tallyOfMotion` (end of file), so its fallback branches can be UNIT-TESTED.
+  // Measured: 'box-empty' and 'box-status-unreadable' could not be reached through the public face at all, because the pack's
+  // motion-box middleware lazily REBINDS on every motion - a hand-set binding to a bogus box id was overwritten before the tally ran.
+  // A branch no test can reach is a branch nobody has checked; the export is what makes checking it possible.
+  const tallyOf = (meetingId, mo) => tallyOfMotion({ meetingId, mo, boxFor: boxBinding.resolve(), ballot })
 
   const api = {
     openMeetings,
@@ -1345,4 +1330,33 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   }
 
   return api
+}
+
+/**
+ * THE MOTION TALLY, AS A PURE FUNCTION. Every return names its SOURCE and, when it falls back, WHY - measured while auditing the
+ * ballot vote-right enforcement: the meeting's own \`mo.votes\` count used to come back with no \`source\` at all, while the box path
+ * carried \`source:'box'\`, so a reader could not tell "the box was consulted and had nothing" from "there is no box". That matters
+ * for the enforcement itself: when the vote-right test REFUSES a ballot the vote never reaches the box, the box stays empty, and the
+ * silent fallback is exactly where a bypass would hide.
+ *
+ * EXPORTED (and declared at the END of this file, which is fine - function declarations hoist) so the four fallback branches are
+ * reachable by a test. The closure above calls it with the real seams; a test calls it with fakes.
+ */
+export function tallyOfMotion({ meetingId, mo, boxFor, ballot }) {
+  const base = {
+    for: [...mo.votes.values()].filter((v) => v === 1).length,
+    against: [...mo.votes.values()].filter((v) => v === 0).length,
+    abstain: mo.abstain.size,
+    source: 'meeting',
+  }
+  if (typeof boxFor !== 'function' || !ballot || typeof ballot.status !== 'function') return Object.assign(base, { fallback: 'no-box-binding' })
+  const ans = boxFor({ meeting: meetingId, motion: mo.id })
+  const boxId = ans && typeof ans === 'object' ? ans.boxId : ans
+  if (!boxId) return Object.assign(base, { fallback: 'motion-has-no-box' })
+  const st = ballot.status({ boxId })
+  if (!st || st.ok !== true || !st.byChoice) return Object.assign(base, { fallback: 'box-status-unreadable' })
+  const f = Number(st.byChoice['1'] || 0)
+  const a = Number(st.byChoice['0'] || 0)
+  if (f + a === 0) return Object.assign(base, { fallback: 'box-empty', boxId: String(boxId) })
+  return { for: f, against: a, abstain: Number(st.abstain || 0), source: 'box', boxId: String(boxId) }
 }

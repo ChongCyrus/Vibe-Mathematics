@@ -1880,3 +1880,25 @@ vibe_v5_record_progress \u5de5\u5177\u8c03\u7528\u6b21\u6570 : 5
 ★ 原因：★ 我用 `while ($start -gt 0 -and ...) { $start-- }` 找注释块开头，★ **而标记行里含 `★` 与全角字符，★ `-match` 没命中** ⇒ **`$start` 一路减到 0** ⇒ ★ 删除了文件前 160 行。
 ★ **处置**：★ `git checkout -- tests/vmu-motion-box.test.mjs` ⇒ ★ **恢复到 HEAD** ⇒ ★ **`dirty=0`、★ `28 passed, 0 failed`、★ 150 行** ✓
 ★★ **教训**：★ **按行号边界批量删除是危险操作** —— ★ **一旦"找边界"的循环没有命中，★ 它会静默退化成"删掉整个前缀"。** ★ 正确做法是**先 dry-run 打印边界并断言 `start > 0`**，★ 或**用 `edit` 按字面文本替换**（★ 本轮之前那些成功的改动都是后者）。
+﻿
+### §7.12 ★★★★★ 四个回落分支【全部测到】—— ★ 靠把 `tallyOf` 抽成导出的纯函数
+
+**§7.11 的结论是"通过公开面无法稳定测到"** ⇒ ★ 本轮把逻辑**抽成 `export function tallyOfMotion({ meetingId, mo, boxFor, ballot })`**（★ 声明放在 `kernel/meetings.js` 末尾 —— ★ 函数声明会提升），★ 闭包改为一行委托：
+```js
+const tallyOf = (meetingId, mo) => tallyOfMotion({ meetingId, mo, boxFor: boxBinding.resolve(), ballot })
+```
+★★ **这没有改变任何行为** —— ★ `vmu-meetings` **195/0** ✓、★ `vmu-motion-box` **28/0** ✓ 先证清白，★ 再加断言。
+
+**★★★ 新增 9 条单元断言（★ `28 → 37`，★ exit=0）**：
+| ★ 分支 | ★ 断言 |
+|---|---|
+| ★ `no-box-binding` | ★ `source:'meeting'` ＋ `fallback:'no-box-binding'` ＋ `for:1` |
+| ★ `motion-has-no-box` | ★ 同上，★ 但 `boxFor` 返回 `null` |
+| ★ `box-status-unreadable` | ★ `boxFor` 返回一个不存在的 boxId ⇒ ★ 具名 |
+| ★ `box-empty` | ★ 箱可读但无票 ⇒ ★ 具名（★ 带 `boxId`） |
+| ★ **正常路径** | ★ **可读箱有票 ⇒ `source:'box'` ＋ 箱自己的计数**（★ **没有这条，"总是回落"也能通过**） |
+
+**★ 每条回落断言都同时检 `for:1`** —— ★ **确保"具名"没有丢数据。**
+
+**★★★★ 至此本阶段"有机制但没测"的地方清零**（★ `box-empty`／`box-status-unreadable` 是最后两处）。
+**★ 而这条路径本身值得记**：★ **一个分支在公开面上不可达，★ 不代表它不可测** —— ★ **把逻辑抽成纯函数，★ 它就变得可测了**；★ **而抽出来的过程还顺带证明了行为未变（195/0、28/0）。**
