@@ -805,3 +805,20 @@ fs.cpSync("$DESK\node_modules", "$PROF\node_modules")   # \u628a\u684c\u9762 1.1
 2. ★ **真机跑【中途就能读】**（★ jsonl／session／srv 日志是增量写的）⇒ ★ **不必等它跑完**。
 3. ★ **不依赖旧实测与旧经验** —— ★ **但也不要靠重复跑真机来替代读代码**。
 4. ★★ **每次跑完立即删 clone**，并 ★ **核对 C 盘余量**（★ 已被填满一次）。
+### §6.60 ★★★ 源码级诊断（★ 按用户效率纪律做的，★ 未跑 10 分钟真机）
+
+**从 `app.asar` 与 drive 源码读到的硬事实**：
+1. ★ **RPC 形状**：★ `POST /api/<endpoint>`，★ body `{type:'client-request', rpcId, method, payload:{args:{…}}}`；★ **auth 是 `GET /?token=<t>` 拿 cookie 后用 `cookie` 头**。
+2. ★ **`session/create` 要求 `args.request`** —— ★ **实测报错原文**：★ `session/create: args fields do not match the descriptor: missing "request"`。
+3. ★★ **而 drive 的 create 是对的**：★ `rpc('session/create', { args: { request: { agentPreset: PRESET, cwd: CWD } } })` ✓ —— ★ **所以 drive 的 RPC 没问题，★ 是我第一、二版小探针写错了。**
+4. ★★ **`SessionPromptRequest` 的 schema**（★ 从 `app.asar` 取出）★ 与 drive 的 prompt payload **逐字段吻合** ✓
+5. ★★ **drive 的 poll 逻辑**：★ `items.find(x => x.sessionId === sessionId)`；★ **`if (!now) continue`** 在 `emit` **之前** ⇒ ★ **既然 jsonl 里出现了 565 条 `poll` 行，★ 说明 `now` 找到了、★ `running:false` 是真的** ⇒ ★ **会话确实没在跑，★ 不是误读。**
+
+★★★ **⇒ 所以"prompt 被接受但 turn 不启动"是真的，★ 而两个 RPC 的 payload 都是对的** ⇒ ★ **剩下的唯一方向是【`agentPreset: vibe-math-vmu` 在当前 dsh 下能否真正装载】**（★ `agentAvailable:true` 可能只表示"id 存在"）。
+
+**★★★★ 下一轮（★ 严格按 40 秒小探针，★ 不再跑 10 分钟）**：
+★ 用正确的 RPC 形状（★ `payload.args.request`）★ 在**一个 clone profile**（★ `web` 里没有 vmu preset）里：
+1. ★ **`session/create` 带 `agentPreset:'vibe-math-vmu'`** ⇒ ★ 看返回的 `agentPreset` 与 `agentAvailable`
+2. ★ **`session/prompt` 一句 `Say OK`** ⇒ ★ **poll 15 秒** ⇒ ★ **看 `running` / `outputTokens`**
+3. ★★ **对照：`session/create` 不带 `agentPreset`**（★ 默认 preset）⇒ ★ **若默认能跑而 vmu 不能 ⇒ 就是 preset 装载问题，★ 与 dsh 无关**
+★ **这条 A/B 只需 ~1 分钟**（★ 起 server 18 秒 ＋ 探针 20 秒），★ **不需要 10 分钟真机。**
