@@ -1500,3 +1500,19 @@ exit=0
 **★★ 待补（如实记账）**：★ **一条专用断言**（★ 造一个"有绑箱但箱空"的会议，★ 断言回执含 `source:'meeting'` ＋ `fallback:'box-empty'`）—— ★ 本轮时间不足，★ 下一轮补。
 
 **★★★ #29 的结论**：★ **"误伤合法投票"这个担心【没有证据支持】—— 真机上 `cast:true` 由两名成员正常达成（§6.70）**；★ **而这次复核发现的是另一件事：★ 回落不具名**。★ 两者都记下。
+﻿
+### §6.94 box-empty 回落的断言：★ **本轮没加上，★ 但原因与位置都查清了**
+
+**尝试**：★ 在 `tests/vmu-motion-box.test.mjs` 里插入一段"解绑后投票、断言 `tally.source === 'meeting'` ＋ `fallback:'no-box-binding'`"的断言。
+
+**失败**：★ `TypeError: Cannot read properties of undefined (reading 'open')` —— ★ **我把块插在了 `// ---- 1. the declared shape and the pure policy` 之前，★ 而那时 `k`（pack handle）还没被建立**；★ 既有用例的 `k` 是在后续段里才有的（`:58` 起才 `k.members.hire(...)`）。
+
+**★ 处置**：★ **已移除该块，★ 树保持绿**（`vmu-motion-box` 与 `vmu-meetings` 都已复跑确认）。★ **按 L2／L28：★ 我不把"没加上"写成"已覆盖"。**
+
+**★ 下一轮的正确位置**：★ 插在**已有 `k` 的作用域内**（★ 例如 `:116` 附近，★ 那里已经有 `k.meetings.bindBox(null)` 的反向用例）—— ★ **那一段正好就是"解绑"的场景，★ 直接在其后追加两条断言即可**：
+```js
+const noBoxSum = k.meetings.summary({ meeting })   // \u2605 \u89e3\u7ed1\u540e\u7684\u8ba1\u7968
+ok(noBoxSum.tally.source === 'meeting', ...)        // \u2605 \u6765\u6e90\u5177\u540d
+ok(noBoxSum.tally.fallback === 'no-box-binding', ...)
+```
+`box-empty` 与 `box-status-unreadable` 两个分支**仍未测** —— ★ **如实记为未覆盖**。
