@@ -79,6 +79,9 @@ export default {
 > **③ "用脚本控制事件流"当前没有受支持的形状。** ★ **脚本桥（`script-bridge`）中间件拿不到** —— M2 模块只收到 `kernel:{read}` ＋ 能力门控的 `services`，而服务目录里没有它（`kernel/loader.js:114`；服务目录见 `kernel/index.js` 的 `services` 那一块）。★ 想在事件上判断又要跑外部程序，现在只能在 M2 里自己起进程，★ **那会丢掉 M3 的整套保证**（结构化结果、超时具名失败、声明与预算）。
 > ★ **这是已知的形状缺口，不是已实现能力。**
 >
+> ★★★ **但别把 ③ 读成"中间件拿不到总线"—— 那是错的。** ★ **写【JS 程序】（M2）既能插进事件流，也能调控总线本身**：`vmu.middleware` 在**能力门控服务目录**里（`kernel/index.js` 的 `middlewareServiceCatalog`），声明 `trigger-workflow` 后 `api.services.get('vmu.middleware')` 即可 ⇒ **加条目**（`on`/`add`）、**启停**（`disable`/`enable`）、**读**（`status`/`entries`/`trace`）、★★ **甚至自己发事件**（`emit`）与**接管宿主 waterfall**（`wrapHostWaterfall`）。★ 另有**模型侧**的同一能力：工具面 `vibe_vmu_middleware`（`list`/`disable`/`enable`/`validate`）。
+> ★★ **三件事要分开**：★ **JS 程序 ⇒ 能进流、能调控总线、能发事件**；★ **外部程序 ⇒ 只能被当工具调用，进不了流**；★ **模型 ⇒ 能经工具面调控，但那是调用**。★ **权威与完整方法表见 `docs/05-middleware.md §2.1 ①′`。**
+>
 > ★★ **而"禁止脚本"是另一回事**：★ **v5r 用一条【总线规则】关掉了【脚本面】** —— `v5r-core-no-adhoc-scripts`（`on:['tools/pre-execute']`，`when:{tool:['vibe_vmu_script']}` ⇒ 拒）。★ 它可被禁用，所以是**机构政策**、不是内核限制。★ **"没实现"与"明令禁止"要分开说。**
 
 ### 2.1 M1 —— 声明式规则（★ 想做"某条件下拒绝/放行"就用它）

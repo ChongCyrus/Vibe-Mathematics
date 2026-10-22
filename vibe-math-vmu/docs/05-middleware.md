@@ -84,6 +84,37 @@
 ⇒ ★ **需要"在事件上判断 ＋ 跑外部程序"的人，现在只能在 M2 里自己 `import('node:child_process')`** —— 而那会丢掉 M3 的整套保证（结构化结果校验、超时是硬具名 `VMU_JOB_TIMEOUT`、`config.scripts` 的声明与预算；见 `kernel/script-bridge.js`）。
 ★★ **这是【已知的形状缺口】，不是【已实现的能力】。** 若要让两层合一，最小的一步是把脚本桥作为 capability-gated 服务暴露给中间件；那需要一次设计决定，**尚未做**。
 
+**①′ 但【总线本身】是可以被程序调控的 —— 这一点必须和 ① 分开说，否则会读反。**
+
+★ **实测**：★ **`'vmu.middleware': bus` 在【能力门控服务目录】里**（`kernel/index.js` 的 `middlewareServiceCatalog`，`vmu.middleware` 那一行）⇒ ★ **一个声明了 `trigger-workflow` 的 M2 模块可以 `api.services.get('vmu.middleware')` 拿到总线本体**。
+★ 拿到之后（方法表见 `kernel/bus.js` 的 `bus` 对象）：
+
+| 能力 | 方法 |
+|---|---|
+| ★ **加条目** | `on(entry, handler)`（内部就是 `add`）／`add`（返回 id） |
+| ★ **启停条目** | `disable(id, reason)`／`enable(id)` |
+| ★ **读** | `status()`／`entries()`／`trace(traceId)` |
+| ★★ **发事件** | `emit(hook, payload, opts)` —— ★ **不只是"插在流上"，还能【造流】** |
+| ★ **接管宿主 waterfall** | `wrapHostWaterfall(next)` |
+| ★ **主题归属** | `declareTopic(name,{by})`／`retractTopic`／`retractTopicsOwnedBy(by)` |
+| ★ **读已完成 emit 的决策** | `rewriteOf(hook, emitted)`（只读，不重放） |
+| ★ **干跑** | `setDryRun(value)`／`isDryRun()` |
+
+★ **另有【模型侧】的同一能力**：工具面 **`vibe_vmu_middleware`** 的 `list`／`disable`／`enable`／`validate`。
+
+★★★ **所以这里是三件要分开说的事**（本节最容易混）：
+1. ★ **写 JS 程序（M2）** ⇒ ★ **能插进事件流、能调控总线、还能发事件** —— 受 `trigger-workflow` 门控
+2. ★ **写外部程序（M3 脚本）** ⇒ ★ **不能插进事件流**，只能被模型当工具调用（上面 ① 讲的就是这一条）
+3. ★ **模型自己** ⇒ 可经工具面运行时调控总线，★ **但那是"调用"，不是"程序在流上判断"**
+
+★★ **所以 ① 不能被读成"中间件拿不到总线"** —— 那是错的。★ 本小节写成 ①′ 正是因为这个读法很自然：本节最初只有 ①，读者会得出相反结论。
+
+★★★ **而上面那张表里有一处【已知缺口】，必须写在这里而不是留给下一个人踩**：
+
+★ **`emit` 没有重入守卫。** ★ 实测：一个挂在某钩子上的条目，在自己的 handler 里 `emit` **同一个钩子** ⇒ **总线会重入**，★ handler 重复执行（探针里嵌套到 **31 层**仍然继续，★ 只因为探针自己设了上限才停），★ 而 `emit` 的回执仍是 `ok:true, decisions:0` —— ★ **没有任何地方说"你递归了"**。
+★★ 对照：`vmu.turn` 对同一类风险是有守卫的（`VMU_TURN_REENTRANT`，`kernel/index.js` 里那段注释解释了为什么要加）。★ **`vmu.middleware` 暴露的是整套 bus（含 `emit`），而 `index.js` 里那句安全论证只覆盖 `rewriteOf`**（"it emits nothing, so no recursion is possible"）—— ★ **论证比授权窄**。
+★★ **现状**：这是**已验证的缺口，尚未修**（修法要决定"哪些钩子允许嵌套"，属总线语义决策）；★ **任何持有 `trigger-workflow` 的模块都可以碰到它**。
+
 **② pack 文件夹里的 `middleware/` **不是**类别判据。**
 
 ★ 一个 pack 的条目在 **`index.js` 里分两级声明**，★ **读声明，不读目录名**：
