@@ -1668,3 +1668,40 @@ cleanup: clone_gone=True  C_free_GB=14.02
 - ★ 第一版**过严**：★ 把 `:58` 那句「**当前**派生读数是 104 个模块（`node scripts/generate-kernel-index.mjs --check`）」判成违规 —— ★ **而那句是对的**（★ 它点名了派生命令，★ 是活引用）★ ⇒ **加一条狭义豁免**：★ **点名派生命令的行放行**。★ 按 `AGENTS.md §7.1`：★ **判据套错层的不是严谨，是噪声。**
 
 **★ 实测**：★ `=== DOCS-LANDED COUNTS: 5 passed, 0 failed ===`、★ **exit=0** ✓
+﻿
+### §7.02 ★★★★ 门禁抓住了我 —— 新加的 `audit-*` 脚本【没有 `--selftest`】
+
+**T1 报的**：
+```
+TOTAL 403  PASS 402  FAIL 1
+FAIL audit-scanner-selfproof.test.mjs
+   FAIL ★★ 反：新出现的 audit-* 若既无自证也未登记 ⇒ 红（债务只能缩小，不能悄悄变大） [["audit-docs-landed-counts.test"]]
+```
+★★★ **⇒ 仓内 `audit-scanner-selfproof` 要求：★ 每个 `audit-*` 脚本必须【自证】或【具名登记为债务】** —— ★ **正是 `AGENTS.md §7.2`「扫描器自己会空过」那条规矩。** ★ **我新加的那个没有 `--selftest`，★ 它抓到了。**
+
+**★ 已补 `--selftest`（同一份判据函数驱动合成样本，★ 不是另写一套）**：
+- ★ **正**：★ `104 个模块` 判违规；★ **同一句加「定稿时」判不违规**；
+- ★ **豁免要窄**：★ 点名 `generate-kernel-index.mjs` 的行放行，★ **而下一行不带限定的仍然违规**；
+- ★ **反**：★ `通过率 12/15`、★ 裸 `88/103` **不被匹配**（★ 否则 §4.1 自己的表行会被误报）；
+- ★ **扫描器本身**：★ **合成目录里放一条无限定计数 ⇒ 恰 1 条违规**；★ **换成带限定的 ⇒ 同样 1 次匹配、0 条违规**。
+
+**★ 实测**：
+```
+=== DOCS-LANDED COUNTS SELFTEST: 6 passed, 0 failed ===   exit=0
+=== DOCS-LANDED COUNTS: 5 passed, 0 failed ===            exit=0
+=== SCANNER SELF-PROOF: 4 passed, 0 failed ===            exit=0
+```
+
+### §7.03 ★★★ 用户纠正：★ **目标 8 我之前【已经做过了】，★ 而压缩让我忘了**
+
+**用户原话**：★ 「那个目标 8 你之前做过了。你现在上下文压缩导致很多事情都忘记了。」
+
+**★ 读回核实（★ 不凭记忆）**：★ `vibe-math-vmu/kernel/index.js:1664` ——
+```js
+'vmu.script': Object.freeze({ … })      // ★ \u5df2\u5728\u80fd\u529b\u95e8\u63a7\u7684\u670d\u52a1\u76ee\u5f55\u91cc
+```
+★ 且 ★ `host.js:216` 的 bridge 面 **`families: ['vmu.script.', 'vmu.bridge.']`** ⇒ ★ **脚本桥确实已暴露给中间件** ✓
+
+**★★ 所以目标 8 判定为【已完成】**（★ 形式是 `vmu.script.start()`），★ **不再需要用户裁定方向** —— ★ **我上一轮又把它当成"待裁定"抛给用户，★ 那是我自己的记忆错误，★ 不是它没做。**
+
+**★★★ 教训（★ 要进 lessons）**：★ **压缩之后，★ "我记得没做"和"实际没做"是两件事** ⇒ ★ **对任何"待办/待裁定"，★ 回答之前必须先 grep 一遍仓库**（★ 这本来就是 `L1` 读回确认的适用范围，★ 而我把它只用在了"设了值"上，★ 没用在了"记不清"上）。
