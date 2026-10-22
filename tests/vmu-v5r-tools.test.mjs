@@ -275,8 +275,10 @@ try {
   const prioUnknown = await receipt(v5rBoot, 'vibe_v5_prioritize', { order: [{ task_id: 't-phantom', priority: 1 }], why: 'x' })
   ok(prioUnknown.parsed && prioUnknown.parsed.ok === false && prioUnknown.parsed.code === 'VMU_NO_SUCH_OBJECT', 'prioritize: 反 — an order over phantom tasks is refused by name', prioUnknown.parsed)
   const prioOk = await receipt(v5rBoot, 'vibe_v5_prioritize', { order: [{ task_id: createdId, priority: 1 }], why: '离结题最近' })
-  ok(prioOk.parsed && prioOk.parsed.ok === true && !!prioOk.parsed.archived && /NOT applied/.test(String(prioOk.parsed.note)),
-    '★ prioritize: 正 — the order is ARCHIVED as a durable record AND the receipt says it was not applied to the board', prioOk.parsed && prioOk.parsed.note)
+  // ★ UPDATED WITH THE CAPABILITY: `prioritize` could not apply an order because the kernel had no setPriority. It does now,
+    // so the assertion flips from "it says it was NOT applied" to "it WAS applied and reports from->to".
+    ok(prioOk.parsed && prioOk.parsed.ok === true && !!prioOk.parsed.archived && Array.isArray(prioOk.parsed.applied) && prioOk.parsed.applied.length === 1 && prioOk.parsed.applied[0].to === 1,
+    '★ prioritize: 正 — the order is ARCHIVED and APPLIED (kernel/tasks.js setPriority), with from->to in the receipt', prioOk.parsed && prioOk.parsed.note)
 
   const fbMissing = await receipt(v5rBoot, 'vibe_v5_feedback', { op: 'add', category: '协作' })
   ok(fbMissing.parsed && fbMissing.parsed.ok === false && fbMissing.parsed.code === 'VMU_INVALID_ARGUMENT',
@@ -1032,8 +1034,11 @@ try {
   ok(taught.length > 0 && undeclaredTaught.length === 0,
     '★ closed world: every vibe_v5_* name the PROMPT CORPUS teaches is declared as a tool (nothing taught-but-missing is left)', { taught: taught.length, missing: undeclaredTaught })
   const gaps = toolsMod.V5R_NAMED_GAPS
-  ok(Array.isArray(gaps) && gaps.length === 5 && gaps.filter((g) => typeof g === 'string' && g.length > 20).length === 5,
-    '★ the measured limits are recorded as NAMED GAPS (visible-tools reader / mail purge / task-priority SETTER / per-box secrecy / meeting propose)', gaps && gaps.length)
+  // ★ 4, not 5: `task-priority SETTER` LEFT this list when the kernel gained setPriority. The COUNT is only a shape check;
+  // the anti-rot guard is the NEXT assertion, which re-checks that each named capability is still grep-ABSENT from the
+  // kernel file it names - that is what makes this list unable to lie, and it is why the count had to move with the fix.
+  ok(Array.isArray(gaps) && gaps.length === 4 && gaps.filter((g) => typeof g === 'string' && g.length > 20).length === 4,
+    '★ the measured limits are recorded as NAMED GAPS (visible-tools reader / mail purge / per-box secrecy / meeting propose)', gaps && gaps.length)
   // ★ ROUND 23: three of the six old gaps were CLOSED by the kernel in round 6 and are now WIRED by this pack. The list
   // must say so, and every remaining gap must be VERIFIABLE — its missing capability has to still be grep-absent from the
   // kernel file named in the check (this is the anti-rot guard: if the kernel gains the capability, this flips red).
@@ -1047,7 +1052,8 @@ try {
     const src = fsModGap.readFileSync(join(REPO, 'vibe-math-vmu', ...c.file.split('/')), 'utf8')
     gapVerdicts.push({ gap: c.gap, file: c.file, absent: (src.match(c.absent) || []).length, present: c.present ? (src.match(c.present) || []).length : -1 })
   }
-  ok(Array.isArray(gapChecks) && gapChecks.length === 5 && gapVerdicts.filter((v) => v.absent === 0 && (v.present === -1 || v.present > 0)).length === 5,
+  // ★ 4, not 5: the `task priority setter` check left with the gap it guarded, because the kernel gained setPriority.
+  ok(Array.isArray(gapChecks) && gapChecks.length === 4 && gapVerdicts.filter((v) => v.absent === 0 && (v.present === -1 || v.present > 0)).length === 4,
     '★★★ every NAMED GAP is still VERIFIABLE: the claimed-missing capability is grep-ABSENT from the kernel file it names (and the provider it names is still present) — the list cannot silently go stale again',
     { checked: gapVerdicts.length, all: gapVerdicts.filter((v) => v.absent === 0 && (v.present === -1 || v.present > 0)).length })
   // ★ ROUND 4: `tool_help` is no longer a prompt invention — it is DECLARED, and the original still has no such tool.

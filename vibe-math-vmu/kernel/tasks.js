@@ -255,6 +255,30 @@ export function createTasks({
       return { ok: true, id: t.id, deps: t.deps.slice(), revision: t.revision }
     },
 
+    /**
+     * ★★ CHANGE AN EXISTING TASK'S PRIORITY. Until now priority could only be set at CREATE time: `list()` sorts by it
+     * (`(b.priority - a.priority)`), so the field mattered, but nothing could move an existing row - and a pack face
+     * (`vibe_v5_prioritize`) therefore registered the absence in its NAMED GAPS and archived orders without applying them.
+     * Measured on a full live run: an agent set priorities, read the board back, saw `current: null`, and reported the tool
+     * as not working. It was right: the capability was missing from the kernel, which is where capability belongs.
+     * ★ Same compare-and-set discipline as every other mutation here, so a stale view cannot silently overwrite a newer
+     * revision, and the change is RECORDED rather than inferred from the final state.
+     */
+    async setPriority(id, priority, { expectedRevision = null, by = null } = {}) {
+      const t = task(id)
+      requireFresh(t, expectedRevision)
+      const n = Number(priority)
+      if (!Number.isFinite(n)) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'setPriority needs a finite number, got ' + JSON.stringify(priority),
+          'priority is a number; the board sorts DESC by it (kernel/tasks.js list())')
+      }
+      const before = t.priority
+      t.priority = n
+      bump(t)
+      record('task-priority-set', { id: t.id, from: before, to: n, by })
+      return { ok: true, id: t.id, priority: t.priority, previous: before, revision: t.revision }
+    },
+
     /** F39: the advisory overlap view (read-only; never refuses anything). Read by `status().writeScopeConflicts`. */
     writeScopeConflicts,
 

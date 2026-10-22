@@ -355,8 +355,22 @@ async function toolPrioritize(args = {}, { kernel } = {}) {
     body: 'why：' + str(args.why) + '\norder：' + order.map((r, i) => (i + 1) + '. ' + str(r.task_id) + ' (priority ' + str(r.priority) + ')').join('\n'),
     settled: false, by: str(args.member) || 'vibe_v5_prioritize',
   })
-  return { ok: true, tool: 'vibe_v5_prioritize', order, archived: archived && archived.id, currentPriorities,
-    note: 'this kernel carries priority AT CREATE TIME and sorts the board by it (kernel/tasks.js:211/234/371), but it exposes NO operation to change an existing task\'s priority — so the ORDER itself is archived on the state track and NOT applied to existing rows; that remaining half is recorded as 需内核能力：tasks.setPriority' }
+  // ★★★ THE ORDER IS NOW APPLIED, NOT ONLY ARCHIVED. This face used to record the order and say, in its own note, that the
+  // kernel had no operation for changing an existing task's priority - so an agent set priorities, read the board back, saw
+  // `current: null` and reported the tool as broken. It was right. `kernel/tasks.js` now publishes `setPriority` with the same
+  // compare-and-set discipline as every other mutation, and this face applies every entry that CARRIES a priority.
+  // ★ An entry with no `priority` is a position-only statement: it stays part of the archived order and is NOT turned into a
+  // number the caller never asked for. Each applied row reports what it was and what it became, so nothing is inferred.
+  const applied = []
+  for (const r of order) {
+    if (r.priority === undefined || r.priority === null) continue
+    const res = await tasksOf(kernel).setPriority(str(r.task_id), r.priority, { by: str(args.member) || 'vibe_v5_prioritize' })
+    applied.push({ task_id: String(r.task_id), from: res.previous, to: res.priority, revision: res.revision })
+  }
+  return { ok: true, tool: 'vibe_v5_prioritize', order, archived: archived && archived.id, currentPriorities, applied,
+    note: applied.length === 0
+      ? 'no entry carried a priority, so only the ORDER was archived - pass priority on an entry to change the board'
+      : 'priorities applied to ' + applied.length + ' task(s); the board sorts DESC by priority (see `applied` for from/to)' }
 }
 
 const FEEDBACK_ADD_REQUIRED = Object.freeze(['category', 'route', 'phenomenon', 'impact', 'action'])
@@ -1052,7 +1066,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_prioritize',
-    description: 'Set institute-wide priorities: an ordered list of {task_id, priority} plus why. The ledger stores priority at CREATE time and sorts the board by it, but exposes no setter for an existing task — so the order is archived as a durable record, the receipt reports each task\'s CURRENT priority, and the unapplied half is named (需内核能力：tasks.setPriority).',
+    description: 'Set institute-wide priorities: an ordered list of {task_id, priority} plus why. The order is archived as a durable record AND applied to the board — entries that carry a priority change the task via kernel/tasks.js setPriority (compare-and-set), and the receipt reports each task\'s from->to. An entry without a priority is a position-only statement and changes nothing.',
     parameters: { order: { type: 'array', required: true }, why: { type: 'string', required: true } },
     handler: toolPrioritize,
   },
@@ -1239,7 +1253,6 @@ export const V5R_NEXT_BATCH_TOOLS = Object.freeze([])
 export const V5R_NAMED_GAPS = Object.freeze([
   'visible-tools reader: the kernel installs a visible-tools PROVIDER but exposes no getter for the full visible NAME set, so tool_help can name the pack-declared tools exactly and the host visible COUNT, not the host face names.',
   'mail purge on fire: the mailbox face exposes no per-member purge this pack may call, so fire dismisses the member and cancels their tasks but does not drop their mail.',
-  'task priority surface: the ledger stores priority at CREATE time and SORTS the board by it, but (a) the list projection omits the field and (b) no operation changes an existing task\'s priority — so prioritize archives the order and reports each row\'s requested/current value instead of applying it.',
   'per-box secrecy/abstention: the per-box `rules` object covers minVotes/allowRevote/maxChoices/minChoices/mode only; secrecy and abstention remain deployment-level ballot policy, so poll_open reports those two under `unapplied`.',
   'meeting propose: the meetings face has no "propose a meeting" path, so a non-chair seat cannot propose one for the chair to convene (the tool says so in its receipt instead of pretending).',
 ])
@@ -1260,7 +1273,6 @@ export const V5R_CLOSED_GAPS = Object.freeze([
 export const V5R_NAMED_GAP_CHECKS = Object.freeze([
   { gap: 'visible-tools reader', file: 'kernel/turn/index.js', absent: /visibleTools\s*\(/, present: /setVisibleToolsProvider/ },
   { gap: 'mail purge on fire', file: 'kernel/mailbox.js', absent: /purge/ },
-  { gap: 'task priority setter', file: 'kernel/tasks.js', absent: /setPriority\s*\(/ },
   { gap: 'per-box secrecy/abstention', file: 'kernel/ballotbox.js', absent: /RULE_KEYS\s*=\s*\[[^\]]*'secret'/ },
   { gap: 'meeting propose', file: 'kernel/meetings.js', absent: /propose\s*\(/ },
 ])
