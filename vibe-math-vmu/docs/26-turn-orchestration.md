@@ -618,6 +618,13 @@ root agent 自己的 assembly（root 不属于任何成员槽）。
 ★★ **占位段**：pack 可提供名为 `v5r-effective-tools` 的段（或文本含 `【本轮你实际能调用的工具`）；有则**替换**，无则**追加**并在 `toolFacePull.effectiveBlock` 记录 `appended`（**不静默**）。角色静态清单可保留作职责说明，但以本块为准。
 ★ **验收**：`node scripts/slv-inspect.mjs <会话>` 对含该块的回合，`promptTools` 与 `wireTools` 双向差集为空。
 
+★★★★ **而 root 会话没有这个块 —— 这是设计如此，不是缺口**（★ 补于本轮，因为真机复验把它当成 RED 报过一次）：
+
+★ **`host.js` 里有一处提前返回**：★ `if (!member && !Array.isArray(stickyAllow)) return out` —— ★ **root 的 agent id 以 `session-` 开头**（★ 见 §3.35：root 不属于任何成员槽），★ 而 `stickyAllow` 只对**非 `session-`** 的 agent 取窄面 ⇒ ★ **root 两样都没有 ⇒ 直接返回，不写块**。
+★★ **为什么不写是对的**：★ 块回答的问题是"**这一回合你这个【席】实际能调什么**" —— ★ **root 没有席**，★ 它的面本来就是**全量目录**，★ 没有"按席收窄"这件事可报告。
+★★★ **由此得出一条审计纪律**（★ 已写进 `scripts/slv-inspect.mjs` 的注释）：★ **"没有同源块"不是"块与 wire 不一致"的证据。** ★ 修前 `slv-inspect` 在无块时**退回 pack 的静态清单**做差集，★ 于是 **root 的 84 个 wire 工具全被报"未在提示词里命名"** —— ★ **一次假红**。★ 现在：★ **无块 ⇒ 差集只作 `INFO (no block)`，不进 RED**；★ **只有"真有块且会话是成员"时，差集才是 RED**。★ 判据在一个布尔 `blockIsAuthority` 上，★ **判定与打印共用它，所以两者不可能再打架**。
+★ **自检**：`node scripts/slv-inspect.mjs --selftest` ★ **正例必须不红、反例（块与 wire 真不一致）必须红** —— ★ **收紧判据不等于放水**。
+
 ## 3.37 ★★★★★ 信箱通知进入成员提示词（PHASE 9 / 轮 5）
 
 ★ **真机病**：root 发信回执正确，但成员提示词里**连“有一封留言”都没有**；`status` 显示 `wake.wired:false`、`peerCheck.shortCircuit:true`。

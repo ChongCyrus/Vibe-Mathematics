@@ -209,7 +209,12 @@ export function analyzeSession(file, { memberFilter = null } = {}) {
   const staticDiff = sameSource.present
     ? { missingFromWire: userTools.filter((n) => !wireTools.includes(n)), extraOnWire: wireTools.filter((n) => !userTools.includes(n) && n !== 'run_code') }
     : null
-  const sameSourceMismatch = sameSource.present && member && (missingFromWire.length > 0 || extraOnWire.length > 0)
+  // ★★ THE BLOCK IS THE AUTHORITY ONLY WHEN THERE IS ONE *AND* THE SESSION IS A MEMBER. Root has no block by design
+  // (`host.js` returns early: `if (!member && !Array.isArray(stickyAllow)) return out`), so diffing root's wire against
+  // the pack's static catalogue proves nothing about root. ONE boolean drives BOTH the red calculation and the
+  // printout, so the verdict and the message can never disagree — which is exactly how the false red arose.
+  const blockIsAuthority = sameSource.present && !!member
+  const sameSourceMismatch = blockIsAuthority && (missingFromWire.length > 0 || extraOnWire.length > 0)
   const runCode = wireTools.includes('run_code')
   const callsNotInWire = [...new Set(calls.map((c) => c.name).filter((n) => !wireTools.includes(n)))]
   // Under PTC the SDK dispatches inner tools inside run_code; those are NOT direct wire names, so they are reported
@@ -248,7 +253,8 @@ export function analyzeSession(file, { memberFilter = null } = {}) {
     resultCount: results,
     countMismatch,
     receipts: assistant.slice(-4).map((t) => (t.length > CAP.receipt ? t.slice(0, CAP.receipt - 1) + '…' : t)),
-    red: missingFromWire.length > 0 || extraOnWire.length > 0 || unknownCalls.length > 0 || countMismatch,
+    blockIsAuthority,
+    red: sameSourceMismatch || unknownCalls.length > 0 || countMismatch,
   }
 }
 
@@ -303,20 +309,40 @@ function render(s) {
   lines.push('receipts (last, truncated):')
   for (const r of s.receipts) lines.push('  ' + oneLine(r, 400))
   lines.push('AUTO CHECKS:')
-  if (s.sameSource && s.sameSource.present) {
+  // ★★★ "NO SAME-SOURCE BLOCK" IS NOT EVIDENCE OF A MISMATCH, AND IT IS EXPECTED FOR ROOT.
+  // Measured on a clean live run: the root session reported `RED wire tools not named in prompt` listing all 84 wire
+  // tools, while an INFO on the same line said the block was absent and the list came from the pack's static catalogue.
+  // Root has no block BY DESIGN — `host.js` returns early when the agent has no member and no sticky narrow face
+  // (`if (!member && !Array.isArray(stickyAllow)) return out`), because the root's face IS the full catalogue and there
+  // is nothing per-slot to narrow. So diffing the wire against a static list proves nothing about root, and it proves
+  // nothing about any session whose prompt is the old format. The diff is reported as INFO in both cases, and only a
+  // REAL block — same-source, present — can red this gate.
+  const hasBlock = !!s.blockIsAuthority
+  if (hasBlock) {
     if (s.sameSourceMismatch) {
       lines.push('  RED 同源块与 wire 不一致: block=[' + s.sameSource.tools.join(', ') + '] blockOnly=[' + s.missingFromWire.join(', ') +
         '] wireOnly=[' + s.extraOnWire.join(', ') + ']')
     }
-  } else if (!s.root) {
+  } else if (s.root) {
+    lines.push('  INFO 根会话没有同源块 —— 这是设计如此（根的面就是全量目录，没有按席收窄）；' +
+      '因此下面任何"与静态清单的差集"都不是证据，不计入 RED')
+  } else {
     lines.push('  INFO 旧格式：没有同源块（【本轮你实际能调用的工具｜…】）；promptTools 取自静态清单，差集可能误报')
   }
   if (s.staticDiff && (s.staticDiff.missingFromWire.length || s.staticDiff.extraOnWire.length)) {
     lines.push('  INFO 静态清单与 wire 不同（职责说明，已被同源块取代）: missing=' + s.staticDiff.missingFromWire.join(', ') +
       ' extra=' + s.staticDiff.extraOnWire.join(', '))
   }
-  if (s.missingFromWire.length) lines.push('  RED promptTools missing from wire: ' + s.missingFromWire.join(', '))
-  if (s.extraOnWire.length) lines.push('  RED wire tools not named in prompt: ' + s.extraOnWire.join(', '))
+  // ★ The two diff lines can only be RED when a REAL same-source block exists (see the note above). Without one they
+  // are a static-list artifact: INFO names them, RED would be a false alarm — and a false RED is worse than no RED,
+  // because it teaches the reader to ignore the gate.
+  const diffAsRed = hasBlock
+  if (s.missingFromWire.length) {
+    lines.push((diffAsRed ? '  RED promptTools missing from wire: ' : '  INFO (no block) promptTools missing from wire: ') + s.missingFromWire.join(', '))
+  }
+  if (s.extraOnWire.length) {
+    lines.push((diffAsRed ? '  RED wire tools not named in prompt: ' : '  INFO (no block) wire tools not named in prompt: ') + s.extraOnWire.join(', '))
+  }
   if (s.unknownCalls.length) lines.push('  RED tool calls not in wire: ' + s.unknownCalls.join(', '))
   if (s.ptcNestedCalls && s.ptcNestedCalls.length) lines.push('  PTC inner calls (inside run_code, not direct wire names): ' + s.ptcNestedCalls.join(', '))
   if (s.countMismatch) lines.push('  RED tool/call count != tool/result count')
