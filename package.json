@@ -502,6 +502,7 @@
     "tests/audit-vmu-docs.mutants.mjs",
     "tests/audit-scope-classification.test.mjs",
     "tests/audit-scanner-selfproof.test.mjs",
+    "tests/audit-prompt-tool-names.test.mjs",
     "tests/vmu-round1-seams.test.mjs",
     "tests/vmu-round2-seams.test.mjs",
     "tests/audit-math-computation-parity.mutants.mjs",
