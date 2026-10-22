@@ -29,7 +29,16 @@ export function makeMathjobsSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (!svc || typeof svc[action] !== 'function') {
           return refused('VMU_ENGINE_UNAVAILABLE', 'this assembly has no math-jobs face (kernel.mathjobs.' + String(action) + ' is missing)')
         }
-        return Object.assign({ ok: true, action }, await svc[action](rest))
+        const result = await svc[action](rest)
+        // ★★★ NEVER SPREAD A PRIMITIVE. Measured on a full live run: `jobsDir` returns a PATH STRING, and
+        // `Object.assign({ ok:true, action }, 'M:/a/b')` spread it character by character into `{0:'M',1:'/',2:'a',…}` -
+        // the caller got a receipt that looked like data and was a bug. A primitive has no properties to merge, so the
+        // honest receipt names it: `result`. (The same shape exists in ~250 sibling faces; this one is fixed here and the
+        // systemic repair is recorded in docs/acceptance/phase11-final-run-triage.md.)
+        if (result === null || result === undefined || typeof result !== 'object') {
+          return { ok: true, action, result: result === undefined ? null : result }
+        }
+        return Object.assign({ ok: true, action }, result)
       } catch (e) {
         return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
       }
