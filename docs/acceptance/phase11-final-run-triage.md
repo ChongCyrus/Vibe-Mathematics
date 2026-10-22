@@ -1902,3 +1902,34 @@ const tallyOf = (meetingId, mo) => tallyOfMotion({ meetingId, mo, boxFor: boxBin
 
 **★★★★ 至此本阶段"有机制但没测"的地方清零**（★ `box-empty`／`box-status-unreadable` 是最后两处）。
 **★ 而这条路径本身值得记**：★ **一个分支在公开面上不可达，★ 不代表它不可测** —— ★ **把逻辑抽成纯函数，★ 它就变得可测了**；★ **而抽出来的过程还顺带证明了行为未变（195/0、28/0）。**
+﻿
+### §7.13 ★★★★★★★ 重构后的最终真机（HEAD `60f7e047`）：★ **判据全部达成，且 `cast` 由机器读出**
+
+**为什么必须再跑一次**：★ **本轮把 `kernel/meetings.js` 的计票闭包抽成了导出的纯函数 `tallyOfMotion`**（★ 为了让回落分支可单测）⇒ ★ **它动的是会议计票，★ 那正是真机流程的核心路径之一** ⇒ ★ **按纪律必须重验。**
+
+**`done` 行**：
+```
+{"preset":"vibe-math-vmu","durationSec":68,"tokenTotal":650632,
+ "transcriptEvents":112,"toolCalls":15,"followStreamWorked":true,
+ "title":"通过 vmu 工具推进研究所结题"}
+VERDICT: PASS
+cleanup: clone_gone=True  C_free_GB=14.01
+```
+
+**★★★★★ 判据（★ 机器读出）**：
+```
+CLOSURE: full-1023-003548.jsonl  cast=true  (from 6 turn receipt(s))
+SUMMARY: 1 session(s), 0 with RED checks
+```
+| ★ 判据 | ★ 结果 |
+|---|---|
+| ★ **`cast: true`** | ★ **`cast=true  (from 6 turn receipt(s))`** ✓ |
+| ★ **`slv-inspect` 0 RED** | ★ **`0 with RED checks`** ✓ |
+| ★ `NO_FENCE` | ★ **0** |
+| ★ **`UNKNOWN_FIELD`** | ★ **0 个运行时错误** —— ★ 3 次出现**全是同一条提示词文本**（★ 「写了会被判 `VMU_TURN_UNKNOWN_FIELD`」，★ 该句被注入 3 个提示词各一次） |
+| ★ `FIELD_NOT_APPLICABLE` | ★ **0** |
+| ★ `BAD_JSON` | ★ **0** |
+| ★ `followStreamWorked` | ★ **true** |
+| ★ **中间件注册** | ★ **7 条** |
+
+**★★★ ⇒ 重构没有破坏真机流程。** ★ **T1 403/403** ＋ ★ **真机判据全中**，★ **两者都在 HEAD `60f7e047` 上成立。**
