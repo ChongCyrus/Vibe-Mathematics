@@ -1254,3 +1254,21 @@ const seam = async ({ turn, text }) => {
 2. `v5r-core.js:402` `v5rCharterSectionsGlobal({ hasLeader = true } = {})` → 内部用 `charterSections({ hasLeader })`；
 3. **策略层（`decideSections`）从「是否有在册领头人」推出 `hasLeader` 并传入** —— 这一半是**消费者**，少了它就是白做；
 4. 断言：无领头人时 `CHARTER_LEADERLESS_MISSING_TEXT` 不出现、且任何 section 里不再出现 `院士 ` 空槽。
+﻿
+### §6.82 ★★★★★ E 的更深层：`charterSections({ hasLeader })` 这条路上【没有任何可达的读点】
+
+**四个层全堵住了（逐条有行号）**：
+1. `v5r-charter.js:148` `CHARTER_SECTIONS = Object.freeze(charterSections({ hasLeader: true }))` —— **写死 true**
+2. `v5r-core.js:402` `const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, …]` —— **无参数**
+3. `v5r-core.js:340` `get sections() { return v5rCharterSectionsGlobal() }` —— **manifest getter 也是无参的，装配那一刻拿不到名册**
+4. **策略层也不行**：`pack.js:330-332`、`:347` 的契约严格是 `{decisions:[{name,enabled}],errors}` —— **只能按 section 名启停**；★ 而两个变体**名字相同**（同一个 `b.name`）⇒ **无法用名字切**
+
+**★★★ 于是结论是**：`CHARTER_LEADER_VARIANTS`（`:99`）、`CHARTER_LEADERLESS_MISSING_TEXT`（`:115`）、`CHARTER_LEADERLESS_OMISSIONS`（`:117`）、以及 `charterSections({hasLeader:false})` 的分支 —— **这一整套机制（含一个守卫、一份具名缺失清单、一段具名占位文本）【没有任何可达的读点】**。
+★ 这正是 `01-philosophy.md:63` 说的「**没有任何路径让用户用上的机制**」—— 只是它此刻装成了「已实现并有守卫」的样子。
+**★★ 而 `docs/26:219`、`v5r-charter.js:15`、`:30` 都写着「由是否有领头人决定整段句子」** —— **文档描述的机制存在，但无人能触发它。**
+
+**★★★ 下一轮的修法（建议，按可行性排序）**：
+① `v5r-core.js:340` 的 getter 改为**从一个可读的会话面推导**（如果 manifest 拿得到 kernel 句柄）；
+② **渲染时变量**：把这整句话提成 `{{ leaderSentence }}` 一类变量，由渲染层在 `leaderId` 为空时产出无领头人句子；
+③ **最小且诚实**：在渲染层把已解析的 `leaderId` 传进 `charterSections`，让空串走 leaderless 分支（**必须先有渲染层这个消费者**）。
+★ **不得先加参数再说「以后接」** —— 那就是 §1.4.4 的静默不生效，**这一轮已经证明那条路连 getter 都过不去**。
