@@ -1068,3 +1068,29 @@ workspaceFiles: [..., "VibeMath/vmu/audit/2026-10-22.jsonl", ...]
 ★★★ **⇒ 这一条同时达成三件事**：★ ① **`cast:true`**（★ 目标 5 核心判据）；★ ② **验证了 16 条修复里的多条在真机上生效**（★ 雇人/开会/投票/结题全通）；★ ③ **产出 6 条新的、有回执证据的缺陷**（★ 目标 2 的下一批）。
 
 **★★ 仍未做**：★ `slv-inspect`（★ 0 RED 判据）★ 与 ★ #29 的**票→动议**专验（★ 本轮 `motion` 未出现）。
+### §6.72 ★★★★★★ **目标 5 的判据【全部达成】**
+
+**`node scripts/slv-inspect.mjs full-1022-221812.jsonl` 输出**：
+```
+SUMMARY: 1 session(s), 0 with RED checks
+OK: prompt/wire names consistent; all calls visible; counts match
+```
+★ 两条 `INFO`（★ 非 RED）：★ ① 旧格式无同源块 ⇒ ★ `promptTools` 取自静态清单；★ ② 默认工具（`pwsh`/`glob`/`read`…）未在提示词里被点名 —— ★ **两者都是【预期行为】**，★ 而 `slv-inspect` 自己判为 `INFO` 而非 `RED`。
+
+**判据逐项（★ 这次是【在当前 dsh ＋ 最新代码 ＋ v5r 包已加载】的真机上）**：
+| ★ 目标 5 的判据 | ★ 结果 |
+|---|---|
+| ★ **`cast: true`** | ★ ★**达成**（★ 代理第 12 步：`vibe_vmu_status closure → cast true`）★ |
+| ★ **`slv-inspect` 0 RED** | ★ ★**达成**（`0 with RED checks`）★ |
+| ★ **`NO_FENCE`** | ★ **0** |
+| ★ **`UNKNOWN_FIELD`** | ★ **0** |
+| ★ **`FIELD_NOT_APPLICABLE`** | ★ **0** |
+| ★ **`BAD_JSON`** | ★ **0** |
+| ★ `followStreamWorked` | ★ **true** |
+| ★ **`calls(14) vs results(14)`** | ★ **一致** |
+| ★ **`visible tools: 88`** | ★ **工具面完整** |
+| ★★ **`【本轮可用的工具｜研究员】` 占位段** | ★ **已被替换成真实工具列表**（★ `· vibe_v5_record_progress` …）→ ★ **#12 的占位段在【有席的成员】上正常工作** ✓ |
+
+**★★★ 仍未做的一件事**：★ **#29 的"票 → 动议"专验** —— ★ 本轮**没有出现 `motion`**（★ 代理没发起动议），★ 所以 `motion.votes` 仍未在真机上被验到。
+
+★★★★ **⇒ 目标 5 到此【交账】**：★ **完整流程真机跑到结题、0 RED、四码全 0、工具面一致、占位段正常。**
