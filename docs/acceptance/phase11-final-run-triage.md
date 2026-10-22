@@ -1389,3 +1389,27 @@ turn.leaderOnStaff=true => with-leader=true  leaderless=false  errors=0
 **★ 这个测试【证不了】什么（写在文件头）**：★ 它不端到端组装真实宿主提示词（★ 那需要活宿主，★ 见 `vmu-assistant-host-slice` 的具名 not-run 段）⇒ ★ **它证明的是决策与文本这两层，★ 而缺陷正好在这两层。**
 
 **★ 派生面**：★ 新测试文件让三处派生漂移（★ `JOBS 470→471`、★ 读点索引、★ settings 表）。★ 已 `node scripts/regen-all.mjs --write` ⇒ **`regen-all: 16/16 in sync`** ✓ ★ `check-docs: PASS` ✓
+﻿
+### §6.89 ★★★★★ 仓内 RULE E 门禁抓到了我测试里的【两处空断言】—— 现已全部改掉
+
+**`audit-declaration-criterion` 报的原文**（跑 T1 时它红了）：
+```
+FAIL RULE E ⇒ vmu-charter-leader-pair.test.mjs:39 [B] both sides (CHARTER_LEADERLESS_SECTIONS, ...)
+FAIL RULE E fingerprint set ⇒ NEW vacuous pass (not in the baseline list): vmu-charter-leader-pair.test.mjs:A:pairNames
+```
+
+**★ 依据（`AUDIT-CHECKLIST.md:567`）**：★ **空断言（vacuous）＝两边取同一表达式/同一变量，恒真** ⇒ ★ **要让两边来自【不同来源】**（★ 代码 vs 规格/文档/常量）。
+
+**★★ 我的三处违规（全是真的）**：
+| ★ 位置 | ★ 为什么恒真 | ★ 改法 |
+|---|---|---|
+| ★ `CHARTER_LEADER_PAIRS.length === leaderConditional.length` | ★ **三者都由同一个 `CHARTER_BLOCKS.filter(kind)` 派生** | ★ 改为 **规则 vs 数据**：★ 每个配对的第二项必须**恰为** `第一项 + '-leaderless'` |
+| ★ `[...pairNames].every(n => blockNames.has(n))` | ★ **两者同源** | ★ 改为 **比 `CHARTER_LEADER_VARIANTS`**（★ 由 `Object.fromEntries(b.texts)` 独立派生） |
+| ★ `pairLess` vs `sectionNames`、★ `withLeader.length` vs `CHARTER_BLOCKS.length` | ★ **两侧可同时为空 ⇒ 空 vs 空恒等** | ★ **先断言两侧都【非空】**，★ 再比较 |
+
+**★ 结果**：
+- ★ 新测试 **`=== VMU CHARTER LEADER PAIR: 24 passed, 0 failed ===`** ✓
+- ★ RULE E 门禁 **`=== DECLARATION CRITERION: 89 passed, 0 failed ===`**、★ **exit=0** ✓
+
+**★★★ 这是本轮最有价值的一件事**：★ **我写了一个"看起来有 22 条断言"的测试，★ 而其中三条【永远不可能失败】**。★ **是仓内自己的门禁把它抓出来的** —— ★ 这正是本仓「把宣称抄成断言」那条纪律的意义：★ **断言的价值不在于数量，★ 而在于它【真的能红】。**
+★★ **并记下：★ 我上一轮还写了"22 passed"就当成通过 —— 直到 T1 把它变成红。** ★ **单跑一个自测通过 ≠ T1 通过**，★ 而 **T1 里有专门审断言的断言。**

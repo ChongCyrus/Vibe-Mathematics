@@ -33,17 +33,32 @@ console.log('=== 1. THE PAIRS AND THE SEPARATE NAMES EXIST ===')
 {
   ok(leaderConditional.length > 0,
     '★ there is at least one leader-conditional block (otherwise this whole test is vacuous)', { count: leaderConditional.length })
-  ok(CHARTER_LEADER_PAIRS.length === leaderConditional.length,
-    '★ CHARTER_LEADER_PAIRS covers EVERY leader-conditional block - a pair missing here would be a block the policy can never switch',
-    { pairs: CHARTER_LEADER_PAIRS.length, blocks: leaderConditional.length })
-  ok(CHARTER_LEADERLESS_SECTIONS.length === leaderConditional.length,
-    '★ CHARTER_LEADERLESS_SECTIONS declares one section per leader-conditional block', { sections: CHARTER_LEADERLESS_SECTIONS.length })
-  const namesUnique = new Set(CHARTER_BLOCKS.map((b) => b.name)).size === CHARTER_BLOCKS.length
-  const lessNamesUnique = new Set(CHARTER_LEADERLESS_SECTIONS.map((s) => s.name)).size === CHARTER_LEADERLESS_SECTIONS.length
-  const noOverlap = CHARTER_LEADERLESS_SECTIONS.every((s) => !CHARTER_BLOCKS.some((b) => b.name === s.name))
-  ok(namesUnique && lessNamesUnique && noOverlap,
-    '★ every leaderless section has its OWN name and none collides with a with-leader name - duplicate section names are a named pack conflict',
-    { namesUnique, lessNamesUnique, noOverlap })
+  // ★★★ RULE E: AN ASSERTION WHOSE TWO SIDES COME FROM THE SAME EXPRESSION IS VACUOUS (AUDIT-CHECKLIST §1 "empty assertion":
+  // "both sides take the same expression/variable, always true ⇒ make the two sides come from DIFFERENT sources"). The first
+  // version of this block compared CHARTER_LEADER_PAIRS.length and CHARTER_LEADERLESS_SECTIONS.length against
+  // leaderConditional.length - and all three are produced by the SAME `CHARTER_BLOCKS.filter(kind === 'leader-conditional')`, so
+  // both comparisons were tautologies by construction. audit-declaration-criterion caught it. The replacements below compare the
+  // NAMING RULE against the emitted data, which can genuinely disagree.
+  const RULE_SUFFIX = '-leaderless'
+  const wrongSuffix = CHARTER_LEADER_PAIRS.filter((pair) => pair[1] !== pair[0] + RULE_SUFFIX)
+  ok(wrongSuffix.length === 0,
+    '★ every pair follows the NAMING RULE (leaderless side is exactly <withLeaderName>' + RULE_SUFFIX + ') - this is rule-vs-data, not data-vs-data',
+    wrongSuffix.slice(0, 3))
+  // two INDEPENDENT derivations that could drift: PAIRS is built from block names, SECTIONS is built through CHARTER_LEADER_VARIANTS
+  const pairLess = CHARTER_LEADER_PAIRS.map((pair) => pair[1]).sort()
+  const sectionNames = CHARTER_LEADERLESS_SECTIONS.map((s) => s.name).sort()
+  // ★ RULE E shape B: "two empty collections compare equal". Assert BOTH sides are non-empty FIRST, in an assertion the scanner can see.
+  ok(pairLess.length > 0 && sectionNames.length > 0,
+    '★ the two name lists are both NON-EMPTY before being compared (otherwise equal-vs-equal would pass vacuously)',
+    { pairLess: pairLess.length, sectionNames: sectionNames.length })
+  ok(JSON.stringify(pairLess) === JSON.stringify(sectionNames),
+    '★★ the two derivations agree: the names the policy switches to are exactly the names the manifest declares (they are produced by different code paths, so this can fail)',
+    { pairLess: pairLess.slice(0, 3), sectionNames: sectionNames.slice(0, 3) })
+  ok(new Set(CHARTER_BLOCKS.map((b) => b.name)).size === CHARTER_BLOCKS.length && CHARTER_BLOCKS.length > 0,
+    '★ block names are unique across the whole corpus (duplicate section names are a named pack conflict)', { blocks: CHARTER_BLOCKS.length })
+  ok(CHARTER_LEADERLESS_SECTIONS.every((s) => !CHARTER_LEADER_VARIANTS[s.name]) && CHARTER_LEADERLESS_SECTIONS.length > 0,
+    '★ a leaderless section name never collides with a with-leader variant key - the two live in different namespaces',
+    CHARTER_LEADERLESS_SECTIONS.map((s) => s.name))
 }
 
 console.log('=== 2. THE LEADERLESS TEXT NEVER CARRIES THE NAMING SLOT ===')
@@ -54,7 +69,7 @@ console.log('=== 2. THE LEADERLESS TEXT NEVER CARRIES THE NAMING SLOT ===')
     leaking.map((s) => s.name))
   // and the with-leader variant is expected to carry it: that is the whole point of the split
   const withSlot = leaderConditional.filter((b) => NAMING_SLOT.test(String((b.texts || {})['with-leader'] || '')))
-  ok(withSlot.length > 0,
+  ok(leaderConditional.length > 0 && withSlot.length > 0,
     '★ the with-leader variants DO name the leader through the setting (so the split is a real split, not two copies of the same text)',
     withSlot.map((b) => b.name))
   // the two variants must actually differ, or the switch would be cosmetic
@@ -111,13 +126,17 @@ console.log('=== 4. NOTHING THAT WORKED BEFORE IS BROKEN ===')
 {
   // CHARTER_SECTIONS / charterSections({hasLeader:true}) must still produce the historical reading
   const withLeader = charterSections({ hasLeader: true })
-  ok(Array.isArray(withLeader) && withLeader.length === CHARTER_BLOCKS.length,
+  ok(CHARTER_BLOCKS.length > 0 && Array.isArray(withLeader) && withLeader.length === CHARTER_BLOCKS.length,
     '★ charterSections({hasLeader:true}) still returns one section per block (the default reading is unchanged)', { n: withLeader.length })
-  const blockNames = new Set(CHARTER_BLOCKS.map((b) => b.name))
-  const pairNames = new Set(CHARTER_LEADER_PAIRS.map((p) => p[0]))
-  ok([...pairNames].every((n) => blockNames.has(n)),
-    '★ every pair uses a REAL block name as its with-leader side (no invented section the manifest never declares)',
-    [...pairNames].filter((n) => !blockNames.has(n)))
+  // ★★ RULE E again: the old form compared pairNames against blockNames - both built from CHARTER_BLOCKS, so it could never fail.
+  // CHARTER_LEADER_VARIANTS is a DIFFERENT derivation (built through Object.fromEntries on b.texts), so comparing PAIRS against IT can
+  // genuinely disagree if the two drift apart.
+  const variantKeys = Object.keys(CHARTER_LEADER_VARIANTS)
+  const pairNames = CHARTER_LEADER_PAIRS.map((p) => p[0])
+  const notInVariants = pairNames.filter((n) => !variantKeys.includes(n))
+  ok(variantKeys.length > 0 && notInVariants.length === 0,
+    '★ every pair names a key that CHARTER_LEADER_VARIANTS actually holds (two independent derivations, so this can fail)',
+    { variantKeys: variantKeys.length, notInVariants })
   ok(Object.keys(CHARTER_LEADER_VARIANTS).length === leaderConditional.length,
     '★ CHARTER_LEADER_VARIANTS still covers every leader-conditional block (the leaderless texts are reached THROUGH it, so the two cannot drift)',
     { variants: Object.keys(CHARTER_LEADER_VARIANTS).length })
