@@ -1232,3 +1232,25 @@ const seam = async ({ turn, text }) => {
 **★★★ 所以我在 §6.78 里说「这是红线 4」是错的**：★ 我当时问的其实是【有没有读点】（**接线层**），★ 而我用了【消费者】（**设计层**）这个词 —— ★ **正是 §1.4.1、§1.4.2 写在那里要防的那种误读**。
 **★★ 但结论仍然成立、实修仍然正确**：★ 若不补 `meetingView()`，`loop`/`note` 就是 §1.4.4 说的「**静默地声明了却不生效**」—— ★ 它们会存在于内核却永远到不了服务面的回执里。★ **修法对，标签错。**
 **★★★ 一个反向确认**：★ 按 §1.4.1，`loop`/`note` **有消费者**（使用者确实需要知道两套循环的区别）—— 所以它们**该存在**；★ 而它们当时**没有读点**，所以**该接线**（而不是该删）。★ §1.4.3 给的删除举证责任，我一条都没满足 —— ★ **所以删除从一开始就不在选项里**。
+
+
+### §6.81 缺陷 **E**（charter 字段未解析）的**精确根因**：决策机制完整，**没有人去选那个分支**
+
+**机制是完整的（逐条行号）**：
+- `v5r-charter.js:125` `charterSections({ hasLeader = true })` —— `hasLeader:false` 时把每个 `leader-conditional` 块换成 `leaderless` 变体
+- `v5r-charter.js:99` `CHARTER_LEADER_VARIANTS`；`:117` `CHARTER_LEADERLESS_OMISSIONS`（**缺变体就具名**）；`:115` 具名占位文本
+- `v5r-charter.js:108-110` 自述：**「知道本所无院士的装配体要传 `{ hasLeader: false }`」**
+
+**★★★ 而没有人传**：
+- `v5r-charter.js:148` `export const CHARTER_SECTIONS = Object.freeze(charterSections({ hasLeader: true }))` —— **写死 true 的冻结常量**
+- `v5r-core.js:390` 导入的就是这个常量；`:402` `const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, …]` —— **无参数**
+- **全仓 grep `charterSections(` 只有两处命中**：定义处与那个常量 ⇒ **没有第二个调用者**
+
+**★★ 于是**：无院士研究所也永远发「有领头人」那段，而 `{{ setting:vmu.turn.leaderId }}` 默认为空（`schema.js:226 def:''`）⇒ 渲染成 `本所的领头人是**院士 。` ⇒ **代理报「charter 字段未解析」完全属实。**
+
+**★★★ 不半做的理由**：单把 `v5rCharterSectionsGlobal` 加上 `hasLeader` 参数、而没有任何策略传它，就是 **§1.4.4 说的「静默地声明了却不生效」** —— 刚刚在 §6.78–§6.80 踩过一次同样的坑。
+**★ 下一轮的完整修法（两半必须同一次做）**：
+1. `v5r-charter.js` → 保留 `CHARTER_SECTIONS`（兼容），新增 `charterSections` 的导出供策略使用；
+2. `v5r-core.js:402` `v5rCharterSectionsGlobal({ hasLeader = true } = {})` → 内部用 `charterSections({ hasLeader })`；
+3. **策略层（`decideSections`）从「是否有在册领头人」推出 `hasLeader` 并传入** —— 这一半是**消费者**，少了它就是白做；
+4. 断言：无领头人时 `CHARTER_LEADERLESS_MISSING_TEXT` 不出现、且任何 section 里不再出现 `院士 ` 空槽。
