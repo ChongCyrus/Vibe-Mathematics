@@ -65,6 +65,43 @@
 
 > **统一形状**：**总线上的两种形态**最终都产出同一形状的条目（`id/kind/on/order/failure/capabilities/scope/source/handler`）⇒ §3–§5 的语义对它们**完全通用**；差别只在"处理器从哪来"。M3/M4/L4 各有自己的契约（`script-bridge` / 宿主插件 / `pack.js`），**不套用总线条目语义**。
 
+### 2.1 三种【关系】，不是三条并行轨道 —— 以及"文件夹不等于类别"
+
+★ 上表说的是**载体**。而载体不同带来的真正差别是**关系不同**，判据一句话：
+
+> ★★ **它能拦住【别人】的行为吗？**
+> - **能** ⇒ **介入**：M1／M2，在事件流上产出 `deny`／`cancel`／`rewriteArgs`／`appendPrompt`…
+> - **不能**，它只是**被叫过去**算一件事 ⇒ **被调用**：M3（工具面 `vibe_vmu_script`）
+> - 不在这条流上，而是**把 vmu 包在里面** ⇒ **包含**：M4（宿主插件）
+
+★★★ 由这条判据得到三个**实用推论**（都是量过的，不是推演）：
+
+**① "用脚本控制事件流"当前没有受支持的形状。**
+
+`script-bridge` 只经两处可达：**`vibe_vmu_script` 工具面**（模型主动调用；`host.js` 的 description 逐字写"结果只回给调用方，**绝不自动进入提示词**"），与 **`kernel.bridge`**（内部字段与状态读面 `bridge.status()`）。
+★ **中间件拿不到它**：M2 模块收到的是 `kernel:{read}` **only** ＋ 能力门控的 `services`
+（`kernel/loader.js:114`、`:127`、`:187`），而**能力门控服务目录里没有脚本桥**（`kernel/index.js` 的服务目录那一块，`vmu.tasks`／`vmu.meetings`／…／`vmu.report`／`vmu.fidelity`）。
+⇒ ★ **需要"在事件上判断 ＋ 跑外部程序"的人，现在只能在 M2 里自己 `import('node:child_process')`** —— 而那会丢掉 M3 的整套保证（结构化结果校验、超时是硬具名 `VMU_JOB_TIMEOUT`、`config.scripts` 的声明与预算；见 `kernel/script-bridge.js`）。
+★★ **这是【已知的形状缺口】，不是【已实现的能力】。** 若要让两层合一，最小的一步是把脚本桥作为 capability-gated 服务暴露给中间件；那需要一次设计决定，**尚未做**。
+
+**② pack 文件夹里的 `middleware/` **不是**类别判据。**
+
+★ 一个 pack 的条目在 **`index.js` 里分两级声明**，★ **读声明，不读目录名**：
+- `middleware: [...]` ⇒ 交给**总线**（`kind:'rules'|'module'`）
+- `promptPolicies: [...]` ⇒ 交给 `createKernel` 的 `sectionPolicy`，★ **不是总线**
+
+★★ **实测反例**：`packs/v5r/middleware/prompt-switches.js` **住在 `middleware/` 目录里，而它不是中间件** —— 它的 `on` 是 `prompt/assemble`，★ **不是已登记的总线钩子**。★ `packs/v5r/index.js:71-75` 记着后果：按 `middleware` 声明时 `pack.js` 把它交给总线，总线拒绝（非 rules 条目又没有 handler）⇒ **整个 pack 的 apply 在那里抛错**，★ 而这个 policy 作为总线条目**不可达、作为管线 policy 却是活的**。
+★ 另一处同类的历史：该文件的注释记着更早一版"**条目在真实 preset 里 INERT，而测试是绿的**"。
+
+⇒ ★ **判据：看 `index.js` 的字段名，不看文件在哪个目录。**
+
+**③ 一个机构可以用【总线】关掉【另一层】。**
+
+★★ 实例：v5r 的 `v5r-core-no-adhoc-scripts` 是一条 `on:['tools/pre-execute']` 的 **M1 规则**，
+`when: { all: [{ tool: ['vibe_vmu_script'] }] }` ⇒ ★ **拒掉脚本面**（`VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS`，`packs/v5r/prompts/v5r-core.js:226-239`）。
+★ 它**可被禁用**（hint 里就写着怎么禁），所以是**机构政策**、不是内核限制。
+★★★ ⇒ **"没有实现脚本控流"与"明令禁止脚本"是两件事**：前者是缺能力，★ **后者是 v5r 的选择 —— 而且它用"介入"层去关闭"被调用"层，正是 ① 与 ② 的正面示范。**
+
 ---
 
 ## 3. 条目契约

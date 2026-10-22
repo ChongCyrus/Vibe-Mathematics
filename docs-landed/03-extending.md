@@ -64,6 +64,23 @@ export default {
 ★★ **但有一处精度，写错会被拒**：★ **`kind:'script'`／`kind:'plugin'` 在【总线】上会被具名拒**（★ `VMU_MIDDLEWARE_KIND_UNSUPPORTED`，★ hint 说明该去哪）—— ★ **因为总线只跑 M1/M2，★ 脚本与插件【各有自己的载体】** ✓
 ★ **M3 与 M4 的完整用法**：★ **`docs/19-plugin-and-extension-development.md`**（★ "当 settings ＋ 中间件不够用时"；★ 行数以该卷为准）＋ ★ `docs/05-middleware.md §2` ✓
 
+> ★★★★ **三件最容易搞混的事**（★ **权威在 `docs/05-middleware.md §2.1`**，★ 这里只给判据）：
+>
+> **① 载体不同 ＝ 关系不同，不是"主路 vs 支线"。**
+> ★★ 一句话判据：★ **它能拦住【别人】的行为吗？**
+> ★ **能** ⇒ **介入**（M1／M2，在事件流上 `deny`／`cancel`／改参数／加提示词段）；
+> ★ **不能，只是被叫过去算一件事** ⇒ **被调用**（M3 —— `vibe_vmu_script` 的结果**只回给调用方**）；
+> ★ **不在这条流上，而是把 vmu 包在里面** ⇒ **包含**（M4，宿主插件）。
+>
+> **② 文件夹名不是类别。** ★ 一个 pack 的条目在 **`index.js` 里分两级声明**：`middleware: [...]` 交给**总线**；`promptPolicies: [...]` 交给 `createKernel` 的 `sectionPolicy`（**不是总线**）。
+> ★★ **实测反例**：★ **`packs/v5r/middleware/prompt-switches.js` 住在 `middleware/` 目录里，而它不是中间件** —— 它的 `on` 是 `prompt/assemble`，★ **不是已登记的总线钩子**；按 `middleware` 声明会让 `pack.js` 把它交给总线、**总线拒绝**、**整个 pack 的 apply 抛错**（`packs/v5r/index.js:71-75` 记着这段）。
+> ⇒ ★ **读 `index.js` 的字段名，不读目录名。**
+>
+> **③ "用脚本控制事件流"当前没有受支持的形状。** ★ **脚本桥（`script-bridge`）中间件拿不到** —— M2 模块只收到 `kernel:{read}` ＋ 能力门控的 `services`，而服务目录里没有它（`kernel/loader.js:114`；服务目录见 `kernel/index.js` 的 `services` 那一块）。★ 想在事件上判断又要跑外部程序，现在只能在 M2 里自己起进程，★ **那会丢掉 M3 的整套保证**（结构化结果、超时具名失败、声明与预算）。
+> ★ **这是已知的形状缺口，不是已实现能力。**
+>
+> ★★ **而"禁止脚本"是另一回事**：★ **v5r 用一条【总线规则】关掉了【脚本面】** —— `v5r-core-no-adhoc-scripts`（`on:['tools/pre-execute']`，`when:{tool:['vibe_vmu_script']}` ⇒ 拒）。★ 它可被禁用，所以是**机构政策**、不是内核限制。★ **"没实现"与"明令禁止"要分开说。**
+
 ### 2.1 M1 —— 声明式规则（★ 想做"某条件下拒绝/放行"就用它）
 
 ```js
