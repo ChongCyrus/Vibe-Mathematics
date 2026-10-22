@@ -231,3 +231,14 @@
 ### §6.20 已修计数：★ **12 条**；★ **未修 5 条**（#1 #15 #19 #20半 #23 #29 #30 #31 —— ★ 归入 R1／R5／R7／R8／R6）
 
 ★ **另**：★ 本轮查过 **#15**（★ 提示词要求 `v5_meeting summary/close`）—— ★ **静态提示词里没有这句**（★ 应来自运行期拼装）⇒ ★ **未找到廉价修法，留待下一轮**；★ 不写"已处理"。
+### §6.21 #23（PDF 三种错误码无法判断）—— ★ **根因查到，改动回退**
+
+**根因（★ 查到行）**：★ `kit/paper.js:328` 的 `PaperArtifacts` **静态断言**：★
+`code: PDF_NEEDS_KERNEL` ＋ `why: 'this kernel has no xelatex/pdflatex/latexmk face (measured: kernel/ has no such spawn caller)'`。
+★★★ **那是一个【关于运行期事实的静态宣称】** —— ★ 而且是**一次测量写死在字符串里**。
+★★ 真机里：★ `env probe` **探到了 xelatex**、★ 代理去 render、★ 拿到一个 PDF 码 ★ **却无法判断是"引擎没接"还是"编译报错"** —— ★ **正是这个分支制造的歧义**。
+
+**修法（★ 已实现）**：★ `PaperArtifacts` **不再声称**引擎存不存在 —— ★ 它只报 **"pdf 尚未产出"**（★ `produced:false`），★ 并**明确说**：★ **引擎是否存在由 `render()` 决定**，★ 只有**那一次尝试**才能具名 `PDF_NEEDS_KERNEL`（★ 找不到引擎）★ 与 `PDF_FAILED`（★ 引擎跑了、编译失败）。
+
+**为什么回退**：★ `vmu-v5r-tools` **两处断言固化了那个陈旧宣称**（★ 一处是"NAMES the kernel capability"、★ 另一处经 `status` 间接触及）⇒ ★ 我改了第一处，★ **第二处仍未定位**，★ 而**本轮预算不足以继续** ⇒ ★ **`git checkout` 回退**，★ 树回到 `49e8d32f` 的绿态（★ v5r-tools **332/0**、★ latex **11/0**、★ regen 16/16）。
+★★ **下一轮**：★ 按上面这条修，★ 并**先找出 `status` 那条断言**（★ 它拿 `PaperArtifacts` 的 `pdf` 与 `render` 对齐）再一起改。
