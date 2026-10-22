@@ -21,10 +21,32 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       // slot as the role. An explicit `members` still WINS when the caller supplies one - the framework defaults
       // sensibly and the deployment stays in control.
       const explicit = Array.isArray(args.members) && args.members.length > 0
+      // ★★ A BARE-ID ARRAY IS NORMALISED, AND A WRONG ENTRY IS REFUSED BY NAME — never answered with a false
+      // "no-members". MEASURED on a live run: a caller passed `members: ['member']` (an obvious reading of the
+      // declared `[{id, role}]`) and got `stopped: 'no-members'` while the roster held a seated member, because
+      // the kernel reads `.id` off each entry: a string yields no id, the list becomes empty, and the answer said
+      // "no members" about an institute that had one. A misleading answer is worse than a refusal — the refusal
+      // can be acted on. So: a non-empty string becomes `{id}`, a well-formed object passes through, and anything
+      // else is refused with the declared shape in the hint.
+      const memberEntry = (m) => {
+        if (typeof m === 'string' && m.trim() !== '') return { id: m.trim() }
+        if (m && typeof m === 'object' && typeof m.id === 'string' && m.id.trim() !== '') return m
+        return null
+      }
+      let explicitMembers = []
+      if (explicit) {
+        const bad = args.members.find((m) => memberEntry(m) === null)
+        if (bad !== undefined) {
+          return refused('VMU_INVALID_ARGUMENT',
+            'members 的每一项必须是 {id, role} 或一个非空的成员 id 字符串；收到 ' + JSON.stringify(bad),
+            'pass members:[{id, role}] or members:["m-1"] — omitting members entirely infers them from the roster')
+        }
+        explicitMembers = args.members.map(memberEntry)
+      }
       const inferred = !explicit && kernel.members && typeof kernel.members.roster === 'function'
         ? kernel.members.roster().filter((m) => m && m.state === 'live').map((m) => ({ id: m.id, role: m.slot }))
         : []
-      const members = explicit ? args.members : inferred
+      const members = explicit ? explicitMembers : inferred
       if (op === 'status') {
     const status = kernel.turn.status()
     // ★ PHASE 7 / round 17: the turn face used to call closureVoteOf with its DEFAULTS (roster []), so a seated member

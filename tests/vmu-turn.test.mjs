@@ -1196,6 +1196,52 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     '★ 反：allow 里的未注册名 ⇒ 具名拒（VMU_INVALID_ARGUMENT），且该回合不执行', bad)
 }
 
+// ★ MEASURED ON A LIVE RUN: a caller passed `members: ['member']` — an obvious reading of the declared shape
+// `[{id, role}]` — and the turn answered `stopped: 'no-members'` while the roster held a seated member, because the
+// kernel reads `.id` off each entry and a string yields none. A false "no members" is WORSE than a refusal: it cannot
+// be acted on. Three assertions below: a bare id is normalised, a wrongly-shaped entry is refused BY NAME, and an
+// omitted `members` still infers from the roster (the behaviour ROUND 45 added).
+{
+  const refused = (code, message, hint) => ({ ok: false, code, message, hint })
+  const param = (type, description, opts) => Object.assign({ type, description }, opts || {})
+  const mkTurnSpec = (kernel) => makeTurnSpec({ param, refused, TOOL_NAMES: { turn: 'vibe_vmu_turn' }, kernel })
+  const capture = () => {
+    const seen = []
+    return {
+      seen,
+      kernel: {
+        turn: { step: async (a) => { seen.push(a && a.members); return { ok: true, receipt: { executed: 0 } } }, status: () => ({ apiVersion: 1 }) },
+        members: { roster: () => [{ id: 'r-1', state: 'live', slot: 'member' }] },
+        setMemberToolOverride: () => ({ ok: true }), clearMemberToolOverride: () => ({ ok: true }),
+        validateToolFaceNames: () => ({ ok: true }), setActiveTurnMember: () => ({ ok: true }),
+      },
+    }
+  }
+  // 正：裸 id 字符串被规范化成 {id}，不再产出假的 no-members
+  {
+    const c = capture()
+    await mkTurnSpec(c.kernel).run({ op: 'step', members: ['r-1'] })
+    const got = c.seen[c.seen.length - 1]
+    ok(Array.isArray(got) && got.length === 1 && got[0] && got[0].id === 'r-1',
+      '★ 真机反例：members:["r-1"] 被规范化成 [{id:"r-1"}]（旧行为：id 读不到 ⇒ 假的 stopped:no-members）', got)
+  }
+  // 正：缺省 members 仍从名册推断
+  {
+    const c = capture()
+    await mkTurnSpec(c.kernel).run({ op: 'step' })
+    const got = c.seen[c.seen.length - 1]
+    ok(Array.isArray(got) && got.length === 1 && got[0].id === 'r-1' && got[0].role === 'member',
+      '★ 缺省 members ⇒ 从名册推断 [{id,role}]（契约原本这么写，ROUND 45 才真的这么做）', got)
+  }
+  // 反：形状错误的项 ⇒ 具名拒，且引擎没被执行
+  {
+    const c = capture()
+    const res = await mkTurnSpec(c.kernel).run({ op: 'step', members: [123] })
+    ok(res && res.ok === false && res.code === 'VMU_INVALID_ARGUMENT' && /members/.test(String(res.hint)) && c.seen.length === 0,
+      '★ 反：members 里有形状错误的项 ⇒ 具名 VMU_INVALID_ARGUMENT（hint 给出正确形状），引擎不执行', { res, calls: c.seen.length })
+  }
+}
+
 // ★ G6 tier 2 (measured on a real machine): a member turn that calls `vibe_vmu_turn` used to QUEUE behind the very
 // step delivering it (measured 175.7s), the outer step hit its 180s delivery timeout, the timeout's finally cleared
 // the active-member scalar, and the member's NEXT request resolved no member and leaked the full 87-tool host
