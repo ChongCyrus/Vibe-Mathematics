@@ -1454,3 +1454,22 @@ exit=0
 **★★ 关于 `SKIPPED (needs CLI args)`**：★ `run-tests.mjs:990` 给被跳过的作业记 `ok: true` ⇒ ★ **skip 不会造成 exit=1**；★ 它仍然计入 TOTAL，★ 所以 402 这个数包含它。★ **这是设计明确的（"作业清单永不缩小"），★ 不是静默跳过。**
 
 **★ 结论**：★ **T1 = 402/402，0 FAIL，exit=0。** ★ 这是一个**可复现的全绿**（★ 两次跑：★ 一次 exit=1 且日志被截断，★ 一次 exit=0 且日志完整）。
+﻿
+### §6.92 缺陷 **F** 的复核结论：★ **不是缺陷** —— ★ 绑定证据的【机制存在】，★ 而绑定与否是 pack 政策
+
+**代理报的**：★ *"the closure vote is entirely unbound to content: cast:true with reason 'every enfranchised member judged the question solved' while nothing…"*
+
+**★ 源码事实**：
+- `kernel/index.js:1057` —— `vote_solved` 是**成员声明的一个布尔**，★ 结题＝**全体有表决权者一致为 true**；★ 回执 `reason` 原文是「每个有表决权者都判断问题已解决」—— ★ **这句是【真话】**：★ 它说的就是"判断"，★ 没说"证明"。
+- `09-math-formalization.md:519` —— **「本卷只提供'形式化身份'作为【可选证据】」** ⇒ ★ **证据在 vmu 里本来就是可选的。**
+- ★★★ **而绑定证据的机制【存在】**：`kernel/bus.js:86` 的 **`turn/reply-parsed`**，★ `blockable: true, rewritable: true`、★ `failure: 'closed'` ⇒ ★ **中间件可以在 dispatch 之前拒掉一个没有证据的 `vote_solved:true`**。
+- ★★ **而且它已经有真实消费者**：★ `packs/v5r/middleware/paper-dispatch.js` 就挂在 `turn/reply-parsed` 上（★ 4 处引用）。
+
+**★★★ 所以 F 的正确裁定**：
+1. ★ **不是内核缺陷** —— ★ 按 R1（政策在 pack），★ **内核【不得】内置"结题必须有证据"这类规则**；
+2. ★ **不是"没有机制"** —— ★ 钩子可阻塞、★ 已有消费者；
+3. ★ **它是一条【pack 政策缺口】**：★ **v5r 目前没有"结题需证据"的策略** ⇒ ★ **这是一个可选项，★ 不是 bug**；
+4. ★ **回执措辞是诚实的**（"judged"，★ 不是"proved"）。
+
+**★ vmu 侧应做的（本轮）**：★ **把这个事实写进文档**，★ 让使用者知道：★ ① 结题是**判断票**；★ ② 要绑定证据就往 `turn/reply-parsed` 加一个可阻塞中间件；★ ③ v5r **当前没有**这样做。
+**★★ 不做**：★ **不在内核里加证据规则**（★ 违反 R1）；★ **不给 v5r 擅自加**（★ 那是产品决定，★ 且会改变既有行为）。
