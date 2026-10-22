@@ -1375,3 +1375,17 @@ turn.leaderOnStaff=true => with-leader=true  leaderless=false  errors=0
 
 **★★ 这一刻，`CHARTER_LEADER_VARIANTS` / `CHARTER_LEADERLESS_MISSING_TEXT` / `CHARTER_LEADERLESS_OMISSIONS` 这套机制第一次真正有了【读点】**（§6.82 说它一个都没有）。
 **★ 仍待补**：一条断言（无领头人时 out 里不含 `本所的领头人是` 且不含 `院士 ` 空槽）—— ★ 下一轮。
+﻿
+### §6.88 E 的断言已落地 ＋ 派生面重新生成
+
+**新增测试**：`tests/vmu-charter-leader-pair.test.mjs` ⇒ **`=== VMU CHARTER LEADER PAIR: 22 passed, 0 failed ===`** ✓
+
+**四组断言（★ 每组都写明它证不了什么）**：
+1. ★ **配对与独立段名存在** —— ★ 每个 `leader-conditional` 块都有配对项与独立段名，★ **且无与 with-leader 名字冲突**（★ 重名是 pack 冲突）；
+2. ★ **无领头人文本绝不含 `{{ setting:vmu.turn.leaderId }}`** —— ★ 那个空槽正是渲染成 `「院士 。」` 的东西；★ 同时断言 **with-leader 变体确实带它**（★ 所以这是真拆分、★ 不是两份同文）；★ 并断言 **没有一对是同文**（★ 否则切换是装饰性的）；
+3. ★ **策略每对恰启一个**，★ 对五种输入逐一验：★ 空 leaderId／★ 在册／★ 不在册／★ `turn.leaderOnStaff`／★ **无 roster（不可知）**；★ **并单独钉住安全默认**：★ 不可知 ⇒ leaderless。
+4. ★ **旧行为没破** —— ★ `charterSections({hasLeader:true})` 仍一块一段、★ 配对用的是**真实块名**、★ `CHARTER_LEADER_VARIANTS` 仍覆盖全部块。
+
+**★ 这个测试【证不了】什么（写在文件头）**：★ 它不端到端组装真实宿主提示词（★ 那需要活宿主，★ 见 `vmu-assistant-host-slice` 的具名 not-run 段）⇒ ★ **它证明的是决策与文本这两层，★ 而缺陷正好在这两层。**
+
+**★ 派生面**：★ 新测试文件让三处派生漂移（★ `JOBS 470→471`、★ 读点索引、★ settings 表）。★ 已 `node scripts/regen-all.mjs --write` ⇒ **`regen-all: 16/16 in sync`** ✓ ★ `check-docs: PASS` ✓
