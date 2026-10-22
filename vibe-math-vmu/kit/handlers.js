@@ -116,7 +116,13 @@ function toolRecordProgress(args = {}, { kernel } = {}) {
     // (packs/v5r/prompts/v5r-core.js), so an archival entry must say it is settled — that is the institution's own
     // stance, read from the declaration rather than overridden here.
     settled: true,
-    by: str(args.member) || 'vibe_v5_record_progress',
+    // ★★★ A TOOL NAME IS NOT AN AUTHOR. This used to fall back to the literal string 'vibe_v5_record_progress', so a research-log
+    // entry claimed a "person" who was really the tool, and a reader could not tell an institutional record written by a member from one
+    // whose author nobody recorded. Measured on a full live run: the agent drove rounds through vibe_vmu_turn and its progress lines came
+    // back attributed to the tool. §1.4.4's "silently declared but ineffective" has an authorship twin: silently declared but UNKNOWN.
+    // `by` now carries the member id when the caller names one, and is honestly null when it does not - with `bySource` saying which.
+    by: has(args.member) ? str(args.member) : null,
+    bySource: has(args.member) ? 'argument' : 'unknown',
   })
   return {
     ok: true, tool: 'vibe_v5_record_progress', track,
@@ -159,7 +165,9 @@ function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extr
       title: str(args.title) || str(args.id) || (title + ' ' + str(args.p)),
       body,
       settled: isSettled,
-      by: str(args.member) || tool,
+      // ★ same rule as record_progress: a tool name is not an author
+    by: has(args.member) ? str(args.member) : null,
+    bySource: has(args.member) ? 'argument' : 'unknown',
     })
     return {
       ok: true, tool, track, kind,

@@ -1558,3 +1558,22 @@ ok,id,meeting,kind,state,reason,chair,secretary,motions,votes,closedAt
 
 **★ 实测**：★ `=== VMU V5R TOOLS: 334 passed, 0 failed ===` ✓
 **★★ 不做**：★ **不给 `vibe_v5_meeting` 加 `action`** —— ★ 那会把两个面的词汇混成一个，★ **违反"包词汇从原始实现转写"这条设计**。
+﻿
+### §6.97 — **#20 的"作者"半边结案**：★ 研究日志不再拿【工具名】冒充作者
+
+**源码事实（`kit/handlers.js`，★ 同族两处）**：
+```js
+:119  by: str(args.member) || 'vibe_v5_record_progress',   // \u2605 \u56de\u843d\u6210\u5de5\u5177\u540d
+:162  by: str(args.member) || tool,                        // \u2605 \u540c\u4e00\u5199\u6cd5
+```
+★★★ **⇒ 一条研究日志的"作者"可以是一个**工具名** ⇒ ★ 读者**分不出**"某成员写的研究记录"和"作者没人记下"** —— ★ 这正是 `owner:null` 那一类。
+
+**★ 而它有一个漂亮的类比**：★ §1.4.4 说的是「**静默地声明了却不生效**」；★ **这里是它的孪生——静默地声明了却【不知道是谁】**。
+
+**★ 已修（两处）**：
+- ★ `by: has(args.member) ? str(args.member) : null` —— ★ **有就写真人，没有就诚实为 `null`**；
+- ★ **新增 `bySource: 'argument' | 'unknown'`** —— ★ **回执自己说清属主是怎么来的**。
+
+**★ 实测**：★ `=== VMU V5R TOOLS: 334 passed, 0 failed ===` ✓
+**★★ 不做**：★ **不从 exec 上下文猜成员** —— ★ 猜错比 `null` 更糟；★ **要归属就显式传 `member`**（★ 这正是"拒绝要具名、不许静默"的口径）。
+**★★ 仍未结案的一半**：★ **"两条记录"**（★ 需要成员 transcript）—— ★ **如实留在未覆盖清单里。**
