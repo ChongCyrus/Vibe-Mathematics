@@ -1629,3 +1629,20 @@ cleanup: clone_gone=True  C_free_GB=14.02
 **★★★ 其余**：★ 代理报告 **「no named refusals」**（★ 零具名拒绝）；★ clone 已自动清理；★ C 盘 14.02 GB。
 
 **★★★★ 这是本阶段真机复验的【最终结论】**：★ **在当前 dsh、当前 HEAD 上，v5r 包完整加载、中间件链运行、代理从空研究所推到 `cast:true`、零具名拒绝、零畸形回执、`slv-inspect` 0 RED。**
+﻿
+### §7.00 ★★★★★ `closureVote` 现在落在【每一次 turn 回执】上 —— ★ 判据从"代理自述"变成"机器字段"
+
+**为什么改（★ 这是上一轮我自己记下的可改进项）**：
+★ 目标 5 的头号判据是 **`closureVote.cast === true`**，★ 而**最后一次真机里，它的唯一证据是代理自己的【散文】**（★ `slv-inspect` 摘出的 *"cast === true confirmed in both readings"*）⇒ ★ **一个本该机器可查的判据，★ 却在靠人读叙述来判。**
+★★ **这与本轮修的其他缺陷是【同一类】**：★ **值存在，★ 但没有被带到消费者看的地方。**
+
+**源码事实**：★ `tools/turn.js` 只有 `op:'status'` 与 `detail:'closure'` 两条路带 `closureVote`（★ `:54`、★ `:64-66`），★ **而 `op:'step'` / `op:'drive'` 直接 `return await kernel.turn.step(...)`** —— ★ **回执里没有它。**
+
+**★ 已改（`tools/turn.js`）**：
+- ★ 新增 `withClosure(out)` —— ★ **用内核【唯一那一次计算】** `kernel.closureVoteView()`（★ 与 `status`/`closure` 同源，★ **不另造第二份口径**）；
+- ★ `op:'step'` 与 `op:'drive'` 的返回值**都**经它包一层（★ **同族两处，一起改**）；
+- ★ 失败时**原样返回 out**（`try/catch` 只保底，★ 不吞掉原始回执）。
+
+**★ 实测**：★ `VMU TURN: 186 passed, 0 failed` ✓ ★ `VMU V5R TOOLS: 334 passed, 0 failed` ✓ ★ `TURN CONTRACTS: 12 passed, 0 failed` ✓
+
+**★★ 边界（如实说）**：★ **驱动器（`dsh-drive.mjs`）还没有读这个字段** —— ★ 它在仓外，★ **但字段现在有了**；★ **下一次真机跑可以把 `cast` 直接从 `step` 回执里读出来，★ 不再靠 grep 代理的散文。**

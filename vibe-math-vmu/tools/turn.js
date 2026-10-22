@@ -119,13 +119,24 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           for (const id of ids) { try { kernel.clearMemberToolOverride(id) } catch { /* clear is best effort */ } }
         }
       }
+      // ★★★ THE CLOSURE READING BELONGS ON EVERY TURN RECEIPT, NOT ONLY ON status/clore. The SLV acceptance criterion is
+      // "closureVote.cast === true", and on the final live run the only evidence for it was the AGENT'S OWN PROSE quoting a status call -
+      // a machine-checkable criterion was being judged from a human-readable narrative. That is the same defect class as everything else
+      // this round: a value that exists but is not carried where the consumer looks. Both writers below now attach the kernel's ONE
+      // calculation (kernel.closureVoteView, the same source status/closure use) so every step receipt answers "is the institute closed?"
+      // without a second call, and a scripted run can read it as a FIELD.
+      const withClosure = (out) => {
+        if (!out || typeof out !== 'object') return out
+        if (typeof kernel.closureVoteView !== 'function') return out
+        try { return Object.assign({}, out, { closureVote: kernel.closureVoteView() }) } catch { return out }
+      }
       if (op === 'step') {
         const activeId = members.length > 0 && members[0] && typeof members[0].id === 'string' ? members[0].id : null
         if (activeId && typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(activeId)
-        try { return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step }) }
+        try { return withClosure(await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })) }
         finally { if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null) }
       }
-      if (op === 'drive') return await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step })
+      if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step }))
       return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: step, drive, status')
     }
     // ★ PHASE 8 / round 36: SERIALIZE the tool calls. Root may issue several step calls in ONE assistant message (parallel
