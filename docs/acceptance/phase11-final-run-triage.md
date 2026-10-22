@@ -609,3 +609,20 @@ $srv = Start-Process node -ArgumentList @($BIN,'--profile',$CloneName,'--port',"
 ★★★ **而紧接着 drive 报 `node:internal/modules/esm/resolve:272`** ⇒ ★ 单独用同参数跑 drive 得到的是 **`fetch failed / ECONNREFUSED`**（★ server 不在那端口）⇒ ★ **所以真实跑里是【server 起来后又退出】**，★ 而 drive 的 `fetch` 因此炸。
 
 ★ **下一轮第一步**：★ **保留 `slvr52-ws`（★ 已禁用清理）★ 读 `srv.err`／`srv.out`** ⇒ ★ 看 server 为何在拿到 token 后退出。★ **这一步只需要读文件，★ 不需要再跑。**
+### §6.49 ★★★★★ 当前 dsh 上：★ **server 与 prompt 都通了，★ 而 turn 从未启动**
+
+**实测（★ 手工起 server ＋ 手工跑 drive，★ 全程可复现）**：
+- ★ **server 起来了**：★ `srv.out` = `dsh web: http://127.0.0.1:19389/?token=…`、★ **`srv.err` = 0 字节** ✓
+- ★ `session/create` ⇒ **`agentPreset: vibe-math-vmu`**、★ `agentAvailable: true` ✓
+- ★ `session/prompt` ⇒ **`accepted: true, chars: 1901`** ✓
+- ★★★ **而 `poll` 一直 `running:false`、★ `totalTokens:0`**
+- ★★★★ **且会话文件 `session.v4.jsonl.zstd` 解压后【只有 1 行】—— 只有头，★ 零事件** ⇒ ★ **turn 从未开始**
+
+★★ **⇒ 这**不再是 provider 问题**（★ 没有 `NO_ADAPTER`、★ 没有任何错误），★ 而是【提示词被接受后 agent 循环没起来】。**
+★★★ **注意**：★ 这与之前 `deepseek-official` 那次**成功跑起来**的情形不同 —— ★ 那次有 265 秒、★ 5.6M token、★ 84 步。★ **所以差异在 `opencode-go` 这个 provider 上**：★ **它现在能被选、★ 但请求发不出去**（★ 没有 `turn/end`、★ 没有 error、★ 没有事件）。
+
+**下一轮第一步（★ 很具体）**：★ **用 `deepseek-official` 在这套【当前 dsh】脚本上跑一次** ⇒
+- ★ 若**成功** ⇒ ★ **`opencode-go` 在当前 dsh 上仍不可用** ⇒ ★ **用 `deepseek-official` 完成真机验，★ 并明确记录 provider 替换**
+- ★ 若**也零事件** ⇒ ★ **问题在当前 dsh 的 preset 装载**（★ 与 provider 无关）⇒ ★ 查 `agentAvailable:true` 之后为何不起 turn
+
+★ **本轮零仓内代码改动**；★ `dirty = 0`。★ `slvr52-ws`（★ server 日志）与 `slvr51-ws` 保留供复核。
