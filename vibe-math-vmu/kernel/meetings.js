@@ -1193,7 +1193,14 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
 
     meetingView({ meeting = null } = {}) {
       const m = requireMeeting(meeting, { readOnly: true })
-      return { ok: true, meeting: m.id, state: m.state, reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,
+      // ★★★ SAME SELF-DESCRIPTION AS meeting.js status(): THE SERVICE REGISTRY IS THE PATH THE LIVE RUN ACTUALLY USED. Adding
+      // loop/note only to meeting.js#status() would have left them with no consumer here - tools/meeting.js returns
+      // primitive.status() for the PRIMITIVE registry (line 174) but THIS view for the SERVICE registry (line 182), and
+      // vibe_v5_meeting creates service meetings. So the wording has to exist on both read faces or it is a mechanism
+      // with no consumer for the only path that mattered.
+      return { ok: true, meeting: m.id, state: m.state,
+        loop: 'meeting-ask-answer',
+        note: '★ motions/votes/state here describe the MEETING’s own ask()+answer()+motion cycle. A member answering a vibe_vmu_turn prompt is a DIFFERENT loop: read vibe_vmu_turn’s receipts (awaiting/memberPrompt/deliveryPath) for that one. hasDeliverSeam on the primitive face refers to open({deliver}), not to the turn loop’s deliveryPath.', reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,
         motions: m.motions.map((x) => ({ id: x.id, by: x.by, kind: x.kind, status: x.status, secondedBy: x.secondedBy || null, withdrawnAt: x.withdrawnAt || null })) }
     },
     /** READ-ONLY self-report: WIRED list, the declared-but-unwired list (per key + reason), counters, values. */

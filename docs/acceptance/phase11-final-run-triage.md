@@ -1182,3 +1182,20 @@ const seam = async ({ turn, text }) => {
 2. ★ 移到汇总前之后 ⇒ ★ **3 条全红** —— 原因是我用错了访问器：★ `meetings.open()` 返回的是**回执**、★ `status()` 在 **`meetings` 服务**上，★ 而服务面 `status({id})` 的返回**不含 `loop`**（★ `loop` 在**单个 meeting 对象**的 `status()` 上）。
 3. ★ **处置**：★ **移除这 3 条断言、保留源码改动** —— ★ 当前 `193 passed, 0 failed` **是绿树**，★ 而"给 `loop`/`note` 加断言"**列为下一轮的待办**（★ 需要先找到 `meeting.js` 里单个 meeting 对象的导出路径）。
 **★★★ 结论**：★ **源码改动是安全的（加法、193 绿），★ 但【它的断言还没写】—— 这一点必须如实记录，★ 不能因为 193 绿就说"已测"。** ★ 按 `L2`／`L16`：**没测就是没测。**
+### §6.78 ★★★★★ 差点造出"没有消费者的机制" —— `meetingView()` 才是真机的读取路径
+
+**发现**：★ 上一轮我只给 **`meeting.js` 的 `status()`** 加了 `loop`/`note`。★ 而 `tools/meeting.js` 有**两条**读取路径：
+```js
+:173  const primitive = kernel.liveMeeting(pid)
+:174  if (primitive) return Object.assign({ ok: true, action }, primitive.status())        // \u2605 \u539f\u8bed \u21d2 \u6211\u7684\u5b57\u6bb5\u4f1a\u6d41\u51fa
+:178  if (svc && typeof svc.meetingView === 'function' && serviceHas(pid)) {
+:182    return Object.assign({ ok: true, action, registry: 'service', quorum }, view)      // \u2605 \u670d\u52a1\u9762 \u21d2 \u4e0d\u542b\u6211\u7684\u5b57\u6bb5
+```
+★★★ **而那次真机用的是 `vibe_v5_meeting` ⇒ 服务面 ⇒ `meetingView()`** ⇒ ★ **我加的字段【在唯一重要的路径上没有消费者】** —— ★ **这正是红线 4「没有消费者，就不给机制」**，★ 而我差点自己违反它。
+
+**★ 修复**：★ **`meetings.js:1190 meetingView()` 也返回 `loop: 'meeting-ask-answer'` ＋ 同样的 `note`**。
+**★ 实测**：★ `=== VMU MEETINGS: 193 passed, 0 failed ===` ✓ ★ `=== VMU V5R TOOLS: 334 passed, 0 failed ===` ✓
+
+**★★★ 这一轮的教训（★ 对应 `L18`／`L17`）**：★ **"我加了字段"不等于"字段会被读到"** —— ★ 必须找到**那条真实调用路径**，★ 并确认**两个读取面都覆盖**。
+★ **而这一条本可以在上一轮就发现**：★ 代理报的是 `vibe_vmu_meeting {action:"status"}` 的**回执**，★ 而我当时只改了内核单对象的 `status()`，★ **没有顺着 `tools/meeting.js` 走一遍** —— ★ **`L3`（诊断面就是被测系统）的又一次变体**。
+★ **仍待办**：★ **给 `loop`/`note` 加断言**（★ 现在有两个面可测：★ 服务面走 `meetingView`，★ 原语面走 `status()`；★ 下一轮用工具面调用最稳）。
