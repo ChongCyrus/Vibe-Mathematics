@@ -30,6 +30,11 @@ function refuse(code, message, hint) {
 export function createPaperFlow({
   kernel,
   sections = [],
+  // ★★★ THE SECTION -> PART-FIELD MAPPING IS POLICY, so the PACK supplies it (one entry per section, '' = no field).
+  // Before this, PaperMd looped over sections and, inside each, emitted every member's ENTIRE part - so the whole body was
+  // copied into every top-level section ("整篇正文出现在每一节里"). A part is a set of FIELDS
+  // (title/solution/methods/rules/limits/evidence); a section owns AT MOST ONE of them.
+  sectionFields = [],
   maxRounds = 3,
   engineOrder = {},
   repairCore = [],
@@ -48,7 +53,7 @@ export function createPaperFlow({
   if (!Array.isArray(sections) || sections.length === 0) {
     throw refuse('VMU_INVALID_ARGUMENT', 'createPaperFlow needs the section titles', 'pass sections:[…] (the institution paper outline)')
   }
-  const SECTIONS = sections, MAX_ROUNDS = maxRounds, ENGINE_ORDER = engineOrder, REPAIR_CORE = repairCore, TRACK = track, CODES = codes
+  const SECTIONS = sections, SECTION_FIELDS = sectionFields, MAX_ROUNDS = maxRounds, ENGINE_ORDER = engineOrder, REPAIR_CORE = repairCore, TRACK = track, CODES = codes
   if (!kernel || !kernel.records) {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the paper subsystem needs the records face', 'assemble a kernel with the records service')
   }
@@ -276,17 +281,30 @@ export function createPaperFlow({
   function PaperMd({ target } = {}) {
     const { state } = requireState(target)
     const lines = ['# 论文：' + state.target, '', '状态：' + state.status + '｜轮次：' + state.round + '｜编辑：' + state.editor, '']
-    lines.push('## ' + SECTIONS[0])
-    lines.push('目标对象：' + state.target + '；参与成员：' + state.participants.join('、'))
-    for (let i = 1; i < SECTIONS.length; i += 1) {
+    // ★ EACH SECTION OWNS AT MOST ONE FIELD, and each member contributes to it ONCE. The previous shape emitted the whole part
+    // under every heading, which is why the live .md carried the full body in all nine sections.
+    for (let i = 0; i < SECTIONS.length; i += 1) {
       lines.push('', '## ' + SECTIONS[i])
+      if (i === 0) {
+        lines.push('目标对象：' + state.target + '；参与成员：' + state.participants.join('、'))
+        for (const member of state.participants) {
+          const part = readPartVerified(state, member)
+          if (part && has(part.title)) lines.push('', '**' + part.title + '**')
+        }
+        continue
+      }
+      const field = SECTION_FIELDS[i]
+      if (!field) continue
       for (const member of state.participants) {
         const part = readPartVerified(state, member)
-        if (!part) continue
-        const chunk = [part.title && '**' + part.title + '**', part.solution, part.methods, part.rules, part.limits]
-          .filter((x) => has(x)).join('\n\n')
-        if (has(chunk)) lines.push('', '### ' + member + '（第 ' + part.round + ' 轮）', '', chunk)
-        if (i === SECTIONS.length - 1 && part.evidence.length) lines.push('', '证据：' + part.evidence.join('；'))
+        if (!part || !has(part[field])) continue
+        lines.push('', '### ' + member + '（第 ' + part.round + ' 轮）', '', String(part[field]))
+      }
+      if (field === 'evidence') {
+        for (const member of state.participants) {
+          const part = readPartVerified(state, member)
+          if (part && Array.isArray(part.evidence) && part.evidence.length) lines.push('', member + '：' + part.evidence.join('；'))
+        }
       }
     }
     if (state.warnings.length) lines.push('', '## 警告', ...state.warnings.map((w) => '- ' + w))
@@ -297,7 +315,8 @@ export function createPaperFlow({
   function PaperTex({ target } = {}) {
     const state = requireState(target).state
     const md = PaperMd({ target })
-    const esc = (s) => String(s).replace(/([&%$#_{}])/g, '\\$1')
+    // ★ ** is MARKDOWN bold and it is not a TeX character - it used to travel into the .tex verbatim. Convert it first, then escape.
+    const esc = (s) => String(s).replace(/\*\*([^*]+)\*\*/g, '\\\\textbf{' + '$1' + '}').replace(/([&%$#_{}])/g, '\\$1')
     const body = md.split('\n').map((line) => {
       if (line.startsWith('### ')) return '\\subsection*{' + esc(line.slice(4)) + '}'
       if (line.startsWith('## ')) return '\\section*{' + esc(line.slice(3)) + '}'

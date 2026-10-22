@@ -400,3 +400,20 @@ for (let i = 1; i < SECTIONS.length; i += 1) {          // ★ 每个顶层节
 ★★★ **修法（★ 下一轮）**：★ **分节映射** —— 每个顶层节只放**它自己的字段**（★ 例如"方法"节只放 `part.methods`，"局限"节只放 `part.limits`），★ **而不是把整份 part 重复 N 遍**。
 ★ **为什么本轮没做**：★ `SECTIONS` **来自 pack 策略**（`PAPER_SECTIONS`，★ 9 节），★ 而 part 只有 ~5 个字段 ⇒ ★ **9 节 ≠ 5 字段**，★ **映射需要一个明确的分配规则**（★ 哪个字段进哪一节、★ 空节怎么办）⇒ ★ **这是设计决定，★ 不是一处笔误**。★ 预算不足以做决定 + 实现 + 验证（★ `vmu-v5r-tools` 有 3 处 `PaperMd` 断言）。
 ★★ **便宜且确定的那半可先做**：★ `PaperTex` 里把 `**x**` 转成 `\textbf{x}`（★ 一行），★ **能立刻止住"`**` 漏进 tex"**。
+### §6.38 ★★★ 已修 #31 的两条真缺陷
+
+**① 全文复制进每一节** —— `kit/paper.js` 的 `PaperMd` **不再嵌套**：
+★★ **根因是【粒度】**：★ 一个 part 是**一组字段**（`title/solution/methods/rules/limits/evidence`），★ **而一个节至多拥有其中一个**；★ 旧代码把**整份 part** 塞进**每一个节**。
+★ **修法（★ 而映射是【策略】）**：★ `createPaperFlow` 新增 **`sectionFields`**（★ 每节一项，`''` = 该节不拥有单一字段），★ **由 pack 提供**：★
+`packs/v5r/paper.js` ⇒ `sectionFields: ['title','','solution','','','methods','rules','limits','evidence']`
+★ 对应 `PAPER_SECTIONS`：0 标题|1 引言|**2 完整解法**|3 命题|4 子问题|**5 有价值之物**|**6 规律**|**7 局限**|**8 证据**｜★ 0 节额外收 `title`，★ 8 节额外收 `evidence` 列表。
+
+**② `**` 漏进 tex** —— `PaperTex` 的 `esc` **先把 `**x**` 转成 `\textbf{x}`，再转义** `&%$#_{}`。
+
+★★★ **为什么映射必须放 pack**：★ **换一个机构就换一套章节** ⇒ ★ **映射写在 kit 里就是 policy 进内核**，★ 违反红线 1。★ 所以 **kit 只接受一张表，★ pack 给表**。
+
+★ **GATES**：★ **T1 = 401/401** ✓ ★ v5r-tools **332/0** ✓ ★ regen 16/16、★ check-docs PASS、★ preflight PASS ✓
+
+### §6.39 ★ #31 第三条**不是缺陷**（★ 已读代码确认）
+
+★ `state.editor` 是**真实值**；★ `editorDefault = 'academician'`（`:115`）只是**默认**。★ 真机显示 "编辑：academician" **因为它确实是**。★ **未改。**

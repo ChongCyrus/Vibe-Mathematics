@@ -53,6 +53,9 @@ export function createPaperSubsystem({ kernel } = {}) {
   return createPaperFlow({
     kernel,
     sections: PAPER_SECTIONS,
+    // ★ THE MAPPING IS POLICY (kit/paper.js §PaperMd): one entry per section, '' = that section owns no single part-field.
+    // 序号对应 PAPER_SECTIONS：0 标题|1 引言|★2 完整解法|★3 命题|4 子问题|★5 有价值之物|★6 规律|★7 局限|★8 证据
+    sectionFields: Object.freeze(['title', '', 'solution', '', '', 'methods', 'rules', 'limits', 'evidence']),
     maxRounds: PAPER_MAX_ROUNDS,
     engineOrder: PAPER_ENGINE_ORDER,
     repairCore: PAPER_REPAIR_CORE,
