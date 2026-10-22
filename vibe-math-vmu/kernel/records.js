@@ -521,7 +521,19 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         fire('records/deduplicated', { id: existing.id, track, fingerprint: fp })
         return { ok: true, deduplicated: true, id: existing.id, slug: existing.slug, fingerprint: fp, bytes: existing.bytes, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), note: 'the same content is already recorded in this track (fingerprintPolicy=' + fingerprintPolicy + '): nothing was added, the duplicate is COUNTED' }
       }
-      const id = requestedId === null || requestedId === undefined ? mint('record', 'r-') : String(requestedId)
+      // ★★★ A MINTED ID MUST BE FREE, AND `mint()` ALONE DOES NOT GUARANTEE THAT. `kernel/ids.js` promises strictly increasing
+      // numbers, which prevents reuse BY THE MINTER - but a record can also be written with an EXPLICIT id (the paper-part path does
+      // exactly that), and the minter has no idea that number is taken. Measured on a full live run: `records list` returned the same
+      // id nine times and `total` counted it nine times. The chain was: mint hands out an id an explicit write already owns ->
+      // `records.set` overwrites the map entry -> `order.push` and the track push append a SECOND index row for it. So the count
+      // grew while the data was destroyed, and neither the write nor the read said anything.
+      // ★ Loop until free. This is the fix at the ROOT: no collision means no overwrite and no duplicate index row.
+      let id
+      if (requestedId === null || requestedId === undefined) {
+        do { id = mint('record', 'r-') } while (records.has(id))
+      } else {
+        id = String(requestedId)
+      }
       const at = now()
       const rec = {
         id, track, kind: String(kind), title: candidate.title, slug, body: bodyText, tags: candidate.tags, bytes,
@@ -529,8 +541,12 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         by: by === null || by === undefined ? null : String(by), versions: [], trashedAt: null, purgeAt: null,
       }
       records.set(id, rec)
-      order.push(id)
-      trackList(track).push(id)
+      // ★ Defense in depth: an explicit re-put under the SAME id is LEGITIMATE (the paper tamper test relies on it), so the map is
+      // overwritten on purpose - but the INDEX arrays must never gain a second row for one id, because a duplicate there carries no
+      // information and only makes a later read count the record twice.
+      if (!order.includes(id)) order.push(id)
+      const trackArr = trackList(track)
+      if (!trackArr.includes(id)) trackArr.push(id)
       slugIndex.set(slug, id)
       fpIndex.set(fp, id)
       counters.put += 1
@@ -583,7 +599,8 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const chosen = fields === null ? headFields.slice() : fields.slice()
       const trimmed = headFields.filter((f) => !chosen.includes(f))
       if (trimmed.length) mark(fired, K.headFields)
-      const ids = track === null ? order.slice() : trackList(track).slice()
+      // ★ Deduped on read too, so an index written by the OLD code (which could hold a duplicate per collision) heals.
+      const ids = [...new Set(track === null ? order.slice() : trackList(track).slice())]
       let live = ids.map((i) => records.get(i)).filter((r) => r && r.state === 'live')
       live.sort((a, b) => headSort === 'title' ? String(a.title || '').localeCompare(String(b.title || '')) : (headSort === 'createdAt' ? a.createdAt - b.createdAt : a.updatedAt - b.updatedAt) || (a.id < b.id ? -1 : 1))
       const capWanted = Number.isInteger(limit) && limit >= 0 ? limit : headListAt
