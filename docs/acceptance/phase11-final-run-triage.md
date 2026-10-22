@@ -591,3 +591,21 @@ code: 'MODULE_NOT_FOUND', requireStack: []
 **★★★ 仍卡住**：★ 跑 SLV 时 **`ABORT: no token`**，★ `srv.err` 里是 `MODULE_NOT_FOUND`（★ `run_main_module`）。
 ★★ **而这次 drive 已证明能跑** ⇒ ★ **`MODULE_NOT_FOUND` 来自被 spawn 的 server** ⇒ ★ **而【同一个 wrapper 命令】手工跑 `--profile web` 是成功的** ⇒ ★ **差异只在 `--profile <clone name>`**。
 ★ **下一轮第一步（★ 极具体）**：★ **手工用 wrapper 起一个 clone profile**（★ 例如先手工建 `slvr50` 或直接用已存在的 `slvr41`）★ 看是否也 `MODULE_NOT_FOUND` ⇒ ★ **若也失败 ⇒ 是 clone profile 本身在当前 dsh 下不可用**（★ 可能因为它是从 `desktop` 拷来的，★ 而 `desktop` 被 Electron 独占，★ 拷贝出来的 profile **仍带 Electron 标记**）。★★ **若是这个原因**：★ 应改为**从 `web` profile 拷贝**（★ `slv5n-run.ps1` 当年就是 `$SRC = profiles\web`，★ **而 `slv-final` 改成了 `desktop`**）—— ★ **这可能才是真正的分水岭**。
+### §6.48 ★★★★★ `NO_ADAPTER` / `MODULE_NOT_FOUND` 的**最终真因**：★ **server 是 `.ps1` 自己起的，★ 与 drive 的 `DSH_BIN` 无关**
+
+★ **`slv-*-run.ps1:22`**：
+```powershell
+$BIN  = 'C:\Users\admin\scoop\apps\nodejs-lts\current\bin\node_modules\@deepseek-ai\dsh\lib\bin.js'
+```
+★ **`:110/113`**：
+```powershell
+$srv = Start-Process node -ArgumentList @($BIN,'--profile',$CloneName,'--port',"$Port",'--no-open') …
+```
+★★★ **⇒ server 是【脚本自己】用 `node $BIN` 起的，★ 而 `$BIN` 就是那个旧 scoop 路径** ⇒ ★ **这才是 `MODULE_NOT_FOUND`（★ `Cannot find module …scoop…\bin.js`）的直接来源**。
+★★★★ **而 `_oneoff/vm-drive/dsh-drive.mjs` 只是【客户端】** —— ★ **我在它身上改 `DSH_BIN`、★ 加 `ELECTRON_RUN_AS_NODE`、★ 加 `--expose-internals`，★ 全都与这个错误无关** ⇒ ★ **这也解释了为什么"改了没变化"**。
+
+**已修**：★ `$BIN` → ★ `D:\wd\vibemath开发\_oneoff\vm-drive\dsh-current.mjs`（★ 那个 adapter）。★ `slv-r52-run.ps1`，★ 语法 0 错误。
+★★ **实测进展**：★ **server 起来了、★ `$tok` 拿到了**（★ 越过了 `ABORT: no token`）✓
+★★★ **而紧接着 drive 报 `node:internal/modules/esm/resolve:272`** ⇒ ★ 单独用同参数跑 drive 得到的是 **`fetch failed / ECONNREFUSED`**（★ server 不在那端口）⇒ ★ **所以真实跑里是【server 起来后又退出】**，★ 而 drive 的 `fetch` 因此炸。
+
+★ **下一轮第一步**：★ **保留 `slvr52-ws`（★ 已禁用清理）★ 读 `srv.err`／`srv.out`** ⇒ ★ 看 server 为何在拿到 token 后退出。★ **这一步只需要读文件，★ 不需要再跑。**
