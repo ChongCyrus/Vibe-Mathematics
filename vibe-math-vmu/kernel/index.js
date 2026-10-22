@@ -2041,6 +2041,22 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         isPaused: () => controlState.state === 'paused' }, opts, { id }))
       // E2: the MEETING factory receives `deliver` on construction AND hands it to every meeting it makes.
       noteSeam('deliver', 'meetings', made ? deliver : null)
+      // ★★★ A CLOSED MEETING LEAVES THE LIVE TABLE. MEASURED (probe): after `close()` the meeting STILL answered
+      // `liveMeeting(id)` and still appeared in `liveList().meetings` — a table whose name promises "live" listing a
+      // meeting whose own `state` says `closed` — and the id-conflict guard above then refused REUSING that id with
+      // "a live meeting already uses id …", a refusal that was simply false. The only thing that ever cleared it was
+      // `liveCap` eviction, so closed meetings also leaked against the cap.
+      // ★ THE SIBLING REGISTRY ALREADY DOES THIS (`kernel/meetings.js` does `live.delete(m.id)` on close), so the two
+      // disagreeing about what "live" means was the defect, not the removal. Nothing is lost: the meeting's own
+      // append-only audit keeps `record('closed', …)`, and `summary()` still answers on the object a caller holds.
+      const rawClose = made.close
+      if (typeof rawClose === 'function') {
+        made.close = async (...closeArgs) => {
+          const result = await rawClose.apply(made, closeArgs)
+          if (result && result.ok === true && result.state === 'closed') liveMeetings.delete(String(id))
+          return result
+        }
+      }
       rememberLive(liveMeetings, id, made)
       return made
     },

@@ -1141,6 +1141,31 @@ const FALLBACK_KEYS = [
     '\u2605 validatePack \u540c\u6837\u5728 plan \u9636\u6bb5\u5c31\u62a5\u5f62\u72b6\uff08\u5408\u6cd5\u503c\u5217\u5728\u9519\u8bef\u91cc\uff09', plains && plains.problems)
 }
 
+// ── A CLOSED PRIMITIVE MEETING LEAVES THE LIVE TABLE (and its id becomes reusable) ──────────────────────────
+// ★ MEASURED before the fix: after `close()` the meeting STILL answered `liveMeeting(id)` and still appeared in
+// `liveList().meetings` — a table whose name promises "live" listing a meeting whose own state said `closed` — and
+// the id-conflict guard then refused REUSING that id with "a live meeting already uses id …", a refusal that was
+// false. Only `liveCap` eviction ever cleared it, so closed meetings leaked against the cap too.
+// ★ The SIBLING registry already removes on close (`kernel/meetings.js` does `live.delete(m.id)`), so the two
+// disagreeing about what "live" means was the defect. Nothing is lost: the meeting keeps `record('closed', …)`.
+{
+  const k = m.createKernel({ clock: () => 0 })
+  await k.start()
+  const made = k.meeting({ id: 'probe-pm-1' })
+  ok(k.liveMeeting('probe-pm-1') !== null && k.liveList().meetings.indexOf('probe-pm-1') !== -1,
+    '★ 开会后它在 live 表里（前提）', k.liveList().meetings)
+  const closed = await made.close('done', { force: true })
+  ok(closed && closed.ok === true && closed.state === 'closed', '★ close 成功且自报 closed', closed)
+  ok(k.liveMeeting('probe-pm-1') === null && k.liveList().meetings.indexOf('probe-pm-1') === -1,
+    '★★ 反：关闭后【不再】出现在 liveMeeting / liveList（一个叫 live 的表不该列已关闭的会）', k.liveList().meetings)
+  let reuse = null
+  try { reuse = k.meeting({ id: 'probe-pm-1' }) } catch (e) { reuse = 'REFUSED ' + (e && e.code) }
+  ok(reuse && reuse !== 'REFUSED' && typeof reuse === 'object' && k.liveMeeting('probe-pm-1') !== null,
+    '★★ 正：关闭后同一 id 可以重新使用（旧行为：永远 VMU_CONFLICT，且理由说它是 live —— 那是假的）', reuse === 'REFUSED' ? reuse : typeof reuse)
+  const still = k.meeting({ id: 'probe-pm-2' })
+  ok(k.liveMeeting('probe-pm-2') !== null && still && typeof still.close === 'function',
+    '★ 正：未关闭的会议仍在 live（修复没有把整张表清空）', k.liveList().meetings)
+}
 console.log('=== VMU KERNEL: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
