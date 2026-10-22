@@ -2131,7 +2131,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       const decided = await bus.emit('control/paused', { reason: 'stopped', at: clock() }, {})
       return { ok: true, stopped: true, state: controlState.state, reason: controlState.stoppedReason,
         middleware: decided && decided.decisions ? decided.decisions.length : 0,
-        middlewareRan: decided && typeof decided.ran === 'number' ? decided.ran : 0 }
+        middlewareRan: decided && typeof decided.ran === 'number' ? decided.ran : 0,
+        // ★ These describe `control/heartbeat` ONLY (see the note above). A caller that wants the idle policy must read `idle.middleware`.
+        middlewareHook: 'control/heartbeat' }
     },
 
     /** The capability seams, refused by name when they are missing (docs/11 搂4.1). ONE home for each refusal:
@@ -2833,7 +2835,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // ★ null means "no episode crossed on this beat", NOT "an episode did nothing" — the distinction the old
           // receipt could not express at all.
           middleware: idleEmitted && idleEmitted.decisions ? idleEmitted.decisions.length : (idle.emitted === true ? 0 : null),
-          middlewareRan: idleEmitted && typeof idleEmitted.ran === 'number' ? idleEmitted.ran : (idle.emitted === true ? 0 : null) },
+          middlewareRan: idleEmitted && typeof idleEmitted.ran === 'number' ? idleEmitted.ran : (idle.emitted === true ? 0 : null),
+          // ★★ WHICH HOOK THESE NUMBERS BELONG TO. Measured on a full live run: this receipt carried `middleware: 0` at the TOP level and
+          // `idle.middleware: 1` nested, and the agent read the top number as "nothing ran" - while a meeting had just been convened by
+          // the control/idle middleware. Both numbers were RIGHT: they count DIFFERENT hooks. Two bare `middleware` keys at different
+          // depths, each counting a different hook, is an ambiguity in the receipt, not in the bus - so each now names its hook.
+          middlewareHook: 'control/idle' },
         middleware: decided && decided.decisions ? decided.decisions.length : 0,
         middlewareRan: decided && typeof decided.ran === 'number' ? decided.ran : 0 }
     },
