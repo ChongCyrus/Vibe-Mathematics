@@ -439,3 +439,28 @@ for (let i = 1; i < SECTIONS.length; i += 1) {          // ★ 每个顶层节
 3. ★ 检查 **`$OUT` 的乱码路径**是否让 **drive 的 log 文件全是 0 字节**（★ 实测 `*.run.log` **确实是 0 字节**）⇒ ★ **修编码**（★ 把脚本以 UTF-8 重存）。
 
 ★ **本轮没有产生任何代码改动**；★ 仓内 `HEAD = db4a8371`，★ `dirty = 0`。
+### §6.41 ★★★★★ 真机跑结束：★ **`NO_ADAPTER` —— 整次跑无效，★ 而原因【不在 vmu】**
+
+★ 跑满 **1807 秒**、★ `tokens=0`、★ 结论 **`VERDICT: NON-RESULT (no adapter registered for the provider)`**。
+
+★★★ **决定性证据（★ 从 run.log 里抽出的 `turn/end` 事件原文）**：
+```json
+"turn/end","seq":17,"data":{"turn":1,"reason":{"kind":"error","error":{
+  "message":"no adapter registered for provider \"dsh-opencode-go\"","code":"NO_ADAPTER"}}}
+```
+★ **⇒ 会话建好、★ 任务投递了、★ `request/header` 与 `request/context` 都写明了 `provider: dsh-opencode-go`，★ 然后运行时直接说"这个 provider 没有适配器"。**
+
+★★ **所以：★ 这次跑【没有验证到 vmu 的任何东西】。** ★ **不是 vmu 的缺陷、★ 不是 preset 的缺陷、★ 不是 #29 反例。** ★ 它**什么都没测**。
+
+**已确认的事实**：
+- ★ bundle **装上了**（★ `PROVIDER PACKAGE present in the clone: True`，★ 且 `bundles now:` 列表里有 `dsh-opencode-go`）✓
+- ★ 模型设置成功（★ `MODEL SET: provider=dsh-opencode-go model=deepseek-v4.1-flash`）✓
+- ★★ **但适配器没注册** ⇒ ★ **`NO_ADAPTER`** ✗
+- ★ `srv.err` **只有** `dshmarket` peer 依赖那条（★ 无关）
+
+**★★★ 关键线索（★ 下一轮第一步）**：★ 上一阶段的真机跑在 `HEAD 38be56a2` **跑通了**（★ 394 秒、★ 115 次工具调用、★ 548 万 token）⇒ ★ **同一个 provider 那时是能用的** ⇒ ★ **所以是【环境/装配】变了，★ 不是 provider 本身不可用**。
+★ 候选：★ ① bundle 装了但**没 `enable`/激活**；★ ② **桌面 profile 里的 `dsh-opencode-go` 版本与这次 clone 的 DSH 不兼容**（★ 就像 `dshmarket@1.66.2` 那条 peer 冲突）；★ ③ 脚本 `:52-60` 的拷贝步骤**只拷了包、★ 没写进 bundle 激活清单**。
+
+★ **下一轮顺序**：★ ① **先只验证 provider**（★ 用一个**不含 vmu 任务的最小会话**，★ 看是否同样 `NO_ADAPTER`）⇒ ★ **一步区分"环境坏了"与"vmu 坏了"**；★ ② 若环境坏 ⇒ ★ 修装配（★ `dsh plugin` 启用 / ★ 版本对齐）；★ ③ **环境好了之后再跑一次完整 SLV** —— ★ **那一次才是目标 5 的判据**。
+
+★ **本轮零代码改动**；★ `HEAD = c987f159`（★ 上一轮留下的文档 commit），★ `dirty = 0`。
