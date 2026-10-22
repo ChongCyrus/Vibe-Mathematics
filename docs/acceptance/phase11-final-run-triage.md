@@ -1646,3 +1646,25 @@ cleanup: clone_gone=True  C_free_GB=14.02
 **★ 实测**：★ `VMU TURN: 186 passed, 0 failed` ✓ ★ `VMU V5R TOOLS: 334 passed, 0 failed` ✓ ★ `TURN CONTRACTS: 12 passed, 0 failed` ✓
 
 **★★ 边界（如实说）**：★ **驱动器（`dsh-drive.mjs`）还没有读这个字段** —— ★ 它在仓外，★ **但字段现在有了**；★ **下一次真机跑可以把 `cast` 直接从 `step` 回执里读出来，★ 不再靠 grep 代理的散文。**
+﻿
+### §7.01 — **目标 7 结案**：前三项早已完成，★ 本轮补上最后一项（极小门禁）
+
+**★ 复核 `docs-landed/00-README.md` 得知：前三项【已经做完了】**（★ 不是这一轮做的，★ 是我这一轮核实到的）：
+- ★ `:48` 标题已是 **「门 ①：源码级检查 —— **定稿时**文件级 100%」**；
+- ★ `:55` 已是 **「**定稿时** 103/103 个 kernel 文件【全部】…」**；
+- ★ `:58` **讲清了漂移**（★ "当前派生读数是 104 个模块 ⇒ 那张表没有第 104 个的位置，所以'全部'只对着它自己的时点成立"）；
+- ★ `:59` **指回当前权威**（★ "要看 `tests/audit-kernel-claims-*.mjs` 的实际读数与 `docs/02` 的生成式模块索引"）。
+
+**★ 而"不被扫描"这一项也已不成立**：★ `tests/audit-doc-line-refs.test.mjs:45` 的 `DOC_ROOTS` **已包含 `docs-landed`** ✓
+
+**★★ 所以真正剩下的是最后一项：★ 一个【极小门禁】。** ★ 已新增 **`tests/audit-docs-landed-counts.test.mjs`**：
+1. ★ **判定**：★ `docs-landed` 里**陈述 kernel 模块计数**的行，★ **必须在同一行带【时间限定词】**（`定稿时`／`at freeze`／…）—— ★ **快照只能陈述它自己时点的数字**；
+2. ★ **非空自证**：★ 断言扫描**真的匹配到了**（★ 匹配为 0 ⇒ 说明判据坏了，★ 不是文档干净）；
+3. ★ **指回权威**：★ `00-README.md` 必须含 `vibe-math-vmu/docs` 与 `generate-kernel-index.mjs`；
+4. ★ **不重算正确数字**（★ 那是 `generate-kernel-index.mjs --check` 的事，★ 答案住在 `docs/02`）—— ★ **这是一条漂移绊线，★ 不是生成器。**
+
+**★ 写这条门禁踩了两个坑（★ 都已修，★ 都写进了注释）**：
+- ★ `import.meta.url` 的 `.pathname` 是 **percent-encoded** ⇒ 中文仓库路径变成 `%E5%BC%80...` ⇒ `readdirSync` 报 `ENOENT`；★ **改用 `fileURLToPath`**；
+- ★ 第一版**过严**：★ 把 `:58` 那句「**当前**派生读数是 104 个模块（`node scripts/generate-kernel-index.mjs --check`）」判成违规 —— ★ **而那句是对的**（★ 它点名了派生命令，★ 是活引用）★ ⇒ **加一条狭义豁免**：★ **点名派生命令的行放行**。★ 按 `AGENTS.md §7.1`：★ **判据套错层的不是严谨，是噪声。**
+
+**★ 实测**：★ `=== DOCS-LANDED COUNTS: 5 passed, 0 failed ===`、★ **exit=0** ✓
