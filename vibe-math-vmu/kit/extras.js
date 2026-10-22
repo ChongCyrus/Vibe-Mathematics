@@ -7,6 +7,10 @@
 // and parameterising them would change the handler signature the pack spec already publishes. They stay in the pack.
 
 import { KIT_HELPERS } from './handlers.js'
+// ★ THE LEGAL STATES COME FROM THE KERNEL, never a local copy: `TASK_STATES` is frozen there, and a second list here would
+// be exactly the "two sources that drift" shape this project keeps removing. Importing it is also what makes the refusal
+// below able to say the real values instead of a vague "invalid status".
+import { TASK_STATES } from '../kernel/tasks.js'
 const { str, has, refuse } = KIT_HELPERS
 
 function tasksOf(kernel) {
@@ -44,7 +48,24 @@ async function toolTaskList(args = {}, { kernel } = {}) {
   const tasks = tasksOf(kernel)
   const all = rowsOf(await tasks.list())
   let out = all
-  if (has(args.status)) out = out.filter((t) => String(t.status || t.state) === str(args.status))
+  if (has(args.status)) {
+    const want = str(args.status)
+    // ★★★ "all" IS NOT A STATUS, AND SILENTLY RETURNING NOTHING FOR IT IS A LIE THE READER CANNOT SEE. Measured on a full
+    // live run: `task_list {status:'all'}` returned zero rows while the SAME receipt carried `total: 2`, so the caller saw
+    // "no tasks" beside evidence of two. The old line compared the literal string against each row's state and matched
+    // nothing - a filter that cannot distinguish "all" from a typo.
+    // ★ So: "all" (and "*") mean NO FILTER, and an UNKNOWN status is REFUSED BY NAME with the legal values - which also
+    // answers the second half of the live report, that `in_progress` was rejected without saying what the real states are
+    // (`doing` is the state; `in_progress` never existed).
+    if (want === 'all' || want === '*') {
+      // no filter, said explicitly
+    } else if (!TASK_STATES.includes(want)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'unknown task status: ' + want,
+        'valid: all, ' + TASK_STATES.join(', ') + ' — note the state is "doing" (there is no "in_progress")')
+    } else {
+      out = out.filter((t) => String(t.status || t.state) === want)
+    }
+  }
   if (has(args.owner)) out = out.filter((t) => String(t.owner) === str(args.owner))
   // "ready" DERIVED, not guessed: a row is ready when it declares no unfinished blocker. The kernel hands the
   // blocked-by list out; this filter reads it, it does not invent a readiness rule of its own.
