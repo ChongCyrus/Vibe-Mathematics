@@ -378,3 +378,25 @@ return kernel.toolsView({ member, agent })
 ★ **GATES**：★ **T1 = 401/401** ✓ ★ meetings **193/0**、★ meeting **50/0**、★ meeting-domain **10/0**、★ ballot **44/0**、★ v5r-tools **332/0** ✓
 
 ★★ **注意仍未验的**：★ 这是**代码级**修复，★ **真机里"投票后 `summary().for > 0`"要等下一次完整 SLV**（★ 那正是目标 5 的意义）。
+### §6.37 #31（★ 论文渲染）—— ★ **三个报告点在【同一段 10 行】里，根因精确**
+
+**根因（★ `kit/paper.js:281-290` 的 `PaperMd`）**：
+```js
+for (let i = 1; i < SECTIONS.length; i += 1) {          // ★ 每个顶层节
+  lines.push('', '## ' + SECTIONS[i])
+  for (const member of state.participants) {            // ★ 每个成员
+    const part = readPartVerified(state, member)
+    const chunk = [part.title, part.solution, part.methods, part.rules, part.limits]   // ★ 整份 part
+    lines.push('', '### ' + member + '（第 ' + part.round + ' 轮）', '', chunk)          // ★ 塞进【每一个】顶层节
+  }
+}
+```
+★ **⇒ 每个成员的【整份 part】**（★ title ＋ solution ＋ methods ＋ rules ＋ limits）★ **被复制进【每一个】顶层节** ⇒ ★ **"整篇正文出现在每一节里"** ✓ ★ **这就是报告里最刺眼的那条。**
+
+★★ **另外两条**：
+- ★ `:286` 的 **`'**' + part.title + '**'`** ⇒ ★ **粗体标记直通**，★ 而 `PaperTex`（`:300-306`）**只转义 `&%$#_{}`，不处理 `**`** ⇒ ★ **`**` 原样漏进 tex** ✓
+- ★ `:278` 的 `'编辑：' + state.editor` ⇒ ★ **不是硬编码**：★ `state.editor` 是**真实值**（★ `:115` 的 `editorDefault='academician'` 只是**默认**）⇒ ★ **所以真机上显示 "academician" 是因为它【确实】是默认编辑者** —— ★ **这一条我读代码后判断【不是缺陷】**，★ 报告可能是把"默认值"误读成"硬编码"。
+
+★★★ **修法（★ 下一轮）**：★ **分节映射** —— 每个顶层节只放**它自己的字段**（★ 例如"方法"节只放 `part.methods`，"局限"节只放 `part.limits`），★ **而不是把整份 part 重复 N 遍**。
+★ **为什么本轮没做**：★ `SECTIONS` **来自 pack 策略**（`PAPER_SECTIONS`，★ 9 节），★ 而 part 只有 ~5 个字段 ⇒ ★ **9 节 ≠ 5 字段**，★ **映射需要一个明确的分配规则**（★ 哪个字段进哪一节、★ 空节怎么办）⇒ ★ **这是设计决定，★ 不是一处笔误**。★ 预算不足以做决定 + 实现 + 验证（★ `vmu-v5r-tools` 有 3 处 `PaperMd` 断言）。
+★★ **便宜且确定的那半可先做**：★ `PaperTex` 里把 `**x**` 转成 `\textbf{x}`（★ 一行），★ **能立刻止住"`**` 漏进 tex"**。
