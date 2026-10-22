@@ -922,3 +922,31 @@ cleanup: clone_gone=True  C_free_GB=14.04
 
 ★★ **⇒ 基础设施这一关【过了】；★ 剩下的是【任务深度】**：★ `deepseek-flash` 在 69 秒内只反复查状态，★ **没有真正推进机构流程**。
 ★★★ **下一轮**：★ **① 先跑 `slv-inspect` 看 RED**；★ ② **换一个更明确的收敛任务**（★ 或加大 timeout 让它真跑）；★ ③ **专门构造一次会议投票以验 #29**。
+### §6.66 ★★★★★ 第二次（★ 收敛任务）真机跑：★ 基础设施全过，★ 而模型没走机构流程
+
+**配置**：★ 当前 dsh `0.2.1-rc.2` ＋ **HEAD 包** ＋ **`deepseek-official`/`deepseek-flash`** ＋ **干净新任务文件**（★ 原来那些 `vmu-v5r-*.txt` **全是乱码**，★ 只有 `vmu-final-task.txt` 是好的，★ 而它的标题是"问题清点" ⇒ ★ **这就是第一次只跑 69 秒的原因**）。
+
+**结果（★ `done` 行原文）**：
+```
+{"preset":"vibe-math-vmu","durationSec":1703,"tokenTotal":178180,
+ "transcriptEvents":74,"toolCalls":13,"followStreamWorked":true,
+ "title":"VMU 框架完整流程走查"}
+VERDICT: PASS
+```
+★★ **⇒ 跑了 28.4 分钟、★ 178k token、★ follow-stream 正常** ✓
+
+**★★★ 而工具序列是**：★ `vibe_vmu_status`、★ **`pwsh`**、★ `glob`、★ `working_directory`、★ `read`、★ `grep`、★ `glob`、★ `pwsh`
+★★★★ **⇒ 它去【探索文件系统/跑 shell】了，★ 而【没有】调 `vibe_vmu_turn` / `hire` / `meeting`** ⇒ ★ **没有走研究所流程** ⇒ ★ **`cast:true` 未达成。**
+
+**★ 判据最终状态**：
+| ★ 判据 | ★ 结果 |
+|---|---|
+| ★ 完整流程跑起来 | ★ **是**（★ 1703 s、★ 178k token）✓ |
+| ★ `NO_FENCE`/`UNKNOWN_FIELD`/`FIELD_NOT_APPLICABLE`/`BAD_JSON` | ★ **全 0** ✓ |
+| ★ `followStreamWorked` | ★ **true** ✓ |
+| ★★ **`cast:true`** | ★ **未达成** —— ★ 模型选了探索而非驱动机构 |
+| ★★ **#29 会议投票** | ★ **未验** |
+| ★★ **`slv-inspect`** | ★ **未跑** |
+
+★★★ **⇒ 结论：★ 基础设施这一关【已完全通过】；★ 剩下的卡点是【模型行为】—— `deepseek-flash` 面对长任务时倾向于先探索仓库，★ 而不是调用 vmu 的机构面。** ★ 这**不是 vmu 的缺陷**，★ 而是**任务/提示词与模型能力的匹配问题**。
+★ **下一轮**：★ ① **把任务缩短、并把"第一步必须调 `vibe_vmu_turn`"写死**；★ ② 或 ★ **用 `-MaxTokens` 之外的手段强制首轮即机构流程**；★ ③ ★ **同时跑 `slv-inspect` 与 #29 的投票验证**。
