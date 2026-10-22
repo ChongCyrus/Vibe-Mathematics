@@ -642,3 +642,29 @@ node $DRIVE --port $Port --token $tok --cwd $WS --preset $Preset --task-file $Ta
 ★★★ **另一条要顺手验的**：★ **把 `$OUT` 的乱码路径改正确**（★ 应为 `D:\wd\vibemath开发\_oneoff\vm-slv`）—— ★ 这**同时解释了为什么 `*.run.log` 一直是 0 字节**（★ 写入畸形目录）。
 
 ★ **本轮零仓内代码改动**；★ `dirty = 0`。
+### §6.51 ★★★ 变量全对、★ 越过 `verify`，★ 死在 `session/prompt` 之后
+
+**命令回显（★ 全部正确）**：
+```
+DRIVE      = [D:\wd\vibemath开发\_oneoff\vm-drive\dsh-drive.mjs]  exists=True
+PORT       = [19389]      TOKEN len=43      WS exists=True
+PRESET     = [vibe-math-vmu]      TASKFILE exists=True
+JSONL      = [D:\wd\vibemath开发\_oneoff\vm-slv\…jsonl]  dirExists=True
+LOG        = [….run.log]      TIMEOUT=[1800]  MAXTOKENS=[6000000]
+```
+★★ **⇒ 变量这一层可以排除了。**
+
+**★★★ 而 `$log` 里（★ 它才是 `node $DRIVE … *> $log` 的真实落点）显示**：
+```
+{"step":"auth","status":303,…}
+{"step":"rpc","endpoint":"session/create","ok":true,"http":200}
+{"step":"create","sessionId":"session-c6dbf85b-…","agentPreset":"vibe-math-vmu"}
+{"step":"rpc","endpoint":"session/list","ok":true,"http":200}
+{"step":"verify","projectionPreset":"vibe-math-vmu","agentAvailable":true}
+```
+★ **⇒ 会话建好了、★ preset 正确、★ agent 可用** —— ★ **然后 step 就断了**，★ 紧接着是 `esm/resolve:272`。
+
+★★ **⇒ 崩溃点在 `verify` 之后的下一步（★ `session/prompt` 附近），★ 而不是启动、★ 不是 provider、★ 不是变量。**
+★★★ **注意**：★ 这**与 §6.49 手工跑时"prompt accepted 但零事件"是同一次失败的另一面** —— ★ 手工那次 `prompt` 返回了 `accepted:true`，★ 而脚本这条路在 `prompt` **之前或之中**就抛了 `esm/resolve`。
+
+★ **下一轮第一步**：★ **在 `$log` 之后紧接着 `Get-Content $log -Tail 40`**（★ 因为 `*>` 把 stderr 也吞进去了，★ 只要把 `$log` 读出来就有完整栈）—— ★ **本轮的 818 字节 log 只有 5 行**，★ **说明 stack 被 `*>` 送进了别处**，★ **需要把 `*> $log` 改成 `2>&1 | Tee-Object`** 才能同时看到 stdout 与 stderr。
