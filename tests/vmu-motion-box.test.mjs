@@ -114,6 +114,30 @@ ok(k.meetings.status().boxBinding.bound === false, 'R2. an explicit unbind reall
 const v2 = k.meetings.vote({ meeting: m2, member: 'm1', motion: mo2, value: 1 })
 ok(v2.receipt.ballot.code === 'VMU_MEETING_BOX_UNWIRED' && v2.receipt.ballot.reason === 'no-binding',
   'R3. so the vote on the EXISTING motion is NAMED-unwired (no box invented, no silent success)', v2.receipt.ballot)
+// ★★★ THE TALLY MUST NAME ITS SOURCE, INCLUDING WHEN IT FALLS BACK (#29). Measured while auditing the ballot vote-right
+// enforcement: meetings.js tallyOf() returned the meeting's own mo.votes count with NO `source` whenever the box was missing,
+// unusable or empty, while the box path carried source:'box'. So a reader could not tell "the box was consulted and had nothing"
+// from "there is no box" - and when the vote-right test REFUSES a ballot the vote never reaches the box, so that silent fallback is
+// exactly where an enforcement bypass would hide. RIGHT HERE the seam is unbound (R2) and v2 was still recorded in mo.votes, so the
+// tally MUST name the fallback instead of reporting a bare {for, against, abstain}.
+// WHAT THIS DOES NOT COVER, named rather than implied: the 'box-empty' and 'box-status-unreadable' branches are still UNTESTED.
+{
+  const s = k.meetings.summary({ meeting: m2 })
+  // ★ THE TALLY LIVES ON THE MOTION ROW, NOT ON THE SUMMARY ROOT (measured: summary keys are
+  // ok,id,meeting,kind,state,reason,chair,secretary,motions,votes,closedAt - there is no summary.tally).
+  // My first version of this assertion read summary.tally and went red for the RIGHT reason: the reader-facing path was wrong.
+  const row = ((s && s.motions) || []).filter((x) => x && x.id === mo2)[0]
+  const tally = row && row.tally
+  ok(tally && tally.source === 'meeting',
+    '★★ the tally NAMES its source when it falls back (source:"meeting", not absent) - a silent fallback is where an enforcement bypass hides',
+    tally)
+  ok(tally && tally.fallback === 'no-box-binding',
+    '★★ and it names WHY (fallback:"no-box-binding") - the reader is told which branch was taken, not just that a number exists',
+    tally)
+  ok(tally && tally.for === 1,
+    '★ the fallback still carries the real count (the one vote in mo.votes), so naming the source did not lose the data',
+    tally)
+}
 // and the pack's own policy re-arms on the NEXT motion - that is the lazy bind doing its job, stated as such
 const mo3 = k.meetings.motion({ meeting: m2, member: 'm1', kind: 'ordinary', text: 're-armed' }).motion
 await new Promise((r) => setTimeout(r, 40))

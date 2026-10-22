@@ -1516,3 +1516,28 @@ ok(noBoxSum.tally.source === 'meeting', ...)        // \u2605 \u6765\u6e90\u5177
 ok(noBoxSum.tally.fallback === 'no-box-binding', ...)
 ```
 `box-empty` 与 `box-status-unreadable` 两个分支**仍未测** —— ★ **如实记为未覆盖**。
+﻿
+### §6.95 ★★★★★ tally 回落具名的断言已补上 —— ★ 而且它先红了一次，★ 红得完全正确
+
+**结果**：★ `=== VMU MOTION BOX: 28 passed, 0 failed ===`（★ 25 → **28**，★ 新增 3 条）
+
+**★ 第一次跑：3 条全红。** ★ 而它们**红得对** —— ★ 我的断言写了 `summary().tally`，★ 探针实测 `summary` 的键是：
+```
+ok,id,meeting,kind,state,reason,chair,secretary,motions,votes,closedAt
+```
+★ **没有 `tally`** —— ★ 它在 **`summary.motions[].tally`** 上。
+
+**★★ 而我用探针读出来的真实值，★ 恰好证明源码修复是生效的**：
+```json
+"tally": {"for":1,"against":0,"abstain":0,"source":"meeting","fallback":"no-box-binding"}
+```
+★★★ **⇒ `source:'meeting'` 与 `fallback:'no-box-binding'` 都在，★ 数字也没丢（`for:1`）。**
+
+**★ 三条断言（插在 `R3` 之后，★ 那一刻接缝确实已解绑、★ `v2` 已记进 `mo.votes`）**：
+1. ★ `tally.source === 'meeting'` —— **来源具名，★ 不是缺失**；
+2. ★ `tally.fallback === 'no-box-binding'` —— **说清走了哪条分支**；
+3. ★ `tally.for === 1` —— **具名没有丢数据**。
+
+**★★ 并写明它【不覆盖】什么**：★ `'box-empty'` 与 `'box-status-unreadable'` 两个分支**仍未测** —— ★ 如实记为未覆盖，★ 不写成"已覆盖"。
+
+**★ 这一轮的过程本身是一课**：★ **断言先红 ⇒ 打探针看真实形状 ⇒ 发现是我读错了路径 ⇒ 改断言 ⇒ 变绿**，★ 而**源码修复从头到尾是对的**。★ 如果我没有断言、只写了"已加 source 字段"，★ **我永远不会知道这个字段落在哪一层。**
