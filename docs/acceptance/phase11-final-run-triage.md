@@ -1040,3 +1040,31 @@ workspaceFiles: [..., "VibeMath/vmu/audit/2026-10-22.jsonl", ...]
 **★★ 但性质变了**：★ **环境 ✓／代码 ✓／pack ✓／中间件 ✓／工具 ✓／零拒绝 ✓** —— ★ **剩下纯粹是【模型是否决定去雇佣和开会】的行为问题，★ 与 vmu 机制无关。**
 
 **★★★★ 这是本阶段真机复验的【决定性成果】**：★ **v5r 整合包在当前 dsh 上完整加载、★ 中间件链真实运行、★ 零畸形回执。** ★ 而它之所以之前完全看不到，★ **是因为我漏了 `packs: ['v5r']` 那一行 config。**
+### §6.71 ★★★★★★ **`cast: true` 达成** —— 真机完整流程**跑到了结题**
+
+**代理自己的最终报告（★ 原文摘录，★ 逐条工具调用）**：
+```
+1. vibe_vmu_status (detail=summary) — closureVote.cast false, eligible [], roster empty
+2. vibe_vmu_control hire m1 slot member institution institute → ok:true, seated:true, occupied:1, capacity:0, unlimited:true
+3. ... hire m2 → occupied:2
+4. vibe_vmu_meeting open agenda + member m1 + roster [m1,m2] → id m-1, state in_session
+5. vibe_vmu_turn step (no reply) → awaiting:true, memberPrompt m1 t-1, deliveryPath caller
+6. ... step with reply {"vote_solved":true} → receipt round 2, member m2, turn t-2, executed 0
+9. vibe_vmu_status summary → closureVoteRecorded {"m1":true}, cast false, for [m1], missing [m2]
+12. vibe_vmu_status closure → cast true.
+```
+★★★★★ **⇒ 从空研究所 → 雇 2 人 → 开会 → 多回合 → 投票 → `cast:true`** ✓✓✓ **这是目标 5 的核心判据。**
+
+**★ 而代理同时报了 6 个【新的真实缺陷】**（★ 全部有回执证据）：
+| ★ | ★ 缺陷 |
+|---|---|
+| ★ **A** | ★ **回复与提示词错配／回合被吞**：★ 返回 m1 的回复后，回执是 `{"round":2,"member":"m2","turn":"t-2","executed":0}` ⇒ ★ **m2 的提示词从未交回**；★ 之后 `missing:["m2"]` 而 t-2 已 "resolved" |
+| ★ **B** | ★ **`closureVote.window` 是 `"round"`，★ 而跨轮票被累加**：★ m1 在 round-2、m2 在 round-6 ⇒ ★ **若按轮窗口，round-2 应已过期** |
+| ★ **C** | ★ **会议与回合循环脱耦**：★ `answered:0, pending:["m1","m2"], rounds:1`，★ **即使两人都答过、★ `cast:true`** |
+| ★ **D** | ★ **两个面自相矛盾**：★ `hasDeliverSeam:false` vs 回合面 `deliveryPath:"caller"` ＋ `instructionDelivered:true` |
+| ★ **E** | ★ **`【本轮你实际能调用的工具｜占位段】` 未被替换**（★ **就是 §6.1 的 #12 占位段！**）★ 且 ★ **charter 字段未解析**（`leaderId`…） |
+| ★ **F** | ★ **结题票与内容无关**：★ `cast:true` 的理由是"每个有表决权者都判断问题已解决"，★ 而实际内容为空 |
+
+★★★ **⇒ 这一条同时达成三件事**：★ ① **`cast:true`**（★ 目标 5 核心判据）；★ ② **验证了 16 条修复里的多条在真机上生效**（★ 雇人/开会/投票/结题全通）；★ ③ **产出 6 条新的、有回执证据的缺陷**（★ 目标 2 的下一批）。
+
+**★★ 仍未做**：★ `slv-inspect`（★ 0 RED 判据）★ 与 ★ #29 的**票→动议**专验（★ 本轮 `motion` 未出现）。
