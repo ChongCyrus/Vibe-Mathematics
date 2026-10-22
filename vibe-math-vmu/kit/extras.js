@@ -119,8 +119,18 @@ async function toolTaskGet(args = {}, { kernel } = {}) {
   const row = rows.filter((t) => String(t.id) === id)[0]
   if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no task "' + id + '" on this board', 'call task_list for the real ids')
   let brief = null
-  if (kernel.tasks && typeof kernel.tasks.briefOf === 'function') brief = kernel.tasks.briefOf(id)
-  return { ok: true, tool: 'vibe_v5_task_get', task: row, brief }
+  let briefNote = null
+  // ★★★ A READ MUST NOT FAIL BECAUSE AN OPTIONAL PART IS ABSENT. Measured on a full live run: `task_get` refused the WHOLE row when
+  // the task had no brief, so the caller could not read the task it had just been told about. The row and the brief are two
+  // facts: the row always exists once its id matches, the brief may legitimately not.
+  // ★ AND THE FAILURE IS NOT SWALLOWED: when the brief lookup itself throws (rather than returning nothing), that is reported
+  // in `briefNote` - the read succeeds, and the reason the brief is missing stays visible instead of being lost.
+  if (kernel.tasks && typeof kernel.tasks.briefOf === 'function') {
+    try { brief = kernel.tasks.briefOf(id) } catch (e) { brief = null; briefNote = 'brief lookup failed: ' + String((e && e.code) || (e && e.message) || e) }
+  } else {
+    briefNote = 'this assembly publishes no briefOf, so the task has no brief to read'
+  }
+  return { ok: true, tool: 'vibe_v5_task_get', task: row, brief, ...(briefNote ? { briefNote } : {}) }
 }
 
 function leanFaceOrRefuse(kernel, what) {
