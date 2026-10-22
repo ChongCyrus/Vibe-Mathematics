@@ -574,6 +574,18 @@ export function createBallotBox(opts) {
     if (a && a.boxId) {
       if (!box) return deny('VMU_NOT_FOUND', '找不到票箱', '先 open()')
       return { ok: true, boxId: box.id, round: box.round, sealed: box.sealed, state: box.state, reopenCount: Number(box.reopenCount || 0), votes: box.votes.size, abstain: box.abstain.size, absent: box.absent.length,
+        // ★★★ PER-OPTION COUNTS, NOT JUST A TOTAL. Measured on a full live run: a motion stayed `seconded` with `tally for:0` even
+        // though the ballots had been cast, because the only read available here was `votes: box.votes.size` - a TOTAL that cannot
+        // tell "for" from "against". Per-option counts existed only in close()'s tally, so an OPEN box could not answer the question
+        // the meeting needs to ask (kernel/meetings.js counts for/against from the motion's own `mo.votes`, which stays empty
+        // because the votes live here). `byChoice` is a direct aggregate over `box.votes` - no new state, nothing inferred.
+        // ★ Secrecy does NOT hide these numbers: a sealed box still COUNTED, it only withholds the detail of who chose what (close()
+        // does exactly that - `detail: null` while `tally` remains). So the totals are safe to expose at any state.
+        byChoice: (() => {
+          const acc = {}
+          for (const choice of box.votes.values()) acc[String(choice)] = (acc[String(choice)] || 0) + 1
+          return acc
+        })(),
         // F28: the fallback state is observable state, not an inference from a missing board.
         openMaxMs, lapse: box.lapse ? Object.assign({}, box.lapse) : null, droppedAudit,
         // G7 self-report (Round 9): "no durable log is bound ⇒ this commit is IN-PROCESS ONLY" must be READABLE

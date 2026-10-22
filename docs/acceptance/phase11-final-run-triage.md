@@ -353,3 +353,15 @@ return kernel.toolsView({ member, agent })
 
 ★ **本轮不改代码**：★ 需要 ① 给 `status` 加 `byChoice`、★ ② 改两处 tally、★ ③ 同步 `vmu-ballot*` 套件的断言 ⇒ ★ **三站点，★ 预算不足**。
 ★★ **下一轮顺序（已定）**：★ ① `ballotbox.js` 的 `status({boxId})` 加 `byChoice`（★ 正反断言：★ 空箱全 0、★ 投两票后正确分项）；★ ② `meetings.js` 两处 tally 读它；★ ③ 断言 **投票后 `summary()` 的 `for > 0`**。
+### §6.34 #29 第 1/2 步已落地：★ `ballot.status({boxId})` 现在给**逐项计数**
+
+★ **改动**（`kernel/ballotbox.js:576` 的 `status({boxId})`）：★ 加 **`byChoice`** —— ★ **直接由 `box.votes` 聚合**，★ **不新增状态、不推断**。
+★ **注释里写明两件事**：★ ① **为什么需要它**（★ 此前只有 `votes: box.votes.size` —— ★ **一个总数分不出 for/against**，★ 而逐项计数只在 `close()` 里，★ **开着的箱子拿不到**）；★ ② **为什么泄密不冲突**（★ 密封箱子**仍然计数**，★ 只是不给出"谁投了什么" —— ★ `close()` 正是 `detail:null` 而 `tally` 保留，★ **所以总数在任何状态都安全**）。
+
+★ **实测**：★ 空箱 ⇒ **`byChoice:{}`** ✓；★ 投 2 张 `'1'` ＋ 1 张 `'0'` ⇒ **`byChoice:{"0":1,"1":2}`、★ `votes=3`** ✓
+
+★ **GATES**：★ **T1 = 401/401** ✓ ★ ballot **44/0**、★ ballotbox **16/0**、★ meetings **193/0** ✓
+
+### §6.35 #29 第 2/2 步（★ 未做）：把两处 tally 指向箱子
+
+★ **下一轮**：★ ① `meetings.js:774`（`vote()`）与 `:1160`（`summary()`）**在动议有绑定箱子时数 `ballot.status({boxId}).byChoice`**，★ **没箱子才回落到 `mo.votes`**；★ ② ★ **取 boxId 用现成的 `boxBinding.resolve()`**（★ `:346-356`，★ 已在文件里）；★ ③ ★ **断言**：★ 投票后 **`summary().tally.for > 0`** 且 ★ **动议状态不再是 `seconded`**。
