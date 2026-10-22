@@ -702,3 +702,24 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'C:\Users\admin\.dsh\profiles\n
 
 **★★ 下一轮唯一要做的**：★ **从【当前 app】里取出 `session/prompt` 的 typert schema**（★ 在 `app.asar` 的 `@deepseek-ai/dsh-*` 里搜 `session/prompt` 的 `SessionPromptRequest` 定义）★ **按新契约改 drive 的 payload** —— ★ **这是最后一个未知量，★ 而且它现在被精确定位到【一个 JSON 字段】。**
 ★ **注意**：★ 这**完全不是 vmu 的缺陷** —— ★ **是 SLV 驱动器与新运行时的契约差异**。
+### §6.54 ★★★ payload 与 schema **完全一致** —— 所以"静默不启动"是真的
+
+**从当前 app 的 `app.asar` 里取出的 `SessionPromptRequest` 精确 schema**：
+```json
+{ "type":"object", "properties": {
+    "requestId": {"type":"string"},
+    "sessionId": {"type":"string"},
+    "mode": {"type":"string", "enum": ["queue","steer"]},
+    "content": {"type":"array","items":{"oneOf":[{"type":"object",
+        "properties":{"type":{"const":"text"},"text":{"type":"string"}},
+        "required":["type","text"],"additionalProperties":true}]}} } }
+```
+★★ **而 drive 发的正是** `{requestId, sessionId, mode:'queue', content:[{type:'text',text}]}` ⇒ ★ **逐字段吻合** ✓
+★★★ **⇒ 上一轮"契约变了"的判断【被推翻】**：★ `mode:'send'` 被拒是**因为 `send` 不在 enum 里**（★ 预期行为），★ 而 `queue` **是合法且正确的**。
+
+**★ 所以现在的状态是**：★ `session/prompt` 返回 **`accepted: true`**、★ **server 的 `srv.err` 是 0 字节**、★ **而会话文件只有头、★ 零事件、★ `totalTokens:0`**。
+★★★★ **⇒ 这在当前运行时里是一个【静默不启动】** —— ★ 没有错误、★ 没有拒绝、★ 没有事件。★ **它可复现、★ 位置明确、★ 且不是 vmu 的缺陷。**
+
+★ **已排除（★ 全部有测量）**：★ 旧 dsh、★ `$BIN`、★ `$OUT` 乱码、★ `DSH_BIN`、★ provider、★ 变量值、★ `ws` 依赖、★ **payload 形状（★ 本轮实测与 schema 逐字段吻合）**。
+
+★ **下一轮的方向**：★ **① 查 `session/new` 与 `session/prompt` 之间是否还需要一步**（★ 端点表里有 `session/new`、★ `session/created`、★ `session/end-seed`、★ **`session/end-seed` 很可疑**）；★ **② 或直接问用户：★ 你在当前 GUI 里发一条消息时，客户端调的是哪一串 RPC** —— ★ 这能把"静默不启动"一步定位。
