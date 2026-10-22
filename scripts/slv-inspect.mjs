@@ -130,6 +130,25 @@ export function analyzeSession(file, { memberFilter = null } = {}) {
   const headers = []
   const calls = []
   let results = 0
+  // ★★★ THE CLOSURE READING IS NOW A MACHINE FIELD, SO READ IT HERE. §7.00 made every vibe_vmu_turn step/drive receipt carry
+  // `closureVote`, which means the acceptance criterion "cast === true" no longer has to be judged from the AGENT'S PROSE - it is in
+  // the tool result this script already walks. The driver cannot do this (it is only a client: the AGENT calls the tools), so the
+  // inspector is the right consumer. `closureCast` below is the LAST cast value seen across all tool results; `closureSeen` counts
+  // how many results carried one, so a run with no turn receipts reports null rather than a comfortable false.
+  let closureCast = null
+  let closureSeen = 0
+  const noteClosure = (x) => {
+    let s
+    try { s = typeof x === 'string' ? x : JSON.stringify(x) } catch { return }
+    if (!s || s.indexOf('closureVote') === -1) return
+    // the receipt’s own shape: "closureVote":{"window":..., "cast":true|false, ...}
+    const i = s.indexOf('closureVote')
+    const tail = s.slice(i, i + 600)
+    const m = /"cast"\s*:\s*(true|false)/.exec(tail)
+    if (!m) return
+    closureSeen += 1
+    closureCast = m[1] === 'true'
+  }
   const assistant = []
   let prompt = ''
   let promptScore = -1
@@ -157,7 +176,7 @@ export function analyzeSession(file, { memberFilter = null } = {}) {
     walk(ev, (x) => {
       if (x.type === 'request/header' && x.data && x.data.header && Array.isArray(x.data.header.tools)) headers.push(x.data.header)
       if (x.type === 'tool/call' && x.data && typeof x.data.name === 'string') calls.push({ name: x.data.name, args: x.data.arguments })
-      if (x.type === 'tool/result') results += 1
+      if (x.type === 'tool/result') { results += 1; noteClosure(x) }
       if (x.message && x.message.role === 'assistant' && Array.isArray(x.message.content)) {
         const t = x.message.content.map((b) => (b && typeof b.text === 'string' ? b.text : '')).join('\n').trim()
         if (t.length > 40 && !seenText.has(t)) { seenText.add(t); assistant.push(t) }
@@ -237,6 +256,8 @@ export function analyzeSession(file, { memberFilter = null } = {}) {
     sameSource,
     sameSourceMismatch,
     staticDiff,
+    closureCast,
+    closureSeen,
     appendedCount: appendedTexts.length,
     promptToolBlock: block,
     promptSections: sections,
@@ -461,7 +482,14 @@ function main() {
   } else {
     for (const s of sessions) console.log(render(s))
     const red = sessions.filter((s) => s.red).length
-    console.log('SUMMARY: ' + sessions.length + ' session(s), ' + red + ' with RED checks')
+    // ★★★ THE ACCEPTANCE CRITERION, AS A MACHINE LINE. "cast" used to be judged from the agent's prose; the turn receipts now carry
+// closureVote (§7.00) and this script reads it (§7.05). A run with NO turn receipt says so by name - null is not "true".
+for (const s of sessions) {
+  const seen = s.closureSeen || 0
+  if (seen === 0) { console.log('CLOSURE: ' + s.file + '  no closureVote on any tool result (the run never carried a turn receipt)'); continue }
+  console.log('CLOSURE: ' + s.file + '  cast=' + String(s.closureCast) + '  (from ' + seen + ' turn receipt(s))')
+}
+console.log('SUMMARY: ' + sessions.length + ' session(s), ' + red + ' with RED checks')
   }
   process.exitCode = sessions.some((s) => s.red) ? 1 : 0
 }

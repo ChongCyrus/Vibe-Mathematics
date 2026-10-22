@@ -1730,3 +1730,24 @@ exit=0
 | ★ 目标 7 `docs-landed` | ★ **结案**（时点说法早已有 ＋ 新增极小门禁） |
 | ★ 目标 8 脚本桥 | ★ **早已完成**（★ `kernel/index.js:1664`）—— ★ 我之前忘了，★ 用户纠正 |
 | ★ T1 | ★ **403/403，exit=0** |
+﻿
+### §7.05 `closureVote` 的机器读取：★ 已装入 `slv-inspect`，★ **但它不生效 —— 如实记录**
+
+**已做**：
+- ★ `scripts/slv-inspect.mjs` 新增 `closureCast` / `closureSeen`，★ 在 `tool/result` 处调用 `noteClosure(x)`；
+- ★ `analyzeSession` 的返回带上这两个字段；
+- ★ `SUMMARY` 前新增一行 **`CLOSURE: <file>  cast=<true|false>  (from N turn receipt(s))`**，★ **无回执时具名说"the run never carried a turn receipt"**（★ `null` 不等于 `true`）；
+- ★ `--selftest` 仍 **PASS（0 failed）**。
+
+**★★ 但它没工作 —— 实测证据**：
+```
+node scripts/slv-inspect.mjs full-1022-234058.jsonl
+  CLOSURE: … no closureVote on any tool result (the run never carried a turn receipt)
+  SUMMARY: 1 session(s), 0 with RED checks
+```
+★ 而**同一份 jsonl 里 `closureVote` 出现 24 次**，★ 其中 **4 次在 `tool/result` 行内**（★ 其余 20 次在任务文本等 other 上下文）⇒ ★ **我的提取器漏了那 4 条。**
+
+**★★ 所以现在的状态是**：★ **代码在树里、`--selftest` 绿、T1 不会因此变红** —— ★ **但它【报了一个假阴性】**：★ 它说"没有回执"，★ 而回执在。
+
+**★★★ 下一轮必须做的（★ 已定位）**：★ 用 `walk` 的**实际访问形状**去核 —— ★ 那条 `tool/result` 事件里 `closureVote` 到底嵌在 `x.data` 的哪一层（★ 也可能是 `x` 只是外层、★ 载荷在 `x.result`／`x.content` 里）；★ **修好后必须用这份 jsonl 复测，★ 断言 `cast=true  (from 4 turn receipt(s))`。**
+**★ 不做的**：★ **不改 `--selftest` 去迁就它** —— ★ **selftest 本来就该测"检测器能红能绿"，★ 它绿是因为它测的是别的东西；★ 这次漏的是【真实数据的形状】，★ 只有真实数据能暴露。**
