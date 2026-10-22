@@ -1199,3 +1199,15 @@ const seam = async ({ turn, text }) => {
 **★★★ 这一轮的教训（★ 对应 `L18`／`L17`）**：★ **"我加了字段"不等于"字段会被读到"** —— ★ 必须找到**那条真实调用路径**，★ 并确认**两个读取面都覆盖**。
 ★ **而这一条本可以在上一轮就发现**：★ 代理报的是 `vibe_vmu_meeting {action:"status"}` 的**回执**，★ 而我当时只改了内核单对象的 `status()`，★ **没有顺着 `tools/meeting.js` 走一遍** —— ★ **`L3`（诊断面就是被测系统）的又一次变体**。
 ★ **仍待办**：★ **给 `loop`/`note` 加断言**（★ 现在有两个面可测：★ 服务面走 `meetingView`，★ 原语面走 `status()`；★ 下一轮用工具面调用最稳）。
+### §6.79 `loop`/`note` 的断言已补上（★ 195/0）★ 而这次卡了四轮，原因是一个回执字段名
+
+**最后成功的写法**：★ `svc.open({type:'ordinary'})` ⇒ ★ **回执字段是 `meeting`、★ 不是 `id`** ⇒ ★ 用 `opened.id` 会去寻址 `meeting: "null"` ⇒ ★ 被 `VMU_NO_SUCH_OBJECT` 拒绝（★ 实测原文：★ `no such meeting: null | hint=open: m1`）。
+**实测**：`=== VMU MEETINGS: 195 passed, 0 failed ===` ✓ ★（★ **新增 2 条**：★ 服务面 `meetingView()` 的 `loop` 与 `note`）。
+
+**★★★ 四次失败的原因（★ 全部按 `L13`：回执字段名≠含义）**：
+1. ★ `meetingsMod` 不存在（★ 该文件用直接导入 `createMeetings`）
+2. ★ `meetings.open()` 返回的是**回执**，★ `status()` 在**服务面**上、且是**设置面状态**（★ 不含单会面字段）
+3. ★ `svc.open(...).id` 是 `undefined` —— ★ **字段名是 `meeting`**
+4. ★ 构造参数要照既有可跑样例（★ `settings: {}`、★ `log: () => {}`）
+
+★★ ★**这四步每一次都是"我以为的 API"和"模块真实的 API"不一致** —— ★ 而**纠正的依据全在模块自己身上**（★ 拒绝消息里的 `hint`、★ 既有样例的写法）。★ 这一条已写进 `AGENTS.md §7.3` 的配套纪律，★ **本轮又一次印证**。

@@ -814,6 +814,23 @@ const err = (fn) => errOf(fn)
       '★ 反：不传 reason ⇒ 回 null，不是 undefined（"没有说明"是一个明确的事实）', sum2 && sum2.reason)
   }
 }
+// ★★★ THE SERVICE READ FACE MUST CARRY THE SAME SELF-DESCRIPTION. A full live run drove two members through vibe_vmu_turn, both
+// answered and cast became true, then read vibe_vmu_meeting {action:'status'} - answered:0, pending both, hasDeliverSeam:false - and
+// reported all of it as defects. tools/meeting.js returns primitive.status() for the PRIMITIVE registry (line 174) but
+// svc.meetingView() for the SERVICE registry (line 182), and vibe_v5_meeting creates service meetings. So loop/note must exist on BOTH
+// faces; adding them only to meeting.js#status() would be a mechanism with no consumer for the only path that mattered.
+// NOTE the receipt field is `meeting`, not `id` - open() returns { ok, meeting, ... }, and addressing meetingView with `id` asks for
+// meeting "null" and is refused VMU_NO_SUCH_OBJECT (measured while writing this assertion).
+{
+  const svc = createMeetings({ clock: () => 0, settings: {}, log: () => {} })
+  const opened = svc.open({ type: 'ordinary' })
+  const id = opened && (opened.meeting || opened.id)
+  const view = svc.meetingView({ meeting: id })
+  ok(view && view.loop === 'meeting-ask-answer',
+    '★★ the SERVICE read face (meetingView) names its loop - this is the face vibe_v5_meeting + vibe_vmu_meeting status actually return', { loop: view && view.loop })
+  ok(view && typeof view.note === 'string' && /vibe_vmu_turn/.test(view.note) && /hasDeliverSeam/.test(view.note),
+    '★★ the SERVICE face note points at vibe_vmu_turn for the OTHER loop and says what hasDeliverSeam refers to', { note: String(view && view.note).slice(0, 50) })
+}
 console.log('=== VMU MEETINGS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL - ' + f)
 process.exit(failed ? 1 : 0)
