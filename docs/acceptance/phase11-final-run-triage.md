@@ -1705,3 +1705,28 @@ FAIL audit-scanner-selfproof.test.mjs
 **★★ 所以目标 8 判定为【已完成】**（★ 形式是 `vmu.script.start()`），★ **不再需要用户裁定方向** —— ★ **我上一轮又把它当成"待裁定"抛给用户，★ 那是我自己的记忆错误，★ 不是它没做。**
 
 **★★★ 教训（★ 要进 lessons）**：★ **压缩之后，★ "我记得没做"和"实际没做"是两件事** ⇒ ★ **对任何"待办/待裁定"，★ 回答之前必须先 grep 一遍仓库**（★ 这本来就是 `L1` 读回确认的适用范围，★ 而我把它只用在了"设了值"上，★ 没用在了"记不清"上）。
+﻿
+### §7.04 ★★★★★ T1 回到全绿：**403/403，0 FAIL，exit=0** —— ★ 且新门禁已被纳入
+
+**完整日志**：`D:\_tmp\t1-r96.log`（★ 全程无并发）
+```
+run-tests: scope=vmu  jobs=403  concurrency=2
+concurrency 2 · wall 540.6s · sum of suite times 1017.9s · speed-up x1.88
+TOTAL 403  PASS 403  FAIL 0  (suites 339 · probes 64)
+exit=0
+```
+**★ 全日志无一行 `FAIL`** ✓
+
+**★★ 两条关键门禁都在里面**：
+- ★ `audit-docs-landed-counts.test.mjs` ⇒ **PASS**（★ 新增的目标 7 门禁，★ 5/0）
+- ★ `audit-scanner-selfproof.test.mjs` ⇒ **PASS**，★ 且它自己报出：★ **`scanners=124  self-proven=57  named-debt=67`** ⇒ ★ **自证数 ＋ 具名债务数 ＝ 总数**（★ 57+67=124 ✓）
+
+**★★★ 本轮把目标 7 收尾的完整链条**：★ 写门禁 ⇒ **被 `audit-scanner-selfproof` 抓出"没有 `--selftest`"** ⇒ 补 selftest（★ 6 条，★ 含合成目录的正反例）⇒ ★ **T1 403/403**。
+
+**★ 进度小结（★ 截至 `0fde65a7`/本轮）**：
+| ★ 项 | ★ 状态 |
+|---|---|
+| ★ 目标 5 真机复验 | ★ **判据全部达成**（`cast:true`／0 RED／四码 0） |
+| ★ 目标 7 `docs-landed` | ★ **结案**（时点说法早已有 ＋ 新增极小门禁） |
+| ★ 目标 8 脚本桥 | ★ **早已完成**（★ `kernel/index.js:1664`）—— ★ 我之前忘了，★ 用户纠正 |
+| ★ T1 | ★ **403/403，exit=0** |
