@@ -166,7 +166,18 @@ async function toolLeanArchive(args = {}, { kernel } = {}) {
   const mapped = LEAN_ARCHIVE_KIND_MAP[str(args.kind)]
   if (!mapped) throw refuse('VMU_INVALID_ARGUMENT', 'unknown archive kind: ' + str(args.kind), 'the original offered: ' + Object.keys(LEAN_ARCHIVE_KIND_MAP).join(', '))
   if (!has(args.name)) throw refuse('VMU_INVALID_ARGUMENT', 'lean_archive needs name', 'give a stable name: read() and lib() use it')
-  const file = has(args.from) ? str(args.from) : (has(args.file) ? str(args.file) : '')
+  // ★★ TWO NAMES FOR ONE THING MUST NOT SILENTLY DISAGREE. `from` used to take priority over `file`: a caller that passed BOTH
+  // got `from` and never learned that `file` was ignored. Measured on a full live run - the agent supplied both and could not
+  // tell which one the archive used. A silent shadow is the same failure as a silent no-op: the caller believes something that
+  // did not happen. So: one name, or two names that AGREE; two that DISAGREE are refused by name.
+  const fromRaw = has(args.from) ? str(args.from) : null
+  const fileRaw = has(args.file) ? str(args.file) : null
+  if (fromRaw !== null && fileRaw !== null && fromRaw !== fileRaw) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'lean_archive got BOTH from and file with different values',
+      'pass ONE of them (they name the same thing): from=' + fromRaw + ' file=' + fileRaw +
+      ' — the archive used to prefer `from` and silently ignore `file`, which is why this is now refused')
+  }
+  const file = fromRaw !== null ? fromRaw : (fileRaw !== null ? fileRaw : '')
   if (!file) throw refuse('VMU_INVALID_ARGUMENT', 'lean_archive needs the existing .lean file (from/file)', 'this face registers existing files; it does not take inline content')
   const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_archive')
   const archived = await lean.archive({ name: str(args.name), kind: mapped, file, statement: has(args.target) ? str(args.target) : '' })
