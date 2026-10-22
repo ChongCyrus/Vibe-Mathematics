@@ -1169,3 +1169,16 @@ const seam = async ({ turn, text }) => {
 3. ★ **`docs/` 里把两套循环的边界写清**。
 
 **★★★ 本轮不再"修"归属或计数** —— ★ **按 L15：代理的报告是线索，★ 不是可执行缺陷清单；★ 照原话去改，★ 会改坏两套本来各自正确的循环。**
+### §6.77 已落地：★ `meeting.status()` 自述所属循环（★ 加法，★ 零破坏）
+
+**改动**：★ `kernel/meeting.js:467` 的 `status()` 新增两个**只增不改**的字段：
+- ★ `loop: 'meeting-ask-answer'`
+- ★ `note: '★ rounds/answered/pending/silent/refused 描述【本会议自己的 ask()+answer() 循环】。成员回答 vibe_vmu_turn 的提示词属于【另一个循环】，不会增加这些数字；那一个要看 vibe_vmu_turn 自己的回执（awaiting/memberPrompt/deliveryPath）。hasDeliverSeam 指的是 open({deliver}) 注入的【会议接缝】，不是回合循环的 deliveryPath。'`
+★ **原有字段一个没动** ⇒ ★ **消费者零破坏**。
+★ **实测**：`=== VMU MEETINGS: 193 passed, 0 failed ===` ✓
+
+**★★ 而测试断言【没加上】，★ 过程本身又是一课（★ 已记入 L2）**：
+1. ★ 第一次把断言**追加到文件末尾** ⇒ ★ **它在 `process.exit` 之后 ⇒ 从未执行**，★ 所以 `193 passed` **没变**。★ **差一点就把"没跑"当成"通过"。**
+2. ★ 移到汇总前之后 ⇒ ★ **3 条全红** —— 原因是我用错了访问器：★ `meetings.open()` 返回的是**回执**、★ `status()` 在 **`meetings` 服务**上，★ 而服务面 `status({id})` 的返回**不含 `loop`**（★ `loop` 在**单个 meeting 对象**的 `status()` 上）。
+3. ★ **处置**：★ **移除这 3 条断言、保留源码改动** —— ★ 当前 `193 passed, 0 failed` **是绿树**，★ 而"给 `loop`/`note` 加断言"**列为下一轮的待办**（★ 需要先找到 `meeting.js` 里单个 meeting 对象的导出路径）。
+**★★★ 结论**：★ **源码改动是安全的（加法、193 绿），★ 但【它的断言还没写】—— 这一点必须如实记录，★ 不能因为 193 绿就说"已测"。** ★ 按 `L2`／`L16`：**没测就是没测。**

@@ -465,8 +465,17 @@ let debateEnded = null
 
     /** Observability (R11): the state machine plus the refusal-inclusive audit trail. */
     status() {
+      // ★★★ THESE NUMBERS BELONG TO THE MEETING'S OWN ask()/answer LOOP, NOT TO THE TURN LOOP. Measured on a full live run: the
+      // agent drove two members through vibe_vmu_turn, both answered, and closureVote.cast became true - then it read this status,
+      // saw answered:0 / pending:[m1,m2] / hasDeliverSeam:false, and reported both as defects. Every one of those numbers was TRUE
+      // of this object: nobody ever ask()ed the meeting, so its own inputs map stayed empty, and `deliver` here is the MEETING's seam
+      // (injected by open({deliver})), which is a different seam from the turn loop's deliveryPath. Two correct subsystems, no wording
+      // anywhere saying they are different - which is exactly the "no misleading mechanism" red line. The fields stay (consumers rely
+      // on them, and renaming would be a breaking change for a readability win); `loop` and `note` make the distinction explicit.
       return {
         id, kind, state: state.value, agenda, rounds: rounds.length,
+        loop: 'meeting-ask-answer',
+        note: '★ rounds/answered/pending/silent/refused describe THIS meeting’s own ask()+answer() cycle. A member answering a vibe_vmu_turn prompt is a DIFFERENT loop and does not increment them; read vibe_vmu_turn’s own receipts (awaiting/memberPrompt/deliveryPath) for that one. hasDeliverSeam refers to the meeting seam injected by open({deliver}), not to the turn loop’s deliveryPath.',
         // B①: the agenda as items (closed ones included) — a reader can always see what was discussed and why.
         agendaItems: agendaItems.length,
         agendaOpen: agendaItems.filter((it) => it.state === 'open').length,
