@@ -1599,3 +1599,33 @@ exit=0
 **★★ 无一行 `FAIL`**（★ 全日志 grep 过，★ 唯一的匹配是 `FAIL 0` 那个汇总数字本身）。
 
 **★★★ 至此本轮的代码改动全部落在绿树上**：★ `kit/handlers.js`（作者诚实）、★ `packs/v5r/tools.js`（#15 发现性指引）、★ `kernel/meetings.js`（计票来源具名）、★ `kernel/turn/index.js`（`window` 诚实）、★ `packs/v5r/prompts/v5r-charter.js` ＋ `v5r-core.js` ＋ `middleware/prompt-switches.js`（E：无领头人变体可选中）。
+﻿
+### §6.99 ★★★★★★ **最后一次完整真机（本轮 6 个文件改动之后）：判据全部达成**
+
+**配置**：★ 当前 dsh `0.2.1-rc.2` ＋ **HEAD `96eb27ac` 重打的包**（`dsh-vibe-math-HEAD.tgz`，23:40）＋ `deepseek-official`/`deepseek-flash` ＋ **`packs: ['v5r']` 已注入**。
+
+**`done` 行（原文）**：
+```
+{"preset":"vibe-math-vmu","durationSec":58,"tokenTotal":484090,
+ "transcriptEvents":100,"toolCalls":15,"followStreamWorked":true,
+ "title":"只用 vmu 工具推进研究所结题"}
+VERDICT: PASS
+cleanup: clone_gone=True  C_free_GB=14.02
+```
+
+**判据逐项（★ 全部达成）**：
+| ★ 判据 | ★ 结果 |
+|---|---|
+| ★ **`cast: true`** | ★ ★达成★ —— ★ `slv-inspect` 摘出代理自己的推理：★ **「cast === true confirmed in both readings」** |
+| ★ **`slv-inspect` 0 RED** | ★ **`SUMMARY: 1 session(s), 0 with RED checks`** ✓ |
+| ★ **`NO_FENCE`** | ★ **0** |
+| ★ **`UNKNOWN_FIELD`** | ★ **0 个运行时错误** —— ★ 唯一 1 次出现在**提示词正文**里（★ 原文「写了会被判 `VMU_TURN_UNKNOWN_FIELD`」，★ **提示词在警告模型**） |
+| ★ **`FIELD_NOT_APPLICABLE`** | ★ **0** |
+| ★ **`BAD_JSON`** | ★ **0** |
+| ★ `followStreamWorked` | ★ **true** |
+| ★ **工作区产物** | ★ `VibeMath/vmu/state.json` ＋ `audit/2026-10-22.jsonl`（★ 4519 B） |
+| ★ **中间件注册数** | ★ **7 条 `middleware/registered`** |
+
+**★★★ 其余**：★ 代理报告 **「no named refusals」**（★ 零具名拒绝）；★ clone 已自动清理；★ C 盘 14.02 GB。
+
+**★★★★ 这是本阶段真机复验的【最终结论】**：★ **在当前 dsh、当前 HEAD 上，v5r 包完整加载、中间件链运行、代理从空研究所推到 `cast:true`、零具名拒绝、零畸形回执、`slv-inspect` 0 RED。**
