@@ -527,3 +527,29 @@ VERDICT: candidate PASS
 ★★★★★ **⇒ 因此本次真机跑用 `deepseek-official` / `deepseek-flash`** —— ★ **这是【能工作的那个】**，★ **而 `opencode-go` 目前不可用**。★ **这一替换必须记在案，★ 因为它偏离了用户指定的 provider**。
 
 **下一轮**：★ **同一套参数再跑一次并放长超时** ⇒ ★ **目标是 `cast:true`**；★ 若仍不收敛，★ 跑 `slv-inspect` 看 RED 项。
+### §6.45 ★★★★★ 用户裁定：★ **SLV 一直跑在【旧 dsh】上** —— 这才是 `NO_ADAPTER` 的真因
+
+★ **用户指出**：★ *"你跑 slv 用的旧版本 dsh 吗？应该用当前我们这个 dsh 的版本的 dsh 啊！！！我们现在所在的是 dsh-v0.2.1-rc.2"*。
+
+★★★ **核实：用户完全正确。** ★ `_oneoff/vm-drive/dsh-drive.mjs:98` 的默认值：
+```js
+const bin = process.env.DSH_BIN || 'C:/Users/admin/scoop/apps/nodejs-lts/current/bin/node_modules/@deepseek-ai/dsh/lib/bin.js'
+```
+★ 那个路径的版本是 **`0.2.0-rc.2`** ⇒ ★ **SLV 从始至终跑在 scoop 装的旧 dsh 上**，★ **而 `dsh-opencode-go` 的适配器只在当前版本里** ⇒ ★ **这就是 `NO_ADAPTER`**。
+★★ **⇒ 我前面那两轮排除（"缺包 147 个"、"provider 名 `opencode-go`"）都是对的排除，★ 但都在错的维度上** —— ★ **真因是【运行时版本】。**
+
+**已做的处置（★ 按用户要求）**：
+1. ★★ **旧 dsh 已移出活动路径** —— `C:\Users\admin\scoop\apps\nodejs-lts\current\bin\node_modules\@deepseek-ai\dsh`（**453 MB**）★ → ★ `D:\_tmp\dsh-0.2.0-rc.2-REMOVED`（★ 备份，★ 可复核后删）。
+2. ★★★ **`dsh-drive.mjs` 的静默回退已删除** —— ★ 默认值不再指向旧版，★ 改成 **`const bin = process.env.DSH_BIN`** ⇒ ★ **没设 `DSH_BIN` 会【响亮失败】**，★ 而不是悄悄用旧版。★ **"静默回退"正是这次错误的成因**。
+
+**当前版本的启动方式（★ 已探明，★ 供下一轮用）**：
+★ 当前 dsh **在 `app.asar` 内**（★ 普通 node 读不了）⇒ ★ 必须：
+```
+$env:DSH_BIN = '<app>\resources\app.asar\dsh\node_modules\@deepseek-ai\dsh-desktop-host\lib\cli.js'
+$env:ELECTRON_RUN_AS_NODE = '1'
+& '<app>\DeepSeek Harness.exe' --expose-internals <drive.mjs> ...args
+```
+★ 已生成 `D:\_tmp\slv-phase5\slv-r46-run.ps1`（★ 语法 0 错误、★ 含此改动）。
+★★ **第一次尝试 `dur=0s / tokens=-1 / no done line`** ⇒ ★ **server 没起来**，★ 而 `srv.err` **为空** ⇒ ★ **待查**（★ 可能 `app.asar` 内的 cli.js 需要 `--expose-internals` 之外的处理，★ 或 `DSH_BIN` 路径在 asar 内不被 `spawn` 接受）。
+
+★ **另**：★ 本轮还修了真机代理报的**一条我自己引入的缺陷** —— ★ `vibe_v5_task_update` 的 **`transition` 分支加了但 `to` 参数没加进 schema** ⇒ ★ 已补 `to`／`why`／`blocked_by` ⇒ ★ **T1 = 401/401** ✓
