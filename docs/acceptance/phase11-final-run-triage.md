@@ -580,3 +580,14 @@ code: 'MODULE_NOT_FOUND', requireStack: []
 
 **★★ 下一轮的第一步（★ 很具体）**：★ **先单独验证「exe 能否把 `dsh-drive.mjs` 当脚本执行」** —— 例如 `& $exe --expose-internals D:\wd\vibemath开发\_oneoff\vm-drive\dsh-drive.mjs --selftest`（★ drive 自带 selftest）⇒ ★ **若它也 `MODULE_NOT_FOUND` ⇒ 换一种启动 drive 的方式**（★ 例如用一个极小的 `.js` wrapper 去 `import()` 它，★ 或直接用 `node` 跑 drive 但 **`DSH_BIN` 指向 exe 而非 cli.js**）。
 ★★★ **注意**：★ `node` 跑 drive、★ 而 **`DSH_BIN` 指向 `DeepSeek Harness.exe`** —— ★ 这样 `spawn(exe, ['--expose-internals', cli.js, …])` 可能才是对的组合（★ 因为 **drive 自己**用普通 node 跑，★ 只有 **它 spawn 的 server** 需要 exe）。
+### §6.47 当前 dsh 接线：★ **wrapper 方案已就绪，★ 而 server 侧仍差一步**
+
+**已做（★ 都有实测输出）**：
+1. ★ **新建 `_oneoff\vm-drive\dsh-current.mjs`** —— ★ 它把 `['--expose-internals', <app.asar cli.js>, ...args]` 交给 `DeepSeek Harness.exe`（★ `ELECTRON_RUN_AS_NODE=1`）。
+   ★ **手工实测**：★ `node dsh-current.mjs --profile web --help` ⇒ **`Usage: dsh --profile web [options]`** ＋ ★ 自报 **`dsh 0.2.1-rc.2`** ✓
+2. ★ **`slv-r48-run.ps1`**：★ `DSH_BIN` = wrapper、★ **drive 用普通 `node` 跑**（★ 各用对的解释器）。
+3. ★ **drive 自证可跑**：★ `node dsh-drive.mjs --selftest` ⇒ **`{"step":"fatal","error":"attach mode needs --token"}`** ⇒ ★ **drive 没问题** ✓
+
+**★★★ 仍卡住**：★ 跑 SLV 时 **`ABORT: no token`**，★ `srv.err` 里是 `MODULE_NOT_FOUND`（★ `run_main_module`）。
+★★ **而这次 drive 已证明能跑** ⇒ ★ **`MODULE_NOT_FOUND` 来自被 spawn 的 server** ⇒ ★ **而【同一个 wrapper 命令】手工跑 `--profile web` 是成功的** ⇒ ★ **差异只在 `--profile <clone name>`**。
+★ **下一轮第一步（★ 极具体）**：★ **手工用 wrapper 起一个 clone profile**（★ 例如先手工建 `slvr50` 或直接用已存在的 `slvr41`）★ 看是否也 `MODULE_NOT_FOUND` ⇒ ★ **若也失败 ⇒ 是 clone profile 本身在当前 dsh 下不可用**（★ 可能因为它是从 `desktop` 拷来的，★ 而 `desktop` 被 Electron 独占，★ 拷贝出来的 profile **仍带 Electron 标记**）。★★ **若是这个原因**：★ 应改为**从 `web` profile 拷贝**（★ `slv5n-run.ps1` 当年就是 `$SRC = profiles\web`，★ **而 `slv-final` 改成了 `desktop`**）—— ★ **这可能才是真正的分水岭**。
