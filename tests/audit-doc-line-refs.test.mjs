@@ -37,7 +37,12 @@ import { dirname, join, resolve, basename } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const OVERRIDE = process.env.VMU_DOC_REF_DIR ? resolve(process.env.VMU_DOC_REF_DIR) : null
-const DOC_ROOTS = OVERRIDE ? [OVERRIDE] : [join(REPO, 'vibe-math-vmu', 'docs'), join(REPO, 'docs')]
+// ★ `docs-landed` IS SCANNED TOO, and it was the gap: it ships in `package.json#files` (the landed short version
+// 面向使用者) but neither this gate nor the doc linter walked it, so its `file:line` citations could drift with
+// nothing to notice. MEASURED before adding it: 134 refs, 0 not-found, 1 ambiguous basename - so this tightened
+// the gate without needing to repair anything first. It is a DOCUMENT tree, which is why it belongs here rather
+// than behind an exception.
+const DOC_ROOTS = OVERRIDE ? [OVERRIDE] : [join(REPO, 'vibe-math-vmu', 'docs'), join(REPO, 'docs'), join(REPO, 'docs-landed')]
 const SYMBOL_WINDOW = (() => {
   const m = process.argv.find((a) => a.startsWith('--symbol-window'))
   if (!m) return null
