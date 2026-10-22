@@ -1772,3 +1772,27 @@ analyzeSession(file) ⇒ closureCast=null  closureSeen=0      # \u5b57\u6bb5\u57
 **★ 不改 `--selftest` 迁就它** —— ★ selftest 测的是检测器的红绿能力，★ **这次漏的是真实负载的转义层，★ 只有真实数据能暴露。**
 
 **★★★ 结论**：★ **判据的证据已经存在于数据里（★ `cast:true`），★ 缺的只是一个正确的读取器。** ★ 在这条读取器修好并复测之前，★ **我不宣称"`cast` 已机器可验"，★ 只宣称"`cast:true` 已出现在机器数据里、★ 并已人工核对原文"。**
+﻿
+### §7.07 ★★★★★★ closure 读取器修好了 —— **`cast` 现在是【机器可读的一行】**
+
+**根因（★ 有探针原文）**：★ **工具结果是一个 JSON \u5b57\u7b26\u4e32**，★ 所以它的引号是**转义的**：
+```
+raw tail:  closureVote\":{\"window\":\"meeting\",\"cast\":true,…
+含 "cast"  （未转义）: false     ← ★ \u8fd9\u5c31\u662f\u4e3a\u4ec0\u4e48\u7b2c\u4e00\u7248\u4ece\u4e0d\u8ba1\u6570
+含 \"cast\"（转义）  : true
+归一并匹配 /"cast":(true|false)/: "true"
+```
+**★ 修复**：★ 正则跑在 **`tail.replace(/\\\\"/g, '"')`** 之后的**未转义文本**上。
+
+**★★★ 实测（★ 真实数据，★ 不是合成夹具）**：
+```
+CLOSURE: full-1022-234058.jsonl  cast=true  (from 2 turn receipt(s))
+SUMMARY: 1 session(s), 0 with RED checks
+```
+★ **`--selftest` 仍 PASS（0 failed）** ✓
+
+**★★★★ 至此，目标 5 的头号判据终于有两个【独立】证据**：
+1. ★ **人工核对过的原文**（§7.06：`"cast":false` → `"cast":true` 的完整轨迹）；
+2. ★ **`slv-inspect` 的机器行**（★ `cast=true  (from 2 turn receipt(s))`）。
+
+**★★ 而这条 bug 本身就是本阶段那句纪律的又一次现形**：★ **"诊断面本身就是被测系统的一部分"** —— ★ 一个**报假阴性**的检查器，★ 比没有检查器更糟：★ **它会让人以为判据从未达成。** ★ **而它绿了整整一轮（`--selftest` PASS），★ 因为它测的是别的东西。**

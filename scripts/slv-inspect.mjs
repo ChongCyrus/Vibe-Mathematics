@@ -141,9 +141,14 @@ export function analyzeSession(file, { memberFilter = null } = {}) {
     let s
     try { s = typeof x === 'string' ? x : JSON.stringify(x) } catch { return }
     if (!s || s.indexOf('closureVote') === -1) return
-    // the receipt’s own shape: "closureVote":{"window":..., "cast":true|false, ...}
+    // ★★★ THE TOOL RESULT IS A JSON **STRING**, SO ITS QUOTES ARE ESCAPED. Measured on the real run (node 14):
+    //   raw tail:  closureVote\":{\"window\":\"meeting\",\"cast\":true,...
+    //   contains "cast"  (unescaped) : false      <- this is why the first version never counted
+    //   contains \"cast\" (escaped)   : true
+    // So the regex has to run against the UNESCAPED text. Without this the reader reported "no closureVote on any tool result"
+    // while the value was right there - a false negative from the diagnostic surface itself, which is the worst place for one.
     const i = s.indexOf('closureVote')
-    const tail = s.slice(i, i + 600)
+    const tail = s.slice(i, i + 600).replace(/\\"/g, '"')
     const m = /"cast"\s*:\s*(true|false)/.exec(tail)
     if (!m) return
     closureSeen += 1
