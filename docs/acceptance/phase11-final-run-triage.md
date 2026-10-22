@@ -1413,3 +1413,24 @@ FAIL RULE E fingerprint set ⇒ NEW vacuous pass (not in the baseline list): vmu
 
 **★★★ 这是本轮最有价值的一件事**：★ **我写了一个"看起来有 22 条断言"的测试，★ 而其中三条【永远不可能失败】**。★ **是仓内自己的门禁把它抓出来的** —— ★ 这正是本仓「把宣称抄成断言」那条纪律的意义：★ **断言的价值不在于数量，★ 而在于它【真的能红】。**
 ★★ **并记下：★ 我上一轮还写了"22 passed"就当成通过 —— 直到 T1 把它变成红。** ★ **单跑一个自测通过 ≠ T1 通过**，★ 而 **T1 里有专门审断言的断言。**
+﻿
+### §6.90 ★★★★★ T1 重跑：**`TOTAL 402 PASS 402 FAIL 0`** —— ★ 而**进程仍 exit=1**，两者不一致，必须查清
+
+**T1 输出（★ 本次全程无并发）**：
+```
+concurrency 2 · wall 535.7s · speed-up x1.88
+TOTAL 402  PASS 402  FAIL 0  (suites 338 · probes 64)
+  SKIPPED (needs CLI args): audit-tool-exec.mjs — node tests/audit-tool-exec.mjs <preset-js> <tool-name>
+```
+**★★★ 而进程 `exit code: 1`** —— ★ **`FAIL 0` 与 `exit 1` 矛盾，★ 不能只报"402/402 通过"。**
+
+**★ 源码线索（★ 已定位到但未定论）**：
+- `tests/run-tests.mjs:1151` `let exitCode = bad.length === 0 ? 0 : 1`
+- `tests/run-tests.mjs:1098` `const bad = results.filter((r) => !r.ok)`
+- ★ 而汇总行报 `FAIL 0` ⇒ ★ **说明有一条 result 的 `ok` 为 false、★ 却【不计入 FAIL 计数】** —— ★ **最可能是那条 `SKIPPED (needs CLI args)` 的 `audit-tool-exec.mjs`。**
+
+**★★ 两种可能，必须分清**：
+1. ★ **设计如此**（★ "被跳过的作业不算通过" ⇒ 一个含 skip 的 sweep 不能算绿）★ —— ★ 若是，★ 则 `GATE_SCOPE=vmu` 的 T1 **永远不可能 exit 0**，★ 而"402/402"这个报法会**误导**；
+2. ★ **计数与退出码不一致的缺陷**（★ FAIL 计数漏了 skip）★ —— ★ 若是，★ 那是**诊断面自身的不一致**，★ 属于本仓最在意的那一类。
+
+**★ 下一轮第一件事**：★ **读 `results` 的 `ok` 在 skip 分支里怎么赋值**，★ 判定是 1 还是 2，★ **并按下述口径报告**：★ **要么"含 1 个具名 skip 的 402/402"，★ 要么"402/402 且 exit=0"** —— ★ **在此之前，★ 我不宣称 T1 全绿。**
