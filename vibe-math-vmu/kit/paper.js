@@ -381,7 +381,12 @@ export function createPaperFlow({
       const failure = refuse(CODES.PDF_FAILED,
         'LaTeX 编译失败：' + String((r && r.code) || 'unknown') + (r && r.engine ? '（engine=' + r.engine + '）' : '') +
           (engineList.length ? '；已试引擎=' + engineList.join(', ') : ''),
-        '这不是"论文为假"，只是**没编译出来**：把 stderrTail 交给人看；回执不声称有 pdf')
+        // ★★ THE HINT MUST NAME SOMETHING THE READER CAN ACTUALLY SEE. It used to say "把 stderrTail 交给人看", and measured on a
+        // full live run the agent could not: the compiler's stderr tail IS attached to this thrown error (see `failure.stderrTail`
+        // below), but the TOOL RECEIPT carries only code/message/hint - the host does not relay custom error fields. So the hint
+        // pointed at a name that existed on an object the receipt had already flattened away, which is the "looks correct but is
+        // unusable" shape this phase keeps removing. It now says what the receipt DOES carry and what the operator can do with it.
+        '这不是"论文为假"，只是**没编译出来**：回执只带 code/message/hint；编译器 stderr 的尾部在【这条错误的 `stderrTail`】上，宿主回执不转述它 —— 请把这条 message 交给人，或直接用 LaTeX 手工重跑该 .tex；回执不声称有 pdf')
       // the face's own diagnostics travel ON the error (bounded), so the caller can put them into a receipt
       failure.faceCode = (r && r.code) || null
       failure.tried = (r && Array.isArray(r.tried)) ? r.tried.slice() : []
