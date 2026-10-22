@@ -350,6 +350,28 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   // keeps the state (`m.orderOverride`), the audit rows and the receipt ledger. `isDeclared` is the capability rail.
   const orderControls = createOrderControls({ requireMeeting, clock, limits: () => K, declared: isDeclared, deny, audit: (ev) => say(withScope(ev)), pushReceipt: (row) => pushReceipt(withScope(row)) })
 
+  // ★★★ THE MOTION'S TALLY MUST COUNT WHERE THE VOTES ACTUALLY ARE. Measured on a full live run: a motion stayed `seconded` with
+  // `tally for:0` although the ballots had been cast, because this face counted `mo.votes` - and the votes live in the BALLOT BOX
+  // the pack binds to the motion (the vote site's mirrorVote() writes them there; `mo.votes` fills only when a vote goes through
+  // the meeting face itself). `ballot.status({boxId})` now exposes `byChoice`, so the tally asks the box first and falls back to
+  // `mo.votes` only when no box is bound.
+  // ★ ONE SOURCE OF TRUTH: the box holds the votes and this tally is a VIEW of it. Writing box counts back into `mo.votes` would
+  // create two counts that can drift - the shape this repository keeps removing.
+  const tallyOf = (meetingId, mo) => {
+    const base = { for: [...mo.votes.values()].filter((v) => v === 1).length, against: [...mo.votes.values()].filter((v) => v === 0).length, abstain: mo.abstain.size }
+    const boxFor = boxBinding.resolve()
+    if (typeof boxFor !== 'function' || !ballot || typeof ballot.status !== 'function') return base
+    const ans = boxFor({ meeting: meetingId, motion: mo.id })
+    const boxId = ans && typeof ans === 'object' ? ans.boxId : ans
+    if (!boxId) return base
+    const st = ballot.status({ boxId })
+    if (!st || st.ok !== true || !st.byChoice) return base
+    const f = Number(st.byChoice['1'] || 0)
+    const a = Number(st.byChoice['0'] || 0)
+    if (f + a === 0) return base
+    return { for: f, against: a, abstain: Number(st.abstain || 0), source: 'box', boxId: String(boxId) }
+  }
+
   const api = {
     openMeetings,
     bindBox: boxBinding.bind,
@@ -771,7 +793,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // (it used to answer {for:0,against:0,abstain:0} while `counters.votes` rose and the minutes row was written).
       // The real open-ballot CONTAINER is `kernel/ballot.js` (v5r pollOpen/pollVote/pollClose ≙ action ballot/vote/tally).
       const tallyNote = target ? null : 'no motion or box is open for this vote: it IS recorded (minutes + counters) but NOT counted, so no tally is claimed (tally:null)'
-      const tally = target ? { for: [...target.votes.values()].filter((v) => v === 1).length, against: [...target.votes.values()].filter((v) => v === 0).length, abstain: target.abstain.size } : null
+      const tally = target ? tallyOf(m.id, target) : null
       m.minutes.entries.push({ at: now, kind: 'vote', motion: target ? target.id : null, member: String(member), value: value === 0 ? 0 : 1 })
       const ballotMirror = mirrorVote({ ballot, boxFor: boxBinding.resolve(), counters, meeting: m.id, motionId: target ? target.id : null, member, value,
         motionText: target ? target.text : null, motionKind: target ? target.kind : null, motionEmergency: target ? target.emergency === true : false })
@@ -1157,7 +1179,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         const voters = [...mo.votes.entries()].map(([memberId, value]) => ({ member: memberId, value }))
         return {
           id: mo.id, by: mo.by, kind: mo.kind, text: mo.text, status: mo.status, secondedBy: mo.secondedBy || null,
-          tally: { for: voters.filter((v) => v.value === 1).length, against: voters.filter((v) => v.value === 0).length, abstain: mo.abstain.size },
+          tally: tallyOf(m.id, mo),
           votes: voters, abstentions: [...mo.abstain],
         }
       })

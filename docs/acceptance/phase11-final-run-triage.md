@@ -365,3 +365,16 @@ return kernel.toolsView({ member, agent })
 ### §6.35 #29 第 2/2 步（★ 未做）：把两处 tally 指向箱子
 
 ★ **下一轮**：★ ① `meetings.js:774`（`vote()`）与 `:1160`（`summary()`）**在动议有绑定箱子时数 `ballot.status({boxId}).byChoice`**，★ **没箱子才回落到 `mo.votes`**；★ ② ★ **取 boxId 用现成的 `boxBinding.resolve()`**（★ `:346-356`，★ 已在文件里）；★ ③ ★ **断言**：★ 投票后 **`summary().tally.for > 0`** 且 ★ **动议状态不再是 `seconded`**。
+### §6.36 ★★★ #29 第 2/2 步已落地 —— **动议的 tally 现在去【票真正所在的地方】数**
+
+★ **根因补齐**：★ `vote()`（`meetings.js:774`）与 `summary()`（`:1160`）**都从 `mo.votes` 数**，★ **而票在【pack 绑定的票箱】里**（★ 投票点的 `mirrorVote()` 写进去的），★ **`mo.votes` 只在【经会议面本身投票】时才填** ⇒ ★ 真机里 `for:0`。
+
+★ **修法**：★ 新增 **`tallyOf(meetingId, mo)`**：★ **先问箱子** —— `boxBinding.resolve()`（★ `boxFor({meeting, motion})` ⇒ `boxId` 或 `{boxId,…}`）★ ⇒ `ballot.status({boxId}).byChoice` ⇒ `for = byChoice['1']`、★ `against = byChoice['0']`；★ 🚨 **没有箱子／箱子没票 ⇒ 回落 `mo.votes`**（★ 既有行为不变）。
+★★ **调用点**：★ `vote()` 的 `tally`、★ `summary()` 每项动议的 `tally` —— **同一个助手，★ 不会再分叉**。
+★★★ **一个真相源**：★ **箱子持有票，★ 这个 tally 是它的视图**；★ **不把箱子计数写回 `mo.votes`**（★ 那会造出两份会漂移的计数）。
+
+★ **防御到位**：★ **无 `ballot`／无 `boxFor`／无 `status`／无 `byChoice`／箱子 0 票** ⇒ **逐级回落**，★ **不抛、★ 不吞**（★ `audit-no-silent-reads` **6/0**）。
+
+★ **GATES**：★ **T1 = 401/401** ✓ ★ meetings **193/0**、★ meeting **50/0**、★ meeting-domain **10/0**、★ ballot **44/0**、★ v5r-tools **332/0** ✓
+
+★★ **注意仍未验的**：★ 这是**代码级**修复，★ **真机里"投票后 `summary().for > 0`"要等下一次完整 SLV**（★ 那正是目标 5 的意义）。
