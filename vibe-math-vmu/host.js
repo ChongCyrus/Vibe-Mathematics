@@ -1137,6 +1137,17 @@ export function toHostSpec(spec) {
  */
 export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared = null, defineTool = null, log = () => {}, instance = null, scripts = [], packLoader = null, config = {}, faces = null, mergeReport = null, packReport = null, promptSection = null, ...faceFlags } = {}) {
   const disposers = []
+  // ★ LISTENER DISPOSERS ARE COUNTED SEPARATELY FROM TOOL DISPOSERS, and the separation is a defect fix rather than
+  // tidiness: `onDisposed` was computed over `disposers`, which ALSO collects every tool's `dispose`, so a host whose
+  // `ctx.on` returned no handle still reported `onDisposed: 1` and `onDisposeMode: 'disposed-here'` — the
+  // `host-managed` branch (whose whole purpose is to say "the host owns the unwind") was unreachable whenever any
+  // tool had registered. The receipt must describe the LISTENERS, so the listeners get their own array.
+  const listenerDisposers = []
+  // \u2605\u2605 ATTACHMENT IS TRACKED SEPARATELY FROM DISPOSERS, and the probe proved why: when the host returns NO handle,
+  // listenerDisposers stays empty forever, so  + [char]0x22 + if (listenerDisposers.length === 0) attach + [char]0x22 +  would re-attach on
+  // EVERY install and DOUBLE every listener (measured: listeners went 2 -> 4). A boolean answers the real question
+  // ( + [char]0x22 + re they attached? + [char]0x22 + ) instead of inferring it from what could be removed.
+  let listenersAttached = false
   const registered = []
   const toolDescriptions = {}
   // ★ PHASE 7: name -> disposer. `registered` alone can only be unwound as a batch in uninstall(), which left no way
@@ -1365,6 +1376,11 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     }
     if (typeof presentation.disposer === 'function') disposers.push(presentation.disposer)
     installed = true
+    // ★ AND THE PROMPT LISTENERS COME BACK. They are attached at construction and DISPOSED by `uninstall()`, so an
+    // install → uninstall → install cycle used to restore every tool and none of the hooks: the effective-tools block
+    // and the mailbox notice would be silently missing for the rest of the process while the receipt said installed.
+    // Re-attaching only when nothing is attached keeps this idempotent (no duplicate listeners on a second install).
+    if (!listenersAttached) attachPromptListeners()
     publishToolFaceCatalogue()
     // ★ The receipt's presentation object is the SAME object the hook mutates (presentAs / unapplied after an agent
     // request). Returning a frozen copy here made "was ptc applied?" unobservable through the install receipt.
@@ -1631,28 +1647,37 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
   //     Registering on ctx.root (when present) makes the listener untagged and therefore admitted globally.
   //   · agent/created gives the per-agent ctx itself; registering the same listener there is the scoped fallback (and the
   //     event's own `this` scope is the agent, so dispatch can also route it this way).
-  try {
-    const rootCtx = ctx && ctx.root && typeof ctx.root.on === 'function' ? ctx.root : ctx
-    // ★ { global: true } is REQUIRED: this event is dispatched through a scope carrier (dsh-scope routes it by
-    // context.scope = the agent). A NORMAL listener is filtered by its own context tag; the DSH invariant installs the
-    // same event with { global: true } for exactly this reason. Without it the listener is silently never called.
-    // ★ EVERY LISTENER NEEDS A DISPOSABLE HANDLE. `uninstall()` unwinds `disposers`, and these three registrations
-    // were not going into it: the root listener, the agent/created watcher, and - worst of all - the per-agent
-    // listeners that watcher installs, which are created once PER AGENT and would accumulate on every re-assembly
-    // with no way to take them back. `keepOn` captures whatever the host returns and registers it, tolerating a
-    // host that returns nothing (then there is simply nothing to dispose, which is not a silent success because
-    // the uninstall receipt keeps reporting the registrations it did own).
-    const keepOn = (d) => { if (typeof d === 'function') { try { disposers.push(d) } catch { /* non-fatal */ } return d } return d }
-    if (rootCtx && typeof rootCtx.on === 'function') { keepOn(rootCtx.on('system-prompt/assemble', pullMemberToolFace, { global: true })); if (kernel.setToolFacePullRegistered) kernel.setToolFacePullRegistered(true) }
-    if (ctx && typeof ctx.on === 'function') {
-      keepOn(ctx.on('agent/created', (payload) => {
-        const agent = payload && payload.agent
-        const agentCtx = agent && agent.ctx
-        if (!agentCtx || typeof agentCtx.on !== 'function') return
-        try { keepOn(agentCtx.on('system-prompt/assemble', pullMemberToolFace)) } catch { /* root registration still applies */ }
-      }))
-    }
-  } catch (e) { log('vmu: system-prompt/assemble hook was refused: ' + String((e && e.message) || e)) }
+  // ★★ AND THE ATTACHMENT IS A FUNCTION, NOT A ONE-SHOT BLOCK — the second defect this coverage found. This block used
+  // to run ONCE when the adapter was constructed, while `uninstall()` disposed those very handles. So an
+  // install → uninstall → install cycle reinstalled every TOOL and NONE of the listeners: the effective-tools block and
+  // the mailbox notice would be silently gone for the rest of the process, with `installed: true` and a clean receipt.
+  // That is the "set a value, nothing happened" family at the host level, and no live run could have caught it because
+  // none of them uninstalled. `install()` now re-attaches when there is nothing attached.
+  const attachPromptListeners = () => {
+    if (listenersAttached) return
+    listenersAttached = true
+    try {
+      const rootCtx = ctx && ctx.root && typeof ctx.root.on === 'function' ? ctx.root : ctx
+      // ★ { global: true } is REQUIRED: this event is dispatched through a scope carrier (dsh-scope routes it by
+      // context.scope = the agent). A NORMAL listener is filtered by its own context tag; the DSH invariant installs the
+      // same event with { global: true } for exactly this reason. Without it the listener is silently never called.
+      // ★ EVERY LISTENER NEEDS A DISPOSABLE HANDLE, and into `listenerDisposers` specifically (see its declaration):
+      // the root listener, the agent/created watcher, and the per-agent listeners that watcher installs, which are
+      // created once PER AGENT and would accumulate on every re-assembly with no way to take them back. `keepOn`
+      // tolerates a host that returns nothing (then there is simply nothing to dispose — reported as `host-managed`).
+      const keepOn = (d) => { if (typeof d === 'function') { try { listenerDisposers.push(d) } catch { /* non-fatal */ } return d } return d }
+      if (rootCtx && typeof rootCtx.on === 'function') { keepOn(rootCtx.on('system-prompt/assemble', pullMemberToolFace, { global: true })); if (kernel.setToolFacePullRegistered) kernel.setToolFacePullRegistered(true) }
+      if (ctx && typeof ctx.on === 'function') {
+        keepOn(ctx.on('agent/created', (payload) => {
+          const agent = payload && payload.agent
+          const agentCtx = agent && agent.ctx
+          if (!agentCtx || typeof agentCtx.on !== 'function') return
+          try { keepOn(agentCtx.on('system-prompt/assemble', pullMemberToolFace)) } catch { /* root registration still applies */ }
+        }))
+      }
+    } catch (e) { log('vmu: system-prompt/assemble hook was refused: ' + String((e && e.message) || e)) }
+  }
+  attachPromptListeners()
   if (kernel && kernel.turn && typeof kernel.turn.setVisibleToolsProvider === 'function') {
     kernel.turn.setVisibleToolsProvider((member) => {
       const r = resolveMemberAgent(member)
@@ -1719,10 +1744,19 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         // with `ctx.on` unwind themselves. Those are not `ctx.effect` registrations, so this branch used to return
         // early and leave every `on` disposer uncalled: the handle was collected and never used, which is exactly the
         // "set a value, nothing happened" failure this phase keeps finding. They are now invoked here, on BOTH paths.
+        // ★ THE RECEIPT DESCRIBES THE LISTENERS, so it counts `listenerDisposers` — not `disposers`. Counting the latter
+        // meant every tool's own `dispose` was reported as a disposed LISTENER, so a host whose `ctx.on` returned no
+        // handle still read `onDisposed: 1, onDisposeMode: 'disposed-here'`; the `host-managed` branch, whose entire
+        // purpose is to say "the host owns this", was unreachable whenever any tool had registered. Both arrays are
+        // unwound; only the listeners are COUNTED.
         const onFailures = []
         let onDisposed = 0
-        for (const d of disposers.splice(0)) {
+        let toolsDisposed = 0
+        for (const d of listenerDisposers.splice(0)) {
           try { d(); onDisposed += 1 } catch (e) { onFailures.push(String((e && e.message) || e)) }
+        }
+        for (const d of disposers.splice(0)) {
+          try { d(); toolsDisposed += 1 } catch (e) { onFailures.push(String((e && e.message) || e)) }
         }
         registered.length = 0
         disposerFor.clear()
@@ -1731,11 +1765,12 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
         evaluations = 0
         for (const k of Object.keys(reasonFor)) delete reasonFor[k]
         installed = false
+        listenersAttached = false
         // ★ AND IT IS NAMED WHEN THERE WAS NOTHING TO DISPOSE. A host whose `on()` returns no handle leaves us with
         // no way to detach, and that fact must be visible in the receipt rather than being an empty array nobody
         // interprets: `onDisposed: 0` with `onDisposeMode: 'host-managed'` says the host is responsible.
         return { ok: exitFlush.ok !== false, ownedByHost: true, exitFlush,
-          onDisposed, onDisposeMode: onDisposed > 0 ? 'disposed-here' : 'host-managed',
+          onDisposed, toolsDisposed, onDisposeMode: onDisposed > 0 ? 'disposed-here' : 'host-managed',
           onDisposeFailures: onFailures.length ? onFailures : undefined,
           note: 'the host unwinds the TOOL registrations through ctx.effect; ctx.on listeners are disposed here' }
       }
@@ -1746,6 +1781,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       evaluations = 0
       for (const k of Object.keys(reasonFor)) delete reasonFor[k]
       installed = false
+      listenersAttached = false
       return { ok: failures2.length === 0 && exitFlush.ok !== false, failures: failures2, exitFlush }
     },
 

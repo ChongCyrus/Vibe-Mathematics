@@ -937,6 +937,67 @@ if (SELF_PROBE) {
   }
 }
 
+// ── ctx.on DISPOSERS ARE ACTUALLY CALLED, ON BOTH UNINSTALL PATHS ─────────────────────────────────────────────
+// ★ Measured before the fix: `ctx.on` returned a disposable, the adapter collected it, and the `ownedByHost` branch
+// returned EARLY without calling any of them — the handle was collected and never used, the exact "set a value,
+// nothing happened" shape. This block is the coverage that was missing entirely (no test mentioned onDisposed).
+{
+  // A host whose `on()` hands back a disposable and records both the registration and the disposal.
+  const makeCtx = ({ returnsHandle = true, withEffect = true } = {}) => {
+    const st = { specs: [], effects: [], listeners: [], disposedListeners: 0 }
+    const tools = {
+      register: async (spec) => { st.specs.push(spec); return () => {} },
+      schemas: () => [],
+    }
+    const ctx = {
+      tools,
+      on(name, fn) {
+        st.listeners.push(name)
+        if (!returnsHandle) return undefined   // a host that promises no way to detach
+        return () => { st.disposedListeners++ }
+      },
+    }
+    if (withEffect) ctx.effect = (fn, label) => { st.effects.push(label); return fn() }
+    return { st, ctx }
+  }
+  // 正：host 给了句柄 ⇒ 卸载时【真的】调用它们，并在回执里报数（不是空数组让人自己猜）
+  {
+    const f = makeCtx()
+    const k = km.createKernel({ clock })
+    const adapter = hm.createHostAdapter({ ctx: f.ctx, kernel: k, settings: {} })
+    await adapter.install()
+    ok(f.st.listeners.length > 0, '★ 装载时通过 ctx.on 挂上了监听（前提：至少一条）', f.st.listeners)
+    const before = f.st.disposedListeners
+    const res = await adapter.uninstall()
+    ok(f.st.disposedListeners > before,
+      '★★ 正：卸载【真的】调用了 ctx.on 的 disposer（旧行为：句柄收下、从不调用）',
+      { before, after: f.st.disposedListeners })
+    ok(res && res.onDisposed > 0 && res.onDisposeMode === 'disposed-here',
+      '★★ 正：回执报 onDisposed>0 且 onDisposeMode="disposed-here"（可观测，不是静默）', { onDisposed: res && res.onDisposed, mode: res && res.onDisposeMode })
+  }
+  // 反：host 的 on() 不给句柄 ⇒ 如实报 host-managed，而不是假装自己卸掉了
+  {
+    const f = makeCtx({ returnsHandle: false })
+    const k = km.createKernel({ clock })
+    const adapter = hm.createHostAdapter({ ctx: f.ctx, kernel: k, settings: {} })
+    await adapter.install()
+    const res = await adapter.uninstall()
+    ok(res && res.onDisposed === 0 && res.onDisposeMode === 'host-managed',
+      '★★ 反：on() 不给句柄 ⇒ onDisposed=0 且 onDisposeMode="host-managed"（说清责任在宿主，不假装）',
+      { onDisposed: res && res.onDisposed, mode: res && res.onDisposeMode })
+  }
+  // 正：第二次 install 仍能挂上（卸载没有把登记面弄坏）
+  {
+    const f = makeCtx()
+    const k = km.createKernel({ clock })
+    const adapter = hm.createHostAdapter({ ctx: f.ctx, kernel: k, settings: {} })
+    await adapter.install()
+    await adapter.uninstall()
+    const n1 = f.st.listeners.length
+    await adapter.install()
+    ok(f.st.listeners.length > n1, '★★ 正：卸载后可以重新装载，监听重新挂上（卸载没有破坏登记面）', { before: n1, after: f.st.listeners.length })
+  }
+}
 console.log('=== VMU HOST: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
