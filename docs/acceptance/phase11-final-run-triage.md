@@ -891,3 +891,34 @@ poll 5 (25s): running=true total=154701 out=5054
 **★ 处置**：★ **正式 SLV 用 `deepseek-official` / `deepseek-flash`**（★ 这是当前 dsh 上唯一可用的组合），★ **并在报告里明确"偏离了指定的 `dsh-opencode-go`，★ 因为它在当前运行时不出 token"**。
 
 **★★ 另一个必须记的**：★ 我手工那次"成功"，★ **当时以为是 drive 的 A/B，★ 其实同时把 provider 换成了官方** —— ★ **两个变量一起变了，★ 我差点把它当成"drive 可用"的证据**。★ 这一条**又踩了"一次只变一个变量"的纪律**。
+### §6.65 ★★★★★ **第一次在【当前 dsh】上跑通完整 SLV 流程**
+
+**配置（★ 全部按用户裁定）**：
+- ★ **运行时**：★ 当前 `dsh 0.2.1-rc.2`（★ 经 `dsh-current.mjs` adapter 启动）★ 旧 scoop dsh **已永久移出**。
+- ★ **代码**：★ `dsh-vibe-math-HEAD.tgz`（★ 20:57 从 HEAD 重打）。
+- ★ **provider**：★ **`deepseek-official` / `deepseek-flash`**（★ clone 继承 `web` 的模型行，★ **不再改写**）。
+- ★ **clone**：★ 129 MB（★ 已修回原尺寸）★ **跑完自动删除**。
+
+**结果（★ `done` 行原文）**：
+```
+{"step":"done","preset":"vibe-math-vmu","durationSec":69,
+ "tokens":{"uncachedInputTokens":80259,"outputTokens":11598,"cacheReadTokens":518656},
+ "tokenTotal":642428,"tokenCapHit":false,
+ "transcriptEvents":87,"toolCalls":13,"followStreamWorked":true}
+VERDICT: PASS
+cleanup: clone_gone=True  C_free_GB=14.04
+```
+★★★ **⇒ 真实 token、★ 真实工具调用、★ follow-stream 正常、★ 会话跑了 87 个事件** —— **整条链路终于在【当前 dsh ＋ 最新代码】上跑通了。**
+
+**★★ 而判据仍未全中**：
+| ★ 判据 | ★ 结果 |
+|---|---|
+| ★ 真实 token | ★ **642,428** ✓ |
+| ★ `NO_FENCE` / `UNKNOWN_FIELD` / `FIELD_NOT_APPLICABLE` / `BAD_JSON` | ★ **全 0** ✓ |
+| ★ `followStreamWorked` | ★ **true** ✓ |
+| ★★ **`cast:true`** | ★ **未达成** —— ★ 只跑了 **69 秒**、★ 13 次工具调用、★ **反复调 `vibe_vmu_status` 7 次** ⇒ ★ **没走完 v5r 全流程** |
+| ★★ **`slv-inspect` 0 RED** | ★ **未跑** |
+| ★★ **#29 票→动议** | ★ **未验**（★ 本轮无会议投票） |
+
+★★ **⇒ 基础设施这一关【过了】；★ 剩下的是【任务深度】**：★ `deepseek-flash` 在 69 秒内只反复查状态，★ **没有真正推进机构流程**。
+★★★ **下一轮**：★ **① 先跑 `slv-inspect` 看 RED**；★ ② **换一个更明确的收敛任务**（★ 或加大 timeout 让它真跑）；★ ③ **专门构造一次会议投票以验 #29**。
