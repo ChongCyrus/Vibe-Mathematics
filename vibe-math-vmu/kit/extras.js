@@ -73,7 +73,14 @@ async function toolTaskList(args = {}, { kernel } = {}) {
   return { ok: true, tool: 'vibe_v5_task_list', count: out.length, total: all.length, tasks: out }
 }
 
-const TASK_UPDATE_FACE_OPS = Object.freeze(['claim', 'reassign', 'complete', 'reopen', 'set_dependencies'])
+// ★★★ THE LEDGER'S TWO REAL VERBS NOW HAVE FACE NAMES. Measured on a full live run: a member wanted to ASSIGN and to
+// TRANSITION a task, and this face accepted neither word. Neither was a missing capability - `claim`/`reassign` already call
+// `tasks.assign`, and `tasks.transition` exists in the kernel - so the gap was that the face's VOCABULARY was narrower than the
+// ledger's, and a caller using the ledger's words was refused. That is the opposite of the named-refusal red line: a refusal is
+// only useful when the caller's intent has NO operation behind it.
+// ★ `assign` is the ledger's own name for what `claim`/`reassign` do; `transition` is the generic move the kernel publishes
+// (`to` plus a reason) and which had NO face at all.
+const TASK_UPDATE_FACE_OPS = Object.freeze(['claim', 'reassign', 'assign', 'transition', 'complete', 'reopen', 'set_dependencies'])
 
 async function toolTaskUpdate(args = {}, { kernel } = {}) {
   const tasks = tasksOf(kernel)
@@ -95,10 +102,22 @@ async function toolTaskUpdate(args = {}, { kernel } = {}) {
     const done = await tasks.assign(id, str(args.member), { expectedRevision: rev })
     return { ok: true, tool: 'vibe_v5_task_update', action, task: done }
   }
-  if (action === 'reassign') {
-    if (!has(args.owner)) throw refuse('VMU_INVALID_ARGUMENT', 'reassign needs the new owner', 'pass owner:"<roster id>"')
-    const done = await tasks.assign(id, str(args.owner), { expectedRevision: rev })
-    return { ok: true, tool: 'vibe_v5_task_update', action, task: done }
+  if (action === 'reassign' || action === 'assign') {
+    const owner = has(args.owner) ? str(args.owner) : (has(args.member) ? str(args.member) : null)
+    if (!owner) {
+      throw refuse('VMU_INVALID_ARGUMENT', action + ' needs the new owner', 'pass owner:"<roster id>" (member: is accepted too)')
+    }
+    const done = await tasks.assign(id, owner, { expectedRevision: rev })
+    return { ok: true, tool: 'vibe_v5_task_update', action, owner, task: done }
+  }
+  // ★ TRANSITION: the generic move the kernel publishes, which this face simply did not expose. The `to` state is the caller's
+  // choice and the kernel's transition table is what judges it - so an illegal move is refused BY THE KERNEL, with its own code,
+  // not by a list this face invents.
+  if (action === 'transition') {
+    if (!has(args.to)) throw refuse('VMU_INVALID_ARGUMENT', 'transition needs the target state', 'pass to:"open|assigned|doing|done|cancelled" (the transition table in kernel/tasks.js judges it)')
+    const reason = has(args.why) ? str(args.why) : (has(args.reason) ? str(args.reason) : 'vibe_v5_task_update transition')
+    const done = await tasks.transition(id, str(args.to), { reason, expectedRevision: rev })
+    return { ok: true, tool: 'vibe_v5_task_update', action, to: str(args.to), task: done }
   }
   if (action === 'complete' || action === 'reopen') {
     const to = action === 'complete' ? 'done' : 'open'

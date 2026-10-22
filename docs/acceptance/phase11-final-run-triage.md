@@ -285,3 +285,18 @@ return kernel.toolsView({ member, agent })
 ★ **GATES**：★ **T1 = 401/401** ✓ ★ v5r-tools **332/0** ✓
 
 ### §6.26 已修计数：★ **14 条**；★ **未修 3 条**（#1 #15 #20半 #29 #30 #31 —— ★ 归入 R1／R3／R7／R8／R6）
+### §6.27 已修 #1（★ `v5_task_update` 的词汇比台账窄）
+
+★ **根因**：★ `kit/extras.js` 的 `TASK_UPDATE_FACE_OPS` 只有 `claim|reassign|complete|reopen|set_dependencies`。
+★★ **而这两个"缺失"性质【不同】**：
+- ★ **`assign` 不是缺能力** —— `claim`/`reassign` **本来就走 `tasks.assign`**；★ 缺的是**名字**：★ **调用方用台账自己的词，★ 面就拒**。
+- ★★ **`transition` 是真缺口** —— `tasks.transition(id, to, {reason, expectedRevision})` **内核有、★ 面一个都没有**。
+
+★★★ **修法**：★ **两个词都加进 action 表**；★ `assign` 与 `reassign` 同体（★ `owner` 或 `member` 皆可）★ 并在回执里回报 `owner`；★ `transition` **把 `to`/`why` 交给 `tasks.transition`** —— ★ **合法与否由【内核的状态转移表】判**，★ **面不发明自己的清单**。
+★ **描述同步**：★ `claim | reassign | assign | transition | complete | reopen | set_dependencies`。
+
+★★ **这一条值得记的教训**：★ **"拒绝具名"只在【调用方的意图确实没有操作】时才是优点**。★ 当**操作存在、★ 只是词汇不同**时，★ **具名拒变成了语言障碍** —— ★ 与 #19（★ 机制存在、★ 面不传参）是**同一族**：★ **能力在、★ 接口没接上**。
+
+★ **GATES**：★ **T1 = 401/401** ✓ ★ tasks **42/0**、★ v5r-tools **332/0** ✓
+
+### §6.28 已修计数：★ **15 条**；★ **未修 2 条**（#15 #20半 #29 #30 #31 —— ★ 归入 R3／R7／R8／R6）
