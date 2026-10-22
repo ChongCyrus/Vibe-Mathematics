@@ -1541,3 +1541,20 @@ ok,id,meeting,kind,state,reason,chair,secretary,motions,votes,closedAt
 **★★ 并写明它【不覆盖】什么**：★ `'box-empty'` 与 `'box-status-unreadable'` 两个分支**仍未测** —— ★ 如实记为未覆盖，★ 不写成"已覆盖"。
 
 **★ 这一轮的过程本身是一课**：★ **断言先红 ⇒ 打探针看真实形状 ⇒ 发现是我读错了路径 ⇒ 改断言 ⇒ 变绿**，★ 而**源码修复从头到尾是对的**。★ 如果我没有断言、只写了"已加 source 字段"，★ **我永远不会知道这个字段落在哪一层。**
+﻿
+### §6.96 — **#15 结案**：`vibe_v5_meeting` 没有 `summary`/`close`，★ 但那是**架构正确的**，缺的是**发现性**
+
+**代理报的**：★ *"`vibe_v5_meeting` has no `summary`/`close`"* —— ★ **属实。**
+
+**★ 源码事实**：
+- ★ `packs/v5r/tools.js:491 toolMeeting` —— ★ **这个面【只负责开会】**：★ 参数是 `agenda/kind/target/formal_agenda/secretary/member`，★ **没有 `action`**；
+- ★ 而**内核面** `vibe_vmu_meeting`（`tools/meeting.js`）★ **有 `list|open|speak|silent|hand|refuse|invite|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|ballot|…`** —— ★ **同一个会议对象，两个面都能寻址**（★ `tools/meeting.js:173-183` 的 `registry: 'primitive' | 'service'`）。
+
+**★★★ 所以这不是"缺能力"，而是【发现性】** —— ★ 按架构，★ `vibe_v5_*` 是**包自己的最小词汇**（★ 从原始实现转写），★ `vibe_vmu_*` 是**内核完整面**；★ **两者并存是设计**。★ 但**没有任何地方告诉代理"要 summary 请换一个面"** ⇒ ★ 代理在 `vibe_v5_meeting` 上试 `summary`/`close`，★ **拿到空、★ 然后把它报成"缺能力"**。
+
+**★ 已做（§目标 3：对但不够好）** —— 两处**只增不改**的指引：
+1. ★ `vibe_v5_meeting` 的 **`description`** 加上：★ **「★ THIS FACE ONLY CONVENES - status/summary/close live on vibe_vmu_meeting.」**
+2. ★ 其回执的 **`note`** 明确列出：★ **`status/summary/snapshot/close/extend/lapse/ballot/speak/silent/hand` 都去 `vibe_vmu_meeting { action, id }`**，★ 并**写清这是实测教训**（★ "one face over and nothing said so"）。
+
+**★ 实测**：★ `=== VMU V5R TOOLS: 334 passed, 0 failed ===` ✓
+**★★ 不做**：★ **不给 `vibe_v5_meeting` 加 `action`** —— ★ 那会把两个面的词汇混成一个，★ **违反"包词汇从原始实现转写"这条设计**。

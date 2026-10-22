@@ -513,7 +513,7 @@ function toolMeeting(args = {}, { kernel } = {}) {
   const opened = kernel.meetings.open({ type: 'ordinary', chair: member, roster, materials: str(args.agenda), secretary })
   return { ok: true, tool: 'vibe_v5_meeting', meeting: opened && opened.meeting ? opened.meeting : opened,
     kind, agenda: str(args.agenda), formalAgenda: args.formal_agenda === true, secretary,
-    note: 'the original could also PROPOSE a meeting from a non-chair seat and let the chair convene it; this face has no propose path (named gap: procedure/propose)' }
+    note: 'the original could also PROPOSE a meeting from a non-chair seat and let the chair convene it; this face has no propose path (named gap: procedure/propose). ★★ THIS FACE ONLY CONVENES: for status/summary/snapshot/close/extend/lapse/ballot/speak/silent/hand use vibe_vmu_meeting { action, id } - the kernel face, which reaches the same meeting object. Measured on a full live run: an agent tried summary/close HERE, got nothing, and reported it as a missing capability; the capability existed one face over and nothing said so.' }
 }
 
 const MOTION_KINDS = Object.freeze(['topic', 'procedural', 'resolution'])
@@ -1094,7 +1094,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_meeting',
-    description: 'Convene a meeting (agenda REQUIRED; kind is sync/division/verify-request/solve-vote). The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name.',
+    description: 'Convene a meeting (agenda REQUIRED; kind is sync/division/verify-request/solve-vote). ★ THIS FACE ONLY CONVENES - status/summary/close live on vibe_vmu_meeting. The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name.',
     parameters: { agenda: { type: 'string', required: true }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true } },
     handler: toolMeeting,
   },
