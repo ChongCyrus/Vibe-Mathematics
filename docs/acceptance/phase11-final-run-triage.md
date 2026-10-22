@@ -1308,3 +1308,25 @@ const seam = async ({ turn, text }) => {
 **★★★ 这是同一错误的第二次**（第一次在 §6.78，已写入 lessons 的 L27）。★ **说明 L27 写得不够可执行** —— 它讲了原理，**没给一个下笔前必须做的动作**。
 **★ 已强化 L27**：加一条**下笔前的一句自问** —— 「我要问的是『有没有代码读它』，还是『用户需不需要它』？」
 ★ 前者 ⇒ 写**读点**；★ 后者 ⇒ 写**消费者**。**写完必须回头念一遍那句话通不通**。
+﻿
+### §6.85 T1 全量结果：**401 中 399 通过** —— ★ 两个失败**都归因于我自己**
+
+```
+TOTAL 401  PASS 399  FAIL 2  (suites 337 · probes 64)   wall 588.9s · concurrency 2
+FAILED: audit-declaration-criterion.test.mjs [suite] (exit 1)
+          FAIL regen-all --check really runs green (the aggregate chain now has an execution point)
+FAILED: vmu-assistant-host-slice.test.mjs [suite] (exit 1)
+          FAIL `dsh` is on PATH and reports a version — {"status":1,"out":""}
+```
+
+**★ 失败 ①：`audit-declaration-criterion` —— 并发抖动，不是真失败**
+- ★ **单跑 `node tests/audit-declaration-criterion.test.mjs` ⇒ `=== DECLARATION CRITERION: 89 passed, 0 failed ===`、★ exit=0** ✓
+- ★ **`node scripts/regen-all.mjs --check` 单跑 ⇒ `=== vmu regen-all: 16/16 in sync ===`** ✓ ⇒ **派生面没有漂移**
+- ★★★ **⇒ 它是被 T1 的并发压垮的** —— ★ **而压垮它的正是我自己**：★ **我把 T1 放后台，★ 同时在前台跑 `regen-all --check` 和读源码** ⇒ ★ **正好撞上 AGENTS.md 那句「全量 T1 必须在【没有其它 lane 活跃】时跑」**。★ **上一阶段两次 395/396 是同一个原因，★ 这次我亲手又造了一次。**
+
+**★ 失败 ②：`vmu-assistant-host-slice` —— 真的，★ 而且是我造成的**
+- ★ 失败原文：★ `` `dsh` is on PATH and reports a version `` 返回 `{"status":1,"out":""}`
+- ★ **根因**：★ **`dsh` 仍在 PATH 上**（★ `Get-Command dsh` ⇒ `...\scoop\...\bin\dsh.ps1`），★ **但它指向的 `@deepseek-ai/dsh` 模块已被我永久移出**（★ 为满足「正式 SLV 只用当前 dsh」）⇒ ★ **一个指向不存在模块的 shim。**
+- ★ **处置待定**：★ 要么 ① **让 `dsh` 指向当前 dsh**（★ 用 `dsh-current.mjs` 那套 adapter 做成同签名的 shim）；★ 要么 ② **把这个用例改成"没有 dsh 时 SKIP 并具名说明"** —— ★ **按本仓「不得把没测写成没问题」的口径，★ ② 更诚实**（★ 它本来就是 route FACT，★ 而不是核心断言）。
+
+**★ 结论**：★ **399/401，★ 0 个是代码缺陷** —— ★ 一个是我的并发，★ 一个是我的环境删除留下的悬空 shim。
