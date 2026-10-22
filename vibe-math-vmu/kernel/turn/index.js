@@ -1445,7 +1445,12 @@ export function createTurnOrchestrator({
     // travels back to the caller and the member's reply arrives through this verb. A seam without `supply` refuses by
     // name rather than dropping the reply, because silently discarding an answer is the one outcome this phase has
     // ruled out everywhere else.
-    supplyMemberReply: (reply) => {
+    // ★★★ THE CALLER MUST BE ABLE TO SAY WHOSE REPLY THIS IS. Measured on a full live run: the caller played member m1, returned
+      // m1's reply, and the very next receipt read {"round":2,"member":"m2","turn":"t-2","executed":0} - the vote was recorded against
+      // the NEXT member, and the real voter was then reported missing. The attribution below (`delivered.forMember`) was the right
+      // mechanism, but nothing could ever fill it because this seam accepted only the text. An optional second argument lets the
+      // caller name the member the pending prompt belonged to; omitting it keeps the old behaviour byte for byte.
+      supplyMemberReply: (reply, forMember = null) => {
       if (!deliver || typeof deliver.supply !== 'function') {
         fail('VMU_ENGINE_UNAVAILABLE', 'this delivery seam does not accept a caller-supplied reply',
           'supplyMemberReply applies only to the deliverByReturning seam; a real delivery seam answers with the reply itself')

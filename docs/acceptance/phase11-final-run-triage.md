@@ -1094,3 +1094,28 @@ OK: prompt/wire names consistent; all calls visible; counts match
 **★★★ 仍未做的一件事**：★ **#29 的"票 → 动议"专验** —— ★ 本轮**没有出现 `motion`**（★ 代理没发起动议），★ 所以 `motion.votes` 仍未在真机上被验到。
 
 ★★★★ **⇒ 目标 5 到此【交账】**：★ **完整流程真机跑到结题、0 RED、四码全 0、工具面一致、占位段正常。**
+### §6.73 新缺陷 **A** 的源码复核：★ **归属本来是对的，★ 是【回执歧义】**
+
+**代理报的**：★ *"returning m1's reply for t-1 后，回执是 `{"round":2,"member":"m2","turn":"t-2","executed":0}` ⇒ m2 的提示词从未交回"*。
+
+**★ 源码事实（`kernel/turn/index.js:535-550`，★ `deliverByReturning`）**：
+```js
+let answeredFor = null
+const seam = async ({ turn, text }) => {
+  if (supplied !== null) {
+    const reply = supplied
+    supplied = null
+    answeredFor = pendingPrompt && pendingPrompt.member ? String(pendingPrompt.member) : null   // ★ 谁的提示词 ⇒ 谁的回复
+    pendingPrompt = null
+    return { reply, forMember: answeredFor, … deliveryPath: 'caller' }                         // ★ 归属正确
+  }
+  pendingPrompt = { member: turn.member, … }                                                    // ★ 新回合的成员
+  return { reply: null, awaiting: true, memberPrompt: pendingPrompt, … }
+}
+```
+★★★ **⇒ `forMember` 一直是【提示词所属成员】（★ m1），★ 而 `apply(parsed.reply, null, attributedTo || turn.member)`（`:1178`）用的正是它** ⇒ ★ **回复确实被算给了 m1** ✓
+★★★★ **⇒ 所以 A 不是【数据被记错人】，★ 而是【回执里的 `member` 字段有歧义】**：★ 它报的是**正在驱动的新回合的成员**（★ m2），★ 而读者会把它当成"这条回复的归属"。
+
+**★ 已做（★ 作为**安全网**，★ 不是修数据错误）**：★ `supplyMemberReply(reply, forMember)` 现在接受可选的第二个参数、★ `vibe_vmu_turn` 新增 **`reply_for`** 参数并转交 ⇒ ★ **调用者可以显式指明"这是谁的回复"**；★ **不传则完全沿用旧行为**。
+**★★ 但真正的改进应当是【改回执字段名／加说明】**：★ 例如把 `member` 改为 `drivenMember`，★ 或加 `repliedFor`。★ **这属于目标 3（对但不够好）**。
+**★★★ 结论**：★ **A 是【诊断面歧义】，★ 不是【投票记错人】。★ 这一点必须写清，★ 否则会误导下一轮去"修"一个没坏的归属链。**

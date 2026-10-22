@@ -73,7 +73,9 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       // this face is where the reply arrives. Supplying one is optional, so a deployment with a real delivery seam is
       // unaffected.
       if (typeof args.reply === 'string' && kernel.turn && typeof kernel.turn.supplyMemberReply === 'function') {
-        kernel.turn.supplyMemberReply(args.reply)
+        // ★ PASS THE MEMBER THE PROMPT BELONGED TO (see kernel/turn/index.js supplyMemberReply). Without it the reply is recorded
+        // against whatever member the wakeup policy picked next, which is how a truthful vote landed on the wrong person.
+        kernel.turn.supplyMemberReply(args.reply, typeof args.reply_for === 'string' && args.reply_for ? args.reply_for : null)
       }
       // ★ PHASE 8 / round 37: THREE SHAPES of tools:
       //   'none'                 -> empty face (deny all)
@@ -173,7 +175,8 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）'),
         phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
         why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
-        reply: param('string', '★ 由调用者扮演成员回合时：★ 上一次 step／drive 交回的成员提示词，★ 其【成员自己的回复】放在这里送回（★ 仅当交付接缝是 deliverByReturning 时需要）'),
+        reply_for: param('string', '★ 这个回复属于哪个成员（它的提示词是上一次 step 交回的那个）；不传 = 沿用旧行为'),
+      reply: param('string', '★ 由调用者扮演成员回合时：★ 上一次 step／drive 交回的成员提示词，★ 其【成员自己的回复】放在这里送回（★ 仅当交付接缝是 deliverByReturning 时需要）'),
         next_step: param('string', '下一步要做什么'),
         tools: param('string', '★ step 专用：none＝清空；或 JSON 字符串 {"allow":["<工具名>"]}＝只挂这些（校验后生效）；缺省＝按角色收窄'),
       },
