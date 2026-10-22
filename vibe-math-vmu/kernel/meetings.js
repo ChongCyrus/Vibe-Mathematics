@@ -358,17 +358,23 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   // ★ ONE SOURCE OF TRUTH: the box holds the votes and this tally is a VIEW of it. Writing box counts back into `mo.votes` would
   // create two counts that can drift - the shape this repository keeps removing.
   const tallyOf = (meetingId, mo) => {
-    const base = { for: [...mo.votes.values()].filter((v) => v === 1).length, against: [...mo.votes.values()].filter((v) => v === 0).length, abstain: mo.abstain.size }
+    // ★★★ EVERY TALLY MUST NAME ITS SOURCE, INCLUDING WHEN IT FALLS BACK. Measured while auditing the ballot vote-right enforcement (#29):
+    // this function returns the meeting's own `mo.votes` tally whenever the bound box is missing, unusable, OR EMPTY - and it used to return
+    // that with NO `source` at all, while the box path carried `source:'box'`. So a reader could not tell "the box was consulted and had
+    // nothing" from "there is no box". That matters exactly for the enforcement: when the vote-right test REFUSES a ballot, the vote never
+    // reaches the box, the box stays empty, and the tally silently reports the meeting's own count - the enforcement is bypassed with no
+    // trace. Naming the fallback makes that visible instead of silent.
+    const base = { for: [...mo.votes.values()].filter((v) => v === 1).length, against: [...mo.votes.values()].filter((v) => v === 0).length, abstain: mo.abstain.size, source: 'meeting' }
     const boxFor = boxBinding.resolve()
-    if (typeof boxFor !== 'function' || !ballot || typeof ballot.status !== 'function') return base
+    if (typeof boxFor !== 'function' || !ballot || typeof ballot.status !== 'function') return Object.assign(base, { fallback: 'no-box-binding' })
     const ans = boxFor({ meeting: meetingId, motion: mo.id })
     const boxId = ans && typeof ans === 'object' ? ans.boxId : ans
-    if (!boxId) return base
+    if (!boxId) return Object.assign(base, { fallback: 'motion-has-no-box' })
     const st = ballot.status({ boxId })
-    if (!st || st.ok !== true || !st.byChoice) return base
+    if (!st || st.ok !== true || !st.byChoice) return Object.assign(base, { fallback: 'box-status-unreadable' })
     const f = Number(st.byChoice['1'] || 0)
     const a = Number(st.byChoice['0'] || 0)
-    if (f + a === 0) return base
+    if (f + a === 0) return Object.assign(base, { fallback: 'box-empty', boxId: String(boxId) })
     return { for: f, against: a, abstain: Number(st.abstain || 0), source: 'box', boxId: String(boxId) }
   }
 
