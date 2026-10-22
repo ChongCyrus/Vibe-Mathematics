@@ -497,7 +497,12 @@ export function createPromptPipeline({
             'no value was supplied for ' + whole + ', so the section would have rendered an empty slot',
             'supply it in the assembly context (or in settings for a setting: variable); set vmu.prompts.missingVariable=report to record instead of refusing')
         }
-        return ''
+        // ★★★ AN EMPTY SLOT IS A LIE THE READER CANNOT SEE. Measured on a full live run: the agents read `本所「」`, `你的雇主：`,
+        // `m =  名有表决权者` and an empty roster table, and had no way to tell a missing VALUE from a formatting bug - they
+        // reported it as a prompt defect, and they were right to. In `report` mode the miss was already recorded in
+        // `variableMisses`, but the rendered prompt said nothing, so the one reader who needed the fact never saw it.
+        // The slot now renders the fact: what is missing, and that it is a data gap rather than a bug.
+        return '〔未提供：' + key + '〕'
       }
       return escapeTemplate(value)
     })
