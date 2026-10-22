@@ -986,3 +986,28 @@ VERDICT: PASS
 ★★ **⇒ 极简重写必须【逐段对照原脚本】，★ 而不是凭记忆挑几步。**
 
 **★ 下一轮**：★ **在 `slv-min2-run.ps1` 里补回 pack 注入**（★ 从 `slv-r58` 的 `:102-108` 原样搬），★ **重跑** ⇒ ★ **那才是有 v5r 包的完整流程**。
+### §6.69 ★★★★★ 补上 pack 注入后：★ **v5r pack 真的加载了，★ 中间件在跑**
+
+**配置**：★ 当前 dsh ＋ HEAD 包 ＋ `deepseek-official` ＋ ★ **补回 `packs: ['v5r']` 等 config 注入**（★ 原出处 `slv-r58:102-108`）。
+
+**结果**：
+```
+{"durationSec":57,"tokenTotal":596542,"transcriptEvents":102,"toolCalls":14,
+ "title":"用 vmu 工具推动研究所结题"}
+VERDICT: PASS
+workspaceFiles: [..., "VibeMath/vmu/audit/2026-10-22.jsonl", ...]
+```
+
+**★★★ 而 `VibeMath/vmu/` 里出现了真实产物**：
+- ★ `state.json`（★ 817 B，★ `recoveries[0].reason:"kernel-start"` ⇒ ★ **内核真启动了**）
+- ★ `audit/2026-10-22.jsonl`（★ 4.3 KB）⇒ ★ **里面有**：
+  ```
+  {"what":"middleware/decision","id":"v5r.artifact-counter::tools/result",
+   "hook":"tools/result","dryRun":false,"traceId":"t63-tools…"}
+  ```
+  ★★★ **⇒ `v5r.artifact-counter` 中间件真的在每个 `tools/result` 上跑了决策** ✓✓✓
+
+★★★★ **⇒ 这是本阶段【第一次】在真机上看到 v5r 的中间件链工作** —— ★ **而它之所以之前不出现，★ 就是因为我漏了那一段 pack config。**
+
+**★★ 而 `cast` 仍未达成**：★ `state.json` 里 `members: []`、`meetings: []` ⇒ ★ **代理还是没有 `hire`、没有开场会议** ⇒ ★ **模型行为层面仍未驱动机构**。
+★★★ **⇒ 现在的问题已经【完全干净】：★ 环境对（当前 dsh）、★ 代码对（HEAD）、★ pack 加载（中间件在跑）、★ 拒收零畸形 —— ★ 剩下纯粹是【模型要不要去调 `hire`/`vibe_vmu_turn`】。**
