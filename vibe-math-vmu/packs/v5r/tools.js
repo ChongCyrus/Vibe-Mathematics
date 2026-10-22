@@ -227,16 +227,26 @@ async function toolOverview(args = {}, { kernel } = {}) {
  * ★ NO LIVE AGENT / NO PROVIDER ⇒ the kernel's reading refuses BY NAME; this forwarder propagates that refusal (it never
  * returns an empty list and calls it success).
  */
-function toolHelp(args = {}, { kernel } = {}) {
+function toolHelp(args = {}, exec = {}) {
   if (!has(args.member)) {
     throw refuse('VMU_INVALID_ARGUMENT', 'tool_help needs the member id',
       'pass member:"<roster id>" — the answer is per member, because each seat sees a different tool table')
   }
+  // ★★★ THE KERNEL HAS A CALLER-AGENT PATH AND THIS FACE WAS ITS ONLY CONSUMER THAT NEVER USED IT. `kernel/index.js`
+  // documents "CALLER AGENT FIRST: inside a one-shot member turn the memberSession map may not be learned yet, but the tool
+  // already runs on that Agent - its own schemas are the authoritative visible set". The signature defaults `agent = null`,
+  // and this call passed only `{ member }`, so that branch was DEAD: the call always fell through to the provider, which
+  // answered "no live Agent for member … (session=(none learned yet))" even after the member had run two turns (item #19).
+  // ★ The caller Agent is already in `exec` - `tools/member-tools.js` reads `exec.agent` for exactly this purpose - so the
+  // fix is to forward it, and to drop root session ids the same way that sibling does (a root session is not a member seat).
+  const kernel = exec && exec.kernel ? exec.kernel : undefined
   if (!kernel || typeof kernel.toolsView !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no toolsView reader, so the visible tool table cannot be read',
       'assemble the host adapter so members expose their tool table (the pack must not invent one)')
   }
-  const view = kernel.toolsView({ member: str(args.member) })
+  const caller = exec && exec.agent ? exec.agent : null
+  const agent = caller && typeof caller.id === 'string' && !caller.id.startsWith('session-') ? caller : null
+  const view = kernel.toolsView({ member: str(args.member), agent })
   return Object.assign({}, view, { tool: 'vibe_v5_tool_help',
     note: 'thin forwarder: the kernel\'s toolsView reading (the member\'s VISIBLE set from the live provider), not the pack declaration; purpose:null means the host registered no description for that name' })
 }

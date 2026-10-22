@@ -268,3 +268,20 @@
 
 **为什么本轮没改**：★ 要让 `agent` 到达面，★ 需要**跨 `host.js`（注册面）→ 面的处理器 ctx** 的管道改动 ⇒ ★ 而本轮预算不足以**改完并验证**（★ 本阶段已三次因"改了一处、★ 另两处断言随之红"而回退）。
 ★★ **下一轮的做法**：① ★ 先查清**面处理器的第二个参数到底由谁填充**（★ `toolHelp(args, { kernel })` 里的 `kernel` 已经被填上，★ 所以那条管道**存在**，★ 只是**没带 agent**）；② ★ 把 `agent` 加进同一处 ctx；③ ★ 面里把它转给 `toolsView`；④ ★ 断言：★ **一个跑过回合的成员，★ `tool_help` 必须返回 `source:'caller'` 而不是 provider 的拒绝**。
+### §6.25 ★★★ 已修 #19 —— **同族里就有正确写法**
+
+★ **根因**：★ `packs/v5r/tools.js` 的 `toolHelp(args, { kernel })` 调用 `kernel.toolsView({ member })` ★ **从不传 `agent`** —— ★ 而 `kernel/index.js:2497` **专门为这个场景写了 CALLER AGENT FIRST 分支**（★ 注释原文：*"the tool already runs on that Agent — its own schemas are the authoritative visible set"*）⇒ ★ **默认 `agent = null` ⇒ 该分支是死代码** ⇒ ★ 永远落到 provider ⇒ ★ 报 `no live Agent (session=(none learned yet))`，★ **哪怕成员跑了两轮**。
+
+★★★ **而正确写法【就在同一个仓里】**：★ `tools/member-tools.js:29-31` 做的正是这件事 ——
+```js
+const caller = exec && exec.agent ? exec.agent : null
+const agent = caller && typeof caller.id === 'string' && !caller.id.startsWith('session-') ? caller : null
+return kernel.toolsView({ member, agent })
+```
+★ 而 `host.js:1111` 的 `spec.run(args || {}, exec)` **正是把 `exec` 交到处理器的第二参数** ⇒ ★ **`exec.agent` 早就在那里**。
+
+★ **修法**：★ `toolHelp` 改签名为 `(args = {}, exec = {})`，★ **从 `exec.kernel` 取内核**（★ 旧调用传 `{ kernel }` 仍成立 ⇒ **向后兼容**）、★ **从 `exec.agent` 取 caller 并按同族规则排除 root session**、★ **转给 `toolsView`**。
+★★ **实测三种情形**：★ 带 agent ⇒ **`source:'caller'`** ✓；★ root session ⇒ **`agent: null`** ✓；★ 无 agent（旧调用）⇒ **不崩** ✓
+★ **GATES**：★ **T1 = 401/401** ✓ ★ v5r-tools **332/0** ✓
+
+### §6.26 已修计数：★ **14 条**；★ **未修 3 条**（#1 #15 #20半 #29 #30 #31 —— ★ 归入 R1／R3／R7／R8／R6）
