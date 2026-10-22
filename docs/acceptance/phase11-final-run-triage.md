@@ -255,3 +255,16 @@
 ★ **GATES**：★ **T1 = 401/401**（★ 337 套件 ＋ 64 探针）✓ ★ v5r-tools **332/0** ✓
 
 ### §6.23 已修计数：★ **13 条**；★ **未修 4 条**（#1 #15 #19 #20半 #29 #30 #31 —— ★ 归入 R1／R5／R7／R8／R6）
+### §6.24 #19（`tool_help` 两轮后仍说 `no live Agent (session=(none learned yet))`）—— ★★★ **根因定位：一条【内核写了、面从不走】的路径**
+
+**根因（★ 一句话）**：★ `packs/v5r/tools.js:239` 调用
+`kernel.toolsView({ member: str(args.member) })` —— ★ **从不传 `agent`**。
+★★ 而 `kernel/index.js:2497-2518` **写的就是为这种情况准备的路径**，注释原文：
+> ★ *"CALLER AGENT FIRST: inside a one-shot member turn the memberSession map may not be learned yet, but the tool already runs on that Agent — its own schemas are the authoritative visible set."*
+
+★★★ **⇒ 那条 `agent.ctx.tools.schemas(scope)` 分支是【死代码】**（★ `agent` 恒为 `null`，★ 函数签名默认 `agent = null`）⇒ ★ **永远落到 provider 分支** ⇒ ★ **provider 说 "no live Agent for member … (session=(none learned yet))"**，★ **哪怕成员已经跑了两轮**。
+
+★★★★ **这是一个特别值得记的形状**：★ **内核为解决某个问题写了机制，★ 而唯一的使用者从不把那个参数传进去** ⇒ ★ **机制存在、★ 注释详细、★ 行为却是旧的**。★ 这**不是"没实现"**，★ 是 **"实现了但没接线"**（★ 与 AGENTS.md §7.3 "验证宣称"同源：★ **宣称写得很具体，★ 而它可以被测量**）。
+
+**为什么本轮没改**：★ 要让 `agent` 到达面，★ 需要**跨 `host.js`（注册面）→ 面的处理器 ctx** 的管道改动 ⇒ ★ 而本轮预算不足以**改完并验证**（★ 本阶段已三次因"改了一处、★ 另两处断言随之红"而回退）。
+★★ **下一轮的做法**：① ★ 先查清**面处理器的第二个参数到底由谁填充**（★ `toolHelp(args, { kernel })` 里的 `kernel` 已经被填上，★ 所以那条管道**存在**，★ 只是**没带 agent**）；② ★ 把 `agent` 加进同一处 ctx；③ ★ 面里把它转给 `toolsView`；④ ★ 断言：★ **一个跑过回合的成员，★ `tool_help` 必须返回 `source:'caller'` 而不是 provider 的拒绝**。
