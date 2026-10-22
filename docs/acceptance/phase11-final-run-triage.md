@@ -1751,3 +1751,24 @@ node scripts/slv-inspect.mjs full-1022-234058.jsonl
 
 **★★★ 下一轮必须做的（★ 已定位）**：★ 用 `walk` 的**实际访问形状**去核 —— ★ 那条 `tool/result` 事件里 `closureVote` 到底嵌在 `x.data` 的哪一层（★ 也可能是 `x` 只是外层、★ 载荷在 `x.result`／`x.content` 里）；★ **修好后必须用这份 jsonl 复测，★ 断言 `cast=true  (from 4 turn receipt(s))`。**
 **★ 不做的**：★ **不改 `--selftest` 去迁就它** —— ★ **selftest 本来就该测"检测器能红能绿"，★ 它绿是因为它测的是别的东西；★ 这次漏的是【真实数据的形状】，★ 只有真实数据能暴露。**
+﻿
+### §7.06 ★★★★★★ **`cast:true` 的【机器证据】找到了** —— ★ 而提取器仍是坏的（★ 未修完，★ 如实记账）
+
+**★★★ 好消息（★ 这是目标 5 一直缺的那块证据）**：★ 用 walk 直接遍历上一份真机 jsonl 的 `tool/result` 节点，★ **第 14 个节点的原始负载是**：
+```json
+"closureVote":{"window":"meeting","cast":true,"for":["r1","r2"],"against":[],"missing":[],
+ "eligible":["r1","r2"],"permission":"vote",
+ "reason":"every enfranchised member judged the question solved"}
+```
+★ 同一次跑里第 10 个节点是 **`cast:false` ＋ `missing:["r2"]`**（★ 还没结题时）。
+★★★ **⇒ `cast` 从 `false` 变 `true` 的【完整机器轨迹】就在 jsonl 里** —— ★ **不再需要靠代理的散文转述。** ★ 这正好印证 §7.00 的改动方向是对的（★ 现在的问题是**读取器**，★ 不是数据）。
+
+**★★ 而提取器仍然坏 —— 已测到确定状态**：
+```
+analyzeSession(file) ⇒ closureCast=null  closureSeen=0      # \u5b57\u6bb5\u5728\u8fd4\u56de\u5bf9\u8c61\u91cc\uff08in=true\uff09\uff0c\u4f46\u4ece\u672a\u8ba1\u6570
+```
+★ **已排除**：★ `noteClosure` 的定义成形（`:140`）；★ 调用点在 `analyzeSession` 内（`:179`）；★ 字段在返回对象里（`in=true`）；★ `tool/result` 节点确实被 walk 访问到（我在探针里复现了同样的 walk，★ 15 个节点、其中 4 个含 `closureVote`）。
+**★★ 仍未排除（★ 下一轮的第一步）**：★ **把第 14 个节点单独喂给 `noteClosure`**，★ 看是 `indexOf` 落到了 `"vmu.turn.closureVotePermission"`（★ 第 1／15 节点确实如此，★ 那些应当跳过），★ 还是 `/"cast"\\s*:\\s*(true|false)/` 在**被二次转义的字符串**里没匹配上。
+**★ 不改 `--selftest` 迁就它** —— ★ selftest 测的是检测器的红绿能力，★ **这次漏的是真实负载的转义层，★ 只有真实数据能暴露。**
+
+**★★★ 结论**：★ **判据的证据已经存在于数据里（★ `cast:true`），★ 缺的只是一个正确的读取器。** ★ 在这条读取器修好并复测之前，★ **我不宣称"`cast` 已机器可验"，★ 只宣称"`cast:true` 已出现在机器数据里、★ 并已人工核对原文"。**
