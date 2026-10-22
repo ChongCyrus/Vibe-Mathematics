@@ -1011,3 +1011,32 @@ workspaceFiles: [..., "VibeMath/vmu/audit/2026-10-22.jsonl", ...]
 
 **★★ 而 `cast` 仍未达成**：★ `state.json` 里 `members: []`、`meetings: []` ⇒ ★ **代理还是没有 `hire`、没有开场会议** ⇒ ★ **模型行为层面仍未驱动机构**。
 ★★★ **⇒ 现在的问题已经【完全干净】：★ 环境对（当前 dsh）、★ 代码对（HEAD）、★ pack 加载（中间件在跑）、★ 拒收零畸形 —— ★ 剩下纯粹是【模型要不要去调 `hire`/`vibe_vmu_turn`】。**
+### §6.70 ★★★★★ v5r pack 在真机上**完整加载** —— 6 个中间件全部注册
+
+**`VibeMath/vmu/audit/2026-10-22.jsonl`（★ 21 条，★ 真机产物）的头 6 条**：
+```
+{"what":"middleware/registered","id":"v5r-core-no-adhoc-scripts","on":"tools/pre-execute","order":1000,"failure":"closed"}
+{"what":"middleware/registered","id":"v5r-core-settled-records-only","on":"tools/pre-execute","order":200,"failure":"closed"}
+{"what":"middleware/registered","id":"v5r.stall-meeting::control/idle","on":"control/idle","order":300,"failure":"open"}
+{"what":"middleware/registered","id":"v5r.motion-box::meeting/motion","on":"meeting/motion","order":310,"failure":"open"}
+{"what":"middleware/registered","id":"v5r.artifact-counter::tools/result","on":"tools/result","order":320,"failure":"open"}
+{"what":"middleware/registered","id":"v5r.artifact-counter::math/job-settled","on":"math/job-settled","order":320,"failure":"open"}
+```
+★★★ **⇒ 6 个中间件全部按声明的钩子／order／failure 模式注册了** ✓✓✓ ★ 后面 15 条是 `middleware/decision`（★ 真的在决策）。
+
+**工具可见性（★ 从 run jsonl 统计）**：
+| ★ 工具 | ★ 出现次数 |
+|---|---|
+| ★ **`vibe_vmu_turn`** | ★ **43** |
+| ★ `vibe_vmu_status` | ★ 22 |
+| ★ **`vibe_vmu_meeting`** | ★ 21 |
+| ★ `vibe_vmu_control` | ★ 15 |
+| ★ **`vibe_v5_hire` / `vibe_v5_meeting` / `vibe_v5_assign` / `vibe_v5_motion` / …** | ★ **各 1（工具声明，★ 说明 pack 工具已注册）** |
+★★ **⇒ 包工具真的出现在了工具面里** ✓
+
+**拒绝统计**：★ `VMU_NO_OPEN_MEETING` **0**、★ `VMU_INVALID_ARGUMENT` **0**、★ `VMU_ENGINE_UNAVAILABLE` **0**、★ **`ok":false` 0** ⇒ ★ **几乎零拒绝** ✓
+
+**★ 仍未达成的**：★ `state.json` 里 `members: []`、★ `meetings: []` ⇒ ★ **代理没有 `hire`、没有开场会议** ⇒ ★ **`cast:true` 未达成**。
+**★★ 但性质变了**：★ **环境 ✓／代码 ✓／pack ✓／中间件 ✓／工具 ✓／零拒绝 ✓** —— ★ **剩下纯粹是【模型是否决定去雇佣和开会】的行为问题，★ 与 vmu 机制无关。**
+
+**★★★★ 这是本阶段真机复验的【决定性成果】**：★ **v5r 整合包在当前 dsh 上完整加载、★ 中间件链真实运行、★ 零畸形回执。** ★ 而它之所以之前完全看不到，★ **是因为我漏了 `packs: ['v5r']` 那一行 config。**
