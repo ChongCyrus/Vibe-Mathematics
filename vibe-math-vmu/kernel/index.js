@@ -1653,6 +1653,21 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // way to ask it - the marker was write-only. Exposing the READ-ONLY predicate (`passedWithdrawnFor`) lets the
     // verified read points check the same truth the kernel writes. It mutates nothing through this seam.
     'vmu.fidelity': fidelity,
+    // ★★★ THE SCRIPT BRIDGE, ASYNCHRONOUS FORM ONLY — and the absence of `run` is the design, not an omission. A hook has
+    // `vmu.middleware.hookTimeoutMs` (2000 ms) to spend; a script's own budget defaults to 60000 ms. Exposing `run` would
+    // let a policy await the subprocess, burn the hook budget, and leave the bus reporting the entry as failed while the
+    // child kept running. `start()` returns a handle at once and the outcome arrives as the `script/settled` event, so the
+    // bus's synchronous-decision model and the hook budget both survive.
+    // ★ WHAT IT BUYS: a pack can now define a policy that consults its OWN program using the kernel's capability —
+    // structured-JSON validation, a hard named timeout, the declared-script budget — instead of each pack spawning its own
+    // child_process and losing all of that. "Capability in the kernel, policy in the pack" reaching the policy layer.
+    'vmu.script': Object.freeze({
+      start: (request) => bridge.start(request),
+      status: () => bridge.status(),
+      // ★ NAMED, so a caller that expected `run` gets an answer instead of `undefined`: the blocking form exists but is
+      // deliberately not published here.
+      note: 'start() only: the blocking run() is not published to middleware, because a hook budget (2000 ms) is smaller than a script budget (60000 ms) — the result arrives as the script/settled event',
+    }),
   })
   const loader = createLoader({
     // (甲) PRODUCTION GOES THROUGH THE GUARD: this facade used to answer `null` when there was no durable root,
@@ -1678,7 +1693,22 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     dryRun,
     clock,
   })
-  const bridge = createScriptBridge({ spawn, defaultTimeoutMs: settings['vmu.math.timeoutMs'] || undefined, dryRun, clock })
+  const bridge = createScriptBridge({ spawn, defaultTimeoutMs: settings['vmu.math.timeoutMs'] || undefined, dryRun, clock,
+    // ★ THE ASYNC FORM'S RESULT COMES BACK AS AN EVENT. `bridge.start()` returns a handle immediately because a hook has
+    // `vmu.middleware.hookTimeoutMs` (2000 ms) to spend while a script's own budget is 60000 ms - so the outcome cannot be
+    // a return value without breaking one of the two budgets. It is published on `script/settled` instead, where any
+    // middleware may act on it. The emit is fire-and-forget: this callback must never throw into the bridge, and a
+    // rejected emit is swallowed BY DESIGN because the alternative is an unhandled rejection on a background job.
+    onSettled: (jobId, settled) => {
+      const payload = Object.assign({ jobId, at: clock() }, settled || {})
+      // ★ A FAILED EMIT HERE IS REPORTED, NEVER ALLOWED TO ESCAPE. This runs on a background job's promise callback: an
+      // exception would become an unhandled rejection with no caller to see it, and the child's outcome would be lost.
+      // The bridge has already recorded `script-started` in its own history either way, so the failure is not invisible.
+      const note = (m) => { try { log(m) } catch { /* the logger is the last resort; it must not break the bridge */ } }
+      Promise.resolve(bus.emit('script/settled', payload, {}))
+        .then((r) => { if (r && r.ok === false && r.refused) note('script/settled refused: ' + String(r.refused.code || '')) })
+        .catch((e) => note('script/settled emit failed: ' + String((e && e.message) || e)))
+    } })
   const registry = createRegistry({})
   // Publish what this assembly actually offers (M4, D13-O3): a pack can then DECLARE `requires` and be
   // checked, instead of discovering a missing service at the first hook. Only real capabilities appear.

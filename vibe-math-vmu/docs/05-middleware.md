@@ -76,13 +76,27 @@
 
 ★★★ 由这条判据得到三个**实用推论**（都是量过的，不是推演）：
 
-**① "用脚本控制事件流"当前没有受支持的形状。**
+**① "用脚本控制事件流"曾经没有受支持的形状 —— 现在有了，而且是异步形态（goal 8）。**
 
 `script-bridge` 只经两处可达：**`vibe_vmu_script` 工具面**（模型主动调用；`host.js` 的 description 逐字写"结果只回给调用方，**绝不自动进入提示词**"），与 **`kernel.bridge`**（内部字段与状态读面 `bridge.status()`）。
 ★ **中间件拿不到它**：M2 模块收到的是 `kernel:{read}` **only** ＋ 能力门控的 `services`
 （`kernel/loader.js:114`、`:127`、`:187`），而**能力门控服务目录里没有脚本桥**（`kernel/index.js` 的服务目录那一块，`vmu.tasks`／`vmu.meetings`／…／`vmu.report`／`vmu.fidelity`）。
 ⇒ ★ **需要"在事件上判断 ＋ 跑外部程序"的人，现在只能在 M2 里自己 `import('node:child_process')`** —— 而那会丢掉 M3 的整套保证（结构化结果校验、超时是硬具名 `VMU_JOB_TIMEOUT`、`config.scripts` 的声明与预算；见 `kernel/script-bridge.js`）。
-★★ **这是【已知的形状缺口】，不是【已实现的能力】。** 若要让两层合一，最小的一步是把脚本桥作为 capability-gated 服务暴露给中间件；那需要一次设计决定，**尚未做**。
+★★★★★ **这个缺口已经被补上（goal 8），而补的方式决定了它为什么不破坏任何不变式**：
+
+★★ **能力门控服务目录里现在有 `vmu.script`，★ 但它【只暴露 `start`，没有 `run`】** —— ★ **而这个"没有"是设计，不是遗漏**：
+- ★ **钩子预算 `vmu.middleware.hookTimeoutMs` 默认 2000 ms**；★ **脚本预算默认 60000 ms** ⇒ ★ **相差 30 倍**
+- ★ 若暴露 `run`，★ 一个正常的脚本调用会**先耗尽钩子预算** ⇒ ★ 总线按该条目的 `failure` 策略**判它失败**，★ **而子进程还在跑** ⇒ ★ **"事件已失败、进程仍活着"的分裂状态**
+- ★ **所以 `start()` 立刻返回一个 `jobId`，★ 结果经 `script/settled` 事件回来** ⇒ ★ **总线"同步决策"的模型和钩子预算都完好** ✓
+
+★★ **用法**（★ 一个 pack 可以这样写一条"我的检查器说不行就拒"的策略）：
+```js
+const scripts = api.services.get('vmu.script')      // ★ 需要 capabilities: ['trigger-workflow']
+const started = scripts.start({ file: './check.py', args: [id] })   // ★ 立刻返回 { ok, jobId }
+// ★ 结果不在返回值里 —— 在 script/settled 上；另一条中间件收到后可以 deny / record / annotate
+```
+★★★ **它买到了什么**：★ **pack 现在能用【内核的能力】去跑【自己的程序】**（★ 结构化 JSON 校验、★ 硬具名超时、★ 声明预算），★ **而不是每个 pack 自己 spawn 一份、把这三样全丢掉** —— ★ 这就是 **"能力在内核、政策在 pack"** 终于到达**政策层**。
+★ **为什么不做得更"强"（暴露 `run`）**：★ **那不是更强，那是更脆** —— ★ 它让一条 2 秒的预算去承担 60 秒的工作，★ 而失败的方式是**分裂状态**，★ 不是具名拒。
 
 **①′ 但【总线本身】是可以被程序调控的 —— 这一点必须和 ① 分开说，否则会读反。**
 
@@ -508,7 +522,7 @@
 
 ### 钩子索引（★ **生成**：来自 `VU_HOOKS` ＋ `DEFAULT_FAILURE` ＋ 实仓 emit 扫描 ✓）
 
-> ★★★ **本节的数字【曾经手写、并因此过期**]✗** ✓：★ **§5 的标题写着"**20** 个冻结名"，而 `VU_HOOKS` 在轮 496 已增至 **127**（★ 新增 `budget/warn` 与 `member/self-report` ✓ —— ★ 两个都是**修活 bug 时**加上的 ✓）⇒ ★★ **手写计数【必然**]落后于代码** ✓ ⇒ **这张表改为生成** ✓。
+> ★★★ **本节的数字【曾经手写、并因此过期**]✗** ✓：★ **§5 的标题写着"**20** 个冻结名"，而 `VU_HOOKS` 在轮 496 已增至 **128**（★ 新增 `budget/warn` 与 `member/self-report` ✓ —— ★ 两个都是**修活 bug 时**加上的 ✓）⇒ ★★ **手写计数【必然**]落后于代码** ✓ ⇒ **这张表改为生成** ✓。
 
 | 钩子 | 默认失败策略 | 生产者 |
 |---|---|---|
@@ -600,6 +614,7 @@
 | `panel/viewed` | `open` | `panel.js` |
 | `math/job-submitted` | `open` | `mathjobs.js` |
 | `math/job-settled` | `open` | `bus.js`、`mathjobs.js` |
+| `script/settled` | `open` | `index.js` |
 | `math/job-failed` | `open` | `mathjobs.js` |
 | `math/job-timeout` | `open` | `mathjobs.js` |
 | `math/job-cancelled` | `open` | `mathjobs.js` |
@@ -640,7 +655,7 @@
 | `topology/select` | `open` | `topology.js` |
 | `trust/signal` | `open` | `trust.js` |
 
-> ★★ 合计 **127** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
+> ★★ 合计 **128** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
 
 <!-- END GENERATED: hook-index -->
 

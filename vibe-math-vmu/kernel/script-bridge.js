@@ -58,8 +58,11 @@ export function validateRequest(request) {
  * synchronously) or be paired with `spawnHandle(spec, onHandle)` — then the local budget really terminates
  * the child. `timer` is injectable so the budget can be driven deterministically in tests.
  */
-export function createScriptBridge({ spawn = null, spawnHandle = null, timer = null, defaultTimeoutMs = 60_000, dryRun = false, clock = () => new Date().toISOString() } = {}) {
-  const stats = { runs: 0, failures: 0, timeouts: 0, refusals: 0, dryRuns: 0, terminated: 0, notTerminated: 0 }
+export function createScriptBridge({ spawn = null, spawnHandle = null, timer = null, defaultTimeoutMs = 60_000, dryRun = false, clock = () => new Date().toISOString(), onSettled = null } = {}) {
+  const stats = { runs: 0, failures: 0, timeouts: 0, refusals: 0, dryRuns: 0, terminated: 0, notTerminated: 0, started: 0 }
+  // ★ `jobSeq` numbers the async form's handles. Distinct from `stats` so a reader can tell "how many were STARTED" from
+  // "how many finished" - the gap between them is jobs still in flight.
+  let jobSeq = 0
   const history = []
   const childBudget = createChildBudget({ timer })
   let lastSpawnHadHandle = null
@@ -196,6 +199,56 @@ export function createScriptBridge({ spawn = null, spawnHandle = null, timer = n
       const parsed = parseResult(raw.stdout, label)
       record({ what: 'script-ran', label, exit: 0, ok: parsed.ok })
       return Object.assign({ ran: true, exit: 0, policy: failure, timedOut: false }, parsed)
+    },
+
+    /**
+     * ★★★ START A SCRIPT AND RETURN IMMEDIATELY. This is the ONLY form a middleware may reach, and the restriction is
+     * structural rather than advisory: the capability-gated catalogue publishes an object that has `start` and no `run`,
+     * so a policy cannot await a 60-second subprocess inside a hook whose budget is `vmu.middleware.hookTimeoutMs`
+     * (2000 ms by default). Measured conflict: 2000 against 60000 - a normal call would burn the hook budget, the bus
+     * would apply the entry's `failure` policy, and the child would keep running: an event declared failed while its
+     * process was still alive.
+     *
+     * WHAT THIS BUYS, and it is the point: a pack can now DEFINE a policy that consults its own program ("reject when my
+     * checker says the proof is invalid") using the kernel's capability - structured-JSON validation, a hard named
+     * timeout, the declared-script budget - instead of every pack spawning its own child_process and losing all of it.
+     * That is "capability in the kernel, policy in the pack" finally reaching the policy layer.
+     *
+     * THE RESULT ARRIVES AS AN EVENT (`script/settled`), not as a return value: the hook decides and returns, the outcome
+     * comes later, and another middleware may act on it. The bus's synchronous-decision model stays intact.
+     */
+    start(request) {
+      const problems = validateRequest(request)
+      if (problems.length > 0) {
+        stats.refusals++
+        throw refuse('VMU_INVALID_ARGUMENT', 'invalid M3 request: ' + problems.join('; '),
+          'see docs/05 §2.1 for the accepted shape')
+      }
+      if (dryRun) {
+        stats.dryRuns++
+        return { ok: true, started: false, dryRun: true, plan: bridge.plan(request).plan }
+      }
+      if (typeof spawn !== 'function') {
+        stats.refusals++
+        throw refuse('VMU_ENGINE_UNAVAILABLE', 'no subprocess seam is bound',
+          'inject { spawn } - the bridge never reaches into the host (docs/11 §4.1)')
+      }
+      const jobId = 'scr-' + (++jobSeq)
+      stats.started = (stats.started || 0) + 1
+      record({ what: 'script-started', jobId, label: request.file ? 'script ' + request.file : 'inline script' })
+      // ★ NOT AWAITED. The caller gets a handle now; the outcome is delivered through `onSettled`, and when no seam is
+      // wired the promise is still handled so a late rejection can never surface as an unhandled rejection.
+      const pending = bridge.run(request)
+      const notify = (settled) => {
+        if (typeof onSettled !== 'function') return
+        try { onSettled(jobId, settled) } catch { /* a broken seam must not corrupt the bridge */ }
+      }
+      pending.then(
+        (result) => notify({ ok: !!(result && result.ok !== false), result }),
+        (error) => notify({ ok: false, code: (error && error.code) || 'VMU_MIDDLEWARE_FAILED', message: String((error && error.message) || error) })
+      )
+      return { ok: true, started: true, jobId,
+        note: 'started; the result arrives as the `script/settled` event (never as this return value)' }
     },
 
     /** Observability (R11): what ran, what failed, and the standing promise about prompts. */

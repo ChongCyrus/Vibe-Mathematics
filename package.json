@@ -476,6 +476,7 @@
     "tests/vmu-rules.test.mjs",
     "tests/vmu-loader.test.mjs",
     "tests/vmu-script-bridge.test.mjs",
+    "tests/vmu-script-service.test.mjs",
     "tests/vmu-registry.test.mjs",
     "tests/vmu-kernel.test.mjs",
     "tests/vmu-pack.test.mjs",

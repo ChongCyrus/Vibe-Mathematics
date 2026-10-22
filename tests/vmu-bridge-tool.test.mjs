@@ -41,8 +41,22 @@ ok(JSON.stringify(spec.parameters.action.enum) === JSON.stringify(ACTIONS),
 ok(spec.parameters.action.required === true, 'and action is required')
 {
   const serviceMethods = Object.keys(k.bridge).filter((n) => typeof k.bridge[n] === 'function').sort()
-  ok(JSON.stringify([...ACTIONS].sort()) === JSON.stringify(serviceMethods),
-    'and the enum matches the service s own method list one for one, so neither can drift', { enum: [...ACTIONS].sort(), serviceMethods })
+  // ★ ONE NAMED EXCEPTION, AND ITS REASON IS THE POINT OF THE EXCEPTION. `start` is the ASYNCHRONOUS form added for
+  // MIDDLEWARE (goal 8): it returns a job handle at once because a hook has vmu.middleware.hookTimeoutMs (2000 ms) while a
+  // script's own budget is 60000 ms, and the outcome arrives as the `script/settled` event. It is deliberately NOT a face
+  // action: the MODEL wants `run`'s synchronous result, and exposing `start` would hand it a jobId it can only wait on.
+  // ★ The rule this keeps is the one that matters - "neither can drift SILENTLY": every method is either in the enum or
+  // listed here by name, so a new method still reddens this gate until someone says which side it belongs to.
+  const FACE_EXCLUDED = ['start']
+  const comparable = serviceMethods.filter((m) => !FACE_EXCLUDED.includes(m))
+  ok(JSON.stringify([...ACTIONS].sort()) === JSON.stringify(comparable),
+    'and the enum matches the service s own method list one for one, except the named async-only form, so neither can drift',
+    { enum: [...ACTIONS].sort(), serviceMethods, excluded: FACE_EXCLUDED })
+  // ★ `FACE_EXCLUDED.length > 0` is not decoration: `every` on an EMPTY array is vacuously true, so without it this
+  // assertion would pass on a list that had been emptied - RULE E in audit-declaration-criterion flagged exactly that,
+  // and it was right (it has now corrected four successive shapes in this phase's new code).
+  ok(FACE_EXCLUDED.length > 0 && FACE_EXCLUDED.every((m) => serviceMethods.includes(m)),
+    '★ and every excluded name really exists on the service (no stale exemption)', { excluded: FACE_EXCLUDED, methods: serviceMethods })
 }
 {
   ok(Object.prototype.hasOwnProperty.call(spec.parameters, 'request'),
