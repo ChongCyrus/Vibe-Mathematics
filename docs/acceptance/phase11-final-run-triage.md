@@ -764,3 +764,17 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'C:\Users\admin\.dsh\profiles\n
 - ★ **正式 SLV 必须用【当前运行的这个 dsh】（`0.2.1-rc.2`）**，★ **不得用旧 scoop dsh** ⇒ ★ 旧 dsh 已**永久移出**（★ `D:\_tmp\OLD-dsh-0.2.0-REMOVED`）。
 - ★ **每次 SLV 必须用【最新代码】** ⇒ ★ **跑前必须 `git rev-parse HEAD` ＋ `npm pack` 重新打包**，★ **不得复用旧 `.tgz`**。
 ★ 对应脚本：★ `D:\_tmp\slv-phase5\slv-r58-run.ps1`（★ `$BIN` → `dsh-current.mjs`，★ 即当前 dsh）。
+### §6.57 正式配置（★ 当前 dsh ＋ HEAD 包）跑了一次 —— ★ 仍是"prompt 被接受、★ 零事件"
+
+★ **配置**：★ `slv-r58-run.ps1`（★ `$BIN` → `dsh-current.mjs`，★ 即当前 `0.2.1-rc.2`）＋ ★ `dsh-vibe-math-HEAD.tgz`（★ 20:57 从 HEAD `7368b5e3` 重打）＋ ★ `dsh-opencode-go`。
+★★ **结果（★ 有 jsonl 为证）**：★ 装配全绿、★ `session/create` 成功、★ `verify` `agentAvailable:true`、★ **337 行 jsonl**、★ **而 `totalTokens` 全程 0、★ `running:false`**。
+★★★ **⇒ 与 §6.49／§6.54 完全一致：★ `session/prompt` 被接受、★ 会话零事件、★ 模型不出 token。**
+
+**★ 已排除（★ 累计，★ 每项有测量）**：★ 旧 dsh（★ 已永久移出）、★ `$BIN`、★ `$OUT` 乱码、★ `DSH_BIN`、★ provider（★ 两个相同）、★ 变量值（★ 全对）、★ `ws` 依赖、★ payload 形状（★ 与官方 `SessionPromptRequest` schema 逐字段吻合）、★ `session/create`（★ 当前 dsh 里 55 处引用、★ 有效）。
+
+**★★★ 剩下的唯一差异**：★ **用户 GUI 能在当前 dsh 上正常发消息** ⇒ ★ **说明"客户端调用序列"里还有一步 drive 没做** —— ★ 端点表里的 **`session/model-experience`** 与 **`session/end-seed`** 是**最可疑的两个**（★ 前者可能就是"为这个 session 选模型"那一步）。
+
+**★ 本轮同时完成（★ 用户要求的**）**：
+1. ★ **旧 dsh 永久移出**（★ `D:\_tmp\OLD-dsh-0.2.0-REMOVED`）—— ★ 正式 SLV **只用当前 dsh**。
+2. ★ **HEAD 包重打**（★ `dsh-vibe-math-HEAD.tgz`，★ 含全部 16 条修复）—— ★ **正式 SLV 只用最新代码**。
+3. ★ **C 盘清理 12.61 GB**（★ 1.44 → 14.05 GB），★ **并清理了本次 clone** ⇒ ★ **跑完即删**。
