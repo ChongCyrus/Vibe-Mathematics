@@ -75,10 +75,28 @@ export const ROLE_ONLY_SECTIONS = Object.freeze([
   ['v5r-charter-roster-temp-leaderless', 'temp'],
 ])
 
+/**
+ * ★★★ PHASE 12 / R14 (found in live run 5's transcripts) — ROLE-CLAIMING SECTIONS ARE FAIL-CLOSED.
+ *
+ * `v5r-turn-acad-leads` opens with 「作为院士，除了做研究，你还要**统筹全所**」. It is declared `kind: 'shared'`, so the
+ * assembly hands it to EVERY seat: a researcher's prompt in run 5 literally carried 「作为院士…统筹全所」. That is worse
+ * than a missing sentence — it tells a non-chair to do the chair's job.
+ *
+ * WHY THIS IS A SECOND LIST AND NOT A THIRD ENTRY IN `ROLE_ONLY_SECTIONS`:
+ * the pair above must stay FAIL-OPEN on an unknown role (R13j: an unknown role must change nothing, because guessing
+ * could switch off the leaderless variant the seat actually needs). A section that CLAIMS A ROLE is the opposite
+ * direction: when the role is unknown we must NOT claim 「作为院士」, so it is disabled unless the role is positively
+ * the one it describes. The two policies are genuinely different, so they are two lists, not one list plus a flag.
+ */
+export const ROLE_CLAIMING_SECTIONS = Object.freeze([
+  ['v5r-turn-acad-leads', 'chair'],
+])
+
 export const V5R_PROMPT_SWITCH_STATES = Object.freeze({
   offSwitches: OFF_SWITCHES,
   hostOnly: HOST_ONLY_SECTIONS,
   roleOnly: ROLE_ONLY_SECTIONS,
+  roleClaiming: ROLE_CLAIMING_SECTIONS,
   catalogues: CATALOGUES,
   meetingStates: MEETING_STATES,
   formalStatuses: FORMAL_STATUSES,
@@ -210,6 +228,11 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
   if (role !== null) {
     for (const [name, only] of ROLE_ONLY_SECTIONS) if (role !== only) decisions.push({ name, enabled: false })
   }
+
+  // (6) ★ ROLE-CLAIMING SECTIONS (see ROLE_CLAIMING_SECTIONS): FAIL-CLOSED, so this runs even when the role is unknown.
+  //   「作为院士…统筹全所」 may only reach a seat that IS the chair; for every other seat (and for an unknown role) it is
+  //   switched off. Nothing is pushed for the chair, so the section it describes stays on.
+  for (const [name, only] of ROLE_CLAIMING_SECTIONS) if (role !== only) decisions.push({ name, enabled: false })
 
   return { decisions, errors }
 }

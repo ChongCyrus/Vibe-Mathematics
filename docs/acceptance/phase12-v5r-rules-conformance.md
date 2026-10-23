@@ -56,7 +56,7 @@
 | D2 | 院士召开、关闭、**延长时长上界**；院士主持 | **三条都有了**：`open()` chair 轨；`close()` 的 `vmu.meetings.closeRequiresChair`（须 actor＝本会主席，否则具名拒）；`extendWall({meeting, ms, actor, why})`＝**会议级**延长（正步长校验、`vmu.meetings.extendCeilingMs` 天花板 4h、越过具名拒、回执带 before/after/actor/why，且**延长后的界真的被 speak 消费**）。主持＝`chairNeutral`/`order`/`interrupt`/`recess`/`queueGate` | `tests/vmu-meeting-types.test.mjs` §5b/⑤c（8 断言，含"延长是假的就会红"的两条）＋ 内核面 `extendlimit` 可达性 | ✅ 已实现 |
 | D3 | 院士设：标题、**类型**、内容事项、邀请成员、时长上界 | **五个字段都可设且都可读回**：标题＝`open({title})`（**新加的独立承载字段**：非字符串具名拒、空白归一 null，回执/`summary()`/`meetingView()`/`meetings/opened` 全能读到）；类型＝`type`（`vmu.meetings.typeCatalog` 六值，未知具名拒并列合法值）；内容事项＝`materials`（★ 原来**只用于 `materialsRequired` 校验然后被丢弃**，`m.materials` 零读者 ⇒ 现在作为指针承载并在两个读面回吐，非字符串具名拒）；邀请成员＝`roster`；时长上界＝`hardLimitMs`（可 `extendWall` 延长） | `tests/vmu-meeting-types.test.mjs` §1–§4 + §3b（标题/议程各 6 条，含"同议程不同标题 ⇒ 不同标题"证明不是派生） | ✅ 已实现 |
 | D4 | 院士通过命令自组织、决策会议中一切内容/控制/活动 | **✅ 命令面齐备且在 41+21 个活工具里**：内核面 `vibe_vmu_meeting` 的 action 枚举（`tools/meeting.js:26`）含 `open/speak/silent/hand/hands/refuse/invite/invitedspeak/end/agendaclose/agendaitems/leaverequest/leaveapprove/leaverequests/aggregation/complete/phase/status/summary/snapshot/close/extend/extendlimit/lapse/revokelapse/ballot/vote/tally/reopen/freeze/unfreeze/boxopen/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse/second/withdraw/flow/overrideorder`；主席专属约束是**运行期具名拒**而非命令缺失（`chairNeutral`/`closeRequiresChair`/`conveneRequiresChair`/`extendWall`）。★ 注意：pack 面 `vibe_v5_meeting` 是**单用途 open**（D1 收口），主持动作走内核面 | 上面的枚举行号＋`tests/vmu-meeting-types.test.mjs` §5a–§5d；内核面 `extendlimit`/`proceed`/`attend` 可达性各 1 断言 | ✅ 已实现 |
-| D5 | **特殊类型会议下框架初始给院士推荐流程骨架**，实施/是否遵循完全由院士决定 | `packs/v5r/meeting-procedures.js`（140→265 行）：`step()` `:37` 给每步加**可机器核对**的 `tool:` 字段；六套骨架 `MEETING_PROCEDURES` `:196`（`DEBATE_PROCEDURE` `:48` 四步文本逐字未动）；**`MEETING_PROCEDURE_DECISIONS` `:209`** 要求六类各有决议（不给骨架须写具名 reason）；`procedureFor()` `:246`；每套 `binding:"recommendation"`，回执 `procedureNote` 写明"推荐不是门禁" | `tests/vmu-meeting-procedures-catalog.test.mjs` 38/0（用真机 `state.specs` / `kernel.packTools()` 核对每个 `tool:`，含"篡改副本必须被抓"控制组）＋ `tests/vmu-meeting-types.test.mjs` 126/0（六类各有骨架、每步有 what、`tool:` ∈ 派生工具集、decisions 全覆盖） | ✅ 已实现 |
+| D5 | **特殊类型会议下框架初始给院士推荐流程骨架**，实施/是否遵循完全由院士决定 | `packs/v5r/meeting-procedures.js`（140→265 行）：`step()` `:37` 给每步加**可机器核对**的 `tool:` 字段；五套骨架 `MEETING_PROCEDURES`（★ 用户裁定 2026-10-24：ordinary 不再有骨架，改为具名「不给」——见 §25.2） `:196`（`DEBATE_PROCEDURE` `:48` 四步文本逐字未动）；**`MEETING_PROCEDURE_DECISIONS` `:209`** 要求六类各有决议（不给骨架须写具名 reason）；`procedureFor()` `:246`；每套 `binding:"recommendation"`，回执 `procedureNote` 写明"推荐不是门禁" | `tests/vmu-meeting-procedures-catalog.test.mjs` 38/0（用真机 `state.specs` / `kernel.packTools()` 核对每个 `tool:`，含"篡改副本必须被抓"控制组）＋ `tests/vmu-meeting-types.test.mjs` 126/0（六类各有骨架、每步有 what、`tool:` ∈ 派生工具集、decisions 全覆盖） | ✅ 已实现 |
 | D6 | 允许一次性设置**连续展开的多个会议** | `open({sequence:[…]})`：每个后续会议的描述符**在任何事发生前**就校验（错在第 3 个当场拒，不是等三个会议之后）；描述符不许自带 chair/actor（否则是绕过召开权轨的第二条召开路径）；`advanceSequence` 在当前会议 `close()` 时把下一个转成 `scheduled` 并继承主席；`seqInfo` 在 `summary()`/`meetingView()` 报告 `{index,total,next}`；整串超出 `extendCeilingMs` ⇒ 具名拒 | `tests/vmu-meeting-types.test.mjs` §8（序列开 2 个、描述符非法当场拒、关一个自动启下一个、越界拒） | ✅ 已实现 |
 | D7 | 成员可用命令/工具**按会议类型和身份**有差异 | **两个维度都成形**：① 身份维＝活的可见工具表（`host.js:1681-1691` / `:1722-1729`）＋内核运行期具名拒（`requireChairSeat` / `chairNeutral` / `closeRequiresChair`）；② **类型维＝`packs/v5r/meeting-tool-face.js`**（`MEETING_TYPE_TOOL_FACES` `:21`：debate 收窄 20 项 allow，其余五类 `narrowed:false` ＋具名 reason）＋新工具 `vibe_v5_meeting_round`（`tools.js:1166` / `:1868-1876`）：allow＝`kernel.toolsView({member})` ∩ 策略表，**只收窄**；身份面读不到 ⇒ `VMU_ENGINE_UNAVAILABLE`（不猜 allow）、交集空 ⇒ `VMU_STATE`；`applyMeetingTypeFace()` `:107` 两阶段应用避免 override 残影；override 只活一轮，`finally` 清 | `tests/vmu-meeting-type-tools.test.mjs` 51/0（辩论期 `vibe_v5_paper` 不在 allow ／正常会议零 override／主席永不被收窄）＋ §5a–§5d 的身份拒法 | ✅ 已实现 |
 | D8 | 会议类型含：正常、学术交流、辩论、结题、论文交流、未来规划/策划… | `MEETING_TYPES` 六值（normal/academic/debate/final/paper/planning）＋ v5r 声明 `vmu.meetings.typeCatalog` ⇒ 类型**不再是死字段**：存储、回读、白名单、按类型取骨架（`procedureFor`）、内核 `committee` 结题报告轨都按它走 | 同上（未知类型具名拒；回读 summary/meetingView 都有 type） | ✅ 已实现 |
@@ -86,7 +86,7 @@
 | F2 | 断点续跑 | ✅ **机制＋门禁**（`lane-rows-c.md` F2）：`tests/vmu-resume-e2e.test.mjs:231` 覆盖续跑；★ 未判定：**真机**断点续跑（phase 12 只读不跑真机） | `tests/vmu-resume-e2e.test.mjs` 108/0 | ✅ 已实现 |
 | F3 | 特殊权限/请求可经报告所办向用户询问 | ✅ **本轮补齐（此前是 ⚠️ 一半）**：报告面（`vibe_v5_report`）＋ 咨询闸（`kit/paper.js` 的 consult 族，E4 同一实现）两条路都在册。★ 历史事实保留：此前 `vmu.paper.officeConsult` 的读取者装配不加载 ⇒ 只剩报告一条路 | `tests/vmu-paper-office-consult.test.mjs` ＋ 同 E4 的 `tests/vmu-kernel-reachability.test.mjs` | ✅ 已实现 |
 | F4 | 功能尽量通过**代理可执行命令（工具）**实现，而非每轮结束输出 JSON | ✅ **已实现（F5 之后补齐：提示词不再教 JSON 围栏）**：替代通道是**已存在的工具**——`vibe_vmu_turn {op:'reply', reply, reply_for?}`（`vibe-math-vmu/tools/turn.js:87-134` 调 `kernel.turn.supplyMemberReply`；内核侧 `supplyStructuredReply` 在 `kernel/turn/index.js:1005-1063`，两个真值源冲突 ⇒ `VMU_TURN_REPLY_CONFLICT`，`mergeReplyChannels` `:228-260`）；回执里的 `closureVote` 是**机器字段**（不是让人手写）。★ **更正我上一版台账写错的话**：这里曾写「`vibe_v5_reply`（别称 `vibe_v5_verdict`）」——**`vibe_v5_reply` 这个工具不存在**（`packs/v5r/tools.js` 只声明 `vibe_v5_verdict` 与 `vibe_v5_verdict_final`），是 vmu-pack 的静态门禁 `audit-prompt-tool-params` 按「参数键 ⊆ 真工具表」把它抓出来的。★ 教训：写给模型的花名一旦是幽灵，比不具名更糟（模型会照它调用，然后必拒）。**补齐证据**：手写层的教学段已零旧措辞（```json 围栏 0 处、「只输出一个合法 JSON 对象」0 处、`end_verify 的 formal_proof` 0 处、「m 票布尔一致」0 处；残留只出现在更正段与源码注释里，前者是引用、后者不进装配），且 `tests/audit-prompt-retired-mechanisms.test.mjs` 把这条件变成断言（68/0）；回执链路本身是工具参数（`vibe_vmu_turn {op:'reply', report:{…}}`），不是每轮手写 JSON。 | `tests/vmu-turn-reply-tool.test.mjs` 32/0、`tests/vmu-turn.test.mjs` 191/0 | ⚠️ 部分 |
-| F5 | **提示词与规则完全相符自洽**：删除「m 票机制」「每轮结束返回 JSON 机制」等不再适用的内容 | **提示词与规则完全相符自洽**：删除「m 票机制」「每轮结束返回 JSON 机制」等不再适用的内容 | ✅ **已实现（本轮重写手写层 ＋ 把门禁改成量「修好了」）**：手写层里 9 处旧措辞被替换或删除——`v5r-blocks-a.js` 的 `（end_verify 的 formal_proof）`⇒命题卡 `proofState:complete`＋Lean 归档证据、`仍须 m 票布尔一致`⇒「正式证明＋辩论裁决为真」、truth-note 与 temp 两处 `m 票`⇒`【五】的定论门槛`，以及院士／研究员两个变体各 9 行的旧投票段整体换成 8 行现行机制（`vibe_v5_verdict` 用法、p=1 且具名证据的进门（`VMU_PACK_V5R_P1_NEEDS_DEBATE`／`VERIFIED_SINGLE_WRITER`）、`表决（法定票数 m = min(所办上限, 在册有表决权人数)）≠ 定论`）；`v5r-blocks-b.js` 的 6 处 ```json 围栏与「只输出一个合法 JSON 对象」全删，改成「结束时调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」＋最小合法 `report` 样例（`core.js:535` 还有一处回执 JSON 围栏，同批删）。★ 门禁从「旧措辞必须仍在装配里」改成「旧措辞**只能**出现在更正段」：`tests/audit-prompt-retired-mechanisms.test.mjs` **68/0**，`OBSOLETE` 四类（reply-fence／m-vote-count／phantom-formal-tools／reply-transport）逐条断言 `在装配里的次数 === 在更正段里的次数`，另加 TEETH（植入一条教学段落必红）。★ 同批另修两个教学缺陷：`vibe_v5_tool_help` 被教成要传 `tool` 键（真实签名只收 `member`，`packs/v5r/tools.js:379-395`），以及 `audit-prompt-tool-params` 的两条「账本必须非空／必须等于 cap」断言——它们与 `audit-prompt-retired-mechanisms` 的 `captureNeedles` 属同一族「把缺陷当证据」，改成「账本为空也算良构（cap 是天花板）＋用合成调用证非空洞」，该门禁 **74/0**，非空洞性从此由合成 TEETH 保证，不再依赖产品里留着缺陷。 | `tests/audit-prompt-retired-mechanisms.test.mjs` 68/0 · `tests/audit-prompt-tool-params.test.mjs` 74/0 · `tests/vmu-pack-prompts.test.mjs` 24/0 · `tests/vmu-prompt-live-facts.test.mjs` 23/0 · `regen-all` 16/16（语料 sha 未变，因为语料是**冻结的捕获层**，本轮改的是手写层，门禁量的也是装配层）
+| F5 | **提示词与规则完全相符自洽**：删除「m 票机制」「每轮结束返回 JSON 机制」等不再适用的内容 | ✅ **已实现（本轮重写手写层 ＋ 把门禁改成量「修好了」）**：手写层里 9 处旧措辞被替换或删除——`v5r-blocks-a.js` 的 `（end_verify 的 formal_proof）`⇒命题卡 `proofState:complete`＋Lean 归档证据、`仍须 m 票布尔一致`⇒「正式证明＋辩论裁决为真」、truth-note 与 temp 两处 `m 票`⇒`【五】的定论门槛`，以及院士／研究员两个变体各 9 行的旧投票段整体换成 8 行现行机制（`vibe_v5_verdict` 用法、p=1 且具名证据的进门（`VMU_PACK_V5R_P1_NEEDS_DEBATE`／`VERIFIED_SINGLE_WRITER`）、`表决（法定票数 m = min(所办上限, 在册有表决权人数)）≠ 定论`）；`v5r-blocks-b.js` 的 6 处 ```json 围栏与「只输出一个合法 JSON 对象」全删，改成「结束时调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」＋最小合法 `report` 样例（`core.js:535` 还有一处回执 JSON 围栏，同批删）。★ 门禁从「旧措辞必须仍在装配里」改成「旧措辞**只能**出现在更正段」：`tests/audit-prompt-retired-mechanisms.test.mjs` **68/0**，`OBSOLETE` 四类（reply-fence／m-vote-count／phantom-formal-tools／reply-transport）逐条断言 `在装配里的次数 === 在更正段里的次数`，另加 TEETH（植入一条教学段落必红）。★ 同批另修两个教学缺陷：`vibe_v5_tool_help` 被教成要传 `tool` 键（真实签名只收 `member`，`packs/v5r/tools.js:379-395`），以及 `audit-prompt-tool-params` 的两条「账本必须非空／必须等于 cap」断言——它们与 `audit-prompt-retired-mechanisms` 的 `captureNeedles` 属同一族「把缺陷当证据」，改成「账本为空也算良构（cap 是天花板）＋用合成调用证非空洞」，该门禁 **74/0**。 | `tests/audit-prompt-retired-mechanisms.test.mjs` 68/0 · `tests/audit-prompt-tool-params.test.mjs` 74/0 · `tests/vmu-pack-prompts.test.mjs` 24/0 · `tests/vmu-prompt-live-facts.test.mjs` 23/0 · `tests/vmu-corrections` 83/0 · `regen-all` 16/16（语料 sha 未变，因为语料是**冻结的捕获层**，本轮改的是手写层，门禁量的也是装配层） |
 
 ## §7 汇总
 
@@ -98,7 +98,9 @@
 | D 会议 | 15 | 11 | 4 | 0 | 0 |
 | E 论文 | 4 | 1 | 3 | 0 | 0 |
 | F 额外要求 | 5 | 2 | 3 | 0 | 0 |
-| **合计** | **42** | **27** | **13** | **2** | **0** |
+| **合计** | **42** | **30** | **12** | **0** | **0** |
+> **计数怎么来的**：§7 的数字由行状态单元格派生——逐行取第一个以 ✅/⚠️/❌ 开头的单元格（`| **合计**` 行自身除外），不手抄。2026-10-24 复测：42 行 = **30 已实现 / 12 部分 / 0 缺口 / 0 待核**；12 条部分＝A1 A4 B1 B6 B10 B11 C2 C3 D10 E1 E3 F1。
+
 
 ★ 这张表第一次写出来的时候 **9 条已确认缺口、31 条待核**——即"待核"是绝大多数，任何"已完成"的说法都必须先把待核清零。
 
@@ -719,7 +721,7 @@ B8（忠实性收口链路）施工时，按**真实面方法名**核对证据�
 
 | # | 不符项 | 证据（回执字段） | 性质 |
 |---|---|---|---|
-| R1 | 普通会议**也有** 3 步流程骨架（验收预期 `procedure:null`） | `m2`: `type:"ordinary"` ＋ 3 步「正常会议 · 推荐流程骨架」 | **裁定：保留（非缺陷）**。骨架 `binding:"recommendation"`，不能约束任何动作；规则只为「辩论会议」写了流程，并未禁止框架给别的类型**推荐**。`MEETING_PROCEDURE_DECISIONS` 是机器可读的逐类型台账（每个类型要么有骨架、要么具名说没有），因此"普通会议也有骨架"是有意的决定而遗漏。验收预期改为此口径 |
+| R1 | 普通会议**也有** 3 步流程骨架（验收预期 `procedure:null`） | `m2`: `type:"ordinary"` ＋ 3 步「正常会议 · 推荐流程骨架」 | **裁定：保留（非缺陷）** —— ★★ 该裁定已于 2026-10-24 被用户推翻：普通会议**不该**有骨架，见 §25.2。骨架 `binding:"recommendation"`，不能约束任何动作；规则只为「辩论会议」写了流程，并未禁止框架给别的类型**推荐**。`MEETING_PROCEDURE_DECISIONS` 是机器可读的逐类型台账（每个类型要么有骨架、要么具名说没有），因此"普通会议也有骨架"是有意的决定而遗漏。验收预期改为此口径 |
 | R2 | `at` 的两种"合法"写法都不按预期：epoch 毫秒**字符串**被拒；不带时区偏移的 ISO 被按进程本地 +08:00 解析 ⇒ 落到过去、直接 `state:"open"` | `VMU_INVALID_ARGUMENT at is not a usable time: "1792779800000"`；`m3`: `state:"open", scheduledFor:null` | ✅ **已修**：`atMs` 现接受纯数字字符串（JSON 往返会把数字变成字符串，一个能被精确还原的时刻不该因拼写被拒）。**未改**的部分：不带偏移的 ISO 仍按进程本地时区解析（那是 `Date.parse` 的语义），hint 已把"带偏移"写成推荐写法 —— 这是文档面而非机制面 |
 | R3 | "未到齐进等待"**不可达** ⇒ "超时自决"永不成立 | 三个会议的 quorum 块全为 `min:0, required:0, ratio:0, median:"met":true`；m4 到点后 `scheduled ⇒ open`，从未 `waiting` | ✅ **已修**：把「到齐与否」和「能不能表决」**分成两个问题**。新声明键 `vmu.meetings.waitForAll`（boolean，def **true**）＝"名册全员到齐才开场；到点有人未到 ⇒ waiting"；`false` ＝ 回到旧的"达到法定人数即开"。`syncMeeting` 两个分支共用同一个 `arrived()` 判据（避免同概念两处各写），waiting 事件带 `present`/`rosterSize`/`absent`。门禁 `tests/vmu-meeting-quorum-floor.test.mjs` R3-1…R3-11（**含反向**：`waitForAll:false` 时同一场景直接 `open` 且不发 waiting 事件）。⚠️ 真机复验待下一次活跑 |
 | R4 | 到点推进**不是时间驱动，是触碰驱动** | 到点后 `status` 仍 `scheduled`（`waitStartedAt:null`），必须有一次动作才推进；`scheduleNote` 自述"没有定时器" | 已知设计，叙述需对齐 |
@@ -1015,3 +1017,61 @@ jsonl bytes=3372272 lines=7797
 ### 24.5 诚实边界
 - F5 的「行为面」仍待真机：文字自洽只保证**提示词不再教退役机制**，不保证成员真按新机制投票／不再交 JSON。第 5 次真机跑要专门读两件事：成员回复里有没有 json 围栏、有没有拿 m 票说话。
 - 捕获层（`v5r-prompts.js` 等 67 条语料）里旧措辞仍在，那是**逐字捕获**的证据，不是教学内容；审计口径以装配层为准，这一点在 §24.4 已写死。
+
+
+## §25 第五次真机跑（cast:true）与两条用户裁定（2026-10-24）
+
+### §25.1 跑 5 的机器读数（不是印象）
+
+transcript `full-1024-065545.jsonl`（8 681 行）：`"cast":true` 在 **14** 份 `closureVote` 回执中出现；工具直方图（原始出现次数）
+`vibe_vmu_meeting` 383 · `vibe_vmu_control` 383 · `vibe_v5_meeting` 289 · `vibe_vmu_turn` 245 · `vibe_v5_verdict` 97 ·
+`vibe_vmu_status` 78 · `vibe_v5_verdict_final` 76 · `vibe_v5_read_library` 62 · `vibe_v5_overview` 58 · `vibe_v5_configure` 52。
+`verdict` 97 + `verdict_final` 76 说明**辩论、最终裁决与主席聚合**这一轮真的跑过了（不是只有开会）。
+
+### §25.2 用户裁定 A —— 普通会议不要推荐骨架（推翻 §20.4 R1 的「保留（非缺陷）」）
+
+**裁定原文**：「普通会议不需要推荐给院士流程骨架，只有一些特殊类型会议比如辩论才推荐给院士流程骨架」。
+
+改前：`MEETING_PROCEDURES` 六类各一套骨架，D5 判据写成「没有骨架 = 缺陷」，§20.4 R1 还专门把「ordinary 也有 3 步骨架」判成非缺陷。
+改后（`vibe-math-vmu/packs/v5r/meeting-procedures.js`）：
+- `MEETING_PROCEDURES` = **五类**（academic/closure/debate/paper/planning），`ordinary` 不在内；
+- 新增 `ORDINARY_NO_SKELETON_REASON`（`Object.freeze` 的具名字符串，点名用户裁定与日期）；
+- `MEETING_PROCEDURE_DECISIONS` 仍是**六行**决议台账，ordinary 那行 `hasProcedure:false` + `reason` 直接引用该常量；
+- `procedureFor('ordinary')` ⇒ `{hasProcedure:false, procedure:null, binding:null, note:"…具名决定…"}`；
+- 工具面回执：`procedure:null` / `procedureBinding:null` / `procedureNote` 说明「本类型没有推荐流程骨架（这是具名决定，不是遗漏）」。
+
+★ 为什么不是「直接删掉骨架就完事」：沉默的 `null` 与具名的「不给」在调用方眼里长得一样，只有后者能被断言、被读到。
+这与本阶段反复出现的同一类缺陷（静默缺失）是同一个理由。
+
+门禁：`tests/vmu-meeting-procedures-catalog.test.mjs` **53/0** —— 断言（a）恰五类有骨架、（b）**恰一类**无骨架且必须是 ordinary、
+（c）无骨架者必须带 reason 且 reason 里点名「用户裁定」、（d）回执 `procedure:null` 但 `procedureNote` 必须说明原因、（e）正控：
+`procedureFor('debate')` 仍有四步骨架。`tests/vmu-meeting-types.test.mjs` **132/0** 同步分区（ordinary 另行钉）。
+
+### §25.3 用户裁定 B（R14）—— 角色专属章节泄漏给非该角色席位
+
+**真机证据**（跑 5 transcript）：`member-2`（常驻研究员）的提示词里带着 `# v5r-turn-acad-leads`，开头逐字是
+「作为院士，除了做研究，你还要**统筹全所**：…」—— 一个非院士被要求统筹全所。
+
+**根因**：该 section 在 `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:13,19` 声明 `kind:'shared'`，装配按 kind 发给**每一个席位**；
+而 section policy（`packs/v5r/middleware/prompt-switches.js`）在此之前只按**会议/名单**开关，没有任何「按角色收窄」的通道。
+
+**修法**：新增 `ROLE_CLAIMING_SECTIONS`（`[["v5r-turn-acad-leads","chair"]]`），策略第 (6) 段**fail-closed**：role !== 'chair' ⇒ 关。
+★ 刻意与 R13 的 `ROLE_ONLY_SECTIONS` 分成两张表而不是加一个 flag：后者必须 **fail-open**（R13j：未知角色不得改变任何决定，
+否则会猜掉 leaderless 变体），前者必须 **fail-closed**（未知角色不得被称作院士）。两种相反的安全默认值不能共用一条通道。
+
+门禁：`tests/vmu-prompt-live-facts.test.mjs` 新增 R14a–R14f（**29/0**）：决策层（主席保留/成员关/temp 关/未知角色关）＋
+真实装配两端（主席提示词有该标题与开头那半句；成员提示词既无标题也无「作为院士，除了做研究」）。
+
+### §25.4 两个被自己证伪的断言（本轮的教训）
+
+1. **R14f 第一版禁的是词，不是那件事**：「成员提示词不得含『统筹全所』」立刻红 —— 因为有三段**写给成员**的话合法地用该词描述
+   院士的职责（「主动向院士汇报：它需要你的进展…才能统筹全所」）。改成禁**角色宣称本身**（`作为院士，除了做研究`）＋标题后才对。
+   一个词在正确文本里也会出现，拿词当替身必然既误报又漏报。
+2. **辩论正控第一版做在回执层**：真开一场 `type:'debate'` 的会议，被**辩论对象闸**挡住（命题卡必须存在且 `proofState=complete`），
+   于是正控红，而它红的原因与「骨架在不在」毫无关系。改到**目录层** `procedureFor('debate')` —— 正控必须只依赖它想证明的那一件事。
+
+### §25.5 当前状态
+
+HEAD `512fb19b`（+ 本批未提交改动）；本批 = `prompt-switches.js`（ROLE_CLAIMING_SECTIONS）、`vmu-prompt-live-facts` +6 断言、
+`meeting-procedures.js`（ordinary 具名不给）、`vmu-meeting-procedures-catalog` 53/0、`vmu-meeting-types` 132/0、本节 + D5 行 + §20.4 R1 行。
+待办：跑 6（复核 F5 与 R14 的真机读数）、账本里仍为 ⚠️ 的行、无并发全量 T1。

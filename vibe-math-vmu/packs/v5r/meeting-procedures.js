@@ -8,10 +8,11 @@
  * 今天的形状：`MEETING_TYPES` 是 pack 自己的词汇（内核不认识这六个 id，`tests/vmu-meeting-types.test.mjs`
  * 会真的去 `kernel/meetings.js` 里 grep 它们，确认「换机构＝换 pack」这条第一原则没被破坏）。
  *
- * ★ D5（本轮）：**每一类都有决议**。规则只点名给了辩论会议的骨架，但「规则没给骨架」不等于
- * 「框架可以静默返回 null」—— 那是把"没写"当成"没有"。所以六个类型现在各自有一套推荐骨架，
- * 每一步都带 `tool:` 字段点名**真实存在**的工具（`tests/vmu-meeting-procedures-catalog.test.mjs` 会拿
- * 运行时工具目录逐个核对：假工具名＝假承诺，B4/B10 已经踩过一次）。
+ * ★ D5 + 用户裁定（2026-10-24）：**每一类都有决议，但不是每一类都有骨架**。规则只点名给了辩论会议的骨架，
+ * 而「规则没给骨架」不等于「框架可以静默返回 null」；所以最初六类各配一套骨架。用户随后裁定「普通会议不需要
+ * 推荐流程骨架，只有一些特殊类型会议比如辩论才推荐」⇒ ordinary 改成一个**具名的「不给」**
+ * （`ORDINARY_NO_SKELETON_REASON`），其余五类保留骨架。每一步都带 `tool:` 字段点名**真实存在**的工具
+ * （`tests/vmu-meeting-procedures-catalog.test.mjs` 会拿
  *
  * 语义边界（必须一直被说清）：
  *   · `binding:'recommendation'` 是**机器可读**的承诺：骨架不是门禁。院士可以只做其中一步、改顺序、
@@ -72,27 +73,16 @@ export const DEBATE_PROCEDURE = Object.freeze({
   ]),
 })
 
-/** 正常会议：例行同步 —— 进展 / 分工 / 收尾。 */
-export const ORDINARY_PROCEDURE = Object.freeze({
-  title: '正常会议 · 推荐流程骨架',
-  binding: 'recommendation',
-  subject: null,
-  steps: Object.freeze([
-    step(1, 'sync-progress', 'vibe_v5_say',
-      '每人依次同步：手上在做什么、做到哪一步、下一步是什么。要留档的进展用记录面写卡，不要只在会议记录里说。',
-      ['vibe_v5_say { text: "<进展>" }', 'vibe_v5_record_progress { ... }']),
-    step(2, 'distribute-work', 'vibe_v5_task_create',
-      '把本轮定下的活落成任务卡（谁做、做什么、做到什么算完成）；已有任务用 task_update 改状态，不要口头分工。',
-      ['vibe_v5_task_create { ... }', 'vibe_v5_assign { ... }', 'vibe_v5_task_update { ... }']),
-    step(3, 'close-and-record', 'vibe_vmu_meeting',
-      '主席收尾并关会：确认没有未决事项，然后把结论写进机构记录（会议记录本身不是机构记录）。',
-      ['vibe_vmu_meeting { action: "summary", id: "<本会议>" }', 'vibe_vmu_meeting { action: "close", id: "<本会议>" }']),
-  ]),
-  notes: Object.freeze([
-    '本骨架是**推荐**，不是门禁：可以只做一步、改顺序、完全不用。',
-    '正常会议不要求议题对象（`subject`）：有议题就写进 agenda，不必为了"像开会"编一个。',
-  ]),
-})
+/**
+ * ★ 为什么 ordinary 没有骨架（**具名决定**，机器可读）—— 用户裁定（2026-10-24）：「普通会议不需要推荐给院士
+ * 流程骨架，只有一些特殊类型会议比如辩论才推荐给院士流程骨架」。这不是遗漏：普通会议就是例行同步，议程与顺序
+ * 完全由院士决定，框架再给一套三步脚本反而是替院士做决定。
+ *
+ * 保留一条硬约束：**没有骨架也必须说得出来为什么**。`MEETING_PROCEDURE_DECISIONS` 里 ordinary 的
+ * `hasProcedure:false` 与这句 reason 是同一个决定的两面，工具面回执里 `procedure:null` 旁边就跟着这句。
+ */
+export const ORDINARY_NO_SKELETON_REASON = Object.freeze(
+  '本类型不给推荐骨架：正常会议（例行同步）的议程与顺序完全由院士自行编排（用户裁定 2026-10-24；这一条是具名决定，不是遗漏）。')
 
 /** 学术交流：报告 + 交叉提问 + 把线索落库。 */
 export const ACADEMIC_PROCEDURE = Object.freeze({
@@ -190,11 +180,11 @@ export const PLANNING_PROCEDURE = Object.freeze({
 })
 
 /**
- * 六个类型 ⇒ 六套骨架。**没有 null 分支**：`MEETING_PROCEDURE_DECISIONS` 是机器可读的决议台账，
- * 新增类型若忘了配骨架，`tests/vmu-meeting-procedures-catalog.test.mjs` 会红（而不是静默返回 null）。
+ * 五个类型 ⇒ 五套骨架，**ordinary 一个具名的「不给」**（`ORDINARY_NO_SKELETON_REASON`）。没有静默 null：
+ * `MEETING_PROCEDURE_DECISIONS` 是机器可读的决议台账，新增类型若既没配骨架也没写理由，
+ * `tests/vmu-meeting-procedures-catalog.test.mjs` 会红
  */
 export const MEETING_PROCEDURES = Object.freeze({
-  ordinary: ORDINARY_PROCEDURE,
   academic: ACADEMIC_PROCEDURE,
   debate: DEBATE_PROCEDURE,
   closure: CLOSURE_PROCEDURE,
@@ -212,7 +202,7 @@ export const MEETING_PROCEDURE_DECISIONS = Object.freeze(MEETING_TYPES.map((t) =
     type: t.id,
     label: t.label,
     hasProcedure: !!procedure,
-    reason: procedure ? null : '本类型不给推荐骨架：' + t.label + ' 的议程完全由院士自行编排（这一条是具名决定，不是遗漏）。',
+    reason: procedure ? null : (t.id === 'ordinary' ? ORDINARY_NO_SKELETON_REASON : '本类型不给推荐骨架：' + t.label + ' 的议程完全由院士自行编排（这一条是具名决定，不是遗漏）。'),
   })
 }))
 

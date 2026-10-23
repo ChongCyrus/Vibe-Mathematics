@@ -252,6 +252,53 @@ const mkTurn = (extra = {}) => createTurnOrchestrator({ sectionPolicy: decideSec
     { withLeader: norole13.get('v5r-charter-roster-temp'), leaderless: norole13.get('v5r-charter-roster-temp-leaderless') })
 }
 
+// ═══ R14 (found in live run 5's transcripts): A ROLE-CLAIMING SECTION REACHED A SEAT THAT IS NOT THAT ROLE ═══════════
+// `v5r-turn-acad-leads` opens with 「作为院士，除了做研究，你还要**统筹全所**」. It is declared `kind: 'shared'`, so the
+// assembly handed it to EVERY seat: run 5's member-2 (a researcher) was literally told to coordinate the whole institute.
+// The fix is a second, FAIL-CLOSED policy list (`ROLE_CLAIMING_SECTIONS`): the section survives only for the role it
+// claims. These assertions ask BOTH layers — the decision list AND a real assembled prompt — because the previous round
+// proved a decision-level assertion alone can be true while the real prompt disagrees.
+{
+  const packPipeline14 = createPromptPipeline({ sections: PACK.sections, bindings: PACK.bindings, clock: () => '2026-01-01T00:00:00.000Z' })
+  const pick14 = (turn) => new Map(decideSections({ settings: {}, turn }).decisions.map((d) => [d.name, d.enabled]))
+  const chair14 = pick14({ phase: 'normal', role: 'chair', rosterIds: ['r-1', 'r-2'], chairId: 'r-1' })
+  const member14 = pick14({ phase: 'normal', role: 'member', rosterIds: ['r-1', 'r-2'], chairId: 'r-1' })
+  const temp14 = pick14({ phase: 'normal', role: 'temp', rosterIds: ['r-1', 'r-2'], chairId: 'r-1' })
+  const unknown14 = pick14({ phase: 'normal', rosterIds: ['r-1', 'r-2'], chairId: 'r-1' })
+  ok(chair14.get('v5r-turn-acad-leads') !== false,
+    'R14a. the chair keeps the 「作为院士…统筹全所」 section (nothing is emitted for the role it claims)', { chair: chair14.get('v5r-turn-acad-leads') })
+  ok(member14.get('v5r-turn-acad-leads') === false,
+    'R14b. ★★★★★ a plain member does NOT get the academician-leadership section (this is what live run 5 violated)',
+    { member: member14.get('v5r-turn-acad-leads') })
+  ok(temp14.get('v5r-turn-acad-leads') === false,
+    'R14c. ★★★ a temp seat does not get it either', { temp: temp14.get('v5r-turn-acad-leads') })
+  ok(unknown14.get('v5r-turn-acad-leads') === false,
+    'R14d. ★★★★ FAIL-CLOSED: an unknown role must not be told 「作为院士」 (the opposite policy from the leader pair, R13j)',
+    { unknown: unknown14.get('v5r-turn-acad-leads') })
+
+  const t14 = createTurnOrchestrator({
+    sectionPolicy: decideSections,
+    prompt: packPipeline14,
+    deliver: deliverByReturning(),
+    turnFacts: () => ({ roster: '- r-1 · chair\n- r-2 · member', rosterIds: ['r-1', 'r-2'], chairId: 'r-1', quorum: 2 }),
+  })
+  const asChair14 = await t14.run({ member: 'r-1', phase: 'normal', role: 'chair' })
+  const asMember14 = await t14.run({ member: 'r-2', phase: 'normal', role: 'member' })
+  const textChair14 = (asChair14 && asChair14.memberPrompt && asChair14.memberPrompt.text) || ''
+  const textMember14 = (asMember14 && asMember14.memberPrompt && asMember14.memberPrompt.text) || ''
+  const carried14 = (text, name) => text.split('\n').some((line) => line === '# ' + name)
+  ok(carried14(textChair14, 'v5r-turn-acad-leads') && textChair14.includes('作为院士，除了做研究'),
+    'R14e. the REAL chair prompt carries the section heading', { chars: textChair14.length })
+  // ★ MEASURED FALSE POSITIVE, designed out: an earlier version of this assertion banned the PHRASE 「统筹全所」 from the
+  // member prompt, but three sections ADDRESSED TO THE MEMBER legitimately describe the chair's job with that phrase
+  // (「主动向院士汇报：它需要你的进展…才能统筹全所」). What must be absent is the ROLE CLAIM ITSELF — the opening line
+  // 「作为院士，除了做研究，你还要…」 and the section heading. Banning a word instead of the claim would have been a
+  // gate that fires on correct text.
+  ok(!carried14(textMember14, 'v5r-turn-acad-leads') && !textMember14.includes('作为院士，除了做研究'),
+    'R14f. ★★★★★ the REAL member prompt carries neither the role-claiming heading nor its opening claim 「作为院士…」 (end-to-end)',
+    { chars: textMember14.length })
+}
+
 console.log('\n=== VMU PROMPT LIVE FACTS: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) { console.log('FAILURES:'); for (const f of failures) console.log('  - ' + f) }
 process.exit(failed ? 1 : 0)

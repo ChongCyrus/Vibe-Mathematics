@@ -136,27 +136,43 @@ try {
   ok(decidedTypes.length > 0 && proc.MEETING_TYPE_IDS.every((id) => decidedTypes.includes(id)),
     'every declared type appears in the decision ledger', decidedTypes)
   const skeletonTypes = proc.MEETING_PROCEDURE_DECISIONS.filter((d) => d.hasProcedure === true).map((d) => d.type)
-  ok(skeletonTypes.length === 6,
-    '★ all six types now carry a recommended skeleton (a rule that named only debate does not make the other five "nothing")',
+  // ★ 用户裁定（2026-10-24）：「普通会议不需要推荐流程骨架，只有一些特殊类型会议比如辩论才推荐给院士流程骨架」。
+  // 所以这里断言的是 FIVE，而 ordinary 的无骨架必须是具名决议（下一条）。断言「六」会把裁定当成回归。
+  ok(skeletonTypes.length === 5,
+    '★★ five types carry a recommended skeleton - ordinary no longer does (user ruling 2026-10-24)',
     proc.MEETING_PROCEDURE_DECISIONS.map((d) => [d.type, d.hasProcedure]))
+  const ordinaryDecision = proc.MEETING_PROCEDURE_DECISIONS.find((d) => d.type === 'ordinary')
+  ok(ordinaryDecision && ordinaryDecision.hasProcedure === false && /用户裁定/.test(ordinaryDecision.reason || ''),
+    '★★★★ ordinary 的「不给骨架」是具名决议，reason 里点名了用户裁定（不是遗漏、不是静默 null）',
+    ordinaryDecision)
   const namedNonSkeletons = proc.MEETING_PROCEDURE_DECISIONS.filter((d) => d.hasProcedure === false)
-  // EMPTY_ALLOWED: 今天六个类型都有骨架，所以这个集合按设计可能为空 —— 断言的是「凡是无骨架者必须带具名理由」这个
-  // 形状，而不是「现在一定存在无骨架者」。反过来强行要求非空会让这条闸在规则演进后变成假红，必须显式说明空集合法。
+  // 形状要求始终成立：凡是无骨架者必须带具名理由。★ 且今天这个集合 BY RULING 非空（就是 ordinary）——
+  // 若某次改动让它变空，说明裁定被回退了，那应该是红，而不是「空集合法」的老注释把它放过去。
+  ok(namedNonSkeletons.length === 1 && namedNonSkeletons[0].type === 'ordinary',
+    '★★ exactly one type has no skeleton, and it is ordinary (the ruling is pinned here, not just in prose)',
+    namedNonSkeletons.map((d) => d.type))
   ok(namedNonSkeletons.every((d) => typeof d.reason === 'string' && d.reason.trim().length > 10),
-    'a type WITHOUT a skeleton must carry a named reason (the shape stays even while unused today)',
+    'a type WITHOUT a skeleton must carry a named reason',
     namedNonSkeletons.map((d) => d.type))
 
   // ── ② 每个类型 procedureFor() 都说得出话 ────────────────────────────────────────────────────────────────
   console.log('=== 2. procedureFor() ANSWERS FOR EVERY TYPE — AND NEVER RETURNS A SILENT NULL ===')
   ok(proc.MEETING_TYPE_IDS.length > 0, 'the type list is non-empty (RULE E)', proc.MEETING_TYPE_IDS.length)
   const perType = proc.MEETING_TYPE_IDS.map((id) => ({ id, d: proc.procedureFor(id) }))
-  const missingSkeleton = perType.filter((r) => r.d.hasProcedure !== true || !r.d.procedure)
-  ok(missingSkeleton.length === 0, 'every known type returns a skeleton object (non-null)', missingSkeleton.map((r) => r.id))
-  const badBinding = perType.filter((r) => r.d.binding !== 'recommendation')
+  const withProc = perType.filter((r) => r.id !== 'ordinary')
+  const ordinaryProc = perType.find((r) => r.id === 'ordinary')
+  const missingSkeleton = withProc.filter((r) => r.d.hasProcedure !== true || !r.d.procedure)
+  ok(missingSkeleton.length === 0, 'every type the ruling keeps a skeleton for returns it (non-null)', missingSkeleton.map((r) => r.id))
+  ok(ordinaryProc && ordinaryProc.d.hasProcedure === false && ordinaryProc.d.procedure === null,
+    '★ ordinary returns NO skeleton (null), which is the ruling - not a lookup failure', ordinaryProc && ordinaryProc.d)
+  ok(ordinaryProc && typeof ordinaryProc.d.note === 'string' && ordinaryProc.d.note.includes('具名决定'),
+    '★★ and it still SAYS WHY: the note names it a deliberate decision, so null is never silent',
+    ordinaryProc && ordinaryProc.d.note)
+  const badBinding = withProc.filter((r) => r.d.binding !== 'recommendation')
   ok(badBinding.length === 0, '★ every skeleton is machine-readably a RECOMMENDATION (never a gate)', badBinding.map((r) => [r.id, r.d.binding]))
-  const emptySteps = perType.filter((r) => !Array.isArray(r.d.procedure.steps) || r.d.procedure.steps.length === 0)
+  const emptySteps = withProc.filter((r) => !Array.isArray(r.d.procedure.steps) || r.d.procedure.steps.length === 0)
   ok(emptySteps.length === 0, 'every skeleton has at least one step', emptySteps.map((r) => r.id))
-  const badNotes = perType.filter((r) => !/推荐/.test(r.d.note))
+  const badNotes = withProc.filter((r) => !/推荐/.test(r.d.note))
   ok(badNotes.length === 0, 'the per-type note still says it is a recommendation (skipping it is allowed)', badNotes.map((r) => r.id))
   const unknown = proc.procedureFor('weekly-sync')
   ok(unknown.known === false && unknown.hasProcedure === false && /legal:/.test(unknown.note),
@@ -166,7 +182,17 @@ try {
   console.log('=== 3. EVERY STEP NAMES A TOOL THAT REALLY EXISTS (a fake name is a fake promise) ===')
   ok(toolNames.length > 0, 'the runtime tool catalogue is non-empty (RULE E — an empty catalogue would make this check vacuous)', toolNames.length)
   const withSkeleton = proc.MEETING_TYPE_IDS.filter((id) => proc.MEETING_PROCEDURES[id])
-  ok(withSkeleton.length === 6, 'the skeleton map covers all six types', withSkeleton)
+  ok(withSkeleton.length === 5, 'five types carry a skeleton map entry', withSkeleton)
+  const noSkeleton = proc.MEETING_TYPE_IDS.filter((id) => !proc.MEETING_PROCEDURES[id])
+  ok(noSkeleton.length === 1 && noSkeleton[0] === 'ordinary',
+    '★ 用户裁定（2026-10-24）：ordinary 是唯一没有骨架的类型 —— 普通会议不需要推荐流程骨架', noSkeleton)
+  const decisions = new Map(proc.MEETING_PROCEDURE_DECISIONS.map((d) => [d.type, d]))
+  ok(decisions.size === 6 && decisions.get('ordinary').hasProcedure === false
+    && typeof decisions.get('ordinary').reason === 'string' && decisions.get('ordinary').reason.includes('用户裁定'),
+    '★★ ordinary 的「不给骨架」是具名决议：hasProcedure:false 与 reason 里点名了用户裁定（不是静默 null）',
+    decisions.get('ordinary'))
+  ok(noSkeleton.every((id) => typeof decisions.get(id).reason === 'string' && decisions.get(id).reason.trim() !== ''),
+    'RULE E：没有骨架也必须给得出理由（每个无骨架类型都有 reason）', noSkeleton.map((id) => [id, decisions.get(id).reason]))
   const allSteps = withSkeleton.reduce((a, id) => a.concat(proc.MEETING_PROCEDURES[id].steps.map((s) => ({ id, s }))), [])
   ok(allSteps.length >= 6, 'there is at least one step per type to check (RULE E)', allSteps.length)
   const fakeTools = allSteps.filter((r) => !toolNames.includes(r.s.tool))
@@ -227,11 +253,20 @@ try {
   await kernel.members.hire({ id: 'r-1', slot: 'member' })
   const opened = await call(booted2, 'vibe_v5_meeting', { agenda: '本轮同步', kind: 'sync', member: 'acad', type: 'ordinary' })
   ok(opened.parsed && opened.parsed.ok === true, 'an ordinary meeting opens', opened.parsed && opened.parsed.ok)
-  ok(opened.parsed && opened.parsed.procedure && Array.isArray(opened.parsed.procedure.steps) && opened.parsed.procedure.steps.length >= 2,
-    '★ the ordinary receipt carries a non-empty recommended skeleton (it reads back from the pack, not from the prompt)',
-    opened.parsed && opened.parsed.procedure && opened.parsed.procedure.steps && opened.parsed.procedure.steps.length)
-  ok(opened.parsed && opened.parsed.procedureBinding === 'recommendation', 'the receipt labels it a recommendation', opened.parsed && opened.parsed.procedureBinding)
-  ok(opened.parsed && opened.parsed.procedureNote && /推荐/.test(opened.parsed.procedureNote), 'the receipt says in words that following it is optional', opened.parsed && opened.parsed.procedureNote)
+  ok(opened.parsed && opened.parsed.procedure === null,
+    '★ ordinary 的回执里 procedure 为 null —— 用户裁定：普通会议不需要骨架',
+    opened.parsed && opened.parsed.procedure)
+  ok(opened.parsed && opened.parsed.procedureBinding === null, '★ 也不假装有 binding', opened.parsed && opened.parsed.procedureBinding)
+  ok(opened.parsed && opened.parsed.procedureNote && opened.parsed.procedureNote.includes('具名决定'),
+    '★★ 但回执仍然说明为什么没有骨架 —— null 从不沉默',
+    opened.parsed && opened.parsed.procedureNote)
+
+  // 正控（目录层，而不是开一场真辩论）：辩论会议仍然有推荐骨架。★ 不在回执层做这个正控，是因为开一场真辩论要先过
+  // 辩论对象闸（命题卡必须存在且 proofState=complete），那会把「骨架还在不在」与「对象闸合不合格」两件事混在一起。
+  const debateProc = proc.procedureFor('debate')
+  ok(debateProc.hasProcedure === true && Array.isArray(debateProc.procedure.steps) && debateProc.procedure.steps.length >= 4,
+    '★ 正控：辩论会议仍然有推荐骨架（四步）—— 只有 ordinary 被裁定不给',
+    debateProc.procedure && debateProc.procedure.steps && debateProc.procedure.steps.length)
   const planned = await call(booted2, 'vibe_v5_meeting', { agenda: '下季度规划', kind: 'sync', member: 'acad', type: 'planning' })
   ok(planned.parsed && planned.parsed.procedure && planned.parsed.procedure.steps.length === 4,
     'the planning receipt reports its own four-step skeleton (per-type, not one shared blob)',

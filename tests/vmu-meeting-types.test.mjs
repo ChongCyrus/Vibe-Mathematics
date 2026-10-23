@@ -106,15 +106,20 @@ try {
     .concat(['vibe_vmu_meeting', 'vibe_vmu_turn', 'vibe_vmu_records', 'vibe_vmu_mailbox', 'vibe_vmu_status', 'vibe_vmu_tools']))
   ok(published.size >= 45, 'the derived tool vocabulary is the full published surface (RULE E: a non-empty set)', published.size)
   ok(toolNames.length > 0 && toolNames.every((t) => published.has(t)), 'every tool a step names is a real published tool', toolNames)
-  // ★ D5 判据变了（vmu-pack R17 落盘）：规则原文是「特殊类型会议下框架初始给院士**推荐流程**」，
-  //   所以六类**都**该有一套推荐骨架；"没有骨架"不再是对的类型答案。唯一允许没有骨架的是
-  //   **未声明的类型**（下面 unknown 那段钉住它，且必须具名说明 + 列法律值，不许静默 null）。
-  //   这里逐类钉：有骨架 / 步骤非空 / 每步点名的工具真存在 / 回执里写明"推荐不是门禁"。
-  const others = ids.filter((t) => t !== 'debate')
-  ok(others.length === 5, 'the non-debate list is non-empty (RULE E)', others.length)
+  // ★ 用户裁定（2026-10-24）推翻了这条 D5 判据：规则原文是「特殊类型会议下框架初始给院士**推荐流程**」，
+  //   ordinary（正常会议）**不是**特殊类型 ⇒ 它不该有骨架，而且必须以具名理由说出来（不是静默 null）。
+  //   这里逐类钉：特殊类型有骨架 / 步骤非空 / 每步点名的工具真存在 / 回执里写明"推荐不是门禁"；ordinary 另行钉。
+  const ordinaryProc = proc.procedureFor('ordinary')
+  ok(ordinaryProc.known === true && ordinaryProc.hasProcedure === false && ordinaryProc.procedure === null,
+    '★ ordinary has NO recommended skeleton（用户裁定 2026-10-24：普通会议不需要推荐流程骨架）',
+    { hasProcedure: ordinaryProc.hasProcedure, procedure: ordinaryProc.procedure })
+  ok(/具名决定/.test(String(ordinaryProc.note)),
+    '★★ ordinary 的「没有骨架」必须具名说明 —— null 从不沉默', ordinaryProc.note)
+  const others = ids.filter((t) => t !== 'debate' && t !== 'ordinary')
+  ok(others.length === 4, 'the special-type list is non-empty (RULE E)', others.length)
   ok(others.every((t) => proc.procedureFor(t).hasProcedure === true && Array.isArray(proc.procedureFor(t).procedure.steps)
       && proc.procedureFor(t).procedure.steps.length >= 1),
-    '★ the five other types EACH carry a recommended skeleton (D5 says the framework recommends for special types)',
+    '★ the four other SPECIAL types EACH carry a recommended skeleton',
     others.map((t) => [t, proc.procedureFor(t).hasProcedure, proc.procedureFor(t).procedure && proc.procedureFor(t).procedure.steps.length]))
   const otherSteps = others.reduce((a, t) => a.concat(proc.procedureFor(t).procedure.steps), [])
   ok(otherSteps.every((s) => typeof s.what === 'string' && s.what.length > 0),
@@ -217,10 +222,10 @@ try {
   ok(backSum.type === 'debate' && backSum.subject === 'p-2', '★ read-back from the service confirms what the tool claimed', { type: backSum.type, subject: backSum.subject })
   const plain = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '一般议事' })
   ok(plain.parsed && plain.parsed.ok === true && plain.parsed.type === 'ordinary', 'the default type is ordinary (old callers keep working)', plain.parsed && plain.parsed.type)
-  ok(plain.parsed && plain.parsed.procedure && plain.parsed.procedure.steps.length >= 2
-      && /推荐/.test(String(plain.parsed.procedureNote)),
-    '★ an ordinary meeting ALSO reports a recommended skeleton (a normal meeting has an agenda order worth recommending)',
-    plain.parsed && (plain.parsed.procedureNote || '').slice(0, 80))
+  ok(plain.parsed && plain.parsed.procedure === null && plain.parsed.procedureBinding === null
+      && /具名决定/.test(String(plain.parsed.procedureNote)),
+    '★★ an ordinary meeting reports NO skeleton AND says why（用户裁定 2026-10-24：普通会议不需要推荐骨架）',
+    plain.parsed && (plain.parsed.procedureNote || '').slice(0, 90))
   const noSubject = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '辩论一个没说是什么的东西', type: 'debate' })
   ok(noSubject.parsed && noSubject.parsed.ok === false && noSubject.parsed.code === 'VMU_INVALID_ARGUMENT' && /subject/.test(String(noSubject.parsed.message)),
     '★ a debate with no object is refused by name (never a debate about nothing)', noSubject.parsed && noSubject.parsed.code)
