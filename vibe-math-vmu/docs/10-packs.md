@@ -192,7 +192,7 @@ pack 默认  <  预设 Config  <  会话 settings  <  运行时 set
 |---|---|---|
 | **孤儿键（`vmu.meetings.` ＋ `reconsiderFloor`）** | 同时出现在 `settings/schema.js` 与 v5r 清单 `packs/v5r/prompts/v5r-core.js:78`，**全仓无任何读者**；真正生效的是 **`vmu.ballot.reopenFloor`**（读者 `kernel/ballotbox.js:22,41,137`） | **vmu-core（schema）＋ vmu-assistant（清单）＋ reader-c（docs/08 的叙述）**：清单与 docs 先改述为 `vmu.ballot.reopenFloor`，core 再删 schema 行（**顺序**：清单/docs 先清，否则门禁把"点名"当"读取"而红） |
 | **M-A04 子项：论文轮次上限** → **已闭合（轮 6 收尾）** | core 已落 `vmu.paper.maxRounds`（schema）＋ 读点（`kernel/paper.js:41,135` 的 `revise()`，超限**具名拒** `VMU_PAPER_ROUNDS_EXCEEDED`）；本 pack 随即声明 **`vmu.paper.maxRounds=3`**（＝v5r 的 `PAPER_MAX_ROUNDS`，defaults.json/js 同值） | ✅ 判据：defaults 探针 `undeclared=0`（35 键）；`vmu-paper` 37/0、`vmu-pack` 53/0 |
-| **4 处矩阵键名是 v1 转述** | `GRANTABLE_COMMANDS/GRANT_SCOPES`→`vmu.grant.*`；`vmu.lean.*`→`vmu.math.*`；`chatDigestMax/Ms`→`vmu.mailbox.digestMax/digestWindowMs`（**默认 12／45000 ＝ v5r 值**）；`SECRETARY_ENTRY_MAX`/`min_votes`/`motionSecondsRequired`→`vmu.minutes.verbatimCapBytes`/`vmu.ballot.minVotes`/`vmu.motions.secondThreshold` | **vmu-verify**：矩阵 pack 列按真名改判（**不是缺口**） |
+| **3 处矩阵键名是 v1 转述**（grant 一处已随 `kernel/grant.js` 的裁定删除作废） | `vmu.lean.*`→`vmu.math.*`；`chatDigestMax/Ms`→`vmu.mailbox.digestMax/digestWindowMs`（**默认 12／45000 ＝ v5r 值**）；`SECRETARY_ENTRY_MAX`/`min_votes`/`motionSecondsRequired`→`vmu.minutes.verbatimCapBytes`/`vmu.ballot.minVotes`/`vmu.motions.secondThreshold` | **vmu-verify**：矩阵 pack 列按真名改判（**不是缺口**） |
 
 ★ **pack 侧状态**：**48 个键**全部有真读者（41 个内核读者 ＋ 5 个由本 pack 的 `middleware/prompt-switches.js` 读 ＋ 1 个孤儿在别人名下 ＋ **新增的 `vmu.paper.maxRounds`**），`vmu-pack-defaults-vs-schema.mjs` 的 `undeclared=0`。
 

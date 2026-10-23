@@ -106,13 +106,20 @@ async function mathjobsRailProbe(mod) {
   await tick(); await tick(); await tick()
   const afterState = svc.status({ jobId: second.jobId }).job.state
   const firstState = svc.status({ jobId: first.jobId }).job.state
-  return {
+  const read = {
     firstStarted: !!first && first.ok === true && firstState !== 'queued',
     parkedState, spawnedWhileParked,
     // THE READING: the released slot really handed over to the parked job
     parkedIsQueued: parkedState === 'queued' && spawnedWhileParked === 1,
     parkedJobStarted: afterState === 'running' && pending.length === 2,
   }
+  // ★ CLEANUP (round speed-1, measured 120.5 s): the second job's fake spawn never settles, so its 120 s child-budget
+  // timer (`kernel/mathjobs.js` `runWithBudget`) stays armed after the probe and keeps this suite's event loop alive
+  // until it fires — the suite prints all 26 assertions in 0.4 s and then idles for two minutes. Finishing the job
+  // HERE disarms that timer; the reading above is already taken, so the probe's assertions cannot change.
+  if (pending[1]) pending[1]({ exitCode: 0, stdout: 'b', stderr: '' })
+  await tick()
+  return read
 }
 
 const family = await falsifyFamily({

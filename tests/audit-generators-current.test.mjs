@@ -17,7 +17,7 @@
 // file being tested. Round 507 made --write the opt-in everywhere, and this guard reads regen-all's own table and runs each
 // generator bare, so a generator added there is covered the moment it is listed and can never be silently bypassed.
 import { readFileSync, existsSync, mkdtempSync, copyFileSync, rmSync } from 'node:fs'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -57,13 +57,34 @@ ok(writeByDefault.length === 0,
   { writeByDefault })
 
 console.log('=== 3. AND NO GENERATED ARTIFACT IS STALE ===')
+// PERFORMANCE (measured 2026-10-23 on the 32-core box): a generator run bare is READ-ONLY, so these 16 entries are
+// independent and used to cost the SUM of sixteen `node` startups (~22 s with this section's share). They run through
+// a bounded pool instead: same assertions, same order of reports, wall time near the slowest generator (~5 s here).
+const runBare = (script) => new Promise((resolve) => {
+  const child = spawn(process.execPath, [join(REPO, script)], { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'] })
+  let out = ''
+  child.stdout.setEncoding('utf8').on('data', (d) => { out += d })
+  child.stderr.setEncoding('utf8').on('data', (d) => { out += d })
+  child.on('close', (code) => resolve({ code, out }))
+  child.on('error', (e) => resolve({ code: -1, out: String(e) }))
+})
+// dedupe by script: regen-all lists two of the generators twice (once for write, once for the check half)
+const uniqueScripts = [...new Set(entries.map((e) => e.script))]
+const bareResults = new Map()
+{
+  const POOL = Math.max(1, Math.min(6, uniqueScripts.length))
+  let next = 0
+  await Promise.all(Array.from({ length: POOL }, async () => {
+    while (next < uniqueScripts.length) {
+      const script = uniqueScripts[next++]
+      bareResults.set(script, await runBare(script))
+    }
+  }))
+}
 const stale = []
 for (const e of entries) {
-  try {
-    execFileSync(process.execPath, [join(REPO, e.script)], { cwd: REPO, encoding: 'utf8' })
-  } catch (err) {
-    stale.push(e.label + ' -> ' + (String(err.stdout || '') + String(err.stderr || '')).trim().slice(0, 140))
-  }
+  const r = bareResults.get(e.script)
+  if (r.code !== 0) stale.push(e.label + ' -> ' + String(r.out || '').trim().slice(0, 140))
 }
 ok(stale.length === 0,
   'running every generator bare reports every generated artifact current, so a hand edit to one fails the gate',

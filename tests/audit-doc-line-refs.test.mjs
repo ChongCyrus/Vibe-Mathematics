@@ -178,6 +178,7 @@ export const KNOWN_OUT_OF_RANGE = Object.freeze([
   { doc: 'docs/acceptance/v5r-inventory-c.md', docLine: 787, ref: 'agent.cordis.yml:294-295', why: '历史 acceptance 记录：当时 vmu agent.cordis.yml 更长（现 207 行）；按“历史 acceptance 不改写”保留原行号' },
   { doc: 'docs/COMPAT-AUDIT-ROUND2.md', docLine: 113, ref: 'agent.cordis.yml:191-209', why: '历史兼容审计记录：当时 vmu agent.cordis.yml 更长（现 207 行）；旧行号保留，供对照历史审计' },
   { doc: 'docs/COMPAT-AUDIT-ROUND2.md', docLine: 114, ref: 'agent.cordis.yml:212-230', why: '历史兼容审计记录：当时 vmu agent.cordis.yml 更长（现 207 行）；旧行号保留，供对照历史审计' },
+  { doc: 'docs/acceptance/conformance/lane-meeting.md', docLine: 173, ref: 'meeting-procedures.js:126-144', why: '历史 acceptance 记录：当时 packs/v5r/meeting-procedures.js 有 144 行；该文件现为 141 行（上游删减），按“历史 acceptance 不改写”保留原行号' },
 ])
 /**
  * A doc that cites one file several times writes the follow-ups as SHORTHAND on the same line: `f.js:531`, `:564`

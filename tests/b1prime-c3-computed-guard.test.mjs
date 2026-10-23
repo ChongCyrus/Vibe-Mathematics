@@ -6,7 +6,7 @@
 // look", and a literal-constant subscript (`const K = 'vmu.x'; NS[K]`) deliberately lands in the SAME loud bucket
 // (resolving it would need a same-file constant table — that part is named "没核", never guessed).
 // ★ NON-EMPTY CONTROL: the same copy WITHOUT the probe must be silent and exit 0, so "it fired" cannot be vacuous.
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync, cpSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync, copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -22,7 +22,20 @@ const runCopy = (dir) => {
   try { return { code: 0, err: '', out: execFileSync(process.execPath, [dir + '\\' + GEN, '--json'], { cwd: dir, encoding: 'utf8' }) } }
   catch (e) { return { code: e.status === undefined ? 1 : e.status, err: String(e.stderr || ''), out: String(e.stdout || '') } }
 }
-const mkCopy = (dir) => { mkdirSync(dir, { recursive: true }); for (const p of ['scripts', 'vibe-math-vmu']) cpSync(join(REPO, p), join(dir, p), { recursive: true }) }
+// ★ PORTABILITY (measured on Node v22.17.0 / Windows): `fs.cpSync(src, dest, { recursive: true })` ABORTS the
+// process with STATUS_STACK_BUFFER_OVERRUN (0xC0000409) when the SOURCE path contains non-ASCII characters —
+// e.g. when this repository lives under `学习资料/python项目`. A single-file `cpSync` is fine; only the recursive
+// form crashes. The fixture needs no symlinks, so a plain recursive copy is equivalent, and it works from any path.
+const copyTree = (src, dest) => {
+  mkdirSync(dest, { recursive: true })
+  for (const e of readdirSync(src, { withFileTypes: true })) {
+    const s = join(src, e.name); const d = join(dest, e.name)
+    if (e.isDirectory()) copyTree(s, d)
+    else if (e.isSymbolicLink()) throw new Error('copyTree: unexpected symlink in fixture source: ' + s)
+    else copyFileSync(s, d)
+  }
+}
+const mkCopy = (dir) => { mkdirSync(dir, { recursive: true }); for (const p of ['scripts', 'vibe-math-vmu']) copyTree(join(REPO, p), join(dir, p)) }
 
 const root = mkdtempSync(join(tmpdir(), 'c3-'))
 try {

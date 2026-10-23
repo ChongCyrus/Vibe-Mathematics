@@ -46,9 +46,14 @@ ok(parseExample('e.g. boom({x: process.exit(1)})') === null, 'an expression is R
 ok(parseExample('e.g. boom({x: require("fs")})') === null, 'and so is a call', {})
 
 console.log('=== 2. EXAMPLES ARE COLLECTED FROM THE REAL REFUSALS ===')
+// ★ PERFORMANCE (round speed-1, measured 30.3 s): see `vmu-refusals-guide.test.mjs` — the two waiters' DEFAULT
+// path blocks for tens of seconds by design (`vmu.activity.timeoutMs` defaults to 30000). This suite reads the
+// hints refusals carry; the waiters' own fast action is enough here. Their timeout path stays covered elsewhere.
+const actionsOf = (s) => (s.name === 'vibe_vmu_wait' || s.name === 'vibe_v5_wait')
+  ? ['status'] : ((s.parameters.action && s.parameters.action.enum) || [])
 const examples = []
 for (const s of specs) {
-  for (const a of (s.parameters.action && s.parameters.action.enum) || []) {
+  for (const a of actionsOf(s)) {
     let r
     try { r = await s.run({ action: a }) } catch (e) { r = { code: e.code, hint: e.hint } }
     if (!r || r.ok === true || !r.hint) continue

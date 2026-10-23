@@ -14,8 +14,8 @@
 // non-empty (it was empty in two modules, because everything is wired), it picked a READ entry point to look for a refusal,
 // and it read `validateRule` as boolean-shaped when it returns a list of problems.
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
-const K = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu/kernel/'
+import { dirname, join } from 'node:path'
+const K = join(dirname(fileURLToPath(import.meta.url)), '..', 'vibe-math-vmu', 'kernel')
 const url = (f) => 'file:///' + join(K, f).replace(/\\/g, '/').replace(/ /g, '%20')
 let pass = 0, fail = 0
 const failures = []

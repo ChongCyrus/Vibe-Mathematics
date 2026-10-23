@@ -35,54 +35,72 @@ const hasNoVerifySlot = (v) => !!v && !('verify' in v) && !('verifyReason' in v)
 // It copies the module, removes ONE `fail()` whitelist line, and requires the named §32 assertion
 // to fail in the child. Usage: node tests/math-computation-shared.test.mjs --self-probe
 if (process.argv.includes('--self-probe')) {
+  // PERFORMANCE (measured 2026-10-23 on the 32-core box): the five cases below are INDEPENDENT copies of the same
+  // module, and each child re-runs the whole suite. Running them one after another cost 32-34 s per sweep for no
+  // reason: the prep is sync, so all five children are spawned up front and awaited together. Wall time of this
+  // mode is now ~one child (7 s here); every named-red requirement below is unchanged.
   const { mkdtempSync, copyFileSync, readFileSync: rf, writeFileSync: wf, rmSync } = await import('node:fs')
   const { tmpdir } = await import('node:os')
   const { join, dirname } = await import('node:path')
-  const { spawnSync } = await import('node:child_process')
+  const { spawn } = await import('node:child_process')
+  const selfPath = fileURLToPath(import.meta.url)
   const modPath = process.env.MATH_COMPUTATION_MODULE || fileURLToPath(pathToFileURL(legacyFile('vibe-math-v2', 'math-computation.js')))
-  const dir = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe-'))
-  const enginesSrc = join(dirname(modPath), 'math-engines.js')
-  try { copyFileSync(enginesSrc, join(dir, 'math-engines.js')) } catch (e) { /* engines may be resolved elsewhere */ }
-  const src = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
+  const raw = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
+  // start(tag, mutate) prepares one mutated copy and spawns its child; mutate returns {src} or {err(anchor missing)}.
+  const start = (tag, mutate) => {
+    const dir = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe' + tag + '-'))
+    try { copyFileSync(join(dirname(modPath), 'math-engines.js'), join(dir, 'math-engines.js')) } catch (e) { /* engines may be resolved elsewhere */ }
+    const m = mutate(raw)
+    if (m.err) { rmSync(dir, { recursive: true, force: true }); return { prepErr: m.err } }
+    wf(join(dir, 'math-computation.js'), m.src)
+    const done = new Promise((resolve) => {
+      const child = spawn(process.execPath, [selfPath], { env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir, 'math-computation.js') }), stdio: ['ignore', 'pipe', 'pipe'] })
+      let out = ''
+      child.stdout.setEncoding('utf8').on('data', (d) => { out += d })
+      child.stderr.setEncoding('utf8').on('data', (d) => { out += d })
+      child.on('close', (code) => resolve({ status: code, out }))
+      child.on('error', (e) => resolve({ status: -1, out: String(e) }))
+    }).then((r) => { rmSync(dir, { recursive: true, force: true }); return r })
+    return { done }
+  }
+  const childNamed = (r, needle) => String(r.out || '').split('\n').filter((l) => /^\s*FAIL\b/.test(l)).some((l) => l.indexOf(needle) !== -1)
+  const childSummary = (r, re) => (String(r.out || '').split('\n').filter((l) => re.test(l)).slice(-1)[0] || 'no summary').trim()
+  const firstFails = (r) => String(r.out || '').split('\n').filter((l) => /^\s*FAIL\b/.test(l)).slice(0, 4)
+
+  // case 1 (S2): remove ONE fail() whitelist line -> the named §32 assertion must redden.
   const whitelist = '  if (extra && Array.isArray(extra.absent)) out.absent = extra.absent\n'
-  if (src.indexOf(whitelist) === -1) {
-    console.log('SELF-PROBE FAIL: the fail() whitelist line for absent[] was not found (the probe cannot mutate what it cannot see)')
-    rmSync(dir, { recursive: true, force: true })
-    process.exit(1)
-  }
-  wf(join(dir, 'math-computation.js'), src.replace(whitelist, ''))
-  const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { encoding: 'utf8', maxBuffer: 1 << 26, env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir, 'math-computation.js') }) })
-  const out = String(child.stdout || '') + String(child.stderr || '')
-  const failLines = out.split('\n').filter((l) => /^\s*FAIL\b/.test(l))
-  const named = failLines.some((l) => l.indexOf('S2 absence evidence: the failure carries an absent[] list') !== -1)
-  const sum = (out.split('\n').filter((l) => /passed, \d+ failed/.test(l)).slice(-1)[0] || '').trim()
-  console.log((child.status !== 0 && named ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': removing ONE fail() whitelist line reddens the named §32 assertion (' + sum + ')')
-  if (!named) for (const l of failLines.slice(0, 4)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
-  rmSync(dir, { recursive: true, force: true })
-  // case 2 (S4/S5): remove the single `out.installedSoFar = …` assignment and require the NAMED §33
-  // assertion in the child's FAIL line (a label found anywhere in the output is NOT a red).
+  const c1 = start('1', (s) => s.indexOf(whitelist) === -1
+    ? { err: 'the fail() whitelist line for absent[] was not found (the probe cannot mutate what it cannot see)' }
+    : { src: s.replace(whitelist, '') })
+  // case 2 (S4/S5): remove the single `out.installedSoFar = …` assignment -> the NAMED §33 assertion must redden.
   const s45line = '      out.installedSoFar = results.filter((x) => x.exit === 0).map((x) => x.argv)\n'
-  const dir2 = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe2-'))
-  const src2 = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
-  let ok2 = false
-  if (src2.indexOf(s45line) === -1) {
-    console.log('SELF-PROBE FAIL: the installedSoFar assignment was not found (cannot mutate what it cannot see)')
-  } else {
-    try { copyFileSync(join(dirname(modPath), 'math-engines.js'), join(dir2, 'math-engines.js')) } catch (e) { /* optional */ }
-    wf(join(dir2, 'math-computation.js'), src2.replace(s45line, ''))
-    const child2 = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { encoding: 'utf8', maxBuffer: 1 << 26, env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir2, 'math-computation.js') }) })
-    const out2 = String(child2.stdout || '') + String(child2.stderr || '')
-    const failLines2 = out2.split('\n').filter((l) => /^\s*FAIL\b/.test(l))
-    ok2 = child2.status !== 0 && failLines2.some((l) => l.indexOf('reports what already succeeded (installedSoFar)') !== -1)
-    const sum2 = (out2.split('\n').filter((l) => /passed, \d+ failed/.test(l)).slice(-1)[0] || '').trim()
-    console.log((ok2 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': removing ONE installedSoFar assignment reddens the named §33 assertion (' + sum2 + ')')
-    if (!ok2) for (const l of failLines2.slice(0, 4)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
-  }
-  rmSync(dir2, { recursive: true, force: true })
+  const c2 = start('2', (s) => s.indexOf(s45line) === -1
+    ? { err: 'the installedSoFar assignment was not found (cannot mutate what it cannot see)' }
+    : { src: s.replace(s45line, '') })
+  // case 4 (task-1): mislabel the bundled-runtime stage -> the named foundVia assertion must redden.
+  const FROM4 = "via: 'host-runtime'"
+  const c4 = start('4', (s) => {
+    const n = s.split(FROM4).length - 1
+    return n !== 1 ? { err: 'the stage-2 via anchor occurs ' + n + ' times (expected exactly 1)' } : { src: s.split(FROM4).join("via: 'path'") }
+  })
+  // case 5 (task-2 item 3): restore the old `injected || …` form -> the named empty-injection assertion must redden.
+  const FIXED5 = 'const roots = (Array.isArray(injected) && injected.length) ? injected : mathInstallRoots(engineName, env, win)'
+  const c5 = start('5', (s) => {
+    const n = s.split(FIXED5).length - 1
+    return n !== 1 ? { err: 'the empty-array guard occurs ' + n + ' times (expected exactly 1)' } : { src: s.split(FIXED5).join('const roots = injected || mathInstallRoots(engineName, env, win)') }
+  })
+  // case 6 (task-2 built-in route): empty the built-in root table -> the named built-in-route assertion must redden.
+  const TABLE6 = 'return (table[engineName] || []).filter((x) => typeof x === \'string\' && x)'
+  const c6 = start('6', (s) => {
+    const n = s.split(TABLE6).length - 1
+    return n !== 1 ? { err: 'the built-in root-table return occurs ' + n + ' times (expected exactly 1)' } : { src: s.split(TABLE6).join('return []') }
+  })
+
   // case 3 (§30, verify provenance): the SAME predicates the §30 assertions use, fed a broken helper.
   // The real `verifyFields(engine)` helper is extracted from the module under test and run against a stub
   // descriptor table; dropping its single reason line (or the no-empty-slot guard) must flip its predicate.
-  const src3 = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
+  // (pure in-process work - no child, so it is not deferred like cases 1/2/4/5/6)
+  const src3 = raw
   const hStart = src3.indexOf('function verifyFields(engine) {')
   let helper = ''
   if (hStart !== -1) {
@@ -114,83 +132,75 @@ if (process.argv.includes('--self-probe')) {
     ok3 = bad3 === 0
     console.log('  --- §30 verify-provenance predicates: ' + (cases3.length - bad3) + '/' + cases3.length + ' as required')
   }
-  // case 4 (task-1): mislabel the bundled-runtime stage -> the named foundVia assertion must redden.
-  // NOTE: the self-probe's fs imports are ALIASED at the top of this block (`rf` = readFileSync,
-  // `wf` = writeFileSync); using the unaliased names here is a ReferenceError, not a probe failure.
+
+  // case 1 result
+  let ok1 = false
+  {
+    const r = c1.prepErr ? { prepErr: c1.prepErr } : await c1.done
+    if (r.prepErr) console.log('SELF-PROBE FAIL: ' + r.prepErr)
+    else {
+      const named = childNamed(r, 'S2 absence evidence: the failure carries an absent[] list')
+      const sum = childSummary(r, /passed, \d+ failed/)
+      ok1 = r.status !== 0 && named
+      console.log((ok1 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': removing ONE fail() whitelist line reddens the named §32 assertion (' + sum + ')')
+      if (!ok1) for (const l of firstFails(r)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
+    }
+  }
+  // case 2 result
+  let ok2 = false
+  {
+    const r = c2.prepErr ? { prepErr: c2.prepErr } : await c2.done
+    if (r.prepErr) console.log('SELF-PROBE FAIL: ' + r.prepErr)
+    else {
+      const named = childNamed(r, 'reports what already succeeded (installedSoFar)')
+      const sum = childSummary(r, /passed, \d+ failed/)
+      ok2 = r.status !== 0 && named
+      console.log((ok2 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': removing ONE installedSoFar assignment reddens the named §33 assertion (' + sum + ')')
+      if (!ok2) for (const l of firstFails(r)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
+    }
+  }
+  // case 4 result
   let ok4 = false
   {
-    const dir4 = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe4-'))
-    try {
-      copyFileSync(join(dirname(modPath), 'math-engines.js'), join(dir4, 'math-engines.js'))
-      const src4 = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
-      const FROM4 = "via: 'host-runtime'"
-      const n4 = src4.split(FROM4).length - 1
-      if (n4 !== 1) {
-        console.log('SELF-PROBE FAIL: the stage-2 via anchor occurs ' + n4 + ' times (expected exactly 1)')
-      } else {
-        wf(join(dir4, 'math-computation.js'), src4.split(FROM4).join("via: 'path'"), 'utf8')
-        const child4 = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { encoding: 'utf8', maxBuffer: 1 << 26,
-          env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir4, 'math-computation.js') }) })
-        const out4 = String(child4.stdout || '') + String(child4.stderr || '')
-        const failLines4 = out4.split('\n').filter((l) => /^\s*FAIL\b/.test(l))
-        const named4 = failLines4.some((l) => l.indexOf('a bundled runtime tree is reported as host-runtime') !== -1)
-        const summary4 = out4.split('\n').filter((l) => /passed,/.test(l)).slice(-1)[0] || 'no summary'
-        ok4 = child4.status !== 0 && named4
-        console.log((ok4 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': mislabelling the bundled-runtime stage reddens the named foundVia assertion (' + summary4 + ')')
-        if (!ok4) for (const l of failLines4.slice(0, 4)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
-      }
-    } finally { rmSync(dir4, { recursive: true, force: true }) }
+    const r = c4.prepErr ? { prepErr: c4.prepErr } : await c4.done
+    if (r.prepErr) console.log('SELF-PROBE FAIL: ' + r.prepErr)
+    else {
+      const named = childNamed(r, 'a bundled runtime tree is reported as host-runtime')
+      const summary = childSummary(r, /passed,/)
+      ok4 = r.status !== 0 && named
+      console.log((ok4 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': mislabelling the bundled-runtime stage reddens the named foundVia assertion (' + summary + ')')
+      if (!ok4) for (const l of firstFails(r)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
+    }
   }
-  // case 5 (task-2 item 3): restore the old `injected || …` form -> the named empty-injection
-  // assertion must redden (a JS empty array is truthy, so the per-OS table was suppressed).
+  // case 5 result
   let ok5 = false
   {
-    const dir5 = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe5-'))
-    try {
-      copyFileSync(join(dirname(modPath), 'math-engines.js'), join(dir5, 'math-engines.js'))
-      const src5 = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
-      const FIXED5 = 'const roots = (Array.isArray(injected) && injected.length) ? injected : mathInstallRoots(engineName, env, win)'
-      const n5 = src5.split(FIXED5).length - 1
-      if (n5 !== 1) console.log('SELF-PROBE FAIL: the empty-array guard occurs ' + n5 + ' times (expected exactly 1)')
-      else {
-        wf(join(dir5, 'math-computation.js'), src5.split(FIXED5).join('const roots = injected || mathInstallRoots(engineName, env, win)'), 'utf8')
-        const child5 = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { encoding: 'utf8', maxBuffer: 1 << 26,
-          env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir5, 'math-computation.js') }) })
-        const out5 = String(child5.stdout || '') + String(child5.stderr || '')
-        const failLines5 = out5.split('\n').filter((l) => /^\s*FAIL\b/.test(l))
-        ok5 = child5.status !== 0 && failLines5.some((l) => l.indexOf('task-2 empty-injection') !== -1)
-        const sum5 = (out5.split('\n').filter((l) => /passed,/.test(l)).slice(-1)[0] || 'no summary').trim()
-        console.log((ok5 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': restoring the old injected-truthiness form reddens the named empty-injection assertion (' + sum5 + ')')
-        if (!ok5) for (const l of failLines5.slice(0, 4)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
-      }
-    } finally { rmSync(dir5, { recursive: true, force: true }) }
+    const r = c5.prepErr ? { prepErr: c5.prepErr } : await c5.done
+    if (r.prepErr) console.log('SELF-PROBE FAIL: ' + r.prepErr)
+    else {
+      const named = childNamed(r, 'task-2 empty-injection')
+      const sum = childSummary(r, /passed,/)
+      ok5 = r.status !== 0 && named
+      console.log((ok5 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': restoring the old injected-truthiness form reddens the named empty-injection assertion (' + sum + ')')
+      if (!ok5) for (const l of firstFails(r)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
+    }
   }
-  // case 6 (task-2 built-in route): empty the built-in root table -> the named built-in-route assertion
-  // must redden (§23c injects NO roots, so the built-in table is the only stage that can find it).
+  // case 6 result
   let ok6 = false
   {
-    const dir6 = mkdtempSync(join(tmpdir(), 'mc-shared-selfprobe6-'))
-    try {
-      copyFileSync(join(dirname(modPath), 'math-engines.js'), join(dir6, 'math-engines.js'))
-      const src6 = rf(modPath, 'utf8').replace(/\r\n/g, '\n')
-      const TABLE6 = 'return (table[engineName] || []).filter((x) => typeof x === \'string\' && x)'
-      const n6 = src6.split(TABLE6).length - 1
-      if (n6 !== 1) console.log('SELF-PROBE FAIL: the built-in root-table return occurs ' + n6 + ' times (expected exactly 1)')
-      else {
-        wf(join(dir6, 'math-computation.js'), src6.split(TABLE6).join('return []'), 'utf8')
-        const child6 = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { encoding: 'utf8', maxBuffer: 1 << 26,
-          env: Object.assign({}, process.env, { MATH_COMPUTATION_MODULE: join(dir6, 'math-computation.js') }) })
-        const out6 = String(child6.stdout || '') + String(child6.stderr || '')
-        const failLines6 = out6.split('\n').filter((l) => /^\s*FAIL\b/.test(l))
-        ok6 = child6.status !== 0 && failLines6.some((l) => l.indexOf('task-2 built-in route') !== -1)
-        const sum6 = (out6.split('\n').filter((l) => /passed,/.test(l)).slice(-1)[0] || 'no summary').trim()
-        console.log((ok6 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': emptying the built-in root table reddens the named built-in-route assertion (' + sum6 + ')')
-        if (!ok6) for (const l of failLines6.slice(0, 4)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
-      }
-    } finally { rmSync(dir6, { recursive: true, force: true }) }
+    const r = c6.prepErr ? { prepErr: c6.prepErr } : await c6.done
+    if (r.prepErr) console.log('SELF-PROBE FAIL: ' + r.prepErr)
+    else {
+      const named = childNamed(r, 'task-2 built-in route')
+      const sum = childSummary(r, /passed,/)
+      ok6 = r.status !== 0 && named
+      console.log((ok6 ? 'SELF-PROBE PASS' : 'SELF-PROBE FAIL') + ': emptying the built-in root table reddens the named built-in-route assertion (' + sum + ')')
+      if (!ok6) for (const l of firstFails(r)) console.log('      child FAIL line: ' + l.trim().slice(0, 140))
+    }
   }
-    process.exit(child.status !== 0 && named && ok2 && ok3 && ok4 && ok5 && ok6 ? 0 : 1)
+  process.exit(ok1 && ok2 && ok3 && ok4 && ok5 && ok6 ? 0 : 1)
 }
+
 
 let passed = 0, failed = 0
 const failures = []

@@ -17,7 +17,7 @@
 //      and the header always prints requested scope + effective scope + final job count together.
 //
 // Run: node tests/audit-scope-classification.test.mjs
-import { spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -34,25 +34,46 @@ const ok = (cond, label, detail) => {
 }
 
 /** Run the runner and capture both channels. `env` ALWAYS sets GATE_SCOPE explicitly (never inherits one). */
-const runRunner = (argv, env = {}) => {
-  const r = spawnSync(process.execPath, [RUNNER, '--no-temp-hygiene', ...argv], {
+const runRunner = (argv, env = {}) => new Promise((resolve) => {
+  const child = spawn(process.execPath, [RUNNER, '--no-temp-hygiene', ...argv], {
     cwd: REPO,
-    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: Object.assign({}, process.env, { GATE_SCOPE: 'full' }, env),
   })
-  return { status: r.status, out: String(r.stdout || ''), err: String(r.stderr || '') }
-}
+  let out = ''
+  let err = ''
+  child.stdout.setEncoding('utf8')
+  child.stderr.setEncoding('utf8')
+  child.stdout.on('data', (d) => { out += d })
+  child.stderr.on('data', (d) => { err += d })
+  child.on('error', (e) => resolve({ status: -1, out, err: err + String((e && e.message) || e) }))
+  child.on('close', (code) => resolve({ status: code, out, err }))
+})
 /** The runner's DERIVED classification. `--scope-report` runs nothing and prints pure JSON on stdout. */
-const report = (env = {}, argv = []) => {
-  const r = runRunner(['--scope-report', ...argv], env)
+const report = async (env = {}, argv = []) => {
+  const r = await runRunner(['--scope-report', ...argv], env)
   let json = null
   try { json = JSON.parse(r.out.trim()) } catch (e) { /* reported by the caller */ }
   return { ...r, json }
 }
+/** PERFORMANCE (round speed-2): bounded parallel map for independent subprocess probes. */
+const runPool = async (thunks, limit) => {
+  const results = new Array(thunks.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(limit, thunks.length) }, async () => {
+    while (true) {
+      const i = next++
+      if (i >= thunks.length) return
+      results[i] = await thunks[i]()
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
 
 // ── 1. the report is real, and it comes from the runner's own single job list ─────────────────────
 console.log('=== 1. THE DERIVED CLASSIFICATION IS READABLE ===')
-const base = report()
+const base = await report()
 ok(!!base.json, 'the runner prints a parseable --scope-report', base.out.slice(0, 90))
 if (!base.json) {
   console.log('')
@@ -61,6 +82,22 @@ if (!base.json) {
   process.exit(1)
 }
 const { scopes, quickExpectedJobs, excludeRules, vmuClassification, legacySubstringDrops, anchoredDrops } = base.json
+// PERFORMANCE (round speed-2): every probe below is an independent subprocess that only PRINTS the
+// derived classification (--scope-report / --counts / --self-check run no jobs). They used to be spawned
+// one after another (11 x ~1.1 s = 12.4 s in the gate); the same invocations now run in a small
+// bounded pool, and the assertions keep their original order and wording.
+const [inVmu, outOfScope, inFull, quickOverlap, excluded, bothOut, countsQuick, countsVmu, selfCheck, plain] = await runPool([
+  () => report({ GATE_SCOPE: 'vmu' }, ['--only', 'vmu-prompt-v5r-bridge']),
+  () => report({ GATE_SCOPE: 'quick' }, ['--only', 'vmu-kernel']),
+  () => report({ GATE_SCOPE: 'full' }, ['--only', 'vmu-prompt-v5r-bridge']),
+  () => report({ GATE_SCOPE: 'quick' }, ['--only', 'vmu-prompt-v5r-bridge']),
+  () => report({ GATE_SCOPE: 'full' }, ['--exclude', 'mutants']),
+  () => report({ GATE_SCOPE: 'full' }, ['--only', 'audit-package-membership', '--exclude', 'audit-package-membership']),
+  () => runRunner(['--counts'], { GATE_SCOPE: 'quick' }),
+  () => runRunner(['--counts'], { GATE_SCOPE: 'vmu' }),
+  () => runRunner(['--self-check'], { GATE_SCOPE: 'quick' }),
+  () => runRunner(['--scope-report'], { GATE_SCOPE: 'vmu' }),
+], 6)
 const n = (s) => s.total
 ok(n(scopes.full) > 0 && n(scopes.quick) > 0 && n(scopes.vmu) > 0,
   'all three scopes resolve to a non-empty job list', JSON.stringify({ full: n(scopes.full), quick: n(scopes.quick), vmu: n(scopes.vmu) }))
@@ -147,7 +184,7 @@ ok(legacySubstringDrops.length > 0 && anchoredDrops.length > 0 && legacySubstrin
 
 // ── 5. `--only` / `--exclude` INTERSECT the requested scope (D-06: no silent downgrade) ───────────
 console.log('=== 5. --only / --exclude ARE ORTHOGONAL TO THE SCOPE ===')
-const inVmu = report({ GATE_SCOPE: 'vmu' }, ['--only', 'vmu-prompt-v5r-bridge'])
+// (spawned concurrently in the batch above)
 ok(inVmu.status === 0 && inVmu.json && inVmu.json.final.total === 1 && inVmu.json.effectiveScope === 'vmu',
   'GATE_SCOPE=vmu --only <an in-scope file> => exactly 1 job, effective scope still vmu',
   JSON.stringify({ exit: inVmu.status, final: inVmu.json && inVmu.json.final, eff: inVmu.json && inVmu.json.effectiveScope }))
@@ -156,34 +193,34 @@ ok(!!inVmu.json && JSON.stringify(inVmu.json.filters.only) === JSON.stringify(['
 // THE OLD BEHAVIOUR (--only forcing full) would have run ANY file under GATE_SCOPE=quick. A file that is
 // genuinely outside the quick subset must now be a ZERO-JOB request. `vmu-kernel.test.mjs` is in the vmu
 // scope but matches no QUICK_ONLY entry, which is what makes it the right probe here.
-const outOfScope = report({ GATE_SCOPE: 'quick' }, ['--only', 'vmu-kernel'])
+// (spawned concurrently in the batch above)
 ok(outOfScope.status === 2,
   '★ GATE_SCOPE=quick --only <a file outside quick> is a ZERO-JOB request (exit 2), not a silent full-list run',
   'exit=' + outOfScope.status)
 ok(/no suites matched: requested-scope=quick\s+effective-scope=quick/.test(outOfScope.err),
   '...and the zero-job refusal NAMES the requested and effective scopes', JSON.stringify(outOfScope.err.split('\n').find((l) => /no suites matched/.test(l))))
-const inFull = report({ GATE_SCOPE: 'full' }, ['--only', 'vmu-prompt-v5r-bridge'])
+// (spawned concurrently in the batch above)
 ok(inFull.status === 0 && inFull.json && inFull.json.final.total === 1,
   'the same selection under the default (full) scope resolves to 1 job', JSON.stringify(inFull.json && inFull.json.final))
 // THE QUICK ALLOW-LIST HAS THE SAME SHAPE OF OVERLAP, and it is DELIBERATE there (see the runner's S24/S30
 // notes: `v5` also selects `v5r` names, and `vmu-ab-v5r.test.mjs` belongs in the edit loop). Asserting the
 // current fact keeps it from changing silently; anchoring the quick list would change QUICK_EXPECTED_JOBS and
 // is a separate decision, so it is documented here rather than changed.
-const quickOverlap = report({ GATE_SCOPE: 'quick' }, ['--only', 'vmu-prompt-v5r-bridge'])
+// (spawned concurrently in the batch above)
 ok(quickOverlap.status === 0 && quickOverlap.json && quickOverlap.json.final.total === 1
   && quickOverlap.json.effectiveScope === 'quick',
   '★ the quick allow-list selects v5r names through its `v5` entry (a documented overlap, asserted so it cannot drift silently)',
   JSON.stringify({ exit: quickOverlap.status, final: quickOverlap.json && quickOverlap.json.final, eff: quickOverlap.json && quickOverlap.json.effectiveScope }))
-const excluded = report({ GATE_SCOPE: 'full' }, ['--exclude', 'mutants'])
+// (spawned concurrently in the batch above)
 ok(excluded.status === 0 && excluded.json && excluded.json.final.total > 0 && excluded.json.final.total < n(scopes.full),
   '--exclude narrows the REQUESTED scope without changing it',
   JSON.stringify({ final: excluded.json && excluded.json.final, eff: excluded.json && excluded.json.effectiveScope }))
-const bothOut = report({ GATE_SCOPE: 'full' }, ['--only', 'audit-package-membership', '--exclude', 'audit-package-membership'])
+// (spawned concurrently in the batch above)
 ok(bothOut.status === 2, '--only and --exclude are both applied (intersection can be empty => exit 2)', 'exit=' + bothOut.status)
 
 // ── 6. repository-wide modes pin `full` EXPLICITLY, with a named reason that is PRINTED ───────────
 console.log('=== 6. --counts / --self-check PIN THE SCOPE TO full, EXPLICITLY ===')
-const countsQuick = runRunner(['--counts'], { GATE_SCOPE: 'quick' })
+// (spawned concurrently in the batch above)
 let countsJson = null
 try { countsJson = JSON.parse(countsQuick.out.trim()) } catch (e) { /* reported below */ }
 ok(countsQuick.status === 0 && !!countsJson && countsJson.total === n(scopes.full),
@@ -194,20 +231,20 @@ ok(/SCOPE OVERRIDE \(named reason\): --counts/.test(countsQuick.err),
   JSON.stringify(countsQuick.err.split('\n').filter((l) => /SCOPE OVERRIDE|requested-scope/.test(l))))
 ok(/requested-scope=quick\s+effective-scope=full/.test(countsQuick.err),
   '★ the header prints the requested scope AND the effective scope together', JSON.stringify(countsQuick.err.split('\n').find((l) => /requested-scope=/.test(l))))
-const countsVmu = runRunner(['--counts'], { GATE_SCOPE: 'vmu' })
+// (spawned concurrently in the batch above)
 let countsVmuJson = null
 try { countsVmuJson = JSON.parse(countsVmu.out.trim()) } catch (e) { /* reported below */ }
 ok(!!countsVmuJson && !!countsJson && countsVmuJson.total === countsJson.total,
   '--counts is scope-independent: quick and vmu give the same repository total (a doc count cannot depend on the invocation)',
   JSON.stringify({ quick: countsJson && countsJson.total, vmu: countsVmuJson && countsVmuJson.total }))
-const selfCheck = runRunner(['--self-check'], { GATE_SCOPE: 'quick' })
+// (spawned concurrently in the batch above)
 ok(selfCheck.status === 0 && /SELF-CHECK PASS/.test(selfCheck.out),
   '--self-check still passes under a narrowed requested scope (its baseline is repository-wide)', 'exit=' + selfCheck.status)
 ok(/SCOPE OVERRIDE \(named reason\): --self-check/.test(selfCheck.err) && /effective full/.test(selfCheck.err),
   '★ --self-check PRINTS the override and the effective scope (it exits before the job-list header, so the reason is emitted where the scope is decided)',
   JSON.stringify(selfCheck.err.split('\n').filter((l) => /SCOPE OVERRIDE/.test(l))))
 // The header is on EVERY run, not only machine modes.
-const plain = runRunner(['--scope-report'], { GATE_SCOPE: 'vmu' })
+// (spawned concurrently in the batch above)
 ok(/requested-scope=vmu\s+effective-scope=vmu\s+final-jobs=\d+/.test(plain.err),
   'an ordinary scoped run prints requested scope, effective scope and the final job count together',
   JSON.stringify(plain.err.split('\n').find((l) => /requested-scope=/.test(l))))

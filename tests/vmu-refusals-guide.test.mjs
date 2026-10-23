@@ -25,9 +25,16 @@ const total = specs.reduce((n, s) => n + ((s.parameters.action && s.parameters.a
 ok(total > 200, 'and they advertise a substantial number of actions between them', { actions: total })
 
 console.log('=== 2. A REFUSAL USUALLY GUIDES THE CALLER ===')
+// ★ PERFORMANCE (round speed-1, measured 30.3 s): a bare sweep of EVERY action calls the two waiters' DEFAULT
+// path, and that path blocks for tens of seconds by design (`vmu.activity.timeoutMs` defaults to 30000 and its
+// domain starts at 10000). This suite judges REFUSAL SHAPE, not the waiter's hold, so it reads the waiters' own
+// fast action instead — the same guard `vmu-undefined-refusals.test.mjs` already uses for the same reason; the
+// waiters' timeout path stays covered by the activity/math suites. No other face has a slow default.
+const actionsOf = (s) => (s.name === 'vibe_vmu_wait' || s.name === 'vibe_v5_wait')
+  ? ['status'] : ((s.parameters.action && s.parameters.action.enum) || [])
 const refusals = []
 for (const s of specs) {
-  const en = (s.parameters.action && s.parameters.action.enum) || []
+  const en = actionsOf(s)
   for (const a of en) {
     let r
     try { r = await s.run({ action: a }) } catch (e) { r = { code: e.code || 'THREW', hint: e.hint } }

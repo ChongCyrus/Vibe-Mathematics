@@ -23,18 +23,35 @@
 //                        (_oneoff/probe-installer-policy.mjs) uses this to prove these assertions
 //                        really do detect the previous, edit-preserving policy.
 // ============================================================================================
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, cpSync, readdirSync, statSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, readdirSync, statSync } from 'node:fs'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { PRESETS } from '../installer.js'
+import { PRESETS as REAL_PRESETS } from '../installer.js'
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const INSTALLER_SRC = process.env.INSTALLER_JS ? resolve(process.env.INSTALLER_JS) : join(REPO, 'installer.js')
 const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'))
+
+// PERFORMANCE (round speed-2): the shipped PRESETS list manages 261 files, and every throwaway
+// package build copied all of them (5 builds x 261) while every version-changing apply rewrote all
+// 261 with a temp+rename and a backup check. Measured on this checkout: 11.0 s standalone / up to
+// 24.5 s inside the gate, almost all of it per-file fs syscalls (open/rename/unlink/exists ~58 % of
+// a CPU profile) — the cost scales with the file COUNT, not with the policy. The copy policy is
+// file-count-independent, so the fixture runs the SAME policy over a representative 9-file subset
+// (one .yml / one .js / one .md plus the named files the assertions use), which makes this suite
+// fast on any machine. §8 still verifies the REAL managed list against the REAL package.json#files,
+// so shrinking the fixture does not weaken the managed-list coverage check.
+const FIXTURE_FILES = [
+  'agent.cordis.yml', 'preset.yml', 'vibe-math-vmu.js', 'host-deliver.js',
+  'math-computation.js', 'kernel/store.js', 'glossary.json', 'docs/00-README.md', 'settings/planned.js',
+]
+const PRESETS = [{ src: REAL_PRESETS[0].src, dst: REAL_PRESETS[0].dst, files: FIXTURE_FILES }]
+// Replace the installer's `files: [...]` array (a single line in installer.js) with the fixture.
+const minimizePresets = (src) => src.replace(/files: \[[^\]]*\]/, 'files: ' + JSON.stringify(FIXTURE_FILES))
 
 let passed = 0, failed = 0
 const failures = []
@@ -52,8 +69,9 @@ function ok(cond, label, detail) {
  */
 function buildPackage(version, dir, transform) {
   mkdirSync(dir, { recursive: true })
-  if (typeof transform === 'function') writeFileSync(join(dir, 'installer.js'), transform(readFileSync(INSTALLER_SRC, 'utf8')))
-  else cpSync(INSTALLER_SRC, join(dir, 'installer.js'))
+  // Every throwaway package runs the same copy policy over the representative fixture file set.
+  const source = minimizePresets(readFileSync(INSTALLER_SRC, 'utf8'))
+  writeFileSync(join(dir, 'installer.js'), typeof transform === 'function' ? transform(source) : source)
   writeFileSync(join(dir, 'package.json'), JSON.stringify({
     name: 'dsh-vibe-math', version, type: 'module', dsh: { bundle: { patch: './cordis.patch.yml' } },
   }, null, 2))
@@ -249,8 +267,8 @@ console.log('=== 7. an unreadable package manifest replaces nothing (and self-he
 }
 
 console.log('=== 8. the managed list covers what the presets need ===')
-ok(PRESETS.length > 0, 'managed-file coverage has declared presets')
-for (const p of PRESETS) {
+ok(REAL_PRESETS.length > 0, 'managed-file coverage has declared presets')
+for (const p of REAL_PRESETS) {
   const shippedFiles = (pkg.files || []).filter((f) => f.startsWith(p.src + '/')).map((f) => f.slice(p.src.length + 1))
   const runtime = ['agent.cordis.yml', 'preset.yml', p.src + '.js']
   const unmanagedRuntime = runtime.filter((f) => !p.files.includes(f))

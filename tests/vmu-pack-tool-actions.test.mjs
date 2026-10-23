@@ -18,9 +18,9 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 
-const REPO = 'D:\\wd\\vibemath开发\\Vibe-Mathematics'
+const REPO = join(fileURLToPath(import.meta.url), '..', '..')
 const hm = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host.js')).href)
 const km = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js')).href)
 const pm = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'pack.js')).href)

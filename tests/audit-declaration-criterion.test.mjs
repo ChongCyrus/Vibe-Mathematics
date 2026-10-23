@@ -395,6 +395,8 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-pack-manifest-pointers.test.mjs:A:for:dirs',
   'vmu-paper.test.mjs:A:PLANNED_KEYS',
   'vmu-planned-settings.test.mjs:A:keys',
+  'vmu-prompt-mechanism-parity.test.mjs:A:for:cases',
+  'vmu-prompt-mechanism-parity.test.mjs:A:taughtFour',
   'vmu-prompt-v5r-bridge.test.mjs:A:names',
   'vmu-prompt-v5r-bridge.test.mjs:A:v5rPromptSections',
   'vmu-prompt.test.mjs:A:sections',
@@ -678,12 +680,60 @@ ok(sourceFiles.length > 0 && sourceFiles.every((s) => s.src.length > 0), 'every 
 // ── 0) REALLY RUN the self-proof modes (the only evidence RULE A accepts) ─────────────────────────────
 
 const executedEvidence = []
+// ── PERFORMANCE (measured on this checkout, round speed-2) ──────────────────────────────────────────
+// The eleven self-proof modes below are INDEPENDENT, read-only child runs (`--selftest`/`--self-test` or a bare
+// probe script); none of them reads another one's output. Running them one after another used to cost 5.4 s
+// standalone and ~15.8 s inside T1. MEASURED 2026-10-23 (Node v22.17.0, 32 logical cores): the same set in a
+// bounded async pool takes ~3.0 s standalone (bounded by `regen-all.mjs --check`). The pool size is derived from
+// available parallelism and capped at 6 so the gate's outer scheduling never sees more than 6 extra processes
+// from this suite; the ASSERTIONS and their ORDER are unchanged (results are consumed in the original order).
+const SELF_PROOF_SPECS = [
+  ['generate-zero-mechanism-matrix.mjs', '--selftest'],
+  ['generate-wired-schema.mjs', '--selftest'],
+  ['slv-inspect.mjs', '--selftest'],
+  ['audit-readers.mjs', '--selftest'],
+  ['clean-temp.mjs', '--self-test'],
+  ['release-check.mjs', '--self-test'],
+  ['audit-pack-value-domain.mjs', '--selftest'],
+  ['audit-pack-middleware-shape.mjs', '--selftest'],
+  ['audit-projection-census.mjs', ''],
+  ['audit-acquire-release.mjs', '--selftest'],
+  ['regen-all.mjs', '--check'],
+]
+const selfProofCache = await (async () => {
+  const { spawn: spawnAsync } = await import('node:child_process')
+  const { availableParallelism } = await import('node:os')
+  const pool = Math.max(1, Math.min(6, availableParallelism() - 1))
+  const cache = new Map()
+  const one = (scriptName, flag) => new Promise((resolve) => {
+    const script = join(SCRIPTS, scriptName)
+    if (!existsSync(script)) { resolve({ script, flag, status: null, stdout: '', stderr: '', missing: true }); return }
+    const child = spawnAsync(process.execPath, [script, flag], { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (d) => { stdout += d })
+    child.stderr.on('data', (d) => { stderr += d })
+    child.on('close', (status) => resolve({ script, flag, status, stdout, stderr, missing: false }))
+    child.on('error', (e) => resolve({ script, flag, status: 1, stdout: '', stderr: String(e && e.message || e), missing: false }))
+  })
+  let next = 0
+  const workers = Array.from({ length: Math.min(pool, SELF_PROOF_SPECS.length) }, async () => {
+    while (true) {
+      const i = next++
+      if (i >= SELF_PROOF_SPECS.length) return
+      const [name, flag] = SELF_PROOF_SPECS[i]
+      cache.set(name + '\u0000' + flag, await one(name, flag))
+    }
+  })
+  await Promise.all(workers)
+  return cache
+})()
 const runSelfProof = (scriptName, flag) => {
-  const script = join(SCRIPTS, scriptName)
-  if (!existsSync(script)) { console.log('  EXECUTED: (missing) ' + scriptName + ' ' + flag); return null }
-  const r = spawnSync(process.execPath, [script, flag], { cwd: REPO, encoding: 'utf8', timeout: 300000 })
+  const r = selfProofCache.get(scriptName + '\u0000' + flag)
+  if (!r) { console.log('  EXECUTED: (not batched) ' + scriptName + ' ' + flag); return null }
+  if (r.missing) { console.log('  EXECUTED: (missing) ' + scriptName + ' ' + flag); return null }
   console.log('  EXECUTED: node scripts/' + scriptName + ' ' + flag + ' ⇒ exit=' + r.status + ' | ' + String(r.stdout || '').trim().split('\n').slice(-1)[0])
-  executedEvidence.push({ script, flag, status: r.status })
+  executedEvidence.push({ script: r.script, flag, status: r.status })
   return r
 }
 const matrixRun = runSelfProof('generate-zero-mechanism-matrix.mjs', '--selftest')

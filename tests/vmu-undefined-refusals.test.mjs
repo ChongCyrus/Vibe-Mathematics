@@ -35,10 +35,15 @@ ok(specs.length >= 35 && total > 200, 'every tool and action is exercised', { to
 
 console.log('=== 2. REFUSALS SAYING A VALUE IS undefined, SPLIT BY WHETHER A PRIOR STEP IS NAMED ===')
 const PRIOR = /first|before|pass \{|call |needs \{|list\(\)|register|open/i
+// The two waiters are the ONLY faces whose default path blocks for tens of seconds: use the fast read here too.
+// Their timeout path is covered by their own suites; a real 30s/60s wait is not a fixture.
+const probeActionsOf = (s) => (s.name === 'vibe_vmu_wait' || s.name === 'vibe_v5_wait')
+  ? ['status']
+  : ((s.parameters.action && s.parameters.action.enum) || [])
 const withPrior = []
 const without = []
 for (const s of specs) {
-  for (const a of (s.parameters.action && s.parameters.action.enum) || []) {
+  for (const a of probeActionsOf(s)) {
     let r
     try { r = await s.run({ action: a }) } catch (e) { r = { code: e.code, message: String(e.message), hint: e.hint } }
     if (r && r.ok === true) continue

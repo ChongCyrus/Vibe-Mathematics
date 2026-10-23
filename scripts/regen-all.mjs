@@ -16,7 +16,12 @@
 //
 //   node scripts/regen-all.mjs            # write everything
 //   node scripts/regen-all.mjs --check    # verify everything, exit 1 on any drift
-import { spawnSync } from 'node:child_process'
+//
+// PERFORMANCE (measured 2026-10-23): `--check` only READS, so its steps are independent of one another and were
+// run sequentially for no reason — 16 spawns, ~8 s. They now run in a bounded pool (~1.5 s on this checkout).
+// WRITE mode keeps the strict dependency order above: that is the whole point of the list.
+import { spawn, spawnSync } from 'node:child_process'
+import { availableParallelism } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -48,16 +53,50 @@ const STEPS = [
   ['pack persona (packs/v5r-persona.js) [check]', 'scripts/generate-pack-persona.mjs'],
 ]
 
+const lastLine = (out) => String(out || '').trim().split('\n').filter(Boolean).slice(-1)[0] || ''
+
+if (!CHECK) {
+  // WRITE MODE: strictly sequential, because each step may consume what the previous one wrote.
+  let failed = 0
+  for (const [label, script] of STEPS) {
+    const r = spawnSync(process.execPath, [join(REPO, script), '--write'], { cwd: REPO, encoding: 'utf8' })
+    const out = String(r.stdout || '') + String(r.stderr || '')
+    const okStep = r.status === 0
+    if (!okStep) failed++
+    console.log((okStep ? '  ok   ' : '  FAIL ') + label + (lastLine(out) ? ' :: ' + lastLine(out).slice(0, 140) : ''))
+  }
+  console.log('')
+  console.log('=== vmu regen-all: ' + (STEPS.length - failed) + '/' + STEPS.length + ' written ===')
+  process.exit(failed === 0 ? 0 : 1)
+}
+
+// CHECK MODE: read-only and order-independent, so run the (deduplicated) generators concurrently.
+// Deduplicated because two steps are the same pack-prompt/persona check listed in both halves of the chain.
+const spawnStep = (script) => new Promise((resolve) => {
+  const child = spawn(process.execPath, [join(REPO, script), '--check'], { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'] })
+  let out = ''
+  child.stdout.setEncoding('utf8').on('data', (d) => { out += d })
+  child.stderr.setEncoding('utf8').on('data', (d) => { out += d })
+  child.on('close', (status) => resolve({ status, out }))
+  child.on('error', (err) => resolve({ status: -1, out: String(err) }))
+})
+const scripts = [...new Set(STEPS.map(([, script]) => script))]
+const results = new Map()
+const POOL = Math.max(1, Math.min(8, availableParallelism() - 1))
+let cursor = 0
+await Promise.all(Array.from({ length: Math.min(POOL, scripts.length) }, async () => {
+  while (cursor < scripts.length) {
+    const script = scripts[cursor++]
+    results.set(script, await spawnStep(script))
+  }
+}))
 let failed = 0
 for (const [label, script] of STEPS) {
-  const args = [join(REPO, script)].concat(CHECK ? ['--check'] : ['--write'])
-  const r = spawnSync(process.execPath, args, { cwd: REPO, encoding: 'utf8' })
-  const out = String(r.stdout || '') + String(r.stderr || '')
-  const last = out.trim().split('\n').filter(Boolean).slice(-1)[0] || ''
+  const r = results.get(script)
   const okStep = r.status === 0
   if (!okStep) failed++
-  console.log((okStep ? '  ok   ' : '  FAIL ') + label + (last ? ' :: ' + last.slice(0, 140) : ''))
+  console.log((okStep ? '  ok   ' : '  FAIL ') + label + (lastLine(r.out) ? ' :: ' + lastLine(r.out).slice(0, 140) : ''))
 }
 console.log('')
-console.log('=== vmu regen-all: ' + (STEPS.length - failed) + '/' + STEPS.length + ' ' + (CHECK ? 'in sync' : 'written') + ' ===')
+console.log('=== vmu regen-all: ' + (STEPS.length - failed) + '/' + STEPS.length + ' in sync ===')
 process.exit(failed === 0 ? 0 : 1)

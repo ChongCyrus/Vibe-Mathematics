@@ -27,7 +27,7 @@
  * runner (audit-formal-sensitivity.mjs) does, and it passes its own dirs.
  *
  * Usage:
- *   node tests/run-tests.mjs                      # every suite + probe, concurrency = min(2, cpus) (measured: 4 oversubscribes)
+ *   node tests/run-tests.mjs                      # every suite + probe, concurrency = half the cores (clamped 2..8)
  *   node tests/run-tests.mjs --concurrency=6
  *   node tests/run-tests.mjs --only formal        # substring match on the file name (repeatable, OR)
  *   node tests/run-tests.mjs --exclude e2e-v4     # substring to skip (repeatable)
@@ -37,10 +37,12 @@
  *   node tests/run-tests.mjs --temp-dry-run       # temp hygiene: print the plan, delete nothing
  *   node tests/run-tests.mjs --no-temp-hygiene    # skip the sweep and the roomier-drive temp root
  *
- * GATE DISCIPLINE (measured 2026-10 on a 4-core box; the numbers are why these defaults exist):
- *   · DEFAULT CONCURRENCY STAYS 2. `--concurrency=4` is faster but noisier (per-job inflation ~+15%);
- *     `--concurrency=6` is NOT VIABLE: at k=6 this sweep was RED with one 180 s TIMEOUT and one real
- *     failure. Never raise a TIMEOUT to fit oversubscription - fix the load, not the budget.
+ * GATE DISCIPLINE (measured 2026-10; the numbers are why these defaults exist):
+ *   · CONCURRENCY IS DERIVED FROM THE CORE COUNT: half the logical cores, clamped 2..8 (a 4-core box
+ *     keeps 2; a wide box gets the measured speed-up). Oversubscription inflates per-job times - on the
+ *     old 4-core box `--concurrency=4` was ~+15% per job and k=6 went RED (one 180 s TIMEOUT and one real
+ *     failure); the recent 32-core sweep at k=8 was green (wall 75.6 s, sum 421.0 s, 416/416 PASS).
+ *     Never raise a TIMEOUT to fit oversubscription - fix the load, not the budget.
  *   · `GATE_SCOPE=quick` (or `--scope quick`) is the ITERATION subset: v5 work + shared parity/contract +
  *     the registration surface, with EVERY `*.mutants.mjs` excluded and the 135 s shared sensitivity probe
  *     left to `full`. It is for the edit loop only and is NOT a substitute for the full sweep.
@@ -159,14 +161,18 @@ process.env.V4_TEX_ROOTS_SANDBOX = TEX_ROOTS_SANDBOX_DIR
 process.env.V5_TEX_ROOTS_SANDBOX = TEX_ROOTS_SANDBOX_DIR
 process.on('exit', () => { try { rmSync(TEX_ROOTS_SANDBOX_DIR, { recursive: true, force: true }) } catch (e) { /* best effort: a leftover empty scratch dir must never fail the gate */ } })
 const asJson = has('json')
-// task-13 (MEASURED): the default used to be min(4, cpus) = 4 on this 4-core box, and the heavy jobs then
+// task-13 (MEASURED): on the 4-core box the default used to be min(4, cpus) = 4, and the heavy jobs then
 // ran 1.3x-4.5x SLOWER than standalone - the gate's own "slowest" lines recorded v2-fix-probes.mutants
 // 430 s standalone -> 568-651 s under the gate, v5-institute-fixes.mutants 202 s -> 419-900 s (the last
 // one TIMING OUT at its own 900 s override). That oversubscription is what made timing-sensitive suites
 // report failures that never reproduce standalone (e2e-v4-fixes T1/T19/T22/T23/T26/T31, e2e-v5-round2
-// paper phase, host-failure-paths stall watchdog). Two concurrent jobs keep the machine honest; pass
-// --concurrency=N explicitly when a faster (noisier) sweep is wanted.
-const concurrency = Math.max(1, Number(flag('concurrency')[0] || Math.min(2, cpus().length)))
+// paper phase, host-failure-paths stall watchdog). So concurrency is DERIVED from the core count, not
+// pinned: half the logical cores, clamped to 2..8. Fewer than 8 cores keeps the old honesty (a 4-core
+// box still runs 2); a wide box gets the measured speed-up. 2026-10 on a 32-core box after the
+// generator/waiter fixes: --concurrency=8 full sweep wall 75.6 s, sum of suite times 421.0 s, x5.57,
+// 416/416 PASS. Never raise a TIMEOUT to fit oversubscription; pass --concurrency=N when a different
+// trade is wanted.
+const concurrency = Math.max(1, Number(flag('concurrency')[0] || Math.max(2, Math.min(8, Math.floor(cpus().length / 2)))))
 
 const SELF = 'run-tests.mjs'
 // Per-suite HARD timeout (GATE_SUITE_TIMEOUT_MS overrides, ms). It bounds an intermittent hang so the
@@ -254,6 +260,10 @@ const TIMEOUT_OVERRIDES = {
   // 180 s default was already too small before this batch - the timeout was never caused by the batch, and the
   // two readings are the evidence (a batch-caused slowdown would differ between them). 500 s = 2.19x (2x rule).
   'vmu-wiring-index.test.mjs': 500000,
+  // b1prime-c3-computed-guard.test.mjs: MEASURED 2026-10-23 on Node v22.17.0 / Windows on a non-ASCII checkout path.
+  // It copies `scripts/ + vibe-math-vmu/` and runs the settings generator inside the copy;
+  // the copy; gate-load amplification is the binding constraint. 420 s = 3.1x the 134.7 s measurement; budget only.
+  'b1prime-c3-computed-guard.test.mjs': 420000,
 }
 /** One place decides a job limit: explicit job value, then the named override, then (S22) the family
  *  default for `*.mutants.mjs`, then the 180 s suite default. Every layer has a safe default, so a
@@ -279,6 +289,25 @@ const DURATION_WEIGHTS = {
   // plus 1319-1456 s in the history below. The old weight (906.9) under-stated it by ~2x, which mis-scheduled
   // the headstart window; 1800 s is the measured midpoint, and the 2400 s timeout above still covers the worst.
   'v5-institute-fixes.mutants.mjs': 1800,
+  // ── MEASURED 2026-10-23, GATE_SCOPE=vmu at concurrency 8 after the suite-level parallelization round ──────
+  // (416 jobs, wall 53.6 s, sum of suite times 382.4 s, 416/416 PASS). These were NOT in the table before, i.e.
+  // they inherited DEFAULT_WEIGHT=2 and were scheduled like 2 s suites: the six longest of them started near the
+  // END of the sweep and their durations became the tail of the wall. The values are the gate's own `slowest`
+  // lines from that run (each figure includes the gate's own load), not guesses. Re-measure when a suite moves.
+  'audit-installer-policy.test.mjs': 22.8,
+  'audit-generators-current.test.mjs': 18.7,
+  'vmu-planned-settings.test.mjs': 14.4,
+  'audit-prompt-invariants.mjs': 12.0,
+  'audit-scope-classification.test.mjs': 10.3,
+  'audit-seam-reachability.test.mjs': 8.7,
+  'vmu-wiring-index.test.mjs': 7.7,
+  'math-computation-shared.test.mjs': 7.5,
+  'audit-declaration-criterion.test.mjs': 7.2,
+  'audit-v5-sensitivity.mjs': 7.0,
+  'audit-formal-sensitivity.mjs': 7.0,
+  'vmu-planned-codes.test.mjs': 4.9,
+  'b1prime-staleness-report.test.mjs': 4.8,
+  'audit-vmu-orphan-methods.test.mjs': 4.8,
   'v2-fix-probes.mutants.mjs': 453.6,
   'v3-fix-probes.mutants.mjs': 249.5,
   'audit-math-computation-sensitivity.mjs': 127.6,

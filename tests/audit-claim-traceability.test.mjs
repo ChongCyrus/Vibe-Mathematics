@@ -104,9 +104,21 @@ ok(Object.keys(IN_REPO).length === 1 && IN_REPO.F53 === 'docs/acceptance/03-v5r-
   'and the IN_REPO table is exactly F53, so a file that moves cannot quietly park itself here',
   { keys: Object.keys(IN_REPO) })
 const missingExternal = Object.entries(EXTERNAL).filter(([, p]) => !existsSync(join(WS, p)))
-ok(missingExternal.length === 0,
-  'each recorded EXTERNAL file exists under the WORKSPACE root, so the pointer is a fact rather than a hope',
-  { missing: missingExternal.map(([id]) => id) })
+// ★ On a CLONE the private workspace tree is absent. Pretending to verify it would be a different dishonesty than
+// the one this table exists to prevent, so the gap is stated in both directions: WITH the tree, every pointer must
+// resolve; WITHOUT it, the six pointers are recorded-not-verified (and a PARTIAL tree is still RED, via the branch
+// that applies whenever `_oneoff/` exists).
+const hasPrivateTree = existsSync(join(WS, '_oneoff'))
+if (hasPrivateTree) {
+  ok(missingExternal.length === 0,
+    'each recorded EXTERNAL file exists under the WORKSPACE root, so the pointer is a fact rather than a hope',
+    { missing: missingExternal.map(([id]) => id) })
+} else {
+  console.log('  ★ RECORDED, NOT VERIFIED: the private workspace tree `_oneoff/` is absent (a clone is not the author\'s workspace); the six EXTERNAL design pointers stay recorded above, not asserted to exist')
+  ok(missingExternal.length === Object.keys(EXTERNAL).length,
+    'without the private workspace tree, the six EXTERNAL pointers are RECORDED-not-verified (the gap is named, not hidden)',
+    { missing: missingExternal.map(([id]) => id) })
+}
 const missingInRepo = Object.entries(IN_REPO).filter(([, p]) => !existsSync(join(REPO, p)))
 ok(missingInRepo.length === 0,
   'and each recorded IN_REPO file exists under the REPOSITORY root, so moving a volume in cannot leave its recorded id dangling',

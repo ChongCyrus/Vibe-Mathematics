@@ -259,36 +259,66 @@ const SELF_PROBE_MUTATIONS = [
 
 if (process.argv.includes('--self-probe')) {
   const bad = []
+  const { spawn } = await import('node:child_process')
+  const { availableParallelism } = await import('node:os')
   /**
    * Read a file WITHOUT the mutation seam, so the loop can prove the mutation really changes something.
    * A missing target is a NAMED refusal (requireFile), never an empty string: silently degrading it is the exact
    * class tests/audit-no-silent-reads.test.mjs keeps at zero.
    */
   const readPlain = (rel) => requireFile(resolveRel(rel), 'the mutation target of the prompt-invariant self-probe')
-  for (const mut of SELF_PROBE_MUTATIONS) {
+  // ★ PERFORMANCE (measured 2026-10-23): each mutation needs its OWN child process (the seam reads
+  // `PROMPT_INVARIANTS_MUTATE` at module load), and each child is a full run of this file (~1.1 s measured).
+  // The children are INDEPENDENT of one another, so the old one-at-a-time loop spent 26 x 1.1 s ~= 30 s of pure
+  // wall time. They now run in a bounded pool; the anti-vacuous pre-checks and every assertion below are unchanged,
+  // and results are still printed in table order so the report reads the same.
+  const SELF = fileURLToPath(import.meta.url)
+  const POOL = Math.max(1, Math.min(8, availableParallelism() - 1))
+  const prepared = SELF_PROBE_MUTATIONS.map((mut) => {
     // ★ ANTI-VACUOUS MUTATION (round 13). A mutation is a guard on the guard: if its `from` text has moved on, the
     // child runs UNMUTATED, stays green, and the probe reports `hit=false` — a silent no-op that reads like a real
     // miss. This repo's own discipline is "before a scanner reports 0, prove its predicate can hit"; the same
     // applies here, so a mutation that changes NOTHING is a hard failure with its own message.
-    if (!mut.control) {
-      let before = null
-      try { before = readPlain(mut.rel) } catch (e) {
-        console.log('FAIL ' + mut.name + '  → mutation target unreadable: ' + e.message)
-        bad.push(mut.name + ' (mutation target unreadable)')
-        continue
-      }
-      const after = mut.from ? before.replace(mut.from, mut.to) : before
-      if (!mut.from || before === after) {
-        console.log('FAIL ' + mut.name + '  → mutation target NOT FOUND (replacing it changes nothing): ' + JSON.stringify(String(mut.from).slice(0, 90)))
-        bad.push(mut.name + ' (mutation made no change)')
-        continue
-      }
+    if (mut.control) return { mut, run: true }
+    let before = null
+    try { before = readPlain(mut.rel) } catch (e) {
+      console.log('FAIL ' + mut.name + '  → mutation target unreadable: ' + e.message)
+      bad.push(mut.name + ' (mutation target unreadable)')
+      return { mut, run: false }
     }
-    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--json'], {
+    const after = mut.from ? before.replace(mut.from, mut.to) : before
+    if (!mut.from || before === after) {
+      console.log('FAIL ' + mut.name + '  → mutation target NOT FOUND (replacing it changes nothing): ' + JSON.stringify(String(mut.from).slice(0, 90)))
+      bad.push(mut.name + ' (mutation made no change)')
+      return { mut, run: false }
+    }
+    return { mut, run: true }
+  })
+  const runChild = (mut) => new Promise((resolve) => {
+    const child = spawn(process.execPath, [SELF, '--json'], {
       cwd: HERE,
       env: Object.assign({}, process.env, mut.control ? {} : { PROMPT_INVARIANTS_MUTATE: JSON.stringify([mut.rel, mut.from, mut.to]) }),
-      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
     })
+    let stdout = '', stderr = ''
+    child.stdout.setEncoding('utf8').on('data', (d) => { stdout += d })
+    child.stderr.setEncoding('utf8').on('data', (d) => { stderr += d })
+    child.on('close', (status) => resolve({ status, stdout, stderr }))
+    child.on('error', (err) => resolve({ status: -1, stdout, stderr: stderr + '\n' + String(err) }))
+  })
+  const queue = prepared.filter((p) => p.run).map((p) => p.mut)
+  const results = new Map()
+  let cursor = 0
+  await Promise.all(Array.from({ length: Math.min(POOL, queue.length) }, async () => {
+    while (cursor < queue.length) {
+      const mut = queue[cursor++]
+      results.set(mut, await runChild(mut))
+    }
+  }))
+  for (const p of prepared) {
+    if (!p.run) continue
+    const mut = p.mut
+    const r = results.get(mut)
     let parsed = null
     try { parsed = JSON.parse(r.stdout) } catch (e) { /* fall through to the diagnostic below */ }
     const text = (r.stdout || '') + (r.stderr || '')

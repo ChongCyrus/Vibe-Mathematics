@@ -164,13 +164,30 @@ const lineOf = (events, typeFilters) => { const i = events.findIndex((e) => type
 // ── 1. THE ENVIRONMENT, ASSERTED (this part always runs) ─────────────────────────────────────────────────────────
 stage('1. THE HOST PRECONDITIONS, MEASURED (named, never assumed)')
 const version = dsh(['--version'])
-ok(version.status === 0 && /\d+\.\d+\.\d+/.test(String(version.stdout || '')),
-  '`dsh` is on PATH and reports a version (a scripted live run needs a real host)', { status: version.status, out: String(version.stdout || version.error || '').trim().slice(0, 80) })
+// ★ A MISSING CLI IS A NAMED PRECONDITION, NOT A DEFECT: the header says a plain run "asserts the route facts; slice NOT
+// RUN", and the whole host branch below already treats an absent host as `pending` (never as a pass). The only thing that
+// may turn that absence into a RED is the explicit `--require-host` opt-in (line 28: "exit ≠0 while the slice cannot run").
+// MEASURED on a clean clone with no `dsh` on PATH: the old unconditional `ok()` here failed the suite before any route
+// fact could be read. Assert the CLI when it exists; otherwise name the missing precondition and keep going.
+const cliUsable = version.status === 0 && /\d+\.\d+\.\d+/.test(String(version.stdout || ''))
+if (cliUsable) {
+  ok(true, '`dsh` is on PATH and reports a version (a scripted live run needs a real host)', { status: version.status, out: String(version.stdout || '').trim().slice(0, 80) })
+} else {
+  ok(!REQUIRE_HOST, '`dsh` is on PATH and reports a version (a scripted live run needs a real host)',
+    { status: version.status, out: String(version.stdout || version.error || '').trim().slice(0, 80) })
+  pending('`dsh` is on PATH and reports a version (a scripted live run needs a real host)',
+    'no `dsh` CLI was resolved on this machine; pass --require-host to make that absence fatal')
+}
 
 const template = dsh(['--dump-default-config', '--profile', 'headless'])
-ok(template.status === 0 || /\w/.test(String(template.stdout || '')),
-  'the shipped `headless` template composes (kept as a route FACT, even though it cannot host this face: see §2)',
-  { status: template.status })
+if (cliUsable) {
+  ok(template.status === 0 || /\w/.test(String(template.stdout || '')),
+    'the shipped `headless` template composes (kept as a route FACT, even though it cannot host this face: see §2)',
+    { status: template.status })
+} else {
+  pending('the shipped `headless` template composes (kept as a route FACT, even though it cannot host this face: see §2)',
+    'composing the template needs the `dsh` CLI, which was not resolved on this machine')
+}
 
 try { mkdirSync(DSH_HOME, { recursive: true }) } catch (e) { /* reported below */ }
 ok(existsSync(DSH_HOME), 'an ISOLATED `DSH_HOME` is usable, so a slice never touches the operator\'s own profile', { DSH_HOME })
