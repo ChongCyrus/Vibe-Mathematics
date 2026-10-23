@@ -396,6 +396,16 @@ const VMU_EXCLUDE = [
   { kind: 'prefix', value: 'v2-fix', why: 'v2 fix probes' },
   { kind: 'prefix', value: 'v3-fix', why: 'v3 fix probes' },
   { kind: 'prefix', value: 'v4-final', why: 'v4 final-paper suites' },
+  // dedup round: the anchored list above named v2-fix/v3-fix/v4-final but missed the remaining preset-OWNED
+  // suites: v2-path-escape, v2-tool-cap, v4-mailbox-stall, v5-meeting-attribution, v5-tool-help and the
+  // v5-only audit probes (audit-v5-integrity/sensitivity/lean-abstention). They are preset-internal by the
+  // same test the design comment above applies ("a vmu change never touches another preset\'s plugin source"),
+  // so the ITERATION scope must not re-run them; the FULL sweep still runs every one (nothing is deleted).
+  // Measured: 8 jobs, 30.0 s of suite time removed from the iteration gate.
+  { kind: 'prefix', value: 'v2-', why: 'v2 preset-internal suites (full scope runs them)' },
+  { kind: 'prefix', value: 'v4-', why: 'v4 preset-internal suites (full scope runs them)' },
+  { kind: 'prefix', value: 'v5-', why: 'v5 preset-internal suites (full scope runs them)' },
+  { kind: 'prefix', value: 'audit-v5-', why: "the v5 preset's own audit probes (full scope runs them)" },
   { kind: 'prefix', value: 'roundC-fix', why: 'round-C fix probes' },
   { kind: 'prefix', value: 'prompt-v5', why: "the OTHER presets' prompt-v5 suites (PREFIX-anchored on purpose: a vmu name such as vmu-prompt-v5r-bridge must stay IN scope)" },
   // the other presets' own math-computation suites (the parity and contract gates stay IN scope)

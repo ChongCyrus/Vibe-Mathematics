@@ -273,7 +273,7 @@ if (process.argv.includes('--self-probe')) {
   // wall time. They now run in a bounded pool; the anti-vacuous pre-checks and every assertion below are unchanged,
   // and results are still printed in table order so the report reads the same.
   const SELF = fileURLToPath(import.meta.url)
-  const POOL = Math.max(1, Math.min(8, availableParallelism() - 1))
+  const POOL = Math.max(1, Math.min(13, availableParallelism() - 1))
   const prepared = SELF_PROBE_MUTATIONS.map((mut) => {
     // ★ ANTI-VACUOUS MUTATION (round 13). A mutation is a guard on the guard: if its `from` text has moved on, the
     // child runs UNMUTATED, stays green, and the probe reports `hit=false` — a silent no-op that reads like a real
