@@ -230,11 +230,15 @@ export function aggregateVerdicts({ verdicts, propositionId = null, at = null } 
  */
 export const DEFAULT_RULING_TEMPLATE = {
   unanimous: '由于参与辩论的 {n} 名成员给出的最终裁决全部一致（布尔概率 {value}），命题 {proposition} 的最终布尔概率裁定为 {value}，故请把相应命题卡的布尔概率改为 {value}。',
-  mean: '由于参与辩论的 {n} 名成员给出的最终裁决未全部一致（依次为 {list}），依规则取平均值后命题 {proposition} 的最终布尔概率裁定为 {value}，故请把相应命题卡的布尔概率改为 {value}。',
+  mean: '由于参与辩论的 {n} 名成员给出的最终裁决未全部一致（依次为 {list}），依规则取平均值后命题 {proposition} 的最终布尔概率裁定为 {value}，故请把相应命题卡的布尔概率改为 {value}。{caveat}',
 }
 
 /** The facts a template may name, and — for a caller — the full list rather than a guess. */
-export const TEMPLATE_FIELDS = Object.freeze(['proposition', 'owner', 'n', 'value', 'exact', 'mode', 'list', 'reasons'])
+// ★ R8 OF THE PHASE-12 LIVE RUN: `caveat` is a field like the others (a template may place it) and is EMPTY for a
+// unanimous ruling, so a caller that does not use it sees no change. It exists because the mean template used to be an
+// imperative - "请把命题卡的布尔概率改为 0.6" - while the same receipt said `decided:false, estimate:true`. The
+// receipt was honest and the SENTENCE was not: the card holder reads the notice, not the JSON.
+export const TEMPLATE_FIELDS = Object.freeze(['proposition', 'owner', 'n', 'value', 'exact', 'mode', 'list', 'reasons', 'caveat'])
 
 const fill = (template, fields) => String(template).replace(/\{(\w+)\}/g, (whole, k) =>
   (Object.prototype.hasOwnProperty.call(fields, k) ? String(fields[k]) : whole))
@@ -281,6 +285,9 @@ export function rulePropositionProbability({ verdicts, propositionId, owner, fro
     mode: agg.mode,
     list: agg.perMember.map((r) => r.member + '=' + String(r.p)).join('、'),
     reasons: agg.perMember.map((r) => r.member + ': ' + r.reason).join('；'),
+    // R8: empty when the ruling IS the decision; otherwise it says in words what `decided:false` says in JSON.
+    caveat: agg.decided ? ''
+      : '★ 注意：这不是全体一致的裁定，而是由各自不同的判断取出的均值（decided:false／estimate:true）——没有任何成员主张这个数值。改卡前请让成员对同一个布尔概率达成一致。',
   }
   const chosen = template === null || template === undefined ? DEFAULT_RULING_TEMPLATE[agg.mode] : template
   if (typeof chosen !== 'string' || chosen.trim() === '') {

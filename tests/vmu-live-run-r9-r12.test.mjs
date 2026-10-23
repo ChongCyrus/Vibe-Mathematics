@@ -126,6 +126,30 @@ console.log('=== R12. detail: a slice that does not exist is REFUSED, not answer
   ok(summary && summary.ok === true, 'detail:"summary" (the default) is untouched', { ok: summary && summary.ok })
 }
 
+// ── R8: the ruling's SENTENCE (the card holder reads the text, not the JSON) ─────────────────────────────────────
+console.log('=== R8. a mean ruling must not read as an imperative decision ===')
+{
+  const MV = await import('../vibe-math-vmu/kernel/meetingverdict.js')
+  const mean = MV.rulePropositionProbability({ verdicts: [{ member: 'm1', p: 0.8, reason: '甲' }, { member: 'm2', p: 0.4, reason: '乙' }], propositionId: 'p-1', owner: 'm1', from: 'acad' })
+  ok(mean && mean.decided === false && mean.estimate === true,
+    'the aggregation is honest in JSON: a mean is decided:false / estimate:true', { decided: mean.decided, estimate: mean.estimate })
+  ok(typeof mean.notice.text === 'string' && mean.notice.text.includes('decided:false'),
+    '★ and the NOTICE TEXT says the same thing — the sentence used to be a bare imperative',
+    { text: mean.notice.text.slice(-90) })
+  ok(mean.notice.text.includes('不是全体一致的裁定') && mean.notice.text.includes('没有任何成员主张这个数值'),
+    'the caveat names WHY the number is not a decision, in words a card holder can act on', { text: mean.notice.text.slice(-90) })
+  const unanimous = MV.rulePropositionProbability({ verdicts: [{ member: 'm1', p: 1, reason: '甲' }, { member: 'm2', p: 1, reason: '乙' }], propositionId: 'p-1', owner: 'm1', from: 'acad' })
+  ok(unanimous.notice.text.includes('故请把相应命题卡的布尔概率改为') && !unanimous.notice.text.includes('decided:false'),
+    '★ NEGATIVE: a UNANIMOUS ruling keeps its imperative and gains NO caveat (the caveat is not decoration)',
+    { text: unanimous.notice.text })
+  ok(unanimous.decided === true && unanimous.enforceable === true,
+    'and a unanimous ruling stays enforceable', { decided: unanimous.decided })
+  // a caller who supplies their own template may place {caveat}; unknown fields stay VISIBLE by contract
+  const custom = MV.rulePropositionProbability({ verdicts: [{ member: 'm1', p: 0.2, reason: '甲' }, { member: 'm2', p: 0.6, reason: '乙' }], propositionId: 'p-1', owner: 'm1', from: 'acad', template: '裁定 {value}。{caveat}' })
+  ok(custom.notice.text.startsWith('裁定 0.4') && custom.notice.text.includes('decided:false'),
+    'a pack-supplied template can place {caveat} where it wants', { text: custom.notice.text.slice(0, 60) })
+}
+
 console.log('')
 if (failed) { console.error('FAILURES:'); for (const f of failures) console.error(' - ' + f) }
 console.log('=== VMU LIVE RUN R9-R12: ' + passed + ' passed, ' + failed + ' failed ===')
