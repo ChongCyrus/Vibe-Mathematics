@@ -144,6 +144,30 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(wrapped && wrapped.code === 'VMU_TURN_FIELD_NOT_APPLICABLE' && wrapped.cause && wrapped.cause.code === 'VMU_NO_OPEN_MEETING' &&
     /instructionDelivered/.test(String(wrapped.hint)),
     'T16b. ★ 反：回执带 meeting 字段但本回合无会议工具 ⇒ 具名 VMU_TURN_FIELD_NOT_APPLICABLE（保留 cause，不再只报 NO_OPEN_MEETING）', wrapped && { code: wrapped.code, cause: wrapped.cause && wrapped.cause.code })
+
+  // ★ PHASE 12: two reply fields can NEVER be dispatched from a reply — a member reply is `{field: payload}` and
+  // carries NO meeting reference. Measured before the fix: both dispatched `undefined` as the meeting id and the
+  // service refused with VMU_NO_SUCH_OBJECT "no such meeting: undefined" (naming the wrong problem), and
+  // `meeting_invite → attend` made the replying member ATTEND ITSELF. The receipt must say "this field has no
+  // supported shape", never blame the host with face-not-wired (the faces below ARE wired for `speak`/`create`).
+  const planShape = t.plan({ meeting_hand: { member: 'm-1' }, meeting_invite: { member: 'm-2' } })
+  ok(planShape.length === 2 && planShape.every((p) => p.notApplicable && p.notApplicable.code === 'VMU_TURN_FIELD_NOT_APPLICABLE'),
+    'T16c. ★★★ 反：从回执里永远表达不了的字段在【计划阶段】就被标成 notApplicable（code=VMU_TURN_FIELD_NOT_APPLICABLE）',
+    planShape.map((p) => p.field + ':' + (p.notApplicable ? p.notApplicable.code : 'none')))
+  ok(planShape.every((p) => p.face === 'vmu.meetings' && typeof p.op === 'string' && p.op.length > 0),
+    'T16d. ★ 原本想走的路线仍然可读（face/op 都留着，读者能看见“本来打算做什么”，而不是整条消失）',
+    planShape.map((p) => p.face + '.' + p.op))
+  const shapeApplied = await t.apply({ meeting_hand: { member: 'm-1' }, meeting_invite: { member: 'm-2' } })
+  ok(shapeApplied.executed.length === 0 && shapeApplied.skipped.length === 2 &&
+    shapeApplied.skipped.every((s) => s.reason === 'no-supported-shape' && s.code === 'VMU_TURN_FIELD_NOT_APPLICABLE'),
+    'T16e. ★★★ 反：跳过理由是这两个字段自己的形状问题（no-supported-shape），不是把宿主报成 face-not-wired',
+    shapeApplied.skipped.map((s) => s.field + ':' + s.reason))
+  ok(calls.length === 2 && /vibe_vmu_meeting/.test(String(shapeApplied.skipped[0].hint)),
+    'T16f. ★★ 反：宿主零调用（calls 仍是 T14 那两次），而 hint 指向能表达它的工具面 vibe_vmu_meeting',
+    { hostCalls: calls.length, hint: shapeApplied.skipped[0] && shapeApplied.skipped[0].hint })
+  ok(t.status().counts.notExecuted === 3,
+    'T16g. ★ 没有假执行：这两个字段被计入 notExecuted（1 次 face-not-wired + 2 次无形状），不是“已完成”',
+    t.status().counts.notExecuted)
 }
 
 // ⑤ the whole loop in one call, through both seams

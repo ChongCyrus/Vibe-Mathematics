@@ -27,6 +27,9 @@ import { createPromptPipeline } from './prompt/index.js'
 // framework can run a member turn instead of borrowing the original preset loop. Its ownership table names REAL
 // faces and operations (read off this kernel at runtime in round 338), and delivery goes through the host seam.
 import { createTurnOrchestrator, facesFrom, closureVoteOf } from './turn/index.js'
+// PHASE 12 / D7 step 2: the CALL-TIME half of the per-seat face (pure predicate, consumes the ONE resolver below —
+// it never re-derives the deny set; the wire filter in host.js and this gate must read the same answer).
+import { faceGate as evaluateMemberFaceGate, hiddenNames as projectFaceHidden } from './memberface.js'
 // A1 step 1 · Part A: the reporting feedback receipt shape, handed DOWN to `kernel/report.js` as an injected provider
 // (that file stays import-free by invariant).
 import { reportFeedbackFailure, REPORT_FEEDBACK_WHAT_CONTEXT } from './reportfeedback.js'
@@ -87,6 +90,11 @@ import { createProjectionMigrator } from './projmigrate.js'
 import { createMeetings } from './meetings.js'
 import { createBallotBox } from './ballotbox.js'
 import { createRecords } from './records.js'
+// ★ PHASE 12 / D15: the LAST step of a debate — what the members' final boolean probabilities ADD UP TO (all agree ⇒ that
+// value, otherwise the mean) and the payload that tells the proposition card's holder which number to write. Pure
+// arithmetic plus one payload: it declares NO setting (the rule is the pack's) and it sends nothing by itself (the
+// assembly below binds the EXISTING mailbox face as its `send` port, so there is no second communication channel).
+import { createMeetingVerdict } from './meetingverdict.js'
 import { createCourse } from './course.js'
 // Round 32: three faces the docs declared but the kernel did not have. Each one follows the mathtools standard -
 // a wired key must change an observable behaviour, refusals carry the enforced list and its scope, and the keys
@@ -1302,6 +1310,38 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // `cast` runs unchanged (named degradation, no pretend durability).
   const ballotbox = createBallotBox({ settings: settingsView, bus, clock: guardedClock, log, durableQueue: sharedCommitLog })
   const records = createRecords({ settings: settingsView, bus, clock: guardedClock, log })
+  // ★★★★★★★ PHASE 12 / D15: THE DEBATE'S FINAL RULING, CLOSED INTO THE INSTITUTE'S OWN CHANNEL.
+  // THE HOLE THAT WAS MEASURED: the single-member halves existed (`vibe_v5_verdict` casts, `kernel/ballot.js`'s
+  // `defaultTally` turns booleans into a boolean) and NOTHING added up a set of per-member [0,1] rulings, and nothing told
+  // the proposition card's holder to change its number. A pack could have computed a mean in its own middleware — which is
+  // exactly how a rule about truth-consensus ends up in policy code no gate can check, re-implemented per pack.
+  // WHAT IS MECHANISM HERE: the arithmetic, the refusal of an empty/incomplete/duplicate set, the float discipline (the
+  // exact mean and the written value both travel), and the machine-readable payload.
+  // WHAT IS NOT: who debates, when a debate ends, who owns the card, who speaks (that is `from`, refused by name when it
+  // is a non-string and left `null` when omitted) and the wording (a pack may pass its own `template`).
+  // ★ THE DELIVERY IS THE EXISTING FACE, NOT A NEW ONE: `send` hands the payload to `mailbox` (constructed above), whose
+  // own refusals (no such recipient, empty sender) travel back as a FAILED delivery — counted, never swallowed.
+  const meetingVerdict = createMeetingVerdict({
+    clock: guardedClock,
+    log,
+    bus,
+    send: (notice) => {
+      const from = notice && notice.from
+      if (!from) {
+        return {
+          ok: false,
+          code: 'VMU_INVALID_ARGUMENT',
+          message: 'the ruling notice carries no `from`: who speaks for the institute is a POLICY fact, so the caller must pass it (the mailbox face refuses an empty sender)',
+        }
+      }
+      return mailbox.send(from, {
+        to: notice.to,
+        text: notice.text,
+        kind: 'dm',
+        subject: '命题最终裁决 ' + String(notice.about) + '：布尔概率 ' + String(notice.value),
+      })
+    },
+  })
   // ★ PHASE 9 / goal 3: the environment adapter — table + probe + report, no installs. The spawn seam may be null; probe
   // then returns a NAMED result instead of fabricating a version.
   const env = createEnvFace({ settings: settingsView, spawn, records, log })
@@ -1392,7 +1432,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       }
       attach('vmu.tasks', tasks, ['create', 'assign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback'], (m, a) => (a && (a.title || a.id)) || null)
       attach('vmu.ballotbox', ballotbox, ['open', 'freeze', 'unfreeze', 'cast', 'close', 'reopen'], (m, a) => (a && a.target) || null)
-      attach('vmu.meetings', meetings, ['convene', 'open', 'speak', 'vote', 'close', 'recess', 'extendWall'], (m, a) => (a && (a.topic || a.id)) || null)
+      attach('vmu.meetings', meetings, ['convene', 'open', 'speak', 'vote', 'close', 'recess', 'extendWall', 'proceed'], (m, a) => (a && (a.topic || a.id)) || null)
       // ROUND 4 / task-25 E — COVERAGE ASSESSMENT, ANSWERED BY EXTENDING WHERE IT IS SOUND.
       // The gate is ZERO-MECHANISM by default (`vmu.human.gatedActions` empty ⇒ nothing queues), so wrapping a face
       // costs nothing until a deployment names an action - which makes "cover every authority face" the right default.
@@ -1608,6 +1648,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
 
   const middlewareServiceCatalog = () => ({
     'vmu.tasks': tasks, 'vmu.meetings': meetings, 'vmu.chat': chat, 'vmu.mailbox': mailbox,
+    // ★ PHASE 12 / D15: the debate's final ruling. Listed here because a capability a declared module may not reach is
+    // not a capability ("能力在内核，但要有路"): a pack that wants to close a debate must be able to call the aggregation
+    // and get the payload back. The face is pure — it reads no setting and, without a bound `send`, delivers nothing.
+    'vmu.meetingverdict': meetingVerdict,
     'vmu.panel': panel, 'vmu.minutes': minutes, 'vmu.ballotbox': ballotbox, 'vmu.members': members,
     'vmu.commitlog': sharedCommitLog, 'vmu.library': library, 'vmu.records': records, 'vmu.human': human,
     'vmu.budget': budget, 'vmu.activity': activity,
@@ -1763,6 +1807,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   registry.register('vmu.activity', { apiVersion: 1 }, { kind: 'service', description: '一次性 future-only 活动等待器：等待开始前的通知绝不唤醒、一次通知只唤醒当前一代、超时 disposer 在所有分支清理（docs/08 原语）' })
   registry.register('vmu.fidelity', { apiVersion: 1 }, { kind: 'service',
     description: '忠实性缺陷强制弃权（C-45，v5r 的 L2 option A）：declareDefect 留痕（append-only，可落 Formal/Defects/<target>.json 并 loadDefects 重载）；abstentionFor 是纯谓词；applyAbstention 是唯一强制点——被登记者在该对象上的布尔票 1/0 一律被改写为 0.5 弃权（不可由 pack 关闭）。' })
+  // PHASE 12 / D15: the debate's FINAL RULING. Registered as a SERVICE (not put on the orphan-exemption list) because a
+  // pack will `requires` it: the pack tool that ends a debate calls `rulePropositionProbability` and hands the payload to
+  // `vmu.mailbox`. Exempting it would tell the next reader "nothing uses this" about precisely what the pack is meant to
+  // use — the right gate, the wrong bucket.
+  registry.register('vmu.meetingverdict', { apiVersion: 1 }, { kind: 'service', description: '一场辩论的最终裁定：把各成员的 [0,1] 布尔概率聚合为「全一致取该值、否则取算术平均」，并产出给命题卡持有者的通知载荷（machine-readable，交出给既有 mailbox 面投递）；只属算术与载荷，谁辩论/何时结束/谁是卡主/措辞归 pack（docs/03 §2）' })
   registry.register('vmu.report', { apiVersion: 1 }, { kind: 'service', description: 'reporting: declarable report triggers (event/period/threshold), content templates, recipients and channels, an off switch whose default declares nothing, an append-only trace, and a parameter-config face whose domain and owners come from settings rather than from the kernel (docs/22 §reporting)' })
   registry.register('vmu.skills', { apiVersion: 1 }, { kind: 'service', description: 'skills: never self-appointed, expiry degrades and says so (docs/17 搂8)' })
   registry.register('vmu.publication', { apiVersion: 1 }, { kind: 'service', description: 'publication: unbroken version chain, offline archive registration, availability that refuses on-request-only (docs/16 搂7)' })
@@ -1968,6 +2017,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get mathadapters() { return mathadapters },
     get chat() { return chat },
     get mailbox() { return mailbox },
+    /** PHASE 12 / D15: the debate's final ruling (aggregate the members' [0,1] verdicts ⇒ one value + notice payload). */
+    get meetingverdict() { return meetingVerdict },
   /** ROUND 9 / task-66 A (G7): the shared commit log, reachable by name (`vmu.commitlog`). */
   get commitlog() { return sharedCommitLog },
     get panel() { return panel },
@@ -2341,6 +2392,25 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       if (ov) { if (ov.all) { deny.add('*'); sources.push('turn') } else { if (Array.isArray(ov.allow)) { allow = ov.allow.slice(); sources.push('turn') }; for (const n of ov.deny) { deny.add(n); sources.push('turn') } } }
       return { ok: true, member: id, slot, all: deny.has('*'), deny: [...deny].filter((n) => n !== '*'), allow, source: sources.length ? sources : null }
     },
+    /**
+     * ★ PHASE 12 / D7: THE CALL-TIME GATE. A hidden tool is not by itself a refused call — the wire says what the model
+     * was OFFERED, not what it is ALLOWED to do. This answers the second question with the FIRST answer: it runs the same
+     * resolver the wire filter runs and hands its result to the pure predicate (`kernel/memberface.js`), so the two
+     * readings cannot drift (the 20-vs-22 lesson). Unknown member ⇒ `VMU_NO_SUCH_OBJECT` (the resolver's named refusal,
+     * propagated — never a silently-open face).
+     */
+    memberFaceGate({ member = null, toolName = null } = {}) {
+      const id = typeof member === 'string' ? member.trim() : ''
+      if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'memberFaceGate needs a member', 'pass member:"<roster id>" — the face is per seat')
+      const name = typeof toolName === 'string' ? toolName.trim() : ''
+      if (!name) throw refuse('VMU_INVALID_ARGUMENT', 'memberFaceGate needs a toolName', 'pass toolName:"<the tool the member is about to call>"')
+      const resolved = this.resolveMemberToolDeny(id)
+      const verdict = evaluateMemberFaceGate({ member: id, slot: resolved.slot, toolName: name, faces: resolved })
+      // NOTE: this file's refusals carry code/message/hint only (see `refuse()`); the D3 `enforced[]` envelope belongs to
+      // the role faces (mathjobs/lean/formal/mathtools). Adding it here would publish an enforcement list from the
+      // composition root — the gate decides nothing of its own, it reports the pack declaration's face.
+      return verdict
+    },
     /** ★ PHASE 7: apply the declaration to every LIVE member of that role NOW (members seated later are skipped).
      *  The receipt is per member: applied / failed, both derived from the real applier. */
     applyPackToolFaces({ by = null } = {}) {
@@ -2526,7 +2596,23 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         source = 'provider'
       }
       const purposes = toolFaceDescriptions || {}
-      return { ok: true, member: String(member), count: names.length, tools: names.map((name) => ({ name, purpose: purposes[name] || null })), source, agentId, schemaScope }
+      // ★ PHASE 12 / D7 step 2: `hidden` — the OTHER half of this same reading. The list above says what the member can
+      // use; this says what the face keeps away, and WHY, so a member that notices a missing command can be told the
+      // reason instead of silently losing it (rule D7's discoverability requirement). It is a pure projection of facts
+      // already held here: the declared pack tools, the names this request offers, and the SAME resolved face the wire
+      // filter used. It decides nothing, and a face that cannot be resolved contributes no entries (no guessing).
+      let hidden = []
+      try {
+        const declared = typeof this.packTools === 'function' ? this.packTools().map((t) => (t && t.name)) : []
+        let face = null
+        try {
+          const resolved = this.resolveMemberToolDeny(member)
+          const allowIsFace = Array.isArray(resolved.allow)
+          face = { slot: resolved.slot, all: resolved.all === true, allow: allowIsFace ? resolved.allow : null, deny: Array.isArray(resolved.deny) ? resolved.deny : [], source: resolved.source }
+        } catch { face = null }
+        hidden = projectFaceHidden({ declared, visible: names, face })
+      } catch { hidden = [] }
+      return { ok: true, member: String(member), count: names.length, tools: names.map((name) => ({ name, purpose: purposes[name] || null })), hidden, source, agentId, schemaScope }
     },
     applyMemberToolFace({ member, allow = null, deny = null } = {}) {
       const id = typeof member === 'string' ? member : ''

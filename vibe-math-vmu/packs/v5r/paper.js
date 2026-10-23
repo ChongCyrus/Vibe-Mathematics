@@ -43,15 +43,32 @@ export const PAPER_CODES = Object.freeze({
   PDF_NEEDS_KERNEL: 'VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL',
   EXECUTOR: 'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING',
   PDF_FAILED: 'VMU_PACK_V5R_CORE_PAPER_PDF_FAILED',
+  // ★ E4 — the pre-finalisation office consult. These are INSTITUTION codes (registered in docs/03 §8), passed into the
+  // kit because the kit invents no codes: the gate is declared here, the mechanism that runs it lives in kit/paper.js.
+  OFFICE_CONSULT_REQUIRED: 'VMU_OFFICE_CONSULT_REQUIRED',
+  OFFICE_CONSULT_TIMEOUT: 'VMU_OFFICE_CONSULT_TIMEOUT',
 })
+
+/**
+ * ★ E4 — WHO answers a pre-finalisation consult is INSTITUTION POLICY, so it is declared HERE and handed to the kit as a
+ * parameter (the kit must not assume the institute has an "office"). Matching is by member `id` OR `slot`, which is why
+ * the v5r office counts whichever way a deployment seats it (a human office in slot `office`, or the id `office`).
+ * Not exported: `tests/vmu-v5r-tools.test.mjs` pins this module's export surface, and the policy needs no reader outside.
+ */
+const PAPER_CONSULT_ROLES = Object.freeze(['office'])
 
 /**
  * Create the paper subsystem over ONE kernel. This is now a POLICY-ONLY wrapper: the flow itself is the kit's.
  * `kernel` is required by the kit (it composes the records / members / latex faces); the policy below is the institute's.
  */
-export function createPaperSubsystem({ kernel } = {}) {
+export function createPaperSubsystem({ kernel, clock = null } = {}) {
   return createPaperFlow({
     kernel,
+    // ★ E4: the clock is a SEAM (the consult ledger records when the office was asked and the timeout is measured against
+    // it). Defaults to the wall clock so every existing caller is unaffected; tests move time without sleeping.
+    clock: typeof clock === 'function' ? clock : () => Date.now(),
+    // ★ E4: who may answer the pre-finalisation consult — the institution's office (see PAPER_CONSULT_ROLES).
+    consultRoles: PAPER_CONSULT_ROLES,
     sections: PAPER_SECTIONS,
     // ★ THE MAPPING IS POLICY (kit/paper.js §PaperMd): one entry per section, '' = that section owns no single part-field.
     // 序号对应 PAPER_SECTIONS：0 标题|1 引言|★2 完整解法|★3 命题|4 子问题|★5 有价值之物|★6 规律|★7 局限|★8 证据

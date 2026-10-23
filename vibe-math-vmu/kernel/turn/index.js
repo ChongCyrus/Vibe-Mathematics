@@ -27,6 +27,26 @@ export const apiVersion = 1
  * `mathjobs` has `submit`. Where a field genuinely has no counterpart yet it is declared with `face: null` and the
  * dispatcher reports it as not executed instead of inventing a call.
  */
+/**
+ * THE ONE REASON A REPLY FIELD IS NOT-APPLICABLE BY CONSTRUCTION (see `meeting_hand` / `meeting_invite` below).
+ *
+ * A member reply is `{ field: payload }` and carries NO meeting reference. Two of the reply fields can only be
+ * carried out against a named meeting, so dispatching them means passing `undefined` as the meeting id: measured on a
+ * real machine, the meeting service refuses with `VMU_NO_SUCH_OBJECT "no such meeting: undefined"` — a refusal that
+ * names the wrong problem, because the id was never in the reply to begin with. `meeting_invite` was worse than that:
+ * it was mapped to `attend`, so a member that "invited" someone ATTENDED ITSELF.
+ *
+ * The supported shape for both is the tool face, where the actor and the meeting are both explicit and the chair rail
+ * applies to an invitation: `vibe_vmu_meeting { action: "hand" | "hands" | "invite", id: "<meeting id>" }`. Keeping a
+ * doomed dispatch would be the declared-but-unreachable class, so the plan marks these fields not-applicable BY NAME
+ * and the receipt says why. Nothing is pretended to have run.
+ */
+const NO_REPLY_MEETING_SHAPE = Object.freeze({
+  code: 'VMU_TURN_FIELD_NOT_APPLICABLE',
+  message: 'this reply field carries no meeting reference, so the framework cannot dispatch it without inventing one',
+  hint: 'use the meeting tool face: vibe_vmu_meeting { action: "hand" | "hands" | "invite", id: "<meeting id>", ... } — the actor and the meeting are explicit there, and the chair rail applies to an invitation',
+})
+
 export const FIELD_OWNERS = Object.freeze({
   say: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
   progress: Object.freeze({ face: 'vmu.records', op: 'put' }),
@@ -44,8 +64,13 @@ export const FIELD_OWNERS = Object.freeze({
   // below was checked against what the kernel's services REALLY expose at runtime - the meeting service carries speak,
   // motion, queue, attend and open; tasks carries assign and transition; the ballot box carries cast - so nothing here
   // is invented. Sending one of these to a face that does not implement it is visible as face-not-wired, never silent.
-  meeting_hand: Object.freeze({ face: 'vmu.meetings', op: 'queue' }),
-  meeting_invite: Object.freeze({ face: 'vmu.meetings', op: 'attend' }),
+  // EXCEPTION, MEASURED LATER (phase 12): a face that IS wired can still be the wrong route when the reply cannot
+  // carry what the operation needs. `meeting_hand`/`meeting_invite` are that case and carry `noReplyShape`; the
+  // capability itself stays reachable through `vibe_vmu_meeting`.
+  // ★ PHASE 12: these two carry `noReplyShape` — see NO_REPLY_MEETING_SHAPE above for the measurement and the route
+  // that does work. The `op` is kept so a reader can see what was intended; the plan refuses before dispatch.
+  meeting_hand: Object.freeze({ face: 'vmu.meetings', op: 'queue', noReplyShape: NO_REPLY_MEETING_SHAPE }),
+  meeting_invite: Object.freeze({ face: 'vmu.meetings', op: 'attend', noReplyShape: NO_REPLY_MEETING_SHAPE }),
   input: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
   propose_meeting: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
   convene_meeting: Object.freeze({ face: 'vmu.meetings', op: 'open' }),
@@ -154,6 +179,77 @@ export const RECORDED_FIELDS = Object.freeze([
   'contextPct', 'compacted',
   'solved', 'vote_solved', 'prioritize', 'hire', 'fire',
 ])
+
+/**
+ * ★★★★★★★ LANE turn-reply / 08号决策 — THE TOOL REPORT IS A CHANNEL; THE FENCED JSON IS ITS COMPATIBILITY PATH.
+ *
+ * WHY THIS EXISTS. Until this change the ONLY structured way for a member to report was to put one fenced JSON object
+ * in its reply TEXT: `parse()` refused everything else with `VMU_TURN_NO_FENCE`, and the tool face carried that text
+ * back through `supplyMemberReply`. That works, but it makes the report a SHAPE THE MODEL TYPES BY HAND inside prose,
+ * and when it gets the shape slightly wrong the refusal ("no usable json object") is indistinguishable from the model
+ * having said nothing at all. A tool call is checkable by the provider, arrives as an object, and can be READ BACK -
+ * so it becomes the PRIMARY channel, and the fence stays byte-for-byte supported for every existing caller.
+ *
+ * ★★ THE TWO-TRUTHS RULE (this is the whole rule; there is no third case, and the tests pin each branch down):
+ *   1. a report recorded for a turn and NO text json   -> the report IS the reply (`source:'tool'`);
+ *   2. no report and a fenced/whole/bracketed json     -> the text IS the reply (`source:'text'`), byte-for-byte the
+ *      behaviour that existed before this change;
+ *   3. BOTH carry the same field with the SAME value  -> merged (`source:'tool+text'`): one truth, two spellings;
+ *   4. BOTH carry the same field with DIFFERENT values -> REFUSED BY NAME (`VMU_TURN_REPLY_CONFLICT`) naming EVERY
+ *      conflicting field, BEFORE anything is dispatched. The kernel does not pick a winner: whichever it picked would
+ *      silently discard something the member actually said, and "one field, two values" is exactly the class of
+ *      ambiguity this repository refuses rather than resolves by convention.
+ *   A report plus PROSE (no json at all) is case 1 with `textIgnored:true` - prose is not a competing truth, and
+ *   refusing it would punish a member for explaining itself.
+ *
+ * `source` travels on the turn receipt, on the `step` receipt and in the `turn/reply-parsed` bus payload, so a reader
+ * can tell WHICH channel produced a field without re-deriving it from prose.
+ */
+export const REPLY_FIELDS = Object.freeze(FIELDS.concat(RECORDED_FIELDS))
+
+/** A stable serialisation: "same value" must not depend on key insertion order, because a tool object and a parsed
+ *  json object are equal when they SAY the same thing, whichever key was written first. */
+function canonicalReplyValue(value) {
+  const walk = (v) => {
+    if (v === null || typeof v !== 'object') return v
+    if (Array.isArray(v)) return v.map(walk)
+    const out = {}
+    for (const k of Object.keys(v).sort()) out[k] = walk(v[k])
+    return out
+  }
+  try { return JSON.stringify(walk(value)) } catch { return String(value) }
+}
+
+/**
+ * Merge the structured report (channel 1) with the parsed json (channel 2) under the rule above. Kept PURE and
+ * exported so the rule itself is testable without driving a whole turn - the suite asserts it directly as well as
+ * end-to-end. A conflict is a THROW (a named refusal), never a `{ok:false}` that a caller might ignore.
+ */
+export function mergeReplyChannels(toolReply = {}, textReply = {}) {
+  const head = toolReply && typeof toolReply === 'object' && !Array.isArray(toolReply) ? toolReply : {}
+  const base = textReply && typeof textReply === 'object' && !Array.isArray(textReply) ? textReply : {}
+  const conflicts = []
+  const textOnly = []
+  const reply = {}
+  for (const k of Object.keys(base)) {
+    if (k === 'ignoredFields') continue
+    reply[k] = base[k]
+    if (!Object.prototype.hasOwnProperty.call(head, k)) textOnly.push(k)
+    else if (canonicalReplyValue(head[k]) !== canonicalReplyValue(base[k])) conflicts.push(k)
+  }
+  for (const k of Object.keys(head)) { if (k !== 'ignoredFields') reply[k] = head[k] }
+  if (conflicts.length) {
+    throw refuse('VMU_TURN_REPLY_CONFLICT',
+      'the tool report and the json reply disagree on: ' + conflicts.join(', ') + ' - one field cannot hold two truths in one turn',
+      'send each field through exactly ONE channel: drop it from the tool report, or drop it from the json. The kernel refuses instead of choosing, because either choice would silently discard what the member actually said (docs/26 §3)')
+  }
+  const ignored = []
+  for (const k of [].concat(Array.isArray(head.ignoredFields) ? head.ignoredFields : [], Array.isArray(base.ignoredFields) ? base.ignoredFields : [])) {
+    if (!ignored.includes(k)) ignored.push(k)
+  }
+  if (ignored.length) reply.ignoredFields = ignored
+  return { ok: true, reply, conflicts, textOnly, fields: Object.keys(reply) }
+}
 
 // THE FRAMEWORK OWNS THE IDEA OF A PHASE, NOT THE WORDS. Round 409 added `heartbeat` here because the original has it
 // - a no-progress prompt that REPLACES an ordinary round - and that was the framework learning an institution word.
@@ -558,6 +654,17 @@ export function deliverByReturning() {
   seam.supply = (reply) => { supplied = typeof reply === 'string' ? reply : null; return seam }
   seam.pending = () => pendingPrompt
   seam.awaiting = () => supplied === null
+  /**
+   * ★ LANE turn-reply: A PROMPT CAN BE ANSWERED WITHOUT A REPLY STRING. A structured tool report answers the pending
+   * prompt as surely as `supply()` does, but it is not text - so the kernel needs a way to say "this prompt has been
+   * answered" without inventing a reply. Without it, a completed report would leave the pending prompt dangling and the
+   * next delivery would report it as unanswered (or, worse, hand the SAME prompt back twice).
+   */
+  seam.consumePending = () => {
+    const answered = pendingPrompt
+    pendingPrompt = null
+    return answered
+  }
   return seam
 }
 export function sendViaSubagents(subagents) {
@@ -669,6 +776,19 @@ export function createTurnOrchestrator({
   // ★ ROUND 79: which member the most recent caller-supplied reply answers, so the closure vote is recorded against
   // THAT member rather than against whoever the next step happened to wake.
   let lastReplyForMember = null
+  /**
+   * ★★★★★★★ LANE turn-reply: THE STRUCTURED REPORT SLOT — ONE slot, because a member turn can report ONCE (a second
+   * report for the same open turn is `VMU_TURN_REPLY_CONFLICT`, not a silent overwrite). It is filled by the `reply` op
+   * on the turn tool (`supplyStructuredReply`) and consumed exactly once, by the step/drive that answers that prompt —
+   * so a report can never be applied twice and can never leak into another member's turn.
+   */
+  let structuredReport = null
+  /**
+   * The turn between `assemble()` and the end of its delivery. A member playing its OWN turn calls the reply tool while
+   * `deliver()` is still awaiting it (the subagent route), and this is how the kernel knows WHICH turn that call answers
+   * without being told — the same reason the caller-played seam keeps `pendingPrompt`.
+   */
+  let inFlightTurn = null
 
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
@@ -827,6 +947,140 @@ export function createTurnOrchestrator({
   }
 
   /**
+   * ★★★★★★★ LANE turn-reply — WHICH MEMBER TURN IS OPEN RIGHT NOW, AND HOW DO WE KNOW?
+   *
+   * Two routes, checked in the order they can be true, and BOTH come from state the loop already keeps:
+   *   · in-flight delivery — a real member Agent is answering its prompt RIGHT NOW (the subagent route). The turn is in
+   *     `inFlightTurn`, set for the whole duration of `runFrom`'s delivery;
+   *   · pending prompt    — the calling session played the turn and the seam is holding the assembled prompt
+   *     (`deliverByReturning`). That is the same `pending()` the status reading uses.
+   * Returns null when NO turn is open. That is the ONLY case where a report is refused (`VMU_TURN_NO_PENDING_MEMBER`),
+   * and it is a refusal rather than an invention: a tool call that arrives outside a turn must not CREATE one, because a
+   * turn has a member, a phase and a prompt, and none of those can be guessed from a tool call.
+   */
+  const openTurnForReport = () => {
+    if (inFlightTurn && typeof inFlightTurn.member === 'string' && inFlightTurn.member !== '') {
+      return { member: inFlightTurn.member, turnId: inFlightTurn.id || null, via: 'in-flight' }
+    }
+    const pending = deliver && typeof deliver.pending === 'function' ? deliver.pending() : null
+    if (pending && typeof pending.member === 'string' && pending.member !== '') {
+      return { member: pending.member, turnId: pending.turnId || null, via: 'pending-prompt' }
+    }
+    return null
+  }
+
+  /** Read back the report slot WITHOUT consuming it (the receipt and the `status`-side readback both use this). */
+  const pendingStructuredReport = () => {
+    if (!structuredReport) return null
+    return {
+      source: 'tool',
+      member: structuredReport.member,
+      turn: structuredReport.turnId,
+      via: structuredReport.via,
+      fields: Object.keys(structuredReport.reply),
+      ignoredFields: structuredReport.ignoredFields.slice(),
+      at: structuredReport.at,
+    }
+  }
+
+  /**
+   * Take the report for `member` (and for `turnId` when both sides know one), ONCE. A report for another member is left
+   * alone: it belongs to a different turn and consuming it here would hand one member's words to another.
+   */
+  const takeStructuredReport = (member, turnId = null) => {
+    if (!structuredReport) return null
+    const want = member === null || member === undefined ? null : String(member)
+    if (want !== null && structuredReport.member !== want) return null
+    if (turnId !== null && turnId !== undefined && structuredReport.turnId !== null && structuredReport.turnId !== turnId) return null
+    const taken = structuredReport
+    structuredReport = null
+    return taken
+  }
+
+  /**
+   * ★ THE TOOL CHANNEL'S WRITE SIDE. Records ONE structured report against the OPEN member turn and answers with a
+   * receipt that can be READ BACK (`readback` is the slot as it really stands, not a copy of the arguments - "the value
+   * was set" and "the value took effect" are different claims, and this repository only makes the second one).
+   */
+  const supplyStructuredReply = (fields, { forMember = null } = {}) => {
+    const obj = fields && typeof fields === 'object' && !Array.isArray(fields) ? fields : null
+    if (!obj) {
+      fail('VMU_INVALID_ARGUMENT', 'a structured report must be an object of reply fields, not ' + (fields === null ? 'null' : typeof fields),
+        'pass the report as an object: { say: "…" } — fields: ' + known.concat(RECORDED_FIELDS).join(', '))
+    }
+    const open = openTurnForReport()
+    if (!open) {
+      fail('VMU_TURN_NO_PENDING_MEMBER', 'no member turn is open, so there is nothing for this report to answer',
+        'report while the turn is open: a step returns `awaiting:true` + memberPrompt, and this report answers THAT prompt before the next step; the fenced-json compatibility path is vibe_vmu_turn { op:"step", reply:"<one fenced json object>" }')
+    }
+    const wanted = forMember === null || forMember === undefined ? null : String(forMember)
+    if (wanted !== null && wanted !== open.member) {
+      fail('VMU_INVALID_ARGUMENT', 'reply_for names ' + wanted + ' but the open member turn belongs to ' + open.member,
+        'omit reply_for (the open turn names the member), or pass reply_for:"' + open.member + '"')
+    }
+    const keys = Object.keys(obj).filter((k) => obj[k] !== undefined)
+    if (keys.length === 0) {
+      fail('VMU_INVALID_ARGUMENT', 'the report carries no reply fields',
+        'pass at least one of: ' + known.concat(RECORDED_FIELDS).join(', '))
+    }
+    const unknown = keys.filter((k) => !Object.prototype.hasOwnProperty.call(owners, k) && !RECORDED_FIELDS.includes(k))
+    // The SAME field gate as `parse()`: one setting, two channels, so a deployment that refuses unknown names refuses
+    // them whichever channel they arrive through.
+    const unknownFieldMode = settings && settings['vmu.turn.unknownReplyFieldMode'] === 'refuse' ? 'refuse' : 'ignore-named'
+    if (unknown.length && unknownFieldMode === 'refuse') {
+      fail('VMU_TURN_UNKNOWN_FIELD', 'unknown reply field(s): ' + unknown.join(', ') + ' - refusing rather than guessing what was meant',
+        'known fields: ' + known.concat(RECORDED_FIELDS).join(', '))
+    }
+    const recorded = { reply: {}, member: open.member, turnId: open.turnId, via: open.via, ignoredFields: unknown.slice(), at: clock() }
+    for (const k of keys) if (!unknown.includes(k)) recorded.reply[k] = obj[k]
+    if (Object.keys(recorded.reply).length === 0) {
+      // A report that carries ONLY unknown names would record an empty reply and then look like a turn with nothing to
+      // dispatch. That is a refusal, not an empty report: the member meant to say something and none of it is readable.
+      fail('VMU_TURN_UNKNOWN_FIELD', 'the report carries no field this loop accepts: ' + unknown.join(', '),
+        'known fields: ' + known.concat(RECORDED_FIELDS).join(', ') + ' (vmu.turn.unknownReplyFieldMode=' + unknownFieldMode + ')')
+    }
+    if (structuredReport && structuredReport.member === recorded.member
+      && (structuredReport.turnId === null || recorded.turnId === null || structuredReport.turnId === recorded.turnId)) {
+      // ★ THE TWO-TRUTHS RULE, ENFORCED AT THE WRITE SIDE TOO: a second report for the SAME open turn is not an update.
+      // Silently replacing the first would mean the member said two things and the kernel kept only the last.
+      fail('VMU_TURN_REPLY_CONFLICT',
+        'this member turn already carries a structured report (' + Object.keys(structuredReport.reply).join(', ') + '); a second one would be a second truth',
+        'send the WHOLE report in ONE call; to correct it, finish this turn and report again in the next one - the kernel will not silently replace what the member already said')
+    }
+    structuredReport = recorded
+    const readback = pendingStructuredReport()
+    return {
+      ok: true,
+      accepted: true,
+      source: 'tool',
+      member: recorded.member,
+      turn: recorded.turnId,
+      fields: Object.keys(recorded.reply),
+      ignoredFields: recorded.ignoredFields.slice(),
+      ignoredFieldMode: unknownFieldMode,
+      // ★ READ BACK, NOT SET: this is the slot as it stands AFTER the write (member, turn, fields), so a caller can see
+      // that the report really landed on the turn it thinks it did.
+      readback,
+      rule: 'tool report first, fenced json second: a field sent through both channels must agree, or the turn is refused by name (VMU_TURN_REPLY_CONFLICT)',
+    }
+  }
+
+  /**
+   * Is there a report waiting for the prompt the caller is HOLDING (and has not answered with text)? Then the next
+   * `step`/`drive` must COMPLETE that turn instead of opening a new one - otherwise every step would hand back another
+   * prompt before the previous answer was ever dispatched, and a tool report could never be applied at all.
+   */
+  const awaitingStructuredReport = () => {
+    const pending = deliver && typeof deliver.pending === 'function' ? deliver.pending() : null
+    if (!pending || typeof pending.member !== 'string' || pending.member === '') return null
+    // A text reply already supplied (awaiting()===false) goes through the normal path, where the two channels are merged.
+    if (typeof deliver.awaiting === 'function' && deliver.awaiting() === false) return null
+    if (!structuredReport || structuredReport.member !== pending.member) return null
+    if (pending.turnId && structuredReport.turnId && pending.turnId !== structuredReport.turnId) return null
+    return { pending, report: structuredReport }
+  }
+
+  /**
    * ROUND 4 / F9: talk to a member that is ALREADY running. The host semantics are the reason this is a seam and not a
    * loop feature: a running target receives at its nearest step boundary, an idle one starts a turn, an absent direct
    * child cold-resumes - none of which the loop can do by itself. Missing seam ⇒ named refusal.
@@ -898,9 +1152,15 @@ export function createTurnOrchestrator({
       }
     }
     if (!obj) {
+      // ★ LANE turn-reply: NEITHER CHANNEL ANSWERED. The old message named only the fence, which is now the FALLBACK
+      // shape rather than the requirement - a reader who was told "no fenced json" would go looking for a fence in a
+      // turn where the tool channel is what they should have used. Both channels are named, the same order the kernel
+      // tries them in, and the hint spells out a working call for each.
       fail(sawJsonish ? 'VMU_TURN_BAD_JSON' : 'VMU_TURN_NO_FENCE',
-        'the reply carries no usable json object, so there is nothing to apply',
-        'ask for exactly one fenced json object (docs/26 §3); a bare fence, a bare object and a prose-wrapped object are all accepted')
+        sawJsonish
+          ? 'the reply carries braces but they do not hold valid json (也没有可用的工具汇报), so there is nothing to apply'
+          : '本回合既没有工具汇报、也没有可解析的围栏 JSON（neither a tool report nor a usable json object), so there is nothing to apply',
+        'report through the tool: vibe_vmu_turn { op:"reply", report:{ say:"…", input:{…}, … } } (the fields the reply catalogue declares); the fenced json object stays supported as the COMPATIBILITY path: vibe_vmu_turn { op:"step", reply:"```json { … }```" } — a bare fence, a bare object and a prose-wrapped object are all still accepted (docs/26 §3)')
     }
     const unknown = Object.keys(obj).filter((k) => !Object.prototype.hasOwnProperty.call(owners, k) && !RECORDED_FIELDS.includes(k))
     // ★ PHASE 7 / round 15: a field gate must not destroy a turn the member already did the work in (founder's own
@@ -945,9 +1205,14 @@ export function createTurnOrchestrator({
   /** ⑤ plan: a PURE function from a parsed reply to the dispatch list (one owner per field). */
   const plan = (reply) => {
     const r = reply && typeof reply === 'object' ? reply : {}
-    return Object.keys(r).filter((k) => Object.prototype.hasOwnProperty.call(owners, k)).map((k) => ({
-      field: k, face: owners[k].face, op: owners[k].op, payload: r[k],
-    }))
+    return Object.keys(r).filter((k) => Object.prototype.hasOwnProperty.call(owners, k)).map((k) => {
+      const owner = owners[k]
+      const step = { field: k, face: owner.face, op: owner.op, payload: r[k] }
+      // ★ a field with no reply shape is reported as such BEFORE any face lookup, so the receipt cannot claim
+      // `face-not-wired` (which would blame the host for a field the reply could never express).
+      if (owner.noReplyShape) step.notApplicable = owner.noReplyShape
+      return step
+    })
   }
 
   /**
@@ -1083,6 +1348,11 @@ export function createTurnOrchestrator({
     const executed = []
     const skipped = []
     for (const d of dispatches) {
+      if (d.notApplicable) {
+        counts.notExecuted += 1
+        skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'no-supported-shape', code: d.notApplicable.code, hint: d.notApplicable.hint })
+        continue
+      }
       const face = map[d.face]
       const fn = face && typeof face[d.op] === 'function' ? face[d.op] : null
       if (!fn) {
@@ -1117,47 +1387,36 @@ export function createTurnOrchestrator({
     return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping }
   }
 
-  /** One full turn, in order. Returns the turn receipt rather than making the caller re-implement the sequence. */
-  // ★ PHASE 6 / K2: renamed from `run` to `runOne` so the public `run` can be the guarded wrapper below. The body is
-  // untouched; what changed is only that it is no longer directly callable while another turn is in flight.
-  const runFrom = async (turn, spec) => {
-    const asm = await assemble(turn)
-    const raw = await deliverTurn(turn, asm.text)
-    // ★★★ ROUND 73: A CALLER-PLAYED TURN RETURNS EARLY, AND THAT IS NOT A FAILED ROUND. The seam handed the assembled
-    // prompt back to the calling session and deliberately has no reply yet; parsing `null` would turn the one route that
-    // needs no host Agent into "the model said nothing". The awaiting envelope travels out with the prompt attached, so
-    // the caller can play the member turn and answer on the next call.
-    if (raw && typeof raw === 'object' && raw.awaiting === true) {
-      return { ok: true, awaiting: true, turn, memberPrompt: raw.memberPrompt || null,
-        assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true,
-        fields: [], executed: [], skipped: [], refused: [],
-        attribution: Object.assign({}, lastAttribution) }
-    }
-    let parsed
+  /**
+   * A refusal about the reply's SHAPE must carry the reply itself (bounded), so the next run can answer "empty? prose?
+   * a tool object?" from the record instead of re-running to guess. Shared by BOTH channels.
+   */
+  const attachReplyDiagnostics = (e, text) => {
     try {
-      parsed = parse(raw)
-    } catch (e) {
-      // ★ SLV DIAGNOSTIC: a refusal about the reply's SHAPE must carry the reply itself (bounded), so the next run can
-      // answer "empty? prose? a tool object?" from the record instead of re-running to guess.
-      if (e && typeof e === 'object') {
-        const text = String(raw === undefined || raw === null ? '' : raw)
-        e.replyText = text.slice(0, 2000)
-        e.replyLength = text.length
-        e.hadBrace = text.indexOf('{') !== -1
-      }
-      throw e
-    }
-    // consumed once: the next turn's reply belongs to whoever it answers
-    const attributedTo = lastReplyForMember
-    lastReplyForMember = null
+      if (!e || typeof e !== 'object') return e
+      const t = String(text === undefined || text === null ? '' : text)
+      e.replyText = t.slice(0, 2000)
+      e.replyLength = t.length
+      e.hadBrace = t.indexOf('{') !== -1
+    } catch { /* diagnostics must not replace the refusal */ }
+    return e
+  }
+
+  /**
+   * ★★★★★★★ THE ONE TAIL BOTH CHANNELS SHARE: ignored-field notice, the `turn/reply-parsed` hook (and its rewrite), the
+   * dispatch, and one notice per refused field. `parsed` is `{ reply, fields, ignoredFields?, source }`; `source` is
+   * carried onto the receipt and into the bus payload, so a reader can tell WHICH channel produced a field.
+   */
+  const dispatchReply = async ({ turn, parsed, attributedTo, rawText }) => {
     // ★ PHASE 7: "ignored" must be READABLE - one notice for this member's next prompt (red line 3: never silent).
     if (Array.isArray(parsed.ignoredFields) && parsed.ignoredFields.length) {
       queueNotice(turn.member, '【研究所提示】回执里出现未登记字段：' + parsed.ignoredFields.join(', ') + '（已按 ignore-named 忽略；回执顶层请只写登记字段）')
     }
     // ROUND 496: `turn/reply-parsed` was frozen with a default policy and NOTHING emitted it, so middleware could not see
     // a parsed reply. Emitted BEFORE dispatch, which is the only point where inspecting it can still change the outcome.
+    // LANE turn-reply: the payload now names the CHANNEL (`source`), so a middleware can tell a tool report from a fence.
     if (bus && typeof bus.emit === 'function') {
-      const seen = await bus.emit('turn/reply-parsed', { turn: turn.id, member: turn.member, phase: turn.phase, fields: parsed.fields, reply: parsed.reply }, { member: turn.member, role: turn.role, phase: turn.phase })
+      const seen = await bus.emit('turn/reply-parsed', { turn: turn.id, member: turn.member, phase: turn.phase, fields: parsed.fields, reply: parsed.reply, source: parsed.source }, { member: turn.member, role: turn.role, phase: turn.phase })
       if (seen && seen.ok === false) fail((seen.refused && seen.refused.code) || 'VMU_MIDDLEWARE_FAILED', (seen.refused && seen.refused.message) || 'a middleware refused turn/reply-parsed', (seen.refused && seen.refused.hint) || null)
       // ★★★★★★★ PHASE 6 / K10: THE REWRITE POINT NOW EXISTS. `docs/19 §19.12` publishes this hook as returning
       // "reply（rewrite-result）" and `bus.js` has always carried `rewriteResult: 'rewrite-result'` - but nothing read
@@ -1185,7 +1444,7 @@ export function createTurnOrchestrator({
       out = await apply(parsed.reply, null, attributedTo || turn.member)
     } catch (e) {
       try {
-        const text = typeof raw === 'string' ? raw : JSON.stringify(parsed.reply)
+        const text = typeof rawText === 'string' ? rawText : JSON.stringify(parsed.reply)
         if (e && typeof e === 'object') {
           e.replyText = String(text).slice(0, 2000)
           e.replyLength = String(text).length
@@ -1208,7 +1467,103 @@ export function createTurnOrchestrator({
       queueNotice(turn.member, line)
       refused.push({ field: e.field, code: r.code === undefined ? null : r.code })
     }
-    return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, fields: parsed.fields, ignoredFields: parsed.ignoredFields || [], refused, attribution: Object.assign({}, lastAttribution), ...out }
+    return { ok: true, fields: parsed.fields, ignoredFields: parsed.ignoredFields || [], refused,
+      attribution: Object.assign({}, lastAttribution), source: parsed.source,
+      ...(parsed.textIgnored === true ? { textIgnored: true } : {}),
+      ...(Array.isArray(parsed.textOnlyFields) && parsed.textOnlyFields.length ? { textOnlyFields: parsed.textOnlyFields } : {}),
+      ...out }
+  }
+
+  /**
+   * ★★★★★★★ THE ENTRY DECISION (08号决策): TOOL REPORT FIRST, TEXT JSON SECOND, AND A NAMED REFUSAL WHEN NEITHER EXISTS.
+   *
+   * This is the whole mechanism in one function, and the two-truths rule lives here (the pure merge is exported above):
+   *   · a report recorded for THIS member      -> it is the reply; a text json, if any, is MERGED into it by value;
+   *   · no report                              -> the text goes through `parse()`, EXACTLY as before this change;
+   *   · report + prose (no json)               -> the report wins and the receipt says `textIgnored:true`;
+   *   · report + json that DISAGREE on a field -> `VMU_TURN_REPLY_CONFLICT`, thrown before anything is dispatched;
+   *   · neither                                -> `parse()` throws `VMU_TURN_NO_FENCE` (message names BOTH channels).
+   * The report is CONSUMED here (`takeStructuredReport`), so it is applied at most once.
+   */
+  const replyFromChannels = (raw, member) => {
+    const report = takeStructuredReport(member)
+    if (!report) {
+      let parsed
+      try { parsed = parse(raw) } catch (e) { throw attachReplyDiagnostics(e, raw) }
+      parsed.source = 'text'
+      return parsed
+    }
+    let text = null
+    try { text = parse(raw) } catch (e) {
+      // A report already covers this turn: prose is case 1 (`textIgnored`), not a second truth - refusing it would punish
+      // a member for explaining itself. A brace span that DOES NOT PARSE is different: the member tried to send a json
+      // report the kernel cannot read, and silently keeping the tool half would hide a broken second channel.
+      if (e && e.code === 'VMU_TURN_BAD_JSON') throw attachReplyDiagnostics(e, raw)
+      text = null
+    }
+    if (!text) {
+      return { reply: Object.assign({}, report.reply), fields: Object.keys(report.reply), ignoredFields: report.ignoredFields.slice(), source: 'tool', textIgnored: true }
+    }
+    const merged = mergeReplyChannels(report.reply, text.reply)
+    const ignored = []
+    for (const k of [].concat(report.ignoredFields.slice(), text.ignoredFields || [])) if (!ignored.includes(k)) ignored.push(k)
+    return { reply: merged.reply, fields: Object.keys(merged.reply), ...(ignored.length ? { ignoredFields: ignored } : {}),
+      source: 'tool+text', textOnlyFields: merged.textOnly }
+  }
+
+  /** One full turn, in order. Returns the turn receipt rather than making the caller re-implement the sequence. */
+  // ★ PHASE 6 / K2: renamed from `run` to `runOne` so the public `run` can be the guarded wrapper below. The body is
+  // untouched; what changed is only that it is no longer directly callable while another turn is in flight.
+  const runFrom = async (turn, spec) => {
+    // ★ LANE turn-reply: the tool channel needs to know WHICH turn is open while a member answers it (see
+    // `openTurnForReport`). Set here rather than at `open()` because a turn that is opened but never assembled has no
+    // prompt to answer, and a report must attach to a PROMPT, not to a name.
+    inFlightTurn = turn
+    try {
+      const asm = await assemble(turn)
+      const raw = await deliverTurn(turn, asm.text)
+      // ★★★ ROUND 73: A CALLER-PLAYED TURN RETURNS EARLY, AND THAT IS NOT A FAILED ROUND. The seam handed the assembled
+      // prompt back to the calling session and deliberately has no reply yet; parsing `null` would turn the one route that
+      // needs no host Agent into "the model said nothing". The awaiting envelope travels out with the prompt attached, so
+      // the caller can play the member turn and answer on the next call.
+      if (raw && typeof raw === 'object' && raw.awaiting === true) {
+        return { ok: true, awaiting: true, turn, memberPrompt: raw.memberPrompt || null,
+          assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true,
+          fields: [], executed: [], skipped: [], refused: [],
+          attribution: Object.assign({}, lastAttribution) }
+      }
+      // consumed once: the next turn's reply belongs to whoever it answers
+      const attributedTo = lastReplyForMember
+      lastReplyForMember = null
+      const parsed = replyFromChannels(raw, attributedTo || turn.member)
+      const tail = await dispatchReply({ turn, parsed, attributedTo: attributedTo || turn.member, rawText: raw })
+      return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, ...tail }
+    } finally {
+      inFlightTurn = null
+    }
+  }
+
+  /**
+   * ★★★ COMPLETE THE TURN A TOOL REPORT ANSWERS (the caller-played route). This is NOT "open a turn and run it": the turn
+   * already exists (it was opened by the step that handed its prompt back), so the receipt names THAT turn and no new
+   * member is woken. It is the honest pairing of `supplyStructuredReply` - one side records, this side dispatches.
+   */
+  const completeStructuredReport = async () => {
+    const pending = deliver && typeof deliver.pending === 'function' ? deliver.pending() : null
+    const member = pending && typeof pending.member === 'string' && pending.member !== '' ? pending.member : null
+    const turnId = pending && pending.turnId ? pending.turnId : null
+    const report = takeStructuredReport(member, turnId)
+    if (!report) {
+      fail('VMU_TURN_NO_PENDING_MEMBER', 'no structured report is waiting for an open member turn',
+        'report with vibe_vmu_turn { op:"reply", report:{…} } while the prompt is open, then call step; a pending report is completed BEFORE the next member is woken')
+    }
+    const turn = (turnId && turns.get(turnId)) || { id: turnId, member, round: null }
+    // the prompt is ANSWERED: consume it before dispatch, so a dispatch failure cannot resurrect a question the member
+    // already answered (the refusal travels on the receipt instead).
+    if (typeof deliver.consumePending === 'function') deliver.consumePending()
+    const parsed = { reply: Object.assign({}, report.reply), fields: Object.keys(report.reply), ignoredFields: report.ignoredFields.slice(), source: 'tool' }
+    const tail = await dispatchReply({ turn, parsed, attributedTo: report.member, rawText: JSON.stringify(report.reply) })
+    return Object.assign({ member: report.member }, tail)
   }
 
   /**
@@ -1354,19 +1709,36 @@ export function createTurnOrchestrator({
     const receipts = []
     const failures = []
     const consecutive = new Map()
+    // ★★ LANE turn-reply: A PENDING TOOL REPORT IS ALREADY ONE COMPLETED ROUND. Complete it BEFORE the loop, so a caller
+    // that drives in a loop does not keep asking for prompts it has already answered (the report would otherwise never be
+    // dispatched). It is reported separately as `completed` and does NOT count as a round: no member was woken for it.
+    let completed = null
+    const waiting = awaitingStructuredReport()
+    if (waiting) {
+      try {
+        const done = await completeStructuredReport()
+        completed = { member: done.member, fields: done.fields, executed: (done.executed || []).length, skipped: (done.skipped || []).length,
+          turn: done.turn ? done.turn.id : null, source: 'tool' }
+      } catch (e) {
+        const code = (e && e.code) || null
+        const message = String((e && e.message) || e)
+        return { ok: false, code, message, completed: null, receipts, failures: [{ round: 0, member: null, code, message: message.slice(0, 300) }],
+          roundsRun: 0, roundsAttempted: 0, hint: (e && e.hint) || null }
+      }
+    }
     for (let i = 1; i <= n; i += 1) {
       const spec = nextTurn({ members, phase, why, nextStep, role })
       // ★★ ROUND 45: AN EMPTY ROUND MUST SAY WHERE MEMBERS COME FROM. `no-members` is true, but on its own it leaves a
       // reader unable to act - the real machine called this face sixty-one times and learned nothing from it. The
       // hint names the two things that actually help: read the roster, and pass it (the tool face now infers it from
       // the roster too, so omitting it works; this hint is for the case where the roster itself is empty).
-      if (!spec) return { ok: true, receipts, failures, stopped: 'no-members', roundsRun: receipts.filter((r) => !r.failed).length, roundsAttempted: receipts.length,
+      if (!spec) return { ok: true, receipts, failures, completed, stopped: 'no-members', roundsRun: receipts.filter((r) => !r.failed).length, roundsAttempted: receipts.length,
         next: { kind: 'roster', tool: 'vibe_vmu_control', hint: 'no member was passed AND the kernel roster holds no live member: read it with vibe_vmu_control { action: "roster" }, seat one with { action: "hire", member_id, slot } (the pack declares the slots), then retry. Passing an explicit `members` array also works.' } }
       try {
         const r = await run({ ...spec, round: i })
         // ★ ROUND 73: a caller-played turn ENDS the batch - the prompt goes back and the round resumes on the next call.
-        if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member }
-        receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id })
+        if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member }
+        receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id, source: r.source || null })
         consecutive.set(spec.member, 0)
       } catch (e) {
         counts.refused += 0
@@ -1380,12 +1752,31 @@ export function createTurnOrchestrator({
         consecutive.set(spec.member, streak)
         if (streak >= MEMBER_FAILURE_LIMIT) {
           return { ok: false, stopped: 'member-failures', member: spec.member, round: i, code, message: message.slice(0, 300),
-            receipts, failures, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length,
+            receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length,
             hint: 'the SAME member failed ' + streak + ' rounds in a row; a batch is not stopped by one bad reply, but a member that cannot answer three times in a row is reported (docs/26 section 3.2)' }
         }
       }
     }
-    return { ok: true, receipts, failures, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length }
+    return { ok: true, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length }
+  }
+
+  /**
+   * The failure shape a failed STEP returns (a failed round is an operational outcome, returned rather than thrown).
+   * Factored out so the report-completion route and the ordinary route report failures identically.
+   */
+  const stepFailure = (e) => {
+    // ★★★ ROUND 61: THE STACK STAYS. This catch kept only the message, and that is precisely why a real machine's
+    // failure was undiagnosable: the transcript recorded `Cannot read properties of undefined (reading 'id')` thirty-
+    // three times with no frame, no file and no line, and several rounds went into reading candidate sites by hand.
+    // A slice of the stack costs a few hundred bytes on a FAILED round only, and it converts "a TypeError happened
+    // somewhere" into "this line, in this function". The bound is deliberate: a stack from a deep async chain can be
+    // long, and a receipt is not a log file.
+    const stack = typeof e === 'object' && e && typeof e.stack === 'string'
+      ? (function () { const all = String(e.stack).split('\n'); const head = all.slice(0, 8).map((l) => l.trim()); const ci = all.findIndex((l) => /caused by/.test(l)); const tail = ci >= 0 ? all.slice(ci, ci + 5).map((l) => l.trim()) : []; return head.concat(tail).join(' | ').slice(0, 1400) })()
+      : null
+    return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null, stack,
+      ...(e && typeof e.hint === 'string' ? { hint: e.hint } : {}),
+      ...(e && typeof e.replyText === 'string' ? { replyLength: e.replyLength, hadBrace: e.hadBrace, replyExcerpt: e.replyText.slice(0, 500), trackValue: e.trackValue } : {}) }
   }
 
   /**
@@ -1395,6 +1786,20 @@ export function createTurnOrchestrator({
    * operational outcome; a malformed ARGUMENT still throws, because that is a programming error.
    */
   const step = async ({ members = [], phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+    // ★★ LANE turn-reply — A REPORT THAT ANSWERS THE OPEN PROMPT COMPLETES **THAT** TURN. Without this guard every step
+    // would hand back a NEW prompt before the previous answer was dispatched, so a tool report could never be applied at
+    // all (the caller-played route answers its prompt on the NEXT call). No turn is opened here: the member was already
+    // woken by the step that returned its prompt, and the receipt names the turn that was ANSWERED, not a fresh one.
+    const waiting = awaitingStructuredReport()
+    if (waiting) {
+      try {
+        const r = await completeStructuredReport()
+        return { ok: true, source: 'tool', completed: true,
+          receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, fields: r.fields,
+            executed: (r.executed || []).length, skipped: (r.skipped || []).length, instructionDelivered: false,
+            turn: r.turn ? r.turn.id : null, source: 'tool', completed: true } }
+      } catch (e) { return stepFailure(e) }
+    }
     const spec = nextTurn({ members, phase, why, nextStep, role })
     if (!spec) return { ok: true, receipt: null, stopped: 'no-members' }
     // ★ G7 ④: clear this member's tool-call index at the START of the step, so the receipt reports THIS turn only.
@@ -1428,20 +1833,14 @@ export function createTurnOrchestrator({
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated }
       return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length,
+        // ★ LANE turn-reply: the receipt must say WHICH CHANNEL answered ('text' | 'tool' | 'tool+text'), or a reader
+        // cannot tell a legacy fenced-json round from a tool-reported one - and a mechanism whose channel is invisible in
+        // its own receipt is exactly the "set a value, cannot read it back" defect this lane exists to remove.
+        source: r.source || null,
         instructionDelivered: r.instructionDelivered === true, turn: r.turn.id,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated } }
     } catch (e) {
-      // ★★★ ROUND 61: THE STACK STAYS. This catch kept only the message, and that is precisely why a real machine's
-      // failure was undiagnosable: the transcript recorded `Cannot read properties of undefined (reading 'id')` thirty-
-      // three times with no frame, no file and no line, and several rounds went into reading candidate sites by hand.
-      // A slice of the stack costs a few hundred bytes on a FAILED round only, and it converts "a TypeError happened
-      // somewhere" into "this line, in this function". The bound is deliberate: a stack from a deep async chain can be
-      // long, and a receipt is not a log file.
-      const stack = typeof e === 'object' && e && typeof e.stack === 'string'
-        ? (function () { const all = String(e.stack).split('\n'); const head = all.slice(0, 8).map((l) => l.trim()); const ci = all.findIndex((l) => /caused by/.test(l)); const tail = ci >= 0 ? all.slice(ci, ci + 5).map((l) => l.trim()) : []; return head.concat(tail).join(' | ').slice(0, 1400) })()
-        : null
-      return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null, stack,
-        ...(e && typeof e.replyText === 'string' ? { replyLength: e.replyLength, hadBrace: e.hadBrace, replyExcerpt: e.replyText.slice(0, 500), trackValue: e.trackValue } : {}) }
+      return stepFailure(e)
     }
   }
 
@@ -1465,6 +1864,16 @@ export function createTurnOrchestrator({
       deliver.supply(reply)
       return { ok: true, supplied: true }
     },
+    /**
+     * ★★★★★★★ LANE turn-reply — THE TOOL CHANNEL'S VERBS, right next to the text channel's `supplyMemberReply`.
+     * `supplyStructuredReply(report)` records ONE report against the OPEN member turn and answers with a READBACK (the
+     * slot as it really stands); `completeStructuredReply()` dispatches it for the turn it answers - `step` and `drive`
+     * call that automatically, so a caller normally never needs it; `structuredReply()` reads the slot without consuming
+     * it. Kept together so "who may report, and how a report gets applied" has one place to read.
+     */
+    supplyStructuredReply,
+    completeStructuredReply: () => completeStructuredReport(),
+    structuredReply: pendingStructuredReport,
     awaitingCaller: () => !!(deliver && typeof deliver.pending === 'function' && deliver.pending()),
     // ROUND 4 / F9+F10: the ongoing-command verbs, plus the observable state behind them.
     sendToMember, interruptMember,

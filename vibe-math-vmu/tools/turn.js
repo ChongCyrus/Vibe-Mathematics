@@ -1,6 +1,17 @@
 // vibe-math-vmu/tools/turn.js — the turn tool spec, split out of host.js (round 538) so the host file stays inside the
 // DECIDED 1200-line limit (docs/02). This block was SELF-CONTAINED - it defined its own core and two wrappers - so those 
 // definitions move with the spec; the factory supplies only what the block genuinely took from the host scope.
+//
+// ★★★★★★★ LANE turn-reply: THE REPORT'S FIELDS COME FROM THE KERNEL'S OWN TABLE. `FIELD_OWNERS` is the field → face map
+// the dispatcher actually uses, and `REPLY_FIELDS` adds the bookkeeping fields (`RECORDED_FIELDS`). A hand-written list
+// here would drift the moment a face gains a field, and the published schema would then reject a legal report before the
+// kernel had a chance to accept it - the same contract-versus-implementation gap this repo keeps paying for.
+import { FIELD_OWNERS, REPLY_FIELDS } from '../kernel/turn/index.js'
+
+const REPORT_FIELDS_DOC = REPLY_FIELDS
+  .map((f) => (FIELD_OWNERS[f] ? f + '→' + FIELD_OWNERS[f].face + '.' + FIELD_OWNERS[f].op : f + '→书账'))
+  .join('；')
+
 export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     // ROUND 349: ONE CORE, TWO THIN WRAPPERS. The middleware wrapper calls `spec.run` and stringifies what it gets,
     // while direct callers (and the tests) call `spec.execute` and parse a string themselves. Measured the hard way:
@@ -67,6 +78,51 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     }
     return { ok: true, status }
   }
+      // ★★★★★★★ LANE turn-reply — THE PRIMARY REPORTING CHANNEL (08号决策). A member turn reports through THIS op; the
+      // fenced json object stays supported as the COMPATIBILITY path (and is byte-for-byte the old path). Why the op is
+      // here and not a new tool name: publishing a second tool name needs a TOOL_NAMES entry AND a TOOL_FACES row in
+      // host.js (a host edit, and the host belongs to another lane), and the report belongs to the turn face anyway -
+      // what it answers IS a turn. The op records the report into the kernel's ONE structured slot and answers with a
+      // READBACK computed after recording, so the caller sees which fields were really taken, not what it hoped.
+      if (op === 'reply') {
+        if (!kernel.turn || typeof kernel.turn.supplyStructuredReply !== 'function') {
+          return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel has no structured-report channel on the turn loop',
+            'assemble a kernel that exposes turn.supplyStructuredReply; until then report through the fenced json object: op:"step" with reply:"```json { ... }```"')
+        }
+        // ★ ONE CALL, ONE CHANNEL. A report AND a text reply in the same call would put the same turn's answer in two
+        // places at once, and the tool call has no delivery to attach the text to - so it is refused BY NAME instead of
+        // being silently preferred, dropped or double-sent. The two channels DO combine when they arrive on different
+        // calls (the kernel merges them and stamps source:'tool+text') - see the 08号决策 note in kernel/turn/index.js.
+        if (typeof args.reply === 'string' && args.reply.trim() !== '') {
+          return refused('VMU_INVALID_ARGUMENT',
+            'this call carries BOTH a tool report and a text reply: one turn must not be answered through two channels in one call',
+            'send the report alone with op:"reply", report:{...} — or send the text alone with op:"step", reply:"…"; the two channels merge only when they arrive on different calls (source:"tool+text")')
+        }
+        const rawReport = args.report === undefined || args.report === null ? null : args.report
+        // The schema declares `report` as an object; a model can still hand it over JSON-encoded, and that ONE alternate
+        // representation is normalised here (everything else unknown is refused, never ignored).
+        let report = rawReport
+        if (typeof rawReport === 'string') {
+          try { report = JSON.parse(rawReport) } catch (e) {
+            return refused('VMU_INVALID_ARGUMENT', 'report is not valid JSON: ' + String((e && e.message) || e),
+              'pass report as an object literal: { say: "…", input: {…} }; known fields: ' + REPORT_FIELDS_DOC)
+          }
+        }
+        if (!report || typeof report !== 'object' || Array.isArray(report) || Object.keys(report).length === 0) {
+          return refused('VMU_INVALID_ARGUMENT', 'report is missing or empty: this call records nothing',
+            'pass report:{ <field>: <value> } with at least one field; known fields: ' + REPORT_FIELDS_DOC)
+        }
+        const forMember = typeof args.reply_for === 'string' && args.reply_for ? args.reply_for : null
+        // ★ THE KERNEL'S REFUSALS ARE THE ANSWER. supplyStructuredReply refuses by name (no open member turn ⇒
+        // VMU_TURN_NO_PENDING_MEMBER, second report for the same turn ⇒ VMU_TURN_REPLY_CONFLICT, no recognised field ⇒
+        // VMU_TURN_UNKNOWN_FIELD, reply_for mismatch ⇒ VMU_INVALID_ARGUMENT); this face must not re-decide any of it -
+        // it only maps the thrown refusal into the tool's returned shape, hint untouched.
+        try {
+          return await kernel.turn.supplyStructuredReply(report, { forMember })
+        } catch (e) {
+          return refused((e && e.code) || 'VMU_ENGINE_UNAVAILABLE', (e && e.message) || String(e), (e && e.hint) || null)
+        }
+      }
       // ★★★ ROUND 73: THE CALLER-PLAYED TURN, SECOND HALF. When a host cannot lend an Agent, the assembled member
       // prompt is handed back to the CALLING session instead of being delivered to a subagent, and that session
       // returns the member's own reply here on the next call. The seam is the framework's own (`deliverByReturning`);
@@ -154,14 +210,19 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     //   · that read runs directly instead of entering the queue, so it can never wait behind its own step.
     const agentIdOf = (exec) => { try { return String((exec && exec.agent && exec.agent.id) || '') } catch { return '' } }
     const isMemberCaller = (id) => id !== '' && !id.startsWith('session-')
+    // ★★★★★★★ LANE turn-reply: `reply` JOINS `status` AS A MEMBER-SAFE OP. The whole point of the tool channel is that the
+    // MEMBER reports from inside its own turn; the G6 guard below must therefore let that one writing op through, and it
+    // must run it DIRECTLY (not queued): the member's call arrives while its own step is still in flight, and a queued
+    // member call is exactly what deadlocked for 175.7s and bypassed role narrowing. `step`/`drive` stay root-only.
     const coreTurn = (args = {}, exec = null) => {
       const op = String((args && args.op) || 'status')
       const caller = agentIdOf(exec)
       const memberCaller = isMemberCaller(caller)
-      if (memberCaller && op !== 'status') {
+      const memberAllowed = op === 'status' || op === 'reply'
+      if (memberCaller && !memberAllowed) {
         return Promise.resolve(refused('VMU_NOT_PERMITTED',
           'a member turn cannot run the institute turn engine (op: ' + op + ')',
-          'remove vibe_vmu_turn from tools.allow: the turn engine belongs to the root/office; a member acts through the faces its role grants and waits for the next step'))
+          'remove vibe_vmu_turn from tools.allow: the turn engine belongs to the root/office; a member reports with op:"status" (read) or op:"reply" (report), and acts through the faces its role grants'))
       }
       if (memberCaller) return Promise.resolve(coreTurnInner(args, exec))
       const job = turnQueue.then(() => coreTurnInner(args, exec), () => coreTurnInner(args, exec))
@@ -173,21 +234,29 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
       name: TOOL_NAMES.turn,
       description: 'Run institute TURNS: step runs exactly one round (who is chosen by vmu.turn.wakeupPolicy, what ' +
-        'prompt is assembled by the pipeline), drive runs a bounded number, status reports what the loop has done. ' +
+        'prompt is assembled by the pipeline), drive runs a bounded number, status reports what the loop has done, ' +
+        'reply records the member\'s structured report for the open turn (the primary reporting channel - the fenced ' +
+        'json object in reply stays supported as the compatibility path). ' +
         'A round with no members is a legal no-op; a failed round is returned with its code rather than thrown.',
       // ★ PHASE 7 / round 20: this block used to be a FULL JSON SCHEMA passed where the host expects a PARAM MAP.
       // toHostParameters() then wrapped it once more, so the PUBLISHED schema had properties named type/properties/required
       // and a real "properties" object - the model (correctly) put its arguments INSIDE that object, so top-level keys like
       // tools:'none' never reached coreTurn. It is a param map now, exactly like every other tool.
       parameters: {
-        op: param('string', 'step＝一轮／drive＝连跑若干轮／status＝读数', { required: true }),
+        op: param('string', 'step＝一轮／drive＝连跑若干轮／reply＝汇报本回合（工具通道，首选）／status＝读数', { required: true }),
         detail: param('string', '仅 status：closure＝只回 closureVote（小回执）；未知值具名拒'),
         members: param('array', '本轮可唤醒的成员：[{id, role}]；缺省时由内核名册推断（无成员 ⇒ 合法空转）'),
         rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）'),
         phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
         why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
         reply_for: param('string', '★ 这个回复属于哪个成员（它的提示词是上一次 step 交回的那个）；不传 = 沿用旧行为'),
-      reply: param('string', '★ 由调用者扮演成员回合时：★ 上一次 step／drive 交回的成员提示词，★ 其【成员自己的回复】放在这里送回（★ 仅当交付接缝是 deliverByReturning 时需要）'),
+        // ★★★★★★★ LANE turn-reply: THE REPORT ITSELF. The field names below are DERIVED from the kernel's field table
+        // (see the import at the top of this file), never hand-copied; the JSON type of each field is the dispatcher's
+        // business (the kernel's field gate refuses what it cannot dispatch), so this schema declares only the ONE legal
+        // container shape and leaves the per-field shapes to the owner that dispatches them.
+        report: param('object', '★ op:"reply"：★ 本回合的结构化汇报（对象）。字段与围栏 JSON 完全同一张表：' + REPORT_FIELDS_DOC +
+          '。未知字段由内核按 vmu.turn.unknownReplyFieldMode 收下或具名拒；空对象与"一个字段都不认识"都具名拒'),
+      reply: param('string', '★ 兼容通道（仅当交付接缝是 deliverByReturning 时需要）：★ 上一次 step／drive 交回的成员提示词，★其【成员自己的回复】放在这里送回；★ 首选是用 op:"reply" 的 report 汇报'),
         next_step: param('string', '下一步要做什么'),
         tools: param('string', '★ step 专用：none＝清空；或 JSON 字符串 {"allow":["<工具名>"]}＝只挂这些（校验后生效）；缺省＝按角色收窄'),
       },

@@ -24,9 +24,9 @@
  *   node scripts/clean-temp.mjs --self-test         # prove the guards below (fresh dirs are NEVER swept)
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -176,6 +176,51 @@ export function formatSuspect(s) {
   return '  pid=' + s.pid + '  parent=' + s.parent + (s.parentGone ? ' (GONE)' : '') + '  ' + (s.created || '') + '  ' + cmd.slice(0, 120)
 }
 
+/**
+ * THE `--root` GUARD (Lead ruling, round 17): cleanup targets TEMP roots only. The sweep deletes by
+ * "prefix + age", so pointing `--root` at the repository would delete repo files that happen to share a
+ * suite prefix and be old enough — the exact "bulk delete by time window" class this repo forbids.
+ *
+ * THREE HARD CONSTRAINTS (all checked BEFORE anything is planned or deleted — "先算后删"):
+ *   1. `--root` is resolved with `realpath` and refused BY NAME when it is, or resolves inside, the repo
+ *      root (a `..` escape or a symlink/junction back into the repo is caught by the same realpath).
+ *   2. A non-default `--root` forces `--dry-run` (print the plan, delete nothing) unless
+ *      `--yes-really-delete` is ALSO given — the confirmation switch is only effective together with `--root`.
+ *   3. A refusal happens before any deletion; the test proves the probe directory keeps every file.
+ *
+ * PURE function on purpose: the four branches are checkable without touching disk.
+ */
+export function rootGuard({ root, defaultRoot = tmpdir(), repo = REPO, confirmed = false } = {}) {
+  const real = (p) => {
+    try { return realpathSync(p) } catch (e) { return resolve(p) } // a missing root cannot be inside the repo by escape
+  }
+  const rootGiven = !(root === null || root === undefined || String(root).trim() === '')
+  if (!rootGiven) {
+    if (confirmed === true) {
+      return { refusal: { code: 'CLEAN_TEMP_CONFIRM_WITHOUT_ROOT', message: '--yes-really-delete needs --root=<dir>', hint: 'the switch is only effective together with --root' }, forceDryRun: true }
+    }
+    return { refusal: null, forceDryRun: false }
+  }
+  const realRoot = real(String(root))
+  const realRepo = real(repo)
+  const inside = realRoot === realRepo || realRoot.startsWith(realRepo + sep)
+  if (inside) {
+    return {
+      refusal: {
+        code: 'CLEAN_TEMP_ROOT_INSIDE_REPO',
+        message: 'refusing --root=' + realRoot + ': it is (or resolves inside) the repository root ' + realRepo,
+        hint: 'cleanup targets temp roots only; deletion inside the repo must be done by a human, explicitly',
+      },
+      forceDryRun: true,
+    }
+  }
+  if (confirmed === true && String(root).trim() === '') {
+    return { refusal: { code: 'CLEAN_TEMP_CONFIRM_WITHOUT_ROOT', message: '--yes-really-delete needs --root=<dir>', hint: 'the switch is only effective together with --root' }, forceDryRun: true }
+  }
+  const realDefault = real(defaultRoot)
+  return { refusal: null, forceDryRun: realRoot !== realDefault && confirmed !== true }
+}
+
 const argv = process.argv.slice(2)
 const has = (n) => argv.includes('--' + n)
 const val = (n, d) => { const a = argv.find((x) => x.startsWith('--' + n + '=')); return a ? a.split('=').slice(1).join('=') : d }
@@ -226,6 +271,20 @@ if (has('self-test')) {
   check(!susp.some((s) => s.pid === 5), 'TEMP-HYGIENE: a process with a LIVE parent (our running gate) is never called a leftover')
   check(susp.some((s) => s.pid === 2) && susp.some((s) => s.pid === 3), 'TEMP-HYGIENE: ORPHANED project/team processes are reported (incl. a DSH host started against a clone profile)')
   check(!susp.some((s) => s.pid === 4), 'TEMP-HYGIENE: an unrelated program is never reported (the command-line gate holds)')
+  // ROUND 17: the `--root` guard — the four branches are pinned here so "the rule stopped biting" and
+  // "the rule had nothing to bite" cannot look the same (docs/11 §4.2 第四条).
+  const rg = (o) => rootGuard(o)
+  check(rg({ root: join(REPO, 'tests'), repo: REPO, defaultRoot: tmpdir() }).refusal?.code === 'CLEAN_TEMP_ROOT_INSIDE_REPO',
+    'TEMP-HYGIENE: --root inside the repo is REFUSED by name (cleanup never targets repo files)')
+  check(rg({ root: tmpdir(), repo: REPO, defaultRoot: tmpdir() }).refusal === null
+    && rg({ root: tmpdir(), repo: REPO, defaultRoot: tmpdir() }).forceDryRun === false,
+    'TEMP-HYGIENE: --root at the DEFAULT temp root is allowed and does not force a dry-run')
+  check(rg({ root: tmpdir(), repo: REPO, defaultRoot: 'D:\\_tmp' }).forceDryRun === true,
+    'TEMP-HYGIENE: a NON-default --root forces --dry-run unless the confirmation switch is given')
+  check(rg({ root: tmpdir(), repo: REPO, defaultRoot: 'D:\\_tmp', confirmed: true }).forceDryRun === false,
+    'TEMP-HYGIENE: the confirmation switch lifts the forced dry-run when it is given WITH --root')
+  check(rg({ root: null, repo: REPO, confirmed: true }).refusal?.code === 'CLEAN_TEMP_CONFIRM_WITHOUT_ROOT',
+    'TEMP-HYGIENE: the confirmation switch WITHOUT --root is refused by name (it is only effective together with --root)')
   console.log('temp-hygiene self-test: ' + (failures.length ? failures.length + ' failure(s)' : 'all checks passed'))
   process.exit(failures.length ? 1 : 0)
 }
@@ -254,12 +313,21 @@ if (isCli) {
     process.exit(0)
   }
   const root = val('root', null)
+  // ROUND 17: the guard runs BEFORE the temp-root switch and BEFORE any sweep ("先算后删").
+  const guard = rootGuard({ root, defaultRoot: tmpdir(), repo: REPO, confirmed: has('yes-really-delete') })
+  if (guard.refusal) {
+    console.error('temp-hygiene: ' + guard.refusal.code + ' — ' + guard.refusal.message)
+    console.error('  hint: ' + guard.refusal.hint)
+    process.exit(2)
+  }
   if (!root) { const pref = preferredTempRoot(); if (useTempRoot(pref)) console.log('temp-hygiene: using temp root ' + pref) }
+  const dryRun = has('dry-run') || guard.forceDryRun
+  if (guard.forceDryRun && !has('dry-run')) console.log('temp-hygiene: --root is not the default temp root ⇒ forced --dry-run (delete requires --yes-really-delete together with --root)')
   const res = sweep({
     root: val('root', tmpdir()),
     prefixes: sweepPrefixes(),
     ageHours: Number(val('age-hours', '6')),
-    dryRun: has('dry-run'),
+    dryRun,
     log: (m) => console.log(m),
   })
   console.log('temp-hygiene: ' + JSON.stringify(res))

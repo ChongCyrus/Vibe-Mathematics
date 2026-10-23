@@ -99,6 +99,11 @@ export const HOOK_REGISTRY = Object.freeze([
   // 动作已经发生，所以 `failure: 'open'`，且不可 block。
   { name: 'meeting/second', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion inside a meeting was seconded', producer: 'kernel/meetings.js' },
   { name: 'meeting/withdrawn', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a motion inside a meeting was withdrawn', producer: 'kernel/meetings.js' },
+  // ★ PHASE 12 / D15：一条**待辩论命题的最终裁决**已经算出来了（全一致取原值 / 否则取均值），且通知载荷已经点名了卡
+  // 的持有者与「改成哪个值」。`failure:'open'` 且**不可 block**：事件触发时那个数字**已经算完**（本模块是纯函数），
+  // 监听者可以据此审计、镜像、或让 pack 换措辞，但不能否决一个已经裁定好的值 —— 位置与上面的 `meeting/motion` 完全同类。
+  // 生产者在 `kernel/meetingverdict.js` 的 `createMeetingVerdict` 里（**唯一一处** emit，失败只记数不抛）。
+  { name: 'meeting/verdict-ruled', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a debated proposition got its final probability (aggregation done, notice payload built)', producer: 'kernel/meetingverdict.js' },
   // ── ROUND 13 / task-99: the `emit({ type: … })` family becomes REGISTRABLE 事件 ────────────────────────────────
   // Background (measured in round 12): 29 object-shape emit sites existed, 28 of them unregistered, and NEITHER hook
   // audit could see them (the classification gate's regex only accepts `emit('<name>'`; `audit-vmu-docs` §I's helper

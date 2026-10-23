@@ -98,10 +98,16 @@ const EXEMPT = ['v2的额外要求.txt'] // an author note, deliberately not ins
 
 ---
 
-## E. 附：一条与本议题直接相关的**环境事故**（R13 实测）
+## E. 附：一条与本议题直接相关的**环境事故**（R13 实测）——★ 后经 vmu-verify 审计更正归因
 
-`packs/v5r/middleware/motion-box.js` 在 R13 收尾时**被不明并发进程删除了两次**（第一次：写完并通过 `node --check`／`vmu-pack` 之后；第二次：`installer.js` 登记之后）。我用备份 `<临时目录>/motion-box-backup.js` 复原（哈希一致）。
-⇒ **可能与"清理未登记/未跟踪文件"的步骤有关**：这正说明**登记是承重的**（未登记的文件会被某种清理视为垃圾）。建议 Lead 排查该步骤，并把"删除前先看两册"写进流程。
+**我的原始观察（如实保留）**：`packs/v5r/middleware/motion-box.js` 在 R13 收尾时两次从工作树消失（第一次：写完并通过 `node --check`／`vmu-pack` 之后；第二次：`installer.js` 登记之后），两次都用备份 `<临时目录>/motion-box-backup.js` 复原（哈希一致）；本轮 `pack-round13-report.md` 也出现过"写完后再读不到"。
+
+**★ 更正（vmu-verify 的删除路径审计，2026-10-23）**：这两次都**不是被清理掉的**——
+1. `_handoff/` **整体搬进了 `docs/acceptance/`**：本报告现在就在 `docs/acceptance/pack-round13-report.md`（旧路径只作为历史引用留在 `docs/acceptance/04-parity-matrix.md:22,437,459` 与 `tests/audit-claim-traceability.test.mjs:60` 的注释里；`tests/audit-doc-index.test.mjs:73` 专门 `continue` 跳过 `_handoff`，说明它早被当作已迁走）。⇒ 报告的"消失"＝搬迁。
+2. `motion-box.js` **现在存在且两册齐**（`package.json:428` ＋ `installer.js:60` 的 PRESETS files 数组）。⇒ 当时那次"消失"的原因**至今未能归因**，但可以排除"仓库内自动删除"：`scripts/clean-temp.mjs` 只扫**临时根目录顶层**且要求"已知套件前缀 ＋ 超过 ageHours"，root 默认是 `tmpdir()`／`D:\_tmp`，**不指向仓库**；`scripts/audit-projection-census.mjs:64` 的 ROOT 也在临时目录；`tests/**`＋`scripts/**` 里所有 `rmSync/unlinkSync/rm -rf` 删的都是各自 `mkdtempSync` 的 scratch，**没有一处以仓库根为根**，也没有按时间窗扫仓库的脚本。
+3. 唯一真实的窄口子：`scripts/clean-temp.mjs --root=<dir>` 是**人工**参数（`:23`），若被手工指向仓库就会按"前缀＋年龄"扫。**vmu-verify 将加守卫**：`--root` 解析后落在仓库根之内 ⇒ 具名拒绝（`CLEAN_TEMP_ROOT_INSIDE_REPO`），并保留 `--dry-run` 先看计划。
+
+**教训（保留）**：登记是承重的（未登记/未跟踪的文件在搬迁与清理中都没有名单可依）；但**"文件不见了"要先查搬迁与名单，再谈清理** —— 我当初把"未归因"写成了"可能与清理有关"，这是推断冒充观测，本次更正。
 
 ---
 

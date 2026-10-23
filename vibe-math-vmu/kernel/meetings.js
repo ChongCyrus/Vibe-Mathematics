@@ -77,6 +77,25 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   }
   const n = (v, def = 0) => (Number.isFinite(v) ? v : def)
   /**
+   * A MEETING TIME, AS A NUMBER OF MILLISECONDS. `at` used to be stored exactly as it arrived, so an ISO-8601 string
+   * from a model silently became a STRING `openedAt` (and `ms + budgetWallMs` string-CONCATENATED, turning a wall bound
+   * into `"2026-10-24T10:00:00+08:001800000"`). Models do pass ISO strings — the rule for scheduling says "a time", not
+   * "epoch milliseconds" — so the framework accepts both forms and REFUSES anything else by name. Coercing a bad value
+   * to 0 (what `n()` above does) would schedule the meeting in 1970, i.e. "open now" with a receipt claiming a start
+   * time; that is the silent fake success this project forbids.
+   */
+  const atMs = (value, what = 'at') => {
+    if (Number.isFinite(value)) return value
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Date.parse(value)
+      if (Number.isFinite(parsed)) return parsed
+      throw deny('VMU_INVALID_ARGUMENT', what + ' is not a usable time: "' + value + '"',
+        'pass epoch milliseconds, or an ISO-8601 timestamp such as "2026-10-24T10:00:00+08:00"', [])
+    }
+    throw deny('VMU_INVALID_ARGUMENT', what + ' must be epoch milliseconds or an ISO-8601 string; got ' + (value === null ? 'null' : typeof value),
+      'pass epoch milliseconds, or an ISO-8601 timestamp string', [])
+  }
+  /**
    * ROUND 13 (phase 12): a MILLISECOND read with an absent-value answer, expressed as `(key, default)` so the
    * generated settings table can RECOVER the default. `--check` refused the first version of `extendCeilingMs`,
    * which wrote the default inside an IIFE (`raw === undefined ? 14400000 : n(raw)`): the collector reads an
@@ -134,6 +153,17 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // so); extension therefore adds a DECLARED step to a meeting's own bound, never removes the ceiling. R13: read
     // through `msOr` so the default is recoverable by the settings-table generator (see that helper's note).
     extendCeilingMs: Math.min(86400000, Math.max(3000000, msOr('vmu.meetings.extendCeilingMs', 14400000))),
+    // ★★ PHASE 12 D1 — 预约时间 + 到点人未齐的等待阶段（v5r 规则：「院士可以预约会议的召开时间（预约时负责
+    // 人可设置预约时间、等待阶段、未到齐超时自决）」）。
+    // ★ 能力在这里（内核状态机 + 具名拒），**时长与权轨是设置**。三个键的关系要说清，否则读者会把它们当成重复：
+    //   · `scheduleAllowed`  —— 能力闸：false ⇒ `open({ at: 未来 })` 名拒「不能预约」，而不是把预约悄悄当成立即召开；
+    //   · `waitOnDueMs`      —— 到点但法定人数不足时最多等多久；超时后**不替院士决定**，只把 `waitDecisionDue` 置真；
+    //   · `waitDecisionRequiresChair` —— 「超时后接着开／散会／休会」只能由该会主席决定（proceed 的权轨）。
+    // ★ 全为离线可测的纯状态转移：到点（clock 越过 scheduledFor）不靠定时器，而是在下一次读写该会议时惰性结算
+    //   （`syncMeeting`）。理由与本仓既有的 lapse 一致：**没有后台定时器**，就不会有"进程被杀后会议永远卡在等待"。
+    scheduleAllowed: sget('vmu.meetings.scheduleAllowed') !== false,
+    waitOnDueMs: Math.min(86400000, Math.max(0, msOr('vmu.meetings.waitOnDueMs', 300000))),
+    waitDecisionRequiresChair: sget('vmu.meetings.waitDecisionRequiresChair') !== false,
     committeeMax: n(sget('vmu.meetings.committeeMax')), committeeReportRequired: sget('vmu.meetings.committeeReportRequired') === true,
     budgetTurns: n(sget('vmu.meetings.budgetTurns')), budgetTokens: n(sget('vmu.meetings.budgetTokens')),
     budgetWallMs: n(sget('vmu.meetings.budgetWallMs')), budgetOnExceed: D.values.budgetOnExceed,
@@ -249,6 +279,28 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       throw deny('VMU_STATE', 'the meeting is LAPSED by its declared bound (' + MEETING_LAPSE_NAME + '): ' + String(opts.what || 'this act') + ' is refused',
         'revokeLapse({ meeting, by, reason }) restores it (a reason is required); the record itself stays readable via minutes()/verbatim()/status()/quorum()', [])
     }
+    // ★ PHASE 12 D1: EVERY TOUCH settles the scheduled start first (see `syncMeeting`), so a caller never sees a
+    // meeting as "still scheduled" after its time has passed merely because nothing else happened to run.
+    syncMeeting(m, opts.at === undefined ? null : opts.at)
+    // ★ A SCHEDULED / WAITING MEETING IS NOT RUNNING. Reading it is fine (that is how a caller finds out), but acting
+    // in it is refused BY NAME with the way out — before this rail an agent could speak into a meeting whose start
+    // time had not arrived, which is precisely what "预约" is supposed to prevent.
+    // ★ ONE ACT IS EXEMPT AND IT IS THE ONE THE WAIT EXISTS FOR: `attend`. Blocking it made 等待 a dead end — the
+    // quorum could only ever shrink relative to the roster, nothing else may act in the meeting, and the chair's
+    // `proceed()` was the only exit; the "wait a bit for the latecomers" state could not in fact wait for a latecomer
+    // to arrive. Callers pass `allowPending` deliberately (see `attend`), so the exemption is explicit at the call
+    // site, not a silent hole in this rail.
+    if (opts.readOnly !== true && opts.allowPending !== true && (m.state === 'scheduled' || m.state === 'waiting')) {
+      const q = quorumOf(m)
+      if (m.state === 'scheduled') {
+        throw deny('VMU_STATE', 'meeting ' + m.id + ' is SCHEDULED for ' + new Date(m.scheduledFor).toISOString() + ' and has not started: ' + String(opts.what || 'this act') + ' is refused',
+          'it starts by itself when the clock reaches that time (vmu.meetings.scheduleAllowed); reads (status/summary/meetingView/quorum) work now', [])
+      }
+      throw deny('VMU_STATE', 'meeting ' + m.id + ' is WAITING for its scheduled start: ' + q.present + '/' + q.roster + ' present, quorum requires ' + q.required + ' — ' + String(opts.what || 'this act') + ' is refused',
+        m.waitDecisionDue === true
+          ? 'the wait has EXPIRED: the chair decides — proceed({ meeting, actor }) / lapse({ meeting, by, reason }) / recess({ meeting, by })'
+          : 'the wait is still running (vmu.meetings.waitOnDueMs): the chair may proceed early, or wait it out', [])
+    }
     return m
   }
   const isMember = (id) => {
@@ -289,9 +341,31 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // ROUND 203: `vmu.meetings.quorumCap` - the ceiling. The contract words it `min(cap, participants)`, so with a
     // cap in force a meeting can never require more than the people actually present; that is what stops a small
     // meeting from being permanently blocked. At 0 there is no cap and quorum CAN be lost.
+    //
+    // ★ ROUND 12 (phase 12, rule D12): 「表决人数下限 = min(用户设置数, 院士+常驻研究员数)」. The old third term was
+    // `m.present.size`, which made the "lower bound" vacuous: required could never exceed the people already in the
+    // room, so with a cap in force quorum was ALWAYS met on arrival and one voter could carry a closure vote. Measured
+    // before this change: roster 2, cap 3, one present ⇒ required 1, met true, `close()` succeeded on one voice.
+    // The min's right-hand side is now the ELIGIBLE UNIVERSE — the members who could ever vote, i.e. the roster
+    // intersected with `vmu.meetings.eligibleSeats` (v5r: chair + member; temps hold slot `temp` and are therefore
+    // excluded, which is exactly the rule's 「院士+常驻研究员」). Presence is no longer part of the formula: a lower
+    // bound that shrinks to whoever showed up is not a lower bound. At `quorumCap: 0` nothing is capped.
     const needUncapped = Math.max(needMin, needRatio)
-    const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, m.present.size) : needUncapped
+    const capUniverse = (() => {
+      if (!m.roster.length) return { n: 0, source: 'empty-roster' }
+      if (!K.eligibleSeats.length) return { n: m.roster.length, source: 'roster (no voter seats declared)' }
+      const list = (members && typeof members.roster === 'function') ? (members.roster() || []) : []
+      const seatOf = new Map(list.filter(Boolean).map((x) => [String(x.id), String(x.slot)]))
+      const eligible = m.roster.filter((r) => K.eligibleSeats.includes(seatOf.get(String(r))))
+      // A roster id the members service cannot resolve is COUNTED AS ELIGIBLE: shrinking the denominator on a lookup
+      // miss would quietly make the meeting easier to close, which is the failure direction that matters.
+      const unresolved = m.roster.filter((r) => !seatOf.has(String(r))).length
+      return { n: eligible.length + unresolved, source: unresolved ? 'seats + unresolved roster ids' : 'seats' }
+    })()
+    const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, capUniverse.n) : needUncapped
     return {
+      cap: K.quorumCap, capUniverse: capUniverse.n, capUniverseSource: capUniverse.source,
+      capPolicy: K.quorumCap > 0 ? 'min(quorumMin/quorumRatio need, vmu.meetings.quorumCap, eligible members in the roster)' : 'uncapped (vmu.meetings.quorumCap = 0)',
       meeting: m.id, mode: K.attendanceMode, present: m.present.size, roster: m.roster.length,
       unanswered: unanswered.length, unansweredList: unanswered.slice().sort(),
       denominator: effective, denominatorPolicy: K.unansweredInDenominator ? 'all-roster (unanswered counted)' : 'present-only',
@@ -303,6 +377,68 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       unansweredPolicy: 'members who have neither attended nor voted',
       note: 'unanswered members are named, never passed over silently (08 卷 D3/L4 口径); voting counts as participation',
     }
+  }
+
+  /**
+   * ★★ PHASE 12 D1 — THE SCHEDULED START, EVALUATED LAZILY ON THE NEXT TOUCH.
+   *
+   * WHY LAZY AND NOT A TIMER: this face owns no background timer anywhere (the same reason `lapse` is computed on
+   * demand). A timer would mean "a meeting that must start while nobody is looking", and a process restart would
+   * leave it stranded — the failure mode the whole project refuses. So the clock is read whenever the meeting is
+   * touched and the transition is applied then, which is deterministic, replayable and unit-testable without fakes.
+   *
+   * THE THREE TRANSITIONS, and what they are NOT:
+   *   scheduled --(due, quorum met)--> open      (a scheduled meeting is NOT already running; it cannot be spoken in)
+   *   scheduled --(due, quorum short)--> waiting (still not running; `waitStartedAt` records when the wait began)
+   *   waiting   --(waitOnDueMs elapsed)--> waiting + waitDecisionDue=true
+   * ★ THE LAST ONE DELIBERATELY CHANGES NOTHING ELSE. The rule says 「此时院士自行决定怎么做」 — so the framework
+   * does NOT auto-open, auto-lapse or auto-extend; it only makes the deadline VISIBLE on every read face and lets
+   * `proceed()` (chair-gated) be the one way out. Deciding for the chair would be a mechanism with no authorization.
+   *
+   * ★ IT REPORTS WHAT IT DID. `syncMeeting` returns the transition it applied (or null) so a caller can tell "the
+   * meeting was already open" from "this touch is what opened it" — a silent transition is indistinguishable from a
+   * bug when a receipt is missing.
+   */
+  const syncMeeting = (m, at = null) => {
+    if (!m || (m.state !== 'scheduled' && m.state !== 'waiting')) return null
+    const now = at === null ? clock() : n(at)
+    if (m.state === 'scheduled') {
+      if (!Number.isFinite(m.scheduledFor) || now < m.scheduledFor) return null
+      const q = quorumOf(m)
+      m.activatedAt = now
+      m.waitStartedAt = now
+      if (q.met) {
+        m.state = 'open'
+        m.startedLate = true
+        markState(m, 'open')
+        say({ type: 'meetings/started', at: now, meeting: m.id, scheduledFor: m.scheduledFor, waitedMs: 0, quorum: q, enforcedScope: ENFORCED_SCOPE })
+        return 'started'
+      }
+      m.state = 'waiting'
+      markState(m, 'waiting')
+      say({ type: 'meetings/waiting', at: now, meeting: m.id, scheduledFor: m.scheduledFor, quorum: q, waitOnDueMs: K.waitOnDueMs, enforcedScope: ENFORCED_SCOPE })
+      return 'waiting'
+    }
+    // state === 'waiting'
+    // ★★ THE WAIT EXISTS TO BE SATISFIED. A latecomer who arrives during the wait must be able to turn it into a
+    // running meeting, so the quorum is re-checked BEFORE the deadline logic — otherwise the only exit from `waiting`
+    // is the chair's `proceed()`, i.e. the state that exists to wait for people could not be resolved by a person
+    // arriving. Measured: without this branch `attend()` added the member, the quorum became met, and the meeting
+    // still reported `waiting` forever (the assertion below went red with `settled:null`).
+    if (quorumOf(m).met) {
+      m.state = 'open'
+      m.startedLate = true
+      markState(m, 'open')
+      say({ type: 'meetings/started', at: now, meeting: m.id, scheduledFor: m.scheduledFor, waitedMs: now - (Number.isFinite(m.waitStartedAt) ? m.waitStartedAt : now), quorum: quorumOf(m), via: 'latecomer', enforcedScope: ENFORCED_SCOPE })
+      return 'started'
+    }
+    if (m.waitDecisionDue === true) return null
+    if (K.waitOnDueMs > 0 && now - m.waitStartedAt < K.waitOnDueMs) return null
+    m.waitDecisionDue = true
+    say({ type: 'meetings/wait-expired', at: now, meeting: m.id, scheduledFor: m.scheduledFor, waitedMs: now - m.waitStartedAt,
+      waitOnDueMs: K.waitOnDueMs, quorum: quorumOf(m), enforcedScope: ENFORCED_SCOPE,
+      note: 'the framework does not decide: the chair proceeds (proceed), lapses (lapse) or recesses (recess)' })
+    return 'wait-expired'
   }
 
   /**
@@ -415,109 +551,74 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // object under debate") is the PACK's; the FRAMEWORK only has to be able to carry such a reference and hand it
     // back on every read face. Without it a debate meeting could not say what was being debated anywhere a reader
     // looks, and the pack's `vibe_v5_meeting` had a `target` parameter with no consumer at all (declared, not wired).
-    open({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, actor = null } = {}) {
+    // ★ the implementation is the hoisted `openSeq` below (see the note there): D6 needs `close()` to open the
+    // next meeting of a sequence through the SAME code path, and a literal's method cannot be reused.
+    open: openSeq,
+
+    /**
+     * ★★ PHASE 12 D1 — 「未到齐超时，此时院士自行决定怎么做」的唯一出口。
+     *
+     * WHY THIS IS A METHOD AND NOT AN AUTOMATIC TRANSITION: the rule gives the DECISION to the chair. The framework's
+     * job is to make the deadline visible (`waitDecisionDue` on every read face) and to provide exactly one way out
+     * that records WHO took it. Doing it automatically would be the framework deciding, which the rule does not say.
+     *
+     * WHAT THE CHAIR CAN ALSO DO (deliberately NOT re-implemented here): `lapse()` ends the meeting, `recess()` pauses
+     * it. Those already exist and are their own audited acts; `proceed` only answers "start anyway".
+     *
+     * ★ TWO REFUSALS THAT MATTER: (1) a meeting that is not WAITING cannot be proceeded (an already-open meeting does
+     * not need it, and a scheduled one whose time has not come is not "late"); (2) when the chair rail is on, an
+     * anonymous or non-chair actor is refused — an override of quorum is an authority act, and the receipt must say
+     * whose. `beforeDeadline` is recorded, so "the chair jumped the gun" is distinguishable from "the chair decided
+     * after the declared wait" — a silent early start would look identical to an on-time one in the minutes.
+     */
+    proceed({ meeting = null, actor = null, by = null, at = null, why = null } = {}) {
+      const mid = String(meeting)
+      const m = meetingOf(mid)
+      if (!m) throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + mid, 'open: ' + ([...live.keys()].sort().join(', ') || '(none)'), [])
+      const now = at === null ? clock() : atMs(at)
+      syncMeeting(m, now)
       const enforced = []
-      const ms = at === null ? clock() : at
-      // GAP-MTG-02: a CONTRADICTORY tier declaration is refused BEFORE any state is created. Same predicate as
-      // the close rail — one decision point, several call sites, so the two can never disagree.
-      if (isLight() && K.allowLight === false) throw truthWriteRefusal('opening a meeting', enforced)
-      if (K.typeCatalog.length) {
-        mark(enforced, 'vmu.meetings.typeCatalog')
-        if (!K.typeCatalog.includes(String(type))) {
-          throw deny('VMU_NO_SUCH_OBJECT', 'meeting type "' + type + '" is not in vmu.meetings.typeCatalog',
-            'allowed: ' + K.typeCatalog.join(', ') + ' (vmu.meetings.typeCatalog)', enforced)
-        }
+      if (m.state !== 'waiting') {
+        throw deny('VMU_STATE', 'proceed() only applies to a meeting WAITING for its scheduled start: ' + mid + ' is ' + m.state,
+          m.state === 'scheduled' ? 'its start time has not arrived yet; nothing is late' : 'the meeting is already running — just act in it', enforced)
       }
-      // ★ PHASE 12 — 「会议只能由院士（= 本会主席）召开」的内核承载：能力在这里（具名拒，并说出谁可以），
-      // 「本所的主席只有院士」这条政策在 pack 的 defaults.json 里声明。★ 第三件不做：不在这里查
-      // 「actor 是不是院士」——那是 pack 的名册知识，内核若硬编码一个角色名，第二个 pack 就抄不动了。
-      // ★ WHAT THIS RAIL CAN AND CANNOT DO, said plainly (a security argument must cover the ACTUAL authorization, not
-      // the part it finds convenient). WHEN A CONVENE INSTALLS A CHAIR, that chair is an authority, so the convene must
-      // name it and must come FROM it: ① no actor ⇒ refused (an anonymous convene could install any chair); ② actor ≠
-      // chair ⇒ refused (convening ON BEHALF of another chair is the forgery this rule is about). A CHAIRLESS CONVENE
-      // IS NOT THIS RAIL'S BUSINESS: `v5r.stall-meeting` opens one from `control/idle`, where no member exists at all,
-      // and a kernel cannot tell a workflow from a member. That split is deliberate and documented on both sides:
-      // 「只有院士（a seat）能召开」is enforced where the caller id AND the slot are both known — the pack's tool face
-      // (`requireChairSeat` in packs/v5r/tools.js); the kernel guards the shape it can actually see.
-      if (K.conveneRequiresChair) {
-        mark(enforced, 'vmu.meetings.conveneRequiresChair')
-        const who = (actor === null || actor === undefined) ? null : String(actor)
-        const seat = (chair === null || chair === undefined) ? null : String(chair)
-        if (seat !== null) {
+      const who = (actor === null || actor === undefined) ? ((by === null || by === undefined) ? null : String(by)) : String(actor)
+      if (K.waitDecisionRequiresChair) {
+        mark(enforced, 'vmu.meetings.waitDecisionRequiresChair')
+        if (m.chair !== null) {
           if (who === null) {
-            throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.conveneRequiresChair=true: a convene that installs a chair must name that chair as its actor',
-              'pass { actor: "<member id>" } together with { chair: "<the same id>" } (vmu.meetings.conveneRequiresChair)', enforced)
+            throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.waitDecisionRequiresChair=true: starting a waiting meeting needs the chair to name itself',
+              'pass { actor: "' + m.chair + '" } — overriding an unmet quorum is an authority act and must be attributable', enforced)
           }
-          if (who !== seat) {
-            throw deny('VMU_NOT_PERMITTED', 'only the member who takes the chair may convene this meeting: actor ' + who + ' != chair ' + seat,
-              'pass { actor: x, chair: x } — convening ON BEHALF of another chair is exactly what this rail refuses (vmu.meetings.conveneRequiresChair)', enforced)
+          if (who !== m.chair) {
+            throw deny('VMU_NOT_PERMITTED', 'only the meeting’s chair may start a waiting meeting: actor ' + who + ' != chair ' + m.chair,
+              'pass { actor: "' + m.chair + '" } (vmu.meetings.waitDecisionRequiresChair)', enforced)
           }
-          chair = who
         }
       }
-      // ★ WHERE this meeting is about something (a debate's object, a closure's proposition, a paper's draft), the
-      // reference is CARRIED and READ BACK, never inferred. A non-string is refused by name rather than stringified:
-      // `String({})` would silently store "[object Object]" and every later reader would trust it.
-      if (subject !== null && subject !== undefined && typeof subject !== 'string') {
-        throw deny('VMU_INVALID_ARGUMENT', 'subject must be a string reference (a card id, a file path, or a one-line statement); got ' + typeof subject,
-          'pass subject:"<what this meeting is about>" or omit it', enforced)
-      }
-      const subjectRef = (subject === null || subject === undefined || String(subject).trim() === '') ? null : String(subject).trim()
-      if (K.liveCap > 0) {
-        mark(enforced, 'vmu.meetings.liveCap')
-        if (live.size >= K.liveCap) cap('VMU_QUOTA_EXCEEDED', 'live meetings', live.size, K.liveCap, 'vmu.meetings.liveCap', enforced)
-      }
-      if (K.committeeMax > 0 && size !== null) {
-        mark(enforced, 'vmu.meetings.committeeMax')
-        if (n(size) > K.committeeMax) cap('VMU_QUOTA_EXCEEDED', 'committee size', n(size), K.committeeMax, 'vmu.meetings.committeeMax', enforced)
-      }
-      if (K.materialsRequired) {
-        mark(enforced, 'vmu.meetings.materialsRequired')
-        if (!materials) throw deny('VMU_STATE', 'vmu.meetings.materialsRequired=true: a meeting cannot open without materials', 'pass { materials: <pointer> } — the pointer belongs to 07/22 and is only referenced here', enforced)
-      }
-      // A1 round 10 — AN EXPLICIT id IS HONOURED, and a COLLISION IS REFUSED BY NAME. The vmu meeting face's
-      // secretary bridge passes the primitive id in, and this used to ignore it: the tool believed it had
-      // aligned two records while the service minted its own id (measured: primitive pm9 vs service m3).
-      // The auto id stays the default, and the counter still advances on an explicit open so the two can
-      // never mint the same name later without the guard below firing.
-      const wanted = (typeof id === 'string' && id.trim() !== '') ? id.trim() : null
-      const mid = wanted || ('m' + (counters.opened + 1))
-      if (live.has(mid)) throw deny('VMU_CONFLICT', 'a live meeting already uses id ' + String(mid), 'open: ' + [...live.keys()].sort().join(', '), enforced)
-      const m = {
-        id: mid, type: String(type), kind: kind === null ? null : String(kind), chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),
-        roster: arr(roster).map(String), present: new Set(chair === null ? [] : [String(chair)]),
-        openedAt: ms, state: 'open', turns: 0, tokens: 0, wallStartMs: ms,
-        // ★ the meeting's OWN wall bound (frozen at open) plus who convened it; `extend()` raises the first.
-        wallLimitMs: K.hardLimitMs, openedBy: (actor === null || actor === undefined) ? null : String(actor), extendedMs: 0,
-        queue: [], speechUsed: new Map(), interrupts: new Map(), warnings: new Map(), mutes: new Map(),
-        recess: null, previousConfirmed: false, minutes: { entries: [], refused: [], actions: [] },
-        transcript: [], confidentiality: K.confidentialityDefault, motions: [], appeals: [], closedAt: null,
-        committeeReport: null, dissent: [],
-        // ★ WHY this meeting was convened (null when the caller did not say). Until now this was computed by the
-        // caller and discarded here, so a reader of summary()/meetingView() could see a "stall" meeting with no
-        // statement of what stalled.
-        reason: reason === null || reason === undefined ? null : String(reason),
-        // ★ WHAT this meeting is about, when the convenor said so (null = not stated, never guessed).
-        subject: subjectRef,
-      }
-      live.set(mid, m)
+      const beforeDeadline = m.waitDecisionDue !== true
+      const waitedMs = Number.isFinite(m.waitStartedAt) ? now - m.waitStartedAt : 0
+      m.state = 'open'
+      m.activatedAt = now
+      m.startedLate = true
       markState(m, 'open')
-      counters.opened += 1
-      const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, subject: m.subject, openedBy: m.openedBy, confidentiality: m.confidentiality, enforced, enforcedScope: ENFORCED_SCOPE }
+      const whyText = (why === null || why === undefined) ? null : String(why)
+      m.minutes.entries.push({ at: now, kind: 'proceeded', by: who, why: whyText, waitedMs, beforeDeadline, quorum: quorumOf(m) })
+      const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, scheduledFor: m.scheduledFor, quorum: quorumOf(m), enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
-      say({ type: 'meetings/opened', at: ms, meeting: mid, type: m.type, subject: m.subject, openedBy: m.openedBy, enforced, enforcedScope: ENFORCED_SCOPE })
-      // ★ type/subject are ALSO at the top level, not only inside `receipt`: a caller that asked for them should not
-      // have to know the receipt envelope's shape to read back what it just set (the same reason `attend` returns `late`).
-      return { ok: true, meeting: mid, type: m.type, subject: m.subject, openedBy: m.openedBy, wallLimitMs: m.wallLimitMs, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      say({ type: 'meetings/proceeded', at: now, meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, quorum: quorumOf(m), enforced, enforcedScope: ENFORCED_SCOPE })
+      return Object.assign({ ok: true, meeting: m.id, state: m.state, startedLate: true, receipt }, receipt)
     },
 
     /** Join. `lateAfterMs` decides whether a late arrival is allowed/recorded/refused. */
     attend({ meeting, member, at = null } = {}) {
-      const m = requireMeeting(meeting)
+      // ★ EXEMPT FROM THE "no act before it starts" RAIL, on purpose: attending is how a waiting meeting gets its
+      // quorum, so it is the one act that must work while the meeting is still scheduled/waiting.
+      const m = requireMeeting(meeting, { allowPending: true })
       const enforced = []
       if (typeof member !== 'string' || !member) throw deny('VMU_INVALID_ARGUMENT', 'attend needs a member id', 'e.g. { meeting: "m1", member: "r-1" }', [])
       if (!isMember(member)) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + member, 'the roster seam rejected it', [])
-      const ms = at === null ? clock() : at
+      const ms = at === null ? clock() : atMs(at)
       if (m.state === 'recess') throw deny('VMU_STATE', 'the meeting is in recess: ' + m.id, 'resume() first (vmu.meetings.recessMaxMs / recessResumeRequiresMotion)', [])
       let late = false
       if (K.lateAfterMs > 0 && ms - m.openedAt > K.lateAfterMs) {
@@ -526,18 +627,23 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       }
       m.roster = m.roster.includes(member) ? m.roster : m.roster.concat([member])
       m.present.add(member)
+      // ★ SETTLE THE SCHEDULE ON THIS TOUCH. "The last person arrived ⇒ the meeting starts" is exactly what 等待 is
+      // FOR; without this line the quorum could only be improved by an act that the rail forbids, so a waiting meeting
+      // could never start by itself and the chair's `proceed()` was the only exit. `syncMeeting` reports what it did,
+      // and the receipt repeats it, so "this attendance is what opened the meeting" is not silent.
+      const settled = (m.state === 'scheduled' || m.state === 'waiting') ? syncMeeting(m, ms) : null
       const q = quorumOf(m)
-      const receipt = { at: ms, action: 'attend', meeting: m.id, member, late, quorum: q, enforced, enforcedScope: ENFORCED_SCOPE }
+      const receipt = { at: ms, action: 'attend', meeting: m.id, member, late, quorum: q, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
-      say({ type: 'meetings/attended', at: ms, meeting: m.id, member, late, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, late, quorum: q, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      say({ type: 'meetings/attended', at: ms, meeting: m.id, member, late, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, late, quorum: q, state: m.state, settled, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Leave. `leaveEarlyPolicy` (allow/note/deny) and `quorumLossPolicy` decide the consequence. */
     leave({ meeting, member, at = null } = {}) {
       const m = requireMeeting(meeting)
       const enforced = []
-      const ms = at === null ? clock() : at
+      const ms = at === null ? clock() : atMs(at)
       if (!m.present.has(String(member))) throw deny('VMU_NOT_MEMBER', 'member is not present: ' + String(member), 'present: ' + [...m.present].sort().join(', '), [])
       if (K.leaveEarlyPolicy !== 'allow' && m.state === 'open') {
         mark(enforced, 'vmu.meetings.leaveEarlyPolicy')
@@ -573,7 +679,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     speak({ meeting, member, ms: speechMs = null, text = '', verbatim = false, tokens = 0, at = null } = {}) {
       const m = requireMeeting(meeting)
       const enforced = []
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       if (!m.present.has(String(member))) throw deny('VMU_NOT_MEMBER', 'speaker is not present: ' + String(member), 'attend() first', [])
       const mute = m.mutes.get(String(member))
       if (mute && now < mute.until) {
@@ -660,7 +766,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const m = requireMeeting(meeting)
       if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'interrupt() acts as or on the interrupting member - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const enforced = []
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       mark(enforced, 'vmu.meetings.interruptAllow')
       if (!K.interruptAllow) {
         throw deny('VMU_MEETING_INTERRUPT_DENIED', 'vmu.meetings.interruptAllow=false: interrupting is not allowed in this meeting',
@@ -701,7 +807,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const m = requireMeeting(meeting)
       if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'motion() acts as or on the member moving the motion - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
       const enforced = []
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       // GAP-MTG-02: a RESOLUTION motion is an entity conclusion, so a light meeting refuses it through the SAME
       // predicate the close rail uses (the v5r S12/D7 rule, now a single decision point).
       if (String(kind) === 'resolution') {
@@ -768,7 +874,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
      */
     second({ meeting, motion = null, member = null, at = null } = {}) {
       const m = requireMeeting(meeting)
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'second() acts as a member', [])
       const target = motion === null ? null : m.motions.find((x) => x.id === String(motion))
       if (!target) throw deny('VMU_NO_SUCH_OBJECT', 'no such motion: ' + String(motion), 'motions: ' + (m.motions.map((x) => x.id).join(', ') || 'none'))
@@ -788,7 +894,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
      */
     withdraw({ meeting, motion = null, member = null, at = null } = {}) {
       const m = requireMeeting(meeting)
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       const target = motion === null ? null : m.motions.find((x) => x.id === String(motion))
       if (!target) throw deny('VMU_NO_SUCH_OBJECT', 'no such motion: ' + String(motion), 'motions: ' + (m.motions.map((x) => x.id).join(', ') || 'none'))
       if (String(member) !== target.by) throw deny('VMU_NOT_PERMITTED', 'only the proposer may withdraw motion ' + target.id + ': ' + String(member), 'proposer=' + target.by)
@@ -808,7 +914,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     vote({ meeting, member, motion = null, value = 1, at = null } = {}) {
       const m = requireMeeting(meeting)
       const enforced = []
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       if (!isMember(member)) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'the roster seam rejected it', [])
       // THE VOTER-SEAT GATE (A1 round 10). Declared seats only; no declaration = no seat rule. The refusal NAMES the
       // slot and the seats, because the caller's next question is always "then who may vote?".
@@ -911,7 +1017,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         if (!isMember(String(by))) throw deny('VMU_NOT_MEMBER', 'the acting member is not on the roster: ' + String(by), 'the roster seam rejected the actor for recess()', [])
       }
       const enforced = []
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       if (K.recessMaxMs > 0) {
         mark(enforced, 'vmu.meetings.recessMaxMs')
         if (n(ms) > K.recessMaxMs) cap('VMU_MEETING_RECESS_LIMIT', 'recess (ms)', n(ms), K.recessMaxMs, 'vmu.meetings.recessMaxMs', enforced)
@@ -929,7 +1035,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     resume({ meeting, motion = null, at = null } = {}) {
       const m = requireMeeting(meeting)
       const enforced = []
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       if (m.state !== 'recess') throw deny('VMU_STATE', 'the meeting is not in recess: ' + m.id, 'state: ' + m.state, [])
       if (K.recessMaxMs > 0 && m.recess && now - m.recess.since > K.recessMaxMs) {
         mark(enforced, 'vmu.meetings.recessMaxMs')
@@ -960,7 +1066,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         if (!isMember(String(by))) throw deny('VMU_NOT_MEMBER', 'the acting member is not on the roster: ' + String(by), 'the roster seam rejected the actor for warn()', [])
       }
       const enforced = []
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       const used = (m.warnings.get(String(member)) || 0) + 1
       m.warnings.set(String(member), used)
       counters.warnings += 1
@@ -995,7 +1101,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         throw deny('VMU_MEETING_DISCIPLINE_DENIED', 'vmu.meetings.disciplineExpelAllowed=false: expulsion is not allowed',
           'use warn()/mute() instead, or set vmu.meetings.disciplineExpelAllowed=true', enforced)
       }
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       m.present.delete(String(member))
       m.minutes.entries.push({ at: now, kind: 'expel', member: String(member), reason: reason === null ? null : String(reason) })
       const q = quorumOf(m)
@@ -1024,7 +1130,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const m = meeting === null ? null : requireMeeting(meeting)
       const enforced = ['vmu.meetings.appealScope']
       if (!isMember(String(member))) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + String(member), 'fileAppeal() acts as or on the member filing the appeal - the roster seam rejected this id; a non-member never votes (08 D-series)', [])
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       if (K.appealScope === 'none' || (K.appealScope === 'procedural' && String(kind) !== 'procedural')) {
         throw deny('VMU_MEETING_APPEAL_OUT_OF_SCOPE', 'appeal kind "' + kind + '" is out of scope (vmu.meetings.appealScope=' + K.appealScope + ')',
           'allowed: ' + K.appealScope, enforced)
@@ -1064,7 +1170,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     minutes({ meeting, by = null, at = null } = {}) {
       const m = requireMeeting(meeting, { readOnly: true })
       assertCanReadRecord(m, 'minutes', by)
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       const refused = m.minutes.refused.filter(() => K.minutesIncludeRefused)
       const entries = K.minutesDetail === 'full' ? m.minutes.entries.slice() : m.minutes.entries.filter((e) => e.kind !== 'speech' || e.ms > 0).slice(0, 20)
       return {
@@ -1081,7 +1187,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const m = requireMeeting(meeting, { readOnly: true })
       assertCanReadRecord(m, 'verbatim', by)
       if (!K.verbatimEnabled) return { ok: true, enabled: false, lines: [], dropped: counters.prunedVerbatim, note: 'vmu.meetings.verbatimEnabled=false: nothing is captured' }
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       let lines = m.transcript.slice()
       if (K.verbatimRetentionMs > 0) {
         const kept = lines.filter((l) => now - l.at <= K.verbatimRetentionMs)
@@ -1098,7 +1204,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (typeof wake !== 'function') {
         throw deny('VMU_ENGINE_UNAVAILABLE', 'no wake seam is injected', 'inject { wake } (the member-wake surface) to use this rail', [])
       }
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       let out = { ok: true }
       try { out = wake({ member, at: now }) || { ok: true } } catch (e) { out = { ok: false, error: String((e && e.message) || e) } }
       if (out.ok === false) {
@@ -1137,7 +1243,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     close({ meeting, report = null, actions = null, at = null, actor = null } = {}) {
       const m = requireMeeting(meeting)
       const enforced = []
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       // PHASE 12 - only the chair closes: capability here, policy in the pack (vmu.meetings.closeRequiresChair).
       // ORDER MATTERS: ask WHO is closing before asking WHAT the close carries, so a non-chair caller is told
       // it lacks the seat rather than that its report is malformed (the same lesson as motion() below).
@@ -1219,9 +1325,23 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // (not a shared reference) keep both fields as readable key lists even for a serializer that marks repeats.
       const closedBy = (actor === null || actor === undefined) ? null : String(actor)
       const receipt = { at: now, action: 'close', meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+      // ★★ PHASE 12 D6 — 「允许一次性设置连续展开的多个会议」: closing this meeting OPENS the next one it was convened
+      // with. Two failure directions are treated differently on purpose: (1) a next meeting that cannot open (quota, a
+      // type that left the catalogue) does NOT un-close this one — the closure already happened and reverting it would
+      // be a lie about a past fact; it is reported as `nextMeetingError` with its own code. (2) `sequenceIndex` advances
+      // only when a meeting really opened, so a refused advance stays visible (it is retried on the next close) instead
+      // of vanishing.
+      const advanced = advanceSequence(m, now)
+      if (advanced.meeting) {
+        receipt.nextMeeting = advanced.meeting
+        receipt.sequence = { index: advanced.index, total: advanced.total, next: advanced.next === undefined ? null : advanced.next }
+      } else if (advanced.error) {
+        receipt.nextMeetingError = advanced.error
+      }
       pushReceipt(receipt)
       say({ type: 'meetings/closed', at: now, meeting: m.id, closedBy, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+      if (advanced.meeting) say({ type: 'meetings/sequence-advanced', at: now, from: m.id, meeting: advanced.meeting, index: advanced.index, total: advanced.total, enforced: ['vmu.meetings.sequence'], enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, nextMeeting: advanced.meeting || null, nextMeetingError: advanced.error || null, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
     },
 
     /**
@@ -1239,7 +1359,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     extendWall({ meeting, ms = null, at = null, actor = null, why = null } = {}) {
       const m = requireMeeting(meeting)
       const enforced = []
-      const now = at === null ? clock() : at
+      const now = at === null ? clock() : atMs(at)
       if (m.state !== 'open' && m.state !== 'recess') {
         throw deny('VMU_STATE', 'only an open (or recessed) meeting can be extended: ' + m.id + ' is ' + m.state,
           'reopen() it first, or open a new meeting', enforced)
@@ -1337,7 +1457,17 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       })
       return {
         ok: true, id: m.id, meeting: m.id, type: m.type, kind: m.kind, state: m.state, reason: m.reason === undefined ? null : m.reason,
+        title: m.title === undefined ? null : m.title,
+        materials: m.materials === undefined ? null : m.materials,
         subject: m.subject === undefined ? null : m.subject,
+        sequence: seqInfo(m),
+        // ★ PHASE 12 D1: the schedule is part of the DECISION record — a reader must be able to tell a scheduled
+        // meeting from a running one, and a late start from an on-time one, without asking a second face.
+        scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor,
+        activatedAt: m.activatedAt === undefined ? null : m.activatedAt,
+        startedLate: m.startedLate === true,
+        waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
+        waitDecisionDue: m.waitDecisionDue === true,
         chair: m.chair || null, secretary: m.secretary || null,
         motions, votes: (m.minutes && Array.isArray(m.minutes.entries)) ? m.minutes.entries.filter((e) => e && e.kind === 'vote').length : 0,
         closedAt: m.closedAt || null,
@@ -1352,13 +1482,25 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // vibe_v5_meeting creates service meetings. So the wording has to exist on both read faces or it is a mechanism
       // with no consumer for the only path that mattered.
       return { ok: true, meeting: m.id, type: m.type, state: m.state,
+        title: m.title === undefined ? null : m.title,
+        materials: m.materials === undefined ? null : m.materials,
         subject: m.subject === undefined ? null : m.subject,
+        sequence: seqInfo(m),
+        // ★ PHASE 12 D1: the schedule's state on the view the live run actually reads.
+        scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor,
+        activatedAt: m.activatedAt === undefined ? null : m.activatedAt,
+        startedLate: m.startedLate === true,
+        waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
+        waitDecisionDue: m.waitDecisionDue === true,
         loop: 'meeting-ask-answer',
         note: '★ motions/votes/state here describe the MEETING’s own ask()+answer()+motion cycle. A member answering a vibe_vmu_turn prompt is a DIFFERENT loop: read vibe_vmu_turn’s receipts (awaiting/memberPrompt/deliveryPath) for that one. hasDeliverSeam on the primitive face refers to open({deliver}), not to the turn loop’s deliveryPath.', reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,
         motions: m.motions.map((x) => ({ id: x.id, by: x.by, kind: x.kind, status: x.status, secondedBy: x.secondedBy || null, withdrawnAt: x.withdrawnAt || null })) }
     },
     /** READ-ONLY self-report: WIRED list, the declared-but-unwired list (per key + reason), counters, values. */
     status() {
+      // ★ PHASE 12 D1: settle every scheduled/waiting meeting before reporting, so `scheduledMeetings` /
+      // `waitDecisionDue` are the CURRENT facts rather than a snapshot of the last time someone touched that meeting.
+      for (const m of live.values()) syncMeeting(m, null)
       const declared = declaredKeys()
       const wired = WIRED_KEYS.slice()
       const plannedKeys = declared.keys.filter((k) => !wired.includes(k))
@@ -1373,6 +1515,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         wiredNotDeclared: declared.count > 0 ? wired.filter((k) => !declared.keys.includes(k)) : [],
         complementOk: plannedKeys.length + wired.length === declared.count && plannedKeys.filter((k) => wired.includes(k)).length === 0,
         liveMeetings: [...live.keys()].sort(), archived: archive.length,
+        // ★ PHASE 12 D1: a scheduled / waiting meeting is live but NOT runnable, and an operator must be able to see
+        // the difference without opening each one. `waitDecisionDue` is the actionable half: those are the meetings
+        // where the framework is deliberately waiting for a human decision.
+        scheduledMeetings: [...live.values()].filter((m) => m.state === 'scheduled').map((m) => ({ meeting: m.id, scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
+        waitingMeetings: [...live.values()].filter((m) => m.state === 'waiting').map((m) => ({ meeting: m.id, scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor, waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt, waitDecisionDue: m.waitDecisionDue === true, quorum: quorumOf(m) })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
+        waitDecisionDue: [...live.values()].filter((m) => m.state === 'waiting' && m.waitDecisionDue === true).map((m) => m.id).sort(),
         // F28: a lapse is a first-class state an operator must be able to SEE (not infer from a missing meeting).
         lapsedMeetings: [...live.values()].filter((m) => m.lapse && !m.lapse.revokedAt).map((m) => m.id).sort(),
         // F51 (task-89): the durable-domain-marker SELF-DISCLOSURE, owned by `kernel/meetingmarker.js` —
@@ -1490,6 +1638,247 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     for (const k of WIRED_KEYS) if (!all.includes(k)) all.push(k)
     all.sort()
     return { keys: all, count: all.length, source: 'settings/schema.js (core + planned) + WIRED_KEYS' }
+  }
+
+  // ★★ PHASE 12 D6 turned this from an object-literal METHOD into a NAMED, HOISTED function: a sequence advances
+  // by OPENING the next meeting, and a sibling method cannot call another sibling method inside the same literal.
+  // Declaring it here is the smallest change that lets `close()` reuse the ONE open implementation — a second open
+  // path would have to keep the rails, the ids and the receipts in step by hand, which is how the two-loops confusion
+  // earlier in this project started.
+  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null } = {}) {
+
+    const enforced = []
+    const ms = at === null ? clock() : atMs(at)
+    // ★★ PHASE 12 D1 — 预约：`at` 指向未来 ⇒ 会议先处于 scheduled 态，**不是**"一个 openedAt 在未来的已开会议"。
+    // 差别是实打实的：旧实现把未来的 `at` 直接写进 openedAt，于是一个"预约"会议可以立刻被发言、投票、关闭，
+    // 预约只是个装饰字段。现在它有自己的状态，而状态由 `syncMeeting` 在到点时结算。
+    // ★ 能力可以关掉（`vmu.meetings.scheduleAllowed=false`），**关掉时是具名拒，不是把预约悄悄变成立即召开**
+    //   —— 后者会让调用方以为会议已按预约时间排好，实际已经开着（假绿）。
+    const scheduledFor = ms > clock() ? ms : null
+    if (scheduledFor !== null) {
+      mark(enforced, 'vmu.meetings.scheduleAllowed')
+      if (!K.scheduleAllowed) {
+        throw deny('VMU_STATE', 'vmu.meetings.scheduleAllowed=false: a meeting cannot be SCHEDULED (requested at ' + new Date(ms).toISOString() + ', now ' + new Date(clock()).toISOString() + ')',
+          'open it now by omitting { at } (an `at` in the future would otherwise create a meeting that pretends to be scheduled)', enforced)
+      }
+    }
+    // GAP-MTG-02: a CONTRADICTORY tier declaration is refused BEFORE any state is created. Same predicate as
+    // the close rail — one decision point, several call sites, so the two can never disagree.
+    if (isLight() && K.allowLight === false) throw truthWriteRefusal('opening a meeting', enforced)
+    if (K.typeCatalog.length) {
+      mark(enforced, 'vmu.meetings.typeCatalog')
+      if (!K.typeCatalog.includes(String(type))) {
+        throw deny('VMU_NO_SUCH_OBJECT', 'meeting type "' + type + '" is not in vmu.meetings.typeCatalog',
+          'allowed: ' + K.typeCatalog.join(', ') + ' (vmu.meetings.typeCatalog)', enforced)
+      }
+    }
+    // ★ PHASE 12 — 「会议只能由院士（= 本会主席）召开」的内核承载：能力在这里（具名拒，并说出谁可以），
+    // 「本所的主席只有院士」这条政策在 pack 的 defaults.json 里声明。★ 第三件不做：不在这里查
+    // 「actor 是不是院士」——那是 pack 的名册知识，内核若硬编码一个角色名，第二个 pack 就抄不动了。
+    // ★ WHAT THIS RAIL CAN AND CANNOT DO, said plainly (a security argument must cover the ACTUAL authorization, not
+    // the part it finds convenient). WHEN A CONVENE INSTALLS A CHAIR, that chair is an authority, so the convene must
+    // name it and must come FROM it: ① no actor ⇒ refused (an anonymous convene could install any chair); ② actor ≠
+    // chair ⇒ refused (convening ON BEHALF of another chair is the forgery this rule is about). A CHAIRLESS CONVENE
+    // IS NOT THIS RAIL'S BUSINESS: `v5r.stall-meeting` opens one from `control/idle`, where no member exists at all,
+    // and a kernel cannot tell a workflow from a member. That split is deliberate and documented on both sides:
+    // 「只有院士（a seat）能召开」is enforced where the caller id AND the slot are both known — the pack's tool face
+    // (`requireChairSeat` in packs/v5r/tools.js); the kernel guards the shape it can actually see.
+    if (K.conveneRequiresChair) {
+      mark(enforced, 'vmu.meetings.conveneRequiresChair')
+      const who = (actor === null || actor === undefined) ? null : String(actor)
+      const seat = (chair === null || chair === undefined) ? null : String(chair)
+      if (seat !== null) {
+        if (who === null) {
+          throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.conveneRequiresChair=true: a convene that installs a chair must name that chair as its actor',
+            'pass { actor: "<member id>" } together with { chair: "<the same id>" } (vmu.meetings.conveneRequiresChair)', enforced)
+        }
+        if (who !== seat) {
+          throw deny('VMU_NOT_PERMITTED', 'only the member who takes the chair may convene this meeting: actor ' + who + ' != chair ' + seat,
+            'pass { actor: x, chair: x } — convening ON BEHALF of another chair is exactly what this rail refuses (vmu.meetings.conveneRequiresChair)', enforced)
+        }
+        chair = who
+      }
+    }
+    // ★ WHERE this meeting is about something (a debate's object, a closure's proposition, a paper's draft), the
+    // reference is CARRIED and READ BACK, never inferred. A non-string is refused by name rather than stringified:
+    // `String({})` would silently store "[object Object]" and every later reader would trust it.
+    if (subject !== null && subject !== undefined && typeof subject !== 'string') {
+      throw deny('VMU_INVALID_ARGUMENT', 'subject must be a string reference (a card id, a file path, or a one-line statement); got ' + typeof subject,
+        'pass subject:"<what this meeting is about>" or omit it', enforced)
+    }
+    const subjectRef = (subject === null || subject === undefined || String(subject).trim() === '') ? null : String(subject).trim()
+    // ★ PHASE 12 D3 — 「院士设：标题、类型、内容事项…」. `materials` carries the AGENDA; a meeting's TITLE is a separate
+    // thing a reader looks for in a list, so it gets its own carried field instead of being re-derived from the first
+    // line of the agenda (re-derivation is a hardcoded rule that looks like data). Same refusal discipline as
+    // `subject`: a non-string is named, never stringified into "[object Object]".
+    if (title !== null && title !== undefined && typeof title !== 'string') {
+      throw deny('VMU_INVALID_ARGUMENT', 'title must be a string; got ' + typeof title,
+        'pass title:"<one line naming this meeting>" or omit it', enforced)
+    }
+    const titleRef = (title === null || title === undefined || String(title).trim() === '') ? null : String(title).trim()
+    // ★ PHASE 12 D3 — 「内容事项」 WAS VALIDATED AND THEN DROPPED. `materials` only decided whether opening was ALLOWED
+    // (`vmu.meetings.materialsRequired`) and then never reached the meeting object: measured, `m.materials` had ZERO
+    // readers, so a chair could state the agenda and no read face could ever return it. It is carried as the POINTER
+    // the docs already say it is (07/22 owns the text), so the head view stays a pointer and the rule's "set the
+    // agenda" becomes observable. Non-string is refused by name, same discipline as title/subject.
+    if (materials !== null && materials !== undefined && typeof materials !== 'string') {
+      throw deny('VMU_INVALID_ARGUMENT', 'materials must be a string pointer to the agenda (a card id or a file path); got ' + typeof materials,
+        'pass materials:"<agenda pointer>" or omit it', enforced)
+    }
+    const materialsRef = (materials === null || materials === undefined || String(materials).trim() === '') ? null : String(materials).trim()
+    // ★★ PHASE 12 D6 — 「允许一次性设置连续展开的多个会议」. `sequence` lists the meetings that FOLLOW this one
+    // (this call opens the first). Every entry is validated NOW, not when its turn comes: a typo in entry 3 must be
+    // refused while the chair is still looking at the call, not three meetings later when nobody remembers it.
+    // A descriptor may NOT carry chair/actor — those are inherited from the closing meeting, because a per-entry
+    // chair would be a second convene path that never passed the convene rail.
+    const seqEntries = normalizeSequence(sequence, enforced)
+    if (K.liveCap > 0) {
+      mark(enforced, 'vmu.meetings.liveCap')
+      if (live.size >= K.liveCap) cap('VMU_QUOTA_EXCEEDED', 'live meetings', live.size, K.liveCap, 'vmu.meetings.liveCap', enforced)
+    }
+    if (K.committeeMax > 0 && size !== null) {
+      mark(enforced, 'vmu.meetings.committeeMax')
+      if (n(size) > K.committeeMax) cap('VMU_QUOTA_EXCEEDED', 'committee size', n(size), K.committeeMax, 'vmu.meetings.committeeMax', enforced)
+    }
+    if (K.materialsRequired) {
+      mark(enforced, 'vmu.meetings.materialsRequired')
+      if (!materials) throw deny('VMU_STATE', 'vmu.meetings.materialsRequired=true: a meeting cannot open without materials', 'pass { materials: <pointer> } — the pointer belongs to 07/22 and is only referenced here', enforced)
+    }
+    // A1 round 10 — AN EXPLICIT id IS HONOURED, and a COLLISION IS REFUSED BY NAME. The vmu meeting face's
+    // secretary bridge passes the primitive id in, and this used to ignore it: the tool believed it had
+    // aligned two records while the service minted its own id (measured: primitive pm9 vs service m3).
+    // The auto id stays the default, and the counter still advances on an explicit open so the two can
+    // never mint the same name later without the guard below firing.
+    const wanted = (typeof id === 'string' && id.trim() !== '') ? id.trim() : null
+    const mid = wanted || ('m' + (counters.opened + 1))
+    if (live.has(mid)) throw deny('VMU_CONFLICT', 'a live meeting already uses id ' + String(mid), 'open: ' + [...live.keys()].sort().join(', '), enforced)
+    const m = {
+      id: mid, type: String(type), kind: kind === null ? null : String(kind), chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),
+      roster: arr(roster).map(String), present: new Set(chair === null ? [] : [String(chair)]),
+      openedAt: ms, state: scheduledFor === null ? 'open' : 'scheduled', turns: 0, tokens: 0, wallStartMs: ms,
+      // ★ PHASE 12 D1 — the schedule's own state. `startedLate` is not decoration: a scheduled meeting that had to
+      // wait is a different institutional fact from one that started on time, and the minutes must be able to say so.
+      // `activatedAt` is when it actually became runnable (null while scheduled); `waitStartedAt`/`waitDecisionDue`
+      // exist only after a due-but-incomplete start.
+      scheduledFor, activatedAt: scheduledFor === null ? ms : null, startedLate: false,
+      waitStartedAt: null, waitDecisionDue: false,
+      // ★ the meeting's OWN wall bound (frozen at open) plus who convened it; `extend()` raises the first.
+      wallLimitMs: K.hardLimitMs, openedBy: (actor === null || actor === undefined) ? null : String(actor), extendedMs: 0,
+      queue: [], speechUsed: new Map(), interrupts: new Map(), warnings: new Map(), mutes: new Map(),
+      recess: null, previousConfirmed: false, minutes: { entries: [], refused: [], actions: [] },
+      transcript: [], confidentiality: K.confidentialityDefault, motions: [], appeals: [], closedAt: null,
+      committeeReport: null, dissent: [],
+      // ★ WHY this meeting was convened (null when the caller did not say). Until now this was computed by the
+      // caller and discarded here, so a reader of summary()/meetingView() could see a "stall" meeting with no
+      // statement of what stalled.
+      reason: reason === null || reason === undefined ? null : String(reason),
+      // ★ WHAT this meeting is about, when the convenor said so (null = not stated, never guessed).
+      subject: subjectRef,
+      title: titleRef,
+      materials: materialsRef,
+      // ★★ PHASE 12 D6: the follow-ups this meeting was opened with, and how many are still pending.
+      // `close()` advances this list; without it the rule sentence had no implementation at all.
+      sequence: seqEntries, sequenceIndex: 0, sequenceTotal: seqEntries.length,
+    }
+    live.set(mid, m)
+    markState(m, m.state)
+    counters.opened += 1
+    const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, confidentiality: m.confidentiality, sequence: { index: 0, total: 1 + seqEntries.length }, enforced, enforcedScope: ENFORCED_SCOPE }
+    pushReceipt(receipt)
+    say({ type: m.state === 'scheduled' ? 'meetings/scheduled' : 'meetings/opened', at: ms, meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, scheduledFor: m.scheduledFor, enforced, enforcedScope: ENFORCED_SCOPE })
+    // ★ type/subject are ALSO at the top level, not only inside `receipt`: a caller that asked for them should not
+    // have to know the receipt envelope's shape to read back what it just set (the same reason `attend` returns `late`).
+    return { ok: true, meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, wallLimitMs: m.wallLimitMs, sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+    
+  }
+
+  // ★★ PHASE 12 D6 — the meeting SEQUENCE. 「允许一次性设置连续展开的多个会议（例如先进行学术交流会议
+  // 再开展未来规划交流和任务安排分配会议）」: one call declares the follow-ups, and each close advances one step.
+  //
+  // WHY THE DESCRIPTORS ARE VALIDATED UP FRONT AND SHAPED NARROWLY: they are installed later, at a moment when nobody is
+  // reading the original call any more. So the vocabulary is closed (an unknown key is refused by name, never ignored),
+  // the type is checked against the SAME catalogue `open()` uses, and chair/actor are not settable per entry.
+  const SEQUENCE_KEYS = ['type', 'kind', 'materials', 'subject', 'size', 'secretary', 'roster', 'reason', 'at']
+  function normalizeSequence(raw, enforced) {
+    const ev = Array.isArray(enforced) ? enforced : []
+    if (raw === null || raw === undefined) return []
+    if (!Array.isArray(raw)) {
+      throw deny('VMU_INVALID_ARGUMENT', 'sequence must be an ARRAY of meeting descriptors (the meetings that FOLLOW this one); got ' + typeof raw,
+        'pass sequence: [{ type: "academic" }, { type: "planning" }] — several consecutive meetings in one call', ev)
+    }
+    if (!raw.length) return []
+    return raw.map((e, i) => {
+      if (!e || typeof e !== 'object' || Array.isArray(e)) {
+        throw deny('VMU_INVALID_ARGUMENT', 'sequence[' + i + '] must be an OBJECT (a meeting descriptor); got ' + (Array.isArray(e) ? 'array' : typeof e),
+          'e.g. { type: "academic", materials: "…" }', ev)
+      }
+      for (const k of Object.keys(e)) {
+        if (!SEQUENCE_KEYS.includes(k)) {
+          throw deny('VMU_INVALID_ARGUMENT', 'sequence[' + i + '] has an unknown key "' + k + '"',
+            'allowed: ' + SEQUENCE_KEYS.join(', ') + ' — chair/actor are inherited from the meeting this sequence was convened with', ev)
+        }
+      }
+      if (e.type !== undefined && K.typeCatalog.length && !K.typeCatalog.includes(String(e.type))) {
+        throw deny('VMU_NO_SUCH_OBJECT', 'sequence[' + i + '] type "' + e.type + '" is not in vmu.meetings.typeCatalog',
+          'allowed: ' + K.typeCatalog.join(', ') + ' (vmu.meetings.typeCatalog)', ev)
+      }
+      if (e.at !== undefined && e.at !== null) {
+        try { atMs(e.at) } catch (err) {
+          throw deny('VMU_INVALID_ARGUMENT', 'sequence[' + i + '].at is not a time: ' + String(e.at),
+            'pass epoch milliseconds or an ISO-8601 string, or omit it to start right after the previous meeting closes', ev)
+        }
+      }
+      return Object.assign({}, e)
+    })
+  }
+  /**
+   * The sequence as a READER sees it: how many meetings the chair declared, how many are still pending, and the next
+   * one's type/kind/subject (never its materials text — the head view of a meeting is a pointer, not the content).
+   * 「布置了序列」与「序列还剩几场」必须能读回，否则这个能力只在开会那一瞬可见。
+   */
+  function seqInfo(m) {
+    const seq = Array.isArray(m && m.sequence) ? m.sequence : []
+    const idx = Number.isFinite(Number(m && m.sequenceIndex)) ? Number(m.sequenceIndex) : 0
+    const nx = seq[idx] || null
+    return {
+      total: 1 + seq.length,
+      index: idx,
+      remaining: Math.max(0, seq.length - idx),
+      next: nx ? { type: nx.type === undefined ? null : nx.type, kind: nx.kind === undefined ? null : nx.kind, subject: nx.subject === undefined ? null : nx.subject } : null,
+    }
+  }
+  /**
+   * Open the next meeting this one was convened with. Returns `{meeting}` on success (and advances the counter on the
+   * CLOSED meeting, so a second close cannot replay it), or `{error:{code,message,index,total}}` — a named failure,
+   * never a silent no-op. `done:true` says "there was nothing left", which is a different fact from "one was attempted
+   * and refused".
+   */
+  function advanceSequence(m, now) {
+    const seq = Array.isArray(m && m.sequence) ? m.sequence : []
+    const idx = Number.isFinite(Number(m && m.sequenceIndex)) ? Number(m.sequenceIndex) : 0
+    const total = seq.length
+    if (idx >= total) return { meeting: null, done: true, index: idx, total }
+    const e = seq[idx]
+    try {
+      const opened = openSeq(Object.assign({}, e, {
+        chair: m.chair === undefined ? null : m.chair,
+        secretary: (e.secretary === undefined ? m.secretary : e.secretary),
+        roster: (Array.isArray(e.roster) ? e.roster : (Array.isArray(m.roster) ? m.roster.slice() : [])),
+        actor: (m.chair === undefined || m.chair === null) ? null : String(m.chair),
+        at: (e.at === undefined ? null : e.at),
+        reason: (e.reason === undefined || e.reason === null || String(e.reason).trim() === '')
+          ? ('the next meeting in the sequence set when ' + String(m.id) + ' was convened')
+          : e.reason,
+        sequence: seq.slice(idx + 1),
+      }))
+      m.sequenceIndex = idx + 1
+      return { meeting: opened.meeting, type: opened.type, state: opened.state, index: idx + 1, total, next: seq[idx + 1] || null }
+    } catch (err) {
+      return {
+        meeting: null, index: idx, total,
+        error: { code: (err && err.code) ? String(err.code) : 'VMU_MIDDLEWARE_FAILED', message: String((err && err.message) || err), index: idx, total },
+      }
+    }
   }
 
   return api

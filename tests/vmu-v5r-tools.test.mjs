@@ -45,7 +45,7 @@ const EXPECTED = ['vibe_v5_record_progress', 'vibe_v5_record_proposition', 'vibe
   'vibe_v5_tool_help', 'vibe_v5_assign', 'vibe_v5_fire', 'vibe_v5_nudge', 'vibe_v5_prioritize', 'vibe_v5_feedback',
   'vibe_v5_read_library',
   'vibe_v5_meeting', 'vibe_v5_motion', 'vibe_v5_second', 'vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_poll_close',
-  'vibe_v5_verdict',
+  'vibe_v5_verdict', 'vibe_v5_verdict_final', 'vibe_v5_verified_promote',
   'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_pause', 'vibe_v5_resume', 'vibe_v5_configure', 'vibe_v5_set',
   'vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive',
   'vibe_v5_inbox', 'vibe_v5_wait', 'vibe_v5_paper']
@@ -86,14 +86,14 @@ try {
   // ── ① ZERO MECHANISM ────────────────────────────────────────────────────────────────────────────────────────
   console.log('=== 1. NO PACK ⇒ NOT ONE v5r TOOL EXISTS ===')
   const bare = await boot({ root })
-  ok(EXPECTED.length === 41, 'the expected list is non-empty (RULE E)', EXPECTED.length)
+  ok(EXPECTED.length === 43, 'the expected list is non-empty (RULE E)', EXPECTED.length)
   const bareHits = EXPECTED.filter((n) => bare.names.includes(n))
   ok(bareHits.length === 0, 'without the pack none of the six names is published', bareHits)
 
   // ── ② THE DECLARATION (the names come FROM the pack) ───────────────────────────────────────────────────────
   console.log('=== 2. WITH packs=["v5r"] THE THIRTY-EIGHT DECLARED NAMES ARE PUBLISHED ===')
   const PACK = v5r.PACK
-  ok(Array.isArray(PACK.tools) && PACK.tools.length === 41, 'the loaded manifest DECLARES forty tools', PACK.tools && PACK.tools.length)
+  ok(Array.isArray(PACK.tools) && PACK.tools.length === 43, 'the loaded manifest DECLARES forty-three tools', PACK.tools && PACK.tools.length)
   const declaredNames = PACK.tools.map((t) => t.name)
   ok(declaredNames.length > 0 && EXPECTED.filter((n) => declaredNames.includes(n)).length === EXPECTED.length,
     'the declaration is exactly the thirty-eight expected names', declaredNames)
@@ -101,9 +101,9 @@ try {
   const published = EXPECTED.filter((n) => v5rBoot.names.includes(n))
   ok(EXPECTED.length > 0 && published.length > 0 && published.length === EXPECTED.length,
     'all thirty-eight are published through the real host adapter', { published: published.length, names: v5rBoot.names.length })
-  ok(v5rBoot.handle.kernel.packTools().length === 41, 'the KERNEL holds the forty declarations', v5rBoot.handle.kernel.packTools().length)
+  ok(v5rBoot.handle.kernel.packTools().length === 43, 'the KERNEL holds the forty-three declarations', v5rBoot.handle.kernel.packTools().length)
   const kernelStatus = v5rBoot.handle.kernel.status({ detail: 'summary' })
-  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length === 41,
+  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length === 43,
     'kernel.status() reports the declared names (observable, not implicit)', kernelStatus.packTools && kernelStatus.packTools.length)
   const hostNames = Object.values((await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host.js')).href)).TOOL_NAMES)
   const leaked = EXPECTED.filter((n) => hostNames.includes(n))
@@ -128,8 +128,14 @@ try {
   ok(after === before + 1, 'the progress track grew by exactly one', { before, after })
 
   const propBefore = countOf(kernel, 'propositions')
+  // ★ PHASE 12 / D13: 「只有辩论能把命题卡的 p 改成 1」 is now a GATE (packs/v5r/verification-gates.js `p1Intent`), so a
+  // p=1 write must carry the conclusion that produced it. Here that conclusion is a unanimous debate ruling on this very
+  // card — caller-supplied by design (§10.6: the gate proves "no evidence ⇒ refuse", never "the evidence is true").
+  // The refusal side (p=1 with no evidence) is covered in tests/vmu-v5r-verdict-final.test.mjs, and the promoted-verified
+  // row is the second legal source.
   const prop = await receipt(v5rBoot, 'vibe_v5_record_proposition',
-    { id: 'p-tools-1', title: '引理 A', statement: 'A 成立', value: 3, motive: '主证明的一步', p: 1 })
+    { id: 'p-tools-1', title: '引理 A', statement: 'A 成立', value: 3, motive: '主证明的一步', p: 1,
+      debate_ruling: { mode: 'unanimous', value: 1, subject: 'p-tools-1', ballotId: 'ballot-tools-1' } })
   ok(prop.parsed && prop.parsed.ok === true && prop.parsed.track === 'propositions', 'record_proposition writes onto the propositions track', prop.parsed)
   ok(prop.parsed && prop.parsed.settled === true, 'p=1 settles the card (the original card key is carried, not interpreted)', prop.parsed && prop.parsed.settled)
   ok(countOf(kernel, 'propositions') === propBefore + 1, 'the propositions track grew by exactly one', propBefore)
@@ -491,9 +497,22 @@ try {
   let finalBad = null
   try { await paper.recordFinal({ target: TARGET, member: 'r-1', decision: 'deliverable' }) } catch (e) { finalBad = e }
   ok(finalBad && finalBad.code === 'VMU_NOT_PERMITTED', '★ recordFinal: 反 — a non-chair member cannot finalise (the academician does)', finalBad && finalBad.code)
+  // ★ E4 — "定稿前必须问所办" now REALLY EXECUTES ON THIS PATH. The live v5r settings declare
+  // `vmu.paper.officeConsult="required"` and the gate lives in kit/paper.js `recordFinal` (kernel/paper.js carries a gate
+  // too but nothing constructs it, so it never ran — that unreachable guard was the defect). Asserting it HERE, on the
+  // assembled path, is what makes "已接线" a measured fact instead of a table cell.
+  let consultBad = null
+  try { await paper.recordFinal({ target: TARGET, member: 'r-chair', decision: 'deliverable', note: '互审一致', conclusion: 'A 成立' }) } catch (e) { consultBad = e }
+  ok(consultBad && consultBad.code === 'VMU_OFFICE_CONSULT_REQUIRED' && /所办/.test(String(consultBad.message)) && Array.isArray(consultBad.enforced) && consultBad.enforced.length === 5,
+    '★★ E4 recordFinal: 反 — 在册路径上"定稿前必须问所办"真的执行（required ⇒ 具名拒，并列出五个求值键）', consultBad && { code: consultBad.code, enforced: consultBad.enforced })
+  const consultAnswer = paper.recordConsult({ target: TARGET, by: 'office', note: '已核对合并稿：结论范围与题设一致' })
+  ok(consultAnswer && consultAnswer.ok === true && consultAnswer.answeredBy === 'office' && consultAnswer.cleared === true,
+    '★★ E4 recordConsult: 正 — 所办答复后才放行（答复角色由 pack 的 consultRoles 声明，不是内核猜的）', consultAnswer)
   const finalized = await paper.recordFinal({ target: TARGET, member: 'r-chair', decision: 'deliverable', note: '互审一致', conclusion: 'A 成立' })
   ok(finalized && finalized.ok === true && finalized.finalized === true && finalized.missing.includes('pdf'),
     '★ recordFinal: 正 — the academician finalises; the receipt renders md/tex/meta, still reports the missing pdf, and NEVER claims a complete paper', finalized && { missing: finalized.missing })
+  ok(finalized && finalized.consult && finalized.consult.armed === true && finalized.consult.satisfiedBy === 'answered',
+    '★ E4 回执: 定稿回执写明闸开着、由所办答案满足（不是只说 finalized）', finalized && finalized.consult)
   const md = paper.PaperMd({ target: TARGET })
   ok(typeof md === 'string' && md.includes(paperMod.PAPER_SECTIONS[0]) && md.includes('r-1'),
     '★ PaperMd: 正 — the body is REBUILT from the parts (by id + fingerprint), section headings from the original\'s nine', md.length)
@@ -601,6 +620,14 @@ try {
   const rev2 = await dispatchMod.dispatchPaperReply({ phase: 'paper-review', turn: 't-rev-2', member: 'r-2', flat: { kernel }, reply: { paper_review: { target: T2, deliverable: true, comments: '可以' } } })
   ok(rev1.ok === true && rev2.ok === true, '★ review replies are dispatched to paper.recordReview', { r1: rev1.ok, r2: rev2.ok })
   paper.advance({ target: T2 })
+  // ★ E4: the FINAL reply now goes through the office-consult gate (kit/paper.js), so the dispatcher must refuse it by
+  // name until the office answers — and the refusal must be VISIBLE through paperDispatchStatus(), never swallowed.
+  const finBlocked = await dispatchMod.dispatchPaperReply({ phase: 'paper-final', turn: 't-fin-0', member: 'r-chair', flat: { kernel },
+    reply: { paper_final: { target: T2, decision: 'deliverable', note: '一致', conclusion: '结论' } } })
+  ok(finBlocked.ok === false && finBlocked.code === 'VMU_OFFICE_CONSULT_REQUIRED' && paper.state(T2).state.status === 'awaiting-editor',
+    '★★ E4: 定稿回执在"没问所办"时被具名拦下（dispatcher 不吞），论文仍停在 awaiting-editor', { code: finBlocked.code, status: paper.state(T2).state.status })
+  const finConsult = paper.recordConsult({ target: T2, by: 'office', note: '定稿前已核' })
+  ok(finConsult.ok === true, '★ E4: 所办答复后可继续定稿', finConsult)
   const fin = await dispatchMod.dispatchPaperReply({ phase: 'paper-final', turn: 't-fin', member: 'r-chair', flat: { kernel },
     reply: { paper_final: { target: T2, decision: 'deliverable', note: '一致', conclusion: '结论' } } })
   ok(fin.ok === true && fin.result && fin.result.finalized === true,
@@ -1030,8 +1057,8 @@ try {
   const k2 = km.createKernel({ clock: () => 1000, root })
   const loader = pm.createPackLoader({ kernel: k2, registry: k2.registry })
   const applied = await loader.apply({ id: 'v5r-tools-probe', version: '1.0.0', tools: toolsMod.V5R_PACK_TOOLS })
-  ok(applied && applied.ok === true, 'a manifest carrying the forty declarations APPLIES', applied && (applied.code || applied.id))
-  ok(k2.packTools().length === 41, 'the kernel holds the forty names after apply', k2.packTools().length)
+  ok(applied && applied.ok === true, 'a manifest carrying the forty-three declarations APPLIES', applied && (applied.code || applied.id))
+  ok(k2.packTools().length === 43, 'the kernel holds the forty-three names after apply', k2.packTools().length)
   const unloaded = await loader.unload('v5r-tools-probe')
   ok(unloaded && unloaded.ok === true && unloaded.residueFree === true, 'unload reports no residue', unloaded)
   ok(k2.packTools().length === 0, 'the declarations are RETRACTED (nothing left to publish)', k2.packTools().length)
@@ -1213,7 +1240,10 @@ try {
   ok(g7vbad.parsed && g7vbad.parsed.ok === false && g7vbad.parsed.code === 'VMU_INVALID_ARGUMENT' &&
     /ballotId/.test(String(g7vbad.parsed.message)) && /meeting/.test(String(g7vbad.parsed.message)),
     '★ G7 ② 反：vote 没有任何地址 ⇒ 具名拒并同时说出两种合法形状', g7vbad.parsed && g7vbad.parsed.message)
-  const g7close = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'close', meeting: g7mid })
+  // ★ UPDATED WITH THE CAPABILITY (phase 12, rule D2): the v5r pack now declares `vmu.meetings.closeRequiresChair`, so a
+  // close must be ATTRIBUTABLE and must name the chair. The kernel face falls back actor → by → member, so `member` alone
+  // is a route; the assertion keeps its original subject (the enforced arrays are real arrays, not "[circular]").
+  const g7close = await receipt(v5rBoot, 'vibe_vmu_meeting', { action: 'close', meeting: g7mid, member: chairId })
   ok(g7close.parsed && g7close.parsed.ok === true && Array.isArray(g7close.parsed.enforced) && Array.isArray(g7close.parsed.receipt && g7close.parsed.receipt.enforced),
     '★ G7 ④：close 回执的 enforced 是【数组】（顶层与 receipt 内都是），不是 "[circular]" 串',
     g7close.parsed && { enforced: g7close.parsed.enforced, inReceipt: g7close.parsed.receipt && g7close.parsed.receipt.enforced })
@@ -1293,8 +1323,8 @@ try {
 
   // ── ⑦e GOAL B-2 (PHASE 8): the pack IMPORTS the kit — one copy of the code, institution vocabulary stays in v5r ──
   console.log('=== 7e. B-2 WIRING: kit imports, zero local copies ===')
-  ok(PACK.tools.length === 41,
-    '★★ the declared tool COUNT is what the pack declares (institution vocabulary stays in the pack; 38 + inbox + wait)', PACK.tools.length)
+  ok(PACK.tools.length === 43,
+    '★★ the declared tool COUNT is what the pack declares (institution vocabulary stays in the pack; 40 + inbox + wait)', PACK.tools.length)
   const packSrcW = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
   const movedDecls = [
     'const str = (v)', 'const has = (v)', 'function refuse(', 'function settingsOf(', 'function declaredTracks(',
@@ -1429,7 +1459,7 @@ try {
   // (constant-anchored: the declared count is a contract asserted elsewhere, so "both sides empty" cannot pass here)
   const wireSorted39 = wireSpecs39.slice().sort()
   const kernelSorted39 = kernelNames39.slice().sort()
-  ok(wireSpecs39.length === 41 && kernelNames39.length === 41 && JSON.stringify(wireSorted39) === JSON.stringify(kernelSorted39),
+  ok(wireSpecs39.length === 43 && kernelNames39.length === 43 && JSON.stringify(wireSorted39) === JSON.stringify(kernelSorted39),
     '★★★ WIRE == LOGICAL: the registered v5r specs are exactly the tools the kernel holds (native; nothing replaced by run_code)', { wire: wireSpecs39.length, kernel: kernelNames39.length })
   ok(v5rBoot.state.specs.filter((s) => s.deferLoading !== undefined).length === 0,
     '★★ no spec carries deferLoading (the disproved defer mode is gone as well)', v5rBoot.state.specs.length)

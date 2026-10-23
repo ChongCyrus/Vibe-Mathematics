@@ -193,13 +193,14 @@ packs/v5r/prompts/{v5r-assistant,v5r-blocks-a,v5r-blocks-b,v5r-core,v5r-persona,
 - 宿主面：`host.js:244-245` `vibe_vmu_human`（families `vmu.human.` / `vmu.resume.`）。
 
 **断点续跑**
-- 控制面：`packs/v5r/tools.js:717-751` `vibe_v5_pause` / `vibe_v5_resume`；`vibe_v5_resume` 显式走 `kernel.resume(reason)`（**控制流**），注释记了实测 bug：旧实现调 `kernel.controlService.resume()` —— 「answered ok while the kernel stayed paused (measured in the A1 probe: `controlState.state === 'paused'`, `resumes:0`)」。
+- 控制面：`packs/v5r/tools.js:1070`（`toolPause`）／`:1088`（`toolResume`）；`vibe_v5_resume` 显式走 `kernel.resume(reason)`（**控制流**），注释记了实测 bug：旧实现调 `kernel.controlService.resume()` —— 「answered ok while the kernel stayed paused (measured in the A1 probe: `controlState.state === 'paused'`, `resumes:0`)」。
 - 耐久面：`settings/schema.js:999-1004,1049`（`vmu.resume.autoRecover` / `projections` / `keepRecoveries` / `readBack` / `journalCap` / `writeThrough`）＋ `kernel/resume.js`（`attachProjection` 写穿、`VMU_RESUME_PROJECTION_GAP` / `VMU_RESUME_READBACK_DRIFT` 具名）；`host.js` 亦以 `vmu.resume.` 家族点灯同一面。
-- 停止是终态：`packs/v5r/tools.js:731,750` 的 hint 明说「a stopped institute cannot be resumed」（不假装能续）。
+- 停止是终态：`packs/v5r/tools.js:1078`（pause 包装的 `VMU_STATE` hint）原文「nothing was paused: the kernel is stopped (terminal) … **a stopped institute cannot be resumed**, start a fresh one with `vibe_v5_start`」；`:1097`（resume 包装）「nothing was resumed: the kernel is NOT in the paused state (it may be running or stopped) … a STOPPED kernel is terminal (start a fresh one with `vibe_v5_start`)」—— 内核经 `VMU_STATE` 拒，工具层负责给出路（不假装能续）。**行号漂移说明**：`tools.js` 正在被并行修改（同一事实 15:07 在 `:717-751`、15:26 已到 `:1070-1098`），本条以**函数名** `toolPause`/`toolResume` 为准，行号只是快照。
+- **落点可达性（R16 判据）**：`kernel/human.js` 链 `vibe-math-vmu.js → kernel/index.js → kernel/human.js`；`kernel/resume.js` 同链；`packs/v5r/tools.js`（pause/resume 面）链 `vibe-math-vmu.js → packs/v5r/index.js → packs/v5r/prompts/v5r-core.js → packs/v5r/tools.js`；`settings/schema.js` 直连 `vibe-math-vmu.js`。四者都在装配静态图内（探针 `D:\_tmp\reach-f2.mjs`，2026-10-23 15:45）⇒ F2「已接线」的**下界**成立；可达 ≠ 被构造/被调用，那部分由行为套件（`vmu-human.js` 族 5/0、`vmu-lean-killable` 等）承担，读法见 `lane-d10-members.md` §A2/A3 落点可达性。
 
 ### (c) 门禁 —— 有，但**默认不闸**
 
-- v5r 的默认值：`packs/v5r/settings/defaults.json:44-46` ⇒ `human.vetoLiftRoles:["office"]`、`onTimeout:"hold"`、`gatedActions:[]`。
+- v5r 的默认值：`packs/v5r/settings/defaults.json:43-45` ⇒ `human.onTimeout:"hold"`、`human.vetoLiftRoles:["office"]`、`human.gatedActions:[]`（原文 `:46` 是空行，旧引用 `44-46` 偏移了一行）。
   ⇒ 能力在、门在，**但默认什么都没闸**（这符合本仓"没有消费者就不给机制"的红线，但也意味着"人工干预"在本 pack 默认是**可选**而非**强制**）。
 
 ### 判定：✅ 具备；⚠️ 提示：若规则要求"关键动作必须人工批准"，则需在 pack 里声明 `gatedActions`（现在为空）。

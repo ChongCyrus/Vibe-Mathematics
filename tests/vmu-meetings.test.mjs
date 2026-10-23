@@ -670,16 +670,25 @@ const err = (fn) => errOf(fn)
   ok(eb && eb.code === 'VMU_RESOURCE_BUDGET',
     'hardLimitMs: the ceiling is CLAMPED to 7200000 (99000000 is refused at 8e6 ms)', eb && eb.code)
 }
-// ROUND 203: `vmu.meetings.quorumCap` decides - the quorum ceiling, m = min(cap, participants); 0 = no ceiling.
+// ROUND 203 declared the ceiling as `m = min(cap, participants)`. ROUND 12 (phase 12, rule D12) replaces it with
+// 「表决人数下限 = min(用户设置数, 院士+常驻研究员数)」: the right-hand term is the ELIGIBLE UNIVERSE (the roster
+// intersected with `vmu.meetings.eligibleSeats`), never the people who happen to be present. ★ The old term made the
+// "lower bound" vacuous — with a cap in force `required` could not exceed the attendees, so quorum was always met on
+// arrival and one voice could close a meeting. These assertions pin the new arithmetic and the words that name it.
 {
   const capped = opened({ 'vmu.meetings.quorumMin': 3, 'vmu.meetings.quorumCap': 2 })
-  ok(capped.h.t.quorum({ meeting: capped.id }).required === 1,
-    'quorumCap[+]: min(cap 2, participants 1) caps the required 3 down to 1', String(capped.h.t.quorum({ meeting: capped.id }).required))
+  const cq = capped.h.t.quorum({ meeting: capped.id })
+  ok(cq.required === 2 && cq.cap === 2 && cq.capUniverse === 4 && cq.met === false,
+    '★ quorumCap[+]: min(cap 2, eligible 4) = 2 — and ONE attendee does NOT satisfy it (the removed min(present) term made required 1 and quorum always met)',
+    JSON.stringify({ required: cq.required, cap: cq.cap, eligible: cq.capUniverse, present: cq.present, met: cq.met }))
+  ok(/min\(quorumMin\/quorumRatio need/.test(String(cq.capPolicy)) && cq.capUniverseSource === 'roster (no voter seats declared)',
+    '★ quorumCap: the number NAMES its own formula and its universe source (a bare integer here would be unexplainable)',
+    { policy: cq.capPolicy, source: cq.capUniverseSource })
   capped.h.t.attend({ meeting: capped.id, member: 'r-1' })
   capped.h.t.attend({ meeting: capped.id, member: 'r-2' })
   capped.h.t.attend({ meeting: capped.id, member: 'r-3' })
   ok(capped.h.t.quorum({ meeting: capped.id }).required === 2,
-    'quorumCap[+]: with all four present the cap bites at 2 (uncapped would be 3)', String(capped.h.t.quorum({ meeting: capped.id }).required))
+    'quorumCap[+]: with all four present the cap still bites at 2 (uncapped would be 3)', String(capped.h.t.quorum({ meeting: capped.id }).required))
   const uncapped = opened({ 'vmu.meetings.quorumMin': 3, 'vmu.meetings.quorumCap': 0 })
   ok(uncapped.h.t.quorum({ meeting: uncapped.id }).required === 3,
     'quorumCap[-]: 0 means NO ceiling - the required 3 stands even with one present', String(uncapped.h.t.quorum({ meeting: uncapped.id }).required))
@@ -690,8 +699,8 @@ const err = (fn) => errOf(fn)
   // built directly on a getter that returns undefined.
   const bare = createMeetings({ clock: () => 1000, settings: { get: (k) => (k === 'vmu.meetings.quorumMin' ? 3 : undefined) } })
   const bo = bare.open({ type: 'ordinary', chair: 'acad', roster })
-  ok(bare.quorum({ meeting: bo.meeting }).required === 1,
-    'quorumCap: an ABSENT key takes the declared default 3, so the required 3 is capped to the 1 present',
+  ok(bare.quorum({ meeting: bo.meeting }).required === 3,
+    'quorumCap: an ABSENT key takes the declared default 3 — and presence no longer shrinks it (the 1 attendee used to cap it to 1)',
     String(bare.quorum({ meeting: bo.meeting }).required))
 }
 /**
@@ -760,6 +769,29 @@ const err = (fn) => errOf(fn)
   const chairVote = h.t.vote({ meeting: mid, member: 'acad', motion: mo.motion, value: 1 })
   ok(chairVote.ok === true && chairVote.counted === true && chairVote.tally.for === 1,
     '★ A1③ 正: a declared voter seat still counts', chairVote.tally)
+  // ★ D12 (phase 12): 「表决人数下限 = min(用户设置数, 院士+常驻研究员数)」 — the same declared seats are the min's
+  // right-hand side, so a TEMP seat can neither vote NOR inflate the number the meeting must reach.
+  const qh = mk(Object.assign({ 'vmu.meetings.quorumMin': 2, 'vmu.meetings.quorumCap': 2 }, SEATS), seatsSeam)
+  const qid = qh.t.open({ chair: 'acad', roster: ROSTER.map((x) => x.id) }).meeting
+  const q1 = qh.t.quorum({ meeting: qid })
+  ok(q1.required === 2 && q1.capUniverse === 2 && q1.roster === 3 && q1.met === false,
+    '★★ D12: the lower bound is min(user setting 2, eligible 2) — the TEMP seat is in the roster (3) but NOT in the universe (2), and the chair alone does not meet it',
+    { required: q1.required, universe: q1.capUniverse, roster: q1.roster, present: q1.present, met: q1.met })
+  ok(q1.capUniverseSource === 'seats',
+    '★★ D12: the universe says how it was derived (seats vs roster fallback) — an unexplained 2 next to a roster of 3 is not readable', q1.capUniverseSource)
+  // The lower bound must be OBSERVABLE at the act that matters: a vote. (close() carries no quorum rail at all — that
+  // is a separate gap, recorded in the phase-12 ledger; these assertions do not pretend close is gated.)
+  const qmo = qh.t.motion({ meeting: qid, member: 'acad', kind: 'ordinary', text: 'adopt the result' })
+  qh.t.second({ meeting: qid, motion: qmo.motion, member: 'r-1' })
+  const thinVote = err(() => qh.t.vote({ meeting: qid, member: 'acad', motion: qmo.motion, value: 1 }))
+  ok(thinVote && thinVote.code === 'VMU_MEETING_QUORUM_LOST' && /quorum is not met: 1\/2/.test(String(thinVote.message)) && /现值=1, 需要=2/.test(String(thinVote.hint)),
+    '★★ D12: the 表决 gate refuses a one-voice vote when the eligible universe needs 2, and the refusal prints 现值/需要 (before this rule required was 1 here ⇒ the vote landed)',
+    thinVote && thinVote.message)
+  qh.t.attend({ meeting: qid, member: 'r-1' })
+  ok(qh.t.quorum({ meeting: qid }).met === true,
+    '★ D12 反: once the second ELIGIBLE member attends, the bound is met (the rule is reachable, not a permanent block)')
+  ok(qh.t.vote({ meeting: qid, member: 'acad', motion: qmo.motion, value: 1 }).counted === true,
+    '★ D12 反: the very vote that was refused now counts')
   // the key really decides: the SAME temp seat votes when no seat rule is declared
   const noSeats = mk({}, seatsSeam)
   const noSeatsId = noSeats.t.open({ chair: 'acad', roster: ROSTER.map((x) => x.id) }).meeting

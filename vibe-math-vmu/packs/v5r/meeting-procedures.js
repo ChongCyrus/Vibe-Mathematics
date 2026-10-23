@@ -74,30 +74,25 @@ export const DEBATE_PROCEDURE = Object.freeze({
       n: 4,
       phase: 'aggregate-and-notify',
       what: '框架裁定并通知：若全部一致为 1（或一致为 0）则最终概率取该值，否则取所有裁决的平均值；随后通知该命题卡的持有者把卡片概率改为该值。',
-      tools: Object.freeze([]),
-      status: 'pending',
-      pendingReason: '聚合规则（一致⇒该值 / 否则平均）与「通知命题卡持有者」都还没有工具面。票面能收概率（vibe_v5_verdict），消息面能发消息（vibe_v5_message），但**没有东西把票变成结论、更没有人去通知持有者** —— 需要调用方自己算。已登记为缺口 verdict-aggregation（见 MEETING_PROCEDURE_GAPS）。',
+      tools: Object.freeze([
+        'vibe_v5_verdict_final { meeting: "<本会议>", proposition_id: "<命题卡>", verdicts: [{ member, p, reason }], fidelity?: "conform" | "defect" }',
+      ]),
+      status: 'supported',
     }),
   ]),
   notes: Object.freeze([
     '本骨架是**推荐**：院士可以只做其中一步、改变顺序、或完全不用。框架不检查、不阻断、不记录偏离。',
     '「单次发言版群聊」在本框架里就是「每人各说一次、互不打断」：会议内用 `vibe_vmu_meeting { action:"speak" }`（进会议记录），群聊形态用 `vibe_v5_say`。',
     '发言楼层（谁先说话）是另一套机制：`vibe_vmu_meeting { action:"flow" }`（open/hands/round_robin/call_on）。骨架管议程，flow 管顺序，两者互不替代。',
+    '第 4 步不是自动的：`vibe_v5_verdict_final` 由**主席**显式调用（裁决必须有签名人），内核面 `vmu.meetingverdict` 只做算术与校验，通知走既有 mailbox 面 —— 本 pack **没有**在 `meetings.close` 上挂任何自动聚合钩子（"会议关了就把数算出来"会把一次显式裁定变成一次静默推断）。',
   ]),
 })
 
 /** 只有规则点名给了骨架的类型才有骨架。其余类型**不发明**流程 —— 返回 null 并说明，而不是给一套看起来专业的假流程。 */
 export const MEETING_PROCEDURES = Object.freeze({ debate: DEBATE_PROCEDURE })
 
-/** 规则里写明、而框架**尚未实现**的两件事。机器可读，供工具面与文档共同引用（单一来源）。 */
+/** 规则里写明、而框架**尚未实现**的事。机器可读，供工具面与文档共同引用（单一来源）。 */
 export const MEETING_PROCEDURE_GAPS = Object.freeze([
-  Object.freeze({
-    id: 'verdict-aggregation',
-    rule: '待辩论会议结束，各成员给出最终裁决「布尔概率([0,1])，理由，...」；若全部一致为 1（或一致为 0）则最终概率为该值，否则取平均值；并通知该命题卡持有者改概率。',
-    now: '票面（kernel 的 ballot 原语 + vibe_v5_verdict）能收每个成员的概率；但聚合规则与「通知持有者」都没有实现：内核的 defaultTally 只处理 for/against 布尔票，estimate 只被计数、从不参与任何平均值计算。',
-    owner: 'pack（聚合规则是机构政策）；通知走 kernel 的 mailbox 面',
-    status: 'not-implemented',
-  }),
   Object.freeze({
     id: 'min-voters',
     rule: '辩论、结题表决的人数至少为某一定数量，这个数量取「用户设置的数量」和「院士+常驻研究员 的数量」的最小值。',

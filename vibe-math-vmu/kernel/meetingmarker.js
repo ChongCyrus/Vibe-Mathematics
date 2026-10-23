@@ -252,6 +252,14 @@ export function meetingKeysSnapshot(K) {
     'vmu.meetings.disciplineWarnMax': K.disciplineWarnMax, 'vmu.meetings.disciplineMuteMs': K.disciplineMuteMs,
     'vmu.meetings.disciplineExpelAllowed': K.disciplineExpelAllowed,
     'vmu.meetings.recessMaxMs': K.recessMaxMs, 'vmu.meetings.recessResumeRequiresMotion': K.recessResumeRequiresMotion,
+    // ★ PHASE 12: the chair rails and the schedule/wait keys. They were ABSENT here when the rails landed (the
+    // snapshot is a hand list), so `status().keys` silently under-reported them while `WIRED_KEYS` claimed them —
+    // exactly the "the diagnostic surface is part of the system under test" failure. The suite's
+    // `status().keys` size check now pins the two lists together.
+    'vmu.meetings.conveneRequiresChair': K.conveneRequiresChair, 'vmu.meetings.closeRequiresChair': K.closeRequiresChair,
+    'vmu.meetings.extendRequiresChair': K.extendRequiresChair, 'vmu.meetings.extendCeilingMs': K.extendCeilingMs,
+    'vmu.meetings.scheduleAllowed': K.scheduleAllowed, 'vmu.meetings.waitOnDueMs': K.waitOnDueMs,
+    'vmu.meetings.waitDecisionRequiresChair': K.waitDecisionRequiresChair,
     'vmu.meetings.leaveApprover': K.leaveApprover,
     'vmu.meetings.confidentialityDefault': K.confidentialityDefault, 'vmu.meetings.confidentialityQuotePolicy': K.confidentialityQuotePolicy,
     'vmu.meetings.verbatimEnabled': K.verbatimEnabled, 'vmu.meetings.verbatimRetentionMs': K.verbatimRetentionMs,

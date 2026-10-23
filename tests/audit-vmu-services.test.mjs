@@ -78,6 +78,7 @@ const SURFACES = {
   'vmu.activity': 'activity',         // round 3 (one-shot future-only activity waiter; createActivity)
   'vmu.fidelity': 'fidelity',         // round 3 (C-45 faithful-abstention predicate; createFidelityRegistry)
   'vmu.commitlog': 'sharedCommitLog', // round 9 / task-66 A (G7): the ONE commit log shared by the board + mailbox
+  'vmu.meetingverdict': 'meetingVerdict', // phase 12 / D15: a debate's final ruling (unanimous-else-mean + notice payload)
 }
 
 // ROUND 9 (Lead's gate-shape requirement): the scan must NOT depend on the NAME'S SHAPE. The old pattern

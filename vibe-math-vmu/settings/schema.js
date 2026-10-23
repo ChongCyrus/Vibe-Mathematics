@@ -143,7 +143,7 @@ const CORE_DEFS = Object.freeze([
 
   // ---- meetings (rules and mechanism only; "when to meet" and "what counts as stalled" are middleware)
   { key: 'vmu.meetings.quorumRule', type: 'enum', domain: ['m-unanimous', 'all-unanimous'], def: 'm-unanimous', hot: HOT.H1, who: 'role:chair', doc: '法定数规则（仅规则，不含"何时开会"）' },
-  { key: 'vmu.meetings.quorumCap', type: 'natural', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：法定数上限 m = min(cap, 参与人数)；0＝不设上限' },
+  { key: 'vmu.meetings.quorumCap', type: 'natural', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：法定数上限 m = min(用户设置数, 可投票成员数＝名册∩vmu.meetings.eligibleSeats)；参会人数不参与该式；0＝不设上限' },
   // ROUND 6 / target-4 verdict: `vmu.meetings.reconsiderFloor` was a CONFIRMED ORPHAN (zero readers) and has been
   // DELETED here (Round 6 close). The knob that actually works is `vmu.ballot.reopenFloor`; a second name with a
   // different semantic made a deployment believe there were two knobs when only one is wired. Removal order was
@@ -1311,17 +1311,18 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.meetings.budgetWallMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.chairNeutral', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.chairTransferAudit', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.meetings.closeRequiresChair', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.meetings.closeRequiresChair', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.committeeMax', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.committeeReportRequired', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.confirmPreviousMinutes', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.meetings.conveneRequiresChair', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.meetings.conveneRequiresChair', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.disciplineExpelAllowed', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.disciplineMuteMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.disciplineWarnMax', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.emergencyKinds', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.emergencyQuorumRatio', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.meetings.extendRequiresChair', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（meetings.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.meetings.extendCeilingMs', type: 'natural', def: 14400000, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.meetings.extendRequiresChair', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.interruptAllow', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.interruptQuota', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.lateAfterMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
@@ -1335,6 +1336,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.meetings.quorumRecountMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.recessMaxMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.recessResumeRequiresMotion', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.meetings.scheduleAllowed', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.speechDefaultMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.speechExtendMax', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.speechExtendMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
@@ -1344,6 +1346,8 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.meetings.unansweredInDenominator', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.verbatimEnabled', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.verbatimRetentionMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.meetings.waitDecisionRequiresChair', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.meetings.waitOnDueMs', type: 'natural', def: 300000, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.migration.auto', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（migration.js 读取）；默认值取自模块源码" },
   { key: 'vmu.migration.dryRunDefault', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（migration.js 读取）；默认值取自模块源码" },
   { key: 'vmu.migration.dryrun', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（migration.js 读取）；默认值取自模块源码" },

@@ -15,10 +15,15 @@ export const PAPER_ARTIFACTS = Object.freeze(['md', 'tex', 'pdf', 'meta'])
 const str = (v) => (v === undefined || v === null ? '' : String(v))
 const has = (v) => v !== undefined && v !== null && String(v).trim() !== ''
 
-function refuse(code, message, hint) {
+function refuse(code, message, hint, extra = null) {
   const e = new Error(message)
   e.code = code
   if (hint) e.hint = hint
+  // ★ E4: a refusal about a SETTING must travel with the facts a caller can act on (current value, legal values, which
+  // keys were enforced) — `code` alone forces the caller to re-read the settings to answer "what was it set to?".
+  if (extra && typeof extra === 'object') {
+    for (const k of Object.keys(extra)) if (k !== 'code' && k !== 'message' && k !== 'hint' && extra[k] !== undefined) e[k] = extra[k]
+  }
   return e
 }
 
@@ -45,6 +50,13 @@ export function createPaperFlow({
   outDirPrefix = 'Paper/',
   editorDefault = 'academician',
   finalizerSlot = 'chair',
+  // ★ E4 — WHO answers the pre-finalisation consult is POLICY, so the PACK supplies it (the kit must not guess that the
+  //   institute has an "office"). An empty list is honored as "the pack declared no answering role" ⇒ the gate can never
+  //   be satisfied, which is a NAMED refusal (VMU_NOT_PERMITTED), never a silent pass.
+  consultRoles = [],
+  // The clock is a seam: the consult ledger records WHEN the office was asked (durability ⇒ the question survives a
+  // crash) and the timeout is measured against it, so tests need to move time without sleeping.
+  clock = () => Date.now(),
 } = {}) {
   if (!codes || typeof codes !== 'object' || typeof codes.STATE !== 'string' || typeof codes.FINGERPRINT !== 'string') {
     throw refuse('VMU_INVALID_ARGUMENT', 'createPaperFlow needs the REGISTERED error codes',
@@ -108,6 +120,229 @@ export function createPaperFlow({
   }
 
   /** ① start: writing/round 1, participants = the writing members. */
+  // ── ★ E4 / OFFICE CONSULT — "最后讨论、检查无误后定稿：定稿前必须问所办" ──────────────────────────────────────
+  // WHY THE GATE IS HERE. `kernel/paper.js` also carries a consult gate, but NOTHING constructs it in the live assembly
+  // (only tests and scripts call `createPaper(`), so a guard there is a comment: the rule never ran. The path that
+  // ACTUALLY finalises a paper is `packs/v5r/paper.js` → this kit (`vibe_v5_paper` → `recordFinal`), so the gate lives
+  // here, on the registered path. POLICY STAYS IN THE PACK: who answers (`consultRoles`) and which roles are exempt come
+  // in as parameters; the kit owns only the state transition, the durable ledger, and the named refusals (the CODES are
+  // passed in — the kit invents none).
+  const CONSULT_ROLES = Array.isArray(consultRoles) ? consultRoles.map(String).filter(has) : []
+  const CONSULT_KEYS = Object.freeze([
+    'vmu.paper.officeConsult',
+    'vmu.paper.officeConsultOn',
+    'vmu.paper.officeConsultTimeoutMs',
+    'vmu.paper.officeConsultOnTimeout',
+    'vmu.paper.officeConsultExemptRoles',
+  ])
+  const settingsSnap = () => {
+    try { return (kernel.settingsSnapshot ? kernel.settingsSnapshot() : {}) || {} } catch { return {} }
+  }
+  /**
+   * Read the five consult keys AT CALL TIME (D-13: live reads, never a boot snapshot). Two rules a settings gate owes its
+   * reader: (a) an unreadable value is NEVER a quiet allow — `officeConsult` outside required|off is reported as
+   * `invalid` and refuses; (b) an unrecognised `officeConsultOnTimeout` degrades to `hold` (the conservative branch),
+   * because "I did not understand the policy" must not become "go ahead".
+   */
+  function consultPolicy() {
+    const s = settingsSnap()
+    const raw = s['vmu.paper.officeConsult']
+    const status = raw === undefined || raw === null ? 'off'
+      : (raw === true || raw === 'required') ? 'required'
+      : (raw === false || raw === 'off') ? 'off'
+      : 'invalid'
+    const onRaw = str(s['vmu.paper.officeConsultOn'])
+    const on = onRaw === '' ? 'finalize' : onRaw
+    const tRaw = s['vmu.paper.officeConsultTimeoutMs']
+    const timeoutMs = (typeof tRaw === 'number' && Number.isFinite(tRaw) && tRaw >= 0) ? tRaw : 0
+    const onTimeoutRaw = str(s['vmu.paper.officeConsultOnTimeout'])
+    const onTimeout = onTimeoutRaw === 'refuse' ? 'refuse' : 'hold'
+    const exemptRaw = s['vmu.paper.officeConsultExemptRoles']
+    const exemptRoles = Array.isArray(exemptRaw) ? exemptRaw.map(String).filter(has) : []
+    return {
+      status, on, timeoutMs, onTimeout, exemptRoles,
+      raw: raw === undefined ? null : raw,
+      onTimeoutRaw: onTimeoutRaw === '' ? null : onTimeoutRaw,
+      values: {
+        'vmu.paper.officeConsult': raw === undefined ? null : raw,
+        'vmu.paper.officeConsultOn': on,
+        'vmu.paper.officeConsultTimeoutMs': timeoutMs,
+        'vmu.paper.officeConsultOnTimeout': attemptsDown(onTimeoutRaw, onTimeout),
+        'vmu.paper.officeConsultExemptRoles': exemptRoles.slice(),
+      },
+    }
+  }
+  /** Report the timeouts as they are USED (the raw value travels separately in `onTimeoutRaw`), so a receipt never claims
+   *  a policy that is not the one enforced. */
+  function attemptsDown(rawOnTimeout, used) {
+    return rawOnTimeout === '' || rawOnTimeout === null || rawOnTimeout === used ? used : used + ' (from ' + rawOnTimeout + ')'
+  }
+  const MAX_CONSULT_REQUESTS = 16
+  /** The consult ledger lives INSIDE the paper's state record (one record per paper ⇒ a replay finds the questions
+   *  already asked). It is BOUNDED: at most 16 entries; the counters keep the long history. */
+  function consultOf(state) {
+    if (!state.consult || typeof state.consult !== 'object') state.consult = { requests: [], opened: 0, answered: 0, exempted: 0, timedOut: 0 }
+    const c = state.consult
+    if (!Array.isArray(c.requests)) c.requests = []
+    if (typeof c.opened !== 'number') c.opened = 0
+    if (typeof c.answered !== 'number') c.answered = 0
+    if (typeof c.exempted !== 'number') c.exempted = 0
+    if (typeof c.timedOut !== 'number') c.timedOut = 0
+    return c
+  }
+  const consultAnswered = (ledger) => ledger.requests.filter((r) => r && r.status === 'answered').slice(-1)[0] || null
+  const consultAwaiting = (ledger) => ledger.requests.filter((r) => r && r.status === 'awaiting').slice(-1)[0] || null
+  const rosterOf = () => {
+    try { return Array.isArray(kernel.members && kernel.members.roster()) ? kernel.members.roster() : [] } catch { return [] }
+  }
+  /**
+   * The gate. Returns `{ allowed, reason, policy, ledger, error? }` and NEVER throws: the caller owns the mutation order,
+   * which is how a refusal leaves the paper exactly where it was (bar the durable request it just opened — that is the
+   * point of asking: the question must survive a crash, not be re-asked from scratch).
+   */
+  function consultGate({ state, member }) {
+    const policy = consultPolicy()
+    const ledger = consultOf(state)
+    const wanted = ['OFFICE_CONSULT_REQUIRED', 'OFFICE_CONSULT_TIMEOUT']
+    const missing = wanted.filter((k) => !codes || typeof codes[k] !== 'string')
+    if (policy.status === 'invalid') {
+      return { allowed: false, policy, ledger, reason: 'invalid-policy',
+        error: refuse('VMU_INVALID_ARGUMENT',
+          'vmu.paper.officeConsult 只能是 "required" 或 "off"，现在是 ' + JSON.stringify(policy.raw),
+          '把 vmu.paper.officeConsult 改成 "required"（定稿前必须问所办）或 "off"（不要这道闸）；来源：pack defaults / 配置 / 运行时设置',
+          { enforced: CONSULT_KEYS.slice(), declared: ['required', 'off'], value: policy.raw, settingValues: policy.values }) }
+    }
+    if (policy.status !== 'required') {
+      return { allowed: true, policy, ledger, reason: 'policy:' + policy.status, armed: false }
+    }
+    if (CONSULT_ROLES.length === 0) {
+      // ★ A gate nobody can satisfy must fail as a CONFIGURATION error, at the gate, with the missing declaration named —
+      // not open a question in the ledger that no answer can ever close (that would look like "waiting forever by design").
+      return { allowed: false, policy, ledger, reason: 'no-answer-role',
+        error: refuse('VMU_INVALID_ARGUMENT',
+          '所办问询闸是开着的（vmu.paper.officeConsult="required"），但声明这层流程的一方没有给出"谁能答复"',
+          '在 createPaperFlow 里传 consultRoles:["office"]（答复角色是机构政策，内核不替它猜）；或在 pack 里把 vmu.paper.officeConsult 设成 "off"',
+          { enforced: CONSULT_KEYS.slice(), declared: [], declaredAnswerRoles: [], settingValues: policy.values }) }
+    }
+    if (missing.length > 0) {
+      return { allowed: false, policy, ledger, reason: 'codes-missing',
+        error: refuse('VMU_INVALID_ARGUMENT',
+          '所办问询闸是开着的（vmu.paper.officeConsult="required"），但调用方没有把这道闸的登记码传下来',
+          '在声明这层流程的机构里把 codes:{' + missing.join(',') + '} 传进 createPaperFlow（内核不发明错误码）',
+          { enforced: CONSULT_KEYS.slice(), declared: wanted.slice(), missing: codes ? missing : wanted.slice(), settingValues: policy.values }) }
+    }
+    const answered = consultAnswered(ledger)
+    if (answered) {
+      return { allowed: true, policy, ledger, reason: 'answered', armed: true,
+        answeredBy: answered.answeredBy || null, answer: answered.answer === undefined ? null : answered.answer, requestId: answered.id || null }
+    }
+    const row = rosterOf().filter((m) => m && String(m.id) === str(member))[0]
+    const me = [str(member), row ? str(row.slot) : ''].filter(has)
+    const hit = policy.exemptRoles.filter((r) => me.includes(str(r)))
+    if (hit.length > 0) {
+      ledger.exempted += 1
+      writeState(state)
+      return { allowed: true, policy, ledger, reason: 'exempt', armed: true, exemptedBy: hit[0],
+        note: 'vmu.paper.officeConsultExemptRoles 里点了「' + hit[0] + '」，所以这一篇不再等所办' }
+    }
+    const awaiting = consultAwaiting(ledger)
+    const now = Number(clock())
+    if (awaiting) {
+      const waited = Number(now) - Number(awaiting.at)
+      const expired = policy.timeoutMs > 0 && Number.isFinite(waited) && waited > policy.timeoutMs
+      const base = { enforced: CONSULT_KEYS.slice(), declared: ['required', 'off'], currentValue: String(policy.raw),
+        settingValues: policy.values, requestId: awaiting.id || null, requestedAt: awaiting.at === undefined ? null : awaiting.at,
+        waitedMs: Number.isFinite(waited) ? waited : null, timeoutMs: policy.timeoutMs, onTimeout: policy.onTimeout, actedBy: str(member) }
+      if (expired && policy.onTimeout === 'refuse') {
+        awaiting.status = 'timed-out'
+        ledger.timedOut += 1
+        writeState(state)
+        return { allowed: false, policy, ledger, reason: 'timeout-refused', requestCleared: true,
+          error: refuse(CODES.OFFICE_CONSULT_TIMEOUT,
+            '定稿被拦住：所办 ' + policy.timeoutMs + 'ms 内没有答复（vmu.paper.officeConsultOnTimeout="refuse"）',
+            '重新调 recordConsult 再问一次（这条提问已作废）；或改成 "hold"（继续等、仍不放行）；或把 vmu.paper.officeConsult 设成 "off"',
+            { ...base, treatedAs: 'refused', requestCleared: true }) }
+      }
+      if (expired) {
+        ledger.timedOut += 1
+        writeState(state)
+        return { allowed: false, policy, ledger, reason: 'timeout-hold', requestCleared: false,
+          error: refuse(CODES.OFFICE_CONSULT_TIMEOUT,
+            '所办已超过 ' + policy.timeoutMs + 'ms 未答复；vmu.paper.officeConsultOnTimeout="hold" 保持提问但**不放行**',
+            '等所办答复后重试；或把 onTimeout 设成 "refuse"（作废并重新问）；不要指望它自己放行',
+            { ...base, heldOnTimeout: true, requestCleared: false }) }
+      }
+      return { allowed: false, policy, ledger, reason: 'awaiting', requestCleared: false,
+        error: refuse(CODES.OFFICE_CONSULT_REQUIRED,
+          '定稿前必须问所办（vmu.paper.officeConsult="required"）：这道提问还没有答复（' + (awaiting.id || '?') + '）',
+          '由所办调 recordConsult({target, by:"' + (CONSULT_ROLES[0] || 'office') + '"}) 答复后重试；或把 vmu.paper.officeConsult 设成 "off"',
+          { ...base, reason: 'awaiting' }) }
+    }
+    ledger.opened += 1
+    const request = { id: 'consult-' + str(state.target) + '-' + ledger.opened, by: str(member), at: now, note: '', status: 'awaiting', policy: 'required' }
+    ledger.requests.push(request)
+    if (ledger.requests.length > MAX_CONSULT_REQUESTS) ledger.requests.splice(0, ledger.requests.length - MAX_CONSULT_REQUESTS)
+    writeState(state)
+    return { allowed: false, policy, ledger, reason: 'opened', requestId: request.id, requestCleared: false,
+      error: refuse(CODES.OFFICE_CONSULT_REQUIRED,
+        '定稿前必须问所办（vmu.paper.officeConsult="required"）：已向所办(' + (CONSULT_ROLES.join('|') || '未声明') + ')提出问询 ' + request.id + '，还没有答复',
+        '所办调 recordConsult({target:"' + str(state.target) + '", by:"' + (CONSULT_ROLES[0] || 'office') + '"}) 答复后重试；或把 vmu.paper.officeConsult 设成 "off"（取消这道闸）',
+        { enforced: CONSULT_KEYS.slice(), declared: ['required', 'off'], currentValue: String(policy.raw), settingValues: policy.values,
+          requestId: request.id, requestedAt: now, actedBy: str(member), answerRoles: CONSULT_ROLES.slice() }) }
+  }
+  /** The office's answer. WHO may answer is POLICY (`consultRoles`, from the pack): the kit refuses anyone else with a
+   *  NAMED refusal that lists the roles it would have accepted — a gate nobody can satisfy must say so out loud. */
+  function recordConsult({ target, by, note = '', answer = null } = {}) {
+    const { state } = requireState(target)
+    if (state.status === 'finalized') {
+      throw refuse(CODES.STATE, '这篇论文已经定稿了，所办问询不能再补', '问询是"定稿前"的闸：现在开始问只能对下一篇（或先把 status 改回 awaiting-editor 再走一遍）')
+    }
+    if (!has(by)) throw refuse('VMU_INVALID_ARGUMENT', 'recordConsult 需要 by（谁在答复：所办）', 'pass by:"office"（pack 用 consultRoles 声明答复角色）')
+    const row = rosterOf().filter((m) => m && String(m.id) === str(by))[0]
+    const who = [str(by), row ? str(row.slot) : ''].filter(has)
+    const okRole = CONSULT_ROLES.filter((r) => who.includes(str(r)))[0]
+    if (!okRole) {
+      throw refuse('VMU_NOT_PERMITTED',
+        '「' + str(by) + '」不能答复所办问询：只有 ' + (CONSULT_ROLES.join('|') || '（pack 没有声明答复角色）') + ' 可以',
+        '答复角色是 pack 声明的事实（createPaperSubsystem → consultRoles），不是内核替它猜的；学会说"不对"比悄悄放行安全',
+        { declared: CONSULT_ROLES.slice(), received: str(by), memberSlot: row ? str(row.slot) : null })
+    }
+    const ledger = consultOf(state)
+    const awaiting = consultAwaiting(ledger)
+    const now = Number(clock())
+    let request = awaiting
+    if (!request) {
+      ledger.opened += 1
+      request = { id: 'consult-' + str(state.target) + '-' + ledger.opened, by: str(by), at: now, note: '', status: 'awaiting', policy: 'required' }
+      ledger.requests.push(request)
+      if (ledger.requests.length > MAX_CONSULT_REQUESTS) ledger.requests.splice(0, ledger.requests.length - MAX_CONSULT_REQUESTS)
+    }
+    request.status = 'answered'
+    request.answeredAt = now
+    request.answeredBy = str(by)
+    request.answeredRole = okRole
+    request.note = str(note).slice(0, 2000)
+    request.answer = answer === null || answer === undefined ? null : String(answer).slice(0, 2000)
+    ledger.answered += 1
+    writeState(state)
+    return { ok: true, target: state.target, requestId: request.id, answeredBy: request.answeredBy, answeredRole: okRole,
+      answeredAt: now, answered: ledger.answered, cleared: Boolean(awaiting), note: request.note }
+  }
+  /** Read side: the gate's own state, so a caller (or a test) can answer "was the office asked, and what did it say?" */
+  function consultState({ target } = {}) {
+    const { state } = requireState(target)
+    const policy = consultPolicy()
+    const ledger = consultOf(state)
+    const awaiting = consultAwaiting(ledger)
+    const answered = consultAnswered(ledger)
+    return { ok: true, target: state.target, status: state.status, armed: policy.status === 'required',
+      policy: { ...policy.values, raw: policy.raw, onTimeoutRaw: policy.onTimeoutRaw, answerRoles: CONSULT_ROLES.slice() },
+      awaiting: awaiting ? { id: awaiting.id, at: awaiting.at, by: awaiting.by } : null,
+      answered: answered ? { id: answered.id, at: answered.answeredAt, by: answered.answeredBy, role: answered.answeredRole, note: answered.note, answer: answered.answer } : null,
+      requests: ledger.requests.map((r) => ({ id: r.id, status: r.status, at: r.at, by: r.by, answeredAt: r.answeredAt || null, answeredBy: r.answeredBy || null })),
+      counters: { opened: ledger.opened, answered: ledger.answered, exempted: ledger.exempted, timedOut: ledger.timedOut } }
+  }
+
   function start({ target, participants = [], editor = editorDefault, lang = 'zh', format = 'both' } = {}) {
     ensureTrack()
     if (!has(target)) throw refuse('VMU_INVALID_ARGUMENT', 'start needs the paper target', 'pass target:"<the object being written up>"')
@@ -120,6 +355,9 @@ export function createPaperFlow({
       participants: list, editor: str(editor) || 'academician', lang: lang === 'en' ? 'en' : 'zh',
       format: ['both', 'md', 'tex'].includes(format) ? format : 'both',
       parts: {}, reviews: {}, reviewOf: {}, final: null, disagreement: [], warnings: [], forcedAfterCap: false,
+      // ★ E4: the ledger starts empty here so "was the office asked?" is answerable for EVERY paper, not only the ones
+      // that reached the gate (an absent field would make the reader ask a second question: does null mean no or unknown?).
+      consult: { requests: [], opened: 0, answered: 0, exempted: 0, timedOut: 0 },
       createdAt: 1, updatedAt: 1,
     }
     ensureTrack()
@@ -234,6 +472,10 @@ export function createPaperFlow({
     if (decision !== 'deliverable' && decision !== 'revise') throw refuse('VMU_INVALID_ARGUMENT', 'decision must be deliverable|revise', 'the original accepts exactly these two')
     const fin = { by: str(member), decision, note: str(note).slice(0, 4000), conclusion: str(conclusion).slice(0, 20000) }
     if (decision === 'deliverable') {
+      // ★ E4: 定稿前必须问所办. The gate runs BEFORE any mutation, so a refusal leaves the paper exactly where it was
+      // (except the durable request it just opened — the question has to survive a crash, that is the point of asking).
+      const gate = consultGate({ state, member: fin.by })
+      if (!gate.allowed) throw gate.error
       state.final = fin; state.status = 'finalized'; state.stage = 'finalized'
       writeState(state)
       const rendered = render({ target })
@@ -249,7 +491,10 @@ export function createPaperFlow({
           faceCode: (e && e.faceCode) || null,
           triedEngines: Array.isArray(e && e.triedEngines) ? e.triedEngines.slice(0, 12) : [] }
       }
-      return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: rendered.missing, pdf }
+      return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: rendered.missing, pdf,
+        // ★ E4: the receipt says WHICH way the consult rule was satisfied ("off" / "answered" / "exempt"): a finalisation
+        // that claims the office was consulted when the gate was simply off is the sort of quiet lie this pack refuses.
+        consult: { armed: gate.armed === true, satisfiedBy: gate.reason, answeredBy: gate.answeredBy || null, requestId: gate.requestId || null, note: gate.note || null } }
     }
     state.final = fin
     if (state.round < MAX_ROUNDS) {
@@ -450,6 +695,7 @@ export function createPaperFlow({
   }
 
   return { start, recordPart, recordReview, advance, pass, recordFinal, PaperMd, PaperTex, PaperArtifacts, render, compilePdf,
+    recordConsult, consultState,
     sections: () => SECTIONS.slice(), state: (target) => readState(target) }
 }
 

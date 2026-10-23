@@ -1,7 +1,17 @@
 // ★ PHASE 8 / B-3: the task board and the Lean five live in the kit now (one implementation in the tree).
 import { toolTaskCreate, toolTaskList, toolTaskUpdate, toolTaskGet, toolLeanRun, toolLeanJob, toolLeanLib, toolLeanRead, toolLeanArchive, tasksOf, rowsOf } from '../../kit/extras.js'
 import { KIT_CARD_TOOL as cardTool, KIT_HELPERS, KIT_READ_LIBRARY as toolReadLibrary, KIT_RECORD_PROGRESS as toolRecordProgress, KIT_SOCIAL } from '../../kit/handlers.js'
-import { kitCardHandler } from '../../kit/tools.js'
+import { kitCardHandler, KIT_CARD_CONFIG } from '../../kit/tools.js'
+// ★ PHASE 12 / D13–D15: THE FOUR RULE PREDICATES GET THEIR **CALLERS** IN THIS FILE.
+// `./verification-gates.js` is PURE (no settings, no filesystem, no writes, nothing named `enforced` inside it) and until
+// this round had ZERO call sites — a mechanism with no consumer, which AGENTS red line 4 forbids. The predicates stay
+// pure: every refusal is raised in THIS file, and the declared keys a predicate consulted are copied into
+// `enforced`/`enforcedScope` by the wiring layer only (the consistency audit reads a mention of the word inside a
+// predicate module as a new blind spot, so it must not appear there).
+import { p1Intent, debateSubjectGate, singleWriter, fidelityAsked } from './verification-gates.js'
+// ★ The VERIFIED carrier (B1 step 1): `findVerified` answers null instead of guessing, `promoteVerified` is the ONLY
+// writer on that track, and `parseCard` names a card it cannot judge (empty/truncated body) instead of half-parsing it.
+import { parseCard, findVerified, promoteVerified, VERIFIED_TRACK } from './verified.js'
 // ★ GOAL ROUND 3: the paper subsystem's RUNTIME ENTRY. It lives in this pack (`./paper.js` → `kit/paper.js` is the flow);
 // the face below is only the missing READ POINT — before it, `paper.start` existed but nothing in production called it.
 import { createPaperSubsystem } from './paper.js'
@@ -488,6 +498,267 @@ function requireVoter(kernel, member, what) {
   return row
 }
 
+// ── PHASE 12 / D13–D15: THE WIRING LAYER OF THE FOUR RULE PREDICATES ──────────────────────────────────────────
+// A predicate answers {ok, allowed, applicable, code, message, hint, keys}. It never throws and never writes: the
+// NAMED refusal and the `enforced` receipt field are THIS file's job (see the import note at the top of the file).
+/** The pack evaluated the rule for THIS call (the kernel's own receipts use the same scope word). */
+const ENFORCED_SCOPE = 'evaluated-so-far'
+/** The track a card tool writes by default — read from the kit's OWN config, so there is no second copy to drift. */
+const cardTrackOf = (toolName) => (KIT_CARD_CONFIG[toolName] ? KIT_CARD_CONFIG[toolName].track : null)
+
+/** A refused predicate becomes a NAMED refusal carrying the declared keys it consulted. */
+function gateRefuse(gate) {
+  if (!gate || gate.allowed !== false) return
+  // The message is what the AGENT reads first, so it must carry the RULE and, when the gate knows it, the QUESTION the
+  // rule is asking — a refusal that only says "not allowed" costs a round trip ("what exactly do you want from me?").
+  // `fidelityAsked` reports its prompt as `reason`/`question`/`options` (not `message`), so fold those in here rather
+  // than inventing a second vocabulary in the wiring layer.
+  const base = str(gate.message) || str(gate.reason) || 'a v5r rule refused this call; nothing was written'
+  const asked = str(gate.question)
+  const options = Array.isArray(gate.options) && gate.options.length ? ' [' + gate.options.join(' | ') + ']' : ''
+  const message = asked ? base + ' — ' + asked + options : base
+  const e = refuse(gate.code || 'VMU_STATE', message,
+    gate.hint || 'the rule requires evidence this call did not carry; record the estimate and let the debate produce the conclusion')
+  e.enforced = Array.isArray(gate.keys) ? gate.keys.slice() : []
+  e.enforcedScope = ENFORCED_SCOPE
+  throw e
+}
+/** The union of the keys the gates of ONE call consulted (order-preserving, no duplicates). */
+function enforcedOf(gates) {
+  const out = []
+  for (const g of gates) {
+    if (!g || !Array.isArray(g.keys)) continue
+    for (const k of g.keys) if (out.indexOf(k) < 0) out.push(k)
+  }
+  return out
+}
+/** ONE record row by id, or null: a gate judges ABSENCE, so "no such record" must not escape this plumbing as a throw. */
+function rowOrNull(records, id) {
+  if (!has(id) || !records || typeof records.get !== 'function') return null
+  try { return records.get({ id: str(id) }) } catch { return null }
+}
+/** The card as the DEBATE gate must see it: its `p`, and the proof reference its AUTHOR put in the body payload. */
+function cardProjectionOf(records, id) {
+  const row = rowOrNull(records, id)
+  if (!row) return null
+  const parsed = parseCard(row)
+  if (!parsed || parsed.ok !== true || !parsed.card) {
+    return { id: has(id) ? str(id) : null, p: null, proofRef: '', proofState: '', bodyTruncated: row.bodyTruncated === true,
+      unjudgeable: parsed && parsed.reason ? str(parsed.reason) : 'the card body could not be parsed' }
+  }
+  const fields = parsed.fields || {}
+  return { id: row.id, p: parsed.card.p,
+    proofRef: fields.proofRef === undefined ? '' : str(fields.proofRef),
+    proofState: fields.proofState === undefined ? '' : str(fields.proofState),
+    bodyTruncated: false }
+}
+/** The card's own `p`, or null when the card cannot be judged (never half-parsed). */
+function cardPOf(records, id) {
+  const proj = cardProjectionOf(records, id)
+  return proj ? proj.p : null
+}
+/** The VERIFIED row a card was promoted to, or null. An undeclared track throws inside the carrier ⇒ "no evidence". */
+function verifiedRowOf(records, id, fidelity = null) {
+  if (!has(id) || !records) return null
+  try {
+    const found = findVerified(records, str(id), { fidelity })
+    if (!found) return null
+    const v = found.verified || {}
+    return { id: found.id, cardId: v.cardId === undefined ? str(id) : v.cardId, conclusion: v.conclusion }
+  } catch { return null }
+}
+/** The Lean EVIDENCE a write may claim: the kernel's conclusion for that job, plus the caller's conformance ruling.
+ *  Lean passing is NOT the same as "the code says what the proposition needs" — the gate demands BOTH (p1Intent:111). */
+function leanEvidenceOf(kernel, args = {}) {
+  const job = leanPassedOf(kernel, args.lean_job)
+  if (!job) return null
+  const decision = has(args.lean_conformance) ? str(args.lean_conformance) : null
+  return Object.assign({}, job, decision === null ? {} : { conformance: { decision } })
+}
+/** The debate EVIDENCE a write may claim (caller-supplied by design: the gate proves "no evidence ⇒ refuse", never
+ *  "this evidence is true" — see docs/acceptance/conformance/lane-verified-design.md §10.6). Only known fields pass. */
+function debateEvidenceOf(args = {}) {
+  const raw = args.debate_ruling
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  return { mode: raw.mode === undefined ? null : str(raw.mode), value: raw.value === undefined ? null : raw.value,
+    ballotId: raw.ballotId === undefined ? null : str(raw.ballotId),
+    subject: raw.subject === undefined ? null : str(raw.subject) }
+}
+/** The Lean CONCLUSION for one job id, or null. `passed` is a conclusion on the kernel's lean face, never a state. */
+function leanPassedOf(kernel, jobId) {
+  if (!has(jobId)) return null
+  const face = kernel && kernel.lean
+  if (!face || typeof face.job !== 'function') return null
+  try {
+    const r = face.job(str(jobId))
+    const job = r && (r.job || (r.ok === true ? r : null))
+    if (!job) return null
+    return { jobId: str(jobId), passed: job.passed === true, state: job.state === undefined ? null : job.state,
+      file: job.file === undefined ? null : job.file }
+  } catch { return null }
+}
+/** The fidelity registry's withdrawal predicate in the shape the ④ gate wants (a function), or null when unpublished. */
+function fidelityWithdrawnFn(kernel) {
+  const face = kernel && kernel.fidelity
+  if (!face || typeof face.passedWithdrawnFor !== 'function') return null
+  return (id) => { try { return face.passedWithdrawnFor(str(id)) === true } catch { return false } }
+}
+
+/**
+ * ★ ① + ③, ON THE CARD WRITE PATH. `kitCardHandler` is the ONE body shared by the three card tools; wrapping it here is
+ * the smallest place where both facts a gate needs are visible at once (the args, AND the records face).
+ *   · p1Intent     — p=1 is a CONCLUSION, not a preference: the ordinary card write must carry one of the three
+ *                    evidences (a verified row, a unanimous debate value of 1, a passed Lean run). Without one the
+ *                    refusal is NAMED and the card is not written; the estimate belongs in (0,1).
+ *   · singleWriter — the verified track has exactly ONE writer (`promoteVerified`, reached through
+ *                    vibe_v5_verified_promote). A card tool can never become a second door into that track.
+ */
+function gatedCardHandler(toolName) {
+  const inner = kitCardHandler(toolName)
+  return function handler(args = {}, ctx = {}) {
+    const kernel = ctx && ctx.kernel
+    const records = recordsOf(kernel)
+    const track = has(args.track) ? str(args.track) : cardTrackOf(toolName)
+    const cardId = has(args.id) ? str(args.id) : null
+    const by = has(args.member) ? str(args.member) : null
+    const writerGate = singleWriter({ records, cardId, by, writer: toolName, track })
+    gateRefuse(writerGate)
+    const gates = [writerGate]
+    if (toolName === 'vibe_v5_record_proposition') {
+      // The three evidences the rule accepts. `debate` and `lean` come from the CALLER's args (a card write cannot go
+      // and hold a debate); `verified` is read from the records face, so it is not claimable by argument at all.
+      const evidence = { verified: verifiedRowOf(records, cardId, kernel && kernel.fidelity),
+        debate: debateEvidenceOf(args), lean: leanEvidenceOf(kernel, args) }
+      // `card` carries the id for evidence matching and the truncation FACT, but NOT the old p: the value under judgement
+      // is the one being written (p1Intent:95 prefers card.p, so handing it the stored row would judge yesterday's value).
+      const stored = cardProjectionOf(records, cardId)
+      const card = cardId === null ? null : { id: cardId, bodyTruncated: !!(stored && stored.bodyTruncated) }
+      const pGate = p1Intent({ tool: toolName, args, card, evidence })
+      gateRefuse(pGate)
+      gates.push(pGate)
+    }
+    const res = inner(args, ctx)
+    if (!res || typeof res !== 'object' || Array.isArray(res)) return res
+    return Object.assign({}, res, { enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE })
+  }
+}
+
+/**
+ * ★ ③ THE VERIFIED TRACK'S ONLY WRITE PATH. `promoteVerified` (in ./verified.js) had NO caller — a writer nobody could
+ * reach. It needs a JUDGE (`warrant.id` + `warrant.kind`) and it refuses by name a card whose p is not exactly 1 or 0, a
+ * truncated card, and a proof the fidelity registry withdrew. This face mints nothing: it forwards the warrant the
+ * caller names, so "which debate decided this" stays answerable from the record.
+ */
+function toolVerifiedPromote(args = {}, { kernel } = {}) {
+  const records = recordsOf(kernel)
+  const sourceId = has(args.card) ? str(args.card) : (has(args.id) ? str(args.id) : '')
+  if (!sourceId) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'promote needs the proposition card it promotes',
+      'pass card:"<records id of a propositions/proposition card whose p is exactly 1 or 0>"')
+  }
+  const member = has(args.member) ? requireSeat(kernel, args.member, 'verified promote').id : null
+  const writerGate = singleWriter({ records, cardId: sourceId, by: member, writer: 'promoteVerified', track: VERIFIED_TRACK })
+  gateRefuse(writerGate)
+  if (!has(args.warrant) || !has(args.warrant_kind)) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'promote needs the warrant that produced this conclusion — the judge, not a preference',
+      'pass warrant:"<debate/ballot ruling id>" warrant_kind:"debate-unanimous" (or "lean-conformance" once that ruling exists)')
+  }
+  const promoted = promoteVerified({ records, sourceId,
+    warrant: { id: str(args.warrant), kind: str(args.warrant_kind), subject: sourceId },
+    by: member, fidelity: kernel && kernel.fidelity ? kernel.fidelity : null })
+  return Object.assign({ ok: true, tool: 'vibe_v5_verified_promote', card: sourceId,
+    warrant: { id: str(args.warrant), kind: str(args.warrant_kind) },
+    enforced: enforcedOf([writerGate]), enforcedScope: ENFORCED_SCOPE,
+    note: 'the verified row is a SECOND carrier beside the card: the card keeps its p, the verified row keeps the JUDGE (warrant), so "why is this settled" is answerable instead of asserted' }, promoted)
+}
+
+/**
+ * ★ D15 · THE DEBATE'S FINAL RULING — the pack half of "收各成员最终裁决 → 全一致取该值否则取均值 → 通知命题卡持有者".
+ * The kernel face (vmu.meetingverdict) owns the arithmetic and the notice. THIS function owns the three things the
+ * kernel cannot know: WHICH meeting the ruling belongs to (so the signer is that meeting's chair, NAMED — an anonymous
+ * ruling is not a ruling), WHETHER the fidelity question was answered before a number is announced (④), and the
+ * operator's receipt (`enforced`). It is an EXPLICIT act: nothing is hooked onto meetings.close.
+ */
+function toolVerdictFinal(args = {}, { kernel } = {}) {
+  if (!has(args.meeting)) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'the final ruling needs the meeting it was taken in',
+      'pass meeting:"<the id vibe_v5_meeting returned>" — the ruling is signed by that meeting\'s chair')
+  }
+  const meeting = str(args.meeting)
+  if (!kernel || !kernel.meetings || typeof kernel.meetings.meetingView !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'no meeting face: the ruling cannot be tied to a chair',
+      'assemble a full kernel (vibe-math-vmu.js publishes vmu.meetings)')
+  }
+  const view = kernel.meetings.meetingView({ meeting })
+  const chair = view && view.chair ? str(view.chair) : ''
+  if (!chair) {
+    throw refuse('VMU_STATE', 'meeting ' + meeting + ' declares no chair, so nobody can sign its final ruling',
+      'convene the meeting with a chair seat (vibe_v5_meeting) — a ruling without a signer would be an anonymous assertion')
+  }
+  if (has(args.member) && str(args.member) !== chair) {
+    throw refuse('VMU_NOT_PERMITTED', 'only the meeting CHAIR signs the final ruling: the chair of ' + meeting + ' is "' + chair + '", and you passed "' + str(args.member) + '"',
+      'pass member:"' + chair + '", or omit member (the chair signs by default)')
+  }
+  if (!has(args.proposition_id)) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'the ruling needs the proposition it rules on',
+      'pass proposition_id:"<records id of the proposition card>" — verdicts of different propositions are never mixed')
+  }
+  const propositionId = str(args.proposition_id)
+  const verdicts = Array.isArray(args.verdicts) ? args.verdicts : null
+  if (!verdicts || verdicts.length === 0) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'the final ruling needs the members\' verdicts — an empty set has no value',
+      'pass verdicts:[{member,p,reason}] (p is a boolean probability in [0,1]); the kernel aggregates: all agree ⇒ that value, otherwise the arithmetic mean')
+  }
+  const records = kernel.records || null
+  const cardRow = rowOrNull(records, propositionId)
+  const owner = has(args.owner) ? str(args.owner)
+    : (cardRow && has(cardRow.owner) ? str(cardRow.owner) : '')
+  if (!owner) {
+    throw refuse('VMU_STATE', 'nobody can be told: proposition "' + propositionId + '" is '
+      + (cardRow ? 'owned by nobody (the record row carries no author)' : 'not on the records track')
+      + ', so a ruling over it would have no recipient and the card could never be corrected',
+    'pass owner:"<member id>", or record the proposition first (the card tools store the author as `by`)')
+  }
+  // ④ BEFORE a number is announced: if Lean passed and p is still not 1, the fidelity question must be ANSWERED —
+  // either the caller answers it here (fidelity:"conform"|"defect") or the gate refuses with the question and options.
+  const leanEvidence = has(args.lean_job) ? leanPassedOf(kernel, args.lean_job)
+    : (args.lean_passed === true || args.lean_passed === false
+      ? { jobId: null, passed: args.lean_passed === true, state: null, file: null } : null)
+  const answered = has(args.fidelity) ? { decision: str(args.fidelity) } : null
+  const pGate = fidelityAsked({ cardId: propositionId,
+    leanPassed: !!(leanEvidence && leanEvidence.passed === true),
+    p: cardRow ? cardPOf(records, propositionId) : null,
+    withdrawnFor: fidelityWithdrawnFn(kernel), answered })
+  gateRefuse(pGate)
+  const face = kernel.meetingverdict
+  if (!face || typeof face.rulePropositionProbability !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'the kernel publishes no meeting-verdict face, so nothing can aggregate the verdicts',
+      'assemble a full kernel — vibe-math-vmu.js publishes vmu.meetingverdict (kernel/meetingverdict.js)')
+  }
+  // The kernel validates every row (duplicate member, out-of-range p, mixed propositions…) and refuses BY NAME; those
+  // refusals travel up unchanged — this face never rewrites a kernel refusal into a success.
+  const ruled = face.rulePropositionProbability({ verdicts, propositionId, owner, from: chair, at: null,
+    template: has(args.template) ? str(args.template) : null })
+  const delivery = (ruled && ruled.delivery) || { attempted: false, ok: false }
+  const notified = delivery.attempted === true && delivery.ok === true ? [owner] : []
+  return {
+    ok: true, tool: 'vibe_v5_verdict_final', meeting, chair, from: chair,
+    proposition: ruled.proposition, value: ruled.value, valueSource: ruled.valueSource,
+    mode: ruled.mode, exact: ruled.exact, rounded: ruled.rounded, decided: ruled.decided,
+    enforceable: ruled.enforceable, estimate: ruled.estimate, n: ruled.n, perMember: ruled.perMember,
+    spread: ruled.spread, owner, notified, delivery,
+    notice: ruled.notice && ruled.notice.text ? ruled.notice.text : null,
+    fidelity: { consulted: pGate.applicable === true, resolved: pGate.resolved === true,
+      required: pGate.required === true, answered: !!answered,
+      lean: leanEvidence ? (leanEvidence.jobId ? 'lean_job:' + leanEvidence.jobId : 'caller') : 'none' },
+    enforced: enforcedOf([pGate]), enforcedScope: ENFORCED_SCOPE,
+    note: notified.length
+      ? 'the ruling is on the record and the card owner (' + owner + ') was told through the mailbox face'
+      : '★ the ruling IS on the record but the card owner was NOT told: delivery reported ok=' + String(delivery.ok)
+        + ' — the number is not hidden, the notice is simply missing (see `delivery`)',
+  }
+}
+
 /** ★ `vibe_v5_task_get` — read ONE task (the corpus teaches it, so it is declared rather than left dangling). */
 
 
@@ -531,6 +802,25 @@ function toolMeeting(args = {}, { kernel } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'a ' + type + ' meeting needs a subject: the object of the debate',
       'pass subject:"<card id | file reference | the proposition in one line>" — the rule gives a debate meeting an extra field for its object')
   }
+  // ★ D14 — 辩论的对象必须带「证明已写完」的承载，而且这个判定发生在会议**存在之前**（规则：「只有辩论才能把命题卡的
+  // 布尔概率改成 1」，所以一场围绕半成品/没证明的辩论是在辩论"没有对象"）。闸是纯谓词（只判不写、不抛、不读设置），
+  // 具名拒由这一层抛出；它核到的证据形态原样写进回执（`subjectGate.proofVia`/`provenance`），不替调用方美化。
+  // 证据来源：卡/form 的文件形态由调用方在 `subject_evidence` 里自报（闸只保证"没证据就拒"，不核内容真伪——见
+  // docs/acceptance/conformance/lane-verified-design.md §10.6）；vedrified 轨与 Lean 结论由 pack 自己查 records 面。
+  let subjectGate = null
+  if (typeInfo.subjectRequired) {
+    const records = kernel.records || null
+    const subjectText = subject === null || subject === undefined ? '' : str(subject)
+    const supplied = (args.subject_evidence && typeof args.subject_evidence === 'object' && !Array.isArray(args.subject_evidence))
+      ? args.subject_evidence : null
+    subjectGate = debateSubjectGate({ meeting: { type }, subject: subjectText, evidence: {
+      card: cardProjectionOf(records, subjectText) || null,
+      verified: verifiedRowOf(records, subjectText),
+      lean: (supplied && supplied.lean) || leanPassedOf(kernel, args.lean_job),
+      file: (supplied && supplied.file) || null,
+    } })
+    gateRefuse(subjectGate)
+  }
   // ★ PHASE 7 round 23: the kernel's `meetings.open` accepts a SECRETARY (a recorder). The pack passes it through and
   // validates that the named id is on the roster — the RECORD right is a role the meeting declares, never a silent name.
   let secretary = null
@@ -542,17 +832,48 @@ function toolMeeting(args = {}, { kernel } = {}) {
   // PHASE 12 - the academician convenes AS ITSELF: `actor` is the caller, `chair` the seat it takes. With
   // vmu.meetings.conveneRequiresChair=true (declared below) the kernel refuses an anonymous convene and a convene
   // that installs somebody ELSE as chair, so "only the chair may convene" is a machine fact rather than a habit.
+  // ★ PHASE 12 D1 — 预约时间（规则：「院士可以预约会议的召开时间（预约时负责人可设置预约时间、等待阶段、未到齐超时自决）」）。
+  // 这一面之前**根本没法预约**：内核的 `open` 收 `at`，而这里不透传，于是「预约」在真机上完全不可达（内核的状态机却早已存在）。
+  // `at` 原样透传，不在这一层做第二次解析：内核是唯一的时点判定点（`atMs()`：有限数字＝epoch ms，或 ISO-8601 字符串；
+  // 其它一律具名 `VMU_INVALID_ARGUMENT`，并把那个值和它的类型写进消息）。也不在这里造第二套预约机制：`scheduled`/`waiting`、
+  // 惰性结算（`syncMeeting`，全仓没有定时器，进程被杀不会留下永远卡住的会议）与 chairman 的 `proceed()` 都是内核的。
+  // ★ PHASE 12 / D3 — 标题。在这之前「会议没有独立标题」：`agenda` 兼作议题与标题，于是回执里那个位置永远是一句话
+  // 议程。内核的 `open({title})` 已经存在（字符串、空白归 null、非字符串具名拒并带 typeof），这一面只做**声明 + 只在
+  // 传了时透传** + 读回：不在这里做第二次空白归一以外的加工，也不给没传的会议编一个标题。
+  let title = null
+  if (args.title !== undefined && args.title !== null) {
+    if (typeof args.title !== 'string') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'title must be a string; got ' + typeof args.title,
+        'pass title:"<a short name for this meeting>" or omit it (the agenda stays as the subject)')
+    }
+    const trimmed = args.title.trim()
+    title = trimmed === '' ? null : trimmed
+  }
+  const at = has(args.at) ? args.at : null
   const opened = kernel.meetings.open({ type, chair: member, actor: member, roster, materials: str(args.agenda), secretary,
-    subject: subject === null || subject === undefined ? null : subject })
+    subject: subject === null || subject === undefined ? null : subject, at, title })
+  // ★ 可读回的事实：预约不是"一个被收下的参数"，而是会议对象的状态。`state`/`scheduledFor` 由内核回执给出，
+  // 这一面只转述；`scheduleNote` 只在真的进入 scheduled 时出现（不要给立即召开的会议编一句预约说明）。
+  const state = opened && opened.state !== undefined ? opened.state : null
+  const scheduledFor = opened && opened.scheduledFor !== undefined ? opened.scheduledFor : null
+  const scheduleNote = state === 'scheduled'
+    ? '★ 这场会议是【预约】的（scheduledFor=' + String(scheduledFor) + '）：status/summary/meetingView 现在就能读，但开始时间之前任何动作都会被内核具名拒绝；到点后按法定人数转 open，或先进入等待阶段——等待期间有迟到者 attend 并凑满法定人数，那一次触碰就会让会议开始（没有定时器在后台推它）。'
+    : null
   // ★ GOAL ROUND 3 — THE RECOMMENDED PROCEDURE. A type that the rule gave a skeleton gets it in the receipt, labelled
   // `binding:'recommendation'` so no reader can mistake it for a gate; a type with no skeleton reports null and WHY
   // (nothing is invented). Steps the framework has NOT implemented are reported in `pendingSteps` rather than omitted.
   const proc = procedureFor(type)
   return { ok: true, tool: 'vibe_v5_meeting', meeting: opened && opened.meeting ? opened.meeting : opened,
     type, subject: opened && opened.subject !== undefined ? opened.subject : null,
+    title: opened && opened.title !== undefined ? opened.title : title,
     procedure: proc.procedure, procedureBinding: proc.binding, procedureNote: proc.note, pendingSteps: proc.pendingSteps,
     kind, agenda: str(args.agenda), formalAgenda: args.formal_agenda === true, secretary,
-    note: 'the original could also PROPOSE a meeting from a non-chair seat and let the chair convene it; this face has no propose path (named gap: procedure/propose). ★★ THIS FACE ONLY CONVENES: for status/summary/snapshot/close/extend/lapse/ballot/speak/silent/hand/flow use vibe_vmu_meeting { action, id } - the kernel face, which reaches the same meeting object. Measured on a full live run: an agent tried summary/close HERE, got nothing, and reported it as a missing capability; the capability existed one face over and nothing said so. ★ The recommended procedure is a RECOMMENDATION: skipping it, reordering it, or ignoring it entirely is allowed and unchecked.' }
+    state, scheduledFor, at, scheduleNote,
+    subjectGate: subjectGate ? { allowed: true, applicable: subjectGate.applicable === true, form: subjectGate.form || null,
+      proofVia: subjectGate.proofVia || null, provenance: subjectGate.provenance || null,
+      proofChecked: subjectGate.proofChecked === true, note: subjectGate.note || null } : null,
+    enforced: enforcedOf([subjectGate]), enforcedScope: ENFORCED_SCOPE,
+    note: 'the original could also PROPOSE a meeting from a non-chair seat and let the chair convene it; this face has no propose path (named gap: procedure/propose). ★★ THIS FACE ONLY CONVENES: for status/summary/snapshot/close/extend/extendlimit/proceed/lapse/ballot/speak/hand/hands/order/invite/invitedspeak/attend/flow/overrideorder use vibe_vmu_meeting { action, id } - the kernel face, which reaches the same meeting object. Measured on a full live run: an agent tried summary/close HERE, got nothing, and reported it as a missing capability; the capability existed one face over and nothing said so. ★ D9 邀请面 (this round): hand/invite/invitedspeak/order/attend now really reach a SERVICE meeting through that face — hand = a member queues itself, invite = the CHAIR puts one member or an ordered list (members:[…]) on the floor queue, order = reads the real queue back, invitedspeak = the invited voice speaks in the minutes, attend = marks a member present (an invitation NEVER marks anybody present: attendance is its own act and only it counts for the quorum). silent/end/hands stay primitive-only and the kernel face refuses them on a service meeting BY NAME. ★ A floor-order override (flow/overrideorder) still needs vmu.meetings.orderMode declared by the deployment; v5r does not declare it, so on a real run it is refused by name rather than silently ignored. ★ The recommended procedure is a RECOMMENDATION: skipping it, reordering it, or ignoring it entirely is allowed and unchecked.' }
 }
 
 const MOTION_KINDS = Object.freeze(['topic', 'procedural', 'resolution'])
@@ -1007,21 +1328,21 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_record_proposition',
-    description: 'Record a proposition/lemma card in your library. REQUIRES statement, value, motive and p (your probability that it is true); the card is settled when p is 1 or 0.',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, member: { type: 'string' } },
-    handler: kitCardHandler('vibe_v5_record_proposition'),
+    description: 'Record a proposition/lemma card in your library. REQUIRES statement, value, motive and p (your probability that it is true); the card is settled when p is 1 or 0. ★ p=1 IS A CONCLUSION, NOT A PREFERENCE: writing 1 is refused BY NAME unless the write carries one of the three conclusions the rule accepts — a promoted verified row on THIS card (the kernel record, not an argument), a unanimous debate ruling (`debate_ruling:{mode:"unanimous", value:1, subject:"<this card id>", ballotId}`), or a passed Lean run PLUS the conformance ruling (`lean_job` + `lean_conformance:"conform"`). Estimating in (0,1) is always allowed.',
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, debate_ruling: { type: 'object' }, member: { type: 'string' } },
+    handler: gatedCardHandler('vibe_v5_record_proposition'),
   },
   {
     name: 'vibe_v5_record_method',
     description: 'Record a theory/method/tool card in your library. REQUIRES content, value, motive and p.',
     parameters: { id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, content: { type: 'string', required: true }, notation: { type: 'string' }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, member: { type: 'string' } },
-    handler: kitCardHandler('vibe_v5_record_method'),
+    handler: gatedCardHandler('vibe_v5_record_method'),
   },
   {
     name: 'vibe_v5_record_subproblem',
     description: 'Record a sub-problem card in your library. REQUIRES statement, value, motive and p.',
     parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, member: { type: 'string' } },
-    handler: kitCardHandler('vibe_v5_record_subproblem'),
+    handler: gatedCardHandler('vibe_v5_record_subproblem'),
   },
   {
     name: 'vibe_v5_say',
@@ -1133,8 +1454,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_meeting',
-    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary) and a debate REQUIRES subject (its object: a card id, a file reference, or one line). A type that the institution gave a recommended procedure returns it in `procedure` — ★ it is a RECOMMENDATION, never a gate: skipping or reordering it is allowed and unchecked. Steps the framework has NOT implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES - status/summary/close/flow live on vibe_vmu_meeting { action, id }. The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name.',
-    parameters: { agenda: { type: 'string', required: true }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true } },
+    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary) and a debate REQUIRES subject (its object: a card id, a file reference, or one line). ★ `title` is an OPTIONAL separate name (omit it and the agenda stays as the subject; non-string is refused by name). ★ `at` SCHEDULES it: epoch milliseconds or an ISO-8601 string (e.g. "2026-10-24T10:00:00+08:00"); a future time puts the meeting in the `scheduled` state — status/summary/meetingView read it right away, but every action before the start time is refused BY NAME, and when the start time arrives with too few present it waits (a latecomer attending then starts it). The receipt reads the real state back (`state`, `scheduledFor`). ★ A DEBATE\'S SUBJECT MUST CARRY A FINISHED PROOF: a card id must have `proofRef`+`proofState:"complete"` (or a verified row / a passed Lean run), a file reference needs `subject_evidence.file = {readable:true, bytes:N, name}` (the gate only proves "exists and is non-empty" — content completeness is judged by the members in the debate), and a one-line proposition is legal but the receipt records `subjectGate.provenance:"none"` because nothing can be checked. A type that the institution gave a recommended procedure returns it in `procedure` — ★ it is a RECOMMENDATION, never a gate: skipping or reordering it is allowed and unchecked. Steps the framework has NOT implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES - status/summary/close/flow live on vibe_vmu_meeting { action, id }. The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name.',
+    parameters: { agenda: { type: 'string', required: true }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true }, at: { type: 'string' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' } },
     handler: toolMeeting,
   },
   {
@@ -1172,6 +1493,18 @@ export const V5R_PACK_TOOLS = Object.freeze([
     description: 'Cast your boolean verdict on the object under verification: verdict in [0,1] (1 = true, 0 = false, in between = an UNCERTAIN probability), on a LIVE ballot (target = its id).',
     parameters: { target: { type: 'string', required: true }, verdict: { type: 'number', required: true }, reason: { type: 'string' }, member: { type: 'string', required: true } },
     handler: toolVerdict,
+  },
+  {
+    name: 'vibe_v5_verdict_final',
+    description: '★ TALLY THE DEBATE\'S FINAL RULING (the CHAIR signs it): collect the members\' boolean verdicts on ONE proposition, aggregate them (all agree ⇒ that value, otherwise the arithmetic mean) and tell the proposition card\'s owner to correct its probability. meeting + proposition_id + verdicts REQUIRED; verdicts = [{member,p,reason}] where p∈[0,1]. member is who signs (default: the meeting chair; anyone else is refused by name — an anonymous ruling is not a ruling). owner defaults to the card\'s author and is REQUIRED to be resolvable, because a ruling nobody is told changes nothing. ★ If a Lean run passed and the card\'s p is still not 1, you must ANSWER THE FIDELITY QUESTION first (pass fidelity:"conform" or "defect", with lean_job naming the run): the refusal carries the question and the two legal answers. The kernel face keeps the arithmetic/validation and refuses by name (duplicate member, p out of range, mixed propositions); delivery of the notice is reported honestly in `delivery` and `notified` (an empty `notified` means the number is on the record but nobody was told).',
+    parameters: { meeting: { type: 'string', required: true }, proposition_id: { type: 'string', required: true }, verdicts: { type: 'array', required: true }, member: { type: 'string' }, owner: { type: 'string' }, lean_job: { type: 'string' }, lean_passed: { type: 'boolean' }, fidelity: { type: 'string' }, template: { type: 'string' } },
+    handler: toolVerdictFinal,
+  },
+  {
+    name: 'vibe_v5_verified_promote',
+    description: '★ PROMOTE A PROPOSITION CARD TO THE VERIFIED TRACK — the ONLY writer of that track, and the place where a settled p is carried together with its JUDGE. card REQUIRED (a propositions/proposition card whose p is exactly 1 or 0); warrant + warrant_kind REQUIRED (which debate/ruling decided it, e.g. kind "debate-unanimous"). Refused by name: a card that is not a proposition card, a truncated card, a card whose p is neither 1 nor 0 ("a preference is not a conclusion"), a withdrawn proof, and a missing warrant. The card keeps its own p; the verified row records the warrant, so "why is this settled" is answerable instead of asserted.',
+    parameters: { card: { type: 'string', required: true }, warrant: { type: 'string', required: true }, warrant_kind: { type: 'string', required: true }, member: { type: 'string' } },
+    handler: toolVerifiedPromote,
   },
   {
     name: 'vibe_v5_start',

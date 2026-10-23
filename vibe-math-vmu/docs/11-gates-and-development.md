@@ -129,6 +129,15 @@
 
 **⇒ 第五条硬要求（★ R8 新增，源于一次**假阴性**）**：**证据源必须与事实所在处一致** —— 断言要在**事实真正落地的那个通道**上读。实例：vmu-assistant 的首跑报 13 passed/3 failed，**三红是假的**——那三条实质断言读的是**驱动 stdout**，而**工具回执只落在会话日志里**（驱动不回声结果）；改为读 `sess.rawResults`／`sess.assistant` 并新增 **`--session <id>` 离线复评**（同一套断言复评**已录会话**、**不花会话**）⇒ **15/0**。★ 与第三条（`--dump-config` 不是运行时定义）同族：**判据与环境错配会产生假阳性或假阴性两个方向的错误**。⇒ 纪律：写断言前先问"**这个事实到底写在哪儿**"；长回执/大对象优先走**离线复评**，而不是把判据压在摘要输出上。
 
+**⇒ 第五条补：把"生效"拆成【三级链】（可达 ≠ 被构造 ≠ 被调用）**（★ R16 新增，源于 B 组复核的两个实例）—— 本条原话说"证据源要与事实所在处一致"，但真正被反复误判的是**"哪一级"算事实**。三级必须分开取证，**缺一级就降一档**：
+1. **可达（reachable）**：代码里存在引用点（`file:line`）—— 只说明"有一条路通到它"，**是一条声明，不是一件已发生的事**。
+2. **被构造（constructed）**：运行时对象里**真的存在** —— `Object.keys(createKernel({...}))` 的成员、包 `packTools()` 的产物、或真机 `request/header.tools` 里的面。
+3. **被调用（called）**：真实轨迹里**出现过它产出的那个事实** —— 会话日志／工具回执／测试断言里的那条读数。
+⇒ 规则：判"**具备**"必须**三级全中**，结论里**逐级给证据**；只有①或①② ⇒ 判**部分**或**缺失**，**不得**写"已实现"。★ "可达"最容易冒充"生效"，因为它只要一次 grep；而"被调用"要在真实轨迹里出现，最容易被"提示语/注释/文档说它生效"替代 —— 那正是本条（证据源）要防的假阴性。
+- 实例 1（B2 公共蓝图）：`vmu.turn.protocolPath` 在 `settings/schema.js:212` 与 `packs/v5r/settings/defaults.json:12` 都有声明（①可达），但全库**零消费者** ⇒ ②③从未发生 ⇒ **缺失**（"声明了一个旋钮，没人拧"）。
+- 实例 2（B11 自反馈库）：成员侧 `vibe_v5_feedback`（`packs/v5r/tools.js:404-438`）三级全中 ⇒ **具备**；院士"阶段自反馈"连**阶段词表**都没有（`packs/v5r` 全目录 `复盘|阶段自|流程优化|组织协作` 零命中）⇒ **缺失**；且提示行 `packs/v5r/prompts/v5r-blocks-b.js:105` 承诺"未闭环条目会出现在汇报与总览的计数里"，而 `tools.js:174-189`（report）与 `:195-210`（overview）**都没有** feedback 计数 ⇒ **③被调用这一级上提示语与代码不一致**（这是缺陷，不是"未来工作"）。
+- 与第四／六条的分工：第四条问"**门能不能咬人**"，第六条问"**观测量在两端是否真的不同**"，本条问"**你判它生效，用的是哪一级的证据**"。
+
 **⇒ 第六条硬要求（★ R9 新增，源于 `vmu-entry` E-17(乙)）**：**断言所选的"观测量"必须在被测的两档之间【真的不同】** —— 否则它是**语义级的空过**，而**语法级的 RULE E 看不见**（RULE E 只问"某个集合是否可能为空"，不问"这个量在两档之间是否有差异"）。实例（本轮实测）：那条断言说的是"`config.packs` 的顺序决定重叠设置 ⇒ 后应用者胜"，观测量却取了 **`vmu.meetings.quorumRule`**；而**两个包现在都声明 `'m-unanimous'`** ⇒ `reversed.quorum === on.quorum`，`!==` **永不成立**。★ **双重教训**：它当年"能区分"**只因为 v3-core 声明的是域外值 `'majority'`**，而那个域外值正是本轮**值域门禁**抓到的真实缺陷（域＝`['m-unanimous','all-unanimous']`，且 `ballot.js` 的默认 tally 只把它当标签）⇒ **不准为救一条断言把非法值写回去**。**正例**：观测 `vmu.meetings.verdictMaxRounds`（v3-core **5** / institute-min **3**，顺序可见）⇒ `vmu-entry` 回 **150/0**。⇒ 纪律：**先证明"这个量真的随被测条件变化"**（把两档实测值对一下）再写进断言；"同值也能过"属**语义空过**，与 RULE E 拦的**语法空过**是两回事、要分别防。
 
 **⇒ 第七条硬要求（★ R10 新增，源于 `audit-dependency-cycles`）**：**门禁必须读"事实所在的那种文本"** —— 静态门扫源码时，**注释与数据字符串不是代码**。实例：依赖环门禁原先直接对**原文**跑 `(?:import|export)[^'"\n]*from '…'`，于是 `resume.js` **注释里**为解释一个摘要助手而写的一句 `import { contentDigest } from './resume.js'` 被当成真 import ⇒ 报出**自环**；当时的修法是**改写注释**——**门禁在指挥文档措辞**，这是判据与环境错配的又一方向。**正解**（与 `audit-package-membership` 同一做法）：**先去注释**（`tests/_lib/strip-comments.mjs`）**再要求语句位置**（`^[ \t]*(?:import|export)\b[^;]*?from '…'` ＋ 副作用导入），并配**自探针**：注释（行/块）与数据字符串里的 import 形状**不得**被计入，而**四种真拼法**（单行、**多行**、副作用、re-export）**必须**仍被找到。★ **附带收获**：换成语句位置判据后，同一棵树上的内部边由 **245 → 246** —— 旧模式连**多行 import** 都看不见（`[^'"\n]*` 不跨行），所以这次既**去掉假边**又**补回一条真边**。⇒ 纪律：静态门的输入要先"降到代码"，再用**双向自探针**证明"假的不算、真的不漏"；只证一头会留下另一头的错。
@@ -211,11 +220,11 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓；PHASE 6 复测 ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 454 / suites 348 / probes 106`** ✓（旧值 134／68／66、322／250／72 均已在扩卷与增件后过期 ✗；PHASE 6 删除 `audit-gate-snapshot.test.mjs` 后作业数 −1） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 367 / suites 263 / probes 104`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 372 / suites 268 / probes 104`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓；**PHASE 6 起由 `--scope-report` 派生、`update-doc-counts --write` 自动重写** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 385 / suites 323 / probes 62`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
-**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **404 作业**（340 套件 + 64 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **415 作业**（351 套件 + 64 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
 **更新方式（2026-10-14 更正 ✗✓；PHASE 6 再更正 ✓）**：旧文写"`scripts/update-doc-counts.mjs` 只**整行重写 4 处**……**不含** `vibe-math-vmu/docs/**`" —— **该说法已过期** ✗。实读该脚本：它覆盖 **6 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`、**本卷两行**），本卷的 `shipped.*` 行与"vmu 子集"行都按标记**整行重写**（**不要手改** ✓）。★ **PHASE 6 修复的残留缺陷**：此前"vmu 子集"行**永远不会被重写** —— 它想用 `GATE_SCOPE=vmu` 下的 `--counts` 派生，而 `--counts` **按设计**是作用域无关的，脚本只能拒绝并留一行人工数字（**永久说谎** ✗）。现在改为从 `node tests/run-tests.mjs --scope-report` 的 `scopes.vmu` 派生（只派生、不跑作业 ✓），该行**由 `--write` 自动跟随**；`--check` 与 `--write` 的差集即为待同步项 ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓
@@ -813,6 +822,8 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `meetingmarker` · `status()` | object | — | — | ok 或 object（轮 11 从 `meetings.js` 抽出（F51 标记族：域派生/耐久接缝/读面/自曝；`meetings.js` 1244→1198 ✓）。**实测零机制形状**：工厂 `createMeetingMarker({clock})`（**不注入 `durable`**）⇒ 首个零参操作 `status()` 回 **object**，其中 **`bound:false`／`durableMarker:false`** 自曝、**不声称任何"开着"的会** ✓ ⇒ 零机制＝"**没有域接缝就明说自己没有**"，而不是假装有 ✓（有 `create*` 工厂 ⇒ 不适用 EXPECT_NA）。★ 期望词表是**闭集**：我先写裸 `object` 被判 mismatch（fail-closed ✓），必须用词表里的 `ok 或 object`。） |
 | `meetings-defaults` | （无 create* 工厂） | — | — | EXPECT_NA（R21 拆出（纯数据：WIRED_KEYS／UNWIRED_REASONS／reasonFor／DEFAULTS，无 `status()`、无 `create*` 工厂 ⇒ 不适用 ✓）—— 行为由 vmu-meetings／vmu-meeting-parity／vmu-meeting-domain 套件覆盖 ✓） |
 | `meetings` · `open()` | ok | — | enforced=[0] enforcedScope=evaluated-so-far | 按声明默认开成（零机制＝按声明默认值开成（不拒）✓） |
+| `meetingverdict` · `status()` | ok | — | — | ok 或 object（PHASE 12 实测：无参 `status()` ⇒ **ok**（零机制＝无裁决 ⇒ 放行 ✓）；`aggregateVerdicts([])` 的具名拒（空集不是 0）属输入错误形状、不登记为零机制 ✓） |
+| `memberface` | （无 create* 工厂） | — | — | EXPECT_NA（纯谓词模块（**无 `create*` 工厂、无服务** ⇒ 矩阵不适用 ✓）；phase 12「座位→工具面」闸新增（非抽取）：`resolveFace`／`faceGate`（`VMU_TOOL_NOT_IN_FACE` 具名拒）／`hiddenNames`（`toolsView.hidden[]` 的目录）。零机制（`faces=null`）⇒ `{ok:true}`＝"没人声明就无物可执行 ⇒ 放行"，与其它 EXPECT_NA 行同形 ✓ —— 行为由 `tests/vmu-member-face.test.mjs` 覆盖 ✓） |
 | `members` · `status()` | object | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
 | `memory` · `record()` | ok | — | — | ok 或 object（task-204 实测（形状取自测试 vmu-memory.test.mjs:63）：`record({kind,text,by,evidence})` ⇒ **ok**（零机制＝有默认 scope、放行 ✓）） |
 | `metrics` · `status()` | ok | — | — | ok 或 object（状态/列表面：无声明 ⇒ 放行（不拒）） |
@@ -857,7 +868,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 104 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 9 probe-errors, 9 n/a ===
+=== ZERO-MECHANISM MATRIX: 106 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 9 probe-errors, 10 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
 
 ### 11.x 改文档的标准手法（★ 轮 524 补 ✓ —— ★ 本节在台账上结转了 6 轮 ✗）

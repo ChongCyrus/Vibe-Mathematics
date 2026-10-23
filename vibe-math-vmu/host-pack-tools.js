@@ -24,6 +24,24 @@
  *
  * ZERO MECHANISM: nothing here runs unless a pack declares `tools` and the kernel holds those
  * declarations (`kernel.packTools()`); an assembly with no such pack gets an empty list.
+ *
+ * ★ PHASE 12 / D7 — THE SEAT FACE GATE (`faceGate`) IS WIRED HERE, and this is the ONE漏斗 every
+ * pack tool goes through. The seat face (`pack.toolFaces`, resolved by the kernel at
+ * `kernel/index.js#resolveMemberToolDeny`) already NARROWS what the wire offers a member; hiding a
+ * tool from the request is not the same as refusing it, so the decision is re-asked here, BEFORE
+ * the handler runs, and a member outside its face gets a named refusal instead of a silent
+ * execution. The predicate is `kernel/memberface.js#faceGate` — the same one `toolsView().hidden[]`
+ * reports from, so "what you cannot see" and "what is refused" cannot drift apart.
+ *   · ROOT sessions (`session-…`) have no member ⇒ allowed (a root agent is not a seat; v5r's
+ *     `deliverMode:'caller'` really does drive packs from the root agent).
+ *   · a member whose face cannot be resolved ⇒ fail-CLOSED (`VMU_TOOL_FACE_UNRESOLVED`), never
+ *     "could not tell, so let it through".
+ *   · no kernel at all ⇒ the spec factory is being used standalone (unit tests, planning): there is
+ *     no seat to resolve and no declaration to honour, so the gate is skipped, and says so.
+ *
+ * NO IMPORT: the predicate is reached THROUGH the kernel (`kernel.memberFaceGate`, which is
+ * `kernel/memberface.js#faceGate` applied to the kernel's own `resolveMemberToolDeny`), so this file
+ * keeps its "no import from the kernel or host" property and there is exactly ONE deny computation.
  */
 const str = (v) => (v === undefined || v === null ? '' : String(v))
 
@@ -52,6 +70,115 @@ export function packToolFailureRows(entries = [], reserved = []) {
   }))
 }
 
+/** The agent id this call was dispatched for ('' when the host did not pass one). */
+function agentIdOf(exec) {
+  return String((exec && exec.agent && exec.agent.id) || '')
+}
+
+/**
+ * WHICH MEMBER is this call for? The SAME criterion the assembler uses (`host.js:1484-1495`,
+ * copied — `host.js` is a closure and must not be imported): the turn tool's record first (only for
+ * a non-root agent id; root ids are `session-…` and have no member), then the learned session map
+ * (`kernel.memberSession(row.id) === agent.id`), then an exact roster id.
+ *
+ * Returns a roster id or `null` — and `null` is a REAL answer (root/non-member), NOT "could not
+ * tell". The fail-closed decision lives in `packToolFaceGate` below.
+ */
+export function resolveTurnMember(kernel = null, exec = null) {
+  if (!kernel || typeof kernel !== 'object') return null
+  const agentId = agentIdOf(exec)
+  const nonRoot = agentId !== '' && !agentId.startsWith('session-')
+  if (nonRoot && typeof kernel.currentTurnMember === 'function') {
+    const m = kernel.currentTurnMember()
+    if (typeof m === 'string' && m !== '') return m
+  }
+  if (agentId === '') return null
+  let roster = []
+  try { roster = kernel.members && typeof kernel.members.roster === 'function' ? kernel.members.roster() : [] } catch { roster = [] }
+  for (const row of Array.isArray(roster) ? roster : []) {
+    if (!row || typeof row.id !== 'string') continue
+    if (row.id === agentId) return row.id
+    try { if (typeof kernel.memberSession === 'function' && kernel.memberSession(row.id) === agentId) return row.id } catch { /* keep looking */ }
+  }
+  return null
+}
+
+/**
+ * The refusal receipt for a member outside its seat face, with the tools it CAN see spelled out.
+ * The visible list is PRESENTATION (a hint) — the decision is `faceGate`'s, the same predicate the
+ * wire filter and `toolsView().hidden[]` use, so this cannot become a second opinion.
+ */
+function outOfFaceRefusal(kernel, member, verdict, declaredNames) {
+  const shown = str(verdict && verdict.toolName) || '(this tool)'
+  let visible = []
+  try {
+    const resolved = typeof kernel.resolveMemberToolDeny === 'function' ? kernel.resolveMemberToolDeny(member) : null
+    if (resolved && Array.isArray(declaredNames)) {
+      visible = resolved.all
+        ? []
+        : (Array.isArray(resolved.allow)
+          ? declaredNames.filter((n) => resolved.allow.includes(n))
+          : declaredNames.filter((n) => !resolved.deny.includes(n)))
+    }
+  } catch { visible = [] }
+  const face = str(verdict && verdict.face) || (str(verdict && verdict.slot) ? 'seat:' + str(verdict.slot) : 'seat')
+  return {
+    ok: false,
+    code: 'VMU_TOOL_NOT_IN_FACE',
+    message: 'member "' + member + '" may not call "' + shown + '": it is outside this member\'s seat face (' + face + ')',
+    hint: visible.length > 0
+      ? 'this member may call: ' + visible.join(', ')
+      : 'this member\'s seat face allows no pack tool at all in this turn',
+    face,
+    member,
+    toolName: shown,
+  }
+}
+
+/**
+ * THE GATE. Called by `makePackToolSpec().run` before the handler, so a refusal cannot leave a
+ * side effect behind. Read-only: resolves the member + its face, asks `faceGate`, returns a verdict
+ * — never throws for a decision, never writes.
+ */
+export function packToolFaceGate({ kernel = null, exec = null, toolName = '', declaredNames = null } = {}) {
+  const name = str(toolName)
+  if (!name) throw new Error('packToolFaceGate needs a toolName')
+  if (!kernel || typeof kernel !== 'object') return { ok: true, member: null, skipped: 'no-kernel' }
+  const member = resolveTurnMember(kernel, exec)
+  if (!member) return { ok: true, member: null, skipped: 'root-or-non-member' }
+  if (typeof kernel.memberFaceGate !== 'function') {
+    return {
+      ok: false,
+      code: 'VMU_TOOL_FACE_UNRESOLVED',
+      message: 'cannot resolve the seat face for member "' + member + '": this kernel has no face resolver',
+      hint: 'seat the member through the kernel (a tool face applies to a SEATED member) before calling pack tools',
+      member,
+      toolName: name,
+    }
+  }
+  let verdict = null
+  let failure = null
+  try { verdict = kernel.memberFaceGate({ member, toolName: name }) } catch (err) { failure = err }
+  if (failure) {
+    return {
+      ok: false,
+      code: 'VMU_TOOL_FACE_UNRESOLVED',
+      message: 'the seat face for member "' + member + '" could not be resolved: ' + str(failure && failure.message),
+      hint: str(failure && failure.hint) || 'seat the member first, or declare toolFaces for its slot',
+      member,
+      toolName: name,
+    }
+  }
+  if (verdict && verdict.ok === false) {
+    let names = Array.isArray(declaredNames) ? declaredNames : null
+    if (!names) {
+      try { names = kernel.packTools().map((t) => t && t.name).filter((n) => typeof n === 'string') } catch { names = [] }
+    }
+    return outOfFaceRefusal(kernel, member, Object.assign({ toolName: name }, verdict), names)
+  }
+  return { ok: true, member, slot: (verdict && verdict.slot) || null }
+}
+
 /**
  * Turn one pack declaration into an INTERNAL tool spec (the shape `host.js#toHostSpec` consumes).
  *
@@ -77,6 +204,13 @@ export function makePackToolSpec({ entry, kernel = null, packId = null } = {}) {
       if (typeof handler !== 'function') {
         throw Object.assign(new Error('pack tool ' + name + ' has no handler function'),
           { code: 'VMU_PACK_MISSING', hint: 'declare tools[i].handler in the pack manifest' })
+      }
+      // ★ THE SEAT FACE GATE — BEFORE the handler, so a refusal cannot leave a side effect behind.
+      // The assembler already narrowed the wire, but a hidden tool is not a refused tool; this is
+      // where "this member may not call that" becomes a named receipt.
+      const gate = packToolFaceGate({ kernel, exec, toolName: name })
+      if (gate.ok === false) {
+        throw Object.assign(new Error(gate.message), { code: gate.code, hint: gate.hint, face: gate.face })
       }
       const out = await handler(args && typeof args === 'object' ? args : {}, { kernel, exec: exec || null, packId: id })
       // THE CONTRACT: a handler returns an OBJECT (or returns nothing). A non-object is wrapped

@@ -91,8 +91,39 @@ const isDeclarationLine = (line) => {
   return false
 }
 const SOURCE_TEXT = SOURCES.map((f) => readFileSync(f, 'utf8').split('\n').filter((l) => !isDeclarationLine(l)).join('\n')).join('\n')
-/** Each source with its text, so the CARRIER column can name the first file that actually reads a key. */
-const SOURCE_FILES = SOURCES.map((f) => ({ rel: f.replace(VMU_DIR, '').replace(/^[\\/]/, '').replace(/\\/g, '/'), text: readFileSync(f, 'utf8') }))
+/** Each source with its text, so the CARRIER column can name the first file that actually reads a key.
+ *  ★ `text` stays RAW (the list-index walk needs real line numbers); `filtered` is the declaration-free view that the
+ *  consumer test must use — reusing raw text there would count an array ELEMENT as a read and silently re-widen the
+ *  wiring column (the exact defect round 33's third tier exists to prevent). */
+const SOURCE_FILES = SOURCES.map((f) => {
+  const raw = readFileSync(f, 'utf8')
+  return {
+    rel: f.replace(VMU_DIR, '').replace(/^[\\/]/, '').replace(/\\/g, '/'),
+    text: raw,
+    filtered: raw.split('\n').filter((l) => !isDeclarationLine(l)).join('\n'),
+  }
+})
+
+/**
+ * ★ A READER THAT THE ASSEMBLY NEVER LOADS IS NOT A READER.
+ *
+ * THE DEFECT THIS FIXES (measured, not suspected): the 接线 column credits the first file whose text reads a key. That
+ * is a necessary condition, not a sufficient one — a key can be read by a module the running plugin never imports. Two
+ * such modules were measured by `tests/vmu-kernel-reachability.test.mjs`:
+ *   · `kernel/paper.js` — owns six `vmu.paper.*` keys; `createPaper(` exists only in tests/scripts. The live v5r paper
+ *     runs through `packs/v5r/paper.js` → `kit/paper.js`, which reads NONE of them ⇒ the table said ✅ 已接线
+ *     ("现在改就有效") about `vmu.paper.officeConsult='required'` while changing it could not change anything.
+ *   · `kernel/grant.js` — owns four `vmu.grant.*` keys; `createGrant(` exists only in one test file.
+ * That is exactly the failure this project keeps paying for (设了值 ≠ 生效了), and it sat on the DOC face: a reader of
+ * the manual would believe a refusal existed that never runs.
+ *
+ * THE FIX: only `kernel/` modules are subject to reachability (the pack loader resolves pack modules from config at
+ * runtime, so a static walk cannot see them — restricting packs/kit/tools would mis-report every pack reader). A kernel
+ * module reached from no plugin entry contributes no reader, so its keys fall to ⚠️ 未接线 while the carrier column
+ * keeps naming the module — the honest verdict: declared, and nothing in the running assembly reads it.
+ */
+const { unreachableKernelModules } = await import(new URL('./lib/reachability.mjs', import.meta.url).href)
+const DEAD_KERNEL = new Set(unreachableKernelModules(VMU_DIR))
 
 /**
  * ★ ROUND 9/256 (task-227): THE TEMPLATE PATH IS A CONSUMER TOO - and this predicate was blind to it.
@@ -159,6 +190,7 @@ export function tableIterationCarrier(key) {
   const needle1 = "'" + key + "'"
   const needle2 = '"' + key + '"'
   for (const f of SOURCE_FILES) {
+    if (DEAD_KERNEL.has(f.rel)) continue          // ★ an unloadable module's iteration is not a consumer either
     // ① every table literal in this file that CONTAINS the key as a quoted member
     const tables = []
     TABLE_DECL.lastIndex = 0
@@ -182,24 +214,36 @@ export function tableIterationCarrier(key) {
   return null
 }
 
-/** Does any runtime source read this key? (the honest meaning of "the knob works") */
+/** The files that READ this key (quoted literal or template placeholder), excluding kernel modules the assembly cannot
+ *  load. Kept as a list, not a boolean, because the CARRIER column needs the first one and `hasConsumer` the count. */
+const consumersOf = (key) => SOURCE_FILES.filter((f) => !DEAD_KERNEL.has(f.rel) &&
+  (f.filtered.includes("'" + key + "'") || f.filtered.includes('"' + key + '"') || isTemplateReader(f.filtered, key)))
+
+/** Does any REACHABLE runtime source read this key? (the honest meaning of "the knob works") */
 export function hasConsumer(key) {
   // NO BACKTICK BRANCH (round 32). Counting a bare `vmu.something` inside a COMMENT as a consumer made this
   // column claim 已接线 for keys that no code ever read - the audit suite flagged two of them, and the root cause
   // was exactly this third alternative. A comment that mentions a key is documentation, not a reader; the audit
   // suite has always judged by quoted literals, so the generator now matches that stricter standard.
-  return SOURCE_TEXT.includes("'" + key + "'") || SOURCE_TEXT.includes('"' + key + '"') ||
-    isTemplateReader(SOURCE_TEXT, key) || tableIterationCarrier(key) !== null
+  //
+  // ★ REACHABILITY (see DEAD_KERNEL above): the per-file scan replaced the concatenated SOURCE_TEXT so a reader in a
+  // module the plugin never loads cannot be credited. Per-file and whole-text agree for every other file.
+  return consumersOf(key).length > 0 || tableIterationCarrier(key) !== null
 }
 
 /**
- * WHERE the key is read (the first runtime source that names it), or null. The 接线 column says WHETHER the
- * knob works; this one says WHO reads it - so a reader can go straight to the consumer instead of trusting
- * the manual (docs/04 §7).
+ * WHERE the key is read (the first REACHABLE runtime source that names it), or null. The 接线 column says WHETHER the
+ * knob works; this one says WHO reads it. ★ A key whose only reader is an unreachable kernel module reports `未接线`
+ * with the module still named here — a reader who sees that pair learns the true state (declared, unreachable reader)
+ * instead of reading "✅ 已接线" about a module that is never constructed.
  */
 export function carrierOf(key) {
-  const hit = SOURCE_FILES.find((f) => f.text.includes("'" + key + "'") || f.text.includes('"' + key + '"') || isTemplateReader(f.text, key))
-  return hit ? hit.rel : tableIterationCarrier(key)
+  const hit = consumersOf(key)[0]
+  if (hit) return hit.rel
+  // ★ an unreachable reader is still the thing a reader of the manual needs to find: naming it (with the verdict saying
+  // it cannot run) is more useful than `—`, which would read as "no such file exists".
+  const dead = deadReaderOf(key)
+  return dead || tableIterationCarrier(key)
 }
 
 const MODE_WRITE = process.argv.includes('--write')
@@ -262,6 +306,18 @@ export const NOT_WIRED = '⚠️ 未接线（改了不会有行为变化）'
  * comments) still reports `未接线` — the criterion keeps its teeth (task-162 C).
  */
 export const UNDETERMINED = '❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有）'
+/**
+ * ★ THE FOURTH TIER — 「未接线（读取者不可达）」, added together with `DEAD_KERNEL`.
+ *
+ * WHY IT EXISTS: the three tiers above assume every file in the source tree can run. Two kernel modules cannot:
+ * `kernel/paper.js` (10 `vmu.paper.*` keys) and `kernel/grant.js` (4 `vmu.grant.*` keys) are imported by nothing the
+ * plugin loads — measured by `tests/vmu-kernel-reachability.test.mjs` and by the same graph walk this generator imports.
+ * Before this tier those keys fell to `❓ 未判定`, i.e. the table said "maybe a dynamic read" about the one situation
+ * where the truth is the opposite: the only reader is a module that is never constructed. A reader of the manual would
+ * still have believed `vmu.paper.officeConsult='required'` armed a refusal. This tier says what is true, and pairs with
+ * a carrier column that still names the dead module, so the claim can be checked instead of trusted.
+ */
+export const NOT_WIRED_UNREACHABLE = '⚠️ 未接线（读取者不可达：该模块装配时不加载）'
 /** A comment line can never be evidence: R32's rule (a key named in a comment is documentation, not a reader). */
 const COMMENT_LINE = /^\s*(\/\/|\*|\/\*)/
 
@@ -470,10 +526,29 @@ export function listIterationEvidence(key) {
   return LIST_INDEX.get(key) || null
 }
 
-/** The three-tier verdict. `已接线` ⇐ a literal READ; else `未判定` ⇐ the key is an element of a list (the dynamic
- *  path may read it); else `未接线` ⇐ nothing but declarations/comments name it. */
+/**
+ * ★ THE FOURTH VERDICT (added with DEAD_KERNEL above): `未接线（读取者不可达）`.
+ *
+ * WHY A FOURTH TIER RATHER THAN REUSING `未判定`: before this, a key whose only reader is an unloadable kernel module
+ * reported `❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有）` — which is the OPPOSITE of the truth. Nothing reads it
+ * dynamically; the one module that would read it is never constructed. Measured on `vmu.paper.*` (10 keys) and
+ * `vmu.grant.*` (4 keys): the table stopped SAYING "wired", but it said "undetermined", and a reader would still have
+ * believed a refusal was armed. The tier names the actual state, so the manual cannot be read as "live, maybe".
+ */
+export function deadReaderOf(key) {
+  const ev = listIterationEvidence(key)
+  if (ev && DEAD_KERNEL.has(ev.rel)) return ev.rel
+  const dead = SOURCE_FILES.find((f) => DEAD_KERNEL.has(f.rel) &&
+    (f.filtered.includes("'" + key + "'") || f.filtered.includes('"' + key + '"') || isTemplateReader(f.filtered, key)))
+  return dead ? dead.rel : null
+}
+
+/** The four-tier verdict. `已接线` ⇐ a REACHABLE literal READ; `未接线（读取者不可达）` ⇐ the only reader is a kernel
+ *  module the assembly never loads; `未判定` ⇐ the key is an element of a list (a dynamic path may read it); `未接线`
+ *  ⇐ nothing but declarations/comments name it. */
 export function verdictOf(key) {
   if (hasConsumer(key)) return WIRED
+  if (deadReaderOf(key)) return NOT_WIRED_UNREACHABLE
   return listIterationEvidence(key) ? UNDETERMINED : NOT_WIRED
 }
 
@@ -503,10 +578,13 @@ const nextText = before.concat(generated.split('\n'), after).join('\n')
 const WIRED_COUNT = SETTING_DEFS.filter((d) => verdictOf(d.key) === WIRED).length
 const UNDETERMINED_COUNT = SETTING_DEFS.filter((d) => verdictOf(d.key) === UNDETERMINED).length
 const NOT_WIRED_COUNT = SETTING_DEFS.filter((d) => verdictOf(d.key) === NOT_WIRED).length
-const SUMMARY = SETTING_DEFS.length + ' keys (' + WIRED_COUNT + ' wired, ' + UNDETERMINED_COUNT + ' undetermined, ' + NOT_WIRED_COUNT + ' declared-but-not-wired)'
+const UNREACHABLE_COUNT = SETTING_DEFS.filter((d) => verdictOf(d.key) === NOT_WIRED_UNREACHABLE).length
+const SUMMARY = SETTING_DEFS.length + ' keys (' + WIRED_COUNT + ' wired, ' + UNDETERMINED_COUNT + ' undetermined, ' +
+  NOT_WIRED_COUNT + ' declared-but-not-wired, ' + UNREACHABLE_COUNT + ' reader-unreachable)'
 
 if (JSON_OUT) {
   console.log(JSON.stringify({ keys: SETTING_DEFS.length, wired: WIRED_COUNT, undetermined: UNDETERMINED_COUNT, notWired: NOT_WIRED_COUNT,
+    unreachableReader: UNREACHABLE_COUNT,
     tableLines: generated.split('\n').length, stale: nextText !== docText }, null, 2))
 } else if (nextText === docText) {
   console.log('vmu settings table: up to date (' + SUMMARY + ')')

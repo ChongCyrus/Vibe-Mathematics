@@ -6,6 +6,20 @@
 // `hand` (举手), `refuse` (被拒输入不推进轮次), `invite`/`invitedspeak` (受邀临时工：只记、不计票、不阻塞收束),
 // `end` (R10-2a 显式结束辩论), `aggregation` (聚合闸), `complete`/`phase` (两阶段派生), `status`/`summary`/`snapshot`,
 // and ballot `freeze`/`unfreeze` (表决期冻结). Every one of them calls an existing kernel method: this face adds no policy.
+//
+// ★ PHASE 12 / D9 (lane-invite): the rule names 举手发言／邀请发言／批量指定成员按一定顺序发言／单次发言版群聊. Those
+// faces live on the `vmu.meetings` SERVICE (the one `vibe_v5_meeting` convenes), but this tool addressed the PRIMITIVE
+// registry only, so a pack-convened meeting answered `VMU_NO_SUCH_OBJECT` for hand/invite/invitedspeak (`docs/
+// acceptance/conformance/lane-invite.md` §2: measured on a real boot — hand, invite, invitedspeak and hands were all
+// refused, and the promise printed in the pack's own receipt note was false). `hand`/`invite`/`invitedspeak` now cross
+// that boundary exactly like `speak`/`status`/`summary`/`close` already did. Two actions were added where the route was
+// MISSING, not merely unused: `order` (the floor is READABLE — `meetingView` deliberately discloses no queue, so a chair
+// that queued speakers could not verify what it did) and `attend` (`meetings.speak` refuses an absent speaker, and
+// nothing in the tool layer could make anyone present, so every non-chair speech on a service meeting was a dead end).
+// Both call existing kernel methods. The one thing this face DOES add is the AUTHORITY GATE the service cannot hold
+// itself: the chair is visible here (`meetingView().chair`) while the service's `queue()` has no chair rail except
+// under call_on, so "only the chair invites" is enforced at this gate and nowhere else. An invitation never marks the
+// invitee PRESENT — attendance is what the quorum counts, so forging it would silently change the denominator.
 export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
   // ★ G7 (real machine): a ballot opened from this face is bound to (service meeting, motion) so that cast votes can
   // be mirrored into the ONE authoritative tally. Keyed by ballot id, per spec instance.
@@ -15,6 +29,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
       description: 'vmu 会议/表决面：action=list|open|speak|silent|hand|refuse|invite|invitedspeak|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|revokelapse|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen|boxlapse|boxrevokelapse|flow|overrideorder。' +
         '会议与表决是**逐对象原语**（内核给工厂、pack 给政策）；本工具只用**内核已登记的实例 id** 寻址（未知 id 具名拒）。' +
         '★ **A2（轮 1）：一个会议对象，两个面都能寻址。** `list` 返回两套注册表：`meetings`（原语）、`serviceMeetings`（`vmu.meetings` 服务，即 `vibe_v5_meeting` 建的那些）、`unionMeetings`（并集）；`status`/`speak`/`close` **先找原语、找不到再找服务**（服务侧的 `status` 带 `registry:"service"` 与动议视图，`speak` 走服务的发言面，`close` 走服务的收束并**进归档**，回执带 `registry` 与 `closeSemantics`）。两处都没有 ⇒ 具名 `VMU_NO_SUCH_OBJECT`，hint **逐条列出两个 id 空间**。' +
+        '★ **D9（轮 12）：邀请/举手/发言序在 SERVICE 会议上真的可达。** `hand`（成员**自荐**入发言队列）、`invite`（**只有主席**：`member` 单个或 `members` 数组**按给定顺序批量**入队，回执 `order` 读回真实队列）、`invitedspeak`（走服务的发言面，回执带 `wasQueued` 说明他是否真在队列里）、`order`（**只读**发言序 `{mode,source,order,queueOpen}`）、`attend`（**发言的前提**：服务的 `speak` 要求在场，而 `open` 只让主席在席）。这五个 action **先找原语、找不到再找服务**，服务侧回执带 `registry:"service"`；**邀请≠签到**（邀请不改 quorum，被邀者须自己 `attend` 后才 `speak`）。`hands` 的**队列管理**（grant/revoke/clear）在服务面上**不存在**，因此**具名拒**并说明缺哪块，绝不假装成功。' +
         '要点：**被拒输入不推进轮次**（refuse）；**受邀发言只记、不计票、不阻塞收束**（invite/invitedspeak）；' +
         '**聚合必须先显式结束辩论**（end ⇒ aggregation.allowed=true，R10-2a）；**表决期冻结**由逐场票箱原语承载（freeze/unfreeze）。' +
         '**F28 有界兜底**：超过声明的墙钟上限（`vmu.meetings.hardLimitMs`）后可用 **lapse** 具名收束（回执带 `{name,why,at,revocable}`），**未到上限会具名拒**，收束后可用 **revokelapse（必须给理由）**恢复；`extend` 是**声明步长**的延长命令（读 `speechExtendMs/Max`）。' +
@@ -22,12 +37,13 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         '其中 **boxreopen 需理由**且受 `vmu.ballot.reopenFloor` 约束（门槛只升不降）；若构造时声明了 `openMaxMs`，则 **boxlapse/boxrevokelapse** 对它提供同一套有界兜底。' +
         '**发言序/地面（B③/B④，Round 14）**：`flow` 设**四种地面模式**（open 无队列｜hands 按举手序｜round_robin 按已发言次数｜call_on 主席指定），`overrideorder` **覆盖发言序**（fifo｜round-robin｜chair｜random，random 为**确定性**洗牌：种子与结果 order 都写进回执）。**两者都只由主席做、都必须给 reason**，且**未声明 `vmu.meetings.orderMode` 的部署一律具名拒**（默认不可覆盖）。★ 这两个 action 寻址的是 **`vmu.meetings` 服务记录**（`kernel/meetings.js`），**不是**上面 `open` 造的逐对象会议 id —— 未知 id 由服务**具名拒**（hint 列出在活记录）。',
       parameters: {
-        action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜refuse｜invite｜invitedspeak｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜extend｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
-          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'refuse', 'invite', 'invitedspeak', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit'] }),
+        action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜order｜refuse｜invite｜invitedspeak｜attend｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜extend｜extendlimit｜proceed｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
+          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order', 'refuse', 'invite', 'invitedspeak', 'attend', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit', 'proceed'] }),
         id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定）'),
         meeting: param('string', '会议 id 的【别名】：与 id 同义（两者都接受；同时给且不一致 ⇒ 具名拒）。ballot 用它把票绑定到服务会议，见 summary/close 与 ballot 的读数'),
         ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
-        member: param('string', '成员 id（speak/silent/hand/refuse/invitedspeak/extend/vote/boxcast 必填）'),
+        member: param('string', '成员 id（speak/silent/hand/refuse/attend/invitedspeak/extend/vote/boxcast 必填；invite 用它邀一个人——批量用 members）'),
+        members: param('array', 'invite 的**批量形**：按数组顺序把一串成员放进发言队列（「批量指定成员按一定顺序发言」）。与 member 互斥（同时给 ⇒ 具名拒）；顺序就是队列顺序，回执 order 读回真实队列'),
         text: param('string', '发言内容（speak/refuse/invitedspeak 必填）'),
         reason: param('string', 'silent/close/reopen/refuse/end/freeze/unfreeze/boxreopen/**revokelapse/boxrevokelapse** 的原因（end 与两个撤销必填：无理由的结束/撤销正是这条规则要防的静默动作）'),
         ms: param('number', 'extend 的延长毫秒数（缺省读 vmu.meetings.speechExtendMs，仍为 0 ⇒ 具名拒）'),
@@ -44,13 +60,13 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         op: param('string', 'hands：grant｜revoke｜clear｜list', { enum: ['grant', 'revoke', 'clear', 'list'] }),
         scope: param('string', 'hands clear/revoke 的作用域（all｜round）', { enum: ['all', 'round'] }),
         why: param('string', 'invite 的理由（必填：邀请必须可审计，v5r meeting_invite 的口径）；flow/overrideorder 也读 reason 作理由（必填）'),
-        by: param('string', 'invite/invitedspeak/end 的执行人（审计事实）；flow/overrideorder 必填且必须是该会议的主席'),
-        actor: param('string', '谁在动作（审计事实）：true 的政策下 close/extendlimit 必须给，且必须等于该会议的主席（vmu.meetings.closeRequiresChair/extendRequiresChair）'),
+        by: param('string', 'invite/invitedspeak/end 的执行人（审计事实）；**服务会议的 invite 必填且必须等于该会议的主席**（权限只在看得见席位的那一层执行）；flow/overrideorder 必填且必须是该会议的主席'),
+        actor: param('string', '谁在动作（审计事实）：true 的政策下 close/extendlimit 必须给，且必须等于该会议的主席（vmu.meetings.closeRequiresChair/extendRequiresChair）；省略时 close 退回到 by，再退回到 member（同一个人的三种写法，不是猜测）'),
         // ★ 会议级延长（规则「院士可延长会议时长上界」）。★ 与 `extend` 区分：`extend` 是【发言】延长，
         // 读 speechExtendMs/Max；`extendlimit` 是【会议墙钟上界】延长，读 extendCeilingMs。两个上界两个面。
         mode: param('string', 'flow/overrideorder 的模式（flow：open｜hands｜round_robin｜call_on；overrideorder：fifo｜round-robin｜chair｜random）', { enum: ['open', 'hands', 'round_robin', 'call_on', 'fifo', 'round-robin', 'chair', 'random'] }),
       },
-      run: async ({ action, id, meeting: meetingArg, ballotId, member, text, reason, agenda, roster, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor } = {}) => {
+      run: async ({ action, id, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor } = {}) => {
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
         // ★ G7 (real machine): `meeting` and `id` name the same object but only `id` was read, so a caller that used
         // the documented-in-the-task `meeting:"m1"` got `no live meeting with id undefined`. BOTH are accepted now; a
@@ -77,7 +93,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             throw Object.assign(new Error('no live meeting with id ' + String(id)), {
               code: 'VMU_NO_SUCH_OBJECT',
               hint: inService
-                ? 'meeting ' + String(id) + ' lives in the SERVICE registry: list/speak/summary/close cross registries, but ' + String(what || 'this action') + ' addresses the primitive registry only'
+                ? 'meeting ' + String(id) + ' lives in the SERVICE registry: list/speak/summary/close/status/extendlimit/second/withdraw/flow/overrideorder/hand/invite/invitedspeak/order/attend cross registries, but ' + String(what || 'this action') + ' addresses the primitive registry only'
                 : 'use action=list (it reports both registries: meetings, serviceMeetings, unionMeetings)',
             })
           }
@@ -157,10 +173,108 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             throw noSuchMeeting(pid)
           }
           if (action === 'silent') return Object.assign({ ok: true, action, id }, await live().markSilent(need(member, 'member'), reason || 'no input'))
-          if (action === 'hand') return Object.assign({ ok: true, action, id }, live().handUp(need(member, 'member')))
+          // ── D9: 举手 ────────────────────────────────────────────────────────────────────────────────────────────
+          // A primitive meeting raises a hand (`handUp`, which respects the round's ask list). A SERVICE meeting has
+          // no hand-up at all — its floor is a QUEUE, so "raising a hand" IS "put myself in the queue" (`queue`).
+          // No second book of who wants the floor is created here.
+          if (action === 'hand') {
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('hand')
+            const primitive = kernel.liveMeeting(pid)
+            if (primitive) return Object.assign({ ok: true, action, id }, primitive.handUp(need(member, 'member')))
+            const svc = svcOf()
+            if (svc && typeof svc.queue === 'function' && serviceHas(pid)) {
+              const who = String(need(member, 'member'))
+              const out = svc.queue({ meeting: pid, member: who, by: who })
+              return Object.assign({ ok: true, action, id: pid, registry: 'service', source: 'self' }, out)
+            }
+            throw noSuchMeeting(pid)
+          }
           if (action === 'refuse') return Object.assign({ ok: true, action, id }, live().refuseInput(need(member, 'member'), text || '', reason || 'refused'))
-          if (action === 'invite') return Object.assign({ ok: true, action, id }, live().invite(need(member, 'member'), { by: by || null, why: need(why, 'why') }))
-          if (action === 'invitedspeak') return Object.assign({ ok: true, action, id }, live().speakInvited(need(member, 'member'), need(text, 'text'), { by: by || null }))
+          // ── D9: 邀请发言（单个或批量按序）────────────────────────────────────────────────────────────────────────
+          // The primitive face keeps an INVITE LEDGER (invited/invitedOrder, audited, never counted). A service meeting
+          // has no ledger and this face will not invent one: an invitation on the SERVICE is "the chair puts this
+          // person on the floor queue". The CHAIR RAIL lives here because this is the only place that can see the
+          // seat (`meetingView().chair`) — the service's `queue()` accepts anyone under fifo, so without this gate a
+          // member could invite on the chair's behalf.
+          if (action === 'invite') {
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('invite')
+            const primitive = kernel.liveMeeting(pid)
+            if (primitive) return Object.assign({ ok: true, action, id }, primitive.invite(need(member, 'member'), { by: by || null, why: need(why, 'why') }))
+            const svc = svcOf()
+            if (svc && typeof svc.queue === 'function' && serviceHas(pid)) {
+              const reason = need(why, 'why')
+              const actor = by === undefined || by === null || by === '' ? null : String(by)
+              if (actor === null) {
+                return refused('VMU_INVALID_ARGUMENT', 'action invite on service meeting ' + pid + ' needs by:"<the chair id>"',
+                  'an invitation must be auditable: name WHO invites (the chair). A member who wants the floor invites THEMSELVES with action=hand { id, member:"<own id>" }')
+              }
+              let chair = null
+              if (typeof svc.meetingView === 'function') {
+                try { const view = svc.meetingView({ meeting: pid }); chair = view && view.chair ? String(view.chair) : null } catch (e) { chair = null }
+              }
+              if (!chair) {
+                return refused('VMU_ENGINE_UNAVAILABLE', 'meeting ' + pid + ' declares no chair, so nobody holds the authority to invite',
+                  'the invitation face consults the chair seat (kernel meetings.open({ chair })); with no chair it must refuse rather than pick an authority')
+              }
+              if (actor !== chair) {
+                return refused('VMU_NOT_PERMITTED', 'invite is a CHAIR action on meeting ' + pid + '; "' + actor + '" is not the chair (' + chair + ')',
+                  'only the chair invites or orders speakers; a member puts THEMSELVES on the floor with action=hand { id, member:"<own id>" }')
+              }
+              const batch = Array.isArray(members) ? members : null
+              const single = member === undefined || member === null || String(member) === '' ? null : String(member)
+              if (batch && single !== null) {
+                return refused('VMU_INVALID_ARGUMENT', 'action invite takes EITHER member (one guest) OR members (an ordered list), not both',
+                  'pass members:["r-1","r-2"] to invite a batch in that order, or member:"r-1" for a single invitation')
+              }
+              let list = []
+              if (batch) {
+                if (batch.length === 0) return refused('VMU_INVALID_ARGUMENT', 'invite needs at least one member: `members` is empty', 'pass members:["r-1", …]')
+                list = batch.map((x) => String(x === undefined || x === null ? '' : x).trim())
+                const blank = list.filter((x) => x === '')
+                if (blank.length > 0) return refused('VMU_INVALID_ARGUMENT', '`members` holds an empty entry', 'every entry must be a member id, in the order they should speak')
+              } else list = [String(need(member, 'member'))]
+              const receipts = list.map((who) => {
+                const row = svc.queue({ meeting: pid, member: who, by: actor })
+                return row && row.receipt ? row.receipt : row
+              })
+              const floor = typeof svc.orderView === 'function' ? svc.orderView({ meeting: pid }) : null
+              return { ok: true, action, id: pid, registry: 'service', invited: list, why: reason,
+                order: floor ? floor.order : null, mode: floor ? floor.mode : null, modeSource: floor ? floor.source : null,
+                queueOpen: floor ? floor.queueOpen : null, receipts,
+                note: 'the invitation puts the listed members ON THE FLOOR QUEUE in exactly this order; it does NOT mark them present — attendance stays their own act (action=attend), so an invitation never changes the quorum' }
+            }
+            throw noSuchMeeting(pid)
+          }
+          // ── D9: 被邀者发言 ──────────────────────────────────────────────────────────────────────────────────────
+          // On a SERVICE meeting the invited voice speaks through the service's OWN speech face (minutes, budget,
+          // quota, discipline-mute all stay where they live). `wasQueued` is READ BACK before speaking so the receipt
+          // says whether this person had actually been invited — the queue IS the invitation, and no ledger is faked.
+          if (action === 'invitedspeak') {
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('invitedspeak')
+            const primitive = kernel.liveMeeting(pid)
+            if (primitive) return Object.assign({ ok: true, action, id }, primitive.speakInvited(need(member, 'member'), need(text, 'text'), { by: by || null }))
+            const svc = svcOf()
+            if (svc && typeof svc.speak === 'function' && serviceHas(pid)) {
+              const who = String(need(member, 'member'))
+              const body = need(text, 'text')
+              let wasQueued = null
+              if (typeof svc.orderView === 'function') {
+                try { const floor = svc.orderView({ meeting: pid }); if (floor && Array.isArray(floor.order)) wasQueued = floor.order.indexOf(who) !== -1 } catch (e) { wasQueued = null }
+              }
+              let out
+              try { out = svc.speak({ meeting: pid, member: who, text: body }) } catch (e) {
+                if (e && e.code === 'VMU_NOT_MEMBER') {
+                  throw Object.assign(e, { hint: 'the speaker must be PRESENT before speaking: call action=attend { id, member:"' + who + '" } first — an invitation only puts a member on the floor queue, it does not forge attendance (attendance is what the quorum counts)' })
+                }
+                throw e
+              }
+              return Object.assign({ ok: true, action, id: pid, registry: 'service', wasQueued }, out)
+            }
+            throw noSuchMeeting(pid)
+          }
           if (action === 'end') return Object.assign({ ok: true, action, id }, live().endDebate({ by: by || null, reason: need(reason, 'reason') }))
           // Round 8 (B①): the agenda is closed, never deleted (target names the item; reason is mandatory).
           if (action === 'agendaclose') {
@@ -213,7 +327,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             // live table; `summary` stays the archive read face), while a primitive close keeps it in the live map.
             const svc = svcOf()
             if (svc && typeof svc.close === 'function' && serviceHas(pid)) {
-              const out = svc.close({ meeting: pid, actor: actor === undefined ? (by || null) : actor })
+              const out = svc.close({ meeting: pid, actor: actor === undefined ? (by || member || null) : actor })
               return Object.assign({ ok: true, action, id: pid, registry: 'service', closeSemantics: 'service-archives' }, out, {
                 note: 'closed in the meetings SERVICE: the meeting moved to the service ARCHIVE (not the primitive live table); its motions/votes remain readable via action=summary',
               })
@@ -221,9 +335,57 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             throw noSuchMeeting(pid)
           }
           // F28: the bounded fallback (named + revocable) and the declared extension step (GAP-MTG-05).
+          // ★ D9: hands(grant/revoke/clear/list) is the PRIMITIVE floor face. A service meeting's floor is a QUEUE with
+          // no dequeue/revoke/scope at all, so this action cannot be honoured there by delegating — it is refused by
+          // NAME with the two actions that DO exist on that face (hand = self-queue, invite = chair order).
           if (action === 'hands') {
-            return Object.assign({ ok: true, action, id }, live().hands({ op: need(op, 'op'), member: member || null,
-              by: by || null, why: reason || '', scope: scope || 'all' }))
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('hands')
+            const primitive = kernel.liveMeeting(pid)
+            if (primitive) {
+              return Object.assign({ ok: true, action, id: pid }, primitive.hands({ op: need(op, 'op'), member: member || null,
+                by: by || null, why: reason || '', scope: scope || 'all' }))
+            }
+            if (svcOf() && serviceHas(pid)) {
+              return refused('VMU_ENGINE_UNAVAILABLE', 'the meeting ' + pid + ' is a SERVICE meeting: its floor is a QUEUE and it has no grant/revoke/clear/list of hands',
+                'on a service meeting a member raises a hand with action=hand { id, member:"<own id>" } (self-queue) and the chair orders speakers with action=invite { id, by:"<chair>", why:"…", members:[…] }; action=hands is the primitive meeting face')
+            }
+            throw noSuchMeeting(pid)
+          }
+          // ★ D9: the READ side of the floor. `queue`/`invite` write the order; without this action the order could be
+          // written and never read back, and the batched-invitation ordering claim would be unfalsifiable.
+          if (action === 'order') {
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('order')
+            const svc = svcOf()
+            if (svc && typeof svc.orderView === 'function' && serviceHas(pid)) {
+              return Object.assign({ ok: true, action, id: pid, registry: 'service' }, svc.orderView({ meeting: pid }))
+            }
+            if (kernel.liveMeeting(pid)) {
+              return refused('VMU_INVALID_ARGUMENT', 'order reads the floor ORDER, which only a service meeting has; ' + pid + ' is a primitive meeting',
+                'a primitive meeting has a per-round ask list instead of a floor order: read it with action=status (it reports who the round asks)')
+            }
+            throw noSuchMeeting(pid)
+          }
+          // ★ D9: ATTENDANCE. A pack-convened service meeting starts with only the chair present (meetings.open puts
+          // the chair in `present`), and no other face routed `attend` — so every non-chair member was silently unable
+          // to speak at all ("attend() first"). This is PURE DELEGATION: no policy, no default, no role check and no
+          // re-worded refusal of our own — the kernel owns who may be marked present and what that does to the quorum.
+          // It is deliberately a SEPARATE act from `invite`: inviting puts someone on the floor queue, it never forges
+          // attendance (attendance is what the quorum counts).
+          if (action === 'attend') {
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('attend')
+            const svc = svcOf()
+            if (svc && typeof svc.attend === 'function' && serviceHas(pid)) {
+              return Object.assign({ ok: true, action, id: pid, registry: 'service' },
+                svc.attend({ meeting: pid, member: need(member, 'member') }))
+            }
+            if (kernel.liveMeeting(pid)) {
+              return refused('VMU_INVALID_ARGUMENT', 'attend marks a member PRESENT in a service meeting; ' + pid + ' is a primitive meeting',
+                'a primitive meeting has no present/roster/quorum — it tracks the round ask list instead, readable with action=status')
+            }
+            throw noSuchMeeting(pid)
           }
           // B② (Round 10): leave requests — asking and deciding are separate acts (the approver is DECLARED).
           if (action === 'leaverequest') {
@@ -249,6 +411,22 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (kernel.liveMeeting(pid)) {
               return refused('VMU_INVALID_ARGUMENT', 'extendlimit extends the MEETING wall bound, which lives on the meetings SERVICE; ' + pid + ' is a primitive meeting',
                 'use action=extend for a SPEECH extension on a primitive meeting (speechExtendMs/Max), or convene the meeting through the pack so it exists in the service (extendWall)')
+            }
+            throw noSuchMeeting(pid)
+          }
+          // ★ PHASE 12 D1 · 「未到齐超时，院士自行决定怎么做」的唯一出口。同样只打在 SERVICE 上：
+          // 预约/等待状态机住在 `kernel/meetings.js`（服务注册表），原语注册表没有这两个状态。
+          if (action === 'proceed') {
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('proceed')
+            const svc = svcOf()
+            if (svc && typeof svc.proceed === 'function' && serviceHas(pid)) {
+              const out = svc.proceed({ meeting: pid, actor: actor === undefined ? (by || null) : actor, by: by || null, why: reason || why || null })
+              return Object.assign({ ok: true, action, id: pid, registry: 'service' }, out)
+            }
+            if (kernel.liveMeeting(pid)) {
+              return refused('VMU_INVALID_ARGUMENT', 'proceed applies to a SCHEDULED/WAITING meeting, which lives on the meetings SERVICE; ' + pid + ' is a primitive meeting',
+                'primitive meetings start immediately (they have no scheduled state); use action=open to convene one')
             }
             throw noSuchMeeting(pid)
           }

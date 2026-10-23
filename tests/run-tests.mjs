@@ -317,7 +317,10 @@ const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // 30 -> 31, deliberately: `audit-docs-entry-template` joined in round 187. It enforces that every capability entry in the
 // design volumes carries a maturity marker - the difference between "designed" and "works today" - over 171 entries,
 // with a selftest and an end-to-end control both proving it can fail.
-const QUICK_EXPECTED_JOBS = 37
+// 37 -> 38, deliberately: `tests/vmu-v5r-verdict-final.test.mjs` joined in phase 12 with the 辩论最终裁决 trigger (the
+// pack tool that reads the chair, calls `rulePropositionProbability` and mails the card owner). Its NAME contains `v5r`,
+// so the curated `v5` prefix picks it up - the same "on purpose" case as S30, not a drifted filter.
+const QUICK_EXPECTED_JOBS = 38
 // `vmu` is the ITERATION subset for developing the vmu framework: the vmu jobs themselves, plus every
 // gate that guards a SHARED surface a vmu change can reach (preset rows and the generated patch,
 // the installer, package membership, README/doc counts, path discipline, artifact docs, the shared

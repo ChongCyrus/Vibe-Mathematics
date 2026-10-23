@@ -64,6 +64,11 @@ const EXPECT = {
   formal: G('具名拒（带 code）', 'task-214 实测：`check()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT** ⇒ 零机制＝无形式化请求 ⇒ 具名拒即真实形状 ✓'), mathjobs: G('ok 或 object', '**两侧都写清** ✓（★ 轮 4 更正读数 ✗✓）：**状态/列表面 `list()` ⇒ `{ok:true,count:0,dropped:0,jobs:[]}`（object 信封；零机制＝无作业 ⇒ 空列表放行 ✓）**；`submit()` 缺参 ⇒ 具名拒 **VMU_MATH_INVALID_INPUT**（task-214 实测，保留 ✓）。★★ 为什么改：轮 2 这行写"`list()` ⇒ array[0]"，而**当时探针没有固定 op**（`mathjobs` 同时有 `submit`/`list`，谁先匹配谁被调）⇒ 那个形状可能来自另一个方法、也可能是模块自身的形状变化 ✗ ⇒ 本轮**固定探针 op＝`list`**（见 `PROBE_ARGS.mathjobs`）后按**实测**改写；`submit` 的具名拒仍由既有 task-214 断言守着 ✓'), lean: G('具名拒（带 code）', 'task-214 实测：`submit()` ⇒ 具名拒 **VMU_LEAN_STATEMENT_REQUIRED** ⇒ 零机制＝无命题文本 ⇒ 具名拒即真实形状 ✓'), lifecycle: G('具名拒（带 code）', 'task-214 实测：`stages()` ⇒ 具名拒 **VMU_LIFECYCLE_NOT_DECLARED** ⇒ 零机制＝未声明生命周期 ⇒ 具名拒即真实形状 ✓'), stateversion: G('具名拒（带 code）', 'task-214 实测：`check()` ⇒ 具名拒 **VMU_COMPAT_UNKNOWN_COMBO** ⇒ 零机制＝无版本声明 ⇒ 具名拒即真实形状 ✓'), repropack: G('具名拒（带 code）', 'task-214 实测：`build()` ⇒ 具名拒 **VMU_MATH_SEED_REQUIRED** ⇒ 零机制＝无复现种子 ⇒ 具名拒即真实形状 ✓'),
   idempotency: G('ok 或 object', '列表/状态面放行 ✓；**显式 `absent` 只在去重操作上**（该操作需参数 ⇒ 探针见 NEEDS_ARGS ✓）'),
   meetings: G('按声明默认开成', '零机制＝按声明默认值开成（不拒）✓'),
+  // ── PHASE 12 D15：辩论裁决聚合面（`kernel/meetingverdict.js`，vmu-core 新建）
+  // 零机制形状取自**实测**：无参 `status()` ⇒ `ok`（零机制＝一条裁决都没有 ⇒ 空计数/空列表放行 ✓）。
+  // ★ 为什么不按 `aggregateVerdicts([])` 登记：空集合**具名拒**（"空集不是 0"）是**输入错误**的形状，不是"零机制时的形状"；
+  // 混写会让下一个读者以为"有记录时才会拒"。两个形状分开写，探针只走无参那一面。
+  meetingverdict: G('ok 或 object', 'PHASE 12 实测：无参 `status()` ⇒ **ok**（零机制＝无裁决 ⇒ 放行 ✓）；`aggregateVerdicts([])` 的具名拒（空集不是 0）属输入错误形状、不登记为零机制 ✓'),
   // ── 探针缺参（**显式登记**，不算 mismatch ✓）：需显式探针或补参数
   arbitration: G('具名拒或 ok', 'task-214 批 3 补参（形状取自测试 vmu-arbitration.test.mjs:261 `open({parties,subject})`）：补参前实测具名拒 **VMU_ARBITRATION_OFF**（带口径 `enforcedScope=evaluated-so-far`）⇒ 若补参后仍拒，则"具名拒即零机制真实形状"✓；若放行 ⇒ 亦合规 ✓'),
   budget: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-budget.test.mjs:16）：不传 settings 下 `open({scope})` ⇒ **ok**（零机制＝不限额、放行 ✓）'), charter: G('具名拒或 ok', 'task-214 批 3 补参（形状取自测试 vmu-charter.test.mjs:236 `propose({kind:"charter",text,by,articles:[{id}]})`）：补参前实测具名拒 **VMU_CHARTER_NOT_AUTHORIZED** ⇒ 补参后若放行 ⇒ ok ✓；若仍具名拒 ⇒ 写明"缺参即其零机制形状" ✓'),
@@ -185,6 +190,13 @@ const EXPECT = {
   // nothing to probe - which corresponds verbatim to `EXPECT_NA`. Same category, and the same reason for existing, as
   // the `contentvalue` row below (`:176`), which is also a pure-function module extracted to get under 1200.
   receiptbounds: G('EXPECT_NA', '纯函数工具模块（**无 `create*` 工厂** ⇒ 矩阵不适用 ✓）；轮 32 从 `host.js` 抽出（该文件 **1231 行越过 1200** ⇒ 抽取，**未往 `KNOWN` 加名字** ✓，`host.js` 1231→1151）：回执尺寸契约 `MAX_TOOL_RESULT_BYTES` ＋ **结构内、路径级**省略 `boundedToolResult(value)`（**不动键、不动数组长度**；其形状与 `elided:[{path,from,to,bytes}]` 由 `tests/vmu-receipt-truncation.test.mjs` 覆盖 ✓）。'),
+  // PHASE 12 (v5r rules · D7 座位→工具面闸): `memberface` is a NEW pure-predicate module (no `create*` factory, no
+  // service, nothing to probe) written for the seat/face gate. Recorded because the matrix treats a module that EXISTS
+  // without a row as a FINDING — the row is forced by the module landing, not chosen for convenience. Under zero
+  // mechanism (`faces === null`) `faceGate` returns `{ok:true}` = "no declaration ⇒ nothing to enforce ⇒ let it pass",
+  // which is the same shape the other EXPECT_NA rows describe; behaviour is covered by
+  // `tests/vmu-member-face.test.mjs` and the wiring by `host.js`'s `tools/pre-execute`.
+  memberface: G('EXPECT_NA', '纯谓词模块（**无 `create*` 工厂、无服务** ⇒ 矩阵不适用 ✓）；phase 12「座位→工具面」闸新增（非抽取）：`resolveFace`／`faceGate`（`VMU_TOOL_NOT_IN_FACE` 具名拒）／`hiddenNames`（`toolsView.hidden[]` 的目录）。零机制（`faces=null`）⇒ `{ok:true}`＝"没人声明就无物可执行 ⇒ 放行"，与其它 EXPECT_NA 行同形 ✓ —— 行为由 `tests/vmu-member-face.test.mjs` 覆盖 ✓'),
   meetingmarker: G('ok 或 object', '轮 11 从 `meetings.js` 抽出（F51 标记族：域派生/耐久接缝/读面/自曝；`meetings.js` 1244→1198 ✓）。**实测零机制形状**：工厂 `createMeetingMarker({clock})`（**不注入 `durable`**）⇒ 首个零参操作 `status()` 回 **object**，其中 **`bound:false`／`durableMarker:false`** 自曝、**不声称任何"开着"的会** ✓ ⇒ 零机制＝"**没有域接缝就明说自己没有**"，而不是假装有 ✓（有 `create*` 工厂 ⇒ 不适用 EXPECT_NA）。★ 期望词表是**闭集**：我先写裸 `object` 被判 mismatch（fail-closed ✓），必须用词表里的 `ok 或 object`。'),
   // Round 9: the same measured reason as `timevalue` - `contentvalue` is a pure-function module (no `create*` factory,
   // no service, nothing to probe), extracted out of `resume.js` when the file crossed the 1200-line rule. It is

@@ -91,13 +91,15 @@ try {
     'step 1 is the independent simultaneous estimate round (布尔概率 + 理由)', steps[0].what)
   ok(/轮数由院士/.test(steps[1].what), 'step 2 leaves the number of rounds to the academician (the rule says so)', steps[1].what)
   ok(steps[2].status === 'supported' && /最终裁决/.test(steps[2].what), 'step 3 is the final verdict round', steps[2].what)
-  ok(steps[3].status === 'pending' && typeof steps[3].pendingReason === 'string' && steps[3].pendingReason.length > 40,
-    '★ step 4 (aggregate + notify the card holder) is reported as NOT implemented, with a reason', steps[3].status)
-  ok(Array.isArray(d.pendingSteps) && d.pendingSteps.length === 1 && d.pendingSteps[0].n === 4,
-    'the tool-facing `pendingSteps` names exactly the unimplemented step', d.pendingSteps)
+  // ★ 状态变了：第 4 步（聚合 + 通知卡片持有者）已从 pending 变成 supported —— 内核 `vmu.meetingverdict`
+  //   提供算术与校验、pack 面 `vibe_v5_verdict_final` 是唯一触发者。这里两侧都钉住，免得"实现回退"被当成无事发生。
+  ok(steps[3].status === 'supported' && /平均/.test(steps[3].what) && /通知/.test(steps[3].what),
+    '★ step 4 (aggregate + notify the card holder) is now IMPLEMENTED: both branches of the rule are spelled out', steps[3].what)
+  ok(Array.isArray(d.pendingSteps) && d.pendingSteps.length === 0,
+    '`pendingSteps` is empty, and it stays a FIELD (an empty list is the honest form of "nothing is pending")', d.pendingSteps)
   // every step must name only tools that really exist
   const toolNames = steps.reduce((a, s) => a.concat(s.tools.map((t) => t.split(' ')[0])), [])
-  const known = ['vibe_vmu_meeting', 'vibe_v5_verdict', 'vibe_v5_say', 'vibe_v5_message']
+  const known = ['vibe_vmu_meeting', 'vibe_v5_verdict', 'vibe_v5_say', 'vibe_v5_message', 'vibe_v5_verdict_final']
   ok(toolNames.length > 0 && toolNames.every((t) => known.includes(t)), 'every tool a step names is a real published tool', toolNames)
   const others = ids.filter((t) => t !== 'debate')
   ok(others.length === 5, 'the non-debate list is non-empty (RULE E)', others.length)
@@ -108,7 +110,9 @@ try {
   ok(unknown.known === false && unknown.hasProcedure === false && /legal:/.test(unknown.note),
     'an unknown type is unknown-by-name and lists the legal values (never a silent empty)', unknown.note)
   const gaps = proc.MEETING_PROCEDURE_GAPS
-  ok(Array.isArray(gaps) && gaps.length === 2, 'the two unimplemented RULES are registered as gaps', gaps && gaps.length)
+  // 聚合缺口已闭合（`verdict-aggregation` 从 GAPS 里删除，因为它不再是缺口）；剩下的是人数下限那条。
+  ok(Array.isArray(gaps) && gaps.length === 1 && gaps[0].id === 'min-voters',
+    'exactly the ONE still-unimplemented rule is registered as a gap (the aggregation gap was closed, not hidden)', gaps && gaps.map((g) => g.id))
   ok(gaps.every((g) => g.status === 'not-implemented' && typeof g.rule === 'string' && typeof g.owner === 'string'),
     'each gap carries the rule text, its status and who must implement it', gaps.map((g) => g.id))
 
@@ -143,6 +147,36 @@ try {
   ok(notDeclared && /ordinary, academic, debate, closure, paper, planning/.test(String(notDeclared.hint)),
     'the refusal lists the legal values (the academician learns the vocabulary from the refusal)', notDeclared && notDeclared.hint)
 
+  // ── ③b THE TITLE: its own carried field (the rule says the chair sets 标题 AND 内容事项, two things) ────────────
+  const titled = kernel.meetings.open({ type: 'academic', chair: 'r-acad', actor: 'r-acad', roster: ['r-acad', 'r-1'], materials: '议题正文', title: '第一次学术交流' })
+  ok(titled.title === '第一次学术交流', '★ the receipt reports the TITLE back (it is a carried field, not re-derived from the agenda)', titled.title)
+  ok(titled.receipt && titled.receipt.title === '第一次学术交流', 'the receipt RECORD carries it too (a reader of the log sees the title)', titled.receipt && titled.receipt.title)
+  const titledSum = kernel.meetings.summary({ meeting: titled.meeting })
+  ok(titledSum.title === '第一次学术交流' && titledSum.materials === '议题正文',
+    '★★ summary() reports title AND materials as TWO DIFFERENT things — the title is not the first line of the agenda',
+    { title: titledSum.title, materials: titledSum.materials })
+  const noTitle = kernel.meetings.open({ type: 'academic', chair: 'r-acad', actor: 'r-acad', roster: ['r-acad'], materials: 'x' })
+  ok(noTitle.title === null && kernel.meetings.summary({ meeting: noTitle.meeting }).title === null,
+    '★ omitting the title stores null (no invented title, no crash)', noTitle.title)
+  // ★★ the agenda pointer used to be VALIDATED AND THEN DROPPED: `m.materials` had zero readers, so a chair could
+  // state 内容事项 and no read face could ever return it. Both halves are asserted, plus the "not derived" proof.
+  const titledView = kernel.meetings.meetingView({ meeting: titled.meeting })
+  ok(titledView.title === '第一次学术交流' && titledView.materials === '议题正文',
+    '★★ meetingView() reports BOTH carried fields (the face the live run actually reads)', { title: titledView.title, materials: titledView.materials })
+  const sameAgenda = kernel.meetings.open({ type: 'academic', chair: 'r-acad', actor: 'r-acad', roster: ['r-acad'], materials: '议题正文', title: '另一个标题' })
+  ok(kernel.meetings.summary({ meeting: sameAgenda.meeting }).title === '另一个标题' && sameAgenda.title !== titled.title,
+    '★★ same agenda text, different title ⇒ different titles (proof the title is CARRIED, not re-derived from materials)',
+    { first: titled.title, second: sameAgenda.title })
+  const badMaterials = (() => { try { kernel.meetings.open({ type: 'academic', chair: 'r-acad', actor: 'r-acad', roster: ['r-acad'], materials: ['a', 'b'] }); return null } catch (e) { return e } })()
+  ok(!!badMaterials && badMaterials.code === 'VMU_INVALID_ARGUMENT' && /got object/.test(String(badMaterials.message)),
+    '★ a non-string agenda is refused by name (the pointer is a string, not an array of items)', badMaterials && badMaterials.message)
+  const badTitle = (() => { try { kernel.meetings.open({ type: 'academic', chair: 'r-acad', actor: 'r-acad', roster: ['r-acad'], title: { text: 'x' } }); return null } catch (e) { return e } })()
+  ok(!!badTitle && badTitle.code === 'VMU_INVALID_ARGUMENT' && /got object/.test(String(badTitle.message)),
+    '★ a non-string title is refused by name and its TYPE is named (no "[object Object]" title)', badTitle && badTitle.code + ' / ' + badTitle.message)
+  const blankTitle = kernel.meetings.open({ type: 'academic', chair: 'r-acad', actor: 'r-acad', roster: ['r-acad'], title: '   ' })
+  ok(blankTitle.title === null, '★ a blank title normalises to null', blankTitle.title)
+  ok(kernel.meetings.summary({ meeting: blankTitle.meeting }).materials === null, '★ an omitted agenda reads back as null, never ""', kernel.meetings.summary({ meeting: blankTitle.meeting }).materials)
+
   // ── ④ THE PACK TOOL: TYPE + SUBJECT REACH THE KERNEL ───────────────────────────────────────────────────────
   console.log('=== 4. THE TOOL FACE PASSES THE TYPE AND THE SUBJECT THROUGH ===')
   const typed = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '辩论 p-2 的定义是否符合原意', type: 'debate', subject: 'p-2' })
@@ -151,8 +185,8 @@ try {
   ok(typed.parsed && typed.parsed.subject === 'p-2', 'the receipt carries the subject', typed.parsed && typed.parsed.subject)
   ok(typed.parsed && typed.parsed.procedure && typed.parsed.procedureBinding === 'recommendation',
     '★ a debate receives the recommended skeleton and its binding is printed on the receipt', typed.parsed && typed.parsed.procedureBinding)
-  ok(typed.parsed && Array.isArray(typed.parsed.pendingSteps) && typed.parsed.pendingSteps.length === 1,
-    '★ the receipt itself reports the unimplemented step (no silent half)', typed.parsed && typed.parsed.pendingSteps)
+  ok(typed.parsed && Array.isArray(typed.parsed.pendingSteps) && typed.parsed.pendingSteps.length === 0,
+    '★ the receipt itself reports the (now empty) pending list instead of omitting the field', typed.parsed && typed.parsed.pendingSteps)
   ok(typed.parsed && /推荐/.test(String(typed.parsed.procedureNote)) && /不是门禁/.test(String(typed.parsed.procedureNote)),
     'the receipt says, in words, that the skeleton is a recommendation and not a gate', typed.parsed && typed.parsed.procedureNote)
   const backSum = kernel.meetings.summary({ meeting: typed.parsed.meeting })
@@ -249,6 +283,226 @@ try {
   const extByTool = await call(b, 'vibe_vmu_meeting', { action: 'extendlimit', id: 'no-such-meeting', ms: 600000, actor: 'acad' })
   ok(extByTool.parsed && extByTool.parsed.ok === false && extByTool.parsed.code === 'VMU_NO_SUCH_OBJECT',
     '★ the kernel face really offers `extendlimit` (an unknown id is refused by name — the action is reachable)', extByTool.parsed && extByTool.parsed.code)
+
+  // ── ⑥ 预约 / 等待 / 继续开会 ────────────────────────────────────────────────────────────────────────────────
+  // The rule has three sentences and each one needs its own machine shape: 「院士可以设置（预约）会议时间」,
+  // 「到点但法定人数不足 ⇒ 等待阶段」, 「等待超时 ⇒ 院士自行决定怎么做」. The third one is the interesting one:
+  // a framework that "helps" by auto-opening on timeout would be a MECHANISM with no authorization, so the honest
+  // shape is "make the deadline visible, refuse to decide, and give the chair exactly one attributable way out".
+  console.log('=== 6. SCHEDULED START / WAITING / THE CHAIR\'S OWN WAY OUT ===')
+  let now2 = 1000
+  const HOUR = 3600000
+  // a quorum that can actually be UNMET: the default quorum is met by construction (quorumMin 0, quorumCap 3 clamps
+  // the requirement to the people present), so a test that never sets these would "prove" the waiting state by
+  // silently never entering it.
+  const s = await boot({
+    root: join(root, 'schedule'), packs: ['v5r'], clock: () => now2,
+    // ★ settings arrive as the NESTED `config.vmu` tree (or as dotted `vmu.*` keys on the config itself). A nested
+    // `{ settings: {...} }` object is HOST config, not settings — it is accepted and then silently does nothing, which
+    // is exactly the "设了值 ≠ 生效了" trap this suite exists to catch: the first version of this block passed
+    // `settings: {...}` and every waiting-state assertion below went red because the quorum stayed at its default.
+    vmu: { meetings: { quorumMin: 2, quorumCap: 0 } },
+  })
+  const sk = s.handle.kernel
+  await sk.members.hire({ id: 'acad', slot: 'chair' })
+  await sk.members.hire({ id: 'r-1', slot: 'member' })
+  await sk.members.hire({ id: 'r-2', slot: 'member' })
+  const serr = (fn) => { try { return { value: fn() } } catch (e) { return { error: e } } }
+
+  // ⑥a a future `at` creates a SCHEDULED meeting — not an open one carrying a decorative field
+  const sched = sk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1'], materials: '预约的会', at: now2 + HOUR })
+  ok(sched.state === 'scheduled' && sched.scheduledFor === now2 + HOUR && sched.receipt.state === 'scheduled',
+    '★★ open({ at: future }) creates a SCHEDULED meeting and the receipt says so (a schedule is a STATE, not a field)', { state: sched.state, at: sched.scheduledFor })
+  const sView = sk.meetings.meetingView({ meeting: sched.meeting })
+  ok(sView.state === 'scheduled' && sView.scheduledFor === now2 + HOUR && sView.activatedAt === null,
+    '★ the read face shows "not started yet" honestly (scheduled + scheduledFor + activatedAt:null)', { state: sView.state, activatedAt: sView.activatedAt })
+  const sAct = serr(() => sk.meetings.speak({ meeting: sched.meeting, member: 'acad', text: '提前说话' }))
+  ok(!!sAct.error && sAct.error.code === 'VMU_STATE' && /SCHEDULED/.test(String(sAct.error.message)) && /reads .* work now/.test(String(sAct.error.hint)),
+    '★★ acting in a meeting that has not started is refused BY NAME, and the hint says reading still works', sAct.error && sAct.error.code)
+  const earlyProceed = serr(() => sk.meetings.proceed({ meeting: sched.meeting, actor: 'acad' }))
+  ok(!!earlyProceed.error && earlyProceed.error.code === 'VMU_STATE' && /has not arrived yet/.test(String(earlyProceed.error.hint)),
+    '★ proceed() BEFORE the start time is refused: nothing is late yet (a way out that is always open is not a way out)', earlyProceed.error && earlyProceed.error.code)
+  const sStatus = sk.meetings.status()
+  ok(sStatus.scheduledMeetings.some((x) => x.meeting === sched.meeting),
+    '★ status() lists it under scheduledMeetings (an operator can tell runnable from scheduled without opening it)', sStatus.scheduledMeetings)
+
+  // ⑥b the WAIT is the only act allowed before the start, and it is what lets the wait ever succeed
+  const earlyAttend = sk.meetings.attend({ meeting: sched.meeting, member: 'r-1' })
+  ok(earlyAttend.ok === true && earlyAttend.state === 'scheduled' && earlyAttend.settled === null,
+    '★★ attending BEFORE the start time is allowed and recorded — without this exemption a waiting meeting could never reach quorum (the wait would be a dead end)', { state: earlyAttend.state, settled: earlyAttend.settled })
+  now2 = now2 + HOUR
+  const dueMet = sk.meetings.meetingView({ meeting: sched.meeting })
+  ok(dueMet.state === 'open' && dueMet.startedLate === true && dueMet.activatedAt === now2,
+    '★★ at the scheduled time with the quorum met, the NEXT TOUCH opens it — no timer, no background job, replayable', { state: dueMet.state, activatedAt: dueMet.activatedAt })
+
+  // ⑥c quorum SHORT at the due time ⇒ waiting (and it is a named state, not "still scheduled")
+  now2 = now2 + HOUR
+  const shortMtg = sk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1', 'r-2'], materials: '到点人不够', at: now2 + HOUR })
+  now2 = now2 + HOUR
+  const waiting = sk.meetings.meetingView({ meeting: shortMtg.meeting })
+  ok(waiting.state === 'waiting' && Number.isFinite(waiting.waitStartedAt) && waiting.waitDecisionDue === false,
+    '★★ quorum short at the due time ⇒ WAITING, with the moment the wait began on the record', { state: waiting.state, waitStartedAt: waiting.waitStartedAt })
+  const wAct = serr(() => sk.meetings.speak({ meeting: shortMtg.meeting, member: 'acad', text: '人没到齐就说话' }))
+  ok(!!wAct.error && wAct.error.code === 'VMU_STATE' && /WAITING/.test(String(wAct.error.message)) && /waitOnDueMs/.test(String(wAct.error.hint)),
+    '★ acting while WAITING is refused by name and the hint names the wait key', wAct.error && wAct.error.code)
+  const wStatus = sk.meetings.status()
+  ok(wStatus.waitingMeetings.some((x) => x.meeting === shortMtg.meeting) && wStatus.waitDecisionDue.length === 0,
+    '★ status() separates waitingMeetings from waitDecisionDue (the actionable half is not mixed in)', { waiting: wStatus.waitingMeetings.length, due: wStatus.waitDecisionDue.length })
+  // ★★ THE ASSERTION THE EXEMPTION EXISTS FOR: the latecomer arrives and the meeting starts by itself
+  const lateArrive = sk.meetings.attend({ meeting: shortMtg.meeting, member: 'r-1' })
+  ok(lateArrive.settled === 'started' && lateArrive.state === 'open',
+    '★★ a latecomer attending a WAITING meeting reaches quorum and the meeting STARTS on that touch — the wait is not a dead end', { settled: lateArrive.settled, state: lateArrive.state })
+
+  // ⑥d the wait EXPIRES and the framework still does NOT decide
+  now2 = now2 + HOUR
+  const expiring = sk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1', 'r-2'], materials: '等到超时', at: now2 + HOUR })
+  now2 = now2 + HOUR
+  const startedWait = sk.meetings.meetingView({ meeting: expiring.meeting })
+  ok(startedWait.state === 'waiting', 'the second scheduled meeting is waiting (RULE E: the expiry assertion below is not vacuous)', startedWait.state)
+  now2 = now2 + 300000 + 1
+  const expired = sk.meetings.meetingView({ meeting: expiring.meeting })
+  ok(expired.state === 'waiting' && expired.waitDecisionDue === true,
+    '★★ when the wait EXPIRES the state is still `waiting` and only the deadline flag flips — the framework makes the decision VISIBLE instead of making it', { state: expired.state, due: expired.waitDecisionDue })
+  ok(sk.meetings.status().waitDecisionDue.includes(expiring.meeting),
+    '★ the expired wait is in the operator-visible actionable list (waitDecisionDue)', sk.meetings.status().waitDecisionDue)
+  // the chair's one way out, and it is attributable
+  const pAnon = serr(() => sk.meetings.proceed({ meeting: expiring.meeting }))
+  ok(!!pAnon.error && pAnon.error.code === 'VMU_NOT_PERMITTED' && /needs the chair to name itself/.test(String(pAnon.error.message)),
+    '★★ overriding an unmet quorum without saying WHO is refused by name (an authority act must be attributable)', pAnon.error && pAnon.error.code)
+  const pWrong = serr(() => sk.meetings.proceed({ meeting: expiring.meeting, actor: 'r-1' }))
+  ok(!!pWrong.error && pWrong.error.code === 'VMU_NOT_PERMITTED' && /only the meeting’s chair/.test(String(pWrong.error.message)),
+    '★★ a non-chair member cannot start a waiting meeting', pWrong.error && pWrong.error.code)
+  const proceed = sk.meetings.proceed({ meeting: expiring.meeting, actor: 'acad', why: '只剩三个人，等不起了' })
+  ok(proceed.ok === true && proceed.state === 'open' && proceed.startedLate === true,
+    '★★ the chair starts it anyway, and the receipt records startedLate', { state: proceed.state, startedLate: proceed.startedLate })
+  ok(proceed.beforeDeadline === false && proceed.receipt.beforeDeadline === false && proceed.waitedMs > 300000,
+    '★ the receipt says the chair decided AFTER the declared wait (an early start would have to be distinguishable from an on-time one)', { beforeDeadline: proceed.beforeDeadline, waitedMs: proceed.waitedMs })
+  ok(proceed.receipt.by === 'acad' && proceed.receipt.why === '只剩三个人，等不起了',
+    '★ who + why are on the record (the meeting is now legally running with a short quorum)', { by: proceed.receipt.by })
+  const afterProceed = sk.meetings.attend({ meeting: expiring.meeting, member: 'r-1' })
+  const speakAfter = sk.meetings.speak({ meeting: expiring.meeting, member: 'r-1', text: '开始了' })
+  ok(afterProceed.ok === true && speakAfter.ok !== false,
+    '★★ after proceed() the meeting really RUNS (attending and speaking are no longer refused) — the exit is not cosmetic', { attend: afterProceed.ok, speak: speakAfter.ok })
+
+  // ⑥e the other half of the deadline flag: an EARLY proceed is recorded distinguishably
+  now2 = now2 + HOUR
+  const earl = sk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1', 'r-2'], materials: '没超时就接着开', at: now2 + HOUR })
+  now2 = now2 + HOUR
+  const earlyWake = sk.meetings.proceed({ meeting: earl.meeting, actor: 'acad' })
+  ok(earlyWake.ok === true && earlyWake.beforeDeadline === true,
+    '★ the chair may also decide BEFORE the declared wait runs out, and the receipt marks it as such', { beforeDeadline: earlyWake.beforeDeadline })
+
+  // ⑥f the capability can be turned OFF, and then it is a NAMED refusal — never a silent "open now"
+  const off = await boot({ root: join(root, 'off'), packs: ['v5r'], clock: () => now2, vmu: { meetings: { scheduleAllowed: false } } })
+  const offk = off.handle.kernel
+  await offk.members.hire({ id: 'acad', slot: 'chair' })
+  const offErr = serr(() => offk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad'], materials: 'x', at: now2 + HOUR }))
+  ok(!!offErr.error && offErr.error.code === 'VMU_STATE' && /vmu\.meetings\.scheduleAllowed=false/.test(String(offErr.error.message)),
+    '★★ with vmu.meetings.scheduleAllowed=false, scheduling is refused BY NAME and the key is printed (the old behaviour was to silently open now)', offErr.error && offErr.error.code)
+  const offNow = offk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad'], materials: '立即开' })
+  ok(offNow.ok === true && offNow.state === 'open',
+    '★ the switch is about SCHEDULING, not about meetings: an immediate convene still works with it off', offNow.state)
+
+  // ⑥g A TIME IS A NUMBER **OR** AN ISO STRING — and anything else is refused by name
+  // Measured before this existed: `const ms = at === null ? clock() : at` stored the raw value, so an ISO string became a
+  // STRING `openedAt`, `ms > clock()` was a string/number comparison (always false ⇒ the "scheduled" meeting silently
+  // opened NOW), and `ms + budgetWallMs` string-concatenated the wall bound. A model passing a timestamp is normal,
+  // so the framework takes both forms; it must not coerce the difference away.
+  const isoFuture = new Date(now2 + HOUR).toISOString()
+  const isoMtg = sk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1'], materials: '用 ISO 时间预约', at: isoFuture })
+  ok(isoMtg.state === 'scheduled' && isoMtg.scheduledFor === (now2 + HOUR),
+    '★★ an ISO-8601 string is accepted as a start time and normalised to epoch ms (a model passes timestamps, not numbers)', { state: isoMtg.state, scheduledFor: isoMtg.scheduledFor })
+  ok(typeof isoMtg.scheduledFor === 'number' && Number.isFinite(isoMtg.wallLimitMs),
+    '★★ the stored start time is a NUMBER (the old code stored the string and `ms + budgetWallMs` concatenated it)', { type: typeof isoMtg.scheduledFor, wall: isoMtg.wallLimitMs })
+  const badAt = serr(() => sk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad'], materials: 'x', at: 'next tuesday' }))
+  ok(!!badAt.error && badAt.error.code === 'VMU_INVALID_ARGUMENT' && /not a usable time/.test(String(badAt.error.message)) && /next tuesday/.test(String(badAt.error.message)),
+    '★★ an unparseable time is refused BY NAME and the offending value is printed (never coerced to 0 ⇒ "open now")', badAt.error && badAt.error.code)
+  const nullAt = serr(() => sk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad'], materials: 'x', at: { soon: true } }))
+  ok(!!nullAt.error && nullAt.error.code === 'VMU_INVALID_ARGUMENT' && /got object/.test(String(nullAt.error.message)),
+    '★ a non-string non-number is refused and its TYPE is named', nullAt.error && nullAt.error.code)
+
+  // ── ⑧ ONE CALL, SEVERAL CONSECUTIVE MEETINGS (PHASE 12 D6) ────────────────────────────────────────────────
+  // 「允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）」
+  // Before this existed the sentence had no shape at all: `open()` took one meeting and `close()` ended the story.
+  // The assertions below split into three questions that must not be confused:
+  //   (a) is the DECLARATION validated when it is made (not three meetings later)?
+  //   (b) does closing really OPEN the next one, with the declared type, and does the read-back say what is pending?
+  //   (c) when the next one cannot open, is that a NAMED failure that does not eat the closure and does not consume
+  //       the sequence (a silent skip would look exactly like "there was nothing left").
+  console.log('=== 8. 一次性设置连续展开的多个会议: 声明即校验、关闭即展开、失败具名 ===')
+  const seqMs = 3000
+  const qb = await boot({ root: join(root, 'seq'), packs: ['v5r'], clock: () => seqMs })
+  const qk = qb.handle.kernel
+  await qk.members.hire({ id: 'acad', slot: 'chair' })
+  await qk.members.hire({ id: 'r-1', slot: 'member' })
+
+  const seqOpen = qk.meetings.open({
+    chair: 'acad', actor: 'acad', roster: ['acad', 'r-1'], materials: '学术交流', type: 'academic',
+    sequence: [{ type: 'planning', materials: '未来规划', subject: 'p-plan' }, { type: 'closure', materials: '结题' }],
+  })
+  ok(seqOpen.sequence && seqOpen.sequence.total === 3, '★ one call declares THIS meeting plus two follow-ups (total 3)', seqOpen.sequence)
+  ok(seqOpen.sequence.next && seqOpen.sequence.next.type === 'planning', '★ the receipt names the NEXT meeting it will open (not just a count)', seqOpen.sequence && seqOpen.sequence.next)
+  const seqSum = qk.meetings.summary({ meeting: seqOpen.meeting })
+  ok(seqSum.sequence && seqSum.sequence.remaining === 2 && seqSum.sequence.total === 3, '★★ the pending count READS BACK from the kernel (a declared-only sequence would be invisible here)', seqSum.sequence)
+  const seqView = qk.meetings.meetingView({ meeting: seqOpen.meeting })
+  ok(seqView.sequence && seqView.sequence.next && seqView.sequence.next.subject === 'p-plan', '★ the next one\'s subject survives the round trip (its materials text does NOT — a head view is a pointer)', seqView.sequence && seqView.sequence.next)
+
+  // (a) the declaration is validated NOW — every refusal names the entry INDEX and the offending thing
+  const badSeq = (args) => serr(() => qk.meetings.open(Object.assign({ chair: 'acad', actor: 'acad', roster: ['acad'], materials: 'x' }, args)))
+  const sNotArray = badSeq({ sequence: 'planning' })
+  ok(!!sNotArray.error && sNotArray.error.code === 'VMU_INVALID_ARGUMENT' && /ARRAY/.test(String(sNotArray.error.message)) && /got string/.test(String(sNotArray.error.message)),
+    '★ a non-array sequence is refused by name and its TYPE is printed', sNotArray.error && sNotArray.error.code)
+  const sUnknownKey = badSeq({ sequence: [{ agenda: 'x' }] })
+  ok(!!sUnknownKey.error && sUnknownKey.error.code === 'VMU_INVALID_ARGUMENT' && /sequence\[0\]/.test(String(sUnknownKey.error.message)) && /unknown key "agenda"/.test(String(sUnknownKey.error.message)),
+    '★★ an unknown descriptor key is refused WITH ITS INDEX — never silently ignored (a typo would otherwise become a default meeting)', sUnknownKey.error && sUnknownKey.error.message)
+  const sChair = badSeq({ sequence: [{ chair: 'r-9' }] })
+  ok(!!sChair.error && sChair.error.code === 'VMU_INVALID_ARGUMENT' && /unknown key "chair"/.test(String(sChair.error.message)) && /inherited/.test(String(sChair.error.hint)),
+    '★★ a descriptor may NOT install a chair: that would be a second convene path that never passed the convene rail', sChair.error && sChair.error.message)
+  const sBadType = badSeq({ sequence: [{ type: 'secret' }] })
+  ok(!!sBadType.error && sBadType.error.code === 'VMU_NO_SUCH_OBJECT' && /sequence\[0\]/.test(String(sBadType.error.message)) && /typeCatalog/.test(String(sBadType.error.message)),
+    '★ the type of a follow-up is checked against the SAME catalogue before anything is opened', sBadType.error && sBadType.error.code)
+  const sBadAt = badSeq({ sequence: [{ at: 'next tuesday' }] })
+  ok(!!sBadAt.error && sBadAt.error.code === 'VMU_INVALID_ARGUMENT' && /sequence\[0\]\.at/.test(String(sBadAt.error.message)),
+    '★ an unparseable follow-up time is refused with the entry index', sBadAt.error && sBadAt.error.code)
+  const sNull = badSeq({ sequence: [null] })
+  ok(!!sNull.error && sNull.error.code === 'VMU_INVALID_ARGUMENT' && /must be an OBJECT/.test(String(sNull.error.message)),
+    '★ a null entry is refused (no crash, no silent skip)', sNull.error && sNull.error.code)
+
+  // (b) closing really opens the next one
+  const close1 = qk.meetings.close({ meeting: seqOpen.meeting, actor: 'acad' })
+  ok(typeof close1.nextMeeting === 'string' && close1.nextMeeting !== seqOpen.meeting, '★★ closing the first meeting OPENED the second one', { next: close1.nextMeeting })
+  ok(close1.receipt && close1.receipt.sequence && close1.receipt.sequence.index === 1 && close1.receipt.sequence.total === 2,
+    '★★ the close RECEIPT records which step of the sequence advanced (index 1 of 2)', close1.receipt && close1.receipt.sequence)
+  const second = qk.meetings.summary({ meeting: close1.nextMeeting })
+  ok(second.ok === true && second.type === 'planning', '★★ the follow-up opened with the type the chair DECLARED (not ordinary)', { type: second && second.type })
+  ok(second.sequence && second.sequence.remaining === 1, '★ the remaining part of the sequence was carried onto the new meeting', second.sequence)
+  const close2 = qk.meetings.close({ meeting: close1.nextMeeting, actor: 'acad' })
+  const third = qk.meetings.summary({ meeting: close2.nextMeeting })
+  ok(third.ok === true && third.type === 'closure' && third.sequence && third.sequence.remaining === 0,
+    '★★ the second close opened the third and last meeting; nothing is left pending', { type: third && third.type, seq: third && third.sequence })
+  const close3 = qk.meetings.close({ meeting: close2.nextMeeting, actor: 'acad' })
+  ok(close3.nextMeeting === null && close3.nextMeetingError === null,
+    '★ the last close reports `null` for the next meeting and NO error: "there was nothing left" is a different fact from "one was refused"', { next: close3.nextMeeting, err: close3.nextMeetingError })
+
+  // (c) a refused advance is NAMED, does not undo the closure, and does not consume the sequence
+  const rb = await boot({ root: join(root, 'seq-refuse'), packs: ['v5r'], clock: () => seqMs, vmu: { meetings: { scheduleAllowed: false } } })
+  const rk = rb.handle.kernel
+  await rk.members.hire({ id: 'acad', slot: 'chair' })
+  // ★ WHY THIS BOOT SHAPE: `vmu.meetings.scheduleAllowed` is read ONCE, at construction (`meetings.js:164`
+  // `sget(...)`), so flipping it on a live kernel would prove nothing about the rail — that is the old trap
+  // 「设了值 ≠ 生效了」. The deployment below is the realistic one: scheduling is OFF and the chair still
+  // declares a follow-up that needs a future start time.
+  const willRefuse = rk.meetings.open({
+    chair: 'acad', actor: 'acad', roster: ['acad'], materials: '下一场是预约的',
+    sequence: [{ type: 'academic', materials: '预约的下一场', at: seqMs + HOUR }],
+  })
+  ok(willRefuse.ok === true, '★ the immediate meeting itself still opens (the switch is about SCHEDULING, not meetings)', willRefuse && willRefuse.state)
+  const closeRefused = rk.meetings.close({ meeting: willRefuse.meeting, actor: 'acad' })
+  ok(closeRefused.ok === true, '★★ the closure itself SUCCEEDED — a refused follow-up must not un-close a meeting that really closed', closeRefused && closeRefused.ok)
+  ok(closeRefused.nextMeeting === null && closeRefused.nextMeetingError && closeRefused.nextMeetingError.code === 'VMU_STATE',
+    '★★ the refused advance is named (`VMU_STATE`, scheduleAllowed=false) instead of silently skipped', closeRefused.nextMeetingError && closeRefused.nextMeetingError.code)
+  ok(/vmu\.meetings\.scheduleAllowed=false/.test(String(closeRefused.nextMeetingError && closeRefused.nextMeetingError.message)),
+    '★ the refusal prints the SETTING that refused it (the reader does not have to guess)', closeRefused.nextMeetingError && closeRefused.nextMeetingError.message)
 } finally {
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 }
