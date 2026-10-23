@@ -935,3 +935,39 @@ charter 文本属**冻结的 capture 层**（T71 parity 逐字钉死，§19/§21
 - 本节**没有**证明 member prompt 里的那句话被改掉了：charter 是冻结层，提示词侧只能靠 `v5r-fix-leader-id` 的职责说明 ＋ 真机跑里由 office 执行 `vibe_v5_configure` 来闭合。真机跑的任务文件已要求院士设置 `vmu.turn.leaderId`，下一轮据此复核。
 - `leadershipReading` 读的是 `members.roster()` 的行形状（`{id, slot, state}`）；若内核改行形状，本模块会退化成 `no-chair-seated`（安全方向），并由测试的 §5 防御组提示。
 - 本轮之后 R1–R13 的处置：R1（裁定非缺陷）、R2/R3/R5/R6/R7/R8/R9/R11/R12/R13 已修且有门禁，R4（touch 驱动，机制如此、已在大厅记档）、R10（已修，commit `8ff2f45a`）。
+
+## §23 R13 第三次修正：不是「通道没通」，是「条件本来就错」+ 一个把事实吞掉的字段
+
+### 23.1 真机实测发现（run 3，`full-1024-055534.jsonl`）
+院士（`slot:'chair'`）在场、`vmu.turn.leaderId` 为空时，同一个成员提示词里同时出现：
+- 五段 leaderless 变体（含 `# v5r-charter-roster-temp-leaderless`「你的雇主：…」——**对一个坐在主席席的人说「你的雇主」**）；
+- 同行名册句「\*\*院士 member-1（你）\*\* —— 本所领头人」。
+
+团队规则原文：提示词里出现「本所当前没有在册院士」而实际有院士在 chair 席 ⇒ 框架缺陷。
+
+### 23.2 两层根因（都是「设了值 ≠ 生效了」的同族）
+1. **条件错**：`prompt-switches.js` 把 `vmu.turn.leaderId !== ''` 当作「有在册院士」。设置没写时章程就走 leaderless，即使有人坐在 chair 席。现在改为：**设置优先，席位占用人是文档化的回退**——`declaredLeader` 非空则用之，否则用 `turn.chairId`。理由写进源码：办公室仍会收到「席位有人但没写设置」的具名警告（`leadership.code = chair-seated-but-leaderId-empty`，命令照旧给出），但**提示词不得否认一个正坐在席上的人**。
+2. **事实被字段表吞掉**（更隐蔽）：`kernel/index.js` 的 turnFacts 早已返回 `rosterIds`/`chairId`，`turn/index.js` 的 `merged` 也已经把它们并进调用，**但 `open()` 里那个 turn 字面量没有这两个字段**，于是 `turn.rosterIds` 在策略里永远是 `undefined`，leader 对子每一轮都落到 leaderless。用探针实测（spy 包住 sectionPolicy 打印 `Object.keys(ctx.turn)`）：
+   ```
+   [id, member, role, roleLabel, phase, task, why, nextStep, roster, quorum, statusBlock, facts, meetingState, formalStatus, round, at]
+   ```
+   ——没有 `rosterIds`，也没有 `chairId`。**单元测试直接调 `decideSections`，永远看不到这个形状**，所以绿得毫无意义（正是本轮反复出现的假绿类别）。修法：`open()` 形参补 `rosterIds`/`chairId`，turn 字面量补两个字段。
+
+### 23.3 第三个缺陷：一个分节写给一个角色，却出现在所有角色的提示词里
+`v5r-charter-roster-temp` 是 `leader-conditional` 块，而 `charterSections()` 对**每种角色**都发每个 leader-conditional 块（`CHARTER_ROLE_BINDINGS` 表达不了「临时工 **且** 无领头人」）。策略只能在这对里二选一，无法因角色而关掉整对。新增 `ROLE_ONLY_SECTIONS = [['v5r-charter-roster-temp','temp'], ['v5r-charter-roster-temp-leaderless','temp']]`：**只关错角色的那一对**（对正确角色不推任何 decision，让上面的变体决定保活）。第一次写成 `enabled: role === only` 同时推两个名字 ⇒ 临时工拿到**两个变体同时开**，被 R13i 抓住。
+
+### 23.4 门禁
+`tests/vmu-prompt-live-facts.test.mjs` 由 18 条扩到 **23 条**：R13f（席位占用即领头人，设置未写时）/ R13g（主席的提示词**零** leaderless 变体、带 with-leader、且指名主席）/ R13h（临时工专属对主席关闭）/ R13i（临时工角色下**恰好一个**变体）/ R13j（角色未知 ⇒ 不变，不静默关）。
+
+两条断言在过程中被自己证伪，都记在文件里：
+- 旧 R13e/R13g 用**短语**「本所当前没有在册院士」判断——而 `v5r-corrections.js` 的更正段**引用**了这句话（「…章程会走 leaderless 版并说「本所当前没有在册院士」，那是假的」），检测器把「警告一个缺陷」误判成「犯了该缺陷」。改为判断**结构化事实**：哪些变体分节的标题被组装进来（`line === '# ' + name`）。
+- 主席变体一直渲染成「常驻研究员（含你）」——不是产品缺陷，是**测试没有挂 `PACK.bindings`**：没有 bindings 时 role-kind 分节一律落到默认文本（member 变体）。测试宿主必须挂宿主会挂的东西。
+
+### 23.5 为什么这条值得三层修
+规则原文关心的是**提示词自身是否自相矛盾**。三层修的都是「同一条事实在不同面被回答两次」：设置面（leaderId）、事实面（席位占用）、角色面（这段文案到底写给谁）。任何一层缺失，框架都会给出一个**看起来正确、读起来自相矛盾**的提示词——这种缺陷不会被任何「工具是否能调用成功」的测试发现，只能靠读真机提示词原文。
+
+### 23.6 当前状态
+- 门禁：`vmu-prompt-live-facts` 23/0；邻居 `vmu-turn` 191/0、`vmu-charter-leader-pair` 24/0、`vmu-pack-prompts` 24/0、`vmu-leadership-reading` 43/0、`vmu-kernel` 260/0、`vmu-meetings` 201/0。
+- 派生面：`regen-all --check` **16/16 in sync**。
+- 尚未做：第 4 次真机跑（验证主席提示词真的不再矛盾）、以及规则表里仍为 ⚠️ 的行。
+

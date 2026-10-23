@@ -798,7 +798,13 @@ export function createTurnOrchestrator({
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
   /** ① open a turn: who, which round, which phase, which task. */
-  const open = ({ member, role = null, roleLabel = null, phase, task = null, why = null, nextStep = null, roster = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1 } = {}) => {
+  // ★★★ R13 (third pass, the part that made the earlier fix REAL): `rosterIds` and `chairId` were carried by the seam
+  // and merged into the call, but THIS literal dropped them - so `turn.rosterIds` was always undefined inside the prompt
+  // policy and the leader pair fell back to "leaderless" on every turn. Measured: a spy policy saw the turn's keys as
+  // [id, member, role, roleLabel, phase, task, why, nextStep, roster, quorum, statusBlock, facts, meetingState,
+  // formalStatus, round, at] with NO rosterIds/chairId, while the unit tests (which call `decideSections` directly)
+  // stayed green. A fact the caller supplies must travel all the way, or the unit test is testing a shape nobody sends.
+  const open = ({ member, role = null, roleLabel = null, phase, task = null, why = null, nextStep = null, roster = null, rosterIds = null, chairId = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1 } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
     const knownPhases = extraPhases && extraPhases.length ? PHASES.concat(extraPhases) : PHASES
     if (typeof phase !== 'string' || !knownPhases.includes(phase)) {
@@ -810,7 +816,7 @@ export function createTurnOrchestrator({
     // name and the framework's vocabulary were entangled by a MISSING FIELD, not by a design choice. With the field
     // carried, the caller owns the name (the pack supplies it in real use) and the kernel holds none of an
     // institution's words. A caller that supplies nothing gets the KEY it passed.
-    const turn = { id: 't-' + seq, member, role, roleLabel, phase, task, why, nextStep, roster, quorum, statusBlock, facts, meetingState, formalStatus, round, at: clock() }
+    const turn = { id: 't-' + seq, member, role, roleLabel, phase, task, why, nextStep, roster, rosterIds, chairId, quorum, statusBlock, facts, meetingState, formalStatus, round, at: clock() }
     turns.set(turn.id, turn)
     woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1
@@ -1680,6 +1686,7 @@ export function createTurnOrchestrator({
     // other. A seam that supplies only the prose form is treated as "ids unknown" (never as "ids empty").
     const merged = { roster: supplied.roster === undefined ? null : supplied.roster,
       rosterIds: supplied.rosterIds === undefined ? null : supplied.rosterIds,
+      chairId: supplied.chairId === undefined ? null : supplied.chairId,
       quorum: supplied.quorum === undefined ? null : supplied.quorum, ...spec }
     const { turn } = open(merged)
     return runFrom(turn, spec)

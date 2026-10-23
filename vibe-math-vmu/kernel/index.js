@@ -1537,11 +1537,17 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // the leaderless variants were chosen even on a staffed institute. Two representations, ONE survey, one call:
       // a decision must never have to parse prose, and a sentence must never have to be reassembled from ids.
       const rosterIds = live.length === 0 ? null : live.map((m) => String(m.id))
+      // ★★★ R13 (third pass): WHO occupies the leading seat. The prompt policy used to treat an unset
+      // `vmu.turn.leaderId` as "no academician on staff" and printed 「本所当前没有在册院士」 on an institute whose
+      // roster line in the very same prompt named 「院士 <id>（你）」. The rule calls that a framework defect, so the
+      // seat's occupant is reported here and the policy derives the leader from it when the setting is silent.
+      const seat = live.find((m) => String(m.slot || m.role || '') === 'chair')
+      const chairId = seat ? String(seat.id) : null
       const view = closureVoteView()
       const eligible = Array.isArray(view.eligible) ? view.eligible.length : 0
       const cap = Number(readSetting(settingsView, 'vmu.meetings.quorumCap'))
       const quorum = Number.isFinite(cap) && cap > 0 ? Math.min(cap, eligible) : eligible
-      return { roster, rosterIds, quorum }
+      return { roster, rosterIds, chairId, quorum }
     },
     clearMemberToolCalls: (member) => { memberToolCallLog.delete(String(member)) },
   })

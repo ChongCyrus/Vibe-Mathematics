@@ -29,6 +29,7 @@ import { createTurnOrchestrator, deliverByReturning } from '../vibe-math-vmu/ker
 import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
 import { decideSections, HOST_ONLY_SECTIONS } from '../vibe-math-vmu/packs/v5r/middleware/prompt-switches.js'
+import { CHARTER_LEADER_PAIRS } from '../vibe-math-vmu/packs/v5r/prompts/v5r-charter.js'
 import { PACK } from '../vibe-math-vmu/packs/v5r/prompts/v5r-core.js'
 
 let passed = 0
@@ -147,7 +148,10 @@ const mkTurn = (extra = {}) => createTurnOrchestrator({ sectionPolicy: decideSec
     { decisions: HOST_ONLY_SECTIONS.map((n) => [n, byName.get(n)]) })
   // The claim is about assembled text, not just the policy's verdict: a policy that decided false but a pipeline that
   // ignored it would leave the placeholder in place. Prove it through a real turn with the pack's own sections.
-  const packPipeline = createPromptPipeline({ sections: PACK.sections, clock: () => '2026-01-01T00:00:00.000Z' })
+  // ★ The bindings are part of what makes a role block address the right role: without them every role-kind section
+  // renders its DEFAULT text (the member variant), which is exactly how this suite first "measured" that the chair's
+  // prompt named a 常驻研究员. `PACK.bindings` is what the host mounts, so the test must mount it too.
+  const packPipeline = createPromptPipeline({ sections: PACK.sections, bindings: PACK.bindings, clock: () => '2026-01-01T00:00:00.000Z' })
   const t = createTurnOrchestrator({ sectionPolicy: decideSections, prompt: packPipeline, deliver: deliverByReturning() })
   const r = await t.run({ member: 'r-1', phase: 'normal' })
   const text = (r && r.memberPrompt && r.memberPrompt.text) || ''
@@ -185,7 +189,7 @@ const mkTurn = (extra = {}) => createTurnOrchestrator({ sectionPolicy: decideSec
     { division: proseBy.get('v5r-charter-division'), leaderless: proseBy.get('v5r-charter-division-leaderless') })
 
   // End to end through a REAL turn with the pack's own sections: the composed prompt must not negate itself.
-  const packPipeline = createPromptPipeline({ sections: PACK.sections, clock: () => '2026-01-01T00:00:00.000Z' })
+  const packPipeline = createPromptPipeline({ sections: PACK.sections, bindings: PACK.bindings, clock: () => '2026-01-01T00:00:00.000Z' })
   const t13 = createTurnOrchestrator({
     sectionPolicy: decideSections,
     prompt: packPipeline,
@@ -198,13 +202,54 @@ const mkTurn = (extra = {}) => createTurnOrchestrator({ sectionPolicy: decideSec
   // the id through `vibe_v5_configure`. What must hold regardless: the prompt never says both things at once.
   ok(text13.includes('本所的领头人') || text13.includes('本所当前没有在册院士') || text13.length > 0,
     'R13d. (channel probe) the composed prompt is non-empty so the following assertion has a subject', { chars: text13.length })
-  const saysNone = text13.includes('本所当前没有在册院士')
-  // A name is a person, never the unresolved-hole marker: 「院士 〔未提供：setting:vmu.turn.leaderId〕」 is the
-  // absence of an answer dressed as one, and must not be read as evidence that a leader exists.
-  const namesLeader = /本所的领头人是\*\*院士 (?!〔)/.test(text13) || /\*\*院士 (?!〔)[^*]+\*\* —— 本所领头人/.test(text13)
-  ok(!(saysNone && namesLeader),
-    'R13e. ★★★★★ ONE prompt never both "没有在册院士" and "领头人是院士 X" — the measured contradiction',
-    { saysNone, namesLeader })
+  // ★ MEASURED FALSE POSITIVE, now designed out: the first version of this assertion looked for the PHRASE
+  // 「本所当前没有在册院士」 anywhere in the text — and `v5r-corrections.js` QUOTES that phrase inside its own correction
+  // (「…章程会走 leaderless 版并说「本所当前没有在册院士」，那是假的」), so the detector fired on a warning ABOUT the
+  // defect. A phrase an instruction quotes can never be evidence that the instruction commits it. The assertions now ask
+  // the prompt's STRUCTURE: which variant SECTION headings were carried.
+  const carried = (text, name) => text.split('\n').some((line) => line === '# ' + name)
+  const lessCarried = CHARTER_LEADER_PAIRS.map(([, l]) => l).filter((n) => carried(text13, n))
+  const withCarried = CHARTER_LEADER_PAIRS.map(([w]) => w).filter((n) => carried(text13, n))
+  ok(!(lessCarried.length > 0 && withCarried.length > 0),
+    'R13e. ★★★★★ ONE prompt carries at most ONE variant of each leader pair — never both stories at once',
+    { lessCarried, withCarried })
+
+  // ── R13, third pass: the CONDITION was wrong, not just the channel ────────────────────────────────────────────────
+  // The rule says: if the prompt says 「本所当前没有在册院士」 while an academician SITS in the chair, the framework is at
+  // fault. So "leaderless" must mean "nobody occupies the leading seat", never "the `vmu.turn.leaderId` setting is unset".
+  // Live run 3 measured exactly that: chair seated, setting unset ⇒ five leaderless sections + a roster line naming
+  // 「院士 member-1（你）—— 本所领头人」 in ONE prompt.
+  const t13b = createTurnOrchestrator({
+    sectionPolicy: decideSections,
+    prompt: packPipeline,
+    deliver: deliverByReturning(),
+    turnFacts: () => ({ roster: '- r-1 · chair\n- r-2 · member', rosterIds: ['r-1', 'r-2'], chairId: 'r-1', quorum: 2 }),
+  })
+  const r13b = await t13b.run({ member: 'r-1', phase: 'normal', role: 'chair' })
+  const text13b = (r13b && r13b.memberPrompt && r13b.memberPrompt.text) || ''
+  const by13b = new Map((decideSections({ settings: {}, turn: { phase: 'normal', rosterIds: ['r-1', 'r-2'], chairId: 'r-1' } }).decisions).map((d) => [d.name, d.enabled]))
+  ok(by13b.get('v5r-charter-division') === true && by13b.get('v5r-charter-division-leaderless') === false,
+    'R13f. ★★★★ a SEATED chair is a leader even when `vmu.turn.leaderId` is unset (setting wins, seat is the fallback)',
+    { division: by13b.get('v5r-charter-division'), leaderless: by13b.get('v5r-charter-division-leaderless') })
+  const lessB = CHARTER_LEADER_PAIRS.map(([, l]) => l).filter((n) => carried(text13b, n))
+  const withB = CHARTER_LEADER_PAIRS.map(([w]) => w).filter((n) => carried(text13b, n))
+  ok(lessB.length === 0 && withB.length > 0 && /\*\*院士 r-1（你）\*\*/.test(text13b),
+    'R13g. ★★★★ the seated chair prompt carries NO leaderless variant, carries the with-leader ones, and names the chair',
+    { lessB, withB, namesChair: /\*\*院士 r-1（你）\*\*/.test(text13b), chars: text13b.length })
+
+  // The temp block speaks to ONE role. Measured live: the chair's prompt carried it ("你的雇主：…").
+  const acad13 = new Map(decideSections({ settings: {}, turn: { phase: 'normal', role: 'chair', rosterIds: ['r-1', 'r-2'], chairId: 'r-1' } }).decisions.map((d) => [d.name, d.enabled]))
+  const temp13 = new Map(decideSections({ settings: {}, turn: { phase: 'normal', role: 'temp', rosterIds: ['r-1', 'r-2'], chairId: 'r-1' } }).decisions.map((d) => [d.name, d.enabled]))
+  ok(acad13.get('v5r-charter-roster-temp') === false && acad13.get('v5r-charter-roster-temp-leaderless') === false,
+    'R13h. ★★★★ the temp-only pair is OFF for the chair (a chair is not told who employs them)',
+    { withLeader: acad13.get('v5r-charter-roster-temp'), leaderless: acad13.get('v5r-charter-roster-temp-leaderless') })
+  ok((temp13.get('v5r-charter-roster-temp') === true) !== (temp13.get('v5r-charter-roster-temp-leaderless') === true),
+    'R13i. ★★★ and exactly ONE of its variants is on for a temp (the pair still decides the variant, not the role)',
+    { withLeader: temp13.get('v5r-charter-roster-temp'), leaderless: temp13.get('v5r-charter-roster-temp-leaderless') })
+  const norole13 = new Map(decideSections({ settings: {}, turn: { phase: 'normal', rosterIds: ['r-1', 'r-2'], chairId: 'r-1' } }).decisions.map((d) => [d.name, d.enabled]))
+  ok(norole13.get('v5r-charter-roster-temp') === true,
+    'R13j. ★★★ an UNKNOWN role changes nothing: the pair keeps its variant decision (no silent off-switch)',
+    { withLeader: norole13.get('v5r-charter-roster-temp'), leaderless: norole13.get('v5r-charter-roster-temp-leaderless') })
 }
 
 console.log('\n=== VMU PROMPT LIVE FACTS: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -63,9 +63,22 @@ export const FORMAL_STATUSES = Object.freeze([
   ['none', 'v5r-formal-status-none'],
 ])
 
+/**
+ * Sections written for exactly ONE role. A leader-conditional block has no role axis — `charterSections()` emits every
+ * one of them for EVERY role (`CHARTER_ROLE_BINDINGS` cannot express "temp AND leaderless") — so without this table the
+ * policy can only choose between a pair's two variants and can never switch the pair off for the wrong role.
+ * Measured on live run 3 (`full-1024-055534.jsonl`): the ACADEMICIAN's prompt carried
+ * `# v5r-charter-roster-temp-leaderless` —「你的雇主：…」, i.e. the institute's chair was told who employs THEM.
+ */
+export const ROLE_ONLY_SECTIONS = Object.freeze([
+  ['v5r-charter-roster-temp', 'temp'],
+  ['v5r-charter-roster-temp-leaderless', 'temp'],
+])
+
 export const V5R_PROMPT_SWITCH_STATES = Object.freeze({
   offSwitches: OFF_SWITCHES,
   hostOnly: HOST_ONLY_SECTIONS,
+  roleOnly: ROLE_ONLY_SECTIONS,
   catalogues: CATALOGUES,
   meetingStates: MEETING_STATES,
   formalStatuses: FORMAL_STATUSES,
@@ -127,7 +140,13 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
   // leader who is not on staff, so when this policy cannot PROVE the leader is on staff it must not emit the naming sentence. A
   // false "no leader" costs a less personal organisational paragraph; a false "leader is X" tells the whole institute to report to
   // someone who may not exist. Unknowable therefore resolves to leaderless, deliberately.
-  const leaderId = typeof s['vmu.turn.leaderId'] === 'string' ? s['vmu.turn.leaderId'] : ''
+  // ★★★ R13 (third pass): the SETTING wins; the leading seat's occupant is the documented fallback. Measured live:
+  // with the setting unset, five leaderless sections said 「本所当前没有在册院士」 while the roster line in the same
+  // prompt said 「院士 member-1（你）—— 本所领头人」. The rule calls that a framework defect. The office is still told
+  // to record the id (kernel.leadershipReading reports chair-seated-but-leaderId-empty with the exact command), but the
+  // PROMPT never denies an academician who is sitting in the chair.
+  const declaredLeader = typeof s['vmu.turn.leaderId'] === 'string' ? s['vmu.turn.leaderId'] : ''
+  const leaderId = declaredLeader !== '' ? declaredLeader : (turn && typeof turn.chairId === 'string' ? turn.chairId : '')
   // ★ R13 (second half): IDS, from the structured fact when the caller supplies it. The prose form is NOT parsed:
   // a sentence is for humans and a parser over one is a second, silently divergent reader of the same fact.
   // `turn.roster` is still accepted when it IS an array (hand-built turns and the unit tests use that shape).
@@ -179,6 +198,17 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
   }
   for (const [key, section] of FORMAL_STATUSES) {
     decisions.push({ name: section, enabled: status === key })
+  }
+
+  // (5) ★★★ ROLE-ONLY SECTIONS (see ROLE_ONLY_SECTIONS): the pair above decided WHICH VARIANT; this decides whether
+  //   the pair belongs in this role's prompt at all. `turn.role` is already handed to the assembly
+  //   (`vibe-math-vmu/kernel/turn/index.js:876`). An UNKNOWN role changes nothing — the variant decision stands.
+  //   ONLY the WRONG role is switched off; for the right role nothing is emitted, so the variant decision above
+  //   survives untouched. (An earlier version pushed `enabled: role === only` for both names, which turned BOTH
+  //   variants ON for a temp — the pair no longer chose anything. The suite caught it: R13i.)
+  const role = turn && typeof turn.role === 'string' ? turn.role : null
+  if (role !== null) {
+    for (const [name, only] of ROLE_ONLY_SECTIONS) if (role !== only) decisions.push({ name, enabled: false })
   }
 
   return { decisions, errors }
