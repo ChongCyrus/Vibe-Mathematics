@@ -1392,7 +1392,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       }
       attach('vmu.tasks', tasks, ['create', 'assign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback'], (m, a) => (a && (a.title || a.id)) || null)
       attach('vmu.ballotbox', ballotbox, ['open', 'freeze', 'unfreeze', 'cast', 'close', 'reopen'], (m, a) => (a && a.target) || null)
-      attach('vmu.meetings', meetings, ['convene', 'open', 'speak', 'vote', 'close', 'recess'], (m, a) => (a && (a.topic || a.id)) || null)
+      attach('vmu.meetings', meetings, ['convene', 'open', 'speak', 'vote', 'close', 'recess', 'extendWall'], (m, a) => (a && (a.topic || a.id)) || null)
       // ROUND 4 / task-25 E — COVERAGE ASSESSMENT, ANSWERED BY EXTENDING WHERE IT IS SOUND.
       // The gate is ZERO-MECHANISM by default (`vmu.human.gatedActions` empty ⇒ nothing queues), so wrapping a face
       // costs nothing until a deployment names an action - which makes "cover every authority face" the right default.

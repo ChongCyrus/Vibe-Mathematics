@@ -1254,14 +1254,17 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.budgetWallMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.chairNeutral` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.chairTransferAudit` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
+| `vmu.meetings.closeRequiresChair` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.committeeMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.committeeReportRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.confirmPreviousMinutes` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
+| `vmu.meetings.conveneRequiresChair` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.disciplineExpelAllowed` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.disciplineMuteMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.disciplineWarnMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.emergencyKinds` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.emergencyQuorumRatio` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
+| `vmu.meetings.extendRequiresChair` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.interruptAllow` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.interruptQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.lateAfterMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
@@ -1540,7 +1543,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1147** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1150** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1601,7 +1604,7 @@ vmu.packs.active: [v5r]
 | `vmu.limits.*` | 5 |
 | `vmu.mailbox.*` | 6 |
 | `vmu.math.*` | 105 |
-| `vmu.meetings.*` | 59 |
+| `vmu.meetings.*` | 62 |
 | `vmu.members.*` | 1 |
 | `vmu.memory.*` | 16 |
 | `vmu.metadata.*` | 2 |

@@ -123,8 +123,8 @@ console.log('=== 2b. GATE (G6 tier 2): EVERY NAMED REFUSAL CARRIES A NON-EMPTY H
   const markerHits = []
   let scannedReceipts = 0
   try {
-    const opened = handle.kernel.meetings.open({ chair: 'acad', roster: ['acad', 'r-1'] })
-    const closed = handle.kernel.meetings.close({ meeting: opened.meeting })
+    const opened = handle.kernel.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1'] })
+    const closed = handle.kernel.meetings.close({ meeting: opened.meeting, actor: 'acad' })
     const closeJson = boundedToolResult(Object.assign({ ok: true, action: 'close' }, closed))
     const closeParsed = JSON.parse(closeJson)
     scannedReceipts += 1

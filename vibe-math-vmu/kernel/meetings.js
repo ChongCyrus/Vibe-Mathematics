@@ -76,6 +76,21 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     try { bus.emit(name, event) } catch (e) { say({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
   }
   const n = (v, def = 0) => (Number.isFinite(v) ? v : def)
+  /**
+   * ROUND 13 (phase 12): a MILLISECOND read with an absent-value answer, expressed as `(key, default)` so the
+   * generated settings table can RECOVER the default. `--check` refused the first version of `extendCeilingMs`,
+   * which wrote the default inside an IIFE (`raw === undefined ? 14400000 : n(raw)`): the collector reads an
+   * absent-value literal off the shape of the call, and an IIFE has no shape to read, so the key would have been
+   * emitted with `type:'object'` - a declaration contradicting its own numeric default (exactly the failure class
+   * the OBJECT_FALLBACKS invariant exists to stop). The fix is to WRITE the default where it can be read, not to
+   * name a fallback for it: the type here is knowable, so pretending it is not would hide a real fact.
+   * Same absent-vs-value distinction as every other reader in this table: unset (undefined/null/'') ⇒ the default;
+   * a declared 0 is a VALUE (it then clamps up to the floor), not "use the default".
+   */
+  const msOr = (key, def) => {
+    const raw = sget(key)
+    return (raw === undefined || raw === null || raw === '') ? def : n(raw)
+  }
   const arr = (v) => (Array.isArray(v) ? v.slice() : [])
 
   // ROUND 31 (task-149 C③): the ELEVEN strict `vmu.meetings.*` domains live in
@@ -108,6 +123,17 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     unansweredInDenominator: sget('vmu.meetings.unansweredInDenominator') === true,
     emergencyQuorumRatio: n(sget('vmu.meetings.emergencyQuorumRatio')), emergencyKinds: arr(sget('vmu.meetings.emergencyKinds')).map(String),
     chairNeutral: sget('vmu.meetings.chairNeutral') === true, chairTransferAudit: sget('vmu.meetings.chairTransferAudit') === true,
+    // ★ PHASE 12: the three rails behind 「会议只能由院士召开和关闭、延长」. The CAPABILITY is here (a named refusal
+    // that names who may act); the DECLARATION that a real institute has a chair-only convene is the PACK's job
+    // (`packs/v5r/settings/defaults.json`). All three default OFF so no existing caller changes behaviour — the
+    // v5r pack turns them on, which is what makes them have a consumer (a key nobody sets is a mechanism with none).
+    conveneRequiresChair: sget('vmu.meetings.conveneRequiresChair') === true,
+    closeRequiresChair: sget('vmu.meetings.closeRequiresChair') === true,
+    extendRequiresChair: sget('vmu.meetings.extendRequiresChair') !== false,
+    // ROUND 12: the ceiling for a meeting-level extension. `hardLimitMs` itself has no off switch (its contract says
+    // so); extension therefore adds a DECLARED step to a meeting's own bound, never removes the ceiling. R13: read
+    // through `msOr` so the default is recoverable by the settings-table generator (see that helper's note).
+    extendCeilingMs: Math.min(86400000, Math.max(3000000, msOr('vmu.meetings.extendCeilingMs', 14400000))),
     committeeMax: n(sget('vmu.meetings.committeeMax')), committeeReportRequired: sget('vmu.meetings.committeeReportRequired') === true,
     budgetTurns: n(sget('vmu.meetings.budgetTurns')), budgetTokens: n(sget('vmu.meetings.budgetTokens')),
     budgetWallMs: n(sget('vmu.meetings.budgetWallMs')), budgetOnExceed: D.values.budgetOnExceed,
@@ -183,6 +209,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
    * loud on every receipt AND every refusal, so nobody reads a "so far" list as the operation's whole key set.
    */
   const ENFORCED_SCOPE = 'evaluated-so-far'
+  /** The meeting's OWN wall bound. `open()` freezes `wallLimitMs = hardLimitMs`; `extendWall()` raises it. A meeting
+   *  opened by an older writer (or by a test) has no field, and then the configured hard limit is the bound — that
+   *  fallback is why `extendWall` could be added without rewriting one existing meeting record. */
+  const wallLimitOf = (m) => (m && Number.isFinite(m.wallLimitMs)) ? m.wallLimitMs : K.hardLimitMs
   const cap = (code, label, value, limit, key, evaluated) => {
     const keys = Array.isArray(evaluated) ? evaluated.slice() : []
     mark(keys, key)
@@ -385,7 +415,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // object under debate") is the PACK's; the FRAMEWORK only has to be able to carry such a reference and hand it
     // back on every read face. Without it a debate meeting could not say what was being debated anywhere a reader
     // looks, and the pack's `vibe_v5_meeting` had a `target` parameter with no consumer at all (declared, not wired).
-    open({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null } = {}) {
+    open({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, actor = null } = {}) {
       const enforced = []
       const ms = at === null ? clock() : at
       // GAP-MTG-02: a CONTRADICTORY tier declaration is refused BEFORE any state is created. Same predicate as
@@ -396,6 +426,33 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         if (!K.typeCatalog.includes(String(type))) {
           throw deny('VMU_NO_SUCH_OBJECT', 'meeting type "' + type + '" is not in vmu.meetings.typeCatalog',
             'allowed: ' + K.typeCatalog.join(', ') + ' (vmu.meetings.typeCatalog)', enforced)
+        }
+      }
+      // ★ PHASE 12 — 「会议只能由院士（= 本会主席）召开」的内核承载：能力在这里（具名拒，并说出谁可以），
+      // 「本所的主席只有院士」这条政策在 pack 的 defaults.json 里声明。★ 第三件不做：不在这里查
+      // 「actor 是不是院士」——那是 pack 的名册知识，内核若硬编码一个角色名，第二个 pack 就抄不动了。
+      // ★ WHAT THIS RAIL CAN AND CANNOT DO, said plainly (a security argument must cover the ACTUAL authorization, not
+      // the part it finds convenient). WHEN A CONVENE INSTALLS A CHAIR, that chair is an authority, so the convene must
+      // name it and must come FROM it: ① no actor ⇒ refused (an anonymous convene could install any chair); ② actor ≠
+      // chair ⇒ refused (convening ON BEHALF of another chair is the forgery this rule is about). A CHAIRLESS CONVENE
+      // IS NOT THIS RAIL'S BUSINESS: `v5r.stall-meeting` opens one from `control/idle`, where no member exists at all,
+      // and a kernel cannot tell a workflow from a member. That split is deliberate and documented on both sides:
+      // 「只有院士（a seat）能召开」is enforced where the caller id AND the slot are both known — the pack's tool face
+      // (`requireChairSeat` in packs/v5r/tools.js); the kernel guards the shape it can actually see.
+      if (K.conveneRequiresChair) {
+        mark(enforced, 'vmu.meetings.conveneRequiresChair')
+        const who = (actor === null || actor === undefined) ? null : String(actor)
+        const seat = (chair === null || chair === undefined) ? null : String(chair)
+        if (seat !== null) {
+          if (who === null) {
+            throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.conveneRequiresChair=true: a convene that installs a chair must name that chair as its actor',
+              'pass { actor: "<member id>" } together with { chair: "<the same id>" } (vmu.meetings.conveneRequiresChair)', enforced)
+          }
+          if (who !== seat) {
+            throw deny('VMU_NOT_PERMITTED', 'only the member who takes the chair may convene this meeting: actor ' + who + ' != chair ' + seat,
+              'pass { actor: x, chair: x } — convening ON BEHALF of another chair is exactly what this rail refuses (vmu.meetings.conveneRequiresChair)', enforced)
+          }
+          chair = who
         }
       }
       // ★ WHERE this meeting is about something (a debate's object, a closure's proposition, a paper's draft), the
@@ -430,6 +487,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         id: mid, type: String(type), kind: kind === null ? null : String(kind), chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),
         roster: arr(roster).map(String), present: new Set(chair === null ? [] : [String(chair)]),
         openedAt: ms, state: 'open', turns: 0, tokens: 0, wallStartMs: ms,
+        // ★ the meeting's OWN wall bound (frozen at open) plus who convened it; `extend()` raises the first.
+        wallLimitMs: K.hardLimitMs, openedBy: (actor === null || actor === undefined) ? null : String(actor), extendedMs: 0,
         queue: [], speechUsed: new Map(), interrupts: new Map(), warnings: new Map(), mutes: new Map(),
         recess: null, previousConfirmed: false, minutes: { entries: [], refused: [], actions: [] },
         transcript: [], confidentiality: K.confidentialityDefault, motions: [], appeals: [], closedAt: null,
@@ -444,12 +503,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       live.set(mid, m)
       markState(m, 'open')
       counters.opened += 1
-      const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, subject: m.subject, confidentiality: m.confidentiality, enforced, enforcedScope: ENFORCED_SCOPE }
+      const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, subject: m.subject, openedBy: m.openedBy, confidentiality: m.confidentiality, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
-      say({ type: 'meetings/opened', at: ms, meeting: mid, type: m.type, subject: m.subject, enforced, enforcedScope: ENFORCED_SCOPE })
+      say({ type: 'meetings/opened', at: ms, meeting: mid, type: m.type, subject: m.subject, openedBy: m.openedBy, enforced, enforcedScope: ENFORCED_SCOPE })
       // ★ type/subject are ALSO at the top level, not only inside `receipt`: a caller that asked for them should not
       // have to know the receipt envelope's shape to read back what it just set (the same reason `attend` returns `late`).
-      return { ok: true, meeting: mid, type: m.type, subject: m.subject, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, meeting: mid, type: m.type, subject: m.subject, openedBy: m.openedBy, wallLimitMs: m.wallLimitMs, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Join. `lateAfterMs` decides whether a late arrival is allowed/recorded/refused. */
@@ -561,12 +620,15 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       }
       // ROUND 200: the HARD wall-clock backstop is consulted FIRST - it has no off switch, while the soft budget
       // below may refuse, warn or extend. A pack can set this key and it now changes behaviour.
-      if (now - m.wallStartMs > K.hardLimitMs) {
+      // ★ PHASE 12: the bound is the MEETING's own (`wallLimitOf`), so a declared extension really moves it. The key
+      // marked is `hardLimitMs` because that is what froze the bound at open; when the bound was raised the receipt
+      // says so by naming both numbers in the refusal message, so a reader can tell "raised" from "never raised".
+      if (now - m.wallStartMs > wallLimitOf(m)) {
         mark(enforced, 'vmu.meetings.hardLimitMs')
         // F28: past the declared bound this is no longer only a refusal — the meeting can be SETTLED BY NAME
         // (`lapse()`), which produces `{name, why, at, revocable}` and can be revoked with a reason.
-        throw deny('VMU_RESOURCE_BUDGET', 'the meeting wall-clock HARD limit is exceeded: ' + (now - m.wallStartMs) + ' / ' + K.hardLimitMs,
-          'settle it by name with lapse() (bounded fallback, revocable), or close() it explicitly; the hard limit has no off switch (vmu.meetings.hardLimitMs, clamped [300000, 7200000])', enforced)
+        throw deny('VMU_RESOURCE_BUDGET', 'the meeting wall-clock HARD limit is exceeded: ' + (now - m.wallStartMs) + ' / ' + wallLimitOf(m) + (wallLimitOf(m) !== K.hardLimitMs ? ' (extended from ' + K.hardLimitMs + ')' : ''),
+          'settle it by name with lapse() (bounded fallback, revocable), or close() it explicitly; the hard limit has no off switch (vmu.meetings.hardLimitMs, clamped [300000, 7200000]) and extension is capped by vmu.meetings.extendCeilingMs', enforced)
       }
       if (K.budgetWallMs > 0 && now - m.wallStartMs > K.budgetWallMs) {
         mark(enforced, 'vmu.meetings.budgetWallMs')
@@ -1072,10 +1134,33 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     },
 
     /** Close the meeting. `committeeReportRequired`, `minutesActionsRequired`, `confirmPreviousMinutes`. */
-    close({ meeting, report = null, actions = null, at = null } = {}) {
+    close({ meeting, report = null, actions = null, at = null, actor = null } = {}) {
       const m = requireMeeting(meeting)
       const enforced = []
       const now = at === null ? clock() : at
+      // PHASE 12 - only the chair closes: capability here, policy in the pack (vmu.meetings.closeRequiresChair).
+      // ORDER MATTERS: ask WHO is closing before asking WHAT the close carries, so a non-chair caller is told
+      // it lacks the seat rather than that its report is malformed (the same lesson as motion() below).
+      if (K.closeRequiresChair) {
+        mark(enforced, 'vmu.meetings.closeRequiresChair')
+        const who = (actor === null || actor === undefined) ? null : String(actor)
+        const seat = (m.chair === null || m.chair === undefined) ? null : String(m.chair)
+        // A CHAIRLESS MEETING HAS NO AUTHORITY TO PROTECT, so this rail does not apply to it (the same boundary as
+        // `open`: `v5r.stall-meeting` convenes one from `control/idle`, and refusing to close it would leave an
+        // un-closeable record behind — a rail that creates garbage is worse than no rail). A meeting WITH a chair
+        // can only be closed by that chair, and only while naming it: refusing here also means the close receipt
+        // can never print `closedBy` as a guess.
+        if (seat !== null) {
+          if (who === null) {
+            throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.closeRequiresChair=true: closing needs the chair to name itself; the chair of ' + m.id + ' is ' + seat,
+              'pass { actor: "' + seat + '" } - the close receipt records who closed (vmu.meetings.closeRequiresChair)', enforced)
+          }
+          if (who !== seat) {
+            throw deny('VMU_NOT_PERMITTED', 'only the declared chair may close this meeting: ' + who + ' != ' + seat,
+              'the chair of ' + m.id + ' is ' + seat + ' (vmu.meetings.closeRequiresChair)', enforced)
+          }
+        }
+      }
       // GAP-MTG-02 (D7): a `report` IS an entity conclusion, so a light (or light-disallowed) meeting refuses
       // the close that carries one BY NAME. Agenda, rounds and ACTION ITEMS remain allowed — that is what a
       // light procedure is for (v5r: 简流程＝议程＋轮询＋行动项，但不得产出实体定论).
@@ -1132,10 +1217,69 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // ★ G7: the SAME `enforced` array appeared at the top level AND inside `receipt`. The serializer used to mark a
       // second sight of a shared reference as "[circular]", so this receipt carried `enforced:"[circular]"`. Copies
       // (not a shared reference) keep both fields as readable key lists even for a serializer that marks repeats.
-      const receipt = { at: now, action: 'close', meeting: m.id, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+      const closedBy = (actor === null || actor === undefined) ? null : String(actor)
+      const receipt = { at: now, action: 'close', meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
-      say({ type: 'meetings/closed', at: now, meeting: m.id, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, meeting: m.id, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+      say({ type: 'meetings/closed', at: now, meeting: m.id, closedBy, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+    },
+
+    /**
+     * RAISE THE MEETING'S OWN WALL BOUND - the rule (the academician may extend the meeting's time bound).
+     *
+     * TWO BOUNDS, TWO FACES, ON PURPOSE - AND THEREFORE TWO NAMES. The service's `extend()` (built below at the
+     * `createLapseControls` seam) lengthens ONE MEMBER'S SPEECH SLOT (`speechExtendMs/Max`); this one lengthens the
+     * MEETING. The first draft of this method was ALSO called `extend` and was silently shadowed by that const in the
+     * returned object - a same-word-two-meanings bug found by a red test, not by reading. Hence `extendWall`, and the
+     * tool face's `extendlimit`, so no reader has to guess which bound a call moves.
+     * WHY A SEPARATE CEILING. `hardLimitMs` is documented as having no off switch. An extension therefore ADDS a
+     * declared step to the meeting's own bound and can never remove the ceiling: past `extendCeilingMs` the refusal
+     * names both numbers, so "how far can I go" is answerable before the call rather than after it.
+     */
+    extendWall({ meeting, ms = null, at = null, actor = null, why = null } = {}) {
+      const m = requireMeeting(meeting)
+      const enforced = []
+      const now = at === null ? clock() : at
+      if (m.state !== 'open' && m.state !== 'recess') {
+        throw deny('VMU_STATE', 'only an open (or recessed) meeting can be extended: ' + m.id + ' is ' + m.state,
+          'reopen() it first, or open a new meeting', enforced)
+      }
+      mark(enforced, 'vmu.meetings.extendRequiresChair')
+      if (K.extendRequiresChair) {
+        const who = (actor === null || actor === undefined) ? null : String(actor)
+        const seat = (m.chair === null || m.chair === undefined) ? null : String(m.chair)
+        if (seat === null) {
+          throw deny('VMU_ENGINE_UNAVAILABLE', 'vmu.meetings.extendRequiresChair=true: this meeting declares no chair, so no one may extend it',
+            'convene with { chair: "<member id>" } - the kernel never invents an authority (vmu.meetings.extendRequiresChair)', enforced)
+        }
+        if (who === null) {
+          throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.extendRequiresChair=true: extending needs the chair to name itself; the chair of ' + m.id + ' is ' + seat,
+            'pass { actor: "' + seat + '" } (vmu.meetings.extendRequiresChair)', enforced)
+        }
+        if (who !== seat) {
+          throw deny('VMU_NOT_PERMITTED', 'only the declared chair may extend this meeting: ' + who + ' != ' + seat,
+            'the chair of ' + m.id + ' is ' + seat + ' (vmu.meetings.extendRequiresChair)', enforced)
+        }
+      }
+      // The step is REQUIRED and must be positive: "extend it a bit" is not a declared amount.
+      if (!Number.isFinite(Number(ms)) || Number(ms) <= 0) {
+        throw deny('VMU_INVALID_ARGUMENT', 'extend needs a positive step in ms; got ' + String(ms),
+          'e.g. { ms: 600000 } adds ten minutes to this meeting wall bound (vmu.meetings.extendCeilingMs caps the total)', enforced)
+      }
+      const before = wallLimitOf(m)
+      const after = before + Number(ms)
+      if (after > K.extendCeilingMs) {
+        mark(enforced, 'vmu.meetings.extendCeilingMs')
+        throw deny('VMU_RESOURCE_BUDGET', 'the extended wall bound would pass the ceiling: ' + after + ' / ' + K.extendCeilingMs + ' (from ' + before + ' + ' + Number(ms) + ')',
+          'the ceiling is vmu.meetings.extendCeilingMs; close this meeting and open a new one instead of extending without bound', enforced)
+      }
+      m.wallLimitMs = after
+      m.extendedMs = (Number(m.extendedMs) || 0) + Number(ms)
+      m.extensions = (Number(m.extensions) || 0) + 1
+      const receipt = { at: now, action: 'extend', meeting: m.id, ms: Number(ms), wallLimitMs: after, extendedMs: m.extendedMs, extensions: m.extensions, actor: (actor === null || actor === undefined) ? null : String(actor), why: why === null ? null : String(why), enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+      pushReceipt(receipt)
+      say({ type: 'meetings/extended', at: now, meeting: m.id, ms: Number(ms), wallLimitMs: after, extendedMs: m.extendedMs, actor: receipt.actor, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, meeting: m.id, wallLimitMs: after, extendedMs: m.extendedMs, extensions: m.extensions, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
     },
 
     /** READ-ONLY quorum view (never mutates). */

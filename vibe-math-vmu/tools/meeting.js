@@ -23,7 +23,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         '**发言序/地面（B③/B④，Round 14）**：`flow` 设**四种地面模式**（open 无队列｜hands 按举手序｜round_robin 按已发言次数｜call_on 主席指定），`overrideorder` **覆盖发言序**（fifo｜round-robin｜chair｜random，random 为**确定性**洗牌：种子与结果 order 都写进回执）。**两者都只由主席做、都必须给 reason**，且**未声明 `vmu.meetings.orderMode` 的部署一律具名拒**（默认不可覆盖）。★ 这两个 action 寻址的是 **`vmu.meetings` 服务记录**（`kernel/meetings.js`），**不是**上面 `open` 造的逐对象会议 id —— 未知 id 由服务**具名拒**（hint 列出在活记录）。',
       parameters: {
         action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜refuse｜invite｜invitedspeak｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜extend｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
-          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'refuse', 'invite', 'invitedspeak', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder'] }),
+          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'refuse', 'invite', 'invitedspeak', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit'] }),
         id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定）'),
         meeting: param('string', '会议 id 的【别名】：与 id 同义（两者都接受；同时给且不一致 ⇒ 具名拒）。ballot 用它把票绑定到服务会议，见 summary/close 与 ballot 的读数'),
         ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
@@ -45,9 +45,12 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         scope: param('string', 'hands clear/revoke 的作用域（all｜round）', { enum: ['all', 'round'] }),
         why: param('string', 'invite 的理由（必填：邀请必须可审计，v5r meeting_invite 的口径）；flow/overrideorder 也读 reason 作理由（必填）'),
         by: param('string', 'invite/invitedspeak/end 的执行人（审计事实）；flow/overrideorder 必填且必须是该会议的主席'),
+        actor: param('string', '谁在动作（审计事实）：true 的政策下 close/extendlimit 必须给，且必须等于该会议的主席（vmu.meetings.closeRequiresChair/extendRequiresChair）'),
+        // ★ 会议级延长（规则「院士可延长会议时长上界」）。★ 与 `extend` 区分：`extend` 是【发言】延长，
+        // 读 speechExtendMs/Max；`extendlimit` 是【会议墙钟上界】延长，读 extendCeilingMs。两个上界两个面。
         mode: param('string', 'flow/overrideorder 的模式（flow：open｜hands｜round_robin｜call_on；overrideorder：fifo｜round-robin｜chair｜random）', { enum: ['open', 'hands', 'round_robin', 'call_on', 'fifo', 'round-robin', 'chair', 'random'] }),
       },
-      run: async ({ action, id, meeting: meetingArg, ballotId, member, text, reason, agenda, roster, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules } = {}) => {
+      run: async ({ action, id, meeting: meetingArg, ballotId, member, text, reason, agenda, roster, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor } = {}) => {
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
         // ★ G7 (real machine): `meeting` and `id` name the same object but only `id` was read, so a caller that used
         // the documented-in-the-task `meeting:"m1"` got `no live meeting with id undefined`. BOTH are accepted now; a
@@ -210,7 +213,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             // live table; `summary` stays the archive read face), while a primitive close keeps it in the live map.
             const svc = svcOf()
             if (svc && typeof svc.close === 'function' && serviceHas(pid)) {
-              const out = svc.close({ meeting: pid })
+              const out = svc.close({ meeting: pid, actor: actor === undefined ? (by || null) : actor })
               return Object.assign({ ok: true, action, id: pid, registry: 'service', closeSemantics: 'service-archives' }, out, {
                 note: 'closed in the meetings SERVICE: the meeting moved to the service ARCHIVE (not the primitive live table); its motions/votes remain readable via action=summary',
               })
@@ -232,6 +235,22 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'leaverequests') return Object.assign({ ok: true, action, id }, live().leaveRequests({ meeting: need(id, 'id') }))
           if (action === 'extend') {
             return Object.assign({ ok: true, action, id }, live().extend({ meeting: need(id, 'id'), member: need(member, 'member'), ms: ms === undefined ? null : ms, by: by || null }))
+          }
+          // ★ PHASE 12 · 会议级延长（规则「院士…延长会议时长上界」）。它只打在 SERVICE 上：
+          // 原语注册表的 `extend` 是【发言】延长，两者不是同一个上界。名字分开写，避免"同一个词两种语义"。
+          if (action === 'extendlimit') {
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('extendlimit')
+            const svc = svcOf()
+            if (svc && typeof svc.extendWall === 'function' && serviceHas(pid)) {
+              const out = svc.extendWall({ meeting: pid, ms: ms === undefined ? null : ms, actor: actor === undefined ? (by || null) : actor, why: reason || null })
+              return Object.assign({ ok: true, action, id: pid, registry: 'service' }, out)
+            }
+            if (kernel.liveMeeting(pid)) {
+              return refused('VMU_INVALID_ARGUMENT', 'extendlimit extends the MEETING wall bound, which lives on the meetings SERVICE; ' + pid + ' is a primitive meeting',
+                'use action=extend for a SPEECH extension on a primitive meeting (speechExtendMs/Max), or convene the meeting through the pack so it exists in the service (extendWall)')
+            }
+            throw noSuchMeeting(pid)
           }
           if (action === 'lapse') return Object.assign({ ok: true, action, id }, live().lapse({ meeting: need(id, 'id'), by: by || null }))
           if (action === 'revokelapse') {

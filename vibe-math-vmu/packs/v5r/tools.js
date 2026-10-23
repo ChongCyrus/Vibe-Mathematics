@@ -491,11 +491,17 @@ function requireVoter(kernel, member, what) {
 /** ★ `vibe_v5_task_get` — read ONE task (the corpus teaches it, so it is declared rather than left dangling). */
 
 
-/** ★ `vibe_v5_meeting` — convene a meeting. The original also let a non-chair PROPOSE one for the chair to convene;
- * this face has no propose path, so that half is a named gap rather than a silent convenience. */
+/** ★ `vibe_v5_meeting` — convene a meeting. ONLY the chair seat may convene (the rule「会议只能由院士…召开」): the
+ * original also let a non-chair PROPOSE one for the chair to convene; this face has no propose path, so that half is a
+ * named gap rather than a silent convenience. */
 function toolMeeting(args = {}, { kernel } = {}) {
   if (!has(args.agenda)) throw refuse('VMU_INVALID_ARGUMENT', 'meeting needs an agenda', 'pass agenda:"what this meeting is for"')
-  const member = requireSeat(kernel, args.member, 'meeting').id
+  // ★ PHASE 12 — before this line, `requireSeat` let ANY member convene and 「会议只能由院士召开」 was only a sentence in
+  // a prompt. The slot is the pack's own declared vocabulary (the kernel never learns what "academician" means), so the
+  // gate belongs here, where both the caller id and its seat are known. The kernel holds the matching SHAPE gate
+  // (`vmu.meetings.conveneRequiresChair`: a convene that installs a chair must name that chair as its actor) — two
+  // locks, because a member calling the kernel directly is the other door, and neither lock claims to be the whole door.
+  const member = requireChairSeat(kernel, args.member, 'meeting (convening)').id
   const roster = membersOf(kernel).roster().filter((m) => m.state === 'live').map((m) => m.id)
   // ★ GOAL ROUND 3 — THE TYPE. Until now this line was `type: 'ordinary'` HARDCODED into the call below: the rule says
   // 「院士可以设置会议的类型」 and the academician could not set it at all. The type is now a parameter, validated against
@@ -533,7 +539,10 @@ function toolMeeting(args = {}, { kernel } = {}) {
     if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + str(args.secretary) + '" on this roster', 'the secretary must be a real member id')
     secretary = row.id
   }
-  const opened = kernel.meetings.open({ type, chair: member, roster, materials: str(args.agenda), secretary,
+  // PHASE 12 - the academician convenes AS ITSELF: `actor` is the caller, `chair` the seat it takes. With
+  // vmu.meetings.conveneRequiresChair=true (declared below) the kernel refuses an anonymous convene and a convene
+  // that installs somebody ELSE as chair, so "only the chair may convene" is a machine fact rather than a habit.
+  const opened = kernel.meetings.open({ type, chair: member, actor: member, roster, materials: str(args.agenda), secretary,
     subject: subject === null || subject === undefined ? null : subject })
   // ★ GOAL ROUND 3 — THE RECOMMENDED PROCEDURE. A type that the rule gave a skeleton gets it in the receipt, labelled
   // `binding:'recommendation'` so no reader can mistake it for a gate; a type with no skeleton reports null and WHY

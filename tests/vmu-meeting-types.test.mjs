@@ -118,7 +118,7 @@ try {
   const kernel = b.handle.kernel
   await kernel.members.hire({ id: 'r-acad', slot: 'chair' })
   await kernel.members.hire({ id: 'r-1', slot: 'member' })
-  const opened = kernel.meetings.open({ type: 'debate', chair: 'r-acad', roster: ['r-acad', 'r-1'], materials: '辩论 p-1', subject: 'p-1' })
+  const opened = kernel.meetings.open({ type: 'debate', chair: 'r-acad', actor: 'r-acad', roster: ['r-acad', 'r-1'], materials: '辩论 p-1', subject: 'p-1' })
   ok(!!opened && typeof opened.meeting === 'string', 'the kernel convenes a typed meeting', opened && opened.meeting)
   ok(opened.type === 'debate', 'the receipt reports the TYPE it stored (not a hardcoded ordinary)', opened.type)
   ok(opened.subject === 'p-1', '★ the receipt reports the SUBJECT back (the extra field has a consumer now)', opened.subject)
@@ -129,15 +129,15 @@ try {
   const view = kernel.meetings.meetingView({ meeting: mid })
   ok(view.ok === true && view.type === 'debate' && view.subject === 'p-1', 'meetingView() reports both', { type: view && view.type, subject: view && view.subject })
   // a non-string is refused BY NAME: `String({})` would silently store "[object Object]"
-  const bad = (() => { try { kernel.meetings.open({ type: 'debate', chair: 'r-acad', roster: ['r-acad'], subject: { id: 'p-1' } }); return null } catch (e) { return e } })()
+  const bad = (() => { try { kernel.meetings.open({ type: 'debate', chair: 'r-acad', actor: 'r-acad', roster: ['r-acad'], subject: { id: 'p-1' } }); return null } catch (e) { return e } })()
   ok(!!bad && bad.code === 'VMU_INVALID_ARGUMENT' && /got object/.test(String(bad.message)),
     '★ a non-string subject is refused by name and its TYPE is named in the message', bad && bad.code + ' / ' + bad.message)
   // an empty/blank subject is stored as null, never as ''
-  const blank = kernel.meetings.open({ type: 'academic', chair: 'r-acad', roster: ['r-acad'], materials: '交流', subject: '   ' })
+  const blank = kernel.meetings.open({ type: 'academic', chair: 'r-acad', actor: 'r-acad', roster: ['r-acad'], materials: '交流', subject: '   ' })
   ok(blank.subject === null, '★ a blank subject normalises to null (an empty string is not a reference)', blank.subject)
   ok(kernel.meetings.summary({ meeting: blank.meeting }).subject === null, 'the null is what a reader sees (no "" leaking through)', kernel.meetings.summary({ meeting: blank.meeting }).subject)
   // the declared typeCatalog now BINDS in this pack
-  const notDeclared = (() => { try { kernel.meetings.open({ type: 'secret', chair: 'r-acad', roster: ['r-acad'], materials: 'x' }); return null } catch (e) { return e } })()
+  const notDeclared = (() => { try { kernel.meetings.open({ type: 'secret', chair: 'r-acad', actor: 'r-acad', roster: ['r-acad'], materials: 'x' }); return null } catch (e) { return e } })()
   ok(!!notDeclared && notDeclared.code === 'VMU_NO_SUCH_OBJECT' && /typeCatalog/.test(String(notDeclared.message)),
     '★ the pack\'s declared typeCatalog binds: an undeclared type is refused with the key named', notDeclared && notDeclared.code + ' / ' + notDeclared.message)
   ok(notDeclared && /ordinary, academic, debate, closure, paper, planning/.test(String(notDeclared.hint)),
@@ -170,6 +170,85 @@ try {
   // `target` stays a working alias (it was the declared-but-unread parameter; now it has a consumer in both spellings)
   const alias = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '辩论别名', type: 'debate', target: 'p-3' })
   ok(alias.parsed && alias.parsed.ok === true && alias.parsed.subject === 'p-3', '★ `target` is a live alias for the debate object (it was dead before)', alias.parsed && alias.parsed.subject)
+
+  // ── ⑤ THE CHAIR RAILS (会议只能由院士召开 / 关闭 / 延长) ──────────────────────────────────────────────────────
+  // Why this block exists: the rule has THREE verbs, and the first implementation guarded only the shape the kernel
+  // could see. Each rail is asserted in BOTH directions (refuses the wrong actor, ACCEPTS the chair) because a gate
+  // that refuses everything is not a gate; each refusal is read for its CODE and its named cause, not just "it threw".
+  console.log('=== 5. ONLY THE CHAIR CONVENES, CLOSES, EXTENDS ===')
+  let now = 1000
+  const c = await boot({ root: join(root, 'rails'), packs: ['v5r'], clock: () => now })
+  const ck = c.handle.kernel
+  await ck.members.hire({ id: 'acad', slot: 'chair' })
+  await ck.members.hire({ id: 'r-1', slot: 'member' })
+  const err = (fn) => { try { return { value: fn() } } catch (e) { return { error: e } } }
+
+  // ⑤a CONVENE
+  const anon = err(() => ck.meetings.open({ chair: 'acad', roster: ['acad', 'r-1'], materials: 'x' }))
+  ok(!!anon.error && anon.error.code === 'VMU_NOT_PERMITTED' && /must name that chair as its actor/.test(String(anon.error.message)),
+    '★ a convene that installs a chair WITHOUT naming the actor is refused by name', anon.error && anon.error.code)
+  const forged = err(() => ck.meetings.open({ chair: 'acad', actor: 'r-1', roster: ['acad', 'r-1'], materials: 'x' }))
+  ok(!!forged.error && forged.error.code === 'VMU_NOT_PERMITTED' && /only the member who takes the chair/.test(String(forged.error.message)),
+    '★ convening ON BEHALF of another chair is refused (the forgery this rule is about)', forged.error && forged.error.code)
+  const asChair = ck.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1'], materials: '议题' })
+  ok(asChair.ok === true && asChair.openedBy === 'acad', 'the chair convening as itself is accepted, and the receipt records openedBy', asChair && asChair.openedBy)
+  // ★ THE BOUNDARY, asserted on purpose rather than left implicit: a CHAIRLESS convene has no authority to protect, and
+  // that is the shape `v5r.stall-meeting` uses from `control/idle`. The kernel cannot tell a workflow from a member, so
+  // it does not pretend to — 「只有院士能召开」 is enforced on the TOOL face below, where the seat is known.
+  const chairless = ck.meetings.open({ kind: 'stall', reason: 'idle', materials: '停摆', at: now })
+  ok(chairless.ok === true && chairless.openedBy === null,
+    '★ the documented boundary: a CHAIRLESS convene is allowed and records openedBy:null (workflow path, not a member path)', chairless && chairless.openedBy)
+
+  // ⑤b CLOSE
+  const closeAnon = err(() => ck.meetings.close({ meeting: asChair.meeting }))
+  ok(!!closeAnon.error && closeAnon.error.code === 'VMU_NOT_PERMITTED' && /needs the chair to name itself/.test(String(closeAnon.error.message)),
+    '★ closing without naming the chair is refused by name', closeAnon.error && closeAnon.error.code)
+  const closeWrong = err(() => ck.meetings.close({ meeting: asChair.meeting, actor: 'r-1' }))
+  ok(!!closeWrong.error && closeWrong.error.code === 'VMU_NOT_PERMITTED' && /only the declared chair may close/.test(String(closeWrong.error.message)),
+    '★ a non-chair member cannot close the meeting', closeWrong.error && closeWrong.error.code)
+  const closed = ck.meetings.close({ meeting: asChair.meeting, actor: 'acad' })
+  ok(closed.ok === true && closed.closedBy === 'acad', '★ the chair closes it and the receipt records WHO closed', closed && closed.closedBy)
+  const closeChairless = ck.meetings.close({ meeting: chairless.meeting })
+  ok(closeChairless.ok === true, '★ the chairless boundary holds for close too (a rail must not leave an un-closeable record behind)')
+
+  // ⑤c EXTEND — the MEETING wall bound, not a speech slot
+  const forExtend = ck.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1'], materials: '要延长的会' })
+  ok(Number.isFinite(forExtend.wallLimitMs) && forExtend.wallLimitMs > 0, 'a newly opened meeting carries its own wall bound', forExtend.wallLimitMs)
+  const extAnon = err(() => ck.meetings.extendWall({ meeting: forExtend.meeting, ms: 600000 }))
+  ok(!!extAnon.error && extAnon.error.code === 'VMU_NOT_PERMITTED', '★ extending without naming the chair is refused', extAnon.error && extAnon.error.code)
+  const extWrong = err(() => ck.meetings.extendWall({ meeting: forExtend.meeting, ms: 600000, actor: 'r-1' }))
+  ok(!!extWrong.error && extWrong.error.code === 'VMU_NOT_PERMITTED' && /only the declared chair may extend/.test(String(extWrong.error.message)),
+    '★ a non-chair member cannot extend the meeting', extWrong.error && extWrong.error.code)
+  const extBadMs = err(() => ck.meetings.extendWall({ meeting: forExtend.meeting, ms: 0, actor: 'acad' }))
+  ok(!!extBadMs.error && extBadMs.error.code === 'VMU_INVALID_ARGUMENT' && /positive step/.test(String(extBadMs.error.message)),
+    '★ "extend it a bit" is not an amount: a non-positive step is refused', extBadMs.error && extBadMs.error.code)
+  const ext = ck.meetings.extendWall({ meeting: forExtend.meeting, ms: 600000, actor: 'acad', why: '辩论没走完' })
+  ok(ext.ok === true && ext.wallLimitMs === forExtend.wallLimitMs + 600000 && ext.receipt.extendedMs === 600000,
+    '★ the chair extends it and BOTH numbers come back (before + step)', { before: forExtend.wallLimitMs, after: ext.wallLimitMs })
+  ok(ext.receipt.why === '辩论没走完' && ext.receipt.actor === 'acad', 'the extension is auditable (who + why)', { who: ext.receipt.actor, why: ext.receipt.why })
+  const extCeil = err(() => ck.meetings.extendWall({ meeting: forExtend.meeting, ms: 86400000, actor: 'acad' }))
+  ok(!!extCeil.error && extCeil.error.code === 'VMU_RESOURCE_BUDGET' && /extendCeilingMs/.test(String(extCeil.error.message) + ' ' + String(extCeil.error.hint)),
+    '★ extension is NOT unbounded: past the declared ceiling it is refused with the key named', extCeil.error && extCeil.error.code)
+  // ★★ THE ASSERTION THAT ACTUALLY MATTERS: the raised bound must be CONSULTED, not merely stored. Speak once past the
+  // ORIGINAL limit (must now be allowed) and once past the EXTENDED limit (must be refused, saying it was extended).
+  // the speaker must be PRESENT before speak() answers about the wall clock (otherwise the presence rail fires first,
+  // and a test that reads the wrong rail as a failure would "prove" the extension for the wrong reason)
+  ck.meetings.attend({ meeting: forExtend.meeting, member: 'r-1' })
+  now = 1000 + forExtend.wallLimitMs + 1000
+  const stillSpoken = err(() => ck.meetings.speak({ meeting: forExtend.meeting, member: 'r-1', text: '时间已超原上界，但会已延长' }))
+  ok(!stillSpoken.error, '★★ past the ORIGINAL wall bound but under the extended one the meeting is still usable (the extension is real, not a receipt field)', stillSpoken.error && stillSpoken.error.message)
+  now = 1000 + ext.wallLimitMs + 1000
+  const nowBlocked = err(() => ck.meetings.speak({ meeting: forExtend.meeting, member: 'r-1', text: '超时' }))
+  ok(!!nowBlocked.error && nowBlocked.error.code === 'VMU_RESOURCE_BUDGET' && /extended from/.test(String(nowBlocked.error.message)),
+    '★★ past the EXTENDED bound the wall clock refuses AND the message says the bound was extended', nowBlocked.error && nowBlocked.error.code)
+
+  // ⑤d THE TOOL FACES: the pack's convene is chair-only; the kernel face reaches the service's extend
+  const byMember = await call(b, 'vibe_v5_meeting', { member: 'r-1', agenda: '我不想让院士开这个会' })
+  ok(byMember.parsed && byMember.parsed.ok === false && byMember.parsed.code === 'VMU_NOT_PERMITTED' && /chair seat/.test(String(byMember.parsed.message)),
+    '★★ the PACK tool refuses a member who is not in the chair seat (the rule, enforced where the seat is known)', byMember.parsed && byMember.parsed.code)
+  const extByTool = await call(b, 'vibe_vmu_meeting', { action: 'extendlimit', id: 'no-such-meeting', ms: 600000, actor: 'acad' })
+  ok(extByTool.parsed && extByTool.parsed.ok === false && extByTool.parsed.code === 'VMU_NO_SUCH_OBJECT',
+    '★ the kernel face really offers `extendlimit` (an unknown id is refused by name — the action is reachable)', extByTool.parsed && extByTool.parsed.code)
 } finally {
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 }

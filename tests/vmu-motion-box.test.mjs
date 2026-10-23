@@ -52,7 +52,7 @@ const root = await mkdtemp(join(tmpdir(), 'vmu-motion-box-'))
 const handle = await loadPack(root)
 const k = handle.kernel
 
-const meeting = k.meetings.open({ chair: 'c1', roster: ['c1', 'm1', 'm2'] }).meeting
+const meeting = k.meetings.open({ chair: 'c1', actor: 'c1', roster: ['c1', 'm1', 'm2'] }).meeting
 // ★★ ROUND 13 (A1 aftermath): SEAT THE FIXTURE - AND SAY WHY. This suite used to pass with ids that were NEVER on
 // the roster, because the meetings face had no `members` seam at all: `isMember()` was vacuously true (no seam ⇒
 // accepts everyone), so `motion({member:'m1'})` "worked". A1 wired the seam into the assembly (kernel/index.js) and
@@ -106,7 +106,7 @@ ok(k.ballotbox.status().boxes === 1, 'B8. and it opened NO extra box (the policy
 //         assembly invents nothing -----------------------------------------------------------------
 // Move a motion FIRST (the policy binds), THEN unbind: a vote on that existing motion must be named-unwired -
 // nothing re-binds behind our back, because no new `meeting/motion` fires.
-const m2 = k.meetings.open({ chair: 'c1', roster: ['c1', 'm1'] }).meeting
+const m2 = k.meetings.open({ chair: 'c1', actor: 'c1', roster: ['c1', 'm1'] }).meeting
 const mo2 = k.meetings.motion({ meeting: m2, member: 'm1', kind: 'ordinary', text: 'bound first' }).motion
 await new Promise((r) => setTimeout(r, 40))
 ok(k.meetings.status().boxBinding.bound === true, 'R1. the policy bound again on the new meeting motion (idempotent lazy bind)', k.meetings.status().boxBinding)
@@ -151,7 +151,7 @@ const bare = await mkdtemp(join(tmpdir(), 'vmu-motion-box-bare-'))
 const noPolicy = entryMod.apply(fakeCtx(), { clock: () => 1000, root: bare, packs: [] })
 await noPolicy.ready()
 const nk = noPolicy.kernel
-const nm = nk.meetings.open({ chair: 'c1', roster: ['c1', 'm1'] }).meeting
+const nm = nk.meetings.open({ chair: 'c1', actor: 'c1', roster: ['c1', 'm1'] }).meeting
 const nmo = nk.meetings.motion({ meeting: nm, member: 'm1', kind: 'ordinary', text: 'no pack at all' }).motion
 await new Promise((r) => setTimeout(r, 40))
 ok(nk.ballotbox.status().boxes === 0, 'R2. an assembly with NO policy opens NO box (nothing pretends)', nk.ballotbox.status().boxes)

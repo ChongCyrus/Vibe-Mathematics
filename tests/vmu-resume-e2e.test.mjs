@@ -506,8 +506,8 @@ rmSync(MROOT, { recursive: true, force: true })
 mkdirSync(MROOT, { recursive: true })
 const M1 = await boot('boot-m1', { root: MROOT, meetings: { methods: [] } })
 ok(M1.recovery.ok === true, '11a a boot that attaches `meetings` the way the SHIPPED assembly does still recovers cleanly', M1.recovery.unhydrated)
-const mA = M1.meetings.open({ type: 'ordinary', chair: 'm-1', roster: ['m-1', 'm-2'] })
-const mB = M1.meetings.open({ type: 'ordinary', chair: 'm-3', roster: ['m-3', 'm-4'] })
+const mA = M1.meetings.open({ type: 'ordinary', chair: 'm-1', actor: 'm-1', roster: ['m-1', 'm-2'] })
+const mB = M1.meetings.open({ type: 'ordinary', chair: 'm-3', actor: 'm-3', roster: ['m-3', 'm-4'] })
 ok(mA.ok === true && mB.ok === true && mA.meeting === 'm1' && mB.meeting === 'm2',
   '11b TWO live meetings exist at once (multi-instance: the collection is the registry)', { a: mA.meeting, b: mB.meeting })
 await M1.resume.settle()
@@ -543,8 +543,8 @@ if (typeof reader1.close === 'function') await reader1.close()
 // (b) THE FIX: same face, same seams, only the method list filled in — what `methodsOf` must carry.
 const MMETHODS = ['open', 'close', 'attend', 'motion']
 const M2 = await boot('boot-m2', { root: MROOT, meetings: { methods: MMETHODS } })
-M2.meetings.open({ type: 'ordinary', chair: 'm-1', roster: ['m-1', 'm-2'] })
-M2.meetings.open({ type: 'ordinary', chair: 'm-3', roster: ['m-3', 'm-4'] })
+M2.meetings.open({ type: 'ordinary', chair: 'm-1', actor: 'm-1', roster: ['m-1', 'm-2'] })
+M2.meetings.open({ type: 'ordinary', chair: 'm-3', actor: 'm-3', roster: ['m-3', 'm-4'] })
 await M2.resume.settle()
 const mfold2 = M2.store.export().keys
 ok(!!mfold2.meetings && mfold2.meetings.mode === 'state' && liveMeetingsIn(mfold2.meetings) === 2,
@@ -608,8 +608,8 @@ ok(!!wMeetings && Array.isArray(wMeetings.methods) && wMeetings.methods.length >
   '12b the assembly WRAPS real methods for `meetings` (the `methodsOf[face] || []` defect is gone)',
   wMeetings && { face: wMeetings.face, mode: wMeetings.mode, methods: wMeetings.methods.slice(0, 8), wrapped: wMeetings.wrapped })
 
-const km1 = K1.kernel.meetings.open({ type: 'ordinary', chair: 'r-1', roster: ['r-1', 'r-2'] })
-const km2 = K1.kernel.meetings.open({ type: 'ordinary', chair: 'r-3', roster: ['r-3'] })
+const km1 = K1.kernel.meetings.open({ type: 'ordinary', chair: 'r-1', actor: 'r-1', roster: ['r-1', 'r-2'] })
+const km2 = K1.kernel.meetings.open({ type: 'ordinary', chair: 'r-3', actor: 'r-3', roster: ['r-3'] })
 const kb1 = K1.kernel.ballotbox.open({ question: 'adopt the roadmap?', options: ['for', 'against'] })
 const kb2 = K1.kernel.ballotbox.open({ question: 'extend the deadline?', options: ['yes', 'no'] })
 ok(km1.ok === true && km2.ok === true && kb1.ok === true && kb2.ok === true,
