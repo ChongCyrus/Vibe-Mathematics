@@ -29,6 +29,22 @@ export const OFF_SWITCHES = Object.freeze([
   ['vmu.turn.feedback', 'v5r-feedback-line'],
 ])
 
+/** Sections that exist ONLY to be REPLACED by the HOST in the root system prompt.
+ *
+ * `host.js:1595-1621` writes 【本轮你实际能调用的工具｜<slot>】 over one of these three sections on every
+ * `system-prompt/assemble`, so the correction sits exactly where the static role table sits. The TURN
+ * pipeline has NO replacement step — it only assembles sections — so carrying these into a turn prompt hands
+ * the model a paragraph whose own text says 「你读到了原文，说明替换没有发生」. That is a self-describing
+ * falsehood: measured on the live run `full-1024-021750.jsonl`, where every member prompt carried
+ * `# v5r-effective-tools-chair` (and the member/temp twins) verbatim. Zero injection is better than a
+ * placeholder whose producer never runs on this path.
+ */
+export const HOST_ONLY_SECTIONS = Object.freeze([
+  'v5r-effective-tools-chair',
+  'v5r-effective-tools-member',
+  'v5r-effective-tools-temp',
+])
+
 /** The two reply catalogues. The original sends one or the other, never both. */
 const CATALOGUES = Object.freeze({ compact: 'v5r-reply-compact', full: 'v5r-reply-spec' })
 
@@ -49,6 +65,7 @@ export const FORMAL_STATUSES = Object.freeze([
 
 export const V5R_PROMPT_SWITCH_STATES = Object.freeze({
   offSwitches: OFF_SWITCHES,
+  hostOnly: HOST_ONLY_SECTIONS,
   catalogues: CATALOGUES,
   meetingStates: MEETING_STATES,
   formalStatuses: FORMAL_STATUSES,
@@ -88,6 +105,10 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
   for (const [key, section] of OFF_SWITCHES) {
     decisions.push({ name: section, enabled: s[key] !== false })
   }
+
+  // (1b) ★ HOST-ONLY placeholders (see HOST_ONLY_SECTIONS): always off in a TURN prompt. The host replaces
+  // them in the root system prompt, which is a different assembly; here there is nothing to replace them with.
+  for (const name of HOST_ONLY_SECTIONS) decisions.push({ name, enabled: false })
 
   // (2) Exactly one reply catalogue. The pack's preference is the compact one; anything other than
   // the exact string "full" stays on the default rather than being treated as a request for it.

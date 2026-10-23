@@ -648,7 +648,13 @@ export function createKernel({
   // overrides, overridesByLang, locale.*, glossary.*) was inert while docs/04 marked them wired. The LIVE VIEW is
   // passed, not the raw object: these keys are declared H1 ("next turn"), and the pipeline now reads the read-time
   // policy through this handle on every assemble, so a runtime `vibe_vmu_set` really does reach the next turn.
-  const prompt = createPromptPipeline({ sections, bindings, overrides, whoMayOverride, bus, readFile, clock, settings: settingsView })
+  const prompt = createPromptPipeline({ sections, bindings, overrides, whoMayOverride, bus, readFile, clock, settings: settingsView,
+    // ★★★ PHASE 12 / R10 (measured on a full live run): the `{{ setting:... }}` channel read the CONFIGURED map only,
+    // so every unconfigured slot rendered `〔未提供：setting:...〕` even when the schema declares a default — the live
+    // prompt fed the institute `本所「〔未提供：setting:vmu.turn.instituteName〕」` while `def` for that key is 'institute'.
+    // Defaults are deliberately NOT materialised into `settings` (kernel/settings-defaults.js states that contract), which
+    // is why the fix belongs here: hand the template channel the SAME one reader every other consumer uses.
+    settingFallback: (key) => readSetting(settingsView, key) })
 
   // PHASE 6 (goal-3 audit, half-built pair): the CONSTRUCTION-TIME tracks are kept, because `retractTracks()` must be
   // able to restore exactly what the kernel started with after a pack that declared tracks is unloaded.
@@ -1514,6 +1520,24 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // only place that sees them; it writes to memberToolCallLog above). Lazy arrows: the map is declared later in
     // this function's scope, and by the time a step runs it exists.
     memberToolCalls: (member) => (memberToolCallLog.get(String(member)) || []).slice(),
+    // ★★★ PHASE 12 / R10: the two live facts the charter's template contract asks for (`{{ roster }}`, `{{ quorum }}`).
+    // The framework does not own the VALUES - who is on staff and what the vote floor equals are the deployment's
+    // facts, and the pack words them - so this seam reports them and nothing more. It is derived from the ONE closure
+    // calculation above (`closureVoteOf`) rather than recomputing who may vote, and the floor is the SAME
+    // `vmu.meetings.quorumCap` rule the meeting seats use (cap <= 0 means "no cap").
+    // Measured before this seam existed: every member prompt on a full live run read `〔未提供：roster〕` and
+    // `〔未提供：quorum〕`, so the charter's staff snapshot and every `m = …` sentence in it were holes.
+    turnFacts: () => {
+      const live = members && typeof members.roster === 'function' ? members.roster().filter((m) => m && m.state === 'live') : []
+      const roster = live.length === 0
+        ? null
+        : live.map((m) => '- ' + String(m.id) + ' · ' + String(m.slot || m.role || 'member')).join('\n')
+      const view = closureVoteView()
+      const eligible = Array.isArray(view.eligible) ? view.eligible.length : 0
+      const cap = Number(readSetting(settingsView, 'vmu.meetings.quorumCap'))
+      const quorum = Number.isFinite(cap) && cap > 0 ? Math.min(cap, eligible) : eligible
+      return { roster, quorum }
+    },
     clearMemberToolCalls: (member) => { memberToolCallLog.delete(String(member)) },
   })
   // ★ PHASE 7 / round 17: THE ONE CLOSURE-VOTE CALCULATION. The turn face and kernel.status() call THIS function with the

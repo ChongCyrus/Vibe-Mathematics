@@ -755,7 +755,12 @@ export function createTurnOrchestrator({
   noticeSource = null,
   // ★ G7 ④: the HOST-side member tool-call index (kernel records name/phase/ok at the tool hooks). The step receipt
   // carries a BOUNDED SUMMARY so the root can see what the member actually called; full receipts never travel here.
-  memberToolCalls = null, clearMemberToolCalls = null } = {}) {
+  memberToolCalls = null, clearMemberToolCalls = null,
+  // ★★★ PHASE 12 / R10: the LIVE facts the template contract asks for but nothing supplied (`{{ roster }}` and
+  // `{{ quorum }}`). The framework does not own these (who is on staff, and what the required vote floor m equals, are
+  // the deployment's facts), so it takes them from this seam and refuses BY NAME when the seam fails rather than
+  // rendering an empty slot. Absent ⇒ the historical behaviour (null ⇒ the slot reports itself as missing).
+  turnFacts = null } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
   // ROUND 347: the wakeup POLICY (docs/26 section 3.2). The original preset recorded only WHO should be woken and
@@ -1643,7 +1648,27 @@ export function createTurnOrchestrator({
   const dispatchStatus = () => Object.assign({}, dispatchStats, { active: dispatchActive })
 
   const runOne = async (spec) => {
-    const { turn } = open(spec)
+    // ★★★ PHASE 12 / R10: THE LIVE FACTS THE CHARTER ASKS FOR. Measured on a full live run: the member prompt carried
+    // `〔未提供：roster〕` and `〔未提供：quorum〕` — the pack's charter TEMPLATE_VARS map has carried both since it was
+    // written (its `quorumM()`/`rosterLine(member)` feed `{{ quorum }}`/`{{ roster }}`), but
+    // NOTHING ever supplied them: `open()` defaults them to null, `step()`/`drive()` do not accept them, so a real round
+    // rendered two holes where the institute's staff list and the required vote floor belong.
+    // The framework does not compute these (who is on staff and what m equals are the DEPLOYMENT's facts), so it takes
+    // them from the injected `turnFacts` seam. A seam that throws is a NAMED refusal, never a silent hole: an empty
+    // roster would read as "no staff", which is a fact the reader cannot distinguish from a bug.
+    const supplied = typeof turnFacts === 'function'
+      ? (() => {
+        let got
+        try { got = turnFacts({ member: spec.member, phase: spec.phase }) } catch (e) {
+          fail('VMU_ENGINE_UNAVAILABLE', 'the turn-facts seam failed for ' + String(spec.member) + ': ' + String((e && e.message) || e),
+            'a turn-facts seam must return { roster, quorum }; the assembly refuses rather than rendering empty slots')
+        }
+        return got && typeof got === 'object' ? got : {}
+      })()
+      : {}
+    const merged = { roster: supplied.roster === undefined ? null : supplied.roster,
+      quorum: supplied.quorum === undefined ? null : supplied.quorum, ...spec }
+    const { turn } = open(merged)
     return runFrom(turn, spec)
   }
 

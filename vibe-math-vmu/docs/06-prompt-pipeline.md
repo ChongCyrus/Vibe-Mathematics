@@ -135,6 +135,8 @@ assemble(ctx = { settings, member, role, phase, task, ... })
   - ★★★ **本行曾【只列 8 项却写着"逐字"**]✗（★ 轮 489 修正 ✓：漏了 `roleLabel`／`roster`／`round`／`quorum`／`statusBlock` ✓）—— ★★ **"声称逐字、却不是逐字"比单纯遗漏更糟，因为读者会因此不再核对** ✓；★ **现在由 `tests/vmu-turn-contracts.test.mjs` 的双向断言守着** ✓。
 - **取值**：`setting:<k>` ⇒ `ctx.settings[k]`；`count:<k>` ⇒ `counts[k]`；其它 ⇒ `ctx[key]`。**轮 1 更正**：`undefined`/`null` **不是静默空串**——每一次缺值都记进 `assemble().variableMisses[]`，并由 `vmu.prompts.missingVariable` 决定：`report`（默认）记录后渲染空串；`refuse` ⇒ 具名拒 **`VMU_PROMPT_VARIABLE_MISSING`**（该策略从 `ctx.settings` 读，属于调用方设置而非工厂快照）。
 - **未登记变量 ⇒ `VMU_INVALID_ARGUMENT`**（消息含整个占位符，hint 列出白名单）——**绝不原样保留 `{{...}}`**（否则用户看到的提示词会带垃圾）。
+- ★★★ **`setting:<k>` 的缺值三态（PHASE 12 / R10 实测修正）**：① 配置了 ⇒ 用配置值；② 未配置、但 `settings/schema.js` 为该键声明了 `def` ⇒ 用**声明默认值**（`settingFallback`；内核注入 `kernel/settings-defaults.js` 的 `readSetting`，即"配置值否则声明值"的**唯一读者**——声明默认值**不会**被物化进 settings，见该模块的契约）；③ 既未配置也未声明 ⇒ 才记进 `variableMisses` 并按 `vmu.prompts.missingVariable` 处理。**为什么这条必须写明**：真机 `full-1024-021750.jsonl` 上整所读到 `本所「〔未提供：setting:vmu.turn.instituteName〕」`，而该键的 `def` 就是 `'institute'` —— **一个已声明且存在的值被报成缺失**，读的人无法把它与"真没配"区分开。门禁：`tests/vmu-prompt-live-facts.test.mjs` F1–F5（默认值生效／显式值仍优先／未声明键仍报缺失／真内核装配里也生效）。
+- ★★★ **`{{ roster }}` / `{{ quorum }}` 的供给者（PHASE 12 / R10）**：`kernel/turn` 的 `turnFacts({member,phase})` seam（`kernel/index.js` 用成员名册的活动集与"合格人数按 `vmu.meetings.quorumCap` 封顶"算出，与会议座位的 `m` 同一条规则）；**未注入 ⇒ 槽位如实报缺失**（框架不编造"谁在册""票数下限是多少"这类部署事实）；**seam 抛错 ⇒ 具名拒 `VMU_ENGINE_UNAVAILABLE`**（半张名册比一个空洞更危险）。门禁同上 F6–F10。
 - **防注入（关键）**：替换值经 `escapeTemplate` ⇒ `{{` 变 `{ {`、`}}` 变 `} }` ⇒ **值里的模板语法不会被二次展开**（一次替换，不做递归展开）。
 - **七类上下文**（`ctx` 的语义面）：设置、状态、资源、会议、任务、数学面、实例身份 —— 其中**状态/时间/预算**由 `facts` 区间与 `state` 段承载（只读）。
 
@@ -166,6 +168,13 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 | `task` | **管线独有**（总线段过滤与绑定都支持；总线钩子**不支持**） | 见 `05` §6.4 非对称 |
 
 **规则**：段过滤＝`scopeMatches`（`undefined`/`'*'` 全匹配，数组含即匹配）；绑定优先级固定 `role < phase < member < task`；**任务级最窄、最后追加** ⇒ 最贴近"当下这件事"的内容在最后（对模型最显著）。
+
+### 9.1 **宿主专用占位段**：不是每一段都该进 turn 管线（PHASE 12 / R10）
+
+`packs/v5r` 声明了三个 `v5r-effective-tools-{chair,member,temp}` 段，文本是 `【本轮你实际能调用的工具｜占位段】…你读到了原文，说明替换没有发生。`。它们的**唯一**消费者是宿主：`host.js` 在 `system-prompt/assemble` 上把真实工具清单**覆盖**进这三个段（放在静态角色工具表旁边，纠正紧挨着被纠正的表）。
+
+- **turn 管线没有替换步骤**（它只装配），所以这三个段一旦进 turn 提示词，就是一段**自己说自己没被替换**的文字——读的人无法把它与"宿主坏了"区分开；实测 `full-1024-021750.jsonl` 里每个成员提示词都带着 `# v5r-effective-tools-chair` 原文。
+- **规则**：段仍然**声明**（宿主才找得到替换目标），但 pack 的段策略 `HOST_ONLY_SECTIONS`（`packs/v5r/middleware/prompt-switches.js`）在**每次 turn 装配**里把它们全部关闭 ⇒ **零注入**，不是"disabled 说明"。★ 判别形状：一段若其唯一生产者不在本管线里，它的正确归宿是"声明但本管线不注入"，而不是"注入一段解释自己为什么没生效"的话。门禁：`tests/vmu-prompt-live-facts.test.mjs` F11–F13（仍声明／策略全关／真实装配里零占位段）。
 
 ---
 

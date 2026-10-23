@@ -79,6 +79,10 @@ export function createPromptPipeline({
   // ROUND 241: the locale family needs somewhere to read from; before this the pipeline had no settings handle at all.
   settings = {},
   clock = () => new Date().toISOString(),
+  // ★★★ PHASE 12 / R10: "the configured value, else the DECLARED default" for `{{ setting:... }}` slots. Optional, so a
+  // hand-made pipeline (tests, another host) keeps the old behaviour byte for byte; the kernel injects its ONE reader
+  // (kernel/settings-defaults.js `readSetting`) so this module never imports the schema table.
+  settingFallback = null,
 } = {}) {
   // D-13 — THE SETTINGS ARE READ LIVE, NOT SNAPSHOTTED AT CONSTRUCTION. The kernel hands this factory a
   // LIVE settings view (`settings.get(k)`), and every key below is declared hot class H1 ("next turn"):
@@ -487,7 +491,21 @@ export function createPromptPipeline({
           'the whitelist is docs/03 §4 / docs/06 §5: ' + VARIABLE_WHITELIST.join(', '))
       }
       let value
-      if (key.startsWith('setting:')) value = ctx.settings ? ctx.settings[key.slice(8)] : undefined
+      // ★★★ PHASE 12 / R10 (measured on a full live run): `{{ setting:... }}` READ THE RAW MAP AND IGNORED THE
+      // DECLARED DEFAULT. The kernel deliberately does not materialise schema defaults into the settings object
+      // (kernel/settings-defaults.js states that contract), so a deployment that configures nothing carries an empty
+      // map - and every unconfigured slot rendered `〔未提供：setting:...〕` in the member's prompt. The live run fed the
+      // institute `本所「〔未提供：setting:vmu.turn.instituteName〕」` while the schema declares def 'institute', i.e. a
+      // PRESENT, DECLARED VALUE was reported as missing. The framework already has ONE reader for "configured value, else
+      // declared default" (`readSetting`); this channel was the door that bypassed it. `settingFallback` is that reader,
+      // injected by the assembler below so this module keeps zero knowledge of the schema table.
+      if (key.startsWith('setting:')) {
+        const sk = key.slice(8)
+        value = ctx.settings ? ctx.settings[sk] : undefined
+        if (value === undefined && typeof settingFallback === 'function') {
+          try { value = settingFallback(sk) } catch (e) { value = undefined }
+        }
+      }
       else if (key.startsWith('count:')) value = counts[key.slice(6)]
       else value = ctx[key]
       if (value === undefined || value === null) {

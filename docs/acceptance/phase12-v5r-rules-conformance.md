@@ -728,7 +728,7 @@ B8（忠实性收口链路）施工时，按**真实面方法名**核对证据�
 | R7 | "表决人数下限＝min(设置, 院士+常驻)"**任何回执都查不到** | `ballot` 只有 `eligible`；`tally` 只有 `{decisive:0, eligible:2}`；无 `min_votes`/`floor` | **缺陷（读数缺失）** |
 | R8 | 最终裁决与票箱**脱耦**：票箱 `undecided`，裁决照签且 notice 是祈使句 | `tally: outcome:"undecided", decisive:0` vs `verdict_final: value:0.6, decided:false, enforceable:false` ＋「请把命题卡改为 0.6」 | **缺陷（语义被文案越过）** |
 | R9 | "发言有预算"没有生效对象 | `speak`: `ms:0, turns:1, tokens:0, budget:null` | 机制在、默认关，需 pack 给预算或文档说明 |
-| R10 | 成员提示词里两个状态块**始终是占位符** | `memberPrompt.text` 含 `〔未提供：setting:vmu.turn.instituteName〕`、`leaderId`、`〔未提供：roster〕`、`〔未提供：quorum〕`；"本轮你实际能调用的工具"段原文未替换 | **缺陷（规则自洽依赖的读数在成员视野里是空的）** |
+| R10 | 成员提示词里两个状态块**始终是占位符** | `memberPrompt.text` 含 `〔未提供：setting:vmu.turn.instituteName〕`、`leaderId`、`〔未提供：roster〕`、`〔未提供：quorum〕`；"本轮你实际能调用的工具"段原文未替换 | ✅ **已修（§21）**：三类根因分别落在 `kernel/prompt/index.js`+`kernel/index.js`（声明默认值通道）、`kernel/turn/index.js`+`kernel/index.js`（`turnFacts` seam）、`packs/v5r/middleware/prompt-switches.js`（宿主专用段零注入）；门禁 `tests/vmu-prompt-live-facts.test.mjs` 13/0。⚠️ 真机复验待下一次活跑 |
 | R11 | `step` 结算读数自相矛盾（`executed:0` 却完成结题计票） | `receipt:{executed:0, fields:["vote_solved"], turn:null}` ＋ 同一回执 `closureVote.cast:true` | 读数不清（`executed` 只数"字段动作"，`vote_solved` 走结题窗） |
 | R12 | 诊断接缝溢出预算却不裁剪 | `vibe_vmu_status {detail:"quorum"}` ⇒ `originalBytes:223591`（上限 12000 的 18 倍），`note:"NOTHING was elided by us"` | **缺陷（只读诊断能塞 220 KB 进上下文）** |
 
@@ -745,3 +745,42 @@ B8（忠实性收口链路）施工时，按**真实面方法名**核对证据�
 - 这一次跑通的是**当前 dsh（0.2.1-rc.2）＋ 当前仓库 HEAD（`d08c5ab7`）＋ opencode-go**；出包方式是 `git archive HEAD` → `npm pack`，所以**工作树里未提交的东西没有进包**，读数只对 `d08c5ab7` 成立。
 - `UNKNOWN_FIELD=2` 的两次命中都在**任务文本**里（码名被引用），不是运行时拒绝；若只看正则计数会误判成红线，必须逐条看上下文 —— 这与本阶段早先"提示词文本提到码名≠运行时错误"是同一类。
 - 本次运行 43 次工具调用、243 万 tokens，**没有**覆盖规则全表（例如 Lean 作业、论文三阶段、断点续跑只做了单测级验证）；§20.4 的 12 条是"跑了这一遍看到的不符"，不是"规则全表已验完"。
+
+---
+
+## §21 R10 闭合：活跑实测到的“空洞”三类根因（一条也不靠猜）
+
+§20.4 的 **R10** 记的是现象：接受态成员提示词里出现 `〔未提供：setting:vmu.turn.instituteName〕`、`〔未提供：setting:vmu.turn.leaderId〕`、`〔未提供：roster〕`、`〔未提供：quorum〕`，以及一段**自称“替换没有发生”**的 `# v5r-effective-tools-chair`。本节是根因与落点：三类，彼此独立，缺一条都还在坏。
+
+### 21.1 根因一：`{{ setting:... }}` 无视**声明默认值**
+
+- 真实行为（修前）：`kernel/prompt/index.js` 的 `renderVariables` 只查 `ctx.settings[k]`；而内核**故意**不把 schema 的 `def` 物化进 settings（契约写在 `kernel/settings-defaults.js`）。没配东西的部署 = 空表 ⇒ **每一个未配置槽位都渲染成“缺失”**，即使该键的默认值是“存在的”。
+- 实测伤点：`vmu.turn.instituteName` 的 `def` 是 `'institute'`，被渲染成「未提供」；charter 里所有 `m = …` 句子与在册快照同理。
+- 落点：`kernel/prompt/index.js` 新增可选 `settingFallback`（缺省 null ⇒ 旧行为逐字不变）；内核在 `kernel/index.js` 注入 `readSetting(settingsView, key)` —— 即“配置值否则声明值”的**唯一读者**，模板通道不再自开门。**三态**：配置值 > 声明默认值 > 真缺失（仍记 `variableMisses`，仍受 `vmu.prompts.missingVariable` 管辖，未知键照旧报缺失）。
+
+### 21.2 根因二：`{{ roster }}` / `{{ quorum }}` 有合同、**无生产者**
+
+- 合同：`packs/v5r/prompts/v5r-charter.js` 头注释逐字写明 `quorumM() -> {{ quorum }}`、`rosterLine(member) -> {{ roster }}`；`kernel/turn/index.js` 的 `open()` 也早就接受并转交这两个字段（`assemble({roster, quorum})`）。
+- 缺口：`step()`/`drive()` **从没**传过它们 ⇒ 真回合里两个洞。这正是本阶段反复遇到的“声明了、也有读者、但调用链上没有生产者”。
+- 落点：`kernel/turn/index.js` 新增 `turnFacts` seam（`createTurnOrchestrator({ turnFacts })`，在 `runOne` 里并入 spec）；`kernel/index.js` 注入实现：活动成员名册 + “合格人数按 `vmu.meetings.quorumCap` 封顶”（与会议座位的 m **同一条规则**，复用 `closureVoteOf` 的唯一闭包票计算）。
+- 三条边界，都在门禁里：**未注入 ⇒ 槽位如实报缺失**（框架不编造部署事实）；**seam 抛错 ⇒ 具名拒 `VMU_ENGINE_UNAVAILABLE`**（半张名册比洞更危险）；**quorum 是数字、roster 是文本块**（charter 两种用法各自直接可用）。
+
+### 21.3 根因三：宿主专用占位段被 turn 管线当成普通段注入
+
+- `v5r-effective-tools-{chair,member,temp}` 的唯一生产者是**宿主**（`host.js` 在 `system-prompt/assemble` 上把真实清单覆盖进这三段）。turn 管线只装配、不替换 ⇒ 注入的正是那段「你读到了原文，说明替换没有发生」。
+- 落点：段**仍然声明**（宿主才找得到替换目标），但 pack 的段策略新增 `HOST_ONLY_SECTIONS`（`packs/v5r/middleware/prompt-switches.js`），在**每次 turn 装配**里把三者全部关闭 ⇒ **零注入**，不是“disabled 说明”。
+- 判别形状（写给下一个读者）：**一段若其唯一生产者不在本管线里，它的正确归宿是“声明但本管线不注入”，而不是“注入一段解释自己为什么没生效”的话。**
+
+### 21.4 门禁与读数
+
+| 门 | 读数 |
+|---|---|
+| 新增 `tests/vmu-prompt-live-facts.test.mjs` | **13 passed / 0 failed**（F1–F5 默认值通道含真内核；F6–F10 seam 三态；F11–F13 占位段零注入）|
+| `vmu-turn` / `vmu-meeting-types` / `vmu-v5r-tools` / `vmu-kernel` / `vmu-pack-prompts` / `vmu-charter-contracts` / `vmu-meeting-verdict` | 191／126／339／260／24／22／37 全 0 failed |
+| `regen-all` | `--write` ⇒ 16/16 written；再 `--check` ⇒ **16/16 in sync** |
+| `check-docs` / `audit-vmu-docs` / `audit-doc-line-refs` | DOC LINT PASS／103 passed／9 passed |
+
+### 21.5 诚实边界
+
+- 本节证明的是**框架与 pack 的这一半**：默认值到文本、seam 到文本、turn 管线零占位段。**宿主对占位段的替换**（`host.js` 那条路径）不在本组断言内，它由宿主自己的套件守着 —— 所以 R10 的关闭是“三类根因已修 + 有门禁”，**不是“真机已复验”**；真机复验要等下一次完整活跑。
+- R10 之外的 R1–R12 仍在 §20.4 待办里；本次只闭合 R10。
