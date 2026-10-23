@@ -252,20 +252,28 @@ export function collectPlannedDefs({ volumes, core, namespaces, mirrors }) {
     walk(join(REPO, 'vibe-math-vmu', 'kernel'))
     return out
   })()
-  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  /** A READ is a lookup: settings[...], get(...), or a raw/readKey/strOf/boolOf/numOf/intOr argument. A declaration list is not a read. */
-  const readersOf = (key) => {
-    const q = esc(key)
-    const pats = [new RegExp("settings\\[\\s*['\"]" + q + "['\"]\\s*\\]"),
-      new RegExp("\\.get\\(\\s*['\"]" + q + "['\"]"),
-      new RegExp("(?:raw|readKey|strOf|boolOf|numOf|intOr)\\(\\s*[^,)]*['\"]" + q + "['\"]")]
-    return kernelSources.filter((s) => pats.some((re) => re.test(s.text))).map((s) => s.path.split('/').pop())
+  /**
+   * PERFORMANCE (dedup round): the old readersOf/declarersOf built three fresh RegExp PER KEY and re-scanned every
+   * kernel source for each one - the dominant cost of collectPlannedDefs (profiled at ~40% self time), and this
+   * function is called several times per gate run. ONE pass over the sources now builds the same key => files maps.
+   * The verdicts are identical: same three read shapes, same declarer shape.
+   */
+  const READERS = new Map()
+  const DECLARERS = new Map()
+  const remember = (map, key, file) => {
+    let list = map.get(key)
+    if (!list) { list = []; map.set(key, list) }
+    if (list.indexOf(file) === -1) list.push(file)
   }
-  /** A face that lists the key inside a reasons map has recorded its verdict where it belongs. */
-  const declarersOf = (key) => {
-    const re = new RegExp("\\[\\s*['\"]" + esc(key) + "['\"]\\s*,")
-    return kernelSources.filter((s) => re.test(s.text)).map((s) => s.path.split('/').pop())
+  for (const s of kernelSources) {
+    const file = s.path.split('/').pop()
+    for (const m of s.text.matchAll(/settings\[\s*['"]([^'"]+)['"]\s*\]/g)) remember(READERS, m[1], file)
+    for (const m of s.text.matchAll(/\.get\(\s*['"]([^'"]+)['"]/g)) remember(READERS, m[1], file)
+    for (const m of s.text.matchAll(/(?:raw|readKey|strOf|boolOf|numOf|intOr)\(\s*[^,)]*['"]([^'"]+)['"]/g)) remember(READERS, m[1], file)
+    for (const m of s.text.matchAll(/\[\s*['"]([^'"]+)['"]\s*,/g)) remember(DECLARERS, m[1], file)
   }
+  const readersOf = (key) => (READERS.get(key) || []).slice()
+  const declarersOf = (key) => (DECLARERS.get(key) || []).slice()
   const verdictOf = (key) => {
     const rd = readersOf(key)
     if (rd.length) return '★ **实测矛盾**：已被 `' + rd.join('`／`') + '` **读取** ✗ ⇒ 应从 planned 移入核心表（审计发现的真缺陷 ✓）'
