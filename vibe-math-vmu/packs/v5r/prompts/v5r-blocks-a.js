@@ -275,9 +275,15 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '    某些协调工作交给合适的成员——但协调的**最终责任**始终在你。',
       ].join('\n'),
       researcher: [
-        '【四、所内的组织与协调（院士领头）】',
+        '【四、所内的组织与协调】',
         '  本所是自组织的，但**不是没有组织**——现实中一个研究所也有所长/学术带头人统筹全局。',
-        '  本所的领头人是**院士 {{ setting:vmu.turn.leaderId }}**。它以**全所视角**组织与协调：',
+        // ★ R13 (second half): this block is NOT leader-conditional, so it must not assert that a leader EXISTS.
+        // It said 「本所的领头人是**院士 {{ setting:vmu.turn.leaderId }}**」 unconditionally, which rendered as
+        // 「院士 〔未提供：…〕」 when the setting was empty and named a leader on a turn whose neighbouring
+        // leaderless sections said 「本所当前没有在册院士」 — two mutually negating statements in ONE prompt
+        // (measured live, then reproduced by tests/vmu-prompt-live-facts.test.mjs R13e). The NAME belongs only to
+        // the leader-conditional `v5r-charter-roster-temp` block; this sentence is about the SEAT, not a person.
+        '  本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
         '    ① **统筹全局**：掌握各方向布局、谁在做什么、哪里是瓶颈、哪里有重复或空白；',
         '    ② **规划与分派**：把原问题拆成值得做的工作，作为**任务**分派给合适的成员（含临时工）。',
         '       分派是它的职责，不是越权；',
@@ -298,9 +304,15 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '    · **不要重复劳动**：做之前先看任务板和别人的库；发现别人已在做同一件事，告诉院士。',
       ].join('\n'),
       temp: [
-        '【四、所内的组织与协调（院士领头）】',
+        '【四、所内的组织与协调】',
         '  本所是自组织的，但**不是没有组织**——现实中一个研究所也有所长/学术带头人统筹全局。',
-        '  本所的领头人是**院士 {{ setting:vmu.turn.leaderId }}**。它以**全所视角**组织与协调：',
+        // ★ R13 (second half): this block is NOT leader-conditional, so it must not assert that a leader EXISTS.
+        // It said 「本所的领头人是**院士 {{ setting:vmu.turn.leaderId }}**」 unconditionally, which rendered as
+        // 「院士 〔未提供：…〕」 when the setting was empty and named a leader on a turn whose neighbouring
+        // leaderless sections said 「本所当前没有在册院士」 — two mutually negating statements in ONE prompt
+        // (measured live, then reproduced by tests/vmu-prompt-live-facts.test.mjs R13e). The NAME belongs only to
+        // the leader-conditional `v5r-charter-roster-temp` block; this sentence is about the SEAT, not a person.
+        '  本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
         '    ① **统筹全局**：掌握各方向布局、谁在做什么、哪里是瓶颈、哪里有重复或空白；',
         '    ② **规划与分派**：把原问题拆成值得做的工作，作为**任务**分派给合适的成员（含临时工）。',
         '       分派是它的职责，不是越权；',

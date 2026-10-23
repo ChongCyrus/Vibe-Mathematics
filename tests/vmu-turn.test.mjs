@@ -549,7 +549,18 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   let total = 0
   const missing = []
   const unbaselined = []
-  const KNOWN_UNBASELINED = ['v5r-charter-roster-temp/leaderless: · 本所当前没有在册院士：你只需向**雇主**负责（它给你派活）。']
+  // ★ R13 (phase 12, second half): the source charter asserted a leader UNCONDITIONALLY («本所的领头人是**院士
+  // {{ setting:vmu.turn.leaderId }}**»), which on a staffed-but-unconfigured institute rendered as an unresolved hole
+  // and contradicted the neighbouring leaderless sections («本所当前没有在册院士») inside ONE prompt — measured on a
+  // live run and reproduced by tests/vmu-prompt-live-facts.test.mjs R13e. The capture is a historical artefact and
+  // cannot be edited, so the SHIPPED charter deliberately says 「本所的**领头人**（坐在 `chair` 席位…）」 instead: a
+  // sentence about the SEAT, which stays true whether or not the office is occupied. The two lines are therefore
+  // declared here BY NAME (a new, different line still reddens T71) rather than silently exempted.
+  const KNOWN_UNBASELINED = [
+    'v5r-charter-roster-temp/leaderless: · 本所当前没有在册院士：你只需向**雇主**负责（它给你派活）。',
+    'v5r-charter-org/researcher: 本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
+    'v5r-charter-org/temp: 本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
+  ]
   // Scope: the CHARTER blocks are checked against the persona the original really hands out. The reply spec is
   // deliberately EXCLUDED because measuring showed the captured prompt corpus does NOT contain it - only its opening
   // sentence and vote_solved appear - so there is no capture-side baseline for it. That gap is recorded in docs/26

@@ -1532,11 +1532,16 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       const roster = live.length === 0
         ? null
         : live.map((m) => '- ' + String(m.id) + ' · ' + String(m.slot || m.role || 'member')).join('\n')
+      // ★★★ R13 (second half): the SAME fact in the shape the DECISION needs. The policy that picks the leader pair
+      // reads ids; this seam used to answer only the prose form, so it always looked like "no roster is known" and
+      // the leaderless variants were chosen even on a staffed institute. Two representations, ONE survey, one call:
+      // a decision must never have to parse prose, and a sentence must never have to be reassembled from ids.
+      const rosterIds = live.length === 0 ? null : live.map((m) => String(m.id))
       const view = closureVoteView()
       const eligible = Array.isArray(view.eligible) ? view.eligible.length : 0
       const cap = Number(readSetting(settingsView, 'vmu.meetings.quorumCap'))
       const quorum = Number.isFinite(cap) && cap > 0 ? Math.min(cap, eligible) : eligible
-      return { roster, quorum }
+      return { roster, rosterIds, quorum }
     },
     clearMemberToolCalls: (member) => { memberToolCallLog.delete(String(member)) },
   })

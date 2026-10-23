@@ -128,9 +128,14 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
   // false "no leader" costs a less personal organisational paragraph; a false "leader is X" tells the whole institute to report to
   // someone who may not exist. Unknowable therefore resolves to leaderless, deliberately.
   const leaderId = typeof s['vmu.turn.leaderId'] === 'string' ? s['vmu.turn.leaderId'] : ''
-  const rosterIds = Array.isArray(turn && turn.roster)
-    ? turn.roster.map((m) => String(m && m.id !== undefined ? m.id : m))
-    : null
+  // ★ R13 (second half): IDS, from the structured fact when the caller supplies it. The prose form is NOT parsed:
+  // a sentence is for humans and a parser over one is a second, silently divergent reader of the same fact.
+  // `turn.roster` is still accepted when it IS an array (hand-built turns and the unit tests use that shape).
+  const rosterIds = Array.isArray(turn && turn.rosterIds)
+    ? turn.rosterIds.map((m) => String(m && m.id !== undefined ? m.id : m))
+    : (Array.isArray(turn && turn.roster)
+        ? turn.roster.map((m) => String(m && m.id !== undefined ? m.id : m))
+        : null)
   const leaderOnStaff = typeof turn.leaderOnStaff === 'boolean'
     ? turn.leaderOnStaff
     : (rosterIds !== null && leaderId !== '' && rosterIds.includes(leaderId))

@@ -1675,7 +1675,11 @@ export function createTurnOrchestrator({
         return got && typeof got === 'object' ? got : {}
       })()
       : {}
+    // ★ R13 (second half): `rosterIds` rides beside `roster` for the same reason the seam emits both — the pack's
+    // prompt policy decides the leader pair from IDS, the template renders PROSE, and neither may have to parse the
+    // other. A seam that supplies only the prose form is treated as "ids unknown" (never as "ids empty").
     const merged = { roster: supplied.roster === undefined ? null : supplied.roster,
+      rosterIds: supplied.rosterIds === undefined ? null : supplied.rosterIds,
       quorum: supplied.quorum === undefined ? null : supplied.quorum, ...spec }
     const { turn } = open(merged)
     return runFrom(turn, spec)

@@ -156,6 +156,57 @@ const mkTurn = (extra = {}) => createTurnOrchestrator({ sectionPolicy: decideSec
     { headings: (text.match(/^# v5r-[a-z-]+/gm) || []).slice(0, 8) })
 }
 
+// ── 5. R13: THE ROSTER FACT MUST REACH THE DECISION (not only the sentence) ───────────────────────────────────────
+{
+  // Measured on a live run: five `-leaderless` sections sat next to `# v5r-charter-org` naming
+  // 「本所的领头人是**院士 member-1**」. Root cause: the turn-facts seam answered `roster` as PROSE, the policy reads
+  // IDS, so an institute with a seated chair looked leaderless to the decision and staffed to the sentence.
+  const leaderPairs = PACK.sections && PACK.sections.length ? null : null // (kept for readability below)
+  const withLeader = decideSections({
+    settings: { 'vmu.turn.leaderId': 'r-1' },
+    turn: { phase: 'meeting', meetingState: 'others', rosterIds: ['r-1', 'r-2'] },
+  })
+  const enabled = new Map(withLeader.decisions.map((d) => [d.name, d.enabled]))
+  const lessNames = [...enabled.keys()].filter((n) => n.endsWith('-leaderless'))
+  // EMPTY_ALLOWED: the pack might declare no leaderless variants at all; the assertion below is the pair verdict, and a
+  // pack with zero pairs would be caught by tests/vmu-charter-leader-pair.test.mjs (which derives its list from the pack).
+  ok(lessNames.length > 0 && lessNames.every((n) => enabled.get(n) === false),
+    'R13a. ★★★ with the structured roster fact the policy picks the WITH-LEADER variant of every pair', { lessNames, enabled: lessNames.map((n) => enabled.get(n)) })
+  ok(enabled.get('v5r-charter-division') === true && enabled.get('v5r-charter-rule-7') === true,
+    'R13b. ★★★ and the naming variants it picked are enabled (not merely "the leaderless ones are off")',
+    { division: enabled.get('v5r-charter-division'), rule7: enabled.get('v5r-charter-rule-7') })
+
+  // The OLD shape must stay readable as "ids unknown", never guessed from a sentence: parsing prose would be a second,
+  // silently divergent reader of the same fact — the class this repository keeps paying for.
+  const proseOnly = decideSections({ settings: { 'vmu.turn.leaderId': 'r-1' }, turn: { phase: 'meeting', meetingState: 'others', roster: '- r-1 · chair\n- r-2 · member' } })
+  const proseBy = new Map(proseOnly.decisions.map((d) => [d.name, d.enabled]))
+  ok(proseBy.get('v5r-charter-division') === false && proseBy.get('v5r-charter-division-leaderless') === true,
+    'R13c. ★★★ a PROSE roster is not ids: the policy refuses to parse it and keeps the safe default (leaderless)',
+    { division: proseBy.get('v5r-charter-division'), leaderless: proseBy.get('v5r-charter-division-leaderless') })
+
+  // End to end through a REAL turn with the pack's own sections: the composed prompt must not negate itself.
+  const packPipeline = createPromptPipeline({ sections: PACK.sections, clock: () => '2026-01-01T00:00:00.000Z' })
+  const t13 = createTurnOrchestrator({
+    sectionPolicy: decideSections,
+    prompt: packPipeline,
+    deliver: deliverByReturning(),
+    turnFacts: () => ({ roster: '- r-1 · chair\n- r-2 · member', rosterIds: ['r-1', 'r-2'], quorum: 2 }),
+  })
+  const r13 = await t13.run({ member: 'r-2', phase: 'normal' })
+  const text13 = (r13 && r13.memberPrompt && r13.memberPrompt.text) || ''
+  // The setting comes from the schema default ('' here), so this case proves the CHANNEL only; the live run supplies
+  // the id through `vibe_v5_configure`. What must hold regardless: the prompt never says both things at once.
+  ok(text13.includes('本所的领头人') || text13.includes('本所当前没有在册院士') || text13.length > 0,
+    'R13d. (channel probe) the composed prompt is non-empty so the following assertion has a subject', { chars: text13.length })
+  const saysNone = text13.includes('本所当前没有在册院士')
+  // A name is a person, never the unresolved-hole marker: 「院士 〔未提供：setting:vmu.turn.leaderId〕」 is the
+  // absence of an answer dressed as one, and must not be read as evidence that a leader exists.
+  const namesLeader = /本所的领头人是\*\*院士 (?!〔)/.test(text13) || /\*\*院士 (?!〔)[^*]+\*\* —— 本所领头人/.test(text13)
+  ok(!(saysNone && namesLeader),
+    'R13e. ★★★★★ ONE prompt never both "没有在册院士" and "领头人是院士 X" — the measured contradiction',
+    { saysNone, namesLeader })
+}
+
 console.log('\n=== VMU PROMPT LIVE FACTS: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failures.length) { console.log('FAILURES:'); for (const f of failures) console.log('  - ' + f) }
 process.exit(failed ? 1 : 0)
