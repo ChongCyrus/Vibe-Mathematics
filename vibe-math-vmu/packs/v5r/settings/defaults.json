@@ -55,6 +55,7 @@
     "vmu.meetings.tier": "formal",
     "vmu.meetings.allowLight": false,
     "vmu.meetings.eligibleSeats": ["chair", "member"],
+    "vmu.meetings.attendDeniedSeats": ["temp"],
     "vmu.meetings.typeCatalog": ["ordinary", "academic", "debate", "closure", "paper", "planning"],
     "_chairRails": "规则「会议只能由院士（chair）预约/召开和关闭」「院士可以延长会议时长上界」是【本所的制度】，不是框架的：内核把三条都做成默认 false（零机制），这里才是它们被采纳的地方。★ 不在这里重述 vmu.meetings.extendRequiresChair / extendCeilingMs —— 内核默认已是 true / 14400000ms，重述等于把框架默认抄进价值层（本文件 §rule: 一个过时的显式值比「没设」更糟）。",
     "vmu.meetings.conveneRequiresChair": true,

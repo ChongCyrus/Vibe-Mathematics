@@ -232,7 +232,7 @@ export function createBoxBinding({ clock, initial = null, refuse }) {
 export function meetingKeysSnapshot(K) {
   return {
     'vmu.meetings.wakeRetries': K.wakeRetries, 'vmu.meetings.verdictMaxRounds': K.verdictMaxRounds, 'vmu.meetings.hardLimitMs': K.hardLimitMs,
-    'vmu.meetings.tier': K.tier, 'vmu.meetings.allowLight': K.allowLight, 'vmu.meetings.eligibleSeats': K.eligibleSeats,
+    'vmu.meetings.tier': K.tier, 'vmu.meetings.allowLight': K.allowLight, 'vmu.meetings.eligibleSeats': K.eligibleSeats, 'vmu.meetings.attendDeniedSeats': K.attendDeniedSeats,
     'vmu.meetings.typeCatalog': K.typeCatalog, 'vmu.meetings.attendanceMode': K.attendanceMode, 'vmu.meetings.liveCap': K.liveCap,
     'vmu.meetings.quorumMin': K.quorumMin, 'vmu.meetings.quorumRatio': K.quorumRatio, 'vmu.meetings.quorumLossPolicy': K.quorumLossPolicy, 'vmu.meetings.quorumCap': K.quorumCap,
     'vmu.meetings.quorumRecountMs': K.quorumRecountMs, 'vmu.meetings.unansweredInDenominator': K.unansweredInDenominator,

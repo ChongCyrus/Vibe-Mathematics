@@ -7,6 +7,11 @@
 // BY CODE, the clock is injected, zero mechanism does not crash, and read paths never mutate.
 import { createMeetings, WIRED_KEYS, UNWIRED_REASONS } from '../vibe-math-vmu/kernel/meetings.js'
 import { SETTING_DEFS } from '../vibe-math-vmu/settings/schema.js'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
 
 let passed = 0
 let failed = 0
@@ -801,6 +806,51 @@ const err = (fn) => errOf(fn)
   // the seat gate marks the key in enforced[] (a consulted key must be named in the refusal)
   ok(tempVote && Array.isArray(tempVote.enforced) && tempVote.enforced.includes('vmu.meetings.eligibleSeats'),
     '★ A1④: the seat key is NAMED in the refusal enforced[] (it was consulted, not merely declared)', tempVote && tempVote.enforced)
+}
+
+// ── ★ A4 (phase 12): 「临时工默认不参与会议」 had no machine gate ──────────────────────────────────────
+// The rule was expressed as prose in the pack and as a row in the conformance ledger with the verdict 部分, because
+// `attend()` only checked membership: a temp seat could walk in. The gate is NOT a hard-coded slot in the kernel —
+// the kernel compares the roster slot against a DECLARED list, and the pack declares which slots its institution
+// keeps out (`vmu.meetings.attendDeniedSeats: ["temp"]`), exactly like the vote rule uses `eligibleSeats`.
+{
+  const ROSTER = [
+    { id: 'acad', slot: 'chair', state: 'live' },
+    { id: 'r-1', slot: 'member', state: 'live' },
+    { id: 't-1', slot: 'temp', state: 'live' },
+  ]
+  const seam = { members: { roster: () => ROSTER } }
+  const DENY = { 'vmu.meetings.attendDeniedSeats': ['temp'] }
+
+  const h = mk(DENY, seam)
+  const mid = h.t.open({ chair: 'acad', roster: ROSTER.map((x) => x.id) }).meeting
+  const presentBefore = h.t.quorum({ meeting: mid }).present
+  const denied = errOf(() => h.t.attend({ meeting: mid, member: 't-1' }))
+  ok(denied && denied.code === 'VMU_NOT_PERMITTED' && /does not attend meetings/.test(String(denied.message)) && /"temp"/.test(String(denied.message)),
+    '★ A4: a DECLARED non-attending seat is refused by name, and the refusal names the slot it holds', denied && denied.code)
+  ok(denied && Array.isArray(denied.enforced) && denied.enforced.includes('vmu.meetings.attendDeniedSeats'),
+    '★ A4: the consulted key is NAMED in enforced[] (a refusal must expose what decided it)', denied && denied.enforced)
+  ok(denied && /vmu\.meetings\.attendDeniedSeats/.test(String(denied.hint)),
+    '★ A4: the hint points at the setting that would change the outcome')
+  ok(h.t.quorum({ meeting: mid }).present === presentBefore,
+    '★ A4 反: the refused attend left the room exactly as it was (no half-written attendance)', { before: presentBefore, after: h.t.quorum({ meeting: mid }).present })
+  ok(h.t.attend({ meeting: mid, member: 'acad' }).ok === true && h.t.attend({ meeting: mid, member: 'r-1' }).ok === true,
+    '★ A4 正: seats that are not declared stay allowed (the rule is the DECLARATION, never a hard-coded list)')
+  const free = mk({}, seam)
+  const fid = free.t.open({ chair: 'acad', roster: ROSTER.map((x) => x.id) }).meeting
+  ok(free.t.attend({ meeting: fid, member: 't-1' }).ok === true,
+    '★ A4 反: with no declared non-attending seats the temp seat attends (zero mechanism, no hidden default)')
+  const unreadable = { members: { roster: () => [{ id: 'acad', slot: 'chair' }, { id: 'r-1', slot: 'member' }, { id: 't-1' }] } }
+  const u = mk(DENY, unreadable)
+  const uid = u.t.open({ chair: 'acad', roster: ['acad', 'r-1', 't-1'] }).meeting
+  ok(u.t.attend({ meeting: uid, member: 't-1' }).ok === true,
+    '★ A4 反: an UNKNOWN slot fails OPEN (membership was already validated; a missing slot must not become a silent refusal)')
+  // The pack file keeps its defaults under the 'defaults' key (pure data, folded UNDER the user's settings by the
+  // plugin before the kernel is built) — so read THAT, not the file root.
+  const packDefaults = JSON.parse(readFileSync(join(HERE, '..', 'vibe-math-vmu', 'packs', 'v5r', 'settings', 'defaults.json'), 'utf8')).defaults
+  ok(JSON.stringify(packDefaults['vmu.meetings.attendDeniedSeats']) === JSON.stringify(['temp']),
+    '★ A4: the v5r pack DECLARES the institution vote (temp does not attend by default) — the rule is POLICY, not a kernel default',
+    packDefaults['vmu.meetings.attendDeniedSeats'])
 }
 
 // ── ★ A1 (round 10): service summary (motions + votes), live AND archived ───────────────────────────────

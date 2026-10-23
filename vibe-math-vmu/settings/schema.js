@@ -1099,6 +1099,9 @@ const CORE_DEFS = Object.freeze([
   // 读取方落地前必须按名具名降级（不臆造，不改裁决）。
   { key: 'vmu.meetings.leaveApprover', type: 'enum', domain: ['chair', 'office'], def: 'chair', hot: HOT.H1, who: 'office', doc: '请假/休会的批准人：chair＝主席批准，office＝办公室兜底。★ 本轮**只声明键**（B② 的 requestLeave/approveLeave 未落）；键被读时必须按此值域判定，未落前读取具名降级。' },
   { key: 'vmu.meetings.eligibleSeats', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '投票席位白名单（席别名；空＝不按席别限制，只要求是本场成员）。一个判据、两个消费者：`kernel/meetings.js` 的 `vote()`（票权闸）与 `eligibleVoterIds()`（供逐对象票箱取 eligible）。默认空＝零策略；v5r 包声明 chair/member。' },
+  // ★ A4 「临时工默认不参与会议」: the NON-ATTENDING seats. Empty = no seat rule (zero mechanism). One consumer:
+  // `attend()` in kernel/meetings.js. v5r declares `["temp"]` in its pack defaults — the institution vote.
+  { key: 'vmu.meetings.attendDeniedSeats', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '不参与会议的席位（席别名；空＝不按席别限制）。消费者＝attend() 门：命中即 VMU_NOT_PERMITTED 并点名该键与席位。' },
 
   // ── ROUND 10 / task-74 (A): the eight v5r parameters, each WITH ITS READER (a key without one is an orphan) ──
   // Every default below is v5r's own value with a line reference; nothing is invented, and every key names the

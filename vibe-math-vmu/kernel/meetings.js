@@ -138,6 +138,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // consumers: the `vote()` gate below and `eligibleVoterIds()` (which the per-object ballot face asks for the
     // eligible list). The comparison is on the ROSTER's slot, never a role hard-coded in this file.
     eligibleSeats: arr(sget('vmu.meetings.eligibleSeats')).map(String),
+    // ★ A4 「临时工：…**默认不参与会议**」: the DECLARED NON-ATTENDING seats. Empty = the framework imposes no
+    // seat rule (zero mechanism); a pack declares which slots its institution keeps out of meetings (v5r:
+    // `temp`). ONE consumer: the `attend()` gate below. The vocabulary is the PACK's — this file only compares
+    // the roster's `slot`, exactly the way `eligibleSeats` (vote) and `capUniverse` (denominator) already do.
+    attendDeniedSeats: arr(sget('vmu.meetings.attendDeniedSeats')).map(String),
     liveCap: n(sget('vmu.meetings.liveCap')),
     quorumMin: n(sget('vmu.meetings.quorumMin')), quorumRatio: n(sget('vmu.meetings.quorumRatio')),
     // ROUND 203: the quorum ceiling (declared default 3; 0 = no ceiling). `undefined` means unset -> default 3,
@@ -649,6 +654,20 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const enforced = []
       if (typeof member !== 'string' || !member) throw deny('VMU_INVALID_ARGUMENT', 'attend needs a member id', 'e.g. { meeting: "m1", member: "r-1" }', [])
       if (!isMember(member)) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + member, 'the roster seam rejected it', [])
+      // ★ A4: a seat the institution keeps out of meetings cannot take a seat here. This is the missing MACHINE
+      // gate behind 「临时工默认不参与会议」 — before it, the only expression of that rule was prose.
+      // FAIL-OPEN ON AN UNRESOLVABLE SLOT on purpose: membership was already validated above, and a roster seam
+      // that cannot report a slot must not silently deny attendance (that would be a silent refusal).
+      if (K.attendDeniedSeats.length) {
+        const list = (members && typeof members.roster === 'function') ? (members.roster() || []) : []
+        const row = list.find((x) => x && String(x.id) === String(member))
+        const slot = row ? String(row.slot || '') : ''
+        if (slot && K.attendDeniedSeats.includes(slot)) {
+          mark(enforced, 'vmu.meetings.attendDeniedSeats')
+          throw deny('VMU_NOT_PERMITTED', 'this seat does not attend meetings: "' + String(member) + '" is in slot "' + slot + '"',
+            'the declared non-attending seats are ' + K.attendDeniedSeats.join(', ') + ' (vmu.meetings.attendDeniedSeats)', enforced)
+        }
+      }
       const ms = at === null ? clock() : atMs(at)
       if (m.state === 'recess') throw deny('VMU_STATE', 'the meeting is in recess: ' + m.id, 'resume() first (vmu.meetings.recessMaxMs / recessResumeRequiresMotion)', [])
       let late = false
