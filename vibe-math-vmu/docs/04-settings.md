@@ -1296,7 +1296,7 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.verbatimEnabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.verbatimRetentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.waitDecisionRequiresChair` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.waitForAll` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
+| `vmu.meetings.waitForAll` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ 规则「未到齐则等待」的开关：true ⇒ 预约到点的会议要等**应到全员**到齐才 open，否则进 waiting（可用 vmu.meetings.waitOnDueMs 超时自决）。★ 它不是表决人数下限：法定人数是 vmu.meetings.quorumMin（票箱面为 vmu.ballot.minVotes），两者不是同一个数，quorum 已满足也可能仍在 waiting。 |
 | `vmu.meetings.waitOnDueMs` | int ≥0 | `300000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.migration.auto` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.migration.dryRunDefault` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |

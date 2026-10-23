@@ -474,6 +474,17 @@ export function unnamedFallbacks(defs) {
     .map((d) => ({ key: d.key, module: d.module, literal: d.literal }))
 }
 
+/** ★ ROUND-3/phase-12: rows whose SEMANTICS cannot be inferred from the source get one hand-written sentence
+ *  appended to the generated doc. The sentence lives HERE, beside the generator, and NOT in `settings/schema.js`:
+ *  the WIRED-SCHEMA block is rewritten wholesale on every `regen-all --write`, so a hand-edited doc inside it is
+ *  silently destroyed (measured: the R3 note on `vmu.meetings.waitForAll` was reverted that way, and the suite
+ *  asserting the explanation went red while the code was right). One owner per sentence.
+ *  ★ A note may not restate a value that is derivable from code — it explains MEANING (which key is which number),
+ *  because that is the part no extractor can recover. */
+export const DOC_NOTES = {
+  'vmu.meetings.waitForAll': '★ 规则「未到齐则等待」的开关：true ⇒ 预约到点的会议要等**应到全员**到齐才 open，否则进 waiting（可用 vmu.meetings.waitOnDueMs 超时自决）。★ 它不是表决人数下限：法定人数是 vmu.meetings.quorumMin（票箱面为 vmu.ballot.minVotes），两者不是同一个数，quorum 已满足也可能仍在 waiting。'
+}
+
 export function render(defs) {
   const lines = [BEGIN]
   for (const d of defs) {
@@ -488,9 +499,11 @@ export function render(defs) {
       : '已接线（' + d.module + ' 读取）；默认值取自模块源码'
     // ★ ROUND 32: an UN-INFERABLE type is written out WITH ITS NAME in the artifact itself (never silently), so a
     // reader of the generated block can tell a declared `object` from an explained fallback.
+    const note = DOC_NOTES[d.key] ? '；' + DOC_NOTES[d.key] : ''
+    const docBase = doc + note
     const docOut = d.type === null
-      ? doc + '；★ 类型推断不出（' + (named ? '具名回落 object：' + named.class + ' — ' + named.why : '★ 未具名：见 OBJECT_FALLBACKS，--check 会红') + '）'
-      : doc
+      ? docBase + '；★ 类型推断不出（' + (named ? '具名回落 object：' + named.class + ' — ' + named.why : '★ 未具名：见 OBJECT_FALLBACKS，--check 会红') + '）'
+      : docBase
     lines.push("  { key: '" + d.key + "', type: '" + type + "', def: " + def + ", hot: HOT.H1, who: 'office', doc: " + JSON.stringify(docOut) + ' },')
   }
   lines.push(END)

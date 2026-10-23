@@ -305,8 +305,20 @@ try {
   // Time moves: the meeting that was scheduled is started BY A TOUCH (the kernel's lazy settle), and the floor opens.
   NOW = NOW + 11 * 60_000
   const afterDue = await call(b, 'vibe_vmu_meeting', { action: 'attend', id: smid, member: 'r-1' })
-  ok(afterDue.parsed && afterDue.parsed.ok === true && afterDue.parsed.state === 'open',
-    '★★★ 正: after the start time a member attends and the meeting is OPEN — a scheduled meeting really becomes a meeting', afterDue.parsed && { code: codeOf(afterDue.parsed), state: afterDue.parsed.state, settled: afterDue.parsed.settled })
+  // ★ R3 (「未到齐」): the roster is three seats and only one has arrived, so the meeting that was scheduled
+  // RESOLVES into `waiting`, not into `open`. This used to read `open` because the old code shared ONE number
+  // (present.size) with the vote floor; the assertion now pins the rule instead of the old arithmetic.
+  ok(afterDue.parsed && afterDue.parsed.ok === true && afterDue.parsed.state === 'waiting',
+    '★★★ 正: after the start time a scheduled meeting RESOLVES — but only into waiting while the roster is incomplete (the rule 「未到齐则等待」)', afterDue.parsed && { code: codeOf(afterDue.parsed), state: afterDue.parsed.state, settled: afterDue.parsed.settled })
+  const missing = (afterDue.parsed && afterDue.parsed.quorum && Array.isArray(afterDue.parsed.quorum.unansweredList)) ? afterDue.parsed.quorum.unansweredList : []
+  ok(missing.length > 0,
+    '★★ and the waiting receipt NAMES who has not arrived instead of just saying "not yet" (the missing seats are read, not assumed)', afterDue.parsed && afterDue.parsed.quorum && afterDue.parsed.quorum.unansweredList)
+  let allHere = null
+  for (const absent of missing) {
+    allHere = await call(b, 'vibe_vmu_meeting', { action: 'attend', id: smid, member: absent })
+  }
+  ok(allHere.parsed && allHere.parsed.ok === true && allHere.parsed.state === 'open',
+    '★★★ 正: the last arrival completes the roster and the SAME meeting is now open — a scheduled meeting really becomes a meeting', allHere.parsed && { code: codeOf(allHere.parsed), state: allHere.parsed.state, settled: allHere.parsed.settled })
   const spoke = await call(b, 'vibe_vmu_meeting', { action: 'speak', id: smid, member: 'r-1', text: '到点了，可以说了' })
   ok(spoke.parsed && spoke.parsed.ok === true && typeof spoke.parsed.turns === 'number' && spoke.parsed.turns >= 1,
     '★★ and the floor is genuinely open: the same act that was refused before the start time now lands in the minutes', spoke.parsed && { code: codeOf(spoke.parsed), turns: spoke.parsed.turns })
