@@ -7,14 +7,16 @@
 // matched `vmu-prompt-v5r-bridge.test.mjs` (`prompt-v5` is a substring of `prompt-v5r`), and the vmu
 // iteration scope dropped a vmu suite silently. This guard now asserts, against the RUNNER'S OWN DERIVED
 // DECISION (`--scope-report`), that:
-//   1. the three scopes are derived from the runner's single job list and are internally consistent;
+//   1. the FIVE scopes (`quick|vmu|full|archive|all`) are derived from the runner's single job list and are
+//      internally consistent, and that the algebra `all = full + archive` holds on real job totals;
 //   2. the quick subset is exactly `QUICK_EXPECTED_JOBS` and free of mutant families (the runner's own check);
 //   3. the vmu scope NEVER drops a vmu SUITE - only mutant families may be excluded (two directions: the
 //      `prompt-v5` rule still bites `prompt-v5-integrity.test.mjs`, and it does NOT reach the vmu name);
 //   4. a substring/anchoring collision is visible BY NAME (the detector is self-probed so it cannot be vacuous);
 //   5. `--only`/`--exclude` INTERSECT the requested scope and can no longer downgrade it silently (D-06);
-//   6. `--counts`/`--self-check` pin the effective scope to `full` EXPLICITLY, with a named printed reason,
-//      and the header always prints requested scope + effective scope + final job count together.
+//   6. `--counts`/`--self-check` pin the effective scope to `all` EXPLICITLY, with a named printed reason,
+//      and the header always prints requested scope + effective scope + final job count together;
+//   7. `GATE_SCOPE=archive` selects exactly the archived frozen-preset jobs, and nothing from `full`.
 //
 // Run: node tests/audit-scope-classification.test.mjs
 import { spawn } from 'node:child_process'
@@ -81,12 +83,12 @@ if (!base.json) {
   for (const f of failures) console.error('  - ' + f)
   process.exit(1)
 }
-const { scopes, quickExpectedJobs, excludeRules, vmuClassification, legacySubstringDrops, anchoredDrops } = base.json
+const { scopes, quickExpectedJobs, excludeRules, archiveRules, archiveDrops, vmuClassification, vmuDropsFromFull, legacySubstringDrops, anchoredDrops } = base.json
 // PERFORMANCE (round speed-2): every probe below is an independent subprocess that only PRINTS the
 // derived classification (--scope-report / --counts / --self-check run no jobs). They used to be spawned
 // one after another (11 x ~1.1 s = 12.4 s in the gate); the same invocations now run in a small
 // bounded pool, and the assertions keep their original order and wording.
-const [inVmu, outOfScope, inFull, quickOverlap, excluded, bothOut, countsQuick, countsVmu, selfCheck, plain] = await runPool([
+const [inVmu, outOfScope, inFull, quickOverlap, excluded, bothOut, countsQuick, countsVmu, selfCheck, plain, archiveOnly] = await runPool([
   () => report({ GATE_SCOPE: 'vmu' }, ['--only', 'vmu-prompt-v5r-bridge']),
   () => report({ GATE_SCOPE: 'quick' }, ['--only', 'vmu-kernel']),
   () => report({ GATE_SCOPE: 'full' }, ['--only', 'vmu-prompt-v5r-bridge']),
@@ -97,11 +99,12 @@ const [inVmu, outOfScope, inFull, quickOverlap, excluded, bothOut, countsQuick, 
   () => runRunner(['--counts'], { GATE_SCOPE: 'vmu' }),
   () => runRunner(['--self-check'], { GATE_SCOPE: 'quick' }),
   () => runRunner(['--scope-report'], { GATE_SCOPE: 'vmu' }),
-], 10)
+  () => report({ GATE_SCOPE: 'archive' }),
+], 11)
 const n = (s) => s.total
-ok(n(scopes.full) > 0 && n(scopes.quick) > 0 && n(scopes.vmu) > 0,
-  'all three scopes resolve to a non-empty job list', JSON.stringify({ full: n(scopes.full), quick: n(scopes.quick), vmu: n(scopes.vmu) }))
-for (const k of ['full', 'quick', 'vmu']) {
+ok(n(scopes.full) > 0 && n(scopes.quick) > 0 && n(scopes.vmu) > 0 && n(scopes.archive) > 0 && n(scopes.all) > 0,
+  'all five scopes resolve to a non-empty job list', JSON.stringify({ full: n(scopes.full), quick: n(scopes.quick), vmu: n(scopes.vmu), archive: n(scopes.archive), all: n(scopes.all) }))
+for (const k of ['quick', 'vmu', 'full', 'archive', 'all']) {
   ok(scopes[k].total === scopes[k].suites + scopes[k].probes,
     `the ${k} scope is internally consistent (total = suites + probes)`,
     JSON.stringify(scopes[k]))
@@ -112,23 +115,36 @@ ok(base.json.requestedScope === 'full' && base.json.effectiveScope === 'full' &&
 ok(/quick-scope self-check ok \(\d+ jobs, no mutant family\)/.test(base.err),
   "the runner's own quick-scope self-check ran and passed on this invocation", base.err.split('\n').slice(-1)[0])
 
+// ── 1b. the scope algebra: the default gate IS the live product, the archive is frozen preset history ─
+console.log('=== 1b. THE SCOPE ALGEBRA (full + archive = all) ===')
+ok(n(scopes.full) + n(scopes.archive) === n(scopes.all),
+  '★ full + archive = all exactly: the frozen preset families are PARTITIONED out of the default gate, never hidden twice and never lost',
+  JSON.stringify({ full: n(scopes.full), archive: n(scopes.archive), all: n(scopes.all) }))
+ok(n(scopes.all) > n(scopes.full) && n(scopes.full) > 0,
+  'the default (full) scope is a strict subset of everything the repository gate knows', JSON.stringify({ all: n(scopes.all), full: n(scopes.full) }))
+ok(archiveDrops.length === n(scopes.archive) && n(scopes.archive) > 0,
+  'the archive rule accounts for EXACTLY the archive jobs (no other mechanism hides them, and the set is not empty)',
+  JSON.stringify({ drops: archiveDrops.length, archive: n(scopes.archive) }))
+ok(archiveRules.length > 0 && archiveRules.every((r) => (r.kind === 'prefix' || r.kind === 'suffix') && r.value && r.why),
+  'every archive rule declares an anchor kind, a value and a reason', JSON.stringify(archiveRules.map((r) => r.kind + ':' + r.value)))
+
 // ── 2. the quick subset is the declared constant, and it contains no mutant family ─────────────────
 console.log('=== 2. THE QUICK SUBSET ===')
 ok(n(scopes.quick) === quickExpectedJobs,
   'the quick subset resolves to exactly QUICK_EXPECTED_JOBS (' + quickExpectedJobs + ')', 'got ' + n(scopes.quick))
 ok(quickExpectedJobs > 0, 'the quick expectation is a real number (the check above is not vacuous)', String(quickExpectedJobs))
-ok(n(scopes.quick) < n(scopes.full), 'the quick subset is a STRICT subset of the repository job list',
+ok(n(scopes.quick) < n(scopes.full), 'the quick subset is a STRICT subset of the default (full) job list',
   n(scopes.quick) + ' vs ' + n(scopes.full))
 
 // ── 3. the vmu scope: composition + the two directions of the anchoring rule ───────────────────────
 console.log('=== 3. THE VMU SCOPE AND THE ANCHORING RULE (BOTH DIRECTIONS) ===')
-ok(n(scopes.vmu) < n(scopes.full), 'the vmu scope is a strict subset of the repository job list',
+ok(n(scopes.vmu) < n(scopes.full), 'the vmu scope is a strict subset of the default (full) job list',
   n(scopes.vmu) + ' vs ' + n(scopes.full))
-ok(n(scopes.full) - n(scopes.vmu) === anchoredDrops.length,
-  'exactly the anchored rule drops separate the vmu scope from the full list (no other mechanism filters it)',
-  JSON.stringify({ full: n(scopes.full), vmu: n(scopes.vmu), anchoredDrops: anchoredDrops.length }))
+ok(n(scopes.full) - n(scopes.vmu) === vmuDropsFromFull.length,
+  'exactly the declared vmu exclusions separate the vmu scope from the full list (no other mechanism filters it)',
+  JSON.stringify({ full: n(scopes.full), vmu: n(scopes.vmu), vmuDropsFromFull: vmuDropsFromFull.length }))
 ok(excludeRules.length > 0 && excludeRules.every((r) => (r.kind === 'prefix' || r.kind === 'suffix') && r.value && r.why),
-  'every exclusion rule declares an anchor kind, a value and a reason', JSON.stringify(excludeRules.map((r) => r.kind + ':' + r.value)))
+  'every vmu exclusion rule declares an anchor kind, a value and a reason', JSON.stringify(excludeRules.map((r) => r.kind + ':' + r.value)))
 
 // THE REGRESSION, NAMED. `vmu-prompt-v5r-bridge.test.mjs` contains `prompt-v5` but does not START with it.
 const bridge = vmuClassification.find((c) => c.file === 'vmu-prompt-v5r-bridge.test.mjs')
@@ -218,18 +234,18 @@ ok(excluded.status === 0 && excluded.json && excluded.json.final.total > 0 && ex
 // (spawned concurrently in the batch above)
 ok(bothOut.status === 2, '--only and --exclude are both applied (intersection can be empty => exit 2)', 'exit=' + bothOut.status)
 
-// ── 6. repository-wide modes pin `full` EXPLICITLY, with a named reason that is PRINTED ───────────
-console.log('=== 6. --counts / --self-check PIN THE SCOPE TO full, EXPLICITLY ===')
+// ── 6. repository-wide modes pin `all` EXPLICITLY, with a named reason that is PRINTED ────────────
+console.log('=== 6. --counts / --self-check PIN THE SCOPE TO all, EXPLICITLY ===')
 // (spawned concurrently in the batch above)
 let countsJson = null
 try { countsJson = JSON.parse(countsQuick.out.trim()) } catch (e) { /* reported below */ }
-ok(countsQuick.status === 0 && !!countsJson && countsJson.total === n(scopes.full),
-  '--counts reports the REPOSITORY job total even when the requested scope is quick (scope-independent by design)',
-  JSON.stringify({ exit: countsQuick.status, total: countsJson && countsJson.total, full: n(scopes.full) }))
+ok(countsQuick.status === 0 && !!countsJson && countsJson.total === n(scopes.all),
+  '--counts reports the REPOSITORY (all) job total even when the requested scope is quick (scope-independent by design)',
+  JSON.stringify({ exit: countsQuick.status, total: countsJson && countsJson.total, all: n(scopes.all) }))
 ok(/SCOPE OVERRIDE \(named reason\): --counts/.test(countsQuick.err),
   '★ --counts PRINTS the override and the mode that caused it (the pin is explicit, never silent)',
   JSON.stringify(countsQuick.err.split('\n').filter((l) => /SCOPE OVERRIDE|requested-scope/.test(l))))
-ok(/requested-scope=quick\s+effective-scope=full/.test(countsQuick.err),
+ok(/requested-scope=quick\s+effective-scope=all/.test(countsQuick.err),
   '★ the header prints the requested scope AND the effective scope together', JSON.stringify(countsQuick.err.split('\n').find((l) => /requested-scope=/.test(l))))
 // (spawned concurrently in the batch above)
 let countsVmuJson = null
@@ -240,7 +256,7 @@ ok(!!countsVmuJson && !!countsJson && countsVmuJson.total === countsJson.total,
 // (spawned concurrently in the batch above)
 ok(selfCheck.status === 0 && /SELF-CHECK PASS/.test(selfCheck.out),
   '--self-check still passes under a narrowed requested scope (its baseline is repository-wide)', 'exit=' + selfCheck.status)
-ok(/SCOPE OVERRIDE \(named reason\): --self-check/.test(selfCheck.err) && /effective full/.test(selfCheck.err),
+ok(/SCOPE OVERRIDE \(named reason\): --self-check/.test(selfCheck.err) && /effective all/.test(selfCheck.err),
   '★ --self-check PRINTS the override and the effective scope (it exits before the job-list header, so the reason is emitted where the scope is decided)',
   JSON.stringify(selfCheck.err.split('\n').filter((l) => /SCOPE OVERRIDE/.test(l))))
 // The header is on EVERY run, not only machine modes.
@@ -248,6 +264,19 @@ ok(/SCOPE OVERRIDE \(named reason\): --self-check/.test(selfCheck.err) && /effec
 ok(/requested-scope=vmu\s+effective-scope=vmu\s+final-jobs=\d+/.test(plain.err),
   'an ordinary scoped run prints requested scope, effective scope and the final job count together',
   JSON.stringify(plain.err.split('\n').find((l) => /requested-scope=/.test(l))))
+
+// ── 7. GATE_SCOPE=archive selects exactly the archived frozen-preset jobs ─────────────────────────
+console.log('=== 7. THE ARCHIVE SCOPE ===')
+// (spawned concurrently in the batch above)
+ok(archiveOnly.status === 0 && !!archiveOnly.json && archiveOnly.json.effectiveScope === 'archive',
+  'GATE_SCOPE=archive resolves to the archive scope (requested = effective, no override)',
+  JSON.stringify({ exit: archiveOnly.status, eff: archiveOnly.json && archiveOnly.json.effectiveScope }))
+ok(!!archiveOnly.json && archiveOnly.json.final.total === n(scopes.archive) && archiveOnly.json.final.total > 0,
+  'an archive run contains exactly the archived jobs the classification names (and that set is not empty)',
+  JSON.stringify({ final: archiveOnly.json && archiveOnly.json.final, archive: n(scopes.archive) }))
+ok(/requested-scope=archive\s+effective-scope=archive\s+final-jobs=\d+/.test(archiveOnly.err),
+  'an archive run prints requested scope, effective scope and the final job count together',
+  JSON.stringify(archiveOnly.err.split('\n').find((l) => /requested-scope=/.test(l))))
 
 console.log('')
 console.log('=== SCOPE CLASSIFICATION: ' + passed + ' passed, ' + failed + ' failed ===')

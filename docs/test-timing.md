@@ -8,11 +8,21 @@
 ## 1. 怎么跑（并行是默认）
 
 ```bash
-node tests/run-tests.mjs                     # 全部套件 + 全部探针（tests/ 下每个 .mjs），并行（**并发 = min(2, CPU 核数)**，见 `tests/run-tests.mjs:161`；命令都从**仓库根**执行）
-node tests/run-tests.mjs --only formal       # 只跑名字含 formal 的项（套件与探针一起筛）
+node tests/run-tests.mjs                     # 默认门禁 GATE_SCOPE=full：当前产品的 live 面（415 作业，本机实测约 65 s），并行（**并发 = min(8, max(2, floor(CPU 核数/2)))**，可用 `--concurrency=N` 覆盖；命令都从**仓库根**执行）
+node tests/run-tests.mjs --scope-report      # 打印 5 个 scope 的派生分类与作业数（quick|vmu|full|archive|all），不跑任何作业
+node tests/run-tests.mjs --only formal       # 只跑名字含 formal 的项（套件与探针一起筛；与 requested scope 取交集，不降级 scope）
 node tests/run-tests.mjs --concurrency=6     # 手动指定并发
 node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedNeedsArgs / devCheckout）
 ```
+
+**scope 语义（本轮新增）**：`quick`＝编辑循环子集（25 作业）；`vmu`＝产品内迭代子集（394 作业）；
+`full`（**默认**）＝当前产品的完整门禁（vmu ＋ 活跃 preset 的 live 面，**415 作业**，**不含**冻结归档的
+legacy preset 家族）；`archive`＝冻结归档的 legacy preset 家族（v2..v5r 的 accept/e2e/selfdrive/
+formal-verify/fix 套件，**57 作业**）；`all`＝仓库全量（`full + archive`，**472 作业**）。
+**提交前要求 non-incremental `full` 全绿；打 tag/发布要求 `all` 全绿**（`GATE_RELEASE=1` 强制非增量，
+`--write-baseline` 只在 `all` scope 下允许写）。仓库口径的计数（`--counts`/README 锚点）始终是 `all`。
+本机（32 逻辑核 / Windows，2026-10-24）实测：`full` c8 **65 s**（415/415 PASS）、`all` c8 **848 s**（472/472 PASS）、
+`vmu` c8 **约 35 s**、`archive` c8 **818 s**（57/57 PASS；三项之和的关系是 `all` 的作业集合 = `full` + `archive`，wall 各自独立）。
 
 `run-tests.mjs` 的收集规则（Round B 起）：`tests/` 下**每个** `.mjs` 都会被跑——
 

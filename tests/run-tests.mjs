@@ -27,7 +27,11 @@
  * runner (audit-formal-sensitivity.mjs) does, and it passes its own dirs.
  *
  * Usage:
- *   node tests/run-tests.mjs                      # every suite + probe, concurrency = half the cores (clamped 2..8)
+ *   node tests/run-tests.mjs                      # the FULL (live-product) gate: every job except the archived preset families
+ *   GATE_SCOPE=all node tests/run-tests.mjs       # EVERY job = full + archive (the repository-wide truth; pre-release)
+ *   GATE_SCOPE=archive node tests/run-tests.mjs   # ONLY the frozen legacy-preset families (v2..v5r; slow, pre-release)
+ *   GATE_SCOPE=vmu node tests/run-tests.mjs       # the vmu framework iteration subset (full minus product mutant families)
+ *   GATE_SCOPE=quick node tests/run-tests.mjs     # the curated edit-loop subset
  *   node tests/run-tests.mjs --concurrency=6
  *   node tests/run-tests.mjs --only formal        # substring match on the file name (repeatable, OR)
  *   node tests/run-tests.mjs --exclude e2e-v4     # substring to skip (repeatable)
@@ -43,31 +47,46 @@
  *     old 4-core box `--concurrency=4` was ~+15% per job and k=6 went RED (one 180 s TIMEOUT and one real
  *     failure); the recent 32-core sweep at k=8 was green (wall 75.6 s, sum 421.0 s, 416/416 PASS).
  *     Never raise a TIMEOUT to fit oversubscription - fix the load, not the budget.
- *   · `GATE_SCOPE=quick` (or `--scope quick`) is the ITERATION subset: v5 work + shared parity/contract +
- *     the registration surface, with EVERY `*.mutants.mjs` excluded and the 135 s shared sensitivity probe
- *     left to `full`. It is for the edit loop only and is NOT a substitute for the full sweep.
- *   · The FULL sweep (the default, `GATE_SCOPE=full`) is REQUIRED before every commit and release. It
- *     cannot be skipped, shortened or cancelled for speed, and it runs the same jobs as before this change.
+ *   · SCOPES (`GATE_SCOPE=quick|vmu|full|archive|all`, default `full`; handover D-06 lineage, scope-split round):
+ *     · `all` = EVERY job (the repository truth: 472 jobs = 365 suites + 107 probes/variants; `--counts` reports
+ *       THIS list). Nothing is ever deleted from it.
+ *     · `archive` = the FROZEN legacy-preset families (v2..v5r: acceptance/e2e/self-driving/formal-verify/
+ *       fix-probes/sensitivity probes and their preset-internal maths). They exercise code that now lives,
+ *       unchanged, under `archive/legacy-presets/`, and they cost the overwhelming majority of the old sweep:
+ *       measured 55 jobs / 3898.9 s of an 847.9 s (c8) sweep = 91.9% of the SUM. They still run, on demand.
+ *     · `full` (DEFAULT, the live-product gate) = `all` − `archive`: every job that guards code this
+ *       repository still edits; measured target < 100 s wall at the derived concurrency.
+ *     · `vmu` = `full` − the product mutant families: the framework's iteration subset.
+ *     · `quick` = the curated edit-loop subset: v5r/vmu parity + shared surfaces, with EVERY
+ *       `*.mutants.mjs` excluded. It is for the edit loop ONLY and is NOT a substitute for `full`.
+ *   · ITERATION vs PRE-RELEASE: the default `full` sweep is REQUIRED before every commit. `GATE_SCOPE=all`
+ *     (non-incremental; `GATE_RELEASE=1` also forces non-incremental) is REQUIRED before a release/tag,
+ *     because a product change can still reach an archived preset through the one seam
+ *     (`tests/_lib/legacy-presets.mjs`) — and because `--counts`/docs claim the repository-wide total.
  *   · Long jobs are started FIRST (LPT: static measured weights + file-name tiebreak, deterministic).
  *     Measured effect at concurrency 2: wall 1878.1 s -> ~1447.6 s (simulated from that run's own per-job
  *     timings), with NO change to which jobs run, no assertion removed and no semantics relaxed.
  *   · SCOPE SEMANTICS (handover D-06, handover round 1): `--only`/`--exclude` are ORTHOGONAL to the scope -
  *     they INTERSECT the REQUESTED scope and never override it. `--counts` and `--self-check` are
- *     REPOSITORY-WIDE and pin the effective scope to `full`, printing that pin AND its named reason on every
- *     run. The header always prints requested scope, effective scope and the final job count together, so a
- *     `scope=quick` label can never again sit beside a 177-job full-list run.
+ *     REPOSITORY-WIDE and pin the effective scope to `all` (the repository truth), printing that pin AND its
+ *     named reason on every run. The header always prints requested scope, effective scope and the final job
+ *     count together, so a `scope=quick` label can never again sit beside a 177-job full-list run.
  *
- * INCREMENTAL FULL (`GATE_INCREMENTAL=1`, default OFF => today's behaviour byte-for-byte):
+ * INCREMENTAL (`GATE_INCREMENTAL=1`, default OFF => today's behaviour byte-for-byte; scopes `full` and
+ * `all` only):
  *   · It SKIPS a mutant family only when every source file that family reads/copies/mutates (its target
  *     set) is outside the changed set since the recorded baseline. The JOB LIST NEVER SHRINKS: skipped
  *     families still count in TOTAL and are reported as `SKIP <family> (incremental: targets unchanged …)`.
+ *   · It never applies to `archive`/`vmu`/`quick`: those scopes exist precisely to run the frozen families
+ *     or a curated edit set, so they always run everything (a request for them disables incremental with a
+ *     named reason). `all` is the repository-wide sibling of `full` and does accept incremental.
  *   · BASELINE: a file OUTSIDE the repository, `GATE_BASELINE_FILE` (default
  *     `D:\_tmp\gate-full-baseline.txt`), holding the commit of the last GREEN FULL sweep. This runner only
  *     READS it. It is written by the gate flow after a green full sweep
  *     (`git rev-parse HEAD > D:\_tmp\gate-full-baseline.txt`) or by `--write-baseline`, which REFUSES to
- *     write unless the sweep is FULL and GREEN - a red or partial tree must never become a baseline.
- *   · RELEASE RULE (hard): before a commit/release/tag the FULL, non-incremental sweep is REQUIRED.
- *     `GATE_RELEASE=1` ignores `GATE_INCREMENTAL` entirely and runs everything.
+ *     write unless the sweep is `all`-scope and GREEN - a red or partial tree must never become a baseline.
+ *   · RELEASE RULE (hard): a commit requires the non-incremental `full` sweep; a release/tag requires the
+ *     non-incremental `all` sweep (full + archive). `GATE_RELEASE=1` ignores `GATE_INCREMENTAL` entirely.
  *   · NEVER SILENTLY UNDERRUN: an unreadable baseline, a baseline that is not an ancestor of HEAD, a
  *     failing `git diff`/`status`, a family with no declared targets, or ANY disagreement between the
  *     declared targets and what the harness's own source touches => that family RUNS (named reason on
@@ -327,13 +346,17 @@ function lptOrder(list) {
   return list.slice().sort((a, b) => (weightOf(b) - weightOf(a)) || (label(a) < label(b) ? -1 : 1))
 }
 
-// ── Gate scopes (GATE_SCOPE=quick|vmu|full; default full = exactly today's sweep) ──────────────────
-// `quick` is the ITERATION subset: v5 work + the shared parity/contract surfaces + the registration
-// surface, with EVERY `*.mutants.mjs` excluded (the 26 families are ~2/3 of the sweep's sum) and the
-// 135 s shared sensitivity probe left to `full`. MEASURED with the probe still included at concurrency 2:
-// `wall 144.1s · sum 287.1s` and `TOTAL 24 PASS 24 FAIL 0`; without it the subset is 23 jobs.
-// `quick` is for the edit loop ONLY and is NOT a substitute for the full sweep, which stays REQUIRED
-// before every commit and release (see the GATE DISCIPLINE note at the top of this file).
+// ── Gate scopes (GATE_SCOPE=quick|vmu|full|archive|all; default full = the live-product gate) ──────
+// Scope split (user request: "全量测试 < 100 s"): the archived preset families are FROZEN code — they live
+// under `archive/legacy-presets/` and were measured at 55 jobs / 3898.9 s of an 847.9 s (c8) repository
+// sweep, i.e. 91.9% of the SUM. They are not deleted: `archive` runs exactly them and `all` runs everything.
+//   `all`     = every job (472 jobs; `--counts` reports this list — docs anchors stay repository-wide)
+//   `archive` = the frozen legacy-preset families only
+//   `full`    = `all` − `archive` (DEFAULT): every job guarding code this repository still edits
+//   `vmu`     = `full` − product mutant families (the framework iteration subset)
+//   `quick`   = the curated edit-loop subset (v5r/vmu parity + shared surfaces, no mutant family)
+// `quick` is for the edit loop ONLY; a commit requires non-incremental `full`, a release requires `all`
+// (see the GATE DISCIPLINE note at the top of this file).
 const QUICK_ONLY = ['v5', 'audit-participant-set-parity', 'audit-math-computation-parity',
   'audit-math-computation-contract', 'math-computation-shared', 'audit-registration',
   'audit-preset-rows', 'audit-status-report-fields', 'audit-artifact-docs', 'audit-enum-branches',
@@ -360,7 +383,11 @@ const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // 37 -> 38, deliberately: `tests/vmu-v5r-verdict-final.test.mjs` joined in phase 12 with the 辩论最终裁决 trigger (the
 // pack tool that reads the chair, calls `rulePropositionProbability` and mails the card owner). Its NAME contains `v5r`,
 // so the curated `v5` prefix picks it up - the same "on purpose" case as S30, not a drifted filter.
-const QUICK_EXPECTED_JOBS = 38
+// 38 -> 25, deliberately (scope-split round): `full` no longer contains the ARCHIVED v2..v5r families, so the
+// curated `v5` entry now only reaches the product-side v5r names (`vmu-ab-v5r.test.mjs`,
+// `vmu-v5r-verdict-final.test.mjs`). The archived suites those entries used to select still RUN, in
+// `GATE_SCOPE=archive`/`all`; this constant is the edit-loop subset within the live product only.
+const QUICK_EXPECTED_JOBS = 25
 // `vmu` is the ITERATION subset for developing the vmu framework: the vmu jobs themselves, plus every
 // gate that guards a SHARED surface a vmu change can reach (preset rows and the generated patch,
 // the installer, package membership, README/doc counts, path discipline, artifact docs, the shared
@@ -377,81 +404,98 @@ const QUICK_EXPECTED_JOBS = 38
 // cited as gate evidence, which is exactly the paper-capability failure this repository keeps finding elsewhere: a check
 // that exists, passes when run by hand, and is never executed by the thing that is supposed to run it.
 //
-// The EXCLUDE list names only what is genuinely outside this preset: the acceptance and end-to-end suites for v2..v5r, the
-// long sensitivity probes, and the mutant families (the FULL sweep runs those). What is NOT listed is included, so a new
-// guard is in scope from the moment it is written. The classification is asserted by
-// `tests/audit-scope-classification.test.mjs`, so a file can never be dropped silently in either direction.
+// The ARCHIVE list names the FROZEN legacy-preset families: acceptance and end-to-end suites for v2..v5r, the
+// long sensitivity probes, the preset-internal maths and the fix probes. Their code moved to
+// `archive/legacy-presets/` and is no longer edited by product work; a PRODUCT change can still reach it
+// through the one seam (`tests/_lib/legacy-presets.mjs`), which is why `GATE_SCOPE=all` stays REQUIRED
+// before a release. Measured (c8, 2026-10-24): 55 jobs, 3898.9 s of the 847.9 s repository sweep.
+// The VMU list names only the product mutant families (each one re-runs its target suite many times, so they
+// belong to the commit `full` sweep, not to the per-edit iteration loop).
 // EVERY RULE IS EXPLICITLY ANCHORED, and it matches the FILE NAME ONLY. Substring matching was a defect
 // (round 1 of the handover): the value `prompt-v5` - meant for the OTHER presets' `prompt-v5*` suites - also
 // matched `vmu-prompt-v5r-bridge.test.mjs` (`prompt-v5` is a substring of `prompt-v5r`), so a vmu suite was
 // dropped from its own iteration scope silently. A PREFIX rule cannot reach a name that merely CONTAINS its
-// value, which is exactly the property `tests/audit-scope-classification.test.mjs` now asserts in both
+// value, which is exactly the property `tests/audit-scope-classification.test.mjs` asserts in both
 // directions (`prompt-v5-integrity.test.mjs` OUT, `vmu-prompt-v5r-bridge.test.mjs` IN).
-const VMU_EXCLUDE = [
+const ARCHIVE_RULES = [
   // acceptance / end-to-end suites for the other presets
-  { kind: 'prefix', value: 'accept-', why: 'v2..v5r acceptance suites' },
-  { kind: 'prefix', value: 'e2e-', why: 'v2..v5r end-to-end suites' },
-  { kind: 'prefix', value: 'selfdrive-', why: 'v2..v5r self-driving mock-host suites' },
-  { kind: 'prefix', value: 'formal-verify', why: "the other presets' formal-verification suites" },
-  { kind: 'prefix', value: 'v2-fix', why: 'v2 fix probes' },
-  { kind: 'prefix', value: 'v3-fix', why: 'v3 fix probes' },
-  { kind: 'prefix', value: 'v4-final', why: 'v4 final-paper suites' },
-  // dedup round: the anchored list above named v2-fix/v3-fix/v4-final but missed the remaining preset-OWNED
-  // suites: v2-path-escape, v2-tool-cap, v4-mailbox-stall, v5-meeting-attribution, v5-tool-help and the
-  // v5-only audit probes (audit-v5-integrity/sensitivity/lean-abstention). They are preset-internal by the
-  // same test the design comment above applies ("a vmu change never touches another preset\'s plugin source"),
-  // so the ITERATION scope must not re-run them; the FULL sweep still runs every one (nothing is deleted).
-  // Measured: 8 jobs, 30.0 s of suite time removed from the iteration gate.
-  { kind: 'prefix', value: 'v2-', why: 'v2 preset-internal suites (full scope runs them)' },
-  { kind: 'prefix', value: 'v4-', why: 'v4 preset-internal suites (full scope runs them)' },
-  { kind: 'prefix', value: 'v5-', why: 'v5 preset-internal suites (full scope runs them)' },
-  { kind: 'prefix', value: 'audit-v5-', why: "the v5 preset's own audit probes (full scope runs them)" },
-  { kind: 'prefix', value: 'roundC-fix', why: 'round-C fix probes' },
-  { kind: 'prefix', value: 'prompt-v5', why: "the OTHER presets' prompt-v5 suites (PREFIX-anchored on purpose: a vmu name such as vmu-prompt-v5r-bridge must stay IN scope)" },
+  { kind: 'prefix', value: 'accept-', why: 'v2..v5r acceptance suites (archived presets)' },
+  { kind: 'prefix', value: 'e2e-', why: 'v2..v5r end-to-end suites (archived presets)' },
+  { kind: 'prefix', value: 'selfdrive-', why: 'v2..v5r self-driving mock-host suites (archived presets)' },
+  { kind: 'prefix', value: 'formal-verify', why: "the other presets' formal-verification suites (archived presets)" },
+  { kind: 'prefix', value: 'v2-fix', why: 'v2 fix probes (archived preset)' },
+  { kind: 'prefix', value: 'v3-fix', why: 'v3 fix probes (archived preset)' },
+  { kind: 'prefix', value: 'v4-final', why: 'v4 final-paper suites (archived preset)' },
+  // preset-OWNED suites: v2-path-escape, v2-tool-cap, v4-mailbox-stall, v5-meeting-attribution, v5-tool-help
+  // and the v5-only audit probes (audit-v5-integrity/sensitivity/lean-abstention).
+  { kind: 'prefix', value: 'v2-', why: 'v2 preset-internal suites (archived preset)' },
+  { kind: 'prefix', value: 'v3-', why: 'v3 preset-internal suites (archived preset)' },
+  { kind: 'prefix', value: 'v4-', why: 'v4 preset-internal suites (archived preset)' },
+  { kind: 'prefix', value: 'v5-', why: 'v5 preset-internal suites (archived preset)' },
+  { kind: 'prefix', value: 'v2v3-', why: 'v2+v3 interrupt probes (archived presets)' },
+  { kind: 'prefix', value: 'audit-v5-', why: "the v5 preset's own audit probes (archived preset)" },
+  { kind: 'prefix', value: 'roundC-fix', why: 'round-C fix probes (archived presets)' },
+  { kind: 'prefix', value: 'prompt-v5', substringProne: true, why: "the OTHER presets' prompt-v5 suites (PREFIX-anchored on purpose: a vmu name such as vmu-prompt-v5r-bridge must stay IN scope)" },
   // the other presets' own math-computation suites (the parity and contract gates stay IN scope)
-  { kind: 'prefix', value: 'math-computation-v', why: "the other presets' math-computation suites" },
-  { kind: 'prefix', value: 'math-computation-a', why: 'the math-computation archive-rerun family' },
-  { kind: 'prefix', value: 'math-computation-b', why: 'the math-computation b-family' },
-  // long sensitivity probes
-  { kind: 'prefix', value: 'audit-math-computation-sensitivity', why: 'long sensitivity probe (full/incremental only)' },
-  { kind: 'prefix', value: 'audit-formal-sensitivity', why: 'long sensitivity probe (full/incremental only)' },
-  { kind: 'prefix', value: 'audit-persona-sensitivity', why: 'long sensitivity probe (full/incremental only)' },
-  // mutant families: the FULL sweep runs these, the iteration scope does not
-  { kind: 'suffix', value: '.mutants.mjs', why: 'mutant families run at full/incremental scope' },
+  { kind: 'prefix', value: 'math-computation-v', why: "the other presets' math-computation suites (archived presets)" },
+  { kind: 'prefix', value: 'math-computation-a', why: 'the math-computation archive-rerun family (archived presets)' },
+  { kind: 'prefix', value: 'math-computation-b', why: 'the math-computation b-family (archived presets)' },
+  // long sensitivity probes over the archived presets
+  { kind: 'prefix', value: 'audit-math-computation-sensitivity', why: 'long sensitivity probe over archived math copies' },
+  { kind: 'prefix', value: 'audit-formal-sensitivity', why: 'long sensitivity probe over the archived formal surfaces' },
+  { kind: 'prefix', value: 'audit-persona-sensitivity', why: 'long sensitivity probe over the archived personas' },
+]
+// The VMU list is now only what the ITERATION subset excludes FROM THE LIVE PRODUCT: the product mutant
+// families (each one re-runs its target suite many times, so they belong to the commit `full` sweep).
+const VMU_EXCLUDE = [
+  { kind: 'suffix', value: '.mutants.mjs', why: 'product mutant families run at full (not at the vmu iteration scope)' },
 ]
 /** The anchored matcher, per rule kind. `prefix` = startsWith (NOT includes), `suffix` = endsWith. */
 const EXCLUDE_MATCH = {
   prefix: (name, v) => name.startsWith(v),
   suffix: (name, v) => name.endsWith(v),
 }
-/** The FIRST anchored rule that excludes `file`, or null. Reads the FILE NAME, never the label with args. */
+/** The FIRST anchored ARCHIVE rule that matches `file`, or null. Reads the FILE NAME, never the label. */
+function archiveRule(file) {
+  return ARCHIVE_RULES.find((r) => EXCLUDE_MATCH[r.kind](file, r.value)) || null
+}
+/** The FIRST anchored VMU rule that excludes `file`, or null. Reads the FILE NAME, never the label with args. */
 function vmuExcludeRule(file) {
   return VMU_EXCLUDE.find((r) => EXCLUDE_MATCH[r.kind](file, r.value)) || null
 }
-/** Apply a scope's curated filter. `full` is the identity (byte-for-byte the old behaviour). */
+/** `all` − archive: the live-product job list. Used by `full`, `vmu` and `quick` alike. */
+function productJobs(list) {
+  return list.filter((j) => !archiveRule(j.file))
+}
+/** Apply a scope's curated filter. `all` is the identity (the repository-wide list `--counts` reports). */
 function applyScope(list, scope) {
-  if (scope !== 'quick' && scope !== 'vmu') return list
-  if (scope === 'vmu') return list.filter((j) => !vmuExcludeRule(j.file))
+  if (scope === 'all') return list
+  if (scope === 'archive') return list.filter((j) => archiveRule(j.file))
+  const product = productJobs(list)
+  if (scope === 'full') return product
+  if (scope === 'vmu') return product.filter((j) => !vmuExcludeRule(j.file))
   const only = QUICK_ONLY
-  const filtered = list.filter((j) => only.some((x) => label(j).includes(x)))
+  const filtered = product.filter((j) => only.some((x) => label(j).includes(x)))
   return scope === 'quick'
     ? filtered.filter((j) => !QUICK_EXCLUDE.some((x) => label(j).includes(x)))
     : filtered
 }
 // Scope is parsed HERE (not next to the job list) so every helper below - including the ones the
-// `--self-check` block calls - sees an initialised value. `full` is the identity.
+// `--self-check` block calls - sees an initialised value. `full` (the live product) is the default.
+const SCOPES = ['quick', 'vmu', 'full', 'archive', 'all']
 const GATE_SCOPE = String(process.env.GATE_SCOPE || flag('scope')[0] || 'full').toLowerCase()
-if (GATE_SCOPE !== 'quick' && GATE_SCOPE !== 'vmu' && GATE_SCOPE !== 'full') {
-  console.error('unknown GATE_SCOPE: ' + GATE_SCOPE + ' (expected quick|vmu|full)')
+if (!SCOPES.includes(GATE_SCOPE)) {
+  console.error('unknown GATE_SCOPE: ' + GATE_SCOPE + ' (expected ' + SCOPES.join('|') + ')')
   process.exit(2)
 }
 // SCOPE SEMANTICS (handover D-06). Two different things used to be one:
 //   · REPOSITORY-WIDE MODES (`--counts`, `--self-check`) report properties of the REPOSITORY, not of an edit
-//     loop, so they pin the effective scope to `full`. That pin is now EXPLICIT: the reason and both scope
-//     names are printed on every such run (see the header below). Without the pin, a guard that spawns this
-//     runner as a child inherits the scope - the incident that produced the rule: `run-tests.mutants.mjs`
-//     children inherited the vmu scope, its `--only audit-prompt-invariants` timeout POSITIVE saw ZERO jobs,
-//     its `--self-check` baseline diverged, and `audit-readme-counts` read a scoped total of 27 instead of 110.
+//     loop, so they pin the effective scope to `all` (full + archive). That pin is now EXPLICIT: the reason
+//     and both scope names are printed on every such run (see the header below). Without the pin, a guard that
+//     spawns this runner as a child inherits the scope - the incident that produced the rule:
+//     `run-tests.mutants.mjs` children inherited the vmu scope, its `--only audit-prompt-invariants` timeout
+//     POSITIVE saw ZERO jobs, its `--self-check` baseline diverged, and `audit-readme-counts` read a scoped
+//     total of 27 instead of 110.
 //   · `--only` / `--exclude` are NOT repository-wide. They are ORTHOGONAL to the scope and INTERSECT with the
 //     REQUESTED one, so `GATE_SCOPE=vmu --only <file>` runs that file iff the vmu scope contains it. They no
 //     longer downgrade the scope behind the reader's back: `GATE_SCOPE=quick --only vmu-...` is now simply a
@@ -459,13 +503,13 @@ if (GATE_SCOPE !== 'quick' && GATE_SCOPE !== 'vmu' && GATE_SCOPE !== 'full') {
 // `--json` is deliberately NOT repository-wide: a machine-readable ITERATION report is a legitimate use of a scope.
 const REPO_WIDE_MODES = ['counts', 'self-check'].filter((m) => has(m))
 const MACHINE_MODE = REPO_WIDE_MODES.length > 0
-const SCOPE = MACHINE_MODE ? 'full' : GATE_SCOPE
+const SCOPE = MACHINE_MODE ? 'all' : GATE_SCOPE
 // The override is NAMED HERE, at the point the scope is decided, because `--self-check` exits from its own
 // block long before the job-list header is printed: a reason that only appeared in the header would be
 // invisible in exactly the mode whose override a reader most needs to understand.
 if (SCOPE !== GATE_SCOPE) {
   console.error('run-tests: SCOPE OVERRIDE (named reason): ' + REPO_WIDE_MODES.map((m) => '--' + m).join(', ')
-    + ' report properties of the REPOSITORY, not of an edit loop => effective scope forced to full (requested '
+    + ' report properties of the REPOSITORY, not of an edit loop => effective scope forced to all (requested '
     + GATE_SCOPE + ', effective ' + SCOPE + '). NOTE: --only/--exclude are NOT repository-wide; they intersect with the REQUESTED scope.')
 }
 
@@ -582,8 +626,8 @@ function planIncremental(list) {
   if (String(process.env.GATE_INCREMENTAL || '') !== '1') {
     return { enabled: false, reason: 'GATE_INCREMENTAL not set (default = full sweep)', skipped: [] }
   }
-  if (SCOPE !== 'full') {
-    return { enabled: false, reason: 'GATE_SCOPE=' + SCOPE + ' (incremental applies to full only)', skipped: [] }
+  if (SCOPE !== 'full' && SCOPE !== 'all') {
+    return { enabled: false, reason: 'GATE_SCOPE=' + SCOPE + ' (incremental applies to the full/all scopes; archive/vmu/quick always run everything)', skipped: [] }
   }
   if (String(process.env.GATE_RELEASE || '') === '1') {
     return { enabled: false, reason: 'GATE_RELEASE=1 (release/tag => forced full sweep)', skipped: [] }
@@ -959,6 +1003,7 @@ if (has('scope-report')) {
     probes: list.filter((j) => j.kind === 'probe').length,
   })
   const vmuJobs = jobs.filter((j) => j.file.includes('vmu'))
+  const product = productJobs(jobs)
   console.log(JSON.stringify({
     requestedScope: GATE_SCOPE,
     effectiveScope: SCOPE,
@@ -966,12 +1011,19 @@ if (has('scope-report')) {
     filters: { only, exclude },
     final: summarize(suites),
     scopes: {
-      full: summarize(applyScope(jobs, 'full')),
       quick: summarize(applyScope(jobs, 'quick')),
       vmu: summarize(applyScope(jobs, 'vmu')),
+      full: summarize(applyScope(jobs, 'full')),
+      archive: summarize(applyScope(jobs, 'archive')),
+      all: summarize(applyScope(jobs, 'all')),
     },
     quickExpectedJobs: QUICK_EXPECTED_JOBS,
     excludeRules: VMU_EXCLUDE,
+    archiveRules: ARCHIVE_RULES,
+    // The scope algebra's raw material, as JOB LABELS (so variants are visible): `archive` is what `full`
+    // subtracts, and `vmu` is what the vmu scope subtracts from `full`.
+    archiveDrops: jobs.filter((j) => archiveRule(j.file)).map(label).sort(),
+    vmuDropsFromFull: product.filter((j) => vmuExcludeRule(j.file)).map(label).sort(),
     // every vmu-NAMED job (`vmu*` and `audit-vmu-*`): in the vmu scope, or out WITH the anchored rule that
     // excluded it. The collision victim is a `vmu*` suite and the mutant families are `audit-vmu-*`, so the
     // question "which vmu jobs does the vmu scope drop, and why" needs BOTH shapes.
@@ -979,11 +1031,14 @@ if (has('scope-report')) {
       const r = vmuExcludeRule(j.file)
       return { file: j.file, inVmuScope: !r, excludedBy: r ? r.value : null, excludedWhy: r ? r.why : null }
     }).sort((a, b) => (a.file < b.file ? -1 : 1)),
-    // The collision detector's raw material: what the OLD unanchored `.includes()` semantics would have
-    // dropped vs what the ANCHORED rules drop. The two must differ by exactly `collisionAllowList` below
-    // (empty when the rules are collision-free); a NEW collision shows up here by name.
-    legacySubstringDrops: jobs.filter((j) => VMU_EXCLUDE.some((r) => j.file.includes(r.value))).map((j) => j.file).sort(),
-    anchoredDrops: jobs.filter((j) => vmuExcludeRule(j.file)).map((j) => j.file).sort(),
+    // The collision detector's raw material: what UNANCHORED `.includes()` semantics would have dropped vs
+    // what the ANCHORED rules drop. The two must differ by exactly `collisionAllowList` below (empty when the
+    // watched rules are collision-free); a NEW collision shows up here by name. Only `substringProne` rules
+    // are watched: their values came from the pre-split `VMU_EXCLUDE` list and one of them (`prompt-v5`) is a
+    // genuine mid-name substring of a product suite. The other archive prefixes are value-anchored by
+    // construction and are not compared against a hypothetical substring reading.
+    legacySubstringDrops: jobs.filter((j) => ARCHIVE_RULES.some((r) => r.substringProne && j.file.includes(r.value))).map((j) => j.file).sort(),
+    anchoredDrops: jobs.filter((j) => archiveRule(j.file)).map((j) => j.file).sort(),
   }, null, 2))
   process.exit(0)
 }
@@ -991,7 +1046,7 @@ if (has('scope-report')) {
 // --counts: print the DERIVED suite/probe totals (the same job list the gate runs) as JSON, then
 // exit. Docs quote these numbers, so they must be derived and checked rather than typed by hand.
 // The job TOTAL never shrinks under incremental: the skipped families are reported in their own field.
-// REPOSITORY-WIDE BY DESIGN: it always reports the FULL job list (see REPO_WIDE_MODES above), so a doc count
+// REPOSITORY-WIDE BY DESIGN: it always reports the ALL (full + archive) job list (see REPO_WIDE_MODES above), so a doc count
 // never depends on how the run was invoked. The SCOPED count, if you need one, is what `--scope-report` prints.
 if (process.argv.includes('--counts')) {
   const suiteN = suites.filter((j) => j.kind === 'suite').length

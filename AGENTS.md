@@ -36,8 +36,11 @@ tests/                    ← 套件与探针（门禁都在这里）
 
 ```bash
 node scripts/preflight.mjs                  # T0 预检
-GATE_SCOPE=vmu node tests/run-tests.mjs     # T1 全量门禁（套件＋探针）
-node tests/run-tests.mjs --counts           # ★ 作业计数的【权威来源】（README/文档里的数字由它派生）
+node tests/run-tests.mjs                    # T1 默认门禁 = GATE_SCOPE=full（当前产品 live 面，415 作业，本机 ~65 s）
+GATE_SCOPE=vmu node tests/run-tests.mjs     # 产品内迭代子集（394 作业，~35 s）
+GATE_SCOPE=all node tests/run-tests.mjs     # 仓库全量（472 作业，含冻结归档 legacy 家族）——打 tag/发布前必须
+GATE_SCOPE=archive node tests/run-tests.mjs # 只跑冻结归档的 legacy preset 家族（57 作业）
+node tests/run-tests.mjs --counts           # ★ 作业计数的【权威来源】（README/文档里的数字由它派生；固定按 all 口径）
 node scripts/regen-all.mjs --check          # 派生面是否同步（改完 schema/提示词务必跑）
 node scripts/check-docs.mjs                 # 文档 lint
 ```
