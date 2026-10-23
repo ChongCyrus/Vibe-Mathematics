@@ -5,6 +5,9 @@ import { kitCardHandler } from '../../kit/tools.js'
 // ★ GOAL ROUND 3: the paper subsystem's RUNTIME ENTRY. It lives in this pack (`./paper.js` → `kit/paper.js` is the flow);
 // the face below is only the missing READ POINT — before it, `paper.start` existed but nothing in production called it.
 import { createPaperSubsystem } from './paper.js'
+// ★ GOAL ROUND 3 (rule conformance): the meeting TYPE catalog and the recommended procedure skeletons are INSTITUTION
+// vocabulary, so they live in this pack (`./meeting-procedures.js`) — the kernel only carries the type string.
+import { MEETING_TYPE_IDS, meetingTypeOf, procedureFor } from './meeting-procedures.js'
 // ★ PHASE 8 / B-2 step 2: the kit owns the implementations; v5r keeps only INSTITUTION vocabulary (names, descriptions,
 // parameters) and its policy. The 8 generic helpers come from the kit so the tree has exactly ONE copy.
 const { str, has, refuse, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker } = KIT_HELPERS
@@ -494,6 +497,16 @@ function toolMeeting(args = {}, { kernel } = {}) {
   if (!has(args.agenda)) throw refuse('VMU_INVALID_ARGUMENT', 'meeting needs an agenda', 'pass agenda:"what this meeting is for"')
   const member = requireSeat(kernel, args.member, 'meeting').id
   const roster = membersOf(kernel).roster().filter((m) => m.state === 'live').map((m) => m.id)
+  // ★ GOAL ROUND 3 — THE TYPE. Until now this line was `type: 'ordinary'` HARDCODED into the call below: the rule says
+  // 「院士可以设置会议的类型」 and the academician could not set it at all. The type is now a parameter, validated against
+  // the pack's own catalog with the legal list named in the refusal; the kernel ADDITIONALLY validates it against the
+  // declared `vmu.meetings.typeCatalog` when the institution declares that key, so the vocabulary is tunable without code.
+  const typeInfo = meetingTypeOf(has(args.type) ? str(args.type) : 'ordinary')
+  if (!typeInfo.known) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'unknown meeting type: "' + typeInfo.type + '"',
+      'the declared types are: ' + MEETING_TYPE_IDS.join(', ') + ' — declare vmu.meetings.typeCatalog to change the vocabulary')
+  }
+  const type = typeInfo.type
   const kind = has(args.kind) ? str(args.kind) : 'sync'
   const KNOWN = ['sync', 'division', 'verify-request', 'solve-vote']
   if (!KNOWN.includes(kind)) {
@@ -501,6 +514,16 @@ function toolMeeting(args = {}, { kernel } = {}) {
   }
   if (!kernel.meetings || typeof kernel.meetings.open !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no meetings face is published, so a meeting cannot be convened', 'assemble a kernel with the meetings service')
+  }
+  // ★ GOAL ROUND 3 — THE DEBATE'S EXTRA FIELD. The rule says 「院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的
+  // 对象或辩论对象的文件引用」. `target` was DECLARED in the schema and read by nothing (a declared parameter with no
+  // consumer); both spellings now reach the kernel, which stores the reference and reads it back on the receipt, on
+  // `summary()` and on `meetingView()`. For a type that requires it, an empty value is refused by name instead of
+  // convening a debate about nothing.
+  const subject = has(args.subject) ? args.subject : (has(args.target) ? args.target : null)
+  if (typeInfo.subjectRequired && (subject === null || String(subject).trim() === '')) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'a ' + type + ' meeting needs a subject: the object of the debate',
+      'pass subject:"<card id | file reference | the proposition in one line>" — the rule gives a debate meeting an extra field for its object')
   }
   // ★ PHASE 7 round 23: the kernel's `meetings.open` accepts a SECRETARY (a recorder). The pack passes it through and
   // validates that the named id is on the roster — the RECORD right is a role the meeting declares, never a silent name.
@@ -510,10 +533,17 @@ function toolMeeting(args = {}, { kernel } = {}) {
     if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + str(args.secretary) + '" on this roster', 'the secretary must be a real member id')
     secretary = row.id
   }
-  const opened = kernel.meetings.open({ type: 'ordinary', chair: member, roster, materials: str(args.agenda), secretary })
+  const opened = kernel.meetings.open({ type, chair: member, roster, materials: str(args.agenda), secretary,
+    subject: subject === null || subject === undefined ? null : subject })
+  // ★ GOAL ROUND 3 — THE RECOMMENDED PROCEDURE. A type that the rule gave a skeleton gets it in the receipt, labelled
+  // `binding:'recommendation'` so no reader can mistake it for a gate; a type with no skeleton reports null and WHY
+  // (nothing is invented). Steps the framework has NOT implemented are reported in `pendingSteps` rather than omitted.
+  const proc = procedureFor(type)
   return { ok: true, tool: 'vibe_v5_meeting', meeting: opened && opened.meeting ? opened.meeting : opened,
+    type, subject: opened && opened.subject !== undefined ? opened.subject : null,
+    procedure: proc.procedure, procedureBinding: proc.binding, procedureNote: proc.note, pendingSteps: proc.pendingSteps,
     kind, agenda: str(args.agenda), formalAgenda: args.formal_agenda === true, secretary,
-    note: 'the original could also PROPOSE a meeting from a non-chair seat and let the chair convene it; this face has no propose path (named gap: procedure/propose). ★★ THIS FACE ONLY CONVENES: for status/summary/snapshot/close/extend/lapse/ballot/speak/silent/hand use vibe_vmu_meeting { action, id } - the kernel face, which reaches the same meeting object. Measured on a full live run: an agent tried summary/close HERE, got nothing, and reported it as a missing capability; the capability existed one face over and nothing said so.' }
+    note: 'the original could also PROPOSE a meeting from a non-chair seat and let the chair convene it; this face has no propose path (named gap: procedure/propose). ★★ THIS FACE ONLY CONVENES: for status/summary/snapshot/close/extend/lapse/ballot/speak/silent/hand/flow use vibe_vmu_meeting { action, id } - the kernel face, which reaches the same meeting object. Measured on a full live run: an agent tried summary/close HERE, got nothing, and reported it as a missing capability; the capability existed one face over and nothing said so. ★ The recommended procedure is a RECOMMENDATION: skipping it, reordering it, or ignoring it entirely is allowed and unchecked.' }
 }
 
 const MOTION_KINDS = Object.freeze(['topic', 'procedural', 'resolution'])
@@ -1094,8 +1124,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_meeting',
-    description: 'Convene a meeting (agenda REQUIRED; kind is sync/division/verify-request/solve-vote). ★ THIS FACE ONLY CONVENES - status/summary/close live on vibe_vmu_meeting. The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name.',
-    parameters: { agenda: { type: 'string', required: true }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true } },
+    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary) and a debate REQUIRES subject (its object: a card id, a file reference, or one line). A type that the institution gave a recommended procedure returns it in `procedure` — ★ it is a RECOMMENDATION, never a gate: skipping or reordering it is allowed and unchecked. Steps the framework has NOT implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES - status/summary/close/flow live on vibe_vmu_meeting { action, id }. The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name.',
+    parameters: { agenda: { type: 'string', required: true }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true } },
     handler: toolMeeting,
   },
   {

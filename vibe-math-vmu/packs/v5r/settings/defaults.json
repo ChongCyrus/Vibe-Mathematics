@@ -54,6 +54,7 @@
     "vmu.meetings.tier": "formal",
     "vmu.meetings.allowLight": false,
     "vmu.meetings.eligibleSeats": ["chair", "member"],
+    "vmu.meetings.typeCatalog": ["ordinary", "academic", "debate", "closure", "paper", "planning"],
     "vmu.ballot.reopenFloor": 0,
 
     "vmu.paper.officeConsult": "required",

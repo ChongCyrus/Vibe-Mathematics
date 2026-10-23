@@ -754,6 +754,7 @@
     "vibe-math-vmu/packs/v3/middleware/gates.js",
     "vibe-math-vmu/packs/v3/tools.js",
     "vibe-math-vmu/packs/v5r/tools.js",
+    "vibe-math-vmu/packs/v5r/meeting-procedures.js",
     "vibe-math-vmu/packs/v5r/paper.js",
     "vibe-math-vmu/packs/v5r/middleware/paper-dispatch.js",
     "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js",

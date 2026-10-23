@@ -380,7 +380,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // in its decision, then called `open({ type, kind, at })` — and the reason was DROPPED, because this signature had
     // nowhere to put it. So overview / status / summary could not answer "why was this meeting opened" for exactly the
     // kind of meeting that most needs the answer. Optional, so every existing caller is unchanged.
-    open({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null } = {}) {
+    // ★ 2026-10-23 (v5r rules conformance): `subject` — WHAT this meeting is about, as a reference (a record/card id,
+    // a file path, or a one-line statement). The institution vocabulary ("a debate has an extra field naming the
+    // object under debate") is the PACK's; the FRAMEWORK only has to be able to carry such a reference and hand it
+    // back on every read face. Without it a debate meeting could not say what was being debated anywhere a reader
+    // looks, and the pack's `vibe_v5_meeting` had a `target` parameter with no consumer at all (declared, not wired).
+    open({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null } = {}) {
       const enforced = []
       const ms = at === null ? clock() : at
       // GAP-MTG-02: a CONTRADICTORY tier declaration is refused BEFORE any state is created. Same predicate as
@@ -393,6 +398,14 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
             'allowed: ' + K.typeCatalog.join(', ') + ' (vmu.meetings.typeCatalog)', enforced)
         }
       }
+      // ★ WHERE this meeting is about something (a debate's object, a closure's proposition, a paper's draft), the
+      // reference is CARRIED and READ BACK, never inferred. A non-string is refused by name rather than stringified:
+      // `String({})` would silently store "[object Object]" and every later reader would trust it.
+      if (subject !== null && subject !== undefined && typeof subject !== 'string') {
+        throw deny('VMU_INVALID_ARGUMENT', 'subject must be a string reference (a card id, a file path, or a one-line statement); got ' + typeof subject,
+          'pass subject:"<what this meeting is about>" or omit it', enforced)
+      }
+      const subjectRef = (subject === null || subject === undefined || String(subject).trim() === '') ? null : String(subject).trim()
       if (K.liveCap > 0) {
         mark(enforced, 'vmu.meetings.liveCap')
         if (live.size >= K.liveCap) cap('VMU_QUOTA_EXCEEDED', 'live meetings', live.size, K.liveCap, 'vmu.meetings.liveCap', enforced)
@@ -425,14 +438,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         // caller and discarded here, so a reader of summary()/meetingView() could see a "stall" meeting with no
         // statement of what stalled.
         reason: reason === null || reason === undefined ? null : String(reason),
+        // ★ WHAT this meeting is about, when the convenor said so (null = not stated, never guessed).
+        subject: subjectRef,
       }
       live.set(mid, m)
       markState(m, 'open')
       counters.opened += 1
-      const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, confidentiality: m.confidentiality, enforced, enforcedScope: ENFORCED_SCOPE }
+      const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, subject: m.subject, confidentiality: m.confidentiality, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
-      say({ type: 'meetings/opened', at: ms, meeting: mid, type: m.type, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, meeting: mid, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      say({ type: 'meetings/opened', at: ms, meeting: mid, type: m.type, subject: m.subject, enforced, enforcedScope: ENFORCED_SCOPE })
+      // ★ type/subject are ALSO at the top level, not only inside `receipt`: a caller that asked for them should not
+      // have to know the receipt envelope's shape to read back what it just set (the same reason `attend` returns `late`).
+      return { ok: true, meeting: mid, type: m.type, subject: m.subject, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Join. `lateAfterMs` decides whether a late arrival is allowed/recorded/refused. */
@@ -1175,7 +1192,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         }
       })
       return {
-        ok: true, id: m.id, meeting: m.id, kind: m.kind, state: m.state, reason: m.reason === undefined ? null : m.reason,
+        ok: true, id: m.id, meeting: m.id, type: m.type, kind: m.kind, state: m.state, reason: m.reason === undefined ? null : m.reason,
+        subject: m.subject === undefined ? null : m.subject,
         chair: m.chair || null, secretary: m.secretary || null,
         motions, votes: (m.minutes && Array.isArray(m.minutes.entries)) ? m.minutes.entries.filter((e) => e && e.kind === 'vote').length : 0,
         closedAt: m.closedAt || null,
@@ -1189,7 +1207,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // primitive.status() for the PRIMITIVE registry (line 174) but THIS view for the SERVICE registry (line 182), and
       // vibe_v5_meeting creates service meetings. So the wording has to exist on both read faces or it is a mechanism
       // with no consumer for the only path that mattered.
-      return { ok: true, meeting: m.id, state: m.state,
+      return { ok: true, meeting: m.id, type: m.type, state: m.state,
+        subject: m.subject === undefined ? null : m.subject,
         loop: 'meeting-ask-answer',
         note: '★ motions/votes/state here describe the MEETING’s own ask()+answer()+motion cycle. A member answering a vibe_vmu_turn prompt is a DIFFERENT loop: read vibe_vmu_turn’s receipts (awaiting/memberPrompt/deliveryPath) for that one. hasDeliverSeam on the primitive face refers to open({deliver}), not to the turn loop’s deliveryPath.', reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,
         motions: m.motions.map((x) => ({ id: x.id, by: x.by, kind: x.kind, status: x.status, secondedBy: x.secondedBy || null, withdrawnAt: x.withdrawnAt || null })) }
