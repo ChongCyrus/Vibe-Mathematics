@@ -313,3 +313,32 @@ const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, capUniverse.n
 ### 门禁读数（本轮实跑）
 
 `vmu-meeting-types` 122/0 · `vmu-meeting-invite` 67/0 · `vmu-meeting-verdict` 37/0 · `vmu-v5r-tools` 339/0 · `vmu-v5r-verdict-final` 63/0 · `vmu-verified-gates` 95/0 · `vmu-verified-track` 72/0 · `vmu-member-face` 46/0 · `vmu-turn` 191/0 · `vmu-turn-reply-tool` 32/0 · `vmu-paper-office-consult` 65/0 · `vmu-meetings` 201/0 · `vmu-kernel` 260/0 · `vmu-resume-e2e` 108/0 · `vmu-a2a3-seats-and-bounds` 17/0 · `vmu-kernel-reachability` 8/0 · `clean-temp-root-guard` 15/0 · `audit-generators-current` 23/0 · `audit-package-membership` 29/0 · `audit-vmu-docs` 103/0 · `regen-all --check` **16/16** · `check-docs` PASS。
+
+## §12 第六批：42 行全部有判定 ＋ 删掉不可达的 grant 面 ＋ 两条"深度审计纠正台账"的记录（提交 `1963b940`）
+
+这一批没有新增"能力"，做的是**把账算清**和**把假的关掉**：
+
+### 1. 最后 9 行"待核"由两条只读深查补齐，其中两条**推翻了台账自己的判断**
+- `lane-rows-b.md`（11 行）：A1/A4/B2–B5/B7/B9/B10/B11。**推翻**：A4 原写"临时工默认不入会由 `vmu.meetings.eligibleSeats` 表达"——实测该键只表达**投票权**（vote 门 + quorum 分母），`attend()` 完全不读它 ⇒ "默认不参会"是流程约定、无门禁；B10 的"归档/复算"也没有落点。
+- `lane-rows-c.md`（8 行：C1–C3/E1–E3/F1–F2）。**推翻**：E2 原写落点是 `vmu.paper.maxRounds`/`vmu.review.mode`/`vmu.reviewers.maxLoad`——前者的读者是**不可达**的 `kernel/paper.js`（`scripts/lib/reachability.mjs:36-48` 的 KNOWN_UNMOUNTED），v5r 论文路径的真实上限是 pack 常量 `PAPER_MAX_ROUNDS=3`；后两者属评审人市场面、与论文互审环无关。同一份报告还纠正 `lane-claims-paper.md` 的"E3 只断言关键词"——实际有文本合同级门禁（`tests/vmu-v5r-tools.test.mjs:553-597`）＋三阶段正反隔离。
+- 结论：**"结论也要有读者"**。两条被推翻的判断都是"机制存在 ⇒ 这个键就是它的消费者"的推断，而实测显示存在≠被这条路径消费。
+
+### 2. `kernel/grant.js` 从"待裁定"变成"删除"（`1963b940`）
+可达性闸把它列为**未被任何装配入口 import** 的模块 ⇒ 它的 4 个 `vmu.grant.*` 键被设置表登成 `✅ 已接线`，而跑起来的装配里没有读者。两个选项（挂上去 / 删掉）中选删除，理由：它是上一代授权面的遗留，没有任何 pack 或规则条目需要它；删除同时也关掉了设置表的假绿。`tests/vmu-grant.test.mjs` 随之删除，`audit-kernel-claims-16`/`04-parity-matrix` 的对应声明同步改。
+
+### 3. 三条新的门禁（针对"说了但没有"这一族）
+| 门禁 | 它抓什么 | 读数 |
+|---|---|---|
+| `tests/vmu-kernel-reachability.test.mjs` | 一个内核模块是否被**装配入口可达**；豁免表只许缩 | 8/0 |
+| `scripts/generate-vmu-settings-table.mjs` 的第四档 | `⚠️ 未接线（读取者不可达）`：读者在，但装配不加载它 | 17 键从 ✅ 改判 |
+| `tests/vmu-doc-claims-vs-code.test.mjs`（`v5r-reader-b`，**当前 2 红**） | 代码内 hint／提示词里的一句承诺，其声称的机制能否从源码证出来 | 10 passed / 2 failed |
+
+第 3 条的两处红是**真结论**，不是测试缺陷，已派给 `vmu-core` 本轮修（①汇报/总览计数缺 feedback；②B10 的"归档/复算流程"没有落点）；修完它才转绿——**先红后绿**，不许把断言删掉。
+
+### 4. 台账字数与读数
+`§7` = **42 条 = 19 已实现 / 19 部分 / 4 缺口 / 0 待核**（4 缺口＝B2 蓝图、B8 lean⇒辩论联动、F5 提示词自洽，及 B10 正被修）。
+
+### 5. 本批交给三条 lane 的（尚未回收）
+- `vmu-pack`：F5 更正段 ×4（JSON 围栏／tool_help 参数／`end_verify` 与 `formal_proof`／`m 票` 的真实机制）＋ 静态门禁"提示词教的参数必须 ⊆ 工具 schema"。
+- `vmu-core`：feedback 计数、紧急私信入口（C2）、状态面板四要素闸（C3）、脚本归档面（B10）、`verification-gates` 的两条谓词接线（B8）。
+- `vmu-verify`：F1「引擎为何声明了却不物化」与 D7「会议类型 ⇒ 工具面差异」两张只读施工单。
