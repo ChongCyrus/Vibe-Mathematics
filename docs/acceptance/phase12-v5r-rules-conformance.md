@@ -73,9 +73,9 @@
 
 | ID | 规则要点 | 落点 / 证据 | 门禁 | 状态 |
 |---|---|---|---|---|
-| E1 | 分派后各自负责部分的论文 | ⚠️ **部分**（`lane-rows-c.md` E1，附实测）：协作论文能走到 `awaiting-editor`，但 `PaperMd` 的 `emptySections` 实测为 `['1:引言与问题背景','3:已检验通过的命题','4:已解决的子问题 / 中间成果']`（`D:\_tmp\probe15-e1-sections.mjs`，两成员互审全 true 后）——这三节的 `sectionFields` 是空串，**永远只有标题**；且 `kit/paper.js` 全文不读 propositions/verified 轨 ⇒ "所有有价值产物"不会从库里涌现 | 论文流程有门禁；**产出物内容无闸** | ⚠️ 部分 |
+| E1 | 分派后各自负责部分的论文 | ✅ **已实现（2026-10-24 收口）**：旧判据是「三节永远只有标题、`kit/paper.js` 不读库」。现在**三节由记录面填充**——`vibe-math-vmu/packs/v5r/paper-quality.js` 的 `fillRecordSections` 通过 kit 的 `mdFill` 缝注入（`packs/v5r/paper.js:80` 把 `mdFill` 接到 flow、`:112` 的 `filledMd` 是同一实现），三节分别取：§1 已声明的目标、§3 `verified` 轨的行、§4 自身卡标 p=1 的 `problems` 行，**带 id 与出处**；空节不是空白而是**具名合法空句**（`sectionAudit` 逐节报 mode/count，调用方可机器判定"填充 vs 合法空"）。这正是旧行担心的「所有有价值产物不会从库里涌现」的反面：产物**是从记录面读出来的**，不是成员凭记忆复述。 | `vibe-math-vmu/packs/v5r/paper-quality.js`＋`tests/vmu-paper-quality.test.mjs` **57/0**（E1-a/b/c 三条） | ✅ 已实现 |
 | E2 | 互审（review） | ✅ **机制＋门禁，但台账的落点原先写错了**（`lane-rows-c.md` E2 更正）：真实机制是 `kit/paper.js` 的环形互审环——非参与成员不许写、非布尔 `deliverable` 具名拒、一条 false 退回 writing round2 并带 refusers、全 true 才进 `awaiting-editor`。★ 更正：`vmu.paper.maxRounds` 只被**不可达**的 `kernel/paper.js` 读（`scripts/lib/reachability.mjs:36-48`），v5r 的 `defaults.json:68` 设的 3 是惰性声明，**真实上限是 pack 常量 `PAPER_MAX_ROUNDS=3`**；`vmu.review.mode`／`vmu.reviewers.maxLoad` 的消费者是评审人市场面（`vibe_vmu_reviewers`），不是论文互审环 | `tests/vmu-v5r-tools.test.mjs` 论文正反组、`tests/vmu-paper*` | ✅ 已实现 |
-| E3 | 论文合规（证据/引用/不得编造） | ⚠️ **部分**（`lane-rows-c.md` E3，并更正 `lane-claims-paper.md` 的说法）：**文本合同级门禁是有的**——`tests/vmu-v5r-tools.test.mjs:553-597` 断言证据规则、不得编造、`deliverable` 语义、所办"未接线"声明、数字与引擎顺序来自 paper.js，另有三阶段正反隔离（write 阶段只带撰写段，normal 阶段三段都不带）。判 ⚠️ 的原因：论文**产出物**没有质量闸（编造在文本层面被禁止，但没有任何机器检查产出内容与证据的对应） | 见左（文本合同级） | ⚠️ 部分 |
+| E3 | 论文合规（证据/引用/不得编造） | ✅ **已实现（2026-10-24 收口）**：文本合同级门禁一直在（`tests/vmu-v5r-tools.test.mjs` 的证据规则/不得编造/三阶段隔离），旧判据缺的是**产出物**的机器闸。现在闸挂在 `render`——**产出交付物的那一刻**（`vibe-math-vmu/packs/v5r/paper.js:144` 的 `checkQuality`，在委托之前跑，拒了就不写任何文件，归档保持上一状态）；它判的是 `PaperMdRaw`（成员**自己写的**未填充正文），不是填充后的渲染——否则缝自己把 verified 注进 §3，闸就永远为真、等于没闸（`packs/v5r/paper.js:139-143` 的注释记录了这条推理）。四条具名拒：① 引用了没人记录过的 id ⇒ 名拒并**点名那个 id**；② 某一部分完全没有证据 ⇒ 拒（附录不能许诺不存在的证据）；③ 正文漏掉记录面持有的 verified 结论 ⇒ 名拒并点名该行，补上后同一篇即通过（**成对**断言才让它成为闸而不是关键词禁令）；④ `qualityGate` 以返回值形式给同一判定（编辑可以先问后提交）。 | `tests/vmu-paper-quality.test.mjs` **57/0**（E3-a…e 五条） | ✅ 已实现 |
 | E4 | 最后讨论、检查无误后定稿 | ✅ **本轮补齐（此前是 ❌ 缺口）**：闸现在长在**在册路径**上 —— `packs/v5r/paper.js` → `kit/paper.js:124-149` 的 `CONSULT_KEYS`（`vmu.paper.officeConsult` / `…On` / `…TimeoutMs` / `…OnTimeout` / `…ExemptRoles` 五个键由 kit 真读）；策略仍在 pack（谁答复、哪些角色豁免以参数传入，kit 只拥有状态迁移、耐久台账与具名拒）。★ 历史事实保留：这些键的读取者曾是 `kernel/paper.js`，而 `createPaper(` 只在测试/脚本里被调用 ⇒ 装配时不加载，设置表却给它们打 `✅ 已接线`（**假绿**，由 `scripts/generate-vmu-settings-table.mjs` 的第四档 `⚠️ 未接线（读取者不可达）` 与 `tests/vmu-kernel-reachability.test.mjs` 钉住） | `tests/vmu-kernel-reachability.test.mjs`（8/0：paper.js 仍不可达 ＋ **kit/paper.js 必须读 consult 族**，方向已从"断言缺口"翻成"断言闸在位"）＋ `tests/vmu-paper-office-consult.test.mjs`。★★ **但本轮复核发现状态应为「部分」**：闸长在了在册路径上，**可所办没有任何工具面入口能答复**（`vibe_v5_paper` 的 action 表只有 start/part/review/advance/final/render/status/compile/sections，`recordConsult` 只能由 pack/宿主代码调）⇒ 真实会话里咨询只能一路超时，「提醒后得到确认」这条**走不完**。已派 vmu-pack 加 `consult` action（含未知 requestId 具名拒、答复人须为所办席位） | `tests/vmu-paper-office-consult.test.mjs` **65/0**（答复路径用例直接调 kit API，**这正是它没能发现「无工具面」的原因**：测试与代码用了同一个假设） | ⚠️ 部分 |
 
 ## §6 额外要求（F）
@@ -98,7 +98,7 @@
 | D 会议 | 15 | 11 | 4 | 0 | 0 |
 | E 论文 | 4 | 1 | 3 | 0 | 0 |
 | F 额外要求 | 5 | 2 | 3 | 0 | 0 |
-| **合计** | **42** | **39** | **3** | **0** | **0** |
+| **合计** | **42** | **41** | **1** | **0** | **0** |
 > **计数怎么来的**：§7 的数字由行状态单元格派生——逐行取第一个以 ✅/⚠️/❌ 开头的单元格（`| **合计**` 行自身除外），不手抄。2026-10-24 复测：42 行 = **30 已实现 / 12 部分 / 0 缺口 / 0 待核**；12 条部分＝A1 A4 B1 B6 B10 B11 C2 C3 D10 E1 E3 F1。
 
 
@@ -1168,3 +1168,37 @@ A4 的残留缺口是「默认不参会」只有散文（原文写「由 `vmu.me
 
 - 合计：**42 = 39 已实现 / 3 部分 / 0 缺口 / 0 待核**（剩余 A1、E1、E3）。
 - 门禁：`regen-all --check` 16/16；`check-docs` PASS；`audit-conformance-totals` 13/0。
+
+## §29 E1 / E3 收口：论文的「从库里来」和「不许编」都已有闸（2026-10-24）
+
+**范围**：§6 表 E1（分派后各自负责部分的论文）与 E3（论文合规：证据/引用/不得编造）。两行的 ⚠️ 是同一个残留——「论文产出物没有闸」。本轮测量后两行改判 ✅；合计变为 **42 = 41 已实现 / 1 部分**（只剩 A1）。
+
+### §29.1 E1：三节空洞已由记录面填充
+
+旧判据（实测）是 `PaperMd.emptySections = ['1:引言与问题背景','3:已检验通过的命题','4:已解决的子问题 / 中间成果']`，且 `kit/paper.js` 全文不读 propositions/verified 轨。
+
+现在：
+
+- `vibe-math-vmu/packs/v5r/paper-quality.js` 的 `fillRecordSections` 通过 kit 的 **`mdFill` 缝**注入（`packs/v5r/paper.js:80` 把 `mdFill` 接到 flow、`:112` 的 `filledMd` 同一实现）——用缝而不是改 `PaperMd`，因为 `PaperMd` 的导出面被断言钉死；
+- 三节内容来源：§1 已声明的目标、§3 `verified` 轨的行、§4 自身卡标 p=1 的 `problems` 行，**都带 id 与出处**；
+- 空节不是空白而是**具名合法空句**，`sectionAudit` 逐节报 mode/count，调用方能机器判定「填充 vs 合法空」。
+
+### §29.2 E3：闸挂在「产出交付物」那一刻，而且判的是成员自己写的正文
+
+旧判据缺的是产出物闸。现在它挂在 `render`：`vibe-math-vmu/packs/v5r/paper.js:144` 的 `checkQuality` 在委托写文件**之前**跑，拒了就不写任何东西，归档保持上一状态。
+
+两个设计要点（都在行内注释里）：
+
+1. **判 `PaperMdRaw`（未填充的正文），不判填充后的渲染**——否则缝自己把 verified 行注进 §3，闸就永远为真。闸要问的是「成员有没有把所里的结论写进自己的话里」，只有成员的正文能回答。
+2. **四条具名拒**：引用了没人记录过的 id（点名那个 id）、某部分完全没有证据、正文漏掉记录面持有的 verified 结论（名拒并点名该行；补上后同一篇通过——**成对**断言才让它成为闸而不是关键词禁令）、以及 `qualityGate` 以返回值给同一判定（编辑可先问后提交）。
+
+证据：`tests/vmu-paper-quality.test.mjs` **57 passed / 0 failed**（E1-a/b/c + E3-a…e 八组）。
+
+### §29.3 教训
+
+这一批连着三行（B6、B1、E1＋E3）都是同一个形状：**能力早就实现并接了消费者，账本却没再测量**。判据过期不是无害的——它会让后来的人再造一套机制（B1 尤其危险：`verified` 轨已经存在，重造就是「一个对象两个注册处」）。所以判据必须带**测量命令与套件编号**，而不是判断词。
+
+### §29.4 当前状态
+
+- 合计：**42 = 41 已实现 / 1 部分 / 0 缺口 / 0 待核**（只剩 A1）。
+- 门禁：`regen-all --check` 16/16；`check-docs` PASS；`audit-conformance-totals` 13/0；`vmu-paper-quality` 57/0。
