@@ -49,7 +49,7 @@ export const DEBATE_PROCEDURE = Object.freeze({
     Object.freeze({
       n: 1,
       phase: 'independent-estimates',
-      what: '各成员同时、独立发言，各自给出该命题当前的布尔概率([0,1])、理由、以及证明/证伪进展。先不互相反驳、不互相引用。',
+      what: '各成员各自独立表态：给出该命题当前的布尔概率([0,1])、理由、以及证明/证伪进展。先不互相反驳、不互相引用（「独立」是**尽力而为的约定**，不是内核保证的隔离 —— 见 notes）。',
       tools: Object.freeze(['vibe_vmu_meeting { action: "speak" }', 'vibe_v5_say']),
       status: 'supported',
     }),
@@ -82,7 +82,7 @@ export const DEBATE_PROCEDURE = Object.freeze({
   ]),
   notes: Object.freeze([
     '本骨架是**推荐**：院士可以只做其中一步、改变顺序、或完全不用。框架不检查、不阻断、不记录偏离。',
-    '「单次发言版群聊」在本框架里就是「每人各说一次、互不打断」：会议内用 `vibe_vmu_meeting { action:"speak" }`（进会议记录），群聊形态用 `vibe_v5_say`。',
+    '「单次发言版群聊」在本框架里就是「每人各说一次、互不打断」：会议内用 `vibe_vmu_meeting { action:"speak" }`（进会议记录），群聊形态用 `vibe_v5_say`。★ 但「独立」只是**尽力而为的约定**，两条事实要一起看：(a) 框架没有并发，轮次是**顺序**推进的（`kernel/turn` 的 drive 一个成员接一个成员跑），caller 交付模式下更是一格一回合（交回一份提示词、等一份回复，同一时刻只有一个待回回合），提示词装配也**不注入**别人的发言；(b) **即使顺序化、即使不注入前文，读房间仍然可能** —— `vibe_vmu_chat` 走 `chat.list`，内核的聊天读面**不按调用者过滤**，任何成员都能读到整个房间，包括同一轮里别人刚说的话。所以第 1 步的「独立」不是隔离保证：要隔离请用会议发言（进会议记录，工具面没有会议记录的读面）；靠群聊就只能靠这条约定。',
     '发言楼层（谁先说话）是另一套机制：`vibe_vmu_meeting { action:"flow" }`（open/hands/round_robin/call_on）。骨架管议程，flow 管顺序，两者互不替代。',
     '第 4 步不是自动的：`vibe_v5_verdict_final` 由**主席**显式调用（裁决必须有签名人），内核面 `vmu.meetingverdict` 只做算术与校验，通知走既有 mailbox 面 —— 本 pack **没有**在 `meetings.close` 上挂任何自动聚合钩子（"会议关了就把数算出来"会把一次显式裁定变成一次静默推断）。',
   ]),

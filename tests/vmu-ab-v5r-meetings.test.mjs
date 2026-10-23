@@ -654,18 +654,21 @@ ok(registry.has('vibe_v5_meeting') && typeof registry.get('vibe_v5_meeting').exe
     'G6f. ★ and a resolution is recorded with its text and its follow-up actions')
 
   // our side
-  const grantSrc = readFileSync(new URL('../vibe-math-vmu/kernel/grant.js', import.meta.url), 'utf8')
   const membSrc = readFileSync(new URL('../vibe-math-vmu/kernel/members.js', import.meta.url), 'utf8')
-  const grantMethods = [...new Set([...grantSrc.matchAll(/^\s{4}(?:async )?([a-zA-Z][\w]*)\(/gm)].map((m) => m[1]))]
   const membMethods = [...new Set([...membSrc.matchAll(/^\s{4}(?:async )?([a-zA-Z][\w]*)\(/gm)].map((m) => m[1]))]
-  ok(['grant', 'check', 'revoke', 'list'].every((m) => grantMethods.includes(m)),
-    'G6g. ★★ vmu has the same shape: a grant face with grant, check, revoke and list', grantMethods)
-  ok(/scope|event/i.test(grantSrc),
-    'G6h. ★★ and its grants are scoped to an event rather than to a permanent capability')
+  // ★ RECORDED ASYMMETRY (goal round 3): the reference has a temporary-grant face (`vibe_v5_grant`/`vibe_v5_revoke`,
+  // asserted on the reference side by G6c/G6d above); vmu deliberately does NOT. `kernel/grant.js` was deleted — it had
+  // no live constructor (`createGrant(` appeared only in tests), the four `vmu.grant.*` keys went with it, and the v5r
+  // rule set does not require grants. This used to be an "EQUAL" paragraph claiming a matching `grant/check/revoke/list`
+  // face; it is now an ABSENCE assertion, so re-adding the module without a decision reddens here instead of quietly
+  // re-entering the settings table as a knob nobody can reach.
+  ok(!existsSync(new URL('../vibe-math-vmu/kernel/grant.js', import.meta.url)),
+    'G6g. ★★ RECORDED ASYMMETRY: the reference grants temporary authorisation; vmu does not ship a grant face (kernel/grant.js deleted — re-adding it needs a decision, not a silent return)')
   ok(membMethods.includes('hire') && membMethods.includes('end') && membMethods.includes('wake') && membMethods.includes('assignRole'),
     'G6i. ★ the roster face covers all three: hire, dismiss, wake and role assignment', membMethods)
-  mark('PROPERTY', 'temporary authorisation is an EVENT-SCOPED, enumerated grant with a named command and a stated reason on both sides, revocation is written down rather than done silently, a permanent roster change is set apart from a temporary grant, and supervision names both a reason and a next step')
-  mark('EQUAL', 'the six remaining tools all have counterparts: grant/check/revoke/list against the grant face, hire/end/wake/assignRole against the roster face, and the resolution against the minutes and records surfaces')
+  mark('PROPERTY', 'the reference keeps temporary authorisation as an EVENT-SCOPED, enumerated grant with a named command and a stated reason, and revocation is written down rather than done silently; a permanent roster change is set apart from a temporary grant, and supervision names both a reason and a next step')
+  mark('EQUAL', 'the roster half has counterparts on both sides (hire/end/wake/assignRole) and the resolution lands on the minutes and records surfaces; the temporary-grant half is an asymmetry recorded above — the reference has it, vmu deliberately does not')
+  mark('DIVERGENT', 'temporary grant face: v5r has vibe_v5_grant/vibe_v5_revoke; vmu has no grant module (deleted in goal round 3 after measuring zero live constructors). Revival condition: a consumer that needs a command-scoped, expiring authorisation and can name who grants it — then the module returns WITH that consumer, not before')
 }
 
 rmSync(workspace, { recursive: true, force: true })

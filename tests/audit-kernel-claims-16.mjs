@@ -1,7 +1,8 @@
-// tests/audit-kernel-claims-16.mjs — ROUND 112, batch P: grant (11) · tenure (9) · lifecycle (8) · loader (13).
+// tests/audit-kernel-claims-16.mjs — ROUND 112, batch P: tenure (9) · lifecycle (8) · loader (13).
 //
 // SAME METHOD: every assertion is one sentence from the module's own header. This probe carries its OWN --selftest, which
-// reports 40 passed and 1 failed - the deliberate falsehood going red is the proof that the harness can fail.
+// reports 29 passed and 1 failed - the deliberate falsehood going red is the proof that the harness can fail.
+// (The grant section's 11 claims were removed with `kernel/grant.js` in goal round 3; the module had no live constructor.)
 //
 // AND IT RECORDS ONE FINDING THAT IS THE OPPOSITE OF A DEFECT: loader.js enforces MORE than its header states. Besides the
 // two refusals it documents, it also requires every capability a module USES to be among those its entry DECLARED
@@ -32,43 +33,15 @@ const norm = async (fn) => {
   try { const v = await fn(); return { threw: false, raw: v, code: v && v.code, bag: bag(v) } }
   catch (e) { return { threw: true, raw: e, code: e && e.code, bag: bag(e) } }
 }
-const G = await import(url('grant.js'))
 const H = await import(url('tenure.js'))
 const L = await import(url('lifecycle.js'))
 const D = await import(url('loader.js'))
 
-console.log('=== 1. grant: the enumerated commands/scopes + the gate never silently allows ===')
-ok(G.ENFORCED_SCOPE === 'evaluated-so-far', '★ the D3 scope marker literal', G.ENFORCED_SCOPE)
-ok(Array.isArray(G.GRANTABLE_COMMANDS) && G.GRANTABLE_COMMANDS.join(',') === 'assign,prioritize,nudge,convene',
-  '★ "the commands that may be granted are an ENUMERATED list (v5r: assign / prioritize / nudge / convene)"', G.GRANTABLE_COMMANDS)
-ok(Array.isArray(G.GRANT_SCOPES) && G.GRANT_SCOPES.join(',') === 'meeting,verify,once',
-  '★ "a grant has a SCOPE (v5r: meeting / verify / once) — a window, not an open door"', G.GRANT_SCOPES)
-ok(Array.isArray(G.WIRED_KEYS) && G.WIRED_KEYS.length > 0, '★ the module declares a non-empty WIRED_KEYS', G.WIRED_KEYS.length)
-const gZero = await norm(() => G.createGrant({ clock: () => 1000, settings: {} }))
-ok(gZero.threw === false && !!gZero.raw, '★ zero-config: the grant ledger builds with no settings (nothing installed)', gZero.bag)
-{
-  const face = gZero.raw || {}
-  const st = await norm(async () => (typeof face.status === 'function' ? await face.status() : undefined))
-  const s = st.raw || {}
-  ok(s.enabled === false, '★ THE ZERO MECHANISM: `vmu.grant.enabled` defaults to FALSE (no grant machinery is armed)', s.enabled)
-  ok(s.commands && Array.isArray(s.commands) && s.commands.length > 0 && s.commands.join(',') === 'assign,prioritize,nudge,convene',
-    '★ and the declared allowlist is echoed in status (the enum is the single source)', s.commands)
-  ok(s.counters && typeof s.counters === 'object' && ['granted', 'refused', 'used', 'revoked', 'expired'].every((k) => k in s.counters),
-    '★ "every decision is recorded": the ledger declares a counter per decision class', s.counters ? Object.keys(s.counters) : null)
-  // ★ NOT assumed to refuse (a disabled mechanism may legally no-op) — the teeth are that NO grant is recorded.
-  const before = Number(s.open || 0) + Number(s.total || 0)
-  const attempt = await norm(async () => (typeof face.grant === 'function' ? await face.grant({ member: 'm1', command: 'assign', scope: 'once' }) : undefined))
-  const st2 = await norm(async () => (typeof face.status === 'function' ? await face.status() : undefined))
-  const s2 = st2.raw || {}
-  const after = Number(s2.open || 0) + Number(s2.total || 0)
-  ok(after === before, '★ with the mechanism DISABLED an attempt must not silently create a grant (no state change behind a refusal or no-op)',
-    { before, after, code: attempt.code })
-  ok(attempt.code === undefined || /^VMU_/.test(String(attempt.code)),
-    '★ and if it answers at all, a refusal is NAMED (VMU_*), never a bare error', { code: attempt.code, threw: attempt.threw })
-}
-const gBadClock = await norm(() => G.createGrant({ clock: 'nope', settings: {} }))
-ok(gBadClock.threw === false || typeof gBadClock.code === 'string',
-  '★ the clock direction: a non-function clock is refused by name or tolerated — recorded, not assumed', { code: gBadClock.code, threw: gBadClock.threw })
+// ★ SECTION 1 (grant, 11 claims) WAS DELETED WITH ITS SUBJECT: `kernel/grant.js` was removed in goal round 3 (no live
+// path constructed `createGrant`, the v5r rule set does not require grants, and the four `vmu.grant.*` keys went too).
+// A probe that asserts sentences from a module's header has nothing to assert once the module is gone - so the section
+// is removed, not re-pointed at a neighbour. The file keeps its name (batch P) because the remaining three modules are
+// the ones it was written for; the counts below are the surviving ones.
 
 console.log('\n=== 2. tenure: "码＝零新码：只用 03-§8／22 卷已登记的 7 个 VMU_HR_*" + 未支持语义逐条点名 ===')
 ok(H.ENFORCED_SCOPE === 'evaluated-so-far', '★ the D3 scope marker literal', H.ENFORCED_SCOPE)

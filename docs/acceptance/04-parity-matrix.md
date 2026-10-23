@@ -99,7 +99,7 @@
 | M-A27 | `ready()/state()/inst()` 与 `prematureReads` 诊断 | `vmu.store`、`kernel/metrics.js` | 内核级 | 等价承载 | 映射 |
 | M-A28 | 载入/写失败诊断缓冲 ＋ `commit()` 的恢复语义 | `kernel/store.js`、`kernel/alerts.js`、`kernel/audit.js` | pack：阈值可声明 | 等价承载 | 映射 |
 | M-A29 | S5 静止提示（**只推荐、不驱动**，幂等键 `sinceAt`） | `kernel/scheduler.js`、`kernel/control.js`、`vmu.scheduler` | pack：`v5r/settings/defaults.js`（`stallAutoMeetingMs` 语义保留） | 等价承载 | 映射 |
-| M-A30 | S6 临时授权与撤回（事件型失效、无定时器） | `kernel/grant.js`、`kernel/delegation.js`、`vmu.governance` | pack：`v5r/settings` 声明 `vmu.grant.commands`/`vmu.grant.defaultScope` 策略 | 等价承载 | 映射 |
+| M-A30 | S6 临时授权与撤回（事件型失效、无定时器） | **框架不提供**（`kernel/grant.js` 已于 goal round 3 删除：零活构造者、4 个 `vmu.grant.*` 键一并删除、`KNOWN_UNMOUNTED` 条目撤销；`kernel/delegation.js` 仍在，但那是**实例级委托**，不是「命令级 + 事件作用域」的临时授权） | pack 无 | **框架不提供（规则集不要求）**——理由：v5r 规则集不要求 grants，本模块无任何活路径构造，留着只会让读者以为「临时授权」存在。**改判条件**：出现一个真实的、需要「枚举命令 + 事件作用域 + 到期」授权的消费者时，模块**带着该消费者一起**回来（而不是先留壳） | 映射 |
 | M-A31 | S7 投票板（开板/投票/截止；两个门槛各算各的） | `kernel/ballot.js`、`kernel/ballotbox.js`、`vmu.ballotbox` | pack：`v5r/settings/defaults.js`（`vmu.ballot.minVotes` **无默认值**等） | 等价承载 | 映射 |
 | M-A32 | S13 决议台账与检索（append-only ＋ `latestResolution()`） | `kernel/records.js`、`vmu.records` | pack：检索上限/维度 | 等价承载 | 映射 |
 | M-A33 | S9 少数意见入档 ＋ 复议（门槛只升不降） | `kernel/ballot.js`、`kernel/records.js` | pack：`v5r/settings/defaults.js`（`reconsiderFloor`） | 等价承载 | 映射 |
@@ -444,9 +444,10 @@ v3 的闭合口径是"**等价承载·已闭合**"（读码证明唯一强制点
 | ③ **真缺口** | **1 条子项 ＋ 1 个孤儿键** | 见 9.3.3 |
 
 ### 9.3.2 逐类改判清单（行 id 照 vmu-pack §4）
-1. **约 34 行改判为"框架具备（键族），pack 未声明（默认值生效）"**：`M-A02`、`M-A06`（提示词侧已声明）、`M-A17`、`M-A18`、`M-A21`、`M-A28`、`M-A30`、`M-A31`、`M-A32`、`M-A37`、`M-A38`、`M-A44`、`M-A45`、`M-B02`、`M-B07`–`M-B10`、`M-B12`、`M-B14`、`M-B16`、`M-B18`、`M-B19`、`C-01`–`C-06`、`C-08`、`C-10`–`C-22`、`C-25`–`C-28`、`C-31`–`C-35`、`C-37`、`C-38`、`C-41`、`C-42`、`C-44`、`C-46`、`C-47`、`C-49`、`C-50`。
+1. **约 33 行改判为"框架具备（键族），pack 未声明（默认值生效）"**：`M-A02`、`M-A06`（提示词侧已声明）、`M-A17`、`M-A18`、`M-A21`、`M-A28`、`M-A31`、`M-A32`、`M-A37`、`M-A38`、`M-A44`、`M-A45`、`M-B02`、`M-B07`–`M-B10`、`M-B12`、`M-B14`、`M-B16`、`M-B18`、`M-B19`、`C-01`–`C-06`、`C-08`、`C-10`–`C-22`、`C-25`–`C-28`、`C-31`–`C-35`、`C-37`、`C-38`、`C-41`、`C-42`、`C-44`、`C-46`、`C-47`、`C-49`、`C-50`。
 2. **改判为"pack 真声明的键"**：`M-A19`、`M-A33`、`M-A36`、`M-A06`／`M-B11`、`M-A24`、`M-A47`、`M-B14`、`C-29`／`C-30`、`C-39`、`C-52`、`C-55`（键 ↔ 机制 id 对照见 vmu-pack §1.1 的 47 键表）。
-3. **4 处"键名不存在／真名是 X"（不是缺口）**：`GRANTABLE_COMMANDS`／`GRANT_SCOPES` → **`vmu.grant.commands`／`defaultScope`／`enabled`／`maxOpenGrants`**；`vmu.lean.*` → **不存在**，承载是 **`vmu.math.*`**；`chatDigestMax(12)`／`chatDigestMs(45s)` → **`vmu.mailbox.digestMax`（默认 12）／`digestWindowMs`（默认 45000，与 v5r 值逐字相同）**；`SECRETARY_ENTRY_MAX`／`min_votes`／`motionSecondsRequired` → **`vmu.minutes.verbatimCapBytes`／`vmu.ballot.minVotes`／`vmu.motions.secondThreshold`**。
+3. **4 处"键名不存在／真名是 X"（不是缺口）**：`GRANTABLE_COMMANDS`／`GRANT_SCOPES` → **框架不提供**（旧真名 `vmu.grant.commands`／`defaultScope`／`enabled`／`maxOpenGrants` 已随 `kernel/grant.js` 在 goal round 3 删除 ⇒ 见上表 `M-A30` 的「框架不提供」改判；**这里不再有"真名"可指**）；`vmu.lean.*` → **不存在**，承载是 **`vmu.math.*`**；`chatDigestMax(12)`／`chatDigestMs(45s)` → **`vmu.mailbox.digestMax`（默认 12）／`digestWindowMs`（默认 45000，与 v5r 值逐字相同）**；`SECRETARY_ENTRY_MAX`／`min_votes`／`motionSecondsRequired` → **`vmu.minutes.verbatimCapBytes`／`vmu.ballot.minVotes`／`vmu.motions.secondThreshold`**。
+4. **1 行改判为"框架不提供（规则集不要求）"**：`M-A30`（临时授权与撤回）—— `kernel/grant.js` 已删除（零活构造者；v5r 规则集不要求 grants），4 个 `vmu.grant.*` 键、`grant/granted` 钩子登记、reachability 豁免条目一并撤销。**这不是缺口**：规则集不要它，框架就不再宣称有它；**改判条件**写在 `M-A30` 行内。
 
 ### 9.3.3 真缺口与清理项（具名，可追溯）
 - ★ **新增真缺口（M-A04 子项）**：**`vmu.paper.*` 没有轮次上限键，`kernel/paper.js` 没有 `maxRounds` 读点** ⇒ 本矩阵 `M-A04` 原先"可覆盖轮次/引擎"的措辞**必须撤回，或先加键再声称**（owner＝vmu-core）。
@@ -460,7 +461,7 @@ v3 的闭合口径是"**等价承载·已闭合**"（读码证明唯一强制点
 
 | 旧写法（转述） | **真名（仓内）** | 出现过的行 |
 |---|---|---|
-| `GRANTABLE_COMMANDS` / `GRANT_SCOPES` | **`vmu.grant.commands` / `vmu.grant.defaultScope`**（同族还有 `enabled`、`maxOpenGrants`） | M-A30 |
+| `GRANTABLE_COMMANDS` / `GRANT_SCOPES` | **框架不提供** —— 旧真名 `vmu.grant.commands` / `vmu.grant.defaultScope` 已随 `kernel/grant.js` 删除（goal round 3）⇒ 见 `M-A30` 的「框架不提供」改判；**不是缺口，也不再是本仓的设置键** | M-A30 |
 | `vmu.lean.*` | **不存在** —— 承载是 **`vmu.math.*`** | M-B12 |
 | `chatDigestMax`(12) / `chatDigestMs`(45 s) | **`vmu.mailbox.digestMax`**（默认 12） / **`vmu.mailbox.digestWindowMs`**（默认 45000，与 v5r 值逐字相同） | M-A45、C-05 |
 | `SECRETARY_ENTRY_MAX` | **`vmu.minutes.verbatimCapBytes`** | M-A37 |

@@ -1382,12 +1382,12 @@ try {
   const paperLeftovers = paperImpls.filter((sig) => paperSrcW.split(sig).length - 1 > 0)
   ok(paperImpls.length === 14 && paperLeftovers.length === 0,
     '★★★ ZERO local state-machine / fingerprint / assembly implementations remain in the pack (source probe, 14 signatures)', { checked: paperImpls.length, leftovers: paperLeftovers })
-  const policyDecls = ['export const PAPER_MAX_ROUNDS = 3', 'export const PAPER_SECTIONS', 'export const PAPER_ENGINE_ORDER', 'export const PAPER_REPAIR_CORE']
+  const policyDecls = ['export const PAPER_MAX_ROUNDS = 3', 'export const PAPER_SECTIONS', 'export const PAPER_ENGINE_ORDER', 'export const PAPER_REPAIR_CORE', 'export const PAPER_CONSULT_ROLES']
   ok(policyDecls.filter((p) => paperSrcW.includes(p)).length === policyDecls.length,
     '★★ the four POLICY constants are still declared in the PACK (the kit never owns institution semantics)', policyDecls)
   const paperModW = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper.js')).href)
   const paperKeys = Object.keys(paperModW).sort()
-  ok(JSON.stringify(paperKeys) === JSON.stringify(['PAPER_ARTIFACTS', 'PAPER_CODES', 'PAPER_ENGINE_ORDER', 'PAPER_MAX_ROUNDS', 'PAPER_REPAIR_CORE', 'PAPER_SECTIONS', 'PAPER_STATES', 'PAPER_TRACK', 'createPaperSubsystem', 'default']) &&
+  ok(JSON.stringify(paperKeys) === JSON.stringify(['PAPER_ARTIFACTS', 'PAPER_CODES', 'PAPER_CONSULT_ROLES', 'PAPER_ENGINE_ORDER', 'PAPER_MAX_ROUNDS', 'PAPER_REPAIR_CORE', 'PAPER_SECTIONS', 'PAPER_STATES', 'PAPER_TRACK', 'createPaperSubsystem', 'default']) &&
     typeof paperModW.default === 'function', '★★ the module EXPORT SURFACE is unchanged (middleware/tests import these names)', paperKeys)
   const paperFlow = paperModW.createPaperSubsystem({ kernel: v5rBoot.handle.kernel })
   const flowMethods = ['start', 'recordPart', 'recordReview', 'advance', 'pass', 'recordFinal', 'PaperMd', 'PaperTex', 'PaperArtifacts', 'render', 'compilePdf', 'sections', 'state']

@@ -39,12 +39,6 @@ export const KNOWN_UNMOUNTED = Object.freeze({
     '`packs/v5r/paper.js` → `kit/paper.js`, which reads none of its `vmu.paper.*` keys ⇒ those keys are INERT on the ' +
     'mounted path. Kept because its tests are the reference implementation of the office-consult gate; deleting it is ' +
     'a separate decision, and must not be replaced by "nobody noticed".',
-  'kernel/grant.js':
-    'NOT CONSTRUCTED by any live path (`createGrant(` appears only in `tests/audit-enforced-consistency.test.mjs`). ' +
-    'It owns four `vmu.grant.*` keys and declares itself the producer of `grant/granted`, so the settings table used ' +
-    'to call those keys wired while nothing in the assembly could ever read them. The v5r rule set does not require ' +
-    'grants today — so this is a packaged capability with no consumer, kept only because deleting a tested kernel ' +
-    'surface needs an explicit decision (recorded in the phase-12 ledger as an open row).',
 })
 
 const edgesOf = (file) => {

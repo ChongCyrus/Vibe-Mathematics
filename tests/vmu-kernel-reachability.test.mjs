@@ -8,8 +8,10 @@
 //     producer of `paper/office-consult-required`) is imported by NO live file — `createPaper(` appears only in tests
 //     and scripts. The v5r paper actually runs through `packs/v5r/paper.js` → `kit/paper.js`, which reads none of those
 //     keys ⇒ `vmu.paper.officeConsult='required'` was INERT on the mounted path while the table credited its reader.
-//   · `vibe-math-vmu/kernel/grant.js` — `createGrant(` appears only in `tests/audit-enforced-consistency.test.mjs`, yet
-//     it owns four `vmu.grant.*` keys and declares itself the producer of `grant/granted`.
+//   · `vibe-math-vmu/kernel/grant.js` — `createGrant(` appeared only in `tests/audit-enforced-consistency.test.mjs`,
+//     yet it owned four `vmu.grant.*` keys and declared itself the producer of `grant/granted`. Measured here, then
+//     DELETED in goal round 3 (module + 4 schema keys + hook row + shipper lines): the v5r rule set does not require
+//     grants, and a packaged capability with no consumer is exactly what this project must not keep advertising.
 // That is the "设了值 ≠ 生效了" failure this project keeps paying for — and it sat on the DOC face, where a reader of the
 // manual would believe a refusal existed that never runs.
 //
@@ -22,9 +24,10 @@
 //
 // ★ SHARED IMPLEMENTATION: the graph walk lives in `scripts/lib/reachability.mjs`, because
 // `scripts/generate-vmu-settings-table.mjs` uses the SAME fact to stop crediting readers the assembly cannot load
-// (measured effect: 1173 → 1163 wired, exactly the 6 paper + 4 grant keys). Two copies would drift.
+// (measured effect: 1173 → 1163 wired, exactly the 6 paper + 4 grant keys; the 4 grant keys are now DELETED with the
+// module, so the live figure is 6 lower still). Two copies would drift.
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -87,12 +90,17 @@ ok(new Set(kitConsultKeys).size >= 5,
   '★★ the MOUNTED paper flow (kit/paper.js) reads the office-consult family — the gate lives on the registered path, not only in an unmounted module',
   { kitConsultKeys: [...new Set(kitConsultKeys)] })
 
-// ★★ the grant family: same measurement, second instance. Pinned so neither the module nor its keys can be "forgotten"
-// back into the wired column by a future refactor.
-const grantSrc = readFileSync(join(VMU, 'kernel/grant.js'), 'utf8')
-ok(unreachable.includes('kernel/grant.js') && /vmu\.grant\.enabled/.test(grantSrc),
-  '★★ the second measured case: kernel/grant.js is unreachable AND owns the vmu.grant.* keys',
-  { unreachable: unreachable.includes('kernel/grant.js'), readsEnabled: /vmu\.grant\.enabled/.test(grantSrc) })
+// ★★ the grant family: DELETED — the honest shape after the decision, pinned as ABSENCE so a future "re-add the
+// knob" cannot resurrect a settings claim without a mechanism. The module is gone, and no file in `kernel/**` or
+// `settings/schema.js` may still read or declare a `vmu.grant.*` key (a leftover declaration would be exactly the
+// "declared yet inert" class this gate exists for, and it would silently re-enter the settings table).
+const readIf = (p) => { try { return readFileSync(p, 'utf8') } catch { return '' } }
+const grantScan = ['kernel', 'kernel/prompt', 'kernel/turn', 'settings']
+  .flatMap((d) => { try { return readdirSync(join(VMU, d)).filter((f) => f.endsWith('.js')).map((f) => readIf(join(VMU, d, f))) } catch { return [] } })
+  .join('\n')
+ok(!existsSync(join(VMU, 'kernel/grant.js')) && !/vmu\.grant\./.test(grantScan),
+  '★★ the second measured case is CLOSED by deletion: kernel/grant.js is gone and no kernel/schema file still names a vmu.grant.* key',
+  { moduleGone: !existsSync(join(VMU, 'kernel/grant.js')), leftoverKeys: [...new Set(grantScan.match(/vmu\.grant\.[A-Za-z]+/g) || [])] })
 
 console.log(failed === 0
   ? '=== VMU KERNEL REACHABILITY: ' + passed + ' passed, 0 failed ==='

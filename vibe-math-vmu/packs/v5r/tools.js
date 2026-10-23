@@ -14,7 +14,10 @@ import { p1Intent, debateSubjectGate, singleWriter, fidelityAsked } from './veri
 import { parseCard, findVerified, promoteVerified, VERIFIED_TRACK } from './verified.js'
 // ★ GOAL ROUND 3: the paper subsystem's RUNTIME ENTRY. It lives in this pack (`./paper.js` → `kit/paper.js` is the flow);
 // the face below is only the missing READ POINT — before it, `paper.start` existed but nothing in production called it.
-import { createPaperSubsystem } from './paper.js'
+// ★ E4 (真缺陷): `PAPER_CONSULT_ROLES` is imported, not re-typed. The kit owns the consult STATE TRANSITION; the pack owns
+// "who may answer". One declaration, two readers (createPaperSubsystem hands it to the kit as `consultRoles`; the tool
+// pre-check below uses the same constant) — a second literal `['office']` in this file would be a second authority.
+import { createPaperSubsystem, PAPER_CONSULT_ROLES } from './paper.js'
 // ★ GOAL ROUND 3 (rule conformance): the meeting TYPE catalog and the recommended procedure skeletons are INSTITUTION
 // vocabulary, so they live in this pack (`./meeting-procedures.js`) — the kernel only carries the type string.
 import { MEETING_TYPE_IDS, meetingTypeOf, procedureFor } from './meeting-procedures.js'
@@ -494,6 +497,38 @@ function requireVoter(kernel, member, what) {
   if (seats.length && !seats.includes(String(row.slot))) {
     throw refuse('VMU_NOT_PERMITTED', '列席／受邀／临时工没有表决权（原版 V5_NOT_VOTER／D8）："' + row.id + '" 在 "' + String(row.slot) + '" 席',
       '只有声明的表决席有票权（本机构声明：' + seats.join(' / ') + '）；授权也不能把票权授出去（H12/R36）——本面没有授权路径，所以结构上无从授出')
+  }
+  return row
+}
+
+// ── ★ E4 (真缺陷): THE MISSING TOOL FACE FOR "THE OFFICE ANSWERS" ────────────────────────────────────────────────
+// `kit/paper.js` grew `recordConsult`/`consultState` and the gate runs on the assembled path — but `vibe_v5_paper`'s
+// action table only had start/part/review/advance/final/render/status/compile/sections, so in a REAL session the
+// academician's final was blocked by a question NOBODY could answer: the gate could only ever time out. That is the
+// "mechanism with no reachable consumer" defect, one level worse than a missing feature (the mechanism exists and is
+// even tested — the TESTS call it directly, the product cannot).
+//
+// WHO MAY ANSWER IS POLICY AND IT IS DECLARED IN ONE PLACE: `PAPER_CONSULT_ROLES` (`./paper.js`), matching a member by
+// `id` OR `slot`. This helper is a PRE-CHECK, not a second gate: the kit re-checks after the delegation (defence in
+// depth). Its value is that the refusal can name the roster fact ("r-1 is in slot member") and the declared roles
+// BEFORE the durable consult ledger is touched — and that a member id which does not exist cannot claim to be the office.
+function requireConsultAnswerer(kernel, member) {
+  const row = requireSeat(kernel, member, 'paper consult (answering the office pre-finalisation question)')
+  if (row.state !== undefined && String(row.state) !== 'live') {
+    throw refuse('VMU_STATE', 'member "' + String(row.id) + '" is ' + String(row.state) + ', so it cannot answer the office consult',
+      'the roster holds the live ids (roster() reports state); seat a live office member, or answer from one')
+  }
+  const who = [String(row.id), String(row.slot)].filter((x) => x !== '')
+  const hit = PAPER_CONSULT_ROLES.filter((r) => who.includes(String(r)))[0]
+  if (!hit) {
+    const e = refuse('VMU_NOT_PERMITTED',
+      '「' + String(row.id) + '」不能答复所办问询：只有 ' + (PAPER_CONSULT_ROLES.join('|') || '（本 pack 没有声明答复角色）') + ' 可以',
+      '答复角色是机构政策（packs/v5r/paper.js 的 PAPER_CONSULT_ROLES，按 member id 或 slot 匹配）；普通成员不能替所办签字——'
+      + '他们该做的是等所办答复，或由主席改 vmu.paper.officeConsult 的取值（那是设置面，不是这条工具）')
+    e.declared = PAPER_CONSULT_ROLES.slice()
+    e.received = String(row.id)
+    e.memberSlot = String(row.slot)
+    throw e
   }
   return row
 }
@@ -1189,7 +1224,17 @@ function toolSet(args = {}, { kernel } = {}) {
  *   review  target · member · deliverable (boolean) · notes · of|part
  *   advance target
  *   final   target · member · decision (deliverable|revise) · note · conclusion|body
+ *   consult_state target                        ← ★ read side of the office-consult ledger (E4, see below)
+ *   consult target · member|by (the ANSWERER) · request_id · answer|note   ← ★ E4: the office's answer
  *   render / status / compile / sections
+ *
+ * ★ E4 (真缺陷) — `consult` EXISTS SO THE GATE CAN BE SATISFIED FROM A SESSION AT ALL. `kit/paper.js` `recordConsult`
+ * was reached by nothing but tests: the action table had no answer action, so `vmu.paper.officeConsult="required"` (the
+ * declared v5r value) could only ever time out in a real run. Two design rules for this action:
+ *   · it adds NO second policy — the answer is delegated to `paper.recordConsult`, and "who may answer" is the pack's
+ *     `PAPER_CONSULT_ROLES` (pre-checked in `requireConsultAnswerer`, re-checked by the kit);
+ *   · it adds NO second vocabulary — `decision` is deliberately NOT accepted here: the kit's consult has no decision
+ *     enum (`deliverable|revise` belongs to `action:"final"`), so the office answers with `answer`/`note` text.
  */
 async function toolPaper(args = {}, { kernel } = {}) {
   const action = str(args.action || 'status')
@@ -1263,6 +1308,13 @@ async function toolPaper(args = {}, { kernel } = {}) {
         ok: finalized.ok === true, finalized: finalized.finalized === true, target: finalized.target,
         final: finalized.final || null,
         missing: Array.isArray(finalized.missing) ? finalized.missing.slice() : [],
+        // ★ E4: the kit returns WHICH way the consult rule was satisfied ("off" / "answered" / "exempt") precisely so a
+        // finalisation cannot quietly claim "the office checked it" when the gate was simply off. The projection used to
+        // drop that field — i.e. the tool face hid the one piece of evidence that makes the gate's claim auditable.
+        consult: finalized.consult ? {
+          armed: finalized.consult.armed === true, satisfiedBy: finalized.consult.satisfiedBy || null,
+          answeredBy: finalized.consult.answeredBy || null, requestId: finalized.consult.requestId || null,
+          note: finalized.consult.note || null } : null,
         pdf: finalized.pdf ? { ok: finalized.pdf.ok === true, code: finalized.pdf.code || null, message: finalized.pdf.message || null,
           faceCode: finalized.pdf.faceCode || null,
           // ★ THE CAP MUST ANNOUNCE ITSELF. A caller that sees a truncated list with no marker concludes those are
@@ -1294,9 +1346,48 @@ async function toolPaper(args = {}, { kernel } = {}) {
         missing: Array.isArray(compiled.missing) ? compiled.missing.slice() : [],
       } }
     }
+    case 'consult_state':
+      // Read side (the same discipline as `order` on the meeting face): the ledger was WRITE-ONLY from the tool face, so
+      // "am I still waiting, and on which request id?" was unanswerable and a stale id looked exactly like a typo.
+      return { ok: true, tool, action, consult: paper.consultState({ target }) }
+    case 'consult': {
+      if (has(args.decision)) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'consult does not take `decision` (the office answer is free text)',
+          'the kit\'s recordConsult has no decision enum — `deliverable|revise` is the argument of action:"final"; pass answer:"…" + note:"…" so the answer says what was checked')
+      }
+      const by = str(args.member || args.by || '')
+      if (!by) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'consult needs the member answering (the office)',
+          'pass member:"<roster id>" — the paper refuses an answer with no author (an unsigned signature is not a consult answer)')
+      }
+      const before = paper.consultState({ target })
+      const waiting = before.requests.filter((r) => r && r.status === 'awaiting')
+      const wanted = str(args.request_id || args.requestId || '')
+      if (wanted && !waiting.some((r) => r.id === wanted)) {
+        // A wrong id is the signature of "I answered a question I remember, not the one on the table": name the waiting
+        // ones instead of silently answering whichever is open (the kit would do that, and the caller would never learn).
+        const e = refuse('VMU_NO_SUCH_OBJECT', 'no waiting consult request "' + wanted + '" on paper "' + before.target + '"',
+          waiting.length
+            ? 'answer one of the requests still waiting: ' + waiting.map((r) => r.id).join(', ')
+            : 'nothing is waiting on this paper (the gate is off, or it was already answered): read action:"consult_state"')
+        e.waiting = waiting.map((r) => r.id)
+        throw e
+      }
+      requireConsultAnswerer(kernel, by)
+      const answered = paper.recordConsult({ target, by, note: str(args.note || args.notes || ''),
+        answer: has(args.answer) ? str(args.answer) : null })
+      const after = paper.consultState({ target })
+      return { ok: true, tool, action, target: after.target, consult: {
+        requestId: answered.requestId, answeredBy: answered.answeredBy, answeredRole: answered.answeredRole || null,
+        cleared: answered.cleared === true, answeredTotal: answered.answered, note: answered.note || null,
+        // Read back through the READER, not from the write receipt: "the write said ok" is not "the gate sees an answer".
+        armed: after.armed === true, awaiting: after.awaiting, latestAnswer: after.answered,
+        declaredAnswerRoles: after.policy && Array.isArray(after.policy.answerRoles) ? after.policy.answerRoles.slice() : [],
+      } }
+    }
     default:
       throw refuse('VMU_INVALID_ARGUMENT', 'unknown paper action: ' + action,
-        'actions: start|part|review|advance|final|render|status|compile|sections')
+        'actions: start|part|review|advance|final|render|status|compile|sections|consult|consult_state')
   }
 }
 
@@ -1574,27 +1665,33 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_paper',
-    description: '论文子系统（真入口）：action=start|part|review|advance|final|render|status|compile|sections。只做参数映射——阶段合法性、互审规则、'
-      + '「只有 chair 席能定稿」都由内核的 paper flow 判并具名拒；本面不自己判政策、不造阶段、不编结论。render 如实报 wrote/missing/complete；compile 无 LaTeX 面即具名拒。',
+    description: '论文子系统（真入口）：action=start|part|review|advance|final|render|status|compile|sections|consult|consult_state。只做参数映射——阶段合法性、互审规则、'
+      + '「只有 chair 席能定稿」都由内核的 paper flow 判并具名拒；本面不自己判政策、不造阶段、不编结论。render 如实报 wrote/missing/complete；compile 无 LaTeX 面即具名拒。'
+      + '★ 所办问询（vmu.paper.officeConsult="required"）：定稿被拦时会给出 requestId，由所办用 action:"consult" 答复（member=答复人所办，answer/note 写核对结论），'
+      + '答完重试 action:"final" 才放行；谁能答复由本 pack 的 PAPER_CONSULT_ROLES 声明（不是内核猜的），普通成员答会被具名拒（VMU_NOT_PERMITTED）。'
+      + 'action:"consult_state" 只读：看谁在等、哪条 requestId 还开着。',
     parameters: {
-      action: { type: 'string', required: true, description: 'start｜part｜review｜advance｜final｜render｜status｜compile｜sections' },
+      action: { type: 'string', required: true, description: 'start｜part｜review｜advance｜final｜render｜status｜compile｜sections｜consult｜consult_state' },
       target: { type: 'string', description: '论文对象（对象名；start 时可用 title/track 别名）' },
       title: { type: 'string' },
       track: { type: 'string' },
       participants: { type: 'array', description: 'start：写作参与者（成员 id 列表；引用名册，本面不猜）' },
       editor: { type: 'string' }, lang: { type: 'string' }, format: { type: 'string' },
-      member: { type: 'string', description: 'part/review/final：动作发起者的名册 id（由内核校验其参与资格/席位）' },
+      member: { type: 'string', description: 'part/review/final：动作发起者的名册 id（由内核校验其参与资格/席位）；consult：答复人（所办，必须匹配 pack 声明的答复角色）' },
+      by: { type: 'string', description: 'consult：member 的别名（谁在答复）' },
       part: { type: 'string', description: 'part：你这一份的标题；review：被审对象（of 的别名）' },
       body: { type: 'string', description: 'part：正文；final：结论别名' },
       solution: { type: 'string' }, methods: { type: 'string' }, rules: { type: 'string' }, limits: { type: 'string' },
       evidence: { type: 'array', description: 'part：证据指针列表' },
       deliverable: { type: 'boolean', description: 'review：true/false（未表态不交付）' },
-      notes: { type: 'string', description: 'review：评语' },
+      notes: { type: 'string', description: 'review：评语；consult：答复备注（note 的别名）' },
       comments: { type: 'string', description: 'review：评语（与 notes 同义，向后兼容的别名）' },
       of: { type: 'string', description: 'review：被审成员' },
-      decision: { type: 'string', description: 'final：deliverable｜revise（必填，面不代填）' },
-      note: { type: 'string', description: 'final：定稿代表备注' },
+      decision: { type: 'string', description: 'final：deliverable｜revise（必填，面不代填）；consult 不收这个参数（答复是自由文本）' },
+      note: { type: 'string', description: 'final：定稿代表备注；consult：答复备注（写清核对了什么）' },
       conclusion: { type: 'string', description: 'final：结论' },
+      request_id: { type: 'string', description: 'consult：要答复的那条问询 id（定稿被拦时回执里的 requestId）；给了却不是当前在等的 ⇒ 具名拒并列出现在在等的那几条' },
+      answer: { type: 'string', description: 'consult：所办的答复正文（自由文本，sealed 进台账；不要填 decision）' },
     },
     handler: toolPaper,
   },

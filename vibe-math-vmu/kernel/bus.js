@@ -138,7 +138,6 @@ export const HOOK_REGISTRY = Object.freeze([
   { name: 'conference/submitted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a submission was recorded', producer: 'kernel/conference.js' },
   { name: 'conference/agenda-planned', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a conference agenda was planned', producer: 'kernel/conference.js' },
   { name: 'funding/account-opened', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a funding account was opened', producer: 'kernel/funding.js' },
-  { name: 'grant/granted', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a grant was granted', producer: 'kernel/grant.js' },
   { name: 'mathtools/ran', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a math tool ran (after the engine returned)', producer: 'kernel/mathtools.js' },
   { name: 'migration/applied', kind: 'vmu', failure: 'open', blockable: false, rewritable: false, scope: VU_SCOPE, timing: 'a migration was applied', producer: 'kernel/migration.js' },
   { name: 'ballot/cast', kind: 'vmu', failure: 'closed', blockable: true, rewritable: false, scope: VU_SCOPE, timing: 'a vote is cast', producer: 'kernel/ballot.js' },
@@ -760,7 +759,7 @@ export function createBus({ entries = [], settings = {}, clock = () => new Date(
       // with `declareTopic` is refused - the "declare before emit" rule. The three LOG-ONLY namespaces
       // (`audit`, `auditchain`, `retention`) are deliberately NOT listed: their rows are not hooks, so their
       // emits stay in the foreign-namespace pass-through path (documented in docs/05 §5.4).
-      const VU_NAMESPACE = /^(member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control|resume|ids|human|chat|mailbox|panel|math|lifecycle|paper|publication|notify|crypto|external|legalentity|ratelimit|recruit|reviewers|workflow|formal|lean|board|projmigrate|skills|topology|trust|motion|agenda|store|course|resource|repro|stateversion|metrics|alerts|bidding|capacity|conference|funding|grant|mathtools|migration)\//
+      const VU_NAMESPACE = /^(member|turn|meeting|ballot|record|task|prompt|budget|pack|settle|control|resume|ids|human|chat|mailbox|panel|math|lifecycle|paper|publication|notify|crypto|external|legalentity|ratelimit|recruit|reviewers|workflow|formal|lean|board|projmigrate|skills|topology|trust|motion|agenda|store|course|resource|repro|stateversion|metrics|alerts|bidding|capacity|conference|funding|mathtools|migration)\//
       const bridged = opts && opts.bridge === true
       const isVmuName = typeof hook === 'string' && VU_NAMESPACE.test(hook)
       if (!bridged && isVmuName && !(VU_HOOKS.includes(hook) || customTopics.has(hook))) {

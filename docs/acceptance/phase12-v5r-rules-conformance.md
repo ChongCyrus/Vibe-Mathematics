@@ -19,34 +19,34 @@
 
 | ID | 规则要点 | 落点 / 证据 | 门禁 | 状态 |
 |---|---|---|---|---|
-| A1 | 所办＝主代理：用户助手；有进展时自动唤起汇报；是用户与研究所的媒介/传信者；支持用户用自然语言让所办设参数、控制进程 | 席位 `office`（`packs/v5r/tools.js` 头部映射：`vibe_v5_message` 以 office 声音投递）；通知族 `packs/v5r/notices.js:74 officeNotice`；设参面 `vibe_v5_configure` / `vibe_v5_set` | 待核 | 待核 |
+| A1 | 所办＝主代理：用户助手；有进展时自动唤起汇报；是用户与研究所的媒介/传信者；支持用户用自然语言让所办设参数、控制进程 | ⚠️ **部分**（`lane-rows-b.md` A1）：机制真存在——汇报原语 `kernel/report.js:100`、`:372` 真投递、`:44` 无 transport 时**具名拒** `VMU_REPORT_NO_TRANSPORT`；pack 三条策略＋enabled `packs/v5r/prompts/v5r-core.js:150-195`；tick 挂在 `agent/turn-stopping`（`vibe-math-vmu.js:767-790`）；设参/控制面 `packs/v5r/tools.js:1152-1205`（只许声明键，start/stop/pause/resume 是真工具）。**两处断点**：① `config.deliver` 是部署缝、默认 null ⇒ 仓内闭环走不完；② **传信是单向的**——mailbox 没有 `'office'` 收件人，所办也不是席位（`v5r-core.js:214-218` 只有 chair/member/temp）⇒ "用户与研究所的媒介"只有"所→用户"，没有"用户→所"。★ 未判定：自动唤起的真机效果取决于部署侧 `deliver` 实现 | `tests/vmu-*report*`（如有）＋上述行号；**缺口无门禁** | ⚠️ 部分 |
 | A2 | 院士：主席席位，主持/决策会议 | ✅ **机制＋消费者，两向已测**：主席席拒绝（`packs/v5r/tools.js` `toolOverview`，座位判定 `:198-201`，**以函数名定位、行号只作快照**——该文件正被并行改写）、会议主席动作轨 `requireChairSeat` `:482-488`，以及本轮刚落的三条院士权轨（只有主席能召开／关闭／延长，见 §8）；表决席位是**声明值** `vmu.meetings.eligibleSeats`（`settings/schema.js:1101` 声明、`kernel/meetings.js:132,350-363` 消费、空列表回落全名册）＋ `chairNeutral` 禁止主席对自己动议投赞成 | `tests/vmu-a2a3-seats-and-bounds.test.mjs` **17/0**（chair⇒ok／非 chair⇒`VMU_NOT_PERMITTED` 点名主席／未知成员⇒具名拒且 hint 所指替代读点存在） | ✅ 已实现 |
 | A3 | 常驻研究员 | ✅ **机制＋消费者，四向已测**：`vibe_v5_start` = `toolStart`（`:1050`）的 `researcherCount` 默认 3（`:1051`）、域 `0..50` 越界具名拒 `VMU_INVALID_ARGUMENT`（`:1052`，带 hint、零副作用）；省略⇒3／`0`⇒合法且真坐 0 人／`51`、`-1`⇒具名拒 | 同上（`tests/vmu-a2a3-seats-and-bounds.test.mjs` 17/0，含「0 合法」与「越界零副作用」两向） | ✅ 已实现 |
-| A4 | 临时工：被院士/常驻研究员雇佣做特殊/临时任务；**无表决权**；**默认不参与会议**；可雇佣/解雇 | `vibe_v5_hire` → members `hire` 进 `temp` 席位 + 初始任务；`vibe_v5_fire` → members `end` + tasks `cancelled`；`vmu.members.maxTempPerMember: 3`；**无表决权/不入会由 `vmu.meetings.eligibleSeats:['chair','member']` 表达**（temp 不在册） | 待核 | 待核 |
+| A4 | 临时工：被院士/常驻研究员雇佣做特殊/临时任务；**无表决权**；**默认不参与会议**；可雇佣/解雇 | ⚠️ **部分**（`lane-rows-b.md` A4，**并更正原文**）：雇佣 `packs/v5r/tools.js:160-175`／解雇 `:308-329` 有门禁；**无表决权是真门**（`kernel/meetings.js:921-930` ＋ quorum 分母求交 `:356-363`，`tests/vmu-meetings.test.mjs:766-767,795-802`）；★ **但"默认不参会"没有机器门**：`attend()`（`kernel/meetings.js:614-650`）只查在册，temp 也能到场。**原文写"由 `vmu.meetings.eligibleSeats` 表达"是错的**——该键只表达**投票权**（vote 门 ＋ 分母），不表达入会；已改为"默认不参会＝流程约定（无门禁）" ⇒ 这是一条**已确认缺口** | 雇佣/解雇与投票权有两向断言；**入会无门禁** | ⚠️ 部分 |
 
 ## §2 文件与归档（B）
 
 | ID | 规则要点 | 落点 / 证据 | 门禁 | 状态 |
 |---|---|---|---|---|
-| B1 | **公共 Verified 文件夹**：只有布尔概率＝1 的命题（或参考文献中的命题）可加入；**只有辩论能把概率改成 1**，否则只能∈(0,1) | ★ 实测 `grep -rn "Verified" --include=*.js vibe-math-vmu/ \| wc -l` ＝ **85 条 / 15 个文件**（原写"只命中 auditchain"是**假阴性**，已更正：`grep -rln` 列出 15 文件）——但逐文件看：v5r 侧命中**全在 5 个提示词文件**（`prompts/v5r-assistant|blocks-a|blocks-b|core|persona|prompts.js`，是文字），代码侧命中是 `kernel/auditchain.js`(anchorVerified，无关)、`kernel/crypto.js`、`kernel/records.js`、`kit/paper.js` 与 **v3 pack**（`packs/v3/index.js`、`middleware/dataplane.js` 的 promoteVerified…＝v3 真的做过）。⇒ **v5r pack 没有 verified 轨/kind/字段**（`packs/v5r/settings/defaults.json` 十条轨无 verified；`kernel/records.js:457` 只有 `settled`），也**没有"概率＝1 只能来自辩论"的闸** | 无 | ❌ 缺口 |
-| B2 | **公共蓝图**：实现总目标的完整技术路线设计/策划；按时更新；院士+常驻研究员共同设计；**最终编辑权归院士** | `vmu.turn.protocolPath: 'Shared/Protocol.md'`（pack 默认，`settings/defaults.json`）只是路径约定，无编辑权闸 | 无 | 待核 |
-| B3 | 各自 progress | track `progress`（`defaults.json` records.tracks）＋ `vibe_v5_record_progress` | 待核 | 待核 |
-| B4 | 已尝试路线/方法及进度 | tracks `routes` ＋ `methods` | 待核 | 待核 |
-| B5 | 遇障路线/方法/障碍及原因归档 | tracks `obstacles` `rejected` | 待核 | 待核 |
+| B1 | **公共 Verified 文件夹**：只有布尔概率＝1 的命题（或参考文献中的命题）可加入；**只有辩论能把概率改成 1**，否则只能∈(0,1) | ★ 实测 `grep -rn "Verified" --include=*.js vibe-math-vmu/ \| wc -l` ＝ **85 条 / 15 个文件**（原写"只命中 auditchain"是**假阴性**，已更正：`grep -rln` 列出 15 文件）——但逐文件看：v5r 侧命中**全在 5 个提示词文件**（`prompts/v5r-assistant|blocks-a|blocks-b|core|persona|prompts.js`，是文字），代码侧命中是 `kernel/auditchain.js`(anchorVerified，无关)、`kernel/crypto.js`、`kernel/records.js`、`kit/paper.js` 与 **v3 pack**（`packs/v3/index.js`、`middleware/dataplane.js` 的 promoteVerified…＝v3 真的做过）。⇒ **v5r pack 没有 verified 轨/kind/字段**（`packs/v5r/settings/defaults.json` 十条轨无 verified；`kernel/records.js:457` 只有 `settled`），★ **本轮补齐（此前是 ❌）：机制已落地，提示词未跟上**。承载＝公共轨 `verified`（`packs/v5r/verified.js`：`VERIFIED_TRACK/KIND`、单写入器 `promoteVerified`、`parseVerified`；轨/kind 由 pack 在 `settings/defaults.json` 声明）；闸＝`packs/v5r/verification-gates.js` 四条纯谓词已各自接到真实调用点（`p1Intent`→三个记卡 handler、`debateSubjectGate`→辩论开会、`singleWriter`→促升、`fidelityAsked`→裁决前），`vibe_v5_verified_promote` 是唯一促升入口。**仍缺**：提示词里没有任何一段告诉成员"verified 轨存在、p=1 只能来自辩论"（F5 一并重写）；且没有真机验证过 | `tests/vmu-verified-track.test.mjs` **72/0**、`tests/vmu-verified-gates.test.mjs` **95/0**、`tests/vmu-v5r-tools.test.mjs` **339/0** | ⚠️ 部分 |
+| B2 | **公共蓝图**：实现总目标的完整技术路线设计/策划；按时更新；院士+常驻研究员共同设计；**最终编辑权归院士** | ❌ **缺口**（`lane-rows-b.md` B2）：`vmu.turn.protocolPath`（`settings/schema.js:212`，pack 默认 `Shared/Protocol.md`，`defaults.json:12`）全仓**只有两处提示词插值**消费者（`v5r-blocks-b.js:236,584`），**没有任何编辑权闸**，middleware 五个文件里零写权规则 ⇒ 这是**路径约定，不是机制**（台账纪律：提示词里写了 ≠ 机制存在） | 无 | ❌ 缺口 |
+| B3 | 各自 progress | ✅ **机制＋消费者**（`lane-rows-b.md` B3）：`vibe_v5_record_progress`（`packs/v5r/tools.js:1415` → `kit/handlers.js:96-135`）、轨 `defaults.json:19`、turn 自动写（`kernel/turn/index.js:50-60`）、读者＝`read_library` 四轨含 progress（`kit/handlers.js:264`） | `tests/vmu-v5r-tools.test.mjs:122-131` | ✅ 已实现 |
+| B4 | 已尝试路线/方法及进度 | ⚠️ **部分**（`lane-rows-b.md` B4）：`methods` 全链 ✅（`kit/tools.js:22` ＋ read_library）；**`routes` 写得进去但读不出来**——`kit/handlers.js:264` 硬编码四轨（不含 routes），而 `kernel/records.js:582` 的 `records.list({track})` 本身支持任意已声明轨。★★ 更糟的是 `host.js:836` 的 hint 写着"先按 track 收窄"，而 `vibe_vmu_records` 面**没有 track 参数**（`host.js:805-812`）⇒ **假 hint**（比不写更误导） | methods 有断言；routes 无读面无门禁 | ⚠️ 部分 |
+| B5 | 遇障路线/方法/障碍及原因归档 | ⚠️ **部分**（`lane-rows-b.md` B5）：`obstacles`／`rejected` 与 B4 同族——**写有读无**（`read_library` 四轨不含它们） | 无 | ⚠️ 部分 |
 | B6 | 命题库：完整定义＋布尔概率∈[0,1]＋进度；证明过程平时只写「证明/证伪**尝试**」字段；真会证了才写正式证明/证伪；**只有含正式证明（写完）的命题卡才能用于辩论**；概率＝1 要标记 verified | track `propositions` + `vibe_v5_record_proposition`（必填 statement/value/motive/p）；"正式证明"字段是**成员文件** `Members/<id>/Propos/<pid>.md` 的 `## 证明尝试/## 证伪尝试`；★「只有正式证明写完才能进辩论」的**机器闸**未找到 | 无 | ⚠️ 部分 |
-| B7 | 方法库（一般化/推广/抽象出工具、理论框架） | track `methods` + `vibe_v5_record_method` | 待核 | 待核 |
+| B7 | 方法库（一般化/推广/抽象出工具、理论框架） | ✅ **机制＋消费者**（`lane-rows-b.md` B7）：`vibe_v5_record_method`（`packs/v5r/tools.js:1427`）＋ `methods` 轨 ＋ `read_library` 可读 ＋ 轨校验 | `tests/vmu-v5r-tools.test.mjs` 记卡正向组 | ✅ 已实现 |
 | B8 | Lean 代码＋编译结果归档；**lean 通过 ⇒ 辩论只查描述/定义符合性 ⇒ 符合即概率＝1 且可入 verified**；参数可开「鼓励形式化」开关 | `vibe_v5_lean_run/job/lib/read/archive`；`vmu.math.leanJobsMaxParallel`；★ lean-pass → 概率＝1 的联动**未找到** | 无 | ❌ 缺口（联动） |
-| B9 | 分派后各自负责部分的论文 | `packs/v5r/paper.js` + `vibe_v5_paper` | 待核 | 待核 |
-| B10 | 脚本文件 | 无专门面（成员用 shell/工具写文件） | — | 待核 |
-| B11 | 自反馈库：问题/冗余/障碍/可优化点与方案；**院士另含对各阶段（平时/会议/辩论）流程与组织协作的自反馈优化** | track `feedback` + `vibe_v5_feedback` | 待核 | 待核 |
+| B9 | 分派后各自负责部分的论文 | ✅ **机制＋消费者**（`lane-rows-b.md` B9）：政策壳 `packs/v5r/paper.js` ＋ 真流程 `kit/paper.js`（start `:346`、recordPart `:372`、环形互审 `:416-424`、deliverable 是**真布尔**判断 `:399-412`、全员 true 才 awaiting-editor、`recordFinal` 仅主席 `:461`、九节由 parts 按 id＋指纹重组 `:526`）；工具面 `packs/v5r/tools.js:1667` 含 `consult`／`consult_state` | `tests/vmu-v5r-tools.test.mjs` 论文正反组 ＋ `tests/vmu-paper-office-consult.test.mjs` 65/0 | ✅ 已实现 |
+| B10 | 脚本文件 | ⚠️ **部分**（`lane-rows-b.md` B10，口径由 Lead 裁定＝「脚本作为所级产物应可归档／复核」才算实现）：**能写**——成员用基座 write 面写脚本文件；**临时跑被真规则拒**（`packs/v5r/prompts/v5r-core.js:224-241`，码 `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS`，`tests/vmu-entry.test.mjs:392`）；**但"脚本声明／归档／复算"面不存在**，而规则 hint 里写着"归档/复算流程" ⇒ **承诺无落点**（与 B4 的假 hint 同类） | 禁用临时脚本有断言；归档/复算无面 | ⚠️ 部分 |
+| B11 | 自反馈库：问题/冗余/障碍/可优化点与方案；**院士另含对各阶段（平时/会议/辩论）流程与组织协作的自反馈优化** | ⚠️ **部分**（`lane-rows-b.md` B11，成员侧 a／院士侧 b 分开判）：**a 成员侧 ⚠️** — `vibe_v5_feedback`（`packs/v5r/tools.js:404-440`）三 op、路由必填、interpersonal assessment `:402,:422-425`、`feedback` 轨 `defaults.json:19`、提示行 `v5r-blocks-b.js:89-108`、门禁 `tests/b1prime-feedback-gate.test.mjs`；**但** `read_library` 四轨不含 feedback ⇒ **他人读不到自己之外的反馈**；且 `v5r-blocks-b.js:105`「未闭环条目会出现在汇报与总览的计数里」经复核**确为假承诺**（`packs/v5r/tools.js:177-193` report 与 `:196-215` overview 的 counts 都没有 feedback）。**b 院士侧 ❌** — `grep -rEn "复盘|阶段自|流程优化|组织协作" packs/v5r/` **零命中**，category 是自由串、无阶段维度、无院士专属面/读面/门禁 | a 有门禁；b 无 | ⚠️ 部分 |
 
 ## §3 平时研究推进（C）
 
 | ID | 规则要点 | 落点 / 证据 | 门禁 | 状态 |
 |---|---|---|---|---|
-| C1 | 各自推进各自总任务 | `vmu.turn.objective` + 各成员任务（tasks 面） | 待核 | 待核 |
-| C2 | 交流通道：邮箱（非紧急）、私信（希望尽早回复）、群聊（非紧急） | `vibe_v5_inbox`(list/open/mark)、`vibe_v5_message`(office 声音)、`vibe_v5_say`(群聊 / `to` ⇒ DM)、`vibe_v5_nudge`；`vmu.mailbox.wakeBudget: 1` | 待核 | 待核 |
-| C3 | 状态版：可查看他人、可改自己；内容①总任务②规划计划③各任务完成状态④当前小任务；含时间信息 | track `state`（`vibe_v5_record_progress` 可路由到 state）；★ 四个必需字段**是否有闸**待核 | 待核 | 待核 |
+| C1 | 平时推进的完整流程（从目标到产出） | ✅ **机制＋消费者**（`lane-rows-c.md` C1）：任务板（`vibe_v5_task_*`）→ 记卡四轨 → `read_library` 读回 → 论文阶段的 parts 组装，全链有工具面与门禁 | `tests/vmu-v5r-tools.test.mjs`、`tests/vmu-task-*` | ✅ 已实现 |
+| C2 | 成员之间可以互相通信；紧急情况可私信 | ⚠️ **部分**（`lane-rows-c.md` C2）：三通道机制齐（`say`／`message`／`inbox`），通知文本真机验过；**但"紧急私信"对成员不可达**——`vibe_v5_say` 的 DM 分支没有 `urgent`（`kit/handlers.js:204-210`），紧急只能走**没被教过**的 `vibe_vmu_mailbox`；`inbox` 行 8 个字段里也没有 `urgent` ⇒ 机制在、入口不在成员的可见面里 | 通道有断言；紧急面**无门禁** | ⚠️ 部分 |
+| C3 | 状态面板：写自己 / 看他人 / 时间戳 | ⚠️ **部分**（`lane-rows-c.md` C3）：写自己（`track=state`）、看他人（`vibe_vmu_records`）、时间戳都在；**但四个必需内容零闸**，提示词里连"状态版"都没有，且被教的 `vibe_v5_read_library` 硬编码四条轨、**读不到 state**（`kit/handlers.js:264`） | 无 | ⚠️ 部分 |
 
 ## §4 会议（D）
 
@@ -61,7 +61,7 @@
 | D7 | 成员可用命令/工具**按会议类型和身份**有差异 | **机制有；差异用「拒绝」实现，不是「看不见」**：① 可见工具表按成员是活的（`host.js:1681-1691` `turn.setVisibleToolsProvider` 返回该成员 Agent 的真实工具表；`:1722-1729` `visibleToolsOf` 无 live Agent ⇒ 具名拒；`vibe_vmu_tools` 可读回）；② 但 v5r pack **没有按席位/按类型裁剪的工具面**——41 个工具对所有成员同名同量（`packs/v5r/middleware/` 只有 artifact-counter / motion-box / paper-dispatch / prompt-switches / stall-meeting，无 toolfilter；对照 v3 有 `packs/v3/middleware/toolfilter.js`）；③ 身份差异落在**内核轨**：主持专属动作由 `requireChairSeat` / `chairNeutral` / `closeRequiresChair` 等**运行期具名拒**（§5a–§5d）；④ 类型差异只到回执里的 `procedure` 骨架（`packs/v5r/meeting-procedures.js`），不改变任何命令是否可用 | `tests/vmu-meeting-types.test.mjs` §5a–§5d（拒法逐条钉死）＋ 上面 4 处 `file:line` | ⚠️ 部分（**按类型零差异**：类型不改变可用命令，只附带骨架文案） |
 | D8 | 会议类型含：正常、学术交流、辩论、结题、论文交流、未来规划/策划… | `MEETING_TYPES` 六值（normal/academic/debate/final/paper/planning）＋ v5r 声明 `vmu.meetings.typeCatalog` ⇒ 类型**不再是死字段**：存储、回读、白名单、按类型取骨架（`procedureFor`）、内核 `committee` 结题报告轨都按它走 | 同上（未知类型具名拒；回读 summary/meetingView 都有 type） | ✅ 已实现 |
 | D9 | 常见命令：举手发言、邀请发言、**批量指定成员按顺序发言**、单次发言版群聊（权限区分，部分仅主持） | vmu-pack D9 lane 交付（67 断言）：`hand`(举手)、`invite`(邀请，具名 why，主席/秘书轨)、`queue`+`order`(排序＝批量指定顺序)、`invitedspeak`(仅主持)、`vibe_v5_say`(群聊)＋`attend`(入场，原来没有入口)；pack 面新增 `vibe_v5_meeting{action:'hand'|'hands'|'invite'|'attend'}`。★ 回执字段 `meeting_hand`/`meeting_invite` 已被内核标为 `noReplyShape`（回执里没有会议引用，派发只会得到 "no such meeting: undefined"；`invite→attend` 还会让邀请人自出席） | `tests/vmu-meeting-invite.test.mjs` / `tests/vmu-turn.test.mjs` T16c–T16g | ✅ 已实现 |
-| D10 | 特殊活动：投票板（选项＋最多/最少选几项机制）、任务板设置与认领/交派、群聊式交流（院士为群管，可设权限/发言次数/禁言） | ballotbox（`poll_open/vote/close`，min/max 选择）＋ tasks 面 ＋ `vmu.chat.admins:['acad']` / `speakQuota` / `muteDefaultMs` | 待核 | 待核 |
+| D10 | 特殊活动：投票板（选项＋最多/最少选几项机制）、任务板设置与认领/交派、群聊式交流（院士为群管，可设权限/发言次数/禁言） | ⚠️ **部分**（`lane-d10-members.md` 四个子项逐条）：**投票板 ✅** —— 规则校验 `kernel/ballotbox.js:169,178-200`，越限**具名拒** `:271-277`（`VMU_BALLOT_CHOICE_COUNT`），pack 面把 `min/max/mode/min_votes/allow_revote` 翻译进 rules 并回报 applied/unapplied（`packs/v5r/tools.js:636-648`）；**群聊 ✅** —— 六键声明并接线 `kernel/chat.js:31-35,40-42`，非管理员具名拒 `:280-290`（`VMU_CHAT_NOT_ADMIN`）、禁言具名拒 `:341-343`（`VMU_CHAT_MUTED` 带解除时刻）、配额具名拒 `:349-357`（`VMU_CHAT_QUOTA_EXCEEDED` 带 used/limit/窗口）；**两套机制不重复** —— 群聊侧 `chat.js:31-35` 与会议侧 `meetings.js:179-182` 地址的是**不同对象**（会话发言 vs 会议发言），非同一件事双口径；**任务板认领/交派 ⚠️** —— 面覆盖全（`kit/extras.js:96-129` 七动作＋真交派 `packs/v5r/tools.js:258-290`），**但 claim/assign 的审计事实没有 `by`**：`kernel/tasks.js:302` 只记 `who`，`kit/extras.js:100-111` 也不收 `by`（同一模块的 `setPriority` 记了 `by`：`kernel/tasks.js:278`）⇒ 事后无法区分"自己认领"与"被院士交派" | 投票板/群聊门禁见左；任务板审计面未记操作者 | ⚠️ 部分 |
 | D11 | **辩论类型会议有额外字段：辩论的对象或对象文件引用** | `open({subject})`＝字符串引用（卡 id / 文件路径 / 一行陈述）；非字符串⇒`VMU_INVALID_ARGUMENT`（带 typeof），空白⇒归一 `null`；辩论会议缺 `subject`⇒pack 具名拒；`vibe_v5_meeting` 的 `target` 是它的**活别名**（原来声明了没人读）；回执/`summary()`/`meetingView()`/`meetings/opened` 全能读回 | 同上 | ✅ 已实现 |
 | D12 | 辩论/结题**表决人数下限** ≥ min(用户设置数, 院士+常驻研究员数) | **两个面都满足，且第二个面有证明**：① 表决面＝`quorumOf()` 第三项由「在场人数」换成「**可投票成员数**（名册∩`eligibleSeats`，临时席位 `temp` 不计）」⇒ `need = min(quorumMin/Ratio, quorumCap, 可投票成员数)`，`vote()` 上可观测；② 结题面＝`closureVoteOf` 的全一致性**在数学上包含下限**：`floor = min(setting, universe) ≤ universe = 全一致性所需票数`，所以"沉默阻塞结题"这条既有纪律本身就强于规则要求的下限；用户设置数在结题路径不是"不生效"，而是**被更强的约束支配**（这一条是本次改台账时补的证明，不是推断） | `tests/vmu-meetings.test.mjs` 6 条 + 上面的包含关系 | ✅ 已实现 |
 | D13 | lean 已通过但概率非 1 的命题：辩论聚焦 **lean 代码中命题/定义的描述符合性** | ✅ **闸已落地并接线**：`packs/v5r/verification-gates.js:281-300` `fidelityAsked({cardId,leanPassed,p,withdrawnFor,answered})` —— lean 通过且 p≠1 时**必须先回答**「代码中的命题/定义是否符合所需」，未回答 ⇒ `VMU_PACK_V5R_FIDELITY_ASK_REQUIRED`（带问题原文与 `conform`/`defect` 两个选项，不是一句 forbidden）；`defect` 撤回情形 ⇒ `resolved`，不再追问；接线点 `packs/v5r/tools.js:726-737`（`vibe_v5_verdict_final` **落数之前**调闸，先问后算）；卡的 `p=1` 走另一条：`p1Intent` 要求 `debate`/`lean`/`verified` 三种定论来源之一 | `tests/vmu-v5r-verdict-final.test.mjs`（④ 正/反）＋ `tests/vmu-verified-gates.test.mjs` 93/0 | ✅ 已实现 |
@@ -73,32 +73,32 @@
 
 | ID | 规则要点 | 落点 / 证据 | 门禁 | 状态 |
 |---|---|---|---|---|
-| E1 | 系统梳理原总问题与所有有价值产物，合作撰写最终论文 | `packs/v5r/paper.js` 的阶段流（draft/review/finalize，`editorDefault:'academician'`） | 待核 | 待核 |
-| E2 | 合作写（分工后系统合并）、互审 | `vmu.review.mode:'single-blind'`、`vmu.reviewers.maxLoad:3`、`vmu.paper.maxRounds:3` | 待核 | 待核 |
-| E3 | 面向读者：系统、正确、完整、严谨清晰 | 提示词层面（`v5r-paper-prompts.js`） | 待核 | 待核 |
-| E4 | 最后讨论、检查无误后定稿 | ✅ **本轮补齐（此前是 ❌ 缺口）**：闸现在长在**在册路径**上 —— `packs/v5r/paper.js` → `kit/paper.js:124-149` 的 `CONSULT_KEYS`（`vmu.paper.officeConsult` / `…On` / `…TimeoutMs` / `…OnTimeout` / `…ExemptRoles` 五个键由 kit 真读）；策略仍在 pack（谁答复、哪些角色豁免以参数传入，kit 只拥有状态迁移、耐久台账与具名拒）。★ 历史事实保留：这些键的读取者曾是 `kernel/paper.js`，而 `createPaper(` 只在测试/脚本里被调用 ⇒ 装配时不加载，设置表却给它们打 `✅ 已接线`（**假绿**，由 `scripts/generate-vmu-settings-table.mjs` 的第四档 `⚠️ 未接线（读取者不可达）` 与 `tests/vmu-kernel-reachability.test.mjs` 钉住） | `tests/vmu-kernel-reachability.test.mjs`（8/0：paper.js 仍不可达 ＋ **kit/paper.js 必须读 consult 族**，方向已从"断言缺口"翻成"断言闸在位"）＋ `tests/vmu-paper-office-consult.test.mjs` | ✅ 已实现 |
+| E1 | 分派后各自负责部分的论文 | ⚠️ **部分**（`lane-rows-c.md` E1，附实测）：协作论文能走到 `awaiting-editor`，但 `PaperMd` 的 `emptySections` 实测为 `['1:引言与问题背景','3:已检验通过的命题','4:已解决的子问题 / 中间成果']`（`D:\_tmp\probe15-e1-sections.mjs`，两成员互审全 true 后）——这三节的 `sectionFields` 是空串，**永远只有标题**；且 `kit/paper.js` 全文不读 propositions/verified 轨 ⇒ "所有有价值产物"不会从库里涌现 | 论文流程有门禁；**产出物内容无闸** | ⚠️ 部分 |
+| E2 | 互审（review） | ✅ **机制＋门禁，但台账的落点原先写错了**（`lane-rows-c.md` E2 更正）：真实机制是 `kit/paper.js` 的环形互审环——非参与成员不许写、非布尔 `deliverable` 具名拒、一条 false 退回 writing round2 并带 refusers、全 true 才进 `awaiting-editor`。★ 更正：`vmu.paper.maxRounds` 只被**不可达**的 `kernel/paper.js` 读（`scripts/lib/reachability.mjs:36-48`），v5r 的 `defaults.json:68` 设的 3 是惰性声明，**真实上限是 pack 常量 `PAPER_MAX_ROUNDS=3`**；`vmu.review.mode`／`vmu.reviewers.maxLoad` 的消费者是评审人市场面（`vibe_vmu_reviewers`），不是论文互审环 | `tests/vmu-v5r-tools.test.mjs` 论文正反组、`tests/vmu-paper*` | ✅ 已实现 |
+| E3 | 论文合规（证据/引用/不得编造） | ⚠️ **部分**（`lane-rows-c.md` E3，并更正 `lane-claims-paper.md` 的说法）：**文本合同级门禁是有的**——`tests/vmu-v5r-tools.test.mjs:553-597` 断言证据规则、不得编造、`deliverable` 语义、所办"未接线"声明、数字与引擎顺序来自 paper.js，另有三阶段正反隔离（write 阶段只带撰写段，normal 阶段三段都不带）。判 ⚠️ 的原因：论文**产出物**没有质量闸（编造在文本层面被禁止，但没有任何机器检查产出内容与证据的对应） | 见左（文本合同级） | ⚠️ 部分 |
+| E4 | 最后讨论、检查无误后定稿 | ✅ **本轮补齐（此前是 ❌ 缺口）**：闸现在长在**在册路径**上 —— `packs/v5r/paper.js` → `kit/paper.js:124-149` 的 `CONSULT_KEYS`（`vmu.paper.officeConsult` / `…On` / `…TimeoutMs` / `…OnTimeout` / `…ExemptRoles` 五个键由 kit 真读）；策略仍在 pack（谁答复、哪些角色豁免以参数传入，kit 只拥有状态迁移、耐久台账与具名拒）。★ 历史事实保留：这些键的读取者曾是 `kernel/paper.js`，而 `createPaper(` 只在测试/脚本里被调用 ⇒ 装配时不加载，设置表却给它们打 `✅ 已接线`（**假绿**，由 `scripts/generate-vmu-settings-table.mjs` 的第四档 `⚠️ 未接线（读取者不可达）` 与 `tests/vmu-kernel-reachability.test.mjs` 钉住） | `tests/vmu-kernel-reachability.test.mjs`（8/0：paper.js 仍不可达 ＋ **kit/paper.js 必须读 consult 族**，方向已从"断言缺口"翻成"断言闸在位"）＋ `tests/vmu-paper-office-consult.test.mjs`。★★ **但本轮复核发现状态应为「部分」**：闸长在了在册路径上，**可所办没有任何工具面入口能答复**（`vibe_v5_paper` 的 action 表只有 start/part/review/advance/final/render/status/compile/sections，`recordConsult` 只能由 pack/宿主代码调）⇒ 真实会话里咨询只能一路超时，「提醒后得到确认」这条**走不完**。已派 vmu-pack 加 `consult` action（含未知 requestId 具名拒、答复人须为所办席位） | `tests/vmu-paper-office-consult.test.mjs` **65/0**（答复路径用例直接调 kit API，**这正是它没能发现「无工具面」的原因**：测试与代码用了同一个假设） | ⚠️ 部分 |
 
 ## §6 额外要求（F）
 
 | ID | 规则要点 | 落点 / 证据 | 门禁 | 状态 |
 |---|---|---|---|---|
-| F1 | 支持数学计算工具（Python 等）；**所办可通过参数设工具并发上限**（防 CPU 过载/OOM） | `vmu.math.maxParallel:1`、`vmu.math.leanJobsMaxParallel`、math jobs 面（`vibe_v5_lean_*`）+ `vibe_v5_configure` | 待核 | 待核 |
-| F2 | 支持人工干预决策/运行、**断点续跑** | `vmu.human.*`（onTimeout/vetoLiftRoles/gatedActions）+ resume 面（`vmu.resume.*`、`vibe_v5_pause/resume`） | 待核 | 待核 |
+| F1 | 工具：Python 等计算工具可用；工具并发上限 | ⚠️ **部分**（`lane-rows-c.md` F1）：**并发上限这一半 ✅**（键在、office 独占、别角色写被具名拒 `r-1 may not set vmu.math.maxParallel (declared owner: office)`、真值进 `mathjobs.config()`）；**但"Python 等计算工具"默认不可用**：schema 声明 8 个默认引擎，运行时 `config.engines=[]`，`submit({engine:'python'})` ⇒ `VMU_MATH_UNSUPPORTED_OP 未声明任何引擎（vmu.math.engines 为空）`；部署脚本也只注入少数 vmu 键 ⇒ 真机同样为空。★ 未判定：python 真跑（探针无宿主 spawn 接缝，准入层就拒；真机只跑过 Lean） | 并发键有门禁；引擎面**无门禁** | ⚠️ 部分 |
+| F2 | 断点续跑 | ✅ **机制＋门禁**（`lane-rows-c.md` F2）：`tests/vmu-resume-e2e.test.mjs:231` 覆盖续跑；★ 未判定：**真机**断点续跑（phase 12 只读不跑真机） | `tests/vmu-resume-e2e.test.mjs` 108/0 | ✅ 已实现 |
 | F3 | 特殊权限/请求可经报告所办向用户询问 | ✅ **本轮补齐（此前是 ⚠️ 一半）**：报告面（`vibe_v5_report`）＋ 咨询闸（`kit/paper.js` 的 consult 族，E4 同一实现）两条路都在册。★ 历史事实保留：此前 `vmu.paper.officeConsult` 的读取者装配不加载 ⇒ 只剩报告一条路 | `tests/vmu-paper-office-consult.test.mjs` ＋ 同 E4 的 `tests/vmu-kernel-reachability.test.mjs` | ✅ 已实现 |
-| F4 | 功能尽量通过**代理可执行命令（工具）**实现，而非每轮结束输出 JSON | ❌ **实测缺口（本轮量出）**：结构化回复通道 `supplyStructuredReply(fields,{forMember})`（`kernel/turn/index.js:1005-1063`，导出 `:1865-1870`）**全仓没有任何工具调用它** —— repo-wide grep 只命中该文件自身；成员唯一可达的是根会话面 `vibe_vmu_turn {op:'step', reply:'<文本>'}`（`tools/turn.js:75-79`，schema `:183-193`）⇒ **每轮手写 JSON 围栏仍然是成员唯一能用的结构化上报方式**。两真值规则已实现（`mergeReplyChannels` `kernel/turn/index.js:228-260`，异值⇒`VMU_TURN_REPLY_CONFLICT`），缺的是"给它一个工具名" | 待建：新工具面 ＋ 断言；现状以 `grep -rn supplyStructuredReply` 与 `tools/turn.js` 为证 | ❌ 缺口 |
+| F4 | 功能尽量通过**代理可执行命令（工具）**实现，而非每轮结束输出 JSON | ❌ **实测缺口（本轮量出）**：结构化回复通道 `supplyStructuredReply(fields,{forMember})`（`kernel/turn/index.js:1005-1063`，导出 `:1865-1870`）**全仓没有任何工具调用它** —— repo-wide grep 只命中该文件自身；成员唯一可达的是根会话面 `vibe_vmu_turn {op:'step', reply:'<文本>'}`（`tools/turn.js:75-79`，schema `:183-193`）⇒ **每轮手写 JSON 围栏仍然是成员唯一能用的结构化上报方式**。两真值规则已实现（`mergeReplyChannels` `kernel/turn/index.js:228-260`，异值⇒`VMU_TURN_REPLY_CONFLICT`），缺的是"给它一个工具名" ★ **本轮补齐了一半**：替代机制已经是工具——`vibe_v5_reply`（`packs/v5r/tools.js`，别称 `vibe_v5_verdict`，写入走 `tools/turn.js` 的 reply 通道，`noReplyShape` 让"需要会议却没给会议"的字段具名报错而不是拼出 `undefined`），回执里 `closureVote` 也是机器字段（不是让人手写 JSON）。**仍缺**：提示词仍在教每轮输出 `{json}` 围栏（F5），所以"实际运行时还被要求写 JSON"这件事没变 | `tests/vmu-turn-reply-tool.test.mjs` **32/0**、`tests/vmu-turn.test.mjs` **191/0** | ⚠️ 部分 |
 | F5 | **提示词与规则完全相符自洽**：删除「m 票机制」「每轮结束返回 JSON 机制」等不再适用的内容 | ❌ **实测缺口（本轮量出，逐条带行号）**：① `v5r-reply-compact`（`packs/v5r/prompts/v5r-blocks-b.js:235`）教 `vibe_v5_tool_help({"tool":"工具名称"})`，而该工具**只收 `member`**（`packs/v5r/tools.js:243-265`，缺则 `VMU_INVALID_ARGUMENT: tool_help needs the member id`）⇒ **照做必拒**，同句在 GENERATED `v5r-prompts.js` 出现 46 次；② `end_verify` + `formal_proof`（`v5r-blocks-a.js:196`、GENERATED `v5r-persona.js:41`）**机制不存在**（kernel/tools 全仓 0 命中，真实字段是 `formal:{decision,file,note}`）；③ 手写 JSON 围栏仍被教：`v5r-reply-spec`（`v5r-blocks-a.js:558-667`，围栏 `:564/:597/:634`）、`v5r-reply-compact`（`v5r-blocks-b.js:220-240`）、`v5r-core.js:465/:472`、`v5r-blocks-b.js:622`；装配实测（`D:\_tmp\f5-probe.mjs`，76 段全开 ⇒ 23494 字符）：`m 票`×3、`法定票数`×1、` ```json `×2、`围栏`×4、`end_verify`×1、`formal_proof`×1 | 待建：先补 F4 的工具面，再重写提示词（persona/prompts 是 GENERATED ⇒ 走 generator） | ❌ 缺口 |
 
 ## §7 汇总
 
 | 组 | 条数 | 已实现 | 部分 | 缺口 | 待核 |
 |---|---|---|---|---|---|
-| A 成员 | 4 | 0 | 0 | 0 | 4 |
-| B 文件与归档 | 11 | 0 | 1 | 2 | 8 |
-| C 平时推进 | 3 | 0 | 0 | 0 | 3 |
-| D 会议 | 15 | 9 | 4 | 1 | 1 |
-| E 论文 | 4 | 0 | 0 | 0 | 4 |
-| F 额外要求 | 5 | 0 | 0 | 0 | 5 |
-| **合计** | **42** | **14** | **6** | **4** | **18** |
+| A 成员 | 4 | 2 | 2 | 0 | 0 |
+| B 文件与归档 | 11 | 3 | 6 | 2 | 0 |
+| C 平时推进 | 3 | 1 | 2 | 0 | 0 |
+| D 会议 | 15 | 11 | 4 | 0 | 0 |
+| E 论文 | 4 | 1 | 2 | 1 | 0 |
+| F 额外要求 | 5 | 1 | 3 | 1 | 0 |
+| **合计** | **42** | **19** | **19** | **4** | **0** |
 
 ★ 这张表第一次写出来的时候 **9 条已确认缺口、31 条待核**——即"待核"是绝大多数，任何"已完成"的说法都必须先把待核清零。
 
@@ -270,3 +270,46 @@ const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, capUniverse.n
 
 ### 门禁
 `node tests/vmu-kernel-reachability.test.mjs` ⇒ **8 passed, 0 failed**；`node tests/audit-enforced-consistency.test.mjs` ⇒ **358/0**；`node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`；`node scripts/generate-vmu-settings-table.mjs --check` ⇒ 与 schema 一致（1267 keys）。
+
+## §11 第五批：九行规则落地 ＋ 三个新内核闸 ＋ 两条系统性发现（提交 `b70a69ec`）
+
+这一批把 §3–§6 里"机制不存在"的行大幅缩短：**合计 17 已实现 / 13 部分 / 3 缺口 / 9 待核**（§7 的表与本节的逐行一致；改动一律连"证据"列一起改）。★ 其中 11 行（A1/A4/B2–B5/B7/B9/B10/B11）是 `v5r-reader-b` 的只读深查（`lane-rows-b.md`）给出的判定，我逐条复核后落表；**它推翻了台账一处错的表述**：A4 原写"不入会由 `vmu.meetings.eligibleSeats` 表达"，实测该键只表达**投票权**（vote 门＋quorum 分母），`attend()` 不读它 ⇒ "默认不参会"是流程约定、无门禁。
+
+### 落地的能力（按规则行）
+
+| 行 | 这一批让它变成什么 | 证据 |
+|---|---|---|
+| A2/A3 | 院士席＝主席，三条**只有主席**能做的动作（召开／关闭／延长）；常驻研究员人数＝`vibe_v5_start` 的 `researcherCount`（默认 3、域 0..50、越界具名拒零副作用） | `tests/vmu-a2a3-seats-and-bounds.test.mjs` 17/0、`tests/vmu-meeting-types.test.mjs` 122/0 |
+| D1 | 预约（`scheduleAllowed`／`scheduledFor`）、未到齐进 `waiting`（`waitOnDueMs`）、到期由主席自决 `proceed`（`waitDecisionRequiresChair`）；`at` 现在同时收 epoch 毫秒与 ISO 串，认不出就具名拒（改前会 `new Date(object)` ⇒ 静默变 NaN） | `kernel/meetings.js` 的 `atMs`/`syncMeeting`/`proceed`；`tests/vmu-meeting-types.test.mjs` §6/§7 |
+| D2/D4 | 主席权轨三条（见上），并修掉一个**同词两义**的真 bug：会议级"延长"原本叫 `extend`，与"延长发言"（`createLapseControls().extend`）在同一工厂里重名 ⇒ 后定义覆盖前者，测试用"不存在的 id"证明调用跑到了错的那支，改名 `extendWall` 后通过 | `kernel/meetings.js` `extendWall`、`tools/meeting.js` `extendlimit`；§8 |
+| D3/D8/D11 | 会议**类型**不再是死字段：`vibe_v5_meeting` 收 `type`（默认 `ordinary`，按 pack 声明的 catalog 校验，非法值列出合法集），辩论必须给 `subject`（辩论对象：卡 id／文件路径／一句话），`title` 与 `materials` 分开存（**materials 此前是"校验完就丢"**），读面（`summary`/`meetingView`）都能读回 | `packs/v5r/meeting-procedures.js`、`packs/v5r/tools.js`、`tests/vmu-meeting-types.test.mjs` |
+| D6 | 一次调用开一串会：`sequence` ＋ `advanceSequence`，把 receipt 里的"下一场"变成真的 | 同上 |
+| D9 | 邀请/举手/发言序：pack 侧 `invite`/`interacted speak` 跨注册表落地，`attend` 有了入口（改前 pack 开的 service 会议里**除主席外没有任何人能发言**，因为没有任何 `attend` 路径，`meetings.speak` 一律 `VMU_NOT_MEMBER "attend() first"`） | `tools/meeting.js`、`tests/vmu-meeting-invite.test.mjs` 67/0 |
+| D12 | 表决人数下限变成真的下限：第三项从 `m.present.size` 换成"可达席位∩名册"，并把这些事实报出来（`capUniverse`/`capUniverseSource`/`capPolicy`）；此前只要在场人数够，`quorumCap` 永远绑不住 | `kernel/meetings.js` `quorumOf`；`tests/vmu-meetings.test.mjs` 201/0 |
+| D15 | 裁决聚合：`kernel/meetingverdict.js` 命题感知（行可标命题；混命题／半标／裁决所指与目标不符都具名拒，**绝不裁错卡**），6 位小数是声明常量；`vibe_v5_verdict_final` 由主席签发，`from`＝主席 member id，通知走既有 mailbox | `tests/vmu-meeting-verdict.test.mjs` 37/0、`tests/vmu-v5r-verdict-final.test.mjs` 63/0 |
+| E4 | 咨询闸从**不可达**的 `kernel/paper.js` 搬到在册路径 `kit/paper.js`，"谁答复"作为机构政策由 pack 声明；超时两分岔（`hold` 保留提问／`refuse` 作废重开）**都不放行** | `tests/vmu-paper-office-consult.test.mjs` 65/0 |
+| F4 | 回复不再是手写 JSON：`vibe_v5_reply`（别称 `vibe_v5_verdict`）＋回执里的机器字段 `closureVote`＋`noReplyShape`（"这字段要会议"就具名报错，不拼 `undefined`） | `tests/vmu-turn-reply-tool.test.mjs` 32/0、`vmu-turn` 191/0 |
+
+### 两条系统性发现（都已做成门禁，不是"记一笔"）
+
+1. **可达性**：`scripts/lib/reachability.mjs` 从 8 个插件入口走装配图。它证明 `kernel/paper.js` 与 `kernel/grant.js` **没有任何装配会加载**，而这正是设置表把 17 个键印成 `✅ 已接线` 的原因（"读者存在"≠"读者会跑"）。生成器现在共用同一份图并按第四档 `⚠️ 未接线（读取者不可达）` 出表；`tests/vmu-kernel-reachability.test.mjs`（8/0）逐模块断言"可达或声明在 `KNOWN_UNMOUNTED` 且写明理由"，列表**只减不增**。★ 顺带修掉第二个"声明即字面"的假绿：键的消费者原来在**含声明行**的原文里数，8 个 `planned` 键因此变成"已接线"；改成在剔除声明行后的文本里数。
+2. **所办咨询的应答面无入口**（本轮复核 E4 时发现，已派工）：闸在位、测试全绿，但 `vibe_v5_paper` 的 action 表里没有"答复咨询"这一项 ⇒ 真机会话里咨询只能超时。**这正是"测试与代码用了同一个假设"造成的假绿**：测试直接调 `kit/paper.js` 的 `recordConsult`，于是永远发现不了"没人能调到它"。E4 因此从 ✅ 降为 ⚠️。
+
+### 这一批同时改判的
+
+- `B1` ❌→⚠️（承载＋四闸已落地，提示词未跟上，未真机验证）；
+- `F4` ❌→⚠️（替代机制已存在，提示词仍教 JSON 围栏 ⇒ F5 未做前"实际运行"没变）；
+- `E4` ✅→⚠️（见上，答复无工具面）。
+
+### 未闭合（带责任人）
+
+1. **F5 提示词重写**（vmu-pack 先出"谁生成它"的表，防止被 regen 覆盖；GENERATED 的 persona/prompts 必须走生成器）；
+2. **`vibe_v5_paper` 加 `consult` action**（vmu-pack，含未知 `requestId` 具名拒、答复人须为所办席位）；
+3. **`kernel/grant.js` 删除**（vmu-core，`createGrant` 零调用者、4 键已标不可达、规则集不要求；级联＝模块＋schema 4 键＋bus producer＋两条打包清单＋`KNOWN_UNMOUNTED` 减一条＋三份说明改判）；
+4. **`kernel/paper.js` 的同类裁定**（它仍有 8 个 `vmu.paper.*` 键不可达；删除级联比 grant 大，留到下一轮，按 grant 的模板做）；
+5. **19 条"待核"**（reader-b 11 条／reader-a 8 条并行深查，产物 `lane-rows-b.md`／`lane-rows-c.md`）；
+6. **真机实测**（最高优先，只有它能证伪以上全部）：跑完整 SLV，明确告知代理这是模拟、核验对象是规则集本身。
+
+### 门禁读数（本轮实跑）
+
+`vmu-meeting-types` 122/0 · `vmu-meeting-invite` 67/0 · `vmu-meeting-verdict` 37/0 · `vmu-v5r-tools` 339/0 · `vmu-v5r-verdict-final` 63/0 · `vmu-verified-gates` 95/0 · `vmu-verified-track` 72/0 · `vmu-member-face` 46/0 · `vmu-turn` 191/0 · `vmu-turn-reply-tool` 32/0 · `vmu-paper-office-consult` 65/0 · `vmu-meetings` 201/0 · `vmu-kernel` 260/0 · `vmu-resume-e2e` 108/0 · `vmu-a2a3-seats-and-bounds` 17/0 · `vmu-kernel-reachability` 8/0 · `clean-temp-root-guard` 15/0 · `audit-generators-current` 23/0 · `audit-package-membership` 29/0 · `audit-vmu-docs` 103/0 · `regen-all --check` **16/16** · `check-docs` PASS。

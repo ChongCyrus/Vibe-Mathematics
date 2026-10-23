@@ -115,7 +115,7 @@
 | M-A22／M-A23 | 会话注册表／会话参数默认表 | `vibe-math-vmu.js`／`settings/schema.js` | 内核级（pack 声明了本所偏好 47 键） |
 | M-A25..M-A28 | 路径守卫／fs 语义／ready 诊断／失败缓冲 | `kernel/guard.js`／`storepolicy.js`／`store.js`／`alerts.js` | 内核级 |
 | **M-A29／C-38** | **S5 静止提示（只推荐、不驱动）** | `vmu.control.idleAfterMs`／`idleAction`／`watchdogIntervalMs` ＋ `vmu.schedule.*` | **默认不启用**（`vmu.schedule.triggerVia='none'`；见 `docs/10 §4.3`） |
-| **M-A30** | **临时授权与撤回** | `vmu.grant.commands`／`defaultScope`／`enabled`／`maxOpenGrants` ＋ `vmu.delegation.*`(12) | 框架默认（pack 未声明 ⇒ 用默认白名单） |
+| **M-A30** | **临时授权与撤回** | **框架不提供** —— `kernel/grant.js` 与 4 个 `vmu.grant.*` 键已于 goal round 3 删除（零活构造者；规则集不要求 grants）。仍在的是 `vmu.delegation.*`(12)，但那是**实例级委托**（只减权），不是「命令级 + 事件作用域」的临时授权 | **框架不提供（规则集不要求）**；改判条件见 `04-parity-matrix` 的 `M-A30` 行 |
 | **M-A31／C-22** | **投票板门槛** | `vmu.ballot.minVotes`／`minVotesRatio`／`abstainCountsForFloor`…（23 键） | 框架默认（矩阵说"`min_votes` 无默认值"＝**键名转述**；真名是 `vmu.ballot.minVotes`） |
 | M-A32 | 决议台账与检索 | `vmu.records.*`(32) | 框架默认 |
 | M-A34／C-23 | 票与发言时序分离（谓词） | `kernel/meeting.js`／`control.js` | 内核级谓词 |
@@ -153,7 +153,7 @@
 | # | 项 | 事实（实测） | 处置 / 改判条件 |
 |---|---|---|---|
 | **G1** | **M-A04 子项：论文轮次上限可调** → **已闭合（轮 6 收尾）** | **读点与键都已落地**：core 落 `settings/schema.js` 的 `vmu.paper.maxRounds`（natural/def 0/H1/office），`kernel/paper.js:41,135` 真读（`revise()` 计数、超限**具名拒** `VMU_PAPER_ROUNDS_EXCEEDED` 且上限进 `enforced[]`）；**我随即在 v5r pack 声明 `3`**（＝v5r 的 `PAPER_MAX_ROUNDS`，defaults.json/js 同值）。 | ✅ **闭合**。判据：`node D:\_tmp\vmu-pack-defaults-vs-schema.mjs` → `undeclared=0`（35 键）；`vmu-paper` 37/0、`vmu-pack` 53/0、JSON/JS 同键同值。矩阵 M-A04 的 pack 列可写"`vmu.paper.maxRounds=3`（读者 `kernel/paper.js` 的 `revise()`）"。 |
-| **G2** | **M-A30 的 `GRANTABLE_COMMANDS`／`GRANT_SCOPES`** | 无同名键；框架的真名是 **`vmu.grant.commands`／`defaultScope`／`enabled`／`maxOpenGrants`** ＋ `vmu.delegation.*`(12)。 | **不是缺口**：矩阵键名改判为框架真名（pack 未声明 ⇒ 用默认白名单）。 |
+| **G2** | **M-A30 的 `GRANTABLE_COMMANDS`／`GRANT_SCOPES`** → **已改判（goal round 3 收尾）** | 当时认定的"真名"`vmu.grant.commands`／`defaultScope`／`enabled`／`maxOpenGrants` **也随 `kernel/grant.js` 一起删除了**（模块零活构造者、规则集不要求 grants）。仍在的是 `vmu.delegation.*`(12)，但那是**实例级委托**（只减权），**不能**顶替「命令级 + 事件作用域」的临时授权。 | **不是缺口**：改判为「**框架不提供（规则集不要求）**」。`04-parity-matrix` 的 `M-A30` 行与 §9.4 表已同步改写；**改判条件**＝出现真实的「枚举命令 + 事件作用域 + 到期」消费者时，模块**带着消费者一起**回来。 |
 | **G3** | **M-B12 的 `vmu.lean.*` 策略键** | **`vmu.lean.*` 一个键都不存在**（`grep` schema → 0）；框架承载是 `vmu.math.*`（pack 已声明 3 个）。 | **不是缺口**：矩阵改判为 `vmu.math.*`。 |
 | **G4** | **C-05／M-A45 的 `chatDigestMax(12)`／`chatDigestMs(45s)`** | 真名是 **`vmu.mailbox.digestMax`（默认 12）／`digestWindowMs`（默认 45000）**——**框架默认值与 v5r 值逐字相同**。 | **不是缺口**：矩阵改判为真名，并写明"v5r 值＝框架默认值 ⇒ pack 无需声明"。 |
 | **G5** | **M-A37 的 `SECRETARY_ENTRY_MAX`／M-A31 的 `min_votes`／M-A38 的 `motionSecondsRequired`** | 真名分别是 `vmu.minutes.verbatimCapBytes`、**`vmu.ballot.minVotes`**、**`vmu.motions.secondThreshold`**（＋ `vmu.motions.*` 共 9 键）。 | **不是缺口**：矩阵改判为真名（pack 未声明 ⇒ 框架默认）。 |

@@ -804,16 +804,17 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('records') && kernel.library) {
     specs.push({
       name: TOOL_NAMES.records,
-      description: 'vmu 记录面：list（头部列表，不含正文）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹）。',
+      description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹）。',
       parameters: {
         action: param('string', 'list（默认）｜expand｜append', { required: true, enum: ['list', 'expand', 'append'] }),
         id: param('string', '记录 id（expand 必填）'),
         limit: param('integer', 'list 的最大条数（0 = 全部；省略用内核 vmu.records.headListAt）'),
+        track: param('string', 'list：只列某一轨（省略＝全部；合法值见 vmu.records.tracks，内核会具名拒未知轨）'),
         kind: param('string', 'append：proposition｜method｜subproblem', { enum: ['proposition', 'method', 'subproblem'] }),
         statement: param('string', 'append：陈述'),
         proof: param('string', 'append：证明/方法正文'),
       },
-      run: async ({ action = 'list', id, limit, kind, statement, proof } = {}) => {
+      run: async ({ action = 'list', id, limit, track, kind, statement, proof } = {}) => {
         try {
           // ★ SLV (measured): this face read `kernel.library` while the v3 data plane writes `kernel.records` - two
           // different stores, so every card was invisible here (`records: []` beside a non-zero journal). The RECORDS
@@ -832,13 +833,13 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               // ★ G7 finding: `rc.list({})` applies headListAt and the old face returned `.items` only, so a capped
               // list looked like the whole catalog (r-20 was expandable but absent). NEVER hide the cap: report total,
               // returned, truncated and how to ask for more.
-              const listed = rc.list({ limit: Number.isInteger(limit) ? limit : null })
+              const listed = rc.list({ track: (typeof track === 'string' && track.trim() !== '') ? track.trim() : null, limit: Number.isInteger(limit) ? limit : null })
               const items = Array.isArray(listed.items) ? listed.items : []
               const total = Number.isInteger(listed.available) ? listed.available : items.length
               const truncated = listed.truncated === true || total > items.length
               return Object.assign({
                 ok: true, action, total, returned: items.length, truncated,
-                hint: truncated ? '只回了 ' + items.length + '/' + total + ' 条：传 limit:0 取全部，或先按 track 收窄，再用 action:expand + id 取正文' : null,
+                hint: truncated ? '只回了 ' + items.length + '/' + total + ' 条：传 limit:0 取全部，或先按 track 收窄（本面已支持 track 参数），再用 action:expand + id 取正文' : null,
               }, { records: items })
             }
             return Object.assign({ ok: true, action, total: libItems.length, returned: libItems.length, truncated: false, hint: null }, { records: libItems })

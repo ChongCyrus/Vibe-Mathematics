@@ -53,9 +53,13 @@ export const PAPER_CODES = Object.freeze({
  * ★ E4 — WHO answers a pre-finalisation consult is INSTITUTION POLICY, so it is declared HERE and handed to the kit as a
  * parameter (the kit must not assume the institute has an "office"). Matching is by member `id` OR `slot`, which is why
  * the v5r office counts whichever way a deployment seats it (a human office in slot `office`, or the id `office`).
- * Not exported: `tests/vmu-v5r-tools.test.mjs` pins this module's export surface, and the policy needs no reader outside.
+ * EXPORTED (and the pinned export surface in `tests/vmu-v5r-tools.test.mjs` was widened with it): the tool face
+ * (`vibe_v5_paper { action:"consult" }`) must refuse a non-answerer BEFORE the kit runs, and it may not learn "who may
+ * answer" from anywhere else — a second literal `['office']` in `tools.js` would be a second authority that drifts.
+ * One declaration, two readers (this wrapper hands it to the kit as `consultRoles`; the tool imports it for its own
+ * pre-check, and the kit still re-checks — defence in depth, never a second vocabulary).
  */
-const PAPER_CONSULT_ROLES = Object.freeze(['office'])
+export const PAPER_CONSULT_ROLES = Object.freeze(['office'])
 
 /**
  * Create the paper subsystem over ONE kernel. This is now a POLICY-ONLY wrapper: the flow itself is the kit's.

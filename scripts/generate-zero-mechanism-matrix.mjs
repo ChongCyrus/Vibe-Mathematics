@@ -161,10 +161,6 @@ const EXPECT = {
   reviewers: G('ok 或 object', '实测（轮 279）：零声明下 status() ⇒ ok（reviewers=0、zeroMechanism=true 自曝 ✓）；assign() 对【已声明冲突】具名拒（VMU_COI_VIOLATION）、对【达并发上限】具名拒（VMU_REVIEWER_OVERLOADED）；盲评解绑无理由拒（VMU_BLIND_UNBIND_DENIED）✓'),
   guard: G('EXPECT_NA', '非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）'),
   'meetings-defaults': G('EXPECT_NA', 'R21 拆出（纯数据：WIRED_KEYS／UNWIRED_REASONS／reasonFor／DEFAULTS，无 `status()`、无 `create*` 工厂 ⇒ 不适用 ✓）—— 行为由 vmu-meetings／vmu-meeting-parity／vmu-meeting-domain 套件覆盖 ✓'),
-  // Round 90-91: the grant face (temporary, scoped, single-command authorization, ported from the v5r line). Its
-  // zero mechanism is `vmu.grant.enabled=false`, where NOTHING may be granted or checked and every attempt is
-  // refused BY NAME - so the honest expectation is a named refusal, not an ok.
-  grant: G('具名拒（带 code）', '零机制：`vmu.grant.enabled=false` ⇒ `grant()`／`check()` 均**具名拒 `VMU_NOT_PERMITTED`**（"this face grants nothing (zero mechanism)" ✓）；开启后 `commands` 枚举外亦具名拒 ✓；`check()` 无授予 ⇒ 具名拒 ✓'),
   // Round 48: the instant normaliser became a shared kernel tool and therefore a new file the matrix sees. It is
   // a PURE FUNCTION module - no factory, no service, nothing to probe - so it is registered as not-applicable for
   // the same measured reason as `guard` rather than given an invented expectation. It exists because compliance
@@ -174,7 +170,7 @@ const EXPECT = {
   // `meetings.js` 1199 -> 1196, i.e. the file pinned at the 1200 limit went DOWN).
   // ★ WHICH WORD, AND WHY (the vocabulary is a CLOSED set — read, not guessed): the generator's OWN measured row is
   // `refusal` with code `VMU_NO_SUCH_OBJECT`, and `judge()` reddens a refusal WITHOUT a code. The word in the closed
-  // set that says exactly that is `具名拒（带 code）` (the word `grant` already uses): measured shape and allowed
+  // set that says exactly that is `具名拒（带 code）` (the word the `formal` / `lean` rows already use): measured shape and allowed
   // value agree, so nothing was forced.
   // ZERO MECHANISM, VERBATIM: `createMeetingDomains({ clock })` with NO seams injected still BUILDS (the table is
   // pure; all eleven keys fall back to their declared defaults), and the probe then calls `read()` with no argument
