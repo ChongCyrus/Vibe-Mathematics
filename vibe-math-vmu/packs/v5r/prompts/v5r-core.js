@@ -528,7 +528,10 @@ export const v5rFixtureTools = Object.freeze({
     '本轮**可以且应该**调用你自己的工具：边做边记录，不要把动作攒到回合末尾。',
     '你这一刻能用的工具清单就在本提示词的「本轮可用的工具｜<你的角色>」段里（按你的席位列出，逐条只有工具名与一句用途）；不确定时可调用工具帮助本身。',
     '调用工具后结果立即可见；**回执可以很薄**——动作已经由工具完成了，回执只需说明"这一轮做了什么、下一步是什么"，不要为了凑长篇而重复工具已经记录的内容。',
-    '仍然只输出一个合法 JSON 对象作为回执（不要输出额外的说明文字）。',
+    // ★ PHASE 12 (F5): this used to say "仍然只输出一个合法 JSON 对象" — an end-of-turn JSON TEXT. The reply is a
+    // TOOL ARGUMENT now (`vibe_vmu_turn {op:"reply", report:{…}}`), so teaching the old transport contradicted the
+    // very mechanism the harness enforces (a live run's members wrote prose + JSON and the turn was rejected).
+    '回执用一次 `vibe_vmu_turn { op: "reply", report: { … } }` 交回（不要输出 JSON 围栏，围栏外也不要说明文字）。',
     // ★ G7 (real machine): members quoted tool receipts containing `{}` in their reply prose, the first brace opened
     // the reply object and the whole turn was rejected as VMU_TURN_BAD_JSON. This is a prompt obligation, not a parser bug.
     '回执正文里【不要】粘贴 JSON 对象或工具回执原文；需要引用时用一句话概括（正文里的大括号会被当成回执边界）。',

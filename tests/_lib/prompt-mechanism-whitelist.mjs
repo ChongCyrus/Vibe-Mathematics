@@ -97,16 +97,12 @@ export const PROMPT_MECHANISM_DIVERGENCES = Object.freeze([
  * The HARD CEILING on this ledger's length. Lower it whenever an entry is deleted; **never raise it silently** — a raise is
  * the signal that a new taught-but-undeclared parameter was accepted, which needs its own ruling.
  */
-export const PROMPT_PARAM_SHRINK_CAP = 1
+export const PROMPT_PARAM_SHRINK_CAP = 0
 
 export const PROMPT_PARAM_DIVERGENCES = Object.freeze([
-  Object.freeze({
-    tool: 'vibe_v5_tool_help',
-    key: 'tool',
-    contains: 'vibe_v5_tool_help({"tool"',
-    owner: 'vmu-pack · packs/v5r/prompts/v5r-blocks-b.js:235 (段 v5r-reply-compact) + 46 处 GENERATED 副本（v5r-prompts.js）',
-    reason: '实测参数表只有 member（packs/v5r/tools.js:243-265，注册 :1414-1418 声明 member 必填）：照教法只传 {"tool":…} ⇒ VMU_INVALID_ARGUMENT: tool_help needs the member id。该句仍在产品提示词里，由更正段 v5r-fix-tool-help（order 891）说明「没有 tool 参数」；本条记的是旧教法仍在。',
-    expiry: '当 v5r-blocks-b.js:235 那句不再教 tool 参数（改传 member 或删除）后删除本条，并把 PROMPT_PARAM_SHRINK_CAP 降到 0',
-    reviewed: 'R17-F5',
-  }),
+  // PHASE 12 (F5): the one entry that lived here (vibe_v5_tool_help taught WITHOUT `member`) was deleted
+  // because the taught text was fixed: `packs/v5r/prompts/v5r-blocks-b.js` now teaches
+  // `vibe_v5_tool_help({"member":"<你的成员 id>","tool":"…"})`, and `tool_help` refuses without a member.
+  // Its expiry note said exactly this, so the cap was lowered 1 -> 0 rather than the entry being kept.
+
 ])

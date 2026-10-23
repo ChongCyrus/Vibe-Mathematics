@@ -86,7 +86,7 @@
 | F2 | 断点续跑 | ✅ **机制＋门禁**（`lane-rows-c.md` F2）：`tests/vmu-resume-e2e.test.mjs:231` 覆盖续跑；★ 未判定：**真机**断点续跑（phase 12 只读不跑真机） | `tests/vmu-resume-e2e.test.mjs` 108/0 | ✅ 已实现 |
 | F3 | 特殊权限/请求可经报告所办向用户询问 | ✅ **本轮补齐（此前是 ⚠️ 一半）**：报告面（`vibe_v5_report`）＋ 咨询闸（`kit/paper.js` 的 consult 族，E4 同一实现）两条路都在册。★ 历史事实保留：此前 `vmu.paper.officeConsult` 的读取者装配不加载 ⇒ 只剩报告一条路 | `tests/vmu-paper-office-consult.test.mjs` ＋ 同 E4 的 `tests/vmu-kernel-reachability.test.mjs` | ✅ 已实现 |
 | F4 | 功能尽量通过**代理可执行命令（工具）**实现，而非每轮结束输出 JSON | ⚠️ **部分（本轮把口径纠正了）**：替代通道是**已存在的工具**——`vibe_vmu_turn {op:'reply', reply, reply_for?}`（`vibe-math-vmu/tools/turn.js:87-134` 调 `kernel.turn.supplyMemberReply`；内核侧 `supplyStructuredReply` 在 `kernel/turn/index.js:1005-1063`，两个真值源冲突 ⇒ `VMU_TURN_REPLY_CONFLICT`，`mergeReplyChannels` `:228-260`）；回执里的 `closureVote` 是**机器字段**（不是让人手写）。★ **更正我上一版台账写错的话**：这里曾写「`vibe_v5_reply`（别称 `vibe_v5_verdict`）」——**`vibe_v5_reply` 这个工具不存在**（`packs/v5r/tools.js` 只声明 `vibe_v5_verdict` 与 `vibe_v5_verdict_final`），是 vmu-pack 的静态门禁 `audit-prompt-tool-params` 按「参数键 ⊆ 真工具表」把它抓出来的。★ 教训：写给模型的花名一旦是幽灵，比不具名更糟（模型会照它调用，然后必拒）。**仍缺**：提示词仍教每轮手写 JSON 围栏（见 F5；现由附加的更正段抵消，但旧句仍在） | `tests/vmu-turn-reply-tool.test.mjs` 32/0、`tests/vmu-turn.test.mjs` 191/0 | ⚠️ 部分 |
-| F5 | **提示词与规则完全相符自洽**：删除「m 票机制」「每轮结束返回 JSON 机制」等不再适用的内容 | ⚠️ **部分（旧措辞一条没删，只加了「更正段」）**：新 `vibe-math-vmu/packs/v5r/prompts/v5r-corrections.js`（order **890/891/892/893**，在 `PACK.sections` **无条件注册**）四段分别更正：① 手写 json 围栏 ⇒ `vibe_vmu_turn{op:"reply"}`（351 字）② `vibe_v5_tool_help({"tool":…})` ⇒ 真实签名只有 `{member}`（186 字）③ `end_verify`/`formal_proof` ⇒ `formal:{decision,file,note}`（230 字）④「凑够 m 票」⇒ `quorumRule`+`defaultTally` 一致判定（250 字）。★ 踩坑已记录：初版放 900-903 会被派生成 `override` 区间而**在装配里静默消失**（`pack` 区间是 `[600,899]`）。装配实测 **25164 字符**，四段位于 24086/24459/24664/24913，**都排在全部旧措辞之后**；`tests/vmu-prompt-corrections.test.mjs` **68/0**（含「真实装配里更正句晚于旧措辞」＋TEETH），`tests/audit-prompt-tool-params.test.mjs` **77/0**（参数键 ⊆ `kernel.packTools()` 的 `parameters`，工具表不硬编码；账本 shrink-only）。★ **为什么还不算完**：规则要求的是**删除**，四段是**追加更正**——旧句仍在装配里（`m 票`×3、`法定票数`×1、围栏、`end_verify`/`formal_proof`）；`v5r-persona.js`/`v5r-prompts.js` 是 GENERATED（`scripts/generate-pack-prompts.mjs` 从 `prompt-corpus-v5.json` 生成 + sha 断言）⇒ 删旧措辞必须走 generator，不能手改。`vibe_v5_tool_help` 的 `tool` 键（`v5r-blocks-b.js:235` + 46 处生成副本）现记在 `tests/_lib/prompt-mechanism-whitelist.mjs` PART 2 `PROMPT_PARAM_DIVERGENCES`（cap=1，shrink-only） | `tests/vmu-prompt-corrections.test.mjs` 68/0、`tests/audit-prompt-tool-params.test.mjs` 77/0、`tests/vmu-prompt-mechanism-parity.test.mjs` 64/64 | ⚠️ 部分 |
+| F5 | **提示词与规则完全相符自洽**：删除「m 票机制」「每轮结束返回 JSON 机制」等不再适用的内容 | **提示词与规则完全相符自洽**：删除「m 票机制」「每轮结束返回 JSON 机制」等不再适用的内容 | ✅ **已实现（本轮重写手写层 ＋ 把门禁改成量「修好了」）**：手写层里 9 处旧措辞被替换或删除——`v5r-blocks-a.js` 的 `（end_verify 的 formal_proof）`⇒命题卡 `proofState:complete`＋Lean 归档证据、`仍须 m 票布尔一致`⇒「正式证明＋辩论裁决为真」、truth-note 与 temp 两处 `m 票`⇒`【五】的定论门槛`，以及院士／研究员两个变体各 9 行的旧投票段整体换成 8 行现行机制（`vibe_v5_verdict` 用法、p=1 且具名证据的进门（`VMU_PACK_V5R_P1_NEEDS_DEBATE`／`VERIFIED_SINGLE_WRITER`）、`表决（法定票数 m = min(所办上限, 在册有表决权人数)）≠ 定论`）；`v5r-blocks-b.js` 的 6 处 ```json 围栏与「只输出一个合法 JSON 对象」全删，改成「结束时调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」＋最小合法 `report` 样例（`core.js:535` 还有一处回执 JSON 围栏，同批删）。★ 门禁从「旧措辞必须仍在装配里」改成「旧措辞**只能**出现在更正段」：`tests/audit-prompt-retired-mechanisms.test.mjs` **68/0**，`OBSOLETE` 四类（reply-fence／m-vote-count／phantom-formal-tools／reply-transport）逐条断言 `在装配里的次数 === 在更正段里的次数`，另加 TEETH（植入一条教学段落必红）。★ 同批另修两个教学缺陷：`vibe_v5_tool_help` 被教成要传 `tool` 键（真实签名只收 `member`，`packs/v5r/tools.js:379-395`），以及 `audit-prompt-tool-params` 的两条「账本必须非空／必须等于 cap」断言——它们与 `audit-prompt-retired-mechanisms` 的 `captureNeedles` 属同一族「把缺陷当证据」，改成「账本为空也算良构（cap 是天花板）＋用合成调用证非空洞」，该门禁 **74/0**，非空洞性从此由合成 TEETH 保证，不再依赖产品里留着缺陷。 | `tests/audit-prompt-retired-mechanisms.test.mjs` 68/0 · `tests/audit-prompt-tool-params.test.mjs` 74/0 · `tests/vmu-pack-prompts.test.mjs` 24/0 · `tests/vmu-prompt-live-facts.test.mjs` 23/0 · `regen-all` 16/16（语料 sha 未变，因为语料是**冻结的捕获层**，本轮改的是手写层，门禁量的也是装配层）
 
 ## §7 汇总
 
@@ -98,7 +98,7 @@
 | D 会议 | 15 | 11 | 4 | 0 | 0 |
 | E 论文 | 4 | 1 | 3 | 0 | 0 |
 | F 额外要求 | 5 | 2 | 3 | 0 | 0 |
-| **合计** | **42** | **23** | **17** | **2** | **0** |
+| **合计** | **42** | **24** | **16** | **2** | **0** |
 
 ★ 这张表第一次写出来的时候 **9 条已确认缺口、31 条待核**——即"待核"是绝大多数，任何"已完成"的说法都必须先把待核清零。
 
@@ -990,3 +990,25 @@ jsonl bytes=3372272 lines=7797
 
 这条验证刻意不依赖「工具能不能调通」：矛盾只存在于**提示词原文**里，所以判据就是读原文。
 
+
+## §24 第二批（F5）：把「提示词自洽」从口号做成可测的不变量
+
+### 24.1 这一轮的判据换了
+旧门禁 `tests/audit-prompt-retired-mechanisms.test.mjs` 的 `captureNeedles` 断言的是「每条退役机制**仍然**以旧措辞出现在装配里」。这等于把缺陷钉成证据：谁真的把文字改好，门禁就红。同一族毛病这轮一共找到三处（另两处是 `audit-prompt-tool-params` 的「账本必须非空」与「账本长度必须等于 cap」，以及 `audit-math-computation-contract` 里那处被忽略的 `MC_CONTRACT_ROOT`）。改法统一为：**门禁量的是「修好了」，不是「缺陷还在」**；非空洞性由**合成植入**证明（TEETH），不由产品里留着缺陷证明。
+
+### 24.2 手写层被重写的位置（旧措辞在教学段已 0 处残留）
+- `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js`：`:196` `（end_verify 的 formal_proof）` ⇒「把命题卡 `proofState` 置为 `complete`，并归档 Lean 通过证据」；`:270` `仍须 m 票布尔一致` ⇒「仍须『正式证明 + 辩论裁决为真』」；`:348/:353` truth-note 两变体 `m 票布尔一致（见【五】）` ⇒「【五】的定论门槛」；`:406` temp `按 m 票布尔一致决定` ⇒「按【五】的定论门槛决定」；院士／研究员两个变体的旧投票段各 9 行整体替换为 8 行现行机制（`vibe_v5_verdict`、p=1 且具名证据的进门、唯一写者、`表决 ≠ 定论`）。
+- `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js`：6 处 json 围栏与「只输出一个合法 JSON 对象」全删，改为「结束时调用一次 `vibe_vmu_turn { op: \"reply\", report: { … } }`」＋最小合法 `report` 样例；`:287-288` 的 `formal` JSON 回复对象改为 `formal` 字段说明。
+- `vibe-math-vmu/packs/v5r/prompts/v5r-core.js:535`：回执样例里的 json 围栏删除（同一个坑的第三处）。
+
+### 24.3 顺手修掉的两个教学缺陷
+1. `vibe_v5_tool_help` 被教成 `({"member":…,"tool":…})`，而真实签名只收 `member`（`vibe-math-vmu/packs/v5r/tools.js:379-395` 只看 `args.member`，`tool` 键会被忽略）。更正段原本只是「说它错了」，教学段仍在教错——本轮直接改教学段，并把更正段那条账本项删掉（它已无消费者）。
+2. 门禁自身的两族缺陷钉：`tests/audit-prompt-retired-mechanisms.test.mjs` 的 `captureNeedles`，与 `tests/audit-prompt-tool-params.test.mjs` 的「账本必须非空 / 长度必须等于 cap」。前者改为「退役措辞**只能**出现在更正段」（`在装配里的次数 === 在更正段里的次数`，四类：reply-fence / m-vote-count / phantom-formal-tools / reply-transport），后者改为「账本为空也算良构（cap 是天花板）」＋合成 TEETH（植入一条未声明的教学调用必红）。`PROMPT_PARAM_DIVERGENCES` 清空、`PROMPT_PARAM_SHRINK_CAP` 置 0。
+
+### 24.4 派生面与环境事实
+- `node scripts/regen-all.mjs --write` ⇒ 16/16；`--check` ⇒ 16/16 in sync。**语料 sha `d889776b36ff` 不变是预期的**：`vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js` 是**冻结的捕获层**（逐字捕获），本轮改的是手写层，门禁量的也是装配层。这条区分写在这里，避免下次把「sha 没变」误读成「没生效」。
+- 组合跑：`audit-prompt-retired-mechanisms` 68/0 · `audit-prompt-tool-params` 74/0 · `vmu-pack-prompts` 24/0 · `vmu-prompt-live-facts` 23/0 · `audit-doc-line-refs` 9/0。
+
+### 24.5 诚实边界
+- F5 的「行为面」仍待真机：文字自洽只保证**提示词不再教退役机制**，不保证成员真按新机制投票／不再交 JSON。第 5 次真机跑要专门读两件事：成员回复里有没有 json 围栏、有没有拿 m 票说话。
+- 捕获层（`v5r-prompts.js` 等 67 条语料）里旧措辞仍在，那是**逐字捕获**的证据，不是教学内容；审计口径以装配层为准，这一点在 §24.4 已写死。

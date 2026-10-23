@@ -80,10 +80,14 @@ const judgeCalls = (calls, table, ledger) => {
 }
 
 console.log('=== 1. the ledger is a well-formed, shrink-only record ===')
-ok(Array.isArray(PROMPT_PARAM_DIVERGENCES) && PROMPT_PARAM_DIVERGENCES.length > 0, 'the taught-parameter ledger is a non-empty array', Array.isArray(PROMPT_PARAM_DIVERGENCES) ? PROMPT_PARAM_DIVERGENCES.length : PROMPT_PARAM_DIVERGENCES)
+// ★ PHASE 12 (F5): the ledger is now EMPTY on purpose — its single entry expired when the taught text was fixed.
+// An emptied debt ledger is the goal of a shrink-only ledger, so 'non-empty' is no longer a valid well-formedness
+// rule; what must stay true is that it still IS an array and that it stays within a cap that only goes down
+// (asserted below). Non-vacuity of the scanner is proved by a synthetic TEETH case in section 4, not by a debt entry.
+ok(Array.isArray(PROMPT_PARAM_DIVERGENCES), 'the taught-parameter ledger is a declared array', Array.isArray(PROMPT_PARAM_DIVERGENCES) ? PROMPT_PARAM_DIVERGENCES.length : PROMPT_PARAM_DIVERGENCES)
 ok(Object.isFrozen(PROMPT_PARAM_DIVERGENCES) && PROMPT_PARAM_DIVERGENCES.every((e) => Object.isFrozen(e)), 'the ledger and every entry are frozen')
 ok(typeof PROMPT_PARAM_SHRINK_CAP === 'number' && PROMPT_PARAM_SHRINK_CAP >= 0, 'the shrink cap is a declared number', PROMPT_PARAM_SHRINK_CAP)
-ok(PROMPT_PARAM_DIVERGENCES.length > 0 && PROMPT_PARAM_DIVERGENCES.length === PROMPT_PARAM_SHRINK_CAP, 'the ledger length equals the declared SHRINK CAP (adding an entry means raising the cap — a visible diff, never a silent growth)', { entries: PROMPT_PARAM_DIVERGENCES.length, cap: PROMPT_PARAM_SHRINK_CAP })
+ok(PROMPT_PARAM_DIVERGENCES.length === PROMPT_PARAM_SHRINK_CAP, 'the ledger length equals the declared SHRINK CAP (adding an entry means raising the cap — a visible diff, never a silent growth)', { entries: PROMPT_PARAM_DIVERGENCES.length, cap: PROMPT_PARAM_SHRINK_CAP })
 for (const e of PROMPT_PARAM_DIVERGENCES) {
   ok(typeof e.tool === 'string' && /^vibe_[A-Za-z0-9_]+$/.test(e.tool), 'entry names a real-looking tool: ' + J(e.tool))
   ok(typeof e.key === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(e.key), 'entry names the undeclared key: ' + J(e.key))
@@ -179,7 +183,12 @@ for (const a of assemblies) {
   const judged = judgeCalls(calls, table, PROMPT_PARAM_DIVERGENCES)
   for (const v of judged) allViolations.push(Object.assign({ at: a.label }, v))
 }
-ok(allViolations.length > 0, 'the scan is not vacuous: the known divergence is still in the shipped prompt (when it is fixed, this assertion and the ledger entry both go)', allViolations.length)
+// ★ PHASE 12 (F5): this used to demand that a REAL divergence still exist in the shipped prompt, which made the
+// gate go red exactly when the prompt was fixed — the same defect-pinning pattern removed from
+// `audit-prompt-retired-mechanisms`. Non-vacuity is now proved by a SYNTHETIC call instead of by a product defect.
+const synthetic = scanTaughtCalls('调 vibe_v5_ghost_tool({"made_up_key":1,"member":"r-1"}) 看看')
+const syntheticVerdicts = judgeCalls(synthetic, table, []) 
+ok(synthetic.length > 0 && syntheticVerdicts.some((v) => v.kind === 'UNDECLARED-TOOL'), 'the scanner+judge really catch an undeclared taught call (TEETH, not a product defect)', { calls: synthetic.length, verdicts: syntheticVerdicts.map((v) => v.kind) })
 const uncovered = allViolations.filter((v) => v.kind === 'UNDECLARED-TOOL' || v.covered !== true)
 ok(uncovered.length === 0, 'no taught key is undeclared without a ledger entry naming it', uncovered.map((v) => v.tool + '.' + v.key))
 for (const v of allViolations) {
@@ -187,7 +196,9 @@ for (const v of allViolations) {
 }
 
 console.log('=== 5. SHRINK-ONLY: every ledger entry is still doing work ===')
-ok(PROMPT_PARAM_DIVERGENCES.length > 0, 'there is at least one entry to check (RULE E)', PROMPT_PARAM_DIVERGENCES.length)
+// the ledger is now EMPTY by design (the one entry expired when its text was fixed), so the assertion is the
+// ceiling, not a floor: no entry may exist unless the cap was raised deliberately
+ok(PROMPT_PARAM_DIVERGENCES.length <= PROMPT_PARAM_SHRINK_CAP, 'the divergence ledger is within its hard ceiling', { entries: PROMPT_PARAM_DIVERGENCES.length, cap: PROMPT_PARAM_SHRINK_CAP })
 for (const e of PROMPT_PARAM_DIVERGENCES) {
   const matched = allViolations.some((v) => v.tool === e.tool && v.key === e.key && String(v.snippet).includes(e.contains))
   ok(matched, 'ledger entry still matches real taught text (if not: the text was fixed — delete the entry and lower the cap): ' + e.tool + '.' + e.key)

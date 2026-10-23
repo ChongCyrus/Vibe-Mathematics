@@ -223,7 +223,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '只输出一个合法 JSON 对象；所有旧字段仍有效，以下仅列当前阶段常用字段。',
+        '用一次 `vibe_vmu_turn { op: "reply", report: { … } }` 回复；所有旧字段仍有效，以下仅列当前阶段常用字段。',
         'progress：数学进展/阻塞及下一步；record：成果卡数组（kind,id,title,statement或content,value,motive,p）；say：必要消息或{to,text}。',
         'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
         // THE MORE COMMON OF TWO WORDINGS. The corpus carries this line in two forms and they are not interchangeable:
@@ -232,7 +232,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // says; the other is kept below as its own section rather than deleted, because it is real output too.
         '协调需要时可propose_verify、propose_meeting、hire/fire；具体字段查手册。',
         '{"progress":"当前推导、证据及下一步","solved":false}',
-        '复杂工具首次使用前调用 vibe_v5_tool_help({"tool":"工具名称"}) 查阅方法；简单工具和 JSON 回执直接使用。',
+        '复杂工具首次使用前调用 vibe_v5_tool_help({"member":"<你的成员 id>"}) 查阅方法（**只收 member；缺它会被具名拒绝**）；简单工具和工具回执直接使用。',
         'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
       ].join('\n'),
     },
@@ -284,8 +284,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'phase',
     texts: {
       verify: [
-        '若你本轮做了形式化或给出难度判断，请一并加上：',
-        '{"formal":{"target":"{{ setting:vmu.turn.verifyTarget }}","decision":"used|blocked|defect","file":"Formal/{{ setting:vmu.turn.verifyTarget }}.lean","note":"难度判断（used）/ 阻塞原因（blocked）/ 具体偏差（defect）"}}',
+        '若你本轮做了形式化或给出难度判断，请用 `vibe_v5_lean_archive` 归档：参数 target、kind、',
+        'file、note 表达同一件事（used = 归档通过的形式化；blocked = `kind:"assumption"` 并把难点',
+        '写进 note；defect = 在 note 里写明具体偏差）。不要用 JSON 回复块表达形式化结论。',
       ].join('\n'),
     },
   },
@@ -619,8 +620,8 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '**计票规则（不得误解）**：只有投票通道产生票；**表决期内的发言不改变任何票**；',
         '**沉默不是同意，也不是反对**——未表态会**阻塞结题**（未表态名单会被列出），绝不会被折算为赞成或反对。',
         '',
-        '结束时请**只**输出一个 JSON 对象（```json 围栏内）：',
-        '{"verdict":{"target":"{{ setting:vmu.turn.verifyTarget }}","verdict":0.5,"reason":"尚未完成独立复核"}}',
+        '结束时请用 `vibe_v5_verdict` 给出你的独立复核（一个概率值 + 理由），其中的对象是',
+        '`{{ setting:vmu.turn.verifyTarget }}`；本所的表决走工具调用，不用 JSON 回复块。',
       ].join('\n'),
     },
   },

@@ -15,9 +15,11 @@
 //   ② each correction section NAMES the obsolete wording and the real mechanism (`declaredNeedles`);
 //   ③ each correction order stays inside `ORDER_RANGES.pack` = [600, 899] (outside it the kernel derives an
 //      `override` band, which is reserved and silently drops the pack section — measured this phase);
-//   ④ a REAL assembly (entry -> kernel -> prompt.assemble) contains every correction marker, and — for the
-//      mechanisms whose obsolete wording SURVIVES in the capture — that wording too (`captureNeedles`): the
-//      pairing is only allowed to be vacuous where the old wording really is not in the shipped text;
+//   ④ a REAL assembly (entry -> kernel -> prompt.assemble) contains every correction marker, and the obsolete
+//      wording appears **only inside a correction section** (`OBSOLETE`): a correction may name what it
+//      supersedes, a TEACHING section may not. (PHASE 12: this replaced an assertion that demanded the
+//      obsolete wording still be PRESENT in the assembly — that pinned the defect and went red exactly when
+//      the text was fixed, which is the wrong direction for a gate.)
 //   ⑤ every `vibe_*` name a correction teaches is a tool the REAL kernel declares, and the names the formal
 //      correction calls phantom are really absent from the tool table;
 //   ⑥ TEETH: removing one declaration makes the judge name exactly that mechanism; planting an invented tool
@@ -67,31 +69,26 @@ const RETIRED = Object.freeze([
     id: 'reply-fence',
     section: 'v5r-fix-json-reply',
     declaredNeedles: ['每轮手写一段 json 代码围栏', 'op:"reply"', 'VMU_TURN_REPLY_CONFLICT', 'vibe_vmu_meeting'],
-    captureNeedles: ['只输出一个合法 JSON 对象', 'meeting_hand'],
   }),
   Object.freeze({
     id: 'm-vote-count',
     section: 'v5r-fix-m-vote',
     declaredNeedles: ['m 票布尔一致', 'quorumCap', 'quorumOf', 'quorumRule', 'defaultTally', 'm-unanimous'],
-    captureNeedles: ['m 票布尔一致'],
   }),
   Object.freeze({
     id: 'phantom-formal-tools',
     section: 'v5r-fix-formal',
     declaredNeedles: ['end_verify', 'formal_proof', 'formal:{decision,file,note}', 'vibe_v5_verified_promote', 'warrant'],
-    captureNeedles: ['end_verify 的 formal_proof'],
   }),
   Object.freeze({
     id: 'tool-help-param',
     section: 'v5r-fix-tool-help',
     declaredNeedles: ['vibe_v5_tool_help', '{member}', '{"tool":"…"}', 'tool_help needs the member id'],
-    captureNeedles: ['vibe_v5_tool_help({"tool"'],
   }),
   Object.freeze({
     id: 'verified-writer',
     section: 'v5r-fix-formal',
     declaredNeedles: ['vibe_v5_verified_promote', 'warrant'],
-    captureNeedles: ['只输出一个合法 JSON 对象'],
   }),
 ])
 
@@ -132,7 +129,7 @@ ok(orders.length === SECTIONS.length && orders.every((o) => Number.isInteger(o))
 ok(orders.length > 0 && orders.every((o) => o >= PACK_BAND[0] && o <= PACK_BAND[1]), 'every correction order is inside ORDER_RANGES.pack', { orders, band: PACK_BAND })
 ok(orders.length > 0 && new Set(orders).size === orders.length, 'the correction orders are distinct', orders)
 
-console.log('=== 4. the REAL assembled prompt carries every declaration; the surviving capture wording is measurably present ===')
+console.log('=== 4. the REAL assembled prompt carries every declaration; obsolete wording lives ONLY in the corrections ===')
 const entry = await import(pathToFileURL(ENTRY).href)
 const root = await mkdtemp(join(tmpdir(), 'vmu-f5-retired-'))
 const specs = []
@@ -170,15 +167,37 @@ const judgeDeclarations = (text, list) => list.filter((r) => {
   return !String(text).includes(markerOf(s))
 }).map((r) => r.id)
 
-const captureMechanisms = RETIRED.filter((r) => r.captureNeedles.length > 0)
-ok(captureMechanisms.length === RETIRED.length, 'every retired mechanism still has its obsolete wording in the assembled capture layer (the declaration supersedes something real, not a memory of it)', captureMechanisms.map((r) => r.id))
+// ★ PHASE 12 (F5 second half): the SHIPPED text no longer TEACHES the retired mechanisms. The hand-written
+// passages that carried them were rewritten (`v5r-blocks-a.js` / `v5r-blocks-b.js`), so the old wording must now
+// appear ONLY inside a correction section — a correction is allowed, and required, to name what it supersedes.
+// THIS IS A STRONGER ASSERTION THAN THE ONE IT REPLACES. The former block asserted that the obsolete wording was
+// STILL in the assembly ("the declaration supersedes something real, not a memory of it"); that made the defect a
+// pinned feature — it went red exactly when someone fixed the text, which is the wrong direction for a gate. The
+// corrected rule is: no teaching section may carry it, and the corrections must still name it (asserted above).
+const OBSOLETE = Object.freeze([
+  Object.freeze({ id: 'reply-fence', needles: ['只输出一个合法 JSON 对象', '```json'] }),
+  Object.freeze({ id: 'm-vote-count', needles: ['m 票布尔一致'] }),
+  Object.freeze({ id: 'phantom-formal-tools', needles: ['end_verify 的 formal_proof'] }),
+  Object.freeze({ id: 'reply-transport', needles: ['**只**输出一个 JSON', '最小合法样例（可直接照抄'] }),
+  // measured this round: `tool_help` REFUSES without a member (`vibe-math-vmu/packs/v5r/tools.js:380`),
+  // so the prompt's old one-argument call shape was a guaranteed refusal taught as advice
+  Object.freeze({ id: 'tool-help-old-shape', needles: ['vibe_v5_tool_help({"tool"'] }),
+])
+ok(OBSOLETE.length > 0, 'the obsolete-wording list is non-empty (RULE E)', OBSOLETE.length)
+ok(OBSOLETE.every((o) => o.needles.length > 0), 'every obsolete-wording entry carries needles (a list of ids with no needles asserts nothing)', OBSOLETE.filter((o) => !o.needles.length).map((o) => o.id))
+// the corrections' REAL text (not their marker) — a correction is ALLOWED to name what it supersedes, so the
+// count of obsolete wording inside the corrections is the budget the assembly may contain
+const correctionText = SECTIONS.map((s) => String(s.text || '')).join('\n')
+const countIn = (hay, needle) => hay.split(needle).length - 1
 
 for (const a of assemblies) {
   ok(judgeDeclarations(a.text, RETIRED).length === 0, 'every retired mechanism has its declaration in the same prompt (' + a.label + ')', judgeDeclarations(a.text, RETIRED))
-  ok(captureMechanisms.length > 0, 'the capture-layer check has a non-empty subject (RULE E)', captureMechanisms.length)
-  for (const r of captureMechanisms) {
-    const missing = r.captureNeedles.filter((n) => !a.text.includes(n))
-    ok(missing.length === 0, 'obsolete wording of ' + r.id + ' really is in the assembled prompt (' + a.label + ')', missing)
+  for (const o of OBSOLETE) {
+    for (const n of o.needles) {
+      const inAll = countIn(a.text, n)
+      const inCorrections = countIn(correctionText, n)
+      ok(inAll === inCorrections, 'obsolete wording of ' + o.id + ' appears ONLY inside a correction (' + a.label + ') ' + JSON.stringify(n), { inAssembly: inAll, inCorrections })
+    }
   }
 }
 
@@ -211,6 +230,13 @@ const oldOnly = [
 const missingAll = judgeDeclarations(oldOnly, RETIRED)
 ok(RETIRED.length > 0 && missingAll.length === RETIRED.length, 'TEETH: old wording alone satisfies ZERO mechanisms (it is the defect, not the declaration)', { missing: missingAll.length, total: RETIRED.length })
 ok(RETIRED.length > 0 && missingAll.length > 0, 'TEETH: the planted old-wording text really misses declarations (the check is not vacuous)')
+
+// ★ TEETH for the assertion that replaced the capture check: plant ONE teaching occurrence of an obsolete phrase
+// into the real prompt and prove the count-based judge notices it (it compares the assembly against the corrections'
+// own budget, so planting a teaching occurrence must break the equality).
+const plantedIn = realText + '\n' + OBSOLETE[0].needles[0]
+const plantedGap = OBSOLETE.flatMap((o) => o.needles.map((n) => ({ id: o.id, n, gap: countIn(plantedIn, n) - countIn(correctionText, n) }))).filter((x) => x.gap !== 0)
+ok(OBSOLETE.length > 0 && plantedGap.length > 0, 'TEETH: a teaching occurrence of obsolete wording is caught by the only-inside-corrections judge', plantedGap)
 
 console.log('')
 console.log('=== AUDIT PROMPT RETIRED MECHANISMS: ' + passed + ' passed, ' + failed + ' failed ===')
