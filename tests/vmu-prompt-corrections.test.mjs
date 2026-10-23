@@ -181,10 +181,20 @@ ok(assemblies.length > 0, 'there are real assemblies to judge the ordering on (R
 for (const a of assemblies) {
   const missing = SUPERSEDES.filter((s) => !a.text.includes(s.marker)).map((s) => s.marker)
   ok(missing.length === 0, 'every correction is in the assembled prompt (' + a.label + ')', missing)
+  // ★ PHASE 12 (F5) — this assertion used to require `oldAt !== -1`, i.e. it required the RETIRED wording to still
+  // be in the prompt, so it went red the moment F5 actually deleted it (the same defect-pinning family as
+  // `audit-prompt-retired-mechanisms`'s captureNeedles and `audit-prompt-tool-params`'s non-empty-ledger rule).
+  // The invariant that survives is ORDER, in both directions of the fix:
+  //   · deleted  (oldAt === -1)      ⇒ nothing to supersede; the correction stands on its own;
+  //   · quoted   (oldAt > newAt)     ⇒ the only remaining occurrence is INSIDE the correction itself, which is what a
+  //                                    quote is; that is the fixed state, not a misordering;
+  //   · taught   (oldAt < newAt)     ⇒ RETIRED WORDING IS TAUGHT BEFORE IT IS CORRECTED ⇒ red.
   const misordered = SUPERSEDES.filter((s) => {
     const oldAt = a.text.indexOf(s.oldLine)
     const newAt = a.text.indexOf(s.marker)
-    return oldAt === -1 || newAt === -1 || !(newAt > oldAt)
+    if (newAt === -1) return true
+    if (oldAt === -1) return false
+    return !(oldAt > newAt)
   }).map((s) => s.marker)
   ok(misordered.length === 0, 'every correction is read AFTER the wording it corrects, inside the same prompt (' + a.label + ')', misordered)
 }

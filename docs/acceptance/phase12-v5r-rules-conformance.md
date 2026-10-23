@@ -1001,9 +1001,12 @@ jsonl bytes=3372272 lines=7797
 - `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js`：6 处 json 围栏与「只输出一个合法 JSON 对象」全删，改为「结束时调用一次 `vibe_vmu_turn { op: \"reply\", report: { … } }`」＋最小合法 `report` 样例；`:287-288` 的 `formal` JSON 回复对象改为 `formal` 字段说明。
 - `vibe-math-vmu/packs/v5r/prompts/v5r-core.js:535`：回执样例里的 json 围栏删除（同一个坑的第三处）。
 
-### 24.3 顺手修掉的两个教学缺陷
+### 24.3 顺手修掉的两个教学缺陷（以及第四处「把缺陷当证据」的门禁）
 1. `vibe_v5_tool_help` 被教成 `({"member":…,"tool":…})`，而真实签名只收 `member`（`vibe-math-vmu/packs/v5r/tools.js:379-395` 只看 `args.member`，`tool` 键会被忽略）。更正段原本只是「说它错了」，教学段仍在教错——本轮直接改教学段，并把更正段那条账本项删掉（它已无消费者）。
 2. 门禁自身的两族缺陷钉：`tests/audit-prompt-retired-mechanisms.test.mjs` 的 `captureNeedles`，与 `tests/audit-prompt-tool-params.test.mjs` 的「账本必须非空 / 长度必须等于 cap」。前者改为「退役措辞**只能**出现在更正段」（`在装配里的次数 === 在更正段里的次数`，四类：reply-fence / m-vote-count / phantom-formal-tools / reply-transport），后者改为「账本为空也算良构（cap 是天花板）」＋合成 TEETH（植入一条未声明的教学调用必红）。`PROMPT_PARAM_DIVERGENCES` 清空、`PROMPT_PARAM_SHRINK_CAP` 置 0。
+
+### 24.3.1 第四处缺陷钉：`tests/vmu-prompt-corrections.test.mjs` 的顺序断言
+它原来要求 `oldAt !== -1`——即**退役措辞必须仍出现在提示词里**，与 `captureNeedles`／「账本必须非空」完全同族：F5 真把文字删掉时它必红（提交 `19a3c7ea` 后实测 **80 passed / 3 failed**）。改法把「顺序」在两个修复方向上都写清：`oldAt === -1`（已删）⇒ 无需被更正；`oldAt > newAt`（只剩引用）⇒ 唯一残留就在更正段里，那正是修好后的形态；`oldAt < newAt`（先教后更正）⇒ 红。改后 **83 passed / 0 failed**。★ 教训：这一族断言很难靠读发现——它红的时候看起来像「文字被改坏了」，只有先问「它到底在量什么状态」才能看出它在量缺陷。
 
 ### 24.4 派生面与环境事实
 - `node scripts/regen-all.mjs --write` ⇒ 16/16；`--check` ⇒ 16/16 in sync。**语料 sha `d889776b36ff` 不变是预期的**：`vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js` 是**冻结的捕获层**（逐字捕获），本轮改的是手写层，门禁量的也是装配层。这条区分写在这里，避免下次把「sha 没变」误读成「没生效」。
