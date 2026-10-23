@@ -719,13 +719,13 @@ B8（忠实性收口链路）施工时，按**真实面方法名**核对证据�
 
 | # | 不符项 | 证据（回执字段） | 性质 |
 |---|---|---|---|
-| R1 | 普通会议**也有** 3 步流程骨架（验收预期 `procedure:null`） | `m2`: `type:"ordinary"` ＋ 3 步「正常会议 · 推荐流程骨架」 | 实物 vs 验收预期不一致，需裁定 |
-| R2 | `at` 的两种"合法"写法都不按预期：epoch 毫秒**字符串**被拒；不带时区偏移的 ISO 被按进程本地 +08:00 解析 ⇒ 落到过去、直接 `state:"open"` | `VMU_INVALID_ARGUMENT at is not a usable time: "1792779800000"`；`m3`: `state:"open", scheduledFor:null` | **缺陷** |
-| R3 | "未到齐进等待"**不可达** ⇒ "超时自决"永不成立 | 三个会议的 quorum 块全为 `min:0, required:0, ratio:0, median:"met":true`；m4 到点后 `scheduled ⇒ open`，从未 `waiting` | **缺陷（机制无消费者）** |
+| R1 | 普通会议**也有** 3 步流程骨架（验收预期 `procedure:null`） | `m2`: `type:"ordinary"` ＋ 3 步「正常会议 · 推荐流程骨架」 | **裁定：保留（非缺陷）**。骨架 `binding:"recommendation"`，不能约束任何动作；规则只为「辩论会议」写了流程，并未禁止框架给别的类型**推荐**。`MEETING_PROCEDURE_DECISIONS` 是机器可读的逐类型台账（每个类型要么有骨架、要么具名说没有），因此"普通会议也有骨架"是有意的决定而遗漏。验收预期改为此口径 |
+| R2 | `at` 的两种"合法"写法都不按预期：epoch 毫秒**字符串**被拒；不带时区偏移的 ISO 被按进程本地 +08:00 解析 ⇒ 落到过去、直接 `state:"open"` | `VMU_INVALID_ARGUMENT at is not a usable time: "1792779800000"`；`m3`: `state:"open", scheduledFor:null` | ✅ **已修**：`atMs` 现接受纯数字字符串（JSON 往返会把数字变成字符串，一个能被精确还原的时刻不该因拼写被拒）。**未改**的部分：不带偏移的 ISO 仍按进程本地时区解析（那是 `Date.parse` 的语义），hint 已把"带偏移"写成推荐写法 —— 这是文档面而非机制面 |
+| R3 | "未到齐进等待"**不可达** ⇒ "超时自决"永不成立 | 三个会议的 quorum 块全为 `min:0, required:0, ratio:0, median:"met":true`；m4 到点后 `scheduled ⇒ open`，从未 `waiting` | ✅ **已修**：把「到齐与否」和「能不能表决」**分成两个问题**。新声明键 `vmu.meetings.waitForAll`（boolean，def **true**）＝"名册全员到齐才开场；到点有人未到 ⇒ waiting"；`false` ＝ 回到旧的"达到法定人数即开"。`syncMeeting` 两个分支共用同一个 `arrived()` 判据（避免同概念两处各写），waiting 事件带 `present`/`rosterSize`/`absent`。门禁 `tests/vmu-meeting-quorum-floor.test.mjs` R3-1…R3-11（**含反向**：`waitForAll:false` 时同一场景直接 `open` 且不发 waiting 事件）。⚠️ 真机复验待下一次活跑 |
 | R4 | 到点推进**不是时间驱动，是触碰驱动** | 到点后 `status` 仍 `scheduled`（`waitStartedAt:null`），必须有一次动作才推进；`scheduleNote` 自述"没有定时器" | 已知设计，叙述需对齐 |
-| R5 | `proceed` 的"只有主席"**不可观测**：状态闸先短路，主席/非主席拒绝**逐字相同** | 两条 `VMU_STATE` 完全相同；对照 `verdict_final` 的席位闸是 `VMU_NOT_PERMITTED` | **缺陷（权威闸被状态闸遮蔽）** |
-| R6 | 结题票**有权限者不含院士**，与规则 m＝院士＋常驻冲突 | `closureVote.eligible:["member-2"]`，`chair` 永不在内；框架自述「the v5r pack grants it to `member` but NOT to `chair` or `temp`」 | **缺陷（pack 授权口径）** |
-| R7 | "表决人数下限＝min(设置, 院士+常驻)"**任何回执都查不到** | `ballot` 只有 `eligible`；`tally` 只有 `{decisive:0, eligible:2}`；无 `min_votes`/`floor` | **缺陷（读数缺失）** |
+| R5 | `proceed` 的"只有主席"**不可观测**：状态闸先短路，主席/非主席拒绝**逐字相同** | 两条 `VMU_STATE` 完全相同；对照 `verdict_final` 的席位闸是 `VMU_NOT_PERMITTED` | ✅ **已修**：`proceed` 改为**权轨先于状态闸**（与 `verdict_final` 一致）。非主席在任何状态下都得到 `VMU_NOT_PERMITTED`，主席才是 `VMU_STATE`；且非主席不再被告知会议处于哪个阶段。门禁 `tests/vmu-meeting-types.test.mjs` R5 四条（含"两个拒绝码必须不同"与"非主席看不到阶段"） |
+| R6 | 结题票**有权限者不含院士**，与规则 m＝院士＋常驻冲突 | `closureVote.eligible:["member-2"]`，`chair` 永不在内；框架自述「the v5r pack grants it to `member` but NOT to `chair` or `temp`」 | ✅ **已修**：pack 的 `chair` 席位补上 `vote`（`packs/v5r/prompts/v5r-core.js` slots）⇒ 结题票选民＝**院士＋常驻**、temp 仍不在内。框架那句自述同步改正（它现在是错的）；不动的一句是"权限由 pack 授予"——那才是框架该说的话。门禁 `tests/vmu-closure-electorate.test.mjs` 7/0（座位作为**数据**读，不手抄；`closureVote.eligible` 由内核算出） |
+| R7 | "表决人数下限＝min(设置, 院士+常驻)"**任何回执都查不到** | `ballot` 只有 `eligible`；`tally` 只有 `{decisive:0, eligible:2}`；无 `min_votes`/`floor` | ✅ **已修**：`ballotbox` 新增 `ruleFloor` 读数（`{rule, setting, eligible, required, cast, met, boundBy}`），**开箱即可读**（`open` 回执）＋ `status({boxId})` 随时可读 ＋ 决选轮的 `tally` 带上。`required = min(设置数, 有表决权人数)`；未设下限时按"全员"解释并把 `boundBy` 写成 `eligible`；没有名册时 `eligible:null`（"未知"不写成 0）。与 `close()` 内部那个 `tally.floor`（叠加 `minVotesRatio`、决定成不成会）**名字与口径都分开**。门禁 `tests/vmu-meeting-quorum-floor.test.mjs` R7-1…R7-7 |
 | R8 | 最终裁决与票箱**脱耦**：票箱 `undecided`，裁决照签且 notice 是祈使句 | `tally: outcome:"undecided", decisive:0` vs `verdict_final: value:0.6, decided:false, enforceable:false` ＋「请把命题卡改为 0.6」 | **缺陷（语义被文案越过）** |
 | R9 | "发言有预算"没有生效对象 | `speak`: `ms:0, turns:1, tokens:0, budget:null` | 机制在、默认关，需 pack 给预算或文档说明 |
 | R10 | 成员提示词里两个状态块**始终是占位符** | `memberPrompt.text` 含 `〔未提供：setting:vmu.turn.instituteName〕`、`leaderId`、`〔未提供：roster〕`、`〔未提供：quorum〕`；"本轮你实际能调用的工具"段原文未替换 | ✅ **已修（§21）**：三类根因分别落在 `kernel/prompt/index.js`+`kernel/index.js`（声明默认值通道）、`kernel/turn/index.js`+`kernel/index.js`（`turnFacts` seam）、`packs/v5r/middleware/prompt-switches.js`（宿主专用段零注入）；门禁 `tests/vmu-prompt-live-facts.test.mjs` 13/0。⚠️ 真机复验待下一次活跑 |
@@ -784,3 +784,61 @@ B8（忠实性收口链路）施工时，按**真实面方法名**核对证据�
 
 - 本节证明的是**框架与 pack 的这一半**：默认值到文本、seam 到文本、turn 管线零占位段。**宿主对占位段的替换**（`host.js` 那条路径）不在本组断言内，它由宿主自己的套件守着 —— 所以 R10 的关闭是“三类根因已修 + 有门禁”，**不是“真机已复验”**；真机复验要等下一次完整活跑。
 - R10 之外的 R1–R12 仍在 §20.4 待办里；本次只闭合 R10。
+
+---
+
+## §22 第五批：R1–R7 的六条裁定与实现（活跑回执逐条兑现）
+
+§20.4 的 R1–R12 是**活跑实测**出来的不符项。本节闭合其中六条（R2、R3、R5、R6、R7 已修，R1 裁定为"非缺陷"），并说明每条为什么那样修 —— 尤其说明**哪些看起来像缺陷的东西其实是概念被混为一谈**。
+
+### 22.1 逐条裁定
+
+| # | 裁定 | 一句话理由 |
+|---|---|---|
+| R1 | **保留，非缺陷** | 推荐骨架 `binding:"recommendation"` 不能约束任何动作；规则只为辩论会议写流程，并没有禁止给别的类型**推荐**。逐类型决议台账（每个类型要么有骨架、要么具名说没有）让"有骨架"成为有意决定 |
+| R2 | **已修** | 纯数字字符串是能被精确还原的时刻，不该因 JSON 往返把它变成字符串而被拒 |
+| R3 | **已修（概念拆分）** | 「到齐没有」与「能不能表决」是两个问题；旧实现用一个 `required:0` 同时回答两个，导致等待态永不可达 |
+| R5 | **已修（顺序）** | 权轨必须**先于**状态闸求值，否则"只有主席能决定"这句话为真但不可观测 |
+| R6 | **已修（授权口径）** | 规则的 m 是院士＋常驻；pack 的 chair 席位没有 `vote`，等于把院士排除在自己的表决之外 |
+| R7 | **已修（读数）** | 下限只在拒绝时被算出来，于是"通过了的表决"反而查不到自己过的是哪条线 |
+
+### 22.2 R3 的关键判断：两个数不能共用一个名字
+
+旧代码在 `syncMeeting` 里用 `quorumOf(m).met` 同时回答两件事：
+
+- **能不能表决**（法定人数）—— 由 `vmu.meetings.quorumMin`/`quorumRatio` 决定，框架默认 0 ＝ 不设下限；
+- **人齐没有**（出勤完整性）—— 规则里的「未到齐」判的是这一件。
+
+默认 `required:0` ⇒ 永远 `met:true` ⇒ `waiting` 不可达 ⇒「未到齐超时由院士自决」整条规则空转（正是本仓点名过的"机制没有消费者"）。修法**不是**去改法定人数默认值（那会改变所有会议的投票语义），而是把两个问题分开：
+
+- 新声明键 `vmu.meetings.waitForAll`（boolean，def **true**，H2，office）：true ＝ 名册全员到齐才开场；false ＝ 达到法定人数即开（旧行为，供愿意等的部署选择）。
+- `syncMeeting` 的两个分支共用**同一个** `arrived()` 判据 —— 不这样做的话，`scheduled⇒waiting` 与 `waiting⇒open` 会用两套口径，那正是本仓反复记过的"同一概念两处各写"。
+- waiting 事件带 `present`/`rosterSize`/`absent`，让"谁没来"可审计。
+
+### 22.3 R6 的关键判断：框架把不该归它的权判了
+
+框架的提示文本原话是「the v5r pack grants it to `member` but NOT to `chair` or `temp`」—— 一个**框架**在替 **pack** 宣布授权口径。这句话比缺陷本身更值得记：它把"谁有权"写进了内核的叙述，而"谁有权"本应由 pack 的席位声明决定。修法因此是两条：
+
+1. pack 的 `chair` 席位补上 `vote`（规则的 m 是「院士＋常驻」）；
+2. 框架那句自述改成"授权由 pack 决定"的事实陈述，不再列举谁有谁没有。
+
+门禁 `tests/vmu-closure-electorate.test.mjs` 把座位当**数据**读（`PACK.slots`），不手抄权限表 —— 抄一遍就等于又一个会漂移的副本。
+
+### 22.4 R7 的关键判断：两个 floor 必须分别命名
+
+`close()` 内部早有一个 `floor`（`max(minVotes, minVotesRatio × …)`，决定"成不成会"），它**只在拒绝路径上出现**。规则要的下限是 `min(用户设置, 有表决权人数)`。两者口径不同，所以新读数叫 `ruleFloor` 而**不是**给旧的那个改名 —— 同一个词两个口径，读的人无法从数字上分辨。
+
+### 22.5 门禁与读数（本节实跑）
+
+| 项 | 读数 |
+|---|---|
+| `tests/vmu-meeting-quorum-floor.test.mjs` | **18 passed, 0 failed**（R3 十一条含反向、R7 七条） |
+| `tests/vmu-closure-electorate.test.mjs` | **7 passed, 0 failed** |
+| `tests/vmu-meeting-types.test.mjs` | **130 passed, 0 failed**（含 R5 四条） |
+| `tests/vmu-meetings.test.mjs` / `vmu-ballotbox` / `vmu-ballot` / `vmu-v5r-tools` / `vmu-motion-box` / `vmu-resume-e2e` / `vmu-prompt-live-facts` | 201/0 · 16/0 · 44/0 · 339/0 · 37/0 · 108/0 · 13/0 |
+
+### 22.6 诚实边界
+
+- 本节证明的是**判据与读数**：等待态可达且由声明键决定、院士在内、下限可读、两种拒绝可分。它**不能**证明下一次活跑里模型会按骨架讨论 —— 那要等 R8/R9/R11/R12 也修完并重跑。
+- R4（到点推进是触碰驱动、无定时器）**未改**：那是既有设计（理由写在 `syncMeeting` 上方：没有后台定时器就不会有"进程被杀后会议永远卡在等待"），要改的是叙述而不是机制。
+- R8/R9/R11/R12 仍在 §20.4 待办。

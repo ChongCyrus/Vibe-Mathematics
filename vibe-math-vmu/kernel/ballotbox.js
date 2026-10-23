@@ -103,6 +103,29 @@ export function createBallotBox(opts) {
   const refusals = new Map()
   const bumpRefusal = (code) => { refusals.set(code, (refusals.get(code) || 0) + 1) }
   const ENFORCED_SCOPE = 'evaluated-so-far'
+  /**
+   * R7 — 「表决人数下限」的可读数。规则原文：下限 = min(用户设置数, 院士+常驻研究员数)。
+   * 实现里这个数**曾经只在拒绝时算**（`VMU_BALLOT_MIN_VOTES_NOT_MET` 的 `tally.floor`），于是"通过了的表决"
+   * 反而查不到它过的是哪条线 —— 读数在需要它的时候恰好缺失。这里只做两件事：取声明值、与有表决权人数取小。
+   * `setting` 为 0（未设）时按"全员"解释（min(∞, n) = n），并把 `boundBy` 写成 'eligible'，让读者知道这条线是
+   * 被人数而不是被设置卡住的。★ 它不是 close() 内部那个 `floor`（那个还叠加 minVotesRatio、且决定成不成会），
+   * 两者口径不同，因此名字区分开（`ruleFloor` vs `tally.floor`），不给读者一个看不出差别的数。
+   */
+  const floorReading = (box, c) => {
+    const declared = box && box.rules && Number.isInteger(box.rules.minVotes) ? box.rules.minVotes : (c ? c.minVotes : 0)
+    const eligible = box && Array.isArray(box.eligible) ? box.eligible.length : null
+    const required = eligible === null ? declared : Math.min(declared > 0 ? declared : eligible, eligible)
+    const cast = box ? box.votes.size + ((c && c.abstainCountsForFloor) ? box.abstain.size : 0) : 0
+    return Object.freeze({
+      rule: 'min(设置数, 有表决权人数)',
+      setting: declared,
+      eligible,
+      required,
+      cast,
+      met: required === 0 ? true : cast >= required,
+      boundBy: (eligible !== null && required === eligible && (declared === 0 || declared > eligible)) ? 'eligible' : 'vmu.ballot.minVotes',
+    })
+  }
   // 入列前查重（D3 统一口径 ✓）：同一个键在一份回执里**只出现一次** ✗✓ —— **不改** `enforced` 的数组语义 ✓
   const mark = (list, key) => { if (key && list.indexOf(key) === -1) list.push(key); return list }
   const deny = (code, msg, hint, enforced) => {
@@ -222,7 +245,7 @@ export function createBallotBox(opts) {
       eligible: Array.isArray(args.eligible) ? args.eligible.map((x) => String(x)) : null }
     boxes.set(id, box)
     emit('ballot/open', { id })
-    return { ok: true, boxId: id, round: box.round, sealed: box.sealed, rules: box.rules || null, rulesDeclared: box.rulesDeclared === true, enforced, enforcedScope: ENFORCED_SCOPE }
+    return { ok: true, boxId: id, round: box.round, sealed: box.sealed, rules: box.rules || null, rulesDeclared: box.rulesDeclared === true, ruleFloor: floorReading(box, cfg()), enforced, enforcedScope: ENFORCED_SCOPE }
   }
 
   const castBody = (a) => {
@@ -409,7 +432,7 @@ export function createBallotBox(opts) {
         box.round += 1
         box.votes = new Map(); box.abstain = new Map()
         emit('ballot/runoff', { boxId: box.id, round: box.round })
-        return { ok: true, boxId: box.id, round: 2, runoff: ranked.slice(0, c.runoffTopN).map((x) => x.option), tally: { cast: castN, votes: castN, abstain: 0, absent: box.absent.length, floor, floorBase }, enforced, enforcedScope: ENFORCED_SCOPE, note: '进入第二轮 ✓' }
+        return { ok: true, boxId: box.id, round: 2, runoff: ranked.slice(0, c.runoffTopN).map((x) => x.option), tally: { cast: castN, votes: castN, abstain: 0, absent: box.absent.length, floor, floorBase, ruleFloor: floorReading(box, c) }, enforced, enforcedScope: ENFORCED_SCOPE, note: '进入第二轮 ✓' }
       }
       if (c.method === 'runoff' && box.round >= c.roundsMax) {
         mark(enforced, 'vmu.ballot.roundsMax')
@@ -435,7 +458,7 @@ export function createBallotBox(opts) {
       box.round += 1
       box.votes = new Map(); box.abstain = new Map()
       emit('ballot/runoff', { boxId: box.id, round: box.round })
-      return { ok: true, boxId: box.id, round: 2, runoff: ranked.slice(0, c.runoffTopN).map((x) => x.option), tally: { cast: castN, votes: castN, abstain: 0, absent: box.absent.length, floor, floorBase }, enforced, enforcedScope: ENFORCED_SCOPE, note: '进入第二轮 ✓' }
+      return { ok: true, boxId: box.id, round: 2, runoff: ranked.slice(0, c.runoffTopN).map((x) => x.option), tally: { cast: castN, votes: castN, abstain: 0, absent: box.absent.length, floor, floorBase, ruleFloor: floorReading(box, c) }, enforced, enforcedScope: ENFORCED_SCOPE, note: '进入第二轮 ✓' }
     }
     if (c.method === 'runoff' && box.round >= c.roundsMax && tie) {
       mark(enforced, 'vmu.ballot.roundsMax')
@@ -588,6 +611,13 @@ export function createBallotBox(opts) {
         })(),
         // F28: the fallback state is observable state, not an inference from a missing board.
         openMaxMs, lapse: box.lapse ? Object.assign({}, box.lapse) : null, droppedAudit,
+        // ★ R7: THE RULE'S FLOOR must be askable on a PASSING ballot, not only inside a refusal. The rule reads
+        // 「表决人数下限 = min(用户设置数, 院士+常驻研究员数)」; the implementation computed that number only while
+        // throwing `VMU_BALLOT_MIN_VOTES_NOT_MET`, so a ballot that cleared the floor could not report WHICH floor it
+        // cleared — the reading was missing exactly when it was needed (the live run's `tally` showed
+        // `{decisive:0, eligible:2}` and nothing else). `ruleFloor` is derived from the box's own eligible list and
+        // the declared setting; nothing is inferred from votes.
+        ruleFloor: floorReading(box, c),
         // G7 self-report (Round 9): "no durable log is bound ⇒ this commit is IN-PROCESS ONLY" must be READABLE
         // here, never inferred (mirrors `ballot.status().gate.durable`).
         durableLog: { bound: !!(o.durableQueue && o.durableQueue.durable === true) } }

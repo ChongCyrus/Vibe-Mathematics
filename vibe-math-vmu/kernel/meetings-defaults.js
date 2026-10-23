@@ -12,7 +12,7 @@ export const WIRED_KEYS = Object.freeze([
   'vmu.meetings.budgetTurns', 'vmu.meetings.budgetTokens', 'vmu.meetings.budgetWallMs', 'vmu.meetings.budgetOnExceed',
   // ★ PHASE 12 D1: 预约时间 + 到点人未齐的等待阶段（能力在内核，值是设置）。三个键一起接线：
   // scheduleAllowed 是能力闸，waitOnDueMs 是等待时长，waitDecisionRequiresChair 是「超时由院士自决」的权轨。
-  'vmu.meetings.scheduleAllowed', 'vmu.meetings.waitOnDueMs', 'vmu.meetings.waitDecisionRequiresChair',
+  'vmu.meetings.scheduleAllowed', 'vmu.meetings.waitOnDueMs', 'vmu.meetings.waitDecisionRequiresChair', 'vmu.meetings.waitForAll',
   // ★ PHASE 12 D1/D2: 主席权轨三件（召开/关闭/延长）——它们改了行为，所以必须出现在 WIRED 里，
   // 否则 `status()` 会把"已接线的键"报成"声明了没接线"，那就是反向的假绿。
   'vmu.meetings.conveneRequiresChair', 'vmu.meetings.closeRequiresChair', 'vmu.meetings.extendRequiresChair', 'vmu.meetings.extendCeilingMs',
@@ -52,7 +52,7 @@ export const DEFAULTS = Object.freeze({
   // 是因为 `generate-wired-schema --check` 要从源码恢复默认值 —— 省略会让它报 null 而失配。
   'vmu.meetings.conveneRequiresChair': false, 'vmu.meetings.closeRequiresChair': false,
   'vmu.meetings.extendRequiresChair': true, 'vmu.meetings.extendCeilingMs': 14400000,
-  'vmu.meetings.scheduleAllowed': true, 'vmu.meetings.waitOnDueMs': 300000, 'vmu.meetings.waitDecisionRequiresChair': true,
+  'vmu.meetings.scheduleAllowed': true, 'vmu.meetings.waitOnDueMs': 300000, 'vmu.meetings.waitDecisionRequiresChair': true, 'vmu.meetings.waitForAll': true,
   'vmu.meetings.speechDefaultMs': 0, 'vmu.meetings.speechMaxMs': 0, 'vmu.meetings.speechExtendMs': 0, 'vmu.meetings.speechExtendMax': 0, 'vmu.meetings.speechQuotaPerMember': 0,
   'vmu.meetings.interruptAllow': true, 'vmu.meetings.interruptQuota': 0, 'vmu.meetings.orderMode': 'fifo',
   'vmu.meetings.lateAfterMs': 0, 'vmu.meetings.leaveEarlyPolicy': 'allow', 'vmu.meetings.materialsRequired': false,

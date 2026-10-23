@@ -212,7 +212,12 @@ export const PACK = Object.freeze({
   // REQUIRES `promptAck` (a marker that must appear in one of this pack's prompt sections) — see kernel/pack.js.
   // ⇒ v5r deliberately declares nothing: zero mechanism, every tool stays native, and the prompt keeps matching the wire.
   slots: [
-    { id: 'chair', label: '主持人', capacity: 1, permissions: ['convene', 'close', 'assign', 'grant', 'freeze'] },
+    // ★ PHASE 12 / R6 (measured on a full live run): the chair did NOT hold `vote`, so `closureVote.eligible`
+    // listed only the residents — while the rule's vote floor is 「min(用户设置数, 院士+常驻研究员数)」, i.e. the
+    // academician IS part of the electorate the floor is counted over. A floor computed over a universe the chair is
+    // not in can never agree with its own rule. `temp` stays without a vote: temps are 旁听/协作者, and the rule's
+    // 常驻研究员 excludes them.
+    { id: 'chair', label: '主持人', capacity: 1, permissions: ['convene', 'close', 'assign', 'grant', 'freeze', 'vote'] },
     { id: 'member', label: '成员', capacity: 0, permissions: ['speak', 'vote', 'propose'] },
     { id: 'temp', label: '临时', capacity: 12, permissions: ['speak'] },
   ],

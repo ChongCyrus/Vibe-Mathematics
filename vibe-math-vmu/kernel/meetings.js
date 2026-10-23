@@ -87,10 +87,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   const atMs = (value, what = 'at') => {
     if (Number.isFinite(value)) return value
     if (typeof value === 'string' && value.trim() !== '') {
-      const parsed = Date.parse(value)
+      const trimmed = value.trim()
+      // ★ R2 of the phase-12 live run: a JSON round-trip turns a number into a STRING, and the live run passed
+      // `at: "1792779800000"` — a perfectly usable epoch-millisecond instant that was refused. A time that can be
+      // recovered exactly must not be refused for its spelling; `Date.parse` alone does not recognise it.
+      if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+        const asNumber = Number(trimmed)
+        if (Number.isFinite(asNumber)) return asNumber
+      }
+      const parsed = Date.parse(trimmed)
       if (Number.isFinite(parsed)) return parsed
-      throw deny('VMU_INVALID_ARGUMENT', what + ' is not a usable time: "' + value + '"',
-        'pass epoch milliseconds, or an ISO-8601 timestamp such as "2026-10-24T10:00:00+08:00"', [])
+      throw deny('VMU_INVALID_ARGUMENT', what + ' is not a usable time: "' + trimmed + '"',
+        'pass epoch milliseconds (number or numeric string), or an ISO-8601 timestamp such as "2026-10-24T10:00:00+08:00"', [])
     }
     throw deny('VMU_INVALID_ARGUMENT', what + ' must be epoch milliseconds or an ISO-8601 string; got ' + (value === null ? 'null' : typeof value),
       'pass epoch milliseconds, or an ISO-8601 timestamp string', [])
@@ -164,6 +172,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     scheduleAllowed: sget('vmu.meetings.scheduleAllowed') !== false,
     waitOnDueMs: Math.min(86400000, Math.max(0, msOr('vmu.meetings.waitOnDueMs', 300000))),
     waitDecisionRequiresChair: sget('vmu.meetings.waitDecisionRequiresChair') !== false,
+    // ★★ R3 OF THE PHASE-12 LIVE RUN: 「未到齐」的判据是**出勤完整性**，不是表决下限。
+    // 实测：三个会议的 quorum 块全是 `min:0, required:0, met:true`（框架默认 quorumMin=0＝不设下限），
+    // 于是「到点未到齐 ⇒ 等待」永远不成立，`waiting` 状态不可达 ⇒ 「未到齐超时自决」这条规则整条空转。
+    // 这两个概念本来就不同：法定人数决定"能不能表决"，到齐与否决定"要不要等"。规则原文说的是后者。
+    //   · true（默认）—— 名册上有人没到 ⇒ waiting；全部到齐才开场；
+    //   · false        —— 只要达到法定人数即可开场（旧行为，供"不等齐"的部署选择）。
+    waitForAll: sget('vmu.meetings.waitForAll') !== false,
     committeeMax: n(sget('vmu.meetings.committeeMax')), committeeReportRequired: sget('vmu.meetings.committeeReportRequired') === true,
     budgetTurns: n(sget('vmu.meetings.budgetTurns')), budgetTokens: n(sget('vmu.meetings.budgetTokens')),
     budgetWallMs: n(sget('vmu.meetings.budgetWallMs')), budgetOnExceed: D.values.budgetOnExceed,
@@ -402,21 +417,30 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   const syncMeeting = (m, at = null) => {
     if (!m || (m.state !== 'scheduled' && m.state !== 'waiting')) return null
     const now = at === null ? clock() : n(at)
+    // ★ R3: 「未到齐」= 名册上还有人不 present（或部署把 `vmu.meetings.waitForAll` 关掉，则回落到法定人数）。
+    // 判据只在这里算一次，两个分支共用 —— 否则 `scheduled⇒waiting` 与 `waiting⇒open` 会用两套口径，
+    // 那是本仓反复记过的"同一概念两处各写"。
+    const arrived = () => {
+      if (K.waitForAll === false) return quorumOf(m).met
+      const roster = m.roster instanceof Set ? [...m.roster] : (Array.isArray(m.roster) ? m.roster : [])
+      if (roster.length === 0) return quorumOf(m).met
+      return roster.every((id) => m.present.has(id))
+    }
     if (m.state === 'scheduled') {
       if (!Number.isFinite(m.scheduledFor) || now < m.scheduledFor) return null
       const q = quorumOf(m)
       m.activatedAt = now
       m.waitStartedAt = now
-      if (q.met) {
+      if (arrived()) {
         m.state = 'open'
         m.startedLate = true
         markState(m, 'open')
-        say({ type: 'meetings/started', at: now, meeting: m.id, scheduledFor: m.scheduledFor, waitedMs: 0, quorum: q, enforcedScope: ENFORCED_SCOPE })
+        say({ type: 'meetings/started', at: now, meeting: m.id, scheduledFor: m.scheduledFor, waitedMs: 0, quorum: q, present: m.present.size, rosterSize: (m.roster instanceof Set ? m.roster.size : (m.roster || []).length), enforcedScope: ENFORCED_SCOPE })
         return 'started'
       }
       m.state = 'waiting'
       markState(m, 'waiting')
-      say({ type: 'meetings/waiting', at: now, meeting: m.id, scheduledFor: m.scheduledFor, quorum: q, waitOnDueMs: K.waitOnDueMs, enforcedScope: ENFORCED_SCOPE })
+      say({ type: 'meetings/waiting', at: now, meeting: m.id, scheduledFor: m.scheduledFor, quorum: q, present: m.present.size, rosterSize: (m.roster instanceof Set ? m.roster.size : (m.roster || []).length), absent: (m.roster instanceof Set ? [...m.roster] : (m.roster || [])).filter((id) => !m.present.has(id)), waitOnDueMs: K.waitOnDueMs, enforcedScope: ENFORCED_SCOPE })
       return 'waiting'
     }
     // state === 'waiting'
@@ -425,7 +449,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // is the chair's `proceed()`, i.e. the state that exists to wait for people could not be resolved by a person
     // arriving. Measured: without this branch `attend()` added the member, the quorum became met, and the meeting
     // still reported `waiting` forever (the assertion below went red with `settled:null`).
-    if (quorumOf(m).met) {
+    if (arrived()) {
       m.state = 'open'
       m.startedLate = true
       markState(m, 'open')
@@ -578,10 +602,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const now = at === null ? clock() : atMs(at)
       syncMeeting(m, now)
       const enforced = []
-      if (m.state !== 'waiting') {
-        throw deny('VMU_STATE', 'proceed() only applies to a meeting WAITING for its scheduled start: ' + mid + ' is ' + m.state,
-          m.state === 'scheduled' ? 'its start time has not arrived yet; nothing is late' : 'the meeting is already running — just act in it', enforced)
-      }
+      // ★ AUTHORITY BEFORE STATE (R5 of the phase-12 live run). Measured before this reordering: with the state gate
+      // first, a non-chair got the SAME `VMU_STATE` as the chair, so "only the chair may decide" was unobservable —
+      // the authority rail was shadowed by the state rail and a caller could not tell which one it hit. Ordering the
+      // seat check first makes the two refusals distinguishable (`VMU_NOT_PERMITTED` names the chair, `VMU_STATE`
+      // describes the state) and stops a passer-by from learning the meeting's phase. Same shape as `verdict_final`,
+      // whose seat gate was never shadowed. Authority-first is also the framework's general convention for acts that
+      // confer power; state remains the gate for acts that need the meeting to BE in a phase.
       const who = (actor === null || actor === undefined) ? ((by === null || by === undefined) ? null : String(by)) : String(actor)
       if (K.waitDecisionRequiresChair) {
         mark(enforced, 'vmu.meetings.waitDecisionRequiresChair')
@@ -595,6 +622,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
               'pass { actor: "' + m.chair + '" } (vmu.meetings.waitDecisionRequiresChair)', enforced)
           }
         }
+      }
+      if (m.state !== 'waiting') {
+        throw deny('VMU_STATE', 'proceed() only applies to a meeting WAITING for its scheduled start: ' + mid + ' is ' + m.state,
+          m.state === 'scheduled' ? 'its start time has not arrived yet; nothing is late' : 'the meeting is already running — just act in it', enforced)
       }
       const beforeDeadline = m.waitDecisionDue !== true
       const waitedMs = Number.isFinite(m.waitStartedAt) ? now - m.waitStartedAt : 0

@@ -1296,6 +1296,7 @@ vmu.packs.active: [v5r]
 | `vmu.meetings.verbatimEnabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.verbatimRetentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.waitDecisionRequiresChair` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
+| `vmu.meetings.waitForAll` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.meetings.waitOnDueMs` | int ≥0 | `300000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
 | `vmu.migration.auto` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.migration.dryRunDefault` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
@@ -1553,7 +1554,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1150** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1151** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1613,7 +1614,7 @@ vmu.packs.active: [v5r]
 | `vmu.limits.*` | 5 |
 | `vmu.mailbox.*` | 6 |
 | `vmu.math.*` | 105 |
-| `vmu.meetings.*` | 66 |
+| `vmu.meetings.*` | 67 |
 | `vmu.members.*` | 1 |
 | `vmu.memory.*` | 16 |
 | `vmu.metadata.*` | 2 |

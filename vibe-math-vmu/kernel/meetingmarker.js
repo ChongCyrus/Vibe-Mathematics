@@ -260,6 +260,7 @@ export function meetingKeysSnapshot(K) {
     'vmu.meetings.extendRequiresChair': K.extendRequiresChair, 'vmu.meetings.extendCeilingMs': K.extendCeilingMs,
     'vmu.meetings.scheduleAllowed': K.scheduleAllowed, 'vmu.meetings.waitOnDueMs': K.waitOnDueMs,
     'vmu.meetings.waitDecisionRequiresChair': K.waitDecisionRequiresChair,
+    'vmu.meetings.waitForAll': K.waitForAll,
     'vmu.meetings.leaveApprover': K.leaveApprover,
     'vmu.meetings.confidentialityDefault': K.confidentialityDefault, 'vmu.meetings.confidentialityQuotePolicy': K.confidentialityQuotePolicy,
     'vmu.meetings.verbatimEnabled': K.verbatimEnabled, 'vmu.meetings.verbatimRetentionMs': K.verbatimRetentionMs,

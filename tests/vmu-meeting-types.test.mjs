@@ -363,7 +363,7 @@ try {
 
   // ⑥c quorum SHORT at the due time ⇒ waiting (and it is a named state, not "still scheduled")
   now2 = now2 + HOUR
-  const shortMtg = sk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1', 'r-2'], materials: '到点人不够', at: now2 + HOUR })
+  const shortMtg = sk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1'], materials: '到点人不够', at: now2 + HOUR })
   now2 = now2 + HOUR
   const waiting = sk.meetings.meetingView({ meeting: shortMtg.meeting })
   ok(waiting.state === 'waiting' && Number.isFinite(waiting.waitStartedAt) && waiting.waitDecisionDue === false,
@@ -377,7 +377,7 @@ try {
   // ★★ THE ASSERTION THE EXEMPTION EXISTS FOR: the latecomer arrives and the meeting starts by itself
   const lateArrive = sk.meetings.attend({ meeting: shortMtg.meeting, member: 'r-1' })
   ok(lateArrive.settled === 'started' && lateArrive.state === 'open',
-    '★★ a latecomer attending a WAITING meeting reaches quorum and the meeting STARTS on that touch — the wait is not a dead end', { settled: lateArrive.settled, state: lateArrive.state })
+    '★★ a latecomer completing the roster turns WAITING into a running meeting on that touch — the wait is not a dead end', { settled: lateArrive.settled, state: lateArrive.state })
 
   // ⑥d the wait EXPIRES and the framework still does NOT decide
   now2 = now2 + HOUR
@@ -405,6 +405,23 @@ try {
     '★ the receipt says the chair decided AFTER the declared wait (an early start would have to be distinguishable from an on-time one)', { beforeDeadline: proceed.beforeDeadline, waitedMs: proceed.waitedMs })
   ok(proceed.receipt.by === 'acad' && proceed.receipt.why === '只剩三个人，等不起了',
     '★ who + why are on the record (the meeting is now legally running with a short quorum)', { by: proceed.receipt.by })
+  // ★★ R5 — THE AUTHORITY RAIL MUST NOT BE SHADOWED BY THE STATE RAIL. Measured in the phase-12 live run: the state
+  // gate came first, so a non-chair on a meeting that was NOT waiting received the byte-identical `VMU_STATE` reply the
+  // chair receives, i.e. "only the chair decides" was true but unobservable. These three assertions pin the ORDER.
+  {
+    const openMtg = sk.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1'], materials: '状态闸与权轨的先后' })
+    const byWrongOnOpen = serr(() => sk.meetings.proceed({ meeting: openMtg.meeting, actor: 'r-1' }))
+    const byChairOnOpen = serr(() => sk.meetings.proceed({ meeting: openMtg.meeting, actor: 'acad' }))
+    const byAnonOnOpen = serr(() => sk.meetings.proceed({ meeting: openMtg.meeting }))
+    ok(!!byWrongOnOpen.error && byWrongOnOpen.error.code === 'VMU_NOT_PERMITTED',
+      '★★★ R5: a NON-chair is refused for WHO IT IS even when the meeting is not waiting — the seat rail is asked first', byWrongOnOpen.error && byWrongOnOpen.error.code)
+    ok(!!byChairOnOpen.error && byChairOnOpen.error.code === 'VMU_STATE',
+      '★★★ R5: and the CHAIR then gets the state refusal — the two callers are now distinguishable', byChairOnOpen.error && byChairOnOpen.error.code)
+    ok(byWrongOnOpen.error.code !== byChairOnOpen.error.code && !/is open|is scheduled/.test(String(byWrongOnOpen.error.message)),
+      '★★★ R5: the two refusals differ by code AND the non-chair is not told the meeting\'s phase', { nonChair: byWrongOnOpen.error.code, chair: byChairOnOpen.error.code })
+    ok(!!byAnonOnOpen.error && byAnonOnOpen.error.code === 'VMU_NOT_PERMITTED' && /name itself/.test(String(byAnonOnOpen.error.message)),
+      '★★ R5: no actor is a named refusal too (never a silent "well, you are not the chair, whoever you are")', byAnonOnOpen.error && byAnonOnOpen.error.code)
+  }
   const afterProceed = sk.meetings.attend({ meeting: expiring.meeting, member: 'r-1' })
   const speakAfter = sk.meetings.speak({ meeting: expiring.meeting, member: 'r-1', text: '开始了' })
   ok(afterProceed.ok === true && speakAfter.ok !== false,
