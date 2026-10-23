@@ -28,12 +28,12 @@
 
 | ID | 规则要点 | 落点 / 证据 | 门禁 | 状态 |
 |---|---|---|---|---|
-| B1 | **公共 Verified 文件夹**：只有布尔概率＝1 的命题（或参考文献中的命题）可加入；**只有辩论能把概率改成 1**，否则只能∈(0,1) | ★ 实测 `grep -rn "Verified" --include=*.js vibe-math-vmu/ \| wc -l` ＝ **85 条 / 15 个文件**（原写"只命中 auditchain"是**假阴性**，已更正：`grep -rln` 列出 15 文件）——但逐文件看：v5r 侧命中**全在 5 个提示词文件**（`prompts/v5r-assistant|blocks-a|blocks-b|core|persona|prompts.js`，是文字），代码侧命中是 `kernel/auditchain.js`(anchorVerified，无关)、`kernel/crypto.js`、`kernel/records.js`、`kit/paper.js` 与 **v3 pack**（`packs/v3/index.js`、`middleware/dataplane.js` 的 promoteVerified…＝v3 真的做过）。⇒ **v5r pack 没有 verified 轨/kind/字段**（`packs/v5r/settings/defaults.json` 十条轨无 verified；`kernel/records.js:457` 只有 `settled`），★ **本轮补齐（此前是 ❌）：机制已落地，提示词未跟上**。承载＝公共轨 `verified`（`packs/v5r/verified.js`：`VERIFIED_TRACK/KIND`、单写入器 `promoteVerified`、`parseVerified`；轨/kind 由 pack 在 `settings/defaults.json` 声明）；闸＝`packs/v5r/verification-gates.js` 四条纯谓词已各自接到真实调用点（`p1Intent`→三个记卡 handler、`debateSubjectGate`→辩论开会、`singleWriter`→促升、`fidelityAsked`→裁决前），`vibe_v5_verified_promote` 是唯一促升入口。**仍缺**：提示词里没有任何一段告诉成员"verified 轨存在、p=1 只能来自辩论"（F5 一并重写）；且没有真机验证过 | `tests/vmu-verified-track.test.mjs` **72/0**、`tests/vmu-verified-gates.test.mjs` **95/0**、`tests/vmu-v5r-tools.test.mjs` **339/0** | ⚠️ 部分 |
+| B1 | **公共 Verified 文件夹**：只有布尔概率＝1 的命题（或参考文献中的命题）可加入；**只有辩论能把概率改成 1**，否则只能∈(0,1) | ✅ **已实现（本轮收口，2026-10-24；此前是 ❌ → ⚠️）**：**承载**——公共轨 `packs/v5r/verified.js`（`VERIFIED_TRACK/KIND`、单写入器 `promoteVerified`、读面 `parseVerified`），轨与 kind 由 pack 在 `packs/v5r/settings/defaults.json` 声明；**进 Verified/ 的门**——`verification-gates.js` 的 `p1Intent` 只挂在**同一条**写卡路径上（`vibe-math-vmu/packs/v5r/tools.js:1116`，三个记卡 handler 共用），p=1 必须带三种具名证据之一，否则名拒 `VMU_PACK_V5R_P1_NEEDS_DEBATE` / `_WARRANT_INVALID`；**唯一写入者**——`vibe_v5_verified_promote`，越权写入名拒 `VMU_PACK_V5R_VERIFIED_SINGLE_WRITER`；**辩论是把 p 推到 1 的唯一合法途径**——`debateSubjectGate`（`tools.js:1299`）＋ `aggregateVerdicts`（`kernel/meetingverdict.js`，6 位算术平均）→ 定论行 → `p1Intent` 认可证据形态；**提示词已跟上**（F5 那批的副产品）——`packs/v5r/prompts/v5r-blocks-a.js:369-400` 现在逐条教 Verified/ 的门、p=1 的三种证据、名拒码与唯一写入者（此前提示词只在"什么可信"处提 Verified/）。证据：`tests/vmu-verified-track.test.mjs` **72/0**、`tests/vmu-verified-gates.test.mjs` **99/0**、`tests/vmu-debate-subject-proof.test.mjs` **39/0**。★ 诚实边界：规则括注的「或参考文献中的命题」是**允许项**，没有对应的机器闸（也没有该被拒的对象）；`0<p<1` 的卡无法绕过 p1Intent 变成 1，这一点由上述三套断言覆盖。 | 见左（三套件共 210 条断言） | ✅ 已实现 |
 | B2 | **公共蓝图**：实现总目标的完整技术路线设计/策划；按时更新；院士+常驻研究员共同设计；**最终编辑权归院士** | ✅ **机制＋消费者**（本轮补齐，此前 ❌）：`vibe-math-vmu/packs/v5r/blueprint.js`（335 行）—— 轨声明 `BLUEPRINT_TRACK='blueprint'`（:38）并在**装配期**登记（`packs/v5r/settings/defaults.json` 的 `vmu.records.tracks`/`allowedKinds`；`kernel/records.js:189-221` 的轨集合是构造期快照，运行时临时 put 会静默落默认轨）；提案 `proposeBlueprint`（:200，任何在册成员）／落成 `adoptBlueprint`（:244，**仅 chair 席**，`BLUEPRINT_ADOPT_SLOT` :45）／读面 `listBlueprints`（:117）·`blueprintState`（:141）·`readBlueprint`（:187）；工具面 `vibe_v5_blueprint{action:state\|propose\|adopt\|read}`（`packs/v5r/tools.js:1417`，注册 :2196），路径缺省取 `vmu.turn.protocolPath` 并在回执写 `pathSource`。三处语义纪律：**"在生效"是派生的**（取 current 行最高 revision，不另存一份事实）／**草案只增不改**（重复落成只查 current 行的 `proposalId`）／**stale 是提示不是拒绝**（`ageMs`/`staleAfterMs`/`staleNote` 全可读，阈值 30 天 :47）。读面不新造：`vibe_v5_read_library{track:'blueprint'}` 靠 `declaredTracks(kernel)` 天然可读（`kit/handlers.js:365-413`）。**仍缺**：提示词没有一段教"蓝图怎么用"（工具 description 自述 ⇒ 属可发现性，不是机制缺口） | `tests/vmu-blueprint.test.mjs` **54/0** | ✅ 已实现 |
 | B3 | 各自 progress | ✅ **机制＋消费者**（`lane-rows-b.md` B3）：`vibe_v5_record_progress`（`packs/v5r/tools.js:1415` → `kit/handlers.js:96-135`）、轨 `defaults.json:19`、turn 自动写（`kernel/turn/index.js:50-60`）、读者＝`read_library` 四轨含 progress（`kit/handlers.js:264`） | `tests/vmu-v5r-tools.test.mjs:122-131` | ✅ 已实现 |
 | B4 | 已尝试路线/方法及进度 | ✅ **已实现（2026-10-24 复测：写读闭环）**：`methods` 全链 ✅（`kit/tools.js:22` ＋ read_library）；★ **旧判断 B4 已过期**——当时说 `routes` 写得进去读不出来（`kit/handlers.js:264` 硬编码四轨），但那一行现在不存在：reader 改为从声明派生 `declaredTracks(kernel)`（`kit/handlers.js:52-55` 读 `vmu.records.tracks`），而 v5r 的 `packs/v5r/settings/defaults.json` 把 `vmu.records.tracks` 声明成 13 轨（progress, routes, obstacles, rejected, state, propositions, methods, problems, feedback, paper, verified, scripts, blueprint）⇒ 写读闭环成立。★ 本轮把它做成端到端断言（不是读代码）：`tests/vmu-v5r-tools.test.mjs` 先用 `vibe_v5_record_progress{track:"routes"}` 写、再用 `vibe_v5_read_library{track:"routes"}` 读回，并断言 `declaredTracks` 含 routes/obstacles/rejected 且长度 ≥5（该套件 **344/0**）。 | methods 有断言；routes 无读面无门禁 | ⚠️ 部分 |
 | B5 | 遇障路线/方法/障碍及原因归档 | ✅ **已实现（与 B4 同一处修复）**：`obstacles`／`rejected` 曾经写有读无（`read_library` 的四轨不含它们）；现随 B4 闭环——reader 从 `vmu.records.tracks` 派生 13 轨，端到端断言见 B4（写 rejected 卡 → 按 track 读回），`tests/vmu-v5r-tools.test.mjs` **344/0**。 | 无 | ⚠️ 部分 |
-| B6 | 命题库：完整定义＋布尔概率∈[0,1]＋进度；证明过程平时只写「证明/证伪**尝试**」字段；真会证了才写正式证明/证伪；**只有含正式证明（写完）的命题卡才能用于辩论**；概率＝1 要标记 verified | track `propositions` + `vibe_v5_record_proposition`（必填 statement/value/motive/p）；"正式证明"字段是**成员文件** `Members/<id>/Propos/<pid>.md` 的 `## 证明尝试/## 证伪尝试`；★「只有正式证明写完才能进辩论」的**机器闸**未找到 | 无 | ⚠️ 部分 |
+| B6 | 命题库：完整定义＋布尔概率∈[0,1]＋进度；证明过程平时只写「证明/证伪**尝试**」字段；真会证了才写正式证明/证伪；**只有含正式证明（写完）的命题卡才能用于辩论**；概率＝1 要标记 verified | ✅ **已实现（本轮收口，2026-10-24）**：承载在 `track=propositions`＋`vibe_v5_record_proposition`（必填 `statement/value/motive/p`，`p∈[0,1]` 越界名拒），「正式证明」是成员文件 `Members/<id>/Propos/<pid>.md` 的 `## 证明尝试/## 证伪尝试`（平时只写尝试，写完了才标 `proofState=complete`）——★「只有正式证明写完的卡才能进辩论」现在有**机器闸且端到端断言过**：闸是 `vibe-math-vmu/packs/v5r/verification-gates.js` 的 `debateSubjectGate`（两种缺失两个码 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF` / `_UNPROVEN`），真调用点是 `vibe-math-vmu/packs/v5r/tools.js:1299`（`vibe_v5_meeting` 在**会议存在之前**判定，证据取自 `records` 面的卡投影/verified 行/Lean 结论），端到端证据 `tests/vmu-debate-subject-proof.test.mjs` **39/0**（含面级反例：没写完的卡/半成品/一句话命题各按名拒；TEETH 有证据则放行）；`p=1 ⇒ verified` 的单写入器与门是 `promoteVerified`＋`p1Intent`（`VMU_PACK_V5R_P1_NEEDS_DEBATE`）。★ 判据口径（与 D7 同法）：门在**制度面**（被教的 `vibe_v5_meeting`）；内核原始面 `vibe_vmu_meeting` 不带制度判断——它只认 `typeCatalog`（默认空 ⇒ `type` 是标签），这是「能力在内核、政策在包」的必然结果，**不是隐去的漏洞**：绕开制度面直接开一场没有对象的辩论，其裁决也不会被 `promoteVerified` 接受（p=1 的证据形态不在原始面上）。 | 见左（`verification-gates.js`＋`tests/vmu-debate-subject-proof.test.mjs` 39/0） | ✅ 已实现 |
 | B7 | 方法库（一般化/推广/抽象出工具、理论框架） | ✅ **机制＋消费者**（`lane-rows-b.md` B7）：`vibe_v5_record_method`（`packs/v5r/tools.js:1427`）＋ `methods` 轨 ＋ `read_library` 可读 ＋ 轨校验 | `tests/vmu-v5r-tools.test.mjs` 记卡正向组 | ✅ 已实现 |
 | B8 | Lean 代码＋编译结果归档；**lean 通过 ⇒ 辩论只查描述/定义符合性 ⇒ 符合即概率＝1 且可入 verified**；参数可开「鼓励形式化」开关 | ✅ **机制＋消费者**（本轮补齐，此前 ❌「联动」）：`vibe_v5_fidelity_conclude`（`packs/v5r/tools.js:926` 起）——`fidelity:'conform'` ⇒ 走**同一条** `gatedCardHandler` 写 p=1（证据＝这次 Lean 作业 ＋ `lean_conformance:'conform'`），再 `singleWriter` 复核 ＋ `promoteVerified({warrant:{id:lean_job,kind:'lean-conformance',subject:cardId}})`（唯一促升入口）；`fidelity:'defect'` ⇒ `kernel.fidelity.declareDefect`（原因必填）；缺作业／面不认识／作业未通过 ⇒ `VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED`（消息区分"面不认识该作业"与"作业没通过（点名 state）"）。★ 施工时按**真实服务面方法名/返回形状**核对，抓出三条"真机上永不命中"的静默机制并已修：`passedWithdrawnFor(id) === true` 与返回的标记对象形状不符（`kernel/fidelity.js:150-158`）、`leanPassedOf` 探 `lean.job` 而面方法名是 `status`（`kernel/lean.js:977`）⇒ **Lean 证据链此前整条是死的**。这也是 `kernel/fidelity`/`kernel/lean` 第一次有 pack 消费者。**仍缺**：「参数可开鼓励形式化开关」的门禁联动（`vmu.math.requireFormal`/`encourageFormal` 当前零消费者，另记） | `tests/vmu-fidelity-conclude.test.mjs` **69/0**；`tests/vmu-debate-subject-proof.test.mjs` **39/0** | ✅ 已实现 |
 | B9 | 分派后各自负责部分的论文 | ✅ **机制＋消费者**（`lane-rows-b.md` B9）：政策壳 `packs/v5r/paper.js` ＋ 真流程 `kit/paper.js`（start `:346`、recordPart `:372`、环形互审 `:416-424`、deliverable 是**真布尔**判断 `:399-412`、全员 true 才 awaiting-editor、`recordFinal` 仅主席 `:461`、九节由 parts 按 id＋指纹重组 `:526`）；工具面 `packs/v5r/tools.js:1667` 含 `consult`／`consult_state` | `tests/vmu-v5r-tools.test.mjs` 论文正反组 ＋ `tests/vmu-paper-office-consult.test.mjs` 65/0 | ✅ 已实现 |
@@ -98,7 +98,7 @@
 | D 会议 | 15 | 11 | 4 | 0 | 0 |
 | E 论文 | 4 | 1 | 3 | 0 | 0 |
 | F 额外要求 | 5 | 2 | 3 | 0 | 0 |
-| **合计** | **42** | **37** | **5** | **0** | **0** |
+| **合计** | **42** | **39** | **3** | **0** | **0** |
 > **计数怎么来的**：§7 的数字由行状态单元格派生——逐行取第一个以 ✅/⚠️/❌ 开头的单元格（`| **合计**` 行自身除外），不手抄。2026-10-24 复测：42 行 = **30 已实现 / 12 部分 / 0 缺口 / 0 待核**；12 条部分＝A1 A4 B1 B6 B10 B11 C2 C3 D10 E1 E3 F1。
 
 
@@ -1134,3 +1134,37 @@ A4 的残留缺口是「默认不参会」只有散文（原文写「由 `vmu.me
 
 - 合计：**42 = 37 已实现 / 5 部分 / 0 缺口 / 0 待核**（剩余 5 行：A1、B1、B6、E1、E3）。
 - 门禁：`regen-all --check` 16/16；`check-docs` PASS；`vmu-v5r-tools` 347/0；`audit-conformance-totals` 13/0；`vmu-tasks-attribution` 20/0；`vmu-kernel` 260/0。
+
+## §28 B6 / B1 收口：两个「闸未找到」的旧判据被测量推翻（2026-10-24）
+
+**范围**：§6 表 B6（命题库 / 只有正式证明写完的卡能进辩论）与 B1（公共 Verified 文件夹 / 只有辩论能把 p 改成 1）。两行的 ⚠️ 都是同一句残留——「机器闸未找到」。本轮**先测量再判定**，结论是闸存在且已有端到端断言，两行改判 ✅。
+
+### §28.1 B6：闸在，而且在「会议存在之前」
+
+旧判据写「★『只有正式证明写完才能进辩论』的**机器闸**未找到」。实测：
+
+- 闸：`vibe-math-vmu/packs/v5r/verification-gates.js` 的 `debateSubjectGate`，两种缺失给两个码（`VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`／`_UNPROVEN`）；
+- 真调用点：`vibe-math-vmu/packs/v5r/tools.js:1299`——在 `meetings.open()` **之前**判定，证据取自 `records` 面的卡投影 / verified 行 / Lean 结论，判定结果（`proofVia`/`provenance`）原样写进回执；
+- 端到端断言：`tests/vmu-debate-subject-proof.test.mjs` **39 passed / 0 failed**，含面级反例（没写完的卡、半成品、一句话命题各按名拒）与 TEETH（有证据则放行）。
+
+判据口径与 D7 同法：**门在制度面**（被教的 `vibe_v5_meeting`）；内核原始面 `vibe_vmu_meeting` 只认 `typeCatalog`（默认空 ⇒ `type` 是标签），不带制度判断。这是「**能力在内核、政策在包**」的必然结果，所以写进证据列而不是隐去；并且它不构成绕过：原始面开出的辩论即便裁决为真，也无法满足 `promoteVerified` 要的证据形态（p=1 的三种证据是 pack 的闸在判）。
+
+### §28.2 B1：承载、门、唯一写入者、提示词，四件都已到位
+
+四件逐条落实（全部可指到行，且各有断言）：
+
+1. **承载**：`packs/v5r/verified.js`（`VERIFIED_TRACK/KIND`、`promoteVerified`、`parseVerified`），轨与 kind 由 pack 在 `settings/defaults.json` 声明——不是内核写死的。
+2. **门**：`p1Intent` 挂在**同一条**写卡路径（`packs/v5r/tools.js:1116`，三个记卡 handler 共用），p=1 必须带三种具名证据之一，否则名拒 `VMU_PACK_V5R_P1_NEEDS_DEBATE` / `_WARRANT_INVALID`。旧行的「否则只能∈(0,1)」因此是机器事实：没有证据就写不进 1。
+3. **唯一写入者**：`vibe_v5_verified_promote`，越权写入名拒 `VMU_PACK_V5R_VERIFIED_SINGLE_WRITER`。
+4. **提示词**：`packs/v5r/prompts/v5r-blocks-a.js:369-400` 现在逐条教 Verified/ 的门、p=1 的三种证据、名拒码与唯一写入者——旧行说的「提示词未跟上」是 F5 那批的副产品，已随 F5 一并消除。
+
+证据：`tests/vmu-verified-track.test.mjs` 72/0、`tests/vmu-verified-gates.test.mjs` 99/0、`tests/vmu-debate-subject-proof.test.mjs` 39/0（合计 210 条）。
+
+### §28.3 教训（这是本阶段的复用判据）
+
+**「闸未找到」不是「闸不存在」**——旧判据是在一次 grep 之后写下的，而闸的两个关键事实（真调用点、端到端反例）都只能靠**跑套件 + 读调用点**得到。以后凡是要写「未找到」，先写出**找过什么、用什么命令找的、找到的最近邻是什么**；否则这行会一直把已实现的能力记成缺口，反过来又诱导后来的人再造一套闸（正是「一个对象两个注册处」的成因）。
+
+### §28.4 当前状态
+
+- 合计：**42 = 39 已实现 / 3 部分 / 0 缺口 / 0 待核**（剩余 A1、E1、E3）。
+- 门禁：`regen-all --check` 16/16；`check-docs` PASS；`audit-conformance-totals` 13/0。
