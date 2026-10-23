@@ -842,3 +842,69 @@ B8（忠实性收口链路）施工时，按**真实面方法名**核对证据�
 - 本节证明的是**判据与读数**：等待态可达且由声明键决定、院士在内、下限可读、两种拒绝可分。它**不能**证明下一次活跑里模型会按骨架讨论 —— 那要等 R8/R9/R11/R12 也修完并重跑。
 - R4（到点推进是触碰驱动、无定时器）**未改**：那是既有设计（理由写在 `syncMeeting` 上方：没有后台定时器就不会有"进程被杀后会议永远卡在等待"），要改的是叙述而不是机制。
 - R8/R9/R11/R12 仍在 §20.4 待办。
+
+---
+
+## §23 第三批：R9／R11／R12 —— “能读成两种意思的读数”（2026-10-24）
+
+本轮处理的是 §20.4 表里剩下的三条**读数型**缺陷。它们的共同形态不是“机制没实现”，而是**回执可以读成两种意思**，
+而两种意思里必有一种是错的。共同修法：**不改旧字段的含义（旧消费者不破），把没说的那半句补上**。
+
+### 23.1 R9 —— `speak` 的 `ms:0` 与 `budget:null`
+
+真机读数：`{ms:0, turns:1, tokens:0, budget:null}`。在 `vmu.meetings.speechDefaultMs=0`、`speechMaxMs=0` 时，
+`ms:0` 是**无界哨兵**（不是“零时间”），`budget:null` 是**没有越过任何预算**（不是“还很富余”）。两个 0 一个 null
+放一起，读者只能猜。
+
+修法（`vibe-math-vmu/kernel/meetings.js` `speak()`，**只增不改**）：回执与返回值都多两个**自述**字段——
+
+- `speechBound: { declaredMs, maxMs, unlimited, why }`：`unlimited:true` 时 `why` 明说
+  「`ms:0` 表示 UNBOUNDED，不是零时间」；
+- `budgetDeclared: false` ＋ `budgetWhy`：明说 `budget:null` 是“没有裁定”，不是“预算没用完”。
+
+★ 旧字段 `ms`／`budget` 的取值与含义**一字未动**（测试里有一条专门钉这个），所以任何既有消费者不受影响。
+
+### 23.2 R11 —— 回执 `executed:0` 与 `closureVote.cast:true` 并排
+
+真机读数：一回合里成员只做了结题票，回执 `{executed:0, fields:["vote_solved"], turn:null}`，而同一条回执的
+`closureVote.cast` 已经是 `true`。两句话**都真**，但说的是两件事：`executed` 数的是 **FIELD_OWNERS 动作**，
+结题票走的是 closure 窗口。没有第三句话说清这一点，于是“什么都没发生”和“研究所刚刚关闭”并排出现。
+
+修法（`vibe-math-vmu/kernel/turn/index.js`）：新增 **`effects`** —— 机制级后果的清单（今天只有
+`{kind:'closure-vote', member, solved, source}`，两个输入通道都记），随回执一起带出；`executed` 的语义与计数
+**完全不动**。共三处回执构造点补齐（`apply` 的返回、`step` 的两条 receipt 构造）。
+
+### 23.3 R12 —— `detail:'quorum'` 回答 154 KB
+
+真机读数：`vibe_vmu_status {detail:"quorum"}` ⇒ `originalBytes:223591`（`receiptMeta.note`：“NOTHING was elided by us”）。
+根因**不是** receiptbounds 的阈值，而是这条参数的**词表里有四个不存在的值**：工具描述写着
+`phase｜quorum｜formal｜paper（按段取）`，而 `kernel.status({detail})` 对这四个值**没有任何分支**，
+一律落到完整视图（实测：四个值各 **154,534 字节**，与 `full` 逐字节相同）。
+于是“我要的只是法定人数那一行”，代价是 154 KB 和**没有任何错误**——这是本项目反复判为缺陷的
+「声明了却没有实现」，而静默是它最坏的形式。
+
+修法（`vibe-math-vmu/host.js` 状态面）：`detail` 收敛为**真实存在的四个值**
+`summary | full | settings | closure`；其余值**具名拒**（`VMU_INVALID_ARGUMENT` ＋ `hint` 逐条列合法值，
+并明说按段视图尚未实现、`closure` 是「只回结题读数」）。★ 拒法用**返回回执**而不是 `throw`：
+面级包装会把抛出的错误改写成 `VMU_MIDDLEWARE_FAILED` 并**丢掉 code/hint**（实测），那样等于把刚修掉的缺陷换个名字留下。
+
+### 23.4 门禁
+
+新增 `tests/vmu-live-run-r9-r12.test.mjs` —— **33 条**，三条缺陷各一组，每组都写成对：
+
+| 组 | 正证 | 反证／边界 |
+|---|---|---|
+| R9 | `speechBound.unlimited===true` 且 `why` 含 "UNBOUNDED"；`budgetDeclared===false` 且 `budgetWhy` >40 字；`receipt` 里同样两份读数 | 旧 `ms===0`、`budget===null` **取值不变** |
+| R11 | `effects` 长度 1、`kind==='closure-vote'`、带 member/solved；同时 `executed===0` | 票**真的落账**（`status().closureVoteRecorded.m1===true`）——回执不报没发生的事 |
+| R12 | 四个不存在的 detail 各被具名拒，且回执 <600 字节、带合法词表 | `closure` 仍可用且 <4000 字节；`summary`（默认）不受影响 |
+
+同轮回归：`vmu-turn` 191/0、`vmu-host` 196/0、`vmu-meetings` 201/0、`vmu-meeting-types` 130/0、
+`vmu-turn-dispatch-k2` 10/0、`vmu-turn-contracts` 12/0；`regen-all` 16/16 in sync；`check-docs` DOC LINT PASS。
+
+### 23.5 诚实边界
+
+- 这三条都**只改了读数，没有改行为**：`speak` 的截断、结题票的计数、状态面的裁剪策略都没动。
+- R12 的“按段视图”**仍未实现**——本轮做的是**让它说真话**（拒绝并给词表），不是补出 `phase/quorum/formal/paper`
+  四个切片。补它们需要在 pack 层声明每段由谁贡献，属下一步。
+- R9 的 `speechBound` 说明**声明的**边界，不证明“发言真的被计时限制过”——本仓库的发言时长是软约束，
+  真机也没观察到它被强制。

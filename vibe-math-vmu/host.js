@@ -473,11 +473,31 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       // ★★ ROUND 34 (measured): the resolved settings map made this receipt larger than the host's limit on a real
       // machine, so the host truncated it and the sections a reader most needed were the ones cut. The default is a
       // bounded summary; the complete map is one word away. Nothing is lost - only requested.
-      detail: param('string', 'summary（默认，紧凑可读，<4000 字符）｜full／settings（完整逐键表）｜closure（只回结题读数）｜phase｜quorum｜formal｜paper（按段取）'),
+      detail: param('string', 'summary（默认，紧凑可读，<4000 字符）｜full／settings（完整逐键表）｜closure（只回结题读数）'),
     },
     run: async (req = {}) => {
       try {
         const detail = req && typeof req.detail === 'string' ? req.detail : 'summary'
+        // ★★ R12 OF THE PHASE-12 LIVE RUN. The parameter used to advertise four more slices — `phase`, `quorum`,
+        // `formal`, `paper`（按段取）— and the kernel's `status({detail})` never implemented any of them: all four fell
+        // through to the COMPLETE view (measured: 154,534 bytes each, byte-identical to `full`). So a caller asking
+        // for "just the quorum reading" got 154 KB and no error, and the live run paid `originalBytes:223591` for one
+        // question. A slice that does not exist must be REFUSED BY NAME, not silently answered with everything —
+        // "declared but not implemented" is the defect family this phase is about, and silence is its worst form.
+        // ★ This is not a capability removal: `closure` covers the reading the run actually wanted, and `summary` /
+        // `full` / `settings` were always the real vocabulary. The pack-contributed per-segment view is a FUTURE
+        // feature (the kernel doc-comment already describes it as pack-contributed); until it exists, asking for it is
+        // an error with the legal list, not a 154 KB surprise.
+        const DETAILS = ['summary', 'full', 'settings', 'closure']
+        if (DETAILS.indexOf(detail) === -1) {
+          // ★ A REFUSAL RECEIPT, not a throw: the face-level wrapper around `run` turns a thrown error into
+          // VMU_MIDDLEWARE_FAILED and drops its code/hint (measured), which would have re-created the very defect this
+          // branch removes - a caller unable to tell a spelling mistake from a broken face.
+          return { ok: false, code: 'VMU_INVALID_ARGUMENT',
+            message: 'detail:' + JSON.stringify(detail) + ' is not a detail this face provides',
+            hint: 'legal: ' + DETAILS.join(' | ') + '. The per-segment view (phase/quorum/formal/paper) is not implemented; detail:"closure" returns the closing reading, detail:"summary" the compact view.' }
+          throw err
+        }
         // ★ PHASE 7 / round 17: a diagnostic face the model cannot READ is a mechanism nobody can use. These two compact
         // faces are the measurable answer: default summary, and detail:'closure' = only the closing reading.
         if (detail === 'closure') {

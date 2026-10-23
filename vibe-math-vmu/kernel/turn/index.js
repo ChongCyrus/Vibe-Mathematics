@@ -1278,6 +1278,12 @@ export function createTurnOrchestrator({
   // while closure is a per-round judgement"). Keyed by member, the window becomes well defined.
   const closureVotes = new Map()   // ★ `vote_solved` per member: the CLOSURE vote (unanimity required)
   let closureVoteWrites = 0        // ★ one counter, incremented ONLY inside recordClosureVote (both input channels)
+  // ★★★ R11 OF THE PHASE-12 LIVE RUN: `executed` counts FIELD_OWNERS actions only, so a turn whose ONLY effect was the
+  // closure vote came back as `executed:0 + closureVote.cast:true` — a receipt that reads like "nothing happened" beside
+  // a window that says the institute just closed. The two statements were both true about DIFFERENT things, and nothing
+  // said so. `effects` is the missing list: mechanism-level consequences that are not reply-field actions (today: the
+  // closure vote, from either channel). It is additive — `executed` keeps its exact old meaning and count.
+  const turnEffects = []           // reset per apply(); entries {kind, member, ...}
   const visibleToolsByMember = new Map() // ★ last assembled visible set per member (this turn)
   const toolVotedThisTurn = new Set()    // ★ members who already voted THROUGH THE TOOL this turn
   const solvedThisRound = new Map() // ★ `solved` per member: the per-round convergence reading, NOT closure
@@ -1292,6 +1298,8 @@ export function createTurnOrchestrator({
     if (source === 'tool') toolVotedThisTurn.add(id)
     closureVotes.set(id, value)
     closureVoteWrites += 1
+    // R11: the effect is recorded HERE so BOTH channels (reply field and `vibe_vmu_vote`) land in one list.
+    turnEffects.push({ kind: 'closure-vote', member: id, solved: value, source })
     return { ok: true, member: id, solved: value }
   }
 
@@ -1299,6 +1307,7 @@ export function createTurnOrchestrator({
     const map = faceMap || faces
     const r = reply && typeof reply === 'object' ? reply : {}
     const bookkeeping = []
+    turnEffects.length = 0   // R11: effects are per-apply, never accumulated across turns
     if (r.contextPct !== undefined && r.contextPct !== null) {
       const pct = Math.max(0, Math.min(100, Math.floor(Number(r.contextPct))))
       if (Number.isFinite(pct)) { context.set('pct', pct); bookkeeping.push({ field: 'contextPct', pct }) }
@@ -1389,7 +1398,7 @@ export function createTurnOrchestrator({
     // Each one is now kept on the turn state under its own name and reported in the receipt, so the framework can read
     // it and a consumer can see that it arrived. No face is invented for them: the members service is not even present
     // in a default kernel, and sending a payload to an operation that does not exist would be worse than keeping it.
-    return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping }
+    return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping, effects: turnEffects.slice() }
   }
 
   /**
@@ -1742,7 +1751,7 @@ export function createTurnOrchestrator({
     if (waiting) {
       try {
         const done = await completeStructuredReport()
-        completed = { member: done.member, fields: done.fields, executed: (done.executed || []).length, skipped: (done.skipped || []).length,
+        completed = { member: done.member, fields: done.fields, executed: (done.executed || []).length, skipped: (done.skipped || []).length, effects: (done.effects || []).slice(),
           turn: done.turn ? done.turn.id : null, source: 'tool' }
       } catch (e) {
         const code = (e && e.code) || null
@@ -1763,7 +1772,7 @@ export function createTurnOrchestrator({
         const r = await run({ ...spec, round: i })
         // ★ ROUND 73: a caller-played turn ENDS the batch - the prompt goes back and the round resumes on the next call.
         if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member }
-        receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, turn: r.turn.id, source: r.source || null })
+        receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), turn: r.turn.id, source: r.source || null })
         consecutive.set(spec.member, 0)
       } catch (e) {
         counts.refused += 0
@@ -1821,7 +1830,7 @@ export function createTurnOrchestrator({
         const r = await completeStructuredReport()
         return { ok: true, source: 'tool', completed: true,
           receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, fields: r.fields,
-            executed: (r.executed || []).length, skipped: (r.skipped || []).length, instructionDelivered: false,
+            executed: (r.executed || []).length, skipped: (r.skipped || []).length, effects: (r.effects || []).slice(), instructionDelivered: false,
             turn: r.turn ? r.turn.id : null, source: 'tool', completed: true } }
       } catch (e) { return stepFailure(e) }
     }
@@ -1857,7 +1866,7 @@ export function createTurnOrchestrator({
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated }
-      return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length,
+      return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(),
         // ★ LANE turn-reply: the receipt must say WHICH CHANNEL answered ('text' | 'tool' | 'tool+text'), or a reader
         // cannot tell a legacy fenced-json round from a tool-reported one - and a mechanism whose channel is invisible in
         // its own receipt is exactly the "set a value, cannot read it back" defect this lane exists to remove.

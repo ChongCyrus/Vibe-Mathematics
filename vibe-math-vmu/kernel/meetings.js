@@ -786,10 +786,25 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       m.minutes.entries.push(entry)
       // B④: `floor` DISCLOSES the floor in force — the `open` floor has NO queue, so nobody can be "not their turn".
       const floor = orderControls.floorOf(m)
-      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, tokens: m.tokens, budget: soft, floor, enforced, enforcedScope: ENFORCED_SCOPE }
+      // ★ R9 OF THE PHASE-12 LIVE RUN: `ms:0` and `budget:null` read as "no time" and "nothing to report", but with
+      // `vmu.meetings.speechDefaultMs=0` they mean "NO BOUND IS DECLARED" — 0 is the unbounded sentinel on this key
+      // (unlike `budgetWallMs`, whose 0 means "no bound at all"). A reading that can be read two ways is the defect,
+      // so the receipt now says which one it is instead of leaving the model to infer it from a zero.
+      const speechBound = Object.freeze({
+        declaredMs: K.speechDefaultMs,
+        maxMs: K.speechMaxMs,
+        unlimited: K.speechDefaultMs === 0 && K.speechMaxMs === 0,
+        why: (K.speechDefaultMs === 0 && K.speechMaxMs === 0)
+          ? 'no speech-time bound is declared (vmu.meetings.speechDefaultMs=0 and vmu.meetings.speechMaxMs=0): ms:0 means UNBOUNDED, not "zero time"'
+          : null,
+      })
+      const budgetDeclared = soft !== null
+      const budgetWhy = budgetDeclared ? null
+        : 'no meeting budget was crossed and none is declared (vmu.meetings.budgetTurns/budgetTokens/budgetWallMs are 0, or their thresholds were not reached) — budget:null means "no verdict", not "plenty left"'
+      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       say({ type: 'meetings/spoke', at: now, meeting: m.id, member: String(member), floor, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, ms: wanted, turns: m.turns, tokens: m.tokens, budget: soft, floor, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, ms: wanted, turns: m.turns, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Interrupt. `interruptAllow` + `interruptQuota` govern the floor. */
