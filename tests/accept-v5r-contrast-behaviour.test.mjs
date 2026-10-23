@@ -56,9 +56,19 @@ const opened = (settings) => { const t = face(settings); const o = t.open({ type
   const a = opened({ 'vmu.meetings.quorumMin': 3, 'vmu.meetings.quorumCap': 2 })
   const uncapped = opened({ 'vmu.meetings.quorumMin': 3, 'vmu.meetings.quorumCap': 0 })
   ok(V5R_VALUES.quorumCap === 3, 'v5r declares quorumCap=3 (read from its DEFAULT_PARAMS, not from prose)', String(V5R_VALUES.quorumCap))
-  ok(a.t.quorum({ meeting: a.id }).required === 1 && uncapped.t.quorum({ meeting: uncapped.id }).required === 3,
-    '等价: vmu caps the required quorum at min(cap, participants) exactly as v5r words it (capped=1, uncapped=3)',
+  ok(a.t.quorum({ meeting: a.id }).required === 2 && uncapped.t.quorum({ meeting: uncapped.id }).required === 3,
+    '等价: the required quorum is min(quorumMin, quorumCap, |roster ∩ eligible seats|) — capped=2, uncapped=3 (v5r: min(cap, |voters|))',
     JSON.stringify({ capped: a.t.quorum({ meeting: a.id }).required, uncapped: uncapped.t.quorum({ meeting: uncapped.id }).required }))
+  // ★ This assertion used to demand `capped === 1`, and it was GREEN for the wrong reason: the old formula
+  // had a third term `present.size`, which is 1 right after `open()` (only the chair attended), so the cap
+  // appeared to bind and the required count was really "how many happen to be in the room". v5r words the
+  // floor as min(cap, |voters|) — the cap is a CEILING on the institution's requirement, never a function of
+  // attendance. Pinned in both directions below.
+  const before = a.t.quorum({ meeting: a.id }).required
+  for (const m of roster) a.t.attend({ meeting: a.id, member: m })
+  ok(a.t.quorum({ meeting: a.id }).required === before,
+    'the required quorum does not move when members attend (attendance is not part of the floor)',
+    JSON.stringify({ before, after: a.t.quorum({ meeting: a.id }).required }))
 }
 
 // 2. verdictMaxRounds - v5r: Math.max(1, floor(params.verdictMaxRounds || 3)), refusal at curRound >= maxRounds

@@ -31,7 +31,6 @@ const ballotMod = await import(pathToFileURL(K('ballot.js')).href)
 const boxMod = await import(pathToFileURL(K('ballotbox.js')).href)
 const meetingsMod = await import(pathToFileURL(K('meetings.js')).href)
 const minutesMod = await import(pathToFileURL(K('minutes.js')).href)
-const grantMod = await import(pathToFileURL(K('grant.js')).href)
 const fidelityMod = await import(pathToFileURL(K('fidelity.js')).href)
 
 let NOW = Date.parse('2026-10-09T00:00:00.000Z')
@@ -199,16 +198,20 @@ const roster = ['r-1', 'r-2']
   ok(Object.prototype.hasOwnProperty.call(snap.data, 'droppedVerbatimBytes'), 'the snapshot reports verbatim truncation as a number')
 }
 
-// ---- 9. grant: the v5r authority matrix, verbatim ------------------------------------------------
+// ---- 9. grant: DELETED in goal round 3 — it had no live constructor, so nothing assembled it -------
+// The v5r authority matrix this section used to copy (`GRANTABLE_COMMANDS` / `GRANT_SCOPES`) described a
+// surface no assembly could reach: `createGrant(` appeared only in tests. The v5r rule set requires no
+// grants (the chair's powers are seat checks in the meeting face), so the module and its four
+// `vmu.grant.*` keys were removed. This section asserts the deletion, not the API.
 {
-  ok(JSON.stringify(grantMod.GRANTABLE_COMMANDS) === JSON.stringify(['assign', 'prioritize', 'nudge', 'convene']),
-    'the grantable commands match the v5r matrix exactly')
-  ok(JSON.stringify(grantMod.GRANT_SCOPES) === JSON.stringify(['meeting', 'verify', 'once']),
-    'the grant scopes match the v5r event-typed scopes exactly')
-  const g = grantMod.createGrant({ clock, settings: { 'vmu.grant.enabled': true } })
-  const gs = g.status()
-  ok(gs.enabled === true && gs.commands.length === 4 && gs.defaultScope === 'once',
-    'the grant face is enabled, exposes exactly the four contract commands, and defaults to a once-scope')
+  let gone = false
+  try {
+    await import(pathToFileURL(K('grant.js')).href)
+  } catch (err) {
+    gone = err && err.code === 'ERR_MODULE_NOT_FOUND'
+  }
+  ok(gone === true,
+    'the unmounted grant surface stays deleted (no live constructor existed; ledger phase12 §10 row ①)')
 }
 
 // ---- 10. the tool faces expose the baseline actions ----------------------------------------------

@@ -1099,6 +1099,29 @@ let toolExecObserver = null
  * lists meant no listener existed at all. */
 export function setToolExecObserver(fn) { toolExecObserver = typeof fn === 'function' ? fn : null }
 
+/** ★ ROUND 52 (measured, then fixed): the ATTRIBUTION a thrown refusal may carry, copied ONLY when the thrower set
+ * it. `enforced` is the list of settings keys that produced the decision, `enforcedScope` says how far the evaluation
+ * got, and `settingValues` records the values actually read — docs/03 promises a refusal can answer "which keys refused
+ * this call", and until this helper the host's error branch deleted all three.
+ *
+ * WHY "ONLY WHEN SET" AND NOT ALWAYS: a refusal that never consulted a setting must NOT print `enforced: []` — that
+ * reads as "I checked and enforced nothing", which is a different and untrue statement. Absent means absent.
+ * A non-array `enforced` is dropped rather than passed through: attribution is an enumerable list of key names.
+ *
+ * WHY IT LIVES HERE AND NOT IN EACH PACK: throwing a naming refusal and RETURNING `{ok:false,...}` used to be
+ * non-equivalent through the host, so pack authors were pushed into the returned-receipt shape just to keep the facts.
+ * With this helper both shapes carry the same fields and the choice is style. */
+function refusalAttribution(e) {
+  const out = {}
+  if (!e || typeof e !== 'object') return out
+  if (Array.isArray(e.enforced)) out.enforced = e.enforced.map(String).filter((k) => k !== '')
+  if (typeof e.enforcedScope === 'string' && e.enforcedScope !== '') out.enforcedScope = e.enforcedScope
+  if (e.settingValues && typeof e.settingValues === 'object' && !Array.isArray(e.settingValues)) {
+    out.settingValues = Object.assign({}, e.settingValues)
+  }
+  return out
+}
+
 /** Turn an internal spec into the HOST's shape (the one the real host accepted for v5r). */
 export function toHostSpec(spec) {
   return {
@@ -1120,12 +1143,12 @@ export function toHostSpec(spec) {
         // the refusal was well-formed in CONTENT and malformed in SHAPE.
         // It now goes through the SAME serializer as every other result, so a refusal is a receipt of the same species
         // as a success. The content is unchanged: the same code, message and hint reach the caller.
-        return boundedToolResult({
+        return boundedToolResult(Object.assign({
           ok: false,
           code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED',
           message: String((e && e.message) || e),
           hint: (e && e.hint) || null,
-        })
+        }, refusalAttribution(e)))
       }
     },
   }

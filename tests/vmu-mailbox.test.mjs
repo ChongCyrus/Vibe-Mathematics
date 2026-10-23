@@ -94,10 +94,35 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   ok(!JSON.stringify(env).includes(SECRET), '★ 反（唯一真证据）：非紧急投递物【任何字段/JSON 文本】都不含正文标记串', JSON.stringify(env))
   ok(out.notified === 1 && mb.pending('r-2').length === 1, 'non-urgent notice does not ack (body remains readable)')
   const row = mb.list('r-2').entries[0]
-  ok(row && Object.keys(row).sort().join(',') === ['at', 'bytes', 'from', 'id', 'kind', 'read', 'subject', 'todo'].join(',') &&
-    row.read === false && row.todo === false && !('text' in row), '★ 正：list 行字段恰为 8 个、不含正文、初始 read:false', row)
+  // ★ ROUND 52: the row is NINE fields now — `urgent` was missing from this read face (and from `openView`), which made
+  // an urgent message indistinguishable from ordinary mail unless the caller joined `pending()` (and got null for
+  // anything already acked). The write side always recorded it; the read side deleted it.
+  ok(row && Object.keys(row).sort().join(',') === ['at', 'bytes', 'from', 'id', 'kind', 'read', 'subject', 'todo', 'urgent'].join(',') &&
+    row.read === false && row.todo === false && row.urgent === false && !('text' in row),
+    '★ 正：list 行字段恰为 9 个（含 urgent）、不含正文、初始 read:false / urgent:false', row)
   const opened = mb.open('r-2', row.id)
   ok(opened.ok === true && opened.entry.text.includes(SECRET) && opened.read === true, '★ 正：open 返回正文并把 read 置 true', opened)
+  // ★ ROUND 52 正：urgent 逐字走到两个读面（写入侧记录的事实，读面不再删）。open 视图是 6 字段 + urgent。
+  ok(opened.entry.urgent === false && 'urgent' in opened.entry,
+    '★ 正：open 视图也带 urgent（与写入侧同义，不在这里造默认值）', opened.entry && opened.entry.urgent)
+  // ★ ROUND 53 正（Lead 口径）：字段必须是布尔，缺省 false，**不许** undefined / 缺失。写侧永远记布尔，所以这里
+  // 用一条 LEGACY 快照造出"没有这个字段的老条目"——读面读到的必须是 false，而不是 null 或 undefined。
+  const legacy = mk()
+  const hydrate = legacy.hydrate({ face: 'mailbox', counters: { seq: 1 },
+    data: { boxes: { 'r-9': [{ id: 'ml-1', seq: 1, from: 'r-1', to: 'r-9', at: NOW, kind: 'dm', subject: 'old mail',
+      text: 'from before the field existed', read: false, todo: false }] } } })
+  ok(hydrate.ok === true, '★ 前置：legacy 快照能 hydrate（否则下面的缺省断言测的是空气）', hydrate)
+  const legacyRow = legacy.list('r-9').entries[0]
+  const legacyOpen = legacy.open('r-9', 'ml-1')
+  ok(legacyRow && 'urgent' in legacyRow && legacyRow.urgent === false,
+    '★★ 正：老条目没有 urgent 字段 ⇒ list 行给 false（布尔缺省，不是 undefined/缺失）', legacyRow && JSON.stringify(legacyRow.urgent))
+  ok(legacyOpen.ok === true && legacyOpen.entry.urgent === false,
+    '★★ 正：open 视图对老条目同样给 false', legacyOpen.entry && legacyOpen.entry.urgent)
+  mb.send('r-1', { to: 'r-2', text: 'urgent one', kind: 'dm', urgent: true })
+  const urgentRow = mb.list('r-2').entries.filter((r) => r.subject === 'urgent one')[0]
+  ok(urgentRow && urgentRow.urgent === true, '★★★ 正：紧急私信在 list 行里 urgent:true（这正是规则「紧急私信」要的那一格）', urgentRow)
+  const urgentOpen = mb.open('r-2', urgentRow.id)
+  ok(urgentOpen.ok === true && urgentOpen.entry.urgent === true, '★★ 正：open 视图里 urgent 同样为 true', urgentOpen.entry && urgentOpen.entry.urgent)
   const row2 = mb.list('r-2').entries[0]
   ok(row2.read === true && !('text' in row2), '★ 正：list 再看 read:true 且仍不含正文')
   const state = mb.setState('r-2', { id: row.id, todo: true })

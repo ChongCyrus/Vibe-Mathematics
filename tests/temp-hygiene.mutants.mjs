@@ -5,12 +5,15 @@
 // removed in `finally`.
 import { spawnSync } from 'node:child_process'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
-const SRC = join(REPO, 'scripts', 'clean-temp.mjs')
+// `--source=<file>` exists so the shell's own SETUP-FAIL branches can be exercised with teeth (round 17):
+// a driver whose failure paths are never executed is the same false green its families are meant to prevent.
+const srcArg = process.argv.findIndex((a) => a.startsWith('--source='))
+const SRC = srcArg > -1 ? resolve(process.argv[srcArg].slice('--source='.length)) : join(REPO, 'scripts', 'clean-temp.mjs')
 
 const FAMILIES = [
   {
@@ -49,9 +52,33 @@ function runSelftest(scriptPath) {
   return { code: r.status, out: String(r.stdout || '') + String(r.stderr || '') }
 }
 
+// ── A1. ANCHOR PREFLIGHT ────────────────────────────────────────────────────────────────────────────────────
+// Every `from` must still occur EXACTLY ONCE in the source. Without this, an anchor that a refactor moved or
+// respelled looked like "the mutation did not redden the guard" — a family red for the wrong reason, which is
+// worse than a missing family because it accuses the code of surviving a test it was never given.
+{
+  const src = readFileSync(SRC, 'utf8').replace(/\r\n?/g, '\n')
+  const drift = FAMILIES.map((f) => ({ name: f.name, anchor: f.from, hits: src.split(f.from).length - 1 }))
+    .filter((x) => x.hits !== 1)
+  console.log('anchor preflight: ' + (FAMILIES.length - drift.length) + '/' + FAMILIES.length + ' anchors match exactly once')
+  if (drift.length) {
+    for (const d of drift) console.error('  ANCHOR-MISS(' + d.hits + ') ' + JSON.stringify(d.anchor) + '  ← ' + d.name)
+    console.error('SETUP-FAIL - the anchor set has drifted from scripts/clean-temp.mjs; update the anchors, do NOT delete the family')
+    process.exit(1)
+  }
+}
+
 const control = runSelftest(SRC)
 console.log('control (unmutated sweeper): exit=' + control.code + (control.code === 0 ? '  green, as required' : '  NOT GREEN'))
-if (control.code !== 0) console.log(control.out.split(/\r?\n/).filter((l) => /FAIL/.test(l)).slice(0, 3).join('\n'))
+if (control.code !== 0) {
+  // ★ The control run is this shell's own PRECONDITION, not a family result: if the guard's `--self-test` is not
+  // green, "a mutation failed to redden it" proves NOTHING about the family — a broken fixture looks exactly like
+  // a surviving mutant. Name that state SETUP-FAIL (the `tests/_lib/falsify.mjs` vocabulary), print the failing
+  // guard lines, and stop BEFORE the families so a full-sweep log cannot mislabel an environment failure as 4/4.
+  console.log(control.out.split(/\r?\n/).filter((l) => /FAIL/.test(l)).slice(0, 3).join('\n'))
+  console.error('SETUP-FAIL - control (unmutated sweeper) is NOT green: the guard cannot be falsified until its own --self-test passes')
+  process.exit(1)
+}
 
 let red = 0
 for (const f of FAMILIES) {

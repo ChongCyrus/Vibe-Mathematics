@@ -201,6 +201,15 @@ assemble(ctx = { settings, member, role, phase, task, ... })
 - **可观测**：`assemble()` 回执的 `locale`/`glossary` 反映的是**本次**读取的值；`overrideMerge.declared` 仍是构造期计数（供回执对照）。
 - **验收**：建**一个** pipeline，运行期 `setSettingsValue(...)` 后**不重建**、下一次 `assemble()` 即生效（轮 2 的定向断言与探针；不是"重建才生效"）。
 
+### 11.2 pack 自己的**更正段**（F5）：旧措辞与真实机制同时在场时，谁算数
+- **问题**：提示词里有些句子教的机制**不存在**（`vibe_v5_tool_help({"tool":…})` 的真实签名只有 `member`；`end_verify`/`formal_proof` 两名字全仓不存在；"每轮手写 ` ```json ` 围栏"只是兼容路径；"m 票"被读成计票规则，而 `m` 是法定票数、定论靠 `quorumRule` 的一致判定）。
+- **不能就地改**：这些句子要么是**保真基线**（charter 逐行被 T71 对原件 capture 校验，改一行即红），要么是**生成物**（`v5r-prompts.js`/`v5r-persona.js` 由语料生成，`--check` 逐字比对、`--write` 会覆盖）。语料本身又是原件的 capture ⇒ 手改语料等于改基线的一次采样。
+- **做法**：pack 追加**命名的更正段** `packs/v5r/prompts/v5r-corrections.js`（四条：`v5r-fix-json-reply` / `v5r-fix-tool-help` / `v5r-fix-formal` / `v5r-fix-m-vote`），在 `PACK.sections` 里**无条件注册**（没有开关能关掉一条更正——可关的更正等于可以靠沉默撒谎）。
+- **优先级由 order 决定**：更正段用 **890–893**。pack 区间是 `[600,899]`（`ORDER_RANGES.pack`，drift 到 900 会派生到内核保留的 `override` 区间并**被装配丢弃**），而 fixture 段占 `600 + i`、手写/论文/助手段最高到 820 ⇒ 更正段**排在它更正的每一段之后**。同一份提示词里"旧说法先出现、更正句后出现"，谁算数由位置写明。
+- **门禁**（不是散文）：`tests/vmu-prompt-corrections.test.mjs` 断言四段存在、各含旧名与新名、order 落 pack 区间且在全部已声明段之后、**真实装配**的提示词同时含四段且顺序在旧措辞之后；`tests/audit-prompt-tool-params.test.mjs` 静态比对"教出来的工具调用键 ⊆ 工具表 `parameters`"（表取自 `kernel.packTools()`，不硬编码），未声明键必须由 `tests/_lib/prompt-mechanism-whitelist.mjs` 的 `PROMPT_PARAM_DIVERGENCES` 具名收口，且该表**只许缩不许增**。
+- **不用"已知偏差豁免表"代替**：那会把"我们有意偏离基线"变成一条长期、不可见的豁免——与"没有消费者的机制"同族（红线④）。更正段是成员**真会读到**的文字，源句保留为证据，修好源句的那天更正段和豁免一起删掉。
+- **一条口径更正（留在这里，免得下一位读者被旧说法带偏）**：本节初稿与对应派单曾把结构化上报通道写成 `vibe_v5_reply` —— **该工具不存在**（全仓无此名）。真实通道是 `vibe_vmu_turn { op:"reply", report:{…}, reply_for? }`（→ `kernel.turn.supplyStructuredReply`；拒绝码 `VMU_TURN_NO_PENDING_MEMBER`／`VMU_TURN_REPLY_CONFLICT`／`VMU_TURN_UNKNOWN_FIELD`），手写 `json` 围栏只是兼容路径；回复字段 `meeting_hand`／`meeting_invite` 带 `noReplyShape` 时是 `plan()` 标 **`notApplicable`**，不是"具名拒缺项"。更正段 ① 按真实机制写，不写这条幽灵名。
+
 ---
 
 ## 12. 与整合包（M4）的关系

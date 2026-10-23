@@ -16,8 +16,9 @@
     "vmu.members.maxTempPerMember": 3,
     "vmu.tasks.memberMayRejectAssign": true,
 
-    "vmu.records.tracks": ["progress", "routes", "obstacles", "rejected", "state", "propositions", "methods", "problems", "feedback", "paper", "verified"],
-    "vmu.records.allowedKinds": ["progress", "route", "decision", "finding", "lesson", "state", "dataset", "rebuttal", "proposition", "method", "subproblem", "feedback", "paper-state", "paper-part", "paper-review", "paper-md", "paper-tex", "paper-meta", "paper-pdf", "verified"],
+    "vmu.records.tracks": ["progress", "routes", "obstacles", "rejected", "state", "propositions", "methods", "problems", "feedback", "paper", "verified", "scripts", "blueprint"],
+    "vmu.records.allowedKinds": ["progress", "route", "decision", "finding", "lesson", "state", "dataset", "rebuttal", "proposition", "method", "subproblem", "feedback", "paper-state", "paper-part", "paper-review", "paper-md", "paper-tex", "paper-meta", "paper-pdf", "verified", "blueprint"],
+    "_blueprintTrack": "PHASE 12 / R18-B2: 'blueprint' is the carrier for the public blueprint (packs/v5r/blueprint.js). Two values added, no new KEY: (a) tracks needs the name because the kernel SNAPSHOTS the set at construction (kernel/records.js:189-221) and refuses an undeclared track by name; (b) allowedKinds needs it because records.put checks kinds too. Drafts and adopted revisions are ordinary rows of this track; which revision is IN FORCE is derived (highest revision among live 'current' rows), never stored.",
     "_requireSettledRecords": "PHASE 7 ROUND 3 (Lead ruling): FALSE, so a draft proposition can be written and promoted later by the verified track (the original workflow). This key is SNAPSHOTTED at kernel construction (kernel/records.js:189-221), so the VALUE layer is the only effective owner; the manifest line was removed to keep exactly one owner (a duplicate is refused as VMU_PACK_CONFLICT).",
     "vmu.records.requireSettledRecords": false,
     "_v5rFixtureMode": "PHASE 7 ROUND 10: the SLV fixture switch. 'no-tools' (default) keeps the historical instruction ('本轮不调用工具') so previous rounds' results stay comparable; 'tools' enables the v5r-fixture-tools variant ('本轮可以且应该调用工具'). READ AT CALL TIME by the pack's prompt policy (decideSections), so the value layer is sufficient — no kernel construction snapshot is involved.",

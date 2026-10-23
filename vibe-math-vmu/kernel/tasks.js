@@ -40,6 +40,41 @@ export const TRANSITIONS = Object.freeze({
  *  that any key list travelling with it is "what was consulted SO FAR", never the operation's full key set. */
 export const ENFORCED_SCOPE = 'evaluated-so-far'
 
+/** ★ ROUND 53 (D10): where the audit row's `by` came from. A CLOSED SET, and `unknown` requires `by: null`. */
+export const ACTOR_SOURCES = Object.freeze(['argument', 'caller', 'unknown'])
+
+/**
+ * The attribution of an actor for an audit row, validated rather than guessed.
+ * `by` is a member id or null; `bySource` says how we know it. The rule that keeps this honest:
+ *   · a value with NO stated source is `argument` (the caller handed it over explicitly);
+ *   · a stated source of `unknown` MUST carry `by: null` — "I do not know who" is not a member id;
+ *   · a stated source of `argument`/`caller` MUST carry a non-empty id — a source pointing at nothing is a lie.
+ * Anything else is refused by name instead of being written into the ledger.
+ */
+export function normaliseActor(by = null, bySource = null) {
+  if (by !== null && by !== undefined && (typeof by !== 'string' || by.length === 0)) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'by must be a member id (or null when unknown), got ' + JSON.stringify(by),
+      'pass the actor\'s roster id; when the actor cannot be determined pass null and bySource:"unknown"')
+  }
+  const hasBy = typeof by === 'string' && by.length > 0
+  if (bySource !== null && bySource !== undefined) {
+    if (typeof bySource !== 'string' || ACTOR_SOURCES.indexOf(bySource) === -1) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'bySource must be one of ' + ACTOR_SOURCES.join('|') + ', got ' + JSON.stringify(bySource),
+        'argument = the caller passed by; caller = the acting member is the one named; unknown = nobody told us (by must be null)')
+    }
+    if (bySource === 'unknown' && hasBy) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'bySource:"unknown" cannot carry a member id (' + by + ')',
+        'an unknown source and a known actor are contradictory; drop `by` or name the real source')
+    }
+    if (bySource !== 'unknown' && !hasBy) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'bySource:"' + bySource + '" needs the member id it points at',
+        'pass by:"<roster id>", or bySource:"unknown" with by:null')
+    }
+    return { by: hasBy ? String(by) : null, bySource }
+  }
+  return { by: hasBy ? String(by) : null, bySource: hasBy ? 'argument' : 'unknown' }
+}
+
 export function refuse(code, message, hint, extra) {
   const err = new Error(message)
   if (hint) err.hint = hint
@@ -282,11 +317,24 @@ export function createTasks({
     /** F39: the advisory overlap view (read-only; never refuses anything). Read by `status().writeScopeConflicts`. */
     writeScopeConflicts,
 
-    /** Assign (or reassign) an owner. Being assigned is a state, so it follows the transition table. */
-    async assign(id, who, { expectedRevision = null } = {}) {
+    /**
+     * Assign (or reassign) an owner. Being assigned is a state, so it follows the transition table.
+     *
+     * ★ ROUND 53 (D10, measured defect): the audit row recorded ONLY `who` (the assignee), so the ledger could not
+     * tell "I claimed this myself" from "the chair assigned it to me" — the rule set's whole point ("任务板可认领/
+     * 交派" with an attributable history). `setPriority` already recorded `by`; `assign` did not. The actor is now a
+     * parameter, and when the caller cannot tell who acted the row says so BY NAME (`by: null, bySource: 'unknown'`)
+     * instead of guessing an owner, a chair, or the assignee. The three sources are a closed set:
+     *   · `argument` — the caller passed `by` (the tool face passes the operator's/chair's explicit id here);
+     *   · `caller`   — the actor IS the member taking the action (self-claim through a tool face);
+     *   · `unknown`  — nobody told us; `by` must then be null (a value with an "unknown" source is a contradiction).
+     */
+    async assign(id, who, { expectedRevision = null, by = null, bySource = null } = {}) {
       const t = task(id)
       requireFresh(t, expectedRevision)
       if (typeof who !== 'string' || who.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'assign needs a member id')
+      // The attribution is validated BEFORE the mutation: a refused audit row must not leave the board moved.
+      const actor = normaliseActor(by, bySource)
       if (bus) {
         const dec = await bus.emit('task/assign', { id, who, state: t.state }, { member: who })
         if (dec && dec.ok === false) return { ok: false, refused: dec.refused || { code: dec.code, message: dec.message } }
@@ -299,11 +347,11 @@ export function createTasks({
       if (from === 'open') t.state = 'assigned'
       t.transitions.push({ at: clock(), from, to: t.state, reason: 'assigned to ' + t.owner })
       bump(t)
-      record('task-assigned', { id, who: t.owner, state: t.state })
+      record('task-assigned', { id, who: t.owner, by: actor.by, bySource: actor.bySource, state: t.state })
       // ROUND 10 / task-74 (A5): the receipt says whether the assignee may OBJECT (v5r :9555-9562 records and
       // broadcasts an objection, and the task still runs). The declaration is read here as well as in
       // `objectAssign()` so a caller never has to guess which door is open.
-      return { ok: true, id, owner: t.owner, state: t.state,
+      return { ok: true, id, owner: t.owner, by: actor.by, bySource: actor.bySource, state: t.state,
         mayObject: sget('vmu.tasks.memberMayRejectAssign', true) !== false,
         enforced: ['vmu.tasks.memberMayRejectAssign'] }
     },

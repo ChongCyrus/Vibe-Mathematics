@@ -46,9 +46,14 @@ function ok(cond, label, detail) {
   return false
 }
 // ★ G4 stage A: repo-relative reads that point INTO a legacy preset dir resolve through the ONE preset seam.
+// ★ MC_CONTRACT_ROOT comes FIRST: the mutant harness points this audit at a MUTATED copy of the tree, and a
+// read that always went to the archive would make every mutation invisible (measured: three families exited
+// 0 with "no named red" before this line existed).
 const read = (rel) => {
   const idx = rel.indexOf('/')
-  const p = idx > 0 && LEGACY_PRESET_NAMES.includes(rel.slice(0, idx)) ? legacyFile(rel.slice(0, idx), rel.slice(idx + 1)) : join(ROOT, rel)
+  const inRoot = join(ROOT, rel)
+  if (existsSync(inRoot) && ROOT !== REPO) return readFileSync(inRoot, 'utf8')
+  const p = idx > 0 && LEGACY_PRESET_NAMES.includes(rel.slice(0, idx)) ? legacyFile(rel.slice(0, idx), rel.slice(idx + 1)) : inRoot
   return readFileSync(p, 'utf8')
 }
 

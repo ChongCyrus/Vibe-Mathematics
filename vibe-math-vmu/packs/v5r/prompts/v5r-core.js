@@ -392,6 +392,12 @@ import { CHARTER_SECTIONS, CHARTER_BINDINGS, CHARTER_LEADERLESS_SECTIONS } from 
 // `./assistant.json`, which the plugin reads by folder name before the kernel exists; this half is registered through
 // the manifest because it is rendered by the prompt pipeline on every member round. Two readers, two files, no copy.
 import { V5R_ASSISTANT_TURN_SECTIONS } from './v5r-assistant.js'
+// ★ F5 (Lead ruling this round): the CORRECTION SECTIONS. The passages that teach a mechanism which does not exist are
+// NOT edited where they live — the charter lines are baselined against the original capture (T71) and the fixture
+// passages are GENERATED from a capture that the full sweep rewrites. Instead the pack appends a named correction that
+// says which of the two to believe, ordered AFTER everything it corrects (order ≥ 800 vs. 600..666). See
+// `./v5r-corrections.js` for the whole ruling, including why a `KNOWN_CORRECTIONS` exemption list was rejected.
+import { V5R_CORRECTION_SECTIONS } from './v5r-corrections.js'
 
 /**
  * The runtime sections: the charter transcribed from the original source (docs/26 sections 3.10-3.18), PLUS the authored
@@ -412,7 +418,14 @@ const v5rCharterSectionsGlobal = () => [...CHARTER_SECTIONS, ...CHARTER_LEADERLE
   // PHASE 7 round 8: the PAPER PROMPTS — phase-scoped (`paper-write` / `paper-review` / `paper-final`), so at most ONE
   // of them is in any given turn's prompt (the pipeline matches scope.phase; no kernel change needed).
   ...V5R_PAPER_PROMPT_SECTIONS,
-  ...V5R_ASSISTANT_TURN_SECTIONS]
+  ...V5R_ASSISTANT_TURN_SECTIONS,
+  // ★ F5: LAST IN ORDER, ON PURPOSE. The pipeline sorts by `order`, so 890..893 land after the generated fixtures
+  // (600 + i), after the reply catalogues (797/798), after the paper/assistant sections and after the highest declared
+  // charter block (820): a reader who meets the obsolete wording first meets the correction afterwards, in the same
+  // prompt. ★ 890..893 is inside `ORDER_RANGES.pack` ([600,899]); 900 would silently become `override` — the exact
+  // "declared but never assembled" class this round hunts. The four are declared unconditionally (there is no switch
+  // that can turn a correction off — a switchable correction is one that can lie by omission).
+  ...V5R_CORRECTION_SECTIONS]
 
 /** Its role and phase bindings - one winner per section per assembly is the pipeline's job (docs/26 section 3.20). */
 const v5rCharterBindingsGlobal = () => CHARTER_BINDINGS

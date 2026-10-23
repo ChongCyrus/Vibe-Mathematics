@@ -291,6 +291,18 @@ export function listVerified(records) {
 }
 
 /**
+ * ★ B8: 撤回判定的**唯一读法**。内核的 `passedWithdrawnFor` 返回的是**标记对象**（`{ok:true,target,withdrawn:true,…}`）
+ * 或 `null`，从来不是布尔 `true`；早先两处写 `=== true` 的比较因此在真机上**永不命中** —— 缺陷标记写了、verified 行
+ * 却照样可读（"一行没人看的字"）。这里两种形状都认：布尔（旧 seam）与 `withdrawn===true`（规格面）。
+ */
+function withdrawnBy(fidelity, id) {
+  if (!fidelity || typeof fidelity.passedWithdrawnFor !== 'function') return false
+  let r = null
+  try { r = fidelity.passedWithdrawnFor(id) } catch (e) { return false }
+  return r === true || (!!r && typeof r === 'object' && r.withdrawn === true)
+}
+
+/**
  * Find the verified row for a card id (`verified` rows carry `- cardId：`). Returns null when there is none — it
  * NEVER guesses by title or by position. A withdrawn proof is invisible to this read point (v3 P1-9 parity with
  * `dataplane.js:56-60`): the kernel fidelity registry's `passedWithdrawnFor` is asked, so a marker written by a
@@ -300,7 +312,7 @@ export function findVerified(records, sourceId, { fidelity = null } = {}) {
   requireRecords(records, 'findVerified')
   if (!hasText(sourceId)) throw refuse('VMU_INVALID_ARGUMENT', 'findVerified needs the card id to look for', 'pass the records id of the proposition card')
   const key = text(sourceId).trim()
-  if (fidelity && typeof fidelity.passedWithdrawnFor === 'function' && fidelity.passedWithdrawnFor(key) === true) return null
+  if (withdrawnBy(fidelity, key)) return null
   const heads = records.list({ track: VERIFIED_TRACK, limit: 0 })
   const items = Array.isArray(heads && heads.items) ? heads.items : []
   for (const head of items) {
@@ -380,7 +392,7 @@ export function promoteVerified({ records, sourceId, warrant = null, at = null, 
     throw refuse('VMU_STATE', 'card ' + key + ' is not settled (p=' + probText(card.p) + '), so it cannot enter the verified track',
       'only 1 or 0 may be promoted: p in (0,1) is experience, not a conclusion — a debate settlement is what turns it into 1 (ocks the step-2 gate)')
   }
-  if (fidelity && typeof fidelity.passedWithdrawnFor === 'function' && fidelity.passedWithdrawnFor(logicalId) === true) {
+  if (withdrawnBy(fidelity, logicalId)) {
     throw refuse('VMU_STATE', 'the archived proof of ' + logicalId + ' was WITHDRAWN by a fidelity defect marker, so it cannot be promoted (a withdrawal must not be undone by the next settlement)',
       'the defect marker is the shared truth for every reader; reinstating a proof means a new card/settlement, not deleting the marker')
   }

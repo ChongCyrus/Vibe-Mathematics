@@ -45,10 +45,11 @@ const EXPECTED = ['vibe_v5_record_progress', 'vibe_v5_record_proposition', 'vibe
   'vibe_v5_tool_help', 'vibe_v5_assign', 'vibe_v5_fire', 'vibe_v5_nudge', 'vibe_v5_prioritize', 'vibe_v5_feedback',
   'vibe_v5_read_library',
   'vibe_v5_meeting', 'vibe_v5_motion', 'vibe_v5_second', 'vibe_v5_poll_open', 'vibe_v5_poll_vote', 'vibe_v5_poll_close',
-  'vibe_v5_verdict', 'vibe_v5_verdict_final', 'vibe_v5_verified_promote',
+  'vibe_v5_verdict', 'vibe_v5_verdict_final', 'vibe_v5_verified_promote', 'vibe_v5_meeting_round', 'vibe_v5_fidelity_conclude',
+  'vibe_v5_blueprint',
   'vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_pause', 'vibe_v5_resume', 'vibe_v5_configure', 'vibe_v5_set',
   'vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive',
-  'vibe_v5_inbox', 'vibe_v5_wait', 'vibe_v5_paper']
+  'vibe_v5_inbox', 'vibe_v5_wait', 'vibe_v5_paper', 'vibe_v5_script']
 /** The codes a refusal may carry: REGISTERED ones only (docs/03 §8). */
 const REGISTERED_CODES = ['VMU_INVALID_ARGUMENT', 'VMU_NO_SUCH_OBJECT', 'VMU_STATE', 'VMU_ENGINE_UNAVAILABLE',
   'VMU_NOT_PERMITTED', 'VMU_NOT_FOUND', 'VMU_CONFLICT', 'VMU_QUOTA_EXCEEDED', 'VMU_PACK_MISSING']
@@ -86,24 +87,24 @@ try {
   // ── ① ZERO MECHANISM ────────────────────────────────────────────────────────────────────────────────────────
   console.log('=== 1. NO PACK ⇒ NOT ONE v5r TOOL EXISTS ===')
   const bare = await boot({ root })
-  ok(EXPECTED.length === 43, 'the expected list is non-empty (RULE E)', EXPECTED.length)
+  ok(EXPECTED.length === 47, 'the expected list is non-empty (RULE E)', EXPECTED.length)
   const bareHits = EXPECTED.filter((n) => bare.names.includes(n))
   ok(bareHits.length === 0, 'without the pack none of the six names is published', bareHits)
 
   // ── ② THE DECLARATION (the names come FROM the pack) ───────────────────────────────────────────────────────
   console.log('=== 2. WITH packs=["v5r"] THE THIRTY-EIGHT DECLARED NAMES ARE PUBLISHED ===')
   const PACK = v5r.PACK
-  ok(Array.isArray(PACK.tools) && PACK.tools.length === 43, 'the loaded manifest DECLARES forty-three tools', PACK.tools && PACK.tools.length)
+  ok(Array.isArray(PACK.tools) && PACK.tools.length === 47, 'the loaded manifest DECLARES forty-seven tools', PACK.tools && PACK.tools.length)
   const declaredNames = PACK.tools.map((t) => t.name)
   ok(declaredNames.length > 0 && EXPECTED.filter((n) => declaredNames.includes(n)).length === EXPECTED.length,
-    'the declaration is exactly the thirty-eight expected names', declaredNames)
+    'the declaration is exactly the forty-seven expected names', declaredNames)
   const v5rBoot = await boot({ root, packs: ['v5r'] })
   const published = EXPECTED.filter((n) => v5rBoot.names.includes(n))
   ok(EXPECTED.length > 0 && published.length > 0 && published.length === EXPECTED.length,
-    'all thirty-eight are published through the real host adapter', { published: published.length, names: v5rBoot.names.length })
-  ok(v5rBoot.handle.kernel.packTools().length === 43, 'the KERNEL holds the forty-three declarations', v5rBoot.handle.kernel.packTools().length)
+    'all forty-seven are published through the real host adapter', { published: published.length, names: v5rBoot.names.length })
+  ok(v5rBoot.handle.kernel.packTools().length === 47, 'the KERNEL holds the forty-seven declarations', v5rBoot.handle.kernel.packTools().length)
   const kernelStatus = v5rBoot.handle.kernel.status({ detail: 'summary' })
-  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length === 43,
+  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length === 47,
     'kernel.status() reports the declared names (observable, not implicit)', kernelStatus.packTools && kernelStatus.packTools.length)
   const hostNames = Object.values((await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host.js')).href)).TOOL_NAMES)
   const leaked = EXPECTED.filter((n) => hostNames.includes(n))
@@ -456,7 +457,7 @@ try {
     '★ recordPart: 正 — the part is archived as its own record AND carries the KERNEL-computed fingerprint', part && { id: part.recordId, fp: String(part.fingerprint).slice(0, 12) })
   // ★ G7 finding: a second part by the same member used to overwrite the first state slot silently. The minimal fix
   // names what was replaced instead of pretending both are represented.
-  const part2 = paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的第二种写法', solution: '改写成反证法' })
+  const part2 = paper.recordPart({ target: TARGET, member: 'r-1', title: '引理 A 的第二种写法', solution: '改写成反证法', evidence: ['r-1 的命题卡（反证法版）'] })
   ok(part2 && part2.ok === true && part2.replaced && part2.replaced.recordId === part.recordId,
     '★ recordPart: 正 — a second part NAMES the replaced record (replaced.recordId === the first part id)', part2 && part2.replaced)
   ok(part2.replaced && part2.replaced.title === '引理 A 的证明骨架',
@@ -1057,8 +1058,8 @@ try {
   const k2 = km.createKernel({ clock: () => 1000, root })
   const loader = pm.createPackLoader({ kernel: k2, registry: k2.registry })
   const applied = await loader.apply({ id: 'v5r-tools-probe', version: '1.0.0', tools: toolsMod.V5R_PACK_TOOLS })
-  ok(applied && applied.ok === true, 'a manifest carrying the forty-three declarations APPLIES', applied && (applied.code || applied.id))
-  ok(k2.packTools().length === 43, 'the kernel holds the forty-three names after apply', k2.packTools().length)
+  ok(applied && applied.ok === true, 'a manifest carrying the forty-seven declarations APPLIES', applied && (applied.code || applied.id))
+  ok(k2.packTools().length === 47, 'the kernel holds the forty-seven names after apply', k2.packTools().length)
   const unloaded = await loader.unload('v5r-tools-probe')
   ok(unloaded && unloaded.ok === true && unloaded.residueFree === true, 'unload reports no residue', unloaded)
   ok(k2.packTools().length === 0, 'the declarations are RETRACTED (nothing left to publish)', k2.packTools().length)
@@ -1323,7 +1324,7 @@ try {
 
   // ── ⑦e GOAL B-2 (PHASE 8): the pack IMPORTS the kit — one copy of the code, institution vocabulary stays in v5r ──
   console.log('=== 7e. B-2 WIRING: kit imports, zero local copies ===')
-  ok(PACK.tools.length === 43,
+  ok(PACK.tools.length === 47,
     '★★ the declared tool COUNT is what the pack declares (institution vocabulary stays in the pack; 40 + inbox + wait)', PACK.tools.length)
   const packSrcW = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
   const movedDecls = [
@@ -1459,7 +1460,7 @@ try {
   // (constant-anchored: the declared count is a contract asserted elsewhere, so "both sides empty" cannot pass here)
   const wireSorted39 = wireSpecs39.slice().sort()
   const kernelSorted39 = kernelNames39.slice().sort()
-  ok(wireSpecs39.length === 43 && kernelNames39.length === 43 && JSON.stringify(wireSorted39) === JSON.stringify(kernelSorted39),
+  ok(wireSpecs39.length === 47 && kernelNames39.length === 47 && JSON.stringify(wireSorted39) === JSON.stringify(kernelSorted39),
     '★★★ WIRE == LOGICAL: the registered v5r specs are exactly the tools the kernel holds (native; nothing replaced by run_code)', { wire: wireSpecs39.length, kernel: kernelNames39.length })
   ok(v5rBoot.state.specs.filter((s) => s.deferLoading !== undefined).length === 0,
     '★★ no spec carries deferLoading (the disproved defer mode is gone as well)', v5rBoot.state.specs.length)
@@ -1493,8 +1494,8 @@ try {
   }
   const inboxList = await specs('vibe_v5_inbox').handler({ action: 'list', member: 'r-1' }, { kernel: stubKernel })
   const rowKeys = inboxList.rows && inboxList.rows[0] ? Object.keys(inboxList.rows[0]).sort() : []
-  ok(JSON.stringify(rowKeys) === JSON.stringify(['at', 'bytes', 'from', 'id', 'kind', 'read', 'subject', 'todo']) && inboxList.rows[0].text === undefined,
-    '★★★ inbox list: every row carries EXACTLY the eight triage fields and NO body (text is only via open)', rowKeys)
+  ok(JSON.stringify(rowKeys) === JSON.stringify(['at', 'bytes', 'from', 'id', 'kind', 'read', 'subject', 'todo', 'urgent']) && inboxList.rows[0].text === undefined,
+    '★★★ inbox list: every row carries EXACTLY the nine triage fields (the eight plus the sender urgent flag) and NO body (text is only via open)', rowKeys)
   const inboxOpen = await specs('vibe_v5_inbox').handler({ action: 'open', id: 'm1', member: 'r-1' }, { kernel: stubKernel })
   ok(inboxOpen.message && inboxOpen.message.text === 'BODY TEXT' && inboxOpen.message.read === true,
     '★★★ inbox open: the body comes back and the read flag is true', inboxOpen.message && { hasText: inboxOpen.message.text === 'BODY TEXT', read: inboxOpen.message.read })
@@ -1511,8 +1512,8 @@ try {
   const rowAfter = inboxAfter.parsed && Array.isArray(inboxAfter.parsed.rows) ? inboxAfter.parsed.rows.filter((r) => r.subject === 'S1')[0] : null
   const rowKeysReal = rowAfter ? Object.keys(rowAfter).sort() : []
   ok(sentProbe.parsed && sentProbe.parsed.ok === true && sentProbe.parsed.urgent === false && rowAfter &&
-    JSON.stringify(rowKeysReal) === JSON.stringify(['at', 'bytes', 'from', 'id', 'kind', 'read', 'subject', 'todo']) && rowAfter.text === undefined,
-    '★★★ 真实 cycle：message 默认非紧急发出 ⇒ inbox list 里出现该行，且行【恰八个字段、无正文】', { keys: rowKeysReal, urgent: sentProbe.parsed && sentProbe.parsed.urgent })
+    JSON.stringify(rowKeysReal) === JSON.stringify(['at', 'bytes', 'from', 'id', 'kind', 'read', 'subject', 'todo', 'urgent']) && rowAfter.text === undefined,
+    '★★★ 真实 cycle：message 默认非紧急发出 ⇒ inbox list 里出现该行，且行【恰九个字段（八字段＋紧急标）、无正文】', { keys: rowKeysReal, urgent: sentProbe.parsed && sentProbe.parsed.urgent })
   const realId = rowAfter && rowAfter.id
   const openedReal = await receipt(v5rBoot, 'vibe_v5_inbox', { action: 'open', id: realId, member: 'r-chair' })
   const listAgainReal = await receipt(v5rBoot, 'vibe_v5_inbox', { action: 'list', member: 'r-chair', status: 'all' })

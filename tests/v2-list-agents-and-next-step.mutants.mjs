@@ -80,7 +80,7 @@ rmSync(baseRoot, { recursive: true, force: true })
 // ---------- F3b: the tool must be MENTIONED (persona still names the old name) ----------
 {
   const root = mkdtempSync(join(tmpdir(), 'v2gaps-mention-'))
-  for (const d of PRESETS) cpSync(join(REPO, d), join(root, d), { recursive: true, filter: () => true })
+  for (const d of PRESETS) cpSync(legacyDir(d), join(root, d), { recursive: true, filter: () => true })
   const p = join(root, 'vibe-math-v2', 'vibe-math-v2.js')
   writeFileSync(p, readFileSync(p, 'utf8').split(REGISTER).join(REGISTER.replace('list_agents', 'list_agentsX')))
   const r = runSuite('audit-persona-surface.test.mjs', { PERSONA_ROOT: root })

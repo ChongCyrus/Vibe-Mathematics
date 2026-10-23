@@ -220,6 +220,14 @@ vmu.prompts.bindings:
 vmu.packs.active: [v5r]
 ```
 
+### 8.1 数学引擎：默认声明 8 个候选，可用性以探活为准（R16）
+
+- **默认值从哪来**：`vmu.math.engines` 的 8 个候选（`python,r,octave,julia,matlab,maple,wolfram,cli`）由 **v5r pack 的 `packs/v5r/settings/defaults.json` 声明**（复刻原 v5r 默认），运行面来源记 `pack:v5r`；schema 里那条声明（`settings/schema.js`）只是**声明层**，本身不物化。
+- **可用性以探活为准**：一个引擎"可用"＝描述符 + PATH/安装目录发现 + `--version` 探活（`math-computation.js` 的 `probeMathEngines`）；**不需要在设置里写命令路径**（那是 `vmu.math.adapters.python` 的语义：显式解释器、绝不猜）。首次数学调用最多串行探 8 个候选，探活超时首个候选 20s、其后 45s（`math-computation.js:609`）、结果按会话缓存 ⇒ 有一次性成本，不是每次调用都付。
+- **`cli` 不自动探活**：它是"调用方给命令"的通道，即使声明在列表里也不会被自动探测；要用须显式给命令。
+- **引擎不可用时是具名降级，不是静默**：`kernel/mathjobs.js:733`（"未声明任何引擎（vmu.math.engines 为空）"）与 `:734`（"引擎未声明：X"）。显式设 `[]` ⇒ 同样具名拒；H2 热改 ⇒ 运行期可收窄/清空；部署要与 pack 默认不同值时，走 O4 的具名门（`vmu.packs.activeOverrides` 点名或 `vmu.packs.allowKernelOverride`），不许静默覆盖。
+- **Lean 不是引擎**：形式化走 `vmu.math.leanCommand`（`kernel/lean.js`、`kernel/formal.js`），与 `vmu.math.engines` 无关——"真机跑过 Lean"不能推出"引擎已声明"。
+
 ---
 
 ## 9. 反模式（评审时直接打回）
@@ -328,7 +336,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.deliverProvider` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `host-deliver.js` | 成员回合【一次性交付】所用的 provider 名：★ 非空且宿主提供 start() 时，★ 交付走一次性路径（★ 不进入 continuable registry）；★ 空则走 continuable 路径 |
 | `vmu.turn.deliveryTimeoutMs` | number | `180000` | — | 会话 | H2 | office | ✅ 已接线 | `host-deliver.js` | 成员回合 one-shot 交付的 deadline（毫秒）。★ 超时后该回合以 VMU_TURN_DELIVERY_TIMEOUT 具名失败（带 turn/member/已等毫秒/最后一次交付阶段），并释放串行队列；★ 正常回合只要在 deadline 内返回就不受影响。★ SLV 实测（opencode，v3）：正常成员回合 5–44 秒；异常回合在 180 秒时超时（deliveryTimeoutMs 即由此定） |
 | `vmu.turn.closureVotePermission` | string | `vote` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | capability-default: 值只是一个权限字符串的【名字】，谓词拿它去问谁能结题；换名不改机制，而名字本身是部署词汇（v5r 交给 member 槽位）。哪一个权限字符串算【结题表决权】：★ 谓词据此判断谁【有资格】结题。★ 默认 vote（★ v5r pack 把 vote 给 member 槽位，chair 与 temp 都没有）；★ 另一家机构可以改名 |
-| `vmu.turn.objective` | string | `（尚未设定）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号 |
+| `vmu.turn.objective` | string | `（尚未设定）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/paper-quality.js` | 本所研究对象（原问题）；默认值与原线未设定时的输出一字不差，绝不留空括号 |
 | `vmu.turn.maxParallel` | number | `3` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 每轮最多同时唤醒的成员数（原线默认 3；非法值回落 3） |
 | `vmu.tools.enabled` | string[] | `null` | — | 会话 | H2 | office | ✅ 已接线 | `host.js` | 已接线（host.js 的 install 读取）：宿主注册哪些 vmu 工具。空/缺省（null）＝不限制；显式空表 [] ＝一个都不注册；未知名会被具名拒绝而不是静默放开（docs/03 §7）。 |
 | `vmu.tools.faces` | string[] | `null` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 已接线（host.js resolveFaces 读取）：要发布的工具面清单（面键如 `minutes`／工具名 `vibe_vmu_minutes`／`*` 全部）。缺省 null＝不额外声明任何面（仍遵守各面自己的 config／vmu.<族>.* 声明）；显式空表 []＝不靠本键声明任何面。 |
@@ -339,7 +347,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.selfCheck` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | 是否向成员展示资源纪律段（关掉＝零注入，提示词回到该段之前，注入点逐字不变） |
 | `vmu.turn.replyCatalogue` | enum | `compact` | `compact`∣`full` | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full |
 | `vmu.turn.unknownReplyFieldMode` | enum | `ignore-named` | `ignore-named`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `kernel/turn/index.js` | PHASE 7：回执顶层出现未登记字段时怎么办。ignore-named（默认）＝已知字段照常处理、未登记字段不丢弃而是具名报告（reply.ignoredFields＋一条 notice），不再作废整轮；refuse＝保留旧严格语义（VMU_TURN_UNKNOWN_FIELD，整轮拒绝）。 |
-| `vmu.turn.protocolPath` | string | `Shared/Protocol.md` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | protocol path named by the compact reply catalogue (relative to the session working directory) |
+| `vmu.turn.protocolPath` | string | `Shared/Protocol.md` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | protocol path named by the compact reply catalogue (relative to the session working directory) |
 | `vmu.turn.verifyTarget` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | the object under a truth ballot (verify phase) |
 | `vmu.turn.verifyKindLabel` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | the kind label shown next to the object under a truth ballot |
 | `vmu.turn.invitedBy` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | who invited this temp to speak (meeting phase) |
@@ -1185,10 +1193,6 @@ vmu.packs.active: [v5r]
 | `vmu.funding.requiredFields` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 已接线（funding.js 读取）；默认值取自模块源码 |
 | `vmu.funding.settlementRoundMinor` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 已接线（funding.js 读取）；默认值取自模块源码 |
 | `vmu.funding.split` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/funding.js` | 已接线（funding.js 读取）；默认值取自模块源码 |
-| `vmu.grant.commands` | string[] | `[]` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/grant.js` | 已接线（grant.js 读取）；默认值取自模块源码 |
-| `vmu.grant.defaultScope` | string | `once` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/grant.js` | 已接线（grant.js 读取）；默认值取自模块源码 |
-| `vmu.grant.enabled` | bool | `false` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/grant.js` | 已接线（grant.js 读取）；默认值取自模块源码 |
-| `vmu.grant.maxOpenGrants` | int ≥0 | `32` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/grant.js` | 已接线（grant.js 读取）；默认值取自模块源码 |
 | `vmu.ip.appealWindowDays` | int ≥0 | `30` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.ip.authorshipRule` | string | `byContribution` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
 | `vmu.ip.confidentialityWindowDays` | int ≥0 | `180` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ip.js` | 已接线（ip.js 读取）；默认值取自模块源码 |
@@ -1549,7 +1553,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1154** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1150** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1596,7 +1600,6 @@ vmu.packs.active: [v5r]
 | `vmu.formal.*` | 5 |
 | `vmu.funding.*` | 16 |
 | `vmu.funds.*` | 11 |
-| `vmu.grant.*` | 4 |
 | `vmu.handover.*` | 11 |
 | `vmu.hooks.*` | 1 |
 | `vmu.human.*` | 11 |

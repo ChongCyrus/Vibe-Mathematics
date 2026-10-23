@@ -12,6 +12,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { legacyFile } from './_lib/legacy-presets.mjs'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const AUDIT = 'tests/audit-math-computation-contract.mjs'
@@ -23,14 +24,21 @@ const hangs = []
 const skipped = []
 // Copy only the inputs read by this audit; research data and local checkouts are not fixtures.
 function copyTree(from, to) {
-  const files = ['README.md', 'README.en.md', 'docs/math-computation.md', 'vibe-math-v2/math-computation.js']
-  for (const name of ['v2', 'v3', 'v4', 'v5', 'v5r']) {
-    files.push('vibe-math-' + name + '/vibe-math-' + name + '.js', 'vibe-math-' + name + '/agent.cordis.yml')
+  // Two kinds of source: repo-relative docs (from `from`) and ARCHIVED preset files (through the seam).
+  const repoFiles = ['README.md', 'README.en.md', 'docs/math-computation.md']
+  const presetFiles = [['vibe-math-v2', 'math-computation.js']]
+  for (const name of ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v4', 'vibe-math-v5', 'vibe-math-v5r']) {
+    presetFiles.push([name, name + '.js'], [name, 'agent.cordis.yml'])
   }
-  for (const file of files) {
+  for (const file of repoFiles) {
     const target = join(to, file)
     mkdirSync(dirname(target), { recursive: true })
     copyFileSync(join(from, file), target)
+  }
+  for (const [dir, file] of presetFiles) {
+    const target = join(to, dir, file)
+    mkdirSync(dirname(target), { recursive: true })
+    copyFileSync(legacyFile(dir, file), target)
   }
 }
 function runFamily(f) {

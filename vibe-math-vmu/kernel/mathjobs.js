@@ -32,6 +32,7 @@
 //   · ids   —— 可选：`kernel/ids.js` 的实例（缺省用模块级单例）⇒ 作业号经**唯一铸号者**、恢复时水合取 max+1
 
 import { mint as mintId, observeIds } from './ids.js'
+import { declaredDefault } from './settings-defaults.js'
 
 export const MATH_KEYS = Object.freeze([
   'vmu.math.computation',
@@ -419,7 +420,18 @@ export function createJobMirror({ fs = null, dir = null, keep = 0, clock = () =>
 
 export function createMathJobs(opts) {
   const o = opts || {}
-  const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
+  // ★ R16 / F1 (Lead ruling): a consumer NEVER invents a default beside a read — it asks for the DECLARED one.
+  // `kernel/settings-defaults.js` is the single answer to "a declared setting, or its declared default" (its own head
+  // comment records FOUR doors that each grew their own fallback and THREE of which disagreed with the declaration).
+  // MEASURED before this line: `vmu.math.engines` was declared (8 names, settings/schema.js) while this reader saw
+  // `undefined` and every job was refused "未声明任何引擎" on a host where python WAS installed — a declaration face
+  // and a runtime face disagreeing. The live-view `.get` path is kept because a Proxy view is read through its trap.
+  const readKey = (k) => {
+    const s = o.settings || {}
+    let raw
+    try { raw = typeof s.get === 'function' ? s.get(k) : s[k] } catch (e) { raw = undefined }
+    return raw === undefined ? declaredDefault(k) : raw
+  }
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
   const log = typeof o.log === 'function' ? o.log : () => {}
   // bus.emit takes (NAME, payload) — a single object was silently swallowed by the try/catch in the

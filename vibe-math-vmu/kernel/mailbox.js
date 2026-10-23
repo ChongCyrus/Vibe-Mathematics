@@ -213,10 +213,21 @@ export function createMailbox({
     return st === null ? null : new Date(st).toISOString()
   }
   /** Public list row: exactly these 8 fields; NO body. */
+  // ★ ROUND 52 (measured defect): these two READ faces used to drop `urgent`. The entry carries it (the sender's own
+  // intent, and the value the caller's receipt already shows), but a triage row that omits it makes an urgent message
+  // indistinguishable from ordinary mail — the read face deleted a fact the write face had just recorded. A consumer
+  // (v5r's inbox) could only reconstruct it by joining `pending()`, which returns "unknown" (null) for anything acked —
+  // i.e. "I cannot tell" was the best a caller could do, and "cannot tell" is not "not urgent".
+  // ★ ROUND 53 (Lead ruling): the field is a BOOLEAN with default `false`, never `undefined` and never absent. The
+  // write side always records a boolean, so for anything this face produced the value is the sender's own; a LEGACY
+  // entry restored from an older snapshot may predate the field, and for it `false` is the honest reading — a message
+  // is not urgent unless it says so. What must never happen is an absent key: a consumer reading `row.urgent` gets a
+  // verdict, and "the field is missing" is not one of the two possible values.
+  const urgentOfEntry = (e) => e.urgent === true
   const listRow = (e) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind,
-    read: e.read === true, todo: e.todo === true, bytes: bytesOf(e.text) })
+    read: e.read === true, todo: e.todo === true, bytes: bytesOf(e.text), urgent: urgentOfEntry(e) })
   const openView = (e) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind,
-    text: e.text, replyTo: e.replyTo === undefined ? null : e.replyTo })
+    text: e.text, replyTo: e.replyTo === undefined ? null : e.replyTo, urgent: urgentOfEntry(e) })
   const findEntry = (member, id) => {
     const box = boxes.get(String(member)) || []
     const hit = box.find((e) => e.id === String(id))

@@ -1332,7 +1332,7 @@ recount(ballotId):
 | 程序异议／申诉留痕 | `meetings.fileAppeal`（`appealScope/appealReasonRequired/appealDeadlineMs`） | ✅（变形） |
 | 纪要（起草／确认／逐字稿／行动项） | `minutes.js`（`draft/confirm/append/actions/list/status`；`dissentMandatory/actionsOwnerRequired/dueRequired`） | ✅ |
 | 上次纪要确认 | `minutes.confirm` + `confirmPreviousRequired` + `meetings.confirmPreviousMinutes` | ✅ |
-| 临时授权（4 命令 × 3 事件型范围） | `grant.js`：`GRANTABLE_COMMANDS=['assign','prioritize','nudge','convene']`、`GRANT_SCOPES=['meeting','verify','once']`（与 v5r 逐字一致） | ✅（**工具面缺，见 GAP-MTG-12**） |
+| 临时授权（4 命令 × 3 事件型范围） | ⛔ **已移除**：原 `kernel/grant.js`（`GRANTABLE_COMMANDS`／`GRANT_SCOPES`）与 4 个 `vmu.grant.*` 键在提交 `1963b940` 一并删除 —— **零消费者**（`createGrant(` 只出现在一个测试文件里，没有任何装配入口 import），按红线④"没有消费者就不给机制"删除；**当前既没有"临时授权"能力面、也没有 `vibe_vmu_grant` 工具面**；记录见 `docs/acceptance/phase12-v5r-rules-conformance.md` §12 | ⛔ 已移除（`vmu.grant.*` 四键与 grant 面都不存在） |
 | 会议参数与上下界（硬界／唤醒重试／引用上限／轮次） | `meetings.hardLimitMs`（默认 1800000，钳 [300000,7200000]）、`wakeRetries`（钳 [0,10]）、`verdictMaxRounds`（≥1）；`meeting.roundTimeoutMs`／`quotesPerMessageMax`（默认 2，超限拒）／`quoteDepthMax`（默认 3，超深折叠计数） | ✅ |
 | 会议分级（formal/light，简流程不得产出实体定论） | **`vmu.meetings.tier`＋`allowLight`＋`truthWriteRefusal()`（GAP-MTG-02 已落）**；`meetings.confidentiality*` 仍管保密级别与引用 | ✅ |
 
@@ -1364,7 +1364,7 @@ recount(ballotId):
 | **GAP-MTG-09** | 会中任务的「请求认领 → 批准」批准点（`claim_pending`） | 任务面 `tasks.js`/`board.js` 的认领是**直接**的；无 `claim_pending` 状态 | `board.js`／`tasks.js`（v5r 的 `meeting_task_claim` 语义） |
 | **GAP-MTG-10** | 投票板层的 `reopen`（复议门槛只升不降） | **已落**：`kernel/ballotbox.js` 新增显式生命周期（`open｜closed`：**裁定后的板不再收票/记缺席**，均具名拒 `VMU_STATE`）＋ **自有 `reopen()`**（要求 `reason`；**`vmu.ballot.reopenFloor` 真读并决定**——不达门槛 ⇒ `VMU_BALLOT_MIN_VOTES_NOT_MET` 带当前/门槛且 `enforced[]` 点名该键；旧结论先入 `reopenHistory` 再清票，只增不改）。该键已由 `PLANNED_BALLOT_KEYS` **移入 `WIRED_BALLOT_KEYS`**（分区 `27 = 23 + 4` 仍 exact）；工具面新增 `boxopen/boxcast/boxclose/boxreopen` 使其可达 | **已落**（`kernel/ballotbox.js` `reopen()`；**无第二份 reopen 实现**） |
 | **GAP-MTG-11** | 会后异步补票窗口（`vote_window`；窗口只延长时间、不得重定义分母） | `mailbox.js` 提供耐久投递与 ack；投票侧无窗口概念（`minVotes` 是成立门槛） | `ballotbox.js`（窗口键 + 截止策略）；分母语义由 `meetings.unansweredInDenominator` 持有 |
-| **GAP-MTG-12** | 临时授权／动议／纪要的**工具面**（`vibe_vmu_grant` 等；**工具面未实现 ✗**——**能力已在内核 ✓、工具缺 ✗**，两者要分清） | 内核有 `grant.js`／`governance.js`／`minutes.js`，`TOOL_FACES` 里**没有 grant 面**（动议/纪要已有各自工具面） | `host.js`（加 `grant` 面：families `vmu.grant.`，config `grant`）＋`tools/grant.js` |
+| **GAP-MTG-12** | 临时授权／动议／纪要的工具面 | **grant 侧已关闭**：内核 `kernel/grant.js` 与 4 个 `vmu.grant.*` 键在 `1963b940` 删除（零消费者，违反红线④）；动议／纪要的工具面各自存在 ⇒ 剩下的不是"补工具面"，而是**这个能力本身不存在** | 若 v5r 规则集将来要求 grants，须**内核面 ＋ pack 面一起重新引入**（不得只补工具面，否则又是"工具面有、能力无"） |
 
 ### 25.5 持久化（投影缝）· Round 2
 

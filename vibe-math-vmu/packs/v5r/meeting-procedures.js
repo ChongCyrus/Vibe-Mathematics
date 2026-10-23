@@ -1,38 +1,42 @@
-// vibe-math-vmu/packs/v5r — 会议类型目录与「推荐流程骨架」（hand-written：没有任何生成器读它）
-//
-// ★ WHY THIS FILE EXISTS. 研究所规则说：院士可以设置会议的**类型**；某些特殊类型下，框架在开会时**推荐**一套流程骨架，
-//   但「具体实施、决定、是否要遵循完全由院士自己决定」。三条能力以前都不存在：
-//     · `vibe_v5_meeting` 的 `kind` 是**校完就丢**的参数，并且它把 `type:'ordinary'` **硬编码**传给内核 —— 院士根本无法设置类型；
-//     · 声明过的 `target`（辩论对象/文件引用）**没有任何消费者**；
-//     · 没有任何东西携带「推荐流程」。
-//   本文件是这三条的 pack 侧唯一来源：类型目录、骨架文本、以及**明确登记的缺口**。
-//
-// ★ WHY IT IS NOT CALLED `flow`. 内核已经有一个 `flow`（`kernel/meetingmarker.js` `createOrderControls` ⇒
-//   `{ flow, overrideOrder, effective, orderFor, floorOf, queueGate, view, ORDER_KEY }`），它管的是**发言楼层/顺序**
-//   （`open` / `hands` / `round_robin` / `call_on`），是「谁先说话」的机制。本文件管的是**议程顺序**（先干什么、后干什么）。
-//   两个东西都被叫成「流程」就会让人以为设了 `flow` 就等于设了议程 —— 所以这里一律写 `procedure`，
-//   并且 `vibe_v5_meeting` 的返回里两者分开报告（`flow` 由内核面负责，`procedure` 由本文件负责）。
-//
-// ★ RECOMMENDATION, NOT REQUIREMENT. `binding: 'recommendation'` 是机器可读的：任何读取方都不许把骨架当成门禁。
-//   框架不推进议程、不检查院士是否照做、也不因为偏离而拒绝任何调用 —— 这正是规则要的「完全由院士自己决定」。
-//
-// ★ THE HONEST HALF. 规则里有两件事目前**框架没有实现**，它们以 `status:'pending'` 出现在骨架里、并以
-//   `MEETING_PROCEDURE_GAPS` 具名导出（每个缺口写明规则原文、现状、以及它该由哪一面实现）。
-//   宁可让院士看到「这一步还没实现」，也不要给一个看起来跑通了的假流程。
+/**
+ * 会议**类型**目录与**推荐**流程骨架 —— 机构政策，属于 pack，不属于内核（D5 / 规则「特殊类型会议」）。
+ *
+ * 三条历史缺陷（本文件存在的原因，逐条都有 file:line 级的旧行为为证）：
+ *   ① 类型词汇在 pack 里被校验完就丢掉，内核永远只看到 `type:'ordinary'`；
+ *   ② `type` 之后 `target`（议题对象）没有任何消费者；
+ *   ③ 没有任何「流程骨架」—— 院士开完会没有任何议程建议。
+ * 今天的形状：`MEETING_TYPES` 是 pack 自己的词汇（内核不认识这六个 id，`tests/vmu-meeting-types.test.mjs`
+ * 会真的去 `kernel/meetings.js` 里 grep 它们，确认「换机构＝换 pack」这条第一原则没被破坏）。
+ *
+ * ★ D5（本轮）：**每一类都有决议**。规则只点名给了辩论会议的骨架，但「规则没给骨架」不等于
+ * 「框架可以静默返回 null」—— 那是把"没写"当成"没有"。所以六个类型现在各自有一套推荐骨架，
+ * 每一步都带 `tool:` 字段点名**真实存在**的工具（`tests/vmu-meeting-procedures-catalog.test.mjs` 会拿
+ * 运行时工具目录逐个核对：假工具名＝假承诺，B4/B10 已经踩过一次）。
+ *
+ * 语义边界（必须一直被说清）：
+ *   · `binding:'recommendation'` 是**机器可读**的承诺：骨架不是门禁。院士可以只做其中一步、改顺序、
+ *     或完全不用；框架不检查、不阻断、不记录偏离。
+ *   · 骨架里的 `status:'yes'` 之类的"实现状态"不要编：只有 `'supported'` 与 `'pending'(+pendingReason)`
+ *     两种，`pendingSteps` 由 `status !== 'supported'` 派生，空的就真的是空。
+ */
 
-/** 会议类型目录。规则原文：「正常会议，学术交流，辩论，结题，论文交流，未来规划/策划，...」——
- *  最后的「...」是允许扩展：设置 `vmu.meetings.typeCatalog` 可以收紧或放宽，内核按声明校验。 */
+/** 六个类型（顺序即展示顺序）。`subjectRequired` 只有辩论为真 —— 规则只点名辩论需要「命题对象」。 */
 export const MEETING_TYPES = Object.freeze([
-  Object.freeze({ id: 'ordinary', label: '正常会议', purpose: '临时起意的一般议事：同步进展、定分工、处理突发。', subjectRequired: false }),
-  Object.freeze({ id: 'academic', label: '学术交流', purpose: '交换各自方向的进展与想法，不裁决任何命题。', subjectRequired: false }),
-  Object.freeze({ id: 'debate', label: '辩论', purpose: '围绕一个命题（或一篇论文/一段 Lean）的**真伪**展开辩论，并以最终裁决给出布尔概率。', subjectRequired: true }),
-  Object.freeze({ id: 'closure', label: '结题', purpose: '对一个课题的收尾：确认已完成、尚缺什么、是否达标。', subjectRequired: false }),
-  Object.freeze({ id: 'paper', label: '论文交流', purpose: '交叉互审与定稿讨论（面向读者的正确性与系统性）。', subjectRequired: false }),
-  Object.freeze({ id: 'planning', label: '未来规划/策划', purpose: '设计/调整技术路线蓝图与后续阶段安排。', subjectRequired: false }),
+  Object.freeze({ id: 'ordinary', label: '正常会议', purpose: '例行同步：本所/小组的进展、分工、阻塞与下一步。', subjectRequired: false }),
+  Object.freeze({ id: 'academic', label: '学术交流', purpose: '围绕研究方向互相报告与提问，把要追的线索落到记录上。', subjectRequired: false }),
+  Object.freeze({ id: 'debate', label: '辩论', purpose: '围绕一个命题（命题卡/文件/一句话）辩论，以最终裁决给出布尔概率。', subjectRequired: true }),
+  Object.freeze({ id: 'closure', label: '结题', purpose: '确认目标是否达成、缺什么，并对"是否达标"表决与归档。', subjectRequired: false }),
+  Object.freeze({ id: 'paper', label: '论文交流', purpose: '围绕一篇论文稿的提交、互审、修订与定稿。', subjectRequired: false }),
+  Object.freeze({ id: 'planning', label: '未来规划/策划', purpose: '基于现状与约束，给出备选路线与阶段计划。', subjectRequired: false }),
 ])
 
 export const MEETING_TYPE_IDS = Object.freeze(MEETING_TYPES.map((t) => t.id))
 const BY_ID = new Map(MEETING_TYPES.map((t) => [t.id, t]))
+
+/** 一步骨架。`tool` 是**唯一主工具名**（机器可核对的字段），`tools` 是给人读的完整调用示例。 */
+function step(n, phase, tool, what, tools) {
+  return Object.freeze({ n, phase, tool, what, tools: Object.freeze(tools), status: 'supported' })
+}
 
 /**
  * 辩论会议的推荐流程骨架 —— 逐条对应规则原文，不增不减：
@@ -46,39 +50,19 @@ export const DEBATE_PROCEDURE = Object.freeze({
   binding: 'recommendation',
   subject: '辩论对象：命题卡 id、一个文件引用（如 Members/<成员>/Propos/<id>.md 或 Lean 文件），或一句话命题。lean 已通过但概率仍非 1 的命题，辩论焦点是「代码中的命题与定义是否符合原意」。',
   steps: Object.freeze([
-    Object.freeze({
-      n: 1,
-      phase: 'independent-estimates',
-      what: '各成员各自独立表态：给出该命题当前的布尔概率([0,1])、理由、以及证明/证伪进展。先不互相反驳、不互相引用（「独立」是**尽力而为的约定**，不是内核保证的隔离 —— 见 notes）。',
-      tools: Object.freeze(['vibe_vmu_meeting { action: "speak" }', 'vibe_v5_say']),
-      status: 'supported',
-    }),
-    Object.freeze({
-      n: 2,
-      phase: 'debate',
-      what: '展开辩论：轮流发言 / 举手后发言 / 主席邀请发言。★ 轮数由院士自行决定，框架不设默认轮数、也不在轮数用尽时拒绝任何调用。',
-      tools: Object.freeze(['vibe_vmu_meeting { action: "hand" }', 'vibe_vmu_meeting { action: "invite" }', 'vibe_vmu_meeting { action: "speak" }']),
-      status: 'supported',
-    }),
-    Object.freeze({
-      n: 3,
-      phase: 'final-verdicts',
-      what: '会议结束前，每位参加辩论的成员给出最终裁决：「布尔概率([0,1])，理由」。主席先开一个 live 票（target = 辩论对象），成员再各自写入自己的概率。',
-      tools: Object.freeze([
-        'vibe_vmu_meeting { action: "ballot", ballotId: "<自定 id>", target: "<辩论对象>" }',
-        'vibe_v5_verdict { verdict: <0..1>, target: "<ballotId>", member: "<你>" }',
-      ]),
-      status: 'supported',
-    }),
-    Object.freeze({
-      n: 4,
-      phase: 'aggregate-and-notify',
-      what: '框架裁定并通知：若全部一致为 1（或一致为 0）则最终概率取该值，否则取所有裁决的平均值；随后通知该命题卡的持有者把卡片概率改为该值。',
-      tools: Object.freeze([
-        'vibe_v5_verdict_final { meeting: "<本会议>", proposition_id: "<命题卡>", verdicts: [{ member, p, reason }], fidelity?: "conform" | "defect" }',
-      ]),
-      status: 'supported',
-    }),
+    step(1, 'independent-estimates', 'vibe_v5_say',
+      '各成员各自独立表态：给出该命题当前的布尔概率([0,1])、理由、以及证明/证伪进展。先不互相反驳、不互相引用（「独立」是**尽力而为的约定**，不是内核保证的隔离 —— 见 notes）。',
+      ['vibe_vmu_meeting { action: "speak" }', 'vibe_v5_say']),
+    step(2, 'debate', 'vibe_vmu_meeting',
+      '展开辩论：轮流发言 / 举手后发言 / 主席邀请发言。★ 轮数由院士自行决定，框架不设默认轮数、也不在轮数用尽时拒绝任何调用。',
+      ['vibe_vmu_meeting { action: "hand" }', 'vibe_vmu_meeting { action: "invite" }', 'vibe_vmu_meeting { action: "speak" }']),
+    step(3, 'final-verdicts', 'vibe_v5_verdict',
+      '会议结束前，每位参加辩论的成员给出最终裁决：「布尔概率([0,1])，理由」。主席先开一个 live 票（target = 辩论对象），成员再各自写入自己的概率。',
+      ['vibe_vmu_meeting { action: "ballot", ballotId: "<自定 id>", target: "<辩论对象>" }',
+        'vibe_v5_verdict { verdict: <0..1>, target: "<ballotId>", member: "<你>" }']),
+    step(4, 'aggregate-and-notify', 'vibe_v5_verdict_final',
+      '框架裁定并通知：若全部一致为 1（或一致为 0）则最终概率取该值，否则取所有裁决的平均值；随后通知该命题卡的持有者把卡片概率改为该值。',
+      ['vibe_v5_verdict_final { meeting: "<本会议>", proposition_id: "<命题卡>", verdicts: [{ member, p, reason }], fidelity?: "conform" | "defect" }']),
   ]),
   notes: Object.freeze([
     '本骨架是**推荐**：院士可以只做其中一步、改变顺序、或完全不用。框架不检查、不阻断、不记录偏离。',
@@ -88,8 +72,149 @@ export const DEBATE_PROCEDURE = Object.freeze({
   ]),
 })
 
-/** 只有规则点名给了骨架的类型才有骨架。其余类型**不发明**流程 —— 返回 null 并说明，而不是给一套看起来专业的假流程。 */
-export const MEETING_PROCEDURES = Object.freeze({ debate: DEBATE_PROCEDURE })
+/** 正常会议：例行同步 —— 进展 / 分工 / 收尾。 */
+export const ORDINARY_PROCEDURE = Object.freeze({
+  title: '正常会议 · 推荐流程骨架',
+  binding: 'recommendation',
+  subject: null,
+  steps: Object.freeze([
+    step(1, 'sync-progress', 'vibe_v5_say',
+      '每人依次同步：手上在做什么、做到哪一步、下一步是什么。要留档的进展用记录面写卡，不要只在会议记录里说。',
+      ['vibe_v5_say { text: "<进展>" }', 'vibe_v5_record_progress { ... }']),
+    step(2, 'distribute-work', 'vibe_v5_task_create',
+      '把本轮定下的活落成任务卡（谁做、做什么、做到什么算完成）；已有任务用 task_update 改状态，不要口头分工。',
+      ['vibe_v5_task_create { ... }', 'vibe_v5_assign { ... }', 'vibe_v5_task_update { ... }']),
+    step(3, 'close-and-record', 'vibe_vmu_meeting',
+      '主席收尾并关会：确认没有未决事项，然后把结论写进机构记录（会议记录本身不是机构记录）。',
+      ['vibe_vmu_meeting { action: "summary", id: "<本会议>" }', 'vibe_vmu_meeting { action: "close", id: "<本会议>" }']),
+  ]),
+  notes: Object.freeze([
+    '本骨架是**推荐**，不是门禁：可以只做一步、改顺序、完全不用。',
+    '正常会议不要求议题对象（`subject`）：有议题就写进 agenda，不必为了"像开会"编一个。',
+  ]),
+})
+
+/** 学术交流：报告 + 交叉提问 + 把线索落库。 */
+export const ACADEMIC_PROCEDURE = Object.freeze({
+  title: '学术交流 · 推荐流程骨架',
+  binding: 'recommendation',
+  subject: null,
+  steps: Object.freeze([
+    step(1, 'report-directions', 'vibe_v5_record_progress',
+      '各方向报告当前状态：已有结论、正在试的路、卡住的点。能落卡的结论要落卡（记录面才是机构记忆）。',
+      ['vibe_v5_record_progress { ... }', 'vibe_v5_say { text: "<报告>" }']),
+    step(2, 'cross-questions', 'vibe_vmu_meeting',
+      '交叉提问与追问：举手/邀请发言后由本人回答。重点是"这一步为什么成立"，不是"做没做"。',
+      ['vibe_vmu_meeting { action: "hand" }', 'vibe_vmu_meeting { action: "speak" }']),
+    step(3, 'file-the-leads', 'vibe_v5_task_create',
+      '把要追的线索与待验证的猜想落成任务/子问题卡，散会后再也不会"没人记得"。',
+      ['vibe_v5_task_create { ... }', 'vibe_v5_record_subproblem { ... }']),
+  ]),
+  notes: Object.freeze([
+    '本骨架是**推荐**，不是门禁：可以跳过、改序、完全不用。',
+    '「交流」不需要投票：需要定论的时候才用辩论会议，别把交流会开成表决会。',
+  ]),
+})
+
+/** 结题：清点 + 点名缺口 + 表决 + 归档。 */
+export const CLOSURE_PROCEDURE = Object.freeze({
+  title: '结题 · 推荐流程骨架',
+  binding: 'recommendation',
+  subject: null,
+  steps: Object.freeze([
+    step(1, 'inventory-what-is-done', 'vibe_v5_overview',
+      '清点已完成的东西：目标逐条对照，只有能指到产物/记录的才算完成。',
+      ['vibe_v5_overview { ... }', 'vibe_v5_task_list { ... }']),
+    step(2, 'name-the-gaps', 'vibe_v5_task_create',
+      '点名缺口：缺什么、为什么缺、补它需要什么。不许用"基本完成"略过。',
+      ['vibe_v5_task_create { ... }', 'vibe_v5_record_progress { ... }']),
+    step(3, 'take-the-vote', 'vibe_v5_poll_open',
+      '对「是否达标」表决：先开票，再由有资格者各自投，最后取票。人数下限仍是一条**未实现**的规则（见 `MEETING_PROCEDURE_GAPS` 的 min-voters）。',
+      ['vibe_v5_poll_open { ... }', 'vibe_v5_poll_vote { ... }', 'vibe_v5_poll_close { ... }']),
+    step(4, 'archive-the-verdict', 'vibe_v5_report',
+      '把结题结论归档：结论、依据、遗留项各一段，交给机构记录而不是留在会议记录里。',
+      ['vibe_v5_report { ... }']),
+  ]),
+  notes: Object.freeze([
+    '本骨架是**推荐**，不是门禁：可以只做一步、改顺序、完全不用。',
+    '表决的结果必须能被读回（票箱/裁决面），「大家都没意见」不是结论。',
+  ]),
+})
+
+/** 论文交流：提交 + 互审 + 修订定稿（定稿受所办咨询闸约束）。 */
+export const PAPER_PROCEDURE = Object.freeze({
+  title: '论文交流 · 推荐流程骨架',
+  binding: 'recommendation',
+  subject: null,
+  steps: Object.freeze([
+    step(1, 'submit-and-announce', 'vibe_v5_paper',
+      '稿件的当前版本先落到论文子系统（start/sections/status 都可读回），再在会上公示版本与变化。',
+      ['vibe_v5_paper { action: "start", target: "<论文 id>" }', 'vibe_v5_paper { action: "sections", target: "<论文 id>" }']),
+    step(2, 'cross-review', 'vibe_v5_paper',
+      '交叉互审：每位评审给出"可交付 / 需修改"的判定与理由；判定要落进论文子系统的 review 面。',
+      ['vibe_v5_paper { action: "review", target: "<论文 id>", deliverable: true|false, notes: "<理由>" }']),
+    step(3, 'revise-and-finalize', 'vibe_v5_paper',
+      '按评审意见修订后推进状态；定稿要过所办咨询闸（`vmu.paper.officeConsult`），所办用 `consult` 答复后才放行。',
+      ['vibe_v5_paper { action: "advance", target: "<论文 id>" }',
+        'vibe_v5_paper { action: "consult", target: "<论文 id>", member: "<所办>", answer: "<意见>" }',
+        'vibe_v5_paper { action: "final", target: "<论文 id>", member: "<院士>", deliverable: true }']),
+  ]),
+  notes: Object.freeze([
+    '本骨架是**推荐**，不是门禁：可以跳过互审直接定稿（但咨询闸是内核/系列化策略，不在本骨架的裁量范围内）。',
+    '所办咨询闸是**策略**：`vmu.paper.officeConsult` 由部署声明；本骨架只说明"定稿可能被拒、拒了怎么答复"。',
+  ]),
+})
+
+/** 未来规划/策划：读现状 + 列备选 + 排阶段 + 确认。 */
+export const PLANNING_PROCEDURE = Object.freeze({
+  title: '未来规划/策划 · 推荐流程骨架',
+  binding: 'recommendation',
+  subject: null,
+  steps: Object.freeze([
+    step(1, 'read-the-state', 'vibe_v5_overview',
+      '先把现状与约束摊开：目标、已完成、已知阻塞、外部限制。没有现状的规划是许愿。',
+      ['vibe_v5_overview { ... }', 'vibe_v5_read_library { ... }']),
+    step(2, 'lay-out-routes', 'vibe_v5_record_method',
+      '列备选路线（至少两条），每条写清代价、风险、可验证的里程碑；方法/路线落卡，别只存在于发言里。',
+      ['vibe_v5_record_method { ... }', 'vibe_v5_record_proposition { ... }']),
+    step(3, 'plan-the-phases', 'vibe_v5_task_create',
+      '把选定路线拆成阶段任务，标出优先级与依赖；先做哪一步、什么条件下改路线要写下来。',
+      ['vibe_v5_task_create { ... }', 'vibe_v5_prioritize { ... }']),
+    step(4, 'confirm-plan', 'vibe_v5_poll_close',
+      '确认阶段计划：要形成机构决定就表决，并把结果记录（谁赞成、谁保留、什么条件下重议）。',
+      ['vibe_v5_poll_open { ... }', 'vibe_v5_poll_vote { ... }', 'vibe_v5_poll_close { ... }']),
+  ]),
+  notes: Object.freeze([
+    '本骨架是**推荐**，不是门禁：规划会议尤其可以不按骨架走 —— 但"没有备选路线"与"没有里程碑"通常意味着还没规划。',
+  ]),
+})
+
+/**
+ * 六个类型 ⇒ 六套骨架。**没有 null 分支**：`MEETING_PROCEDURE_DECISIONS` 是机器可读的决议台账，
+ * 新增类型若忘了配骨架，`tests/vmu-meeting-procedures-catalog.test.mjs` 会红（而不是静默返回 null）。
+ */
+export const MEETING_PROCEDURES = Object.freeze({
+  ordinary: ORDINARY_PROCEDURE,
+  academic: ACADEMIC_PROCEDURE,
+  debate: DEBATE_PROCEDURE,
+  closure: CLOSURE_PROCEDURE,
+  paper: PAPER_PROCEDURE,
+  planning: PLANNING_PROCEDURE,
+})
+
+/**
+ * 决议台账：每个类型要么有骨架，要么**具名**说明"本类型不给骨架，原因：X"。今天六个都有骨架，
+ * 但形状保留 —— 一个能被机器检查的"没有"，胜过一个静默的 null。
+ */
+export const MEETING_PROCEDURE_DECISIONS = Object.freeze(MEETING_TYPES.map((t) => {
+  const procedure = MEETING_PROCEDURES[t.id] || null
+  return Object.freeze({
+    type: t.id,
+    label: t.label,
+    hasProcedure: !!procedure,
+    reason: procedure ? null : '本类型不给推荐骨架：' + t.label + ' 的议程完全由院士自行编排（这一条是具名决定，不是遗漏）。',
+  })
+}))
 
 /** 规则里写明、而框架**尚未实现**的事。机器可读，供工具面与文档共同引用（单一来源）。 */
 export const MEETING_PROCEDURE_GAPS = Object.freeze([
@@ -133,7 +258,7 @@ export function procedureFor(type) {
       ? row.note
       : (procedure
         ? '这套骨架是**推荐**，不是门禁：院士可以跳过、改序或完全不用，框架不检查也不阻断。'
-        : '本类型没有推荐流程骨架（规则只点名给了辩论会议）：框架只提供它的通用会议原语，议程由院士自行编排。'),
+        : '本类型没有推荐流程骨架（这是具名决定，不是遗漏）：框架只提供它的通用会议原语，议程由院士自行编排。'),
     // 有骨架时把该骨架里尚未实现的步骤一并报出来，调用方不必去读源码才知道哪一步是空的。
     pendingSteps: procedure ? procedure.steps.filter((s) => s.status !== 'supported').map((s) => ({ n: s.n, phase: s.phase, reason: s.pendingReason })) : [],
   }

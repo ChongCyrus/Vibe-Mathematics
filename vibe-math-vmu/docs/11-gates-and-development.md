@@ -138,6 +138,15 @@
 - 实例 2（B11 自反馈库）：成员侧 `vibe_v5_feedback`（`packs/v5r/tools.js:404-438`）三级全中 ⇒ **具备**；院士"阶段自反馈"连**阶段词表**都没有（`packs/v5r` 全目录 `复盘|阶段自|流程优化|组织协作` 零命中）⇒ **缺失**；且提示行 `packs/v5r/prompts/v5r-blocks-b.js:105` 承诺"未闭环条目会出现在汇报与总览的计数里"，而 `tools.js:174-189`（report）与 `:195-210`（overview）**都没有** feedback 计数 ⇒ **③被调用这一级上提示语与代码不一致**（这是缺陷，不是"未来工作"）。
 - 与第四／六条的分工：第四条问"**门能不能咬人**"，第六条问"**观测量在两端是否真的不同**"，本条问"**你判它生效，用的是哪一级的证据**"。
 
+**⇒ 第五条附：共享文件的编辑纪律（★ R17 补，源于一次把 `package.json` 写坏的事故）** —— 第五条讲"**去哪读**"，这一条讲"**用什么写**"：读错会报错结论，写错会毁掉共享文件。四条都来自实测，不是泛泛的"注意编码"。
+
+1. **事故（可核对，R16）**：PowerShell 链 `Get-Content -Raw` → `-replace` 插登记行 → `Set-Content`／`WriteAllText` 写回，在 **GBK 控制台**下把 UTF-8 中文写坏：字节数 **76,118 → 40,342**，随后 `JSON.parse` 抛 **`Bad control character`**，整个 `package.json` 不可读。**恢复方式只有两条**：`git checkout -- package.json` ＋ **用 Node 重放 ASCII 登记行**——不是"再修一遍编码"（坏掉的中文没有原字节可救）。
+2. **写盘通道一律走 Node**：lane 写任何共享文件（`package.json`／`installer.js`／`docs/**`／`settings/*.json`）一律 `readFileSync(path,"utf8")` → 字符串替换 → `writeFileSync(path, out, "utf8")`。**禁止**用 PowerShell 读改写（`Get-Content`／`-replace`／`Set-Content`／`WriteAllText`）——它在非 UTF-8 控制台下会**静默降级**，而且 `node:fs` 直写不经过 harness 的 fs 版本守卫（与 `第九条·I9` 同族：守卫看不见的写入者，会把定点编辑悄悄毁掉）。
+3. **改共享 JSON/Markdown 前先确认无并发写者**：`git status --porcelain -- <file>`（必要时连 `git diff --stat -- <file>` 一起读）确认没有别的车道正在写同一文件；有就在回执里点名等待，不抢写。**"读-改-写"三步之间若有别人落盘，你的替换会覆盖对方的改动，而且不会报错**——这是本轮唯一一个"两个人都在正确做事、结果还是坏的"失败形态。
+4. **写前确认目标段落不是生成区**：本仓在 HTML 注释里用 `BEGIN GENERATED: <生成区名>` … `END GENERATED: <生成区名>` 界定生成区（本卷的零机制矩阵块就是生成区），两者之间的内容由生成器拥有，手写的行落在里面，下一次 `--write`／`--check` 会把它**逐字符还原**（§11.af 与 `第九条·I9` 的同一根因）。⇒ **动手前先 `Select-String` 一遍生成标记**，再决定插在哪。
+
+⇒ 与第五条的合读：**读**要在事实落地的通道上（本条原话），**写**要在不会破坏事实的通道上（本条附）；两者都要求同一件事——**先确认你碰的这个文件此刻归谁**。
+
 **⇒ 第六条硬要求（★ R9 新增，源于 `vmu-entry` E-17(乙)）**：**断言所选的"观测量"必须在被测的两档之间【真的不同】** —— 否则它是**语义级的空过**，而**语法级的 RULE E 看不见**（RULE E 只问"某个集合是否可能为空"，不问"这个量在两档之间是否有差异"）。实例（本轮实测）：那条断言说的是"`config.packs` 的顺序决定重叠设置 ⇒ 后应用者胜"，观测量却取了 **`vmu.meetings.quorumRule`**；而**两个包现在都声明 `'m-unanimous'`** ⇒ `reversed.quorum === on.quorum`，`!==` **永不成立**。★ **双重教训**：它当年"能区分"**只因为 v3-core 声明的是域外值 `'majority'`**，而那个域外值正是本轮**值域门禁**抓到的真实缺陷（域＝`['m-unanimous','all-unanimous']`，且 `ballot.js` 的默认 tally 只把它当标签）⇒ **不准为救一条断言把非法值写回去**。**正例**：观测 `vmu.meetings.verdictMaxRounds`（v3-core **5** / institute-min **3**，顺序可见）⇒ `vmu-entry` 回 **150/0**。⇒ 纪律：**先证明"这个量真的随被测条件变化"**（把两档实测值对一下）再写进断言；"同值也能过"属**语义空过**，与 RULE E 拦的**语法空过**是两回事、要分别防。
 
 **⇒ 第七条硬要求（★ R10 新增，源于 `audit-dependency-cycles`）**：**门禁必须读"事实所在的那种文本"** —— 静态门扫源码时，**注释与数据字符串不是代码**。实例：依赖环门禁原先直接对**原文**跑 `(?:import|export)[^'"\n]*from '…'`，于是 `resume.js` **注释里**为解释一个摘要助手而写的一句 `import { contentDigest } from './resume.js'` 被当成真 import ⇒ 报出**自环**；当时的修法是**改写注释**——**门禁在指挥文档措辞**，这是判据与环境错配的又一方向。**正解**（与 `audit-package-membership` 同一做法）：**先去注释**（`tests/_lib/strip-comments.mjs`）**再要求语句位置**（`^[ \t]*(?:import|export)\b[^;]*?from '…'` ＋ 副作用导入），并配**自探针**：注释（行/块）与数据字符串里的 import 形状**不得**被计入，而**四种真拼法**（单行、**多行**、副作用、re-export）**必须**仍被找到。★ **附带收获**：换成语句位置判据后，同一棵树上的内部边由 **245 → 246** —— 旧模式连**多行 import** 都看不见（`[^'"\n]*` 不跨行），所以这次既**去掉假边**又**补回一条真边**。⇒ 纪律：静态门的输入要先"降到代码"，再用**双向自探针**证明"假的不算、真的不漏"；只证一头会留下另一头的错。
@@ -220,11 +229,11 @@
 | 口径 | 来源 | 实测值（**本轮重新实测** ✓） |
 |---|---|---|
 | `derived.*`＝**作业计数**（**2026-10-14 实跑** ✓；PHASE 6 复测 ✓） | `node tests/run-tests.mjs --counts`（或 `node scripts/update-doc-counts.mjs --check`） | **`total 454 / suites 348 / probes 106`** ✓（旧值 134／68／66、322／250／72 均已在扩卷与增件后过期 ✗；PHASE 6 删除 `audit-gate-snapshot.test.mjs` 后作业数 −1） |
-| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 372 / suites 268 / probes 104`** ✓ |
+| `shipped.*`＝**文件计数** | `package.json#files` 里 `tests/*.mjs` 的行数 | **`total 393 / suites 288 / probes 105`** ✓ |
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓；**PHASE 6 起由 `--scope-report` 派生、`update-doc-counts --write` 自动重写** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 385 / suites 323 / probes 62`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
-**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **415 作业**（351 套件 + 64 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **433 作业**（369 套件 + 64 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
 **更新方式（2026-10-14 更正 ✗✓；PHASE 6 再更正 ✓）**：旧文写"`scripts/update-doc-counts.mjs` 只**整行重写 4 处**……**不含** `vibe-math-vmu/docs/**`" —— **该说法已过期** ✗。实读该脚本：它覆盖 **6 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`、**本卷两行**），本卷的 `shipped.*` 行与"vmu 子集"行都按标记**整行重写**（**不要手改** ✓）。★ **PHASE 6 修复的残留缺陷**：此前"vmu 子集"行**永远不会被重写** —— 它想用 `GATE_SCOPE=vmu` 下的 `--counts` 派生，而 `--counts` **按设计**是作用域无关的，脚本只能拒绝并留一行人工数字（**永久说谎** ✗）。现在改为从 `node tests/run-tests.mjs --scope-report` 的 `scopes.vmu` 派生（只派生、不跑作业 ✓），该行**由 `--write` 自动跟随**；`--check` 与 `--write` 的差集即为待同步项 ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓
@@ -795,7 +804,6 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `formal` · `check()` | refusal | VMU_MATH_INVALID_INPUT | enforced=[0] enforcedScope=evaluated-so-far | 具名拒（带 code）（task-214 实测：`check()` ⇒ 具名拒 **VMU_MATH_INVALID_INPUT** ⇒ 零机制＝无形式化请求 ⇒ 具名拒即真实形状 ✓） |
 | `funding` · `list()` | ok | — | enforced=[0] fired=[0] enforcedScope=evaluated-so-far | ok 或 object（实测 `list()` ⇒ **ok**（`enforced=[0] fired=[0]` ⇒ 零机制清单可读、**不拒**；**键数由本生成器实测输出** ✓）） |
 | `governance` · `keysUsed()` | array[15] | — | — | array 或 object（治理面：只读列举（keysUsed/partition 不拒）） |
-| `grant` · `check()` | refusal | VMU_NOT_PERMITTED | enforced=[1] fired=[1] enforcedScope=evaluated-so-far | 具名拒（带 code）（零机制：`vmu.grant.enabled=false` ⇒ `grant()`／`check()` 均**具名拒 `VMU_NOT_PERMITTED`**（"this face grants nothing (zero mechanism)" ✓）；开启后 `commands` 枚举外亦具名拒 ✓；`check()` 无授予 ⇒ 具名拒 ✓） |
 | `guard` | （无 create* 工厂） | — | — | EXPECT_NA（非服务模块（无 `create*` 工厂 ⇒ 不适用 ✓）） |
 | `handover` · `open()` | ok | — | — | 具名拒或 ok（task-214 批 3 补参（形状取自测试 vmu-handover.test.mjs:27 `open({from,to})`）：补参前实测具名拒 **VMU_INVALID_ARGUMENT** ⇒ 补参后应见放行 ⇒ 已放宽为"具名拒或 ok" ✓） |
 | `human` · `list()` | array[0] | — | — | array 或 object（两侧都写清 ✓：**零声明下 `status()` ⇒ ok（object）**（vetoes: 0、approvals: 0 ✓；neverAllowsBySilence: true 自曝「onTimeout 默认 hold ⇒ 沉默绝不变成批准」 ✓，轮 224 实测）；**Round 3 新增 `queue()` ⇒ 零机制下返回 `array[0]`**（审批队列为空正是零机制的正确形状 ⇒ **空列表放行、不拒** ✓，与 `mathjobs.list()` 同判据）。★ 判据＝**列表面可读、不拒**；"队列为空"**不得**被读成"门已生效"（门由 `gate()` 的具名拒证明 ✓）） |
@@ -868,7 +876,7 @@ PASS  v5-institute-fixes.mutants.mjs  exit=0   472.1s  [shard=2/3]  ALL MUTANTS 
 | `work` | create 抛出 | — | — | PROBE_NEEDS_ARGS（缺：工作项） |
 | `workflow` · `advance()` | refusal | VMU_WORKFLOW_TRANSITION_REQUIRED | enforced=[7] enforcedScope=evaluated-so-far | 具名拒或 ok（**两侧都写清** ✓：`define({})` / `stages()` ⇒ 零机制**放行（ok）** ✓；被探 `advance()` 缺参 ⇒ **task-214 实测：具名拒 `VMU_WORKFLOW_TRANSITION_REQUIRED`（带口径 `enforced=[7]`）** ⇒ 具名拒即真实形状 ✓（旧 note 曾写 `op 抛出` ✗ / "缺参 ⇒ 具名拒" 混述 ✗，均已按实测改写 ✓）） |
 
-=== ZERO-MECHANISM MATRIX: 106 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 9 probe-errors, 10 n/a ===
+=== ZERO-MECHANISM MATRIX: 105 modules, 0 mismatches, 0 unregistered, 0 EXPECT_UNDECIDED, 9 probe-errors, 10 n/a ===
 <!-- END GENERATED: zero-mechanism-matrix -->
 
 ### 11.x 改文档的标准手法（★ 轮 524 补 ✓ —— ★ 本节在台账上结转了 6 轮 ✗）

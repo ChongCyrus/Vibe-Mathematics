@@ -170,7 +170,7 @@
 - 制度声明：`packs/v5r/settings/defaults.json:57`（`vmu.meetings.typeCatalog` 六值）。
 - 内核真读（不是声明即生效）：`kernel/meetings.js:424-428`，非白名单 ⇒ `VMU_NO_SUCH_OBJECT` + 合法值列表，并 `mark(enforced,'vmu.meetings.typeCatalog')`。
 - 存储与回读：`open()` `:418` → 会议对象；`summary()` `:1323-1346` 回 `type`；`meetingView()` `:1347-1360` 回 `type`；`snapshot()` `:1406-1419` 序列化整个会议对象（故 `type` 也随快照过重启）。
-- 按类型取骨架：`meeting-procedures.js:126-144`。
+- 按类型取骨架：`meeting-procedures.js:121-140`。
 - 门禁（本轮实跑）：`tests/vmu-meeting-types.test.mjs` 65/0 exit 0（含 §1–§3 的类型/回读/未知类型拒）。
 - ★ 台账 `docs/acceptance/phase12-v5r-rules-conformance.md` §4 D8 行把 id 写成 `normal/final`，实际是 `ordinary/closure`——台账措辞过期，不影响判定，但引用时别抄。
 

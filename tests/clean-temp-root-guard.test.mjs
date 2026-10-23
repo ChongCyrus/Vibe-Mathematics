@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { rootGuard, sweepPrefixes } from '../scripts/clean-temp.mjs'
+import { requireDir } from './_lib/require-file.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -55,7 +56,11 @@ const probe = join(HERE, '.clean-temp-guard-probe')
   ok(r.status === 2, '★ 仓库内 --root ⇒ exit 2（具名拒绝，不删除）', { status: r.status, err: (r.stderr || '').slice(0, 200) })
   ok((r.stderr || '').includes('CLEAN_TEMP_ROOT_INSIDE_REPO'), '★ stderr 带拒绝码', (r.stderr || '').slice(0, 160))
   ok((r.stderr || '').includes(REPO), '★ stderr 点名仓库根', (r.stderr || '').slice(0, 160))
-  const after = existsSync(probe) ? readdirSync(probe, { recursive: true }).sort() : []
+  // ★ G4 pre-work (audit-no-silent-reads): a silent `[]` here would make the very next assertion vacuously TRUE
+  // (two empty lists compare equal) exactly when the refusal DELETED the probe — the failure this block exists to
+  // catch. requireDir refuses BY NAME instead of degrading.
+  requireDir(probe, 'a refusal must happen BEFORE any deletion: the probe directory must still be listable')
+  const after = readdirSync(probe, { recursive: true }).sort()
   ok(after.length === before.length && after.every((x, i) => x === before[i]) && after.length > 0,
     '★ 被拒后目录内容逐项相同（证明拒绝先于删除）', { before, after })
 }

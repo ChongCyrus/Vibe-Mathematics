@@ -57,6 +57,12 @@ export function createPaperFlow({
   // The clock is a seam: the consult ledger records WHEN the office was asked (durability ⇒ the question survives a
   // crash) and the timeout is measured against it, so tests need to move time without sleeping.
   clock = () => Date.now(),
+  // ★ E1 — THE ARTEFACT-MARKDOWN SEAM. `render` / `PaperTex` / `PaperArtifacts` all build from the closure `PaperMd`, so a
+  // pack whose record-driven sections are filled AFTER the kit assembles its outline could only ever fill the TOOL RECEIPT,
+  // never the .md/.tex written to `Paper/`. That was a real gap (E1: three sections were structurally empty in the archive).
+  // The transformer is POLICY ⇒ the PACK supplies it and the kit only calls it once per render. It MUST return a string:
+  // a fill that returns undefined would silently blank the paper, so a non-string is a named refusal, never a coercion.
+  mdFill = null,
 } = {}) {
   if (!codes || typeof codes !== 'object' || typeof codes.STATE !== 'string' || typeof codes.FINGERPRINT !== 'string') {
     throw refuse('VMU_INVALID_ARGUMENT', 'createPaperFlow needs the REGISTERED error codes',
@@ -66,6 +72,7 @@ export function createPaperFlow({
     throw refuse('VMU_INVALID_ARGUMENT', 'createPaperFlow needs the section titles', 'pass sections:[…] (the institution paper outline)')
   }
   const SECTIONS = sections, SECTION_FIELDS = sectionFields, MAX_ROUNDS = maxRounds, ENGINE_ORDER = engineOrder, REPAIR_CORE = repairCore, TRACK = track, CODES = codes
+  const MD_FILL = typeof mdFill === 'function' ? mdFill : null
   if (!kernel || !kernel.records) {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the paper subsystem needs the records face', 'assemble a kernel with the records service')
   }
@@ -522,8 +529,10 @@ export function createPaperFlow({
     try { return JSON.parse(String(body || '{}')) } catch { return null }
   }
 
-  /** ⑦ markdown: rebuilt from the parts (by id + fingerprint), one section per the original's list. */
-  function PaperMd({ target } = {}) {
+  /** ⑦ markdown: rebuilt from the parts (by id + fingerprint), one section per the original's list.
+   *  `rawMd` is the UNFILLED markdown (the seam below is applied on top); it is exported as `PaperMdRaw` so a pack that
+   *  owns the fill can also produce its AUDIT from the same base instead of calling the filled version twice. */
+  function rawMd({ target } = {}) {
     const { state } = requireState(target)
     const lines = ['# 论文：' + state.target, '', '状态：' + state.status + '｜轮次：' + state.round + '｜编辑：' + state.editor, '']
     // ★ EACH SECTION OWNS AT MOST ONE FIELD, and each member contributes to it ONCE. The previous shape emitted the whole part
@@ -554,6 +563,19 @@ export function createPaperFlow({
     }
     if (state.warnings.length) lines.push('', '## 警告', ...state.warnings.map((w) => '- ' + w))
     return lines.join('\n')
+  }
+
+  /** ⑦b the markdown every artefact is built from — the seam is applied HERE, once, so `.md`, `.tex` and the receipt agree. */
+  function PaperMd(args = {}) {
+    const raw = rawMd(args)
+    if (!MD_FILL) return raw
+    const { state } = requireState(args && args.target)
+    const filled = MD_FILL(raw, { target: state.target, state })
+    if (typeof filled !== 'string') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'mdFill must return the markdown string (got ' + typeof filled + ')',
+        'the pack supplies mdFill; return the filled markdown, or null in the option to opt out')
+    }
+    return filled
   }
 
   /** ⑧ tex: same body, with the engine order's preamble needs (ctex for Chinese). */
@@ -694,7 +716,7 @@ export function createPaperFlow({
       artifacts: PaperArtifacts({ target }), missing: PaperArtifacts({ target }).missing }
   }
 
-  return { start, recordPart, recordReview, advance, pass, recordFinal, PaperMd, PaperTex, PaperArtifacts, render, compilePdf,
+  return { start, recordPart, recordReview, advance, pass, recordFinal, PaperMd, PaperMdRaw: rawMd, PaperTex, PaperArtifacts, render, compilePdf,
     recordConsult, consultState,
     sections: () => SECTIONS.slice(), state: (target) => readState(target) }
 }

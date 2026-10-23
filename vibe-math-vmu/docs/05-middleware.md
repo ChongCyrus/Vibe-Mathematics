@@ -522,7 +522,7 @@ const started = scripts.start({ file: './check.py', args: [id] })   // ★ 立�
 
 ### 钩子索引（★ **生成**：来自 `VU_HOOKS` ＋ `DEFAULT_FAILURE` ＋ 实仓 emit 扫描 ✓）
 
-> ★★★ **本节的数字【曾经手写、并因此过期**]✗** ✓：★ **§5 的标题写着"**20** 个冻结名"，而 `VU_HOOKS` 在轮 496 已增至 **129**（★ 新增 `budget/warn` 与 `member/self-report` ✓ —— ★ 两个都是**修活 bug 时**加上的 ✓）⇒ ★★ **手写计数【必然**]落后于代码** ✓ ⇒ **这张表改为生成** ✓。
+> ★★★ **本节的数字【曾经手写、并因此过期**]✗** ✓：★ **§5 的标题写着"**20** 个冻结名"，而 `VU_HOOKS` 在轮 496 已增至 **128**（★ 新增 `budget/warn` 与 `member/self-report` ✓ —— ★ 两个都是**修活 bug 时**加上的 ✓）⇒ ★★ **手写计数【必然**]落后于代码** ✓ ⇒ **这张表改为生成** ✓。
 
 | 钩子 | 默认失败策略 | 生产者 |
 |---|---|---|
@@ -555,7 +555,6 @@ const started = scripts.start({ file: './check.py', args: [id] })   // ★ 立�
 | `conference/submitted` | `open` | `conference.js` |
 | `conference/agenda-planned` | `open` | `conference.js` |
 | `funding/account-opened` | `open` | `funding.js` |
-| `grant/granted` | `open` | `grant.js` |
 | `mathtools/ran` | `open` | `mathtools.js` |
 | `migration/applied` | `open` | `migration.js` |
 | `ballot/cast` | `closed` | `ballot.js` |
@@ -656,7 +655,7 @@ const started = scripts.start({ file: './check.py', args: [id] })   // ★ 立�
 | `topology/select` | `open` | `topology.js` |
 | `trust/signal` | `open` | `trust.js` |
 
-> ★★ 合计 **129** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
+> ★★ 合计 **128** 个冻结钩子 ✓；★ **无默认策略的 **0** 个** ✓。
 
 <!-- END GENERATED: hook-index -->
 

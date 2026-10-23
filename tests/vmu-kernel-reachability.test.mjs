@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url'
 import {
   PLUGIN_ENTRY_FILES, KNOWN_UNMOUNTED, walkAssembly, unreachableKernelModules,
 } from '../scripts/lib/reachability.mjs'
+import { requireDir, requireFile } from './_lib/require-file.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
@@ -94,9 +95,13 @@ ok(new Set(kitConsultKeys).size >= 5,
 // knob" cannot resurrect a settings claim without a mechanism. The module is gone, and no file in `kernel/**` or
 // `settings/schema.js` may still read or declare a `vmu.grant.*` key (a leftover declaration would be exactly the
 // "declared yet inert" class this gate exists for, and it would silently re-enter the settings table).
-const readIf = (p) => { try { return readFileSync(p, 'utf8') } catch { return '' } }
+// ★ G4 pre-work (audit-no-silent-reads): these directories ARE the evidence base of the absence claim below. A
+// silent `[]`/`''` would make "no vmu.grant.* key remains" vacuously TRUE after a rename, so every directory and
+// every file is READ-OR-REFUSED BY NAME instead of degraded to an empty value.
 const grantScan = ['kernel', 'kernel/prompt', 'kernel/turn', 'settings']
-  .flatMap((d) => { try { return readdirSync(join(VMU, d)).filter((f) => f.endsWith('.js')).map((f) => readIf(join(VMU, d, f))) } catch { return [] } })
+  .flatMap((d) => requireDir(join(VMU, d), 'the grant-family absence scan enumerates this directory')
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => requireFile(join(VMU, d, f), 'the grant-family absence scan reads every kernel/settings file')))
   .join('\n')
 ok(!existsSync(join(VMU, 'kernel/grant.js')) && !/vmu\.grant\./.test(grantScan),
   '★★ the second measured case is CLOSED by deletion: kernel/grant.js is gone and no kernel/schema file still names a vmu.grant.* key',

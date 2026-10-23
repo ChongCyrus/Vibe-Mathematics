@@ -273,15 +273,24 @@ if (has('self-test')) {
   check(!susp.some((s) => s.pid === 4), 'TEMP-HYGIENE: an unrelated program is never reported (the command-line gate holds)')
   // ROUND 17: the `--root` guard — the four branches are pinned here so "the rule stopped biting" and
   // "the rule had nothing to bite" cannot look the same (docs/11 §4.2 第四条).
+  //
+  // ★ FIXED after a FULL-SWEEP red (Lead round 17): the first version wrote `root: tmpdir()` against
+  // `defaultRoot: 'D:\\_tmp'`, so it was green only while TEMP pointed somewhere else. `run-tests` calls
+  // `useTempRoot(preferredTempRoot())`, which points TEMP/TMP/TMPDIR at `D:\\_tmp` ⇒ `os.tmpdir()` EQUALS the
+  // "non-default" root and the branch under test can never fire — the check went red for the ENVIRONMENT, not
+  // for the guard. Both fixtures are now derived FROM tmpdir(), so they stay distinct under any ambient redirect.
+  // (A test that passes only because of where TEMP happens to point is the same false green docs/11 §4.2 names.)
   const rg = (o) => rootGuard(o)
-  check(rg({ root: join(REPO, 'tests'), repo: REPO, defaultRoot: tmpdir() }).refusal?.code === 'CLEAN_TEMP_ROOT_INSIDE_REPO',
+  const defaultRootFixture = join(tmpdir(), 'temp-hygiene-default-root')
+  const otherRootFixture = join(tmpdir(), 'temp-hygiene-other-root')
+  check(rg({ root: join(REPO, 'tests'), repo: REPO, defaultRoot: defaultRootFixture }).refusal?.code === 'CLEAN_TEMP_ROOT_INSIDE_REPO',
     'TEMP-HYGIENE: --root inside the repo is REFUSED by name (cleanup never targets repo files)')
-  check(rg({ root: tmpdir(), repo: REPO, defaultRoot: tmpdir() }).refusal === null
-    && rg({ root: tmpdir(), repo: REPO, defaultRoot: tmpdir() }).forceDryRun === false,
+  check(rg({ root: defaultRootFixture, repo: REPO, defaultRoot: defaultRootFixture }).refusal === null
+    && rg({ root: defaultRootFixture, repo: REPO, defaultRoot: defaultRootFixture }).forceDryRun === false,
     'TEMP-HYGIENE: --root at the DEFAULT temp root is allowed and does not force a dry-run')
-  check(rg({ root: tmpdir(), repo: REPO, defaultRoot: 'D:\\_tmp' }).forceDryRun === true,
+  check(rg({ root: otherRootFixture, repo: REPO, defaultRoot: defaultRootFixture }).forceDryRun === true,
     'TEMP-HYGIENE: a NON-default --root forces --dry-run unless the confirmation switch is given')
-  check(rg({ root: tmpdir(), repo: REPO, defaultRoot: 'D:\\_tmp', confirmed: true }).forceDryRun === false,
+  check(rg({ root: otherRootFixture, repo: REPO, defaultRoot: defaultRootFixture, confirmed: true }).forceDryRun === false,
     'TEMP-HYGIENE: the confirmation switch lifts the forced dry-run when it is given WITH --root')
   check(rg({ root: null, repo: REPO, confirmed: true }).refusal?.code === 'CLEAN_TEMP_CONFIRM_WITHOUT_ROOT',
     'TEMP-HYGIENE: the confirmation switch WITHOUT --root is refused by name (it is only effective together with --root)')

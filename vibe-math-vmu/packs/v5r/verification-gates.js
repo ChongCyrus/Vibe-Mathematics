@@ -36,6 +36,9 @@ import { meetingTypeOf } from './meeting-procedures.js'
 export const GATE_CODES = Object.freeze({
   P1_NEEDS_DEBATE: 'VMU_PACK_V5R_P1_NEEDS_DEBATE',
   DEBATE_SUBJECT_NO_PROOF: 'VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF',
+  // ★ B6: the SECOND refusal of the same gate, because "没写证明" and "写了但拿不出证据"是两种缺失、两条改法。
+  // 合成一个码会让被拒的人不知道自己是漏登记还是证据没到齐 —— 拒绝必须点名缺什么。
+  DEBATE_SUBJECT_UNPROVEN: 'VMU_PACK_V5R_DEBATE_SUBJECT_UNPROVEN',
   VERIFIED_SINGLE_WRITER: 'VMU_PACK_V5R_VERIFIED_SINGLE_WRITER',
   FIDELITY_ASK_REQUIRED: 'VMU_PACK_V5R_FIDELITY_ASK_REQUIRED',
 })
@@ -151,7 +154,9 @@ export function classifySubject(subject) {
  * 输出：`{ ok, allowed, applicable, code?, message?, hint?, form, proofChecked, ... }`
  *
  * ★ 三种形态各自的满足方式（拒绝文案必须说清，否则会把合法用法拒掉）：
- *   · 卡 id  → 卡存在且（`proofRef` 非空且 `proofState='complete'` ｜ `verified` 行 ｜ lean 作业 passed）
+ *   · 卡 id  → **证据层优先**（B6 之后）：该卡有 Lean 已通过作业、或已在 `verified` 轨有定论行 ⇒ 放行；
+ *     **声明层不构成证明**（`proofRef` 非空且 `proofState='complete'` 是作者自述）⇒ 只有声明、没有证据
+ *     ⇒ `DEBATE_SUBJECT_UNPROVEN`；声明也没有 ⇒ `DEBATE_SUBJECT_NO_PROOF`（两种缺失两个码）
  *   · 文件引用 → 证据说文件**可读且非空**；★ 但"它是不是一份写完的证明"本闸**判不了**，回执必须写
  *     `proofContentChecked:false` —— 宁可承认判不了，也不要给一个看起来严的假闸。
  *   · 一句话命题 → 无法承载证明引用 ⇒ **放行**（它是规则允许的合法形态），但回执记 `provenance:'none'`、
@@ -206,22 +211,41 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
   }
   const proofRef = c.proofRef === null || c.proofRef === undefined ? '' : String(c.proofRef).trim()
   const proofState = c.proofState === null || c.proofState === undefined ? '' : String(c.proofState).trim()
-  const complete = proofRef !== '' && proofState === PROOF_STATE_COMPLETE
+  const declared = proofRef !== '' && proofState === PROOF_STATE_COMPLETE
   const verifiedHit = !!(ev.verified && ev.verified.conclusion !== undefined)
   const leanHit = !!(ev.lean && ev.lean.passed === true)
-  if (complete || verifiedHit || leanHit) {
+  const evidenced = verifiedHit || leanHit
+  // ★ PHASE 12 / B6：**证据层是唯一放行依据**。声明层（proofRef + proofState）是成员写进卡体的自述，作者说
+  // "写完了"不等于有人验证过；把它当证明就是"把自报当已证"。证据层只有两种机器事实：Lean 作业通过、或这张卡
+  // 已经在 verified 轨上有一条定论行（有人裁过）。两者都没有时，闸要能分开说缺的是哪一层。
+  if (evidenced) {
     return allow({ form: 'card', subject: cls.raw, proofChecked: true,
-      proofVia: complete ? 'proofRef+proofState=complete' : (verifiedHit ? 'verified-row' : 'lean-passed'),
-      note: complete ? null : '证明引用来自' + (verifiedHit ? ' verified 轨的定论行' : ' 已通过的 Lean 作业') + '；卡自身的 proofRef 未标 complete，接线层应把它补上或说明为什么不需要' })
+      proofVia: verifiedHit ? 'verified-row' : 'lean-passed',
+      evidence: { lean: leanHit, verified: verifiedHit },
+      declared, declaredState: proofState || null,
+      note: declared ? null
+        : '放行依据是机器证据（' + (verifiedHit ? 'verified 轨的定论行' : '已通过的 Lean 作业') + '），不是卡上的自报：'
+          + '这张卡还没登记 proofRef/proofState="complete"，接线层应把证明引用补上，让"谁写的、写在哪"可追溯' })
+  }
+  if (declared) {
+    return refuseGate(GATE_CODES.DEBATE_SUBJECT_UNPROVEN,
+      '命题卡 ' + cls.raw + ' 声明了自己的证明（proofRef=' + proofRef + '、proofState="complete"），但没有任何机器证据：'
+      + 'Lean 作业未通过、`verified` 轨也没有这张卡的定论行。★ 声明层是**作者自述**，不构成证明；'
+      + '规则要的是"含正式证明且已写完"，本闸只认证据层',
+      '两条合法路径（任一即可）：\n'
+      + '  · 先跑 Lean：`vibe_v5_lean_run { target:"' + cls.raw + '" }`，作业 settled 且 passed；\n'
+      + '  · 或让这张卡走完辩论，在 `verified` 轨留下一条定论行。\n'
+      + '证明其实还没写完的话：把 proofState 改成 "draft"（自述要如实），写完再开会。',
+      { form: 'card', subject: cls.raw, proofChecked: false, declared: true, declaredState: proofState, declaredProofRef: proofRef })
   }
   return refuseGate(GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
-    '命题卡 ' + cls.raw + ' 没有「正式证明或证伪**已写完**」的承载：proofRef=' + (proofRef || '空')
+    '命题卡 ' + cls.raw + ' 没有「正式证明或证伪**已写完**」的任何登记，也没有机器证据：proofRef=' + (proofRef || '空')
     + '、proofState=' + (proofState || '空') + '、verified 轨无定论行、Lean 作业未通过'
     + '。规则：只有含正式证明/证伪（且已写完而非半成品）的卡才能进入辩论；"证明尝试"只是候选，不是辩论对象',
-    '三种合法形态各自的满足方式：\n  · 命题卡 id ⇒ 卡上 `proofRef` 非空且 `proofState:"complete"`（或已有 verified 定论行 / Lean 通过）\n'
-    + '  · 文件引用 ⇒ 文件存在且非空（`evidence.file`），内容完整性由人在辩论中核\n'
-    + '  · 一句话命题 ⇒ 合法但本闸无法核证明（放行并记 provenance:none）',
-    { form: 'card', subject: cls.raw, proofChecked: false })
+    '先登记证明引用（写卡时传 `payload:{proofRef:"Members/<m>/Propos/<id>.md#正式证明", proofState:"complete"|"draft"}`，'
+    + '或工具面的 `proof_ref`/`proof_state`），再跑 Lean 或走辩论；声明与证据齐了才可开辩论。'
+    + '三种合法形态：命题卡 id（声明 + 机器证据）/ 文件引用（存在且非空）/ 一句话命题（本闸判不了证明，放行但记 provenance:none）',
+    { form: 'card', subject: cls.raw, proofChecked: false, declared: false, declaredState: proofState || null })
 }
 
 /**
@@ -313,7 +337,10 @@ export function fidelityAsked({ cardId = null, leanPassed = false, p = null, wit
 export function gateCatalog() {
   return Object.freeze([
     Object.freeze({ id: 'p1Intent', code: GATE_CODES.P1_NEEDS_DEBATE, rule: '只有辩论才能把命题卡的布尔概率修改为 1', appliesTo: '写 p=1 的任何调用' }),
-    Object.freeze({ id: 'debateSubjectGate', code: GATE_CODES.DEBATE_SUBJECT_NO_PROOF, rule: '只有含正式证明/证伪（且写完）的卡才能用于辩论', appliesTo: 'type=debate 的会议 subject' }),
+    // ★ B6: 一个闸、两个拒绝码 —— 「声明了证明但拿不出证据」与「根本没登记」是两种缺失、两条改法。
+    Object.freeze({ id: 'debateSubjectGate', code: GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
+      codes: Object.freeze([GATE_CODES.DEBATE_SUBJECT_NO_PROOF, GATE_CODES.DEBATE_SUBJECT_UNPROVEN]),
+      rule: '只有含正式证明/证伪（且写完）的卡才能用于辩论；卡上的 proofRef/proofState 只是自述，没有 Lean 通过或 verified 定论行就不算"已证"', appliesTo: 'type=debate 的会议 subject' }),
     Object.freeze({ id: 'singleWriter', code: GATE_CODES.VERIFIED_SINGLE_WRITER, rule: '定论只能由单一写入器写', appliesTo: '写 verified 轨的任何入口' }),
     Object.freeze({ id: 'fidelityAsked', code: GATE_CODES.FIDELITY_ASK_REQUIRED, rule: 'lean 通过但 p≠1 必须先核描述符合性（D13）', appliesTo: 'lean 通过且 p≠1 的命题卡' }),
   ])

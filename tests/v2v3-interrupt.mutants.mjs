@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { legacyFile } from './_lib/legacy-presets.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -22,7 +23,7 @@ const hangs = []
 const skipped = []
 
 function copyGraph(preset, file, dest) {
-  const src = join(REPO, preset, file)
+  const src = legacyFile(preset, file)
   copyFileSync(src, join(dest, file))
   for (const m of readFileSync(src, 'utf8').matchAll(/from\s+'(\.\/[A-Za-z0-9_.-]+\.js)'/g)) {
     const dep = m[1].slice(2)

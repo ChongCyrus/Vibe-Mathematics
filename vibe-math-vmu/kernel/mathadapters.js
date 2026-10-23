@@ -39,6 +39,7 @@
 //     · clock/log/bus     — injected time source, logger, event bus (all optional; clock only measures).
 
 import { createHash } from 'node:crypto'
+import { declaredDefault } from './settings-defaults.js'
 import { mint as mintId } from './ids.js'
 import { createChildBudget } from './mathjobs.js'
 
@@ -430,7 +431,15 @@ function shapeName(raw) {
 
 export function createMathAdapters(opts) {
   const o = opts || {}
-  const readKey = (k) => (o.settings && typeof o.settings.get === 'function' ? o.settings.get(k) : (o.settings || {})[k])
+  // ★ R16 / F1 (Lead ruling): same convention as kernel/mathjobs.js — the DECLARED default is the default, read
+  // through `kernel/settings-defaults.js`. A literal written beside a read is a second copy of a declaration and the
+  // one that drifts (four such doors were measured and removed in PHASE 6 / goal 3).
+  const readKey = (k) => {
+    const s = o.settings || {}
+    let raw
+    try { raw = typeof s.get === 'function' ? s.get(k) : s[k] } catch (e) { raw = undefined }
+    return raw === undefined ? declaredDefault(k) : raw
+  }
   const clock = typeof o.clock === 'function' ? o.clock : () => 0
   const log = typeof o.log === 'function' ? o.log : () => {}
   // bus.emit takes (NAME, payload): the single-object shape would be refused by the bus and swallowed.
@@ -463,8 +472,13 @@ export function createMathAdapters(opts) {
     const cache = String(readKey('vmu.math.adapters.probeCache') || 'session')
     return {
       enabled: readKey('vmu.math.adapters.enabled') !== false,
-      // ABSENT ⇒ the four documented libraries (same treatment as `vmu.math.engines`, whose default is the
-      // engine order); an EXPLICIT `[]` means "declare none" and is refused by name at probe/run time.
+      // TWO DIFFERENT KINDS OF DEFAULT, deliberately NOT "the same treatment" (R16 measured):
+      //   · libs: ABSENT ⇒ the four documented libraries — a CODE default; no settings layer provides it.
+      //   · engines: ABSENT ⇒ [] — there is NO code default. The 8-name engine order is a DECLARED default
+      //     (`settings/schema.js`), MATERIALIZED by the v5r pack layer (`packs/v5r/settings/defaults.json`,
+      //     source `pack:v5r`); so ABSENT here means the deployment declared none, and guessing engines would
+      //     spawn probes nobody asked for. An EXPLICIT `[]` means "declare none" and is refused by name at
+      //     probe/run time (same refusal for both keys).
       libs: Array.isArray(libsRaw) ? libsRaw.map(String) : ADAPTER_LIBS.slice(),
       engines: Array.isArray(enginesRaw) ? enginesRaw.map(String) : [],
       explicitPython: String(readKey('vmu.math.adapters.python') || '').trim(),

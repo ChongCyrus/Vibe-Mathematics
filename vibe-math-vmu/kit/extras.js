@@ -97,18 +97,27 @@ async function toolTaskUpdate(args = {}, { kernel } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'task action "' + action + '" has NO task-face operation in this kernel',
       'the original allowed edit/delete/release; this kernel\'s ledger exposes only ' + TASK_UPDATE_FACE_OPS.join(', ') + ' — the missing ones are refused by name rather than faked')
   }
+  // ★ ROUND 53 (D10): the ledger's audit row now carries WHO did it (`by`) next to WHOM it happened to (`who`), and
+  // this face states where that knowledge came from instead of leaving it implicit:
+  //   · claim — the claiming member IS the actor, so `by` defaults to `member` with source `caller`; an explicit `by`
+  //             (a chair claiming on someone's behalf, recorded as such) wins with source `argument`;
+  //   · assign / reassign — this face does NOT know the caller's identity, so without `by` the row says
+  //             `by:null, bySource:'unknown'`. The kernel refuses to invent a chair or to reuse the assignee as actor.
   if (action === 'claim') {
     if (!has(args.member)) throw refuse('VMU_INVALID_ARGUMENT', 'claim needs the claiming member', 'pass member:"<roster id>"')
-    const done = await tasks.assign(id, str(args.member), { expectedRevision: rev })
-    return { ok: true, tool: 'vibe_v5_task_update', action, task: done }
+    const declared = has(args.by) ? str(args.by) : null
+    const done = await tasks.assign(id, str(args.member), { expectedRevision: rev,
+      by: declared === null ? str(args.member) : declared, bySource: declared === null ? 'caller' : 'argument' })
+    return { ok: true, tool: 'vibe_v5_task_update', action, by: done.by, bySource: done.bySource, task: done }
   }
   if (action === 'reassign' || action === 'assign') {
     const owner = has(args.owner) ? str(args.owner) : (has(args.member) ? str(args.member) : null)
     if (!owner) {
       throw refuse('VMU_INVALID_ARGUMENT', action + ' needs the new owner', 'pass owner:"<roster id>" (member: is accepted too)')
     }
-    const done = await tasks.assign(id, owner, { expectedRevision: rev })
-    return { ok: true, tool: 'vibe_v5_task_update', action, owner, task: done }
+    const done = await tasks.assign(id, owner, { expectedRevision: rev,
+      by: has(args.by) ? str(args.by) : null, bySource: has(args.by) ? 'argument' : 'unknown' })
+    return { ok: true, tool: 'vibe_v5_task_update', action, owner, by: done.by, bySource: done.bySource, task: done }
   }
   // ★ TRANSITION: the generic move the kernel publishes, which this face simply did not expose. The `to` state is the caller's
   // choice and the kernel's transition table is what judges it - so an illegal move is refused BY THE KERNEL, with its own code,

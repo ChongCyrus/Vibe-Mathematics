@@ -43,10 +43,10 @@ function cardRow(records, { p = 0.5, title = '命题-平方和' } = {}) {
 
 // ── ⓪ declarations ───────────────────────────────────────────────────────────────────────────────────────
 {
-  eq(Object.keys(GATE_CODES).length, 4, 'exactly four gate codes are declared')
+  eq(Object.keys(GATE_CODES).length, 5, 'exactly five gate codes are declared (B6 added SUBJECT_UNPROVEN: "declared finished" is not "proved")')
   const codes = Object.values(GATE_CODES)
   ok(codes.every((c) => c.startsWith('VMU_PACK_V5R_')), 'every gate code wears the pack prefix (' + codes.join(', ') + ')')
-  ok(new Set(codes).size === 4, 'the four codes are distinct')
+  ok(new Set(codes).size === 5, 'the five codes are distinct')
   ok(Object.isFrozen(GATE_CODES) && Object.isFrozen(SUBJECT_FORMS), 'the surface is frozen (no runtime mutation of the vocabulary)')
   eq(SUBJECT_FORMS.join(','), 'card,file,statement', 'the three legal subject forms are the ones the rule names')
   eq(SINGLE_WRITER, 'promoteVerified', 'the single writer is named by contract, not by convention')
@@ -55,8 +55,13 @@ function cardRow(records, { p = 0.5, title = '命题-平方和' } = {}) {
   // ★ GUARD (RULE E, shape A): assert the catalogue is NON-EMPTY in its own right, so no later
   // `.every`/`.map` over it can pass on an empty list (`[].every(fn) === true` is a vacuous green).
   ok(Array.isArray(cat) && cat.length > 0, 'the catalogue is non-empty (guard: a loop over it can never be vacuous)', cat.length)
-  eq(cat.length, 4, 'the catalog lists four gates')
-  eq(cat.map((g) => g.code).join(','), codes.join(','), 'the catalog codes are exactly GATE_CODES (one noun, one meaning)')
+  eq(cat.length, 4, 'the catalog lists four GATES (a gate may publish more than one code)')
+  // a gate row publishes `code` and may publish `codes` (plural) — every published code must be a declared one,
+  // and every declared code must be published by some gate (neither direction can go vacuous).
+  const published = new Set()
+  for (const g of cat) for (const c of (Array.isArray(g.codes) ? g.codes : [g.code])) published.add(c)
+  ok(cat.every((g) => g.code && published.has(g.code)), 'every catalog row names a declared code')
+  ok(codes.every((c) => published.has(c)), 'every declared code is published by a gate row (no orphan vocabulary)', [...published].join(','))
   ok(cat.length === 4 && cat.every((g) => g.id && g.rule && g.appliesTo), 'each catalog row carries its rule text and what it applies to (non-empty by the four-gate count above)')
 }
 
@@ -131,8 +136,18 @@ function cardRow(records, { p = 0.5, title = '命题-平方和' } = {}) {
   permitted(debateSubjectGate({ meeting: debate, subject: '' }), 'an empty subject is left to the tool\'s required-field gate (named, not duplicated)')
 
   const cardEvidence = { card: { id: 'r-abc', p: 0.6, proofRef: 'Members/pi/Propos/r-abc.md', proofState: 'complete' } }
-  permitted(debateSubjectGate({ meeting: debate, subject: 'r-abc', evidence: cardEvidence }), 'a card with proofRef + proofState=complete may enter the debate')
-  eq(debateSubjectGate({ meeting: debate, subject: 'r-abc', evidence: cardEvidence }).proofVia, 'proofRef+proofState=complete', 'the receipt names the proof carrier')
+  // ★ B6 / R18: a DECLARATION is not a PROOF. The card claims `proofState=complete`, but no machine evidence
+  // (a passing Lean job, or a verified conclusion row) backs it ⇒ refused by NAME with its own code, and the
+  // refusal must tell the two legal ways to become legitimate. This assertion replaces the old one that let a
+  // self-declaration through — the old green was the defect.
+  const declaredOnly = debateSubjectGate({ meeting: debate, subject: 'r-abc', evidence: cardEvidence })
+  refused(declaredOnly, GATE_CODES.DEBATE_SUBJECT_UNPROVEN, '★ 声明不是证明：proofState=complete 但没有机器证据 ⇒ 具名拒', '两条合法路径')
+  eq(declaredOnly.declared, true, 'the refusal carries the fact that a declaration WAS present')
+  eq(declaredOnly.declaredState, 'complete', 'and which declared state it saw (so the reader can act)')
+  permitted(debateSubjectGate({
+    meeting: debate, subject: 'r-abc',
+    evidence: { card: { id: 'r-abc', p: 0.6, proofRef: 'Members/pi/Propos/r-abc.md', proofState: 'complete' }, lean: { jobId: 'j-0', passed: true } },
+  }), 'a declaration BACKED by machine evidence may enter the debate (evidence outranks self-report)')
 
   const halfBaked = { card: { id: 'r-abc', p: 0.6, proofRef: 'Members/pi/Propos/r-abc.md', proofState: 'attempt' } }
   refused(debateSubjectGate({ meeting: debate, subject: 'r-abc', evidence: halfBaked }), GATE_CODES.DEBATE_SUBJECT_NO_PROOF,

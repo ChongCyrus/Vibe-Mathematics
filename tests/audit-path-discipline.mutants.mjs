@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { legacyFile } from './_lib/legacy-presets.mjs'
 const here = dirname(fileURLToPath(import.meta.url))
 const repo = join(here, '..')
 const audit = join(here, 'audit-path-discipline.mjs')
@@ -29,7 +30,7 @@ mkdirSync(tmp, { recursive: true })
 let ok = 0, bad = 0
 try {
 for (const f of families) {
-  const src = join(repo, f.preset, f.preset + '.js')
+  const src = legacyFile(f.preset, f.preset + '.js')
   let t = readFileSync(src, 'utf8')
   const hits = f.regex ? (t.match(new RegExp(f.from, 'm')) || []).length : t.split(f.from).length - 1
   if (hits < 1) { console.error('  NO-OP - ' + f.name + ' (predicate did not match)'); bad++; continue }

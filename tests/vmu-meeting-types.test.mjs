@@ -99,13 +99,37 @@ try {
     '`pendingSteps` is empty, and it stays a FIELD (an empty list is the honest form of "nothing is pending")', d.pendingSteps)
   // every step must name only tools that really exist
   const toolNames = steps.reduce((a, s) => a.concat(s.tools.map((t) => t.split(' ')[0])), [])
-  const known = ['vibe_vmu_meeting', 'vibe_v5_verdict', 'vibe_v5_say', 'vibe_v5_message', 'vibe_v5_verdict_final']
-  ok(toolNames.length > 0 && toolNames.every((t) => known.includes(t)), 'every tool a step names is a real published tool', toolNames)
+  // the legal set is DERIVED from the pack manifest + the kernel faces the skeleton may name (never hand-typed:
+  // a hand-typed allowlist silently rots when a tool is renamed, and then this assertion stops meaning anything)
+  const { V5R_PACK_TOOLS } = await import('../vibe-math-vmu/packs/v5r/tools.js')
+  const published = new Set(V5R_PACK_TOOLS.map((t) => t && t.name).filter(Boolean)
+    .concat(['vibe_vmu_meeting', 'vibe_vmu_turn', 'vibe_vmu_records', 'vibe_vmu_mailbox', 'vibe_vmu_status', 'vibe_vmu_tools']))
+  ok(published.size >= 45, 'the derived tool vocabulary is the full published surface (RULE E: a non-empty set)', published.size)
+  ok(toolNames.length > 0 && toolNames.every((t) => published.has(t)), 'every tool a step names is a real published tool', toolNames)
+  // ★ D5 判据变了（vmu-pack R17 落盘）：规则原文是「特殊类型会议下框架初始给院士**推荐流程**」，
+  //   所以六类**都**该有一套推荐骨架；"没有骨架"不再是对的类型答案。唯一允许没有骨架的是
+  //   **未声明的类型**（下面 unknown 那段钉住它，且必须具名说明 + 列法律值，不许静默 null）。
+  //   这里逐类钉：有骨架 / 步骤非空 / 每步点名的工具真存在 / 回执里写明"推荐不是门禁"。
   const others = ids.filter((t) => t !== 'debate')
   ok(others.length === 5, 'the non-debate list is non-empty (RULE E)', others.length)
-  ok(others.every((t) => proc.procedureFor(t).hasProcedure === false && proc.procedureFor(t).procedure === null),
-    '★ the five other types report NO skeleton (nothing is invented) ', others.map((t) => [t, proc.procedureFor(t).hasProcedure]))
-  ok(others.every((t) => /没有推荐流程骨架/.test(proc.procedureFor(t).note)), 'each says WHY it has none', proc.procedureFor('closure').note)
+  ok(others.every((t) => proc.procedureFor(t).hasProcedure === true && Array.isArray(proc.procedureFor(t).procedure.steps)
+      && proc.procedureFor(t).procedure.steps.length >= 1),
+    '★ the five other types EACH carry a recommended skeleton (D5 says the framework recommends for special types)',
+    others.map((t) => [t, proc.procedureFor(t).hasProcedure, proc.procedureFor(t).procedure && proc.procedureFor(t).procedure.steps.length]))
+  const otherSteps = others.reduce((a, t) => a.concat(proc.procedureFor(t).procedure.steps), [])
+  ok(otherSteps.every((s) => typeof s.what === 'string' && s.what.length > 0),
+    'every step of every skeleton says WHAT to do (no placeholder step)', otherSteps.length)
+  ok(otherSteps.every((s) => s.tool === undefined || published.has(s.tool)),
+    '★ every machine-checkable `tool:` a step names is a REAL published tool (a fake tool name is a fake promise)',
+    otherSteps.map((s) => s.tool).filter(Boolean))
+  ok(others.every((t) => /推荐/.test(String(proc.procedureFor(t).note)) && /不是门禁/.test(String(proc.procedureFor(t).note))),
+    'each says in words that the skeleton is a RECOMMENDATION, not a gate', proc.procedureFor('closure').note)
+  const decisions = proc.MEETING_PROCEDURE_DECISIONS
+  ok(Array.isArray(decisions) && decisions.length === ids.length
+      && ids.every((t) => decisions.some((d) => d.type === t && typeof d.hasProcedure === 'boolean'
+        && (d.hasProcedure === true || (typeof d.reason === 'string' && d.reason.length > 10)))),
+    '★ EVERY type has a recorded decision (a skeleton, or a NAMED reason) — "no decision" is not a legal state',
+    (decisions || []).map((d) => d.type + ':' + d.hasProcedure + (d.reason ? ' / ' + String(d.reason).slice(0, 24) : '')))
   const unknown = proc.procedureFor('weekly-sync')
   ok(unknown.known === false && unknown.hasProcedure === false && /legal:/.test(unknown.note),
     'an unknown type is unknown-by-name and lists the legal values (never a silent empty)', unknown.note)
@@ -193,8 +217,10 @@ try {
   ok(backSum.type === 'debate' && backSum.subject === 'p-2', '★ read-back from the service confirms what the tool claimed', { type: backSum.type, subject: backSum.subject })
   const plain = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '一般议事' })
   ok(plain.parsed && plain.parsed.ok === true && plain.parsed.type === 'ordinary', 'the default type is ordinary (old callers keep working)', plain.parsed && plain.parsed.type)
-  ok(plain.parsed && plain.parsed.procedure === null && /没有推荐流程骨架/.test(String(plain.parsed.procedureNote)),
-    '★ an ordinary meeting reports null + the reason (no invented skeleton)', plain.parsed && plain.parsed.procedureNote)
+  ok(plain.parsed && plain.parsed.procedure && plain.parsed.procedure.steps.length >= 2
+      && /推荐/.test(String(plain.parsed.procedureNote)),
+    '★ an ordinary meeting ALSO reports a recommended skeleton (a normal meeting has an agenda order worth recommending)',
+    plain.parsed && (plain.parsed.procedureNote || '').slice(0, 80))
   const noSubject = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '辩论一个没说是什么的东西', type: 'debate' })
   ok(noSubject.parsed && noSubject.parsed.ok === false && noSubject.parsed.code === 'VMU_INVALID_ARGUMENT' && /subject/.test(String(noSubject.parsed.message)),
     '★ a debate with no object is refused by name (never a debate about nothing)', noSubject.parsed && noSubject.parsed.code)

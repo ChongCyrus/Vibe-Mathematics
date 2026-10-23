@@ -1340,7 +1340,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       }
       pushReceipt(receipt)
       say({ type: 'meetings/closed', at: now, meeting: m.id, closedBy, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE })
-      if (advanced.meeting) say({ type: 'meetings/sequence-advanced', at: now, from: m.id, meeting: advanced.meeting, index: advanced.index, total: advanced.total, enforced: ['vmu.meetings.sequence'], enforcedScope: ENFORCED_SCOPE })
+      // NO `enforced` list on the advance event: advancing is decided by the call that declared the sequence, not by
+      // a settings key, so naming one would be a false audit trail. The sequence length is not bounded either - the
+      // rule asks for "several consecutive meetings in one call", not for a quota, and a bound no rule requires would
+      // be policy the pack never asked for.
+      if (advanced.meeting)
+      say({ type: 'meetings/sequence-advanced', at: now, from: m.id, meeting: advanced.meeting, index: advanced.index, total: advanced.total, enforcedScope: ENFORCED_SCOPE })
       return { ok: true, meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, nextMeeting: advanced.meeting || null, nextMeetingError: advanced.error || null, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
     },
 

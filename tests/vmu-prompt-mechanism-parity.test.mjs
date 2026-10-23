@@ -117,6 +117,7 @@ try {
     { member: 'r-2', role: 'member', roleLabel: '常驻研究员', phase: 'normal' },
     { member: 'r-3', role: 'member', roleLabel: '常驻研究员', phase: 'founding' },
   ]
+  ok(cases.length > 0, 'the assembly matrix is non-empty (an empty matrix would make the loop below vacuous)', cases.length)
   for (const c of cases) {
     const asm = await kernel.prompt.assemble(Object.assign({ settings }, c))
     ok(asm && typeof asm.text === 'string' && asm.text.length > 2000,
@@ -163,7 +164,7 @@ ok(REPLY_FIELDS.length === FIELD_OWNER_NAMES.length + RECORDED_FIELDS.length,
   { reply: REPLY_FIELDS.length, owners: FIELD_OWNER_NAMES.length, recorded: RECORDED_FIELDS.length })
 ok(REPLY_FIELDS.length > 4, 'MECHANISM: the accepted reply catalogue is LARGER than the four fields the prompt teaches', REPLY_FIELDS.length)
 const taughtFour = ['progress', 'say', 'solved', 'vote_solved']
-ok(taughtFour.every((f) => REPLY_FIELDS.includes(f)),
+ok(taughtFour.length > 0 && taughtFour.every((f) => REPLY_FIELDS.includes(f)),
   'MECHANISM: the four taught fields are all really accepted (the taught subset is legal, just not exhaustive)', taughtFour)
 const missingFromTaught = REPLY_FIELDS.filter((f) => !taughtFour.includes(f))
 ok(missingFromTaught.length === REPLY_FIELDS.length - taughtFour.length && missingFromTaught.length > 0,

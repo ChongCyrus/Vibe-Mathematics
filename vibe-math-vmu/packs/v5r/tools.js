@@ -21,6 +21,14 @@ import { createPaperSubsystem, PAPER_CONSULT_ROLES } from './paper.js'
 // ★ GOAL ROUND 3 (rule conformance): the meeting TYPE catalog and the recommended procedure skeletons are INSTITUTION
 // vocabulary, so they live in this pack (`./meeting-procedures.js`) — the kernel only carries the type string.
 import { MEETING_TYPE_IDS, meetingTypeOf, procedureFor } from './meeting-procedures.js'
+// ★ PHASE 12 / D7 (second sentence)：「成员可用的命令按会议类型不同」。`kernel/turn.step` 早就能收窄一轮的工具面
+// （`{tools:{allow}}` → `setMemberToolOverride`），但 pack 侧没有生产者 —— 提示词不是门禁。`./meeting-tool-face.js`
+// 是这张**机构政策表**（哪类会议收窄、收窄到哪些工具）＋"只能收窄不能扩大"的求交；本文件只负责把它装到一轮上。
+import { applyMeetingTypeFace, meetingTypeFace } from './meeting-tool-face.js'
+// ★ R18-B2: the public blueprint carrier. `vmu.turn.protocolPath` had two prompt interpolations and no writer, so the
+// blueprint was a path with no edit right attached. `./blueprint.js` is the data face (a records track + propose/adopt);
+// this import is its REACHABLE consumer (red line ④).
+import { BLUEPRINT_ADOPT_SLOT, BLUEPRINT_PATH_KEY, BLUEPRINT_TRACK, adoptBlueprint, blueprintState, proposeBlueprint, readBlueprint } from './blueprint.js'
 // ★ PHASE 8 / B-2 step 2: the kit owns the implementations; v5r keeps only INSTITUTION vocabulary (names, descriptions,
 // parameters) and its policy. The 8 generic helpers come from the kit so the tree has exactly ONE copy.
 const { str, has, refuse, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker } = KIT_HELPERS
@@ -93,12 +101,40 @@ function mailboxAction(kernel, action) {
   }
   return fn.bind(mb)
 }
-/** A row WITHOUT the body: exactly the eight fields a member needs to triage. */
-const inboxRow = (row) => ({
-  id: str(row && row.id), from: str(row && (row.from || row.by)), at: row && row.at !== undefined ? row.at : null,
-  subject: row && row.subject !== undefined ? row.subject : null, read: row && row.read === true, todo: row && row.todo === true,
-  kind: str(row && row.kind), bytes: Number.isFinite(Number(row && row.bytes)) ? Number(row.bytes) : 0,
-})
+/** id → urgent, joined from the mailbox face's ENTRY-level read (`pending`).
+ *
+ *  WHY A JOIN AND NOT A FIELD READ. `kernel/mailbox.js` keeps `urgent` on every entry, but its two TRIAGE read faces
+ *  project a fixed field list and DROP it: `listRow` returns exactly the eight fields (id/from/at/subject/kind/read/
+ *  todo/bytes) and `openView` six (no `urgent` either). So through those faces an urgent message is INDISTINGUISHABLE
+ *  from ordinary mail — which is precisely the C2 rule violation. `pending(member)` returns whole entries (it is the
+ *  "what is waiting for this member" face), so the pack joins id→urgent from it rather than widening a kernel face
+ *  this lane does not own. An id the join cannot answer comes back `null` ("urgency unknown"), never `false` — a
+ *  quiet `false` would be a lie of the same kind the missing field already tells. */
+const urgencyById = (kernel, member) => {
+  const map = new Map()
+  const mb = kernel && kernel.mailbox
+  if (!mb || typeof mb.pending !== 'function') return map
+  const rows = mb.pending(String(member))
+  for (const entry of Array.isArray(rows) ? rows : []) {
+    if (!entry || entry.id === undefined) continue
+    map.set(String(entry.id), entry.urgent === true)
+  }
+  return map
+}
+/** A row WITHOUT the body: the eight triage fields, plus `urgent` (joined by `urgencyById`; `null` when unknown). */
+const inboxRow = (row, urgency = null) => {
+  const id = str(row && row.id)
+  let urgent = null
+  if (row && row.urgent === true) urgent = true
+  else if (row && row.urgent === false) urgent = false
+  else if (urgency && urgency.has(id)) urgent = urgency.get(id)
+  return {
+    id, from: str(row && (row.from || row.by)), at: row && row.at !== undefined ? row.at : null,
+    subject: row && row.subject !== undefined ? row.subject : null, read: row && row.read === true, todo: row && row.todo === true,
+    urgent,
+    kind: str(row && row.kind), bytes: Number.isFinite(Number(row && row.bytes)) ? Number(row.bytes) : 0,
+  }
+}
 /** vibe_v5_inbox — ONE action-shaped tool (list | open | mark) over the mailbox face. */
 async function toolInbox(args = {}, { kernel } = {}) {
   const action = has(args.action) ? str(args.action) : 'list'
@@ -108,8 +144,9 @@ async function toolInbox(args = {}, { kernel } = {}) {
     const status = has(args.status) ? str(args.status) : 'unread'
     const r = await list(member, { status })
     const rows = Array.isArray(r) ? r : Array.isArray(r && r.entries) ? r.entries : Array.isArray(r && r.rows) ? r.rows : []
-    return { ok: true, tool: 'vibe_v5_inbox', action: 'list', member, status, count: rows.length, rows: rows.map(inboxRow),
-      note: 'rows carry NO body: triage by sender/time/subject/read/todo, then open ONE message' }
+    const urgency = urgencyById(kernel, member)
+    return { ok: true, tool: 'vibe_v5_inbox', action: 'list', member, status, count: rows.length, rows: rows.map((row) => inboxRow(row, urgency)),
+      note: 'rows carry NO body: triage by sender/time/subject/urgent/read/todo, then open ONE message; urgent:null means the face could not tell (not "not urgent")' }
   }
   if (action === 'open') {
     if (!has(args.id)) throw refuse('VMU_INVALID_ARGUMENT', 'inbox open needs the message id', 'take it from the list rows')
@@ -117,8 +154,11 @@ async function toolInbox(args = {}, { kernel } = {}) {
     const r = await open(member, str(args.id))
     const row = r && r.entry ? r.entry : r
     if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no message "' + str(args.id) + '" in this inbox', 'call inbox list for the real ids')
-    return { ok: true, tool: 'vibe_v5_inbox', action: 'open', member, id: str(args.id),
-      message: { id: str(row.id), from: str(row.from || row.by), at: row.at !== undefined ? row.at : null, subject: row.subject !== undefined ? row.subject : null, kind: str(row.kind), text: str(row.text), read: true, todo: row.todo === true },
+    const urgency = urgencyById(kernel, member)
+    const mid = str(row.id)
+    const joinedUrgent = row.urgent === true ? true : urgency.has(mid) ? urgency.get(mid) : null
+    return { ok: true, tool: 'vibe_v5_inbox', action: 'open', member, id: str(row.id),
+      message: { id: str(row.id), from: str(row.from || row.by), at: row.at !== undefined ? row.at : null, subject: row.subject !== undefined ? row.subject : null, kind: str(row.kind), urgent: joinedUrgent, text: str(row.text), read: true, todo: row.todo === true },
       note: 'opening marks it read; use action:"mark" with todo to track a follow-up' }
   }
   if (action === 'mark') {
@@ -173,22 +213,93 @@ async function toolHire(args = {}, { kernel } = {}) {
     note: 'direction/term are onboarding prose in the original and roster data here, so they are not stored by this tool' }
 }
 
-/** A READ-ONLY human-readable report (the original takes no parameters): staffing, task board, meetings, artefacts. */
+/**
+ * ★ THE FEEDBACK LEDGER'S COUNT, IN ONE PLACE — the pack's two reporting tools both print it, and the prompt line
+ * 「未闭环条目会出现在汇报与总览的计数里」 is only TRUE if this exists (it did not: the sentence was a claim with no code,
+ * which is the (乙) class defect).
+ *
+ * THE MEASURED SEMANTICS, taken from the WRITE side and not re-invented here: `op:'add'` writes a card with no verdict
+ * line, `op:'update'` rewrites the SAME card and puts its verdict on the FIRST BODY LINE (`status：closed|…`). So "closed"
+ * is a fact of the body, and `open` is every other row. `op:'list'` and both reporting tools all classify through
+ * `classifyFeedback` below, so a reader cannot get two answers, and the three keys are `open` / `closed` / `total`.
+ *
+ * HONEST ABSENCE: a deployment with no records face, or one that does not declare the `feedback` track, gets zeros with
+ * `declared:false` — the records face refuses an undeclared track BY NAME, and reporting "0 open" from a track that does
+ * not exist would be exactly the kind of confident-but-empty number this repository bans.
+ */
+const FEEDBACK_COUNT_LIMIT = 5000
+/** ★ WHERE "CLOSED" ACTUALLY LIVES — measured, not assumed. The records HEAD row carries `status`, but it is the
+ *  LIFECYCLE state (`rec.state`: live|trashed, `kernel/records.js:331`), never the feedback verdict; the `op:update`
+ *  branch therefore records closure where it does live: the first line of the card BODY (`status：closed`). A counter
+ *  that compared the head field would have reported "closed: 0" forever — a confident number, and a false one. */
+const FEEDBACK_CLOSED_LINE = /^\s*status\s*[：:]\s*closed\b/m
+function feedbackCardBody(records, id) {
+  try {
+    const got = records.get({ id })
+    const rec = got && got.record ? got.record : got
+    return rec ? String(rec.body || '') : null
+  } catch { return null } // a body the face cannot hand back is reported as unreadable, never counted as closed
+}
+function classifyFeedback(kernel) {
+  const out = { declared: false, total: 0, closed: 0, open: 0, unreadable: 0, items: [], truncated: false }
+  const records = kernel && kernel.records
+  if (!records || typeof records.list !== 'function') return out
+  let listed = null
+  try {
+    listed = records.list({ track: 'feedback', limit: FEEDBACK_COUNT_LIMIT })
+  } catch (e) {
+    if (e && e.code === 'VMU_INVALID_ARGUMENT') return out // the face's own named answer: the track is not declared
+    throw e
+  }
+  const heads = Array.isArray(listed && listed.items) ? listed.items : []
+  out.declared = true
+  out.total = heads.length
+  out.truncated = listed && listed.truncated === true
+  for (const head of heads) {
+    const body = feedbackCardBody(records, head && head.id)
+    if (body === null) { out.unreadable += 1; out.items.push({ id: head && head.id, status: 'unreadable' }); continue }
+    const closed = FEEDBACK_CLOSED_LINE.test(body)
+    if (closed) out.closed += 1; else out.open += 1
+    out.items.push({ id: head && head.id, status: closed ? 'closed' : 'open' })
+  }
+  return out
+}
+function feedbackCounts(kernel) {
+  const classified = classifyFeedback(kernel)
+  const out = { open: classified.open, closed: classified.closed, total: classified.total, declared: classified.declared, basis: 'feedback card body status line' }
+  // A count that silently saturates at the read limit is a lie of a different shape: say when the window was truncated.
+  if (classified.truncated === true) out.truncated = true
+  // An unreadable body is stated, not folded into either bucket (the two buckets must add up to what was READ).
+  if (classified.unreadable > 0) out.unreadable = classified.unreadable
+  return out
+}
+
+/** The one-line rendering both tools use, so the sentence and the counts cannot drift apart. */
+function feedbackLine(fb) {
+  if (!fb || fb.declared !== true) return '· 反馈库：本部署未声明 feedback 轨（计数如实缺席，不报 0 当结论）'
+  return '· 反馈库：未闭环 ' + fb.open + ' 条 / 共 ' + fb.total + ' 条（已闭环 ' + fb.closed + ' 条）'
+    + (fb.truncated === true ? '（读取窗口已截断，实际更多）' : '')
+}
+
+/** A READ-ONLY human-readable report (the original takes no parameters): staffing, task board, meetings, feedback. */
 async function toolReport(args = {}, { kernel } = {}) {
   const roster = membersOf(kernel).roster()
   const rows = kernel.tasks && typeof kernel.tasks.list === 'function' ? rowsOf(await kernel.tasks.list()) : []
   const openRows = rows.filter((t) => String(t.status || t.state) !== 'done')
   const openMeetings = kernel.meetings && typeof kernel.meetings.openMeetings === 'function' ? kernel.meetings.openMeetings() : null
   const meetingRows = openMeetings && Array.isArray(openMeetings.meetings) ? openMeetings.meetings : []
+  const fb = feedbackCounts(kernel)
   const lines = [
     '【所内报告】',
     '· 编制：名册 ' + roster.length + ' 人（在册 live ' + roster.filter((m) => m.state === 'live').length + ' 人）',
     '· 任务板：共 ' + rows.length + ' 张，其中未完成 ' + openRows.length + ' 张',
     '· 会议：开着的 ' + meetingRows.length + ' 场',
+    feedbackLine(fb),
   ]
   return { ok: true, tool: 'vibe_v5_report', report: lines.join('\n'),
-    counts: { roster: roster.length, live: roster.filter((m) => m.state === 'live').length, tasks: rows.length, openTasks: openRows.length, openMeetings: meetingRows.length },
-    note: 'read-only composition of the published faces; no new kernel capability and no template invention' }
+    counts: { roster: roster.length, live: roster.filter((m) => m.state === 'live').length, tasks: rows.length, openTasks: openRows.length, openMeetings: meetingRows.length, feedback: fb },
+    note: 'read-only composition of the published faces; no new kernel capability and no template invention. '
+      + 'feedback.open = the feedback-track rows whose status is not "closed" (the same predicate vibe_v5_feedback op=list uses); declared:false means this deployment has no feedback track, so the count is honestly absent' }
 }
 
 /**
@@ -209,7 +320,9 @@ async function toolOverview(args = {}, { kernel } = {}) {
   return { ok: true, tool: 'vibe_v5_overview', by: member,
     roster: roster.map((m) => ({ id: m.id, slot: m.slot, state: m.state })),
     board: { tasks: rows.length, open: rows.filter((t) => String(t.status || t.state) !== 'done').length },
-    meetings: meetingRows.map((m) => ({ id: m.id, state: m.state })) }
+    meetings: meetingRows.map((m) => ({ id: m.id, state: m.state })),
+    // ★ Same three keys and the same rule as vibe_v5_report.counts.feedback (one helper, so they cannot disagree).
+    feedback: feedbackCounts(kernel) }
 }
 
 // ── ⑬–⑲ THIRD BATCH: help, assignment, dismissal, supervision, priorities, feedback, library reading ─────────
@@ -411,10 +524,17 @@ function toolFeedback(args = {}, { kernel } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'feedback needs op=add|update|list', 'pass op:"add" / "update" / "list"')
   }
   if (op === 'list') {
-    const rows = records.list({ track: 'feedback', limit: has(args.limit) ? Number(args.limit) : 50 })
-    const items = Array.isArray(rows.items) ? rows.items : []
-    const open = items.filter((r) => String(r.status) !== 'closed')
-    return { ok: true, tool: 'vibe_v5_feedback', op, count: open.length, items: args.all === true ? items : open }
+    // ★ ONE RULE, ONE PLACE: the same classifier the report/overview counters use decides what "open" means here, so the
+    // list and the two counts cannot drift apart (`status: 'unreadable'` rows are listed under `unreadable`, not folded
+    // into "open" — a body the face cannot hand back is unknown, not unresolved).
+    const classified = classifyFeedback(kernel)
+    const heads = records.list({ track: 'feedback', limit: has(args.limit) ? Number(args.limit) : 50 })
+    const byId = new Map(classified.items.map((r) => [r.id, r.status]))
+    const items = Array.isArray(heads.items) ? heads.items : []
+    const open = items.filter((r) => byId.get(r && r.id) !== 'closed')
+    return { ok: true, tool: 'vibe_v5_feedback', op, count: open.length,
+      counts: { open: classified.open, closed: classified.closed, total: classified.total, declared: classified.declared },
+      items: args.all === true ? items : open }
   }
   if (op === 'add') {
     const missing = FEEDBACK_ADD_REQUIRED.filter((k) => !has(args[k]))
@@ -439,6 +559,115 @@ function toolFeedback(args = {}, { kernel } = {}) {
     settled: has(args.status) && str(args.status) === 'closed', by: str(args.member) || 'vibe_v5_feedback' })
   return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: has(args.status) ? str(args.status) : 'closed' }
 }
+
+// ── ★ PHASE 12 / B10: THE SCRIPT ARCHIVE (归档/复算) ───────────────────────────────────────────────────────────────
+/**
+ * The rule: 「脚本文件」— a script is a *所级产物*: it must be archivable and reviewable, and the no-adhoc-scripts rule's
+ * own hint says "请走归档/复算流程". Measured before this tool: that sentence had NO landing point — the member could
+ * write a script with the host's own write face, but the PACK had no scripts track, no archive face and no read-back,
+ * so "归档/复算" was a promise with no mechanism (the (乙) class: a published claim with no code).
+ *
+ * WHY `kind: 'dataset'` AND NOT A NEW KIND: the records face owns the vocabulary (`vmu.records.allowedKinds`) and a
+ * script IS an archived artifact with a path/purpose/fingerprint — exactly what `dataset` means in this kernel. The
+ * fingerprint is the KERNEL's (`records.put` computes it under `vmu.records.fingerprintPolicy`), so a re-read can prove
+ * the archived text has not drifted instead of trusting a hash this tool invented. No new key and no new kind is added;
+ * the only declaration change is the `scripts` TRACK, which the record layer refuses by name until it is declared.
+ *
+ * THE BODY IS THE SCRIPT, VERBATIM: `read` returns `text` byte-identical to what was archived (the provenance lives in
+ * `title`/`tags`/`by`), because a "recompute" over a body that was silently decorated is not a recompute of the thing.
+ */
+function scriptArchivedRow(kernel, id) {
+  const got = recordsOf(kernel).get({ id: str(id) })
+  return got && got.record ? got.record : got
+}
+
+function toolScript(args = {}, { kernel } = {}) {
+  const records = recordsOf(kernel)
+  const op = has(args.op) ? str(args.op) : 'archive'
+  if (op !== 'archive' && op !== 'read' && op !== 'list') {
+    throw refuse('VMU_INVALID_ARGUMENT', 'script needs op=archive|read|list', 'pass op:"archive" / "read" / "list"')
+  }
+  const tracks = declaredTracks(kernel)
+  if (!tracks.includes(SCRIPTS_TRACK)) {
+    throw refuse('VMU_INVALID_ARGUMENT',
+      'this deployment declares no scripts track, so a script cannot be archived (vmu.records.tracks)',
+      'declare "scripts" in vmu.records.tracks (the v5r pack ships it); until then this face is absent rather than fake',
+      { declared: tracks, missingTrack: SCRIPTS_TRACK })
+  }
+  if (op === 'archive') {
+    const missing = ['name', 'text'].filter((k) => !has(args[k]))
+    if (missing.length > 0) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'script archive is missing: ' + missing.join(', '),
+        'pass name:"<file name>" text:"<the whole script>" (optional purpose/parent/edition)')
+    }
+    const tags = ['script']
+    if (has(args.purpose)) tags.push('purpose:' + str(args.purpose))
+    if (has(args.parent)) tags.push('parent:' + str(args.parent))
+    if (has(args.edition)) tags.push('edition:' + str(args.edition))
+    const written = records.put({
+      track: SCRIPTS_TRACK,
+      kind: 'dataset', // an archived artifact: kernel-computed fingerprint + provenance, no invented hash
+      title: str(args.name),
+      body: str(args.text), // verbatim: read-back must return the same bytes
+      tags,
+      settled: true,
+      by: has(args.member) ? str(args.member) : null,
+      bySource: has(args.member) ? 'argument' : 'unknown',
+    })
+    return {
+      ok: true, tool: 'vibe_v5_script', op, track: SCRIPTS_TRACK,
+      recordId: written && written.id, name: str(args.name),
+      fingerprint: written && written.fingerprint,
+      purpose: has(args.purpose) ? str(args.purpose) : null,
+      at: written && (written.updatedAt || written.createdAt),
+      recompute: 'recompute by running the archived text again (math_computation op=run mode=file), and compare the '
+        + 'record fingerprint before/after — the archive is the artefact, not a note ABOUT the artefact',
+    }
+  }
+  if (op === 'read') {
+    if (!has(args.id) && !has(args.name)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'script read needs id or name', 'pass id:"<record id>" or name:"<archived file name>"')
+    }
+    let row = null
+    if (has(args.id)) {
+      row = scriptArchivedRow(kernel, args.id)
+      if (!row || String(row.track) !== SCRIPTS_TRACK) {
+        throw refuse('VMU_NO_SUCH_OBJECT', 'no archived script with id "' + str(args.id) + '"',
+          'call op=read with name:"<file name>", or op=list for the archived scripts')
+      }
+    } else {
+      const listed = records.list({ track: SCRIPTS_TRACK, limit: SCRIPT_LIST_LIMIT })
+      const items = Array.isArray(listed.items) ? listed.items : []
+      const same = items.filter((it) => String(it.title) === str(args.name))
+      if (same.length === 0) {
+        throw refuse('VMU_NO_SUCH_OBJECT', 'no archived script named "' + str(args.name) + '"',
+          'call op=list to see the archived script names')
+      }
+      // latest edition wins: the head list is ordered newest-first by the records layer
+      row = scriptArchivedRow(kernel, same[0].id)
+    }
+    return {
+      ok: true, tool: 'vibe_v5_script', op,
+      script: {
+        id: row && row.id, name: row && row.title, fingerprint: row && row.fingerprint,
+        track: row && row.track, by: row && row.owner, at: row && (row.updatedAt || row.createdAt),
+        tags: row && Array.isArray(row.tags) ? row.tags : [], text: row && row.body,
+      },
+      note: 'the text is the archived body verbatim; the fingerprint is the kernel\'s, so a recompute can prove drift',
+    }
+  }
+  const listed = records.list({ track: SCRIPTS_TRACK, limit: has(args.limit) ? Number(args.limit) : SCRIPT_LIST_LIMIT })
+  const items = Array.isArray(listed.items) ? listed.items : []
+  return { ok: true, tool: 'vibe_v5_script', op, track: SCRIPTS_TRACK, count: items.length,
+    // `tags` is NOT part of the head row (`vmu.records.headFields`), so the list form does not print it — an empty array
+    // here would claim "no provenance" for a script whose provenance is in the body record. `op:read` returns it.
+    scripts: items.map((it) => ({ id: it.id, name: it.title, fingerprint: it.fingerprint, by: it.owner,
+      at: it.updatedAt || it.createdAt })),
+    truncated: listed.truncated === true }
+}
+
+const SCRIPTS_TRACK = 'scripts'
+const SCRIPT_LIST_LIMIT = 50
 
 // ── ⑳–㉖ FOURTH BATCH: the meeting and voting skeleton (v5r's core difference from v3) ──────────────────────
 /**
@@ -543,7 +772,7 @@ const cardTrackOf = (toolName) => (KIT_CARD_CONFIG[toolName] ? KIT_CARD_CONFIG[t
 
 /** A refused predicate becomes a NAMED refusal carrying the declared keys it consulted. */
 function gateRefuse(gate) {
-  if (!gate || gate.allowed !== false) return
+  if (!gate || gate.allowed !== false) return null
   // The message is what the AGENT reads first, so it must carry the RULE and, when the gate knows it, the QUESTION the
   // rule is asking — a refusal that only says "not allowed" costs a round trip ("what exactly do you want from me?").
   // `fidelityAsked` reports its prompt as `reason`/`question`/`options` (not `message`), so fold those in here rather
@@ -552,11 +781,19 @@ function gateRefuse(gate) {
   const asked = str(gate.question)
   const options = Array.isArray(gate.options) && gate.options.length ? ' [' + gate.options.join(' | ') + ']' : ''
   const message = asked ? base + ' — ' + asked + options : base
-  const e = refuse(gate.code || 'VMU_STATE', message,
-    gate.hint || 'the rule requires evidence this call did not carry; record the estimate and let the debate produce the conclusion')
-  e.enforced = Array.isArray(gate.keys) ? gate.keys.slice() : []
-  e.enforcedScope = ENFORCED_SCOPE
-  throw e
+  // ★ WHY THIS IS A RETURNED RECEIPT (re-measured ROUND 52, and the reason it first needed to be one is gone).
+  // HISTORY: the host used to turn a thrown refusal into exactly {ok:false, code, message, hint} and DROP every other
+  // property, so the p=1 gate refused correctly and the receipt still carried no `enforced` list — the "which keys
+  // refused this" fact docs/03 promises never reached the caller. That is why this wiring layer hands the refusal back
+  // as DATA of the same shape plus the enforced keys, and why the old throw-version left two dead lines here (removed).
+  // NOW: `host.js` preserves `enforced`/`enforcedScope`/`settingValues` on a thrown refusal too (proved by
+  // tests/vmu-host-refusal-attribution.test.mjs), so the two shapes ARE equivalent and the choice is style, not
+  // necessity. It stays a receipt because v5r's callers read it as DATA (a receipt is a value the turn can inspect and
+  // a hook cannot swallow), and because it carries the gate's own facts (`enforced`, `enforcedScope`) without building
+  // an exception object per refusal. The gate itself still stays a pure predicate: allowed / code / keys.
+  return { ok: false, code: gate.code || 'VMU_STATE', message,
+    hint: gate.hint || 'the rule requires evidence this call did not carry; record the estimate and let the debate produce the conclusion',
+    enforced: Array.isArray(gate.keys) ? gate.keys.slice() : [], enforcedScope: ENFORCED_SCOPE }
 }
 /** The union of the keys the gates of ONE call consulted (order-preserving, no duplicates). */
 function enforcedOf(gates) {
@@ -619,24 +856,196 @@ function debateEvidenceOf(args = {}) {
     ballotId: raw.ballotId === undefined ? null : str(raw.ballotId),
     subject: raw.subject === undefined ? null : str(raw.subject) }
 }
-/** The Lean CONCLUSION for one job id, or null. `passed` is a conclusion on the kernel's lean face, never a state. */
+/** The Lean CONCLUSION for one job id, or null. `passed` is a conclusion on the kernel's lean face, never a state.
+ *  ★ B8 修的两个真缺陷：① 这个面挂的方法叫 `status(id)`（导出表见 `vibe-math-vmu/kernel/lean.js:977`），
+ *  早先按 `job(id)` 探测 ⇒ 真机上永远探不到 ⇒ "Lean 证据"这条分支静默不存在；② 面本身在宿主没有 spawn 缝时
+ *  就是 `null`（零机制红线的正常态），那不是错误、是"没有形式化面"，调用方要具名说清而不是当成"作业没通过"。 */
 function leanPassedOf(kernel, jobId) {
   if (!has(jobId)) return null
   const face = kernel && kernel.lean
-  if (!face || typeof face.job !== 'function') return null
+  if (!face) return null
+  const read = typeof face.status === 'function' ? face.status.bind(face)
+    : (typeof face.job === 'function' ? face.job.bind(face) : null)
+  if (!read) return null
   try {
-    const r = face.job(str(jobId))
-    const job = r && (r.job || (r.ok === true ? r : null))
+    const r = read(str(jobId))
+    const job = r && (r.job || (r.ok === true && (r.passed !== undefined || r.state !== undefined) ? r : null))
     if (!job) return null
     return { jobId: str(jobId), passed: job.passed === true, state: job.state === undefined ? null : job.state,
       file: job.file === undefined ? null : job.file }
   } catch { return null }
 }
-/** The fidelity registry's withdrawal predicate in the shape the ④ gate wants (a function), or null when unpublished. */
+/** The deployment's formalisation policy (`vmu.math.formalVerify`), read through the face that owns it.
+ *  面不存在（无 spawn 缝）⇒ `null`：这时"要求形式化"这件事没有载体，调用方必须如实说出来。 */
+function leanPolicyOf(kernel) {
+  const face = kernel && kernel.lean
+  if (!face || typeof face.policy !== 'function') return null
+  try { const p = face.policy(); return p && typeof p === 'object' ? p : null } catch (e) { return null }
+}
+/** The fidelity registry's withdrawal predicate in the shape the ④ gate wants (a function), or null when unpublished.
+ *  ★ B8：内核返回的是**标记对象**（`{withdrawn:true,…}`）而不是布尔 `true`，所以两种形状都认。 */
 function fidelityWithdrawnFn(kernel) {
   const face = kernel && kernel.fidelity
   if (!face || typeof face.passedWithdrawnFor !== 'function') return null
-  return (id) => { try { return face.passedWithdrawnFor(str(id)) === true } catch { return false } }
+  return (id) => {
+    try {
+      const r = face.passedWithdrawnFor(str(id))
+      return r === true || (!!r && typeof r === 'object' && r.withdrawn === true)
+    } catch { return false }
+  }
+}
+/** 读回撤回标记（对象或布尔都归一成"有/没有 + 内容"）。 */
+function withdrawalOf(kernel, cardId) {
+  const face = kernel && kernel.fidelity
+  if (!face || typeof face.passedWithdrawnFor !== 'function') return null
+  try {
+    const r = face.passedWithdrawnFor(str(cardId))
+    if (r === true) return { withdrawn: true, markerId: null, note: null, by: null, at: null }
+    if (r && typeof r === 'object' && r.withdrawn === true) {
+      return { withdrawn: true, markerId: r.markerId === undefined ? null : r.markerId,
+        note: r.note === undefined ? null : r.note, by: r.by === undefined ? null : r.by,
+        at: r.at === undefined ? null : r.at }
+    }
+    return null
+  } catch (e) { return null }
+}
+
+/**
+ * ★ B8 · 「Lean 已过 ⇒ 辩论只查描述/定义符合性 ⇒ 符合即 p=1 且入 verified」的**显式收口动作**。
+ *
+ * 为什么需要一个动作而不是自动钩子：规则里的"符合性判定"是**人的判断**（形式化说的还是不是命题说的），
+ * 框架不该替人答，也不该把判定埋进 `meetings.close`。所以这里是主席（院士）点名做的一次收口：
+ *   · `fidelity:"conform"` ⇒ 卡上的 p 由同一条 gated 写卡路径改成 1（证据＝这次 Lean 作业），
+ *     再经**唯一写入器** `promoteVerified` 进 verified 轨（warrant＝lean 作业 id，kind=`lean-conformance`）；
+ *   · `fidelity:"defect"` ⇒ 由 `kernel.fidelity.declareDefect` 落下**耐久标记**（原因必填），
+ *     该标记让 verified 读数立刻不可见（`findVerified` 的唯一撤回读法），且**不能再被下一次收口复活**。
+ *
+ * 两条硬前提（都具名拒，不静默）：① Lean 作业必须存在且**通过** —— 没有通过的编译，"符合性"无从谈起；
+ * ② 收口人必须是主席席位（`requireChairSeat`）—— 把别人的经验值改成结论，是署名动作。
+ */
+async function toolFidelityConclude(args = {}, { kernel } = {}) {
+  const records = recordsOf(kernel)
+  const cardId = has(args.card) ? str(args.card)
+    : (has(args.id) ? str(args.id) : (has(args.proposition_id) ? str(args.proposition_id) : ''))
+  if (!cardId) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'fidelity conclusion needs the proposition card it judges',
+      'pass card:"<records id of the proposition card>"')
+  }
+  const decision = has(args.fidelity) ? str(args.fidelity).trim() : ''
+  if (decision !== 'conform' && decision !== 'defect') {
+    throw refuse('VMU_INVALID_ARGUMENT', 'fidelity must be "conform" or "defect"; got "' + decision + '"',
+      'after a PASSING Lean run the debate judges correspondence only: "conform"＝形式化说的就是命题说的 ⇒ p=1 且入 verified；'
+      + '"defect"＝不一致 ⇒ 撤回该卡的 verified 并记原因（defect 必须给 note）')
+  }
+  const chair = requireChairSeat(kernel, has(args.member) ? args.member : args.by, 'fidelity conclusion')
+  const jobId = has(args.lean_job) ? str(args.lean_job)
+    : (has(args.lean_job_id) ? str(args.lean_job_id) : '')
+  const policy = leanPolicyOf(kernel)
+  if (!jobId) {
+    throw refuse('VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED',
+      'a conformance conclusion needs the PASSING Lean job that settled the formalisation (no job id was given)',
+      'pass lean_job:"<job id from vibe_v5_lean_run / vibe_v5_lean_job>" — 没有编译通过的作业，"符合性"无从判定')
+  }
+  const lean = leanPassedOf(kernel, jobId)
+  if (!lean) {
+    throw refuse('VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED',
+      'Lean job "' + jobId + '" is not readable on this deployment ('
+      + (kernel && kernel.lean ? 'the Lean face knows no such job id' : 'the Host exposes no spawn seam, so this deployment has no Lean face at all')
+      + ')',
+      'run the formalisation first（vibe_v5_lean_run）或把真实作业 id 传进来；没有 Lean 面时这条收口无载体，不要假装编过')
+  }
+  if (lean.passed !== true) {
+    throw refuse('VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED',
+      'Lean job "' + jobId + '" did NOT pass (state=' + str(lean.state) + '): conformance can only be judged on a formalisation that compiles',
+      'fix the Lean file and re-run；缺陷路径也要求编译通过 —— "编译不过"不是"定义不忠实"')
+  }
+  const delivery = { lean: { jobId: lean.jobId, passed: lean.passed, state: lean.state, file: lean.file },
+    policy: policy ? { formalVerify: policy.formalVerify, requireFormal: policy.requireFormal === true, encourageFormal: policy.encourageFormal === true } : null }
+
+  if (decision === 'defect') {
+    const fidelityFace = kernel && kernel.fidelity
+    if (!fidelityFace || typeof fidelityFace.declareDefect !== 'function') {
+      throw refuse('VMU_ENGINE_UNAVAILABLE', 'this deployment publishes no fidelity registry, so a defect cannot be recorded (and a withdrawal nobody records is not a withdrawal)',
+        'assemble a kernel whose fidelity face is published (kernel.fidelity.declareDefect)')
+    }
+    const note = has(args.note) ? str(args.note).trim() : (has(args.reason) ? str(args.reason).trim() : '')
+    const before = withdrawalOf(kernel, cardId)
+    let declared = null
+    let appended = false
+    if (!before) {
+      const res = await fidelityFace.declareDefect({ target: cardId, by: chair.id, note })
+      if (!res || res.ok === false) {
+        throw refuse(str(res && res.code) || 'VMU_STATE', (res && res.message) || 'the fidelity registry refused to record the defect',
+          (res && res.hint) || 'a defect needs target + by + note（写清哪条定义/条件/假设/结论与命题原文不一致）')
+      }
+      declared = res
+    } else if (note && before.note !== note) {
+      const res = await fidelityFace.declareDefect({ target: cardId, by: chair.id, note })
+      if (!res || res.ok === false) {
+        throw refuse(str(res && res.code) || 'VMU_STATE', (res && res.message) || 'the fidelity registry refused to record the new defect',
+          (res && res.hint) || 'a defect needs target + by + note')
+      }
+      declared = res
+      appended = true
+    }
+    const marker = withdrawalOf(kernel, cardId)
+    const stillVisible = findVerified(records, cardId, { fidelity: fidelityFace })
+    const projection = cardProjectionOf(records, cardId)
+    return Object.assign({ ok: true, tool: 'vibe_v5_fidelity_conclude', card: cardId, fidelity: 'defect',
+      chair: chair.id, withdrawn: marker !== null, marker, alreadyWithdrawn: before !== null, appended,
+      verifiedVisible: stillVisible !== null, cardP: projection ? projection.p : null,
+      persisted: declared ? declared.persisted === true : null,
+      enforced: [], enforcedScope: ENFORCED_SCOPE }, delivery,
+    { note: '撤回是**耐久标记**，不是删行：verified 行还在盘上，但唯一读法（findVerified/verified 轨读面）从此看不见它；'
+      + '再次 conform 会被 promoteVerified 以 `VMU_STATE` 拒（撤回不可被下一次收口撤销）。卡上的 p 不动 —— 撤回的是"结论"，不是"作者当时的估计"。' })
+  }
+
+  const cardRow = rowOrNull(records, cardId)
+  if (!cardRow) {
+    throw refuse('VMU_NO_SUCH_OBJECT', 'no record with id "' + cardId + '"',
+      'pass the records id of an existing proposition card（先 vibe_v5_record_proposition）')
+  }
+  const projection = cardProjectionOf(records, cardId)
+  if (!projection || projection.unjudgeable || projection.bodyTruncated) {
+    throw refuse('VMU_STATE', 'card "' + cardId + '" cannot be read as a complete v5r proposition card',
+      'a truncated or unparseable card cannot be promoted：修好卡体（四个声明字段）再收口')
+  }
+  const parsed = parseCard(cardRow)
+  if (!parsed.ok) {
+    throw refuse('VMU_STATE', 'card "' + cardId + '" is not a propositions/proposition card with the four declared fields'
+      + (Array.isArray(parsed.problems) && parsed.problems.length ? ' (' + parsed.problems.join('; ') + ')' : ''),
+      'the carrier never invents a missing field；先按 vibe_v5_record_proposition 的四个必填字段重写')
+  }
+  const fields = parsed.fields || {}
+  let cardWrite = null
+  if (projection.p !== 1) {
+    // p=1 只能走**同一条** gated 写卡路径（p1Intent 的证据＝这次 Lean 作业），这样"改成 1"不产生第二条写路径。
+    const writeCard = gatedCardHandler('vibe_v5_record_proposition')
+    const writeArgs = { id: cardId, title: str(cardRow.title || fields.title || ''),
+      statement: fields.statement, value: fields.value, motive: fields.motive, p: 1,
+      lean_job: jobId, lean_conformance: 'conform', member: chair.id }
+    if (projection.proofRef) writeArgs.proof_ref = projection.proofRef
+    writeArgs.proof_state = 'complete'
+    cardWrite = await writeCard(writeArgs, { kernel })
+  }
+  const writerGate = singleWriter({ records, cardId, by: chair.id, writer: 'promoteVerified', track: VERIFIED_TRACK })
+  const writerRefusal = gateRefuse(writerGate)
+  if (writerRefusal) return writerRefusal
+  const promoted = promoteVerified({ records, sourceId: cardId,
+    warrant: { id: jobId, kind: 'lean-conformance', subject: cardId },
+    by: chair.id, fidelity: kernel && kernel.fidelity ? kernel.fidelity : null })
+  const after = cardProjectionOf(records, cardId)
+  const verified = findVerified(records, cardId, { fidelity: kernel && kernel.fidelity ? kernel.fidelity : null })
+  return Object.assign({ ok: true, tool: 'vibe_v5_fidelity_conclude', card: cardId, fidelity: 'conform',
+    chair: chair.id, p1Written: cardWrite !== null, cardWrite: cardWrite ? { recordId: cardWrite.recordId === undefined ? null : cardWrite.recordId,
+      deduplicated: cardWrite.deduplicated === true } : null,
+    cardP: after ? after.p : null,
+    verified: verified ? { id: verified.id, cardId: verified.verified.cardId, p: verified.verified.p, warrant: verified.verified.warrant,
+      source: verified.verified.source, by: verified.verified.by, at: verified.verified.at } : null,
+    promoted: { written: promoted.written === true, unchanged: promoted.unchanged === true, refreshed: promoted.refreshed === true, id: promoted.id },
+    enforced: enforcedOf([writerGate]), enforcedScope: ENFORCED_SCOPE }, delivery,
+  { note: 'conform 的语义：卡上 p 改成 1（证据＝这次 Lean 作业，走 gated 写卡路径），并由唯一写入器进 verified 轨；'
+    + '重复收口是幂等的（p 已是 1 且 verified 行同事实 ⇒ 不新增行、不报错）。' })
 }
 
 /**
@@ -656,8 +1065,25 @@ function gatedCardHandler(toolName) {
     const track = has(args.track) ? str(args.track) : cardTrackOf(toolName)
     const cardId = has(args.id) ? str(args.id) : null
     const by = has(args.member) ? str(args.member) : null
+    // ★ PHASE 12 / B6 声明层：卡上的 `proofRef`/`proofState` 是**作者自述**（"我的证明写在哪、写完了没有"）。
+    // 它不构成证明 —— 证据层在 `verification-gates.js` 的 `debateSubjectGate`（Lean 通过 或 verified 定论行）。
+    // 两个别名收在这里，调用方不必知道 kit 的 payload 机制；只给 proofRef 不给状态 ⇒ 一律记 'draft'
+    // （"只写了个引用"不能被读成"已经写完"）。
+    if (has(args.proof_ref) || has(args.proof_state)) {
+      const state = has(args.proof_state) ? str(args.proof_state).trim() : ''
+      if (state && state !== 'complete' && state !== 'draft') {
+        throw refuse('VMU_INVALID_ARGUMENT', 'proof_state must be "complete" or "draft"; got "' + state + '"',
+          'pass proof_state:"complete" only if the proof/refutation is finished — it is a self-report, and a debate still needs machine evidence (Lean passed or a verified row)')
+      }
+      const payload = args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload) ? Object.assign({}, args.payload) : {}
+      if (has(args.proof_ref)) payload.proofRef = str(args.proof_ref)
+      if (state) payload.proofState = state
+      else if (has(args.proof_ref) && !has(payload.proofState)) payload.proofState = 'draft'
+      args = Object.assign({}, args, { payload })
+    }
     const writerGate = singleWriter({ records, cardId, by, writer: toolName, track })
-    gateRefuse(writerGate)
+    const writerRefusal = gateRefuse(writerGate)
+    if (writerRefusal) return writerRefusal
     const gates = [writerGate]
     if (toolName === 'vibe_v5_record_proposition') {
       // The three evidences the rule accepts. `debate` and `lean` come from the CALLER's args (a card write cannot go
@@ -669,7 +1095,8 @@ function gatedCardHandler(toolName) {
       const stored = cardProjectionOf(records, cardId)
       const card = cardId === null ? null : { id: cardId, bodyTruncated: !!(stored && stored.bodyTruncated) }
       const pGate = p1Intent({ tool: toolName, args, card, evidence })
-      gateRefuse(pGate)
+      const pRefusal = gateRefuse(pGate)
+      if (pRefusal) return pRefusal
       gates.push(pGate)
     }
     const res = inner(args, ctx)
@@ -693,7 +1120,8 @@ function toolVerifiedPromote(args = {}, { kernel } = {}) {
   }
   const member = has(args.member) ? requireSeat(kernel, args.member, 'verified promote').id : null
   const writerGate = singleWriter({ records, cardId: sourceId, by: member, writer: 'promoteVerified', track: VERIFIED_TRACK })
-  gateRefuse(writerGate)
+  const writerRefusal = gateRefuse(writerGate)
+  if (writerRefusal) return writerRefusal
   if (!has(args.warrant) || !has(args.warrant_kind)) {
     throw refuse('VMU_INVALID_ARGUMENT', 'promote needs the warrant that produced this conclusion — the judge, not a preference',
       'pass warrant:"<debate/ballot ruling id>" warrant_kind:"debate-unanimous" (or "lean-conformance" once that ruling exists)')
@@ -764,7 +1192,8 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
     leanPassed: !!(leanEvidence && leanEvidence.passed === true),
     p: cardRow ? cardPOf(records, propositionId) : null,
     withdrawnFor: fidelityWithdrawnFn(kernel), answered })
-  gateRefuse(pGate)
+  const pRefusal = gateRefuse(pGate)
+  if (pRefusal) return pRefusal
   const face = kernel.meetingverdict
   if (!face || typeof face.rulePropositionProbability !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the kernel publishes no meeting-verdict face, so nothing can aggregate the verdicts',
@@ -854,7 +1283,8 @@ function toolMeeting(args = {}, { kernel } = {}) {
       lean: (supplied && supplied.lean) || leanPassedOf(kernel, args.lean_job),
       file: (supplied && supplied.file) || null,
     } })
-    gateRefuse(subjectGate)
+    const subjectRefusal = gateRefuse(subjectGate)
+    if (subjectRefusal) return subjectRefusal
   }
   // ★ PHASE 7 round 23: the kernel's `meetings.open` accepts a SECRETARY (a recorder). The pack passes it through and
   // validates that the named id is on the roster — the RECORD right is a role the meeting declares, never a silent name.
@@ -911,8 +1341,141 @@ function toolMeeting(args = {}, { kernel } = {}) {
     note: 'the original could also PROPOSE a meeting from a non-chair seat and let the chair convene it; this face has no propose path (named gap: procedure/propose). ★★ THIS FACE ONLY CONVENES: for status/summary/snapshot/close/extend/extendlimit/proceed/lapse/ballot/speak/hand/hands/order/invite/invitedspeak/attend/flow/overrideorder use vibe_vmu_meeting { action, id } - the kernel face, which reaches the same meeting object. Measured on a full live run: an agent tried summary/close HERE, got nothing, and reported it as a missing capability; the capability existed one face over and nothing said so. ★ D9 邀请面 (this round): hand/invite/invitedspeak/order/attend now really reach a SERVICE meeting through that face — hand = a member queues itself, invite = the CHAIR puts one member or an ordered list (members:[…]) on the floor queue, order = reads the real queue back, invitedspeak = the invited voice speaks in the minutes, attend = marks a member present (an invitation NEVER marks anybody present: attendance is its own act and only it counts for the quorum). silent/end/hands stay primitive-only and the kernel face refuses them on a service meeting BY NAME. ★ A floor-order override (flow/overrideorder) still needs vmu.meetings.orderMode declared by the deployment; v5r does not declare it, so on a real run it is refused by name rather than silently ignored. ★ The recommended procedure is a RECOMMENDATION: skipping it, reordering it, or ignoring it entirely is allowed and unchecked.' }
 }
 
-const MOTION_KINDS = Object.freeze(['topic', 'procedural', 'resolution'])
+/**
+ * ★ PHASE 12 / D7 第二句 —— `vibe_v5_meeting_round`：按**会议类型**推进一轮，并把这一轮的工具面收窄到该类型允许的范围。
+ *
+ * 为什么需要一个新的驱动面：`kernel/turn.step` 的 `{tools:{allow}}` 只接受**本次调用方**给的名单，而唯一的既有调用方
+ * 是 host 的 `vibe_vmu_turn`（它不接受外部策略）；中间件够不到 kernel root；服务会议没有 open/close 生命周期钩子；
+ * 持久 override 又会被 host 工具自己的 `finally` 清掉（`tools/turn.js`）。所以"谁能按会议类型收窄"这件事，只能由一个
+ * **知道自己正在为哪场会是哪类型**的驱动者来做 —— 那就是这个 pack 工具。
+ *
+ * 三条语义（每一条都有门禁）：
+ *   · 只**收窄**：allow 是「身份可见表 ∩ pack 声明的类型允许集」，读不到身份面就具名拒（不猜、不扩权）；
+ *   · 未声明收窄的类型**具名决定走默认**（不设 override），不是空集；
+ *   · 收窄后为空 ⇒ 具名拒（空工具面是坏配置，不是"严格"）。
+ * 主席**不收窄**：他要在会议里维持秩序（关会、流程、投票箱），那是他的席位职责，不是议题内容。
+ */
+function toolMeetingRound(args = {}, { kernel } = {}) {
+  const meeting = str(args.meeting || args.id || '')
+  if (meeting === '') throw refuse('VMU_INVALID_ARGUMENT', 'meeting_round needs the meeting id', 'pass meeting:"<id>" — the id vibe_v5_meeting returned when the meeting was opened')
+  // 未知会议 ⇒ 内核具名拒（原样透出，这一层不重新解释）。
+  const viewed = kernel.meetings.meetingView({ meeting })
+  const type = viewed && viewed.type ? String(viewed.type) : 'ordinary'
+  const chair = viewed && viewed.chair ? String(viewed.chair) : null
+  // 成员名单：显式给了就用；没给就取"全部在册 live 成员 − 主席"。空集不静默跳过，而是具名拒。
+  const live = membersOf(kernel).roster().filter((m) => m.state === 'live').map((m) => m.id)
+  let ids
+  if (args.members !== undefined) {
+    if (!Array.isArray(args.members)) throw refuse('VMU_INVALID_ARGUMENT', 'members must be an array of member ids', 'pass members:["r-1","r-2"] or omit it (defaults to every live member except the chair)')
+    ids = args.members.map((m) => String(m && typeof m === 'object' ? (m.id === undefined ? '' : m.id) : m)).filter((id) => id !== '')
+    if (ids.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'members was given but names nobody', 'pass at least one member id, or omit members to use the default set')
+  } else {
+    ids = live.filter((id) => id !== chair)
+  }
+  if (ids.length === 0) {
+    throw refuse('VMU_STATE', '这一轮没有可推进的成员：名册 ' + live.length + ' 人，主席 ' + String(chair) + '，去掉主席后为空',
+      '先让成员 attend/在册，或用 members:[…] 明确点名这一轮由谁发言')
+  }
+  const face = meetingTypeFace(type)
+  const applied = applyMeetingTypeFace({ kernel, type, members: ids, refuse })
+  let step = null
+  let failure = null
+  try {
+    step = kernel.turn.step({ members: ids.map((id) => ({ id })), phase: str(args.phase || 'meeting'), why: str(args.why || '') })
+  } catch (err) {
+    failure = err
+  } finally {
+    // override 是**这一轮**的：无论 step 成功还是失败都要撤掉，否则会影响下一个回合（那不是"收窄"，是留后门）。
+    applied.clear()
+  }
+  if (failure) {
+    if (failure && typeof failure === 'object') {
+      failure.narrowing = { type, narrowed: face.narrowed === true, reason: face.reason, members: applied.rows }
+    }
+    throw failure
+  }
+  return {
+    ok: true, tool: 'vibe_v5_meeting_round', meeting, type, chair, phase: str(args.phase || 'meeting'),
+    narrowed: face.narrowed === true, narrowing: { type, narrowed: face.narrowed === true, reason: face.reason, expected: face.allow, members: applied.rows },
+    members: ids, turn: step,
+    note: face.narrowed === true
+      ? '★ 这一轮按会议类型收窄了成员工具面：下发的是「身份可见表 ∩ pack 声明的允许集」，不是手写名单 —— 只能变小。主席不在收窄范围内（他要维持会议秩序）。override 已在 finally 撤掉，不影响下一轮。'
+      : '这一轮**没有**按会议类型收窄（' + face.reason + '）：工具面等于该成员的身份面。',
+  }
+}
 
+// ── ★ R18-B2: THE PUBLIC BLUEPRINT (提案 → 落成 → 读到"哪一版在生效 / 多久没动") ────────────────────────────────────
+// THE DEFECT: `vmu.turn.protocolPath` had two prompt interpolations and NO writer — the blueprint was a path with no
+// edit right attached: nobody could propose a revision, nobody could decide which one is in force, and nobody could
+// tell when the one in force was last touched. The carrier is `./blueprint.js` (a `records` track, declared in
+// `settings/defaults.json`), and this handler is its REACHABLE consumer (red line ④: no mechanism without one).
+//
+// WHO MAY DO WHAT IS PACK POLICY, IN ONE PLACE: any live member may `propose` (a draft is not in force), ONLY the chair
+// slot may `adopt` (`BLUEPRINT_ADOPT_SLOT` in `./blueprint.js`, compared against the roster row — the kernel never learns
+// the name, same rule as `PAPER_CONSULT_ROLES`). Staleness is a SIGNAL: `state` reports `updatedAt/ageMs/stale`; nothing
+// here refuses because a blueprint is old (a reminder that blocks work is a gate nobody asked for).
+function toolBlueprint(args = {}, { kernel } = {}) {
+  const action = str(args.action || 'state').trim()
+  const records = recordsOf(kernel)
+  const pathFromArg = has(args.path) ? str(args.path).trim() : ''
+  const pathFromSetting = str((settingsOf(kernel) || {})[BLUEPRINT_PATH_KEY] || '').trim()
+  const path = pathFromArg || pathFromSetting
+  if (path === '') {
+    throw refuse('VMU_INVALID_ARGUMENT', '没有蓝图路径：既没传 path，部署也没声明 ' + BLUEPRINT_PATH_KEY,
+      'pass path:"Shared/Protocol.md"（或让部署声明 ' + BLUEPRINT_PATH_KEY + '）—— 蓝图按路径分账，路径不明就无从读、也无从提案')
+  }
+  const pathSource = pathFromArg !== '' ? 'argument' : 'setting:' + BLUEPRINT_PATH_KEY
+  if (action === 'state') {
+    const state = blueprintState({ records, path })
+    return Object.assign({}, state, {
+      tool: 'vibe_v5_blueprint', action, pathSource,
+      readSurface: 'vibe_v5_read_library { track: "' + BLUEPRINT_TRACK + '" }',
+      note: state.hasCurrent === false
+        ? '该路径上还没有生效版本：先 propose（任何成员）再由主席席 adopt。'
+        : (state.stale === true
+          ? '★ 蓝图已超期（提示，不是拒绝）：' + Math.round(state.staleAfterMs / 86400000) + ' 天内没有更新，建议按协议复查后提案。'
+          : '蓝图为现行版本；成稿读面见 readSurface。'),
+    })
+  }
+  if (action === 'read') {
+    const wanted = str(args.id || args.draft || '').trim()
+    const read = readBlueprint({ records, id: wanted })
+    return { ok: read.ok, tool: 'vibe_v5_blueprint', action, path, pathSource, id: read.id, status: read.status || null, revision: read.revision || null, fields: read.fields, text: read.text, problems: read.problems, title: read.row && read.row.title }
+  }
+  if (action === 'propose') {
+    const member = requireSeat(kernel, args.member || args.by, 'blueprint (proposal)')
+    const text = str(args.text || args.body || '').trim()
+    if (text === '') {
+      throw refuse('VMU_INVALID_ARGUMENT', '蓝图提案需要正文 text',
+        'pass text:<完整的一版蓝图> —— 空提案等于悄悄落成"什么都没有"')
+    }
+    const proposed = proposeBlueprint({ records, path, text, by: String(member.id), note: str(args.note || '') })
+    const state = blueprintState({ records, path })
+    return Object.assign({}, proposed, {
+      tool: 'vibe_v5_blueprint', pathSource, member: String(member.id),
+      inForce: state.current,
+      draftsWaiting: state.draftsWaiting,
+      note: '★ 草案已登记但**没有生效**：只有主席席可以 adopt（机构政策：' + BLUEPRINT_ADOPT_SLOT + ' 席）。',
+    })
+  }
+  if (action === 'adopt') {
+    const member = requireChairSeat(kernel, args.member || args.by, 'blueprint (adoption)')
+    const draft = str(args.draft || args.id || '').trim()
+    if (draft === '') {
+      throw refuse('VMU_INVALID_ARGUMENT', '落成蓝图需要指名哪一份草案（draft）',
+        'pass draft:<proposal id>；state 的 drafts[] 列出在等的草案（含 revision 与提案人）')
+    }
+    const adopted = adoptBlueprint({ records, path, draft, by: String(member.id), note: str(args.note || '') })
+    return Object.assign({}, adopted, {
+      tool: 'vibe_v5_blueprint', pathSource, member: String(member.id),
+      readSurface: 'vibe_v5_read_library { track: "' + BLUEPRINT_TRACK + '" }',
+    })
+  }
+  throw refuse('VMU_INVALID_ARGUMENT', 'unknown blueprint action: ' + action,
+    'actions: state（读现行版/草案/超期）| propose（任何成员提案）| adopt（主席席落成）| read（按 id 读一版）')
+}
+
+const MOTION_KINDS = Object.freeze(['topic', 'procedural', 'resolution'])
 /** ★ `vibe_v5_motion` — raise a motion inside an ONGOING meeting, or WITHDRAW your own. The kernel's meeting face has
  * `motion()`, `second()` and `withdraw()` (PHASE 7 round 6); this tool is the pack-side path to all three. */
 function toolMotion(args = {}, { kernel } = {}) {
@@ -1413,14 +1976,17 @@ async function toolPaper(args = {}, { kernel } = {}) {
 export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_record_progress',
-    description: 'Append to YOUR research log. track picks the file: progress (default) / routes / obstacles / rejected / state — use rejected for disproved routes and obstacles for blockers, so negative knowledge is archived in its own track.',
-    parameters: { content: { type: 'string', required: true }, track: { type: 'string' }, title: { type: 'string' }, member: { type: 'string' } },
+    description: 'Append to YOUR research log. track picks the file: progress (default) / routes / obstacles / rejected / state — use rejected for disproved routes and obstacles for blockers, so negative knowledge is archived in its own track. '
+      + '★ The STATE panel (track:"state") has FOUR REQUIRED contents — progress (当前进度), obstacles (遇到的障碍), next (下一步计划), help (需要的帮助) — passed flat or nested under `state`; a panel missing one is refused by name with the missing keys in `missing`, and `content` is free text on top, never a substitute.',
+    parameters: { content: { type: 'string' }, track: { type: 'string' }, title: { type: 'string' }, member: { type: 'string' },
+      progress: { type: 'string' }, obstacles: { type: 'string' }, next: { type: 'string' }, help: { type: 'string' }, state: { type: 'object' } },
     handler: toolRecordProgress,
   },
   {
     name: 'vibe_v5_record_proposition',
-    description: 'Record a proposition/lemma card in your library. REQUIRES statement, value, motive and p (your probability that it is true); the card is settled when p is 1 or 0. ★ p=1 IS A CONCLUSION, NOT A PREFERENCE: writing 1 is refused BY NAME unless the write carries one of the three conclusions the rule accepts — a promoted verified row on THIS card (the kernel record, not an argument), a unanimous debate ruling (`debate_ruling:{mode:"unanimous", value:1, subject:"<this card id>", ballotId}`), or a passed Lean run PLUS the conformance ruling (`lean_job` + `lean_conformance:"conform"`). Estimating in (0,1) is always allowed.',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, debate_ruling: { type: 'object' }, member: { type: 'string' } },
+    description: 'Record a proposition/lemma card in your library. REQUIRES statement, value, motive and p (your probability that it is true); the card is settled when p is 1 or 0. ★ p=1 IS A CONCLUSION, NOT A PREFERENCE: writing 1 is refused BY NAME unless the write carries one of the three conclusions the rule accepts — a promoted verified row on THIS card (the kernel record, not an argument), a unanimous debate ruling (`debate_ruling:{mode:"unanimous", value:1, subject:"<this card id>", ballotId}`), or a passed Lean run PLUS the conformance ruling (`lean_job` + `lean_conformance:"conform"`). Estimating in (0,1) is always allowed. '
+      + '★ PROOF REGISTRATION (B6): pass `proof_ref` (where the proof/refutation lives, e.g. "Members/<m>/Propos/<pid>.md#正式证明") and `proof_state:"complete"|"draft"` — this is a SELF-REPORT, recorded and traceable, NOT a verification: a debate on this card still needs machine evidence (a passed Lean run on it, or a verified row). Only `proof_ref` ⇒ state is recorded as draft.',
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, debate_ruling: { type: 'object' }, member: { type: 'string' } },
     handler: gatedCardHandler('vibe_v5_record_proposition'),
   },
   {
@@ -1437,8 +2003,9 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_say',
-    description: 'Speak in the group chat (omit `to`), send a private message (`to`: a member id / "all" / "voters"), or record a meeting speech (`meeting`: the open meeting id). The speaker must be a REAL roster id: this tool never invents one.',
-    parameters: { member: { type: 'string', required: true }, text: { type: 'string', required: true }, to: { type: 'string' }, meeting: { type: 'string' } },
+    description: 'Speak in the group chat (omit `to`), send a private message (`to`: a member id / "all" / "voters"), or record a meeting speech (`meeting`: the open meeting id). The speaker must be a REAL roster id: this tool never invents one. '
+      + '★ `urgent:true` is available ONLY on the private-message form (it is the sender\'s explicit intent, carried by the mailbox\'s own urgency semantics and reflected in the recipient\'s inbox row); the group-chat and meeting forms are refused by name when `urgent` is set, because neither has a recipient to wake.',
+    parameters: { member: { type: 'string', required: true }, text: { type: 'string', required: true }, to: { type: 'string' }, meeting: { type: 'string' }, urgent: { type: 'boolean' } },
     handler: toolSay,
   },
   {
@@ -1449,7 +2016,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_inbox',
-    description: 'Read/triage the mailbox: action=list returns rows WITHOUT the body (id/from/at/subject/read/todo/kind/bytes), action=open returns ONE body and marks it read, action=mark sets read/todo. Mail does not need to be read immediately.',
+    description: 'Read/triage the mailbox: action=list returns rows WITHOUT the body (id/from/at/subject/read/todo/urgent/kind/bytes) — `urgent` is the sender\'s explicit flag from the message face, so urgency is visible WITHOUT opening the message; action=open returns ONE body and marks it read, action=mark sets read/todo. Mail does not need to be read immediately.',
     parameters: { action: { type: 'string' }, member: { type: 'string', required: true }, status: { type: 'string' }, id: { type: 'string' }, read: { type: 'boolean' }, todo: { type: 'boolean' } },
     handler: toolInbox,
   },
@@ -1490,14 +2057,24 @@ export const V5R_PACK_TOOLS = Object.freeze([
     handler: toolHire,
   },
   {
+    name: 'vibe_v5_script',
+    description: 'THE SCRIPT ARCHIVE (归档/复算): op=archive stores a script\'s WHOLE text as a `scripts`-track card with the kernel\'s own fingerprint (provenance in title/tags, body byte-identical); op=read returns the archived text verbatim by id or name (latest edition); op=list shows the archived scripts. '
+      + '★ A script is a 所级产物, so it is archived and reviewable — but a TEMPORARY script still cannot be run ad hoc: the pack\'s no-adhoc-scripts rule refuses that by name. Recompute by running the archived text again and comparing the fingerprint, never by trusting a note about it.',
+    parameters: { op: { type: 'string' }, name: { type: 'string' }, text: { type: 'string' }, purpose: { type: 'string' }, parent: { type: 'string' }, edition: { type: 'string' }, id: { type: 'string' }, limit: { type: 'integer' }, member: { type: 'string' } },
+    handler: toolScript,
+  },
+  {
     name: 'vibe_v5_report',
-    description: 'Human-readable institute report (staffing, task board, meetings). Read-only composition of the published faces; the original takes no parameters.',
+    description: 'Human-readable institute report (staffing, task board, meetings, feedback ledger). Read-only composition of the published faces; the original takes no parameters. '
+      + 'counts.feedback = { open, closed, total, declared } — a feedback card is CLOSED when its body verdict line is `status：closed` (what vibe_v5_feedback op=update writes); open is every other card, and both are derived by the same classifier vibe_v5_feedback op=list uses, '
+      + 'declared:false means this deployment declares no feedback track (the count is then honestly absent, never a fabricated 0), and unreadable counts bodies the records face could not hand back.',
     parameters: {},
     handler: toolReport,
   },
   {
     name: 'vibe_v5_overview',
-    description: 'Institute-wide view (roster, task board, meetings). Academician (chair seat) only — the role check is the pack\'s, and another seat is refused by name.',
+    description: 'Institute-wide view (roster, task board, meetings, feedback ledger). Academician (chair seat) only — the role check is the pack\'s, and another seat is refused by name. '
+      + 'The returned `feedback` object is { open, closed, total, declared } with the same rule as vibe_v5_report.counts.feedback (closed = the card body verdict line is `status：closed`, classified by the one shared classifier).',
     parameters: { member: { type: 'string', required: true } },
     handler: toolOverview,
   },
@@ -1539,8 +2116,9 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_read_library',
-    description: 'Read anyone\'s library (read-only): id reads one card; the list form reads the declared tracks and filters by kind and by the card\'s author.',
-    parameters: { member: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, list: { type: 'boolean' }, limit: { type: 'integer' } },
+    description: 'Read anyone\'s library (read-only): id reads one card; the list form reads EVERY declared track (vmu.records.tracks — so a member\'s state panel, obstacles, rejected routes and feedback are all readable) and filters by kind, by the card\'s author, and by `track`/`tracks`. '
+      + '★ An undeclared track name is refused by name with the declared set in `declared`; a declared track the records face itself refuses is reported in `skippedTracks`, never silently dropped.',
+    parameters: { member: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, list: { type: 'boolean' }, limit: { type: 'integer' }, track: { type: 'string' }, tracks: { type: 'array' } },
     handler: toolReadLibrary,
   },
   {
@@ -1548,6 +2126,17 @@ export const V5R_PACK_TOOLS = Object.freeze([
     description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary) and a debate REQUIRES subject (its object: a card id, a file reference, or one line). ★ `title` is an OPTIONAL separate name (omit it and the agenda stays as the subject; non-string is refused by name). ★ `at` SCHEDULES it: epoch milliseconds or an ISO-8601 string (e.g. "2026-10-24T10:00:00+08:00"); a future time puts the meeting in the `scheduled` state — status/summary/meetingView read it right away, but every action before the start time is refused BY NAME, and when the start time arrives with too few present it waits (a latecomer attending then starts it). The receipt reads the real state back (`state`, `scheduledFor`). ★ A DEBATE\'S SUBJECT MUST CARRY A FINISHED PROOF: a card id must have `proofRef`+`proofState:"complete"` (or a verified row / a passed Lean run), a file reference needs `subject_evidence.file = {readable:true, bytes:N, name}` (the gate only proves "exists and is non-empty" — content completeness is judged by the members in the debate), and a one-line proposition is legal but the receipt records `subjectGate.provenance:"none"` because nothing can be checked. A type that the institution gave a recommended procedure returns it in `procedure` — ★ it is a RECOMMENDATION, never a gate: skipping or reordering it is allowed and unchecked. Steps the framework has NOT implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES - status/summary/close/flow live on vibe_vmu_meeting { action, id }. The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name.',
     parameters: { agenda: { type: 'string', required: true }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true }, at: { type: 'string' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' } },
     handler: toolMeeting,
+  },
+  {
+    name: 'vibe_v5_meeting_round',
+    description: 'Advance ONE member turn of an open meeting with the meeting-type tool face enforced (D7: 成员可用的命令按会议类型不同). '
+      + 'It resolves the meeting\'s `type`, then narrows each participating member\'s tool face to 「identity visible set ∩ the pack-declared allow list for that type」 — it can only get SMALLER (a widening is impossible: the intersection is taken against the member\'s own visible face, and an unreadable identity face is refused by name instead of guessed). '
+      + 'During a DEBATE, recording tools such as vibe_v5_paper / lean / hiring / settings are NOT callable by members (they are another meeting\'s business); in a type that declares no narrowing (ordinary/academic/closure/paper/planning) the member keeps the identity face and the receipt says so by name. '
+      + 'The CHAIR is never narrowed (order-keeping is the seat\'s duty). The override lives for exactly this one round and is cleared in a finally, so the next turn starts from the identity face again. '
+      + 'A type with no declared narrowing is a NAMED decision (default face), never a silent empty set; an empty intersection is refused by name (a bad configuration is not "strictness"). '
+      + 'Defaults: members = every live member except the chair; phase = "meeting".',
+    parameters: { meeting: { type: 'string', required: true }, members: { type: 'array' }, phase: { type: 'string' }, why: { type: 'string' } },
+    handler: toolMeetingRound,
   },
   {
     name: 'vibe_v5_motion',
@@ -1596,6 +2185,18 @@ export const V5R_PACK_TOOLS = Object.freeze([
     description: '★ PROMOTE A PROPOSITION CARD TO THE VERIFIED TRACK — the ONLY writer of that track, and the place where a settled p is carried together with its JUDGE. card REQUIRED (a propositions/proposition card whose p is exactly 1 or 0); warrant + warrant_kind REQUIRED (which debate/ruling decided it, e.g. kind "debate-unanimous"). Refused by name: a card that is not a proposition card, a truncated card, a card whose p is neither 1 nor 0 ("a preference is not a conclusion"), a withdrawn proof, and a missing warrant. The card keeps its own p; the verified row records the warrant, so "why is this settled" is answerable instead of asserted.',
     parameters: { card: { type: 'string', required: true }, warrant: { type: 'string', required: true }, warrant_kind: { type: 'string', required: true }, member: { type: 'string' } },
     handler: toolVerifiedPromote,
+  },
+  {
+    name: 'vibe_v5_fidelity_conclude',
+    description: '★ CLOSE A FORMALISATION: the chair judges whether a PASSING Lean run says what the proposition says, and that judgement is the ONLY way a debate turns into a conclusion. card + fidelity("conform"|"defect") + lean_job + member(the chair seat) REQUIRED. conform ⇒ the card p is written as 1 through the SAME gated card path (evidence = this Lean job) and the ONLY writer promotes it into the verified track (warrant = lean job, kind "lean-conformance"); defect ⇒ kernel.fidelity.declareDefect records a DURABLE marker with your reason (note REQUIRED), which makes the verified row invisible to every reader and cannot be undone by a later conclusion. Refused by name: a Lean job that is missing / not readable / did NOT pass, a non-chair signer, an unreadable or truncated card, a bad fidelity value, and a defect without a note. Idempotent: repeating the same conclusion adds nothing.',
+    parameters: { card: { type: 'string', required: true }, fidelity: { type: 'string', required: true }, lean_job: { type: 'string', required: true }, member: { type: 'string' }, note: { type: 'string' } },
+    handler: toolFidelityConclude,
+  },
+  {
+    name: 'vibe_v5_blueprint',
+    description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision (path + text REQUIRED; a draft is never in force); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one (draft REQUIRED; any other seat is refused by name); "read" returns one revision by id. Every change is one record row (who proposed, who adopted, when, fingerprint), so "who changed the blueprint" is answerable instead of remembered. The rows are also readable through vibe_v5_read_library { track: "blueprint" }.',
+    parameters: { action: { type: 'string' }, path: { type: 'string' }, member: { type: 'string' }, text: { type: 'string' }, draft: { type: 'string' }, id: { type: 'string' }, note: { type: 'string' } },
+    handler: toolBlueprint,
   },
   {
     name: 'vibe_v5_start',

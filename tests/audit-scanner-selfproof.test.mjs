@@ -62,9 +62,12 @@ const UNPROVEN = new Set([
   'audit-zpolicy.test',
 ])
 
-/** Is `code` a gate that READS --selftest from argv? Co-occurrence, not same-line: a multi-line guard is still a
- *  guard, and requiring one line made a real self-test look absent (measured: 2 files differed). */
-const readsSelftest = (code) => /(['"])--selftest\1/.test(code) && /argv/.test(code)
+/** Is `code` a gate that READS a `--selftest` / `--self-test` flag from argv? Co-occurrence, not same-line: a
+ *  multi-line guard is still a guard, and requiring one line made a real self-test look absent (measured: 2 files
+ *  differed). ★ BOTH SPELLINGS count (round 17): the tree's own convention is `--self-test` (scripts/clean-temp.mjs
+ *  and the five gates that gained a runnable `--self-test` in that round), and recognizing only the compact spelling
+ *  reported five self-proving gates as unproven — the same false-negative class as the `.test.mutants.mjs` lookup. */
+const readsSelftest = (code) => /(['"])--self-?test\1/.test(code) && /argv/.test(code)
 
 /** Classify every audit-* in `dir`. Pure with respect to its argument, which is what makes --selftest possible. */
 function classify(dir) {
@@ -110,6 +113,9 @@ if (argv.includes('--selftest')) {
   try {
     writeFileSync(join(dir, 'audit-plain.mjs'), 'console.log(1)\n')
     writeFileSync(join(dir, 'audit-with-selftest.mjs'), "const a = process.argv.slice(2)\nif (a.includes('--selftest')) console.log('x')\n")
+    // ★ Both spellings must classify identically — the compact one above and the hyphenated one the tree actually
+    // uses (scripts/clean-temp.mjs, and the five gates that gained a runnable --self-test in round 17).
+    writeFileSync(join(dir, 'audit-with-hyphen.mjs'), "const a = process.argv.slice(2)\nif (a.includes('--self-test')) console.log('x')\n")
     writeFileSync(join(dir, 'audit-mentions-only.mjs'), '// this file mentions --selftest but argv is never read\n')
     writeFileSync(join(dir, 'audit-stale.mjs'), "if (process.argv.includes('--selftest')) console.log('x')\n")
     writeFileSync(join(dir, 'audit-paired.test.mjs'), 'console.log(1)\n')
@@ -117,6 +123,7 @@ if (argv.includes('--selftest')) {
     const byBase = Object.fromEntries(classify(dir).map((r) => [r.base, r]))
     check(byBase['audit-plain'].proven === false, '★ 无自证的文件必须被判为未自证', byBase['audit-plain'])
     check(byBase['audit-with-selftest'].proven === true, '★ 从 argv 读 --selftest 的必须被判为自证', byBase['audit-with-selftest'])
+    check(byBase['audit-with-hyphen'].proven === true, '★★ 连字符写法 --self-test 同样是自证（只认紧凑写法会把真自证误判成未自证）', byBase['audit-with-hyphen'])
     check(byBase['audit-mentions-only'].proven === false, '★★ 只在注释里提到 --selftest 的【不】算自证（假绿）', byBase['audit-mentions-only'])
     check(byBase['audit-paired.test'].proven === true, '★ X.test.mjs 与 X.mutants.mjs 配对必须被识别', byBase['audit-paired.test'])
     const j1 = judge(classify(dir), new Set(['audit-stale']))

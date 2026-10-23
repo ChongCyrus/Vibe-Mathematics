@@ -27,6 +27,7 @@ import {
   MATH_FAILURE_CODES,
   MATH_PARAM_DEFAULTS,
 } from '../math-computation.js'
+import { declaredDefault } from './settings-defaults.js'
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
@@ -145,7 +146,9 @@ export function createMathSurface({ host, settings = {} } = {}) {
     status() {
       return {
         tool: MATH_TOOL_NAME,
-        engines: settings['vmu.math.engines'] || [],
+        engines: declaredDefault('vmu.math.engines') !== undefined && settings['vmu.math.engines'] === undefined
+          ? declaredDefault('vmu.math.engines')
+          : (settings['vmu.math.engines'] || []),
         compileTimeoutMs: settings['vmu.math.compileTimeoutMs'] || 0,
         requireFormalization: REQUIRE_FORMALIZATION,
         onUnavailable: ON_UNAVAILABLE,

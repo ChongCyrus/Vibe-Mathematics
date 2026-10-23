@@ -1782,12 +1782,15 @@ section('N6 four-preset path discipline (member root / prefix-note)')
 {
   const { readFileSync } = await import('node:fs')
   const { fileURLToPath } = await import('node:url')
-  const pick = (env, rel) => process.env[env] ? process.env[env] : fileURLToPath(new URL(rel, import.meta.url))
+  // ★ the default must come from the ONE seam (`tests/_lib/legacy-presets.mjs`), never from a
+  // repo-root relative URL: the five legacy presets are ARCHIVED (`archive/legacy-presets`, G4), so a
+  // root-relative default made this section a permanent ENOENT — measured red at HEAD `478b342a`.
+  const pick = (env, name, rel) => process.env[env] ? process.env[env] : legacyFile(name, rel)
   const files = {
-    v2: pick('V2_PLUGIN', '../vibe-math-v2/vibe-math-v2.js'),
-    v3: pick('V3_PLUGIN', '../vibe-math-v3/vibe-math-v3.js'),
-    v4: pick('V4_PLUGIN', '../vibe-math-v4/vibe-math-v4.js'),
-    v5: pick('V5_PLUGIN', '../vibe-math-v5/vibe-math-v5.js'),
+    v2: pick('V2_PLUGIN', 'vibe-math-v2', 'vibe-math-v2.js'),
+    v3: pick('V3_PLUGIN', 'vibe-math-v3', 'vibe-math-v3.js'),
+    v4: pick('V4_PLUGIN', 'vibe-math-v4', 'vibe-math-v4.js'),
+    v5: pick('V5_PLUGIN', 'vibe-math-v5', 'vibe-math-v5.js'),
   }
   const ROOT = /Members\/<[^>]+>\/(?:Progress|Propos|Methods|Subproblems)\//g
   const LEGACY = /(?:^|[^/>])(?:Progress|Propos|Methods|Subproblems)\/<[^>]+>\//g
