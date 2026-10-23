@@ -25,6 +25,11 @@ import { MEETING_TYPE_IDS, meetingTypeOf, procedureFor } from './meeting-procedu
 // （`{tools:{allow}}` → `setMemberToolOverride`），但 pack 侧没有生产者 —— 提示词不是门禁。`./meeting-tool-face.js`
 // 是这张**机构政策表**（哪类会议收窄、收窄到哪些工具）＋"只能收窄不能扩大"的求交；本文件只负责把它装到一轮上。
 import { applyMeetingTypeFace, meetingTypeFace } from './meeting-tool-face.js'
+// ★ PHASE 12 / R13 (measured on the full live run of 2026-10-24): seating the academician with
+// `vibe_vmu_control {action:"hire", slot:"chair"}` does NOT set `vmu.turn.leaderId`, so every member prompt opened with
+// 「本所当前没有在册院士」 while the chair was seated. `./leadership.js` is the pure reading that makes the two facts
+// comparable; the chair-only `vibe_v5_overview` below is its consumer (a named warning instead of a silent mismatch).
+import { leadershipReading, leadershipWarning, LEADER_SLOT } from './leadership.js'
 // ★ R18-B2: the public blueprint carrier. `vmu.turn.protocolPath` had two prompt interpolations and no writer, so the
 // blueprint was a path with no edit right attached. `./blueprint.js` is the data face (a records track + propose/adopt);
 // this import is its REACHABLE consumer (red line ④).
@@ -317,12 +322,26 @@ async function toolOverview(args = {}, { kernel } = {}) {
   const rows = kernel.tasks && typeof kernel.tasks.list === 'function' ? rowsOf(await kernel.tasks.list()) : []
   const openMeetings = kernel.meetings && typeof kernel.meetings.openMeetings === 'function' ? kernel.meetings.openMeetings() : null
   const meetingRows = openMeetings && Array.isArray(openMeetings.meetings) ? openMeetings.meetings : []
-  return { ok: true, tool: 'vibe_v5_overview', by: member,
+  // ★ R13: WHO LEADS, read from the LIVE roster and the resolved setting — the two facts the charter depends on. The
+  // reading is a separate module (`./leadership.js`) because the policy decision in `middleware/prompt-switches.js` §4
+  // and this receipt must be able to disagree ONLY in a way a reader can see; today they delegate to one another instead.
+  const settingsForLeader = typeof kernel.settingsView === 'function' ? kernel.settingsView() : null
+  const leaderId = settingsForLeader && typeof settingsForLeader.get === 'function'
+    ? String(settingsForLeader.get('vmu.turn.leaderId') === undefined || settingsForLeader.get('vmu.turn.leaderId') === null ? '' : settingsForLeader.get('vmu.turn.leaderId'))
+    : ''
+  const leadership = leadershipReading({ roster, leaderId, leaderSlot: LEADER_SLOT })
+  const leadershipIssue = leadershipWarning(leadership)
+  const out = { ok: true, tool: 'vibe_v5_overview', by: member,
     roster: roster.map((m) => ({ id: m.id, slot: m.slot, state: m.state })),
     board: { tasks: rows.length, open: rows.filter((t) => String(t.status || t.state) !== 'done').length },
     meetings: meetingRows.map((m) => ({ id: m.id, state: m.state })),
     // ★ Same three keys and the same rule as vibe_v5_report.counts.feedback (one helper, so they cannot disagree).
-    feedback: feedbackCounts(kernel) }
+    feedback: feedbackCounts(kernel),
+    leadership }
+  // A warning is a TOP-LEVEL field, not a line inside `leadership`: a caller that reads only the warned shape cannot
+  // mistake "no warning" for "no field" — absent means consistent, and the note says which code it was.
+  if (leadershipIssue) { out.warning = leadershipIssue }
+  return out
 }
 
 // ── ⑬–⑲ THIRD BATCH: help, assignment, dismissal, supervision, priorities, feedback, library reading ─────────

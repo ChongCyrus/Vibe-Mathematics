@@ -65,6 +65,7 @@ const EXPECTED = Object.freeze([
   Object.freeze({ name: 'v5r-fix-tool-help', oldNeedles: ['vibe_v5_tool_help', '"tool"'], newNeedles: ['{member}', 'tool_help needs the member id'], marker: '【更正·工具查询】' }),
   Object.freeze({ name: 'v5r-fix-formal', oldNeedles: ['end_verify', 'formal_proof'], newNeedles: ['formal:{decision,file,note}'], marker: '【更正·形式化】' }),
   Object.freeze({ name: 'v5r-fix-m-vote', oldNeedles: ['m 票'], newNeedles: ['quorumRule', 'defaultTally', 'm-unanimous'], marker: '【更正·m 票】' }),
+  Object.freeze({ name: 'v5r-fix-leader-id', oldNeedles: ['没有在册院士'], newNeedles: ['vmu.turn.leaderId', 'vibe_v5_configure', 'leadership.code'], marker: '【更正·领头人】' }),
 ])
 
 console.log('=== 1. the correction ledger is a well-formed, complete statement ===')
@@ -74,7 +75,7 @@ console.log('=== 1. the correction ledger is a well-formed, complete statement =
 // fingerprints to that baseline instead of shrinking it).
 ok(Array.isArray(SECTIONS) && SECTIONS.length > 0, 'the correction ledger is a non-empty array', Array.isArray(SECTIONS) ? SECTIONS.length : SECTIONS)
 ok(Array.isArray(EXPECTED) && EXPECTED.length > 0, 'there are expected corrections to compare against (RULE E)', Array.isArray(EXPECTED) ? EXPECTED.length : EXPECTED)
-ok(SECTIONS.length === EXPECTED.length, 'the correction list carries exactly the four corrections the ruling named', { sections: SECTIONS.length, expected: EXPECTED.length })
+ok(SECTIONS.length === EXPECTED.length, 'the correction list carries exactly the corrections the ruling named', { sections: SECTIONS.length, expected: EXPECTED.length })
 ok(Object.isFrozen(SECTIONS) && SECTIONS.length > 0 && SECTIONS.every((s) => Object.isFrozen(s)), 'the ledger and every entry are frozen (a runtime mutation cannot add or edit a correction)')
 const names = SECTIONS.map((s) => s.name)
 ok(names.length === new Set(names).size, 'the section names are unique (the pipeline would refuse a duplicate by name)', names)
@@ -119,7 +120,7 @@ ok(Array.isArray(PACK_BAND) && correctionOrders.every((o) => o >= PACK_BAND[0] &
   'every correction sits inside the PACK band (outside it the range derives to a kernel-reserved band and the pipeline drops the section)',
   { orders: correctionOrders, packBand: PACK_BAND })
 const registered = names.filter((n) => declared.some((s) => s.name === n))
-ok(names.length > 0 && registered.length === names.length, 'all four corrections are REGISTERED on the manifest (PACK.sections), not merely exported', { registered, names })
+ok(names.length > 0 && registered.length === names.length, 'every correction is REGISTERED on the manifest (PACK.sections), not merely exported', { registered, names })
 
 console.log('=== 4. a correction must not look like the divergence it corrects ===')
 // The mechanism-parity gate (tests/vmu-prompt-mechanism-parity.test.mjs) watches four taught-claim families and treats a
@@ -137,7 +138,7 @@ for (const s of SECTIONS) {
   ok(hits.length === 0, 'correction does not trip a parity family (' + s.name + ')', hits)
 }
 
-console.log('=== 5. the REAL assembled member prompt carries all four, after the old wording ===')
+console.log('=== 5. the REAL assembled member prompt carries all corrections, after the old wording ===')
 const entry = await import(pathToFileURL(ENTRY).href)
 const root = await mkdtemp(join(tmpdir(), 'vmu-f5-corrections-'))
 const specs = []
@@ -179,7 +180,7 @@ const SUPERSEDES = Object.freeze([
 ok(assemblies.length > 0, 'there are real assemblies to judge the ordering on (RULE E)', assemblies.length)
 for (const a of assemblies) {
   const missing = SUPERSEDES.filter((s) => !a.text.includes(s.marker)).map((s) => s.marker)
-  ok(missing.length === 0, 'all four corrections are in the assembled prompt (' + a.label + ')', missing)
+  ok(missing.length === 0, 'every correction is in the assembled prompt (' + a.label + ')', missing)
   const misordered = SUPERSEDES.filter((s) => {
     const oldAt = a.text.indexOf(s.oldLine)
     const newAt = a.text.indexOf(s.marker)

@@ -5,7 +5,7 @@
 // `v5r-persona.js`) still carries the OLD wording — it is a historical record, not live teaching, and the text
 // cannot be edited there (a capture that is rewritten is no longer a record; `regen-all --check` would also
 // overwrite it). The hand-written passages have been repaired, and the pack declares the repair in
-// `packs/v5r/prompts/v5r-corrections.js` — text the member actually receives (orders 890-893, inside the pack
+// `packs/v5r/prompts/v5r-corrections.js` — text the member actually receives (orders 890-894, inside the pack
 // band, after every section it corrects). So the judgement is NOT "the old words are gone" (they must stay in
 // the capture where they are evidence) but "for every retired mechanism the same assembly carries its named
 // correction".
@@ -106,13 +106,13 @@ const VIBE_NAMES = (text) => [...String(text).matchAll(/vibe_[A-Za-z0-9_]+/g)].m
 console.log('=== 1. the pairing table and the correction ledger are well-formed (RULE E) ===')
 ok(Array.isArray(SECTIONS) && SECTIONS.length > 0, 'the correction ledger is a non-empty array', Array.isArray(SECTIONS) ? SECTIONS.length : SECTIONS)
 ok(Array.isArray(RETIRED) && RETIRED.length > 0, 'there are retired mechanisms to pair against (RULE E)', Array.isArray(RETIRED) ? RETIRED.length : RETIRED)
-ok(SECTIONS.length === 4, 'the pack declares exactly four correction sections (the shape the ledger test pins)', SECTIONS.length)
+ok(SECTIONS.length === corr.V5R_CORRECTION_SECTIONS.length && SECTIONS.length > 0, 'the pack declares exactly the corrections the ledger module owns (count DERIVED from that module, never typed here)', SECTIONS.length)
 ok(RETIRED.length > 0 && RETIRED.every((r) => r.declaredNeedles.length > 0), 'every retired mechanism carries declaration needles (a pairing without needles is a wish)')
 ok(RETIRED.length > 0 && RETIRED.every((r) => sectionByName.has(r.section)), 'every retired mechanism maps to a real correction section', RETIRED.map((r) => r.section))
 const ids = RETIRED.map((r) => r.id)
 ok(ids.length > 0 && ids.length === new Set(ids).size, 'retired-mechanism ids are unique')
 const usedSections = new Set(RETIRED.map((r) => r.section))
-ok(usedSections.size >= 4, 'the five mechanisms are spread over the four sections', [...usedSections])
+ok(usedSections.size > 0 && usedSections.size <= SECTIONS.length, 'the retired mechanisms are spread over the correction sections (derived, not counted here)', [...usedSections])
 
 console.log('=== 2. each section NAMES the obsolete wording and the replacement mechanism ===')
 for (const r of RETIRED) {

@@ -356,7 +356,7 @@ vmu.packs.active: [v5r]
 | `vmu.pointer.propagation` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | 是否注入指针传播契约（关掉＝零注入；原线的 S21 开关同义） |
 | `vmu.prompts.missingVariable` | enum | `report` | `report`∣`refuse` | 会话 | H2 | office | ✅ 已接线 | `kernel/prompt/index.js` | 占位符无人供值时：report＝记录并在装配结果里报告（默认）；refuse＝具名拒（VMU_PROMPT_VARIABLE_MISSING） |
 | `vmu.turn.instituteName` | string | `institute` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-assistant.js` | 本所名（章程开头与多处句子引用） |
-| `vmu.turn.leaderId` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | 在册领头人的代号；空＝无领头人（原线：章程绝不可点名不在册的领头人） |
+| `vmu.turn.leaderId` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/leadership.js` | 在册领头人的代号；空＝无领头人（原线：章程绝不可点名不在册的领头人） |
 | `vmu.turn.tempHiredBy` | string | `（未说明）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 临时工的雇主（临时工章程开头用） |
 | `vmu.turn.tempDirection` | string | `（未说明）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 给临时工的起点方向 |
 | `vmu.turn.tempTerm` | string | `雇主另行通知` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 临时工任务期（原线默认措辞） |

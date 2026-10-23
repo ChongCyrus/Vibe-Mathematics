@@ -908,3 +908,30 @@ B8（忠实性收口链路）施工时，按**真实面方法名**核对证据�
   四个切片。补它们需要在 pack 层声明每段由谁贡献，属下一步。
 - R9 的 `speechBound` 说明**声明的**边界，不证明“发言真的被计时限制过”——本仓库的发言时长是软约束，
   真机也没观察到它被强制。
+
+## §23 R13 —— 坐着院士的所被说成「没有在册院士」（真机发现，2026-10-24）
+
+### 23.1 它是怎么被发现的
+真机跑 `full-1024-033834.jsonl` 里，root 用 `vibe_vmu_control {action:"hire", slot:"chair", member_id:"member-1"}` 装了院士；**同一份 member prompt** 的开头却是
+
+    · 本所当前没有在册院士：你只需向**雇主**负责（它给你派活）。
+
+而它的角色块写着「角色：chair」。两条结论互相矛盾，但**两边各自都是对的**：charter 只读 `vmu.turn.leaderId`（`settings/schema.js` 默认 `''`），而 pack 的 leader-pair 策略只肯说「领班人在册」当它能**证明**——`middleware/prompt-switches.js` §4 的安全默认是 leaderless。**没有任何东西把「椅上有人」和「领班人有名」连起来**，于是安全默认答了「没有院士」，对一个真坐着的院士是**假话**。
+
+### 23.2 为什么不当场改提示词
+charter 文本属**冻结的 capture 层**（T71 parity 逐字钉死，§19/§21 的教训），且规则的判据是「谁能改名」而非「文本怎么写」。所以这一轮只做两件事：把**读法**做成机制、把**职责**写成具名更正段。
+
+### 23.3 落了什么
+- NEW `vibe-math-vmu/packs/v5r/leadership.js`：`leadershipReading({roster, leaderId, leaderSlot})` 返回五种具名状态之一（`LEADERSHIP_STATES`：`leader-named-and-seated`／`chair-seated-but-leaderId-empty`／`no-chair-seated`／`leaderId-not-on-roster`／`leaderId-outside-chair-slot`）＋ `consistent`／`leaderOnStaff`／`seatedChairs`／`note`／`next`（`next` 是**可执行的那一条命令**，带真实 member id）；`leadershipWarning()` 只在**可修复**的状态上给顶层 `warning`（「没有院士」是**真**的，不告警）。
+- 消费者：chair-only 的 `vibe_v5_overview` 回执带 `leadership`，并把 `warning` 提到顶层（红线④：无消费者不是机制）。
+- 职责面：`packs/v5r/prompts/v5r-corrections.js` 新增第四条具名更正 `v5r-fix-leader-id`（order 894，pack 段内）：**装院士 ≠ 命名领班人**，命令 `vibe_v5_configure {key:"vmu.turn.leaderId", value:"<chair id>"}`，并写明外部读者会看到的状态码。
+- NEW `tests/vmu-leadership-reading.test.mjs` **43/0**（六组：状态表是声明的／实测那一例不是「一致」／其余四态正反各钉／ended 行不算在座／防御形状不抛／消费者真的在且更正在包里）。
+- 一并修掉两个**派生面**的硬编码：`tests/audit-prompt-retired-mechanisms.test.mjs` 曾断言「恰好四条更正段」（数字手抄）→ 改成与 `V5R_CORRECTION_SECTIONS` 自身长度比较；另一条「五条机制分在四段」→ 改成 `>0 && <= 段数`。
+
+### 23.4 顺带被新测试抓出来的一个真 bug
+`leadership.js` 的存活过滤写成了 `String(m && m.state !== 'ended')` —— 按优先级解析成 `m && (m.state !== 'ended')`（**布尔**），`String(true)` 永远不等于 `'ended'` ⇒ 过滤形同虚设，**已结束的院士仍被算作在座**。§4 的三条断言当场变红把它钉住，改成 `m && String(m.state) !== 'ended'`。★ 这正是「新写的门禁先抓自己」的例子。
+
+### 23.5 诚实边界
+- 本节**没有**证明 member prompt 里的那句话被改掉了：charter 是冻结层，提示词侧只能靠 `v5r-fix-leader-id` 的职责说明 ＋ 真机跑里由 office 执行 `vibe_v5_configure` 来闭合。真机跑的任务文件已要求院士设置 `vmu.turn.leaderId`，下一轮据此复核。
+- `leadershipReading` 读的是 `members.roster()` 的行形状（`{id, slot, state}`）；若内核改行形状，本模块会退化成 `no-chair-seated`（安全方向），并由测试的 §5 防御组提示。
+- 本轮之后 R1–R13 的处置：R1（裁定非缺陷）、R2/R3/R5/R6/R7/R8/R9/R11/R12/R13 已修且有门禁，R4（touch 驱动，机制如此、已在大厅记档）、R10（已修，commit `8ff2f45a`）。

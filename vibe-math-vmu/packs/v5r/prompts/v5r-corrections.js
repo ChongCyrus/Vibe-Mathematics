@@ -23,8 +23,8 @@
  *   · no second copy of the corrected passage — the correction points at the mechanism, it does not restate the old text;
  *   · `source` marks them so a reader can tell authored corrections from transcribed charter and from generated corpus.
  *
- * `tests/vmu-prompt-corrections.test.mjs` asserts: all four exist, each names old + new, each sits at order ≥ 800 and
- * strictly after the highest generated section, each is ≤ 400 chars, and a REAL assembly contains all four.
+ * `tests/vmu-prompt-corrections.test.mjs` asserts: every declared correction exists, each names old + new, each sits at order ≥ 800 and
+ * strictly after the highest generated section, each is ≤ 400 chars, and a REAL assembly contains every one.
  */
 
 /** The oldest order a correction may use: generated fixtures occupy 600 + i and the authored/paper/assistant sections run
@@ -82,6 +82,21 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // kernel/ballot.js defaultTally — not-every-voter => undecided, all-for => true, all-against => false, split => undecided.
     text: [
       '【更正·m 票】旧说法「按 m 票布尔一致决定 / 凑够 m 票就通过」读错了 m。m 是法定票数（由 quorumCap 派生：m = min(所办设的上限, 有表决权人数)，0 表示不设上限），由框架自己的 quorumOf / 票箱计算并具名拒，不是另一种计票法。定论条件由 vmu.meetings.quorumRule 控制，默认 m-unanimous：kernel/ballot.js 的 defaultTally 要求全体有表决权者都投出布尔值且一致——未投满 ⇒ undecided，全 for ⇒ 通过，全 against ⇒ 否决，票分裂 ⇒ undecided。代理只需诚实投票，不必自己数票。',
+    ].join('\n'),
+  }),
+  Object.freeze({
+    name: 'v5r-fix-leader-id',
+    order: 894,
+    range: 'pack',
+    source: 'v5r-correction:leader-id',
+    // MEASURED on the full live run 2026-10-24 (_oneoff/vm-slv/full-1024-033834.jsonl): the office seated the
+    // academician with vibe_vmu_control {action:"hire", slot:"chair"} and every member prompt still said
+    // 「本所当前没有在册院士」, because vmu.turn.leaderId (settings/schema.js, default '') was never written and the
+    // pack's leader-pair policy may only name a leader it can PROVE is on staff. The charter texts cannot change
+    // (capture layer frozen by T71 parity), so the missing half is the OFFICE'S DUTY — stated here, read back by
+    // vibe_v5_overview.leadership (packs/v5r/leadership.js) so it cannot fail silently.
+    text: [
+      '【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空）。把人安置到 chair 席位**不等于**设置了领头人：只 hire 不写，章程会走 leaderless 版并说「本所当前没有在册院士」，那是假的。安置院士后立刻 `vibe_v5_configure {"member":"<院士>","params":{"vmu.turn.leaderId":"<同一个代号>"}}`；院士离开时清空。`vibe_v5_overview` 的 `leadership.code` 会具名说出当前情形（chair-seated-but-leaderId-empty 就是「席位有人但没写」）。先修数据，别改章程措辞。',
     ].join('\n'),
   }),
 ])
