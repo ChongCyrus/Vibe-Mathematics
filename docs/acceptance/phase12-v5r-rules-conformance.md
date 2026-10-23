@@ -19,7 +19,7 @@
 
 | ID | 规则要点 | 落点 / 证据 | 门禁 | 状态 |
 |---|---|---|---|---|
-| A1 | 所办＝主代理：用户助手；有进展时自动唤起汇报；是用户与研究所的媒介/传信者；支持用户用自然语言让所办设参数、控制进程 | ⚠️ **部分**（`lane-rows-b.md` A1）：机制真存在——汇报原语 `kernel/report.js:100`、`:372` 真投递、`:44` 无 transport 时**具名拒** `VMU_REPORT_NO_TRANSPORT`；pack 三条策略＋enabled `packs/v5r/prompts/v5r-core.js:150-195`；tick 挂在 `agent/turn-stopping`（`vibe-math-vmu.js:767-790`）；设参/控制面 `packs/v5r/tools.js:1152-1205`（只许声明键，start/stop/pause/resume 是真工具）。**两处断点**：① `config.deliver` 是部署缝、默认 null ⇒ 仓内闭环走不完；② **传信是单向的**——mailbox 没有 `'office'` 收件人，所办也不是席位（`v5r-core.js:214-218` 只有 chair/member/temp）⇒ "用户与研究所的媒介"只有"所→用户"，没有"用户→所"。★ 未判定：自动唤起的真机效果取决于部署侧 `deliver` 实现 | `tests/vmu-*report*`（如有）＋上述行号；**缺口无门禁** | ⚠️ 部分 |
+| A1 | 所办＝主代理：用户助手；有进展时自动唤起汇报；是用户与研究所的媒介/传信者；支持用户用自然语言让所办设参数、控制进程 | ⚠️ **部分（口径已收紧到唯一残留：真机零证据）**：机制与门都在——汇报原语 `kernel/report.js`（声明式触发/模板/收件人/渠道，`drives:false` 永不驱动，未知触发器/未知模板变量/越域参数/错 owner 全部名拒并留审计行，`tests/vmu-assistant-report.test.mjs` **93/0**）；无 transport 时**具名拒** `VMU_REPORT_NO_TRANSPORT`（`:365`，绝不假装已送达）；pack 三条策略＋开关 `packs/v5r/prompts/v5r-core.js:150-195`；宿主 tick 挂在 `agent/turn-stopping`（`vibe-math-vmu.js:767-790`）；设参/控制面 `packs/v5r/tools.js:1152-1205`（只许声明键；start/stop/pause/resume 是真工具，`withOffice` 之外的改动名拒）；交付缝的实现有断言（`tests/vmu-reportfeedback-delivery.test.mjs` 7/0，含截断必须自述）。**残留两点，都不再是"机制不存在"**：① `config.deliver` 由部署侧提供（默认 null，故意不猜信封形状——猜形状就是"假装送达"，见 `vibe-math-vmu.js:553-559` 的边界注释）⇒ 仓内能证明"缝判对/拒得对"，但**自动唤起的最后一跳属于部署**；② **真机零证据**：最近三次 live run 的 transcript 里 `report/undelivered`、`VMU_REPORT_NO_TRANSPORT`、`"delivered":true` 出现次数都是 **0**（`grep -o` 于 `_oneoff/vm-slv/full-1024-072041.jsonl`）⇒ 没有一次"有进展⇒自动唤起汇报"真的发生过，因为代理从未走 report 路径。★ 下一次 live run 的任务文件必须显式要求"有阶段进展时用汇报面通报所办"，并把 `report` 的 delivered/drives 读出来作为判据——这才是这一行的收口方式。 | 见左（两套件 100 条断言）；**真机待验**（不在代码侧） | ⚠️ 部分 |
 | A2 | 院士：主席席位，主持/决策会议 | ✅ **机制＋消费者，两向已测**：主席席拒绝（`packs/v5r/tools.js` `toolOverview`，座位判定 `:198-201`，**以函数名定位、行号只作快照**——该文件正被并行改写）、会议主席动作轨 `requireChairSeat` `:482-488`，以及本轮刚落的三条院士权轨（只有主席能召开／关闭／延长，见 §8）；表决席位是**声明值** `vmu.meetings.eligibleSeats`（`settings/schema.js:1101` 声明、`kernel/meetings.js:132,350-363` 消费、空列表回落全名册）＋ `chairNeutral` 禁止主席对自己动议投赞成 | `tests/vmu-a2a3-seats-and-bounds.test.mjs` **17/0**（chair⇒ok／非 chair⇒`VMU_NOT_PERMITTED` 点名主席／未知成员⇒具名拒且 hint 所指替代读点存在） | ✅ 已实现 |
 | A3 | 常驻研究员 | ✅ **机制＋消费者，四向已测**：`vibe_v5_start` = `toolStart`（`:1050`）的 `researcherCount` 默认 3（`:1051`）、域 `0..50` 越界具名拒 `VMU_INVALID_ARGUMENT`（`:1052`，带 hint、零副作用）；省略⇒3／`0`⇒合法且真坐 0 人／`51`、`-1`⇒具名拒 | 同上（`tests/vmu-a2a3-seats-and-bounds.test.mjs` 17/0，含「0 合法」与「越界零副作用」两向） | ✅ 已实现 |
 | A4 | 临时工：被院士/常驻研究员雇佣做特殊/临时任务；**无表决权**；**默认不参与会议**；可雇佣/解雇 | ✅ **已实现（本轮收口）**（`lane-rows-b.md` A4，**并更正原文**）：雇佣 `packs/v5r/tools.js:160-175`／解雇 `:308-329` 有门禁；**无表决权是真门**（`kernel/meetings.js:921-930` ＋ quorum 分母求交 `:356-363`，`tests/vmu-meetings.test.mjs:766-767,795-802`）；★ **但"默认不参会"没有机器门**：`attend()`（`kernel/meetings.js:614-650`）只查在册，temp 也能到场。**原文写"由 `vmu.meetings.eligibleSeats` 表达"是错的**——该键只表达**投票权**（vote 门 ＋ 分母），不表达入会；已改为"默认不参会＝流程约定（无门禁）" ⇒ 这是一条**已确认缺口** ★ 已收口：机器门是 `vmu.meetings.attendDeniedSeats`（`vibe-math-vmu/settings/schema.js` · stringList · 默认 `[]` ＝零机制；v5r pack 在 `vibe-math-vmu/packs/v5r/settings/defaults.json` 的 `defaults` 里声明 `["temp"]`），唯一消费者 `attend()`（`kernel/meetings.js`：按 roster 的 `slot` 比对，命中 ⇒ `VMU_NOT_PERMITTED` 并点名该键与席位，`enforced[]` 带键名；席位不可解析 ⇒ FAIL-OPEN，因为成员资格已在上面校验过、缺 slot 不该变成静默拒）。断言 `tests/vmu-meetings.test.mjs` +8 条（正·反·未知席位·拒绝后房间逐字未变·pack 默认值就是政策）⇒ 209 passed / 0 failed。 | 雇佣/解雇与投票权有两向断言；**入会无门禁** | ⚠️ 部分 |
@@ -1202,3 +1202,38 @@ A4 的残留缺口是「默认不参会」只有散文（原文写「由 `vmu.me
 
 - 合计：**42 = 41 已实现 / 1 部分 / 0 缺口 / 0 待核**（只剩 A1）。
 - 门禁：`regen-all --check` 16/16；`check-docs` PASS；`audit-conformance-totals` 13/0；`vmu-paper-quality` 57/0。
+
+## §30 本批总账：五条判据过期被推翻，最后一条收紧到「真机零证据」（2026-10-24）
+
+**本批（§27–§30）动的是判据，不是机制**：五条 ⚠️/❌ 行被测量推翻（D10、B6、B1、E1、E3），一条只剩真机证据（A1）。合计从 **42 = 30 已实现 / 12 部分 / 0 缺口 / 0 待核** 变为 **42 = 41 已实现 / 1 部分 / 0 缺口 / 0 待核**。
+
+### §30.1 五条各自的关键证据（一行一条，细节见分节）
+
+| 行 | 旧判据 | 实测结论 | 分节 |
+| --- | --- | --- | --- |
+| D10 | 「claim/assign 的审计事实没有 `by`」 | 内核早已记 `by/bySource`，**入口没声明** ⇒ 修入口（`packs/v5r/tools.js` 声明 `by`）＋ 三条断言（claim⇒caller / assign⇒argument / 面必须声明它读的参数） | §27 |
+| B6 | 「只有正式证明写完能进辩论」的机器闸未找到 | 闸在 `verification-gates.js:debateSubjectGate`，真调用点 `packs/v5r/tools.js:1299`（**会议存在之前**判定），端到端 39/0 含面级反例 | §28.1 |
+| B1 | 「v5r pack 没有 verified 轨」 | 承载/门/唯一写入者/提示词四件都在：`packs/v5r/verified.js`＋`defaults.json` 声明＋`p1Intent`（单一写卡路径）＋`vibe_v5_verified_promote`＋提示词 `v5r-blocks-a.js:369-400`；三套件 210 条 | §28.2 |
+| E1 | 「三节永远只有标题，论文不读库」 | `paper-quality.js:fillRecordSections` 经 kit 的 `mdFill` 缝注入，§1/§3/§4 从目标/verified 行/p=1 子问题填充，空节是**具名合法空句**＋`sectionAudit` | §29.1 |
+| E3 | 「产出物没有质量闸」 | 闸挂在 `render`（`packs/v5r/paper.js:144`，委托前跑，拒了不写文件），判**成员自写正文**而非填充后渲染，四条具名拒成对断言 | §29.2 |
+
+### §30.2 A1：残留从「机制不全」收紧成「真机零证据」
+
+A1 的旧判据给了两个断点，复核后两个都不是机制缺失：
+
+1. **交付缝**：`config.deliver` 由部署侧提供是**有意的边界**（`vibe-math-vmu/vibe-math-vmu.js:553-559` 写明不猜信封形状，猜形状就是「假装送达」）；没有 transport 时是**具名拒** `VMU_REPORT_NO_TRANSPORT`，不是静默失败。
+2. **传信方向**：用户⇄所办走宿主会话（所办就是主代理本身），成员→所办走汇报原语，所办→成员走 `say`/`message`——「单向」的说法把「所办不是席位」误读成了「没有通道」。
+
+真正剩下的只有一件事：**最近三次 live run 的 transcript 里 `report/undelivered`、`VMU_REPORT_NO_TRANSPORT`、`"delivered":true` 的命中次数都是 0**——因为代理一次都没走汇报路径。所以 A1 保持 ⚠️，但残留写成可验证的一条：
+
+`D:\_tmp\slv-phase5\task-p12.txt` 增加了 **§⑤ 汇报面**（69 行，新增 4 行）：要求代理在有阶段进展时调用一次汇报面，并在最终报告里原样抄录 `delivered`/`drives`/`code`/`message`；`drives` 必须为 `false`，且必须出现 `delivered:true` 或具名拒之一。**这一行的收口方式是真机跑一次，而不是再读一遍代码。**
+
+### §30.3 教训（写给下一次的自己）
+
+判据过期有**方向性伤害**：它把已实现的记成缺口，于是后来的人会去再造一套机制——B1 尤其危险，`verified` 轨已经存在，重造就是「一个对象两个注册处」。所以每条 ⚠️/❌ 都必须带**测量命令＋套件编号**；只写判断词的行，下一次必须重新测量，不许直接继承。
+
+### §30.4 当前状态
+
+- 合计：**42 = 41 已实现 / 1 部分（A1，真机待验）/ 0 缺口 / 0 待核**；`audit-conformance-totals` 从状态单元派生（13/0）。
+- 门禁：`regen-all --check` 16/16；`check-docs` PASS；本批涉及套件 `vmu-v5r-tools` 347/0、`vmu-debate-subject-proof` 39/0、`vmu-verified-track` 72/0、`vmu-verified-gates` 99/0、`vmu-paper-quality` 57/0、`vmu-assistant-report` 93/0、`vmu-reportfeedback-delivery` 7/0。
+- 下一步：一次不与其他进程并发的真机跑（任务文件已含 §⑤），读 `report` 的 delivered/drives 收口 A1；随后 T1 全量。
