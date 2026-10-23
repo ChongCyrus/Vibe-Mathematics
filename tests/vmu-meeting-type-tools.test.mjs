@@ -141,14 +141,14 @@ try {
     '★ every allowed name is a name the member could already see (subset, not a new grant)', cut.allow)
   ok(cut.dropped.includes('vibe_v5_paper'),
     '★ the names the member LOSES are reported (`dropped` = visible minus allow, not silently discarded)', cut.dropped)
-  ok(cut.dropped.every((n) => visible.includes(n)),
+  ok(cut.dropped.length > 0 && cut.dropped.every((n) => visible.includes(n)),
     '`dropped` contains only names the member actually had (a policy-only name is not a loss)', cut.dropped)
   ok(Array.isArray(cut.unavailable),
     'the policy-only names are a SEPARATE list (`unavailable`: wanted but never visible — a recipe/identity mismatch, not a loss)', cut.unavailable)
-  ok(cut.unavailable.every((n) => !visible.includes(n)),
+  ok(cut.unavailable.length > 0 && cut.unavailable.every((n) => !visible.includes(n)),
     '`unavailable` never contains a name the member can see (the two difference lists do not overlap)', cut.unavailable)
   const widened = faceMod.intersectFace(visible, { allow: visible.concat(['vibe_v5_hire', 'vibe_v5_set']) })
-  ok(widened.allow.every((n) => visible.includes(n)) && !widened.allow.includes('vibe_v5_hire'),
+  ok(widened.allow.length > 0 && widened.allow.every((n) => visible.includes(n)) && !widened.allow.includes('vibe_v5_hire'),
     '★ even if the POLICY asked for a name outside the identity face, it cannot be granted (the table is not an authority over identity)', widened.allow)
 
   // ── ③ 两条具名拒 + 不留残余 ─────────────────────────────────────────────────────────────────────────────

@@ -165,7 +165,7 @@ if (process.argv.includes('--self-test')) {
   ok(same(row.value, MATH_ENGINE_ORDER),
     '★★ ARM 1 (runtime ← declaration): the resolved value equals the shared engine order',
     'runtime=' + JSON.stringify(row.value) + ' order=' + JSON.stringify(MATH_ENGINE_ORDER))
-  ok(Array.isArray(row.value) && row.value.every((n) => typeof n === 'string' && n !== ''),
+  ok(Array.isArray(row.value) && row.value.length > 0 && row.value.every((n) => typeof n === 'string' && n !== ''),
     '★ ARM 1: every engine name is a non-empty string', JSON.stringify(row.value))
 }
 

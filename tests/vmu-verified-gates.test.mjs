@@ -45,7 +45,7 @@ function cardRow(records, { p = 0.5, title = '命题-平方和' } = {}) {
 {
   eq(Object.keys(GATE_CODES).length, 5, 'exactly five gate codes are declared (B6 added SUBJECT_UNPROVEN: "declared finished" is not "proved")')
   const codes = Object.values(GATE_CODES)
-  ok(codes.every((c) => c.startsWith('VMU_PACK_V5R_')), 'every gate code wears the pack prefix (' + codes.join(', ') + ')')
+  ok(codes.length > 0 && codes.every((c) => c.startsWith('VMU_PACK_V5R_')), 'every gate code wears the pack prefix (' + codes.join(', ') + ')')
   ok(new Set(codes).size === 5, 'the five codes are distinct')
   ok(Object.isFrozen(GATE_CODES) && Object.isFrozen(SUBJECT_FORMS), 'the surface is frozen (no runtime mutation of the vocabulary)')
   eq(SUBJECT_FORMS.join(','), 'card,file,statement', 'the three legal subject forms are the ones the rule names')
@@ -59,6 +59,7 @@ function cardRow(records, { p = 0.5, title = '命题-平方和' } = {}) {
   // a gate row publishes `code` and may publish `codes` (plural) — every published code must be a declared one,
   // and every declared code must be published by some gate (neither direction can go vacuous).
   const published = new Set()
+  ok(cat.length > 0, 'the gate catalogue is non-empty (RULE E)', cat.length)
   for (const g of cat) for (const c of (Array.isArray(g.codes) ? g.codes : [g.code])) published.add(c)
   ok(cat.every((g) => g.code && published.has(g.code)), 'every catalog row names a declared code')
   ok(codes.every((c) => published.has(c)), 'every declared code is published by a gate row (no orphan vocabulary)', [...published].join(','))

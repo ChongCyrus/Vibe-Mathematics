@@ -52,6 +52,7 @@ const UNPROVEN = new Set([
   'audit-persona-sensitivity', 'audit-planned-names.test', 'audit-planned-tools-inventory.test',
   'audit-policy-defaults.test', 'audit-preset-declaration-group.test', 'audit-preset-mechanism.test',
   'audit-preset-overlay-merge.test', 'audit-preset-rows.test', 'audit-prompt-invariants',
+  'audit-prompt-retired-mechanisms.test',
   'audit-readme-bilingual.test', 'audit-refusal-regressions.test', 'audit-registration',
   'audit-round1-regressions.test', 'audit-round6-persistence.test', 'audit-roundtrip-idempotence',
   'audit-scope-classification.test', 'audit-seam-reachability.test', 'audit-service-coverage.test',

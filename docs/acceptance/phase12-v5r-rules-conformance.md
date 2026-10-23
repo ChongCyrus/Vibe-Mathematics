@@ -640,3 +640,39 @@ B8（忠实性收口链路）施工时，按**真实面方法名**核对证据�
 `BLUEPRINT` 54/0 · `FIDELITY CONCLUDE` 69/0 · `DEBATE SUBJECT PROOF` 39/0 · `V5R TOOLS` 339/0（工具 47）· `VERIFIED GATES` 98/0 · `RECORDS` 269/0 · `LIBRARY` 126/0 · `MEETING TYPES` 126/0 · `SETTINGS` 47/0 · `INSTALLER POLICY` 90/0 ALL GREEN · `PACKAGE MEMBERSHIP` 29/0 · `DOC VS CODE TABLES` 17/0 · `DOC ACTIONS` 61/0 · `DOC LINE REFS` 9/0 · `DOC LINT: PASS`。
 
 `§7` 重算（脚本逐行读末列）：**49 条 = 32 ✅ / 17 ⚠️ / 0 ❌ / 0 待核**（A 2/2 · B 6/5 · C 3/0 · D 18/2 · E 1/4 · F 2/4）。仍未提交；本批末统一 `regen-all --write` → 全量 T1（无并发）→ 单 commit。
+
+## §19 批次后的全量 T1：7 条红逐个归因（4 真缺陷 + 3 条预算过时）
+
+提交 `e0bba243` 后第一次安静全量 T1（`node tests/run-tests.mjs`，无并发、无 lane 在跑）：**495 PASS / 7 FAIL**。七条全部逐条跑出根因，无一条"因为忙所以红"的原谅。
+
+### 19.1 四条真红（都已修，全部改的是"闸本身"而不是被闸的东西）
+
+| 红 | 根因 | 修法 |
+|---|---|---|
+| `audit-assembly-reachability-snapshot` 15/1 | 可达集合多了三个**本批新增**的 pack 模块（`blueprint.js`／`meeting-tool-face.js`／`paper-quality.js`），基线没跟着动 | `--write` 重新生成（先看 diff：只有 3 个 added、0 removed），再跑 16/0 |
+| `audit-planned-names` 13/1 | `docs/08:1335` 那行"临时授权（已移除）"里写着 `vibe_vmu_grant`，而 `grant` **确实还是** `chat` 工具的 `op` 之一 ⇒ 闸要求该行说出"其能力＝grant" | 把行改成"⛔ 已移除（其能力＝原 `grant` 动作；与 `chat` 工具的 `op:"grant"` 同名不同事，别混）"；14/0 |
+| `audit-scanner-selfproof` | 新门禁 `audit-prompt-retired-mechanisms.test` 既无自证也未登记 ⇒ 正反两条都红（`proven 62 + exempt 67 ≠ total 130`） | 登记进具名债务 `UNPROVEN`（提交说明里写明理由：它的"0 findings"暂时无法与死谓词区分）；4/0 |
+| `audit-declaration-criterion` 86/3 | ★ **RULE E：我自己新写的 13 条断言是"可空真"** —— `x.every(...)`／`for..of`／`JSON.stringify(a)===JSON.stringify(b)` 在空集合上恒真 | 12 处加非空前置（`x.length > 0 && x.every(...)`、循环前一行 `ok(x.length > 0, ...)`），1 处形状 B 加 `a.length > 0 && a.length === b.length`；两处**刻意允许空集**的用 `// EMPTY_ALLOWED` 写明理由（"六个类型今天都有骨架"是规则演进的结果，不是缺陷）；最终 89/0 |
+
+★ 19.1 的最后一格是本批**最有价值的一条**：我新加的断言里有一半是"集合为空时也通过"。这正是本阶段反复记的"假绿比红危险"——只是这次假绿长在我自己的新测试里，是 RULE E 抓出来的，不是我读出来的。
+
+### 19.2 三条超时的归因：不是并发，是预算本来就不够（并且方法可复核）
+
+| 套件 | 旧预算 | 本机单独实测 | 判据 |
+|---|---|---|---|
+| `audit-generators-current` | 300 s（注释写"MEASURED 136.8 s · 2026-10-22 · 2.19x"） | **320.8 s**（23/0，exit 0） | 2 天里成本翻倍（本批加了 3 个 pack 模块 + 1 个测试文件），旧 300 s **单独跑就会杀**，不是被别的 lane 挤死 |
+| `b1prime-staleness-report` | 180 s（默认） | **219.0 s**（16/0，exit 0） | 它自己 spawn 四路独立生成器并扫 30 卷，早就超过默认 |
+| `vmu-wiring-index` | 180 s（默认） | **228.0 s** 本树／**225.1 s** 纯 `478b342a` worktree | ★ 两个读数几乎相同 ⇒ **这条超时与本批无关**（若是本批造成的，纯 HEAD 树应显著更快）；旧 180 s 在本批之前就不够 |
+
+三条都按仓库既定规矩改预算（`tests/run-tests.mjs` 的 `TIMEOUT_OVERRIDES`，只动预算不动断言，2x 规则 + 注释写清实测时间与来源日期）：700 s／480 s／500 s。
+
+★ 方法本身值得留档：**"这条超时是不是我造成的"有一个可复核的判据 —— 在纯 HEAD worktree 上量同一个套件，两次读数接近 ⇒ 与本批无关。** 这比我上一轮凭"忙"猜要硬。
+
+### 19.3 复跑读数
+- `audit-declaration-criterion` 89/0、`audit-planned-names` 14/0、`audit-scanner-selfproof` 4/0、`audit-assembly-reachability-snapshot` 16/0、`vmu-meeting-procedures-catalog` 46/0、`vmu-meeting-type-tools` 51/0、`vmu-meeting-types` 126/0、`vmu-verified-gates` 99/0、`audit-prompt-retired-mechanisms` 64/0。
+- `regen-all --check` **16/16 in sync**；`check-docs` **DOC LINT: PASS**；`audit-doc-line-refs` 9/0。
+- 全量 T1 待本轮收尾时安静重跑一次，目标 0 FAIL。
+
+### 19.4 未变的事实（不许被这轮"绿灯"盖过去）
+- 规则台账仍是 **49 条 = 32 ✅ / 17 ⚠️ / 0 ❌ / 0 待核**；17 条 ⚠️ 的名单在 §7。**"T1 绿"只证明没有回归，不证明规则全实现。**
+- 真机端到端**仍未跑**。`D:\_tmp\slv-phase5\slv-p12-run.ps1` + `task-p12.txt` 已备好（任务文件开头就写明这是**模拟运行**、具名拒是验收产物、只能调 vmu 工具面）。

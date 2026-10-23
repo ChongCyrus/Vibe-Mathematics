@@ -1332,7 +1332,7 @@ recount(ballotId):
 | 程序异议／申诉留痕 | `meetings.fileAppeal`（`appealScope/appealReasonRequired/appealDeadlineMs`） | ✅（变形） |
 | 纪要（起草／确认／逐字稿／行动项） | `minutes.js`（`draft/confirm/append/actions/list/status`；`dissentMandatory/actionsOwnerRequired/dueRequired`） | ✅ |
 | 上次纪要确认 | `minutes.confirm` + `confirmPreviousRequired` + `meetings.confirmPreviousMinutes` | ✅ |
-| 临时授权（4 命令 × 3 事件型范围） | ⛔ **已移除**：原 `kernel/grant.js`（`GRANTABLE_COMMANDS`／`GRANT_SCOPES`）与 4 个 `vmu.grant.*` 键在提交 `1963b940` 一并删除 —— **零消费者**（`createGrant(` 只出现在一个测试文件里，没有任何装配入口 import），按红线④"没有消费者就不给机制"删除；**当前既没有"临时授权"能力面、也没有 `vibe_vmu_grant` 工具面**；记录见 `docs/acceptance/phase12-v5r-rules-conformance.md` §12 | ⛔ 已移除（`vmu.grant.*` 四键与 grant 面都不存在） |
+| 临时授权（4 命令 × 3 事件型范围） | ⛔ **已移除（其能力＝原 `grant` 动作；与 `chat` 工具的 `op:"grant"` 同名不同事，别混）**：原 `kernel/grant.js`（`GRANTABLE_COMMANDS`／`GRANT_SCOPES`）与 4 个 `vmu.grant.*` 键在提交 `1963b940` 一并删除 —— **零消费者**（`createGrant(` 只出现在一个测试文件里，没有任何装配入口 import），按红线④"没有消费者就不给机制"删除；**当前既没有"临时授权"能力面、也没有 `vibe_vmu_grant` 工具面**；记录见 `docs/acceptance/phase12-v5r-rules-conformance.md` §12 | ⛔ 已移除（`vmu.grant.*` 四键与 grant 面都不存在） |
 | 会议参数与上下界（硬界／唤醒重试／引用上限／轮次） | `meetings.hardLimitMs`（默认 1800000，钳 [300000,7200000]）、`wakeRetries`（钳 [0,10]）、`verdictMaxRounds`（≥1）；`meeting.roundTimeoutMs`／`quotesPerMessageMax`（默认 2，超限拒）／`quoteDepthMax`（默认 3，超深折叠计数） | ✅ |
 | 会议分级（formal/light，简流程不得产出实体定论） | **`vmu.meetings.tier`＋`allowLight`＋`truthWriteRefusal()`（GAP-MTG-02 已落）**；`meetings.confidentiality*` 仍管保密级别与引用 | ✅ |
 

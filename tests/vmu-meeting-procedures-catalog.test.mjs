@@ -68,7 +68,10 @@ const catalogProblems = ({ typeIds, procedures, decisions, toolNames }) => {
   if (!Array.isArray(toolNames) || toolNames.length === 0) problems.push({ where: 'toolNames', why: '工具目录是空的（空集会让"名字合法"这条假绿）' })
   const toolSet = new Set(toolNames || [])
   const decisionByType = new Map((decisions || []).map((d) => [d.type, d]))
-  for (const id of typeIds || []) {
+  // RULE E 非空前置：第 66 行已把「空类型目录」记成一条问题。这里再把「空输入」显式挡住并提前返回，
+  // 让循环的前置条件在源码形状上可被审计看见 —— 纯函数遇到空输入必须带着问题返回，绝不空转后返回 []。
+  if (!(Array.isArray(typeIds) && typeIds.length > 0)) return problems
+  for (const id of typeIds) {
     const decision = decisionByType.get(id)
     if (!decision) { problems.push({ where: id, why: '这一类没有决议（既没骨架也没具名不骨架的理由）' }); continue }
     const procedure = procedures ? procedures[id] : null
@@ -82,6 +85,7 @@ const catalogProblems = ({ typeIds, procedures, decisions, toolNames }) => {
     if (procedure.binding !== 'recommendation') problems.push({ where: id, why: 'binding 不是 recommendation（骨架会被误当门禁）' })
     if (!Array.isArray(procedure.steps) || procedure.steps.length === 0) { problems.push({ where: id, why: '骨架没有任何步骤' }); continue }
     const seen = new Set()
+    ok(procedure.steps.length > 0, 'the skeleton really has steps to check (RULE E)', procedure.steps.length)
     for (const s of procedure.steps) {
       if (!Number.isInteger(s.n) || s.n < 1) problems.push({ where: id + ' step', why: 'n 不是正整数：' + String(s.n) })
       else if (seen.has(s.n)) problems.push({ where: id + ' step ' + s.n, why: 'n 重复' })
@@ -136,6 +140,8 @@ try {
     '★ all six types now carry a recommended skeleton (a rule that named only debate does not make the other five "nothing")',
     proc.MEETING_PROCEDURE_DECISIONS.map((d) => [d.type, d.hasProcedure]))
   const namedNonSkeletons = proc.MEETING_PROCEDURE_DECISIONS.filter((d) => d.hasProcedure === false)
+  // EMPTY_ALLOWED: 今天六个类型都有骨架，所以这个集合按设计可能为空 —— 断言的是「凡是无骨架者必须带具名理由」这个
+  // 形状，而不是「现在一定存在无骨架者」。反过来强行要求非空会让这条闸在规则演进后变成假红，必须显式说明空集合法。
   ok(namedNonSkeletons.every((d) => typeof d.reason === 'string' && d.reason.trim().length > 10),
     'a type WITHOUT a skeleton must carry a named reason (the shape stays even while unused today)',
     namedNonSkeletons.map((d) => d.type))
@@ -186,7 +192,7 @@ try {
   ok(/平均/.test(debate.procedure.steps[3].what) && /通知/.test(debate.procedure.steps[3].what),
     'step 4 still spells out both branches (average, notify)', debate.procedure.steps[3].what.slice(0, 60))
   ok(debate.pendingSteps.length === 0, 'debate still reports no pending step', debate.pendingSteps)
-  ok(debate.procedure.steps.every((s) => s.status === 'supported'),
+  ok(debate.procedure.steps.length > 0 && debate.procedure.steps.every((s) => s.status === 'supported'),
     'every debate step is still labelled supported (the field stays, an empty list is the honest form)', debate.procedure.steps.map((s) => s.status))
 
   // ── ⑤ 台账有牙：篡改副本必须被同一个检查器抓出来 ─────────────────────────────────────────────────────────

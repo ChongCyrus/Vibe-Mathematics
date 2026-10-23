@@ -120,7 +120,7 @@ for (const r of RETIRED) {
   if (!ok(!!s, 'correction section exists: ' + r.section)) continue
   const text = String(s.text)
   ok(markerOf(s).length > 4, 'section carries a stable correction marker: ' + r.section, markerOf(s))
-  ok(r.declaredNeedles.every((n) => text.includes(n)), 'section names the obsolete wording AND the mechanism: ' + r.id, r.declaredNeedles.filter((n) => !text.includes(n)))
+  ok(r.declaredNeedles.length > 0 && r.declaredNeedles.every((n) => text.includes(n)), 'section names the obsolete wording AND the mechanism: ' + r.id, r.declaredNeedles.filter((n) => !text.includes(n)))
   ok(text.length > 0 && text.length <= corr.V5R_CORRECTION_MAX_CHARS, 'section respects the declared character cap: ' + r.section, { len: text.length, cap: corr.V5R_CORRECTION_MAX_CHARS })
 }
 
@@ -175,6 +175,7 @@ ok(captureMechanisms.length === RETIRED.length, 'every retired mechanism still h
 
 for (const a of assemblies) {
   ok(judgeDeclarations(a.text, RETIRED).length === 0, 'every retired mechanism has its declaration in the same prompt (' + a.label + ')', judgeDeclarations(a.text, RETIRED))
+  ok(captureMechanisms.length > 0, 'the capture-layer check has a non-empty subject (RULE E)', captureMechanisms.length)
   for (const r of captureMechanisms) {
     const missing = r.captureNeedles.filter((n) => !a.text.includes(n))
     ok(missing.length === 0, 'obsolete wording of ' + r.id + ' really is in the assembled prompt (' + a.label + ')', missing)

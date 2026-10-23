@@ -242,7 +242,18 @@ const TIMEOUT_OVERRIDES = {
   // artifacts - and that number only grows. The 180 s default leaves it 31% headroom, so gate-load amplification
   // times it out while its own counts stay green (measured: 23/0 standalone, killed in full sweeps). Same shape as
   // run-tests.mutants.mjs above. 300 s = 2.19x the measurement, satisfying the 2x rule; only the budget moves.
-  'audit-generators-current.test.mjs': 300000,
+  // RE-MEASURED 2026-10-24 00:10: 320.8 s standalone on this host (23/0, exit 0), i.e. the tree doubled its cost
+  // in two days (the 136.8 s above was 2026-10-22, before this batch added three pack modules and a test file).
+  // 300 s therefore killed it STANDALONE, not only under gate load - the shape that made the old comment's
+  // "2.19x headroom" stale. 700 s = 2.18x the fresh measurement (the 2x rule), budget only.
+  'audit-generators-current.test.mjs': 700000,
+  // MEASURED 2026-10-24 00:00: 219.0 s standalone (16/0, exit 0) - it spawns four independent generator runs and
+  // walks 30 volumes, so it outgrew the 180 s default. 480 s = 2.19x (the 2x rule), budget only.
+  'b1prime-staleness-report.test.mjs': 480000,
+  // MEASURED 2026-10-24 00:02: 228.0 s on THIS tree and 225.1 s on a PRISTINE `478b342a` worktree, i.e. the old
+  // 180 s default was already too small before this batch - the timeout was never caused by the batch, and the
+  // two readings are the evidence (a batch-caused slowdown would differ between them). 500 s = 2.19x (2x rule).
+  'vmu-wiring-index.test.mjs': 500000,
 }
 /** One place decides a job limit: explicit job value, then the named override, then (S22) the family
  *  default for `*.mutants.mjs`, then the 180 s suite default. Every layer has a safe default, so a

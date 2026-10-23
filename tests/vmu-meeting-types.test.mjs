@@ -122,10 +122,10 @@ try {
   ok(otherSteps.every((s) => s.tool === undefined || published.has(s.tool)),
     '★ every machine-checkable `tool:` a step names is a REAL published tool (a fake tool name is a fake promise)',
     otherSteps.map((s) => s.tool).filter(Boolean))
-  ok(others.every((t) => /推荐/.test(String(proc.procedureFor(t).note)) && /不是门禁/.test(String(proc.procedureFor(t).note))),
+  ok(others.length > 0 && others.every((t) => /推荐/.test(String(proc.procedureFor(t).note)) && /不是门禁/.test(String(proc.procedureFor(t).note))),
     'each says in words that the skeleton is a RECOMMENDATION, not a gate', proc.procedureFor('closure').note)
   const decisions = proc.MEETING_PROCEDURE_DECISIONS
-  ok(Array.isArray(decisions) && decisions.length === ids.length
+  ok(Array.isArray(decisions) && decisions.length > 0 && decisions.length === ids.length
       && ids.every((t) => decisions.some((d) => d.type === t && typeof d.hasProcedure === 'boolean'
         && (d.hasProcedure === true || (typeof d.reason === 'string' && d.reason.length > 10)))),
     '★ EVERY type has a recorded decision (a skeleton, or a NAMED reason) — "no decision" is not a legal state',
