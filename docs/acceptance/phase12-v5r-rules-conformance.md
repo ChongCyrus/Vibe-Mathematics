@@ -676,3 +676,72 @@ B8（忠实性收口链路）施工时，按**真实面方法名**核对证据�
 ### 19.4 未变的事实（不许被这轮"绿灯"盖过去）
 - 规则台账仍是 **49 条 = 32 ✅ / 17 ⚠️ / 0 ❌ / 0 待核**；17 条 ⚠️ 的名单在 §7。**"T1 绿"只证明没有回归，不证明规则全实现。**
 - 真机端到端**仍未跑**。`D:\_tmp\slv-phase5\slv-p12-run.ps1` + `task-p12.txt` 已备好（任务文件开头就写明这是**模拟运行**、具名拒是验收产物、只能调 vmu 工具面）。
+
+## §20 第五批：真机端到端跑通了（当前 dsh ＋ opencode-go），并交出 12 条实测不符项
+
+本节记录**第一次在【当前 dsh 0.2.1-rc.2 ＋ opencode-go】上跑通完整 SLV** 的读数，以及该次运行对《v5r 运行规则》的逐条实测结论。运行之前，本阶段所有"真机实测"都还是欠账。
+
+### §20.1 判据达成读数（机械读出，不是转述）
+
+| 判据 | 读数 | 来源 |
+|---|---|---|
+| `cast:true` | **true**（`for:["member-2"], against:[], missing:[]`，reason「every enfranchised member judged the question solved」） | `full-1024-021750.jsonl`，6 份 turn 回执 |
+| `slv-inspect` 0 RED | **1 session, 0 with RED checks** | 运行器第 7 步 |
+| `NO_FENCE` | **0** | 同上第 6 步 |
+| `FIELD_NOT_APPLICABLE` | **0** | 同上 |
+| `BAD_JSON` | **0** | 同上 |
+| `UNKNOWN_FIELD` | **2**，两处都是**任务文本里提到** `VMU_TURN_UNKNOWN_FIELD` 这个码名（`grep` 上下文为提示词原文），**不是**运行时拒绝 | 逐条抄上下文核对 |
+| 规模 | 43 次工具调用、436 s、243 万 tokens（cap 600 万未触顶）、transcriptEvents 221 | `{"step":"done",...}` |
+
+### §20.2 为什么之前一直 `NO_ADAPTER`（两个独立原因，各自都能单独致死）
+
+1. **插件被当文件夹复制，缺自己的依赖闭包。** 服务端 stderr（`slvp12-ws/srv.err`）明写：`opencode-go (dsh-opencode-go): failed to import: ERR_MODULE_NOT_FOUND: Cannot find package 'opencode-go-pi-ai' imported from …/node_modules/dsh-opencode-go/lib/index.js`。插件里 `package.json` 的 `dependencies` 含 `opencode-go-pi-ai: npm:@earendil-works/pi-ai@0.87.1`，只 `Copy-Item` 主包不会带它。改为 `npm install --legacy-peer-deps dsh-opencode-go@0.1.21`（拉全闭包）。
+2. **provider id 用错。** 插件注册的是 `PROVIDER_ID = "dsh-opencode-go"`（`lib/index.js:1119`，`:2267` `ctx.llm.registerAdapter([PROVIDER_ID], adapter)`）；`opencode-go` 只是**模型描述里的 SDK provider 字段**（`:1121` `SDK_PROVIDER_ID`）。模型行必须写 `provider: dsh-opencode-go`。
+
+★ 诊断纪律（已写进运行器）：**先读服务端自己的 stderr，再读驱动的 jsonl**。驱动只会告诉你 `NO_ADAPTER`；"为什么没注册"只写在 stderr 里，而 stderr 之前被 PowerShell 的 `NativeCommandError` 吃掉大半。现在运行器在起服之后、跑驱动之前插了一道 **failed-import 闸**：stderr 一旦出现 `failed to import` 就直接 `exit 3`，不再烧掉 1900 s 的超时。
+
+### §20.3 实测**达到**的部分（逐条对得上规则）
+
+| 规则 | 实测证据 |
+|---|---|
+| 会议类型可设 | `vibe_v5_meeting {type:"debate"}` ⇒ `type:"debate"`、`procedure` 4 步骨架、`procedureBinding:"recommendation"` |
+| 辩论会议额外对象字段 | `subject:"…state.json"` ＋ `subject_evidence:{file:{readable:true,bytes:4096}}` ⇒ `subjectGate.allowed:true` |
+| 对象闸认**证据**不认自述 | 传自述"已证明"的卡 `r-1` ⇒ `VMU_PACK_V5R_DEBATE_SUBJECT_UNPROVEN`，message 点名"声明层是作者自述，不构成证明" |
+| 缺对象具名拒 | `type:"debate"` 无 `subject` ⇒ `VMU_INVALID_ARGUMENT`「a debate meeting needs a subject」 |
+| 预约/到点推进 | `at` ⇒ `state:"scheduled"`、`scheduledFor`、到点前动作被具名拒；到点后被触碰 ⇒ `state:"open"`、`activatedAt`、`startedLate:true` |
+| 邀请＋到场＋发言分离 | `invite` ⇒ 入队 `order:["member-2"]`（note 明说"邀请不标到场、不影响 quorum"）；`attend` ⇒ `quorum.present:2/2`；未到场先发言 ⇒ `VMU_NOT_MEMBER`「speaker is not present」 |
+| 最终裁决聚合＋通知 | 0.8/0.4 ⇒ `mode:"mean"`、`value:0.6`、`exact:0.6000000000000001`、`notified:["member-2"]`、`delivery:{via:"send-port",ok:true}`；持有者 `inbox` 见 `ml-1` 未读 |
+| 只有主席签发裁决 | 非主席调用 ⇒ `VMU_NOT_PERMITTED`「only the meeting CHAIR signs the final ruling: the chair of m1 is "member-1", and you passed "member-2"」＋正确 hint |
+| 结题票 ≥ 全体一致才 cast | 两名有权限者，一人投 true、一人未投 ⇒ `cast:false, missing:["member-2"]`；补投后 `cast:true` |
+| 默认零汇报 | 未声明 `reports` ⇒ `vibe_vmu_report` 零汇报（符合"没声明就什么都不报"） |
+
+### §20.4 实测**不符**的 12 条（本次运行的真正产出；每条都能指向回执字段）
+
+| # | 不符项 | 证据（回执字段） | 性质 |
+|---|---|---|---|
+| R1 | 普通会议**也有** 3 步流程骨架（验收预期 `procedure:null`） | `m2`: `type:"ordinary"` ＋ 3 步「正常会议 · 推荐流程骨架」 | 实物 vs 验收预期不一致，需裁定 |
+| R2 | `at` 的两种"合法"写法都不按预期：epoch 毫秒**字符串**被拒；不带时区偏移的 ISO 被按进程本地 +08:00 解析 ⇒ 落到过去、直接 `state:"open"` | `VMU_INVALID_ARGUMENT at is not a usable time: "1792779800000"`；`m3`: `state:"open", scheduledFor:null` | **缺陷** |
+| R3 | "未到齐进等待"**不可达** ⇒ "超时自决"永不成立 | 三个会议的 quorum 块全为 `min:0, required:0, ratio:0, median:"met":true`；m4 到点后 `scheduled ⇒ open`，从未 `waiting` | **缺陷（机制无消费者）** |
+| R4 | 到点推进**不是时间驱动，是触碰驱动** | 到点后 `status` 仍 `scheduled`（`waitStartedAt:null`），必须有一次动作才推进；`scheduleNote` 自述"没有定时器" | 已知设计，叙述需对齐 |
+| R5 | `proceed` 的"只有主席"**不可观测**：状态闸先短路，主席/非主席拒绝**逐字相同** | 两条 `VMU_STATE` 完全相同；对照 `verdict_final` 的席位闸是 `VMU_NOT_PERMITTED` | **缺陷（权威闸被状态闸遮蔽）** |
+| R6 | 结题票**有权限者不含院士**，与规则 m＝院士＋常驻冲突 | `closureVote.eligible:["member-2"]`，`chair` 永不在内；框架自述「the v5r pack grants it to `member` but NOT to `chair` or `temp`」 | **缺陷（pack 授权口径）** |
+| R7 | "表决人数下限＝min(设置, 院士+常驻)"**任何回执都查不到** | `ballot` 只有 `eligible`；`tally` 只有 `{decisive:0, eligible:2}`；无 `min_votes`/`floor` | **缺陷（读数缺失）** |
+| R8 | 最终裁决与票箱**脱耦**：票箱 `undecided`，裁决照签且 notice 是祈使句 | `tally: outcome:"undecided", decisive:0` vs `verdict_final: value:0.6, decided:false, enforceable:false` ＋「请把命题卡改为 0.6」 | **缺陷（语义被文案越过）** |
+| R9 | "发言有预算"没有生效对象 | `speak`: `ms:0, turns:1, tokens:0, budget:null` | 机制在、默认关，需 pack 给预算或文档说明 |
+| R10 | 成员提示词里两个状态块**始终是占位符** | `memberPrompt.text` 含 `〔未提供：setting:vmu.turn.instituteName〕`、`leaderId`、`〔未提供：roster〕`、`〔未提供：quorum〕`；"本轮你实际能调用的工具"段原文未替换 | **缺陷（规则自洽依赖的读数在成员视野里是空的）** |
+| R11 | `step` 结算读数自相矛盾（`executed:0` 却完成结题计票） | `receipt:{executed:0, fields:["vote_solved"], turn:null}` ＋ 同一回执 `closureVote.cast:true` | 读数不清（`executed` 只数"字段动作"，`vote_solved` 走结题窗） |
+| R12 | 诊断接缝溢出预算却不裁剪 | `vibe_vmu_status {detail:"quorum"}` ⇒ `originalBytes:223591`（上限 12000 的 18 倍），`note:"NOTHING was elided by us"` | **缺陷（只读诊断能塞 220 KB 进上下文）** |
+
+### §20.5 下一批的处置计划（按"是否让规则变假"排序）
+
+1. **R3/R5/R6/R7**（会议权威与表决口径）：给 pack 声明会议法定人数下限使其真正生效；`proceed` 把**席位闸放到状态闸之前**；结题票授权补上 `chair`；`ballot`/`tally` 回执补 `min_votes`/`floor` 读数。
+2. **R10**（提示词占位符）：查 `deliverMode:"caller"` 下变量为何为空 —— 这是"设了值 ≠ 生效了"的又一例，且它让 `v5r-charter-voting` 的"以 m 为准"落空。
+3. **R2/R8/R12**：`at` 接受数字字符串并拒绝无偏移 ISO（或明确写出解析时区）；裁决 notice 在 `decided:false` 时改成非祈使句；诊断面按同一预算裁剪并计数。
+4. **R1/R9/R11**：R1 需裁定（普通会议要不要骨架）；R9 由 pack 给预算或文档说明；R11 让 `executed` 的语义在回执里自述。
+5. 运行器侧（非 vmu）：把 `vmu.control.idleAfterMs`/`vmu.v5r.fixtureMode` 写进 `vmu.packs.activeOverrides`，消掉 4 次 `VMU_PACK_CONFLICT` 噪音（O4 的具名冲突提示本身是正确行为）。
+
+### §20.6 诚实边界
+
+- 这一次跑通的是**当前 dsh（0.2.1-rc.2）＋ 当前仓库 HEAD（`d08c5ab7`）＋ opencode-go**；出包方式是 `git archive HEAD` → `npm pack`，所以**工作树里未提交的东西没有进包**，读数只对 `d08c5ab7` 成立。
+- `UNKNOWN_FIELD=2` 的两次命中都在**任务文本**里（码名被引用），不是运行时拒绝；若只看正则计数会误判成红线，必须逐条看上下文 —— 这与本阶段早先"提示词文本提到码名≠运行时错误"是同一类。
+- 本次运行 43 次工具调用、243 万 tokens，**没有**覆盖规则全表（例如 Lean 作业、论文三阶段、断点续跑只做了单测级验证）；§20.4 的 12 条是"跑了这一遍看到的不符"，不是"规则全表已验完"。
