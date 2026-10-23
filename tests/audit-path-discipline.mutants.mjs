@@ -4,6 +4,7 @@
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, mkdtempSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { legacyFile } from './_lib/legacy-presets.mjs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { legacyFile } from './_lib/legacy-presets.mjs'
