@@ -72,7 +72,7 @@ const runBare = (script) => new Promise((resolve) => {
 const uniqueScripts = [...new Set(entries.map((e) => e.script))]
 const bareResults = new Map()
 {
-  const POOL = Math.max(1, Math.min(6, uniqueScripts.length))
+  const POOL = Math.max(1, Math.min(14, uniqueScripts.length))
   let next = 0
   await Promise.all(Array.from({ length: POOL }, async () => {
     while (next < uniqueScripts.length) {

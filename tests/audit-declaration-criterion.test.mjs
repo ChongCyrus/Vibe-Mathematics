@@ -704,7 +704,7 @@ const SELF_PROOF_SPECS = [
 const selfProofCache = await (async () => {
   const { spawn: spawnAsync } = await import('node:child_process')
   const { availableParallelism } = await import('node:os')
-  const pool = Math.max(1, Math.min(6, availableParallelism() - 1))
+  const pool = Math.max(1, Math.min(11, availableParallelism() - 1))
   const cache = new Map()
   const one = (scriptName, flag) => new Promise((resolve) => {
     const script = join(SCRIPTS, scriptName)

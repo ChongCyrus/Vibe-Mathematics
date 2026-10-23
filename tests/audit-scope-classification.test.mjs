@@ -97,7 +97,7 @@ const [inVmu, outOfScope, inFull, quickOverlap, excluded, bothOut, countsQuick, 
   () => runRunner(['--counts'], { GATE_SCOPE: 'vmu' }),
   () => runRunner(['--self-check'], { GATE_SCOPE: 'quick' }),
   () => runRunner(['--scope-report'], { GATE_SCOPE: 'vmu' }),
-], 6)
+], 10)
 const n = (s) => s.total
 ok(n(scopes.full) > 0 && n(scopes.quick) > 0 && n(scopes.vmu) > 0,
   'all three scopes resolve to a non-empty job list', JSON.stringify({ full: n(scopes.full), quick: n(scopes.quick), vmu: n(scopes.vmu) }))

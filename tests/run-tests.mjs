@@ -805,8 +805,10 @@ const VARIANTS = [
   { file: 'audit-registration.mjs', args: ['vibe-math-v4/vibe-math-v4.js'] },
   { file: 'audit-registration.mjs', args: ['vibe-math-v5/vibe-math-v5.js'] },
   // The invariant scanner's own falsifiability check: it exits 0 only when every injected
-  // mutation really made a run go RED (and the unmutated control stayed green).
-  { file: 'audit-prompt-invariants.mjs', args: ['--self-probe'] },
+  // mutation really made a run go RED. Its control child re-runs THIS SCRIPT unmutated and must
+  // stay green (exit 0, 0 failures) - that is exactly the bare run's assertion, so the bare job is
+  // replaced, not duplicated: deduped, same coverage, one fewer full scan per gate.
+  { file: 'audit-prompt-invariants.mjs', args: ['--self-probe'], replaceBare: true },
   // The participant-set proof, shipped: the guard's own predicates against broken strings.
   { file: 'audit-participant-set-parity.mjs', args: ['--self-probe'] },
   // R-6b SPLIT (user-approved 2026-10-10): the 168-family / 107-control monolith used to be ONE ~25-35 min job

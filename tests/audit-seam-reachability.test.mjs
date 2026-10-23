@@ -86,7 +86,7 @@ try {
     () => run(['--check', '--out', stale]),
     () => run([]),
     () => run(['--no-fingerprint']),
-  ], 4)
+  ], 8)
 
   // ── A. the live tree must be green: extraction runs, the table renders, no findings ──────────
   ok(live.code === 0, 'A1: the live kernel yields no seam findings', 'exit=' + live.code)
