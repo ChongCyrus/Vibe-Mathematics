@@ -304,6 +304,28 @@ try {
   ok(libMissing.parsed && libMissing.parsed.ok === false && ['VMU_NO_SUCH_OBJECT', 'VMU_NOT_FOUND'].includes(libMissing.parsed.code),
     'read_library: 反 — an unknown card id is refused by name', libMissing.parsed)
 
+  // ★ PHASE 12 (B4/B5): `routes` / `obstacles` / `rejected` used to be WRITE-ONLY — the pack wrote negative knowledge
+  // into them (vibe_v5_record_progress) while the reader listed a hardcoded four tracks that did not include them.
+  // The pack now declares 13 tracks (`vmu.records.tracks`) and the reader DERIVES its list from that declaration
+  // (kit/handlers.js `declaredTracks()`), so the round trip is asserted end to end instead of being argued from code.
+  const routePut = await receipt(v5rBoot, 'vibe_v5_record_progress', { member: 'r-1', track: 'routes', content: '先拟合小 n 再外推', title: '路线卡' })
+  ok(routePut.parsed && routePut.parsed.ok === true && routePut.parsed.track === 'routes',
+    'B4: a route card can be WRITTEN (track:"routes")', routePut.parsed)
+  const rejectedPut = await receipt(v5rBoot, 'vibe_v5_record_progress', { member: 'r-1', track: 'rejected', content: '直接枚举到 n=8 不可行', title: '否决路线' })
+  ok(rejectedPut.parsed && rejectedPut.parsed.ok === true && rejectedPut.parsed.track === 'rejected',
+    'B5: a rejected route can be WRITTEN (track:"rejected")', rejectedPut.parsed)
+  const libRoutes = await receipt(v5rBoot, 'vibe_v5_read_library', { member: 'r-1', track: 'routes' })
+  ok(libRoutes.parsed && libRoutes.parsed.ok === true && libRoutes.parsed.count >= 1
+    && (libRoutes.parsed.cards || []).some((c) => String(c.track) === 'routes'),
+    '★ B4: what was written to `routes` is READABLE through read_library (the write-only gap is closed)', libRoutes.parsed && libRoutes.parsed.count)
+  const libRejected = await receipt(v5rBoot, 'vibe_v5_read_library', { member: 'r-1', track: 'rejected' })
+  ok(libRejected.parsed && libRejected.parsed.ok === true && libRejected.parsed.count >= 1,
+    '★ B5: `rejected` is readable too — negative knowledge is not write-only', libRejected.parsed && libRejected.parsed.count)
+  const libAll = await receipt(v5rBoot, 'vibe_v5_read_library', { member: 'r-1' })
+  const declaredNow = (libAll.parsed && libAll.parsed.declaredTracks) || []
+  ok(['routes', 'obstacles', 'rejected'].every((t) => declaredNow.includes(t)) && declaredNow.length >= 5,
+    'B4/B5: the READER takes its track list from the declaration (no hardcoded four)', declaredNow)
+
   const fireNoId = await receipt(v5rBoot, 'vibe_v5_fire', {})
   ok(fireNoId.parsed && fireNoId.parsed.ok === false && fireNoId.parsed.code === 'VMU_INVALID_ARGUMENT', 'fire: 反 — no id is refused by name', fireNoId.parsed)
   const fireUnknown = await receipt(v5rBoot, 'vibe_v5_fire', { id: 'r-ghost' })
