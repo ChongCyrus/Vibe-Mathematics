@@ -971,3 +971,22 @@ charter 文本属**冻结的 capture 层**（T71 parity 逐字钉死，§19/§21
 - 派生面：`regen-all --check` **16/16 in sync**。
 - 尚未做：第 4 次真机跑（验证主席提示词真的不再矛盾）、以及规则表里仍为 ⚠️ 的行。
 
+
+### 23.7 第 4 次真机跑（自证）
+`slv-p12b-run.ps1` 从 `git archive HEAD`（当时 `b7f79153`）重建 tarball，provider `dsh-opencode-go` / `deepseek-v4.1-flash`，跑完读数：
+
+```
+jsonl bytes=3372272 lines=7797
+  cast readings: true
+  NO_FENCE=0   UNKNOWN_FIELD=4   FIELD_NOT_APPLICABLE=0   BAD_JSON=0
+  CLOSURE: full-1024-062448.jsonl  cast=true  (from 9 turn receipt(s))
+  SUMMARY: 1 session(s), 0 with RED checks
+```
+
+`UNKNOWN_FIELD=4` 的四处**全部是提示词正文**在解释这个拒绝名（`…写了会被判 \`VMU_TURN_UNKNOWN_FIELD\``），不是运行时违规——计数取自整份 transcript 的子串，读它必须看上下文，这一点在 §20 已记过。
+
+**R13 在真机上被证实**（`D:\_tmp\verify-r13-live.mjs`，只读 transcript）：4 份带「所内编制」段的成员提示词，主席那份
+`{"chars":12438,"carriesLeaderless":false,"saysNone":false,"namesChair":true,"verdict":"ok"}` ⇒ **既没有 leaderless 变体，也不是在否认一位在场的院士**；另一位成员的提示词 `namesChair:false` 且 `carriesLeaderless:false` 是**正确**的（它不是主席，名册句本来就不该说「你」是领头人）。
+
+这条验证刻意不依赖「工具能不能调通」：矛盾只存在于**提示词原文**里，所以判据就是读原文。
+
