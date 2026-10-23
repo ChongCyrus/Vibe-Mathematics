@@ -211,6 +211,23 @@ try {
   const claimed = await receipt(v5rBoot, 'vibe_v5_task_update', { task_id: createdId, expected_revision: rev0, action: 'claim', member: 'r-1' })
   ok(claimed.parsed && claimed.parsed.ok === true && claimed.parsed.action === 'claim',
     'task_update: 正 — claim with the right revision goes through the task face assign', claimed.parsed && claimed.parsed.task && { owner: claimed.parsed.task.owner })
+  // ★ D10 (phase 12): 「认领 / 交派」必须能区分「自己认领」与「被院士交派」—— 内核已经记 by/bySource
+  // (kernel/tasks.js assign)，kit/extras.js 也已经读 args.by，但这个 pack 面的 schema 没声明它 ⇒ 通过被教的工具
+  // 永远无法交派归属。断言：声明在、两种来源都真的落在回执上。
+  ok(claimed.parsed && claimed.parsed.by === 'r-1' && claimed.parsed.bySource === 'caller',
+    '★ D10: claim attributes the CLAIMING member (by=r-1, bySource=caller) — self-claim is distinguishable from an assignment',
+    claimed.parsed && { by: claimed.parsed.by, bySource: claimed.parsed.bySource })
+  // assign()'s receipt does NOT carry revision (it returns owner/by/bySource/state) — read the board row.
+  const boardRow = kernel.tasks.list({}).find((r) => r.id === createdId)
+  const revForAssign = boardRow && boardRow.revision
+  const givenBy = await receipt(v5rBoot, 'vibe_v5_task_update', { task_id: createdId, expected_revision: revForAssign, action: 'assign', owner: 'r-2', by: 'r-1' })
+  ok(givenBy.parsed && givenBy.parsed.ok === true && givenBy.parsed.by === 'r-1' && givenBy.parsed.bySource === 'argument',
+    '★ D10: an ASSIGNMENT records the actor that was given (by=r-1, bySource=argument) — never the assignee posing as the actor',
+    givenBy.parsed && { by: givenBy.parsed.by, bySource: givenBy.parsed.bySource, owner: givenBy.parsed.owner })
+  const updateTool = PACK.tools.find((x) => x.name === 'vibe_v5_task_update')
+  ok(!!updateTool && !!updateTool.parameters && !!updateTool.parameters.by,
+    '★ D10: the face DECLARES the attribution parameter it reads (a reader without a declaration is unreachable)',
+    updateTool && updateTool.parameters && Object.keys(updateTool.parameters))
   const noFaceOp = await receipt(v5rBoot, 'vibe_v5_task_update', { task_id: createdId, expected_revision: rev0, action: 'delete' })
   ok(noFaceOp.parsed && noFaceOp.parsed.ok === false && noFaceOp.parsed.code === 'VMU_INVALID_ARGUMENT' && /NO task-face operation/.test(String(noFaceOp.parsed.message)),
     '★ task_update: 反 — `delete` has NO task-face operation in this kernel ⇒ refused BY NAME (not faked, not silently ignored)', noFaceOp.parsed && noFaceOp.parsed.message)

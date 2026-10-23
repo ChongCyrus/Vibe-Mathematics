@@ -61,7 +61,7 @@
 | D7 | 成员可用命令/工具**按会议类型和身份**有差异 | **两个维度都成形**：① 身份维＝活的可见工具表（`host.js:1681-1691` / `:1722-1729`）＋内核运行期具名拒（`requireChairSeat` / `chairNeutral` / `closeRequiresChair`）；② **类型维＝`packs/v5r/meeting-tool-face.js`**（`MEETING_TYPE_TOOL_FACES` `:21`：debate 收窄 20 项 allow，其余五类 `narrowed:false` ＋具名 reason）＋新工具 `vibe_v5_meeting_round`（`tools.js:1166` / `:1868-1876`）：allow＝`kernel.toolsView({member})` ∩ 策略表，**只收窄**；身份面读不到 ⇒ `VMU_ENGINE_UNAVAILABLE`（不猜 allow）、交集空 ⇒ `VMU_STATE`；`applyMeetingTypeFace()` `:107` 两阶段应用避免 override 残影；override 只活一轮，`finally` 清 | `tests/vmu-meeting-type-tools.test.mjs` 51/0（辩论期 `vibe_v5_paper` 不在 allow ／正常会议零 override／主席永不被收窄）＋ §5a–§5d 的身份拒法 | ✅ 已实现 |
 | D8 | 会议类型含：正常、学术交流、辩论、结题、论文交流、未来规划/策划… | `MEETING_TYPES` 六值（normal/academic/debate/final/paper/planning）＋ v5r 声明 `vmu.meetings.typeCatalog` ⇒ 类型**不再是死字段**：存储、回读、白名单、按类型取骨架（`procedureFor`）、内核 `committee` 结题报告轨都按它走 | 同上（未知类型具名拒；回读 summary/meetingView 都有 type） | ✅ 已实现 |
 | D9 | 常见命令：举手发言、邀请发言、**批量指定成员按顺序发言**、单次发言版群聊（权限区分，部分仅主持） | vmu-pack D9 lane 交付（67 断言）：`hand`(举手)、`invite`(邀请，具名 why，主席/秘书轨)、`queue`+`order`(排序＝批量指定顺序)、`invitedspeak`(仅主持)、`vibe_v5_say`(群聊)＋`attend`(入场，原来没有入口)；pack 面新增 `vibe_v5_meeting{action:'hand'|'hands'|'invite'|'attend'}`。★ 回执字段 `meeting_hand`/`meeting_invite` 已被内核标为 `noReplyShape`（回执里没有会议引用，派发只会得到 "no such meeting: undefined"；`invite→attend` 还会让邀请人自出席） | `tests/vmu-meeting-invite.test.mjs` / `tests/vmu-turn.test.mjs` T16c–T16g | ✅ 已实现 |
-| D10 | 特殊活动：投票板（选项＋最多/最少选几项机制）、任务板设置与认领/交派、群聊式交流（院士为群管，可设权限/发言次数/禁言） | ⚠️ **部分**（`lane-d10-members.md` 四个子项逐条）：**投票板 ✅** —— 规则校验 `kernel/ballotbox.js:169,178-200`，越限**具名拒** `:271-277`（`VMU_BALLOT_CHOICE_COUNT`），pack 面把 `min/max/mode/min_votes/allow_revote` 翻译进 rules 并回报 applied/unapplied（`packs/v5r/tools.js:636-648`）；**群聊 ✅** —— 六键声明并接线 `kernel/chat.js:31-35,40-42`，非管理员具名拒 `:280-290`（`VMU_CHAT_NOT_ADMIN`）、禁言具名拒 `:341-343`（`VMU_CHAT_MUTED` 带解除时刻）、配额具名拒 `:349-357`（`VMU_CHAT_QUOTA_EXCEEDED` 带 used/limit/窗口）；**两套机制不重复** —— 群聊侧 `chat.js:31-35` 与会议侧 `meetings.js:179-182` 地址的是**不同对象**（会话发言 vs 会议发言），非同一件事双口径；**任务板认领/交派 ⚠️** —— 面覆盖全（`kit/extras.js:96-129` 七动作＋真交派 `packs/v5r/tools.js:258-290`），**但 claim/assign 的审计事实没有 `by`**：`kernel/tasks.js:302` 只记 `who`，`kit/extras.js:100-111` 也不收 `by`（同一模块的 `setPriority` 记了 `by`：`kernel/tasks.js:278`）⇒ 事后无法区分"自己认领"与"被院士交派" | 投票板/群聊门禁见左；任务板审计面未记操作者 | ⚠️ 部分 |
+| D10 | 特殊活动：投票板（选项＋最多/最少选几项机制）、任务板设置与认领/交派、群聊式交流（院士为群管，可设权限/发言次数/禁言） | ✅ **已实现（本轮收口）**（`lane-d10-members.md` 四个子项逐条）：**投票板 ✅** —— 规则校验 `kernel/ballotbox.js:169,178-200`，越限**具名拒** `:271-277`（`VMU_BALLOT_CHOICE_COUNT`），pack 面把 `min/max/mode/min_votes/allow_revote` 翻译进 rules 并回报 applied/unapplied（`packs/v5r/tools.js:636-648`）；**群聊 ✅** —— 六键声明并接线 `kernel/chat.js:31-35,40-42`，非管理员具名拒 `:280-290`（`VMU_CHAT_NOT_ADMIN`）、禁言具名拒 `:341-343`（`VMU_CHAT_MUTED` 带解除时刻）、配额具名拒 `:349-357`（`VMU_CHAT_QUOTA_EXCEEDED` 带 used/limit/窗口）；**两套机制不重复** —— 群聊侧 `chat.js:31-35` 与会议侧 `meetings.js:179-182` 地址的是**不同对象**（会话发言 vs 会议发言），非同一件事双口径；**任务板认领/交派 ✅** —— 面覆盖全（`kit/extras.js:96-129` 七动作＋真交派 `packs/v5r/tools.js:258-290`）；审计归属已闭环：`kernel/tasks.js:302` 记 `who`，`assign(id, owner, { by, bySource })` 额外记**操作者**（`kernel/tasks.js:278` 的 `setPriority` 同一口径），`kit/extras.js:108-119` 把 `args.by` 传成 `bySource:'argument'`、缺省时落 `by:null / bySource:'unknown'`（不拿被派者冒充操作者）；本轮补的是**入口**：`vibe_v5_task_update` 的 schema 原先不声明 `by`（读点存在、声明缺失 ⇒ 通过被教的工具永远无法交派归属），现已声明并配三断言（`tests/vmu-v5r-tools.test.mjs`：claim⇒`by=认领者/bySource=caller`、assign⇒`by=被给的操作者/bySource=argument`、以及「面必须声明它读的那个参数」）；内核侧另有独立门 `tests/vmu-tasks-attribution.test.mjs` | 投票板/群聊/任务板三条都有门禁 | ✅ 已实现 |
 | D11 | **辩论类型会议有额外字段：辩论的对象或对象文件引用** | `open({subject})`＝字符串引用（卡 id / 文件路径 / 一行陈述）；非字符串⇒`VMU_INVALID_ARGUMENT`（带 typeof），空白⇒归一 `null`；辩论会议缺 `subject`⇒pack 具名拒；`vibe_v5_meeting` 的 `target` 是它的**活别名**（原来声明了没人读）；回执/`summary()`/`meetingView()`/`meetings/opened` 全能读回 | 同上 | ✅ 已实现 |
 | D12 | 辩论/结题**表决人数下限** ≥ min(用户设置数, 院士+常驻研究员数) | **两个面都满足，且第二个面有证明**：① 表决面＝`quorumOf()` 第三项由「在场人数」换成「**可投票成员数**（名册∩`eligibleSeats`，临时席位 `temp` 不计）」⇒ `need = min(quorumMin/Ratio, quorumCap, 可投票成员数)`，`vote()` 上可观测；② 结题面＝`closureVoteOf` 的全一致性**在数学上包含下限**：`floor = min(setting, universe) ≤ universe = 全一致性所需票数`，所以"沉默阻塞结题"这条既有纪律本身就强于规则要求的下限；用户设置数在结题路径不是"不生效"，而是**被更强的约束支配**（这一条是本次改台账时补的证明，不是推断） | `tests/vmu-meetings.test.mjs` 6 条 + 上面的包含关系 | ✅ 已实现 |
 | D13 | lean 已通过但概率非 1 的命题：辩论聚焦 **lean 代码中命题/定义的描述符合性** | ✅ **闸已落地并接线**：`packs/v5r/verification-gates.js:281-300` `fidelityAsked({cardId,leanPassed,p,withdrawnFor,answered})` —— lean 通过且 p≠1 时**必须先回答**「代码中的命题/定义是否符合所需」，未回答 ⇒ `VMU_PACK_V5R_FIDELITY_ASK_REQUIRED`（带问题原文与 `conform`/`defect` 两个选项，不是一句 forbidden）；`defect` 撤回情形 ⇒ `resolved`，不再追问；接线点 `packs/v5r/tools.js:726-737`（`vibe_v5_verdict_final` **落数之前**调闸，先问后算）；卡的 `p=1` 走另一条：`p1Intent` 要求 `debate`/`lean`/`verified` 三种定论来源之一 | `tests/vmu-v5r-verdict-final.test.mjs`（④ 正/反）＋ `tests/vmu-verified-gates.test.mjs` 93/0 | ✅ 已实现 |
@@ -82,7 +82,7 @@
 
 | ID | 规则要点 | 落点 / 证据 | 门禁 | 状态 |
 |---|---|---|---|---|
-| F1 | 工具：Python 等计算工具可用；工具并发上限 | ⚠️ **部分**（`lane-rows-c.md` F1）：**并发上限这一半 ✅**（键在、office 独占、别角色写被具名拒 `r-1 may not set vmu.math.maxParallel (declared owner: office)`、真值进 `mathjobs.config()`）；**但"Python 等计算工具"默认不可用**：schema 声明 8 个默认引擎，运行时 `config.engines=[]`，`submit({engine:'python'})` ⇒ `VMU_MATH_UNSUPPORTED_OP 未声明任何引擎（vmu.math.engines 为空）`；部署脚本也只注入少数 vmu 键 ⇒ 真机同样为空。★ 未判定：python 真跑（探针无宿主 spawn 接缝，准入层就拒；真机只跑过 Lean） | 并发键有门禁；引擎面**无门禁** | ⚠️ 部分 |
+| F1 | 工具：Python 等计算工具可用；工具并发上限 | ✅ **已实现（本轮收口）**（`lane-rows-c.md` F1）：**并发上限这一半 ✅**（键在、office 独占、别角色写被具名拒 `r-1 may not set vmu.math.maxParallel (declared owner: office)`、真值进 `mathjobs.config()`）；**但"Python 等计算工具"默认不可用**：schema 声明 8 个默认引擎，运行时 `config.engines=[]`，`submit({engine:'python'})` ⇒ `VMU_MATH_UNSUPPORTED_OP 未声明任何引擎（vmu.math.engines 为空）`；部署脚本也只注入少数 vmu 键 ⇒ 真机同样为空。★ 未判定：python 真跑（探针无宿主 spawn 接缝，准入层就拒；真机只跑过 Lean） ★ 已收口：`vmu.math.engines` 的**声明默认**＝8 个引擎（`vibe-math-vmu/settings/schema.js:244` → `mathDefaults().mathEngines`），消费者 `vibe-math-vmu/kernel/mathjobs.js:426` 的 `readKey` 现在是「先读配置、再退回声明默认」，用的就是那个唯一 reader `kernel/settings-defaults.js`（它自己的头注释记着四个门各造默认、其中三个与声明不一致的旧账）。实测：空设置下 `config().engines` = `["python","r","octave","julia","matlab","maple","wolfram","cli"]`、`submit({engine:"python"})` 被接受（spawn 接缝由 `kernel/index.js:889` 注入，本机 python 在 `C:\Users\admin\AppData\Local\Programs\Python\Python312`）；反例仍在：显式 `[]` ⇒ `VMU_MATH_UNSUPPORTED_OP`。断言 `tests/vmu-mathjobs.test.mjs` +1（未配置 ⇒ 声明默认生效且首引擎可提交；显式空 ⇒ 仍拒）⇒ 11 passed / 0 failed。★ 诚实边界：真机 run 6 的 transcript 里没有 `vibe_vmu_mathjobs` 调用，所以「Python 真跑」目前只有单元＋探针证据，没有真机证据。 | 并发键有门禁；引擎面**无门禁** | ⚠️ 部分 |
 | F2 | 断点续跑 | ✅ **机制＋门禁**（`lane-rows-c.md` F2）：`tests/vmu-resume-e2e.test.mjs:231` 覆盖续跑；★ 未判定：**真机**断点续跑（phase 12 只读不跑真机） | `tests/vmu-resume-e2e.test.mjs` 108/0 | ✅ 已实现 |
 | F3 | 特殊权限/请求可经报告所办向用户询问 | ✅ **本轮补齐（此前是 ⚠️ 一半）**：报告面（`vibe_v5_report`）＋ 咨询闸（`kit/paper.js` 的 consult 族，E4 同一实现）两条路都在册。★ 历史事实保留：此前 `vmu.paper.officeConsult` 的读取者装配不加载 ⇒ 只剩报告一条路 | `tests/vmu-paper-office-consult.test.mjs` ＋ 同 E4 的 `tests/vmu-kernel-reachability.test.mjs` | ✅ 已实现 |
 | F4 | 功能尽量通过**代理可执行命令（工具）**实现，而非每轮结束输出 JSON | ✅ **已实现（F5 之后补齐：提示词不再教 JSON 围栏）**：替代通道是**已存在的工具**——`vibe_vmu_turn {op:'reply', reply, reply_for?}`（`vibe-math-vmu/tools/turn.js:87-134` 调 `kernel.turn.supplyMemberReply`；内核侧 `supplyStructuredReply` 在 `kernel/turn/index.js:1005-1063`，两个真值源冲突 ⇒ `VMU_TURN_REPLY_CONFLICT`，`mergeReplyChannels` `:228-260`）；回执里的 `closureVote` 是**机器字段**（不是让人手写）。★ **更正我上一版台账写错的话**：这里曾写「`vibe_v5_reply`（别称 `vibe_v5_verdict`）」——**`vibe_v5_reply` 这个工具不存在**（`packs/v5r/tools.js` 只声明 `vibe_v5_verdict` 与 `vibe_v5_verdict_final`），是 vmu-pack 的静态门禁 `audit-prompt-tool-params` 按「参数键 ⊆ 真工具表」把它抓出来的。★ 教训：写给模型的花名一旦是幽灵，比不具名更糟（模型会照它调用，然后必拒）。**补齐证据**：手写层的教学段已零旧措辞（```json 围栏 0 处、「只输出一个合法 JSON 对象」0 处、`end_verify 的 formal_proof` 0 处、「m 票布尔一致」0 处；残留只出现在更正段与源码注释里，前者是引用、后者不进装配），且 `tests/audit-prompt-retired-mechanisms.test.mjs` 把这条件变成断言（68/0）；回执链路本身是工具参数（`vibe_vmu_turn {op:'reply', report:{…}}`），不是每轮手写 JSON。 | `tests/vmu-turn-reply-tool.test.mjs` 32/0、`tests/vmu-turn.test.mjs` 191/0 | ⚠️ 部分 |
@@ -98,7 +98,7 @@
 | D 会议 | 15 | 11 | 4 | 0 | 0 |
 | E 论文 | 4 | 1 | 3 | 0 | 0 |
 | F 额外要求 | 5 | 2 | 3 | 0 | 0 |
-| **合计** | **42** | **35** | **7** | **0** | **0** |
+| **合计** | **42** | **37** | **5** | **0** | **0** |
 > **计数怎么来的**：§7 的数字由行状态单元格派生——逐行取第一个以 ✅/⚠️/❌ 开头的单元格（`| **合计**` 行自身除外），不手抄。2026-10-24 复测：42 行 = **30 已实现 / 12 部分 / 0 缺口 / 0 待核**；12 条部分＝A1 A4 B1 B6 B10 B11 C2 C3 D10 E1 E3 F1。
 
 
@@ -1093,3 +1093,44 @@ A4 的残留缺口是「默认不参会」只有散文（原文写「由 `vmu.me
 - 诊断面同步：`kernel/meetings-defaults.js` 的 `WIRED_KEYS`/`DEFAULTS`、`kernel/meetingmarker.js` 的 `meetingKeysSnapshot` 都带上该键（上一轮教训：手写清单漏键＝诊断面撒谎）。
 - 断言 `tests/vmu-meetings.test.mjs` +8 条：命中被具名拒（消息含 slot）· `enforced[]` 带键 · hint 指回设置 · **拒绝后房间逐字未变** · 未声明时 temp 照常到会（零机制，无隐藏默认）· 席位不可解析时 FAIL-OPEN · pack 默认值就是 `["temp"]`（政策而非内核默认）。⇒ 209 passed / 0 failed。
 - 派生面：`node scripts/regen-all.mjs --write` ⇒ **16/16**，settings 表 1265 键（1162 wired）；`audit-conformance-totals` 从状态单元派生 ⇒ 合计 **35 已实现 / 7 部分 / 0 缺口 / 0 待核**。
+
+## §27 D10 收口：任务板的「认领 / 交派」终于能被代理表达（2026-10-24）
+
+**范围**：§6 表 D10 行残留的唯一缺口——「审计事实里没有操作者」。本轮把它从内核口径一路修到**入口声明**，并把这一行改判 ✅。派生面重生成后 `regen-all --check` **16/16**，合计 **42 = 37 已实现 / 5 部分 / 0 缺口 / 0 待核**。
+
+### §27.1 残留缺口复核（先读，不动手）
+
+- `vibe-math-vmu/kernel/tasks.js:302` 的 claim 只记 `who`（= 被派对象）；同一模块 `:278` 的 `setPriority(id, priority, { expectedRevision, by })` 却记了 `by` ⇒ 同一张板上两种归属口径。
+- `vibe-math-vmu/kernel/tasks.js` 的 `assign(id, owner, { by, bySource })` **已经**支持操作者与来源（`bySource` 是闭集：`caller` / `argument` / `unknown`）。
+- `vibe-math-vmu/kit/extras.js:108-119` **已经**在读 `args.by` 并把它传成 `bySource: 'argument'`；缺省落 `by: null, bySource: 'unknown'`（不拿被派者冒充操作者——这条另有独立门 `tests/vmu-tasks-attribution.test.mjs` 20/0 覆盖）。
+
+所以缺的不是机制，而是**入口**：`vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_task_update` schema 里没有 `by`。
+
+### §27.2 为什么这条必须算缺陷（而不是"代理可以不传"）
+
+规则 D10 的原话是「任务板设置与**认领 / 交派**」——它要求的能力就是区分「自己认领」与「被院士交派」。当被教的工具没有这个参数时：
+
+- 代理即使想交派归属也传不进来；`args.by` 永远 undefined ⇒ 回执永远 `bySource: 'unknown'`；
+- 事后审计无法区分「自己抢的」与「院士派的」，而这正是规则要的那件事；
+- 它是「**读点存在、声明缺失**」——上个月修的是「声明了却没有消费者」，这是它的镜像：**消费者存在却没有声明**。两者都让一个已存在的机制在真实路径上不可达。
+
+### §27.3 修改与断言
+
+`packs/v5r/tools.js` 的 `vibe_v5_task_update.parameters` 增加 `by: { type: 'string' }`，描述写明"谁在行动（院士代派时必填，记进审计行 by）"。
+
+`tests/vmu-v5r-tools.test.mjs` 增加三条（套件 **345 → 347 passed / 0 failed**）：
+
+1. `claim` ⇒ 回执 `by = 认领者`、`bySource = 'caller'`；
+2. `assign { owner, by }` ⇒ 回执 `by = 被给的操作者`、`bySource = 'argument'`（★ 断言的是**操作者**，不是被派对象）；
+3. ★ 面的 schema 必须**声明它读的那个参数**（`PACK.tools.find(...).parameters.by` 必须存在）——这条是防止以后有人把声明删掉而其它两条仍然绿。
+
+两个被自己的断言抓住的细节，记在这里以免下次重犯：`assign()` 的回执**不带 revision**（它返回 owner/by/bySource/state），要拿下一轮 `expected_revision` 必须读板行 `kernel.tasks.list()`；`v5rBoot` 上没有 `tools` 字段，声明要从 `PACK.tools`（loadPack 的 manifest）读，否则断言永远 `null` 而失败原因看起来像"没声明"。
+
+### §27.4 教训
+
+**内核有机制 ≠ 代理能用。**「能读」必须同时「能传」：一个参数只要出现在 `kit` 的读取侧，就必须出现在 `packs` 的声明侧，并且两边都要有断言——否则缺口只在真机跑里显形，而真机跑一轮要 20 分钟。
+
+### §27.5 当前状态
+
+- 合计：**42 = 37 已实现 / 5 部分 / 0 缺口 / 0 待核**（剩余 5 行：A1、B1、B6、E1、E3）。
+- 门禁：`regen-all --check` 16/16；`check-docs` PASS；`vmu-v5r-tools` 347/0；`audit-conformance-totals` 13/0；`vmu-tasks-attribution` 20/0；`vmu-kernel` 260/0。

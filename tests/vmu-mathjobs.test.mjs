@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict'
 import { createMathJobs, MATH_KEYS } from '../vibe-math-vmu/kernel/mathjobs.js'
+import { declaredDefault } from '../vibe-math-vmu/kernel/settings-defaults.js'
 
 let passed = 0
 let failed = 0
@@ -33,6 +34,24 @@ test('zero-mechanism: no declared engine refuses at submit', async () => {
   assert.equal(r.code, 'VMU_MATH_UNSUPPORTED_OP')
   const off = createMathJobs({ settings: mk({ 'vmu.math.computation': 'off' }).settings, clock: () => 0, spawn: fakeSpawn(OK) })
   assert.equal((await off.submit({ engine: 'sympy' })).code, 'VMU_MATH_UNSUPPORTED_OP')
+  passed += 1
+})
+
+// ★ F1 (phase 12): 「Python 等计算工具可用」 — with NOTHING configured the reader must act on the DECLARED engines
+// (settings/schema.js declares eight names), not on "empty". MEASURED before the settings-defaults unification: this
+// face saw `undefined` and refused every job with 未声明任何引擎 on a host where python WAS installed — a declaration
+// face and a runtime face disagreeing, which is the exact defect class §7 of the ledger counts.
+test('F1: no configured engines => the DECLARED ones are in force, and an explicit [] still means none', async () => {
+  const declared = declaredDefault('vmu.math.engines')
+  assert.ok(Array.isArray(declared) && declared.length >= 1, 'settings/schema.js must DECLARE engines, else this is not a mechanism')
+  const gov = createMathJobs({ settings: {}, clock: () => 0, spawn: fakeSpawn(OK) })
+  assert.deepEqual(gov.config().engines, declared.map(String), 'an unset key must fall back to the DECLARED list')
+  const ran = await gov.submit({ engine: declared[0], argv: ['-c', '1'] })
+  assert.equal(ran.ok, true, 'the first declared engine must be ACCEPTED (the refusal would name an empty declaration)')
+  // 反: an EXPLICIT empty list is an operator decision, not an absence — zero mechanism must survive the fix.
+  const off = createMathJobs({ settings: mk({ 'vmu.math.engines': [] }).settings, clock: () => 0, spawn: fakeSpawn(OK) })
+  assert.deepEqual(off.config().engines, [])
+  assert.equal((await off.submit({ engine: declared[0] })).code, 'VMU_MATH_UNSUPPORTED_OP')
   passed += 1
 })
 
