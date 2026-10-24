@@ -2948,3 +2948,39 @@ EXIT=0
 - 第 42 次真机跑之后，产品代码只动过 `vibe-math-vmu/kernel/turn/index.js` 的**注释**，行为未变；因此不认为需要为注释再跑一次真机。
 - 本轮没有新增真机跑的证据链，完成依据是**第 42 次跑它自己的报告**，不是我的推断。
 - 已知的、不再修的东西仍然记在账本里（例如 `sweep.at` 的「时钟命名」问题已按读数修复、`budget:null` 属诚实空而非缺陷）。
+
+## §75 采纳上游 PR #20 的一条思路：设置表生成器从「每键全扫」改为一趟索引
+
+### §75.1 来源与取舍
+上游 PR #20（van-zxc，`perf(tests): make the gate truthful and fast on a fresh clone`）的正文列了四组改动。
+我不是整包接受，而是先在本仓库上**逐条测**，只采纳在我们这棵树上真的有收益、且不改变语义的那一条：
+
+| 它的想法 | 在我们树上的判断 | 结论 |
+| --- | --- | --- |
+| ①「索引 kernel 读取扫描一次，而不是每键一次」 | `generate-vmu-settings-table.mjs --check` 实测 **82.4 s**；`--cpu-prof` 显示 `consumersOf` 32.6%、正则**编译** 14.5%、`tableIterationCarrier` 10.3%、`templateReader` 5.6%，而计数块对每个键调用 `verdictOf` **四次** ⇒ 每次扫描付四遍 | ✅ **采纳并已落地** |
+| ② 把 `full` 拆成 `full/archive/all` | 我们的默认迭代范围已经是 `GATE_SCOPE=vmu`（**457 个 job**），它本来就不含冻结的 v2..v5r 家族；`full` 是恒等范围且必须保持恒等（`audit-scope-classification` 依赖这条代数）。再切一刀只会多出两个名字 | ❌ 不采纳（理由：我们的慢范围已经被 `vmu` 覆盖，重定义 `full` 会破坏既有代数） |
+| ③ 把 13 个 `vmu-*-tool.test.mjs` 折成一张表驱动套件 | 我们的 38 个 per-tool 套件不是逐字克隆：每个都断言本工具自己的 name/flag/ACTIONS/拒绝文案；折叠会删掉**按工具定位**的失败信息 | ❌ 不采纳（收益是文件数，成本是定位能力） |
+| ④ 把自证子进程改成有界并行池 | 本仓库的规矩是门禁**安静、低并发**跑（此前为孤儿进程级联超时付过代价，tree-kill 才修好）；池化是拿稳定性换时间 | ❌ 不采纳 |
+
+### §75.2 实测（改前 / 改后，同一台机器、同一棵树）
+- `generate-vmu-settings-table.mjs --check`：**82 378 ms → 1 424 ms**（57×）。
+- `regen-all.mjs --check`：**≈90 s → 13 348 ms**。
+- `vmu-wiring-index` 套件：17 626 ms，**ALL GREEN**（它内部会再 spawn 这个生成器与 `generate-wiring-index.mjs`）。
+- **语义不变的证据（三条，缺一不算）**：① `--json` 输出与改前**逐字节相同**（`1265 keys / 1160 wired / 1 undetermined / 96 not-wired / 8 unreachable`）；② 改后 `--write` 生成 `vibe-math-vmu/docs/04-settings.md`，`git diff` **为空**；③ 依赖它的八个套件全绿（`audit-generators-current` 23、`audit-vmu-docs` 103、`vmu-planned-settings` 39、`vmu-wiring-index` 31、`audit-pack-json` 9、`vmu-kernel-reachability` 8、`b1prime-staleness-report` 16、新门禁 23）。
+
+### §75.3 改法（为什么是「语义不变的快」，而不是「重写一遍」）
+三类谓词的**规则一个字没改**，只是把「每键 × 每文件」的求值换成「每文件一趟」，并加键级 memo：
+1. **引号读取** ⇔ 原文含 `key`（单/双引号两种）。新索引用 `/(['"])(vmu\.[A-Za-z0-9_.]+)\1/g` 一趟收齐，与旧的 `text.includes(quote + key + quote)` 等价（键都是 `vmu.*`）。
+2. **模板读取** ⇔ `{{ … setting:key … }}` 且键后有**词边界**、花括号内无 `}`。因为 `.` 是非词字符，`\bsetting:vmu.a.b\b` **也会**匹配更长 token 的前缀 ⇒ 索引里刻意记录每个点前缀，否则会漏判（这是一处容易写成假绿的地方，已写进注释）。
+3. **表迭代读取** ⇔ 同文件「表字面量含该键」+「`for … of` 迭代该表」+「循环体内用循环变量下标」。
+★ 还有一处**必须保留的差异**：旧实现的表迭代路径读的是 `f.text`，而引号/模板路径读的是 `f.filtered`。把两者合并成一份文本看着更「干净」，但那会让判定结果改变——所以索引按文件同时保留两个视图。
+
+### §75.4 新门禁 `tests/vmu-settings-wiring-index.test.mjs`（23 断言）
+它锁的不是「判得对」，而是「四种读取形状都还从索引里被看见」与「每键全扫不许回来」：
+- 四个真锚点：内核字面量读取（`vmu.math.maxParallel` → `kernel/mathjobs.js`）、pack 模板读取（`vmu.turn.maxParallel` → `packs/v5r/prompts/v5r-blocks-b.js`）、无读取者（`vmu.a11y.enabled`）、读取者不可达（`vmu.paper.maxSections` → `kernel/paper.js`）；每个锚点先断言**键真的存在于 schema**（防「拿记忆当判据」）。
+- 双向判据：把四条期望整体取反必须**全不命中**，否则「4/4 一致」可能只是判据返回常量。
+- 汇总代数：`keys === wired + undetermined + notWired + unreachable`，且 `keys > 1000`（非空断言）。
+- 形状守卫：源码里必须还有 `WIRE.consumers.has(key)` / `WIRE.entries` / `WIRE.verdict.has(key)`，且**不再**出现 `SOURCE_FILES.filter((f) => !DEAD_KERNEL.has(f.rel) &&` 与 `const templateReader = (key) => new RegExp`。
+
+### §75.5 诚实边界
+这次改动没有为它单独跑一次全量 T1。理由：生成器的**输出字节级不变**、它本身不是产品运行路径，且依赖它的八个套件全绿；但「没跑全量」不等于「跑过全量」，所以在此写明，供后续收口时补。

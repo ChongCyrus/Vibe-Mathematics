@@ -146,8 +146,8 @@ const DEAD_KERNEL = new Set(unreachableKernelModules(VMU_DIR))
  * stays wired, and a key that nothing reads (neither quoted nor as a placeholder) still reports `未接线`, so the
  * criterion can still redden.
  */
-const templateReader = (key) => new RegExp('\\{\\{[^}]*\\bsetting:' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b[^}]*\\}\\}')
-const isTemplateReader = (text, key) => templateReader(key).test(text)
+// (the placeholder predicate lives in the ONE-PASS WIRE INDEX below as `SETTING_TOKEN` / `MUSTACHE_BLOCK`: the old
+// `templateReader(key)` compiled a fresh RegExp per (key × file), which the profile showed at 14.5 % of the runtime.)
 
 /**
  * ★ ROUND 11/256 (task-237): THE SECOND BLIND SPOT - READS THROUGH AN ITERATED KEY TABLE.
@@ -185,39 +185,105 @@ const literalBodyOf = (text, fromIdx) => {
   }
   return null
 }
-/** Carrier file for "this key is read through a loop over a table that contains it", or null. */
-export function tableIterationCarrier(key) {
-  const needle1 = "'" + key + "'"
-  const needle2 = '"' + key + '"'
-  for (const f of SOURCE_FILES) {
-    if (DEAD_KERNEL.has(f.rel)) continue          // ★ an unloadable module's iteration is not a consumer either
-    // ① every table literal in this file that CONTAINS the key as a quoted member
-    const tables = []
+/**
+ * ★★★ PERFORMANCE — THE ONE-PASS WIRE INDEX. Adopted from upstream PR #20's idea ("index the kernel read scan once
+ * instead of per key"), re-implemented against THIS file's predicates.
+ *
+ * THE MEASUREMENT (this repo, 2026-10-25): `node --cpu-prof scripts/generate-vmu-settings-table.mjs --check` took
+ * **82.4 s**, and the profile put 32.6 % in `consumersOf`, 14.5 % in regex COMPILATION, 10.3 % in
+ * `tableIterationCarrier` and 5.6 % in `templateReader`. The cost was O(keys × files), aggravated by `verdictOf` being
+ * called FOUR times per key by the count block below — so every scan was paid four times over.
+ *
+ * WHY IT IS A PURE OPTIMISATION (each predicate keeps its EXACT rule, including the two different views of a file):
+ *   · quoted read      ⇔ the raw text contains `'key'` or `"key"`. The regex below matches precisely those two
+ *                        quote-adjacent forms for a `vmu.*` key, so a set membership replaces a substring scan.
+ *   · template read    ⇔ `{{ … setting:key … }}` with a WORD BOUNDARY after the key, and no `}` inside the braces.
+ *                        Because `.` is a non-word char, `\bsetting:vmu.a.b\b` ALSO matches the prefix `vmu.a`; the
+ *                        index therefore records every dot-prefix of a longer token, not just the whole token.
+ *   · table iteration  ⇔ the same three parts as before, and — note this — it is computed from `f.TEXT`, not
+ *                        `f.filtered`, exactly as the original did (the original read `f.text` here and `f.filtered`
+ *                        in `consumersOf`; collapsing the two views would have been a silent semantic change).
+ */
+const QUOTED_VMU_KEY = /(['"])(vmu\.[A-Za-z0-9_.]+)\1/g
+const MUSTACHE_BLOCK = /\{\{[^}]*\}\}/g
+const SETTING_TOKEN = /(^|[^\w])setting:([A-Za-z0-9_.]+)/g
+const indexReadRegex = (loopVar) => new RegExp('\\[\\s*' + loopVar + '\\s*\\]')
+
+const quotedKeysIn = (text, into) => {
+  QUOTED_VMU_KEY.lastIndex = 0
+  for (let m = QUOTED_VMU_KEY.exec(text); m; m = QUOTED_VMU_KEY.exec(text)) into.add(m[2])
+  return into
+}
+const templateKeysIn = (text, into) => {
+  MUSTACHE_BLOCK.lastIndex = 0
+  for (let m = MUSTACHE_BLOCK.exec(text); m; m = MUSTACHE_BLOCK.exec(text)) {
+    SETTING_TOKEN.lastIndex = 0
+    for (let t = SETTING_TOKEN.exec(m[0]); t; t = SETTING_TOKEN.exec(m[0])) {
+      const token = t[2]
+      into.add(token)
+      for (let i = 0; i < token.length; i += 1) if (token[i] === '.') into.add(token.slice(0, i))
+    }
+  }
+  return into
+}
+
+const WIRE = (() => {
+  const entries = SOURCE_FILES.map((f) => {
+    const quoted = quotedKeysIn(f.filtered, new Set())
+    const templated = templateKeysIn(f.filtered, new Set())
+    // ① every table literal in this file, and the keys quoted inside it (from f.TEXT — see the note above)
+    const declared = new Map()
     TABLE_DECL.lastIndex = 0
     for (let m = TABLE_DECL.exec(f.text); m; m = TABLE_DECL.exec(f.text)) {
       const body = literalBodyOf(f.text, m.index)
-      if (body && (body.includes(needle1) || body.includes(needle2))) tables.push(m[1])
+      if (!body) continue
+      const keys = quotedKeysIn(body, new Set())
+      if (keys.size > 0) declared.set(m[1], keys)
     }
-    if (tables.length === 0) continue
-    // ② a loop iterating one of those tables, and ③ an index read through the LOOP VARIABLE in its body
+    // ② loops that iterate a table and ③ index it with the loop variable
+    const indexReadTables = new Set()
     TABLE_LOOP.lastIndex = 0
     for (let m = TABLE_LOOP.exec(f.text); m; m = TABLE_LOOP.exec(f.text)) {
       const loopVar = m[1] || m[2]
-      const iterable = m[3]
-      if (!tables.includes(iterable)) continue
       const bodyStart = f.text.indexOf('{', m.index)
       if (bodyStart < 0) continue
       const body = literalBodyOf(f.text, bodyStart)
-      if (body && new RegExp('\\[\\s*' + loopVar + '\\s*\\]').test(body)) return f.rel
+      if (body && indexReadRegex(loopVar).test(body)) indexReadTables.add(m[3])
     }
+    const iterated = new Set()
+    for (const [name, keys] of declared) {
+      if (!indexReadTables.has(name)) continue
+      for (const k of keys) iterated.add(k)
+    }
+    return { rel: f.rel, dead: DEAD_KERNEL.has(f.rel), quoted, templated, iterated }
+  })
+  return { entries, consumers: new Map(), carrier: new Map(), dead: new Map(), verdict: new Map() }
+})()
+
+/** Carrier file for "this key is read through a loop over a table that contains it", or null. */
+export function tableIterationCarrier(key) {
+  if (WIRE.carrier.has(key)) return WIRE.carrier.get(key)
+  let rel = null
+  for (const e of WIRE.entries) {
+    // ★ an unloadable module's iteration is not a consumer either
+    if (!e.dead && e.iterated.has(key)) { rel = e.rel; break }
   }
-  return null
+  WIRE.carrier.set(key, rel)
+  return rel
 }
 
 /** The files that READ this key (quoted literal or template placeholder), excluding kernel modules the assembly cannot
  *  load. Kept as a list, not a boolean, because the CARRIER column needs the first one and `hasConsumer` the count. */
-const consumersOf = (key) => SOURCE_FILES.filter((f) => !DEAD_KERNEL.has(f.rel) &&
-  (f.filtered.includes("'" + key + "'") || f.filtered.includes('"' + key + '"') || isTemplateReader(f.filtered, key)))
+const consumersOf = (key) => {
+  if (WIRE.consumers.has(key)) return WIRE.consumers.get(key)
+  const hit = []
+  for (const e of WIRE.entries) {
+    if (e.dead) continue
+    if (e.quoted.has(key) || e.templated.has(key)) hit.push(e)
+  }
+  WIRE.consumers.set(key, hit)
+  return hit
+}
 
 /** Does any REACHABLE runtime source read this key? (the honest meaning of "the knob works") */
 export function hasConsumer(key) {
@@ -538,18 +604,23 @@ export function listIterationEvidence(key) {
 export function deadReaderOf(key) {
   const ev = listIterationEvidence(key)
   if (ev && DEAD_KERNEL.has(ev.rel)) return ev.rel
-  const dead = SOURCE_FILES.find((f) => DEAD_KERNEL.has(f.rel) &&
-    (f.filtered.includes("'" + key + "'") || f.filtered.includes('"' + key + '"') || isTemplateReader(f.filtered, key)))
-  return dead ? dead.rel : null
+  if (WIRE.dead.has(key)) return WIRE.dead.get(key)
+  const dead = WIRE.entries.find((e) => e.dead && (e.quoted.has(key) || e.templated.has(key)))
+  const rel = dead ? dead.rel : null
+  WIRE.dead.set(key, rel)
+  return rel
 }
 
 /** The four-tier verdict. `已接线` ⇐ a REACHABLE literal READ; `未接线（读取者不可达）` ⇐ the only reader is a kernel
  *  module the assembly never loads; `未判定` ⇐ the key is an element of a list (a dynamic path may read it); `未接线`
  *  ⇐ nothing but declarations/comments name it. */
 export function verdictOf(key) {
-  if (hasConsumer(key)) return WIRED
-  if (deadReaderOf(key)) return NOT_WIRED_UNREACHABLE
-  return listIterationEvidence(key) ? UNDETERMINED : NOT_WIRED
+  if (WIRE.verdict.has(key)) return WIRE.verdict.get(key)
+  const v = hasConsumer(key)
+    ? WIRED
+    : (deadReaderOf(key) ? NOT_WIRED_UNREACHABLE : (listIterationEvidence(key) ? UNDETERMINED : NOT_WIRED))
+  WIRE.verdict.set(key, v)
+  return v
 }
 
 const rows = SETTING_DEFS.map((def) => {
