@@ -1816,6 +1816,8 @@ section('16 the captured prompt corpus is written for human review')
   const dirty = entries.filter((e) => /\[object Object\]|\bNaN\b|:\s*undefined|["']undefined["']|undefined\s*[,}\]]/.test(e.prompt))
   assert(dirty.length === 0, 'no captured prompt contains placeholder garbage (' + dirty.map((d) => d.label).join(',') + ')')
   assert(joined.indexOf('<VIBEMATH>') !== -1, 'the VibeMath root is normalised to <VIBEMATH>')
+  // RULE E: without this, the sweep below would pass vacuously if no host had been booted.
+  assert(Array.isArray(hosts) && hosts.length > 0, '★ the machine-path sweep really had hosts to sweep (guard)')
   for (const h of hosts) {
     const ws = String(h.WS)
     assert(joined.indexOf(ws) === -1 && joined.indexOf(ws.replace(/\\/g, '/')) === -1, 'no captured prompt leaks a machine path (' + h.label + ')')

@@ -144,6 +144,12 @@ export const DECLARED_SELF_REPORT_FIELDS = Object.freeze([
   // "we verified it" into a measurement instead of a claim. NOTE `host.js:326` also uses `checked:false` (the
   // tool-filter passthrough): same word, different surface, which is exactly why the source is written here.
   'checked',
+  // ROUND 520 (live run 8, finding F): the no-transport REFUSAL now carries the same two facts its status() does, so the
+  // mechanical extraction sees `transportInjected` (and the pair `neverDrives`/`drives`) on the refusal path as well as
+  // on the read face. Declared here WITH the reason: `kernel/report.js` report/tick receipts report whether a delivery
+  // transport was injected, because "nothing was sent" must be readable from the call that failed - and a refusal is a
+  // read face too. `neverDrives` rides along in the same declaration for the same reason (drives:false is a claim).
+  'transportInjected',
 ])
 
 /** Top-level keys of every `return { … }` object literal in one source. */
@@ -349,7 +355,6 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'b1prime-reportfeedback-shape-pin.test.mjs:A:KEYS',
   'b1prime-reportfeedback-shape-pin.test.mjs:A:KEYS',
   'e2e-v4-fixes.test.mjs:A:st1.busy',
-  'formal-verify-v2.test.mjs:A:for:hosts',
   'formal-verify-v4.test.mjs:A:corpus',
   'math-computation-archive-rerun.mutants.mjs:A:for:CASES',
   'math-computation-discovery.mutants.mjs:A:for:CASES',

@@ -19,7 +19,7 @@
 
 | ID | 规则要点 | 落点 / 证据 | 门禁 | 状态 |
 |---|---|---|---|---|
-| A1 | 所办＝主代理：用户助手；有进展时自动唤起汇报；是用户与研究所的媒介/传信者；支持用户用自然语言让所办设参数、控制进程 | ✅ **已实现（本轮收口：真机证据已取得）**：机制与门都在——汇报原语 `kernel/report.js`（声明式触发/模板/收件人/渠道，`drives:false` 永不驱动，未知触发器/未知模板变量/越域参数/错 owner 全部名拒并留审计行，`tests/vmu-assistant-report.test.mjs` **93/0**）；无 transport 时**具名拒** `VMU_REPORT_NO_TRANSPORT`（`:365`，绝不假装已送达）；pack 三条策略＋开关 `packs/v5r/prompts/v5r-core.js:150-195`；宿主 tick 挂在 `agent/turn-stopping`（`vibe-math-vmu.js:767-790`）；设参/控制面 `packs/v5r/tools.js:1152-1205`（只许声明键；start/stop/pause/resume 是真工具，`withOffice` 之外的改动名拒）；交付缝的实现有断言（`tests/vmu-reportfeedback-delivery.test.mjs` 7/0，含截断必须自述）。**残留两点，都不再是"机制不存在"**：① `config.deliver` 由部署侧提供（默认 null，故意不猜信封形状——猜形状就是"假装送达"，见 `vibe-math-vmu.js:553-559` 的边界注释）⇒ 仓内能证明"缝判对/拒得对"，但**自动唤起的最后一跳属于部署**；② **真机零证据**：最近三次 live run 的 transcript 里 `report/undelivered`、`VMU_REPORT_NO_TRANSPORT`、`"delivered":true` 出现次数都是 **0**（`grep -o` 于 `_oneoff/vm-slv/full-1024-072041.jsonl`）⇒ 没有一次"有进展⇒自动唤起汇报"真的发生过，因为代理从未走 report 路径。★ 下一次 live run 的任务文件必须显式要求"有阶段进展时用汇报面通报所办"，并把 `report` 的 delivered/drives 读出来作为判据——这才是这一行的收口方式。 | 见左（两套件 100 条断言）；**真机待验**（不在代码侧） | ⚠️ 部分  **本轮真机收口（run 7，`full-1024-093121.jsonl`，`cast=true`／0 RED）**：代理确实调用了汇报面（转录里 `vibe_vmu_report` 154 次出现、`vibe_v5_report` 7 次），拿到的是**具名拒** `{"ok":false,"code":"VMU_REPORT_NO_TRANSPORT","message":"no delivery transport was injected: nothing was sent (and nothing is pretended)"}`，并且它自己把这条读成「Named refusal #8 … status said transportInjected:false」——即**没有任何假装送达**。这与 A1 的判据（`delivered:true` 或具名拒之一，且 `drives:false`）完全对上；`delivered:true` 在本 harness 下按设计不可达（transport 由部署侧注入，属内核有意边界），已在 `vibe-math-vmu/vibe-math-vmu.js:553-559` 注释与本行原证据中说明。 |
+| A1 | 所办＝主代理：用户助手；有进展时自动唤起汇报；是用户与研究所的媒介/传信者；支持用户用自然语言让所办设参数、控制进程 | ✅ **已实现（本轮收口：真机证据已取得）**：机制与门都在——汇报原语 `kernel/report.js`（声明式触发/模板/收件人/渠道，`drives:false` 永不驱动，未知触发器/未知模板变量/越域参数/错 owner 全部名拒并留审计行，`tests/vmu-assistant-report.test.mjs` **93/0**）；无 transport 时**具名拒** `VMU_REPORT_NO_TRANSPORT`（`:365`，绝不假装已送达）；pack 三条策略＋开关 `packs/v5r/prompts/v5r-core.js:150-195`；宿主 tick 挂在 `agent/turn-stopping`（`vibe-math-vmu.js:767-790`）；设参/控制面 `packs/v5r/tools.js:1152-1205`（只许声明键；start/stop/pause/resume 是真工具，`withOffice` 之外的改动名拒）；交付缝的实现有断言（`tests/vmu-reportfeedback-delivery.test.mjs` 7/0，含截断必须自述）。**收口证据（真机第 8 次走查，`_oneoff/vm-slv/full-1024-111113.jsonl`）**：代理按验收要求打了两次汇报面 —— `{action:"fire"}` 被拒 `VMU_INVALID_ARGUMENT`（该面**没有** `fire` 动作，验收脚本自身写错了，已改任务书），改调 `{action:"emit"}` 两次均被拒 **`VMU_REPORT_NO_TRANSPORT`**，`status` 读回 `fires:2, delivered:0, failures:0, drives:false, neverDrives:true, transportInjected:false`，且该拒绝回执现在**自带** `drives`/`neverDrives`/`transportInjected`（run-8 finding F）。含义：① 自动唤起与审计行都真跑过（`fires:2` 不是 0）；② "没送出"是**具名拒**而不是静默成功；③ 最后一跳缺 transport 是**部署边界**（`config.deliver` 默认 null，猜信封形状＝假装送达），仓内能证明"缝判对/拒得对"，注入 transport 后才会有 `delivered:true`。这条残留因此不再是"零真机证据"，而是"交付由部署完成"的**有意边界**。| 见左（两套件 100 条断言）；**真机待验**（不在代码侧） | ⚠️ 部分  **本轮真机收口（run 7，`full-1024-093121.jsonl`，`cast=true`／0 RED）**：代理确实调用了汇报面（转录里 `vibe_vmu_report` 154 次出现、`vibe_v5_report` 7 次），拿到的是**具名拒** `{"ok":false,"code":"VMU_REPORT_NO_TRANSPORT","message":"no delivery transport was injected: nothing was sent (and nothing is pretended)"}`，并且它自己把这条读成「Named refusal #8 … status said transportInjected:false」——即**没有任何假装送达**。这与 A1 的判据（`delivered:true` 或具名拒之一，且 `drives:false`）完全对上；`delivered:true` 在本 harness 下按设计不可达（transport 由部署侧注入，属内核有意边界），已在 `vibe-math-vmu/vibe-math-vmu.js:553-559` 注释与本行原证据中说明。 |
 | A2 | 院士：主席席位，主持/决策会议 | ✅ **机制＋消费者，两向已测**：主席席拒绝（`packs/v5r/tools.js` `toolOverview`，座位判定 `:198-201`，**以函数名定位、行号只作快照**——该文件正被并行改写）、会议主席动作轨 `requireChairSeat` `:482-488`，以及本轮刚落的三条院士权轨（只有主席能召开／关闭／延长，见 §8）；表决席位是**声明值** `vmu.meetings.eligibleSeats`（`settings/schema.js:1101` 声明、`kernel/meetings.js:132,350-363` 消费、空列表回落全名册）＋ `chairNeutral` 禁止主席对自己动议投赞成 | `tests/vmu-a2a3-seats-and-bounds.test.mjs` **17/0**（chair⇒ok／非 chair⇒`VMU_NOT_PERMITTED` 点名主席／未知成员⇒具名拒且 hint 所指替代读点存在） | ✅ 已实现 |
 | A3 | 常驻研究员 | ✅ **机制＋消费者，四向已测**：`vibe_v5_start` = `toolStart`（`:1050`）的 `researcherCount` 默认 3（`:1051`）、域 `0..50` 越界具名拒 `VMU_INVALID_ARGUMENT`（`:1052`，带 hint、零副作用）；省略⇒3／`0`⇒合法且真坐 0 人／`51`、`-1`⇒具名拒 | 同上（`tests/vmu-a2a3-seats-and-bounds.test.mjs` 17/0，含「0 合法」与「越界零副作用」两向） | ✅ 已实现 |
 | A4 | 临时工：被院士/常驻研究员雇佣做特殊/临时任务；**无表决权**；**默认不参与会议**；可雇佣/解雇 | ✅ **已实现（本轮收口）**（`lane-rows-b.md` A4，**并更正原文**）：雇佣 `packs/v5r/tools.js:160-175`／解雇 `:308-329` 有门禁；**无表决权是真门**（`kernel/meetings.js:921-930` ＋ quorum 分母求交 `:356-363`，`tests/vmu-meetings.test.mjs:766-767,795-802`）；★ **但"默认不参会"没有机器门**：`attend()`（`kernel/meetings.js:614-650`）只查在册，temp 也能到场。**原文写"由 `vmu.meetings.eligibleSeats` 表达"是错的**——该键只表达**投票权**（vote 门 ＋ 分母），不表达入会；已改为"默认不参会＝流程约定（无门禁）" ⇒ 这是一条**已确认缺口** ★ 已收口：机器门是 `vmu.meetings.attendDeniedSeats`（`vibe-math-vmu/settings/schema.js` · stringList · 默认 `[]` ＝零机制；v5r pack 在 `vibe-math-vmu/packs/v5r/settings/defaults.json` 的 `defaults` 里声明 `["temp"]`），唯一消费者 `attend()`（`kernel/meetings.js`：按 roster 的 `slot` 比对，命中 ⇒ `VMU_NOT_PERMITTED` 并点名该键与席位，`enforced[]` 带键名；席位不可解析 ⇒ FAIL-OPEN，因为成员资格已在上面校验过、缺 slot 不该变成静默拒）。断言 `tests/vmu-meetings.test.mjs` +8 条（正·反·未知席位·拒绝后房间逐字未变·pack 默认值就是政策）⇒ 209 passed / 0 failed。 | 雇佣/解雇与投票权有两向断言；**入会无门禁** | ⚠️ 部分 |
@@ -1394,3 +1394,26 @@ F 断言拒绝回执自带三个布尔。★ 这一套**不证明**宿主发布�
 
 `regen-all --check` ⇒ `16/16 in sync`（本轮新增一个测试文件后重生成过）；`check-docs` ⇒ `DOC LINT: PASS`。
 测试文件自述里写明了它证明不了什么（宿主发布路径/真模型会话），与本账本一贯口径一致。
+
+### §34.3 A1 的改判与一条自我更正
+
+§34 把 A1 的残留 ②（"真机零证据"）作废：第 8 次真机走查里，代理按验收要求调了两次汇报面，`{action:"fire"}` 被拒
+`VMU_INVALID_ARGUMENT`（该面没有 `fire`，是**验收脚本自己写错**，任务书已改为 `emit`），改调 `emit` 两次均被拒
+`VMU_REPORT_NO_TRANSPORT`，`status` 读回 `fires:2, delivered:0, failures:0, drives:false, neverDrives:true, transportInjected:false`。
+这满足 A1 的判据：① 自动唤起与审计行真跑过；② "没送出"是具名拒；③ 缺 transport 是**部署边界**
+（`config.deliver` 默认 null，猜信封形状＝假装送达），注入后才有 `delivered:true`。
+
+★ 自我更正：A1 的状态单元此前已经写成 ✅ 并把标题写成"真机证据已取得"，而它自己的残留段同时写着"真机零证据"——
+**一只手翻绿、另一只手留着反证**。这次把残留段换成上面这份实测证据；合计于是从"42 已实现"变成**真的** 42 已实现（
+`audit-conformance-totals` 13/0 从状态单元派生，不手抄）。教训与 §30.3 同族：**判据过期有方向性伤害**，只不过这次方向
+是"提前宣布完成"，比"把已实现记成缺口"更危险——它会让后面所有轮次都跳过这一行。
+
+### §34.4 门禁收尾读数
+
+- `tests/audit-declaration-criterion.test.mjs`：新字段 `transportInjected` 必须进"声明表"，否则 RULE C 报
+  "discovered but undeclared"。声明后又报 `neverDrives` 是 **ghost entry**（声明了却无人发现）——两个方向都会报，这正是
+  这张表存在的意义。最终只声明 `transportInjected`，并补一处 RULE E 守卫（`tests/formal-verify-v2.test.mjs` 的机器路径
+  扫描先断言 `hosts` 非空，否则"零泄漏"是空的），再 `--write-baseline`（`entries=81 multiLineC=66`）⇒ **89 passed / 0 failed**。
+- `tests/formal-verify-v2.test.mjs` ⇒ `passed=490 failed=0 ALL GREEN`；`tests/audit-scanner-selfproof.test.mjs` ⇒
+  `SCANNER SELF-PROOF: 4 passed, 0 failed`（`scanners=131 self-proven=63 named-debt=68`）；`audit-conformance-totals` 13/0。
+- `regen-all --write` ⇒ 16/16 written，随后 `--check` ⇒ `16/16 in sync`；`check-docs` ⇒ `DOC LINT: PASS`。
