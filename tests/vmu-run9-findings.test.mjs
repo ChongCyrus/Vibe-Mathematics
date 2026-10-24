@@ -88,6 +88,36 @@ try {
   ok(later && typeof later.note === 'string' && later.note.includes('chair'),
     'the note says a due WAIT still needs the CHAIR to decide — the sweep must not read as an automatic decision', later && later.note)
 
+  // ★★ FINDING (a) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12): "到点自决" had no real sweep.
+  // The report was RIGHT that the deadline was never observed on time and WRONG about the cause: the pass existed
+  // (section F above proves it settles a due meeting) but NOTHING CALLED IT, so the only moment a deadline was
+  // noticed was the moment somebody touched that meeting. The caller is the beat — the framework's one polling
+  // point, because there is no timer by design (docs/03 §2). These assertions are about the CALLER, which is the
+  // half a pass-only suite cannot see: a mechanism without a consumer is exactly the defect class this repo names.
+  console.log('')
+  console.log('=== G(a). the BEAT is the caller of the pass ===')
+  ok(typeof kernel.beat === 'function', 'the kernel exposes a beat (otherwise the caller under test does not exist)', typeof kernel.beat)
+  const soon = Date.now() + 1_000
+  const opened2 = JSON.parse(await tool.execute({ member: 'acad', agenda: 'G(a)：预约一场会，让 BEAT 去结算它', at: soon }, {}))
+  const mid2 = opened2 && (opened2.meeting || opened2.id)
+  ok(opened2 && opened2.ok === true && opened2.state === 'scheduled', 'setup: a second meeting really is SCHEDULED', opened2 && opened2.state)
+  const beatEarly = await kernel.beat('G(a): before the start time')
+  const sweepEarly = beatEarly && beatEarly.meetings && beatEarly.meetings.sweep
+  ok(sweepEarly !== undefined && sweepEarly !== null, 'a beat REPORTS a sweep (null would mean the meetings service was never constructed — the two are not the same)', beatEarly && beatEarly.meetings)
+  ok(sweepEarly && sweepEarly.swept === 0, 'before the start time the beat-run pass settles nothing (moving it early would invent a decision)', sweepEarly && sweepEarly.swept)
+  const beforeMemory = meetings.status({}).sweep
+  await new Promise((r) => setTimeout(r, 1_150))
+  const beatLate = await kernel.beat('G(a): after the start time')
+  const sweepLate = beatLate && beatLate.meetings && beatLate.meetings.sweep
+  ok(sweepLate && sweepLate.swept >= 1, 'AFTER the start time the BEAT settles it — no unrelated call was needed', sweepLate && sweepLate.swept)
+  ok(sweepLate && Array.isArray(sweepLate.transitions) && sweepLate.transitions.some((t) => t.meeting === mid2 && t.from === 'scheduled' && t.to === 'open'),
+    'the beat receipt NAMES the meeting and the transition it made', sweepLate && sweepLate.transitions)
+  const afterMemory = meetings.status({}).sweep
+  ok(beforeMemory && beforeMemory.ran === true && afterMemory && afterMemory.ran === true,
+    'meetings.status() reports that a pass has RUN (the "article of faith" half of the finding)', { before: beforeMemory, after: afterMemory })
+  ok(afterMemory && typeof afterMemory.at === 'number' && afterMemory.at >= beforeMemory.at,
+    'the memory carries the instant of the BEAT that ran the pass, not a stale earlier one', { before: beforeMemory && beforeMemory.at, after: afterMemory && afterMemory.at })
+
   console.log('')
   console.log('=== VMU RUN9 FINDINGS: ' + passed + ' passed, ' + failures.length + ' failed ===')
   for (const f of failures) console.log('  FAIL ' + f)

@@ -2959,8 +2959,22 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       try { idleEmitted = idle.emitSettled ? await idle.emitSettled : null } catch { idleEmitted = null }
       controlState.beats += 1
       controlState.lastBeatAt = clock()
+      // ★★ FINDING (a) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12): "到点自决" was reported as
+      // having no real sweep — and the report was right, but not because the pass was missing. `sweepDue()` exists
+      // (live run 9, finding F) and settles a scheduled/waiting meeting's deadline through the SAME `syncMeeting` the
+      // touch path uses; what was missing was a CALLER, so a deadline was only ever noticed at the moment somebody
+      // happened to touch that meeting. THIS IS THE CALLER: the beat is the framework's polling point (there is no
+      // timer by design — docs/03 §2), so one synchronous pass runs per beat. It decides nothing for the chair: it
+      // makes the deadline OBSERVABLE at the instant it passes, and the receipt says what it settled.
+      const sweep = meetingsRef.current && typeof meetingsRef.current.sweepDue === 'function'
+        ? meetingsRef.current.sweepDue({ at: controlState.lastBeatAt })
+        : null
       const decided = await bus.emit('control/heartbeat', { beats: controlState.beats, at: controlState.lastBeatAt, note: note ? String(note) : null }, {})
       return { ok: true, beats: controlState.beats, at: controlState.lastBeatAt,
+        // ★ A beat now REPORTS the meeting sweep it ran (finding (a)): `null` means the meetings service was not
+        // constructed for this kernel, `swept: 0` means the pass ran and nothing was due. Both are honest and
+        // distinguishable — the defect was that NO pass existed, not that a pass found nothing.
+        meetings: sweep === null ? null : { sweep: { at: sweep.at, swept: sweep.swept, transitions: sweep.transitions } },
         // The idle verdict travels in the beat receipt, so a caller can see WHY middleware was (or was not) woken.
         idle: { idle: idle.idle, action: idle.action, elapsedMs: idle.elapsedMs === undefined ? null : idle.elapsedMs,
           afterMs: idle.afterMs === undefined ? null : idle.afterMs, emitted: idle.emitted === true, note: idle.note || null,

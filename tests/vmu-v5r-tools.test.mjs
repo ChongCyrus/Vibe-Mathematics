@@ -887,7 +887,10 @@ try {
     '★★ votes cast in a previous round still count (this is the behaviour the meeting label now declares truthfully instead of hiding behind ‘round’)', { cast: withStale.cast })
   // and the prompt teaches exactly that contract (no drift between the text a member reads and the proof above)
   const contractText = [...PACK.sections].filter((s) => String(s.text || '').includes('顶层只允许这四个字段'))
-  ok(contractText.length >= 1 && contractText.filter((s) => String(s.text).includes('{"vote_solved": true}')).length >= 1,
+  // REPOINTED after the F5/R15 rewrite: the minimal-receipt line now teaches BOTH values ({vote_solved: true|false})
+  // because the closure vote is a boolean; the old needle pinned the one-value form, so the assertion went red when the
+  // text got MORE correct. The intent (the section carries a copy-pasteable vote_solved receipt) is unchanged.
+  ok(contractText.length >= 1 && contractText.filter((s) => /\{"vote_solved": true(\|false)?\}/.test(String(s.text))).length >= 1,
     '★★ the fixture-tools section carries the receipt contract AND the copy-paste minimal receipt', contractText.map((s) => s.name))
   const staleNoteAdvice = [...PACK.sections].filter((s) => /写进回执的 note/.test(String(s.text || '')))
   ok(staleNoteAdvice.length === 0,

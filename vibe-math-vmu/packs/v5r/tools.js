@@ -1337,6 +1337,18 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
  * original also let a non-chair PROPOSE one for the chair to convene; this face has no propose path, so that half is a
  * named gap rather than a silent convenience. */
 function toolMeeting(args = {}, { kernel } = {}) {
+  // ★★ FINDING (j) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12): the agent opened a SCHEDULED
+  // meeting and then read it back with `{action:'status', id}` on THIS face; it got
+  // 「VMU_INVALID_ARGUMENT: meeting needs an agenda」 and reasonably suspected that status had fallen through to the
+  // open branch. The dispatch was not the defect — this face NEVER dispatches: it only convenes, so `action` was
+  // silently ignored and the call became "convene a meeting with no agenda". A refusal that names a missing field the
+  // caller never meant to supply is worse than a bare refusal: it sends the reader to fix the wrong thing. An `action`
+  // (or the read-only keys a status call carries) is now refused BY NAME and pointed at the face that answers it.
+  if (args.action !== undefined && args.action !== null) {
+    throw refuse('VMU_INVALID_ARGUMENT',
+      'vibe_v5_meeting only CONVENES a meeting; it has no "' + String(args.action) + '" action (this call was never dispatched, so nothing about it was validated)',
+      'convene with { member, agenda } (optional: type/subject/title/at/formal_agenda/secretary); to READ or drive an existing meeting call vibe_vmu_meeting { action: "status"|"summary"|"snapshot"|"flow", id: "<meeting>" }')
+  }
   if (!has(args.agenda)) throw refuse('VMU_INVALID_ARGUMENT', 'meeting needs an agenda', 'pass agenda:"what this meeting is for"')
   // ★ PHASE 12 — before this line, `requireSeat` let ANY member convene and 「会议只能由院士召开」 was only a sentence in
   // a prompt. The slot is the pack's own declared vocabulary (the kernel never learns what "academician" means), so the
@@ -1429,7 +1441,7 @@ function toolMeeting(args = {}, { kernel } = {}) {
   const state = opened && opened.state !== undefined ? opened.state : null
   const scheduledFor = opened && opened.scheduledFor !== undefined ? opened.scheduledFor : null
   const scheduleNote = state === 'scheduled'
-    ? '★ 这场会议是【预约】的（scheduledFor=' + String(scheduledFor) + '）：status/summary/meetingView 现在就能读，但开始时间之前任何动作都会被内核具名拒绝；到点后按法定人数转 open，或先进入等待阶段——等待期间有迟到者 attend 并凑满法定人数，那一次触碰就会让会议开始（没有定时器在后台推它）。'
+    ? '★ 这场会议是【预约】的（scheduledFor=' + String(scheduledFor) + '）：status/summary/meetingView 现在就能读，但开始时间之前任何动作都会被内核具名拒绝；到点后按法定人数转 open，或先进入等待阶段——等待期间有迟到者 attend 并凑满法定人数，那一次触碰就会让会议开始；到点的判定由内核对每次 `beat()` 跑的一趟 sweep 结算（框架没有定时器：没人 beat 的进程不会自己醒）。'
     : null
   // ★ GOAL ROUND 3 — THE RECOMMENDED PROCEDURE. A type that the rule gave a skeleton gets it in the receipt, labelled
   // `binding:'recommendation'` so no reader can mistake it for a gate; a type with no skeleton reports null and WHY

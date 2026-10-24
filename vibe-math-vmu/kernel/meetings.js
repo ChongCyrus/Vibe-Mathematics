@@ -744,10 +744,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const overrodeQuorum = qAfter.met !== true
       // ★ LIVE RUN 10, finding E: a boolean plus a prose note still left the reader asking "WHICH rule let this continue".
       // The override is now a record: the rule that authorises it, the floor that was not met, and who present count it had.
-      const overrode = overrodeQuorum
+      // ★★ FINDING (b) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12): the agent read the proceed
+      // receipt, saw `overrodeQuorum:false` + `overrode:null`, and reported that the promised record was missing. The
+      // record EXISTED but under a different name than the one a reader would look at: the ledger promises
+      // `overrodeQuorum{by,rule,floor,present}`, while the CODE put the record on `overrode` and kept `overrodeQuorum`
+      // as a boolean. Two names for one fact, and the name that promised the record delivered a flag — a reader cannot
+      // be blamed for calling that missing. `overrodeQuorum` is now the RECORD (null when the floor was met, which is
+      // a fact and not an absence), the flag moves to `overrodeQuorumFlag`, and `overrode` stays as a compatibility
+      // alias so nothing that already reads it breaks.
+      const overrodeRecord = overrodeQuorum
         ? { by: who, rule: 'meetings.proceed: the chair may start a meeting after its declared wait even when the floor is unmet', floor: qAfter.required, present: qAfter.present, waitedMs }
         : null
-      const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, scheduledFor: m.scheduledFor, quorum: qAfter, overrodeQuorum, overrode, overrodeNote: overrodeQuorum ? 'the meeting started WITHOUT its quorum: the chair used proceed() to start it anyway (this is the chair\'s authority act, recorded in minutes as `proceeded`)' : null, enforced, enforcedScope: ENFORCED_SCOPE }
+      const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, scheduledFor: m.scheduledFor, quorum: qAfter, overrodeQuorum: overrodeRecord, overrodeQuorumFlag: overrodeQuorum, overrode: overrodeRecord, overrodeNote: overrodeQuorum ? 'the meeting started WITHOUT its quorum: the chair used proceed() to start it anyway (this is the chair\'s authority act, recorded in minutes as `proceeded`)' : null, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       say({ type: 'meetings/proceeded', at: now, meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, quorum: quorumOf(m), enforced, enforcedScope: ENFORCED_SCOPE })
       return Object.assign({ ok: true, meeting: m.id, state: m.state, startedLate: true, receipt }, receipt)
@@ -1145,7 +1153,15 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       m.minutes.entries.push({ at: now, kind: 'vote', motion: target ? target.id : null, member: String(member), value: value === 0 ? 0 : 1 })
       const ballotMirror = mirrorVote({ ballot, boxFor: boxBinding.resolve(), counters, meeting: m.id, motionId: target ? target.id : null, member, value,
         motionText: target ? target.text : null, motionKind: target ? target.kind : null, motionEmergency: target ? target.emergency === true : false })
-      const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, counted: target !== null, tallyNote, quorum: quorumAfter, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror }
+      // ★★ FINDING (b), second half: the same report said "提案表决回执里没有 overrode 标记". It is TRUE that a vote
+      // receipt has no override record — and that is CORRECT, because a vote cannot override a floor: only `proceed()`
+      // may start a meeting without quorum. The defect was that the field was simply ABSENT, so "no override" and
+      // "this face forgot to report" looked identical. It is now explicitly `null` WITH a note that says which act
+      // would have recorded one, whenever the floor is in fact unmet at this vote.
+      const overrodeAtVote = quorumAfter.met === true ? null : {
+        by: null, rule: null, floor: quorumAfter.required, present: quorumAfter.present, waitedMs: null,
+        note: 'the floor is NOT met at this vote (present ' + quorumAfter.present + ' < required ' + quorumAfter.required + '); a vote does not override it — only meetings.proceed() may start a meeting without its quorum, so no override is recorded on this receipt' }
+      const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, counted: target !== null, tallyNote, quorum: quorumAfter, overrodeQuorum: overrodeAtVote, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror }
       pushReceipt(receipt)
       return { ok: true, tally, counted: target !== null, tallyNote, quorum: quorumAfter, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
@@ -1699,7 +1715,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         // where the framework is deliberately waiting for a human decision.
         // ★ LIVE RUN 10, finding F: the due-clock pass must be READABLE, not merely to exist. `ran:false` is the honest
         // state of a process that has not swept yet (not "nothing was due").
-        sweep: lastSweep === null ? { ran: false, at: null, swept: 0, transitions: [], note: 'no sweep pass has run in this process yet' } : Object.assign({ ran: true }, lastSweep),
+        sweep: lastSweep === null ? { ran: false, at: null, swept: 0, transitions: [], note: 'no sweep pass has run in this process yet - the kernel runs one on every beat() (there is no timer by design)' } : Object.assign({ ran: true }, lastSweep),
         scheduledMeetings: [...live.values()].filter((m) => m.state === 'scheduled').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
         waitingMeetings: [...live.values()].filter((m) => m.state === 'waiting').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor, waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt, waitDueAt: waitDueOf(m), waitDecisionDue: m.waitDecisionDue === true, quorum: quorumOf(m) })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
         waitDecisionDue: [...live.values()].filter((m) => m.state === 'waiting' && m.waitDecisionDue === true).map((m) => m.id).sort(),

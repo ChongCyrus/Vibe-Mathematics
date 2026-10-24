@@ -1761,8 +1761,34 @@ function createTurnOrchestrator({
    * counters, so the same roster and the same history choose the same member - which is what makes a multi-round run
    * reproducible. Nobody to wake is a LEGAL state (null), never an invented member and never a failure.
    */
+  /**
+   * FINDING (g) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12). A selection is accepted in three
+   * shapes by the people who read the docs - ["member-2"], [{ id: "member-2" }] and [{ member: "member-2" }] -
+   * while EVERY consumer in this module required m.id. So the first shape was silently FILTERED OUT (the batch then
+   * fell back to the default roster, which is what the agent experienced as "requested came back as the default
+   * roster"), and an entry the loop genuinely could not read vanished instead of raising. One normalizer now owns the
+   * shapes, and an unreadable entry is a NAMED refusal carrying the offending value - never a silent fallback.
+   */
+  const normalizeMembersSelection = (members) => {
+    const raw = Array.isArray(members) ? members : (members === null || members === undefined ? [] : [members])
+    const out = []
+    const unreadable = []
+    for (const m of raw) {
+      const id = typeof m === 'string' ? m
+        : (m && typeof m.id === 'string' ? m.id : (m && typeof m.member === 'string' ? m.member : null))
+      if (typeof id === 'string' && id.trim() !== '') out.push(typeof m === 'string' ? { id: m.trim() } : { ...m, id: id.trim() })
+      else unreadable.push(m)
+    }
+    if (raw.length > 0 && unreadable.length > 0) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'could not read a member id out of ' + unreadable.length + ' of the ' + raw.length + ' entries in members',
+        'pass ["member-2"] or [{ id: "member-2" }] (or [{ member: "member-2" }]); unreadable: ' + JSON.stringify(unreadable).slice(0, 300))
+    }
+    return out
+  }
   const nextTurn = ({ members = [], phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
-    const list = (Array.isArray(members) ? members : []).filter((m) => m && typeof m.id === 'string' && m.id.trim() !== '')
+    // (g): the ONE shape-owner for a selection. Plain id strings are accepted here too, because the roster default
+    // must never be used as a silent substitute for a caller's explicit list.
+    const list = normalizeMembersSelection(members)
     if (list.length === 0) return null
     let pick = null
     if (POLICY === 'least-recent') {
@@ -1785,6 +1811,9 @@ function createTurnOrchestrator({
    */
   const MEMBER_FAILURE_LIMIT = 3
   const drive = async ({ members = [], rounds = 1, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+    // (g): the batch route owns the same shape rule as step(), so a batch also accepts plain id strings and refuses an
+    // unreadable entry by name instead of falling back to the default roster.
+    const selection = normalizeMembersSelection(members)
     const n = Number(rounds)
     if (!Number.isInteger(n) || n < 1) {
       fail('VMU_INVALID_ARGUMENT', 'rounds must be a positive integer: the bound is stated, never assumed',
@@ -1811,7 +1840,7 @@ function createTurnOrchestrator({
       }
     }
     for (let i = 1; i <= n; i += 1) {
-      const spec = nextTurn({ members, phase, why, nextStep, role })
+      const spec = nextTurn({ members: selection, phase, why, nextStep, role })
       // ★★ ROUND 45: AN EMPTY ROUND MUST SAY WHERE MEMBERS COME FROM. `no-members` is true, but on its own it leaves a
       // reader unable to act - the real machine called this face sixty-one times and learned nothing from it. The
       // hint names the two things that actually help: read the roster, and pass it (the tool face now infers it from
@@ -1870,6 +1899,9 @@ function createTurnOrchestrator({
    * operational outcome; a malformed ARGUMENT still throws, because that is a programming error.
    */
   const step = async ({ members = [], phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+    // (g): the selection is normalized BEFORE the branch, so an unreadable entry is refused on BOTH routes (a malformed
+    // list used to be filtered only on the pending route and to fall through to the default roster everywhere else).
+    const selection = normalizeMembersSelection(members)
     // ★★ LANE turn-reply — A REPORT THAT ANSWERS THE OPEN PROMPT COMPLETES **THAT** TURN. Without this guard every step
     // would hand back a NEW prompt before the previous answer was dispatched, so a tool report could never be applied at
     // all (the caller-played route answers its prompt on the NEXT call). No turn is opened here: the member was already
@@ -1882,8 +1914,14 @@ function createTurnOrchestrator({
         // member-1's settlement receipt back, with nothing in the receipt saying the selection had not been applied.
         // `members` chooses who receives the NEXT prompt; completing a pending report cannot change whose report it was.
         // The reading now names both facts instead of leaving the caller to infer them.
-        const requested = (Array.isArray(members) ? members : [])
-          .map((m) => (m && typeof m.id === 'string' ? m.id : null)).filter((id) => id !== null)
+        // ★★ FINDING (g) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12). Two defects here:
+        // ① the parser accepted ONLY `{id}` objects, so the ordinary `members: ["member-2"]` (and `[{member:"…"}]`)
+        //    produced an EMPTY list — the selection silently vanished, and `selectionIgnored` then read `null` while the
+        //    caller believed it had asked for someone. ② when NO id could be read out of a NON-empty `members`, the old
+        //    code fell through to the ordinary path and opened a turn for the DEFAULT roster, which is exactly the
+        //    "silently replaced my request" the agent reported. A selection the loop cannot honour is now a NAMED
+        //    refusal (`VMU_INVALID_ARGUMENT`) that says which entries were unreadable — never a silent fallback.
+        const requested = selection.map((m) => m.id)
         // ★ LIVE RUN 9, finding A: the ledger (§33 row k) and the acceptance task file both name a structured
         // `selectionIgnored{requested,reason,pending}`, while the receipt only carried three PARALLEL scalars. The
         // agent therefore recorded "the promised reading is absent" — a doc that names a field the code never emits is

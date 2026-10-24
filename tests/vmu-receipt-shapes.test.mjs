@@ -85,7 +85,13 @@ try {
   ok(st2 && st2.state === 'waiting', 'setup: the meeting is now waiting (proceed is only legal there)', st2 && st2.state)
   const proceeded = await call('vibe_vmu_meeting', { action: 'proceed', id: mid, actor: 'chair', why: 'E：验证越权记录', at: DUE + 2000 })
   ok(proceeded && proceeded.ok === true, 'setup: proceed succeeded (proceeding IS the chair\'s authority act)', proceeded && (proceeded.code || proceeded.message))
-  ok(proceeded.overrodeQuorum === true, 'the boolean still says the floor was not met', proceeded.overrodeQuorum)
+  // ★★ REWRITTEN FOR FINDING (b) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, run 12). This assertion used to
+  // pin `overrodeQuorum === true` — i.e. it pinned the very shape the live agent reported as wrong. The record was
+  // real but sat on `overrode` while the name the ledger promises (`overrodeQuorum`) carried a boolean. The promise is
+  // now kept on the promised name; the boolean moved to `overrodeQuorumFlag`; `overrode` remains an alias.
+  has(proceeded.overrodeQuorum, ['by', 'rule', 'floor', 'present', 'waitedMs'], 'the receipt carries `overrodeQuorum{by, rule, floor, present, waitedMs}` — the name the ledger promises now holds the RECORD')
+  ok(proceeded.overrodeQuorumFlag === true, 'the flag is still available, under a name that says it is a flag', proceeded.overrodeQuorumFlag)
+  ok(proceeded.overrode && ['by', 'rule', 'floor', 'present', 'waitedMs'].every((k) => proceeded.overrode[k] === proceeded.overrodeQuorum[k]), 'the old `overrode` name agrees FIELD BY FIELD with `overrodeQuorum` (a compatibility alias cannot drift)', { overrode: proceeded.overrode, overrodeQuorum: proceeded.overrodeQuorum })
   has(proceeded.overrode, ['by', 'rule', 'floor', 'present', 'waitedMs'], 'the receipt carries `overrode{by, rule, floor, present, waitedMs}` — WHICH rule and WHO')
   ok(proceeded.overrode && proceeded.overrode.by === 'chair', 'the override names the actor', proceeded.overrode)
   ok(proceeded.overrode && typeof proceeded.overrode.rule === 'string' && /proceed/i.test(proceeded.overrode.rule), 'the override names the rule that authorised it', proceeded.overrode && proceeded.overrode.rule)

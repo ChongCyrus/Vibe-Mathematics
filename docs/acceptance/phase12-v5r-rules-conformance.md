@@ -1625,3 +1625,47 @@ the round number and the floor as a NUMBER.
   j status 派发回落、d/e/h/i 读数与命名）尚未处理。
 - 门禁读数：`vmu-prompt-closure-channel` 24/0、`vmu-prompt-no-holes` 26/0、`vmu-turn` 196/0、`vmu-notice-block` 15/0、
   `audit-declaration-criterion` 89/0、`audit-scanner-selfproof` 132 scanners、`regen-all --check` 16/16、`check-docs` PASS。
+
+## §41 研究所自己的验收报告 (a)(b)(g)(j)：四条都在源头修掉，各配断言
+
+§40 把 (c)(f) 收口之后，run 12 报告剩下的四条按「先测出缺陷在哪一层，再动那一层」的方式逐个修。这一节记的是**每条的真根因**，不是改动清单。
+
+### §41.1 四条的真根因
+
+| 报告条目 | 报告的读法 | 测出来的真根因 | 修在哪一层 |
+|---|---|---|---|
+| (a) ⑦.5 到点自决没有真 sweep | `sweep:{ran:false,note:"no sweep pass has run in this process yet"}`，`activatedAt` 比 `scheduledFor` 晚 11.4s | sweep **存在**（`kernel/meetings.js` `sweepDue`），但**没有任何东西调用它**；且 `scheduleNote` 自承「没有定时器在后台推它」 | 内核 beat 点（`kernel/index.js` `beat()`）——框架唯一轮询点本来就该干这个 |
+| (b) ⑦.4 `overrodeQuorum` 形状错 | 期望 `{by,rule,floor,present}`，实得布尔 `false`；提案表决回执里没有这个键 | 记录**存在但注册在错名下**：结构体叫 `overrode`，`overrodeQuorum` 只是它的布尔别名 | 内核 `meetings.proceed()` 的字段注册 + `vote()` 补一条明确说明 |
+| (g) `selectionIgnored.requested` | 形状是对象 ✓，但 `requested` 回填默认名册；显式传 `members` 不触发它 | `nextTurn` 用 `filter((m) => m && typeof m.id === 'string')` **静默丢弃**纯字符串，列表变空后回落默认名册 | 内核 `turn/index.js` 新增 `normalizeMembersSelection`，不可读的条目**具名拒** |
+| (j) `{action:"status"}` 被判 "meeting needs an agenda" | 以为是 status 派发回落到 open 分支 | `toolMeeting()` **不看 `action`**，先撞 agenda 校验，于是把「这个面不能读」误报成「你没给议程」 | 包策略层 `packs/v5r/tools.js`：任何 `action` 参数在 agenda 校验**之前**按名拒 |
+
+四条里有三条的共同形状：**机制在，但消费者/调用者/注册名不对**。这不是「功能没写」，所以修法不是新增能力，而是把已有的东西接到它该在的位置上——与 §30.3 的教训同族。
+
+### §41.2 每一处改动
+
+- **(a)** `vibe-math-vmu/kernel/index.js` `beat()` 在推进 `beats`/`lastBeatAt` 之后立刻 `meetingsRef.current.sweepDue({ at: controlState.lastBeatAt })`，回执新增 `meetings: { sweep: { at, swept, transitions } }`（服务缺席时 `null`，与「跑了但没到期」`swept:0` 保持可区分）。`kernel/meetings.js` `status()` 的默认 sweep note 改成「本进程还没跑过 sweep —— 内核在每次 beat 时跑一次（按设计没有定时器）」；`packs/v5r/tools.js` 的 `scheduleNote` 同步改口径。
+- **(b)** `kernel/meetings.js` `proceed()`：`overrodeQuorum` 现在是**记录** `{by, rule, floor, present, waitedMs}` 或 `null`，布尔挪到 `overrodeQuorumFlag`，`overrode` 保留为别名；`vote()` 回执带上 `overrodeQuorum: null` 加一条说明（表决不能越过 quorum 下限，只有 `proceed()` 会记录这种越权）。
+- **(g)** `kernel/turn/index.js`：新内部函数 `normalizeMembersSelection(members)` 接受 `["member-2"]` / `[{id}]` / `[{member}]`；不可读条目在**非空**列表里抛 `VMU_INVALID_ARGUMENT`（消息带条数，hint 里原样引用该值）。`nextTurn`、`step()`、`drive()` 统一走它，`step()` 里原来那段自己解析的代码删掉。
+- **(j)** `packs/v5r/tools.js` `toolMeeting()`：先看 `args.action`，有就按名拒：「vibe_v5_meeting only CONVENES a meeting; it has no "<action>" action (this call was never dispatched, so nothing about it was validated)」，hint 指向会答的面 `vibe_vmu_meeting { action: "status" }`。旧行为不但答错问题，还会把读者推去改议程。
+
+### §41.3 断言（写进三套已有套件，不新开文件）
+
+- `tests/vmu-run9-findings.test.mjs`（17 → **25**）新增 (a)：内核暴露 `beat`；一次 beat **回执里有 sweep 对象**（不是 null）；到期前不结算；**到期后同一次 beat 结算并点名迁移**（`scheduled→open`）；`meetings.status().sweep.ran === true` 且 `at` 等于该次 beat 的时刻。
+- `tests/vmu-receipt-shapes.test.mjs`（**49**）把原来钉「`overrodeQuorum === true`」的地方重写——它钉的正是真机报告的那个坏形状；现在钉「承诺名上是记录」「布尔在 `overrodeQuorumFlag`」「别名逐字段一致」（同一性不可断言，工具面会重建对象，值可以）。
+- `tests/vmu-meeting-types.test.mjs` ⑧（132 → **142**）：(j) 四条（具名拒 / 消息说 CONVENES / 消息**不出现** agenda / hint 指向 status）+ 控制项（真正的 convene 仍到达内核）；(g) 三条（不可读条目具名拒且引用原值 / 纯字符串**不再被过滤**：循环接手后只在投递层失败 `VMU_ENGINE_UNAVAILABLE`，而修复前会停在 `stopped:'no-members'` 并改用默认名册 / 控制项）。
+- `tests/vmu-v5r-tools.test.mjs` 里一条**过期针脚**被重新对准：它找 `{"vote_solved": true}` 作为最小回执的证据，而 §R15 的改写把文本变成 `{"vote_solved": true|false}`（因为结题票是布尔）——文字变得更正确时这条断言反而红了。针脚改成 `/\{"vote_solved": true(\|false)?\}/`，意图不变。
+
+### §41.4 两条自查记录（花掉的代价，下次别再付）
+
+1. **CRLF**：`tests/vmu-meeting-types.test.mjs` 是 CRLF 文件，用 `\n` 拼的锚点永远匹配不到（脚本打印 `ANCHOR MISSING`，而文件里 grep 得到该串）。修法：`indexOf('} finally {')` + 检测 `\r\n` 后再拼。
+2. **过宽的 `replace`**：把 `nextTurn({ members, … })` 那行的替换命中了 `drive()` 里同名的调用，而不是 `step()` 里的。堆栈直接指出是哪个函数——阅代码得到的「作用域」不能代替堆栈。
+
+### §41.5 一条如实登记的残余
+
+(g) 的投递层拒（`VMU_ENGINE_UNAVAILABLE`）**不点名是哪个成员**投递失败。本轮只把它写进断言注释与本节，不假装它不存在：它不影响「选择被尊重」这一结论（选择不生效时循环会停在 `no-members`），但一个不点名的拒回执确实不如点名可读。留待与 (e) 的命名清理一并处理。
+
+### §41.6 状态
+
+`vibe-math-vmu/kernel/index.js` · `kernel/meetings.js` · `kernel/turn/index.js` · `packs/v5r/tools.js` · `tests/vmu-run9-findings.test.mjs` · `tests/vmu-receipt-shapes.test.mjs` · `tests/vmu-meeting-types.test.mjs` · `tests/vmu-v5r-tools.test.mjs` · `docs/acceptance/audit-coverage-debt.md`（派生面）。套件：`vmu-run9-findings` 25/0 · `vmu-receipt-shapes` 49/0 · `vmu-meeting-types` 142/0 · `vmu-v5r-tools` 347/0 · `vmu-turn` 196/0 · `vmu-meetings` 214/0 · `vmu-kernel` 260/0 · `vmu-meeting-parity` 204/0 · `vmu-meeting-invite` 69/0。`regen-all --check` 16/16，`check-docs` PASS。
+
+下一步：真机全流程复跑，验证 (a)(b)(g)(j) 在真实运行里可读，并让研究所自己的验收报告成为判据。

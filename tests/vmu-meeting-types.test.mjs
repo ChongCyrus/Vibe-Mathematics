@@ -551,6 +551,47 @@ try {
     '★★ the refused advance is named (`VMU_STATE`, scheduleAllowed=false) instead of silently skipped', closeRefused.nextMeetingError && closeRefused.nextMeetingError.code)
   ok(/vmu\.meetings\.scheduleAllowed=false/.test(String(closeRefused.nextMeetingError && closeRefused.nextMeetingError.message)),
     '★ the refusal prints the SETTING that refused it (the reader does not have to guess)', closeRefused.nextMeetingError && closeRefused.nextMeetingError.message)
+  // ── ⑧ FINDINGS (g) AND (j) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12) ────────────────
+  console.log('=== 8. TWO MISLEADING REFUSALS THE INSTITUTE REPORTED ITSELF ===')
+  const bb = await boot({ root: join(root, 'x8'), packs: ['v5r'] })
+  // (j) the pack's meeting face CONVENES ONLY. A read call sent to it used to be silently re-interpreted as "convene
+  // with no agenda", so the refusal named a field the caller never meant to supply.
+  const readOnConvene = await call(bb, 'vibe_v5_meeting', { action: 'status', id: 'm-1' })
+  ok(readOnConvene.missing === false, 'setup: the convene face is present', readOnConvene.missing)
+  ok(readOnConvene.parsed && readOnConvene.parsed.ok === false && readOnConvene.parsed.code === 'VMU_INVALID_ARGUMENT',
+    '(j) an action on the convene-only face is a NAMED refusal', readOnConvene.parsed && (readOnConvene.parsed.code || readOnConvene.raw))
+  ok(typeof readOnConvene.parsed.message === 'string' && /CONVENES/.test(readOnConvene.parsed.message),
+    '(j) the message says the face only convenes (so the reader stops looking for a dispatch bug)', readOnConvene.parsed && readOnConvene.parsed.message)
+  ok(typeof readOnConvene.parsed.message === 'string' && !/agenda/i.test(readOnConvene.parsed.message),
+    '★ (j) and it does NOT claim an agenda is missing - that was the misleading part', readOnConvene.parsed && readOnConvene.parsed.message)
+  ok(typeof readOnConvene.parsed.hint === 'string' && /vibe_vmu_meeting/.test(readOnConvene.parsed.hint) && /status/.test(readOnConvene.parsed.hint),
+    '(j) the hint points at the face that can answer (vibe_vmu_meeting { action: "status" })', readOnConvene.parsed && readOnConvene.parsed.hint)
+  const plainConvene = await call(bb, 'vibe_v5_meeting', { member: 'r-acad', agenda: 'x' })
+  ok(plainConvene.parsed && plainConvene.parsed.ok !== undefined,
+    'control: a real convene still reaches the kernel (the guard above did not block it)', plainConvene.parsed && plainConvene.parsed.code)
+
+  // (g) a selection is accepted in the three shapes the docs describe, and an unreadable one is REFUSED, never silently
+  // replaced by the default roster. Before the fix only {id} objects survived; plain strings were filtered out.
+  ok(bb.handle.kernel && bb.handle.kernel.turn && typeof bb.handle.kernel.turn.step === 'function',
+    'setup: the kernel exposes the turn step (otherwise (g) is not reachable here)', bb.handle.kernel && bb.handle.kernel.turn)
+  let unreadableErr = null
+  try { await bb.handle.kernel.turn.step({ members: [{ nope: 1 }] }) } catch (e) { unreadableErr = e }
+  ok(unreadableErr !== null && unreadableErr.code === 'VMU_INVALID_ARGUMENT',
+    '(g) an unreadable members entry REFUSES by name (the silent fallback to the default roster is gone)', unreadableErr && (unreadableErr.code || String(unreadableErr)))
+  ok(unreadableErr !== null && /entries in members/.test(String(unreadableErr.message)) && /nope/.test(String(unreadableErr.message) + String(unreadableErr.hint || '')),
+    '(g) and the message quotes the offending value, so the caller can fix it without guessing', unreadableErr && String(unreadableErr.message))
+  let stringOutcome = null
+  try { stringOutcome = await bb.handle.kernel.turn.step({ members: ['definitely-not-a-member'] }) } catch (e) { stringOutcome = { thrown: e, code: e && e.code, message: String((e && e.message) || e) } }
+  const stringRefusal = stringOutcome && stringOutcome.thrown === undefined && stringOutcome.ok === false ? String(stringOutcome.code || '') + ' ' + String(stringOutcome.message || '') : (stringOutcome ? String(stringOutcome.code || stringOutcome.message || '') : '')
+  // ★ THE POINT IS *NOT* WHICH FAILURE: it is that the selection was not silently replaced by the default roster. Before the
+  // fix the list became empty here and the turn ran for somebody else; now the named member reaches the loop and the loop
+  // says something about THAT member (a step failure is a returned outcome by design, not a throw).
+  // The loop got as far as DELIVERY and refused there (no subagents service in this boot) - which is exactly what proves
+  // the explicit selection was honoured. Before the fix the same call returned `stopped:'no-members'` because the string
+  // was filtered out and no roster member was passed through. (The delivery refusal itself does not name the member;
+  // that is a separate reading, recorded here rather than asserted away.)
+  ok(stringOutcome !== null && stringOutcome.stopped !== 'no-members' && stringOutcome.code === 'VMU_ENGINE_UNAVAILABLE',
+    '★ (g) a PLAIN STRING selection is no longer filtered away: the loop accepts the id and only refuses at DELIVERY (before, it stopped at no-members and would have used the DEFAULT roster)', stringOutcome && (stringOutcome.code || stringOutcome.stopped || stringOutcome.message))
 } finally {
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 }
