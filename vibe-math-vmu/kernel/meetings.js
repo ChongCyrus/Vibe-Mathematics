@@ -2056,7 +2056,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     const taken = (x) => live.has(x) || foreign.includes(x)
     if (wanted !== null && taken(wanted)) {
       throw deny('VMU_CONFLICT', 'a live meeting already uses id ' + String(wanted),
-        'open: ' + ([...live.keys()].sort().join(', ') || '(none)') + (foreign.includes(wanted) ? ' — that id belongs to the PRIMITIVE meeting registry (vibe_vmu_meeting action:"open"), which is a different table; pass another id' : ''), enforced)
+        // ★ LIVE RUN 31: the DECISIVE sentence comes first and the full id list last. Measured in the institute's
+        // report: the hint opened with m1…m115 and the one sentence that said WHICH registry owned the id was at the
+        // end of a 115-item list, so the answer to "why was this refused" was the hardest part to find.
+        (foreign.includes(wanted)
+          ? 'that id belongs to the PRIMITIVE meeting registry (vibe_vmu_meeting action:"open"), which is a different table — pass another id. Service ids in use: ' + ([...live.keys()].sort().join(', ') || '(none)')
+          : 'choose another id; live service meetings: ' + ([...live.keys()].sort().join(', ') || '(none)')), enforced)
     }
     let mid = wanted || ('m' + (counters.opened + 1))
     if (wanted === null) {

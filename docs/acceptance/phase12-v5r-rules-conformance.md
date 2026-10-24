@@ -2417,3 +2417,55 @@ transcript `_oneoff/vm-slv/full-1024-220035.jsonl`（3 730 行），build `89610
 - 派生面：`update-doc-counts --write` ⇒ JOBS 522 / suites 414 / probes 108（无变化，说明这轮没新增套件文件）。
 - ★ 仍缺：**真机证据**。㉒.1c（反向撞名）与 ㉒.2 之外的别名规则都只有单元断言。下一轮短跑复验这两条，
   并且要**只用 vmu 工具面**（这次代理做到了）。
+
+## §62 第 31 次真机跑：㉓.1/㉓.2/㉓.3 全通过，代理抓到一条「被拒调用留痕」的原子性缺陷
+
+真机读数（transcript `_oneoff/vm-slv/full-1024-221621.jsonl`，tarball build `2163a3ea`）：`cast:true`（`votesCast:2`，`missing:[]`）、
+`SUMMARY: 1 session(s), 0 with RED checks`。报告 7 798 字符，`㉓.1`/`㉓.2`/`㉓.3` 三节均判「通过」。
+
+### §62.1 三条判据的真机原文（摘录）
+
+| 判据 | 真机读数 |
+| --- | --- |
+| ㉓.1 反向撞名（原语占名 → 包面用同名） | `code:"VMU_CONFLICT"`，hint 末句 `that id belongs to the PRIMITIVE meeting registry (vibe_vmu_meeting action:"open"), which is a different table` |
+| ㉓.1 包面自起名有效 | `{"meeting":"svc-named-1","state":"open"}` |
+| ㉓.2 普通会议带对象 | `VMU_INVALID_ARGUMENT`，`message:"a ordinary meeting takes no object"` |
+| ㉓.2 辩论里 `target` 是别名 | `{"meeting":"m117","type":"debate","subject":"r-47"}`，`subjectGate.proofBasis:"declaration-only"` |
+| ㉓.3 辩论 → 裁决 → 结题 | `mode:"unanimous"`、`value:1`、`n:2`；`closureVote.cast:true`、`for:["member-1","member-2"]`、`votesCast:2`、`missing:[]` |
+
+### §62.2 代理报的唯一实质缺陷：被拒的原语 `open` 留了一条半成品记录（create-before-validate）
+
+它的证据链完整到可以直接钉：会话开场 `vibe_vmu_status` 里 `"live":{"meetings":[],"cap":50,"evicted":0}`（当时为空）；
+第一次 `vibe_vmu_meeting {action:"open", id:"p-x", agenda:"primitive", member:"member-1"}` 以 `VMU_MEETING_TOO_SMALL` 被拒；
+补上 `roster` 用**同一个 id** 重试 ⇒ `VMU_CONFLICT — a live meeting already uses id p-x`；
+`vibe_vmu_meeting {action:"status", id:"p-x"}` 回 `{"ok":true,...,"state":"idle","agenda":null,"rounds":0,"asked":[]}`。
+
+根因：`vibe-math-vmu/kernel/index.js` 的 `meeting()` **先** `rememberLive(liveMeetings, id, made)`，
+而 `convene()` 的具名拒（`kernel/meeting.js` 的 `canConvene` 默认策略：至少两名参与者）在**之后**才抛 ⇒
+拒绝不是原子的，半成品记录留在活表里，并且**同 id 无法补正**（撞名闸是对的，被它挡住的是自己留下的残骸）。
+
+修法（三层，最小面）：
+1. `vibe-math-vmu/kernel/index.js` 新增 `forgetMeeting: (id) => liveMeetings.delete(String(id))`，注释写清「一次拒绝必须原子」；
+2. `vibe-math-vmu/tools/meeting.js` 的 `open` 分支把 `convene()`+`openRound()` 包进 `try/catch`，**只在抛出路径**上 `kernel.forgetMeeting(meeting.id)` 后原样 rethrow —— 拒绝文案不变、快乐路径不变；
+3. 只在「从未进入活状态」时才可能被清除（`convene` 之前 state 恒为 `idle`，那不是任何调用方能寻址的会议）。
+
+### §62.3 两条可读性项（代理标注为非门禁，也一并修了）
+
+- `vibe-math-vmu/kernel/meetings.js` 的跨表撞名 hint 原先**先列 m1…m115 再给结论**，真正决定性的那句落在 115 项列表末尾 ⇒ 现在结论在前、列表在后并带 `Service ids in use:` 标签；同表撞名改成 `choose another id; live service meetings: …`。
+- `vibe-math-vmu/packs/v5r/tools.js` 的 `"a " + type + " meeting takes no object"` ⇒ 冠词按类型派生（`an ordinary` / `a debate`）。
+
+### §62.4 门禁：`tests/vmu-run31-findings.test.mjs`（14 断言，14/0）
+
+① 被拒的原语 `open` 之后：`kernel.liveMeeting('p-x') === null`、`liveList().meetings` 不含它、**同 id 补正重试成功**、成功的那次确实在活表里（清理不能碰快乐路径）；
+② 跨表撞名 hint 以 `that id belongs to the PRIMITIVE meeting registry` **开头**、`pass another id` 与 `Service ids in use:` 都在、message 不以 id 列表开头；
+③ `an ordinary meeting takes no object` 且 code 仍是 `VMU_INVALID_ARGUMENT`；
+④ 对照组：新的被拒 open 仍是 `VMU_MEETING_TOO_SMALL`（修的是清理，不是策略），铸号 id 仍工作且不重用 `p-x`。
+
+邻居套件：`vmu-meeting-name-space` 27/0 · `vmu-meeting-invite` 69/0 · `vmu-meetings` 214/0 · `vmu-meeting-types` 142/0 · `vmu-v5r-tools` 354/0；
+`regen-all --write` → `--check` **16/16 in sync**；`check-docs` `DOC LINT: PASS`。
+
+### §62.5 教训
+
+**一次被拒的调用必须什么都不留下**，否则调用方「按 hint 修正后重试」这条唯一的补救路径会被自己的残骸堵死 ——
+而堵它的那道闸（撞名）本身是**对的**，所以从外面看像是「闸坏了」。代理这次把「期望/实际」并排写成两行，正好是这个类
+缺陷最省时间的报法。

@@ -1421,7 +1421,9 @@ function toolMeeting(args = {}, { kernel } = {}) {
   const subjectSupplied = has(args.subject) || has(args.target)
   if (subjectSupplied && !typeInfo.subjectRequired) {
     throw refuse('VMU_INVALID_ARGUMENT',
-      'a ' + type + ' meeting takes no object: subject/target only mean something for a type that debates one',
+      // ★ LIVE RUN 31: the institute quoted this refusal back and flagged the grammar. It is a message, not a
+      // rule: the article is derived from the type it names (an ordinary / a debate).
+      (type === 'ordinary' ? 'an ordinary' : 'a ' + type) + ' meeting takes no object: subject/target only mean something for a type that debates one',
       'drop subject/target (this meeting is about its agenda) — or convene with type:"debate"; ★ note that `target` on this face is an ALIAS of `subject`, while on vibe_vmu_meeting `target` is a VOTE\'s object')
   }
   if (typeInfo.subjectRequired && (subject === null || String(subject).trim() === '')) {

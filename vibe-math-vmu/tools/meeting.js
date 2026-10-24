@@ -142,8 +142,18 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'open') {
             const meeting = kernel.meeting({ id: id || undefined, roster: Array.isArray(roster) ? roster : undefined })
             if (typeof secretary === 'string' && secretary !== '') meeting.secretary = secretary
-            await meeting.convene(agenda === undefined ? null : agenda)
-            await meeting.openRound({ members: Array.isArray(roster) ? roster : null })
+            // ★★★ LIVE RUN 31 (the institute's own report): a REFUSED convene must leave no record. `kernel.meeting()`
+            // has already put the id in the live table, so a named refusal here (VMU_MEETING_TOO_SMALL, VMU_STATE, …)
+            // used to strand a half-built meeting that then refused the corrected retry with VMU_CONFLICT. The face
+            // that created it is the face that forgets it — on the throw path only, and only when the meeting never
+            // reached a live state (state "idle" is not a meeting anyone can address).
+            try {
+              await meeting.convene(agenda === undefined ? null : agenda)
+              await meeting.openRound({ members: Array.isArray(roster) ? roster : null })
+            } catch (e) {
+              try { if (typeof kernel.forgetMeeting === 'function') kernel.forgetMeeting(meeting.id) } catch (ignored) { /* the refusal is the answer */ }
+              throw e
+            }
             // ★ PHASE 7: the SERVICE record (which owns motions/resolutions) must learn the SAME id, or a tool-declared
             // secretary could never be honoured by the service's resolution check. Only declared ⇒ this call happens
             // (zero mechanism: no secretary ⇒ no service record created here).

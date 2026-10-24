@@ -2212,6 +2212,14 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     },
     /** Look up a live meeting/ballot by the id a tool face handed out (never a guess: unknown 鈬?null). */
     liveMeeting: (id) => liveMeetings.get(String(id)) || null,
+    // ★★★ LIVE RUN 31 (the institute's own report): A REFUSED `open` LEFT A LIVE RECORD. The tool face
+    // constructs the primitive FIRST and convenes SECOND, so `convene()`'s named refusal (e.g.
+    // `VMU_MEETING_TOO_SMALL`) was thrown AFTER `rememberLive` had already put the id in the table: the failed call
+    // left a half-built meeting (state "idle", agenda null) that then REFUSED the corrected retry with
+    // `VMU_CONFLICT - a live meeting already uses id …`. A refusal must be atomic, so the face that creates a
+    // primitive and then convenes it calls this on the throw path (the record it removes was never observable as a
+    // meeting: state stayed "idle"). Returns whether something was actually removed.
+    forgetMeeting: (id) => liveMeetings.delete(String(id)),
     liveBallot: (id) => liveBallots.get(String(id)) || null,
     liveList: () => ({ meetings: [...liveMeetings.keys()], ballots: [...liveBallots.keys()],
       cap: liveCap, evicted: liveEvicted }),
