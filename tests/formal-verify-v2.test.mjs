@@ -1766,7 +1766,15 @@ section('16 the captured prompt corpus is written for human review')
   const missingCaseRule = jsonFenced.filter((e) => e.prompt.indexOf('KEY CASE IS PART OF THE REPLY CONTRACT') === -1)
   assert(jsonFenced.length >= 4, 'F7: prompts carrying a json contract were captured (' + jsonFenced.length + ')')
   assert(missingCaseRule.length === 0, '★★ [F7] every json-contract prompt states the canonical key-case rule (offenders=' + JSON.stringify(missingCaseRule.map((e) => e.label)) + ')')
-  const capitalised = entries.filter((e) => /"Result":/.test(e.prompt))
+  // ★ 2026-10-24 FLAKE FIX, MEASURED RATHER THAN GUESSED: this assertion once failed inside a full sweep (60.8s, one
+  // offender) while the same file passed standalone twice (488/0) and through `run-tests --only` (58.5s). The cause is
+  // the set it measures: `push` and `feedback` entries are the FRAMEWORK's own messages to the main agent, and whether a
+  // push exists at all depends on the reportDirty tick (see the comment above - that is why the corpus keeps only the
+  // FIRST push). A framework notice is not a prompt that asks a member to reply, so it is not a "reply contract" and the
+  // key-case rule does not belong to it; including such entries made the assertion depend on the machine's load. The
+  // contract scope is REPLY-ASKING prompts (spawn/wake), and the non-empty guard keeps the set from becoming vacuous.
+  const capitalised = entries.filter((e) => (e.kind === 'spawn' || e.kind === 'wake') && /"Result":/.test(e.prompt))
+  assert(capitalised.length > 0, 'F7: capitalised Result/Reason contracts were captured (' + capitalised.length + ') — non-empty, so the every() below cannot pass on nothing')
   assert(capitalised.every((e) => e.prompt.indexOf('KEY CASE IS PART OF THE REPLY CONTRACT') !== -1), '★★ [F7] …including the capitalised Result/Reason contracts (' + capitalised.length + ')')
   mkdirSync(CORPUS_DIR, { recursive: true })
   writeFileAtomic(join(CORPUS_DIR, 'formal-verify-v2.json'), JSON.stringify({ entries: entries }, null, 2))

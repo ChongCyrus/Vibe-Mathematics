@@ -499,11 +499,30 @@ const phaseOf = (kind, text) => {
   const isDataLine = (l) => /[a-z]{1,8}-\d/.test(l) || /^[\[▸]/.test(l) || /^【/.test(l) || /p-[a-z]/.test(l) || /:\s*"/.test(l) || /^陈述：/.test(l) || /^对象：/.test(l) || /^类型：/.test(l)
   let totalAB = 0
   const missAB = new Set()
+  // ★★ DECLARED DIVERGENCES (F5 + the tool-help signature fix). These captured lines are ones the port is KNOWN to
+  // have rewritten ON PURPOSE, so counting them as missing makes the ratio measure policy instead of fidelity:
+  //   · two of them are the RETIRED reply transport (「只输出一个合法 JSON 对象…」 and 「结束时请**只**输出一个 JSON 对象」),
+  //     removed because 《规则》 requires the prompt not to teach mechanisms the runtime no longer has (F5);
+  //   · one taught a call the tool REFUSES: `vibe_v5_tool_help({"tool":"工具名称"})`, while the tool only accepts
+  //     `member` (measured: it refuses a `tool` key by name), so the port passes `member` and warns instead;
+  //   · one listed retired reply fields (`assign`, `prioritize`, `nudge`, `convene_meeting`) that the current faces no
+  //     longer share.
+  // They are excluded from BOTH sides of the ratio and asserted to be live (a prefix that matches nothing is stale).
+  const DECLARED_DIVERGENCES_AB = [
+    { prefix: '只输出一个合法 JSON 对象', why: 'F5: the retired JSON transport' },
+    { prefix: '结束时请**只**输出一个 JSON', why: 'F5: the retired JSON transport' },
+    { prefix: '复杂工具首次使用前调用 vibe_v5_tool_help({"tool"', why: 'the tool only accepts `member`; the old call is refused by name' },
+    { prefix: '协调需要时可用assign（subject', why: 'F5: retired reply fields' },
+  ]
+  const matchedDeclared = Object.fromEntries(DECLARED_DIVERGENCES_AB.map((d) => [d.prefix, 0]))
+  let declaredAB = 0
   // An UNCAPPED tally, because missAB stops at eight samples and cannot say how large a family is.
   const leftAB = new Map()
   for (const p of PROMPTS) {
     const mine = oursAB[phaseOf(String(p.kind), String(p.text))]
     for (const line of fixedOf(p.text)) {
+      const declared = DECLARED_DIVERGENCES_AB.find((d) => String(line).startsWith(d.prefix))
+      if (declared) { declaredAB += 1; matchedDeclared[declared.prefix] += 1; continue }
       totalAB += 1
       const dataLine = isDataLine(line)
         if (!dataLine) proseTotalAB += 1
@@ -511,10 +530,18 @@ const phaseOf = (kind, text) => {
       else { const k = String(line).slice(0, 18); leftAB.set(k, (leftAB.get(k) || 0) + 1); if (missAB.size < 8) missAB.add(line.slice(0, 46)) }
     }
   }
+  ok(declaredAB > 0 && Object.values(matchedDeclared).every((n) => n > 0),
+    'V65b. ★★ THE DECLARED DIVERGENCES ARE LIVE: every rewritten family still matches captured lines, so an exclusion cannot outlive the reason for it - and excluding them is what keeps the ratio below a fidelity number rather than a policy number',
+    { declaredLines: declaredAB, byPrefix: matchedDeclared, percentOfCorpus: Math.round(1000 * declaredAB / (declaredAB + totalAB)) / 10 })
   const pctAB = Math.round(100 * hitAB / totalAB)
-  ok(totalAB > 800 && hitAB > 0,
-    "V66. **** ACCEPTANCE (2), MEASURED (ROUND 550 DECLARED REFORM: the harness now uses the corpus s own object name p-lean-a instead of inventing q-1, a deliberate change declared rather than folded in - and MEASURED TO CHANGE NOTHING, because this comparison reads a SYNTHETIC assembly rather than the harness run, so the residual below is scenario DATA (vote payloads, formal decisions) that no assembly can produce): our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",
-    { hit: hitAB, total: totalAB, percent: pctAB })
+  // ★ FLOORS RE-BASED ON 2026-10-24, WHEN THE DECLARED DIVERGENCES WERE EXCLUDED. Before that the excluded families were
+  // counted as HITS, because the corrections section QUOTES the retired wording it corrects - so the old 85% was partly a
+  // measurement of our own quotation rather than of reproduced prose. The honest basis (only lines we still intend to
+  // reproduce) measures 80% here; the floors are set AT the measured value so a real regression reddens immediately while
+  // this declared reform does not need a later "lower the threshold" round.
+  ok(totalAB > 700 && hitAB > 0,
+    "V66. **** ACCEPTANCE (2), MEASURED (ROUND 550 DECLARED REFORM, RE-BASED 2026-10-24: " + declaredAB + " captured lines are DECLARED divergences (F5 + the tool-help signature fix) and are excluded from both sides, so this ratio measures reconstructed prose rather than quoted policy; the harness uses the corpus's own object name p-lean-a, a deliberate change declared rather than folded in - and MEASURED TO CHANGE NOTHING, because this comparison reads a SYNTHETIC assembly rather than the harness run, so the residual below is scenario DATA (vote payloads, formal decisions) that no assembly can produce): our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",
+    { hit: hitAB, total: totalAB, percent: pctAB, declared: declaredAB })
   // THE OTHER DIRECTION, which the first number cannot see. A line-by-line comparison against the original
   // under-counts whatever the source holds as several entries but renders as one line, so it can report a gap that
   // is not there. Asking the reverse question - how much of OUR prompt comes from the original at all - is the
@@ -563,7 +590,7 @@ const phaseOf = (kind, text) => {
     // divergence, so those captured lines are structurally unreproducible rather than missing transcription.
     "the paper submission protocol (JSON receipt fields → vibe_v5_paper tool calls)",
   ]
-  ok(pctAB >= 84 && knownGapsAB.length === 5,
+  ok(pctAB >= 80 && knownGapsAB.length === 5,
     "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the five that remain are listed (the paper protocol is a DECLARED replacement, see the comment)",
     { families: knownGapsAB.length, percent: pctAB })
 
@@ -590,9 +617,10 @@ const phaseOf = (kind, text) => {
   // The biggest remaining family. See the comment above: this is the number that distinguishes "65 percent and
   // closing" from "65 percent with one large family still missing".
   const BIGGEST_LEFT = leftAB.size ? Math.max(...leftAB.values()) : 0
+  const TOP_LEFT = [...leftAB.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4)
   ok(BIGGEST_LEFT <= 15,
-    "V70. **** NO SINGLE REMAINING FAMILY EXCEEDS FIFTEEN LINES, AND THE FIFTEEN IS DATA: the largest group still unmatched is " + BIGGEST_LEFT + " line(s), the largest group is the ballot minimal sample, whose only difference is the OBJECT NAME - p-lean-a against the scenario name - and a data row cannot match unless the harness picks the same object; what is left is names, statements, task boards and status rather than a missing block of prose",
-    { biggest: BIGGEST_LEFT, groups: knownGapsAB.length })
+    "V70. **** NO SINGLE REMAINING FAMILY EXCEEDS FIFTEEN LINES, AND THE FIFTEEN IS DATA: the largest group still unmatched is " + BIGGEST_LEFT + " line(s) [" + TOP_LEFT.map(([k, n]) => n + "×" + k).join(" | ") + "]; what is left is names, statements, task boards and status rather than a missing block of prose",
+    { biggest: BIGGEST_LEFT, top: TOP_LEFT, groups: knownGapsAB.length })
   }
 
 // A FAILED ASSERTION MUST BE VISIBLE TO THE GATE. This block was swallowed by a stray brace, and the suite printed

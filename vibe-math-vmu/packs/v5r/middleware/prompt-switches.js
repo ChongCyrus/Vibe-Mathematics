@@ -204,6 +204,13 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
   for (const [key, section] of MEETING_STATES) {
     decisions.push({ name: section, enabled: state === key })
   }
+  // ★★ (3b) ONE STATE BLOCK PER PROMPT (defect found 2026-10-24 while repairing T99). `v5r-meeting-others` is the
+  // section that forwards other members' speeches, and it PLACES the status block itself (in a meeting turn the state
+  // block is what carries the forwarded opinions). The always-on `v5r-brief-status` was not standing down there, so
+  // that assembly carried the ENTIRE state block TWICE — measured: 12 476 chars with `m=2` twice, against 12 395 with
+  // it once. Two copies of the authority line is worse than a wasted few hundred characters: the model is told its
+  // seat/quorum twice, and a later edit to one copy silently disagrees with the other.
+  if (state === 'others') decisions.push({ name: 'v5r-brief-status', enabled: false })
 
   // (4) The formalisation status line: always shown, so the default branch is "none".
   const status = turn.formalStatus === undefined || turn.formalStatus === null ? 'none' : turn.formalStatus

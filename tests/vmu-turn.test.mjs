@@ -561,6 +561,21 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'v5r-charter-org/researcher: 本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
     'v5r-charter-org/temp: 本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
   ]
+  // ★★ F5 (phase 12, 2026-10-24): SOME LINES ARE REWRITTEN ON PURPOSE, and the direction is the opposite of the
+  // list above. The rule 「提示词与规则完全相符自洽：删除『m 票机制』『每轮结束返回 JSON 机制』」 requires the prompt to
+  // stop teaching mechanisms the runtime no longer has, so those paragraphs were REPLACED by the current doors
+  // (`vibe_v5_verdict` + the p=1 evidence door + `vibe_v5_verified_promote`, and `vibe_vmu_turn {op:"reply"}` as the
+  // reply transport). The capture is a frozen historical artefact and must NOT be edited, so the shipped text
+  // deliberately differs from it. Declaring the divergence PER BLOCK, WITH A REASON, is the honest form: a block
+  // listed here with ZERO divergent lines is itself a failure (a stale declaration would silently widen the
+  // exemption), which the loop below asserts.
+  const DECLARED_DIVERGENCES = Object.freeze({
+    'v5r-charter-hard-rules': 'F5: 「正式证明或证伪」的登记口径从 `end_verify 的 formal_proof` 改成命题卡 `proofState=complete` + Lean 证据',
+    'v5r-charter-org': 'F5: Verified/ 的进门条件从「m 票/布尔一致」改成「正式证明 + 辩论裁决为真」',
+    'v5r-charter-truth-note': 'F5: 同上，truth-note 的两个变体都改成指向【五】的定论门槛',
+    'v5r-charter-voting': 'F5: 整段「m 票布尔一致」换成求真门槛（`vibe_v5_verdict` 概率 + p=1 的三种定论证据 + 唯一写入者），并把「表决 m」与「定论」明确分开',
+  })
+  const divergedByBlock = Object.create(null)
   // Scope: the CHARTER blocks are checked against the persona the original really hands out. The reply spec is
   // deliberately EXCLUDED because measuring showed the captured prompt corpus does NOT contain it - only its opening
   // sentence and vote_solved appear - so there is no capture-side baseline for it. That gap is recorded in docs/26
@@ -606,7 +621,9 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
         if (!baselineCorpus.some((s) => s.includes(line))) {
           const named = b.name + '/' + variant + ': ' + line
           if (KNOWN_UNBASELINED.includes(named)) unbaselined.push(named)
-          else missing.push(b.name + '/' + variant + ': ' + line.slice(0, 40))
+          else if (DECLARED_DIVERGENCES[b.name] !== undefined) {
+            divergedByBlock[b.name] = (divergedByBlock[b.name] || 0) + 1
+          } else missing.push(b.name + '/' + variant + ': ' + line.slice(0, 40))
         }
       }
     }
@@ -625,6 +642,15 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(unbaselined.length > 0 && KNOWN_UNBASELINED.length > 0 && unbaselined.length === KNOWN_UNBASELINED.length,
     'T71b. ★★ THE ONLY LINES WITH NO CAPTURED BASELINE ARE THE NAMED ONES: the capture has no temp×leaderless charter, so that single line is frozen here - a NEW gap reddens T71b, and a closed gap must shrink the list (no silent exemption)',
     { found: unbaselined.length, known: KNOWN_UNBASELINED.length, foundList: unbaselined.map((x) => x.slice(0, 70)) })
+  // ★ T71c: a declared divergence must still BE a divergence. Without this, adding a block here would permanently
+  // exempt it even after the capture moved or the text came back into parity - the declaration would outlive its reason.
+  {
+    const names = Object.keys(DECLARED_DIVERGENCES)
+    const stale = names.filter((n) => !divergedByBlock[n])
+    ok(names.length > 0 && stale.length === 0,
+      'T71c. ★★ EVERY DECLARED DIVERGENCE STILL DIVERGES: each block named as an F5 rewrite really has lines that the capture does not contain, so the declaration cannot silently outlive its reason',
+      { declared: names.length, diverged: Object.fromEntries(names.map((n) => [n, divergedByBlock[n] || 0])), stale })
+  }
   const loopC = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
   const asmC = await loopC.assemble(loopC.open({ member: 'acad', role: 'academician', roleLabel: '院士', phase: 'founding', roster: 'acad、r-1', quorum: 2, round: 1 }).turn)
   ok(asmC.ok === true && asmC.text.includes('【二、通用规章（全员必读）】') && asmC.text.includes('【一、所内编制与你的同事】') && asmC.text.includes('{{') === false,
@@ -662,12 +688,15 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // These assertions test the FULL catalogue, so they name it: the loop selects one of the two by settings.
   const loopRp = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_ROLE_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }), settings: { 'vmu.turn.replyCatalogue': 'full' } })
   const asmRp = await loopRp.assemble(loopRp.open({ member: 'r-2', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 3 }).turn)
-  ok(asmRp.ok === true && asmRp.text.includes('字段目录') && asmRp.text.includes('因此这一段并非合法 JSON') && asmRp.text.includes('你真正要输出的对象必须严格合法'),
-    'T75. **** the catalogue arrives AND admits it is not JSON while demanding a valid object - the contradiction is stated instead of left for a model to guess',
+  ok(asmRp.ok === true && asmRp.text.includes('字段目录') && asmRp.text.includes('因此这一段并非合法对象字面量') && asmRp.text.includes('你真正要交回的 `report` 必须严格合法'),
+    'T75. **** the catalogue arrives AND admits it is not a valid object literal while demanding a strictly valid `report` - the contradiction is stated instead of left for a model to guess',
     { chars: asmRp.text.length })
-  ok(asmRp.text.includes('最小合法样例') && asmRp.text.includes('{"say":"…","progress":"…","solved":false,"contextPct":40}') && asmRp.text.includes('"vote_solved": true|false'),
-    'T76. **** and it ends with a STRICTLY VALID minimal sample, with the unanimity rule stated right next to vote_solved and the authority matrix next to fire',
+  ok(asmRp.text.includes('最小合法 report 样例') && asmRp.text.includes('report: {"say":"…","progress":"…","solved":false,"contextPct":40}') && asmRp.text.includes('"vote_solved": true|false'),
+    'T76. **** and it ends with a STRICTLY VALID minimal report sample, with the unanimity rule stated right next to vote_solved and the authority matrix next to fire',
     { sample: true })
+  ok(asmRp.text.includes('调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`') && asmRp.text.includes('```json') === false,
+    'T76b. ★★ F5: the reply transport is a TOOL CALL, not a fenced JSON blob - the lead sentence names the tool and the whole spec carries no ```json fence',
+    { toolLead: true, fences: (asmRp.text.match(/```json/g) || []).length })
   ok(asmRp.text.includes('常驻研究员只能由所办解聘') && asmRp.text.includes('只要有一位有表决权者没有填 true'),
     'T77. **** the two corrections the source records are carried verbatim: the firing authority matrix and what a partial yes does',
     { corrected: true })
@@ -798,9 +827,26 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(asmR.text.includes('你是「institute」的一名常驻研究员') && (asmR.text.match(/你是「institute」的\*\*院士\*\*/g) || []).length === 0,
     'T98. **** and the researcher gets exactly ONE identity instead of three appended together',
     { chars: asmR.text.length })
-  ok(asmR.text.length < 20000 && asmR.text.includes('m = 2') === true,
-    'T99. **** with a single quorum value rather than the three the append produced',
-    { chars: asmR.text.length })
+  const STATUS_ONCE = '[状态] 你是 r-1（常驻研究员）｜轮次 3｜法定票数 m=2｜有表决权者 2 人'
+  // ★ Measured through the ORCHESTRATOR, not the raw pipeline: the raw pipeline places every section it is given, so
+  // it would report the meeting-state sections too. The single-value property is a property of the ASSEMBLED prompt.
+  const loopQ = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
+  const asmQ = await loopQ.assemble(loopQ.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 3, roster: 'acad、r-1', quorum: 2, statusBlock: STATUS_ONCE, settings: defaults }).turn)
+  ok(asmR.text.length < 20000 && asmQ.text.includes('m=2') && (asmQ.text.match(/m\s*=\s*2/g) || []).length === 1,
+    'T99. **** with a SINGLE quorum value rather than the three the append produced: the charter defers the number to the status block instead of freezing its own copy, so exactly one `m=2` reaches the prompt',
+    { chars: asmR.text.length, occurrences: (asmQ.text.match(/m\s*=\s*2/g) || []).length })
+  // ★★ T99b: THE STATE BLOCK ARRIVES ONCE IN EVERY MEETING STATE. Measured defect: `v5r-meeting-others` places the
+  // status block itself, but the always-on `v5r-brief-status` did not stand down there, so that one assembly carried
+  // the whole state twice (12 476 chars, `m=2` ×2). One copy per prompt in all three states, and the meeting state
+  // is still announced.
+  for (const st of ['first', 'others', 'invited']) {
+    const loopM = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
+    const asmM = await loopM.assemble(loopM.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'meeting', meetingState: st, round: 3, roster: 'acad、r-1', quorum: 2, statusBlock: STATUS_ONCE, task: 't', why: 'w', nextStep: 'n' }).turn)
+    const times = (asmM.text.match(/法定票数 m=2/g) || []).length
+    ok(asmM.ok === true && times === 1,
+      'T99b. ★★ ONE STATE BLOCK PER PROMPT in meeting state ' + st + ': the state is placed by exactly one section, so the authority line cannot arrive twice',
+      { state: st, occurrences: times, chars: asmM.text.length })
+  }
 }
 
 // 25) CONTEXT BOOKKEEPING AND THE RESUME SEED (docs/26 section 3.21). The original accounts for context usage on

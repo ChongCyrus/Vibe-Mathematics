@@ -253,12 +253,24 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   // submission boilerplate is intentionally not reproduced. This is a fourth structural class, named rather
   // than folded into the ratio.
   const isReplacedPaperProtocol = (l) => /^结束时只输出一个 JSON 对象/.test(l) || /\bpaper_part\b|\bpaper_review\b/.test(l)
-  const unexplained = left.filter((x) => !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line))
+  // ★ FIFTH STRUCTURAL CLASS (2026-10-24) — THE F5 RETIREMENT, RULED BY THE USER: 《规则》 requires the prompt to stop
+  // teaching mechanisms the runtime no longer has (「删除『m 票机制』『每轮结束返回 JSON 机制』」). Two families fall out
+  // of that ruling: the retired JSON-transport lead/invitation sentences, and the `vibe_v5_tool_help({"tool":…})` call,
+  // which the tool REFUSES by name (it only accepts `member`; the port now passes `member` and warns). Naming them as a
+  // class keeps the claim below honest: a gap appearing BEYOND the five named classes still means real transcription is
+  // missing rather than a policy change being re-discovered as a defect.
+  const isRetiredByF5 = (l) => /^只输出一个合法 JSON 对象/.test(l) || /^结束时请\*\*只\*\*输出一个 JSON/.test(l) || /^复杂工具首次使用前调用 vibe_v5_tool_help\(\{"tool"/.test(l) || /^若你本轮做了形式化或给出难度判断，请一并加上/.test(l)
+  // ★ SIXTH STRUCTURAL CLASS (2026-10-24) — R14: a role-claiming section is now CHAIR-ONLY. The corpus put
+  // 「作为院士，除了做研究，你还要统筹全所…」 into every member's prompt; measured on a live run, that told a
+  // plain member it ran the institute. The section is still shipped (the chair really does lead), so the only
+  // reproducible difference is that non-chair assemblies no longer carry those two lines.
+  const isChairOnlyRoleSection = (l) => /^作为院士，除了做研究/.test(l) || /^哪里是瓶颈；把工作拆成任务并用/.test(l)
+  const unexplained = left.filter((x) => !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
   const uniqueLeft = [...new Set(left.map((x) => x.line))]
   const uniqueUnexplained = [...new Set(unexplained.map((x) => x.line))]
   ok(unexplained.length === 0,
     "EVERY REMAINING GAP IS STRUCTURAL: of " + left.length + " unreproduced occurrences, which are " + uniqueLeft.length + " DISTINCT lines, every one is either the compact catalogues OTHER wording (the corpus spans a version change of the original, so printing both would print a line the original did not) a line addressed to a member or reviewer this scenario did not name (one assembly names one member), a line that carried a CAPTURED ABSOLUTE PATH and was made relative on purpose (round 94: freezing a recorded path into a live prompt is what the runtime-safety guard refuses), or the DECLARED paper-protocol replacement (JSON receipt fields → vibe_v5_paper tool calls). No line is missing for want of transcription",
-    { occurrences: left.length, distinctLines: uniqueLeft.length, firstLines: uniqueLeft.slice(0, 3).map((l) => l.slice(0, 60)), unexplainedDistinct: uniqueUnexplained.length })
+    { occurrences: left.length, distinctLines: uniqueLeft.length, firstLines: uniqueLeft.slice(0, 3).map((l) => l.slice(0, 60)), unexplainedDistinct: uniqueUnexplained.length, unexplained: uniqueUnexplained.slice(0, 6).map((l) => l.slice(0, 120)) })
 }
 console.log('=== 6. THE PER-MEMBER STARTING DIRECTIONS ARE SELECTED BY MEMBER ===')
 {
