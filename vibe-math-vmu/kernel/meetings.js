@@ -49,6 +49,12 @@ export { WIRED_KEYS, UNWIRED_REASONS }
 
 const RING = 200
 
+// ★ R25 (live run 17, the institute's own report): the kernel has always accepted the actor under three
+// spellings (`actor`, `by`, `member` — `who = actor ?? by ?? member`), but every chair rail hint named only
+// `actor`, so a caller who had passed `member:` was told to pass a parameter it had already passed. One phrase,
+// used by every rail, so the vocabulary cannot drift rail by rail.
+const ACTOR_ALIASES = 'the actor is accepted as actor, by or member (the three names are the same person)'
+
 export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null, boxFor = null } = {}) {
   if (typeof clock !== 'function') {
     // No key has been consulted at construction time: the list is explicitly EMPTY (never undefined).
@@ -332,7 +338,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       throw deny('VMU_STATE', 'meeting ' + m.id + ' is WAITING for its scheduled start: ' + q.present + '/' + q.roster + ' present; the floor (quorum) requires ' + q.required + ' and ' + (q.met === true ? 'IS met' : 'is NOT met') + ', but the institution rule is not: ' + ((q.unanimity && q.unanimity.because) ? String(q.unanimity.because) : 'not everyone has attended or voted yet') + ' — ' + String(opts.what || 'this act') + ' is refused',
         m.waitDecisionDue === true
           ? 'the wait has EXPIRED: the chair decides — proceed({ meeting, actor | by | member }) / lapse({ meeting, by, reason }) / recess({ meeting, by }) (the three names for the actor are the same thing)'
-          : 'the wait is still running (vmu.meetings.waitOnDueMs): the chair may proceed early, or wait it out', [])
+          : 'the wait is still running (vmu.meetings.waitOnDueMs): the chair may proceed early, or wait it out - ' + ACTOR_ALIASES, [])
     }
     return m
   }
@@ -771,11 +777,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         if (m.chair !== null) {
           if (who === null) {
             throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.waitDecisionRequiresChair=true: starting a waiting meeting needs the chair to name itself',
-              'pass { actor: "' + m.chair + '" } (member: is accepted as the same thing) — overriding an unmet quorum is an authority act and must be attributable', enforced)
+              'pass { actor: "' + m.chair + '" } - ' + ACTOR_ALIASES + '; overriding an unmet quorum is an authority act and must be attributable', enforced)
           }
           if (who !== m.chair) {
             throw deny('VMU_NOT_PERMITTED', 'only the meeting’s chair may start a waiting meeting: actor ' + who + ' != chair ' + m.chair,
-              'pass { actor: "' + m.chair + '" } (vmu.meetings.waitDecisionRequiresChair)', enforced)
+              'pass { actor: "' + m.chair + '" } - ' + ACTOR_ALIASES + ' (vmu.meetings.waitDecisionRequiresChair)', enforced)
           }
         }
       }
@@ -1517,11 +1523,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         if (seat !== null) {
           if (who === null) {
             throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.closeRequiresChair=true: closing needs the chair to name itself; the chair of ' + m.id + ' is ' + seat,
-              'pass { actor: "' + seat + '" } - the close receipt records who closed (vmu.meetings.closeRequiresChair)', enforced)
+              'pass { actor: "' + seat + '" } - ' + ACTOR_ALIASES + '; the close receipt records who closed (vmu.meetings.closeRequiresChair)', enforced)
           }
           if (who !== seat) {
             throw deny('VMU_NOT_PERMITTED', 'only the declared chair may close this meeting: ' + who + ' != ' + seat,
-              'the chair of ' + m.id + ' is ' + seat + ' (vmu.meetings.closeRequiresChair)', enforced)
+              'the chair of ' + m.id + ' is ' + seat + ' - ' + ACTOR_ALIASES + ' (vmu.meetings.closeRequiresChair)', enforced)
           }
         }
       }
@@ -1637,11 +1643,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         }
         if (who === null) {
           throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.extendRequiresChair=true: extending needs the chair to name itself; the chair of ' + m.id + ' is ' + seat,
-            'pass { actor: "' + seat + '" } (vmu.meetings.extendRequiresChair)', enforced)
+            'pass { actor: "' + seat + '" } - ' + ACTOR_ALIASES + ' (vmu.meetings.extendRequiresChair)', enforced)
         }
         if (who !== seat) {
           throw deny('VMU_NOT_PERMITTED', 'only the declared chair may extend this meeting: ' + who + ' != ' + seat,
-            'the chair of ' + m.id + ' is ' + seat + ' (vmu.meetings.extendRequiresChair)', enforced)
+            'the chair of ' + m.id + ' is ' + seat + ' - ' + ACTOR_ALIASES + ' (vmu.meetings.extendRequiresChair)', enforced)
         }
       }
       // The step is REQUIRED and must be positive: "extend it a bit" is not a declared amount.
@@ -1968,11 +1974,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       if (seat !== null) {
         if (who === null) {
           throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.conveneRequiresChair=true: a convene that installs a chair must name that chair as its actor',
-            'pass { actor: "<member id>" } together with { chair: "<the same id>" } (vmu.meetings.conveneRequiresChair)', enforced)
+            'pass { actor: "<member id>" } together with { chair: "<the same id>" } - ' + ACTOR_ALIASES + ' (vmu.meetings.conveneRequiresChair)', enforced)
         }
         if (who !== seat) {
           throw deny('VMU_NOT_PERMITTED', 'only the member who takes the chair may convene this meeting: actor ' + who + ' != chair ' + seat,
-            'pass { actor: x, chair: x } — convening ON BEHALF of another chair is exactly what this rail refuses (vmu.meetings.conveneRequiresChair)', enforced)
+            'pass { actor: x, chair: x } - ' + ACTOR_ALIASES + '; convening ON BEHALF of another chair is exactly what this rail refuses (vmu.meetings.conveneRequiresChair)', enforced)
         }
         chair = who
       }

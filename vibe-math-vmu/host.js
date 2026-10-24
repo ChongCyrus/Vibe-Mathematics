@@ -664,6 +664,26 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             out.bus = { entries: out.bus.entries.length, note: 'summary: count only; detail:"full" for the bus table' }
           }
           if (Array.isArray(out.auditTail)) out.auditTail = out.auditTail.slice(-1)
+          // ★ R26-family: `closureVote` grew LONG PROSE for the moment a member is about to vote
+          // (`castMeaning`, `windowMeans`, `candidateBasis`, `votesCastMeaning`, …). The summary is read at
+          // other moments, and the same reading is already available verbatim on `detail:"closure"`. So the
+          // long strings are moved behind that face — and the keys are LISTED in `proseOmitted` with a
+          // pointer, so nothing vanishes silently (that would be the "declared but not readable" defect
+          // this whole phase keeps finding). Machine fields (cast, votesCast, eligible, for/against/missing,
+          // window, round…) all stay.
+          if (out.closureVote && typeof out.closureVote === 'object') {
+            const kept = {}
+            const omitted = []
+            for (const [k, v] of Object.entries(out.closureVote)) {
+              if (typeof v === 'string' && v.length > 90) omitted.push(k)
+              else kept[k] = v
+            }
+            if (omitted.length > 0) {
+              kept.proseOmitted = omitted
+              kept.proseWhere = 'detail:"closure" carries these readings verbatim (they are long because they explain a name that is easy to misread)'
+            }
+            out.closureVote = kept
+          }
           if (Array.isArray(out.packTools)) out.packTools = { count: out.packTools.length, note: 'summary: count only; detail:"full" for names' }
           if (out.loader && typeof out.loader === 'object') out.loader = { loaded: Array.isArray(out.loader.modules) ? out.loader.modules.length : null, note: 'summary: count only; detail:"full"' }
           out.prompt = out.prompt && typeof out.prompt === 'object'

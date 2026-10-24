@@ -465,11 +465,21 @@ if (SELF_PROBE) {
   const statusSpec = host.state.specs.find((s) => s.name === 'vibe_vmu_status')
   const text = await statusSpec.execute({}, {})
   const parsed = JSON.parse(text)
-  ok(text.length < 8000, '★ 真装配（v5r pack）下 status 默认 summary < 8000 字节（可读，不再被宿主截断）', { bytes: text.length })
+  ok(text.length < 8000, '★ 真装配（v5r pack）下 status 默认 summary < 8000 字节（可读，不再被宿主截断）', 'bytes=' + text.length)
   ok(parsed.faces && typeof parsed.faces.count === 'number' && Array.isArray(parsed.faces.published),
     '★ summary 的 faces 是计数＋名字，不是每个工具的详情（契约字段仍在）', parsed.faces)
   ok(parsed.prompt && (parsed.prompt.sections !== undefined || parsed.prompt.chars !== undefined),
     '★ summary 的 prompt 是段数/字符数（契约字段仍在）', parsed.prompt)
+  // ★ R26-family: the summary must not silently LOSE the long closure prose — it names the omitted keys and
+  // points at the face that carries them, and that face must really carry them.
+  const omitted = parsed.closureVote && Array.isArray(parsed.closureVote.proseOmitted) ? parsed.closureVote.proseOmitted : []
+  ok(omitted.length > 0, '★ summary 把 closureVote 的长句移出，但逐名声明了被移出的键（不静默丢）', parsed.closureVote)
+  ok(/detail:"closure"/.test(String(parsed.closureVote && parsed.closureVote.proseWhere)),
+    '★ 并且指向承载它们的那张面（detail:"closure"）', parsed.closureVote && parsed.closureVote.proseWhere)
+  const closureText2 = await statusSpec.execute({ detail: 'closure' }, {})
+  const closureParsed = JSON.parse(closureText2)
+  ok(omitted.every((k) => typeof closureParsed.closureVote[k] === 'string' && closureParsed.closureVote[k].length > 90),
+    '★ 被移出的每一个键在 detail:"closure" 上都是原文长句（不是被删掉）', { omitted, got: Object.keys(closureParsed.closureVote || {}) })
   await rm(root, { recursive: true, force: true })
 }
 

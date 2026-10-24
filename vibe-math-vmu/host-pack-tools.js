@@ -46,6 +46,25 @@
 const str = (v) => (v === undefined || v === null ? '' : String(v))
 
 /**
+ * ★ R26 (live run 18, MEASURED): the agent called `vibe_v5_set { key, value, reason }` while the face
+ * declares `{ key, value, why }`. The handler destructured what it knows, never saw `reason`, and the
+ * call SUCCEEDED for a different key type — so a misspelled parameter name produced a receipt that
+ * looked like a normal answer to a question the caller had not asked. That is the "declared but not
+ * consumed" defect one layer up, on the CALLER's side, and the declaration already carries the fix:
+ * the parameter MAP is the accepted vocabulary, so an undeclared key can be refused by name.
+ *
+ * Why here: `makePackToolSpec().run` is the ONE funnel every pack tool goes through, so the check is
+ * unavoidable and cannot drift tool by tool. It refuses BEFORE the handler (no side effect) and
+ * BEFORE the seat-face gate (shape is not authority — and the declaration is public anyway).
+ */
+export function unknownParametersOf(entry = null, args = null) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return []
+  const declared = entry && entry.parameters && typeof entry.parameters === 'object' ? entry.parameters : {}
+  const known = new Set(Object.keys(declared))
+  return Object.keys(args).filter((k) => !known.has(k))
+}
+
+/**
  * The pack tools whose names the host already publishes as its OWN tools. A collision is a
  * named refusal (the adapter records it in `failures` with a registered code), never a silent
  * shadow: two tools with one name would make "which one does the model call" unanswerable.
@@ -204,6 +223,16 @@ export function makePackToolSpec({ entry, kernel = null, packId = null } = {}) {
       if (typeof handler !== 'function') {
         throw Object.assign(new Error('pack tool ' + name + ' has no handler function'),
           { code: 'VMU_PACK_MISSING', hint: 'declare tools[i].handler in the pack manifest' })
+      }
+      // ★ R26: an undeclared parameter is refused BY NAME rather than dropped. Measured in live run
+      // 18: `vibe_v5_set { key, value, reason }` executed while the face declares `why`.
+      const unknown = unknownParametersOf(entry, args)
+      if (unknown.length > 0) {
+        const declaredMap = entry.parameters && typeof entry.parameters === 'object' ? entry.parameters : {}
+        const known = Object.keys(declaredMap)
+        throw Object.assign(new Error('pack tool ' + name + ' does not accept parameter(s) ' + unknown.map((k) => '"' + k + '"').join(', ') +
+          '; it declares: ' + (known.length > 0 ? known.join(', ') : '(none)')),
+        { code: 'VMU_INVALID_ARGUMENT', hint: 'check the parameter names against the tool declaration — an undeclared key would otherwise be dropped silently, and the call would succeed for reasons nobody recorded' })
       }
       // ★ THE SEAT FACE GATE — BEFORE the handler, so a refusal cannot leave a side effect behind.
       // The assembler already narrowed the wire, but a hidden tool is not a refused tool; this is

@@ -1926,3 +1926,37 @@ phase 12 的收尾判据不是「我抽查没问题」，而是**研究所自己
 邻居：`vmu-meetings` 214/0 · `vmu-meeting-types` 142/0 · `vmu-turn` 209/0 · `vmu-v5r-tools` 348/0 · `vmu-receipt-shapes` **50/0** · `vmu-run16-findings` 16/0 · `vmu-meeting-parity` 204/0 · `vmu-kernel` 260/0。
 
 派生面：`update-doc-counts --write` ⇒ `JOBS total=518 suites=410 probes=108`；`generate-coverage-debt --write` ⇒ `107 files · L3 90 · L2 12 · L1 5 · L0 0`；`regen-all --check` ⇒ **16/16 in sync**。
+
+## §49 第 18 次真机跑：17/18 项被证实，留下两条同族缺陷（R25、R26）
+
+第 18 次真机跑（`D:\wd\vibemath开发\_oneoff\vm-slv\full-1024-181943.jsonl`，构建 `03226e5c`，`cast=true`，`SUMMARY: 1 session(s), 0 with RED checks`）。读数器用**读文本**的方式（`result.data.message.content[].text`）而不是重建 JSON —— 这是 §47 那条教训的直接应用。
+
+### §49.1 被真机证实的 17 项
+
+⑪.1 自签裁决 `notified: []` + `notifiedMeans` 说明「没有东西可发」；⑪.2 `presentBreakdown{chairSeated:true, attended:0}` 在开场即读出、真到场后 `attended` 与 `present` 一起动；⑪.3 `voteFloor.effectiveNote` 把 0 读成「没有门槛」；⑪.4 `selectionIgnored.pending` 在完成路径上给出真实 turn id；⑪.5 `waitDecisionDue` 变成 true 并抄到了 `overrodeQuorum{whichRule, waitedMs}`；⑪.6 `cast:true`。
+
+### §49.2 R25：到期提示仍在教一个参数名（同族第 2 次出现）
+
+`meetings.js` 里所有「你是谁」的提示都只写 `actor`，而收到的参数三个名字都收（`actor` / `by` / `member`）。上一轮只修了 `proceed` 那一处提示，其余各处的拒绝文案仍是旧词。本轮把**同族全部站点**一次改掉，并抽出一个常量 `ACTOR_ALIASES`（`actor | by | member` 的说明句），共 10 处；新断言检查这 10 处文案都含三种写法。教训：修一处文案时必须搜同族，否则下一跑会以「还是没改」的形式回来。
+
+### §49.3 ★ R26（新，最重的一条）：pack 工具**静默丢弃未声明的参数**
+
+第 18 跑里代理调用 `vibe_v5_set { key, value, reason }`，而这个面**声明**的是 `{ key, value, why }`。处理器解构它认识的部分，`reason` 从未被看见，调用**成功**了，回执还正常说「这个键的 hot 等级是 H1、已生效」—— 于是一个拼错的参数名产出了一份看起来完全正常的回答。没有任何地方说「你的一个参数被忽略了」。
+
+这是整个阶段一直在抓的「声明了却没有消费者」的**镜像**：这回是**消费了却没有声明**。修在一个漏斗上：`vibe-math-vmu/host-pack-tools.js` 的 `makePackToolSpec().run` 是所有 pack 工具的唯一入口，未声明的键在**处理器之前**按名拒（`VMU_INVALID_ARGUMENT`，拒文点名违规键 + 列出本面接受的键 + hint 说清「静默丢弃会让回执变成别人的答案」）。先拒后跑 ⇒ 拒绝不留副作用。
+
+### §49.4 这个闸装上去**当天**就抓到了反向的同族缺陷
+
+装上闸后 `tests/vmu-v5r-tools.test.mjs` 立刻红：`vibe_v5_record_method` 收到 `track` / `payload` 被拒，而 `gatedCardHandler`（`packs/v5r/tools.js:1136`）**确实读** `track`、`payload`、`proof_ref`、`proof_state` —— 三个卡写入面（`record_proposition` / `record_method` / `record_subproblem`）都读这四个键，却一个都没声明。也就是说：**按发布的声明调用，调用方根本用不了「写到通用轨」「附带 payload」「登记证明」这些已经实现的能力**。已把四个键补进三个面的声明（proposition 另有 `debate_ruling`）。
+
+### §49.5 顺带修掉的第三处：status summary 超限
+
+`tests/vmu-host.test.mjs` 的「真装配下 summary < 8000 字节」变红，实测 **8118**。原因不是尺子变严，而是 `closureVote` 为了「投票那一刻别误读」长出了长句（`castMeaning` / `windowMeans` / `candidateBasis` …）。处理方式不是放宽尺子，而是**把长句移到 `detail:"closure"` 上**，并在 summary 里留下 `proseOmitted`（逐键点名）与 `proseWhere`（指向那张面）—— 移走可以，静默丢不行。改后 **7363 字节**。
+
+### §49.6 门禁
+
+新 `tests/vmu-pack-tool-args.test.mjs`（**31 条 0 失败**）：helper 的全函数性、真实 spec 工厂的行为（声明内的键到达处理器 / 未声明的键按名拒且处理器**未被调用** / 拒文含违规键与可写集合）、三个卡面「声明了它确实读的四个键」、以及第 18 跑那次调用的原样复现（`reason` 被拒 + 去掉它之后参数闸不再插手）。
+
+`tests/vmu-host.test.mjs` 新增三条：summary 的 `proseOmitted` 非空、`proseWhere` 指向 `detail:"closure"`、且**被移出的每个键在该面上都是原文长句**（移走 ≠ 删掉）。套件 196 → **199/0**。
+
+邻居：`vmu-v5r-tools` 348/0 · `vmu-turn` 209/0 · `vmu-meetings` 214/0 · `vmu-kernel` 260/0 · `vmu-receipt-shapes` 50/0 · `vmu-prompt-live-facts` 29/0 · `audit-prompt-tool-params` 74/0 · `audit-prompt-retired-mechanisms` 68/0。
