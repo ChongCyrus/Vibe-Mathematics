@@ -1417,3 +1417,38 @@ F 断言拒绝回执自带三个布尔。★ 这一套**不证明**宿主发布�
 - `tests/formal-verify-v2.test.mjs` ⇒ `passed=490 failed=0 ALL GREEN`；`tests/audit-scanner-selfproof.test.mjs` ⇒
   `SCANNER SELF-PROOF: 4 passed, 0 failed`（`scanners=131 self-proven=63 named-debt=68`）；`audit-conformance-totals` 13/0。
 - `regen-all --write` ⇒ 16/16 written，随后 `--check` ⇒ `16/16 in sync`；`check-docs` ⇒ `DOC LINT: PASS`。
+
+
+## §35 真机跑 9 的验收反馈：五条修在源头，一条是**回执/账本口径**问题，另加一道「账本不许承诺不存在的字段」门禁
+
+**时点**：2026-10-24 12:50 前后 | **真机**：`full-1024-122115.jsonl`（run 9，`cast=true`，0 RED）| **HEAD 入**：`c48e6c9b` 之上的未提交批次
+
+### §35.1 五条修在源头
+
+| # | 反馈 | 根因（指到行） | 修法 |
+|---|---|---|---|
+| C | 汇报面拒收时看不到「送达能力」三面 | `tools/report.js` 的 `emit` 分支直接抛，`rec.refused` 里的 `drives` / `neverDrives` / `transportInjected` 随异常丢失 | `emit` 包 try/catch，异常上挂 `{code, message, hint, drives:false, neverDrives:true, transportInjected:false}` 再抛 |
+| B | 结题裁决把「通知卡片持有者」只写进文字，机器面不可见 | `vibe_v5_verdict_final` 的通知回执只有 `notified` | 回执增 `delivery:{addressed, selfAddressed, recipient, reason}`；`selfAddressed:true` 即「主席自己的卡，无需通知」 |
+| A | 轮次回执 `members` 被忽略时不说明原因 | 收条只有三个平行标量 | 改为 `selectionIgnored:{requested, reason, pending}`（**一个对象**，账本先前写的正是这个名字——见 §35.3） |
+| E | 「等待期已到但流程继续」时没有「是哪条规则让它继续」 | 提案表决里没有 overrode 标记 | 表决回执增 `overrodeQuorum:{by, rule, floor, present}`，并把「继续」与「主席自决」绑成一条可读事实 |
+| F | 预约/等待中的会议「到期」只能靠**别的事情碰到它**才被发现 | `syncMeeting` 只在该会议被访问时运行 | 内核新增 **`meetings.sweepDue({at})`**：一趟扫描、走**同一个** `syncMeeting`、返回 `{at, swept, transitions:[{meeting, from, to}], note}`；v5r 的 idle 边把它作为真实消费者 |
+
+### §35.2 一条不是产品缺陷：G——账本自己错了
+
+账本 §33 写 `allFor`，产品里的字段是 `for`；同批还有一处把「三个平行标量」写成了一个对象名。这两处**都是账本的问题**，改账本、不改产品。教训：**账本也是被测面**，它承诺的字段名必须能在产品里找到。
+
+### §35.3 于是有了新门禁：`tests/audit-ledger-field-claims.test.mjs`
+
+规则：账本表格行里每一个反引号包起来的**驼峰标识符**，都必须出现在 `vibe-math-vmu/**/*.js` 的源码里。实测 `rows=62 claimed=79 present=79 missing=0`。唯一豁免 `captureNeedles` 是"账本记录它已被删除"的历史名，且豁免必须**同时**满足"账本仍在用它"与"产品里确实没有它"——任一不再成立即报过期。
+
+**它能证明什么 / 不能证明什么**：证明"账本承诺的名字在产品源码里存在"；不能证明"该字段真的在那张回执上"——只有真机调用能证明后者。它抓的是"命名了却从未写入"这一类，而这一类在这个项目里已经发生过两次。
+
+**`--selftest`**（8 项）：正控（干净账本不报）、反控（编造名字必报）、散文不算承诺、豁免的名字不被报缺、**豁免过期必报**、非表格输入、断言数量固定。
+
+### §35.4 断言面被"测量"限定（而不是照着反馈逐条写测试）
+
+`tests/vmu-run9-findings.test.mjs` 只断言**最小启动里真能到达**的那一条（F：`sweepDue` 在无人触碰时结算到期会议，17 条断言）；A/B/C/E 四条各自写明"为什么这里到不了"（收据实测：`members()` 在最小启动里没有 subagents 服务；`verdict_final` 需要 `meeting`；`report` 需要先声明名字），并各自指到**它真正可达的那个套件**（`vmu-meeting-types` §7 / `vmu-debate-subject-proof` / `vmu-verified-gates`）。A 那类"文档承诺了代码没发的字段"则改由上面那道**类门禁**兜住——一条门禁抓一类，比再补一个端到端用例更值。
+
+### §35.5 状态
+
+五条修复 + 两道新门禁（`audit-ledger-field-claims`、`vmu-run9-findings`）＋ `audit-scanner-selfproof` 的计数（132 = 64 自证 + 68 具名债务）；`regen-all` 16/16；`update-doc-counts` 后 `JOBS total=511 suites=403 probes=108`。下一步：提交，然后真机跑 10 验证这五条在真机上可见。

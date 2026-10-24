@@ -48,8 +48,17 @@ export const V5R_STALL_MEETING = Object.freeze({
   capabilities: Object.freeze(['trigger-workflow', 'record']),
   hooks: Object.freeze({
     'control/idle': async (flat = {}) => {
+      // ★ LIVE RUN 9, finding F: the wait deadline must be observable without an unrelated call touching the meeting.
+      // The idle edge is the natural clock for it (nothing else is happening), and the sweep is the KERNEL's pass — this
+      // module does not decide anything, it only asks the face to settle its own meetings on time. A face without
+      // `sweepDue` (an older assembly) is reported, never silently skipped.
+      const meetingsFace = flat.api && flat.api.services && typeof flat.api.services.get === 'function'
+        ? flat.api.services.get('vmu.meetings') : null
+      const swept = (meetingsFace && typeof meetingsFace.sweepDue === 'function')
+        ? meetingsFace.sweepDue({ at: flat.at === undefined ? null : flat.at })
+        : { swept: 0, transitions: [], note: 'this assembly publishes no meetings.sweepDue, so due waits were NOT swept' }
       const decision = stallDecision(flat)
-      if (!decision.convene) return { ok: true, convened: false, reason: decision.reason }
+      if (!decision.convene) return { ok: true, convened: false, reason: decision.reason, swept: swept.swept, sweptTransitions: swept.transitions }
       // The seam is capability-gated: with no `trigger-workflow` this throws a NAMED refusal, and an unpublished
       // name throws VMU_NO_SUCH_OBJECT listing what IS published - never a silent null.
       const meetings = flat.api.services.get('vmu.meetings')
@@ -57,7 +66,7 @@ export const V5R_STALL_MEETING = Object.freeze({
       // returned to the bus while the meeting itself recorded nothing, so `summary`/`status` could show a "stall" meeting
       // with no statement of what stalled — measured on a live host, and the reader had no way to tell why it was opened.
       const opened = await meetings.open({ type: 'ordinary', kind: 'stall', at: flat.at === undefined ? null : flat.at, reason: decision.reason })
-      return { ok: true, convened: true, stallAfterMs: decision.stallAfterMs,
+      return { ok: true, convened: true, swept: swept.swept, sweptTransitions: swept.transitions, stallAfterMs: decision.stallAfterMs,
         meetingId: opened && (opened.meetingId || opened.id) ? (opened.meetingId || opened.id) : null, reason: decision.reason }
     },
   }),

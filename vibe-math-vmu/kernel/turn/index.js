@@ -1853,9 +1853,20 @@ export function createTurnOrchestrator({
         // The reading now names both facts instead of leaving the caller to infer them.
         const requested = (Array.isArray(members) ? members : [])
           .map((m) => (m && typeof m.id === 'string' ? m.id : null)).filter((id) => id !== null)
+        // ★ LIVE RUN 9, finding A: the ledger (§33 row k) and the acceptance task file both name a structured
+        // `selectionIgnored{requested,reason,pending}`, while the receipt only carried three PARALLEL scalars. The
+        // agent therefore recorded "the promised reading is absent" — a doc that names a field the code never emits is
+        // the same defect class as §33's `allFor`. The scalars stay (consumers exist, and they are the same facts); the
+        // structured object is ADDED so the promised name resolves, with the pending turn NAMED rather than implied.
         return { ok: true, source: 'tool', completed: true,
           requestedMembers: requested,
           selectionApplied: requested.length === 0,
+          selectionIgnored: requested.length === 0 ? null : {
+            requested,
+            pending: r.turn && r.turn.id !== undefined ? r.turn.id : null,
+            pendingMember: r.member === undefined ? null : String(r.member),
+            reason: 'the pending report belonged to ' + String(r.member) + ': `members` selects who receives the NEXT prompt, and completing an already-issued prompt cannot change whose report it was',
+          },
           selectionNote: requested.length === 0 ? null
             : 'the pending report belonged to ' + String(r.member) + ', so `members` did not apply to this call - it selects who gets the NEXT prompt; call step again to apply it',
           receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, fields: r.fields,

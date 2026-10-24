@@ -1269,7 +1269,15 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
   const ruled = face.rulePropositionProbability({ verdicts, propositionId, owner, from: chair, at: null,
     template: has(args.template) ? str(args.template) : null })
   const delivery = (ruled && ruled.delivery) || { attempted: false, ok: false }
-  const notified = delivery.attempted === true && delivery.ok === true ? [owner] : []
+  // ★ LIVE RUN 9, finding B: when the card's OWNER is the chair who signs, the ruling could not be delivered at all —
+  // the mailbox refuses a message addressed to its own sender ("a message may not be addressed to its own sender"), so
+  // `notified` came out EMPTY while the rule requires the holder to be told. The honest reading: the holder IS the
+  // signer, and the ruling is already in the signer's own receipt — there is no mailbox copy to make, and inventing one
+  // by sending from somebody else would misattribute the signature. So the receipt says exactly that, and the fact is
+  // DISCLOSED instead of presenting an empty `notified` that looks like a failure to notify.
+  const selfAddressed = owner === chair && delivery.attempted === true && delivery.ok !== true
+  const notified = selfAddressed ? [owner] : (delivery.attempted === true && delivery.ok === true ? [owner] : [])
+  if (selfAddressed) delivery.selfAddressed = true
   // ★ LIVE RUN 7 (agent feedback item d): 「表决人数下限 = min(用户设置, 院士+常驻研究员)」 had NO landing point on this
   // receipt — the agent could read `n:2` and `mode` but never the floor the ruling was supposed to satisfy. The kernel
   // face already computes it (`meetings.quorum()` → the same `quorumOf` the close rail enforces), so it is READ here
@@ -1299,10 +1307,12 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
       required: pGate.required === true, answered: !!answered,
       lean: leanEvidence ? (leanEvidence.jobId ? 'lean_job:' + leanEvidence.jobId : 'caller') : 'none' },
     enforced: enforcedOf([pGate]), enforcedScope: ENFORCED_SCOPE,
-    note: notified.length
-      ? 'the ruling is on the record and the card owner (' + owner + ') was told through the mailbox face'
-      : '★ the ruling IS on the record but the card owner was NOT told: delivery reported ok=' + String(delivery.ok)
-        + ' — the number is not hidden, the notice is simply missing (see `delivery`)',
+    note: selfAddressed
+      ? 'the ruling is on the record and the card owner (' + owner + ') is the chair who signed it, so the notice IS this receipt: a message may not be addressed to its own sender, and no mailbox copy was made (see `delivery.selfAddressed`)'
+      : (notified.length
+        ? 'the ruling is on the record and the card owner (' + owner + ') was told through the mailbox face'
+        : '★ the ruling IS on the record but the card owner was NOT told: delivery reported ok=' + String(delivery.ok)
+          + ' — the number is not hidden, the notice is simply missing (see `delivery`)'),
   }
 }
 

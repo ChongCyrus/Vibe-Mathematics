@@ -69,7 +69,20 @@ export function makeReportSpec({ param, refused, TOOL_NAMES, kernel }) {
         }
         if (action === 'emit') {
           if (!name) return refused('VMU_INVALID_ARGUMENT', 'emit needs name')
-          return Object.assign({ ok: true, action }, r.emit({ name, payload: { metrics: parseMetrics() } }))
+          try {
+            return Object.assign({ ok: true, action }, r.emit({ name, payload: { metrics: parseMetrics() } }))
+          } catch (e) {
+            // ★ LIVE RUN 9, finding C: a refusal is a READ FACE, but the host's catch branch builds EXACTLY
+            // {ok:false, code, message, hint} and drops every other property (see the note in kit/handlers.js). So the
+            // three facts the acceptance check must transcribe (this channel never drives the loop; no transport is
+            // injected) existed on status()/trace() but NOT on the receipt of the call that failed. Measured: the
+            // kernel-side refusal carries them (kernel/report.js) and they were lost here.
+            const extra = {}
+            for (const k of ['drives', 'neverDrives', 'transportInjected', 'report', 'id']) {
+              if (e && e[k] !== undefined) extra[k] = e[k]
+            }
+            return Object.assign(refused((e && e.code) || 'VMU_ENGINE_UNAVAILABLE', String((e && e.message) || e), (e && e.hint)), extra)
+          }
         }
         if (action === 'tick') {
           return Object.assign({ ok: true, action }, r.tick({ at: null, event: event === undefined ? null : event, metrics: parseMetrics() }))

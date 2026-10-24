@@ -664,6 +664,34 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
      * whose. `beforeDeadline` is recorded, so "the chair jumped the gun" is distinguishable from "the chair decided
      * after the declared wait" — a silent early start would look identical to an on-time one in the minutes.
      */
+    /**
+     * ★ LIVE RUN 9, finding F: a WAITING meeting's deadline was only ever evaluated when something else happened to
+     * TOUCH that meeting (`requireMeeting` calls `syncMeeting`). So "the wait expired" was a fact nobody learned until
+     * an unrelated call arrived — the state that exists to wait had no clock of its own. This is the clock: one pass over
+     * the live meetings, each settled through the SAME `syncMeeting` the touch path uses (no second transition rule,
+     * no second authority). It never DECIDES anything for the chair — `waitDecisionDue` becomes true and the chair still
+     * has to proceed/lapse/recess — it only makes the deadline observable on schedule.
+     */
+    sweepDue({ at = null } = {}) {
+      const now = at === null ? clock() : atMs(at)
+      const transitions = []
+      for (const mm of [...live.values()]) {
+        if (mm.state !== 'waiting' && mm.state !== 'scheduled') continue
+        const before = mm.state
+        const dueBefore = mm.waitDecisionDue === true
+        syncMeeting(mm, now)
+        if (mm.state !== before || (mm.waitDecisionDue === true && dueBefore !== true)) {
+          transitions.push({ meeting: mm.id, from: before, to: mm.state, waitDecisionDue: mm.waitDecisionDue === true,
+            scheduledFor: mm.scheduledFor === undefined ? null : mm.scheduledFor,
+            dueAt: mm.waitStartedAt === undefined ? null : mm.waitStartedAt })
+        }
+      }
+      return { at: now, swept: transitions.length, transitions,
+        note: transitions.length === 0
+          ? 'no scheduled or waiting meeting changed state at this instant (the pass still ran)'
+          : 'settled by the same syncMeeting the touch path uses; a due WAIT still needs the chair to decide (proceed/lapse/recess)' }
+    },
+
     proceed({ meeting = null, actor = null, by = null, at = null, why = null } = {}) {
       const mid = String(meeting)
       const m = meetingOf(mid)
@@ -704,7 +732,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       markState(m, 'open')
       const whyText = (why === null || why === undefined) ? null : String(why)
       m.minutes.entries.push({ at: now, kind: 'proceeded', by: who, why: whyText, waitedMs, beforeDeadline, quorum: quorumOf(m) })
-      const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, scheduledFor: m.scheduledFor, quorum: quorumOf(m), enforced, enforcedScope: ENFORCED_SCOPE }
+      // ★ LIVE RUN 9, finding E: the agent read "proceed succeeded" and asked whether the roster had been checked.
+      // Refusing would be wrong (proceeding IS the chair's override of an unmet quorum — that is what 等待 exists for),
+      // but the receipt has to SAY so: `quorum.met` alone is easy to read as "the institution rule was satisfied".
+      const qAfter = quorumOf(m)
+      const overrodeQuorum = qAfter.met !== true
+      const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, scheduledFor: m.scheduledFor, quorum: qAfter, overrodeQuorum, overrodeNote: overrodeQuorum ? 'the meeting started WITHOUT its quorum: the chair used proceed() to start it anyway (this is the chair\'s authority act, recorded in minutes as `proceeded`)' : null, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       say({ type: 'meetings/proceeded', at: now, meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, quorum: quorumOf(m), enforced, enforcedScope: ENFORCED_SCOPE })
       return Object.assign({ ok: true, meeting: m.id, state: m.state, startedLate: true, receipt }, receipt)
