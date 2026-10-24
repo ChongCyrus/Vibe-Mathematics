@@ -380,7 +380,12 @@ export function createMeetingVerdict({ clock = () => 0, log = null, bus = null, 
       // from "the signer IS the holder" without parsing the send port's own result. Both facts are stated here, and the
       // SELF case is short-circuited: the mailbox refuses a self-addressed message by name, so attempting it produced a
       // spurious ok:false that looked like a delivery failure.
-      const signer = (args && (args.member || args.signedBy || args.by)) ? String(args.member || args.signedBy || args.by) : null
+      // ★ LIVE RUN 11: the pack face passes the signer as `from` (the notice's sender — the name it uses everywhere in
+      // this module's API), so a signer resolution that only looked at member/signedBy/by saw null and the self case fell
+      // through to an actual mailbox send, where the mailbox refused by name. `from` is accepted here because it IS the
+      // signer: rulePropositionProbability signs the ruling, and the notice's sender is that signature.
+      const signerOf = (a) => (a && (a.member || a.signedBy || a.by || a.from)) || null
+      const signer = signerOf(args) === null ? null : String(signerOf(args))
       const holder = rec.owner === undefined || rec.owner === null ? null : String(rec.owner)
       const selfAddressed = holder !== null && signer !== null && holder === signer
       if (selfAddressed) {

@@ -1483,3 +1483,27 @@ F 断言拒绝回执自带三个布尔。★ 这一套**不证明**宿主发布�
 
 ### §36.5 状态
 账本 42 行：**41 已实现 / 1 部分（A1，只差真机汇报面证据）/ 0 缺口 / 0 待核**（本轮不新增行，只把 B/E/F/C 的「已修」补上断言与读数）。
+
+
+## §37 真机第 11 跑：交付回执的形状被逐条量到，同时抓出两个「假 selfAddressed」
+
+### §37.1 读数
+- transcript：`D:\wd\vibemath开发\_oneoff\vm-slv\full-1024-131714.jsonl`（13 431 行 / 5.5 MB），tarball build=`866c1344`，`CLOSURE cast=true`（6 个 turn 回执），`SUMMARY: 1 session(s), 0 with RED checks`。
+- **B**：真机回执 `delivery{addressed, selfAddressed, recipient, reason}` 两条都在——他人卡：`addressed:true, selfAddressed:false, recipient:"member-2", ok:true, result:{ids:["ml-1"], queued:1}`，且 `vibe_v5_inbox` 里真的读到了那条消息；本人卡（r-24）：`addressed:false, selfAddressed:true, recipient:"member-1"`。
+- **F**：两个读面都带 `sweep{ran, at, swept, transitions, note}`；真机里 `ran:false`（院士全程没闲过，空闲边沿没触发扫过）——**这是诚实的「本进程还没扫过」，不是「没有到期的」**；`swept/transitions` 的真值由 `tests/vmu-receipt-shapes.test.mjs` 在进程内直接驱动 `sweepDue` 量到。
+- **E**：真机 `proceed` 回执 `overrodeQuorum:false, overrode:null`，且 `quorum{required:0, floorMet:true, zeroBecause:"vmu.meetings.quorumMin and quorumRatio are both 0: the deployment declared no floor"}`——**这个部署没有声明法定人数下限**，所以「没有可被越过的下限」是正确答案，不是字段缺失；越过下限的分支（`required>0` 却不满足）由形状套件在 `quorumMin:2` 的 boot 上量到 `overrode{by, rule, floor, present, waitedMs}`。
+- **C / A1**：真机汇报面被拒是 `{ok:false, code:"VMU_REPORT_NO_TRANSPORT", drives:false, neverDrives:true, transportInjected:false, report:"v5r-outward-progress", id:"rep-1"}` ⇒ A1 一直缺的那条**真机证据**到手（具名拒，而不是假装送达）。
+
+### §37.2 两个真缺陷（都由真机回执暴露，不是由审计暴露）
+1. **内核的「签名者」解析看不见 `from`**。`vibe-math-vmu/kernel/meetingverdict.js` 原来只认 `args.member || args.signedBy || args.by`，而 pack 面一直传 `from`（在这个模块里「通知的发送者」就是签名者）⇒ `selfAddressed` 永假 ⇒ 本人卡的路径**真的去投递**，邮箱按名拒绝（`a message may not be addressed to its own sender`），回执成了 `selfAddressed:true + ok:false + code:VMU_INVALID_ARGUMENT` 的自相矛盾。修法：签名者解析接受 `from`，并在注释里写明它为什么**就是**签名者。
+2. **pack 面改写内核的 delivery**。旧代码 `const selfAddressed = owner === chair && delivery.attempted === true && delivery.ok !== true; if (selfAddressed) delivery.selfAddressed = true` —— **从一次失败推断出「本人投递」，再把结论写进内核的对象里**。后果：① 回执自相矛盾；② 内核的短路缺陷被这层掩盖，整整一轮看不出来。修法：pack 只**读** `delivery.selfAddressed`，并新增 `deliveryContradiction`：若内核又开始尝试自发投递，回执如实说 `true`，而不是把它写成故事。
+   ★ 这一条属于「读面篡改另一个读面的结论」，比字段缺失更危险——它让错误看不出来。
+
+### §37.3 断言
+`tests/vmu-receipt-shapes.test.mjs` **47 passed / 0 failed**（36 → 47）：B（内核三支：本人短路 / 他人投递 / 端口拒绝）、B2（**pack 面**：本人卡 ⇒ `selfAddressed:true, attempted:false, ok:true`、`deliveryContradiction:false`、`notified` 含本人；他人卡 ⇒ `addressed:true`、`recipient` 正确、邮箱真的收下）、E（`overrode{by,rule,floor,present,waitedMs}`）、F（两个读面同读一次 pass 的 `at`）、C（被拒回执三字段）。★ A（`selectionIgnored`）仍具名不覆盖：需要一次真的在等待的 turn，最小 boot 无 subagents 服务。
+
+### §37.4 教训
+「我加了一个字段」的结论有三层，缺一层就是假绿：① 代码里有 ② 回执里有（**形状断言**）③ 真机回执里有（**真机读数**）。第 9–10 跑我只有 ①，于是三条「已修」是假的；本轮三层齐全，而第 ③ 层立刻抓出两个比原缺陷更隐蔽的错。
+
+### §37.5 状态
+账本 42 行全部 ✅（A1 的真机证据补齐后不再有 ⚠️ 行）。

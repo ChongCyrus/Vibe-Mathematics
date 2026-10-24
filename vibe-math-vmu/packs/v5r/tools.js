@@ -1281,9 +1281,15 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
   // signer, and the ruling is already in the signer's own receipt — there is no mailbox copy to make, and inventing one
   // by sending from somebody else would misattribute the signature. So the receipt says exactly that, and the fact is
   // DISCLOSED instead of presenting an empty `notified` that looks like a failure to notify.
-  const selfAddressed = owner === chair && delivery.attempted === true && delivery.ok !== true
+  // ★ LIVE RUN 11: this used to INFER the self case from a FAILED delivery and then WRITE `selfAddressed` into the
+  // kernel's own `delivery` object (old line: `if (selfAddressed) delivery.selfAddressed = true`). The result was a
+  // receipt that said both `selfAddressed:true` and `ok:false, code:VMU_INVALID_ARGUMENT`, i.e. 'I addressed myself and
+  // it failed' — a read face editing another face's verdict, and the reason the kernel's short-circuit was never noticed
+  // as broken. The kernel decides this now (`delivery.selfAddressed` after its own short-circuit); the pack only READS it
+  // and may not mutate it.
+  const selfAddressed = delivery.selfAddressed === true
   const notified = selfAddressed ? [owner] : (delivery.attempted === true && delivery.ok === true ? [owner] : [])
-  if (selfAddressed) delivery.selfAddressed = true
+  const deliveryContradiction = selfAddressed && (delivery.attempted === true || delivery.ok === false)
   // ★ LIVE RUN 7 (agent feedback item d): 「表决人数下限 = min(用户设置, 院士+常驻研究员)」 had NO landing point on this
   // receipt — the agent could read `n:2` and `mode` but never the floor the ruling was supposed to satisfy. The kernel
   // face already computes it (`meetings.quorum()` → the same `quorumOf` the close rail enforces), so it is READ here
@@ -1313,6 +1319,8 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
       required: pGate.required === true, answered: !!answered,
       lean: leanEvidence ? (leanEvidence.jobId ? 'lean_job:' + leanEvidence.jobId : 'caller') : 'none' },
     enforced: enforcedOf([pGate]), enforcedScope: ENFORCED_SCOPE,
+    // if this is ever true, the kernel attempted a self-addressed send: the receipt says so rather than smoothing it over
+    deliveryContradiction,
     note: selfAddressed
       ? 'the ruling is on the record and the card owner (' + owner + ') is the chair who signed it, so the notice IS this receipt: a message may not be addressed to its own sender, and no mailbox copy was made (see `delivery.selfAddressed`)'
       : (notified.length
