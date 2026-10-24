@@ -2199,3 +2199,35 @@ brief ⑤ 要求抄 `delivered / drives / code / message`，而 `VMU_REPORT_NO_T
 - 新门禁 `tests/vmu-roster-liveness.test.mjs` **22/0**；邻居全绿：`vmu-host` 199 · `vmu-turn` 209 · `vmu-closure-electorate` 7 · `vmu-control-roster` 14 · `vmu-control` 26 · `vmu-v5r-tools` 354 · `vmu-meetings` 214 · `vmu-kernel` 260 · `vmu-live-run-r9-r12` 39。
 - 派生面：`update-doc-counts --write` ⇒ `JOBS total=521 suites=413 probes=108`；`regen-all --check` ⇒ 16/16。
 - 下一步：第 27 次真机跑，验收项为 ⑰.2 c-1（已过，作为回归）、以及「离所成员不再占席/不再计票/不再入 electorate」这三条在真机上确实成立。
+
+## §58 第 27 次真机跑：六条判据全部通过，代理仍列出三条读面残余（并已修）
+
+### §58.1 机器读数
+
+- transcript `_oneoff/vm-slv/full-1024-210018.jsonl`，build=`e53c9a93`，`cast=true`（两张**活人**票），`SUMMARY: 1 session(s), 0 with RED checks`。
+- ⑲.1 席位只数活人：fire 后同席可再雇（旧版永久「席位已满」）——通过。
+- ⑲.2 离所成员的票被具名拒且不计入——通过（码是 `VMU_STATE`，见残余 1）。
+- ⑲.3 electorate ＝ 活名册：`eligible` 只有两名活人，`missing` 不含已离所者，`votesCast:2`——通过。
+- ⑲.4 `hire` 缺 `member_id` 具名拒，并明写旧版会造出字符串 `"undefined"` 幽灵成员——通过。
+- ⑲.5 c-1 回归：`op:"prompt"` 的 `turn` 与 `memberPrompt.turnId` 完全相等（`t-1`），四页分页可读全——通过。
+- ⑲.6 汇报面 `VMU_REPORT_NO_TRANSPORT` 具名拒，`delivered:false / drives:false / neverDrives:true / transportInjected:false`——通过。
+
+### §58.2 代理列出的三条残余（全部是「面」的读法问题，不是机制缺失）
+
+| # | 现象 | 修法 | 门禁 |
+|---|---|---|---|
+| 1 | `vibe_vmu_vote` **静默忽略**未声明参数：`value:1`/`reason:"…"` 被丢弃，回执只报缺 `solved` | `vibe-math-vmu/tools/vote.js`：参数面声明提成一个冻结对象，`run()` 里按它逐键比对，未声明者具名拒（`no parameter named "value", "reason" - it was NOT applied`），hint 列出声明集 | `tests/vmu-roster-liveness.test.mjs` ④（7 条） |
+| 2 | `VMU_NO_SUCH_OBJECT` 的 hint 把**已离所**成员列入「known members」 | 同一文件：hint 分开写 `enrolled members: …` 与 `departed (cannot vote): …`，与下面的 state 闸同一条规则 | ③（既有断言加强） |
+| 3 | `roster` 面读不到席位占用（`occupied/capacity` 只在 hire/fire 回执里） | `vibe-math-vmu/tools/control.js` 的 roster 分支转发 `kernel.members.status().slots/live/total`，并给出 `slotsMeans` 说明「只数活人、字段名是 occupied」 | ⑤（7 条，含 fire 后由 roster 面读到 0） |
+
+### §58.3 教训
+
+1. **同一个数只能有一个来源。** 席位占用在 `members.status()` 里算一次，roster 面转发它；如果面自己再数一遍，就又多一个会漂的真相。
+2. **「读不到」也是缺陷。** 三条残余没有一条是机制缺失，全是「机制做了但读面上看不见/说错」——这类缺陷只有真机的读者会提出来。
+3. **第三次因反引号受损。** 用 `sed` 把含反引号的短语写进 `control.js`，命令替换把 `occupied` 吃掉，正文变成「the field is )」。含反引号/中文的文本一律用 write 工具生成脚本，不再走 bash 内联。
+
+### §58.4 状态
+
+- 修改：`vibe-math-vmu/tools/vote.js`、`vibe-math-vmu/tools/control.js`；`tests/vmu-roster-liveness.test.mjs` 由 22 条扩到 **35 条 0 fail**。
+- 邻居：`vmu-control` 26 · `vmu-control-roster` 14 · `vmu-host` 199 · `vmu-turn` 209 · `vmu-v5r-tools` 354 · `vmu-closure-electorate` 7，全 0 fail。
+- 下一步：第 28 次真机跑，验收项为 ⑳.1 `value`/`reason` 被具名拒、⑳.2 roster 面读 `occupied/capacity`、⑳.3 离所票的拒码与 hint 两个读数。

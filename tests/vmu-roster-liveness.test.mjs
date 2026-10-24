@@ -140,6 +140,41 @@ console.log('=== 3. THE ELECTORATE IS THE LIVE ROSTER (run 26 defect 3) ===')
     '★★ closure is reached by the TWO live members alone — no vote from a departed member is needed', { cast: done.cast, votesCast: done.votesCast, for: done.for })
 }
 
+console.log('=== 4. AN UNDECLARED PARAMETER IS REFUSED BY NAME, NOT IGNORED (run 27 residual 1) ===')
+{
+  const { kernel, call } = await boot()
+  await call('control', { action: 'hire', slot: 'chair', member_id: 'chair-1', institution: 'acceptance-institute' })
+  const withValue = await call('vote', { member: 'chair-1', value: 1, reason: 'the run-27 call shape' })
+  ok(withValue.ok === false, '★ the vote face refuses a call it cannot interpret instead of answering the wrong question', withValue)
+  ok(withValue.code === 'VMU_INVALID_ARGUMENT', '★★ the refusal is VMU_INVALID_ARGUMENT (a call-shape error, not a state error)', withValue.code)
+  ok(/no parameter named "value"/.test(withValue.message || '') && /"reason"/.test(withValue.message || ''),
+    '★★★ it names BOTH undeclared parameters — the run dropped them silently', withValue.message)
+  ok(/NOT applied/.test(withValue.message || ''), '★ it says the call was NOT applied (nothing was half-counted)', withValue.message)
+  ok(/declared parameters are member, solved, why/.test(withValue.hint || ''), '★ the hint lists the declared set from the SAME object the schema uses', withValue.hint)
+  const legit = await call('vote', { member: 'chair-1', solved: true })
+  ok(legit.ok === true, '★ and a declared call still votes', legit)
+  ok(kernel.closureVoteView().votesCast === 1, '★★ exactly one judgement was recorded — the refused call contributed nothing', kernel.closureVoteView().votesCast)
+}
+
+console.log('=== 5. THE ROSTER FACE SAYS WHETHER A SEAT IS FREE (run 27 residual 3) ===')
+{
+  const { call } = await boot()
+  const empty = await call('control', { action: 'roster' })
+  ok(Array.isArray(empty.slots), '★ roster carries a per-slot occupancy view (it used to carry member rows only)', Object.keys(empty))
+  const chairRow = (empty.slots || []).find((s) => s && s.id === 'chair') || null
+  ok(chairRow !== null, '★ the chair slot is listed', (empty.slots || []).map((s) => s && s.id))
+  ok(chairRow && chairRow.occupied === 0 && chairRow.capacity === 1, '★★ it starts empty with a finite capacity, so the reading can move', chairRow)
+  await call('control', { action: 'hire', slot: 'chair', member_id: 'chair-1', institution: 'acceptance-institute' })
+  const seated = await call('control', { action: 'roster' })
+  const seatedRow = (seated.slots || []).find((s) => s && s.id === 'chair') || null
+  ok(seatedRow && seatedRow.occupied === 1, '★★ hiring moves the SAME number the roster reports (no second truth)', seatedRow)
+  await call('control', { action: 'fire', member_id: 'chair-1', reason: 'acceptance' })
+  const freed = await call('control', { action: 'roster' })
+  const freedRow = (freed.slots || []).find((s) => s && s.id === 'chair') || null
+  ok(freedRow && freedRow.occupied === 0, '★★★ firing frees the seat, read from the roster face (the run could see it only on the fire receipt)', freedRow)
+  ok(/LIVING only/.test(freed.slotsMeans || ''), '★ the face explains the count is over the living, so "used:0" beside an ended member is not a contradiction', freed.slotsMeans)
+}
+
 console.log('')
 console.log(failed === 0
   ? '=== VMU ROSTER LIVENESS: ' + passed + ' passed, 0 failed ==='

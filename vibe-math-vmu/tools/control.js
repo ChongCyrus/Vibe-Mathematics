@@ -63,7 +63,23 @@ export function makeControlSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (!kernel.members || typeof kernel.members.roster !== 'function') {
               return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel declares no role slots, so there is no roster to list')
             }
-            return Object.assign({ ok: true, action, source: 'kernel.members (the roster the turn face reads)' }, { roster: kernel.members.roster() })
+            // ★★★ LIVE RUN 27 residual 3 (the institute's own report): THE ROSTER COULD NOT ANSWER "IS THE SEAT FREE?".
+            // `roster` returned member rows only; `occupied/capacity` existed solely on the hire/fire receipts, so the
+            // very check ⑲.1 asked for ("read used/capacity from the roster face") was unreadable. The occupancy is the
+            // kernel's own view (`members.status().slots`, which computes `occupancy()` over the LIVING), so it is
+            // forwarded rather than recomputed here - two implementations of "who holds the chair" would drift.
+            const occupancyView = typeof kernel.members.status === 'function' ? kernel.members.status() : null
+            return Object.assign(
+              { ok: true, action, source: 'kernel.members (the roster the turn face reads)' },
+              { roster: kernel.members.roster() },
+              occupancyView
+                ? {
+                    slots: occupancyView.slots,
+                    live: occupancyView.live,
+                    total: occupancyView.total,
+                    slotsMeans: 'occupied/capacity per declared slot (capacity 0 = unlimited; the field name is "occupied"). These count the LIVING only: a member whose state is "ended" holds no seat (live run 26 defect 2), so a freed chair can be filled again',
+                  }
+                : { slots: null, slotsNote: 'this kernel exposes no slot-occupancy view, so it cannot say whether a seat is free' })
           }
           if (action === 'hire') {
             // ★ THE SEATING IS THE POINT. Without it the hire is recorded where the turn face does not look, and the
