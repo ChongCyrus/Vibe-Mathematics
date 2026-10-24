@@ -8,17 +8,17 @@
 ## 1. 怎么跑（并行是默认）
 
 ```bash
-node tests/run-tests.mjs                     # 默认门禁 GATE_SCOPE=full：当前产品的 live 面（415 作业，本机实测约 65 s），并行（**并发 = min(8, max(2, floor(CPU 核数/2)))**，可用 `--concurrency=N` 覆盖；命令都从**仓库根**执行）
+node tests/run-tests.mjs                     # 默认门禁 GATE_SCOPE=full：当前产品的 live 面（442 作业，本机实测约 64 s），并行（**并发 = min(8, max(2, floor(CPU 核数/2)))**，可用 `--concurrency=N` 覆盖；命令都从**仓库根**执行）
 node tests/run-tests.mjs --scope-report      # 打印 5 个 scope 的派生分类与作业数（quick|vmu|full|archive|all），不跑任何作业
 node tests/run-tests.mjs --only formal       # 只跑名字含 formal 的项（套件与探针一起筛；与 requested scope 取交集，不降级 scope）
 node tests/run-tests.mjs --concurrency=6     # 手动指定并发
 node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedNeedsArgs / devCheckout）
 ```
 
-**scope 语义（本轮新增）**：`quick`＝编辑循环子集（25 作业）；`vmu`＝产品内迭代子集（394 作业）；
-`full`（**默认**）＝当前产品的完整门禁（vmu ＋ 活跃 preset 的 live 面，**415 作业**，**不含**冻结归档的
+**scope 语义（本轮新增）**：`quick`＝编辑循环子集（25 作业）；`vmu`＝产品内迭代子集（421 作业）；
+`full`（**默认**）＝当前产品的完整门禁（vmu ＋ 活跃 preset 的 live 面，**442 作业**，**不含**冻结归档的
 legacy preset 家族）；`archive`＝冻结归档的 legacy preset 家族（v2..v5r 的 accept/e2e/selfdrive/
-formal-verify/fix 套件，**57 作业**）；`all`＝仓库全量（`full + archive`，**472 作业**）。
+formal-verify/fix 套件，**57 作业**）；`all`＝仓库全量（`full + archive`，**499 作业**）。
 **提交前要求 non-incremental `full` 全绿；打 tag/发布要求 `all` 全绿**（`GATE_RELEASE=1` 强制非增量，
 `--write-baseline` 只在 `all` scope 下允许写）。仓库口径的计数（`--counts`/README 锚点）始终是 `all`。
 本机（32 逻辑核 / Windows，2026-10-24）实测：`full` c8 **65 s**（415/415 PASS）、`all` c8 **848 s**（472/472 PASS）、
@@ -63,7 +63,7 @@ formal-verify/fix 套件，**57 作业**）；`all`＝仓库全量（`full + arc
 
 | 脚本 | 串行（sum） | 并行（wall） | 实测输出 |
 |---|---|---|---|
-| `tests/run-tests.mjs`（**512 项作业**（job count）= 404 套件 + 108 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线，未复核） | **未复核**（**2026-10-14**：并发 = `min(2, CPU 核数)`，旧文"并发 4" ✗ 已过期；全量成本仓库内有**三个互斥**说法 —— `≈121–200 s`／`1447.6 s`（runner 自述**模拟值**）／132 作业时 `31 min` 实测 ⇒ **以现量现报为准**） | `TOTAL 512  PASS 512  FAIL 0  (suites 404 · probes 108)`（输出形状；数字现取） |
+| `tests/run-tests.mjs`（**499 项作业**（job count）= 392 套件 + 107 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线，未复核） | **未复核**（**2026-10-14**：并发 = `min(2, CPU 核数)`，旧文"并发 4" ✗ 已过期；全量成本仓库内有**三个互斥**说法 —— `≈121–200 s`／`1447.6 s`（runner 自述**模拟值**）／132 作业时 `31 min` 实测 ⇒ **以现量现报为准**） | `TOTAL 499  PASS 499  FAIL 0  (suites 392 · probes 107)`（输出形状；数字现取） |
 | `tests/audit-formal-sensitivity.mjs`（49 探针，自带并发 4；v2 12 / v3 12 / v4 12 / v5 13） | ≈ 1035 s | **260.7 s**（实测，x3.97） | 关键路径 = v2/v3 的 `require` 探针（各 ≈75 s）；全 49 条按预期变红、0 问题 |
 | `tests/audit-v5-sensitivity.mjs`（39 探针，串行） | ≈ 101 s | — | 每条 = 一次被测套件重跑 |
 | `tests/audit-persona-sensitivity.mjs`（16 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |

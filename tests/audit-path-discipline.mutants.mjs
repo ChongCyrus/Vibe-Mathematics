@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url'
 import { legacyFile } from './_lib/legacy-presets.mjs'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { legacyFile } from './_lib/legacy-presets.mjs'
 const here = dirname(fileURLToPath(import.meta.url))
 const repo = join(here, '..')
 const audit = join(here, 'audit-path-discipline.mjs')
