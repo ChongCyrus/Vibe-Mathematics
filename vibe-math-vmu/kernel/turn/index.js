@@ -2031,8 +2031,19 @@ export function createTurnOrchestrator({
           },
           selectionNote: requested.length === 0 ? null
             : 'the pending report belonged to ' + String(r.member) + ', so `members` did not apply to this call - it selects who gets the NEXT prompt; call step again to apply it',
+          // ★ LIVE RUN 38 (the institute's own report, ㉙.1): THIS route was the false green. The ordinary `step()`
+          // receipt had been fixed to carry `skippedDetail`/`notes`, and the turn suite asserted exactly that route — but
+          // the shape a member actually meets on the taught path is: `op:"reply"` records the report, and the NEXT
+          // `op:"step"` completes the held turn. That completion receipt reduced the skip to a COUNT again, so the
+          // institute saw `"skipped":1` with all four detail fields ABSENT (and `receiptMeta.truncated:false`, proving
+          // nothing was cut). A reading that exists on one of three routes is not a mechanism; the same four fields are
+          // emitted here, built from the same recorded detail.
           receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, fields: r.fields,
             executed: (r.executed || []).length, skipped: (r.skipped || []).length, effects: (r.effects || []).slice(), instructionDelivered: false,
+            skippedDetail: (r.skipped || []).slice(0, 5),
+            skippedDetailTruncated: (r.skipped || []).length > 5,
+            notes: (r.notes || []).slice(0, 5),
+            notesMean: r.notesMean || null,
             turn: completedTurnId, source: 'tool', completed: true } }
       } catch (e) { return stepFailure(e) }
     }

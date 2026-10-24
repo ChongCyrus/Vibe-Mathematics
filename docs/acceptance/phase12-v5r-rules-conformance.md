@@ -2674,3 +2674,38 @@ transcript `_oneoff/vm-slv/full-1024-220035.jsonl`（3 730 行），build `89610
 ### §67.6 状态
 
 HEAD `89f45a36` + 本轮未提交改动（kernel 回执 + 5 条断言 + 覆盖率债重生成）。`regen-all --check` 16/16；`audit-declaration-criterion` 89/0。下一步：第 38 次真机跑，让所办自己判「跳过原因与原文是否读得回」。
+
+## §68 第 38 次真机跑：我自己的修复是假绿（同一条回执有三条路径，我只修了一条）
+
+### §68.1 所办的读数
+
+`full-1025-013907.jsonl`（build `dbdd2a01`）`cast=true`、0 RED。㉙.2 的五条回归带全部通过，㉙.1 **不通过**，原文：
+
+> `"receipt":{"round":null,"member":"member-2","fields":["say"],"executed":0,"skipped":1,"effects":[],"instructionDelivered":false,"turn":null,"source":"tool","completed":true}`
+> `skippedDetail` —— **字段不存在** ✘；`notes` —— **字段不存在** ✘；`notesMean` —— **字段不存在** ✘；`skippedDetailTruncated` —— **字段不存在** ✘；
+> 该回执 `"receiptMeta":{"truncated":false,"elided":[]…}` —— 没有任何省略，不是被截断掉的；这些字段是**根本没写进结算回执**。
+
+### §68.2 为什么我的门禁是绿的：三条路径，只断言了一条
+
+`step()` 的回执有三个构造点：
+
+1. 普通回合（`apply()` 直接跑完）—— `index.js:2082` 附近，§67 修的就是这里；
+2. 批量 `run()` 每轮 —— `:1934`，§67 顺带修了；
+3. **完成回执**（`op:"reply"` 记下报告，下一次 `op:"step"` 结算这个被持有的回合）—— `:2034`，**没修**。
+
+而 §67 的 R29a–R29e 用 `deliver: async () => fence(...)` 走的是**第 1 条**。于是：修的是会员几乎不会走的路，测的也是那条路，绿得毫无意义——这正是本阶段反复记录的「假绿比红更危险」的第五次实例，而且这次是**我自己**造的。
+
+### §68.3 修法
+
+- `vibe-math-vmu/kernel/turn/index.js` 完成回执（`:2034`）补齐同四个字段，形状与另两条路完全一致（`skippedDetail` 最多 5 条、`skippedDetailTruncated`、`notes` 最多 5 条、`notesMean`），并在注释里写明「一条路径上存在的读数不是机制」。
+- `tests/vmu-turn.test.mjs` 新增 **R30a–R30g**（套件 225 → **232/0**），走**真实教学路径**：`step()` 开回合 → `supplyStructuredReply({say:…}, {forMember})` 记账 → 再 `step()` 结算 → 断言**完成回执**：`completed:true`、`skipped:1`、`skippedDetail[0].reason === "no-meeting-bound"`、`notes[0].text` 等于原句、`notesMean` 解释空列表、`skippedDetailTruncated:false`。
+
+### §68.4 教训（写给下一轮的我）
+
+1. **修回执之前先问：这条回执有几个构造点？** 一个字段在一个构造点出现，等于它在其余 N−1 条路上缺失。
+2. **断言必须走会员真正走的路**：`op:"reply"` + 下一次 `op:"step"` 结算，是提示词教他的路径；直接 `apply()` 是内核的路径。
+3. 只修一处而测试通过时，先怀疑测试，再庆祝修复。
+
+### §68.5 状态
+
+HEAD `dbdd2a01` + 本轮未提交改动（完成回执 + R30 七条 + 覆盖率债重生成）。`regen-all --check` 16/16、`audit-declaration-criterion` 89/0、`vmu-turn` 232/0。下一步：第 39 次真机跑，只验 ㉙.1 这一条（外加回归带）。

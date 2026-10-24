@@ -1538,10 +1538,13 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(/supersede/.test(keep.pendingMeans), '★ R28c: and that a held prompt is what a later call would supersede', keep.pendingMeans)
 }
 
-// ★ PHASE 12 / live run 37 (the institute's own report): the step receipt reduced `skipped` to a NUMBER, so a member who
-// copied the prompt's minimal receipt saw "skipped:1" and could not learn which field, why, or what it had said. The
-// detail now travels with the count, bounded - asserted through a REAL step, because the defect lived in the receipt
-// shaping rather than in the decision that made the skip.
+// ★ PHASE 12 / live runs 37 AND 38 (the institute's own reports): `skipped` was reduced to a NUMBER, so a member who
+// copied the prompt's minimal receipt saw "skipped:1" and could not learn which field, why, or what it had said.
+// ★★ AND THE FIRST FIX WAS A FALSE GREEN: it patched the receipt the ordinary `step()` builds and asserted exactly that
+// route — but the shape a member really meets on the taught path is "reply records the report; the NEXT step completes
+// the held turn", whose receipt is built elsewhere. Run 38 measured that other receipt and found all four detail fields
+// ABSENT (`receiptMeta.truncated:false`, so nothing had been cut). Both routes are asserted here; a reading that exists
+// on one of three routes is not a mechanism.
 {
   const t = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
     deliver: async () => fence({ say: '核验句-甲' }),
@@ -1556,6 +1559,31 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(!!rc && typeof rc.notesMean === 'string' && /empty list means no such line/.test(rc.notesMean),
     '★★ R29d: the empty case stays explicable (an empty list must not read as "something was dropped")', rc && rc.notesMean)
   ok(!!rc && rc.skippedDetailTruncated === false, '★ R29e: the bound announces itself (no silent truncation)', rc && rc.skippedDetailTruncated)
+}
+
+// ★★★ R30: THE TAUGHT PATH. `op:"reply"` records the report against the held turn; the NEXT step completes it on the
+// COMPLETION route — the receipt run 38 actually read. It reduced the skip to a count again.
+{
+  const rt = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
+    deliver: deliverByReturning(),
+    faces: { 'vmu.meetings': { speak: async () => ({ ok: true }) } } })
+  const opened = await rt.step({ members: ['r-2'], why: 'R30a open a held turn' })
+  ok(!!opened && opened.awaiting === true && opened.memberPrompt && typeof opened.memberPrompt.turnId === 'string',
+    '★ R30a: a held turn was issued through the caller-played seam', opened && { awaiting: opened.awaiting, id: opened.memberPrompt && opened.memberPrompt.turnId })
+  const recorded = rt.supplyStructuredReply({ say: '核验句-乙' }, { forMember: 'r-2' })
+  ok(!!recorded && recorded.ok === true && recorded.accepted === true && Array.isArray(recorded.fields) && recorded.fields.includes('say'),
+    '★ R30b: the report is RECORDED (not yet applied) — this is the half the member sees first', recorded && { fields: recorded.fields })
+  const settled = await rt.step({ why: 'R30c settle the held turn' })
+  const crc = settled && (settled.receipt || null)
+  ok(!!crc && crc.completed === true && crc.skipped === 1,
+    '★ R30c: the completion route ran and skipped exactly one field', crc && { completed: crc.completed, skipped: crc.skipped })
+  ok(!!crc && Array.isArray(crc.skippedDetail) && crc.skippedDetail.length === 1 && crc.skippedDetail[0].reason === 'no-meeting-bound',
+    '★★★ R30d: THE COMPLETION RECEIPT carries the reason too (this is what run 38 measured and found absent)', crc && crc.skippedDetail)
+  ok(!!crc && Array.isArray(crc.notes) && crc.notes.length === 1 && crc.notes[0].text === '核验句-乙',
+    '★★★ R30e: and the kept sentence is readable on the completion receipt', crc && crc.notes)
+  ok(!!crc && typeof crc.notesMean === 'string' && /empty list means no such line/.test(crc.notesMean),
+    '★★ R30f: the empty case stays explicable here as well', crc && crc.notesMean)
+  ok(!!crc && crc.skippedDetailTruncated === false, '★ R30g: the bound announces itself on every route', crc && crc.skippedDetailTruncated)
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
