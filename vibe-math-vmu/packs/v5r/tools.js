@@ -1850,6 +1850,46 @@ async function toolResume(args = {}, { kernel } = {}) {
 
 /** Apply ONE declared setting through the kernel's guarded writer and report the hot level it declares. Shared body of
  * configure/set/start so the H1/H2 wording is written exactly once. */
+/**
+ * ★ LIVE RUN 20 (its residual 1) — THE DECLARATION IS THE FACE'S PROMISE, SO THE FACE MUST KEEP IT.
+ * `vibe_v5_set` describes `value` as 「新值（按声明的类型解析：布尔/数字/JSON 数组或对象/字符串）」, so a caller who reads
+ * that sentence passes `"8000"` — a STRING — and the kernel guard then refuses it (`expected an integer >= 0`), which
+ * is correct at the guard's layer (it only judges JSON types) and wrong at the face's (it promised to parse). The
+ * institute caught the contradiction in its run-20 report and it was right: two layers, one sentence.
+ *
+ * The face now parses, for declarations that are not text themselves:
+ *   · natural / integer / positiveInteger / number / percentage / ratio — "8000" ⇒ 8000, "8.5" ⇒ 8.5
+ *   · boolean — "true"/"false"/"1"/"0" ⇒ true/false
+ *   · object / objectList / stringList / list-ish — a JSON string ⇒ JSON.parse once
+ * A string that cannot be parsed is NOT guessed at: it is refused HERE, naming the declared type and the input, so the
+ * caller is never told "expected an integer" about a value it never saw.
+ */
+function coerceDeclaredValue(def, value) {
+  if (typeof value !== 'string') return value
+  const t = String(def && def.type ? def.type : '')
+  const TEXT_TYPES = ['string', 'path', 'enum']
+  if (TEXT_TYPES.includes(t)) return value
+  const s = value.trim()
+  if (['natural', 'integer', 'positiveInteger', 'number', 'percentage', 'ratio'].includes(t)) {
+    if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s)
+    throw refuse('VMU_INVALID_ARGUMENT', 'setting ' + def.key + ' is declared ' + t + ' but the value is the text ' + JSON.stringify(value),
+      'pass a JSON NUMBER (pass ' + (s === '' ? '8000' : '8000') + ', not "8000") — the face parses a numeric string, but ' + JSON.stringify(value) + ' is not one')
+  }
+  if (t === 'boolean') {
+    if (s === 'true' || s === '1') return true
+    if (s === 'false' || s === '0') return false
+    throw refuse('VMU_INVALID_ARGUMENT', 'setting ' + def.key + ' is declared boolean but the value is the text ' + JSON.stringify(value),
+      'pass true or false (JSON booleans), or the text "true"/"false"')
+  }
+  // Everything structured: one JSON.parse, and a refusal that says the text was not JSON.
+  try {
+    return JSON.parse(s)
+  } catch {
+    throw refuse('VMU_INVALID_ARGUMENT', 'setting ' + def.key + ' is declared ' + t + ' but the value is not JSON: ' + JSON.stringify(value),
+      'pass the structure itself (a JSON array/object) or its JSON text')
+  }
+}
+
 function applyDeclaredSetting(kernel, key, value, opts = {}) {
   const def = typeof kernel.settingDef === 'function' ? kernel.settingDef(key) : null
   if (!def) {
@@ -1866,8 +1906,10 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
   // THE OWNER IS THE DECLARATION'S: the kernel's settings guard refuses a `by` that is not the key's declared owner
   // (`settingsGuard`: declared key, H3 read-only, declared owner). A pack tool has no human identity, so it acts AS the
   // declared owner and records that in the receipt instead of inventing an actor.
+  // ★ The FACE keeps its declaration's promise before the guard judges the value (run 20 residual 1).
+  const coerced = coerceDeclaredValue(def, value)
   const actor = opts.by || def.who || null
-  const receipt = kernel.setSettingsValue(key, value, { by: actor, reason: opts.reason || null })
+  const receipt = kernel.setSettingsValue(key, coerced, { by: actor, reason: opts.reason || null })
   // ★ LIVE RUN 7 (agent feedback item g): this used to RE-INVENT the applicability with its own rule
   // (`hot === 'H1' ? '立即生效' : '重启后生效'`, and `restartRequired = hot !== 'H1'`), which contradicted the kernel's own
   // receipt two lines below it. Measured on the run: setting `vmu.turn.leaderId` (declared H2) came back with
@@ -1877,7 +1919,7 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
   // CARRIES the kernel's answer instead of computing a second, contradictory one.
   const kApplied = receipt && receipt.applied !== undefined ? receipt.applied : null
   const kRestart = !!(receipt && receipt.requiresRestart === true)
-  return { key, value, hot: def.hot, who: def.who || null, appliedBy: actor,
+  return { key, value: coerced, hot: def.hot, who: def.who || null, appliedBy: actor,
     applied: kApplied,
     requiresRestart: kRestart,
     appliesAt: receipt && receipt.appliesAt !== undefined ? receipt.appliesAt : null,
@@ -2386,7 +2428,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_set',
-    description: 'Set ONE declared setting key. The receipt carries the declared hot level and whether it is live now or on restart; an undeclared key or an H3 (read-only) key is refused by name.',
+    description: 'Set ONE declared setting key. The receipt carries the declared hot level and whether it is live now or on restart; an undeclared key or an H3 (read-only) key is refused by name. `value` is parsed against the key\'s DECLARED type: a numeric string ("8000") becomes the number 8000, "true"/"false" become booleans, and a JSON string becomes the structure — text keys keep their text. A value the declared type cannot accept is refused by name, never coerced silently.',
     parameters: { key: { type: 'string', required: true }, value: {}, why: { type: 'string' } },
     handler: toolSet,
   },

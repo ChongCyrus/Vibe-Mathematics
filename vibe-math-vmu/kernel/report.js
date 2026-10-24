@@ -367,7 +367,10 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
       // were only on status()/declarations(). A refusal is a read face too.
       rec.refused = { code: CODE.noTransport, message: 'no delivery transport was injected: nothing was sent (and nothing is pretended)',
         hint: 'pass { deliver: (report) => … } when creating the module',
-        drives: false, neverDrives: true, transportInjected: false }
+        // ★ LIVE RUN 20 (readability residual 2): the brief's own wording is「抄 delivered / drives / code / message」,
+        // and this refusal was the ONE place that answered three of the four. `delivered:false` is not decoration — it
+        // is the key a reader was told to look for, and "absent" reads as "not measured" where the truth is "no".
+        delivered: false, drives: false, neverDrives: true, transportInjected: false }
       say({ type: 'report/undelivered', at, name: it.name, code: CODE.noTransport })
       record(rec)
       return rec
@@ -479,7 +482,10 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
       // `status()`/`declarations()` but NOT on the receipt of the call that failed. An acceptance check that reads the
       // refusal could not tell "refused" from "sent nothing on purpose".
       const refused = Object.assign({}, rec.refused, {
-        drives: false, neverDrives: true, transportInjected: typeof deliver === 'function',
+        // `delivered:false` kept here too (run 20): this object is what the CALLER's receipt carries, and it must answer
+        // the same four questions as the record above — otherwise the two read faces differ on the one key a reader was
+        // told to quote.
+        delivered: false, drives: false, neverDrives: true, transportInjected: typeof deliver === 'function',
         report: it.name, id: rec.id,
       })
       const err = refuse(rec.refused.code, rec.refused.message, rec.refused.hint, { report: it.name, id: rec.id })

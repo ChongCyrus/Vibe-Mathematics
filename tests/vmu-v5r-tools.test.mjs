@@ -459,6 +459,22 @@ try {
   const undeclared = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.no.such.key', value: 1 })
   ok(undeclared.parsed && undeclared.parsed.ok === false && undeclared.parsed.code === 'VMU_INVALID_ARGUMENT',
     '★ set: 反 — an UNDECLARED key is refused by name (only settings/schema.js keys are settable)', undeclared.parsed)
+  // ★ LIVE RUN 20 (its residual 1): the face's declaration promises to PARSE the value against the declared type, and
+  // the institute reported the contradiction — a numeric string was refused with "expected an integer >= 0". The face
+  // now keeps that promise; the receipt must echo the COERCED value, because that is what was written.
+  const numericText = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.limits.maxLiveMembers', value: '2', why: '字符串数字' })
+  ok(numericText.parsed && numericText.parsed.ok === true && numericText.parsed.applied.value === 2,
+    '★ set: 正 — a numeric STRING for a `natural` key is parsed to the number and the receipt echoes 2 (not "2")', numericText.parsed && numericText.parsed.applied)
+  const badNumeric = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.limits.maxLiveMembers', value: 'two' })
+  ok(badNumeric.parsed && badNumeric.parsed.ok === false && badNumeric.parsed.code === 'VMU_INVALID_ARGUMENT'
+    && /is declared natural but the value is the text/.test(String(badNumeric.parsed.message)) && /JSON NUMBER/.test(String(badNumeric.parsed.hint)),
+    '★ set: 反 — a NON-numeric string is refused NAMING the declared type and the text (never "expected an integer" about an unseen value)', badNumeric.parsed)
+  const boolText = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.data.requireParent', value: 'true' })
+  ok(boolText.parsed && boolText.parsed.ok === true && boolText.parsed.applied.value === true,
+    '★ set: 正 — the text "true" is parsed for a boolean key', boolText.parsed && boolText.parsed.applied)
+  const textStays = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.prompts.agentId', value: '8000' })
+  ok(textStays.parsed && textStays.parsed.ok === true && textStays.parsed.applied.value === '8000',
+    '★ set: 正 — a TEXT key keeps "8000" as text (the parse must not touch text declarations)', textStays.parsed && textStays.parsed.applied)
   const cfgMixed = await receipt(v5rBoot, 'vibe_v5_configure', { institute: '测试所', params: { 'vmu.ballot.minVotes': 3 } })
   ok(cfgMixed.parsed && cfgMixed.parsed.ok === true && cfgMixed.parsed.restartRequired.includes('vmu.ballot.minVotes'),
     '★ configure: 正 — mixed hot levels are reported: H2 keys land in restartRequired (H1 ones do not)', cfgMixed.parsed && cfgMixed.parsed.restartRequired)

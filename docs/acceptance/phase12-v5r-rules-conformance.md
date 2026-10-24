@@ -2031,3 +2031,35 @@ run 18 的 ⑪.0 失败、run 19 再犯同一个错：`vibe_v5_set { value: "800
 ### §51.4 门禁
 `vmu-settings` 49/0；`audit-prompt-tool-params` 80/0；`audit-conformance-totals` 13/0；`regen-all --check` 16/16；`DOC LINT: PASS`。
 
+
+
+## §52 第 20 次真机跑：代理第一次写出「有实质残余」，而它两条都对
+
+第 20 次跑是**短 brief**试验（只验三项 + 汇报面 + 结题）。结果：`cast=true`、0 RED、95 秒、约 106 万 token（上限 1200 万，未撞顶）—— 而它**拒绝写「本轮无实质残余」**，给出 1 条实质残余 + 1 条可读性残余。两条经复核**都成立**，都按它的指认修了。
+
+### §52.1 它报的第一条：声明与行为相反（实质）
+`vibe_v5_set` 的 `value` 被描述为「新值（按声明的类型解析：布尔/数字/JSON 数组或对象/字符串）」，但传字符串 `"8000"` 给 `natural` 键一律被拒（`expected an integer >= 0`）。它指出：**按声明填必错、按 hint 才通**。
+
+★ 这条批评是对的，而我在 §51 的修法（改 hint 教「不要加引号」）**只治了症状**：声明仍然承诺「会解析」，实现仍然不解析。§51 的 hint 是给用户的绕行指引，不是让两个层次对齐。
+
+修法（`vibe-math-vmu/packs/v5r/tools.js`）：新增 `coerceDeclaredValue(def, value)`，**面**在自己的层把声明的承诺兑现，再把结果交给内核守卫：
+- `natural / integer / positiveInteger / number / percentage / ratio`：数字串 ⇒ 数字；
+- `boolean`：`"true"/"false"/"1"/"0"` ⇒ 布尔；
+- `object / objectList / stringList` 等结构类：JSON 串 ⇒ `JSON.parse` 一次；
+- `string / path / enum`：**不动**（文本键的 `"8000"` 就是文本）。
+解析不了的不猜：在本层具名拒 `setting <key> is declared <type> but the value is the text "…"`，hint 给出正确形状。收据里的 `value` 回吐**被写入的那个值**（`2` 而不是 `"2"`），否则读回的人会以为写的是字符串。工具描述也补了这条解析规则（声明必须能查到）。
+
+### §52.2 它报的第二条：拒收回执少了一个被点名的键（可读性）
+brief ⑤ 要求抄 `delivered / drives / code / message`，而 `VMU_REPORT_NO_TRANSPORT` 的拒收体只有后三个 + `neverDrives / transportInjected`。修法（`vibe-math-vmu/kernel/report.js` 两处：记录层 `rec.refused` 与调用方收到的那条 error）：补 `delivered: false`。理由写在注释里：**缺席读起来是「没测」，而真相是「没有送」**。
+
+### §52.3 它明确判为非缺陷、我也同意并归档的三条
+- 结题票要等**下一次 step 结算在途回合**才出现在 `closureVote` 里 —— 这是三条通道（回合内 / 下一次结算 / 状态读面）的时序，事件回执本身给 `accepted:true` + `fields:["vote_solved"]`，可读；
+- `selectionIgnored.pending` 的两种形态（id / `pendingUnknown` 说明）可接受；
+- 两名成员提示词里的 charter 目标仍是 fixture 的「前 n 个奇数之和 = n²」而非本轮 brief 举例 —— 那是 pack fixture，不是规则缺陷。
+
+### §52.4 本轮门禁
+`vmu-v5r-tools` **352/0**（新增 4 条：数字串被解析且收据回吐数字 / 非数字串按名拒并说出声明类型 / `"true"` 被解析 / 文本键的 `"8000"` 保持文本）；`vmu-assistant-report` 93/0；`vmu-kernel` 260/0；`vmu-settings` 49/0；`vmu-host` 199/0。
+
+### §52.5 教训
+**「改提示/改 hint 让用户绕过」和「让声明与行为一致」是两件不同的事；代理的验收报告能分辨它们。** §51 我以为自己修好了同一件事，其实只是让它更容易被绕开；这一轮它当面指出「按声明必错」——这正是本 goal 的完成判据要的那种反馈。
+
