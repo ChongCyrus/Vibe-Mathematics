@@ -1593,6 +1593,29 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     '★ R30i: and with no explicit selection there is nothing ignored (no invented reading)', settled && settled.selectionIgnored)
 }
 
+// ★★★ R31 (live run 40, the institute's own report): the tool face fills `members` from the roster when the caller
+// omits it, and the kernel used to treat that inferred list as a REQUEST — the completion receipt printed
+// `selectionIgnored.requested: ["member-1","member-2"]` (the default roster) so a reader could not tell "the caller
+// asked for these two" from "nobody asked". An inferred list must produce NO ignored reading and must NAME its source.
+{
+  const rt = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
+    deliver: deliverByReturning(), faces: { 'vmu.meetings': { speak: async () => ({ ok: true }) } } })
+  const opened = await rt.step({ members: ['r-2'], membersInferred: false, why: 'R31a explicit selection' })
+  ok(!!opened && opened.awaiting === true, '★ R31a: an EXPLICIT selection opens the turn for the named member', opened && opened.awaiting)
+  const recorded = rt.supplyStructuredReply({ say: '核验句-庚' }, { forMember: 'r-2' })
+  ok(!!recorded && recorded.ok === true, '★ R31b: the report is recorded against the held turn', recorded && recorded.ok)
+  const settled = await rt.step({ members: ['r-2'], membersInferred: true, why: 'R31c complete with an INFERRED list' })
+  ok(!!settled && settled.requestedMembersSource === 'roster-default',
+    '★★★ R31c: the receipt NAMES the source of the list (roster-default, not explicit)', settled && settled.requestedMembersSource)
+  ok(!!settled && settled.selectionIgnored === null,
+    '★★★ R31d: an inferred list is NOT a request, so nothing was ignored (no echo of the default roster)', settled && settled.requestedMembers)
+  ok(!!settled && Array.isArray(settled.requestedMembers) && settled.requestedMembers.length === 0,
+    '★★ R31e: requestedMembers stays empty for an inferred list (the field answers "what did the caller ask")', settled && settled.requestedMembers)
+  const explicit = await rt.step({ members: ['r-1'], membersInferred: false, why: 'R31f explicit again' })
+  ok(!!explicit && explicit.requestedMembersSource === 'explicit',
+    '★ R31f: an explicit list says so on the same field (the distinction is real, not a constant)', explicit && explicit.requestedMembersSource)
+}
+
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

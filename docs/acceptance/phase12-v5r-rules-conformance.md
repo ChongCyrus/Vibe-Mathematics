@@ -2732,3 +2732,48 @@ HEAD `dbdd2a01` + 本轮未提交改动（完成回执 + R30 七条 + 覆盖率�
 ### §69.3 状态
 
 HEAD `2f4b32a0` + 本轮未提交改动（完成回执 id + 两条断言 + 覆盖率债重生成）。`regen-all --check` 16/16、`audit-declaration-criterion` 89/0、`vmu-turn` 234/0、`vmu-receipt-shapes` 50/0、`vmu-run16-findings` 16/0。下一步：第 40 次真机跑，验 ㉚.3 那条风险已消失（`receipt.turn` 为真实 id）+ 回归带，然后即可收口本轮 goal。
+
+## §70 第 40 次真机跑：工具面把自己的「推断」当成了调用方的「要求」
+
+### §70.1 所办的读数
+
+`full-1025-021211.jsonl`（build `7ae3d4f9`）`cast=true`、0 RED。㉛.1 的六条主判据**全过**：`receipt.turn:"t-1"`（等于开回合时的 `memberPrompt.turnId`）、`skipped:1`、`skippedDetail[0].reason:"no-meeting-bound"`、`notes[0].text:"核验句-丁"`、`notesMean`、`skippedDetailTruncated:false`。§68/§69 两次修复在真机都成立。
+
+但它把㉛.1 判为**不通过**，理由是它自己加的那条对照项：本轮它**没有**传 `members`，而回执里 `selectionIgnored` 非空：
+
+```json
+"selectionIgnored":{"requested":["member-1","member-2"],"pending":"t-1","pendingUnknown":null,"pendingMember":"member-2",
+ "reason":"the pending report belonged to member-2: `members` selects who receives the NEXT prompt, and completing an al…"}
+```
+
+它写得极准：「`requested` 填的是内核默认名册 `["member-1","member-2"]`，不是调用方传入的值。**这使回执无法区分「调用方显式选人」与「内核默认选人」**；读者会误以为调用方要求换人。」
+
+### §70.2 根因：一条「为了让空列表不误报」的好心，制造了一个看不见的要求
+
+`vibe-math-vmu/tools/turn.js:84-116`：调用方省略 `members` 时，工具面从名册**推断**出 `[{id, role}]`，理由是历史缺陷——空列表会让回合面回 `stopped:"no-members"`，而所里明明有人。这个推断是对的。
+
+错在它把推断结果当成 `members` 原样传给内核：`kernel.turn.step({ members, … })`。于是内核**无从分辨**「调用方点名了这两个人」与「调用方没说话、默认生效」，而 `selectionIgnored`/`requestedMembers` 这两个字段的语义恰恰是「调用方要了什么」。第三次出现同一形状的缺陷：**字段名的语义与写它的代码不一致**。
+
+### §70.3 修法（让「谁决定的」成为一份可读的事实）
+
+- `vibe-math-vmu/kernel/turn/index.js` `step({ members, membersInferred = false, … })`：新增 `membersInferred`；`selectionSource = membersInferred ? "roster-default" : "explicit"`；`requestedIds = membersInferred ? [] : selection.map(id)`。
+- 完成回执与普通回执都新增 `requestedMembersSource`；`selectionReadings` 也按 `requestedIds` 计算，于是**推断出来的名册不再产生 `selectionIgnored`**。
+- `vibe-math-vmu/tools/turn.js`：`await kernel.turn.step({ members, membersInferred: !explicit, … })` —— 工具面把自己「是否推断」明确告诉内核，而不是让内核去猜。
+
+### §70.4 门禁
+
+`tests/vmu-turn.test.mjs` 新增 **R31a–R31f**（套件 234 → **240/0**）：
+
+- R31a/R31b 建立场景（显式选人开回合、记账）；
+- R31c ★★★ `requestedMembersSource === "roster-default"`（推断必须自报）；
+- R31d ★★★ 推断不产生 `selectionIgnored`（不回显默认名册）；
+- R31e ★★ `requestedMembers` 为空（该字段的语义是「调用方要了什么」）；
+- R31f 显式列表在同一字段上自报 `"explicit"`（证明这不是一个常量，而是真的区分）。
+
+### §70.5 教训
+
+「为了方便」而替调用方补一个参数，是这一阶段最反复的一类缺陷来源：补得对（空列表确实不该读成「没有人」），但**补完之后没人告诉下游「这是我补的」**。规则可以写死一句话：**凡是由框架推断出来的输入，都必须在下游回执里自报来源**，否则它读起来就等同调用方的指令。
+
+### §70.6 状态
+
+HEAD `7ae3d4f9` + 本轮未提交改动（`membersInferred` + R31 六条 + 覆盖率债重生成）。`regen-all --check` 16/16、`audit-declaration-criterion` 89/0、`vmu-turn` 240/0、`vmu-v5r-tools` 354/0、`vmu-host` 199/0、`vmu-meeting-types` 142/0、`vmu-live-run-r9-r12` 39/0。下一步：第 41 次真机跑，验 ㉛.1 全部（含 `selectionIgnored` 对照）+ 回归带。

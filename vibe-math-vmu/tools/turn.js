@@ -274,7 +274,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           // claims this-turn availability, which made the silence the only remaining signal. The receipt now reports what
           // the face DID (it called the seam for these members) and names the seam, so the claim is exactly as strong as
           // the evidence and no stronger.
-          const stepped = await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
+          const stepped = await kernel.turn.step({ members, membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step })
           const withOverride = stepped && typeof stepped === 'object'
             ? Object.assign({}, stepped, { toolsOverride: { mode: isNone ? 'none' : 'allow', allow: isNone ? [] : (allow || []), members: ids,
               seam: 'setMemberToolOverride', note: 'reported by the turn face: the seam was set for these members before the round and cleared after it; the actual wire is narrowed by the pull resolver on its next request, which this face cannot read' } })

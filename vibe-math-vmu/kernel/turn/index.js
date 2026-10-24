@@ -1979,10 +1979,18 @@ export function createTurnOrchestrator({
    * the pipeline owns WHAT PROMPT. A round that fails is RETURNED rather than thrown, because a failed round is an
    * operational outcome; a malformed ARGUMENT still throws, because that is a programming error.
    */
-  const step = async ({ members = [], phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+  const step = async ({ members = [], membersInferred = false, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
     // (g): the selection is normalized BEFORE the branch, so an unreadable entry is refused on BOTH routes (a malformed
     // list used to be filtered only on the pending route and to fall through to the default roster everywhere else).
     const selection = normalizeMembersSelection(members)
+    // ★★ LIVE RUN 40 (the institute's own report): THE FACE INFERS THE ROSTER, THE KERNEL CALLS IT A REQUEST. When a
+    // caller omits `members`, the tool face fills them in from the live roster (because an empty list must not read as
+    // "this institute has nobody"). That inferred list then travelled as if the caller had chosen it, so the completion
+    // receipt printed `selectionIgnored.requested: ["member-1","member-2"]` — the DEFAULT roster — and a reader could not
+    // tell "the caller asked for these two" from "nobody asked, the default applied". The face now says which it was, and
+    // an inferred list is not a request: no `selectionIgnored`, and the source is named.
+    const selectionSource = membersInferred === true ? 'roster-default' : 'explicit'
+    const requestedIds = membersInferred === true ? [] : selection.map((m) => m.id)
     // ★★ LANE turn-reply — A REPORT THAT ANSWERS THE OPEN PROMPT COMPLETES **THAT** TURN. Without this guard every step
     // would hand back a NEW prompt before the previous answer was dispatched, so a tool report could never be applied at
     // all (the caller-played route answers its prompt on the NEXT call). No turn is opened here: the member was already
@@ -2002,7 +2010,7 @@ export function createTurnOrchestrator({
         //    code fell through to the ordinary path and opened a turn for the DEFAULT roster, which is exactly the
         //    "silently replaced my request" the agent reported. A selection the loop cannot honour is now a NAMED
         //    refusal (`VMU_INVALID_ARGUMENT`) that says which entries were unreadable — never a silent fallback.
-        const requested = selection.map((m) => m.id)
+        const requested = requestedIds
         // ★★ PHASE 12 / R24 (the institute's own run-17 report, item 4): `selectionIgnored` carried
         // `pending:null` beside a non-null `pendingMember` on the completion route, because `r.turn` is the turn ID
         // STRING here (it comes from apply()'s tail), not an object with `.id` - so the id was silently dropped.
@@ -2030,6 +2038,7 @@ export function createTurnOrchestrator({
         // structured object is ADDED so the promised name resolves, with the pending turn NAMED rather than implied.
         return { ok: true, source: 'tool', completed: true,
           requestedMembers: requested,
+          requestedMembersSource: selectionSource,
           selectionApplied: requested.length === 0,
           selectionIgnored: requested.length === 0 ? null : {
             requested,
@@ -2062,7 +2071,7 @@ export function createTurnOrchestrator({
     // and `pending: null` (the field the ledger promises) could not say which turn it was. Both are named here: `pending`
     // always says which prompt the caller is holding, `selectionIgnored` appears exactly when that prompt is NOT in the
     // explicit selection (so it is about to be dropped), and `superseded` names the dropped turn instead of losing it.
-    const selectionReadings = selectionReadingsOf(deliver && typeof deliver.pending === 'function' ? deliver.pending() : null, selection.map((mm) => mm.id))
+    const selectionReadings = { ...selectionReadingsOf(deliver && typeof deliver.pending === 'function' ? deliver.pending() : null, requestedIds), requestedMembersSource: selectionSource }
     const spec = nextTurn({ members, phase, why, nextStep, role })
     if (!spec) return { ok: true, receipt: null, stopped: 'no-members', ...selectionReadings }
     // ★ G7 ④: clear this member's tool-call index at the START of the step, so the receipt reports THIS turn only.
