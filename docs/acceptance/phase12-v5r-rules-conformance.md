@@ -2914,3 +2914,37 @@ HEAD `89674611`；本轮只写账本（无代码改动）。下一步：一次�
 
 `vmu-turn` 242/0 · `vmu-settings` 49/0 · `vmu-host` 199/0 · `vmu-v5r-tools` 354/0 · `vmu-turn-reply-tool` 38/0 ·
 `vmu-turn-vote-survives-refusal` 8/0 · `audit-declaration-criterion` 89/0（单跑）。
+
+## §74 收口：vmu 范围全量 T1 457/0，`goal-bb297b1a` 的完成条件达成
+
+### §74.1 最后一次安静 T1（无任何并发进程）
+
+命令：`GATE_SCOPE=vmu node tests/run-tests.mjs > D:/_tmp/t1-p12-vmu-r43.log`（提交 `7c110979`，工作树干净）。
+
+```
+TOTAL 457  PASS 457  FAIL 0  (suites 393 · probes 64)
+EXIT=0
+```
+
+日志里 `grep -c "^FAIL"` 为 0；唯一的非 PASS 行是 `SKIPPED (needs CLI args): audit-tool-exec.mjs`（该探针需要 preset 与 tool 两个参数，属于设计上的跳过，不是静默略过）。
+
+### §74.2 完成条件对照
+
+| 条件 | 证据 |
+| --- | --- |
+| 代理自己的验收报告里没有实质不符项 | 第 42 次真机跑（build `89674611`，`_oneoff/vm-slv/full-1025-023552.jsonl`）自判「本轮无实质残余：是」，两侧判定全过，见 §72 |
+| 每一条被报告过的项都有定性 | a–j（§65 系列）、R13–R26、⑲–㉕ 全部逐条定性并有门禁，见 §65–§72 与各 `tests/vmu-run*-findings.test.mjs` |
+| 判定不是我说了算 | 每次跑的原始回执留在 `_oneoff/vm-slv/`，分析脚本在 `D:\_tmp\verify-run*.mjs`（读 `content[].text` 的原文，不做深度截断的 JSON 重组） |
+| 派生面与现实一致 | `regen-all --check` 16/16；`check-docs` `DOC LINT: PASS` |
+
+### §74.3 收口前最后一批（本次）
+
+`7c110979` 修的是「契约改了、判据没跟」：第 35 次真机跑的修复让裸字符串 `say` 按名跳过，但 `vmu-turn-reply-tool` 与
+`vmu-turn-vote-survives-refusal` 仍在断言旧派发，另有一处注释点名了不存在的设置键 `vmu.meetings.speak`。四处都由
+一次 vmu 范围 T1 抓出（§73 记录二分：`8f64fad0` 绿、`29481cbd` 红）。修完后 T1 从 453/4 变为 457/0。
+
+### §74.4 状态的诚实边界
+
+- 第 42 次真机跑之后，产品代码只动过 `vibe-math-vmu/kernel/turn/index.js` 的**注释**，行为未变；因此不认为需要为注释再跑一次真机。
+- 本轮没有新增真机跑的证据链，完成依据是**第 42 次跑它自己的报告**，不是我的推断。
+- 已知的、不再修的东西仍然记在账本里（例如 `sweep.at` 的「时钟命名」问题已按读数修复、`budget:null` 属诚实空而非缺陷）。
