@@ -1960,3 +1960,40 @@ phase 12 的收尾判据不是「我抽查没问题」，而是**研究所自己
 `tests/vmu-host.test.mjs` 新增三条：summary 的 `proseOmitted` 非空、`proseWhere` 指向 `detail:"closure"`、且**被移出的每个键在该面上都是原文长句**（移走 ≠ 删掉）。套件 196 → **199/0**。
 
 邻居：`vmu-v5r-tools` 348/0 · `vmu-turn` 209/0 · `vmu-meetings` 214/0 · `vmu-kernel` 260/0 · `vmu-receipt-shapes` 50/0 · `vmu-prompt-live-facts` 29/0 · `audit-prompt-tool-params` 74/0 · `audit-prompt-retired-mechanisms` 68/0。
+
+
+## §50 第 19 次真机跑：R26 被真机证实，而「声明面」的门禁自己也只扫了一半
+
+§49 留下的两条同族缺陷里，R26（包工具静默丢掉未声明的参数）在 run 19 里被真机证实已修，同时暴露出**我的门禁本身覆盖不全**。
+
+### §50.1 run 19：R26 真机证实
+transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1024-185922.jsonl`（build `c171e9c3`）：`cast=true`、`SUMMARY: 1 session(s), 0 with RED checks`、`NO_FENCE=0`、`FIELD_NOT_APPLICABLE=0`、`BAD_JSON=0`。所办在最终报告里抄录了拒绝原文：`pack tool vibe_v5_configure does not accept parameter(s) "member"; it declares: project, institute, problem, params`，并附 `hint` 指回 `vibe_v5_tool_help` / `vibe_v5_set`。**这就是 R26 要的行为**：不再静默忽略，而是具名拒绝 + 指路。
+
+### §50.2 同一次跑也证明：我教的那个调用**根本是错的**
+拒绝原文说明 `vibe_v5_configure` 只声明 `project / institute / problem / params`，而更正段教的是 `vibe_v5_configure {"member":"<院士>","params":{…}}` —— `member` 不在声明里。旧门禁没抓到，原因有两个，都在**扫描器**里：
+
+1. **只认带括号的形式**：`CALL_RE = /(vibe_\w+)\s*\(\s*\{([^{}]*)\}/g`。更正段写的是可粘贴的裸形式 `vibe_v5_configure {"member":…}`，无括号 ⇒ 整条不匹配 ⇒ 扫零条 ⇒ 门禁绿。
+2. **不允许嵌套**：`[^{}]*` 遇到 `"params":{"…":"…"}` 就断开，所以即使带括号，那条也匹配不到。
+两者叠加 = 「语法形式之一才扫」的门禁，比没有门禁更像绿。
+
+### §50.3 修法（都在同一道门里，且都不放宽判据）
+- `CALL_RE` 改为 `/…\s*\(?\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g`：括号可选、允许一层嵌套。
+- 新增纯函数 `topLevelKeys(body)`：按深度切段，只判**调用者真正传的键**（`params` 要判，`params` 内部的 `vmu.turn.leaderId` 不判）。
+- ★ 首版 `topLevelKeys` 有真 bug：尾段在循环里用 `i === body.length - 1` 推入，但 body 末字符是嵌套的 `}` 时会先 `continue`，于是 `params` 丢失 —— 被 TEETH 断言当场抓住（`["member"]` 而不是 `member,params`），改为循环后无条件推尾段。
+- 框架工具（`vibe_vmu_env` / `vibe_vmu_meeting` / `vibe_vmu_turn`）不在 pack 工具表里，加宽扫描后会被误报 UNDECLARED-TOOL。真值来源是**注册的 spec 列表**，不是手抄映射。
+- ★ 第二个「一词两形」陷阱：注册 spec 的 `parameters` 是 JSON Schema（`properties`），pack 声明的是扁平 map。用 `Object.keys(spec.parameters)` 当参数表会得到 `type,properties,additionalProperties,required` 四个假参数 —— 结果把 `vibe_vmu_env.action` 等全部报成未声明。加 `declaredKeysOf()` 显式区分两形。
+- TEETH 新增 5 条：裸形式被找到、嵌套只判顶层、**run 19 那条原样被抓**（`vibe_v5_configure` 无 `member`）、合法裸嵌套通过（不是「永远红」）。
+
+### §50.4 教的那个调用改成真的能用的
+`vibe-math-vmu/packs/v5r/prompts/v5r-corrections.js` 的领头人更正段由
+`vibe_v5_configure {"member":"<院士>","params":{"vmu.turn.leaderId":"<同一个代号>"}}`
+改为
+`vibe_v5_set { key: "vmu.turn.leaderId", value: "<同一个代号>", why: "安置院士" }`
+（`vibe_v5_set` 真实声明 `key/value/why`，README 里就是它的标准用法）。
+
+### §50.5 门禁读数
+`audit-prompt-tool-params` **80 passed / 0 failed**（含 `--self-test` 单独跑 TEETH）；`audit-prompt-retired-mechanisms` 68/0；`vmu-prompt-closure-channel` 24/0；`vmu-pack-prompts` 24/0；`vmu-prompt-live-facts` 29/0；`vmu-v5r-tools` 348/0；`vmu-host` 199/0；`audit-package-membership` 29/0；`audit-conformance-totals` 13/0；`regen-all --check` ⇒ 16/16 in sync。
+
+### §50.6 教训
+**一道门如果只覆盖被判对象的一种语法形式，它的绿不代表「没有违规」，只代表「没看见违规」。** 这一批两个独立案例（括号形式 / 顶层切分）都是被真机跑的证据反推出来的 —— 判据要跟着**真实用户写的形状**走，而不是跟着我自己习惯的模板走。
+

@@ -47,10 +47,42 @@ const J = (o) => JSON.stringify(o)
 // ── The scanner, shared by the real judgement and by the teeth tests ────────────────────────────────────────────────
 // A taught call is `<tool>({ <body> }`. `body` is matched only up to one nesting level: the POSTS in these prompts are
 // shallow object literals, and a nested object would be a different construct worth seeing rather than silently skipping.
-const CALL_RE = /(vibe_[A-Za-z0-9_]+)\s*\(\s*\{([^{}]*)\}/g
+// A taught call comes in TWO forms in this prompt layer: `tool({ ... })` and, since the corrections sections were
+// written to be pastable, `tool { ... }` — the bare form is what a reader copies, so it must be scanned too.
+// ★ And it can carry ONE level of nesting: `vibe_v5_configure {"member":"x","params":{"k":"v"}}`. The first version
+// of this regex used `[^{}]*`, so the nested body matched NOTHING and the gate stayed green while the corrections
+// section taught `vibe_v5_configure {"member":…}` — a key that face does not declare (measured in live run 19:
+// `pack tool vibe_v5_configure does not accept parameter(s) "member"; it declares: project, institute, problem, params`).
+const CALL_RE = /(vibe_[A-Za-z0-9_]+)\s*\(?\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g
 // Keys appear BOTH unquoted (`member:`) and quoted (`"tool":`). Capturing only the unquoted form was the silent-zero bug:
 // it returned [] for the one real violation in the tree while the gate looked green. Both forms are required below.
 const KEY_RE = /(?:^|[,{\s])(?:"([A-Za-z_][A-Za-z0-9_]*)"|([A-Za-z_][A-Za-z0-9_]*))\s*:/g
+
+/**
+ * The TOP-LEVEL keys of a taught body. Nesting means the naive `matchAll(KEY_RE)` over the whole body would also
+ * report inner keys (`vmu.turn.leaderId` inside `params`, and the `params` of a nested object as if it belonged to
+ * the tool). Depth is tracked so only the keys a caller actually passes to the tool are judged.
+ */
+const topLevelKeys = (body) => {
+  const out = []
+  let depth = 0
+  let start = 0
+  const segments = []
+  for (let i = 0; i < body.length; i += 1) {
+    const ch = body[i]
+    if (ch === '{') { depth += 1; continue }
+    if (ch === '}') { depth -= 1; continue }
+    if (ch === ',' && depth === 0) { segments.push(body.slice(start, i)); start = i + 1; continue }
+  }
+  // ★ The tail must be pushed AFTER the loop: a body whose last character is a nested `}` hits the `continue` above and
+  // never reached the old "last index" branch, so `vibe_v5_configure {"member":…,"params":{…}}` reported only `member`.
+  segments.push(body.slice(start))
+  for (const seg of segments) {
+    const m = seg.match(/^\s*(?:"([A-Za-z_][A-Za-z0-9_]*)"|([A-Za-z_][A-Za-z0-9_]*))\s*:/)
+    if (m) out.push(m[1] || m[2])
+  }
+  return out
+}
 
 /** Every taught call in `text`: `{tool, keys, snippet}`. Pure; no kernel, no disk. */
 const scanTaughtCalls = (text) => {
@@ -58,8 +90,7 @@ const scanTaughtCalls = (text) => {
   CALL_RE.lastIndex = 0
   let m
   while ((m = CALL_RE.exec(text)) !== null) {
-    const keys = [...m[2].matchAll(KEY_RE)].map((x) => x[1] || x[2])
-    out.push({ tool: m[1], keys, snippet: m[0] })
+    out.push({ tool: m[1], keys: topLevelKeys(m[2]), snippet: m[0] })
   }
   return out
 }
@@ -123,6 +154,28 @@ try {
       'declared tool carries a parameters object: ' + (t && t.name), t && Object.keys(t.parameters || {}))
     table.set(t.name, new Set(Object.keys(t.parameters || {})))
   }
+  // ★ The pack prompts also teach the FRAMEWORK's own tools (`vibe_vmu_env {action:'probe'…}`,
+  // `vibe_vmu_meeting { action: "minutes", id: … }`). Those are not pack tools, so before this loop the widened
+  // scanner reported them as UNDECLARED-TOOL — a false positive that would have hidden the real one. The ground
+  // truth for them is the registered spec list (the same objects the host publishes), never a hardcoded map.
+  let frameworkTools = 0
+  // A REGISTERED host spec carries a JSON Schema (`parameters.properties`), while a pack declaration carries a plain
+  // map. Reading one as the other silently yields `type,properties,additionalProperties,required` as if they were the
+  // parameters — the exact "two shapes, one word" trap. Both are normalised here, explicitly.
+  const declaredKeysOf = (sp) => {
+    const p = sp && sp.parameters
+    if (!p || typeof p !== 'object') return new Set()
+    if (p.properties && typeof p.properties === 'object' && !Array.isArray(p.properties)) return new Set(Object.keys(p.properties))
+    return new Set(Object.keys(p))
+  }
+  for (const sp of specs) {
+    const nm = sp && typeof sp.name === 'string' ? sp.name : ''
+    if (!nm.startsWith('vibe_') || table.has(nm)) continue
+    table.set(nm, declaredKeysOf(sp))
+    frameworkTools += 1
+  }
+  ok(frameworkTools > 0, 'the framework tools a pack prompt may teach are in the judged table too (measured on the registered specs, not a hand map)', frameworkTools)
+  ok(table.has('vibe_vmu_env') && table.has('vibe_vmu_meeting'), 'MECHANISM: the two framework tools the prompts name are now resolvable', { env: table.has('vibe_vmu_env'), meeting: table.has('vibe_vmu_meeting') })
   const toolHelp = table.get('vibe_v5_tool_help')
   ok(!!toolHelp && toolHelp.size === 1 && toolHelp.has('member'), 'MECHANISM: vibe_v5_tool_help declares exactly {member} — the key the prompt wrongly teaches is NOT in the schema', toolHelp && [...toolHelp])
   const settings = kernel.settingsSnapshot()
@@ -162,6 +215,20 @@ const multiCalls = scanTaughtCalls(plantedQuoted)
 ok(multiCalls.length === 2 && multiCalls[1].keys.includes('agenda'), 'TEETH: two taught calls in one line are both found', multiCalls.map((c) => c.tool))
 const phantom = judgeCalls(scanTaughtCalls('示例：调用 vibe_v5_reply({"progress":"x"}) 上报。'), table, [])
 ok(phantom.length === 1 && phantom[0].kind === 'UNDECLARED-TOOL', 'TEETH: teaching a tool that does not exist is caught (this is what caught the phantom `vibe_v5_reply`)', phantom)
+// ★ TWO FORMS THE FIRST SCANNER MISSED, both found by a live run rather than by reading (run 19):
+//   (a) the BARE form `tool { … }` with no parentheses — that is what a reader copies out of a correction section;
+//   (b) a body with ONE level of NESTING — `vibe_v5_configure {"member":"x","params":{"k":"v"}}`. With `[^{}]*` the
+//       whole call matched nothing, so the gate stayed green while the section taught a key the face refuses.
+const bareBad = '示例：vibe_v5_configure {"member":"r-1","params":{"vmu.turn.leaderId":"r-1"}}'
+const bareCalls = scanTaughtCalls(bareBad)
+ok(bareCalls.length === 1 && bareCalls[0].tool === 'vibe_v5_configure', 'TEETH: the BARE form (no parentheses) is found', bareCalls)
+ok(bareCalls[0] && bareCalls[0].keys.join(',') === 'member,params',
+  'TEETH: with one nesting level only the TOP-LEVEL keys are judged (`params` yes, `vmu.turn.leaderId` no)', bareCalls[0] && bareCalls[0].keys)
+const bareJudged = judgeCalls(bareCalls, table, [])
+ok(bareJudged.length === 1 && bareJudged[0].kind === 'UNDECLARED-KEY' && bareJudged[0].key === 'member',
+  'TEETH: ★ the exact run-19 defect is caught (vibe_v5_configure has no `member` parameter)', bareJudged)
+const bareGood = '示例：vibe_v5_configure {"problem":"x","params":{"vmu.turn.objective":"y"}}'
+ok(judgeCalls(scanTaughtCalls(bareGood), table, []).length === 0, 'TEETH: a legal bare nested call passes (not "always red")', judgeCalls(scanTaughtCalls(bareGood), table, []))
 }
 runTeeth()
 if (process.argv.includes('--self-test')) {
