@@ -2518,3 +2518,35 @@ transcript `_oneoff/vm-slv/full-1024-220035.jsonl`（3 730 行），build `89610
 **「无实质残余：是」不是终点，而是把判定权交回来**——它附的两条都不是它不敢判，而是它知道那是我们的口径选择。
 把这类交回当作噪声，就会漏掉下一批真缺陷；把它们当作缺陷直接改，又会去改一个没错的机制。正确处理是：**读面各自报名表**，
 既不改 id 也不改语义，并让门禁证明「同一个拼写确实来自两张表」。
+
+## §64 第 33 次真机跑：两条口径各自报名表，所办复判「无实质残余：是」——本阶段的收尾条件达成
+
+真机读数（transcript `_oneoff/vm-slv/full-1024-230538.jsonl`，tarball build `7ef1d045`，55 s / 1 turn receipt，
+`SUMMARY: 1 session(s), 0 with RED checks`）：这是一次**定向短跑**，只核 §63.2 那两条口径，`cast:false` 是**预期**的
+（它没有跑结题流程，本轮不要求）。
+
+### §64.1 所办自己的判定（原文）
+
+| 小节 | 判定 | 它抄下的原文读数 |
+| --- | --- | --- |
+| ㉕.1 `t-<n>` 消歧 | **通过** | `"idRegistry":"task-board"` + `idMeans`（点名 TURN store）／`"turnIdRegistry":"turn-store"` + `turnIdMeans`（点名 TASK board） |
+| ㉕.2 `sweep` 计数口径 | **通过** | `ran:false, swept:0`，`sweptMeans:"no pass has run in this process yet, so `swept:0` is the ABSENCE of a pass - not a pass that found nothing due"` |
+
+第 4 节「与《规则》不符之处」：**无**。未验项：**无**（按短跑范围）。判词：**「本轮无实质残余：是」**。
+
+### §64.2 阶段收尾条件（对照 goal 的完成判据）
+
+从 run 12（所办第一次给出完整验收报告）到 run 33，**所办报告里的每一条都已被定性**，并且每一条都配了门禁：
+
+- run 12 的 a–j：c（结题票通道）/f（裸占位）/a（sweep 无真调用）/b（`overrodeQuorum` 形状）/g（`selectionIgnored` 形状）/j（status 派发回落）
+  ⇒ 全部修复并各有断言；d/e/h/i ⇒ 判为非缺陷（读数/命名，各自在 `metIs`/`castMeaning`/诚实空值里已解释）。
+- run 13–run 31：每一轮的残余（R17–R26、c-1/c-2、㉑–㉓ 系列）⇒ 逐条修复 + 门禁（`vmu-run13/14/16/17/31-findings`、
+  `vmu-roster-liveness`、`vmu-receipt-shapes`、`audit-prompt-tool-params` 等）。
+- run 32：判「是」，但交回两条口径 ⇒ `vmu-run32-findings`（19 断言）固定，run 33 真机复判通过。
+- run 33：0 缺陷、0 未验项、判「是」。
+
+### §64.3 教训（本阶段最后一条）
+
+**「无实质残余」这句话必须由被测方说，且必须能被复查。** 本阶段两次假收尾（T1 全绿 + 我自己的抽查）都是因为把
+「机器判据」当成了「规则验收」；真正的截止阀是**所办自己的报告**——它从 run 12 起每次都在最后一条消息里，
+而它每次都在列表末尾交出下一条真缺陷。让代理当验收方、把它的每一条定性并配门禁，是这一阶段唯一稳定的推进方式。
