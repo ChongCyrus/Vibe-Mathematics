@@ -226,6 +226,18 @@ export function makePackToolSpec({ entry, kernel = null, packId = null } = {}) {
       }
       // ★ R26: an undeclared parameter is refused BY NAME rather than dropped. Measured in live run
       // 18: `vibe_v5_set { key, value, reason }` executed while the face declares `why`.
+      // ★★ LIVE RUN 29: A PACK MAY GIVE THE SHARPER REFUSAL FIRST. `vibe_v5_meeting` is convene-only, so passing
+      // `action:"status"` is not merely an undeclared key — it is a call from the WRONG FACE, and the pack's own message
+      // ("this face only CONVENES; read it with vibe_vmu_meeting {action:…}") sends the reader to the right place while
+      // this layer's generic sentence sends it to the declaration. `validate(args)` is the pack's chance to refuse with
+      // its own vocabulary; the gate below still runs for everything it does not claim (a safety net, not a bypass).
+      if (entry && typeof entry.validate === 'function') {
+        const verdict = await entry.validate(args)
+        if (verdict && verdict.ok === false) {
+          throw Object.assign(new Error(verdict.message || ('pack tool ' + name + ' refused this call')),
+            { code: verdict.code || 'VMU_INVALID_ARGUMENT', hint: verdict.hint || null })
+        }
+      }
       const unknown = unknownParametersOf(entry, args)
       if (unknown.length > 0) {
         const declaredMap = entry.parameters && typeof entry.parameters === 'object' ? entry.parameters : {}

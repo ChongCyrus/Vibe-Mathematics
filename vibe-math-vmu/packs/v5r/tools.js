@@ -1352,6 +1352,22 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
 /** ★ `vibe_v5_meeting` — convene a meeting. ONLY the chair seat may convene (the rule「会议只能由院士…召开」): the
  * original also let a non-chair PROPOSE one for the chair to convene; this face has no propose path, so that half is a
  * named gap rather than a silent convenience. */
+/**
+ * ★★ FINDING (j) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12) — as a PURE judge so it can run in the
+ * two places that need it: this face's own `run()` (a direct call, e.g. from a test or an M2 module) and the pack funnel's
+ * `validate` hook (which refuses BEFORE the generic undeclared-parameter gate, so this message wins and the reader is sent
+ * to the right face instead of to a parameter list). Returns `null` when the call is not an action call.
+ */
+function validateMeetingArgs(args = {}) {
+  if (args.action === undefined || args.action === null) return null
+  return {
+    ok: false,
+    code: 'VMU_INVALID_ARGUMENT',
+    message: 'vibe_v5_meeting only CONVENES a meeting; it has no "' + String(args.action) + '" action (this call was never dispatched, so nothing about it was validated)',
+    hint: 'convene with { member, agenda } (optional: type/subject/title/at/formal_agenda/secretary); to READ or drive an existing meeting call vibe_vmu_meeting { action: "status"|"summary"|"snapshot"|"flow", id: "<meeting>" }',
+  }
+}
+
 function toolMeeting(args = {}, { kernel } = {}) {
   // ★★ FINDING (j) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12): the agent opened a SCHEDULED
   // meeting and then read it back with `{action:'status', id}` on THIS face; it got
@@ -1361,9 +1377,8 @@ function toolMeeting(args = {}, { kernel } = {}) {
   // caller never meant to supply is worse than a bare refusal: it sends the reader to fix the wrong thing. An `action`
   // (or the read-only keys a status call carries) is now refused BY NAME and pointed at the face that answers it.
   if (args.action !== undefined && args.action !== null) {
-    throw refuse('VMU_INVALID_ARGUMENT',
-      'vibe_v5_meeting only CONVENES a meeting; it has no "' + String(args.action) + '" action (this call was never dispatched, so nothing about it was validated)',
-      'convene with { member, agenda } (optional: type/subject/title/at/formal_agenda/secretary); to READ or drive an existing meeting call vibe_vmu_meeting { action: "status"|"summary"|"snapshot"|"flow", id: "<meeting>" }')
+    const refusal = validateMeetingArgs(args)
+    throw refuse(refusal.code, refusal.message, refusal.hint)
   }
   if (!has(args.agenda)) throw refuse('VMU_INVALID_ARGUMENT', 'meeting needs an agenda', 'pass agenda:"what this meeting is for"')
   // ★ PHASE 12 — before this line, `requireSeat` let ANY member convene and 「会议只能由院士召开」 was only a sentence in
@@ -2324,6 +2339,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
     description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary) and a debate REQUIRES subject (its object: a card id, a file reference, or one line). ★ `title` is an OPTIONAL separate name (omit it and the agenda stays as the subject; non-string is refused by name). ★ `at` SCHEDULES it: epoch milliseconds or an ISO-8601 string (e.g. "2026-10-24T10:00:00+08:00"); a future time puts the meeting in the `scheduled` state — status/summary/meetingView read it right away, but every action before the start time is refused BY NAME, and when the start time arrives with too few present it waits (a latecomer attending then starts it). The receipt reads the real state back (`state`, `scheduledFor`). ★ A DEBATE\'S SUBJECT MUST CARRY A FINISHED PROOF: a card id must have `proofRef`+`proofState:"complete"` (or a verified row / a passed Lean run), a file reference needs `subject_evidence.file = {readable:true, bytes:N, name}` (the gate only proves "exists and is non-empty" — content completeness is judged by the members in the debate), and a one-line proposition is legal but the receipt records `subjectGate.provenance:"none"` because nothing can be checked. A type that the institution gave a recommended procedure returns it in `procedure` — ★ it is a RECOMMENDATION, never a gate: skipping or reordering it is allowed and unchecked. Steps the framework has NOT implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES - status/summary/close/flow live on vibe_vmu_meeting { action, id }. The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name.',
     parameters: { agenda: { type: 'string', required: true }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true }, at: { type: 'string' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' } },
     handler: toolMeeting,
+    // ★ LIVE RUN 29: the funnel refuses undeclared keys generically; this face can say WHY it is the wrong face.
+    validate: validateMeetingArgs,
   },
   {
     name: 'vibe_v5_meeting_round',

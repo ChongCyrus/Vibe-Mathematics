@@ -1309,7 +1309,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       return ballotbox.cast({ boxId: String(args.boxId), by: String(args.by || args.member || ''), choice: args.value })
     },
   }
-  meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam, ballot: meetingBallot, members: memberRef })
+  // ★★★ LIVE RUN 29: ONE VISIBLE NAME, ONE MEETING. The service and the primitive registry (`liveMeetings`, declared
+  // later and therefore read through a LATE-BOUND arrow - it is only called when a meeting is opened, never during
+  // construction) both hand callers ids that read as "the meeting". Without this seam each guarded only its own table,
+  // and a minted `m111` here plus an explicit `m111` there were two meetings under one name (the agent reported it).
+  meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam, ballot: meetingBallot, members: memberRef, foreignIds: () => [...liveMeetings.keys()] })
   const meetings = meetingsRef.current
   // ROUND 9 / task-66 A (G7): the board's cast/settle commits through the SAME durable log as the mailbox — one
   // instance, one ticket sequence, so a recovery replay has a single order to follow. Absent store ⇒ the board's
@@ -2170,6 +2174,14 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // A1 round 10: an explicit id that is already LIVE is refused BY NAME. Overwriting it would silently
       // replace a meeting another caller is still addressing (the same guard the meetings SERVICE now has).
       if (liveMeetings.has(id)) throw refuse('VMU_CONFLICT', 'a live meeting already uses id ' + String(id), 'choose another id; a live meeting is never silently replaced')
+      // ★★★ LIVE RUN 29: the same one-name-one-meeting rule on THIS side. The service mints `mN`; an explicit `mN` here
+      // used to be accepted, so the two tables could hold different meetings under one name. A collision with the
+      // service is refused by name (never silently re-pointed) and the hint says which table owns the id.
+      const serviceIds = meetingsRef.current && typeof meetingsRef.current.liveIds === 'function' ? meetingsRef.current.liveIds() : []
+      if (Array.isArray(serviceIds) && serviceIds.includes(String(id))) {
+        throw refuse('VMU_CONFLICT', 'a live meeting already uses id ' + String(id),
+          'that id belongs to the meetings SERVICE (the pack face / vibe_vmu_meeting actions); choose another id - one visible name must denote one meeting (live run 29)')
+      }
       const made = createMeeting(Object.assign({ bus, clock, deliver,
         // PHASE 6 / P0 (goal-3 audit R1): these used to read raw and fall back to 0, turning the declared caps OFF.
         // The declared defaults (2 / 3) now come from the ONE reader, and an unconfigured deployment enforces them.
@@ -2376,6 +2388,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           parameters: raw.parameters && typeof raw.parameters === 'object' && !Array.isArray(raw.parameters) ? raw.parameters : {},
           handler: raw.handler,
           packId: owner,
+          // ★★ LIVE RUN 29: the pack's own pre-gate refusal judge, carried verbatim (see packTools()). A declaration
+          // without one is stored without the key — never a placeholder that would have to be truth-tested later.
+          ...(typeof raw.validate === 'function' ? { validate: raw.validate } : {}),
         }))
         stagedNames.add(name)
       }
@@ -2753,6 +2768,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       return [...packToolDeclarations.values()].map((t) => ({
         name: t.name, description: t.description, parameters: t.parameters, handler: t.handler,
         packId: t.packId,
+        // ★★ LIVE RUN 29: A PACK MAY REFUSE WITH ITS OWN VOCABULARY BEFORE THE GENERIC PARAMETER GATE. This map used to
+        // carry exactly five keys, so a declaration's `validate(args)` was silently dropped on the way to the funnel and
+        // never ran — the pack's sharper sentence ("this face only CONVENES; read it with …") could not win against
+        // "does not accept parameter(s)". Carried now, and only when it is a function (no placeholder keys).
+        ...(typeof t.validate === 'function' ? { validate: t.validate } : {}),
       }))
     },
 

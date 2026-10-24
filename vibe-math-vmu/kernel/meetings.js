@@ -55,7 +55,7 @@ const RING = 200
 // used by every rail, so the vocabulary cannot drift rail by rail.
 const ACTOR_ALIASES = 'the actor is accepted as actor, by or member (the three names are the same person)'
 
-export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null, boxFor = null } = {}) {
+export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null, boxFor = null, foreignIds = null } = {}) {
   if (typeof clock !== 'function') {
     // No key has been consulted at construction time: the list is explicitly EMPTY (never undefined).
     throw Object.assign(refuse('VMU_INVALID_ARGUMENT', 'createMeetings needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock'), { enforced: [], evaluated: [] })
@@ -698,6 +698,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // ★ the implementation is the hoisted `openSeq` below (see the note there): D6 needs `close()` to open the
     // next meeting of a sequence through the SAME code path, and a literal's method cannot be reused.
     open: openSeq,
+
+    /**
+     * ★★★ LIVE RUN 29: the ids THIS service holds, so the OTHER meeting registry (the primitive one at
+     * `vibe_vmu_meeting {action:"open"}`) can refuse/mint around them. Read-only and sorted: it exists to make
+     * "one visible name = one meeting" checkable from both sides, not to expose the meetings themselves.
+     */
+    liveIds: () => [...live.keys()].sort(),
 
     /**
      * ★★ PHASE 12 D1 — 「未到齐超时，此时院士自行决定怎么做」的唯一出口。
@@ -1929,7 +1936,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   // Declaring it here is the smallest change that lets `close()` reuse the ONE open implementation — a second open
   // path would have to keep the rails, the ids and the receipts in step by hand, which is how the two-loops confusion
   // earlier in this project started.
-  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null } = {}) {
+  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null, adoptForeign = false } = {}) {
 
     const enforced = []
     const ms = at === null ? clock() : atMs(at)
@@ -2034,7 +2041,30 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // The auto id stays the default, and the counter still advances on an explicit open so the two can
     // never mint the same name later without the guard below firing.
     const wanted = (typeof id === 'string' && id.trim() !== '') ? id.trim() : null
-    const mid = wanted || ('m' + (counters.opened + 1))
+    // ★★★ LIVE RUN 29 (the institute's own report, ㉑.5/㉑.6): TWO REGISTRIES, ONE VISIBLE NAME SPACE. The primitive
+    // meeting registry (`kernel/meeting.js`, reachable as `vibe_vmu_meeting {action:"open", id}`) and this SERVICE both
+    // hand out ids that a caller reads as "the meeting" — so an explicit `m111` on the primitive face and a minted
+    // `m111` here denoted two different meetings with one name, and the agent's own report recorded it as a collision it
+    // could not resolve. Each registry only guarded its OWN table. The `foreignIds` seam (supplied by the kernel) lets
+    // this one see the other's live ids, so ONE NAME ALWAYS MEANS ONE MEETING: an explicit id that the other registry
+    // holds is refused by name (never silently re-pointed), and a MINTED id steps past it.
+    // ★★ `adoptForeign`: the ONE caller allowed to share an id with the other registry is the documented BRIDGE
+    // (`vibe_vmu_meeting {action:"open", id}` creates the primitive meeting first and then records the SAME id here so a
+    // tool-declared secretary can be honoured — tools/meeting.js). That call is one deliberate act; two SEPARATE opens
+    // that happen to pick the same name are the defect this guard exists for. The flag is the bridge saying so out loud.
+    const foreign = adoptForeign ? [] : (() => { try { const v = typeof foreignIds === 'function' ? foreignIds() : null; return Array.isArray(v) ? v.map(String) : [] } catch { return [] } })()
+    const taken = (x) => live.has(x) || foreign.includes(x)
+    if (wanted !== null && taken(wanted)) {
+      throw deny('VMU_CONFLICT', 'a live meeting already uses id ' + String(wanted),
+        'open: ' + ([...live.keys()].sort().join(', ') || '(none)') + (foreign.includes(wanted) ? ' — that id belongs to the PRIMITIVE meeting registry (vibe_vmu_meeting action:"open"), which is a different table; pass another id' : ''), enforced)
+    }
+    let mid = wanted || ('m' + (counters.opened + 1))
+    if (wanted === null) {
+      // a MINTED id must not collide with the other registry either: advance the counter rather than hand back a name
+      // that already denotes a meeting elsewhere (silently reusing it would be the same defect with a luckier order).
+      let guard = 0
+      while (taken(mid) && guard < 10000) { counters.opened += 1; mid = 'm' + (counters.opened + 1); guard += 1 }
+    }
     if (live.has(mid)) throw deny('VMU_CONFLICT', 'a live meeting already uses id ' + String(mid), 'open: ' + [...live.keys()].sort().join(', '), enforced)
     const m = {
       id: mid, type: String(type), kind: kind === null ? null : String(kind), chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),

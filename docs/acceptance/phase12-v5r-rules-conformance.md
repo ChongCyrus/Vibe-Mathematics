@@ -2259,3 +2259,97 @@ brief ⑤ 要求抄 `delivered / drives / code / message`，而 `VMU_REPORT_NO_T
 - 修改：`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/tools/control.js`；`tests/vmu-turn.test.mjs` 209→**212**，`tests/vmu-roster-liveness.test.mjs` 35→**38**。
 - 邻居：`vmu-host` 199 · `vmu-kernel` 260 · `vmu-meetings` 214 · `vmu-v5r-tools` 354 · `vmu-live-run-r9-r12` 39 · `vmu-run17-findings` 13 · `vmu-control-roster` 14，全 0 fail。
 - 下一步：第 29 次真机跑是一次**全会话收官跑**——把 ①–⑳ 的关键读数一次性重验（此前几轮各自只验自己那一节，代理明确说「旧项不给读数」），并要求它在报告里给出全表结论。
+
+## §60 第 29 次真机跑（未跑完）：一个名字两个会议，以及一个被两张键表丢掉的闸
+
+### §60.1 这次跑的结局先说清楚
+
+第 29 次跑**没有正常结束**：它同时开两个会议、各起一个并行会话，结果服务器在运行中被系统回收
+（`clone_gone` 之前进程消失，drive `exit=1`，transcript 只有 4 万行、`cast:false`）。
+按诚实纪律，这次跑**不构成任何验收证据**：它既没有证明修好的东西在真机上成立，也没有证明它们不成立。
+它的价值只有一条——它把两个**新的**缺陷暴露出来了，而这两个缺陷在此之前的所有跑里都看不见。
+
+### §60.2 一个名字，两个会议（代理自己报的）
+
+代理的最终报告 ㉑.5/㉑.6 原文的意思：它手上两个会议都叫 `m111`，一个是 `vibe_v5_meeting` 开的，
+一个是 `vibe_vmu_meeting { action:"open", id:"m111" }` 开的；两个面读同一个 `m111` 时给出不同的会议，
+而任何读面上都没有一句话能区分「这是哪个表里的 m111」。
+
+根因是**两个注册表各自只查自己的表**：
+
+- 原语表 `vibe-math-vmu/kernel/index.js` 的 `liveMeetings`（`vibe_vmu_meeting {action:"open", id}`）；
+- 服务表 `vibe-math-vmu/kernel/meetings.js` 的 `live`（`vibe_v5_meeting` / `vibe_vmu_meeting` 的服务动作）。
+
+一边拿显式 id、另一边**铸**id（`'m' + (counters.opened + 1)`），两套编号互不参考，于是一次铸号就可能和
+另一表已有的名字撞上，撞上之后两边都认为自己是权威。
+
+**修法（两边都改，一条规则）**：「一个可见的名字最多指一个会议。」
+
+- `createMeetings({ …, foreignIds })` —— 新增只读 seam，内核把原语表的 live id 传进来（late-bound，
+  只在实际开会时求值，构造期不触碰尚未初始化的 `liveMeetings`）。
+- 服务侧 `openSeq`：显式 id 撞到原语表 ⇒ `VMU_CONFLICT`，hint **点名是哪张表持有**（含
+  `vibe_vmu_meeting action:"open"` 字样）；铸号撞到 ⇒ 计数器前进到下一个自由号（静默复用是同一个缺陷，
+  只是运气好）。
+- 原语侧 `meeting({ id })`：撞到服务表 ⇒ 同样 `VMU_CONFLICT`，hint 点名 `meetings SERVICE`。
+- 服务新增 `liveIds()`（排序只读），供另一侧判撞。
+- ★ **桥接例外**：`vibe-math-vmu/tools/meeting.js:155` 的 `svc.open({ id: meeting.id, … })` 是**一个动作**：
+  为了让工具声明的 secretary 被服务认，同一个 id 必须落到两张表。它现在显式传 `adoptForeign: true`，
+  而这条例外是**说出来的**，不是靠顺序碰巧成立。两次独立的开会撞名仍然是缺陷。
+
+### §60.3 第二个缺陷：`validate` 在两张键表里被丢掉（我自己的新代码）
+
+修 (j)（`vibe_v5_meeting` 只有「开会」语义，传 `action` 应被按名拒绝并指向 `vibe_vmu_meeting`）时，
+我先在 pack 的 tool 声明上加了 `validate: validateMeetingArgs`，在 `host-pack-tools.js` 的漏斗里先跑它、
+再跑通用的「未声明参数」闸。结果三条既有断言全红，而且报的还是**通用**那句。
+
+实测（不是推理）：
+
+```
+node -e "… PACK.tools.find(t=>t.name==='vibe_v5_meeting').validate"  → function   // 声明本身在
+测试里 spec.run({action:'status'})                                    → 通用那句   // 漏斗里却拿不到
+```
+
+两处**键表**把它吃了：
+
+1. `vibe-math-vmu/kernel/index.js` 的 `packToolDeclarations` 暂存时只保留
+   `{name, description, parameters, handler, packId}`；
+2. 同一个文件的 `packTools()` 再映射一次，仍然只输出那五个键。
+
+于是「pack 能用自己的措辞先拒」这件事，在**注册那一层**就已经不可能发生了——闸写好了，参数永远到不了它手上。
+两处都补成 `...(typeof raw.validate === 'function' ? { validate: raw.validate } : {})`（有条件、不留占位键）。
+
+★ 这是本阶段第四次「声明了却没有消费者」，但**这一次是我在同一个批次里自己造的**：加机制时不检查
+它是否活着到运行时。教训写进 §60.5。
+
+### §60.4 新闸 `tests/vmu-meeting-name-space.test.mjs`（20 断言）
+
+| 组 | 断言什么 | 为什么不是装饰 |
+|---|---|---|
+| ① 铸号让位 | 铸出的 id **不是**另一表已有的那个；且是下一个号（确定性前进）；且本侧**不写**对方那张表 | 「不撞」可以用随机达到，确定性前进 + 只读才证明是规则 |
+| ② 显式撞名被拒 | `VMU_CONFLICT` + hint 点名 **PRIMITIVE** 表 + message 带 id | 报告的原话是「没有任何一句话说是哪个表」 |
+| ③ 桥接例外 | `adoptForeign:true` 时同一个 id **接受** | 没有这条，A1② 的桥接会被自己的闸打死（实测确实打死了，`vmu-v5r-tools` 2 红） |
+| ④ 反方向 | 原语面拒绝服务表已占的 id，hint 点名 **SERVICE** | 只修一边，另一边仍是后门 |
+| ⑤ 闸到得了 | pack 声明里的 `validate` 经过**两张键表**后仍是函数；漏斗用它的句子而不是通用句子；hint 指向能回答的面；且**不**声称缺 agenda | 这是 §60.3 那个缺陷的回归闸——它考的是「机制活着」，不是「机制存在」 |
+
+### §60.5 教训（本轮最贵的一条）
+
+**「加了闸」和「闸能跑到」是两件事，而只有前者看得见。** 我这批的第一版 `validate` 写对了、单元上也被
+直接调用过（`makePackToolSpec` 手工喂 entry 时是通的），但**真实路径**上 entry 经过两次键表映射，
+键被丢掉，闸永远不执行——而测试报的错和「闸没写」完全一样，看起来像写错了句子。
+唯一可靠的判据是**从注册完毕的运行时里把规格取出来调用**（`kernel.packTools()` → 漏斗 spec），
+而不是从声明处调用。凡新增机制，闸必须**至少有一条断言走真实注册路径**。
+
+### §60.6 当前状态
+
+- 代码：`kernel/meetings.js`（foreignIds / adoptForeign / liveIds / 铸号让位）、`kernel/index.js`
+  （foreignIds seam / 原语侧撞名拒 / `validate` 两处键表）、`tools/meeting.js`（桥接 adoptForeign）、
+  `packs/v5r/tools.js`（`validateMeetingArgs` 纯判官 + 声明上挂 `validate`）、`host-pack-tools.js`（漏斗先跑
+  pack 的 `validate`）。
+- 断言：新增 `tests/vmu-meeting-name-space.test.mjs` **20/0**；邻居全绿（`vmu-v5r-tools` 354/0、
+  `vmu-meetings` 214/0、`vmu-meeting-types` 142/0、`vmu-kernel` 260/0、`vmu-host` 199/0、
+  `vmu-turn` 212/0、`vmu-receipt-shapes` 50/0、`vmu-roster-liveness` 38/0、`vmu-meeting-parity` 204/0、
+  `vmu-meeting-invite` 69/0、`vmu-meeting-procedures-catalog` 53/0）。
+- 派生面：`update-doc-counts --write` ⇒ JOBS 522 / suites 414 / probes 108；`regen-all` 16/16 in sync；
+  `check-docs` `DOC LINT: PASS`。
+- ★ 仍然缺的：**真机证据**。§60.1 那次跑无效，所以「一个名字一个会议」与「pack 的措辞先拒」都只有单元断言，
+  没有一次干净的真机跑确认。下一轮必须以**单会议、单会话**的短跑复验这两条，再继续收尾。
