@@ -13,6 +13,28 @@ const REPORT_FIELDS_DOC = REPLY_FIELDS
   .join('；')
 
 export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
+    // ★★★ LIVE RUN 23: THE DELIVERED PROMPT COULD NOT BE READ BACK, SO A WHOLE CLASS OF ACCEPTANCE CHECK WAS UNPROVABLE.
+    // The step receipt carries `memberPrompt.text`, but a receipt is bounded (12 000 bytes per tool result), so a
+    // ~21 700-byte member prompt came back with its middle elided and its tail host-cut: the reader could not answer
+    // "does this prompt say X anywhere", and the institute correctly refused to certify what it could not see. Reading
+    // a truncated receipt and eyeballing the visible part is not verification. So the face REMEMBERS the full text of
+    // the last few prompts it handed out and exposes op:"prompt", paged by offset/limit, stating the total, the page's
+    // end and the next offset - the same characters the member received, readable in full.
+    // The cache lives on the SPEC (one per assembled host), not inside the per-call core, so a page can be read after
+    // the call that produced it returned. Bounded to the last few turns; an unknown turn is refused by name.
+    const PROMPT_CACHE_LIMIT = 6
+    const promptCache = new Map()
+    const rememberPrompt = (out) => {
+      const p = out && out.memberPrompt
+      const text = p && typeof p.text === 'string' ? p.text : null
+      if (text) {
+        const id = (out.turn && out.turn.id) || 'anon-' + (promptCache.size + 1)
+        promptCache.delete(id)
+        promptCache.set(id, text)
+        while (promptCache.size > PROMPT_CACHE_LIMIT) promptCache.delete(promptCache.keys().next().value)
+      }
+      return out
+    }
     // ROUND 349: ONE CORE, TWO THIN WRAPPERS. The middleware wrapper calls `spec.run` and stringifies what it gets,
     // while direct callers (and the tests) call `spec.execute` and parse a string themselves. Measured the hard way:
     // a face that returns a string from `run` gets it stringified AGAIN, so the caller parses back the same string.
@@ -61,6 +83,50 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         ? kernel.members.roster().filter((m) => m && m.state === 'live').map((m) => ({ id: m.id, role: m.slot || m.role }))
         : []
       const members = explicit ? explicitMembers : inferred
+      if (op === 'prompt') {
+        const want = args.turn === undefined || args.turn === null || args.turn === '' ? null : String(args.turn)
+        let id = want
+        let text = null
+        if (id === null) {
+          if (promptCache.size === 0) {
+            return refused('VMU_STATE', 'no member prompt has been assembled in this process yet, so there is nothing to page',
+              'run op:"step" first - the prompt that step hands you is the one this op pages')
+          }
+          id = Array.from(promptCache.keys()).pop()
+          text = promptCache.get(id)
+        } else {
+          text = promptCache.get(id) || null
+          if (text === null) {
+            return refused('VMU_NO_SUCH_OBJECT', 'no assembled member prompt is retained for turn ' + id,
+              'retained turns: ' + (promptCache.size ? Array.from(promptCache.keys()).join(', ') : '(none - the cache is per process and bounded to the last ' + PROMPT_CACHE_LIMIT + ')'))
+          }
+        }
+        const asInt = (v, dflt) => {
+          if (v === undefined || v === null || v === '') return dflt
+          const n = typeof v === 'number' ? v : Number(String(v))
+          return Number.isFinite(n) && Math.floor(n) === n ? n : null
+        }
+        const offset = asInt(args.offset, 0)
+        if (offset === null || offset < 0) {
+          return refused('VMU_INVALID_ARGUMENT', 'offset must be a non-negative whole number of characters', 'omit offset to start at the beginning')
+        }
+        const askedLimit = asInt(args.limit, 6000)
+        if (askedLimit === null || askedLimit < 1) {
+          return refused('VMU_INVALID_ARGUMENT', 'limit must be a positive whole number of characters', 'omit limit for 6000')
+        }
+        const LIMIT_MAX = 9000
+        const limit = Math.min(askedLimit, LIMIT_MAX)
+        if (offset >= text.length) {
+          return refused('VMU_INVALID_ARGUMENT', 'offset ' + offset + ' is past the end of this prompt (' + text.length + ' characters)',
+            'page from 0 and follow nextOffset to the end')
+        }
+        const end = Math.min(text.length, offset + limit)
+        return { ok: true, turn: id, chars: text.length, offset, limit,
+          limitClamped: limit !== askedLimit, end, done: end >= text.length,
+          nextOffset: end >= text.length ? null : end,
+          text: text.slice(offset, end),
+          pages: Math.ceil(text.length / limit) }
+      }
       if (op === 'status') {
     const status = kernel.turn.status()
     // ★ PHASE 7 / round 17: the turn face used to call closureVoteOf with its DEFAULTS (roster []), so a seated member
@@ -172,7 +238,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         for (const id of ids) kernel.setMemberToolOverride({ member: id, all: isNone, allow })
         if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(ids[0])
         try {
-          return await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
+          return rememberPrompt(await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step }))
         } finally {
           if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null)
           for (const id of ids) { try { kernel.clearMemberToolOverride(id) } catch { /* clear is best effort */ } }
@@ -189,10 +255,10 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (typeof kernel.closureVoteView !== 'function') return out
         try { return Object.assign({}, out, { closureVote: kernel.closureVoteView() }) } catch { return out }
       }
-      if (op === 'step') {
+            if (op === 'step') {
         const activeId = members.length > 0 && members[0] && typeof members[0].id === 'string' ? members[0].id : null
         if (activeId && typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(activeId)
-        try { return withClosure(await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })) }
+        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step }))) }
         finally { if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null) }
       }
       if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step }))
@@ -246,7 +312,10 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       // and a real "properties" object - the model (correctly) put its arguments INSIDE that object, so top-level keys like
       // tools:'none' never reached coreTurn. It is a param map now, exactly like every other tool.
       parameters: {
-        op: param('string', 'step＝一轮／drive＝连跑若干轮／reply＝汇报本回合（工具通道，首选）／status＝读数', { required: true }),
+        op: param('string', 'step＝一轮／drive＝连跑若干轮／reply＝汇报本回合（工具通道，首选）／status＝读数／prompt＝分页读回本进程交出的成员提示词原文（step 回执里的 memberPrompt 会被回执上限截断，这里不会）', { required: true }),
+        turn: param('string', '仅 prompt：要读哪一轮的提示词（省略＝最近一轮）'),
+        offset: param('integer', '仅 prompt：从第几个字符开始（省略＝0）'),
+        limit: param('integer', '仅 prompt：本页最多多少字符（省略＝6000，上限 9000；被夹到上限时回执 limitClamped:true）'),
         detail: param('string', '仅 status：closure＝只回 closureVote（小回执）；未知值具名拒'),
         members: param('array', '本轮可唤醒的成员：[{id, role}]；缺省时由内核名册推断（无成员 ⇒ 合法空转）'),
         rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）'),

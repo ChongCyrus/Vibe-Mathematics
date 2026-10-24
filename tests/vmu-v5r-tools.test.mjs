@@ -980,26 +980,38 @@ try {
   const asChair = await assembleForRole('chair')
   const asMemberSlot = await assembleForRole('member')
   const asTempSlot = await assembleForRole('temp')
-  ok(asChair.includes('【本轮可用的工具｜院士】') && asChair.includes('vibe_v5_poll_open'),
+  ok(asChair.includes('【本角色可用的工具｜院士】') && asChair.includes('vibe_v5_poll_open'),
     '★ chair slot renders the academician tool list (convening/poll verbs included)', asChair.length)
-  ok(asMemberSlot.includes('【本轮可用的工具｜研究员】') && !asMemberSlot.includes('【本轮可用的工具｜院士】'),
+  ok(asMemberSlot.includes('【本角色可用的工具｜研究员】') && !asMemberSlot.includes('【本角色可用的工具｜院士】'),
     '★ member slot renders the researcher tool list and not the chair one', asMemberSlot.length)
-  ok(asTempSlot.includes('【本轮可用的工具｜临时成员】') && !asTempSlot.includes('【本轮可用的工具｜研究员】'),
+  ok(asTempSlot.includes('【本角色可用的工具｜临时成员】') && !asTempSlot.includes('【本角色可用的工具｜研究员】'),
     '★ temp slot renders the temp tool list only', asTempSlot.length)
   // NEGATIVE (this is the real-machine shape): a DISPLAY name as `role` renders NO ROLE-SCOPED v5r section at all.
   // (The non-role-scoped sections — e.g. the no-tools fixture constraint — legitimately still render; only sections whose
   // scope is a role are evidence here, so those are exactly the markers counted below.)
   const asDisplayAcademician = await assembleForRole('academician')
   const asDisplayResearcher = await assembleForRole('researcher')
-  const displayMarkers = ['【本轮可用的工具｜院士】', '【本轮可用的工具｜研究员】', '【本轮可用的工具｜临时成员】', '【SLV 夹具约束｜本轮调用工具】']
+  const displayMarkers = ['【本角色可用的工具｜院士】', '【本角色可用的工具｜研究员】', '【本角色可用的工具｜临时成员】', '【SLV 夹具约束｜本轮调用工具】']
   const renderedWithDisplay = [asDisplayAcademician, asDisplayResearcher]
     .filter((t) => displayMarkers.some((m) => t.includes(m))).length
   ok(renderedWithDisplay === 0,
     '★★★ 负证明: when `role` is a DISPLAY name (academician/researcher) NO role-scoped v5r section renders — so the next person who writes a display name in a scope turns this red',
-    { displayAcademician: asDisplayAcademician.includes('【本轮可用的工具'), displayResearcher: asDisplayResearcher.includes('【本轮可用的工具') })
+    { displayAcademician: asDisplayAcademician.includes('【本角色可用的工具'), displayResearcher: asDisplayResearcher.includes('【本角色可用的工具') })
 
-  // ── ③n THE BINDING VOCABULARY (round 13): the charter's role BINDINGS must speak slot ids too ───────────────
-  // Same mechanism as §3m, one layer deeper: a binding's `role` dimension is matched against turn.role (the SLOT ID).
+  // ★ LIVE RUN 23 (b)1 — THE HEADING USED TO CLAIM PER-TURN AVAILABILITY. `tools:"none"` narrows the REAL wire, but the
+  // role catalogue is static text: a heading 「本轮可用的工具」 sitting beside the host's 「本轮你实际能调用的工具」 gave two
+  // similar names to two different things, and the institute reported the catalogue as proof that the override had not
+  // applied. The catalogue heading is 本角色 now, and the sentence that points at the host's section states outright that
+  // the catalogue is NOT a promise about the mounted face.
+  const toolsSectionText = (PACK.sections || []).map((s2) => (s2 && typeof s2.text === 'string' ? s2.text : '')).join('\n')
+  ok(!toolsSectionText.includes('【本轮可用的工具｜'),
+    '★★ no pack section claims "THIS TURN" tool availability any more (that heading now belongs to the host-written section alone)',
+    toolsSectionText.includes('【本轮可用的工具｜'))
+  ok(toolsSectionText.includes('不承诺「本回合已挂载」') && toolsSectionText.includes('本轮你实际能调用的工具'),
+    '★ and the pointer sentence says the catalogue is a ROLE list, naming the host section as the availability authority',
+    { disclaimer: toolsSectionText.includes('不承诺「本回合已挂载」'), namesHostSection: toolsSectionText.includes('本轮你实际能调用的工具') })
+
+  // ── ③n THE BINDING VOCABULARY (round 13): the charter's role BINDINGS must speak slot ids too ───────────────  // Same mechanism as §3m, one layer deeper: a binding's `role` dimension is matched against turn.role (the SLOT ID).
   // The charter's texts are keyed by the SOURCE's words (academician/researcher/temp); emitting those words as binding
   // dimensions made the role-specific content DEAD — every seat fell back to the section default (= researcher text).
   console.log('=== 3n. THE BINDING VOCABULARY: charter role bindings speak slot ids ===')
@@ -1056,7 +1068,7 @@ try {
   const rolesScoped = toolSections.map((s) => s.scope && s.scope.role)
   ok(J(rolesScoped.sort()) === J(['chair', 'member', 'temp']), 'each is scoped to exactly ONE role (no cross-role prelude)', rolesScoped)
   const markers = toolSections.map((s) => String(s.text).split('\n')[0])
-  const badMarkers = markers.filter((m) => !m.startsWith('【本轮可用的工具｜'))
+  const badMarkers = markers.filter((m) => !m.startsWith('【本角色可用的工具｜'))
   ok(new Set(markers).size === 3 && markers.length === 3 && badMarkers.length === 0,
     'every marker is unique and names its own role', markers)
   const placeholders = toolSections.filter((s) => /\{\{/.test(String(s.text)))
@@ -1071,9 +1083,9 @@ try {
   const asResearcher = await textFor('member')
   const asTemp = await textFor('temp')
   const asAcademician = await textFor('chair')
-  ok(asResearcher.includes('vibe_v5_record_proposition') && asResearcher.includes('【本轮可用的工具｜研究员】'),
+  ok(asResearcher.includes('vibe_v5_record_proposition') && asResearcher.includes('【本角色可用的工具｜研究员】'),
     'the researcher\'s assembly carries the researcher tool list', asResearcher.length)
-  ok(asAcademician.includes('vibe_v5_message') && asAcademician.includes('【本轮可用的工具｜院士】'),
+  ok(asAcademician.includes('vibe_v5_message') && asAcademician.includes('【本角色可用的工具｜院士】'),
     'the academician sees the office-relay tool (the researcher\'s list does not have it)', asAcademician.length)
   // THE SUBSET IS CHECKED ON THE SECTION ITSELF (the assembled prompt legitimately mentions these names elsewhere in
   // the charter, so a whole-prompt grep would confuse prose with a tool list).
@@ -1119,9 +1131,9 @@ try {
     'the researcher gets the Lean five but NOT the lifecycle/config band', String(researcherSection.text).length)
   ok(!bulletHas(tempSection.text, 'vibe_v5_lean_run') && !bulletHas(tempSection.text, 'vibe_v5_set'),
     'the temp seat gets neither the Lean five nor configuration', String(tempSection.text).length)
-  ok(asTemp.includes('【本轮可用的工具｜临时成员】') && !asTemp.includes('【本轮可用的工具｜研究员】'),
+  ok(asTemp.includes('【本角色可用的工具｜临时成员】') && !asTemp.includes('【本角色可用的工具｜研究员】'),
     'the TEMP assembly carries its OWN marker and not another role\'s', asTemp.length)
-  ok(!asResearcher.includes('【本轮可用的工具｜临时成员】') && !asAcademician.includes('【本轮可用的工具｜研究员】'),
+  ok(!asResearcher.includes('【本角色可用的工具｜临时成员】') && !asAcademician.includes('【本角色可用的工具｜研究员】'),
     'no role sees another role\'s tool list (no cross-role leak)', { researcherHasTemp: asResearcher.includes('｜临时成员'), acadHasRes: asAcademician.includes('｜研究员') })
 
   // ── ⑥ UNLOAD RETRACTS THE DECLARATIONS ─────────────────────────────────────────────────────────────────────
@@ -1798,7 +1810,7 @@ try {
   // that role's static list. That is what makes the host's in-place replacement land next to the table it corrects.
   const promptModM = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kernel', 'prompt', 'index.js')).href)
   const pipeM = promptModM.createPromptPipeline({ sections: PACK.sections, bindings: PACK.bindings || [], settings: {}, counts: {} })
-  const roleMarksM = { chair: '【本轮可用的工具｜院士】', member: '【本轮可用的工具｜研究员】', temp: '【本轮可用的工具｜临时成员】' }
+  const roleMarksM = { chair: '【本角色可用的工具｜院士】', member: '【本角色可用的工具｜研究员】', temp: '【本角色可用的工具｜临时成员】' }
   const placementM = {}
   for (const role of ['chair', 'member', 'temp']) {
     const t = (await pipeM.assemble({ member: 'r-1', role, roleLabel: role, phase: 'normal' })).text

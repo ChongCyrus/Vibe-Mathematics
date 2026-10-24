@@ -530,7 +530,9 @@ export const v5rFixtureTools = Object.freeze({
   text: [
     '【SLV 夹具约束｜本轮调用工具】',
     '本轮**可以且应该**调用你自己的工具：边做边记录，不要把动作攒到回合末尾。',
-    '你这一刻能用的工具清单就在本提示词的「本轮可用的工具｜<你的角色>」段里（按你的席位列出，逐条只有工具名与一句用途）；不确定时可调用工具帮助本身。',
+    '本提示词的「本角色可用的工具｜<你的角色>」段按你的席位列出该角色的工具与一句用途 —— 它是**角色职责清单**，',
+    '不承诺「本回合已挂载」。本回合真正挂载了哪些，以宿主装配时给出的「本轮你实际能调用的工具」段为准（该段由宿主写入）；',
+    '若提示词里没有那一段，说明本轮提示词不是宿主装配的，工具面就是你所在角色的默认面。不确定时可调用',
     '调用工具后结果立即可见；**回执可以很薄**——动作已经由工具完成了，回执只需说明"这一轮做了什么、下一步是什么"，不要为了凑长篇而重复工具已经记录的内容。',
     // ★ PHASE 12 (F5): this used to say "仍然只输出一个合法 JSON 对象" — an end-of-turn JSON TEXT. The reply is a
     // TOOL ARGUMENT now (`vibe_vmu_turn {op:"reply", report:{…}}`), so teaching the old transport contradicted the
@@ -598,7 +600,7 @@ export const v5rToolSectionAcademician = Object.freeze({
   source: 'v5r-fixture:tools',
   scope: Object.freeze({ role: 'chair' }),
   text: [
-    '【本轮可用的工具｜院士】',
+    '【本角色可用的工具｜院士】',
     '· vibe_v5_record_progress —— 写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state；证伪的路走 rejected，阻塞走 obstacles）。',
     '· vibe_v5_record_proposition —— 写命题卡（statement、value、motive、p 四项必填；p 是你对它为真的概率，未定稿可以先写，草稿不会被当成已验证）。',
     '· vibe_v5_record_method —— 写方法卡（content、value、motive、p 四项必填）。',
@@ -652,7 +654,7 @@ export const v5rToolSectionResearcher = Object.freeze({
   source: 'v5r-fixture:tools',
   scope: Object.freeze({ role: 'member' }),
   text: [
-    '【本轮可用的工具｜研究员】',
+    '【本角色可用的工具｜研究员】',
     '· vibe_v5_record_progress —— 写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state）。',
     '· vibe_v5_record_proposition —— 写命题卡（statement、value、motive、p 必填；草稿可先写，不会被当成已验证）。',
     '· vibe_v5_record_method —— 写方法卡（content、value、motive、p 必填）。',
@@ -695,7 +697,7 @@ export const v5rToolSectionTemp = Object.freeze({
   source: 'v5r-fixture:tools',
   scope: Object.freeze({ role: 'temp' }),
   text: [
-    '【本轮可用的工具｜临时成员】',
+    '【本角色可用的工具｜临时成员】',
     '· vibe_v5_record_progress —— 把你这一轮的进展写进研究日志（临时席位只记进展，不建自己的方法/命题库）。',
     '· vibe_v5_say —— 在群里发言（省略 to）或私信（to 填成员 id）；发言者必须是你自己的真名册 id。',
     '· vibe_v5_task_list / vibe_v5_task_update —— 看任务板、就地更新分给你的那张任务（认领/完成/重开）。',
