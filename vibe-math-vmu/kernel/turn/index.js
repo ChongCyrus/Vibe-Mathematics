@@ -1929,7 +1929,10 @@ export function createTurnOrchestrator({
         const r = await run({ ...spec, round: i })
         // ★ ROUND 73: a caller-played turn ENDS the batch - the prompt goes back and the round resumes on the next call.
         if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member }
-        receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), turn: r.turn.id, source: r.source || null })
+        receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), turn: r.turn.id, source: r.source || null,
+          // ★ PHASE 12 / run 37: the same detail the step receipt now carries - a batch receipt is read by the same person.
+          skippedDetail: r.skipped.slice(0, 5), skippedDetailTruncated: r.skipped.length > 5,
+          notes: (r.notes || []).slice(0, 5), notesMean: r.notesMean || null })
         consecutive.set(spec.member, 0)
       } catch (e) {
         counts.refused += 0
@@ -2073,6 +2076,13 @@ export function createTurnOrchestrator({
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated, ...selectionReadings }
       return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(),
+        // ★ PHASE 12 / live run 37 (the institute's own report): this receipt reduced `skipped` to a NUMBER, so the reason
+        // and the kept line were unreadable - the member saw "skipped:1" and could not learn which field, why, or what it
+        // had said. A COUNT is a diagnostic that costs nothing and tells nothing; the detail travels with it, BOUNDED.
+        skippedDetail: r.skipped.slice(0, 5),
+        skippedDetailTruncated: r.skipped.length > 5,
+        notes: (r.notes || []).slice(0, 5),
+        notesMean: r.notesMean || null,
         // ★ LANE turn-reply: the receipt must say WHICH CHANNEL answered ('text' | 'tool' | 'tool+text'), or a reader
         // cannot tell a legacy fenced-json round from a tool-reported one - and a mechanism whose channel is invisible in
         // its own receipt is exactly the "set a value, cannot read it back" defect this lane exists to remove.
@@ -2178,7 +2188,7 @@ export const dispatchSkipReason = (d) => {
   if (d.face === 'vmu.meetings' && d.op === 'speak' && !hasMeetingRef(d.payload)) {
     return {
       reason: 'no-meeting-bound',
-      note: 'this turn has no meeting, so a speech has nothing to attach to; the line stays in the round state only (the prompt allows `say` as the explanation for speech already made through vibe_v5_say)',
+      note: 'this turn has no meeting, so a speech has nothing to attach to (the prompt allows `say` as the explanation for speech already made through vibe_v5_say); the line is KEPT, see `notes`',
     }
   }
   return null

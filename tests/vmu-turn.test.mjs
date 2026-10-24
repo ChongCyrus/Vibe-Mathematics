@@ -1538,6 +1538,26 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(/supersede/.test(keep.pendingMeans), '★ R28c: and that a held prompt is what a later call would supersede', keep.pendingMeans)
 }
 
+// ★ PHASE 12 / live run 37 (the institute's own report): the step receipt reduced `skipped` to a NUMBER, so a member who
+// copied the prompt's minimal receipt saw "skipped:1" and could not learn which field, why, or what it had said. The
+// detail now travels with the count, bounded - asserted through a REAL step, because the defect lived in the receipt
+// shaping rather than in the decision that made the skip.
+{
+  const t = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
+    deliver: async () => fence({ say: '核验句-甲' }),
+    faces: { 'vmu.meetings': { speak: async () => ({ ok: true }) } } })
+  const stepped = await t.step({ members: ['r-2'], why: 'R29 the receipt must show WHY a field was skipped' })
+  const rc = stepped && (stepped.receipt || null)
+  ok(!!rc && rc.skipped === 1, '★ R29a: the round completed with exactly one skipped field', rc && rc.skipped)
+  ok(!!rc && Array.isArray(rc.skippedDetail) && rc.skippedDetail.length === 1 && rc.skippedDetail[0].reason === 'no-meeting-bound',
+    '★★★ R29b: the step receipt carries the REASON, not just a count', rc && rc.skippedDetail)
+  ok(!!rc && Array.isArray(rc.notes) && rc.notes.length === 1 && rc.notes[0].text === '核验句-甲',
+    '★★★ R29c: and the sentence that was not dispatched is READABLE on the same receipt', rc && rc.notes)
+  ok(!!rc && typeof rc.notesMean === 'string' && /empty list means no such line/.test(rc.notesMean),
+    '★★ R29d: the empty case stays explicable (an empty list must not read as "something was dropped")', rc && rc.notesMean)
+  ok(!!rc && rc.skippedDetailTruncated === false, '★ R29e: the bound announces itself (no silent truncation)', rc && rc.skippedDetailTruncated)
+}
+
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

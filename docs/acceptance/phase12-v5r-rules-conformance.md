@@ -2634,3 +2634,43 @@ transcript `_oneoff/vm-slv/full-1024-220035.jsonl`（3 730 行），build `89610
 以及跳过说明不再指错地方（`the line IS kept: see`）。套件：`vmu-turn` **220/0**、`vmu-run35-findings` **26/0**。
 
 ★ 这一条是本阶段第 N 次「修完以后自查自己的措辞」，也是「诊断面本身就是被测系统」的又一例：note 属于诊断面，诊断面说谎与机制说谎等价。
+
+## §67 第 37 次真机跑：跳过发生了，但会员看不见为什么（诊断面又一次是缺陷本体）
+
+### §67.1 这次真机跑证明了什么
+
+`full-1025-011108.jsonl`（build `89f45a36`）`cast=true`、0 RED。所办自己的报告逐条给了读数：
+
+- **㉘.1 前半通过**：`{"say":"…"}`（提示词里那句最小回执）不再让回合炸掉——回合走完，`executed:0 skipped:1`。上一轮的 `VMU_NO_SUCH_OBJECT "no such meeting: undefined"` 没有复现。
+- **㉘.1 后半：不通过**。报告原文：「**没有 `notExecuted`、没有 `notes`、没有 `notesMean`，也没有任何 `no-meeting-bound` 字样**……结算回执只给 `skipped:1` 这个数字，原因不具名，句子内容不可读回」。
+- ㉘.2/㉘.3 通过（回合丢失具名、`turnState` 出现在错误回执上）。
+
+### §67.2 根因：守住了话，却没有守住「读得出来」
+
+上一轮的修复把两件事做对了：`apply()` 把 `say` 判成 `no-meeting-bound` 跳过，并把句子收进 `notes`（数据没丢）。但 `step()` 与批量 `run()` 组装回执时各自写了 `skipped: r.skipped.length`——**只把数字搬出来**，`skippedDetail`/`notes`/`notesMean` 全留在内核里。
+
+这就是本阶段第四次同一个形状的错误：*诊断面本身就是被测系统的一部分*。会员按提示词发一句 `say`，收到 `skipped:1`，他既不知道是哪个字段、为什么被跳过，也读不回自己刚说过的话——而这恰是提示词**教他**发的形状。
+
+### §67.3 修法（两处回执 + 一处措辞）
+
+- `vibe-math-vmu/kernel/turn/index.js` `step()` 成功回执：新增 `skippedDetail`（最多 5 条，带 `reason`/`field`/`note`）、`skippedDetailTruncated`（有界即声明）、`notes`（最多 5 条）、`notesMean`。
+- 同文件批量 `run()` 的每轮 receipt：同样四项（批量回执是给同一个人看的，不能只有 step 路可读）。
+- `dispatchSkipReason()` 的 note 不再说「the line stays in the round state only」（那是修复前的真相），改为「the line is KEPT, see `notes`」。
+
+### §67.4 门禁
+
+`tests/vmu-turn.test.mjs` 新增 R29a–R29e（5 条，套件 220 → **225/0**），走**真实的 step**而不是纯函数：
+
+- R29a 该轮 `skipped === 1`（先确认场景成立，否则后面全是空断言）；
+- R29b ★★★ `skippedDetail[0].reason === "no-meeting-bound"`——回执必须给出原因，而不只是数字；
+- R29c ★★★ `notes[0].text` 等于那句被跳过的话——会员读得回自己说了什么；
+- R29d `notesMean` 解释空列表（「空」不是「丢了」）；
+- R29e `skippedDetailTruncated === false`（有界必须自己说出来）。
+
+### §67.5 教训
+
+「机制在跑」与「机制可读」是两件事，而这一阶段已经四次栽在后者：`overrodeQuorum` 藏在别名里、`sweep` 只在一张脸上、`memberPrompt.turnId` 与 `pending.turn` 口径不一、现在是 `skipped` 只剩计数。**凡是回执里出现一个数字，就必须问：它的细节在哪一条路上丢了。**
+
+### §67.6 状态
+
+HEAD `89f45a36` + 本轮未提交改动（kernel 回执 + 5 条断言 + 覆盖率债重生成）。`regen-all --check` 16/16；`audit-declaration-criterion` 89/0。下一步：第 38 次真机跑，让所办自己判「跳过原因与原文是否读得回」。
