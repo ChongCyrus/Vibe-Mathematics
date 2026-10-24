@@ -85,7 +85,11 @@ export function createMeetingMarker({ clock = () => 0, live = new Map(), archive
     // which broke that distinction - the test was right and the filter was too broad.
     const openRows = list.filter((r) => domainOf(r.state) !== 'closed')
     return { ok: true, durableMarker: true, source: 'durable-seam',
-      meetings: openRows.map((r) => ({ id: String(r.id), state: domainOf(r.state) })),
+      // ★ LIVE RUN 7 (agent feedback item h): the `state` here is the DOMAIN marker (open|lapsed|closed) that a restart
+      // question needs, but a reader comparing it with the meeting face saw two different answers for one object
+      // (overview said open, the meeting said scheduled). The face label travels BESIDE it, so the two are not
+      // contradicting readings but one reading with its granularity named.
+      meetings: openRows.map((r) => ({ id: String(r.id), state: domainOf(r.state), status: String(r.state), faceState: String(r.state) })),
       readBack: list.length, closedCount: list.length - openRows.length,
       note: openRows.length
         ? 'read back from the durable domain seam'
@@ -228,44 +232,24 @@ export function createBoxBinding({ clock, initial = null, refuse }) {
   return { bind, view, resolve }
 }
 
-/** The value record for every wired key (explicit map; a name-derived lookup silently produced nulls). */
+import { WIRED_KEYS } from './meetings-defaults.js'
+
+/**
+ * The value record for every wired key.
+ *
+ * ★ PHASE 12 / round 8 (live run 7 item f): this used to be a HAND-WRITTEN map, and it drifted twice — when the chair
+ * rails landed and again when the schedule/wait keys did, `status().keys` silently under-reported keys that
+ * `WIRED_KEYS` claimed, i.e. the diagnostic surface disagreed with the list it is supposed to report. A hand list of
+ * a derived set is a defect by construction, so the record is now DERIVED from `WIRED_KEYS`: the short name is the
+ * key with the `vmu.meetings.` prefix removed, which is exactly how `K` is populated in `kernel/meetings.js`. A key
+ * whose short name could not be found would come out `undefined`, and the module suite asserts `st.keys[k] !==
+ * undefined` for EVERY wired key — so a future reader that forgets to add `K.<short>` fails loudly instead of
+ * under-reporting.
+ */
 export function meetingKeysSnapshot(K) {
-  return {
-    'vmu.meetings.wakeRetries': K.wakeRetries, 'vmu.meetings.verdictMaxRounds': K.verdictMaxRounds, 'vmu.meetings.hardLimitMs': K.hardLimitMs,
-    'vmu.meetings.tier': K.tier, 'vmu.meetings.allowLight': K.allowLight, 'vmu.meetings.eligibleSeats': K.eligibleSeats, 'vmu.meetings.attendDeniedSeats': K.attendDeniedSeats,
-    'vmu.meetings.typeCatalog': K.typeCatalog, 'vmu.meetings.attendanceMode': K.attendanceMode, 'vmu.meetings.liveCap': K.liveCap,
-    'vmu.meetings.quorumMin': K.quorumMin, 'vmu.meetings.quorumRatio': K.quorumRatio, 'vmu.meetings.quorumLossPolicy': K.quorumLossPolicy, 'vmu.meetings.quorumCap': K.quorumCap,
-    'vmu.meetings.quorumRecountMs': K.quorumRecountMs, 'vmu.meetings.unansweredInDenominator': K.unansweredInDenominator,
-    'vmu.meetings.emergencyQuorumRatio': K.emergencyQuorumRatio, 'vmu.meetings.emergencyKinds': K.emergencyKinds,
-    'vmu.meetings.chairNeutral': K.chairNeutral, 'vmu.meetings.chairTransferAudit': K.chairTransferAudit,
-    'vmu.meetings.committeeMax': K.committeeMax, 'vmu.meetings.committeeReportRequired': K.committeeReportRequired,
-    'vmu.meetings.budgetTurns': K.budgetTurns, 'vmu.meetings.budgetTokens': K.budgetTokens, 'vmu.meetings.budgetWallMs': K.budgetWallMs,
-    'vmu.meetings.budgetOnExceed': K.budgetOnExceed,
-    'vmu.meetings.speechDefaultMs': K.speechDefaultMs, 'vmu.meetings.speechMaxMs': K.speechMaxMs, 'vmu.meetings.speechExtendMs': K.speechExtendMs,
-    'vmu.meetings.speechExtendMax': K.speechExtendMax, 'vmu.meetings.speechQuotaPerMember': K.speechQuotaPerMember,
-    'vmu.meetings.interruptAllow': K.interruptAllow, 'vmu.meetings.interruptQuota': K.interruptQuota, 'vmu.meetings.orderMode': K.orderMode,
-    'vmu.meetings.lateAfterMs': K.lateAfterMs, 'vmu.meetings.leaveEarlyPolicy': K.leaveEarlyPolicy, 'vmu.meetings.materialsRequired': K.materialsRequired,
-    'vmu.meetings.minutesDetail': K.minutesDetail, 'vmu.meetings.minutesIncludeRefused': K.minutesIncludeRefused,
-    'vmu.meetings.minutesActionsRequired': K.minutesActionsRequired, 'vmu.meetings.minutesRetentionMs': K.minutesRetentionMs,
-    'vmu.meetings.confirmPreviousMinutes': K.confirmPreviousMinutes,
-    'vmu.meetings.appealDeadlineMs': K.appealDeadlineMs, 'vmu.meetings.appealReasonRequired': K.appealReasonRequired, 'vmu.meetings.appealScope': K.appealScope,
-    'vmu.meetings.disciplineWarnMax': K.disciplineWarnMax, 'vmu.meetings.disciplineMuteMs': K.disciplineMuteMs,
-    'vmu.meetings.disciplineExpelAllowed': K.disciplineExpelAllowed,
-    'vmu.meetings.recessMaxMs': K.recessMaxMs, 'vmu.meetings.recessResumeRequiresMotion': K.recessResumeRequiresMotion,
-    // ★ PHASE 12: the chair rails and the schedule/wait keys. They were ABSENT here when the rails landed (the
-    // snapshot is a hand list), so `status().keys` silently under-reported them while `WIRED_KEYS` claimed them —
-    // exactly the "the diagnostic surface is part of the system under test" failure. The suite's
-    // `status().keys` size check now pins the two lists together.
-    'vmu.meetings.conveneRequiresChair': K.conveneRequiresChair, 'vmu.meetings.closeRequiresChair': K.closeRequiresChair,
-    'vmu.meetings.extendRequiresChair': K.extendRequiresChair, 'vmu.meetings.extendCeilingMs': K.extendCeilingMs,
-    'vmu.meetings.scheduleAllowed': K.scheduleAllowed, 'vmu.meetings.waitOnDueMs': K.waitOnDueMs,
-    'vmu.meetings.waitDecisionRequiresChair': K.waitDecisionRequiresChair,
-    'vmu.meetings.waitForAll': K.waitForAll,
-    'vmu.meetings.leaveApprover': K.leaveApprover,
-    'vmu.meetings.confidentialityDefault': K.confidentialityDefault, 'vmu.meetings.confidentialityQuotePolicy': K.confidentialityQuotePolicy,
-    'vmu.meetings.verbatimEnabled': K.verbatimEnabled, 'vmu.meetings.verbatimRetentionMs': K.verbatimRetentionMs,
-    'vmu.meetings.wakeFailurePolicy': K.wakeFailurePolicy,
-  }
+  const out = {}
+  for (const key of WIRED_KEYS) out[key] = K[key.slice('vmu.meetings.'.length)]
+  return out
 }
 
 /* ════════════════════════════════════════════════════════════════════════════════════════════════════════════════

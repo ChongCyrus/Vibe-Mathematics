@@ -192,7 +192,14 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
         { form: 'file', subject: cls.raw, proofChecked: false })
     }
     return allow({ form: 'file', subject: cls.raw, proofChecked: false, proofContentChecked: false,
-      note: '文件存在且非空（bytes=' + String(f.bytes) + '）——本闸只能证明这么多；"内容是否写完"由辩论中的人核，回执如实标 proofContentChecked:false' })
+      // ★ LIVE RUN 7 (agent feedback item i): the acceptance agent passed `{path, name, readable:true, bytes:4096}` and
+      // the gate allowed it, then claimed "文件存在且非空". It was right to call that out: the numbers were the
+      // CALLER's, and nothing here stat()ed anything (this module is pure by design, and the pack holds no filesystem
+      // seam). The claim is downgraded to what it actually is — caller-reported — and the field that says so travels
+      // with the reading, so a reader cannot mistake it for a measurement.
+      evidenceSource: 'caller-reported',
+      note: '文件形态：调用方自报可读且非空（bytes=' + String(f.bytes) + '），本闸**没有**文件系统接缝、未自行 stat；'
+        + '"内容是否写完"由辩论中的人核 ⇒ 回执如实标 proofContentChecked:false、evidenceSource:"caller-reported"' })
   }
 
   // form === 'card'

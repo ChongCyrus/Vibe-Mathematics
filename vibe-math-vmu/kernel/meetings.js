@@ -145,6 +145,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     attendDeniedSeats: arr(sget('vmu.meetings.attendDeniedSeats')).map(String),
     liveCap: n(sget('vmu.meetings.liveCap')),
     quorumMin: n(sget('vmu.meetings.quorumMin')), quorumRatio: n(sget('vmu.meetings.quorumRatio')),
+    // ★ PHASE 12 / LIVE RUN 7 item f: the institution's quorum RULE, read here so `quorum().met` can honour it (the
+    // ballot face read it already; the meeting face did not, which is why 「未到齐 ⇒ 法定人数不成立」 had no landing
+    // point). Unset keeps the declared default; the value is echoed in `quorum().rule`/`metPolicy`/`metBecause`.
+    quorumRule: (() => { const v = sget('vmu.meetings.quorumRule'); return v === undefined || v === null ? 'm-unanimous' : String(v) })(),
     // ROUND 203: the quorum ceiling (declared default 3; 0 = no ceiling). `undefined` means unset -> default 3,
     // an explicit 0 is a VALUE -> no ceiling. Same unset-vs-value distinction as the other readers wired here.
     quorumCap: (() => {
@@ -352,6 +356,20 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     if (!isMember(String(by))) throw deny('VMU_NOT_MEMBER', 'the acting member is not on the roster: ' + String(by),
       'the roster seam rejected the actor for ' + what + '()', [])
   }
+  /**
+   * ★ PHASE 12 / live run 7 (agent feedback item c): `waitDueAt` — WHEN the chair's decision falls due.
+   *
+   * The waiting receipt carried `waitStartedAt` and a boolean `waitDecisionDue`, so a reader could see that the wait was
+   * running but never WHEN it ends — the rule's 「超过一定时间仍未到齐」 had no landing point on any read face, and the
+   * agent reported the missing field by name. It is DERIVED from the two facts that already exist (`waitStartedAt` and
+   * the declared `vmu.meetings.waitOnDueMs`), so this adds no state: a value that cannot be re-derived would be a second
+   * copy of the truth.
+   */
+  const waitDueOf = (m) => {
+    if (!m || m.state !== 'waiting' || !Number.isFinite(m.waitStartedAt)) return null
+    return K.waitOnDueMs > 0 ? m.waitStartedAt + K.waitOnDueMs : null
+  }
+
   /** The quorum computation (READ-ONLY): `attendanceMode` + `unansweredInDenominator` change the numbers. */
   const quorumOf = (m) => {
     const unanswered = m.roster.filter((r) => !m.present.has(r))
@@ -383,13 +401,57 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       return { n: eligible.length + unresolved, source: unresolved ? 'seats + unresolved roster ids' : 'seats' }
     })()
     const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, capUniverse.n) : needUncapped
+    // ★ PHASE 12 / LIVE RUN 7 (agent feedback item f): `met` was `present.size >= need`, so with the floor at 0 it was
+    // ALWAYS true — "未到齐" (present 1 of roster 2) and "法定人数" were decoupled readings of one meeting, and the
+    // accepted rule 「未到齐则法定人数不成立」 had no landing point. ★ FIRST ATTEMPT (kept as a recorded lesson): folding
+    // the institution's unanimity rule INTO `met` deadlocked the face — `met` gates `vote()`, so requiring "nobody
+    // unanswered" before anyone may cast a vote means the house can never fill up. The two questions are therefore kept
+    // APART and BOTH NAMED: `met` stays the FLOOR (may this house transact at all), while `unanimity.met` is the
+    // institution's rule (rule `vmu.meetings.quorumRule`, which this face did not read before this change).
+    const allIn = unanswered.length === 0
+    const unanimityRule = K.quorumRule === 'm-unanimous' || K.quorumRule === 'all-unanimous'
+    const met = m.present.size >= need
     return {
       cap: K.quorumCap, capUniverse: capUniverse.n, capUniverseSource: capUniverse.source,
       capPolicy: K.quorumCap > 0 ? 'min(quorumMin/quorumRatio need, vmu.meetings.quorumCap, eligible members in the roster)' : 'uncapped (vmu.meetings.quorumCap = 0)',
       meeting: m.id, mode: K.attendanceMode, present: m.present.size, roster: m.roster.length,
       unanswered: unanswered.length, unansweredList: unanswered.slice().sort(),
       denominator: effective, denominatorPolicy: K.unansweredInDenominator ? 'all-roster (unanswered counted)' : 'present-only',
-      required: need, met: m.present.size >= need, ratio: K.quorumRatio, min: needMin,
+      required: need, met: met, ratio: K.quorumRatio, min: needMin,
+      // ★ LIVE RUN 7 item f: the FLOOR and the RULE are separate, named readings. `metPolicy` says what `met` answers
+      // (`met` gates `vote()`, so it may only ever be the floor question); `unanimity` carries the institution's rule
+      // (rule `vmu.meetings.quorumRule`), which is what 「未到齐 ⇒ 法定人数不成立」 lands on.
+      rule: K.quorumRule,
+      metPolicy: 'met = (present >= required) — the FLOOR question (may this house transact at all); it deliberately '
+        + 'does NOT fold in the institution\'s unanimity rule, because `met` gates vote() and requiring full attendance '
+        + 'before the first vote would deadlock the house. The rule is `unanimity` below.',
+      unanimity: {
+        rule: K.quorumRule, ruleIsUnanimity: unanimityRule,
+        met: unanimityRule ? (met && allIn) : met,
+        unanswered: unanswered.slice().sort(),
+        policy: unanimityRule
+          ? 'the institution\'s rule is unanimity: the quorum counts as established only when EVERY roster member has '
+            + 'attended or voted AND the floor is met (「未到齐则法定人数不成立」)'
+          : 'the institution\'s rule (' + String(K.quorumRule) + ') is not unanimity: only the floor applies',
+        because: unanimityRule
+          ? (met && allIn ? 'every roster member attended or voted and the floor is met'
+            : (met ? 'the floor is met, but not everyone has attended or voted yet: ' + unanswered.slice().sort().join(', ')
+              : 'the floor is not met: present ' + m.present.size + ' < required ' + need))
+          : (met ? null : 'the floor is not met: present ' + m.present.size + ' < required ' + need),
+      },
+      // ★ LIVE RUN 7 (agent feedback item d/f): `required:0` with no derivation read as "no floor at all". The rule's
+      // formula is 「min(用户设置数, 院士+常驻研究员数)」, and every input is already in scope here, so the derivation is
+      // reported instead of left for a reader to infer: a 0 now says WHICH input was 0.
+      voteFloor: {
+        setting: needMin, ratioNeed: needRatio, eligibleUniverse: capUniverse.n, cap: K.quorumCap,
+        effective: need,
+        formula: K.quorumCap > 0
+          ? 'min(max(quorumMin, ceil(quorumRatio*roster)), quorumCap, eligible universe)'
+          : 'max(quorumMin, ceil(quorumRatio*roster)) [uncapped: quorumCap = 0]',
+        zeroBecause: need === 0
+          ? (needMin === 0 && needRatio === 0 ? 'vmu.meetings.quorumMin and quorumRatio are both 0: the deployment declared no floor' : null)
+          : null,
+      },
       emergencyRatio: K.emergencyQuorumRatio,
       // ★ G7 (real machine): "unanswered" used to mean "not in the PRESENT set", so after two votes it still listed a
       // member who had just voted (present stayed at 1) — a caller read that as "one person has not decided yet". The
@@ -1537,6 +1599,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         activatedAt: m.activatedAt === undefined ? null : m.activatedAt,
         startedLate: m.startedLate === true,
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
+        waitDueAt: waitDueOf(m),
         waitDecisionDue: m.waitDecisionDue === true,
         chair: m.chair || null, secretary: m.secretary || null,
         motions, votes: (m.minutes && Array.isArray(m.minutes.entries)) ? m.minutes.entries.filter((e) => e && e.kind === 'vote').length : 0,
@@ -1561,6 +1624,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         activatedAt: m.activatedAt === undefined ? null : m.activatedAt,
         startedLate: m.startedLate === true,
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
+        waitDueAt: waitDueOf(m),
         waitDecisionDue: m.waitDecisionDue === true,
         loop: 'meeting-ask-answer',
         note: '★ motions/votes/state here describe the MEETING’s own ask()+answer()+motion cycle. A member answering a vibe_vmu_turn prompt is a DIFFERENT loop: read vibe_vmu_turn’s receipts (awaiting/memberPrompt/deliveryPath) for that one. hasDeliverSeam on the primitive face refers to open({deliver}), not to the turn loop’s deliveryPath.', reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,
@@ -1588,8 +1652,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         // ★ PHASE 12 D1: a scheduled / waiting meeting is live but NOT runnable, and an operator must be able to see
         // the difference without opening each one. `waitDecisionDue` is the actionable half: those are the meetings
         // where the framework is deliberately waiting for a human decision.
-        scheduledMeetings: [...live.values()].filter((m) => m.state === 'scheduled').map((m) => ({ meeting: m.id, scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
-        waitingMeetings: [...live.values()].filter((m) => m.state === 'waiting').map((m) => ({ meeting: m.id, scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor, waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt, waitDecisionDue: m.waitDecisionDue === true, quorum: quorumOf(m) })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
+        scheduledMeetings: [...live.values()].filter((m) => m.state === 'scheduled').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
+        waitingMeetings: [...live.values()].filter((m) => m.state === 'waiting').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor, waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt, waitDueAt: waitDueOf(m), waitDecisionDue: m.waitDecisionDue === true, quorum: quorumOf(m) })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
         waitDecisionDue: [...live.values()].filter((m) => m.state === 'waiting' && m.waitDecisionDue === true).map((m) => m.id).sort(),
         // F28: a lapse is a first-class state an operator must be able to SEE (not infer from a missing meeting).
         lapsedMeetings: [...live.values()].filter((m) => m.lapse && !m.lapse.revokedAt).map((m) => m.id).sort(),

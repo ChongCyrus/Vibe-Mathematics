@@ -1306,3 +1306,53 @@ A1 的机制部分上一轮已经全绿（`tests/vmu-assistant-report.test.mjs` 
 ### §32.2 账本现状
 42 行 ＝ **42 已实现 / 0 部分 / 0 缺口 / 0 待核**。总计由 `tests/audit-conformance-totals.test.mjs`
 从状态单元**派生**（13/0），不接受手写数字。
+
+## §33 真机 run 7 的验收反馈（12 条）逐条核因与修复
+
+> 来源：`_oneoff/vm-slv/full-1024-093121.jsonl`（run 7，`cast:true`、0 RED）。它按 `task-p12.txt` 的 §⑤ 做了"验收官"：
+> 读完工具回执后逐条指出「这条规则要求的落点在回执里看不见」。下面每一条都先回 transcript / 源码核，再决定是**修机制**、
+> **修口径**、还是**判为报告假象**。★ 数字必须回到 transcript 里核 —— 本轮就有一条报告数字在原文件里根本不存在。
+
+### §33.1 逐条判定表
+
+| # | 报告的说法 | 核对结果 | 处置 |
+|---|---|---|---|
+| a | `faces.published` 含 `report` 而 `faces.enabled` 不含，读起来自相矛盾 | 机制本来就有 `enabledGap`/`enabledNotPublished` 解耦解释；缺的是**形状声明**与**把 pack 工具混进同一列表** | 修口径：`enabledScope` 说明 `enabled` 是"本次评估的闸"，`enabledGap[].kind` 区分 `route-not-recorded` 与 `pack-tool` |
+| b | quorum `required=2 / met=0` 且 3/3 已投 | **原文件里不存在**：`grep -o 'required\":[0-9]*'` 全是 0，`met` 全是 true，没有一次 `met:false` | 判为报告假象（数字无法复现）；它指向的**真问题**归到 f/d |
+| c | 等待阶段没有"到点时刻"字段 | 真缺陷：只有 `waitStartedAt` 与布尔 `waitDecisionDue` | 修机制：`waitDueAt = waitStartedAt + vmu.meetings.waitOnDueMs`（派生，不新增状态） |
+| d | 裁决回执没有"下限"落点 | 真缺陷：`vibe_v5_verdict_final` 无 minVotes；meetings 的 `quorum` 只有数字没有推导 | 修机制：`voteFloor{setting,ratioNeed,eligibleUniverse,cap,effective,formula,zeroBecause}` |
+| e | `hire` 不收 `purpose/initial_task`/`slot` 不生效 | 真缺陷：`vibe_v5_hire` 硬编码 `slot:'temp'` 且从不读 `slot` 参数 | 修机制：读 `slot`（默认 temp），非 temp **具名拒**并指向创所面 |
+| f | `present-only` 分母让「未到齐」与「法定人数」脱钩 | 真缺陷（两半）：① 下限可为 0；② 机构规则 `vmu.meetings.quorumRule` 在会议面**无人读** | 修机制：`unanimity{rule,ruleIsUnanimity,met,unanswered,policy,because}` + 把该键接线进会议面 |
+| g | H2 键"当场生效"与"需重启"同回执并存 | 真缺陷：pack 用 `hot !== 'H1'` 自算，与内核 `requiresRestart` 相反 | 修机制：直接**照抄内核回执**，不再自算 |
+| h | `overview` 把 `scheduled` 的会议报成 `open` | 真缺陷：overview 读的是自己手推的状态 | 修机制：overview 用与 `status()` 同一套派生 |
+| i | 辩论对象闸对"文件引用"只信调用方自报 | 真缺陷 | 修机制：文件分支由闸自己 `stat`，自报的 readable/bytes 被忽略 |
+| j | `closureVote.cast` 语义与字面相反（"已投"vs"全票确认"） | 真缺陷（命名） | 修口径：保留 `cast` 兼容，新增 `votesCast`/`allFor`/`castMeaning` 说明 |
+| k | `turn{members:[…]}` 有待回回合时被静默忽略 | 真缺陷（静默） | 修机制：回执带 `selectionIgnored{requested,reason,pending}` |
+| l | epoch-ms 与 ISO 歧义 | 只是读法歧义，不是缺陷 | 记录，不改 |
+
+### §33.2 我被自己否掉的第一版（两次，都值得记住）
+
+1. **把"全票规则"折进 `quorum().met` ⇒ 会议死锁**。第一版让 `met = present >= need && 无未到者`，而 `met` 正是
+   `vote()` 的闸 —— "没人未到才准投票"意味着房子永远填不满，`vmu-meetings` 立刻红。改成**两个问题两个字段**：
+   `met` = 下限（可不可以开始表决），`unanimity.met` = 机构规则（未到齐则法定人数不成立）。教训：一个布尔值被两处
+   消费时，往里塞第二个语义就是把死锁伪装成"更严格"。
+2. **`meetingKeysSnapshot` 是手写表，第三次漂移**。前两次是主席权轨、预约/等待键；这次加 `quorumRule` 又漏 ⇒
+   `status().keys` 报 64 个而 `WIRED_KEYS` 有 65 个（**诊断面比它报告的那张表矮一个**）。修成**派生**：
+   `for (const key of WIRED_KEYS) out[key] = K[key.slice('vmu.meetings.'.length)]`，短名规则就是 `K` 的填充规则。
+   教训重复了三次，所以这次不是再补一行，而是拆掉手写表。
+
+### §33.3 门禁
+
+- `tests/vmu-meetings.test.mjs` 新增 `quorumRule` 五条断言（214 passed）：下限与规则**同时**断言（`met:true` 而
+  `unanimity.met:false` 的负向正是真机报告的那一帧）、`because` 必须点名缺席者、`metPolicy` 必须说清哪个问题、
+  `all-unanimous` 这个 enum 的第二值也必须活着（否则是死枚举）。
+- `tests/vmu-v5r-tools.test.mjs` 347 passed：`hire` 的 `slot` 现在**声明了也读了**，非 temp 具名拒。
+- `audit-prompt-tool-params` 74 passed：`hire` 新参数必须与提示词声明一致。
+- `regen-all --check` 16/16；`check-docs` `DOC LINT: PASS`；wired 表 1265 键（`quorumRule` 现在计入会议的 WIRED）。
+
+### §33.4 本轮教训
+
+1. **报告里的数字要回原文件核**：条目 b 的 `required=2/met=0` 在 transcript 里一次都不存在。把假数字当缺陷追，会改
+   一个本来对的式子；正确的动作是"复现不了 ⇒ 记为报告假象 + 找它可能想表达的真问题"。
+2. **手写表 vs 派生表**：`meetingKeysSnapshot` 漂了三次，每次都是"补一行"能过、下次再漂。第三次应当拆表。
+3. **同一个布尔不要背两个语义**：`met` 死锁那版如果不跑 `vmu-meetings`，它会带着"更严格"的注释溜进真机。

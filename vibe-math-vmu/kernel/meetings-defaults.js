@@ -5,6 +5,10 @@
 export const WIRED_KEYS = Object.freeze([
   'vmu.meetings.typeCatalog', 'vmu.meetings.tier', 'vmu.meetings.allowLight', 'vmu.meetings.attendanceMode', 'vmu.meetings.liveCap',
   'vmu.meetings.quorumMin', 'vmu.meetings.quorumRatio', 'vmu.meetings.quorumLossPolicy', 'vmu.meetings.quorumRecountMs',
+  // ★ PHASE 12 / LIVE RUN 7 (agent feedback item f): `vmu.meetings.quorumRule` was declared on the CHAIR and read by the
+  // BALLOT face only, so the meeting's own `quorum().met` could not reflect the institution's rule and 「未到齐 ⇒ 法定人数
+  // 不成立」 had no landing point on the meeting face. Wired here; the meeting face reads it as `K.quorumRule`.
+  'vmu.meetings.quorumRule',
   'vmu.meetings.quorumCap',
   'vmu.meetings.leaveApprover',
   'vmu.meetings.unansweredInDenominator', 'vmu.meetings.emergencyQuorumRatio', 'vmu.meetings.emergencyKinds',
@@ -42,6 +46,7 @@ export const reasonFor = (key) => UNWIRED_REASONS[key.split('.').slice(0, 2).joi
 export const DEFAULTS = Object.freeze({
   'vmu.meetings.typeCatalog': [], 'vmu.meetings.attendanceMode': 'roster', 'vmu.meetings.liveCap': 0,
   'vmu.meetings.quorumMin': 0, 'vmu.meetings.quorumRatio': 0, 'vmu.meetings.quorumLossPolicy': 'suspend', 'vmu.meetings.quorumRecountMs': 0,
+  'vmu.meetings.quorumRule': 'm-unanimous',
   'vmu.meetings.quorumCap': 3,
   'vmu.meetings.eligibleSeats': [],
   'vmu.meetings.attendDeniedSeats': [],

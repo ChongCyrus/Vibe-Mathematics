@@ -443,11 +443,19 @@ try {
   const resumed = await receipt(v5rBoot, 'vibe_v5_resume', { reason: '继续' })
   ok(resumed.parsed && resumed.parsed.ok === true && resumed.parsed.receipt, 'resume: 正 — resumed through the CONTROL face', resumed.parsed && resumed.parsed.receipt)
   const h1 = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.records.tracks', value: ['progress', 'routes', 'obstacles', 'rejected', 'state', 'propositions', 'methods', 'problems', 'feedback', 'paper'] })
-  ok(h1.parsed && h1.parsed.ok === true && h1.parsed.applied.hot === 'H1' && /立即/.test(String(h1.parsed.effective)),
-    '★ set: 正 — an H1 key is written AND the receipt says "live now" with its declared hot level', h1.parsed && h1.parsed.applied)
+  // ★ LIVE RUN 7 (agent feedback item g): these two assertions used to demand the PACK's invented wording
+  // ("live now" for H1 / "restart to take effect" for H2). The kernel already answers when a value is visible
+  // (`appliesAt` + `requiresRestart = hot === 'H2' && liveReaders.length === 0`, kernel/index.js:2847), and the pack
+  // contradicted it in the SAME receipt (`applied:"immediate"` for a key also listed in `restartRequired`). What is
+  // asserted now is that the pack CARRIES the kernel's answer; the hot letter alone no longer decides the sentence.
+  ok(h1.parsed && h1.parsed.ok === true && h1.parsed.applied.hot === 'H1' && h1.parsed.applied.appliesAt === 'next turn'
+    && h1.parsed.applied.requiresRestart === false && /H1/.test(String(h1.parsed.effective)),
+    '★ set: 正 — an H1 key is written and the receipt carries the KERNEL appliesAt (next turn), not a hot-letter guess', h1.parsed && h1.parsed.applied)
   const h2 = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.ballot.minVotes', value: 2 })
-  ok(h2.parsed && h2.parsed.ok === true && h2.parsed.applied.hot === 'H2' && /重启后生效/.test(String(h2.parsed.effective)),
-    '★ set: 正 — an H2 key is written AND the receipt says "restart to take effect" (never implying it is live)', h2.parsed && h2.parsed.effective)
+  ok(h2.parsed && h2.parsed.ok === true && h2.parsed.applied.hot === 'H2'
+    && typeof h2.parsed.applied.appliesAt === 'string' && h2.parsed.applied.appliesAt.length > 0
+    && h2.parsed.applied.requiresRestart === ((h2.parsed.applied.liveReadBy || []).length === 0),
+    '★ set: 正 — an H2 key is written and requiresRestart AGREES with the measured live readers carried in the receipt', h2.parsed && h2.parsed.applied)
   const undeclared = await receipt(v5rBoot, 'vibe_v5_set', { key: 'vmu.no.such.key', value: 1 })
   ok(undeclared.parsed && undeclared.parsed.ok === false && undeclared.parsed.code === 'VMU_INVALID_ARGUMENT',
     '★ set: 反 — an UNDECLARED key is refused by name (only settings/schema.js keys are settable)', undeclared.parsed)

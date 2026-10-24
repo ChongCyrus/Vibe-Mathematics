@@ -208,13 +208,25 @@ async function toolHire(args = {}, { kernel } = {}) {
   if (!has(args.purpose)) throw refuse('VMU_INVALID_ARGUMENT', 'hire needs purpose', 'pass purpose:"why this worker exists"')
   if (!has(args.initial_task)) throw refuse('VMU_INVALID_ARGUMENT', 'hire needs initial_task', 'pass initial_task:"the first task"')
   if (!has(args.to)) throw refuse('VMU_INVALID_ARGUMENT', 'hire needs the new member id', 'pass to:"<new member id>" (this pack never invents an id)')
+  // ★ LIVE RUN 7 (agent feedback item e): the rule wants the SLOT stated explicitly (「显式给 slot…」), and this face used to
+  // hardcode `temp` without ever reading a `slot` argument, so a caller could not tell whether its slot had been honoured
+  // or overridden. The slot is now read, defaulted (temp), and REFUSED BY NAME when it names a seat this face does not
+  // seat: a 院士/常驻研究员 seat is created by the FOUNDING face (`vibe_v5_start`) or by the office through
+  // `vibe_vmu_control {action:"hire"}`, and quietly downgrading such a request to a temp seat is the silent-substitution
+  // failure this project forbids.
+  const slot = has(args.slot) ? str(args.slot) : 'temp'
+  if (slot !== 'temp') {
+    throw refuse('VMU_NOT_PERMITTED', 'vibe_v5_hire seats TEMP seats only; you asked for slot "' + slot + '"',
+      'the 「院士」/「常驻研究员」 seats are created by the founding face (vibe_v5_start { researcherCount }) or by the office with '
+      + 'vibe_vmu_control { action: "hire", member_id, slot } — this face refuses instead of silently seating a temp worker')
+  }
   const members = membersOf(kernel)
-  const hired = await members.hire({ id: str(args.to), slot: 'temp' })
+  const hired = await members.hire({ id: str(args.to), slot })
   let task = null
   if (kernel.tasks && typeof kernel.tasks.create === 'function') {
     task = await kernel.tasks.create({ title: str(args.initial_task), objective: str(args.purpose), owner: str(args.to), deps: null, writeScopes: [] })
   }
-  return { ok: true, tool: 'vibe_v5_hire', member: str(args.to), slot: 'temp', hired, task,
+  return { ok: true, tool: 'vibe_v5_hire', member: str(args.to), slot, slotRequested: slot, hired, task,
     note: 'direction/term are onboarding prose in the original and roster data here, so they are not stored by this tool' }
 }
 
@@ -334,7 +346,7 @@ async function toolOverview(args = {}, { kernel } = {}) {
   const out = { ok: true, tool: 'vibe_v5_overview', by: member,
     roster: roster.map((m) => ({ id: m.id, slot: m.slot, state: m.state })),
     board: { tasks: rows.length, open: rows.filter((t) => String(t.status || t.state) !== 'done').length },
-    meetings: meetingRows.map((m) => ({ id: m.id, state: m.state })),
+    meetings: meetingRows.map((m) => ({ id: m.id, state: m.state, status: m.status === undefined ? null : m.status, faceState: m.faceState === undefined ? null : m.faceState })),
     // ★ Same three keys and the same rule as vibe_v5_report.counts.feedback (one helper, so they cannot disagree).
     feedback: feedbackCounts(kernel),
     leadership }
@@ -1224,8 +1236,26 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
     template: has(args.template) ? str(args.template) : null })
   const delivery = (ruled && ruled.delivery) || { attempted: false, ok: false }
   const notified = delivery.attempted === true && delivery.ok === true ? [owner] : []
+  // ★ LIVE RUN 7 (agent feedback item d): 「表决人数下限 = min(用户设置, 院士+常驻研究员)」 had NO landing point on this
+  // receipt — the agent could read `n:2` and `mode` but never the floor the ruling was supposed to satisfy. The kernel
+  // face already computes it (`meetings.quorum()` → the same `quorumOf` the close rail enforces), so it is READ here
+  // rather than re-derived: a second copy of the formula is exactly the kind of second authority this project refuses.
+  const floor = (() => {
+    const faceM = kernel && kernel.meetings
+    if (!faceM || typeof faceM.quorum !== 'function') return { readable: false, why: 'the kernel publishes no quorum() reading' }
+    try {
+      const q = faceM.quorum({ meeting })
+      return { readable: true, minVotes: q && q.required !== undefined ? q.required : null,
+        min: q && q.min !== undefined ? q.min : null, roster: q && q.roster !== undefined ? q.roster : null,
+        eligibleUniverse: q && q.capUniverse !== undefined ? q.capUniverse : null,
+        cap: q && q.cap !== undefined ? q.cap : null,
+        formula: q && q.capPolicy ? q.capPolicy : null,
+        satisfiedBy: ruled && Array.isArray(ruled.perMember) ? (Number(ruled.n) >= Number(q && q.required)) : null }
+    } catch (e) { return { readable: false, why: (e && e.message) || String(e) } }
+  })()
   return {
     ok: true, tool: 'vibe_v5_verdict_final', meeting, chair, from: chair,
+    floor,
     proposition: ruled.proposition, value: ruled.value, valueSource: ruled.valueSource,
     mode: ruled.mode, exact: ruled.exact, rounded: ruled.rounded, decided: ruled.decided,
     enforceable: ruled.enforceable, estimate: ruled.estimate, n: ruled.n, perMember: ruled.perMember,
@@ -1749,9 +1779,21 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
   // declared owner and records that in the receipt instead of inventing an actor.
   const actor = opts.by || def.who || null
   const receipt = kernel.setSettingsValue(key, value, { by: actor, reason: opts.reason || null })
+  // ★ LIVE RUN 7 (agent feedback item g): this used to RE-INVENT the applicability with its own rule
+  // (`hot === 'H1' ? '立即生效' : '重启后生效'`, and `restartRequired = hot !== 'H1'`), which contradicted the kernel's own
+  // receipt two lines below it. Measured on the run: setting `vmu.turn.leaderId` (declared H2) came back with
+  // `applied:"immediate"`, `liveReadBy:['kernel/prompt …']` AND `restartRequired:['vmu.turn.leaderId']` in the same
+  // object, while the very next turn assembly already used the new value. The kernel already answers this question
+  // correctly - `requiresRestart = hot === 'H2' && liveReaders.length === 0` (kernel/index.js:2847) - so the pack now
+  // CARRIES the kernel's answer instead of computing a second, contradictory one.
+  const kApplied = receipt && receipt.applied !== undefined ? receipt.applied : null
+  const kRestart = !!(receipt && receipt.requiresRestart === true)
   return { key, value, hot: def.hot, who: def.who || null, appliedBy: actor,
-    applied: receipt && receipt.applied !== undefined ? receipt.applied : null,
-    effective: def.hot === 'H1' ? '立即生效（H1）' : '重启后生效（' + String(def.hot) + '）',
+    applied: kApplied,
+    requiresRestart: kRestart,
+    appliesAt: receipt && receipt.appliesAt !== undefined ? receipt.appliesAt : null,
+    liveReadBy: receipt && Array.isArray(receipt.liveReadBy) ? receipt.liveReadBy : [],
+    effective: String(def.hot) + (kRestart ? '（需重启的读取者，见 appliesAt）' : '（本会话内即可读到，见 appliesAt）'),
     receipt }
 }
 
@@ -1770,11 +1812,17 @@ function toolConfigure(args = {}, { kernel } = {}) {
     }
   }
   if (applied.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'configure needs something to set', 'pass institute/problem/params (the original needed at least one)')
-  const restarts = applied.filter((a) => a.hot !== 'H1')
-  return { ok: true, tool: 'vibe_v5_configure', applied, restartRequired: restarts.map((a) => a.key),
+  // The partition comes from the KERNEL receipt (`requiresRestart`), never from the hot letter: an H2 key that a live
+  // reader measures (e.g. `vmu.turn.leaderId` read by the prompt assembler) is readable in THIS session, and the kernel
+  // already says so. Reporting it as "restart required" is the contradiction run 7 caught.
+  const restarts = applied.filter((a) => a.requiresRestart === true)
+  const liveNow = applied.filter((a) => a.requiresRestart !== true)
+  return { ok: true, tool: 'vibe_v5_configure', applied,
+    restartRequired: restarts.map((a) => a.key),
+    appliesNow: liveNow.map((a) => a.key),
     note: restarts.length > 0
-      ? 'the keys in restartRequired are NOT live yet: their declared hot level takes effect on restart (the receipt says so instead of implying it worked)'
-      : 'every key applied here is H1 (live immediately)' }
+      ? 'the keys in restartRequired have NO measured live reader (kernel receipt `requiresRestart`), so they take effect on restart; the keys in appliesNow are already readable in this session - read `appliesAt` on each entry instead of inferring from the hot letter'
+      : 'every key applied here is readable in this session (kernel receipt `requiresRestart` is false for each); `appliesAt` names the granularity of the readers - the hot letter alone does not decide when a value is seen' }
 }
 
 /** ★ `vibe_v5_set` — one declared key. Same guarded writer, same hot-level wording. */
@@ -2071,8 +2119,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_hire',
-    description: 'Hire one temp worker into the temp seat and open their initial task. Requires purpose, initial_task and to (the new member id — this pack never invents an id).',
-    parameters: { purpose: { type: 'string', required: true }, initial_task: { type: 'string', required: true }, to: { type: 'string', required: true }, direction: { type: 'string' }, term: { type: 'string' } },
+    description: 'Hire one temp worker into the temp seat and open their initial task. Requires purpose, initial_task and to (the new member id — this pack never invents an id). The SLOT is explicit (default "temp"); any other slot is refused by name and points at the founding face.'
+    , parameters: { purpose: { type: 'string', required: true }, initial_task: { type: 'string', required: true }, to: { type: 'string', required: true }, slot: { type: 'string' }, direction: { type: 'string' }, term: { type: 'string' } },
     handler: toolHire,
   },
   {

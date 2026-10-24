@@ -572,9 +572,23 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               faceRowSource: faceResolution.sources[d.face] === undefined ? null : faceResolution.sources[d.face],
               inThisEvaluation: false,
               evaluations: out.faces.evaluations,
-              reason: 'not in this receipt\'s `enabled`: it was published by a route the face-row decision does not record (see source / faceRowSource / evaluations)',
+              // ★ LIVE RUN 7 (agent feedback item a): the acceptance agent read `published ⊅ enabled` as two readings of one
+              // fact contradicting each other, and listed `middleware` plus all 47 pack-tool rows as instances. They are
+              // not the same kind of gap: a face published through a route the face-row decision does not RECORD is a
+              // bookkeeping gap in this receipt, while a PACK tool is published by the pack's own registered route and
+              // never rides a face-row decision at all (there is nothing to reconcile). The kind is DATA so a reader can
+              // tell them apart without believing a sentence.
+              kind: String(d.face) === 'pack' ? 'pack-tool (published by the pack route; no face row is involved)'
+                : 'route-not-recorded (published by a route the face-row decision does not record)',
+              reason: 'not in this receipt\'s `enabled`: it was published by a route the face-row decision does not record (see source / faceRowSource / evaluations; `kind` says which of the two shapes this is)',
             }))
         }
+        // ★ LIVE RUN 7 (agent feedback item a), second half: the SHAPE of `enabled` had to be stated, because a bare list
+        // reads as "these are the faces that work". It is the set of faces ENABLED BY THIS EVALUATION'S GATE; a tool can
+        // still be callable without appearing here (see `enabledGap` / `enabledNotPublished`).
+        out.faces.enabledScope = '`enabled` = the faces THIS evaluation\'s gate turned on (per-evaluation, `evaluations` '
+          + String(out.faces.evaluations) + '); it is NOT the list of callable tools - `registeredTools`/`publishedDetail` '
+          + 'are, and `enabledGap`/`enabledNotPublished` name the rows where the two disagree'
         // ROUND 27 / task-143 — THE OTHER DIRECTION (measured independently by vmu-verify2): a face can be
         // `enabled` while its TOOL never publishes - on the deployment route `enabled` lists `set` and
         // `publishedDetail` has no `vibe_vmu_set` entry. Same class, opposite sign, so it is named here too; the

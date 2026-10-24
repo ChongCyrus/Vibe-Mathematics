@@ -100,6 +100,33 @@ const err = (fn) => errOf(fn)
   const denomNo = opened({})
   ok(denomNo.h.t.quorum({ meeting: denomNo.id }).denominator === 1 && /present-only/.test(denomNo.h.t.quorum({ meeting: denomNo.id }).denominatorPolicy),
     'unansweredInDenominator[-]: with the key off the denominator is the present set')
+  // ★ PHASE 12 / LIVE RUN 7 (agent feedback item f): 「未到齐」 and 「法定人数」 were two decoupled readings of one
+  // meeting — with the floor at 0, `met` was true even with 1 of 2 present, because `met` was `present >= need` only.
+  // The pack declares `vmu.meetings.quorumRule: 'm-unanimous'` and NOTHING on this face read it, so the institution's
+  // rule had no landing point. The two questions are now SEPARATE and both named: `met` is the floor (it gates vote(),
+  // so it must not demand full attendance before the first vote — that deadlock was my first attempt and is recorded
+  // in the code), `unanimity.met` is the rule. Both directions are pinned; the negative one is what the run reported.
+  const unanim = opened({ 'vmu.meetings.quorumRule': 'm-unanimous', 'vmu.meetings.quorumCap': 0 })
+  unanim.h.t.attend({ meeting: unanim.id, member: 'acad' })
+  const qUn = unanim.h.t.quorum({ meeting: unanim.id })
+  ok(qUn.rule === 'm-unanimous' && qUn.met === true && qUn.unanimity.met === false && qUn.unanswered === 3,
+    'quorumRule=m-unanimous[-]: the floor may be met while the INSTITUTION\'s unanimity rule is NOT met (「未到齐」)',
+    JSON.stringify({ met: qUn.met, unanimity: qUn.unanimity.met, required: qUn.required, present: qUn.present, unanswered: qUn.unanswered }))
+  ok(/EVERY roster member/.test(String(qUn.unanimity.policy)) && /not everyone has attended or voted/.test(String(qUn.unanimity.because)) && /r-1/.test(String(qUn.unanimity.because)),
+    'quorumRule=m-unanimous[-]: the rule reading NAMES the missing voters and quotes the rule instead of saying "not met"',
+    qUn.unanimity.because)
+  ok(/FLOOR question/.test(String(qUn.metPolicy)) && /unanimity/.test(String(qUn.metPolicy)),
+    'quorumRule=m-unanimous: metPolicy says WHICH question `met` answers, so the two readings cannot be confused again', qUn.metPolicy)
+  for (const m of ['r-1', 'r-2', 'r-3']) unanim.h.t.attend({ meeting: unanim.id, member: m })
+  const qUn2 = unanim.h.t.quorum({ meeting: unanim.id })
+  ok(qUn2.met === true && qUn2.unanimity.met === true && qUn2.unanswered === 0 && /every roster member attended or voted/.test(String(qUn2.unanimity.because)),
+    'quorumRule=m-unanimous[+]: a complete house meets BOTH readings', JSON.stringify({ met: qUn2.met, unanimity: qUn2.unanimity.met }))
+  const maj = opened({ 'vmu.meetings.quorumRule': 'all-unanimous', 'vmu.meetings.quorumCap': 0 })
+  maj.h.t.attend({ meeting: maj.id, member: 'acad' })
+  const qMaj = maj.h.t.quorum({ meeting: maj.id })
+  ok(qMaj.unanimity.met === false && qMaj.unanimity.rule === 'all-unanimous' && /EVERY roster member/.test(String(qMaj.unanimity.policy)),
+    'quorumRule=all-unanimous[-]: the second declared value is honoured too (neither value is a dead enum member)',
+    JSON.stringify({ rule: qMaj.unanimity.rule, met: qMaj.unanimity.met }))
   const emq = opened({ 'vmu.meetings.emergencyQuorumRatio': 1, 'vmu.meetings.emergencyKinds': ['emergency'] })
   ok(emq.h.t.motion({ meeting: emq.id, member: 'acad', kind: 'emergency' }).quorumRequired === 4,
     'emergencyQuorumRatio[+]: an emergency motion needs the emergency ratio (4/4)')

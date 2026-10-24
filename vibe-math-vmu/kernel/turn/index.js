@@ -147,6 +147,14 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
   return {
     window: 'meeting',
     cast,
+    // ★ LIVE RUN 7 (agent feedback item j): `cast` READS like "the votes were cast", but this predicate is "closure was
+    // CONFIRMED unanimously" — the acceptance agent reported the field's meaning as inverted from its name, and it was
+    // right: two members voting `solved:false` leaves `cast:false` although both votes WERE cast. The name is kept (turn
+    // receipts, prompts and gates read it) and the truth travels beside it: `confirmed` is the same predicate under a
+    // name that says what it means, and `votesCast` counts the judgements that actually arrived.
+    confirmed: cast,
+    votesCast: forIt.length + against.length,
+    castMeaning: 'cast === confirmed: every enfranchised member judged the question solved. It is NOT "the votes were cast" - see votesCast for how many judgements arrived',
     for: forIt,
     against,
     missing,
@@ -1839,7 +1847,17 @@ export function createTurnOrchestrator({
     if (waiting) {
       try {
         const r = await completeStructuredReport()
+        // ★ LIVE RUN 7 (agent feedback item k): the acceptance agent passed `members:[{id:'member-2',…}]` and got
+        // member-1's settlement receipt back, with nothing in the receipt saying the selection had not been applied.
+        // `members` chooses who receives the NEXT prompt; completing a pending report cannot change whose report it was.
+        // The reading now names both facts instead of leaving the caller to infer them.
+        const requested = (Array.isArray(members) ? members : [])
+          .map((m) => (m && typeof m.id === 'string' ? m.id : null)).filter((id) => id !== null)
         return { ok: true, source: 'tool', completed: true,
+          requestedMembers: requested,
+          selectionApplied: requested.length === 0,
+          selectionNote: requested.length === 0 ? null
+            : 'the pending report belonged to ' + String(r.member) + ', so `members` did not apply to this call - it selects who gets the NEXT prompt; call step again to apply it',
           receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, fields: r.fields,
             executed: (r.executed || []).length, skipped: (r.skipped || []).length, effects: (r.effects || []).slice(), instructionDelivered: false,
             turn: r.turn ? r.turn.id : null, source: 'tool', completed: true } }

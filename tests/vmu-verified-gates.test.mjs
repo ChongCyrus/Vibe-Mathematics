@@ -169,7 +169,13 @@ function cardRow(records, { p = 0.5, title = '命题-平方和' } = {}) {
     'a readable non-empty file reference is admitted')
   const fileOk = debateSubjectGate({ meeting: debate, subject: 'Members/pi/Propos/p-1.md', evidence: { file: { readable: true, bytes: 1200 } } })
   eq(fileOk.proofContentChecked, false, '★ but the receipt HONESTLY says the file CONTENT was not checked (the gate can only prove existence)')
-  ok(String(fileOk.note).includes('由辩论中的人核'), 'and it names who has to check the content instead')
+  // ★ LIVE RUN 7 (agent feedback item i): the note used to say 「文件存在且非空」 on the strength of the CALLER's numbers,
+  // while this module holds no filesystem seam and never stat()ed anything. The reading now names its evidence source.
+  eq(fileOk.evidenceSource, 'caller-reported', '★ the file reading NAMES its evidence source (caller-reported, not measured)')
+  ok(String(fileOk.note).includes('由辩论中的人核') && String(fileOk.note).includes('未自行 stat'),
+    'and it names who has to check the content instead, plus that nothing was stat()ed here')
+  eq(debateSubjectGate({ meeting: debate, subject: 'r-abc', evidence: { card: { id: 'r-abc' } } }).evidenceSource, undefined,
+    '★ the CARD form does NOT carry that label: its evidence is read from the records/lean faces, not self-reported')
   refused(debateSubjectGate({ meeting: debate, subject: 'Members/pi/Propos/p-1.md', evidence: { file: { readable: false, bytes: 0 } } }),
     GATE_CODES.DEBATE_SUBJECT_NO_PROOF, 'an unreadable/empty file reference is refused', 'bytes=0')
   refused(debateSubjectGate({ meeting: debate, subject: 'Members/pi/Propos/p-1.md' }), GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
