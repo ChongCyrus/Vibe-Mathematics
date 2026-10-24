@@ -94,7 +94,7 @@ handle.kernel.idleState({ lastActivityAt: 900000, at: 900000 + 359999 })   // on
 await new Promise((r) => setTimeout(r, 60))
 ok(opened.length === 0, 'N2. one millisecond short of the stall threshold convenes nothing', opened)
 
-await rm(root, { recursive: true, force: true })
+await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 
 console.log('=== VMU STALL MEETING: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

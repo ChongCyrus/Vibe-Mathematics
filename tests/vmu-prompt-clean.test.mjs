@@ -63,7 +63,7 @@ async function assemble({ packs = null, settings = {} } = {}) {
   const handle = entry.apply(ctx, cfg)
   await handle.ready()
   const status = JSON.parse(await tools['vibe_vmu_status'].execute({}))
-  try { await rm(dir, { recursive: true, force: true }) } catch { }
+  try { await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { }
   const text = injected.map((x) => (typeof x === 'string' ? x : (x && x.text) || '')).join('\n')
   return { tools: Object.keys(tools).sort(), sections: injected.length, text, hits: hits(text), promptSection: status.promptSection }
 }

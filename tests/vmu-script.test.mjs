@@ -144,7 +144,7 @@ if (SELF_PROBE) {
     try { mm.createHostSpawn({ ctx: { get: () => undefined } }) } catch (e) { refused = e.code }
     // With the guard removed the seam is built without a service: the assertion MUST fail.
     ok(refused === 'VMU_ENGINE_UNAVAILABLE', 'self-probe: guard removed => the no-service assertion fails (as required)', String(refused))
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU SCRIPT SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)

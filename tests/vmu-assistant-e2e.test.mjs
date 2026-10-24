@@ -106,7 +106,7 @@ async function boot(extraConfig = {}, { withDeploymentReportPolicy = true, trans
       const opened = handle.kernel.turn.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 1 })
       return handle.kernel.turn.assemble(opened.turn)
     },
-    cleanup: () => rm(root, { recursive: true, force: true }),
+    cleanup: () => rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }),
   }
 }
 const trace = (r) => r.trace({ limit: 50 }).items

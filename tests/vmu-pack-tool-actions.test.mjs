@@ -112,7 +112,7 @@ const appliedNoWhen = await call({ action: 'apply', manifest: J(noWhen) })
 ok(appliedNoWhen.ok === false && appliedNoWhen.code === plannedNoWhen.code,
   'S3. plan and apply agree on the CODE — the same judgement, reached before the loader compiles the rule', { plan: plannedNoWhen.code, apply: appliedNoWhen.code })
 
-try { await rm(root, { recursive: true, force: true }) } catch { /* Windows keeps the store handle */ }
+try { await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* Windows keeps the store handle */ }
 console.log('=== VMU PACK TOOL ACTIONS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

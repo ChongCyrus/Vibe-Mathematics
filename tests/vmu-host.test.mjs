@@ -125,7 +125,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   const names = richHost.state.specs.map((s) => s.name)
   ok(names.includes('vibe_vmu_records') && names.includes('vibe_vmu_middleware'),
     'records and middleware tools appear once a root and declared middleware exist', names.join(','))
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 3b. THE RECORDS TOOL READS THE SAME SOURCE THE DATA PLANE WRITES (SLV measured: two different stores) ----
@@ -167,7 +167,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   const missing = await call(recSpec, { action: 'expand', id: 'r-nope' })
   ok(missing && missing.ok === false && missing.code === 'VMU_NO_SUCH_OBJECT',
     'reverse: an id that was never written still refuses by name (no invented record)', missing && missing.code)
-  try { await rm(root, { recursive: true, force: true }) } catch { /* the store may still hold the file open; the temp dir is disposable */ }
+  try { await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* the store may still hold the file open; the temp dir is disposable */ }
 }
 
 // ---- 4. the HOST shape (the mismatch the real host exposed) -------------------------------------
@@ -211,7 +211,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   ok(adapter2.status().ownedByHost === false, 'without ctx.effect the adapter reports that it owns the registrations')
   await adapter2.uninstall()
   ok(plain.state.disposed === 1, 'and its uninstall really calls the disposer', plain.state.disposed)
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 5. refusals are named JSON, and the receipts are useful ------------------------------------
@@ -259,7 +259,7 @@ if (SELF_PROBE) {
     const names = host.state.specs.map((s) => s.name)
     // With the guard removed the records tool appears with no durable root: the assertion MUST fail.
     ok(names.join(',') === 'vibe_vmu_status', 'self-probe: guard removed => the host-side zero-mechanism assertion fails (as required)', names.join(','))
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU HOST SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)
@@ -480,7 +480,7 @@ if (SELF_PROBE) {
   const closureParsed = JSON.parse(closureText2)
   ok(omitted.every((k) => typeof closureParsed.closureVote[k] === 'string' && closureParsed.closureVote[k].length > 90),
     '★ 被移出的每一个键在 detail:"closure" 上都是原文长句（不是被删掉）', { omitted, got: Object.keys(closureParsed.closureVote || {}) })
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ── 9. ★ PHASE 7 (goal 4): MEMBER TOOL FACE — kernel capability, host applier, real schemas diff ────────────

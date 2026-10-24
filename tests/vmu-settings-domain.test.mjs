@@ -277,7 +277,7 @@ console.log('=== 7. ★ `null` = THE SETTINGS-UNSET SENTINEL (task-149 ②) + �
     { dec: gen.typeOf('0.5'), int: gen.typeOf('7'), obj: gen.typeOf('{}') })
 }
 
-await rm(root, { recursive: true, force: true }).catch(() => {})
+await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }).catch(() => {})
 
 console.log('')
 console.log('=== VMU SETTINGS DOMAIN: ' + passed + ' passed, ' + failed + ' failed ===')

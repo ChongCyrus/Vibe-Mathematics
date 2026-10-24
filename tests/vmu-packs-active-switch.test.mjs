@@ -54,7 +54,7 @@ async function assemble({ settings = {}, root = true, packs = null } = {}) {
   return { handle, status, dir, tools }
 }
 const busIds = (st) => ((st.bus && st.bus.entries) || []).map((e) => e.id)
-const cleanup = async (dir) => { if (dir) { try { await rm(dir, { recursive: true, force: true }) } catch { /* going away */ } } }
+const cleanup = async (dir) => { if (dir) { try { await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* going away */ } } }
 
 // =========================================================================================================
 // A. THE SETTLE PRECONDITION ITSELF (without it, every arm below can measure its own race)

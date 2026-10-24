@@ -60,7 +60,7 @@ const run = async (config, mode = 'access-throws') => {
   try { handle = entry.apply(ctx, Object.assign({ clock: () => 1000000, root }, config)); await handle.ready() } catch (e) { err = e }
   process.stderr.write = origWrite
   const state = handle && typeof handle.status === 'function' ? handle.status().promptSection : null
-  try { await rm(root, { recursive: true, force: true }) } catch { /* keep */ }
+  try { await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* keep */ }
   return { touched, err, state, stderr: stderr.join(''), sectionCalls }
 }
 

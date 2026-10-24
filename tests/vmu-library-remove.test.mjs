@@ -117,6 +117,6 @@ let trashedId = null
   ok((await empty.list()).length === 0, 'empty head list')
 }
 
-await rm(root, { recursive: true, force: true })
+await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 console.log('=== VMU LIBRARY REMOVE: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)

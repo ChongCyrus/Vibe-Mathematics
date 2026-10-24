@@ -1105,7 +1105,7 @@ const promoteOnce = async (value) => {
     const json3 = await lib.exportRecord(r3.id, { format: 'json', allowInternal: true })
     ok(json3.currentDefect && json3.currentDefect.code === 'VMU_PACK_V3_DEFECT_TARGET_UNRESOLVED',
       '★ 缺 - ID: 锚点 ⇒ 具名 unresolved（不静默猜记录 id）', json3.currentDefect)
-  } finally { await fsp.rm(dir, { recursive: true, force: true }) }
+  } finally { await fsp.rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) }
 }
 
 // ── 20. directions 轨：方向卡必须进入简报（否则 planner 盲派 explorer，方向卡再多也看不见） ──────────────

@@ -120,7 +120,7 @@ if (SELF_PROBE) {
     let refused = false
     try { mr.alias('vmu.library', 'vmu.members') } catch (e) { refused = e.code === 'VMU_MIDDLEWARE_FAILED' }
     ok(refused === true, 'self-probe: shadow refusal removed => the no-override assertion fails (as required)', 'refused=' + refused)
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU REGISTRY SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)

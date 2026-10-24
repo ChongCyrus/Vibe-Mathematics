@@ -129,7 +129,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   entry.apply(loud.ctx, { clock, prompt: 'vmu: only locked objects may be voted on' })
   ok(loud.state.sections.length === 1 && loud.state.sections[0].text.includes('locked objects'),
     'a declared prompt section IS injected, through the host service', JSON.stringify(loud.state.sections))
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 6. a shipped PACK is applied through config.packs ------------------------------------------
@@ -161,7 +161,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
     ok(mw.ok === true && mw.entries.some((e) => e.id === 'institute-min-locked-vote'),
       'and the pack rule is live on the assembled bus', JSON.stringify((mw.entries || []).map((e) => e.id)))
   }
-  await rm(packRoot, { recursive: true, force: true })
+  await rm(packRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 7. M2 code modules are loaded and put on the bus ------------------------------------------
@@ -182,7 +182,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   const decision = await handle.kernel.bus.emit('tools/pre-execute', { tool: 'edit' }, {})
   ok(decision.ok === false && decision.refused && decision.refused.code === 'VMU_PACK_SLV_M2_DENIED',
     'the M2 module decides on the assembled bus', JSON.stringify(decision.refused))
-  await rm(moduleRoot, { recursive: true, force: true })
+  await rm(moduleRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 8. PROMPT MANAGEMENT: sections / bindings / overrides really reach the model -------------------
@@ -231,7 +231,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
     'vmu.prompts.overridesDir really overrides the text that reaches the host', text2.slice(0, 40))
   ok(handle2.kernel.status().prompt.sections[0].overridden === true,
     'and the pipeline status marks the section as overridden')
-  await rm(dir, { recursive: true, force: true })
+  await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 9. B2: the pack tool appears only with declared packs, and plan() is pure ----------------------
@@ -264,7 +264,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   ok(!plain.state.specs.some((s) => s.name === 'vibe_vmu_pack'),
     'with no declared pack the pack tool does NOT appear (zero mechanism stays intact)',
     plain.state.specs.map((s) => s.name).join(','))
-  await rm(dir, { recursive: true, force: true })
+  await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 10. V9: declaring math intent publishes the inherited math_computation tool --------------------
@@ -364,7 +364,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   ok(rec2 && rec2.recovered === 1 && handle2.kernel.work.interrupted()[0].owner === 'r-1',
     'a fresh entry marks the unfinished work INTERRUPTED (the "resume knows what is pending" promise)',
     JSON.stringify(rec2).slice(0, 160))
-  await rm(dir, { recursive: true, force: true })
+  await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 13. V5: the v5r-core PACK actually loads AND actually fires -------------------------------------
@@ -408,8 +408,8 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   const forced = await handleOn.kernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_records', args: { action: 'append' } }, {})
   ok(forced.ok === false && forced.refused && forced.refused.code === 'VMU_PACK_V5R_CORE_NOT_SETTLED',
     'and it STILL fires when the same pack is assembled with the stance ON (the module is wired, not dead)', JSON.stringify(forced.refused || null))
-  await rm(dirOn, { recursive: true, force: true })
-  await rm(dir, { recursive: true, force: true })
+  await rm(dirOn, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+  await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 14. V5 second half: the v3-core PACK loads and its carried M2 rules really fire -----------------
@@ -446,7 +446,7 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
     'in mode=manual it refuses dispatch by name', JSON.stringify(manual.refused))
 
   // Unload residue and plan purity are covered by tests/vmu-pack.test.mjs; here we only need "it loaded".
-  await rm(dir, { recursive: true, force: true })
+  await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 15b. the turn loop has a REAL entry point: declared only, and it reaches the loop the plugin assembled ------
@@ -569,7 +569,7 @@ if (SELF_PROBE) {
     mm.apply(ctx, { clock })
     // With the guard removed a prompt section is injected although none was declared: the assertion fails.
     ok(!state.effects.includes('vmu:prompt'), 'self-probe: guard removed => the zero-prompt assertion fails (as required)', state.effects.join(','))
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU ENTRY SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)
@@ -699,7 +699,7 @@ if (SELF_PROBE) {
     ok(false, 'E-14(甲) the entry must expose the turn face, or the data packs text cannot be observed end to end',
       { keys: turn ? Object.keys(turn).slice(0, 8) : null })
   }
-  await rm(dataRoot, { recursive: true, force: true })
+  await rm(dataRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 16. TWO REAL PACKS AT ONCE, which the conflict tests had never done with shipped folders ----------
@@ -716,7 +716,7 @@ if (SELF_PROBE) {
     const handle = entry.apply(host.ctx, { clock, root: twoRoot, packs })
     await new Promise((r) => setTimeout(r, 200))
     const out = { errors: handle.packErrors() || [], applied: handle.appliedPacks() || [] }
-    await rm(twoRoot, { recursive: true, force: true })
+    await rm(twoRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
     return out
   }
   const both = await run(['institute-min', 'v3-core'])
@@ -761,7 +761,7 @@ if (SELF_PROBE) {
     // only records it as a label). Asserting on it again would mean propping a gate up with an illegal value.
     // `verdictMaxRounds` really differs (v3-core 5, institute-min 3), so the order is visible.
     const out = { errors: handle.packErrors() || [], applied: (handle.appliedPacks() || []).map((a) => a.id), quorum: val('vmu.meetings.quorumRule'), rounds: val('vmu.meetings.verdictMaxRounds') }
-    await rm(r, { recursive: true, force: true })
+    await rm(r, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
     return out
   }
   const off = await boot(['institute-min', 'v3-core'], {})
@@ -800,7 +800,7 @@ if (SELF_PROBE) {
       JSON.stringify(errs))
     ok(handle.appliedPacks().length === 0, 'and it is not recorded as applied (absent from the list, not silently included)',
       JSON.stringify(handle.appliedPacks()))
-    await rm(missingRoot, { recursive: true, force: true })
+    await rm(missingRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
 }
 

@@ -24,7 +24,20 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     // the call that produced it returned. Bounded to the last few turns; an unknown turn is refused by name.
     const PROMPT_CACHE_LIMIT = 6
     const promptCache = new Map()
+    // ★ ROUND 32 (run-32 report, readability item 1): the TURN store mints `t-<n>` and so does the TASK board, from
+    // separate counters — `vibe_v5_hire` returns `task.id: "t-1"` while `vibe_vmu_turn` returns `memberPrompt.turnId: "t-1"`.
+    // The ids cannot be renamed without invalidating every stored id, so the PROMPT side names its own table here; the
+    // task side does the same in `packs/v5r/tools.js` (`task.idRegistry: "task-board"`).
+    const labelPromptRegistry = (out) => {
+      const p = out && out.memberPrompt
+      if (p && typeof p === 'object' && p.turnIdRegistry === undefined) {
+        p.turnIdRegistry = 'turn-store'
+        p.turnIdMeans = 'turn ids are minted by the TURN store (`t-<n>`); the TASK board mints `t-<n>` from ITS own counter, so a bare id is ambiguous across receipts — this field names the table, and `task.idRegistry` names the other one'
+      }
+      return out
+    }
     const rememberPrompt = (out) => {
+      labelPromptRegistry(out)
       const p = out && out.memberPrompt
       const text = p && typeof p.text === 'string' ? p.text : null
       if (text) {

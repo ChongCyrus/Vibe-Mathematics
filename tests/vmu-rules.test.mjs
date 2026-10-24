@@ -167,7 +167,7 @@ if (SELF_PROBE) {
     // With the check removed an expression-shaped rule passes validation: the safety assertion MUST fail.
     ok(problems.some((p) => /expressions are not allowed/.test(p)) === true,
       'self-probe: check removed => the "no expressions in M1" assertion fails (as required)', JSON.stringify(problems))
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU RULES SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)

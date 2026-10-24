@@ -99,7 +99,7 @@ await handleA.ready()
     'I7. the module\'s own counters agree with the face (recorded 5, no skips) — receipt and fact stated separately',
     { observed: after2.observed - before2.observed, skipped: after2.skippedUndeclared - before2.skippedUndeclared })
 }
-await rm(rootA, { recursive: true, force: true })
+await rm(rootA, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 
 console.log('=== 3. ② NOT INSTALLED: zero observations, and NO fabricated 0 ===')
 const rootB = await mkdtemp(join(tmpdir(), 'vmu-counter-b-'))
@@ -125,7 +125,7 @@ await handleB.ready()
   ok(V5R_ARTIFACT_COUNTER.counters().observed === before3.observed,
     'N4. and the module recorded nothing (its counter did not move)', V5R_ARTIFACT_COUNTER.counters())
 }
-await rm(rootB, { recursive: true, force: true })
+await rm(rootB, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 
 console.log('=== 4. ③ INDICATOR NOT DECLARED: a NAMED skip, COUNTED (never silent) ===')
 const rootC = await mkdtemp(join(tmpdir(), 'vmu-counter-c-'))
@@ -183,7 +183,7 @@ await handleC.ready()
   ok(noSeam && noSeam.ok === false && noSeam.code === 'VMU_ENGINE_UNAVAILABLE',
     'U7. a handler reached without the loader\'s `api` refuses BY NAME (why this must be a module entry)', noSeam && noSeam.code)
 }
-await rm(rootC, { recursive: true, force: true })
+await rm(rootC, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 
 console.log('')
 console.log('=== VMU METRIC COUNTER: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -147,18 +147,18 @@ const openStore = async (opts = {}) => {
   await expectThrow(async () => { const s = m.createStore({ root: dir }); await s.open() }, 'VMU_STORE_FAILED',
     'a durable file carrying an undeclared key is refused on load')
 
-  await rm(dir, { recursive: true, force: true })
+  await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 9. self-probe ----------------------------------------------------------------------------
 if (SELF_PROBE) {
   ok(failed > 0, 'self-probe: the naive read-modify-write lost an update and the assertion caught it', failed)
   console.log('=== VMU STORE SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   process.exit(failed > 0 ? 0 : 1)
 }
 
-await rm(root, { recursive: true, force: true })
+await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 console.log('=== VMU STORE: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

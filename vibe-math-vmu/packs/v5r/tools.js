@@ -226,7 +226,17 @@ async function toolHire(args = {}, { kernel } = {}) {
   if (kernel.tasks && typeof kernel.tasks.create === 'function') {
     task = await kernel.tasks.create({ title: str(args.initial_task), objective: str(args.purpose), owner: str(args.to), deps: null, writeScopes: [] })
   }
-  return { ok: true, tool: 'vibe_v5_hire', member: str(args.to), slot, slotRequested: slot, hired, task,
+  // ★ ROUND 32 (run-32 report, readability item 1): `vibe_v5_hire` hands back a TASK whose id is `t-1`, and
+  // `vibe_vmu_turn { op:"step" }` hands back a PROMPT whose `turnId` is also `t-1` — two registries minting from their own
+  // counters with the same prefix. Two tables, one spelling: a reader holding both receipts cannot tell which `t-1` a later
+  // call means. The ids stay (renaming either namespace would break every stored id), so each receipt NAMES ITS TABLE.
+  const taskWithRegistry = task === null || typeof task !== 'object'
+    ? task
+    : Object.assign({}, task, {
+      idRegistry: 'task-board',
+      idMeans: 'task ids are minted by the TASK board (`t-<n>`); the TURN store mints `t-<n>` from ITS own counter, so a bare id is ambiguous across receipts — this field names the table, and `memberPrompt.turnIdRegistry` names the other one',
+    })
+  return { ok: true, tool: 'vibe_v5_hire', member: str(args.to), slot, slotRequested: slot, hired, task: taskWithRegistry,
     note: 'direction/term are onboarding prose in the original and roster data here, so they are not stored by this tool' }
 }
 

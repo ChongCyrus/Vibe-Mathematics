@@ -152,7 +152,7 @@ stage('5. THE REAL PRESET ENTRY: THE PACK\'S ASSISTANT SURFACE IS IN THE LIVE PI
   ok(String(asm.text).includes('主动汇报是成员义务'),
     'and assembling through the real kernel pipeline puts the duty text in the round prompt', { chars: String(asm.text).length })
   ok(String(asm.text).includes('v5r-report-duty'), 'with its heading, so a reader can tell which section said it')
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 stage('6. THE PERSONA SAYS THE THINGS THE RULING REQUIRES IT TO SAY')

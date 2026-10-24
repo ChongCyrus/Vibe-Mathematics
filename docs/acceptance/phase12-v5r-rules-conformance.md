@@ -2469,3 +2469,52 @@ transcript `_oneoff/vm-slv/full-1024-220035.jsonl`（3 730 行），build `89610
 **一次被拒的调用必须什么都不留下**，否则调用方「按 hint 修正后重试」这条唯一的补救路径会被自己的残骸堵死 ——
 而堵它的那道闸（撞名）本身是**对的**，所以从外面看像是「闸坏了」。代理这次把「期望/实际」并排写成两行，正好是这个类
 缺陷最省时间的报法。
+
+## §63 第 32 次真机跑：㉔.1/㉔.2/㉔.3 全通过、「无实质残余：是」，但它留了两条读数口径
+
+真机读数（transcript `_oneoff/vm-slv/full-1024-224324.jsonl`，tarball build `767e9679`，117 s / 3 turn receipts）：
+`cast:true`、`SUMMARY: 1 session(s), 0 with RED checks`。所办自己的判词是 **「本轮无实质残余：是（仅机制层面）」**，并把它看到的两条
+口径问题**主动交回**给我们判断——这恰好是从 run 12 起建立的「让所办当验收方」所期望的输出形态。
+
+### §63.1 三条判据的真机原文
+
+| 判据 | 读数 |
+| --- | --- |
+| ㉔.1 原子性（三层） | 缺 roster 的 `open` ⇒ `VMU_MEETING_TOO_SMALL`；紧接着 `status` 同 id ⇒ `VMU_NO_SUCH_OBJECT … in either meeting registry`；同 id 补正 ⇒ `{"ok":true,"id":"p-atomic","state":"in_session"}` |
+| ㉔.2 撞名 hint 顺序 | `hint` 首句即 `that id belongs to the PRIMITIVE meeting registry …`，id 清单在 `Service ids in use:` 之后 |
+| ㉔.3 回归带（六条） | `proceed.member` 别名可达（`whichRule:"institution-rule"`）；`sweep.recentTransitions` 新增一行且 `passAt` = proceed 的 `at`；`pending.turn`/`memberPrompt.turnId` 都是真实 id；`toolsOverride` 在位；`cast/votesCast/for/castMeaning` 四键齐全；被 `fire` 的人不进 `roster` 也不进 `closureVote.eligible` |
+
+### §63.2 它交回的两条（都是口径，不是机制）
+
+1. **`t-1` 一个拼写给两张表**：`vibe_v5_hire` 的 `task.id:"t-1"`（任务板）与 `vibe_vmu_turn` 的 `memberPrompt.turnId:"t-1"`（回合库）
+   各自从自己的计数器铸造，前缀相同 ⇒ 同时持有两张回执的人无法判断后续调用指哪边。
+2. **`sweep.ran:false` / `swept:0` 与 4 条 `recentTransitions` 并列**：§47 已命名的那个「两个时钟」解释了`at`，但没解释`swept` ——
+   「这一遍没扫到」与「根本没有扫描过」读起来一样。
+
+**修法（都不改 id、不破坏任何已存数据）**：读面各自报名表。
+- `vibe-math-vmu/packs/v5r/tools.js` `toolHire`：task 回执追加 `idRegistry:"task-board"` 与 `idMeans`（明说 TURN store 也用 `t-<n>`）；
+- `vibe-math-vmu/tools/turn.js` `labelPromptRegistry`（在 `rememberPrompt` 入口调用）：`memberPrompt` 追加
+  `turnIdRegistry:"turn-store"` 与 `turnIdMeans`（明说 TASK board 也用 `t-<n>`）。**两个标签互相指向对方**，单个标签没有用。
+- `vibe-math-vmu/kernel/meetings.js` `status().sweep` 追加 `sweptMeans`：无扫描 ⇒ `the ABSENCE of a pass - not a pass that
+  found nothing due`；有扫描 ⇒ `counts only the transitions THIS last pass settled`。
+
+### §63.3 门禁：`tests/vmu-run32-findings.test.mjs`（19 断言，19/0）
+
+① 两个命名空间**真的**同拼写（任务 id 与回合 id 都匹配 `/^t-\d+$/`）——否则这条观察只是假想；
+② 两张回执各自报名表且**互相指向**（`task.idRegistry==="task-board"`、`memberPrompt.turnIdRegistry==="turn-store"`，
+   各自的说明里点名对方的表）；③ `sweep.sweptMeans` 的「无扫描」分支是行为断言，「有扫描」分支用**源码文本**钉住
+   （要造出真正到点的会议，否则断言测的是 fixture 而不是产品）；④ 标签是**追加**的：task 的 `id/state` 与提示词正文都还在。
+另附一条结构性断言：两个 `idRegistry` 值必须不同（同一个拼写给两个不同表名，否则不构成消歧）。
+
+### §63.4 ★ 顺带修掉一个「假红」类：临时目录清理的竞态（48 个测试文件）
+
+跑邻居套件时 `tests/vmu-run31-findings.test.mjs` 以 `ENOTEMPTY: rmdir 'D:\\_tmp\\vmu-run31-…\\vmu'` 崩掉，
+而同一文件单独跑刚刚是全绿。根因是**清理与异步写入竞态**：store 的写是异步落盘的，`rm(root,{recursive,force})` 与自己的 io 抢跑。
+这不是产品缺陷，是**测试套件级的假红源**（本阶段已经为「假绿」付过学费，假红同样烧轮次）。
+修法：`maxRetries: 20, retryDelay: 50`（`tests/**` 共 **48** 个文件、同一处模板，一处脚本改完 + 每个文件 `node --check` 0 失败）。
+
+### §63.5 本轮教训
+
+**「无实质残余：是」不是终点，而是把判定权交回来**——它附的两条都不是它不敢判，而是它知道那是我们的口径选择。
+把这类交回当作噪声，就会漏掉下一批真缺陷；把它们当作缺陷直接改，又会去改一个没错的机制。正确处理是：**读面各自报名表**，
+既不改 id 也不改语义，并让门禁证明「同一个拼写确实来自两张表」。

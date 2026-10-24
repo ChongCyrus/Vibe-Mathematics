@@ -103,7 +103,7 @@ await (async () => {
 })()
 
 // Windows keeps the store handle open, so cleanup is BEST EFFORT: a locked temp dir must not turn a green suite red.
-try { await rm(root, { recursive: true, force: true }) } catch { /* the temp dir stays */ }
+try { await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* the temp dir stays */ }
 
 console.log('=== VMU R19 BOUNDARY METRICS: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

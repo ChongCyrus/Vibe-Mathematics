@@ -180,7 +180,7 @@ if (SELF_PROBE) {
     const untouched = mb.summary().inputs['r-2'] === undefined
     // With the bug the refused input IS recorded: the regression assertion must therefore fail.
     ok(untouched === true, 'self-probe: bug reintroduced => the "refusal is not an input" assertion fails (as required)', 'untouched=' + untouched)
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU MEETING SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)

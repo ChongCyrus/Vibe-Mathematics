@@ -80,7 +80,7 @@ console.log('=== 3. THE FACE REALLY USES THIS READER (defence in depth behind R3
   const t = createMeetings({ clock: () => 1000, settings: { get: (k) => (k === 'vmu.meetings.tier' ? 'light' : undefined) } })
   const r = t.open({ type: 'ordinary', roster: ['r-1'] })
   ok(r && r.ok === true && r.receipt, 'F2. and an in-domain value builds and opens normally (the guard is not a blanket refusal)', r && r.ok)
-  await rm(root, { recursive: true, force: true }).catch(() => {})
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }).catch(() => {})
 }
 
 console.log('')

@@ -211,6 +211,6 @@ test('dedupe uses the SAME key as settle (content hash + build context)', async 
 for (const c of cases) {
   try { await c.f(); console.log('ok - ' + c.n) } catch (e) { failed += 1; console.log('FAIL - ' + c.n + ' :: ' + String((e && e.message) || e)) }
 }
-await rm(dir, { recursive: true, force: true })
+await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 console.log('=== VMU LEAN KILLABLE: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed > 0 ? 1 : 0)

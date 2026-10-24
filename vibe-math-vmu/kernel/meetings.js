@@ -1808,6 +1808,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
             // touch path: attend/speak/proceed). In that run the two disagreed by tens of seconds while nothing named
             // the difference, so "sweep.at" looked like the instant the transition happened. Both are labelled now.
             lastTransitionPassAt: sweepHistory.length === 0 ? null : sweepHistory[sweepHistory.length - 1].passAt,
+            // ★ ROUND 32 (run-32 report, readability item 2): `swept:0` sat next to four `recentTransitions` rows, and the
+            // note below explains the CLOCK but not the COUNT — "swept nothing" and "no pass has run" read the same. Both
+            // halves are named here in terms of what the number counts.
+            sweptMeans: lastSweep === null
+              ? 'no pass has run in this process yet, so `swept:0` is the ABSENCE of a pass - not a pass that found nothing due'
+              : '`swept` counts only the transitions THIS last pass settled; `recentTransitions` is the bounded cross-pass history, so a non-zero history beside `swept:0` means other passes or the touch path moved meetings',
             recentTransitionsNote: 'this is the BOUNDED history (last 20 transitions across all state-moving paths); each row carries its OWN passAt, which is the instant THAT transition was recorded - it is not `at`, because `at`/`swept`/`transitions` describe the last BEAT sweep only, while a meeting also moves on the touch path (attend/speak/proceed)' }),
         scheduledMeetings: [...live.values()].filter((m) => m.state === 'scheduled').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
         waitingMeetings: [...live.values()].filter((m) => m.state === 'waiting').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor, waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt, waitDueAt: waitDueOf(m), waitDecisionDue: m.waitDecisionDue === true, quorum: quorumOf(m) })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),

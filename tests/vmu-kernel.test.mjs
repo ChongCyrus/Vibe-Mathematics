@@ -113,7 +113,7 @@ const clock = () => '2026-10-09T00:00:00.000Z'
   ok(k2.registry.checkPack({ requires: [{ service: 'vmu.tasks', minVersion: 1 }] }).ok === true, 'a pack requiring a published service passes the check')
   ok(k2.registry.checkPack({ requires: [{ service: 'vmu.store', minVersion: 1 }] }).ok === false,
     'a pack requiring a service this assembly does NOT have (no root) fails the check')
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 5. packs: ONE implementation (the loader), and its refusals are named -----------------------
@@ -197,7 +197,7 @@ if (SELF_PROBE) {
     const inert = mk.members === null
     // With the guard removed a roster materialises with nothing declared: the assertion MUST fail.
     ok(inert === true, 'self-probe: guard removed => the zero-mechanism assertion fails (as required)', 'members=' + (mk.members === null ? 'null' : 'created'))
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU KERNEL SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)
@@ -277,7 +277,7 @@ if (SELF_PROBE) {
   ok(/middleware\/dry-run/.test(text) && text.trim().split('\n').length >= 1,
     'the durable file holds the JSONL rows (one object per line)', text.slice(0, 100))
   ok(audit.file && /2026-10-09\.jsonl$/.test(audit.file), 'the file is named by UTC day', String(audit.file))
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 
   // A root that cannot hold a directory: the failure must be visible, and the in-memory tail must survive.
   const file = await mkdtemp(join(tmpdir(), 'vmu-audit-bad-'))
@@ -289,7 +289,7 @@ if (SELF_PROBE) {
     'a failing audit write is REPORTED in status().audit.lastWriteError, not swallowed',
     JSON.stringify(bad.status().audit).slice(0, 140))
   ok(bad.status().auditTail.length >= 1, 'and the in-memory auditTail keeps working meanwhile')
-  await rm(file, { recursive: true, force: true })
+  await rm(file, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- In-flight ledger: "after an interruption the owner is told what is unfinished" ------------------
@@ -328,7 +328,7 @@ if (SELF_PROBE) {
   const bare = m.createKernel({ clock: () => '2026-10-09T00:00:00.000Z' })
   ok(bare.work === null && bare.status().work === null,
     'without a durable root there is no ledger - and status() stays safe instead of throwing (R11)')
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- the concurrency gate has ONE meaning: maxLiveMembers, with maxParallel as a declared synonym ---------
@@ -716,7 +716,7 @@ if (SELF_PROBE) {
   try { bare.declareTracks(['progress']) } catch (e) { tracksErr = e }
   ok(tracksErr && tracksErr.code === 'VMU_ENGINE_UNAVAILABLE' && /no library root/.test(tracksErr.message),
     'E-8(甲) BEHAVIOUR: declareTracks refuses by name through the guard when there is no root', tracksErr && tracksErr.message)
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   // the guard faces are registered in the DOCS too (docs/11 §守卫面清单)
   const section = DOC11.slice(DOC11.indexOf('## 4.2'), DOC11.indexOf('## 5.'))
   ok(section.length > 0 && guards.registered.every((f) => section.includes(f)),
@@ -827,7 +827,7 @@ const FALLBACK_KEYS = [
   const removed = await kl.library.removeRevision({ id: added.id, rev: 1 }).then(() => null, (e) => e)
   ok(removed && removed.code === 'VMU_RETENTION_CONFLICT',
     'P0-fallback: with an EMPTY settings object, storeMode is diff ⇒ the baseline revision is protected (before the fix the default was full and this delete succeeded)', removed && removed.code)
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // DOOR 2 (retention): its config view must report the same declared default.
@@ -961,7 +961,7 @@ const FALLBACK_KEYS = [
   ok(after.tracks.includes('problems') === false && after.tracks.length > 0,
     'P1-tracks: after the unload the pack track is GONE and the construction-time tracks are back (before the fix the rebuilt library survived)',
     after.tracks)
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ── PHASE 6 · goal 3 P2: no decorative fields; documented middleware surface must be REACHABLE from M2 ─────────
@@ -1024,7 +1024,7 @@ const FALLBACK_KEYS = [
   const fresh = m.createKernel({ clock: clockNum, settings })
   ok(fresh.records.list({ track: 'problems', limit: 0 }).items.length === 0,
     'reverse: a kernel without a root starts with NO records (nothing is invented)')
-  try { await rm(root, { recursive: true, force: true }) } catch { /* the store may still hold the file open */ }
+  try { await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* the store may still hold the file open */ }
 }
 
 // ── ★ PHASE 7: vmu.status — generic pack-registered status sections + unload dispose contract ─────────────────

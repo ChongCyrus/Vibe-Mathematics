@@ -92,7 +92,7 @@ const LEGAL = { id: 'p-legal', rules: [{ id: 'r-legal', on: [HOOK], when: {}, th
   ok(p3.ok === true, 'P3. a LEGAL rule plans clean - the new check does not turn valid packs red', p3)
   ok(Array.isArray(p3.problems) && p3.problems.length === 0, 'P3b. ...with an empty problem list', p3.problems)
 
-  try { await rm(root, { recursive: true, force: true }) } catch { /* the store handle may still be held */ }
+  try { await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* the store handle may still be held */ }
 }
 
 // =========================================================================================================
@@ -107,7 +107,7 @@ const LEGAL = { id: 'p-legal', rules: [{ id: 'r-legal', on: [HOOK], when: {}, th
   ok(rules.length > 0, 'E0. the shipped pack really carries M1 rules, so this is not a vacuous regression guard', { rules: rules.length })
   ok(p.ok === true && Array.isArray(p.problems) && p.problems.length === 0,
     'E1. ★ the REAL shipped v5r pack still plans CLEAN after the validator was wired in (no false positive on the pack we ship)', p)
-  try { await rm(root, { recursive: true, force: true }) } catch { /* going away */ }
+  try { await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* going away */ }
 }
 
 // =========================================================================================================
@@ -151,8 +151,8 @@ const LEGAL = { id: 'p-legal', rules: [{ id: 'r-legal', on: [HOOK], when: {}, th
   ok(errs.length > 0 && errs.some((e) => /when is required/.test(String(e.message)) && String(e.message).includes('r-nowhen')),
     'F6. ★ REAL ENTRY: the recorded reason names the SAME rule and the SAME cause as the direct path',
     errs.map((e) => e.message))
-  try { await rm(root2, { recursive: true, force: true }) } catch { /* going away */ }
-  try { await rm(root, { recursive: true, force: true }) } catch { /* going away */ }
+  try { await rm(root2, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* going away */ }
+  try { await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* going away */ }
 }
 
 // =========================================================================================================
@@ -207,7 +207,7 @@ const LEGAL = { id: 'p-legal', rules: [{ id: 'r-legal', on: [HOOK], when: {}, th
   ok(plannedB.ok === false && plannedB.problems.length > 0 && plannedB.problems.some((p) => /when is required/.test(String(p))),
     'G5. ★ shape B with an INVALID rule is named at PLAN (the same rule in `rules[]` already was - the two shapes are finally symmetric)', plannedB)
 
-  for (const rt of [root, b.root, b2.root, bad.root]) { try { await rm(rt, { recursive: true, force: true }) } catch { /* going away */ } }
+  for (const rt of [root, b.root, b2.root, bad.root]) { try { await rm(rt, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* going away */ } }
 }
 
 // =========================================================================================================
@@ -238,7 +238,7 @@ const LEGAL = { id: 'p-legal', rules: [{ id: 'r-legal', on: [HOOK], when: {}, th
     ok(planned.ok === true && Array.isArray(planned.problems) && planned.problems.length === 0,
       'H1. shipped pack ' + name + ': still PLANS CLEAN', planned)
     ok(applyErr === null, 'H2. shipped pack ' + name + ': still APPLIES without throwing', applyErr && applyErr.code)
-    try { await rm(root, { recursive: true, force: true }) } catch { /* going away */ }
+    try { await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* going away */ }
   }
 
   // H3 IS DELIBERATELY NOT INSIDE THE LOOP. It used to be guarded by `if (name === 'v5r') { … }`, which the C2
@@ -258,7 +258,7 @@ const LEGAL = { id: 'p-legal', rules: [{ id: 'r-legal', on: [HOOK], when: {}, th
   const fired = await v5rKernel.bus.emit('tools/pre-execute', { tool: 'vibe_vmu_script', args: {}, agent: null, hook: 'tools/pre-execute' })
   ok(fired && fired.decision && fired.decision.deny && fired.decision.deny.code === 'VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS',
     'H3. ★ the SHIPPED v5r rule still fires on the real assembly (no regression on the historical path; it discriminates by tool, so a blanket deny could not fake it)', fired && fired.decision)
-  try { await rm(v5rRoot, { recursive: true, force: true }) } catch { /* going away */ }
+  try { await rm(v5rRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* going away */ }
 }
 
 console.log('=== VMU PACK PLAN RULE VALIDATE: ' + passed + ' passed, ' + failed + ' failed ===')

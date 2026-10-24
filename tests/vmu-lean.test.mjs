@@ -402,6 +402,6 @@ test('read refuses when the referenced file DRIFTED (cite-not-copy is enforced)'
 for (const c of cases) {
   try { await c.fn(); console.log('ok - ' + c.name) } catch (e) { failed += 1; console.log('FAIL - ' + c.name + ' :: ' + String((e && e.message) || e)) }
 }
-await rm(dir, { recursive: true, force: true })
+await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 console.log((failed === 0 ? 'ALL GREEN' : 'RED') + '  (passed=' + passed + ', failed=' + failed + ')')
 process.exit(failed === 0 ? 0 : 1)

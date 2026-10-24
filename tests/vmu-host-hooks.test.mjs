@@ -167,7 +167,7 @@ if (SELF_PROBE) {
     const bridge = mm.attachHostHooks({ ctx: host.ctx, kernel, settings: {} })
     // With the filter removed the bridge attaches hooks although nothing was declared: assertion must fail.
     ok(bridge.plan().count === 0, 'self-probe: filter removed => the zero-mechanism assertion fails (as required)', JSON.stringify(bridge.plan()))
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU HOST HOOKS SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)

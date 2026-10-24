@@ -171,7 +171,7 @@ if (SELF_PROBE) {
     let refused = false
     try { await ml.load({ id: 'a', kind: 'module', module: typo }) } catch (e) { refused = /unregistered hook/.test(e.message) }
     ok(refused === true, 'self-probe: check removed => the typo assertion fails (as required)', 'refused=' + refused)
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU LOADER SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)

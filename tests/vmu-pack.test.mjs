@@ -86,7 +86,7 @@ const mk = async (settings = {}) => {
     'a pack\'s settings ARE applied by the kernel settings layer (they are never silently dropped)')
   await expectThrow(() => loader.apply({ id: 'wants-settings-2', settings: { 'vmu.records.headListAt': 4 } }), 'VMU_PACK_CONFLICT',
     'a pack that would overwrite an ACTIVE setting is refused unless overrides are declared (O4)')
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 3. apply() does what the plan said ---------------------------------------------------------
@@ -110,7 +110,7 @@ const mk = async (settings = {}) => {
   ok(kernel.registry.resolve('vibe_v5_poll_vote').name === 'vmu.tasks', 'the pack alias resolves')
   ok(kernel.packNotes().some((n) => n.what === 'applied'), 'the application is recorded in the pack notes')
   expectThrow(() => loader.apply(manifest), 'VMU_PACK_CONFLICT', 'applying the same pack twice is refused (O4)')
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 4. unload leaves no behavioural residue ----------------------------------------------------
@@ -132,7 +132,7 @@ const mk = async (settings = {}) => {
   expectThrow(() => loader.unload('temp-pack'), 'VMU_NO_SUCH_OBJECT', 'unloading a pack that is not applied is refused')
   ok(kernel.packNotes().some((n) => n.what === 'unloaded'), 'the unload is recorded in the notes')
   ok(loader.status().applied.length === 0, 'status() lists no applied packs afterwards')
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 5. self-probe ----------------------------------------------------------------------------
@@ -162,8 +162,8 @@ if (SELF_PROBE) {
     let refused = false
     try { await loader.apply(manifest) } catch (e) { refused = e.code === 'VMU_PACK_CONFLICT' }
     ok(refused === true, 'self-probe: guard removed => the double-apply assertion fails (as required)', 'refused=' + refused)
-    await rm(dir, { recursive: true, force: true })
-    await rm(root, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU PACK SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)
@@ -295,7 +295,7 @@ if (SELF_PROBE) {
   ok(slotsAfter.length > 0 && slotsAfterV3.length > 0 && JSON.stringify(slotsAfter) === JSON.stringify(slotsAfterV3),
     'the FIRST pack is untouched: its slots (non-empty on BOTH sides) were NOT replaced', { before: slotsAfterV3, after: slotsAfter })
   ok(a.kernel.status().packs.includes('v3-core') === false, 'the refused pack is not listed as applied', a.kernel.status().packs)
-  await rm(a.root, { recursive: true, force: true })
+  await rm(a.root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 
   // direction 2: v3-core first, then v3 must be refused
   const b = await mk()
@@ -306,7 +306,7 @@ if (SELF_PROBE) {
   const tracksCoreAfter = (await b.kernel.library.status()).tracks.slice()
   ok(tracksCoreAfter.length > 0 && tracksCore.length > 0 && JSON.stringify(tracksCoreAfter) === JSON.stringify(tracksCore),
     'v3-core keeps its tracks after the refused v3 apply (both sides non-empty)', { before: tracksCore, after: tracksCoreAfter })
-  await rm(b.root, { recursive: true, force: true })
+  await rm(b.root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ── ★ PHASE 7 (goal 4): pack-declared role -> tool face. Shape is validated; no declaration = zero mechanism ──────
@@ -330,7 +330,7 @@ if (SELF_PROBE) {
   const applied = k.applyPackToolFaces({ by: 'probe-pack' })
   ok(applied.ok === true && applied.applied.length === 1 && applied.applied[0].member === 'member-a' && calls.length === 1 && calls[0].allow[0] === 'vibe_vmu_status',
     '★ 正：声明后按角色真的 apply 到 live 成员（内核执行、宿主 applier 收到 allow）', applied)
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ── ★ PHASE 7: a pack module registers a vmu.status section at LOAD; pack unload calls its dispose and clears it ──
@@ -354,7 +354,7 @@ if (SELF_PROBE) {
   await h.loader.unload('probe-status-pack')
   ok(!Object.prototype.hasOwnProperty.call(h.kernel.status(), 'sections'),
     '★ 正：pack unload 调 dispose 后该段消失（清零路径存在）', Object.keys(h.kernel.status()).includes('sections'))
-  await rm(h.root, { recursive: true, force: true })
+  await rm(h.root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ── PHASE 9 / round 1: a NON-NATIVE presentation must prove its prompts were adapted (promptAck) ──────────────────

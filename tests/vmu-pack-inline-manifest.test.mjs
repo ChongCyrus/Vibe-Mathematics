@@ -155,7 +155,7 @@ async function assemble(packs, { reports = null, root = null } = {}) {
   const names = sink.map((s) => s.name)
   ok(names.includes('artifacts-met'), 'A7. ★ the ABOVE-line threshold fired AUTONOMOUSLY at the turn boundary and was delivered', names)
   ok(!names.includes('artifacts-unmet'), 'A8. ★ the BELOW-line threshold stayed SILENT in the same deployment (the adversarial half)', names)
-  try { await rm(dir, { recursive: true, force: true }) } catch { /* the store handle may still be held on Windows */ }
+  try { await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* the store handle may still be held on Windows */ }
 }
 
 // =========================================================================================================
@@ -189,7 +189,7 @@ async function assemble(packs, { reports = null, root = null } = {}) {
       'B2. ' + label + ': NOT the bare `ERR_INVALID_ARG_TYPE` the defect produced', errs)
     ok(errs.length > 0 && errs.every((e) => String(e.message || '').length > 0 && !/^\s*$/.test(String(e.message))),
       'B3. ' + label + ': the refusal carries a message (not a nameless throw)', errs)
-    try { await rm(dir, { recursive: true, force: true }) } catch { /* going away */ }
+    try { await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* going away */ }
   }
   console.log('  refusals observed: ' + JSON.stringify(seen))
 }
@@ -203,7 +203,7 @@ async function assemble(packs, { reports = null, root = null } = {}) {
   ok(errs.length === 1 && String(errs[0].message).includes('no pack named no-such-pack-anywhere'),
     'C1. a shipped-id miss is still a NAMED refusal (the string path is unchanged by the fix)', errs)
   ok(handle.appliedPacks().length === 0, 'C2. ...and nothing was recorded as applied', handle.appliedPacks())
-  try { await rm(dir, { recursive: true, force: true }) } catch { /* going away */ }
+  try { await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* going away */ }
 }
 
 // =========================================================================================================
@@ -229,7 +229,7 @@ async function assemble(packs, { reports = null, root = null } = {}) {
     'D3. and the message names the actual conflict (a duplicate section), not a generic failure', errs.map((e) => e.message))
   ok(bad.handle.appliedPacks().some((a) => a.id === 'dup-section-pack') === false,
     'D4. the refused pack is NOT recorded as applied (a named refusal is not a partial success)', bad.handle.appliedPacks())
-  try { await rm(bad.dir, { recursive: true, force: true }) } catch { /* going away */ }
+  try { await rm(bad.dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* going away */ }
 
   // REVERSE: the SAME fixture shape with UNIQUE names must load - so the red above is the duplicate, not the fixture.
   const good = {
@@ -247,7 +247,7 @@ async function assemble(packs, { reports = null, root = null } = {}) {
   const registered = (fine.handle.kernel.prompt.status().sections || []).map((s) => s.name)
   ok(registered.includes('deploy-uniq-a') && registered.includes('deploy-uniq-b'),
     'D7. both sections really reached the prompt pipeline (the production path registered them through the helper)', registered)
-  try { await rm(fine.dir, { recursive: true, force: true }) } catch { /* going away */ }
+  try { await rm(fine.dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* going away */ }
 }
 
 console.log('=== VMU PACK INLINE MANIFEST: ' + passed + ' passed, ' + failed + ' failed ===')

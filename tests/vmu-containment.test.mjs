@@ -157,7 +157,7 @@ const loader = pm.createPackLoader({ kernel, registry: kernel.registry })
     'the settings provenance names every key the pack brought', JSON.stringify(settingsNote.keys))
 }
 
-await rm(root, { recursive: true, force: true })
+await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 console.log('=== VMU CONTAINMENT: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

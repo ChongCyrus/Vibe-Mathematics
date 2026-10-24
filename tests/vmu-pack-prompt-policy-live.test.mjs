@@ -187,8 +187,8 @@ console.log('=== 5. ★★ A MANIFEST promptPolicy, APPLIED AFTER THE KERNEL EXI
     receipt.packReport.promptPolicies.effective === true && receipt.packReport.promptPolicies.ids.includes('probe-live-off'),
     '★★ the `vibe_vmu_status` RECEIPT carries the live policy (packReport.promptPolicies), so the state is readable from the tool the operator calls',
     JSON.stringify(receipt === null ? null : receipt.packReport && receipt.packReport.promptPolicies))
-  await rm(control.root, { recursive: true, force: true })
-  await rm(switched.root, { recursive: true, force: true })
+  await rm(control.root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+  await rm(switched.root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 console.log('=== 6. ★★ ZERO MECHANISM: no pack declared ⇒ null, and "nothing declared" does not change the prompt ===')
@@ -220,9 +220,9 @@ console.log('=== 6. ★★ ZERO MECHANISM: no pack declared ⇒ null, and "nothi
   ok(bareReport.mode === 'none' && bareReport.handedToKernel === null && bareReport.effective === false && bareReport.ids.length === 0,
     'no pack declared ⇒ mode:none / handedToKernel:null / nothing effective - the zero-mechanism path, named rather than inferred',
     JSON.stringify(bareReport))
-  await rm(plain.root, { recursive: true, force: true })
-  await rm(withNoopPack.root, { recursive: true, force: true })
-  await rm(bare.root, { recursive: true, force: true })
+  await rm(plain.root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+  await rm(withNoopPack.root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+  await rm(bare.root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 console.log('=== 7. ★★ A THROWING POLICY IS A NAMED REFUSAL, NOT A SILENT SKIP ===')
@@ -237,7 +237,7 @@ console.log('=== 7. ★★ A THROWING POLICY IS A NAMED REFUSAL, NOT A SILENT SK
   ok(refusal !== null && /probe-live-bomb/.test(String(refusal.message)) && /kaboom from the policy/.test(String(refusal.message)),
     'and the message NAMES the policy and carries the original cause, so the caller can fix the right thing',
     refusal === null ? null : String(refusal.message))
-  await rm(session.root, { recursive: true, force: true })
+  await rm(session.root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 console.log('=== 8. ★ UNLOADING A PACK REMOVES ITS POLICY FROM THE LIVE SET (the sink returns a real dispose) ===')
@@ -254,7 +254,7 @@ console.log('=== 8. ★ UNLOADING A PACK REMOVES ITS POLICY FROM THE LIVE SET (t
   ok(session.handle.packReport().promptPolicies.collected.length === 0,
     'and the status report agrees: no residue in the receipt',
     JSON.stringify(session.handle.packReport().promptPolicies))
-  await rm(session.root, { recursive: true, force: true })
+  await rm(session.root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 console.log('=== PACK PROMPT POLICY LIVE: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -169,7 +169,7 @@ if (SELF_PROBE) {
     try { await mb.cast('r-2', 1); counted = true } catch { counted = false }
     // With the guard removed the frozen cast IS counted: the regression assertion must therefore fail.
     ok(counted === false, 'self-probe: guard removed => the frozen-refusal assertion fails (as required)', 'counted=' + counted)
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU BALLOT SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)

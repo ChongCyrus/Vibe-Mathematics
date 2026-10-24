@@ -96,7 +96,7 @@ stage('2. WITH THE PACK ACTIVE THE ASSISTANT PERSONA IS IN THE HOST SYSTEM PROMP
   const fromPack = prompts.filter((p) => String(p.source || '').startsWith('pack:'))
   ok(fromPack.length >= 1,
     'and the entry reports the section as coming from the PACK, so the provenance is auditable', prompts.map((p) => p.name + ':' + p.source).slice(0, 6))
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 stage('3. ZERO MECHANISM IS UNTOUCHED: NO PACK ⇒ NO ASSISTANT SECTION')
@@ -112,7 +112,7 @@ stage('3. ZERO MECHANISM IS UNTOUCHED: NO PACK ⇒ NO ASSISTANT SECTION')
   ok(!h.state.specs.some((s) => s.name === 'vibe_vmu_report'),
     'and no report tool face is published (its intent is declared by a pack, not by the framework)',
     h.state.specs.map((s) => s.name))
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 stage('4. THE DECLARATION IS READABLE WHERE A READER WOULD LOOK (the file itself)')

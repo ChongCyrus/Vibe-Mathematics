@@ -91,7 +91,7 @@ ok(table && typeof table === 'object' && Object.keys(table).length > 0,
     'D3. ★★ the value is the KERNEL\'S REFINED disclosure, not the coarse `APPLIES.H2` string - so a regression to recomputing it from the table would be visible HERE', { receipt: r.appliesAt, tableH2: table.H2 })
 }
 
-try { await rm(dir, { recursive: true, force: true }) } catch { }
+try { await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { }
 console.log('=== VMU APPLIES NAME UNIFIED: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

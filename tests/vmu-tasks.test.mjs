@@ -161,7 +161,7 @@ if (SELF_PROBE) {
     try { await ml.transition(work.id, 'doing') } catch (e) { refused = e && e.code === 'VMU_STATE' }
     // With the guard removed the unmet dependency is ignored: the assertion below MUST fail.
     ok(refused === true, 'self-probe: guard removed => the dependency assertion fails (as required)', 'refused=' + refused)
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU TASKS SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)

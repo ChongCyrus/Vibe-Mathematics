@@ -24,7 +24,7 @@ const ok = (cond, name, detail) => {
 }
 const fakeCtx = () => ({ effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async () => () => {} } })
 // Windows keeps the store's handle open, so cleanup is BEST EFFORT: a locked temp dir must not turn a green suite red.
-const cleanup = async (dir) => { try { await rm(dir, { recursive: true, force: true }) } catch { /* the temp dir stays */ } }
+const cleanup = async (dir) => { try { await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch { /* the temp dir stays */ } }
 const loadPack = async (root, extra = {}) => {
   const handle = entryMod.apply(fakeCtx(), Object.assign({ clock: () => 1000, root, packs: ['v5r'], 'vmu.packs.active': ['v5r'] }, extra))
   await handle.ready()

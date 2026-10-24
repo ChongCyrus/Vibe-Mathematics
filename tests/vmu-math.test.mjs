@@ -143,7 +143,7 @@ if (SELF_PROBE) {
     const mm = await import(pathToFileURL(join(dir, 'kernel', 'math.js')).href + '?probe=1')
     const got = mm.classifyOutcome({ ok: false, code: 'MATH_ENGINE_NOT_FOUND' })
     ok(got.code === 'VMU_ENGINE_UNAVAILABLE', 'self-probe: guard removed => the named-degradation assertion fails (as required)', got.code)
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU MATH SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
   process.exit(failed > 0 ? 0 : 1)

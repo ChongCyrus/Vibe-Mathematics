@@ -115,7 +115,7 @@ try {
     ok(codes.length === 2 && codes.every((c) => seen.has(c)), 'both named codes were really observed (not asserted on an empty set)', [...seen])
   }
 } finally {
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 console.log('')

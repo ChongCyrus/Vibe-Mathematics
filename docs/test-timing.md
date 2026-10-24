@@ -53,7 +53,7 @@ node tests/run-tests.mjs --json              # 机器可读汇总（含 skippedN
 
 | 脚本 | 串行（sum） | 并行（wall） | 实测输出 |
 |---|---|---|---|
-| `tests/run-tests.mjs`（**523 项作业**（job count）= 415 套件 + 108 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线，未复核） | **未复核**（**2026-10-14**：并发 = `min(2, CPU 核数)`，旧文"并发 4" ✗ 已过期；全量成本仓库内有**三个互斥**说法 —— `≈121–200 s`／`1447.6 s`（runner 自述**模拟值**）／132 作业时 `31 min` 实测 ⇒ **以现量现报为准**） | `TOTAL 523  PASS 523  FAIL 0  (suites 415 · probes 108)`（输出形状；数字现取） |
+| `tests/run-tests.mjs`（**524 项作业**（job count）= 416 套件 + 108 探针/变体；**由 `--counts` 派生**） | ≈ 424 s（历史基线，未复核） | **未复核**（**2026-10-14**：并发 = `min(2, CPU 核数)`，旧文"并发 4" ✗ 已过期；全量成本仓库内有**三个互斥**说法 —— `≈121–200 s`／`1447.6 s`（runner 自述**模拟值**）／132 作业时 `31 min` 实测 ⇒ **以现量现报为准**） | `TOTAL 524  PASS 524  FAIL 0  (suites 416 · probes 108)`（输出形状；数字现取） |
 | `tests/audit-formal-sensitivity.mjs`（49 探针，自带并发 4；v2 12 / v3 12 / v4 12 / v5 13） | ≈ 1035 s | **260.7 s**（实测，x3.97） | 关键路径 = v2/v3 的 `require` 探针（各 ≈75 s）；全 49 条按预期变红、0 问题 |
 | `tests/audit-v5-sensitivity.mjs`（39 探针，串行） | ≈ 101 s | — | 每条 = 一次被测套件重跑 |
 | `tests/audit-persona-sensitivity.mjs`（16 探针） | ≈ 4.4 s | — | 本身很快，不需要并行 |

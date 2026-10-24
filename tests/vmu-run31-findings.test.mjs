@@ -129,7 +129,7 @@ try {
   ok(minted.parsed && minted.parsed.ok === true && typeof minted.parsed.id === 'string' && minted.parsed.id !== 'p-x',
     '★ a MINTED id still works and does not reuse p-x', minted.parsed && { id: minted.parsed.id })
 } finally {
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 console.log('\n=== VMU RUN31 FINDINGS: ' + passed + ' passed, ' + failed + ' failed ===')

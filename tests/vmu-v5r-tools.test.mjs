@@ -418,7 +418,7 @@ try {
     ok(earlyClose.parsed && earlyClose.parsed.ok === false && earlyClose.parsed.code === 'VMU_BALLOT_MIN_VOTES_NOT_MET' && /不成立/.test(String(earlyClose.parsed.message)),
       '★★ poll_close: 反 — with the floor unmet the ballot DOES NOT COUNT: VMU_BALLOT_MIN_VOTES_NOT_MET + "本次投票不成立" (min_votes is NOT the quorum)',
       earlyClose.parsed && { code: earlyClose.parsed.code, message: earlyClose.parsed.message })
-  } finally { await rm(strictRoot, { recursive: true, force: true }).catch(() => {}) }
+  } finally { await rm(strictRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }).catch(() => {}) }
   const closeByMember = await receipt(v5rBoot, 'vibe_v5_poll_close', { ballot_id: boxId, member: 'r-1' })
   ok(closeByMember.parsed && closeByMember.parsed.ok === false && closeByMember.parsed.code === 'VMU_NOT_PERMITTED',
     'poll_close: 反 — only the chair seat may close/tally', closeByMember.parsed)

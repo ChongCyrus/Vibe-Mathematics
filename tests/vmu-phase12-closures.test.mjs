@@ -243,7 +243,7 @@ try {
   ok(estimate.parsed && estimate.parsed.ok === true,
     '★ an ESTIMATE in (0,1) is always allowed — the gate closes the conclusion door, not the research', estimate.parsed && estimate.parsed.ok)
 } finally {
-  await rm(root, { recursive: true, force: true }).catch(() => {})
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }).catch(() => {})
 }
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed')

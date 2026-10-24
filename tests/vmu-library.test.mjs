@@ -90,7 +90,7 @@ const mk = (opts = {}) => m.createLibrary(Object.assign({ root, clock: () => '20
   await writeFile(file, (await readFile(file, 'utf8')).replace('title: Method card', 'title: Renamed behind its back'), 'utf8')
   const again = await lib.list()
   ok(again[0].title === 'Renamed behind its back', 'list() is rebuilt from disk (no stale cache)', again[0].title)
-  await rm(root3, { recursive: true, force: true })
+  await rm(root3, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 4. a dangling id is refused by name -------------------------------------------------------
@@ -155,7 +155,7 @@ const mk = (opts = {}) => m.createLibrary(Object.assign({ root, clock: () => '20
   ok(st.headListAt === 7 && st.tracks.join(',') === 'progress,rejected', 'status() reports the declared switches')
   ok(Array.isArray(st.truncation) && st.truncation.length === 0, 'status() reports truncation as a list (this line threw a ReferenceError before it was fixed)')
   ok(st.kinds.proposition === 1 && st.kinds.method === 1, 'status() counts records by kind', JSON.stringify(st.kinds))
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // ---- 9. self-probe ----------------------------------------------------------------------------
@@ -175,14 +175,14 @@ if (SELF_PROBE) {
     try { await ml.expand('dangling') } catch (e) { namedRefusal = e && e.code === 'VMU_NO_SUCH_OBJECT' }
     // With the guard removed the failure is a TypeError, not the named refusal: the assertion below MUST fail.
     ok(namedRefusal === true, 'self-probe: guard removed => the dangling-id assertion fails (as required)', 'namedRefusal=' + namedRefusal)
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   }
   console.log('=== VMU LIBRARY SELF-PROBE: ' + (failed > 0 ? 'guard can fail (as required)' : 'GUARD CANNOT FAIL') + ' ===')
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
   process.exit(failed > 0 ? 0 : 1)
 }
 
-await rm(root, { recursive: true, force: true })
+await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 // ---- B6: vmu.records.headListAt is a REAL row cap, and the drop is counted (bug #35) -----------------
 {
   const root = await mkdtemp(join(tmpdir(), 'vmu-lib-head-'))
@@ -197,7 +197,7 @@ await rm(root, { recursive: true, force: true })
     'and the omission is COUNTED, never silent (docs/07 §4.4)', JSON.stringify(rep))
   const open = m.createLibrary({ root, tracks: ['progress'], headListAt: 0 })
   ok((await open.list()).length === 3, 'headListAt: 0 means "keep everything"')
-  await rm(root, { recursive: true, force: true })
+  await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
 
 

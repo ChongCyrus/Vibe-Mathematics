@@ -113,6 +113,6 @@ let id = null
   ok(/rev: 1/.test(raw) && /baseline: true/.test(raw), 'revision file carries rev and baseline marker')
 }
 
-await rm(root, { recursive: true, force: true })
+await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 console.log('=== VMU LIBRARY REVISIONS: ' + pass + ' passed, ' + fail + ' failed ===')
 process.exit(fail ? 1 : 0)
