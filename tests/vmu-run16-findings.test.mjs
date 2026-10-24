@@ -88,10 +88,21 @@ const src = (rel) => readFileSync(new URL(rel, ROOT), 'utf8')
   ok(/markerState: String\(r\.state\)/.test(marker) && !/status: String\(r\.state\)/.test(marker) && !/faceState: String\(r\.state\)/.test(marker),
     '★★ R19: the marker face names its raw lifecycle `markerState` and no longer publishes it as `status`/`faceState` (the pair that made state:\'waiting\' and status:\'open\' coexist)')
   const overview = src('vibe-math-vmu/packs/v5r/tools.js')
-  ok(/markerState: m\.markerState === undefined \? null : m\.markerState/.test(overview) && /markerStateNote:/.test(overview),
+  const rowStart = overview.indexOf('meetings: meetingIds.map')
+  const rowEnd = overview.indexOf('sweep: sweepTrace', rowStart)
+  const rowSlice = rowStart >= 0 && rowEnd > rowStart ? overview.slice(rowStart, rowEnd) : ''
+  ok(rowSlice.length > 0, 'R19 setup: the overview meeting-row literal was located (so the counts below are not vacuous)', rowSlice.length)
+  ok(/markerState:/.test(rowSlice) && /markerStateNote: 'markerState is the DOMAIN MARKER/.test(rowSlice),
     '★★ R19: the overview row reports the marker value under `markerState` WITH a note saying it is not the meeting\'s state')
   ok(!/faceState: m\.faceState === undefined/.test(overview),
     'R19: and it no longer emits the neutral name that a reader took for the meeting\'s status')
+  // ★ DUPLICATE-KEY GATE (a defect my own first R19 patch shipped): the row literal declared `markerState` TWICE, so the
+  // later key silently won and the earlier one was dead code. A source-level gate that only asks "is the name present"
+  // cannot see that, so this counts the declarations inside the row literal.
+  const markerStateDecls = rowSlice.split('markerState:').length - 1
+  ok(markerStateDecls === 1,
+    '★★ R19: the row literal declares `markerState` EXACTLY ONCE (a second declaration would silently win and leave the first dead)',
+    markerStateDecls)
 }
 
 console.log('')

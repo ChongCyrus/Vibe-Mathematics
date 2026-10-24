@@ -380,13 +380,14 @@ async function toolOverview(args = {}, { kernel } = {}) {
       const meetingState = view && view.state !== undefined ? String(view.state) : null
       return { id, state: meetingState === null ? (m.state === undefined ? null : m.state) : meetingState,
         stateSource: meetingState === null ? 'marker (meeting service view unavailable)' : 'meeting service view',
-        markerState: m.state === undefined ? null : String(m.state),
         scheduledFor: view && view.scheduledFor !== undefined ? view.scheduledFor : null,
         type: view && view.type !== undefined ? view.type : null,
         // ★★★ PHASE 12 / R19 (run-16 report, item 3): these two used to be the MARKER's lifecycle under the neutral
         // names `status`/`faceState`, so a row could say state:'waiting' and status:'open' at once. The marker value is
         // reported once, under a name that cannot be read as the meeting's status, and the note says what it is.
-        markerState: m.markerState === undefined ? null : m.markerState,
+        // the marker row already names its own value `markerState`; older rows carry it as `state`, so the fallback
+        // keeps the FACT rather than reading null on a row shape the marker no longer emits.
+        markerState: m.markerState === undefined ? (m.state === undefined ? null : String(m.state)) : m.markerState,
         markerStateNote: 'markerState is the DOMAIN MARKER own lifecycle (it opens when a meeting is convened, so it says "open" even for a meeting that is still scheduled). The meeting state is the `state` field.' }
     }),
     // ★ Same three keys and the same rule as vibe_v5_report.counts.feedback (one helper, so they cannot disagree).
