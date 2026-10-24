@@ -800,6 +800,11 @@ function createTurnOrchestrator({
   const POLICY = ['round-robin', 'least-recent'].includes(wakeupPolicy) ? wakeupPolicy : 'round-robin'
   const woken = new Map()   // member -> how often this loop has opened a turn for it
   let cursor = 0            // round-robin position, so cycling is positional rather than count-based
+  // ★★★ ROUND 14 (live run 14): the spec used to carry NO turn id, so `deliverByReturning` stored `turnId: null` and
+  // every reading that is supposed to NAME the held turn (`pending.turn`, `selectionIgnored.pending`,
+  // `superseded.turn`) came back null while its `member` was filled — a half-reading that reads as "no turn" next to
+  // a member who plainly has one. The id is minted here, at the ONE place a turn spec is created, per orchestrator.
+  let turnSeq = 0
   const turns = new Map()
   const counts = { opened: 0, assembled: 0, delivered: 0, parsed: 0, refused: 0, dispatched: 0, notExecuted: 0 }
   const lastRefusal = { code: null, message: null }
@@ -1798,7 +1803,10 @@ function createTurnOrchestrator({
       pick = list[cursor % list.length]
       cursor += 1
     }
-    return { member: pick.id, role: role || pick.role || null, phase, why, nextStep }
+    // ★ ROUND 14: the id must exist BEFORE delivery, because the delivery seam records it for the caller
+    // (`pending().turnId`) and the step receipt reports the held turn by it. Minting it at the end of the call chain
+    // would leave every reading null on the first delivery — which is exactly what the live run measured.
+    return { id: 't-' + (turnSeq += 1), member: pick.id, role: role || pick.role || null, phase, why, nextStep }
   }
 
   /**

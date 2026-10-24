@@ -492,7 +492,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
    * meeting was already open" from "this touch is what opened it" — a silent transition is indistinguishable from a
    * bug when a receipt is missing.
    */
-  const syncMeeting = (m, at = null) => {
+  const syncMeetingInner = (m, at = null) => {
     if (!m || (m.state !== 'scheduled' && m.state !== 'waiting')) return null
     const now = at === null ? clock() : n(at)
     // ★ R3: 「未到齐」= 名册上还有人不 present（或部署把 `vmu.meetings.waitForAll` 关掉，则回落到法定人数）。
@@ -541,6 +541,27 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       waitOnDueMs: K.waitOnDueMs, quorum: quorumOf(m), enforcedScope: ENFORCED_SCOPE,
       note: 'the framework does not decide: the chair proceeds (proceed), lapses (lapse) or recesses (recess)' })
     return 'wait-expired'
+  }
+
+  // ★★★ ROUND 14 (live run 14, finding ⑧.4): the cross-pass history only ever recorded transitions found by a
+  // sweepDue() PASS — but a meeting also moves on the TOUCH path (attend/speak/proceed call syncMeeting), and that is
+  // exactly what the live run did: m75 went scheduled→waiting through `speak`, so `sweep.recentTransitions` stayed
+  // `[]` while its own note promised "a transition from an earlier pass is still visible here". A history that only
+  // remembers one of the two ways a state can move is a false reading, not a small one.
+  // The recorder now sits at syncMeeting — the ONE place a state moves — so both paths are recorded, once.
+  const recordTransition = (m, before, now) => {
+    sweepHistory.push({ passAt: now, meeting: m.id, from: before, to: m.state,
+      waitDecisionDue: m.waitDecisionDue === true,
+      scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor,
+      dueAt: m.waitStartedAt === undefined ? null : m.waitStartedAt })
+    if (sweepHistory.length > 20) { sweepHistory.shift(); sweepHistoryDropped += 1 }
+  }
+  const syncMeeting = (m, at = null) => {
+    const before = m && m.state
+    const atNow = at === null ? clock() : n(at)
+    const out = syncMeetingInner(m, at)
+    if (out !== null && m && m.state !== before) recordTransition(m, before, atNow)
+    return out
   }
 
   /**
@@ -702,10 +723,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // ★ LIVE RUN 10, finding F: the pass existed but its trace was nowhere a reader could see it, so "the deadline was
       // observed" remained an article of faith. lastSweep is the memory of the LAST pass and status() reports it.
       lastSweep = pass
-      for (const tr of transitions) {
-        sweepHistory.push(Object.assign({ passAt: now }, tr))
-        if (sweepHistory.length > 20) { sweepHistory.shift(); sweepHistoryDropped += 1 }
-      }
+      // the per-transition history is recorded by `recordTransition` inside `syncMeeting` (the ONE place a state
+      // moves), so it also catches the touch path; pushing again here would double-count the same transition.
       return pass
     },
 

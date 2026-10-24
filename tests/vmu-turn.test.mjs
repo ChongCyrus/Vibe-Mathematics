@@ -10,7 +10,7 @@ import { RECORDED_FIELDS } from '../vibe-math-vmu/kernel/turn/index.js'
 //
 // Run: node tests/vmu-turn.test.mjs   (last line: === VMU TURN: N passed, M failed ===)
 
-import { createTurnOrchestrator, FIELD_OWNERS, FIELDS, extractFence, facesFrom, resolveOwners, deliverViaSubagents } from '../vibe-math-vmu/kernel/turn/index.js'
+import { createTurnOrchestrator, FIELD_OWNERS, FIELDS, extractFence, facesFrom, resolveOwners, deliverViaSubagents, deliverByReturning, selectionReadingsOf } from '../vibe-math-vmu/kernel/turn/index.js'
 import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
 import { v5rPromptSections, v5rTurnSections } from '../vibe-math-vmu/packs/v5r/prompts/v5r-core.js'
 import { createKernel } from '../vibe-math-vmu/kernel/index.js'
@@ -1413,6 +1413,41 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const quietOut = await quiet.step({ members: [{ id: 'r-2', role: 'member' }], why: 'G7 no calls' })
   ok(quietOut && quietOut.receipt && Array.isArray(quietOut.receipt.toolCalls) && quietOut.receipt.toolCalls.length === 0,
     '★ G7 ④ 反：成员没用工具 ⇒ 摘要为空数组（形状稳定，不是缺字段）', quietOut && quietOut.receipt && quietOut.receipt.toolCalls)
+}
+
+// ★★★ ROUND 14 (live run 14, finding ⑧.3): A TURN SPEC HAD NO ID ⇒ every reading that must NAME the held turn was
+// half-empty. The delivery seam stores `turnId` from the spec, and `selectionReadingsOf` reports it as `pending.turn` /
+// `selectionIgnored.pending` / `superseded.turn`. With no id minted all three came back null while `member` was filled
+// — a reading that says "no turn" beside a member who plainly has one. Measured live: {"requested":["member-1"],
+// "pending":null,"pendingMember":"member-2",...}
+{
+  const seam = deliverByReturning()
+  const t = mk({ deliver: seam })
+  const out = await t.step({ members: [{ id: 'r-1', role: 'member' }], why: 'R14 the held turn must be nameable' })
+  const held = seam.pending()
+  ok(held && typeof held.member === 'string' && held.member === 'r-1', '★ R14a: the seam holds a prompt for the member', held && held.member)
+  ok(held && typeof held.turnId === 'string' && held.turnId !== '',
+    '★★ R14b: the held prompt carries a TURN ID (without it the caller cannot name what it holds)', held && held.turnId)
+  const readings = selectionReadingsOf(held, ['r-9'])
+  ok(readings.pending && readings.pending.turn === held.turnId,
+    '★★ R14c: `pending.turn` IS that id (not null beside a filled member)', readings.pending)
+  ok(readings.selectionIgnored && readings.selectionIgnored.pending === held.turnId,
+    '★★ R14d: `selectionIgnored.pending` names the dropped turn', readings.selectionIgnored)
+  ok(readings.superseded && readings.superseded.turn === held.turnId,
+    '★ R14e: `superseded.turn` names it too, so both readings agree', readings.superseded)
+  // ★ the receipt's `pending` describes the prompt that was ALREADY held when the call started (what the caller is
+  // holding going in) — not the one this call just produced. So it is only nameable on the SECOND call, which is
+  // exactly the call where a caller can drop it by passing an explicit list.
+  // the readings live at the TOP LEVEL of the step result (both the awaiting branch and the settled receipt), not
+  // inside `receipt` — which is why the live transcript shows them beside toolCalls.
+  const second = await t.step({ members: [{ id: 'r-9', role: 'member' }], why: 'R14f a selection that drops the held turn' })
+  ok(second && second.pending && second.pending.turn === held.turnId,
+    '★★ R14f: the STEP RESULT names the turn the caller was holding, by the same id the seam holds', second && second.pending)
+  ok(second && second.selectionIgnored && second.selectionIgnored.pending === held.turnId,
+    '★★ R14f2: and it says in the SAME result that this selection dropped that turn', second && second.selectionIgnored)
+  const keep = selectionReadingsOf(held, ['r-1'])
+  ok(keep.selectionIgnored === null && keep.selectionApplied === true,
+    '★ R14g: a selection that KEEPS the held member is not called ignored (no false alarm)', keep.selectionIgnored)
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')

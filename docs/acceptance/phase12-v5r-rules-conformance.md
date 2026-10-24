@@ -1746,3 +1746,58 @@ phase 12 的收尾判据不是「我抽查没问题」，而是**研究所自己
 ### §43.6 教训
 
 **判据必须来自外部**。这一阶段最贵的两次错误同源：把「我自己抽查通过」当成「对方验收通过」。所办代理的报告是**外部判据**，它列出的每一条都必须被定性（已修／已判非缺陷／已登记），并且定性要能指到 `file:line` 或命令输出。把「机器判据全绿」写成「规则验收通过」，是**假绿的最高级形态**：绿的是我自己的仪器，不是对方的验收。
+
+## §44 第 14 次真机跑（`b913c138`）：所办自己报的 5 条 + 我的验证脚本发现的 4 条读不到
+
+### §44.1 机器读数
+
+| 项 | 值 |
+| --- | --- |
+| transcript | `_oneoff/vm-slv/full-1024-164455.jsonl`（10 225 行 / 4.4 MB） |
+| build | `b913c138`（`git archive HEAD` 重建 tarball） |
+| 判据 | `cast=true`（7 条 turn 回执） · `SUMMARY: 1 session(s), 0 with RED checks` · `NO_FENCE=0` · `UNKNOWN_FIELD=1`（提示词里引用拒收名） · `FIELD_NOT_APPLICABLE=0` · `BAD_JSON=0` |
+| 规模 | 287 s · 48 次工具调用 · 3 077 084 tokens（cap 6 M） · `C_free_GB=12.37` |
+
+### §44.2 所办代理报告（27 997 字符）自己列的 5 条 —— 逐条定性
+
+| # | 报告原话（要点） | 定性 | 处置 |
+| --- | --- | --- | --- |
+| 6.1 | 「主席提前自决必须叫 `actor`，叫 `member` 会被拒——且 hint 说反了」：`proceed {id, member:"member-1"}` 被 `VMU_NOT_PERMITTED`「needs the chair to name itself」拒，而同一回执 hint 写着 `(member: is accepted as the same thing)` | **真缺陷（面未转发别名）** | `vibe-math-vmu/tools/meeting.js` 的 proceed 分支现在把 `member` 转给内核（内核早已接受 `actor ?? by ?? member`，`tests/vmu-run13-findings.test.mjs` ⑧-c 证明）；新门禁 `tests/vmu-run14-findings.test.mjs` 6.1（含 TEETH：把 `member:` 删掉的 PRE-FIX 调用点必须判红）+ 两端一致性断言 |
+| 6.2 | 发言回执 `budget:null`、`budgetDeclared:false`，「还剩多少」读不出来 | **已判非缺陷**（默认部署未声明预算） | 读数诚实且已在 `tests/vmu-receipt-shapes.test.mjs` 钉住形状；不改 |
+| 6.3 | `met:true` 与 `required:0`、1/2 在场并排，易读成「法定人数成立」 | **已判非缺陷 / 命名建议** | `metIs` 已解释语义，纯下界读数以 `floorMet` 命名（只在 proceed 覆写记录里）；因一条建议改破坏性读面不做。门禁只钉「两种读数不被合并成一个布尔」 |
+| 6.4 | 用裸字符串传 `members` 会让同一名院士在提示词里同时被称「院士」与「常驻研究员」，并被塞进 `# v5r-charter-roster-temp` 的「你的雇主」段 | **真缺陷（身份口径）—— 未修，登记** | 下一批修：`members` 的条目缺 `role` 时从名册回填席位，或按「丢席位」具名拒；当前已登记为待修项 |
+| 6.5 | `closureVote.window:"meeting"` 但结算发生在 `phase:"normal"` 的 turn step，会议关联读不出 | **已判非缺陷 / 命名建议** | `castMeaning` 已澄清 `cast !== votesCast`；`window` 的语义改名留作读面演进，不改 |
+
+### §44.3 我的验证脚本发现的 4 条「读不到」—— 其中 2 条是真缺陷
+
+- ⑧.1 等待期拒收文本：**通过**（新版逐字命中「the floor (quorum) requires 0 and IS met, but the institution rule is not: …」）。
+- ⑧.2 覆写记录：**内核通过**（run13 ⑧-b 已钉），**面层不通过** ⇒ 见 §44.2 6.1。
+- ⑧.3 `pending` / `selectionIgnored`：**真缺陷** ⇒ §44.5。
+- ⑧.4 `sweep.recentTransitions`：**真缺陷** ⇒ §44.4。
+- 另：`cast:true` 我的脚本一开始报「没找到」，是脚本自身只匹配未转义 JSON 造成的假红；改成「把 content 文本块递归解两次 JSON」后命中。**验收脚本自己也是被测系统的一部分。**
+
+### §44.4 真缺陷：sweep 的跨 pass 历史只记「扫描」这一条路
+
+`sweep.recentTransitions` 实测是 `[]`，而它自己的 `recentTransitionsNote` 承诺「last 20 transitions across all passes … 早前 pass 的转移仍可见」。
+根因：历史只在 `sweepDue()` 的 pass 里 push；但会议也会被 **touch 路径**（`speak`/`attend`/`proceed` → `syncMeeting`）搬动状态，真机正是这样走的 ⇒ 历史永久为空。
+修法：把记录器下沉到 `syncMeeting`（**唯一的状态变更点**），`sweepDue` 不再自行 push（否则同一转移记两次）。`passAt` 记的是这次移动的时刻。
+门禁：`tests/vmu-run14-findings.test.mjs` ⑧.4（4 条）——历史从空开始并自报边界；**不调 `sweepDue`**、只靠 `speak` 触碰后历史里必须有 `scheduled→waiting`；每条带 `passAt`；再过一趟 pass 时历史**不重复**。
+
+### §44.5 真缺陷：turn spec 没有 id，于是「被挂起的回合」读不出名字
+
+实测形状：`{"requested":["member-1"],"pending":null,"pendingMember":"member-2",…}` —— `member` 有值、`pending` 是 null。
+根因：`nextTurn()` 返回的 spec 没有 `id`，`deliverByReturning` 存 `turnId: turn.id ?? null` ⇒ `pending.turn` / `selectionIgnored.pending` / `superseded.turn` 三个读数全空。
+修法：id 在 **spec 铸造处**（`nextTurn`）发 `t-N`，per-orchestrator 计数；不是事后补。
+门禁：`tests/vmu-turn.test.mjs` R14a–R14g（7 条）——seam 持有的 prompt 带 id；`pending.turn` / `selectionIgnored.pending` / `superseded.turn` 三处同一个 id；**第二次 step 的回执**用同一 id 报「你进来时手上挂着哪个回合」（第一次 step 的 `pending` 按语义是 null，因为那时没有持有物）；选择里保留了被挂起成员时 `selectionIgnored` 必须仍是 null。
+
+### §44.6 教训
+
+1. **「缺陷」与「读数不好用」必须分开定性。** 6.1/6.4/⑧.3/⑧.4 是缺陷；6.2/6.3/6.5 是诚实但不好用/命名建议。混在一起会让下一批去改读面形状，把「可读的歧义」变成「错误的答案」。
+2. **验收脚本自己会假红也会假绿。** 第一版验证脚本没有解析二次编码的 tool result，把 ⑧.1 判成「没跑」；同一版若是放过，会把 6.1 判成「脚本问题」。改法是递归解两次 JSON，并把「没找到」与「找到了但不是期望形状」分开报。
+3. **一个面不得宣传它不转发的别名。** hint 与调用签名不一致，比没有 hint 更坏：照文档做的人被拒，且拒因是假的。这类一致性要有 TEETH（删掉转发键必须判红）。
+
+### §44.7 状态
+
+- 本批（§44）改动：`vibe-math-vmu/tools/meeting.js`（转发 `member`）、`vibe-math-vmu/kernel/turn/index.js`（`nextTurn` 发 id）、`vibe-math-vmu/kernel/meetings.js`（记录器下沉 `syncMeeting`）、`tests/vmu-turn.test.mjs`（R14a–R14g）、新 `tests/vmu-run14-findings.test.mjs`（15 条）+ 派生面重生成。
+- 断言：`vmu-turn` 204/0 · `vmu-run14-findings` 15/0 · `vmu-meetings` 214/0 · `vmu-meeting-types` 142/0 · `vmu-receipt-shapes` 49/0 · `vmu-run13-findings` 33/0 · `vmu-run9-findings` 25/0；`regen-all --check` 16/16；`check-docs` PASS。
+- 仍待：6.4（裸字符串 `members` 的席位口径）；然后第 15 次真机跑，判据仍是「所办报告无实质残余」。

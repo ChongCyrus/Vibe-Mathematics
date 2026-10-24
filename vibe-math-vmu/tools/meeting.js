@@ -426,7 +426,13 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (!pid) return meetingFieldRefusal('proceed')
             const svc = svcOf()
             if (svc && typeof svc.proceed === 'function' && serviceHas(pid)) {
-              const out = svc.proceed({ meeting: pid, actor: actor === undefined ? (by || null) : actor, by: by || null, why: reason || why || null })
+              // ★★★ ROUND 14 (live run 14, finding 6.1): the kernel accepts `member` as a synonym for the chair
+              // (`who = actor ?? by ?? member`) and every VMU_NOT_PERMITTED hint SAYS SO — but this face dropped
+              // `member` on the floor, so a caller who followed the hint was refused with "needs the chair to name
+              // itself" while the hint in the SAME receipt promised the opposite. A face may not advertise an alias
+              // it does not forward.
+              const out = svc.proceed({ meeting: pid, member: member === undefined ? null : member,
+                actor: actor === undefined ? (by || null) : actor, by: by || null, why: reason || why || null })
               return Object.assign({ ok: true, action, id: pid, registry: 'service' }, out)
             }
             if (kernel.liveMeeting(pid)) {
