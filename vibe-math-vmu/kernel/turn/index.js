@@ -1432,6 +1432,21 @@ export function createTurnOrchestrator({
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'no-supported-shape', code: d.notApplicable.code, hint: d.notApplicable.hint })
         continue
       }
+      // ★ PHASE 12 / run 35 item 2: A REPLY FIELD CAN REQUIRE AN OBJECT THE TURN DOES NOT HAVE. `say` maps to
+      // `vmu.meetings.speak`, and the prompt tells a member they may keep one line of explanation in the receipt after
+      // speaking through `vibe_v5_say` - so a member following the prompt's own example writes `{"say":"…"}` in a turn
+      // that has NO meeting bound. The dispatch used to be attempted anyway and the KERNEL threw
+      // `VMU_NO_SUCH_OBJECT "no such meeting: undefined"` from deep inside the meeting service; that throw then ended
+      // the held turn, and the member's next reply read `VMU_TURN_NO_PENDING_MEMBER` - i.e. copying the prompt's example
+      // cost them their turn, with nothing saying why. Here the field is SKIPPED BY NAME instead (the reason is a pure
+      // function so the promise is assertable without a live host): nothing is pretended to have happened, the turn
+      // still completes, and the receipt says which field was dropped and why.
+      const skipReason = dispatchSkipReason(d)
+      if (skipReason !== null) {
+        counts.notExecuted += 1
+        skipped.push({ field: d.field, face: d.face, op: d.op, reason: skipReason.reason, note: skipReason.note })
+        continue
+      }
       const face = map[d.face]
       const fn = face && typeof face[d.op] === 'function' ? face[d.op] : null
       if (!fn) {
@@ -1529,6 +1544,7 @@ export function createTurnOrchestrator({
           e.replyLength = String(text).length
           e.hadBrace = String(text).indexOf('{') !== -1
           e.trackValue = parsed.reply && parsed.reply.progress && parsed.reply.progress.track !== undefined ? parsed.reply.progress.track : null
+          e.turnState = lostTurnState(turn)
         }
       } catch { /* diagnostics must not replace the refusal */ }
       throw e
@@ -2134,6 +2150,40 @@ export function createTurnOrchestrator({
  * `superseded` names the dropped turn, because 'the round vanished' is the one outcome this phase rules out everywhere.
  * When NO selection was given nothing is ignored: the default-roster route is not a caller asking for somebody.
  */
+// ★ PHASE 12 / live run 35 item ② (first half): DOES THIS REPLY FIELD HAVE THE OBJECT IT NEEDS? `say` is dispatched to
+// `vmu.meetings.speak`, and the prompt offers `{"say":"…"}` as its minimal receipt - so a member following the prompt in a
+// turn with NO meeting used to send the kernel into the meeting service with `meeting: undefined`, where it threw
+// `VMU_NO_SUCH_OBJECT "no such meeting: undefined"` AND THAT THROW ENDED THE HELD TURN. The decision is a pure function so
+// it can be asserted without a live host; `apply()` is its only caller and consults it before touching any face.
+export const hasMeetingRef = (payload) =>
+  !!(payload && payload.meeting !== undefined && payload.meeting !== null && payload.meeting !== '')
+
+export const dispatchSkipReason = (d) => {
+  if (!d || typeof d !== 'object') return null
+  if (d.face === 'vmu.meetings' && d.op === 'speak' && !hasMeetingRef(d.payload)) {
+    return {
+      reason: 'no-meeting-bound',
+      note: 'this turn has no meeting, so a speech has nothing to attach to; the line stays in the round state only (the prompt allows `say` as the explanation for speech already made through vibe_v5_say)',
+    }
+  }
+  return null
+}
+
+// ★ PHASE 12 / live run 35 item ② (second half): WHAT A THROWING APPLY DOES TO THE HELD TURN. It consumes it and does NOT
+// re-open it (the reply was partially applied, so re-opening would silently re-run those effects) - and until this
+// existed, NOTHING said so: the member's next reply read `VMU_TURN_NO_PENDING_MEMBER`, i.e. "there is nothing to answer"
+// while the real cause was "your last answer destroyed the turn". Pure so the promise can be asserted.
+export const lostTurnState = (turn) => {
+  const id = turn && turn.id !== undefined && turn.id !== null ? turn.id : (turn && turn.turnId !== undefined && turn.turnId !== null ? turn.turnId : null)
+  return {
+    member: String((turn && turn.member) || ''),
+    turnId: id === null ? null : String(id),
+    consumed: true,
+    reopened: false,
+    note: 'the held turn was consumed by this failed apply and is NOT re-opened; the next step starts a new turn. Fields recorded before the failing dispatch (closure vote, bookkeeping) survived.',
+  }
+}
+
 export const selectionReadingsOf = (heldPrompt, explicitIds) => {
   const ids = Array.isArray(explicitIds) ? explicitIds.map(String) : []
   const heldMember = heldPrompt && typeof heldPrompt.member === 'string' && heldPrompt.member !== '' ? heldPrompt.member : null

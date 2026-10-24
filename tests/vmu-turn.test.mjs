@@ -162,25 +162,61 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const faces = {
     'vmu.meetings': { speak: async (p) => { calls.push(['meetings.speak', p]); return { ok: true } } },
     'vmu.tasks': { create: async (p) => { calls.push(['tasks.create', p]); return { ok: true } } },
+    'vmu.records': { put: async (p) => { calls.push(['records.put', p]); return { ok: true } } },
   }
   const t = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), faces })
-  const out = await t.apply({ say: 'hello', task_create: { title: 'x' } })
+  const out = await t.apply({ progress: { track: 'progress', text: 'x' }, task_create: { title: 'x' } })
   ok(out.ok === true && out.executed.length === 2 && calls.length === 2,
     'T14. ★★★ each field reaches the face that owns it, exactly once', { executed: out.executed.length })
-  ok(calls.some((c) => c[0] === 'meetings.speak') && calls.some((c) => c[0] === 'tasks.create'),
+  ok(calls.some((c) => c[0] === 'tasks.create') && calls.some((c) => c[0] === 'records.put'),
     'T15. ★★ and they go to DIFFERENT faces, because ownership is one-to-one', calls.map((c) => c[0]))
+  // ★ PHASE 12 / live run 35 item ②: `say` is the prompt's MINIMAL RECEIPT — 「已经用 vibe_v5_say 说过时，回执里可只
+  // 留一句说明」 — so a bare string cannot name the meeting a speech goes into. Dispatching it anyway made the kernel
+  // throw `VMU_NO_SUCH_OBJECT "no such meeting: undefined"`, that throw CONSUMED the held turn, and the member's next
+  // reply read `VMU_TURN_NO_PENDING_MEMBER`: copying the prompt's own example cost them the turn. It is SKIPPED BY NAME.
+  const t2 = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), faces })
+  const sayBare = await t2.apply({ say: '已经在群里说过的一句话' })
+  ok(sayBare.executed.length === 0 && sayBare.skipped.length === 1 && sayBare.skipped[0].reason === 'no-meeting-bound',
+    'T14b. ★★★ a bare-string `say` is SKIPPED BY NAME instead of being dispatched into the meeting service',
+    { executed: sayBare.executed.length, skipped: sayBare.skipped })
+  ok(calls.filter((c) => c[0] === 'meetings.speak').length === 0,
+    'T14c. ★★ and the meeting face was NOT called at all (the host sees no attempt, not a failure)', calls.map((c) => c[0]))
+  ok(t2.status().counts.notExecuted === 1,
+    'T14c2. ★ the skip is COUNTED, not silently dropped', t2.status().counts.notExecuted)
+  const meetingCalls = []
+  const sayObjects = await createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
+    faces: { 'vmu.meetings': { speak: async (p) => { meetingCalls.push(p); return { ok: true } } } } })
+    .apply({ say: { meeting: 'm-1', text: '一句话' } })
+  ok(sayObjects.executed.length === 1 && meetingCalls.length === 1,
+    'T14d. ★★ the SAME field carrying a meeting reference still dispatches — the guard does not disable the real path',
+    { executed: sayObjects.executed.length, meetingCalls: meetingCalls.length })
   const half = await t.apply({ verdict: true })
   ok(half.skipped.length === 1 && half.skipped[0].reason === 'face-not-wired' && t.status().counts.notExecuted === 1,
     'T16. ★★★ a field whose face is NOT wired is reported and COUNTED - a half-installed host is visible, never silent',
     { skipped: half.skipped, counts: t.status().counts })
   // ★ PHASE 9 / round 7: no open meeting is a SYMPTOM; the real chain (a field no tool in this turn could produce) is named.
-  const noMeeting = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
-    faces: { 'vmu.meetings': { speak: async () => { const e = new Error('no meeting is open'); e.code = 'VMU_NO_OPEN_MEETING'; throw e } } } })
+  // ★ PHASE 12 / run 35: the trigger moved from `say` to `task_create`, because a bare-string `say` is now SKIPPED before
+  // any face is touched — the wrapping promise (named code + preserved cause) is about ANY face that refuses by name.
+  const throwing = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
+    faces: { 'vmu.tasks': { create: async () => { const e = new Error('no meeting is open'); e.code = 'VMU_NO_OPEN_MEETING'; throw e } } } })
   let wrapped = null
-  try { await noMeeting.apply({ say: 'x' }) } catch (e) { wrapped = e }
+  try { await throwing.apply({ task_create: { title: 'x' } }) } catch (e) { wrapped = e }
   ok(wrapped && wrapped.code === 'VMU_TURN_FIELD_NOT_APPLICABLE' && wrapped.cause && wrapped.cause.code === 'VMU_NO_OPEN_MEETING' &&
     /instructionDelivered/.test(String(wrapped.hint)),
-    'T16b. ★ 反：回执带 meeting 字段但本回合无会议工具 ⇒ 具名 VMU_TURN_FIELD_NOT_APPLICABLE（保留 cause，不再只报 NO_OPEN_MEETING）', wrapped && { code: wrapped.code, cause: wrapped.cause && wrapped.cause.code })
+    'T16b. ★ 反：派发被宿主具名拒绝 ⇒ 具名 VMU_TURN_FIELD_NOT_APPLICABLE（保留 cause，不再只报宿主码）', wrapped && { code: wrapped.code, cause: wrapped.cause && wrapped.cause.code })
+  ok(wrapped && wrapped.turnState === undefined,
+    'T16b2. ★★ 反：裸的 `apply()` 没有持有任何回合，所以错误上不出现「回合被消耗」的记录——凭空的记录比没有记录更糟',
+    wrapped && wrapped.turnState)
+  // …and the record must be attached on the path that actually HOLDS a turn: `run()` (open → assemble → deliver →
+  // parse → apply), not on a bare `apply()` call which never had a turn to lose.
+  const stepping = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
+    deliver: async () => fence({ task_create: { title: 'x' } }),
+    faces: { 'vmu.tasks': { create: async () => { const e = new Error('boom while dispatching'); e.code = 'VMU_NO_OPEN_MEETING'; throw e } } } })
+  let stepped = null
+  try { await stepping.run({ member: 'r-2', phase: 'normal', round: 1 }) } catch (e) { stepped = e }
+  ok(stepped && stepped.code === 'VMU_TURN_FIELD_NOT_APPLICABLE' && stepped.turnState && stepped.turnState.consumed === true &&
+    stepped.turnState.member === 'r-2' && stepped.turnState.turnId !== null,
+    'T16b3. ★★★ 在真正持有回合的路径上（run）也带这条记录，且指名成员与回合 id', stepped && { code: stepped.code, turnState: stepped.turnState })
 
   // ★ PHASE 12: two reply fields can NEVER be dispatched from a reply — a member reply is `{field: payload}` and
   // carries NO meeting reference. Measured before the fix: both dispatched `undefined` as the meeting id and the

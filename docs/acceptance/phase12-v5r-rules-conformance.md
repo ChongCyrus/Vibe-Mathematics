@@ -2575,3 +2575,44 @@ transcript `_oneoff/vm-slv/full-1024-220035.jsonl`（3 730 行），build `89610
 
 **验收简报本身是被测系统的一部分。** 这一轮第 1 条不是产品缺陷，是我把一个不存在的工具名写进了验收项——所办拒绝为它盖章，正是它该做的。
 写简报时凡出现工具名，必须先 `grep` 一遍确认它真的注册在面里；否则测的是一份幻觉。
+
+## §66 第 35 次真机跑的残余：提示词自己的最小样例把回合弄丢了（一个缺陷、两半）
+
+### §66.1 所办测到的是什么
+
+`_oneoff/vm-slv/full-1025-002929.jsonl`（build `0cfdc35c`）里，代理按提示词给出的最小回执样例作答：
+
+- 提示词原文（`packs/v5r/prompts/v5r-core.js` 的回执目录）：`· {"say":"已经在群里说过的一句话"}（已经用 vibe_v5_say 说过时，回执里可只留一句说明）`；
+- 成员照抄后，内核从会议服务深处抛 `VMU_NO_SUCH_OBJECT "no such meeting: undefined"`（`FIELD_OWNERS.say` 映射到 `vmu.meetings.speak`，而回执里没有会议引用）；
+- **这个 throw 把持有的回合吃掉了**：该成员下一次 `op:"reply"` 读到 `VMU_TURN_NO_PENDING_MEMBER`（「没有待答回合」）。
+
+于是「照抄提示词自己的样例」这件事本身要付一个回合的代价，而回执说的却是另一件事。所办的判断是对的：
+**一个样例若不能照抄，它就不是最小合法样例**；**一次失败若吃掉了回合，就必须说出来**。
+
+### §66.2 两半的修法
+
+1. **派发前按名跳过**（`vibe-math-vmu/kernel/turn/index.js`）：新增纯函数 `hasMeetingRef(payload)` 与 `dispatchSkipReason(d)`；`apply()` 的派发循环在 `const face = map[d.face]` **之前**调用它，命中时记一条 `skipped: { reason: "no-meeting-bound", note: … }` 并 `continue`。
+   - 纯函数是刻意的：这条承诺因此可以在**没有活宿主**的情况下被断言（本阶段的教训：只有活宿主能验的机制，等于没有门禁）。
+   - 跳过不等于静默丢弃：`counts.notExecuted` 加一，`skipped` 里带 `field/face/op/reason/note`，读者能看见「本来打算做什么、为什么没做」。
+2. **失败时给回合命名**：新增纯函数 `lostTurnState(turn)`，`step()`/`drive()` 的 apply 失败分支把 `e.turnState = { member, turnId, consumed: true, reopened: false, note }` 挂到同一个错误上。
+   - **不重开**是刻意的：回执已被部分应用（结题票、记账在派发之前落地），重开会静默重跑那些副作用——那比丢一个回合更糟；
+   - 所以只命名损失，不假装挽救。
+
+### §66.3 被这次修改推翻的断言（第四次「测试钉住了缺陷」）
+
+`tests/vmu-turn.test.mjs` 第 ④ 组原本用 `{ say: "hello", task_create: … }` 断言「每个字段都到达它自己的宿主」。
+那条断言之所以一直绿，正是因为它派发的 `say` 是**永远表达不了自己**的裸字符串。本次改为：
+
+- T14/T15 改用两个**能表达自己**的字段（`progress` → `vmu.records.put`、`task_create` → `vmu.tasks.create`）；
+- T14b/T14c/T14c2 新增：裸字符串 `say` 按名跳过、宿主零调用、且计进 `notExecuted`；
+- T14d 新增：同一个字段**带会议引用**时仍然正常派发（守卫没有把真路径一起关掉）；
+- T16b 的触发字段从 `say` 改为 `task_create`（包装承诺讲的是**任何**具名拒绝，与哪个字段无关）；
+- T16b2 新增**反向**断言：裸 `apply()` 没有持有回合，所以错误上**不得**出现「回合被消耗」的记录——凭空记录比没有记录更糟；
+- T16b3 新增正向断言：在真正持有回合的 `run()` 路径上，记录必须带成员与回合 id。
+
+结果：`vmu-turn` **218 passed / 0 failed**（原 206/6），新门禁 `tests/vmu-run35-findings.test.mjs` **22 passed / 0 failed**。
+
+### §66.4 状态
+
+- 派生面：`update-doc-counts --write`（JOBS 526 / suites 418 / probes 108 / files 393）、`regen-all --write` → `--check` **16/16 in sync**、`check-docs` **PASS**。
+- 下一步：第 36 次真机跑，专验 ⑧/⑨ 的两条读数（同为「按提示词样例作答」的场景），以及所办是否仍判「无实质残余」。
