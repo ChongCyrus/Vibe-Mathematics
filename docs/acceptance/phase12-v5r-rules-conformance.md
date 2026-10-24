@@ -2616,3 +2616,21 @@ transcript `_oneoff/vm-slv/full-1024-220035.jsonl`（3 730 行），build `89610
 
 - 派生面：`update-doc-counts --write`（JOBS 526 / suites 418 / probes 108 / files 393）、`regen-all --write` → `--check` **16/16 in sync**、`check-docs` **PASS**。
 - 下一步：第 36 次真机跑，专验 ⑧/⑨ 的两条读数（同为「按提示词样例作答」的场景），以及所办是否仍判「无实质残余」。
+
+### §66.5 我自己的 note 在撒谎——被跳过的句子其实被丢了（第 36 次真机跑前自查发现）
+
+第 35 次真机跑修好之后，回执里的跳过说明写的是「the line stays in the round state only」。**这是假的**：
+`vibe-math-vmu/kernel/turn/index.js` 的记账循环只遍历 `RECORDED_FIELDS`（`:199-202` = `contextPct/compacted/solved/vote_solved/prioritize/hire/fire`），
+而 `say` 在 `FIELD_OWNERS` 里（派发面），**不在** `RECORDED_FIELDS` 里 —— 所以那个 `context.set` 从来没有为它跑过，那句话被丢掉了，
+而回执却说它在。**一个指明「数据在哪里」却那里没有数据的 note，比没有 note 更糟。**
+
+修法（`apply()`）：
+- 新增 `const keptNotes = []` 与 `const NOTE_CAP = 500`；跳过分支把文本按上限截断后推进去（`{field, reason, text, kept, truncated?}`）；
+- 返回值新增 `notes: keptNotes` 与 `notesMean`（「空列表＝本来就没有这样一句话，绝不表示有句话被静默丢掉」）；
+- 跳过说明改为「the line IS kept: see `notes` for this round」——现在这句是真的。
+
+门禁：`tests/vmu-turn.test.mjs` 新增 **T14b2**（`notes[0].text` 就是那句话、`kept:true`）与 **T14b3**（`notesMean` 必须解释「空」的含义）；
+`tests/vmu-run35-findings.test.mjs` 新增四条源码级断言：keeper 存在（`const keptNotes = []`）、有界（`NOTE_CAP = 500`）、会随回执出去（`notes:`/`notesMean:`）、
+以及跳过说明不再指错地方（`the line IS kept: see`）。套件：`vmu-turn` **220/0**、`vmu-run35-findings` **26/0**。
+
+★ 这一条是本阶段第 N 次「修完以后自查自己的措辞」，也是「诊断面本身就是被测系统」的又一例：note 属于诊断面，诊断面说谎与机制说谎等价。

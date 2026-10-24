@@ -183,6 +183,12 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'T14c. ★★ and the meeting face was NOT called at all (the host sees no attempt, not a failure)', calls.map((c) => c[0]))
   ok(t2.status().counts.notExecuted === 1,
     'T14c2. ★ the skip is COUNTED, not silently dropped', t2.status().counts.notExecuted)
+  ok(Array.isArray(sayBare.notes) && sayBare.notes.length === 1 && sayBare.notes[0].field === 'say' &&
+    sayBare.notes[0].kept === true && sayBare.notes[0].text === '已经在群里说过的一句话',
+    'T14b2. ★★★ 被跳过的那句话真的被 KEEP 下来（第一版 note 说「留在回合状态里」，而 say 不在 RECORDED_FIELDS 里 —— 那句话被丢了，note 在撒谎）',
+    sayBare.notes)
+  ok(typeof sayBare.notesMean === 'string' && /empty list means no such line/.test(sayBare.notesMean),
+    'T14b3. ★ notesMean 说清「空列表」的含义，读者不必猜是有没有话还是被吞了', sayBare.notesMean)
   const meetingCalls = []
   const sayObjects = await createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
     faces: { 'vmu.meetings': { speak: async (p) => { meetingCalls.push(p); return { ok: true } } } } })

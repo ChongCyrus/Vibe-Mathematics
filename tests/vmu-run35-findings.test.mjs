@@ -76,7 +76,7 @@ const SRC = readFileSync(ROOT + 'vibe-math-vmu/kernel/turn/index.js', 'utf8')
   ok(/export const dispatchSkipReason = /.test(SRC), 'b) `dispatchSkipReason` is DECLARED and exported')
   ok(SRC.split('dispatchSkipReason(d)').length - 1 === 1, 'b) and has exactly ONE consumer (a helper nobody calls is the defect this phase keeps finding)', SRC.split('dispatchSkipReason(d)').length - 1)
   ok(/const skipReason = dispatchSkipReason\(d\)/.test(SRC), 'b) the dispatcher calls it on the dispatch entry it is about to run')
-  ok(/if \(skipReason !== null\)[\s\S]{0,240}?continue/.test(SRC), 'b) and a skip CONTINUES past the face lookup (no face is touched)')
+  ok(/if \(skipReason !== null\)[\s\S]{0,900}?continue/.test(SRC), 'b) and a skip CONTINUES past the face lookup (no face is touched)')
   // the guard must sit BEFORE the face lookup, or a face would already have been chosen for a field that never runs
   const skipAt = SRC.indexOf('const skipReason = dispatchSkipReason(d)')
   const faceAt = SRC.indexOf('const face = map[d.face]', skipAt < 0 ? 0 : skipAt)
@@ -84,6 +84,13 @@ const SRC = readFileSync(ROOT + 'vibe-math-vmu/kernel/turn/index.js', 'utf8')
   ok(/export const lostTurnState = /.test(SRC), 'b) `lostTurnState` is DECLARED and exported')
   ok(SRC.split('lostTurnState(turn)').length - 1 === 1, 'b) and has exactly ONE consumer', SRC.split('lostTurnState(turn)').length - 1)
   ok(/e\.turnState = lostTurnState\(turn\)/.test(SRC), 'b) the throwing apply attaches the record to the refusal it rethrows')
+  // ★ the skip note's first version claimed the line "stays in the round state" while NOTHING kept it (say is not in
+  // RECORDED_FIELDS). A note that names a place the data is not in is worse than no note; the keeper is now real,
+  // bounded, and travels out under a field that says what an empty list means.
+  ok(/const keptNotes = \[\]/.test(SRC), 'b) the skipped line has a KEEPER (the first version claimed one that did not exist)')
+  ok(/const NOTE_CAP = 500/.test(SRC), 'b) the keeper is BOUNDED (a receipt has to stay bounded)')
+  ok(/notes: keptNotes/.test(SRC) && /notesMean:/.test(SRC), 'b) and it travels out with a field explaining an empty list')
+  ok(/the line IS kept: see/.test(SRC), 'b) the skip note no longer promises a place the data is not')
 }
 
 const total = passed.n + failures.length

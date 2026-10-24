@@ -1426,6 +1426,12 @@ export function createTurnOrchestrator({
     const dispatches = plan(reply)
     const executed = []
     const skipped = []
+    // ★ PHASE 12 / run 35 item ② follow-up (my own note was a LIE): the skip note said "the line stays in the round state
+    // only", but `say` is not in RECORDED_FIELDS, so nothing anywhere kept it - the member's sentence was dropped while the
+    // receipt claimed it was kept. A note that describes a place where the data is NOT is worse than no note. The text is
+    // therefore KEPT here, bounded, and travels out on `notes` under its own field name.
+    const keptNotes = []
+    const NOTE_CAP = 500
     for (const d of dispatches) {
       if (d.notApplicable) {
         counts.notExecuted += 1
@@ -1444,7 +1450,14 @@ export function createTurnOrchestrator({
       const skipReason = dispatchSkipReason(d)
       if (skipReason !== null) {
         counts.notExecuted += 1
-        skipped.push({ field: d.field, face: d.face, op: d.op, reason: skipReason.reason, note: skipReason.note })
+        // The line is recorded, not thrown away: the prompt allows `say` as the explanation for speech already made
+        // through `vibe_v5_say`, so it is a READING of what the member did, and a reading that vanishes is the defect.
+        const raw = typeof d.payload === 'string' ? d.payload : (d.payload && typeof d.payload.text === 'string' ? d.payload.text : null)
+        const note = { field: d.field, reason: skipReason.reason, text: raw === null ? null : String(raw).slice(0, NOTE_CAP), kept: raw !== null }
+        if (raw !== null && String(raw).length > NOTE_CAP) note.truncated = true
+        keptNotes.push(note)
+        skipped.push({ field: d.field, face: d.face, op: d.op, reason: skipReason.reason,
+          note: skipReason.note + '; the line IS kept: see `notes` for this round' })
         continue
       }
       const face = map[d.face]
@@ -1478,7 +1491,9 @@ export function createTurnOrchestrator({
     // Each one is now kept on the turn state under its own name and reported in the receipt, so the framework can read
     // it and a consumer can see that it arrived. No face is invented for them: the members service is not even present
     // in a default kernel, and sending a payload to an operation that does not exist would be worse than keeping it.
-    return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping, effects: turnEffects.slice() }
+    return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping, effects: turnEffects.slice(),
+      notes: keptNotes,
+      notesMean: 'lines that were NOT dispatched but ARE kept: a reading of what the member said, bounded to ' + NOTE_CAP + ' chars each - an empty list means no such line existed, never that a line was dropped silently' }
   }
 
   /**
