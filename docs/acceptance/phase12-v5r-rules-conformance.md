@@ -2171,3 +2171,31 @@ brief ⑤ 要求抄 `delivered / drives / code / message`，而 `VMU_REPORT_NO_T
 ### §56.4 教训（本轮最贵）
 **修完一处，要照「真实回执的形状」再测一遍，而不是照我记忆里的形状。** 第 24 轮我写断言时用的是自己构造的 `turnId*{ top-level }`，内核给的是 `memberPrompt.turnId` —— 两者都叫「turn id」，却是不同位置。凡是「从回执里取字段」的修法，断言必须用**实测抄下来的回执原文**做输入。
 
+
+## §57 第 26 次真机跑：c-1 收口，以及三个「在册」层面的实质缺陷
+
+### §57.1 机器读数
+
+- transcript `_oneoff/vm-slv/full-1024-203958.jsonl`，tarball build=`86ff04d2`，`cast=true`，`SUMMARY: 1 session(s), 0 with RED checks`。
+- 收口：**c-1（分页读面必须指回真实 turn id）通过** —— `op:"prompt"` 返回的 `turn` 与 step 回执的 `memberPrompt.turnId` 一致，且 `pages`/`nextOffset`/`chars` 三者自洽；c-2（`tools:"none"` 在回执可见）继续通过。
+
+### §57.2 三个新缺陷（都在「在册」这个词上，各修一处）
+
+| # | 现象（真机原文） | 根因 | 修法 | 门禁 |
+|---|---|---|---|---|
+| 1 | `vibe_vmu_control {action:"hire"}` 不带 `member_id` 时「成功」，并雇出一个 id 恒为字符串 `"undefined"` 的成员 | 控制面把缺省参数强制成一个字符串，而不是具名拒 | `vibe-math-vmu/tools/control.js` 的 `hire`/`fire` 分支先校验 `member_id`，缺失即 `VMU_INVALID_ARGUMENT` 并在 hint 里写明它替代的那个 coercion | `tests/vmu-roster-liveness.test.mjs` ①（5 条） |
+| 2 | 席位占用把**已离所**的成员一直算着：`vibe_vmu_control {action:"fire"}` 报 `unseated:true`，但 1/1 席位被永久占满，无法再雇人 | `vibe-math-vmu/kernel/members.js` 的 `occupancy()` 数的是「曾经坐过」的成员，不是 `live()` | `occupancy = live().filter(...)`（离所/暂停都不再占位） | ②（7 条，含「离所后可以再雇」） |
+| 3 | **最重要的一个**：离所成员的结题票仍被计入 —— 真机里 `cast:true` 是靠一张离所成员的票达到的 | 结题票集只按「谁投过」累计，没有对**当前活着的在册者**筛 | `vibe-math-vmu/kernel/index.js` 的闭包票集改为按 `members.live()` 过滤；`vibe-math-vmu/tools/vote.js` 的投票面拒收不在活名册上的 id，并具名给出「state: ended / 谁在册」 | ③（10 条，含「合法者投票仍然通过」） |
+
+### §57.3 教训
+
+1. **「在册」是活的，快照不是。** 前几轮把「法定票数 m = min(上限, 在册人数)」里的「在册」实现成了一次性快照；只要有人离所，快照就比现实大。
+2. **一个名字被两个子系统用时，必须各测一次。** 同一份 roster 既是席位占用、又是 electorate、又是提示词里的编制表 —— 本轮三处各自错在不同的地方，只有真机的组合运行能同时暴露。
+3. **离所成员的票能让 `cast:true`** —— 这是本轮最贵的读数：判据是真机自己报出来的，而不是我推出来的。
+
+### §57.4 状态
+
+- 修复：`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/tools/control.js`、`vibe-math-vmu/tools/vote.js`。
+- 新门禁 `tests/vmu-roster-liveness.test.mjs` **22/0**；邻居全绿：`vmu-host` 199 · `vmu-turn` 209 · `vmu-closure-electorate` 7 · `vmu-control-roster` 14 · `vmu-control` 26 · `vmu-v5r-tools` 354 · `vmu-meetings` 214 · `vmu-kernel` 260 · `vmu-live-run-r9-r12` 39。
+- 派生面：`update-doc-counts --write` ⇒ `JOBS total=521 suites=413 probes=108`；`regen-all --check` ⇒ 16/16。
+- 下一步：第 27 次真机跑，验收项为 ⑰.2 c-1（已过，作为回归）、以及「离所成员不再占席/不再计票/不再入 electorate」这三条在真机上确实成立。

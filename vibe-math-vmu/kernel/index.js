@@ -1572,7 +1572,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // SAME inputs, so "two places compute the same reading" cannot drift into eligible:[] again.
   const closureVoteInput = () => ({
     votes: turn && typeof turn.status === 'function' ? turn.status().closureVoteVotes : new Map(),
-    roster: members && typeof members.roster === 'function' ? members.roster() : [],
+    // ★★★ LIVE RUN 26 defect 3 (the institute's own report, and the worst of the three): A DEPARTED MEMBER STAYED IN THE
+    // ELECTORATE. The roster was passed WHOLE, so a fired member counted as enfranchised: closure could be BLOCKED by its
+    // silence (`missing:["<id>"]`, `cast:false`) and then "unblocked" by voting on its behalf — the run's `cast:true` was
+    // reached by casting a vote for a member who had left. That destroys what `cast` means (every enfranchised member
+    // judged the question solved). The electorate is the members who are HERE: `state !== 'ended'`.
+    roster: members && typeof members.roster === 'function' ? members.roster().filter((m) => !m || m.state !== 'ended') : [],
     may: members && typeof members.may === 'function' ? (id, perm) => {
       // may() returns an OBJECT ({ ok, allowed }), not a boolean; passing it straight through enfranchised the chair.
       const r = members.may(id, perm)

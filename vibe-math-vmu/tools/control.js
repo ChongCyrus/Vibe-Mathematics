@@ -78,6 +78,16 @@ export function makeControlSpec({ param, refused, TOOL_NAMES, kernel }) {
               return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel declares no role slots, so a hired member cannot be seated',
                 'the roster the turn face reads comes from the pack-declared slots; load a pack that declares them')
             }
+            // ★★★ LIVE RUN 26 defect 1 (the institute's own report): A MISSING `member_id` WAS SILENTLY COERCED INTO THE
+            // LITERAL MEMBER ID "undefined". `String(member_id)` turned `undefined` into the string `"undefined"`, so
+            // `hire {slot:"chair", institution:…}` seated a member whose id is the TEXT "undefined" — and it then
+            // appeared in the roster, in the closure electorate and in a vote receipt (`for:["undefined",…]`). This face
+            // declares that it never invents an id; a coercion that manufactures one is exactly the shape this repo
+            // calls a silent fake. Refuse at the face, by name, before identity or seating is touched.
+            if (typeof member_id !== 'string' || member_id.trim() === '') {
+              return refused('VMU_INVALID_ARGUMENT', 'hire needs the MEMBER ID to seat (got ' + (member_id === undefined ? 'nothing' : JSON.stringify(member_id)) + ')',
+                'pass member_id: "<id>" - this face never invents one; note that an omitted id used to become the literal member "undefined" (live run 26)')
+            }
             if (typeof slot !== 'string' || slot.length === 0) {
               const available = typeof kernel.members.roles === 'function' ? kernel.members.roles().map((r) => r.id) : []
               return refused('VMU_INVALID_ARGUMENT', 'hire needs the SLOT to seat ' + String(member_id) + ' into',
@@ -95,6 +105,12 @@ export function makeControlSpec({ param, refused, TOOL_NAMES, kernel }) {
             return Object.assign({ ok: true, action, seated: true, slot: String(slot) }, await kernel.members.hire({ id: String(member_id), slot: String(slot) }), identity ? { identity } : {})
           }
           if (action === 'fire') {
+            // Same coercion hole, other verb: `fire` with no id would write `endMembership({memberId:"undefined"})` and
+            // `members.end("undefined")`, i.e. it would "successfully" fire a member that never existed.
+            if (typeof member_id !== 'string' || member_id.trim() === '') {
+              return refused('VMU_INVALID_ARGUMENT', 'fire needs the MEMBER ID to remove (got ' + (member_id === undefined ? 'nothing' : JSON.stringify(member_id)) + ')',
+                'pass member_id: "<roster id>" - read the roster with action:"roster"')
+            }
             const identity = kernel.identity ? kernel.identity.endMembership({ memberId: member_id, reason: reason === undefined ? null : reason }) : null
             // ★ THE SYMMETRIC HALF: without it a fired member keeps occupying a kernel slot, so the roster the turn
             // face reads still contains someone who has left.

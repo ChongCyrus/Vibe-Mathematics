@@ -81,7 +81,13 @@ export function createMembers({
     })
   }
 
-  const occupancy = (slotId) => [...members.values()].filter((m) => m.slot === slotId).length
+  // ★★★ LIVE RUN 26 defect 2 (the institute's own report): A FIRED MEMBER KEPT ITS SEAT. `occupancy` counted every record
+  // in the roster regardless of `state`, so after `fire` (which correctly writes `state:'ended'`) the slot still read
+  // `occupied:1`, and the NEXT hire into that slot was refused with `VMU_RESOURCE_BUDGET role slot chair is full: 1/1`
+  // while the roster itself showed the member as `ended`. The chair seat became unusable for the rest of the session — on
+  // a real run the institute had to seat everyone in the unlimited `member` slot and point the leadership setting at a
+  // non-chair. Capacity is a limit on who is HERE, not on who has EVER been here, so occupancy counts the living.
+  const occupancy = (slotId) => live().filter((m) => m.slot === slotId).length
   const live = () => [...members.values()].filter((m) => m.state !== 'ended')
 
   const assertSlot = (slotId) => {

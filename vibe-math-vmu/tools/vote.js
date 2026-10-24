@@ -21,6 +21,22 @@ export function makeVoteSpec({ param, refused, TOOL_NAMES, kernel }) {
       const member = typeof args.member === 'string' ? args.member : ''
       if (!member) return refused('VMU_INVALID_ARGUMENT', 'vibe_vmu_vote needs member', 'pass member:"<roster id>"')
       if (typeof args.solved !== 'boolean') return refused('VMU_INVALID_ARGUMENT', 'vibe_vmu_vote needs solved:boolean', 'pass solved:true or solved:false')
+      // ★★★ LIVE RUN 26 defect 3: THE FACE PROMISED 「在册成员」 AND DID NOT CHECK IT. A fired member still carried the slot's
+      // vote permission, so `vibe_vmu_vote { member:"<fired id>", solved:true }` was ACCEPTED and its judgement entered the
+      // closure tally — the run's `cast:true` was produced that way. The description now has a gate behind it: a member who
+      // is not in the roster is refused as unknown, and one whose state is `ended` is refused as departed.
+      const rosterOf = kernel.members && typeof kernel.members.roster === 'function' ? kernel.members.roster() : null
+      if (Array.isArray(rosterOf)) {
+        const row = rosterOf.find((m) => m && String(m.id) === member) || null
+        if (!row) {
+          return refused('VMU_NO_SUCH_OBJECT', 'no member with id ' + member + ' is on the roster, so its vote cannot be counted',
+            'known members: ' + (rosterOf.length ? rosterOf.map((m) => String(m.id)).join(', ') : '(none)') + ' - a vote must name an ENROLLED member')
+        }
+        if (row.state === 'ended') {
+          return refused('VMU_STATE', 'member ' + member + ' has left the institute (state: "ended"): its judgement is not part of the closure vote',
+            'the closure electorate is the LIVE roster; find it with vibe_vmu_control { action: "roster" }')
+        }
+      }
       try {
         return kernel.recordClosureVote({ member, solved: args.solved, why: typeof args.why === 'string' ? args.why : null })
       } catch (e) {
