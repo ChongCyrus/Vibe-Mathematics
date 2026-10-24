@@ -1614,6 +1614,16 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const explicit = await rt.step({ members: ['r-1'], membersInferred: false, why: 'R31f explicit again' })
   ok(!!explicit && explicit.requestedMembersSource === 'explicit',
     '★ R31f: an explicit list says so on the same field (the distinction is real, not a constant)', explicit && explicit.requestedMembersSource)
+  // ★★★ R31g (live run 41): the kernel learned the distinction, but only ONE of the face's TWO step call sites passed it.
+  // Run 41 omitted `members`, was routed through the ordinary path, and still read `requestedMembersSource:"explicit"`
+  // with the default roster echoed - the fix was live on the tools-override path and dead on the path people walk.
+  // A source-level assertion, because the face needs a full kernel boot to call; what it CANNOT prove: that the face is
+  // wired at runtime - that is what run 42 measures. What it DOES prove: no step call site can silently drop the flag.
+  const FACE = readFileSync(new URL('../vibe-math-vmu/tools/turn.js', import.meta.url), 'utf8')
+  const stepCalls = FACE.split('\n').filter((l) => /kernel\.turn\.step\(\{/.test(l))
+  ok(stepCalls.length >= 2, '★ R31g(i): the face has more than one step call site (that is why one patch was not enough)', stepCalls.length)
+  ok(stepCalls.every((l) => /membersInferred: !explicit/.test(l)),
+    '★★★ R31g(ii): EVERY step call site passes membersInferred — no path can drop the distinction', stepCalls.map((l) => l.trim().slice(0, 90)))
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')

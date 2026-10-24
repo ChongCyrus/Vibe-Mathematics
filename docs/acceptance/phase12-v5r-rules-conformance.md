@@ -2777,3 +2777,41 @@ HEAD `2f4b32a0` + 本轮未提交改动（完成回执 id + 两条断言 + 覆�
 ### §70.6 状态
 
 HEAD `7ae3d4f9` + 本轮未提交改动（`membersInferred` + R31 六条 + 覆盖率债重生成）。`regen-all --check` 16/16、`audit-declaration-criterion` 89/0、`vmu-turn` 240/0、`vmu-v5r-tools` 354/0、`vmu-host` 199/0、`vmu-meeting-types` 142/0、`vmu-live-run-r9-r12` 39/0。下一步：第 41 次真机跑，验 ㉛.1 全部（含 `selectionIgnored` 对照）+ 回归带。
+
+## §71 第 41 次真机跑：修复落在工具面的两条路之一（同一族的第六次）
+
+### §71.1 读数
+
+`full-1025-022530.jsonl`（build `d0392b9e`）`cast=true`、0 RED。㉜.1 第一次（不传 `members`）**不通过**，回执原文：
+
+```json
+"requestedMembers":["member-1","member-2"],
+"requestedMembersSource":"explicit",
+"selectionApplied":false,
+"selectionIgnored":{"requested":["member-1","member-2"], … }
+```
+
+而同一个回执的 `receipt.turn:"t-1"`、`skipped:1`、`skippedDetail[0].reason:"no-meeting-bound"`、`notes[0].text:"核验句-辛"` 全部正确 —— 前两轮的修复都活着，只有这一条新的没生效。
+
+### §71.2 根因：`vibe-math-vmu/tools/turn.js` 有**两个** step 调用点
+
+```
+277:  const stepped = await kernel.turn.step({ members, membersInferred: !explicit, … })   ← 我在 §70 改的（tools 覆盖分支）
+302:  try { return rememberPrompt(withClosure(await kernel.turn.step({ members, … }))) }    ← 普通路径，没改
+```
+
+普通路径是绝大多数调用走的那条。于是：内核学会了区分、门禁断言了内核、而工具面把这份区分丢在了另一条路上——**「修好了一层、测了那一层、实际走的是另一层」**，与 §68（三条回执路径只修一条）完全同族。这一阶段第六次。
+
+### §71.3 修法
+
+- 两处 `kernel.turn.step({…})` 都带上 `membersInferred: !explicit`。
+- `tests/vmu-turn.test.mjs` 新增 **R31g(i)/(ii)**（套件 240 → **242/0**）：从源码里取出**每一个** `kernel.turn.step({` 调用点，断言 `stepCalls.length >= 2`（先证明「不止一处」这个前提成立，否则断言是空的），并断言**每一处**都带 `membersInferred: !explicit`。
+- 该断言的自述边界写进注释：它是源码级断言，能证明「没有调用点漏掉这个标志」，**不能**证明运行时接好——后者由第 42 次真机跑测。
+
+### §71.4 教训
+
+同一个函数在一个文件里有多个调用点时，**改一处等于没改**。这类缺陷不该靠复查发现，而该靠门禁：源码级断言「每个调用点都必须带某个参数」成本极低、噪声极小，而它抓的正是「改漏一处」这种最贵的错误。这一条与 §70.5 那条并列，可以合成一句话：**框架补的输入要自报来源；修复的调用点要一次全改，并用门禁证明全改了。**
+
+### §71.5 状态
+
+HEAD `d0392b9e` + 本轮未提交改动（第二处调用点 + R31g 两条 + 覆盖率债重生成）。`regen-all --check` 16/16、`audit-declaration-criterion` 89/0、`vmu-turn` 242/0。下一步：第 42 次真机跑，验 ㉜.1 两侧判定 + 回归带。
