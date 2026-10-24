@@ -235,6 +235,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   const receipts = []
   const receiptDropped = { n: 0 }
   const live = new Map()          // meetingId -> meeting
+  let lastSweep = null           // the LAST `sweepDue` pass (reported by status(); see live run 10, finding F)
   const archive = []              // closed meetings (minutes retention pruning happens here)
 
   /**
@@ -686,10 +687,14 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
             dueAt: mm.waitStartedAt === undefined ? null : mm.waitStartedAt })
         }
       }
-      return { at: now, swept: transitions.length, transitions,
+      const pass = { at: now, swept: transitions.length, transitions,
         note: transitions.length === 0
           ? 'no scheduled or waiting meeting changed state at this instant (the pass still ran)'
           : 'settled by the same syncMeeting the touch path uses; a due WAIT still needs the chair to decide (proceed/lapse/recess)' }
+      // ★ LIVE RUN 10, finding F: the pass existed but its trace was nowhere a reader could see it, so "the deadline was
+      // observed" remained an article of faith. lastSweep is the memory of the LAST pass and status() reports it.
+      lastSweep = pass
+      return pass
     },
 
     proceed({ meeting = null, actor = null, by = null, at = null, why = null } = {}) {
@@ -737,7 +742,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // but the receipt has to SAY so: `quorum.met` alone is easy to read as "the institution rule was satisfied".
       const qAfter = quorumOf(m)
       const overrodeQuorum = qAfter.met !== true
-      const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, scheduledFor: m.scheduledFor, quorum: qAfter, overrodeQuorum, overrodeNote: overrodeQuorum ? 'the meeting started WITHOUT its quorum: the chair used proceed() to start it anyway (this is the chair\'s authority act, recorded in minutes as `proceeded`)' : null, enforced, enforcedScope: ENFORCED_SCOPE }
+      // ★ LIVE RUN 10, finding E: a boolean plus a prose note still left the reader asking "WHICH rule let this continue".
+      // The override is now a record: the rule that authorises it, the floor that was not met, and who present count it had.
+      const overrode = overrodeQuorum
+        ? { by: who, rule: 'meetings.proceed: the chair may start a meeting after its declared wait even when the floor is unmet', floor: qAfter.required, present: qAfter.present, waitedMs }
+        : null
+      const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, scheduledFor: m.scheduledFor, quorum: qAfter, overrodeQuorum, overrode, overrodeNote: overrodeQuorum ? 'the meeting started WITHOUT its quorum: the chair used proceed() to start it anyway (this is the chair\'s authority act, recorded in minutes as `proceeded`)' : null, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       say({ type: 'meetings/proceeded', at: now, meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, quorum: quorumOf(m), enforced, enforcedScope: ENFORCED_SCOPE })
       return Object.assign({ ok: true, meeting: m.id, state: m.state, startedLate: true, receipt }, receipt)
@@ -1687,6 +1697,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         // ★ PHASE 12 D1: a scheduled / waiting meeting is live but NOT runnable, and an operator must be able to see
         // the difference without opening each one. `waitDecisionDue` is the actionable half: those are the meetings
         // where the framework is deliberately waiting for a human decision.
+        // ★ LIVE RUN 10, finding F: the due-clock pass must be READABLE, not merely to exist. `ran:false` is the honest
+        // state of a process that has not swept yet (not "nothing was due").
+        sweep: lastSweep === null ? { ran: false, at: null, swept: 0, transitions: [], note: 'no sweep pass has run in this process yet' } : Object.assign({ ran: true }, lastSweep),
         scheduledMeetings: [...live.values()].filter((m) => m.state === 'scheduled').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
         waitingMeetings: [...live.values()].filter((m) => m.state === 'waiting').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor, waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt, waitDueAt: waitDueOf(m), waitDecisionDue: m.waitDecisionDue === true, quorum: quorumOf(m) })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
         waitDecisionDue: [...live.values()].filter((m) => m.state === 'waiting' && m.waitDecisionDue === true).map((m) => m.id).sort(),

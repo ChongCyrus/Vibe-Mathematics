@@ -297,7 +297,12 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
               const view = svc.meetingView({ meeting: pid })
               let quorum = null
               if (typeof svc.quorum === 'function') { try { quorum = svc.quorum({ meeting: pid }) } catch (e) { quorum = null } }
-              return Object.assign({ ok: true, action, registry: 'service', quorum }, view)
+              // ★ LIVE RUN 10, finding F: the due-clock pass used to be invisible. The service remembers its LAST pass
+              // (`status().sweep`) and this read relays it, so "the deadline was observed" is a fact a caller can see
+              // instead of an article of faith. `ran:false` means no pass has happened in this process yet.
+              let sweep = null
+              if (typeof svc.status === 'function') { try { sweep = svc.status().sweep || null } catch (e) { sweep = null } }
+              return Object.assign({ ok: true, action, registry: 'service', quorum, sweep }, view)
             }
             throw noSuchMeeting(pid)
           }

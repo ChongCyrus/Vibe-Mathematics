@@ -339,12 +339,16 @@ async function toolOverview(args = {}, { kernel } = {}) {
   // `vibe_v5_meeting {action:"status"}` could read it. The list is therefore built from the MEETING SERVICE's live set
   // (the authority for "which meetings exist"); the marker's rows only enrich it, and the schedule-aware state always
   // comes from `meetingView`, because the marker's own `state` is its lifecycle, not the meeting's state.
-  const serviceLive = (() => {
+  // ★ LIVE RUN 10, finding F: the due-clock pass (`meetings.sweepDue`) had no readable trace, so "the deadline was
+  // observed" was unverifiable from outside. The service remembers its LAST pass and both read faces relay it;
+  // `ran:false` is the honest state of a process that has not swept yet (NOT "nothing was due").
+  const serviceStatus = (() => {
     try {
-      const s = kernel.meetings && typeof kernel.meetings.status === 'function' ? kernel.meetings.status() : null
-      return s && Array.isArray(s.liveMeetings) ? s.liveMeetings : null
+      return kernel.meetings && typeof kernel.meetings.status === 'function' ? kernel.meetings.status() : null
     } catch { return null }
   })()
+  const serviceLive = serviceStatus && Array.isArray(serviceStatus.liveMeetings) ? serviceStatus.liveMeetings : null
+  const sweepTrace = serviceStatus && serviceStatus.sweep !== undefined ? serviceStatus.sweep : null
   const markerById = new Map(meetingRows.filter(Boolean).map((r) => [String(r.id), r]))
   const meetingIds = (() => {
     const seen = []
@@ -383,6 +387,8 @@ async function toolOverview(args = {}, { kernel } = {}) {
     }),
     // ★ Same three keys and the same rule as vibe_v5_report.counts.feedback (one helper, so they cannot disagree).
     feedback: feedbackCounts(kernel),
+    // the LAST due-clock pass over scheduled/waiting meetings (see the comment above `serviceStatus`)
+    sweep: sweepTrace,
     leadership }
   // A warning is a TOP-LEVEL field, not a line inside `leadership`: a caller that reads only the warned shape cannot
   // mistake "no warning" for "no field" — absent means consistent, and the note says which code it was.

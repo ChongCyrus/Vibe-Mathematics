@@ -375,6 +375,20 @@ export function createMeetingVerdict({ clock = () => 0, log = null, bus = null, 
     lastRuling = { at: rec.at, proposition: rec.proposition, owner: rec.owner, mode: rec.mode, value: rec.value, n: rec.n, decided: rec.decided }
     if (typeof send === 'function') {
       deliveries += 1
+      // ★ LIVE RUN 10, finding B: this record used to say only {attempted, via, ok, result, error, code, note}. The
+      // ledger promised {addressed, selfAddressed, recipient, reason} — and a reader could not tell "sent to the holder"
+      // from "the signer IS the holder" without parsing the send port's own result. Both facts are stated here, and the
+      // SELF case is short-circuited: the mailbox refuses a self-addressed message by name, so attempting it produced a
+      // spurious ok:false that looked like a delivery failure.
+      const signer = (args && (args.member || args.signedBy || args.by)) ? String(args.member || args.signedBy || args.by) : null
+      const holder = rec.owner === undefined || rec.owner === null ? null : String(rec.owner)
+      const selfAddressed = holder !== null && signer !== null && holder === signer
+      if (selfAddressed) {
+        rec.delivery = { attempted: false, via: 'none', ok: true, result: null, error: null, code: null,
+          addressed: false, selfAddressed: true, recipient: holder,
+          reason: 'the signer owns this card, so there is nobody else to tell: the ruling is already on the signature receipt' }
+        return rec
+      }
       try {
         const out = send(rec.notice)
         // THE PORT'S OWN ANSWER COUNTS: the mailbox face refuses by RETURNING `{ok:false, code}` for some cases (no such
@@ -384,6 +398,8 @@ export function createMeetingVerdict({ clock = () => 0, log = null, bus = null, 
         const failed = answered && typeof answered === 'object' && answered.ok === false
         if (failed) deliveryFailures += 1
         rec.delivery = {
+          addressed: true, selfAddressed: false, recipient: holder,
+          reason: failed ? 'the send port answered a refusal, so the holder was NOT told (reported, not swallowed)' : 'handed to the send port the assembly bound (the message/mailbox face)',
           attempted: true, via: 'send-port', ok: failed ? false : true,
           result: answered, error: failed ? String(answered.message || answered.code || 'the send port answered ok:false') : null,
           code: failed ? (answered.code || null) : null,
@@ -394,7 +410,9 @@ export function createMeetingVerdict({ clock = () => 0, log = null, bus = null, 
         if (failed) say({ type: 'meeting/verdict-delivery-failed', at: clock(), proposition: rec.proposition, owner: rec.owner, code: (answered && answered.code) || null, message: String((answered && (answered.message || answered.code)) || 'ok:false') })
       } catch (e) {
         deliveryFailures += 1
-        rec.delivery = { attempted: true, via: 'send-port', ok: false, error: String((e && e.message) || e), code: (e && e.code) || null,
+        rec.delivery = { addressed: false, selfAddressed: false, recipient: holder,
+          reason: 'the send port threw, so the holder was NOT told (reported, not swallowed)',
+          attempted: true, via: 'send-port', ok: false, error: String((e && e.message) || e), code: (e && e.code) || null,
           note: 'the send port THREW: the ruling stands (it is computed here) but the holder was not told — reported, not swallowed' }
         say({ type: 'meeting/verdict-delivery-failed', at: clock(), proposition: rec.proposition, owner: rec.owner, code: (e && e.code) || null, message: String((e && e.message) || e) })
       }

@@ -1452,3 +1452,34 @@ F 断言拒绝回执自带三个布尔。★ 这一套**不证明**宿主发布�
 ### §35.5 状态
 
 五条修复 + 两道新门禁（`audit-ledger-field-claims`、`vmu-run9-findings`）＋ `audit-scanner-selfproof` 的计数（132 = 64 自证 + 68 具名债务）；`regen-all` 16/16；`update-doc-counts` 后 `JOBS total=511 suites=403 probes=108`。下一步：提交，然后真机跑 10 验证这五条在真机上可见。
+
+
+## §36 真机第 10 跑：三条「已修」被自己的回执判为未交付
+
+### §36.1 读数（先摆机器读数，再谈结论）
+- playbook：`D:\_tmp\slv-phase5\slv-p12b-run.ps1`，tarball 由 `git archive HEAD` 重建，HEAD = `a0621ffb`。
+- transcript：`D:\wd\vibemath开发\_oneoff\vm-slv\full-1024-125231.jsonl`（20 516 行）。
+- `cast:true`；`SUMMARY: 1 session(s), 0 with RED checks`；`NO_FENCE 0 / FIELD_NOT_APPLICABLE 0 / BAD_JSON 0 / UNKNOWN_FIELD` 全部落在提示词正文的转述处。
+
+### §36.2 被揭穿的三件事（第 9 跑之后我写进账本「已修」的三条）
+| 账本承诺 | 回执里实际有的 | 判据 |
+| --- | --- | --- |
+| B：交付回执带 `addressed / selfAddressed / recipient / reason` | `delivery{attempted, via, ok, result, error, code, note}` | 只说了「试过」，没说「交给谁」「是不是我自己」 |
+| E：`overrodeQuorum` 记成 `{by, rule, floor, present}` 记录 | 一个布尔 `overrodeQuorum: true` + 一段散文 note | 读的人无法知道**哪条规则**授权了这次越过、**谁**越的 |
+| F：到期时钟的扫过（sweep）可从外部看到 | 服务里确实发生了，但**没有任何读面**带 `swept/transitions` | 「截止时间被观察到」在外部不可验证 |
+
+这三条共同的错法：**我改的是「代码里有没有」，而不是「调用方能不能读到」**。
+
+### §36.3 修法与它们的断言
+- **B**（`vibe-math-vmu/kernel/meetingverdict.js` `ruleThrough()`）：三条分支各自补齐 `addressed / selfAddressed / recipient / reason`；`selfAddressed` 是**短路**——签名者本人就是卡片持有者时不再向邮箱投递（邮箱对自发消息本来就具名拒，投递只会造出一个假的 `ok:false`）。
+- **E**（`vibe-math-vmu/kernel/meetings.js` `proceed()`）：布尔保留（兼容），新增 `overrode{by, rule, floor, present, waitedMs}`——`rule` 是那条允许「未到齐也开」的规则名，`by` 是行使人。
+- **F**（`meetings.status()` / `meetingView` / `vibe_v5_overview`）：服务记住**最后一次**到期扫过 `{ran, at, swept, transitions, note}`，两个读面（会议面与 pack 概览面）转述同一个对象；`ran:false` 是诚实的「本进程还没扫过」，不是「没有到期的」。
+- **C**（`vibe-math-vmu/tools/report.js`）：emit 被拒时回执带 `drives:false / neverDrives:true / transportInjected`——报告永不驱动对话这一事实，从散文变成字段。
+- 断言：新 `tests/vmu-receipt-shapes.test.mjs`（**36 passed / 0 failed**）在真实 boot 上逐条量：E 的 `overrode` 记录（含 `by/rule/floor/present/waitedMs`）、F 的两面同读（同一次 pass 的 `at` 一致）、B 的三种分支（他人 / 本人 / 端口拒绝，各自四字段）与「端口真的收到了」，C 的被拒回执三字段。
+- ★ **A 没有断言**：`selectionIgnored` 需要一次**真的在等待**的 turn，最小 boot 里没有 subagents 服务，够不到——写成本文件头部的具名不覆盖，而不是悄悄省略。
+
+### §36.4 教训（这一条比修法重要）
+账本的「字段声称闸」（`tests/audit-ledger-field-claims.test.mjs`）只能证明**标识符在源码里存在**；它证明不了**回执里有这个字段**。所以「账本说已修」与「调用方读得到」之间有一条稳定的缝，而这条缝**只有真机跑或形状断言能看见**。第 9 跑之后我用前者写结论、用后者从未写断言 ⇒ 三条假绿。今后任何「我加了一个字段」的结论，必须同时有：① 形状断言（真的调用一次，读回执）② 真机读数。
+
+### §36.5 状态
+账本 42 行：**41 已实现 / 1 部分（A1，只差真机汇报面证据）/ 0 缺口 / 0 待核**（本轮不新增行，只把 B/E/F/C 的「已修」补上断言与读数）。
