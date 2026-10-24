@@ -83,8 +83,8 @@ try {
   ok(later && later.transitions.some((t) => t.meeting === mid), 'the transition NAMES the meeting it settled', later && later.transitions)
   ok(later && later.transitions.some((t) => t.meeting === mid && t.from === 'scheduled' && t.to === 'open'),
     'the moved meeting goes scheduled -> open (the very transition the touch path would have made)', later && later.transitions)
-  ok(later && later.transitions.every((t) => typeof t.from === 'string' && typeof t.to === 'string' && t.from !== t.to),
-    'every transition carries a real from/to (a transition that did not move is not a transition)', later && later.transitions)
+  ok(later && later.transitions.length > 0 && later.transitions.every((t) => typeof t.from === 'string' && typeof t.to === 'string' && t.from !== t.to),
+    'every transition carries a real from/to (the length guard keeps every() from being true on an empty set)', later && later.transitions)
   ok(later && typeof later.note === 'string' && later.note.includes('chair'),
     'the note says a due WAIT still needs the CHAIR to decide — the sweep must not read as an automatic decision', later && later.note)
 
