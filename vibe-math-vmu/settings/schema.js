@@ -1677,7 +1677,19 @@ export function validateValue(key, value) {
     throw refuse('VMU_INVALID_ARGUMENT', 'unknown declaration type for ' + d.key + ': ' + d.type,
       'add a case in validateValue (and a coverage witness), or list it in UNJUDGED_TYPES with a reason')
   }
-  if (why) throw refuse('VMU_INVALID_ARGUMENT', d.key + ': ' + why, 'declared as ' + d.type)
+  if (why) {
+    // ★ LIVE-RUN FRICTION (run 18 ⑪.0, run 19): the institute wrote `vibe_v5_set { value: "8000" }` — a QUOTED
+    // number — and got only "expected an integer >= 0". That names the rule but not the mistake, and JSON quoting is
+    // invisible in a transcript. So a numeric-looking string gets its own clause: it says the value is TEXT and shows
+    // the unquoted form. Only for declarations that are not text types themselves (a `string` key may legitimately
+    // hold "8000").
+    const numericLooking = typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value.trim())
+    const textType = d.type === 'string' || d.type === 'stringList' || d.type === 'enum'
+    const hint = numericLooking && !textType
+      ? 'declared as ' + d.type + ' — a QUOTED number is a text value, not a number: pass 8000, not "8000"'
+      : 'declared as ' + d.type
+    throw refuse('VMU_INVALID_ARGUMENT', d.key + ': ' + why, hint)
+  }
   return value
 }
 

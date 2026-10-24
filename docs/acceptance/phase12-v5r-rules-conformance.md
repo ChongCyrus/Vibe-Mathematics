@@ -1997,3 +1997,37 @@ transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1024-185922.jsonl`（build 
 ### §50.6 教训
 **一道门如果只覆盖被判对象的一种语法形式，它的绿不代表「没有违规」，只代表「没看见违规」。** 这一批两个独立案例（括号形式 / 顶层切分）都是被真机跑的证据反推出来的 —— 判据要跟着**真实用户写的形状**走，而不是跟着我自己习惯的模板走。
 
+
+
+## §51 第 19 次真机跑的收尾：R26 三重证实、一个「引号不可见」的读数改进、以及 token 预算成为新的瓶颈
+
+§50 记了 run 19 证明 R26 已修**和**我的声明面门禁只扫了一半。这一节记两件后续事实。
+
+### §51.1 R26 在真机上被三个不同面各证实一次
+run 19 的 transcript 里三条独立拒绝（不是同一处重复）：
+
+1. `vibe_v5_configure {"member":"<院士>",…}` ⇒ `pack tool vibe_v5_configure does not accept parameter(s) "member"; it declares: project, institute, problem, params`
+2. `vibe_v5_meeting {"id":"m105",…}` ⇒ `… does not accept parameter(s) "id"; it declares: agenda, title, type, subject, kind, target, formal_agenda, secretary, member, at, subject_evidence, lean_job`
+3. `vibe_v5_set {"key":…,"reason":"…","value":"9000"}` ⇒ `… does not accept parameter(s) "reason"; it declares: key, value, why`
+
+三条都带 `hint` 说明「未声明的键过去会被静默丢掉」。三条都发生在**代理真实想用的形状**上（写领头人、按 id 查会议、带理由设置），所以这不是我自己构造的探针，是运行中的自然调用。
+
+### §51.2 读数改进：引号在 transcript 里是不可见的
+run 18 的 ⑪.0 失败、run 19 再犯同一个错：`vibe_v5_set { value: "8000" }`（字符串）被拒，原回执只有 `expected an integer >= 0`。拒绝对，**但没说出错在哪** —— 代理看到的 `"8000"` 和 `8000` 在文本上几乎一样。
+
+修法（`vibe-math-vmu/settings/schema.js` `validateValue`）：当值是一个「长得像数字的字符串」且声明类型不是文本类时，hint 改为
+`declared as natural — a QUOTED number is a text value, not a number: pass 8000, not "8000"`
+文本类（`string` / `stringList` / `enum`）不受影响——它们的 `"8000"` 是合法值，加这句会变成误导。
+
+断言写进 `tests/vmu-settings.test.mjs`（**49 passed / 0 failed**）：拒绝码正确 + hint 正则同时命中「QUOTED number is a text value」与「pass 8000, not "8000"」。★ 断言读的是 hint 文本本身，不是「有没有抛错」——否则一个更模糊的 hint 也能绿。
+
+### §51.3 新的瓶颈：token 预算，不是缺陷
+- run 18：`tokenTotal 7 818 700 / cap 8 000 000`，`tokenCapHit:false` ⇒ 有完整最终报告。
+- run 19：`tokenTotal 8 133 292 / cap 8 000 000`，`tokenCapHit:true` ⇒ **在写最终报告前被截断**。
+两次跑验收项几乎相同，差异是 run 19 的 brief 更长（§①–§⑪）。结论：**验收 brief 的长度直接换算成 token**，而「代理自己写报告说无残余」这个完成判据需要预算留白。
+
+对策（下一跑执行）：brief 只留本轮真正待验的项（§⑫ 四项），并在第 20 次跑的 brief 里硬性要求「预算用掉 60% 时停止探索、先写最终报告」；runner 的 `-MaxTokens` 提到 12 000 000。这不是放宽判据，是把「证据收集」和「结论输出」的预算分开。
+
+### §51.4 门禁
+`vmu-settings` 49/0；`audit-prompt-tool-params` 80/0；`audit-conformance-totals` 13/0；`regen-all --check` 16/16；`DOC LINT: PASS`。
+

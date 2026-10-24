@@ -148,6 +148,17 @@ expectThrow(() => m.resolveSettings([{ 'vmu.typo.key': 1 }]), 'VMU_INVALID_ARGUM
 expectThrow(() => m.validateValue('vmu.limits.maxLiveMembers', -1), 'VMU_INVALID_ARGUMENT', 'negative natural refused')
 expectThrow(() => m.validateValue('vmu.limits.maxLiveMembers', 1.5), 'VMU_INVALID_ARGUMENT', 'fractional natural refused')
 expectThrow(() => m.validateValue('vmu.limits.maxLiveMembers', '6'), 'VMU_INVALID_ARGUMENT', 'stringified natural refused')
+// ★ LIVE-RUN FRICTION (run 18 ⑪.0 / run 19): the institute passed `value: "8000"`. Refusing is right; refusing
+// without naming the mistake is not — the quote marks are invisible in a transcript. The refusal must say that a
+// quoted number is TEXT and show the unquoted form (measured, not assumed: the hint is read back here).
+try {
+  m.validateValue('vmu.meetings.waitOnDueMs', '8000')
+  ok(false, 'a quoted number is refused (RULE E: the case below must be reachable)')
+} catch (e) {
+  ok(e && e.code === 'VMU_INVALID_ARGUMENT', 'a quoted number is refused with VMU_INVALID_ARGUMENT', e && e.code)
+  ok(typeof e.hint === 'string' && /QUOTED number is a text value/.test(e.hint) && /pass 8000, not "8000"/.test(e.hint),
+    '★ the refusal NAMES the quoting mistake and shows the fix (a bare "expected an integer" was not enough)', e && e.hint)
+}
 ok(m.validateValue('vmu.limits.maxLiveMembers', 6) === 6, 'an in-range natural passes through')
 expectThrow(() => m.validateValue('vmu.meetings.quorumRule', 'bogus'), 'VMU_INVALID_ARGUMENT', 'out-of-domain enum refused')
 ok(m.validateValue('vmu.meetings.quorumRule', 'all-unanimous') === 'all-unanimous', 'in-domain enum passes through')
