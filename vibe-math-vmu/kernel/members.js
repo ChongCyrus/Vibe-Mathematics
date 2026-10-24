@@ -322,10 +322,17 @@ export function createMembers({
 
     /** Observability (R11): slots with occupancy, live count, and the caps actually in force. */
     status() {
+      const ended = [...members.values()].filter((m) => m && m.state === 'ended').length
       return {
         slots: this.roles(),
         live: live().length,
         total: members.size,
+        // ★★ LIVE RUN 28 observation 1 (the institute's own report): `total` sat beside `live` with no definition, and it
+        // counted members whose state is "ended" - so after firing the only member the receipt read `live:0, total:1`,
+        // which a reader naturally takes as "the institute has one member". The number itself is honest (it is the roster
+        // RECORD count); what was missing was the definition and the departed count that makes it explainable.
+        departed: ended,
+        totalMeans: 'roster RECORDS, including members whose state is "ended"; read `live` for how many are enfranchised now (live run 28 observation 1)',
         maxLiveMembers,
         caps: { maxLiveMembers },
         pendingDeliverSeam: typeof deliver !== 'function',

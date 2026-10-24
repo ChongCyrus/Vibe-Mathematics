@@ -175,6 +175,22 @@ console.log('=== 5. THE ROSTER FACE SAYS WHETHER A SEAT IS FREE (run 27 residual
   ok(/LIVING only/.test(freed.slotsMeans || ''), '★ the face explains the count is over the living, so "used:0" beside an ended member is not a contradiction', freed.slotsMeans)
 }
 
+console.log('=== 6. `total` SAYS WHAT IT COUNTS (run 28 observation 1) ===')
+{
+  const { call } = await boot()
+  await call('control', { action: 'hire', slot: 'chair', member_id: 'chair-1', institution: 'acceptance-institute' })
+  const seated = await call('control', { action: 'roster' })
+  ok(seated.live === 1 && seated.total === 1 && seated.departed === 0,
+    '★ a seated member is live, recorded and not departed', { live: seated.live, total: seated.total, departed: seated.departed })
+  await call('control', { action: 'fire', member_id: 'chair-1', reason: 'run-28 observation' })
+  const gone = await call('control', { action: 'roster' })
+  ok(gone.live === 0 && gone.total === 1 && gone.departed === 1,
+    '★★★ after the fire, `live:0` no longer sits beside an unexplained `total:1` — the departed count explains it',
+    { live: gone.live, total: gone.total, departed: gone.departed })
+  ok(typeof gone.totalMeans === 'string' && /RECORDS/.test(gone.totalMeans) && /live/.test(gone.totalMeans),
+    '★★ `total` carries its definition, so it cannot be read as "the institute has one member"', gone.totalMeans)
+}
+
 console.log('')
 console.log(failed === 0
   ? '=== VMU ROSTER LIVENESS: ' + passed + ' passed, 0 failed ==='

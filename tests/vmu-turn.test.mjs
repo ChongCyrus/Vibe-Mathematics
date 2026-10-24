@@ -1485,6 +1485,15 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const keep = selectionReadingsOf(held, ['r-1'])
   ok(keep.selectionIgnored === null && keep.selectionApplied === true,
     '★ R14g: a selection that KEEPS the held member is not called ignored (no false alarm)', keep.selectionIgnored)
+  // ★★ LIVE RUN 28 observation 2 (the institute's own report): `awaiting:true` beside `"pending":null` reads as a
+  // contradiction unless the receipt states what `pending` is scoped to. It is the prompt the CALLER is holding, not the
+  // round this call returns - and when nothing is held it is legitimately null while a prompt IS being returned.
+  const nothingHeld = selectionReadingsOf(null, [])
+  ok(nothingHeld.pending === null && typeof nothingHeld.pendingMeans === 'string' && nothingHeld.pendingMeans.length > 40,
+    '★★ R28a: `pending:null` always travels with its definition (so it cannot be read as "no round")', nothingHeld.pendingMeans)
+  ok(/NOT the round this call returns/.test(keep.pendingMeans) && /memberPrompt\.turnId/.test(keep.pendingMeans),
+    '★★ R28b: the definition says which field names the returned round', keep.pendingMeans)
+  ok(/supersede/.test(keep.pendingMeans), '★ R28c: and that a held prompt is what a later call would supersede', keep.pendingMeans)
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')

@@ -2131,6 +2131,11 @@ export const selectionReadingsOf = (heldPrompt, explicitIds) => {
   const dropped = heldMember !== null && ids.length > 0 && !ids.includes(heldMember)
   return {
     pending: heldMember === null ? null : { turn: heldTurn, member: heldMember },
+    // ★★ LIVE RUN 28 observation 2 (the institute's own report): `awaiting:true` sat beside `"pending":null` and the reader
+    // had to work out that the two describe different turns. `pending` is the prompt the CALLER is still holding (the one a
+    // later call would supersede); the round this call actually returns is named by `memberPrompt.turnId`. The field stays
+    // null when nothing is held - that is what makes the pair look contradictory - so the definition travels with it.
+    pendingMeans: 'the unanswered prompt YOU are holding (a turn a later call would supersede); it is NOT the round this call returns - that round is named by memberPrompt.turnId (null means you hold no unanswered prompt)',
     selectionApplied: dropped ? false : true,
     selectionIgnored: dropped
       ? { requested: ids, pending: heldTurn, pendingMember: heldMember,

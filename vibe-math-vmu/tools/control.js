@@ -77,6 +77,11 @@ export function makeControlSpec({ param, refused, TOOL_NAMES, kernel }) {
                     slots: occupancyView.slots,
                     live: occupancyView.live,
                     total: occupancyView.total,
+                    // ★ LIVE RUN 28 observation 1: `total` counts roster RECORDS (ended members included), so it is
+                    // forwarded together with the departed count and its definition - otherwise `live:0, total:1` reads
+                    // as "the institute still has one member", which is the opposite of what happened.
+                    departed: occupancyView.departed,
+                    totalMeans: occupancyView.totalMeans,
                     slotsMeans: 'occupied/capacity per declared slot (capacity 0 = unlimited; the field name is "occupied"). These count the LIVING only: a member whose state is "ended" holds no seat (live run 26 defect 2), so a freed chair can be filled again',
                   }
                 : { slots: null, slotsNote: 'this kernel exposes no slot-occupancy view, so it cannot say whether a seat is free' })

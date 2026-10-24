@@ -2231,3 +2231,31 @@ brief ⑤ 要求抄 `delivered / drives / code / message`，而 `VMU_REPORT_NO_T
 - 修改：`vibe-math-vmu/tools/vote.js`、`vibe-math-vmu/tools/control.js`；`tests/vmu-roster-liveness.test.mjs` 由 22 条扩到 **35 条 0 fail**。
 - 邻居：`vmu-control` 26 · `vmu-control-roster` 14 · `vmu-host` 199 · `vmu-turn` 209 · `vmu-v5r-tools` 354 · `vmu-closure-electorate` 7，全 0 fail。
 - 下一步：第 28 次真机跑，验收项为 ⑳.1 `value`/`reason` 被具名拒、⑳.2 roster 面读 `occupied/capacity`、⑳.3 离所票的拒码与 hint 两个读数。
+
+## §59 第 28 次真机跑：四条判据全通过、无机制缺陷，代理留下两条「可读性观察」
+
+### §59.1 机器读数
+
+- transcript `_oneoff/vm-slv/full-1024-211333.jsonl`，build=`1d53a3e8`，`cast=true`（3 张回合回执），`SUMMARY: 1 session(s), 0 with RED checks`。
+- ⑳.1 未声明参数按名拒：`vibe_vmu_vote {member, value, reason}` ⇒ `VMU_INVALID_ARGUMENT / no parameter named "value", "reason" - it was NOT applied`，hint 列 `member, solved, why`；随后声明式调用成功，`votesCast:1`（被拒的那次没有落账）。
+- ⑳.2 roster 读席位：`occupied` 0→1→0 三次对得上；fire 后同一席位可重新雇回（旧版永久「席位已满」）。
+- ⑳.3 离所票：`VMU_STATE` + `state: "ended"` + hint `the closure electorate is the LIVE roster`；不存在的 id ⇒ hint 分开列 `enrolled members:` 与 `departed (cannot vote):`。
+- ⑳.4 回归：回合 id 一致（`t-1`），`closureVote.eligible` 只含活人、`missing` 不含离所者，汇报面 `VMU_REPORT_NO_TRANSPORT` 且 `drives:false`。
+
+### §59.2 代理的两条可读性观察（已修，这一类是「机制做了但读数会被误读」）
+
+| # | 观察（原文要点） | 修法 | 门禁 |
+|---|---|---|---|
+| 1 | `roster.total` 没有定义，且**计入已离所者**：fire 之后 `live:0, total:1` 会被读成「本所还有 1 人」 | `vibe-math-vmu/kernel/members.js` `status()` 增加 `departed` 与 `totalMeans`（「名册记录数，含 state:\"ended\"；在册人数读 `live`」），`vibe-math-vmu/tools/control.js` 的 roster 分支转发这两个字段 | `tests/vmu-roster-liveness.test.mjs` ⑥（3 条） |
+| 2 | `step` 回执里 `awaiting:true` 与 `pending:null` 并列，读者要自己推出 `pending` 指「调用方仍持有的旧回合」 | `vibe-math-vmu/kernel/turn/index.js` `selectionReadingsOf` 增加 `pendingMeans`（「你手上那份未回应的提示词；不是本次调用返回的回合——后者由 `memberPrompt.turnId` 命名」） | `tests/vmu-turn.test.mjs` R28a–R28c（3 条） |
+
+### §59.3 教训
+
+1. **数字本身可以是对的，缺的是定义。** `total:1` 在 fire 之后完全诚实（名册记录还在），但和一个没定义的字段并排时，它就在误导读者。修法不是改数字，是补定义并把能解释它的数（`departed`）一起给出。
+2. **`null` 与 `true` 并排时，要说明 `null` 的作用域。** `awaiting:true`（这一轮在等回应）与 `pending:null`（你没持有旧回合）都是真话，放在一起像矛盾——这是 `D` 类（读数不自洽）在本阶段的最后一个成员。
+
+### §59.4 状态
+
+- 修改：`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/tools/control.js`；`tests/vmu-turn.test.mjs` 209→**212**，`tests/vmu-roster-liveness.test.mjs` 35→**38**。
+- 邻居：`vmu-host` 199 · `vmu-kernel` 260 · `vmu-meetings` 214 · `vmu-v5r-tools` 354 · `vmu-live-run-r9-r12` 39 · `vmu-run17-findings` 13 · `vmu-control-roster` 14，全 0 fail。
+- 下一步：第 29 次真机跑是一次**全会话收官跑**——把 ①–⑳ 的关键读数一次性重验（此前几轮各自只验自己那一节，代理明确说「旧项不给读数」），并要求它在报告里给出全表结论。
