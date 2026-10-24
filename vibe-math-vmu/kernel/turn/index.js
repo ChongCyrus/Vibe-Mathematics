@@ -100,7 +100,7 @@ export const FIELD_OWNERS = Object.freeze({
  * @param permission the permission that grants a closure vote. Defaults to the framework's own README word only as
  *                   a last resort; a deployment should set `vmu.turn.closureVotePermission`.
  */
-export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote' } = {}) {
+export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote', meetingId = null } = {}) {
   const enfranchised = roster
     .map((m) => String(m && m.id !== undefined ? m.id : m))
     .filter((id) => {
@@ -145,7 +145,17 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
   // The true window is the meeting: the map lives for as long as the orchestrator does. If per-round expiry is ever wanted, the
   // vote records must carry their round first - that is a data-model change, not a label change.
   return {
-    window: 'meeting',
+    // ★★★ PHASE 12 / R18 (the institute's own run-16 report, item 2): window:'meeting' named a MEETING this reading
+    // cannot name — the vote map is the orchestrator's, it is not bound to any meeting id, and that run's settlement
+    // happened in a phase:"normal" step with no meeting in sight. The agent could not tell which of m85/m86/m87/m90 the
+    // "meeting window" meant, which is what a misleading label does. The window now states the scope it really has (the
+    // SESSION = this orchestrator), a caller that DOES know the meeting may pass meetingId, and the field says so when
+    // it is null instead of implying one.
+    window: meetingId === null ? 'session' : 'meeting',
+    meetingId: meetingId === null ? null : String(meetingId),
+    windowMeans: meetingId === null
+      ? 'the votes map lives for as long as this orchestrator does, so the closure reading spans the SESSION: it is not per-round and it cannot name a meeting. A caller that knows the meeting passes { meetingId }'
+      : 'this reading was computed for the named meeting',
     cast,
     // ★ LIVE RUN 7 (agent feedback item j): `cast` READS like "the votes were cast", but this predicate is "closure was
     // CONFIRMED unanimously" — the acceptance agent reported the field's meaning as inverted from its name, and it was

@@ -881,8 +881,15 @@ try {
   // without this failing).
   const staleVote = new Map([['r-1', true], ['r-2', true]])
   const withStale = turnMod.closureVoteOf({ votes: staleVote, roster: ['r-1', 'r-2'] })
-  ok(allIn.window === 'meeting' && withStale.window === 'meeting',
-    '★★ closureVote.window is the MEETING (the true window), not ‘round’ - votes carry no round, so a per-round label would promise expiry that does not exist', { window: allIn.window })
+  // ★★★ PHASE 12 / R18 (the institute's own run-16 report, item 2): the label is now the scope the predicate really
+  // has. The votes map is the ORCHESTRATOR's, so it cannot name a meeting — saying 'meeting' claimed a fact the reading
+  // did not carry, and the run's settlement (a phase:'normal' step) could not be attributed to any of m85/m86/m87/m90.
+  // A caller that knows the meeting may pass { meetingId }, and then the label IS 'meeting' — asserted both ways here.
+  ok(allIn.window === 'session' && withStale.window === 'session' && allIn.meetingId === null && typeof allIn.windowMeans === 'string',
+    '★★ closureVote.window is the SESSION (the votes map lives as long as the orchestrator) and it says why — a per-round label would promise expiry that does not exist, and a `meeting` label would name a meeting it cannot name', { window: allIn.window, meetingId: allIn.meetingId })
+  const attributed = turnMod.closureVoteOf({ votes: new Map([['r-1', true]]), roster: ['r-1'], meetingId: 'm-7' })
+  ok(attributed.window === 'meeting' && attributed.meetingId === 'm-7',
+    '★★ and a caller that DOES know the meeting gets the meeting window back, with the id — so the correction is a scope statement, not the removal of a reading', { window: attributed.window, meetingId: attributed.meetingId })
   ok(withStale.cast === true,
     '★★ votes cast in a previous round still count (this is the behaviour the meeting label now declares truthfully instead of hiding behind ‘round’)', { cast: withStale.cast })
   // and the prompt teaches exactly that contract (no drift between the text a member reads and the proof above)

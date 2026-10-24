@@ -89,7 +89,11 @@ export function createMeetingMarker({ clock = () => 0, live = new Map(), archive
       // question needs, but a reader comparing it with the meeting face saw two different answers for one object
       // (overview said open, the meeting said scheduled). The face label travels BESIDE it, so the two are not
       // contradicting readings but one reading with its granularity named.
-      meetings: openRows.map((r) => ({ id: String(r.id), state: domainOf(r.state), status: String(r.state), faceState: String(r.state) })),
+      // ★★★ PHASE 12 / R19 (run-16 report, item 3): `status` and `faceState` were the MARKER's lifecycle string under
+      // neutral names, beside a schedule-aware `state` — so one row could say state:'waiting' and status:'open' at the
+      // same time, and the comment above claimed the pair was "one reading with its granularity named" when the two
+      // values were byte-identical. One fact, one name: the raw marker value is `markerState`.
+      meetings: openRows.map((r) => ({ id: String(r.id), state: domainOf(r.state), markerState: String(r.state) })),
       readBack: list.length, closedCount: list.length - openRows.length,
       note: openRows.length
         ? 'read back from the durable domain seam'

@@ -770,10 +770,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       }
       const beforeDeadline = m.waitDecisionDue !== true
       const waitedMs = Number.isFinite(m.waitStartedAt) ? now - m.waitStartedAt : 0
+      // ★★★ PHASE 12 / R17 (the institute's own run-16 report, item 1): the state DID move here, and the bounded
+      // transition history did not see it. The recorder sat inside syncMeeting, so the touch path through
+      // syncMeeting (attend/speak) was recorded while proceed() — which assigns m.state directly — was not. Measured
+      // in that run: m90 went waiting→open through proceed and sweep.recentTransitions still had only
+      // scheduled→waiting, while m87/m89's attend-driven waiting→open WERE listed. A history that lists one of the
+      // two ways a state moves is a false reading.
+      const beforeState = m.state
       m.state = 'open'
       m.activatedAt = now
       m.startedLate = true
       markState(m, 'open')
+      recordTransition(m, beforeState, now)
       const whyText = (why === null || why === undefined) ? null : String(why)
       m.minutes.entries.push({ at: now, kind: 'proceeded', by: who, why: whyText, waitedMs, beforeDeadline, quorum: quorumOf(m) })
       // ★ LIVE RUN 9, finding E: the agent read "proceed succeeded" and asked whether the roster had been checked.
@@ -1767,7 +1775,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
             ? { ran: false, at: null, swept: 0, transitions: [], note: 'no sweep pass has run in this process yet - the kernel runs one on every beat() (there is no timer by design)' }
             : Object.assign({ ran: true }, lastSweep),
           { recentTransitions: sweepHistory.slice(), recentTransitionsDropped: sweepHistoryDropped,
-            recentTransitionsNote: 'this is the BOUNDED history (last 20 transitions across all passes); `at`/`swept`/`transitions` above describe the LAST pass only, so a transition from an earlier pass is still visible here' }),
+            // ★★★ PHASE 12 / R20 (run-16 report, item 4): TWO CLOCKS APPEARED IN ONE OBJECT. `at`/`swept` come from the
+            // last BEAT sweep, while a row's passAt comes from whichever path moved the meeting (the beat pass OR the
+            // touch path: attend/speak/proceed). In that run the two disagreed by tens of seconds while nothing named
+            // the difference, so "sweep.at" looked like the instant the transition happened. Both are labelled now.
+            lastTransitionPassAt: sweepHistory.length === 0 ? null : sweepHistory[sweepHistory.length - 1].passAt,
+            recentTransitionsNote: 'this is the BOUNDED history (last 20 transitions across all state-moving paths); each row carries its OWN passAt, which is the instant THAT transition was recorded - it is not `at`, because `at`/`swept`/`transitions` describe the last BEAT sweep only, while a meeting also moves on the touch path (attend/speak/proceed)' }),
         scheduledMeetings: [...live.values()].filter((m) => m.state === 'scheduled').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
         waitingMeetings: [...live.values()].filter((m) => m.state === 'waiting').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor, waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt, waitDueAt: waitDueOf(m), waitDecisionDue: m.waitDecisionDue === true, quorum: quorumOf(m) })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
         waitDecisionDue: [...live.values()].filter((m) => m.state === 'waiting' && m.waitDecisionDue === true).map((m) => m.id).sort(),

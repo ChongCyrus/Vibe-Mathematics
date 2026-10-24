@@ -1845,3 +1845,43 @@ phase 12 的收尾判据不是「我抽查没问题」，而是**研究所自己
 
 - `tokenCapHit:true`（6 142 169 / 6 000 000）：跑在被封顶处结束，研究院**没来得及写收尾报告**，所以「本轮无实质残余」缺席是「跑没了」而不是「满意了」。下一轮把 `MaxTokens` 提到 8 000 000。
 - 我的核对脚本第一版用递归展平 + `depth > 8` 上限，把 6 KB 的 `proceed` 回执**尾部截断**，于是 `overrodeQuorum` / `whichRule` / `cast:true` 全被判为「缺失」——假红。改成直接读 `result.data.message.content[].text` 再正则后，三条全部命中。**重建 JSON 的核对器是嫌疑犯，读已发出的文本的才是证据。**
+
+## §47 第 16 次真机跑：R16 被真机证实，四条读数残余被修掉
+
+第 16 次真机跑（`D:\wd\vibemath开发\_oneoff\vm-slv\full-1024-173611.jsonl`，构建 `c78dffca`，`cast=true`，`SUMMARY: 1 session(s), 0 with RED checks`，293 s / 55 次工具调用 / 5 814 881 tokens（cap 8 M，未撞顶））。
+
+### §47.1 被真机证实的（不是单元测试证实）
+
+| 项 | 结果 | 证据 |
+|---|---|---|
+| ⑨.4 / R16 席位 | ✅ | 主席提示词带 `【本轮面向的成员】代号：member-1 ｜角色：院士` 与 `你是「institute」的**院士**`，且**没有** `# v5r-charter-roster-temp`、没有「你的雇主：（未说明）」 |
+| ⑨.1 `proceed {member:…}` | ✅ | 非主席被具名拒；主席通过，`overrodeQuorum` 是完整对象（`whichRule:"institution-rule"`、`unmetRule:"unanimity"`、`floorMet:true`、`waitedMs`、`beforeDeadline`） |
+| ⑨.2 `sweep.recentTransitions` | ✅（部分见 R17） | 9 个读面都带它，含 `scheduled→waiting` 与 `passAt` |
+| ⑨.3 `selectionIgnored.pending` | ✅ | `pending:{turn:"t-1",member:"member-1"}` |
+
+### §47.2 四条残余（都由它自己的报告提出，都已修）
+
+| 编号 | 读数缺陷 | 修法 |
+|---|---|---|
+| **R17** | `proceed()` 造成的 `waiting→open` 不进 `sweep.recentTransitions`（而 attend 路径的有），实测 m90 缺行 | 记录点补到 `proceed()` 里；`const beforeState = m.state` 后 `recordTransition(m, beforeState, now)`（同一台账本、同一 20 条上界） |
+| **R18** | `closureVote.window:"meeting"` 却读不出是哪一场会（实测结算发生在 `phase:"normal"`，无从归属 m85/m86/m87/m90） | `closureVoteOf` 增加可选 `meetingId`；无此参时 `window:"session"` + `meetingId:null` + `windowMeans` 说明「票图属于本编排器，跨轮次、无法指名会议」；给了 `meetingId` 则 `window:"meeting"` 并把 id 回传 |
+| **R19** | `overview.meetings[]` 同一行 `state:"waiting"` 与 `status:"open"` 并列（`status`/`faceState` 其实是**标记域**的生命周期字符串） | `meetingmarker.js` 改为只发 `markerState`；`packs/v5r/tools.js` 的 overview 行改为 `markerState` + `markerStateNote`（明说它不是会议状态） |
+| **R20** | `sweep.at/swept` 来自 beat，而 `recentTransitions[].passAt` 来自触碰 pass，两者时间戳不同源且无人说明 | `status()` 新增 `lastTransitionPassAt`（最后一条迁移自己的时刻），`recentTransitionsNote` 改写为「每行带自己的 passAt；`at`/`swept` 只描述最后一次 BEAT pass」 |
+
+### §47.3 它自己判过、我复核后同意的分类（不是缺陷）
+
+- **⑨.5-1 `budget:null` + `budgetDeclared:false`**：可接受。`budgetWhy` 已明说「null 表示没有裁决，不是余额充足」，`speechBound.unlimited` 说的是发言时长无上限，两件事。
+- **⑨.5-2 `met:true` 与 `required:0` 并排**：可接受但需条件读 —— `metIs` 已把「这只是下界问题，不是制度规则」说尽。**键名混用仍是债**：`met` 同时被读作「下界成立」与「法定人数成立」。留记为命名债（不改，因为改名会打断既有读者）。
+- **⑤ 汇报面在本部署永远 `VMU_REPORT_NO_TRANSPORT`**：可接受的诚实设计（不假装送达），`drives:false` / `neverDrives:true` / `transportInjected:false` 三件套齐。
+
+### §47.4 我自己的一份缺陷：验收脚本的 ⑨.1 路径不可执行
+
+任务文件写的「先让 member-2 到场，再 `proceed`」**永远测不出预期形状**：member-2 一到场，`unanimity.met` 就变真，会议直接 `open`，于是 `proceed` 被 `VMU_STATE` 拒。代理自己改用「只让一名成员到场 → proceed」才复现出 `overrodeQuorum`。**验收脚本的路径设计也是被测对象的一部分**：一条写不出预期形状的验收项，会被读成「机制坏了」。下一版任务文件改成单人到场。
+
+### §47.5 门禁
+
+新 `tests/vmu-run16-findings.test.mjs`（**14 条 0 失败**）：R17 含**正向**（pass 驱动的迁移在册）与**负向对照**（proceed 之前 waiting→open 不在册）+ proceed 后**恰好一条**且 `passAt` 等于迁移时刻；R20 断言 `lastTransitionPassAt` 与注释同时点名两个时钟；R18 三态（无 meetingId / 有 meetingId / 谓词本身不变）；R19 是**源码级**门禁（说清为什么只能是源码级：这一行的形状需要完整 boot 才能观察到，真机是最终判据）。
+
+邻居：`vmu-kernel` 260/0 · `vmu-meetings` 214/0 · `vmu-meeting-types` 142/0 · `vmu-turn` 209/0 · `vmu-v5r-tools` **348/0**（其中一条断言原本钉住 `window:"meeting"` —— 它钉的正是被 R18 推翻的旧标签，已改为钉新语义并加「给了 meetingId 就回到 meeting」的反向断言）· `vmu-meeting-parity` 204/0 · `vmu-run13-findings` 33/0 · `vmu-run9-findings` 25/0 · `vmu-receipt-shapes` 49/0。
+
+派生面：`update-doc-counts --write` ⇒ `JOBS total=517 suites=409 probes=108 | FILES tests/*.mjs=393 (288 suites + 105 probes/scripts)`；`generate-coverage-debt --write` ⇒ `107 files · L3 90 · L2 12 · L1 5 · L0 0`；`regen-all --check` ⇒ **16/16 in sync**。
