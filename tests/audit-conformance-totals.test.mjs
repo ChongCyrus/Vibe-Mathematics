@@ -49,9 +49,31 @@ export function parseLedger(text) {
     }
     ;(derived[status] || derived.unmarked).push(r.id)
   }
+  // The group rows of §7 (`| A 成员 | 4 | 2 | 2 | 0 | 0 |`) are a hand-typed breakdown ABOVE the totals row.
+  // They are not decoration: a stale group row is exactly how the table once said 32/17/2 while its own cells said 42/42.
+  const groupRows = []
+  for (const line of tableLines) {
+    const m = /^\| ([A-F]) [^|]+\| (\d+) \| (\d+) \| (\d+) \| (\d+) \| (\d+) \|\s*$/.exec(line)
+    if (m) groupRows.push({ group: m[1], nums: [m[2], m[3], m[4], m[5], m[6]].map(Number) })
+  }
+  const groupsDerived = {}
+  for (const r of rows) {
+    if (counts[r.id] > 1) continue
+    const g = r.id[0]
+    groupsDerived[g] = groupsDerived[g] || { n: 0, done: 0, partial: 0, gap: 0, unread: 0 }
+    groupsDerived[g].n += 1
+    let status = null
+    for (let k = 1; k < r.cells.length; k++) {
+      const cell = r.cells[k].replace(/^\*\*/, '').trim()
+      const hit = EMOJI.exec(cell)
+      if (hit) { status = STATUS_OF[hit[0]]; break }
+    }
+    if (status === null) groupsDerived[g].unread += 1
+    else groupsDerived[g][status] += 1
+  }
   const totalsLine = totalsIdx > 0 ? lines[totalsIdx] : null
   const totals = totalsLine === null ? null : totalsLine.split('|').map((c) => c.trim()).filter((c) => c !== '').slice(1).map((c) => Number(c.replace(/\*/g, '')))
-  return { totalsIdx, rows, ids, duplicateIds: Object.entries(counts).filter(([, n]) => n > 1).map(([id, n]) => id + '×' + n), derived, totalsLine, totals }
+  return { totalsIdx, rows, ids, duplicateIds: Object.entries(counts).filter(([, n]) => n > 1).map(([id, n]) => id + '×' + n), derived, totalsLine, totals, groupRows, groupsDerived }
 }
 
 /** The judgement that matters: do the typed totals equal what the cells say, and do the columns add up? */
@@ -73,6 +95,20 @@ export function judge(text) {
       if (p.totals[1] + p.totals[2] + p.totals[3] + p.totals[4] !== p.totals[0]) problems.push('columns do not add up')
     }
   }
+  // every group row must equal what its OWN cells say, and the groups must sum to the totals row
+  for (const g of p.groupRows) {
+    const d = p.groupsDerived[g.group] || { n: 0, done: 0, partial: 0, gap: 0 }
+    const want = [d.n, d.done, d.partial, d.gap, 0]
+    const has = g.nums
+    if (has.length !== 5) problems.push('group ' + g.group + ' does not carry five numbers')
+    else if (has.join(',') !== want.join(',')) problems.push('group ' + g.group + ' typed ' + has.join('/') + ' != cells ' + want.join('/'))
+  }
+  if (p.groupRows.length > 0 && p.totals) {
+    for (let col = 0; col < 5; col++) {
+      const sum = p.groupRows.reduce((s, g) => s + (g.nums[col] || 0), 0)
+      if (sum !== p.totals[col]) problems.push('group column ' + col + ' sums to ' + sum + ' != totals ' + p.totals[col])
+    }
+  }
   return { ok: problems.length === 0, problems, parsed: p }
 }
 
@@ -89,6 +125,13 @@ if (process.argv.slice(2).includes('--selftest')) {
     + '| A2 | rule two | \u26A0 **partial** — the old wording said \u274C here |\n'
     + '| A3 | rule three | \u2705 **done** |\n' // flipped: the typed totals below now over-report one gap
     + '| **\u5408\u8ba1** | **3** | **1** | **1** | **1** | **0** |\n'
+  const grouped = '| \u7ec4 | \u6761\u6570 | \u5df2\u5b9e\u73b0 | \u90e8\u5206 | \u7f3a\u53e3 | \u5f85\u6838 |\n| --- | --- | --- | --- | --- | --- |\n'
+    + '| A \u6210\u5458 | 2 | 1 | 1 | 0 | 0 |\n'
+    + head
+    + '| A1 | rule one | \u2705 **done** |\n'
+    + '| A2 | rule two | \u26A0 **partial** |\n'
+    + '| **\u5408\u8ba1** | **2** | **1** | **1** | **0** | **0** |\n'
+  const groupedDrift = grouped.replace('| A \u6210\u5458 | 2 | 1 | 1 | 0 | 0 |', '| A \u6210\u5458 | 2 | 2 | 0 | 0 | 0 |')
   const cases = [
     ['a CONSISTENT table is judged consistent', () => judge(consistent).ok === true, JSON.stringify(judge(consistent).problems)],
     ['a ❌ inside EVIDENCE prose does not make the row a gap', () => judge(consistent).parsed.derived.gap.length === 1, JSON.stringify(judge(consistent).parsed.derived)],
@@ -96,6 +139,8 @@ if (process.argv.slice(2).includes('--selftest')) {
     ['and it says WHICH count drifted rather than "totals wrong"', () => judge(drifted).problems.some((p) => /^gap /.test(p)), JSON.stringify(judge(drifted).problems)],
     ['an EMPTY table is refused instead of passing vacuously', () => judge(head).ok === false, JSON.stringify(judge(head).problems)],
     ['a MISSING totals row is refused', () => judge(head + '| A1 | x | \u2705 **done** |\n').ok === false, 'no totals row'],
+    ['a GROUP row that disagrees with its own cells is refused', () => judge(groupedDrift).ok === false, JSON.stringify(judge(groupedDrift).problems)],
+    ['a GROUP row that agrees is accepted', () => judge(grouped).ok === true, JSON.stringify(judge(grouped).problems)],
   ]
   let bad = 0
   for (const [label, fn, detail] of cases) {
