@@ -1438,8 +1438,8 @@ export function createTurnOrchestrator({
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'no-supported-shape', code: d.notApplicable.code, hint: d.notApplicable.hint })
         continue
       }
-      // ★ PHASE 12 / run 35 item 2: A REPLY FIELD CAN REQUIRE AN OBJECT THE TURN DOES NOT HAVE. `say` maps to
-      // `vmu.meetings.speak`, and the prompt tells a member they may keep one line of explanation in the receipt after
+      // ★ PHASE 12 / run 35 item 2: A REPLY FIELD CAN REQUIRE AN OBJECT THE TURN DOES NOT HAVE. `say` maps to the
+      // meetings face's `speak`, and the prompt tells a member they may keep one line of explanation in the receipt after
       // speaking through `vibe_v5_say` - so a member following the prompt's own example writes `{"say":"…"}` in a turn
       // that has NO meeting bound. The dispatch used to be attempted anyway and the KERNEL threw
       // `VMU_NO_SUCH_OBJECT "no such meeting: undefined"` from deep inside the meeting service; that throw then ended
@@ -2205,7 +2205,7 @@ export function createTurnOrchestrator({
  * When NO selection was given nothing is ignored: the default-roster route is not a caller asking for somebody.
  */
 // ★ PHASE 12 / live run 35 item ② (first half): DOES THIS REPLY FIELD HAVE THE OBJECT IT NEEDS? `say` is dispatched to
-// `vmu.meetings.speak`, and the prompt offers `{"say":"…"}` as its minimal receipt - so a member following the prompt in a
+// the meetings face's `speak`, and the prompt offers `{"say":"…"}` as its minimal receipt - so a member following the prompt in a
 // turn with NO meeting used to send the kernel into the meeting service with `meeting: undefined`, where it threw
 // `VMU_NO_SUCH_OBJECT "no such meeting: undefined"` AND THAT THROW ENDED THE HELD TURN. The decision is a pure function so
 // it can be asserted without a live host; `apply()` is its only caller and consults it before touching any face.

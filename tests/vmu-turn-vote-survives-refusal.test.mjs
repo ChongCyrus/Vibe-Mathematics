@@ -53,7 +53,12 @@ console.log('=== 2. ★ A REFUSED ROUND STILL RECORDS THE JUDGEMENT THE MEMBER E
   const handed = await spec(TOOL_NAMES.turn).run({ op: 'step', phase: 'founding' })
   ok(handed.ok === true && handed.awaiting === true,
     'the round hands the member prompt back (the caller-played route)', { awaiting: handed.awaiting })
-  const reply = JSON.stringify({ say: '占位命题已解决', progress: '投 true', vote_solved: true })
+  // ★★ PHASE 12 / run 35 item 2 changed WHICH field carries this refusal, and this line is where the suite had pinned the
+  // old carrier: a bare-string `say` no longer reaches the meeting service at all (it is skipped by name, so the turn
+  // survives), so it can no longer produce a refusal. A field that still MUST reach a meeting - `propose_verify`, mapped
+  // to the meetings face's `motion` - keeps producing exactly the refusal this suite is about: the round is refused for a
+  // reason that has nothing to do with the vote, and the vote is recorded anyway.
+  const reply = JSON.stringify({ propose_verify: { kind: 'verify-request', why: '占位命题已解决' }, vote_solved: true })
   seam.supply(reply)
   const refused = await spec(TOOL_NAMES.turn).run({ op: 'step', phase: 'founding', reply })
   // ★ PHASE 9 / round 7 (INTENTIONAL SEMANTIC CHANGE, not a relaxation): the turn now wraps the meeting error in a code that

@@ -2865,3 +2865,52 @@ HEAD `d0392b9e` + 本轮未提交改动（第二处调用点 + R31g 两条 + 覆
 ### §72.5 状态
 
 HEAD `89674611`；本轮只写账本（无代码改动）。下一步：一次安静的全量 vmu T1 收口，然后结束 `goal-bb297b1a`。
+
+## §73 一次 vmu 范围的 T1 抓到我自己的契约改动留下了三处过期判据
+
+第 42 次真机跑之后，我在已提交的 `14d08177` 上跑了一次安静的全量 T1（`GATE_SCOPE=vmu node tests/run-tests.mjs`）：
+`TOTAL 457  PASS 453  FAIL 4`。四条都不是新功能的问题，其中三条是**我自己的契约改动没有回头核对判据**。
+
+### §73.1 四条红光逐个定性（先单跑，不从套件名推断）
+
+| 套件 | 单跑结果 | 定性 | 出处 |
+| --- | --- | --- | --- |
+| `audit-declaration-criterion` | 89 passed / 0 failed | 并发抖动（T1 里 180.2s 撞预算）。不抬高预算，已有先例 | — |
+| `vmu-settings` | 红 | **我的注释点名了一个不存在的设置键** | `kernel/turn/index.js` §67 注释写 `vmu.meetings.speak`，schema 里没有这个键 |
+| `vmu-turn-reply-tool` | 红 | **判据钉住的是已被删除的派发** | ① `say` 是否真的到达 meetings 面 |
+| `vmu-turn-vote-survives-refusal` | 红 | 同上（换了载体就换不了拒因） | `say` 被当作「必然拒绝」的载体 |
+
+### §73.2 归因：不是新缺陷，是 `29481cbd` 改契约时没回头改判据
+
+用两条 worktree 做的二分（`git worktree add` 到 `D:\_tmp`，不触碰工作树）：
+
+- `8f64fad0`（上一次 T1 全绿的提交）：三个套件全绿（49/32/8）。
+- `29481cbd`（第 35 次真机跑的修复：`dispatchSkipReason` + `lostTurnState`）：三个套件全红。
+
+即**只有这一个提交**在两者之间。它的正面效果是真的（第 37 次真机跑证明确实不再丢回合），但它改变了 `say` 的派发语义，
+而另外两个套件仍在断言旧语义。这类「契约改了、判据没跟」正是全量 T1 唯一能看见的东西——单跑被改的那个套件是绿的。
+
+### §73.3 改法（判据跟着契约走，并且给新契约留一个正例）
+
+- `vmu-settings`：把注释里的 `vmu.meetings.speak` 改成「the meetings face 的 speak」——**注释点名一个不存在的键**本身
+  就是「错的具名比不具名更糟」，而且这道门禁扫的正是运行时代码里出现的键名。
+- `vmu-turn-reply-tool` ① / ②：断言改为「裸字符串 `say` **不派发**、按名跳过（`skippedDetail[].reason ===
+  'no-meeting-bound'`），而那句话**仍留在同一张回执的 `notes` 里**」——这正是第 35/37 次真机跑要的行为。
+- 新增 ①b 正例：带 `meeting` 引用的 `say` **仍然到达 meetings 面**，并且回读面拿到的就是那个对象。没有这一条，
+  「跳过」可以被一条死路满足（无消费者的机制）。
+- ③：`input` 同样映射到 meetings 面，所以正例里给它补上 `meeting`；`say` 继续按名跳过。
+- `vmu-turn-vote-survives-refusal`：载体从 `say` 换成 `propose_verify`（它**必须**落到 meetings 面），
+  这样「回合被拒、票仍记账」的原意保留，拒因仍是 `VMU_TURN_FIELD_NOT_APPLICABLE` 且消息里带着会议原因。
+
+### §73.4 教训
+
+1. **改一个回复字段的派发语义，必须 grep 全仓测试里对该字段的断言**，而不是只跑自己改过的那一个套件。
+   本次两个套件的名字里都带 `turn`，但断言的是**旧契约**。
+2. **全量 T1 的价值就在「判据」这一层**：它不测新功能，它测「我改了语义之后，还有谁在按老语义说话」。
+3. 二分用 worktree 最省事：`git worktree add /d/_tmp/wt-x <sha>` 后单跑那一个文件，两分钟就能把范围缩到一个提交。
+4. 并发下超时的门禁**先单跑再定性**：本次四条里有一条单跑 89/0，那是抖动，不是产品问题，也不该抬高预算。
+
+### §73.5 本批的验证读数
+
+`vmu-turn` 242/0 · `vmu-settings` 49/0 · `vmu-host` 199/0 · `vmu-v5r-tools` 354/0 · `vmu-turn-reply-tool` 38/0 ·
+`vmu-turn-vote-survives-refusal` 8/0 · `audit-declaration-criterion` 89/0（单跑）。

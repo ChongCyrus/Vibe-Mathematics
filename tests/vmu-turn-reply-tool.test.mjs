@@ -77,8 +77,15 @@ console.log('=== VMU TURN REPLY TOOL (' + FIELDS.length + ' field owners + ' + R
   const step2 = await gov.step({ members: [{ id: 'm1' }], phase: 'normal' })
   ok(step2.ok === true && step2.receipt && step2.receipt.completed === true && step2.receipt.source === 'tool',
     '① ★ step 2 completes the REPORTED turn instead of asking for a new prompt', step2.receipt)
-  ok(spoken.length === 1 && spoken[0] === 'tool says hello',
-    '① ★★ the `say` field REACHED the meetings face (read back at the consumer, not from the receipt)', spoken)
+  // ★ PHASE 12 / run 35 item 2 — CONTRACT CHANGE, and this suite had pinned the OLD dispatch. A BARE-STRING `say` carries
+  // no meeting reference, so dispatching it handed `undefined` to the meeting service, which threw "no such meeting:
+  // undefined"; that throw then CONSUMED the held turn (the member's next reply read "there is nothing to answer").
+  // The dispatcher now SKIPS such a field BY NAME and keeps the sentence on the receipt, so nothing is dropped silently
+  // and the turn survives. The face itself stays reachable - block ①b dispatches one and reads it back.
+  ok(spoken.length === 0 && Array.isArray(step2.receipt.skippedDetail) && step2.receipt.skippedDetail.some((s) => s.field === 'say' && s.reason === 'no-meeting-bound'),
+    '① ★★ a bare-string `say` is NOT dispatched (it has no meeting to attach to) - it is skipped BY NAME', { spoken, skipped: step2.receipt.skippedDetail })
+  ok(Array.isArray(step2.receipt.notes) && step2.receipt.notes.some((n) => n.text === 'tool says hello'),
+    '① ★★ and the sentence is NOT lost: the same receipt keeps it under its own field name', step2.receipt.notes)
   ok(step2.receipt.fields.includes('say') && step2.receipt.fields.includes('solved'),
     '① ★★ the completed receipt carries both fields (dispatched one + bookkeeping one)', step2.receipt.fields)
   ok(gov.structuredReply() === null,
@@ -86,6 +93,24 @@ console.log('=== VMU TURN REPLY TOOL (' + FIELDS.length + ' field owners + ' + R
   const st = gov.status()
   ok(st && st.solvedThisRound && st.solvedThisRound.m1 === true,
     '① the bookkeeping field landed in the kernel status too (solved is per-round state, read back as such)', st && st.solvedThisRound)
+}
+
+// ①b THE FACE IS STILL REACHABLE: a `say` that NAMES its meeting is dispatched exactly as before. Without this block the
+// skip in ① could be satisfied by a dead path (the mechanism-with-no-consumer class), so the positive case is asserted
+// against the consumer's own array, not against the receipt.
+{
+  const seam = deliverByReturning()
+  const { gov, spoken } = makeGov({ deliver: seam })
+  await gov.step({ members: [{ id: 'm1' }], phase: 'normal' })
+  const said = { meeting: 'm-1', by: 'm1', text: 'a real speech' }
+  const rec = await gov.supplyStructuredReply({ say: said })
+  ok(rec.ok === true && rec.accepted === true, '①b a meeting-carrying `say` is accepted', { code: rec.code })
+  const step2 = await gov.step({ members: [{ id: 'm1' }], phase: 'normal' })
+  ok(step2.ok === true && step2.receipt.completed === true, '①b and the round completes', step2.receipt && step2.receipt.completed)
+  ok(spoken.length === 1 && spoken[0] && spoken[0].meeting === 'm-1' && spoken[0].text === 'a real speech',
+    '①b ★★ it REACHED the meetings face with its own meeting reference (the skip is not a dead path)', spoken)
+  ok(Array.isArray(step2.receipt.skippedDetail) && step2.receipt.skippedDetail.length === 0,
+    '①b ★ nothing was skipped when the reference was present', step2.receipt.skippedDetail)
 }
 
 // ② JSON ONLY: the compatibility path, unchanged. Same seam, same turn, a fenced object in the text reply.
@@ -98,8 +123,9 @@ console.log('=== VMU TURN REPLY TOOL (' + FIELDS.length + ' field owners + ' + R
   const step2 = await gov.step({ members: [{ id: 'm1' }], phase: 'normal' })
   ok(step2.ok === true && step2.receipt.source === 'text',
     '② ★ the json path still runs, and says so (source:"text")', step2.receipt)
-  ok(step2.receipt.fields.includes('say') && spoken[0] === 'json says hi',
-    '② ★★ the json field still reaches the face (byte-compatible behaviour)', spoken)
+  ok(step2.receipt.fields.includes('say') && spoken.length === 0 &&
+    Array.isArray(step2.receipt.notes) && step2.receipt.notes.some((n) => n.text === 'json says hi'),
+    '② ★★ the json `say` travels the SAME path: not dispatched (no meeting), kept on the receipt', { spoken, notes: step2.receipt.notes })
   ok(step2.receipt.completed === undefined,
     '② the ordinary round is NOT reported as a report-completion (shape stays distinct)')
 }
@@ -113,7 +139,9 @@ console.log('=== VMU TURN REPLY TOOL (' + FIELDS.length + ' field owners + ' + R
     if (typeof gov.supplyStructuredReply === 'function') {
       await gov.supplyStructuredReply({ say: 'tool half', solved: true }, { forMember: turn.member })
     }
-    return { reply: fence({ input: { kind: 'note' } }), childId: 'child-1', stopReason: 'end' }
+    // ★ the payload must NAME its meeting: a reply carries no meeting reference, so a meetings-face field without one is
+    // skipped by name (run 35 item 2) - and `input` maps to that same face, so the positive case has to carry it too.
+    return { reply: fence({ input: { meeting: 'm-1', kind: 'note' } }), childId: 'child-1', stopReason: 'end' }
   }
   gov = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), faces, deliver })
   const r = await gov.run({ member: 'm1', phase: 'normal' })
@@ -125,8 +153,12 @@ console.log('=== VMU TURN REPLY TOOL (' + FIELDS.length + ' field owners + ' + R
     '③ the receipt names which fields came ONLY from the text (input)', r.textOnlyFields)
   // ★ ORDER IS THE MERGED REPLY'S KEY ORDER, NOT THE CHANNEL ORDER (the merge lays the text keys down first and the
   // tool report overwrites in place), so this asserts WHAT arrived at the face, not in which of the two orders.
-  ok(spoken.length === 2 && spoken.some((s) => s === 'tool half') && spoken.some((s) => JSON.stringify(s) === JSON.stringify({ kind: 'note' })),
-    '③ ★★ both effects really happened (the tool say reached the face, and the text input too)', spoken)
+  // ★ Only the OBJECT field (`input`, which carries its own shape) reaches a face; the bare-string `say` is skipped by
+  // name and kept on the receipt - the same contract as ①/②, read back at the consumer and on the ledger of skips.
+  ok(spoken.length === 1 && spoken.some((s) => s && s.meeting === 'm-1' && s.kind === 'note'),
+    '③ ★★ the text-only `input` (which names its meeting) really reached its face', spoken)
+  ok(Array.isArray(r.notes) && r.notes.some((n) => n.text === 'tool half'),
+    '③ ★★ the skipped `say` line is still readable on the merged receipt', r.notes)
   // and the merge rule itself, at its own boundary: equal values collapse, differing values refuse.
   const same = mergeReplyChannels({ say: 'a' }, { say: 'a' })
   ok(same.ok === true && same.conflicts.length === 0 && same.fields.join(',') === 'say',
