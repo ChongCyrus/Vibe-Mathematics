@@ -2815,3 +2815,53 @@ HEAD `7ae3d4f9` + 本轮未提交改动（`membersInferred` + R31 六条 + 覆�
 ### §71.5 状态
 
 HEAD `d0392b9e` + 本轮未提交改动（第二处调用点 + R31g 两条 + 覆盖率债重生成）。`regen-all --check` 16/16、`audit-declaration-criterion` 89/0、`vmu-turn` 242/0。下一步：第 42 次真机跑，验 ㉜.1 两侧判定 + 回归带。
+
+## §72 第 42 次真机跑：两侧判定全过，所办自判「无实质残余：是」
+
+### §72.1 读数
+
+`full-1025-023552.jsonl`（build `89674611`）`cast=true`、0 RED、8 个回合回执。所办报告（6 520 字符）逐条抄了回执：
+
+**㉝.1 第一次（结算时不传 `members`）**
+
+```json
+"requestedMembers": [],"requestedMembersSource": "roster-default","selectionApplied": true,
+"selectionIgnored": null,"selectionNote": null,
+"receipt": {"member":"member-2","skipped":1,"turn":"t-1","completed":true,
+  "skippedDetail":[{"field":"say","face":"vmu.meetings","op":"speak","reason":"no-meeting-bound", …}],
+  "skippedDetailTruncated": false,
+  "notes":[{"field":"say","reason":"no-meeting-bound","text":"核验句-戌","kept":true}]}
+```
+
+**㉝.1 第二次（显式 `members:["member-1"]` 结算一个属于 member-2 的回合）**
+
+```json
+"requestedMembers": ["member-1"],"requestedMembersSource": "explicit","selectionApplied": false,
+"selectionIgnored": {"requested": ["member-1"],"pending": "t-2","pendingUnknown": null,"pendingMember": "member-2", …}
+```
+
+`requested` 是**调用方传入的那一个**，不再是默认名册——§70/§71 的修复在真机成立，且两侧可判。
+
+### §72.2 回归带（六条）全部拿到读数
+
+`proceed {member:…}` 接受（`by:"member-1"`、`whichRule` 在）；`sweep.recentTransitions` 带 `passAt`；`pending.turn`/`memberPrompt.turnId`/`receipt.turn` 全为真实 id（`t-1`…`t-5`）；`tools:"none"` 的 `toolsOverride{mode,seam,note}` 齐备；`cast`/`votesCast`/`castMeaning` 齐备；`fire` 后 `roster.live:2,total:3,departed:1` 且 `closureVote.eligible` 只剩在册者。
+
+### §72.3 两条读数风险（非机制缺陷，如实记）
+
+1. **同一次 beat 内 `passAt` 早于 `sweep.at` 而 `swept:0`**：`beat` 回执 `{"at":…102875,"swept":0,"transitions":[]}`，随后 `status` 的 `recentTransitions[0].passAt = …102827`。`recentTransitionsNote` 已说明「每行自带 `passAt`、它不是 `at`」，所以两条读数是**可并存的**：`.827` 那一次转移是**触碰路径**（`proceed`）记录的，`.875` 的 pass 没有自己结算任何东西。风险在于读者仍可能把「`swept:0`」读成「这一拍什么都没发生」。**记为读数风险**；若要进一步收口，可在 `sweep` 里加一个 `touchedSinceLastPass` 计数（下一轮候选，本轮不做）。
+2. **一次探针撞上上一轮留下的活会议**：`vibe_vmu_meeting {action:"open", id:"m33", …}` → `VMU_CONFLICT`（`a live meeting already uses id m33`）。这是**测试台卫生问题**，不是产品缺陷：SLV 工作区里的 `state.json` 在两次跑之间没有被清掉。下一步在 runner 里加「跑前清 `vmu/state.json`」（属 harness，不入产品）。
+
+### §72.4 结论
+
+所办自己的最终裁决：**「本轮无实质残余：是」**，并自陈「仅就 ㉝.1 / ㉝.2 六项机制判据而言；上述两条为读数风险，非机制缺陷」。
+
+至此本阶段的完成条件达成：
+
+1. run 12 报告里的 a–j 十条**逐条定性**（已修 / 已判非缺陷 / 已登记），每条配门禁（§47–§72 的 run-XX-findings 门禁套件）；
+2. 之后每一轮真机跑新发现的项都按同一流程处理（R17–R31，共 15 组断言）；
+3. 最后一轮真机跑由**所办自己**判「无实质残余」——这正是原定完成条件；
+4. 过程中被抓出的「假绿」有五次被写进账本（§68 三条回执只修一条、§71 两个调用点只改一个等），并各自加了结构性门禁。
+
+### §72.5 状态
+
+HEAD `89674611`；本轮只写账本（无代码改动）。下一步：一次安静的全量 vmu T1 收口，然后结束 `goal-bb297b1a`。
