@@ -77,9 +77,18 @@ export function makeReportSpec({ param, refused, TOOL_NAMES, kernel }) {
             // three facts the acceptance check must transcribe (this channel never drives the loop; no transport is
             // injected) existed on status()/trace() but NOT on the receipt of the call that failed. Measured: the
             // kernel-side refusal carries them (kernel/report.js) and they were lost here.
+            // ★ LIVE RUN 21: the list below used to be HAND-WRITTEN and it dropped `delivered` — so run 21 read the
+            // same refusal and reported the same missing key I had just added in kernel/report.js. Two layers, one
+            // truth: the kernel said `delivered:false`, this face's whitelist silently dropped it. A hand list cannot
+            // be kept honest across layers, so every own field the kernel put on the refusal is carried — except the
+            // four the host already turns into the receipt envelope.
+            const ENVELOPE = ['ok', 'code', 'message', 'hint']
             const extra = {}
-            for (const k of ['drives', 'neverDrives', 'transportInjected', 'report', 'id']) {
-              if (e && e[k] !== undefined) extra[k] = e[k]
+            for (const k of Object.keys(e || {})) {
+              if (ENVELOPE.includes(k)) continue
+              const v = e[k]
+              if (v === undefined || typeof v === 'function') continue
+              extra[k] = v
             }
             return Object.assign(refused((e && e.code) || 'VMU_ENGINE_UNAVAILABLE', String((e && e.message) || e), (e && e.hint)), extra)
           }

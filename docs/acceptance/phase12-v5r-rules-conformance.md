@@ -2063,3 +2063,35 @@ brief ⑤ 要求抄 `delivered / drives / code / message`，而 `VMU_REPORT_NO_T
 ### §52.5 教训
 **「改提示/改 hint 让用户绕过」和「让声明与行为一致」是两件不同的事；代理的验收报告能分辨它们。** §51 我以为自己修好了同一件事，其实只是让它更容易被绕开；这一轮它当面指出「按声明必错」——这正是本 goal 的完成判据要的那种反馈。
 
+
+
+## §53 第 21 次真机跑：四项里三项通过，第四项证明我又只修了一层
+
+第 21 次跑（短 brief，100 秒，`cast=true`，0 RED）验 ⑬ 五项：**⑬.1 全中（4/4）**、**⑬.3 通过**，**⑬.2 不通过** —— 而它不通过的方式，和第 20 次报的是**同一个**问题。
+
+### §53.1 ⑬.1 的读数（声明类型解析，四条全中）
+| # | 调用 | 实测 |
+|---|---|---|
+| 1 | `set { key:"vmu.limits.maxLiveMembers", value:"6" }` | `"value":6`（数字）· hot H0 |
+| 2 | `set { key:"vmu.data.requireParent", value:"true" }` | `"value":true`（布尔）· hot H1 |
+| 3 | `set { key:"vmu.limits.maxLiveMembers", value:"two" }` | 拒：`is declared natural but the value is the text "two"` + hint `JSON NUMBER` |
+| 4 | `set { key:"vmu.prompts.agentId", value:"8000" }` | `"value":"8000"`（文本键未被解析） |
+
+⑬.2 的反面：`vibe_vmu_report { action:"emit" }` 的拒收体仍是
+`{ok:false, code:"VMU_REPORT_NO_TRANSPORT", message, hint, drives:false, neverDrives:true, transportInjected:false, report, id}`
+—— **没有 `delivered`**。
+
+### §53.2 根因：两层，我只修了下面那层
+§52 我在 `vibe-math-vmu/kernel/report.js` 给拒收记录和抛出的 error 都加了 `delivered:false`。但代理读的是**工具面**回执，而那个面在 `vibe-math-vmu/tools/report.js` 里用一张**手写的键白名单**重建拒收体：
+`for (const k of ['drives','neverDrives','transportInjected','report','id'])` —— `delivered` 不在表里，于是被上层静默丢掉。这与 R26「未声明参数被静默丢掉」是同一类缺陷，只是发生在**回执字段**上而不是**入参**上。
+
+修法：把那句白名单换成「携带 error 上所有自有字段，只排除宿主会重新封装的 `ok/code/message/hint`」。手写清单无法跨层保持诚实，所以直接取消清单。
+
+### §53.3 断言（两层都钉住，防止再次只修一层）
+- `tests/vmu-assistant-report.test.mjs` 第六节新增 2 条：**抛出的** no-transport 拒绝必须带 `delivered:false`，且 `drives/neverDrives/transportInjected` 同在一张回执上；
+- 同一文件新增 3 条**面层**断言（用一个自己会抛 no-transport 的假 kernel 走 `makeReportSpec`）：面返回的是回执而不是抛出、回执带全四个事实、`report`/`id` 也活着。
+- 套件 `vmu-assistant-report` **98 passed / 0 failed**（原 93）。
+
+### §53.4 教训
+**「修在正确的层」这句话，在有一个面代理另一个面时是不够的：必须确认调用方真正读的那张脸也变了。** 第 20 次我修了内核，第 21 次同一个键仍然缺席 —— 因为工具面用一张手写清单把内核的事实又丢了回去。和 R26 同族。判据要落在**调用方读的那一层**，不是「我改的那一层」。
+

@@ -240,6 +240,16 @@ console.log('=== 6. EVERY REPORT AND EVERY CHANGE LEAVES A TRACE ===')
     'without a transport the report is RECORDED and refused by name (nothing is pretended)', t2.fired[0])
   ok(noTransport.trace().total === 1, 'and the trace still has the row')
   ok(throwsCode(() => noTransport.emit({ name: 'x' }), CODE.noTransport), 'an explicit emit without a transport refuses by name')
+  // ★ LIVE RUN 20/21: the receipt of the FAILED emit is a read face, and the key a reader is told to quote is
+  // `delivered`. It was absent from the thrown refusal (the kernel record had `delivered:false` on the RECORD but not
+  // on the error), and then absent AGAIN because the tool face carried a hand-written whitelist of keys. Both layers
+  // are asserted here, so the pair cannot drift apart again without this going red.
+  let thrown = null
+  try { noTransport.emit({ name: 'x' }) } catch (e) { thrown = e }
+  ok(thrown && thrown.delivered === false, '★ the THROWN no-transport refusal carries delivered:false (not absent)', thrown && thrown.delivered)
+  ok(thrown && thrown.drives === false && thrown.neverDrives === true && thrown.transportInjected === false,
+    '★ and the other three facts ride with it, so all four quoted keys exist on one receipt',
+    thrown && { drives: thrown.drives, neverDrives: thrown.neverDrives, transportInjected: thrown.transportInjected })
 }
 
 console.log('=== 7. THE PARAMETER DOMAIN: DECLARED KEYS, DECLARED OWNERS, REPORTED HOT CLASS ===')
@@ -309,6 +319,28 @@ console.log('=== 8. THE TOOL FACE: ONE SANCTIONED WRITER, ONE GUARD, NO HAND-WRI
   const noFace = makeReportSpec({ param: (t, d, e = {}) => ({ t, d, ...e }), refused: (code, message, hint) => ({ ok: false, code, message, hint: hint || null }), TOOL_NAMES: { report: 'vibe_vmu_report' }, kernel: {} })
   const missing = await noFace.run({ action: 'status' })
   ok(missing.ok === false && missing.code === 'VMU_ENGINE_UNAVAILABLE', 'an assembly with no report face refuses by name instead of no-op', missing)
+  // ★ LIVE RUN 21: the TOOL FACE is the layer the agent actually reads, and it used to rebuild the refusal from a
+  // HAND-WRITTEN key list — so the "delivered" field I had just added to the kernel error was dropped one layer above
+  // it and run 21 reported the same missing key again. The face now carries every own field of the refusal, so this
+  // asserts a receipt a caller could quote: code + the four facts + the report name and id.
+  const faceKernel = { report: { emit() {
+    const e = new Error('no delivery transport was injected: nothing was sent (and nothing is pretended)')
+    e.code = CODE.noTransport
+    e.hint = 'pass { deliver: (report) => ... } when creating the module'
+    e.delivered = false
+    e.drives = false
+    e.neverDrives = true
+    e.transportInjected = false
+    e.report = 'x'
+    e.id = 'rep-1'
+    throw e
+  }, status: () => ({ ok: true }), declarations: () => ({ declared: [] }) } }
+  const faceSpec = makeReportSpec({ param: (t, d, e = {}) => ({ t, d, ...e }), refused: (code, message, hint) => ({ ok: false, code, message, hint: hint || null }), TOOL_NAMES: { report: 'vibe_vmu_report' }, kernel: faceKernel })
+  const faceRefusal = await faceSpec.run({ action: 'emit', name: 'x' })
+  ok(faceRefusal.ok === false && faceRefusal.code === CODE.noTransport, '★ the tool face returns the refusal as a receipt, not a throw', faceRefusal)
+  ok(faceRefusal.delivered === false && faceRefusal.drives === false && faceRefusal.neverDrives === true && faceRefusal.transportInjected === false,
+    '★ and the receipt the CALLER quotes carries all four facts (a hand-written key list dropped delivered once)', faceRefusal)
+  ok(faceRefusal.report === 'x' && faceRefusal.id === 'rep-1', 'and the report name and id survive the face too', { report: faceRefusal.report, id: faceRefusal.id })
 }
 
 console.log('=== 9. THE PACK\'S OWN POLICY IS VALID (it cannot ship a broken declaration) ===')
