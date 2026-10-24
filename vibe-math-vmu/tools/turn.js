@@ -28,7 +28,10 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       const p = out && out.memberPrompt
       const text = p && typeof p.text === 'string' ? p.text : null
       if (text) {
-        const id = (out.turn && out.turn.id) || 'anon-' + (promptCache.size + 1)
+        // ★ LIVE RUN 24 (c-1): the awaiting receipt names the turn as `turnId`, not as `turn:{id}`, so keying on
+        // `out.turn.id` alone produced synthetic keys (`anon-1`, `anon-2`) — and a reader holding two paginated prompts
+        // could not tell which page belonged to which turn. Prefer the receipt's own id, in every shape it arrives.
+        const id = (out.turn && out.turn.id) || (typeof out.turnId === 'string' && out.turnId !== '' ? out.turnId : null) || 'anon-' + (promptCache.size + 1)
         promptCache.delete(id)
         promptCache.set(id, text)
         while (promptCache.size > PROMPT_CACHE_LIMIT) promptCache.delete(promptCache.keys().next().value)
@@ -238,7 +241,17 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         for (const id of ids) kernel.setMemberToolOverride({ member: id, all: isNone, allow })
         if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(ids[0])
         try {
-          return rememberPrompt(await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step }))
+          // ★ LIVE RUN 24 (c-2): the override changed the pull resolver's face, but the receipt said NOTHING about it, so
+          // a reader could not tell "none took effect" from "none was ignored" — and the prompt's own text no longer
+          // claims this-turn availability, which made the silence the only remaining signal. The receipt now reports what
+          // the face DID (it called the seam for these members) and names the seam, so the claim is exactly as strong as
+          // the evidence and no stronger.
+          const stepped = await kernel.turn.step({ members, phase: args.phase, why: args.why, nextStep: args.next_step })
+          const withOverride = stepped && typeof stepped === 'object'
+            ? Object.assign({}, stepped, { toolsOverride: { mode: isNone ? 'none' : 'allow', allow: isNone ? [] : (allow || []), members: ids,
+              seam: 'setMemberToolOverride', note: 'reported by the turn face: the seam was set for these members before the round and cleared after it; the actual wire is narrowed by the pull resolver on its next request, which this face cannot read' } })
+            : stepped
+          return rememberPrompt(withOverride)
         } finally {
           if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null)
           for (const id of ids) { try { kernel.clearMemberToolOverride(id) } catch { /* clear is best effort */ } }

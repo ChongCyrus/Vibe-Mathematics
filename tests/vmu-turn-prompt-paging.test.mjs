@@ -90,6 +90,40 @@ for (let i = 0; i < 9; i += 1) {
 const stillThere = await kernelTurn.run({ op: 'prompt', turn: 't-7' })
 ok(stillThere.ok === true, 'repeated steps with the same turn id keep exactly one entry readable', stillThere.code)
 
+console.log('=== 5. THE PAGE NAMES THE REAL TURN, AND A TOOLS OVERRIDE IS REPORTED (run 24 c-1/c-2) ===')
+// c-1: the awaiting receipt calls the turn `turnId`, not `turn:{id}`. Keying on the nested shape alone produced synthetic
+// keys (`anon-1`), so a reader holding two paginated prompts could not tell which page belonged to which turn.
+const seenOverrides = []
+const seenCleared = []
+const tool3 = makeTurnSpec({
+  param,
+  refused,
+  TOOL_NAMES: { turn: 'vibe_vmu_turn' },
+  kernel: {
+    turn: {
+      status: () => ({ ok: true }),
+      step: async () => ({ ok: true, awaiting: true, turnId: 't-9', memberPrompt: { text: 'B'.repeat(12000) }, deliveryPath: 'caller' }),
+    },
+    setMemberToolOverride: (a) => seenOverrides.push(a),
+    clearMemberToolOverride: (id) => seenCleared.push(id),
+    setActiveTurnMember: () => {},
+    validateToolFaceNames: () => {},
+  },
+})
+const step3 = await tool3.run({ op: 'step', members: ['chair-1'], tools: 'none' })
+ok(step3.toolsOverride && step3.toolsOverride.mode === 'none', '★ a tools:"none" round REPORTS the override instead of staying silent', step3.toolsOverride && step3.toolsOverride.mode)
+ok(step3.toolsOverride && step3.toolsOverride.seam === 'setMemberToolOverride' && typeof step3.toolsOverride.note === 'string' && step3.toolsOverride.note.includes('cannot read'),
+  '★ and it names the seam plus its own blind spot (the wire is narrowed by the resolver, which the face cannot read)',
+  { seam: step3.toolsOverride && step3.toolsOverride.seam })
+ok(seenOverrides.length === 1 && seenOverrides[0].all === true && seenCleared.length === 1 && seenCleared[0] === 'chair-1',
+  'the seam was set once and cleared once (a leaked override would silently narrow the NEXT round)', { set: seenOverrides.length, cleared: seenCleared.length })
+const page3 = await tool3.run({ op: 'prompt' })
+ok(page3.ok === true && page3.turn === 't-9', '★★ the page receipt carries the REAL turn id (t-9), not a synthetic anon-N key', page3.turn)
+const byId3 = await tool3.run({ op: 'prompt', turn: 't-9' })
+ok(byId3.ok === true, 'and that id can be used to ask for it explicitly', byId3.code)
+const anon3 = await tool3.run({ op: 'prompt', turn: 'anon-1' })
+ok(anon3.ok === false && anon3.code === 'VMU_NO_SUCH_OBJECT', 'the old synthetic key no longer resolves (so the fix is observable, not cosmetic)', anon3.code)
+
 console.log('')
 console.log(failed === 0
   ? '=== VMU TURN PROMPT PAGING: ' + passed + ' passed, 0 failed ==='
