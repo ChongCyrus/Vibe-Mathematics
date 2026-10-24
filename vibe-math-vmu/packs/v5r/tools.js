@@ -1412,6 +1412,18 @@ function toolMeeting(args = {}, { kernel } = {}) {
   // `summary()` and on `meetingView()`. For a type that requires it, an empty value is refused by name instead of
   // convening a debate about nothing.
   const subject = has(args.subject) ? args.subject : (has(args.target) ? args.target : null)
+  // ★★ LIVE RUN 30, finding b-2 (the institute's own words): `target` was a live alias of `subject` and NOTHING said so —
+  // the agent passed `target:"p-prim-1"` meaning "name the meeting p-prim-1" and got a NEW meeting m114 whose subject was
+  // that string. On the KERNEL face `target` means the object of a vote; here it means the object of a DEBATE. One word,
+  // two meanings, no declaration. Two things changed: the alias is now stated in the tool description, and a subject on a
+  // type that has NO object is refused by name instead of being silently filed as a subject (that is what made the
+  // mistake invisible — an ordinary meeting accepted an object it can never use).
+  const subjectSupplied = has(args.subject) || has(args.target)
+  if (subjectSupplied && !typeInfo.subjectRequired) {
+    throw refuse('VMU_INVALID_ARGUMENT',
+      'a ' + type + ' meeting takes no object: subject/target only mean something for a type that debates one',
+      'drop subject/target (this meeting is about its agenda) — or convene with type:"debate"; ★ note that `target` on this face is an ALIAS of `subject`, while on vibe_vmu_meeting `target` is a VOTE\'s object')
+  }
   if (typeInfo.subjectRequired && (subject === null || String(subject).trim() === '')) {
     throw refuse('VMU_INVALID_ARGUMENT', 'a ' + type + ' meeting needs a subject: the object of the debate',
       'pass subject:"<card id | file reference | the proposition in one line>" — the rule gives a debate meeting an extra field for its object')
@@ -1465,7 +1477,13 @@ function toolMeeting(args = {}, { kernel } = {}) {
     title = trimmed === '' ? null : trimmed
   }
   const at = has(args.at) ? args.at : null
-  const opened = kernel.meetings.open({ type, chair: member, actor: member, roster, materials: str(args.agenda), secretary,
+  // ★★ LIVE RUN 30, finding b-1: WITHOUT an id parameter the "one visible name, one meeting" rule was only enforceable
+  // in ONE direction. The service mints `mN`, so a caller of THIS face could never name a meeting — the reverse collision
+  // (a service meeting squatting on a primitive id) was inexpressible and therefore unverifiable, and the primitive-side
+  // hint ("choose another id") was advice this face could not follow. `id` now optionally names the meeting; the kernel
+  // service refuses an id the other registry holds, BY NAME and naming that table.
+  const wantedId = (has(args.id) && String(args.id).trim() !== '') ? str(args.id).trim() : null
+  const opened = kernel.meetings.open({ ...(wantedId !== null ? { id: wantedId } : {}), type, chair: member, actor: member, roster, materials: str(args.agenda), secretary,
     subject: subject === null || subject === undefined ? null : subject, at, title })
   // ★ 可读回的事实：预约不是"一个被收下的参数"，而是会议对象的状态。`state`/`scheduledFor` 由内核回执给出，
   // 这一面只转述；`scheduleNote` 只在真的进入 scheduled 时出现（不要给立即召开的会议编一句预约说明）。
@@ -2336,8 +2354,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_meeting',
-    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary) and a debate REQUIRES subject (its object: a card id, a file reference, or one line). ★ `title` is an OPTIONAL separate name (omit it and the agenda stays as the subject; non-string is refused by name). ★ `at` SCHEDULES it: epoch milliseconds or an ISO-8601 string (e.g. "2026-10-24T10:00:00+08:00"); a future time puts the meeting in the `scheduled` state — status/summary/meetingView read it right away, but every action before the start time is refused BY NAME, and when the start time arrives with too few present it waits (a latecomer attending then starts it). The receipt reads the real state back (`state`, `scheduledFor`). ★ A DEBATE\'S SUBJECT MUST CARRY A FINISHED PROOF: a card id must have `proofRef`+`proofState:"complete"` (or a verified row / a passed Lean run), a file reference needs `subject_evidence.file = {readable:true, bytes:N, name}` (the gate only proves "exists and is non-empty" — content completeness is judged by the members in the debate), and a one-line proposition is legal but the receipt records `subjectGate.provenance:"none"` because nothing can be checked. A type that the institution gave a recommended procedure returns it in `procedure` — ★ it is a RECOMMENDATION, never a gate: skipping or reordering it is allowed and unchecked. Steps the framework has NOT implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES - status/summary/close/flow live on vibe_vmu_meeting { action, id }. The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name.',
-    parameters: { agenda: { type: 'string', required: true }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true }, at: { type: 'string' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' } },
+    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary) and a debate REQUIRES subject (its object: a card id, a file reference, or one line). ★ `title` is an OPTIONAL separate name (omit it and the agenda stays as the subject; non-string is refused by name). ★ `at` SCHEDULES it: epoch milliseconds or an ISO-8601 string (e.g. "2026-10-24T10:00:00+08:00"); a future time puts the meeting in the `scheduled` state — status/summary/meetingView read it right away, but every action before the start time is refused BY NAME, and when the start time arrives with too few present it waits (a latecomer attending then starts it). The receipt reads the real state back (`state`, `scheduledFor`). ★ A DEBATE\'S SUBJECT MUST CARRY A FINISHED PROOF: a card id must have `proofRef`+`proofState:"complete"` (or a verified row / a passed Lean run), a file reference needs `subject_evidence.file = {readable:true, bytes:N, name}` (the gate only proves "exists and is non-empty" — content completeness is judged by the members in the debate), and a one-line proposition is legal but the receipt records `subjectGate.provenance:"none"` because nothing can be checked. A type that the institution gave a recommended procedure returns it in `procedure` — ★ it is a RECOMMENDATION, never a gate: skipping or reordering it is allowed and unchecked. Steps the framework has NOT implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES - status/summary/close/flow live on vibe_vmu_meeting { action, id }. The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name. ★ `id` optionally NAMES the meeting (omit it and the service mints one); an id already held by the OTHER (primitive) meeting registry is refused by name, naming that table. ★ `target` is an ALIAS of `subject` on THIS face (one value, one meaning) — but on `vibe_vmu_meeting` `target` is a VOTE\'s object, so do not carry the habit between faces; a subject/target on a type that debates nothing is refused by name.',
+    parameters: { agenda: { type: 'string', required: true }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true }, at: { type: 'string' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' } },
     handler: toolMeeting,
     // ★ LIVE RUN 29: the funnel refuses undeclared keys generically; this face can say WHY it is the wrong face.
     validate: validateMeetingArgs,

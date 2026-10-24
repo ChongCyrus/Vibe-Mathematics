@@ -146,6 +146,87 @@ console.log('=== 5. A DECLARED `validate` REACHES THE FUNNEL (it was dropped by 
     'it does not pretend the agenda is missing — the misleading part of the original refusal', refused && refused.message)
 }
 
+// ── ⑥ THE REVERSE DIRECTION AT THE PACK FACE (live run 30, finding b-1) ────────────────────────────────────────────
+// Run 30 proved the rule was only enforceable in ONE direction: `vibe_v5_meeting` had no `id` parameter, so a caller of
+// the face the AGENT actually uses could never name a meeting — the reverse collision was inexpressible, hence
+// unverifiable, and the primitive-side hint ("choose another id") was advice that face could not follow. `id` now exists.
+console.log('=== 6. THE PACK FACE CAN NAME A MEETING, AND A TAKEN NAME IS REFUSED BY NAME ===')
+{
+  const state = { specs: [] }
+  const ctx = {
+    effect(fn) { return fn() },
+    on() { return () => {} },
+    tools: { register: async (spec) => { state.specs.push(spec); return () => {} } },
+  }
+  const handle = ENTRY.apply(ctx, { root: join(root, 'k3'), clock: () => NOW, packs: ['v5r'] })
+  await handle.ready()
+  const kernel = handle.kernel || (handle.state && handle.state.kernel) || null
+  const specs = []
+  HPT.appendPackToolSpecs(specs, kernel && kernel.packTools ? kernel.packTools() : [], [], kernel)
+  // the funnel THROWS a refusal (Error with code/hint) and RETURNS a JSON string on success — both are read here, and a
+  // thrown refusal is never treated as "no answer" (that is how a refusal can look like a missing feature).
+  const call = async (name, args) => {
+    const spec = specs.find((s) => s.name === name)
+    try {
+      const raw = await spec.run(args, {})
+      return typeof raw === 'string' ? JSON.parse(raw) : raw
+    } catch (e) {
+      return { ok: false, code: (e && e.code) || 'THREW', message: String((e && e.message) || e), hint: (e && e.hint) || null }
+    }
+  }
+  await kernel.members.hire({ id: 'm-acad', slot: 'chair' })
+  await kernel.members.hire({ id: 'm-res', slot: 'member' })
+  const prim = kernel.meeting({ id: 'p-taken-1', agenda: 'primitive meeting' })
+  ok(prim && prim.id === 'p-taken-1', 'a primitive meeting holds an id the pack face will try to reuse', prim && prim.id)
+  const refused = await call('vibe_v5_meeting', { member: 'm-acad', agenda: 'x', id: 'p-taken-1' })
+  ok(refused && refused.ok === false && refused.code === 'VMU_CONFLICT',
+    '★ the PACK face refuses an id the primitive registry holds (the reverse direction is now expressible)', refused && refused.code)
+  ok(refused && /PRIMITIVE meeting registry/.test(String(refused.hint)),
+    '★ and it names WHICH table holds it', refused && refused.hint)
+}
+
+// ── ⑦ `target` IS DECLARED AS AN ALIAS, AND AN OBJECT ON A TYPE THAT DEBATES NOTHING IS REFUSED ─────────────────────
+// Run 30, finding b-2: the agent passed `target:"p-prim-1"` meaning "name the meeting that" and got a NEW meeting whose
+// SUBJECT was that string. Two defects in one: the alias was undeclared, and an ordinary meeting silently accepted an
+// object it can never use (which is what made the mistake invisible).
+console.log('=== 7. THE `target` ALIAS IS DECLARED, AND A USELESS OBJECT IS REFUSED ===')
+{
+  const state = { specs: [] }
+  const ctx = {
+    effect(fn) { return fn() },
+    on() { return () => {} },
+    tools: { register: async (spec) => { state.specs.push(spec); return () => {} } },
+  }
+  const handle = ENTRY.apply(ctx, { root: join(root, 'k4'), clock: () => NOW, packs: ['v5r'] })
+  await handle.ready()
+  const kernel = handle.kernel || (handle.state && handle.state.kernel) || null
+  const declared = kernel && kernel.packTools ? kernel.packTools() : []
+  const meeting = declared.find((t) => t.name === 'vibe_v5_meeting')
+  ok(meeting && /ALIAS of `subject`/.test(String(meeting.description)),
+    '★ the tool description STATES that `target` is an alias of `subject` (it was undeclared before)', meeting && String(meeting.description).slice(-260))
+  ok(meeting && /do not carry the habit between faces/.test(String(meeting.description)),
+    '★ and warns that the kernel face uses `target` for a VOTE\'s object', meeting && String(meeting.description).slice(-260))
+
+  const specs = []
+  HPT.appendPackToolSpecs(specs, declared, [], kernel)
+  const call = async (name, args) => {
+    const spec = specs.find((s) => s.name === name)
+    try {
+      const raw = await spec.run(args, {})
+      return typeof raw === 'string' ? JSON.parse(raw) : raw
+    } catch (e) {
+      return { ok: false, code: (e && e.code) || 'THREW', message: String((e && e.message) || e), hint: (e && e.hint) || null }
+    }
+  }
+  await kernel.members.hire({ id: 'm-acad', slot: 'chair' })
+  await kernel.members.hire({ id: 'm-res', slot: 'member' })
+  const misuse = await call('vibe_v5_meeting', { member: 'm-acad', agenda: 'x', target: 'p-prim-1' })
+  ok(misuse && misuse.ok === false && misuse.code === 'VMU_INVALID_ARGUMENT',
+    '★ an object on a type that debates nothing is REFUSED (was silently filed as subject)', misuse && misuse.code)
+  ok(misuse && /takes no object/.test(String(misuse.message)) && /ALIAS of `subject`/.test(String(misuse.hint)),
+    'the refusal names the cause AND quotes the alias rule so the next reader cannot repeat it', misuse && misuse.message)
+}
+
 console.log('')
 console.log('=== VMU MEETING NAME SPACE: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) { for (const f of failures) console.error(' - ' + f); process.exit(1) }

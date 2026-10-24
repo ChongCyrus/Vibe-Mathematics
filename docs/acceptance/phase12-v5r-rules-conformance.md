@@ -2353,3 +2353,67 @@ node -e "… PACK.tools.find(t=>t.name==='vibe_v5_meeting').validate"  → funct
   `check-docs` `DOC LINT: PASS`。
 - ★ 仍然缺的：**真机证据**。§60.1 那次跑无效，所以「一个名字一个会议」与「pack 的措辞先拒」都只有单元断言，
   没有一次干净的真机跑确认。下一轮必须以**单会议、单会话**的短跑复验这两条，再继续收尾。
+
+## §61 第 30 次真机跑：㉒.2 通过，㉒.1 只通过一半 —— 规则只在单向可执行
+
+### §61.1 这次跑的数据
+
+transcript `_oneoff/vm-slv/full-1024-220035.jsonl`（3 730 行），build `896100b3`，`DRIVE exit=0`，
+`cast:true`（2 张结题票），`SUMMARY: 1 session(s), 0 with RED checks`。这一轮是**短跑**：单会议、单会话，
+正是为了不再重演第 29 次那种「同时开两个会议、各起并行会话」的结构性风险（那次服务器被系统回收，什么也没验成）。
+
+### §61.2 通过的（真回执原文）
+
+- **㉒.2 pack 走错面** —— `vibe_v5_meeting { action:"status", id:"m113" }` 回：
+  `VMU_INVALID_ARGUMENT`、message 含 `only CONVENES`、hint 指向 `vibe_vmu_meeting { action:"status" … }`、
+  **不含** `needs an agenda`。计划中要验的三项全中。
+- **㉒.3 收尾** —— 辩论 `m115`（`subjectGate.provenance:"declared"`、`proofBasis:"declaration-only"`）、
+  票板 `b-1`、两人各 `verdict:1`、主席 `vibe_v5_verdict_final` 回 `mode:"unanimous", exact:1, n:2`，
+  结题票 `{"window":"session","cast":true,"votesCast":2,"for":["member-1","member-2"],"missing":[]}`。
+- **㉒.1(b) 顺向撞名** —— 用服务面的 `m113` 去开原语会议：`VMU_CONFLICT`，
+  hint `that id belongs to the meetings SERVICE …`。**这一条是 §60 那次修的真机证据。**
+
+### §61.3 不通过的（代理原话的要点）
+
+**b-1（实质）：规则只在单向可执行。** 代理按任务书 ㉒.1c「用 `vibe_v5_meeting` 显式指定 id 去撞原语表的名字」
+操作，回执是：
+`pack tool vibe_v5_meeting does not accept parameter(s) "id"; it declares: agenda, title, type, subject, kind, target, …`
+—— 因为**这个面根本没有 `id` 参数**，id 一律由服务自己铸（m113/m114/m115）。于是：
+「服务会议占了原语 id」这条路径在参数面上**表达不出来**，既无法被违反，也无法被验证；而 §60 那句
+`choose another id` 的 hint 对**这个面**的调用者是做不到的建议。
+
+**b-2（可读性，同族）：`target` 一词两义且未自述。** 代理把 `target:"p-prim-1"` 当作「给会议起名」传进来，
+回执是 `{"ok":true,"meeting":"m114", … "subject":"p-prim-1"}` —— 既没报错也没撞名，而是**静默开了一场新会议
+并把那个字符串当作辩论对象**。开会面上 `target` 是 subject 的别名，内核面上 `target` 是投票标的，
+而开会面的说明里**一个字都没说**这是别名。这正是「错的名字/没有定义的名字比没有名字更糟」的同族。
+
+### §61.4 修法（两条，都在 pack 面）
+
+1. **`id` 进入开会面**（`vibe-math-vmu/packs/v5r/tools.js`）：schema 增 `id`，调用时
+   `kernel.meetings.open({ id, type, chair, … })`。于是反向撞名可表达 ⇒ 服务侧的 `foreignIds` 闸当场生效，
+   按名拒并点名 **PRIMITIVE** 表。**注意这不是"为了让测试过而加参数"**：没有它，规则的一半在用户唯一会用的面上
+   根本不存在。
+2. **别名自述 + 无用对象被拒**：`target` 在说明里被明确写成 `ALIAS of \`subject\``，并警告内核面的 `target`
+   是投票标的；更关键的是 `typeInfo.subjectRequired` 为假时传 subject/target **按名拒**（原来静默落成 subject，
+   这才是让错误看不见的原因）。
+
+### §61.5 新断言（`tests/vmu-meeting-name-space.test.mjs` 20 → 27）
+
+| 组 | 断言 |
+|---|---|
+| ⑥ 反向可达 | pack 面用原语表已占的 id ⇒ `VMU_CONFLICT`，hint 含 `PRIMITIVE meeting registry` |
+| ⑦ 别名自述 | 工具说明里出现 `ALIAS of \`subject\`` 与 `do not carry the habit between faces`；普通会议传 target ⇒ `VMU_INVALID_ARGUMENT` 且 message 含 `takes no object`、hint 引用别名规则 |
+
+写这两组时踩到一个**测试自身的坑**（记下来）：包面在拒绝时是 `throw`（Error + code/hint），成功才回 JSON 字符串。
+我的调用助手一开始只 `JSON.parse` 返回值，于是"拒绝"被当成"没回答"，测试报的错看起来像功能缺失——
+**把 throw 当异常而不是当作回执，会让一条正确的具名拒看起来像没实现**。助手现在两种都读。
+
+### §61.6 状态
+
+- 代码：`packs/v5r/tools.js`（`id` 参数 + 别名自述 + 无用对象具名拒）。
+- 断言：`vmu-meeting-name-space` **27/0**；邻居 `vmu-meeting-types` 142/0、`vmu-v5r-tools` 354/0、
+  `vmu-turn` 212/0、`vmu-meetings` 214/0、`vmu-kernel` 260/0、`vmu-host` 199/0、`vmu-v5r-heading-label` 10/0、
+  `vmu-meeting-procedures-catalog` 53/0、`audit-prompt-tool-params` 80/0。
+- 派生面：`update-doc-counts --write` ⇒ JOBS 522 / suites 414 / probes 108（无变化，说明这轮没新增套件文件）。
+- ★ 仍缺：**真机证据**。㉒.1c（反向撞名）与 ㉒.2 之外的别名规则都只有单元断言。下一轮短跑复验这两条，
+  并且要**只用 vmu 工具面**（这次代理做到了）。
