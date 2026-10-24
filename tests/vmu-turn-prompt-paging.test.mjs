@@ -124,6 +124,38 @@ ok(byId3.ok === true, 'and that id can be used to ask for it explicitly', byId3.
 const anon3 = await tool3.run({ op: 'prompt', turn: 'anon-1' })
 ok(anon3.ok === false && anon3.code === 'VMU_NO_SUCH_OBJECT', 'the old synthetic key no longer resolves (so the fix is observable, not cosmetic)', anon3.code)
 
+console.log('=== 6. THE REAL LIVE SHAPE: the id rides on memberPrompt.turnId (run 25 caught this) ===')
+// ★★ RUN 25 reported c-1 as NOT FIXED: the awaiting receipt the kernel really emits carries the turn id as a STRING on
+// `memberPrompt.turnId` (plus `pending.turn`), and the first fix looked only at `turn.id` / `turnId`. Every page was filed
+// under `anon-N` while the reader held `t-1` — and the hint then offered a name the caller had never been given. This
+// section pins the ACTUAL receipt shape, so a future refactor of the awaiting envelope cannot silently re-break the key.
+const tool4 = makeTurnSpec({
+  param,
+  refused,
+  TOOL_NAMES: { turn: 'vibe_vmu_turn' },
+  kernel: {
+    turn: {
+      status: () => ({ ok: true }),
+      step: async () => ({
+        ok: true, awaiting: true,
+        pending: { turn: 't-1', member: 'member-1' },
+        memberPrompt: { turnId: 't-1', text: 'C'.repeat(12000) },
+        deliveryPath: 'caller',
+      }),
+    },
+  },
+})
+await tool4.run({ op: 'step', members: ['member-1'] })
+const liveShapePage = await tool4.run({ op: 'prompt' })
+ok(liveShapePage.ok === true && liveShapePage.turn === 't-1',
+  '★★★ the live receipt shape (memberPrompt.turnId) keys the cache to the REAL turn id — the exact defect run 25 reported',
+  liveShapePage.turn)
+const explicitById = await tool4.run({ op: 'prompt', turn: 't-1' })
+ok(explicitById.ok === true, 'so the id the caller was TOLD is the id it can page by (no untold names)', explicitById.code)
+const oldAnon = await tool4.run({ op: 'prompt', turn: 'anon-1' })
+ok(oldAnon.ok === false && oldAnon.code === 'VMU_NO_SUCH_OBJECT',
+  'and the synthetic anon-1 no longer exists in this shape (the fix is behavioural, not cosmetic)', oldAnon.code)
+
 console.log('')
 console.log(failed === 0
   ? '=== VMU TURN PROMPT PAGING: ' + passed + ' passed, 0 failed ==='

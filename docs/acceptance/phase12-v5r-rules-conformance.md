@@ -2151,3 +2151,23 @@ brief ⑤ 要求抄 `delivered / drives / code / message`，而 `VMU_REPORT_NO_T
 ### §55.4 教训
 **「可观测性」是判据的一部分，不是锦上添花。** 第 23 次的问题是「读不全」，第 24 次的问题是「读得全，但不知道读的是哪一个、也不知道设置生效没有」——两次都不是机制坏了，而是**回执没有把读者需要的事实说出来**。每次修完一个机制，都要问一遍：**读者凭什么相信它生效了？**
 
+
+
+## §56 第 25 次跑：c-2 通过，c-1 **仍未修** —— 我的修法看着对，取错了字段
+
+第 25 次跑（`cast=true`，0 RED）：
+- **c-2 通过**。`tools:"none"` 的 `step` 回执原文带 `toolsOverride:{"mode":"none","allow":[],"members":["member-1"],"seam":"setMemberToolOverride","note":"…the actual wire is narrowed by the pull resolver on its next request, which this face cannot read"}`，三个键都对；`op:"prompt"` 读回的标题是「【本角色可用的工具｜院士】」，全文**没有**「【本轮可用的工具｜」。
+- **c-1 不通过**，而且它把原因说得比我清楚：`step` 回执里真实 id 在 `memberPrompt.turnId:"t-1"`（以及 `pending.turn:"t-1"`），而 `op:"prompt"` 读到的是 `"turn":"anon-1"`；拿 `t-1` 精确翻页被拒，**hint 里列的却是调用方从未收到过的名字 `anon-1`**。同一份回执里 `pending.turn` 是真 id、提示词仓库的键是匿名 id。
+
+### §56.1 根因（我的错）
+上一轮修 `rememberPrompt` 时，我按 `out.turn.id` / `out.turnId` 取名 —— 但内核真实交出的 awaiting 回执把 id 放在 **`memberPrompt.turnId`** 上（`pending.turn` 也在）。我把「回执里有个 turn id」当成「回执顶层有 turn id」，于是合成键照旧生成，而**测试没覆盖真实形状**，所以 26 条全绿却漏了这个洞 —— 又一个「测试与代码犯同一个错」的假绿。
+
+### §56.2 修法
+`rememberPrompt` 现在用一个 `idOf()` 按顺序读**所有**它出现过的形状：`turn.id`（对象）→ `turn`（字符串）→ `turnId` → `memberPrompt.turnId` → `pending.turn`；**只有全都没有才用合成键**。
+
+### §56.3 断言
+`tests/vmu-turn-prompt-paging.test.mjs` 增 §6（3 条，套件 **29/0**）：**照内核真实的 awaiting 形状构造**（`pending:{turn}` + `memberPrompt:{turnId}`），断言页面键等于 `t-1`、能用 `t-1` 精确翻页、旧的 `anon-1` 在这一形状下**不存在**。
+
+### §56.4 教训（本轮最贵）
+**修完一处，要照「真实回执的形状」再测一遍，而不是照我记忆里的形状。** 第 24 轮我写断言时用的是自己构造的 `turnId*{ top-level }`，内核给的是 `memberPrompt.turnId` —— 两者都叫「turn id」，却是不同位置。凡是「从回执里取字段」的修法，断言必须用**实测抄下来的回执原文**做输入。
+

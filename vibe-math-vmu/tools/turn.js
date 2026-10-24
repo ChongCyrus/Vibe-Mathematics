@@ -28,10 +28,25 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       const p = out && out.memberPrompt
       const text = p && typeof p.text === 'string' ? p.text : null
       if (text) {
-        // ★ LIVE RUN 24 (c-1): the awaiting receipt names the turn as `turnId`, not as `turn:{id}`, so keying on
-        // `out.turn.id` alone produced synthetic keys (`anon-1`, `anon-2`) — and a reader holding two paginated prompts
-        // could not tell which page belonged to which turn. Prefer the receipt's own id, in every shape it arrives.
-        const id = (out.turn && out.turn.id) || (typeof out.turnId === 'string' && out.turnId !== '' ? out.turnId : null) || 'anon-' + (promptCache.size + 1)
+        // ★ LIVE RUN 24 (c-1) / RUN 25 (still red): the awaiting receipt names the turn as a STRING on the prompt object
+        // (`memberPrompt.turnId: "t-1"`), and the old key-finder looked only at `out.turn.id` / `out.turnId`, so every
+        // page was filed under a synthetic `anon-N` — while the SAME receipt carried the real id elsewhere
+        // (`pending.turn`, `memberPrompt.turnId`). Run 25 caught it: the page said `anon-1`, the reader had `t-1`, and
+        // the hint offered a name the caller had never been given. Read the id from EVERY shape it arrives in, and
+        // refuse to invent one: a synthetic key is only used when the receipt truly carries no id at all.
+        const idOf = (o) => {
+          if (!o || typeof o !== 'object') return null
+          const cands = [
+            o.turn && typeof o.turn === 'object' ? o.turn.id : null,
+            typeof o.turn === 'string' ? o.turn : null,
+            o.turnId,
+            o.memberPrompt && typeof o.memberPrompt === 'object' ? o.memberPrompt.turnId : null,
+            o.pending && typeof o.pending === 'object' ? o.pending.turn : null,
+          ]
+          for (const c of cands) if (typeof c === 'string' && c !== '') return c
+          return null
+        }
+        const id = idOf(out) || 'anon-' + (promptCache.size + 1)
         promptCache.delete(id)
         promptCache.set(id, text)
         while (promptCache.size > PROMPT_CACHE_LIMIT) promptCache.delete(promptCache.keys().next().value)
