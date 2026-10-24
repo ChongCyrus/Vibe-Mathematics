@@ -211,15 +211,19 @@ export const PACK = Object.freeze({
   // translation layer are all still there for a pack that is willing to adapt its prompts. A non-native declaration now
   // REQUIRES `promptAck` (a marker that must appear in one of this pack's prompt sections) — see kernel/pack.js.
   // ⇒ v5r deliberately declares nothing: zero mechanism, every tool stays native, and the prompt keeps matching the wire.
+  // ★★★ PHASE 12 / R15 (finding f): the LABELS were 主持人/成员/临时 while every charter sentence in this pack
+  // says 院士/常驻研究员/临时工. That mismatch is why the turn-facts seam can now map a seat to `{{ roleLabel }}` and
+  // still hand the member a name the rest of the prompt does not use. These labels are the institution vocabulary,
+  // so they live here (policy in pack); the MAPPING from a member slot to its label is the kernel turn-facts job.
   slots: [
     // ★ PHASE 12 / R6 (measured on a full live run): the chair did NOT hold `vote`, so `closureVote.eligible`
     // listed only the residents — while the rule's vote floor is 「min(用户设置数, 院士+常驻研究员数)」, i.e. the
     // academician IS part of the electorate the floor is counted over. A floor computed over a universe the chair is
     // not in can never agree with its own rule. `temp` stays without a vote: temps are 旁听/协作者, and the rule's
     // 常驻研究员 excludes them.
-    { id: 'chair', label: '主持人', capacity: 1, permissions: ['convene', 'close', 'assign', 'grant', 'freeze', 'vote'] },
-    { id: 'member', label: '成员', capacity: 0, permissions: ['speak', 'vote', 'propose'] },
-    { id: 'temp', label: '临时', capacity: 12, permissions: ['speak'] },
+    { id: 'chair', label: '院士', capacity: 1, permissions: ['convene', 'close', 'assign', 'grant', 'freeze', 'vote'] },
+    { id: 'member', label: '常驻研究员', capacity: 0, permissions: ['speak', 'vote', 'propose'] },
+    { id: 'temp', label: '临时工', capacity: 12, permissions: ['speak'] },
   ],
 
   // v5r's Progress tracks (docs/07 §4.2): negative knowledge gets its own file, not a footnote.
@@ -546,7 +550,13 @@ export const v5rFixtureTools = Object.freeze({
     // ever needed.
     '★★ 回执契约：**顶层只允许这四个字段** —— progress / say / solved / vote_solved（这是本夹具的收敛口径）。★ `note`、`plan` 之类**不在内核字段清单**里，写了会被判 `VMU_TURN_UNKNOWN_FIELD`；`record`/`meeting_hand` 虽在内核清单里，但本夹具要求用工具做、**不要写进回执**。',
     '★★ 已经用工具做完的动作，**不要再写进回执**；回执只放"没有工具对应的纯决定"（例如是否结题）。',
-    '★★ 最小合法回执（可直接照抄）：{"vote_solved": true} 或 {"solved": false}；要写进展就 `{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"…"}}`，**不要**把 progress 写成字符串。',
+    // ★★★ PHASE 12 / R15 (live run 12, the agent's finding c): THIS LINE USED TO OFFER `{"solved": false}` AS AN
+    // EQUIVALENT "minimal receipt" beside `vote_solved`, and the line below paired `{"solved":false}` with
+    // 「结题表决只走回执」. The kernel is explicit about the split (`kernel/turn/index.js` `RECORDED_FIELDS` loop:
+    // `vote_solved` is the CLOSURE vote, `solved` is only the per-round judgement and is never counted), so a member
+    // that copied the `solved` sample VOTED NOTHING while the receipt said `accepted:true` - the institute could not
+    // close. A prompt may not teach a field that does not vote as if it voted.
+    '★★ 最小合法回执（可直接照抄）：**结题表决用 `{"vote_solved": true|false}`（只有它计结题票）**；个人本轮判断用 `{"solved": false}`（**不计票**）；要写进展就 `{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"…"}}`，**不要**把 progress 写成字符串。',
     // ★ PHASE 7 round 14: COPY-PASTE samples, taken from the kernel's real shapes (records.put args / the declared
     // kinds). The real machine proved why this is needed: a member guessed `"progress": "长叙述"` and every write of the
     // turn failed with "unknown record track: undefined".
@@ -554,7 +564,7 @@ export const v5rFixtureTools = Object.freeze({
     '★★ 回执的形状样例（可直接照抄；progress 必须是**一个对象**，不是字符串/数组）：',
     '   · {"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"这一轮做了什么与下一步"}}',
     '   · {"say":"已经在群里说过的一句话"}（已经用 vibe_v5_say 说过时，回执里可只留一句说明）',
-    '   · {"solved":false}（结题表决只走回执；它不是工具）',
+    '   · {"vote_solved":false}（结题表决只走回执；它不是工具）',
     '   · 写卡片请直接用工具（vibe_v5_record_*），**不要**把卡片塞进回执的 record 字段。',
     '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
   ].join('\n'),

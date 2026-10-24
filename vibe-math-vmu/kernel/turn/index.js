@@ -734,11 +734,34 @@ export function resolveOwners(bindings = null) {
   return Object.freeze(merged)
 }
 
+// ★★★ PHASE 12 / R15 (finding f, measured on live run 12): THE LOOP NOW COMPOSES THE PER-ROUND BRIEF.
+// `kernel/prompt/index.js:40-47` has always documented `statusBlock` as 「the loop composes that block from the
+// kernel's own state and hands it over as ONE variable」 — but no loop ever did: `turn.open()` defaulted it to null
+// and the v5r pack rendered the bare placeholder, so every member prompt on a live run read
+// 「〔未提供：statusBlock〕」 exactly where its seat, the round and the vote floor belong.
+// THE VOCABULARY IS THE FRAMEWORK'S OWN FALLBACK, not an institution's wording: a pack that wants different prose
+// can supply `statusBlock` itself (that is what the v3 pack's middleware does), in which case this composer is not
+// reached. Kept deliberately minimal - a seat, the round, the roster and the floor - because inventing more would
+// mean guessing facts the loop does not have.
+const composeStatusBlock = (turn) => {
+  if (!turn || typeof turn !== "object") return ""
+  const who = turn.roleLabel ? String(turn.roleLabel) + "「" + String(turn.member) + "」" : String(turn.member)
+  const round = turn.round ? "；本轮是第 " + String(turn.round) + " 轮" : ""
+  const phase = turn.phase ? "（阶段：" + String(turn.phase) + "）" : ""
+  const lines = ["[状态] 你是 " + who + round + phase + "。"]
+  if (typeof turn.roster === "string" && turn.roster.trim() !== "") lines.push("", "[在册]", turn.roster)
+  if (turn.quorum !== null && turn.quorum !== undefined && Number.isFinite(Number(turn.quorum))) {
+    lines.push("", "[表决] 法定票数 m = " + String(Number(turn.quorum)) + "。")
+  }
+  return lines.join("\n")
+}
+
 /**
  * Create the orchestrator. `prompt` is the pipeline (docs/06), `deliver` is the adapter seam, `faces` maps a face
  * name to its operations, e.g. `{ 'vmu.tasks': { create: async (p) => ... } }`.
  */
-export function createTurnOrchestrator({
+export
+function createTurnOrchestrator({
   // The institution policy for prompt-section switches. Null means the framework switches NOTHING,
   // which is this preset's stated design: "default zero mechanism, mechanisms provided as packs".
   sectionPolicy = null,
@@ -874,8 +897,11 @@ export function createTurnOrchestrator({
     const noticeText = pendingNotices.length && typeof noticeBlock === "function"
       ? String(noticeBlock(pendingNotices) || "")
       : ""
-    const statusWithNotices = (noticeText ? [turn.statusBlock] : [turn.statusBlock, ...pendingNotices])
+    const suppliedStatus = (noticeText ? [turn.statusBlock] : [turn.statusBlock, ...pendingNotices])
       .filter((l) => typeof l === "string" && l.trim() !== "").join("\n")
+    // ★ R15: a caller that supplies nothing gets the loop's own composition instead of a hole; a caller that DOES
+    // supply one keeps full control (the pack words its own brief), so this is a fallback and not a second source.
+    const statusWithNotices = suppliedStatus !== "" ? suppliedStatus : composeStatusBlock(turn)
     const turnSettings = (settings || turn.facts) ? { ...(settings || {}), ...(turn.facts || {}) } : undefined
     // ROUND 407: THE FRAMEWORK OFFERS THE MECHANISM; THE PACK STATES THE POLICY (goal 2). Which optional blocks an
     // institution switches on, which reply catalogue it sends, which meeting speaker state applies and which
@@ -887,7 +913,7 @@ export function createTurnOrchestrator({
       for (const e of (decided && decided.errors) || []) fail(e.code, e.message, e.hint)
       for (const d of (decided && decided.decisions) || []) setSectionEnabled(d.name, d.enabled !== false)
     }
-    const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: statusWithNotices === "" ? turn.statusBlock : statusWithNotices, round: turn.round, settings: turnSettings })
+    const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: statusWithNotices, round: turn.round, settings: turnSettings })
     if (!out || out.ok !== true) {
       fail('VMU_TURN_ASSEMBLY_FAILED', 'the prompt pipeline refused this turn: ' + JSON.stringify((out && out.refused) || {}).slice(0, 160))
     }
@@ -1692,9 +1718,14 @@ export function createTurnOrchestrator({
     // ★ R13 (second half): `rosterIds` rides beside `roster` for the same reason the seam emits both — the pack's
     // prompt policy decides the leader pair from IDS, the template renders PROSE, and neither may have to parse the
     // other. A seam that supplies only the prose form is treated as "ids unknown" (never as "ids empty").
+    // ★★★ PHASE 12 / R15 (finding f): `roleLabel` rides the same seam. The prompt pipeline documents it as
+    // loop-composed (kernel/prompt/index.js:40-47) and the pack rewrites `{{ role }}` into `{{ roleLabel }}` at load
+    // (the pack's own core prompt module rewrites it at load), so a loop that never supplies it hands every member a hole
+    // seat name belongs. Supplied as a FACT (the slot's declared label), never guessed here.
     const merged = { roster: supplied.roster === undefined ? null : supplied.roster,
       rosterIds: supplied.rosterIds === undefined ? null : supplied.rosterIds,
       chairId: supplied.chairId === undefined ? null : supplied.chairId,
+      roleLabel: supplied.roleLabel === undefined ? null : supplied.roleLabel,
       quorum: supplied.quorum === undefined ? null : supplied.quorum, ...spec }
     const { turn } = open(merged)
     return runFrom(turn, spec)

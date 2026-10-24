@@ -663,10 +663,15 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 771,
     range: 'pack',
     kind: 'shared',
+    // ★★★ PHASE 12 / R15 (finding f): the second line was {{ statusBlock }} under a heading claiming the framework had
+    // already forwarded the other members' opinions. It had not — nothing fills that variable for this pack, so the
+    // member got a hole where other people's arguments belong AND was told they had been forwarded. The opinions ARE
+    // recorded (speak() writes the minutes and the group chat), so the honest wording points at the reads that return
+    // them and claims nothing about what is already in the prompt.
     texts: {
       shared: [
-        '### 其他成员本次会议已发表的意见（框架已转发给你，请参考、补充或反驳）',
-        '{{ statusBlock }}',
+        '### 其他成员本次会议已发表的意见',
+        '（别人的发言**不在你的提示词里**：它们写在会议纪要与群聊中。可用 `vibe_vmu_meeting { action: "minutes", id: "<会议 id>" }` 读纪要与逐字发言，或用 `action: "status"` 看谁已发言、谁还被问过。请据此补充、附议或反驳。）',
       ].join('\n'),
     },
   },

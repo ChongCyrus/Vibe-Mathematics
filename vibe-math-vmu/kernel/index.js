@@ -1527,7 +1527,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // `vmu.meetings.quorumCap` rule the meeting seats use (cap <= 0 means "no cap").
     // Measured before this seam existed: every member prompt on a full live run read `〔未提供：roster〕` and
     // `〔未提供：quorum〕`, so the charter's staff snapshot and every `m = …` sentence in it were holes.
-    turnFacts: () => {
+    turnFacts: ({ member: memberId } = {}) => {
       const live = members && typeof members.roster === 'function' ? members.roster().filter((m) => m && m.state === 'live') : []
       const roster = live.length === 0
         ? null
@@ -1547,7 +1547,18 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       const eligible = Array.isArray(view.eligible) ? view.eligible.length : 0
       const cap = Number(readSetting(settingsView, 'vmu.meetings.quorumCap'))
       const quorum = Number.isFinite(cap) && cap > 0 ? Math.min(cap, eligible) : eligible
-      return { roster, rosterIds, chairId, quorum }
+      // ★★★ PHASE 12 / R15 (finding f, measured on live run 12): every member prompt read 「角色：〔未提供：roleLabel〕」
+      // because NOTHING supplied it — turn.open()/turn.step() never pass it and this seam did not report it. The
+      // VOCABULARY (院士 / 常驻研究员 / 临时工) belongs to the pack's slot labels; the MAPPING from "which slot is this
+      // member in" to "that slot's label" is a fact about the roster, i.e. the framework's job. A seat whose slot is
+      // unknown reports null so the prompt shows a hole for something genuinely unknown rather than inventing a name.
+      const me = live.find((m) => String(m.id) === String(memberId))
+      const mySlot = me ? String(me.slot || me.role || '') : ''
+      const slotDef = mySlot && members && typeof members.roles === 'function'
+        ? members.roles().find((r) => r && String(r.id) === mySlot)
+        : null
+      const roleLabel = slotDef && typeof slotDef.label === 'string' && slotDef.label.trim() !== '' ? slotDef.label : null
+      return { roster, rosterIds, chairId, roleLabel, quorum }
     },
     clearMemberToolCalls: (member) => { memberToolCallLog.delete(String(member)) },
   })

@@ -550,6 +550,14 @@ export const CHARTER_BLOCKS_A = Object.freeze([
     order: 722,
     range: 'pack',
     kind: 'shared',
+    // ★★★ PHASE 12 / R15 (finding f, measured on live run 12): this section was the bare placeholder
+    // {{ statusBlock }} and NOTHING composed that block for this pack, so every member read
+    // 「〔未提供：statusBlock〕」 where its own seat, round and vote floor belong (11 occurrences in one live run).
+    // TWO things were wrong and each is fixed at its own layer:
+    //   · the LOOP now composes the block when the caller supplies none (`kernel/turn/index.js` `composeStatusBlock`),
+    //     which is what `kernel/prompt/index.js:40-47` always CLAIMED the loop does;
+    //   · this section stays ONE placeholder, because the pack words its brief and spelling the fields out here would
+    //     print the state twice (measured while fixing this: 15 841 chars with `m=2` ×2 — the duplicate T99 catches).
     texts: {
       shared: '{{ statusBlock }}',
     },

@@ -1556,3 +1556,72 @@ F 断言拒绝回执自带三个布尔。★ 这一套**不证明**宿主发布�
 
 ### §39.4 收尾声明
 本阶段的判据是「每条规则有实现 + 有门禁 + 一次干净真机跑」，三项均已由上面的读数支持；上面 §39.3 是同一份诚实账：未覆盖的项按项写明，不以「全绿」替代。
+
+## §40  reopening on the user's challenge: the institute's own acceptance report was never read to the end
+
+**WHY THIS CHAPTER EXISTS.** The phase was closed as complete (§39: T1 443/443, live run 12 clean, four uncovered items named).
+The user then asked: 「所以最终 v5r 真机实测时研究所各代理……是否它们最终没有再检查出不符合规则的地方、缺陷、不合理的地方？」
+The honest answer was **no**. Run 12's OFFICE agent wrote a 19,065-character acceptance report as the LAST assistant message
+of the run — it listed **ten** 「与《规则》不符之处」 (a–j) — and the closure was declared without reading it to the end.
+This is the same class as lesson L2 (a false green is worse than a red): the machine criteria were green, my own spot checks
+were green, and the ONE instrument that exercises the rules the way a user does had said otherwise in a long message nobody
+re-read. Goal `goal-bb297b1a-982b-4fa2-801a-45ed8e0fd16b` was opened with the rule that **every reported item must be
+classified (固定 / 已判非缺陷 / 已登记)**, and this chapter starts that ledger.
+
+### §40.1 (c) 结题票的通道与提示词相反 — the defect was in the PROMPT, not the kernel
+Measured: members followed the prompt's 「结题表决只走回执」 + `{"solved": false}` sample, the receipt came back
+`accepted:true, fields:["solved"]`, and **`votesCast` stayed 0**.
+The kernel was already correct and explicit (`vibe-math-vmu/kernel/turn/index.js:1345-1358`): `vote_solved` IS the closure
+vote (`recordClosureVote` → `closureVotes`), while `solved` only fills `solvedThisRound` (the per-round convergence reading).
+So the fix is text: `vibe-math-vmu/packs/v5r/prompts/v5r-core.js` now teaches
+「结题表决用 `{"vote_solved": true|false}`（只有它计结题票）；个人本轮判断用 `{"solved": false}`（**不计票**）」,
+and the old ambiguous sample was replaced.
+GATE: `tests/vmu-prompt-closure-channel.test.mjs` (**24 assertions**) holds **RULE C** — in any CLAUSE that names the
+closure vote, `vote_solved` must appear and a bare `solved` must not. Clause-level (not line-level) is load-bearing: the
+fixed sentence legitimately names both words in two different clauses, and a line-level rule would have failed the fix it
+was written to protect. Two self-inflicted iterations are recorded: the first rule was line-level (4 reds on the FIXED
+text), and the first brief wording named 结题表决 in a clause that only talks about the FLOOR — which RULE C correctly
+rejected, so the floor line now says 「凡按票数门槛的决议」 instead.
+
+### §40.2 (f) 非主席席位提示词里的裸占位 — two variables with NO producer
+Measured on run 12's transcripts: `〔未提供：roleLabel〕` ×25 and `〔未提供：statusBlock〕` ×11, e.g.
+「角色：〔未提供：roleLabel〕」 and 「# v5r-brief-status 〔未提供：statusBlock〕」.
+Both were the same class — a section rendering a variable the TURN LOOP never supplies:
+- `statusBlock`: `kernel/prompt/index.js:40-47` has always documented it as 「the loop composes that block from the kernel's
+  own state and hands it over as ONE variable」. No loop did. The only pack that fills it is **v3**, from its M2 middleware
+  (`packs/v3/middleware/planner.js:549`, `:1218`, `verify.js:629`), so the claim was true of one institution and false of v5r.
+- `roleLabel`: `prompt/index.js:40-47` calls it loop-composed and `packs/v5r/prompts/v5r-core.js:68-73` rewrites
+  `{{ role }}` → `{{ roleLabel }}` at load — but `turn.open()`/`turn.step()` never accepted it and the turn-facts seam never
+  reported it: **no producer existed anywhere**.
+FIX, split by layer (机制在内核、政策在包):
+1. `vibe-math-vmu/kernel/index.js` `turnFacts({ member })` now maps the member's SLOT to that slot's declared `label` and
+   returns `roleLabel` (an unseated member ⇒ `null`, a hole for a genuinely unknown fact rather than an invented name).
+2. `vibe-math-vmu/kernel/turn/index.js` carries `roleLabel` through the turn-facts merge into `open()`.
+3. `vibe-math-vmu/packs/v5r/prompts/v5r-core.js` slot LABELS now use the rule's own words (院士 / 常驻研究员 / 临时工) — the
+   vocabulary is the institution's, so it lives in the pack; the MAPPING from a slot to its label is the kernel's.
+4. `vibe-math-vmu/kernel/turn/index.js` gained `composeStatusBlock(turn)` — the loop now composes the per-round brief
+   (seat, round, roster, floor) when the caller supplies none, which is what the pipeline always claimed it did. A pack that
+   supplies its own `statusBlock` keeps full control, so this is a FALLBACK and not a second source.
+5. `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js` `v5r-meeting-others` stopped claiming 「框架已转发给你」 (nothing was
+   forwarded) and now points at the two reads that actually return other members' arguments
+   (`vibe_vmu_meeting { action: "minutes" | "status" }`).
+★ The brief section itself went BACK to the single `{{ statusBlock }}` placeholder: spelling the fields out printed the state
+TWICE (measured 15,841 chars with `m=2` ×2 — caught by `tests/vmu-turn.test.mjs` T99). A hole is fixed by giving the variable
+a producer, not by duplicating the variable's content in the section.
+GATE: `tests/vmu-prompt-no-holes.test.mjs` (**26 assertions**) — no v5r section may name a variable without a producer;
+`v5r-brief-status` is the ONE section allowed to render `statusBlock`; and a REAL kernel turn for each of the three seats
+(院士 / 常驻研究员 / 临时工) must produce a prompt with **zero** 「〔未提供：…〕」, three DIFFERENT seat names, a roster heading,
+the round number and the floor as a NUMBER.
+
+### §40.3 教训
+- 「机制缺失」和「文案与机制不符」必须分开判：本轮的 (c) 是文案错、内核是对的；(f) 是真无生产者。判错的代价是把对的写坏。
+- 一个模板变量有没有生产者，必须同时查三处：`open()` 形参、`step()`/`drive()` 的 merged、`turnFacts` 报告。只查一处会得出
+  「文档说 loop 会填 ⇒ 它应该填着」这种假绿。
+- 加固一个洞的正确做法是给变量补生产者，不是把内容抄进 section（抄进去就印两遍，被 T99 抓住）。
+- 又要写带反引号/中文的 Node 脚本：用 `write` 工具落成 .mjs 再跑；heredoc 里的模板字符串反引号会把脚本吞掉（本轮踩了一次）。
+
+### §40.4 当前状态
+- (c)、(f) 已修 + 各有门禁；a–j 其余八条（a 到点自决无 sweep、b `overrodeQuorum` 形状、g `selectionIgnored.requested`、
+  j status 派发回落、d/e/h/i 读数与命名）尚未处理。
+- 门禁读数：`vmu-prompt-closure-channel` 24/0、`vmu-prompt-no-holes` 26/0、`vmu-turn` 196/0、`vmu-notice-block` 15/0、
+  `audit-declaration-criterion` 89/0、`audit-scanner-selfproof` 132 scanners、`regen-all --check` 16/16、`check-docs` PASS。
