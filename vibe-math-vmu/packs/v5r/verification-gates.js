@@ -222,6 +222,10 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
   const verifiedHit = !!(ev.verified && ev.verified.conclusion !== undefined)
   const leanHit = !!(ev.lean && ev.lean.passed === true)
   const evidenced = verifiedHit || leanHit
+  // ★ run-8 finding A: `DEBATE_SUBJECT_UNPROVEN` now has a REAL reachable meaning — the card declares "proof complete"
+  // while a Lean job it was pointed at FAILED. That is not "no evidence yet" (admitted below), it is evidence CONTRADICTING
+  // the declaration, which the gate must refuse rather than let the institution debate a claim its own machine rejected.
+  const leanFailed = !!(ev.lean && ev.lean.passed === false && ev.lean.state !== null)
   // ★ PHASE 12 / B6：**证据层是唯一放行依据**。声明层（proofRef + proofState）是成员写进卡体的自述，作者说
   // "写完了"不等于有人验证过；把它当证明就是"把自报当已证"。证据层只有两种机器事实：Lean 作业通过、或这张卡
   // 已经在 verified 轨上有一条定论行（有人裁过）。两者都没有时，闸要能分开说缺的是哪一层。
@@ -234,16 +238,32 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
         : '放行依据是机器证据（' + (verifiedHit ? 'verified 轨的定论行' : '已通过的 Lean 作业') + '），不是卡上的自报：'
           + '这张卡还没登记 proofRef/proofState="complete"，接线层应把证明引用补上，让"谁写的、写在哪"可追溯' })
   }
-  if (declared) {
+  // ★ PHASE 12 / live run 8 finding A — THIS BRANCH USED TO REFUSE, AND THAT WAS A DEADLOCK.
+  // The rule's condition for a debate subject is 「含正式证明且已写完」, and the DECLARATION (proofRef + proofState
+  // "complete") is exactly that registration. Demanding machine evidence ON TOP made two of the three legal subject
+  // forms unreachable in a real deployment: the only machine-evidence paths are (a) a `verified` row — which requires
+  // a FINISHED DEBATE, i.e. the thing being gated — and (b) a passed Lean job — which requires a `.lean` file that the
+  // preset has no tool to create. Measured in run 8: a card registered precisely as rule ⑩ requires was refused with
+  // DEBATE_SUBJECT_UNPROVEN, and `lean_run` refused for want of `file` ⇒ a closed loop with no entrance.
+  // The truth the gate still owes the reader is that a declaration is the AUTHOR's self-report. So it is admitted, and
+  // the receipt says `proofBasis:'declaration-only'` instead of pretending it was verified. Evidence is machine-checked
+  // where it belongs: promoting to the `verified` track still passes p1Intent + the single-writer gate.
+  if (declared && leanFailed) {
     return refuseGate(GATE_CODES.DEBATE_SUBJECT_UNPROVEN,
-      '命题卡 ' + cls.raw + ' 声明了自己的证明（proofRef=' + proofRef + '、proofState="complete"），但没有任何机器证据：'
-      + 'Lean 作业未通过、`verified` 轨也没有这张卡的定论行。★ 声明层是**作者自述**，不构成证明；'
-      + '规则要的是"含正式证明且已写完"，本闸只认证据层',
-      '两条合法路径（任一即可）：\n'
-      + '  · 先跑 Lean：`vibe_v5_lean_run { target:"' + cls.raw + '" }`，作业 settled 且 passed；\n'
-      + '  · 或让这张卡走完辩论，在 `verified` 轨留下一条定论行。\n'
-      + '证明其实还没写完的话：把 proofState 改成 "draft"（自述要如实），写完再开会。',
-      { form: 'card', subject: cls.raw, proofChecked: false, declared: true, declaredState: proofState, declaredProofRef: proofRef })
+      '命题卡 ' + cls.raw + ' 声明了自己的证明（proofRef=' + proofRef + '、proofState="complete"），但它指向的 Lean 作业 '
+      + '(' + String(ev.lean.jobId || '?') + ', state=' + String(ev.lean.state) + ') 没有通过：机器证据与声明矛盾',
+      '要么把 Lean 作业跑通（`vibe_v5_lean_run { target:"' + cls.raw + '" }` 且 passed），要么把 proofState 改成 "draft" 并说明'
+      + '证明还没写完 —— 声明"写完了"而机器说没通过，闸不能当没看见',
+      { form: 'card', subject: cls.raw, proofChecked: false, declared: true, declaredState: proofState,
+        declaredProofRef: proofRef, contradictedBy: { jobId: ev.lean.jobId || null, state: ev.lean.state || null } })
+  }
+  if (declared) {
+    return allow({ form: 'card', subject: cls.raw, proofChecked: false, proofBasis: 'declaration-only',
+      provenance: 'declared', declared: true, declaredState: proofState, declaredProofRef: proofRef,
+      note: '辩论对象的证明目前只有**作者自述**（proofRef=' + proofRef + '、proofState="complete"），没有机器证据：'
+        + 'Lean 作业未通过、`verified` 轨也没有这张卡的定论行。规则要的是"已登记为写完"，所以本闸放行；'
+        + '但自述不等于已证 —— 回执记 proofBasis:"declaration-only"，而这场辩论正是把它送进证据层的正当路径，'
+        + '进 `verified` 轨仍要过 p1Intent 与单写者两道闸' })
   }
   return refuseGate(GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
     '命题卡 ' + cls.raw + ' 没有「正式证明或证伪**已写完**」的任何登记，也没有机器证据：proofRef=' + (proofRef || '空')

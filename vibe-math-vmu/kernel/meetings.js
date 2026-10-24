@@ -422,6 +422,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // (`met` gates `vote()`, so it may only ever be the floor question); `unanimity` carries the institution's rule
       // (rule `vmu.meetings.quorumRule`), which is what 「未到齐 ⇒ 法定人数不成立」 lands on.
       rule: K.quorumRule,
+      floorMet: met,
+      metIs: 'the FLOOR question only (present >= required) — it is NOT the institution rule; with required=0 it is true while nobody has attended. Read unanimity.met / the pack rule for the real threshold',
       metPolicy: 'met = (present >= required) — the FLOOR question (may this house transact at all); it deliberately '
         + 'does NOT fold in the institution\'s unanimity rule, because `met` gates vote() and requiring full attendance '
         + 'before the first vote would deadlock the house. The rule is `unanimity` below.',

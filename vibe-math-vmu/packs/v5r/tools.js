@@ -334,6 +334,24 @@ async function toolOverview(args = {}, { kernel } = {}) {
   const rows = kernel.tasks && typeof kernel.tasks.list === 'function' ? rowsOf(await kernel.tasks.list()) : []
   const openMeetings = kernel.meetings && typeof kernel.meetings.openMeetings === 'function' ? kernel.meetings.openMeetings() : null
   const meetingRows = openMeetings && Array.isArray(openMeetings.meetings) ? openMeetings.meetings : []
+  // ★ run-8 finding B (second half, found while pinning it): the marker only knows meetings that have been MARKED (a
+  // convened meeting somebody spoke into), so a SCHEDULED or WAITING meeting was invisible in this list even though
+  // `vibe_v5_meeting {action:"status"}` could read it. The list is therefore built from the MEETING SERVICE's live set
+  // (the authority for "which meetings exist"); the marker's rows only enrich it, and the schedule-aware state always
+  // comes from `meetingView`, because the marker's own `state` is its lifecycle, not the meeting's state.
+  const serviceLive = (() => {
+    try {
+      const s = kernel.meetings && typeof kernel.meetings.status === 'function' ? kernel.meetings.status() : null
+      return s && Array.isArray(s.liveMeetings) ? s.liveMeetings : null
+    } catch { return null }
+  })()
+  const markerById = new Map(meetingRows.filter(Boolean).map((r) => [String(r.id), r]))
+  const meetingIds = (() => {
+    const seen = []
+    for (const id of (serviceLive || [])) if (id && !seen.includes(String(id))) seen.push(String(id))
+    for (const r of meetingRows) if (r && r.id !== undefined && !seen.includes(String(r.id))) seen.push(String(r.id))
+    return seen
+  })()
   // ★ R13: WHO LEADS, read from the LIVE roster and the resolved setting — the two facts the charter depends on. The
   // reading is a separate module (`./leadership.js`) because the policy decision in `middleware/prompt-switches.js` §4
   // and this receipt must be able to disagree ONLY in a way a reader can see; today they delegate to one another instead.
@@ -346,7 +364,23 @@ async function toolOverview(args = {}, { kernel } = {}) {
   const out = { ok: true, tool: 'vibe_v5_overview', by: member,
     roster: roster.map((m) => ({ id: m.id, slot: m.slot, state: m.state })),
     board: { tasks: rows.length, open: rows.filter((t) => String(t.status || t.state) !== 'done').length },
-    meetings: meetingRows.map((m) => ({ id: m.id, state: m.state, status: m.status === undefined ? null : m.status, faceState: m.faceState === undefined ? null : m.faceState })),
+    // ★ PHASE 12 / run-8 finding B: the marker's own `state` is the MARKER's lifecycle (it says "open" the moment a
+    // meeting is convened, even for a meeting that is still SCHEDULED). Reporting it as the meeting's state made
+    // `vibe_v5_overview` disagree with `vibe_v5_meeting {action:"status"}` for the same id in the same window — a read
+    // face contradicting a read face. The authority for a meeting's state is the meeting service view (schedule-aware);
+    // the marker's value is kept under a name that cannot be confused with it.
+    meetings: meetingIds.map((id) => {
+      const m = markerById.get(id) || {}
+      let view = null
+      try { view = kernel.meetings && typeof kernel.meetings.meetingView === 'function' ? kernel.meetings.meetingView({ meeting: id }) : null } catch { view = null }
+      const meetingState = view && view.state !== undefined ? String(view.state) : null
+      return { id, state: meetingState === null ? (m.state === undefined ? null : m.state) : meetingState,
+        stateSource: meetingState === null ? 'marker (meeting service view unavailable)' : 'meeting service view',
+        markerState: m.state === undefined ? null : String(m.state),
+        scheduledFor: view && view.scheduledFor !== undefined ? view.scheduledFor : null,
+        type: view && view.type !== undefined ? view.type : null,
+        status: m.status === undefined ? null : m.status, faceState: m.faceState === undefined ? null : m.faceState }
+    }),
     // ★ Same three keys and the same rule as vibe_v5_report.counts.feedback (one helper, so they cannot disagree).
     feedback: feedbackCounts(kernel),
     leadership }
@@ -1385,6 +1419,9 @@ function toolMeeting(args = {}, { kernel } = {}) {
     state, scheduledFor, at, scheduleNote,
     subjectGate: subjectGate ? { allowed: true, applicable: subjectGate.applicable === true, form: subjectGate.form || null,
       proofVia: subjectGate.proofVia || null, provenance: subjectGate.provenance || null,
+      // ★ run-8 finding A: the gate now ADMITS a declared-only proof, so the receipt must carry the honesty the gate
+      // bought — otherwise the read face would be more flattering than the decision that produced it.
+      proofBasis: subjectGate.proofBasis || null,
       proofChecked: subjectGate.proofChecked === true, note: subjectGate.note || null } : null,
     enforced: enforcedOf([subjectGate]), enforcedScope: ENFORCED_SCOPE,
     note: 'the original could also PROPOSE a meeting from a non-chair seat and let the chair convene it; this face has no propose path (named gap: procedure/propose). ★★ THIS FACE ONLY CONVENES: for status/summary/snapshot/close/extend/extendlimit/proceed/lapse/ballot/speak/hand/hands/order/invite/invitedspeak/attend/flow/overrideorder use vibe_vmu_meeting { action, id } - the kernel face, which reaches the same meeting object. Measured on a full live run: an agent tried summary/close HERE, got nothing, and reported it as a missing capability; the capability existed one face over and nothing said so. ★ D9 邀请面 (this round): hand/invite/invitedspeak/order/attend now really reach a SERVICE meeting through that face — hand = a member queues itself, invite = the CHAIR puts one member or an ordered list (members:[…]) on the floor queue, order = reads the real queue back, invitedspeak = the invited voice speaks in the minutes, attend = marks a member present (an invitation NEVER marks anybody present: attendance is its own act and only it counts for the quorum). silent/end/hands stay primitive-only and the kernel face refuses them on a service meeting BY NAME. ★ A floor-order override (flow/overrideorder) still needs vmu.meetings.orderMode declared by the deployment; v5r does not declare it, so on a real run it is refused by name rather than silently ignored. ★ The recommended procedure is a RECOMMENDATION: skipping it, reordering it, or ignoring it entirely is allowed and unchecked.' }

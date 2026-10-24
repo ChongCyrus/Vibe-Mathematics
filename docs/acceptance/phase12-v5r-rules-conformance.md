@@ -1326,7 +1326,7 @@ A1 的机制部分上一轮已经全绿（`tests/vmu-assistant-report.test.mjs` 
 | g | H2 键"当场生效"与"需重启"同回执并存 | 真缺陷：pack 用 `hot !== 'H1'` 自算，与内核 `requiresRestart` 相反 | 修机制：直接**照抄内核回执**，不再自算 |
 | h | `overview` 把 `scheduled` 的会议报成 `open` | 真缺陷：overview 读的是自己手推的状态 | 修机制：overview 用与 `status()` 同一套派生 |
 | i | 辩论对象闸对"文件引用"只信调用方自报 | 真缺陷 | 修机制：文件分支由闸自己 `stat`，自报的 readable/bytes 被忽略 |
-| j | `closureVote.cast` 语义与字面相反（"已投"vs"全票确认"） | 真缺陷（命名） | 修口径：保留 `cast` 兼容，新增 `votesCast`/`allFor`/`castMeaning` 说明 |
+| j | `closureVote.cast` 语义与字面相反（"已投"vs"全票确认"） | 真缺陷（命名） | 修口径：保留 `cast` 兼容，新增 `votesCast`/`castMeaning`（`for`/`against`/`missing` 本来就存在；★ 本轮更正：这里原写「新增 `allFor`」是错的，读面从来没有 `allFor` 字段，字段名是 `for`） |
 | k | `turn{members:[…]}` 有待回回合时被静默忽略 | 真缺陷（静默） | 修机制：回执带 `selectionIgnored{requested,reason,pending}` |
 | l | epoch-ms 与 ISO 歧义 | 只是读法歧义，不是缺陷 | 记录，不改 |
 
@@ -1356,3 +1356,41 @@ A1 的机制部分上一轮已经全绿（`tests/vmu-assistant-report.test.mjs` 
    一个本来对的式子；正确的动作是"复现不了 ⇒ 记为报告假象 + 找它可能想表达的真问题"。
 2. **手写表 vs 派生表**：`meetingKeysSnapshot` 漂了三次，每次都是"补一行"能过、下次再漂。第三次应当拆表。
 3. **同一个布尔不要背两个语义**：`met` 死锁那版如果不跑 `vmu-meetings`，它会带着"更严格"的注释溜进真机。
+
+---
+
+## §34 真机第 8 次走查：七条验收发现（五修、一撤、一改文档）
+
+第 8 次真机跑（HEAD `a60033f6`，`_oneoff/vm-slv/full-1024-111113.jsonl`）机器判据全过：`cast:true, confirmed:true,
+votesCast:2`；`NO_FENCE=0`、`FIELD_NOT_APPLICABLE=0`、`BAD_JSON=0`（`UNKNOWN_FIELD` 命中的是提示词里**解释**这个拒绝名的文字）。
+代理按"核对规则"的角色交了一份 16.8 KB 验收报告，列出七条：「动了/没动/与规则不符/读不出来」。七条逐条处置：
+
+| # | 发现（代理原话要点） | 判定 | 处置 |
+|---|---|---|---|
+| A | 辩论对象「指向命题卡 id」在本部署**实际不可达**：卡上 `proofState:"complete"` 被拒（自述不算证据），唯一能产证据的 Lean 面要 `file`，而 preset 没有建 `.lean` 的工具；三条合法路径只剩「一句话命题」 | **真缺陷（过度闸门）** | 闸门改为「**声明层可放行**」：有 `proofRef+proofState:'complete'` ⇒ 放行，但回执必须写 `proofBasis:"declaration-only"` 并说明自述≠已证；声明与机器证据**矛盾**（Lean 作业未过）仍具名拒 `DEBATE_SUBJECT_UNPROVEN`；连声明都没有/只 `draft` ⇒ `DEBATE_SUBJECT_NO_PROOF`。`vmu-debate-subject-proof` 42/0、`vmu-verified-gates` 103/0 |
+| B | `vibe_v5_overview.meetings[].state` 报的是**标记**生命周期（一开会就"open"），与同窗口 `vibe_v5_meeting` 的 `state:"scheduled"` 冲突；且**预约/等待中的会议在总览里根本不出现** | **真缺陷（读面自相矛盾 + 漏项）** | 总览会议列表改为**从会议服务的 live 集合构建**（`meetings.status().liveMeetings`）+ `meetingView` 取调度态；标记值移入 `markerState`，并新增 `stateSource` 明写来源 |
+| C | `faces.enabledGap[].kind` 全表只有 `route-not-recorded`，连 source 明写"declared by pack … (tools[])"的 pack 工具也是它 | **真缺陷（标签不可达）** | 判定由 `face === 'pack'` 改为 `startsWith('pack:')` ⇒ `pack-tool` 这一档现在真会出现 |
+| D | `quorum.met:true` 在**无人到场**时即为真（默认下限 0），读者会把"下限满足"读成"机构规则满足" | **可改进（命名）** | 新增 `floorMet`（与 `met` 同一布尔，不是第二次计算）与 `metIs`（明写"这是 FLOOR 问题，不是机构规则"）；**不删 `met`** 以保兼容 |
+| E | 建议「票数下限」应按机构规则给出非 0 值 | **已尝试后撤销** | 试过在 pack 声明 `vmu.meetings.quorumRatio:1`，实测**过度**：所有普通动议都要求全员到场，3 个既有用例立刻崩（`quorum is not met: 1/3`）；规则的下限针对**辩论/结题表决**，而结题走的是 `unanimity` 全票通道本身已满足。已回退，原因写在此处（而不是静默回退） |
+| F | `VMU_REPORT_NO_TRANSPORT` 拒绝回执只有 code/message/hint，`drives`/`transportInjected` 只在 `status()` 里 | **真缺陷（拒绝面也是读面）** | 回执（含抛出的错误对象）现在都带 `drives:false, neverDrives:true, transportInjected:false` |
+| G | 账本 §33 声称新增了 `allFor` 字段 | **文档错** | 已更正：读面从来没有 `allFor`，字段名是 `for` |
+
+新增门禁 `tests/vmu-run8-findings.test.mjs`（**25 passed / 0 failed**）把 B/C/D/F 钉在真实装配上，每条都带非空守卫
+（否则"零违规"是空的）：B 断言预约会议在总览里 `state:"scheduled"`、来源是会议服务、`markerState !== 'scheduled'`、
+`scheduledFor` 带出；C 先断言**存在** pack 面 gap 行、再断言全部标 `pack-tool`、且非 pack 行仍标 `route-not-recorded`；
+D 断言 `floorMet === met`、`metIs` 含 FLOOR 与 NOT the institution rule、且"下限满足而全票未满足"这一具体读法；
+F 断言拒绝回执自带三个布尔。★ 这一套**不证明**宿主发布路径与真模型会话（前者 `vmu-host`，后者真机跑）。
+
+### §34.1 这一轮的四条教训
+
+1. **一个"更严的闸"可能把合法路径全堵死**：A 的闸原意（自述≠已证）是对的，但把"声明层"整条否掉之后，规则允许的三种
+   辩论对象形态在本部署只剩一种可达。正确形状是**放行 + 如实标注 + 只在矛盾时拒**，而不是"没有机器证据就拒"。
+2. **标签判定要测得到取值域**：C 里 `kind` 那一档从来没出现过，因为判定式写的字符串不在实际取值里；这类缺陷任何
+   "字符串出现在源码里"的检查都抓不到，只有**统计每个取值的出现次数**才抓得到。
+3. **一次试验性修复的撤销理由必须写下来**：E 如果不写，下一轮会有人再试一遍。
+4. **拒绝回执与状态面必须携带同一组事实**：F 的根因是"两个面各说一半"，与 B 同族（读面之间互相矛盾）。
+
+### §34.2 收尾时的机器读数
+
+`regen-all --check` ⇒ `16/16 in sync`（本轮新增一个测试文件后重生成过）；`check-docs` ⇒ `DOC LINT: PASS`。
+测试文件自述里写明了它证明不了什么（宿主发布路径/真模型会话），与本账本一贯口径一致。

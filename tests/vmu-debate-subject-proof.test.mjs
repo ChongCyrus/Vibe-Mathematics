@@ -12,7 +12,10 @@
 //   ③ 追溯层：声明与证据都记在卡/轨上，"写完"本身不可机器判定，违规由 D13 忠实性审查 + defect 撤回兜底。
 //
 // WHAT THIS SUITE PROVES（每条都能机器失败）：
-//   ① 只有声明、没有证据 ⇒ 拒，且码是 `VMU_PACK_V5R_DEBATE_SUBJECT_UNPROVEN`（**不是** NO_PROOF）；
+//   ① 只有声明、没有证据 ⇒ **放行**，但回执必须写 `proofBasis:"declaration-only"` 并说明「自述不等于已证」
+//      （★ live run 8 把这条口径改了：规则要的是「已登记为写完」，而把机器证据也当必要条件会让三条合法形态里两条
+//       在本部署不可达——verified 行要先有辩论、lean 要先有 .lean 文件，而 preset 没有建文件的工具 ⇒ 死锁）；
+//   ①b 声明与机器证据**矛盾**（指向的 Lean 作业没通过）⇒ `DEBATE_SUBJECT_UNPROVEN`；
 //   ② 连声明都没有（或只标 draft）⇒ 拒，码是 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`（两种缺失两个码）；
 //   ③ 有机器证据（lean 通过 / verified 定论行）⇒ 放行，且回执点名证据来源 `proofVia`；
 //   ④ 一句话命题是规则允许的合法形态 ⇒ 不被这个闸拦（`provenance:'none'` 如实记）；
@@ -83,17 +86,28 @@ console.log('=== 0. the vocabulary: two missing-pieces, two codes ===')
   ok(published.includes(gates.GATE_CODES.DEBATE_SUBJECT_UNPROVEN), '目录里能查到 B6 新增的码')
 }
 
-console.log('=== 1. 只有声明（自报）⇒ 具名拒：UNPROVEN ===')
+console.log('=== 1. 只有声明（自报）⇒ 放行但如实标注；声明与机器证据矛盾 ⇒ UNPROVEN ===')
 {
   const declaredOnly = gates.debateSubjectGate({ meeting: DEBATE, subject: CARD_ID,
     evidence: cardEvidence({ card: { id: CARD_ID, bodyTruncated: false, proofRef: 'Members/acad/Propos/' + CARD_ID + '.md#正式证明', proofState: 'complete' } }) })
-  ok(declaredOnly.allowed === false, '★★★ 拒绝：声明 complete 但没有 Lean 通过 / verified 行', declaredOnly)
-  ok(declaredOnly.code === gates.GATE_CODES.DEBATE_SUBJECT_UNPROVEN,
-    '★ 码是 UNPROVEN（不是 NO_PROOF）：它告诉被拒的人"你登记过，缺的是证据"', declaredOnly.code)
+  // ★ live run 8 finding A: this used to be a refusal, and that refusal was a deadlock (verified row needs a finished
+  // debate; a passed Lean job needs a .lean file the preset cannot create). The rule's condition is the REGISTRATION,
+  // so the gate admits it and puts the honesty in the receipt instead of in a refusal that blocked the legal path.
+  ok(declaredOnly.allowed === true, '★★★ 放行：声明 complete（这是规则要的「已登记为写完」）', declaredOnly)
+  ok(declaredOnly.proofBasis === 'declaration-only', '★★ 但回执必须写 proofBasis:"declaration-only"（不把自报说成已证）', declaredOnly.proofBasis)
   ok(declaredOnly.declared === true && declaredOnly.declaredState === 'complete',
-    '回执如实记下"作者声明过 complete"（自报被记录，但不被当成证明）', { declared: declaredOnly.declared, state: declaredOnly.declaredState })
-  ok(typeof declaredOnly.hint === 'string' && /lean_v5_lean_run|vibe_v5_lean_run/.test(declaredOnly.hint) && /verified/.test(declaredOnly.hint),
-    'hint 给出两条合法路径：跑 Lean、或走完辩论进 verified 轨', declaredOnly.hint)
+    '回执如实记下"作者声明过 complete"', { declared: declaredOnly.declared, state: declaredOnly.declaredState })
+  ok(typeof declaredOnly.note === 'string' && /自述/.test(declaredOnly.note) && /verified/.test(declaredOnly.note),
+    'note 说清三件事：自述、辩论是进证据层的正当路径、进 verified 轨还要过闸', declaredOnly.note)
+
+  // ①b TEETH: a declaration the machine CONTRADICTS is still refused — that is what UNPROVEN now means.
+  const contradicted = gates.debateSubjectGate({ meeting: DEBATE, subject: CARD_ID,
+    evidence: cardEvidence({ card: { id: CARD_ID, bodyTruncated: false, proofRef: 'p.md', proofState: 'complete' },
+      lean: { jobId: 'lean-9', passed: false, state: 'failed' } }) })
+  ok(contradicted.allowed === false && contradicted.code === gates.GATE_CODES.DEBATE_SUBJECT_UNPROVEN,
+    '★★★ 声明"写完了"但指向的 Lean 作业 failed ⇒ UNPROVEN（声明不能与机器证据矛盾）', contradicted.code)
+  ok(contradicted.contradictedBy && contradicted.contradictedBy.jobId === 'lean-9',
+    '★ 拒的原因点名是哪个作业、什么状态（不是一句"证据不足"）', contradicted.contradictedBy)
 }
 
 console.log('=== 2. 连声明都没有 / 只标 draft ⇒ 另一个码：NO_PROOF ===')
@@ -158,10 +172,12 @@ try {
     '★★ 读回：卡体里真的有 proofRef（声明层不是只活在回执里）', card.ok ? card.fields.proofRef : null)
   ok(card.ok === true && card.fields.proofState === 'complete', '★★ 读回：proofState=complete', card.ok ? card.fields.proofState : null)
 
-  const blocked = await receipt(b, 'vibe_v5_meeting', { member: 'acad', agenda: '辩论这张卡的证明是否成立', type: 'debate', subject: CARD_ID })
-  ok(blocked.ok === false, '★★★ 真机：只有声明、没有证据的卡 ⇒ 辩论**开不起来**', blocked)
-  ok(blocked.code === gates.GATE_CODES.DEBATE_SUBJECT_UNPROVEN,
-    '★★ 且码是 UNPROVEN（真机把"自报"与"已证"分开）', blocked.code)
+  const opened = await receipt(b, 'vibe_v5_meeting', { member: 'acad', agenda: '辩论这张卡的证明是否成立', type: 'debate', subject: CARD_ID })
+  ok(opened.ok === true && typeof opened.meeting === 'string',
+    '★★★ 真机：按规则登记为 complete 的卡 ⇒ 辩论**开得起来**（run-8 的死锁已解）', opened)
+  ok(opened.subjectGate && opened.subjectGate.proofBasis === 'declaration-only',
+    '★★ 真机回执同样写 declaration-only（读面与闸一致，不美化）',
+    opened.subjectGate && { basis: opened.subjectGate.proofBasis, provenance: opened.subjectGate.provenance })
 
   const draftCard = await receipt(b, 'vibe_v5_record_proposition', { member: 'acad', id: 'r-pv-2',
     statement: '命题卡：半成品', value: '该命题为假则需反例', motive: '声明层 draft', p: 0.4,
@@ -187,7 +203,8 @@ try {
 console.log('=== 6. TEETH：三种变体分别报出应有的码（闸不是恒绿/恒红）===')
 {
   const cases = [
-    { name: '只有声明', ev: cardEvidence({ card: { id: CARD_ID, bodyTruncated: false, proofRef: 'x.md', proofState: 'complete' } }), expect: gates.GATE_CODES.DEBATE_SUBJECT_UNPROVEN },
+    { name: '只有声明', ev: cardEvidence({ card: { id: CARD_ID, bodyTruncated: false, proofRef: 'x.md', proofState: 'complete' } }), expect: null },
+    { name: '声明被 Lean 作业否定', ev: cardEvidence({ card: { id: CARD_ID, bodyTruncated: false, proofRef: 'x.md', proofState: 'complete' }, lean: { jobId: 'lean-9', passed: false, state: 'failed' } }), expect: gates.GATE_CODES.DEBATE_SUBJECT_UNPROVEN },
     { name: '没有声明', ev: cardEvidence(), expect: gates.GATE_CODES.DEBATE_SUBJECT_NO_PROOF },
     { name: '有证据', ev: cardEvidence({ lean: { passed: true } }), expect: null },
   ]

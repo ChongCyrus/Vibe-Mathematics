@@ -137,14 +137,24 @@ function cardRow(records, { p = 0.5, title = '命题-平方和' } = {}) {
   permitted(debateSubjectGate({ meeting: debate, subject: '' }), 'an empty subject is left to the tool\'s required-field gate (named, not duplicated)')
 
   const cardEvidence = { card: { id: 'r-abc', p: 0.6, proofRef: 'Members/pi/Propos/r-abc.md', proofState: 'complete' } }
-  // ★ B6 / R18: a DECLARATION is not a PROOF. The card claims `proofState=complete`, but no machine evidence
-  // (a passing Lean job, or a verified conclusion row) backs it ⇒ refused by NAME with its own code, and the
-  // refusal must tell the two legal ways to become legitimate. This assertion replaces the old one that let a
-  // self-declaration through — the old green was the defect.
+  // ★ live run 8 finding A — THE PREMISE OF THIS BLOCK WAS A DEADLOCK, and it took a real run to see it. The rule's
+  // condition for a debate subject is 「正式证明已写完」, and the DECLARATION (`proofRef` + `proofState:"complete"`) IS
+  // that registration. Requiring machine evidence ON TOP made two of the three legal subject forms unreachable in a
+  // real deployment: a `verified` row requires a finished debate (the thing being gated), and a passed Lean job
+  // requires a `.lean` file the preset has no tool to create. Measured: the card registered exactly as the rule asks
+  // was refused, and `lean_run` refused for want of `file`.
+  // The honesty moved from the VERDICT to the RECEIPT: admitted, with `proofBasis:'declaration-only'` and a note that a
+  // self-report is not a proof and that promotion to `verified` still passes p1Intent + the single-writer gate.
   const declaredOnly = debateSubjectGate({ meeting: debate, subject: 'r-abc', evidence: cardEvidence })
-  refused(declaredOnly, GATE_CODES.DEBATE_SUBJECT_UNPROVEN, '★ 声明不是证明：proofState=complete 但没有机器证据 ⇒ 具名拒', '两条合法路径')
-  eq(declaredOnly.declared, true, 'the refusal carries the fact that a declaration WAS present')
+  permitted(declaredOnly, '★ a registered declaration IS the rule\'s condition ⇒ admitted (no deadlock)')
+  eq(declaredOnly.proofBasis, 'declaration-only', '★ and the receipt says the basis is the DECLARATION, not evidence')
+  eq(declaredOnly.declared, true, 'the receipt carries the fact that a declaration WAS present')
   eq(declaredOnly.declaredState, 'complete', 'and which declared state it saw (so the reader can act)')
+  // ★ TEETH: what UNPROVEN now means — the machine CONTRADICTS the declaration.
+  refused(debateSubjectGate({
+    meeting: debate, subject: 'r-abc',
+    evidence: { card: { id: 'r-abc', p: 0.6, proofRef: 'Members/pi/Propos/r-abc.md', proofState: 'complete' }, lean: { jobId: 'j-9', passed: false, state: 'failed' } },
+  }), GATE_CODES.DEBATE_SUBJECT_UNPROVEN, '★ 声明"写完了"而它指向的 Lean 作业 failed ⇒ UNPROVEN', '声明"写完了"')
   permitted(debateSubjectGate({
     meeting: debate, subject: 'r-abc',
     evidence: { card: { id: 'r-abc', p: 0.6, proofRef: 'Members/pi/Propos/r-abc.md', proofState: 'complete' }, lean: { jobId: 'j-0', passed: true } },

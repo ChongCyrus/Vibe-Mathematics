@@ -578,7 +578,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               // bookkeeping gap in this receipt, while a PACK tool is published by the pack's own registered route and
               // never rides a face-row decision at all (there is nothing to reconcile). The kind is DATA so a reader can
               // tell them apart without believing a sentence.
-              kind: String(d.face) === 'pack' ? 'pack-tool (published by the pack route; no face row is involved)'
+              kind: (String(d.face) === 'pack' || String(d.face).startsWith('pack:')) ? 'pack-tool (published by the pack route; no face row is involved)'
                 : 'route-not-recorded (published by a route the face-row decision does not record)',
               reason: 'not in this receipt\'s `enabled`: it was published by a route the face-row decision does not record (see source / faceRowSource / evaluations; `kind` says which of the two shapes this is)',
             }))

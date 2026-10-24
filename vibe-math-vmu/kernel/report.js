@@ -362,8 +362,12 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
     const rec = { id: 'rep-' + (++seq), name: it.name, trigger: it.kind, event: event || it.event || null, at, channel: it.channel,
       to: it.to.slice(), text, truncated, delivered: false, drives: false, error: null, refused: null }
     if (typeof deliver !== 'function') {
+      // ★ run-8 finding F: the refusal receipt used to carry only code/message/hint, so a reader of the REFUSAL could
+      // not see the two facts that matter (this channel never drives the loop, and no transport is injected) — they
+      // were only on status()/declarations(). A refusal is a read face too.
       rec.refused = { code: CODE.noTransport, message: 'no delivery transport was injected: nothing was sent (and nothing is pretended)',
-        hint: 'pass { deliver: (report) => … } when creating the module' }
+        hint: 'pass { deliver: (report) => … } when creating the module',
+        drives: false, neverDrives: true, transportInjected: false }
       say({ type: 'report/undelivered', at, name: it.name, code: CODE.noTransport })
       record(rec)
       return rec
@@ -470,7 +474,17 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
     counters.fires += 1
     lastAt = now
     if (rec.refused) {
-      throw refuse(rec.refused.code, rec.refused.message, rec.refused.hint, { report: it.name, id: rec.id })
+      // ★ run-8 finding F: the refusal is a READ FACE too. It used to carry only code/message/hint, so the two facts
+      // that matter — this channel never drives the loop, and no transport is injected — were readable on
+      // `status()`/`declarations()` but NOT on the receipt of the call that failed. An acceptance check that reads the
+      // refusal could not tell "refused" from "sent nothing on purpose".
+      const refused = Object.assign({}, rec.refused, {
+        drives: false, neverDrives: true, transportInjected: typeof deliver === 'function',
+        report: it.name, id: rec.id,
+      })
+      const err = refuse(rec.refused.code, rec.refused.message, rec.refused.hint, { report: it.name, id: rec.id })
+      for (const k of Object.keys(refused)) if (err[k] === undefined) err[k] = refused[k]
+      throw err
     }
     return { ok: true, report: rec.name, id: rec.id, trigger: rec.trigger, at: rec.at, to: rec.to, channel: rec.channel, text: rec.text,
       truncated: rec.truncated, delivered: rec.delivered, drives: false, enforced: ARGS.slice(), fired: ['vmu.report.reports'] }
