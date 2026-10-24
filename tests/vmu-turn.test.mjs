@@ -1584,6 +1584,13 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(!!crc && typeof crc.notesMean === 'string' && /empty list means no such line/.test(crc.notesMean),
     '★★ R30f: the empty case stays explicable here as well', crc && crc.notesMean)
   ok(!!crc && crc.skippedDetailTruncated === false, '★ R30g: the bound announces itself on every route', crc && crc.skippedDetailTruncated)
+  // ★★ RUN 39's one reading risk: the completion receipt named the skip correctly but `receipt.turn` was null while the
+  // id was KNOWABLE (the held prompt carries `pending.turnId`, and the reply receipt had printed it). A null beside a
+  // named field sends the reader to another receipt for a fact this one is about.
+  ok(!!crc && crc.turn === opened.memberPrompt.turnId,
+    '★★ R30h: the completion receipt names the turn it settled (no null beside a knowable id)', crc && { turn: crc.turn, held: opened.memberPrompt.turnId })
+  ok(!!settled && settled.selectionIgnored === null,
+    '★ R30i: and with no explicit selection there is nothing ignored (no invented reading)', settled && settled.selectionIgnored)
 }
 
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')

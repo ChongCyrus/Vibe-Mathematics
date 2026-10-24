@@ -2709,3 +2709,26 @@ HEAD `89f45a36` + 本轮未提交改动（kernel 回执 + 5 条断言 + 覆盖�
 ### §68.5 状态
 
 HEAD `dbdd2a01` + 本轮未提交改动（完成回执 + R30 七条 + 覆盖率债重生成）。`regen-all --check` 16/16、`audit-declaration-criterion` 89/0、`vmu-turn` 232/0。下一步：第 39 次真机跑，只验 ㉙.1 这一条（外加回归带）。
+
+## §69 第 39 次真机跑：所办自判「本轮无实质残余：是」，并主动交回一条读数风险
+
+### §69.1 读数
+
+`full-1025-020043.jsonl`（build `2f4b32a0`）`cast=true`、0 RED、8 个回合回执。所办报告：
+
+- **㉚.1 完成回执四个细节字段：通过（四条全中）**，并把 `receipt` 整段抄了回来：`skipped:1`、`skippedDetail[0].reason:"no-meeting-bound"`、`notes[0].text:"核验句-丙"`+`kept:true`、`notesMean` 解释空列表、`skippedDetailTruncated:false`。§68 的修复在真机走通。
+- **㉚.2 回归带五条全中**：`proceed {member:…}` 被接受（`by`=主席、`whichRule:"institution-rule"`、`waitedMs:4195`）；`sweep.recentTransitions` 两类转移在（扫描 `scheduled→waiting`、`proceed` 的 `waiting→open`），逐行 `passAt`；`pending.turn`/`memberPrompt.turnId` 为真实 id；结题读数齐备；`fire` 后 `roster.live:1`、`closureVote.eligible:["member-1"]`。
+- **㉚.3 无机制缺陷**，一条**读数风险**：完成回执里 `receipt.turn:null`，同时 `selectionIgnored.pendingUnknown` 说「the completed turn carried no id on any field this receipt reads」——但它**并非不可知**：上一步 reply 回执写过 `"turn":"t-3"`。
+- **最终裁决：「本轮无实质残余：是」**。
+
+### §69.2 我仍然把那条读数风险修了（不因为判「是」就留下）
+
+`vibe-math-vmu/kernel/turn/index.js` 完成回执的 `completedTurnId` 增加**第三个来源**：`waiting.pending.turnId`（本次正在结算的那个回合自己的 id）。原来的通用读取器排在前（结算自身若报出 id 仍以它为准），最后才回落到被持有回合的 id——理由写进注释：**这份回执是「某个回合的结算」，那个回合的 id 不该让读者去前一份回执里翻。**
+
+`tests/vmu-turn.test.mjs` 新增 **R30h/R30i**（套件 232 → **234/0**）：完成回执的 `turn` 必须等于 `memberPrompt.turnId`（R30h），且没有显式 `members` 时 `selectionIgnored` 必须为 `null`（R30i，防止为了填 id 而发明读数）。
+
+顺带记一个自己踩的坑：R30i 第一次写成断言 `receipt.selectionIgnored`，跑红——因为该字段在完成回执的**顶层对象**上，不在 `receipt` 里。断言写错位置会红，但红了之后要读清是「断言错」还是「产品错」。
+
+### §69.3 状态
+
+HEAD `2f4b32a0` + 本轮未提交改动（完成回执 id + 两条断言 + 覆盖率债重生成）。`regen-all --check` 16/16、`audit-declaration-criterion` 89/0、`vmu-turn` 234/0、`vmu-receipt-shapes` 50/0、`vmu-run16-findings` 16/0。下一步：第 40 次真机跑，验 ㉚.3 那条风险已消失（`receipt.turn` 为真实 id）+ 回归带，然后即可收口本轮 goal。

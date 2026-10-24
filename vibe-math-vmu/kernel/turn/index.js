@@ -2008,10 +2008,19 @@ export function createTurnOrchestrator({
         // STRING here (it comes from apply()'s tail), not an object with `.id` - so the id was silently dropped.
         // One reader for the id, and when it is genuinely unknown the receipt says so instead of leaving null.
         const completedTurnId = (() => {
-          if (!r) return null
-          if (typeof r.turn === 'string' && r.turn !== '') return r.turn
-          if (r.turn && typeof r.turn === 'object' && r.turn.id !== undefined && r.turn.id !== null) return r.turn.id
-          if (r.receipt && r.receipt.turn !== undefined && r.receipt.turn !== null) return r.receipt.turn
+          if (r) {
+            if (typeof r.turn === 'string' && r.turn !== '') return r.turn
+            if (r.turn && typeof r.turn === 'object' && r.turn.id !== undefined && r.turn.id !== null) return r.turn.id
+            if (r.receipt && r.receipt.turn !== undefined && r.receipt.turn !== null) return r.receipt.turn
+          }
+          // ★★ LIVE RUN 39, a reading-risk the institute reported: the completion receipt carried `receipt.turn: null`
+          // while `selectionIgnored.pendingUnknown` said "the completed turn carried no id on any field this receipt
+          // reads". The id was NOT unknowable — the reply receipt had named it, and the held prompt carries it as
+          // `pending.turnId`. Reading it from the held prompt is the honest source: this receipt is the settlement OF
+          // that turn, so its own id is the one being settled. The generic readers above stay first so a settlement
+          // that names the turn itself still wins.
+          const heldId = waiting && waiting.pending && waiting.pending.turnId
+          if (typeof heldId === 'string' && heldId !== '') return heldId
           return null
         })()
         // ★ LIVE RUN 9, finding A: the ledger (§33 row k) and the acceptance task file both name a structured
