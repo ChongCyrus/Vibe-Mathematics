@@ -1507,3 +1507,30 @@ F 断言拒绝回执自带三个布尔。★ 这一套**不证明**宿主发布�
 
 ### §37.5 状态
 账本 42 行全部 ✅（A1 的真机证据补齐后不再有 ⚠️ 行）。
+
+
+## §38 真机第 12 跑：自投递的两个谎言被真机读数证实已消失
+
+### §38.1 读数
+- tarball build=`f1652bdf`，transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1024-142038.jsonl`（7 796 行 / 3.5 MB）
+- `CLOSURE cast=true`（6 个 turn 回执），`SUMMARY: 1 session(s), 0 with RED checks`
+- `NO_FENCE=0` · `UNKNOWN_FIELD=1`（提示词正文提到该具名拒，不是运行时错误）· `FIELD_NOT_APPLICABLE=0` · `BAD_JSON=0`
+- 50 次工具调用 / 2 948 508 tokens / 266 s
+
+### §38.2 自投递（§37 修的两个缺陷）的真机证据
+同一跑里两条裁决，两条都自证：
+- 持卡人＝签名者（`r-28`，owner `member-1`，签名者 `member-1`）：
+  `delivery {attempted:false, via:"none", ok:true, code:null, addressed:false, selfAddressed:true, recipient:"member-1", reason:"the signer owns this card, so there is nobody else to tell: the ruling is already on the signature receipt"}`，`deliveryContradiction:false`
+  ⇒ 内核短路（**没有**尝试发给自己），也不再出现 `VMU_INVALID_ARGUMENT` 的自相矛盾。
+- 他人持卡（`r-29`，owner `member-2`，签名者 `member-1`）：
+  `delivery {addressed:true, selfAddressed:false, attempted:true, via:"send-port", ok:true, result:{ids:["ml-1"], to:["member-2"], queued:1}}`
+  ⇒ 真的投递，且落的是邮箱。
+两条合起来才是完整命题：**同一条路径必须能既有短路也有投递**；只测一边可以永远绿。
+
+### §38.3 同轮 T1（vmu 范围）的一个红——它抓的是我自己的空洞断言
+`TOTAL 443 PASS 442 FAIL 1`，唯一红 `audit-declaration-criterion.test.mjs` 87/2：本轮的 `tests/vmu-run9-findings.test.mjs` 引入了新的 A 类空洞断言指纹 `vmu-run9-findings.test.mjs:A:later.transitions`——`later.transitions.every(...)` 在集合为空时恒真。
+修法不是把它写进基线，而是补前置守卫：`later.transitions.length > 0 && later.transitions.every(...)`（并在断言文案里写明守卫的理由），再 `--write-baseline`（`entries=81`）⇒ **89 passed / 0 failed**。
+★ 这条属「全量扫」的不可替代性：单跑任何一条套件都不会暴露「这条断言在真实数据为空时什么都没测」。
+
+### §38.4 状态
+账本 42/42 ✅；§37 的两个缺陷的真机确认在 §38.2；T1 的唯一红已修且单独复验。
