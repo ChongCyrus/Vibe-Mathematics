@@ -236,6 +236,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   const receiptDropped = { n: 0 }
   const live = new Map()          // meetingId -> meeting
   let lastSweep = null           // the LAST `sweepDue` pass (reported by status(); see live run 10, finding F)
+  // ★ LIVE RUN 13 (the institute's own report, ⑦.5): `status()` replayed the LAST pass only, so a transition from an
+  // earlier pass was invisible ('痕迹只挂在 beat 回执上'). A bounded history keeps those traces readable without turning
+  // a receipt into a log: the most recent 20 transitions, with a count of what the bound dropped.
+  const sweepHistory = []
+  let sweepHistoryDropped = 0
   const archive = []              // closed meetings (minutes retention pruning happens here)
 
   /**
@@ -321,7 +326,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         throw deny('VMU_STATE', 'meeting ' + m.id + ' is SCHEDULED for ' + new Date(m.scheduledFor).toISOString() + ' and has not started: ' + String(opts.what || 'this act') + ' is refused',
           'it starts by itself when the clock reaches that time (vmu.meetings.scheduleAllowed); reads (status/summary/meetingView/quorum) work now', [])
       }
-      throw deny('VMU_STATE', 'meeting ' + m.id + ' is WAITING for its scheduled start: ' + q.present + '/' + q.roster + ' present, quorum requires ' + q.required + ' — ' + String(opts.what || 'this act') + ' is refused',
+      // ★ LIVE RUN 13 (the institute's own report, item 3 under "与规则不符"): the message quoted the FLOOR as the reason
+      // ('quorum requires 0') while refusing — the floor was MET, and the real blocker was the INSTITUTION rule (unanimity).
+      // It now names the rule that is actually unmet and prints the floor separately, so the two can never be confused.
+      throw deny('VMU_STATE', 'meeting ' + m.id + ' is WAITING for its scheduled start: ' + q.present + '/' + q.roster + ' present; the floor (quorum) requires ' + q.required + ' and ' + (q.met === true ? 'IS met' : 'is NOT met') + ', but the institution rule is not: ' + ((q.unanimity && q.unanimity.because) ? String(q.unanimity.because) : 'not everyone has attended or voted yet') + ' — ' + String(opts.what || 'this act') + ' is refused',
         m.waitDecisionDue === true
           ? 'the wait has EXPIRED: the chair decides — proceed({ meeting, actor }) / lapse({ meeting, by, reason }) / recess({ meeting, by })'
           : 'the wait is still running (vmu.meetings.waitOnDueMs): the chair may proceed early, or wait it out', [])
@@ -694,10 +702,14 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // ★ LIVE RUN 10, finding F: the pass existed but its trace was nowhere a reader could see it, so "the deadline was
       // observed" remained an article of faith. lastSweep is the memory of the LAST pass and status() reports it.
       lastSweep = pass
+      for (const tr of transitions) {
+        sweepHistory.push(Object.assign({ passAt: now }, tr))
+        if (sweepHistory.length > 20) { sweepHistory.shift(); sweepHistoryDropped += 1 }
+      }
       return pass
     },
 
-    proceed({ meeting = null, actor = null, by = null, at = null, why = null } = {}) {
+    proceed({ meeting = null, actor = null, by = null, member = null, at = null, why = null } = {}) {
       const mid = String(meeting)
       const m = meetingOf(mid)
       if (!m) throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + mid, 'open: ' + ([...live.keys()].sort().join(', ') || '(none)'), [])
@@ -711,13 +723,21 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // describes the state) and stops a passer-by from learning the meeting's phase. Same shape as `verdict_final`,
       // whose seat gate was never shadowed. Authority-first is also the framework's general convention for acts that
       // confer power; state remains the gate for acts that need the meeting to BE in a phase.
-      const who = (actor === null || actor === undefined) ? ((by === null || by === undefined) ? null : String(by)) : String(actor)
+      // ★ LIVE RUN 13 (the institute's own report, item 2): the agent passed `member: "member-1"` — the name every OTHER
+      // meeting act uses — and was told 'the chair needs to name itself', which reads as 'you named nobody'. The caller HAD
+      // named itself, in the parameter this face does not accept. `member` is now accepted as an alias for `actor` (preference
+      // order unchanged: actor, then by, then member) and the hint names the parameter so the next caller does not guess.
+      const who = (actor === null || actor === undefined)
+        ? ((by === null || by === undefined)
+            ? ((member === null || member === undefined) ? null : String(member))
+            : String(by))
+        : String(actor)
       if (K.waitDecisionRequiresChair) {
         mark(enforced, 'vmu.meetings.waitDecisionRequiresChair')
         if (m.chair !== null) {
           if (who === null) {
             throw deny('VMU_NOT_PERMITTED', 'vmu.meetings.waitDecisionRequiresChair=true: starting a waiting meeting needs the chair to name itself',
-              'pass { actor: "' + m.chair + '" } — overriding an unmet quorum is an authority act and must be attributable', enforced)
+              'pass { actor: "' + m.chair + '" } (member: is accepted as the same thing) — overriding an unmet quorum is an authority act and must be attributable', enforced)
           }
           if (who !== m.chair) {
             throw deny('VMU_NOT_PERMITTED', 'only the meeting’s chair may start a waiting meeting: actor ' + who + ' != chair ' + m.chair,
@@ -752,10 +772,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // be blamed for calling that missing. `overrodeQuorum` is now the RECORD (null when the floor was met, which is
       // a fact and not an absence), the flag moves to `overrodeQuorumFlag`, and `overrode` stays as a compatibility
       // alias so nothing that already reads it breaks.
+      // ★ LIVE RUN 13 (the institute's own report, item 4 / ⑦.4): `proceed()` recorded an override ONLY when the FLOOR was
+      // unmet, so 'the chair started a meeting before everyone had attended or voted' — an override of the INSTITUTION rule,
+      // which the rule text asks to be recorded — came back `overrodeQuorum: null` and read as 'nothing was overridden'.
+      // The record now names WHICH rule authorised the start (floor, then the institution rule), and carries `beforeDeadline`
+      // so 'started early' and 'started after the deadline' are distinguishable without arithmetic on the clock.
+      const unanimityUnmet = !!(qAfter.unanimity && qAfter.unanimity.met !== true)
       const overrodeRecord = overrodeQuorum
-        ? { by: who, rule: 'meetings.proceed: the chair may start a meeting after its declared wait even when the floor is unmet', floor: qAfter.required, present: qAfter.present, waitedMs }
-        : null
-      const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, scheduledFor: m.scheduledFor, quorum: qAfter, overrodeQuorum: overrodeRecord, overrodeQuorumFlag: overrodeQuorum, overrode: overrodeRecord, overrodeNote: overrodeQuorum ? 'the meeting started WITHOUT its quorum: the chair used proceed() to start it anyway (this is the chair\'s authority act, recorded in minutes as `proceeded`)' : null, enforced, enforcedScope: ENFORCED_SCOPE }
+        ? { by: who, rule: 'meetings.proceed: the chair may start a meeting after its declared wait even when the floor is unmet', whichRule: 'floor', floor: qAfter.required, present: qAfter.present, waitedMs, beforeDeadline }
+        : (unanimityUnmet
+            ? { by: who, rule: 'meetings.proceed: the chair may start a meeting before the institution rule is met (unanimity of attendance/votes)', whichRule: 'institution-rule', unmetRule: 'unanimity', floor: qAfter.required, floorMet: qAfter.met === true, present: qAfter.present, roster: qAfter.roster, unanswered: (qAfter.unansweredList || []).slice(), waitedMs, beforeDeadline }
+            : null)
+      const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, scheduledFor: m.scheduledFor, quorum: qAfter, overrodeQuorum: overrodeRecord, overrodeQuorumFlag: overrodeRecord !== null, overrode: overrodeRecord, overrodeNote: overrodeRecord === null ? null : (overrodeRecord.whichRule === 'floor' ? 'the meeting started WITHOUT its quorum: the chair used proceed() to start it anyway (this is the chair\'s authority act, recorded in minutes as `proceeded`)' : 'the meeting started with the FLOOR met but the institution rule (unanimity) unmet: the chair used proceed() to start it early, which is the same authority act and is recorded here so it is not read as "nothing was overridden"'), enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       say({ type: 'meetings/proceeded', at: now, meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, quorum: quorumOf(m), enforced, enforcedScope: ENFORCED_SCOPE })
       return Object.assign({ ok: true, meeting: m.id, state: m.state, startedLate: true, receipt }, receipt)
@@ -1715,7 +1743,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         // where the framework is deliberately waiting for a human decision.
         // ★ LIVE RUN 10, finding F: the due-clock pass must be READABLE, not merely to exist. `ran:false` is the honest
         // state of a process that has not swept yet (not "nothing was due").
-        sweep: lastSweep === null ? { ran: false, at: null, swept: 0, transitions: [], note: 'no sweep pass has run in this process yet - the kernel runs one on every beat() (there is no timer by design)' } : Object.assign({ ran: true }, lastSweep),
+        sweep: Object.assign(
+          lastSweep === null
+            ? { ran: false, at: null, swept: 0, transitions: [], note: 'no sweep pass has run in this process yet - the kernel runs one on every beat() (there is no timer by design)' }
+            : Object.assign({ ran: true }, lastSweep),
+          { recentTransitions: sweepHistory.slice(), recentTransitionsDropped: sweepHistoryDropped,
+            recentTransitionsNote: 'this is the BOUNDED history (last 20 transitions across all passes); `at`/`swept`/`transitions` above describe the LAST pass only, so a transition from an earlier pass is still visible here' }),
         scheduledMeetings: [...live.values()].filter((m) => m.state === 'scheduled').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
         waitingMeetings: [...live.values()].filter((m) => m.state === 'waiting').map((m) => ({ meeting: m.id, status: String(m.state), scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor, waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt, waitDueAt: waitDueOf(m), waitDecisionDue: m.waitDecisionDue === true, quorum: quorumOf(m) })).sort((a, b) => String(a.meeting).localeCompare(String(b.meeting))),
         waitDecisionDue: [...live.values()].filter((m) => m.state === 'waiting' && m.waitDecisionDue === true).map((m) => m.id).sort(),

@@ -1943,8 +1943,15 @@ function createTurnOrchestrator({
             turn: r.turn ? r.turn.id : null, source: 'tool', completed: true } }
       } catch (e) { return stepFailure(e) }
     }
+    // ★ LIVE RUN 13 (the institute's own report, ⑦.3 and item 1): on THIS route two facts were unreadable. (a)
+    // `selectionIgnored` existed only on the structured-report route, so a caller that passed `members` while holding an
+    // unanswered prompt saw nothing at all. (b) the held prompt was superseded with no trace — the round simply vanished,
+    // and `pending: null` (the field the ledger promises) could not say which turn it was. Both are named here: `pending`
+    // always says which prompt the caller is holding, `selectionIgnored` appears exactly when that prompt is NOT in the
+    // explicit selection (so it is about to be dropped), and `superseded` names the dropped turn instead of losing it.
+    const selectionReadings = selectionReadingsOf(deliver && typeof deliver.pending === 'function' ? deliver.pending() : null, selection.map((mm) => mm.id))
     const spec = nextTurn({ members, phase, why, nextStep, role })
-    if (!spec) return { ok: true, receipt: null, stopped: 'no-members' }
+    if (!spec) return { ok: true, receipt: null, stopped: 'no-members', ...selectionReadings }
     // ★ G7 ④: clear this member's tool-call index at the START of the step, so the receipt reports THIS turn only.
     if (typeof clearMemberToolCalls === 'function') { try { clearMemberToolCalls(spec.member) } catch { /* diagnostics only */ } }
     const toolCallSummary = () => {
@@ -1974,14 +1981,15 @@ function createTurnOrchestrator({
       const tcs = toolCallSummary()
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
-        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated }
+        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated, ...selectionReadings }
       return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(),
         // ★ LANE turn-reply: the receipt must say WHICH CHANNEL answered ('text' | 'tool' | 'tool+text'), or a reader
         // cannot tell a legacy fenced-json round from a tool-reported one - and a mechanism whose channel is invisible in
         // its own receipt is exactly the "set a value, cannot read it back" defect this lane exists to remove.
         source: r.source || null,
         instructionDelivered: r.instructionDelivered === true, turn: r.turn.id,
-        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated } }
+        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated },
+        ...selectionReadings }
     } catch (e) {
       return stepFailure(e)
     }
@@ -2056,6 +2064,30 @@ function createTurnOrchestrator({
       closureVoteWrites,
       solvedThisRound: Object.fromEntries(solvedThisRound),
       closureVote: closureVoteOf({ votes: closureVotes, roster, may, permission }) }),
+  }
+}
+
+/**
+ * ★★ LIVE RUN 13 (the institute's own report, ⑦.3 + item 1): WHAT A CALLER'S SELECTION DID, in one pure function so the
+ * receipt's promise can be asserted without a live host. Three facts: (a) `pending` names the unanswered prompt the caller
+ * is holding (the round that is about to be superseded, if any); (b) `selectionIgnored` appears ONLY when the caller gave
+ * an explicit selection AND that held prompt's member is not in it - i.e. exactly when the call drops a pending turn; (c)
+ * `superseded` names the dropped turn, because 'the round vanished' is the one outcome this phase rules out everywhere.
+ * When NO selection was given nothing is ignored: the default-roster route is not a caller asking for somebody.
+ */
+export const selectionReadingsOf = (heldPrompt, explicitIds) => {
+  const ids = Array.isArray(explicitIds) ? explicitIds.map(String) : []
+  const heldMember = heldPrompt && typeof heldPrompt.member === 'string' && heldPrompt.member !== '' ? heldPrompt.member : null
+  const heldTurn = heldPrompt && heldPrompt.turnId !== undefined && heldPrompt.turnId !== null ? heldPrompt.turnId : null
+  const dropped = heldMember !== null && ids.length > 0 && !ids.includes(heldMember)
+  return {
+    pending: heldMember === null ? null : { turn: heldTurn, member: heldMember },
+    selectionApplied: dropped ? false : true,
+    selectionIgnored: dropped
+      ? { requested: ids, pending: heldTurn, pendingMember: heldMember,
+          reason: 'an unanswered prompt for ' + heldMember + ' is still held by the caller: `members` selects who receives the NEXT prompt, so this call drops that pending turn' }
+      : null,
+    superseded: dropped ? { turn: heldTurn, member: heldMember } : null,
   }
 }
 

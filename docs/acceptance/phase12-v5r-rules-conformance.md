@@ -1696,3 +1696,53 @@ phase 12 的收尾判据不是「我抽查没问题」，而是**研究所自己
 
 ### §42.3 状态
 十条全部有定性；其中七条已修并各配门禁（c/f 在 `0fc5c234`，a/b/g/j 在 `1883c4a6`），三条已判非缺陷并写明理由。下一次真机全流程复跑用来验证 a/b/g/j 的可读性，并把研究所的验收报告作为这一阶段的判据而不是装饰。
+
+## §43 第 13 次真机验收：所办自己的报告（新判据）与它提出的五项
+
+第 12 次收尾被用户当面推翻（「代理最终没有再检查出不符合规则的地方吗？」→ 不成立）。本轮起，**判据换成「所办代理的验收报告里每一条都被定性」**，而不是「机器判据全绿」。第 13 次真机跑（`1883c4a6` 出的 tarball）通过，`cast:true`、0 RED，所办在最终报告（21,771 字符）里确认前四条已修，同时提出六项新问题；其中五项已在本轮修掉并各配断言，第六项（发言预算读不出余额）判为**诚实但不可用**的读数，登记为已知，不做机制改动（见 §43.5）。
+
+### §43.1 第 13 次真机跑读数（实测，非记忆）
+
+| 项 | 读数 |
+|---|---|
+| transcript | `_oneoff/vm-slv/full-1024-162256.jsonl`（7,792 行，3.5 MB） |
+| 判据 | `cast:true`（machine line）；`SUMMARY: 1 session(s), 0 with RED checks` |
+| 诊断计数 | `NO_FENCE=0`、`UNKNOWN_FIELD=3`（均为**提示词正文引用该拒绝名**，非运行时错误）、`FIELD_NOT_APPLICABLE=0`、`BAD_JSON=0` |
+| 规模 | 357 s；51 次工具调用；4,095,066 tokens |
+| 所办报告 | 21,771 字符；前四条（①②③④）确认「机制真的动了」 |
+
+### §43.2 报告提出的六项（逐条定性）
+
+| # | 报告原话要点 | 定性 | 处理 |
+|---|---|---|---|
+| 1 | 显式传 `members` 且有待回回合时 `selectionIgnored` **不出现**，待回回合被静默顶掉 | **真缺陷** | `selectionReadingsOf()` 成为唯一逻辑并导出；`pending`/`selectionIgnored`/`superseded` 三个字段在普通路由上也发 |
+| 2 | `proceed` 已给 `member` 却被拒，文案说「主席要指名自己」 | **真缺陷（参数名不一致）** | `proceed()` 接受 `member` 作为 `actor` 的别名；hint 里写明两个名字等价 |
+| 3 | `VMU_STATE` 拒文「1/2 present, quorum requires 0 — 被拒」自相矛盾 | **真缺陷（诊断面）** | 文案改为分层：先报「下界 required=N 且 IS/IS NOT met」，再报「机构规则未满：<unanimity.because>」 |
+| 4 | 主席提前自决（`beforeDeadline:true`）时 `overrodeQuorum` 是 `null` | **真缺陷（记录缺一半）** | 记录现在覆盖**被越过的机构规则**，并带 `whichRule`/`unmetRule`/`floorMet`/`beforeDeadline` |
+| 5 | `sweep` 痕迹只挂在 `beat` 回执上；`status`/`overview` 回放上一次 pass | **真缺陷（可读性）** | `status().sweep.recentTransitions`（有界 20 条）+ `recentTransitionsDropped` + 说明「这是跨 pass 的有界历史」 |
+| 6 | 发言「预算」读不出余额（`budget:null`、`ms:0`） | **非缺陷：诚实读数** | 登记（§43.5），不改机制 |
+
+### §43.3 五处修改（每处都配断言，断言跑在**被指责的那一层**）
+
+- `vibe-math-vmu/kernel/turn/index.js` — 新增并导出纯函数 `selectionReadingsOf(heldPrompt, explicitIds)`：`pending` 永远点名「调用方手上未答的那一轮」（turn + member）；`selectionIgnored` **只在**「显式给了 `members` 且被持有的成员不在其中」时出现；`superseded` 点名被顶掉的回合。`step()` 三条返回路径（待回、普通成功、`stopped:'no-members'`）都带这三个字段。
+- `vibe-math-vmu/kernel/meetings.js` `proceed()` — 形参新增 `member`，`who` 的取值顺序 `actor → by → member`；两条 `VMU_NOT_PERMITTED` 的 hint 说明 `member:` 是同一件事。
+- `vibe-math-vmu/kernel/meetings.js` `overrodeQuorum` — 从「只记 floor」改为**记哪条规则被越过**：`whichRule:'floor'` 或 `'institution-rule'`（含 `unmetRule:'unanimity'`、`floorMet`、`unanswered[]`、`beforeDeadline`）；`overrodeQuorumFlag` 由记录派生（`record !== null`），不再是第二个真相。
+- `vibe-math-vmu/kernel/meetings.js` `requireMeeting()` 等待期拒文 — 分层报「下界」与「机构规则」。
+- `vibe-math-vmu/kernel/meetings.js` `sweepDue()`/`status()` — 有界转换历史 `sweepHistory`（上限 20，溢出计数 `sweepHistoryDropped`）。
+
+### §43.4 新门禁 `tests/vmu-run13-findings.test.mjs`（33 passed / 0 failed）
+
+要点（每条都刻意包含一个**否证**，否则它只是装饰）：
+- (a) 拒文必须匹配 `/the floor \(quorum\) requires \d+ and IS met/` 与 `/the institution rule is not:/`，**并**断言旧措辞 `quorum requires N — ` 已不存在。
+- (b) 同一个 `overrodeQuorum` 字段在两种场景下必须给出**不同**的 `whichRule`（默认机构规则未满 ⇒ `institution-rule`；声明 `quorumMin:2` ⇒ `floor`），否则「有记录」本身不证明任何事；记录必须可归属（`by`）且带 `beforeDeadline`。
+- (c) `proceed({ member })` 成功且 `receipt.by` 等于该成员。
+- ⑦.5 `status().sweep` 同时给出「最后一次 pass」与「跨 pass 的有界历史」，且历史自述上界（不允许静默截断）。
+- ⑦.3 `selectionReadingsOf` 四组用例：无持有 ⇒ 全 null；持有且选中 ⇒ `selectionIgnored:null`（**快乐路径不能触发它**）；持有但被排除 ⇒ 三字段齐备且点名被顶掉的 turn；无显式选择 ⇒ 不算「忽略」。
+
+### §43.5 第 6 项为什么不动机制
+
+`speak()` 的 `budget:null` / `ms:0` / `budgetWhy` 已经写明「没有声明预算，`null` 不是 verdict、不是『充足』」。规则要的是「发言有预算」，而本部署把 `vmu.meetings.budgetTurns/budgetTokens/budgetWallMs` 都设为 0（无上界），所以「还剩多少」在这个部署里**本来就不存在**——凭空造一个余额读数才是假装。登记为已知读数边界，若将来把预算设为非 0，余额读数需另行设计并配门禁。
+
+### §43.6 教训
+
+**判据必须来自外部**。这一阶段最贵的两次错误同源：把「我自己抽查通过」当成「对方验收通过」。所办代理的报告是**外部判据**，它列出的每一条都必须被定性（已修／已判非缺陷／已登记），并且定性要能指到 `file:line` 或命令输出。把「机器判据全绿」写成「规则验收通过」，是**假绿的最高级形态**：绿的是我自己的仪器，不是对方的验收。
