@@ -331,7 +331,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // It now names the rule that is actually unmet and prints the floor separately, so the two can never be confused.
       throw deny('VMU_STATE', 'meeting ' + m.id + ' is WAITING for its scheduled start: ' + q.present + '/' + q.roster + ' present; the floor (quorum) requires ' + q.required + ' and ' + (q.met === true ? 'IS met' : 'is NOT met') + ', but the institution rule is not: ' + ((q.unanimity && q.unanimity.because) ? String(q.unanimity.because) : 'not everyone has attended or voted yet') + ' — ' + String(opts.what || 'this act') + ' is refused',
         m.waitDecisionDue === true
-          ? 'the wait has EXPIRED: the chair decides — proceed({ meeting, actor }) / lapse({ meeting, by, reason }) / recess({ meeting, by })'
+          ? 'the wait has EXPIRED: the chair decides — proceed({ meeting, actor | by | member }) / lapse({ meeting, by, reason }) / recess({ meeting, by }) (the three names for the actor are the same thing)'
           : 'the wait is still running (vmu.meetings.waitOnDueMs): the chair may proceed early, or wait it out', [])
     }
     return m
@@ -424,6 +424,15 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       cap: K.quorumCap, capUniverse: capUniverse.n, capUniverseSource: capUniverse.source,
       capPolicy: K.quorumCap > 0 ? 'min(quorumMin/quorumRatio need, vmu.meetings.quorumCap, eligible members in the roster)' : 'uncapped (vmu.meetings.quorumCap = 0)',
       meeting: m.id, mode: K.attendanceMode, present: m.present.size, roster: m.roster.length,
+      // ★★ PHASE 12 / R22 (the institute's own run-17 report, item 3): `present:1` at open() while nobody had
+      // attended — because open() seats the chair in the present set. The number is right about "may this house
+      // transact", but a reader took it as "one member showed up", and no field said otherwise. The breakdown is
+      // reported so the chair's automatic membership cannot be mistaken for an arrival. Derived, never stored.
+      presentBreakdown: (() => {
+        const chairIn = m.chair !== null && m.chair !== undefined && m.present.has(String(m.chair))
+        return { chairSeated: chairIn, attended: m.present.size - (chairIn ? 1 : 0), chair: m.chair === undefined ? null : m.chair }
+      })(),
+      presentNote: 'present = chair (seated by open(), so the house can transact at all) + members who attended or voted; presentBreakdown splits them, and `unanswered` names who has done neither',
       unanswered: unanswered.length, unansweredList: unanswered.slice().sort(),
       denominator: effective, denominatorPolicy: K.unansweredInDenominator ? 'all-roster (unanswered counted)' : 'present-only',
       required: need, met: met, ratio: K.quorumRatio, min: needMin,
@@ -462,6 +471,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         zeroBecause: need === 0
           ? (needMin === 0 && needRatio === 0 ? 'vmu.meetings.quorumMin and quorumRatio are both 0: the deployment declared no floor' : null)
           : null,
+        // ★★ PHASE 12 / R23 (the institute's own run-17 report, item 7): `effective:0` reads as "the bar is very
+        // low" when it means "this deployment set no bar at all". The cause is named so a reader does not have to
+        // infer it from `zeroBecause` existing or not.
+        effectiveNote: need === 0
+          ? 'NO lower bound is in force (effective 0 means the bar is ABSENT, not cheap): read zeroBecause for which input was 0'
+          : 'the lower bound for a ruling is min(max(quorumMin, ceil(quorumRatio*roster)), quorumCap, eligible universe) — see formula',
       },
       emergencyRatio: K.emergencyQuorumRatio,
       // ★ G7 (real machine): "unanswered" used to mean "not in the PRESENT set", so after two votes it still listed a

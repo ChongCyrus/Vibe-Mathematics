@@ -127,7 +127,14 @@ try {
   ok(finSelf.delivery && finSelf.delivery.selfAddressed === true && finSelf.delivery.attempted === false, 'the SELF ruling is short-circuited: selfAddressed true, nothing attempted', finSelf.delivery)
   ok(finSelf.delivery.ok === true, 'a self ruling is NOT a delivery failure (the pre-fix receipt said ok:false, code VMU_INVALID_ARGUMENT)', finSelf.delivery && { ok: finSelf.delivery.ok, code: finSelf.delivery.code })
   ok(finSelf.deliveryContradiction === false, 'the pack reports no contradiction (it may not paper over one either)', finSelf.deliveryContradiction)
-  ok(Array.isArray(finSelf.notified) && finSelf.notified.includes('chair'), 'the owner counts as told — the receipt IS the notice', finSelf.notified)
+  // ★★ PHASE 12 / R21 (the institute's own run-17 report, item 5): this assertion USED to demand
+  // `notified.includes('chair')` and label it "the owner counts as told". That pinned the defect: no delivery happened
+  // (`attempted:false`), the owner's mailbox held nothing, and `notified` still named the owner. `notified` now lists
+  // only mailboxes that RECEIVED a copy, so the self case is empty AND the receipt must say why.
+  ok(Array.isArray(finSelf.notified) && finSelf.notified.length === 0,
+    'R21: a self ruling wrote NO mailbox copy, so `notified` is empty (it lists mailboxes that received one)', finSelf.notified)
+  ok(typeof finSelf.notifiedMeans === 'string' && /nothing to send/.test(finSelf.notifiedMeans),
+    'R21: and `notifiedMeans` says the empty list means "nothing to send", NOT "the owner was not told"', finSelf.notifiedMeans)
   const finOther = await call('vibe_v5_verdict_final', { member: 'chair', meeting: mo.meeting, proposition_id: cardOther.recordId, verdicts: vote(cardOther.recordId, 1, 'm2') })
   ok(finOther && finOther.ok === true, 'the chair can sign a ruling on somebody else\'s card', finOther && (finOther.code || finOther.message))
   ok(finOther.delivery && finOther.delivery.addressed === true && finOther.delivery.selfAddressed === false && finOther.delivery.recipient === 'm2', 'a ruling for ANOTHER owner is addressed to that owner', finOther.delivery)

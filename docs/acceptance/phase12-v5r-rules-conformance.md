@@ -1885,3 +1885,44 @@ phase 12 的收尾判据不是「我抽查没问题」，而是**研究所自己
 邻居：`vmu-kernel` 260/0 · `vmu-meetings` 214/0 · `vmu-meeting-types` 142/0 · `vmu-turn` 209/0 · `vmu-v5r-tools` **348/0**（其中一条断言原本钉住 `window:"meeting"` —— 它钉的正是被 R18 推翻的旧标签，已改为钉新语义并加「给了 meetingId 就回到 meeting」的反向断言）· `vmu-meeting-parity` 204/0 · `vmu-run13-findings` 33/0 · `vmu-run9-findings` 25/0 · `vmu-receipt-shapes` 49/0。
 
 派生面：`update-doc-counts --write` ⇒ `JOBS total=517 suites=409 probes=108 | FILES tests/*.mjs=393 (288 suites + 105 probes/scripts)`；`generate-coverage-debt --write` ⇒ `107 files · L3 90 · L2 12 · L1 5 · L0 0`；`regen-all --check` ⇒ **16/16 in sync**。
+
+## §48 第 17 次真机跑：⑩.1–⑩.4 四项全部被真机证实，五条读法残余被修掉
+
+第 17 次真机跑（`D:\wd\vibemath开发\_oneoff\vm-slv\full-1024-175938.jsonl`，构建 `98b3d2de`，`cast=true`，`SUMMARY: 1 session(s), 0 with RED checks`，326 s / 56 次工具调用 / 5 363 624 tokens（cap 8 M，未撞顶））。
+
+### §48.1 被真机证实的四条（第 16 跑报告要求的 ⑩.1–⑩.4）
+
+| 项 | 结果 | 代理抄回的原文要点 |
+|---|---|---|
+| ⑩.1 `proceed()` 造成的 waiting→open 入册 | ✅ | proceed 前 `recentTransitions` 长 3，proceed 后长 4，**恰新增一条** `{passAt:1792836210940, meeting:"m94", from:"waiting", to:"open"}`，且 `passAt` ＝ proceed 回执 `at`（不是 beat 的 `1792836138025`） |
+| ⑩.2 两个时钟可区分 | ✅ | `sweep.at:1792836138025`、`swept:0`、`lastTransitionPassAt:1792836210940`，`recentTransitionsNote` 原文点名「行内 passAt 是那次移动自己的时刻；at/swept 只描述最后一次 BEAT 扫描」 |
+| ⑩.3 窗口说清能否指名会议 | ✅ | `window:"session"`、`meetingId:null`、`windowMeans:"…spans the SESSION: it is not per-round and it cannot name a meeting. A caller that knows the meeting passes { meetingId }"` —— 代理判「读得出」 |
+| ⑩.4 overview 不再两套名字并列 | ✅ | m95 行：`{"state":"waiting","stateSource":"meeting service view","markerState":"open",…,"markerStateNote":"…it says \"open\" even for a meeting that is still scheduled…"}`，与 `status.state:"waiting"` 一致 |
+
+### §48.2 五条读法残余（由代理的 §11 提出，都已修）
+
+| 编号 | 残余 | 修法 |
+|---|---|---|
+| **R21** | 自签裁决（`selfAddressed:true, attempted:false`）的回执仍把卡主列进 `notified`，而该成员信箱 0 条 —— 「我已通知」与「没有东西可读」并存 | `notified` 只列**真正投递成功**的信箱（`attempted && ok`）；新增 `notifiedMeans` 明说自签时的空表是「没有东西可发」而非「没通知」；`note` 同步改写 |
+| **R22** | `present:1` 在无人到场时就成立，因为 `open()` 把主席坐进 present，**没有任何字段说明这件事** | `quorum()` 新增 `presentBreakdown{chairSeated, attended, chair}` 与 `presentNote`（`present` = 主席（开会即入席）+ 到场/投票者），全部是**派生值**，不新增状态 |
+| **R23** | `voteFloor.effective:0` 被读成「门槛很低」而不是「没有门槛」 | 新增 `effectiveNote`：0 时明说「NO lower bound is in force … ABSENT, not cheap」并指向 `zeroBecause`；非 0 时给公式句 |
+| **R24** | 完成路径的 `selectionIgnored` 里 `pending:null` 与 `pendingMember` 有值并存，靠 `reason` 才懂 | 根因：`r.turn` 在这条路径是**字符串**（apply 的 tail），旧代码读 `.id` 把它静默丢掉。新增单一读取器 `completedTurnId`（字符串 / 对象.id / receipt.turn 三级），`pending` 与 `receipt.turn` 都用它；真的取不到时给 `pendingUnknown` 具名 |
+| **R25** | 到期提示只教 `actor`，而同一个人有 actor/by/member 三种写法 | 提示改为 `proceed({ meeting, actor | by | member })` 并加一句「三个名字是同一件事」 |
+
+### §48.3 被本轮**推翻的旧断言**（同族教训第 4 次）
+
+`tests/vmu-receipt-shapes.test.mjs` 原本断言 `notified.includes("chair")` 并把标签写成「the owner counts as told — the receipt IS the notice」——**它钉住的正是 R21 报的那条缺陷**。已改为：自签时 `notified` 必须为空 + `notifiedMeans` 必须说明空表含义。这是本阶段第 4 次「测试与代码犯同一个错」：断言写的是旧结论，代码照旧代码，两者互相背书。
+
+### §48.4 代理明确标注「证据不足」的三处（保留其原话性质）
+
+1. `memberPrompt.text` 三次都被回执上限截断（`elided … from:9874 to:20366`），所以「提示词尾段不含某句」只**部分**证实；它没有写成「已验证」。
+2. 等待期到点后的具名决定**未观察到**（`waitDecisionDue:false`，`waitDueAt` 在本跑结束时仍未到）。
+3. 它不写「本轮无实质残余」，理由是 §11-1/3/4/6/7 仍是可读性上的实质残余 —— 这正是新 goal 的完成判据想要的行为。
+
+### §48.5 门禁
+
+新 `tests/vmu-run17-findings.test.mjs`（**13 条 0 失败**）：R22/R23 走 `createMeetings` 的真实读数（含「真到场后 `attended` 才变」「非 0 门槛拿公式句」两条反向对照），R21/R24/R25 是源码级并逐条写明「为什么此处只能源码级」。
+
+邻居：`vmu-meetings` 214/0 · `vmu-meeting-types` 142/0 · `vmu-turn` 209/0 · `vmu-v5r-tools` 348/0 · `vmu-receipt-shapes` **50/0** · `vmu-run16-findings` 16/0 · `vmu-meeting-parity` 204/0 · `vmu-kernel` 260/0。
+
+派生面：`update-doc-counts --write` ⇒ `JOBS total=518 suites=410 probes=108`；`generate-coverage-debt --write` ⇒ `107 files · L3 90 · L2 12 · L1 5 · L0 0`；`regen-all --check` ⇒ **16/16 in sync**。

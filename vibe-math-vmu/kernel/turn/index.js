@@ -1959,6 +1959,17 @@ function createTurnOrchestrator({
         //    "silently replaced my request" the agent reported. A selection the loop cannot honour is now a NAMED
         //    refusal (`VMU_INVALID_ARGUMENT`) that says which entries were unreadable — never a silent fallback.
         const requested = selection.map((m) => m.id)
+        // ★★ PHASE 12 / R24 (the institute's own run-17 report, item 4): `selectionIgnored` carried
+        // `pending:null` beside a non-null `pendingMember` on the completion route, because `r.turn` is the turn ID
+        // STRING here (it comes from apply()'s tail), not an object with `.id` - so the id was silently dropped.
+        // One reader for the id, and when it is genuinely unknown the receipt says so instead of leaving null.
+        const completedTurnId = (() => {
+          if (!r) return null
+          if (typeof r.turn === 'string' && r.turn !== '') return r.turn
+          if (r.turn && typeof r.turn === 'object' && r.turn.id !== undefined && r.turn.id !== null) return r.turn.id
+          if (r.receipt && r.receipt.turn !== undefined && r.receipt.turn !== null) return r.receipt.turn
+          return null
+        })()
         // ★ LIVE RUN 9, finding A: the ledger (§33 row k) and the acceptance task file both name a structured
         // `selectionIgnored{requested,reason,pending}`, while the receipt only carried three PARALLEL scalars. The
         // agent therefore recorded "the promised reading is absent" — a doc that names a field the code never emits is
@@ -1969,7 +1980,8 @@ function createTurnOrchestrator({
           selectionApplied: requested.length === 0,
           selectionIgnored: requested.length === 0 ? null : {
             requested,
-            pending: r.turn && r.turn.id !== undefined ? r.turn.id : null,
+            pending: completedTurnId,
+            pendingUnknown: completedTurnId === null ? 'the completed turn carried no id on any field this receipt reads' : null,
             pendingMember: r.member === undefined ? null : String(r.member),
             reason: 'the pending report belonged to ' + String(r.member) + ': `members` selects who receives the NEXT prompt, and completing an already-issued prompt cannot change whose report it was',
           },
@@ -1977,7 +1989,7 @@ function createTurnOrchestrator({
             : 'the pending report belonged to ' + String(r.member) + ', so `members` did not apply to this call - it selects who gets the NEXT prompt; call step again to apply it',
           receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, fields: r.fields,
             executed: (r.executed || []).length, skipped: (r.skipped || []).length, effects: (r.effects || []).slice(), instructionDelivered: false,
-            turn: r.turn ? r.turn.id : null, source: 'tool', completed: true } }
+            turn: completedTurnId, source: 'tool', completed: true } }
       } catch (e) { return stepFailure(e) }
     }
     // ★ LIVE RUN 13 (the institute's own report, ⑦.3 and item 1): on THIS route two facts were unreadable. (a)

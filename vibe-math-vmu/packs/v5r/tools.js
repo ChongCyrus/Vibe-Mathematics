@@ -1293,7 +1293,12 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
   // as broken. The kernel decides this now (`delivery.selfAddressed` after its own short-circuit); the pack only READS it
   // and may not mutate it.
   const selfAddressed = delivery.selfAddressed === true
-  const notified = selfAddressed ? [owner] : (delivery.attempted === true && delivery.ok === true ? [owner] : [])
+  // ★★ PHASE 12 / R21 (the institute's own run-17 report, item 5): `notified` listed the owner even when the r-35
+  // case made NO delivery at all (`attempted:false`, `selfAddressed:true`), so the receipt claimed a recipient while
+  // that member's mailbox held 0 messages - "I told them" and "there is nothing to read" in one receipt. `notified`
+  // now lists ONLY mailboxes that actually received a copy; the self case is explained in `notifiedMeans` and the
+  // empty list there means "nothing to send", not "the delivery failed".
+  const notified = delivery.attempted === true && delivery.ok === true ? [owner] : []
   const deliveryContradiction = selfAddressed && (delivery.attempted === true || delivery.ok === false)
   // ★ LIVE RUN 7 (agent feedback item d): 「表决人数下限 = min(用户设置, 院士+常驻研究员)」 had NO landing point on this
   // receipt — the agent could read `n:2` and `mode` but never the floor the ruling was supposed to satisfy. The kernel
@@ -1319,6 +1324,12 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
     mode: ruled.mode, exact: ruled.exact, rounded: ruled.rounded, decided: ruled.decided,
     enforceable: ruled.enforceable, estimate: ruled.estimate, n: ruled.n, perMember: ruled.perMember,
     spread: ruled.spread, owner, notified, delivery,
+    // the reading that keeps an empty `notified` from being read as a delivery failure (see R21 above)
+    notifiedMeans: selfAddressed
+      ? 'no mailbox copy was made: the card owner is the chair who signed the ruling, so the ruling IS this receipt (a message may not be addressed to its own sender). An empty notified here means "nothing to send", not "the owner was not told" — see delivery.selfAddressed'
+      : (notified.length
+        ? 'the card owner received a mailbox copy of the notice (notified lists the mailboxes that were written)'
+        : 'NO mailbox copy was written: delivery reported ok=' + String(delivery.ok) + ' — the number is on the record and the receipt says so, but the owner was not told (see delivery.code)'),
     notice: ruled.notice && ruled.notice.text ? ruled.notice.text : null,
     fidelity: { consulted: pGate.applicable === true, resolved: pGate.resolved === true,
       required: pGate.required === true, answered: !!answered,
@@ -1327,7 +1338,7 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
     // if this is ever true, the kernel attempted a self-addressed send: the receipt says so rather than smoothing it over
     deliveryContradiction,
     note: selfAddressed
-      ? 'the ruling is on the record and the card owner (' + owner + ') is the chair who signed it, so the notice IS this receipt: a message may not be addressed to its own sender, and no mailbox copy was made (see `delivery.selfAddressed`)'
+      ? 'the ruling is on the record and the card owner (' + owner + ') is the chair who signed it, so the notice IS this receipt: a message may not be addressed to its own sender, no mailbox copy was made, and `notified` is empty for that reason (see `notifiedMeans` and `delivery.selfAddressed`)'
       : (notified.length
         ? 'the ruling is on the record and the card owner (' + owner + ') was told through the mailbox face'
         : '★ the ruling IS on the record but the card owner was NOT told: delivery reported ok=' + String(delivery.ok)
