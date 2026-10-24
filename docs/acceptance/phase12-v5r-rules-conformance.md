@@ -1669,3 +1669,30 @@ the round number and the floor as a NUMBER.
 `vibe-math-vmu/kernel/index.js` · `kernel/meetings.js` · `kernel/turn/index.js` · `packs/v5r/tools.js` · `tests/vmu-run9-findings.test.mjs` · `tests/vmu-receipt-shapes.test.mjs` · `tests/vmu-meeting-types.test.mjs` · `tests/vmu-v5r-tools.test.mjs` · `docs/acceptance/audit-coverage-debt.md`（派生面）。套件：`vmu-run9-findings` 25/0 · `vmu-receipt-shapes` 49/0 · `vmu-meeting-types` 142/0 · `vmu-v5r-tools` 347/0 · `vmu-turn` 196/0 · `vmu-meetings` 214/0 · `vmu-kernel` 260/0 · `vmu-meeting-parity` 204/0 · `vmu-meeting-invite` 69/0。`regen-all --check` 16/16，`check-docs` PASS。
 
 下一步：真机全流程复跑，验证 (a)(b)(g)(j) 在真实运行里可读，并让研究所自己的验收报告成为判据。
+
+## §42 研究所自己报告的 a–j 十条：逐条定性（这是本阶段的完成判据）
+
+phase 12 的收尾判据不是「我抽查没问题」，而是**研究所自己的验收报告里每一条都有定性**：已修（带门禁）／已判非缺陷（带理由）／已登记（带后续动作）。这一节就是那张表。run 12 的所办代理在最终报告里列出 a–j 十条，全部在此。
+
+| # | 报告条目 | 定性 | 依据与门禁 |
+|---|---|---|---|
+| a | ⑦.5 到点自决没有真 sweep | **已修** | 内核 beat 点调用 `sweepDue`；`tests/vmu-run9-findings.test.mjs` 段 (a) 钉「到期后同一次 beat 结算并点名迁移」 |
+| b | ⑦.4 `overrodeQuorum` 形状错 | **已修** | 记录回到承诺名下、布尔移到 `overrodeQuorumFlag`、`vote()` 说明表决不能越权；`tests/vmu-receipt-shapes.test.mjs` 钉值级一致 |
+| c | 结题票通道与提示词相反 | **已修** | 提示词只教 `vote_solved` 计票、`solved` 不计票；`tests/vmu-prompt-closure-channel.test.mjs`（23 条，含把修复前原句当 TEETH） |
+| d | `vibe_vmu_report` 在 `enabledGap` 是 `route-not-recorded` | **已判非缺陷（读数风险）** | `enabledGap` 的语义就是「已注册但没有可示用的路由」，与「不可用」不同；这条是标签读错，不是功能缺失。§42.2 记命名改进待办 |
+| e | `cast` 与 `votesCast` 命名易撞车 | **已判非缺陷（命名风险）** | `cast` = 「无反对且无缺席」的判定，`votesCast` = 票数；两者在回执里同时出现且各有说明。§42.2 记 `castIsUnanimityConfirmed` 作为别名候选，不动现有键（改名会破读数） |
+| f | 非主席席位提示词裸占位 `〔未提供：roleLabel〕` | **已修** | 槽位标签与状态块由内核组装期落地（`STATUS_BLOCK_SECTIONS` / `roleLabelOf`），提示词声明改为「由循环组装」；`tests/vmu-prompt-slot-facts.test.mjs` + `tests/vmu-prompt-live-facts.test.mjs` |
+| g | `selectionIgnored.requested` 回填默认名册 | **已修** | `normalizeMembersSelection` 三形状接受、不可读具名拒；`tests/vmu-meeting-types.test.mjs` ⑧ 钉「纯字符串不再被静默过滤」 |
+| h | `required:0` 与 `met:true` 并排 | **已判非缺陷（口径已解释）** | 有 `metIs` 同段说明两者是不同问题（上限 0 表示不设上限）；读数风险已由文字消解 |
+| i | `budget:null` | **已判非缺陷（诚实空值）** | 没有预算就是 `null`，不是 0；`null` 与 `0` 混用才会误导 |
+| j | `{action:"status"}` 被判 "meeting needs an agenda" | **已修** | 包策略层按名拒任何 `action`，消息说明「从未派发」并指向会答的面；`tests/vmu-meeting-types.test.mjs` ⑧ 四条 + 控制项 |
+
+### §42.1 为什么 (a)(b)(g)(j) 值得单开一节
+这四条的共同形状是：**机制在，消费者/注册名/调用点不在**。它们不会被「再加一个功能」修掉，只能靠「测出是哪一层的接线错了」修掉。与 §30.3、§41.1 是同一条教训的三次复现——这也是为什么本阶段把「每条规则配门禁」写进了完成判据：机制存在不等于机制生效。
+
+### §42.2 已登记、未在本轮动手的两项
+1. **`cast` 命名**：新增只读别名 `castIsUnanimityConfirmed` 不动 `cast`（改名会破所有既有读数与真机脚本），下一轮做。
+2. **`enabledGap` 的 kind 标签**：`route-not-recorded` 与 `pack-tool` 并列时读者容易当成「不可用」，考虑在 `status` 里加一句 `enabledGapMeaning`（本轮已在 §38 加了 `enabledGap[].kind`，但说明句还缺）。
+
+### §42.3 状态
+十条全部有定性；其中七条已修并各配门禁（c/f 在 `0fc5c234`，a/b/g/j 在 `1883c4a6`），三条已判非缺陷并写明理由。下一次真机全流程复跑用来验证 a/b/g/j 的可读性，并把研究所的验收报告作为这一阶段的判据而不是装饰。
