@@ -1558,7 +1558,13 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         ? members.roles().find((r) => r && String(r.id) === mySlot)
         : null
       const roleLabel = slotDef && typeof slotDef.label === 'string' && slotDef.label.trim() !== '' ? slotDef.label : null
-      return { roster, rosterIds, chairId, roleLabel, quorum }
+      // ★★★ PHASE 12 / R16 (finding 6.4 of the institute's own run-14 report, and its sibling measured in run 15):
+      // THE SEAT IS A FACT, NOT A STRING SHAPE. A caller who names members as bare strings (["member-1"]) used to lose
+      // the slot, so the section policy saw role=null and emitted the TEMP seat's charter section to a 常驻研究员 —
+      // 「你的雇主：（未说明）」 in a prompt whose own role block said 常驻研究员. The kernel already knows the slot
+      // (it is in the roster rows above); the loop must be able to ASK for it without parsing prose.
+      const rosterRows = live.length === 0 ? null : live.map((m) => ({ id: String(m.id), slot: String(m.slot || m.role || '') }))
+      return { roster, rosterIds, rosterRows, chairId, roleLabel, quorum }
     },
     clearMemberToolCalls: (member) => { memberToolCallLog.delete(String(member)) },
   })

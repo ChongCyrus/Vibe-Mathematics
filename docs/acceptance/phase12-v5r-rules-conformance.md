@@ -1801,3 +1801,47 @@ phase 12 的收尾判据不是「我抽查没问题」，而是**研究所自己
 - 本批（§44）改动：`vibe-math-vmu/tools/meeting.js`（转发 `member`）、`vibe-math-vmu/kernel/turn/index.js`（`nextTurn` 发 id）、`vibe-math-vmu/kernel/meetings.js`（记录器下沉 `syncMeeting`）、`tests/vmu-turn.test.mjs`（R14a–R14g）、新 `tests/vmu-run14-findings.test.mjs`（15 条）+ 派生面重生成。
 - 断言：`vmu-turn` 204/0 · `vmu-run14-findings` 15/0 · `vmu-meetings` 214/0 · `vmu-meeting-types` 142/0 · `vmu-receipt-shapes` 49/0 · `vmu-run13-findings` 33/0 · `vmu-run9-findings` 25/0；`regen-all --check` 16/16；`check-docs` PASS。
 - 仍待：6.4（裸字符串 `members` 的席位口径）；然后第 15 次真机跑，判据仍是「所办报告无实质残余」。
+
+## §46 第 15 次真机跑：三条读数被证实，第四条暴露出「席位不是事实」
+
+第 15 次真机跑（`D:\wd\vibemath开发\_oneoff\vm-slv\full-1024-171247.jsonl`，构建 `3838c8aa`，`cast=true`，`SUMMARY: 1 session(s), 0 with RED checks`，330 s / 63 次工具调用）逐条复核第 14 次报告的 ⑨.1–⑨.3：
+
+| 读数 | 结果 | 证据 |
+|---|---|---|
+| ⑨.1 `proceed {member:…}` | ✅ 修好了 | 非主席 `member-2` 被 `VMU_NOT_PERMITTED` 拒；主席 `member-1` 通过，回执带完整 `{by, whichRule:"institution-rule", unmetRule:"unanimity", floor, floorMet, present, roster, unanswered, waitedMs, beforeDeadline}`，`overrodeQuorumFlag:true`，`overrodeNote` 有解释 —— 工具面转发的修法真的到了代理手里 |
+| ⑨.2 `sweep.recentTransitions` | ✅ 修好了 | 9 个读面都带它，含 `scheduled→waiting` 与 `passAt`，`recentTransitionsNote` 声明上界 |
+| ⑨.3 `selectionIgnored.pending` | ✅ 修好了 | `pending:{turn:"t-1",member:"member-1"}`，`superseded.turn` 同名 |
+| ⑨.4 「裸字符串选择改变席位词汇」 | ❌ **仍是真缺陷**（6.4 的兄弟） | 缺省名册 `step` 给 `member-2` 的提示词里同时有 `# v5r-charter-roster-temp` 与「你的雇主：（未说明）」，而同一段的角色块说 `常驻研究员` |
+
+### §46.1 根因：席位不是一个「事实」，而是各层各自猜
+
+- `vibe-math-vmu/tools/turn.js` 的缺省名册推断写的是 `role: m.slot` —— 行上只有 `role` 时得到 `undefined`；
+- `vibe-math-vmu/kernel/index.js` 的 `turnFacts()` 只给 `roster/rosterIds/chairId/roleLabel/quorum`，**没有每个成员的席位表**；
+- `vibe-math-vmu/kernel/turn/index.js` 的 `nextTurn()` 只写 `role: role || pick.role || null` —— 「调用者没说」被当成「没有席位」。
+
+于是 pack 的 section policy 看到 `role` 不是字符串（`null`），无法区分「未知」与「未说明」，role-only 分节闸整段跳过，**两个变体同时发出**。
+
+### §46.2 修法：让「事实」可以从内核问出来，而不再靠参数形状推断
+
+| 层 | 改动 | 文件:行 |
+|---|---|---|
+| 事实 | `turnFacts()` 新增 `rosterRows: [{id, slot}]`（空册为 `null`） | `vibe-math-vmu/kernel/index.js`（`roleLabel` 之后） |
+| 编排 | 新增 `slotOf(memberId)`；`nextTurn()` 的 role 改为 `role \|\| pick.role \|\| slotOf(pick.id) \|\| null` | `vibe-math-vmu/kernel/turn/index.js` |
+| 入口 | 名册推断改 `role: m.slot \|\| m.role` | `vibe-math-vmu/tools/turn.js` |
+
+优先级是刻意的：**显式参数 → 选择项自带的 role → 名册的席位 → `null`**。最后一级仍是 `null`，因为「不知道」必须说得像不知道，而不是编一个席位。
+
+### §46.3 门禁（`tests/vmu-turn.test.mjs`，204 → **209 条 0 失败**）
+
+- **R16a** 裸字符串选择 `["r-2"]` ⇒ 提示词拿到的 role 是名册的 `member`（这条正是 ⑨.4 的形状）；
+- **R16b** `["r-1"]` ⇒ `chair`（反向，证明是读出来的而不是缺省出来的）；
+- **R16c** 名册不提供席位表 ⇒ `role === null`（诚实空洞，不发明席位）；
+- **R16d** 选择项自带 `role:"temp"` ⇒ 仍以显式为准（不静默推翻调用者）；
+- **R16e** 策略层：`role:"member"` 会话里 `v5r-charter-roster-temp` 必须被禁用（把 ⑨.4 的可见症状钉在策略层）。
+
+**一个必须记录的自我更正**：我在本轮中曾把 6.4 的修复记成提交 `e5a1d45c` —— `git show e5a1d45c` 返回 `unknown revision`，该提交在本仓从未存在。6.4 的代码修复此前**并未落地**（`tests/vmu-turn.test.mjs` 里也没有 R14h/R14i）。现在由 §46.2 的三层修改真正覆盖，R16a–R16e 即其门禁。这是本阶段「记忆当证据」的第 N 次教训：**提交哈希必须先 `git log` 核实再用**。
+
+### §46.4 第 15 次跑自身留下的两个读数问题（本范畴外，仅记录）
+
+- `tokenCapHit:true`（6 142 169 / 6 000 000）：跑在被封顶处结束，研究院**没来得及写收尾报告**，所以「本轮无实质残余」缺席是「跑没了」而不是「满意了」。下一轮把 `MaxTokens` 提到 8 000 000。
+- 我的核对脚本第一版用递归展平 + `depth > 8` 上限，把 6 KB 的 `proceed` 回执**尾部截断**，于是 `overrodeQuorum` / `whichRule` / `cast:true` 全被判为「缺失」——假红。改成直接读 `result.data.message.content[].text` 再正则后，三条全部命中。**重建 JSON 的核对器是嫌疑犯，读已发出的文本的才是证据。**

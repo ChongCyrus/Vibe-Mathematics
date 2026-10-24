@@ -1790,6 +1790,22 @@ function createTurnOrchestrator({
     }
     return out
   }
+  /**
+   * ★★★ PHASE 12 / R16: WHICH SEAT IS THIS MEMBER IN? A caller may name a member as a bare string, so the selection
+   * entry it produces carries an id and nothing else — and the pack's section policy decides the chair/temp/member
+   * text from `turn.role`. Before this, "the seat was not stated" was indistinguishable from "there is no seat", and
+   * the temp variant's 「你的雇主」 text landed in a 常驻研究员's prompt while its own role block said 常驻研究员.
+   * The roster is the authority; a seam that cannot answer returns null (the prompt then shows an honest hole rather
+   * than an invented seat).
+   */
+  const slotOf = (memberId) => {
+    if (typeof turnFacts !== 'function' || memberId === null || memberId === undefined) return null
+    let rows = null
+    try { const f = turnFacts({ member: String(memberId) }); rows = f && Array.isArray(f.rosterRows) ? f.rosterRows : null } catch { return null }
+    if (!rows) return null
+    const row = rows.find((r) => r && String(r.id) === String(memberId))
+    return row && typeof row.slot === 'string' && row.slot !== '' ? row.slot : null
+  }
   const nextTurn = ({ members = [], phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
     // (g): the ONE shape-owner for a selection. Plain id strings are accepted here too, because the roster default
     // must never be used as a silent substitute for a caller's explicit list.
@@ -1806,7 +1822,10 @@ function createTurnOrchestrator({
     // ★ ROUND 14: the id must exist BEFORE delivery, because the delivery seam records it for the caller
     // (`pending().turnId`) and the step receipt reports the held turn by it. Minting it at the end of the call chain
     // would leave every reading null on the first delivery — which is exactly what the live run measured.
-    return { id: 't-' + (turnSeq += 1), member: pick.id, role: role || pick.role || null, phase, why, nextStep }
+    // the explicit argument wins, then a role the caller attached to the selection entry, then the ROSTER's slot —
+    // never null-by-accident while the roster knows the answer (that accident is the defect this line closes).
+    const chosenRole = role || pick.role || slotOf(pick.id) || null
+    return { id: 't-' + (turnSeq += 1), member: pick.id, role: chosenRole, phase, why, nextStep }
   }
 
   /**

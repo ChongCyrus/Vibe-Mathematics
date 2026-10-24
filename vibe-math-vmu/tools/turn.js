@@ -55,7 +55,10 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         explicitMembers = args.members.map(memberEntry)
       }
       const inferred = !explicit && kernel.members && typeof kernel.members.roster === 'function'
-        ? kernel.members.roster().filter((m) => m && m.state === 'live').map((m) => ({ id: m.id, role: m.slot }))
+        // ★★★ PHASE 12 / R16 (the institute's run-15 prompt carried the TEMP charter section to a 常驻研究员):
+        // the seat is `slot` on the roster row and `role` on some older rows, so reading ONLY `slot` handed the loop
+        // `role: undefined` — the section policy then could not tell a seat from a hole and emitted both role variants.
+        ? kernel.members.roster().filter((m) => m && m.state === 'live').map((m) => ({ id: m.id, role: m.slot || m.role }))
         : []
       const members = explicit ? explicitMembers : inferred
       if (op === 'status') {

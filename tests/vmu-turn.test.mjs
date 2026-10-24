@@ -119,6 +119,43 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(t.plan({ unknown: 1 }).length === 0, 'T13. ★ fields outside the catalogue never enter the plan')
 }
 
+// ★★★ PHASE 12 / R16 — THE SEAT IS A FACT, NOT A STRING SHAPE. The institute's run-15 report measured a member
+// whose prompt carried the TEMP charter section (「你的雇主：（未说明）」) while its own role block said 常驻研究员: the
+// loop had no seat for that member, so the section policy could not tell "no seat" from "not stated" and emitted both
+// role variants. These assertions hold the loop to ASKING the roster.
+{
+  const seen = []
+  const spy = (ctx) => { seen.push(ctx && ctx.turn ? (ctx.turn.role === undefined ? 'UNDEF' : ctx.turn.role) : 'NO-CTX'); return [] }
+  const rows = [{ id: 'r-1', slot: 'chair' }, { id: 'r-2', slot: 'member' }]
+  const facts = () => ({ roster: rows, rosterIds: ['r-1', 'r-2'], rosterRows: rows, chairId: 'r-1', roleLabel: null, quorum: { required: 1, met: true } })
+
+  const t1 = createTurnOrchestrator({ sectionPolicy: spy, prompt: pipeline(), turnFacts: facts })
+  await t1.step({ members: ['r-2'], why: 'R16 bare string' })
+  ok(seen[seen.length - 1] === 'member',
+    'R16a. ★★★ a BARE-STRING selection still carries the roster SEAT to the prompt (finding 6.4 / ⑨.4)', { role: seen[seen.length - 1] })
+
+  const t2 = createTurnOrchestrator({ sectionPolicy: spy, prompt: pipeline(), turnFacts: facts })
+  await t2.step({ members: ['r-1'], why: 'R16 chair' })
+  ok(seen[seen.length - 1] === 'chair',
+    'R16b. ★★ and the chair seat resolves the other way, so the fact is read rather than defaulted', { role: seen[seen.length - 1] })
+
+  const noRows = () => ({ roster: rows, rosterIds: ['r-1', 'r-2'], chairId: 'r-1', roleLabel: null, quorum: { required: 1, met: true } })
+  const t3 = createTurnOrchestrator({ sectionPolicy: spy, prompt: pipeline(), turnFacts: noRows })
+  await t3.step({ members: ['r-2'], why: 'R16 unknown seat' })
+  ok(seen[seen.length - 1] === null,
+    'R16c. ★★ an UNKNOWN seat stays null instead of being invented (an honest hole beats a guessed seat)', { role: seen[seen.length - 1] })
+
+  const t4 = createTurnOrchestrator({ sectionPolicy: spy, prompt: pipeline(), turnFacts: facts })
+  await t4.step({ members: [{ id: 'r-2', role: 'temp' }], why: 'R16 explicit wins' })
+  ok(seen[seen.length - 1] === 'temp',
+    'R16d. ★ an explicit role on the selection entry still WINS over the roster (the caller is not overruled silently)', { role: seen[seen.length - 1] })
+
+  const decision = DECIDE_SECTIONS({ settings: { 'vmu.v5r.fixtureMode': 'tools' }, turn: { member: 'r-2', role: 'member', phase: 'normal' } })
+  const decide = Array.isArray(decision) ? decision : (decision && Array.isArray(decision.decisions) ? decision.decisions : [])
+  const tempOff = decide.some((d) => d.name === 'v5r-charter-roster-temp' && d.enabled === false)
+  ok(tempOff, 'R16e. ★★★ a 常驻研究员 seat has the TEMP-ONLY charter variant DISABLED — the exact line the run-15 prompt carried', { decisions: decide.filter((d) => /roster-temp/.test(d.name)) })
+}
+
 // ④ dispatch reaches the owning face, and what it cannot reach is COUNTED rather than dropped
 {
   const calls = []
