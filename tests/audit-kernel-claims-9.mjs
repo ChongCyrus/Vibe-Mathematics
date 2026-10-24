@@ -16,8 +16,8 @@
 // deps, getDeps)` takes the START id's DIRECT dependency array while `getDeps` supplies each visited node's - passing a map
 // twice yielded null, and only reading tasks.js:60-80 settled it.
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
-const K = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu/kernel/'
+import { dirname, join } from 'node:path'
+const K = join(dirname(fileURLToPath(import.meta.url)), '..', 'vibe-math-vmu', 'kernel')
 const url = (f) => 'file:///' + join(K, f).replace(/\\/g, '/').replace(/ /g, '%20')
 let pass = 0, fail = 0
 const failures = []

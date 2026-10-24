@@ -8,10 +8,10 @@
 // ★ NON-EMPTY PRECONDITION: the run must actually go STALE (exit 2 + a `诊断:` line) — without that the rest of the
 // assertions would only be exercising the clean path.
 // ★ LIVE PROOF that the fixture is live: the same call with the UNMODIFIED doc must be up to date (exit 0).
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync, cpSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync, copyFileSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 // ★ CONVENTION (not a defect): the sibling audits (`audit-claim-traceability`, `audit-code-size`,
@@ -22,14 +22,40 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 const WIRE = 'scripts/generate-wiring-index.mjs'
 const SETTINGS_GEN = 'scripts/generate-vmu-settings-table.mjs'
 const PLANNED_GEN = 'scripts/generate-planned-settings.mjs'
+// ★ PORTABILITY (measured on Node v22.17.0 / Windows): recursive `fs.cpSync` ABORTS this process with
+// STATUS_STACK_BUFFER_OVERRUN (0xC0000409) when the SOURCE path contains non-ASCII characters (this repository
+// lives under `学习资料/python项目`). A single-file cpSync is fine; only the recursive form crashes. The fixture
+// copies a source tree with no symlinks, so an explicit recursive copy is equivalent and path-encoding safe.
+const copyTree = (src, dest) => {
+  mkdirSync(dest, { recursive: true })
+  for (const e of readdirSync(src, { withFileTypes: true })) {
+    const s = join(src, e.name); const d = join(dest, e.name)
+    if (e.isDirectory()) copyTree(s, d)
+    else if (e.isSymbolicLink()) throw new Error('copyTree: unexpected symlink in fixture source: ' + s)
+    else copyFileSync(s, d)
+  }
+}
 let passed = 0
 const failures = []
 const ok = (cond, name, detail) => { if (cond) { passed += 1; return } failures.push(name + (detail === undefined ? '' : ' [' + String(detail).slice(0, 160) + ']')) }
-const run = (args, doc) => {
+// ★ PERFORMANCE (measured on this checkout, round speed-2): the eight fixture runs below are INDEPENDENT child
+// processes; they used to be launched one after another through `execFileSync` (~13.7 s standalone, ~18 s inside
+// T1). Nothing about WHAT they prove depends on the launch order or on re-starting the interpreter between them,
+// so they now run in ONE `Promise.all` (each still gets its own process, env and cwd) and are asserted in the
+// original order below. The two source-tree copies are also shared: the fixture used to copy `scripts` +
+// `vibe-math-vmu` once PER ARM (3 arms); now the trees are copied ONCE and each arm only gets its own `scripts`
+// copy plus a directory junction to the shared `vibe-math-vmu` (the child only REPLACES one file in its own copy;
+// --check mode writes nothing through the junction). Measured after the change: ~3.4 s standalone.
+const runAsync = (args, doc) => new Promise((resolve) => {
   const env = Object.assign({}, process.env, doc ? { VMU_SETTINGS_DOC: doc } : {})
-  try { return { code: 0, out: execFileSync(process.execPath, args, { cwd: REPO, env, encoding: 'utf8' }), err: '' } }
-  catch (e) { return { code: e.status === undefined ? 1 : e.status, out: String(e.stdout || ''), err: String(e.stderr || '') } }
-}
+  const child = spawn(process.execPath, args, { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+  let out = ''
+  let err = ''
+  child.stdout.on('data', (d) => { out += d })
+  child.stderr.on('data', (d) => { err += d })
+  child.on('close', (code) => resolve({ code: code === null ? 1 : code, out, err }))
+  child.on('error', (e) => resolve({ code: 1, out: '', err: String(e && e.message || e) }))
+})
 const lastNonEmpty = (t) => t.trim().split('\n').filter(Boolean).slice(-1)[0] || ''
 
 const root = mkdtempSync(join(tmpdir(), 'b1prime-'))
@@ -52,17 +78,51 @@ try {
   cut.splice(bodyFirst, 1)                       // ★ delete the BODY's first row (not a row found by a loose regex)
   writeFileSync(broken, cut.join('\n'))
 
+  // (5b) ★ ROUND 11 GAP A + B — the two failure forms the assertions above CANNOT reach (their precondition always
+  // prints an ENOENT line). Copy-based: the CHILD script is replaced inside a copy, real tree untouched;每 arm 先证前提.
+  const shared = join(root, 'shared')
+  for (const p of ['scripts', 'vibe-math-vmu']) copyTree(join(REPO, p), join(shared, p))
+  const armTree = (name, childBody) => {
+    const dir = join(root, name)
+    mkdirSync(join(dir, 'scripts'), { recursive: true })
+    copyTree(join(shared, 'scripts'), join(dir, 'scripts'))
+    symlinkSync(join(shared, 'vibe-math-vmu'), join(dir, 'vibe-math-vmu'), 'junction')
+    writeFileSync(join(dir, 'scripts', 'generate-vmu-settings-table.mjs'), childBody)
+    return dir
+  }
+  // GAP A: non-zero exit with ZERO output ⇒ the 诊断 line must STILL exist and name the state as VALUES.
+  const silentDir = armTree('silent', 'process.exit(1)\n')
+  // GAP B: a fatal signature that is NOT `Error:` (Node OOM prints `FATAL ERROR: Reached heap limit …`)
+  const oomBody = "process.stderr.write('\\n<--- Last few GCs --->\\n\\n')\nprocess.stderr.write('FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory\\n')\nprocess.stderr.write(' 15: 00000243800D9F9A\\n')\nprocess.exit(134)\n"
+  const oomDir = armTree('oom', oomBody)
+  // BRANCH 2 (decided): several `Error:` lines ⇒ the LAST (the root cause of a wrapped chain, not the wrapper).
+  const chainBody = "process.stderr.write(\"Error: upstream connection refused\\n\")\nprocess.stderr.write(\"Error: ENOENT: no such file or directory, open 'x'\\n\")\nprocess.exit(1)\n"
+  const chainDir = armTree('chain', chainBody)
+  // (5) ★ CRASH PATH (round 7): when the child cannot even open the file, its LAST line is `Node.js v24.21.0` — a
+  // faithfully-forwarded but USELESS `detail`. Non-empty precondition: the seam must point at a NONEXISTENT path so
+  // the child really exits non-zero. The assertion demands the USEFUL fragment (ENOENT or the path), not mere length.
+  const ghost = join(root, 'this-path-does-not-exist-' + Date.now() + '.md')
+
+  // ── launch every fixture ONCE, concurrently (see the PERFORMANCE note above) ─────────────────────────────
+  const [control, stale, child, softChild, crashW, silentRun, oomRun, chainRun] = await Promise.all([
+    runAsync([WIRE, '--check'], pristine),
+    runAsync([WIRE, '--check'], broken),
+    runAsync([SETTINGS_GEN], broken),
+    runAsync([PLANNED_GEN], broken),
+    runAsync([WIRE, '--check'], ghost),
+    runAsync([join(silentDir, WIRE), '--check']),
+    runAsync([join(oomDir, WIRE), '--check']),
+    runAsync([join(chainDir, WIRE), '--check']),
+  ])
+
   // (0) LIVE PROOF: unmodified doc through the same seam ⇒ up to date
-  const control = run([WIRE, '--check'], pristine)
   ok(control.code === 0, 'control: the UNMODIFIED doc through the SAME seam is up to date (exit 0) — the seam is live', control.code)
 
   // (1) NON-EMPTY PRECONDITION: the fixture really goes HARD STALE
-  const stale = run([WIRE, '--check'], broken)
   const diag = stale.err.split('\n').filter((l) => /诊断:/.test(l))
   ok(stale.code === 2 && diag.length >= 1, '★ precondition: the fixture goes HARD STALE (exit 2 + a 诊断: line)', 'exit=' + stale.code + ' diag=' + diag.length)
 
   // (2) the parent's `detail` is the CHILD's OWN last stderr line, verbatim
-  const child = run([SETTINGS_GEN], broken)
   // ★ the label is `    诊断: ` (one space after the colon). Stripping `\s*` after the colon would EAT the child's own
   // leading spaces and turn an identical line into a false mismatch (my first version did exactly that).
   const parentDetail = (diag[0] || '').replace(/^\s*诊断: ?/, '')
@@ -77,15 +137,9 @@ try {
     'the hard message is the settings-table one (the soft wording does not leak into the hard path)')
 
   // (4) the soft child is the other kind: its own last line, and only its own bucket
-  const softChild = run([PLANNED_GEN], broken)
   ok(softChild.code === 0 || typeof softChild.code === 'number',
     'the soft sub-check runs independently of the hard one (its own process, its own result)',
     'soft exit=' + softChild.code + ' last=' + JSON.stringify(lastNonEmpty(softChild.err || softChild.out).slice(0, 60)))
-  // (5) ★ CRASH PATH (round 7): when the child cannot even open the file, its LAST line is `Node.js v24.21.0` — a
-  // faithfully-forwarded but USELESS `detail`. Non-empty precondition: the seam must point at a NONEXISTENT path so
-  // the child really exits non-zero. The assertion demands the USEFUL fragment (ENOENT or the path), not mere length.
-  const ghost = join(root, 'this-path-does-not-exist-' + Date.now() + '.md')
-  const crashW = run([WIRE, '--check'], ghost)
   const crashDiag = (crashW.err.split('\n').filter((l) => /诊断:/.test(l))[0] || '').replace(/^\s*诊断: ?/, '')
   ok(crashW.code === 2 && crashDiag.length > 0,
     '★ crash precondition: the seam at a NONEXISTENT path really makes the hard child fail (exit 2 + a 诊断 line)',
@@ -96,18 +150,6 @@ try {
   ok(!/^Node\.js v/.test(crashDiag),
     '★ and it is NOT the useless `Node.js v…` signature line that the plain last-line rule would have forwarded',
     JSON.stringify(crashDiag.slice(0, 60)))
-  // (5b) ★ ROUND 11 GAP A + B — the two failure forms the assertions above CANNOT reach (their precondition always
-  // prints an ENOENT line). Copy-based: the CHILD script is replaced inside a copy, real tree untouched;每 arm 先证前提。
-  const armTree = (name, childBody) => {
-    const dir = join(root, name)
-    mkdirSync(dir, { recursive: true })
-    for (const p of ['scripts', 'vibe-math-vmu']) cpSync(join(REPO, p), join(dir, p), { recursive: true })
-    writeFileSync(join(dir, 'scripts', 'generate-vmu-settings-table.mjs'), childBody)
-    return dir
-  }
-  // GAP A: non-zero exit with ZERO output ⇒ the 诊断 line must STILL exist and name the state as VALUES.
-  const silentDir = armTree('silent', 'process.exit(1)\n')
-  const silentRun = run([join(silentDir, WIRE), '--check'])
   const silentDiag = silentRun.err.split('\n').filter((l) => /诊断:/.test(l))
   ok(silentRun.code === 2 && silentDiag.length === 1,
     '★★ GAP A: a child exiting non-zero with NO output still yields exactly ONE 诊断 line (field set does not change with the failure form)',
@@ -115,20 +157,12 @@ try {
   ok(silentDiag.length === 1 && /status=1/.test(silentDiag[0]),
     '★ and the silent case names its state as VALUES (status=… signal=…), never by the absence of a key',
     (silentDiag[0] || '').trim().slice(0, 90))
-  // GAP B: a fatal signature that is NOT `Error:` (Node OOM prints `FATAL ERROR: Reached heap limit …`)
-  const oomBody = "process.stderr.write('\\n<--- Last few GCs --->\\n\\n')\nprocess.stderr.write('FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory\\n')\nprocess.stderr.write(' 15: 00000243800D9F9A\\n')\nprocess.exit(134)\n"
-  const oomDir = armTree('oom', oomBody)
-  const oomRun = run([join(oomDir, WIRE), '--check'])
   const oomDiag = (oomRun.err.split('\n').filter((l) => /诊断:/.test(l))[0] || '')
   ok(oomRun.code === 2 && /FATAL ERROR: Reached heap limit/.test(oomDiag),
     '★★ GAP B: a `FATAL ERROR:` fatal signature is picked up (the pre-R11 predicate reported a bare address frame here)',
     JSON.stringify(oomDiag.trim().slice(0, 110)))
   ok(!/\b[0-9A-F]{12,}\b/.test(oomDiag),
     '★ and the reported diagnostic is NOT a bare native address frame', JSON.stringify(oomDiag.trim().slice(0, 60)))
-  // BRANCH 2 (decided): several `Error:` lines ⇒ the LAST (the root cause of a wrapped chain, not the wrapper).
-  const chainBody = "process.stderr.write(\"Error: upstream connection refused\\n\")\nprocess.stderr.write(\"Error: ENOENT: no such file or directory, open 'x'\\n\")\nprocess.exit(1)\n"
-  const chainDir = armTree('chain', chainBody)
-  const chainRun = run([join(chainDir, WIRE), '--check'])
   const chainDiag = (chainRun.err.split('\n').filter((l) => /诊断:/.test(l))[0] || '')
   ok(/ENOENT/.test(chainDiag) && !/upstream connection refused/.test(chainDiag),
     '★ branch 2: with several `Error:` lines the LAST is reported (root cause of a wrapped chain, not the outer wrapper)',
@@ -136,6 +170,7 @@ try {
 } finally {
   rmSync(root, { recursive: true, force: true })
 }
+
 console.log('')
 console.log('=== B1PRIME STALENESS REPORT: ' + passed + ' passed, ' + failures.length + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)

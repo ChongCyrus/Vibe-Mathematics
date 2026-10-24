@@ -14,8 +14,8 @@
 // AND IT CONFIRMED THE PREVIOUS RETRACTION INDEPENDENTLY: capacity's refusals do carry `enforcedScope: 'evaluated-so-far'` as
 // their own property - the same field that a helper had discarded when it reported a defect against conference.js.
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
-const K = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu/kernel/'
+import { dirname, join } from 'node:path'
+const K = join(dirname(fileURLToPath(import.meta.url)), '..', 'vibe-math-vmu', 'kernel')
 const url = (f) => 'file:///' + join(K, f).replace(/\\/g, '/').replace(/ /g, '%20')
 let pass = 0, fail = 0
 const failures = []

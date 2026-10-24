@@ -3,7 +3,8 @@
 // is present verbatim, that the line count grew by exactly the block's length, and that the anchor line survived. Any failure
 // leaves the file UNTOUCHED.
 import { readFileSync, writeFileSync } from 'node:fs'
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics/'
+import { fileURLToPath } from 'node:url'
+const REPO = fileURLToPath(new URL('..', import.meta.url))
 
 export function insertVerified (rel, blockLines, { before = /^## /, label = rel } = {}) {
   const F = REPO + rel

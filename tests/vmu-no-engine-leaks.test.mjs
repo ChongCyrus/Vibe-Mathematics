@@ -26,8 +26,13 @@ console.log('=== 2. NO REFUSAL QUOTES THE ENGINE ===')
 // V8 wording that must never reach an operator: these appear only when an internal error escapes as a message.
 const ENGINE = /Cannot destructure|intermediate value|is not a function|is not iterable|Cannot read propert|undefined is not|Unexpected token|TypeError|ReferenceError/i
 const leaks = []
+// ★ PERFORMANCE (round speed-1, measured 30.4 s): see `vmu-refusals-guide.test.mjs` — the two waiters' DEFAULT
+// path blocks for tens of seconds by design (`vmu.activity.timeoutMs` defaults to 30000). A refusal-leak sweep
+// has no business waiting; read the waiters' own fast action. Their timeout path stays covered elsewhere.
+const actionsOf = (s) => (s.name === 'vibe_vmu_wait' || s.name === 'vibe_v5_wait')
+  ? ['status'] : ((s.parameters.action && s.parameters.action.enum) || [])
 for (const s of specs) {
-  for (const a of (s.parameters.action && s.parameters.action.enum) || []) {
+  for (const a of actionsOf(s)) {
     let r
     try { r = await s.run({ action: a }) } catch (e) { r = { code: e.code || 'THREW', message: String(e.message), hint: e.hint } }
     if (r && r.ok === true) continue

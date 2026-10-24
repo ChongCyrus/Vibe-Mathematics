@@ -92,6 +92,8 @@ const OPTIONAL = Object.freeze({
   'tests/v4-final-paper.test.mjs:try-read-catch-empty': LEGACY_E2E,
   'tests/v5-meeting-attribution.test.mjs:ternary-read-empty': LEGACY_E2E,
   'tests/vmu-assistant-host-slice.test.mjs:try-read-catch-empty': '宿主薄片夹具：读取可选宿主产物；缺失时断言看 null 而显式失败',
+  'tests/clean-temp-root-guard.test.mjs:ternary-readdir-empty': '读取本套件自己创建、随后要逐项比对残留的探针目录；目录若被误删，after.length>0 断言会显式失败（不是把仓库文件读成空）',
+  'tests/vmu-kernel-reachability.test.mjs:try-read-catch-empty': '扫描器自用的 readIf：读的是被枚举的 kernel/settings 源码集；扫描范围是固定目录，缺失会让后续断言的条件显式失败',
 })
 
 const walk = (dir, out = []) => {

@@ -19,8 +19,9 @@
 // defects of the shape "the header says every, the implementation does some". Ten universals, three to five points each,
 // including the positive direction (a legal exchange IS allowed, a legal handover IS created) so that a module which refused
 // everything could not pass.
-import { join } from 'node:path'
-const K = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu/kernel/'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+const K = join(dirname(fileURLToPath(import.meta.url)), '..', 'vibe-math-vmu', 'kernel')
 const url = (f) => 'file:///' + join(K, f).replace(/\\/g, '/').replace(/ /g, '%20')
 // ★ the probe's own prelude defined this; the shipper starts at the first import, so it must be restored here.
 const SELFTEST = process.argv.includes('--selftest')

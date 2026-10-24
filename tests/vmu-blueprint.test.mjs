@@ -18,10 +18,10 @@
  * RULE E: every loop below is preceded by an explicit non-empty assertion (a loop over an empty list proves nothing).
  */
 import { mkdtemp, rm } from 'node:fs/promises'
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 const VMU = join(REPO, 'vibe-math-vmu')
 
 let passed = 0

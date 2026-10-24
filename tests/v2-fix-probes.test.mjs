@@ -841,7 +841,17 @@ console.log('\n-- PAPER §6.4: compile branches (success / repaired / persistent
   assert(readFileSync(join(badH.paperDir('p'), 'paper.log.md'), 'utf8').indexOf('所有尝试均失败') !== -1, '(c) the log states the bounded retry sequence is exhausted')
   badH.restore(); rmSync(badH.WS, { recursive: true, force: true })
 
-  // (d) 真机无 LaTeX（本机就是这一档）→ 干净降级，不报错
+  // (d) 无可用 LaTeX → 干净降级，不报错
+  // HOST-INDEPENDENCE (the task-9 mutant must redden on EVERY host): this probe used to rely on the host
+  // having no TeX; a machine WITH MiKTeX/TeX Live found a real engine and took the failed branch, which
+  // makes the task-9 assertion below vacuous there (it short-circuits on compile !== not-detected).
+  // The plugin documents a TEST/DIAGNOSTIC sandbox for the known-install roots
+  // (V2_TEX_ROOTS_SANDBOX in resolveKnownTool: candidates are REBASED under it; a real install is never
+  // touched), so pin the premise here and restore the env afterwards.
+  const noTexSandbox = mkdtempSync(join(tmpdir(), 'v2-notex-'))
+  const savedTexRoots = process.env.V2_TEX_ROOTS_SANDBOX
+  process.env.V2_TEX_ROOTS_SANDBOX = noTexSandbox
+  try {
   const noH = harness(); await load(noH)
   await noH.call('vibe_math_new_project', { name: 'p' })
   const before = noH.errors.length
@@ -867,6 +877,12 @@ console.log('\n-- PAPER §6.4: compile branches (success / repaired / persistent
   assert(m.compile !== 'not-detected' || noLog.indexOf('已探测 PATH 与文档化的常见 TeX 根；可用 paperLatexCommand 指定绝对路径') !== -1,
     '★ [task-9/v2] in the not-detected branch the log keeps its reason AND says where it looked and how to pin an engine')
   noH.restore(); rmSync(noH.WS, { recursive: true, force: true })
+
+  } finally {
+    if (savedTexRoots === undefined) delete process.env.V2_TEX_ROOTS_SANDBOX
+    else process.env.V2_TEX_ROOTS_SANDBOX = savedTexRoots
+    rmSync(noTexSandbox, { recursive: true, force: true })
+  }
 
   // (e) resolver 在、但一个引擎都解析不到（真机另一种形态）
   const emptyH = harness({ latex: { mode: 'resolver-empty' } }); await load(emptyH)

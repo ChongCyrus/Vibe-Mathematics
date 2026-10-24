@@ -16,8 +16,8 @@
 // instead of the reason guard. The last of those turned into a source-level assertion rather than a weakened one.
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
-const K = 'D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu/kernel/'
+import { dirname, join } from 'node:path'
+const K = join(dirname(fileURLToPath(import.meta.url)), '..', 'vibe-math-vmu', 'kernel')
 const url = (f) => 'file:///' + join(K, f).replace(/\\/g, '/').replace(/ /g, '%20')
 let pass = 0, fail = 0
 const failures = []
@@ -100,7 +100,7 @@ ok(chZero.threw === false && !!chZero.raw, '★ "zero mechanism … construction
   // ★ MY ERROR (measured): dissolving a NON-EXISTENT charter (my invented 'ch-1') hits the unknown-id guard first
   // (VMU_NO_SUCH_OBJECT), so the REASON_REQUIRED path needs a really-created charter - an API I did not read. The
   // guard itself is therefore asserted at the source (a structure probe, same style as the earlier claim batches).
-  const chSrc = readFileSync('D:/wd/vibemath开发/Vibe-Mathematics/vibe-math-vmu/kernel/charter.js', 'utf8')
+  const chSrc = readFileSync(join(K, 'charter.js'), 'utf8')
   ok(/dissolveRequiresReason[\s\S]{0,120}VMU_REASON_REQUIRED/.test(chSrc),
     '★ ③ the REASON_REQUIRED guard exists on the dissolve path in the source (VMU_REASON_REQUIRED at charter.js:461-462)', 
     { found: /VMU_REASON_REQUIRED/.test(chSrc) })

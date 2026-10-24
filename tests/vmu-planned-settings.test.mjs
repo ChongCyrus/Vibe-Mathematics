@@ -54,12 +54,28 @@ const schemaMod = await import(pathToFileURL(SCHEMA).href)
 const CORE_DEFS = (Array.isArray(schemaMod.SETTING_DEFS) ? schemaMod.SETTING_DEFS : []).filter((d) => d && d.planned !== true)
 const CORE_KEYS = CORE_DEFS.map((d) => d.key)
 
+// PERFORMANCE (dedup round): the docs, the schema key list, the mirror classification and the planned registry
+// are the SAME inputs for several sections below. Read/compute each ONCE; the sections only consume these facts.
+const CORE = await coreKeys(SCHEMA)
+const NS = namespacesOf(CORE)
+const VOLS_CACHE = { value: null }
+const vols = () => (VOLS_CACHE.value || (VOLS_CACHE.value = docVolumes(DOCS)))
+const MIRRORS = mirrorVolumes(vols(), CORE)
+const plannedMemo = new Map()
+const plannedDefs = (volumes, opts) => {
+  const signature = (volumes === vols() ? 'real' : 'stripped') + ((opts && opts.mirrors) ? '|mirrors' : '')
+  if (!plannedMemo.has(signature)) {
+    plannedMemo.set(signature, collectPlannedDefs(Object.assign({ volumes, core: CORE, namespaces: NS }, opts || {})))
+  }
+  return plannedMemo.get(signature)
+}
+
 // ---- B. the AUDIT's group-G rule, recomputed independently ---------------------------------------
 {
   const keys = new Set([...CORE_KEYS, ...PLANNED_DEFS.map((d) => d.key)])
   const namespaces = new Set([...keys].map((k) => k.split('.').slice(0, 2).join('.')))
   const bogus = new Set()
-  for (const vol of docVolumes(DOCS)) {
+  for (const vol of vols()) {
     for (const m of vol.text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) {
       const k = m[0]
       // ROUND 224: look past the dot too - `vmu.x.y.*` matches as `vmu.x.y` because the key regex stops at a word
@@ -79,7 +95,7 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   // because that is where both the root and its keys live. Two passes: collect them, then drop the roots.
   {
     const documented = new Set()
-    for (const vol of docVolumes(DOCS)) {
+    for (const vol of vols()) {
       for (const m of vol.text.matchAll(/\bvmu\.[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\b/g)) documented.add(m[0])
     }
     for (const entry of [...bogus]) {
@@ -143,8 +159,8 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   ok(mirrorVols.length === 0, 'no entry claims a GENERATED MIRROR (04) as a declaring volume',
     mirrorVols.slice(0, 5).map((d) => d.key).join(','))
   // The generator's own extraction must reproduce the committed file AND the same key count.
-  const core = await coreKeys(SCHEMA)
-  const recomputed = collectPlannedDefs({ volumes: docVolumes(DOCS), core, namespaces: namespacesOf(core) })
+  const core = CORE
+  const recomputed = plannedDefs(vols())
   ok(renderPlannedFile(recomputed.defs) === readFileSync(PLANNED, 'utf8'), 're-rendering from the docs reproduces the committed file byte for byte')
   ok(PLANNED_DEFS.length > 0 && recomputed.defs.length > 0, 'both the committed defs and the generator output are non-empty (non-vacuous comparison)',
     recomputed.defs.length + '/' + PLANNED_DEFS.length)
@@ -157,10 +173,10 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
 
 // ---- D. every mention is bucketed (nothing is swallowed silently) --------------------------------
 {
-  const core = await coreKeys(SCHEMA)
+  const core = CORE
   const coreSet = new Set(core)
   const ns = namespacesOf([...coreSet, ...PLANNED_DEFS.map((d) => d.key)])
-  const mirrors = mirrorVolumes(docVolumes(DOCS), core)
+  const mirrors = MIRRORS
   const mirrorNames = new Set(mirrors.map((m) => m.name))
   const buckets = { planned: new Set(), existing: new Set(), wildcard: new Set(), whitelist: new Set(), namespace: new Set(), twoSegment: new Set(), serviceCall: new Set() }
   // ROUND 225: the generator drops a NAMESPACE ROOT - a name with a known key living under it is a namespace, not a setting.
@@ -190,7 +206,7 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
     }
   }
   // SOURCES: mirrors excluded — that is what the generator counts, so the numbers must match exactly.
-  for (const vol of docVolumes(DOCS)) if (!mirrorNames.has(vol.name)) classify(vol)
+  for (const vol of vols()) if (!mirrorNames.has(vol.name)) classify(vol)
   // ROUND 99: the `ns` set above only knows namespaces derived from CORE keys, so a planned key that is the
   // PREFIX of ANOTHER planned key (`vmu.math.ad` of `vmu.math.ad.backend`) was filed as a setting. A root is
   // not something a pack can set: it is re-filed as a namespace, which keeps the category stats honest.
@@ -204,7 +220,7 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   ok(missingFromPlanned.length === 0, 'the "planned" bucket is exactly the committed registry (recomputed independently)',
     missingFromPlanned.slice(0, 5).join(','))
   // The generator's own stats must agree with this independent recount (no hidden category).
-  const stats = collectPlannedDefs({ volumes: docVolumes(DOCS), core, namespaces: namespacesOf(core), mirrors }).stats
+  const stats = plannedDefs(vols(), { mirrors }).stats
   ok(stats.twoSegment === buckets.twoSegment.size && stats.wildcard === buckets.wildcard.size
     && stats.existing === buckets.existing.size && stats.whitelist === buckets.whitelist.size
     && stats.serviceCall === buckets.serviceCall.size,
@@ -214,19 +230,19 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
   // COVERAGE (the audit-G equivalent): over ALL volumes, INCLUDING the generated mirror, every distinct
   // name must still be covered — a mirror must never introduce a name that nothing registers.
   const covBuckets = { planned: new Set(), existing: new Set(), wildcard: new Set(), whitelist: new Set(), namespace: new Set(), twoSegment: new Set(), serviceCall: new Set() }
-  for (const vol of docVolumes(DOCS)) classify(vol, covBuckets)
+  for (const vol of vols()) classify(vol, covBuckets)
   const covered = new Set([...covBuckets.planned, ...covBuckets.existing, ...covBuckets.wildcard,
     ...covBuckets.whitelist, ...covBuckets.namespace, ...covBuckets.twoSegment, ...covBuckets.serviceCall])
   const distinctAll = new Set()
-  for (const vol of docVolumes(DOCS)) for (const m of vol.text.matchAll(genMod.BROAD_RE)) distinctAll.add(m[0])
+  for (const vol of vols()) for (const m of vol.text.matchAll(genMod.BROAD_RE)) distinctAll.add(m[0])
   ok(covered.size === distinctAll.size, 'every distinct documented vmu.* name is covered by a bucket (mirror included)',
     covered.size + '/' + distinctAll.size)
 }
 
 // ---- E. GENERATED MIRRORS are not sources (provenance + no cycle) --------------------------------
 {
-  const core = await coreKeys(SCHEMA)
-  const mirrors = mirrorVolumes(docVolumes(DOCS), core)
+  const core = CORE
+  const mirrors = MIRRORS
   ok(mirrors.length >= 1, 'at least one generated mirror is detected (docs/04 §11 is generated from the schema)',
     mirrors.map((m) => m.vol).join(','))
   const four = mirrors.find((m) => m.vol === '04')
@@ -244,9 +260,9 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
     'every planned key still names a FIRST source volume (nothing lost by skipping the mirror)')
   // Mirror-independence: emptying the mirror's text must not change the registry at all.
   const mirrorNames = new Set(mirrors.map((m) => m.name))
-  const stripped = docVolumes(DOCS).map((v) => (mirrorNames.has(v.name) ? { num: v.num, name: v.name, text: '' } : v))
-  const withMirror = collectPlannedDefs({ volumes: docVolumes(DOCS), core, namespaces: namespacesOf(core), mirrors }).defs
-  const withoutMirror = collectPlannedDefs({ volumes: stripped, core, namespaces: namespacesOf(core), mirrors }).defs
+  const stripped = vols().map((v) => (mirrorNames.has(v.name) ? { num: v.num, name: v.name, text: '' } : v))
+  const withMirror = plannedDefs(vols(), { mirrors }).defs
+  const withoutMirror = plannedDefs(stripped, { mirrors }).defs
   ok(renderPlannedFile(withoutMirror) === renderPlannedFile(withMirror),
     'the registry is identical whether or not the mirror text is present (no cycle: docs/04 <- schema <- planned.js <- docs/04)')
   // And the settings table must be regenerable WITHOUT invalidating the registry, both ways round, so the
@@ -266,7 +282,7 @@ const CORE_KEYS = CORE_DEFS.map((d) => d.key)
 }
 
 if (failed === 0) {
-  console.log('=== VMU PLANNED SETTINGS: ALL GREEN (planned=' + PLANNED_DEFS.length + ', docs=' + docVolumes(DOCS).length
+  console.log('=== VMU PLANNED SETTINGS: ALL GREEN (planned=' + PLANNED_DEFS.length + ', docs=' + vols().length
     + ', passed=' + passed + ', failed=0) ===')
   process.exit(0)
 }

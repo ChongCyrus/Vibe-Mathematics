@@ -10,10 +10,10 @@
 // 本套件用**真机 boot**（真 records/真 fidelity/真 card 写路径）＋只把这一个面替成可控的假 Lean 面来钉住这些行为：
 // 假面只提供 `status(id)`/`policy()`，其余全是真内核。每条"成功了"都要从 records / fidelity 读回来。
 import { mkdtemp, rm } from 'node:fs/promises'
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
 const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
 const verifiedMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'verified.js')).href)
 

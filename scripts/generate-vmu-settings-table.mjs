@@ -90,7 +90,6 @@ const isDeclarationLine = (line) => {
   if (/^['"]vmu\.[A-Za-z0-9_.]+['"]\s*:/.test(t)) return true          // object key (reasons map)
   return false
 }
-const SOURCE_TEXT = SOURCES.map((f) => readFileSync(f, 'utf8').split('\n').filter((l) => !isDeclarationLine(l)).join('\n')).join('\n')
 /** Each source with its text, so the CARRIER column can name the first file that actually reads a key.
  *  ★ `text` stays RAW (the list-index walk needs real line numbers); `filtered` is the declaration-free view that the
  *  consumer test must use — reusing raw text there would count an array ELEMENT as a read and silently re-widen the
@@ -146,8 +145,40 @@ const DEAD_KERNEL = new Set(unreachableKernelModules(VMU_DIR))
  * stays wired, and a key that nothing reads (neither quoted nor as a placeholder) still reports `未接线`, so the
  * criterion can still redden.
  */
-const templateReader = (key) => new RegExp('\\{\\{[^}]*\\bsetting:' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b[^}]*\\}\\}')
-const isTemplateReader = (text, key) => templateReader(key).test(text)
+/**
+ * ★ PERFORMANCE (measured on this checkout, round speed-1): the consumer test used to scan EVERY source file FOR
+ * EVERY KEY (1263 keys × every file, with two literal `includes` and a fresh `new RegExp` per key), and
+ * `tableIterationCarrier` re-scanned each file's full text per key as well ⇒ `--check` took **34.5 s** here.
+ * `generate-wiring-index.mjs` runs this script as one of its own checks, so that cost multiplied out.
+ *
+ * Both predicates are PURE FUNCTIONS OF THE SOURCE TEXTS, so they are now indexed ONCE (in `SOURCE_FILES` order)
+ * and looked up in O(1). SEMANTICS ARE UNCHANGED — same three shapes (quoted literal, `{{ setting:KEY }}`
+ * placeholder, table element read through an indexed loop variable), same "first file in order" carrier, same four
+ * verdict tiers, same counts (1263 keys / 1160 wired / 0 undetermined / 95 declared-but-not-wired / 8 unreachable).
+ * `--check` proves the rendered table is byte-identical to what the per-key scan produced.
+ */
+const KEY_LITERAL = /['"](vmu\.[A-Za-z0-9_.]+)['"]/g
+const TEMPLATE_KEY = /\{\{[^}]*\bsetting:(vmu\.[A-Za-z0-9_.]+)\b[^}]*\}\}/g
+const quotedKeysOf = (text) => new Set([...text.matchAll(KEY_LITERAL)].map((m) => m[1]))
+const templateKeysOf = (text) => new Set([...text.matchAll(TEMPLATE_KEY)].map((m) => m[1]))
+
+const FILE_INDEX = SOURCE_FILES.map((f) => ({
+  file: f,
+  dead: DEAD_KERNEL.has(f.rel),
+  keys: quotedKeysOf(f.filtered),
+  templates: templateKeysOf(f.filtered),
+}))
+const LIVE_FILES = FILE_INDEX.filter((x) => !x.dead)
+const DEAD_FILES = FILE_INDEX.filter((x) => x.dead)
+/** key → the LIVE files that name it (quoted literal or template placeholder), in SOURCE_FILES order. */
+const CONSUMER_INDEX = (() => {
+  const m = new Map()
+  for (const x of LIVE_FILES) for (const key of new Set([...x.keys, ...x.templates])) {
+    if (!m.has(key)) m.set(key, [])
+    m.get(key).push(x.file)
+  }
+  return m
+})()
 
 /**
  * ★ ROUND 11/256 (task-237): THE SECOND BLIND SPOT - READS THROUGH AN ITERATED KEY TABLE.
@@ -185,39 +216,47 @@ const literalBodyOf = (text, fromIdx) => {
   }
   return null
 }
-/** Carrier file for "this key is read through a loop over a table that contains it", or null. */
-export function tableIterationCarrier(key) {
-  const needle1 = "'" + key + "'"
-  const needle2 = '"' + key + '"'
-  for (const f of SOURCE_FILES) {
-    if (DEAD_KERNEL.has(f.rel)) continue          // ★ an unloadable module's iteration is not a consumer either
-    // ① every table literal in this file that CONTAINS the key as a quoted member
+/** Carrier file for "this key is read through a loop over a table that contains it", or null. ★ ONE pass: each
+ *  LIVE file's table declarations are scanned once, then each `for (… of <table>)` whose body indexes the loop
+ *  variable credits every key that table holds (first file in SOURCE_FILES order wins — same as the per-key scan). */
+const TABLE_CARRIER = (() => {
+  const m = new Map()
+  for (const x of LIVE_FILES) {
+    const text = x.file.text
     const tables = []
     TABLE_DECL.lastIndex = 0
-    for (let m = TABLE_DECL.exec(f.text); m; m = TABLE_DECL.exec(f.text)) {
-      const body = literalBodyOf(f.text, m.index)
-      if (body && (body.includes(needle1) || body.includes(needle2))) tables.push(m[1])
+    for (let q = TABLE_DECL.exec(text); q; q = TABLE_DECL.exec(text)) {
+      const body = literalBodyOf(text, q.index)
+      if (!body) continue
+      // ① the quoted `vmu.*` elements this table literal holds
+      const keys = quotedKeysOf(body)
+      if (keys.size) tables.push({ name: q[1], keys })
     }
     if (tables.length === 0) continue
-    // ② a loop iterating one of those tables, and ③ an index read through the LOOP VARIABLE in its body
+    // ②③ require the iterable to be that table AND the body to index the loop variable
     TABLE_LOOP.lastIndex = 0
-    for (let m = TABLE_LOOP.exec(f.text); m; m = TABLE_LOOP.exec(f.text)) {
-      const loopVar = m[1] || m[2]
-      const iterable = m[3]
-      if (!tables.includes(iterable)) continue
-      const bodyStart = f.text.indexOf('{', m.index)
+    for (let q = TABLE_LOOP.exec(text); q; q = TABLE_LOOP.exec(text)) {
+      const loopVar = q[1] || q[2]
+      const table = tables.find((t) => t.name === q[3])
+      if (!table) continue
+      const bodyStart = text.indexOf('{', q.index)
       if (bodyStart < 0) continue
-      const body = literalBodyOf(f.text, bodyStart)
-      if (body && new RegExp('\\[\\s*' + loopVar + '\\s*\\]').test(body)) return f.rel
+      const body = literalBodyOf(text, bodyStart)
+      if (!body || !new RegExp('\\[\\s*' + loopVar + '\\s*\\]').test(body)) continue
+      for (const key of table.keys) if (!m.has(key)) m.set(key, x.file.rel)
     }
   }
-  return null
+  return m
+})()
+export function tableIterationCarrier(key) {
+  return TABLE_CARRIER.get(key) || null
 }
 
 /** The files that READ this key (quoted literal or template placeholder), excluding kernel modules the assembly cannot
- *  load. Kept as a list, not a boolean, because the CARRIER column needs the first one and `hasConsumer` the count. */
-const consumersOf = (key) => SOURCE_FILES.filter((f) => !DEAD_KERNEL.has(f.rel) &&
-  (f.filtered.includes("'" + key + "'") || f.filtered.includes('"' + key + '"') || isTemplateReader(f.filtered, key)))
+ *  load. Kept as a list, not a boolean, because the CARRIER column needs the first one and `hasConsumer` the count.
+ *  ★ Indexed once (CONSUMER_INDEX, see above): the per-key `SOURCE_FILES.filter(...)` was the 34.5 s hotspot. */
+const consumersOf = (key) => CONSUMER_INDEX.get(key) || []
+const CARRIER_CACHE = new Map()
 
 /** Does any REACHABLE runtime source read this key? (the honest meaning of "the knob works") */
 export function hasConsumer(key) {
@@ -226,7 +265,7 @@ export function hasConsumer(key) {
   // was exactly this third alternative. A comment that mentions a key is documentation, not a reader; the audit
   // suite has always judged by quoted literals, so the generator now matches that stricter standard.
   //
-  // ★ REACHABILITY (see DEAD_KERNEL above): the per-file scan replaced the concatenated SOURCE_TEXT so a reader in a
+  // ★ REACHABILITY (see DEAD_KERNEL above): the per-file index replaced the concatenated source text so a reader in a
   // module the plugin never loads cannot be credited. Per-file and whole-text agree for every other file.
   return consumersOf(key).length > 0 || tableIterationCarrier(key) !== null
 }
@@ -238,12 +277,13 @@ export function hasConsumer(key) {
  * instead of reading "✅ 已接线" about a module that is never constructed.
  */
 export function carrierOf(key) {
+  if (CARRIER_CACHE.has(key)) return CARRIER_CACHE.get(key)
   const hit = consumersOf(key)[0]
-  if (hit) return hit.rel
   // ★ an unreachable reader is still the thing a reader of the manual needs to find: naming it (with the verdict saying
   // it cannot run) is more useful than `—`, which would read as "no such file exists".
-  const dead = deadReaderOf(key)
-  return dead || tableIterationCarrier(key)
+  const out = hit ? hit.rel : (deadReaderOf(key) || tableIterationCarrier(key))
+  CARRIER_CACHE.set(key, out)
+  return out
 }
 
 const MODE_WRITE = process.argv.includes('--write')
@@ -538,18 +578,20 @@ export function listIterationEvidence(key) {
 export function deadReaderOf(key) {
   const ev = listIterationEvidence(key)
   if (ev && DEAD_KERNEL.has(ev.rel)) return ev.rel
-  const dead = SOURCE_FILES.find((f) => DEAD_KERNEL.has(f.rel) &&
-    (f.filtered.includes("'" + key + "'") || f.filtered.includes('"' + key + '"') || isTemplateReader(f.filtered, key)))
-  return dead ? dead.rel : null
+  const dead = DEAD_FILES.find((x) => x.keys.has(key) || x.templates.has(key))
+  return dead ? dead.file.rel : null
 }
 
 /** The four-tier verdict. `已接线` ⇐ a REACHABLE literal READ; `未接线（读取者不可达）` ⇐ the only reader is a kernel
  *  module the assembly never loads; `未判定` ⇐ the key is an element of a list (a dynamic path may read it); `未接线`
- *  ⇐ nothing but declarations/comments name it. */
+ *  ⇐ nothing but declarations/comments name it. ★ Cached: the generator asks `verdictOf` twice per key (the table and
+ *  the four headline counts) and `audit-vmu-docs` asks again; every probe is now O(1) anyway, but the memo guarantees it. */
+const VERDICT_CACHE = new Map()
 export function verdictOf(key) {
-  if (hasConsumer(key)) return WIRED
-  if (deadReaderOf(key)) return NOT_WIRED_UNREACHABLE
-  return listIterationEvidence(key) ? UNDETERMINED : NOT_WIRED
+  if (VERDICT_CACHE.has(key)) return VERDICT_CACHE.get(key)
+  const v = hasConsumer(key) ? WIRED : (deadReaderOf(key) ? NOT_WIRED_UNREACHABLE : (listIterationEvidence(key) ? UNDETERMINED : NOT_WIRED))
+  VERDICT_CACHE.set(key, v)
+  return v
 }
 
 const rows = SETTING_DEFS.map((def) => {
