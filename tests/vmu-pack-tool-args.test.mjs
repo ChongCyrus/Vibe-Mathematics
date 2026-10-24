@@ -95,7 +95,7 @@ const tools = Array.isArray(PACK && PACK.tools) ? PACK.tools : []
   ok(tools.length > 30, '③ 载入的 v5r 工具表非空（RULE E 前置）', tools.length)
   const cardTools = ['vibe_v5_record_proposition', 'vibe_v5_record_method', 'vibe_v5_record_subproblem']
     .map((n) => tools.find((t) => t.name === n))
-  ok(cardTools.every((t) => t && t.parameters && typeof t.parameters === 'object'),
+  ok(cardTools.length === 3 && cardTools.every((t) => t && t.parameters && typeof t.parameters === 'object'),
     '③ 三张卡写入面都在（前置）', cardTools.map((t) => !!(t && t.parameters)))
   // These four keys are READ by `gatedCardHandler` (`packs/v5r/tools.js:1136`): `track` picks the general
   // track, `payload` carries attachments, `proof_ref`/`proof_state` are the B6 proof aliases. A declaration

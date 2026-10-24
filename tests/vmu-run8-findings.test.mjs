@@ -99,7 +99,7 @@ try {
 
   // ── D ──────────────────────────────────────────────────────────────────────────────────────────────────────────
   console.log('=== D. quorum.met is the FLOOR question, and says so ===')
-  const met = await receipt(b, 'vibe_v5_meeting', { member: 'acad', agenda: '读法定数回执', roster: ['acad', 'r-1'] })
+  const met = await receipt(b, 'vibe_v5_meeting', { member: 'acad', agenda: '读法定数回执' })
   ok(met && met.ok === true, 'setup: an ordinary meeting convenes', met && (met.code || met.meeting))
   const st = await receipt(b, 'vibe_vmu_meeting', { action: 'status', id: met.meeting })
   const q = (st && st.quorum) || (met && met.quorum) || null

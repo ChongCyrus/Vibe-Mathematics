@@ -123,7 +123,11 @@ const mk = (opts = {}) => m.createMembers(Object.assign({ slots, clock: () => '2
 
 // ---- 7. the kernel knows no roles (D5) ---------------------------------------------------------
 {
-  const src = await readFile(MODULE, 'utf8')
+  const raw = await readFile(MODULE, 'utf8')
+  // ★ scan CODE only: a comment that RECORDS a live defect must be free to quote the role word (that is how the
+  // next reader learns why the slot arithmetic looks the way it does). Stripping `//` and block comments keeps the
+  // gate's real question intact - "does any CODE PATH branch on a v5r role name".
+  const src = raw.split('\n').map((line) => line.replace(/^\s*\/\/.*$/, '').replace(/\/\*.*?\*\//g, '')).join('\n')
   const forbidden = ['院士', 'academician', '研究员', 'researcher', '临时工', 'temp', 'chair', 'reviewer']
   const hits = forbidden.filter((w) => src.includes(w))
   ok(hits.length === 0, 'the source names no role from the v5r line (kernel gives slots, not roles)', hits.join(','))

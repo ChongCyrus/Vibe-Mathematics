@@ -770,8 +770,7 @@ const composeStatusBlock = (turn) => {
  * Create the orchestrator. `prompt` is the pipeline (docs/06), `deliver` is the adapter seam, `faces` maps a face
  * name to its operations, e.g. `{ 'vmu.tasks': { create: async (p) => ... } }`.
  */
-export
-function createTurnOrchestrator({
+export function createTurnOrchestrator({
   // The institution policy for prompt-section switches. Null means the framework switches NOTHING,
   // which is this preset's stated design: "default zero mechanism, mechanisms provided as packs".
   sectionPolicy = null,

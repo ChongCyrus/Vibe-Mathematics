@@ -101,7 +101,7 @@ ok(forwardsProceedMember(FACE_SRC),
   const after = svc.status({ id: 'm1' })
   const hist2 = after && after.sweep ? after.sweep.recentTransitions : []
   ok(pass && pass.ok !== false, '⑧.4 a sweep pass still runs and returns its own transitions', pass && pass.swept)
-  ok(Array.isArray(hist2) && hist2.length === hist.length,
+  ok(Array.isArray(hist2) && hist.length > 0 && hist2.length === hist.length,
     '★★ ⑧.4 a second pass over an unchanged meeting does NOT duplicate history (the recorder moved, it did not fork)', { before: hist.length, after: hist2.length })
 }
 

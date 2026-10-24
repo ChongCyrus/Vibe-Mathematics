@@ -96,7 +96,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // (capture layer frozen by T71 parity), so the missing half is the OFFICE'S DUTY — stated here, read back by
     // vibe_v5_overview.leadership (packs/v5r/leadership.js) so it cannot fail silently.
     text: [
-      '【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空）。把人安置到 chair 席位**不等于**设置了领头人：只 hire 不写，章程会走 leaderless 版并说「本所当前没有在册院士」，那是假的。安置院士后立刻 `vibe_v5_set { key: "vmu.turn.leaderId", value: "<同一个代号>", why: "安置院士" }`；院士离开时清空。`vibe_v5_overview` 的 `leadership.code` 会具名说出当前情形（chair-seated-but-leaderId-empty 就是「席位有人但没写」）。先修数据，别改章程措辞。',
+      '【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空）。把人安置到 chair 席位**不等于**设置了领头人：只 hire 不写，章程会走 leaderless 版并说「本所当前没有在册院士」，那是假的。安置院士后立刻 `vibe_v5_set { key: "vmu.turn.leaderId", value: "<同一个代号>", why: "安置院士" }`（等价写法：`vibe_v5_configure { params: { "vmu.turn.leaderId": "<同一个代号>" } }` —— 两条通道写的是同一个声明键）；院士离开时清空。`vibe_v5_overview` 的 `leadership.code` 会具名说出当前情形（chair-seated-but-leaderId-empty 就是「席位有人但没写」）。先修数据，别改章程措辞。',
     ].join('\n'),
   }),
 ])

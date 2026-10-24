@@ -2354,7 +2354,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_feedback',
     description: 'Work-experience / process feedback library (not research conclusions). op=add needs category/route/phenomenon/impact/action (and assessment on the interpersonal route); op=update closes with status/outcome/note; op=list returns the open items.',
-    parameters: { op: { type: 'string', required: true }, id: { type: 'string' }, category: { type: 'string' }, route: { type: 'string' }, context: { type: 'string' }, phenomenon: { type: 'string' }, impact: { type: 'string' }, action: { type: 'string' }, assessment: { type: 'string' }, outcome: { type: 'string' }, status: { type: 'string' }, note: { type: 'string' }, all: { type: 'boolean' }, limit: { type: 'integer' } },
+    parameters: { op: { type: 'string', required: true }, id: { type: 'string' }, member: { type: 'string' }, category: { type: 'string' }, route: { type: 'string' }, context: { type: 'string' }, phenomenon: { type: 'string' }, impact: { type: 'string' }, action: { type: 'string' }, assessment: { type: 'string' }, outcome: { type: 'string' }, status: { type: 'string' }, note: { type: 'string' }, all: { type: 'boolean' }, limit: { type: 'integer' } },
     handler: toolFeedback,
   },
   {

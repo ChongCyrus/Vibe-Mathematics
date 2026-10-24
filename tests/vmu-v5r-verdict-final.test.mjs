@@ -143,7 +143,7 @@ try {
   // ── 2. ③ THE VERIFIED TRACK'S SINGLE WRITER ────────────────────────────────────────────────────────────────
   console.log('=== 2. ③ 定论只有一个写入器：卡工具不许变成第二扇门；promote 要法官 ===')
   const secondDoor = await receipt(v5rBoot, 'vibe_v5_record_proposition',
-    { track: 'verified', content: '想绕道写定论轨', value: 1, motive: 'x', p: 0, member: M1 })
+    { track: 'verified', value: 1, motive: 'x', p: 0, member: M1 })
   ok(secondDoor.parsed && secondDoor.parsed.ok === false && codeOf(secondDoor.parsed) === 'VMU_PACK_V5R_VERIFIED_SINGLE_WRITER',
     '★★★ 反：卡工具指向 verified 轨 ⇒ 具名 VMU_PACK_V5R_VERIFIED_SINGLE_WRITER（第二扇门被关）', secondDoor.parsed && codeOf(secondDoor.parsed))
   ok(secondDoor.parsed && /promoteVerified/.test(String(secondDoor.parsed.message)),

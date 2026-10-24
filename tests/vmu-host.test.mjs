@@ -478,7 +478,7 @@ if (SELF_PROBE) {
     '★ 并且指向承载它们的那张面（detail:"closure"）', parsed.closureVote && parsed.closureVote.proseWhere)
   const closureText2 = await statusSpec.execute({ detail: 'closure' }, {})
   const closureParsed = JSON.parse(closureText2)
-  ok(omitted.every((k) => typeof closureParsed.closureVote[k] === 'string' && closureParsed.closureVote[k].length > 90),
+  ok(omitted.length > 0 && omitted.every((k) => typeof closureParsed.closureVote[k] === 'string' && closureParsed.closureVote[k].length > 90),
     '★ 被移出的每一个键在 detail:"closure" 上都是原文长句（不是被删掉）', { omitted, got: Object.keys(closureParsed.closureVote || {}) })
   await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 }
