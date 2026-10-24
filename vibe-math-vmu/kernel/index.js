@@ -2671,9 +2671,35 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       }
       if (names === null) {
         if (!turn || typeof turn.visibleToolsOf !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no visible-tools provider', 'assemble the host adapter so members expose their tool table')
-        const visible = turn.visibleToolsOf(member)
-        names = visible && Array.isArray(visible.tools) ? visible.tools : []
-        source = 'provider'
+        // ★ PHASE 12 / run 34 item 2 — THE WIRE MAY NOT EXIST YET, AND THAT IS NOT THE SAME AS "NO TOOLS".
+        // In `caller` delivery the loop plays the member without a child session, so the provider has no wire to read
+        // and refuses BY NAME. Propagating that refusal makes the reading unusable exactly when the institution asks
+        // what a member can use; answering `tools: []` would be a lie (a member who can see nothing) and the repo bans
+        // a silent empty. So the refusal is CARRIED AS A FIELD and the record the loop WOULD apply is reported.
+        try {
+          const visible = turn.visibleToolsOf(member)
+          names = visible && Array.isArray(visible.tools) ? visible.tools : []
+          source = 'provider'
+        } catch (e) {
+          // ★ ONLY "this member has no session YET" degrades into a readable receipt. A missing or unreadable PROVIDER
+          // is a wiring defect and must stay loud: two different causes behind one quiet answer is worse than no answer
+          // (that is the same distinction the `typeof turn.visibleToolsOf !== 'function'` line above already draws).
+          const cause = (e && e.code) || ''
+          if (cause !== 'VMU_NO_SUCH_OBJECT') throw e
+          let recorded = null
+          try { recorded = typeof this.memberToolOverride === 'function' ? this.memberToolOverride(member) : null } catch { recorded = null }
+          return {
+            ok: true, member: String(member), count: null, tools: null, hidden: [], source: 'no-live-agent',
+            liveAgent: false, schemaScope: null, agentId: null,
+            refusal: {
+              code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE',
+              message: String((e && e.message) || e),
+              hint: (e && e.hint) || null,
+            },
+            override: recorded,
+            note: 'the member wire cannot be READ here: caller delivery plays the member without a child session, so there is no tool table to query. `tools:null` is NOT "sees nothing"; `refusal` is the provider\'s named answer, and `override` is the record the loop applies (null = the pack default for that seat)',
+          }
+        }
       }
       const purposes = toolFaceDescriptions || {}
       // ★ PHASE 12 / D7 step 2: `hidden` — the OTHER half of this same reading. The list above says what the member can

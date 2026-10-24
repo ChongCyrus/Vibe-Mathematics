@@ -2550,3 +2550,28 @@ transcript `_oneoff/vm-slv/full-1024-220035.jsonl`（3 730 行），build `89610
 **「无实质残余」这句话必须由被测方说，且必须能被复查。** 本阶段两次假收尾（T1 全绿 + 我自己的抽查）都是因为把
 「机器判据」当成了「规则验收」；真正的截止阀是**所办自己的报告**——它从 run 12 起每次都在最后一条消息里，
 而它每次都在列表末尾交出下一条真缺陷。让代理当验收方、把它的每一条定性并配门禁，是这一阶段唯一稳定的推进方式。
+
+## §65 第 34 次真机跑：三条真读数 + 一条**验收脚本自己的错**
+
+真机读数（transcript `_oneoff/vm-slv/full-1025-000649.jsonl`，tarball build `16395f43`，`cast:true`、`votesCast:2`、
+`for:["member-1","member-2"]`、`SUMMARY: 1 session(s), 0 with RED checks`）。所办的结论是 **「本轮无实质残余：否」**，
+理由四条——逐条定性如下（其中一条是**我给它的简报写错了**，不是产品缺陷）。
+
+### §65.1 逐条定性
+
+| # | 它报的 | 定性 | 依据 / 处置 |
+| --- | --- | --- | --- |
+| 1 | `vibe_v5_turn` 面不存在，㉖.2(a) 无法核 | **非产品缺陷 —— 简报自身的错（我的错，已登记）** | 全仓 `grep -rn "vibe_v5_turn" vibe-math-vmu/` **0 命中**：这个面从来不存在，真正的回合入口是 `vibe_vmu_turn`。㉖.2(a) 要求核验一个不存在的面，是我的简报把一个旧任务文件里的名字当成工具写进了验收项（与更早的 `fire` 同类）。它拒绝把这一项写成「通过」是对的。**台账登记为验收脚本缺陷，不计入产品** |
+| 2 | caller 交付下 `vibe_v5_tool_help{member}` 永远答不了（`VMU_NO_SUCH_OBJECT no live Agent`） | **已修** | 规则要求成员可见工具表可观测，而在 `deliveryPath:"caller"` 下没有子会话可选，于是读数在**最需要它的时候**不可用。修法不是假装成功：`vibe-math-vmu/kernel/index.js` `toolsView` 现在把 provider 的具名拒**作为字段**带回（`tools:null`、`count:null`、`source:"no-live-agent"`、`refusal:{code,message,hint}`、`override`、`note`），**`tools:null` 明确不是 `[]`**（那会说“什么都用不了”）。★ 同时把边界钉死：**只有 `VMU_NO_SUCH_OBJECT` 降级**，缺 provider（`VMU_ENGINE_UNAVAILABLE`）仍然抛——两个不同原因共用一张安静的脸比不答更糟。门禁 `tests/vmu-run34-findings.test.mjs`（20 断言） |
+| 3 | `closureVote.window:"session"`/`meetingId:null` 指不出会议，而 `windowMeans` 承诺「知道会议的调用方传 `{meetingId}`」 | **已修（改的是承诺，不是语义）** | 核过调用链：`closureVoteOf({meetingId})` 支持该参数，但 `closureVoteInput()`（`vibe-math-vmu/kernel/index.js`）**从不传**，也没有任何面能传 ⇒ 那是一个**没有调用方的承诺**。`vibe-math-vmu/kernel/turn/index.js` 的 `windowMeans` 改为直说限制（`window:"meeting"` 目前从工具面不可达，绑定存在时才标注），行为零变化（`window` 仍是 `session`/`meeting` 两态，门禁断言两态都在） |
+| 4 | `op:"reply"` 回执 `accepted:true` 但 `votesCast` 不变，读起来像票丢了 | **已修（加一句“什么时候生效”）** | 语义本来就对：回执**记录**报告，字段动作在**下一次 `step` 应用**时执行。回执新增 `countedLater:{when,why,fields}`，明确“closureVote.votesCast 在那一步才动”，并原样带回 `fields`（不是一句空话） |
+
+### §65.2 两条断言被这条改动推翻（并各自改正）
+
+- `tests/vmu-kernel.test.mjs` 与 `tests/vmu-host.test.mjs` 原来钉的是「无 live Agent ⇒ 抛具名拒」，`tests/vmu-v5r-tools.test.mjs` 钉的是「pack 面把该拒原样传播」。三处都是**在钉旧设计**——改动是有意的，所以三处改成钉新形状（可读回执 + 拒绝字段 + `tools:null`），并在注释里写明为什么改：规则要的是可观测，报错让读数在最需要时不可用。
+- 修的过程中把 `VMU_ENGINE_UNAVAILABLE` 也一起降级了，`vmu-kernel` 立刻打红（「没有 visible provider ⇒ 具名拒」）。**这就是门禁的价值**：两个原因共用一张安静的脸比不答更糟，catch 收窄为只接 `VMU_NO_SUCH_OBJECT`。
+
+### §65.3 教训
+
+**验收简报本身是被测系统的一部分。** 这一轮第 1 条不是产品缺陷，是我把一个不存在的工具名写进了验收项——所办拒绝为它盖章，正是它该做的。
+写简报时凡出现工具名，必须先 `grep` 一遍确认它真的注册在面里；否则测的是一份幻觉。

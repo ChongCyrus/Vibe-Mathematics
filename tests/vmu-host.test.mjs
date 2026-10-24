@@ -562,8 +562,11 @@ if (SELF_PROBE) {
   await noAgent.install()
   const bareSpec = bareHost.state.specs.find((s) => s.name === 'vibe_vmu_tools')
   const refusal = JSON.parse(await bareSpec.execute({ member: 'member-a' }, {}))
-  ok(refusal.ok === false && refusal.code === 'VMU_NO_SUCH_OBJECT',
-    '★ 反：无 live Agent ⇒ 具名拒（不返回空清单假装成功）', refusal)
+  // ★ PHASE 12 / run 34 item 2: the face publishes the kernel's readable receipt for this case — tools:null plus the
+  // provider's named refusal as a field. Not a throw, and never an empty list pretending the member sees nothing.
+  ok(refusal.ok === true && refusal.tools === null && refusal.source === 'no-live-agent' &&
+    refusal.refusal && refusal.refusal.code === 'VMU_NO_SUCH_OBJECT',
+    '★ 反：无 live Agent ⇒ 可读回执（tools:null + 具名拒字段），不返回空清单也假装成功', refusal)
 }
 
 // ── ★ PHASE 8 / round 37: vibe_vmu_vote writes through the SAME function as the reply path ────────────────────

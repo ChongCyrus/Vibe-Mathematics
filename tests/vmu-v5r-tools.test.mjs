@@ -263,11 +263,15 @@ try {
   ok(helpNoMember.parsed && helpNoMember.parsed.ok === false && helpNoMember.parsed.code === 'VMU_INVALID_ARGUMENT' && typeof helpNoMember.parsed.hint === 'string',
     '★ tool_help: 反（no member）— the answer is PER MEMBER, so a missing member id is refused by name (with a hint)', helpNoMember.parsed && helpNoMember.parsed.code)
   const help = await receipt(v5rBoot, 'vibe_v5_tool_help', { member: 'r-1' })
-  // ★ In THIS fixture there is no live Agent behind the visible-tools provider, so the kernel reading REFUSES BY NAME.
-  // That is the honest local truth; the positive (a real per-seat tool table) needs a live host Agent (real machine).
-  ok(help.parsed && help.parsed.ok === false && typeof help.parsed.code === 'string' && help.parsed.code.length > 3 &&
-    help.parsed.tools === undefined && /live Agent|visible|provider/i.test(String(help.parsed.message || '')),
-    '★★ tool_help: 反（fixture has no live Agent）— it propagates the kernel\'s NAMED refusal and returns NO declaration list (the old body would have returned 38 names here)', help.parsed && { code: help.parsed.code })
+  // ★ In THIS fixture there is no live Agent behind the visible-tools provider. Since run 34 the kernel answers that
+  // case with a READABLE receipt: `tools:null` (never `[]`, which would claim the member can use nothing), the
+  // provider's named refusal as a FIELD, and the override record the loop would apply. The pack face forwards it
+  // verbatim — the assertion pins that the forwarder neither invents a list nor re-wraps the refusal into a throw.
+  ok(help.parsed && help.parsed.ok === true && help.parsed.tools === null && help.parsed.source === 'no-live-agent' &&
+    help.parsed.refusal && help.parsed.refusal.code === 'VMU_NO_SUCH_OBJECT' && help.parsed.tool === 'vibe_v5_tool_help' &&
+    !Array.isArray(help.parsed.tools),
+    '★★ tool_help: 反（fixture has no live Agent）— 回执仍是可读的：tools:null + 具名拒字段 + 无声明清单（旧实现会在这里返回 38 个名字）',
+    help.parsed && { ok: help.parsed.ok, tools: help.parsed.tools, source: help.parsed.source, code: help.parsed.refusal && help.parsed.refusal.code })
   // ★★★ POSITIVE by a DIRECT handler call with a stub kernel: the forwarder must return EXACTLY the toolsView result, and
   // purpose:null must survive — null means "the host registered no description", NOT a missing field.
   const helpSpec = PACK.tools.filter((t) => t.name === 'vibe_v5_tool_help')[0]

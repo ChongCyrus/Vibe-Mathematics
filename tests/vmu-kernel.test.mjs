@@ -1087,9 +1087,13 @@ const FALLBACK_KEYS = [
   noAgent.declareSlots([{ id: 'member', label: 'm', capacity: 0 }])
   await noAgent.members.hire({ id: 'member-a', slot: 'member', institution: 'sim' })
   noAgent.turn.setVisibleToolsProvider(() => { const e = new Error('no live Agent'); e.code = 'VMU_NO_SUCH_OBJECT'; throw e })
-  let err2 = null
-  try { noAgent.toolsView({ member: 'member-a' }) } catch (e) { err2 = e }
-  ok(err2 && err2.code === 'VMU_NO_SUCH_OBJECT', '★ 反：provider 的无 live Agent 具名拒原样传播', err2 && err2.code)
+  // ★ PHASE 12 / run 34 item 2: "no live Agent" is NO LONGER a thrown dead end. In caller delivery there is no child
+  // session to query, so the reading would be unusable exactly when the institution asks — and `tools: []` would lie.
+  // The named refusal now travels as a FIELD and the record the loop would apply is reported with it.
+  const noAgentView = noAgent.toolsView({ member: 'member-a' })
+  ok(noAgentView.ok === true && noAgentView.tools === null && noAgentView.count === null && noAgentView.source === 'no-live-agent' &&
+    noAgentView.refusal && noAgentView.refusal.code === 'VMU_NO_SUCH_OBJECT',
+  '★ 反：无 live Agent ⇒ 可读回执（tools:null + 具名拒字段），既不是空清单也不是死路', noAgentView)
   // ★ PHASE 8 / round 39: inside the caller's own turn, the caller Agent's schemas are authoritative even when the
   // memberSession map is not learned yet. Roster check still runs FIRST.
   const caller = { id: 'child-agent', ctx: { tools: { schemas: (scope) => { callerScope = scope; return [{ name: 'only_one' }] } } } }

@@ -153,8 +153,11 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     // it is null instead of implying one.
     window: meetingId === null ? 'session' : 'meeting',
     meetingId: meetingId === null ? null : String(meetingId),
+    // ★ PHASE 12 / run 34 item 3: the sentence used to promise "a caller that knows the meeting passes { meetingId }" —
+    // and NO face ever did. A promise with no caller is the same class of lie as a mechanism with no consumer, so the
+    // text now states the limit plainly and says what would change it (a turn bound to a meeting).
     windowMeans: meetingId === null
-      ? 'the votes map lives for as long as this orchestrator does, so the closure reading spans the SESSION: it is not per-round and it cannot name a meeting. A caller that knows the meeting passes { meetingId }'
+      ? 'the votes map lives for as long as this orchestrator does, so the closure reading spans the SESSION: it is not per-round and it cannot name a meeting. No current face binds a turn to a meeting, so window:"meeting" is not reachable from the tool surface yet; a reading computed for a named meeting is labelled as such when that binding exists'
       : 'this reading was computed for the named meeting',
     cast,
     // ★ LIVE RUN 7 (agent feedback item j): `cast` READS like "the votes were cast", but this predicate is "closure was
@@ -1121,6 +1124,14 @@ export function createTurnOrchestrator({
       // that the report really landed on the turn it thinks it did.
       readback,
       rule: 'tool report first, fenced json second: a field sent through both channels must agree, or the turn is refused by name (VMU_TURN_REPLY_CONFLICT)',
+      // ★ PHASE 12 / run 34 item 4: `accepted:true` is about the WRITE, not about the effects. The institute reported
+      // that a `vote_solved` in this reply left `closureVote.votesCast` unchanged, which reads like the vote was lost.
+      // It is not lost - the field actions run when this half-turn is APPLIED - so the receipt now says when.
+      countedLater: {
+        when: 'the next `op:"step"` completes this held turn',
+        why: 'this receipt RECORDS the report; the field actions it implies (including a closure vote) are carried out when the held turn is applied, so closureVote.votesCast moves on that step rather than here',
+        fields: Object.keys(recorded.reply),
+      },
     }
   }
 
