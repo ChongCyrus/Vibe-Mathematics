@@ -232,8 +232,6 @@ export function createBoxBinding({ clock, initial = null, refuse }) {
   return { bind, view, resolve }
 }
 
-import { WIRED_KEYS } from './meetings-defaults.js'
-
 /**
  * The value record for every wired key.
  *
@@ -245,10 +243,17 @@ import { WIRED_KEYS } from './meetings-defaults.js'
  * whose short name could not be found would come out `undefined`, and the module suite asserts `st.keys[k] !==
  * undefined` for EVERY wired key — so a future reader that forgets to add `K.<short>` fails loudly instead of
  * under-reporting.
+ *
+ * ★ The WIRED list is a PARAMETER, not an import: `tests/vmu-meeting-order.test.mjs` imports THIS FILE through a
+ * `data:` URL to run its mutants, and a data: URL module cannot resolve a relative import at all
+ * (`ERR_UNSUPPORTED_RESOLVE_REQUEST`) — the first version of this derivation broke that gate. `kernel/meetings.js`
+ * passes `WIRED_KEYS` (it already imports it), and a caller that forgets the list is refused loudly instead of
+ * getting a short map.
  */
-export function meetingKeysSnapshot(K) {
+export function meetingKeysSnapshot(K, keys) {
+  if (!Array.isArray(keys)) throw new Error('meetingKeysSnapshot: pass the WIRED_KEYS list explicitly - this module stays dependency-free because tests import it through a data: URL')
   const out = {}
-  for (const key of WIRED_KEYS) out[key] = K[key.slice('vmu.meetings.'.length)]
+  for (const key of keys) out[key] = K[key.slice('vmu.meetings.'.length)]
   return out
 }
 

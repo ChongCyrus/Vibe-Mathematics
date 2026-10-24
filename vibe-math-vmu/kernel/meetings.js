@@ -1671,7 +1671,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         counters: Object.assign({}, counters),
         refusals: Object.fromEntries([...refusals.keys()].sort().map((k) => [k, refusals.get(k)])),
         refusalsTotal: [...refusals.values()].reduce((a, b) => a + b, 0),
-        keys: keysSnapshot(K),
+        keys: keysSnapshot(K, WIRED_KEYS),
         at: clock(),
         note: 'every key in `wired` changes an observable result (tests/vmu-meetings.test.mjs); `enforced[]` on each receipt lists only the keys that actually fired',
       }
