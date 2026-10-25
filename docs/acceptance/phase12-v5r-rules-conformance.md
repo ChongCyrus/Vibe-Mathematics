@@ -3622,3 +3622,42 @@ transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-150803.jsonl`（build 
 ### §92.4 下一轮
 
 用**研究任务 brief** 重跑（`D:\_tmp\slv-phase5\task-close2.txt`：证明 n³−n 被 6 整除 + 走完自己的流程 + 报告给判定行），量 `cast` 与所办自己的判定；读数由我在 transcript 上量。
+
+
+## §93 第 51 次真机跑：第一次「真正的多智能体 + 完整结题」，以及它自己报出的五条残余
+
+这一轮把 brief 换成了**研究任务**（证明 n³−n 被 6 整除 + 走完研究所自己的流程 + 报告给判定行），不再给验收清单。结果：**结题成立**，而且所办自己写了一份 6 560 字的验收报告，逐条指出五处不符。
+
+### §93.1 真机读数（transcript `full-1025-152814.jsonl`，build `0fe50a25`，25 MB / 46 000+ 行）
+
+| 项 | 读数 |
+| --- | --- |
+| `cast:true` | **来自 6 张 turn 回执**；`votesCast:3`、`missing:[]`、`for:["r-acad","r-1","r-2"]` |
+| 成员回合的执行缝 | `delivery.path:"activation"` + `childId` + `stopReason:"completed"` + `childPreset:"vibe-math-vmu-member"`（四个 childId 互不相同） |
+| 成员 wire | 【本轮你实际能调用的工具｜member】**53 个**：文件面（read/write/edit/glob/grep/read_image/working_directory/todo_write/skill/exit_plan_mode）+ pack 研究面；**pwsh / job_* / web_search / ask_user_question / create_goal / present 一个都没有** |
+| 会议 | m1 `procedure:null` + `procedureNote` 具名说明（普通会议不给骨架） |
+| 编制 | `vibe_v5_start{researcherCount:2}` → hired `["r-acad","r-1","r-2"]` |
+
+⇒ **「真正的多智能体」这一项现在是实测成立的**：成员回合由独立子会话执行、席位工具面收窄生效、结题由三名成员的回执票达成。
+
+### §93.2 它自己报的五条不符（原文要点 + 我的分类）
+
+| # | 它报的 | 分类 |
+| --- | --- | --- |
+| 1 | 回执里没有叫 `settlement` 的段，只有 `delivery`/`delegation` | **我的 brief 错**（我编了个段名）。产品侧段名一直是 `delivery`，且自带逐字 `means` |
+| 2 | `VMU_TURN_DELIVERY_TIMEOUT` + `receipt:null`，而子代理当时仍在跑且已落盘 `Formal/p1.lean` —— **一轮工作被丢弃** | **真缺陷（产品）**：超时路径把子会话的已有产出扔掉，回执里没有任何 partial 读数；它把 `vmu.turn.deliveryTimeoutMs` 调到 600000 才通 |
+| 3 | `vibe_vmu_turn{op:"prompt"}` 取不到 t-3 的提示词：`VMU_NO_SUCH_OBJECT … retained turns: (none - the cache is per process and bounded to the last 6)`，而该工具自述「step 回执里的 memberPrompt 会被回执上限截断，这里不会」 | **真缺陷（产品）**：只跑了 4 个回合，缓存却是空的 —— 说明保留条目在结算时被清掉了，而不是「被 6 条上限挤掉」 |
+| 4 | 成员会话是**独立内核实例**：`eligible` 三席、m1、票箱 b-1 在成员侧都不存在；`vibe_v5_verdict(target="b-1-…")` 与 `vibe_v5_poll_vote` 被 `VMU_NO_SUCH_OBJECT / no member "r-1" on this roster` 拒；`roster live=0` | **真缺陷（结构性）**：`deliverMode:"subagents"` 下「成员各自用 `vibe_v5_verdict` 交 p」**结构上不可达**，这是本轮进不了 Verified 的头号原因 |
+| 5 | `vibe_vmu_tools{member:"r-1"}` 四轮之后仍答 `no live Agent for member r-1 (session=(none learned yet))`，而它的 hint 说「先交付一个回合以便学到子会话 id」 | **真缺陷（产品）**：`path:"activation"` 的子会话没有被登记成该成员的 live Agent |
+
+### §93.3 为什么这一轮才算验收
+
+前几轮我用「审计清单」当 brief，所办会停止做研究、开始做审计，最后既没结题也没产出结论（§92）。换成真研究任务后，它**自己**走完了 hire → meeting → turn×4 → closure，并在报告里指出我这套机制的问题 —— **这正是验收该有的形状：被验收方用它的规则跑一遍，然后说出哪里不对。**
+
+### §93.4 下一步（按危害排序）
+
+1. **#4 结构性**：成员 Session 有独立内核 ⇒ 研究结论必须能跨实例回到所办内核。两条候选：① 成员在回执里用**reply 通道**交裁决（像 `vote_solved` 那样），由所办内核记账；② 成员侧的 records/meeting 面改为**经所办内核转发**。需要先测量哪条与现有接缝相容，再定。
+2. **#2 超时丢产出**：超时路径必须保留 partial（子会话已落的文件/已交的 reply），回执里给 `partialContents`/`partialFiles`，而不是 `receipt:null`。
+3. **#3 提示词缓存**：结算时不要把保留条目清空；`retained turns` 至少要覆盖本轮所有已结算回合（现在 4 个回合就空了）。
+4. **#5 live Agent 登记**：`activation` 子会话也要登记到成员 → 子会话映射，让 `vibe_vmu_tools{member}` 能读到它的 wire。
+5. #1 是我 brief 的错，改 brief 用语即可；同时把「成员回合回执的段名是 `delivery`/`delegation`」写进 `vibe-math-vmu/docs`。
