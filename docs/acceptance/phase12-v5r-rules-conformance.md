@@ -3438,3 +3438,48 @@ note 含「next start」，并且**同族一个真正被提示词变量读取的
 2. **给回执加字段时，要问「哪个部署会走路由 A、哪个走路由 B」**：本次两条读数都只挂在一条路上，
    而目标部署走的是另一条。机制有没有消费者，只能在**真实部署的读数**里回答。
 3. 验收报告的每一条都必须落成 `file:line` 或 `-- 工具输出`，否则「无实质残余」只是句子。
+
+## §88 轮 47：`membersFrom` 一直是 null —— 一个「字段存在但永远空」的读数缺陷，以及本轮判据自己的两处错误
+
+### §88.1 真机读数（run 47）
+
+- transcript `_oneoff/vm-slv/full-1025-133630.jsonl`，build `d30ff7ec`，`cast=true`（10 条 turn 回执），
+  `SUMMARY: 1 session(s), 1 with RED checks`（RED 来自 §87 已知的 inspect「pack 同源块」口径，见 §87.1）。
+- 验收报告（13 974 字符）结论：㉟.1 ✅、㉟.5 ✅、㉟.3 可解释非缺陷、**㉟.2 字面不符**、㉟.4 未验、㊱.1 ✅、㊱.2 未验。
+
+### §88.2 真缺陷：`membersFrom` 字段存在、值永远是 null
+
+报告逐字抄了三张 step 回执：`"membersFrom":null`（两次），而 `requestedMembersSource` 分别是
+`"roster-default"` 与 `"explicit"`。脸（`vibe-math-vmu/tools/turn.js:291`）**确实算出了**
+`const membersFrom = explicit ? 'caller-selection' : 'roster-default'` 并传给 `step`，但 `step` 的读数取自
+`r.membersFrom`（RUN 结果）而值在 **SPEC** 上 ⇒ 恒为 null。这是「设了值读不回来」的教科书形态：
+字段在、值恒空，比字段缺失更难发现，因为形状检查会通过。
+
+修法（三处，同一条链）：
+1. `step` 形参加 `membersFrom = null`；
+2. `nextTurn({ …, membersFrom })` 并把 `membersFrom` 放进它返回的 spec；
+3. 回执读数改为 `membersFromReading = spec.membersFrom ?? 入参`（两种来源都认，且 `null` 与「缺字段」仍然可分）。
+
+门禁：`tests/vmu-turn.test.mjs` R43d —— 传 `membersFrom:"caller-selection"` 的 step 必须把它读回来。套件 **254/0**。
+
+### §88.3 本轮判据自己的两处错误（我写的，不是产品的）
+
+1. **同一份 brief 里有两个 §㊱**：旧的一份（早轮留下、按 awaiting 信封写）要求 `mode:"subagents"`、`childId:null`、
+   `promptChars`；我新写的那份要求 `path`/`childId` 非空/`stopReason`/`attribution`/`means`。报告如实指出
+   「两条判据互相打架」。⇒ brief 追加脚本只查了 `㊱.1` 而旧块用的是别的子编号，**守卫太弱**。
+2. **㉟.4 与 ㊱.2 在本部署下不可验**：`deliverMode:"subagents"` 是**结算式**交付，永远不会产生 `awaiting:true` 信封；
+   而 `vmu.turn.deliverMode` 是 `H2`（`applied:"next-session"`、`requiresRestart:true`，且构造期以
+   `config.vmu.deliverMode` 为准）⇒ 进程内无法把交付切成 `caller` 做对照。判据写的是**另一个部署**的形态。
+   结论：这两条**不是产品缺陷**，是判据越界；下一轮 brief 要么删掉，要么明确写「不可验即记未验」。
+
+### §88.4 命名事实（记录，不改）
+
+回执里 `delegation.path` 的值是 **`activation`**，而设置面 `vmu.turn.deliverMode` 读作 `subagents`。
+两个词是**两种东西**：`deliverMode` 是「用哪条交付策略」，`path` 是「seam 实际用哪个动词执行」，
+`means` 已经解释清楚。不改名（改名会破坏已存回执的可读性），但这条口径差异必须写进 brief，否则每轮都会被当成缺陷重报。
+
+### §88.5 教训
+
+「字段存在但恒为 null」是本阶段查到的最隐蔽一族：形状检查、类型检查、甚至「字段在不在」的断言都会通过。
+唯一能抓到它的是**读回一个非空值**——所以每条新读数都必须配一条「真值必须能被读回来」的断言，
+而不是「字段必须存在」。

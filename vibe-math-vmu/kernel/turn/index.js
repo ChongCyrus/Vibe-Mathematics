@@ -1966,7 +1966,7 @@ export function createTurnOrchestrator({
     const row = rows.find((r) => r && String(r.id) === String(memberId))
     return row && typeof row.slot === 'string' && row.slot !== '' ? row.slot : null
   }
-  const nextTurn = ({ members = [], phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+  const nextTurn = ({ members = [], phase = 'normal', why = null, nextStep = null, role = null, membersFrom = null } = {}) => {
     // (g): the ONE shape-owner for a selection. Plain id strings are accepted here too, because the roster default
     // must never be used as a silent substitute for a caller's explicit list.
     const list = normalizeMembersSelection(members)
@@ -1985,7 +1985,8 @@ export function createTurnOrchestrator({
     // the explicit argument wins, then a role the caller attached to the selection entry, then the ROSTER's slot —
     // never null-by-accident while the roster knows the answer (that accident is the defect this line closes).
     const chosenRole = role || pick.role || slotOf(pick.id) || null
-    return { id: 't-' + (turnSeq += 1), member: pick.id, role: chosenRole, phase, why, nextStep }
+    return { id: 't-' + (turnSeq += 1), member: pick.id, role: chosenRole, phase, why, nextStep,
+      membersFrom: membersFrom === null ? null : membersFrom }
   }
 
   /**
@@ -2088,7 +2089,7 @@ export function createTurnOrchestrator({
    * the pipeline owns WHAT PROMPT. A round that fails is RETURNED rather than thrown, because a failed round is an
    * operational outcome; a malformed ARGUMENT still throws, because that is a programming error.
    */
-  const step = async ({ members = [], membersInferred = false, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+  const step = async ({ members = [], membersInferred = false, membersFrom = null, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
     // (g): the selection is normalized BEFORE the branch, so an unreadable entry is refused on BOTH routes (a malformed
     // list used to be filtered only on the pending route and to fall through to the default roster everywhere else).
     const selection = normalizeMembersSelection(members)
@@ -2216,7 +2217,11 @@ export function createTurnOrchestrator({
         ? 'no `members` was given, so requestedMembers is EMPTY by design (an inferred selection is not a request) and resolvedMembers is the roster default this step prompts'
         : 'the caller named `members`; requestedMembers and resolvedMembers are the same list after normalisation (strings, {id} and {member} all land as ids)',
     }
-    const spec = nextTurn({ members, phase, why, nextStep, role })
+    const spec = nextTurn({ members, phase, why, nextStep, role, membersFrom })
+    // ★★ LIVE RUN 47 (the institute's own report ㉿.2): the face DOES name where the selection came from
+    // (`caller-selection` | `roster-default`), but the reading was looked up on the RUN result instead of on the SPEC
+    // that carries it, so every live receipt read `membersFrom: null` - present but empty, the worst of both.
+    const membersFromReading = spec && typeof spec.membersFrom === 'string' ? spec.membersFrom : (typeof membersFrom === 'string' ? membersFrom : null)
     if (!spec) return { ok: true, receipt: null, stopped: 'no-members', ...selectionReadings }
     // ★ G7 ④: clear this member's tool-call index at the START of the step, so the receipt reports THIS turn only.
     if (typeof clearMemberToolCalls === 'function') { try { clearMemberToolCalls(spec.member) } catch { /* diagnostics only */ } }
@@ -2248,8 +2253,7 @@ export function createTurnOrchestrator({
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,
-        membersFrom: r.membersFrom === undefined ? null : r.membersFrom,
-        delegation: r.delivery || null,
+        membersFrom: membersFromReading, delegation: r.delivery || null,
         ...selectionReadings }
       return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(),
         // ★ PHASE 12 / live run 37 (the institute's own report): this receipt reduced `skipped` to a NUMBER, so the reason
@@ -2275,8 +2279,7 @@ export function createTurnOrchestrator({
         // built one layer down and only ever placed on the AWAITING envelope - but `deliverMode:'subagents'` settles
         // turns, so this deployment's step receipt never returned an awaiting envelope and the two readings were
         // unreachable in the very mode they describe. Same defect family as run 37's count-only `skipped`.
-        membersFrom: r.membersFrom === undefined ? null : r.membersFrom,
-        delegation: r.delivery || null },
+        membersFrom: membersFromReading, delegation: r.delivery || null },
         ...selectionReadings }
     } catch (e) {
       return stepFailure(e)

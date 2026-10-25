@@ -1674,6 +1674,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     '★★★ R43b: and it names the child that executed the turn — the difference between delegation and self-play', rc && rc.delegation)
   ok(!!rc && rc.membersFrom === null,
     '★★ R43c: membersFrom is PRESENT and null when the face did not report one — absent and null must not be the same reading', rc && rc.membersFrom)
+  // ★★ LIVE RUN 47 measured the follow-on: the face DOES pass `membersFrom` ('caller-selection' | 'roster-default') yet
+  // every live receipt read null, because the reading was taken from the RUN result instead of the SPEC. A reading that
+  // is always null is indistinguishable from one that is never set, so this asserts the value travels.
+  const stepped2 = await t.step({ members: ['r-2'], membersFrom: 'caller-selection', why: 'R43d the face names the selection source' })
+  const rc2 = stepped2 && (stepped2.receipt || null)
+  ok(!!rc2 && rc2.membersFrom === 'caller-selection',
+    '★★★ R43d: a step told WHERE the selection came from returns that fact on its receipt (it used to return null always)',
+    rc2 && rc2.membersFrom)
 }
 
 // ★★★ LIVE RUN 42 (the institute's own report ㉝.1): every `step` receipt carried `requestedMembersSource` and NO
