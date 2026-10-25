@@ -3548,3 +3548,39 @@ run 47 的验收报告在 ㊱.1 里逐字抄了 `delegation` 整段：`path` / `
   出现 22 次、点名「用户裁定」20 次，方向上通过但未逐字复核）。
 - 下一轮（run 49）必须验证的清单：`membersFrom` 两个真值、`delegation.childPreset`+`childPresetMeans`、
   普通会议 `procedure:null`/`procedureNote`、辩论会议四步骨架、成员会话 0 个 `pwsh`。
+
+
+## §91 第 49 次真机跑：四项读数落地，而那一条 RED 是检查器自己的模型问题
+
+本轮目的只有一个：把第 46–48 次连续暴露的「值存在但读不到 / 读得到但是 null」四个读数在真机上验一遍。
+
+### §91.1 四项读数：真机通过（数字来自 transcript，不是自述）
+
+transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-142427.jsonl`（build `5c54db78`）：
+
+| 读数 | 真机命中 | 说明 |
+| --- | --- | --- |
+| `membersFrom:"roster-default"` | **3** | 没传 `members` 时路径被命名（§90 的 resolveMembers 回执） |
+| `membersFrom:"caller-selection"` | **5** | 显式传 `members` 时路径被命名 |
+| `childPreset:"vibe-math-vmu-member"` | **4** | 结算式交付的回执终于说出**用哪个 preset** 跑的成员回合（§90 的 childPreset 缺口） |
+| `procedure:null`（ordinary 会议） | **1** | 普通会议不给骨架，且 `procedureNote` 具名解释（用户裁定那一项） |
+
+这四项此前**连续三次**都是「字段存在但真机上读不到」，本轮第一次四个同时命中——原因不是又改了一处，而是 §89/§90 把「算出来的值必须在**结算式交付**的那条回执上」作为验收条件写进了门禁。
+
+### §91.2 那一条 RED 不是产品缺陷，是检查器把两种故障混成一种
+
+自动检查报了 `RED tool calls not in wire: vibe_v5_status`。追查结论：
+
+- `vibe_v5_status` **在整个运行里任何请求都没有广播过**，`vibe-math-vmu/` 里也**没有任何一处**声明它（`grep -c "vibe_v5_status" packs/v5r/tools.js` = **0**，提示词里也 0 处）⇒ 是**调用方猜的名字**，不是 wire 与提示词不一致。
+- 这两种故障形状相同、责任不同：一种说「产品撒谎了」，另一种说「调用方猜错」。用同一个 RED 报它们，会教读者忽略这个门禁（本阶段已经付过一次代价）。
+- 修法（`scripts/slv-inspect.mjs`）：`analyzeSession(..., { globalWire })` 把「本次运行所有会话广播过的名字」并起来；一个名字**既不在本会话、也不在整轮运行**里 ⇒ 归入 `foreignCalls`，以 **INFO** 打印并说明「先查提示词是否教了这个名字；这不是 wire 与提示词的差异」；**仍然保持 RED**：名字在整轮别处广播过、只是本会话的 wire 丢了——那才是真正的作用域故障。
+- 门禁：检查器 `--selftest` 新增 (E) 两条正反断言（外来名字 ⇒ INFO 且不出 "not in wire" 的 RED；整轮广播过但本会话没有 ⇒ 仍 RED），`SELFTEST PASS (0 failed)`。
+
+### §91.3 本轮没有结题，原因写在读数里
+
+`cast=false`、且所办没写最终验收报告：这是一次**短程靶向跑**（只做四项读数），跑到读数就结束，没有走结题流程。这不是产品缺陷，但意味着**验收仍未完成**——下一轮的判据仍是「所办自己的报告说无实质残余 + cast:true」。
+
+### §91.4 教训
+
+1. **门禁也要能分辨"谁错了"**。检查器的任务不是发现差异，而是给差异定责；说不出责任方的红色门禁会被人学会忽略。
+2. 第四次出现同一家族（值存在、读不到）之后，验收条件必须写成「在这个部署的**那条回执**上」，否则修一处漏一处。

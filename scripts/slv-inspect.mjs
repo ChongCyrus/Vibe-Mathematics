@@ -132,7 +132,7 @@ function readEvents(file) {
   return events
 }
 
-export function analyzeSession(file, { memberFilter = null, sessionFilter = null } = {}) {
+export function analyzeSession(file, { memberFilter = null, sessionFilter = null, globalWire = null } = {}) {
   const events = readEvents(file)
   const sessionIds = new Set()
   const headers = []
@@ -288,7 +288,15 @@ export function analyzeSession(file, { memberFilter = null, sessionFilter = null
   // Under PTC the SDK dispatches inner tools inside run_code; those are NOT direct wire names, so they are reported
   // separately instead of being called "unknown".
   const defer = header ? header.tools.filter((t) => t && t.deferLoading === true).map((t) => t.name) : []
-  const unknownCalls = runCode ? [] : callsNotInWire
+  // ★★★ TWO DIFFERENT FAULTS WEAR THE SAME SHAPE (measured on run 49): a call to `vibe_v5_status` — a name that exists in
+  // NO request of the whole run and in no pack catalogue either — is the AGENT naming a tool nothing ever advertised. That
+  // is worth saying out loud, but it is NOT "the wire and the prompt disagree": the product did not lie, the caller guessed.
+  // Reporting it as the same RED as a real wire/prompt mismatch teaches the reader to ignore the gate. So when the caller
+  // supplies the run-wide wire (`globalWire`), a name absent from BOTH this session and the run is split out as
+  // `foreignCalls` (INFO), and `unknownCalls` keeps only names the run DID advertise somewhere — a genuine scope fault.
+  const wireElsewhere = globalWire === null ? null : (Array.isArray(globalWire) ? globalWire : [...globalWire])
+  const foreignCalls = wireElsewhere === null ? [] : callsNotInWire.filter((n) => !wireElsewhere.includes(n))
+  const unknownCalls = (runCode ? [] : callsNotInWire).filter((n) => !foreignCalls.includes(n))
   const ptcNestedCalls = runCode ? callsNotInWire : []
   const callCount = calls.length
   const countMismatch = callCount !== results
@@ -325,6 +333,7 @@ export function analyzeSession(file, { memberFilter = null, sessionFilter = null
     missingCompositionFromWire,
     extraCompositionOnWire,
     unknownCalls,
+    foreignCalls,
     ptcNestedCalls,
     deferLoading: defer,
     runCode,
@@ -438,6 +447,12 @@ function render(s) {
     if (s.extraOnWire.length) lines.push('  INFO (no block) wire tools not named in prompt: ' + s.extraOnWire.join(', '))
   }
   if (s.unknownCalls.length) lines.push('  RED tool calls not in wire: ' + s.unknownCalls.join(', '))
+  // ★ run 49: a name that NO request in the whole run advertised is the caller guessing, not the wire misrepresenting the
+  // prompt. It stays visible (a phantom name in the prompt is a defect — but a DIFFERENT one, and it must be looked for in
+  // the prompt text, not in the header) and it must not colour the RED count.
+  if (Array.isArray(s.foreignCalls) && s.foreignCalls.length) {
+    lines.push('  INFO 本轮调用了任何请求都没有广播过的名字: ' + s.foreignCalls.join(', ') + ' —— 先查提示词是否教了这个名字；这不是 wire 与提示词的差异')
+  }
   // ★ run 43: a call the wire carried EARLIER but not in the last snapshot means the wire narrowed mid-session. That is
   // information about the run, not a defect — and reporting it as RED (or hiding it) both mislead.
   if (s.callsOnlyInEarlierWire && s.callsOnlyInEarlierWire.length) {
@@ -550,6 +565,24 @@ function runSelftest() {
     const compOut = render(comp)
     ok(/INFO wire 上还有组合自带的 2 个工具/.test(compOut) && !/RED /.test(compOut),
       '★★ the render says INFO for composition tools and prints no RED at all', compOut.split('\n').filter((l) => /AUTO|OK|INFO|RED/.test(l)))
+
+    // ── (E) FOREIGN NAME vs SCOPE FAULT: the same fixture judged WITH the run-wide wire ─────────────────────────────
+    // Measured on run 49: the office called `vibe_v5_status`, a name no request of the run ever advertised and no pack
+    // catalogue contains. That is the caller guessing — it must be visible, and it must NOT be filed as a wire/prompt
+    // mismatch (a false RED teaches the reader to ignore the gate). The reverse case must stay RED: a name the run DID
+    // advertise elsewhere but this session's wire dropped is a real scope fault.
+    const foreign = analyzeSession(fx.oldFormat, { globalWire: new Set(['vibe_a', 'vibe_b']) })
+    ok(foreign.unknownCalls.length === 0 && foreign.foreignCalls.includes('vibe_ghost') && foreign.red === true,
+      '★★ a name no request of the run advertised is split into foreignCalls (INFO) — the remaining RED is the count mismatch, not the name',
+      { unknown: foreign.unknownCalls, foreign: foreign.foreignCalls, red: foreign.red })
+    const foreignOut = render(foreign)
+    ok(/INFO 本轮调用了任何请求都没有广播过的名字: vibe_ghost/.test(foreignOut) && !/RED tool calls not in wire/.test(foreignOut),
+      '★★ the render says INFO for a foreign name and prints no "not in wire" RED for it',
+      foreignOut.split('\n').filter((l) => /没有广播|not in wire/.test(l)))
+    const scoped = analyzeSession(fx.oldFormat, { globalWire: new Set(['vibe_a', 'vibe_b', 'vibe_ghost']) })
+    ok(scoped.unknownCalls.includes('vibe_ghost') && scoped.foreignCalls.length === 0,
+      '★★ NEGATIVE: a name the run advertised ELSEWHERE stays a RED scope fault (the split cannot swallow a real one)',
+      { unknown: scoped.unknownCalls, foreign: scoped.foreignCalls })
   } finally {
     rmSync(fx.root, { recursive: true, force: true })
   }
@@ -581,9 +614,17 @@ function main() {
   }
   const multi = new Set(discovered.map((d) => d.file + '::' + d.session)).size > files.length
   if (flags.bySession && multi) {
-    const out = []
+    // ★ TWO PASSES: the run-wide wire must be known BEFORE any single session is judged, otherwise a name the run never
+    // advertised cannot be told apart from a name this session's scope dropped (see `foreignCalls`). The probe pass only
+    // collects each session's advertised union, so it costs one extra walk and cannot change any verdict by itself.
+    const probeWire = new Set()
     for (const d of discovered) {
       const one = analyzeSession(d.file, { memberFilter: flags.member, sessionFilter: d.session })
+      if (one) for (const n of one.wireUnion || []) probeWire.add(n)
+    }
+    const out = []
+    for (const d of discovered) {
+      const one = analyzeSession(d.file, { memberFilter: flags.member, sessionFilter: d.session, globalWire: probeWire })
       if (one) out.push(one)
     }
     if (!out.length) { console.error('no session content found under ' + input); process.exit(2) }
