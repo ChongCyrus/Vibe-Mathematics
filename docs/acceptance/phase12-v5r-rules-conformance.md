@@ -4144,3 +4144,30 @@ seam 早就知道（`vibe-math-vmu/host-deliver.js:283` 设了 `err.deliveryPath
 - `CONSTRUCTION_ONLY_KEYS` 增加**族匹配**（`vmu.meetings.typeCatalog` 家族），修 `set` 的假成功。
 - 邻域：`vmu-turn` 257/0、`vmu-run15-findings` 42/0、`vmu-host` 199/0、`vmu-kernel` 260/0；`regen-all` 16/16 在同步。
 - ★ 本轮教训（写进方法）：**观测器本身要先自证**。run 16 的首个 verifier 用「深度截断的 JSON 扁平化」读回执，把 60 KB 末尾切掉，于是把「有」读成「无」；改成直接取 `content[].text` 才看到真值。
+
+## §108 规则下限的**来源**：用户没设数字时，m 就是「院士＋常驻」——而不是「不设下限」
+
+轮 17 真机（`full-1025-223755.jsonl`，build `c52b4ce0`）的所办把 ④/⑩.3 判为**否**，原文：
+
+> `required:0`、`voteFloor.setting:0`、`zeroBecause:"vmu.meetings.quorumMin and quorumRatio are both 0：the deployment declared no floor"——m=2 未参与计算。
+
+它没写错，只是它撞上了一个**框架读法与规则读法不一致**的地方：
+
+- 框架的老读法：`quorumMin`/`quorumRatio` 都为 0 ⇒ **不设下限**（`effective:0`＝这道闸不存在）。这对任意 pack 都是合理的零机制默认。
+- v5r 规则的读法：「辩论、结题表决的人数**至少**为某一定数量，取**用户设置数**与**院士＋常驻研究员数**的**最小值**」。用户没设数字时，这句话的自然读法是**下限＝院士＋常驻**（用户只是没有收窄它），而不是「没有下限」。
+
+两者都真实，所以修法不是改默认值，而是把**来源**变成声明（内核能力 / pack 政策）：
+
+- 新键 `vmu.meetings.quorumFloorSource`（`enum: setting|universe`，默认 `setting`）。
+  - `setting`：老公式 `max(quorumMin, ceil(quorumRatio×roster))`，再 `min(cap, universe)`。零改动。
+  - `universe`：**没有声明数字时下限＝可投票全体**；声明了数字则只能在这个全体范围内**取 min 收窄**，不能抬高。
+- `vibe-math-vmu/packs/v5r/settings/defaults.json` 声明 `"vmu.meetings.quorumFloorSource": "universe"` —— 这是**本所采纳这条规则**的地方。
+- 回执（`voteFloor`）新增 `source` 与 `sourceMeans`；`zeroBecause` 在 `universe` 下只在「可投票全体为空」时出现（那是算术，不是政策）。
+
+### 门禁（`tests/vmu-meeting-types.test.mjs` §9，7 条，套件 149/0）
+- ⑨a `setting`：0/0 仍然＝无下限，且 `zeroBecause` 说明是哪个输入为 0；
+- ⑨b `universe`：0/0 ⇒ `required:3`（3 席全体），`sourceMeans` 引用规则原文（院士＋常驻 + min），`zeroBecause:null`；
+- ⑨c ★**判别性**用例：`quorumMin=5` 在 3 席上得 **3** 而不是 5（旧 `max()` 会要求一个永远达不到的 5），`quorumMin=2` 则收窄到 2 —— 这就是「min 的方向」。
+
+### 同轮第二处（部署侧，不是产品）
+`vmu.turn.deliveryTimeoutMs` 声明为 `HOT.H2`（构造期读），所以**运行时 set 不生效**是对的；但 run 17 的成员回合每次都在 180 s 超时，而子代理要跑约 5 分钟。修法在**部署面**：runner 在启动前把 `vmu.turn.deliveryTimeoutMs: 900000` 注入 preset 的 `vmu` 配置（`D:\_tmp\slv-phase5\slv-p12g-seat.ps1`）。这正是「H2 应该走部署配置，而不是运行时 set」的用法。

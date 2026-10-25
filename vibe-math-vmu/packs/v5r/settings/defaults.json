@@ -57,6 +57,8 @@
     "vmu.meetings.eligibleSeats": ["chair", "member"],
     "vmu.meetings.attendDeniedSeats": ["temp"],
     "vmu.meetings.typeCatalog": ["ordinary", "academic", "debate", "closure", "paper", "planning"],
+    "_quorumFloorSource": "规则「辩论、结题表决的人数至少为某一定数量，取用户设置数与院士＋常驻研究员数的最小值」需要『用户没设数字时下限＝院士＋常驻』这一读法。框架默认 `setting`（0/0＝不设下限，零机制），本所声明 `universe` 才让这条规则有落点：任何正的 quorumMin/quorumRatio 只能把下限在院士＋常住范围内收窄（min），不能抬高。",
+    "vmu.meetings.quorumFloorSource": "universe",
     "_chairRails": "规则「会议只能由院士（chair）预约/召开和关闭」「院士可以延长会议时长上界」是【本所的制度】，不是框架的：内核把三条都做成默认 false（零机制），这里才是它们被采纳的地方。★ 不在这里重述 vmu.meetings.extendRequiresChair / extendCeilingMs —— 内核默认已是 true / 14400000ms，重述等于把框架默认抄进价值层（本文件 §rule: 一个过时的显式值比「没设」更糟）。",
     "vmu.meetings.conveneRequiresChair": true,
     "vmu.meetings.closeRequiresChair": true,

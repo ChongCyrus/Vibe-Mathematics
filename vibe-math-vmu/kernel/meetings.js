@@ -152,6 +152,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     attendDeniedSeats: arr(sget('vmu.meetings.attendDeniedSeats')).map(String),
     liveCap: n(sget('vmu.meetings.liveCap')),
     quorumMin: n(sget('vmu.meetings.quorumMin')), quorumRatio: n(sget('vmu.meetings.quorumRatio')),
+    // ★ RULE (v5r 运行规则 · 辩论/结题表决人数下限): 「下限 = min(用户设置数, 院士+常驻研究员数)」. When the deployment
+    // declares NO number (quorumMin=0 and quorumRatio=0) the rule's reading is NOT "no floor" — the user simply did not
+    // narrow it, so the floor IS the eligible universe. That is a POLICY question, so the DEFAULT stays the framework's
+    // old behaviour (`setting`: 0 means no floor) and a pack opts in by declaring `universe`. Same shape as
+    // `eligibleSeats`/`attendDeniedSeats`: the kernel compares, the pack names its institution.
+    quorumFloorSource: (() => { const v = sget('vmu.meetings.quorumFloorSource'); return v === undefined || v === null || v === '' ? 'setting' : String(v) })(),
     // ★ PHASE 12 / LIVE RUN 7 item f: the institution's quorum RULE, read here so `quorum().met` can honour it (the
     // ballot face read it already; the meeting face did not, which is why 「未到齐 ⇒ 法定人数不成立」 had no landing
     // point). Unset keeps the declared default; the value is echoed in `quorum().rule`/`metPolicy`/`metBecause`.
@@ -404,7 +410,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // intersected with `vmu.meetings.eligibleSeats` (v5r: chair + member; temps hold slot `temp` and are therefore
     // excluded, which is exactly the rule's 「院士+常驻研究员」). Presence is no longer part of the formula: a lower
     // bound that shrinks to whoever showed up is not a lower bound. At `quorumCap: 0` nothing is capped.
-    const needUncapped = Math.max(needMin, needRatio)
+    const needFromSetting = Math.max(needMin, needRatio)
     const capUniverse = (() => {
       if (!m.roster.length) return { n: 0, source: 'empty-roster' }
       if (!K.eligibleSeats.length) return { n: m.roster.length, source: 'roster (no voter seats declared)' }
@@ -416,6 +422,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const unresolved = m.roster.filter((r) => !seatOf.has(String(r))).length
       return { n: eligible.length + unresolved, source: unresolved ? 'seats + unresolved roster ids' : 'seats' }
     })()
+    // ★ `universe` source: no declared number ⇒ the floor is the eligible universe; a declared number NARROWS it (min).
+    // At `setting` the old formula is untouched, so every existing deployment (and every existing assertion) stands.
+    // ORDER MATTERS: `capUniverse` is computed above because this line reads it (a TDZ ReferenceError here would be a
+    // crash on every open(), which is exactly how the first version of this patch failed the suite).
+    const needUncapped = K.quorumFloorSource === 'universe'
+      ? (needFromSetting > 0 ? Math.min(needFromSetting, capUniverse.n) : capUniverse.n)
+      : needFromSetting
     const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, capUniverse.n) : needUncapped
     // ★ PHASE 12 / LIVE RUN 7 (agent feedback item f): `met` was `present.size >= need`, so with the floor at 0 it was
     // ALWAYS true — "未到齐" (present 1 of roster 2) and "法定人数" were decoupled readings of one meeting, and the
@@ -471,12 +484,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // reported instead of left for a reader to infer: a 0 now says WHICH input was 0.
       voteFloor: {
         setting: needMin, ratioNeed: needRatio, eligibleUniverse: capUniverse.n, cap: K.quorumCap,
+        source: K.quorumFloorSource,
+        sourceMeans: K.quorumFloorSource === 'universe'
+          ? 'the floor is the eligible universe (chair + residents, vmu.meetings.eligibleSeats); a positive quorumMin/quorumRatio only NARROWS it (min) — this is the rule min(用户设置数, 院士+常驻研究员数)'
+          : 'the floor exists only when quorumMin/quorumRatio declare a number; 0/0 means the deployment declared no floor',
         effective: need,
         formula: K.quorumCap > 0
           ? 'min(max(quorumMin, ceil(quorumRatio*roster)), quorumCap, eligible universe)'
           : 'max(quorumMin, ceil(quorumRatio*roster)) [uncapped: quorumCap = 0]',
         zeroBecause: need === 0
-          ? (needMin === 0 && needRatio === 0 ? 'vmu.meetings.quorumMin and quorumRatio are both 0: the deployment declared no floor' : null)
+          ? (K.quorumFloorSource === 'universe'
+            ? (capUniverse.n === 0 ? 'the eligible universe is empty (no chair and no resident seat on the roster), so the floor is 0 by arithmetic, not by policy' : null)
+            : (needMin === 0 && needRatio === 0 ? 'vmu.meetings.quorumMin and quorumRatio are both 0: the deployment declared no floor' : null))
           : null,
         // ★★ PHASE 12 / R23 (the institute's own run-17 report, item 7): `effective:0` reads as "the bar is very
         // low" when it means "this deployment set no bar at all". The cause is named so a reader does not have to

@@ -596,6 +596,52 @@ try {
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 }
 
+
+  console.log('=== 9. QUORUM FLOOR SOURCE: under the v5r rule an UNSET setting is not "no floor" ===')
+  // The rule: 「辩论、结题表决的人数至少为某一定数量，这个数量取用户设置的数量和『院士+常驻研究员』数量的最小值」.
+  // Read literally that is min(user setting, chair+residents). When the user set NO number the honest reading is that the
+  // floor IS chair+residents — but the framework's long-standing reading of 0/0 is "the deployment declared no floor".
+  // Both readings are real, so the SOURCE is a declared policy (kernel default 'setting' = old behaviour, v5r declares
+  // 'universe'). This section pins BOTH, plus the direction of the min: a declared number may only NARROW the universe.
+  const bootFloor = async (vmu2, tag) => boot({ root: join(root, 'floor-' + tag), packs: ['v5r'], clock: () => 1000, vmu: vmu2 })
+  const seat3 = async (k) => {
+    await k.members.hire({ id: 'acad', slot: 'chair' })
+    await k.members.hire({ id: 'f-1', slot: 'member' })
+    await k.members.hire({ id: 'f-2', slot: 'member' })
+  }
+
+  // ⑨a the framework default: 0/0 means NO floor, and the receipt says exactly that
+  const bA = await bootFloor({ meetings: { quorumFloorSource: 'setting' } }, 'a')
+  await seat3(bA.handle.kernel)
+  const oA = bA.handle.kernel.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'f-1', 'f-2'], materials: 'floor-a' })
+  ok(oA.quorum.voteFloor.source === 'setting' && oA.quorum.required === 0,
+    '★★ source=setting: an unset quorumMin/quorumRatio still means NO floor (the framework default is untouched)', { source: oA.quorum.voteFloor.source, required: oA.quorum.required })
+  ok(/declared no floor/.test(String(oA.quorum.voteFloor.zeroBecause)),
+    '★ and the 0 is EXPLAINED (zeroBecause names the input) instead of being left for a reader to infer', oA.quorum.voteFloor.zeroBecause)
+
+  // ⑨b v5r's declaration: the floor is the eligible universe, so 0/0 can no longer mean "the bar is absent"
+  const bB = await bootFloor({ meetings: { quorumFloorSource: 'universe' } }, 'b')
+  await seat3(bB.handle.kernel)
+  const oB = bB.handle.kernel.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'f-1', 'f-2'], materials: 'floor-b' })
+  ok(oB.quorum.voteFloor.source === 'universe' && oB.quorum.required === 3,
+    '★★ source=universe: with no declared number the floor is chair+residents (3 of 3), not 0 — the rule finally has a landing point', { source: oB.quorum.voteFloor.source, required: oB.quorum.required, universe: oB.quorum.voteFloor.eligibleUniverse })
+  ok(/院士/.test(String(oB.quorum.voteFloor.sourceMeans)) && /min\(/.test(String(oB.quorum.voteFloor.sourceMeans)),
+    '★ the receipt quotes the RULE it implements (院士＋常驻 + the min) instead of only naming a switch', oB.quorum.voteFloor.sourceMeans)
+  ok(oB.quorum.voteFloor.zeroBecause === null,
+    '★ zeroBecause is null here: 0 is not reachable by 0/0 policy any more', oB.quorum.voteFloor.zeroBecause)
+
+  // ⑨c the min runs the RULE's way: a declared number NARROWS, it never raises
+  const bC = await bootFloor({ meetings: { quorumFloorSource: 'universe', quorumMin: 2, quorumCap: 3 } }, 'c')
+  await seat3(bC.handle.kernel)
+  const oC = bC.handle.kernel.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'f-1', 'f-2'], materials: 'floor-c' })
+  ok(oC.quorum.required === 2,
+    '★★ a declared quorumMin=2 NARROWS the 3-seat universe to 2 (min(用户设置, 院士+常驻))', { required: oC.quorum.required })
+  const bD = await bootFloor({ meetings: { quorumFloorSource: 'universe', quorumMin: 5, quorumCap: 3 } }, 'd')
+  await seat3(bD.handle.kernel)
+  const oD = bD.handle.kernel.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'f-1', 'f-2'], materials: 'floor-d' })
+  ok(oD.quorum.required === 3,
+    '★★★ quorumMin=5 on a 3-seat universe yields 3, NOT 5 — the discriminating case: max() would have demanded an unmeetable 5, the rule says min(setting, universe)', { required: oD.quorum.required, universe: oD.quorum.voteFloor.eligibleUniverse })
+
 console.log('')
 if (failures.length) { console.error('FAILURES:'); for (const f of failures) console.error('  · ' + f) }
 console.log('=== VMU MEETING TYPES: ' + passed + ' passed, ' + failed + ' failed ===')

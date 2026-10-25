@@ -1331,6 +1331,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.meetings.minutesActionsRequired', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.minutesIncludeRefused', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.minutesRetentionMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.meetings.quorumFloorSource', type: 'string', def: 'setting', hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.quorumMin', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.quorumRatio', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.quorumRecountMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
