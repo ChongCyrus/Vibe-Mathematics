@@ -3516,3 +3516,35 @@ run 47 的验收报告在 ㊱.1 里逐字抄了 `delegation` 整段：`path` / `
 **回执的每个构造器都会重列一遍字段**，于是每加一个读数就有 N 个地方漏掉它。真正该有的形状是
 「seam 返回什么，回执就原样带什么（可删不可重列）」，但那是破坏性重构，本轮不动；
 替代做法是把「新增读数必须有一条『值能读回来』的断言」写进纪律（§88.5 已记）。
+
+## §90 轮 48：`membersFrom` 的第二次修正 —— 同一族缺陷换了位置（第二个 step 调用点）
+
+### §90.1 真机读数（run 48）
+
+- transcript `_oneoff/vm-slv/full-1025-140602.jsonl`，build `01d43e9b`（**已含 §88 的 kernel 修正**）；
+  `cast=false`（本轮所办未跑完结题流程，报告自己说明是被两条判据卡住后主动收尾），`SUMMARY: 1 session(s), 1 with RED`。
+- 关键读数：8 张 step 回执仍然写 `"membersFrom":null`。**kernel 修对了，脸没送对**。
+
+### §90.2 根因：脸有两个 step 调用点，只有一个送了 membersFrom
+
+`vibe-math-vmu/tools/turn.js`：`:292`（tools-override 分支）传了 `membersFrom`，`:330`（**普通分支，人走的那条**）没传。
+这与 R31g 记录的是**同一个坑换了一个字段**：当时 `membersInferred` 也只在一个调用点送达，真机跑 41 证明了后果。
+修法：`:330` 补上 `membersFrom: explicit ? 'caller-selection' : 'roster-default'`。
+
+### §90.3 门禁：按字段、按调用点断言（这是本轮真正的产出）
+
+`tests/vmu-turn.test.mjs` R31h：扫描 `tools/turn.js` 的**每一个** `kernel.turn.step({` 行，要求每行都出现
+`membersFrom:` 或简写 `membersFrom,`。与 R31g 并列，形成「每加一个跨层字段就加一条『所有调用点都送它』的源码断言」的形状。
+套件 **257/0**；`vmu-v5r-tools` 354/0、`vmu-host` 199/0、`vmu-subagent-turn` 21/0；`regen-all --check` 16/16。
+
+### §90.4 教训（第三次同族）
+
+同一份文件里出现两个处理同一 op 的分支，是这类缺陷的温床；「源码级断言所有调用点」是唯一廉价且真的防线。
+本轮把它从「一个字段」推广成纪律：**新跨层字段 ⇒ 必须有一条『所有调用点都传』的源码断言**。
+
+### §90.5 未验与下一次
+
+- run 48 没有验证到：`membersFrom` 真值（本轮修）、`childPreset`（§89 修，需重新跑）、普通会议无骨架（报告里 `procedureNote`
+  出现 22 次、点名「用户裁定」20 次，方向上通过但未逐字复核）。
+- 下一轮（run 49）必须验证的清单：`membersFrom` 两个真值、`delegation.childPreset`+`childPresetMeans`、
+  普通会议 `procedure:null`/`procedureNote`、辩论会议四步骨架、成员会话 0 个 `pwsh`。

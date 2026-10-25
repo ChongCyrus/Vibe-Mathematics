@@ -327,7 +327,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (op === 'step') {
         const activeId = members.length > 0 && members[0] && typeof members[0].id === 'string' ? members[0].id : null
         if (activeId && typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(activeId)
-        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step }))) }
+        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step }))) }
         finally { if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null) }
       }
       if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step }))

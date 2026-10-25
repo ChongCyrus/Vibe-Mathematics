@@ -1630,6 +1630,13 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(stepCalls.length >= 2, '★ R31g(i): the face has more than one step call site (that is why one patch was not enough)', stepCalls.length)
   ok(stepCalls.every((l) => /membersInferred: !explicit/.test(l)),
     '★★★ R31g(ii): EVERY step call site passes membersInferred — no path can drop the distinction', stepCalls.map((l) => l.trim().slice(0, 90)))
+  // ★★★ LIVE RUN 47/48 (the institute's own report ㉟.2): the SAME shape of defect, one field over. `membersFrom` was
+  // plumbed through the FIRST step call site only; the ordinary route (the one people walk) omitted it, so every live
+  // receipt read `membersFrom:null` even after the kernel learned to carry the value. Two call sites is a standing trap:
+  // assert BOTH, per field, at the source.
+  ok(stepCalls.every((l) => /membersFrom[:,]/.test(l)),
+    '★★★ R31h: EVERY step call site passes membersFrom — the source of the selection cannot be null on one path only',
+    stepCalls.map((l) => l.trim().slice(0, 90)))
 }
 
 // ★ PHASE 12 / live run 2026-10-25 (the first REAL subagent run, the institute's own reading): a HARVESTED late delivery was
