@@ -587,10 +587,43 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       }
       await disposeOnce()
       reportPhase('result-returned')
+      // ★★★★★★★ PHASE 7 / ROUND 18: "NO TEXT" IS THREE DIFFERENT EVENTS, AND THE OLD REFUSAL NAMED NONE OF THEM.
+      //   Measured live (run 21): the office got `the child returned no text` with `stopReason=error diagnostic=undefined`
+      //   and could not tell whether (a) the child RUN failed, (b) the child spoke only through tool calls, or (c) the
+      //   contract was structured-only. A refusal that cannot say which one it is cannot be acted on.
+      //   Fix: keep the structure-first contract (an `outputSchema` result IS the answer), and when there is really
+      //   nothing, name the block types we DID see plus the stopReason so the operator knows which event happened.
+      const activationBlocks = Array.isArray(res && res.output) ? res.output : []
+      const activationBlockTypes = []
+      for (const b of activationBlocks) {
+        const t = b && typeof b.type === 'string' ? b.type : (b && typeof b.text === 'string' ? 'text' : null)
+        if (t && !activationBlockTypes.includes(t)) activationBlockTypes.push(t)
+      }
       const activationReply = textOfContentBlocks(res && res.output)
+      const activationStructured = res && res.structured !== undefined && res.structured !== null ? res.structured : null
       if (activationReply === null) {
+        if (activationStructured !== null) {
+          return {
+            reply: JSON.stringify(activationStructured),
+            childId: (activation && (activation.childId || activation.id)) || null,
+            stopReason: res && typeof res.stopReason === 'string' ? res.stopReason : null,
+            structured: activationStructured,
+            attribution: 'activation: no text block; the child answered through its outputSchema, so the structured result IS the reply',
+            deliveryPath: 'activation',
+          }
+        }
+        const stopReason = res && typeof res.stopReason === 'string' ? res.stopReason : null
+        const diagnostic = res && res.diagnostic !== undefined ? res.diagnostic : null
+        const whichChildEvent = stopReason === 'error'
+          ? 'the child RUN itself ended with stopReason="error" - this is a failed child run (read that child session\'s own log), not an empty answer; retrying the turn is legitimate, and the framework does not retry silently because a silent retry would hide a persistent child fault'
+          : (activationBlockTypes.length === 0
+            ? 'the child produced NO output blocks at all'
+            : (activationBlockTypes.every((t) => t === 'tool_use' || t === 'tool-call')
+              ? 'the child spoke ONLY through tool calls and never emitted a text block'
+              : 'the child produced blocks (' + activationBlockTypes.join(', ') + ') but none carried text'))
         throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host accepted the activation but the child returned no text',
-          'stopReason=' + String(res && res.stopReason) + ' diagnostic=' + String(res && res.diagnostic) + '; an activation that returns structure without text is a contract mismatch, not an empty answer')
+          whichChildEvent + '; blockTypes=[' + activationBlockTypes.join(', ') + '] stopReason=' + String(stopReason) +
+          ' diagnostic=' + String(diagnostic) + '. The refusal is named on purpose: reporting an empty string as a member answer would be a silent fake success')
       }
       return {
         reply: activationReply,

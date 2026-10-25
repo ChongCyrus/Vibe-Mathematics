@@ -109,6 +109,52 @@ const signal = new AbortController().signal
   ok(disposed === 1, 'dispose() still called when the result carried no text', { disposed })
 }
 
+// ── 2b. "NO TEXT" IS THREE DIFFERENT EVENTS, AND A REFUSAL THAT NAMES NONE OF THEM CANNOT BE ACTED ON ───────
+// Measured live (run 21): the office was told `the child returned no text` with `stopReason=error diagnostic=undefined`
+// and could not tell a failed child run from a child that only ever called tools. Each cause now names itself.
+{
+  const mk = (result, disposedBox) => ({
+    list: () => ['spawn'], interrupt: () => {}, sendMessage: async () => 'm1',
+    async startActivation() { return { childId: 'c', result: Promise.resolve(result), dispose: async () => { disposedBox.n++ } } },
+  })
+
+  // (a) a schema answer with no text blocks IS the answer - the deployment asked for structure
+  {
+    const box = { n: 0 }
+    const deliver = deliverViaSubagents(mk({ output: [{ type: 'tool_use', name: 'x' }], structured: { solved: true }, stopReason: 'completed' }, box), null, { provider: 'spawn', parent, signal })
+    const got = await deliver({ turn: { id: 't-s' }, text: 'x' })
+    ok(got && typeof got.reply === 'string' && JSON.parse(got.reply).solved === true,
+      '★ a structured-only result IS the answer (JSON reply), not a refusal', got && got.reply)
+    ok(/outputSchema/.test(String(got && got.attribution)), 'and the attribution names why text was absent', got && got.attribution)
+    ok(box.n === 1, 'dispose() still ran on the structured path', box)
+  }
+
+  // (b) stopReason=error is a FAILED CHILD RUN, and must say so rather than "no text"
+  {
+    const box = { n: 0 }
+    const deliver = deliverViaSubagents(mk({ output: [], stopReason: 'error' }, box), null, { provider: 'spawn', parent, signal })
+    const e = await throwsNamed(() => deliver({ turn: { id: 't-e' }, text: 'x' }), 'VMU_ENGINE_UNAVAILABLE', 'stopReason=error refuses by name')
+    ok(e && /RUN itself ended with stopReason="error"/.test(String(e.hint)), '★ and the hint says the CHILD RUN failed (not an empty answer)', e && e.hint)
+  }
+
+  // (c) tool_use-only output: the child spoke through tools and never emitted text
+  {
+    const box = { n: 0 }
+    const deliver = deliverViaSubagents(mk({ output: [{ type: 'tool_use', name: 'a' }], stopReason: 'completed' }, box), null, { provider: 'spawn', parent, signal })
+    const e = await throwsNamed(() => deliver({ turn: { id: 't-t' }, text: 'x' }), 'VMU_ENGINE_UNAVAILABLE', 'tool-only output refuses by name')
+    ok(e && /ONLY through tool calls/.test(String(e.hint)), '★ and the hint distinguishes "spoke only through tool calls"', e && e.hint)
+    ok(e && /blockTypes=\[tool_use\]/.test(String(e.hint)), 'the blocks it DID see are named', e && e.hint)
+  }
+
+  // (d) nothing at all is named as such (a genuinely empty child result)
+  {
+    const box = { n: 0 }
+    const deliver = deliverViaSubagents(mk({ output: [], stopReason: 'completed' }, box), null, { provider: 'spawn', parent, signal })
+    const e = await throwsNamed(() => deliver({ turn: { id: 't-0' }, text: 'x' }), 'VMU_ENGINE_UNAVAILABLE', 'no blocks at all refuses by name')
+    ok(e && /NO output blocks at all/.test(String(e.hint)), '★ and that case is distinguished too', e && e.hint)
+  }
+}
+
 // ── 3. A FAILED CHILD RUN DISPOSES, THEN REFUSES BY NAME ───────────────────────────────────────────────────────
 {
   let disposed = 0

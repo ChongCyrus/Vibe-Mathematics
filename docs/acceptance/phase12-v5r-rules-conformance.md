@@ -4379,3 +4379,54 @@ settings 表里 H1 的承诺是「下一回合生效」（`kernel/index.js:239` 
 `vibe-math-vmu/packs/v5r/settings/defaults.json` · `vibe-math-vmu/kernel/meetings.js` · `vibe-math-vmu/kernel/index.js`
 · `vibe-math-vmu/tools/meeting.js` · `vibe-math-vmu/packs/v5r/tools.js` · `tests/vmu-meeting-summary-votes.test.mjs`（新）
 · `tests/vmu-host.test.mjs` · `tests/vmu-v5r-tools.test.mjs` ＋ 派生面（`regen-all --write`）。
+
+## §114 第 18 轮（第二部分）：run 21 —— 「子代理没吐字」是个三选一，而旧拒因一个都没说
+
+### run 21 的读数
+`D:\wd\vibemath开发\_oneoff\vm-slv\full-1026-015543.jsonl`（103 711 行，6 会话，`slv-inspect 0 RED`，`DRIVE exit=0`，
+`durationSec 1264`，`tokenTotal 14 273 411 / cap 500 000 000`，未触顶）。
+**它没结题**：`closureVote.cast:false`，`against:["m-lin"]`，`reason:"a member judged the question NOT solved: m-lin"`。
+office 只走了 23 次工具调用就停了，停因是一条具名拒：
+
+```
+ok:false, code:"VMU_ENGINE_UNAVAILABLE",
+message:"the host accepted the activation but the child returned no text",
+hint:"stopReason=error diagnostic=undefined; an activation that returns structure without text is a contract mismatch, not an empty answer"
+```
+
+### 缺陷（objective-3 类：不是错，是不够好到无法行动）
+「没有文本」在真机上至少是**三件不同的事**，而这条拒把三件说成一件，且**一件都没点**：
+1. **子代理那次运行本身失败了**（`stopReason:"error"`）——这是「子代理跑挂了」，不是「它没说话」；
+2. **子代理只用了工具、从没吐文本块**——那是「它干活没汇报」，可以再要一次；
+3. **按 outputSchema 回了结构**——那**就是答案**，根本不该拒。
+
+现场的 office 面对这句话无法决定该重试、该换人、还是该看子代理日志，于是停摆，整所跟着没结题。
+
+### 修（`vibe-math-vmu/kernel/turn/index.js`，activation 分支）
+- **结构优先**：`res.structured` 非空而文本为空 ⇒ 直接把结构 `JSON.stringify` 当回复返回，
+  `attribution` 写明「按 outputSchema 作答，结构即回复」。部署既然声明了 outputSchema，结构就是合同。
+- **三选一具名**：否则在 hint 里点名是哪种事件，并把**实际看见的块类型**一并列出：
+  - `stopReason:"error"` ⇒ 「the child RUN itself ended with stopReason="error" … retrying the turn is legitimate,
+    and the framework does not retry silently because a silent retry would hide a persistent child fault」；
+  - 只有 `tool_use` 块 ⇒ 「the child spoke ONLY through tool calls and never emitted a text block」；
+  - 零块 ⇒ 「the child produced NO output blocks at all」；
+  - 其余 ⇒ 「produced blocks (…) but none carried text」，并附 `blockTypes=[…]` 与 `diagnostic`。
+- 拒因码不变（`VMU_ENGINE_UNAVAILABLE`），因为无论哪种，这一轮成员回合确实没有可用的答复——
+  **把空串当成员答复才是静默假成功**，这一点没动。
+
+### 门禁
+`tests/vmu-turn-activation.test.mjs` 新增一节 **2b**（4 组断言，双向）：
+结构优先被接受且 attribution 说明原因；`stopReason=error` 的 hint 必须出现
+「RUN itself ended with stopReason="error"」；tool-only 必须出现「ONLY through tool calls」且 `blockTypes=[tool_use]`；
+零块必须出现「NO output blocks at all」。套件 **44 passed / 0 failed**（原 31 → 44）。
+`tests/vmu-turn.test.mjs` **257/0** 不变。
+
+### 仍然未验（登记，不写成已验证）
+- `counts.failed` 在真机仍未动过：本轮把 `"vote_solved":"true"`（字符串）送进去，框架**把它强制成 true** 而没有抛错，
+  所以写回没失败、`failed` 自然为 0。这说明**回复层的类型强制**是「failed 永不增长」的真正原因，
+  与「计数不可读」是两件事。已登记为未验项。
+- run 21 只走了 23 次工具调用就停，`⑭.2/⑭.3` 未被真正执行（`votesSource`/`votesNote` 只出现在简报文本里一次），
+  下一轮需要更强的「先做完再判」约束。
+
+### 本轮落盘
+`vibe-math-vmu/kernel/turn/index.js` · `tests/vmu-turn-activation.test.mjs`。
