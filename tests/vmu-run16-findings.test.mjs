@@ -1,110 +1,120 @@
-#!/usr/bin/env node
-// tests/vmu-run16-findings.test.mjs — the FOUR readings live run 16's own acceptance report asked for.
+// tests/vmu-run16-findings.test.mjs — §107: the two readings the institute's own run-16 report said were missing.
 //
-// WHY THIS FILE EXISTS. Run 16 verified R16 (the seat) and ⑨.1/⑨.2/⑨.3 live, and then raised four residuals. Each one
-// is pinned HERE at the layer that was wrong:
+// The institute's report (live run 2026-10-25, `full-1025-220054.jsonl`) named two defects of ONE family: the answer
+// existed one layer down and did not travel to the receipt an operator actually reads.
 //
-//  R17 「proceed() 造成的 waiting→open 不进 sweep.recentTransitions」 → the bounded history records EVERY state move,
-//       not only the ones a pass or a touch made through syncMeeting (proceed assigns m.state directly).
-//  R18 「closureVote.window:'meeting' 却读不出是哪一场会」           → the window states the scope the predicate has
-//       (the SESSION), and a caller that knows the meeting gets the meeting window + the id.
-//  R19 「overview 的同一行 state:'waiting' 与 status:'open' 并列」     → the marker's lifecycle is not reported under
-//       a name that reads as the meeting's status.
-//  R20 「sweep.at/swept 是 beat 的，recentTransitions.passAt 是触碰的」→ the reading says which clock each stamp came
-//       from and reports the last transition's own instant beside the beat pass's.
+//   ⑦ 「成员侧工具调用计数在 `step` 回执上均缺位」 — every receipt carried `toolCallsTotal` (which counts THIS kernel's
+//      calls, i.e. the office's) and NONE carried the member's own count. Run 15's office read `toolCallsTotal: 0` as
+//      「真干活没有发生」 while the child session log held tens of thousands of events. Run 16's office then asked for
+//      `memberToolCallsTotal` and found the NAME ABSENT — so a reader still could not tell 「读不到」 from 「0」.
+//   ⑨ 「超时回执的 `deliveryPath` / `deliveryPathMeans` 缺失」 — `host-deliver.js:283` sets both on the thrown error,
+//      but `stepFailure()` kept only code/message/hint, so the delivery path had to be dug out of
+//      `status.deliveryLastFail`.
 //
-// WHAT THIS DOES NOT PROVE: it does not run the host loop, so it cannot prove these fields reach a caller through the
-// TOOL face (the live run does that); R19 is a SOURCE-level gate because the contradiction was in the READ FACE's row
-// shape, which needs a full boot to observe — the live run judges the reading, this gate stops the shape coming back.
+// Run: node tests/vmu-run16-findings.test.mjs   (last line: === VMU RUN 16 FINDINGS: N passed, M failed ===)
 
+import { createTurnOrchestrator, deliverByReturning } from '../vibe-math-vmu/kernel/turn/index.js'
+import { createPromptPipeline } from '../vibe-math-vmu/kernel/prompt/index.js'
+import { decideSections } from '../vibe-math-vmu/packs/v5r/middleware/prompt-switches.js'
+import { v5rPromptSections } from '../vibe-math-vmu/packs/v5r/prompts/v5r-core.js'
 import { readFileSync } from 'node:fs'
-import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
-import { closureVoteOf } from '../vibe-math-vmu/kernel/turn/index.js'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 
 let passed = 0
 let failed = 0
 const failures = []
 const ok = (cond, name, detail) => {
-  if (cond) { passed += 1; console.log('  ok   ' + name) } else { failed += 1; failures.push(name + (detail === undefined ? '' : ' [' + detail + ']')); console.log('  FAIL ' + name + (detail === undefined ? '' : ' [' + detail + ']')) }
+  if (cond) { passed += 1; console.log('  ok   ' + name) } else { failed += 1; failures.push(name); console.log('  FAIL ' + name + (detail === undefined ? '' : ' [' + JSON.stringify(detail).slice(0, 240) + ']')) }
 }
 
-const ROOT = new URL('../', import.meta.url)
-const src = (rel) => readFileSync(new URL(rel, ROOT), 'utf8')
+const HERE = dirname(fileURLToPath(import.meta.url))
+const SRC = readFileSync(join(HERE, '..', 'vibe-math-vmu', 'kernel', 'turn', 'index.js'), 'utf8')
+const pipeline = () => createPromptPipeline({ sections: v5rPromptSections, clock: () => '2026-01-01T00:00:00.000Z' })
+const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: decideSections, prompt: pipeline(), ...extra })
+const fence = (obj) => 'prose\n\n```json\n' + JSON.stringify(obj, null, 2) + '\n```\n'
 
-// ── R17 + R20: one waiting meeting, proceeded by the chair ───────────────────────────────────────────────────────
+// ① ⑦ — the member-count fields exist on the settled receipt and say 「读不到」 rather than 「0」.
 {
-  let NOW = 1000
-  const svc = createMeetings({ clock: () => NOW, settings: { get: () => undefined } })
-  svc.open({ id: 'm1', roster: ['r-1', 'r-2'], chair: 'r-1', materials: 'run16', at: NOW + 1000 })
-  NOW = NOW + 2000
-  const pass = svc.sweepDue({ at: NOW })
-  ok(pass && pass.transitions.some((t) => t.meeting === 'm1' && t.to === 'waiting'),
-    'setup: the scheduled meeting settles to WAITING through a PASS (the recorded path)', pass && JSON.stringify(pass.transitions).slice(0, 140))
-
-  const before = svc.status()
-  const beforeRows = before.sweep && Array.isArray(before.sweep.recentTransitions) ? before.sweep.recentTransitions : []
-  ok(beforeRows.some((r) => r.meeting === 'm1' && r.from === 'scheduled' && r.to === 'waiting'),
-    'R17 setup: the pass-driven transition IS in the bounded history (so the assertion below cannot pass on an empty list)', beforeRows.length)
-  ok(!beforeRows.some((r) => r.meeting === 'm1' && r.from === 'waiting' && r.to === 'open'),
-    'R17 negative control: the waiting→open transition is NOT there before anything starts the meeting', JSON.stringify(beforeRows.filter((r) => r.meeting === 'm1')))
-
-  NOW = NOW + 500
-  const proceeded = svc.proceed({ meeting: 'm1', actor: 'r-1', why: 'run16: the chair starts it' })
-  ok(proceeded && proceeded.ok === true && proceeded.state === 'open', 'R17 setup: proceed() moves the meeting to open', proceeded && proceeded.state)
-
-  const after = svc.status()
-  const rows = after.sweep && Array.isArray(after.sweep.recentTransitions) ? after.sweep.recentTransitions : []
-  const waitToOpen = rows.filter((r) => r.meeting === 'm1' && r.from === 'waiting' && r.to === 'open')
-  ok(waitToOpen.length === 1,
-    '★★ R17: a proceed()-driven waiting→open is IN the bounded history (run 16 measured it missing, while the attend path was recorded)',
-    JSON.stringify(rows.filter((r) => r.meeting === 'm1')))
-  ok(waitToOpen.length === 1 && waitToOpen[0].passAt === NOW,
-    'R17: and it carries the instant the move happened, not the beat pass instant', waitToOpen[0] && waitToOpen[0].passAt)
-
-  ok(after.sweep && after.sweep.lastTransitionPassAt === NOW,
-    '★★ R20: the reading exposes the LAST TRANSITION instant beside the beat sweep instant, so the two clocks cannot be confused',
-    after.sweep && { lastTransitionPassAt: after.sweep.lastTransitionPassAt, at: after.sweep.at, last: rows.length && rows[rows.length - 1].passAt })
-  ok(after.sweep && /BEAT sweep/.test(String(after.sweep.recentTransitionsNote)) && /touch path/.test(String(after.sweep.recentTransitionsNote)),
-    '★★ R20: and the note names BOTH clocks (a row\'s passAt is its own instant; at/swept describe the last beat pass)',
-    after.sweep && String(after.sweep.recentTransitionsNote).slice(0, 160))
+  const t = mk({ deliver: async ({ turn }) => fence({ progress: 'x' }) })
+  t.open({ member: 'r-1', phase: 'normal', round: 1 })
+  const r = await t.step({ members: ['r-1'] })
+  ok(r.ok === true, '① the step settles', r && r.code)
+  // caller delivery: the member's calls ARE this kernel's calls, so the field says so instead of lying.
+  ok(r.memberToolCalls === null, '① `memberToolCalls` is present (null = not readable here, never 0)')
+  ok(typeof r.memberToolCallsMeans === 'string' && r.memberToolCallsMeans.length > 40, '① `memberToolCallsMeans` explains what null means', r.memberToolCallsMeans)
+  ok('memberToolCallsTotal' in r, '① `memberToolCallsTotal` is a field, not an absence')
+  ok(/did not name a path|caller|SEPARATE/.test(String(r.memberToolCallsMeans)), '① the means distinguishes the three cases (caller / child kernel / path not named)', r.memberToolCallsMeans)
+  ok('childSessionId' in r && 'childSessionIdMeans' in r, '① the child session id is named (null when the seam reports none)')
+  ok(/LIVE RUN 16/.test(SRC) && SRC.includes('memberToolCallsTotal'), '① the source records WHY the field exists')
 }
 
-// ── R18: the closure window states the scope it really has ───────────────────────────────────────────────────────
+// ② ⑦ — a NOT-NAMED path is described honestly (neither "here" nor "a child kernel").
 {
-  const votes = new Map([['r-1', true], ['r-2', true]])
-  const session = closureVoteOf({ votes, roster: ['r-1', 'r-2'] })
-  ok(session.window === 'session' && session.meetingId === null && /cannot name a meeting/.test(String(session.windowMeans)),
-    '★★ R18: without a meeting the window is the SESSION and says it cannot name a meeting (run 16 could not tell which of four meetings it meant)', { window: session.window, meetingId: session.meetingId })
-  ok(session.cast === true && session.votesCast === 2,
-    'R18: the predicate itself is unchanged — the correction is the label, not the reading', { cast: session.cast, votesCast: session.votesCast })
-  const named = closureVoteOf({ votes, roster: ['r-1', 'r-2'], meetingId: 'm-9' })
-  ok(named.window === 'meeting' && named.meetingId === 'm-9',
-    'R18: a caller that knows the meeting gets the meeting window AND the id (the field is not removed, it is sourced)', { window: named.window, meetingId: named.meetingId })
+  const t = mk({ deliver: async ({ turn }) => fence({ progress: 'y' }) })
+  t.open({ member: 'r-1', phase: 'normal', round: 1 })
+  const r = await t.step({ members: ['r-1'] })
+  const means = String(r.memberToolCallsMeans || '')
+  ok(/did not name a path/.test(means), '② an unnamed path is reported as unknown, not as a child kernel', means)
+  ok(!/SEPARATE kernel/.test(means), '② and it does NOT claim a separate kernel', means)
+  ok(/null here means NOT READABLE/.test(means), '② while still warning that null is not zero', means)
 }
 
-// ── R19: the marker lifecycle is not reported as the meeting's status ────────────────────────────────────────────
+// ③ ⑦ — CALLER delivery (the real seam) names this kernel as the owner of the count.
 {
-  const marker = src('vibe-math-vmu/kernel/meetingmarker.js')
-  ok(/markerState: String\(r\.state\)/.test(marker) && !/status: String\(r\.state\)/.test(marker) && !/faceState: String\(r\.state\)/.test(marker),
-    '★★ R19: the marker face names its raw lifecycle `markerState` and no longer publishes it as `status`/`faceState` (the pair that made state:\'waiting\' and status:\'open\' coexist)')
-  const overview = src('vibe-math-vmu/packs/v5r/tools.js')
-  const rowStart = overview.indexOf('meetings: meetingIds.map')
-  const rowEnd = overview.indexOf('sweep: sweepTrace', rowStart)
-  const rowSlice = rowStart >= 0 && rowEnd > rowStart ? overview.slice(rowStart, rowEnd) : ''
-  ok(rowSlice.length > 0, 'R19 setup: the overview meeting-row literal was located (so the counts below are not vacuous)', rowSlice.length)
-  ok(/markerState:/.test(rowSlice) && /markerStateNote: 'markerState is the DOMAIN MARKER/.test(rowSlice),
-    '★★ R19: the overview row reports the marker value under `markerState` WITH a note saying it is not the meeting\'s state')
-  ok(!/faceState: m\.faceState === undefined/.test(overview),
-    'R19: and it no longer emits the neutral name that a reader took for the meeting\'s status')
-  // ★ DUPLICATE-KEY GATE (a defect my own first R19 patch shipped): the row literal declared `markerState` TWICE, so the
-  // later key silently won and the earlier one was dead code. A source-level gate that only asks "is the name present"
-  // cannot see that, so this counts the declarations inside the row literal.
-  const markerStateDecls = rowSlice.split('markerState:').length - 1
-  ok(markerStateDecls === 1,
-    '★★ R19: the row literal declares `markerState` EXACTLY ONCE (a second declaration would silently win and leave the first dead)',
-    markerStateDecls)
+  const caller = deliverByReturning()
+  const t = mk({ deliver: caller })
+  t.open({ member: 'r-1', phase: 'normal', round: 1 })
+  const first = await t.step({ members: ['r-1'] })
+  ok(first && first.awaiting === true, '③ caller delivery hands the prompt back (awaiting)', first && Object.keys(first))
+  ok(first.memberToolCalls === null && /caller/.test(String(first.memberToolCallsMeans)), "③ the awaiting receipt says the member calls ARE this kernel own", first.memberToolCallsMeans)
+}
+
+// ④ ⑨ — a delivery failure carries its delivery path onto the RECEIPT the operator reads.
+{
+  const boom = new Error('the one-shot delivery for this member turn did not settle within 180000ms')
+  boom.code = 'VMU_TURN_DELIVERY_TIMEOUT'
+  boom.deliveryPath = 'one-shot'
+  boom.deliveryPathMeans = 'this call used the ONE-SHOT path (subagents.start)'
+  boom.waitedMs = 180123
+  boom.deliveryTimeoutMs = 180000
+  boom.roundConsumed = true
+  boom.roundCompleted = false
+  boom.requestSent = true
+  boom.lastPhase = 'awaiting-reply'
+  boom.partial = { turnId: 't-1', member: 'r-1', elapsedMs: 180123 }
+  const t = mk({ deliver: async () => { throw boom } })
+  t.open({ member: 'r-1', phase: 'normal', round: 1 })
+  const r = await t.step({ members: ['r-1'] })
+  ok(r.ok === false && r.code === 'VMU_TURN_DELIVERY_TIMEOUT', '④ the failure keeps its named code', r && r.code)
+  ok(r.deliveryPath === 'one-shot', '④ the failure receipt NAMES the delivery path', r.deliveryPath)
+  ok(typeof r.deliveryPathMeans === 'string' && r.deliveryPathMeans.length > 20, '④ and explains what that path excludes', r.deliveryPathMeans)
+  ok(r.waitedMs === 180123 && r.deliveryTimeoutMs === 180000, '④ the two windows travel as NUMBERS', { w: r.waitedMs, t: r.deliveryTimeoutMs })
+  ok(r.roundConsumed === true && r.roundCompleted === false, '④ the round is reported as consumed-and-not-completed', { c: r.roundConsumed, d: r.roundCompleted })
+  ok(r.partial && r.partial.member === 'r-1', '④ the partial block says which child was still owed', r.partial)
+}
+
+// ⑤ ⑨ — a failure WITHOUT a delivery seam keeps the old shape (no invented fields).
+{
+  const plain = new Error('boom')
+  plain.code = 'VMU_STATE'
+  const t = mk({ deliver: async () => { throw plain } })
+  t.open({ member: 'r-1', phase: 'normal', round: 1 })
+  const r = await t.step({ members: ['r-1'] })
+  ok(r.ok === false && r.code === 'VMU_STATE', '⑤ a seam-less failure still reports its code')
+  ok(!('deliveryPath' in r), '⑤ no deliveryPath is invented when the error carried none', Object.keys(r))
+  ok(!('waitedMs' in r), '⑤ no window is invented either')
+}
+
+// ⑥ the claim is measured, not asserted: the seam really does set these on the thrown error.
+{
+  const HD = readFileSync(join(HERE, '..', 'vibe-math-vmu', 'host-deliver.js'), 'utf8')
+  ok(/err\.deliveryPath = 'one-shot'/.test(HD), '⑥ `host-deliver.js` really sets `deliveryPath` on the thrown error')
+  ok(HD.includes('err.deliveryPathMeans'), '⑥ and `deliveryPathMeans`')
+  ok(/const failureDelivery =/.test(SRC) && /failureDelivery\.deliveryPath/.test(SRC), '⑥ `stepFailure` really forwards them (the layer that was dropping them)')
 }
 
 console.log('')
-console.log('=== VMU RUN16 FINDINGS: ' + passed + ' passed, ' + failed + ' failed ===')
-if (failed > 0) { console.log('FAILED: ' + failures.join(' | ')); process.exit(1) }
+if (failed > 0) { console.log('FAILURES: ' + failures.join(' | ')) }
+console.log('=== VMU RUN 16 FINDINGS: ' + passed + ' passed, ' + failed + ' failed ===')
+process.exit(failed ? 1 : 0)

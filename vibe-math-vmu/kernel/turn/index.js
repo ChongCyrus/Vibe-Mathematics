@@ -2139,7 +2139,29 @@ export function createTurnOrchestrator({
     const stack = typeof e === 'object' && e && typeof e.stack === 'string'
       ? (function () { const all = String(e.stack).split('\n'); const head = all.slice(0, 8).map((l) => l.trim()); const ci = all.findIndex((l) => /caused by/.test(l)); const tail = ci >= 0 ? all.slice(ci, ci + 5).map((l) => l.trim()) : []; return head.concat(tail).join(' | ').slice(0, 1400) })()
       : null
+    // ★★★★★★★ LIVE RUN 16 (§107) — THE FAILURE RECEIPT MUST NAME ITS DELIVERY PATH TOO. The seam already knew:
+    // `host-deliver.js:283` sets `err.deliveryPath = 'one-shot'`, `err.deliveryPathMeans`, `err.waitedMs`,
+    // `err.deliveryTimeoutMs`, `err.partial{…}` and `err.roundConsumed/roundCompleted`. None of it travelled, so the
+    // institute's own report read: 「超时回执 `ok:false` … `deliveryPath` 与 `deliveryPathMeans` 两个字段在失败回执里都
+    // 不存在（`receipt:null`，只有 `hint`＋`closureVote`）」 and had to go hunting in `status.deliveryLastFail`. Same
+    // defect family as run 37's count-only `skipped` and run 46's awaiting-only delegation: the answer existed one
+    // layer down and did not travel to the receipt an operator actually reads. A failure that cannot name HOW it was
+    // attempted is not diagnosable.
+    const failureDelivery = (e && typeof e === 'object' && e) ? {
+      deliveryPath: typeof e.deliveryPath === 'string' ? e.deliveryPath : null,
+      deliveryPathMeans: typeof e.deliveryPathMeans === 'string' ? e.deliveryPathMeans : null,
+      waitedMs: Number.isFinite(e.waitedMs) ? e.waitedMs : null,
+      deliveryTimeoutMs: Number.isFinite(e.deliveryTimeoutMs) ? e.deliveryTimeoutMs : null,
+      deliveryGraceMs: Number.isFinite(e.deliveryGraceMs) ? e.deliveryGraceMs : null,
+      round: Number.isFinite(e.round) ? e.round : null,
+      roundConsumed: e.roundConsumed === true ? true : (e.roundConsumed === false ? false : null),
+      roundCompleted: e.roundCompleted === false ? false : (e.roundCompleted === true ? true : null),
+      requestSent: e.requestSent === true ? true : (e.requestSent === false ? false : null),
+      lastPhase: typeof e.lastPhase === 'string' ? e.lastPhase : null,
+      partial: e.partial && typeof e.partial === 'object' ? e.partial : null,
+    } : null
     return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null, stack,
+      ...(failureDelivery && (failureDelivery.deliveryPath || failureDelivery.deliveryPathMeans) ? failureDelivery : {}),
       ...(e && typeof e.hint === 'string' ? { hint: e.hint } : {}),
       ...(e && typeof e.replyText === 'string' ? { replyLength: e.replyLength, hadBrace: e.hadBrace, replyExcerpt: e.replyText.slice(0, 500), trackValue: e.trackValue } : {}) }
   }
@@ -2317,19 +2339,44 @@ export function createTurnOrchestrator({
       // 「真干活没有发生」 while the child session had made tens of thousands of calls. An empty list is a claim, and this
       // one was false in the only mode where it matters. The count stays (it is honest about THIS kernel) and the scope
       // travels with it, in the same shape `skippedDetail`/`triedEngines`/`records.list` truncation already uses.
-      const deliveredThrough = r && r.delivery && typeof r.delivery.path === 'string' ? r.delivery.path : null
+      // ★ LIVE RUN 16 (§107): the path is read from THREE places — a seam may report it on `delivery`, on the bare
+      // `deliveryPath`, or on the attribution block — and a null path must NOT be described as a child kernel (that
+      // would be a new lie in place of the old silence).
+      const deliveredThrough = (r && r.delivery && typeof r.delivery.path === 'string' && r.delivery.path)
+        || (r && typeof r.deliveryPath === 'string' && r.deliveryPath)
+        || (r && r.attribution && typeof r.attribution.deliveryPath === 'string' && r.attribution.deliveryPath)
+        || null
       // ★ ANY path except the caller-played one runs the member in a different kernel: `one-shot`, `activation` and
       // `continuable` all start a child session (the receipt names it in delivery.childId). Listing two of the three by
       // hand would have re-introduced exactly the defect this comment exists to prevent — a reading correct in the mode
       // it was measured in and silently wrong in the neighbouring one.
       const { scope: toolCallsScope, note: toolCallsNote } = toolCallsScopeOf(deliveredThrough)
+      // ★ LIVE RUN 16 (§107, ⑦): computed ONCE and spread on BOTH levels — the settled return puts the office-facing
+      // fields inside `receipt`, while the awaiting return puts them at the top; the office was reading one level, the
+      // institute's report the other, and until now NEITHER level named the member's own calls at all.
+      const memberCallsReading = {
+        memberToolCalls: null,
+        memberToolCallsTotal: null,
+        memberToolCallsMeans: deliveredThrough === 'caller'
+          ? 'the caller played this member turn, so the member\'s calls ARE this kernel\'s calls — read toolCalls/toolCallsTotal (scope "member-kernel")'
+          : (deliveredThrough === null
+              ? 'the delivery seam did not name a path on this receipt, so this kernel cannot say whether the member ran here or in a child session — read `delegation` for what the seam did report; null here means NOT READABLE, never "zero calls"'
+              : 'the member ran in a SEPARATE kernel instance (delivery.path="' + String(deliveredThrough) + '"), so its call list lives in the child session log; null here means NOT READABLE FROM THIS RECEIPT, never "zero calls"'),
+        childSessionId: r && r.delivery && (r.delivery.childSessionId || r.delivery.sessionId)
+          ? String(r.delivery.childSessionId || r.delivery.sessionId) : null,
+        childSessionIdMeans: r && r.delivery && (r.delivery.childSessionId || r.delivery.sessionId)
+          ? 'the child session that ran this member turn; read its log for the call list'
+          : (deliveredThrough === 'caller'
+              ? 'not applicable: the caller played this turn in THIS kernel, so there is no child session'
+              : 'the delivery seam did not report a child session id on this receipt; the child turn id is in `delegation`'),
+      }
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,
-        toolCallsScope, toolCallsNote,
+        toolCallsScope, toolCallsNote, ...memberCallsReading,
         membersFrom: membersFromReading, delegation: r.delivery || null,
         ...selectionReadings }
-      return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(),
+      return { ok: true, ...memberCallsReading, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(),
         // ★ PHASE 12 / live run 37 (the institute's own report): this receipt reduced `skipped` to a NUMBER, so the reason
         // and the kept line were unreadable - the member saw "skipped:1" and could not learn which field, why, or what it
         // had said. A COUNT is a diagnostic that costs nothing and tells nothing; the detail travels with it, BOUNDED.
@@ -2350,6 +2397,7 @@ export function createTurnOrchestrator({
         instructionDelivered: r.instructionDelivered === true, turn: r.turn.id,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,
         toolCallsScope, toolCallsNote,
+        ...memberCallsReading,
         // ★★ LIVE RUN 46 (the institute's own report, item ㉟.2/㉟.4): `membersFrom` and the delegation block were
         // built one layer down and only ever placed on the AWAITING envelope - but `deliverMode:'subagents'` settles
         // turns, so this deployment's step receipt never returned an awaiting envelope and the two readings were

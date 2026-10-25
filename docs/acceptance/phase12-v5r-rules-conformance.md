@@ -4118,3 +4118,29 @@ the deployment declared no floor"`——**值存进去了，没有任何读者�
 
 ⇒ 下一轮的**三件待修**（都已登记、下一轮做）：⑦ 父回执补 `memberToolCalls*` 的存在性说明（有/无都要说），
 ⑨ 失败回执补 `deliveryPath`/`deliveryPathMeans`，⑩.2 自动开会分支要能被真机触发（简报里制造一次空闲边缘）。
+
+## §107 轮 16 真机读法修复：⑦ 成员侧计数「字段缺位」与 ⑨ 失败回执不报投递路径
+
+轮 16 真机（`D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-220054.jsonl`，28.3 MB，build `0aab3b27`）**第一次做到 12 轮全程 + 结题**（`DRIVE exit=0`，587 s，office 97 次工具调用，子会话真跑）。所办自己的报告给 `verdict` = 否，其中两条属同一族缺陷：**答案在下一层、但没有旅行到操作者真正读的那张回执上**。
+
+### ⑦ 成员侧工具调用计数在 `step` 回执上「字段缺位」
+实测：`step` 回执顶层有 `toolCalls/toolCallsTotal`（只有 `toolCallsScope` 说明它是**本内核**的计数），而 `memberToolCalls`/`memberToolCallsTotal` **名字都不存在**。于是「读不到」与「0 次」在纸面上不可区分——这一族在 run 15 已经咬过一次（office 把 `toolCallsTotal:0` 读成「真干活没有发生」，而子会话日志有数万条事件）。
+
+修法（`vibe-math-vmu/kernel/turn/index.js`）：`memberCallsReading` **一次计算、两层展开**（settled 回执顶层 + `receipt` 内层 + awaiting 顶层），四个字段恒定存在：
+- `memberToolCalls: null` / `memberToolCallsTotal: null` —— **null 的语义写在字段里**，不是「0」。
+- `memberToolCallsMeans` 三分支：caller 投递 ⇒「成员调用**就是**本内核调用，读 `toolCalls/toolCallsTotal`」；子内核投递 ⇒「在本回执**读不到**，去子会话日志」；**路径未命名**（`deliveredThrough === null`）⇒「本内核无法判断成员在哪跑」，**不许**冒充「独立内核」（那只是用新谎言替代旧沉默）。
+- `childSessionId` / `childSessionIdMeans`：seam 报了子会话 id 就带出来，没报就说明为什么。
+- `deliveredThrough` 改**三处来源**：`delivery.path` → 裸 `deliveryPath` → `attribution.deliveryPath`。
+
+### ⑨ 超时/失败回执不报 `deliveryPath`
+seam 早就知道（`vibe-math-vmu/host-deliver.js:283` 设了 `err.deliveryPath='one-shot'`、`deliveryPathMeans`、`waitedMs`、`deliveryTimeoutMs`、`partial{}`、`roundConsumed/roundCompleted`），但 `stepFailure()` 只留了 code/message/hint，于是所办只能去 `status.deliveryLastFail` 里挖。
+
+修法：`stepFailure` 新增 `failureDelivery`，把上述字段**只在 seam 真报了路径时**转发（`deliveryPath`/`deliveryPathMeans`/`waitedMs`/`deliveryTimeoutMs`/`deliveryGraceMs`/`round`/`roundConsumed`/`roundCompleted`/`requestSent`/`lastPhase`/`partial`）；**没有就不发明字段**（测试 ⑤ 反向锁死）。
+
+### 门禁
+新增 `tests/vmu-run16-findings.test.mjs` —— **24 passed / 0 failed**：①字段存在且 null 语义可读 ②未命名路径不许冒充子内核 ③真 caller seam（`deliverByReturning`）的 awaiting 回执点名「就是本内核」 ④⑤失败回执带路径/窗口/轮次且不发明 ⑥源码断言（`host-deliver.js` 真的设了、`stepFailure` 真的转发了）。
+
+### 同轮其它
+- `CONSTRUCTION_ONLY_KEYS` 增加**族匹配**（`vmu.meetings.typeCatalog` 家族），修 `set` 的假成功。
+- 邻域：`vmu-turn` 257/0、`vmu-run15-findings` 42/0、`vmu-host` 199/0、`vmu-kernel` 260/0；`regen-all` 16/16 在同步。
+- ★ 本轮教训（写进方法）：**观测器本身要先自证**。run 16 的首个 verifier 用「深度截断的 JSON 扁平化」读回执，把 60 KB 末尾切掉，于是把「有」读成「无」；改成直接取 `content[].text` 才看到真值。
