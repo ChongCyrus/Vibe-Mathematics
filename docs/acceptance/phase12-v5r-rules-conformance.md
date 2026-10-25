@@ -4603,3 +4603,59 @@ dsh: fatal load failure: Error: the ballot is not open
 6.0 M token 的验收工作全部作废，只换来这一条缺陷。教训与 §107 同源、但更硬：
 **验收用的真机跑必须假设“任何一次工具调用都可能终结整轮”**，所以：①每轮只推进少量新读数；②崩溃后先读 stderr 的栈，
 再读转录里**最后一个工具回执**；③不要把“跑通了 18 分钟”当成“这一轮是安全的”。
+
+## §119 真机跑 23（commandcode）：**11 个会话 / 0 RED / 所办自己判「无实质残余：是」** —— 但它的 ④ 段同时点名了两条真缺陷
+
+### 运行读数（全部来自磁盘）
+| 项 | 读数 |
+|---|---|
+| 跑测器 / 简报 | `D:\_tmp\slv-phase5\slv-p13-cc.ps1` + `task-r22.txt`（⑮ 四项） |
+| 提供商 / 模型 | **commandcode / `deepseek/deepseek-v4.1-flash`**（不带 `-fast`） |
+| 转录 | `full-1026-043148.jsonl`，131 772 行 |
+| 时长 / token | `durationSec` 2303；`tokenTotal` 12 792 248（上限 500 M，`tokenCapHit:false`） |
+| 会话 | **11 个**（1 个所办 + 10 个成员子代理会话） |
+| `slv-inspect` | **`SUMMARY: 11 session(s) in 1 file(s), 0 with RED checks`** —— 这是本阶段第一次 0 RED 的多代理跑 |
+| `cast` | `"cast":true` **0 处**：这一轮**没有走结题表决**（⑮ 四项不要求结题，故不是缺陷） |
+| 所办自己的判词 | **「本轮无实质残余：是」** |
+
+### 目标完成条件在字面上已经满足
+`goal-5e2adedf` 的完成条件写的是「所办自己的验收报告说无实质残余」。这一轮它说了「是」。
+**但我没有据此收工**，理由是它同一份报告的 ④ 段逐条点了 7 项，其中两项是产品缺陷（下面 #4/#5），
+也就是说：这一轮的「是」是**在代理自己能绕过去的前提下**成立，而不是机制到位。
+
+### 逐条定性（原文引用，不转写）
+1. **`vibe_v5_set` 用 `reason` 而非 `why`** → `VMU_INVALID_ARGUMENT`，回执逐字列出可用参数 ⇒ **我方操作错误**，非缺陷。
+2. **`vibe_vmu_turn` 的 `member` 简写不存在**（真缺陷，**本轮已修**）：
+   原文 `"requestedMembers":[],"requestedMembersSource":"roster-default","resolvedMembers":["acad-1","res-1"]`
+   —— chair 栏杆的 hint 教人写 `vibe_vmu_turn {op:"step", member:"academician-1"}`，而该面**不收 `member`**，
+   于是「只给主席一个回合」变成「把两位成员一起唤醒」。hint 不可执行 ⇒ 承诺失效。
+   **修法**：在**内核**里接受单数简写（一处映射，两个面都受益），工具面声明 `member` 并向前转发；
+   **`members` 显式列表优先**。断言 5 条（`vmu-turn` 267/0 全绿）。
+3. **无票就裁票**（我方操作错误）：在票箱 `decisive:0` 时调 tally，把它变成
+   `"outcome":"undecided","reason":"no decisive vote was cast"`，只能重开。非缺陷。
+4. **成员自己的 `say` 被 `no-meeting-bound` 拦下**（真缺陷，**未修**）：
+   原 `"skippedDetail":[{"field":"say","face":"vmu.meetings","op":"speak","reason":"no-meeting-bound"}]`
+   —— 成员在自己的子内核里没有「所办那场会」的绑定，于是「在会里发言」这个动作**只能由所办代做**。
+5. **成员自己的 `verdict` 没有落到票箱**（真缺陷，**未修**）：t-3/t-4 的 `"effects":[]`，票箱 tally `decisive:0`；
+   所办随后以同一 member 名投票时**未被判重复**——因为成员那一票从未存在。两次票都是所办以成员名义转记的。
+   ⇒ 这正是用户裁定的 **B（成员真跑 + 所办代记）**：目前「代记」只能靠所办代理自己动手，**框架没有任何接缝**。
+6. **结题票来回翻**（设计如此，非缺陷）：`closureVote` 每成员最后一次写入为准，`"window":"session"`、`meetingId:null`
+   ⇒ 票不绑定会议，跨会议不可归属。原文已披露。
+7. **任务书与工具面不一致**（我的错）：简报写 `vibe_v5_meeting {action:"close"}`，该面回执原话说
+   `"★ THIS FACE ONLY CONVENES: for status/summary/... use vibe_vmu_meeting { action, id }"`。下一轮简报改掉。
+
+### 已经**真机核过**的读数（这是本轮实际挣到的）
+- ⑮.1 `hot` / `hotMeans` / `appliesAt` / `requiresRestart` / `declaredVsMeasured` 两个方向都出现
+  **OPTIMISTIC** 与 **PESSIMISTIC**（3/5 处），且 `declaredVsMeasured` 出现 3 处 ⇒ §113 的「类别与真实生效时机」在真机上可读。
+- ⑮.3 `votesSource:"none-recorded-on-this-face"` + `votesNote` 指路票箱面；`openMeetingsReading` 8 处，含
+  `droppedClosed`/`addedFromService`；`summary.state:"closed"` ⇒ §113 的「票数来源」在真机上可读。
+  但同一份报告指出：`droppedClosed:0 / addedFromService:0` **读不出**「没有 marker」与「无需丢弃」的区别 ⇒ 登记为读数缺口。
+- ⑮.4 `childSessionId` 13 处、`childSessionIdMeans` 5 处、`memberToolCalls:null` + `memberToolCallsMeans`
+  说明「成员在独立内核里跑，本回执读不到，绝不等於没调用」⇒ §107 的读法在真机上成立。
+
+### 下一步（本轮之后）
+- 实现 **#4/#5 的机制**：成员在会议相位里交回的 `say`/`solved` 必须由**所办内核在落定时落地**，
+  并带归属（`recordedBy:"office"`, `onBehalfOf:"<member>"`, `basis:"<child session id>"`）——
+  即把用户裁定的「代记」做成一条**有名字、有归属、可核**的接缝，而不是让代理自己记得去做。
+- 修 #7：简报里 `vibe_v5_meeting` 只能开会；
+- 再跑一轮验收，直到「是」不再靠着代理绕过缺陷成立。

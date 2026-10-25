@@ -2230,7 +2230,18 @@ export function createTurnOrchestrator({
    * the pipeline owns WHAT PROMPT. A round that fails is RETURNED rather than thrown, because a failed round is an
    * operational outcome; a malformed ARGUMENT still throws, because that is a programming error.
    */
-  const step = async ({ members = [], membersInferred = false, membersFrom = null, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+  const step = async ({ members = [], member = null, membersInferred = false, membersFrom = null, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+    // ★★★ LIVE RUN 23 (the institute's own report, item 2): THE CHAIR RAIL'S HINT NAMED A PARAMETER THAT DID NOT EXIST.
+    // `VMU_CHAIR_ACT_NOT_DELEGATED` tells the caller to "give the chair its own turn first:
+    // `vibe_vmu_turn {op:"step", member:"academician-1"}`" — singular `member`. This signature had no `member`, so the
+    // call was read as "nobody chose", the roster default awakened EVERY member, and the receipt explained that as
+    // `requestedMembersSource:"roster-default"` (disclosed, but the caller's intent was silently lost). A hint that
+    // cannot be executed is a broken promise, so the singular shorthand is accepted HERE — one place, honoured by both
+    // faces — and it WINS over nothing: an explicit `members` list still wins (a caller who named a list meant the list).
+    if (member !== null && member !== undefined && String(member).trim() !== '' && (!Array.isArray(members) || members.length === 0)) {
+      members = [{ id: String(member).trim() }]
+      membersInferred = false
+    }
     // (g): the selection is normalized BEFORE the branch, so an unreadable entry is refused on BOTH routes (a malformed
     // list used to be filtered only on the pending route and to fall through to the default roster everywhere else).
     const selection = normalizeMembersSelection(members)

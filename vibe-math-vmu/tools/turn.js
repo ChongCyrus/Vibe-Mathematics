@@ -306,7 +306,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           // does (it keeps only code/message/hint). A refusal that hides the work in flight is worse than no refusal.
           let stepped
           try {
-            stepped = await kernel.turn.step({ members, membersFrom, membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step })
+            stepped = await kernel.turn.step({ members, member: args.member || null, membersFrom, membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step })
           } catch (e) {
             if (!e || !e.partial) throw e
             return {
@@ -369,7 +369,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (op === 'step') {
         const activeId = members.length > 0 && members[0] && typeof members[0].id === 'string' ? members[0].id : null
         if (activeId && typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(activeId)
-        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step }))) }
+        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, member: args.member || null, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step }))) }
         finally { if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null) }
       }
       if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step }))
@@ -429,6 +429,10 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         limit: param('integer', '仅 prompt：本页最多多少字符（省略＝6000，上限 9000；被夹到上限时回执 limitClamped:true）'),
         detail: param('string', '仅 status：closure＝只回 closureVote（小回执）；未知值具名拒'),
         members: param('array', '本轮可唤醒的成员：[{id, role}]；缺省时由内核名册推断（无成员 ⇒ 合法空转）'),
+        // ★ LIVE RUN 23 (the institute's own report, item 2): the chair rail's hint writes `vibe_vmu_turn {op:"step", member:"<id>"}`
+        // — a SINGLE-member shorthand. The face refused it as an unknown parameter, so the caller's intent was lost and the roster
+        // default woke everyone. The shortcut is declared here and forwarded to the kernel, which owns the one mapping.
+        member: param('string', '★ 单成员简写（等价于 members:[{id}]）；与 members 同传时 members 优先。chair 栏杆的 hint 用的就是它'),
         rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）'),
         phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
         why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),

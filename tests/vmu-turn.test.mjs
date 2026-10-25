@@ -1639,6 +1639,33 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     stepCalls.map((l) => l.trim().slice(0, 90)))
 }
 
+// ★★★ R32 (live run 23, the institute's own report item 2): THE CHAIR RAIL'S HINT NAMED A PARAMETER THAT DID NOT EXIST.
+// `VMU_CHAIR_ACT_NOT_DELEGATED` tells the caller `vibe_vmu_turn {op:"step", member:"academician-1"}` — singular. The
+// kernel had no `member`, so the call read as "nobody chose a member", the roster default woke EVERY member, and the
+// receipt disclosed that as `requestedMembersSource:"roster-default"`. The institution lost its intent silently while
+// every field was technically honest. A hint that cannot be executed is a broken promise: the shorthand is accepted
+// in ONE place (the kernel) and both faces honour it; an explicit `members` list still wins.
+{
+  const mk = () => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
+    deliver: deliverByReturning(), faces: { 'vmu.meetings': { speak: async () => ({ ok: true }) } } })
+  const a = mk()
+  const both = await a.step({ members: ['r-1'], member: 'r-2', why: 'R32a members wins over member' })
+  ok(!!both && JSON.stringify(both.requestedMembers) === JSON.stringify(['r-1']),
+    '★★ R32a: an explicit `members` list WINS over the shorthand (a caller who named a list meant the list)', both && both.requestedMembers)
+  const b = mk()
+  const one = await b.step({ member: 'r-2', why: 'R32b the singular shorthand from the chair rail hint' })
+  ok(!!one && one.requestedMembersSource === 'explicit',
+    '★★★ R32b: `member:"r-2"` produces an EXPLICIT selection — it is a request, not a default', one && one.requestedMembersSource)
+  ok(!!one && JSON.stringify(one.requestedMembers) === JSON.stringify(['r-2']),
+    '★★★ R32c: exactly the named member was requested — the roster default did not leak in', one && one.requestedMembers)
+  const FACE2 = readFileSync(new URL('../vibe-math-vmu/tools/turn.js', import.meta.url), 'utf8')
+  ok(/member: param\('string'/.test(FACE2), '★★ R32d: the FACE declares `member`, so the rail hint is executable end to end', false)
+  const calls2 = FACE2.split('\n').filter((l) => /kernel\.turn\.step\(\{/.test(l))
+  ok(calls2.length >= 2 && calls2.every((l) => /member: args\.member/.test(l)),
+    '★★ R32e: EVERY step call site forwards `member` (the two-site trap that already bit membersInferred and membersFrom)',
+    calls2.map((l) => l.trim().slice(0, 80)))
+}
+
 // ★ PHASE 12 / live run 2026-10-25 (the first REAL subagent run, the institute's own reading): a HARVESTED late delivery was
 // readable but not COUNTABLE — `deliveredLate` and the three millisecond windows existed on the seam's return value and were
 // dropped when the receipt's `delivery` envelope was built, so a reader had to parse an English sentence to recover
