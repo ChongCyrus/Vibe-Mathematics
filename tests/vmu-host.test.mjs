@@ -387,6 +387,14 @@ if (SELF_PROBE) {
       'E-7: the tool receipt carries the kernel\'s requiresRestart verdict (H2 ⇒ true)', JSON.stringify({ h2: h2.requiresRestart, h0: h0.requiresRestart }))
     ok(/exempted/.test(String(h0.ownerCheck)),
       'E-7: the tool receipt discloses the owner-check exemption (no silent bypass)', h0.ownerCheck)
+    // ★★ LIVE RUN 19 (⑬.1): the receipt carried `hot:"H1"` beside `requiresRestart:true` with nothing saying the two
+    // describe DIFFERENT things (a declared class and a measured effect), so the institute read a contradiction.
+    // `hotMeans` glosses the class and `declaredVsMeasured` names the divergence.
+    const qm = JSON.parse(await spec.execute({ key: 'vmu.meetings.quorumMin', value: '2' }, {}))
+    ok(typeof qm.hotMeans === 'string' && /H1/.test(qm.hotMeans) && /next turn/.test(qm.hotMeans),
+      'E-7b. ★★ the receipt glosses its declared hot class in words (H1 = next turn), so "H1" is not a bare code beside a restart verdict', qm.hotMeans)
+    ok(typeof qm.declaredVsMeasured === 'string' && (/declared/.test(qm.declaredVsMeasured)) && (/MEASURED/.test(qm.declaredVsMeasured)),
+      'E-7c. ★★★ and it NAMES the divergence (declared class vs measured effect) instead of leaving the reader to reconcile them', qm.declaredVsMeasured)
     // ④ an H3 key cannot be removed through the kernel API either (same guard, disclosed)
     let unsetH3 = null
     try { kernel.unsetSettingsValue('vmu.safety.pathPolicy', { by: 'office' }) } catch (e) { unsetH3 = e }

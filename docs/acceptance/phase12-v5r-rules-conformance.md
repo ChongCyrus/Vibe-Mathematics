@@ -4303,3 +4303,29 @@ run 18 是本阶段第一次 office + 真子代理跑完全部轮次并结题（
   （本轮 `childSessionIdMeans` 落到「read from delivery.childId」），读者才能区分「没有」与「没读到」。
 - 「一个对象两个面两个读数」出现两次（`openMeetings` vs 会议服务；`list.ballots` vs `boxclose`）。合并时**两个方向
   都要计数**，只说「已过滤」会把「补上了几条」藏起来。
+
+## §112 第 17 轮：run 19 的「H1 与 requiresRestart 互相矛盾」—— 两句话说的不是一件事，但回执没说这一点
+
+### 病灶（真实机读出的原文）
+`vibe_v5_set { key:"vmu.meetings.quorumMin" }` 的回执同时带 `hot:"H1"` 与 `requiresRestart:true`。
+settings 表里 H1 的承诺是「下一回合生效」（`kernel/index.js:239` `H1:'next turn'`），而回执说的是「下次启动」，
+所办据此判为**自相矛盾**。两句话都对：H1 是这个键**声明的类别**，requiresRestart 是这个键**测得的实际效果**
+（`vmu.meetings.*` 的读者在 `createMeetings()` 构造期快照）。缺的是**一句话说明它们描述的是两件事**。
+
+### 改法（两处，一处事实两个面）
+1. `vibe-math-vmu/kernel/index.js` set 回执新增两个字段，并把「什么时候可见」收敛到一个局部函数：
+   - `hotMeans`：用自然语言解释本键的**声明类别**（`declared class H1 = next turn (the promise the settings table makes for this class)`）。
+   - `declaredVsMeasured`：类别与实测不一致时**点名分歧**（`declared next turn / MEASURED next start (...) — the declared class is OPTIMISTIC for this key`）；一致时写 `declared and measured agree`。
+   - 新增局部 `appliesAtText`，`appliesAt` 与 `declaredVsMeasured` **共用**这一个措辞（避免同一事实两种拼写——本批次反复踩的坑）。
+2. `vibe-math-vmu/host.js` 的 `vibe_vmu_set` 面把两个字段**照原样转发**（与 `appliesAt`/appliesFrom 同一规矩：
+   工具面不得比内核更含糊地回答同一个键）。
+
+### 门禁
+`tests/vmu-host.test.mjs` E-7b/E-7c 两条新增断言（201 passed / 0 failed）：
+- E-7b：`hotMeans` 是字符串、含 `H1` 与 `next turn`（类别被译成人话，而不是一个裸码与 restart 判决并排）。
+- E-7c：`declaredVsMeasured` 同时含 `declared` 与 `MEASURED`（分歧被点名，而不是留给读者自行调和）。
+
+### 仍然登记、未修的两项（本轮已写入账本）
+- `vmu.meetings.quorumMin` 这一族在 settings 表里声明 H1，实测是构造期快照（应为 H2）。**表的标准写法**要不要
+  改成 H2 是账本级决定（涉及 ~20 行），本轮只让回执**说出分歧**；已在 §111 登记。
+- `vibe_v5_meeting list` 与 boxclose 回执里的两个 id 空间（meeting id vs box id）仍分列两个字段，未合并。

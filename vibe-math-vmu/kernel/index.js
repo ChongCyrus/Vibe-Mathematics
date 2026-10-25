@@ -3065,15 +3065,28 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // class — that is how a runtime write to `vmu.meetings.quorumMin` came back `applied:"immediate"` while every
       // later reader still saw 0. The measured verdict wins over the declaration, and the receipt names the reason.
       const requiresRestart = (hot === 'H2' && liveReadBy.length === 0) || (constructionOnly !== null && liveReadBy.length === 0)
+      // one place that words WHEN this write is visible, used by both `appliesAt` and `declaredVsMeasured` (two
+      // spellings of one fact is the defect this whole batch is about).
+      const appliesAtText = constructionOnly && liveReadBy.length === 0
+        ? 'next start (this key has no live reader: ' + constructionOnly + ')'
+        : (hot === 'H2' && liveReadBy.length
+          ? 'this session for the measured live readers (' + liveReadBy.join(', ') + '); declared class H2, so construction-time readers see it next start'
+          : (APPLIES[hot] || null))
       const receipt = {
         ok: true, key, source: 'runtime', hot, who: g.who, ownerCheck: g.ownerCheck,
+        // ★★ LIVE RUN 19 (the institute's own report, ⑬.1): the receipt carried `hot:"H1"` AND `requiresRestart:true`,
+        // and the institute read those two as contradicting each other ("the table says next turn, the receipt says
+        // restart"). They do not contradict — H1's declared promise is "next turn", while THIS key is read once at
+        // construction — but NOTHING in the receipt said the declared class and the measured effect had diverged. The
+        // declared class is now glossed in its own words and the divergence is named, so a reader never has to hold two
+        // sentences in mind and guess how they fit.
+        hotMeans: 'declared class ' + String(hot) + ' = ' + String(APPLIES[hot] || 'unknown class') + ' (the promise the settings table makes for this class)',
+        declaredVsMeasured: requiresRestart && hot !== 'H2'
+          ? 'declared ' + String(APPLIES[hot] || hot) + ' / MEASURED ' + String(appliesAtText) + ' — the declared class is OPTIMISTIC for this key: its readers captured the value at construction, so the receipt reports the measured effect (requiresRestart), not the promise'
+          : 'declared and measured agree',
         // F3: `appliesAt` must agree with `requiresRestart` - an H2 key with a MEASURED live reader is not "next
         // session" for that reader, so the declared class is stated alongside the measured effect.
-        appliesAt: constructionOnly && liveReadBy.length === 0
-          ? 'next start (this key has no live reader: ' + constructionOnly + ')'
-          : (hot === 'H2' && liveReadBy.length
-            ? 'this session for the measured live readers (' + liveReadBy.join(', ') + '); declared class H2, so construction-time readers see it next start'
-            : (APPLIES[hot] || null)),
+        appliesAt: appliesAtText,
         requiresRestart,
         applied: requiresRestart ? 'next-session' : 'immediate',
         liveApplied,

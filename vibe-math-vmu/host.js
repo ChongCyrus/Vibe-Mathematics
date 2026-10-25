@@ -783,6 +783,11 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           requiresRestart: setReceipt ? setReceipt.requiresRestart === true : false,
           appliesAt,
           appliesFrom: appliesAt,
+          // ★★ LIVE RUN 19 (⑬.1): the kernel now glosses the declared hot class and NAMES a divergence between it and
+          // the measured effect. Forwarding them here is the same rule as `appliesAt` above: a tool face must not
+          // answer a question about one key LESS precisely than the kernel does.
+          hotMeans: setReceipt ? setReceipt.hotMeans : null,
+          declaredVsMeasured: setReceipt ? setReceipt.declaredVsMeasured : null,
           source: resolved ? resolved.source : null,
           ...(planned ? { noConsumer: true } : {}),
           note: planned
