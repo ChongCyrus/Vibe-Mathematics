@@ -1815,6 +1815,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + id,
           'live: ' + ([...live.keys()].sort().join(', ') || '(none)') + (archive.length ? '; archived: ' + archive.map((x) => String(x.id)).sort().join(', ') : ''))
       }
+      // ★★ ROUND 19 (live run 26, the institute's own acceptance report, item 4): ONE NAME, TWO OBJECTS. That run
+      // read `state:"open"` from this face AFTER a successful `close` archived the meeting. Whether or not that
+      // resurrection is reachable from a single kernel (six probes could not reproduce it), this face could not
+      // DISTINGUISH the two objects: `live` is consulted before `archive`, so a live twin silently outranks the
+      // recorded closure. The twin is now NAMED, so the next run says which one answered instead of leaving a
+      // reader to compare receipts across calls.
+      const archivedTwin = live.get(id) ? (archive.filter((x) => String(x.id) === id)[0] || null) : null
       const motionVotes = (m.motions || []).reduce((n, mo) => n + (mo && mo.votes && typeof mo.votes.size === 'number' ? mo.votes.size : 0), 0)
       const minuteVotes = (m.minutes && Array.isArray(m.minutes.entries)) ? m.minutes.entries.filter((e) => e && e.kind === 'vote').length : 0
       const motions = (m.motions || []).map((mo) => {
@@ -1826,7 +1833,16 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         }
       })
       return {
-        ok: true, id: m.id, meeting: m.id, type: m.type, kind: m.kind, state: m.state, stateMeans: MEETING_STATE_MEANING[m.state] || null, reason: m.reason === undefined ? null : m.reason,
+        ok: true, id: m.id, meeting: m.id, type: m.type, kind: m.kind, state: m.state,
+        // ★ ROUND 19: the twin is named on the read face (see `archivedTwin` above). `false` means "one object, one
+        // name" — nothing to explain; `true` means the archive ALSO holds this id, and the state above is the LIVE
+        // object's, i.e. a closure was recorded and a live meeting reuses the name.
+        liveWhileArchived: archivedTwin !== null,
+        liveWhileArchivedMeans: archivedTwin === null
+          ? 'only one object carries this id here (no archived record with the same name)'
+          : 'TWO objects carry this id: this state is the LIVE one, and the ARCHIVE also holds a record closed at ' + String(archivedTwin.closedAt === undefined ? 'an unrecorded instant' : archivedTwin.closedAt) + ' — read archivedView for that record, and do not treat the live state as the closure\'s outcome',
+        archivedView: archivedTwin === null ? null : { id: String(archivedTwin.id), state: String(archivedTwin.state), closedAt: archivedTwin.closedAt === undefined ? null : archivedTwin.closedAt, wallMs: archivedTwin.wallMs === undefined ? null : archivedTwin.wallMs },
+        stateMeans: MEETING_STATE_MEANING[m.state] || null, reason: m.reason === undefined ? null : m.reason,
         convenedBy: m.convenedBy === undefined ? null : m.convenedBy,
         title: m.title === undefined ? null : m.title,
         materials: m.materials === undefined ? null : m.materials,
@@ -1859,12 +1875,19 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
 
     meetingView({ meeting = null } = {}) {
       const m = requireMeeting(meeting, { readOnly: true })
+      // ★ ROUND 19: the same twin disclosure as `summary()` — this is the face `vibe_vmu_meeting { action:"status" }`
+      // actually returns, so a closure that a live twin outranks must be named HERE or the live run keeps reading it.
+      const viewTwin = archive.filter((x) => String(x.id) === String(m.id) && live.get(String(m.id)) === m)[0] || null
       // ★★★ SAME SELF-DESCRIPTION AS meeting.js status(): THE SERVICE REGISTRY IS THE PATH THE LIVE RUN ACTUALLY USED. Adding
       // loop/note only to meeting.js#status() would have left them with no consumer here - tools/meeting.js returns
       // primitive.status() for the PRIMITIVE registry (line 174) but THIS view for the SERVICE registry (line 182), and
       // vibe_v5_meeting creates service meetings. So the wording has to exist on both read faces or it is a mechanism
       // with no consumer for the only path that mattered.
       return { ok: true, meeting: m.id, type: m.type, state: m.state,
+        liveWhileArchived: viewTwin !== null,
+        liveWhileArchivedMeans: viewTwin === null
+          ? 'only one object carries this id here (no archived record with the same name)'
+          : 'TWO objects carry this id: this state is the LIVE one, and the ARCHIVE also holds a record closed at ' + String(viewTwin.closedAt === undefined ? 'an unrecorded instant' : viewTwin.closedAt) + ' — the closure happened; this line is not its outcome',
         title: m.title === undefined ? null : m.title,
         materials: m.materials === undefined ? null : m.materials,
         subject: m.subject === undefined ? null : m.subject,
@@ -1890,6 +1913,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         // ★ A READER MUST BE ABLE TO SEE WHO DEBATED WITHOUT CALLING minutes(): the fact, un-pruned.
         spokeBy: [...new Set(m.minutes.entries.filter((e) => e.kind === 'speech').map((e) => String(e.member)))],
         spokeByMeans: 'members with at least one recorded speech in THIS meeting (the fact; minutes() is a shaped view of it)',
+        // ★ ROUND 19: the roster as a READABLE FACT, next to the speakers. A count (quorum().roster) cannot answer
+        // "who", and minutes() drops silent members — so a member who was rostered but did not speak was invisible to
+        // "ask every debating member", and the ask face had to guess from speakers alone (live run 26 asked 1 of 2).
+        roster: (Array.isArray(m.roster) ? m.roster.map(String) : []),
+        presentCount: (m.present && typeof m.present.size === 'number') ? m.present.size : 0,
         stateMeans: MEETING_STATE_MEANING[m.state] || null,
         loop: 'meeting-ask-answer',
         note: '★ motions/votes/state here describe the MEETING’s own ask()+answer()+motion cycle. A member answering a vibe_vmu_turn prompt is a DIFFERENT loop: read vibe_vmu_turn’s receipts (awaiting/memberPrompt/deliveryPath) for that one. hasDeliverSeam on the primitive face refers to open({deliver}), not to the turn loop’s deliveryPath.', reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,
@@ -2069,7 +2097,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   // not a defect of the rail (the rail only guards a convene that INSTALLS a chair); it is a missing FACT: who convened.
   // `convenedBy` names the originator when it is not the caller's own act — 'v5r.stall-meeting' for the automatic path,
   // null when the caller acted directly. Without it, an automatic meeting and a chair's meeting are indistinguishable.
-  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null, adoptForeign = false, convenedBy = null } = {}) {
+  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null, adoptForeign = false, reuseArchivedId = false, convenedBy = null } = {}) {
 
     const enforced = []
     const ms = at === null ? clock() : atMs(at)
@@ -2207,6 +2235,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         (foreign.includes(wanted)
           ? 'that id belongs to the PRIMITIVE meeting registry (vibe_vmu_meeting action:"open"), which is a different table — pass another id. Service ids in use: ' + ([...live.keys()].sort().join(', ') || '(none)')
           : 'choose another id; live service meetings: ' + ([...live.keys()].sort().join(', ') || '(none)')), enforced)
+    }
+    // ★★ ROUND 19 (live run 26, the institute's own acceptance report, item 4): AN ARCHIVED ID MUST NOT COME BACK
+    // SILENTLY. That run closed `m1` (receipt `ok:true, closeSemantics:"service-archives"`), and the very next
+    // `list`/`status`/`summary`/`overview` calls still reported it `open`. Whatever performed the resurrection, the
+    // ID SPACE was the gap: `close()` moves the object to the archive and nothing stopped `open({ id })` from handing
+    // the same name to a brand new meeting, so "m1 is open" and "m1 was closed" could both be true about ONE name and
+    // no receipt said which object answered. An archived id is refused by name now unless the caller reuses it
+    // deliberately; the refusal quotes the archive's own closure, so "closed" never needs a second lookup.
+    const archivedTwin = wanted === null ? null : (archive.filter((x) => String(x.id) === wanted)[0] || null)
+    if (archivedTwin !== null && reuseArchivedId !== true) {
+      throw deny('VMU_MEETING_ID_ARCHIVED', 'meeting id ' + String(wanted) + ' is in the ARCHIVE: it was closed at ' + String(archivedTwin.closedAt === undefined ? 'an unrecorded instant' : archivedTwin.closedAt) + ', so a new meeting must not take a closed meeting\'s name',
+        'choose another id, or pass { reuseArchivedId: true } to reuse the name on purpose (the archive keeps the closed record, so both stay readable and the two object are distinguishable)', enforced)
     }
     let mid = wanted || ('m' + (counters.opened + 1))
     if (wanted === null) {

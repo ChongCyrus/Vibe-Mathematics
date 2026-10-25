@@ -4684,7 +4684,7 @@ dsh: fatal load failure: Error: the ballot is not open
 提示词层还没教所办这么用（F5 判例：机制先落地、文本随后），本轮不动提示词。
 
 
-## §119 辩论规则的后半条：请裁决（ask）+ 完整性闸（round 18）
+## §121 辩论规则的后半条：请裁决（ask）+ 完整性闸（round 18）
 
 **规则原文**：「待辩论会议结束，v5r框架请各个辩论的各个成员给出最终裁决，并通过平均概率和结论来确定该问题的最终答案，并通知卡片持有者。」
 
@@ -4721,3 +4721,48 @@ dsh: fatal load failure: Error: the ballot is not open
 
 ### 仍然存在的边界（诚实登记）
 - 「proof 是否完成」不可机器判定：`vibe_v5_verdict_ask` 只问概率与理由，不问证据等级；证据链仍由 `p1Intent`（Lean/verified）与 fidelity 承担。
+
+## §122 真机跑 26 的 ④ + 辩论规则的「请裁决」：两个人口不一致 + 一个「到不了的人被当成被问到」
+
+### ① 「一个名字两个对象」（run 26 报告的第 4 条）
+run 26 的所办报告说：关掉 `m1` 之后紧接着的 `list`/`status`/`summary`/`overview` 还报它是 open。
+**六次忠实复现（同调用序、第二个内核、同一 store 的新内核、beat+due sweep）都得到正确行为**，所以「复活」本身没有在这里复现；
+但它能发生的洞是真的：`close()` 把对象挪进归档，而 `open({id})` 会把**同一个 id** 交给一个全新会议 —— 于是「m1 是 open 的」和
+「m1 是 closed 的」可以对同一个名字同时为真，且没有任何回执说是哪个对象在答。
+
+修法（加法，两个读面都带说明）：
+- `open` 遇到归档里的 id ⇒ 具名拒 `VMU_MEETING_ID_ARCHIVED`，`message` **引用归档里的关闭时刻**（不是「未记录」），`hint` 指明唯一的门：
+  `reuseArchivedId:true`（故意重用是被允许的，不是墙）。
+- 故意重用时：`summary()` 与 `meetingView()`（即 `vibe_vmu_meeting {action:"status"}` 真正返回的那个面）都带
+  `liveWhileArchived:true` + `archivedView.closedAt` + 一句 `liveWhileArchivedMeans` 明说「有两个对象用这个名字，这一行是活的那个」；
+  活/归档只有一个对象时该字段是 `false` 并**说明为什么是 false**（不是常亮警报）。
+- 闸：`tests/vmu-meeting-id-archive.test.mjs` **16/0**（含「拒不得改动归档」与「fresh id 不是噪声」两条反向）。
+
+### ② 辩论规则「请各成员给最终裁决」的人口错了
+实测（本轮）：`debatedMembersOf` 只读 `spokeBy`/`minutes`（**发过言的人**），所以**在册但还没发言**的成员对这条规则不可见 ——
+run 26 里 2 个辩论成员只被问了 1 个，而下游完整性闸却拿**全体选举人**比，两侧对「谁该被问」各说各话。
+同时：投递被全部拒绝时它仍返回 `ok:true, delivered:[]`，而 `means` 还写「the ask is on the members record now」——
+正是它自己注释里说要避免的「舒服的零」。
+
+修法：
+- `vibe-math-vmu/kernel/meetings.js` `meetingView()` 增加 `roster`（数组）与 `presentCount`：**「谁在册」是事实，计数答不了「谁」**。
+- `debatedMembersOf`：优先 `roster − chair`，再并上真实发过言的人（`source:'roster+speech'`）；没有 roster 才退回 `spokeBy`/`minutes`。
+- 投递前先核**成员是否真的在册**（邮箱只是个盒子袋子，对不存在的 id 也会收下）：不在册 ⇒ 记进 `failed` 并给码，
+  不假装问过。全部到不了 ⇒ 具名拒 `VMU_ASK_NOTHING_DELIVERED`（hint 说怎么办）。
+- 回执加 `deliveredCount/failedCount/partialAsk/partialAskMeans`（「问到了 1/2」写出来），`rosterCount`/`speakerCount` 一并可读。
+- 闸：`tests/vmu-meeting-ask.test.mjs` **17/0**（含「没人发言也要问全体」「沉默成员的信箱里真有那封信」「全被拒 ⇒ 具名拒」）。
+
+### ③ 顺带发现：`tests/vmu-meeting-invite.test.mjs` §10 是**既有**的间歇红（不是我这两处改动造成的）
+证据：把我的产品改动 `git stash` 掉后该套件**同样红**；把 §10 的调用序列抽成独立探针跑 12 次 **0 次失败**，
+但在套件里约 2/4 次失败，失败态是 `vibe_vmu_meeting {action:"attend"}` 回 `VMU_NOT_MEMBER "not a member of this instance: r-1"`
+（其 hint「the roster seam rejected it」是 **pack 面**的成员检查）。一次插桩还读到过该会议的 `roster` 只剩 `["r-chair"]`，
+另一次同一位置读到四个成员全 live —— 说明它依赖套件前序状态，是**时序/前序依赖**问题。
+⇒ 记为下一轮第一优先项（插桩配方：在 `const missing = (afterDue.parsed` 之前打印 `meetingView({meeting:smid}).roster` 与 `members.roster()`）。
+
+### 账本自身的缺陷
+同文件出现**两个 §119**（一个在 §120 之前、一个之后）。已把后者改为 **§121** —— 派生面的编号也必须唯一，否则 §号不能当锚点用。
+
+### 本轮闸
+`vmu-meetings` 214/0 · `vmu-meeting-types` 153/0 · `vmu-v5r-tools` 355/0 · `vmu-run15-findings` 42/0 · `vmu-run16-findings` 24/0 ·
+`vmu-meeting-ask` 17/0 · `vmu-meeting-id-archive` 16/0 · `regen-all --check` 16/16 · `check-docs` PASS。
+**未绿**：`vmu-meeting-invite`（§10 既有间歇红，见 ③）。

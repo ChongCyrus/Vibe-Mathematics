@@ -1410,16 +1410,38 @@ function debatedMembersOf(kernel, meeting) {
   if (!face) {
     return { readable: false, members: [], source: 'unreadable', why: 'the kernel publishes no meetings face, so who debated cannot be established' }
   }
-  // ★ PREFER THE FACT OVER THE PRESENTATION: minutes() shapes and prunes (it drops ms:0 speeches and caps at 20), so a
-  // gate reading it can conclude "nobody debated" while the store says otherwise. spokeBy() reads the entries directly.
+  // ★★★ ROUND 19 (live run 26): THE ROSTER IS THE DEBATE, NOT ONLY THE SPEAKERS. This helper used to read `spokeBy`
+  // (or minutes) alone, so a rostered member who had NOT spoken yet was invisible: the ask went to one member of two
+  // while the ruling's completeness gate compared against the whole electorate. The honest set is the union —
+  // everybody the meeting rostered except the chair (the chair signs the ask), PLUS anybody who actually spoke
+  // (a speaker the roster omits still debated).
+  let speakSet = { readable: false, members: [], why: 'no spokeBy()' }
   if (typeof face.spokeBy === 'function') {
     try {
       const out = face.spokeBy({ meeting })
-      const members = (out && Array.isArray(out.spokeBy)) ? out.spokeBy.map(String) : []
-      return { readable: true, members, source: 'spokeBy', why: null }
+      speakSet = { readable: true, members: (out && Array.isArray(out.spokeBy)) ? out.spokeBy.map(String) : [], why: null }
     } catch (e) {
-      return { readable: false, members: [], source: 'unreadable', why: (e && e.message) || String(e) }
+      speakSet = { readable: false, members: [], why: (e && e.message) || String(e) }
     }
+  }
+  let roster = null
+  let chair = null
+  try {
+    const v = (typeof face.meetingView === 'function') ? face.meetingView({ meeting }) : null
+    if (v && Array.isArray(v.roster)) roster = v.roster.map(String).filter(Boolean)
+    if (v && v.chair) chair = String(v.chair)
+  } catch { roster = null }
+  if (roster && roster.length > 0) {
+    const seen = []
+    for (const m of roster) if (m && m !== chair && !seen.includes(m)) seen.push(m)
+    for (const m of speakSet.members) if (m && m !== chair && !seen.includes(m)) seen.push(m)
+    return {
+      readable: true, members: seen, source: speakSet.readable ? 'roster+speech' : 'roster',
+      chair, rosterCount: roster.length, speakerCount: speakSet.members.length, why: null,
+    }
+  }
+  if (speakSet.readable) {
+    return { readable: true, members: speakSet.members.filter((m) => m && m !== chair), source: 'spokeBy', chair, rosterCount: null, speakerCount: speakSet.members.length, why: null }
   }
   if (typeof face.minutes !== 'function') {
     return { readable: false, members: [], source: 'unreadable', why: 'the kernel publishes neither spokeBy() nor minutes(), so who debated cannot be established' }
@@ -1433,7 +1455,7 @@ function debatedMembersOf(kernel, meeting) {
       const who = e.member ? String(e.member) : ''
       if (who && !seen.includes(who)) seen.push(who)
     }
-    return { readable: true, members: seen, source: 'minutes', why: null }
+    return { readable: true, members: seen.filter((x) => x !== chair), source: 'minutes', chair, rosterCount: null, speakerCount: seen.length, why: null }
   } catch (e) {
     return { readable: false, members: [], source: 'unreadable', why: (e && e.message) || String(e) }
   }
@@ -1493,7 +1515,21 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
     + '（会议 ' + meeting + ' 已结束辩论；收齐全部裁决后由主席用 vibe_v5_verdict_final 汇总：全部一致为 1 或 0 则取该值，否则取算术平均，并通知命题卡持有者。）'
   const delivered = []
   const failed = []
+  // ★★ ROUND 19: THE MAILBOX IS A BAG OF BOXES, NOT AN ADDRESS BOOK — it will happily accept a message for an id that
+  // is not a member (it creates a box). So "the ask was sent" would be a fake success for a non-existent member. The
+  // membership check belongs here, where the institute's own roster is the authority; without a members face the pack
+  // cannot verify and says so in the receipt rather than pretending.
+  let liveIds = null
+  try {
+    if (kernel.members && typeof kernel.members.roster === 'function') {
+      liveIds = new Set((kernel.members.roster() || []).map((m) => String(m && m.id ? m.id : m)))
+    }
+  } catch { liveIds = null }
   for (const to of asked) {
+    if (liveIds && !liveIds.has(String(to))) {
+      failed.push({ to, code: 'VMU_NO_SUCH_OBJECT', message: 'no live member "' + String(to) + '" in this institute, so nobody was asked' })
+      continue
+    }
     try {
       const sent = kernel.mailbox.send(chair, { to, kind: 'final-ruling-request', meeting, proposition: propositionId, text })
       if (sent && sent.ok === false) failed.push({ to, code: sent.code || 'VMU_STATE', message: sent.message || null })
@@ -1502,11 +1538,29 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
       failed.push({ to, code: (e && e.code) || 'VMU_ENGINE_FAILURE', message: (e && e.message) || String(e) })
     }
   }
+  // ★★ ROUND 19: A REFUSED DELIVERY IS NOT AN ASK. Until now this face returned `ok:true` with `delivered:[]` when the
+  // mailbox refused every target, and its `means` still said "the ask is on the members record now" — the same
+  // comfortable-zero the doc comment above claims this face avoids. Zero delivered is a named refusal; a partial
+  // delivery says so in the receipt instead of being averaged with success.
+  if (asked.length > 0 && delivered.length === 0) {
+    throw refuse('VMU_ASK_NOTHING_DELIVERED',
+      'the framework could not reach ANY of the ' + asked.length + ' member(s) it meant to ask: ' + failed.map((f) => String(f.to) + '=' + String(f.code)).join(', '),
+      'the mailbox refused every target (see codes above). A ruling asked of nobody is not a ruling — make the members reachable (hire/attend them so they are on this meeting\'s roster) and call again, or ask explicitly with members:[…]')
+  }
+  const partialAsk = failed.length > 0
   return {
     ok: true, tool: 'vibe_v5_verdict_ask', meeting, chair, from: chair,
     proposition: propositionId,
     asked, askedSource: source,
+    rosterCount: debated.rosterCount === undefined ? null : debated.rosterCount,
+    speakerCount: debated.speakerCount === undefined ? null : debated.speakerCount,
     delivered, failed,
+    deliveredCount: delivered.length,
+    failedCount: failed.length,
+    partialAsk,
+    partialAskMeans: partialAsk
+      ? 'the ask reached ' + delivered.length + ' of ' + asked.length + ' member(s); the rest are named in `failed` — they were NOT asked, so their silence is not a refusal to rule'
+      : 'every member the framework meant to ask was reached',
     how: 'vibe_v5_verdict_final',
     means: 'the ask is on the members record now; the RULING is a separate, explicit act by the chair (asking is not ruling) — '
       + 'and this pack keeps no hook on meetings.close, so a closed debate does not silently become a ruling',
