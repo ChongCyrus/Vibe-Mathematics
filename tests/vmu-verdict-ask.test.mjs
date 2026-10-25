@@ -198,6 +198,21 @@ try {
     plain.parsed && { code: codeOf(plain.parsed), coverage: plain.parsed && plain.parsed.coverage })
 
   // ── ⑥ NO AUTO-HOOK ────────────────────────────────────────────────────────────────────────────────────────
+// ── THE RULE'S LAST CLAUSE: 「并通知卡片持有者」 ─────────────────────────────────────────────────────────
+console.log('=== 6b. THE CARD HOLDER IS TOLD (and the self case says so instead of pretending) ===')
+// the card in this fixture is owned by m-1 while the CHAIR signs the ruling, so the notice must reach m-1.
+// This is the half of the rule that a ruling receipt alone cannot prove: read the holder's own mailbox.
+const fullRuling = await call(b, 'vibe_v5_verdict_final', { meeting: mid, proposition_id: cardId, verdicts: [{ member: 'm-1', p: 0.7, reason: '构造' }, { member: 'm-2', p: 0.5, reason: '反例压力' }] })
+const notified = (fullRuling.parsed && fullRuling.parsed.notified) || []
+ok(Array.isArray(notified) && notified.includes('m-1'),
+  '★★★ the receipt lists the card owner among the mailboxes it wrote', { notified })
+const holderBox = kernel.mailbox.list ? kernel.mailbox.list('m-1', {}) : null
+const holderEntries = (holderBox && holderBox.entries) || []
+const holderNotice = holderEntries.find((e) => e && /裁决|ruling/.test(String(e.subject || '') + String(e.kind || '')))
+ok(!!holderNotice, '★★★ READ BACK: the holder\'s mailbox really carries the ruling notice', holderEntries.map((e) => e && [e.kind, e.subject]))
+ok(fullRuling.parsed && fullRuling.parsed.delivery && fullRuling.parsed.delivery.selfAddressed === false,
+  '★★ the delivery record says this was NOT a self-addressed case (the chair did not own the card)', fullRuling.parsed && fullRuling.parsed.delivery)
+
   console.log('=== 6. THE ASK DID NOT BECOME AN AUTO-RULING ===')
   const viewAfter = kernel.meetings.meetingView({ meeting: mid })
   ok(viewAfter && viewAfter.state !== undefined, 'setup: the debate meeting is still readable after the ruling', viewAfter && viewAfter.state)

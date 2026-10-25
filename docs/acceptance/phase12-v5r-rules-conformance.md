@@ -4702,10 +4702,22 @@ dsh: fatal load failure: Error: the ballot is not open
 - **`verdict_final` 的 `partial`/`why` 只在提示里被要求，参数表里没有声明**（同一「声明了但没消费者」家族的反向：提示要求了一个调用不了的东西）。已补进 `parameters`。
 
 ### 门禁
-`tests/vmu-verdict-ask.test.mjs` **36 passed / 0 failed**（新增）：① 主席可问、非主席与无主席具名拒绝；② 被问集合来自**会议记录的事实**而非参数（并断言 `spokeBy` 这一事实面存在）；③ 信真的进了成员信箱，且正文点名命题与「布尔概率 + 理由」；④ 裁决按算术平均；⑤ 部分裁决必须带 `why`；⑥ 有辩论时漏人 ⇒ 具名拒绝并点名；⑦ 无辩论的会不阻挡普通裁定；⑧ **问不等于判**（回执无 value/mode）。另有两条**机械层**断言：`spokeBy` 存在且含两名发言者；`minutes()` 默认视图保留 `ms:0` 的发言。
+`tests/vmu-verdict-ask.test.mjs` **39 passed / 0 failed**（新增）：① 主席可问、非主席与无主席具名拒绝；② 被问集合来自**会议记录的事实**而非参数（并断言 `spokeBy` 这一事实面存在）；③ 信真的进了成员信箱，且正文点名命题与「布尔概率 + 理由」；④ 裁决按算术平均；⑤ 部分裁决必须带 `why`；⑥ 有辩论时漏人 ⇒ 具名拒绝并点名；⑦ 无辩论的会不阻挡普通裁定；⑧ **问不等于判**（回执无 value/mode）。另有两条**机械层**断言：`spokeBy` 存在且含两名发言者；`minutes()` 默认视图保留 `ms:0` 的发言。
 
 邻居全绿：`vmu-v5r-tools` 355/0、`vmu-meetings` 214/0、`vmu-meeting-types` 153/0、`vmu-turn` 267/0、`vmu-pack-prompts` 24/0。
 
+### 「通知卡片持有者」——已核查：它是**真的接好的**（我先写错了，这里改正）
+这一段的初稿写「通知卡片持有者仍未接」，**那是错的**，而且错在没测就写。实测：
+`vibe_v5_verdict_final` 的 handler 把算术与通知一并交给内核的 `meetingVerdict.rulePropositionProbability`
+（`packs/v5r/tools.js:1326` `face.rulePropositionProbability({ verdicts, propositionId, owner, from: chair, … })`），
+内核在 `vibe-math-vmu/kernel/meetingverdict.js:376-400` 真的发信给卡片持有者，并**诚实地**区分三种情形：
+真的发出去了（`delivery.addressed:true` / `notified:["…"]`）、签者本人就是持有者（`selfAddressed:true`，
+说明「裁决就在签收回执上，没有别人可通知」）、以及发送失败（`ok:false` + code，不伪装成送达）。
+一次探针（`D:\_tmp\probe-notify.mjs`，仓库外一次性脚本）：卡片由 `m-1` 持有、主席签名裁决
+⇒ `notified:["m-1"]`、`delivery{addressed:true,selfAddressed:false,recipient:"m-1",ok:true,via:"send-port"}`、
+`m-1` 的信箱里出现一条 `kind:"dm"`、主题「命题最终裁决 r-1：布尔概率 0.6」。
+因此这条规则的第三段**不需要新代码**，需要的是**一条门禁**：已加进 `tests/vmu-verdict-ask.test.mjs` 的 §6b
+（回执把持有者列进 `notified`／持有者信箱真的出现那条通知／`selfAddressed:false` 说明这次不是自发自收）。
+
 ### 仍然存在的边界（诚实登记）
-- **「通知卡片持有者」仍未接**：`ruleThrough()` 会把裁决告诉「卡片持有者」，但成员写的卡片其持有者是成员自己，消息发回写卡片的人、发不进收卡人的信箱（其路径本末倒置）。登记在案，尚未修。
 - 「proof 是否完成」不可机器判定：`vibe_v5_verdict_ask` 只问概率与理由，不问证据等级；证据链仍由 `p1Intent`（Lean/verified）与 fidelity 承担。
