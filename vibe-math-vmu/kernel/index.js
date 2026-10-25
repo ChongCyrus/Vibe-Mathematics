@@ -215,8 +215,25 @@ export const CONSTRUCTION_ONLY_KEYS = Object.freeze({
   // declared hot level and the real one must be the same sentence.
   'vmu.turn.childPreset': 'resolved once at construction by host-deliver.js (config.vmu.deliverPreset > config.deliverPreset > this setting), so a runtime write changes nothing until the next start',
   'vmu.turn.deliverMode': 'resolved once at construction by host-deliver.js (config.vmu.deliverMode > config.deliverMode > this setting > the subagents default), so a config-declared mode shadows this key and a runtime write takes effect only on the next start',
+  // ★★ LIVE RUN 16 (§106): the whole `vmu.meetings.*` FAMILY is snapshotted once — `createMeetings()` builds `K` from
+  // `sget(...)` at construction and its 148 read sites use that frozen object. A runtime write therefore changes
+  // NOTHING until the next start, while the receipt used to answer `applied:"immediate"` / `appliesAt:"next turn"`
+  // and even claimed "every consumer reads this key live" with `liveReadBy: []`. MEASURED on run 16: the institute
+  // set `vmu.meetings.quorumMin:2` (receipt: H1, applied immediate), and every later meeting still reported
+  // `voteFloor.setting:0` / `zeroBecause:"...quorumMin and quorumRatio are both 0..."`. The declaration (H1) and the
+  // mechanism (construction snapshot) must be the same sentence.
+  'vmu.meetings.': 'createMeetings() snapshots the whole vmu.meetings.* block into its `K` object at construction (148 read sites), so a runtime write changes nothing until the next start; set these through deployment config / the launch brief instead of a runtime face',
 })
 const liveReadersOf = (key) => (CONSTRUCTION_ONLY_KEYS[key] ? [] : Object.entries(LIVE_READERS).filter(([p]) => String(key).startsWith(p)).map(([, who]) => who))
+/** The construction-only reason for a key, longest prefix first, so a family entry (`vmu.meetings.`) can exist beside a
+ *  single-key exception. Returns `null` when the key has a real live reader. */
+export function constructionOnlyReasonOf(key) {
+  if (CONSTRUCTION_ONLY_KEYS[key]) return CONSTRUCTION_ONLY_KEYS[key]
+  const prefixes = Object.keys(CONSTRUCTION_ONLY_KEYS).filter((p) => p.endsWith('.') && String(key).startsWith(p))
+  if (!prefixes.length) return null
+  prefixes.sort((a, b) => b.length - a.length)
+  return CONSTRUCTION_ONLY_KEYS[prefixes[0]]
+}
 export const APPLIES = Object.freeze({
   H0: 'immediately',
   H1: 'next turn',
@@ -3040,15 +3057,20 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // `vibe_vmu_set vmu.turn.instituteName` answered "next session (restart required)" while the value was visible on
       // the NEXT TURN. The MEASURED live readers are now part of the verdict: an H2 key that has one is NOT a restart.
       const liveReadBy = liveReadersOf(key)
-      const requiresRestart = hot === 'H2' && liveReadBy.length === 0
-      const constructionOnly = CONSTRUCTION_ONLY_KEYS[key] || null
+      const constructionOnly = constructionOnlyReasonOf(key)
+      // ★ LIVE RUN 16 (§106): a construction-only key with NO live reader must not be answered with its DECLARED hot
+      // class — that is how a runtime write to `vmu.meetings.quorumMin` came back `applied:"immediate"` while every
+      // later reader still saw 0. The measured verdict wins over the declaration, and the receipt names the reason.
+      const requiresRestart = (hot === 'H2' && liveReadBy.length === 0) || (constructionOnly !== null && liveReadBy.length === 0)
       const receipt = {
         ok: true, key, source: 'runtime', hot, who: g.who, ownerCheck: g.ownerCheck,
         // F3: `appliesAt` must agree with `requiresRestart` - an H2 key with a MEASURED live reader is not "next
         // session" for that reader, so the declared class is stated alongside the measured effect.
-        appliesAt: hot === 'H2' && liveReadBy.length
-          ? 'this session for the measured live readers (' + liveReadBy.join(', ') + '); declared class H2, so construction-time readers see it next start'
-          : (APPLIES[hot] || null),
+        appliesAt: constructionOnly && liveReadBy.length === 0
+          ? 'next start (this key has no live reader: ' + constructionOnly + ')'
+          : (hot === 'H2' && liveReadBy.length
+            ? 'this session for the measured live readers (' + liveReadBy.join(', ') + '); declared class H2, so construction-time readers see it next start'
+            : (APPLIES[hot] || null)),
         requiresRestart,
         applied: requiresRestart ? 'next-session' : 'immediate',
         liveApplied,

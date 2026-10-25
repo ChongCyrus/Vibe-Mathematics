@@ -4062,3 +4062,59 @@ transcript 里有一场 `{chair:null, roster:0}` 的会：`v5r.stall-meeting` �
 - **⑧ 本场已结的辩论没有被判结题票」**：代理说它没等到 `open` 类型为 debate 的会的投票窗口；需在下一轮简报里给足窗口
   与显式步数（同上，属简报口径）。
 - 下一轮真机跑：全新 workspace，brief 设 `vmu.meetings.quorumMin:2`、给辩论结题留出显式两步，再读所办自己的报告。
+
+## §106 run 16：第五条读数（m=2 设了不生效）—— 回执按「声明」而不是「机制」作答
+
+run 16（`D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-220054.jsonl`，build `0aab3b27`，3 会话，0 RED，587s，
+49 次调用，2.95M tokens）是**第一次「主代理 + 真子代理」一起把 12 轮流程走完并到达结题**的运行：
+`closureVote{cast:true, confirmed:true, votesCast:3}`，且所办自己的报告把 ①②③④⑤⑥⑦⑧⑨⑩ 逐条抄了原文。
+它报的最后一条是**真缺陷**。
+
+### §106.1 缺陷：`vmu.meetings.*` 整族是构造期快照，却声明成 H1
+
+院士按简报先 `vibe_v5_set { key:"vmu.meetings.quorumMin", value:"2" }`，回执原文：
+`applied:"immediate"`、`appliesAt:"next turn"`、`requiresRestart:false`、`liveReadBy:[]`、
+`note:"applied immediately (hot class H1): every consumer reads this key live"`。
+随后每一场会的 `voteFloor` 仍然是 `setting:0`，`zeroBecause:"vmu.meetings.quorumMin and quorumRatio are both 0:
+the deployment declared no floor"`——**值存进去了，没有任何读者看见它**。
+
+根因（读码确认）：`kernel/meetings.js:59` 的 `createMeetings({ settings })` 在构造期把整块 `vmu.meetings.*` 读进
+一个 `K` 快照对象（`sget(...)` 一次性求值，148 个 `K.` 读点）。因此**运行期写入对 meetings 无效**，而回执按
+**声明的 hot 档**作答 ⇒ 一个"看起来立即生效、实际要重启"的假读数。同族的 `vmu.turn.deliverMode` /
+`vmu.turn.childPreset` 在 run 42/47 已经被点名过（`CONSTRUCTION_ONLY_KEYS`），但**只登记了单个键**，族前缀没登记。
+
+### §106.2 修法（按机制作答，不按声明）
+
+- `kernel/index.js`：`CONSTRUCTION_ONLY_KEYS` 新增**族前缀** `vmu.meetings.`，理由写清"createMeetings 在构造期
+  快照整块，148 个读点；请通过部署配置/启动简报设，而不是运行期 set 面"。
+- 新增导出 `constructionOnlyReasonOf(key)`：单键优先、再按**最长族前缀**匹配（族与单键例外可共存）。
+- `setSettingsValue`：`constructionOnly && liveReadBy.length === 0` ⇒ `requiresRestart:true`、
+  `applied:"next-session"`、`appliesAt:"next start (this key has no live reader: …)"`；`applied` 的取值
+  与 `note` 全部跟着**实测**走。
+- 文档：`vibe-math-vmu/docs/22-academic-operations.md` §19.9 第 7 条后补 7b，写清"族级构造期快照必须按实测作答"
+  以及"这类键属部署配置面"的推论。
+
+### §106.3 门禁
+
+`tests/vmu-entry.test.mjs` 在既有 run-42 断言之后新增 **R16 组**（159 断言 0 失败）：
+`vmu.meetings.quorumMin` 的写入必须是 `requiresRestart:true` / `applied:"next-session"` / `liveReadBy:[]` /
+`appliesAt` 含 `next start` / `constructionOnly` 点名 `createMeetings` / `note` 说清"下次启动生效"。
+同族活读键 `vmu.turn.leaderId` 仍必须是 `requiresRestart:false`（例外不许变成规则）。
+
+### §106.4 run 16 里其它读数的处置（不是缺陷的部分要说清）
+
+| 读数 | 结论 |
+|---|---|
+| ① 只有院士能召开/关闭 | **是**（非院士开关都被 `VMU_NOT_PERMITTED` 具名拒，原文已抄） |
+| ② 预约/等待/到点自决 | **部分**：`scheduled`/`scheduledFor`/`scheduleNote` 可读；到点结算靠 `beat()` sweep，本轮没等到点 |
+| ③ 辩论对象是卡片 | **是**（`subjectGate.form:"card"`，`provenance:"declared"`，`proofBasis:"declaration-only"` —— 声明层与证据层分开写） |
+| ④ m 未被设置 | **是**（见 §106.1；简报没在部署面设 m，属简报缺陷 + 回执撒谎） |
+| ⑤ 裁决送达卡片持有者 | **是**（`notified:["member-2"]` + `notifiedMeans` + `delivery.result.ids:["ml-1"]`，`queued:1`） |
+| ⑥ 结题/辩论读数 | **是**（`cast:true` `votesCast:3`；辩论 `value`/`perMember`/`floor.minVotes`/`mode`） |
+| ⑦ 真子代理 + 哪些核在数调用 | **部分**：`delivery.path:"activation"`、`childId`、`childPreset:"vibe-math-vmu-member"` 齐；`toolCallsScope:"parent-kernel"` + `toolCallsNote` 齐；但 `memberToolCallsTotal`/`childSessionId` 在父回执上缺（子日志路径只有 turn 侧知道） |
+| ⑧ 不许编制外代理 | **是**（全程未用 `subagent`；`member-2/3` 走 `hire` 入编，`identity.institution` 可读） |
+| ⑨ 失败回执点名 | **部分**：`status.deliveryLastFail` 有 `turn/member/code/deliveryPath/stillRunning/means`；但**失败回执本身**没有 `deliveryPath`/`deliveryPathMeans` |
+| ⑩.2 自动开会权威 | **部分**（`convenedBy:null` + "the caller of open() is the convener"；本轮没有 `v5r.stall-meeting` 自动开会，那条分支未触发） |
+
+⇒ 下一轮的**三件待修**（都已登记、下一轮做）：⑦ 父回执补 `memberToolCalls*` 的存在性说明（有/无都要说），
+⑨ 失败回执补 `deliveryPath`/`deliveryPathMeans`，⑩.2 自动开会分支要能被真机触发（简报里制造一次空闲边缘）。

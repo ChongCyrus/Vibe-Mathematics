@@ -650,6 +650,20 @@ if (SELF_PROBE) {
   ok(r5.liveReadBy.length > 0 && r5.requiresRestart === false,
     'entry/R42[+]: a genuine prompt-variable key in the SAME family is still live (the exception did not become the rule)',
     JSON.stringify({ liveReadBy: r5.liveReadBy, restart: r5.requiresRestart }))
+  // ★★ LIVE RUN 16 (§106) — THE FAMILY CASE. `createMeetings()` snapshots the whole `vmu.meetings.*` block into `K` at
+  // construction (148 read sites), yet those keys are declared H1. Measured on the run: the institute set
+  // `vmu.meetings.quorumMin:2`, the receipt answered `applied:"immediate"` / `appliesAt:"next turn"`, and EVERY later
+  // meeting still reported `voteFloor.setting:0` with `zeroBecause:"…quorumMin and quorumRatio are both 0…"`.
+  const r6 = kernel.setSettingsValue('vmu.meetings.quorumMin', 2, { by: 'office' })
+  ok(r6.requiresRestart === true, 'entry/R16: a construction-only FAMILY member does not promise immediate effect',
+    JSON.stringify({ restart: r6.requiresRestart, applied: r6.applied, appliesAt: r6.appliesAt }))
+  ok(r6.applied === 'next-session' && r6.liveReadBy.length === 0,
+    'entry/R16: the receipt says next-session and measures NO live reader',
+    JSON.stringify({ applied: r6.applied, liveReadBy: r6.liveReadBy }))
+  ok(/next start/.test(String(r6.appliesAt)) && /createMeetings/.test(String(r6.constructionOnly)),
+    'entry/R16: appliesAt names "next start" and constructionOnly names the snapshotting consumer (not a generic reason)',
+    JSON.stringify({ appliesAt: r6.appliesAt, constructionOnly: r6.constructionOnly }))
+  ok(/next start/.test(String(r6.note)), 'entry/R16: and the note states the effect honestly', String(r6.note))
 }
 
 // ---- E-8 (task-170): the guard faces are declared, and the production path really reaches them ---------
