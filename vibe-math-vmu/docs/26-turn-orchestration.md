@@ -678,6 +678,38 @@ root agent 自己的 assembly（root 不属于任何成员槽）。
 ★ **`step` 回执的 `toolCalls`**：每个成员回合的回执带 `toolCalls:[{name,called,receipts,ok}]`，用于回答“这轮到底调了什么”；**部署没有声明 tools 钩子时它是空数组——那表示真的没有观察者，不是“成员没调工具”**。
 ★ **判据**：成员会话 `block` 与 `request/header.tools` 名字集合一致；root 会话的 `block` **不得含 `｜member】`**；`slv-inspect` 0 RED 才是通过。
 
+## 3.42 ★★★★★ 停滞必须被**点名**：计数器只数成功 = 一串会自我掩盖的零（PHASE 9+ / 真机 run 12 的第 3 条）
+
+★ **真机病**：`vibe_vmu_turn {op:'status'}` 在两次成员回合超时后读作
+`turns:2, opened:2, assembled:2, delivered:0, parsed:0, refused:0, dispatched:0, notExecuted:0`；
+超时回执只写「delivery seam timed out (180000 ms + 45000 ms grace)」，**不带 `deliveryPath`**。
+所办据此无法判断：是投递失败、被拒、还是根本没派发 —— 因为**六个计数器全部保持 0，没有一个是那个回合的主人**。
+
+★ **根因（在 `kernel/turn/index.js` 的 `deliverTurn`）**：
+
+```js
+const delivered = await deliver({ turn, text })   // 超时就是抛
+counts.delivered += 1                              // ⇒ 抛了就到不了这一行
+```
+
+`await` 一抛，`delivered/parsed/refused/dispatched/notExecuted` **一个都不增**。这不是「漏了一个字段」，而是
+**计数器的形状错了**：它只记录「结算成功的那一步」，把「卡在 seam」这种最需要被看见的状态，记录成「什么都没发生」。
+
+★ **修（两处，都不改写拒绝的语义）**：
+
+1. `kernel/turn/index.js`
+   - 新增 `counts.deliveryFailed` 与 `counts.deliveryLastFail = { at, turn, member, code, message, deliveryPath, stillRunning, means }`；
+   - `deliver` 调用包 `try/catch`：计数 + 记录，然后 **原样 `throw e`**（这一面**不许**把 seam 的拒绝换成更友善的说法）；
+   - `deliveredMeans` 明写「只数结算成功的；抛出记在 `deliveryFailed`，**永不**记这里」；
+   - `deliveryLastFail.means` 明写「下次 `status` 的 counts 依旧可能是 0/1，**只有这条记录留着原因**」——因为计数不保留历史。
+2. `host-deliver.js`：一次性路径的超时错误补 `err.deliveryPath = 'one-shot'` 与 `err.deliveryPathMeans`
+   （「activation/continuable 没试过」）⇒ 「超时」**不等于**「宿主没有跑成员回合的办法」。
+
+★ **判据（真机可读）**：超时后 `op:'status'` 必须出现 `deliveryFailed ≥ 1` 且 `deliveryLastFail.turn` 指向那个回合；
+超时回执必须带 `deliveryPath` + `deliveryPathMeans`。缺一即「停滞仍不可点名」。
+★ **门禁**：`tests/vmu-run12-findings.test.mjs`（18 条）其中两条是**反假绿**：断言旧的单面计数器映射**已不存在**、断言 seam 拒绝**被原样 rethrow**。
+★ **同类**：与 §3.40「一个字段承担两种事实」、`cast` 之类是同一族 —— **回执必须让读者能区分「没发生」与「发生了但没人认领」**。
+
 ## 4. v1 的边界（**未做，明写** ✗）
 
 1. ★★★ **投递缝已接进内核（轮 339）＋ 宿主桥已提供（轮 344）＋ 入口已装配（轮 1／K3）** ✓✓✓：**vmu.turn 在 kernel/index.js 里建成** ✓，**投递缝是内核的 `deliverTurn` 选项** ✓（★ **轮 1 更正** ✗✓：原文只写 `host.deliverTurn` —— 而真实入口交给内核的 `host` 是 `host-math.js` 的适配器，**它没有 `deliverTurn`** ⇒ 于是**真机每一轮都在 `turn/index.js` 的缺缝分支具名拒** ✗；旧名仍兼容，但**不再是唯一来源** ✓）；★ **宿主不给缝 ⇒ 具名拒 VMU_ENGINE_UNAVAILABLE** ✓（**绝不假装成员答了** ✗，且**计数可见** ✓，`status().seams.turnDeliver`／`turnDeliverSource` 自曝 ✓）。★★★ **宿主桥 `deliverViaSubagents(subagents, extract?)`** ✓✓：**入口已按声明装配** —— `vibe-math-vmu.js` 把它接到 `ctx.get('subagents')`（**调用时解析**，因为 `apply()` 可能早于服务挂载 ✓），宿主**不需要自己写适配器** ✓；★ **它只送【装配后的文本】，绝不自拼** ✗；**标签带轮次 id（可追）** ✓；★ **不给缝 ⇒ 具名拒** ✓；★★ **宿主收下却不回回复 ⇒ 也是【具名拒**】✓（**绝不解析成"模型什么都没说"** ✗）。★ **实测（T35–T39）** ✓✓：**整轮走宿主缝跑通** —— 装配 ⇒ 桥投递 ⇒ 解析 ⇒ **任务台账真的增长** ✓✓；★ **到达缝的正是装配文本且带轮次标签** ✓（>1000 字 ✓）。★★ **轮 1 复测** ✓：以假宿主（`ctx.get('subagents')`）走**真实入口** `entry.apply(...)` ⇒ `seams.turnDeliver:true`，`kernel.turn.step({members:[{id}]})` **真的投递并分派**（`receipt.executed ≥ 1`，桥收到的 `label === 'vmu-turn-<id>'`）✓。
