@@ -1655,6 +1655,33 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     '★ R30d: the vocabulary the value belongs to is stated (my own brief had listed only subagents|caller)', d && d.means)
 }
 
+// ★★★ LIVE RUN 42 (the institute's own report ㉝.1): every `step` receipt carried `requestedMembersSource` and NO
+// receipt carried `requestedMembers`, so a caller could read HOW the selection was decided but never WHAT it resolved
+// to. Both branches are asserted through a real step, because the missing field lived in the receipt a running step
+// produces (the settlement route that did emit it is unreachable under activation delivery).
+{
+  const rows = [{ id: 'r-1', slot: 'chair' }, { id: 'r-2', slot: 'member' }]
+  const facts = () => ({ roster: rows, rosterIds: ['r-1', 'r-2'], rosterRows: rows, chairId: 'r-1', roleLabel: null, quorum: { required: 1, met: true } })
+  const tA = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), turnFacts: facts,
+    deliver: async () => fence({ say: '核验句-乙' }) })
+  // The FACE infers the roster and says so (`membersInferred:true`); replicating that here is the point — calling
+  // `step({})` bare would prompt nobody, which is why the kernel takes the inferred list as an argument.
+  const def = await tA.step({ members: ['r-1', 'r-2'], membersInferred: true, why: 'R42 default selection must be readable' })
+  ok(Array.isArray(def.requestedMembers) && def.requestedMembers.length === 0 &&
+    Array.isArray(def.resolvedMembers) && def.resolvedMembers.join(',') === 'r-1,r-2',
+    '★★★ R42a: a step with NO `members` keeps requestedMembers EMPTY (an inferred list is not a request) and names the RESOLVED roster on its own field',
+    { requested: def.requestedMembers, resolved: def.resolvedMembers })
+  ok(def.requestedMembersSource === 'roster-default' && /resolvedMembers is the roster default/.test(String(def.requestedMembersNote || '')),
+    '★★ R42b and the source + note explain why the request list is empty while a list was prompted', { source: def.requestedMembersSource, note: def.requestedMembersNote })
+  const tB = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), turnFacts: facts,
+    deliver: async () => fence({ say: '核验句-丙' }) })
+  const exp = await tB.step({ members: ['r-2'], why: 'R42 explicit selection must be readable' })
+  ok(Array.isArray(exp.requestedMembers) && exp.requestedMembers.join(',') === 'r-2' && exp.requestedMembersSource === 'explicit' &&
+    Array.isArray(exp.resolvedMembers) && exp.resolvedMembers.join(',') === 'r-2',
+    '★★★ R42c: an explicit selection reports exactly what was asked, in both lists, and the two branches are distinguishable',
+    { requested: exp.requestedMembers, resolved: exp.resolvedMembers, source: exp.requestedMembersSource })
+}
+
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

@@ -15,6 +15,7 @@
 // except the selftest's temporary fixture (removed at the end).
 import { readFileSync, readdirSync, statSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join, basename, resolve, dirname } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
 import zlib from 'node:zlib'
 
@@ -37,10 +38,16 @@ function readSessionText(file) {
   if (file.endsWith('.zstd')) return decompressZstd(b)
   return b.toString('utf8')
 }
-function walk(o, fn) {
+function walk(o, fn, session = null) {
   if (!o || typeof o !== 'object') return
-  fn(o)
-  for (const k of Object.keys(o)) walk(o[k], fn)
+  // ★ THE FILE HOLDS ONE LINE PER EVENT OF EVERY SESSION IN THE RUN. With `deliverMode:'subagents'` a single transcript
+  // carries the office session AND every member child session (measured: 7 sessions / 122 218 lines), and each session
+  // has its own `request/header` wire and its own prompt. Reading "the last header" and "the best prompt" across the
+  // whole file pairs a MEMBER's wire with the OFFICE's prompt, which produced three RED findings on run 3 that were
+  // artifacts of this reader, not of the product. The session id travels with the event, so the walker carries it.
+  const sid = typeof o.session === 'string' && o.session !== '' ? o.session : session
+  fn(o, sid)
+  for (const k of Object.keys(o)) walk(o[k], fn, sid)
 }
 function oneLine(s, cap = CAP.arg) {
   const t = String(s === undefined || s === null ? '' : s).replace(/\s+/g, ' ').trim()
@@ -125,8 +132,9 @@ function readEvents(file) {
   return events
 }
 
-export function analyzeSession(file, { memberFilter = null } = {}) {
+export function analyzeSession(file, { memberFilter = null, sessionFilter = null } = {}) {
   const events = readEvents(file)
+  const sessionIds = new Set()
   const headers = []
   const calls = []
   let results = 0
@@ -178,7 +186,12 @@ export function analyzeSession(file, { memberFilter = null } = {}) {
     if (score > promptScore || (score === promptScore && t.length > prompt.length)) { promptScore = score; prompt = t }
   }
   for (const ev of events) {
-    walk(ev, (x) => {
+    walk(ev, (x, sid) => {
+      if (sid) sessionIds.add(sid)
+      // ★ SESSION SCOPE: a named scope means "this session's own readings only" - the office wire belongs with the
+      // office prompt, a member's wire with that member's prompt. Events without any session id still count when no
+      // scope was asked for (single-session files predate the field).
+      if (sessionFilter !== null && sid !== sessionFilter) return
       if (x.type === 'request/header' && x.data && x.data.header && Array.isArray(x.data.header.tools)) headers.push(x.data.header)
       if (x.type === 'tool/call' && x.data && typeof x.data.name === 'string') calls.push({ name: x.data.name, args: x.data.arguments })
       if (x.type === 'tool/result') { results += 1; noteClosure(x) }
@@ -238,7 +251,18 @@ export function analyzeSession(file, { memberFilter = null } = {}) {
   // the pack's static catalogue proves nothing about root. ONE boolean drives BOTH the red calculation and the
   // printout, so the verdict and the message can never disagree — which is exactly how the false red arose.
   const blockIsAuthority = sameSource.present && !!member
-  const sameSourceMismatch = blockIsAuthority && (missingFromWire.length > 0 || extraOnWire.length > 0)
+  // ★★★ THE BLOCK IS PER **SLOT**, NOT PER SESSION (measured on run 3, `deliverMode:'subagents'`): a member's prompt
+  // carries `【本轮你实际能调用的工具｜<pack slot>】43 个：…` and NONE of the composition's own 10 tools
+  // (`edit/read/write/glob/grep/…`), while the wire has all 53. The block never claimed to name the composition's
+  // tools — it names ITS slot's tools. Counting that as a mismatch made every member session RED for a design that is
+  // correct, so the comparison now separates the two families: a name starting with `vibe_` is the pack's business
+  // (the block must name it), everything else belongs to the composition (the block owes it nothing).
+  const sideOf = (n) => (/^vibe_/.test(n) ? 'pack' : 'composition')
+  const missingPackFromWire = missingFromWire.filter((n) => sideOf(n) === 'pack')
+  const missingCompositionFromWire = missingFromWire.filter((n) => sideOf(n) === 'composition')
+  const extraPackOnWire = extraOnWire.filter((n) => sideOf(n) === 'pack')
+  const extraCompositionOnWire = extraOnWire.filter((n) => sideOf(n) === 'composition').slice().sort()
+  const sameSourceMismatch = blockIsAuthority && (missingPackFromWire.length > 0 || extraPackOnWire.length > 0)
   const runCode = wireTools.includes('run_code')
   const callsNotInWire = [...new Set(calls.map((c) => c.name).filter((n) => !wireTools.includes(n)))]
   // Under PTC the SDK dispatches inner tools inside run_code; those are NOT direct wire names, so they are reported
@@ -251,6 +275,8 @@ export function analyzeSession(file, { memberFilter = null } = {}) {
   const sections = sectionsOf(prompt)
   return {
     file,
+    sessionId: sessionFilter,
+    sessionIds: [...sessionIds].sort(),
     member,
     root: !member,
     headerCount: headers.length,
@@ -270,6 +296,10 @@ export function analyzeSession(file, { memberFilter = null } = {}) {
     promptScore,
     missingFromWire,
     extraOnWire,
+    missingPackFromWire,
+    extraPackOnWire,
+    missingCompositionFromWire,
+    extraCompositionOnWire,
     unknownCalls,
     ptcNestedCalls,
     deferLoading: defer,
@@ -346,8 +376,8 @@ function render(s) {
   const hasBlock = !!s.blockIsAuthority
   if (hasBlock) {
     if (s.sameSourceMismatch) {
-      lines.push('  RED 同源块与 wire 不一致: block=[' + s.sameSource.tools.join(', ') + '] blockOnly=[' + s.missingFromWire.join(', ') +
-        '] wireOnly=[' + s.extraOnWire.join(', ') + ']')
+      lines.push('  RED 同源块与 wire 不一致（只看 pack 侧）: blockOnly=[' + s.missingPackFromWire.join(', ') +
+        '] wireOnly=[' + s.extraPackOnWire.join(', ') + ']')
     }
   } else if (s.root) {
     lines.push('  INFO 根会话没有同源块 —— 这是设计如此（根的面就是全量目录，没有按席收窄）；' +
@@ -362,12 +392,26 @@ function render(s) {
   // ★ The two diff lines can only be RED when a REAL same-source block exists (see the note above). Without one they
   // are a static-list artifact: INFO names them, RED would be a false alarm — and a false RED is worse than no RED,
   // because it teaches the reader to ignore the gate.
+  // ★ Same-source block = ONE SLOT (see the note where `sideOf` is defined): the block owes the PACK's tools, not the
+  // composition's. So the diff is split — pack names are RED when they disagree, composition names are INFO.
   const diffAsRed = hasBlock
-  if (s.missingFromWire.length) {
-    lines.push((diffAsRed ? '  RED promptTools missing from wire: ' : '  INFO (no block) promptTools missing from wire: ') + s.missingFromWire.join(', '))
+  if (s.missingPackFromWire && s.missingPackFromWire.length) {
+    lines.push('  RED 同源块声明的 pack 工具不在 wire 上: ' + s.missingPackFromWire.join(', '))
   }
-  if (s.extraOnWire.length) {
-    lines.push((diffAsRed ? '  RED wire tools not named in prompt: ' : '  INFO (no block) wire tools not named in prompt: ') + s.extraOnWire.join(', '))
+  if (s.missingCompositionFromWire && s.missingCompositionFromWire.length) {
+    lines.push('  INFO 同源块提到的组合工具（不在本块职责内）: ' + s.missingCompositionFromWire.join(', '))
+  }
+  if (s.extraPackOnWire && s.extraPackOnWire.length) {
+    lines.push('  RED wire 上有同源块未声明的 pack 工具: ' + s.extraPackOnWire.join(', '))
+  }
+  if (s.extraCompositionOnWire && s.extraCompositionOnWire.length) {
+    lines.push('  INFO wire 上还有组合自带的 ' + s.extraCompositionOnWire.length + ' 个工具（同源块只管自己的 slot）: ' + s.extraCompositionOnWire.join(', '))
+  }
+  if (!hasBlock) {
+    // No same-source block at all: the two directions come from the superseded static list, so they can only be INFO
+    // (a false RED here would teach the reader to ignore the gate).
+    if (s.missingFromWire.length) lines.push('  INFO (no block) promptTools missing from wire: ' + s.missingFromWire.join(', '))
+    if (s.extraOnWire.length) lines.push('  INFO (no block) wire tools not named in prompt: ' + s.extraOnWire.join(', '))
   }
   if (s.unknownCalls.length) lines.push('  RED tool calls not in wire: ' + s.unknownCalls.join(', '))
   if (s.ptcNestedCalls && s.ptcNestedCalls.length) lines.push('  PTC inner calls (inside run_code, not direct wire names): ' + s.ptcNestedCalls.join(', '))
@@ -410,7 +454,16 @@ function buildSelftest() {
     { message: { role: 'user', content: [{ type: 'text', text: '# role\n【本轮面向的成员】代号：member-x\n\n【本轮可用的工具｜成员】\n· vibe_a —— a tool\n· vibe_extra_static —— only in the static list, which is superseded\n' }] } },
     { content: [{ type: 'text', text: '# runtime\n【本轮你实际能调用的工具｜member】1 个：vibe_ghost（同源块与 wire 不一致的合成反例）' }], source: { kind: 'system-prompt' }, id: 'ctx-bad' },
   ])
-  return { root, oldFormat, blockOk, blockBad }
+  // (D) SLOT-SCOPED: the SAME consistent block, but the wire also carries the composition's own tools (`read`, `edit`).
+  // The block names its slot (the pack) and owes NOTHING to the composition, so this must stay GREEN — while a pack name
+  // missing from the wire must still go red (case C). This is the rule that made six real member sessions report three
+  // false REDs on run 3 (measured: wire 53, block 43, extraOnWire = the 10 composition tools).
+  const blockComposition = writeFixture(root, 'session-block-composition', [
+    { type: 'request/header', data: { header: { tools: [{ name: 'vibe_a' }, { name: 'read' }, { name: 'edit' }] } } },
+    { message: { role: 'user', content: [{ type: 'text', text: '# role\n【本轮面向的成员】代号：member-x\n\n【本轮可用的工具｜成员】\n· vibe_a —— a tool\n· vibe_static_only —— the superseded static list, long enough to be read as a prompt\n' }] } },
+    { content: [{ type: 'text', text: '# runtime\n【本轮你实际能调用的工具｜member】1 个：vibe_a（组合自带的工具不在本块的职责内）' }], source: { kind: 'system-prompt' }, id: 'ctx-composition' },
+  ])
+  return { root, oldFormat, blockOk, blockBad, blockComposition }
 }
 
 function runSelftest() {
@@ -456,6 +509,17 @@ function runSelftest() {
     const badOut = render(bad)
     ok(/RED 同源块与 wire 不一致/.test(badOut) && /blockOnly=\[vibe_ghost\]/.test(badOut) && /wireOnly=\[vibe_a\]/.test(badOut),
       '★ NEGATIVE render: the finding is NAMED "同源块与 wire 不一致" with both directions (blockOnly=block names not on the wire; wireOnly=wire names absent from the block)', badOut.split('\n').filter((l) => /同源块/.test(l)))
+
+    // ── (D) SLOT SCOPE: composition tools on the wire are NOT the block's business ⇒ still green + an INFO line ─────
+    const comp = analyzeSession(fx.blockComposition)
+    ok(comp.sameSource.present && comp.sameSourceMismatch === false && comp.red === false,
+      '★★ SLOT SCOPE: a block that names its pack slot stays GREEN even though the wire carries the composition\'s own tools',
+      { missing: comp.missingPackFromWire, extraPack: comp.extraPackOnWire, extraComposition: comp.extraCompositionOnWire })
+    ok(comp.extraCompositionOnWire.join(',') === 'edit,read' && comp.extraPackOnWire.length === 0,
+      '★★ the composition tools are reported on their OWN field (not folded into the pack diff)', comp.extraCompositionOnWire)
+    const compOut = render(comp)
+    ok(/INFO wire 上还有组合自带的 2 个工具/.test(compOut) && !/RED /.test(compOut),
+      '★★ the render says INFO for composition tools and prints no RED at all', compOut.split('\n').filter((l) => /AUTO|OK|INFO|RED/.test(l)))
   } finally {
     rmSync(fx.root, { recursive: true, force: true })
   }
@@ -466,7 +530,7 @@ function runSelftest() {
 function main() {
   const argv = process.argv.slice(2)
   if (argv.includes('--selftest')) { runSelftest(); return }
-  const flags = { json: argv.includes('--json') }
+  const flags = { json: argv.includes('--json'), bySession: argv.includes('--by-session') }
   const get = (name) => { const i = argv.indexOf(name); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : null }
   flags.member = get('--member')
   const root = get('--root')
@@ -477,6 +541,34 @@ function main() {
     process.exit(2)
   }
   const files = sessionFiles(input)
+  // ★★★ ONE TRANSCRIPT, MANY SESSIONS. Under `deliverMode:'subagents'` the office and every member child write into the
+  // same jsonl, so "the session" is not the file. `--by-session` analyses each id on its own: its own wire, its own
+  // prompt, its own REDs. Without it the reader keeps the old whole-file behaviour (and can pair two sessions' data).
+  const discovered = []
+  for (const f of files) {
+    const probe = analyzeSession(f, { memberFilter: flags.member })
+    if (probe) for (const id of probe.sessionIds) discovered.push({ file: f, session: id })
+  }
+  const multi = new Set(discovered.map((d) => d.file + '::' + d.session)).size > files.length
+  if (flags.bySession && multi) {
+    const out = []
+    for (const d of discovered) {
+      const one = analyzeSession(d.file, { memberFilter: flags.member, sessionFilter: d.session })
+      if (one) out.push(one)
+    }
+    if (!out.length) { console.error('no session content found under ' + input); process.exit(2) }
+    if (flags.json) { console.log(JSON.stringify({ source: input, bySession: true, sessions: out }, null, 2)) }
+    else {
+      for (const s of out) {
+        console.log('── session ' + s.sessionId + ' ──')
+        console.log(render(s))
+      }
+      const red = out.filter((s) => s.red).length
+      console.log('SUMMARY: ' + out.length + ' session(s) in ' + files.length + ' file(s), ' + red + ' with RED checks')
+    }
+    process.exitCode = out.some((s) => s.red) ? 1 : 0
+    return
+  }
   const sessions = files.map((f) => analyzeSession(f, { memberFilter: flags.member })).filter(Boolean)
   if (!sessions.length) {
     console.error('no sessions found under ' + input + (flags.member ? ' for member ' + flags.member : ''))
@@ -499,4 +591,10 @@ console.log('SUMMARY: ' + sessions.length + ' session(s), ' + red + ' with RED c
   process.exitCode = sessions.some((s) => s.red) ? 1 : 0
 }
 
-main()
+// ★ A module that EXPORTS `analyzeSession` must be importable: calling main() unconditionally made every importer run
+// the CLI (measured while writing this: importing it from a one-liner printed `usage: node scripts/slv-inspect.mjs`).
+// The guard keeps `node scripts/slv-inspect.mjs …` working and lets a test or a probe reuse the analysis.
+const invokedDirectly = (() => {
+  try { return import.meta.url === pathToFileURL(process.argv[1] || '').href } catch { return true }
+})()
+if (invokedDirectly) main()

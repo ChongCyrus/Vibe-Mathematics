@@ -157,6 +157,37 @@ ok(oldAnon.ok === false && oldAnon.code === 'VMU_NO_SUCH_OBJECT',
   'and the synthetic anon-1 no longer exists in this shape (the fix is behavioural, not cosmetic)', oldAnon.code)
 
 console.log('')
+console.log('=== 7. ACTIVATION DELIVERY: the prompt went to a child, so the refusal must NAME that (run 42, ㉝.2 ③) ===')
+// ★★ RUN 42 (the institute's own report): with `deliverMode:"subagents"` every `step` handed the assembled prompt to a
+// child session and returned no text here, so `op:"prompt"` answered "nothing has been assembled in this process yet" —
+// which reads like a caller mistake instead of a property of the delivery mode, and sent the institute looking for a bug
+// in its own call. The refusal now names the mode and the remedy, and the field it names must match what actually happened.
+const tool5 = makeTurnSpec({
+  param,
+  refused,
+  TOOL_NAMES: { turn: 'vibe_vmu_turn' },
+  kernel: {
+    turn: {
+      status: () => ({ ok: true }),
+      step: async () => ({ ok: true, awaiting: false, deliveryPath: 'activation', childId: 'child-9' }),
+    },
+  },
+})
+await tool5.run({ op: 'step', members: ['member-1'] })
+const activationPage = await tool5.run({ op: 'prompt' })
+ok(activationPage.ok === false && activationPage.code === 'VMU_STATE',
+  '★★★ R42-paging: after an ACTIVATION round, paging refuses by name instead of pretending nothing happened', activationPage.code)
+ok(/ACTIVATION mode/.test(String(activationPage.message)) && /child session/.test(String(activationPage.message)),
+  '★★ and the message names the mode and where the prompt went', activationPage.message)
+ok(/deliverMode:"caller"/.test(String(activationPage.hint)),
+  '★★ the hint names the remedy (the caller-played route is the one paging covers)', activationPage.hint)
+const tool6 = makeTurnSpec({ param, refused, TOOL_NAMES: { turn: 'vibe_vmu_turn' },
+  kernel: { turn: { status: () => ({ ok: true }), step: async () => ({ ok: true }) } } })
+const untouched = await tool6.run({ op: 'prompt' })
+ok(untouched.ok === false && /has been assembled in this process yet/.test(String(untouched.message)),
+  '★ a process with NO round yet still gets the plain refusal (the new sentence is not applied blindly)', untouched.message)
+
+console.log('')
 console.log(failed === 0
   ? '=== VMU TURN PROMPT PAGING: ' + passed + ' passed, 0 failed ==='
   : '=== VMU TURN PROMPT PAGING: ' + passed + ' passed, ' + failed + ' failed ===\n' + failures.join('\n'))

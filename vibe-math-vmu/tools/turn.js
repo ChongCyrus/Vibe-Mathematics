@@ -24,6 +24,11 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
     // the call that produced it returned. Bounded to the last few turns; an unknown turn is refused by name.
     const PROMPT_CACHE_LIMIT = 6
     const promptCache = new Map()
+    // ★★ LIVE RUN 42 (the institute's own report, ㉝.2 ③): under activation (subagents) delivery the assembled prompt is
+    // handed to the CHILD session, so this face never receives it and `op:"prompt"` could only say "nothing has been
+    // assembled in this process yet" — a sentence that reads like a bug in the caller rather than a property of the
+    // delivery mode. The mode is recorded from what the last step actually handed back, so the refusal can name it.
+    let lastPromptMode = null
     // ★ ROUND 32 (run-32 report, readability item 1): the TURN store mints `t-<n>` and so does the TASK board, from
     // separate counters — `vibe_v5_hire` returns `task.id: "t-1"` while `vibe_vmu_turn` returns `memberPrompt.turnId: "t-1"`.
     // The ids cannot be renamed without invalidating every stored id, so the PROMPT side names its own table here; the
@@ -63,6 +68,10 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         promptCache.delete(id)
         promptCache.set(id, text)
         while (promptCache.size > PROMPT_CACHE_LIMIT) promptCache.delete(promptCache.keys().next().value)
+        lastPromptMode = 'caller'
+      } else if (out && typeof out === 'object' && out.ok !== false) {
+        // A round really happened and handed the text to a child session instead of returning it.
+        lastPromptMode = 'activation'
       }
       return out
     }
@@ -120,10 +129,13 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         let text = null
         if (id === null) {
           if (promptCache.size === 0) {
+            if (lastPromptMode === 'activation') {
+              return refused('VMU_STATE', 'no member prompt was RETAINED: this face delivers in ACTIVATION mode, so the assembled prompt was handed to the child session and never returned here',
+                'paging (op:"prompt") covers the CALLER-PLAYED route - set `vmu.turn.deliverMode:"caller"` and re-run to page prompts; the activation receipt names the child it went to')
+            }
             return refused('VMU_STATE', 'no member prompt has been assembled in this process yet, so there is nothing to page',
               'run op:"step" first - the prompt that step hands you is the one this op pages')
-          }
-          id = Array.from(promptCache.keys()).pop()
+          }          id = Array.from(promptCache.keys()).pop()
           text = promptCache.get(id)
         } else {
           text = promptCache.get(id) || null

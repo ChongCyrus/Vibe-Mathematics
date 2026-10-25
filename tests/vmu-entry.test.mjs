@@ -635,6 +635,21 @@ if (SELF_PROBE) {
   let err = null
   try { kernel.settingsView()['vmu.safety.pathPolicy'] = 'allow-all' } catch (e) { err = e }
   ok(err && err.code === 'VMU_NOT_PERMITTED', 'entry: a consumer cannot write kernel settings through the view', err && err.code)
+  // ★★★ LIVE RUN 42 (the institute's own report, ㉝.1 item (c)2): it wrote `vmu.turn.deliverMode:"caller"`, the receipt
+  // answered `applied:"immediate"` / `requiresRestart:false`, and the run kept delivering on activation. The blanket
+  // `vmu.turn.*` live-reader prefix promised liveness for a family that contains a construction-read exception.
+  const r4 = kernel.setSettingsValue('vmu.turn.deliverMode', 'caller', { by: 'office' })
+  ok(r4.requiresRestart === true, 'entry/R42: a construction-read key does NOT promise immediate effect',
+    JSON.stringify({ restart: r4.requiresRestart, applied: r4.applied }))
+  ok(r4.applied === 'next-session' && r4.liveReadBy.length === 0,
+    'entry/R42: the receipt reports no measured live reader for it', JSON.stringify({ applied: r4.applied, liveReadBy: r4.liveReadBy }))
+  ok(typeof r4.constructionOnly === 'string' && /construction|shadows this key/.test(r4.constructionOnly) && /next start/.test(String(r4.note)),
+    'entry/R42: and NAMES why (the exception travels with the receipt, not with the caller\'s memory)',
+    JSON.stringify({ constructionOnly: r4.constructionOnly, note: r4.note }))
+  const r5 = kernel.setSettingsValue('vmu.turn.leaderId', 'member-1', { by: 'office' })
+  ok(r5.liveReadBy.length > 0 && r5.requiresRestart === false,
+    'entry/R42[+]: a genuine prompt-variable key in the SAME family is still live (the exception did not become the rule)',
+    JSON.stringify({ liveReadBy: r5.liveReadBy, restart: r5.requiresRestart }))
 }
 
 // ---- E-8 (task-170): the guard faces are declared, and the production path really reaches them ---------

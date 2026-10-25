@@ -203,7 +203,16 @@ export const LIVE_READERS = Object.freeze({
   'vmu.ids.': 'kernel/ids (per mint)',
   'vmu.turn.': 'kernel/prompt via a {{ setting:<key> }} variable (per assembly)',
 })
-const liveReadersOf = (key) => Object.entries(LIVE_READERS).filter(([p]) => String(key).startsWith(p)).map(([, who]) => who)
+// ★★★ LIVE RUN 42 (the institute's own report, ㉝.1 item (c)2): the `vmu.turn.` prefix above claimed a LIVE reader for
+// EVERY vmu.turn.* key, so a write to `vmu.turn.deliverMode` answered `requiresRestart:false` / `applied:"immediate"` —
+// while the delivery mode is resolved ONCE, at construction, by host-deliver.js (config first, then the setting). The
+// measured consequence: the institute set it to `caller`, the receipt promised immediate effect, and the run kept
+// running activation delivery. A prefix claim is a promise about a FAMILY, and a family always has exceptions; they are
+// named here instead of being hoped away.
+export const CONSTRUCTION_ONLY_KEYS = Object.freeze({
+  'vmu.turn.deliverMode': 'resolved once at construction by host-deliver.js (config.vmu.deliverMode > config.deliverMode > this setting > the subagents default), so a config-declared mode shadows this key and a runtime write takes effect only on the next start',
+})
+const liveReadersOf = (key) => (CONSTRUCTION_ONLY_KEYS[key] ? [] : Object.entries(LIVE_READERS).filter(([p]) => String(key).startsWith(p)).map(([, who]) => who))
 export const APPLIES = Object.freeze({
   H0: 'immediately',
   H1: 'next turn',
@@ -2921,6 +2930,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // the NEXT TURN. The MEASURED live readers are now part of the verdict: an H2 key that has one is NOT a restart.
       const liveReadBy = liveReadersOf(key)
       const requiresRestart = hot === 'H2' && liveReadBy.length === 0
+      const constructionOnly = CONSTRUCTION_ONLY_KEYS[key] || null
       const receipt = {
         ok: true, key, source: 'runtime', hot, who: g.who, ownerCheck: g.ownerCheck,
         // F3: `appliesAt` must agree with `requiresRestart` - an H2 key with a MEASURED live reader is not "next
@@ -2934,15 +2944,20 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         pendingConsumers,
         // F3: WHICH live readers were measured for this key (empty ⇒ the declared class is the whole truth).
         liveReadBy,
+        // ★ LIVE RUN 42: the key has NO live reader BY DESIGN, and the reason travels with the receipt — the alternative
+        // was a `vmu.turn.*` prefix promising liveness for a family that contains this exception.
+        constructionOnly,
         value: value === undefined ? null : value,
         at: clock(),
-        note: requiresRestart
+        note: constructionOnly
+          ? 'stored now, takes effect on the next start: ' + constructionOnly
+          : (requiresRestart
           ? (liveReadBy.length
             ? 'declared hot class ' + hot + ': stored now and read at construction only by the faces that captured it; MEASURED: it also has LIVE readers, so it is already in force in this session for ' + liveReadBy.join(', ') + ' (the receipt neither under- nor over-reports)'
             : 'hot class ' + hot + ': this key is read ONCE at construction, so the value is stored NOW and takes effect on the next start (requiresRestart:true — the receipt does not claim more)')
           : (pendingConsumers.length
             ? 'applied live to ' + (liveApplied.join(', ') || '(the settings object only)') + '; NOT yet visible to ' + pendingConsumers.join(', ') + ' (they captured the option at construction — disclosed, not claimed)'
-            : 'applied immediately (hot class ' + String(hot) + '): every consumer reads this key live'),
+            : 'applied immediately (hot class ' + String(hot) + '): every consumer reads this key live')),
       }
       // ROUND 7 / task-57: the caller's `reason` is part of the record (the ledger answers "why", not only "who").
       runtimeWrites.push({ key, hot, by, reason: reason === null || reason === undefined ? null : String(reason), ownerCheck: g.ownerCheck, requiresRestart, liveApplied: liveApplied.slice(), pendingConsumers: pendingConsumers.slice(), at: receipt.at, action: 'set' })

@@ -27,6 +27,17 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       || (typeof config.deliverMode === 'string' && config.deliverMode)
       || (settings && typeof settings['vmu.turn.deliverMode'] === 'string' && settings['vmu.turn.deliverMode'])
       || 'subagents'
+    // ★★★ LIVE RUN 42 (the institute's own report, ㉝.1 item (c)2): it set `vmu.turn.deliverMode:"caller"`, the receipt
+    // said `applied:"immediate"` / `requiresRestart:false`, and the run kept delivery on activation — because this
+    // resolution reads the CONFIG FIRST and is captured here, ONCE, at construction. The mode therefore never had a
+    // live reader, and a config-declared mode shadows the setting entirely. Two things now make that readable instead
+    // of inferable: the SOURCE is named on the seam (`deliverModeSource`), and the kernel's settings receipt scores this
+    // key as construction-read (no live reader) instead of inheriting the blanket `vmu.turn.*` claim.
+    const deliverModeSource = (config.vmu && typeof config.vmu.deliverMode === 'string' && config.vmu.deliverMode)
+      ? 'config.vmu.deliverMode'
+      : ((typeof config.deliverMode === 'string' && config.deliverMode) ? 'config.deliverMode'
+        : ((settings && typeof settings['vmu.turn.deliverMode'] === 'string' && settings['vmu.turn.deliverMode'] !== '')
+          ? 'setting:vmu.turn.deliverMode' : 'default:subagents'))
     if (declaredDeliverMode !== 'subagents' && declaredDeliverMode !== 'caller') {
       const err = new Error('unknown delivery mode: ' + String(declaredDeliverMode))
       err.code = 'VMU_INVALID_ARGUMENT'
@@ -34,6 +45,17 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       throw err
     }
     const callerSeam = declaredDeliverMode === 'caller' ? deliverByReturning() : null
+    // Attached to whichever seam object is returned, so a diagnostic can answer "why did setting
+    // vmu.turn.deliverMode change nothing?" from a reading instead of from re-deriving the precedence in source.
+    const withMode = (seam) => {
+      try {
+        seam.deliverMode = declaredDeliverMode
+        seam.deliverModeSource = deliverModeSource
+        seam.deliverModeMeans = 'the mode was resolved ONCE, at construction, reading ' + deliverModeSource +
+          ' - a config-declared mode shadows the setting vmu.turn.deliverMode, so a runtime write to that key cannot change this seam'
+      } catch { /* a frozen seam keeps its behaviour; these fields are a reading, not a capability */ }
+      return seam
+    }
 
   // ★★★★★★★ ROUND 87 — IN CALLER MODE THIS FUNCTION MUST **BE** THE SEAM, NOT A WRAPPER AROUND IT.
   // MEASURED ON A REAL MACHINE: the refusals below reached it twenty-one times in a single run -
@@ -45,7 +67,7 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
   // (`stopReason:"supplied-by-caller"`: 0 occurrences, `deliveryPath:"caller"`: 0). A wrapper that hides the capability
   // it wraps is the whole bug, so in caller mode the seam ITSELF is returned - carrying `supply`, `pending` and
   // `awaiting` with it - and the subagents bridge keeps its own wrapper below.
-  if (callerSeam) return callerSeam
+  if (callerSeam) return withMode(callerSeam)
     const turnDeliver = async ({ turn, text } = {}) => {
       // ★ ROUND 80: DECLARED FIRST, BECAUSE THE REFUSAL BELOW READS THEM. T1 caught a temporal dead zone here: the
       // missing-seam hint reports parentKind and the agents keys, but both were declared further down, so that path
@@ -301,5 +323,5 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
     // `kernel/turn/index.js`'s, and the service is resolved AT CALL TIME (a plugin's `apply` can run before the
     // subagents service mounts, and binding "absent" now would refuse every command forever). A host without the verb
     // produces the bridge's NAMED refusal; the kernel reports the seam as absent in `status().seams.sendMessage/interrupt`.
-  return turnDeliver
+  return withMode(turnDeliver)
 }

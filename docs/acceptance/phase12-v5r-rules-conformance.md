@@ -3264,3 +3264,61 @@ clone patch 里写着 `vmu: { deliverMode: subagents, deliverPreset: vibe-math-v
 用 `edit` 工具改 `.ps1` 会**丢掉 BOM**；Windows PowerShell 5.1 把无 BOM 脚本按 ANSI 解码，脚本里的中文路径变成
 `D:\wd\vibemath寮€鍙慭Vibe-Mathematics`，`git archive` 直接失败。修法：`\ufeff` 前缀写回，并断言 BOM 存在。
 这与 §76.3「写入通道必须是 UTF-8」是同一条律：**任何带非 ASCII 的脚本/文件，编码是它的一部分**。
+
+## §83 run 42 的三条残余：两条读数缺陷与一条「机制存在但用不到」的收口
+
+**真机依据**：`D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-113251.jsonl`（54,201 行 / 5 个 session / build `82384d3d`），
+`cast=true`，五条 `turn` 回执，`SUMMARY: 1 session(s), 0 with RED checks`，每个 session 单独 `slv-inspect` 均为 0 RED。
+所办自己的验收报告给了 `本轮无实质残余：否` 并把残余写成三条——这一次它是对的。
+
+### §83.1 交办要求了 `requestedMembers`，而回执里没有任何一条带这个字段
+
+报告原文（㉝.1 item (c)1）：只有 `requestedMembersSource`，没有 `requestedMembers`。
+测量确认：`vibe-math-vmu/kernel/turn/index.js` 里这个字段只出现在 SETTLEMENT 分支（`:2149`），而 activation 交付下
+这条路不可达——真正会走的 `step()` 回执只有散落的标量与 `selectionIgnored`。
+
+修法不是补一个字符串，而是承认两个问题不同：**「调用方要了谁」与「这一步实际给谁发了提示词」不是同一个问题，一个字段
+回答不了两个问题**（`membersInferred` 的语义让 inferred 列表不算 request，这是 §run-40 的结论，不能推翻）。
+于是 `selectionReadings` 现在同时带：
+- `requestedMembers`（调用方要的；inferred 时**刻意为空**）
+- `resolvedMembers`（本步真实提示的席位列表）
+- `requestedMembersNote`（两个分支各一句话，说明为什么一个空一个不空）
+
+门禁 `tests/vmu-turn.test.mjs` R42a–R42c：default 分支 `requestedMembers:[]` **且** `resolvedMembers` 是全册；
+explicit 分支两个列表相等；`requestedMembersSource` 与 note 同时可读。套件 **250/0**。
+
+### §83.2 `? applied:"immediate"` 但模式没变：族级承诺容不下例外
+
+报告原文（㉝.1 item (c)2）：写 `vmu.turn.deliverMode:"caller"`，回执说 `hot:"H2"` / `applied:"immediate"` /
+`requiresRestart:false`，而这一轮继续走 activation。
+根因两层：`vibe-math-vmu/kernel/index.js` 的 `LIVE_READERS` 用 **前缀** `'vmu.turn.'` 给整族键承诺了活读点；
+而 `vibe-math-vmu/host-deliver.js` 在**构造时读一次**（`config.vmu.deliverMode > config.deliverMode > 该设置 > 默认`），
+所以配置声明的模式会把运行时写入整段遮住。
+
+修法：
+- 新增 `CONSTRUCTION_ONLY_KEYS`（首条 `vmu.turn.deliverMode`，带原因句），`liveReadersOf` 对它返回空 ⇒ 回执改口为
+  `requiresRestart:true` / `applied:"next-session"`，并把 `constructionOnly` 与原因写进回执（例外跟着回执走，不靠记忆）；
+- `resolveDeliver` 把解析出的模式与**来源**挂到它返回的那条 seam 上（`deliverMode` / `deliverModeSource` /
+  `deliverModeMeans`），于是「为什么设置了没变」是一次读数而不是一次推理。
+
+门禁 `tests/vmu-entry.test.mjs`：`requiresRestart === true`、`liveReadBy.length === 0`、`constructionOnly` 含原因、
+note 含「next start」，并且**同族一个真正被提示词变量读取的键仍判活**（例外没有变成规则）。套件 **155/0**，
+且该断言被反向证明过一次会红（把期望值改错 ⇒ 1 failed）。
+
+### §83.3 activation 交付下 `op:"prompt"` 无话可说 ⇒ 它现在说出模式
+
+报告原文（㉝.2 ③）：`op:"prompt"` 回 `VMU_STATE`「no member prompt has been assembled in this process yet」，
+而同一轮 `step` 明明发出过提示词——因为 activation 下提示词交给子 session，本 face 从未拿到它。
+修法：face 记录上一个 step 实际交回了什么（`lastPromptMode`），空缓存时的拒绝分成两句——activation 模式明说
+「交给子 session，paging 覆盖 caller 路线，改 `deliverMode:"caller"` 再来翻页」；从未跑过任何回合时仍用原句。
+门禁 `tests/vmu-turn-prompt-paging.test.mjs` 第 7 节：activation 后三种读法（码、message 指模式与去处、hint 指补救），
+且**空进程仍给原句**（新句不是无条件套用）。套件 **33/0**。
+
+### §83.4 教训
+
+1. **族级承诺必须带例外表**：`'vmu.turn.'` 这种前缀在写下的那一刻是对的，在第一个构造期读取者出现时就变成假话。
+2. **「机制存在」不等于「机制用得到」**：paging、`liveReadBy` 都是真的，但在实际交付模式下不可达——这正是红线④
+   「无消费者不给机制」的真机版本，只是消费者换成了**交付模式**。
+3. 所办报告这次的三条都是**读数**问题而非行为问题，仍然算实质残余：审计报告的价值在于它逼着产品把**它自己做过的事**
+   讲清楚，而不是把「跑通了」当成「讲清楚了」。
+

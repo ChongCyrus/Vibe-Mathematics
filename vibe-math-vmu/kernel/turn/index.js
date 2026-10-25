@@ -2180,7 +2180,24 @@ export function createTurnOrchestrator({
     // and `pending: null` (the field the ledger promises) could not say which turn it was. Both are named here: `pending`
     // always says which prompt the caller is holding, `selectionIgnored` appears exactly when that prompt is NOT in the
     // explicit selection (so it is about to be dropped), and `superseded` names the dropped turn instead of losing it.
-    const selectionReadings = { ...selectionReadingsOf(deliver && typeof deliver.pending === 'function' ? deliver.pending() : null, requestedIds), requestedMembersSource: selectionSource }
+    // ★★★ LIVE RUN 42 (the institute's own report, ㉝.1 item (c)1): every `step` receipt carried
+    // `requestedMembersSource` and NONE carried `requestedMembers` — so a caller could read WHICH way the selection was
+    // decided but not WHAT it resolved to, and the one branch that did emit the list (the settlement route, below) was
+    // unreachable under activation delivery. The list is the resolved selection (an empty `members` becomes the
+    // roster-default list), so it is derived here once and spread on every route.
+    const selectionReadings = {
+      ...selectionReadingsOf(deliver && typeof deliver.pending === 'function' ? deliver.pending() : null, requestedIds),
+      requestedMembers: requestedIds.slice(),
+      requestedMembersSource: selectionSource,
+      // ★★ TWO lists, because the two questions are different and one field cannot answer both: `requestedMembers` is
+      // what the CALLER asked for (empty when the face inferred the roster — §run-40 made that distinction load-bearing
+      // for `selectionIgnored`), `resolvedMembers` is the list this step actually prompts. Without the second list a
+      // caller reading `requestedMembersSource:'roster-default'` still could not see WHICH seats the default resolved to.
+      resolvedMembers: selection.map((m) => m.id),
+      requestedMembersNote: selectionSource === 'roster-default'
+        ? 'no `members` was given, so requestedMembers is EMPTY by design (an inferred selection is not a request) and resolvedMembers is the roster default this step prompts'
+        : 'the caller named `members`; requestedMembers and resolvedMembers are the same list after normalisation (strings, {id} and {member} all land as ids)',
+    }
     const spec = nextTurn({ members, phase, why, nextStep, role })
     if (!spec) return { ok: true, receipt: null, stopped: 'no-members', ...selectionReadings }
     // ★ G7 ④: clear this member's tool-call index at the START of the step, so the receipt reports THIS turn only.
