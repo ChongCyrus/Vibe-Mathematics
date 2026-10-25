@@ -1541,7 +1541,22 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     for (const id of candidates) {
       try { const a = agents.get(id); if (a) return { agent: a, sessionId: id, reason: null } } catch { /* try next */ }
     }
-    return { agent: null, reason: 'no live Agent for member ' + String(member) + ' (session=' + String(session || '(none learned yet)') + ')' }
+    // ★★ LIVE RUN 15 (the institute's own report, item ⑦): the office read this refusal as "the member never ran" and
+    // concluded 真干活没有发生. It HAD run — activation delivery runs the member in its own kernel, the child session was
+    // learned (memberSession(member) is set on settle), and the child FINISHED, so `agents.get` legitimately finds no
+    // LIVE agent. "none learned yet" was therefore false in exactly the case where the reading mattered: it named the
+    // one state that did NOT happen. A finished child and an unknown child are different facts and must read differently.
+    const learned = typeof session === 'string' && session !== ''
+    return {
+      agent: null,
+      knownSession: learned ? session : null,
+      reason: learned
+        ? 'the child session ' + session + ' that ran member "' + member + '" is no longer live (the turn finished), so there is no live Agent to query'
+        : 'no session has been learned for member "' + String(member) + '" yet (no turn of that member has settled in this process)',
+      means: learned
+        ? 'THIS IS NOT EVIDENCE THAT THE MEMBER DID NOTHING: under activation delivery the member runs in its own kernel, and a finished child cannot be interrogated. Its tool calls happened in that child and are recorded in the child session log — read that (delivery.childId on the settled turn receipt) instead of concluding the member was idle'
+        : 'the member has not taken a turn in this process yet, so its tool table cannot be read from a live Agent; run a turn first (the settled receipt carries delivery.childId)',
+    }
   }
   const applyMemberToolFace = async ({ member, allow = null, deny = null }) => {
     const resolved = resolveMemberAgent(member)
@@ -1828,9 +1843,23 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     /** ★ PHASE 7: what the member's Agent can really see; no live Agent is a NAMED refusal. */
     visibleToolsOf(member) {
       const r = resolveMemberAgent(member)
-      if (!r.agent) return { ok: false, code: 'VMU_NO_SUCH_OBJECT', member: String(member),
-        message: 'no live Agent for member ' + String(member) + ' (session=' + String(r.sessionId || '(none learned yet)') + ')',
-        hint: 'deliver one turn first so the child session id is learned' }
+      if (!r.agent) {
+        // ★★★ LIVE RUN 15 (the institute's own report, item ⑦): the refusal said "(session=(none learned yet))" in a run
+        // that delivered through ACTIVATION, where a child session HAD been learned — the child had simply finished, and a
+        // finished child is not a live Agent. Two different causes wore one message, and the institute read the wrong one
+        // (「成员侧没有子会话」) and concluded the members had not done the work. The cause is now a FIELD, so the reader
+        // is told which of the two actually happened.
+        const learned = kernel && kernel.turn && typeof kernel.turn.memberSession === 'function' ? kernel.turn.memberSession(String(member)) : null
+        const cause = learned ? 'child-session-not-live' : 'no-child-session-yet'
+        return { ok: false, code: 'VMU_NO_SUCH_OBJECT', member: String(member),
+          cause, childId: learned || null, learnedSession: learned || null, liveAgent: false,
+          message: cause === 'child-session-not-live'
+            ? 'member "' + String(member) + '" has a learned child session (' + String(learned) + ') but no LIVE Agent: activation delivery starts a child per turn and a finished child is not queryable'
+            : 'no child session has been learned for member "' + String(member) + '" yet, so there is no live Agent to read',
+          hint: cause === 'child-session-not-live'
+            ? 'the calls that child made are in the CHILD SESSION LOG (' + String(learned) + '); this face reports the live table only, so it cannot answer "what did that turn call"'
+            : 'deliver one turn first so the child session id is learned' }
+      }
       const names = (r.agent.ctx.tools.schemas(r.agent) || []).map((x) => (x && typeof x === 'object' ? (x.name || x.id) : x)).filter((n) => typeof n === 'string')
       return { ok: true, member: String(member), tools: names }
     },

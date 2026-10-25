@@ -132,13 +132,21 @@ export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } 
 }
 
 /** 判断辩论 subject 的形态。三种形态的**满足方式完全不同**，所以先分类再判。 */
-export function classifySubject(subject) {
+export function classifySubject(subject, evidence) {
   const raw = subject === null || subject === undefined ? '' : String(subject).trim()
   if (!raw) return { form: null, raw, note: '空 subject：由 `vibe_v5_meeting` 自己的必填门先拒（本闸不重复）' }
-  // 命题卡 id：records 内核的 id 前缀是 `r-`（kernel/records.js:533 `mint('record','r-')`）。
+  // 命题卡 id 有两条判据：
+  //   ① 形状：records 内核的 id 前缀是 `r-`（kernel/records.js:533 `mint('record','r-')`）；
+  //   ② 证据：调用方已经按 id 读到了卡（`evidence.card` / `evidence.verified`）⇒ 这个名字就是卡，形状无关紧要。
+  // ★ ② 是 LIVE RUN 15 的教训：院士把包自己的命题卡 id `p-chair-rail` 当 subject 传进来，而它以 `p-` 开头、不带
+  //   扩展名，于是落到"一句话命题"分支、回执写 `provenance:"none"`，代理据此判「框架把卡当成了短语」。形状判不了
+  //   的名字，证据能判；两者都没有时不许猜成"已经是卡"（那会给出一个看起来严的假闸）。
   if (/^r-[A-Za-z0-9][A-Za-z0-9_-]*$/.test(raw)) return { form: 'card', raw, note: null }
-  // 文件引用：路径分隔符、或是已知的证明/笔记扩展名（规则原文："辩论对象的文件引用"）。
-  if (/[\\/]/.test(raw) || /\.(md|lean|txt|tex|json)$/i.test(raw)) return { form: 'file', raw, note: null }
+  const ev = evidence && typeof evidence === 'object' ? evidence : {}
+  if (ev.card || ev.verified) return { form: 'card', raw, note: null, identifiedBy: 'evidence' }
+  // 文件引用：路径分隔符，或其末段是一份带扩展名的文件（规则原文："辩论对象的文件引用"）。
+  // ★ 也认 `名字.md#锚点`：run 15 里成员写的是 `p-chair-rail.md#证明尝试`，扩展名在锚点之前，旧正则漏掉这种形状。
+  if (/[\\/]/.test(raw) || /\.(md|lean|txt|tex|json)(#|$)/i.test(raw)) return { form: 'file', raw, note: null }
   return { form: 'statement', raw, note: '一句话命题：无法承载证明引用' }
 }
 
@@ -167,13 +175,20 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
   if (!meeting || typeInfo.type !== 'debate') {
     return allow({ applicable: false, form: null, proofChecked: false, note: '会议类型不是 debate（type=' + String(typeInfo.type) + '）：本闸只约束辩论会议的对象' })
   }
-  const cls = classifySubject(subject)
+  const cls = classifySubject(subject, evidence)
   if (!cls.form) return allow({ applicable: false, form: null, proofChecked: false, note: cls.note })
   const ev = evidence || {}
 
   if (cls.form === 'statement') {
-    return allow({ form: 'statement', subject: cls.raw, proofChecked: false, provenance: 'none',
-      note: '一句话命题没有可寻址的载体，本闸对它**无法**核证明（合法放行，但回执如实记 provenance:none）；要受「正式证明已写完」约束，请把 subject 改成命题卡 id 或一个文件引用' })
+    // ★ LIVE RUN 15: a bare identifier that is neither shaped like a kernel record id (`r-…`) nor carries a dot/slash is
+    // AMBIGUOUS — it may be the pack's own card id (`p-chair-rail`), a file stem, or a one-line proposition. This gate
+    // cannot tell them apart without evidence, and the old receipt said `form:"statement", provenance:"none"` flatly,
+    // which a reader could only read as "the framework treated a card as a phrase". The ambiguity is NAMED instead.
+    const looksLikeIdentifier = /^[A-Za-z][A-Za-z0-9_-]*$/.test(cls.raw)
+    return allow({ form: 'statement', subject: cls.raw, proofChecked: false, provenance: 'none', looksLikeIdentifier,
+      note: looksLikeIdentifier
+        ? '这个 subject 是一个裸名字（没有扩展名、没有路径分隔、也不是内核卡片 id `r-…`），本闸无法判定它是一句话命题、一个文件名，还是包自己的卡片 id ⇒ 按"一句话命题"放行，回执如实记 provenance:none；如果它其实是卡片，先 `vibe_v5_read_library {id}` 读到该卡并把读结果作为 evidence（本闸见到卡片证据就按卡片判）'
+        : '一句话命题没有可寻址的载体，本闸对它**无法**核证明（合法放行，但回执如实记 provenance:none）；要受「正式证明已写完」约束，请把 subject 改成命题卡 id 或一个文件引用' })
   }
 
   if (cls.form === 'file') {

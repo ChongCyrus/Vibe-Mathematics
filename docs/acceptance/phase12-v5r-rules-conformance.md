@@ -4005,3 +4005,60 @@ run 13（build `acafb044` 前一个提交，transcript `D:\wd\vibemath开发\_on
 **为什么四个都要修。** 少一个就不是「成员看得见研究所」：只修 1 ⇒ 从没写过；只修 2 ⇒ 首次写进去了但后启内核读不到；只修 1+2 ⇒ 已启动内核永久陈旧；只修 1+2+4 ⇒ 重载后 restore 被拒、花名册纹丝不动。
 
 **边界（诚实）。** ① 这条链让**同一个持久化根**上的多个内核收敛到同一份花名册；跨机器、跨进程共享同一文件仍靠 store 的 file lock（未在本轮验证）。② replace:true 的代价是「本内核未持久化的本地改动会被磁盘覆盖」——在写穿成功的前提下不存在（写失败会被计数并可在 resume 读到），但若部署把写穿关掉（vmu.resume.writeThrough=false），这条 seam 就不该承受 reload。③ meetings/ballotbox/minutes/chat/panel/budget 走的是同一条链（同一个 attach 循环 + 同一个 reload 钩子），但它们**没有** declareSlots 那样的「晚创建」问题，因此只有 3/4 两个断点影响到它们；本轮没有为它们单独写探针，只跑了邻居套件（members 42/0、meetings 214/0、turn 257/0、host 199/0、kernel 260/0、store-coherence 12/0）。
+
+## §105 run 15 的三条读数：两处谎报被改成如实，一处判据缺口被补成"认证据"
+
+run 15（`D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-210042.jsonl`，build `b5e761ca`，10 个会话，0 RED）**首次证明
+成员真的看得见研究所**：子在席 ∅→9，`roster`/`session` 读数不再骗人；60 个子的工具调用里 38 个 `vibe_v5_*` 成功。
+但它的自验收报告同时指出两处**读数在说谎**，这轮把它们改成如实。
+
+### §105.1 ⑦「成员侧 0 工具调用」= 一个作用域的值冒充了另一个作用域
+
+每个 settled 的父回执都写 `toolCalls: [], toolCallsTotal: 0`，而**同一份 transcript** 里子会话带着 38,674 个工具事件。
+父核数的是自己的调用表——activation 投递下它永远不会变——却对被问的"成员到底调了什么"一言不发。
+
+- `kernel/turn/index.js` 新增导出 `toolCallsScopeOf({ deliveryPath, calls, statuses, childTurnId, childSessionId })`：
+  返回 `{ scope, toolCalls, toolCallsTotal, toolCallsDetail, toolCallsExplain, memberToolCalls, memberToolCallsTotal,
+  memberToolCallsMeans, childTurnId, childSessionId, toolCallsReadFrom }`；父回执上 `toolCallsScope:"parent-kernel"`，
+  并显式声明"这一层数的是父核的调用表，成员侧的调用在子会话日志里"。
+- `vibe_vmu_tools({member})` 的 `source:"no-live-agent"` 说明不再无条件说"caller 投递不产生子会话"——
+  那句话在 activation 下是假的。现在按原因分支：没学到子会话 / 学到了但没读到进程内工具表 / 父核无工具表。
+
+### §105.2 ① 自动开会路径上「会议只能由院士召开」被破坏 —— 而且是**静默的**
+
+transcript 里有一场 `{chair:null, roster:0}` 的会：`v5r.stall-meeting` 从 `control/idle` 开的。核的院士闸覆盖不到它
+（无主席的会根本没装权威可查，见 §6.52），所以这条规则要在**知道席位的那一层**补完。本轮裁决：
+
+- **有院士在席** ⇒ 由该院士权威召开，并在**会议自身**记录 `convenedBy:"v5r.stall-meeting"`（触发是自动的，不是主席自己召集的）；
+- **无院士在席**（无领导的所，v5r 支持这种配置，而 stall 规则的存在意义就是让空闲的所还能开会）⇒ **仍然召开，但把例外说出来**：
+  `chair:null` + `chairless:true` + `chairlessNote` 明写"没有院士权威，这场会不能被主席关闭/推进"；
+  `meetingView().convenedByMeans` 也据此分成三支（无来源 / 有主席自动触发 / 无主席自动触发）。
+
+★ 为什么不是"无主席就具名拒"：具名拒会把无领导的所永久冻住，而那正是 v5r 想避免的；为什么不是"照旧静默开"：
+那就是 run 15 抓到的缺陷。**把例外写进读数**是唯一既不冻住、也不说谎的第三条路。
+
+### §105.3 ③ 「框架把卡片 id 当成了短语」= 判据只有形状，没有证据
+
+院士把包自己的命题卡 id `p-chair-rail` 当辩论对象传进来，回执写 `form:"statement", provenance:"none"`。
+根因：`classifySubject()` 只认内核卡片 id 的形状（`/^r-/`），而 v5r 的卡 id 是 `p-…`；于是它落到"一句话命题"分支。
+
+- `classifySubject(subject, evidence)` 现在有**两条**卡片判据：形状（`r-…`）**或**证据（`evidence.card`/`evidence.verified` 存在）。
+- 文件形态也补了一种真实写法：`名字.md#锚点`（run 15 里成员写的是 `p-chair-rail.md#证明尝试`）。
+- 没有证据时仍按"一句话命题"放行（规则允许的形态），但回执**把歧义说出来**：`looksLikeIdentifier:true` + 说明
+  「先 `vibe_v5_read_library {id}` 读到卡、把读结果当 evidence，本闸见到卡片证据就按卡片判」。
+
+### §105.4 门禁与验证
+
+- `tests/vmu-run15-findings.test.mjs` 29 → **42 断言 0 失败**（新增 ③ 的 13 条：形状/证据两种识别、`#锚点` 文件、
+  有证据按卡判、无证据标 `looksLikeIdentifier`、普通会议不适用）。
+- 邻居：`vmu-debate-subject-proof` 42/0 · `vmu-verified-gates` 103/0 · `vmu-stall-meeting` 18/0 · `vmu-meetings` 214/0 ·
+  `vmu-meeting-types` 142/0 · `vmu-turn` 257/0 · `vmu-host` 199/0 · `vmu-kernel` 260/0。
+- `regen-all --check` 16/16 in sync。
+
+### §105.5 仍然开着的（下一轮要收）
+
+- **④「法定票数 m 没被设置」**：这条是**简报自己的缺陷**——brief 里没有设 `vmu.meetings.quorumMin`，而默认 0 在
+  全部出席时确实没有下限。产品侧的读数是对的；下一轮简报要显式设 m 并让代理核对。
+- **⑧ 本场已结的辩论没有被判结题票」**：代理说它没等到 `open` 类型为 debate 的会的投票窗口；需在下一轮简报里给足窗口
+  与显式步数（同上，属简报口径）。
+- 下一轮真机跑：全新 workspace，brief 设 `vmu.meetings.quorumMin:2`、给辩论结题留出显式两步，再读所办自己的报告。

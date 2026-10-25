@@ -2311,9 +2311,22 @@ export function createTurnOrchestrator({
       // ★ ROUND 88: and it NAMES THE ROUTE that handed the prompt back, so "which delivery path ran" is read from the
       // receipt the agent actually sees rather than inferred from prose in a transcript.
       const tcs = toolCallSummary()
+      // ★★★★★★★ LIVE RUN 15 (the institute's own report, item ⑦): THE COUNT WAS SILENTLY SCOPED AND THE INSTITUTE READ IT
+      // AS A FACT ABOUT THE MEMBER. Activation delivery runs the member in its OWN kernel instance, so this kernel sees
+      // ZERO of its calls and the receipt said `toolCalls: [], toolCallsTotal: 0` with no scope — the office concluded
+      // 「真干活没有发生」 while the child session had made tens of thousands of calls. An empty list is a claim, and this
+      // one was false in the only mode where it matters. The count stays (it is honest about THIS kernel) and the scope
+      // travels with it, in the same shape `skippedDetail`/`triedEngines`/`records.list` truncation already uses.
+      const deliveredThrough = r && r.delivery && typeof r.delivery.path === 'string' ? r.delivery.path : null
+      // ★ ANY path except the caller-played one runs the member in a different kernel: `one-shot`, `activation` and
+      // `continuable` all start a child session (the receipt names it in delivery.childId). Listing two of the three by
+      // hand would have re-introduced exactly the defect this comment exists to prevent — a reading correct in the mode
+      // it was measured in and silently wrong in the neighbouring one.
+      const { scope: toolCallsScope, note: toolCallsNote } = toolCallsScopeOf(deliveredThrough)
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,
+        toolCallsScope, toolCallsNote,
         membersFrom: membersFromReading, delegation: r.delivery || null,
         ...selectionReadings }
       return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(),
@@ -2336,6 +2349,7 @@ export function createTurnOrchestrator({
         proseUnparsable: r.proseUnparsable || null,
         instructionDelivered: r.instructionDelivered === true, turn: r.turn.id,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,
+        toolCallsScope, toolCallsNote,
         // ★★ LIVE RUN 46 (the institute's own report, item ㉟.2/㉟.4): `membersFrom` and the delegation block were
         // built one layer down and only ever placed on the AWAITING envelope - but `deliverMode:'subagents'` settles
         // turns, so this deployment's step receipt never returned an awaiting envelope and the two readings were
@@ -2469,6 +2483,34 @@ export const lostTurnState = (turn) => {
     consumed: true,
     reopened: false,
     note: 'the held turn was consumed by this failed apply and is NOT re-opened; the next step starts a new turn. Fields recorded before the failing dispatch (closure vote, bookkeeping) survived.',
+  }
+}
+
+/**
+ * ★★★ LIVE RUN 15 (the institute's own report, item ⑦): WHOSE tool calls does a turn receipt count?
+ *
+ * MEASURED DEFECT: activation delivery runs the member in its own kernel instance, so the parent counted ZERO calls and
+ * the receipt said `toolCalls: [], toolCallsTotal: 0` with no scope. The institute read that as 「成员没有干活」 and
+ * reported the whole turn as not-real, while the child session had in fact made thousands of calls. An empty list is a
+ * CLAIM; this one was false in the only mode where anyone reads it.
+ *
+ * The fix keeps the count (it is honest about THIS kernel) and names its SCOPE, so the number can never again be read as
+ * a statement about the child. Exported and pure for one reason: every branch is reachable from a unit test — the
+ * "a branch no test can reach is a branch nobody has checked" rule this repository applies everywhere else.
+ *
+ * @param {string|null} deliveryPath `r.delivery.path` — 'caller' | 'one-shot' | 'activation' | 'continuable' | null
+ */
+export const toolCallsScopeOf = (deliveryPath) => {
+  const path = typeof deliveryPath === 'string' && deliveryPath !== '' ? deliveryPath : null
+  if (path === null) {
+    return { scope: 'member-kernel', note: 'deliveryPath is absent on this receipt, so the count cannot be attributed to a kernel; treat it as "this kernel saw N calls" rather than as the member\'s own total' }
+  }
+  if (path === 'caller') {
+    return { scope: 'member-kernel', note: null }
+  }
+  return {
+    scope: 'parent-kernel',
+    note: 'THESE COUNTS ARE THIS KERNEL\'S OWN AND ARE NOT EVIDENCE ABOUT THE MEMBER\'S WORK: delivery.path="' + path + '" ran the member in a separate kernel instance (delivery.childId), so calls it made there are invisible here. Read the child session log for its call list; an empty list here does not mean the member did nothing',
   }
 }
 

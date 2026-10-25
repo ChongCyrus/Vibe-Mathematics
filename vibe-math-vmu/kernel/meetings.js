@@ -1746,6 +1746,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       })
       return {
         ok: true, id: m.id, meeting: m.id, type: m.type, kind: m.kind, state: m.state, stateMeans: MEETING_STATE_MEANING[m.state] || null, reason: m.reason === undefined ? null : m.reason,
+        convenedBy: m.convenedBy === undefined ? null : m.convenedBy,
         title: m.title === undefined ? null : m.title,
         materials: m.materials === undefined ? null : m.materials,
         subject: m.subject === undefined ? null : m.subject,
@@ -1775,6 +1776,17 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         title: m.title === undefined ? null : m.title,
         materials: m.materials === undefined ? null : m.materials,
         subject: m.subject === undefined ? null : m.subject,
+        // ★★★ LIVE RUN 15 (the institute's own report, item ①): `convenedBy` was written by the stall path and readable
+        // only through `summary()` — NOT through this view, which is what `vibe_vmu_meeting { action:"status" }` actually
+        // returns and what the run read. So the field that exists to say 「这场会不是院士召开的」 was unreachable on the
+        // one face a member or the office uses. Same defect family as records.list/read_library: a reading added to one
+        // face and not to the face with the consumer is a mechanism nobody can see.
+        convenedBy: m.convenedBy === undefined ? null : m.convenedBy,
+        convenedByMeans: m.convenedBy === undefined || m.convenedBy === null
+          ? 'the caller of open() is the convener (no other originator is recorded)'
+          : (m.chair === null || m.chair === undefined
+            ? 'this meeting was NOT convened by a member act: "' + String(m.convenedBy) + '" triggered it, and NO chair is seated — it therefore has no chair authority (a chairless, automatically convened meeting)'
+            : 'this meeting was NOT convened by a member act: "' + String(m.convenedBy) + '" triggered it, and `chair` names whose authority seats it'),
         sequence: seqInfo(m),
         // ★ PHASE 12 D1: the schedule's state on the view the live run actually reads.
         scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor,
@@ -1956,7 +1968,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   // Declaring it here is the smallest change that lets `close()` reuse the ONE open implementation — a second open
   // path would have to keep the rails, the ids and the receipts in step by hand, which is how the two-loops confusion
   // earlier in this project started.
-  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null, adoptForeign = false } = {}) {
+  // ★★★ LIVE RUN 15 (the institute's own report, item ①): 「只有院士能召开会议」 was TRUE for every call a member made and
+  // FALSE on the automatic path — the pack's stall middleware opened a meeting from `control/idle`, so the transcript
+  // carried `{chair:null, roster:0, state:"open", reason:"idle for … (v5r stallAutoMeetingMs)"}`. A chairless meeting is
+  // not a defect of the rail (the rail only guards a convene that INSTALLS a chair); it is a missing FACT: who convened.
+  // `convenedBy` names the originator when it is not the caller's own act — 'v5r.stall-meeting' for the automatic path,
+  // null when the caller acted directly. Without it, an automatic meeting and a chair's meeting are indistinguishable.
+  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null, adoptForeign = false, convenedBy = null } = {}) {
 
     const enforced = []
     const ms = at === null ? clock() : atMs(at)
@@ -2103,6 +2121,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       waitStartedAt: null, waitDecisionDue: false,
       // ★ the meeting's OWN wall bound (frozen at open) plus who convened it; `extend()` raises the first.
       wallLimitMs: K.hardLimitMs, openedBy: (actor === null || actor === undefined) ? null : String(actor), extendedMs: 0,
+      // ★ WHO convened it when that was NOT the caller's own act (see the note on `openSeq`): 'v5r.stall-meeting' names
+      // the pack's automatic path, so "the chair convened this" and "the framework convened this on the chair's behalf"
+      // stop looking identical in every read face.
+      convenedBy: convenedBy === null || convenedBy === undefined ? null : String(convenedBy),
       queue: [], speechUsed: new Map(), interrupts: new Map(), warnings: new Map(), mutes: new Map(),
       recess: null, previousConfirmed: false, minutes: { entries: [], refused: [], actions: [] },
       transcript: [], confidentiality: K.confidentialityDefault, motions: [], appeals: [], closedAt: null,
@@ -2122,7 +2144,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     live.set(mid, m)
     markState(m, m.state)
     counters.opened += 1
-    const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, confidentiality: m.confidentiality, sequence: { index: 0, total: 1 + seqEntries.length }, enforced, enforcedScope: ENFORCED_SCOPE }
+    const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, convenedBy: m.convenedBy, state: m.state, scheduledFor: m.scheduledFor, confidentiality: m.confidentiality, sequence: { index: 0, total: 1 + seqEntries.length }, enforced, enforcedScope: ENFORCED_SCOPE }
     pushReceipt(receipt)
     say({ type: m.state === 'scheduled' ? 'meetings/scheduled' : 'meetings/opened', at: ms, meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, scheduledFor: m.scheduledFor, enforced, enforcedScope: ENFORCED_SCOPE })
     // ★ type/subject are ALSO at the top level, not only inside `receipt`: a caller that asked for them should not

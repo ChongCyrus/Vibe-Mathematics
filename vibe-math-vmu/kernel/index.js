@@ -2797,16 +2797,27 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           if (cause !== 'VMU_NO_SUCH_OBJECT') throw e
           let recorded = null
           try { recorded = typeof this.memberToolOverride === 'function' ? this.memberToolOverride(member) : null } catch { recorded = null }
+          // ★★★ LIVE RUN 15: the note below used to state ONE cause for every failure ("caller delivery plays the member
+          // without a child session"). Measured in an ACTIVATION run: a child session HAD been learned and had finished,
+          // so that sentence was false exactly where it was read. The provider now reports the cause as a field and this
+          // note follows it — an explanation that cannot be right in all modes must not be written as if it were.
+          const refusalCause = (e && e.cause) || null
+          const learnedChild = (e && (e.learnedSession || e.childId)) || null
           return {
             ok: true, member: String(member), count: null, tools: null, hidden: [], source: 'no-live-agent',
             liveAgent: false, schemaScope: null, agentId: null,
+            cause: refusalCause, childId: learnedChild,
             refusal: {
               code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE',
               message: String((e && e.message) || e),
               hint: (e && e.hint) || null,
             },
             override: recorded,
-            note: 'the member wire cannot be READ here: caller delivery plays the member without a child session, so there is no tool table to query. `tools:null` is NOT "sees nothing"; `refusal` is the provider\'s named answer, and `override` is the record the loop applies (null = the pack default for that seat)',
+            note: refusalCause === 'child-session-not-live'
+              ? 'the member ran in a CHILD SESSION (' + String(learnedChild) + ') that has finished, so there is no live tool table to read here. `tools:null` is NOT "sees nothing" and NOT "did nothing": what that child actually called is in the child session log, not in this field'
+              : (refusalCause === 'no-child-session-yet'
+                ? 'no child session has been learned for this member yet, so the wire cannot be READ here. `tools:null` is NOT "sees nothing"; `refusal` is the provider\'s named answer, and `override` is the record the loop applies (null = the pack default for that seat)'
+                : 'the member wire cannot be READ here. `tools:null` is NOT "sees nothing"; `refusal` is the provider\'s named answer, and `override` is the record the loop applies (null = the pack default for that seat)'),
           }
         }
       }
