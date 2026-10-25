@@ -300,7 +300,32 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           // ★★ b-2: the receipt must say WHICH roster these members came from - a caller cannot tell a default roster
           // from its own selection by looking at the ids alone.
           const membersFrom = explicit ? 'caller-selection' : 'roster-default'
-          const stepped = await kernel.turn.step({ members, membersFrom, membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step })
+          // ★★★★★★★ LIVE RUN 51 residue 2: A THROWN DELIVERY TIMEOUT CARRIED NO PARTIAL READING, so the office read
+          // "nothing happened" while the child was still running and had already written its Lean file. The seam now
+          // attaches `partial`/`stillRunning` to the error, and this face must not drop them the way the generic funnel
+          // does (it keeps only code/message/hint). A refusal that hides the work in flight is worse than no refusal.
+          let stepped
+          try {
+            stepped = await kernel.turn.step({ members, membersFrom, membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step })
+          } catch (e) {
+            if (!e || !e.partial) throw e
+            return {
+              ok: false,
+              tool: 'vibe_vmu_turn',
+              code: e.code || 'VMU_TURN_DELIVERY_TIMEOUT',
+              message: String(e.message || e),
+              hint: e.hint || null,
+              partial: e.partial,
+              stillRunning: e.stillRunning === true,
+              stillRunningMeans: e.stillRunningMeans || null,
+              workspaceHint: e.workspaceHint || null,
+              waitedMs: Number.isFinite(e.waitedMs) ? e.waitedMs : null,
+              deliveryTimeoutMs: e.deliveryTimeoutMs || null,
+              round: e.round === undefined ? null : e.round,
+              roundConsumed: e.roundConsumed === true,
+              roundCompleted: e.roundCompleted === undefined ? null : e.roundCompleted,
+            }
+          }
           const withOverride = stepped && typeof stepped === 'object'
             ? Object.assign({}, stepped, { toolsOverride: { mode: isNone ? 'none' : 'allow', allow: isNone ? [] : (allow || []), members: ids,
               seam: 'setMemberToolOverride', note: 'reported by the turn face: the seam was set for these members before the round and cleared after it; the actual wire is narrowed by the pull resolver on its next request, which this face cannot read' } })

@@ -3708,3 +3708,45 @@ transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-150803.jsonl`（build 
 1. **「修了」必须用真机读数证明**：别名挂上去之后我跑了第 52 次真机，`settlement` 仍是 0 —— 若只看单测，这一条会被记成「已修」。
 2. **一个字段有多条返回路径时，断言要落在「每一条都经过同一个盖章函数」上**，而不是「某个分支里有这个键」。
 3. **未定义标识符是语法检查的盲区**：`node --check` 过了不等于模块能跑，凡是新写进字面量的名字都要有一个真实的形状测试。
+
+## §95 勘误（§94.1 描述了一个不存在的机制）+ 第 2 条残余（超时把子代理的产出当「什么都没发生」）修好
+
+### §95.1 勘误：§94.1 说的 `withSettlement` 在代码里不存在
+
+我在 §94.1 写道「新增 `withSettlement(receipt)`，每条返回路径都盖章」。**那是错的**：`grep -rn "withSettlement\|settleTurn" vibe-math-vmu/ tests/` 零命中，
+`git show f1c1d92a -- vibe-math-vmu/kernel/turn/index.js` 里落地的其实是**提示词存档**（第 3 条残余的修法），签名是 `archivePrompt` + `promptArchive`。
+
+更要紧的是判据本身错了：§93.2 第 1 条的分类是**「我的 brief 错」**（我编了个段名 `settlement`，产品侧一直是 `delivery`/`delegation`，且自带逐字 `means`）。
+所以第 1 条**不需要任何产品改动**；我却在 §94.1 里给它编了一个「修法」，并在提交信息里写成「settlement stamped on EVERY receipt path」。
+这正是本阶段反复付出的那类代价：**把「我打算做的」写成「已经做了的」**，而且写进的是记录（账本 + 提交信息），比写进代码更难被发现。
+
+补充一条判据：`settlement` 在这个仓库里**已经被占用了两个别的含义**（`kernel/ballot.js` 的结算窗口、`kernel/collab.js` 的结算周期），
+所以即便产品真需要别名字段，也不该叫这个名字 —— 一个词三种含义本身就是缺陷。
+
+处理：不新增别名字段；§94.1 保留原文作为错误记录，本章为权威更正。
+
+### §95.2 第 2 条残余：超时把子代理已完成的工作「丢掉」并报成 `receipt:null`
+
+真机读数（§93.2 第 2 条，原文要点）：`VMU_TURN_DELIVERY_TIMEOUT` + `receipt:null`，而子代理当时**仍在跑**且已落盘 `Formal/p1.lean`。
+窗���本身是对的（一次 one-shot 交付若无限等待会永久堵住串行队列），缺的是：**拒绝里没有这个回合的任何读数**。
+
+修法（`vibe-math-vmu/host-deliver.js` 的 `timeoutError`）：错误新增
+`partial`（`turnId` / `member` / `elapsedMs` / `requestSent` / `lastPhase` / `childId`+`childIdMeans`）、
+`stillRunning` + `stillRunningMeans`（**这个截止时间只约束这一次调用，不取消子会话**，所以它在拒绝之后写的文件是真的）、
+`workspaceHint`（先读成员的成果库再断言「这一轮什么都没产出」）。
+`childId` 保持 `null` 并说明为什么 —— 这个面只在**交付结算**时才学到子会话 id，编一个就是本轮一直在杀的那种谎。
+
+面侧（`vibe-math-vmu/tools/turn.js` 的 `step`）：通用漏斗只保留 `code/message/hint`，所以本面显式把 `partial`/`stillRunning`/`round`/`roundConsumed`/`roundCompleted`
+搬到拒绝回执上；**没有 `partial` 的错误原样抛出**，因此其它拒绝的形状一字未变。
+
+门禁：`tests/vmu-turn-delivery-partial.test.mjs`（新增）**26/0** —— 1a–1g 断言错误侧带哪些键、`elapsedMs` 是实测值、`childId` 诚实为 `null`；
+2a–2d 断言面侧只在**有** `partial` 时改写形状、且代码是具名拒；3a–3b 非空性（两个文件确实是被改的那两个模块，长度下限）。
+
+★ 诚实边界：这条的**运行时**半边（真实超时发生时回执真的带上 `partial`）只能在真机跑到一次超时才看见；本轮的 run 53 若没有超时事件，
+就只算「门禁级验证」，不许写成「真机已验证」。
+
+### §95.3 教训
+
+1. **brief 里编出来的字段名和代码里编出来的机制是同一类缺陷**：读到 brief 的人只能照它做，做不成就报「未修」，于是缺陷清单被污染。
+2. **提交信息是记录的一部分**：它写了代码里没有的东西，就制造了一个比代码 bug 更难查的谎（`git log` 是后来者唯一的线索）。
+3. 一个字段要改名之前先 `grep` 这个名字在仓库里的其它含义（本例 `settlement` 已被两处占用）。

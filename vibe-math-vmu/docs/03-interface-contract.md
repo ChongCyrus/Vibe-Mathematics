@@ -1557,7 +1557,7 @@
 | `VMU_TRUST_VOCAB_VIOLATION` | **已实现 ✓** | `vibe-math-vmu/kernel/trust.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_ASSEMBLY_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_BAD_JSON` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
-| `VMU_TURN_DELIVERY_TIMEOUT` | **已实现 ✓** | `vibe-math-vmu/host-deliver.js` | 代码里有该码字符串 ✓ |
+| `VMU_TURN_DELIVERY_TIMEOUT` | **已实现 ✓** | `vibe-math-vmu/host-deliver.js`、`vibe-math-vmu/tools/turn.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_DISPATCH_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_FIELD_NOT_APPLICABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_NO_FENCE` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |

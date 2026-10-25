@@ -279,6 +279,24 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
         err.requestSent = last !== null
         err.lastPhase = last ? last.phase : 'before-call'
         err.phases = phases.slice()
+        // ★★★★★★★ LIVE RUN 51 residue 2 (the institute's own note): A DEADLINE IS NOT A VERDICT ON THE CHILD'S WORK.
+        // MEASURED: the turn was reported as VMU_TURN_DELIVERY_TIMEOUT with `receipt:null` while the child was STILL
+        // RUNNING and had already written `Formal/p1.lean`; the office read "nothing happened" and planned to throw the
+        // work away. The child is NOT cancelled by this deadline - the one-shot window bounds this CALL, not the child
+        // session - so the honest receipt carries what IS known (which turn, which child member, how long, how far the
+        // delivery got) and states plainly that artifacts may still be landing.
+        err.partial = {
+          turnId: err.turn,
+          member: err.member,
+          elapsedMs: waitedMs,
+          requestSent: last !== null,
+          lastPhase: last ? last.phase : 'before-call',
+          childId: null,
+          childIdMeans: 'this face does not learn the child session id unless the delivery settles, so it cannot name it here; the child is the one this member turn was delegated to and its session id appears on the SETTLED receipt (delivery.childId) if this turn is collected later',
+        }
+        err.stillRunning = true
+        err.stillRunningMeans = 'the one-shot deadline bounded THIS CALL, not the child session: the child was not cancelled by it, so files it writes after this refusal are real and may still appear'
+        err.workspaceHint = 'read the member\'s own files (read_library / the record tracks) before concluding the turn produced nothing: in the measured run the child had already written its Lean file when this deadline fired'
         err.hint = 'the turn was started through the one-shot path and never returned; the serial queue is released automatically, and this record says whether the call was entered (' + (last ? 'yes, last phase ' + last.phase : 'no') + ')' +
           '. The round ordinal is carried (`round`) because the pump advances past a turn it cannot settle: `roundConsumed`/`roundCompleted` say the number was allocated and the round was NOT completed, so a gap in the receipts is a timed-out round rather than a lost record' +
           (extra.graceMs ? '. A turn that settles inside the grace window is harvested instead of timed out' : '')
