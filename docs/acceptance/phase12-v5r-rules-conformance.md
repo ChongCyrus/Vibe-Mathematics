@@ -3988,3 +3988,20 @@ run 13（build `acafb044` 前一个提交，transcript `D:\wd\vibemath开发\_on
 
 ### 教训
 **「只有一个进程」是这类缺陷的伪装**：单进程下所有一致性都是免费的，而真子代理一上线，缓存型状态立刻变成"每个人都有一份自己的所"。凡是"读一次就缓存"的东西，在**多实例**事实出现时必须重新回答「我读的是谁的版本」。
+
+## §104 成员资格的可持久性链：声明、读、写、水合、重载（轮 538）
+
+**为什么有这一节。** 真机 run 13 拒绝结题，成员的 say 回执写着 "the roster holds 0 member(s)"，而所办的 vibe_vmu_control{action:'roster'} 报了 3 名成员、磁盘上的 vmu/state.json 也与所办一致。这被当成「子代理没有真跑」的证据之一，实际是**同一份真值的四个断点**。
+
+**一段链路，四个断点，全部实测（tests/vmu-roster-durability.test.mjs 的 10 条断言把它们钉住）：**
+
+| # | 断点 | 实测 | 修在哪 |
+|---|---|---|---|
+| 1 | **声明顺序**：pack 在 vmu.resume.projections 里声明 members，但组装末尾的 attach 循环跑的时候 members 还是 null（它由 declareSlots() 之后才创建）⇒ attach 记录 VMU_RESUME_NO_TARGET，durable members 永远是 store 的 [] 种子 | declareSlots() 的回执 projection.attached=false、磁盘 keys.members=[] | declareSlots() 自己 attach（幂等，循环会跳过已 attach 的 face） |
+| 2 | **写前必读**：resume 引擎在所有写穿前拒绝写（VMU_RESUME_WRITE_BEFORE_READ，v5r 的 V5_STATE_NOT_LOADED 规则），于是即便 attach 成功，after-hook 的每次写都被具名拒绝 ⇒ 投影只是装饰 | 面自己的 snapshot() 正确（含 member-1），durable key 仍是 [] | declareSlots() 先调用引擎自己的整档 read()，再 attach |
+| 3 | **重载不覆盖**：members.restore(snap) 对**非空**花名册拒绝一份不同的快照（VMU_RESUME_RESTORE_CONFLICT，"a silent half-overwrite is refused by name"）——这对「空启动的恢复」是对的，对 reload 钩子是错的 | 探针：后启内核已 reload 到 2 名成员的 fold，restore 被拒，花名册永远停在 1 | adapter 的 restore seam 传 {replace:true}：reload 时**磁盘即权威**（本地改动都过了写穿；写失败的次数在 resume 的 writeThroughFailures 里） |
+| 4 | **读不刷新**：内核启动后另一次 hire 不会进到已启动的内核（它的花名册是内存 Map） | 后启内核 roster() 看不到新成员 | declareSlots() 给读面（roster/roles/may/selfReports/selfReportHistory/timesOf/status）套一层 store.refresh()：读之前先看磁盘，触发 reload 钩子 |
+
+**为什么四个都要修。** 少一个就不是「成员看得见研究所」：只修 1 ⇒ 从没写过；只修 2 ⇒ 首次写进去了但后启内核读不到；只修 1+2 ⇒ 已启动内核永久陈旧；只修 1+2+4 ⇒ 重载后 restore 被拒、花名册纹丝不动。
+
+**边界（诚实）。** ① 这条链让**同一个持久化根**上的多个内核收敛到同一份花名册；跨机器、跨进程共享同一文件仍靠 store 的 file lock（未在本轮验证）。② replace:true 的代价是「本内核未持久化的本地改动会被磁盘覆盖」——在写穿成功的前提下不存在（写失败会被计数并可在 resume 读到），但若部署把写穿关掉（vmu.resume.writeThrough=false），这条 seam 就不该承受 reload。③ meetings/ballotbox/minutes/chat/panel/budget 走的是同一条链（同一个 attach 循环 + 同一个 reload 钩子），但它们**没有** declareSlots 那样的「晚创建」问题，因此只有 3/4 两个断点影响到它们；本轮没有为它们单独写探针，只跑了邻居套件（members 42/0、meetings 214/0、turn 257/0、host 199/0、kernel 260/0、store-coherence 12/0）。

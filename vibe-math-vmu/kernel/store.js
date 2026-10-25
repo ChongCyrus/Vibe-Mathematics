@@ -134,6 +134,10 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
   // §1-(5): freshness is a STAMP (mtime+size), not a promise. `read()` is synchronous because every service face is
   // synchronous; a synchronous stat keeps that shape while still seeing another process's rename.
   let stamp = null
+  // §1-(5) second half: a reload in the FILE is not yet a reload in the SERVICE. The kernel registers here so its
+  // projections re-enter their snapshot when another kernel wrote (measured: a member's roster stayed empty even
+  // after the fold reloaded, because `members` holds a Map, not a store read).
+  const reloadHooks = []
   const stampOf = () => {
     try { const st = statSync(file); return String(st.mtimeMs) + ':' + String(st.size) } catch { return 'missing' }
   }
@@ -171,6 +175,7 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
     stamp = now
     stats.reloads += 1
     stats.lastReloadAt = clock()
+    for (const cb of reloadHooks.slice()) { try { cb({ why: 'newer-on-disk', stamp: now, file }) } catch { /* a hook never breaks a read */ } }
     return { reloaded: true, why: 'newer-on-disk' }
   }
 
@@ -310,6 +315,13 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
       assertKey(key)
       reloadIfStale('read')
       return clone(fold.keys[key])
+    },
+
+    /** Register a callback that runs after EVERY reload this instance performs. Returns its disposer. */
+    onReload(fn) {
+      if (typeof fn !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'onReload needs a function')
+      reloadHooks.push(fn)
+      return () => { const i = reloadHooks.indexOf(fn); if (i !== -1) reloadHooks.splice(i, 1) }
     },
 
     /** Layer 4 (docs/07 §1-(5)): the freshness check itself, so a caller can prove it ran. */

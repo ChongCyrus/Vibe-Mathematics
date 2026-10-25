@@ -1077,7 +1077,13 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // ROUND 3 / task-20 (reader-a's completion list): the eight faces that NOW expose `snapshot()/restore()`.
     // `mode:'state'` + a snapshot/restore pair ⇒ `attachProjection` also WRITES THROUGH after each wrapped mutation
     // (reader-a's after-hook, gated by `vmu.resume.writeThrough`), so these are durable as soon as they are declared.
-    members: () => ({ key: 'members', mode: 'state', snapshot: () => members.snapshot(), restore: (v) => members.restore(v), list: () => (typeof members.roster === 'function' ? members.roster() : []) }),
+    // ★ THE RELOAD RESTORE MUST REPLACE. `members.restore(snap)` deliberately REFUSES a different snapshot on a
+    // NON-EMPTY roster (`VMU_RESUME_RESTORE_CONFLICT`, 'a silent half-overwrite is refused by name') - correct for a
+    // recovery onto an empty boot, WRONG for the reload hook: measured on a probe, a kernel that booted with 1 member
+    // reloaded the durable fold (2 members) and then refused the restore, so its roster stayed stale forever while the
+    // file was right. On a reload the durable file IS the authority (every local change went through the write-through
+    // after-hook; a write that FAILED is counted in `resume`'s `writeThroughFailures`), so the seam replaces.
+    members: () => ({ key: 'members', mode: 'state', snapshot: () => members.snapshot(), restore: (v) => members.restore(v, { replace: true }), list: () => (typeof members.roster === 'function' ? members.roster() : []) }),
     meetings: () => ({ key: 'meetings', mode: 'state', snapshot: () => meetings.snapshot(), restore: (v) => meetings.restore(v), list: () => [] }),
     ballotbox: () => ({ key: 'ballotbox', mode: 'state', snapshot: () => ballotbox.snapshot(), restore: (v) => ballotbox.restore(v), list: () => [] }),
     minutes: () => ({ key: 'minutes', mode: 'state', snapshot: () => minutes.snapshot(), restore: (v) => minutes.restore(v), list: () => [] }),
@@ -1118,6 +1124,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // TTL-sensitive services (the same reasoning already applied to `bindIds` and `createReport`).
     clock, log, faces: {} })
   const attachedProjections = []
+  // §1-(5): the last rehydrate result, so `status()` can prove the hook ran instead of asking a reader to trust it.
+  let lastRehydrate = null
+  let rehydrateDisposer = null
   /**
    * ROUND 4 / task-25 D: ONE phase writer for the four control transitions. `resume.setPhase()` sits behind the
    * read-before-write gate (`VMU_RESUME_WRITE_BEFORE_READ`), and the entry's recovery chain is what normally performs
@@ -1233,6 +1242,37 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   } else {
     attachedProjections.push({ face: 'human', attached: false, reason: 'the human face exposes no snapshot()/restore() in this assembly' })
   }
+  // §1-(5) the second half (measured on the real machine, run 13/round 14): reloading the FOLD is not enough, because
+  // `members`/`meetings`/`ballotbox`/`minutes`/`chat`/`panel`/`budget` keep their truth in a JS Map and only look at the
+  // store through their projection. A member child session therefore kept an EMPTY roster (`live:0`, "the roster holds 0
+  // member(s)") while the office's kernel had three members and the file on disk agreed with the office. A boot-time
+  // `recover()` cannot fix a kernel that booted BEFORE the hire; only a reload hook can. Every restore here is the same
+  // `restore()` the recovery face already uses, and a face that refuses is NAMED rather than swallowed.
+  if (store && typeof store.onReload === 'function') {
+    try {
+      const disposeRehydrate = store.onReload(() => {
+        const done = []
+        for (const row of attachedProjections) {
+          if (!row.attached || row.mode !== 'state') continue
+          const make = RESUME_PROJECTION_ADAPTERS[row.face]
+          if (typeof make !== 'function') { done.push({ face: row.face, ok: false, code: 'VMU_RESUME_NO_ADAPTER' }); continue }
+          let adapter = null
+          try { adapter = make() } catch (e) { done.push({ face: row.face, ok: false, code: (e && e.code) || 'VMU_RESUME_ADAPTER_FAILED' }); continue }
+          if (!adapter || typeof adapter.restore !== 'function') continue
+          let env = null
+          try { env = store.read(adapter.key) } catch (e) { done.push({ face: row.face, ok: false, code: (e && e.code) || 'VMU_STORE_FAILED' }); continue }
+          if (!env || typeof env !== 'object' || env.mode !== 'state') continue
+          try { adapter.restore(env.value); done.push({ face: row.face, ok: true, seq: env.seq === undefined ? null : env.seq }) } catch (e) { done.push({ face: row.face, ok: false, code: (e && e.code) || 'VMU_RESUME_RESTORE_FAILED', message: String((e && e.message) || e) }) }
+        }
+        if (done.length) { try { lastRehydrate = { at: clock(), faces: done } } catch { /* clock guards */ } }
+        return done
+      })
+      rehydrateDisposer = disposeRehydrate
+    } catch (e) {
+      rehydrateDisposer = null
+      try { log({ type: 'vmu/rehydrate-unavailable', code: (e && e.code) || 'VMU_RESUME_UNAVAILABLE', message: String((e && e.message) || e) }) } catch { /* logging never breaks boot */ }
+    }
+  }
   // `PROJECTION_KEYS` is the framework's full list; the difference between it and what this assembly attached is
   // reported (named), so "which durable keys actually have a writer" is answerable from status().
   const projectionReport = () => ({
@@ -1250,6 +1290,8 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     readOnly: [...PROJECTION_READ_ONLY].sort(),
     known: PROJECTION_KEYS.slice(),
     unwiredKnown: PROJECTION_KEYS.filter((k) => !attachedProjections.some((a) => a.face === k && a.attached)),
+    // §1-(5): cross-kernel visibility is a MECHANISM with a consumer (the store reload hook), so it is reported.
+    rehydrate: { wired: typeof rehydrateDisposer === 'function', last: lastRehydrate },
   })
 
   // CONSUMER WIRING (round 19, the point an independent reviewer made): a clock guard that nobody uses changes
@@ -2332,7 +2374,50 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         try { registry.register('vmu.members', { apiVersion: 1 }, { kind: 'service', description: 'role slots and roster' }) }
         catch (e) { if (!e || !/already registered/.test(String(e.message))) throw e }
       }
-      return { ok: true, slots: list.length, hasRoster: members !== null }
+      // ★ THE ORDER BUG THAT COST THE ROSTER ITS DURABILITY (measured on the real machine, run 13 → round 14):
+      // `attachDeclaredProjections()` runs at the END OF THIS FACTORY, and at that moment `members` is null — the pack
+      // declares the slots LATER (this call). So `vmu.resume.projections` named `members`, the attach loop reported
+      // `VMU_RESUME_NO_TARGET` ("this assembly has no members face to project"), the real run's durable `members` stayed
+      // the store's `[]` seed, and every member child session booted with an EMPTY roster while the office's kernel had
+      // three members. Attaching here is IDEMPOTENT (the loop skips faces it already attached) and hydrating here is
+      // what lets a kernel that boots AFTER a hire see the institute it joined.
+      let membershipProjection = { attached: false, hydrated: false }
+      // ★ A READ MUST NOT ANSWER WITH A STALE INSTITUTE. The projection's after-hook makes writes durable; this makes
+      // READS fresh: the roster's read faces refresh the durable file first, which fires the reload hook installed
+      // above and re-enters the snapshot. Measured need (run 13): a member child boots, the office hires a TEMP member
+      // mid-run, and the child's next `roster()` must not answer with the roster it booted with. Only the read-only
+      // names are wrapped (the mutators are wrapped by the projection instead, and wrapping a mutator twice would
+      // snapshot twice for one change).
+      if (members && store && typeof store.refresh === 'function') {
+        for (const name of ['roster', 'roles', 'may', 'selfReports', 'selfReportHistory', 'timesOf', 'status']) {
+          const orig = members[name]
+          if (typeof orig !== 'function') continue
+          members[name] = (...args) => { try { store.refresh() } catch { /* a refresh never breaks a read */ } return orig.apply(members, args) }
+        }
+      }
+      // ★ A DURABLE PROJECTION MUST BE ALLOWED TO WRITE. The resume engine refuses every write-through until it has
+      // READ the current fold (\`VMU_RESUME_WRITE_BEFORE_READ\`, the v5r V5_STATE_NOT_LOADED rule) — and measured on a
+      // probe, attaching the members projection and hiring left the durable key at the store's \`[]\` seed while the
+      // face's own \`snapshot()\` was correct: every after-hook write was being refused by name. Reading here is what
+      // makes the projection real instead of decoration; the read is the engine's own whole-fold read, so nothing is
+      // written that was not read first.
+      if (members && store && resume && typeof resume.read === 'function') {
+        try { resume.read() } catch { /* the recovery face names the refusal; boot must not break */ }
+      }
+      if (members && typeof attachDeclaredProjections === 'function') {
+        try {
+          attachDeclaredProjections()
+          const row = attachedProjections.filter((a) => a.face === 'members').pop()
+          let env = null
+          if (store) { try { env = store.read('members') } catch { env = null } }
+          const restorable = env && typeof env === 'object' && env.mode === 'state' && typeof members.restore === 'function'
+          if (restorable) { try { members.restore(env.value) } catch { /* a refusal is named by the recovery face */ } }
+          membershipProjection = { attached: !!(row && row.attached), hydrated: restorable, seq: restorable && env.seq !== undefined ? env.seq : null }
+        } catch (e) {
+          membershipProjection = { attached: false, hydrated: false, code: (e && e.code) || 'VMU_RESUME_UNAVAILABLE', message: String((e && e.message) || e) }
+        }
+      }
+      return { ok: true, slots: list.length, hasRoster: members !== null, projection: membershipProjection }
     },
 
     /** A pack declares the record TRACKS. Rebuilding the library re-reads the directory, so nothing is lost. */
