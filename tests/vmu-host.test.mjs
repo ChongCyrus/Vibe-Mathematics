@@ -395,6 +395,15 @@ if (SELF_PROBE) {
       'E-7b. ★★ the receipt glosses its declared hot class in words (H1 = next turn), so "H1" is not a bare code beside a restart verdict', qm.hotMeans)
     ok(typeof qm.declaredVsMeasured === 'string' && (/declared/.test(qm.declaredVsMeasured)) && (/MEASURED/.test(qm.declaredVsMeasured)),
       'E-7c. ★★★ and it NAMES the divergence (declared class vs measured effect) instead of leaving the reader to reconcile them', qm.declaredVsMeasured)
+    ok(/OPTIMISTIC/.test(String(qm.declaredVsMeasured)),
+      'E-7d. ★★ the direction is named too: a declared class that promises LESS than the measured effect is OPTIMISTIC (H1 declared, construction-only reader)', qm.declaredVsMeasured)
+    // ★★ LIVE RUN 20 (⑬.1/c): `vmu.turn.leaderId` is declared H2 (restart) while its readers re-read live, so the
+    // receipt came back hot:"H2" + requiresRestart:false + "declared and measured agree" — the last one false.
+    // A class that promises MORE than the measurement is PESSIMISTIC and must say so.
+    const lid = JSON.parse(await spec.execute({ key: 'vmu.turn.leaderId', value: 'member-1' }, {}))
+    ok(lid.requiresRestart === false && /PESSIMISTIC/.test(String(lid.declaredVsMeasured)),
+      'E-7e. ★★★ declared H2 (restart) with a MEASURED live reader ⇒ requiresRestart:false and the receipt says PESSIMISTIC, not "agree"',
+      { hot: lid.hot, requiresRestart: lid.requiresRestart, declaredVsMeasured: lid.declaredVsMeasured })
     // ④ an H3 key cannot be removed through the kernel API either (same guard, disclosed)
     let unsetH3 = null
     try { kernel.unsetSettingsValue('vmu.safety.pathPolicy', { by: 'office' }) } catch (e) { unsetH3 = e }

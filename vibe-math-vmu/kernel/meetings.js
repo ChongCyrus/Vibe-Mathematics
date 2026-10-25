@@ -1802,6 +1802,8 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + id,
           'live: ' + ([...live.keys()].sort().join(', ') || '(none)') + (archive.length ? '; archived: ' + archive.map((x) => String(x.id)).sort().join(', ') : ''))
       }
+      const motionVotes = (m.motions || []).reduce((n, mo) => n + (mo && mo.votes && typeof mo.votes.size === 'number' ? mo.votes.size : 0), 0)
+      const minuteVotes = (m.minutes && Array.isArray(m.minutes.entries)) ? m.minutes.entries.filter((e) => e && e.kind === 'vote').length : 0
       const motions = (m.motions || []).map((mo) => {
         const voters = [...mo.votes.entries()].map(([memberId, value]) => ({ member: memberId, value }))
         return {
@@ -1826,7 +1828,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         waitDueAt: waitDueOf(m),
         waitDecisionDue: m.waitDecisionDue === true,
         chair: m.chair || null, secretary: m.secretary || null,
-        motions, votes: (m.minutes && Array.isArray(m.minutes.entries)) ? m.minutes.entries.filter((e) => e && e.kind === 'vote').length : 0,
+        motions,
+        // ★★ LIVE RUN 20 (the institute's own report): after close, summary answered votes:0 while the tally receipt
+        // had said votes:2 with outcome:true, and it listed motions:[] — because this field counted MINUTES vote
+        // EVENTS only, while the decision had been taken through the BALLOT BOX (no motion existed at all). Two
+        // truthful sentences about different things read as a contradiction; so the count now names its SOURCE and
+        // the absent half is stated instead of implied.
+        votes: motionVotes,
+        votesSource: motionVotes > 0 ? 'motion-votes-kept-after-close' : (minuteVotes > 0 ? 'minutes-vote-events' : 'none-recorded-on-this-face'),
+        votesNote: motionVotes > 0 || minuteVotes > 0
+          ? 'this counts MOTION votes (and, failing that, minutes vote events); a BALLOT-BOX decision is a different record — read it on the ballot face (boxstatus / the boxclose receipt)' 
+          : 'this meeting records no motion votes and no minutes vote events HERE. A decision taken through the BALLOT BOX is not a motion: read the box face (boxstatus / the boxclose receipt) for its tally',
+
         closedAt: m.closedAt || null,
       }
     },

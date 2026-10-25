@@ -1746,6 +1746,14 @@ try {
   ok(envFamilyL.length >= 1 && envFamilyL.filter((k) => k.startsWith('vmu.math.')).length >= 1,
     '★★ 发布原因可复核：v5r 的值层里有 vmu.math.* 键（宿主 env 面的家族是 vmu.env. 或 vmu.math.）⇒ 不必再声明一张 env 需求表',
     envFamilyL)
+  // ★★ LIVE RUN 20 (the institute's own report, ⑬.2): a member's fenced reply carrying an UNDECLARED field
+  // (bogus_field) was silently ignored and the turn executed anyway, while the TOOL channel refuses the same unknown
+  // name by VMU_TURN_UNKNOWN_FIELD. The framework's default is 'ignore-named', so leniency is the DEFAULT a deployment
+  // inherits; this pack must therefore declare 'refuse' explicitly. Without this assertion the pack could lose the line
+  // and only a live run would notice.
+  ok(packDefaultsL['vmu.turn.unknownReplyFieldMode'] === 'refuse',
+    '★★★ LIVE RUN 20 ⑬.2: the v5r value layer declares refuse for unknown reply fields — one rule over two channels (tool args and member replies) must not answer differently',
+    packDefaultsL['vmu.turn.unknownReplyFieldMode'])
   // The four steps, as markers over the REAL section text (not over the source file).
   const stepRowsL = roleSecs.map((s) => {
     const t = String((s && s.text) || '')

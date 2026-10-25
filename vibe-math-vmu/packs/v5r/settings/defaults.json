@@ -6,6 +6,8 @@
   "defaults": {
     "vmu.turn.replyCatalogue": "compact",
       "vmu.turn.closureVotePermission": "vote",
+    "_unknownReplyFieldMode": "LIVE RUN 20 (the institute's own report, ⑬.2): a member's fenced reply carrying an UNDECLARED field (bogus_field) was silently ignored and the turn executed anyway, while the TOOL channel refuses the same unknown name by VMU_TURN_UNKNOWN_FIELD. One rule over two channels must not answer differently, and a member's typo must not look accepted. This institution therefore declares the value below: an unknown reply field aborts the turn by name, listing the fields the loop does accept.",
+    "vmu.turn.unknownReplyFieldMode": "refuse",
     "vmu.pointer.propagation": true,
     "vmu.turn.selfCheck": false,
     "vmu.turn.feedback": true,

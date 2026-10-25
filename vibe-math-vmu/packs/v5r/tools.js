@@ -330,6 +330,11 @@ async function toolReport(args = {}, { kernel } = {}) {
   ]
   return { ok: true, tool: 'vibe_v5_report', report: lines.join('\n'),
     counts: { roster: roster.length, live: roster.filter((m) => m.state === 'live').length, tasks: rows.length, openTasks: openRows.length, openMeetings: meetingRows.length, feedback: fb },
+    // ★★ LIVE RUN 20 (the institute's own report): after closing a meeting the NEXT reading simply did not contain it,
+    // and the receipt could not say whether it had been DROPPED as closed or never seen. openMeetings() already answers
+    // that (droppedClosed / addedFromService / source) one layer down - this face was taking only .meetings and
+    // throwing the explanation away (the same family as §107: the answer existed and did not travel).
+    openMeetingsReading: openMeetings ? { count: meetingRows.length, source: openMeetings.source === undefined ? null : openMeetings.source, droppedClosed: openMeetings.droppedClosed === undefined ? 0 : openMeetings.droppedClosed, addedFromService: openMeetings.addedFromService === undefined ? null : openMeetings.addedFromService, means: openMeetings.droppedClosedMeans === undefined ? null : openMeetings.droppedClosedMeans } : null,
     note: 'read-only composition of the published faces; no new kernel capability and no template invention. '
       + 'feedback.open = the feedback-track rows whose status is not "closed" (the same predicate vibe_v5_feedback op=list uses); declared:false means this deployment has no feedback track, so the count is honestly absent' }
 }
@@ -409,6 +414,16 @@ async function toolOverview(args = {}, { kernel } = {}) {
     feedback: feedbackCounts(kernel),
     // the LAST due-clock pass over scheduled/waiting meetings (see the comment above `serviceStatus`)
     sweep: sweepTrace,
+    // ★★ LIVE RUN 20: this list is built from the SERVICE live set, so a closed meeting simply vanishes — and the
+    // reader could not tell "dropped because it was closed" from "never seen". openMeetings() already distinguishes
+    // them one layer down; relaying it is the same rule as `sweep` (a face must not lose the explanation it was given).
+    openMeetingsReading: openMeetings
+      ? {
+        source: openMeetings.source === undefined ? null : openMeetings.source,
+        droppedClosed: openMeetings.droppedClosed === undefined ? 0 : openMeetings.droppedClosed,
+        addedFromService: openMeetings.addedFromService === undefined ? null : openMeetings.addedFromService,
+      }
+      : null,
     leadership }
   // A warning is a TOP-LEVEL field, not a line inside `leadership`: a caller that reads only the warned shape cannot
   // mistake "no warning" for "no field" — absent means consistent, and the note says which code it was.

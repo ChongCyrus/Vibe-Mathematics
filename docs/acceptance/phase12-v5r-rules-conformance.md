@@ -4329,3 +4329,53 @@ settings 表里 H1 的承诺是「下一回合生效」（`kernel/index.js:239` 
 - `vmu.meetings.quorumMin` 这一族在 settings 表里声明 H1，实测是构造期快照（应为 H2）。**表的标准写法**要不要
   改成 H2 是账本级决定（涉及 ~20 行），本轮只让回执**说出分歧**；已在 §111 登记。
 - `vibe_v5_meeting list` 与 boxclose 回执里的两个 id 空间（meeting id vs box id）仍分列两个字段，未合并。
+
+## §113 第 18 轮：run 20 的五项残留 —— 两项真缺陷、两项「答案在下层没上来」、一项是我的简报写错
+
+### run 20 的判词
+`D:\wd\vibemath开发\_oneoff\vm-slv\full-1026-011408.jsonl`（6 会话，**slv-inspect 0 RED**，`DRIVER exit=0`），
+所办自己的验收报告结论：**「本轮无实质残余：否」**，列了 2 项实质残余 + 5 项「无法验证」+ 6 项非规范行为。
+
+### ① 真缺陷 A —— 成员回执里的未声明字段被静默忽略（tool 通道拒、turn 通道不拒）
+原文：t-5 的 `fields` 含 `bogus_field`，`executed:1`，**没有**被拒。
+根因：`vmu.turn.unknownReplyFieldMode` 的框架默认是 `ignore-named`（`settings/schema.js:212`），
+而**本部署没有任何地方声明 refuse**。于是「同一条规则在两个通道上答案不同」：`vibe_vmu_turn` 的参数面按 R26 具名拒，
+回执面却把拼错的字段当没看见。
+修：`vibe-math-vmu/packs/v5r/settings/defaults.json` 值层声明 `vmu.turn.unknownReplyFieldMode: "refuse"`（+ 说明性注释）。
+门禁：`tests/vmu-v5r-tools.test.mjs` 新增断言「v5r 值层必须声明 refuse」（355/0）；拒的行为本身由 `tests/vmu-turn.test.mjs:102` 早已钉住。
+
+### ② 真缺陷 B —— 收会之后 summary 的 votes 归零，与 tally 的 votes:2 对不上
+原文：收会回执承诺「its motions/votes remain readable via action=summary」，但 summary 返回 `state:"closed"`、`motions:[]`、`votes:0`，
+而收会前 tally 是 `votes:2, outcome:true`。
+根因：`kernel/meetings.js` summary 的 `votes` 只数 **minutes 里的 vote 事件**，而这次决定是走**票箱**的（根本没有 motion）。
+两句话各自为真、却像矛盾。
+修：`summary()` 增加 `votesSource` 与 `votesNote`，votes 改为「motion 票数优先、其次 minutes 事件」，
+并**指名**票箱决定要去 box 面读；`vibe-math-vmu/tools/meeting.js:347` 的收会承诺句同步收窄（不再许诺 summary 能读出票箱）。
+门禁：新 `tests/vmu-meeting-summary-votes.test.mjs`（**8 passed / 0 failed**）两个方向都钉：
+无 motion 时 `votes:0 + votesSource:'none-recorded-on-this-face'` + note 指向 box 面；
+有 motion 时 `votes:1 + 'motion-votes-kept-after-close'`，**收会后仍然是 1**（这正是旧读数塌成 0 的场景）。
+
+### ③ 「答案在下层没上来」C —— H2 声明 vs 实测活读点，回执说「agree」
+原文：`vmu.turn.leaderId` 回执 `hot:"H2"` + `requiresRestart:false` + `declaredVsMeasured:"declared and measured agree"`。
+三个事实里有一个是假的：H2 声明「要重启」，而实测有活读点 ⇒ 不要求重启，二者**不一致**。
+修：`kernel/index.js` 的分歧判定改为**双向**（乐观类 vs 悲观类），并在措辞里点名方向；
+`appliesAtText` 先算、`divergence` 后算（第一版把顺序写反，会在首次调用时 TDZ 抛错——已改）。
+门禁：`tests/vmu-host.test.mjs` E-7d（OPTIMISTIC，quorumMin）/ E-7e（PESSIMISTIC，leaderId）⇒ **203 passed / 0 failed**。
+
+### ④ 「答案在下层没上来」D —— openMeetings 的解释没被转发
+原文：收会后 `openMeetings` 读数只剩 `mtg-1`，而 `droppedClosed / addedFromService / source` 在
+`vibe_v5_report` 与 `vibe_v5_overview` 里**都不存在**，于是「被丢掉」与「从没看见」不可区分。
+根因：`kernel/meetings.js:693` 早就算出这三个字段，`packs/v5r/tools.js` 的两个面只取 `.meetings` 就丢了（§107 同一族）。
+修：两个面新增 `openMeetingsReading`（report 面另带 `means`）。`tests/vmu-v5r-tools.test.mjs` 355/0 不变。
+
+### ⑤ 我的简报写错（不是产品缺陷）
+简报要求抄 `closureVote.confirmations`，实际字段是 `confirmed`；要求用 `vibe_v5_report {action:"overview"}`，
+而该工具**不声明任何参数**（带 action 会被具名拒）。下一轮简报已改。
+另外「失败计数 `failed` 会不会动」在本部署**无法被证伪**：`failed` 只在 `vibe_vmu_turn{op:"status"}` 的 counts 下，
+且它的定义是「回执到了、写回抛错」，而 step 立即落定 ⇒ 没有待回复回合，走不到写回。已在下一轮简报给出
+**新的可触发路径**（让成员回执给一个类型错误的值），并把「`failed` 未在真机被证明会动」作为**登记未验**，不写成已验证。
+
+### 本轮落盘
+`vibe-math-vmu/packs/v5r/settings/defaults.json` · `vibe-math-vmu/kernel/meetings.js` · `vibe-math-vmu/kernel/index.js`
+· `vibe-math-vmu/tools/meeting.js` · `vibe-math-vmu/packs/v5r/tools.js` · `tests/vmu-meeting-summary-votes.test.mjs`（新）
+· `tests/vmu-host.test.mjs` · `tests/vmu-v5r-tools.test.mjs` ＋ 派生面（`regen-all --write`）。

@@ -344,7 +344,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (svc && typeof svc.close === 'function' && serviceHas(pid)) {
               const out = svc.close({ meeting: pid, actor: actor === undefined ? (by || member || null) : actor })
               return Object.assign({ ok: true, action, id: pid, registry: 'service', closeSemantics: 'service-archives' }, out, {
-                note: 'closed in the meetings SERVICE: the meeting moved to the service ARCHIVE (not the primitive live table); its motions/votes remain readable via action=summary',
+                note: 'closed in the meetings SERVICE: the meeting moved to the service ARCHIVE (not the primitive live table); its MOTIONS and the minutes vote events remain readable via action=summary (a BALLOT-BOX decision is a different record: read the box face for its tally)',
               })
             }
             throw noSuchMeeting(pid)

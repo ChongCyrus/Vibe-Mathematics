@@ -3065,13 +3065,25 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // class — that is how a runtime write to `vmu.meetings.quorumMin` came back `applied:"immediate"` while every
       // later reader still saw 0. The measured verdict wins over the declaration, and the receipt names the reason.
       const requiresRestart = (hot === 'H2' && liveReadBy.length === 0) || (constructionOnly !== null && liveReadBy.length === 0)
-      // one place that words WHEN this write is visible, used by both `appliesAt` and `declaredVsMeasured` (two
-      // spellings of one fact is the defect this whole batch is about).
+      // ★★ LIVE RUN 20 (⑬.1/c: `vmu.turn.leaderId` came back hot:"H2" with requiresRestart:false and
+      // declaredVsMeasured:"declared and measured agree" — three facts, one of them false: H2 DECLARES a restart while
+      // the measured readers re-read, so the two did NOT agree. Divergence is now decided explicitly in BOTH directions
+      // (optimistic class vs measured restart; pessimistic class vs measured live readers) and named in the receipt.
+      // ★ ORDER MATTERS: `appliesAtText` is computed FIRST, because the optimistic branch QUOTES it — an earlier
+      // revision of this block declared `divergence` above it and would have thrown on first use (TDZ).
       const appliesAtText = constructionOnly && liveReadBy.length === 0
         ? 'next start (this key has no live reader: ' + constructionOnly + ')'
         : (hot === 'H2' && liveReadBy.length
           ? 'this session for the measured live readers (' + liveReadBy.join(', ') + '); declared class H2, so construction-time readers see it next start'
           : (APPLIES[hot] || null))
+      // ★ The declared class and the measured effect, decided explicitly in BOTH directions: an optimistic class with a
+      // construction-only reader, and a PESSIMISTIC class (H2 = restart) whose readers actually re-read. Saying
+      // "agree" in the second case was false — the class promises a restart the product does not require.
+      const divergence = hot === 'H2' && liveReadBy.length
+        ? 'declared ' + String(APPLIES.H2) + ' / MEASURED this session for the live readers (' + liveReadBy.join(', ') + ') — the declared class is PESSIMISTIC for this key: those readers re-read, so requiresRestart is false while the class promises a restart'
+        : (requiresRestart && hot !== 'H2'
+          ? 'declared ' + String(APPLIES[hot] || hot) + ' / MEASURED ' + String(appliesAtText) + ' — the declared class is OPTIMISTIC for this key: its readers captured the value at construction, so the receipt reports the measured effect (requiresRestart), not the promise'
+          : 'declared and measured agree')
       const receipt = {
         ok: true, key, source: 'runtime', hot, who: g.who, ownerCheck: g.ownerCheck,
         // ★★ LIVE RUN 19 (the institute's own report, ⑬.1): the receipt carried `hot:"H1"` AND `requiresRestart:true`,
@@ -3081,9 +3093,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         // declared class is now glossed in its own words and the divergence is named, so a reader never has to hold two
         // sentences in mind and guess how they fit.
         hotMeans: 'declared class ' + String(hot) + ' = ' + String(APPLIES[hot] || 'unknown class') + ' (the promise the settings table makes for this class)',
-        declaredVsMeasured: requiresRestart && hot !== 'H2'
-          ? 'declared ' + String(APPLIES[hot] || hot) + ' / MEASURED ' + String(appliesAtText) + ' — the declared class is OPTIMISTIC for this key: its readers captured the value at construction, so the receipt reports the measured effect (requiresRestart), not the promise'
-          : 'declared and measured agree',
+        declaredVsMeasured: divergence,
         // F3: `appliesAt` must agree with `requiresRestart` - an H2 key with a MEASURED live reader is not "next
         // session" for that reader, so the declared class is stated alongside the measured effect.
         appliesAt: appliesAtText,
