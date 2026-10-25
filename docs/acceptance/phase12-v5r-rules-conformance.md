@@ -3069,3 +3069,45 @@ update-doc-counts --write ⇒ JOBS total=528 suites=420 probes=108；regen-all -
 - `regen-all --check` 16/16 · `check-docs` PASS。
 
 > ★ 本轮所有结论都来自**多智能体模式**的 transcript；`caller` 模式的旧读数不能用来支持或反驳它们。
+
+## §79 第一次多智能体验收跑：一个真 HANG，和一个被自己的 inspector 指出来的containment 缺口
+
+### §79.1 这次跑与以前所有跑的差别
+
+`deliverMode:"subagents"`：每个成员真的被派发成一个子智能体（独立 session、独立工具线束、独立模型轮次）。
+因此第一次出现「成员自己调用工具」这种事件——也只在这种模式下，下面两个问题才可能暴露。
+
+### §79.2 `vibe_v5_meeting_round` 返回了一个 Promise，不是一轮会议
+
+- 症状（所办自己的判断，原文）：「the turn started by `vibe_v5_meeting_round` is stuck "in progress" for >5 minutes and blocks all further turns. This is a substantive defect」。
+- 直读证据：该工具回执是 `turn:{}` —— 空对象。
+- 根因：`vibe-math-vmu/packs/v5r/tools.js` 的处理器是**同步函数**，却调用 `kernel.turn.step(...)`（async）**没有 await**。
+  于是处理器返回的是 Promise，工具漏斗（`host-pack-tools.js` 的 `run` 里 `const out = await handler(...)`）拿到的是一个 thenable，
+  JSON 序列化后就是 `{}`。真正的 step 在后台继续跑，回合一直停在 in progress，后续每一轮都被它挡住。
+- 为什么以前从没暴露：caller 模式下 step 本来就把提示词交回调用方（`awaiting:true`），"先返回"是**正确**形状；
+  只有真的子智能体回合（要等子进程跑完）才会把"没 await"变成挂死。
+- 修法：处理器改成 `async`，`step = await kernel.turn.step(...)`；收窄 override 仍在 `finally` 里清，但现在是在 step 真的落地之后才清。
+- 门禁 `tests/vmu-meeting-round-await.test.mjs`（10 断言）：处理器是 AsyncFunction；源码里是 `await kernel.turn.step(` 且未 await 的旧形状已消失；
+  用一个「延迟结算」的假 kernel 证明返回的是**已落地的** step 结果而不是 Promise，并且 `JSON.stringify(out.turn) !== "{}"`；
+  最后一条显式声明**不**断言清理顺序（假 kernel 到不了那一步，写下去就是空断言）。
+
+### §79.3 containment 缺口：成员的线束里有宿主工具
+
+同一次跑的 `slv-inspect` 报了两条 RED，我一开始想当成"检查器在多智能体模式下太严"，逐条核对后确认它是**对的**：
+
+- `RED wire tools not named in prompt: ask_user_question, create_goal, edit, exit_plan_mode, get_goal, glob, grep, interrupt_agent, ... pwsh, read, read_image, send_message, skill, subagent, ...`
+- `RED 同源块与 wire 不一致: block=[…41 个 vibe_v5_* 与 vibe_vmu_* …]`
+
+含义：子智能体（= 研究所成员）的 wire 里既有 pack 工具，也有**宿主的标准工具**（`pwsh` / `edit` / `read` / `glob` …）。
+后果在 transcript 里可以直接看到：成员真的执行了 `Get-ChildItem C:\Users\admin\.dsh\profiles\…`、解压 session、
+grep 宿主 checkout —— 它们并不在"研究所"里工作，而是在**宿主机器**上工作。对一个模拟研究所来说，这不是自由度，是越界。
+
+宿主类型也确认了限制方向：`SubagentStartRequest` 只有 `agentPreset / agentOptions / outputSchema / maxDepth / cwd`，
+**没有**工具白名单字段 ⇒ 收窄只能通过「给成员一个专用 agent preset」实现，不能在 spec 上临时限定。
+这一点登记为命名缺口（gap），不是本轮能顺手修掉的东西：需要一个只挂 pack 工具的成员 preset。
+
+### §79.4 本轮结论
+
+- 机制层：子智能体真的跑起来了（多 session、成员自己调工具、`cast=true`）。
+- 但「多智能体真机跑」是**另一个被测系统**：HANG 与 containment 都只在这个模式下出现，53 次 caller 模式的跑全都看不见。
+- 下一轮：给成员一个只含 pack 工具的 preset（或明确登记"成员持有宿主工具"这一决定），然后重跑。

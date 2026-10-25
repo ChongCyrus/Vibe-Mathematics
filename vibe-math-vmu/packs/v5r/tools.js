@@ -1538,7 +1538,13 @@ function toolMeeting(args = {}, { kernel } = {}) {
  *   · 收窄后为空 ⇒ 具名拒（空工具面是坏配置，不是"严格"）。
  * 主席**不收窄**：他要在会议里维持秩序（关会、流程、投票箱），那是他的席位职责，不是议题内容。
  */
-function toolMeetingRound(args = {}, { kernel } = {}) {
+// ★ PHASE 12 / 2026-10-25 (the first REAL multi-agent run, the institute's own diagnosis): this handler called
+// `kernel.turn.step(...)` WITHOUT awaiting it. `step` is async, so the handler returned a PROMISE, which the tool funnel
+// serialised as `turn:{}` — the round looked "done" while the member turn was still opening, and the store kept that turn
+// "in progress" so every later round was refused. A caller-played turn hid this (the seam hands the prompt back anyway);
+// a real subagent turn made it a HANG. The handler is async and the step is awaited; the narrowing is still cleared in
+// the `finally`, which now runs after the step has actually settled.
+async function toolMeetingRound(args = {}, { kernel } = {}) {
   const meeting = str(args.meeting || args.id || '')
   if (meeting === '') throw refuse('VMU_INVALID_ARGUMENT', 'meeting_round needs the meeting id', 'pass meeting:"<id>" — the id vibe_v5_meeting returned when the meeting was opened')
   // 未知会议 ⇒ 内核具名拒（原样透出，这一层不重新解释）。
@@ -1564,7 +1570,7 @@ function toolMeetingRound(args = {}, { kernel } = {}) {
   let step = null
   let failure = null
   try {
-    step = kernel.turn.step({ members: ids.map((id) => ({ id })), phase: str(args.phase || 'meeting'), why: str(args.why || '') })
+    step = await kernel.turn.step({ members: ids.map((id) => ({ id })), phase: str(args.phase || 'meeting'), why: str(args.why || '') })
   } catch (err) {
     failure = err
   } finally {
