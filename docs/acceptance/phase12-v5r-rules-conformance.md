@@ -3835,3 +3835,32 @@ transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-150803.jsonl`（build 
   前者管「这一回合谁在打字」，后者管「这个席位的线束里有没有这条工具」。
 - **真机验证还没做**：下一次多智能体跑要读子会话的 wire，确认 `vibe_v5_verdict_final` 不在里面、且成员不再报这条。
   在那之前，本节只声明「代码与生成物一致、行为由 24 条断言钉住」，不声明「真机上已生效」。
+
+## §98 第 26 轮真机跑（多代理，5 会话 1786 s）：所办自评「否」，根因是一个架构级事实
+
+**跑**：`_oneoff/vm-slv/full-1025-164255.jsonl`（175 534 行 / 77.8 MB，build `e23fbecf`，交付模式 activation+member 预设）。
+机器读数：`cast:true`（2 张结题票，父内核）、`NO_FENCE 45` / `UNKNOWN_FIELD 52` / `FIELD_NOT_APPLICABLE 4` / `BAD_JSON 0`；
+检查器 1 会话 3 RED（两条是提示词同源块与 wire 的 7 个工具差，一条是 `vibe_vmu_overview` 不在 wire 却被调用）。
+所办自评原文结论：**「本轮无实质残余：否」**，列 9 条。
+
+### 已用一手证据核实的第 1 条（架构级）
+- 落盘状态 `VibeMath/vmu/state.json` 只有 **12 条记录**（r-4/5/6/11/16/20/24/25/26/28/30/31）——**全部是所办写的**；
+  成员子会话自称写成的 r-7 / r-12 / r-17 / r-21、feedback r-8/r-14/r-18/r-22 在文件里**不存在**。
+- 子会话日志（`~/.dsh/sessions/<ws>/<child>/session.v4.jsonl.zstd`）解压后**只有一行 299 字节的头**，零事件——子内核的活动连日志都不可重建。
+- 因此「同一作业号 `lean-1` 在子会话失败、在父内核通过」不是偶发：**每个会话各自挂载一份 vmu 内核，共享同一个状态文件，只有所办那份的写入最终落盘。**
+  机制面两个后果：① 成员的内核写入丢失；② 后写者覆盖前者（last-writer-wins）。
+
+### 报告里其余各条的状态（按是否有一手证据分类）
+- **属实且同根**：#2 命题卡/self-feedback 不落盘（就是成员写入丢失）、#5 成员无法在自己的会议里发言（子内核里没有 m1/m2）、#8 progress 记录 `owner` 缺失（子会话写的那份没落盘）。
+- **待核（报告转写产物，不可当缺陷）**：#7 超时回执「五字段缺失」——原文引的 `"receipt":null`、`lastPhase` 在整个 transcript 里**出现 0 次**，
+  而 `host-deliver.js:266-292` 明写会带 `partial/stillRunning/stillRunningMeans/workspaceHint/waitedMs`。所办自述「删去 stack 路径」时重写了回执，**不能据此改代码**。
+- **需按当前 build 复核**：#3（verdict_final 对不存在的卡裁决）、#4（辩论卡路被闸）、#6（step 的 round-robin 不认 why 里点名的成员）、#9（`vibe_v5_vote` 与 `vibe_vmu_vote` 之名不符）。
+
+### 本轮已修（commit `ddddbf02`，push 完成）
+成员席不再被「提供」它根本跑不了的面：`packs/v5r/member-scope.js` 声明 17 个所办专属面，`host.js` 按 `config.packToolAllow` 过滤，
+成员 wire 从 60 个货架降到 43 个，安装器把该表推导进成员预设行；门禁 `tests/vmu-child-wire-scope.test.mjs`（含双向齿）。
+
+### 结论与下一步
+**这条残渣不是收据措辞能修的**：要么让子会话不写内核（所办唯一写者，成员只写文件+回执），要么让所有会话共用一份内核实例。
+这是架构取舍，需要用户裁定（已在下一条消息里带着实测数据问）。
+
