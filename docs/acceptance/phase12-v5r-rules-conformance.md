@@ -4468,3 +4468,44 @@ coercion 与它产生的 effect **并列**出现（票仍然算数，只是现�
 
 ### 本轮落盘
 `vibe-math-vmu/kernel/turn/index.js` · `tests/vmu-turn.test.mjs`。
+
+## §116 环境阻塞：opencode-go 的**月度用量上限**已耗尽 —— 真机验收跑暂时无法进行
+
+### 现象（三次复现，逐次更小）
+| 时间 | 简报 | 结果 |
+|---|---|---|
+| 02:31 | `task-r22.txt`（50 行） | `{"step":"prompt","accepted":true,"chars":2215}` → `poll running:false out:0 in:0 totalTokens:0` 持续 13 分钟 |
+| 02:48 | 同一份简报 | 同上（`full-1026-024828.jsonl`，poll `t=221` 时仍 0 token） |
+| 02:54 | `task-tiny.txt`：**「只回答两个字：收到。不要调用任何工具。」** | 同上（`full-1026-025405.jsonl`，poll `t=216` 仍 0 token） |
+
+三次的会话日志（`C:\Users\admin\.dsh\sessions\--D-_tmp-slv-phase5-slvp12e-ws--\<sid>\session.v4.jsonl.zstd`）
+解压后**只有 1 行 header、零事件** —— 与 phase 11 那个「prompt accepted 但什么都没发生」的现象同形。
+
+### 根因（直接问提供商，不靠推断）
+```
+curl https://opencode.ai/zen/go/v1/chat/completions  (带 x-opencode-session)
+→ HTTP 429
+{"type":"error","error":{"type":"GoUsageLimitError","message":"Go usage limit exceeded"},
+ "metadata":{"workspace":"org_01M4CK99TQYT81FZDJ59JPJD56","limitName":"monthly"}}
+```
+**是月度额度用尽**，不是代码问题：同一套 tarball 在 02:20 还用 `7945df75` 跑完了 run 21（`tokenTotal 14 273 411`），
+此后任何请求都被计费层拒绝，而框架把这次拒绝表现为「回合没开始」，不写任何会话事件。
+
+### 这解释了原先被登记为「无法验证」的一项
+上一轮把「`counts.failed` 不动」登记为未验。现在有了第二层原因：**当回合根本没跑起来时，`failed` 当然也不动**。
+两种「不动」必须分开记账：① 类型强制导致没有失败（本轮 §115 已修，翻译留痕）；② 请求被计费层拒绝导致没有回合（本节）。
+
+### 处置
+- 真机验收（goal `goal-5e2adedf` 的完成条件）**暂停**，直到：拿新的 opencode-go key / 提升 workspace 额度 /
+  或经用户裁定改用其他提供商（若改，必须在每份报告里明写「本轮不是 opencode-go」）。
+- 代码与门禁工作继续（§114/§115 的修复与断言已完成并推送：`81623902`、`62d0dea2`）。
+- 纪律：**不把「跑不起来」写成「跑过了没问题」**；本轮不得声称任何真机结论。
+
+### 复现命令（给下一次用）
+```
+K=$(cat /d/_tmp/slv-opencode-key.txt)
+curl -sS -m 120 -w 'HTTP %{http_code}\n' https://opencode.ai/zen/go/v1/chat/completions \
+  -H "Authorization: Bearer $K" -H 'Content-Type: application/json' -H "x-opencode-session: probe-$RANDOM" \
+  -d '{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"say ok"}],"max_tokens":16}'
+```
+200 ⇒ 额度恢复，可以继续真机验收；429 ⇒ 仍被拦。
