@@ -1579,6 +1579,10 @@ export function createTurnOrchestrator({
     }
     return { ok: true, fields: parsed.fields, ignoredFields: parsed.ignoredFields || [], refused,
       attribution: Object.assign({}, lastAttribution), source: parsed.source,
+      // ★ LIVE RUN 2026-10-25: when a report already covered the turn and the prose still contained an unparsable brace
+      // span, the turn completes and this note names what was NOT parsed. It must reach the receipt, or "the prose was
+      // ignored" is invisible and the member's own words look silently dropped.
+      ...(parsed.proseUnparsable ? { proseUnparsable: parsed.proseUnparsable } : {}),
       ...(parsed.textIgnored === true ? { textIgnored: true } : {}),
       ...(Array.isArray(parsed.textOnlyFields) && parsed.textOnlyFields.length ? { textOnlyFields: parsed.textOnlyFields } : {}),
       ...out }
@@ -1604,15 +1608,29 @@ export function createTurnOrchestrator({
       return parsed
     }
     let text = null
+    let proseUnparsable = null
     try { text = parse(raw) } catch (e) {
       // A report already covers this turn: prose is case 1 (`textIgnored`), not a second truth - refusing it would punish
-      // a member for explaining itself. A brace span that DOES NOT PARSE is different: the member tried to send a json
-      // report the kernel cannot read, and silently keeping the tool half would hide a broken second channel.
-      if (e && e.code === 'VMU_TURN_BAD_JSON') throw attachReplyDiagnostics(e, raw)
-      text = null
+      // a member for explaining itself.
+      //
+      // ★★★★★★★ LIVE RUN 2026-10-25 (the institute's own defect note): THIS BRANCH USED TO FAIL THE WHOLE TURN.
+      // MEASURED: a member answered through the TOOL channel (`vibe_vmu_turn { op: "reply", report: { … } }` returned
+      // `accepted:true, source:"tool", turn:"t-3"`) and then explained itself in prose containing the illustrative
+      // `{ op: "reply", … }`. The kernel rejected the turn as `VMU_TURN_BAD_JSON` (`replyLength:1122`) even though the
+      // report it needed had already been accepted: the turn was reported as FAILED while its content was recorded. That is
+      // a false failure of the same family as the delivery timeout, and the cost is a whole agent turn. The concern the old
+      // line served ("do not silently hide a broken second channel") is still served - better - by a NAMED NOTE: the
+      // prose is not parsed and not merged, and the receipt says so with the offending span.
+      proseUnparsable = {
+        code: e && e.code ? String(e.code) : 'VMU_TURN_BAD_JSON',
+        message: String((e && e.message) || ''),
+        text: String(raw === undefined || raw === null ? '' : raw).slice(0, 160),
+        hint: 'the structured report is authoritative for this turn, so the turn is NOT failed; the prose brace span was NOT parsed and NOT merged - fix the prose if the member meant it as data',
+      }
     }
     if (!text) {
-      return { reply: Object.assign({}, report.reply), fields: Object.keys(report.reply), ignoredFields: report.ignoredFields.slice(), source: 'tool', textIgnored: true }
+      return { reply: Object.assign({}, report.reply), fields: Object.keys(report.reply), ignoredFields: report.ignoredFields.slice(), source: 'tool', textIgnored: true,
+        ...(proseUnparsable ? { proseUnparsable } : {}) }
     }
     const merged = mergeReplyChannels(report.reply, text.reply)
     const ignored = []
@@ -1632,6 +1650,38 @@ export function createTurnOrchestrator({
     try {
       const asm = await assemble(turn)
       const raw = await deliverTurn(turn, asm.text)
+      // ★ LIVE RUN 2026-10-25: THE RECEIPT COULD NOT SAY WHO EXECUTED THE TURN. The delivery seam returns
+      // `{ reply, childId, stopReason, attribution, deliveryPath }` (kernel/turn/index.js:556-614), and the caller-played
+      // seam returns `deliveryPath:'caller'` - but none of it reached the receipt, so an operator could not tell an
+      // independent subagent from a caller-played round without reading the host's session ledger. `deliveryOf` lifts the
+      // seam's own words onto the receipt; it is derived from the returned envelope, never guessed.
+      // ★ The envelope form is for the AWAITING case; the normal path goes through `deliverTurn`, which normalizes the
+      // seam's answer and returns TEXT, so the executor lives in `lastAttribution` (set by that adapter). One reader,
+      // two sources - and no guessing: an absent deliveryPath means the seam did not say who ran it.
+      const deliveryFromAttribution = () => {
+        const a = lastAttribution && typeof lastAttribution === 'object' ? lastAttribution : null
+        if (!a || typeof a.deliveryPath !== 'string' || !a.deliveryPath) return null
+        return {
+          path: a.deliveryPath,
+          childId: a.childId ? String(a.childId) : null,
+          stopReason: typeof a.stopReason === 'string' ? a.stopReason : null,
+          attribution: typeof a.attribution === 'string' ? a.attribution : null,
+          means: 'which seam executed this member turn: caller = the CALLING session played it and returned the reply; subagents/activation = an independent child session ran it (childId + stopReason name that child)',
+        }
+      }
+      const deliveryOf = (d) => {
+        if (!d || typeof d !== 'object') return null
+        const path = typeof d.deliveryPath === 'string' && d.deliveryPath ? d.deliveryPath : null
+        if (!path) return null
+        return {
+          path,
+          childId: d.childId ? String(d.childId) : null,
+          stopReason: typeof d.stopReason === 'string' ? d.stopReason : null,
+          ...(d.deliveredLate === true ? { deliveredLate: true, waitedMs: d.deliveryWaitedMs === undefined ? null : d.deliveryWaitedMs, deadlineMs: d.deliveryDeadlineMs === undefined ? null : d.deliveryDeadlineMs, graceMs: d.deliveryGraceMs === undefined ? null : d.deliveryGraceMs } : {}),
+          attribution: typeof d.attribution === 'string' ? d.attribution : null,
+          means: 'which seam executed this member turn: caller = the CALLING session played it and returned the reply; subagents/activation = an independent child session ran it (childId + stopReason name that child)',
+        }
+      }
       // ★★★ ROUND 73: A CALLER-PLAYED TURN RETURNS EARLY, AND THAT IS NOT A FAILED ROUND. The seam handed the assembled
       // prompt back to the calling session and deliberately has no reply yet; parsing `null` would turn the one route that
       // needs no host Agent into "the model said nothing". The awaiting envelope travels out with the prompt attached, so
@@ -1639,6 +1689,7 @@ export function createTurnOrchestrator({
       if (raw && typeof raw === 'object' && raw.awaiting === true) {
         return { ok: true, awaiting: true, turn, memberPrompt: raw.memberPrompt || null,
           assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true,
+          delivery: deliveryOf(Object.assign({}, raw, { deliveryPath: (raw && raw.deliveryPath) || 'caller' })),
           fields: [], executed: [], skipped: [], refused: [],
           attribution: Object.assign({}, lastAttribution) }
       }
@@ -1647,7 +1698,7 @@ export function createTurnOrchestrator({
       lastReplyForMember = null
       const parsed = replyFromChannels(raw, attributedTo || turn.member)
       const tail = await dispatchReply({ turn, parsed, attributedTo: attributedTo || turn.member, rawText: raw })
-      return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, ...tail }
+      return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(), ...tail }
     } finally {
       inFlightTurn = null
     }
@@ -2116,6 +2167,12 @@ export function createTurnOrchestrator({
         // cannot tell a legacy fenced-json round from a tool-reported one - and a mechanism whose channel is invisible in
         // its own receipt is exactly the "set a value, cannot read it back" defect this lane exists to remove.
         source: r.source || null,
+        // ★ LIVE RUN 2026-10-25 (subagents mode): the round receipt could not say WHO executed the turn. The delivery seam
+        // always knew ({`caller`} for a caller-played round, a child session id for a real subagent) and the turn receipt now
+        // carries it - but the STEP receipt, which is what an operator actually reads, dropped it again. Same defect family
+        // as run 37's count-only `skipped`: the answer existed one layer down and did not travel.
+        delivery: r.delivery || null,
+        proseUnparsable: r.proseUnparsable || null,
         instructionDelivered: r.instructionDelivered === true, turn: r.turn.id,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated },
         ...selectionReadings }

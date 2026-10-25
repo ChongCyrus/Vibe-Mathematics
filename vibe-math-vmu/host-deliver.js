@@ -194,6 +194,7 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       const phases = []
       const onPhase = (phase) => { try { phases.push({ phase: String(phase), at: Date.now() - startedMs }) } catch { /* evidence only */ } }
       let timer = null
+      let graceTimer = null
       // ★ The bridge is a FACTORY: call it once to get the actual deliverer, then call THAT with the turn/text. Racing
       // the factory itself (it returns a function synchronously) made the seam return a function instead of a reply.
       const deliverer = deliverViaSubagents(subs, extract, {
@@ -204,27 +205,59 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
         throw Object.assign(new Error('the delivery seam factory did not return a callable deliverer'), { code: 'VMU_ENGINE_UNAVAILABLE' })
       }
       const delivery = Promise.resolve().then(() => deliverer({ turn, text }))
-      const deadline = new Promise((resolve, reject) => {
-        timer = setTimeout(() => {
-          const waitedMs = Date.now() - startedMs
-          const last = phases.length > 0 ? phases[phases.length - 1] : null
-          const err = new Error('the one-shot delivery for this member turn did not settle within ' + deliveryTimeoutMs + 'ms')
-          err.code = 'VMU_TURN_DELIVERY_TIMEOUT'
-          err.turn = turn && turn.id ? turn.id : null
-          err.member = turn && turn.member ? turn.member : null
-          err.waitedMs = waitedMs
-          err.deliveryTimeoutMs = deliveryTimeoutMs
-          err.requestSent = last !== null
-          err.lastPhase = last ? last.phase : 'before-call'
-          err.phases = phases.slice()
-          err.hint = 'the turn was started through the one-shot path and never returned; the serial queue is released automatically, and this record says whether the call was entered (' + (last ? 'yes, last phase ' + last.phase : 'no') + ')'
-          reject(err)
-        }, deliveryTimeoutMs)
+      // ★★★★★★★ LIVE RUN 2026-10-25 (the institute's own defect note): THE DEADLINE IS NOT A FAILURE VERDICT.
+      // MEASURED: a real member turn (a subagent that really ran) settled at 197 913 ms against a 180 000 ms deadline.
+      // The child had FINISHED - it had written its Lean file, its proposition card and its progress file - but the turn
+      // was reported as VMU_TURN_DELIVERY_TIMEOUT with `receipt:null`, so a completed agent turn (the most expensive object
+      // in this system) was thrown away and the caller was told nothing happened. The deadline must stay BOUNDED (an
+      // unbounded one-shot delivery stalls the serial queue forever - that was the reason it exists), so the fix is not
+      // "wait longer": it is ONE bounded grace window, and if the delivery settles inside it the reply is HARVESTED and
+      // the receipt says so. Nothing is hidden: `deliveredLate` + the two windows travel on the reply.
+      const TIMEOUT = Symbol('delivery-timeout')
+      const startedMsLocal = startedMs
+      const after = (ms) => new Promise((resolve) => {
+        const t = setTimeout(() => resolve(TIMEOUT), ms)
+        if (ms === deliveryTimeoutMs) timer = t
+        else graceTimer = t
       })
+      const timeoutError = (waitedMs, extra = {}) => {
+        const last = phases.length > 0 ? phases[phases.length - 1] : null
+        const err = new Error('the one-shot delivery for this member turn did not settle within ' + deliveryTimeoutMs + 'ms' +
+          (extra.graceMs ? ' (+' + extra.graceMs + 'ms grace)' : ''))
+        err.code = 'VMU_TURN_DELIVERY_TIMEOUT'
+        err.turn = turn && turn.id ? turn.id : null
+        err.member = turn && turn.member ? turn.member : null
+        err.waitedMs = waitedMs
+        err.deliveryTimeoutMs = deliveryTimeoutMs
+        if (extra.graceMs) err.deliveryGraceMs = extra.graceMs
+        err.requestSent = last !== null
+        err.lastPhase = last ? last.phase : 'before-call'
+        err.phases = phases.slice()
+        err.hint = 'the turn was started through the one-shot path and never returned; the serial queue is released automatically, and this record says whether the call was entered (' + (last ? 'yes, last phase ' + last.phase : 'no') + ')' +
+          (extra.graceMs ? '. A turn that settles inside the grace window is harvested instead of timed out' : '')
+        return err
+      }
       try {
-        return await Promise.race([delivery, deadline])
+        const first = await Promise.race([delivery.then((v) => ({ v })), after(deliveryTimeoutMs)])
+        if (first !== TIMEOUT) return first.v
+        const graceMs = Math.max(1000, Math.round(deliveryTimeoutMs / 4))
+        const late = await Promise.race([delivery.then((v) => ({ v })), after(graceMs)])
+        if (late !== TIMEOUT) {
+          const waitedMs = Date.now() - startedMsLocal
+          const base = late.v && typeof late.v === 'object' ? late.v : { reply: late.v }
+          return Object.assign({}, base, {
+            deliveredLate: true,
+            deliveryWaitedMs: waitedMs,
+            deliveryDeadlineMs: deliveryTimeoutMs,
+            deliveryGraceMs: graceMs,
+            attribution: (base.attribution ? base.attribution + '; ' : '') +
+              'the turn settled AFTER the ' + deliveryTimeoutMs + 'ms deadline but inside the ' + graceMs + 'ms grace window, so it was HARVESTED rather than reported as a timeout (waited ' + waitedMs + 'ms)',
+          })
+        }
+        throw timeoutError(Date.now() - startedMsLocal, { graceMs })
       } finally {
         if (timer) clearTimeout(timer)
+        if (graceTimer) clearTimeout(graceTimer)
       }
     }
     // ROUND 4 / F9+F10 (docs/26 §3.22): THE ONGOING-COMMAND SEAMS, assembled exactly like the turn-delivery one above -

@@ -2984,3 +2984,45 @@ EXIT=0
 
 ### §75.5 诚实边界
 这次改动没有为它单独跑一次全量 T1。理由：生成器的**输出字节级不变**、它本身不是产品运行路径，且依赖它的八个套件全绿；但「没跑全量」不等于「跑过全量」，所以在此写明，供后续收口时补。
+
+## §77 第一次真·多代理真机跑（deliverMode:"subagents"）：四条缺陷，全部先测后改
+
+**为什么会有这一节。** 用户问（m18102）：「你之前的真机实测是主代理和研究所各代理都在一起合作进行模拟测试还是只有主代理在测试，以及是否真的完成了你所要求的那些规则的测试而不是只是其中一部分？」实测答：**此前 13 次真机跑里，53 份 transcript 全部是 deliveryPath:"caller"** —— 研究所的两名成员不是独立会话，而是**调用方同一会话扮演的**；sessionId 每份都只有 1 个。而包自己的设置说 vmu.turn.deliverMode 默认是 subagents，SLV runner 却注入 deliverMode:'caller'。所以「多代理是否真的成立」在修复前**没有任何证据**，只有代码里存在第二条路。
+
+跑法：D:\_tmp\slv-phase5\slv-p12e-subagents.ps1（从 slv-p12b-run.ps1 改两处：deliverMode:'subagents'、task 文件换成 task-p12e.txt；BOM + PowerShell 5.1 读中文路径会让 $Preset 变空 ⇒ 没有 preset，该文件用无 BOM 写入）。启动后先读回确认：drive 打印 deliverMode config=subagents，且 GET /api/status 的 settings.vmu.turn.deliverMode = "subagents"。
+
+结果：cast=true，但 SUMMARY: 1 session(s), 1 with RED checks（第一次出现 RED）。RED 的原因正是下面第 1、2 条缺陷的**后果**：研究所成员真的在干活，框架却把轮次判成失败。
+
+### §77.1 交付超时被当失败裁定（最严重）
+
+研究所自己的缺陷笔记原话：「代理实际有在工作，但框架把工作判失败」。实测数据：transcript 里 54 处 VMU_TURN_DELIVERY_TIMEOUT、replyLength 5344..14784、一处 settledMs=197913；subagentTiming 17 行，其中 firedAtMs 与 deadlineMs（默认 180000）并排，最大 deadlineExceededByMs≈17913。也就是说：**子会话真的跑完了、写了文件，只是比 180 秒晚了几十秒**，而回执是 receipt:null + 超时。
+
+根因：vibe-math-vmu/host-deliver.js 的 Promise.race([delivery, deadline]) 把「到期」当作「失败」，没有第二次机会，也没有把「已完成后迟到」这一事实表达出来。
+
+修法（不是调大常量——那只是把墙推远）：保留有界的 deadline（无限等待会让串行队列永久卡死，这是它当初存在的理由），**加一个有界的宽限窗口**（max(1000, deadline/4)）。窗口内落定 ⇒ **收取**（harvest）并回吐 deliveredLate / deliveryWaitedMs / deliveryDeadlineMs / deliveryGraceMs + 一句明确的 attribution（「HARVESTED rather than reported as a timeout」）；窗口外仍不落定 ⇒ VMU_TURN_DELIVERY_TIMEOUT，message 写成 did not settle within 180000ms (+45000ms grace)，让「没交」与「迟到被收」可区分。
+
+### §77.2 报告 + 不可解析的散文 = 整轮失败
+
+实测：成员用**工具通道**答复（vibe_vmu_turn {op:"reply", report:{…}} 回执 accepted:true, source:"tool", turn:"t-3"）之后又在散文里写了 { op: "reply", … } 作示例，内核回 VMU_TURN_BAD_JSON（replyLength:1122）。**内容已经记下了，轮次却被判失败** —— 与第 1 条同族：把一个已经成功的轮次判成失败，代价是一个完整代理回合。
+
+修法：vibe-math-vmu/kernel/turn/index.js 的 replyFromChannels 不再因为散文里的花括号码段不可解析而 throw；报告已经是权威，散文**不解析也不合并**，但以 proseUnparsable:{code,message,text,hint} 具名附在回执上（并透传到 step 回执的 proseUnparsable）。旧行为想保护的「不要静默掩盖坏掉的第二通道」反而被保存得更好：现在它是可读的一条注记，而不是把整轮打掉。
+
+### §77.3 回执说不出「谁执行了这一轮」
+
+实测：/api/status 里 lastDelivery:{deliveryPath:"caller"}，而在 subagents 模式下子会话跑出来的轮次**没有任何执行者字段**。交付缝其实一直知道（{reply, childId, stopReason, attribution, deliveryPath}），只是在 deliverTurn 归一化成字符串后丢了。
+
+修法：deliveryFromAttribution() 从 lastAttribution（缝自己写下的字段，不猜）派生 delivery:{path,childId,stopReason,attribution,means}，挂到轮次回执**和** step 回执上；means 逐字解释 caller 与 subagents 的区别。这样「这一轮到底是不是独立代理跑的」不再需要读宿主的 session 账本。
+
+### §77.4 门禁与守恒量
+
+新 tests/vmu-subagent-turn.test.mjs **19/0**：①迟到在宽限窗口内 ⇒ 回复被收取且回执写明 HARVESTED、两个窗口与 waitedMs 都在；②永不落定 ⇒ 仍是具名拒且有 deliveryGraceMs；③回路与 step 回执都带 delivery.path/childId/stopReason/means；④报告 + 不可解析散文 ⇒ 轮次完成、code ≠ VMU_TURN_BAD_JSON、fields 含 say、proseUnparsable.code 具名。
+
+邻居：vmu-turn 242/0 · vmu-host 199/0 · vmu-turn-reply-tool 38/0 · vmu-kernel 260/0。
+update-doc-counts --write ⇒ JOBS total=528 suites=420 probes=108；regen-all --check ⇒ 16/16；check-docs ⇒ DOC LINT: PASS。
+
+### §77.5 教训
+
+1. **「默认是 subagents」不等于「跑的是 subagents」。** 设置默认值与 runner 注入值必须读回对比——这一条让此前 13 次「真机验收」全部只验了调用方扮演模式；覆盖缺口不是靠推理发现的，是靠读 transcript 里的 deliveryPath 发现的。
+2. **超时是「不知道」，不是「失败」。** 一个 deadline 只能回答「我没等到」，把它写成裁定就把「已完成的昂贵工作」和「没发生的工作」混成同一格。
+3. **第二个通道坏掉，不应否决第一个通道。** 报告已被接受时，散文的问题必须降级为注记（具名、可读），而不是升级为整轮失败。
+4. **诊断面必须能回答「谁做的」。** 执行者身份是回执的一部分，不是调试时再去宿主账本里捞的东西。
