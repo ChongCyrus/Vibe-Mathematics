@@ -425,6 +425,20 @@ export function createLibrary({
 
     /** Append a progress line to one track. An unknown track is refused by name (docs/07 §4.1). */
     async record(member, track, text) {
+      // ★★★ LIVE RUN 18 (the institute's own report, 「本轮无实质残余：否」 item 3): a member's reply carried
+      // `record: { track: {...} }` — the TRACK slot held the payload object — and the refusal answered
+      // `unknown record track: [object Object]`. That names neither the real problem (a SHAPE error, not an unknown
+      // name) nor the fix, so the member could not act on it and had to be told by a human. `String(x)` on an object
+      // is always `[object Object]`, which is the diagnostic equivalent of saying nothing.
+      if (typeof track !== 'string' || track.trim() === '') {
+        const shape = track === null ? 'null'
+          : track === undefined ? 'undefined'
+            : Array.isArray(track) ? 'array[' + track.length + ']'
+              : typeof track === 'object' ? 'object{' + Object.keys(track).slice(0, 6).join(', ') + '}'
+                : typeof track + ' ' + JSON.stringify(track)
+        throw refuse('VMU_RECORD_SHAPE', 'record needs a track NAME (a string); the track slot holds ' + shape,
+          'send { record: { track: "<one of: ' + tracks.join(' | ') + '>", text: "<one line>" } } — the track is the NAME of the list, never the payload object')
+      }
       if (!tracks.includes(track)) {
         throw refuse('VMU_INVALID_ARGUMENT', 'unknown record track: ' + String(track),
           'declared tracks: ' + tracks.join(', ') + ' (vmu.records.tracks)')

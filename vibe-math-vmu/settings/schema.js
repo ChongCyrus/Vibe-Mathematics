@@ -142,19 +142,19 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.prompts.resourceSection', type: 'boolean', def: false, hot: HOT.H0, who: 'office', doc: 'P3/S25-A：默认 false＝提示词一字不改；true 才注入【资源】段' },
 
   // ---- meetings (rules and mechanism only; "when to meet" and "what counts as stalled" are middleware)
-  { key: 'vmu.meetings.quorumRule', type: 'enum', domain: ['m-unanimous', 'all-unanimous'], def: 'm-unanimous', hot: HOT.H1, who: 'role:chair', doc: '法定数规则（仅规则，不含"何时开会"）' },
-  { key: 'vmu.meetings.quorumCap', type: 'natural', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：法定数上限 m = min(用户设置数, 可投票成员数＝名册∩vmu.meetings.eligibleSeats)；参会人数不参与该式；0＝不设上限' },
+  { key: 'vmu.meetings.quorumRule', type: 'enum', domain: ['m-unanimous', 'all-unanimous'], def: 'm-unanimous', hot: HOT.H2, who: 'role:chair', doc: '法定数规则（仅规则，不含"何时开会"）' },
+  { key: 'vmu.meetings.quorumCap', type: 'natural', def: 3, hot: HOT.H2, who: 'role:chair', doc: 'P3：法定数上限 m = min(用户设置数, 可投票成员数＝名册∩vmu.meetings.eligibleSeats)；参会人数不参与该式；0＝不设上限' },
   // ROUND 6 / target-4 verdict: `vmu.meetings.reconsiderFloor` was a CONFIRMED ORPHAN (zero readers) and has been
   // DELETED here (Round 6 close). The knob that actually works is `vmu.ballot.reopenFloor`; a second name with a
   // different semantic made a deployment believe there were two knobs when only one is wired. Removal order was
   // measured, not guessed: the pack manifest values and the volumes that spelled the full name (docs/08, docs/10,
   // docs/12) were reworded FIRST, because the docs gates require every `vmu.*` name written in a volume to exist here.
-  { key: 'vmu.meetings.verdictMaxRounds', type: 'positiveInteger', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：同一对象的复算轮次上限（不得无限复算）' },
-  { key: 'vmu.meetings.hardLimitMs', type: 'natural', def: 1800000, hot: HOT.H1, who: 'office', doc: 'P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"**' },
-  { key: 'vmu.meetings.wakeRetries', type: 'natural', def: 5, hot: HOT.H1, who: 'office', doc: 'P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会"' },
-  { key: 'vmu.meetings.roundTimeoutMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '单轮超时；0＝不限' },
-  { key: 'vmu.meetings.quotesPerMessageMax', type: 'natural', def: 2, hot: HOT.H1, who: 'role:chair', doc: 'P3：每条发言最多引用几条；超限 ⇒ 具名拒' },
-  { key: 'vmu.meetings.quoteDepthMax', type: 'natural', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：引用链深度上限；超深 ⇒ 折叠标注（不拒）' },
+  { key: 'vmu.meetings.verdictMaxRounds', type: 'positiveInteger', def: 3, hot: HOT.H2, who: 'role:chair', doc: 'P3：同一对象的复算轮次上限（不得无限复算）' },
+  { key: 'vmu.meetings.hardLimitMs', type: 'natural', def: 1800000, hot: HOT.H2, who: 'office', doc: 'P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"**' },
+  { key: 'vmu.meetings.wakeRetries', type: 'natural', def: 5, hot: HOT.H2, who: 'office', doc: 'P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会"' },
+  { key: 'vmu.meetings.roundTimeoutMs', type: 'natural', def: 0, hot: HOT.H2, who: 'office', doc: '单轮超时；0＝不限' },
+  { key: 'vmu.meetings.quotesPerMessageMax', type: 'natural', def: 2, hot: HOT.H2, who: 'role:chair', doc: 'P3：每条发言最多引用几条；超限 ⇒ 具名拒' },
+  { key: 'vmu.meetings.quoteDepthMax', type: 'natural', def: 3, hot: HOT.H2, who: 'role:chair', doc: 'P3：引用链深度上限；超深 ⇒ 折叠标注（不拒）' },
 
   // ---- tasks and stages ---------------------------------------------------------------------
   { key: 'vmu.tasks.maxOpenTasks', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '未完成任务上限；0＝不限' },
@@ -1088,21 +1088,21 @@ const CORE_DEFS = Object.freeze([
   // `WIRED_KEYS` declares it - so that read point is reader-b's to retire; until then the key is simply UNDECLARED,
   // which `docs/04` reports as a wired-but-undeclared read (visible, not silent).
   // ROUND 3 / task-20 D (v5r-reader-c 的 task-17 接线单): two keys whose readers already exist.
-  { key: 'vmu.meetings.tier', type: 'enum', domain: ['formal', 'light'], def: 'formal', hot: HOT.H1, who: 'office', doc: '会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。' },
+  { key: 'vmu.meetings.tier', type: 'enum', domain: ['formal', 'light'], def: 'formal', hot: HOT.H2, who: 'office', doc: '会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。' },
   // ROUND 3 / task-20 D（reader-c 的接线单增补）：只有一个 `tier` 键表达不了"本机构不允许简流程"，所以"是否允许"
   // 是第二个键；两者共用**同一个派生判定点**（`open()` 与 `truthWriteRefusal()`），并都在 `WIRED_KEYS`／
   // `keysSnapshot()` 里真读 —— 不会出现"声明了没人读"。
-  { key: 'vmu.meetings.allowLight', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: '是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。' },
+  { key: 'vmu.meetings.allowLight', type: 'boolean', def: true, hot: HOT.H2, who: 'office', doc: '是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。' },
   { key: 'vmu.ballot.reopenFloor', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '投票板重开门槛（0＝不设门槛；>0 时 reopen 需要达到该支持数）。读者：`kernel/ballotbox.js` 的 `reopen()`（reader-c 的 GAP-MTG-10；该面自有实现，不并存第二份）。' },
   // ROUND 8 / task-58 尾账：`docs/08` §25.14 B② 的 Lead 裁决（请假/休会批准人＝chair、office 兜底，**且必须可声明**）
   // 点名了该键，而 `audit-vmu-docs` G 段要求"文档里出现的 `vmu.*` 名必须真在 `schema.js` 里"（`planned.js` 不能顶替）。
   // 键**在此落地**；读者属 08 面的 B②，**本轮未落** ⇒ `docs/04` 会如实把它列为 declared-but-not-wired，
   // 读取方落地前必须按名具名降级（不臆造，不改裁决）。
-  { key: 'vmu.meetings.leaveApprover', type: 'enum', domain: ['chair', 'office'], def: 'chair', hot: HOT.H1, who: 'office', doc: '请假/休会的批准人：chair＝主席批准，office＝办公室兜底。★ 本轮**只声明键**（B② 的 requestLeave/approveLeave 未落）；键被读时必须按此值域判定，未落前读取具名降级。' },
-  { key: 'vmu.meetings.eligibleSeats', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '投票席位白名单（席别名；空＝不按席别限制，只要求是本场成员）。一个判据、两个消费者：`kernel/meetings.js` 的 `vote()`（票权闸）与 `eligibleVoterIds()`（供逐对象票箱取 eligible）。默认空＝零策略；v5r 包声明 chair/member。' },
+  { key: 'vmu.meetings.leaveApprover', type: 'enum', domain: ['chair', 'office'], def: 'chair', hot: HOT.H2, who: 'office', doc: '请假/休会的批准人：chair＝主席批准，office＝办公室兜底。★ 本轮**只声明键**（B② 的 requestLeave/approveLeave 未落）；键被读时必须按此值域判定，未落前读取具名降级。' },
+  { key: 'vmu.meetings.eligibleSeats', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: '投票席位白名单（席别名；空＝不按席别限制，只要求是本场成员）。一个判据、两个消费者：`kernel/meetings.js` 的 `vote()`（票权闸）与 `eligibleVoterIds()`（供逐对象票箱取 eligible）。默认空＝零策略；v5r 包声明 chair/member。' },
   // ★ A4 「临时工默认不参与会议」: the NON-ATTENDING seats. Empty = no seat rule (zero mechanism). One consumer:
   // `attend()` in kernel/meetings.js. v5r declares `["temp"]` in its pack defaults — the institution vote.
-  { key: 'vmu.meetings.attendDeniedSeats', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '不参与会议的席位（席别名；空＝不按席别限制）。消费者＝attend() 门：命中即 VMU_NOT_PERMITTED 并点名该键与席位。' },
+  { key: 'vmu.meetings.attendDeniedSeats', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: '不参与会议的席位（席别名；空＝不按席别限制）。消费者＝attend() 门：命中即 VMU_NOT_PERMITTED 并点名该键与席位。' },
 
   // ── ROUND 10 / task-74 (A): the eight v5r parameters, each WITH ITS READER (a key without one is an orphan) ──
   // Every default below is v5r's own value with a line reference; nothing is invented, and every key names the
@@ -1123,7 +1123,7 @@ const CORE_DEFS = Object.freeze([
   // character-for-character (and this is very likely what overwrote a targeted edit in round 15). The generator skips a
   // key that is already declared here, so this row is now the single source; the generator asserts that a
   // hand-declared-domain key never reappears in its block (`HAND_DECLARED_DOMAINS`), so the row cannot silently revert.
-  { key: 'vmu.meetings.orderMode', type: 'enum', domain: ['fifo', 'round-robin', 'chair', 'random'], def: 'fifo', hot: HOT.H1, who: 'office', doc: "发言序模式（fifo|round-robin|chair|random）；域外值 ⇒ 读取侧具名拒（kernel/meetingmarker.js 的 strictOrderMode），不静默回落到默认值" },
+  { key: 'vmu.meetings.orderMode', type: 'enum', domain: ['fifo', 'round-robin', 'chair', 'random'], def: 'fifo', hot: HOT.H2, who: 'office', doc: "发言序模式（fifo|round-robin|chair|random）；域外值 ⇒ 读取侧具名拒（kernel/meetingmarker.js 的 strictOrderMode），不静默回落到默认值" },
 
   // ROUND 31 / task-149 C①②: THE NINE `vmu.meetings.*` KEYS WHOSE READER ALREADY HAD A STRICT DOMAIN, hand-declared
   // here (OUTSIDE the block below) for the same measured reason as `orderMode` ten lines up: the generator recovers a
@@ -1134,15 +1134,15 @@ const CORE_DEFS = Object.freeze([
   // this declaration and the read-side set — that is exactly what made R17's `orderMode` precedent valid.
   // They are listed in `HAND_DECLARED_DOMAINS` (scripts/generate-wired-schema.mjs) so the generator skips them and
   // reddens if one ever reappears in its block.
-  { key: 'vmu.meetings.attendanceMode', type: 'enum', domain: ['roster', 'signin', 'quorum-only'], def: 'roster', hot: HOT.H1, who: 'office', doc: '出席模式（roster|signin|quorum-only）；域与读取侧 meetings.js:138 的 oneOf 逐字相同' },
-  { key: 'vmu.meetings.quorumLossPolicy', type: 'enum', domain: ['suspend', 'continue', 'recess'], def: 'suspend', hot: HOT.H1, who: 'office', doc: '失去法定人数后的处置（suspend|continue|recess）；域与 meetings.js:147 逐字相同' },
-  { key: 'vmu.meetings.budgetOnExceed', type: 'enum', domain: ['refuse', 'warn', 'extend'], def: 'refuse', hot: HOT.H1, who: 'office', doc: '超预算动作（refuse|warn|extend）；域与 meetings.js:154 逐字相同' },
-  { key: 'vmu.meetings.leaveEarlyPolicy', type: 'enum', domain: ['allow', 'note', 'deny'], def: 'allow', hot: HOT.H1, who: 'office', doc: '提前离席政策（allow|note|deny）；域与 meetings.js:171 逐字相同' },
-  { key: 'vmu.meetings.minutesDetail', type: 'enum', domain: ['brief', 'full'], def: 'brief', hot: HOT.H1, who: 'office', doc: '纪要详略（brief|full）；域与 meetings.js:173 逐字相同' },
-  { key: 'vmu.meetings.appealScope', type: 'enum', domain: ['all', 'procedural', 'none'], def: 'all', hot: HOT.H1, who: 'office', doc: '申诉范围（all|procedural|none）；域与 meetings.js:178 逐字相同' },
-  { key: 'vmu.meetings.confidentialityDefault', type: 'enum', domain: ['public', 'internal', 'restricted'], def: 'internal', hot: HOT.H1, who: 'office', doc: '默认保密级（public|internal|restricted）；域与 meetings.js:185 逐字相同' },
-  { key: 'vmu.meetings.confidentialityQuotePolicy', type: 'enum', domain: ['allow', 'redact', 'deny'], def: 'allow', hot: HOT.H1, who: 'office', doc: '引用机密内容的政策（allow|redact|deny）；域与 meetings.js:186 逐字相同' },
-  { key: 'vmu.meetings.wakeFailurePolicy', type: 'enum', domain: ['refuse', 'skip', 'retry'], def: 'refuse', hot: HOT.H1, who: 'office', doc: '唤醒失败处置（refuse|skip|retry）；域与 meetings.js:188 逐字相同' },
+  { key: 'vmu.meetings.attendanceMode', type: 'enum', domain: ['roster', 'signin', 'quorum-only'], def: 'roster', hot: HOT.H2, who: 'office', doc: '出席模式（roster|signin|quorum-only）；域与读取侧 meetings.js:138 的 oneOf 逐字相同' },
+  { key: 'vmu.meetings.quorumLossPolicy', type: 'enum', domain: ['suspend', 'continue', 'recess'], def: 'suspend', hot: HOT.H2, who: 'office', doc: '失去法定人数后的处置（suspend|continue|recess）；域与 meetings.js:147 逐字相同' },
+  { key: 'vmu.meetings.budgetOnExceed', type: 'enum', domain: ['refuse', 'warn', 'extend'], def: 'refuse', hot: HOT.H2, who: 'office', doc: '超预算动作（refuse|warn|extend）；域与 meetings.js:154 逐字相同' },
+  { key: 'vmu.meetings.leaveEarlyPolicy', type: 'enum', domain: ['allow', 'note', 'deny'], def: 'allow', hot: HOT.H2, who: 'office', doc: '提前离席政策（allow|note|deny）；域与 meetings.js:171 逐字相同' },
+  { key: 'vmu.meetings.minutesDetail', type: 'enum', domain: ['brief', 'full'], def: 'brief', hot: HOT.H2, who: 'office', doc: '纪要详略（brief|full）；域与 meetings.js:173 逐字相同' },
+  { key: 'vmu.meetings.appealScope', type: 'enum', domain: ['all', 'procedural', 'none'], def: 'all', hot: HOT.H2, who: 'office', doc: '申诉范围（all|procedural|none）；域与 meetings.js:178 逐字相同' },
+  { key: 'vmu.meetings.confidentialityDefault', type: 'enum', domain: ['public', 'internal', 'restricted'], def: 'internal', hot: HOT.H2, who: 'office', doc: '默认保密级（public|internal|restricted）；域与 meetings.js:185 逐字相同' },
+  { key: 'vmu.meetings.confidentialityQuotePolicy', type: 'enum', domain: ['allow', 'redact', 'deny'], def: 'allow', hot: HOT.H2, who: 'office', doc: '引用机密内容的政策（allow|redact|deny）；域与 meetings.js:186 逐字相同' },
+  { key: 'vmu.meetings.wakeFailurePolicy', type: 'enum', domain: ['refuse', 'skip', 'retry'], def: 'refuse', hot: HOT.H2, who: 'office', doc: '唤醒失败处置（refuse|skip|retry）；域与 meetings.js:188 逐字相同' },
 
   // WIRED-SCHEMA:BEGIN (generated by scripts/generate-wired-schema.mjs - do not hand-edit)
   { key: 'vmu.allocation.dirtyWorkQuota', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（bidding.js 读取）；默认值取自模块源码" },

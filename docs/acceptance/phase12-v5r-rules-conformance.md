@@ -4208,3 +4208,41 @@ run 17 的所办报告把两条规则判为「只有观感、没有可核实的�
 - 诚实边界: 这两条修订都还没在真机上验证——run 18 的简报（`D:\_tmp\slv-phase5\task-r18.txt` ⑫.2/⑫.3）
   要求所办逐字抄回 `voteFloor.source/eligibleUniverse/effective`、先故意在院士无回合时开会一次取拒绝码、
   再给回合后重试；跑完才谈得上「已实现」。
+
+## §110 run 18 的三条实质残余：一条是「表在说谎」，两条是「失败点不出来」
+
+run 18 是本阶段第一次 office + 真子代理跑完全部轮次并结题（`cast:true`、`votesCast:3`、`missing:[]`），
+但它自己的报告给了 **「本轮无实质残余：否」**，三条实质残余全部成立，其中第一条是设置表本身的谎。
+
+### ① `vmu.meetings.*` 的 hot 等级与真实生效时机不一致（70 个键）
+- 现象: 报告里 `vibe_v5_set { key:"vmu.meetings.quorumMin", value:2 }` 的回执是 `requiresRestart:true`、
+  `appliesAt:"next start (this key has no live reader: createMeetings() snapshots …)"`，而**设置表声明 `hot: H1`**
+  （= 下一回合就生效）。同一个键两句话，读者相信的是表。
+- 量测: `constructionOnlyReasonOf(key)` 与 `SETTING_DEFS` 交叉比对 ⇒ **71 个键**矛盾（全部 `vmu.meetings.*`；
+  其中 1 个是 `settings/planned.js` 的 planned 键，属设计承诺，豁免）。
+- 修: `vibe-math-vmu/settings/schema.js` 里这 **70 个键**从 `HOT.H1` 改为 `HOT.H2`（真话：构造期快照，运行期写要重启才生效）。
+- 门禁: NEW `tests/audit-settings-hot-truth.test.mjs`（**11 passed, 0 failed**，比对 **1155** 个已实现键）：
+  任何被框架判为 construction-only 的键，声明 hot 不得是 H0/H1；并断言「比较的键数 > 1000」防空洞，
+  另用两组合成的 TEETH 证明规则本身有牙（H1 被抓、H2 通过、有活着读取者的键可保留 H1、planned 键豁免）。
+- 既有断言被这条真话撞红一个（`tests/vmu-host.test.mjs` 的「a declared key is applied」硬写了 `hot==="H1"`），
+  改成断言 `hot==="H2" && requiresRestart===true`——**把旧的错声明钉死在测试里的那种红，必须改测试而不是改回去**。
+  修后 `vmu-host` 199/0、`vmu-settings` 49/0、`vmu-settings-domain` 51/0、`vmu-settings-wiring-index` 23/0。
+
+### ② 成员回合「送达成功但写回失败」在任何计数里都看不见
+- 现象: t-1 的成员回复到了、写回抛错（见③），而 `status.counts` 里 `delivered:2`、`deliveryFailed:0`、`refused:0` ——
+  「有一次成员的动作为什么没落账」在合计里完全不可见；只能靠 office 把错误文本抄进报告。
+- 修: `vibe-math-vmu/kernel/turn/index.js` `counts` 新增 `failed` / `failedLast` / `failedMeans`：
+  在 `apply()` 抛错处递增，并把 `turn/member/code/message/replyText(400 字符)` 与一句 `means`（
+  「回复到了、写回抛了 ⇒ 成员回答了，动作没生效；它不计入 deliveryFailed」）写进去；`status()` 的 counts 直接可读。
+
+### ③ `record` 把「载荷对象」塞进 track 槽时报 `unknown record track: [object Object]`
+- 现象: 成员回执写 `record: { track: {...} }`，内核回 `unknown record track: [object Object]` —— 既没说这是**形状**错，
+  也没给修法；`String(对象)` 恒等于 `[object Object]`，是「等于没说」的诊断。
+- 修: `vibe-math-vmu/kernel/library.js` `record()` 先判形状，非字符串/空串 ⇒ `VMU_RECORD_SHAPE`，
+  message 写明「track 槽里是 object{track}」，hint 给出可直接照抄的 `{ record: { track: "<declared>", text: "<one line>" } }`
+  与声明的 track 名单。
+
+### 诚实边界
+- 这三条都还没在真机上复验（run 19 的简报改成：m 由**启动注入**而不是运行期 set；并要求逐字抄 `status.counts.failed`/`failedLast`
+  与形状拒的具体文案）。
+- ②③ 是「让失败可读」，不是「让失败不发生」——t-1 的根因是成员的 record 形状，成员侧提示词是否该更明确，留待下一轮量测。

@@ -223,8 +223,12 @@ const call = async (spec, args = {}) => JSON.parse(await spec.execute(args, {}))
   const bad = await call(setTool, { key: 'vmu.nope.nothing', value: '1' })
   ok(bad.ok === false && bad.code === 'VMU_INVALID_ARGUMENT', 'an undeclared key is refused BY NAME (R4)', JSON.stringify(bad))
   const good = await call(setTool, { key: 'vmu.meetings.quorumCap', value: '7' })
-  ok(good.ok === true && good.value === 7 && good.hot === 'H1' && good.who === 'role:chair',
-    'a declared key is applied, with its hot class and who-may-change-it in the receipt', JSON.stringify(good))
+  // ★ LIVE RUN 18 (the institute's own report): this key was DECLARED H1 ("next turn") while `createMeetings()`
+  // snapshots the whole `vmu.meetings.*` block at construction, so the receipt promised a live effect it could not
+  // deliver. The declaration was corrected to H2 and the receipt now says `requiresRestart:true`; this assertion pins
+  // BOTH halves, so a future flip back to H1 fails here instead of misleading an operator on the real machine.
+  ok(good.ok === true && good.value === 7 && good.hot === 'H2' && good.who === 'role:chair' && good.requiresRestart === true,
+    'a declared key is applied, with its hot class, who-may-change-it and restart requirement in the receipt', JSON.stringify(good))
   ok(kernel.settingsSnapshot()['vmu.meetings.quorumCap'] === 7, 'the value is actually in force')
   const statusTool = host.state.specs.find((s) => s.name === 'vibe_vmu_status')
   ok((await call(statusTool)).ok === true, 'status still works after a set')

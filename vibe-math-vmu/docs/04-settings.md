@@ -320,14 +320,14 @@ vmu.packs.active: [v5r]
 | `vmu.prompts.agentId` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 本装配是【为哪个宿主 agent】：★ scope 的 agent 维据此命中；★ 空 ⇒ 【不命中任何人】（★ 不会因为没设就命中全部）；★ 宿主在装配上下文里给的 agent 优先于此；★ 名字是部署词汇 |
 | `vmu.prompts.whoMayOverride` | string[] | `[office]` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 允许覆盖提示词者 |
 | `vmu.prompts.resourceSection` | bool | `false` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | P3/S25-A：默认 false＝提示词一字不改；true 才注入【资源】段 |
-| `vmu.meetings.quorumRule` | enum | `m-unanimous` | `m-unanimous`∣`all-unanimous` | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/index.js` | 法定数规则（仅规则，不含"何时开会"） |
-| `vmu.meetings.quorumCap` | int ≥0 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：法定数上限 m = min(用户设置数, 可投票成员数＝名册∩vmu.meetings.eligibleSeats)；参会人数不参与该式；0＝不设上限 |
-| `vmu.meetings.verdictMaxRounds` | int ≥1 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/meetings.js` | P3：同一对象的复算轮次上限（不得无限复算） |
-| `vmu.meetings.hardLimitMs` | int ≥0 | `1800000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"** |
-| `vmu.meetings.wakeRetries` | int ≥0 | `5` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会" |
-| `vmu.meetings.roundTimeoutMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 单轮超时；0＝不限 |
-| `vmu.meetings.quotesPerMessageMax` | int ≥0 | `2` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：每条发言最多引用几条；超限 ⇒ 具名拒 |
-| `vmu.meetings.quoteDepthMax` | int ≥0 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：引用链深度上限；超深 ⇒ 折叠标注（不拒） |
+| `vmu.meetings.quorumRule` | enum | `m-unanimous` | `m-unanimous`∣`all-unanimous` | 会话 | H2 | role:chair | ✅ 已接线 | `kernel/index.js` | 法定数规则（仅规则，不含"何时开会"） |
+| `vmu.meetings.quorumCap` | int ≥0 | `3` | — | 会话 | H2 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：法定数上限 m = min(用户设置数, 可投票成员数＝名册∩vmu.meetings.eligibleSeats)；参会人数不参与该式；0＝不设上限 |
+| `vmu.meetings.verdictMaxRounds` | int ≥1 | `3` | — | 会话 | H2 | role:chair | ✅ 已接线 | `kernel/meetings.js` | P3：同一对象的复算轮次上限（不得无限复算） |
+| `vmu.meetings.hardLimitMs` | int ≥0 | `1800000` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetinglapse.js` | P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"** |
+| `vmu.meetings.wakeRetries` | int ≥0 | `5` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会" |
+| `vmu.meetings.roundTimeoutMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 单轮超时；0＝不限 |
+| `vmu.meetings.quotesPerMessageMax` | int ≥0 | `2` | — | 会话 | H2 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：每条发言最多引用几条；超限 ⇒ 具名拒 |
+| `vmu.meetings.quoteDepthMax` | int ≥0 | `3` | — | 会话 | H2 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：引用链深度上限；超深 ⇒ 折叠标注（不拒） |
 | `vmu.tasks.maxOpenTasks` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 未完成任务上限；0＝不限 |
 | `vmu.tasks.requireExpectedRevision` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 任务变更必须声明所见版本（防丢更新；关＝仅在声明时校验） |
 | `vmu.tasks.stages` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 阶段列表；默认空＝不假装有流程 |
@@ -1072,12 +1072,12 @@ vmu.packs.active: [v5r]
 | `vmu.paper.finalizer` | enum | `editor` | `editor`∣`contributor`∣`any` | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 定稿权限**规则**（不是角色名！v5r 的 `paperEditor:'academician'` 是**机构角色**；本键是**规则**，v5r 等价＝`editor` ＋创建时把 paper 的 `editor` 指定为主持人）。★ 轮 8：域外值 ⇒ **具名拒** `VMU_INVALID_ARGUMENT`（列出声明的域），**绝不静默回落** ✗✓；读者＝`kernel/paper.js` 的 `cfg()`。 |
 | `vmu.math.jobs.logMax` | int ≥0 | `200` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathjobs.js` | 作业日志保留条数（溢出必计数）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。 |
 | `vmu.math.jobs.persist` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/lean.js` | 作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`。 |
-| `vmu.meetings.tier` | enum | `formal` | `formal`∣`light` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。 |
-| `vmu.meetings.allowLight` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。 |
+| `vmu.meetings.tier` | enum | `formal` | `formal`∣`light` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 会议级别：light＝简流程，**不得产出实体定论**（派生谓词，不是阶段）。读者：`kernel/meetings.js` 的 `K.tier`＋`tier()`／`truthWriteRefusal()`，唯一判定点在 `close()` 的收束路径（reader-c 的 GAP-MTG-02）。 |
+| `vmu.meetings.allowLight` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 是否允许 light（简流程）会议：false ⇒ 内核在开会/收束处以具名拒挡住 light（与 `tier` 共用同一派生判定点）。读者：`kernel/meetings.js` 的 `K.allowLight`。 |
 | `vmu.ballot.reopenFloor` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/ballotbox.js` | 投票板重开门槛（0＝不设门槛；>0 时 reopen 需要达到该支持数）。读者：`kernel/ballotbox.js` 的 `reopen()`（reader-c 的 GAP-MTG-10；该面自有实现，不并存第二份）。 |
-| `vmu.meetings.leaveApprover` | enum | `chair` | `chair`∣`office` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingleave.js` | 请假/休会的批准人：chair＝主席批准，office＝办公室兜底。★ 本轮**只声明键**（B② 的 requestLeave/approveLeave 未落）；键被读时必须按此值域判定，未落前读取具名降级。 |
-| `vmu.meetings.eligibleSeats` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 投票席位白名单（席别名；空＝不按席别限制，只要求是本场成员）。一个判据、两个消费者：`kernel/meetings.js` 的 `vote()`（票权闸）与 `eligibleVoterIds()`（供逐对象票箱取 eligible）。默认空＝零策略；v5r 包声明 chair/member。 |
-| `vmu.meetings.attendDeniedSeats` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 不参与会议的席位（席别名；空＝不按席别限制）。消费者＝attend() 门：命中即 VMU_NOT_PERMITTED 并点名该键与席位。 |
+| `vmu.meetings.leaveApprover` | enum | `chair` | `chair`∣`office` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetingleave.js` | 请假/休会的批准人：chair＝主席批准，office＝办公室兜底。★ 本轮**只声明键**（B② 的 requestLeave/approveLeave 未落）；键被读时必须按此值域判定，未落前读取具名降级。 |
+| `vmu.meetings.eligibleSeats` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 投票席位白名单（席别名；空＝不按席别限制，只要求是本场成员）。一个判据、两个消费者：`kernel/meetings.js` 的 `vote()`（票权闸）与 `eligibleVoterIds()`（供逐对象票箱取 eligible）。默认空＝零策略；v5r 包声明 chair/member。 |
+| `vmu.meetings.attendDeniedSeats` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 不参与会议的席位（席别名；空＝不按席别限制）。消费者＝attend() 门：命中即 VMU_NOT_PERMITTED 并点名该键与席位。 |
 | `vmu.prompt.compactThreshold` | int ≥0 | `66` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 上下文占比达到该值 ⇒ 组装时注入 [CONTEXT COMPACT] 指示。**百分数 0–100，不是 0–1**。v5r `compactThreshold:66`（`:1078`；`:449` 明写 never clamp to 0-1；`:9869` 拒 ≤0）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.contextPct`）。 |
 | `vmu.prompt.compactAfterRounds` | int ≥0 | `8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 距上次压缩的轮数达到该值 ⇒ 同上注入（与阈值是**或**关系）。v5r `compactAfterRounds:8`（`:1079`；`soft` 判定 `:3902-3903`）。读者：`kernel/prompt/index.js` 的 `assemble()`（读 `ctx.round`）。 |
 | `vmu.paper.finalPaper` | bool | `true` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 运行结束时**自动**写最终论文。v5r `finalPaper:true`（`:1163`；消费点 `:7867` `if (params.finalPaper !== false)`）。读者：`kernel/paper.js` 的 `finalize({auto:true})`（false ⇒ 具名拒，不静默改成手动）。 |
@@ -1086,16 +1086,16 @@ vmu.packs.active: [v5r]
 | `vmu.paper.compilePdf` | bool | `true` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 检测到 LaTeX 引擎时编译 PDF。v5r `paperCompilePdf:true`（`:1166`；消费点 `:8258`；`:8820` 明写 format=md 时**不得**因缺 tex 报警 ⇒ `pdf = compilePdf && format !== 'md'`）。读者：与 `vmu.paper.format` 同一处。 |
 | `vmu.members.maxTempPerMember` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/recruit.js` | 同一雇佣者名下**同时在册**的临时成员上限。v5r `maxTempPerMember:3`（`:1075`；消费点 `:8920-8924`：`perCap = max(1, floor(value||3))`、按 `hiredBy` 计数、超限 `V5_MEMBER_LIMIT` 并回报 current/limit）。vmu 映射（vmu 无 kind:temp）：**仍在试用期**（`confirmedAt === null`）的成员按接纳人 `by` 分组。读者：`kernel/recruit.js` 的 `accept()`。 |
 | `vmu.tasks.memberMayRejectAssign` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tasks.js` | 成员可否对被分派**表示异议**（记录＋广播，**任务仍执行**）。v5r `memberMayRejectAssign:true`（`:1066`；消费点 `:9555-9562`：``reject_assign && params.memberMayRejectAssign`` ⇒ 广播给 voters，原文"任务仍会执行"）。读者：`kernel/tasks.js` 的 `objectAssign()`；★ false 时 vmu **具名拒**（v5r 是静默忽略该字段 —— 刻意更严，不许静默）。 |
-| `vmu.meetings.orderMode` | enum | `fifo` | `fifo`∣`round-robin`∣`chair`∣`random` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 发言序模式（fifo|round-robin|chair|random）；域外值 ⇒ 读取侧具名拒（kernel/meetingmarker.js 的 strictOrderMode），不静默回落到默认值 |
-| `vmu.meetings.attendanceMode` | enum | `roster` | `roster`∣`signin`∣`quorum-only` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 出席模式（roster|signin|quorum-only）；域与读取侧 meetings.js:138 的 oneOf 逐字相同 |
-| `vmu.meetings.quorumLossPolicy` | enum | `suspend` | `suspend`∣`continue`∣`recess` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 失去法定人数后的处置（suspend|continue|recess）；域与 meetings.js:147 逐字相同 |
-| `vmu.meetings.budgetOnExceed` | enum | `refuse` | `refuse`∣`warn`∣`extend` | 会话 | H1 | office | ⚠️ 未接线（改了不会有行为变化） | — | 超预算动作（refuse|warn|extend）；域与 meetings.js:154 逐字相同 |
-| `vmu.meetings.leaveEarlyPolicy` | enum | `allow` | `allow`∣`note`∣`deny` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 提前离席政策（allow|note|deny）；域与 meetings.js:171 逐字相同 |
-| `vmu.meetings.minutesDetail` | enum | `brief` | `brief`∣`full` | 会话 | H1 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | — | 纪要详略（brief|full）；域与 meetings.js:173 逐字相同 |
-| `vmu.meetings.appealScope` | enum | `all` | `all`∣`procedural`∣`none` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 申诉范围（all|procedural|none）；域与 meetings.js:178 逐字相同 |
-| `vmu.meetings.confidentialityDefault` | enum | `internal` | `public`∣`internal`∣`restricted` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 默认保密级（public|internal|restricted）；域与 meetings.js:185 逐字相同 |
-| `vmu.meetings.confidentialityQuotePolicy` | enum | `allow` | `allow`∣`redact`∣`deny` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 引用机密内容的政策（allow|redact|deny）；域与 meetings.js:186 逐字相同 |
-| `vmu.meetings.wakeFailurePolicy` | enum | `refuse` | `refuse`∣`skip`∣`retry` | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 唤醒失败处置（refuse|skip|retry）；域与 meetings.js:188 逐字相同 |
+| `vmu.meetings.orderMode` | enum | `fifo` | `fifo`∣`round-robin`∣`chair`∣`random` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetingmarker.js` | 发言序模式（fifo|round-robin|chair|random）；域外值 ⇒ 读取侧具名拒（kernel/meetingmarker.js 的 strictOrderMode），不静默回落到默认值 |
+| `vmu.meetings.attendanceMode` | enum | `roster` | `roster`∣`signin`∣`quorum-only` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 出席模式（roster|signin|quorum-only）；域与读取侧 meetings.js:138 的 oneOf 逐字相同 |
+| `vmu.meetings.quorumLossPolicy` | enum | `suspend` | `suspend`∣`continue`∣`recess` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 失去法定人数后的处置（suspend|continue|recess）；域与 meetings.js:147 逐字相同 |
+| `vmu.meetings.budgetOnExceed` | enum | `refuse` | `refuse`∣`warn`∣`extend` | 会话 | H2 | office | ⚠️ 未接线（改了不会有行为变化） | — | 超预算动作（refuse|warn|extend）；域与 meetings.js:154 逐字相同 |
+| `vmu.meetings.leaveEarlyPolicy` | enum | `allow` | `allow`∣`note`∣`deny` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 提前离席政策（allow|note|deny）；域与 meetings.js:171 逐字相同 |
+| `vmu.meetings.minutesDetail` | enum | `brief` | `brief`∣`full` | 会话 | H2 | office | ❓ 未判定（可能走动态读取，静态看不见 ⇒ 看不见 ≠ 没有） | — | 纪要详略（brief|full）；域与 meetings.js:173 逐字相同 |
+| `vmu.meetings.appealScope` | enum | `all` | `all`∣`procedural`∣`none` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 申诉范围（all|procedural|none）；域与 meetings.js:178 逐字相同 |
+| `vmu.meetings.confidentialityDefault` | enum | `internal` | `public`∣`internal`∣`restricted` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 默认保密级（public|internal|restricted）；域与 meetings.js:185 逐字相同 |
+| `vmu.meetings.confidentialityQuotePolicy` | enum | `allow` | `allow`∣`redact`∣`deny` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 引用机密内容的政策（allow|redact|deny）；域与 meetings.js:186 逐字相同 |
+| `vmu.meetings.wakeFailurePolicy` | enum | `refuse` | `refuse`∣`skip`∣`retry` | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 唤醒失败处置（refuse|skip|retry）；域与 meetings.js:188 逐字相同 |
 | `vmu.allocation.dirtyWorkQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.fairnessPolicy` | string | `equal` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |
 | `vmu.allocation.rotationWindow` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/bidding.js` | 已接线（bidding.js 读取）；默认值取自模块源码 |

@@ -864,7 +864,7 @@ export function createTurnOrchestrator({
   // only increments AFTER the seam settles, so a delivery that THREW (a timeout is a throw) left no trace anywhere.
   // A counter that only counts successes cannot report a stall; `deliveryFailed` + `deliveryLastFail` exist so the
   // reader can see 'two turns were assembled and both deliveries threw, here is the code and the path'.
-  const counts = { opened: 0, assembled: 0, delivered: 0, deliveryFailed: 0, deliveredMeans: 'settled deliveries: the seam returned an answer or an awaiting envelope. A THROW is counted in deliveryFailed, never here', deliveryLastFail: null, parsed: 0, refused: 0, dispatched: 0, notExecuted: 0 }
+  const counts = { opened: 0, assembled: 0, delivered: 0, deliveryFailed: 0, deliveredMeans: 'settled deliveries: the seam returned an answer or an awaiting envelope. A THROW is counted in deliveryFailed, never here', deliveryLastFail: null, failed: 0, failedMeans: 'replies that ARRIVED but whose write-back threw (a malformed reply field is the usual cause). It is NOT deliveryFailed: the member did answer. Read failedLast for the reason and the text the member actually wrote', failedLast: null, parsed: 0, refused: 0, dispatched: 0, notExecuted: 0 }
   const lastRefusal = { code: null, message: null }
   // ROUND 4 / F11: the attribution of the MOST RECENT delivery (`childId` + `stopReason`), so a caller can ask who a
   // receipt belongs to without re-reading the host handle.
@@ -1658,6 +1658,19 @@ export function createTurnOrchestrator({
           e.trackValue = parsed.reply && parsed.reply.progress && parsed.reply.progress.track !== undefined ? parsed.reply.progress.track : null
           e.turnState = lostTurnState(turn)
         }
+        // ★★★ LIVE RUN 18 (the institute's own report, 「本轮无实质残余：否」 item 1): a member turn that ANSWERED but whose
+        // write-back threw was readable in `deliveryLastFail` as... nothing at all. `deliveryFailed` stayed 0 (correctly —
+        // the delivery did succeed) and `refused` stayed 0 (this face never rewrote the throw), so the aggregate said
+        // "nothing went wrong" while a member's action had silently failed. This counter owns that case by name.
+        counts.failed += 1
+        counts.failedLast = {
+          at: Date.now(),
+          turn: turn && turn.id ? String(turn.id) : null,
+          member: turn && turn.member ? String(turn.member) : null,
+          code: e && e.code ? String(e.code) : null,
+          message: e && e.message ? String(e.message).slice(0, 400) : String(e),
+          replyText: String(text).slice(0, 400),
+          means: 'the reply ARRIVED and its write-back threw: the member answered, the action did not take effect. deliveryFailed is not incremented for this; read failedLast' }
       } catch { /* diagnostics must not replace the refusal */ }
       throw e
     }
