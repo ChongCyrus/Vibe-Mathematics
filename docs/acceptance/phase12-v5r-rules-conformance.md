@@ -3951,3 +3951,40 @@ counts.delivered += 1
 ### 教训
 
 **「只数成功」的计数器是一类会自我掩盖的缺陷**：它的输出是一串零，而零既可能是「什么都没发生」，也可能是「发生了但没人认领」。修法不是给零加注释，而是给失败一个专属的计数器与最后失败记录 —— 这与前面「回执里一个字段承担两种事实」是同一族（run 11 的 `cast`、run 12 的 `counted`）。
+
+---
+
+## §103 成员子会话看到的是「它启动那一刻的所」——跨 kernel 一致性（2026-10-25）
+
+### 来源：run 13 的所办验收报告 + 成员自己的报告
+run 13（build `acafb044` 前一个提交，transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-194540.jsonl`，65 524 行，5 会话 0 RED）**没有结题**：
+三名有表决权的在册成员（含所办）一致投 `solved:false`，`closureVote{cast:false, votesCast:3, for:[], against:[m2,m3,m1]}`。所办原文把 9 项缺口逐条列出，其中**最深的一条**是成员**自己**报的（不是代演推论）：
+
+> 「我这侧内核与所内所称实况脱钩：roster 为 live 0，meeting list 为空，对磁盘里确实存在的 m-run12-ordinary 与 m-run12-debate 按 id 寻址，一律返回 `VMU_NO_SUCH_OBJECT`（primitive/service registry 均 none），records 只到 r-4，展开 r-5 同样返回 `VMU_NO_SUCH_OBJECT`。」
+
+三个成员会话（2a2a3d18 / 7d1ad986 / 6f43a7e6）**各自独立**报出同一形状：**空名册 + 空会议 + 记录只到 r-4**，而磁盘 `VibeMath/vmu/state.json` 里**确实**有 r-5/r-6/r-7 与会议纪要。
+
+### 根因
+`kernel/store.js` 的 `open()` 只读一次文件，把 fold 缓存在内存里；此后 `read()` **永远**返回那个快照。单人代演（caller 模式）只有一个 kernel，所以这一层从未暴露；**真子代理**（`delivery.path:'activation'`，四个 childId 都实测存在）之后，同一个 `state.json` 被**多个进程里的多个 kernel** 打开，谁先打开谁就停在那一刻。
+
+这**不是**「投递失败」，也**不是**成员工具面缺失：成员的 `vibe_v5_say` 是被**内核**按名拒的（「the roster holds 0 member(s)」），因为它的 kernel 里名册确实是空。
+
+### 修法（store 层，三条纪律 → 第四条新增）
+1. `read()` 前**同步**比较**戳**（`mtimeMs:size`，`statSync`），变了就同步重载；
+2. `write()`／`patch()` 在独占段内**先重载再变更**（避免把别人的写覆盖掉）；
+3. 写时取 `state.json.lock`（`openSync(...,'wx')`，退避重试；超时 ⇒ `lockSkips` 计数后**无锁继续**——`rename` 本身原子，绝不因为一个陈旧锁把全所卡死）；
+4. `stats()` 自曝 `reloads / lockWaits / lockSkips / coherence / lastReloadAt`；新增 `refresh()`——**显式**请求，即使 `coherence:'off'` 也生效；
+5. 锁参数沿用**已声明**的 `vmu.store.lock` / `.lock.backoffMs` / `.lock.retries` / `.lock.timeoutMs`（`storepolicy.js` 与 `store.js` 读同一批键，所以关掉锁的部署真会被遵守）。
+
+### 门禁 `tests/vmu-store-coherence.test.mjs`（12/0，全部是真机缺陷的反向断言）
+- ★★ **B 实例必须看见 A 的写**（run 13 的缺陷本体）；
+- ★★ **B 在 A 的值之上 patch**（陈旧 fold 会只写 r-2，丢了 r-1）；
+- ★★ **两个并发写都存活**，且**不留 .lock/.tmp 残骸**；
+- ★★ **`coherence:'off'` 必须真的过期** —— 这是反假绿：证明这项检查不是构造性通过，而 `refresh()` 能修好它。
+
+### 连带的两个诚实点
+- 所办报告里的 ⑨（投递失败点名）本轮**无失败样本**（`deliveryFailed:0, deliveryLastFail:null`），只能记「部分」——不可当「是」；
+- 所办报告里的 ⑤（空 `notified` 的含义）只有定义、无空列表演例，同样记「部分」。
+
+### 教训
+**「只有一个进程」是这类缺陷的伪装**：单进程下所有一致性都是免费的，而真子代理一上线，缓存型状态立刻变成"每个人都有一份自己的所"。凡是"读一次就缓存"的东西，在**多实例**事实出现时必须重新回答「我读的是谁的版本」。

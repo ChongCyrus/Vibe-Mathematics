@@ -1355,11 +1355,11 @@ vmu.packs.active: [v5r]
 | `vmu.store.autoBackup` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.backend` | string | `file` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.fsync` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
-| `vmu.store.lock` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
-| `vmu.store.lock.backoffMs` | int ≥0 | `25` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
-| `vmu.store.lock.retries` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
+| `vmu.store.lock` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 已接线（index.js 读取）；默认值取自模块源码 |
+| `vmu.store.lock.backoffMs` | int ≥0 | `25` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
+| `vmu.store.lock.retries` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.lock.serializeAll` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
-| `vmu.store.lock.timeoutMs` | int ≥0 | `1000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
+| `vmu.store.lock.timeoutMs` | int ≥0 | `1000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.onVersionTooHigh` | string | `refuse` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.remote` | string | `none` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |
 | `vmu.store.remote.consistency` | string | `eventual` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/storepolicy.js` | 已接线（storepolicy.js 读取）；默认值取自模块源码 |

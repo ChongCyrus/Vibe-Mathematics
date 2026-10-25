@@ -25,12 +25,22 @@ interface VmuStore {
 
 **已实现（✓）**：`kernel/store.js` 提供 `createStore`（含 `STATE_VERSION`、`PUBLIC_KEYS` 白名单）。
 
-**四条实现纪律（血的教训，逐条有本仓历史为证）**
+**五条实现纪律（血的教训，逐条有本仓历史为证）**
 1. **写一律走 fold 内函数式变更**：`patch(key, cur => next)` 而不是"读出来改完再写回"。
    *理由*：同 tick 的两次并发写若在 fold 外做整对象读改写，会**丢掉其中一个**（本仓 `e2e-v5-round2` 的"同 tick 两个提议不得丢"用例实测抓到；v5r 的 `leanApplySettle` 也因为同样的写法抹掉过 `sha256`）。
 2. **白名单**：fold 必须**显式白名单**（未登记的键写入即**静默丢弃**是历史坑）⇒ 未登记键写入必须**报错**而不是丢弃。
 3. **原子性**：写文件用 `tmp + rename`；**写入确认 = 落盘成功**（不接受"内存里成功"）。
 4. **单写者串行**：所有写经一条 promise 链，避免交错。
+5. ★★★★★ **一个文件可能同时被多个 kernel 打开（跨会话）**：只缓存一次的 fold 是**快照**，不是事实。
+   *真机 run 13 实测（出自成员自己的报告）*：四个成员子会话各自挂载一个 kernel、指向同一个 `<root>/vmu/state.json`，而
+   `vibe_vmu_control {action:'roster'}` 读到空表 `live:0`、三槽 `occupied:0`；`vibe_v5_say`／`vibe_v5_tool_help`／`vibe_vmu_tools`
+   一律拒 `VMU_NO_SUCH_OBJECT`（「the roster holds 0 member(s)」）；`records expand r-5` 也拒（known ids 只到 r-4），
+   而磁盘上的文件**确实**有 r-5…r-7。即：每个 kernel 看到的是**它启动那一刻的所**。单人代演（caller）模式永远暴露不出这一层。
+   **实现**：`read()` 前按**戳**（mtime+size，同步 `statSync`）比较，变了就同步重载；`write()`／`patch()` 在独占段内**先重载再变更**，
+   并用 `state.json.lock`（`wx` 独占创建、退避重试；超时则**具名计数（`lockSkips`）后无锁继续**，因为 `rename` 仍是原子的）挡住交错读改写。
+   `stats()` 自曝 `reloads`／`lockWaits`／`lockSkips`／`coherence`；`refresh()` 是**显式**请求（即使 `coherence:'off'` 也生效）。
+   **可调**：`vmu.store.lock`／`vmu.store.lock.backoffMs`／`vmu.store.lock.retries`／`vmu.store.lock.timeoutMs`（与 `storepolicy.js` 读同一批键）。
+   **门禁**：`tests/vmu-store-coherence.test.mjs`（12 条，含**反假绿**：`coherence:'off'` 必须**真的**过期，证明这项检查不是构造性通过）。
 
 **后端可选性是本卷第一原则**：单文件／目录／远端都只是端口的实现；**切换后端不得改变调用方**。
 

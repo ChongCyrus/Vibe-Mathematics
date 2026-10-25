@@ -1404,7 +1404,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.store.autoBackup', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（storepolicy.js 读取）；默认值取自模块源码" },
   { key: 'vmu.store.backend', type: 'string', def: 'file', hot: HOT.H1, who: 'office', doc: "已接线（storepolicy.js 读取）；默认值取自模块源码" },
   { key: 'vmu.store.fsync', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（storepolicy.js 读取）；默认值取自模块源码" },
-  { key: 'vmu.store.lock', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（storepolicy.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.store.lock', type: 'boolean', def: true, hot: HOT.H1, who: 'office', doc: "已接线（index.js 读取）；默认值取自模块源码" },
   { key: 'vmu.store.lock.backoffMs', type: 'natural', def: 25, hot: HOT.H1, who: 'office', doc: "已接线（storepolicy.js 读取）；默认值取自模块源码" },
   { key: 'vmu.store.lock.retries', type: 'natural', def: 3, hot: HOT.H1, who: 'office', doc: "已接线（storepolicy.js 读取）；默认值取自模块源码" },
   { key: 'vmu.store.lock.serializeAll', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（storepolicy.js 读取）；默认值取自模块源码" },

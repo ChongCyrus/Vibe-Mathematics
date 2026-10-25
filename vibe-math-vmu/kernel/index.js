@@ -512,8 +512,19 @@ export function createKernel({
     }
   }
 
+  // LAYER 4 (docs/07 §1-(5)): ONE FILE, SEVERAL KERNELS. A subagent session mounts its own kernel over the same
+  // <root>/vmu/state.json, so the fold is revalidated per read and reloaded under a lock per write. The lock knobs
+  // are the DECLARED settings (vmu.store.lock*), which storepolicy already reads - the store reads the same ones so a
+  // deployment that turns locking off is obeyed here too instead of silently locking anyway.
+  const numOr = (k, d) => { const v = Number(settings[k]); return Number.isFinite(v) && v >= 0 ? v : d };
+  const storeOptions = {
+    lock: settings['vmu.store.lock'] !== false,
+    lockBackoffMs: numOr('vmu.store.lock.backoffMs', 25),
+    lockRetries: numOr('vmu.store.lock.retries', 40),
+    lockTimeoutMs: numOr('vmu.store.lock.timeoutMs', 2000),
+  };
   const store = root
-    ? createStore({ root, migrators, clock })
+    ? createStore(Object.assign({ root, migrators, clock }, storeOptions))
     : null
 
   // IN-FLIGHT LEDGER (docs/07 搂3): durable, and only meaningful with a store - without one it stays null and
