@@ -56,6 +56,30 @@ ok(/VMU_TURN_DELIVERY_TIMEOUT/.test(deliver) && /VMU_TURN_DELIVERY_TIMEOUT/.test
   '3a both files name the refusal this test is about')
 ok(deliver.length > 8000 && face.length > 8000, '3b the sources are the real modules, not stubs', { deliver: deliver.length, face: face.length })
 
+// ---- 4. THE MEMBER SESSION MUST BE LEARNED WHERE THE READERS LOOK (run 51 residue 5) ----
+// The institute's report: after four settled rounds, `vibe_vmu_tools{member:"r-1"}` still answered
+// "no live Agent for member r-1 (session=(none learned yet))". Root cause measured: the learners live on the TURN
+// ORCHESTRATOR (`kernel.turn.memberSession`), the readers asked the kernel INDEX (`kernel.memberSession`), and the
+// index never forwarded it - so every reader got null and fell back to looking up an Agent by ROSTER ID.
+const host = src('vibe-math-vmu/host.js')
+ok(/kernel\.turn\.memberSession/.test(host), '4a the host reads the member session from the orchestrator, where it is learned')
+ok(/\(kernel\.turn && kernel\.turn\.memberSession\) \|\| kernel\.memberSession/.test(src('vibe-math-vmu/host-pack-tools.js')),
+  '4b the pack-tool face reads it the same way (one reader cannot be left on the old path)')
+{
+  const firstTurn = host.indexOf('kernel.turn.memberSession')
+  const firstIndex = host.indexOf('typeof kernel.memberSession')
+  ok(firstTurn > 0 && firstIndex > 0 && firstTurn < firstIndex,
+    '4c the ORCHESTRATOR is asked first — the index is only a fallback', { firstTurn, firstIndex })
+}
+// The behavioural half that needs no live host: a real orchestrator exposes the learner. (The rest of the learning path
+// is exercised by the live runs and by tests/vmu-turn.test.mjs's delivery sections; this file does not claim more.)
+{
+  const { createTurnOrchestrator } = await import('file:///' + path.join(REPO, 'vibe-math-vmu/kernel/turn/index.js').replace(/\\/g, '/'))
+  const orch = createTurnOrchestrator({})
+  ok(typeof orch.memberSession === 'function', '4d a real orchestrator exposes memberSession')
+  ok(orch.memberSession('r-1') === null, '4e before any delivery it answers null (not a guess)')
+}
+
 console.log('')
 console.log('=== VMU TURN DELIVERY PARTIAL: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) {

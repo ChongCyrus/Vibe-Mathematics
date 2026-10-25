@@ -1515,7 +1515,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     let agents = null
     try { agents = ctx && typeof ctx.get === 'function' ? ctx.get('agents') : null } catch { agents = null }
     if (!agents || typeof agents.get !== 'function') return { agent: null, reason: 'the host exposes no agents.get' }
-    const session = kernel && typeof kernel.memberSession === 'function' ? kernel.memberSession(member) : null
+    const session = kernel && kernel.turn && typeof kernel.turn.memberSession === 'function' ? kernel.turn.memberSession(member) : (kernel && typeof kernel.memberSession === 'function' ? kernel.memberSession(member) : null)
     const candidates = [session, member].filter((x) => typeof x === 'string' && x !== '')
     for (const id of candidates) {
       try { const a = agents.get(id); if (a) return { agent: a, sessionId: id, reason: null } } catch { /* try next */ }
@@ -1568,7 +1568,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     for (const m of roster) {
       if (!m || typeof m.id !== 'string') continue
       if (m.id === id) return m.id
-      try { if (kernel.memberSession && kernel.memberSession(m.id) === id) return m.id } catch { /* keep looking */ }
+      try { const ms = (kernel.turn && kernel.turn.memberSession) || kernel.memberSession; if (typeof ms === 'function' && ms(m.id) === id) return m.id } catch { /* keep looking */ }
     }
     return null
   }

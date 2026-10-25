@@ -3750,3 +3750,42 @@ transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-150803.jsonl`（build 
 1. **brief 里编出来的字段名和代码里编出来的机制是同一类缺陷**：读到 brief 的人只能照它做，做不成就报「未修」，于是缺陷清单被污染。
 2. **提交信息是记录的一部分**：它写了代码里没有的东西，就制造了一个比代码 bug 更难查的谎（`git log` 是后来者唯一的线索）。
 3. 一个字段要改名之前先 `grep` 这个名字在仓库里的其它含义（本例 `settlement` 已被两处占用）。
+
+## §96 第 5 条残余：成员子会话的 id 从来没被「学到」——读取者一直问一个没有这个函数的对象
+
+### §96.1 真机读数（原文要点）
+
+§93.2 第 5 条：`vibe_vmu_tools{member:"r-1"}` 四轮之后仍答 `no live Agent for member r-1 (session=(none learned yet))`，
+而它自己的 hint 说「先交付一个回合以便学到子会话 id」—— 四个回合都交付过了。
+
+### §96.2 根因（`file:line` 级）
+
+- **学习点**在**回合编排器**上：`vibe-math-vmu/kernel/turn/index.js:861` `const memberSessions = new Map()`，写入点 `:1070`
+  `if (lastAttribution.childId && turn && typeof turn.member === 'string') memberSessions.set(turn.member, lastAttribution.childId)`，
+  读出点 `:2365` `memberSession: (member) => memberSessions.get(String(member)) || null`。
+- **读取点**却问**内核索引**：`vibe-math-vmu/host.js:1518` `kernel && typeof kernel.memberSession === 'function' ? kernel.memberSession(member) : null`。
+- `grep -rn "memberSession" --include=*.js vibe-math-vmu/kernel/index.js` **零命中**：索引从来没有这个函数，
+  于是 `resolveMemberAgent` 永远拿到 `session = null`，退化到 `agents.get(<名册 id>)` —— 而 Agent 的 id 是**会话 id**，不是名册 id，必然找不到。
+- 同一个错误读法还有三处：`host.js:1571`（反查成员）、`host-pack-tools.js:120`（按 agent 认成员）。
+
+### §96.3 修法（一行事的四处，全部指向编排器优先、索引只作回退）
+
+`host.js` 与 `host-pack-tools.js` 的读取改为 `(kernel.turn && kernel.turn.memberSession) || kernel.memberSession`，
+索引用作回退而不是唯一来源。**没有新增机制**，只是把指针指向真正存在的那个对象 —— 这正是本阶段反复出现的形态：
+机制写好了却没有消费者，而「消费者」看起来存在、实际问错了对象。
+
+### §96.4 门禁
+
+`tests/vmu-turn-delivery-partial.test.mjs` 第 4 节（4a–4e）：
+4a 宿主从编排器读、4b 工具面同样读、4c **顺序**是「先编排器、后索引」（`indexOf` 比较，不是「不含旧串」），
+4d 真编排器实例确实暴露 `memberSession`、4e 未交付时答 `null` 而不是猜。套件 **31/0**；邻居 `vmu-host` 199/0、`vmu-turn` 257/0、`vmu-v5r-tools` 354/0。
+
+★ 诚实边界：4d/4e 是实例级，**学习动作本身**（一次结算交付把 `childId` 记进 map）仍由真机跑覆盖；
+本文件不声称「已真机验证」，run 53 若在成员会话里再调一次 `vibe_vmu_tools{member}` 才算了结。
+
+### §96.5 还剩的第 4 条残余（已登记，本轮不动）
+
+§93.2 第 4 条：成员子会话是**独立内核实例** —— `eligible` 三席、`m1`、票箱 `b-1` 在成员侧都不存在，
+于是提示词教它调用的 `vibe_v5_verdict(target="b-1-…")` / `vibe_v5_poll_vote` 被 `VMU_NO_SUCH_OBJECT` 拒。
+这是**架构级缺口**（要么把子内核桥接到父内核，要么让提示词不承诺子会话拿不到的机构级状态），
+不是本轮能顺手改掉的；按 F5 的顺序纪律，**先定机制、再改提示词**，所以下一轮先在设计上裁决。

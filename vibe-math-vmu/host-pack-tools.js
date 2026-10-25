@@ -117,7 +117,7 @@ export function resolveTurnMember(kernel = null, exec = null) {
   for (const row of Array.isArray(roster) ? roster : []) {
     if (!row || typeof row.id !== 'string') continue
     if (row.id === agentId) return row.id
-    try { if (typeof kernel.memberSession === 'function' && kernel.memberSession(row.id) === agentId) return row.id } catch { /* keep looking */ }
+    try { const ms = (kernel.turn && kernel.turn.memberSession) || kernel.memberSession; if (typeof ms === 'function' && ms(row.id) === agentId) return row.id } catch { /* keep looking */ }
   }
   return null
 }
