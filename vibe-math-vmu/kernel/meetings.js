@@ -1245,9 +1245,21 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const overrodeAtVote = quorumAfter.met === true ? null : {
         by: null, rule: null, floor: quorumAfter.required, present: quorumAfter.present, waitedMs: null,
         note: 'the floor is NOT met at this vote (present ' + quorumAfter.present + ' < required ' + quorumAfter.required + '); a vote does not override it — only meetings.proceed() may start a meeting without its quorum, so no override is recorded on this receipt' }
-      const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, counted: target !== null, tallyNote, quorum: quorumAfter, overrodeQuorum: overrodeAtVote, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror }
+      // ★ LIVE RUN 12 (the institute's own report, item 3): a motion vote came back `accepted:true, counted:true`,
+      // tally `for:3`, AND `ballot:{mirrored:false, reason:'refused', code:'VMU_CONFLICT'}` in the SAME receipt.
+      // Both facts are true and they are not contradictory: the MEETING counts its own votes (`mo.votes`), and the
+      // ballot BOX is a separate ledger that may refuse this vote by its own rules (one-person-one-vote,
+      // `allowRevote:false`). What was missing is a sentence saying so, so a reader could only see 'counted and
+      // refused' side by side. The two ledgers and which one this number came from are now named on the receipt.
+      const ballotNote = ballotMirror && ballotMirror.mirrored === true
+        ? 'the ballot box mirrored this vote (boxId ' + String(ballotMirror.boxId || ballotMirror.boxFor || '(unnamed)') + '); the tally above is the MEETING\'s own count and the box holds the same vote'
+        : ('this vote was counted in the MEETING but NOT in the ballot box: ' + String(ballotMirror && ballotMirror.reason || 'unknown')
+          + (ballotMirror && ballotMirror.code ? ' (' + ballotMirror.code + ')' : '')
+          + '. Two ledgers exist on purpose — the box enforces its own rules (a closed box, allowRevote:false, a vote outside the face) — so a refused mirror does NOT invalidate the meeting tally; it means the box did not record it')
+      const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, counted: target !== null, countedMeans: 'counted = the MEETING counted this vote in its own tally; it does not mean the ballot box mirrored it (see ballotNote)', tallyNote, quorum: quorumAfter, overrodeQuorum: overrodeAtVote, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror, ballotNote }
+      const voteOut = { ok: true, tally, counted: target !== null, countedMeans: receipt.countedMeans, tallyNote, quorum: quorumAfter, receipt, ballotNote, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
-      return { ok: true, tally, counted: target !== null, tallyNote, quorum: quorumAfter, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return voteOut
     },
 
     /** Transfer the chair. `chairTransferAudit` demands a reason. */

@@ -571,6 +571,15 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             const out = action === 'flow' ? svc.flow(args) : svc.overrideOrder(args)
             return Object.assign({ ok: true, action }, out)
           }
+          // ★ LIVE RUN 12 (the institute's own report, item 2): with `at` in the PAST the office got
+          // `VMU_INVALID_ARGUMENT「unknown action: undefined」` from a face it had called WITHOUT an `action`
+          // parameter. 'unknown action: undefined' names nothing: it does not say that the CALL omitted the
+          // parameter the face dispatches on, and its hint points at a parameter the caller never wrote.
+          // A missing action is its own named refusal, and the legal list travels with it.
+          if (action === undefined || action === null || String(action).trim() === '') {
+            return refused('VMU_INVALID_ARGUMENT', 'this face needs an action; none was given',
+              'pass action:"<one of the actions above>" — the legal actions are listed in this tool\'s description and in docs/03; a parameter set without `action` cannot be dispatched')
+          }
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)

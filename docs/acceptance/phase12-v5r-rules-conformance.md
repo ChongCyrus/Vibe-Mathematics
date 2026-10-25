@@ -3881,3 +3881,34 @@ transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-150803.jsonl`（build 
 
 **教训（与 L2「假绿比红更危险」互为补充）**：红也分两种 —— 「功能坏了」和「量测漂了」。这一轮六条全是后者,而它们出现的共同原因是我在改产品的同时**没有同步改它的量测面**。门禁存在的意义就是逼我把这句话写下来,而不是靠记忆。
 
+
+---
+
+## §101 第 12 次多代理真机验收 —— 结题了，所办仍判「否」：三条它自己点出的缺陷（2026-10-25）
+
+### 运行读数（build `39fc9fda`，brief `D:\_tmp\slv-phase5\task-r12.txt`）
+- transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-190659.jsonl`（35 357 823 B / 81 014 行，单文件多会话）。
+- `DRIVE exit=0`；`CLOSURE … cast=true (from 7 turn receipt(s))`；`deliverMode:'subagents'`（真子代理，不是调用方代演）。
+- `NO_FENCE=8  UNKNOWN_FIELD=19  FIELD_NOT_APPLICABLE=4  BAD_JSON=0` —— 逐个看过上下文：前三个都是**提示词/帮助文本里提到这些码**，以及一条真实产生的 `noReplyShape:VMU_TURN_FIELD_NOT_APPLICABLE` 回执；**没有一条是运行时错误**。
+- 席位：`wire snapshots … [94, 53, 53, 53, 53]`（所办 94 / 每个成员 53）。成员提示词 `【本角色可用的工具｜member】` 列 43 个 pack 面，其 wire 的另外 10 个是组合自带的 `read/write/edit/glob/grep/skill/…` ⇒ **提示词与 wire 一致**（43 ⊂ 53）。
+- **`slv-inspect` 的整份文件模式报了 2 条 RED，那是读取器的错，不是产品的错**：它把「office 的 wire」和「成员的同源块」配成一对（自己的注释里写着这个陷阱），于是 `wireOnly` 列出 24 个 office-only 面。加 `--by-session` 后：**3 session，0 RED**。已把 `--by-session` 写进 runner。
+- 观察（不是缺陷）：`vibe_vmu_meeting` 被调用 1938 次 —— 所办在轮询会议状态而没有等待原语可用；记为可读性观察。
+
+### 所办的裁决原文
+> 本轮无实质残余：否 —— `vibe_vmu_turn` 两轮 `delivered:0`（成员回合无真实执行者）是实质残余，另有 `at` 过去时点误报与动议票镜像 `VMU_CONFLICT` 两处具名缺陷待修。
+
+### 三条的处置
+| # | 缺陷 | 处置 |
+|---|---|---|
+| 1 | 两个成员回合 `assembled:2 / delivered:0`，且超时回执不带 `deliveryPath`（`op:"status"` 原文：`turns:2, opened:2, assembled:2, delivered:0, parsed:0, refused:0, dispatched:0, notExecuted:0`） | **未修，如实登记**：`delivered:0` 与 `notExecuted:0` 并排意味着「装配了、既没投递也没记未执行」，即**计数器不归属停滞回合**。修它要先让 turn 服务按名字说明每个未结回合卡在哪一步，再谈断言；在此之前给它写断言就是给未修缺陷造绿。 |
+| 2 | `vibe_vmu_meeting`（无 `action` 参数）回 `VMU_INVALID_ARGUMENT「unknown action: undefined」` | **已修**（`vibe-math-vmu/tools/meeting.js`）：缺 `action` 是它自己的具名拒绝，提示说清「你少了派发键」，不再把 undefined 拼进消息。 |
+| 3 | 动议票回执同时 `counted:true, tally for:3` 与 `ballot:{mirrored:false, reason:"refused", code:"VMU_CONFLICT"}` | **已修（补披露）**（`vibe-math-vmu/kernel/meetings.js`）：两本账本来就各有规则，缺的是一句话。回执现在有 `countedMeans` 与 `ballotNote`：明说 tally 是**会议自己的**计数，镜像被拒**不**否证它。 |
+
+### 门禁
+- 新增 `tests/vmu-run12-findings.test.mjs`（12/0）：两条修好的都带**反向**断言（缺 action 的新分支必须在通用兜底之前、通用兜底仍在、返回对象与回执携带同一组读数），第 1 条**显式断言「没有假装修好」**（源码里不得出现 `deliveredMeans`）。
+- 邻居：`vmu-meetings` 214/0、`vmu-meeting-types` 142/0、`vmu-run16-findings` 16/0。
+
+### 教训
+1. **读取器的配对错误看起来和产品缺陷一模一样**：同一份 jsonl 里 office 与成员的提示词/wire 混在一起时，必须先按会话切分再判断（`--by-session`）。这是第二次踩（第一次是 run 3）。
+2. **「装配了但没投递、也没记未执行」是计数器的空洞**：四个计数器并排放着，却谁都不认领停滞的回合 —— 诊断面本身是受测对象的一部分。
+3. brief 要求「不要探索仓库」被遵守了（`pwsh` 0 次、`grep` 0 次）——这是第一次一个验收跑完全不用宿主 shell 去翻实现。
