@@ -3342,7 +3342,7 @@ note 含「next start」，并且**同族一个真正被提示词变量读取的
   `status()` 与 `meetings.js` 的 `summary()`／`meetingView()` 都带 `stateMeans`——**两条读面共用一张表**，不是各写一句。
 - **b-2** `vibe-math-vmu/tools/turn.js` 的 step 分支显式算出 `membersFrom = explicit ? 'caller-selection' : 'roster-default'` 并传给内核；
   `vibe-math-vmu/kernel/turn/index.js` 的 awaiting 回执回显它。★ 这里踩到一个真坑：第一版写成 `a && …`，而该函数的参数名叫 `spec`，
-  于是抛 `ReferenceError`——被外层的 try/catch 吞成一张空回执，测试报「awaiting 回执里没有 memberPrompt」这种**看起来像产品缺陷**的现象。
+  于是抛 `ReferenceError`。它的真实去向是 `step()` 的**逐轮 catch**：那一轮被记为 `failures:[{code:null,message}]`，而外层回执仍是 `ok:true`、没有 `memberPrompt`；我的断言只打印了两个字段，于是现象看起来像「awaiting 回执是空的」。判据教训同上：**读回执要把失败分支一起读**（`failures`/`stopped`），否则一个编程错误会被误读成产品缺陷。
   教训与 §31.3 同族：**声明/参数名对不上时，错误会被伪装成读数缺失**。
 - **b-4** `tools/turn.js` 在 awaiting 路由上附 `delegation: {mode, preset(来自实时 config), turnId, promptChars, childId(null), childIdMeans}`——
   `childId` 在回合结算前**故意是 null**，并由 `childIdMeans` 说明「结算时才给出」，不编造。
@@ -3358,3 +3358,27 @@ note 含「next start」，并且**同族一个真正被提示词变量读取的
 
 §85.5 教训：**「读数缺失」与「读数错了」要用不同的手段修**。b-1/b-2/b-4 都是缺一句话或一个来源字段，不是机制坏了；
 把这类问题当机制修，会造出第二个真相来源（§22 的 `markerState` 重复键就是这么来的）。
+
+## §86 轮 45／跑 45：我的验收脚手架把跑废了，而它废掉的方式暴露了一个真缺陷
+
+§86.1 跑 45 的实际读数（`full-1025-125031.jsonl`，build `9172dfd1`，`cast=false`，0 RED，5 张 turn 回执）：
+`VMU_TURN_DELIVERY_TIMEOUT` 命中 6 次——每一轮成员回合都**等满 180 秒**才被判超时。所办的推理原文：
+「it tried to deliver to a subagent and none came back. Also **r-1 isn't in roster**」。
+
+§86.2 根因（两层，都是我的）：
+1. 我给跑器加了「每轮跑前删掉工作区」——**这是对的做法**（去掉跨轮污染），但我的 brief 仍然假设席位已存在
+   （`㉟.2 传 members:['r-1']`），于是一个**空研究所**被要求直接跑回合。
+2. 更糟的是产品这一侧**没有拒绝**：一个显式指定、却不在名册里的成员被照原样送去投递，然后白等 180 秒。
+   所办不知道自己做错了什么，只知道「没人回来」。
+
+§86.3 修（`vibe-math-vmu/kernel/turn/index.js` `step()`）：显式选择时先问 `turnFacts({})` 的 `rosterIds`，
+有任一个 id 不在册 ⇒ 抛具名拒 `VMU_TURN_UNKNOWN_MEMBER`，message 点名**是哪些 id**，hint 打印**在册名单**并说明
+「否则只会烧掉投递超时」。三条边界同时钉住（`tests/vmu-run45-findings.test.mjs` **7/0**）：
+在册成员不拒（不是一刀切）；`membersInferred` 的推断列表不拿名册去验它自己；**拿不到名册时不猜**（沉默不是证据）。
+
+§86.4 教训（这一轮最贵的一条）：**「跑不通」有两种，产品跑不通和自己把自己跑进死角**。
+这一轮的 6 次 180 秒超时如果只记成「部署有问题」，就会去改投递层；实际是「空名册 + 明确点名 + 不校验名册」三件事叠在一起。
+判据：任何一次真机失败，先分清**是环境（我的脚手架）、输入（我的 brief）还是产品**，三者的修法完全不同（§31 同理）。
+
+§86.5 状态：跑 45 的 ㉟.1／㉟.2／㉟.4 全部**未验**（空研究所里没有回合能落地），不是「通过」也不是「失败」。
+下一次（跑 46）的 brief 已改为**先招聘两名成员**再执行判据；b-1（`stateMeans`）仍需在真机上读到原文才算数。

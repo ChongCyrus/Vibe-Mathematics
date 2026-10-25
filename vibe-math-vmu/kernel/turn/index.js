@@ -2098,6 +2098,24 @@ export function createTurnOrchestrator({
     // receipt printed `selectionIgnored.requested: ["member-1","member-2"]` — the DEFAULT roster — and a reader could not
     // tell "the caller asked for these two" from "nobody asked, the default applied". The face now says which it was, and
     // an inferred list is not a request: no `selectionIgnored`, and the source is named.
+    // ★★★ RUN 45 (a FRESH institute): an explicit selection naming a member who is NOT on the roster was delivered
+    // anyway, and the delivery sat out the full timeout (180 s) waiting for a child session that never existed. The loop
+    // is given the roster through `turnFacts`; it must REFUSE BY NAME before waking anybody. Skipped when the seam
+    // cannot report a roster (an absent seam is not evidence that everyone is unknown).
+    if (membersInferred !== true && selection.length > 0 && typeof turnFacts === 'function') {
+      let liveRoster = null
+      try {
+        const facts = turnFacts({})
+        liveRoster = facts && Array.isArray(facts.rosterIds) ? facts.rosterIds.map(String) : null
+      } catch { liveRoster = null }
+      if (liveRoster && liveRoster.length > 0) {
+        const unknown = selection.map((m) => String(m.id)).filter((id) => liveRoster.indexOf(id) === -1)
+        if (unknown.length > 0) {
+          throw refuse('VMU_TURN_UNKNOWN_MEMBER', 'not on the roster: ' + unknown.join(', '),
+            'live roster: ' + liveRoster.join(', ') + ' - select from that list (or hire first); delivering to an unknown member only burns the delivery timeout')
+        }
+      }
+    }
     const selectionSource = membersInferred === true ? 'roster-default' : 'explicit'
     const requestedIds = membersInferred === true ? [] : selection.map((m) => m.id)
     // ★★ LANE turn-reply — A REPORT THAT ANSWERS THE OPEN PROMPT COMPLETES **THAT** TURN. Without this guard every step
