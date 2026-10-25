@@ -4683,3 +4683,29 @@ dsh: fatal load failure: Error: the ballot is not open
 **诚实边界**：这不等于「成员主动发言」—— 成员仍是在自己的回合里说一句话，是所办那一侧把这句话按成员身份落账；
 提示词层还没教所办这么用（F5 判例：机制先落地、文本随后），本轮不动提示词。
 
+
+## §119 辩论规则的后半条：请裁决（ask）+ 完整性闸（round 18）
+
+**规则原文**：「待辩论会议结束，v5r框架请各个辩论的各个成员给出最终裁决，并通过平均概率和结论来确定该问题的最终答案，并通知卡片持有者。」
+
+这一条此前**完全没有机制**：`grep -rn "verdict_ask\|final-ruling" vibe-math-vmu` 只有 `vibe_v5_verdict_final`（裁决本身），没有任何「请成员裁决」的面，也没有「一场辩论里谁必须表态」的闸。
+
+### 落地的四个部件
+1. `vibe_v5_verdict_ask`（pack 工具，`packs/v5r/tools.js`）：由**主席**签名，按**会议自己记录的发言**取出「谁真的辩论过」，给每人发一条 `kind:"final-ruling-request"` 的信，要求「布尔概率（[0,1]）+ 理由」。它**不聚合、不碰卡片**——问与判是两件事（回执里 `how:"vibe_v5_verdict_final"` 点名裁决面）。
+2. `vibe_v5_verdict_final` 新增**完整性闸**：一场有真实辩论的会议里，辩论过的成员没有全部表态 ⇒ `VMU_STATE` 具名拒绝并点名缺谁；要故意对部分集合下判，必须 `partial:true` + `why`（否则「部分」会被读成「全部」）。
+3. `vibe_v5_verdict_final` 的 `coverage` 读数：`debated / debatedSource / provided / missing / partial / partialWhy / complete`，把「问了谁、谁答了、缺什么」写成可读事实。
+4. 聚合按规则原文：`complete` 时取算术平均并四舍五入到 6 位，回执 `aggregation:"mean"`；空集拒绝（「空集不是 0」）。
+
+### 过程中抓到的三个真实缺陷
+- **`minutes()` 默认视图把每一句发言都丢掉**。`ms:0` 在 `vmu.meetings.speechDefaultMs` 上是**无上限哨兵**，而 `minutes()` 的过滤写成 `e.kind !== "speech" || e.ms > 0` ⇒ `speechDefaultMs=0` 时**所有** speech 条目被滤掉，读到的是 `entries:[]`。修：`keepsSpeech = e.kind !== "speech" || e.ms > 0 || K.speechDefaultMs === 0`。
+- **闸不能读一个「经过修饰的视图」**。即使修好上一条，`minutes()` 仍按 `vmu.meetings.minutesDetail` 塑形、最多 20 条。新增 `meetings.spokeBy({meeting})`：直接读会议自己的 `minutes.entries`，返回 `spokeBy/spokeByCount/source:"minutes-entries"`；`meetingView()` 也带 `spokeBy/spokeByMeans`，让读数的人在状态面上就能看见「谁辩论过」。`debatedMembersOf()` 改为**优先** `spokeBy`，`minutes()` 只作为回退。
+- **`verdict_final` 的 `partial`/`why` 只在提示里被要求，参数表里没有声明**（同一「声明了但没消费者」家族的反向：提示要求了一个调用不了的东西）。已补进 `parameters`。
+
+### 门禁
+`tests/vmu-verdict-ask.test.mjs` **36 passed / 0 failed**（新增）：① 主席可问、非主席与无主席具名拒绝；② 被问集合来自**会议记录的事实**而非参数（并断言 `spokeBy` 这一事实面存在）；③ 信真的进了成员信箱，且正文点名命题与「布尔概率 + 理由」；④ 裁决按算术平均；⑤ 部分裁决必须带 `why`；⑥ 有辩论时漏人 ⇒ 具名拒绝并点名；⑦ 无辩论的会不阻挡普通裁定；⑧ **问不等于判**（回执无 value/mode）。另有两条**机械层**断言：`spokeBy` 存在且含两名发言者；`minutes()` 默认视图保留 `ms:0` 的发言。
+
+邻居全绿：`vmu-v5r-tools` 355/0、`vmu-meetings` 214/0、`vmu-meeting-types` 153/0、`vmu-turn` 267/0、`vmu-pack-prompts` 24/0。
+
+### 仍然存在的边界（诚实登记）
+- **「通知卡片持有者」仍未接**：`ruleThrough()` 会把裁决告诉「卡片持有者」，但成员写的卡片其持有者是成员自己，消息发回写卡片的人、发不进收卡人的信箱（其路径本末倒置）。登记在案，尚未修。
+- 「proof 是否完成」不可机器判定：`vibe_v5_verdict_ask` 只问概率与理由，不问证据等级；证据链仍由 `p1Intent`（Lean/verified）与 fidelity 承担。

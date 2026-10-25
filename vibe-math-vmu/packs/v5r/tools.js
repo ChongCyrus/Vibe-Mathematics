@@ -1278,6 +1278,22 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'the final ruling needs the members\' verdicts — an empty set has no value',
       'pass verdicts:[{member,p,reason}] (p is a boolean probability in [0,1]); the kernel aggregates: all agree ⇒ that value, otherwise the arithmetic mean')
   }
+  // ★ THE RULE FIRST SENTENCE, ENFORCED: 「框架请各个辩论的各个成员给出最终裁决」 — so a ruling that silently
+  // averages only the members the chair happened to collect is refused BY NAME, listing who is missing. The expected
+  // set is read from the meeting minutes (never from a parameter), and an EMPTY set means "no debate on record" —
+  // then there is nothing to enforce and the ruling proceeds (that is what keeps a plain proposition ruling working).
+  const debated = debatedMembersOf(kernel, meeting)
+  const provided = verdicts.map((v) => (v && has(v.member) ? str(v.member) : '')).filter(Boolean)
+  const missing = debated.members.filter((m2) => !provided.includes(m2))
+  const partial = args.partial === true
+  if (missing.length > 0 && !partial) {
+    throw refuse('VMU_STATE', 'the ruling is missing ' + missing.length + ' of the ' + debated.members.length + ' member(s) who debated: ' + missing.join('、'),
+      'ask them for a final ruling first (vibe_v5_verdict_ask { meeting, proposition_id }) and pass every verdict — or, if the chair deliberately rules on a partial set, pass partial:true with why:"<理由>" so the receipt records that this number is not the whole debate')
+  }
+  if (partial && missing.length > 0 && !has(args.why)) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'a partial ruling must say why (the missing verdicts are ' + missing.join('、') + ')',
+      'pass why:"<why the remaining members have no verdict in this number>" — a partial number without a reason reads like a full one')
+  }
   const records = kernel.records || null
   const cardRow = rowOrNull(records, propositionId)
   const owner = has(args.owner) ? str(args.owner)
@@ -1359,6 +1375,8 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
     mode: ruled.mode, exact: ruled.exact, rounded: ruled.rounded, decided: ruled.decided,
     enforceable: ruled.enforceable, estimate: ruled.estimate, n: ruled.n, perMember: ruled.perMember,
     spread: ruled.spread, owner, notified, delivery,
+    coverage: { debated: debated.members, debatedSource: debated.source, provided, missing, partial,
+      partialWhy: partial ? (has(args.why) ? str(args.why) : null) : null, complete: missing.length === 0 },
     // the reading that keeps an empty `notified` from being read as a delivery failure (see R21 above)
     notifiedMeans: selfAddressed
       ? 'no mailbox copy was made: the card owner is the chair who signed the ruling, so the ruling IS this receipt (a message may not be addressed to its own sender). An empty notified here means "nothing to send", not "the owner was not told" — see delivery.selfAddressed'
@@ -1378,6 +1396,123 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
         ? 'the ruling is on the record and the card owner (' + owner + ') was told through the mailbox face'
         : '★ the ruling IS on the record but the card owner was NOT told: delivery reported ok=' + String(delivery.ok)
           + ' — the number is not hidden, the notice is simply missing (see `delivery`)'),
+  }
+}
+
+/**
+ * WHO DEBATED — read from the meeting own minutes (the kind:"speech" entries), never from a caller claim.
+ * The rule says the framework asks 「各个辩论的各个成员」 for a final ruling, so the set to ask is a fact about the
+ * meeting, not a parameter: deriving it here keeps one authority (a caller can still widen it explicitly with
+ * members:[…], and the receipt records which of the two was used).
+ */
+function debatedMembersOf(kernel, meeting) {
+  const face = kernel && kernel.meetings
+  if (!face) {
+    return { readable: false, members: [], source: 'unreadable', why: 'the kernel publishes no meetings face, so who debated cannot be established' }
+  }
+  // ★ PREFER THE FACT OVER THE PRESENTATION: minutes() shapes and prunes (it drops ms:0 speeches and caps at 20), so a
+  // gate reading it can conclude "nobody debated" while the store says otherwise. spokeBy() reads the entries directly.
+  if (typeof face.spokeBy === 'function') {
+    try {
+      const out = face.spokeBy({ meeting })
+      const members = (out && Array.isArray(out.spokeBy)) ? out.spokeBy.map(String) : []
+      return { readable: true, members, source: 'spokeBy', why: null }
+    } catch (e) {
+      return { readable: false, members: [], source: 'unreadable', why: (e && e.message) || String(e) }
+    }
+  }
+  if (typeof face.minutes !== 'function') {
+    return { readable: false, members: [], source: 'unreadable', why: 'the kernel publishes neither spokeBy() nor minutes(), so who debated cannot be established' }
+  }
+  try {
+    const m = face.minutes({ meeting })
+    const entries = (m && (m.entries || (m.minutes && m.minutes.entries))) || []
+    const seen = []
+    for (const e of entries) {
+      if (!e || e.kind !== 'speech') continue
+      const who = e.member ? String(e.member) : ''
+      if (who && !seen.includes(who)) seen.push(who)
+    }
+    return { readable: true, members: seen, source: 'minutes', why: null }
+  } catch (e) {
+    return { readable: false, members: [], source: 'unreadable', why: (e && e.message) || String(e) }
+  }
+}
+
+/**
+ * ★ THE RULE OTHER SENTENCE — 「待辩论会议结束，v5r框架**请**刚刚各个辩论的各个成员给出最终裁决」.
+ *
+ * Until now the pack only had the SECOND half (vibe_v5_verdict_final: aggregate + notify). The asking half was prose
+ * in a recommended procedure, so on a real run nobody was asked and the ruling could be signed from whatever verdicts
+ * the chair happened to collect. This face makes the ask a real act: one mailbox message per debating member, from the
+ * chair, naming the proposition and the two things to answer (probability + reason). It refuses by name when nobody can
+ * be asked (no speech on record, no mailbox face) instead of reporting a comfortable zero.
+ *
+ * It does NOT aggregate and does NOT touch the card: asking is not ruling (the same separation the pack already keeps
+ * between meetings.close and the ruling — see the note on toolVerdictFinal).
+ */
+function toolVerdictAsk(args = {}, { kernel } = {}) {
+  if (!has(args.meeting)) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'asking for final rulings needs the meeting they belong to',
+      'pass meeting:"<the id vibe_v5_meeting returned>" — the ask is signed by the chair of that meeting')
+  }
+  const meeting = str(args.meeting)
+  if (!kernel || !kernel.meetings || typeof kernel.meetings.meetingView !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'no meeting face: the ask cannot be tied to a chair',
+      'assemble a full kernel (vibe-math-vmu.js publishes vmu.meetings)')
+  }
+  const view = kernel.meetings.meetingView({ meeting })
+  const chair = view && view.chair ? str(view.chair) : ''
+  if (!chair) {
+    throw refuse('VMU_STATE', 'meeting ' + meeting + ' declares no chair, so nobody can sign the ask',
+      'convene the meeting with a chair seat — an ask without a signer is not the framework asking')
+  }
+  if (has(args.member) && str(args.member) !== chair) {
+    throw refuse('VMU_NOT_PERMITTED', 'only the meeting CHAIR asks for the final rulings: the chair of ' + meeting + ' is "' + chair + '", and you passed "' + str(args.member) + '"',
+      'pass member:"' + chair + '", or omit member (the chair asks by default)')
+  }
+  if (!has(args.proposition_id)) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'the ask must name the proposition the ruling is about',
+      'pass proposition_id:"<records id of the proposition card>" — a member cannot answer a boolean probability without knowing the proposition')
+  }
+  const propositionId = str(args.proposition_id)
+  if (!kernel.mailbox || typeof kernel.mailbox.send !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'no mailbox face: the framework cannot reach the members',
+      'assemble a full kernel (vibe-math-vmu.js publishes vmu.mailbox) — without it an ask is not an ask')
+  }
+  const explicit = Array.isArray(args.members) ? args.members.map((x) => str(x)).filter(Boolean) : null
+  const debated = debatedMembersOf(kernel, meeting)
+  const asked = explicit && explicit.length ? explicit.slice() : debated.members.slice()
+  const source = explicit && explicit.length ? 'members' : debated.source
+  if (asked.length === 0) {
+    throw refuse('VMU_STATE', 'nobody can be asked: meeting ' + meeting + ' has no debate speech on record'
+      + (debated.readable ? ' (' + debated.source + ' reports no speech by any member)' : ' (' + debated.why + ')'),
+      'hold the debate first (members speak in the meeting), or pass members:[…] to name who must answer — the set of askers is a fact about the debate, so an empty one means there is nothing to rule on yet')
+  }
+  const text = '请你作为本次辩论的参与者，就命题 ' + propositionId + ' 给出最终裁决：布尔概率（[0,1]）+ 理由。'
+    + '（会议 ' + meeting + ' 已结束辩论；收齐全部裁决后由主席用 vibe_v5_verdict_final 汇总：全部一致为 1 或 0 则取该值，否则取算术平均，并通知命题卡持有者。）'
+  const delivered = []
+  const failed = []
+  for (const to of asked) {
+    try {
+      const sent = kernel.mailbox.send(chair, { to, kind: 'final-ruling-request', meeting, proposition: propositionId, text })
+      if (sent && sent.ok === false) failed.push({ to, code: sent.code || 'VMU_STATE', message: sent.message || null })
+      else delivered.push(to)
+    } catch (e) {
+      failed.push({ to, code: (e && e.code) || 'VMU_ENGINE_FAILURE', message: (e && e.message) || String(e) })
+    }
+  }
+  return {
+    ok: true, tool: 'vibe_v5_verdict_ask', meeting, chair, from: chair,
+    proposition: propositionId,
+    asked, askedSource: source,
+    delivered, failed,
+    how: 'vibe_v5_verdict_final',
+    means: 'the ask is on the members record now; the RULING is a separate, explicit act by the chair (asking is not ruling) — '
+      + 'and this pack keeps no hook on meetings.close, so a closed debate does not silently become a ruling',
+    next: 'collect each member {p, reason}, then call vibe_v5_verdict_final { meeting, proposition_id, verdicts } — it refuses when a member who debated has no verdict (pass partial:true + why to rule on a partial set explicitly)',
+    enforced: enforcedOf([]), enforcedScope: ENFORCED_SCOPE,
+    note: 'the framework asked; it did not decide. A member with no verdict cannot be averaged in.',
   }
 }
 
@@ -2472,8 +2607,14 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_verdict_final',
     description: '★ TALLY THE DEBATE\'S FINAL RULING (the CHAIR signs it): collect the members\' boolean verdicts on ONE proposition, aggregate them (all agree ⇒ that value, otherwise the arithmetic mean) and tell the proposition card\'s owner to correct its probability. meeting + proposition_id + verdicts REQUIRED; verdicts = [{member,p,reason}] where p∈[0,1]. member is who signs (default: the meeting chair; anyone else is refused by name — an anonymous ruling is not a ruling). owner defaults to the card\'s author and is REQUIRED to be resolvable, because a ruling nobody is told changes nothing. ★ If a Lean run passed and the card\'s p is still not 1, you must ANSWER THE FIDELITY QUESTION first (pass fidelity:"conform" or "defect", with lean_job naming the run): the refusal carries the question and the two legal answers. The kernel face keeps the arithmetic/validation and refuses by name (duplicate member, p out of range, mixed propositions); delivery of the notice is reported honestly in `delivery` and `notified` (an empty `notified` means the number is on the record but nobody was told).',
-    parameters: { meeting: { type: 'string', required: true }, proposition_id: { type: 'string', required: true }, verdicts: { type: 'array', required: true }, member: { type: 'string' }, owner: { type: 'string' }, lean_job: { type: 'string' }, lean_passed: { type: 'boolean' }, fidelity: { type: 'string' }, template: { type: 'string' } },
+    parameters: { meeting: { type: 'string', required: true }, proposition_id: { type: 'string', required: true }, verdicts: { type: 'array', required: true }, member: { type: 'string' }, owner: { type: 'string' }, lean_job: { type: 'string' }, lean_passed: { type: 'boolean' }, fidelity: { type: 'string' }, template: { type: 'string' }, partial: { type: 'boolean' }, why: { type: 'string' } },
     handler: toolVerdictFinal,
+  },
+  {
+    name: 'vibe_v5_verdict_ask',
+    description: '★ ASK THE DEBATING MEMBERS FOR THEIR FINAL RULING (the CHAIR asks; this is the FIRST half of the rule: 「待辩论会议结束，v5r框架请各个辩论的各个成员给出最终裁决」). One mailbox message per member WHO ACTUALLY SPOKE in that meeting (read from the meeting’s recorded speeches (spokeBy), not from a parameter) asking for 「布尔概率（[0,1]）+ 理由」 on ONE proposition. meeting + proposition_id REQUIRED; members is an optional explicit widening (the receipt says which source was used: askedSource). It does NOT aggregate and does NOT touch the card — asking is not ruling; the ruling is vibe_v5_verdict_final, which now REFUSES by name when a member who debated has no verdict (pass partial:true + why to rule on a partial set deliberately). Refused by name: no chair to sign, a non-chair caller, no mailbox face, and a meeting with no debate speech on record (nothing to rule on yet).',
+    parameters: { meeting: { type: 'string', required: true }, proposition_id: { type: 'string', required: true }, members: { type: 'array' }, member: { type: 'string' }, why: { type: 'string' } },
+    handler: toolVerdictAsk,
   },
   {
     name: 'vibe_v5_verified_promote',

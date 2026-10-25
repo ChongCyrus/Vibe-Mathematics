@@ -1522,7 +1522,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       assertCanReadRecord(m, 'minutes', by)
       const now = at === null ? clock() : atMs(at)
       const refused = m.minutes.refused.filter(() => K.minutesIncludeRefused)
-      const entries = K.minutesDetail === 'full' ? m.minutes.entries.slice() : m.minutes.entries.filter((e) => e.kind !== 'speech' || e.ms > 0).slice(0, 20)
+      // ★ ms:0 is the UNBOUNDED sentinel on vmu.meetings.speechDefaultMs, not "zero time" — filtering those out hid EVERY
+      // speech from the default view. A speech recorded with no bound is still a speech.
+      const keepsSpeech = (e) => e.kind !== 'speech' || e.ms > 0 || K.speechDefaultMs === 0
+      const entries = K.minutesDetail === 'full' ? m.minutes.entries.slice() : m.minutes.entries.filter(keepsSpeech).slice(0, 20)
       return {
         ok: true, meeting: m.id, detail: K.minutesDetail, includeRefused: K.minutesIncludeRefused,
         entries, actions: m.minutes.actions.slice(), refused,
@@ -1530,6 +1533,16 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         retentionMs: K.minutesRetentionMs, archivable: K.minutesRetentionMs > 0 && now - m.openedAt > K.minutesRetentionMs,
         note: 'minutes are OWNED by 08/07 — this view only shapes and prunes them (a pruned entry is counted)',
       }
+    },
+
+    /** WHO SPOKE — the FACT, un-pruned. `minutes()` is a PRESENTATION (it drops nothing that matters now, but it caps at
+     * 20 entries and is shaped by vmu.meetings.minutesDetail); a gate that must know who debated cannot read a
+     * presentation. This returns the members with at least one `kind:"speech"` entry, straight from the store. */
+    spokeBy({ meeting } = {}) {
+      const m = requireMeeting(meeting, { readOnly: true })
+      const spokeBy = [...new Set(m.minutes.entries.filter((e) => e.kind === 'speech').map((e) => String(e.member)))]
+      return { ok: true, meeting: m.id, spokeBy, spokeByCount: spokeBy.length, source: 'minutes-entries',
+        sourceMeans: 'read from the meeting\'s own recorded speech entries, NOT from the shaped minutes() view' }
     },
 
     /** Verbatim transcript (READ-ONLY; pruned by `verbatimRetentionMs`, drops counted). */
@@ -1874,6 +1887,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
         waitDueAt: waitDueOf(m),
         waitDecisionDue: m.waitDecisionDue === true,
+        // ★ A READER MUST BE ABLE TO SEE WHO DEBATED WITHOUT CALLING minutes(): the fact, un-pruned.
+        spokeBy: [...new Set(m.minutes.entries.filter((e) => e.kind === 'speech').map((e) => String(e.member)))],
+        spokeByMeans: 'members with at least one recorded speech in THIS meeting (the fact; minutes() is a shaped view of it)',
         stateMeans: MEETING_STATE_MEANING[m.state] || null,
         loop: 'meeting-ask-answer',
         note: '★ motions/votes/state here describe the MEETING’s own ask()+answer()+motion cycle. A member answering a vibe_vmu_turn prompt is a DIFFERENT loop: read vibe_vmu_turn’s receipts (awaiting/memberPrompt/deliveryPath) for that one. hasDeliverSeam on the primitive face refers to open({deliver}), not to the turn loop’s deliveryPath.', reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,
