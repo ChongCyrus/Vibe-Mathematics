@@ -167,6 +167,12 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     // name that says what it means, and `votesCast` counts the judgements that actually arrived.
     confirmed: cast,
     votesCast: forIt.length + against.length,
+    // ★ LIVE RUN 11 (the institute's own report, item b): the office tried to read `cast`/`votesCast` off the
+    // RULING receipt (`vibe_v5_verdict_final`) and reported the reading 'missing'. It is not missing - it is a
+    // DIFFERENT mechanism: this block is the CLOSURE vote (was the question judged solved?), while the ruling is
+    // a probability over one proposition. Two receipts that never name each other is the same misleading-shape
+    // family as a mechanism with no consumer, so each now says where the other lives.
+    rulingReading: 'NOT on this field: cast/votesCast are the CLOSURE vote (was the question judged solved, unanimously). The DEBATE ruling over a proposition is a different mechanism and lives on the pack face `vibe_v5_verdict_final` (value / perMember / floor.minVotes)',
     castMeaning: 'cast === confirmed: every enfranchised member judged the question solved. It is NOT "the votes were cast" - see votesCast for how many judgements arrived',
     for: forIt,
     against,

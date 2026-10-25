@@ -1335,6 +1335,11 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
   return {
     ok: true, tool: 'vibe_v5_verdict_final', meeting, chair, from: chair,
     floor,
+    // ★ LIVE RUN 11 (the institute's own report, item b): this receipt was read as if it carried the CLOSURE vote
+    // (`cast`/`votesCast`) and the reading was reported missing. It is not missing - it is another mechanism. The
+    // ruling answers 'what is the probability over this proposition', the closure vote answers 'did every member
+    // judge the question solved'. Naming the neighbour is cheaper than letting two receipts look contradictory.
+    closureReading: 'NOT on this receipt: cast/votesCast are the CLOSURE vote and live on `vibe_vmu_meeting { action: "status" }` → closureVote (and on the turn seam receipt built by kernel/turn/index.js). floor.minVotes here is the vote floor that closing meeting also enforces',
     proposition: ruled.proposition, value: ruled.value, valueSource: ruled.valueSource,
     mode: ruled.mode, exact: ruled.exact, rounded: ruled.rounded, decided: ruled.decided,
     enforceable: ruled.enforceable, estimate: ruled.estimate, n: ruled.n, perMember: ruled.perMember,
