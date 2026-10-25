@@ -1309,6 +1309,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.meetings.budgetTokens', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.budgetTurns', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.budgetWallMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.meetings.chairActRequiresTurn', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.chairNeutral', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.chairTransferAudit', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },
   { key: 'vmu.meetings.closeRequiresChair', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（meetings-defaults.js 读取）；默认值取自模块源码" },

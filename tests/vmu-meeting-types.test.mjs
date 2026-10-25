@@ -642,6 +642,48 @@ try {
   ok(oD.quorum.required === 3,
     '★★★ quorumMin=5 on a 3-seat universe yields 3, NOT 5 — the discriminating case: max() would have demanded an unmeetable 5, the rule says min(setting, universe)', { required: oD.quorum.required, universe: oD.quorum.voteFloor.eligibleUniverse })
 
+
+  console.log('=== 10. CHAIR ACT REQUIRES A CHAIR TURN: "the caller signed as chair" is not "the chair decided" ===')
+  // The office holds the only tool wire in this deployment, so `open({actor: chairId})` proves nothing about the chair
+  // having decided anything. This rail makes the kernel demand a fact it can VERIFY (a recorded turn for the chair)
+  // before the seat may be used. Default is off (zero mechanism); the run-18 deployment injects it on.
+  const bootRail = async (vmu3, tag) => boot({ root: join(root, 'rail-' + tag), packs: ['v5r'], clock: () => 1000, vmu: vmu3 })
+  const seatRail = async (k) => {
+    await k.members.hire({ id: 'acad', slot: 'chair' })
+    await k.members.hire({ id: 'r-1', slot: 'member' })
+  }
+
+  // ⑩a off (framework default): the rail is not consulted, an actor-only convene still works
+  const rA = await bootRail({ meetings: { chairActRequiresTurn: false } }, 'off')
+  await seatRail(rA.handle.kernel)
+  const offOpen = rA.handle.kernel.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1'], materials: 'rail-off' })
+  ok(offOpen && offOpen.meeting !== undefined,
+    '★ rail off: a convene signed by the chair is accepted without any recorded turn (zero mechanism by default)', { meeting: offOpen && offOpen.meeting })
+
+  // ⑩b on + no chair turn ⇒ refused BY NAME, with the remedy in the hint
+  const rB = await bootRail({ meetings: { chairActRequiresTurn: true } }, 'on')
+  await seatRail(rB.handle.kernel)
+  const serr2 = (fn) => { try { return { value: fn() } } catch (e) { return { error: e } } }
+  const refused = serr2(() => rB.handle.kernel.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1'], materials: 'rail-on' }))
+  ok(refused.error && refused.error.code === 'VMU_CHAIR_ACT_NOT_DELEGATED',
+    '★★ rail on: convening as a chair that has NO recorded turn is refused by name (an authority act without an attributable decision)', refused.error && refused.error.code)
+  ok(refused.error && /vibe_vmu_turn/.test(String(refused.error.hint || '')),
+    '★ and the refusal NAMES the remedy (give the chair its own turn first) instead of only saying no', refused.error && refused.error.hint)
+
+  // ⑩c the SAME boot, after the chair really took a turn ⇒ the seat is usable (the rail is a gate, not a wall)
+  const bRail = await bootRail({ meetings: { chairActRequiresTurn: true } }, 'on-ok')
+  await seatRail(bRail.handle.kernel)
+  // a caller-played turn is the cheapest real turn: the kernel records it, which is the fact the rail reads
+  const kRail = bRail.handle.kernel
+  try {
+    const held = await kRail.turn.step({ members: ['acad'], membersInferred: true, phase: 'normal', why: 'rail test' })
+    if (held && held.awaiting === true) kRail.turn.supplyMemberReply('已考虑：可以开会。', 'acad')
+  } catch (e) { /* no delivery seam in this boot - the turn record may still exist; asserted below via the refusal message */ }
+  const afterTurn = serr2(() => kRail.meetings.open({ chair: 'acad', actor: 'acad', roster: ['acad', 'r-1'], materials: 'rail-after-turn' }))
+  const code2 = afterTurn.error ? afterTurn.error.code : null
+  ok(code2 === null || (code2 !== 'VMU_CHAIR_ACT_NOT_DELEGATED'),
+    '★★ after the chair took a real turn the chair-turn rail no longer fires (it gates on a recorded fact, not on a caller claim)', { code: code2 })
+
 console.log('')
 if (failures.length) { console.error('FAILURES:'); for (const f of failures) console.error('  · ' + f) }
 console.log('=== VMU MEETING TYPES: ' + passed + ' passed, ' + failed + ' failed ===')

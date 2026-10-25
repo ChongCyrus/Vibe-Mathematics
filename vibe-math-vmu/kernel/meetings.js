@@ -56,7 +56,7 @@ const RING = 200
 // used by every rail, so the vocabulary cannot drift rail by rail.
 const ACTOR_ALIASES = 'the actor is accepted as actor, by or member (the three names are the same person)'
 
-export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null, boxFor = null, foreignIds = null } = {}) {
+export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null, boxFor = null, foreignIds = null, chairActed = null } = {}) {
   if (typeof clock !== 'function') {
     // No key has been consulted at construction time: the list is explicitly EMPTY (never undefined).
     throw Object.assign(refuse('VMU_INVALID_ARGUMENT', 'createMeetings needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock'), { enforced: [], evaluated: [] })
@@ -157,6 +157,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // narrow it, so the floor IS the eligible universe. That is a POLICY question, so the DEFAULT stays the framework's
     // old behaviour (`setting`: 0 means no floor) and a pack opts in by declaring `universe`. Same shape as
     // `eligibleSeats`/`attendDeniedSeats`: the kernel compares, the pack names its institution.
+    // ★ RULE (v5r 运行规则 · 会议只能由院士预约/召开/关闭，院士作为主持): a chair-gated act performed by a CALLER that is not
+    // the chair itself is the norm in this deployment (the office holds the only tool wire), so "who signed" cannot prove
+    // "who decided". This switch makes the institution able to demand that the chair had at least ONE recorded turn
+    // before its seat is used. Framework default false = zero mechanism; v5r declares true.
+    chairActRequiresTurn: sget('vmu.meetings.chairActRequiresTurn') === true,
     quorumFloorSource: (() => { const v = sget('vmu.meetings.quorumFloorSource'); return v === undefined || v === null || v === '' ? 'setting' : String(v) })(),
     // ★ PHASE 12 / LIVE RUN 7 item f: the institution's quorum RULE, read here so `quorum().met` can honour it (the
     // ballot face read it already; the meeting face did not, which is why 「未到齐 ⇒ 法定人数不成立」 had no landing
@@ -2046,6 +2051,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         }
         chair = who
       }
+      // ★★★ RULE (v5r 运行规则 · 院士作为主持；会议只能由院士召开/关闭): the office holds the only tool wire in this
+      // deployment, so "the caller signed as the chair" cannot prove "the chair decided". When the institution turns this
+      // rail on, the chair's seat may only be used after the chair itself has taken at least one turn — a fact THIS kernel
+      // records, so the check is verifiable rather than a promise. Refused BY NAME with the remedy, never downgraded to a
+      // warning: an authority act with no attributable decision is exactly what the rail exists to stop.
+      if (K.chairActRequiresTurn === true && seat !== null && typeof chairActed === 'function' && chairActed(seat) !== true) {
+        mark(enforced, 'vmu.meetings.chairActRequiresTurn')
+        throw deny('VMU_CHAIR_ACT_NOT_DELEGATED',
+          'vmu.meetings.chairActRequiresTurn=true: the chair ' + seat + ' has no recorded turn in this kernel, so its seat cannot convene yet',
+          'give the chair its own turn first (vibe_vmu_turn { op:"step", member:"' + seat + '" } - the chair then acts, or reports through the office), and only then convene (vmu.meetings.chairActRequiresTurn)', enforced)
+      }
+      mark(enforced, 'vmu.meetings.chairActRequiresTurn')
     }
     // ★ WHERE this meeting is about something (a debate's object, a closure's proposition, a paper's draft), the
     // reference is CARRIED and READ BACK, never inferred. A non-string is refused by name rather than stringified:

@@ -2410,6 +2410,10 @@ export function createTurnOrchestrator({
   }
 
   return {
+    // ★ RULE (v5r 运行规则 · 会议只能由院士召开/关闭，院士作为主持并自组织会议进行): a chair-gated act must be able to
+    // answer "did the chair itself ever take a turn?" — the kernel can only verify what it recorded, so the COUNT is
+    // exposed here and `meetings.js` turns it into a named refusal when the institution requires it.
+    memberTurnCount: (memberId) => { let n = 0; for (const t of turns.values()) if (String(t.member) === String(memberId)) n++; return n },
     open, assemble, deliver: deliverTurn, parse, plan, apply, run, nextTurn, drive, step,
     dispatch, whenIdle, dispatchStatus,
     // ★★★ ROUND 73: THE CALLER-PLAYED TURN. When the injected seam is `deliverByReturning`, the assembled prompt

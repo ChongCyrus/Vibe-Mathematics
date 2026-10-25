@@ -1396,7 +1396,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // later and therefore read through a LATE-BOUND arrow - it is only called when a meeting is opened, never during
   // construction) both hand callers ids that read as "the meeting". Without this seam each guarded only its own table,
   // and a minted `m111` here plus an explicit `m111` there were two meetings under one name (the agent reported it).
-  meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam, ballot: meetingBallot, members: memberRef, foreignIds: () => [...liveMeetings.keys()] })
+  meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam, ballot: meetingBallot, members: memberRef, foreignIds: () => [...liveMeetings.keys()],
+    // ★ RULE (v5r: 会议只能由院士召开/关闭): the chair's seat may be used only after the chair took a turn. LATE-BOUND on
+    // purpose - `turn` is constructed below this line, and the predicate must never run during construction.
+    chairActed: (memberId) => { try { return !!(turn && typeof turn.memberTurnCount === 'function' && turn.memberTurnCount(memberId) > 0) } catch (e) { return false } } })
   const meetings = meetingsRef.current
   // ROUND 9 / task-66 A (G7): the board's cast/settle commits through the SAME durable log as the mailbox — one
   // instance, one ticket sequence, so a recovery replay has a single order to follow. Absent store ⇒ the board's

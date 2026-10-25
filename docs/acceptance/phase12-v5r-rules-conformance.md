@@ -4171,3 +4171,40 @@ seam 早就知道（`vibe-math-vmu/host-deliver.js:283` 设了 `err.deliveryPath
 
 ### 同轮第二处（部署侧，不是产品）
 `vmu.turn.deliveryTimeoutMs` 声明为 `HOT.H2`（构造期读），所以**运行时 set 不生效**是对的；但 run 17 的成员回合每次都在 180 s 超时，而子代理要跑约 5 分钟。修法在**部署面**：runner 在启动前把 `vmu.turn.deliveryTimeoutMs: 900000` 注入 preset 的 `vmu` 配置（`D:\_tmp\slv-phase5\slv-p12g-seat.ps1`）。这正是「H2 应该走部署配置，而不是运行时 set」的用法。
+
+## §109 运行规则的两条「权威/下限」补成了机制（quorumFloorSource + chairActRequiresTurn）
+
+run 17 的所办报告把两条规则判为「只有观感、没有可核实的落点」，两条都不是文字问题，而是机制缺位：
+
+### ① m（法定票数下限）没有 SOURCE
+- 现象: 报告里 `quorum.voteFloor.required` 与 `formula` 存在，但**没有任何字段说明 required 是从哪来的**，
+  所以「用户没设数字 → m＝院士＋常驻全体」这条规则在真机上不可核验；用户设了数字时是 max 还是 min 也读不出。
+- 机制: `vibe-math-vmu/kernel/meetings.js` `quorumOf()` 现在给出 `source`：
+  `'setting'`（用户显式声明了数字）/ `'universe'`（未声明，下限就是院士＋常驻全体）/ `'no-universe'`（没有成员记录可推）。
+  同时给出 `setting` / `eligibleUniverse` / `effective` / `formula` / `sourceMeans` 对齐的数据。
+- 关键判别断言（`tests/vmu-meeting-types.test.mjs` §9）：
+  未声明数字时 required = 3（院士＋2 常驻），**不是 0**；
+  声明 `quorumMin=5` 而宇宙只有 3 席时 required = 3（min 收窄），**不是 5**——若是 max() 就会要求一个开不成的会。
+- pack 侧: `packs/v5r/settings/defaults.json` 声明 `vmu.meetings.quorumFloorSource: "universe"`
+  （schema key 见 `settings/schema.js`，`who:'role:chair'`）。
+
+### ② 院士的权威没有可核实的前提
+- 现象: 本部署里所办持有**唯一**的工具面，「调用方签名 = 院士」无法证明「院士做了决定」；
+  「会议只能由院士召开/关闭」因此在机器上只是一句承诺。
+- 机制: 新设置键 `vmu.meetings.chairActRequiresTurn`（boolean，默认 **false**＝零机制）。
+  为 true 时，`open()` 要求主席在本内核里**至少有一个记录的回合**才能用这个席位，否则
+  `VMU_CHAIR_ACT_NOT_DELEGATED` 具名拒绝，hint 直接给补救（先给院士一个回合）。
+  事实来源是内核自己的回合计数（`kernel/index.js` 里 late-bound 的 `chairActed` 谓词），不是调用方自述。
+- 为什么 pack 里保持 false: 一旦在库里开成 true，所有「以院士名义开会」的既有场景都要先给院士回合，
+  连带测试与旧流程一起变红。开不开是**部署政策**，所以由 runner 在启动前注入 true
+  （`D:\_tmp\slv-phase5\slv-p12g-seat.ps1` 注入 `meetings: { chairActRequiresTurn: true }`），
+  真机按规则跑，库内断言不被一次性打断；等流程简报普遍要求「先给院士回合」后再改库。
+- 断言（`tests/vmu-meeting-types.test.mjs` §10，4 条）：关时放行（零机制）/ 开时无回合 ⇒ 具名拒绝且 hint 给补救 /
+  开时给过回合 ⇒ 栏杆不再触发（是门不是墙）。
+
+- 门禁/回归: `vmu-meeting-types` **153 passed, 0 failed**；`vmu-meetings` 214/0、`vmu-turn` 257/0、
+  `vmu-kernel` 260/0、`vmu-host` 199/0；`regen-all` 16/16 in sync。
+
+- 诚实边界: 这两条修订都还没在真机上验证——run 18 的简报（`D:\_tmp\slv-phase5\task-r18.txt` ⑫.2/⑫.3）
+  要求所办逐字抄回 `voteFloor.source/eligibleUniverse/effective`、先故意在院士无回合时开会一次取拒绝码、
+  再给回合后重试；跑完才谈得上「已实现」。
