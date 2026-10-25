@@ -4551,3 +4551,55 @@ curl -sS -m 120 -w 'HTTP %{http_code}\n' https://opencode.ai/zen/go/v1/chat/comp
 
 ### 附：队友约束（用户裁定）
 以后再派队友只能用**第二批（绑定 commandcode）**或第三批。
+
+## §118 真机跑 22（提供商已换 commandcode）：一所连环缺陷被一次真实操作撞出来 —— 其中一条**直接把宿主进程打死**
+
+### 这轮运行的事实（全部来自磁盘）
+| 项 | 读数 |
+|---|---|
+| 跑测器 | `D:\_tmp\slv-phase5\slv-p13-cc.ps1`，简报 `task-r22.txt`（⑮ 四项） |
+| 提供商 / 模型 | **commandcode / `deepseek/deepseek-v4.1-flash`**（不带 `-fast`） |
+| 转录 | `full-1026-040111.jsonl`，39 725 行，5.4 MB |
+| token | 6 018 213（上限 500 M，未触顶） |
+| 会话 | 4 个：1 个所办 + 3 个成员子代理（`childSessionId` 出现 13 次、`memberToolCalls` 9 次 ⇒ 子代理路径**仍然是对的**） |
+| 结局 | `DRIVE exit=1`；**所办没写出验收报告**；`slv-inspect` 4 会话 / 1 有 RED（`tool/call count != tool/result count`，是中断导致的计数残缺，不是产品不一致） |
+
+### 死因（服务器 stderr 原文，逐字保留）
+```
+dsh: fatal load failure: Error: the ballot is not open
+    at refuse (.../kernel/ballot.js:60:15)
+    at castNow (.../kernel/ballot.js:279:13)
+    at run (.../kernel/ballot.js:424:25) { hint: 'state=tallied', code: 'VMU_STATE' }
+```
+所办最后在做的动作是：为命题 P 建了一个 `kind:"decisive"` 的表决箱 → 收会 → 又对**已裁定（state=tallied）**的箱子投了一票。
+`kernel/ballot.js castNow` 对“已结算的箱子不再收票”这条规则**抛具名拒**（这是它对 API 的既定契约，不是错误），
+但这一次抛出落在了把进程打死的那条路径上。
+
+### 已修（本轮落实）
+`vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_verdict`：
+① 投票前先问票箱状态（`ballot.status()`），已结算就**以这个面自己的话**具名拒：
+   `VMU_STATE "no verdict may be cast on this ballot: it is already settled (state=tallied)"`，
+   hint 指到能用的地方（`vibe_v5_record_progress`，或新开一个表决箱）——
+   旧文案 `"the ballot is not open"` 是在说**实现内部的状态名**，不是在说“这张票为什么没投上”。
+② `ballot.cast` 本身包了 try/catch，把具名抛转成本面的具名拒。
+门禁：`tests/vmu-run22-findings.test.mjs`（11 断，全过）。
+
+### 一个被**测量否决**的想法（记录以免重犯）
+我先把转换放进 `host-pack-tools.js makePackToolSpec().run`——那里是**所有** pack 工具的唯一入口。
+结果：`tests/vmu-v5r-tools.test.mjs` 从 355/0 变成 **313 通过 / 42 失败**。
+原因：这套仓库里 pack 工具**抛具名拒**是**契约**，由 `host.js toHostSpec` 的 `execute` 统一接住并序列化成同种回执
+（`host.js` 里那条 round-36 注释正是为此而写：拒与成功必须走同一个 `boundedToolResult`）。
+把转换下移到 funnel 会让 42 条断言同时失效，等于**改契约去迎合一次崩溃**。该改动已**完整撤销**（`git diff` 已确认）。
+
+### 仍未解释的部分（**不装作已解决**）
+既然工具边界内的抛出都会被 `toHostSpec` 转成回执，那么这一条 `fatal load failure` 就**不是普通的工具拒**。
+它发生在“加载”这段的上层语义里（dsh 的原话是 `fatal load failure`），而 `castNow` 在本仓库里只有两个可达调用点
+（`kernel/meetingmarker.js mirrorVote`，已包 try/catch；`packs/v5r/tools.js` 两处）。已核：`meetings.restore()` 不会通过
+`vote()` 重放投票，`ballot` 也没有 journal 重放。
+⇒ 登记为本轮**未解释项**：下一次真机跑若再出现同一行 `fatal load failure: Error: the ballot is not open`，第一件事是
+把它前后的 `step` 行抄下来（尤其是 `session/create` 与最后一个工具回执），而不是继续猜。
+
+### 这次崩溃的代价与教训
+6.0 M token 的验收工作全部作废，只换来这一条缺陷。教训与 §107 同源、但更硬：
+**验收用的真机跑必须假设“任何一次工具调用都可能终结整轮”**，所以：①每轮只推进少量新读数；②崩溃后先读 stderr 的栈，
+再读转录里**最后一个工具回执**；③不要把“跑通了 18 分钟”当成“这一轮是安全的”。

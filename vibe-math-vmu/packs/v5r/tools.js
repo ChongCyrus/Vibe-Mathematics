@@ -1842,7 +1842,22 @@ function toolVerdict(args = {}, { kernel } = {}) {
   if (!ballot || typeof ballot.cast !== 'function') {
     throw refuse('VMU_NO_SUCH_OBJECT', 'no LIVE ballot with id ' + str(args.target), 'the ballot must be open; the original cast verdicts on the object under verification')
   }
-  const r = ballot.cast(member, v, { kind: v === 1 || v === 0 ? 'decisive' : 'estimate' })
+  // ★★ LIVE RUN 22: the ballot's own face throws `VMU_STATE "the ballot is not open"` once it is tallied, and that
+  // throw used to escape this handler and kill the host (see the rail in `vibe-math-vmu/host-pack-tools.js`). Two
+  // layers now: this pre-check gives the READER a sentence about what happened to the ballot, and the funnel turns
+  // any remaining named throw into a receipt. A verdict on a settled ballot is a normal race, not a crash.
+  const boxState = ballot && typeof ballot.status === 'function' ? (() => { try { const s = ballot.status(); return s && s.state ? String(s.state) : null } catch { return null } })() : null
+  if (boxState && boxState !== 'open' && boxState !== 'frozen') {
+    throw refuse('VMU_STATE', 'no verdict may be cast on this ballot: it is already settled (state=' + boxState + ')',
+      'the ballot is closed; a settled ballot keeps its tally — record further judgement with vibe_v5_record_progress, or open a NEW ballot with vibe_vmu_meeting {action:"ballot"}')
+  }
+  let r
+  try {
+    r = ballot.cast(member, v, { kind: v === 1 || v === 0 ? 'decisive' : 'estimate' })
+  } catch (err) {
+    throw refuse((err && err.code) || 'VMU_STATE', String((err && err.message) || 'the ballot refused this verdict'),
+      (err && err.hint) || 'the ballot must be OPEN to take a verdict; re-open it or open a new one')
+  }
   if (r && r.ok === false) throw refuse(r.code || 'VMU_CONFLICT', r.message || 'the ballot refused this verdict', r.hint || 'see the ballot refusal')
   return { ok: true, tool: 'vibe_v5_verdict', target: str(args.target), member, verdict: v,
     kind: v === 1 || v === 0 ? 'decisive' : 'estimate', receipt: r }
