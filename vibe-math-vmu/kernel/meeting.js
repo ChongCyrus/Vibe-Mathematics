@@ -19,6 +19,20 @@
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
 
+/**
+ * ★★★ b-1 (live run 44): everyone can be PRESENT while the meeting is still 'scheduled'. Presence is a SEAT reading;
+ * the START is governed by `at` (and by the chair's proceed()). Nothing said so, so a caller read "present 2/2 + state
+ * scheduled" as a contradiction. Exported so BOTH read faces (the primitive's status() and the service's status()) use
+ * one wording instead of two that may drift.
+ */
+export const MEETING_STATE_MEANING = Object.freeze({
+  scheduled: 'a start time is set and has not arrived: members may ALREADY be present (presence is a seat reading, not a start)',
+  waiting: 'the start time has arrived (or none was set) and the quorum rule is not met yet; the chair may proceed() to start anyway',
+  in_session: 'the meeting has started: speak/vote/hand are open',
+  closed: 'the meeting is closed: its tally is frozen and its vote detail is hidden',
+  lapsed: 'the meeting lapsed for want of participation; call revokelapse() to bring it back',
+})
+
 export function refuse(code, message, hint) {
   const err = new Error(message)
   if (hint) err.hint = hint
@@ -460,6 +474,7 @@ let debateEnded = null
         hands: hands.map((h) => ({ member: h.member, round: h.round })),
         completeness: currentRound ? meeting.roundComplete() : null,
         closedReason,
+        stateMeans: MEETING_STATE_MEANING[state.value] || null,
       }
     },
 
@@ -489,6 +504,7 @@ let debateEnded = null
         phase: meeting.phase,
         hasDeliverSeam: typeof deliver === 'function',
         closedReason,
+        stateMeans: MEETING_STATE_MEANING[state.value] || null,
       }
     },
 

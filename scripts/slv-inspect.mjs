@@ -223,7 +223,21 @@ export function analyzeSession(file, { memberFilter = null, sessionFilter = null
   const member = memberToken || extractMember(prompt) || null
   if (memberFilter && member !== memberFilter) return null
   const header = headers.length ? headers[headers.length - 1] : null
-  const wireTools = header && Array.isArray(header.tools) ? header.tools.map((t) => (t && typeof t === 'object' ? (t.name || t.id) : t)).filter((n) => typeof n === 'string') : []
+  // ★★★ THE WIRE IS PER REQUEST, NOT PER SESSION (measured on live run 43): the harness re-advertises
+  // `request/header` on every request, and the list can CHANGE inside one session — a `tools:'none'` override, a
+  // configure that narrows the pull resolver, or a hot setting. Reading only the LAST header therefore compared calls
+  // made EARLY against a wire that was advertised LATE, and reported three RED "tool calls not in wire"
+  // (`pwsh`, `vibe_v5_meeting_round`, `vibe_v5_verdict_final`) for a ROOT session whose first header contained all
+  // three. A call is unknown only when NO header of that session ever advertised it; a call that some header carried
+  // but the last one did not is reported as INFO (the wire narrowed mid-session), which is the truth rather than a red.
+  const wireOfHeader = (h) => (h && Array.isArray(h.tools)
+    ? h.tools.map((t) => (t && typeof t === 'object' ? (t.name || t.id) : t)).filter((n) => typeof n === 'string')
+    : [])
+  const wireSnapshots = headers.map(wireOfHeader).filter((a) => a.length > 0)
+  const wireTools = header ? wireOfHeader(header) : []
+  const wireUnion = [...new Set(wireSnapshots.flat())]
+  const wireChanged = wireSnapshots.length > 1 && wireSnapshots.some((a) => a.length !== wireSnapshots[0].length ||
+    a.some((n) => !wireSnapshots[0].includes(n)) || wireSnapshots[0].some((n) => !a.includes(n)))
   const block = toolBlockOf(prompt)
   const userTools = toolsNamedInPrompt(block)
   const appendedText = appendedTexts.join('\n\n')
@@ -241,10 +255,13 @@ export function analyzeSession(file, { memberFilter = null, sessionFilter = null
   // behaviour is kept (compare the static list), and the renderer labels that reading as a possible false RED.
   const compareTools = sameSource.present ? sameSource.tools : userTools
   const hasPromptToolBlock = !!block || sameSource.present
-  const missingFromWire = member && hasPromptToolBlock ? compareTools.filter((n) => !wireTools.includes(n)) : []
-  const extraOnWire = member && hasPromptToolBlock ? wireTools.filter((n) => !compareTools.includes(n) && n !== 'run_code') : []
+  // ★ The comparisons below read the UNION of every wire advertised in this session, not the last snapshot: the
+  // question they ask is "was this name ever part of this session's wire?", and a wire that narrowed mid-session
+  // (a `tools:'none'` override, a configure) must not make an earlier legitimate name look absent.
+  const missingFromWire = member && hasPromptToolBlock ? compareTools.filter((n) => !wireUnion.includes(n)) : []
+  const extraOnWire = member && hasPromptToolBlock ? wireUnion.filter((n) => !compareTools.includes(n) && n !== 'run_code') : []
   const staticDiff = sameSource.present
-    ? { missingFromWire: userTools.filter((n) => !wireTools.includes(n)), extraOnWire: wireTools.filter((n) => !userTools.includes(n) && n !== 'run_code') }
+    ? { missingFromWire: userTools.filter((n) => !wireUnion.includes(n)), extraOnWire: wireUnion.filter((n) => !userTools.includes(n) && n !== 'run_code') }
     : null
   // ★★ THE BLOCK IS THE AUTHORITY ONLY WHEN THERE IS ONE *AND* THE SESSION IS A MEMBER. Root has no block by design
   // (`host.js` returns early: `if (!member && !Array.isArray(stickyAllow)) return out`), so diffing root's wire against
@@ -263,8 +280,11 @@ export function analyzeSession(file, { memberFilter = null, sessionFilter = null
   const extraPackOnWire = extraOnWire.filter((n) => sideOf(n) === 'pack')
   const extraCompositionOnWire = extraOnWire.filter((n) => sideOf(n) === 'composition').slice().sort()
   const sameSourceMismatch = blockIsAuthority && (missingPackFromWire.length > 0 || extraPackOnWire.length > 0)
-  const runCode = wireTools.includes('run_code')
-  const callsNotInWire = [...new Set(calls.map((c) => c.name).filter((n) => !wireTools.includes(n)))]
+  const runCode = wireTools.includes('run_code') || wireUnion.includes('run_code')
+  const calledNames = [...new Set(calls.map((c) => c.name))]
+  const callsNotInWire = calledNames.filter((n) => !wireUnion.includes(n))
+  // A name the wire carried EARLIER but not in the last snapshot: the wire narrowed (information, never a red).
+  const callsOnlyInEarlierWire = calledNames.filter((n) => wireUnion.includes(n) && !wireTools.includes(n))
   // Under PTC the SDK dispatches inner tools inside run_code; those are NOT direct wire names, so they are reported
   // separately instead of being called "unknown".
   const defer = header ? header.tools.filter((t) => t && t.deferLoading === true).map((t) => t.name) : []
@@ -281,6 +301,10 @@ export function analyzeSession(file, { memberFilter = null, sessionFilter = null
     root: !member,
     headerCount: headers.length,
     wireTools,
+    wireUnion,
+    wireSnapshots: wireSnapshots.map((a) => a.length),
+    wireChanged,
+    callsOnlyInEarlierWire,
     wireCount: wireTools.length,
     promptTools,
     promptToolsBySource,
@@ -414,6 +438,12 @@ function render(s) {
     if (s.extraOnWire.length) lines.push('  INFO (no block) wire tools not named in prompt: ' + s.extraOnWire.join(', '))
   }
   if (s.unknownCalls.length) lines.push('  RED tool calls not in wire: ' + s.unknownCalls.join(', '))
+  // ★ run 43: a call the wire carried EARLIER but not in the last snapshot means the wire narrowed mid-session. That is
+  // information about the run, not a defect — and reporting it as RED (or hiding it) both mislead.
+  if (s.callsOnlyInEarlierWire && s.callsOnlyInEarlierWire.length) {
+    lines.push('  INFO the wire narrowed during this session: these calls were in an EARLIER wire snapshot but not in the last one: ' + s.callsOnlyInEarlierWire.join(', '))
+  }
+  if (s.wireChanged) lines.push('  INFO wire snapshots in this session: ' + JSON.stringify(s.wireSnapshots) + ' tools per header (the wire is per REQUEST, so the last one is not the whole story)')
   if (s.ptcNestedCalls && s.ptcNestedCalls.length) lines.push('  PTC inner calls (inside run_code, not direct wire names): ' + s.ptcNestedCalls.join(', '))
   if (s.countMismatch) lines.push('  RED tool/call count != tool/result count')
   if (!s.red) lines.push('  OK: prompt/wire names consistent; all calls visible; counts match')

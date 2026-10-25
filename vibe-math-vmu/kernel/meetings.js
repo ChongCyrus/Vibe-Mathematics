@@ -1,6 +1,7 @@
 // vmu kernel · meetings — the meetings service: convening, the agenda, the floor and the minutes, as distinct from the
 // meeting/ballot primitives in meeting.js. Spec: docs/08 (primitives, meeting and ballot) and docs/03 (the interface
 // contract) for the service name a pack may require.
+import { MEETING_STATE_MEANING } from './meeting.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 import { CODE as RESUME_CODE } from './resume.js'
 // The leave/recess request family was extracted at the 1200-line boundary (docs/02 §L174): `kernel/meetingleave.js`
@@ -1732,7 +1733,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         }
       })
       return {
-        ok: true, id: m.id, meeting: m.id, type: m.type, kind: m.kind, state: m.state, reason: m.reason === undefined ? null : m.reason,
+        ok: true, id: m.id, meeting: m.id, type: m.type, kind: m.kind, state: m.state, stateMeans: MEETING_STATE_MEANING[m.state] || null, reason: m.reason === undefined ? null : m.reason,
         title: m.title === undefined ? null : m.title,
         materials: m.materials === undefined ? null : m.materials,
         subject: m.subject === undefined ? null : m.subject,
@@ -1770,6 +1771,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
         waitDueAt: waitDueOf(m),
         waitDecisionDue: m.waitDecisionDue === true,
+        stateMeans: MEETING_STATE_MEANING[m.state] || null,
         loop: 'meeting-ask-answer',
         note: '★ motions/votes/state here describe the MEETING’s own ask()+answer()+motion cycle. A member answering a vibe_vmu_turn prompt is a DIFFERENT loop: read vibe_vmu_turn’s receipts (awaiting/memberPrompt/deliveryPath) for that one. hasDeliverSeam on the primitive face refers to open({deliver}), not to the turn loop’s deliveryPath.', reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,
         motions: m.motions.map((x) => ({ id: x.id, by: x.by, kind: x.kind, status: x.status, secondedBy: x.secondedBy || null, withdrawnAt: x.withdrawnAt || null })) }

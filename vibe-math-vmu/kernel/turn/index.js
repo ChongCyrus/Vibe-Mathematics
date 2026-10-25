@@ -1745,7 +1745,7 @@ export function createTurnOrchestrator({
       // needs no host Agent into "the model said nothing". The awaiting envelope travels out with the prompt attached, so
       // the caller can play the member turn and answer on the next call.
       if (raw && typeof raw === 'object' && raw.awaiting === true) {
-        return { ok: true, awaiting: true, turn, memberPrompt: raw.memberPrompt || null,
+        return { ok: true, awaiting: true, turn, membersFrom: spec && typeof spec.membersFrom === 'string' ? spec.membersFrom : null, memberPrompt: raw.memberPrompt || null,
           assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true,
           delivery: deliveryOf(Object.assign({}, raw, { deliveryPath: (raw && raw.deliveryPath) || 'caller' })),
           fields: [], executed: [], skipped: [], refused: [],

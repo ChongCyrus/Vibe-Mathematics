@@ -3322,3 +3322,39 @@ note 含「next start」，并且**同族一个真正被提示词变量读取的
 3. 所办报告这次的三条都是**读数**问题而非行为问题，仍然算实质残余：审计报告的价值在于它逼着产品把**它自己做过的事**
    讲清楚，而不是把「跑通了」当成「讲清楚了」。
 
+
+## §85 轮 45（真机跑 44 的验收报告）：b-1／b-2／b-4 三条读数补齐，b-3 明确不补
+
+§85.1 跑 44 的读数（`full-1025-120705.jsonl`，build `fd2b8a5f`，164 秒，`cast=true`，14 张 turn 回执）：
+`㉞.1 字段（requestedMembers／resolvedMembers）`、`㉞.2 回执诚实（requiresRestart:true / applied:next-session / constructionOnly）`、
+`㉞.3 activation 模式下 op:"prompt" 的具名拒`——**三条全部「已可读、已说清」**，`constructionOnly` 在 16 处原文里可见。
+所办自己的验收文件 `VibeMath/seat-audit.md`（241 行）末行仍写 `本轮无实质残余：否`，理由不是机制缺失，而是**四条读数**：
+
+| 项 | 所办原话（压缩） | 定性 |
+|---|---|---|
+| b-1 | 「present 2/2 却 `state:"scheduled"`，看不出「到场≠开始」」 | 读数缺一句解释 |
+| b-2 | 「`members` 是从哪份名册来的？回执没说」 | 回执少一个来源字段 |
+| b-3 | 「`op:"prompt"` 只有会议备忘录，没有成员提示词」 | **不补**（见 §85.3） |
+| b-4 | 「我把回合委派出去了，但回执没说派给谁、按什么预设、多大」 | 委派侧缺可读记录 |
+
+§85.2 三条实现（提交 `a0a4ef2e` 前的未提交批次）：
+- **b-1** `vibe-math-vmu/kernel/meeting.js` 新增导出 `MEETING_STATE_MEANING`（五个状态各一句，`scheduled` 那句明说「present 是席位读数，不是开始」），
+  `status()` 与 `meetings.js` 的 `summary()`／`meetingView()` 都带 `stateMeans`——**两条读面共用一张表**，不是各写一句。
+- **b-2** `vibe-math-vmu/tools/turn.js` 的 step 分支显式算出 `membersFrom = explicit ? 'caller-selection' : 'roster-default'` 并传给内核；
+  `vibe-math-vmu/kernel/turn/index.js` 的 awaiting 回执回显它。★ 这里踩到一个真坑：第一版写成 `a && …`，而该函数的参数名叫 `spec`，
+  于是抛 `ReferenceError`——被外层的 try/catch 吞成一张空回执，测试报「awaiting 回执里没有 memberPrompt」这种**看起来像产品缺陷**的现象。
+  教训与 §31.3 同族：**声明/参数名对不上时，错误会被伪装成读数缺失**。
+- **b-4** `tools/turn.js` 在 awaiting 路由上附 `delegation: {mode, preset(来自实时 config), turnId, promptChars, childId(null), childIdMeans}`——
+  `childId` 在回合结算前**故意是 null**，并由 `childIdMeans` 说明「结算时才给出」，不编造。
+
+§85.3 b-3 不补的理由（写在这里，避免下一轮重新发明）：subagents 模式下成员提示词**是交给子 session 的**，
+所办手里本来就没有；`op:"prompt"` 已能按 turn id 翻页（那是给**持有 prompt 的调用方**用的面）。
+让所办「看见」成员的提示词只有两条路：把全文抄进所办回执（违反上下文预算，且会与子 session 的真实输入不一致），
+或假装有（正是本阶段要消灭的假绿）。所以选择**把位置说清**而不是**给一份副本**。
+
+§85.4 门禁：`tests/vmu-run44-findings.test.mjs` **12/0**（b-1 行为化：scheduled 时 `stateMeans` 必须含「presence is a seat reading, not a start」，
+且未预约会议不得复用同一句；b-2 三面：面层算出来、传进去、内核回显；b-4 四面：记录存在、读实时预设、childId 为 null 且带解释、随回执下发）。
+邻居：`vmu-meetings` 214/0、`vmu-turn` 250/0、`vmu-meeting-types` 142/0、`vmu-receipt-shapes` 50/0、`vmu-v5r-tools` 354/0、`vmu-run16-findings` 16/0。
+
+§85.5 教训：**「读数缺失」与「读数错了」要用不同的手段修**。b-1/b-2/b-4 都是缺一句话或一个来源字段，不是机制坏了；
+把这类问题当机制修，会造出第二个真相来源（§22 的 `markerState` 重复键就是这么来的）。

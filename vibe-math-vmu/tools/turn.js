@@ -286,12 +286,28 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           // claims this-turn availability, which made the silence the only remaining signal. The receipt now reports what
           // the face DID (it called the seam for these members) and names the seam, so the claim is exactly as strong as
           // the evidence and no stronger.
-          const stepped = await kernel.turn.step({ members, membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step })
+          // ★★ b-2: the receipt must say WHICH roster these members came from - a caller cannot tell a default roster
+          // from its own selection by looking at the ids alone.
+          const membersFrom = explicit ? 'caller-selection' : 'roster-default'
+          const stepped = await kernel.turn.step({ members, membersFrom, membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step })
           const withOverride = stepped && typeof stepped === 'object'
             ? Object.assign({}, stepped, { toolsOverride: { mode: isNone ? 'none' : 'allow', allow: isNone ? [] : (allow || []), members: ids,
               seam: 'setMemberToolOverride', note: 'reported by the turn face: the seam was set for these members before the round and cleared after it; the actual wire is narrowed by the pull resolver on its next request, which this face cannot read' } })
             : stepped
-          return rememberPrompt(withOverride)
+          // ★★★ b-4 (live run 44): the office DELEGATED this turn but the receipt never named what it delegated. The id
+          // and the size exist; the preset comes from the live config. childId stays null while awaiting and the field
+          // says so, because inventing it would be the class of lie this phase exists to remove.
+          const delegated = withOverride && withOverride.awaiting === true
+            ? Object.freeze({
+              mode: 'subagents',
+              preset: (cfg && cfg.deliverPreset) || null,
+              turnId: (withOverride.memberPrompt && withOverride.memberPrompt.turnId) || null,
+              promptChars: withOverride.memberPrompt && typeof withOverride.memberPrompt.chars === 'number' ? withOverride.memberPrompt.chars : null,
+              childId: withOverride.childId || null,
+              childIdMeans: 'the child session id is reported when this turn SETTLES; null while the turn is awaiting',
+            })
+            : null
+          return rememberPrompt(delegated === null ? withOverride : Object.assign({}, withOverride, { delegation: delegated }))
         } finally {
           if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null)
           for (const id of ids) { try { kernel.clearMemberToolOverride(id) } catch { /* clear is best effort */ } }
