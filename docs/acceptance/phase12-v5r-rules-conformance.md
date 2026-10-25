@@ -3159,3 +3159,108 @@ grep 宿主 checkout —— 它们并不在"研究所"里工作，而是在**宿
 本门禁证明的是**组合正确 + 请求带字段 + 两侧接线一致**，**不能**证明子会话真的以该 preset 启动：
 宿主是否接受 `agentPreset`、该 preset 在部署里是否已注册，都需要真机跑一次并按会话工具直方图复核
 （成员会话的 `pwsh` 调用数应为 0）。此项目前记为**未验**，不记「已修」。
+
+## §81 「限制成员工具会不会让它们做不了研究」——用直方图和工具面回答（2026-10-25）
+
+### §81.1 成员到底用 shell 干什么（76 次调用的逐条分类）
+
+直方图（`_oneoff/vm-slv/full-1025-101322.jsonl`，跑在 `8416afb8` 上，`deliverMode:subagents`）：
+
+| 会话 | 调用数 | pwsh 调用 |
+| --- | --- | --- |
+| 成员 1 | 136 | 34 |
+| 成员 2 | 92 | 12 |
+| 成员 3 | 78 | 6 |
+| 所办 | 65 | 24 |
+
+按首词分类（`D:\_tmp\what-pwsh.mjs` 只读 transcript）：`Get-ChildItem` 23、**`python` 14**、`Get-Content` 8、
+**读宿主自己的会话日志**（`C:\Users\admin\.dsh\sessions\…\session.v4.jsonl`）5–8、**`lean` 4**、工具链检查 2、
+`New-Item`/`Get-Date`/`foreach` 等杂项。
+
+两个结论：
+
+1. **逃逸是真的**：成员用 shell 读到了宿主自己的 `.dsh\sessions\…\session.v4.jsonl`。这正是「限制」要挡的东西。
+2. **但研究所需的两项能力都有内核面**：Lean 编译走 `vibe-math-vmu/kernel/lean.js:37,469` 的 `spawn` 执行接缝
+   （成员工具 `vibe_v5_lean_run`，同一次跑里被调用 10 次）；python 科学栈走 `kernel.mathadapters`
+   （numpy/scipy/pandas/sympy 四个适配器 + 具名拒，工具名 `vibe_vmu_mathadapters`）与 `kernel.mathjobs`
+   （16 个方法：超时/种子/回执六要素/镜像恢复，工具名 `vibe_vmu_mathjobs`，同一次跑里被调用 12 次）。
+   列目录/读文件则由 `tool-fs`（成员席保留）与 `vibe_v5_read_library` 覆盖。
+
+所以「删 shell」不等于「删计算」：**被删掉的是那条无审计的逃逸通道，不是研究能力**。
+
+### §81.2 这一轮抓到的假绿（本轮最贵的一课）
+
+第一次席位跑（`8416afb8`，clone patch 里写着 `vmu: { deliverMode: subagents, deliverPreset: vibe-math-vmu-member }`）
+**成员会话照样有 52 次 `pwsh`** —— 席位根本没生效。原因：
+
+- runner 把 preset 声明在 `config.vmu.deliverPreset`（和它声明 `deliverMode` 的位置一样），
+- 而我的读取只看了 `config.deliverPreset` 与设置项 `vmu.turn.childPreset`；
+- 我的门禁**只测了设置路径**，而那正是部署从不使用的那条 ⇒ **门禁绿、部署路径 inert**，测试和代码犯了同一个错。
+
+同一个文件上方十行处已经写着这个坑（`host-deliver.js:22` 的注释：「a mode declared under `vmu` was invisible」）。
+
+修法（`fc14fe43`）：
+1. `config.vmu.deliverPreset` 优先（与 `deliverMode` 同序），再 `config.deliverPreset`，最后设置项；
+2. 每次成功交付的回执新增 **`childPreset`** + `childPresetMeans` —— 「这个席位有没有被请求」从此**一个回执就能读**，
+   不需要再跑一次 15 分钟直方图；
+3. 门禁新增第 (e) 段：用 runner 的真实 config 形状构造 seam，断言请求字段、回执读数、`null`（继承）分支、
+   以及「没声明就不加键」（13 → 18 条断言）。
+
+**教训（写进方法论）**：门禁必须测**部署实际走的那条路**；回执必须携带「我请求了什么」，否则「机制有没有到达」只能靠
+事后统计转录来猜。这与 §43.6「判据必须来自外部」是同一条律的另一面。
+
+### §81.3 用户第二问：所办能「代劳」什么
+
+能，但**不能代替成员产出研究结论**（那是角色边界，不是权限问题）：
+
+- 能：替成员**读状态并转述**（`vibe_vmu_status/overview/report`）；用受控脚本面（`vibe_vmu_bridge` → `kernel.bridge.run`）
+  代跑计算并把结果交回归档面；通过 `vibe_vmu_meeting/motion/vote` 让成员走正规通道。
+- 不能：命题卡、Lean 证据、辩论裁决、结题票 —— 规则要求它们由成员自己产出，代写等于伪造所内程序。
+
+## §82 成员席真机验证：零宿主出口已达成，但「席位」还差一条 pack 配置（2026-10-25）
+
+### §82.1 第一次座位跑（`8416afb8`）：席位没生效 = 假绿
+
+clone patch 里写着 `vmu: { deliverMode: subagents, deliverPreset: vibe-math-vmu-member }`，成员会话却仍有 52 次
+`pwsh`。根因已在 §81.2 记录：`deliverPreset` 读的是 `config.deliverPreset`／设置项，而部署把它写在 `config.vmu` 下。
+**门禁只测了设置路径，部署从不走那条路** ⇒ 绿得毫无意义。
+
+修法 `fc14fe43`：`config.vmu.deliverPreset` 优先；回执新增 `childPreset` + `childPresetMeans`（「这个席位有没有被请求」
+从此一个回执能读）；门禁新增真实 config 形状的第 (e) 段（13 → 18 条）。
+
+### §82.2 第二次跑（`fc14fe43`）：席位真的生效了
+
+`_oneoff/vm-slv/full-1025-103652.jsonl`（87 301 行，9 个会话），逐会话宿主出口统计：
+
+| 会话 | 调用 | 宿主出口 |
+| --- | --- | --- |
+| 所办（`session-0e4855…`） | 71 | `pwsh` 10 + `present` 1 |
+| 成员 abc… | 48 | **0** |
+| 成员 4d7… | 30 | **0** |
+| 其余 6 个成员会话 | 14–30 | **0** |
+
+⇒ **成员侧 `pwsh`/`job`/`web`/`ask_user`/`subagent`/`goal` 全部为 0**，只有 `read/write/edit/glob/grep/working_directory`
+这六类宿主 fs 与 `vibe_vmu_*`；转录里 57 个 `agentPreset` 对象携带 `vibe-math-vmu-member`。
+
+### §82.3 但同一个跑暴露了第二个缺陷：成员一个 pack 工具都没有
+
+所办自己的验收报告（5 819 字符）逐字记录三位成员的 wire 快照「**完全相同（11 个通用工具）**」，
+并自证 `packs=[]` / `packTools=[]` / `faces.enabled=[status]`；每位成员都用原话点名「**从未挂载**」（不是被具名拒）：
+写不了命题卡（`vibe_v5_record_proposition`）、群聊发不了言（`vibe_v5_say`）、看不了任务板、跑不了精确计算
+（`math_computation`）、编译不了 Lean（`vibe_v5_lean_run`）。那位成员自述：「无 shell、无 python、无 Lean 工具链 ⇒ 只能给纸面推理」。
+
+结论：**这一轮的限制确实过死了**——但死因不是「删了 shell」，而是 pack 根本没被配置到成员那个 preset 行上。
+
+根因：pack 配置是**按 plugin row** 生效的，而 runner 只往「办公室 preset」的 vmu 行注入 `packs/root/vmu`；
+成员 preset 有它**自己的一行** `- id: vibe-math-vmu`（同一份冻结组合的副本），于是那一行 `packs` 为空 ⇒ 无 pack、无 pack 工具。
+这是**部署侧**的缺陷（runner），不是 vmu 的产品缺陷；但它让「席位」这件事只对了一半。
+
+修法（`D:\_tmp\slv-phase5\slv-p12g-seat.ps1`）：注入改为对**两个 preset 行**各注入一次，并**读回断言**
+（`READBACK preset-vibe-math-vmu packs=True` / `READBACK preset-vibe-math-vmu-member packs=True`）。
+缺任一即 `exit 2`——不许在「成员没有 pack 面」的情况下跑验收。
+
+### §82.4 顺带修掉的 harness 缺陷（第二次假红的教训）
+
+用 `edit` 工具改 `.ps1` 会**丢掉 BOM**；Windows PowerShell 5.1 把无 BOM 脚本按 ANSI 解码，脚本里的中文路径变成
+`D:\wd\vibemath寮€鍙慭Vibe-Mathematics`，`git archive` 直接失败。修法：`\ufeff` 前缀写回，并断言 BOM 存在。
+这与 §76.3「写入通道必须是 UTF-8」是同一条律：**任何带非 ASCII 的脚本/文件，编码是它的一部分**。
