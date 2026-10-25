@@ -4509,3 +4509,45 @@ curl -sS -m 120 -w 'HTTP %{http_code}\n' https://opencode.ai/zen/go/v1/chat/comp
   -d '{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"say ok"}],"max_tokens":16}'
 ```
 200 ⇒ 额度恢复，可以继续真机验收；429 ⇒ 仍被拦。
+
+## §117 提供商切换：opencode-go（月度额度用尽）→ **commandcode** 的 `deepseek/deepseek-v4.1-flash`
+
+### 用户裁定（m25101，原文要点）
+「请改用commandcode的deepseekv4.1flash，注意不是有后缀"fast"那个。你找到接口（模型提供商来自一个commandcode插件）后如有必要可以询问我给你apikey。
+另外以后队友的话因为第一批队友都是绑定的opencode，故以后不能用第一批队友了，只能用第二批队友（绑定的commandcode）或第三批队友」
+
+### 已查证的接口事实（全部来自磁盘上的代码，不靠记忆）
+- 插件包：`@mars-sea/dsh-commandcode-provider`（`C:\Users\admin\.dsh\profiles\desktop\node_modules\@mars-sea\dsh-commandcode-provider`，`main: ./lib/index.js`，**无自己的依赖**）。
+- 插件行：`C:\Users\admin\.dsh\profiles\desktop\cordis.patch.yml:77` `- id: llm-commandcode`，
+  `name: "@mars-sea/dsh-commandcode-provider"`，`config: { apiKeyEnv: COMMANDCODE_API_KEY, showSidebarQuota: true }`；且它在桌面 profile 的 `bundles` 列表里。
+- `lib/index.js` 判定 `provider === "commandcode"` ⇒ **模型行里的 provider 写 `commandcode`**（不是包名）。
+- 模型 id：`deepseek/deepseek-v4.1-flash`（另有 `deepseek-v4.1-flash-fast` 与 `deepseek/deepseek-v4.1-flash-fast`，
+  **用户点名不要 fast**，故一律用不带后缀的那个）。
+- key：`C:\Users\admin\.dsh\.credentials.yaml` 的 `refs:` 里有 `COMMANDCODE_API_KEY`（已抽到 `D:\_tmp\slv-cc-key.txt`，
+  只导出进跑测进程，不进仓库、不进全局环境变量）。
+
+### 新跑测器（不改动旧的）
+`D:\_tmp\slv-phase5\slv-p13-cc.ps1` —— 由 `slv-p12g-seat.ps1` 生成，改动只有五处：
+① 克隆 `web` profile 后把 commandcode 插件**拷进**克隆的 `node_modules\@mars-sea\`（桌面 profile 是唯一可信来源）；
+② 在 `- id: agent-default-model` 之前插入 `- id: llm-commandcode` 行（`apiKeyEnv: COMMANDCODE_API_KEY`）——
+   与 opencode 那次同样的教训：**插件在盘上 ≠ 适配器被注册**，必须有这一行；
+③ 模型行改 `provider: commandcode` / `model: deepseek/deepseek-v4.1-flash`；
+④ key 文件改 `D:\_tmp\slv-cc-key.txt`，导出变量改 `COMMANDCODE_API_KEY`；
+⑤ 日志把提供商名字改对（`MODEL SET: provider=commandcode ... (NOT the -fast variant)`）。
+六个仍含 `opencode` 字样的位置都是**注释**（记录当初为什么需要那行），保留以免丢掉那条教训。
+
+### 切换前的证据（为什么必须换）
+| 时间 | 现象 |
+|---|---|
+| 02:31 / 02:48 / 02:54 | 三次真机跑：`prompt accepted` → `0 token` → 会话日志只有 header（见 §116） |
+| 03:5x | 直接打提供商：`HTTP 429 GoUsageLimitError`，`metadata.limitName = "monthly"` |
+| 03:57 | commandcode 一行简报探针：**`totalTokens 29 460`**，回复出现「收到」，`SUMMARY: 1 session(s), 0 with RED checks` |
+
+⇒ 不是我的代码问题，也不是简报问题：**换提供商之后立即恢复出 token**。
+
+### 报告纪律（写进本轮及以后每轮的正文）
+凡本轮真机结论，必须在同一段里写明「本轮提供商是 commandcode / deepseek-deepseek-v4.1-flash」；
+在 opencode-go 恢复之前，不得把任何结论归因于 opencode-go 的行为差异。同理，此后**不再使用绑定 opencode 的第一批队友**。
+
+### 附：队友约束（用户裁定）
+以后再派队友只能用**第二批（绑定 commandcode）**或第三批。
