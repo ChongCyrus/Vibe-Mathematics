@@ -4430,3 +4430,41 @@ hint:"stopReason=error diagnostic=undefined; an activation that returns structur
 
 ### 本轮落盘
 `vibe-math-vmu/kernel/turn/index.js` · `tests/vmu-turn-activation.test.mjs`。
+
+## §115 第 18 轮（第三部分）：被翻译的值必须留下痕迹 —— `"true"` 不是 `true`
+
+### 由来（run 21 的真机读数）
+院士回执里写 `"vote_solved":"true"`（**字符串**）。框架把它**强制成布尔 true** 并当作结票记下，
+`counts.failed` 一直是 0，`counts.failedLast` 一直是 null。
+我上一轮把「failed 不动」登记成「无法验证」，但真正的原因不是「计数不可读」，而是**根本没有东西失败**：
+类型强制把一次本该被拒的写入变成了合法写入。这正是本仓最贵的教训（「设了值 ≠ 生效了」的镜像）：
+**翻译了一个值 ≠ 这个值原本就是那样的**，而当时没有任何一层面说出「我翻译了」。
+
+### 修（`vibe-math-vmu/kernel/turn/index.js`）
+1. 新增 `turnCoercions` 账本（与 `turnEffects` 并列，`apply()` 每次清零），以及一句
+   `COERCIONS_MEANS`：「本轮**被翻译**而不是被拒的值：每条点名字段、成员、到达时的形态和变成的形态；
+   空列表表示没有任何翻译——不表示这个列表被丢了」。
+2. **唯一的结票写入口** `recordClosureVote` 现在自己在内部做布尔归一，并把非布尔输入记成一条 coercion
+   （字段 `vote_solved`、`from` 原文、`to` 归一后的布尔）。这样**两个通道**（回执字段 / `vibe_vmu_vote`）共用同一处记账。
+3. 关键的一行在通道入口：`recordClosureVote(memberId, rawVote === true || rawVote === 'true')`
+   → `recordClosureVote(memberId, rawVote)`。**原来是在调用点就把字符串变成布尔**，等写入口看见时
+   已经无从分辨 `true` 与 `"true"` —— 这就是「答案在下层没上来」的又一例。
+4. 五处回执形态（`apply` 顶层、settled 顶层、settled 内层、`receipts[]`、`awaiting`）全部带
+   `coercions` + `coercionsMeans`。**不做「先修一处、下轮再发现另一处」**：`effects` 出现几次，
+   `coercions` 就出现几次。
+
+### 门禁
+`tests/vmu-turn.test.mjs` 新增 R44a–R44e（编号接在已有 R43 之后，避免重号）：
+字符串结票必须出现在 `coercions` 里（字段 / 原文 / 结果布尔）；`coercionsMeans` 必须说清「空列表的含义」；
+coercion 与它产生的 effect **并列**出现（票仍然算数，只是现在能看见它被翻译过）；真布尔 ⇒ 空列表（反向）；
+**字符串 `"no"` 归一成 false 也必须被记**（只报好消息的翻译器是半个翻译器）。
+套件 **262 passed / 0 failed**（原 257，+5）。
+
+### 边界
+- 这次只覆盖 `vote_solved` 这一条已知的强制路径。`contextPct` 的 `Math.floor(Number(...))` 也做归一，
+  但那是数值裁剪、语义上不改变真假，**未纳入** coercion 账本；如需纳入应在下一轮以同一形态扩展，不在此假装已覆盖。
+- 真机上「coercions 出现在回执里」尚未被 run 证明（run 22 在 `81623902` 上启动后卡在首个回合，见本轮报告），
+  故此项按纪律记为**已落地、真机待验**。
+
+### 本轮落盘
+`vibe-math-vmu/kernel/turn/index.js` · `tests/vmu-turn.test.mjs`。

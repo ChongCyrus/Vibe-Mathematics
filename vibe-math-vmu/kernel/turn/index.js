@@ -1479,6 +1479,13 @@ export function createTurnOrchestrator({
   // said so. `effects` is the missing list: mechanism-level consequences that are not reply-field actions (today: the
   // closure vote, from either channel). It is additive — `executed` keeps its exact old meaning and count.
   const turnEffects = []           // reset per apply(); entries {kind, member, ...}
+  // ★ ROUND 18 of the live-acceptance phase: A COERCED VALUE IS A TRANSFORMATION, AND IT WAS SILENT.
+  //   Measured live (run 21): a member replied `"vote_solved":"true"` (a STRING) and the framework accepted it as the
+  //   boolean true. That leniency is deliberate, but nothing anywhere said a transformation had happened, so the
+  //   institute concluded "the counter never moves" while the real story was "the value never failed". Each coercion
+  //   is recorded here and travels on every receipt shape that already carries `effects`.
+  const turnCoercions = []         // reset per apply(); entries {field, member, from, to}
+  const COERCIONS_MEANS = 'values this turn TRANSLATED instead of refusing: each entry names the field, the member, what arrived and what it became. An empty list means nothing was translated - it does not mean the list was dropped'
   const visibleToolsByMember = new Map() // ★ last assembled visible set per member (this turn)
   const toolVotedThisTurn = new Set()    // ★ members who already voted THROUGH THE TOOL this turn
   const solvedThisRound = new Map() // ★ `solved` per member: the per-round convergence reading, NOT closure
@@ -1490,6 +1497,8 @@ export function createTurnOrchestrator({
   const recordClosureVote = (memberId, solved, source = 'reply') => {
     const id = typeof memberId === 'string' ? memberId : String(memberId)
     const value = solved === true || solved === 'true'
+    // ★ a STRING (or any non-boolean) is TRANSLATED, and the translation is recorded: silence here was the defect.
+    if (typeof solved !== 'boolean') turnCoercions.push({ field: 'vote_solved', member: id, from: typeof solved === 'string' ? solved : String(solved), to: value })
     if (source === 'tool') toolVotedThisTurn.add(id)
     closureVotes.set(id, value)
     closureVoteWrites += 1
@@ -1503,6 +1512,7 @@ export function createTurnOrchestrator({
     const r = reply && typeof reply === 'object' ? reply : {}
     const bookkeeping = []
     turnEffects.length = 0   // R11: effects are per-apply, never accumulated across turns
+    turnCoercions.length = 0 // ROUND 18: coercions are per-apply too
     if (r.contextPct !== undefined && r.contextPct !== null) {
       const pct = Math.max(0, Math.min(100, Math.floor(Number(r.contextPct))))
       if (Number.isFinite(pct)) { context.set('pct', pct); bookkeeping.push({ field: 'contextPct', pct }) }
@@ -1544,7 +1554,9 @@ export function createTurnOrchestrator({
           // field is NOT recorded; the latest-wins ACROSS turns is untouched.
           bookkeeping.push({ field: 'vote_solved', kept: false, reason: 'vibe_vmu_vote is available this turn; the reply vote_solved is ignored (use the tool)' })
         } else {
-          recordClosureVote(memberId, rawVote === true || rawVote === 'true')
+          // ★ ROUND 18: pass the RAW value through. Turning it into a boolean HERE was what made the translation
+          //   invisible: by the time the writer saw it there was no way to tell true from 'true'.
+          recordClosureVote(memberId, rawVote)
         }
       }
       if (bookkeeping.some((b) => b.field === field)) continue
@@ -1621,7 +1633,7 @@ export function createTurnOrchestrator({
     // Each one is now kept on the turn state under its own name and reported in the receipt, so the framework can read
     // it and a consumer can see that it arrived. No face is invented for them: the members service is not even present
     // in a default kernel, and sending a payload to an operation that does not exist would be worse than keeping it.
-    return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping, effects: turnEffects.slice(),
+    return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping, effects: turnEffects.slice(), coercions: turnCoercions.slice(), coercionsMeans: COERCIONS_MEANS,
       notes: keptNotes,
       notesMean: 'lines that were NOT dispatched but ARE kept: a reading of what the member said, bounded to ' + NOTE_CAP + ' chars each - an empty list means no such line existed, never that a line was dropped silently' }
   }
@@ -2125,7 +2137,7 @@ export function createTurnOrchestrator({
     if (waiting) {
       try {
         const done = await completeStructuredReport()
-        completed = { member: done.member, fields: done.fields, executed: (done.executed || []).length, skipped: (done.skipped || []).length, effects: (done.effects || []).slice(),
+        completed = { member: done.member, fields: done.fields, executed: (done.executed || []).length, skipped: (done.skipped || []).length, effects: (done.effects || []).slice(), coercions: (done.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
           turn: done.turn ? done.turn.id : null, source: 'tool' }
       } catch (e) {
         const code = (e && e.code) || null
@@ -2146,7 +2158,7 @@ export function createTurnOrchestrator({
         const r = await run({ ...spec, round: i })
         // ★ ROUND 73: a caller-played turn ENDS the batch - the prompt goes back and the round resumes on the next call.
         if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member }
-        receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), turn: r.turn.id, source: r.source || null,
+        receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, turn: r.turn.id, source: r.source || null,
           // ★ PHASE 12 / run 37: the same detail the step receipt now carries - a batch receipt is read by the same person.
           skippedDetail: r.skipped.slice(0, 5), skippedDetailTruncated: r.skipped.length > 5,
           notes: (r.notes || []).slice(0, 5), notesMean: r.notesMean || null })
@@ -2314,7 +2326,7 @@ export function createTurnOrchestrator({
           // nothing was cut). A reading that exists on one of three routes is not a mechanism; the same four fields are
           // emitted here, built from the same recorded detail.
           receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, fields: r.fields,
-            executed: (r.executed || []).length, skipped: (r.skipped || []).length, effects: (r.effects || []).slice(), instructionDelivered: false,
+            executed: (r.executed || []).length, skipped: (r.skipped || []).length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, instructionDelivered: false,
             skippedDetail: (r.skipped || []).slice(0, 5),
             skippedDetailTruncated: (r.skipped || []).length > 5,
             notes: (r.notes || []).slice(0, 5),
@@ -2447,7 +2459,7 @@ export function createTurnOrchestrator({
           : (deliveredThrough === 'caller'
               ? 'the CALLING session played this member turn in this kernel (deliverByReturning), so the reply came back on the next call'
               : 'a SEPARATE kernel instance ran this member turn (path "' + String(deliveredThrough) + '"); its call list is not visible here'),
-        receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(),
+        receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
         // ★ PHASE 12 / live run 37 (the institute's own report): this receipt reduced `skipped` to a NUMBER, so the reason
         // and the kept line were unreadable - the member saw "skipped:1" and could not learn which field, why, or what it
         // had said. A COUNT is a diagnostic that costs nothing and tells nothing; the detail travels with it, BOUNDED.

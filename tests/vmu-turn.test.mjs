@@ -1737,6 +1737,34 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     { requested: exp.requestedMembers, resolved: exp.resolvedMembers, source: exp.requestedMembersSource })
 }
 
+// R43) A TRANSLATED VALUE IS A TRANSFORMATION, AND IT MUST NOT BE SILENT.
+// Measured live (run 21): a member replied `"vote_solved":"true"` - a STRING - and the framework accepted it as the
+// boolean true. That leniency is deliberate (the reply layer coerces rather than refusing a near-miss), but NOTHING
+// recorded it, so the institute read "the counter never moves" while the truth was "the value never failed". The
+// coercion travels on every receipt shape that already carries `effects`.
+{
+  const tc = mk()
+  const strVote = await tc.apply({ vote_solved: 'true' }, null, 'r-1')
+  ok(Array.isArray(strVote.coercions) && strVote.coercions.length === 1 &&
+    strVote.coercions[0].field === 'vote_solved' && strVote.coercions[0].from === 'true' && strVote.coercions[0].to === true,
+    '★★ R44a: a STRING closure vote is reported as a coercion (field, what arrived, what it became), not swallowed',
+    { coercions: strVote.coercions })
+  ok(typeof strVote.coercionsMeans === 'string' && /TRANSLATED/.test(strVote.coercionsMeans) && /empty list means nothing was translated/.test(strVote.coercionsMeans),
+    '★★ R44b: and the list says what an empty one means, so "no translation" is distinguishable from "not reported"',
+    { means: strVote.coercionsMeans })
+  ok(strVote.effects.some((e) => e.kind === 'closure-vote' && e.solved === true),
+    '★★ R44c: the coercion is recorded BESIDE the effect it produced - the vote itself still lands', strVote.effects)
+
+  const boolVote = await tc.apply({ vote_solved: true }, null, 'r-2')
+  ok(Array.isArray(boolVote.coercions) && boolVote.coercions.length === 0,
+    '★ R44d: a real boolean produces an EMPTY coercion list (the reverse direction)', { coercions: boolVote.coercions })
+
+  const stringNotBoolean = await tc.apply({ vote_solved: 'no' }, null, 'r-3')
+  ok(stringNotBoolean.coercions.length === 1 && stringNotBoolean.coercions[0].to === false,
+    '★ R44e: and a string that coerces to FALSE is reported too (a translator that only reports the happy direction is half a report)',
+    { coercions: stringNotBoolean.coercions })
+}
+
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)
