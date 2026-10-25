@@ -390,6 +390,18 @@ function textOfContentBlocks(output) {
   return text.trim() === '' ? null : text
 }
 
+// ★★★★★★★ LIVE RUN 2026-10-25: what a delegated member session must be told about HOW to hand its work back. The
+// member prompt teaches the F4 channel (`vibe_vmu_turn { op: "reply", report }`), which is CORRECT for the caller-played
+// route and IMPOSSIBLE for a subagent child: the pending turn lives in the parent's turn store, and a child session has
+// its own. Measured cost of not saying so: 20 refused calls and one whole round reported as a failure. Exported so a gate
+// can assert the note is actually carried on the request rather than merely defined.
+export const SUBAGENT_DELIVERY_NOTE = '\n\n【交付方式 · 本会话是被派发的成员会话，不是调用方会话】\n'
+  + '★ 不要调用 `vibe_vmu_turn { op: "reply" }`：那个工具面属于**父会话**的回合循环；在你这个子会话里没有待回的回合，'
+  + '调用它只会得到具名拒（实测：同一轮因此浪费约 20 次调用，并有一轮被误判为失败）。\n'
+  + '把你要交回的 report 作为**本次回复的最终文本**交上来（整段 JSON，或一段 ```json 围栏均可）——交付层会把它当作这一轮'
+  + '的答复收下，并记在父会话的轮次回执里。\n'
+  + '其余照常：该调的工具照调，该给的证据与具名拒原样抄进报告。\n'
+
 export function deliverViaSubagents(subagents, extract = null, { provider = null, parent = null, signal = null, options = null, delay = null } = {}) {
   // ★★★ ROUND 63: A MEMBER TURN IS FOREGROUND ONE-SHOT DELEGATION, AND THE HOST SAYS SO ITSELF. The stack captured on
   // a real machine came from the continuable-activation registry - startContinuable -> assertAdmitting ->
@@ -451,7 +463,15 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       to: turn && turn.member ? turn.member : null,
       why: turn && typeof turn.why === 'string' ? turn.why : null,
       next_step: turn && typeof turn.nextStep === 'string' ? turn.nextStep : null,
-      request: { prompt: [{ type: 'text', text: String(text) }] },
+      // ★★★★★★★ LIVE RUN 2026-10-25 (the first REAL multi-agent run): the child was handed the member prompt verbatim,
+      // and that prompt teaches the F4 reply channel `vibe_vmu_turn { op: "reply", report }`. MEASURED in that run: the
+      // children called it 20 times and every call was refused (`VMU_INVALID_ARGUMENT` naming the member, then
+      // `VMU_TURN_NO_PENDING_MEMBER`), because the pending turn lives in the PARENT's turn store - a child session is a
+      // different process with its own store, so the face cannot answer a turn it has never seen. One whole round was
+      // reported as a failure on top of that. The prompt therefore never told the child HOW to hand work back, while the
+      // seam harvests exactly that: this session's final text. The note below is the missing half, and it is appended by
+      // the SUBAGENTS bridge (not by the pack) because only this bridge knows which side of the seam the reader is on.
+      request: { prompt: [{ type: 'text', text: String(text) + SUBAGENT_DELIVERY_NOTE }] },
       // ★★★ ROUND 71: THE CONTINUABLE REQUEST HAS ITS OWN REQUIRED SHAPE. The host types it as
       // ContinuableCreateRequest { sessionId; parent: Agent; signal: AbortSignal }, and this spec supplied only a
       // label and a prompt - so the same delegationDepthOf read gent.options off a parent that was never there,
@@ -999,6 +1019,15 @@ export function createTurnOrchestrator({
       childId: (delivered && delivered.childId) || null,
       stopReason: (delivered && delivered.stopReason) || null,
       attribution: (delivered && delivered.attribution) || 'the delivery adapter returned an envelope without an attribution note',
+      // ★★★★★★★ LIVE RUN 2026-10-25 (the institute's own reading): a HARVESTED late delivery was only READABLE, not
+      // COUNTABLE - `deliveredLate:true` and the three millisecond windows lived on the seam's return value and were
+      // dropped here, so the receipt's `delivery` object carried five keys and none of them was the late fact. A reader
+      // had to parse an English sentence out of `attribution` to recover 193074 / 180000 / 45000. Numbers travel as
+      // numbers: they are copied through when the seam reported them, and stay absent (not zero) when it did not.
+      deliveredLate: delivered && delivered.deliveredLate === true ? true : null,
+      deliveryWaitedMs: delivered && Number.isFinite(delivered.deliveryWaitedMs) ? delivered.deliveryWaitedMs : null,
+      deliveryDeadlineMs: delivered && Number.isFinite(delivered.deliveryDeadlineMs) ? delivered.deliveryDeadlineMs : null,
+      deliveryGraceMs: delivered && Number.isFinite(delivered.deliveryGraceMs) ? delivered.deliveryGraceMs : null,
     }
     if (lastAttribution.childId && turn && typeof turn.member === 'string') memberSessions.set(turn.member, lastAttribution.childId)
     if (reply === null) {
@@ -1621,9 +1650,16 @@ export function createTurnOrchestrator({
       // a false failure of the same family as the delivery timeout, and the cost is a whole agent turn. The concern the old
       // line served ("do not silently hide a broken second channel") is still served - better - by a NAMED NOTE: the
       // prose is not parsed and not merged, and the receipt says so with the offending span.
+      // ★ LIVE RUN 2026-10-25 (the institute's OWN reading of this field): the `message` below used to be whatever the
+      // parser said, and the parser was only ever reached when NOTHING had been applied - so its sentence ("neither a
+      // tool report nor a parseable fence, so there is nothing to apply") became a lie on the tool-first path, where the
+      // same receipt said `source:"tool", fields:["progress"], executed:1`. A note must describe the channel it is about;
+      // the parser's sentence is kept verbatim under `textMessage` (evidence), and `message` states the PART that failed.
       proseUnparsable = {
         code: e && e.code ? String(e.code) : 'VMU_TURN_BAD_JSON',
-        message: String((e && e.message) || ''),
+        message: 'the PROSE half of this turn did not parse, so it was not applied; the structured report above WAS applied'
+          + (report && report.reply && Object.keys(report.reply).length ? ' (fields: ' + Object.keys(report.reply).join(', ') + ')' : ''),
+        textMessage: String((e && e.message) || ''),
         text: String(raw === undefined || raw === null ? '' : raw).slice(0, 160),
         hint: 'the structured report is authoritative for this turn, so the turn is NOT failed; the prose brace span was NOT parsed and NOT merged - fix the prose if the member meant it as data',
       }
@@ -1658,6 +1694,7 @@ export function createTurnOrchestrator({
       // ★ The envelope form is for the AWAITING case; the normal path goes through `deliverTurn`, which normalizes the
       // seam's answer and returns TEXT, so the executor lives in `lastAttribution` (set by that adapter). One reader,
       // two sources - and no guessing: an absent deliveryPath means the seam did not say who ran it.
+      const DELIVERY_MEANS = 'which seam executed this member turn: caller = the CALLING session played it and returned the reply; activation = an independent child session ran it through startActivation (childId + stopReason name that child); subagents = the same, through the older one-shot verb. This value is the verb the seam actually used, not a normalised category'
       const deliveryFromAttribution = () => {
         const a = lastAttribution && typeof lastAttribution === 'object' ? lastAttribution : null
         if (!a || typeof a.deliveryPath !== 'string' || !a.deliveryPath) return null
@@ -1665,8 +1702,14 @@ export function createTurnOrchestrator({
           path: a.deliveryPath,
           childId: a.childId ? String(a.childId) : null,
           stopReason: typeof a.stopReason === 'string' ? a.stopReason : null,
+          // ★ LIVE RUN 2026-10-25: the late-delivery facts are NUMBERS, and they travel as numbers (absent, not zero, when
+          // the seam did not report them). `deliveredLate` is true only when the seam said so.
+          deliveredLate: a.deliveredLate === true,
+          deliveryWaitedMs: Number.isFinite(a.deliveryWaitedMs) ? a.deliveryWaitedMs : null,
+          deliveryDeadlineMs: Number.isFinite(a.deliveryDeadlineMs) ? a.deliveryDeadlineMs : null,
+          deliveryGraceMs: Number.isFinite(a.deliveryGraceMs) ? a.deliveryGraceMs : null,
           attribution: typeof a.attribution === 'string' ? a.attribution : null,
-          means: 'which seam executed this member turn: caller = the CALLING session played it and returned the reply; subagents/activation = an independent child session ran it (childId + stopReason name that child)',
+          means: DELIVERY_MEANS,
         }
       }
       const deliveryOf = (d) => {
@@ -1677,9 +1720,9 @@ export function createTurnOrchestrator({
           path,
           childId: d.childId ? String(d.childId) : null,
           stopReason: typeof d.stopReason === 'string' ? d.stopReason : null,
-          ...(d.deliveredLate === true ? { deliveredLate: true, waitedMs: d.deliveryWaitedMs === undefined ? null : d.deliveryWaitedMs, deadlineMs: d.deliveryDeadlineMs === undefined ? null : d.deliveryDeadlineMs, graceMs: d.deliveryGraceMs === undefined ? null : d.deliveryGraceMs } : {}),
+          ...(d.deliveredLate === true ? { deliveredLate: true, deliveryWaitedMs: d.deliveryWaitedMs === undefined ? null : d.deliveryWaitedMs, deliveryDeadlineMs: d.deliveryDeadlineMs === undefined ? null : d.deliveryDeadlineMs, deliveryGraceMs: d.deliveryGraceMs === undefined ? null : d.deliveryGraceMs } : {}),
           attribution: typeof d.attribution === 'string' ? d.attribution : null,
-          means: 'which seam executed this member turn: caller = the CALLING session played it and returned the reply; subagents/activation = an independent child session ran it (childId + stopReason name that child)',
+          means: 'which seam executed this member turn: caller = the CALLING session played it and returned the reply; activation = an independent child session ran it through startActivation (childId + stopReason name that child); subagents = the same, through the older one-shot verb. This value is the verb the seam actually used, not a normalised category',
         }
       }
       // ★★★ ROUND 73: A CALLER-PLAYED TURN RETURNS EARLY, AND THAT IS NOT A FAILED ROUND. The seam handed the assembled

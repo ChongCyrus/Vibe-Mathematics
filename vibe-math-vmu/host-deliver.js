@@ -227,6 +227,13 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
         err.code = 'VMU_TURN_DELIVERY_TIMEOUT'
         err.turn = turn && turn.id ? turn.id : null
         err.member = turn && turn.member ? turn.member : null
+        // ★★★★★★★ LIVE RUN 2026-10-25 (the institute's own reading): the receipts jumped from round 1 to round 3 and
+        // NOTHING said whether round 2 had been consumed by the timed-out turn. A reader cannot tell "the round is gone"
+        // from "the round is still owed". The turn's ordinal is therefore carried, with an explicit statement that it was
+        // allocated and NOT completed - the honest answer, because the pump advanced past it.
+        err.round = turn && Number.isFinite(turn.round) ? turn.round : (turn && Number.isFinite(turn.turn) ? turn.turn : null)
+        err.roundConsumed = true
+        err.roundCompleted = false
         err.waitedMs = waitedMs
         err.deliveryTimeoutMs = deliveryTimeoutMs
         if (extra.graceMs) err.deliveryGraceMs = extra.graceMs
@@ -234,6 +241,7 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
         err.lastPhase = last ? last.phase : 'before-call'
         err.phases = phases.slice()
         err.hint = 'the turn was started through the one-shot path and never returned; the serial queue is released automatically, and this record says whether the call was entered (' + (last ? 'yes, last phase ' + last.phase : 'no') + ')' +
+          '. The round ordinal is carried (`round`) because the pump advances past a turn it cannot settle: `roundConsumed`/`roundCompleted` say the number was allocated and the round was NOT completed, so a gap in the receipts is a timed-out round rather than a lost record' +
           (extra.graceMs ? '. A turn that settles inside the grace window is harvested instead of timed out' : '')
         return err
       }

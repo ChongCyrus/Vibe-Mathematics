@@ -1626,6 +1626,29 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     '★★★ R31g(ii): EVERY step call site passes membersInferred — no path can drop the distinction', stepCalls.map((l) => l.trim().slice(0, 90)))
 }
 
+// ★ PHASE 12 / live run 2026-10-25 (the first REAL subagent run, the institute's own reading): a HARVESTED late delivery was
+// readable but not COUNTABLE — `deliveredLate` and the three millisecond windows existed on the seam's return value and were
+// dropped when the receipt's `delivery` envelope was built, so a reader had to parse an English sentence to recover
+// 193074/180000/45000. Numbers travel as numbers; absent means "the seam did not report it", never zero.
+{
+  const t = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
+    deliver: async () => ({
+      reply: JSON.stringify({ say: '核验句-乙' }), deliveryPath: 'activation', childId: 'child-9', stopReason: 'completed',
+      deliveredLate: true, deliveryWaitedMs: 193074, deliveryDeadlineMs: 180000, deliveryGraceMs: 45000,
+      attribution: 'activation: reply read from result.output; the turn settled AFTER the deadline but inside the grace window, so it was HARVESTED rather than reported as a timeout',
+    }),
+    faces: { 'vmu.meetings': { speak: async () => ({ ok: true }) } } })
+  const stepped = await t.step({ members: ['r-2'], why: 'R30 the late facts must be NUMBERS on the receipt' })
+  const d = stepped && stepped.receipt && stepped.receipt.delivery
+  ok(!!d && d.path === 'activation' && d.childId === 'child-9',
+    '★ R30a: the executor is named by the verb the seam actually used (activation, not a normalised name)', d)
+  ok(!!d && d.deliveredLate === true, '★★ R30b: a harvested late delivery SAYS so on the receipt', d)
+  ok(!!d && d.deliveryWaitedMs === 193074 && d.deliveryDeadlineMs === 180000 && d.deliveryGraceMs === 45000,
+    '★★★ R30c: the three windows are numbers a reader can compute with, not a sentence to parse', d)
+  ok(!!d && typeof d.means === 'string' && /activation/.test(d.means) && /caller/.test(d.means),
+    '★ R30d: the vocabulary the value belongs to is stated (my own brief had listed only subagents|caller)', d && d.means)
+}
+
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

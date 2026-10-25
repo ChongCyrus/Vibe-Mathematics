@@ -79,8 +79,15 @@ const signal = new AbortController().signal
   ok(typeof spec.label === 'string' && spec.label.indexOf('vmu-turn-') === 0, 'spec.label is the vmu turn label', spec.label)
   ok(spec.delivery === 'caller', "spec.delivery is 'caller' (result stays with this caller)", spec.delivery)
   ok(spec.signal === signal, 'spec.signal is the delivered signal', typeof spec.signal)
-  ok(spec.request && Array.isArray(spec.request.prompt) && spec.request.prompt[0].text === 'please verify',
-    'spec.request.prompt carries the assembled text', spec.request && spec.request.prompt)
+  ok(spec.request && Array.isArray(spec.request.prompt) && spec.request.prompt[0].text.indexOf('please verify') === 0,
+    'spec.request.prompt carries the assembled text first (the member prompt is never replaced)', spec.request && spec.request.prompt)
+  // ★ LIVE RUN 2026-10-25: the child was handed the member prompt verbatim, which teaches `vibe_vmu_turn { op:"reply" }`
+  // — a face that cannot answer a turn living in the PARENT's store. Measured cost: 20 refused calls in one run and one
+  // round reported as a failure. The bridge must carry the "how to hand it back" half, and it must name the face.
+  const reqText = (spec.request && spec.request.prompt && spec.request.prompt[0] && spec.request.prompt[0].text) || ''
+  ok(reqText.indexOf('本会话是被派发的成员会话') > 0 && /不要调用 `vibe_vmu_turn \{ op: "reply" \}`/.test(reqText),
+    '★★ the child is TOLD the reply face is unavailable across sessions (the measured defect, not a stylistic note)', reqText.slice(-260))
+  ok(/本次回复的最终文本/.test(reqText), '★★ and told the channel that DOES work: this session\'s final text', reqText.slice(-260))
   ok(spec.request && spec.request.parent === parent, 'spec.request.parent carries the resolved parent', spec.request && typeof spec.request.parent)
 }
 

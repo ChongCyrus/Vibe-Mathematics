@@ -1647,7 +1647,15 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       const namesText = effectiveNames.join('、')
       const nativeBlockText = effectiveNames.length
         ? '【本轮你实际能调用的工具｜' + slot + '】' + effectiveNames.length + ' 个：' + namesText +
-          '（这份列表与你这回合的 wire 完全一致；角色段里的静态清单只作职责说明，以本段为准）'
+          // ★★★★★★★ LIVE RUN 2026-10-25 (a REAL multi-agent run, the first one): this caption used to read
+          // 「这份列表与你这回合的 wire 完全一致」 - a promise the producer cannot keep in every session. MEASURED:
+          // a subagent child session's prompt carried 70 names here while that session's wire held the framework's own
+          // tools too, so the list was BOTH short (27 wire tools unnamed) and long (17 pack faces the child's wire did
+          // not carry). The list IS a real snapshot - it is built from `out.tools` at assembly time - but "identical to
+          // the wire for this turn" is a claim about a later moment, and a caption that asserts it turns a snapshot into
+          // a lie. The caption now says what the producer actually knows, and names the tie-break rule.
+          '（这段是本段生成那一刻的 wire 快照；若与本回合的 wire 不一致，以 wire 为准，并把差异当作本轮的缺陷上报——' +
+          '角色段里的静态清单只作职责说明）'
         : '【本轮你实际能调用的工具｜' + slot + '】0 个（本回合没有可用工具；角色段里的静态清单不代表本回合可用性）'
       const ptcBlockText = effectiveNames.length
         ? '【本轮工具呈现｜' + slot + '】本回合以 run_code 呈现：下列 ' + effectiveNames.length + ' 个工具可通过代码调用：' + namesText +

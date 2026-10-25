@@ -43,7 +43,7 @@ const ctx = {
   // delivery itself is injected: `deliverViaSubagents` below replaces the whole call)
   get: (name) => (name === 'subagents' ? { name: 'subagents-stub', start: () => {}, startActivation: () => {}, startContinuable: () => {} } : null),
 }
-const turn = { id: 't-1', member: 'member-1', phase: 'normal' }
+const turn = { id: 't-1', member: 'member-1', phase: 'normal', round: 2 }
 const SETTINGS = { 'vmu.turn.deliveryTimeoutMs': 150 }
 
 // ── 1. a turn that settles INSIDE the grace window is HARVESTED, not reported as a timeout ───────────────────────
@@ -56,7 +56,7 @@ const SETTINGS = { 'vmu.turn.deliveryTimeoutMs': 150 }
     },
     deliverByReturning: () => async () => { throw new Error('the caller seam must not run in subagents mode') },
   })
-  const out = await deliver(turn, 'prompt text')
+  const out = await deliver({ turn, text: 'prompt text' })
   ok(out && out.reply && out.reply.say === '我完成了', '★ the late turn\'s reply is returned (not discarded)', out && out.reply)
   ok(out && out.deliveredLate === true, '★★ and the receipt SAYS it settled late', out && out.deliveredLate)
   ok(out && typeof out.deliveryWaitedMs === 'number' && out.deliveryWaitedMs >= 150, '★★ the waited time travels with it', out && out.deliveryWaitedMs)
@@ -73,11 +73,16 @@ const SETTINGS = { 'vmu.turn.deliveryTimeoutMs': 150 }
     deliverByReturning: () => async () => { throw new Error('unused') },
   })
   let caught = null
-  try { await deliver(turn, 'prompt text') } catch (e) { caught = e }
+  try { await deliver({ turn, text: 'prompt text' }) } catch (e) { caught = e }
   ok(!!caught && caught.code === 'VMU_TURN_DELIVERY_TIMEOUT', '★ a delivery that never settles is still a named refusal', caught && caught.code)
   ok(!!caught && caught.deliveryGraceMs === 1000, '★ and the refusal says the grace window was already spent', caught && caught.deliveryGraceMs)
   ok(!!caught && /\+1000ms grace/.test(String(caught.message)), '★★ the message distinguishes "did not settle in 150" from "did not settle in 150 + grace"', caught && caught.message)
   ok(!!caught && Array.isArray(caught.phases) && /whether the call was entered/.test(String(caught.hint)), '★ the phase record survives (where the turn stood)', caught && caught.hint)
+  // ★ LIVE RUN 2026-10-25: receipts jumped round 1 → round 3 and nothing said whether round 2 had been consumed, so a gap
+  // in the receipts was indistinguishable from a lost record (the institute asked exactly this).
+  ok(!!caught && caught.round === 2 && caught.roundConsumed === true && caught.roundCompleted === false,
+    '★★ the timed-out round is NAMED and its fate stated (allocated, not completed)', caught && { round: caught.round, consumed: caught.roundConsumed, completed: caught.roundCompleted })
+  ok(!!caught && /roundConsumed/.test(String(caught.hint || '')), '★ and the hint explains the fields instead of only releasing the queue', caught && caught.hint)
 }
 
 // ── 3. the delivery envelope reaches the turn receipt AND the step receipt ──────────────────────────────────────

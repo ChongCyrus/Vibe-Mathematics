@@ -799,9 +799,13 @@ if (SELF_PROBE) {
   ok(ptc.block && /vibe_v5_say/.test(ptc.block.text) && /vibe_vmu_status/.test(ptc.block.text),
     '★ 正（ptc）：可代码调用的名字仍来自同一个 effectiveNames', ptc.block && ptc.block.text)
   const native = await mkPtc(false)
+  // ★ LIVE RUN 2026-10-25: the caption used to be asserted verbatim as 「这份列表与你这回合的 wire 完全一致」 — a promise
+  // the producer cannot keep in every session (a subagent child's snapshot was 70 names against a wire that also held the
+  // framework's tools). The assertion now pins what the caption must DO: name itself a snapshot and name the tie-break.
   ok(native.presentCalls.length === 0 && native.block && /【本轮你实际能调用的工具｜member】2 个：vibe_v5_say、vibe_vmu_status/.test(native.block.text) &&
-    /这份列表与你这回合的 wire 完全一致/.test(native.block.text) && !/run_code|呈现/.test(native.block.text),
-    '★ 反（ptc 未应用）：没有 presentAs ⇒ 回落 native 逐字形状（wire 真的没变）', native.block && native.block.text)
+    /本段生成那一刻的 wire 快照/.test(native.block.text) && /以 wire 为准/.test(native.block.text) &&
+    !/与你这回合的 wire 完全一致/.test(native.block.text) && !/run_code|呈现/.test(native.block.text),
+    '★ 反（ptc 未应用）：没有 presentAs ⇒ 回落 native 逐字形状，且块自称"快照"而不是自称"与 wire 完全一致"', native.block && native.block.text)
   const hostSrc = await readFile(join(REPO, 'vibe-math-vmu', 'host.js'), 'utf8')
   ok((hostSrc.match(/const effectiveNames =/g) || []).length === 1,
     '★ 名字只有一个来源：源码里 effectiveNames 只声明一次，块与 wire 只能从它取名字', (hostSrc.match(/const effectiveNames =/g) || []).length)
