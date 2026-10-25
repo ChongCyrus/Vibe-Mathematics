@@ -114,6 +114,54 @@ ok(!!def && typeof def.doc === 'string' && /MEMBER_DROP/.test(def.doc), '★ its
 const patch = readFileSync(join(REPO, 'cordis.patch.yml'), 'utf8')
 ok(/id: preset-vibe-math-vmu-member/.test(patch), '★★★ the generated patch declares the seat, so the name the setting would carry resolves to a real composition', null)
 
+// ── (e) THE DEPLOYMENT PATH: `config.vmu.deliverPreset`, and the receipt READS the seat back ──────────────────
+// WHY THIS SECTION EXISTS (measured defect, 2026-10-25): the first seat run delivered every member turn with NO preset —
+// the runner declares the preset the same way it declares the mode, i.e. `config.vmu.deliverPreset`, while the reader only
+// looked at `config.deliverPreset` and the setting. The gate above was GREEN while the deployed path was inert, because
+// it tested the setting path that the deployment never uses. Nothing in the receipts said which seat was requested, so
+// the only way to see it was a 15-minute transcript histogram. This section pins BOTH halves: the config path, and the
+// reading that makes it visible next time.
+{
+  const { createTurnDeliver } = await import('../vibe-math-vmu/host-deliver.js')
+  const { deliverByReturning } = await import('../vibe-math-vmu/kernel/turn/index.js').then((m) => ({ deliverByReturning: m.deliverByReturning || (() => null) }))
+  const rootAgent = { options: {}, session: { id: 'sess-seat' } }
+  const makeSeam = (config) => {
+    const seen = []
+    const subs = {
+      list: () => ['fake-provider'],
+      start: (provider, request) => {
+        seen.push({ provider, request })
+        return { result: Promise.resolve({ output: [{ type: 'text', text: '{"say":"ok"}' }], stopReason: 'end' }) }
+      },
+    }
+    const seam = createTurnDeliver({
+      ctx: { get: (name) => (name === 'subagents' ? subs : null) },
+      config,
+      settings: {},
+      deliverViaSubagents, deliverByReturning,
+      getRootAgent: () => rootAgent,
+    })
+    return { seam, seen }
+  }
+
+  const deployed = makeSeam({ vmu: { deliverMode: 'subagents', deliverPreset: 'vibe-math-vmu-member' } })
+  const got = await deployed.seam({ turn: { id: 't-seat', member: 'member-2' }, text: 'x' })
+  ok(deployed.seen.length === 1 && deployed.seen[0].request && deployed.seen[0].request.agentPreset === 'vibe-math-vmu-member',
+    '★★★ THE DEPLOYED PATH: `config.vmu.deliverPreset` (what a real runner declares) reaches the child creation request',
+    deployed.seen[0] && deployed.seen[0].request && deployed.seen[0].request.agentPreset)
+  ok(!!got && got.childPreset === 'vibe-math-vmu-member',
+    '★★★ …and the delivery receipt READS THE SEAT BACK (`childPreset`), so "did the preset arrive" is one reader away instead of a 15-minute histogram',
+    got && got.childPreset)
+  ok(!!got && typeof got.childPresetMeans === 'string' && /CREATION request/.test(got.childPresetMeans),
+    '★★ the receipt says what the value IS and what it is not (a request field, not proof the host honoured it)',
+    got && got.childPresetMeans)
+
+  const inherited = makeSeam({ vmu: { deliverMode: 'subagents' } })
+  const got2 = await inherited.seam({ turn: { id: 't-seat2', member: 'member-2' }, text: 'x' })
+  ok(!!got2 && got2.childPreset === null, '★★ no declared preset ⇒ the receipt says null (inherit), so the reader can tell "not asked for" from "asked for but inert"', got2 && got2.childPreset)
+  ok(!inherited.seen[0] || !('agentPreset' in (inherited.seen[0].request || {})), '★ …and the request then carries no agentPreset key at all', inherited.seen[0] && Object.keys(inherited.seen[0].request || {}))
+}
+
 console.log('')
 if (failed > 0) {
   console.log('FAILURES:')

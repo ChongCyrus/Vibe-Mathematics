@@ -405,5 +405,10 @@ dsh --profile <你的 profile> --patch <你的临时目录>/vmu-overlay.yml web
    默认 `null` ＝ 显式「继承」）。门禁 `tests/vmu-turn-child-preset.test.mjs`：两条创建路径都真的到达、
    默认**不加键**、以及「seam 读键」与「schema 声明」两侧同时断言（两侧漂移是本项目反复出现的缺陷类）。
 
+**为什么删掉 shell 不等于删掉计算能力（两处源码事实）**：Lean 编译走的是内核的执行接缝
+（`vibe-math-vmu/kernel/lean.js:37` 的 `spawn` 注入约定、`:469` 的调用点），由宿主 subprocess 服务执行；
+计算脚本走的是内核 M3 脚本面（`vibe-math-vmu/tools/bridge.js:19-21` 把 `request` **原样转发**给 `kernel.bridge.run`，
+形状由内核校验、超时由内核声明、结果结构化）。也就是说：成员席没有 shell，但「编译 Lean」和「跑一段计算」
+仍然是受内核约束的正规动作 —— 这正是它区别于「把 pack 工具也砍掉」的地方。
 **本门禁证明不了什么**：子会话是否真的以该 preset 启动，是宿主机侧事实（宿主是否接受 `agentPreset`、该 preset
 是否已注册），必须真机验证；账本里按「未验」记录，不按「已修」记录。

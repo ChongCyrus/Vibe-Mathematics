@@ -78,7 +78,14 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       // declared setting, forwarded onto the request; `''` (the declared default) means "inherit the caller's preset",
       // which keeps every existing deployment byte-identical. The member preset itself is generated from a table
       // (`scripts/build-preset-rows.mjs` `MEMBER_DROP`) and gated by `tests/vmu-member-preset.test.mjs`.
-      const declaredPreset = (typeof config.deliverPreset === 'string' && config.deliverPreset)
+      // ★★★★★★★ MEASURED DEFECT (2026-10-25, the run that was supposed to prove this seat): the first version of this
+      // reader looked at `config.deliverPreset` and the SETTING only — while a real deployment (the SLV runner) declares
+      // it the same way it declares the mode, i.e. `config.vmu.deliverPreset`. The run therefore delivered member turns
+      // with NO preset and the member sessions still ran 52 `pwsh` calls in total. This is the SAME trap the mode
+      // reader above records ("a mode declared under `vmu` was invisible"), repeated one line lower in the same file:
+      // the gate was green because it tested the setting path, which the deployment never uses.
+      const declaredPreset = (config.vmu && typeof config.vmu.deliverPreset === 'string' && config.vmu.deliverPreset)
+        || (typeof config.deliverPreset === 'string' && config.deliverPreset)
         || (settings && typeof settings['vmu.turn.childPreset'] === 'string' && settings['vmu.turn.childPreset'])
         || null
       const configuredPreset = typeof declaredPreset === 'string' && declaredPreset !== '' ? declaredPreset : null
@@ -256,13 +263,24 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
         return err
       }
       try {
+        // ★★★★★★★ THE SEAT IS A READING, NOT AN INFERENCE (2026-10-25): the first seat run was inert because the
+        // deployment declares the preset under `vmu:` — and nobody could SEE that from the receipt, so the only way to
+        // find out was a 15-minute transcript histogram. Every successful delivery now carries the seat it requested
+        // (`null` = inherit), so the next run answers "did the preset reach the child" by reading one receipt.
+        const withSeat = (v) => {
+          const b = v && typeof v === 'object' ? v : { reply: v }
+          return Object.assign({}, b, {
+            childPreset: configuredPreset,
+            childPresetMeans: 'the agentPreset this face put on the child CREATION request; null means "inherit the caller\'s preset" - it is not a claim that the host accepted it',
+          })
+        }
         const first = await Promise.race([delivery.then((v) => ({ v })), after(deliveryTimeoutMs)])
-        if (first !== TIMEOUT) return first.v
+        if (first !== TIMEOUT) return withSeat(first.v)
         const graceMs = Math.max(1000, Math.round(deliveryTimeoutMs / 4))
         const late = await Promise.race([delivery.then((v) => ({ v })), after(graceMs)])
         if (late !== TIMEOUT) {
           const waitedMs = Date.now() - startedMsLocal
-          const base = late.v && typeof late.v === 'object' ? late.v : { reply: late.v }
+          const base = withSeat(late.v)
           return Object.assign({}, base, {
             deliveredLate: true,
             deliveryWaitedMs: waitedMs,
