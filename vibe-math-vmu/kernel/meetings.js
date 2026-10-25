@@ -654,7 +654,49 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   // `kernel/meetingmarker.js` — the boundary is written out there; this face only owns the objects and the calls.
   const marker = createMeetingMarker({ clock, live, archive, durable })
   const markState = marker.markState
-  const openMeetings = marker.openMeetings
+  // ★★ LIVE RUN 19 (the institute's own report, 结题段「读数不一致」): `vibe_v5_report` still said 「开着的 1 场」 immediately
+  // after a SERVICE meeting's close receipt, and a SECOND close answered VMU_NO_SUCH_OBJECT. Cause, measured: this view is
+  // the DURABLE MARKER's rows, and a service `close()` moves the meeting from `live` to `archive` without rewriting that
+  // row — so one object carried two readings in two faces (service: closed; report: open). The marker stays the source for
+  // what a PREVIOUS process left behind; the LIVE service set is the authority for "which meeting exists now". The view
+  // therefore merges them: an archived id can never be reported open, and a live meeting the marker never saw is added
+  // (counted, never silently). Both directions are counted so a reader can tell a merge from a filter.
+  const openMeetingsMarker = marker.openMeetings
+  const openMeetings = (opts) => {
+    const base = openMeetingsMarker(opts)
+    if (!base || base.ok !== true || !Array.isArray(base.meetings)) return base
+    const archivedIds = new Set(archive.map((m) => String(m.id)))
+    const kept = []
+    let droppedClosed = 0
+    for (const row of base.meetings) {
+      const id = String(row && row.id)
+      if (archivedIds.has(id)) { droppedClosed += 1; continue }
+      kept.push(row)
+    }
+    const seen = new Set(kept.map((r) => String(r.id)))
+    const added = []
+    for (const m of live.values()) {
+      const id = String(m.id)
+      if (seen.has(id)) {
+        // the live row is authoritative about the schedule-aware state; keep the marker label beside it.
+        const at = kept.findIndex((r) => String(r.id) === id)
+        kept[at] = Object.assign({}, kept[at], { state: String(m.state), serviceState: String(m.state) })
+        continue
+      }
+      added.push({ id, state: String(m.state), serviceState: String(m.state), markerState: null, fromService: true })
+    }
+    const meetings = kept.concat(added).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    const merged = droppedClosed > 0 || added.length > 0
+    return Object.assign({}, base, {
+      meetings,
+      source: merged ? 'marker+service' : base.source,
+      droppedClosed,
+      addedFromService: added.length,
+      droppedClosedMeans: 'marker rows whose meeting the MEETING SERVICE has already archived — a closed meeting is never reported open',
+      addedFromServiceMeans: 'live service meetings the durable marker never saw (a meeting opened in this process)',
+      note: (base.note ? base.note + ' | ' : '') + 'merged with the live meeting service: an archived meeting is excluded and a live meeting the marker never saw is added, both counted',
+    })
+  }
   const controls = createMeetingControls({
     requireMeeting, clock, limits: () => K, counters, say, deny, capIn, numbers: n, markState,
   })

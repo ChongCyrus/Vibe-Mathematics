@@ -4246,3 +4246,60 @@ run 18 是本阶段第一次 office + 真子代理跑完全部轮次并结题（
 - 这三条都还没在真机上复验（run 19 的简报改成：m 由**启动注入**而不是运行期 set；并要求逐字抄 `status.counts.failed`/`failedLast`
   与形状拒的具体文案）。
 - ②③ 是「让失败可读」，不是「让失败不发生」——t-1 的根因是成员的 record 形状，成员侧提示词是否该更明确，留待下一轮量测。
+
+## §111 真机验收第 19 轮：两条「读数不在位」修好，一条「两个 id 空间」登记
+
+用户的目标是【所办（研究所）自己的验收报告说「无实质残余：是」】，所以本轮以第 19 次真机跑的**原文报告**为判据。
+
+### 跑（run 19）
+- 载具 `D:\_tmp\slv-phase5\slv-p12g-seat.ps1` + 任务书 `task-r18.txt`（含 ⑫ 三项），产物
+  `D:\wd\vibemath开发\_oneoff\vm-slv\full-1026-000332.jsonl`（75.8 MB / 186 973 行），build `27dc3c4f`，
+  inspector `SUMMARY: 10 session(s) in 1 file(s), 0 with RED checks`。
+- 判据读数：`cast=false`（成员独立投 `solved:false`，所办没有代投票）+ 所办报告 `无实质残余：否`。
+
+### 报告确认「已可核实」的机制（都有回执原文）
+② 预约/等待/到点自决（`scheduled`→`waiting`→`proceed`，`startedLate:true`、`waitedMs`、`overrodeQuorum.whichRule`）
+③ 辩论会议（`type:"debate"`、`subject:"p-12-bipartite"`、四步推荐流程 `binding:"recommendation"`）
+④ 表决人数下限（`voteFloor{setting:2,source:"universe",eligibleUniverse:3,effective:2}`，`floor.minVotes:2`，实到 3）
+⑤ 最终裁决通知卡片持有者（`owner:"member-2", notified:["member-2"]`）
+⑥ 结题票与辩论裁决互相点名（`rulingReading` / `closureReading`）
+⑦ 成员真跑（`delivery.path:"activation"`、`delegation.childId` 两个 UUID、`childPreset:"vibe-math-vmu-member"`）
+⑩.3 `m` 按启动注入生效；⑩.4 卡片 id 作辩论对象必须先有证明登记（`VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`），
+登记后 `subjectGate.form:"card"`（不再是 `statement`）
+⑬.2 写回失败可点名（`VMU_RECORD_SHAPE` + 可照抄 hint + `counts.failed:1` + `failedLast`）
+⑬.4 院士权威栏杆（座位后、回合前 ⇒ `VMU_CHAIR_ACT_NOT_DELEGATED`，给回合后开会成功）
+
+### 报告点名的两条真缺陷 —— 已修 + 已上闸（`tests/vmu-run19-findings.test.mjs` 11 条）
+① ★★★ `childSessionId` 是 null，**而同一条回执里 `delegation.childId` 明明有值**。读点找的是
+`delivery.childSessionId`/`delivery.sessionId`，seam 报的是 `delivery.childId`。这是「答案在下一层没上来」家族的
+第三次（前两次：run 15 `toolCallsTotal:0`、run 16 ⑦）。修：三个拼写都读，且 `childSessionIdMeans` 点名读到哪一个；
+并在**结清回执顶层**补 `deliveryPath`/`deliveryPathMeans`（此前只有 `receipt.delivery`/`delegation` 里有，
+所办据此判「字段不存在」）。
+② ★★ `vibe_v5_report` 在 SERVICE 会议 `close` 回执之后仍报「开着的 1 场」，而再 close 一次说它已不存在。
+原因（实测）：`openMeetings()` 读的是**持久标记行**，而 `close()` 只把会议从 `live` 挪进 `archive`，标记行没被改。
+修：`openMeetings()` 与 live 会议服务**合并**——已归档 id 绝不报 open（计数 `droppedClosed`）、live 里标记没见过的
+会议补上（计数 `addedFromService`）、状态取服务的 schedule-aware 值、`source:"marker+service"` 自陈两源合并。
+
+### 同批修掉的测试假绿（fixture 编码了旧事实）
+`vmu-motion-box.test.mjs` 的三处投票是在「只有主席在场」的房子里投的 —— pack 声明 `quorumFloorSource:"universe"` 后
+法定人数＝院士+常驻＝3，一票不能开庭。修法是**给房子坐满人**（不是放宽栏杆），与 `vmu-v5r-tools` 的修法同因；
+该套件顺便 +1 条 `B0c`（quorum 真的成立）⇒ 38/0。
+
+### 登记（未修，证据在报告原文）
+1. `list.ballots` 与 `boxclose` 的 **id 空间**不同：`list.ballots` 由 `kernel.liveList().ballots` 并集而成，其中含
+   `vibe_v5_poll_open` 造的**逐票 primitive**（`b12-debate`），而 `boxclose` 只认 `kernel/ballotbox.js` 的选项板。
+   所办据此读了「列表里有、关不掉」的矛盾。修的方向：让 `list` 按 id 空间分列（或给每行 `idSpace`），并让
+   `boxclose` 的 not-found 具名指向正确的面 —— 未做，因为动 `liveList()` 的返回形状会牵动多条既有断言。
+2. `vibe_v5_set` 对 `vmu.meetings.quorumMin` 回执 `hot:"H1"` 且 `requiresRestart:true`：所办读作「表说下一回合、
+   回执说需重启」自相矛盾。真因是读取者 `createMeetings()` 在构造时快照整个 `vmu.meetings.*`，H1 在本部署等价
+   「下次启动」；这是**文档语义**问题（H1 的定义要不要按面细分），未改。
+3. ⑨ 投递失败点名仍未验到：把 `deliveryTimeoutMs` 压到 1ms，回合仍 `completed`（`deliveryFailed:0`）——
+   即「能压出投递失败」的输入还没找到，属**验证方法**缺口，不是产品读数缺口。
+4. ⑩.2 自动会议（`convenedBy:"v5r.stall-meeting"`）本轮未出现：该分支由 `control/idle` 的空闲拍触发，短跑里不可达。
+5. `vmu.meetings.world` 键**未声明**（所办想设 `simulation` 设不上）—— 这是所办自己的一个假设，产品侧没有这个键。
+
+### 纪律记录（本轮的教训）
+- 「**field 在那里，但我按另一个拼写找**」这一类已经出现三次；对策不是再加一条注释，而是让**means 字段点名来源**
+  （本轮 `childSessionIdMeans` 落到「read from delivery.childId」），读者才能区分「没有」与「没读到」。
+- 「一个对象两个面两个读数」出现两次（`openMeetings` vs 会议服务；`list.ballots` vs `boxclose`）。合并时**两个方向
+  都要计数**，只说「已过滤」会把「补上了几条」藏起来。

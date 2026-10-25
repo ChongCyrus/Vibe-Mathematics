@@ -64,6 +64,12 @@ await k.members.hire({ id: 'm1', slot: 'member' })
 await k.members.hire({ id: 'm2', slot: 'member' })
 ok(k.members.roster().filter((m) => m.state === 'live').length === 3,
   'B0b. and every id this suite addresses is really LIVE on that roster (c1 chair, m1/m2 members)', k.members.roster().map((m) => m.id + ':' + m.slot))
+// ★★ ROUND 17 (the pack now declares quorumFloorSource="universe"): the vote floor is min(用户设置数, 院士+常驻) = 3 in a
+// three-seat institute, and 「未到齐则法定人数不成立」 means ONE voice cannot open a vote at all. This suite is about the
+// 动议⇒开箱 policy, not about the floor, so the fixture SEATS EVERYONE before it votes - the same correction (and the same
+// reason) as the v5r-tools fixture: never relax the guard, make the fixture a real house.
+for (const id of ['c1', 'm1', 'm2']) k.meetings.attend({ meeting, member: id })
+ok(k.meetings.quorum({ meeting }).met === true, 'B0c. the fixture house really has its quorum (floor = 院士+常驻)', k.meetings.quorum({ meeting }).required)
 const moved = k.meetings.motion({ meeting, member: 'm1', kind: 'ordinary', text: 'convene a vote' })
 const motion = moved.motion
 await new Promise((r) => setTimeout(r, 60))
@@ -107,6 +113,7 @@ ok(k.ballotbox.status().boxes === 1, 'B8. and it opened NO extra box (the policy
 // Move a motion FIRST (the policy binds), THEN unbind: a vote on that existing motion must be named-unwired -
 // nothing re-binds behind our back, because no new `meeting/motion` fires.
 const m2 = k.meetings.open({ chair: 'c1', actor: 'c1', roster: ['c1', 'm1'] }).meeting
+for (const id of ['c1', 'm1']) k.meetings.attend({ meeting: m2, member: id })
 const mo2 = k.meetings.motion({ meeting: m2, member: 'm1', kind: 'ordinary', text: 'bound first' }).motion
 await new Promise((r) => setTimeout(r, 40))
 ok(k.meetings.status().boxBinding.bound === true, 'R1. the policy bound again on the new meeting motion (idempotent lazy bind)', k.meetings.status().boxBinding)
@@ -152,6 +159,7 @@ const noPolicy = entryMod.apply(fakeCtx(), { clock: () => 1000, root: bare, pack
 await noPolicy.ready()
 const nk = noPolicy.kernel
 const nm = nk.meetings.open({ chair: 'c1', actor: 'c1', roster: ['c1', 'm1'] }).meeting
+for (const id of ['c1', 'm1']) nk.meetings.attend({ meeting: nm, member: id })
 const nmo = nk.meetings.motion({ meeting: nm, member: 'm1', kind: 'ordinary', text: 'no pack at all' }).motion
 await new Promise((r) => setTimeout(r, 40))
 ok(nk.ballotbox.status().boxes === 0, 'R2. an assembly with NO policy opens NO box (nothing pretends)', nk.ballotbox.status().boxes)

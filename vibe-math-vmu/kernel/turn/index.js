@@ -2375,13 +2375,28 @@ export function createTurnOrchestrator({
           : (deliveredThrough === null
               ? 'the delivery seam did not name a path on this receipt, so this kernel cannot say whether the member ran here or in a child session — read `delegation` for what the seam did report; null here means NOT READABLE, never "zero calls"'
               : 'the member ran in a SEPARATE kernel instance (delivery.path="' + String(deliveredThrough) + '"), so its call list lives in the child session log; null here means NOT READABLE FROM THIS RECEIPT, never "zero calls"'),
-        childSessionId: r && r.delivery && (r.delivery.childSessionId || r.delivery.sessionId)
-          ? String(r.delivery.childSessionId || r.delivery.sessionId) : null,
-        childSessionIdMeans: r && r.delivery && (r.delivery.childSessionId || r.delivery.sessionId)
-          ? 'the child session that ran this member turn; read its log for the call list'
-          : (deliveredThrough === 'caller'
-              ? 'not applicable: the caller played this turn in THIS kernel, so there is no child session'
-              : 'the delivery seam did not report a child session id on this receipt; the child turn id is in `delegation`'),
+        // ★★ LIVE RUN 19 (the institute's own report, ⑩.1/⑬.3): THIS FIELD WAS null WHILE THE SAME RECEIPT CARRIED
+        // `delegation.childId` — the reader looked for `delivery.childSessionId`/`delivery.sessionId` and the seam
+        // reports `delivery.childId`. Third instance of one family in this phase: "the answer existed one layer down
+        // and did not travel". All three spellings are read, and `childSessionIdMeans` now NAMES the source so a
+        // reader can tell an absent id from an unread spelling.
+        childSessionId: (() => {
+          const d = (r && r.delivery) || null
+          if (!d) return null
+          const v = d.childSessionId || d.sessionId || d.childId
+          return v === undefined || v === null || v === '' ? null : String(v)
+        })(),
+        childSessionIdMeans: (() => {
+          const d = (r && r.delivery) || null
+          const v = d ? (d.childSessionId || d.sessionId || d.childId) : null
+          if (v !== undefined && v !== null && v !== '') {
+            const which = d.childSessionId ? 'delivery.childSessionId' : (d.sessionId ? 'delivery.sessionId' : 'delivery.childId')
+            return 'the child session/agent that ran this member turn (read from ' + which + '); read its log for the call list'
+          }
+          return deliveredThrough === 'caller'
+            ? 'not applicable: the caller played this turn in THIS kernel, so there is no child session'
+            : 'the delivery seam reported no child id on this receipt (checked delivery.childSessionId, delivery.sessionId, delivery.childId) — null means NOT READABLE, not "no child"'
+        })(),
       }
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
@@ -2389,7 +2404,17 @@ export function createTurnOrchestrator({
         toolCallsScope, toolCallsNote, ...memberCallsReading,
         membersFrom: membersFromReading, delegation: r.delivery || null,
         ...selectionReadings }
-      return { ok: true, ...memberCallsReading, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(),
+      return { ok: true, ...memberCallsReading,
+        // ★ LIVE RUN 19 (⑨): the awaiting receipt and the failure receipt both named `deliveryPath`, while the
+        // SETTLED receipt only had it nested in `receipt.delivery`/`delegation` — the institute read that as "the
+        // field does not exist" and could not compare the three cases. One name, on every shape.
+        deliveryPath: deliveredThrough,
+        deliveryPathMeans: deliveredThrough === null
+          ? 'the delivery seam did not report a path on this receipt — null means NOT READABLE, never "nothing was delivered"'
+          : (deliveredThrough === 'caller'
+              ? 'the CALLING session played this member turn in this kernel (deliverByReturning), so the reply came back on the next call'
+              : 'a SEPARATE kernel instance ran this member turn (path "' + String(deliveredThrough) + '"); its call list is not visible here'),
+        receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(),
         // ★ PHASE 12 / live run 37 (the institute's own report): this receipt reduced `skipped` to a NUMBER, so the reason
         // and the kept line were unreadable - the member saw "skipped:1" and could not learn which field, why, or what it
         // had said. A COUNT is a diagnostic that costs nothing and tells nothing; the detail travels with it, BOUNDED.
