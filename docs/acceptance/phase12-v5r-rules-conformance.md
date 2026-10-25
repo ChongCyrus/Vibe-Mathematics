@@ -4659,3 +4659,27 @@ dsh: fatal load failure: Error: the ballot is not open
   即把用户裁定的「代记」做成一条**有名字、有归属、可核**的接缝，而不是让代理自己记得去做。
 - 修 #7：简报里 `vibe_v5_meeting` 只能开会；
 - 再跑一轮验收，直到「是」不再靠着代理绕过缺陷成立。
+
+## §120 裁决 B 第 2 步：成员回合绑定会议 —— 成员说的一句话被记成「成员本人的发言」
+
+**所办自己的报告（run 1 的 ②/⑤ 与 run 2 的 ⑱）连着两轮指向同一件事**：所办替成员跑，但成员说的那句
+`{"say":"…"}` 只会进 `notes`（回执还写着 `no-meeting-bound`），于是「成员在会上的发言」在会议记录里根本不存在 ——
+这就是「成员真跑 + 所办代记」缺的那一半。
+
+**改动**（`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/tools/turn.js`）
+- `apply(reply, faceMap, memberId, opts)` 接受 `{ meeting }`；当目标是 `vmu.meetings.speak`、payload 是一句话、
+  且绑定了会议时，KERNEL 合成 `{ meeting, member: <本轮成员>, text }` 再派发，回执写 `executed[].onBehalf` + `composed`。
+- `dispatchSkipReason(d, { boundMeeting })`：**有绑定就不跳过**；没绑定保持旧行为（一句话仍保留在 `notes`）。
+- `supplyStructuredReply(fields, { forMember, meeting })`：写回执多出 `meeting` 与 `meetingMeans`（绑定/未绑定两句话不同）；
+  completion 路线（`op:"step"` 完成持有回合）把它写到 step 和 `receipt` 两处，并新增 `receipt.executedDetail`
+  （此前 completion 回执只有计数，读者看不到 onBehalf）。
+- `vibe_vmu_turn` 新增声明参数 `meeting` —— 有消费者、有 schema，不是「声明了没接线」。
+
+**门禁**：`tests/vmu-turn-meeting-binding.test.mjs` **22/0**，全部在 FACE 层读回：
+未绑定 ⇒ 会议面 0 次、句子仍在 `notes`（旧承诺不破）、回执 `meeting:null`；
+绑定 ⇒ 会议面恰好收到 1 次且 `{meeting, member, text}` 三项都对、`member` 是**成员不是所办**、回执带
+`onBehalf`/`composed`；工具面 ⇒ `meeting` 真透传（有/无两态可区分）、schema 声明了它；另加三处源码接线断言。
+
+**诚实边界**：这不等于「成员主动发言」—— 成员仍是在自己的回合里说一句话，是所办那一侧把这句话按成员身份落账；
+提示词层还没教所办这么用（F5 判例：机制先落地、文本随后），本轮不动提示词。
+

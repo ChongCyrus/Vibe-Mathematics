@@ -1194,7 +1194,10 @@ export function createTurnOrchestrator({
    * receipt that can be READ BACK (`readback` is the slot as it really stands, not a copy of the arguments - "the value
    * was set" and "the value took effect" are different claims, and this repository only makes the second one).
    */
-  const supplyStructuredReply = (fields, { forMember = null } = {}) => {
+  const supplyStructuredReply = (fields, { forMember = null, meeting = null } = {}) => {
+    // ★ 用户裁决 B 第 2 步：所办可以为「成员的这一轮」指定它属于哪场会议。给了就让成员的那句 say 被记成
+    // 成员本人的发言（onBehalf），没给就保持现状（进 notes，回执说明为什么没派发）。
+    const boundMeeting = meeting === null || meeting === undefined || String(meeting).trim() === '' ? null : String(meeting).trim()
     const obj = fields && typeof fields === 'object' && !Array.isArray(fields) ? fields : null
     if (!obj) {
       fail('VMU_INVALID_ARGUMENT', 'a structured report must be an object of reply fields, not ' + (fields === null ? 'null' : typeof fields),
@@ -1223,7 +1226,7 @@ export function createTurnOrchestrator({
       fail('VMU_TURN_UNKNOWN_FIELD', 'unknown reply field(s): ' + unknown.join(', ') + ' - refusing rather than guessing what was meant',
         'known fields: ' + known.concat(RECORDED_FIELDS).join(', '))
     }
-    const recorded = { reply: {}, member: open.member, turnId: open.turnId, via: open.via, ignoredFields: unknown.slice(), at: clock() }
+    const recorded = { reply: {}, member: open.member, turnId: open.turnId, via: open.via, ignoredFields: unknown.slice(), meeting: boundMeeting, at: clock() }
     for (const k of keys) if (!unknown.includes(k)) recorded.reply[k] = obj[k]
     if (Object.keys(recorded.reply).length === 0) {
       // A report that carries ONLY unknown names would record an empty reply and then look like a turn with nothing to
@@ -1248,6 +1251,10 @@ export function createTurnOrchestrator({
       member: recorded.member,
       turn: recorded.turnId,
       fields: Object.keys(recorded.reply),
+      meeting: recorded.meeting,
+      meetingMeans: recorded.meeting === null
+        ? 'this report was NOT bound to a meeting, so a bare say field cannot become a speech (it is kept, never silently dropped)'
+        : 'this report was bound to the named meeting: the member\'s bare say field will be recorded as THAT MEMBER\'S speech when the held turn is applied (receipt carries onBehalf)',
       ignoredFields: recorded.ignoredFields.slice(),
       ignoredFieldMode: unknownFieldMode,
       // ★ READ BACK, NOT SET: this is the slot as it stands AFTER the write (member, turn, fields), so a caller can see
@@ -1507,7 +1514,7 @@ export function createTurnOrchestrator({
     return { ok: true, member: id, solved: value }
   }
 
-  const apply = async (reply, faceMap = null, memberId = null) => {
+  const apply = async (reply, faceMap = null, memberId = null, opts = null) => {
     const map = faceMap || faces
     const r = reply && typeof reply === 'object' ? reply : {}
     const bookkeeping = []
@@ -1566,6 +1573,19 @@ export function createTurnOrchestrator({
     if (bookkeeping.length) counts.bookkept = (counts.bookkept || 0) + bookkeeping.length
 
     const dispatches = plan(reply)
+    // ★★★ 用户裁决 B（m21840）第 2 步 —— 「成员真跑 + 所办代记」。成员在回合里只说一句话（\`{"say":"…"}\`），
+    // 而 meetings.speak 需要 { meeting, member, text }。没有绑定时这句话只能进 notes（现状：诚实的退回），
+    // 一旦调用方给出会议（op:"reply" 的 meeting 参数），KERNEL 就替成员把三件事补齐并把归属写成成员本人——
+    // 不是伪造：这一轮本来就是「所办替成员跑」，回执里把代记事实写在 onBehalf 上，读的人看得见。
+    const boundMeeting = opts && opts.meeting !== undefined && opts.meeting !== null && String(opts.meeting).trim() !== ''
+      ? String(opts.meeting).trim() : null
+    const ON_BEHALF_MEANS = 'the calling session recorded this on the member\'s behalf: the sentence came from the turn\'s own reply, not from a tool call the member made itself'
+    const composedFor = (d, payload) => {
+      if (d.face !== 'vmu.meetings' || d.op !== 'speak') return null
+      if (boundMeeting === null || memberId === null || memberId === undefined) return null
+      if (typeof payload !== 'string' || payload.trim() === '') return null
+      return { meeting: boundMeeting, member: String(memberId), text: payload }
+    }
     const executed = []
     const skipped = []
     // ★ PHASE 12 / run 35 item ② follow-up (my own note was a LIE): the skip note said "the line stays in the round state
@@ -1589,7 +1609,7 @@ export function createTurnOrchestrator({
       // cost them their turn, with nothing saying why. Here the field is SKIPPED BY NAME instead (the reason is a pure
       // function so the promise is assertable without a live host): nothing is pretended to have happened, the turn
       // still completes, and the receipt says which field was dropped and why.
-      const skipReason = dispatchSkipReason(d)
+      const skipReason = dispatchSkipReason(d, { boundMeeting })
       if (skipReason !== null) {
         counts.notExecuted += 1
         // The line is recorded, not thrown away: the prompt allows `say` as the explanation for speech already made
@@ -1609,9 +1629,11 @@ export function createTurnOrchestrator({
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'face-not-wired' })
         continue
       }
+      const composed = composedFor(d, d.payload)
+      const onBehalf = composed !== null
       let res
       try {
-        res = await fn(d.payload, { field: d.field, face: d.face, op: d.op })
+        res = await fn(onBehalf ? composed : d.payload, { field: d.field, face: d.face, op: d.op })
       } catch (e) {
         if (e && e.code === 'VMU_NO_OPEN_MEETING') {
           // ★ PHASE 9 / round 7: the real reason for the measured failure was NOT "meetings is broken": the member
@@ -1627,13 +1649,19 @@ export function createTurnOrchestrator({
         throw e
       }
       counts.dispatched += 1
-      executed.push({ field: d.field, face: d.face, op: d.op, result: res })    }
+      const entry = { field: d.field, face: d.face, op: d.op, result: res }
+      if (onBehalf) { entry.onBehalf = true; entry.onBehalfMeans = ON_BEHALF_MEANS; entry.composed = { meeting: composed.meeting, member: composed.member } }
+      executed.push(entry)
+    }
     // ROUND 394: the remaining recorded fields used to be RECOGNISED AND THEN DISCARDED - a model that wrote prioritize,
     // hire or fire had its payload vanish with no trace, which is the silent-failure class this repository refuses.
     // Each one is now kept on the turn state under its own name and reported in the receipt, so the framework can read
     // it and a consumer can see that it arrived. No face is invented for them: the members service is not even present
     // in a default kernel, and sending a payload to an operation that does not exist would be worse than keeping it.
-    return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping, effects: turnEffects.slice(), coercions: turnCoercions.slice(), coercionsMeans: COERCIONS_MEANS,
+    return { ok: true, executed, skipped, planned: dispatches.length, bookkeeping, meeting: boundMeeting,
+      meetingMeans: boundMeeting === null
+        ? 'no meeting was bound to this turn, so a reply field that needs { meeting, member, text } cannot be dispatched (a bare sentence is kept in notes, never silently dropped)'
+        : 'this turn was bound to the named meeting, so a member\'s bare sentence was recorded as THAT MEMBER\'S speech and the receipt carries onBehalf for it', effects: turnEffects.slice(), coercions: turnCoercions.slice(), coercionsMeans: COERCIONS_MEANS,
       notes: keptNotes,
       notesMean: 'lines that were NOT dispatched but ARE kept: a reading of what the member said, bounded to ' + NOTE_CAP + ' chars each - an empty list means no such line existed, never that a line was dropped silently' }
   }
@@ -1658,7 +1686,7 @@ export function createTurnOrchestrator({
    * dispatch, and one notice per refused field. `parsed` is `{ reply, fields, ignoredFields?, source }`; `source` is
    * carried onto the receipt and into the bus payload, so a reader can tell WHICH channel produced a field.
    */
-  const dispatchReply = async ({ turn, parsed, attributedTo, rawText }) => {
+  const dispatchReply = async ({ turn, parsed, attributedTo, rawText, meeting = null }) => {
     // ★ PHASE 7: "ignored" must be READABLE - one notice for this member's next prompt (red line 3: never silent).
     if (Array.isArray(parsed.ignoredFields) && parsed.ignoredFields.length) {
       queueNotice(turn.member, '【研究所提示】回执里出现未登记字段：' + parsed.ignoredFields.join(', ') + '（已按 ignore-named 忽略；回执顶层请只写登记字段）')
@@ -1692,7 +1720,7 @@ export function createTurnOrchestrator({
     // arrive with no reply text at all, so the only way to learn what the verifier actually wrote was another run.
     let out
     try {
-      out = await apply(parsed.reply, null, attributedTo || turn.member)
+      out = await apply(parsed.reply, null, attributedTo || turn.member, { meeting })
     } catch (e) {
       try {
         const text = typeof rawText === 'string' ? rawText : JSON.stringify(parsed.reply)
@@ -1900,8 +1928,8 @@ export function createTurnOrchestrator({
     // already answered (the refusal travels on the receipt instead).
     if (typeof deliver.consumePending === 'function') deliver.consumePending()
     const parsed = { reply: Object.assign({}, report.reply), fields: Object.keys(report.reply), ignoredFields: report.ignoredFields.slice(), source: 'tool' }
-    const tail = await dispatchReply({ turn, parsed, attributedTo: report.member, rawText: JSON.stringify(report.reply) })
-    return Object.assign({ member: report.member }, tail)
+    const tail = await dispatchReply({ turn, parsed, attributedTo: report.member, meeting: report.meeting === undefined ? null : report.meeting, rawText: JSON.stringify(report.reply) })
+    return Object.assign({ member: report.member, meeting: report.meeting === undefined ? null : report.meeting }, tail)
   }
 
   /**
@@ -2137,7 +2165,11 @@ export function createTurnOrchestrator({
     if (waiting) {
       try {
         const done = await completeStructuredReport()
-        completed = { member: done.member, fields: done.fields, executed: (done.executed || []).length, skipped: (done.skipped || []).length, effects: (done.effects || []).slice(), coercions: (done.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
+        completed = { member: done.member, meeting: done.meeting === undefined ? null : done.meeting,
+          meetingMeans: (done.meeting === undefined || done.meeting === null)
+            ? 'the completed report was not bound to a meeting'
+            : 'the completed report was bound to the named meeting; its say became that member\'s speech (see executed[].onBehalf)',
+          fields: done.fields, executed: (done.executed || []).length, skipped: (done.skipped || []).length, effects: (done.effects || []).slice(), coercions: (done.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
           turn: done.turn ? done.turn.id : null, source: 'tool' }
       } catch (e) {
         const code = (e && e.code) || null
@@ -2336,8 +2368,12 @@ export function createTurnOrchestrator({
           // institute saw `"skipped":1` with all four detail fields ABSENT (and `receiptMeta.truncated:false`, proving
           // nothing was cut). A reading that exists on one of three routes is not a mechanism; the same four fields are
           // emitted here, built from the same recorded detail.
-          receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, fields: r.fields,
-            executed: (r.executed || []).length, skipped: (r.skipped || []).length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, instructionDelivered: false,
+          meeting: r.meeting === undefined ? null : r.meeting,
+          meetingMeans: (r.meeting === undefined || r.meeting === null)
+            ? 'the completed report was NOT bound to a meeting, so a bare say was kept (see receipt.notes), never dispatched'
+            : 'the completed report was bound to the named meeting: the member\'s bare say was recorded as THAT MEMBER\'S speech (see receipt.executed[].onBehalf)',
+          receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, meeting: r.meeting === undefined ? null : r.meeting, fields: r.fields,
+            executed: (r.executed || []).length, executedDetail: (r.executed || []).slice(0, 5), skipped: (r.skipped || []).length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, instructionDelivered: false,
             skippedDetail: (r.skipped || []).slice(0, 5),
             skippedDetailTruncated: (r.skipped || []).length > 5,
             notes: (r.notes || []).slice(0, 5),
@@ -2606,9 +2642,12 @@ export function createTurnOrchestrator({
 export const hasMeetingRef = (payload) =>
   !!(payload && payload.meeting !== undefined && payload.meeting !== null && payload.meeting !== '')
 
-export const dispatchSkipReason = (d) => {
+export const dispatchSkipReason = (d, opts = null) => {
   if (!d || typeof d !== 'object') return null
-  if (d.face === 'vmu.meetings' && d.op === 'speak' && !hasMeetingRef(d.payload)) {
+  // ★ 用户裁决 B 第 2 步：会议**绑定**在时，「这句话没有会议可依附」不再成立 —— KERNEL 会把 meeting/member/text 补齐，
+  // 所以这条跳过必须让路；没有绑定才跳过（旧行为一字不改）。
+  const bound = opts && opts.boundMeeting !== undefined && opts.boundMeeting !== null && String(opts.boundMeeting).trim() !== ''
+  if (!bound && d.face === 'vmu.meetings' && d.op === 'speak' && !hasMeetingRef(d.payload)) {
     return {
       reason: 'no-meeting-bound',
       note: 'this turn has no meeting, so a speech has nothing to attach to (the prompt allows `say` as the explanation for speech already made through vibe_v5_say); the line is KEPT, see `notes`',

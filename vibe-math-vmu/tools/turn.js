@@ -241,7 +241,10 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         // VMU_TURN_UNKNOWN_FIELD, reply_for mismatch ⇒ VMU_INVALID_ARGUMENT); this face must not re-decide any of it -
         // it only maps the thrown refusal into the tool's returned shape, hint untouched.
         try {
-          return await kernel.turn.supplyStructuredReply(report, { forMember })
+          // ★ 用户裁决 B 第 2 步：所办替成员跑一轮时，可以指名这一轮属于哪场会议 —— 于是成员那句 say 被记成
+          // 成员本人的发言（onBehalf），而不是躺在 notes 里。不传就保持原行为（回执说明为什么没派发）。
+          const forMeeting = typeof args.meeting === 'string' && args.meeting.trim() !== '' ? args.meeting.trim() : null
+          return await kernel.turn.supplyStructuredReply(report, { forMember, meeting: forMeeting })
         } catch (e) {
           return refused((e && e.code) || 'VMU_ENGINE_UNAVAILABLE', (e && e.message) || String(e), (e && e.hint) || null)
         }
@@ -437,6 +440,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
         why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
         reply_for: param('string', '★ 这个回复属于哪个成员（它的提示词是上一次 step 交回的那个）；不传 = 沿用旧行为'),
+        meeting: param('string', '★ op:"reply" 用：这一轮属于哪场会议。给了，成员的 say 就被记成「该成员本人」的发言（回执 executed[].onBehalf），并且要求该成员已在会中（未到会者由内核具名拒）。不传 = 不绑定，say 只进 notes 并在回执说明原因'),
         // ★★★★★★★ LANE turn-reply: THE REPORT ITSELF. The field names below are DERIVED from the kernel's field table
         // (see the import at the top of this file), never hand-copied; the JSON type of each field is the dispatcher's
         // business (the kernel's field gate refuses what it cannot dispatch), so this schema declares only the ONE legal
