@@ -21,6 +21,10 @@ import { createPaperSubsystem, PAPER_CONSULT_ROLES } from './paper.js'
 // ★ GOAL ROUND 3 (rule conformance): the meeting TYPE catalog and the recommended procedure skeletons are INSTITUTION
 // vocabulary, so they live in this pack (`./meeting-procedures.js`) — the kernel only carries the type string.
 import { MEETING_TYPE_IDS, meetingTypeOf, procedureFor } from './meeting-procedures.js'
+// ★ RUN 51 residue #4 (design: docs/acceptance/conformance/member-scope-design.md): WHICH FACE a seat may call is
+// INstitution vocabulary, so the table lives in this pack and the derived lists come from it — one source, two
+// readers (the narrowing below and the gate in tests/audit-member-scope.test.mjs).
+import { applyMemberScope, MEMBER_SCOPE_NOTE } from './member-scope.js'
 // ★ PHASE 12 / D7 (second sentence)：「成员可用的命令按会议类型不同」。`kernel/turn.step` 早就能收窄一轮的工具面
 // （`{tools:{allow}}` → `setMemberToolOverride`），但 pack 侧没有生产者 —— 提示词不是门禁。`./meeting-tool-face.js`
 // 是这张**机构政策表**（哪类会议收窄、收窄到哪些工具）＋"只能收窄不能扩大"的求交；本文件只负责把它装到一轮上。
@@ -236,7 +240,8 @@ async function toolHire(args = {}, { kernel } = {}) {
       idRegistry: 'task-board',
       idMeans: 'task ids are minted by the TASK board (`t-<n>`); the TURN store mints `t-<n>` from ITS own counter, so a bare id is ambiguous across receipts — this field names the table, and `memberPrompt.turnIdRegistry` names the other one',
     })
-  return { ok: true, tool: 'vibe_v5_hire', member: str(args.to), slot, slotRequested: slot, hired, task: taskWithRegistry,
+  const memberScope = applyMemberScope({ kernel, members: [str(args.to)] })
+  return { ok: true, tool: 'vibe_v5_hire', member: str(args.to), slot, slotRequested: slot, hired, task: taskWithRegistry, memberScope,
     note: 'direction/term are onboarding prose in the original and roster data here, so they are not stored by this tool' }
 }
 
@@ -1857,7 +1862,10 @@ async function toolStart(args = {}, { kernel } = {}) {
   const started = typeof kernel.start === 'function' ? await kernel.start() : null
   const applied = []
   if (has(args.problem)) applied.push(applyDeclaredSetting(kernel, 'vmu.turn.objective', str(args.problem)))
-  return { ok: true, tool: 'vibe_v5_start', hired, started, applied,
+  // ★ The seats seeded here are the ones a run will actually drive, so the scope is applied AT SEATING TIME rather
+  // than left to whichever later call happens to remember. `memberScope` carries the seam's answer by name.
+  const memberScope = applyMemberScope({ kernel, members: hired })
+  return { ok: true, tool: 'vibe_v5_start', hired, started, applied, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE,
     note: 'seedDirections are roster data here (the charter reads a member\'s direction), so they are not stored by this tool — reported, not silently dropped' }
 }
 

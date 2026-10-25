@@ -730,6 +730,7 @@
     "vibe-math-vmu/packs/v5r/blueprint.js",
     "vibe-math-vmu/packs/v5r/index.js",
     "vibe-math-vmu/packs/v5r/meeting-procedures.js",
+    "vibe-math-vmu/packs/v5r/member-scope.js",
     "vibe-math-vmu/packs/v5r/leadership.js",
     "vibe-math-vmu/packs/v5r/meeting-tool-face.js",
     "vibe-math-vmu/packs/v5r/middleware/artifact-counter.js",

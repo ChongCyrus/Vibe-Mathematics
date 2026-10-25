@@ -262,6 +262,44 @@
         name: "Vibe Math Unify · 成员席"
         description: "vmu 的「成员席」预设：与 vibe-math-vmu 同一套框架能力（会议/表决/任务/归档/提示词管线/计算与形式化/资源与安全），但去掉了六类宿主出口 —— shell（bash/pwsh）、后台作业、自我分派子代理、联网读网页、直接问用户、以及人类的 /goal 目标环。理由是可测量的：成员做研究用的是 pack 工具（实测一个成员会话 20/20 次全走 pack、零宿主调用），而 shell 才是那条让成员读到宿主 app.asar 的逃逸通道；计算走 vibe_vmu_bridge（内核校验请求、超时、结构化结果、具名拒），Lean 走 pack 的 lean 面，向用户提要求只走「报告所办」这一条规则通道。"
         order: 26
+        packToolAllow:
+          - vibe_v5_assign
+          - vibe_v5_blueprint
+          - vibe_v5_feedback
+          - vibe_v5_fidelity_conclude
+          - vibe_v5_fire
+          - vibe_v5_hire
+          - vibe_v5_inbox
+          - vibe_v5_lean_archive
+          - vibe_v5_lean_job
+          - vibe_v5_lean_lib
+          - vibe_v5_lean_read
+          - vibe_v5_lean_run
+          - vibe_v5_meeting
+          - vibe_v5_meeting_round
+          - vibe_v5_message
+          - vibe_v5_motion
+          - vibe_v5_nudge
+          - vibe_v5_paper
+          - vibe_v5_poll_close
+          - vibe_v5_poll_open
+          - vibe_v5_poll_vote
+          - vibe_v5_prioritize
+          - vibe_v5_read_library
+          - vibe_v5_record_method
+          - vibe_v5_record_progress
+          - vibe_v5_record_proposition
+          - vibe_v5_record_subproblem
+          - vibe_v5_say
+          - vibe_v5_script
+          - vibe_v5_second
+          - vibe_v5_task_create
+          - vibe_v5_task_get
+          - vibe_v5_task_list
+          - vibe_v5_task_update
+          - vibe_v5_tool_help
+          - vibe_v5_verdict
+          - vibe_v5_wait
         plugins:
           # The `vibe-math-vmu` agent preset (vibe-math-unify): the full coding agent (`standard`),
           # plus the vmu FRAMEWORK.

@@ -23,6 +23,16 @@ const VERSIONS = ['vmu']
 const OUT = join(REPO, 'cordis.patch.yml')
 
 /**
+ * THE MEMBER SEAT'S PACK-TOOL ALLOW-LIST is DERIVED from the pack's own declaration, never hand-copied here.
+ * Why: run 51/53 measured the child calling `vibe_v5_verdict_final`, which a fresh child kernel must refuse with
+ * `VMU_NO_SUCH_OBJECT` — so the pack's rule 「本轮的最终裁决不得由代笔执行」 was enforced by a MISNAMED refusal instead of
+ * by the child's wire. The framework cannot import a pack (docs/01 R1: the kernel holds no policy), so the row carries
+ * `packToolAllow` and `host.js#toolSpecs` filters registration by it. `member-scope.js` is the single source of the
+ * distinction (office-only vs seat-safe), and this import is the derivation that keeps the row honest.
+ */
+const { MEMBER_SAFE_TOOLS } = await import('../vibe-math-vmu/packs/v5r/member-scope.js')
+
+/**
  * Every preset id this patch DECLARES — derived from the same two decisions that emit the sections, so a consumer
  * (tests/audit-preset-rows.test.mjs's set-equality row check) cannot drift from the generator.
  */
@@ -223,6 +233,8 @@ ${buildComposition(v)}`
         name: ${JSON.stringify(memberMeta.name + ' · 成员席')}
         description: ${JSON.stringify(memberDescription)}
         order: 26
+        packToolAllow:
+${MEMBER_SAFE_TOOLS.map((n) => '          - ' + n).join('\n')}
         plugins:
 ${buildComposition('vmu', MEMBER_DROP)}`
   return head + sections + memberSection

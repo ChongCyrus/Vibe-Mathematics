@@ -3789,3 +3789,49 @@ transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-150803.jsonl`（build 
 于是提示词教它调用的 `vibe_v5_verdict(target="b-1-…")` / `vibe_v5_poll_vote` 被 `VMU_NO_SUCH_OBJECT` 拒。
 这是**架构级缺口**（要么把子内核桥接到父内核，要么让提示词不承诺子会话拿不到的机构级状态），
 不是本轮能顺手改掉的；按 F5 的顺序纪律，**先定机制、再改提示词**，所以下一轮先在设计上裁决。
+
+## §97 第 5 条残余的后半：成员子会话「被提供」了它永远跑不通的面孔
+
+§96 修的是**读数**（子会话 id 学到了、`vibe_vmu_tools` 能回答）。这一节修的是**线束本身**：子会话一开始就不该被提供那些面孔。
+
+### 97.1 缺陷（第 51 次真机跑自己的报告，verbatim）
+> 「`vibe_v5_verdict_final` 在成员会话里返回 `VMU_NO_SUCH_OBJECT`（没有这个对象）—— 这是错误的错误名」
+
+这是「机制没有消费者」的一个变体：v5r 的规则「本轮的最终裁决不得由代笔执行」**确实**被执行了，但执行它的是一个**拿错名字的拒绝**——
+子会话一启动就是**一个空内核**（没有所办的状态），所以任何 office-only 面孔在子会话里都只能以 `VMU_NO_SUCH_OBJECT` 收场。
+成员于是把它当成缺陷上报（这次它报对了方向，报错了归属）。
+
+### 97.2 三片机制（缺一片就是装饰）
+1. **声明（pack 侧）**：`vibe-math-vmu/packs/v5r/member-scope.js`
+   `TOOL_SCOPES`（一行一个 pack 工具：`member` / `office` / `both`），
+   `MEMBER_SAFE_TOOLS` 与 `OFFICE_ONLY_TOOLS` 都是**派生**的（`Object.keys(...).filter(...).sort()`），从不手写；
+   `scopeCatalogue(availableNames)` 做**双向**比对（表覆盖目录、且表里没有已不存在的名字）。
+2. **派生（生成物）**：`scripts/build-preset-rows.mjs` 用 `await import('../vibe-math-vmu/packs/v5r/member-scope.js')`
+   取 `MEMBER_SAFE_TOOLS`，把它写进成员席的行 `packToolAllow:`。**没有手抄**——手抄会在下一次改动时漂移，而漂移的线束比不收窄更坏。
+3. **消费（框架侧）**：`vibe-math-vmu/host.js#toolSpecs` 读 `config.packToolAllow`，把它交给**唯一的 pack 工具漏斗**
+   `host-pack-tools.js#appendPackToolSpecs(..., { allow })`；漏斗把没被允许的名字收进 `withheld` 并**说出来**，
+   `toolSpecs` 再把结果记在 `specs.packToolScope = { allow, applied, withheld }`——一个断言，不是一片沉默。
+
+方向性（为什么这样分层）：框架不许 import 某个 pack（docs/01 R1「内核不含策略」），所以名单只能**经配置**进入；
+而配置的价值取决于它**由声明派生**，所以第 2 片必须在生成器里，而不是在 YAML 里手写。
+
+### 97.3 门禁 `tests/vmu-member-wire.test.mjs`（24 断言，0 fail）
+- ① 两个作用域**互斥**（`MEMBER_SAFE_TOOLS ∩ OFFICE_ONLY_TOOLS = ∅`）；席位面 ≥ 20；office-only ≥ 10；
+  `vibe_v5_verdict_final` 不在席位面、且表里标 `office`；未分类的名字返回 `unknown`（新面孔不会默认落进席位）。
+- ③ **行为断言**：`appendPackToolSpecs([], entries, [], null)` 不收窄（所办行）；`{allow:['a','c']}` ⇒ appended `a,c`、**withheld 说出 `b`**；
+  每个 entry 都被记账（appended+withheld = 全部）；保留名即使被 allow 也不发布（碰撞优先）。
+- ② 行与声明是**同一个集合**：从 `cordis.patch.yml` 的成员行解析出 `packToolAllow`，与 `MEMBER_SAFE_TOOLS` 双向相等；
+  成员行**不含** `vibe_v5_verdict_final`；**所办行不含** `packToolAllow`（否则所办自己也被收窄）。
+- 生成器里必须有那句 `await import(...)`（派生是真的，不是承诺）；`host.js` 必须读 `config.packToolAllow`、传给那个漏斗、并记录 `specs.packToolScope`。
+
+### 97.4 两处注册（这类模块的老坑）
+新文件同时进了 `package.json#files` 与 `installer.js` 的 `files:` 列表——只进一处时，**发布包装出来会 MODULE_NOT_FOUND**，
+而仓内测试永远是绿的（`tests/audit-package-membership.mjs` 29/0、`audit-installer-policy` 90/0、`audit-installer-compat` 77/0 之后才敢说「接好了」）。
+
+### 97.5 边界（不夸大）
+- 这条名单只管 **pack 工具**。子会话的**宿主流出口**（shell / 后台作业 / 自我分派 / 联网 / 问用户 / /goal）是被**预设组合**去掉的
+  （`MEMBER_DROP` 六行，生成器里可审计），不是这条名单干的。
+- 运行期还有一条**更早**的收窄（`applyMemberScope`，所办代演成员时用）；本节讲的是**注册期**的收窄，两者目的不同、互不替代：
+  前者管「这一回合谁在打字」，后者管「这个席位的线束里有没有这条工具」。
+- **真机验证还没做**：下一次多智能体跑要读子会话的 wire，确认 `vibe_v5_verdict_final` 不在里面、且成员不再报这条。
+  在那之前，本节只声明「代码与生成物一致、行为由 24 条断言钉住」，不声明「真机上已生效」。

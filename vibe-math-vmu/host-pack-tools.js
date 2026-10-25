@@ -269,13 +269,16 @@ export function makePackToolSpec({ entry, kernel = null, packId = null } = {}) {
  * the caller's; nothing is registered here. Returns the names it appended, for a caller that
  * wants to state what the declaration produced.
  */
-export function appendPackToolSpecs(specs = [], entries = [], reserved = [], kernel = null) {
+export function appendPackToolSpecs(specs = [], entries = [], reserved = [], kernel = null, { allow = null } = {}) {
   const collisions = new Set(packToolCollisions(entries, reserved))
+  const allowed = Array.isArray(allow) ? new Set(allow) : null
   const appended = []
+  const withheld = []
   for (const entry of Array.isArray(entries) ? entries : []) {
     if (!entry || typeof entry.name !== 'string' || collisions.has(entry.name)) continue
+    if (allowed && !allowed.has(entry.name)) { withheld.push(entry.name); continue }
     specs.push(makePackToolSpec({ entry, kernel }))
     appended.push(entry.name)
   }
-  return { appended, collisions: [...collisions] }
+  return { appended, collisions: [...collisions], withheld }
 }

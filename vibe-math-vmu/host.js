@@ -1103,7 +1103,28 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
 
   // PHASE 6 / P0-10 — PACK-DECLARED TOOLS: the NAMES come from the pack manifest (`tools[]`), never from this file
   // (a second institution publishes its own names without editing the framework); a collision is NAMED by doInstall.
-  appendPackToolSpecs(specs, (kernel && typeof kernel.packTools === 'function') ? kernel.packTools() : [], Object.values(TOOL_NAMES), kernel)
+  // PHASE 13 / R7 - THE CHILD WIRE: a member seat must not be OFFERED a face it can neither run nor see (measured in
+  // runs 51/53: the child called `vibe_v5_verdict_final`, got a fresh kernel's `VMU_NO_SUCH_OBJECT`, and reported the
+  // misnamed refusal as a defect). The framework must not know the pack, so the list arrives as CONFIG
+  // (`packToolAllow`) and the preset row DERIVES it from the pack's own `MEMBER_SAFE_TOOLS` declaration
+  // (`scripts/build-preset-rows.mjs`). A row that says nothing narrows nothing, so the office row is unchanged.
+  const packToolAllow = (Array.isArray(config.packToolAllow) && config.packToolAllow.length > 0) ? config.packToolAllow : null
+  const packToolScope = appendPackToolSpecs(
+    specs,
+    (kernel && typeof kernel.packTools === 'function') ? kernel.packTools() : [],
+    Object.values(TOOL_NAMES),
+    kernel,
+    { allow: packToolAllow },
+  )
+  // The narrowing is a claim that must be readable from outside the registration: `specs.packToolScope` states what
+  // the config allowed and what was withheld, and `tests/vmu-member-wire.test.mjs` reads it.
+  specs.packToolScope = {
+    allow: packToolAllow,
+    applied: packToolAllow ? packToolScope.appended.filter((n) => packToolAllow.includes(n)) : [],
+    withheld: packToolAllow ? packToolScope.withheld : [],
+  }
+
+
 
   // ROUND 26 / task-141 — PROVENANCE ON EVERY TOOL, attached at the ONE place that has both the tool's name and the
   // face decision. Measured defect: the receipt's `faces.published` listed the tools of THIS evaluation only, while
