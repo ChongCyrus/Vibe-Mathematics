@@ -187,6 +187,44 @@ const untouched = await tool6.run({ op: 'prompt' })
 ok(untouched.ok === false && /has been assembled in this process yet/.test(String(untouched.message)),
   '★ a process with NO round yet still gets the plain refusal (the new sentence is not applied blindly)', untouched.message)
 
+
+console.log('=== 8. LIVE RUN 51 ITEM 3: AN ACTIVATION TURN IS READABLE THROUGH THE KERNEL ARCHIVE ===')
+// The institute reported it could not read the prompt it never saw: in activation mode the text goes to the CHILD,
+// so this face never cached it and `op:"prompt"` refused while promising paged access. The kernel builds the text on
+// every delivery path, so the kernel keeps it; the face asks the kernel before refusing.
+const ACT = Array.from({ length: 1500 }, (_, i) => 'act' + i + ':' + 'y'.repeat(9)).join('\n')
+const kernelArchive = new Map()
+const activationKernel = {
+  turn: {
+    status: () => ({ ok: true }),
+    step: async () => {
+      kernelArchive.set('t-9', { turnId: 't-9', member: 'r-1', chars: ACT.length, text: ACT })
+      return { ok: true, awaiting: false, turn: { id: 't-9' }, delivery: { path: 'activation', childId: 'agent-za', stopReason: 'completed' } }
+    },
+    promptOf: (id) => kernelArchive.get(String(id)) || null,
+    promptTurns: () => Array.from(kernelArchive.keys()),
+  },
+}
+const tool7 = makeTurnSpec({ param, refused, TOOL_NAMES: { turn: "vibe_vmu_turn" }, kernel: activationKernel })
+const act = await tool7.run({ op: 'step' })
+ok(act.ok === true && act.awaiting === false && !(act.memberPrompt && typeof act.memberPrompt.text === 'string'),
+  '★ the activation receipt does NOT carry the prompt text (so the face cache cannot be what serves the read)', act && act.memberPrompt)
+const actPage = await tool7.run({ op: 'prompt', turn: 't-9' })
+ok(actPage.ok === true, '★★★ the prompt of an ACTIVATION turn is readable (live run 51 item 3: it refused before)', actPage.code || actPage.message)
+ok(actPage.ok === true && actPage.chars === ACT.length, '★ and the total is the full length, not the page', actPage.chars)
+const actParts = [actPage.text]
+let actCur = actPage
+let actGuard = 0
+while (actCur.done === false && actGuard < 50) { actCur = await tool7.run({ op: 'prompt', turn: 't-9', offset: actCur.nextOffset, limit: 9000 }); actParts.push(actCur.text); actGuard += 1 }
+ok(actParts.join('') === ACT, '★★ the pages reassemble the activation prompt byte for byte', { got: actParts.join('').length, want: ACT.length })
+const actDefault = await tool7.run({ op: 'prompt' })
+ok(actDefault.ok === true && actDefault.turn === 't-9', '★ with no turn named it defaults to the kernel archive last entry', actDefault.turn)
+// TEETH: a kernel WITHOUT the archive must still refuse by name - the new path may not turn a missing prompt into a page.
+const noArchive = makeTurnSpec({ param, refused, TOOL_NAMES: { turn: "vibe_vmu_turn" },
+  kernel: { turn: { status: () => ({ ok: true }), step: async () => ({ ok: true, awaiting: false, turn: { id: 't-10' }, delivery: { path: 'activation' } }) } } })
+await noArchive.run({ op: 'step' })
+const teeth = await noArchive.run({ op: 'prompt', turn: 't-10' })
+ok(teeth.ok === false && teeth.code === 'VMU_NO_SUCH_OBJECT', '★★ a kernel with no archive still REFUSES (a missing prompt is never answered with a plausible page)', teeth.code)
 console.log('')
 console.log(failed === 0
   ? '=== VMU TURN PROMPT PAGING: ' + passed + ' passed, 0 failed ==='

@@ -3661,3 +3661,50 @@ transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-150803.jsonl`（build 
 3. **#3 提示词缓存**：结算时不要把保留条目清空；`retained turns` 至少要覆盖本轮所有已结算回合（现在 4 个回合就空了）。
 4. **#5 live Agent 登记**：`activation` 子会话也要登记到成员 → 子会话映射，让 `vibe_vmu_tools{member}` 能读到它的 wire。
 5. #1 是我 brief 的错，改 brief 用语即可；同时把「成员回合回执的段名是 `delivery`/`delegation`」写进 `vibe-math-vmu/docs`。
+
+## §94 第 51 次真机跑的五条残余：第 1 条（`settlement`）与第 3 条（激活模式下分页读提示词）修好，并被一个潜伏的 ReferenceError 挡住去路
+
+### §94.1 第 1 条：`settlement` 承诺而不到达（真机实测 0 次）
+
+第 51 次跑（已结题，`cast:true` 来自 3 张成员回复票）的自查报告第 1 条说：`vibe_vmu_turn` 的工具描述承诺回执里有 `settlement`，
+而它在整条 transcript 里出现 **0 次**。我先把别名挂上去（`settlement` = `delegation` 的同一对象，带 `aliasOf`），再跑一次真机，
+结果 **仍是 0 次** —— 这就是本轮最贵的一课：挂上去 ≠ 到得去。
+
+根因：`step()` 有三条返回路径。别名只挂在「单回合」那条的 `rememberPrompt(...)` 上；而真机上所办走的是**批量路径**
+（`receipts: [...]`），于是别名被绕过。修法不是「再挂一处」，而是把「每一份交给调用方的回合回执」定义成一个函数：
+`vibe-math-vmu/kernel/turn/index.js` 新增 `withSettlement(receipt)`，`step()` 的每一条返回路径（批量、单回合、
+压缩摘要、`no-members` 拒）全部经它盖章；`vibe-math-vmu/tools/turn.js` 的 `settleTurn()` 再按 `aliasOf` 校验别名与本体确实是同一份对象。
+
+**为什么值得这一层**：一个字段「声明了却只在一个分支出现」是红线 ④（无消费者/半消费者）的典型形态 ——
+工具描述是全所唯一能读的契约，契约与实现差一条路径，读契约的人就永远等不到那个键。
+
+### §94.2 第 3 条：激活投递下 `op:"prompt"` 读不到提示词
+
+第 51 次跑全部走 ACTIVATION（子会话），回执只带 `memberPrompt.turnId/chars`、不带正文（正文进了子会话），
+所以本面的缓存永远是空的，`op:"prompt"` 只能拒。内核其实**两条路径都存了正文**（`promptOf(id)`），
+本面却只认自己那份缓存。修：`vibe-math-vmu/tools/turn.js` 的 `op:"prompt"` 在拒绝之前先问内核（`kernelTextOf`），
+「存在的提示词」不再被报成「不存在」；`tests/vmu-turn-prompt-paging.test.mjs` 新增第 8 节（真实激活形状：本面无缓存、内核有档），
+断言页能拼回原文、`turn` 是真实 id、未知 id 仍是具名拒且 hint 列出仍保留的回合。套件 30→**39/0**。
+
+### §94.3 ★ 一个潜伏了三轮的 `ReferenceError`（`node --check` 抓不到的那种）
+
+写第 3 条的断言时，分页套件在「等待中子回合」的形状上崩了：`ReferenceError: cfg is not defined`。
+`vibe-math-vmu/tools/turn.js` 的 `delegation` 字面量写着 `preset: (cfg && cfg.deliverPreset) || null`，
+而 `cfg` 是**宿主**的变量 —— 这个 spec 在第 538 轮从 `host.js` 拆出来时没带走它。
+`node --check` 只查语法，查不出未定义标识符，所以它从 `9172dfd1`（第 44 次跑那条 b-4 修复）起一直躺在那里，
+只在**调用方扮演 + 等待中**这条路径上炸，而最近几轮真机都走激活投递，没人踩到。
+
+修法讲边界而不是猜：`preset` 改为 `null` 并加 `presetMeans` —— 本面不读宿主配置，
+「等待中」时它无权命名这个 preset；**结案**回执里的 `delivery.childPreset` 才是那个事实（那里 `null` 表示继承调用方 preset）。
+
+### §94.4 门禁与集合
+
+- `tests/vmu-turn-prompt-paging.test.mjs` **39/0**（第 8 节为新增的激活形状）；
+- `tests/vmu-turn.test.mjs` **257/0**（既有断言全绿，含等待中形状）；
+- `tests/vmu-kernel.test.mjs` 260/0、`tests/vmu-v5r-tools.test.mjs` 354/0（邻居未受影响）。
+
+### §94.5 教训
+
+1. **「修了」必须用真机读数证明**：别名挂上去之后我跑了第 52 次真机，`settlement` 仍是 0 —— 若只看单测，这一条会被记成「已修」。
+2. **一个字段有多条返回路径时，断言要落在「每一条都经过同一个盖章函数」上**，而不是「某个分支里有这个键」。
+3. **未定义标识符是语法检查的盲区**：`node --check` 过了不等于模块能跑，凡是新写进字面量的名字都要有一个真实的形状测试。

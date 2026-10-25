@@ -877,6 +877,24 @@ export function createTurnOrchestrator({
    * without being told — the same reason the caller-played seam keeps `pendingPrompt`.
    */
   let inFlightTurn = null
+  /**
+   * ★★★ LIVE RUN 51 (the institute own report, item 3): the assembled member prompt was UNREADABLE in activation
+   * mode. `tools/turn.js` caches the text only when the receipt carries `memberPrompt.text`, and an activation receipt
+   * carries no such field (the text went to the child session) - so after four settled rounds the cache was EMPTY and
+   * `op:"prompt"` refused with "no retained turn" while the same tool promises paged access. The assembled text is a
+   * KERNEL fact (the kernel built it), so the kernel keeps it: a bounded archive keyed by turn id, written on BOTH
+   * delivery paths. The face reads it when its own cache misses; nothing about the receipt shape changes.
+   */
+  const PROMPT_ARCHIVE_CAP = 12
+  const promptArchive = new Map()
+  const archivePrompt = (turnId, member, text) => {
+    const id = turnId === undefined || turnId === null || turnId === '' ? null : String(turnId)
+    if (id === null || typeof text !== 'string' || text === '') return null
+    promptArchive.delete(id)
+    promptArchive.set(id, { turnId: id, member: member === undefined || member === null ? null : String(member), chars: text.length, text })
+    while (promptArchive.size > PROMPT_ARCHIVE_CAP) promptArchive.delete(promptArchive.keys().next().value)
+    return id
+  }
 
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
 
@@ -1705,6 +1723,7 @@ export function createTurnOrchestrator({
     inFlightTurn = turn
     try {
       const asm = await assemble(turn)
+      archivePrompt(turn && turn.id, turn && turn.member, asm && asm.text)
       const raw = await deliverTurn(turn, asm.text)
       // ★ LIVE RUN 2026-10-25: THE RECEIPT COULD NOT SAY WHO EXECUTED THE TURN. The delivery seam returns
       // `{ reply, childId, stopReason, attribution, deliveryPath }` (kernel/turn/index.js:556-614), and the caller-played
@@ -2332,7 +2351,18 @@ export function createTurnOrchestrator({
     // ROUND 4 / F9+F10: the ongoing-command verbs, plus the observable state behind them.
     sendToMember, interruptMember,
     attribution: () => Object.assign({}, lastAttribution),
-    memberSession: (member) => memberSessions.get(String(member)) || null,
+    /**
+     * ★ LIVE RUN 51 item 3: READ BACK AN ASSEMBLED PROMPT BY TURN ID. The archive is written on every delivery path,
+     * so an activation (child-session) turn is readable here just like a caller-played one. `null` when the turn is
+     * not retained - the caller then names the retained ids with `promptTurns()` instead of guessing.
+     */
+    promptOf: (turnId) => {
+      const id = turnId === undefined || turnId === null ? null : String(turnId)
+      if (id === null) return null
+      const hit = promptArchive.get(id)
+      return hit ? Object.assign({}, hit) : null
+    },
+    promptTurns: () => Array.from(promptArchive.keys()),    memberSession: (member) => memberSessions.get(String(member)) || null,
     setVisibleToolsProvider: (fn) => { visibleToolsFor = typeof fn === 'function' ? fn : null; return { ok: true, installed: typeof visibleToolsFor === 'function' } },
     /** ★ PHASE 7: ask what a member can REALLY see. No provider / no answer is a NAMED refusal, not []. */
     visibleToolsOf: (member) => {

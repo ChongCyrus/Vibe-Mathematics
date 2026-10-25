@@ -127,21 +127,32 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         const want = args.turn === undefined || args.turn === null || args.turn === '' ? null : String(args.turn)
         let id = want
         let text = null
+        // ★ LIVE RUN 51 item 3: THE KERNEL KEEPS THE ASSEMBLED TEXT ON EVERY DELIVERY PATH. This face caches it only when
+        // the receipt carries `memberPrompt.text`, which an ACTIVATION receipt never does (the text went to the child
+        // session), so after four settled rounds the cache was empty and `op:"prompt"` refused while the tool promises
+        // paged access. Ask the kernel before refusing: a prompt that exists is not a prompt that may be reported missing.
+        const kernelTurns = kernel.turn && typeof kernel.turn.promptTurns === 'function' ? kernel.turn.promptTurns() : []
+        const kernelTextOf = (tid) => {
+          if (!kernel.turn || typeof kernel.turn.promptOf !== 'function') return null
+          const hit = kernel.turn.promptOf(tid)
+          return hit && typeof hit.text === 'string' ? hit.text : null
+        }
         if (id === null) {
-          if (promptCache.size === 0) {
+          if (promptCache.size === 0 && kernelTurns.length === 0) {
             if (lastPromptMode === 'activation') {
               return refused('VMU_STATE', 'no member prompt was RETAINED: this face delivers in ACTIVATION mode, so the assembled prompt was handed to the child session and never returned here',
                 'paging (op:"prompt") covers the CALLER-PLAYED route - set `vmu.turn.deliverMode:"caller"` and re-run to page prompts; the activation receipt names the child it went to')
             }
             return refused('VMU_STATE', 'no member prompt has been assembled in this process yet, so there is nothing to page',
               'run op:"step" first - the prompt that step hands you is the one this op pages')
-          }          id = Array.from(promptCache.keys()).pop()
-          text = promptCache.get(id)
+          }
+          id = promptCache.size ? Array.from(promptCache.keys()).pop() : kernelTurns[kernelTurns.length - 1]
+          text = promptCache.get(id) || kernelTextOf(id)
         } else {
-          text = promptCache.get(id) || null
+          text = promptCache.get(id) || kernelTextOf(id)
           if (text === null) {
             return refused('VMU_NO_SUCH_OBJECT', 'no assembled member prompt is retained for turn ' + id,
-              'retained turns: ' + (promptCache.size ? Array.from(promptCache.keys()).join(', ') : '(none - the cache is per process and bounded to the last ' + PROMPT_CACHE_LIMIT + ')'))
+              'retained turns: ' + (promptCache.size || (kernel.turn && typeof kernel.turn.promptTurns === 'function' && kernel.turn.promptTurns().length) ? Array.from(new Set(Array.from(promptCache.keys()).concat(kernel.turn && typeof kernel.turn.promptTurns === 'function' ? kernel.turn.promptTurns() : []))).join(', ') : '(none in this process: the face cache is bounded to ' + PROMPT_CACHE_LIMIT + ' and the kernel archive to its own cap)'))
           }
         }
         const asInt = (v, dflt) => {
@@ -295,12 +306,18 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
               seam: 'setMemberToolOverride', note: 'reported by the turn face: the seam was set for these members before the round and cleared after it; the actual wire is narrowed by the pull resolver on its next request, which this face cannot read' } })
             : stepped
           // ★★★ b-4 (live run 44): the office DELEGATED this turn but the receipt never named what it delegated. The id
-          // and the size exist; the preset comes from the live config. childId stays null while awaiting and the field
-          // says so, because inventing it would be the class of lie this phase exists to remove.
+          // and the size exist; childId stays null while awaiting and the field says so, because inventing it would be the
+          // class of lie this phase exists to remove.
+          // ★★★ LIVE RUN 52 (found by node --check turning into a ReferenceError on the awaiting path): this block named
+          // `cfg.deliverPreset`, and `cfg` is NOT in this module's scope — it was the HOST's variable before this spec was
+          // split out of host.js. So every caller-played awaiting step would have thrown. The preset is not this face's
+          // fact: the host puts it on the child CREATION request, and the SETTLED receipt names it in
+          // `delivery.childPreset`. Claiming it here would be guessing, so it is null and it says why.
           const delegated = withOverride && withOverride.awaiting === true
             ? Object.freeze({
               mode: 'subagents',
-              preset: (cfg && cfg.deliverPreset) || null,
+              preset: null,
+              presetMeans: 'this face does not read the host config, so it cannot name the preset while the turn is still awaiting; the SETTLED receipt carries it as delivery.childPreset (null there means: inherit the caller preset)',
               turnId: (withOverride.memberPrompt && withOverride.memberPrompt.turnId) || null,
               promptChars: withOverride.memberPrompt && typeof withOverride.memberPrompt.chars === 'number' ? withOverride.memberPrompt.chars : null,
               childId: withOverride.childId || null,
