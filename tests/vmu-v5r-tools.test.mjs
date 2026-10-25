@@ -1260,6 +1260,11 @@ try {
   try { a1Svc.vote({ meeting: a1Mid, member: 'r-temp-1', motion: a1MoId, value: 1 }) } catch (e) { a1TempVote = e }
   ok(a1TempVote && a1TempVote.code === 'VMU_NOT_PERMITTED' && Array.isArray(a1TempVote.enforced) && a1TempVote.enforced.includes('vmu.meetings.eligibleSeats'),
     '★ A1③[service]: the TEMP seat is refused by the declared seats, and the refusal names the key in enforced[]', a1TempVote && { code: a1TempVote.code, enforced: a1TempVote.enforced })
+  // ★ LIVE RUN 18 / §109: the quorum floor now has a SOURCE and the pack declares `universe`, so a vote in a 3-seat
+  // house needs the three eligible seats PRESENT (m = min(setting, 院士+常驻)). The old fixture voted with the chair
+  // alone and expected it to count - that expectation encoded the missing floor. Seat the residents first.
+  a1Svc.attend({ meeting: a1Mid, member: 'r-1' })
+  a1Svc.attend({ meeting: a1Mid, member: 'r-2' })
   const a1ChairVote = a1Svc.vote({ meeting: a1Mid, member: chairId, motion: a1MoId, value: 1 })
   ok(a1ChairVote && a1ChairVote.counted === true && a1ChairVote.tally.for === 1,
     '★ A1③[service] 正: a declared voter seat still counts', a1ChairVote && a1ChairVote.tally)
@@ -1294,6 +1299,9 @@ try {
   console.log('=== 7b-quater. G7: ballot votes merge into the service tally (one authority) ===')
   const g7m = await receipt(v5rBoot, 'vibe_v5_meeting', { agenda: 'G7 合流', kind: 'sync', member: chairId })
   const g7mid = g7m.parsed && g7m.parsed.meeting
+  // ★ §109: the floor is the eligible universe, so the three eligible seats must be PRESENT before any vote counts.
+  v5rBoot.handle.kernel.meetings.attend({ meeting: g7mid, member: 'r-1' })
+  v5rBoot.handle.kernel.meetings.attend({ meeting: g7mid, member: 'r-2' })
   const g7mo = await receipt(v5rBoot, 'vibe_v5_motion', { meeting: g7mid, member: 'r-1', kind: 'topic', text: '接受证明' })
   const g7moid = g7mo.parsed && g7mo.parsed.motion
   await receipt(v5rBoot, 'vibe_v5_second', { meeting: g7mid, motion_id: g7moid, member: chairId })
