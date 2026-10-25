@@ -3382,3 +3382,59 @@ note 含「next start」，并且**同族一个真正被提示词变量读取的
 
 §86.5 状态：跑 45 的 ㉟.1／㉟.2／㉟.4 全部**未验**（空研究所里没有回合能落地），不是「通过」也不是「失败」。
 下一次（跑 46）的 brief 已改为**先招聘两名成员**再执行判据；b-1（`stateMeans`）仍需在真机上读到原文才算数。
+
+## §87 轮 43→46：验收脚手架的两次误判、成员席的真机验证，以及两处「机制存在但本部署读不到」
+
+本段记录四次真机跑（43、44、45、46）各自的读数与修正，以及一个必须写明的编号事实：§84 从未写出（当时直接跳到 §85），
+**不是漏抄，是从来没有那一节** —— 编号缺口保留，不补造内容。
+
+### §87.1 run 43：检查器（inspect）自己的模型错了一次，而错法很有教育意义
+
+- 读数：`_oneoff/vm-slv/full-1025-120705.jsonl`，build `fd2b8a5f`，`cast=true`（14 条 turn 回执），
+  1 session，inspect 报 **1 RED**：`tool calls not in wire: pwsh, vibe_v5_meeting_round, vibe_v5_verdict_final …`。
+- 复核结论：**这是检查器的错，不是产品的错**。wire 是**按请求**下发的快照，一次会话里会变化（本次快照序列
+  `[94, 39, 39, 53, 53, 53, 53, 70, 70]`）；检查器只拿**最后一张**快照去比对**全部**调用，于是「本轮收到 prompt 前
+  调用过的工具」被判成「不在 wire 上」。
+- 修法（`scripts/slv-inspect.mjs`）：按会话累计 `wireUnion`、保留 `wireSnapshots`，并区分
+  `callsOnlyInEarlierWire`（信息级）与真正违规；同时把「只在组合侧的工具」拆成 INFO。修后同一 transcript
+  `--by-session` 报 **0 RED**（12 个会话）。检查器新增自证样例 D（会话内 wire 收窄但无违规 ⇒ 不红）。
+
+### §87.2 run 44／45：三条残余收口，其中一条是「提示词教了不存在的工具」
+
+- ⑬.3 留白（`〔未提供：roleLabel〕` 在非主席席位上 0 次）实测通过；
+- ⑬.2 `pwsh` 违规：**成员席真的在跑 shell**（run 44 记录 `pwsh` 10 次），根因是成员用的还是所办预设 ⇒ 引出下一节的成员席；
+- ⑬.4 `vibe_v5_lean_lib` 在**未归档时**的提示词说法与回执不符 ⇒ 提示词改为先 `vibe_v5_lean_archive` 再读。
+
+### §87.3 成员席（member-seat preset）在真机上被证实，且是**可测量**的
+
+- 生成器 `scripts/build-preset-rows.mjs` 产出 `preset-vibe-math-vmu-member`（工具白名单 = pack 面 + 文件面，
+  **无 shell**），`vibe-math-vmu/kernel/turn/index.js` 的 `deliverViaSubagents` 把 `deliverPreset` 放进
+  `SubagentStartRequest.agentPreset`（这是它唯一的消费者）。
+- 真机验证（`D:\_tmp\slv-phase5\slv-p12g-seat.ps1`，读回克隆里的 `deliverPreset` 后才启动）：
+  - **8 个成员子会话的 host 出口调用次数 = 0**（对照 run 1：成员会话 `pwsh` 52 次）；
+  - 唯一的 `pwsh` 出现在**所办**会话（10 次，`vibe_vmu_turn` 也只在所办里调），符合设计；
+  - 子代理真的存在：`childId` 非空、`deliverMode` 读回 `subagents`。
+- 由此可以回答用户的 Q1/Q2：**限制工具不会让研究做不了**，因为 pack 面（41 个工具）覆盖记录/读库/任务/会议/裁决/
+  Lean 归档/git 归档；而被拿掉的是 shell 与任意进程。代劳路径也已存在（`vibe_vmu_bridge` = 受控宿主操作通道）。
+
+### §87.4 run 46：两处「机制存在，但本部署读不到」——同一族缺陷
+
+- run 46（`_oneoff/vm-slv/full-1025-131328.jsonl`，build `d0b47b10`，`cast=true` 来自 6 条 turn 回执）
+  的验收报告给出 **「本轮无实质残余：否」**，两条：
+  1. **㉟.2 `membersFrom` 从不出现**（`requestedMembers`/`requestedMembersSource` 都有）；
+  2. **㉟.4 委派块（`delegation`/`childId`）在所有 step 回执里都读不到**，`awaiting:true` 一次都没出现。
+- 根因是**同一处**：`membersFrom` 与 delegation 块都在 kernel 里、**只挂在 awaiting 信封上**；而
+  `deliverMode:"subagents"` 的回合是**结算式**的（同步返回结果），永远不产生 awaiting 信封 ⇒ 这两个读数在
+  **恰好需要它们的那个部署里**不可达。与 run 37 的「只给计数不给原因」是同一族：答案存在一层之下，没有随回执旅行。
+- 修法（`vibe-math-vmu/kernel/turn/index.js`）：两条路由都带 —— awaiting 分支与 settled 分支各加
+  `membersFrom` 与 `delegation: r.delivery || null`；`null` 与「字段不存在」是两种读数，不许混同。
+- 门禁：`tests/vmu-turn.test.mjs` 新增 R43a–R43c（settled 路由上 delegation 存在、`childId` 点名、
+  `membersFrom` 为 `null` 时字段仍存在）。套件 **253/0**。
+
+### §87.5 教训
+
+1. **检查器也是被测系统的一部分**：run 43 的 RED 若是直接「修产品」去迁就它，会毁掉一个正确的 wire 收窄机制。
+   先问「读数的模型对不对」，再问「产品对不对」。
+2. **给回执加字段时，要问「哪个部署会走路由 A、哪个走路由 B」**：本次两条读数都只挂在一条路上，
+   而目标部署走的是另一条。机制有没有消费者，只能在**真实部署的读数**里回答。
+3. 验收报告的每一条都必须落成 `file:line` 或 `-- 工具输出`，否则「无实质残余」只是句子。

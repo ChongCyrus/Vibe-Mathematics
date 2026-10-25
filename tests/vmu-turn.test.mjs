@@ -1655,6 +1655,27 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     '★ R30d: the vocabulary the value belongs to is stated (my own brief had listed only subagents|caller)', d && d.means)
 }
 
+// ★★★ LIVE RUN 46 (the institute's own report ㉟.2 and ㉟.4): `membersFrom` (the face's own inference note) and the
+// delegation block (who executed the turn) were built one layer down and placed ONLY on the awaiting envelope — but
+// `deliverMode:'subagents'` SETTLES turns, so the step receipt in the very mode those readings describe returned no
+// awaiting envelope and neither reading was reachable. Both are now on both routes; asserted on the settled route here,
+// because that is the route the live deployment actually produces.
+{
+  const t = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
+    deliver: async () => ({
+      reply: JSON.stringify({ say: '核验句-丙' }), deliveryPath: 'activation', childId: 'child-77', stopReason: 'completed',
+      attribution: 'activation: settled synchronously',
+    }),
+    faces: { 'vmu.meetings': { speak: async () => ({ ok: true }) } } })
+  const stepped = await t.step({ members: ['r-2'], why: 'R43 the two readings must travel on the settled route too' })
+  const rc = stepped && (stepped.receipt || null)
+  ok(!!rc && rc.delegation !== undefined, '★★★ R43a: a SETTLED step receipt carries the delegation block (it used to exist only on the awaiting envelope)', rc && rc.delegation)
+  ok(!!rc && !!rc.delegation && rc.delegation.childId === 'child-77',
+    '★★★ R43b: and it names the child that executed the turn — the difference between delegation and self-play', rc && rc.delegation)
+  ok(!!rc && rc.membersFrom === null,
+    '★★ R43c: membersFrom is PRESENT and null when the face did not report one — absent and null must not be the same reading', rc && rc.membersFrom)
+}
+
 // ★★★ LIVE RUN 42 (the institute's own report ㉝.1): every `step` receipt carried `requestedMembersSource` and NO
 // receipt carried `requestedMembers`, so a caller could read HOW the selection was decided but never WHAT it resolved
 // to. Both branches are asserted through a real step, because the missing field lived in the receipt a running step

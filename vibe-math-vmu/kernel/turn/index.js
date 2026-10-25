@@ -2247,7 +2247,10 @@ export function createTurnOrchestrator({
       const tcs = toolCallSummary()
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
-        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated, ...selectionReadings }
+        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,
+        membersFrom: r.membersFrom === undefined ? null : r.membersFrom,
+        delegation: r.delivery || null,
+        ...selectionReadings }
       return { ok: true, receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(),
         // ★ PHASE 12 / live run 37 (the institute's own report): this receipt reduced `skipped` to a NUMBER, so the reason
         // and the kept line were unreadable - the member saw "skipped:1" and could not learn which field, why, or what it
@@ -2267,7 +2270,13 @@ export function createTurnOrchestrator({
         delivery: r.delivery || null,
         proseUnparsable: r.proseUnparsable || null,
         instructionDelivered: r.instructionDelivered === true, turn: r.turn.id,
-        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated },
+        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,
+        // ★★ LIVE RUN 46 (the institute's own report, item ㉟.2/㉟.4): `membersFrom` and the delegation block were
+        // built one layer down and only ever placed on the AWAITING envelope - but `deliverMode:'subagents'` settles
+        // turns, so this deployment's step receipt never returned an awaiting envelope and the two readings were
+        // unreachable in the very mode they describe. Same defect family as run 37's count-only `skipped`.
+        membersFrom: r.membersFrom === undefined ? null : r.membersFrom,
+        delegation: r.delivery || null },
         ...selectionReadings }
     } catch (e) {
       return stepFailure(e)
