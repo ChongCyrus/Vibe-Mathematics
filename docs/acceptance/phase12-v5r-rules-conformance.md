@@ -3864,3 +3864,20 @@ transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-150803.jsonl`（build 
 **这条残渣不是收据措辞能修的**：要么让子会话不写内核（所办唯一写者，成员只写文件+回执），要么让所有会话共用一份内核实例。
 这是架构取舍，需要用户裁定（已在下一条消息里带着实测数据问）。
 
+## §100 第 11 轮：量测侧的六条红 —— 每一条都是我自己的口径漂移，没有一条是产品失效
+
+第 11 轮的全量 T1（`GATE_SCOPE=vmu`）报 `TOTAL 468 PASS 462 FAIL 6`。逐条读过之后，六条全是**量测纪律**的问题，不是功能退步 —— 这正是「门禁绿」与「事实绿」必须分开看的地方。
+
+| # | 红 | 真因（量出来的，不是猜的） | 修法 |
+|---|---|---|---|
+| 1 | `audit-assembly-reachability-snapshot` | 快照基线停在上一轮：新增/改动模块使 `entries=8 reachable=201`，基线未重生成 ⇒ 差异不是「可达性变了」而是「基线旧了」 | `--write` 重生成基线（基线本身带缩水规则，只允许窄化） |
+| 2 | `audit-readme-counts`（脚本名是 `audit-readme-counts.mjs`，不是 `.test.mjs` —— 我自己写错的路径） | 新增一节账本 + 新测试文件后派生的计数变了 | `scripts/update-doc-counts.mjs --write` ⇒ `JOBS total 537 / suites 429 / probes 108`，19/0 |
+| 3 | `audit-declaration-criterion` 85/4 | 四处 **RULE E 形状 B**：两个可能**同时为空**的集合做相等比较（空=空也过）。三处在 lane 新写的成员面测试里，一处在报头核对 | 把「非空」并入同一条件：`a.length>0 && b.length>0 && 相等`；改后 `--write-baseline` 重记 87 条、`89/0` |
+| 4 | `audit-scanner-selfproof` 64+68≠133 | 新增 `tests/audit-member-scope.test.mjs` 无 `--self-test`，按规则必须**具名登记**为欠账 | 写入 `UNPROVEN` 并附一句理由（「表上直接行为断言，无扫描可自证；哪天它有可跑的 self-test 就删这行」）；`proven+exempt=total` 恢复 |
+| 5 | `vmu-activity-timers` | `host-deliver.js` 实际 `timers=1 clears=2`：我加的 grace-harvest 计时器在两条路径上都清（settled / grace 到期），行里只写了 1 | 行改成 `clears: 2` 并在 note 里说清第二个清的是哪条路径 |
+| 6 | `vmu-run44-findings` b-4b | 断言钉的是**字面拼写** `preset: (cfg && cfg.deliverPreset) \|\| null`，而那个 `cfg` 是 HOST 作用域变量、修 ReferenceError 时已删；字段已迁到**结算回执**的 `delivery.childPreset` | 改为断言语义：等待中的回执「不硬编码预设名」且 `presetMeans` 写明为何此刻不能说；字面漂移不再红 |
+
+修后:上述六条逐个 `0 failed`,`regen-all --check` ⇒ `16/16 in sync`。
+
+**教训（与 L2「假绿比红更危险」互为补充）**：红也分两种 —— 「功能坏了」和「量测漂了」。这一轮六条全是后者,而它们出现的共同原因是我在改产品的同时**没有同步改它的量测面**。门禁存在的意义就是逼我把这句话写下来,而不是靠记忆。
+

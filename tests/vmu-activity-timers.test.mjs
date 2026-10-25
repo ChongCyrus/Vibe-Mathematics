@@ -68,7 +68,7 @@ const VERDICT = {
   // byte-identical - the site is one clear plus one set, both inside the seam object, and the handle the scheduler gets
   // back is the same one Node returns, so `timerClear` really cancels it. Classified here because this test's rule is
   // that a new GLOBAL timer site cannot appear unnoticed.
-  'host-deliver.js': { timers: 1, clears: 1, verdict: 'finally-clear', note: 'SLV: the one-shot delivery deadline (declared setting vmu.turn.deliveryTimeoutMs) is cleared in `finally`; a hung turn rejects with VMU_TURN_DELIVERY_TIMEOUT and the serial dispatch queue continues' },
+  'host-deliver.js': { timers: 1, clears: 2, verdict: 'finally-clear', note: 'SLV: the one-shot delivery deadline (declared setting vmu.turn.deliveryTimeoutMs) is cleared in `finally`; a hung turn rejects with VMU_TURN_DELIVERY_TIMEOUT and the serial dispatch queue continues. The SECOND clear is the grace-harvest clear: when the deadline fires the harness keeps waiting briefly for the child to settle (so a slow-but-alive child is not misreported as nothing), and that inner timer is cleared on BOTH paths - the pair is what the scan sees' },
   'vibe-math-vmu.js': { timers: 1, clears: 1, verdict: 'declared-only-seam', note: 'the platform timer is forwarded to the scheduler only when vmu.schedule.autoArm is true (K1); undeclared ⇒ no timer seam at all and status().seams.timerShape stays null' },
 }
 {

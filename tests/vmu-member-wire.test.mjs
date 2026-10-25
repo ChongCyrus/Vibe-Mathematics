@@ -67,7 +67,7 @@ const scopeOf = (n) => (Object.prototype.hasOwnProperty.call(TOOL_SCOPES, n) ? T
   const m = memberBlock.match(/packToolAllow:\n((?:\s+- [^\n]+\n)+)/)
   ok(m !== null, '★ the member row carries a DERIVED packToolAllow list')
   const derived = m ? m[1].split('\n').map((l) => l.trim()).filter(Boolean).map((l) => l.replace(/^- /, '')) : []
-  ok(derived.length === MEMBER_SAFE_TOOLS.length, 'the row lists exactly the declaration', [derived.length, MEMBER_SAFE_TOOLS.length])
+  ok(MEMBER_SAFE_TOOLS.length > 0 && derived.length > 0 && derived.length === MEMBER_SAFE_TOOLS.length, 'the row lists exactly the declaration (non-vacuous)', [derived.length, MEMBER_SAFE_TOOLS.length])
   ok(derived.every((n) => MEMBER_SAFE_TOOLS.includes(n)) && MEMBER_SAFE_TOOLS.every((n) => derived.includes(n)),
     '★ the row and the declaration are the SAME SET (hand-copied drift fails here)',
     derived.filter((n) => !MEMBER_SAFE_TOOLS.includes(n)))

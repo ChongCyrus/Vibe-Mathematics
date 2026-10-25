@@ -137,6 +137,7 @@
     "vibe-math-vmu/packs/v5r/leadership.js",
     "vibe-math-vmu/packs/v5r/meeting-procedures.js",
     "vibe-math-vmu/packs/v5r/meeting-tool-face.js",
+    "vibe-math-vmu/packs/v5r/member-scope.js",
     "vibe-math-vmu/packs/v5r/middleware/artifact-counter.js",
     "vibe-math-vmu/packs/v5r/middleware/motion-box.js",
     "vibe-math-vmu/packs/v5r/middleware/prompt-switches.js",

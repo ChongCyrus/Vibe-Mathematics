@@ -58,8 +58,12 @@ const FACE = readFileSync(join(REPO, 'vibe-math-vmu', 'tools', 'turn.js'), 'utf8
 {
   const hasDelegation = /const delegated = withOverride && withOverride\.awaiting === true/.test(FACE)
   ok(hasDelegation, '★★★ b-4a: the awaiting route builds a delegation record', hasDelegation)
-  const readsPreset = /preset: \(cfg && cfg\.deliverPreset\) \|\| null/.test(FACE)
-  ok(readsPreset, '★★★ b-4b: and it reads the LIVE config preset rather than hard-coding one', readsPreset)
+  // the exact spelling changed when `cfg` (a HOST-scope variable) was found to be out of scope here; what must
+  // NOT change is the semantics: the preset comes from a CONFIG object, never a literal preset name.
+  // the field MOVED to settlement (childPreset on the settled receipt) when the face stopped reaching for a
+  // HOST-scope variable; what must hold on the awaiting receipt is: no hard-coded preset, and a written reason.
+  const readsPreset = /preset: null/.test(FACE) && /presetMeans: '[^']{40,}/.test(FACE)
+  ok(readsPreset, '★★★ b-4b: it never hard-codes a preset, and while awaiting it NAMES why it cannot (the settled receipt carries delivery.childPreset)', readsPreset)
   const honestChild = /childIdMeans: 'the child session id is reported when this turn SETTLES; null while the turn is awaiting'/.test(FACE)
   ok(honestChild, '★★ b-4c: while awaiting, the child id is null AND the field says why (no invented id)', honestChild)
   const attaches = /Object\.assign\(\{\}, withOverride, \{ delegation: delegated \}\)/.test(FACE)

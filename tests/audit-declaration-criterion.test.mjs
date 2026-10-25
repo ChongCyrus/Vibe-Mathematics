@@ -402,6 +402,9 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-rules.test.mjs:A:capabilityKeys',
   'vmu-run14-findings.test.mjs:A:hist',
   'vmu-scheduler.test.mjs:A:line',
+  'vmu-settings-wiring-index.test.mjs:A:ANCHORS',
+  'vmu-settings-wiring-index.test.mjs:A:for:ANCHORS',
+  'vmu-settings-wiring-index.test.mjs:A:for:ANCHORS',
   'vmu-settings.test.mjs:A:defs',
   'vmu-store.test.mjs:A:m.PUBLIC_KEYS',
   'vmu-storepolicy.test.mjs:A:for:receipts',
@@ -412,6 +415,7 @@ export const A_CLASS_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-turn.test.mjs:A:for:CHARTER_BLOCKS.filter',
   'vmu-turn.test.mjs:A:for:phases',
   'vmu-turn.test.mjs:A:for:variants',
+  'vmu-turn.test.mjs:A:stepCalls',
   'vmu-turn.test.mjs:A:ticks',
   'vmu-turn.test.mjs:A:ticks',
 ])

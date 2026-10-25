@@ -41,6 +41,9 @@ const TESTS = join(REPO, 'tests')
 // new scanner may ship without proof.
 const UNPROVEN = new Set([
   'audit-bus-emit-shape.test', 'audit-claim-traceability.test', 'audit-code-size.test', 'audit-code-status.test',
+  // Phase-12 lane file (member scope declaration): direct behaviour assertions over an exported table, no scan to
+  // prove. Registered rather than pretended; delete this row the day it grows a runnable --self-test.
+  'audit-member-scope.test',
   'audit-corrupt-file-guard.test', 'audit-dependency-cycles.test', 'audit-diagram-assets.test',
   'audit-doc-api-coverage.test', 'audit-doc-index.test', 'audit-doc-line-refs.test', 'audit-doc-vs-code-tables.test',
   'audit-enforced-consistency.test', 'audit-engine-faces', 'audit-enum-branches', 'audit-f1-compact-fix.test',

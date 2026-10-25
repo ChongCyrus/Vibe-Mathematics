@@ -40,10 +40,10 @@ ok(names.length > 40, 'the catalogue is the real one', 'n=' + names.length)
 // ── ② 派生而非手抄 ──────────────────────────────────────────────────────────────────────────────────────
 const all = Object.keys(TOOL_SCOPES).sort()
 const union = [...MEMBER_SAFE_TOOLS, ...OFFICE_ONLY_TOOLS].sort()
-ok(JSON.stringify(union) === JSON.stringify(all), 'MEMBER_SAFE ∪ OFFICE_ONLY = the table', 'union=' + union.length + ' table=' + all.length)
+ok(all.length > 0 && union.length > 0 && JSON.stringify(union) === JSON.stringify(all), 'MEMBER_SAFE ∪ OFFICE_ONLY = the table (non-vacuous: two empty lists would also be equal)', 'union=' + union.length + ' table=' + all.length)
 ok(MEMBER_SAFE_TOOLS.every((n) => !OFFICE_ONLY_TOOLS.includes(n)), 'the two lists are disjoint')
 ok(Object.values(TOOL_SCOPES).every((v) => Object.prototype.hasOwnProperty.call(SCOPE_VOCAB, v)), 'every scope value is in the vocabulary')
-ok(MEMBER_SAFE_TOOLS.length + OFFICE_ONLY_TOOLS.length === all.length, 'no tool falls between the two lists')
+ok(MEMBER_SAFE_TOOLS.length > 0 && OFFICE_ONLY_TOOLS.length > 0 && MEMBER_SAFE_TOOLS.length + OFFICE_ONLY_TOOLS.length === all.length, 'no tool falls between the two lists (non-vacuous)')
 // the office-only set is the CONTROL surface, and it must stay small enough to be named: if it ever swallowed the
 // research faces, a member could not do research at all — that is the failure the user asked about directly.
 ok(OFFICE_ONLY_TOOLS.length > 0 && OFFICE_ONLY_TOOLS.length < 15, 'the office-only set is a control surface, not a research surface', 'n=' + OFFICE_ONLY_TOOLS.length)

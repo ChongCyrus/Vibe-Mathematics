@@ -103,7 +103,7 @@ ok(table !== null, 'the generator carries a MEMBER_DROP table (the drop list mus
 // must accept both — the first version required single quotes and silently LOST `tool-jobs`, which is exactly the
 // "two lists drift" failure this assertion exists to catch.
 const pairs = table === null ? [] : [...table[1].matchAll(/\['([\w-]+)',\s*(['"])([\s\S]*?)\2\]/g)].map((m) => ({ id: m[1], why: m[3] }))
-ok(pairs.length === HOST_EXITS.length, '★ every host exit in the table is declared exactly once', { declared: pairs.length, expected: HOST_EXITS.length })
+ok(HOST_EXITS.length > 0 && pairs.length > 0 && pairs.length === HOST_EXITS.length, '★ every host exit in the table is declared exactly once (non-vacuous)', { declared: pairs.length, expected: HOST_EXITS.length })
 ok(pairs.every((p) => p.why.length >= 20), '★★ RULE E: every dropped row carries a WRITTEN reason (an unexplained drop is a silent one)', pairs.filter((p) => p.why.length < 20))
 ok(pairs.map((p) => p.id).sort().join(',') === HOST_EXITS.map(([id]) => id).sort().join(','), 'the table and this gate agree on WHICH rows are exits (two lists that can drift would drift)', { table: pairs.map((p) => p.id), gate: HOST_EXITS.map(([id]) => id) })
 
