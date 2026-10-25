@@ -22,6 +22,12 @@ const CHECK = process.argv.includes('--check')
 const VERSIONS = ['vmu']
 const OUT = join(REPO, 'cordis.patch.yml')
 
+/**
+ * Every preset id this patch DECLARES — derived from the same two decisions that emit the sections, so a consumer
+ * (tests/audit-preset-rows.test.mjs's set-equality row check) cannot drift from the generator.
+ */
+export const DECLARED_PRESET_IDS = Object.freeze([...VERSIONS.map((v) => 'vibe-math-' + v), 'vibe-math-vmu-member'])
+
 /** Roster position: after the shipped presets (standard 1 … cordis 4). */
 const ORDER = { v2: 20, v3: 21, v4: 22, v5: 23, v5r: 24, vmu: 25 }
 
@@ -62,6 +68,39 @@ const TRANSFORMS = [
   },
 ]
 
+/**
+ * ★ THE MEMBER-SEAT PRESET (the user's own question: "would restricting a member's tools stop it from doing
+ * research?"). MEASURED before deciding (live multi-agent run `full-1025-092046.jsonl`, per-session tool histogram):
+ * one member session did its whole round with 20/20 pack calls and ZERO host calls, while another made 82 calls of
+ * which 70 were host tools — 58 of them `pwsh`, including reading the harness's own `app.asar`. The research work
+ * therefore does not need a shell; the shell is the ESCAPE.
+ *
+ * KEEPS: the vmu framework row (all pack tools, including `vibe_vmu_bridge` — the SCOPED computation channel:
+ * kernel-validated request, declared timeout, structured result, named refusal), workspace file tools, planning +
+ * compaction (a long research turn needs both) and the skill rows.
+ *
+ * DROPS, each for a stated reason:
+ *   · tool-bash / tool-pwsh — the escape channel measured above; computation goes through the vmu bridge, Lean through
+ *     the pack's lean faces
+ *   · tool-jobs — the shell's companion; without a shell a background job can only orphan a process
+ *   · delegation — a member-spawned child is a roster entry the kernel cannot see (the roster-liveness round measured a
+ *     fired member still selectable); hiring is the KERNEL's act (`vibe_v5_hire`)
+ *   · tool-web — unscoped network read, owed to no rule, and a second escape
+ *   · tool-ask-user — the rules give the institute exactly ONE user channel: report to the office (所办)
+ *   · tool-goal / command-goal / present — human-facing session furniture (goal loop, deliverable cards), not a seat's
+ */
+const MEMBER_DROP = Object.freeze([
+  ['tool-bash', 'the shell is the escape channel (58 pwsh calls in ONE member session, incl. reading app.asar)'],
+  ['tool-pwsh', 'the same channel on Windows; computation goes through vibe_vmu_bridge and the pack lean faces'],
+  ['tool-jobs', "the shell's companion - without a shell a background job can only orphan a process"],
+  ['delegation', 'a member-spawned child is a roster entry the kernel cannot see; hiring is the kernel act vibe_v5_hire'],
+  ['tool-web', 'unscoped network read, owed to no rule, and a second escape'],
+  ['tool-ask-user', 'the rules give the institute one user channel only: report to the office'],
+  ['tool-goal', 'the goal loop is human-facing session furniture, not a seat'],
+  ['command-goal', 'same: /goal belongs to the human session'],
+  ['present', 'deliverable cards are the office speaking to the human'],
+])
+
 /** The two keys of preset.yml that matter (no YAML dependency in this repo). */
 function readPresetMeta(v) {
   const text = readFileSync(join(REPO, `vibe-math-${v}`, 'preset.yml'), 'utf8')
@@ -71,8 +110,24 @@ function readPresetMeta(v) {
   return { name: name[1].trim(), description: description[1].trim() }
 }
 
+/** Remove `- id: <id>` row blocks (a row plus its more-indented children) from a composition body. */
+function dropRows(body, drops) {
+  const lines = body.split('\n')
+  for (const [id] of drops) {
+    const start = lines.findIndex((l) => l === `- id: ${id}`)
+    if (start < 0) throw new Error(`member preset: no row '- id: ${id}' to drop (the composition changed; fix MEMBER_DROP)`)
+    let end = start + 1
+    while (end < lines.length && !/^- id: /.test(lines[end])) end += 1
+    // ONE splice, so the recorded end can never point past a shortened array (the first version spliced the
+    // separating blank lines BEFORE slicing and silently removed the wrong rows)
+    lines.splice(start, end - start)
+    while (start > 0 && lines[start - 1] === '') lines.splice(start - 1, 1)
+  }
+  return lines.join('\n')
+}
+
 /** The 0.2.0-shaped composition of one preset, already indented under `plugins:`. */
-function buildComposition(v) {
+function buildComposition(v, drops = null) {
   let body = readFileSync(join(REPO, `vibe-math-${v}`, 'agent.cordis.yml'), 'utf8').split('\r\n').join('\n')
   for (const t of TRANSFORMS) {
     const find = typeof t.find === 'function' ? t.find(v) : t.find
@@ -81,6 +136,7 @@ function buildComposition(v) {
     if (hits !== 1) throw new Error(`transform matched ${hits} times (expected 1) in ${v}: ${t.why}`)
     body = typeof find === 'string' ? body.split(find).join(replace) : body.replace(find, replace)
   }
+  if (drops !== null) body = dropRows(body.split('\r\n').join('\n'), drops)
   return body.replace(/\s*$/, '\n').split('\n').map((l) => (l === '' ? '' : '          ' + l)).join('\n')
 }
 
@@ -148,7 +204,28 @@ ${overlay}    - id: preset-vibe-math-${v}
         plugins:
 ${buildComposition(v)}`
   }).join('\n')
-  return head + sections
+  // ★ THE MEMBER SEAT (see MEMBER_DROP): the SAME frozen composition with the host-escape rows removed. It is a
+  // SECOND preset rather than a flag because a deployment — or the framework's own delivery config — names a preset
+  // PER CHILD, and because its presence or absence is then auditable in this one file, like every other preset.
+  const memberMeta = readPresetMeta('vmu')
+  const memberDescription = 'vmu 的「成员席」预设：与 vibe-math-vmu 同一套框架能力（会议/表决/任务/归档/提示词管线/'
+    + '计算与形式化/资源与安全），但去掉了六类宿主出口 —— shell（bash/pwsh）、后台作业、自我分派子代理、联网读网页、'
+    + '直接问用户、以及人类的 /goal 目标环。理由是可测量的：成员做研究用的是 pack 工具（实测一个成员会话 20/20 次全走 '
+    + 'pack、零宿主调用），而 shell 才是那条让成员读到宿主 app.asar 的逃逸通道；计算走 vibe_vmu_bridge（内核校验请求、'
+    + '超时、结构化结果、具名拒），Lean 走 pack 的 lean 面，向用户提要求只走「报告所办」这一条规则通道。'
+  const memberSection = `
+# ── ${memberMeta.name} · 成员席 ────────────────────────────────────────────────
+- insert:
+    - id: preset-vibe-math-vmu-member
+      name: dsh-vibe-math/preset-declaration
+      config:
+        id: vibe-math-vmu-member
+        name: ${JSON.stringify(memberMeta.name + ' · 成员席')}
+        description: ${JSON.stringify(memberDescription)}
+        order: 26
+        plugins:
+${buildComposition('vmu', MEMBER_DROP)}`
+  return head + sections + memberSection
 }
 
 // The CLI half runs only when this file is executed, never when a suite imports `buildPatch`

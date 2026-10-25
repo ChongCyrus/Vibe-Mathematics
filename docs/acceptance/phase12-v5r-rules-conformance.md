@@ -3111,3 +3111,51 @@ grep 宿主 checkout —— 它们并不在"研究所"里工作，而是在**宿
 - 机制层：子智能体真的跑起来了（多 session、成员自己调工具、`cast=true`）。
 - 但「多智能体真机跑」是**另一个被测系统**：HANG 与 containment 都只在这个模式下出现，53 次 caller 模式的跑全都看不见。
 - 下一轮：给成员一个只含 pack 工具的 preset（或明确登记"成员持有宿主工具"这一决定），然后重跑。
+
+## §80 成员席：把「工具受限会不会做不了研究」变成一个可测的组合（2026-10-25）
+
+### §80.1 用户的三问
+
+1. 限制成员的可用工具，会不会让它们做不了正常研究、测不了相应功能？之前是否遇到过「工具限制得太死」？
+2. 如果成员被限制，主代理/我们能不能代替成员做那部分活动？
+3. 之前那些规则是真测过了，还是只测了一部分？
+
+### §80.2 先测后答（三个都用量出来的东西回答）
+
+- **问 1**：真机多代理跑的按会话工具直方图（`_oneoff/vm-slv/full-1025-092046.jsonl`）：成员会话 A 20 次调用
+  **全部是 pack 工具、零宿主调用**；成员会话 B 82 次调用、70 次宿主、其中 **58 次 `pwsh`**（含读宿主 `app.asar`）。
+  ⇒ 研究流程不需要 shell，shell 是逃逸通道。所以「受限」的正确形状不是砍 pack 工具（那会砍掉
+  `vibe_vmu_bridge`，唯一受内核约束的计算通道），而是换一个**组合**：留框架+文件+技能+规划，去掉六类宿主出口。
+- **问 2**：可以，但**不是替成员干活**。主代理能做的是：① 通过 `vibe_vmu_meeting/motion/vote` 让成员走正规通道；
+  ② 通过 `vibe_vmu_status/overview/report` 替成员读状态并转述；③ 用**受控**脚本通道（`vibe_vmu_bridge`）
+  代跑计算，再把结果交回 pack 的归档面。规则里的研究结论（命题卡、Lean 证据、辩论定论）仍必须由成员自己产出 ——
+  这是「能力在内核、政策在包」的边界，不是工具权限问题。
+- **问 3**：这是本轮之前最贵的一笔账，已经写进 §20.4 与 §79.4 的方法论：账本 54 行规则里，**真正被真机跑
+  覆盖过的只有一小部分**，其余是「机制在 + 有门禁」而非「真机验过」。本阶段的做法因此改成「每次真机跑都让
+  所办自己列不符点，再一条条修 + 加门禁」，并把「无实质残余」的判定权交给被测系统自己。
+
+### §80.3 本轮落地的东西
+
+| 层 | 文件 | 内容 | 门禁 |
+| --- | --- | --- | --- |
+| 组合 | `scripts/build-preset-rows.mjs` | `MEMBER_DROP` 表（每条带理由）在同一份冻结组合上删行，派生第二个预设 `vibe-math-vmu-member`（order 26） | `tests/vmu-member-preset.test.mjs` **31/0**：出口名单逐条、删除行数由两个组合的**差集派生**、办公室 preset 仍保留 shell、每条删除都有理由 |
+| 设置 | `vibe-math-vmu/settings/schema.js` | `vmu.turn.childPreset`（string，默认空＝沿用调用方 preset） | `tests/vmu-turn-child-preset.test.mjs` **13/0** |
+| 接线 | `vibe-math-vmu/host-deliver.js` + `vibe-math-vmu/kernel/turn/index.js` | 读键 → `deliverViaSubagents(..., { agentPreset })` → 一次性请求与 activation 的 `spec.request` 都带；continuable 回退放 `spec.agentPreset`（默认 `null`＝显式继承） | 同上：两条创建路径都真的到达、默认**不加键**、seam 与 schema 两侧同时断言 |
+
+被删的六类出口：shell（`tool-bash`/`tool-pwsh`）、后台作业（`tool-jobs`）、自我分派（`delegation`）、
+联网（`tool-web`）、直接问用户（`tool-ask-user`）、目标环（`tool-goal`/`command-goal`/`present`）。
+保留：`persona`/`agent-instructions`/`tool-fs`/`tool-fs-search`/`skill-filesystem`/`tool-skill`/`planning`/
+`compaction`/`tool-todo`/`vibe-math-vmu`（十行）。
+
+### §80.4 两个被自己的断言抓住的坑
+
+1. `dropRows` 第一版**先删空行再切片**，索引随之位移，于是删掉了错误的行区间（表现为「找不到 tool-pwsh 行」）。
+   改成一次 `splice(start, end - start)`。
+2. 门禁第一版只用单引号正则解析那张表，而 `tool-jobs` 的理由里有撇号（它那一行写成了双引号），于是
+   它被**静默漏掉**（8 ≠ 9）—— 正是这条断言声称要防止的「两张表漂移」。改成同时接受两种引号。
+
+### §80.5 诚实边界
+
+本门禁证明的是**组合正确 + 请求带字段 + 两侧接线一致**，**不能**证明子会话真的以该 preset 启动：
+宿主是否接受 `agentPreset`、该 preset 在部署里是否已注册，都需要真机跑一次并按会话工具直方图复核
+（成员会话的 `pwsh` 调用数应为 0）。此项目前记为**未验**，不记「已修」。

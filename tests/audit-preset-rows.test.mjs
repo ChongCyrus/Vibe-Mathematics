@@ -24,7 +24,7 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join, dirname, resolve } from 'node:path'
-import { buildPatch } from '../scripts/build-preset-rows.mjs'
+import { buildPatch, DECLARED_PRESET_IDS } from '../scripts/build-preset-rows.mjs'
 
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -69,7 +69,7 @@ ok(declarationRows.join(',') === VERSIONS.join(','),
 // target row, since it is consumed by the same module - names THIS bundle's own declaration module.
 const rowIds = [...patch.matchAll(/^ {4}- id: ([A-Za-z0-9-]+)$/gm)].map((m) => m[1])
 const expectedRowIds = ['vibe-math-preset-installer', 'vibe-math-vmu-overlay',
-  ...VERSIONS.map((v) => 'preset-vibe-math-' + v)].sort()
+  ...DECLARED_PRESET_IDS.map((id) => 'preset-' + id)].sort()
 ok(JSON.stringify([...rowIds].sort()) === JSON.stringify(expectedRowIds),
   'the patch carries EXACTLY the expected rows: the installer + one declaration per preset + the overlay target row (set equality - a row from nowhere is RED)',
   { rowIds, expectedRowIds })

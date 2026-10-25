@@ -402,7 +402,14 @@ export const SUBAGENT_DELIVERY_NOTE = '\n\n【交付方式 · 本会话是被派
   + '的答复收下，并记在父会话的轮次回执里。\n'
   + '其余照常：该调的工具照调，该给的证据与具名拒原样抄进报告。\n'
 
-export function deliverViaSubagents(subagents, extract = null, { provider = null, parent = null, signal = null, options = null, delay = null } = {}) {
+export function deliverViaSubagents(subagents, extract = null, { provider = null, parent = null, signal = null, options = null, delay = null, agentPreset = null } = {}) {
+  // ★★★★★★★ THE SEAT IS CHOSEN AT CREATION TIME, NOT REQUESTED IN THE PROMPT (goal round 3, the user's question about
+  // restricting a member's tools). MEASURED: a live multi-agent run's per-session tool histogram showed one member
+  // session making 20 pack calls and ZERO host calls, while another made 82 calls of which 58 were `pwsh` — including
+  // reading the harness's own `app.asar`. The host's own contract agrees that the only per-child knobs are
+  // `cwd`/`agentPreset`/`outputSchema` (`SubagentStartRequest.agentPreset`, `SubagentCapabilities.agentPreset`), so the
+  // ONE supported place to change a member seat's tool surface is here: the request that creates the child.
+  const seatPreset = typeof agentPreset === 'string' && agentPreset !== '' ? agentPreset : null
   // ★★★ ROUND 63: A MEMBER TURN IS FOREGROUND ONE-SHOT DELEGATION, AND THE HOST SAYS SO ITSELF. The stack captured on
   // a real machine came from the continuable-activation registry - startContinuable -> assertAdmitting ->
   // closingTeardownFor -> liveLineage - which refuses to admit a NEW activation while a previous one is still being
@@ -472,6 +479,9 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       // seam harvests exactly that: this session's final text. The note below is the missing half, and it is appended by
       // the SUBAGENTS bridge (not by the pack) because only this bridge knows which side of the seam the reader is on.
       request: { prompt: [{ type: 'text', text: String(text) + SUBAGENT_DELIVERY_NOTE }] },
+      // ★ the seat travels on the REQUEST on both creation paths (see `seatPreset` above); `null` means "inherit the
+      // caller's preset", which is the pre-existing behaviour and stays the default.
+      agentPreset: seatPreset,
       // ★★★ ROUND 71: THE CONTINUABLE REQUEST HAS ITS OWN REQUIRED SHAPE. The host types it as
       // ContinuableCreateRequest { sessionId; parent: Agent; signal: AbortSignal }, and this spec supplied only a
       // label and a prompt - so the same delegationDepthOf read gent.options off a parent that was never there,
@@ -499,14 +509,19 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
     // `delivery:'caller'` is deliberate: the result comes back to THIS caller instead of also notifying the parent
     // model, which is exactly what a member turn is - one delivery with a reply (docs/26 stage 3).
     const startOnce = () => {
+      // the seat is a REQUEST field on every path the host accepts: one-shot carries it beside label/prompt/options,
+      // the activation carries it inside `request` (its own start-request), and the continuable fallback reads it off
+      // `spec` (see the spec literal above). A host that does not know the field ignores it, which is why `null` —
+      // "inherit" — is the default rather than a named preset.
+      const seat = seatPreset === null ? {} : { agentPreset: seatPreset }
       if (oneShot) {
-        return subagents.start(provider, Object.assign({ label: spec.label, prompt: spec.request.prompt, parent, signal, options: options || {} }, spec.oneShotRequest || {}))
+        return subagents.start(provider, Object.assign({ label: spec.label, prompt: spec.request.prompt, parent, signal, options: options || {} }, seat, spec.oneShotRequest || {}))
       }
       if (canActivate) {
         return subagents.startActivation(Object.assign({
           provider: String(provider),
           label: spec.label,
-          request: Object.assign({ prompt: spec.request.prompt, parent, signal }, spec.oneShotRequest || {}),
+          request: Object.assign({ prompt: spec.request.prompt, parent, signal }, seat, spec.oneShotRequest || {}),
           signal,
           // 'caller' = keep the result with this caller; 'parent' would also notify the parent model.
           delivery: 'caller',

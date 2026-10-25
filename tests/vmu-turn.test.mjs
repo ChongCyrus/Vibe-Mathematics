@@ -404,9 +404,15 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // the wake information - label, to, why, next_step, request. The host then read `agent.options` off a parent that was
   // never sent, which is the "reading 'options'" failure seen thirty-five times on a real machine. The wake information
   // is still exactly what the original carries; the three transport fields are what the host requires on top.
-  ok(JSON.stringify(keys) === JSON.stringify(['label', 'next_step', 'parent', 'request', 'sessionId', 'signal', 'to', 'why']),
-    'T42. **** PROPERTY: the spec key set is the original wake plus the trace label PLUS the three fields the host\'s continuable contract requires (parent, signal, sessionId)',
+  ok(JSON.stringify(keys) === JSON.stringify(['agentPreset', 'label', 'next_step', 'parent', 'request', 'sessionId', 'signal', 'to', 'why']),
+    'T42. **** PROPERTY: the spec key set is the original wake plus the trace label PLUS the three fields the host\'s continuable contract requires (parent, signal, sessionId) PLUS the seat (agentPreset, null unless a member preset is declared)',
     { keys })
+  // ★ THE SEAT IS A REQUEST FIELD, AND `null` IS THE DEFAULT: the key must be PRESENT with a null value rather than
+  // absent, so a reader of the spec can always ask "which seat did this turn run on" and get an answer (`null` =
+  // inherit). Asserted here because the continuable fallback is the one path where the spec IS the request.
+  ok(seen2[0].agentPreset === null,
+    'T42b. *** the continuable spec carries the seat EXPLICITLY as null (inherit) instead of omitting the key',
+    { agentPreset: seen2[0].agentPreset })
   let noSeam = null
   try { deliverViaSubagents(null) } catch (e) { noSeam = e }
   ok(noSeam !== null && noSeam.code === 'VMU_ENGINE_UNAVAILABLE',

@@ -252,3 +252,130 @@
           # log is never written (docs/07 §1).
           - id: vibe-math-vmu
             name: 'dsh-vibe-math/vibe-math-vmu/vibe-math-vmu.js'
+
+# ── Vibe Math Unify · 成员席 ────────────────────────────────────────────────
+- insert:
+    - id: preset-vibe-math-vmu-member
+      name: dsh-vibe-math/preset-declaration
+      config:
+        id: vibe-math-vmu-member
+        name: "Vibe Math Unify · 成员席"
+        description: "vmu 的「成员席」预设：与 vibe-math-vmu 同一套框架能力（会议/表决/任务/归档/提示词管线/计算与形式化/资源与安全），但去掉了六类宿主出口 —— shell（bash/pwsh）、后台作业、自我分派子代理、联网读网页、直接问用户、以及人类的 /goal 目标环。理由是可测量的：成员做研究用的是 pack 工具（实测一个成员会话 20/20 次全走 pack、零宿主调用），而 shell 才是那条让成员读到宿主 app.asar 的逃逸通道；计算走 vibe_vmu_bridge（内核校验请求、超时、结构化结果、具名拒），Lean 走 pack 的 lean 面，向用户提要求只走「报告所办」这一条规则通道。"
+        order: 26
+        plugins:
+          # The `vibe-math-vmu` agent preset (vibe-math-unify): the full coding agent (`standard`),
+          # plus the vmu FRAMEWORK.
+          #
+          # vmu is a framework, not a mechanism. It provides CAPABILITIES (meetings, ballots, tasks
+          # and stages, records and libraries, the prompt pipeline, durable state, computation and
+          # formalisation, resources and safety, and the hook bus) and the HOOKS to intervene at the
+          # right moments. Every policy — who may convene a meeting, what counts as proof, when a
+          # round is complete, whether a ballot freezes speech — lives in settings, middleware
+          # (declarative rules / code modules / scripts and workflows / further DSH plugins) or a
+          # PACK. Read the design set in vibe-math-vmu/docs/00-README.md before changing this file.
+          #
+          # DEFAULT IS ZERO MECHANISM (docs/04 §3): with no settings, no middleware and no pack, this
+          # preset does nothing beyond making the capabilities available. A generation's behaviour —
+          # for example the research-institute mode — is reproduced by its PACK, never by the kernel
+          # (docs/01 R1: the kernel holds no policy).
+          #
+          # The framework consumes HOST subagents/agents/fs/tools/commands/timer services and
+          # publishes only its own versioned services. vmu state lives in its own durable store
+          # (vmu/state.json); the plugin appends NOTHING to any host session log — DSH refuses to
+          # load a session that carries an unknown event type and Session.append cannot mark one
+          # ignorable, so durable state must never go through the session log (docs/07 R10).
+
+          # ── identity ────────────────────────────────────────────────────────────────
+
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are a coding agent powered by the {{model}} model.
+
+                ## vmu (vibe-math-unify) - the framework
+
+                This session includes vmu: a FRAMEWORK, not a fixed mechanism. It provides
+                CAPABILITIES (meetings, ballots, tasks and stages, records and libraries, the
+                prompt pipeline, durable state, computation and formalisation, resources and
+                safety) and the HOOKS to intervene at the right moments. Every policy - who may
+                convene a meeting, what counts as proof, when a round is complete, whether a
+                ballot freezes speech - comes from settings, middleware or a PACK, never from the
+                kernel.
+
+                With no pack active, vmu does nothing beyond making those capabilities available.
+                Read the design set in vibe-math-vmu/docs/ before changing behaviour, and prefer
+                expressing a mechanism as settings or a declarative rule over writing new code.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+
+          # ── shell ───────────────────────────────────────────────────────────────────
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+
+          # ── background jobs ─────────────────────────────────────────────────────────
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+
+          # ── goals ───────────────────────────────────────────────────────────────────
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                        You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+                        Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+                        The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+                        Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+                        Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+                        When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+
+          # ── compaction ──────────────────────────────────────────────────────────────
+
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+          # ── delegation and workflows ────────────────────────────────────────────────
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: vibe-math-vmu
+            name: 'dsh-vibe-math/vibe-math-vmu/vibe-math-vmu.js'

@@ -376,3 +376,34 @@ dsh --profile <你的 profile> --patch <你的临时目录>/vmu-overlay.yml web
 ★ **为什么不"把 overlay 放进 preset 行 config"** ✗：**实测会替换掉整个 config** ⇒ preset 失去身份（第一版的失败）✓。
 
 > **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。
+
+## 11. 席位组合：同一套框架，不同的出口（**成员席**，2026-10-25 ✓）
+
+**问题（用户提出）**：限制成员的可用工具，会不会让它们做不了正常研究？
+
+**先测后答**（真机多代理跑的按会话工具直方图，`_oneoff/vm-slv/full-1025-092046.jsonl`）：
+
+- 成员会话 A：20 次调用，**20 次全是 pack 工具**，0 次宿主调用 —— 整轮都靠 pack 完成；
+- 成员会话 B：82 次调用，12 pack、**70 宿主**，其中 **58 次 `pwsh`**，包括读到宿主自己的 `app.asar`。
+
+结论：研究流程本身不需要 shell，**shell 才是那条逃逸通道**。所以答案不是「减少 pack 工具」（那会砍掉
+`vibe_vmu_bridge` —— 唯一受内核约束的计算通道：校验请求、声明超时、结构化结果、具名拒），而是「换一个组合：
+保留框架与文件/技能/规划行，去掉六类宿主出口」。
+
+**机制**。宿主只给三个 per-child 旋钮（`SubagentStartRequest` 的 `cwd` / `agentPreset` / `outputSchema`），
+因此席位只能在**子会话创建时**决定，不能靠提示词约束：
+
+1. **组合**：`scripts/build-preset-rows.mjs` 的 `MEMBER_DROP` 表（每条带书面理由）在同一份冻结组合上删行，
+   派生第二个预设 **`vibe-math-vmu-member`**（order 26，写进生成的 `cordis.patch.yml`）。删除的六类出口：
+   shell（`tool-bash`/`tool-pwsh`）、后台作业（`tool-jobs`）、自我分派（`delegation`）、联网（`tool-web`）、
+   直接问用户（`tool-ask-user`）、目标环（`tool-goal`/`command-goal`/`present`）。
+   门禁 `tests/vmu-member-preset.test.mjs`：出口名单逐条断言、删除行数由**两个组合的差集派生**（不是手写数字）、
+   办公室 preset **仍保留** shell（限制是逐席的，不是全局的）、每条删除都有理由。
+2. **设置**：`vmu.turn.childPreset`（string，默认空字符串 ＝ 沿用调用方自己的 preset，历史行为不变）。
+3. **接线**：`vibe-math-vmu/host-deliver.js` 读该键 → `deliverViaSubagents(..., { agentPreset })` → 内核在
+   **一次性**请求与 **activation** 的 `spec.request` 上都带上它（continuable 回退路径放在 `spec.agentPreset`，
+   默认 `null` ＝ 显式「继承」）。门禁 `tests/vmu-turn-child-preset.test.mjs`：两条创建路径都真的到达、
+   默认**不加键**、以及「seam 读键」与「schema 声明」两侧同时断言（两侧漂移是本项目反复出现的缺陷类）。
+
+**本门禁证明不了什么**：子会话是否真的以该 preset 启动，是宿主机侧事实（宿主是否接受 `agentPreset`、该 preset
+是否已注册），必须真机验证；账本里按「未验」记录，不按「已修」记录。

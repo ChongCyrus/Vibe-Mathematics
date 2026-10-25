@@ -72,6 +72,16 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       const declaredProvider = (typeof config.deliverProvider === 'string' && config.deliverProvider)
         || (settings && typeof settings['vmu.turn.deliverProvider'] === 'string' && settings['vmu.turn.deliverProvider'])
         || null
+      // ★★★★★★★ THE MEMBER SEAT (goal round 3). The host's start request has exactly three per-child knobs —
+      // `cwd`, `agentPreset`, `outputSchema` — and the measured escape (a member session making 58 `pwsh` calls,
+      // including reading the harness's own `app.asar`) can only be closed at CREATION time. So the preset name is a
+      // declared setting, forwarded onto the request; `''` (the declared default) means "inherit the caller's preset",
+      // which keeps every existing deployment byte-identical. The member preset itself is generated from a table
+      // (`scripts/build-preset-rows.mjs` `MEMBER_DROP`) and gated by `tests/vmu-member-preset.test.mjs`.
+      const declaredPreset = (typeof config.deliverPreset === 'string' && config.deliverPreset)
+        || (settings && typeof settings['vmu.turn.childPreset'] === 'string' && settings['vmu.turn.childPreset'])
+        || null
+      const configuredPreset = typeof declaredPreset === 'string' && declaredPreset !== '' ? declaredPreset : null
       let configuredProvider = declaredProvider
       // ★ PHASE 6: DSH 0.2.1-rc.2 replaced `start`/`startContinuable` with `startActivation`, so provider discovery
       // must accept that verb too - otherwise a 0.2.1 host is never asked which providers it has and the activation
@@ -198,7 +208,7 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       // ★ The bridge is a FACTORY: call it once to get the actual deliverer, then call THAT with the turn/text. Racing
       // the factory itself (it returns a function synchronously) made the seam return a function instead of a reply.
       const deliverer = deliverViaSubagents(subs, extract, {
-        provider: configuredProvider, parent, signal,
+        provider: configuredProvider, parent, signal, agentPreset: configuredPreset,
         options: Object.assign({}, (config.deliverOptions && typeof config.deliverOptions === 'object') ? config.deliverOptions : {}, { onPhase }),
       })
       if (typeof deliverer !== 'function') {
