@@ -277,6 +277,11 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
         err.deliveryTimeoutMs = deliveryTimeoutMs
         if (extra.graceMs) err.deliveryGraceMs = extra.graceMs
         err.requestSent = last !== null
+        // ★ LIVE RUN 12 (the institute's own report, item 1): the timeout receipt carried no `deliveryPath`, so a
+        // reader could not tell whether the turn had been attempted through the one-shot path, the activation path
+        // or the continuable fallback. This seam IS the one-shot path, so it says so - and says what that excludes.
+        err.deliveryPath = 'one-shot'
+        err.deliveryPathMeans = 'this call used the ONE-SHOT path (subagents.start): a single request whose answer must come back inside the deadline. The activation and continuable paths were NOT tried, so a timeout here does not mean the host has no way to run a member turn - it means this request did not return in time'
         err.lastPhase = last ? last.phase : 'before-call'
         err.phases = phases.slice()
         // ★★★★★★★ LIVE RUN 51 residue 2 (the institute's own note): A DEADLINE IS NOT A VERDICT ON THE CHILD'S WORK.

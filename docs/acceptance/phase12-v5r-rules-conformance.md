@@ -3912,3 +3912,42 @@ transcript `D:\wd\vibemath开发\_oneoff\vm-slv\full-1025-150803.jsonl`（build 
 1. **读取器的配对错误看起来和产品缺陷一模一样**：同一份 jsonl 里 office 与成员的提示词/wire 混在一起时，必须先按会话切分再判断（`--by-session`）。这是第二次踩（第一次是 run 3）。
 2. **「装配了但没投递、也没记未执行」是计数器的空洞**：四个计数器并排放着，却谁都不认领停滞的回合 —— 诊断面本身是受测对象的一部分。
 3. brief 要求「不要探索仓库」被遵守了（`pwsh` 0 次、`grep` 0 次）——这是第一次一个验收跑完全不用宿主 shell 去翻实现。
+
+---
+
+## §102 同一轮的第 3 条：`delivered:0` 的归属（2026-10-25）
+
+### 缺陷的本质不是「投递失败」，而是**只数成功的计数器**
+
+run 12 的 `op:"status"` 原文：`assembled:2, delivered:0, parsed:0, refused:0, dispatched:0, notExecuted:0`。
+
+`kernel/turn/index.js` 的 `deliverTurn` 原来写的是：
+
+```js
+const delivered = await deliver({ turn, text })
+counts.delivered += 1
+```
+
+`await` 一抛（超时就是抛），`delivered` 不增、`parsed` 不增、`refused` 不增、`notExecuted` 不增 —— **六个计数器全部保持 0，没有一个是那个回合的主人**。所以所办只看到「装配了两轮，其余全是 0」，无法判断是投递失败、被拒、还是根本没派发。
+
+### 修法（两处，都在「让停滞可被点名」）
+
+1. `vibe-math-vmu/kernel/turn/index.js`
+   - 计数器新增 `deliveryFailed` 与 `deliveryLastFail`；`deliveredMeans` 明说「只数结算成功的；抛出记在 deliveryFailed，永不记这里」。
+   - `deliver` 调用包 `try/catch`：`counts.deliveryFailed += 1`，`counts.deliveryLastFail = { at, turn, member, code, message, deliveryPath, stillRunning, means }`，然后 **原样 rethrow**（这一面不改写 seam 的拒绝）。
+   - `deliveryLastFail.means` 写明「计数本身不会再看它一次 —— 去读 deliveryLastFail」，因为下一次 status 的 counts 依旧会是 0/1，只有这条记录留着原因。
+2. `vibe-math-vmu/host-deliver.js`
+   - 超时错误补 `err.deliveryPath = 'one-shot'` 与 `deliveryPathMeans`：说清这次走的是**一次性路径**（`subagents.start`），activation/continuable **没试过**，因此「超时」不等于「宿主没有跑成员回合的办法」。所办原话「超时回执不带 deliveryPath」由此闭掉。
+
+### 门禁
+
+`tests/vmu-run12-findings.test.mjs` 从 12 条扩到 **18/0**，新增 7 条针对第 1 条的反向断言，其中两条是防「假装修好」的：
+
+- 断言 **旧的单面计数器映射已经不存在**（`delivered: 0, parsed: 0, …, notExecuted: 0 }`）—— 它那串零正是问题本身。
+- 断言 seam 的拒绝被 **原样 rethrow**，不允许这一面把超时改写成更友善的说法。
+
+邻居：`vmu-turn` 257/0、`vmu-host` 199/0。
+
+### 教训
+
+**「只数成功」的计数器是一类会自我掩盖的缺陷**：它的输出是一串零，而零既可能是「什么都没发生」，也可能是「发生了但没人认领」。修法不是给零加注释，而是给失败一个专属的计数器与最后失败记录 —— 这与前面「回执里一个字段承担两种事实」是同一族（run 11 的 `cast`、run 12 的 `counted`）。

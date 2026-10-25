@@ -56,9 +56,23 @@ ok(kernel.includes('const voteOut = { ok: true, tally,'),
 ok(kernel.includes("receipt, ballotNote, enforced, enforcedScope: ENFORCED_SCOPE }"),
   'item 3: the return object literally includes `ballotNote`')
 
-// ── the third item is REGISTERED, not silently dropped
-ok(!kernel.includes('deliveredMeans'),
-  'item 1 (delivered:0) is NOT claimed fixed here — no receipt field pretends to explain it yet')
+// ── item 1: the stall is ATTRIBUTED — the counter map that only counted successes is gone
+const turn = readFileSync(REPO + '/vibe-math-vmu/kernel/turn/index.js', 'utf8')
+const host = readFileSync(REPO + '/vibe-math-vmu/host-deliver.js', 'utf8')
+ok(turn.includes('deliveryFailed: 0'),
+  '★★ item 1: the counters carry `deliveryFailed` — a throw is no longer invisible')
+ok(turn.includes('counts.deliveryFailed += 1') && turn.includes('counts.deliveryLastFail = {'),
+  '★★ item 1: a thrown delivery increments the counter AND records turn/member/code/path/stillRunning')
+ok(turn.includes("means: 'the delivery seam threw"),
+  '★★ item 1: the record says out loud that counts alone will not show it again (read deliveryLastFail)')
+ok(turn.includes('      throw e\n'),
+  '★★ item 1: the seam\'s refusal is RETHROWN unchanged (this face never rewrites a seam refusal into a friendlier one)')
+ok(!turn.includes('delivered: 0, parsed: 0, refused: 0, dispatched: 0, notExecuted: 0 }'),
+  '★★ item 1: the old one-sided counter map is gone (its zeroes were the whole problem)')
+ok(host.includes("err.deliveryPath = 'one-shot'"),
+  '★★ item 1: the timeout receipt names the path it attempted (`one-shot`)')
+ok(host.includes('err.deliveryPathMeans'),
+  '★★ item 1: and it says what that excludes (the activation / continuable paths were NOT tried)')
 
 console.log('')
 console.log('=== VMU RUN12 FINDINGS: ' + pass + ' passed, ' + fail + ' failed ===')

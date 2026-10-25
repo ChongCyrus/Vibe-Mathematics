@@ -859,7 +859,12 @@ export function createTurnOrchestrator({
   // a member who plainly has one. The id is minted here, at the ONE place a turn spec is created, per orchestrator.
   let turnSeq = 0
   const turns = new Map()
-  const counts = { opened: 0, assembled: 0, delivered: 0, parsed: 0, refused: 0, dispatched: 0, notExecuted: 0 }
+  // ★ LIVE RUN 12 (the institute's own report, item 1): the status read `assembled:2, delivered:0, parsed:0, refused:0,
+  // dispatched:0, notExecuted:0`. Every counter was zero and NONE of them owned the two stalled turns: `delivered`
+  // only increments AFTER the seam settles, so a delivery that THREW (a timeout is a throw) left no trace anywhere.
+  // A counter that only counts successes cannot report a stall; `deliveryFailed` + `deliveryLastFail` exist so the
+  // reader can see 'two turns were assembled and both deliveries threw, here is the code and the path'.
+  const counts = { opened: 0, assembled: 0, delivered: 0, deliveryFailed: 0, deliveredMeans: 'settled deliveries: the seam returned an answer or an awaiting envelope. A THROW is counted in deliveryFailed, never here', deliveryLastFail: null, parsed: 0, refused: 0, dispatched: 0, notExecuted: 0 }
   const lastRefusal = { code: null, message: null }
   // ROUND 4 / F11: the attribution of the MOST RECENT delivery (`childId` + `stopReason`), so a caller can ask who a
   // receipt belongs to without re-reading the host handle.
@@ -1027,7 +1032,26 @@ export function createTurnOrchestrator({
       fail('VMU_ENGINE_UNAVAILABLE', 'no delivery adapter is wired: refusing rather than pretending the member answered',
         'inject { deliver: async ({ turn, text }) => reply } (docs/26 §2 stage 3)')
     }
-    const delivered = await deliver({ turn, text })
+    let delivered
+    try {
+      delivered = await deliver({ turn, text })
+    } catch (e) {
+      // ★ RUN 12 item 1: attribute the stall. The timeout the seam raises already carries turn/member/waitedMs/
+      // lastPhase; what it could NOT say was WHICH delivery path was attempted, and the status counters said
+      // nothing at all. Both are recorded here, and the error is rethrown UNCHANGED (this face never rewrites the
+      // seam's refusal into something friendlier).
+      counts.deliveryFailed += 1
+      counts.deliveryLastFail = {
+        at: Date.now(),
+        turn: turn && turn.id ? turn.id : null,
+        member: turn && turn.member ? String(turn.member) : null,
+        code: e && e.code ? String(e.code) : null,
+        message: e && e.message ? String(e.message).slice(0, 400) : String(e),
+        deliveryPath: (e && e.deliveryPath) || lastAttribution.deliveryPath || null,
+        stillRunning: !!(e && e.stillRunning === true),
+        means: 'the delivery seam threw, so this turn is neither delivered nor answered: it is NOT counted in delivered, parsed or notExecuted. Counts alone will not show it again — read deliveryLastFail' }
+      throw e
+    }
     counts.delivered += 1
     // ROUND 4 / F11: the adapter may hand back a BARE STRING (the pre-round-4 contract) or the attributed envelope
     // `{ reply, childId, stopReason, attribution }` that `deliverViaSubagents` now produces. A bare string is accepted
