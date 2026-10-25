@@ -1684,6 +1684,25 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     rc2 && rc2.membersFrom)
 }
 
+// ★★ LIVE RUN 47 measured the seat reading missing from the receipt: host-deliver.js attaches `childPreset` /
+// `childPresetMeans` to the seam's return value, and `deliveryOf()` rebuilt the envelope from a fixed key list, dropping
+// both — so "did the member preset reach the child" was answerable only by a transcript histogram. A reading that exists
+// one layer down and does not travel is the defect family this phase keeps finding.
+{
+  const t = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(),
+    deliver: async () => ({
+      reply: JSON.stringify({ say: '核验句-丁' }), deliveryPath: 'activation', childId: 'child-42', stopReason: 'completed',
+      childPreset: 'vibe-math-vmu-member', childPresetMeans: 'the agentPreset this face put on the child CREATION request',
+    }),
+    faces: { 'vmu.meetings': { speak: async () => ({ ok: true }) } } })
+  const stepped = await t.step({ members: ['r-2'], why: 'R44 the seat reading must reach the receipt' })
+  const d = stepped && stepped.receipt && stepped.receipt.delivery
+  ok(!!d && d.childPreset === 'vibe-math-vmu-member',
+    '★★★ R44a: the receipt names the preset the child was created with — the seat is a reading, not an inference', d && d.childPreset)
+  ok(!!d && typeof d.childPresetMeans === 'string' && /agentPreset/.test(d.childPresetMeans),
+    '★★ R44b: and it says what the value means (a preset on the request, not a claim about the host)', d && d.childPresetMeans)
+}
+
 // ★★★ LIVE RUN 42 (the institute's own report ㉝.1): every `step` receipt carried `requestedMembersSource` and NO
 // receipt carried `requestedMembers`, so a caller could read HOW the selection was decided but never WHAT it resolved
 // to. Both branches are asserted through a real step, because the missing field lived in the receipt a running step

@@ -1043,6 +1043,11 @@ export function createTurnOrchestrator({
       deliveryWaitedMs: delivered && Number.isFinite(delivered.deliveryWaitedMs) ? delivered.deliveryWaitedMs : null,
       deliveryDeadlineMs: delivered && Number.isFinite(delivered.deliveryDeadlineMs) ? delivered.deliveryDeadlineMs : null,
       deliveryGraceMs: delivered && Number.isFinite(delivered.deliveryGraceMs) ? delivered.deliveryGraceMs : null,
+      // ★★ LIVE RUN 47: the SEAT reading (`childPreset`) lives on the seam's envelope and was dropped here, so the
+      // one field that answers "did the member preset reach the child" could only be recovered from a 15-minute
+      // transcript histogram. It travels now, on every route, with the meaning attached.
+      childPreset: delivered && typeof delivered.childPreset === 'string' ? delivered.childPreset : null,
+      childPresetMeans: delivered && typeof delivered.childPresetMeans === 'string' ? delivered.childPresetMeans : null,
     }
     if (lastAttribution.childId && turn && typeof turn.member === 'string') memberSessions.set(turn.member, lastAttribution.childId)
     if (reply === null) {
@@ -1717,6 +1722,8 @@ export function createTurnOrchestrator({
           path: a.deliveryPath,
           childId: a.childId ? String(a.childId) : null,
           stopReason: typeof a.stopReason === 'string' ? a.stopReason : null,
+          childPreset: typeof a.childPreset === 'string' ? a.childPreset : null,
+          childPresetMeans: typeof a.childPresetMeans === 'string' ? a.childPresetMeans : null,
           // ★ LIVE RUN 2026-10-25: the late-delivery facts are NUMBERS, and they travel as numbers (absent, not zero, when
           // the seam did not report them). `deliveredLate` is true only when the seam said so.
           deliveredLate: a.deliveredLate === true,
@@ -1735,6 +1742,11 @@ export function createTurnOrchestrator({
           path,
           childId: d.childId ? String(d.childId) : null,
           stopReason: typeof d.stopReason === 'string' ? d.stopReason : null,
+          // ★★ LIVE RUN 47: the seat reading existed on the seam's return value (`childPreset` / `childPresetMeans`)
+          // and was dropped here, so the ONE field that answers "did the member preset reach the child" was
+          // unreadable in the deployment that uses it. Same family as run 37's count-only `skipped`.
+          childPreset: typeof d.childPreset === 'string' ? d.childPreset : null,
+          childPresetMeans: typeof d.childPresetMeans === 'string' ? d.childPresetMeans : null,
           ...(d.deliveredLate === true ? { deliveredLate: true, deliveryWaitedMs: d.deliveryWaitedMs === undefined ? null : d.deliveryWaitedMs, deliveryDeadlineMs: d.deliveryDeadlineMs === undefined ? null : d.deliveryDeadlineMs, deliveryGraceMs: d.deliveryGraceMs === undefined ? null : d.deliveryGraceMs } : {}),
           attribution: typeof d.attribution === 'string' ? d.attribution : null,
           means: 'which seam executed this member turn: caller = the CALLING session played it and returned the reply; activation = an independent child session ran it through startActivation (childId + stopReason name that child); subagents = the same, through the older one-shot verb. This value is the verb the seam actually used, not a normalised category',

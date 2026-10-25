@@ -210,6 +210,10 @@ export const LIVE_READERS = Object.freeze({
 // running activation delivery. A prefix claim is a promise about a FAMILY, and a family always has exceptions; they are
 // named here instead of being hoped away.
 export const CONSTRUCTION_ONLY_KEYS = Object.freeze({
+  // ★★ LIVE RUN 47: `vmu.turn.childPreset` was declared H1 ("next turn") while host-deliver.js reads it ONCE at
+  // construction, so a runtime write was reported as `applied:"next-turn"` and did nothing until a restart. The
+  // declared hot level and the real one must be the same sentence.
+  'vmu.turn.childPreset': 'resolved once at construction by host-deliver.js (config.vmu.deliverPreset > config.deliverPreset > this setting), so a runtime write changes nothing until the next start',
   'vmu.turn.deliverMode': 'resolved once at construction by host-deliver.js (config.vmu.deliverMode > config.deliverMode > this setting > the subagents default), so a config-declared mode shadows this key and a runtime write takes effect only on the next start',
 })
 const liveReadersOf = (key) => (CONSTRUCTION_ONLY_KEYS[key] ? [] : Object.entries(LIVE_READERS).filter(([p]) => String(key).startsWith(p)).map(([, who]) => who))

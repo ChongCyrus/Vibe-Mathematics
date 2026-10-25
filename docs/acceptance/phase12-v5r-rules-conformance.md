@@ -3483,3 +3483,36 @@ note 含「next start」，并且**同族一个真正被提示词变量读取的
 「字段存在但恒为 null」是本阶段查到的最隐蔽一族：形状检查、类型检查、甚至「字段在不在」的断言都会通过。
 唯一能抓到它的是**读回一个非空值**——所以每条新读数都必须配一条「真值必须能被读回来」的断言，
 而不是「字段必须存在」。
+
+## §89 轮 47（续）：成员席的读数也是「存在但不旅行」—— `childPreset` 被两层各自丢掉一次
+
+### §89.1 起因
+
+run 47 的验收报告在 ㊱.1 里逐字抄了 `delegation` 整段：`path` / `childId` / `stopReason` / `attribution` / `means`
+五项齐全，**唯独没有 `preset`**；同时 `vibe_v5_set` 面里 `vmu.turn.childPreset` 读作 `""`（默认继承）。
+两句合起来意味着：本轮**无法从任何回执证明成员真的跑在成员席预设下** —— 而这正是成员席存在的理由。
+
+### §89.2 两层丢失（都实测）
+
+1. **`host-deliver.js` 给了、`kernel/turn/index.js` 丢了**：seam 的返回值带 `childPreset` / `childPresetMeans`，
+   但**结算式**回执的 `delivery` 由 `lastAttribution` 重建（`deliveryFromAttribution()`），白名单式列出字段 ⇒
+   两个新字段被丢掉。`deliveryOf()`（awaiting 路由用的构造器）此前也被我漏掉，已一并补上。
+2. **声明与实现不一致**：`vmu.turn.childPreset` 在 `settings/schema.js:191` 声明 `hot: H1`（「下一回合生效」），
+   而 `host-deliver.js:112-113` 在**构造期**只读一次 ⇒ 运行时写入被报告成 `applied:"next-turn"` 却什么也不会变。
+   修法：把它加进 `kernel/index.js` 的 `CONSTRUCTION_ONLY_KEYS`（与 `vmu.turn.deliverMode` 同一句真话：
+   「构造期解析；运行时写入要到下次启动」）。这是「设了值 ≠ 生效了」的又一处，只不过这次骗的是**读数面**而不是功能。
+
+### §89.3 门禁
+
+`tests/vmu-turn.test.mjs` R44a/R44b：seam 返回 `childPreset:'vibe-math-vmu-member'` + `childPresetMeans` 时，
+**结算式** receipt 的 `delivery` 必须带这两项，且 `childPresetMeans` 必须说明「放到子会话创建请求上的」而不是
+「宿主已经照做」。套件 **256/0**。`vmu-kernel` 260/0、`vmu-settings` 49/0、`vmu-host` 199/0、
+`vmu-subagent-turn` 21/0；`regen-all --check` 16/16；`generate-wired-schema --check`
+`INVARIANTS ok: 327 emitted, 826 pre-existing`。
+
+### §89.4 教训（与 §88.5 同一条，但方向不同）
+
+§88 是「字段在、值恒空」；§89 是「值在、字段被白名单构造器丢掉」。两者共同的根因是：
+**回执的每个构造器都会重列一遍字段**，于是每加一个读数就有 N 个地方漏掉它。真正该有的形状是
+「seam 返回什么，回执就原样带什么（可删不可重列）」，但那是破坏性重构，本轮不动；
+替代做法是把「新增读数必须有一条『值能读回来』的断言」写进纪律（§88.5 已记）。
