@@ -1022,3 +1022,15 @@ F-11（应用失败的披露会不会出现）。两件都**通过**：`vibe_v5_
 
 判据：`tests/vmu-run39-attribution.test.mjs` ⑥（无 kind 的围栏 progress 被翻译而不是整轮拒；face 收到
 `kind:"progress"`；回执的 `coercions` 里有这次翻译）⑦（`obstacles` 这类非 kind track 仍具名拒、face 没收到伪造的 kind）。
+
+## ROUND 41（run 41）— 翻译与归属两件事都在真机回执里读到了
+
+run 41（91 秒、12 次调用、0 RED）只做一件事：验证 ROUND 40 的 `composeRecordPut`。r-1 通过围栏只写
+`{track:"progress",title,body}`（不写 `kind`、不调工具），回执是 `ok:true`、`fields:["progress"]`、`executed:1`，并且
+**同时**带 `coercions:[{"field":"progress","member":"r-1","from":"kind:absent","to":"kind:progress",…}]`（翻译被记下）
+与 `attributed:[{"field":"progress","by":"r-1"}]`（作者被填上）；`vibe_v5_read_library{member:"r-1",kind:"progress"}`
+读到了那一行、owner 是 r-1。⇒ "轨道名就是 kind"与"回合知道作者"这两条翻译，都不是猜测：它们在回执里各有一行。
+
+同一次取证还确认了两件记债的事（`§141.5`、台账 `§142.2`）：记录 id 是从成员 id 那条序列发出的（两张反馈卡的
+`recordId` 是 `r-2`、`r-3`），所以每张记录都会与某个成员同形；`vibe_vmu_chat{action:"mute"}` 的回执不含
+`status.muted`，要再读一次 `status`。两件都不在本轮改（改 id 要迁移），写成债而不是静默。

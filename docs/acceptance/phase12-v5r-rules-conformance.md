@@ -5856,3 +5856,51 @@ T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修
 ### §141.7 本轮无实质残余？
 
 **否。** F-12 已修但未真机复验；F-13/F-14 记债未改。
+
+## §142 真机跑 41（build 635c4aed，F-12 定向复验）
+
+### §142.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `slv-p13-cc.ps1 -CloneName slvp41 -Port 19639 -TimeoutSec 1800 -MaxTokens 8000000` |
+| 结果 | `DRIVE exit=0`，`durationSec 91`，根会话 `toolCalls 12`，`transcriptEvents 81` |
+| token | `tokenTotal 553,284`（cap 8,000,000，未撞） |
+| 会话 | 2，`0 with RED checks` |
+| jsonl | `_oneoff/vm-slv/full-1027-052201.jsonl` = 1,420,009 B / 2,230 行 |
+| 机器读数 | `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=8 BAD_JSON=12` |
+| 清理 | `clone_gone=True`，C 盘剩 10.66 GB |
+
+### §142.2 判决表
+
+| 编号 | 关注点 | 判决 | 证据 |
+| --- | --- | --- | --- |
+| F-12 | 回执通道不写 `kind` 时按 track 翻译而不是整轮拒 | ✅ **通过** | r-1 只给 `{track:"progress",title,body}` 的围栏回执 ⇒ `ok:true`、`fields:["progress"]`、`executed:1`；回执 `coercions:[{"field":"progress","member":"r-1","from":"kind:absent","to":"kind:progress",…}]`；同一回执 `attributed:[{"field":"progress","by":"r-1"}]`；`read_library{member:"r-1",kind:"progress"}` 读到该行且 owner=r-1 |
+| F-13 | 记录 id 与成员 id 撞名 | ⚠️ **升级为系统性缺陷（记债）** | 两张反馈卡的 `recordId` 是 `r-2`、`r-3`——**记录 id 就是从成员 id 那条序列发出的**，因此每张记录都会与某个成员同形；`vibe_v5_read_library{id:"r-1"}` 静默解析成"记录 r-1"，不报歧义 |
+| F-14 | mute 回执是否带 `status.muted` | ⚠️ 记债（已确认） | `vibe_vmu_chat{action:"mute"}` 回执只有 `ok/member/until/durationMs/reason/enforced`，没有 `status.muted`；要另调 `status` 才看到 `muted:["r-1"]` |
+| F-10 回归 | 围栏写的行仍带作者 | ✅ 通过 | 同一回执 `attributed:[{"field":"progress","by":"r-1"}]`，落盘卡片 owner 与 kind 都正确 |
+
+### §142.3 本轮改动
+
+本轮**不改代码**（F-12 的修复在 build 里已生效并被验证）；只追加本节与 docs/26 的 ROUND 41 一段。
+
+### §142.4 门禁
+
+本轮无代码改动，T1 仍为上一次的 `TOTAL 507 PASS 507 FAIL 0`；`DOC LINT: PASS`；`regen-all --check 16/16 in sync`。
+
+### §142.5 所办提的两条建议（我不采纳的部分与理由）
+
+1. **把记录 id 改成 `rec-<seq>` 或 `<member>:<seq>` 命名空间**：正确方向，但会同时改动落盘键、`read_library{id}` 的解析、既有测试的历史夹具，属于需要迁移的变更；本轮只把它写成 §142.2 的系统性缺陷与 §141.5 的债，不在模拟验收的收口里做。
+2. **"`read_library{id}` 遇到既是记录又是成员时具名报歧义"**：与 1 同属一个改动面，同样记债；现在它静默解析成记录，这是可读性缺陷而非数据错误（owner 是正确的）。
+
+### §142.6 无法验证（如实）
+
+1. 记录 id 命名空间的迁移方案（未设计）；
+2. `mute` 回执补 `status.muted` 之后的行为（未改）；
+3. 两名以上成员同时用围栏写 progress 时的 kind 翻译与作者填充（本轮只一例）；
+4. F-12 在 `state` track 上是否同样生效（本轮只测 `progress`）；
+5. 撞名在 `vibe_vmu_records{action:"get"}`/`read_library{id}` 之外的读面（未穷举）。
+
+### §142.7 本轮无实质残余？
+
+**否。** F-13/F-14 是已确认、已取证、未修的机制缺陷。
