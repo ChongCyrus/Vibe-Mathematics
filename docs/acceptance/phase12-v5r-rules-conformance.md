@@ -6073,3 +6073,52 @@ T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修
 ### §145.7 本轮无实质残余？
 
 **否。** F-15 已修、待 run 44 判决；另两条是未覆盖面。
+
+## §146 真机跑 44（build 32755809，定向复验 F-15）
+
+### §146.1 读数
+
+- `DRIVE exit=0`、`durationSec 173`、根会话 `toolCalls 23`、`transcriptEvents 126`、`tokenTotal 1,017,062`（cap 10,000,000，`tokenCapHit:false`）、3 会话、`0 with RED checks`
+- 产物 `D:/wd/vibemath开发/_oneoff/vm-slv/full-1027-063100.jsonl` = 4,110,036 B / 6,429 行；`NO_FENCE=122 UNKNOWN_FIELD=32 FIELD_NOT_APPLICABLE=34 BAD_JSON=48`
+- 日志保全 `D:\_tmp\slv-phase5\slv-logs\...20261027-063429`；`cleanup: clone_gone=True C_free_GB=10.64`
+
+### §146.2 判决表
+
+| 项 | 判决 | 证据（回执原文摘要） |
+|---|---|---|
+| F-15 双写被拦 | ✅ | r-1 第一步：`receipt{executed:0, skipped:1}`，`skippedDetail:[{field:"progress", face:"vmu.records", op:"put", reason:"already-written-this-turn", existingId:"rec-1", means:"the same act already reached the ledger during this turn ... Do one act through ONE door"}]` |
+| 同一本账 | ✅ | `vibe_v5_read_library{member:"r-1", list:true}` ⇒ `total:1, count:1`，唯一卡片 `{id:"rec-1", title:"奇数项和·双门试验", owner:"r-1"}` |
+| F-12 轨道→kind 翻译 | ✅ | 同一回执 `coercions:[{field:"progress", member:"r-1", from:"kind:absent", to:"kind:progress", why:"the reply channel names a record by its TRACK and this track IS a declared kind ..."}]` |
+| 续会话真机闭环 | ✅ | r-1 第二/三轮：`deliveryPath:"continuation"`、`continuation{offered:"2d935b44-...", reused:true, applied:true, how:"caller-supplied resume (child, this seam's third argument) ran the member in session 2d935b44-..."}`、`continuationMeans:"THIS TURN CONTINUED THE MEMBER ..."` |
+| F4 回执可观测 | ✅ | 纯散文回合失败回执带 `replyLength:1501`、`replyExcerpt`（该成员那段散文的原文前 1501 字符）与 `sideEffectsUnverified:true` + `sideEffectsMeans`；`message` 不再声称「什么都没发生」 |
+| 状态板四行 | ✅（口径有瑕，已修） | r-2 逐字抄出四行：`[总任务] ...（来源：设置键 vmu.turn.objective）`、`[规划] 该来源未提供：任务板为空（0 条任务），规划无从派生`、`[各任务完成状态] 该来源未提供：任务板上一条任务都没有（tasks.list() 返回 0 行）`、`[当前小任务] 该来源未提供：该成员（r-2）在 progress 轨上还没有记录（records.list 报 1 条可见表头）` |
+
+### §146.3 本轮修的代码（F-16：口径）
+
+`[当前小任务]` 的「该公布 N 条可见表头」不说是谁的 ⇒ 读者（run 44 的所办）要再猜一次。改 `vibe-math-vmu/kernel/turn/index.js` 的 gap 文案为「该轨可见 N 条表头，其中 0 条属于该成员」（截断时仍追加「该轨共 M 条，可见的 N 条是被截断后的」），并在 `tests/vmu-run34-findings.test.mjs` ② 加一条断言钉住新措辞。
+
+### §146.4 简报错两条（我）
+
+1. `vibe_v5_record_progress` 的正文参数叫 **`content`**，不是 `body`：回执 `VMU_INVALID_ARGUMENT "does not accept parameter(s) \"body\"; it declares: content, track, title, member, progress, obstacles, next, help, state"`；成员连试 4 次后才改对（它有 hint，没瞎蒙）。
+2. 我要求抄 `vibe_vmu_turn{op:"status"}` 的 `counts{...}` / `discipline{...}`，实际形状是 `status.dispatch / status.turns / status.fields / status.owners / ...`（没有这两个键）——包含我沿用 run 32/33 的旧形状而没有核当前实现。
+
+### §146.5 门禁
+
+- `VMU RUN 34 FINDINGS 26/0`、`VMU RUN 43 DUPLICATE WRITE 20/0`、`VMU RUN 31 STATUS BOARD 58/0`、`VMU RUN35 READOUTS 26/0`
+- `GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ 见 §146.6 收口末行
+
+### §146.6 收口
+
+- `update-doc-counts --write`：`JOBS total=578 suites=470 probes=108`、`shipped FILES tests/*.mjs=393`、`files changed=0`
+- `regen-all --write` 16/16 → `--check` **16/16 in sync**；`preflight` **PASS**；`DOC LINT: PASS`
+- `GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **`TOTAL 509  PASS 509  FAIL 0  (suites 445 · probes 64)`**
+
+### §146.7 无法验证 / 下一轮
+
+1. **成员 B 的「没有记录」是否只因它真没写**：本轮 r-2 确实没写 progress，所以「0 条属于该成员」是预期内；下一轮应让 B 也写一条，再验 B 的状态板点名它自己。
+2. **两条门都写不同 title 的边界**（F-15 只挡同名同轨）：测试已覆盖本地语义，真机未试。
+3. **`vibe_v5_turn{op:"status"}` 的 `fields` 计数（22）与 `owners` 表的完整形状**：本轮只抄了开头，未逐项核对。
+
+### §146.8 无实质残余？
+
+**否** —— F-16 已修待提交；F-13/F-14 的复验仍未进真机（本轮未提）。

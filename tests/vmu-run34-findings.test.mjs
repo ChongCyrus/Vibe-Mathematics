@@ -141,6 +141,10 @@ try {
     ok(String(lying.current.why || '').includes('还没有记录') && String(lying.current.why || '').includes('40'),
       '★ a TRUNCATED answer says how many rows the track holds (a count we saw and a count the ledger holds are two claims)',
       { why: lying.current.why })
+    // run 44: the reader still had to guess WHOSE rows those were, so the line now names the member's own count.
+    ok(String(lying.current.why || '').includes('其中 0 条属于该成员'),
+      '★ the same line says how many of the visible rows belong to THIS member (run 44 asked "1 条可见表头" — whose?)',
+      { why: lying.current.why })
   }
 
   // ── ③ THE SEQUENCE RECEIPT MUST NAME WHAT `next` REALLY IS ────────────────────────────────────────────────

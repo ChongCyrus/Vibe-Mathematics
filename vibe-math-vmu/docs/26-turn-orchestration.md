@@ -1080,3 +1080,13 @@ run 43 让研究员写**一条** progress，它做了两件事：调 `vibe_v5_re
 ②账本读不到（没有 `list`、返回 Promise、抛错）就**不做判断**、照常写——守卫不能靠猜；③只对 records 写入生效。
 
 真机证据（run 43）：`[当前小任务]` 引 rec-2、成员说 rec-1、两条正文几乎相同（263 B / 227 B，fingerprints 不同）。
+
+## ROUND 44：一次行动只走一扇门（真机判决）
+
+**现象**（run 43）：给研究员一轮指令「既调 record_progress 又在回复围栏里写同一条」，两条记录各建了一条（`rec-1`/`rec-2`，相隔 1 ms），成员散文引 `rec-1`、状态板引 `rec-2`。
+
+**机制**（`vibe-math-vmu/kernel/turn/index.js` 的 `alreadyWrittenThisTurn()`）：同一回合里，若账本已有同 owner、同 track、同 title 且写于回合开启之后的行，第二扇门不写；`receipt{executed:0, skipped:1}` 保留计数，`skippedDetail[].reason==="already-written-this-turn"` + `existingId` + `means` 给出明细。账本读不到（无 `list`、返回 Promise、抛错）＝不判断、照常写。只对 records 写入生效。
+
+**真机判决**（run 44，build 32755809）：`skipped:1` / `skippedDetail[0].existingId:"rec-1"` / 库读 `total:1` ✅；同时 `coercions` 的 track→kind 翻译仍生效、续会话 `continuation.applied:true` 仍成立。
+
+**判据**：①同一 title 只有一条记录；②回执必须点名被跳过的那一扇门与已存在的 id；③下一轮状态板必须指向同一条。

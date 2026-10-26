@@ -1260,10 +1260,11 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
       const mine = items.filter((it) => it && String(it.owner === undefined || it.owner === null ? '' : it.owner) === member.trim())
       if (mine.length === 0) {
         // A truncated list must never be reported as "this member has no records": the count we saw and the count the
-        // ledger holds are two different claims (run 34's defect), so the reason names both.
+        // ledger holds are two different claims (run 34's defect), so the reason names both. Run 44 showed the reader
+        // still hesitating at "N 条可见表头" (whose?), so the line now says how many of them belong to THIS member.
         const seenCount = String(items.length)
         const truncatedTo = progressEnvelope && progressEnvelope.truncated === true ? '；该轨共 ' + String(progressEnvelope.available) + ' 条，可见的 ' + seenCount + ' 条是被截断后的' : ''
-        current = Object.assign(gap('该成员（' + member.trim() + '）在 progress 轨上还没有记录（records.list 报 ' + seenCount + ' 条可见表头' + truncatedTo + '）'),
+        current = Object.assign(gap('该成员（' + member.trim() + '）在 progress 轨上还没有记录（该轨可见 ' + seenCount + ' 条表头，其中 0 条属于该成员' + truncatedTo + '）'),
           { source: "records 的 progress 轨" })
       } else {
         const newest = mine.slice().sort((a, b) => (stampMs(a) === null ? -1 : stampMs(a)) - (stampMs(b) === null ? -1 : stampMs(b)))[mine.length - 1]
