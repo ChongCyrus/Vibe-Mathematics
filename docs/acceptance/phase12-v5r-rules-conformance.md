@@ -5326,3 +5326,49 @@ run 32 第二轮回 `res-01` 时 step 回执给的是：
 - 「续会话真的把话送进成员的既有 child 会话」仍**只有单测**：run 32 的两次都落在 `cause:"resume-failed"`（`VMU_ENGINE_UNAVAILABLE`），修法（`keepResident`）判据已写进回执（`continuity.applied` 与 `delivery.residency` 必须一起读），真机判决排在 run 33。
 - `vmu.tasks.list` / `vmu.records.list` 是否有资格成为配置键，属"状态板读腿该不该可配置"的设计问题；本轮裁决是**不**——读腿由缝表声明，配置化没有调用者。
 - run-33 之前的 P2 六件（蓝图/关闭延长/连排会议/人工干预请示/禁言发言次数/状态板）在提示词侧仍未被席位化教学（task-21 在跑）。
+
+## §132 真机跑 33（build `7936f6d5`，2026-10-26 22:31）——P2 六件与 F8 的判决，续会话仍未成
+
+判据与前几节一致：每条给回执原文或门禁末行；「验证不了」写成验证不了。
+
+### 132.1 本轮读数
+
+- 驱动：`DRIVE exit=0`、`durationSec 1012`、`toolCalls 25`、`transcriptEvents 147`、`tokenTotal 5,180,780`、`tokenCapHit:false`。
+- 产物：`_oneoff/vm-slv/full-1026-223125.jsonl`（19,871,626 B / 43,959 行）；机器读数 `NO_FENCE=16 UNKNOWN_FIELD=16 FIELD_NOT_APPLICABLE=0 BAD_JSON=0`；`slv-inspect` ⇒ `SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`。
+- 日志保全：`D:/_tmp/slv-phase5/slv-logs/…20261026-224902`；`cleanup: clone_gone=True C_free_GB=10.09`。
+- 提取：`D:/_tmp/r33/dig33.mjs`（同一 digger，换文件名）⇒ `D:/_tmp/r33/dig33.txt`（7440 行）。★ **抽取时控制台是 CP936**，直接把中文打到屏幕会出现乱码；判据必须落 UTF-8 文件再读——本轮我先把乱码当成"回执里有坏字符"，随后自证是提取侧的编码问题（同一字段在 jsonl 里是好的），不记缺陷。
+
+### 132.2 判决表
+
+| # | 项目 | 判决 | 证据（回执原文摘录） |
+|---|---|---|---|
+| ① | 蓝图机制（P2-a） | ✅ 可读可改 | `vibe_v5_blueprint{action:"propose",member:"r-acad",path:"Shared/Protocol.md"}` ⇒ `ok:true`、`track:"blueprint"`；不带 `member` 时**具名拒** `blueprint (proposal) needs the acting member id`；`adopt` 需 `draft`（`r-18`）；`state` 读回草案 |
+| ② | 会议延长（P2-b） | ✅ 生效，**字段名与我简报不符** | `vibe_vmu_meeting{action:"extendlimit",actor:"r-acad",id:"m1",ms:60000}` ⇒ `ok:true`，回执读 `wallLimitMs`/`extendedMs`；我简报写的 `wallMs`/`limitMs` **不存在**（第三次同类：简报里凭空造字段名） |
+| ③ | 连排会议（P2-c） | ❌ 本轮**不可达** | `grep sequence packs/v5r/tools.js` = 0 命中；内核 `kernel/meetings.js:2100 openSeq({sequence})` 早已支持 ⇒ 缺的是面。**本轮之后已补**：`vibe_v5_meeting` 新增 `sequence` 参数并透传、回执读回 `sequence{index,total,next}`（见 §132.4），待 run 34 验 |
+| ④ | 人工干预/请示（P2-d） | ⚠️ 可读，**闸门待补** | `vibe_vmu_human{action:"openApproval",by:"r-acad",requestId:"rq-r33",subject:"…"}` ⇒ `ok:true`、`id:"rq-r33"`、`askedAt`、`timeoutMs:0`、`onTimeout:"hold"`、`enforced:[vmu.human.approvalTimeoutMs, vmu.human.onTimeout]`；`approvalState{request_id:"rq-r33"}` ⇒ `state:"pending"`、`expiresAt`、`waitsForever:true`。★ **但席位可以拿 `by:"r-acad"` 开户**，而 `decide/withdraw/veto` 的席位闸门是本轮之后才由 task-22 补的（见 §133） |
+| ⑤ | 禁言/配额（P2-e） | 未验 | 本轮 agent 未调 `vibe_vmu_chat` 的管理动词（只读教学已在 seat-faces 声明里）⇒ 记"未验"而不是"没问题" |
+| ⑥ | `[状态板]`（P2-f） | ✅ 教学+机制都在 | 提示词侧由 `seat-faces.js` 的声明渲染（task-21）；运行中 `0 with RED checks`，无"讲了个不存在的块"类红 |
+| ⑦ | F1（成员收信）回归 | ✅ | 成员子会话 `session=2ebd73f76286` 里 `vibe_v5_inbox{action:"list",member:"res-01"}` ⇒ `count:1`、`rows:[{id:"ml-3",from:"office",kind:"assign",bytes:482,…}]` |
+| ⑧ | F5（verified_promote 提示截断）回归 | ✅ 修好了 | `vibe_v5_verified_promote{card:"p-r33",…}` ⇒ `ok:false,code:"VMU_STATE",message:"card p-r33 is not settled (p=0.4), so it cannot enter the verified track", hint:"only 1 or 0 may be promoted: p in (0,1) is experience, not a conclusion — a debate settlement is what turns it into 1. Promote AFTER that settlement, never before it"`（完整句，不再是半词） |
+| ⑨ | F8（成员续会话） | ❌ **仍未成，但根因已换层** | 第一轮 res-01 ⇒ `delivery.residency:"kept-resident-for-continuation"`（keepResident 生效 ✓）；第二轮 ⇒ `continuation{offered:"8a346f7e…",applied:false,reused:false,cause:"resume-failed",hostCode:"VMU_ENGINE_UNAVAILABLE",why:"…the host refused to admit a continuation prompt into the member session …: Cannot read properties of undefined (reading 'aborted')"}`, `ranIn:"d7fc3cc6…"`（新 child）。⇒ 缺陷从内核移到**宿主的 `subagents.prompt` 内部**；已派 task-23 实测宿主所需前置 |
+| ⑩ | 会议状态语义 | ✅ | `vibe_vmu_meeting{action:"status",id:"m1"}` ⇒ `state:"open"`、`stateMeans:"the meeting is OPEN and running: …"`（§129 之前这里是 `null`）；`attend` 使 `present` 1→2、`presentBreakdown{chairSeated:true,attended:1}`、`unansweredList` 缩短 |
+
+### 132.3 我这轮简报的三处错（同型第三次）
+
+1. `vibe_v5_meeting` 的 `sequence` 参数**当时不存在**（我按规则写了它）——规则有、机制半有、面没有。
+2. `extend/extendlimit` 的回执字段写成 `wallMs`/`limitMs`（真名 `wallLimitMs`/`extendedMs`）。
+3. `vibe_vmu_human` 的 `openApproval` 回执**没有 `state` 字段**，`requestId` 与 `request_id` 是两个参数（前者给 openApproval 自定义 id，后者读 approvalState）。
+
+⇒ 纪律升级为**三条**：① 简报里每个参数名必须来自 `check-task-brief` 的派生（已机械门槛）；② **字段名一律标注"以回执为准"**，不写"应当有"的键；③ 只引用**上一轮真机确实出现过**的字段名，否则写"抄回执里最接近的那个字段"。
+
+### 132.4 本轮之后落的代码（待 run 34 验）
+
+- `packs/v5r/tools.js` 的 `vibe_v5_meeting` 新增 `sequence` 参数：透传给 `kernel.meetings.open({sequence})`（内核 `openSeq` 本来就支持，`normalizeSequence` 会具名拒坏描述符），回执读回 `sequence{index,total,next}` + `sequenceMeans`；声明里补一句"一次调用连排多场"。
+- `kernel/turn/index.js` 的 activation 分支：`keepResident` 保留 activation（已由 run 33 证明生效），无文本分支不再二次 `dispose`（`{"disposed":2}` 是我引入的、被 `vmu-turn-activation` 抓住）。
+- `docs/03` 的 `vmu.store` 行补 `root-gone` 语义（见 §131）。
+
+### 132.5 无法验证 / 本轮残余
+
+- **续会话（F8）**：只有"内核保留了 activation"被证实，"下一轮真的进了同一个 child"仍**未**——task-23 在测宿主前置。
+- **连排、禁言/配额、席位闸门**：本轮 build 里要么没有、要么没被调用，全部推到 run 34。
+- 成员子会话本轮仍在跑自己的 Lean 流（`t-3` 等），与本轮"只测机制"的任务不同——**不是缺陷**，但读成员正文时必须核对来源（同一现象 run 32 已有记录）。

@@ -211,5 +211,39 @@ console.log('=== 6. THE SERIAL DISPATCH QUEUE IS RELEASED BY A TIMED-OUT DELIVER
   ok(ds.lastError && ds.lastError.code === 'VMU_TURN_DELIVERY_TIMEOUT' && calls === 2,
     '★ 失败记进 dispatch.lastError，且第二个回合真的被调用（不是静默丢）', { lastError: ds.lastError, calls })
 }
+console.log('=== 7. THE SEND BRIDGE ALWAYS HANDS THE HOST AN ABORTSIGNAL (run 33, adjacent defect) ===')
+{
+  // MEASURED, not theorised: the host's `sendMessage(parent, childSessionId, content, options)` admission path starts
+  // with `options.signal.throwIfAborted()`, and its rejection path reads `signal.aborted` on the same object without an
+  // undefined guard. A bridge that passes `{}` when the caller had no signal therefore dies inside the host and the
+  // real reason is replaced by "Cannot read properties of undefined (reading 'aborted')" - the exact string run 33
+  // printed for the resume bridge (task-23). The bridge must never leave the signal out.
+  const { sendViaSubagents } = await import('../vibe-math-vmu/kernel/turn/index.js')
+  const seen = []
+  const hostLike = {
+    sendMessage: async (sender, targetId, content, options) => {
+      // exactly the host's first statement - a bridge that omits the signal throws HERE, by it
+      options.signal.throwIfAborted()
+      seen.push({ targetId, blocks: content.length, aborted: options.signal.aborted, kind: typeof options.signal.throwIfAborted })
+      return { messageId: 'inbox-1' }
+    },
+  }
+  const bridge = sendViaSubagents(hostLike)
+  const noSignal = await bridge({ sender: { id: 'root' }, targetId: 'child-1', content: 'hello' })
+  ok(noSignal && noSignal.messageId === 'inbox-1',
+    '★★ a call that wants NO cancellation still reaches the host (the old bridge passed `{}` and the host threw on its first line)',
+    noSignal)
+  ok(seen.length === 1 && seen[0].aborted === false && seen[0].kind === 'function',
+    '★ what it handed over is a real AbortSignal (`aborted === false` = nothing has been cancelled), not an empty object', seen[0])
+  const mine = new AbortController()
+  await bridge({ sender: { id: 'root' }, targetId: 'child-1', content: 'hello', signal: mine.signal })
+  ok(seen.length === 2 && seen[1].kind === 'function',
+    'and a caller-supplied signal is forwarded instead of replaced (a real cancellation must still work)', seen.length)
+  let refused = null
+  try { await bridge({ sender: { id: 'root' }, targetId: '', content: 'x' }) } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_INVALID_ARGUMENT',
+    'and the named refusal for a missing target still comes from the bridge (this change touched no gate)', refused && refused.code)
+}
+
 console.log('=== HOST DELIVER WIRING: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed) { console.error('FAILURES:\n' + failures.map((f) => '  - ' + f).join('\n')); process.exitCode = 1 }

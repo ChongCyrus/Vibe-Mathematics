@@ -8,8 +8,96 @@
 //
 // FACE CONVENTIONS: the spec is a factory (host.js supplies `param`/`refused`/`TOOL_NAMES`/`kernel`); every
 // action returns NAMED structured JSON and never swallows a refusal; `refused()` carries the service's own code.
+//
+// ★ ROUND 33 / task-22 — THE CALLER GATE. Until this round the face had NO caller check: any live member could
+// `decide` / `withdraw` / `veto` / `inject`, i.e. act as the human. Measured on the real entry before the fix:
+//     chair decide (allow:true) → {"ok":true,"decision":"allowed","decidedBy":"chair"}
+//     member veto               → {"ok":true,"veto":{"id":"veto-2","by":"member"}}
+// That is run 33's "所办替院士做裁决" as a MECHANISM hole, not a prompt problem. Two verbs carry the human's
+// AUTHORITY, so they are gated by two DECLARED keys — `vmu.human.deciderRoles` (decide/withdraw/veto) and
+// `vmu.human.injectRoles` (inject) — whose default in `settings/schema.js` is the office ALONE: out of the box no
+// seat may approve anything, because an authority mistake must fail closed.
+//   · WHY HERE AND NOT IN `kernel/human.js`: that kernel gate states the rule itself — "DECIDING BY ROLE IS POLICY,
+//     SO IT LIVES OUTSIDE THIS KERNEL GATE" (task-205 B, kernel/human.js:323). The capability (approve/withdraw/
+//     veto/inject) stays in the kernel; the question "who may" is a declaration, and this face is where the CALLER
+//     is known.
+//   · WHO the caller is comes from `resolveTurnMember` — the SAME unforgeable criterion the pack-tool seat gate
+//     uses (`host-pack-tools.js:106`), never from the model-supplied `by` argument. A seat that writes
+//     `by:"office"` is still refused; the argument names a role, the exec names an actor.
+//   · THE DEFAULT IS READ FROM THE DECLARATION (`SETTING_DEFS`), not written here: a live view value wins (hot
+//     settings really move the gate), the declared `def` is the fallback, and an undeclared key grants NOBODY
+//     (fail closed — the failure mode of a deleted declaration must not be "everyone may approve").
+import { resolveTurnMember } from '../host-pack-tools.js'
+import { SETTING_DEFS } from '../settings/schema.js'
 export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
   const k = kernel || {}
+  // ── THE CALLER GATE (ROUND 33 / task-22) — see the file header for why it lives here and not in the kernel ──
+  const DECIDER_KEY = 'vmu.human.deciderRoles'
+  const INJECT_KEY = 'vmu.human.injectRoles'
+  const DECIDER_CODE = 'VMU_HUMAN_DECIDER_ROLE'
+  const INJECT_CODE = 'VMU_HUMAN_INJECT_ROLE'
+  // ★ A MAP, NOT A TABLE SUBSCRIPTED BY THE ACTION — and the reason is a real gate, not taste.
+  // `tests/audit-face-actions.mjs`'s `isGenericDispatch()` scans the SOURCE TEXT (comments included) for a
+  // table-subscript-by-action pattern, or for a rest-parameter catch-all, and reads either as "this face
+  // dispatches by index". A face judged generic-dispatch stops being checked for "each offered action has its
+  // own branch" and is instead held to "each action name equals a method of a kernel service this face
+  // mentions" — which `withdraw` (really `withdrawApproval`), `inject` (chat/mailbox seams) and
+  // `recoverStatus` (its own branch) can never satisfy. Written as a subscripted-by-action object this table
+  // demoted the human face exactly that way; a `Map` + `.get(action)` states the same policy and leaves the
+  // gate reading the face for what it is: explicit branches.
+  const GATED_VERBS = new Map([['decide', DECIDER_CODE], ['withdraw', DECIDER_CODE], ['veto', DECIDER_CODE], ['inject', INJECT_CODE]])
+  const KEY_OF_CODE = new Map([[DECIDER_CODE, DECIDER_KEY], [INJECT_CODE, INJECT_KEY]])
+  const WHAT_OF_CODE = new Map([
+    [DECIDER_CODE, 'decide an approval, withdraw it, or veto the institute'],
+    [INJECT_CODE, 'speak as the human (inject)'],
+  ])
+  const DECLARED = new Map((SETTING_DEFS || []).filter((d) => d && typeof d.key === 'string').map((d) => [d.key, d]))
+  /** Live value first, the declaration's default second, empty last (an undeclared key grants nobody). */
+  const declaredRoles = (key) => {
+    let live
+    try {
+      const view = kernel && typeof kernel.settingsView === 'function' ? kernel.settingsView() : null
+      live = view && typeof view.get === 'function' ? view.get(key) : undefined
+    } catch { live = undefined }
+    if (Array.isArray(live)) return live.map((r) => String(r).trim()).filter(Boolean)
+    if (typeof live === 'string') return live.split(',').map((r) => r.trim()).filter(Boolean)
+    const def = DECLARED.get(key) && DECLARED.get(key).def
+    return Array.isArray(def) ? def.map((r) => String(r).trim()).filter(Boolean) : []
+  }
+  const rosterRow = (id) => {
+    try {
+      const roster = kernel && kernel.members && typeof kernel.members.roster === 'function' ? kernel.members.roster() : null
+      for (const row of Array.isArray(roster) ? roster : []) if (row && String(row.id) === String(id)) return row
+    } catch { /* an unreadable roster means "not a seat" — the same answer the seat gate gives */ }
+    return null
+  }
+  /** office (no member ⇒ root/host actor, exactly `resolveTurnMember`'s null) or the live roster SLOT. */
+  const callerRole = (exec) => {
+    const member = resolveTurnMember(kernel, exec)
+    if (!member) return { member: null, role: 'office', seat: 'office' }
+    const row = rosterRow(member)
+    const seat = row && typeof row.slot === 'string' && row.slot.trim() ? row.slot.trim() : '(no seat)'
+    return { member, role: seat, seat }
+  }
+  /** Throws a NAMED refusal in the caller's own vocabulary when this caller may not perform `action`. */
+  const gateVerb = (action, exec) => {
+    const code = GATED_VERBS.get(action)
+    if (!code) return null
+    const key = KEY_OF_CODE.get(code)
+    const roles = declaredRoles(key)
+    const who = callerRole(exec)
+    if (roles.indexOf(who.role) !== -1) return who
+    const caller = who.member ? '"' + who.seat + '" (' + who.member + ')' : '"' + who.seat + '"'
+    const what = WHAT_OF_CODE.get(code)
+    throw Object.assign(
+      new Error('the human face decides for the institution: ' + caller + ' may NOT ' + what + ' — declared ' + key + ' = [' + roles.join(', ') + ']'),
+      {
+        code,
+        hint: 'if this caller really may ' + what + ', declare it: ' + key + ' must include "' + who.role + '" (declared in settings/schema.js — the framework default is '
+          + (roles.length ? roles.join(', ') + ' only' : 'nobody, so nothing is granted') + ', and no seat may approve out of the box)',
+        enforced: [key],
+      })
+  }
   const human = () => {
     const h = kernel && kernel.human
     if (!h) throw Object.assign(new Error('this kernel exposes no human face'), { code: 'VMU_ENGINE_UNAVAILABLE', hint: 'the human face is registered by the kernel; check vmu.tools.faces / the facesDisabled list' })
@@ -54,9 +142,12 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
       why: param('string', 'inject：这次干预的理由（会写进回执，便于审计）'),
     },
     run: async ({ action = 'status', scope, target, reason, emergency, veto_id, member_id, request_id, allow, by, subject, domains, requestId, timeout_ms,
-      text, to, from, via, why } = {}) => {
+      text, to, from, via, why } = {}, exec = null) => {
       const notEmpty = (v) => (typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined)
       try {
+        // ★ THE CALLER GATE runs BEFORE any state changes: a refused verb must leave the human table exactly as it
+        // found it (a refusal that still flipped the approval would pass an "did it error?" test and be worthless).
+        gateVerb(action, exec)
         if (action === 'status') return Object.assign({ ok: true, action }, human().status())
         if (action === 'veto') return Object.assign({ ok: true, action }, human().veto({ by: notEmpty(by) || null, scope: notEmpty(scope) || null, target: notEmpty(target) || null, reason: notEmpty(reason) || null, emergency: emergency === true }))
         if (action === 'explainVeto') return Object.assign({ ok: true, action }, human().explainDecision({ vetoId: notEmpty(veto_id) || null, requestId: notEmpty(request_id) || null, reason: notEmpty(reason) || null }))

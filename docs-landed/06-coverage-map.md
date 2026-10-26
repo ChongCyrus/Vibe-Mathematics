@@ -114,3 +114,23 @@
 ★ **十个方面【每一个都有落地模块】**，★ **且清单由生成文件兜底**（★ `docs/02`／`03`／`04`）⇒ ★ **读者不必信这一卷，★ 可以去查** ✓
 
 
+
+## 13. ★★★★ 增量（R29–R33，2026-10-26）：★ 快照之后新增的机制，★ 权威在 `vibe-math-vmu/docs`
+
+★ **本卷是快照，这一节是补丁**。★★ **下面每条都不改上面的历史表格**，只是把"快照之后新增的机制落在哪"点名，
+★ 并把**权威指向**写出来 —— ★ 具体字段／错误码／设置键**一律以 `vibe-math-vmu/docs/` 为准**，★ **本卷不重抄**。
+
+| ★ 机制 | ★ 落点（模块/面） | ★ 权威 |
+|---|---|---|
+| ★★ **席位→工具面由【声明】派生**（不再从提示词反推 deny） | ★ `packs/v5r/seat-faces.js`（`SEAT_TOOL_FACES`／`SEAT_TEACHING`／`seatAllowNames` 等纯函数），提示词 bullet 由它**渲染** | ★ `docs/26` 的 seat 小节 |
+| ★★ **成员工具 override 只能【收窄】**（allow 不许盖过席位 deny） | ★ `kernel/index.js` 的 `resolveMemberToolDeny()`（回执带 `allowNarrowedByDeny`） | ★ `docs/03` 工具面一节 |
+| ★★ **邮箱跨内核共享**（成员子会话能读到自己收到的信） | ★ `kernel/mailbox.js` 读前拉取 + 写时在 store 当前值上合并回写 | ★ `docs/02` mailbox 段 |
+| ★★ **成员在【自己的会话】里提交辩论裁决** | ★ `packs/v5r/tools.js` 的 `vibe_v5_verdict`（`channel:"ruling"`，落成成员名下卡）+ `vibe_v5_verdict_final` 从提交采纳 | ★ `docs/03` verdict 族 |
+| ★★ **`[状态板]` 四字段由机制产出**（总任务／规划／各任务完成状态／当前小任务） | ★ `kernel/turn/index.js` 的 `STATUS_BOARD_READ_OPS`／`STATUS_BOARD_FIELDS`／`renderStatusBoard`／`composeStatusBlock` | ★ `docs/26 §3.44` |
+| ★★ **落盘目录消失时的写：具名拒绝 + 不再制造无人处理的 rejection** | ★ `kernel/store.js`（`root-gone`／回写回滚／`patch()` 直接返回 mutate 的 promise） | ★ `docs/03` 的 `vmu.store` 行 |
+| ★★ **人工审批面的席位闸门**（decide/withdraw/veto/inject 由声明角色决定，默认只有 office） | ★ `tools/human.js` 的 `gateVerb`＋`settings` 的 `vmu.human.deciderRoles`／`injectRoles` | ★ `docs/03 §8` 的 R31 码表 |
+| ★ **成员回合的续会话**（同一 child session；不可达时回执写准原因） | ★ `kernel/turn/index.js`（`continuation` 读数）＋ `host-deliver.js`（`residency`） | ★ `docs/26` 的 `delivery.residency` 段 |
+| ★ **连排多会议** | ★ `packs/v5r/tools.js` 的 `vibe_v5_meeting { sequence }`（内核 `openSeq` 早已支持） | ★ `docs/03` 的 `vibe_v5_meeting` 行 |
+
+★ ★★ **两条读法**：① 上表任一行的"当前是否真的这样"★ **以对应 `docs/` 卷与门禁为准**，★ 本卷写的是**落点**不是**保证**；
+② ★ 真机判决逐轮记录在 `docs/acceptance/phase12-v5r-rules-conformance.md`（§125 起），★ 那一卷是**证据表**，★ 每条都指到 `文件:行` 或门禁末行。

@@ -321,6 +321,7 @@ const faces = { 'vmu.meetings': { speak: async () => ({ ok: true }) } }
     { seq: 3, type: 'turn/end', data: { turn: 1, reason: 'completed' } },
   ]
   const prompts = []
+  const promptSignals = []
   let started = 0
   let disposed = 0
   let resumedTurnWritten = false
@@ -355,7 +356,17 @@ const faces = { 'vmu.meetings': { speak: async () => ({ ok: true }) } }
       }
     },
     // DSH 0.2.1's continuation verb: it admits the prompt and resolves to an inbox id — NOT to the answer.
-    prompt: async (request) => { prompts.push(request); return { messageId: 'msg-7' } },
+    // ★ RUN 33: it also REQUIRES a caller AbortSignal (`submitAdmitted` → `options.signal.throwIfAborted()`, and the
+    // prompt's own refusal path dereferences `signal.aborted` unguarded). The fake enforces that, so the production
+    // wiring cannot regress to the signal-less call that produced run 33's "reading 'aborted'".
+    prompt: async (request, signal) => {
+      if (signal === undefined || signal === null || typeof signal.throwIfAborted !== 'function') {
+        throw new TypeError("Cannot read properties of undefined (reading 'aborted')")
+      }
+      promptSignals.push(signal)
+      prompts.push(request)
+      return { messageId: 'msg-7' }
+    },
     sendMessage: async () => 'inbox-id-1',
   }
   const ctx = {
@@ -397,10 +408,13 @@ const faces = { 'vmu.meetings': { speak: async () => ({ ok: true }) } }
   ok(JSON.stringify(s2).includes('resumed in place'),
     '★★★ ⑥-9 the ANSWER CAME BACK: the text read out of the child session log is the reply this step settled with')
   ok(disposed === 0 && s1 && s1.receipt && s1.receipt.delivery && s1.receipt.delivery.residency === 'kept-resident-for-continuation',
-    '★★★ ⑥-10 ROUND 32 / F8: the activation was KEPT RESIDENT rather than disposed — this host reports a resume capability, and the run-32 refusal (`reading \'aborted\'`) came from resuming a child whose activation had already been torn down. The receipt names the choice in `delivery.residency`, so the measurement is readable instead of inferred',
+    '★★★ ⑥-10 ROUND 32 / F8: the activation was KEPT RESIDENT rather than disposed — a resume cannot be attempted against a child whose activation was torn down. (Run 33 later measured the OTHER half of that refusal: the prompt call itself needs a caller AbortSignal; ⑥-12 pins it.) The receipt names the choice in `delivery.residency`, so the measurement is readable instead of inferred',
     { disposed, residency: s1 && s1.receipt && s1.receipt.delivery && s1.receipt.delivery.residency })
   ok(typeof s2.continuationMeans === 'string' && /CONTINUED THE MEMBER/.test(s2.continuationMeans),
     '★★ ⑥-11 and the sentence says so in words, not only in ids', s2 && s2.continuationMeans)
+  ok(promptSignals.length === 1 && promptSignals[0] && promptSignals[0].aborted === false && typeof promptSignals[0].throwIfAborted === 'function',
+    '★★★ ⑥-12 RUN 33: the production wiring passes a LIVE AbortSignal into `subagents.prompt` — the signal-less call it used to make dies in the host\'s own refusal path reading `undefined.aborted`',
+    promptSignals.length ? { aborted: promptSignals[0].aborted, throwIfAborted: typeof promptSignals[0].throwIfAborted } : promptSignals.length)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────

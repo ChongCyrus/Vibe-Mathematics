@@ -19,7 +19,10 @@
 //   ④ a baseline that cannot be read is refused BEFORE anything is queued (a turn that did not run must not look sent),
 //   ⑤ a turn that ended without text is named as a READING failure, not as "the member said nothing",
 //   ⑥ the deadline bounds THIS CALL and says the member may still be working (`stillRunning`), and
-//   ⑦ an empty session id is an argument error, because "nothing offered" must not be read as "resume it anyway".
+//   ⑦ an empty session id is an argument error, because "nothing offered" must not be read as "resume it anyway",
+//   ⑧ RUN 33: `prompt(request, signal)` needs a CALLER SIGNAL — the bridge passes a live one, a signal-less call
+//      reproduces run 33's `reading 'aborted'` against the mirrored host, and a host that still masks its own refusal is
+//      reported as `VMU_RESUME_HOSTCONTRACT` (host defect) instead of as the member refusing.
 //
 // Run: node tests/vmu-run32-resume.test.mjs        Last line: === VMU RUN32 RESUME: N passed, M failed ===
 
@@ -38,7 +41,7 @@ const rejects = async (fn) => { try { await fn(); return { caught: false } } cat
 // seam's contract is "only events with seq > baseline count as this turn". The fake enforces that by advancing seq only
 // when the prompt is admitted, which is also how the real host behaves (a queued prompt becomes the child's next turn).
 const fakeHost = ({ onPrompt = null, failBaseline = null, endWithoutText = false, neverEnds = false, readback = '灯塔' } = {}) => {
-  const calls = { prompts: [], baselines: [], reads: 0 }
+  const calls = { prompts: [], baselines: [], reads: 0, signals: [] }
   const logs = new Map()
   const logOf = (id) => {
     if (!logs.has(id)) logs.set(id, { seq: 5, events: [] })
@@ -62,8 +65,19 @@ const fakeHost = ({ onPrompt = null, failBaseline = null, endWithoutText = false
   }
   let admitted = 0
   const subs = {
-    prompt: async (req) => {
+    // ★ THE MEASURED HOST CONTRACT (dsh 0.2.1, shipped `@deepseek-ai/dsh-subagent/lib/index.js`): `prompt(request, signal)`
+    // takes a CALLER SIGNAL and uses it on the admission path (`submitAdmitted` runs `options.signal.throwIfAborted()`), and
+    // the prompt's own refusal path runs `isCancellation(error, signal)` = `signal.aborted || …` WITHOUT checking that a
+    // signal exists. A signal-less call therefore dies on `undefined.aborted` INSIDE the refusal, masking whatever was
+    // refused — that is the exact string run 33 reported (`resume-failed` / "reading 'aborted'"). This fake mirrors it, so
+    // a bridge regression reproduces run 33 HERE rather than only on a live run.
+    prompt: async (req, signal) => {
       calls.prompts.push(req)
+      calls.signals.push(signal)
+      if (signal === undefined || signal === null || typeof signal.throwIfAborted !== 'function') {
+        throw new TypeError("Cannot read properties of undefined (reading 'aborted')")
+      }
+      signal.throwIfAborted()
       admitted += 1
       if (onPrompt) await onPrompt(req, admitted)
       const log = logOf(req.childSessionId)
@@ -216,6 +230,54 @@ for (const [hostCode, mustMention] of [
     '⑦ an empty session id is refused as an argument error', r.message)
   ok(host.calls.prompts.length === 0 && host.calls.reads === 0,
     '⑦ …and neither the log was read nor a prompt queued (an empty offer means "nothing to resume")', { reads: host.calls.reads })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ⑧ RUN 33: THE CALLER SIGNAL — `prompt(request, signal)`, and the host refusal it used to mask
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Run 33 showed `keepResident` working (`delivery.residency:"kept-resident-for-continuation"`) and the SECOND turn still
+// failing with `cause:"resume-failed"` / `hostCode:"VMU_ENGINE_UNAVAILABLE"` / "Cannot read properties of undefined
+// (reading 'aborted')" — the same string as run 32. Measured against the shipped host, that TypeError is NOT vmu's:
+// `subagents.prompt(request, signal)` requires a caller AbortSignal, this bridge used to omit it, and the host's own
+// `rejectPrompt` then dereferenced `signal.aborted` while building its refusal. These four assertions pin both halves:
+// the signal is passed, and a host that still masks its refusal is REPORTED AS MASKING rather than as the member refusing.
+{
+  const host = fakeHost()
+  const resume = childOf(host)
+  await resume({ session: 'child-of-res-01', text: '继续你自己的进度', turn: turnOf() })
+  const signal = host.calls.signals[0]
+  ok(host.calls.signals.length === 1 && signal && signal.aborted === false && typeof signal.throwIfAborted === 'function',
+    '★★★ ⑧-1 run 33: the bridge passes a LIVE AbortSignal into `subagents.prompt` (it used to pass none, so the host died reading `undefined.aborted`)',
+    signal ? { aborted: signal.aborted, throwIfAborted: typeof signal.throwIfAborted } : null)
+
+  // The defect itself, reproduced against the mirrored host: no signal ⇒ the host's refusal path throws run 33's string.
+  const bare = await (async () => { try { await host.subs.prompt({ childSessionId: 'child-of-res-01' }); return null } catch (e) { return e } })()
+  ok(bare instanceof TypeError && /reading 'aborted'/.test(String(bare && bare.message)),
+    '★★★ ⑧-2 the mirrored host reproduces run 33 EXACTLY when called signal-less — so that string was the host masking a refusal, not vmu refusing',
+    String(bare && bare.message))
+  ok(/继续你自己的进度/.test(host.calls.prompts[0].content[0].text) && host.calls.signals[0] !== undefined,
+    '⑧-2 …and the FIRST prompt (the production one) is the call that carried the signal and this turn\'s text; only the bare reproduction lacked it', { prompts: host.calls.prompts.length })
+
+  // A host that STILL masks its own refusal must be reported as a host masking (named code + hint), never as "the member
+  // refused" and never as the bare TypeError that run 33 left in the receipt.
+  const masking = fakeHost({ onPrompt: async () => { throw new TypeError("Cannot read properties of undefined (reading 'aborted')") } })
+  const r = await rejects(() => childOf(masking)({ session: 'child-of-res-01', text: 'x', turn: turnOf() }))
+  ok(r.caught && r.code === 'VMU_RESUME_HOSTCONTRACT',
+    '★★★ ⑧-3 a host that masks its own refusal is reported under its OWN code, not as a generic engine failure', { code: r.code })
+  ok(/MASK|masked/.test(String(r.message)) && /rejectPrompt/.test(String(r.message)),
+    '★★★ ⑧-3 …the message names the host defect (`rejectPrompt` reading `signal.aborted`) instead of passing the TypeError through as if the member had refused', r.message)
+  ok(/did NOT run this turn/.test(String(r.hint)) && /host defect/.test(String(r.hint)),
+    '★★ ⑧-3 …and the hint says the member did not run, so a reader does not conclude the member ignored the prompt', r.hint)
+
+  // An aborted delivery signal is forwarded (the host is allowed to stop admission), and the refusal is still named.
+  const controller = new AbortController()
+  controller.abort()
+  const aborted = fakeHost()
+  const r2 = await rejects(() => childOf(aborted, { signal: controller.signal })({ session: 'child-of-res-01', text: 'x', turn: turnOf() }))
+  ok(r2.caught && r2.code === 'VMU_ENGINE_UNAVAILABLE' && /did NOT run this turn/.test(String(r2.hint)),
+    '★ ⑧-4 a delivery signal that is already aborted stops admission, and the receipt still says the member did NOT run', { code: r2.code })
+  ok(aborted.calls.signals.length === 1 && aborted.calls.signals[0].aborted === true,
+    '★ ⑧-4 …because the aborted signal was FORWARDED instead of being swapped for a fresh one', aborted.calls.signals.length)
 }
 
 console.log('')

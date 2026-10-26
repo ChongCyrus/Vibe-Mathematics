@@ -251,7 +251,7 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       // reading instead of implying continuity it never got. Built per call because the parent, the deadline and the
       // cancellation are per-call facts.
       const resumeCapability = memberResumeCapability({ ctx, subs, parent })
-      const resumeChild = makeMemberResumeChild({ ctx, subs, parent, deadlineMs: Math.max(250, Math.floor(deliveryTimeoutMs * 0.98)) })
+      const resumeChild = makeMemberResumeChild({ ctx, subs, parent, signal, deadlineMs: Math.max(250, Math.floor(deliveryTimeoutMs * 0.98)) })
       // The capability probe travels ON the turn (the only channel host-deliver and the seam share, because the seam's
       // factory is called once and its deliverer is called per turn): the kernel's `continuation` reading then names the
       // missing piece instead of only saying "this host offers no reply-capable continuation".
@@ -378,10 +378,16 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
 //     — so none of them can hand a reply back through `deliver({turn,text}) => reply`.
 //   · `startContinuable` does NOT exist on this host (`grep` over the shipped service, manager and index: 0 hits).
 // SO THERE IS NO VERB. There is a COMPOSITION of three documented capabilities, and that is what this factory returns:
-//   1. `subagents.prompt({ parentSessionId, childSessionId, mode:'continuable', delivery:'queue', content })` admits a
-//      next-turn prompt into the member's OWN session. A child that is not resident is cold-resumed from persistence —
+//   1. `subagents.prompt({ parentSessionId, childSessionId, mode:'continuable', delivery:'queue', content }, signal)` admits
+//      a next-turn prompt into the member's OWN session. A child that is not resident is cold-resumed from persistence —
 //      the host writes every locally started child's descriptor as `mode:'continuable'`, which is exactly the descriptor
 //      the cold-resume path requires (`NOT_RESUMABLE` otherwise).
+//      ★ RUN 33: the SECOND argument is not optional. `submitAdmitted` runs `options.signal.throwIfAborted()`, and the
+//      prompt's own refusal path runs `isCancellation(error, signal)` = `signal.aborted || …` without checking the signal,
+//      so a signal-less call dies as `TypeError: … reading 'aborted'` INSIDE the refusal — masking the real reason. Run 32
+//      and run 33 both reported exactly that string while the capability said `capable:true`; the cause was this bridge not
+//      passing a signal, not the host refusing. It always passes one now (see `callerSignal` below), and a host that
+//      STILL masks a refusal is reported as `VMU_RESUME_HOSTCONTRACT` rather than as the member refusing.
 //   2. `ctx.get('agents').get(childSessionId).whenIdle()` is the host's documented quiescence await ("whenIdle() resolves
 //      after the whole agent reaches quiescence"), i.e. the completion signal the inbox id does not carry.
 //   3. `ctx.get('sessionQuery').observeSession(childSessionId, { projectionMode:'none' })` reads that session's log; the
@@ -448,7 +454,7 @@ export function memberResumeCapability({ ctx = null, subs = null, parent = null 
   }
 }
 
-export function makeMemberResumeChild({ ctx = null, subs = null, parent = null, deadlineMs = 180000, sleep = null, clock = null } = {}) {
+export function makeMemberResumeChild({ ctx = null, subs = null, parent = null, signal = null, deadlineMs = 180000, sleep = null, clock = null } = {}) {
   const capability = memberResumeCapability({ ctx, subs, parent })
   if (!capability.capable) return null
   const agents = contextService(ctx, 'agents')
@@ -458,6 +464,16 @@ export function makeMemberResumeChild({ ctx = null, subs = null, parent = null, 
   const now = typeof clock === 'function' ? clock : () => Date.now()
   const budgetMs = Number.isFinite(Number(deadlineMs)) && Number(deadlineMs) > 0 ? Math.floor(Number(deadlineMs)) : 180000
   const pollMs = 200
+  // ★ TASK-23 / RUN 33: `subagents.prompt(request, signal)` REQUIRES a caller AbortSignal, and this bridge used to omit
+  // it. Measured in the shipped `@deepseek-ai/dsh-subagent/lib/index.js` of this host: `submitAdmitted` runs
+  // `options.signal.throwIfAborted()`, and the prompt's own refusal path runs `isCancellation(error, signal)` =
+  // `signal.aborted || ...` UNGUARDED — so a signal-less call throws `TypeError: Cannot read properties of undefined
+  // (reading 'aborted')` INSIDE the refusal path. That masked whatever the host was really refusing, which is exactly the
+  // string run 33 reported (`resume-failed` / `VMU_ENGINE_UNAVAILABLE` / "reading 'aborted'"). One signal is therefore
+  // always passed below: the delivery's own cancellation when it is a real AbortSignal, else a fresh un-aborted one.
+  const callerSignal = signal && typeof signal === 'object' && typeof signal.aborted === 'boolean' && typeof signal.throwIfAborted === 'function'
+    ? signal
+    : new AbortController().signal
 
   const leaseOf = async (childId) => {
     const lease = await query.observeSession(childId, { projectionMode: 'none' })
@@ -511,9 +527,22 @@ export function makeMemberResumeChild({ ctx = null, subs = null, parent = null, 
         delivery: 'queue',
         requestId,
         content: [{ type: 'text', text: String(text) }],
-      })
+      }, callerSignal)
     } catch (e) {
       const hostCode = String((e && e.code) || '')
+      // A signal-less call makes the host's own refusal path throw while BUILDING the refusal (see the comment above the
+      // signal). This bridge now always passes a signal, so if this shape still comes back the host masked a refusal of
+      // its own — say that, instead of handing the reading a TypeError as if the member had refused.
+      if (typeof (e && e.message) === 'string' && /reading '(aborted|throwIfAborted)'/.test(e.message)) {
+        throw namedError('VMU_RESUME_HOSTCONTRACT',
+          'the host\'s continuation prompt failed while it was building its own refusal: ' + messageOf(e)
+            + ' — dsh 0.2.1\'s `rejectPrompt` reads `signal.aborted` without checking that a signal exists, so this TypeError'
+            + ' is the MASK over the host\'s real refusal, not the member refusing. The bridge passed a live AbortSignal, so'
+            + ' the masked refusal is the host\'s to read out of its own log',
+          'this is a host defect, not a vmu misuse: `isCancellation(error, signal)` in the shipped dsh-subagent\'s'
+            + ' `control.js` dereferences `signal.aborted` unguarded. Nothing was admitted, so the member did NOT run this'
+            + ' turn. Read the host log for the refusal that was masked, and re-run the turn')
+      }
       const hints = {
         'subagent/not-resumable': 'the host refused to resume "' + childId + '": it has no continuation state recorded. The host writes `mode:"continuable"` for children IT starts locally, so this session was started another way (or is not a child of this parent) and cannot be resumed — vmu must start that member through the activation path first',
         'subagent/parent-unavailable': 'the root Agent that owns the member is no longer live (parent session "' + parentSessionId + '"), so the host will not admit a prompt into its child. This is the office session having closed, not a missing member',

@@ -998,7 +998,17 @@ export function sendViaSubagents(subagents) {
       throw refuse('VMU_INVALID_ARGUMENT', 'sendMessage needs the target session id', 'pass targetId:"<child session id>" (listChildren lists them)')
     }
     const blocks = Array.isArray(content) ? content : [{ type: 'text', text: String(content === undefined ? '' : content) }]
-    return subagents.sendMessage(sender, targetId, blocks, signal ? { signal } : {})
+    // ★★ ROUND 33 / task-23 (adjacent defect, same shape as the resume bridge): the host's `sendMessage` is
+    // `sendMessage(parent, childSessionId, content, options)` and its admission path starts with
+    // `options.signal.throwIfAborted()`. Passing `{}` when the caller had no signal is therefore NOT a harmless
+    // default — it is a TypeError raised inside the host, and the host's own failure path then reads
+    // `signal.aborted` on the same undefined, so the real refusal reason is replaced by
+    // "Cannot read properties of undefined (reading 'aborted')". Hand it an AbortSignal ALWAYS; an unaborted one is
+    // exactly what "no cancellation requested" means here.
+    const liveSignal = signal && typeof signal === 'object' && typeof signal.aborted === 'boolean' && typeof signal.throwIfAborted === 'function'
+      ? signal
+      : new AbortController().signal
+    return subagents.sendMessage(sender, targetId, blocks, { signal: liveSignal })
   }
 }
 

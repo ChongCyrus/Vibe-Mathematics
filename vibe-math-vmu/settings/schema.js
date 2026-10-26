@@ -1007,6 +1007,13 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.human.defaultAllowAcknowledged', type: 'boolean', def: false, hot: HOT.H0, who: 'office', doc: '仅当为 true 时 onTimeout=default-allow 才生效；否则超时具名拒（绝不静默放行）' },
   { key: 'vmu.human.dashboardDomains', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '仪表盘可见域；空＝仅聚合计数；private/dm 永不可见' },
   { key: 'vmu.human.vetoLiftRoles', type: 'stringList', def: ['office'], hot: HOT.H1, who: 'office', doc: '谁可解除否决（未列角色具名拒）' },
+  // ROUND 33 / task-22: the human face used to have NO caller check — any live seat could decide its own approval
+  // (measured: chair decide → decidedBy:"chair"). These two keys are the DECLARATION the gate reads
+  // (`tools/human.js`), and their default is the CONSERVATIVE one: out of the box NO seat approves and NO seat
+  // speaks as the human. `inject` is a separate key because deciding for the institution and speaking as the human
+  // are different authorities (a deployment may grant one without the other).
+  { key: 'vmu.human.deciderRoles', type: 'stringList', def: ['office'], hot: HOT.H1, who: 'office', doc: '谁可批准/撤回审批与否决（decide/withdraw/veto）；未列角色具名拒 VMU_HUMAN_DECIDER_ROLE；默认仅 office＝开箱没有任何席位能自批' },
+  { key: 'vmu.human.injectRoles', type: 'stringList', def: ['office'], hot: HOT.H1, who: 'office', doc: '谁可以人工干预口吻 inject 发言（该面以人类名义发信）；未列角色具名拒 VMU_HUMAN_INJECT_ROLE；默认仅 office' },
   { key: 'vmu.control.canSetRoles', type: 'stringList', def: ['office'], hot: HOT.H1, who: 'office', doc: '谁可中途改参数（未列角色具名拒 VMU_CONTROL_PARAM_ROLE）' },
   { key: 'vmu.control.tunableKeys', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '可改参数键白名单；空＝不许改（未声明键具名拒 VMU_CONTROL_PARAM_UNDECLARED）' },
   // math adapters + job mirrors (v5r-reader-b · kernel/mathadapters.js · mathjobs.js)

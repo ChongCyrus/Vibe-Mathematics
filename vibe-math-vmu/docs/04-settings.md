@@ -1028,6 +1028,8 @@ vmu.packs.active: [v5r]
 | `vmu.human.defaultAllowAcknowledged` | bool | `false` | — | 会话 | H0 | office | ✅ 已接线 | `kernel/human.js` | 仅当为 true 时 onTimeout=default-allow 才生效；否则超时具名拒（绝不静默放行） |
 | `vmu.human.dashboardDomains` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/human.js` | 仪表盘可见域；空＝仅聚合计数；private/dm 永不可见 |
 | `vmu.human.vetoLiftRoles` | string[] | `[office]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/human.js` | 谁可解除否决（未列角色具名拒） |
+| `vmu.human.deciderRoles` | string[] | `[office]` | — | 会话 | H1 | office | ✅ 已接线 | `tools/human.js` | 谁可批准/撤回审批与否决（decide/withdraw/veto）；未列角色具名拒 VMU_HUMAN_DECIDER_ROLE；默认仅 office＝开箱没有任何席位能自批 |
+| `vmu.human.injectRoles` | string[] | `[office]` | — | 会话 | H1 | office | ✅ 已接线 | `tools/human.js` | 谁可以人工干预口吻 inject 发言（该面以人类名义发信）；未列角色具名拒 VMU_HUMAN_INJECT_ROLE；默认仅 office |
 | `vmu.control.canSetRoles` | string[] | `[office]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/control.js` | 谁可中途改参数（未列角色具名拒 VMU_CONTROL_PARAM_ROLE） |
 | `vmu.control.tunableKeys` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/control.js` | 可改参数键白名单；空＝不许改（未声明键具名拒 VMU_CONTROL_PARAM_UNDECLARED） |
 | `vmu.math.adapters.enabled` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/mathadapters.js` | 数学库专用适配面总开关（off ⇒ 具名拒 VMU_MATH_UNSUPPORTED_OP） |
@@ -1558,7 +1560,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1155** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1157** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1607,7 +1609,7 @@ vmu.packs.active: [v5r]
 | `vmu.funds.*` | 11 |
 | `vmu.handover.*` | 11 |
 | `vmu.hooks.*` | 1 |
-| `vmu.human.*` | 11 |
+| `vmu.human.*` | 13 |
 | `vmu.idempotency.*` | 9 |
 | `vmu.identity.*` | 9 |
 | `vmu.ids.*` | 1 |

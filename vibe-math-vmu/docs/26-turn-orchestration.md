@@ -749,6 +749,16 @@ counts.delivered += 1                              // ⇒ 抛了就到不了这�
 少一处就又是"回执读不到机制已经做出的决定"。判据两条一起读：`continuation.applied` 说"续上了吗"，
 `delivery.residency` 说"为什么可能续上"。
 
+**补充（ROUND 33 / task-23）：宿主 `subagents.prompt` 的第二个实参不是可选的。** 实测安装包
+`@deepseek-ai/dsh-subagent` 的 `prompt(request, signal)` 把 `signal` 一路传到 `submitAdmitted`，那里的**第一句**是
+`options.signal.throwIfAborted()`；而它的失败路径 `rejectPrompt` → `isCancellation(error, signal)` 又直接读
+`signal.aborted`（没有 undefined 保护）。所以只传一个实参时：先抛一个 `TypeError`，再在拒绝路径里抛
+`Cannot read properties of undefined (reading 'aborted')` —— **宿主把自己的拒绝原因盖住了**，run 32/33 看到的正是这句。
+`host-deliver.js` 的桥现在**永远**传一个真 `AbortSignal`（没有取消请求时给一个未 abort 的），并在宿主仍以该形状失败时
+报具名码 `VMU_RESUME_HOSTCONTRACT`（点名这是宿主缺陷对真实原因的 mask，并说明"本回合成员没有运行"）。
+同一条规则适用于 `sendMessage`：`kernel/turn/index.js` 的 `sendViaSubagents` 以前在没有 signal 时传 `{}`，同样会炸在
+宿主第一句上，现在同样永远传一个 `AbortSignal`（`tests/vmu-host-deliver-wiring.test.mjs` 第 7 节钉住）。
+
 ## 3.44 ★★★★★ 状态板的四个字段必须**有来源**：提示词不是数据源（R31 的 P3）
 
 ★ **真机病**：v5r 规则要求每一轮给成员一张状态板（总任务／规划／各任务完成状态／当前小任务），而 `{{ statusBlock }}` 的真实产出只有「席位／轮次／阶段＋在册＋法定票数 m」（`composeStatusBlock` 的旧体）。★ 规则在提示词里被写成"这些字段会被填好"，**而没有任何机制填它们** ⇒ 这是「提示词承诺了机制不存在」的第五种形态：**不是名字写错、不是席位够不着，而是数据源根本不存在**（台账 §129 的 P3）。
