@@ -754,7 +754,7 @@ counts.delivered += 1                              // ⇒ 抛了就到不了这�
 ★ **真机病**：v5r 规则要求每一轮给成员一张状态板（总任务／规划／各任务完成状态／当前小任务），而 `{{ statusBlock }}` 的真实产出只有「席位／轮次／阶段＋在册＋法定票数 m」（`composeStatusBlock` 的旧体）。★ 规则在提示词里被写成"这些字段会被填好"，**而没有任何机制填它们** ⇒ 这是「提示词承诺了机制不存在」的第五种形态：**不是名字写错、不是席位够不着，而是数据源根本不存在**（台账 §129 的 P3）。
 
 ★ **修法（声明读腿 ＋ 单一事实源 ＋ 缺席即具名）**：
-- `STATUS_BOARD_READ_OPS`（`kernel/turn/index.js:346`）是**声明**：「要看状态板，必须先读 `vmu.tasks.list` 与 `vmu.records.list/get`」。`facesFrom` 的第二趟（`:378-386`）按这张表把**活实例**绑进 `faces` ⇒ 读腿随声明走，装配方不必再手接一次 ✓。
+- `STATUS_BOARD_READ_OPS`（`kernel/turn/index.js:346`）是**声明**：「要看状态板，必须先用 `vmu.tasks` 服务的 `list` 动词读任务板，用 `vmu.records` 服务的 `list`／`get` 动词读记录」。`facesFrom` 的第二趟（`:378-386`）按这张表把**活实例**绑进 `faces` ⇒ 读腿随声明走，装配方不必再手接一次 ✓。（这张表是**缝（seam）表**，键是服务名＋动词，不是配置项——所以这里故意不写点号三段式，免得被文档扫描当成"应当存在的配置项"。）
 - `STATUS_BOARD_FIELDS`（`:1054`）四行，每行标**唯一事实源**与默认上限（`:1065 OBJECTIVE_UNSET = '尚未设定'`）：总任务＝`setting vmu.turn.objective`，缺则取任务板**无前置的根任务**；规划＝`tasks.list()` 的未结项按"可开工／被前置卡住（点名在等谁）"分栏；各任务完成状态＝按状态计数（未结单列）；当前小任务＝`records.list({track:'progress'})` 里 `head.owner` 等于**该成员**的最新一条。
 - `statusBoardReadings(...)`（`:1108`）只**读数**（任一来源缺席或抛错 ⇒ 该字段记 `{ok:false, why}`，不编造）；`renderStatusBoard(readings)`（`:1255`）只**渲染**；`composeStatusBlock(turn, readings)`（`:1266`）把 `[状态板]` 一节追加在既有块之后 ✓。
 - **拿不到就写出来**：每个字段缺数据时渲染成「`[标签] 该来源未提供：<原因>`」——**没有数据也是一个读数**，静默省略会让读者以为"这个字段不该有" ✗。

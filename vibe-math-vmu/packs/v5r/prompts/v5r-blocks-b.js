@@ -41,6 +41,29 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       ].join('\n'),
     },
   },
+  // ── THE STATUS BOARD AND ITS ONE SOURCE PER ROW (the four fields must HAVE a source) ───────────────────────
+  // WHY THIS SECTION EXISTS. The acceptance ledger's P3 was「状态板四字段无来源」: the charter told every member to read
+  // 总任务/规划/各任务完成状态/当前小任务 and nothing produced them, so a model had to invent them. The kernel now
+  // composes the block (`kernel/turn/index.js#composeStatusBlock` → `renderStatusBoard`) from the task board and the
+  // records track, and every row with an unreadable source prints 「该来源未提供：<原因>」 instead of disappearing.
+  // Teaching a field that has a source is not the same as teaching one that has none: the wording points at the four
+  // labels and at the single source of each, and says what the gap line means. It is prose about DATA the loop hands
+  // over, so it names no tool as the way to "get" the board - the board is in the prompt already.
+  {
+    name: 'v5r-turn-board',
+    order: 694,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【状态板】每轮提示里有一段 `[状态板]`，四个字段各有**唯一来源**，请直接引用它，不要自己另立一套：',
+        '  · `[总任务]` 来自设置键 `vmu.turn.objective`（它仍未设定时由任务板汇总）；`[规划]` 来自任务板的依赖与顺序；',
+        '  · `[各任务完成状态]` 来自任务板（同一份账本可用 `vibe_v5_task_list`，或按 id 用 `vibe_v5_task_get` 读状态、接受标准、指派人、修订号）；',
+        '  · `[当前小任务]` 来自你 progress 轨上最近的一条记录（所以这一轮没写 progress，它就会说来源未提供）。',
+        '某一行写成「该来源未提供：<原因>」时，意思是**那个来源这一轮读不到**——不等于"没有任务"，更不要用想象补上：先把来源补齐（写 progress、建或更新任务、请所办说明），下一轮再引用新的读数。',
+      ].join('\n'),
+    },
+  },
   // ── PROOF ADMISSION (source `proofStatusBlock`, L2087-2097) ─────────────────────────────────────────────────
   // The source's discipline for what may enter a debate, kept verbatim: a proposition's advocate must state its
   // evidence grade, drafts must never be passed off as argued, and writing truly beats writing fully.

@@ -690,7 +690,11 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
             : (activationBlockTypes.every((t) => t === 'tool_use' || t === 'tool-call')
               ? 'the child spoke ONLY through tool calls and never emitted a text block'
               : 'the child produced blocks (' + activationBlockTypes.join(', ') + ') but none carried text'))
-        await disposeOnce(true)
+        // ★ The general dispose above already ran when the activation was not kept resident, so this only has to act in
+        // the ONE case it was skipped: a kept-resident activation with no reply has nothing worth resuming, and holding
+        // its execution handle open would be the very leak this path exists to prevent. (Measured: calling it
+        // unconditionally disposed twice — `{"disposed":2}` — in tests/vmu-turn-activation.test.mjs.)
+        if (keepResident) await disposeOnce(true)
         throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host accepted the activation but the child returned no text',
           whichChildEvent + '; blockTypes=[' + activationBlockTypes.join(', ') + '] stopReason=' + String(stopReason) +
           ' diagnostic=' + String(diagnostic) + '. The refusal is named on purpose: reporting an empty string as a member answer would be a silent fake success')

@@ -142,6 +142,12 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
   // for plain readers that hold the file without taking it.
   const TRANSIENT_RENAME_CODES = new Set(['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY'])
   const MAX_WRITE_ATTEMPTS = 3
+  // R31 / task-20: a write that outlives its own STORE ROOT (the workspace directory was deleted under it) used to fail as
+  // a raw `ENOENT` on the tmp file. That is not a corrupt file and not a transient rename window: the durable target is
+  // GONE, so the write can never land and must say so by name. The refusal keeps the registered `VMU_STORE_FAILED` code
+  // (docs/03 §8 owns the code registry) and names the condition in `reason`, where a reader cannot mistake it for a
+  // corrupt-and-left-untouched file.
+  const ROOT_GONE = 'root-gone'
   // ONE timer site in this file, shared by the lock backoff and the write-retry backoff: the activity-timer audit maps
   // each file to its declared timer count, and a second timer call would make that declaration stale for no gain.
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -157,6 +163,8 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
     try { const st = statSync(file); return String(st.mtimeMs) + ':' + String(st.size) } catch { return 'missing' }
   }
   const adoptStamp = () => { stamp = stampOf() }
+  /** True only when the store's OWN directory is gone (teardown), not when a single file is missing. */
+  const dirGone = () => { try { statSync(dir); return false } catch { return true } }
   const coherenceOn = coherence !== 'off' && coherence !== false
 
   const parseFold = (raw, where) => {
@@ -183,8 +191,10 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
     const allowed = force ? true : coherenceOn
     if (!allowed || !fold) return { reloaded: false, why: allowed ? 'not-open' : 'coherence-off' }
     const now = stampOf()
-    if (now === stamp) return { reloaded: false, why: 'fresh' }
+    // "missing" is not "fresh": the file was there and is NOT there now (teardown, or a deleted workspace). Answering
+    // `fresh` because the last stamp also said `missing` would hide exactly the case this check exists for.
     if (now === 'missing') { stamp = 'missing'; return { reloaded: false, why: 'missing' } }
+    if (now === stamp) return { reloaded: false, why: 'fresh' }
     const loaded = parseFold(readFileSync(file, 'utf8'), file)
     fold = loaded
     stamp = now
@@ -221,7 +231,7 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
   let fold = null
   let chain = Promise.resolve()
   const listeners = new Map()
-  const stats = { opens: 0, writes: 0, patches: 0, migrations: 0, subscriptions: 0, reloads: 0, lockWaits: 0, lockSkips: 0, writeRetries: 0, writeRetryGiveUps: 0, lastReloadAt: null }
+  const stats = { opens: 0, writes: 0, patches: 0, migrations: 0, subscriptions: 0, reloads: 0, lockWaits: 0, lockSkips: 0, writeRetries: 0, writeRetryGiveUps: 0, writeRootGone: 0, lastReloadAt: null }
 
   const runExclusive = (fn) => {
     const next = chain.then(fn, fn)
@@ -238,12 +248,22 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
 
   const persist = async () => {
     const tmp = tmpFile()
-    await writeFile(tmp, JSON.stringify(fold, null, 2) + '\n', 'utf8')
     try {
+      await writeFile(tmp, JSON.stringify(fold, null, 2) + '\n', 'utf8')
       await rename(tmp, file) // atomic: the visible file is always a complete document
     } catch (e) {
       // the temp copy is evidence of a write that did NOT land; leaving it behind would be a leak, not a record
       try { rmSync(tmp) } catch { /* already gone */ }
+      if (e && e.code === 'ENOENT' && dirGone()) {
+        // task-20: the ROOT is gone (a teardown that cannot be awaited). Name it, count it, and keep it out of the
+        // transient-retry loop — retrying a deleted workspace can only burn attempts.
+        const gone = refuse('VMU_STORE_FAILED',
+          'the store directory disappeared while a write was in flight (' + dir + '): the write is NOT acknowledged and nothing was kept',
+          'a teardown that removes the store root cannot be followed by a durable write; the write is refused by reason (' + ROOT_GONE + ') and counted in stats.writeRootGone, never silently')
+        gone.reason = ROOT_GONE
+        gone.cause = String((e && e.code) || '')
+        throw gone
+      }
       throw e
     }
     adoptStamp()
@@ -272,7 +292,7 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
    * before the file lock and never re-entered, the lock is released in `withFileLock`'s finally, and a lock that cannot
    * be taken degrades to its bounded "proceed without it" path (stats.lockSkips) rather than waiting forever.
    */
-  const mutate = (key, where, compute, before) => runExclusive(() => withFileLock(async () => {
+  const mutate = (key, where, compute, before, landed) => runExclusive(() => withFileLock(async () => {
     let attempt = 0
     for (;;) {
       attempt += 1
@@ -290,10 +310,23 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
         await persist()
       } catch (e) {
         const code = e && e.code
+        if (e && e.reason === ROOT_GONE) {
+          // task-20: the store root was deleted under this write. It can never land, and a fire-and-forget caller (a
+          // marker/ledger write that is not awaited) must not take the PROCESS down after every assertion passed: the
+          // promise still REJECTS for an awaiting caller (the refusal is named), and this only keeps it from being an
+          // unhandled rejection. The failure stays visible in stats.writeRootGone.
+          stats.writeRootGone += 1
+          resyncFromDisk()
+          // the file is gone, so there is nothing to resync FROM: put the pre-mutation value back — an in-memory fold
+          // that keeps a value the file never received is the "durable in appearance only" defect this suite exists for.
+          if (stamp === null && fold && fold.keys) fold.keys[key] = prev
+          throw e
+        }
         if (!TRANSIENT_RENAME_CODES.has(code)) throw e
         if (attempt >= MAX_WRITE_ATTEMPTS) {
           stats.writeRetryGiveUps += 1
           resyncFromDisk()
+          if (stamp === null && fold && fold.keys) fold.keys[key] = prev // unreadable file: keep the value the file HAS
           const err = refuse('VMU_STORE_FAILED',
             'the durable file could not be atomically replaced after ' + attempt + ' attempts (' + code + '): the write is NOT acknowledged',
             'another kernel or a plain reader still held the target; the in-memory fold was resynced to the file, so nothing was silently kept')
@@ -312,6 +345,7 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
       notify(key, fold.keys[key], prev)
       const receipt = { ok: true, key, version: fold.version, changed: true }
       if (attempt > 1) receipt.attempts = attempt // honest: the write only landed after a transient retry
+      if (typeof landed === 'function') landed(receipt)
       return receipt
     }
   }))
@@ -439,14 +473,18 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
     /**
      * The preferred mutation: `current => next`, computed INSIDE the exclusive section, so two changes
      * in the same tick both survive. `fn` returning undefined leaves the value untouched.
+     *
+     * R31 / task-20: this returns MUTATE's promise directly. The old shape (`mutate(...).then(...)`) created a DERIVED
+     * promise for the caller that no one handled when the call was fire-and-forget, so a refusal raised after teardown
+     * crashed the process as an unhandled rejection (the chain that `runExclusive` keeps is a handler for mutate's own
+     * promise, not for the derived one). The retry/root-gone counters live in `stats`, not in a side promise.
      */
     patch(key, fn) {
       return mutate(key, 'patch', (prev) => {
         if (typeof fn !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'patch needs a function: (current) => next')
         return fn(prev)
-      }).then((receipt) => {
+      }, undefined, (receipt) => {
         if (receipt.changed) stats.patches++
-        return receipt
       })
     },
 

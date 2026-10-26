@@ -5283,3 +5283,46 @@ run 32 第二轮回 `res-01` 时 step 回执给的是：
 ### 130.6 本轮无实质残余
 
 **否**。F8 是本轮新暴露、且改动落在内核（有单测、无真机）的一条；P2 六件仍未被覆盖；`store.js` 收口未完成。
+
+## §131 真机跑 32 之后的机制修复（第二批，build `7f18e6a3` 起）
+
+§129 收的是 run 31 之后暴露的那一批；本节收 run 32 判决之后新落的机制与「收口时自己撞出来」的两条。判据不变：每条要么给 `文件:行`，要么给门禁末行原文。
+
+### 131.1 掉线写者：teardown 之后仍在写的 `store.patch` 会变成 unhandled rejection
+
+- **现象**：`tests/vmu-meeting-invite.test.mjs` 单跑偶发 `exit 1`，`Error: ENOENT … state.json.<pid>.<n>.<rand>.tmp`，栈是 `persist` ← `mutate` ← `withFileLock` ← `runExclusive`；同一提交连跑 60 次红 11 次。
+- **定位**（gate-a-store，可复算）：唯一的无 handler 写者是会议域标记 seam —— `vibe-math-vmu/kernel/index.js:1785` `meetingsDomainSeam.write = (rows) => store.patch('meetings', …)`，由 `vibe-math-vmu/kernel/meetingmarker.js:54 markState()` 以 fire-and-forget 调用，而它只有**同步** try/catch。崩溃本身来自旧 `patch()`：`vibe-math-vmu/kernel/store.js:443-451` 返回 `mutate(...).then(...)` 的**派生** promise，`runExclusive`（`store.js:226-230`）只为 mutate 自己的 promise 挂 handler，派生那个没有 ⇒ 拒绝态无人处理。染色实验（`D:/_tmp/r31/teardown/mini/`，给 catch 打 storeKey + `process.on('unhandledRejection')` 计数）：30 次跑出 **16 次 `UNHANDLED key=meetings code=ENOENT`**，其它 key 0 次；对照组的 resume 写通路拒绝全部已被处理（`resume.js:533-536` 的内联双 handler + `resume.js:246` 的 `r.catch`）。
+- **修法**（`vibe-math-vmu/kernel/store.js` +44/−6）：
+  - `:145-149` 新增 `ROOT_GONE = 'root-gone'` 与注释（删根不是"文件暂时缺失"，是"这一层没了"）；
+  - `:165 dirGone()`：落盘目录消失判定；
+  - `:192-196 reloadIfStale` 先判 `missing` —— **missing is not fresh**（此前删根后 `refresh().why==='missing'` 会被当成 fresh）；
+  - `:246-268 persist()` 同时包住 `writeFile` 与 `rename`，`ENOENT` 且 `dirGone()` ⇒ `refuse('VMU_STORE_FAILED', … NOT acknowledged …, hint)` 并挂 `.reason/.cause`；
+  - `:292 mutate(…, landed)`、`:310-323` root-gone 分支把**未落盘的值从 fold 回滚**（"durable in appearance only"）、`:327` give-up 分支同样回滚、`:232` 新增 `stats.writeRootGone`；
+  - `:470-486 patch()` 直接返回 mutate 的 promise（用 `landed` 回调记 `stats.patches`）⇒ **不再制造无人处理的派生 promise**；await 的调用方仍拿到具名拒绝。
+- **牙齿**：新增 `tests/vmu-store-teardown.test.mjs`（13 断言）：`§1a` await 写 ⇒ `VMU_STORE_FAILED` + `reason==='root-gone'`；`§1b` 不 await 的写 ⇒ 250ms 内 **0 unhandled**、`writeRootGone===2`；`§1c` fold/patch/write 计数未被污染；`§2` 健康 store 不受影响。拿 HEAD 旧 `store.js` 跑它 ⇒ `5 passed, 8 failed`（含 `FAIL … NAMED root-gone, not a raw ENOENT [ENOENT]` 与 `FAIL an un-awaited write … does NOT become an unhandled rejection [ENOENT]`）。
+- **读数**：`vmu-meeting-invite` 连跑 30 次 `failures=0`（修前 60 次红 11）；`=== VMU STORE TEARDOWN: 13 passed, 0 failed ===`、`=== VMU STORE COHERENCE: 17 passed, 0 failed ===`（×3）、`=== VMU RUN31 MAILBOX: 66 passed, 0 failed ===`、`=== VMU STORE: 27 passed, 0 failed ===`、`=== VMU TIMERS F15/F16: 43 passed, 0 failed ===`、`=== VMU GOAL1 E2E: 108 passed, 0 failed ===`。
+- **副作用（明写）**：任何**被完全忽略**的写失败从此都不会崩进程（这正是修法）；可见性靠 `stats.writeRootGone` / `writeRetryGiveUps` / `shared.lastError` 如实计数。**仍未覆盖**「两个进程同时写」（task-17 遗留），本轮只覆盖"两个内核 + 一个真实跨进程读者"。
+
+### 131.2 我自己的双拆：一次「通用收尾」+ 一处既有收尾 = `{"disposed":2}`
+
+- `vibe-math-vmu/kernel/turn/index.js` 的 activation 分支为 F8 加了 `keepResident` 与通用 `await disposeOnce()`；无文本分支原本就无条件 `await disposeOnce(true)` ⇒ 同一 activation 被拆两次，`tests/vmu-turn-activation.test.mjs` 报 `FAIL dispose() still called when the result carried no text - {"disposed":2}`。
+- 修法：无文本分支改为 `if (keepResident) await disposeOnce(true)`（通用 dispose 已跑过，这里只补救"被跳过"的那一种）。⇒ `TURN ACTIVATION 44/0`。
+- **教训**：给既有函数加"通用收尾"时，必须逐个检查后来每个分支自己的收尾调用；这一条与前几轮"改面层忘了内核早就在做同一件事"是同一形态的第二类。
+
+### 131.3 配置项与缝的混淆：文档里一个点号形式，把缝表写成了配置项
+
+- 我在 `vibe-math-vmu/docs/26-turn-orchestration.md:757` 把状态板的读腿写成 `vmu.tasks.list` / `vmu.records.list/get`，`audit-vmu-docs` 的生成链于是把它们当成"应当存在的配置项"，`settings/planned.js` 缺它们 ⇒ `preflight` 红（`missing from planned.js (2): vmu.records.list, vmu.tasks.list`）。实际它们是 `STATUS_BOARD_READ_OPS`（`kernel/turn/index.js:346`）的**缝表键**（服务名＋动词），不是 settings。
+- 修法：文档改为「用 `vmu.tasks` 服务的 `list` 动词……」并注明"所以这里故意不写点号三段式"。⇒ `preflight: PASS`。**不**用生成器把缝表键登记成 planned 配置项（那会把"缝的动词"永久钉进配置表）。
+
+### 131.4 收口读数（本轮）
+
+- `node scripts/update-doc-counts.mjs --write` ⇒ `derived JOBS total=565 suites=457 probes=108 | shipped FILES tests/*.mjs=393`；
+- `node scripts/regen-all.mjs --write` ⇒ `16/16 written`；`--check` ⇒ `16/16 in sync`；
+- `node scripts/preflight.mjs` ⇒ `PREFLIGHT: PASS - safe to run a gate`；
+- `node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`（两条 D16 note 为既有提示）。
+
+### 131.5 无法验证 / 本轮残余
+
+- 「续会话真的把话送进成员的既有 child 会话」仍**只有单测**：run 32 的两次都落在 `cause:"resume-failed"`（`VMU_ENGINE_UNAVAILABLE`），修法（`keepResident`）判据已写进回执（`continuity.applied` 与 `delivery.residency` 必须一起读），真机判决排在 run 33。
+- `vmu.tasks.list` / `vmu.records.list` 是否有资格成为配置键，属"状态板读腿该不该可配置"的设计问题；本轮裁决是**不**——读腿由缝表声明，配置化没有调用者。
+- run-33 之前的 P2 六件（蓝图/关闭延长/连排会议/人工干预请示/禁言发言次数/状态板）在提示词侧仍未被席位化教学（task-21 在跑）。
