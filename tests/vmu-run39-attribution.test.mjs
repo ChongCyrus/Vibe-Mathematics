@@ -29,8 +29,23 @@ const pipeline = () => createPromptPipeline({ sections: v5rPromptSections, clock
 /** Faces are FAKES and they are the readback: `records[]` is what ARRIVED at the owning face. */
 const makeGov = (extra = {}, putImpl = null) => {
   const records = []
+  // The fake face VALIDATES like the real one does (kernel/records.js put refuses an absent kind BY NAME): a fake that
+  // accepts anything would make ⑦ (a non-kind track is still refused) untestable.
+  const validate = (payload) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return
+    if (typeof payload.kind !== 'string' || payload.kind.trim() === '') {
+      const e = new Error('kind "' + String(payload.kind) + '" is not allowed'); e.code = 'VMU_INVALID_ARGUMENT'
+      e.hint = 'pass kind (allowed: progress, route, decision, finding, lesson, state, dataset, rebuttal)'
+      throw e
+    }
+    if (!['progress', 'route', 'decision', 'finding', 'lesson', 'state', 'dataset', 'rebuttal'].includes(payload.kind)) {
+      const e = new Error('kind "' + payload.kind + '" is not allowed'); e.code = 'VMU_INVALID_ARGUMENT'
+      e.hint = 'allowed: progress, route, decision, finding, lesson, state, dataset, rebuttal'
+      throw e
+    }
+  }
   const faces = facesFrom({
-    records: { put: async (payload) => { records.push(payload); if (putImpl) return putImpl(payload); return { ok: true, put: records.length } } },
+    records: { put: async (payload) => { records.push(payload); if (putImpl) return putImpl(payload); validate(payload); return { ok: true, put: records.length } } },
   })
   const seam = deliverByReturning()
   const gov = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeline(), faces, deliver: seam, ...extra })
@@ -86,11 +101,31 @@ console.log('=== VMU RUN39 ATTRIBUTION (field owners: ' + Object.keys(FIELD_OWNE
     '④ ★ and hands the operator the check that settles it (read the record tracks)', step2.sideEffectsMeans)
 }
 
+// ⑥ ROUND 40 / F-12: the reply channel names a record by its TRACK, and a track that IS a declared kind fills kind —
+// recorded in `coercions` so the receipt says what the value became instead of refusing the whole turn.
+{
+  const { step2, records } = await runFence({ progress: { track: 'progress', title: '第1轮', body: '没有写 kind。' } })
+  ok(step2.ok === true, '⑥ a fence progress WITHOUT kind is translated instead of refused', { code: step2.code, message: step2.ok ? null : step2.message })
+  ok(records[0] && records[0].kind === 'progress', '⑥ ★ the face received kind:"progress" derived from the track', records[0] && records[0].kind)
+  ok(records[0] && records[0].by === 'm1', '⑥ ★ and the same dispatch still fills the author (the two translations compose)', records[0] && records[0].by)
+  const co = step2.receipt && Array.isArray(step2.receipt.coercions) ? step2.receipt.coercions.find((c) => c.field === 'progress') : null
+  ok(co && co.from === 'kind:absent' && co.to === 'kind:progress', '⑥ ★ the receipt records the translation (from kind:absent to kind:progress)', co)
+}
+
+// ⑦ A TRACK THAT IS NOT A DECLARED KIND IS STILL REFUSED BY NAME: the mechanism does not guess a kind for `obstacles`.
+{
+  const { step2, records } = await runFence({ progress: { track: 'obstacles', title: 't', body: 'b' } })
+  ok(step2.ok === false && step2.code === 'VMU_INVALID_ARGUMENT', '⑦ a non-kind track is still refused by name (no invented kind)', { ok: step2.ok, code: step2.code })
+  ok(records.length === 1 && records[0] && records[0].kind === undefined,
+    '⑦ the call reached the face WITHOUT a kind (the kernel did not invent one) and the face refused it', records[0])
+  ok(step2.sideEffectsUnverified === true, '⑦ the refusal carries the side-effect disclosure (F-11 applies here)', step2.sideEffectsUnverified)
+}
+
 // ⑤ TOOTH-PROOF (the mechanism, not the wiring): the FIELD_OWNERS table really dispatches `progress` to records.put,
 // so ① is about a real dispatch and not about a test-only path.
 {
   ok(FIELD_OWNERS.progress && FIELD_OWNERS.progress.face === 'vmu.records' && FIELD_OWNERS.progress.op === 'put',
-    '⑤ the field `progress` is declared to dispatch vmu.records.put (so ① is a real path)', FIELD_OWNERS.progress)
+    '⑤ the field `progress` is declared to dispatch the records face put (so ① is a real path)', FIELD_OWNERS.progress)
 }
 
 console.log('')

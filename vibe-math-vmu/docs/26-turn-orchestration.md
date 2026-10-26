@@ -997,3 +997,28 @@ run 39 的第 4 步 `VMU_TURN_NO_FENCE` 带了 `sideEffectsUnverified`，而第 
 `dispatchReply` 包进 try/catch，任何应用期抛出的拒绝若自身没带披露，就补 `sideEffectsUnverified:true` 与
 `sideEffectsMeans`（"这是关于应用回执对象的拒绝，不是关于成员有没有干活：子会话里跑过的工具从这里看不见——去读记录轨"）。
 判据：`tests/vmu-run39-attribution.test.mjs` ④（face 真的被调到、拒绝保留自己的码、两个披露字段都在）。
+
+## ROUND 40（run 40）— 回执通道的 track 就是 kind；写作者与披露都已在真机读到
+
+run 40 是定向复验（206 秒、16 次根会话调用、0 RED），目的只有两件：F-10（回执通道写的行有没有作者）与
+F-11（应用失败的披露会不会出现）。两件都**通过**：`vibe_v5_read_library {member:"r-1",kind:"progress"}` 读到了 r-1
+通过围栏写的那一行、`vibe_vmu_records {action:"list"}` 的 `owner` 是 `r-1`，而回执里 `attributed:[{"field":"progress",
+"by":"r-1"}]` 与 `sideEffectsUnverified:true` + `sideEffectsMeans` 都出现了。
+
+复验顺带量出两件新事：
+
+### F-12 回执通道用一个词就能写记录：track 命中已声明的 kind 时补 kind（记入 `coercions`）
+
+所办的原文："同一形状连试两次（漏 `kind`）得到同一个 `VMU_INVALID_ARGUMENT`"，而提示词与 SCHEMA 只说 `{track,title,body}`。
+工具面收 `kind`、回执通道的文档形状只有 `track`，而 `progress`/`state` 这两个 track 本身就是已声明的 kind。
+**修法**：`apply()` 的 `composeRecordPut(d, payload)` 在 `track` ∈ `['progress','state']` 且 `kind` 缺失时补
+`kind: <track>`，并把这次翻译写进 `coercions`（`from:'kind:absent'`、`to:'kind:progress'`）——翻译要可读，不是
+悄悄猜；**不是**已声明 kind 的 track（如 `obstacles`）仍具名拒绝，不猜。
+
+### F-13（记债）记录 id 与成员 id 撞名
+
+所办反馈：r-acad 的 progress 卡 id 是 `r-1`、r-1 的卡 id 是 `r-2`；`owner` 正确，但 `read_library {id}` 里
+"成员 r-1" 与 "记录 r-1" 无法区分。本轮不改（id 生成改了要迁移），记入台账 §141.5。
+
+判据：`tests/vmu-run39-attribution.test.mjs` ⑥（无 kind 的围栏 progress 被翻译而不是整轮拒；face 收到
+`kind:"progress"`；回执的 `coercions` 里有这次翻译）⑦（`obstacles` 这类非 kind track 仍具名拒、face 没收到伪造的 kind）。

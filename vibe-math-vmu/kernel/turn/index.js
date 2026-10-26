@@ -2338,14 +2338,33 @@ export function createTurnOrchestrator({
     // "该成员最近一条" both filter on the author, so the institute saw a row nobody owned while the tool face (which
     // takes `member`) wrote the same kind of row correctly. The turn ALREADY KNOWS whose turn it is: the author is
     // supplied here, and the model is not asked a second time to repeat its own id in json.
-    const attributedFor = (d, payload) => {
+    // ★★★ ROUND 40 (live run 40 / F-12) — THE REPLY CHANNEL NAMES A RECORD BY ITS TRACK, AND THE TRACK IS OFTEN THE KIND.
+    // Run 40's office asked a member to write `{"progress":{"track":"progress","title":...,"body":...}}` through the
+    // envelope and got the WHOLE TURN refused: `VMU_INVALID_ARGUMENT kind "undefined" is not allowed`. The tool face
+    // takes `kind`; the envelope's documented shape is `{track,title,body}`, and for the tracks that ARE kinds the two
+    // words are the same word. Filling `kind` from a track that is a declared kind is a TRANSLATION, not an invention:
+    // it is recorded in `coercions` (from `kind:absent` to `kind:<track>`) so the receipt says what it became, which is
+    // the rule the `coercions` list exists for. A track that is NOT a declared kind is left alone and still refused by
+    // name — this does not guess.
+    const KIND_TRACKS = Object.freeze(['progress', 'state'])
+    const composeRecordPut = (d, payload) => {
       if (d.face !== 'vmu.records' || d.op !== 'put') return null
-      if (memberId === null || memberId === undefined) return null
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
-      const by = payload.by
-      if (typeof by === 'string' && by.trim() !== '') return null
-      if (by !== undefined && by !== null) return null
-      return Object.assign({}, payload, { by: String(memberId) })
+      const out = Object.assign({}, payload)
+      let changed = false
+      let attributed = false
+      if ((out.kind === undefined || out.kind === null || out.kind === '') && typeof out.track === 'string' && KIND_TRACKS.includes(out.track)) {
+        out.kind = out.track
+        changed = true
+        turnCoercions.push({ field: d.field, member: memberId === null || memberId === undefined ? null : String(memberId), from: 'kind:absent', to: 'kind:' + out.track,
+          why: 'the reply channel names a record by its TRACK and this track IS a declared kind, so the envelope is not asked to spell the same word twice (a track that is not a kind is still refused by name)' })
+      }
+      if (memberId !== null && memberId !== undefined) {
+        const by = out.by
+        if ((by === undefined || by === null) || (typeof by === 'string' && by.trim() === '')) { out.by = String(memberId); changed = true; attributed = true }
+      }
+      if (!changed) return null
+      return { payload: out, attributed }
     }
     const ATTRIBUTION_MEANS = 'the author of this row is the member whose turn it is: the turn already knows whose turn it is, so the row is attributed here instead of demanding the model write its own id into the reply json'
     const executed = []
@@ -2393,10 +2412,11 @@ export function createTurnOrchestrator({
       }
       const composed = composedFor(d, d.payload)
       const onBehalf = composed !== null
-      const attributed = onBehalf ? null : attributedFor(d, d.payload)
+      const recordComposed = onBehalf ? null : composeRecordPut(d, d.payload)
+      const attributed = recordComposed !== null && recordComposed.attributed ? recordComposed.payload : null
       let res
       try {
-        res = await fn(onBehalf ? composed : (attributed || d.payload), { field: d.field, face: d.face, op: d.op, ...(attributed ? { attributedTo: String(memberId) } : {}) })
+        res = await fn(onBehalf ? composed : (recordComposed !== null ? recordComposed.payload : d.payload), { field: d.field, face: d.face, op: d.op, ...(attributed ? { attributedTo: String(memberId) } : {}) })
       } catch (e) {
         if (e && e.code === 'VMU_NO_OPEN_MEETING') {
           // ★ PHASE 9 / round 7: the real reason for the measured failure was NOT "meetings is broken": the member

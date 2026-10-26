@@ -5802,3 +5802,57 @@ T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修
 ### §140.7 本轮无实质残余？
 
 **否。** F-10/F-11 已修但未真机复验；禁言的跨轮语义未判定。
+
+## §141 真机跑 40（build 864f7cd7，F-10/F-11 定向复验）
+
+### §141.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `slv-p13-cc.ps1 -CloneName slvp40 -Port 19638 -TimeoutSec 1800 -MaxTokens 8000000` |
+| 结果 | `DRIVE exit=0`，`durationSec 206`，根会话 `toolCalls 16`，`transcriptEvents 112` |
+| token | `tokenTotal 1,371,319`（cap 8,000,000，未撞） |
+| 会话 | 4（根 + 院士 + 两位研究员），`0 with RED checks` |
+| jsonl | `_oneoff/vm-slv/full-1027-050612.jsonl` = 5,268,968 B / 7,389 行 |
+| 机器读数 | `NO_FENCE=72 UNKNOWN_FIELD=48 FIELD_NOT_APPLICABLE=48 BAD_JSON=72` |
+| 清理 | `clone_gone=True`，C 盘剩 10.66 GB |
+
+### §141.2 判决表
+
+| 编号 | 关注点 | 判决 | 证据 |
+| --- | --- | --- | --- |
+| F-10 | 回执通道写的行带作者 | ✅ **通过** | r-1 只用围栏写 progress（不调工具）⇒ `vibe_v5_read_library{member:"r-1",kind:"progress"}` 读到该行、`vibe_vmu_records{action:"list"}` 的 `owner` 是 `r-1`；回执含 `attributed:[{"field":"progress","by":"r-1"}]` |
+| F-11 | 应用失败路径带披露 | ✅ **通过** | 漏 `kind` 的那轮 `VMU_INVALID_ARGUMENT` 回执里 `sideEffectsUnverified:true` + `sideEffectsMeans:"this refusal is about APPLYING…"`（所办抄了原文） |
+| 禁言跨轮 | 禁言在下一轮是否仍生效 | ✅ **通过** | 第 5 步两轮 `vibe_v5_say` 都被 `VMU_CHAT_MUTED` 具名拒；所办自述"Round 2: still VMU_CHAT_MUTED. Mute crosses turns." |
+| F-9 回归 | 形不对的拒绝句不声称"什么都没发生" | ✅ 通过 | 第 4 步回执仍带"去读记录轨（check the record tracks）" |
+| F-12 | 回执通道漏 `kind` 时整轮被拒 | ❌ 新缺陷 ⇒ **本轮已修** | 同一形状连试两次 ⇒ 同一个 `VMU_INVALID_ARGUMENT kind "undefined" is not allowed`，而提示词与 SCHEMA 只说 `{track,title,body}` |
+| F-13 | 记录 id 与成员 id 撞名 | ⚠️ 记债 | r-acad 的卡 id=`r-1`、r-1 的卡 id=`r-2`；`owner` 正确，但 `read_library{id}` 无法区分"成员 r-1"与"记录 r-1" |
+| F-14 | 禁言回执缺 `status.muted` | ⚠️ 记债 | 所办反馈：`mute` 回执里没有 `status.muted`，只能另调 `vibe_vmu_chat{action:"status"}` |
+
+### §141.3 本轮代码
+
+1. **F-12**：`vibe-math-vmu/kernel/turn/index.js` 的 `apply()` 新增 `composeRecordPut(d, payload)`：`track` 是已声明 kind（`progress`/`state`）且 `kind` 缺失 ⇒ 补 `kind` 并把翻译写进 `coercions`（`from:'kind:absent'`、`to:'kind:<track>'`、`why` 明说"轨道名就是 kind，不让模型把同一个词写两遍；不是 kind 的轨道仍具名拒绝"）；作者填充与 kind 翻译在同一次 compose 里合成。
+2. 测试 `tests/vmu-run39-attribution.test.mjs` 扩到 **19/0**（新增 ⑥ kind 翻译 + 回执 coercion 记录、⑦ 非 kind track 仍具名拒且 face 没收到伪造 kind；并把假 face 改成**按真 face 的规则校验 kind**，否则 ⑦ 不可测）。
+3. 相邻：`TURN 272/0`、`TURN REPLY TOOL 38/0`、`RUN35 READOUTS 26/0`、`SETTINGS 49/0`。
+
+### §141.4 门禁
+
+**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**；`PREFLIGHT: PASS - safe to run a gate`；`regen-all --write` **16/16** → `--check` **16/16 in sync**；`DOC LINT: PASS`；`update-doc-counts --write` ⇒ JOBS 576 / suites 468 / probes 108（files changed=0）。
+
+### §141.5 已知债（本轮明确不改）
+
+1. **F-13** 记录 id 与成员 id 同形（`r-1`）：改 id 生成要迁移历史记录，且 `read_library{id}` 的解析要同时支持两种命名空间；
+2. **F-14** `vibe_vmu_chat{action:"mute"}` 回执不带 `status.muted`（要再读一次 status）；
+3. `vibe_v5_feedback` 的写动词是 `op`，本轮所办先用 `action` 被拒一次（这是它自己的滑，**简报里写的是 `op`**）。
+
+### §141.6 无法验证（如实）
+
+1. F-12 的 kind 翻译在真机上是否让"漏 kind 的围栏 progress"整轮通过（本轮 fix 之后未跑，run 41 定向验）；
+2. 同一轮里 `say` + `progress` 同时出现在回执时，`say` 的落点（本轮所办没在同轮写 `say`）；
+3. `attributed` 在 `deliverMode:'subagents'`、成员回合由子内核执行时是否同样出现在根回执（本轮成员回合确实由子会话执行，`attributed` 出现在根回执 —— 但只覆盖一例）；
+4. F-13 撞名在 `read_library{id}` 的真实误读概率（只做了静态推断，没有复现误读）；
+5. 禁言到期（600000 ms）之后的行为（本轮只验了两轮内仍禁言）。
+
+### §141.7 本轮无实质残余？
+
+**否。** F-12 已修但未真机复验；F-13/F-14 记债未改。
