@@ -1792,6 +1792,36 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     { coercions: stringNotBoolean.coercions })
 }
 
+// R45) ONE REPLY WRITES ONE CLOSURE VOTE — the recorded-field loop used to write it once PER FIELD.
+// Measured live (run 27's own acceptance report): `effects` held the same `closure-vote` entry twice for res-01 and
+// res-02, and `closureVoteWrites` was 4 for two members. The tally was right (map keyed by member, last wins) but the
+// write counter and the effects list double-counted, which reads exactly like "one vote counted twice".
+{
+  const tw = mk()
+  const two = await tw.apply({ solved: false, vote_solved: false }, null, 'r-1')
+  const votes = (two.effects || []).filter((e) => e.kind === 'closure-vote')
+  ok(votes.length === 1,
+    '★★★ R45a: a reply carrying BOTH `solved` and `vote_solved` records exactly ONE closure vote (the loop must not write it per field)',
+    { effects: two.effects, votes: votes.length })
+  ok(tw.status().closureVoteWrites === 1,
+    '★★★ R45b: and `closureVoteWrites` counts 1, so the counter can no longer read as "one vote counted twice"',
+    { writes: tw.status().closureVoteWrites })
+
+  const three = await tw.apply({ contextPct: 5, solved: true, vote_solved: true }, null, 'r-2')
+  const votes3 = (three.effects || []).filter((e) => e.kind === 'closure-vote')
+  ok(votes3.length === 1 && tw.status().closureVoteWrites === 2,
+    '★★ R45c: three recorded fields still write ONE vote (and a second member brings the counter to 2, not to 5)',
+    { votes: votes3.length, writes: tw.status().closureVoteWrites })
+
+  const rec = tw.closureVote ? tw.closureVote() : tw.status().closureVote
+  // A BARE orchestrator has no roster seam, so nobody is enfranchised: `votesCast` is 0 and the reason NAMES the
+  // permission. (The kernel-level tally is asserted where a roster exists.) The point here is that the reading stays
+  // internally consistent after the fix.
+  ok(rec && rec.votesCast === 0 && rec.eligible.length === 0 && /closure-vote permission/.test(String(rec.reason)),
+    '★★ R45d: with no roster seam the reading is 0/empty AND says why (the fix did not silently change the tally path)',
+    { votesCast: rec && rec.votesCast, eligible: rec && rec.eligible, reason: rec && String(rec.reason).slice(0, 60) })
+}
+
 console.log('=== VMU TURN: ' + passed + ' passed, ' + failed + ' failed ===')
 for (const f of failures) console.log('  FAIL ' + f)
 process.exit(failed === 0 ? 0 : 1)

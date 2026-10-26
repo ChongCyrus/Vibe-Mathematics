@@ -1545,7 +1545,15 @@ export function createTurnOrchestrator({
       // `vote_solved`, and `solved` is only the per-round convergence reading. Both are recorded; only the first is
       // counted for closure. (The original agrees: it read `speakers[].voteSolved`.)
       if (field === 'solved' && memberId !== null) solvedThisRound.set(String(memberId), r[field] === true)
-      if (memberId !== null && r.vote_solved !== undefined && r.vote_solved !== null) {
+      // ★★★★★★★ ROUND 21 — THE VOTE WAS WRITTEN ONCE PER RECORDED FIELD, NOT ONCE PER REPLY. Measured on a real machine
+      //   (run 27's own acceptance report: "每个回合的 effects 里同一条 closure-vote 重复出现两次", with
+      //   `closureVoteWrites:4` for two members): this block tests `r.vote_solved` but is INSIDE `for (const field of
+      //   RECORDED_FIELDS)`, so it fired at every recorded field that happened to be present. A reply carrying
+      //   `solved` + `vote_solved` therefore wrote the SAME judgement twice; three fields would write it three times.
+      //   The tally was never wrong (the map is keyed by member and last-wins), but `closureVoteWrites` and `effects`
+      //   both double-counted, and the institute read that as "one vote counted twice". The vote is a property of the
+      //   REPLY, not of the field being iterated, so it is now recorded exactly once — when the loop reaches its own field.
+      if (field === 'vote_solved' && memberId !== null && r.vote_solved !== undefined && r.vote_solved !== null) {
         // ★★★★★★★ ROUND 76: THE VALUE ARRIVES AS A STRING, AND A STRICT CHECK SILENTLY DISCARDED IT. Measured on a
         // real machine: the model emitted "vote_solved": "true" - the word in quotes - twelve times, and a strict
         // === true is false for the string "true". So members genuinely recorded their judgement, the receipt kept

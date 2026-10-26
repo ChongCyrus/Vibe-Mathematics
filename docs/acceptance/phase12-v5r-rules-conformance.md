@@ -4807,3 +4807,57 @@ run 26 里 2 个辩论成员只被问了 1 个，而下游完整性闸却拿**�
   否则"刷新"会把数据丢失伪装成"名字被拒"。
 - 一个接口承担两种相反语义时，**加名字**（`restore` vs `restoreReload`）比加开关更安全：开关会被默认值决定行为，名字不会。
 - 这条缺陷属于本阶段反复出现的那一类："用一个数/一个名字说了两件事"，只是这次的受害者是内存里的名单。
+
+## §124 第 21 轮：一票被写了好几次（写计数与 effects 双计），以及一句过时的工具说明
+
+**来源**：第 27 次真机跑（commandcode `deepseek/deepseek-v4.1-flash`，build `046f797c`）所办自己的验收报告 ③ 与 ① 两条：
+③「每个回合的 `effects` 里同一条 `closure-vote` 重复出现两次（res-01、res-02 各两条相同的 `solved:false`）；`closureVoteWrites:4` 与 `votesCast:2` 自相矛盾」；
+①「`vibe_v5_verdict_ask` 的 description 说『只问实际发过言的成员（读 spokeBy）』，实际 population 是 `roster+speech`（`askedSource:"roster+speech"`）——描述与实现不一致」。
+
+### ① 一票写 N 次：`vacation` 级的真缺陷
+
+**根因**（在 `vibe-math-vmu/kernel/turn/index.js` 的 `apply()` 里，属于"循环变量用错"这一类）：
+闭合票的记录块被放在了 `for (const field of RECORDED_FIELDS)` 里面，而它的**守卫条件**读的是回复对象上的 `r.vote_solved`，不是正在被遍历的那个 `field`：
+
+```js
+for (const field of RECORDED_FIELDS) {
+  if (r[field] === undefined || r[field] === null) continue
+  ...
+  if (memberId !== null && r.vote_solved !== undefined && r.vote_solved !== null) {   // ← 每次命中字段都会进入
+```
+
+`RECORDED_FIELDS = ['contextPct','compacted','solved','vote_solved','prioritize','hire','fire']`，`solved` 排在 `vote_solved` **之前**。
+所以一个**同时**带 `solved` 与 `vote_solved` 的回复（这正是成员的标准回复形态）会把同一条判断直接写两遍；带三个记录字段就写三遍。
+实测（真实 transcript `full-1026-075125.jsonl`，转义 JSON 直接可读）：
+
+```
+\"effects\":[{\"kind\":\"closure-vote\",\"member\":\"res-01\",\"solved\":false,\"source\":\"reply\"},
+            {\"kind\":\"closure-vote\",\"member\":\"res-01\",\"solved\":false,\"source\":\"reply\"}]
+```
+
+`closureVoteWrites` 也因此在两个成员的情况下报 4——而 `votesCast` 是**按成员去重**的 2。两个数字单位不同却同名相邻，读的人只能得出"一票被算了两次"。
+
+**唯一权威的读法**：`closureVotes` 是以成员为键的 Map，后写覆盖先写，所以**计票结果从来没错**；错的是写入次数与 `effects` 列表这两处"记账面"。这也是为什么这条缺陷只损害可读性而不改变结论——但"记账面虚增"正是本阶段反复出现的同一族。
+
+**修法**：把守卫改成 `field === 'vote_solved' && ...`，让这票只在循环走到它自己的字段时记录**一次**；语义不变（仍是后写覆盖），但 `closureVoteWrites` 与 `effects` 恢复"一回复一票"。
+
+**门禁**（`tests/vmu-turn.test.mjs` R45a–R45d，271 passed / 0 failed）：
+- R45a 同时带 `solved` + `vote_solved` 的回复只产生 **1** 条 `closure-vote` 效果；
+- R45b `closureVoteWrites === 1`（不再自称"一票算两次"）；
+- R45c 三个记录字段仍是 1 票，第二个成员把计数带到 2 而不是 5；
+- R45d 无名册接缝时读数为 0/空集**且具名说明原因**（修复没有悄悄改变计票路径）。
+
+### ② 过时的工具说明：描述比实现旧一轮
+
+`vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_verdict_ask.description` 仍写着"只问实际发过言的成员（读 `spokeBy`）"，并把 `members` 说成"可选加宽"。第 19 轮把 population 改成**名册 ∪ 发言记录**（`askedSource` 会写出用了哪一种），`members` 也从"加宽"变成**覆盖**（`askedSource:"explicit"`）。说明因此变成了一句关于"机制长什么样"的谎——这是本项目最贵的一类缺陷（描述本身是被读的接口）。
+
+修法：说明改为陈述 `askedSource` 的四种取值、改写的**理由**（只读 `spokeBy` 曾让真机跑请不到任何人，进而让裁决面报 0 人辩论；而无名册的会议仍要找到发过言的人），并点明 `members` 是覆盖而非加宽。
+
+`audit-prompt-tool-params` 81/0、`audit-doc-actions` 61/0、`vmu-v5r-tools` 355/0 均通过。
+
+### ③ 本轮判为"非缺陷"的两条（记录以便下轮不再重开）
+- 「主席对 `solved:false` 未进入表决图」：`solved` 是**每轮个人判断**，闭合票是 `vote_solved`，两者不同机制；报告中 `missing:['acad-01']` 只有在院士**没有投闭合票**时才正确——本轮它确实没投，故不是记错。
+- 「通知自己在自己身上时 `notified:[]`」：规则要求"通知卡片持有者把 p 改成该值"，签署人恰是持有者时无需通知，回执已具名写出 `selfAddressed`；框架**不**代写卡片 p（那会越过"通知"变成"代写"）。判为非缺陷，理由写在此处以免重复讨论。
+
+提交：`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/tools.js`、`tests/vmu-turn.test.mjs`。
+
