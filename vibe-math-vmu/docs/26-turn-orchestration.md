@@ -1090,3 +1090,11 @@ run 43 让研究员写**一条** progress，它做了两件事：调 `vibe_v5_re
 **真机判决**（run 44，build 32755809）：`skipped:1` / `skippedDetail[0].existingId:"rec-1"` / 库读 `total:1` ✅；同时 `coercions` 的 track→kind 翻译仍生效、续会话 `continuation.applied:true` 仍成立。
 
 **判据**：①同一 title 只有一条记录；②回执必须点名被跳过的那一扇门与已存在的 id；③下一轮状态板必须指向同一条。
+
+## ROUND 45：全门验收（十条门走一遍）
+
+**通过**：建所、academic 会议与 quorum 读数、progress 双门去重、状态板四行（含「其中 0 条属于该成员」与「来源：」）、close 后三个读面一致（`status`/`list`/`summary`）、蓝图 propose→adopt→read、命题卡 + 服务面辩论 + `verdict_final` 均值、`verified_promote` 的正确拒绝、成员 feedback。
+
+**没通过**（详见台账 §147.3）：①**禁言没有生效**且 `mute`/`status`/`unmute` 三面自相矛盾（复现在单/双实例都正常 ⇒ 怀疑两次状态写穿落地顺序）；②`vibe_vmu_meeting {action:"open"}` **静默丢 `kind`/`subject`**、且传 `member:"r-acad"` 就能代主席开会（席位门看参数不看调用方）；③**primitive 与 service 两套会议注册表**：同一个 `m-r45` 一边 `in_session`、一边 `VMU_NO_OPEN_MEETING`，hint「去开会」不可执行；④成员自己提交的**裁决卡不进 `read_library`** 的 `propositions` 轨；⑤`approvalState` 不记 `decidedBy`；⑥`decide` 的席位闸门看调用者不看 `by`。
+
+**判据**：一条门"通过"必须有回执原文；"能走但读不出"与"走不通"分开记；跨面（服务面/内核面/pack 面）必须用**同一次真实动作**验证，不许用两面各调一次就当一致。

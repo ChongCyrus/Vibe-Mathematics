@@ -6122,3 +6122,77 @@ T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修
 ### §146.8 无实质残余？
 
 **否** —— F-16 已修待提交；F-13/F-14 的复验仍未进真机（本轮未提）。
+
+## §147 真机跑 45（build fe98b36f，全门验收）
+
+### §147.1 读数
+
+- `DRIVE exit=0`、`durationSec 582`、根会话 `toolCalls 57`、`transcriptEvents 305`、`tokenTotal 5,716,534`（cap 20,000,000，`tokenCapHit:false`）、4 会话、`0 with RED checks`
+- 产物 `D:/wd/vibemath开发/_oneoff/vm-slv/full-1027-064905.jsonl` = 9,726,707 B / 16,279 行；`NO_FENCE=85 UNKNOWN_FIELD=67 FIELD_NOT_APPLICABLE=56 BAD_JSON=85`
+- `cleanup: clone_gone=True C_port_listening=False C_free_GB=10.63`
+
+### §147.2 判决表（按所办自报 + 回执原文复核）
+
+| 门 | 判决 |
+|---|---|
+| `vibe_v5_start` / 建所 | ✅（`started.already:true`，因为所已存在；不重复 hire） |
+| academic 会议 + quorum | ✅（`voteFloor.effective:3`、`unanimity.met:false` 且点名 `unanswered:["r-1","r-2"]`） |
+| progress 双门去重（F-15） | ✅（r-1 一条 progress 落 `rec-2`；回执 `executed:0, skipped:1` 的旧契约仍对得上） |
+| 状态板四行 | ✅（两名成员都抄到含「其中 0 条属于该成员」/「来源：」的行；成员三次转述而非逐字引用 ⇒ 记为提示词约束，不是机制缺陷） |
+| close + 三读面一致（F-6） | ✅（`status` ⇒ `archived:true,state:"closed"`；`list` ⇒ `archivedMeetings:["m1"]`；`summary` ⇒ closed） |
+| 蓝图 propose→adopt→read | ⚠️ 通过，但 `read` 回执**没有 `bytes`**（正文 3312 字节只在 `state.drafts[].bytes`） |
+| 命题卡 + 服务面辩论 + 汇总 | ✅（`verdict_final` ⇒ 均值 `0.65`、`decided:false,estimate:true`、`floor.minVotes:3`） |
+| `verified_promote` 拒绝 | ✅（`VMU_STATE` + 可执行 hint：「只有 1 或 0 可以入册」） |
+| 人工审批 | ❌ **研究员 `decide` 成功**（见 §147.3-F） |
+| 群聊禁言 | ❌ **禁言没有生效**（见 §147.3-A） |
+| 会议两面 | ❌ **primitive/service 两套注册表互不可见、hint 不可执行**（见 §147.3-C） |
+| 成员成果库 | ⚠️ 自己提交的裁决卡不进 `read_library` 的 `propositions` 轨（见 §147.3-D） |
+
+### §147.3 本轮确认的机制缺陷
+
+**A. 禁言没有生效，且三个读面自相矛盾（最重）。**
+`vibe_vmu_chat {action:"mute", by:"r-1", member:"r-2", durationMs:600000}` ⇒ `ok:true, muted:["r-2"]`；紧接着 `send {by:"r-2"}` 连续 4 次**成功**（`msg-1..msg-4`）；`status` ⇒ `muted:[]`；`unmute` ⇒ `wasMuted:false`。三个读面对"禁言在不在"给出三个答案，而 `mutedMeans` 自称"答案就在本回执里"。
+**已做的复现**：新内核单实例（mute→send 被拒）、两实例（A mute、B 发消息后 A 仍拒）**都正常** ⇒ 不是 `kernel/chat.js` 的守卫写错，而是**写穿/回读的时序**：`admin`/`mute` 两次状态写的 snapshot 落地顺序没有被保证，后落的旧快照把 mute 覆盖掉。
+
+**B. `vibe_vmu_meeting {action:"open"}` 静默丢参且不校验调用方席位。**
+传 `kind:"debate"` 得到 `kind:"general"`、`subject` 消失、`ok:true`（没有一个字段说"这两项我丢了"）；传 `member:"r-acad"` 即可代主席开会（`receipt` 显示 `phase:"round-robin"`、`serviceMeeting:null`），说明**席位门看参数不看调用方**。
+
+**C. 两个会议注册表：同一 id 一边 in_session、一边不存在。**
+`vibe_vmu_meeting{action:"open", id:"m-r45", member:"r-acad", roster:[...]}` 落在 **primitive** 表（`serviceMeeting:null`）；`vibe_v5_say{meeting:"m-r45"}` 与 `vibe_v5_verdict_final{meeting:"m-r45"}` 都回 `VMU_NO_OPEN_MEETING`，hint 是"open() a meeting first"——**会已经开了，hint 不可执行**；而 `vibe_vmu_meeting{action:"status", id:"m-r45"}` 又能读到 `state:"in_session"`。
+改用服务面 `vibe_v5_meeting {type:"debate"}`（`m-r45b`）后整条通路（attend→say→verdict→verdict_final）正常。
+
+**D. 裁决卡不进成员自己的成果库。**
+`vibe_v5_verdict` 落 `Members/r-2/Propos/ruling-m-r45b-p-r45-r-2-bac61307.md`，`verdict_final.submissions.cards:4` 可证；但 `vibe_v5_read_library {member:"r-2"}` 只回 `total:3`（progress 轨），`declaredTracks` 里的 `propositions` 为 0 ⇒ 成员"我提交过裁决吗"在自己的库里查不到 id。
+
+**E. `approvalState` 不记 `decidedBy`。**
+`decide` 回执带 `decidedBy:"r-1"`，而 `approvalState` 只有 `{state:"allowed",decidedAt}` —— "谁批的"只存在于创建时刻的回执里。
+
+**F. `vibe_vmu_human {action:"decide"}` 的席位闸门对"代批"失效。**
+闸门看**调用者**（root=office）而不是 `by`：所办在 root 会话里以 `by:"r-1"` 调 `decide` ⇒ `ok:true, decidedBy:"r-1"`。同一份代码在成员自己的内核里会拒（run 33 的 62/0 覆盖了那条路径），所以这是"调用者身份 vs 被代办者"的缺口，不是闸门没写。
+
+**G. 小口径问题（记入债）**：`list` 的 `unionMeetings:[]` 与 `archivedMeetings:["m1"]` 并存，回执不说 union 含不含归档；`attend`/`speak` 回执把 `quorum`/`receipt` 嵌套重复两遍（4773 字节里实质约 1.2KB）；`vibe_v5_start` 回 `started.already:true` 而开跑前 `vibe_v5_report` 是 `roster:0`。
+
+### §147.4 我这轮的简报错（第 11/12 次同类）
+
+1. 第 8 步让所办用 `vibe_vmu_meeting {action:"open", ...}` 开会、再让成员用 `vibe_v5_say`/`verdict_final` —— **这两面不是一套注册表**，所以第 8 步按原文走不通（已改：服务面统一用 `vibe_v5_meeting`）。
+2. 第 9 步让"研究员去 decide" —— 在 root 会话里这是所办代调，闸门看调用者，所以永远"通过"；要测成员越权，必须在成员自己的内核里调（or 让成员回合里调工具）。
+
+### §147.5 门禁
+
+- `update-doc-counts` / `regen-all` / `preflight` / `check-docs` 见收口
+- 定向套件：`VMU RUN 34 FINDINGS 26/0`、`VMU RUN 43 DUPLICATE WRITE 20/0`、`VMU RUN 35 READOUTS 26/0`、`VMU RUN 31 STATUS BOARD 58/0`
+
+### §147.6 收口
+
+待本轮修复完成后回填。
+
+### §147.7 无法验证 / 下一轮
+
+1. **禁言写穿时序**：需要能在真机里看见"两次 snapshot 落地的顺序"的读数；当前只有症状。
+2. **primitive 会议的可达性**：是否有人真的需要 primitive 面（v5r 规则不需要），若不需要，最小修法是让 pack 面拒绝 primitive id 时 hint 点名"这个 id 在 primitive 表里，用内核面读它"。
+3. **成员成果库的 proposals 轨**：裁决卡是否本应进 `propositions` 轨（与 `p-r45` 的落卡位置不同）。
+4. **逐字引用**：成员三次转述状态板四行 ⇒ "提示词要求逐字抄"没有可核机制（建议状态板给一行 `verbatim-sum` 供所办核对）。
+
+### §147.8 无实质残余？
+
+**否** —— §147.3 的 A/B/C/F 都是真缺陷，已按其写面分派修复。
