@@ -1308,7 +1308,15 @@ export function renderStatusBoard(readings) {
     const f = byKey.get(decl.key)
     const value = f && typeof f.value === 'string' && f.value.trim() !== '' ? f.value : null
     const why = f && typeof f.why === 'string' && f.why.trim() !== '' ? f.why : '状态板的读支路没有提供这个字段'
-    return '[' + decl.label + '] ' + (value === null ? '该来源未提供：' + why : value)
+    // ★ ROUND 35 / F3 (live run 35): A READOUT THAT SWITCHES SOURCE MUST SAY WHICH SOURCE FIRED. `[总任务]` read the
+    // setting when it was set and the task board's root task otherwise; run 35's office saw the board's root-task title
+    // while its own settings read said `vmu.turn.objective` held a longer mission text, and reported "the board disagrees
+    // with the setting" - a true observation about a reading that would not name its own provenance. The reading already
+    // carries `source` (statusBoardReadings fills it for every branch); this prints it ONLY next to a value, so the
+    // 「该来源未提供：<why>」 lines keep saying exactly that (their `why` already names the sources it tried).
+    const source = f && typeof f.source === 'string' && f.source.trim() !== '' ? f.source.trim() : null
+    const shown = value === null ? null : (source === null ? value : value + '（来源：' + source + '）')
+    return '[' + decl.label + '] ' + (shown === null ? '该来源未提供：' + why : shown)
   }).join('\n')
 }
 
@@ -1372,7 +1380,16 @@ export function createTurnOrchestrator({
   // be read is rendered as 「该来源未提供：<why>」 rather than as an empty tag.
   // A source that THROWS is a NAMED refusal (the `noticeSource` precedent): a board nobody produced must not be
   // silently replaced by a plausible-looking one.
-  statusSources = null } = {}) {
+  statusSources = null,
+  // ★★★★★★★ ROUND 35 / task-24 (live run 35): THE SHARED TURN LEDGER SEAM. `open()` is the ONE place that knows "this
+  // member has now been given a turn", but this orchestrator's `turns` Map is MEMORY - and a member's child session
+  // mounts a SECOND kernel instance over the same workspace, which cannot see this one's memory. `vmu.meetings.
+  // chairActRequiresTurn` asked exactly that memory (`chairActed` -> `memberTurnCount`), so the chair's own turn was
+  // invisible in the session where the chair convened, and the gate refused by name (`VMU_CHAIR_ACT_NOT_DELEGATED`,
+  // "the chair r-acad has no recorded turn in this kernel") although the turn had just run. The seam is
+  // `{ record(fact), count(memberId) }` over the shared durable fold (`kernel/index.js` owns both halves; `count` is
+  // what `chairActed` calls). Absent ⇒ this loop behaves EXACTLY as before (memory only, byte for byte).
+  turnLedger = null } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
   // ROUND 347: the wakeup POLICY (docs/26 section 3.2). The original preset recorded only WHO should be woken and
@@ -1392,7 +1409,75 @@ export function createTurnOrchestrator({
   // only increments AFTER the seam settles, so a delivery that THREW (a timeout is a throw) left no trace anywhere.
   // A counter that only counts successes cannot report a stall; `deliveryFailed` + `deliveryLastFail` exist so the
   // reader can see 'two turns were assembled and both deliveries threw, here is the code and the path'.
-  const counts = { opened: 0, assembled: 0, delivered: 0, deliveryFailed: 0, deliveredMeans: 'settled deliveries: the seam returned an answer or an awaiting envelope. A THROW is counted in deliveryFailed, never here', deliveryLastFail: null, failed: 0, failedMeans: 'replies that ARRIVED but whose write-back threw (a malformed reply field is the usual cause). It is NOT deliveryFailed: the member did answer. Read failedLast for the reason and the text the member actually wrote', failedLast: null, parsed: 0, refused: 0, dispatched: 0, notExecuted: 0 }
+  const counts = { opened: 0, assembled: 0, delivered: 0, deliveryFailed: 0, deliveredMeans: 'settled deliveries: the seam returned an answer or an awaiting envelope. A THROW is counted in deliveryFailed, never here', deliveryLastFail: null, failed: 0, failedMeans: 'replies that ARRIVED but whose write-back threw (a malformed reply field is the usual cause). It is NOT deliveryFailed: the member did answer. Read failedLast for the reason and the text the member actually wrote', failedLast: null, parsed: 0, refused: 0, dispatched: 0, notExecuted: 0,
+    // ★ ROUND 35 / task-24: the shared turn ledger's own counters (see `noteSharedTurn`). `ledgerRecorded` counts turns
+    // whose fact LANDED in the durable fold; `ledgerFailed` counts writes that did not (read `ledgerLastFail`);
+    // `ledgerSkipped` counts the one benign case - a store this instance never opened, where there is no durable layer
+    // to write to and the loop's historical memory-only behaviour is all that exists.
+    ledgerRecorded: 0, ledgerFailed: 0, ledgerSkipped: 0, ledgerLastFail: null,
+    // ★ ROUND 35 / F4 (live run 35): A REPLY WE COULD NOT PARSE IS NOT A REPLY NOBODY CAN READ. The member DID answer -
+    // it wrote prose where the reply channel wanted a fenced json object - and the office then had no way to read a single
+    // word of it: the receipt carried `fields:[]` and `memberToolCalls:null`, and finding out whether a MUTED member had
+    // spoken anyway took a grep through the child session log (the office spent most of its budget there). The refusal
+    // already reaches the caller; what was missing is a LAST-FAILURE RECORD carrying the member's own text, bounded like
+    // every other receipt field, plus the same excerpt on every successful round.
+    replyParseFailedLast: null,
+    replyParseFailedMeans: 'the reply ARRIVED but could not be parsed into the declared reply shape (no fence, or a brace span that is not json). The member\'s own text is in replyExcerpt (bounded to the same size as failedLast.replyText); `fields`/`executed` do not exist for such a round because nothing was applied',
+    replyParseFailed: 0 }
+  // ★★★★★★★ ROUND 35 / task-24 (live run 35): THE SHARED TURN LEDGER, WRITTEN BEFORE THE PROMPT LEAVES.
+  // The defect this removes: `vmu.meetings.chairActRequiresTurn` asked `chairActed(seat)`, which read THIS instance's
+  // in-memory `turns` Map. A member's child session runs its OWN kernel instance (docs/02 store row: "ONE FILE CAN HAVE
+  // SEVERAL KERNELS OVER IT"), so the chair's turn was invisible in the very session where the chair convened a
+  // meeting: the gate refused `VMU_CHAIR_ACT_NOT_DELEGATED` - "the chair r-acad has no recorded turn in this kernel" -
+  // while that turn existed two processes away. Two halves live here, and BOTH are needed:
+  //   ① `noteSharedTurn`, called by `open()` (the one place a turn is minted), hands the fact to the `turnLedger` seam.
+  //      Its promise is TRACKED and can never reject (an `open()` with no delivery would otherwise arm an unhandled
+  //      rejection) and its failure is COUNTED - never silently dropped.
+  //   ② `settleSharedTurn`, called by `deliverTurn` BEFORE `deliver`, awaits it - so "the prompt has been handed out"
+  //      implies "the fact is in the shared fold". Without this the whole thing is a race: the parent kernel opens the
+  //      chair's turn and the child kernel reads the fold a millisecond later.
+  // The GATE is not touched: a seat that never ran a turn is still refused (`tests/vmu-run35-chair-act.test.mjs` asserts
+  // that counterfactual), because the ledger only ever records a turn that really was opened.
+  const ledgerWrites = new Map()
+  const ledgerFail = (turn, e) => {
+    counts.ledgerFailed += 1
+    counts.ledgerLastFail = { at: Date.now(), turn: turn && turn.id ? turn.id : null,
+      member: turn && turn.member ? String(turn.member) : null,
+      code: e && e.code ? String(e.code) : null,
+      message: e && e.message ? String(e.message).slice(0, 400) : String(e),
+      means: 'the shared turn ledger (durable key `turns`) did not record this turn. A sibling kernel reads that key to answer "has this seat taken a turn", so while it is missing the gate cannot see this turn from another instance. Read `ledgerSkipped` for the one case that is not a failure (a store that was never opened)' }
+    return counts.ledgerLastFail
+  }
+  const noteSharedTurn = (turn) => {
+    if (!turnLedger || typeof turnLedger.record !== 'function') return
+    let pending = null
+    try {
+      pending = turnLedger.record({ id: turn.id, member: turn.member, phase: turn.phase, round: turn.round, at: turn.at })
+    } catch (e) {
+      // A seam that throws SYNCHRONOUSLY is the same event as one that rejects: counted, attributed, and never allowed
+      // to break `open()` (a turn that exists in memory must stay usable; the READER side simply will not see it).
+      ledgerFail(turn, e)
+      return
+    }
+    if (!pending || typeof pending.then !== 'function') return   // a seam that returns no promise has nothing to await
+    ledgerWrites.set(turn.id, Promise.resolve(pending).then(
+      () => { counts.ledgerRecorded += 1; return { ok: true } },
+      (e) => {
+        // "the store is not open" is a DEGRADED INSTANCE, not a corrupted one: `createKernel({ root })` builds a store
+        // but only the entry's `ready()` opens it, so a unit test or a host that never opens it has no durable layer at
+        // all. Refusing a turn for that would break every such caller for a benefit none of them can use; the skip is
+        // COUNTED (`ledgerSkipped`), and the reader side falls back to memory - which is the historical behaviour.
+        if (e && e.code === 'VMU_STORE_FAILED' && /not open/.test(String(e.message))) { counts.ledgerSkipped += 1; return { ok: true, skipped: 'store-not-open' } }
+        ledgerFail(turn, e)
+        return { ok: false, error: e }
+      }))
+  }
+  const settleSharedTurn = async (turn) => {
+    const pending = turn && turn.id ? ledgerWrites.get(turn.id) : null
+    if (!pending) return null
+    ledgerWrites.delete(turn.id)
+    return await pending
+  }
   const lastRefusal = { code: null, message: null }
   // ROUND 4 / F11: the attribution of the MOST RECENT delivery (`childId` + `stopReason`), so a caller can ask who a
   // receipt belongs to without re-reading the host handle.
@@ -1495,6 +1580,11 @@ export function createTurnOrchestrator({
     turns.set(turn.id, turn)
     woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1
+    // ★★★★★★★ ROUND 35 / task-24: announce the turn to the SHARED ledger (see `noteSharedTurn` above). It happens at
+    // OPEN, not at delivery, deliberately: `memberTurnCount` - the in-memory reader the gate used before this round -
+    // counts OPENED turns, so the durable reader and the memory reader must agree by construction. Otherwise the same
+    // member could be "has a turn" in one kernel and "has none" in its sibling, which is the run-35 failure itself.
+    noteSharedTurn(turn)
     return { ok: true, turn }
   }
 
@@ -1671,6 +1761,19 @@ export function createTurnOrchestrator({
     if (typeof deliver !== 'function') {
       fail('VMU_ENGINE_UNAVAILABLE', 'no delivery adapter is wired: refusing rather than pretending the member answered',
         'inject { deliver: async ({ turn, text }) => reply } (docs/26 §2 stage 3)')
+    }
+    // ★★★★★★★ ROUND 35 / task-24: THE FACT MUST BE DURABLE BEFORE THE PROMPT LEAVES (see `noteSharedTurn`). A ledger
+    // write that did not land is a NAMED refusal rather than a best-effort log line: handing this member a prompt while
+    // the shared fold says it never had a turn re-opens the run-35 hole one instance over - the member would convene
+    // from ITS session and be refused by name for a turn that plainly happened. The refusal is the seam's OWN refusal,
+    // unchanged (this face never rewrites a seam's error into something friendlier), so the code registry is untouched:
+    // a store failure keeps `VMU_STORE_FAILED`.
+    const ledger = await settleSharedTurn(turn)
+    if (ledger && ledger.ok !== true) {
+      const cause = ledger.error && typeof ledger.error === 'object' ? ledger.error : null
+      fail(cause && cause.code ? String(cause.code) : 'VMU_STORE_FAILED',
+        'the shared turn ledger did not record the turn for ' + String(turn && turn.member) + ', so the prompt was NOT handed out: ' + String(cause && cause.message ? cause.message : cause),
+        'the `turns` fold is what lets a SIBLING kernel (a member child session) see that this seat has taken a turn; `kernel/index.js` wires that seam over the durable store. Fix the store root/write path and retry this turn (docs/03 §6 `turns`)')
     }
     let delivered
     // ★★★★★★★ TASK-13: the offer is computed ONCE, here, from the map every reader already uses, and it travels INSIDE
@@ -2558,9 +2661,36 @@ export function createTurnOrchestrator({
       // consumed once: the next turn's reply belongs to whoever it answers
       const attributedTo = lastReplyForMember
       lastReplyForMember = null
-      const parsed = replyFromChannels(raw, attributedTo || turn.member)
+      // ★ ROUND 35 / F4: keep the member's own words reachable whether or not they parsed. Two readings, one source:
+      //   · parse FAILED  -> counts.replyParseFailedLast (read through `vibe_vmu_turn {op:"status"}`), so "the member did
+      //     answer, here is what it said" survives the refusal instead of dying with the thrown error;
+      //   · parse WORKED  -> the receipt carries a bounded `replyExcerpt`, so the office can see the sentence the member
+      //     actually wrote next to the fields it produced. A receipt is not a log file: the bound is the same 2000 the
+      //     existing refusal diagnostics use.
+      const REPLY_EXCERPT_MAX = 2000
+      const rawText = String(raw === undefined || raw === null ? '' : raw)
+      let parsed
+      try {
+        parsed = replyFromChannels(raw, attributedTo || turn.member)
+      } catch (e) {
+        try {
+          counts.replyParseFailed += 1
+          counts.replyParseFailedLast = {
+            at: Date.now(),
+            turn: turn && turn.id ? String(turn.id) : null,
+            member: (attributedTo || turn.member) ? String(attributedTo || turn.member) : null,
+            code: e && e.code ? String(e.code) : null,
+            message: e && e.message ? String(e.message).slice(0, 400) : String(e),
+            replyLength: rawText.length,
+            replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX),
+            means: 'the member ANSWERED (this text is what it wrote) and the reply could not be parsed into the declared shape: nothing was applied. This is NOT a silent member and NOT a delivery failure' }
+        } catch { /* diagnostics must not replace the refusal */ }
+        throw e
+      }
       const tail = await dispatchReply({ turn, parsed, attributedTo: attributedTo || turn.member, rawText: raw })
-      return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(), ...tail }
+      return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
+        replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX), replyLength: rawText.length,
+        replyExcerptMeans: 'the reply as the member wrote it, bounded (a receipt is not a log file); `fields` below is what the framework could use from it, so a field missing here is visible as prose instead of silently absent', ...tail }
     } finally {
       inFlightTurn = null
     }
@@ -3304,6 +3434,13 @@ export function createTurnOrchestrator({
         // as run 37's count-only `skipped`: the answer existed one layer down and did not travel.
         delivery: r.delivery || null,
         proseUnparsable: r.proseUnparsable || null,
+        // ★ ROUND 35 / F4: the member's own words travel to the receipt an operator actually reads. Run 35's office saw
+        // `fields:[]` and `memberToolCalls:null` and could not tell "the member said nothing" from "the member said
+        // something we could not use" - BAD_JSON=14 in that run. Same defect family as run 37's count-only `skipped`
+        // and the run-16 delivery-path omission: the answer existed one layer down and did not travel.
+        replyExcerpt: typeof r.replyExcerpt === 'string' ? r.replyExcerpt : null,
+        replyLength: Number.isFinite(Number(r.replyLength)) ? Number(r.replyLength) : null,
+        replyExcerptMeans: typeof r.replyExcerptMeans === 'string' ? r.replyExcerptMeans : null,
         instructionDelivered: r.instructionDelivered === true, turn: r.turn.id,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,
         toolCallsScope, toolCallsNote,

@@ -7,6 +7,7 @@
  * fifty-seven files. This one is data with a name.
  */
 import { LATEX_ENGINE_NOTE } from './v5r-blocks-a.js'
+import { replyCatalogueLines, replyChannelLines } from './v5r-reply-channel.js'
 
 export const CHARTER_BLOCKS_B = Object.freeze([
   {
@@ -239,6 +240,12 @@ export const CHARTER_BLOCKS_B = Object.freeze([
   // as the full one, and only the full one had been transcribed. Transcribed verbatim from the corpus, with the one
   // hard-coded absolute path replaced by a setting, because a project path baked into a prompt is exactly the class of
   // value this work has been removing everywhere else.
+  //
+  // ROUND 35 FIX: the first line used to prescribe `vibe_vmu_turn { op: "reply", report: { … } }` — UNREACHABLE under
+  // this institute's delivery (a member turn settles inside the step, so no prompt is ever awaiting; the kernel refuses
+  // with VMU_TURN_NO_PENDING_MEMBER) — while forbidding the fence, which is the only channel that works. The channel
+  // paragraph and the field lines below are now RENDERED from `v5r-reply-channel.js`, so the field list cannot drift
+  // from the kernel table again; see that file's header for the full defect.
   {
     name: 'v5r-reply-compact',
     order: 797,
@@ -246,7 +253,12 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '用一次 `vibe_vmu_turn { op: "reply", report: { … } }` 回复；所有旧字段仍有效，以下仅列当前阶段常用字段。',
+        ...replyChannelLines(),
+        ...replyCatalogueLines({ mode: 'compact' }),
+        // THE CAPTURE'S OWN SUMMARY LINES, kept verbatim. They are not the authority any more (the rendered catalogue
+        // above is), but they are what the source actually printed, and `tests/vmu-prompt-type-coverage.test.mjs`
+        // measures reproduction of each prompt TYPE against that source: deleting them turns the compact type's
+        // remaining-gap report from "structural, explained by class" into two unexplained lines.
         'progress：数学进展/阻塞及下一步；record：成果卡数组（kind,id,title,statement或content,value,motive,p）；say：必要消息或{to,text}。',
         'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
         // THE MORE COMMON OF TWO WORDINGS. The corpus carries this line in two forms and they are not interchangeable:
@@ -254,7 +266,6 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // prioritize、nudge（to,why）、convene_meeting。`) appears in ten. The more common one is what a round normally
         // says; the other is kept below as its own section rather than deleted, because it is real output too.
         '协调需要时可 hire/fire、创建或分派任务（vibe_v5_task_create／vibe_v5_assign）；开会由院士用 vibe_v5_meeting 召集（type 见会议类型目录），具体字段查手册。',
-        '{"progress":"当前推导、证据及下一步","solved":false}',
         '复杂工具首次使用前调用 vibe_v5_tool_help({"member":"<你的成员 id>"}) 查阅方法（**只收 member；缺它会被具名拒绝**）；简单工具和工具回执直接使用。',
         'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
       ].join('\n'),

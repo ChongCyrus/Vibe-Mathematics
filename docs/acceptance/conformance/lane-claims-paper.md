@@ -53,7 +53,7 @@
    - "概率=1 ⇒ 可入 verified"的落点仍回到 §1 的 `settled` 自动标记（`kit/handlers.js:157-176`），与 lean 无关。
    - **联动是不存在的**：`grep passedWithdrawn` 只在 fidelity/formal/library/v3-packs 命中；没有任何代码读 `lean job passed` 去改卡或改票。
 3. **「鼓励形式化」开关 —— ⚠️ 存在、被读，但唯一效果是提示词/回显**：
-   - `settings/schema.js:249` `vmu.math.formalVerify` enum `off|encourage|require`，def `'off'`，doc「P3：判定时的形式化要求；默认 off＝零策略」；`:231` `vmu.turn.formalModeLine` def「鼓励：按实现难度自行决定…」（读者 `v5r-blocks-a.js:665-675` ⇒ 提示词文本）。
+   - `settings/schema.js:249` `vmu.math.formalVerify` enum `off|encourage|require`，def `'off'`，doc「P3：判定时的形式化要求；默认 off＝零策略」；`:231` `vmu.turn.formalModeLine` def「鼓励：按实现难度自行决定…」（读者 `v5r-blocks-a.js:596-607` ⇒ 提示词文本）。
    - `kernel/lean.js:210/235/247-259`：读键并进 `policy()` 返回 `{formalVerify, requireFormal, encourageFormal, initiative, initiativeEffect:'display-only'}`；`settings/schema.js:256` `vmu.math.leanInitiative` doc 明写「**本运行时只回显**」。
    - **真消费者缺口**：`grep requireFormal\|encourageFormal` 除 `policy()` 自身与 `kernel/math.js:150` 的 `requireFormalization` 状态回显外，**全树零消费者** ⇒ 没有一个判定点据此改变行为（探针 §9③）。
 

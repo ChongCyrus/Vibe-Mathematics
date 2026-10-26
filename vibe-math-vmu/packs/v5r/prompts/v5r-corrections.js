@@ -42,11 +42,13 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     order: 890,
     range: 'pack',
     source: 'v5r-correction:reply-shape',
-    // Old wording: "结束时请只输出一个 JSON 对象（放在 ```json 围栏内）" (the reply-spec/corpus passages).
-    // Real mechanism: kernel/turn/index.js:1005-1063 supplyStructuredReply + tools/turn.js op:'reply';
-    //   tools/turn.js:88-121 refuses report+reply in one call; kernel/turn/index.js:228-260 mergeReplyChannels.
+    // Old wording: "每轮手写一段 json 代码围栏只适用于子代理交付" (the reply-spec/corpus passages).
+    // Real mechanism: kernel/turn/index.js:1958-2004 parse() tiers (fenced -> bare -> named refusal) is the member
+    //   channel under activation/one-shot delivery, where kernel/turn/index.js:1842-1843 refuses op:"reply" with
+    //   VMU_TURN_NO_PENDING_MEMBER and kernel/turn/index.js:445-450 appends the same delivery note.
+    //   ★ ROUND 35 inverted this correction's direction: it had told members the fence was only for subagents.
     text: [
-      '【更正·回复形状】旧措辞「每轮手写一段 json 代码围栏」只适用于子代理交付：回合由 vibe_vmu_turn 驱动时，用 {op:"reply", report:{…}, reply_for?} 上报（没有待回回合 ⇒ VMU_TURN_NO_PENDING_MEMBER）；围栏仍是兼容路径（缺失 ⇒ VMU_TURN_NO_FENCE）。两条通道可合并（source:"tool+text"），同字段不同值 ⇒ VMU_TURN_REPLY_CONFLICT；一次调用同时给 report 与 reply 会被具名拒。会议里的举手/邀请请用 vibe_vmu_meeting——回复字段 meeting_hand 与 meeting_invite 没有可用形状（notApplicable）。',
+      '【更正·回复形状】旧措辞「每轮手写一段 json 代码围栏只适用于子代理交付」把方向说反了：本所成员回合由宿主派发（activation 投递），没有待回的回合，`op:"reply"` 只会得到 VMU_TURN_NO_PENDING_MEMBER——真正可用的通道就是回复正文末尾的那段 json 围栏（缺 ⇒ VMU_TURN_NO_FENCE，不合法 ⇒ VMU_TURN_BAD_JSON）。两条通道并存且同字段不同值 ⇒ VMU_TURN_REPLY_CONFLICT。会议里的举手/邀请请用 vibe_vmu_meeting——回复字段 meeting_hand 与 meeting_invite 没有可用形状（notApplicable）。',
     ].join('\n'),
   }),
   Object.freeze({

@@ -154,6 +154,7 @@
     "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js",
     "vibe-math-vmu/packs/v5r/prompts/v5r-persona.js",
     "vibe-math-vmu/packs/v5r/prompts/v5r-prompts.js",
+    "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js",
     "vibe-math-vmu/packs/v5r/seat-faces.js",
     "vibe-math-vmu/packs/v5r/settings/defaults.js",
     "vibe-math-vmu/packs/v5r/tools.js",

@@ -917,9 +917,20 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // it would report the meeting-state sections too. The single-value property is a property of the ASSEMBLED prompt.
   const loopQ = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' }) })
   const asmQ = await loopQ.assemble(loopQ.open({ member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 3, roster: 'acad、r-1', quorum: 2, statusBlock: STATUS_ONCE, settings: defaults }).turn)
-  ok(asmR.text.length < 20000 && asmQ.text.includes('m=2') && (asmQ.text.match(/m\s*=\s*2/g) || []).length === 1,
+  // ★★ ROUND 35: the LENGTH cap is measured on the prompt a MEMBER RECEIVES, not on the raw pipeline. Reason, measured:
+  // `CATALOGUES` in `middleware/prompt-switches.js` sends exactly ONE of the two reply catalogues ("the original sends one
+  // or the other, never both"), and the raw pipeline places every section it is given, so `asmR` carries BOTH — 20 569
+  // chars here, while the switched prompt is 14 926. Measuring the cap on an assembly no member can ever receive made the
+  // budget look breached by a renderer that had in fact SHRUNK the prompt (the hand-written catalogue is gone). The raw
+  // double-catalogue assembly is asserted below instead, so this cannot quietly become "we stopped measuring".
+  const loopLen = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS, prompt: pipeD })
+  const asmLen = await loopLen.assemble(loopLen.open({ ...ctxOf('researcher'), settings: defaults }).turn)
+  ok((asmR.text.match(/【回执字段目录/g) || []).length === 2 && asmLen.text.length < asmR.text.length,
+    'T98b. ★★ the RAW pipeline carries both catalogues and is therefore not a member prompt: the switch is what makes one of them reach the member',
+    { rawCatalogues: (asmR.text.match(/【回执字段目录/g) || []).length, rawChars: asmR.text.length, switchedChars: asmLen.text.length })
+  ok(asmLen.text.length < 20000 && asmQ.text.includes('m=2') && (asmQ.text.match(/m\s*=\s*2/g) || []).length === 1,
     'T99. **** with a SINGLE quorum value rather than the three the append produced: the charter defers the number to the status block instead of freezing its own copy, so exactly one `m=2` reaches the prompt',
-    { chars: asmR.text.length, occurrences: (asmQ.text.match(/m\s*=\s*2/g) || []).length })
+    { chars: asmLen.text.length, occurrences: (asmQ.text.match(/m\s*=\s*2/g) || []).length })
   // ★★ T99b: THE STATE BLOCK ARRIVES ONCE IN EVERY MEETING STATE. Measured defect: `v5r-meeting-others` places the
   // status block itself, but the always-on `v5r-brief-status` did not stand down there, so that one assembly carried
   // the whole state twice (12 476 chars, `m=2` ×2). One copy per prompt in all three states, and the meeting state

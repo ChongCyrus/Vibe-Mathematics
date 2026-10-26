@@ -5478,3 +5478,85 @@ step 回执给 `memberToolCalls:null`、`toolCalls:[]`、`fields:[…]`，而成
 ### §135.6 本轮无实质残余：否
 
 （F1 是结构缺陷、F2 是协议断链、F3/F4 是读数与可观测性问题；F1/F2 已在修复中。）
+
+## §136 run 35 之后的机制修复（F1–F4）
+
+run 35（build `90e8e35f`）的结论在 §135。这一节记它对四件事做了什么、各修在哪、以及**我重新量到而
+所办没报**的那一条。判定纪律照旧：每条都要能指到 `文件:行` 或门禁末行原文。
+
+### §136.1 处置表
+
+| # | run 35 的现象 | 性质 | 处置与落点 |
+| --- | --- | --- | --- |
+| F1 | 院士**在自己的席位**召会 `VMU_CHAIR_ACT_NOT_DELEGATED` | ❌ 机制缺口（跨实例） | `chairActed` 从"本实例内存 `turns` Map"扩成"本实例 ∪ 共享账本"。`kernel/store.js:43` `PUBLIC_KEYS` 加 `'turns'`；`kernel/turn/index.js:1384` 新参 `turnLedger`、`:1411-1462` `noteSharedTurn()`/`settleSharedTurn()`（投递**前**落盘、失败即具名拒投递）、`:1566` 开回合、`:1748` 投递前 settle；`kernel/index.js:1829-1860` 新 seam `turnLedger`、`:1866-1885` `chairActed` 合并两源。`kernel/meetings.js` 一字未动。反事实测试 `tests/vmu-run35-chair-act.test.mjs` **23/0**（B 内核召会成功；未跑过回合的席位仍拒；全新 root 第三内核仍拒） |
+| F2 | 成员回散文 ⇒ 整轮 `VMU_TURN_NO_FENCE`，所办读不到成员说了什么 | ❌ 可观测性缺口（两层） | ①**提示词**：新增 `packs/v5r/prompts/v5r-reply-channel.js`（194 行，`REPLY_FIELD_ROWS` 29 行 ≡ 内核 `FIELD_OWNERS`+`RECORDED_FIELDS`，渲染进 `v5r-reply-compact`/`v5r-reply-spec`，并明确**不要**调 `op:"reply"` 与三个具名失败码），`tests/vmu-run35-reply-channel.test.mjs` **31/0**；②**读数**：`kernel/turn/index.js` 的 `counts.replyParseFailedLast` 与成功回执的 `replyExcerpt/replyLength/replyExcerptMeans`，`tests/vmu-run35-readouts.test.mjs` 第 ③④ 组 |
+| F3 | `[总任务]` 显示任务板根任务标题，而设置里的 `vmu.turn.objective` 是另一段 | ⚠️ 读数不标来源 | `renderStatusBoard()` 在**有值**行尾追加 `（来源：…）`；`该来源未提供：<why>` 行不加后缀（保住 run 31 契约）。`tests/vmu-run35-readouts.test.mjs` 第 ①② 组 |
+| F4 | 成员回合做了什么，step 回执里只有 `fields:[]`/`memberToolCalls:null` | ⚠️ 未证伪、也未证实 | 不伪造能力：回执改为**自报它看得见的那部分**（`replyExcerpt`/`replyLength`/`replyParseFailedLast`），并把"成员子会话不可读"写成 `means` 的原话。真实缺口（子会话日志不可从回执读）记在这里，等宿主给 seam |
+| 新 | `vibe_vmu_turn {op:"reply"}` 在 activation 下不可达，而提示词与 `tools/turn.js:430` 的帮助文本仍在教它 | ⚠️ 提示词/帮助与现实不符 | 提示词侧已改（F2①）。**未改** `tools/turn.js:430` 的帮助文本（属 `tools/**` 且该面在 caller delivery 下合法），记债：帮助文本必须按投递方式分叉 |
+
+### §136.2 两条被顺带量到的相邻事实
+
+- `vmu.chat.admins` 的默认原来是字面 `["acad"]`，真实名册里不存在这种 id ⇒ 群聊治理面从出生起无人可用（run 34 的
+  `VMU_CHAT_NOT_ADMIN`）。现在默认 `["chair"]` 且列表允许 **SEAT token**，由 `kernel/chat.js` 的 `seatOf` 解析，
+  解析不到不算授予（run 34 已修，此处登记同一族）。
+- `tests/audit-readme-counts.mjs` 的"陈旧声明"正则 `/TOTAL 57/` 会在派生计数涨到 570 时**误报**（`TOTAL 570`
+  命中 `TOTAL 57` 前缀）⇒ 改成 `/TOTAL 57(?!\d)/`。这是门禁自身的 bug，不是放宽断言（mutants 仍 2/0）。
+
+### §136.3 我这轮（run 36 简报）的错误
+
+1. `vibe_v5_start` 已经自动建所并 hire（`r-acad`/`r-1`/`r-2`），我却在简报里再 hire `acad-01`/`res-01`/`res-02`
+   ⇒ `VMU_RESOURCE_BUDGET "role slot chair is full: 1/1"`。这是**同一错误第二次**（run 34 起），已写进简报模板纪律。
+2. `vibe_v5_meeting` 的 `sequence` 元素键不含 `agenda`（合法键 `type,kind,materials,subject,size,secretary,roster,reason,at`），
+   我用了 `agenda`。
+3. `vibe_v5_verified_promote` 的 `warrant` 与 `warrant_kind` 必须成对（简报校验器抓到，补 `warrant_kind:"debate-unanimous"` 后过）。
+
+### §136.4 门禁读数（本轮实跑）
+
+`=== VMU TURN: 271 passed, 0 failed ===`、`=== VMU HOST: 203 passed, 0 failed ===`、
+`=== VMU RUN35 CHAIR ACT: 23 passed, 0 failed ===`、`=== VMU RUN35 READOUTS: 26 passed, 0 failed ===`、
+`=== VMU RUN35 REPLY CHANNEL: 31 passed, 0 failed ===`、`=== VMU PACK PROMPTS: 24 passed, 0 failed ===`、
+`=== PER-TYPE COVERAGE: 14 passed, 0 failed ===`、`=== DECLARATION CRITERION: 90 passed, 0 failed ===`、
+`=== vmu regen-all: 16/16 in sync ===`、`PREFLIGHT: PASS - safe to run a gate`、
+`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ `TOTAL 499  PASS 499  FAIL 0`。
+
+### §136.4b 合并两条 lane 时闸门抓到的四处（都已修）
+
+四条红全部是"两条 lane 各自绿、合起来才红"，记在这里因为它们说明"本地绿"不足以判合并：
+
+1. `audit-assembly-reachability-snapshot`：新模块 `packs/v5r/prompts/v5r-reply-channel.js` 未进可达性基线 ⇒
+   `node tests/audit-assembly-reachability-snapshot.test.mjs --write`（`entries=8 reachable=203`）。
+2. `vmu-prompt-closure-channel`：渲染器把字段目录换成派生行后，**最小形状那行只点名 `solved` 不给语义** ⇒
+   旧断言（"目录必须把 solved 说成这一轮的个人判断"）失败。修法不是改断言，而是让渲染器把该字段的声明语义
+   印在同一行（`REPLY_FIELD_ROWS` 的 `solved.note` + "计票的是 vote_solved"）。
+3. `vmu-run33-p2-teaching`：`vmu.chat.admins` 的默认从字面 `["acad"]` 改成席位 token `["chair"]` 后，
+   教学散文仍写"本所默认只有 acad" ⇒ `seat-faces.js:408` 与断言一起跟着声明走。
+4. `audit-doc-line-refs`：`v5r-blocks-a.js` 重写后十条历史引用（`source-prompt-coverage.md`、两份 `conformance/lane-*`、
+   `phase3-parity-monolith-collab.md`）指向的行号越界。**没有记进 backlog**，而是把引用改指到这些话现在真正在的地方：
+   Lean 形式化行 `:604`、航向块 `:620–623`、会议提示块 `:623`（数组形已并入航向块 `615-625`）。
+   `=== DOC LINE REFS: 9 passed, 0 failed ===`（9 条断言里的第 9 条自己声明了本闸的局限：行号在范围内但
+   指向不同文字是抓不到的，那需要符号名或内容哈希）。
+
+### §136.4c 一处"量具本身错了"：T99 的长度上限量的是一个成员永远收不到的 prompt
+
+合并后第一次全量门禁的红里有一条是 `vmu-turn` T99：`chars=20569 > 20000`。追下去发现量的对象不对——
+`CATALOGUES`（`packs/v5r/middleware/prompt-switches.js`）的注释与实现都是"两个回执目录**只发一个**"，而 T99 用
+**裸 pipeline** 装配（`createPromptPipeline({sections: CHARTER_SECTIONS})`），裸装配会把每一段都放进去 ⇒ 它拿到的是
+**同时带两份目录**的 20 569 字，而真实成员收到的（走 `sectionPolicy: DECIDE_SECTIONS`）是 14 926 字、只有一份目录。
+
+修法不是调大阈值，也不是删断言，而是**把量具换成真实成员 prompt**，并新增 T98b 把"裸装配带两份、所以它不是成员
+prompt"写成断言（先钉住裸装配确实带 2 份目录、再钉住切换后的更短）。这样：
+①上限仍然在 20 000；②"少发一份目录"这件事继续被门禁盯着（T98b + `CATALOGUES` 的既有测试）；
+③将来谁把渲染器写胖到真实 prompt 超限，T99 照样红。
+`tests/vmu-turn.test.mjs` 现 `=== VMU TURN: 272 passed, 0 failed ===`（原 271，多的是 T98b）。
+
+### §136.5 无法验证项
+
+1. F1 的修法在真机上是否真让"院士在自己席位召会"通过——要看 run 36 的 `vibe_v5_meeting` 回执（`ok` 与 `enforced`）。
+2. `turnLedger` 的共享账本在同一 root 的后继会话里是否真的可读（单根多子会话时 `memberTurnCount` 仍是 per-instance）。
+3. 成员子会话日志的可读路径（宿主 seam）——本轮只做"回执自报可见部分"，没有新增读日志能力。
+4. `vmu.turn.replyCatalogue` 的 `full` 档在真机上是否被 wardrobe 使用（默认 compact，只列常用 12 项）。
+5. 模拟模式下代理是否真的按规则书自组织（run 36 才验）。
+
+### §136.6 本轮无实质残余：否
+
+F1/F2/F3 已改并有反事实测试；F4 的"读不到子会话"仍是真缺口；`tools/turn.js:430` 的帮助文本仍是错的（记债）。

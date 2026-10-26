@@ -146,8 +146,8 @@ const allSectionText = SECTIONS.map((s) => String((s && s.text) || '')).join('\n
 // ── 3. THE WORDING RESTS ON DECLARED SETTINGS (read back, so the prompt cannot claim "on" what the defaults leave off) ─
 {
   const keys = (DEFAULTS.defaults && typeof DEFAULTS.defaults === 'object') ? DEFAULTS.defaults : DEFAULTS
-  ok(Array.isArray(keys['vmu.chat.admins']) && keys['vmu.chat.admins'].includes('acad'),
-    'the prompt\u2019s "本所默认只有 acad" is the DECLARED admin list', keys['vmu.chat.admins'])
+  ok(Array.isArray(keys['vmu.chat.admins']) && keys['vmu.chat.admins'].includes('chair'),
+    'the prompt\u2019s "本所默认只给院士席位（chair）" is the DECLARED admin list', keys['vmu.chat.admins'])
   ok(keys['vmu.chat.speakQuota'] === 0, 'the prompt\u2019s "0＝不限" matches the declared quota', keys['vmu.chat.speakQuota'])
   ok(keys['vmu.chat.muteDefaultMs'] === 0, 'the prompt\u2019s mute default matches the declaration', keys['vmu.chat.muteDefaultMs'])
   ok(keys['vmu.human.onTimeout'] === 'hold', 'the prompt\u2019s "默认 hold" matches the declared timeout action', keys['vmu.human.onTimeout'])

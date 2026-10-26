@@ -120,7 +120,7 @@ aggregateVerdict({ votes, eligible, quorumRule, subjectId }) -> { ok:true, mode:
 - 事实：lean 的"通过"是**结论不是状态**，由内核 Lean 面判定（`kernel/lean.js:4,18-19,77`：退出 0 **且** 内容哈希未变才 `passed`；`settled` 才是状态）。`vibe_v5_lean_run/archive` 都接受 `target`（`packs/v5r/tools.js:1215,1239`）——**这是 lean 证据挂到卡片上的现成通道**。
 - 设计判断（逐字读规则 2 "只有辩论能把 p 改成 1"）：**lean 通过本身不改 p**；它把后续辩论降级为"描述符合性辩论"，该辩论全一致 ⇒ warrant kind `lean-conformance` ⇒ 才允许 p=1 入 verified。
   - 若 Lead 采另一读法（lean 通过即 p=1），则把 `lean-conformance` 改成"由内核 lean settled+passed 直接 mint"，闸的形状不变、只是 mint 的触发点不同 —— **该读法是规则原文的歧义，标「未判定」**（我倾向本读法：它保住"只有辩论能改 p=1"的字面，且 B8 原文自己就写了"在辩论时"）。
-- "鼓励形式化"开关：已存在 `vmu.math.formalVerify`（off|encourage|require，默认 off＝零策略，`settings/schema.js:249`）+ `vmu.turn.formalModeLine`（`:231`，读者 `packs/v5r/prompts/v5r-blocks-a.js:665-675`）。**这一条 B8 已经有机制**，缺的只是与 p=1 的联动（即本节）。
+- "鼓励形式化"开关：已存在 `vmu.math.formalVerify`（off|encourage|require，默认 off＝零策略，`settings/schema.js:249`）+ `vmu.turn.formalModeLine`（`:231`，读者 `packs/v5r/prompts/v5r-blocks-a.js:596-607`）。**这一条 B8 已经有机制**，缺的只是与 p=1 的联动（即本节）。
 
 ---
 

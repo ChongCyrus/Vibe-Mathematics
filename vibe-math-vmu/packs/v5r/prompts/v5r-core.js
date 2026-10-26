@@ -545,10 +545,14 @@ export const v5rFixtureTools = Object.freeze({
     '不承诺「本回合已挂载」。本回合真正挂载了哪些，以宿主装配时给出的「本轮你实际能调用的工具」段为准（该段由宿主写入）；',
     '若提示词里没有那一段，说明本轮提示词不是宿主装配的，工具面就是你所在角色的默认面。不确定时可调用',
     '调用工具后结果立即可见；**回执可以很薄**——动作已经由工具完成了，回执只需说明"这一轮做了什么、下一步是什么"，不要为了凑长篇而重复工具已经记录的内容。',
-    // ★ PHASE 12 (F5): this used to say "仍然只输出一个合法 JSON 对象" — an end-of-turn JSON TEXT. The reply is a
-    // TOOL ARGUMENT now (`vibe_vmu_turn {op:"reply", report:{…}}`), so teaching the old transport contradicted the
-    // very mechanism the harness enforces (a live run's members wrote prose + JSON and the turn was rejected).
-    '回执用一次 `vibe_vmu_turn { op: "reply", report: { … } }` 交回（不要输出 JSON 围栏，围栏外也不要说明文字）。',
+    // ★ PHASE 12 (F5) taught a TOOL ARGUMENT (`vibe_vmu_turn {op:"reply", report:{…}}`) after an end-of-turn JSON TEXT
+    // was retired. ★ ROUND 35 (real machine, run 35, BAD_JSON=14): that argument is itself unreachable here — a member
+    // turn is dispatched by the host (activation delivery), so no prompt is ever awaiting and the kernel refuses with
+    // VMU_TURN_NO_PENDING_MEMBER; the members answered in prose because the prompt had forbidden the fence, which is the
+    // channel the parser has always accepted. The fence is now the taught channel, and `op:"reply"` is named + refused.
+    '回执**就是你本次回复的正文**：在正文末尾用一段代码围栏（三个反引号开头，标记写 json 或省略）包一个 JSON 对象（形状样例见下面几行）。'
+      + '★ 本会话里**不要**调用 `vibe_vmu_turn { op: "reply", report: { … } }`：成员回合由宿主派发（activation 投递），没有「待回的回合」，调用只会得到具名拒 `VMU_TURN_NO_PENDING_MEMBER`；'
+      + '既没有围栏也没有对象 ⇒ `VMU_TURN_NO_FENCE`，围栏里的 JSON 不合法 ⇒ `VMU_TURN_BAD_JSON`。',
     // ★ G7 (real machine): members quoted tool receipts containing `{}` in their reply prose, the first brace opened
     // the reply object and the whole turn was rejected as VMU_TURN_BAD_JSON. This is a prompt obligation, not a parser bug.
     '回执正文里【不要】粘贴 JSON 对象或工具回执原文；需要引用时用一句话概括（正文里的大括号会被当成回执边界）。',

@@ -95,6 +95,20 @@ export const PUBLIC_KEYS = Object.freeze([
   // `createKernel({ settings: { 'vmu.resume.projections': ['ballotbox'] } })` + `recover()` threw before this line.
   'ballotbox',
   'minutes',
+  // ROUND 35 / task-24 (live run 35): `turns` - the SHARED TURN LEDGER: one row per member that has been given a turn,
+  // `{member, turn, phase, round, at}`, upserted BY MEMBER so the list is bounded by the roster rather than by the run
+  // length. WHY IT EXISTS: `vmu.meetings.chairActRequiresTurn` is enforced by asking `chairActed(seat)`, and the assembly
+  // wired that to its OWN orchestration instance (`turn.memberTurnCount`), i.e. to that instance's in-memory `turns`
+  // Map. On the real machine (run 35) the academician's child session mounts a SECOND kernel over the SAME root: when it
+  // convened its own meeting, ITS kernel had no turn for the chair, so the gate refused by name
+  // (`VMU_CHAIR_ACT_NOT_DELEGATED`: "the chair r-acad has no recorded turn in this kernel") although the office's kernel
+  // had just run that chair's turn. The fix is NOT to loosen the gate - a seat that never ran a turn must still be
+  // refused, and that counterfactual is asserted in `tests/vmu-run35-chair-act.test.mjs` - it is to put the FACT where
+  // both instances read it: the one durable fold, written by the turn that is being OPENED and read by the gate.
+  // Writer: `kernel/turn/index.js` (`open()`, through the `turnLedger` seam). Readers: `kernel/index.js` (`chairActed`,
+  // which now answers true for "THIS instance has a turn" OR "the fold records one"). The whitelist and docs/03 §6 move
+  // together (the per-key table there is the Lead's edit), exactly as the notices above require.
+  'turns',
 ])
 
 /** Named refusal (codes are registered in docs/03 §8). */

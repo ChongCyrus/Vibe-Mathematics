@@ -57,7 +57,7 @@ if (derived) {
   has(ck, '★ docs/AUDIT-CHECKLIST.md quotes the derived JOB counts', c.ckClaim)
   has(ck, '★ docs/AUDIT-CHECKLIST.md quotes the derived shipped FILE counts (published subset)', c.ckShipped)
   has(ck, '★ docs/AUDIT-CHECKLIST.md D1 row carries the derived counts', c.d1Row)
-  ok(!/TOTAL 57/.test(zh), 'the stale README claim (TOTAL 57) is gone')
+  ok(!/TOTAL 57(?!\d)/.test(zh), 'the stale README claim (TOTAL 57) is gone')
   ok(!/TOTAL 65  PASS 65/.test(tt), 'the old test-timing baseline row (TOTAL 65 PASS 65) is gone')
   ok(!/\*\*65 项\*\* = 44 套件 \+ 21/.test(tt + ck), 'no bolded stale 65-item claim remains (prose about the migration is fine)')
 

@@ -1814,10 +1814,72 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // later and therefore read through a LATE-BOUND arrow - it is only called when a meeting is opened, never during
   // construction) both hand callers ids that read as "the meeting". Without this seam each guarded only its own table,
   // and a minted `m111` here plus an explicit `m111` there were two meetings under one name (the agent reported it).
+  // ── ROUND 35 / task-24: THE SHARED TURN LEDGER (durable key `turns`), ONE ROW PER MEMBER ─────────────────────────
+  // LIVE RUN 35 MEASURED THE HOLE: the academician convened a meeting from ITS OWN child session, and that session mounts
+  // its own kernel instance (docs/02, `store.js` row: ONE state.json, SEVERAL kernels). `chairActed` below answered from
+  // `turn.memberTurnCount`, i.e. from THIS instance's memory, so the gate refused by name -
+  //   `VMU_CHAIR_ACT_NOT_DELEGATED: ... the chair r-acad has no recorded turn in this kernel`
+  // - although the office's kernel had just run the chair's turn. THE FIX IS NOT TO LOOSEN THE GATE (a seat that never
+  // ran a turn is still refused, and `tests/vmu-run35-chair-act.test.mjs` asserts exactly that) but to move the FACT to
+  // where every instance reads it: the durable fold. Writer: the turn loop (`kernel/turn/index.js` `open()` -> `record`).
+  // Reader: `chairActed` below (`count`), and any future face that must answer "has this seat acted" across sessions.
+  // ONE ROW PER MEMBER, not one per turn: the question is a BOOLEAN ("has this seat taken a turn"), so the ledger must
+  // not grow with the length of the run. The row keeps the NEWEST turn's id/phase/round/at, so a reader can say WHICH
+  // turn it saw instead of just "yes".
+  const turnLedger = store ? {
+    record: (fact) => {
+      const f = fact && typeof fact === 'object' ? fact : {}
+      const member = typeof f.member === 'string' && f.member !== '' ? f.member : null
+      if (member === null) {
+        const e = new Error('the turn ledger needs a member: a row keyed by nothing would make every seat look as if it had acted')
+        e.code = 'VMU_INVALID_ARGUMENT'
+        e.hint = 'call the ledger from a turn that HAS a member (kernel/turn/index.js open())'
+        return Promise.reject(e)
+      }
+      const row = { member, turn: typeof f.id === 'string' ? f.id : null, phase: typeof f.phase === 'string' ? f.phase : null,
+        round: Number.isFinite(Number(f.round)) ? Number(f.round) : null, at: typeof f.at === 'string' ? f.at : null }
+      // MERGE INSIDE THE FOLD (docs/07 §1-1): computing `next` in the exclusive section is what lets two kernels record
+      // two different members in the same tick without either overwriting the other - the mailbox precedent, not a new
+      // mechanism. A read-modify-write OUTSIDE the fold is the data-loss bug that precedent exists to prevent.
+      return store.patch('turns', (rows) => {
+        const list = Array.isArray(rows) ? rows.filter((r) => r && typeof r === 'object' && typeof r.member === 'string') : []
+        let replaced = false
+        const next = list.map((r) => { if (r.member === member) { replaced = true; return row } return r })
+        if (!replaced) next.push(row)
+        return next
+      }).then((r) => ({ ok: true, member, turn: row.turn, changed: !!(r && r.changed) }))
+    },
+    // The reader. It THROWS when the fold is unreadable (never opened, corrupt): the CALLER decides what that means, so a
+    // store failure cannot masquerade here as "this seat never acted" - that confusion is the bug this key removes.
+    count: (memberId) => {
+      const rows = store.read('turns')
+      if (!Array.isArray(rows)) return 0
+      const who = String(memberId)
+      let n = 0
+      for (const r of rows) if (r && typeof r === 'object' && String(r.member) === who) n += 1
+      return n
+    },
+  } : null
   meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam, ballot: meetingBallot, members: memberRef, foreignIds: () => [...liveMeetings.keys()],
     // ★ RULE (v5r: 会议只能由院士召开/关闭): the chair's seat may be used only after the chair took a turn. LATE-BOUND on
     // purpose - `turn` is constructed below this line, and the predicate must never run during construction.
-    chairActed: (memberId) => { try { return !!(turn && typeof turn.memberTurnCount === 'function' && turn.memberTurnCount(memberId) > 0) } catch (e) { return false } } })
+    // ★ ROUND 35 / task-24: TWO READERS, ONE QUESTION. ① this instance really ran the chair's turn (the historical,
+    // in-memory answer - it is also what a deployment with no durable layer has); ② ★ the SHARED ledger says some
+    // kernel over this workspace ran it - which is what makes the chair's own meeting legal from inside the chair's own
+    // child session. Neither is a loosening: both only ever say "a turn really was opened for this seat".
+    chairActed: (memberId) => {
+      try {
+        if (turn && typeof turn.memberTurnCount === 'function' && turn.memberTurnCount(memberId) > 0) return true
+        if (turnLedger && typeof turnLedger.count === 'function' && turnLedger.count(memberId) > 0) return true
+        return false
+      } catch (e) {
+        // An UNREADABLE ledger must not be reported as "no turn": that refusal would blame the chair for a store failure.
+        // The condition is NAMED here (the gate still cannot prove the turn, so it still refuses - but the log says what
+        // actually happened), and the memory answer above has already had its say.
+        try { log('vmu chair-act ledger unreadable: ' + String((e && e.message) || e)) } catch (e2) { /* a log must never decide a gate */ }
+        return false
+      }
+    } })
   const meetings = meetingsRef.current
   // ROUND 9 / task-66 A (G7): the board's cast/settle commits through the SAME durable log as the mailbox — one
   // instance, one ticket sequence, so a recovery replay has a single order to follow. Absent store ⇒ the board's
@@ -2075,6 +2137,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       return { roster, rosterIds, rosterRows, chairId, roleLabel, quorum }
     },
     clearMemberToolCalls: (member) => { memberToolCallLog.delete(String(member)) },
+    // ★★★★★★★ ROUND 35 / task-24: THE SHARED TURN LEDGER (declared above, next to the meeting gate that reads it).
+    // `open()` records "this seat has now taken a turn" through `record`; `chairActed` asks the same fold through
+    // `count`. It is what makes the chair's own meeting legal INSIDE the chair's child session, and it is why the
+    // gate did not have to be loosened. Absent store ⇒ null ⇒ the loop keeps its exact historical behaviour.
+    turnLedger,
   })
   // ★ PHASE 7 / round 17: THE ONE CLOSURE-VOTE CALCULATION. The turn face and kernel.status() call THIS function with the
   // SAME inputs, so "two places compute the same reading" cannot drift into eligible:[] again.

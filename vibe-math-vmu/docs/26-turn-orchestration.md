@@ -878,3 +878,21 @@ counts.delivered += 1                              // ⇒ 抛了就到不了这�
 声明现在允许 **SEAT token**（v5r 默认 `["chair"]`，即"院士是群管理员"这条规则），由 `kernel/chat.js` 的
 `seatOf` 缝把它们解析成当前坐在该席位的人；解析不到的 token **不算授予**。席位解析不注入 `isAdmin`
 （那会让拒绝失去 `vmu.chat.admins` 的归因），`adminEnforced()` 仍点名这条声明 ✓。
+
+**补充（ROUND 35 / F3）：一个读数换了来源，就必须说出它读的是哪一条。**
+`[总任务]` 有两条来源：设置 `vmu.turn.objective`（有人设过就用它），否则任务板上**无前置的根任务**。
+两条都是机制，但 run 35 的所办看到的板子是任务板根任务标题，而它自己的设置读数里 `vmu.turn.objective`
+是另一段更长的任务书 ⇒ 它报了"板子和设置不一致"。观察是真的，错的是读数**不说自己读了哪一条**。
+`statusBoardReadings()` 的每个分支本来就把 `source` 写在读数字段里（`设置键 vmu.turn.objective` /
+`任务板（无依赖的根任务 2 条）` / `progress 轨` …），缺的只是渲染：`renderStatusBoard()` 现在在**有值**的行尾
+追加 `（来源：…）`，而 `该来源未提供：<why>` 那一类行**不加后缀**（它们的 `why` 已经点名试过哪些来源，
+改变那句会破坏 run 31 定下的契约）。判据见 `tests/vmu-run35-readouts.test.mjs` 第 ①② 组。
+
+**补充（ROUND 35 / F4）：解析不了的回复，不等于没人说话的回复。**
+run 35 里三个成员回合回了**散文**（回复里没有围栏 json），整轮以 `VMU_TURN_NO_FENCE` / `BAD_JSON` 结束
+（读数 `BAD_JSON=14`），而所办侧只看到 `fields:[]`、`memberToolCalls:null` —— "被禁言的成员到底说没说话"
+只能靠 grep 成员子会话日志（这一轮的预算大半花在这上面）。现在两处读数：
+`counts.replyParseFailedLast`（经 `vibe_vmu_turn {op:"status"}` 读，含 `turn`/`member`/`code`/`replyExcerpt`
+/`replyLength`/`means`，`means` 明说"是**回答了**但没用上，不是没说话、也不是投递失败"）与成功回合回执上的
+`replyExcerpt`/`replyLength`/`replyExcerptMeans`（与既有拒绝诊断同样 2000 字符上限 —— 回执不是日志文件）。
+判据见 `tests/vmu-run35-readouts.test.mjs` 第 ③④ 组（含"散文回合确实被拒"与"成功回合带摘录"两面）。
