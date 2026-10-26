@@ -2102,8 +2102,8 @@ export function createTurnOrchestrator({
       // tries them in, and the hint spells out a working call for each.
       fail(sawJsonish ? 'VMU_TURN_BAD_JSON' : 'VMU_TURN_NO_FENCE',
         sawJsonish
-          ? 'the reply carries braces but they do not hold valid json (也没有可用的工具汇报), so there is nothing to apply'
-          : '本回合既没有工具汇报、也没有可解析的围栏 JSON（neither a tool report nor a usable json object), so there is nothing to apply',
+          ? '回执里带了花括号但没有可用的工具汇报、也不是合法 JSON：本回合没有可用的回执对象（the reply carries braces that do not hold valid JSON, and no tool report backs it either）。成员在自己会话里做过什么在这里看不到——下结论说“什么都没发生”之前，去读记录轨（check the record tracks）'
+          : '本回合既没有工具汇报、也没有可解析的围栏 JSON（neither a tool report nor a usable fenced json object）：本回合没有可用的回执对象。成员在自己会话里做过什么在这里看不到——下结论说“什么都没发生”之前，去读记录轨（check the record tracks）',
         'report through the tool: vibe_vmu_turn { op:"reply", report:{ say:"…", input:{…}, … } } (the fields the reply catalogue declares); the fenced json object stays supported as the COMPATIBILITY path: vibe_vmu_turn { op:"step", reply:"```json { … }```" } — a bare fence, a bare object and a prose-wrapped object are all still accepted (docs/26 §3)')
     }
     const unknown = Object.keys(obj).filter((k) => !Object.prototype.hasOwnProperty.call(owners, k) && !RECORDED_FIELDS.includes(k))
@@ -2422,6 +2422,12 @@ export function createTurnOrchestrator({
       e.replyText = t.slice(0, 2000)
       e.replyLength = t.length
       e.hadBrace = t.indexOf('{') !== -1
+      // ★★★ ROUND 38 (live run 38): the refusal used to end with "so there is nothing to apply", and an institute read
+      // that as a statement about SIDE EFFECTS. It is only a statement about the REPLY SHAPE: when the member turn was
+      // played by an independent child session, any tool that child ran is invisible from here. The refusal now says
+      // which claim it is making, and hands the operator the check that DOES settle it (the record tracks).
+      e.sideEffectsUnverified = true
+      e.sideEffectsMeans = 'this refusal is about the REPLY SHAPE only: the member wrote something the declared envelope could not carry, so the reply was not applied. A member turn played by an independent child session MAY have run tools, and the kernel cannot see them from the parent side — read the record tracks (vibe_v5_read_library / vibe_v5_inbox) before treating this as "nothing happened"'
     } catch { /* diagnostics must not replace the refusal */ }
     return e
   }
@@ -2683,7 +2689,8 @@ export function createTurnOrchestrator({
             message: e && e.message ? String(e.message).slice(0, 400) : String(e),
             replyLength: rawText.length,
             replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX),
-            means: 'the member ANSWERED (this text is what it wrote) and the reply could not be parsed into the declared shape: nothing was applied. This is NOT a silent member and NOT a delivery failure' }
+            sideEffectsUnverified: true,
+            means: 'the member ANSWERED (this text is what it wrote) and the reply could not be parsed into the declared shape, so the REPLY was not applied. This is NOT a silent member and NOT a delivery failure — and it is NOT a claim that nothing happened: a tool the child session ran is not visible from this kernel (read the record tracks to settle it)' }
         } catch { /* diagnostics must not replace the refusal */ }
         throw e
       }
@@ -3040,7 +3047,11 @@ export function createTurnOrchestrator({
     return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null, stack,
       ...(failureDelivery && (failureDelivery.deliveryPath || failureDelivery.deliveryPathMeans) ? failureDelivery : {}),
       ...(e && typeof e.hint === 'string' ? { hint: e.hint } : {}),
-      ...(e && typeof e.replyText === 'string' ? { replyLength: e.replyLength, hadBrace: e.hadBrace, replyExcerpt: e.replyText.slice(0, 500), trackValue: e.trackValue } : {}) }
+      ...(e && typeof e.replyText === 'string' ? { replyLength: e.replyLength, hadBrace: e.hadBrace, replyExcerpt: e.replyText.slice(0, 500), trackValue: e.trackValue } : {}),
+      // ★★★ ROUND 38: the refusal object carries the side-effect disclosure (see attachReplyDiagnostics); it must also
+      // reach the FAILURE RECEIPT, because that is the object an operator actually reads. A disclosure that stops one
+      // layer down is the same defect family as run 23's hint and run 29's child id.
+      ...(e && e.sideEffectsUnverified === true ? { sideEffectsUnverified: true, sideEffectsMeans: typeof e.sideEffectsMeans === 'string' ? e.sideEffectsMeans : null } : {}) }
   }
 
   /**

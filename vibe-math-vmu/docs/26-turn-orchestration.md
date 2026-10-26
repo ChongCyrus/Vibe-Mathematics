@@ -960,3 +960,18 @@ run 37 的所办关掉 `m1` 之后，`vibe_vmu_meeting{action:"status", id:"m1"}
 
 判据：`tests/vmu-run37-meeting-archive-reads.test.mjs`（17/0）——真开会→关会→`status` 答 `closed`/`archived`、
 `summary` 仍答、`list` 列归档且不算活行、从未开过的 id 仍具名拒 `VMU_NO_SUCH_OBJECT` 且 hint 点名两个注册表。
+
+**补充（ROUND 38 / F-9）：形不对 ≠ 什么都没发生——拒绝句不许替内核下它看不到的结论。**
+
+run 38 的成员回合（子会话播放）回了散文、没有围栏，回合被 `VMU_TURN_NO_FENCE` 拒；拒句结尾是"so there is nothing to
+apply"，所办把它读成"成员什么都没做"，与它已经读到的记录轨 (`r-6`) 相互矛盾——于是报了一条"回执与磁盘事实相反"。
+内核此刻**只能**看到回复正文：子会话里跑过的工具，父内核看不见。所以形不对的拒绝只能说两件事：
+
+1. 本回合没有可用的回执对象（`neither a tool report nor a usable fenced json object`）；
+2. 成员在自己会话里做过什么**这里看不到**，下结论之前去读记录轨（`vibe_v5_read_library` / `vibe_v5_inbox`）。
+
+机制（`kernel/turn/index.js`）：`parse()` 的两条 `NO_FENCE`/`BAD_JSON` 文案改为上述两件事；`attachReplyDiagnostics`
+在拒绝对象上挂 `sideEffectsUnverified:true` + `sideEffectsMeans`；失败回执（`step` 的 catch）把这两个字段一并带出；
+`counts.replyParseFailedLast`（`vibe_vmu_turn{op:"status"}` 可读）同字段，并把 `means` 改成"NOT a claim that nothing
+happened"。判据：同一回合里成员写过的记录轨仍在、拒绝句不再出现 nothing-to-apply 的断言、`sideEffectsUnverified`
+在回执与 status 两处都能读到。

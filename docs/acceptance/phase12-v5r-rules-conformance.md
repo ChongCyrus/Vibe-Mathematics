@@ -5695,3 +5695,54 @@ PASS 505 FAIL 0`**（suites 441 · probes 64）。
 
 四条修复全部真机成立、文件级缺陷清空；剩下的是**读面一致性与观测面**（§138.5 的 1–2）与策略空间（3–5），
 下一轮（run 38）专门复验归档读面。
+
+## §139 真机跑 38（build feb7bacb）
+
+### §139.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| package | `dsh-vibe-math@2.8.5`，build `feb7bacb` |
+| provider / model | commandcode / `deepseek/deepseek-v4.1-flash`（非 fast） |
+| drive | `exit=0` · 497 s · 根会话 25 次工具调用 · transcriptEvents 148 |
+| tokens | 3,565,432 / cap 10,000,000（未撞） |
+| 会话 | 3 个（office 根 + 两名成员子会话） |
+| 产物 | `_oneoff/vm-slv/full-1027-040650.jsonl` 6,798,932 B / 12,873 行 |
+| 机器读数 | `NO_FENCE=110 UNKNOWN_FIELD=43 FIELD_NOT_APPLICABLE=28 BAD_JSON=37` |
+| slv-inspect | 0 RED（`calls 25 vs results 25`） |
+| 清理 | `clone_gone=True` · `C_free_GB=10.69` |
+
+### §139.2 逐条判决
+
+| 编号 | 事项 | 判决 |
+| --- | --- | --- |
+| F-6 | 关会后 `status`/`summary`/`list` 三面一致 | ✅ `status` 回 `archived:true,state:"closed",summaryAvailable:true`；`list` 报 `archivedMeetings:["m1"]`、`serviceMeetings:[]` |
+| F-4 | 成员的散文回复可读 | ✅ 回归可见：`replyExcerpt` 16 处，其中含成员"三句话"全文；`counts.replyParseFailed` 1→2 |
+| F-1 | records 跨内核 | ✅ 复检通过：office 侧 `vibe_v5_read_library{kind:"progress"}` 读到 r-6，蓝图 r-7 正文完整 |
+| F-2 | 蓝图正文不截断 | ✅ `read` 回 `revision:1`、正文从 `## 一、` 起、`bodyTruncated:false` |
+| F-9 | **新缺陷**：形不对的拒绝句声称"什么都没发生" | ⚠️ 真机被所办指出（反馈 r-9）：`VMU_TURN_NO_FENCE` 结尾 "so there is nothing to apply" 与记录轨 `r-6` 矛盾；本轮已修（见 §139.3） |
+| — | `vibe_vmu_turn{op:"status"}` 里没有 `[状态板]` 节 | 非缺陷：状态板只进**成员提示词**；所办可用 `vibe_vmu_turn{op:"prompt"}` 读到它（run 38 已这么读） |
+| — | `vibe_v5_blueprint adopt` 只给 `id` 被拒 | 简报错：该动作的参数是 `draft`，且跨目录要带 `path` |
+| — | `vibe_v5_verified_promote` 对不存在的卡回 `VMU_NO_SUCH_OBJECT` | 简报错：我写的是"应回 `VMU_STATE`"；机制具名拒并列出已知 id，行为正确 |
+
+### §139.3 本轮改的东西（F-9）
+
+- `vibe-math-vmu/kernel/turn/index.js`：`parse()` 两条 `NO_FENCE`/`BAD_JSON` 文案改为"没有可用的回执对象 + 成员在自己会话里做过什么这里看不到 + 去读记录轨"（保留中文渠道名，`vmu-turn-reply-tool` ⑤ 的两处断言不受影响）；`attachReplyDiagnostics` 挂 `sideEffectsUnverified:true` + `sideEffectsMeans`；`step` 的失败回执带上这两个字段；`counts.replyParseFailedLast` 增加同名字段并把 `means` 改成"NOT a claim that nothing happened"。
+- 新测试 `tests/vmu-run38-honest-refusal.test.mjs`（19 断言，四组：文案不再声称、失败回执带披露、status 记录分离"未解析"与"没发生"、成功路径不变）。
+- 文档：`vibe-math-vmu/docs/26-turn-orchestration.md` 增"ROUND 38 / F-9"一节。
+
+### §139.4 门禁读数
+
+`VMU RUN38 HONEST REFUSAL 19/0`、`VMU TURN 272/0`、`VMU RUN35 READOUTS 26/0`、`VMU TURN REPLY TOOL 38/0`、`VMU RUN31 CONTINUITY 63/0`、`VMU HOST 203/0`、`VMU RUN 34 FINDINGS 25/0`；`GATE_SCOPE=vmu` 全量 `TOTAL 506 PASS 506 FAIL 0 (suites 442 · probes 64)`；`regen-all 16/16 in sync`；`PREFLIGHT: PASS`；`DOC LINT: PASS`。
+
+### §139.5 无法验证
+
+- 成员在**子会话**里先跑工具、再用纯散文回复的回合（本轮所办报的那条）：内核确实看不到子会话工具，拒绝现在只承认"形不对"；要正面验证需要 run 39 让成员故意这么做。
+- 归档会议的 `list` 在 `cap:50` 截断下的行为未验。
+- `vibe_v5_blueprint` 的跨目录草案与默认路径草案同时存在时的行为未验。
+- 群聊被禁言者"下一轮仍发言"的正面证据仍未取到（需要同一成员连续两轮）。
+- `vibe_vmu_turn{op:"status"}` 是否应直接带 `[状态板]`：现在是设计选择（提示词是唯一读面），未做决定。
+
+### §139.6 本轮无实质残余
+
+否。
