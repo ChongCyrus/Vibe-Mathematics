@@ -862,3 +862,19 @@ counts.delivered += 1                              // ⇒ 抛了就到不了这�
 - ★ **`presentAs('ptc')` 是 per-AGENT 的呈现切换**（作用于调用它的 agent 的整个工具上下文、返回 disposer），因此**"部分工具 ptc、其余 native"不可表达**：要 ptc 就是**整批** ptc。`defer` 与 `ptc` 在本仓实现中也不可并存（多 pack 声明不同 mode ⇒ 具名 `unapplied`，不猜）。
 
 > **历史引用声明（G5 H3）**：本卷提到的 `vibe-math-v2`／`v3`／`v4`／`v5`／`v5r` 路径与行号均为**历史源码引用**；这些 preset 已归档到 `archive/legacy-presets/`，不再作为可安装 preset 发布。
+
+**补充（ROUND 34）：状态板要的那一行，正好是全量表的最后一端。** `records.list` 按 `updatedAt` **升序**
+排序后只留前 `vmu.records.headListAt`（默认 7）条（`kernel/records.js:605-615`），而状态板 ④「当前小任务」
+要的是**该成员最新**的一条 —— 于是默认上限下，最该显示的那一行恰恰是被截掉的。run 34 的真机读数：
+`[当前小任务] 该来源未提供：该成员（res-02）在 progress 轨上还没有记录`，而同一条轨里最新一行正是
+`r-14`（owner `res-02`、`status:"live"`）。修法：板子改读**全轨**（`records.list({track, limit: 0})`，
+`limit: 0` 在 `kernel/records.js:610` 的语义是"全要"），并且**当答案仍被截断时**把截断写进 `why`
+（"该轨共 N 条，可见 M 条"）—— 读数不许把"被截断"说成"没有"。判据：同一成员先 `vibe_v5_record_progress`
+再派一轮，其 prompt 里的 `[当前小任务]` 必须是那条记录，不得出现"还没有记录"
+（`tests/vmu-run34-findings.test.mjs` 第 ② 组钉住 `limit:0` 与截断措辞）。
+
+同轮的另一处机制：`vmu.chat.admins` 的默认值曾经是一个**字面成员 id**（`"acad"`），真实名册里的 id 是
+按所生成的（`r-acad`、`acad-01`…），所以这个默认在任何部署上都解析不到 ⇒ 群管理面从出生起无人可用。
+声明现在允许 **SEAT token**（v5r 默认 `["chair"]`，即"院士是群管理员"这条规则），由 `kernel/chat.js` 的
+`seatOf` 缝把它们解析成当前坐在该席位的人；解析不到的 token **不算授予**。席位解析不注入 `isAdmin`
+（那会让拒绝失去 `vmu.chat.admins` 的归因），`adminEnforced()` 仍点名这条声明 ✓。

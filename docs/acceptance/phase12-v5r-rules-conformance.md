@@ -5419,3 +5419,62 @@ run 32 第二轮回 `res-01` 时 step 回执给的是：
 - 状态板 ③ 的"最新一条"在选择上是否受 `headSort` 部署值影响，只测了默认。
 
 ### §134.6 本轮无实质残余：否
+
+---
+
+## §135 真机跑 35（build `90e8e35f`）
+
+**读数**：`DRIVE exit=0`、`durationSec 1845`、`tokenTotal 12,081,214`、**`tokenCapHit:true`**（cap 12,000,000）、`toolCalls 12`（根会话；成员子会话另有 280+ 次）、`transcriptEvents 78`；`SUMMARY: 4 session(s), 1 with RED checks`；`NO_FENCE=20 UNKNOWN_FIELD=32 FIELD_NOT_APPLICABLE=8 BAD_JSON=14`；产物 `_oneoff/vm-slv/full-1027-001137.jsonl`（35,371,331 B / 80,274 行）。
+唯一的 RED 是 `tool/call count != tool/result count`（12 vs 11）——根会话最后一次 `vibe_vmu_turn` 的结果没有落盘，因为**本轮撞到 token 上限**。这不是仓库缺陷，是驱动参数（我给的 `-MaxTokens 12000000`）与本轮成员子会话的实际开销不匹配。
+
+### §135.1 判决表
+
+| # | 验证项 | 证据 | 判决 |
+|---|---|---|---|
+| ① | run 34 的 `chat need` 修复 | `vibe_vmu_chat{action:"mute", by:"r-acad", member:"r-1", durationMs:60000}` ⇒ `{"ok":true,"action":"mute","member":"r-1","until":…,"durationMs":60000,"enforced":["vmu.chat.admins"]}`；随后 `status` 的 `muted:["r-1"]`，`counts.audit` 1 | ✅ 修好（run 34 同一调用是 `VMU_INVALID_ARGUMENT "mute needs a member id"`） |
+| ② | chat 席位管理（run 34 缺陷 2） | `status` 的 `admins:["chair"]`、`mechanism.hasAdminSeam:false` | ✅ 修好（run 34 是字面 `["acad"]`，谁都进不去） |
+| ③ | 状态板 [总任务] 跟随活设置 | 成员侧 prompt 里 `[状态板]` 节存在（AUTO CHECKS 的 `vibe_vmu_turn{op:"prompt"}` 原文），四字段齐全 | ⚠️ 有读数，但**来源未标注**（见 F3） |
+| ④ | 被禁言者发言应被具名拒 | `vibe_vmu_turn{member:"r-1", next_step:"…说一句话…"}` 的 step 回执里**没有**成员发言结果（`memberToolCalls:null`、`toolCalls:[]`），chat 账本里没有 r-1 的条目 | ⚠️ **不可验证**：禁言是否生效无法从所办侧读到（见 F4） |
+| ⑤ | 同一成员下一轮的状态板能看到它刚写的 progress | ⑥b 的 step 回执同样只带回解析后的字段，成员的 `[状态板]` 原文不在回执里 | ⚠️ **不可验证**（同一原因） |
+| ⑥ | 连排 `sequence` | run 35 未走到（token 上限先到） | 待核 |
+| ⑦ | 续会话（F8）的 `continuation.applied` | run 35 未走到第二轮同一成员 | 待核 |
+
+### §135.2 本轮暴露的三条真缺陷
+
+**F1（结构，最重）主席在自己的子内核里无法召集会议。**
+实测：院士在自己的回合里调 `vibe_v5_meeting{agenda:…}` 得到
+`code=VMU_CHAIR_ACT_NOT_DELEGATED` / `message=vmu.meetings.chairActRequiresTurn=true: the chair r-acad has no recorded turn in this kernel, so its seat cannot convene yet`，
+而**所办**用同一个 `member:"r-acad"` 调同一面是成功的。机制：闸门读注入的 `chairActed(seat)`（`vibe-math-vmu/kernel/meetings.js:2158`），而它接到的是 `turn.memberTurnCount(memberId)`（`vibe-math-vmu/kernel/index.js:1820`）——**单个 orchestrator 实例内存里的 `turns` Map**（`vibe-math-vmu/kernel/turn/index.js:3326`）。席位在自己的子内核里天然"没有回合记录"，于是 v5r 规则「会议只能由院士预约/召开/关闭/延长」在真机上**结构性不可达**：只有所办能替院士开会。院士为此空转了两轮，最后只能把结论写进 progress 报告"转交所办"。
+处置：已派 task-24（让"某席位已获得回合"成为跨内核实例可读的事实；本地 ∪ 共享；未跑过轮次的席位仍被具名拒）。
+
+**F2（协议断链）成员用散文回答 ⇒ 整轮失败，且失败里读不到成员说了什么。**
+实测：②/⑤/⑥ 三轮的 `vibe_vmu_turn{op:"step", next_step:"用一句话说明…"}` 全部以 parse 失败告终（读数 `BAD_JSON=14`），所办连派三轮才拿到一轮有效回执。机制：`vibe-math-vmu/kernel/turn/index.js` 的 `parse()` 只在回复里找到**围栏 JSON 对象**时才算成功（`:1984-2004`）；散文落在 `VMU_TURN_NO_FENCE`/`VMU_TURN_BAD_JSON`。而 **activation 投递下成员无法用 `vibe_vmu_turn{op:"reply"}` 这个"首选通道"**（run 28 的拒绝理由就是这一点）——提示词没有说清"这一轮的回答要放在回复末尾的围栏 JSON 里"。处置：已派 task-25（提示词必须教交付方式，且由声明派生）。
+
+**F3（读数不诚实）状态板 `[总任务]` 换了来源却不说明来源。**
+`[总任务]` 显示 `测试研究所机制：前 n 个奇数之和的封闭形式`（`vibe_v5_start{problem}` 派生的根任务标题），而 `vmu.turn.objective` 的活值是另一段长文本。`statusBoardReadings()` 的 ① 分支优先读设置、否则读任务板——两条都是"机制"，但读数**不写它读的是哪一条**，于是同一件事在团队里出现两个版本。处置：待改（读数里加 `[总任务] 来源：任务板根任务 t-1 / 设置 vmu.turn.objective`）。
+
+**F4（不可观测）成员回合"做了什么、说了什么"不在回执里。**
+step 回执给 `memberToolCalls:null`、`toolCalls:[]`、`fields:[…]`，而成员真正的发言/调用/被拒全在它的子会话里。所办因此无法回答"被禁言的人有没有被拒"、"状态板是不是真的送到了"，只能靠 `grep` 成员的子会话日志（本轮所办就这么做了，花掉大量预算）。这是"存在但没带到消费者眼前"的老缺陷族。处置：待改（回执里带成员回答的有界摘录 + 子会话里被拒的工具调用摘要）。
+
+### §135.3 我这轮简报的两处错
+
+1. `vibe_v5_start{problem, researcherCount:2}` **已经自动建所并 hire 三人**（`r-acad`/`r-1`/`r-2`），我却又写"hire acad-01/res-01/res-02"，实际执行时前一步成功、后一步撞 `VMU_RESOURCE_BUDGET "role slot chair is full: 1/1"`。**这是第 6 次同类错**：简报假设了必须先自建所。
+2. `vibe_v5_meeting{sequence:[…]}` 的元素合法键是 `type/kind/materials/subject/size/secretary/roster/reason/at`，我写了 `agenda`。
+
+纪律（写进下一轮简报头）：简报第一句先写「本所已存在则不要重复建所」；凡我不确定的键名，先 `vibe_v5_tool_help` 或读 `scripts/check-task-brief.mjs` 的派生目录，不许凭记忆。
+
+### §135.4 门禁读数（提交 90e8e35f 的仓库）
+
+`VMU RUN34 FINDINGS 25/0`、`VMU TURN 271/0`、`VMU HOST 203/0`、`VMU CHAT 79/0`、`VMU CHAT FALSIFY 8/0`、`RUN31 STATUS BOARD 58/0`、`V5R TOOLS 359/0`、`PREFLIGHT: PASS`、`regen-all 16/16 in sync`、`DOC LINT: PASS`。
+
+### §135.5 无法验证项
+
+1. 连排 `sequence` 的 `next` 字段在真机上的形状（本轮未走到）。
+2. 续会话在 run 35 的 `continuation.applied`（未走到第二轮）。
+3. `vmu.chat.speakQuota`/`muteDefaultMs` 的非零值行为（本轮全是 0）。
+4. 成员侧"被禁言 ⇒ 发言被具名拒"的端到端证据（见 F4）。
+5. `vibe_v5_verified_promote` 的正向路径（本轮未走到）。
+
+### §135.6 本轮无实质残余：否
+
+（F1 是结构缺陷、F2 是协议断链、F3/F4 是读数与可观测性问题；F1/F2 已在修复中。）

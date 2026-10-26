@@ -131,6 +131,9 @@
 | ★★ **人工审批面的席位闸门**（decide/withdraw/veto/inject 由声明角色决定，默认只有 office） | ★ `tools/human.js` 的 `gateVerb`＋`settings` 的 `vmu.human.deciderRoles`／`injectRoles` | ★ `docs/03 §8` 的 R31 码表 |
 | ★ **成员回合的续会话**（同一 child session；不可达时回执写准原因） | ★ `kernel/turn/index.js`（`continuation` 读数）＋ `host-deliver.js`（`residency`） | ★ `docs/26` 的 `delivery.residency` 段 |
 | ★ **连排多会议** | ★ `packs/v5r/tools.js` 的 `vibe_v5_meeting { sequence }`（内核 `openSeq` 早已支持） | ★ `docs/03` 的 `vibe_v5_meeting` 行 |
+| ★★ **群聊治理面可达**（`vmu.chat.admins` 可写 SEAT token，如 `chair`＝院士；解析不到不算授予） | ★ `kernel/chat.js` 的 `seatOf` 缝＋`packs/v5r/settings/defaults.json` 的 `vmu.chat.admins: ["chair"]` | ★ `docs/04` 的 `vmu.chat.admins` 行＋`docs/26` 的 ROUND 34 段 |
+| ★★ **校验器必须把自己的值交出去**（`need()` 会抛不等于会传；chat 面曾因此把"你传了"报成"没传"） | ★ `tools/chat.js` 的 `need` 返回其值 | ★ `docs/26` 的 ROUND 34 段 |
+| ★★ **状态板读全轨、截断要写明**（`records.list` 默认只给最早 7 行，最新行恰在另一端） | ★ `kernel/turn/index.js` 的状态板 ④ 用 `limit: 0` ＋ 截断措辞 | ★ `docs/26` 的 ROUND 34 段 |
 
 ★ ★★ **两条读法**：① 上表任一行的"当前是否真的这样"★ **以对应 `docs/` 卷与门禁为准**，★ 本卷写的是**落点**不是**保证**；
 ② ★ 真机判决逐轮记录在 `docs/acceptance/phase12-v5r-rules-conformance.md`（§125 起），★ 那一卷是**证据表**，★ 每条都指到 `文件:行` 或门禁末行。
