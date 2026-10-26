@@ -584,6 +584,12 @@ export function createChat({
       mutes.set(who, { until, reason: String(reason || ''), by: by === null ? null : String(by), at: clock() })
       record('muted', { member: who, until, durationMs: base, reason: String(reason || ''), bootstrap: !!gate.bootstrap }, by)
       return { ok: true, member: who, until, durationMs: base, reason: String(reason || ''),
+        // ★ ROUND 42 / F-14: the receipt reads the LIVE mute book back instead of only the row it just wrote.
+        //    `vibe_vmu_chat {action:"status"}` and this receipt must answer the same question the same way — a caller
+        //    that muted two members and reads `muted` can check the whole state without a second call, and a reader
+        //    comparing the two faces never has to guess whether a mute took.
+        muted: [...mutes.keys()].sort(),
+        mutedMeans: 'the members muted RIGHT NOW (the same live book action:"status" prints as status.muted), so "did the mute take" is answerable from this receipt',
         enforced: gate.enforced.concat(asked === null ? ['vmu.chat.muteDefaultMs'] : []) }
     },
 

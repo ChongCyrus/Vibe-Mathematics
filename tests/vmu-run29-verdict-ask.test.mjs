@@ -273,7 +273,10 @@ ok(typeof asFile.propositionWhy === 'string' && asFile.propositionWhy.includes('
 
 const recorded = await call(b, 'vibe_v5_record_proposition', { member: 'res-01', title: '命题', statement: '一句话命题', value: 1, motive: 'run 29 test', p: 0.5 })
 const cardId = R(recorded).recordId
-ok(R(recorded).ok === true && typeof cardId === 'string' && cardId.startsWith('r-'),
+// ROUND 42 (F-13): records are minted as `rec-<n>` now, members stay `r-<n>`. The setup still
+// needs "a card", and a card is recognised by EITHER prefix (`verification-gates.js` keeps the old
+// one readable so ledgers written before round 42 still work).
+ok(R(recorded).ok === true && typeof cardId === 'string' && /^(rec|r)-/.test(cardId),
   '3b. a real proposition card is recorded (setup: the "card" label needs a card)', { recordId: cardId, code: R(recorded).code })
 const asCard = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid2, proposition_id: cardId }))
 ok(asCard.ok === true && asCard.propositionKind === 'card' && asCard.propositionVerified === true && asCard.fileChecked === null,

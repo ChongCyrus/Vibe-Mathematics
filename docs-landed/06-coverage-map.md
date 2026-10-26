@@ -142,6 +142,9 @@
 | ★★ **蓝图正文段是「起点标记」不是「段边界」**（`## 正文` 到 body 末尾逐字；曾把 4134 B 的草案 adopt 成 939 B） | ★ `packs/v5r/blueprint.js` 的 `blueprintTextOf()`／`blueprintMeans()` | ★ `docs/26` 的 ROUND 36 段（F-2） |
 | ★★ **关掉的会议不会在下一个内核里重新开着**（archive 已记录 closed 的 live 行不序列化、不 hydrate、reload 不复活） | ★ `kernel/meetings.js` 的 `snapshot()`／`restore()`／`restoreReload()` | ★ `docs/26` 的 ROUND 36 段（F-3） |
 | ★★ **研究日志的作者由写的人说出来**（不传 `member` ⇒ `by:null`、状态板认不出；落盘行的作者字段曾整个丢失） | ★ `packs/v5r/tools.js` 的 `vibe_v5_record_progress` 描述＋`seat-faces.js` 三条席位教学＋`kernel/index.js` 的 `snapshotRecords` 取 `owner` | ★ `docs/26` 的 ROUND 36 段（F-4） |
+| ★★ **一个名词一个命名空间**（记录铸 `rec-<n>`、成员用 `r-<n>`；旧 `r-<n>` 记录仍可读，不迁移） | ★ `kernel/records.js` 的 `mint('record','rec-')`＋`packs/v5r/verification-gates.js` 的卡 id 判据 `/^(rec|r)-…/` | ★ `docs/26` 的 ROUND 42 段（F-13） |
+| ★★ **读不到时要说出是哪个名词**（把成员 id 当记录 id 读 ⇒ 具名拒并指路 `member:"<id>"`） | ★ `kit/handlers.js` 的 `toolReadLibrary` 未命中分支 | ★ `docs/26` 的 ROUND 42 段（F-13） |
+| ★★ **禁言回执读它写的那本账**（`muted` 与 `status.muted` 同一本活账，不必再问一次） | ★ `kernel/chat.js` 的 `mute()` 回执（`muted`／`mutedMeans`） | ★ `docs/26` 的 ROUND 42 段（F-14） |
 
 ★ ★★ **两条读法**：① 上表任一行的"当前是否真的这样"★ **以对应 `docs/` 卷与门禁为准**，★ 本卷写的是**落点**不是**保证**；
 ② ★ 真机判决逐轮记录在 `docs/acceptance/phase12-v5r-rules-conformance.md`（§125 起），★ 那一卷是**证据表**，★ 每条都指到 `文件:行` 或门禁末行。

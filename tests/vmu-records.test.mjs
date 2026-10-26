@@ -74,8 +74,17 @@ const put = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'p
   throwsNamed(() => r.remove({ id: 'r-404' }), 'VMU_NO_SUCH_OBJECT', 'zero: removing an unknown record is refused')
   ok(r.status().refusals.VMU_NO_SUCH_OBJECT === 2, 'zero: refusals are counted by code')
   const one = put(r)
-  ok(one.ok === true && /^r-\d+$/.test(String(one.id)),
+  // ★ ROUND 42 / F-13: records mint `rec-<n>`, NOT `r-<n>`. The roster mints `r-<n>` from the same counter family,
+  //    so a minted `r-5` record and the member `r-5` were the same string on disk: `read_library{ id }` could not tell
+  //    them apart. The shape here is the CONTRACT (not an implementation detail), so it is asserted on both sides:
+  //    a minted id is `rec-<n>`, and a LEGACY `r-<n>` is still removable/gettable because ids are names (history is
+  //    not migrated) - it is simply never minted again.
+  ok(one.ok === true && /^rec-\d+$/.test(String(one.id)),
     'clock: the id is well-formed and CAPTURED from the call (a literal only held while each instance restarted its counters): ' + one.id)
+  ok(!/^r-\d+$/.test(String(one.id)), 'clock: a minted record id never takes the MEMBER shape `r-<n>` (F-13: one namespace per noun)')
+  const legacy = r.put({ track: 'progress', kind: 'progress', title: 'legacy', body: 'legacy row under an old-style id', id: 'r-9' })
+  ok(legacy.ok === true && legacy.id === 'r-9' && r.get({ id: 'r-9' }).id === 'r-9',
+    'clock: a legacy `r-<n>` row written explicitly is still readable (an id is a name; nothing is migrated)')
   ok(r.get({ id: one.id }).createdAt === 7, 'clock: createdAt comes from the injected clock only')
 }
 

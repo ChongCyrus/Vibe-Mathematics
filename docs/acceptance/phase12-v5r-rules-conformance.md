@@ -5904,3 +5904,62 @@ T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修
 ### §142.7 本轮无实质残余？
 
 **否。** F-13/F-14 是已确认、已取证、未修的机制缺陷。
+
+## §143 ROUND 42：一个名词一个命名空间；回执读它写的那本账（run 42 待判决）
+
+### §143.1 这两条从哪来
+
+`§141.5`／`§142.2` 记下的两条债，都在"看起来像缺一行"的地方：
+
+- **F-13**：`kernel/records.js` 铸 `r-<n>`，而 v5r 建所时 hire 的成员也叫 `r-acad`／`r-1`／`r-2`
+  （`packs/v5r/tools.js:2736/2740`）⇒ `vibe_v5_read_library { id: "r-1" }` 回 `VMU_NO_SUCH_OBJECT "unknown record: r-1"`，
+  读者看不出"这个 id 是个人"；把记录 id 交给 `member:` 又会被当成"不存在的对象"。run 39 的反馈卡 `recordId`
+  `r-2`／`r-3` 与成员 `r-2` 同形，是同一个病。
+- **F-14**：`vibe_vmu_chat { action: "mute" }` 的回执只有 `{ok, member, until, durationMs, reason, enforced}`，
+  而 `action:"status"` 打 `muted:[...]`。读者要知道"我现在到底禁了谁"必须再调一次，且回执本身无法证明这次禁言生效。
+
+### §143.2 修法（产物，不是描述）
+
+| # | 缺陷 | 落点 | 判据（测试末行） |
+|---|---|---|---|
+| F-13a | 记录与成员共用一个 id 形状 | `vibe-math-vmu/kernel/records.js:574` 的 `mint('record', 'rec-')`（旧 `r-<n>` 显式 id 仍可读，不迁移） | `VMU RUN 42 ID NAMESPACE 26/0` ① |
+| F-13b | 卡的形状判据若只认旧前缀，新卡会被判成"一句话命题"、证明闸形同虚设 | `vibe-math-vmu/packs/v5r/verification-gates.js:146` 的 `/^(rec\|r)-…/` | 同上 ③ |
+| F-13c | 读不到时不说"这是哪个名词" | `vibe-math-vmu/kit/handlers.js:396`：未命中且命中活名册 ⇒ 回执点名 `MEMBER` 并指路 `member:"<id>"`；两者都不是 ⇒ 同时点名两个形状 | 同上 ② |
+| F-13d | 面层散文没有告诉代理 id 的形状 | `vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_read_library` 描述（"a RECORD id is `rec-<n>`, a MEMBER id is `r-<n>`",`id` 读记录、`member` 读人） | `VMU V5R TOOLS 359/0`、`audit-prompt-tool-params 81/0` |
+| F-14 | 禁言回执不读账本 | `vibe-math-vmu/kernel/chat.js:592`：回执增 `muted`（与 `status.muted` 同一本活账、排序后）+`mutedMeans` | 同上 ④ |
+
+另：`tests/vmu-records.test.mjs` 里"id 形状"的断言按新契约改写（`/^rec-\d+$/`、且"掺出成员形状 `r-<n>`"被否定、
+旧 `r-<n>` 仍可读写），这是**契约变了所以要改断言**，不是放水。
+
+### §143.3 门禁读数（本轮实跑）
+
+- `VMU RUN 42 ID NAMESPACE` 26/0（新）；`VMU RECORDS` 271/0；`VMU LIBRARY`／`-REVISIONS`／`-REMOVE` 126/30/31 全绿；
+  `VMU CHAT` 79/0、`VMU CHAT FALSIFY` 8/0、`RUN 34 FINDINGS` 25/0、`RUN36 RECORDS SHARED` 37/0；
+  `VERIFIED GATES` 103/0、`VERIFIED TRACK` 72/0、`RUN37 MEETING ARCHIVE READS` 17/0；
+  `RUN35 CHAIR ACT` 23/0、`RUN31 SEAT FACES` 86/0、`RUN31 STATUS BOARD` 58/0、`TURN` 272/0、`HOST` 203/0、
+  `V5R TOOLS` 359/0、`AUDIT PROMPT TOOL PARAMS` 81/0、`DOCS-LANDED COUNTS 5/0`、`DOC LINT: PASS`。
+- 全量门禁与派生文件同步见 §143.4（收口时补）。
+
+### §143.4 全量门禁
+
+`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **`TOTAL 508  PASS 508  FAIL 0  (suites 444 · probes 64)`**
+（`audit-tool-exec.mjs` 按设计 SKIP）。`update-doc-counts --write` 报 `JOBS 577 / suites 469 / probes 108`、
+`regen-all --write` 16/16 → `--check` 16/16 in sync、`preflight` `PREFLIGHT: PASS`、`DOC LINT: PASS`。
+
+收口时我自己踩了两条红，都是"改了契约没改旧断言"，已修：
+
+1. `vmu-run29-verdict-ask` 3b 把"卡 id 以 `r-` 开头"写死了 ⇒ 改成 `/^(rec|r)-/`（旧前缀必须继续认，否则历史库的卡读不出来）；
+2. `audit-declaration-criterion` 的 RULE E 抓到我新测试里 `new Set(ids).size === ids.length` 这类**两边同源**的比较
+   ⇒ 改成先钉 `rows.length === 3` 再比集合（这是 RULE E 存在意义的又一次现场证明：空洞断言看起来最"顺"）。
+
+### §143.5 无法验证 / 留到 run 42 的事
+
+1. **新 id 在真机会不会被旧数据卡住**：run 42 的库里会有旧 `r-<n>` 记录 + 新 `rec-<n>` 记录混存，要读回两者都对。
+2. **成员把成员 id 当记录 id 读**（F-13 的拒绝面）：提示词层面代理是否真会读 hint 并改用 `member:`。
+3. **`muted` 是否与 `status.muted` 在真机字面一致**（测试钉的是集合；真机还要看工具面是否原样透传）。
+4. **同一 run 里"记录 id 与成员 id 混用"是否还有别的读面**（`vibe_vmu_records{action:"get"}` 等未穷举）。
+5. **debate subject 传旧 `r-<n>` 卡**（历史库里的卡）是否仍能通过 `debateSubjectGate` 的"形状=card"分支。
+
+### §143.6 本轮无实质残余？
+
+**否。** 待 run 42 判决：①新 id 空间在真机可读、②拒绝面真的被看懂、③`muted` 与 `status` 字面一致。

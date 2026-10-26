@@ -565,7 +565,13 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       // ★ Loop until free. This is the fix at the ROOT: no collision means no overwrite and no duplicate index row.
       let id
       if (requestedId === null || requestedId === undefined) {
-        do { id = mint('record', 'r-') } while (records.has(id))
+        // ★ ROUND 42 / F-13: the prefix is `rec-`, NOT `r-`. The roster mints its own ids from the same `ids`
+        //    counter family with the `r-` shape (`r-acad`, `r-1`, `r-2` in a live run), so a record id and a
+        //    member id were the same string: `vibe_v5_read_library{ id: "r-1" }` could not tell a reader from a
+        //    record, and a record id handed to `member:` (or the reverse) was accepted as "unknown object" with no
+        //    way to see the mistake. One namespace per noun: rows are `rec-<n>`, people are `r-<n>`. OLD `r-` ids
+        //    stay readable (an id is a name; history is not migrated), they are just no longer MINTED.
+        do { id = mint('record', 'rec-') } while (records.has(id))
       } else {
         id = String(requestedId)
       }

@@ -1015,10 +1015,10 @@ F-11（应用失败的披露会不会出现）。两件都**通过**：`vibe_v5_
 `kind: <track>`，并把这次翻译写进 `coercions`（`from:'kind:absent'`、`to:'kind:progress'`）——翻译要可读，不是
 悄悄猜；**不是**已声明 kind 的 track（如 `obstacles`）仍具名拒绝，不猜。
 
-### F-13（记债）记录 id 与成员 id 撞名
+### F-13（记债 → ROUND 42 已修）记录 id 与成员 id 撞名
 
 所办反馈：r-acad 的 progress 卡 id 是 `r-1`、r-1 的卡 id 是 `r-2`；`owner` 正确，但 `read_library {id}` 里
-"成员 r-1" 与 "记录 r-1" 无法区分。本轮不改（id 生成改了要迁移），记入台账 §141.5。
+"成员 r-1" 与 "记录 r-1" 无法区分。（ROUND 42 已修：记录改铸 `rec-<n>`、未命中的拒绝点名"这是成员"，见本节末尾。）
 
 判据：`tests/vmu-run39-attribution.test.mjs` ⑥（无 kind 的围栏 progress 被翻译而不是整轮拒；face 收到
 `kind:"progress"`；回执的 `coercions` 里有这次翻译）⑦（`obstacles` 这类非 kind track 仍具名拒、face 没收到伪造的 kind）。
@@ -1033,4 +1033,30 @@ run 41（91 秒、12 次调用、0 RED）只做一件事：验证 ROUND 40 的 `
 
 同一次取证还确认了两件记债的事（`§141.5`、台账 `§142.2`）：记录 id 是从成员 id 那条序列发出的（两张反馈卡的
 `recordId` 是 `r-2`、`r-3`），所以每张记录都会与某个成员同形；`vibe_vmu_chat{action:"mute"}` 的回执不含
-`status.muted`，要再读一次 `status`。两件都不在本轮改（改 id 要迁移），写成债而不是静默。
+`status.muted`，要再读一次 `status`。（两件都在 ROUND 42 付清，见下。）
+
+## ROUND 42（run 42 前置修复）— 一个名词一个命名空间；回执要读它写的那本账
+
+这是 run 39–41 的三张账单里最后两张的付款（F-13、F-14），修法与判据如下。
+
+### F-13 记录与成员共用一个 id 形状 ⇒ 两处根修 + 拒绝点名
+
+- **铸造**：`vibe-math-vmu/kernel/records.js:574` 的 `mint('record', 'rec-')` —— 记录从此是 `rec-<n>`，成员仍是
+  `r-<n>`（`packs/v5r/tools.js:2736/2740` hire 的 `r-acad`/`r-<i>`）。计数器是同一个，所以**旧 `r-<n>` 记录不会被
+  重新铸出来**（id 是名字，历史不迁移；显式 id 写入路径照旧可读）。
+- **判形状**：`vibe-math-vmu/packs/v5r/verification-gates.js:146` 的卡 id 判据从 `/^r-…/` 改成 `/^(rec|r)-…/`，
+  因为辩论 subject 的分类决定 P1 证明闸怎么走（把新卡 id 判成"一句话命题"会让证明闸形同虚设）。
+- **拒绝点名**：`vibe-math-vmu/kit/handlers.js:396` 的 `read_library {id}` 未命中时不再只说"unknown record: r-1"，
+  而是：若是活成员 ⇒ "`r-1` is a MEMBER (slot member, state live), not a record. To read THEIR library pass
+  `member:"r-1"` … records are minted as `rec-<n>`"；若两者都不是 ⇒ 同时点名两个形状。拒绝是给"必须改调用的人"看的，
+  所以它必须指出下一步。
+- 判据：`tests/vmu-run42-id-namespace.test.mjs` ①（铸出来的 id 都是 `rec-<n>`、与名册无交集、旧 `r-<n>` 仍可读写）
+  ②（读成员 id 的拒绝含 "MEMBER" 与 `member:"r-1"`，且那个参数真的读得到）③（`classifySubject` 两种形状都是卡，
+  `p-` 名字仍不被猜成卡，证据层优先不变）。
+
+### F-14 禁言回执要读同一本账
+
+`vibe-math-vmu/kernel/chat.js:592` 的 `mute` 回执新增 `muted`（**当前**被禁言的成员列表，和 `status.muted` 同一本活账）
+与 `mutedMeans`（"这个字段和 status 打印的是同一本账"）。判据：`tests/vmu-run42-id-namespace.test.mjs` ④——禁一个
+⇒ `["r-1"]`；禁两个 ⇒ `["r-1","r-2"]`（是账不是增量）；与 `status().muted` 集合一致；解禁后只剩 `["r-2"]`（回执是
+读数不是拷贝）。

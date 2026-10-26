@@ -141,7 +141,9 @@ export function classifySubject(subject, evidence) {
   // ★ ② 是 LIVE RUN 15 的教训：院士把包自己的命题卡 id `p-chair-rail` 当 subject 传进来，而它以 `p-` 开头、不带
   //   扩展名，于是落到"一句话命题"分支、回执写 `provenance:"none"`，代理据此判「框架把卡当成了短语」。形状判不了
   //   的名字，证据能判；两者都没有时不许猜成"已经是卡"（那会给出一个看起来严的假闸）。
-  if (/^r-[A-Za-z0-9][A-Za-z0-9_-]*$/.test(raw)) return { form: 'card', raw, note: null }
+  // ★ ROUND 42 / F-13: records mint `rec-<n>` now (the roster owns `r-<n>`); a legacy `r-<n>` row is still a card,
+  //    because ids are names and history is not migrated. Both shapes are cards; nothing else changes.
+  if (/^(rec|r)-[A-Za-z0-9][A-Za-z0-9_-]*$/.test(raw)) return { form: 'card', raw, note: null }
   const ev = evidence && typeof evidence === 'object' ? evidence : {}
   if (ev.card || ev.verified) return { form: 'card', raw, note: null, identifiedBy: 'evidence' }
   // 文件引用：路径分隔符，或其末段是一份带扩展名的文件（规则原文："辩论对象的文件引用"）。

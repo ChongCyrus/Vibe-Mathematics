@@ -376,8 +376,31 @@ function toolMessage(args = {}, { kernel } = {}) {
 function toolReadLibrary(args = {}, { kernel } = {}) {
   const records = recordsOf(kernel)
   if (has(args.id)) {
-    const row = records.get({ id: str(args.id) })
-    return { ok: true, tool: 'vibe_v5_read_library', card: row && row.record ? row.record : row }
+    const id = str(args.id)
+    try {
+      const row = records.get({ id })
+      return { ok: true, tool: 'vibe_v5_read_library', card: row && row.record ? row.record : row }
+    } catch (e) {
+      // ★ ROUND 42 / F-13: a miss must say WHICH NOUN the id belongs to. Before this, reading `id:"r-1"` answered
+      //    "unknown record: r-1" with a list of ids, and nothing told the reader that `r-1` is a MEMBER (the roster
+      //    mints `r-<n>` from the same counter family the records minted records from). A refusal is addressed to
+      //    whoever must fix the call, so it names their next move: `member:"r-1"` reads THAT member's library.
+      if (!e || e.code !== 'VMU_NO_SUCH_OBJECT') throw e
+      let roster = []
+      try { roster = kernel && kernel.members && typeof kernel.members.roster === 'function' ? kernel.members.roster() : [] } catch { roster = [] }
+      const asMember = (Array.isArray(roster) ? roster : []).find((r) => r && String(r.id) === id) || null
+      const base = String(e.hint || '')
+      const err = new Error(e.message)
+      err.code = e.code
+      err.hint = asMember
+        ? '"' + id + '" is a MEMBER (slot ' + asMember.slot + ', state ' + asMember.state + '), not a record. '
+          + 'To read THEIR library pass member:"' + id + '" (optionally with kind / track / tracks); to read a record pass its own id '
+          + '(records are minted as "rec-<n>"). ' + base
+        : 'no record has the id "' + id + '": records are minted as "rec-<n>" and people are "r-<n>", so check which one you meant. '
+          + base
+      if (e.detail !== undefined) err.detail = e.detail
+      throw err
+    }
   }
   const limit = has(args.limit) ? Number(args.limit) : 20
   const wanted = has(args.member) ? str(args.member) : null
