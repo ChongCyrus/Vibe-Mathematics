@@ -1804,6 +1804,15 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     },
 
     /**
+     * ★★ ROUND 37 (live run 37, the institute's own report): after `close` the meeting moved to the ARCHIVE, and
+     * `status` then answered "no such meeting" while `summary` answered fine — three read faces, three answers to
+     * "is this meeting closed?". The archive is a real place; a read face must be able to list it. Sorted ids only.
+     */
+    archivedIds() {
+      return archive.map((m) => String(m.id)).sort()
+    },
+
+    /**
      * READ-ONLY: one meeting's DECISION summary — motions with their votes — for a live meeting or an archived
      * one. The face used to have no summary at all (`meetingView` shows motion STATE, not votes), so a caller
      * asking "what was voted and how" had to reconstruct it from minutes.

@@ -137,7 +137,13 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             const prim = kernel.liveList()
             const services = serviceIds()
             const unionMeetings = [...new Set([...(prim.meetings || []), ...services])].sort()
-            return Object.assign({ ok: true, action }, prim, { serviceMeetings: services, unionMeetings })
+            // ★ ROUND 37: live ids only used to be reported, so an archived meeting looked like it never existed.
+            const svcL = svcOf()
+            let archivedMeetings = []
+            if (svcL && typeof svcL.archivedIds === 'function') {
+              try { archivedMeetings = svcL.archivedIds().slice() } catch (e) { archivedMeetings = [] }
+            }
+            return Object.assign({ ok: true, action }, prim, { serviceMeetings: services, archivedMeetings, unionMeetings })
           }
           if (action === 'open') {
             const meeting = kernel.meeting({ id: id || undefined, roster: Array.isArray(roster) ? roster : undefined })
@@ -313,8 +319,26 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
               let sweep = null
               if (typeof svc.status === 'function') { try { sweep = svc.status().sweep || null } catch (e) { sweep = null } }
               return Object.assign({ ok: true, action, registry: 'service', quorum, sweep }, view)
+          }
+          // ★★ ROUND 37 (live run 37): a CLOSED meeting is not a MISSING one. `close` archives the service record, so
+          // `meetingView` stops answering and this branch used to say `VMU_NO_SUCH_OBJECT` — while `summary` and the
+          // archive answered fine. Three read faces, three answers to "is it closed?". The archive is consulted before
+          // the refusal, and the answer says WHERE the record lives now instead of pretending it never existed.
+          if (svc && typeof svc.summary === 'function') {
+            let archived = null
+            try { archived = svc.summary({ meeting: pid }) } catch (e) { archived = null }
+            if (archived && archived.ok !== false && archived.state !== undefined && archived.state !== null) {
+              return {
+                ok: true, action, id: pid, meeting: pid, registry: 'service', archived: true,
+                state: String(archived.state),
+                stateMeans: archived.stateMeans || null,
+                archivedMeans: 'the meeting is closed and lives in the service archive: `summary` carries its motions and votes; `list` reports live and archived ids separately',
+                summaryAvailable: true,
+                hint: 'read the record with { action: "summary", id: "' + pid + '" }',
+              }
             }
-            throw noSuchMeeting(pid)
+          }
+          throw noSuchMeeting(pid)
           }
           if (action === 'summary') {
             // A1 round 10 — TWO ID SPACES, TWO READ FACES. A primitive meeting is summarized by the primitive; a

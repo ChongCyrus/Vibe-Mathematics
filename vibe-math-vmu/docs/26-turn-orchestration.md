@@ -944,3 +944,19 @@ run 36 里蓝图草案 r-23（4134 B，含 `## 一`～`## 六`）被 adopt 成 r
 现在 `blueprintTextOf(body)`（`packs/v5r/blueprint.js:92-113`）把 `## 正文` 行之后**到 body 末尾**逐字取出；
 `blueprintMeans()` 给出四句口径（`status` 只读表头、`history` append-only、`revisions` 与 `currentRevision` 两把尺、
 `text` 是正文）。判据在 `tests/vmu-run36-blueprint.test.mjs`（42/0）与 `tests/vmu-blueprint.test.mjs`（54/0）。
+
+**补充（ROUND 37 / F-6）：一场会关掉以后，读面必须还能**找到**它——「不存在」和「已归档」是两件事。**
+
+run 37 的所办关掉 `m1` 之后，`vibe_vmu_meeting{action:"status", id:"m1"}` 得到的是"没有这场会"的拒绝，而
+`summary` 明明答出了 `state:"closed"`——同一件事三个读面三种答案（`read_library` 里也还在）。机制：`close()` 把会议
+移进 service ARCHIVE（`kernel/meetings.js` 的 `archive`），而 `status` 只经 `meetingView` 解析**活行**，归档 id 于是落到
+`noSuchMeeting`。
+
+现在（三处都在读面，写面未动）：
+- `kernel/meetings.js` 新增 `archivedIds()`（排序后的归档 id，纯读，不清理）；
+- `tools/meeting.js` 的 `status`：解析不到活行时**先查归档**，命中回 `{ state, archived:true, summaryAvailable:true,
+  hint:"read it with summary" }`——答案指名记录现在在哪儿，而不是说它从未存在；
+- 同文件 `list` 新增 `archivedMeetings` 栏（与 `serviceMeetings` 并列；归档 id 不计入活行）。
+
+判据：`tests/vmu-run37-meeting-archive-reads.test.mjs`（17/0）——真开会→关会→`status` 答 `closed`/`archived`、
+`summary` 仍答、`list` 列归档且不算活行、从未开过的 id 仍具名拒 `VMU_NO_SUCH_OBJECT` 且 hint 点名两个注册表。

@@ -5638,3 +5638,60 @@ F1/F2/F3 已改并有反事实测试；F4 的"读不到子会话"仍是真缺口
 5. 同一命题多卡（F-5）没有机制去重，属未验证的策略空间。
 
 ### §137.7 「本轮无实质残余：否」
+
+## §138 真机跑 37（build `26cd21ad`，模拟模式定向复验）与一条读面缺陷
+
+### §138.1 读数
+
+`DRIVE exit=0`；`durationSec 706`；`toolCalls 25`（根会话 25 次，全部有结果）；`tokenTotal 4,389,294`（cap 8,000,000，
+未撞）；`transcriptEvents 126`；3 个会话；`0 with RED checks`。jsonl 19,017,298 B / 42,993 行；机器读数
+`NO_FENCE=36 UNKNOWN_FIELD=24 FIELD_NOT_APPLICABLE=30 BAD_JSON=36`；clone 已清、C 盘剩 10.7 GB。
+
+### §138.2 判决表（run 36 的四条修复在真机上成立）
+
+| 编号 | 机制 | 真机回执 | 判决 |
+| --- | --- | --- | --- |
+| F-1 | 命题库跨内核可见 | office 内核 `vibe_v5_read_library{member:"r-1", list:true}` 读到 r-9（propositions）与 r-10（progress），`owner:"r-1"`；再 grep `VibeMath/vmu/state.json` 见两者都以 `"by": "r-1"` 落盘 | ✅ |
+| F-2 | 蓝图正文不被截断 | 草案 v2：`revision 2`、`text` 完整、行字节 5993、`bodyTruncated:false`、`bodyDroppedBytes:0`、三个二级标题与哨兵齐全 | ✅ |
+| F-3 | 会议关闭要持久 | `close` 回执正常；之后 `status` 不再说 open（见 §138.3 的新读面问题） | ✅ |
+| F-4 | 进度日志的作者 | `r-10` 带 `member:"r-1"` ⇒ `owner:"r-1"`，落盘 `by` 也在；状态板能认出是谁的日志 | ✅ |
+
+### §138.3 这一轮暴露的新读面缺陷（F-6）与我修的三处
+
+所办的原话：关闭后的会议在 `status`/`list` 上「像从未存在」，只有 `summary` 面能看到 `closed`——
+**同一件事三个读面三种答案**。机制：`close()` 把会议移进 service ARCHIVE（`kernel/meetings.js` 的 `archive`），
+而 `status` 只经 `meetingView` 解析**活行**，于是归档 id 落到 `noSuchMeeting`。修法（三处，全部在读面）：
+
+1. `vibe-math-vmu/kernel/meetings.js` 新增 `archivedIds()`（排序后的归档 id 列表，纯读）。
+2. `vibe-math-vmu/tools/meeting.js` 的 `status`：解析不到活行时**先查归档**，命中则回
+   `{ state, archived:true, summaryAvailable:true, hint:"read it with summary" }`，不再报"不存在"。
+3. 同文件 `list`：新增 `archivedMeetings` 栏（与 `serviceMeetings` 并列，归档 id 不算活行）。
+
+新测试 `tests/vmu-run37-meeting-archive-reads.test.mjs` **17/0**：真 pack 开会 → 关会 → `status` 答 `closed`/`archived`
+且 hint 指向 `summary`、`summary` 仍答、`list` 列归档 id 且不把它算活行、从未开过的 id 仍具名拒
+`VMU_NO_SUCH_OBJECT` 且 hint 点名两个注册表、`archivedIds()` 有序且读不改状态。相邻套件全绿：
+`RUN36 MEETING CLOSE 39/0`、`MEETING INVITE 69/0`、`MEETING STATE MEANING 10/0`、`MEETING TYPES 153/0`、
+`VMU TURN 272/0`、`VMU HOST 203/0`。
+
+### §138.4 简报错与门禁
+
+简报错 1 处（第 7 次同类）：`vibe_vmu_turn{op:"status", detail:"summary"}` —— `detail` 只接受 `closure` 或不传，
+我又写了工具没有的值。这次是所办按规则报回来的（它记成"提示词问题"），我认账并改简报模板。
+
+门禁（修后）：`regen-all --write` 16/16 → `--check` 16/16 in sync；`update-doc-counts` ⇒ JOBS 574 / suites 466 /
+probes 108；`preflight` ⇒ `PREFLIGHT: PASS`；`DECLARATION CRITERION 90/0`；`GATE_SCOPE=vmu` ⇒ **`TOTAL 505
+PASS 505 FAIL 0`**（suites 441 · probes 64）。
+
+### §138.5 无法验证
+
+1. 归档读面只在单元夹具上验过，run 38 之前没有真机回执（本节的 F-6 修好后需要一次真机确认）。
+2. 成员侧回合仍不可观测（工具面没给 `vibe_vmu_turn{op:"step"}` 回传子会话的工具调用清单），"成员是否照规则做了"
+   依旧只能由其自述。
+3. `NO_FENCE=36`/`BAD_JSON=36` 仍存在：围栏通道已由 `v5r-reply-channel` 教，但成员仍常回散文；量化下降需要更多样本。
+4. 同一命题多卡（§137 的 F-5）没有机制去重，属策略空间。
+5. `vibe_v5_record_progress` 不传 `member` 时的 `bySource:'unknown'` 仍是允许状态（教学已说清，机制不猜作者）。
+
+### §138.6 「本轮无实质残余：否」
+
+四条修复全部真机成立、文件级缺陷清空；剩下的是**读面一致性与观测面**（§138.5 的 1–2）与策略空间（3–5），
+下一轮（run 38）专门复验归档读面。

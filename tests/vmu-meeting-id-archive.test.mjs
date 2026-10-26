@@ -13,8 +13,8 @@
 //
 // WHAT IS ASSERTED (both directions, every state READ BACK — "set" is not "in force"):
 //   ① setup: the pack convenes a SERVICE meeting and the chair really closes it (the closure is a fact with an instant);
-//   ② after that closure THIS kernel can no longer address the id — so the resurrection cannot be explained by
-//      "close only renamed it";
+//   ② after that closure the id answers as an ARCHIVED record (state `closed`, `archived:true`), not as a live one and
+//      not as "no such meeting" — so the resurrection cannot be explained by "close only renamed it";
 //   ③ opening the SAME id is refused by name `VMU_MEETING_ID_ARCHIVED`, and the refusal quotes the ARCHIVE's instant
 //      (not "unrecorded"), so "when was it closed" needs no second lookup;
 //   ④ the refusal names the deliberate way out (`reuseArchivedId:true`), i.e. it is a rail with a door, not a wall;
@@ -96,9 +96,12 @@ ok(archiveBefore >= 1, '① the service counts at least that one archived meetin
 // ── ② AFTER THE CLOSURE THE ID IS UNADDRESSABLE IN THIS KERNEL ────────────────────────────────────────────────
 console.log('=== 2. AFTER THE CLOSURE THIS KERNEL CANNOT ADDRESS THE ID ===')
 const statusAfter = await call(b, 'vibe_vmu_meeting', { action: 'status', id: mid })
-ok(statusAfter.parsed && statusAfter.parsed.ok === false && statusAfter.parsed.code === 'VMU_NO_SUCH_OBJECT',
-  '② `status` refuses by name after the close — "close only renamed it" is ruled out in ONE kernel',
-  statusAfter.parsed && { code: statusAfter.parsed.code, state: statusAfter.parsed.state })
+// ★ ROUND 37 (live run 37): the face used to answer `VMU_NO_SUCH_OBJECT` here, which said "never existed" about a
+// meeting that was closed and archived a line earlier. An archived record is addressable; what must NOT happen is an
+// answer that describes a LIVE meeting. So the assertion now pins the archived shape (closed + archived:true).
+ok(statusAfter.parsed && statusAfter.parsed.ok === true && statusAfter.parsed.state === 'closed' && statusAfter.parsed.archived === true,
+  '② `status` answers as the ARCHIVED record after the close (closed/archived, never live) — "close only renamed it" is ruled out in ONE kernel',
+  statusAfter.parsed && { ok: statusAfter.parsed.ok, code: statusAfter.parsed.code, state: statusAfter.parsed.state, archived: statusAfter.parsed.archived })
 
 // ── ③ REUSING THE NAME IS REFUSED, AND THE REFUSAL QUOTES THE ARCHIVE ─────────────────────────────────────────
 console.log('=== 3. AN ARCHIVED NAME IS NOT SILENTLY REUSABLE ===')
