@@ -343,8 +343,19 @@ function toolMessage(args = {}, { kernel } = {}) {
   const kind = urgentFlag ? 'notice' : 'note'
   const payload = { to: str(args.to), text: str(args.content), kind, urgent: urgentFlag }
   if (has(args.subject)) payload.subject = str(args.subject)
-  const sent = kernel.mailbox.send('office', payload)
-  return { ok: true, tool: 'vibe_v5_message', from: 'office', to: str(args.to), subject: has(args.subject) ? str(args.subject) : null, urgent: urgentFlag, kind,
+  // ★★★★★★★ LIVE RUN 28 (the institute's own report, item 9): THE FACE HAD NO SENDER PARAMETER, so `from` was
+  // always "office" and the rule "a member can message another member" could not be expressed at all — the office
+  // could only pretend. The tool now names WHOSE VOICE the mail carries (`member`, omitted = office) and the receipt
+  // names BOTH sides: `from` is the voice, `relayedBy` is who actually wrote it. That distinction is the whole point
+  // of the B ruling (members really act; the office records on their behalf) — a message that silently claimed a
+  // member wrote it would be worse than one that says "office".
+  const sender = has(args.member) ? str(args.member) : 'office'
+  const sent = kernel.mailbox.send(sender, payload)
+  return { ok: true, tool: 'vibe_v5_message', from: sender, relayedBy: 'office',
+    fromMeans: sender === 'office'
+      ? 'the OFFICE itself is speaking; pass member:"<id>" to carry a member\'s voice instead'
+      : 'the mail carries ' + sender + '\'s voice, but the OFFICE relayed it — members are played by the office in this deployment, so the receipt never claims the member typed it',
+    to: str(args.to), subject: has(args.subject) ? str(args.subject) : null, urgent: urgentFlag, kind,
     note: 'kind does NOT decide urgency (kind "note" for non-urgent, "notice" only when urgent:true); urgent defaults to FALSE' }
 }
 

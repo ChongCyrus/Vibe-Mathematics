@@ -4861,3 +4861,48 @@ for (const field of RECORDED_FIELDS) {
 
 提交：`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/tools.js`、`tests/vmu-turn.test.mjs`。
 
+
+## §125 真机跑 28：所办自己交出 12 条 + 8 条无法验证 —— 其中 4 条是真缺陷，3 条是我的简报写错，5 条是规则本来就对
+
+**运行**：`D:\wd\vibemath开发\_oneoff\vm-slv\full-1026-083238.jsonl`（build `00dd6593`，commandcode `deepseek/deepseek-v4.1-flash`）。`DRIVE exit=0`，5 个会话（所办 + 4 名成员子会话），`SUMMARY: 5 session(s), 0 with RED checks`。所办自己的判定：**「本轮无实质残余：否」**，并列 12 条非规范行为 + 8 条无法验证。
+
+这一轮的验收价值在于：它第一次**按 ③ 的写法**（回复里同时带 `solved` 与 `vote_solved`）投闭票，从而在真机上证实了 §124 的修复。
+
+### 证实了的：一票只写一次
+成员回合回执：
+
+```json
+{"ok":true,"deliveryPath":"activation","childSessionId":"d1e2aa88-…",
+ "receipt":{"round":4,"member":"acad-01","fields":["progress","solved","vote_solved"],
+   "effects":[{"kind":"closure-vote","member":"acad-01","solved":true,"source":"reply"}]}}
+```
+
+`fields` 里有三个记录字段、其中两个与闭票相关，而 `effects` 只有 **1** 条 `closure-vote`。§124 之前这里会是 2 条。
+
+### 真缺陷（本轮修掉，全部带断言）
+1. **`vibe_v5_message` 没有发件人参数** → `from` 恒为 `"office"`，规则「成员之间可以互相通信」在实机上**无法表达**：只能由所办冒名代发。修法：新增 `member`（邮件携带谁的"声音"，省略即 office），回执同时给 `from`（声音）与 `relayedBy`（实际执笔），并附 `fromMeans` 说明两者不同——B 裁决是"成员真跑、所办代记"，**代记必须写在纸上**，否则就是伪证。
+2. **`askedWhy` 被说明承诺、回执不提供**（run 26 的 `vibe_v5_verdict_ask` 改写遗留）：`askedSource` 只写规则名（并集），不写各方贡献，于是"发言记录为空"的会议仍读作 `roster+speech`。修法：回执真的给 `askedWhy`，并逐源陈述规则与本次贡献。
+3. **`op:"reply"` 的"首选"通道在 activation/one-shot 投递下永不可达**：成员回合在 step 内就已落定，`pending` 恒 `null`，所办连试 5 次只得到 `VMU_TURN_NO_PENDING_MEMBER`。修法：拒绝的 hint 改为**说出通道**——`CHANNEL:` 说明 `reply` 只应答"被交回的提示"（caller 投递），在 activation/one-shot 下**重试永远不可能成功**，并给出 `REACHABLE INSTEAD`：让成员在**自己的回合**里投（回执里就是 `effects:[{kind:"closure-vote"}]`），同时打印本内核当前的投递路径。
+4. **`vibe_vmu_tools` 两次真实回合后仍说 `session=(none learned yet)`**，而 step 回执明明带着 `childSessionId`：学习点读的是 `lastAttribution.childId`，activation 路径不总填它，于是成员工具面在整轮里不可读。修法：**从回执自己带的 `childSessionId` 学习**（三处拼写都认），喂给 `memberSessions`，即"答案在一层之下、这一层也接住"。
+
+修复的断言：`tests/vmu-run28-findings.test.mjs` **13 passed / 0 failed**（R46a–R46m，含反向：省略 `member` 时说"office 本人在说话"）。相邻套件：`vmu-turn` 271/0、`vmu-v5r-tools` 355/0（④ 的 schema 断言从 4 键改 5 键并记明理由）、`vmu-host` 203/0。
+
+### 我的简报写错的（3 条，必须记，否则会被当成产品缺陷）
+- `vibe_v5_job` **不存在**——pack 里是 `vibe_v5_lean_job`；所办照抄后找不到该工具。
+- `settlement` **不是** step 回执的键——最接近的是 `receipt.delivery` / `pending` / `superseded`。
+- `vibe_v5_tool_help { tool: … }` **不接受** `tool`（只收 `member`）；`vibe_v5_message` 我写成 `{member,text}`，实际是 `{to,content,subject,urgent}`（现已加 `member` 作为发送者）。
+
+**教训**：简报也是被执行的接口，写错的名字会变成"产品缺陷"报上来，浪费一整轮定位。下一轮简报只从 `V5R_PACK_TOOLS` 的声明里抄参数名。
+
+### 判为"本来就对"的（5 条，记录以免重开）
+- **闭票未成立**：`votesCast:3`、`for:["acad-01"]`、`against:["res-01","res-02"]`、`cast:false`、`reason:"a member judged the question NOT solved: res-01, res-02"` —— 这是 `m-unanimous` 的**正确结果**（三人真投、两人反对），不是缺陷；所办想"替成员补票"被 `VMU_TURN_NO_PENDING_MEMBER` 拒绝也是对的（所办不能篡改成员判断）。
+- **`memberToolCalls:null`**：子会话日志不在本内核里，回执已具名说"NOT READABLE, never zero calls"。
+- **`voteFloor.setting:0` 而 `required:3`**：0 是"未设"哨兵，读门槛应读 `required`/`effective`；`source`/`formula`/`sourceMeans` 都已给出。
+- **`askedSource:"roster+speech"` 而 `speakerCount:0`**：这正是第 2 条要修的表述问题，已修（`askedWhy`）。
+- **成员回合回答与指派不符**（res-02 答成上一场景内容）：待查——可能是子会话上下文继承，需下一轮专门验。
+
+### 未验证（8 条，其中 6 条是我简报的漏洞，2 条要真下一轮）
+`settlement`（键不存在）、`memberToolCalls`（不可读）、成员侧 `vibe_vmu_tools`（不可读）、`verdict_ask` 正文（未 open）、预约会议（未创建）、`verdict_final`（未达结题）、`close`/归档（未执行）、`op:"reply"` 正向（本部署不可达）。
+
+提交：`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/tools.js`、`vibe-math-vmu/kit/handlers.js`、`tests/vmu-run28-findings.test.mjs`（新）、`tests/vmu-v5r-tools.test.mjs`。
+

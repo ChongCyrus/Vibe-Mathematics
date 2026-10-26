@@ -1205,8 +1205,15 @@ export function createTurnOrchestrator({
     }
     const open = openTurnForReport()
     if (!open) {
+      // ★★★★★★★ LIVE RUN 28 (the institute's own report, item 3): the tool description calls op:"reply" 「首选」 and
+      // this refusal said only "no member turn is open". MEASURED: under `activation`/`one-shot` delivery a member
+      // turn SETTLES inside the step, so `pending` is null for the whole run and the "preferred" channel can never
+      // open — the office retried it five times and learned nothing. The refusal now names WHICH delivery path this
+      // kernel is on and what the reachable channel is, because "no pending member" is true on both paths but only one
+      // of them makes it PERMANENT.
+      const onCallerPath = (() => { try { const p = deliver && typeof deliver.pending === 'function' ? deliver.pending() : null; return p === null || typeof p !== 'object' ? null : (typeof p.deliveryPath === 'string' ? p.deliveryPath : null) } catch { return null } })()
       fail('VMU_TURN_NO_PENDING_MEMBER', 'no member turn is open, so there is nothing for this report to answer',
-        'report while the turn is open: a step returns `awaiting:true` + memberPrompt, and this report answers THAT prompt before the next step; the fenced-json compatibility path is vibe_vmu_turn { op:"step", reply:"<one fenced json object>" }')
+        'CHANNEL: `op:"reply"` answers an AWAITING prompt, and an awaiting prompt only exists on the CALLER delivery path (a step hands the prompt back with awaiting:true, and the reply answers it before the next step). Under `activation` or `one-shot` delivery the member\'s turn SETTLES INSIDE the step — nothing is ever left pending, so this channel is permanently unreachable and retrying it cannot work. REACHABLE INSTEAD: let the member vote inside its OWN turn (`op:"step"` whose next_step asks for the closure vote), which is what the receipts show as `effects:[{kind:"closure-vote"}]`; the fenced-json compatibility path is op:"step" with reply:"<one fenced json object>". Delivery path on this kernel right now: ' + (onCallerPath === null ? 'not reported (no pending state)' : '"' + onCallerPath + '"'))
     }
     const wanted = forMember === null || forMember === undefined ? null : String(forMember)
     if (wanted !== null && wanted !== open.member) {
@@ -2497,6 +2504,16 @@ export function createTurnOrchestrator({
             ? 'not applicable: the caller played this turn in THIS kernel, so there is no child session'
             : 'the delivery seam reported no child id on this receipt (checked delivery.childSessionId, delivery.sessionId, delivery.childId) — null means NOT READABLE, not "no child"'
         })(),
+      }
+      // ★★★★★★★ LIVE RUN 28 (the institute's own report, items 4/8): AFTER TWO REAL TURNS THE MEMBER-TOOL FACE STILL
+      // ANSWERED `no live Agent for member acad-01 (session=(none learned yet))`, WHILE THE STEP RECEIPT CARRIED
+      // `childSessionId`. The learning inside `deliverAndParse` reads `lastAttribution.childId`, which the activation
+      // path does not always fill, so the map stayed empty and three member-tool faces became unreadable on the real
+      // machine for the whole run. The receipt ALREADY holds the answer one level down — it is learned here as well,
+      // from whichever spelling the receipt reported. Same family as this field's own comment ("the answer existed one
+      // layer down and did not travel"); now it travels into the map that the faces read.
+      if (memberCallsReading.childSessionId && spec && typeof spec.member === 'string') {
+        try { memberSessions.set(spec.member, memberCallsReading.childSessionId) } catch { /* diagnostics only */ }
       }
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,

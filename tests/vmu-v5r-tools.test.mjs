@@ -1640,8 +1640,11 @@ try {
   console.log('=== 7k. MESSAGE: urgent in the DEPLOYED schema + default NON-urgent ===')
   const msgHostSpec = v5rBoot.specOf('vibe_v5_message')
   const msgProps = msgHostSpec && msgHostSpec.parameters && msgHostSpec.parameters.properties ? Object.keys(msgHostSpec.parameters.properties).sort() : []
-  ok(msgProps.length === 4 && msgProps.filter((n) => n === 'urgent' || n === 'subject').length === 2,
-    '★★★ bug A 反/正：宿主真正发布的 schema 里有 subject 与 urgent（不再被静默丢弃）', msgProps)
+  // ★★★ LIVE RUN 28 (the institute's own report, item 9): the face had NO sender parameter, so `from` was always
+  // "office" and a member-to-member message could not be expressed at all. `member` is the sender now (omitted =
+  // office) and the receipt names both sides (`from` vs `relayedBy`), so the deployed schema has FIVE keys.
+  ok(msgProps.length === 5 && msgProps.filter((n) => n === 'urgent' || n === 'subject' || n === 'member').length === 3,
+    '★★★ bug A 反/正 + run-28 item 9：宿主真正发布的 schema 里有 subject、urgent 与发送者 member', msgProps)
   const mkMsgStub = () => {
     const stub = { members: { roster: () => [{ id: 'r-1', slot: 'member', state: 'live' }] }, _sent: null }
     stub.mailbox = { send: (from, payload) => { stub._sent = { from, payload }; return { ok: true, ids: ['m1'] } } }

@@ -1552,6 +1552,18 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
     ok: true, tool: 'vibe_v5_verdict_ask', meeting, chair, from: chair,
     proposition: propositionId,
     asked, askedSource: source,
+    // ★★★★★★★ LIVE RUN 28 (the institute's own report, item 5): the DESCRIPTION promised `askedWhy says why` and the
+    // receipt never carried it — a promise with no field is a described mechanism that does not exist, the exact
+    // defect class this phase keeps removing. The label `roster+speech` names the RULE (a union), not which side
+    // actually contributed, so a run with an EMPTY speech record still read "roster+speech". `askedWhy` therefore
+    // states the rule AND what each side contributed in this call.
+    askedWhy: source === 'explicit'
+      ? 'the caller named `members`, so that list IS the population (it REPLACES the roster+speech set rather than widening it): ' + asked.length + ' member(s)'
+      : (source === 'roster'
+          ? 'the meeting has a roster and NO speech on record, so the roster alone is the population (' + String(debated.rosterCount === undefined ? '?' : debated.rosterCount) + ' seated); a seated member owes a ruling even if it never spoke'
+          : (source === 'speech'
+              ? 'the meeting has no roster, so only the members on SPEECH RECORD could be reached (' + String(debated.speakerCount === undefined ? '?' : debated.speakerCount) + '); without a roster there is nobody else to ask'
+              : 'the population is the UNION of the meeting roster (' + String(debated.rosterCount === undefined ? '?' : debated.rosterCount) + ') and the speech record (' + String(debated.speakerCount === undefined ? '?' : debated.speakerCount) + ') — a seated member who never spoke still owes a ruling, and a speaker who left the roster is still reachable')),
     rosterCount: debated.rosterCount === undefined ? null : debated.rosterCount,
     speakerCount: debated.speakerCount === undefined ? null : debated.speakerCount,
     delivered, failed,
@@ -2492,8 +2504,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_message',
-    description: 'Relay a message from the office/human into the institute: to a member id, to "all", or to "voters". Delivered as per-recipient durable mail in the office voice.',
-    parameters: { to: { type: 'string', required: true }, content: { type: 'string', required: true }, subject: { type: 'string' }, urgent: { type: 'boolean' } },
+    description: 'Relay a message into the institute: to a member id, to "all", or to "voters". Delivered as per-recipient durable mail. SENDER: `member` names whose voice the mail carries (a member id, or omitted = "office"); the OFFICE is what actually relays it, so the receipt names both sides — `from` is the voice, `relayedBy` is "office". Without `member` the mail is from the office, and a member-to-member message is impossible to express.',
+    parameters: { to: { type: 'string', required: true }, content: { type: 'string', required: true }, subject: { type: 'string' }, urgent: { type: 'boolean' }, member: { type: 'string' } },
     handler: toolMessage,
   },
   {
