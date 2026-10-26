@@ -90,6 +90,12 @@ export function createChat({
   isFrozen = null,
   freezeExempt = null,
   isAdmin = null,
+  // ★ ROUND 34 — SEAT TOKENS IN THE ADMIN LIST. Measured live: `vmu.chat.admins` was `[]` everywhere, so NOBODY could
+  // administer chat (the office was refused too), and the institution's rule says the academician IS the chat
+  // administrator. A declared list of raw member ids cannot express that (ids are minted per institute: `r-acad`,
+  // `acad-01`, …) — but a SEAT can (`chair`). `seatOf(memberId) → slot|null` lets the SAME declaration carry either
+  // form; the list is still the only policy, so `enforced` keeps naming `vmu.chat.admins` (no seam is injected).
+  seatOf = null,
   // G1 (Round 7): the optional PRIVATE-MESSAGE seam `{ senderOf(id) }`. With it, `supplement()` verifies that the
   // signer really sent the private message; without it the record says `authorship:'claimed-unverified'` — the
   // face never pretends it verified something it could not.
@@ -192,7 +198,16 @@ export function createChat({
     const id = member === null || member === undefined ? '' : String(member)
     if (!id) return false
     if (typeof isAdmin === 'function') return !!isAdmin({ member: id })
-    return admins.has(id)
+    if (admins.has(id)) return true
+    // A declared SEAT token (`chair`) is satisfied by whoever currently sits in it; a seat that cannot be resolved is
+    // simply not a match (the declaration is not a promise that somebody is seated).
+    if (typeof seatOf === 'function') {
+      try {
+        const slot = seatOf(id)
+        if (slot !== null && slot !== undefined && admins.has(String(slot))) return true
+      } catch { /* an unreadable roster is NOT an admin grant */ }
+    }
+    return false
   }
 
   /** The freeze predicate, normalised: boolean, `{frozen}`, or ballot-style `{frozen, ballotId}`. */

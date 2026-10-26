@@ -5372,3 +5372,50 @@ run 32 第二轮回 `res-01` 时 step 回执给的是：
 - **续会话（F8）**：只有"内核保留了 activation"被证实，"下一轮真的进了同一个 child"仍**未**——task-23 在测宿主前置。
 - **连排、禁言/配额、席位闸门**：本轮 build 里要么没有、要么没被调用，全部推到 run 34。
 - 成员子会话本轮仍在跑自己的 Lean 流（`t-3` 等），与本轮"只测机制"的任务不同——**不是缺陷**，但读成员正文时必须核对来源（同一现象 run 32 已有记录）。
+
+---
+
+## §134 真机跑 34（build `891a5bdd`，2026-10-26 23:27 起）
+
+**读数（原始回执）**：`DRIVE exit=0`、`durationSec 1502`、`toolCalls 28`、`transcriptEvents 173`、`tokenTotal 9,166,281`、`tokenCapHit:false`、`SUMMARY: 4 session(s), 0 with RED checks`；产物 `_oneoff/vm-slv/full-1026-232717.jsonl`（29,009,252 B / 63,184 行）；机器读数 `NO_FENCE=28 UNKNOWN_FIELD=29 FIELD_NOT_APPLICABLE=4 BAD_JSON=0`；`cleanup: clone_gone=True C_free_GB=10.08`。提取器 `D:/_tmp/r34/dig34.mjs` → `dig34.txt`（338 对调用/回执）。
+
+### §134.1 决算：三条真缺陷（本轮已修）+ 两条「不是缺陷」
+
+| # | 读数（真机原文） | 机制定位 | 判决 |
+|---|---|---|---|
+| ① | `vibe_vmu_chat{action:"mute", member:"res-02", by:"office", durationMs:60000}` ⇒ `VMU_INVALID_ARGUMENT "mute needs a member id"` / hint `pass { member }`（调用者明明传了）；`status().muted` 恒 `[]`；被"禁言"的 res-02 照常发言（`msg-5`） | `vibe-math-vmu/tools/chat.js:48` 的 `const need = (v, what) => { if (…) throw … }` **没有 `return v`**，而所有调用点把 `need(…)` 当值传给内核（`chat.mute(need(member,'member'), …)`、`chat.send(need(by,'by'), need(text,'text'), …)`）⇒ 内核收到 `undefined`，回执是内核对自己没拿到参数的拒绝。同族 `tools/mailbox.js:38`、`meeting.js:70`、`minutes.js:32`、`panel.js:35`、`task.js:28` 的 `need` 都以 `; return v` 收尾 ⇒ **chat 是唯一漏掉的** | ✅ 已修（`return v` + 说明"validator 又是 accessor 时必须 RETURN"） |
+| ② | `vibe_vmu_chat{action:"mute", …}` 修好①后暴露第二层：`VMU_CHAT_NOT_ADMIN "office is not a chat admin: mute is refused"`；`chat.status().admins` 恒 `[]`；v5r 默认值里写的是 `["acad"]` —— 一个**任何名册都不可能有的字面 id**（真实 id 形如 `r-acad`/`acad-01`） | `vibe-math-vmu/packs/v5r/settings/defaults.json` 的 `vmu.chat.admins: ["acad"]`；`kernel/chat.js:195` 默认 `isAdmin = admins.has(id)`；`kernel/index.js:1262` 建 chat 时没有 `isAdmin`/席位信息 ⇒ **群聊治理面从出生起无人可用**（office 也拒），与 v5r 规则「院士为群管理员，可设权限/发言次数/禁言」不符 | ✅ 已修（`seatOf` seam：声明里可写 **SEAT token**；v5r 默认改 `["chair"]`；`adminEnforced()` 仍点名 `vmu.chat.admins`，不注入 `isAdmin` 以免丢掉归因） |
+| ③ | `[当前小任务] 该来源未提供：该成员（res-02）在 progress 轨上还没有记录（records.list 报 6 条可见表头）`，而 `r-14`（`track:"progress"`、`owner:"res-02"`、`status:"live"`）就在该轨里 | `kernel/records.js:605-615` 的 head list 按 `updatedAt` **升序**排序后 `slice(0, cap)`（`vmu.records.headListAt` 默认 7）⇒ 状态板最需要的"最新一条"**恰是被截掉的那一条**；板子只看到 6 条可见表头就断言"没有记录" | ✅ 已修（板子改用 `records.list({track:'progress', limit:0})` 读全轨；若仍被截断，`why` 里写明"该轨共 N 条，可见的 M 条是被截断后的"） |
+| ④ | `sequenceMeans` 写「`next` is the id of the meeting that follows」，实际 `next` 是**描述符** `{"type":"ordinary","subject":"第二场：连排验收"}`；open 回执 `sequence{index:0,total:3,next:{…}}` | 措辞错：会议的 id 只在真正召集时生成，声明阶段没有 id | ✅ 已修（改成"SEQUENCE ROW …一个 id 只在该会议真正被召集后才存在，驱动拿这一行去召集并从 open 回执读新 id"） |
+| ⑤ | `[总任务]` 显示的是 `vibe_v5_start{problem}` 的原文，与 pack 默认的 `vmu.turn.objective` 长文本不同；所办据此记"板子与设置不一致" | **不是缺陷**：`packs/v5r/tools.js:2745` 的 `vibe_v5_start` 本来就会 `applyDeclaredSetting(kernel,'vmu.turn.objective', problem)` 覆盖该键；板子读到的就是**当前值** | ❌ 不改（已写进回归测试，防再次误报） |
+| ⑥ | 所办称"状态板看不到工具写的 progress（已证）" | 与③同因（截断），修好③后自然成立 | ❌ 与③合并 |
+
+### §134.2 本轮改动（都带回归）
+
+- `vibe-math-vmu/tools/chat.js`：`need` 返回其值（+19 行长注释说明"会抛不等于会传"）。
+- `vibe-math-vmu/kernel/chat.js`：新增 `seatOf` 选项；`adminOf()` 在成员 id 之外解析 **SEAT token**（未解析到的席位不算授予）。
+- `vibe-math-vmu/kernel/index.js`：建 chat 时注入 `seatOf`（从活名册取 slot），注释写明"不注入 `isAdmin`，以免 refusals 丢掉 `vmu.chat.admins` 归因"。
+- `vibe-math-vmu/packs/v5r/settings/defaults.json`：`vmu.chat.admins: ["chair"]` + `_chatAdmins` 说明（含 run 34 的实测）。
+- `vibe-math-vmu/settings/schema.js`：`vmu.chat.admins` 的 doc 补"成员 id 或 SEAT token"。
+- `vibe-math-vmu/kernel/turn/index.js`：状态板 ④ 改读全轨（`limit:0`）并在截断时点名条数。
+- `vibe-math-vmu/packs/v5r/tools.js`：`sequenceMeans` 的 `next` 措辞。
+- 新回归 `tests/vmu-run34-findings.test.mjs`（25 条断言，5 组：chat 的 `need` 是 accessor、板子能看见被截断的最新行、`sequenceMeans` 措辞、`总任务` 跟随活设置、`chair` 席位即群管理的声明路径）。
+
+### §134.3 我这轮简报的错（第 5、6 次同类）
+
+1. 简报让先 `vibe_v5_hire` 自建所再 hire —— 而 `vibe_v5_start{problem, researcherCount}` 已经自动建所并 hire，于是 `VMU_RESOURCE_BUDGET "role slot chair is full: 1/1"`。**教训：建所/入职的入口必须先读工具声明与既有回执形态，不能假设"从零建所"。**
+2. `vibe_v5_meeting{sequence:[…]}` 的元素键写成 `agenda` —— 合法键是 `type,kind,materials,subject,size,secretary,roster,reason,at`。**教训：`check-task-brief` 只查"名字存在"，不查"嵌套元素里这个键合法"，嵌套形状必须在简报里逐字抄声明。**
+
+### §134.4 门禁读数（本轮收口）
+
+- `node tests/vmu-run34-findings.test.mjs` ⇒ `=== VMU RUN 34 FINDINGS: 25 passed, 0 failed ===`
+- 相邻：`VMU CHAT 79/0`、`VMU CHAT FALSIFY 8/0`、`VMU TURN 271/0`、`VMU HOST 203/0`、`RUN31 STATUS BOARD 58/0`、`V5R TOOLS 359/0`。
+
+### §134.5 无法验证项
+
+- 禁言生效的**行为**（被禁言者第二次 `say` 应被拒）：本轮只证到"mute 落进账本 + 主席有权"，没让成员在被禁言后再发一次言。
+- `vmu.chat.speakQuota`/`freezeExemptAdmins`/`muteDefaultMs` 三个同族开关仍未验。
+- 群管理其余动作（`unmute`/`freeze`/`admin` 增删/kick）未验。
+- 状态板 ③ 的"最新一条"在选择上是否受 `headSort` 部署值影响，只测了默认。
+
+### §134.6 本轮无实质残余：否

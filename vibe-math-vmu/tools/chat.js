@@ -45,7 +45,17 @@ export function makeChatSpec({ param, refused, TOOL_NAMES, kernel }) {
       // ★ Round 30: the refusal NAMES THE ACTION it belongs to, so the message and the face's contract cannot
       // disagree again (`send` requires `by`/`text`; the description now says so too).
       // ★ Round 30: the refusal NAMES THE ACTION, so the message and the face contract cannot disagree again.
-      const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required (action ' + String(action) + ')'), { code: 'VMU_INVALID_ARGUMENT' }) }
+      // ★★ RUN 34 (measured on a real machine): THIS HELPER USED TO VALIDATE AND RETURN NOTHING. Every call site
+      // passes it straight into the kernel (`chat.mute(need(member, 'member'), …)`, `chat.send(need(by,'by'),
+      // need(text,'text'), …)`), so the kernel received `undefined` for member/by/text and refused with its own
+      // message — "mute needs a member id" — while the caller had passed `member:"res-02"`. The face looked like it
+      // read a parameter it never forwarded: mute never applied, unmute never lifted, and a muted member still spoke.
+      // The lesson is the same one the receipt rules are for: a validator that is also supposed to be an accessor
+      // must RETURN the value; "it threw when wrong" is not enough.
+      const need = (v, what) => {
+        if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required (action ' + String(action) + ')'), { code: 'VMU_INVALID_ARGUMENT' })
+        return v
+      }
       try {
         const chat = kernel.chat
         if (!chat) return refused('VMU_ENGINE_UNAVAILABLE', 'the chat primitive is not mounted in this kernel',

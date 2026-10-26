@@ -1239,11 +1239,19 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
     current = Object.assign(gap('未指定成员：没有成员 id，无法定位「该成员最近的 progress 记录」'), { source: "records 的 progress 轨" })
   } else {
     let items = null
+    let progressEnvelope = null
     try {
-      const listed = readRecords({ track: 'progress' })
+      // ★ LIVE RUN 34 (the office's board, read against the ledger): `records.list` truncates the head list to
+      // `vmu.records.headListAt` (7 by default) AFTER sorting by `updatedAt` ASCENDING - so the rows a status board
+      // needs ("this member's MOST RECENT progress") are exactly the rows the cap drops. Measured: the board printed
+      // 「该成员（res-02）在 progress 轨上还没有记录（records.list 报 6 条可见表头）」 while `r-14` (owner res-02,
+      // track progress, live) was the newest of 7 rows. The board is a kernel-internal reader, not a wire surface, so
+      // it asks for the whole track (`limit: 0` means "all", `kernel/records.js:606`) instead of inheriting the head
+      // budget; a still-truncated answer names the truncation in `why` rather than reading as "nothing here".
+      const listed = readRecords({ track: 'progress', limit: 0 })
       if (isPromise(listed)) current = Object.assign(gap('progress 轨不可读：records.list() 返回了 Promise（状态板只读同步账本）'), { source: "records 的 progress 轨" })
       else if (Array.isArray(listed)) items = listed
-      else if (listed && Array.isArray(listed.items)) items = listed.items
+      else if (listed && Array.isArray(listed.items)) { items = listed.items; progressEnvelope = listed }
       else current = Object.assign(gap('progress 轨不可读：records.list({track:"progress"}) 的返回里没有 items 数组'), { source: "records 的 progress 轨" })
     } catch (e) {
       current = Object.assign(gap('progress 轨不可读：' + String((e && e.message) || e)), { source: "records 的 progress 轨" })
@@ -1251,7 +1259,11 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
     if (items !== null) {
       const mine = items.filter((it) => it && String(it.owner === undefined || it.owner === null ? '' : it.owner) === member.trim())
       if (mine.length === 0) {
-        current = Object.assign(gap('该成员（' + member.trim() + '）在 progress 轨上还没有记录（records.list 报 ' + String(items.length) + ' 条可见表头）'),
+        // A truncated list must never be reported as "this member has no records": the count we saw and the count the
+        // ledger holds are two different claims (run 34's defect), so the reason names both.
+        const seenCount = String(items.length)
+        const truncatedTo = progressEnvelope && progressEnvelope.truncated === true ? '；该轨共 ' + String(progressEnvelope.available) + ' 条，可见的 ' + seenCount + ' 条是被截断后的' : ''
+        current = Object.assign(gap('该成员（' + member.trim() + '）在 progress 轨上还没有记录（records.list 报 ' + seenCount + ' 条可见表头' + truncatedTo + '）'),
           { source: "records 的 progress 轨" })
       } else {
         const newest = mine.slice().sort((a, b) => (stampMs(a) === null ? -1 : stampMs(a)) - (stampMs(b) === null ? -1 : stampMs(b)))[mine.length - 1]

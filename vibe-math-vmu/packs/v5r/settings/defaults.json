@@ -29,7 +29,8 @@
     "_objective": "PHASE 7 ROUND 19 — 'WHAT IS THIS INSTITUTE RESEARCHING' IS PACK POLICY (red line 1), NOT FRAMEWORK POLICY. The declaration's default is the placeholder '（尚未设定）', and the charter interpolates the value verbatim; a real run showed members reading that placeholder and (correctly) refusing to invent a problem from the turn's `why`. This institution therefore carries its own objective in the VALUE layer: a small, definitely-true claim with an explicit acceptance standard — and the members have already demonstrated that they judge it honestly (they voted false while the evidence was incomplete). MEASURED READ PATH: the template interpolation `{{ setting:vmu.turn.objective }}` is resolved at ASSEMBLY time from the call's settings (probe: passing a marker in ctx.settings replaced the value), and the turn loop passes its settings view at kernel/turn/index.js:741 — so the value layer is both sufficient and the right owner.",
     "vmu.turn.objective": "本所本期目标：确立并证明『前 n 个奇数之和的封闭形式 n²』——即对任意正整数 n，1 + 3 + 5 + … + (2n−1) = n²；验收标准是给出完整的四步数学归纳证明（基础情形 n=1、归纳假设、归纳步 n²+(2(n+1)−1)=(n+1)²、结论），并把证明归档进本所成果库。",
 
-    "vmu.chat.admins": ["acad"],
+    "_chatAdmins": "ROUND 34 (measured live): the value here used to be \"acad\" — a literal member id that no roster can ever contain, because ids are minted per institute (`r-acad`, `acad-01`, …). Result: `admins` was effectively empty, EVERY verb was refused (`VMU_CHAT_NOT_ADMIN`) for everyone including the office, and the institution's own rule (「院士为群管理员，可设权限/发言次数/禁言」) had no mechanism behind it. The list now carries a SEAT token, which `kernel/chat.js` resolves through the `seatOf` seam `kernel/index.js` injects from the live roster: `chair` means 'whoever sits in the chair slot'. A raw member id still works (and is what `{action:\"admin\"}` appends).",
+    "vmu.chat.admins": ["chair"],
     "vmu.chat.speakQuota": 0,
     "vmu.chat.muteDefaultMs": 0,
     "vmu.chat.freezeExemptAdmins": true,

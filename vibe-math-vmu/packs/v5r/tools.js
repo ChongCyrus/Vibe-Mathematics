@@ -2188,7 +2188,7 @@ function toolMeeting(args = {}, { kernel } = {}) {
     // "how many more meetings were declared" from the prose.
     sequence: opened && opened.sequence !== undefined ? opened.sequence : null,
     sequenceMeans: opened && opened.sequence !== undefined
-      ? 'the meetings after this one were declared IN THIS CALL: `index` is this meeting\'s position (0-based), `total` counts it, and `next` is the id of the meeting that follows (null = last). Advancing is decided by the call that declared them, not by a settings key, so `enforced` names no policy for it.'
+      ? 'the meetings after this one were declared IN THIS CALL: `index` is this meeting\'s position (0-based), `total` counts it, and `next` is the SEQUENCE ROW of the meeting that follows (`{type,kind,subject}` - the declaration, not an id: an id exists only once that meeting is actually convened, and the driver takes the row, convenes it, and reads the new id from the open receipt; null = last). Advancing is decided by the call that declared them, not by a settings key, so `enforced` names no policy for it.'
       : null,
     subjectGate: subjectGate ? { allowed: true, applicable: subjectGate.applicable === true, form: subjectGate.form || null,
       proofVia: subjectGate.proofVia || null, provenance: subjectGate.provenance || null,

@@ -1002,7 +1002,7 @@ vmu.packs.active: [v5r]
 | `vmu.prompts.overrides` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 语言无关覆盖 {section:text}（合并【在调用方之下】⇒ 调用方仍可胜出，且合并被上报） |
 | `vmu.prompts.overridesByLang` | object | `[object Object]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/prompt/index.js` | 语言级覆盖 {section:{lang:text}}；解析出的语言命中时【优先于语言无关覆盖】 |
 | `vmu.naming.conflictPolicy` | enum | `refuse` | `refuse`∣`suffix` | 会话 | H1 | office | ✅ 已接线 | `kernel/library.js` | 命名冲突策略（★ 只对【显式传入 record.id】生效：显式点名才是对名字的主张；由标题派生的名字不算冲突，因为同标题不同内容正是本面的内容身份语义 ✓） |
-| `vmu.chat.admins` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/chat.js` | 群聊管理员名单；未列者执行管理动作 ⇒ 具名拒 VMU_CHAT_NOT_ADMIN |
+| `vmu.chat.admins` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/chat.js` | 群聊管理员名单（成员 id 或 SEAT token，如 chair）；未列者执行管理动作 ⇒ 具名拒 VMU_CHAT_NOT_ADMIN |
 | `vmu.chat.speakQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/chat.js` | 每人发言次数上限（0＝不限；超限具名拒 VMU_CHAT_QUOTA_EXCEEDED） |
 | `vmu.chat.speakQuotaWindowMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/chat.js` | 配额窗口（0＝整场不重置） |
 | `vmu.chat.muteDefaultMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/chat.js` | 默认禁言时长（0＝无到期，需显式解除） |

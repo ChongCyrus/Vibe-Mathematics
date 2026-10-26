@@ -978,7 +978,7 @@ const CORE_DEFS = Object.freeze([
   // (never silently "working"). Families: vmu.chat.* / vmu.mailbox.* / vmu.panel.* / vmu.resume.* / vmu.human.*
   // / vmu.control.* / vmu.math.adapters.* / vmu.math.jobs.*.
   // chat (v5r-reader-c · kernel/chat.js) — 管理员/发言配额/禁言/冻结豁免/审计环形上限
-  { key: 'vmu.chat.admins', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '群聊管理员名单；未列者执行管理动作 ⇒ 具名拒 VMU_CHAT_NOT_ADMIN' },
+  { key: 'vmu.chat.admins', type: 'stringList', def: [], hot: HOT.H1, who: 'office', doc: '群聊管理员名单（成员 id 或 SEAT token，如 chair）；未列者执行管理动作 ⇒ 具名拒 VMU_CHAT_NOT_ADMIN' },
   { key: 'vmu.chat.speakQuota', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '每人发言次数上限（0＝不限；超限具名拒 VMU_CHAT_QUOTA_EXCEEDED）' },
   { key: 'vmu.chat.speakQuotaWindowMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '配额窗口（0＝整场不重置）' },
   { key: 'vmu.chat.muteDefaultMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: '默认禁言时长（0＝无到期，需显式解除）' },

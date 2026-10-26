@@ -1259,7 +1259,16 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // ROUND 2 (task-14): the group-chat policy face. The freeze predicate is LEFT to the module's documented default
   // ("a kernel with no ballot has no freeze") rather than faked here; `isAdmin` likewise falls back to the declared
   // `vmu.chat.admins`. A real freeze source is wired only when a ballot face exposes one (named in the report).
-  const chat = createChat({ clock: guardedClock, log, settings: settingsView, bus })
+  // ROUND 34: `seatOf` lets `vmu.chat.admins` name a SEAT (`chair`) instead of a minted member id — see chat.js. Without
+  // it the declared list could only ever hold ids that no deployment can know in advance, which is why the chat
+  // administration surface was unreachable in EVERY live run (measured: `admins: []`, every verb not-admin).
+  const chat = createChat({ clock: guardedClock, log, settings: settingsView, bus, seatOf: (id) => {
+    try {
+      const rows = members && typeof members.roster === 'function' ? members.roster() : []
+      const row = rows.find((m) => m && String(m.id) === String(id))
+      return row ? String(row.slot) : null
+    } catch { return null }
+  } })
   // ROUND 2 (task-14): the durable per-recipient mailbox and the member state panel. `resolveAudience` is a REAL
   // seam only for `to:'all'` (the roster); `to:'voters'` has no ballot context in this assembly, so it REFUSES by
   // name instead of quietly handing back the roster (a voter set that is not the voter set is worse than a refusal).
