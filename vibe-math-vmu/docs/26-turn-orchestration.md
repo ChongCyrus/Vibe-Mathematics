@@ -975,3 +975,25 @@ apply"，所办把它读成"成员什么都没做"，与它已经读到的记录
 `counts.replyParseFailedLast`（`vibe_vmu_turn{op:"status"}` 可读）同字段，并把 `means` 改成"NOT a claim that nothing
 happened"。判据：同一回合里成员写过的记录轨仍在、拒绝句不再出现 nothing-to-apply 的断言、`sideEffectsUnverified`
 在回执与 status 两处都能读到。
+
+## ROUND 39（run 39）— 回执通道写下的行必须有作者；应用失败也必须说自己没看见什么
+
+run 39 是一次定向复验（329 秒、42 次根会话调用、0 RED），它确认了 ROUND 38 的诚实拒绝句，也暴露出两件事。
+
+### F-10 回执通道写的行没有作者
+
+`progress` 这个回执字段在 `FIELD_OWNERS`（`kernel/turn/index.js:51`）里派发到 records 面的 `put`，而 `put` 的作者来自 `by`
+（落盘行的 `owner` 就是 `rec.by`，`kernel/records.js:346`）。成员通过**围栏 JSON** 写进度时，`by` 是 `null`，于是
+"该成员最近一条"（状态板 ④）与 `read_library{member}` 都看不见它——同一回合里用工具面（带 `member`）写的行却正常。
+**修法**：`apply()` 新增 `attributedFor(d, payload)`，只对 records 面的 `put` 且 payload 是没有非空 `by` 的对象补
+`by: <本轮成员>`；显式作者不被覆盖，非对象 payload 原样通过；派发条目带 `attributedTo`/`attributionMeans`，step 回执
+新增 `attributed: [{field, by}]` + `attributionMeans`（"内核用回合补作者，因为工具面收 `member`、回执通道应当同义"）。
+判据：`tests/vmu-run39-attribution.test.mjs` ①（行真的带 `by`、回执真的说是谁）②（显式作者不被覆盖）③（非对象不伪造）。
+
+### F-11 应用失败的披露必须覆盖每一条失败路径
+
+run 39 的第 4 步 `VMU_TURN_NO_FENCE` 带了 `sideEffectsUnverified`，而第 6 步的 `VMU_INVALID_ARGUMENT`
+（`kind "undefined" is not allowed`）没有，尽管同一回合的成员已经用工具面真写过一行。**修法**：`runFrom` 里把
+`dispatchReply` 包进 try/catch，任何应用期抛出的拒绝若自身没带披露，就补 `sideEffectsUnverified:true` 与
+`sideEffectsMeans`（"这是关于应用回执对象的拒绝，不是关于成员有没有干活：子会话里跑过的工具从这里看不见——去读记录轨"）。
+判据：`tests/vmu-run39-attribution.test.mjs` ④（face 真的被调到、拒绝保留自己的码、两个披露字段都在）。

@@ -5746,3 +5746,59 @@ PASS 505 FAIL 0`**（suites 441 · probes 64）。
 ### §139.6 本轮无实质残余
 
 否。
+
+## §140 真机跑 39（build 2c2bc125，定向复验）
+
+### §140.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `slv-p13-cc.ps1 -CloneName slvp39 -Port 19637 -TimeoutSec 2400 -MaxTokens 10000000` |
+| 结果 | `DRIVE exit=0`，`durationSec 329`，根会话 `toolCalls 42`，`transcriptEvents 243` |
+| token | `tokenTotal 3,245,352`（cap 10,000,000，未撞） |
+| 会话 | 3（根 + 院士/研究员子会话），`0 with RED checks` |
+| jsonl | `_oneoff/vm-slv/full-1027-043208.jsonl` = 5,590,070 B / 8,915 行 |
+| 机器读数 | `NO_FENCE=132 UNKNOWN_FIELD=43 FIELD_NOT_APPLICABLE=46 BAD_JSON=72` |
+| 清理 | `clone_gone=True`，C 盘剩 10.67 GB |
+| 日志 | 保全在 `D:\_tmp\slv-phase5\slv-logs\…20261027-043813` |
+
+### §140.2 判决表
+
+| 编号 | 关注点 | 判决 | 证据 |
+| --- | --- | --- | --- |
+| F-9 | 形不对的拒绝句不许说"什么都没发生" | ✅ 通过 | 第 4 步 `VMU_TURN_NO_FENCE` 原文写着"本回合没有可用的回执对象。成员在自己会话里做过什么在这里看不到——下结论说'什么都没发生'之前，去读记录轨（check the record tracks）"，并带 `sideEffectsUnverified`/`sideEffectsMeans` |
+| F-6 | 归档会议可被三个读面一致地读到 | ✅ 通过 | `status` 回 `archived:true,state:"closed"`；`list` 回 `archivedMeetings:["m1"]`；`summary` 可读 |
+| F-4 | 解析失败也能读到成员原话 | ✅ 通过 | `vibe_vmu_turn{op:"status"}` 的 `counts.replyParseFailedLast.replyExcerpt` 有原文；成功回合的 `receipt.replyExcerpt` 也在 |
+| F-2 | 长蓝图三面保全文 | ✅ 通过 | `propose → adopt(draft r-6) → read`，`inForce.bytes=4958`，三个二级标题与哨兵都在 |
+| 禁言 | 禁言在下一轮是否仍生效 | ⚠️ 未判定 | 机制侧第一轮回 `VMU_CHAT_MUTED` 具名拒；第二轮所办只抄了"又发了一次"的散文，没有回执原文 ⇒ 无法判断是"禁言到期/被解禁"还是"没生效" |
+| F-10 | 回执通道写的行带作者 | ❌ 新缺陷 ⇒ **本轮已修** | r-3/r-4 通过围栏 `progress` 写入 ⇒ `owner:null`；同回合工具面写入的 r-5 正常 |
+| F-11 | 应用失败的披露要覆盖所有失败路径 | ❌ 新缺陷 ⇒ **本轮已修** | 第 6 步 `VMU_INVALID_ARGUMENT`（`kind "undefined" is not allowed`）没有 `sideEffectsUnverified`，而同回合 r-5 确已入库 |
+
+### §140.3 本轮代码
+
+1. **F-10**：`vibe-math-vmu/kernel/turn/index.js` 的 `apply()` 新增 `attributedFor(d, payload)`（只对 records 面的 `put`、只补缺失作者、不覆盖显式 `by`、非对象不伪造），派发条目带 `attributedTo`/`attributionMeans`；step 回执新增 `attributed:[{field,by}]` 与 `attributionMeans`。
+2. **F-11**：`runFrom` 把 `dispatchReply` 包进 try/catch，应用期拒绝若没带披露就补 `sideEffectsUnverified`/`sideEffectsMeans`。
+3. 新测试 `tests/vmu-run39-attribution.test.mjs`（12/0，五组：作者真的落到 face 且回执点名、显式作者不被覆盖、非对象不伪造、应用拒绝带披露、`FIELD_OWNERS` 证明这是真派发）。
+4. 相邻套件：`TURN 272/0`、`TURN REPLY TOOL 38/0`、`RUN35 READOUTS 26/0`、`RUN36 MEETING CLOSE 39/0`、`RUN37 ARCHIVE READS 17/0`。
+
+### §140.4 逐族门禁
+
+T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修 F-10/F-11 后我自己造成两条红，都在本轮修净：(a) `vmu-settings` 因为我在 `kernel/turn/index.js` 的注释里写了点号键 `vmu.records.put` 而红（扫描器不剥注释）���改成「records 面的 `put`」后 49/0；(b) `vmu-planned-settings` 因为 docs/26 的散文里出现同一个点号键，被 planned-settings 生成器当成「文档承诺但未实现的设置键」而红（114 vs 113）⇒ 同样改措辞后 `regen-all --write` → `--check 16/16 in sync`、`VMU PLANNED SETTINGS: ALL GREEN (planned=113)`。`preflight` ⇒ `PREFLIGHT: PASS`、`DOC LINT: PASS`。
+
+### §140.5 我简报的错（第 N 次同类）
+
+1. 第 9 步写 `vibe_v5_feedback{action:"add"}`，真实参数是 `op:"add"`（`action` 不在声明里）⇒ 所办踩了一次，回执 `VMU_INVALID_ARGUMENT`；
+2. 第 6 步写 `vibe_v5_blueprint{action:"read", id:<adopt 后 id>}`，正确的是**草案 id**（r-6）——采纳后 id 是 r-7，读草案才是"保全文"的证据。
+两条都是"简报假设了工具没有的字段"，`check-task-brief` 只能校验名字与必填，校验不了"语义上该传哪个 id"。
+
+### §140.6 无法验证（如实）
+
+1. 禁言在"下一轮"是否仍生效（见 §140.2）；
+2. 回执通道写入的作者修复在**真机**上的效果（本轮 fix 之后未跑，run 40 定向验）；
+3. `vibe_vmu_meeting{action:"close"}` 之后连开第二场会的状态机（本轮未触发）；
+4. 成员在子会话里跑 Lean 时围栏失败的真实形态（本轮成员没跑 Lean）；
+5. `attributed` 字段在 `deliverMode:'subagents'` 真机下是否同样出现（本轮是根会话派发、子会话执行）。
+
+### §140.7 本轮无实质残余？
+
+**否。** F-10/F-11 已修但未真机复验；禁言的跨轮语义未判定。

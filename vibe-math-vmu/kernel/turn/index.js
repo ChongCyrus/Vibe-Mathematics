@@ -2331,6 +2331,23 @@ export function createTurnOrchestrator({
       if (typeof payload !== 'string' || payload.trim() === '') return null
       return { meeting: boundMeeting, member: String(memberId), text: payload }
     }
+    // ★★★★★★★ ROUND 39 (live run 39 / F-10) — A ROW WRITTEN THROUGH THE REPLY CHANNEL KEPT NO AUTHOR.
+    // The `progress` reply field dispatches the records face's `put`, and `put` takes the author from `by` (the durable row's
+    // `owner` IS `rec.by`, kernel/records.js:346). A member who wrote through the fenced json — the documented
+    // envelope — therefore produced a row with `by: null`; the per-member library read and the status board's
+    // "该成员最近一条" both filter on the author, so the institute saw a row nobody owned while the tool face (which
+    // takes `member`) wrote the same kind of row correctly. The turn ALREADY KNOWS whose turn it is: the author is
+    // supplied here, and the model is not asked a second time to repeat its own id in json.
+    const attributedFor = (d, payload) => {
+      if (d.face !== 'vmu.records' || d.op !== 'put') return null
+      if (memberId === null || memberId === undefined) return null
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null
+      const by = payload.by
+      if (typeof by === 'string' && by.trim() !== '') return null
+      if (by !== undefined && by !== null) return null
+      return Object.assign({}, payload, { by: String(memberId) })
+    }
+    const ATTRIBUTION_MEANS = 'the author of this row is the member whose turn it is: the turn already knows whose turn it is, so the row is attributed here instead of demanding the model write its own id into the reply json'
     const executed = []
     const skipped = []
     // ★ PHASE 12 / run 35 item ② follow-up (my own note was a LIE): the skip note said "the line stays in the round state
@@ -2376,9 +2393,10 @@ export function createTurnOrchestrator({
       }
       const composed = composedFor(d, d.payload)
       const onBehalf = composed !== null
+      const attributed = onBehalf ? null : attributedFor(d, d.payload)
       let res
       try {
-        res = await fn(onBehalf ? composed : d.payload, { field: d.field, face: d.face, op: d.op })
+        res = await fn(onBehalf ? composed : (attributed || d.payload), { field: d.field, face: d.face, op: d.op, ...(attributed ? { attributedTo: String(memberId) } : {}) })
       } catch (e) {
         if (e && e.code === 'VMU_NO_OPEN_MEETING') {
           // ★ PHASE 9 / round 7: the real reason for the measured failure was NOT "meetings is broken": the member
@@ -2396,6 +2414,7 @@ export function createTurnOrchestrator({
       counts.dispatched += 1
       const entry = { field: d.field, face: d.face, op: d.op, result: res }
       if (onBehalf) { entry.onBehalf = true; entry.onBehalfMeans = ON_BEHALF_MEANS; entry.composed = { meeting: composed.meeting, member: composed.member } }
+      if (attributed) { entry.attributedTo = String(memberId); entry.attributionMeans = ATTRIBUTION_MEANS }
       executed.push(entry)
     }
     // ROUND 394: the remaining recorded fields used to be RECOGNISED AND THEN DISCARDED - a model that wrote prioritize,
@@ -2694,7 +2713,22 @@ export function createTurnOrchestrator({
         } catch { /* diagnostics must not replace the refusal */ }
         throw e
       }
-      const tail = await dispatchReply({ turn, parsed, attributedTo: attributedTo || turn.member, rawText: raw })
+      // ★★★★★★★ ROUND 39 (live run 39 / F-11) — THE SIDE-EFFECT DISCLOSURE BELONGED TO EVERY APPLY-REFUSAL, NOT TO ONE CODE.
+      // Run 39's own finding: a turn whose `progress` field was refused with `VMU_INVALID_ARGUMENT` carried NO
+      // `sideEffectsUnverified`, while that same turn's member had already written a row through the tool face — so a
+      // reader could conclude "refused, therefore nothing happened" and be wrong. The shape refusals (NO_FENCE/BAD_JSON)
+      // already carry the disclosure; an APPLY refusal deserves the same sentence, because the child session is
+      // equally invisible from here.
+      let tail
+      try {
+        tail = await dispatchReply({ turn, parsed, attributedTo: attributedTo || turn.member, rawText: raw })
+      } catch (e) {
+        if (e && typeof e === 'object' && e.sideEffectsUnverified !== true) {
+          e.sideEffectsUnverified = true
+          e.sideEffectsMeans = 'this refusal is about APPLYING the reply object, not about whether the member worked: the fields that could not be applied were not applied, but a member turn played by an independent child session MAY have run tools this kernel cannot see from the parent side — read the record tracks (vibe_v5_read_library / vibe_v5_inbox) before treating this as "nothing happened"'
+        }
+        throw e
+      }
       return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
         replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX), replyLength: rawText.length,
         replyExcerptMeans: 'the reply as the member wrote it, bounded (a receipt is not a log file); `fields` below is what the framework could use from it, so a field missing here is visible as prose instead of silently absent', ...tail }
@@ -3433,6 +3467,15 @@ export function createTurnOrchestrator({
         // had said. A COUNT is a diagnostic that costs nothing and tells nothing; the detail travels with it, BOUNDED.
         skippedDetail: r.skipped.slice(0, 5),
         skippedDetailTruncated: r.skipped.length > 5,
+        // ★★★★★★★ ROUND 39 (live run 39 / F-10) — THE AUTHOR THE KERNEL SUPPLIED MUST TRAVEL TO THE RECEIPT.
+        // The dispatch entries carry `attributedTo`/`attributionMeans`, and this receipt reduced `executed` to a COUNT —
+        // the same defect family as run 37's count-only `skipped`: a mechanism that decided something and a receipt that
+        // cannot name it. Present ONLY for rows whose author the kernel had to supply; empty means the reply named its
+        // own author or nothing needed attributing (never that attribution was attempted and failed silently).
+        attributed: (r.executed || []).filter((e) => typeof e.attributedTo === 'string').map((e) => ({ field: e.field, by: e.attributedTo })),
+        attributionMeans: (r.executed || []).some((e) => typeof e.attributedTo === 'string')
+          ? 'the kernel filled the author of these rows from the TURN (the tool face takes `member`; the reply channel got the same meaning instead of a second demand for the model to type its own id)'
+          : null,
         notes: (r.notes || []).slice(0, 5),
         notesMean: r.notesMean || null,
         // ★ LANE turn-reply: the receipt must say WHICH CHANNEL answered ('text' | 'tool' | 'tool+text'), or a reader
