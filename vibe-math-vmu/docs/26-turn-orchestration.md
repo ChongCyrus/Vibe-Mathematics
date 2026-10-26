@@ -1035,6 +1035,12 @@ run 41（91 秒、12 次调用、0 RED）只做一件事：验证 ROUND 40 的 `
 `recordId` 是 `r-2`、`r-3`），所以每张记录都会与某个成员同形；`vibe_vmu_chat{action:"mute"}` 的回执不含
 `status.muted`，要再读一次 `status`。（两件都在 ROUND 42 付清，见下。）
 
+
+**run 42 判决（真机）**：`read_library { id: "r-1" }` 回 `VMU_NO_SUCH_OBJECT` + hint 点名 `MEMBER` 并指路
+`member:"r-1"`；`{ id: "rec-404" }` 的 hint 同时点名 `rec-<n>` 与 `r-<n>`；成员写进 progress 的 `rec-1`
+按 id 与按 `member:"r-1"` 都读得到且 `owner:"r-1"`；`mute` 回执的 `muted:["r-1"]` 与 `status.muted` 字面一致、
+`unmute` 后 `status.muted:[]`；`admins:["chair"]` 而 `by:"r-acad"` 被接受＝席位解析（`seatOf`）在真机成立。
+
 ## ROUND 42（run 42 前置修复）— 一个名词一个命名空间；回执要读它写的那本账
 
 这是 run 39–41 的三张账单里最后两张的付款（F-13、F-14），修法与判据如下。

@@ -5963,3 +5963,53 @@ T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修
 ### §143.6 本轮无实质残余？
 
 **否。** 待 run 42 判决：①新 id 空间在真机可读、②拒绝面真的被看懂、③`muted` 与 `status` 字面一致。
+
+## §144 真机跑 42（build 1eceacbd，F-13/F-14 定向复验）
+
+### §144.1 读数
+
+`DRIVE exit=0`、`durationSec 159`、根会话 `toolCalls 13`、`transcriptEvents 78`、`tokenTotal 818,278`
+（cap 10,000,000）、2 会话、`0 with RED checks`；jsonl `_oneoff/vm-slv/full-1027-055838.jsonl`
+= 2,895,306 B / 6,022 行；`NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=10 BAD_JSON=12`；
+`cleanup: clone_gone=True  port_listening=False  C_free_GB=10.65`。
+
+### §144.2 判决表
+
+| 缺陷 | 判据 | 真机证据 | 判决 |
+|---|---|---|---|
+| F-13a（记录铸 `rec-<n>`） | 记录 id 形状 | `read_library { member: "r-1", track: "progress" }` ⇒ `cards[0].id = "rec-1"`；再 `{ id: "rec-1" }` ⇒ 同一张卡（`owner:"r-1"`、`bytes:1264`、`fingerprintOk:true`） | ✅ |
+| F-13b（旧前缀仍认） | 单元断言 | `verification-gates` 的 `/^(rec\|r)-…/`＋`tests/vmu-run42-id-namespace 27/0` ③ | ✅（单元级；真机里本轮无历史 `r-<n>` 卡） |
+| F-13c（读错名词要指路） | 拒绝面 | `read_library { id: "r-1" }` ⇒ `VMU_NO_SUCH_OBJECT`，hint 原文 `"r-1" is a MEMBER (slot member, state live), not a record. To read THEIR library pass member:"r-1" … records are minted as "rec-<n>". known ids: (none)` | ✅ |
+| F-13c'（不存在的 id 说两个形状） | 拒绝面 | `read_library { id: "rec-404" }` ⇒ hint `no record has the id "rec-404": records are minted as "rec-<n>" and people are "r-<n>", so check which one you meant.` | ✅ |
+| F-14（禁言回执读账本） | 回执 vs status | `mute { member: "r-1", by: "r-acad" }` ⇒ `muted:["r-1"]` + `mutedMeans:"… the same live book action:"status" prints as status.muted"`；`status` ⇒ `muted:["r-1"]`；`unmute` ⇒ `wasMuted:true`；`status` ⇒ `muted:[]` | ✅ 字面一致 |
+| F-14'（群管按席位解析） | `admins:["chair"]` 而 `by:"r-acad"` 成功 | 回执 `ok:true`、`enforced:["vmu.chat.admins"]`；成员 `r-1` 自己删/禁言他人 ⇒ 被拒（`VMU_CHAT_NOT_ADMIN`，见 §144.3） | ✅ |
+
+### §144.3 这一轮顺带量出来的三件事（都不是新缺陷）
+
+1. **`vibe_v5_verified_promote` 对非命题卡说得很准**：传进度记录 `rec-1` ⇒ `VMU_INVALID_ARGUMENT`
+   `record rec-1 is progress/progress, not a propositions/proposition card — only proposition cards can enter
+   the verified track`（hint：`settled propositions (p=1 or p=0) only`）。这是"名词不对"的正确拒绝，不是缺陷。
+2. **禁言闸的席位映射在真机成立**：`status.admins` 打 `["chair"]`（席位 token），而审计行里是 `r-acad`。
+   所办据此问"为什么 `by:"r-acad"` 能被接受"——这正是 `kernel/chat.js` 的 `seatOf` 语义（名字进、席位判）。
+   **留一条展示层面的小账**：`status.admins` 只打 token，读者看不到"现在谁真的在管"；建议未来加 `adminsResolved`
+   （token ⇒ 成员 id 列表），登记为呈现层债，不在本轮改。
+3. **拒绝的 message 仍说 `unknown record: r-1`，只有 hint 说"那是个 MEMBER"**：这是有意的分层（message 说
+   "你在哪个表里没找到"，hint 说"你拿错了名词"），但对外部读者仍可能只读 message。记债：若下一轮真机里仍有
+   代理只读 message 就下结论，再考虑把这个措辞也去掉歧义。
+
+### §144.4 门禁
+
+`TOTAL 508  PASS 508  FAIL 0 (suites 444 · probes 64)`（提交 `1eceacbd` 后同树复跑）；`preflight PASS`、
+`regen-all` 16/16 in sync、`DOC LINT: PASS`、`JOBS 577 / suites 469 / probes 108`。
+
+### §144.5 无法验证 / 下一轮
+
+1. **旧工作区里的历史 `r-<n>` 卡**：本轮工作区是新建的，没有历史卡，所以"旧前缀仍能当卡读"只在单元层证明。
+2. **状态板 ④ 与 `rec-<n>` 的联动**：本轮没让成员读自己的 `[状态板]`，进度行是否出现在「当前小任务」未验。
+3. **`status.admins` 的解析展示**（上面 §144.3-2 的呈现层债）。
+4. **成员把成员 id 当记录 id 读**时，代理是否真的读懂 hint（本轮是所办在读，不是成员）。
+
+### §144.6 本轮无实质残余？
+
+**趋于有。** F-13/F-14 均已取证并复验；剩下的都是"呈现层/未覆盖面"级，不是机制断链。下一轮（run 43）只需
+把 §144.5 的 1/2 两条补上，就可以把 F-13/F-14 从账单上划掉。
