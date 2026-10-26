@@ -207,9 +207,11 @@ ok(defensive.real && defensive.real.parkedJobStarted === true,
 
 console.log('=== TRIPWIRE (self-proving): a resource inside records/store would owe a `finally` ===')
 // THE CRITERION, AS AN ASSERTION (rounds 11/12): a `finally` is owed only where a function ACQUIRES something that
-// must be returned even when the body throws — a lock, a timer, a listener. These three faces hold only in-memory
-// state today, so they owe nothing; the tripwire fires the moment one of them grows an acquisition WITHOUT the
-// `finally` that would have to come with it. Two granularities, because the criterion names both:
+// must be returned even when the body throws — a lock, a timer, a listener. When this was written these three faces
+// held only in-memory state and owed nothing; `store.js` has since grown a real acquisition (a lock FILE, a572b5a4) and
+// pays for it with a `finally` — the tripwire fires the moment one of them grows an acquisition WITHOUT the `finally`
+// that would have to come with it, which is why the live reading below is per-face rather than one blanket claim.
+// Two granularities, because the criterion names both:
 //   · FILE level  — any acquisition/timer/listener anywhere in the file requires a `finally` in that file;
 //   · CALL level  — `storepolicy.write()`'s own body must acquire nothing (the Lead's exact wording: "若 write() 体内
 //                  出现 acquire()"), which a file-level scan cannot see when a `finally` exists elsewhere.
@@ -269,8 +271,20 @@ const live = [AUTHORITY_FACE].concat(TRIPWIRE_FACES).map((f) => {
   return Object.assign({ file: f, stripped: stripComments(src, { strings: true }) }, tripwireScan(src))
 })
 const faceOf = (f) => live.filter((r) => r.file === f)[0]
-ok(live.length > 0 && live.every((r) => r.acquisitions.length === 0),
-  '★ TRIPWIRE: no lock/timer/listener site exists in `records.js`／`store.js`／`storepolicy.js` today ⇒ the ACQUISITION-side predicate owes no `finally` on any of them (a reading, not an opinion) — but "no acquisition SITE" is only HALF of "acquires nothing", see the lock-store reading below', live.map((r) => ({ file: r.file, acquisitions: r.acquisitions, lockStore: r.lockStore })))
+// ★ A 类修正（round 30 取证审计）：这里原先断言「三个面今天都没有任何 acquisition site」。该读数被 a572b5a4
+// （`fix(goal-5e2adedf): one state file, several kernels - the fold is now revalidated per read`，Oct 25 20:17）
+// 推翻：store.js 现在真的有取释面 —— `withFileLock`（store.js:187-209）为防两个内核交错 read-modify-write 而拿
+// 一个 exclusive-create 锁文件（store.js:193 `openSync(lockFile,'wx')`），等待是 bounded 的
+// `await new Promise((r) => setTimeout(r, lockBackoffMs))`（store.js:196，扫描器能看见的 `setTimeout(` 就是它），
+// 交还写在 `finally` 里（store.js:208 closeSync + rmSync）—— 正是本 criterion 要的那个 finally。所以「三文件都
+// 0 site」不再是今天的读数；今天读数是「恰好一处 site，在 store.js，且带着 finally」，下面 :274 的绿是靠那把
+// finally 读出来的，不是因为没有人取用。records.js／storepolicy.js 仍是 0 site（storepolicy 是 lock AUTHORITY，
+// 它 HANDS OUT 锁 —— 见 R14 那行）。
+const acquisitionSites = (f) => faceOf(f).acquisitions.length
+ok(acquisitionSites('store.js') === 1 && acquisitionSites('records.js') === 0 && acquisitionSites('storepolicy.js') === 0 &&
+   live.reduce((n, r) => n + r.acquisitions.length, 0) === 1,
+  '★ TRIPWIRE: exactly ONE acquisition SITE exists among these three faces today — `store.js` `withFileLock` (the exclusive-create lock file added by a572b5a4, whose bounded backoff is the `setTimeout(` the scan sees); it carries the `finally` that closes and removes the lock (store.js:208) ⇒ the NEXT line is green because of that `finally`, not because nothing acquires. `records.js`／`storepolicy.js` still hold 0 sites (storepolicy is the lock AUTHORITY — it hands out locks, see the R14 reading below)',
+  live.map((r) => ({ file: r.file, acquisitions: r.acquisitions, lockStore: r.lockStore })))
 ok(live.length > 0 && live.every((r) => r.needsFinally === false),
   '★ and none of them acquires without a `finally` ⇒ GREEN; the day one does, THIS line goes red naming the file (that is the tripwire, not a preference)',
   live.filter((r) => r.needsFinally).map((r) => r.file))

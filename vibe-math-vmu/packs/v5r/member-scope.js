@@ -17,8 +17,9 @@
  *
  * SCOPES:
  *   'office' — 所办 only. Control/parameter/reporting faces (`report`, `overview`, `start/stop/pause/resume`,
- *              `configure`, `set`) and the two faces whose authority is the INSTITUTION rather than a seat
- *              (`verified_promote`, `verdict_final`).
+ *              `configure`, `set`) and the three faces whose authority is not a seat's own business
+ *              (`verified_promote`, `verdict_final`, and `verdict_ask`, which sends mail SIGNING AS THE CHAIR —
+ *              the row in the table carries the full reason).
  *   'member' — a seat may call it. Every record/communication/task/meeting/lean/paper face is here, because the
  *              CHAIR is a seat too: meeting controls are gated by the kernel's permission rails, not by wire.
  *   'both'   — either side may call it (nothing in this pack is office-and-member-exclusive by nature).
@@ -92,6 +93,18 @@ export const TOOL_SCOPES = Object.freeze({
   vibe_v5_set: 'office',
   vibe_v5_verified_promote: 'office',
   vibe_v5_verdict_final: 'office',
+  // ★ WHY `verdict_ask` IS 'office' AND NOT 'member' (ruled in round 30 / gate-debt D; do NOT re-decide this when the
+  // next member-wire red appears). This face SENDS MAIL IN THE CHAIR'S NAME: its receipt signs `from: <chair>` and it
+  // asks every debating seat for "布尔概率 + 理由". The tool body checks only its ARGUMENT — `member`, when passed, must
+  // equal the meeting's chair (`packs/v5r/tools.js:1664`) — and NEVER checks that the CALLER is that chair. On live run
+  // 29 the office called it with `member:"acad-01"` and the receipt read `from:"acad-01"`; no line of the body could
+  // tell that call apart from a member impersonating the chair, so "who may send this mail" is knowable ONLY from the
+  // wire — and this table IS the wire declaration. A seat's legitimate acts around a ruling are its own vote
+  // (`vibe_v5_verdict`: 'member') and the chair's tally of the votes collected (`vibe_v5_verdict_final`: 'office'); the
+  // v5r rule is that the FRAMEWORK asks each member for a final ruling (「v5r 框架请各成员给出最终裁决」), not that
+  // seats ask one another. Declaring it 'member' would hand a seat a face that speaks as its chair with no rail behind
+  // the signature; declaring it 'office' is the only declaration the mechanism actually supports.
+  vibe_v5_verdict_ask: 'office',
 })
 
 /** DERIVED — never hand-written. A seat may call these. */

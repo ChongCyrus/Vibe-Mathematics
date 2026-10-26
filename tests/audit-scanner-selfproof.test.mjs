@@ -44,6 +44,14 @@ const UNPROVEN = new Set([
   // Phase-12 lane file (member scope declaration): direct behaviour assertions over an exported table, no scan to
   // prove. Registered rather than pretended; delete this row the day it grows a runnable --self-test.
   'audit-member-scope.test',
+  // Round task-7 (settings hot-truth): there is no SCANNER here to prove — the file reads the exported settings table and
+  // asserts each construction-only key's declared class, and its §3 TEETH assertions are the in-file negative controls
+  // (a H1 row for the same key must be caught, H2/H3 must pass, a planned row is exempt). Its §4 is an even stronger
+  // proof than a self-test: it runs the real `createMeetings()` face and shows a runtime write being IGNORED while a
+  // fresh face sees it, so "the predicate can fire" and "the mechanism is what the declaration says" are both measured
+  // rather than assumed. A `--self-test` flag here would only re-run what the suite already runs. Delete this row if the
+  // file ever grows a runnable `--self-test` or a `.mutants.mjs` sibling.
+  'audit-settings-hot-truth.test',
   'audit-corrupt-file-guard.test', 'audit-dependency-cycles.test', 'audit-diagram-assets.test',
   'audit-doc-api-coverage.test', 'audit-doc-index.test', 'audit-doc-line-refs.test', 'audit-doc-vs-code-tables.test',
   'audit-enforced-consistency.test', 'audit-engine-faces', 'audit-enum-branches', 'audit-f1-compact-fix.test',

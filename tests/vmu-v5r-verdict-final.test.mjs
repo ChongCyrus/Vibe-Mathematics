@@ -285,9 +285,18 @@ try {
   })
   ok(noOwner.parsed && noOwner.parsed.ok === false && codeOf(noOwner.parsed) === 'VMU_STATE',
     '★★ 反：命题卡不存在 ⇒ 没有持有者可通知 ⇒ 具名 VMU_STATE（不产生"没人会看的裁定"）', noOwner.parsed && codeOf(noOwner.parsed))
+  // ★ A 类修正（round 30 取证审计）：下面三处裁决集原先只给 M1 —— 在 046f797c 之后这已经不是一个「同场景」的
+  // 裁决集了。046f797c（`feat(goal-5e2adedf): 请裁决的人口 = 在册者而非发过言者…`，2026-10-26 07:50）把
+  // `debatedMembersOf` 的辩论人口从「发过言者」改成「在册者 ∪ 发过言者 − 主席」，而本文件的 sync 会议 roster 是
+  // r-chair／r-1／r-2，于是"辩论过的人"= r-1 与 r-2 两人；`vibe-math-vmu/packs/v5r/tools.js:1288-1295` 的完整性闸
+  // 会先用 `VMU_STATE "the ruling is missing 1 of the 2 member(s) who debated: r-2"` 拒掉只给一人的裁决集，把本段
+  // 要测的三条规则（内核重复成员拒 / 先问符合性 / 回答后可宣布）全挡在那道闸后面。规则本身都还在：内核重复成员拒
+  // `vibe-math-vmu/kernel/meetingverdict.js:108-112`（code VMU_INVALID_ARGUMENT），`fidelityAsked`
+  // `vibe-math-vmu/packs/v5r/verification-gates.js:347-376`（VMU_PACK_V5R_FIDELITY_ASK_REQUIRED）。
+  // 所以断言一字未动，只把人口补齐（补上 M2）：人口规则是后来轮次立的，套件（b70a69ec）写成时人口还是「发过言者」。
   const dupVerdict = await receipt(v5rBoot, 'vibe_v5_verdict_final', {
     meeting: withTitle.parsed.meeting, proposition_id: 'c-mid',
-    verdicts: [{ member: M1, p: 1, reason: 'x' }, { member: M1, p: 0, reason: 'y' }],
+    verdicts: [{ member: M1, p: 1, reason: 'x' }, { member: M1, p: 0, reason: 'y' }, { member: M2, p: 1, reason: '复核通过' }],
   })
   ok(dupVerdict.parsed && dupVerdict.parsed.ok === false && codeOf(dupVerdict.parsed) === 'VMU_INVALID_ARGUMENT',
     '★★ 反：同一个人两条裁决 ⇒ 内核具名拒，原样透出（不静默合并）', dupVerdict.parsed && codeOf(dupVerdict.parsed))
@@ -296,7 +305,7 @@ try {
   console.log('=== 7. ④ Lean 已过但 p≠1 ⇒ 必须先把「符合性」问清楚，才允许宣布裁决 ===')
   const askNeeded = await receipt(v5rBoot, 'vibe_v5_verdict_final', {
     meeting: withTitle.parsed.meeting, proposition_id: 'c-mid', lean_passed: true,
-    verdicts: [{ member: M1, p: 0.9, reason: '基本一致' }],
+    verdicts: [{ member: M1, p: 0.9, reason: '基本一致' }, { member: M2, p: 0.9, reason: '也基本一致' }],
   })
   ok(askNeeded.parsed && askNeeded.parsed.ok === false && codeOf(askNeeded.parsed) === 'VMU_PACK_V5R_FIDELITY_ASK_REQUIRED',
     '★★★ 反：lean 通过 + p≠1 + 没回答符合性问题 ⇒ 具名拒（先问，再宣布）', askNeeded.parsed && codeOf(askNeeded.parsed))
@@ -304,7 +313,7 @@ try {
     '★ 反：拒绝里带着两个合法答案（prompt 不让人猜格式）', askNeeded.parsed && (askNeeded.parsed.message || '').slice(0, 100))
   const answered = await receipt(v5rBoot, 'vibe_v5_verdict_final', {
     meeting: withTitle.parsed.meeting, proposition_id: 'c-mid', lean_passed: true, fidelity: 'conform',
-    verdicts: [{ member: M1, p: 0.9, reason: '基本一致' }],
+    verdicts: [{ member: M1, p: 0.9, reason: '基本一致' }, { member: M2, p: 0.9, reason: '也基本一致' }],
   })
   ok(answered.parsed && answered.parsed.ok === true,
     '★★ 正：回答了符合性（conform）之后裁决可以宣布', answered.parsed && (answered.parsed.code || 'ok'))

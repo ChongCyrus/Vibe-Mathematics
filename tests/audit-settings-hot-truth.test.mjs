@@ -15,9 +15,19 @@
 // NOT VACUOUS: the suite prints how many keys it actually compared, refuses to pass on a suspiciously small number,
 // and runs TWO synthetic teeth (a H1 construction-only key must be caught; a H2 one must pass) so a broken predicate
 // cannot make the whole gate green.
+//
+// ★ ROUND task-7 (2026-05): §1/§2 were still red on the forty-seven `vmu.meetings.*` rows that live in the GENERATED
+// block of `settings/schema.js` (the WIRED-SCHEMA splice) — `scripts/generate-wired-schema.mjs` hard-coded
+// `hot: HOT.H1` for every emitted row, so the artifact promised "next turn" no matter what the kernel said. Both halves
+// are fixed at the DECLARATION, not by inventing a live reader: the generator now derives the class from the kernel's
+// own `constructionOnlyReasonOf` (one owner, so a family exception stays a single edit) and writes the reason into the
+// row's `doc`. §4 below is the MECHANISM SELF-PROOF the claim rests on: it builds a real `createMeetings()` face, writes
+// the setting at runtime, and shows the SAME face ignoring the write while a FRESH face sees it — "next session" is the
+// measurement, not a reading of the table that makes the claim.
 import { SETTING_DEFS } from '../vibe-math-vmu/settings/schema.js'
 import { PLANNED_DEFS } from '../vibe-math-vmu/settings/planned.js'
 import { constructionOnlyReasonOf } from '../vibe-math-vmu/kernel/index.js'
+import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
 
 let passed = 0
 let failed = 0
@@ -72,6 +82,39 @@ ok(ruleHolds({ key: 'synthetic.live', hot: 'H1' }, fakePredicate) === true,
   '3c TEETH: a key with a real live reader may keep H1')
 ok(ruleHolds({ key: 'synthetic.constructionOnly', hot: 'H1', planned: true }, fakePredicate) === true,
   '3d TEETH: a PLANNED key is exempt (it is a design promise, not a wiring claim)')
+
+// ── 4. MECHANISM SELF-PROOF: run the real construct-time snapshot instead of trusting the class table ─────────────────
+// The claim under test is "a runtime write to these keys changes nothing until the next start". So we do the write and
+// read the PUBLIC face, and we add a control that proves the write LANDED, because "the value did not change" is also
+// what a dead settings handle produces:
+//   before write  quorumMin=2 in K ⇒ public quorum() face reports min=2 / required=2
+//   after  write  quorumMin=5 in the backing store ⇒ the SAME face still reports min=2 / required=2   (ignored)
+//   fresh face    a createMeetings() built AFTER the write reports min=5 / required=5                 (control: landed)
+// Numbers are asserted, not printed: if the kernel ever starts reading the key live, 4b goes red with the reading in
+// its detail, and the declaration would have to move back to H1 in the same change.
+const NOW = 1_790_000_000_000
+const backing = { 'vmu.meetings.quorumMin': 2 }
+const liveSettings = { get: (k) => backing[k] }   // a settings handle: whoever calls .get reads the CURRENT backing value
+const mg = createMeetings({ clock: () => NOW, settings: liveSettings })
+const opened = mg.open({ type: 'ordinary', roster: ['a', 'b'] })
+const beforeWrite = mg.quorum({ meeting: opened.meeting })
+ok(beforeWrite && beforeWrite.min === 2, '4a the construct-time snapshot really reads the setting (min=2 before the write)', beforeWrite && { min: beforeWrite.min, required: beforeWrite.required })
+
+backing['vmu.meetings.quorumMin'] = 5             // exactly what a settings set() does between turns
+const afterWrite = mg.quorum({ meeting: opened.meeting })
+ok(afterWrite && afterWrite.min === 2 && afterWrite.required === 2,
+  '4b ★ COUNTERFACTUAL: the live meeting face IGNORES a runtime write (still min=2/required=2 after the store says 5) — this is what makes H2 and H1 different sentences',
+  afterWrite && { storeSays: backing['vmu.meetings.quorumMin'], face: { min: afterWrite.min, required: afterWrite.required } })
+
+const mgFresh = createMeetings({ clock: () => NOW, settings: liveSettings })
+const freshFace = mgFresh.quorum({ meeting: mgFresh.open({ type: 'ordinary', roster: ['a', 'b'] }).meeting })
+ok(freshFace && freshFace.min === 5,
+  '4c CONTROL: a face built AFTER the write DOES see 5 — so 4b is a snapshot, not a broken settings handle',
+  freshFace && { min: freshFace.min, required: freshFace.required })
+
+ok(quorum && quorum.hot === 'H2' && afterWrite && afterWrite.min === beforeWrite.min && freshFace && freshFace.min === 5,
+  '4d the declared class (H2 "next session") IS the measured one: ignored now, effective next start (H1 would be a false promise, H3 would deny the effect that 4c shows)',
+  { declared: quorum && quorum.hot, ignoredSameFace: afterWrite && afterWrite.min === beforeWrite.min, effectiveFreshFace: freshFace && freshFace.min === 5 })
 
 console.log('=== SETTINGS HOT TRUTH: ' + passed + ' passed, ' + failed + ' failed (compared ' + compared + ' keys) ===')
 process.exit(failed ? 1 : 0)

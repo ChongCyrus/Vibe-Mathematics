@@ -343,8 +343,28 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             const svc = svcOf()
             if (svc && typeof svc.close === 'function' && serviceHas(pid)) {
               const out = svc.close({ meeting: pid, actor: actor === undefined ? (by || member || null) : actor })
+              // ★★ LIVE RUN 30 (the institute's own report, item ⑥): THE RECEIPT SHOWED TWO TRUTHS AND SAID NOTHING
+              // ABOUT THEIR RELATION. The close came back `ok:true` while `vibe_vmu_status` reported
+              // `closureVote{cast:false, confirmed:false, votesCast:2, missing:["acad-01"]}` — a reader concluded either
+              // "the close was illegal" or "the closure vote was lost". Both wrong: closing moves the meeting to the
+              // ARCHIVE under the close RAILS (the `enforced` list), while the closure VOTE is the separate, unanimous
+              // "did every enfranchised member judge this question solved" mechanism. The receipt now carries the
+              // second reading next to the first, with the sentence that says it neither gated nor was gated by the close.
+              const closeClosureVote = (() => {
+                try {
+                  if (typeof kernel.closureVoteView === 'function') return kernel.closureVoteView()
+                  const st = typeof kernel.status === 'function' ? kernel.status() : null
+                  return st && st.closureVote ? st.closureVote : null
+                } catch (e) { return { readable: false, why: (e && e.message) || String(e) } }
+              })()
+              const closeEnforced = Array.isArray(out && out.enforced) ? out.enforced : []
               return Object.assign({ ok: true, action, id: pid, registry: 'service', closeSemantics: 'service-archives' }, out, {
                 note: 'closed in the meetings SERVICE: the meeting moved to the service ARCHIVE (not the primitive live table); its MOTIONS and the minutes vote events remain readable via action=summary (a BALLOT-BOX decision is a different record: read the box face for its tally)',
+                // the CLOSURE VOTE is a different mechanism from the close, and this receipt is where a reader meets both
+                closureVote: closeClosureVote,
+                closureVoteNote: closeClosureVote === null || closeClosureVote === undefined
+                  ? 'this kernel publishes no closure-vote reading, so this receipt cannot say whether every enfranchised member judged the question solved — the close below is a fact, the closure vote is UNREAD here'
+                  : 'closureVote (cast/confirmed/votesCast/missing) is the SEPARATE unanimity reading over the same INSTANCE, not a requirement of this close and not changed by it: this close passed the rails named in `enforced` (' + (closeEnforced.length ? closeEnforced.join(', ') : 'none listed') + ') while the closure vote reads cast=' + String(closeClosureVote.cast === true) + ', confirmed=' + String(closeClosureVote.confirmed === true) + ', missing=' + JSON.stringify(closeClosureVote.missing || []) + ' — so "closed" does not mean "unanimously judged solved", and a member named in `missing` is who to ask before claiming closure',
               })
             }
             throw noSuchMeeting(pid)

@@ -108,6 +108,12 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         ? { id: args.member.trim() }
         : null
       const explicit = listed || singleMember !== null
+      // ★★ RUN 30 (the institute's own report, item ②): THE FACE NOW NORMALISES, SO THE FACE MUST NAME THE SHAPE.
+      // A singular `member` is turned into a one-seat `members` list (the run-29 fix above), which means the kernel can
+      // no longer see which parameter the caller actually used: it looked at its own `members` argument and printed
+      // "the caller named `members`" for a call that had passed `member`. Behaviour right, sentence wrong. The shape is
+      // known HERE and nowhere else, so it travels as `selectionShape` and the kernel's note is derived from it.
+      const selectionShape = listed ? 'members' : (singleMember !== null ? 'member' : 'roster-default')
       // ★★ A BARE-ID ARRAY IS NORMALISED, AND A WRONG ENTRY IS REFUSED BY NAME — never answered with a false
       // "no-members". MEASURED on a live run: a caller passed `members: ['member']` (an obvious reading of the
       // declared `[{id, role}]`) and got `stopped: 'no-members'` while the roster held a seated member, because
@@ -325,7 +331,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           // does (it keeps only code/message/hint). A refusal that hides the work in flight is worse than no refusal.
           let stepped
           try {
-            stepped = await kernel.turn.step({ members, member: args.member || null, membersFrom, membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step })
+            stepped = await kernel.turn.step({ members, member: args.member || null, membersFrom, membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step })
           } catch (e) {
             if (!e || !e.partial) throw e
             return {
@@ -388,7 +394,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (op === 'step') {
         const activeId = members.length > 0 && members[0] && typeof members[0].id === 'string' ? members[0].id : null
         if (activeId && typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(activeId)
-        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, member: args.member || null, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, phase: args.phase, why: args.why, nextStep: args.next_step }))) }
+        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, member: args.member || null, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step }))) }
         finally { if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null) }
       }
       if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step }))

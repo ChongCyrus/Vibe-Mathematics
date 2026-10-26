@@ -21,6 +21,11 @@
 // No host imports: this module must be importable by plain Node in this repository (see the same note
 // in settings/schema.js). `open()` creates or loads one JSON file under the workspace.
 
+// WHY THESE IMPORTS ARE SANCTIONED — the only file this module touches is `<root>/vmu/state.json` (plus its
+// temp/backup/lock siblings), i.e. the framework's OWN durable artifact, seeded from PUBLIC_KEYS below. No
+// caller-supplied path, no user-relative path and no file the user names is ever read or written here; the work is
+// open/load/atomic rename/backup/lock — neither a guard decision nor read-only in-package self-inspection.
+// fs-purpose: audit - the durable fold is the framework's own artifact, never a caller's path
 import { mkdir, readFile, writeFile, rename, copyFile, access } from 'node:fs/promises'
 import { join } from 'node:path'
 import { statSync, readFileSync, openSync, closeSync, writeSync, rmSync } from 'node:fs'

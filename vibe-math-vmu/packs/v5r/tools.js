@@ -1353,22 +1353,57 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
   // receipt — the agent could read `n:2` and `mode` but never the floor the ruling was supposed to satisfy. The kernel
   // face already computes it (`meetings.quorum()` → the same `quorumOf` the close rail enforces), so it is READ here
   // rather than re-derived: a second copy of the formula is exactly the kind of second authority this project refuses.
+  // ★★ RUN 30 (the institute's own report, item ③): the receipt carried `floor{minVotes:3, satisfiedBy:false}` beside
+  // `ok:true` and `n:2`, and the office read the pair as "the framework skipped a check it promised". Nothing was
+  // skipped: `floor` is the VOTE floor the CLOSING rail enforces (the same quorumOf()), and a RULING is not a vote —
+  // this face deliberately does not refuse for an unmet floor (a ruling over a partial set is legal when it says why,
+  // see coverage.partial). The numbers are the kernel's (a second copy of the formula would be a second authority),
+  // and the sentence that says what they MEAN is this face's job.
   const floor = (() => {
     const faceM = kernel && kernel.meetings
-    if (!faceM || typeof faceM.quorum !== 'function') return { readable: false, why: 'the kernel publishes no quorum() reading' }
+    if (!faceM || typeof faceM.quorum !== 'function') return { readable: false, why: 'the kernel publishes no quorum() reading', means: null }
     try {
       const q = faceM.quorum({ meeting })
-      return { readable: true, minVotes: q && q.required !== undefined ? q.required : null,
+      const required = q && q.required !== undefined ? q.required : null
+      const n = ruled && ruled.n !== undefined && ruled.n !== null ? Number(ruled.n) : null
+      return { readable: true, minVotes: required,
         min: q && q.min !== undefined ? q.min : null, roster: q && q.roster !== undefined ? q.roster : null,
         eligibleUniverse: q && q.capUniverse !== undefined ? q.capUniverse : null,
         cap: q && q.cap !== undefined ? q.cap : null,
         formula: q && q.capPolicy ? q.capPolicy : null,
-        satisfiedBy: ruled && Array.isArray(ruled.perMember) ? (Number(ruled.n) >= Number(q && q.required)) : null }
-    } catch (e) { return { readable: false, why: (e && e.message) || String(e) } }
+        satisfiedBy: ruled && Array.isArray(ruled.perMember) ? (Number(ruled.n) >= Number(q && q.required)) : null,
+        // ★ the sentence that keeps `satisfiedBy:false` from being read as "a gate was skipped": this is the quorum the
+        // CLOSE rail enforces, it counts the CHAIR (the v5r rule is 「表决人数 ≥ min(用户设置数, 院士+常驻研究员数)」, and the
+        // chair holds one of those seats), and the ruling face does NOT refuse on it — partial rulings are a declared,
+        // receipt-recorded choice, not a silent relaxation.
+        means: 'this is the VOTE floor the CLOSING rail enforces (kernel.meetings.quorum(), read here — not re-derived); it counts the CHAIR because the v5r rule puts 「院士+常驻研究员」 in the denominator and the chair holds one of those seats. It is NOT a gate on THIS receipt: `satisfiedBy:false` means the verdict set is smaller than the close rail would require (' + String(n) + ' of ' + String(required) + '), and a ruling over a partial set is legal exactly when `coverage.partial:true` carries a reason — a ruling is not a vote, and this face refuses by name elsewhere (missing member, duplicate member, p out of range)',
+        satisfiedMeans: null }
+    } catch (e) { return { readable: false, why: (e && e.message) || String(e), means: null } }
   })()
+  // ★★ RUN 30 (the institute's own report, item ⑤): the kernel notice told the card's owner to correct the card's
+  // probability, and NOTHING in the receipt said HOW — the live run ended with the card still at its old p and no
+  // `debate_ruling` row, and the office reported "the framework said change it, but not with what". The rule
+  // (「并通知命题卡持有者改卡」) makes the notice the framework's job and the edit the holder's; what was missing is the
+  // one call that performs it, named with the values THIS ruling produced.
+  const correction = {
+    needed: true,
+    recipient: owner,
+    tool: 'vibe_v5_record_proposition',
+    cardId: cardRow ? propositionId : null,
+    onRecord: cardRow !== null,
+    call: cardRow
+      ? 'vibe_v5_record_proposition { id: "' + propositionId + '", p: ' + String(ruled.value) + ', debate_ruling: { value: ' + String(ruled.value) + ', mode: "' + String(ruled.mode) + '", n: ' + String(ruled.n) + ', decided: ' + String(ruled.decided === true) + ', at: "<ISO time>", meeting: "' + str(meeting) + '", by: "' + chair + '" } }'
+      : 'this ruling has NO card to correct (the object was not on the records track): record the proposition first with vibe_v5_record_proposition { track: "propositions", statement, value, motive, p: ' + String(ruled.value) + ' } and then apply the ruling with the same call + debate_ruling',
+    means: 'the KERNEL notice tells the owner to correct the card; this field names the call that does it and the values this ruling produced, so "who changes the card, with what" is answerable from the receipt instead of inferred. This face does not write the card: the rule makes the notice the FRAMEWORK act and the edit the HOLDER act (and a card write here would be a second writer of the same row)',
+  }
   return {
     ok: true, tool: 'vibe_v5_verdict_final', meeting, chair, from: chair,
     floor,
+    // ★ RUN 30 ③: the sentence travels beside the numbers on purpose — `satisfiedBy:false` next to `ok:true` is exactly
+    // the pair a reader misreads, so the receipt carries its own explanation instead of leaving it to the doc.
+    floorMeans: floor && floor.means ? floor.means : null,
+    // ★ RUN 30 ⑤: WHICH call corrects the card, with which values (see the `correction` block above).
+    correction,
     // ★ LIVE RUN 11 (the institute's own report, item b): this receipt was read as if it carried the CLOSURE vote
     // (`cast`/`votesCast`) and the reading was reported missing. It is not missing - it is another mechanism. The
     // ruling answers 'what is the probability over this proposition', the closure vote answers 'did every member
@@ -1700,7 +1735,20 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
   // reader of the mail learns what the meeting actually reports, and an unreadable state produces 「状态不可读」 rather
   // than a sentence the pack made up.
   const closure = debateClosureOf(view, meeting)
+  // ★★ RUN 30 (the institute's own report, item ④): the mail named the object and nothing else. Measured: the office
+  // asked about `p-nope` — an id the library did NOT hold — the receipt carried `propositionKind:"unverified"` and
+  // `propositionVerified:false`, and the two members' mailboxes received a request that read exactly like one about a
+  // registered card. The RECEIPT was honest and the MAIL was not, which is the same defect class as run 29 ②: the
+  // reader of the mail is not the reader of the receipt. The provenance is therefore derived ONCE here and put in the
+  // body the member actually reads (a card needs no clause — naming a registered card asserts nothing extra).
+  const propositionClause = proposition.kind === 'card' ? null
+    : proposition.kind === 'meeting-subject'
+      ? '（辩论对象就是会议 ' + str(meeting) + ' 声明的对象，未登记为命题卡。）'
+      : proposition.kind === 'file-ref'
+        ? '（辩论对象是一个文件引用，本面**没有读取文件内容**（fileChecked:false）——裁决的对象以这条引用为准。）'
+        : '（★ 命题 "' + propositionId + '" **尚未在命题库登记**：本面无法区分"规则允许的一句话命题"与"笔误"，因此照发并在此写明——裁决的对象仅为这条字符串，登记卡后重问才能对上命题库。）'
   const text = '请你作为本次辩论的参与者，就命题 ' + propositionId + ' 给出最终裁决：布尔概率（[0,1]）+ 理由。'
+    + (propositionClause === null ? '' : propositionClause)
     + '（' + closure.sentence + '收齐全部裁决后由主席用 vibe_v5_verdict_final 汇总：全部一致为 1 或 0 则取该值，否则取算术平均，并通知命题卡持有者。）'
   const delivered = []
   const failed = []
@@ -1764,6 +1812,10 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
     propositionVerified: proposition.verified === true,
     fileChecked: proposition.kind === 'file-ref' ? false : null,
     propositionWhy: proposition.why,
+    // ★★ RUN 30 ④: the receipt and the MAIL must say the same thing about the object. `propositionClause` is the exact
+    // sentence inserted into the body (null for a registered card, which needs no disclaimer), so a reader of the
+    // receipt can see what the member was told without diffing two faces.
+    propositionClause,
     asked, askedSource: source,
     // ★★★★★★★ LIVE RUN 28 (the institute's own report, item 5): the DESCRIPTION promised `askedWhy says why` and the
     // receipt never carried it — a promise with no field is a described mechanism that does not exist, the exact

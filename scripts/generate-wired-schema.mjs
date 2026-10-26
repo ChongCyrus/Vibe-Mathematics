@@ -21,6 +21,15 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stripComments } from '../tests/_lib/strip-comments.mjs'
+// ★ task-7 (hot-truth): the DECLARED hot class of a generated row must be the one the MECHANISM gives, and the kernel
+// already owns that fact in ONE table: `CONSTRUCTION_ONLY_KEYS` (with `constructionOnlyReasonOf`). Until this round
+// `render()` hard-coded `hot: HOT.H1` for every row, so the forty-seven `vmu.meetings.*` rows promised "next turn"
+// while `createMeetings()` snapshots the whole block into its `K` object at construction - a runtime write changes
+// nothing until the next start (measured by tests/audit-settings-hot-truth.test.mjs, which reads back the public
+// `quorum()` face before and after a write). Deriving the class HERE, from the kernel's table, is the difference
+// between a declaration and a promise: hand-editing this do-not-edit block would be reverted by the next regen, and a
+// second table in this file would be a second owner of a fact the kernel already states.
+import { constructionOnlyReasonOf } from '../vibe-math-vmu/kernel/index.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '..')
@@ -485,10 +494,28 @@ export const DOC_NOTES = {
   'vmu.meetings.waitForAll': '★ 规则「未到齐则等待」的开关：true ⇒ 预约到点的会议要等**应到全员**到齐才 open，否则进 waiting（可用 vmu.meetings.waitOnDueMs 超时自决）。★ 它不是表决人数下限：法定人数是 vmu.meetings.quorumMin（票箱面为 vmu.ballot.minVotes），两者不是同一个数，quorum 已满足也可能仍在 waiting。'
 }
 
+/**
+ * task-7: WHY a construction-only key is H2 and not H1, in the artifact's own words. The reason string the kernel
+ * stores is written for the receipt/report side (English, one paragraph); the parameter table needs one sentence a
+ * reader can act on. Keyed by the same family prefix the kernel uses, with a generic fallback so a newly added
+ * construction-only key still gets an honest sentence instead of silence.
+ */
+const CONSTRUCTION_WHY = {
+  'vmu.meetings.': 'createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效'
+}
+const constructionWhy = (key) => {
+  const hit = Object.keys(CONSTRUCTION_WHY).find((p) => String(key).startsWith(p))
+  return hit ? CONSTRUCTION_WHY[hit] : '该键只在构造期被读一次，运行时写入要到下次启动才生效'
+}
+
 export function render(defs) {
   const lines = [BEGIN]
   for (const d of defs) {
     const def = d.literal === null ? 'null' : d.literal
+    // ★ task-7: the class is DERIVED from the kernel's mechanism table, never asserted here. A key the kernel names as
+    // construction-only is H2 ("next session"): a runtime write is real, it just cannot take effect before the next
+    // start. Everything else keeps the historical H1.
+    const constructionOnly = constructionOnlyReasonOf(d.key) ? true : false
     const type = typeFor(d)
     const named = d.type === null ? OBJECT_FALLBACKS[d.key] : null
     const doc = d.literal === null
@@ -501,10 +528,13 @@ export function render(defs) {
     // reader of the generated block can tell a declared `object` from an explained fallback.
     const note = DOC_NOTES[d.key] ? '；' + DOC_NOTES[d.key] : ''
     const docBase = doc + note
-    const docOut = d.type === null
+    const docTyped = d.type === null
       ? docBase + '；★ 类型推断不出（' + (named ? '具名回落 object：' + named.class + ' — ' + named.why : '★ 未具名：见 OBJECT_FALLBACKS，--check 会红') + '）'
       : docBase
-    lines.push("  { key: '" + d.key + "', type: '" + type + "', def: " + def + ", hot: HOT.H1, who: 'office', doc: " + JSON.stringify(docOut) + ' },')
+    // ★ task-7: the artifact SAYS why it is H2, so a reader never has to guess whether the class was chosen or measured.
+    const docOut = constructionOnly ? docTyped + '；★ hot=H2（不是 H1）：' + constructionWhy(d.key) : docTyped
+    const hot = constructionOnly ? 'HOT.H2' : 'HOT.H1'
+    lines.push("  { key: '" + d.key + "', type: '" + type + "', def: " + def + ", hot: " + hot + ", who: 'office', doc: " + JSON.stringify(docOut) + ' },')
   }
   lines.push(END)
   return lines.join('\n')

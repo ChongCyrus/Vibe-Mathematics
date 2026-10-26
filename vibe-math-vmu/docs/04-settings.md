@@ -1255,53 +1255,53 @@ vmu.packs.active: [v5r]
 | `vmu.math.units.constantsSource` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.units.enabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
 | `vmu.math.units.strictDimensions` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/mathtools.js` | 已接线（mathtools.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.appealDeadlineMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.appealReasonRequired` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.budgetTokens` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.budgetTurns` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.budgetWallMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.chairActRequiresTurn` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.chairNeutral` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.chairTransferAudit` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.closeRequiresChair` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.committeeMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.committeeReportRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.confirmPreviousMinutes` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.conveneRequiresChair` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.disciplineExpelAllowed` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.disciplineMuteMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.disciplineWarnMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.emergencyKinds` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.emergencyQuorumRatio` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.extendCeilingMs` | int ≥0 | `14400000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.extendRequiresChair` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.interruptAllow` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.interruptQuota` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.lateAfterMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.liveCap` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.materialsRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.minutesActionsRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.minutesIncludeRefused` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.minutesRetentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.quorumFloorSource` | string | `setting` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.quorumMin` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.quorumRatio` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.quorumRecountMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.recessMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.recessResumeRequiresMotion` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.scheduleAllowed` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechDefaultMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechExtendMax` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechExtendMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechMaxMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.speechQuotaPerMember` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.typeCatalog` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.unansweredInDenominator` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.verbatimEnabled` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.verbatimRetentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.waitDecisionRequiresChair` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
-| `vmu.meetings.waitForAll` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ 规则「未到齐则等待」的开关：true ⇒ 预约到点的会议要等**应到全员**到齐才 open，否则进 waiting（可用 vmu.meetings.waitOnDueMs 超时自决）。★ 它不是表决人数下限：法定人数是 vmu.meetings.quorumMin（票箱面为 vmu.ballot.minVotes），两者不是同一个数，quorum 已满足也可能仍在 waiting。 |
-| `vmu.meetings.waitOnDueMs` | int ≥0 | `300000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码 |
+| `vmu.meetings.appealDeadlineMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.appealReasonRequired` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.budgetTokens` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.budgetTurns` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.budgetWallMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.chairActRequiresTurn` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.chairNeutral` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.chairTransferAudit` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.closeRequiresChair` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.committeeMax` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.committeeReportRequired` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.confirmPreviousMinutes` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.conveneRequiresChair` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.disciplineExpelAllowed` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.disciplineMuteMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.disciplineWarnMax` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.emergencyKinds` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.emergencyQuorumRatio` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.extendCeilingMs` | int ≥0 | `14400000` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.extendRequiresChair` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.interruptAllow` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.interruptQuota` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.lateAfterMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.liveCap` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.materialsRequired` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.minutesActionsRequired` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.minutesIncludeRefused` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.minutesRetentionMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.quorumFloorSource` | string | `setting` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.quorumMin` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.quorumRatio` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.quorumRecountMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.recessMaxMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.recessResumeRequiresMotion` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.scheduleAllowed` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.speechDefaultMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.speechExtendMax` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.speechExtendMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.speechMaxMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetinglapse.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.speechQuotaPerMember` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.typeCatalog` | string[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.unansweredInDenominator` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.verbatimEnabled` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.verbatimRetentionMs` | int ≥0 | `0` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.waitDecisionRequiresChair` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.waitForAll` | bool | `true` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ 规则「未到齐则等待」的开关：true ⇒ 预约到点的会议要等**应到全员**到齐才 open，否则进 waiting（可用 vmu.meetings.waitOnDueMs 超时自决）。★ 它不是表决人数下限：法定人数是 vmu.meetings.quorumMin（票箱面为 vmu.ballot.minVotes），两者不是同一个数，quorum 已满足也可能仍在 waiting。；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
+| `vmu.meetings.waitOnDueMs` | int ≥0 | `300000` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | 已接线（meetings-defaults.js 读取）；默认值取自模块源码；★ hot=H2（不是 H1）：createMeetings() 在构造期把整块 vmu.meetings.* 快照进 K，运行时写入要到下次启动才生效 |
 | `vmu.migration.auto` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.migration.dryRunDefault` | bool | `true` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.migration.dryrun` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |

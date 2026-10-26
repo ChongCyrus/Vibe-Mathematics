@@ -14,6 +14,8 @@
 //   §5 the timer sites OUTSIDE this task's write scope, NAMED with their file:line (the discipline the task allows:
 //      修 or 具名列出) — plus the integration gap that no production caller ever arms/ticks the scheduler.
 import { readFileSync, readdirSync } from 'node:fs'
+import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { stripComments } from './_lib/strip-comments.mjs'
@@ -21,6 +23,7 @@ import { createScheduler } from '../vibe-math-vmu/kernel/scheduler.js'
 import { createBus } from '../vibe-math-vmu/kernel/bus.js'
 import { createChildBudget } from '../vibe-math-vmu/kernel/mathjobs.js'
 import { createHostSpawn } from '../vibe-math-vmu/host-spawn.js'
+import { createStore } from '../vibe-math-vmu/kernel/store.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -70,6 +73,18 @@ const VERDICT = {
   // that a new GLOBAL timer site cannot appear unnoticed.
   'host-deliver.js': { timers: 1, clears: 2, verdict: 'finally-clear', note: 'SLV: the one-shot delivery deadline (declared setting vmu.turn.deliveryTimeoutMs) is cleared in `finally`; a hung turn rejects with VMU_TURN_DELIVERY_TIMEOUT and the serial dispatch queue continues. The SECOND clear is the grace-harvest clear: when the deadline fires the harness keeps waiting briefly for the child to settle (so a slow-but-alive child is not misreported as nothing), and that inner timer is cleared on BOTH paths - the pair is what the scan sees' },
   'vibe-math-vmu.js': { timers: 1, clears: 1, verdict: 'declared-only-seam', note: 'the platform timer is forwarded to the scheduler only when vmu.schedule.autoArm is true (K1); undeclared ⇒ no timer seam at all and status().seams.timerShape stays null' },
+  // ★ ROUND 30 / gate-debt D — a NEW site that appeared AFTER this table was last written (`a572b5a4`, 20:17, is
+  // younger than the round-11 pass at `3b646d39`, 18:31; the same "measurement drift" this file already names). The one
+  // GLOBAL timer is the lock-retry backoff `await new Promise((r) => setTimeout(r, lockBackoffMs))` at store.js:191,
+  // inside `withFileLock`. It binds no handle and `withFileLock(fn)` takes no abort parameter, so it CANNOT be
+  // cancelled early — but it is NOT the finding class: it is a plain awaited sleep that ALWAYS fires (nothing races it,
+  // no branch abandons it), it is bounded (lockRetries × lockBackoffMs inside a lockTimeoutMs budget; defaults at
+  // store.js:124-125 are 40 × 25ms / 2000ms), and the file lock it waits for is released in a `finally`
+  // (store.js:203 closeSync + rmSync). §1b MEASURES the row below, so this verdict is a reading rather than a promise.
+  // Classified `bounded-await-backoff` and not `NAMED-FINDING-uncancellable` ON PURPOSE: a finding is a wait a caller
+  // may need to CANCEL and has no API to ask for; here the caller cannot even express that wish, and the wait always
+  // releases itself. If the store ever grows a cancellable wait path (an AbortSignal on `withFileLock`), re-read this.
+  'kernel/store.js': { timers: 1, clears: 0, verdict: 'bounded-await-backoff', note: 'the lock-retry backoff at store.js:191 (inside withFileLock): no handle bound ⇒ uncancellable, but a plain awaited sleep that always fires, bounded by lockRetries×lockBackoffMs/lockTimeoutMs (store.js:124-125) and guarding a FILE lock released in a finally (store.js:203). §1b measures it with `process.getActiveResourcesInfo()`: a lock-contended patch really takes the sleep branch (lockWaits>0) and leaves no armed timeout' },
 }
 {
   const files = walk('vibe-math-vmu').filter((f) => f.endsWith('.js'))
@@ -116,6 +131,37 @@ const VERDICT = {
   ok(found.length === declaredSites.length && declaredSites.length > 0,
     'every framework file that touches a GLOBAL timer is accounted for by a row declaring a real site (counts derived, never typed)',
     { found: found.length, declared: declaredSites.length, files: found })
+}
+
+console.log('=== 1b. F15 MEASURED on the new `kernel/store.js` row: the lock backoff is a bounded sleep, not an armed timer ===')
+// WHY THIS PROBE: the row above classifies store.js:191 from CODE READING (a plain awaited `setTimeout` inside the lock
+// retry loop). This file's own discipline is that "no timer is left armed" is a READING, not a promise, so the new row
+// gets the same treatment §4 gives `kernel/bus.js`. The measurements are:
+//   ① `lockWaits > 0` — the backoff branch REALLY ran (without it, "nothing armed" would be true of a path that never
+//      slept, i.e. vacuous);
+//   ② `lockSkips === 1` — the bounded wait gave up BY NAME and let the write through (store.js:195-199);
+//   ③ `after === before` — the awaited sleep released its Timeout before `patch` resolved.
+// The lock file this probe creates is removed by the store's own `finally` (store.js:203); the temp root is removed here.
+{
+  const storeRoot = await mkdtemp(join(tmpdir(), 'vmu-timers-'))
+  try {
+    const store = createStore({ root: storeRoot, lockBackoffMs: 10, lockRetries: 3, lockTimeoutMs: 200 })
+    await store.open()
+    // HOLD the lock: `openSync(lockFile, 'wx')` will throw EEXIST, so `withFileLock` walks its retry-and-sleep branch.
+    await writeFile(join(storeRoot, 'vmu', 'state.json.lock'), JSON.stringify({ pid: process.pid, at: 'held-by-probe' }))
+    const beforeSleep = liveTimeouts()
+    const patched = await store.patch('tasks', (tasks) => (Array.isArray(tasks) ? tasks.concat(['probe']) : ['probe']))
+    const afterSleep = liveTimeouts()
+    ok(store.stats().lockWaits > 0 && store.stats().lockSkips === 1,
+      '★ the lock-retry backoff branch REALLY ran and gave up by name (non-vacuous: a path that never slept could not prove anything about the sleep)',
+      { lockWaits: store.stats().lockWaits, lockSkips: store.stats().lockSkips })
+    ok(patched.ok === true, 'and the write still went through after the bounded wait (the sleep is a wait, not a failure)', patched)
+    ok(afterSleep === beforeSleep,
+      '★ MEASURED (store.js:191): the awaited lock backoff leaves NO armed timeout behind — the same F15 reading §4 takes on bus.js',
+      { before: beforeSleep, after: afterSleep })
+  } finally {
+    await rm(storeRoot, { recursive: true, force: true })
+  }
 }
 
 console.log('=== 2. F15 · THE SCHEDULER RELEASES ITS HANDLE ON THE FIRE BRANCH (and every other branch) ===')

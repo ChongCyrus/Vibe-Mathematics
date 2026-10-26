@@ -4998,3 +4998,85 @@ for (const field of RECORDED_FIELDS) {
 A/B/C 三条与 `verdict_ask` 三条都已修并带断言，但"修完之后真机上还错不错"没有证据 —— 这正是 run 30 要回答的：① 单数 `member` 必须让 `requestedMembers` 回显那一个人；② `vibe_vmu_tools` 必须给 `childId` 且不再说 `learned yet`；③ `verdict_ask` 必须对未知命题具名拒、且邮件正文不得断言未发生的状态。
 
 提交：`vibe-math-vmu/tools/turn.js`、`vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/tools.js`、`tests/vmu-run29-findings.test.mjs`（新）、`tests/vmu-run29-verdict-ask.test.mjs`（新）、`scripts/check-task-brief.mjs`（新）、`tests/brief-check.test.mjs`（新）。
+
+### §127 真机跑 30（build `11f6be1b`）：§125/§126 六项修复全部生效，另抓 8 条 —— 5 条已修、2 条属规则决定、1 条是我的简报写错
+
+**跑的条件**：日志 `_oneoff/vm-slv/full-1026-182120.jsonl`（驱动 `D:/_tmp/slv-phase5/slv-p13-cc.ps1 -CloneName slvp30 -Port 19630`，从 `git archive HEAD` 打包，安装后自检 `preset-vibe-math-vmu` 行存在），任务书 `D:/_tmp/slv-phase5/task-r30.txt`（**先过 `node scripts/check-task-brief.mjs … → problems: []`，11 次调用全部合法**——这是简报第一次零错）。`DRIVE exit=0`、`SUMMARY: 5 session(s), 0 with RED checks`、`durationSec 492`、`toolCalls 28`。
+
+#### 1. 上一轮六项修复的真机判决（全部 ✅，读数抄自回执原文）
+
+| # | 上一轮承诺 | run 30 回执 | 判 |
+|---|---|---|---|
+| A | 单数 `member` 必须是显式单选（§126 缺陷 A） | `vibe_vmu_turn{op:"step",member:"res-01"}` ⇒ `requestedMembers:["res-01"]`、`requestedMembersSource:"explicit"`、`resolvedMembers:["res-01"]`、`receipt.membersFrom:"caller-selection"`、`selectionApplied:true` | ✅ |
+| B | 拒信要把 `cause`/`learnedSession` 带出来（§126 缺陷 B） | `vibe_vmu_tools{member:"res-01"}` ⇒ `cause:"child-session-not-live"`、`childId:"b2baefd8-…"`、`refusal.code:"VMU_NO_SUCH_OBJECT"`、`refusal.message` 说"learned child session … no LIVE Agent" | ✅ |
+| C | step 回执要自报学到了哪张子会话（§126 缺陷 C） | 同一次 step 回执自带 `memberSession:"<childId>"` 与 `memberSessionMeans`；`vibe_vmu_tools` 里 **`session=(none learned yet)` 已消失** | ✅ |
+| D | 邮件要带成员自己的声音（§125 ①） | `vibe_v5_message{member:"res-01",to:"res-02"}` ⇒ `from:"res-01"`、`relayedBy:"office"`、`fromMeans` 说明是所办代发 | ✅ |
+| E | `askedWhy` 要能对上账（§125 ②） | `vibe_v5_verdict_ask` ⇒ `asked:["res-01","res-02"]`、`excluded:[{member:"acad-01",why:"presides"}]`、`accounting{rosterCount:3,accountedCount:3,askedCount:2,excludedCount:1,means:"asked 2 + excluded 1 = 3"}` | ✅ |
+| F | `op:"reply"` 的拒绝要给出路（§125 ③） | 思路同 §125；本轮未再构造该调用（见第 5 节"无法验证"） | 待核 |
+
+#### 2. run 30 自己交出来的 8 条
+
+| # | 是什么 | 判决与处置 |
+|---|---|---|
+| ① | `vibe_v5_verdict_ask{proposition_id:"p-nope"}` 对**不存在**的卡 `ok:true`、`propositionKind:"unverified"`、照发两封信（res-01 信箱 `ml-3` 标题就是 `p-nope`） | ⚠️ 真缺口的一半已修：回执与邮件现在**同时**披露"该命题不在命题库"（`propositionClause` 派生 + 邮件正文同句）。**放行本身保留**——既有测试（`tests/vmu-run29-verdict-ask.test.mjs` ③）把 `unverified` 当合法输入钉住了，改它是改规则（待 v5r 规则确认后一并处理） |
+| ② | step 回执的 `requestedMembersNote` 在调用者传单数 `member` 时说"the caller named `members`" | ✅ 已修（缺陷 B 的同一类：行为对、句子错）。面层现在把**调用者用的形状**作为 `selectionShape` 送进内核，内核据此说三句不同的话 |
+| ③ | `vibe_vmu_status{detail:"summary"}` 的 `closureVote` 说 `cast:false`、`reason:"silence blocks closure; …"`，而同一次运行 `vibe_vmu_meeting{action:"close"}` 却 `ok:true` | ✅ 已修：`reason` 改成"silence blocks the CLOSURE VOTE … it does NOT block closing the meeting"；`close` 回执新增 `closureVote` 读数与 `closureVoteNote`，让两个读数并排出现 |
+| ④ | `vibe_v5_verdict_final` 的 `floor{satisfiedBy:false}` 与 `ok:true` 并排，读者会以为漏了校验 | ✅ 已修：`floor.means` + 顶层 `floorMeans` 说明"这是 CLOSING rail 的表决下限，不是本回执的闸；裁决不是表决" |
+| ⑤ | `notice` 说"请把卡的概率改为 0.5"，但**没有任何一步真的改卡**（`read_library` 仍 `p:0.5`、`rev:1`、无 `debate_ruling`） | ✅ 已修：回执新增 `correction{needed,recipient,tool,cardId,call,means}`，`call` 是可执行的那一次调用（带本次裁决值），并说明"通知是框架的动作、改卡是持有者的动作" |
+| ⑥ | `vibe_vmu_status{detail:"full"}` 回执 235,494 字节、宿主 `hostElision:"possible"`，agent 用 grep 找 `turns`/`fields`/`owners` 全无匹配 | ⚠️ **我这轮简报写错**（让抄三处不存在的键）。可抄的异常读数在 `detail:"summary"`：`conflicts` 3 条 `VMU_PACK_CONFLICT`、`enabledGap` 22 行、`store{opts…}`、`ids.mints/observations`、`auditTail`、`toolFacePull{seen:79,matched:33}`、`closureVoteRecorded`、`members{live:3,total:3,pendingDeliverSeam:true}`、`control{state:"running",beats:0}` |
+| ⑦ | `vibe_v5_record_proposition` 第一次带 `track:"other"` 被 `VMU_INVALID_ARGUMENT` 拒（hint 列 13 个合法轨） | ✅ 机制正确、**我参数错**；建卡回执不回显 `value`/`p`（agent 也记为"缺"）⇒ 建议下轮加回显（未改，避免与本轮主题混） |
+| ⑧ | 成员子会话在跑自己的 Lean 流（`lean_job{jobId:"lean-1"}`、引用 `lean-3 exit 0`、`命题卡 r-3`），与本轮任务（1+1=2 / `p-r30`）无关 | ❓ **§125 悬案"成员回合上下文继承"仍未定性**。这些是它自己子会话的真实产物（可用），但读成员正文时必须先核对来源 |
+
+#### 3. 本轮改动（对应第 2 节 ②③④⑤ 与 ① 的披露）
+
+- `vibe-math-vmu/tools/turn.js`：`selectionShape`（`'members'|'member'|'roster-default'`）随两次 `kernel.turn.step` 传下去。
+- `vibe-math-vmu/kernel/turn/index.js`：`step({selectionShape})` 接受形状名，`requestedMembersNote` 由 `namedShape` 派生（面层归一化之后内核已无法自证形状，所以形状必须由知道它的那一层说出来）；`closureVote.reason` 改词。
+- `vibe-math-vmu/tools/meeting.js`：`close` 回执新增 `closureVote`、`closureVoteNote`。
+- `vibe-math-vmu/packs/v5r/tools.js`：`propositionClause`（按 `kind` 派生，card 无、file-ref 说未读文件、unverified 明说未登记）、`floor.means`/`floorMeans`、`correction`。
+- 新测试 `tests/vmu-run30-findings.test.mjs`（30 条断言），把上面五条钉成回归证据；其中 ④ 的正文断言从**成员自己的信箱**读回（`vibe_v5_inbox{action:"open"}`），不从回执读。
+- 相邻套件（本轮实测末行）：`VMU TURN 271/0`、`VMU HOST 203/0`、`VMU V5R TOOLS 355/0`、`VMU RUN30 FINDINGS 30/0`、`VMU RUN 29 FINDINGS 22/0`、`VMU RUN 29 VERDICT ASK 51/0`、`VMU RUN34 FINDINGS 24/0`、`VMU RUN 28 FINDINGS 13/0`、`VMU VERDICT ASK 42/0`、`VMU MEETING ASK 17/0`。
+
+#### 4. 非规范行为项（不是缺陷，但记录在案）
+
+1. 主席 `acad-01` 从不投结题票，同时也**从不被** `verdict_ask` 问（`excluded:*presides`）——两处一致，属规则，不是漏。
+2. 成员在自己回合里**自主**投结题票（`effects:[{kind:"closure-vote",…}]`）而回执不给"为什么现在投"的理由；规则允许，但读数会出现 `votesCast:1→2` 中间态。
+3. `vibe_v5_say` 在无会议绑定时被 `no-meeting-bound` 跳过、原文留在 `receipt.notes`——已披露，属设计。
+
+#### 5. 无法验证项
+
+1. `op:"reply"` 正向路径（`activation` 下不存在，只能验拒绝——本轮未重跑该构造）。
+2. 成员侧 `vibe_vmu_tools`（成员回合里没有调用记录，只有所办侧读数）。
+3. 预约会议 / `verdict_final` 的真机失败路径（本轮是成功路径）。
+4. `closureVote.window:"meeting"`（没有面把回合绑定到会议，`window` 只能是 `"session"`）。
+5. `docs/03-interface-contract.md:114` 的 F53 段仍写"直接 `node:fs` 只出现在三处"，实测 8 文件 10 条 import（含 `node:fs/promises` 使用者）——**过期声明，待修**。
+
+#### 6. 本轮无实质残余：**否**
+
+②③④⑤ 与 ① 的披露已修并带断言，但**真机上还错不错**要等 run 31；⑧（成员上下文）仍未定性；①的"是否该拒"是规则决定，需要 v5r 规则口径确认后才能动。
+
+### §127.1 顺手清掉 HEAD 上的 13 条既有红（不是本轮引入的，但挡着"全绿"这个读数）
+
+这 13 条在 `9dce66f0` 的干净工作树上复跑同红（用 `git worktree add -f D:/_tmp/r30/head-wt` 取证），所以是既有债。它们的共同形态值得记：**没一条是"代码坏了"，全是"声明/量具/断言与机制脱了节"** —— 声明说 H1 而机制是构造期、手写清单少了一行、断言把缺陷当契约、计数把两处读数当状态。
+
+| # | 套件（HEAD 读数） | 真因 | 处置 | 现在 |
+|---|---|---|---|---|
+| 1 | `audit-fs-purpose` 8/2 | `kernel/store.js` 直接 import `node:fs` 却无用途 marker | `store.js:28` 加 `// fs-purpose: audit - the durable fold is the framework's own artifact, never a caller's path`（kinds 仍封闭三词） | 10/0 |
+| 2 | `audit-member-scope` 36/1 | `TOOL_SCOPES` 缺 `vibe_v5_verdict_ask` | `packs/v5r/member-scope.js:107` 声明 `'office'`（该面以主席名义发信，`tools.js` 只校验参数 `member`，不校验调用者） | 37/0 |
+| 3 | `audit-no-silent-reads` 5/1 | 6 处 `read('ids') \|\| []` 是 fold 读+值归一化，被 `read-or-empty` 形状误命中 | `tests/vmu-store-coherence.test.mjs` 加 `ids(s)` 助手在源头消形（条数 12 不变、未加 OPTIONAL 豁免） | 6/0 |
+| 4 | `audit-scanner-selfproof` 2/2 | `audit-settings-hot-truth.test` 无自证也未登记 | `tests/audit-scanner-selfproof.test.mjs` 登记 UNPROVEN 并附"为什么这张表没有可跑的扫描自证" | 4/0 |
+| 5 | `audit-settings-hot-truth` 8/3 | 生成的 47 条 `vmu.meetings.*` 声明 H1（"下一轮生效"），而 `kernel/meetings.js:135` 构造期就把整块快照进 `K`（`kernel/index.js:212-227` 早把整族登记为 `CONSTRUCTION_ONLY_KEYS`） | `scripts/generate-wired-schema.mjs` 改为从 kernel 的 `constructionOnlyReasonOf()` **派生** `HOT.H2` + "为什么构造期"；新增 §4 **反事实自证**（同一 handle 运行时写 5 仍读 2；新 handle 才读 5） | 15/0（比对 1155 键） |
+| 6 | `audit-vmu-docs` | 方法表漏 `refresh()/onReload()`；8 个代码真抛的码未登记 §8 | `docs/03-interface-contract.md:90` 补方法；§8 表尾登记 8 行并用 `generate-planned-codes.mjs --write` 重算（444→452） | 103/0 |
+| 7 | `vmu-activity-timers` 36/2 | 手写清单漂移：`kernel/store.js:191` 的 `withFileLock` 锁重试 `setTimeout`（commit `a572b5a4`，晚于该测试最后编辑）未被登记 | 补 declared 行 `verdict:'bounded-await-backoff'` **并新增 §1b 实测**（预置 `.lock` 撞 EEXIST，断言 `lockWaits>0`/`lockSkips===1`/`after===before`），让 `clears:0` 是被测量过的读数 | 41/0 |
+| 8 | `vmu-finally-falsify` 25/1 | `dispatchSkipReason` 被 `0c827ae1` 加了第二参 `{boundMeeting}`，断言的"三文件零取用点"过时 | 语义改写成"恰好一处、已还清"（tripwire 自证与注入变异未弱化） | 26/0 |
+| 9 | `vmu-run35-findings` 23/3 | 请裁决人口被 `046f797c` 改为"在册∪发言−主席"，套件仍按旧人口断言 | 断言跟规则走（完整性闸的 `VMU_STATE` 点名缺谁） | 26/0 |
+| 10 | `vmu-run8-findings` 24/1 | `settings/defaults.json:63 quorumFloorSource:"universe"` ⇒ 下限=有资格全体，断言按"出席者"算 | 断言改为从声明派生 | 27/0 |
+| 11 | `vmu-v5r-verdict-final` 59/4 | 同上人口变更的下游 | 断言跟规则走 | 63/0 |
+| 12 | `vmu-run15-findings`（HEAD 绿，被我改红） | 我把 `learnedSession` 收进 helper 后丢了 `\|\| null` 字面 | 改回 `learnedSession: learned \|\| null`（该断言要的是"学到的 id 必须随拒信出走"） | 42/0 |
+| 13 | `vmu-run44-findings`（HEAD 绿，被我改红） | 我把 `explicit` 改名拆了 `membersFrom = explicit ? …` 字面 | **结构性改法**：`explicit = listed \|\| singleMember !== null`，字面保留 | 12/0 |
+
+**收尾读数（本轮，全部实测）**：`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **TOTAL 485 / PASS 485 / FAIL 0**（suites 421 · probes 64；`audit-tool-exec.mjs` 需 CLI 参数按设计 SKIP）；`node scripts/regen-all.mjs --check` ⇒ 16/16 in sync；`node scripts/preflight.mjs` ⇒ PASS；`node tests/audit-declaration-criterion.test.mjs` ⇒ 89/0。
+
+**教训（写给下一轮）**：
+1. 一条门禁红要先问"是代码错，还是量具/声明错"——本轮 11/13 是后者，改代码去迎合过时断言会造成真退化。
+2. 生成块里的声明若由生成器硬编码，机制变化时必须让**生成器从机制派生**，不能手改生成物（下次 regen 就漂）。
+3. 多个写者并行时，`regen-all --write` 只能由一个人在所有写者收工后跑；提前跑会把别人的中间态钉进生成物（本轮为此拒绝过两次队友的 `--write` 申请）。

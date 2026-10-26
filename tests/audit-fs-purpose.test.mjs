@@ -6,6 +6,15 @@
 //   · audit      — the framework's own audit anchors / logs / own artifacts
 //   · self-audit — in-package READ-ONLY self-inspection (e.g. reading the glossary or a pack file)
 //
+// WHY `kernel/store.js` IS `audit` (recorded here because a bare marker would read like a word smuggled under a broad
+// kind): its only file is the framework's OWN durable fold, `<root>/vmu/state.json`, created from its own PUBLIC_KEYS
+// whitelist — open/load/atomic rename/backup/lock. That is the "own artifacts" half of `audit`, the SAME half that
+// already covers `host-math.js`'s computation artifacts; it is NOT a guard decision and NOT read-only in-package
+// self-inspection. The list stays CLOSED at three on purpose (repo precedent, `packs/v5r/settings/defaults.js`: a new
+// kind is a bigger decision than avoiding an import) — and store.js cannot avoid this import, because it IS the
+// durable-file port. The marker sits directly above the imports in `kernel/store.js`; the probes below still prove a
+// bare import (and a marker with an unlisted kind) is RED — see the plant-and-delete proof in docs/acceptance.
+//
 // TWO THINGS THIS GATE REFUSES TO DO:
 //   1. It does NOT count an `import ... from 'node:fs'` that appears in a COMMENT or in a DATA STRING (the
 //      false-positive family this repository keeps catching). The detector runs on comment-stripped source and

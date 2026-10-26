@@ -65,7 +65,10 @@ const perms = (id) => (Array.isArray(slotOf(id).permissions) ? slotOf(id).permis
   ok((st.closureVote && st.closureVote.missing || []).length === 2,
     'E6. ★★★ and NOTHING is cast yet: both enfranchised members are named as missing (silence must block closure)',
     { missing: st.closureVote && st.closureVote.missing })
-  ok((st.closureVote && st.closureVote.reason || '').includes('silence blocks closure') || st.closureVote.cast === false,
+  // ★ RUN 30 ⑥: the sentence used to read "silence blocks closure", which a live reader took as "this close was illegal" —
+  // the close rail and the closure VOTE are two mechanisms (the close was `ok:true`). The wording now names which of the
+  // two the silence blocks, so the assertion follows the new sentence (the FALLBACK arm is unchanged, not widened).
+  ok((st.closureVote && st.closureVote.reason || '').includes('silence blocks the CLOSURE VOTE') || st.closureVote.cast === false,
     'E7. ★★ the reading explains itself instead of reporting a bare false', { reason: st.closureVote && st.closureVote.reason })
 }
 

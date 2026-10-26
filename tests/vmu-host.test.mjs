@@ -390,13 +390,32 @@ if (SELF_PROBE) {
     // ★★ LIVE RUN 19 (⑬.1): the receipt carried `hot:"H1"` beside `requiresRestart:true` with nothing saying the two
     // describe DIFFERENT things (a declared class and a measured effect), so the institute read a contradiction.
     // `hotMeans` glosses the class and `declaredVsMeasured` names the divergence.
+    // ★ ROUND task-7 (settings hot-truth): the DIVERGENCE this block was written against is GONE BY DECLARATION. The 47
+    // generated `vmu.meetings.*` rows said H1 while `createMeetings()` snapshots the whole block into `K` at construction,
+    // so the receipt had to apologise for the table; the declaration now follows the mechanism (`settings/schema.js` H2,
+    // derived by `scripts/generate-wired-schema.mjs` from the kernel's own `CONSTRUCTION_ONLY_KEYS`). Keeping the old
+    // "H1 = next turn" wording here would re-encode the defect as the contract, so the gloss is now checked against the
+    // KERNEL's table (`appliesTable()`): "prints words, not a bare code" stays a real assertion while the class itself is
+    // the measured one. Direction naming is still exercised — E-7e below pins PESSIMISTIC — and the OPTIMISTIC direction
+    // has no live fixture left precisely because no construction-only key may be declared H0/H1 (audit-settings-hot-truth
+    // 1b gates that invariant, so a regression is caught there instead of being re-apologised for here).
     const qm = JSON.parse(await spec.execute({ key: 'vmu.meetings.quorumMin', value: '2' }, {}))
-    ok(typeof qm.hotMeans === 'string' && /H1/.test(qm.hotMeans) && /next turn/.test(qm.hotMeans),
-      'E-7b. ★★ the receipt glosses its declared hot class in words (H1 = next turn), so "H1" is not a bare code beside a restart verdict', qm.hotMeans)
-    ok(typeof qm.declaredVsMeasured === 'string' && (/declared/.test(qm.declaredVsMeasured)) && (/MEASURED/.test(qm.declaredVsMeasured)),
-      'E-7c. ★★★ and it NAMES the divergence (declared class vs measured effect) instead of leaving the reader to reconcile them', qm.declaredVsMeasured)
-    ok(/OPTIMISTIC/.test(String(qm.declaredVsMeasured)),
-      'E-7d. ★★ the direction is named too: a declared class that promises LESS than the measured effect is OPTIMISTIC (H1 declared, construction-only reader)', qm.declaredVsMeasured)
+    const appliesTable = kernel.appliesTable()
+    // The DECLARED class is read from the settings TABLE that the receipt is supposed to be quoting (`SETTING_DEFS`,
+    // the same table `kernel/index.js` uses for `settingDescription`), never hard-coded here: the assertion must hold
+    // for whatever the table says, so a future re-classification is checked against the source, not against memory.
+    const { SETTING_DEFS } = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'settings', 'schema.js')).href)
+    const declared = SETTING_DEFS.find((d) => d && d.key === 'vmu.meetings.quorumMin') || null
+    ok(declared && declared.declared !== false && typeof qm.hotMeans === 'string' && qm.hotMeans !== qm.hot
+      && qm.hot === String(declared.hot) && qm.hotMeans.includes(appliesTable[qm.hot])
+      && qm.hotMeans.includes('declared class ' + qm.hot),
+      'E-7b. ★★ the receipt glosses its declared hot class in words taken from the kernel table (not a bare code beside a restart verdict), and the class it glosses IS the one the settings table declares for this key', qm.hotMeans)
+    ok(qm.declaredVsMeasured === 'declared and measured agree' && qm.requiresRestart === true,
+      'E-7c. ★★★ declared and measured now AGREE for this key — and that agreement is the fix, not a relaxation: the receipt used to name a three-way divergence (declared H1 vs MEASURED construction-only vs the OPTIMISTIC direction) because the TABLE said H1 for a family createMeetings() snapshots; the defect was corrected at the declaration, so the honest receipt for this key is "agree" with requiresRestart:true. A class that promises LESS than its readers deliver is still named (PESSIMISTIC, E-7e) and an OPTIMISTIC re-declaration would redden audit-settings-hot-truth 1b', qm.declaredVsMeasured)
+    ok(qm.hot === String(declared.hot) && qm.requiresRestart === true
+      && /next start/.test(String(qm.appliesAt)) && /no live reader/.test(String(qm.appliesAt)),
+      'E-7d. ★★ the declared class, the measured restart and the construction-only REASON are one sentence on the TOOL face: the receipt carries the table\'s class, requiresRestart:true, and an `appliesAt` that names "next start … no live reader" (the kernel measured that this family is snapshotted at construction). A regen that wrote a live class back would redden this line and audit-settings-hot-truth 1b together',
+      JSON.stringify({ hot: qm.hot, requiresRestart: qm.requiresRestart, appliesAt: String(qm.appliesAt).slice(0, 100) }))
     // ★★ LIVE RUN 20 (⑬.1/c): `vmu.turn.leaderId` is declared H2 (restart) while its readers re-read live, so the
     // receipt came back hot:"H2" + requiresRestart:false + "declared and measured agree" — the last one false.
     // A class that promises MORE than the measurement is PESSIMISTIC and must say so.

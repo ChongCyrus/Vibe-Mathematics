@@ -11,7 +11,9 @@
 //      "pack-tool" label was UNREACHABLE and every pack tool was mislabelled `route-not-recorded`.
 //   D  `quorum.met` answers the FLOOR question; with the deployment default floor of 0 it is true while nobody has
 //      attended, so `met:true` could be read as "the institution's rule is satisfied". `floorMet`/`metIs` now say which
-//      question the boolean answers.
+//      question the boolean answers. (round 30 audit: the institute later adopted `quorumFloorSource:"universe"`, so the
+//      zero-floor reading is now taken in an explicitly-`setting` deployment — see section D; the adopted reading is
+//      pinned there too.)
 //   F  the `VMU_REPORT_NO_TRANSPORT` refusal carried only code/message/hint, so the two facts the acceptance check reads
 //      (`drives`, `transportInjected`) existed only on `status()`/`declarations()` — a refusal is a read face too.
 //
@@ -108,9 +110,35 @@ try {
     '★★ D: floorMet is the SAME boolean as met (one fact, two names — not two computations that can drift)', q && { met: q.met, floorMet: q.floorMet })
   ok(q && typeof q.metIs === 'string' && /FLOOR/.test(q.metIs) && /NOT the institution rule/.test(q.metIs),
     '★★★ and `metIs` names which question the boolean answers (FLOOR only, not the institution rule)', q && q.metIs)
-  ok(q && q.floorMet === true && q.unanimity && q.unanimity.met === false,
-    '★★ with the default zero floor: the floor is met while unanimity is NOT — the exact reading that used to be ambiguous',
-    q && { floor: q.floorMet, unanimity: q.unanimity && q.unanimity.met })
+  // ★ A 类修正（round 30 取证审计）：这条断言编码的是「部署的默认下限为 0 ⇒ floor 满足而 unanimity 不满足」这个
+  // 对照。它编码的前提被后续轮次推翻了：`vibe-math-vmu/packs/v5r/settings/defaults.json:63` 现在声明
+  // `"vmu.meetings.quorumFloorSource": "universe"`，本所采纳的下限因此是"有资格者的全体"（院士 + 常驻研究员，
+  // 见 `vibe-math-vmu/kernel/meetings.js:410-437`：needUncapped = capUniverse.n），而不是 0；只有主席在座
+  // （present 1 / roster 2 ⇒ required 2）时 floor 本身就不满足（meetings.js:447 `met = m.present.size >= need`）。
+  // 对照本身没有死 —— 框架的默认仍是 'setting'（`vibe-math-vmu/kernel/meetings-defaults.js:48`、
+  // `vibe-math-vmu/settings/schema.js:1335`），只是要在一个显式声明 setting 的部署里读（紧随其后的那段）。
+  ok(q && q.floorMet === false && q.voteFloor && q.voteFloor.source === 'universe' && q.required > 0 && q.present < q.required &&
+     q.unanimity && q.unanimity.met === false,
+    '★★ 本所采纳的下限（v5r 声明 quorumFloorSource:"universe"）：floor = 有资格者的全体（required>0），只有主席在座 ⇒ floor 未满足、unanimity 也未满足；「零下限下 floor 满足而 unanimity 不满足」的对照见下面显式 setting 部署',
+    q && { source: q.voteFloor && q.voteFloor.source, required: q.required, roster: q.roster, present: q.present, capUniverse: q.voteFloor && q.voteFloor.eligibleUniverse, floorMet: q.floorMet, unanimity: q.unanimity && q.unanimity.met })
+  // The zero-floor CONTRAST, read where it still exists: a deployment that declares the framework default
+  // `quorumFloorSource:"setting"` with no quorumMin/quorumRatio has floor 0 ⇒ `met`/`floorMet` true while nobody but
+  // the chair is present, and `unanimity.met` false — the two questions are still two questions.
+  const floorRoot = await mkdtemp(join('D:/_tmp', 'vmu-run8-floor-'))
+  try {
+    const zero = await boot({ root: floorRoot, packs: ['v5r'], vmu: { meetings: { quorumFloorSource: 'setting' } } })
+    await zero.handle.kernel.members.hire({ id: 'acad', slot: 'chair' })
+    await zero.handle.kernel.members.hire({ id: 'r-1', slot: 'member' })
+    const zeroMet = await receipt(zero, 'vibe_v5_meeting', { member: 'acad', agenda: '读显式零下限回执' })
+    ok(zeroMet && zeroMet.ok === true, 'setup: the explicit-zero-floor deployment convenes a meeting', zeroMet && (zeroMet.code || zeroMet.meeting))
+    const zeroSt = await receipt(zero, 'vibe_vmu_meeting', { action: 'status', id: zeroMet.meeting })
+    const zq = (zeroSt && zeroSt.quorum) || (zeroMet && zeroMet.quorum) || null
+    ok(zq && zq.floorMet === true && zq.required === 0 && zq.unanimity && zq.unanimity.met === false,
+      '★★ with an explicit zero floor (`vmu.meetings.quorumFloorSource:"setting"`, the framework default): the floor is met (required 0) while unanimity is NOT — the exact reading that used to be ambiguous',
+      zq && { source: zq.voteFloor && zq.voteFloor.source, required: zq.required, present: zq.present, roster: zq.roster, floor: zq.floorMet, unanimity: zq.unanimity && zq.unanimity.met })
+  } finally {
+    await rm(floorRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  }
 
   // ── F ──────────────────────────────────────────────────────────────────────────────────────────────────────────
   console.log('=== F. the no-transport REFUSAL carries drives / transportInjected ===')

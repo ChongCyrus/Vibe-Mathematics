@@ -41,22 +41,29 @@ const openStore = async (opts = {}) => {
   return s
 }
 
+// `ids(s)` is a VALUE NORMALISER, not a degraded file read: the store seeds the `ids` key `null`
+// (`kernel/store.js` NULL_SEEDED — "nothing has been projected yet" is the honest first-run state, and a `[]` there
+// would make recovery report a projection gap). Writing `s.read('ids') || []` inline is the same normalisation but it
+// LOOKS like `readFileSync(p) || ''`, the shape `audit-no-silent-reads` exists to catch — so the shape is removed at
+// its source. The assertions below keep exactly the same strictness: a non-array or non-empty fold still fails them.
+const ids = (s) => { const v = s.read('ids'); return Array.isArray(v) ? v : [] }
+
 try {
   // ── 1. the defect itself: instance B must see instance A's write
   const a = await openStore()
   const b = await openStore()
-  ok((a.read('ids') || []).length === 0 && (b.read('ids') || []).length === 0, 'both instances start empty')
+  ok(ids(a).length === 0 && ids(b).length === 0, 'both instances start empty')
 
   await a.patch('ids', (cur) => (cur || []).concat(['r-1']))
-  ok((a.read('ids') || []).length === 1, 'A sees its own write')
-  ok((b.read('ids') || []).length === 1,
+  ok(ids(a).length === 1, 'A sees its own write')
+  ok(ids(b).length === 1,
     '★★ B (a DIFFERENT kernel instance over the same file) sees A\'s write — this is the run-13 defect',
-    JSON.stringify(b.read('ids')))
+    JSON.stringify(ids(b)))
   ok(b.stats().reloads >= 1, '★ the reload is counted, not invisible', JSON.stringify({ reloads: b.stats().reloads }))
 
   // ── 2. no lost update: B patches what A just wrote
   await b.patch('ids', (cur) => (cur || []).concat(['r-2']))
-  const afterBoth = a.read('ids') || []
+  const afterBoth = ids(a)
   ok(afterBoth.length === 2 && afterBoth.join(',') === 'r-1,r-2',
     '★★ B patched ON TOP of A\'s value (a stale fold would have written r-2 alone)',
     JSON.stringify(afterBoth))
@@ -66,7 +73,7 @@ try {
     a.patch('ids', (cur) => (cur || []).concat(['r-3'])),
     b.patch('ids', (cur) => (cur || []).concat(['r-4'])),
   ])
-  const final = (a.read('ids') || []).slice().sort().join(',')
+  const final = ids(a).slice().sort().join(',')
   ok(final === 'r-1,r-2,r-3,r-4', '★★ two concurrent writers both survive', final)
   const leftovers = (await readdir(join(root, 'vmu'))).filter((f) => f.endsWith('.lock') || f.endsWith('.tmp'))
   ok(leftovers.length === 0, '★ no lock or temp file is left behind', JSON.stringify(leftovers))
@@ -76,9 +83,9 @@ try {
   ok(r1.ok === true && r1.coherence === 'on', 'refresh() reports the coherence mode', JSON.stringify(r1))
   const stale = await openStore({ coherence: 'off' })
   await a.patch('ids', (cur) => (cur || []).concat(['r-5']))
-  ok((stale.read('ids') || []).indexOf('r-5') === -1,
+  ok(ids(stale).indexOf('r-5') === -1,
     '★★ coherence:"off" DOES go stale — the check is falsifiable, not vacuous',
-    JSON.stringify(stale.read('ids')))
+    JSON.stringify(ids(stale)))
   ok(stale.refresh().reloaded === true, 'and an explicit refresh() fixes it', JSON.stringify(stale.refresh()))
 
   // ── 5. the file itself is a complete document at every step (the rename discipline still holds)

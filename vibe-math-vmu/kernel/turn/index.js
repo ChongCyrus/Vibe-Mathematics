@@ -183,7 +183,9 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       ? 'every enfranchised member judged the question solved'
       : (enfranchised.length === 0
         ? 'no member holds the closure-vote permission, so unanimity is unreachable - seat members with vibe_vmu_control { action: "hire", member_id, slot, institution } using a slot whose permissions include this one (as of phase 12 the v5r pack grants it to `chair` and `member`, not to `temp`), then drive a turn; a deployment may rename the permission with vmu.turn.closureVotePermission. This reading appeared in a real run BEFORE any member was seated, which is why it names the PERMISSION rather than saying the roster is empty.'
-        : (missing.length ? 'silence blocks closure; no judgement yet from: ' + missing.join(', ') : 'a member judged the question NOT solved: ' + against.join(', '))),
+        : (missing.length
+          ? 'silence blocks the CLOSURE VOTE (unanimity on「每个有投票权的成员都判定该问题已解决」) — it does NOT block closing the meeting: the close rails are the meeting policies (vmu.meetings.*), and this reading never decides whether a close was legal. No judgement yet from: ' + missing.join(', ')
+          : 'a member judged the question NOT solved: ' + against.join(', '))),
   }
 }
 export const FIELDS = Object.freeze(Object.keys(FIELD_OWNERS))
@@ -2277,7 +2279,7 @@ export function createTurnOrchestrator({
    * the pipeline owns WHAT PROMPT. A round that fails is RETURNED rather than thrown, because a failed round is an
    * operational outcome; a malformed ARGUMENT still throws, because that is a programming error.
    */
-  const step = async ({ members = [], member = null, membersInferred = false, membersFrom = null, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+  const step = async ({ members = [], member = null, membersInferred = false, membersFrom = null, selectionShape = null, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
     // ★★★ LIVE RUN 23 (the institute's own report, item 2): THE CHAIR RAIL'S HINT NAMED A PARAMETER THAT DID NOT EXIST.
     // `VMU_CHAIR_ACT_NOT_DELEGATED` tells the caller to "give the chair its own turn first:
     // `vibe_vmu_turn {op:"step", member:"academician-1"}`" — singular `member`. This signature had no `member`, so the
@@ -2285,7 +2287,23 @@ export function createTurnOrchestrator({
     // `requestedMembersSource:"roster-default"` (disclosed, but the caller's intent was silently lost). A hint that
     // cannot be executed is a broken promise, so the singular shorthand is accepted HERE — one place, honoured by both
     // faces — and it WINS over nothing: an explicit `members` list still wins (a caller who named a list meant the list).
-    if (member !== null && member !== undefined && String(member).trim() !== '' && (!Array.isArray(members) || members.length === 0)) {
+    // ★★ RUN 30 (the institute's own report, item ②(?)): the face now sends a singular `member` as a one-seat
+    // selection, and the receipt said "the caller named `members`" for it — the behaviour was right and the SENTENCE was
+    // wrong, so a reader could not tell which parameter produced the selection. The two facts are captured here, before
+    // the shorthand rewrites `members`, and the note at the bottom is derived from them instead of from `selectionSource`
+    // alone (roster-default vs everything-else is not a complete account of HOW the caller spoke).
+    const namedSingleMember = member !== null && member !== undefined && String(member).trim() !== ''
+    const namedMemberList = Array.isArray(members) && members.length > 0
+    // ★★ RUN 30 (the institute's own report, item ②): THE SHAPE BELONGS TO THE CALLER, NOT TO THIS ARGUMENT LIST.
+    // The tool face normalises a singular `member` into a one-seat `members` list before calling here (the run-29 fix),
+    // so `namedMemberList` is TRUE for both shapes and the receipt credited `members` to a caller that had passed
+    // `member`. The face knows which parameter the caller read and says so in `selectionShape`; when that name is one of
+    // the two real shapes it WINS. A caller that reaches this function directly (no face) passes no shape, and then the
+    // two facts above are the only evidence there is — same derivation as before.
+    const namedShape = (selectionShape === 'member' || selectionShape === 'members')
+      ? selectionShape
+      : (namedMemberList ? 'members' : (namedSingleMember ? 'member' : null))
+    if (namedSingleMember && !namedMemberList) {
       members = [{ id: String(member).trim() }]
       membersInferred = false
     }
@@ -2416,9 +2434,17 @@ export function createTurnOrchestrator({
       // for `selectionIgnored`), `resolvedMembers` is the list this step actually prompts. Without the second list a
       // caller reading `requestedMembersSource:'roster-default'` still could not see WHICH seats the default resolved to.
       resolvedMembers: selection.map((m) => m.id),
+      // ★★ RUN 30: three ways to name a selection, three sentences. The old pair said "the caller named `members`" even
+      // when the caller had used the SINGULAR `member` the framework's own hints teach (VMU_CHAIR_ACT_NOT_DELEGATED), so
+      // the receipt named a parameter nobody passed. `namedMemberList`/`namedSingleMember` are read before the shorthand,
+      // so the sentence describes the CALL, not the normalised result.
       requestedMembersNote: selectionSource === 'roster-default'
         ? 'no `members` was given, so requestedMembers is EMPTY by design (an inferred selection is not a request) and resolvedMembers is the roster default this step prompts'
-        : 'the caller named `members`; requestedMembers and resolvedMembers are the same list after normalisation (strings, {id} and {member} all land as ids)',
+        : (namedShape === 'members'
+          ? 'the caller named `members`; requestedMembers and resolvedMembers are the same list after normalisation (strings, {id} and {member} all land as ids)'
+          : (namedShape === 'member'
+            ? 'the caller named `member` (SINGULAR: one seat), so requestedMembers and resolvedMembers are that one id — this is not an inferred selection and not a list, the shorthand for "wake this one member"'
+            : 'the caller named a selection through some other shape; requestedMembers and resolvedMembers are the same list after normalisation')),
     }
     const spec = nextTurn({ members, phase, why, nextStep, role, membersFrom })
     // ★★ LIVE RUN 47 (the institute's own report ㉿.2): the face DOES name where the selection came from

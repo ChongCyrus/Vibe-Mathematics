@@ -74,11 +74,18 @@ const SRC = readFileSync(ROOT + 'vibe-math-vmu/kernel/turn/index.js', 'utf8')
 // ---------------------------------------------------------------- (b) wiring: one consumer each, in the dispatcher
 {
   ok(/export const dispatchSkipReason = /.test(SRC), 'b) `dispatchSkipReason` is DECLARED and exported')
-  ok(SRC.split('dispatchSkipReason(d)').length - 1 === 1, 'b) and has exactly ONE consumer (a helper nobody calls is the defect this phase keeps finding)', SRC.split('dispatchSkipReason(d)').length - 1)
-  ok(/const skipReason = dispatchSkipReason\(d\)/.test(SRC), 'b) the dispatcher calls it on the dispatch entry it is about to run')
+  // ★ A-side correction (round 30 forensic audit): this pinned the literal call text `dispatchSkipReason(d)` — the exact
+  // characters of the CALL, not the rule. Commit 0c827ae1 ("裁决 B 第 2 步 —— 成员回合绑定会议…") gave the predicate the
+  // bound meeting it needs (`dispatchSkipReason(d, { boundMeeting })`, turn/index.js:1627) because a turn bound to a
+  // meeting must NOT skip its `say`. The rule this line is about — exactly ONE consumer, i.e. a helper nobody calls is
+  // the defect — did not change, so the scan now counts CALL SITES (`dispatchSkipReason(d` followed by `,` or `)`), which
+  // accepts the extended signature and would still catch a second call site or none.
+  ok((SRC.match(/dispatchSkipReason\(d[,)]/g) || []).length === 1,
+    'b) and has exactly ONE consumer (a helper nobody calls is the defect this phase keeps finding)', (SRC.match(/dispatchSkipReason\(d[,)]/g) || []).length)
+  ok(/const skipReason = dispatchSkipReason\(d\b/.test(SRC), 'b) the dispatcher calls it on the dispatch entry it is about to run')
   ok(/if \(skipReason !== null\)[\s\S]{0,900}?continue/.test(SRC), 'b) and a skip CONTINUES past the face lookup (no face is touched)')
   // the guard must sit BEFORE the face lookup, or a face would already have been chosen for a field that never runs
-  const skipAt = SRC.indexOf('const skipReason = dispatchSkipReason(d)')
+  const skipAt = SRC.indexOf('const skipReason = dispatchSkipReason(d')
   const faceAt = SRC.indexOf('const face = map[d.face]', skipAt < 0 ? 0 : skipAt)
   ok(skipAt > 0 && faceAt > skipAt, 'b) the guard runs BEFORE `const face = map[d.face]`', { skipAt, faceAt })
   ok(/export const lostTurnState = /.test(SRC), 'b) `lostTurnState` is DECLARED and exported')
