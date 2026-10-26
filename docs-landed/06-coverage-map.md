@@ -148,3 +148,6 @@
 
 ★ ★★ **两条读法**：① 上表任一行的"当前是否真的这样"★ **以对应 `docs/` 卷与门禁为准**，★ 本卷写的是**落点**不是**保证**；
 ② ★ 真机判决逐轮记录在 `docs/acceptance/phase12-v5r-rules-conformance.md`（§125 起），★ 那一卷是**证据表**，★ 每条都指到 `文件:行` 或门禁末行。
+| 一次行动可走两扇门 | `vibe-math-vmu/kernel/turn/index.js` 的 `alreadyWrittenThisTurn()`：同一回合里同 owner+同 track+同 title 的第二扇门不写（`skipped.reason="already-written-this-turn"` + `existingId`），账本读不到就不判断。 | `tests/vmu-run43-duplicate-write.test.mjs` |
+| 两扇门读同一本账 | 状态板 ④ 与 `read_library{member}` 读到的必须是**同一条**记录（run 43 证：两扇门各写一条时两者互相矛盾）。 | `tests/vmu-run43-duplicate-write.test.mjs` ① |
+| 回执要点名跳过的字段 | `skipped` 是计数、`skippedDetail` 是行；只给计数等于不给答案（run 37 教训）。 | `tests/vmu-run43-duplicate-write.test.mjs` ① |

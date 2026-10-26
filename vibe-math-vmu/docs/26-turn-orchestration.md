@@ -1066,3 +1066,17 @@ run 41（91 秒、12 次调用、0 RED）只做一件事：验证 ROUND 40 的 `
 与 `mutedMeans`（"这个字段和 status 打印的是同一本账"）。判据：`tests/vmu-run42-id-namespace.test.mjs` ④——禁一个
 ⇒ `["r-1"]`；禁两个 ⇒ `["r-1","r-2"]`（是账不是增量）；与 `status().muted` 集合一致；解禁后只剩 `["r-2"]`（回执是
 读数不是拷贝）。
+
+## ROUND 43（run 43）：一次行动不必走两扇门，但两扇门都要读同一本账
+
+run 43 让研究员写**一条** progress，它做了两件事：调 `vibe_v5_record_progress`（工具门，作者来自 `member`），
+又把同一条放进回复围栏（信封门）。两扇门都记了账：`rec-1`（工具）与 `rec-2`（信封），同 owner、同 title、
+相隔 1 毫秒；成员自己说"记录 id rec-1"，而状态板「当前小任务」引用的是 `rec-2`。**没有哪扇门错，成对才是错。**
+
+修法在派发层（`kernel/turn/index.js` 的 `alreadyWrittenThisTurn()`）：回合知道"这一轮是谁、何时开的"，
+所以第二扇门先**问账本**——同 owner + 同 track + 同 title + 写于回合开启之后 ⇒ 就是同一个行动的反刍，
+于是 `skipped` 里写 `reason:"already-written-this-turn"`、`existingId:"rec-1"`、`means` 告诉读者"一个行动只走一扇门"。
+判据三条：①时间戳既可能是 epoch ms 也可能是 ISO 字符串（回合的 `at` 默认是 ISO，账本行是 epoch）；
+②账本读不到（没有 `list`、返回 Promise、抛错）就**不做判断**、照常写——守卫不能靠猜；③只对 records 写入生效。
+
+真机证据（run 43）：`[当前小任务]` 引 rec-2、成员说 rec-1、两条正文几乎相同（263 B / 227 B，fingerprints 不同）。

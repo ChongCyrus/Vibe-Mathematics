@@ -2366,6 +2366,50 @@ export function createTurnOrchestrator({
       if (!changed) return null
       return { payload: out, attributed }
     }
+    // ★★★★★★★ ROUND 43 (live run 43) - ONE ACT WALKED THROUGH TWO DOORS.
+    // Measured: a member was told to write ONE progress row; it called `vibe_v5_record_progress` (that door takes
+    // `member`) AND put the same row in the fenced reply (the other door). Both landed: `rec-1` and `rec-2`, same
+    // owner, same title, one millisecond apart - and the status board cited the second while the member's own prose
+    // said the first. Neither door is wrong; the PAIR is one act done twice. The turn knows which member it is and
+    // when it opened, so the second door can ASK THE LEDGER whether the act is already written and skip by name
+    // instead of writing a twin. It never guesses: same owner + same track + same title + written at-or-after open.
+    const stampMs = (v) => {
+      if (v === undefined || v === null || v === '') return null
+      const asNumber = Number(v)
+      if (Number.isFinite(asNumber)) return asNumber
+      const parsed = Date.parse(String(v))
+      return Number.isFinite(parsed) ? parsed : null
+    }
+    const alreadyWrittenThisTurn = (composed, turnStartedAt) => {
+      if (composed === null || composed === undefined) return null
+      const payload = composed.payload || null
+      if (!payload || typeof payload !== 'object') return null
+      if (typeof payload.title !== 'string' || payload.title.trim() === '') return null
+      if (payload.by === undefined || payload.by === null || String(payload.by).trim() === '') return null
+      const started = stampMs(turnStartedAt)
+      if (started === null) return null
+      const recordFace = map['vmu.records'] || null
+      const list = recordFace && typeof recordFace.list === 'function' ? recordFace.list : null
+      if (!list) return null
+      let listed
+      try { listed = list({ track: payload.track, limit: 0 }) } catch { return null }
+      if (!listed || typeof listed.then === 'function') return null
+      const items = Array.isArray(listed.items) ? listed.items : (Array.isArray(listed.cards) ? listed.cards : null)
+      if (items === null) return null
+      const title = payload.title.trim()
+      const owner = String(payload.by).trim()
+      for (const row of items) {
+        if (!row || typeof row !== 'object') continue
+        const rowOwner = row.owner === undefined || row.owner === null ? '' : String(row.owner).trim()
+        if (rowOwner !== owner) continue
+        const rowTitle = row.title === undefined || row.title === null ? '' : String(row.title).trim()
+        if (rowTitle !== title) continue
+        const stamp = stampMs(row.createdAt === undefined || row.createdAt === null ? row.updatedAt : row.createdAt)
+        if (stamp === null || stamp < started) continue
+        return String(row.id === undefined || row.id === null ? '?' : row.id)
+      }
+      return null
+    }
     const ATTRIBUTION_MEANS = 'the author of this row is the member whose turn it is: the turn already knows whose turn it is, so the row is attributed here instead of demanding the model write its own id into the reply json'
     const executed = []
     const skipped = []
@@ -2413,6 +2457,13 @@ export function createTurnOrchestrator({
       const composed = composedFor(d, d.payload)
       const onBehalf = composed !== null
       const recordComposed = onBehalf ? null : composeRecordPut(d, d.payload)
+      const twin = onBehalf ? null : alreadyWrittenThisTurn(recordComposed, opts && opts.turnStart)
+      if (twin !== null) {
+        counts.notExecuted += 1
+        skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'already-written-this-turn', existingId: twin,
+          means: 'the same act already reached the ledger during this turn (same owner, same track, same title, written at-or-after the turn opened): the row is ' + twin + ', so this door did not write a twin. Do one act through ONE door - the tool face or the reply envelope.' })
+        continue
+      }
       const attributed = recordComposed !== null && recordComposed.attributed ? recordComposed.payload : null
       let res
       try {
@@ -2510,7 +2561,7 @@ export function createTurnOrchestrator({
     // arrive with no reply text at all, so the only way to learn what the verifier actually wrote was another run.
     let out
     try {
-      out = await apply(parsed.reply, null, attributedTo || turn.member, { meeting })
+      out = await apply(parsed.reply, null, attributedTo || turn.member, { meeting, turnStart: turn && turn.at, turnId: turn && turn.id })
     } catch (e) {
       try {
         const text = typeof rawText === 'string' ? rawText : JSON.stringify(parsed.reply)

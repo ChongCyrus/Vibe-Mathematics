@@ -125,7 +125,10 @@ console.log('=== VMU TURN MEETING BINDING ===')
   ok(src.includes('const composedFor = (d, payload) =>'), '④a the composition exists in apply()')
   ok(src.includes('const apply = async (reply, faceMap = null, memberId = null, opts = null) =>'),
     '④b apply() takes the binding (a parameter the caller can actually supply)')
-  ok(src.includes('apply(parsed.reply, null, attributedTo || turn.member, { meeting })'),
+  // The call grew a turn stamp in run 43 (the duplicate-write guard needs to know when the turn opened), so the
+  // shape is asserted as "the binding is threaded AND the stamp rides with it" rather than by one frozen literal.
+  ok(src.includes('apply(parsed.reply, null, attributedTo || turn.member, { meeting,')
+    && src.includes('turnStart: turn && turn.at'),
     '④c dispatchReply THREADS it into apply (without this line the binding would die at the seam)')
   ok(src.includes('export function') || true, '④d (no-op anchor: keeps the block non-vacuous if ④a-c change)')
 }

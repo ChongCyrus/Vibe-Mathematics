@@ -6013,3 +6013,63 @@ T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修
 
 **趋于有。** F-13/F-14 均已取证并复验；剩下的都是"呈现层/未覆盖面"级，不是机制断链。下一轮（run 43）只需
 把 §144.5 的 1/2 两条补上，就可以把 F-13/F-14 从账单上划掉。
+
+## §145 真机跑 43（build 5accaa21，两条读面同时验）
+
+### §145.1 读数
+
+`DRIVE exit=0`、`durationSec 90`、根会话 `toolCalls 8`、`transcriptEvents 59`、`tokenTotal 449,465`
+（cap 10,000,000）、3 会话、`0 with RED checks`；jsonl `_oneoff/vm-slv/full-1027-060600.jsonl`
+= 2,469,297 B / 3,154 行；`NO_FENCE=36 UNKNOWN_FIELD=24 FIELD_NOT_APPLICABLE=26 BAD_JSON=36`；
+`cleanup: clone_gone=True  port_listening=False  C_free_GB=10.64`。
+
+### §145.2 判决表
+
+| 项 | 判据 | 真机证据 | 判决 |
+|---|---|---|---|
+| 状态板 ④ 与新 id 空间联动 | 同一成员写 progress 后，它下一轮的 `[当前小任务]` | 研究员回复里逐字抄的四行含 `[当前小任务] rec-2「偶数项和·起点」`（引的是新记录 id） | ✅ |
+| 成员 B 无记录时的读面 | `[当前小任务]` 应写"该来源未提供：…"而不是空白 | B 的回复只抄到自己的四行（见 §145.3） | ✅（未见空白/瞎猜） |
+| 续会话（第二回合同成员） | `continuation` 与 `delivery.residency` | 第二回合回执 `continuation.applied`/`reused` 为真、`ranIn` 与第一回合同 child session | ✅ |
+| 记录按 id 与按成员都可读 | `read_library{id:"rec-2"}` 与 `{member:"r-1"}` | 两者都回同一张卡、`owner:"r-1"` | ✅ |
+| **新缺陷 F-15**：一次行动走两扇门 | 同 owner+同 track+同 title 的两条记录、相隔 1 ms | `rec-1`（263 B，工具门）与 `rec-2`（227 B，信封门），成员说 rec-1、状态板引 rec-2 | ❌ 已修，见 §145.3 |
+
+### §145.3 F-15 与修法（产物）
+
+**现象**：所办给的指令是"调 `vibe_v5_record_progress` 写一条 progress，并在回复末尾给围栏"。成员两件事都做了：
+工具门写 `rec-1`，信封门的 `{progress:{…}}` 又写 `rec-2`。两行同 owner、同 title、同秒、fingerprints 不同；
+成员散文说"记录 id rec-1"，而状态板「当前小任务」引用 `rec-2` —— 对读者是两条互相矛盾的真相。
+
+**修法（派发层，不是提示词）**：`vibe-math-vmu/kernel/turn/index.js` 新增 `alreadyWrittenThisTurn(composed, turnStart)`：
+同一回合里，若账本已有 **同 owner + 同 track + 同 title + 写于回合开启之后** 的行，第二扇门**不写**，改在
+`skipped` 里写 `reason:"already-written-this-turn"`、`existingId:"<那条>"` 与 `means`（"一个行动只走一扇门"）。
+它只问不猜：账本读不到（无 `list`、返回 Promise、抛错）就照旧写；只有 records 写入受它管辖。
+时间戳两种形态都接受（回合 `at` 是 ISO 字符串、账本行是 epoch ms）——这一条是修的时候现场踩到的：
+直接 `Number(turn.at)` 得 NaN，守卫静默失效，测试 ① 红在"twin 还是写进去了"。
+
+**判据**：`tests/vmu-run43-duplicate-write.test.mjs` 19/0（①双写被跳过且回执点名 existingId ②不同 title 照写
+③同 title 异作者照写 ④回合开启**之前**的老行不算 twin ⑤账本不可读时照写——守卫不能靠猜 ⑥非 records 字段不被误伤）。
+
+### §145.4 门禁
+
+`VMU TURN 272/0`、`RUN39 ATTRIBUTION 19/0`、`RUN35 READOUTS 26/0`、`RUN42 ID NAMESPACE 27/0`、
+`RUN31 CONTINUITY 63/0`、`RUN43 DUPLICATE WRITE 19/0`（新）；全量门禁读数见 §145.5。
+
+### §145.5 收口
+
+**实跑末行**（build 5accaa21 + 本轮修复）：
+
+- `GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **`TOTAL 509  PASS 509  FAIL 0  (suites 445 · probes 64)`**（第一版 509/507/2：`vmu-turn-meeting-binding` ④c 的源码字面量断言与 run 43 新增的轮次戳冲突、`audit-declaration-criterion` 因新测试 `A:skipped` 指纹与「删失 0」红；前者改成断言「绑定透传 + 轮次戳随行」，后者 `--write-baseline` 重签 `entries=88 / multiLineC=68 / newSinceBaseline=0`）
+- `DECLARATION CRITERION 90/0`、`VMU TURN MEETING BINDING 22/0`、`VMU RUN43 DUPLICATE WRITE 20/0`、`VMU TURN 272/0`
+- `update-doc-counts --write` ⇒ JOBS 578 / suites 470 / probes 108（files changed=5）；`regen-all --write` 16/16 → `--check` **16/16 in sync**；`preflight` ⇒ `PREFLIGHT: PASS - safe to run a gate`；`check-docs` ⇒ `DOC LINT: PASS`
+- 自伤先例：`vmu-settings`/`vmu-planned-settings` 不剥注释、会把散文里的点号键当设置键 ⇒ 本轮新注释与文档措辞全部避开点号键。
+
+### §145.6 无法验证 / 下一轮
+
+1. **真机里双写是否真的被拦住**：run 43 是"先取证后修"，修后的行为要到 run 44 才能看。
+2. **成员 B 的四行是否完整**（`[当前小任务]` 的"未提供"措辞）：本轮只抄到部分，需要下一轮让它全抄。
+3. **同一 title 的两次**有意**写入**（例如两轮各写一条同名进度）不会被拦——因为回合开启时间不同；这一点是设计，
+   但需要真机确认读者不会误以为"第二轮的记录丢了"。
+
+### §145.7 本轮无实质残余？
+
+**否。** F-15 已修、待 run 44 判决；另两条是未覆盖面。
