@@ -896,3 +896,51 @@ run 35 里三个成员回合回了**散文**（回复里没有围栏 json），�
 /`replyLength`/`means`，`means` 明说"是**回答了**但没用上，不是没说话、也不是投递失败"）与成功回合回执上的
 `replyExcerpt`/`replyLength`/`replyExcerptMeans`（与既有拒绝诊断同样 2000 字符上限 —— 回执不是日志文件）。
 判据见 `tests/vmu-run35-readouts.test.mjs` 第 ③④ 组（含"散文回合确实被拒"与"成功回合带摘录"两面）。
+
+**补充（ROUND 35 / F2）：交回答的唯一可靠通道是"回复正文末尾的围栏对象"，不是一次工具调用。**
+`op:"reply"` 那个通道只在 **caller delivery**（宿主直接返回）下有握手；`activation` 投递下没有待回的回合，
+调用它只会得到 `VMU_TURN_NO_PENDING_MEMBER`。真机 run 35 里三个成员回合因此回了散文、整轮以 `NO_FENCE` 结束。
+现在通道段落与字段目录**都由声明渲染**（`packs/v5r/prompts/v5r-reply-channel.js`）：
+`REPLY_FIELD_ROWS` 29 行 ≡ kernel `FIELD_OWNERS`(22) + `RECORDED_FIELDS`(7)，两个目录段
+（`v5r-reply-compact` 默认 / `v5r-reply-spec` 全量）由 `middleware/prompt-switches.js` 的 `CATALOGUES` **二选一**，
+判据在 `tests/vmu-run35-reply-channel.test.mjs`（含"声明≡内核""真实装配里通道段只出现一次"）。
+附带一条量具修正：T99 的 20 000 字上限原先是量**裸 pipeline**（两份目录都放，20 569 字），而成员实收的是切换后
+的 14 926 字；上限不变、量具换成真实成员 prompt，并新增 T98b 钉住"裸装配带两份目录、所以它不是成员 prompt"。
+
+**补充（ROUND 36 / F-3）：关掉一场会，不是"服务面归档一下"——durable 的 `live` 行也必须被关掉。**
+真机 run 36 的 `VibeMath/vmu/state.json` 第 182 行：`close` 的回执写着 `closeSemantics:"service-archives"`、
+会议"moved to the service ARCHIVE"，可 durable 的 `live` 里同一 id 仍是 `state:"open"`（`present` 一人、
+`spokeBy` 空）⇒ 下一个内核 hydrate 之后这场会又开着。机制两半：
+①`vibe-math-vmu/kernel/meetings.js:2012` 的 `snapshot()` 现在**剔除**"archive 已记录为 closed"的 live 行
+（计数 `counters.droppedLiveWhileArchived`）——一份状态不可能同时说"已关"和"开着"，写穿不许多带一个孪生；
+②`meetings.js:2052` 的 `restore()` 在 hydrate 时同样剔除（同一 fold 里 archive 优先，回执带
+`droppedLiveWhileArchived` 与 `droppedLiveMeans`）；③`meetings.js:2080` 新增 `restoreReload()`（增量合并：
+只加不改、archive 优先、**永不删本地**），并在 `kernel/index.js:1498` 的 `meetings` 适配器上声明
+`restoreReload` —— 读刷新路径此前对会议完全不可用（`members` 早已有 `restoreReload`，会议没有）。
+判据在 `tests/vmu-run36-meeting-close.test.mjs`（39/0）：双对象 fold 的 boot 与 reload 都读成 closed、
+本地行不被 durable 覆盖、end-to-end 两个实例开-关-刷新一致。
+
+**补充（ROUND 36 / F-4）：日志的"作者"必须由写的人说出来，否则状态板认不出它。**
+`vibe_v5_record_progress` 的 `member` 是可选的，成员不传时 `by:null`、`bySource:"unknown"`（run 36 的 r-6/r-7），
+而状态板 `[当前小任务]` 按 `owner` 匹配 ⇒ 永久"该来源未提供"。诚实的修法是**把话说清楚**（提示词与工具描述都要求
+`member:"<你的 id>"`，并说明不传的后果），不是让内核去猜作者：`packs/v5r/seat-faces.js` 的三条席位教学与
+`tools.js` 的工具描述现在都这么写。
+
+**补充（ROUND 36 / F-1）：一个先启动的内核，永远读不到别人后来写下的卡——除非它在读之前再看一眼持久层。**
+run 36 的所办（先启动）调 `vibe_v5_verified_promote{card:"p-odd-sum"}` 得到 `VMU_NO_SUCH_OBJECT "unknown record:
+p-odd-sum"`、`hint:"known ids: (none)"`，而成员子会话 `vibe_v5_read_library` 读得到同一张卡。根因是
+`kernel/index.js:1946` 的 `recordsHydrated` 一次性闩锁：第一次成功读到 store 之后，这个内核再也不会看 store。
+修法两层（缺一不可）：`kernel/records.js:413` 的 `attachStore(store)`（鸭子类型，不抛，boot 不允许因可选端口崩）
+＋ `:929` 的 `synchronize(...)` 在 `get/list/history/externals` **读前**与 `put/supersede` **写前**按 stamp 增量同步
+（写前同步是因为 `snapshotRecords` 是整数组覆盖写，只修读路径会留下 lost update）；`:917` 的 `putInternal` 在任何
+包装之前捕获（否则恢复 N 行 = N 次全量 `store.write`）；`status().shared` 让"为什么这实例什么都没看见"可自证。
+规则：store 未 open / 坏行 ⇒ 计数并具名、不抛不静默；已存在的 id **绝不覆盖**；fold 未变时按签名短路；**读从不写**。
+判据在 `tests/vmu-run36-records-shared.test.mjs`（37/0；seam 短路时复现真机原话）。
+
+**补充（ROUND 36 / F-2）：`## 正文` 是正文的**起点**，不是它的边界。**
+run 36 里蓝图草案 r-23（4134 B，含 `## 一`～`## 六`）被 adopt 成 r-29 后只剩 939 B，一～六节全丢且
+`bodyTruncated:false`。机制：`packs/v5r/blueprint.js` 的 `composeBlueprintBody` 写 `## 正文` 段，而共享
+`parseBody` 按 `## ` 切段 ⇒ 收到的正文在草案自己的第一个二级标题处被切开，adopt 又原样搬过去。
+现在 `blueprintTextOf(body)`（`packs/v5r/blueprint.js:92-113`）把 `## 正文` 行之后**到 body 末尾**逐字取出；
+`blueprintMeans()` 给出四句口径（`status` 只读表头、`history` append-only、`revisions` 与 `currentRevision` 两把尺、
+`text` 是正文）。判据在 `tests/vmu-run36-blueprint.test.mjs`（42/0）与 `tests/vmu-blueprint.test.mjs`（54/0）。

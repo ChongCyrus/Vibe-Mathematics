@@ -5560,3 +5560,81 @@ prompt"写成断言（先钉住裸装配确实带 2 份目录、再钉住切换�
 ### §136.6 本轮无实质残余：否
 
 F1/F2/F3 已改并有反事实测试；F4 的"读不到子会话"仍是真缺口；`tools/turn.js:430` 的帮助文本仍是错的（记债）。
+
+## §137 真机跑 36（build `c7673f73`，模拟模式）与四条新缺陷
+
+### §137.1 读数
+
+| 项 | 值 |
+|---|---|
+| `DRIVE exit` | 0 |
+| `durationSec` | 1805 |
+| `toolCalls` | 45 |
+| `tokenTotal` | 17,473,577（`tokenCapHit:false`） |
+| 会话 | 4（根 + 3 成员），`0 with RED checks` |
+| 机器读数 | `NO_FENCE=108  UNKNOWN_FIELD=92  FIELD_NOT_APPLICABLE=72  BAD_JSON=108` |
+| 规则书 | `SEED copied into the workspace: 1 file(s) from D:\_tmp\slv-phase5\r36-seed`（模拟规则真进了工作区） |
+| 产物 | `_oneoff/vm-slv/full-1027-020048.jsonl`（37,635,322 B / 78,956 行） |
+
+本轮**第一次**以"模拟模式"运行（规则书随工作区下发，命令所办与成员以检验机制为主）：流程跑到辩论收口、`verified`
+轨写入 r-18、蓝图 propose+adopt、成员写 26 条 feedback、Lean 作业多次 —— 但 `NO_FENCE/BAD_JSON` 各 108 次，
+说明**交给内核的回合大量没有围栏对象**（F-2 的教学缺口与成员侧行为共同造成，见下）。
+
+### §137.2 判决表
+
+| # | 结论 | 证据 | 处置 |
+|---|---|---|---|
+| F-1 | ❌ **records 不跨内核可见** | office 侧 `vibe_v5_verified_promote{card:"p-odd-sum"}` ⇒ `VMU_NO_SUCH_OBJECT "unknown record: p-odd-sum"`、`hint:"known ids: (none)"`；成员侧 `read_library` 读得到同一张卡 | ✅ 已修（task-26 / records-sync）：`kernel/index.js:1936` 接上 `records.attachStore`，`records.js:413` 起在读写前按 stamp 增量同步 |
+| F-2 | ❌ **蓝图 adopt 截断草案正文** | r-23（4134 B，含 `## 一～## 六`）→ r-29（939 B），`bodyTruncated:false` | ✅ 已修（task-27 / blueprint-text）：`## 正文` 是**起点标记**不是段边界（`blueprint.js:92-113 blueprintTextOf`） |
+| F-3 | ❌ **关掉的会又开着** | `close` 回执 `closeSemantics:"service-archives"`，而 `state.json:182` 的 `live` 行仍 `state:"open"`（`present`1、`spokeBy:[]`） | ✅ 已修（我）：`meetings.js:2012 snapshot()` 不再序列化"archive 已记录 closed"的 live 行、`:2052 restore()` 同时剔除、`:2080 restoreReload()` 增量合并（archive 优先、不删本地），`kernel/index.js:1498` 声明适配器 |
+| F-4 | ⚠️ **日志作者 unknown** | `vibe_v5_record_progress` 的 `member` 可选，不传时 `by:null`（r-6/r-7），状态板 `[当前小任务]` 永久"该来源未提供" | ⚠️ 已把话说清（提示词与工具描述都要求 `member:"<你的 id>"` 并写明后果）；**内核不做猜测**。另修 `snapshotRecords` 把视图字段 `owner` 误读成 `by` 导致落盘行无作者（`kernel/index.js:1976` 附近） |
+| F-5 | ⚠️ **同命题多卡 / 建议形状被拒** | p-odd-sum、p-r1-odd-sum、r-8 三张卡无去重；`verdict_final.correction` 给的 `debate_ruling` 被 P1 gate 拒，hint 要的 `ballotId` 在 v5r 辩论流程从不产生 | 记账（未修）；"去重"与"建议形状"都是策略决定，需要单独一轮设计 |
+
+### §137.3 两条 lane 的交付与自证
+
+- **task-26（records 跨内核可见）**：`records.js` 一次 hydrate 闩锁（`kernel/index.js:1946`）是根因。修法两层：
+  `records.js:413 attachStore` seam + `:929 synchronize` 在 `get/list/history/externals`（读前）与 `put/supersede`
+  （写前，防整数组覆盖写的 lost update）执行；`:917 putInternal` 绕开快照包装（否则恢复 N 行 = N 次全量写）；
+  `:905 status().shared` 让"为什么没看见"可自证。先红后绿：修前 24/4，seam 短路时复现真机原话；绿后
+  `RUN36 RECORDS SHARED 37/0`。它自己弄红的 4 个门禁（receipt `enforced`、发明的码、`|| []` 降级读、RULE E 空集断言）
+  都是改实现侧修掉的，没有放宽断言。
+- **task-27（蓝图正文）**：`packs/v5r/blueprint.js` 新增 `blueprintTextOf()`（`## 正文` 行到 body 末尾、逐字、无 marker
+  返回 `''`）、`blueprintMeans()` 四句口径（口径①②③：status 只读表头、history append-only、revisions 与
+  currentRevision 两把尺），`parseBlueprint` 改用它（不再走共享 `parseBody` 的 `## ` 段语义，`verified.js` 未动）；
+  adopt 回执补 `currentRevision/revisions/history`；`RUN36 BLUEPRINT TEXT 42/0`、`BLUEPRINT 54/0`。
+  它报的三条相邻缺陷（同 revision 兄弟草案永久不可达、read 回执固定白名单丢 `*Means`、已落盘截断行不自愈）
+  记入 §137.4 的已知债。
+
+### §137.4 我这轮修的三处 + 已知债
+
+1. **会议关闭的持久化**（F-3）：`snapshot()` 剔除 archive 已记录 closed 的 live 行（计数 `droppedLiveWhileArchived`）、
+   `restore()` hydrate 时同样剔除、新增 `restoreReload()` 增量合并；判据 `tests/vmu-run36-meeting-close.test.mjs`（39/0：
+   双对象 fold 的 boot 与 reload 都读成 closed、本地行不被 durable 覆盖、开-关-刷新两个实例一致）。
+2. **落盘记录的作者**（task-26 的相邻发现）：`snapshotRecords` 读 `r.by` 而视图字段是 `owner` ⇒ 持久行无作者、
+   重启后退化成 `'restore'`；改为取 `owner`。
+3. **日志作者要说出来**（F-4）：`vibe_v5_record_progress` 的工具描述与 `seat-faces.js` 的三条席位教学都要求
+   `member:"<你的 id>"` 并写明"不传则作者 unknown、状态板认不出"。
+
+已知债（未修，记账）：①同 revision 兄弟草案不可达；②`tools.js:2308` 的 read 回执白名单丢 `*Means`；
+③已落盘截断行（r-29）不自愈；④`snapshotRecords` 整数组 `store.write` 仍有读改写竞态（真解是 `store.patch` 合并，
+同 `mailbox.pushShared`）；⑤`recordsHydrated` 闩锁现成冗余机制；⑥`vmu.store.coherence='off'` 时实例间仍互不可见。
+
+### §137.5 简报错与门禁
+
+简报错 2 处：①`vibe_v5_start{problem, researcherCount:2}` 已自动建所并 hire，我又写了一条 hire `acad-01` ⇒
+`VMU_RESOURCE_BUDGET "role slot chair is full: 1/1"`（第 5 次同类：简报假设必须先自建所）；②`sequence` 元素键写成
+`agenda`（合法键 `type/kind/materials/subject/size/secretary/roster/reason/at`）。
+
+门禁（修后）：`GATE_SCOPE=vmu` ⇒ `TOTAL 504 PASS 504 FAIL 0`（suites 440 · probes 64）；`regen-all 16/16 in sync`；
+`PREFLIGHT: PASS`；`DOC LINT: PASS`。注：HEAD(c7673f73) 的 preflight 本来也不全绿（`vmu doc linter D16` 一条 note 级差异），
+本轮工作树的 docs-landed 改动把红点从 D16 移到了派生计数，重算后恢复全绿。
+
+### §137.6 无法验证
+
+1. 模拟模式下的"刻意验收动作"没有逐项回读（`tool/result` 只保留 45 次调用，成员侧回合仍不可观测）。
+2. 修后的 records 跨内核可见性只在本机以两内核夹具验证，未在真机 run 37 之前得到实跑确认。
+3. 蓝图截断修好后，"已落盘的历史草案行"仍是残缺的（append-only，不重写历史）。
+4. `vmu.chat.admins` 的 `seatOf` 席位解析在 run 36 未单独触发验证。
+5. 同一命题多卡（F-5）没有机制去重，属未验证的策略空间。
+
+### §137.7 「本轮无实质残余：否」

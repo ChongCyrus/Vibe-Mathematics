@@ -383,7 +383,7 @@ export const SEAT_TOOL_FACES = Object.freeze({
  */
 export const SEAT_TEACHING = Object.freeze({
   chair: Object.freeze([
-    { names: ['vibe_v5_record_progress'], text: '写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state；证伪的路走 rejected，阻塞走 obstacles）。' },
+    { names: ['vibe_v5_record_progress'], text: '写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state；证伪的路走 rejected，阻塞走 obstacles）。★ 传 member:"<你的 id>"——不传的话这条日志的作者是 unknown，状态板认不出是谁的。' },
     { names: ['vibe_v5_record_proposition'], text: '写命题卡（statement、value、motive、p 四项必填；p 是你对它为真的概率，未定稿可以先写，草稿不会被当成已验证）。' },
     { names: ['vibe_v5_record_method'], text: '写方法卡（content、value、motive、p 四项必填）。' },
     { names: ['vibe_v5_record_subproblem'], text: '写子问题卡（statement、value、motive、p 四项必填）。' },
@@ -425,7 +425,7 @@ export const SEAT_TEACHING = Object.freeze({
     { names: ['vibe_v5_paper'], text: '论文流程（start→part→advance→review→render）：用工具推进论文阶段，不要用回执字段假装已写；action=start（开题，需 target 与 participants）／part（写你那一份）／review（互审，deliverable 必填）／advance（推进阶段）／final（定稿，只有 chair 席会被内核接受）／render（产出 md／tex／meta 并如实报 missing）／status／compile／sections；阶段合法性与席位权限由内核判。' },
   ]),
   member: Object.freeze([
-    { names: ['vibe_v5_record_progress'], text: '写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state）。' },
+    { names: ['vibe_v5_record_progress'], text: '写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state）。★ 传 member:"<你的 id>"——不传的话作者是 unknown。' },
     { names: ['vibe_v5_record_proposition'], text: '写命题卡（statement、value、motive、p 必填；草稿可先写，不会被当成已验证）。' },
     { names: ['vibe_v5_record_method'], text: '写方法卡（content、value、motive、p 必填）。' },
     { names: ['vibe_v5_record_subproblem'], text: '写子问题卡（statement、value、motive、p 必填）。' },
@@ -449,7 +449,7 @@ export const SEAT_TEACHING = Object.freeze({
     { names: ['vibe_v5_paper'], text: '论文流程（start→part→advance→review→render）：用工具推进论文阶段，不要用回执字段假装已写；action=start（开题，需 target 与 participants）／part（写你那一份）／review（互审，deliverable 必填）／advance（推进阶段）／final（定稿，只有 chair 席会被内核接受）／render（产出 md／tex／meta 并如实报 missing）／status／compile／sections；阶段合法性与席位权限由内核判。' },
   ]),
   temp: Object.freeze([
-    { names: ['vibe_v5_record_progress'], text: '把你这一轮的进展写进研究日志（临时席位记录自己的进展与命题；方法卡与子问题卡不是它的职责）。' },
+    { names: ['vibe_v5_record_progress'], text: '把你这一轮的进展写进研究日志（临时席位记录自己的进展与命题；方法卡与子问题卡不是它的职责）。★ 传 member:"<你的 id>"——不传的话作者是 unknown。' },
     { names: ['vibe_v5_record_proposition'], text: '写命题卡（statement、value、motive、p 必填；草稿可先写，不会被当成已验证）——你主张了什么、p 是多少，要留在册上。' },
     { names: ['vibe_vmu_human'], framework: true, text: '人工在环的**读**（规则 11·反脆弱）：action="approvalState" 查审批状态（带 requestId）；若所办在 `vmu.human.gatedActions` 里声明了闸门，被闸动作在获批前不执行（具名 `VMU_HUMAN_APPROVAL_PENDING`），超时默认 hold。你没有表决权、也不批任何事：需要权限就在群聊说明，由所办向用户请示。' },
     { names: ['vibe_v5_say'], text: '在群里发言（省略 to）或私信（to 填成员 id）；发言者必须是你自己的真名册 id。' },

@@ -2004,9 +2004,17 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         return val
       })
       const maxId = [...live.keys()].reduce((mx, id) => Math.max(mx, Number(String(id).replace(/[^0-9]/g, '')) || 0), 0)
+      // ★★★ ROUND 36 (live run 36, the institute's own report: a closed meeting came back `state:"open"` on the next
+      // kernel): `close()` does `live.delete(id)` + `archive.push(m)`, but this WRITE-THROUGH serialised whatever `live`
+      // the instance happened to hold — and an instance that booted BEFORE the closure still held the open twin, so its
+      // next state write put the closed meeting back into the durable `live` map. A meeting the ARCHIVE records as
+      // closed must never be serialised as live: the archive is the closure, and it is durable in the same value.
+      const archivedIds = new Set(archive.map((m) => String(m.id)))
+      const liveForDurable = new Map([...live].filter(([id]) => !archivedIds.has(String(id))))
+      const droppedLiveWhileArchived = live.size - liveForDurable.size
       return { apiVersion, face: 'meetings', v: 1, at: clock(),
-        data: { live: ser(live), archive: ser(archive), receipts: ser(receipts) },
-        counters: { meeting: maxId },
+        data: { live: ser(liveForDurable), archive: ser(archive), receipts: ser(receipts) },
+        counters: { meeting: maxId, droppedLiveWhileArchived },
         session: { counters: Object.assign({}, counters), receiptDropped: receiptDropped.n },
         skipped: [{ what: 'policy', why: 'the 47 declared vmu.meetings.* values come from settings/pack and are re-resolved on restore (a snapshot must not pin them)' },
           { what: 'members/ballot/wake/bus', why: 'injected seams are re-bound by the host, never serialised' },
@@ -2035,10 +2043,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         return val
       })
       live.clear()
-      for (const [k, v] of de(d.live)) live.set(String(k), v)
       archive.length = 0
       const arch = de(d.archive)
       if (Array.isArray(arch)) for (const a of arch) archive.push(a)
+      // ★★ ROUND 36: the ARCHIVE wins at HYDRATE time too. A durable fold can carry both objects for one id (a stale
+      // writer, see `snapshot()` above); before this the boot took the live twin as-is and every later reader saw the
+      // meeting OPEN. A meeting the same fold records as closed is not admitted into `live`.
+      const archivedIds = new Set(archive.map((m) => String(m.id)))
+      let droppedLiveWhileArchived = 0
+      for (const [k, v] of de(d.live)) {
+        if (archivedIds.has(String(k))) { droppedLiveWhileArchived += 1; continue }
+        live.set(String(k), v)
+      }
       receipts.length = 0
       const rec = de(d.receipts)
       if (Array.isArray(rec)) for (const r of rec) receipts.push(r)
@@ -2048,7 +2064,50 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       for (const k of Object.keys(counters)) counters[k] = Number(countersIn[k] !== undefined ? countersIn[k] : counters[k]) || 0
       receiptDropped.n = Number((snap.session && snap.session.receiptDropped) || 0) || 0
       return { ok: true, restored: true, restored_items: ['live', 'archive', 'receipts'],
+        droppedLiveWhileArchived,
+        droppedLiveMeans: 'live rows whose id the SAME fold also holds in its archive — a recorded closure is not undone by a boot',
         counters: { meeting: Math.max(fromSnap, maxId) }, skipped: (snap.skipped || []).slice(),
+        liveMeetings: [...live.keys()].sort() }
+    },
+
+    /**
+     * ROUND 36 — the RELOAD path (the read-refresh hook), separate from `restore()` on purpose, exactly like
+     * `members.restoreReload`: a reload may ADD or UPDATE, and it must NEVER resurrect a closure. `restore()` REPLACES
+     * (recovery), so a stale instance restoring a snapshot that still holds an open twin would overwrite its own
+     * archive view; this one merges additively and lets the ARCHIVE win: a stored live meeting whose id our archive
+     * already records closed is DROPPED, and counted, instead of coming back.
+     */
+    restoreReload(snap) {
+      if (!snap || typeof snap !== 'object') return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'no snapshot to reload', missing: ['snapshot'] }
+      if (snap.face !== 'meetings') return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'not a meetings snapshot (face=' + String(snap.face) + ')' }
+      if (Number(snap.v) !== 1) return { ok: false, restored: false, code: RESUME_CODE.snapshotVersion, message: 'unsupported snapshot version ' + String(snap.v) }
+      const d = snap.data
+      if (!d || d.live === undefined) return { ok: false, restored: false, code: RESUME_CODE.snapshotIncomplete, message: 'snapshot is missing live', missing: ['live'] }
+      const de = (s) => JSON.parse(String(s || '[]'), (k, val) => {
+        if (val && typeof val === 'object') {
+          if (Array.isArray(val.__map)) return new Map(val.__map)
+          if (Array.isArray(val.__set)) return new Set(val.__set)
+        }
+        return val
+      })
+      const storedArchive = de(d.archive)
+      const storedLive = de(d.live)
+      let adoptedArchive = 0
+      for (const a of (Array.isArray(storedArchive) ? storedArchive : [])) {
+        if (!archive.some((x) => String(x.id) === String(a.id))) { archive.push(a); adoptedArchive += 1 }
+      }
+      const archivedIds = new Set(archive.map((m) => String(m.id)))
+      let adoptedLive = 0
+      let droppedLive = 0
+      for (const [id, m] of (storedLive instanceof Map ? storedLive : new Map())) {
+        if (archivedIds.has(String(id))) { droppedLive += 1; continue }
+        if (live.has(String(id))) continue
+        live.set(String(id), m)
+        adoptedLive += 1
+      }
+      return { ok: true, restored: true, restored_items: ['live', 'archive'],
+        adoptedLive, adoptedArchive, droppedLiveWhileArchived: droppedLive,
+        droppedLiveMeans: 'stored live meetings whose id this instance ALREADY holds in its archive — a closure is not undone by a reload',
         liveMeetings: [...live.keys()].sort() }
     },
 

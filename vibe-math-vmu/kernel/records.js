@@ -240,6 +240,20 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     chunked: 0, lazyExpanded: 0, lists: 0, listTruncated: 0, listSuppressed: 0, headFieldTrimmed: 0, externalAttached: 0, externalVerified: 0,
   }
 
+  // ── ROUND 36 (task-26): the SHARED seam's state ───────────────────────────────────────────────────
+  // ONE state.json is mounted by SEVERAL kernels (docs/02), and the hydration that wires this projection to the fold
+  // lives in kernel/index.js and runs ONCE per instance (`recordsHydrated`). So an instance that booted FIRST served
+  // its whole session from the map it had at its first read: run 36 answered `VMU_NO_SUCH_OBJECT … known ids: (none)`
+  // for cards that were sitting in the fold, because the members' child kernels wrote them AFTER the office hydrated.
+  // `attachStore` hands the durable port in after construction (the kernel builds this projection BEFORE its store
+  // exists), and every public READ consults it: the fold is the only place several kernels can meet.
+  const SHARED_STORE_KEY = 'records'   // the store.PUBLIC_KEYS name this projection snapshots
+  const shared = {
+    attached: false, store: null, stamp: null, signature: null,
+    pulls: 0, pulled: 0, refused: 0, skipped: 0,
+    lastWhy: null, lastDetail: null, lastPullAt: null, lastSyncAt: null,
+  }
+
   /**
    * THE ONE WAY A KEY ENTERS `enforced`/`fired`: check-before-insert. Duplicates are structurally impossible,
    * so a receipt never has to be cleaned up at the boundary (the same idiom as kernel/meetings.js).
@@ -391,6 +405,23 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     apiVersion,
 
     /**
+     * ROUND 36 (task-26): hand the durable port in AFTER construction, so a READ can see rows another kernel wrote.
+     * DUCK-TYPED ON PURPOSE: the seam needs `read(key)` (and `stats()` for the stamp, when the port has it). A caller
+     * without a store simply never calls this, and a face built by hand in a unit test is untouched. It never THROWS:
+     * an unusable seam is a NAMED result, because a boot path must not crash over an optional port.
+     */
+    attachStore(store) {
+      if (!store || typeof store.read !== 'function') {
+        return { ok: false, reason: 'not-a-store', hint: 'attachStore needs the durable port (`store.read(key)`); the projection will not guess a storage shape (docs/07 §1)', enforced: [], fired: [] }
+      }
+      shared.store = store
+      shared.attached = true
+      shared.signature = null    // the next read folds the fold as it stands, whatever happened before the attach
+      shared.stamp = null
+      return { ok: true, reason: null, attached: true, key: SHARED_STORE_KEY, enforced: [], fired: [] }
+    },
+
+    /**
      * ROUND 261 (volume 16 §L9/L10): register a DATASET - a record with kind `dataset`, carrying path, fingerprint and parent, and
      * referenceable by version. The two declarations are honoured here and nowhere else, so there is exactly one dataset path.
      */
@@ -455,6 +486,10 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
 
     /** Create a record. Every cap is a NAMED refusal with 现值/上限; duplicates are COUNTED, never re-added. */
     put({ id: requestedId = null, track, kind, title, body = '', tags = [], settled = false, permanent = false, by = null } = {}) {
+      // ★ ROUND 36: fold the fold BEFORE writing, because the write-through snapshot (kernel/index.js) replaces the
+      // WHOLE `records` array with THIS instance's view. Without this, instance A's put would overwrite instance B's
+      // rows - a lost update that no read-path fix could repair (the rows would be gone from the durable file).
+      synchronize('put')
       const enforced = []
       const fired = []
       mark(enforced, K.tracks)
@@ -559,6 +594,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
 
     /** READ a record (head + shaped body). The fingerprint is RECOMPUTED and compared (07 §4.2 spirit). */
     get({ id, includeBody = true } = {}) {
+      synchronize('get')   // ★ ROUND 36: a row another kernel wrote after our one-shot hydrate lives in the fold
       const rec = records.get(id)
       if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [], 'get')
       const enforced = []
@@ -580,6 +616,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
 
     /** READ a track's HEAD LIST — the default information channel (07 §4.4; `pointerPropagation` can mute it). */
     list({ track = null, limit = null, fields = null } = {}) {
+      synchronize('list')   // ★ ROUND 36: the head list is the DEFAULT channel, so it must carry the whole root, not one instance
       const enforced = [K.tracks, K.headSort, K.headListAt, K.pointerPropagation, K.headFields]
       const fired = []
       const at = now()
@@ -618,6 +655,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
 
     /** Supersede (a new revision). A reason is mandatory; the versioning knobs shape what is stored. */
     supersede({ id, reason = null, by = null, title = null, body = null, tags = null } = {}) {
+      synchronize('supersede')   // ★ ROUND 36: same reason as put — this one is snapshotted too, so its view must be the root's
       const rec = records.get(id)
       if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [K.historyStoreMode, K.historyDepth], 'supersede')
       const enforced = [K.historyStoreMode, K.historyDepth]
@@ -646,6 +684,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
 
     /** READ the version history (bounded; drops are COUNTED). */
     history({ id = null, limit = DEFAULT_LIST_CAP } = {}) {
+      synchronize('history')   // ★ ROUND 36: history is a read of the same rows (a pulled row has a version trail too)
       const enforced = [K.historyStoreMode, K.historyDepth]
       const cap = Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_LIST_CAP
       const all = []
@@ -818,6 +857,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
 
     /** READ the external references of a record. */
     externals({ id } = {}) {
+      synchronize('externals')   // ★ ROUND 36: an external reference is attached to a row, so the row must be findable first
       const rec = records.get(id)
       if (!rec) throw deny('VMU_NO_SUCH_OBJECT', 'unknown record: ' + String(id), 'known ids: ' + (order.join(', ') || '(none)'), [], 'externals')
       const list = (externalRefs.get(rec.id) || []).map((x) => Object.assign({}, x))
@@ -860,10 +900,103 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         refusals: objOf(refusals), refusalsTotal: sumOf(refusals),
         unwired: objOf(unwired), unwiredTotal: sumOf(unwired),
         historyRows: historyRows.length, historyRingDropped: historyDropped.n,
+        // ★ ROUND 36: the seam is part of the self-report, so "why did this instance see nothing?" is answerable from
+        // status() alone (attached / pulls / pulled / refused + lastWhy), instead of only from a live failure.
+        shared: sharedView(),
         at: now(),
         note: 'every key in `wired` changes an observable result (asserted by tests/vmu-records.test.mjs); `enforced[]` on a receipt lists the keys whose rule was EVALUATED for that call and `fired[]` the ones that changed its outcome — reading a key without changing behaviour would be a lie, so all 24 are wired here',
       }
     },
+  }
+
+  // ── ROUND 36 (task-26): the shared seam — how a READ folds what OTHER kernels wrote ─────────────────
+  // ★ THE ORDER THAT MAKES THIS WORK: `putInternal` is captured HERE, while `api.put` is still this module's own
+  // function. kernel/index.js wraps `records.put` afterwards (write-through snapshot) and the approval gate wraps it
+  // again; a restore must call the INNER put, or every restored row would trigger a full `store.write('records', …)`.
+  // A read that rewrites the file is a second writer, and N restored rows would mean N writes on the first read.
+  const putInternal = api.put
+  /**
+   * Fold the durable fold into this instance, INCREMENTALLY, before a read answers. Three rules make it safe to call
+   * on every read:
+   *   · it NEVER overwrites or deletes a row this instance already has (`records.has(id) ⇒ skip`): a local write that
+   *     has not been snapshotted yet must not be lost to somebody else's older snapshot;
+   *   · it NEVER writes: the durable snapshot stays the mutating instance's job;
+   *   · it is CHEAP when nothing changed: the fold's row-id signature is compared first, so an unchanged fold costs one
+   *     read of an already-open fold and ZERO `put` calls (the freshness check of docs/07 §1-(5)).
+   * A store that is not open is a DEGRADED instance (it opens asynchronously and kernel/index.js retries hydration), so
+   * the failure is COUNTED and ATTRIBUTED, never thrown and never silent.
+   */
+  function synchronize(why) {
+    if (!shared.store) return { synced: false, why: 'no-store', op: why }
+    shared.lastSyncAt = now()
+    let raw
+    try { raw = shared.store.read(SHARED_STORE_KEY) }
+    catch (e) {
+      shared.refused += 1
+      shared.lastWhy = String((e && e.code) || 'VMU_STORE_FAILED')
+      shared.lastDetail = String((e && e.message) || e)
+      return { synced: false, why: 'store-unavailable', op: why }
+    }
+    if (raw === undefined || raw === null) raw = []   // the key was never written: an empty fold is not a lie
+    if (!Array.isArray(raw)) {
+      // A projection ENVELOPE (`{mode:'state', …}`) belongs to another module; adopting it would invent records.
+      shared.refused += 1
+      shared.lastWhy = 'not-a-row-array'
+      shared.lastDetail = 'the durable "' + SHARED_STORE_KEY + '" key is not an array (' + typeof raw + ')'
+      return { synced: false, why: 'not-a-row-array', op: why }
+    }
+    shared.pulls += 1
+    shared.lastPullAt = now()
+    try {
+      const st = typeof shared.store.stats === 'function' ? shared.store.stats() : null
+      shared.stamp = st && typeof st.stamp === 'string' ? st.stamp : null
+    } catch (e) { shared.stamp = null }
+    const signature = sharedSignature(raw)
+    if (signature === shared.signature) {
+      shared.skipped += 1
+      return { synced: false, why: 'unchanged', op: why, stamp: shared.stamp }
+    }
+    shared.signature = signature
+    let added = 0
+    for (const row of raw) {
+      if (!row || typeof row !== 'object') continue
+      const id = row.id === undefined || row.id === null ? null : String(row.id)
+      if (!id || !row.track || !row.kind) continue         // a malformed row is skipped, never invented into a record
+      if (records.has(id)) continue                         // ★ never overwrite/delete what this instance knows
+      try {
+        putInternal.call(api, { id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, settled: true,
+          // the writer is carried by `by` on the row; `owner` is accepted as well because that is the name the VIEW
+          // exposes it under (a snapshot that copies the view - kernel/index.js does - can only carry `owner`).
+          by: row.by !== undefined && row.by !== null ? row.by : (row.owner !== undefined && row.owner !== null ? row.owner : 'restore') })
+        added += 1
+      } catch (e) {
+        shared.refused += 1
+        shared.lastWhy = String((e && e.code) || 'row-refused')   // a refused ROW is not a new refusal CODE: name it as such
+        shared.lastDetail = 'row ' + id + ': ' + String((e && e.message) || e)
+      }
+    }
+    shared.pulled += added
+    return { synced: added > 0, why: added > 0 ? 'newer-on-disk' : 'nothing-new', op: why, added, stamp: shared.stamp }
+  }
+
+  /**
+   * The fold's visible change signature: the SET of row ids. The writer replaces the whole array, so the id set changes
+   * exactly when the rows do; a body-only rewrite of a row that this instance ALREADY has is deliberately not adopted
+   * (rule 1 above: this instance's copy wins for ids it already holds).
+   */
+  function sharedSignature(rows) {
+    let out = String(rows.length)
+    for (const row of rows) out += ',' + (row && row.id !== undefined && row.id !== null ? String(row.id) : '?')
+    return out
+  }
+
+  /** `status()`'s READ-ONLY view of the seam. The store object itself is not exposed (it is a port, not data). */
+  function sharedView() {
+    return {
+      attached: shared.attached, key: SHARED_STORE_KEY, stamp: shared.stamp,
+      pulls: shared.pulls, pulled: shared.pulled, refused: shared.refused, skipped: shared.skipped,
+      lastWhy: shared.lastWhy, lastDetail: shared.lastDetail, lastPullAt: shared.lastPullAt, lastSyncAt: shared.lastSyncAt,
+    }
   }
 
   // ── helpers that keep the surface honest ───────────────────────────────────────────────────────────

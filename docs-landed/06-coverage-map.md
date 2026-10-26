@@ -8,6 +8,10 @@
 > ★★ **快照声明（G8）**：本卷是**弃用前**的 `docs-landed` 快照，不是当前权威清单（旧 `vibe-math-v2`…`v5r`
 > preset 已弃用，见 `docs/DEPRECATED-LEGACY-PRESETS.md`）；下文若出现旧 preset 目录/计数，均按**历史**读。
 
+- 回答通道：`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js`（字段目录由内核表派生，通道段落明写"不要调 op:reply"）＋ `middleware/prompt-switches.js` 的 `CATALOGUES` 二选一（`tests/vmu-run35-reply-channel.test.mjs` 31/0）。
+- 跨实例院士活动：`vibe-math-vmu/kernel/store.js` 的 `turns` 账本 ＋ `kernel/turn/index.js` 投递前落账（写不进就不投递）＋ `kernel/index.js` 的 `turnLedger` seam（`tests/vmu-run35-chair-act.test.mjs` 23/0）。
+- 回执可观测：`counts.replyParseFailedLast` 与成功回合的 `replyExcerpt`（`tests/vmu-run35-readouts.test.mjs` 26/0），状态板有值行打印 `（来源：…）`。
+
 ## 0. ★★★ 三个"任何方面都共用"的底座
 
 | ★ 底座 | ★ 在哪 | ★ 说明 |
@@ -134,6 +138,10 @@
 | ★★ **群聊治理面可达**（`vmu.chat.admins` 可写 SEAT token，如 `chair`＝院士；解析不到不算授予） | ★ `kernel/chat.js` 的 `seatOf` 缝＋`packs/v5r/settings/defaults.json` 的 `vmu.chat.admins: ["chair"]` | ★ `docs/04` 的 `vmu.chat.admins` 行＋`docs/26` 的 ROUND 34 段 |
 | ★★ **校验器必须把自己的值交出去**（`need()` 会抛不等于会传；chat 面曾因此把"你传了"报成"没传"） | ★ `tools/chat.js` 的 `need` 返回其值 | ★ `docs/26` 的 ROUND 34 段 |
 | ★★ **状态板读全轨、截断要写明**（`records.list` 默认只给最早 7 行，最新行恰在另一端） | ★ `kernel/turn/index.js` 的状态板 ④ 用 `limit: 0` ＋ 截断措辞 | ★ `docs/26` 的 ROUND 34 段 |
+| ★★ **命题库跨内核可见**（先启动的所办也要读到成员后来写的卡：`known ids: (none)` 是 run 36 的死因） | ★ `kernel/records.js` 的 `attachStore`／`synchronize`（读写前按 stamp 增量同步，不覆盖本地）＋`kernel/index.js` 的接线 | ★ `docs/26` 的 ROUND 36 段（F-1） |
+| ★★ **蓝图正文段是「起点标记」不是「段边界」**（`## 正文` 到 body 末尾逐字；曾把 4134 B 的草案 adopt 成 939 B） | ★ `packs/v5r/blueprint.js` 的 `blueprintTextOf()`／`blueprintMeans()` | ★ `docs/26` 的 ROUND 36 段（F-2） |
+| ★★ **关掉的会议不会在下一个内核里重新开着**（archive 已记录 closed 的 live 行不序列化、不 hydrate、reload 不复活） | ★ `kernel/meetings.js` 的 `snapshot()`／`restore()`／`restoreReload()` | ★ `docs/26` 的 ROUND 36 段（F-3） |
+| ★★ **研究日志的作者由写的人说出来**（不传 `member` ⇒ `by:null`、状态板认不出；落盘行的作者字段曾整个丢失） | ★ `packs/v5r/tools.js` 的 `vibe_v5_record_progress` 描述＋`seat-faces.js` 三条席位教学＋`kernel/index.js` 的 `snapshotRecords` 取 `owner` | ★ `docs/26` 的 ROUND 36 段（F-4） |
 
 ★ ★★ **两条读法**：① 上表任一行的"当前是否真的这样"★ **以对应 `docs/` 卷与门禁为准**，★ 本卷写的是**落点**不是**保证**；
 ② ★ 真机判决逐轮记录在 `docs/acceptance/phase12-v5r-rules-conformance.md`（§125 起），★ 那一卷是**证据表**，★ 每条都指到 `文件:行` 或门禁末行。

@@ -1493,7 +1493,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // Before this split, a read that refreshed a fold lagging behind the live roster could resurrect a past institute and
     // the next `attend()` was refused VMU_NOT_MEMBER: a READ destroying state.
     members: () => ({ key: 'members', mode: 'state', snapshot: () => members.snapshot(), restore: (v) => members.restore(v, { replace: true }), restoreReload: (v) => members.restore(v, { merge: true }), list: () => (typeof members.roster === 'function' ? members.roster() : []) }),
-    meetings: () => ({ key: 'meetings', mode: 'state', snapshot: () => meetings.snapshot(), restore: (v) => meetings.restore(v), list: () => [] }),
+    // ★★ ROUND 36: `restoreReload` (additive, archive wins) is the READ-REFRESH path — without it a live twin of a
+    // closed meeting was re-read from the durable fold and reported `state:"open"` on the next kernel (run 36).
+    meetings: () => ({ key: 'meetings', mode: 'state', snapshot: () => meetings.snapshot(), restore: (v) => meetings.restore(v), restoreReload: (v) => meetings.restoreReload(v), list: () => [] }),
     ballotbox: () => ({ key: 'ballotbox', mode: 'state', snapshot: () => ballotbox.snapshot(), restore: (v) => ballotbox.restore(v), list: () => [] }),
     minutes: () => ({ key: 'minutes', mode: 'state', snapshot: () => minutes.snapshot(), restore: (v) => minutes.restore(v), list: () => [] }),
     chat: () => ({ key: 'chat', mode: 'state', snapshot: () => chat.snapshot(), restore: (v) => chat.restore(v), list: () => [] }),
@@ -1927,6 +1929,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // (reserved, no writer) - this is the writer: hydrate on boot, snapshot after every mutation. Ids/track/kind/body are
   // preserved so plan references (e.g. r-32) survive the restart.
   const recordsStore = store && typeof store.read === 'function' && typeof store.write === 'function' ? store : null
+  // ★★ ROUND 36 (live run 36, `vibe_v5_verified_promote` ⇒ `known ids: (none)` while the cards were in the store): the
+  // hydration above runs ONCE. An instance that booted FIRST never sees rows another kernel wrote LATER, so the office
+  // could not read the members' cards at all. `records.attachStore` lets the projection re-read by stamp before a read;
+  // the seam is duck-typed so a records face without it (tests that build one by hand) is untouched.
+  if (recordsStore && typeof records.attachStore === 'function') records.attachStore(recordsStore)
   const recordTracks = (() => {
     const t = settings && settings['vmu.records.tracks']
     return Array.isArray(t) && t.length > 0 ? t.slice() : null
@@ -1966,7 +1973,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       for (const track of tracks) {
         for (const head of records.list({ track, limit: 0 }).items) {
           const r = records.get({ id: head.id })
-          rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, by: r.by })
+          // ★★ ROUND 36 (task-26's adjacent finding, measured on the durable fold): the VIEW calls the author `owner`
+          // (`records.js view()`: `owner: rec.by`), so `r.by` here was always undefined and the persisted row carried NO
+          // author at all — after a restart the owner degraded to 'restore' and the status board could not match the row
+          // to the member who wrote it. Persist the author under the name the view uses.
+          rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, by: r.owner !== undefined && r.owner !== null ? r.owner : r.by })
         }
       }
       const wrote = recordsStore.write('records', rows)
