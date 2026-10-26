@@ -4766,3 +4766,44 @@ run 26 里 2 个辩论成员只被问了 1 个，而下游完整性闸却拿**�
 `vmu-meetings` 214/0 · `vmu-meeting-types` 153/0 · `vmu-v5r-tools` 355/0 · `vmu-run15-findings` 42/0 · `vmu-run16-findings` 24/0 ·
 `vmu-meeting-ask` 17/0 · `vmu-meeting-id-archive` 16/0 · `regen-all --check` 16/16 · `check-docs` PASS。
 **未绿**：`vmu-meeting-invite`（§10 既有间歇红，见 ③）。
+
+## §123 一次"读"把研究所的成员抹掉了：读刷新用 replace 还原了滞后的耐久副本
+
+### 症状
+`tests/vmu-meeting-invite.test.mjs` §10 大约 **50%** 概率红：三名已雇员在"录用 → 开会 → attend"之间**凭空消失**，
+随后的 `attend()` 回 `VMU_NOT_MEMBER "not a member of this instance: r-1"`（hint `the roster seam rejected it`）。
+同一位置插桩两次，一次读到 `members.roster()` 只剩 `[['r-chair','live']]`、一次读到四人全 live —— 说明是时序相关。
+
+### 根因（读会消灭状态）
+`vibe-math-vmu/kernel/index.js` 给 `roster/roles/...` 这些**读**名包了一层 `store.refresh()`：读之前先把耐久 fold 刷新一遍。
+这个刷新会触发 `store.onReload` 钩子，而钩子对每个 `mode:'state'` 面调用 `adapter.restore(env.value)`。
+`members` 适配器当时是 `restore: (v) => members.restore(v, { replace: true })` —— **替换式**。
+于是只要耐久 fold 落后于内存（某次 write-through 被拒、或文件写的是成形时刻的快照），
+**一次读就会把内存里新雇的成员按旧快照覆盖掉**，而 `attend()` 紧接着用 `isMember()` 查这份已被毁掉的名单，就具名拒了。
+
+当初选 `replace:true` 的理由（注释里写着）是：reload 时耐久文件是权威，而默认模式在非空名单上会 `VMU_RESUME_RESTORE_CONFLICT`。
+这个理由对**恢复**成立，对**刷新**不成立：刷新需要的是"能看见别人新雇的人"，从不需要"删掉本内核自己雇的人"。
+
+### 修法：把一条接口拆成两种语义（各起名，不靠开关滥调）
+`vibe-math-vmu/kernel/members.js` `restore(snap, { replace, merge })` 三档：
+- `{}`（默认）：同快照幂等；不同快照在非空名单上**具名拒** `VMU_RESUME_RESTORE_CONFLICT`（原样保留）；
+- `{ replace: true }`：**恢复**语义，快照即名单（原有行为）；
+- `{ merge: true }`：**刷新**语义 —— 快照可以**增加或更新**一个成员，**永不删除**；
+  回执写 `mode:'merge'` + `added`/`updated`/`kept`（删人有自己的名字 `end()`，不归还原管）。
+
+`vibe-math-vmu/kernel/index.js`：
+- `members` 适配器两个还原器并存：`restore`（恢复，replace）与 **`restoreReload`**（刷新，merge）；
+- `onReload` 钩子**优先**用 `restoreReload`，并把 `additive/added/updated/kept` 写进 `done` 行 —— 合并是**可审计的**，不是静默行为。
+
+### 证据
+- 修前：该套件 4 次里约 2 次红（并有插桩显示 roster 被抹成 1 人）。
+- 修后：`node tests/vmu-meeting-invite.test.mjs` **连跑 4 次全绿 69/0**。
+- 新闸 `tests/vmu-roster-durability.test.mjs` §5（+9 条，共 **19/0**）：滞后的 fold 走 merge ⇒ 三名成员仍在且 `kept` 点名两人；
+  同一次 merge 仍会**更新**快照里有的那条；也会**增加**本内核没见过的新成员（新鲜度没丢）；恢复路径仍具名拒不同快照（两种语义没有塌成一个）；
+  并断言适配器真的暴露了 `restoreReload`、钩子真的**优先**用它（否则修法只是装饰）。
+
+### 教训
+- **读操作必须是不可见的**。给读加"先刷新"的副作用，就必须同时保证刷新只能**增加**事实、不能**删减**事实；
+  否则"刷新"会把数据丢失伪装成"名字被拒"。
+- 一个接口承担两种相反语义时，**加名字**（`restore` vs `restoreReload`）比加开关更安全：开关会被默认值决定行为，名字不会。
+- 这条缺陷属于本阶段反复出现的那一类："用一个数/一个名字说了两件事"，只是这次的受害者是内存里的名单。

@@ -1100,7 +1100,13 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // reloaded the durable fold (2 members) and then refused the restore, so its roster stayed stale forever while the
     // file was right. On a reload the durable file IS the authority (every local change went through the write-through
     // after-hook; a write that FAILED is counted in `resume`'s `writeThroughFailures`), so the seam replaces.
-    members: () => ({ key: 'members', mode: 'state', snapshot: () => members.snapshot(), restore: (v) => members.restore(v, { replace: true }), list: () => (typeof members.roster === 'function' ? members.roster() : []) }),
+    // ★ TWO RESTORERS, TWO MEANINGS (measured: §10 of `tests/vmu-meeting-invite.test.mjs` flaked ~50% with three hired
+    // members vanishing). `restore` is the RECOVERY path (replace: the snapshot becomes the roster). `restoreReload` is
+    // the RELOAD path the read-refresh hook uses: it may ADD or UPDATE a member, never delete one. Freshness needs the
+    // former's ability to add; it never needs the latter's ability to delete — deletion has its own name (`end()`).
+    // Before this split, a read that refreshed a fold lagging behind the live roster could resurrect a past institute and
+    // the next `attend()` was refused VMU_NOT_MEMBER: a READ destroying state.
+    members: () => ({ key: 'members', mode: 'state', snapshot: () => members.snapshot(), restore: (v) => members.restore(v, { replace: true }), restoreReload: (v) => members.restore(v, { merge: true }), list: () => (typeof members.roster === 'function' ? members.roster() : []) }),
     meetings: () => ({ key: 'meetings', mode: 'state', snapshot: () => meetings.snapshot(), restore: (v) => meetings.restore(v), list: () => [] }),
     ballotbox: () => ({ key: 'ballotbox', mode: 'state', snapshot: () => ballotbox.snapshot(), restore: (v) => ballotbox.restore(v), list: () => [] }),
     minutes: () => ({ key: 'minutes', mode: 'state', snapshot: () => minutes.snapshot(), restore: (v) => minutes.restore(v), list: () => [] }),
@@ -1275,11 +1281,17 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           if (typeof make !== 'function') { done.push({ face: row.face, ok: false, code: 'VMU_RESUME_NO_ADAPTER' }); continue }
           let adapter = null
           try { adapter = make() } catch (e) { done.push({ face: row.face, ok: false, code: (e && e.code) || 'VMU_RESUME_ADAPTER_FAILED' }); continue }
-          if (!adapter || typeof adapter.restore !== 'function') continue
+          // A face that exposes the additive restorer uses it: the reload path must not delete what this kernel hired.
+          const additive = typeof adapter.restoreReload === 'function'
+          const restorer = additive ? adapter.restoreReload : adapter.restore
+          if (!restorer) continue
           let env = null
           try { env = store.read(adapter.key) } catch (e) { done.push({ face: row.face, ok: false, code: (e && e.code) || 'VMU_STORE_FAILED' }); continue }
           if (!env || typeof env !== 'object' || env.mode !== 'state') continue
-          try { adapter.restore(env.value); done.push({ face: row.face, ok: true, seq: env.seq === undefined ? null : env.seq }) } catch (e) { done.push({ face: row.face, ok: false, code: (e && e.code) || 'VMU_RESUME_RESTORE_FAILED', message: String((e && e.message) || e) }) }
+          try {
+            const out = restorer(env.value)
+            done.push({ face: row.face, ok: true, seq: env.seq === undefined ? null : env.seq, additive: additive ? true : null, added: out && Array.isArray(out.added) ? out.added.length : null, updated: out && Array.isArray(out.updated) ? out.updated.length : null, kept: out && Array.isArray(out.kept) ? out.kept.length : null })
+          } catch (e) { done.push({ face: row.face, ok: false, code: (e && e.code) || 'VMU_RESUME_RESTORE_FAILED', message: String((e && e.message) || e) }) }
         }
         if (done.length) { try { lastRehydrate = { at: clock(), faces: done } } catch { /* clock guards */ } }
         return done

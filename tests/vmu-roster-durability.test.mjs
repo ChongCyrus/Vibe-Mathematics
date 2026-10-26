@@ -88,5 +88,47 @@ try {
   await rm(root, { recursive: true, force: true })
 }
 
+
+// ── §5 THE RELOAD PATH MUST NOT RESURRECT A PAST INSTITUTE ────────────────────────────────────────────────────────
+// Measured: `tests/vmu-meeting-invite.test.mjs` §10 flaked ~50% — three hired members vanished between the hire and an
+// `attend()` that then refused `VMU_NOT_MEMBER`. Cause: the read-refresh hook re-read the durable fold and the members
+// adapter restored it with `{replace:true}`, so a read whose fold lagged the LIVE roster replaced the roster with the
+// stale one: a read destroying state. The reload path now uses an ADDITIVE restore — it may add or update a member,
+// never delete one (deletion has its own name: `end()`).
+{
+  const K5 = await openKernel()
+  const k = K5.k
+  await k.members.hire({ id: 'r-chair', slot: 'chair' })
+  await k.members.hire({ id: 'r-9', slot: 'member' })
+  await k.members.hire({ id: 'r-10', slot: 'member' })
+  await flush(k)
+  const live = k.members.roster().map((x) => x.id).sort()
+  ok(live.length === 3, '★★ setup: three members are really live before the stale fold is applied', JSON.stringify(live))
+  const stale = k.members.snapshot()
+  stale.data.members = stale.data.members.filter((x) => x.id === 'r-chair')
+  const merged = k.members.restore(stale, { merge: true })
+  const afterIds = k.members.roster().map((x) => x.id).sort()
+  ok(merged && merged.mode === 'merge', '★ the additive restorer names its mode', merged && merged.mode)
+  ok(afterIds.length === 3 && afterIds.includes('r-9') && afterIds.includes('r-10'),
+    '★★ a RELOAD over a stale fold KEEPS the members this kernel hired (a read cannot delete)', JSON.stringify(afterIds))
+  ok(Array.isArray(merged.kept) && merged.kept.length === 2 && merged.kept.includes('r-9'),
+    '★★ and the receipt NAMES what it kept, so the merge is auditable instead of silent', merged && JSON.stringify(merged.kept))
+  ok(merged.added.length === 0 && merged.updated.length === 1,
+    '★★ it still applies the snapshot row it does have (chair updated, nothing added)', merged && JSON.stringify({ added: merged.added, updated: merged.updated }))
+  const withNew = k.members.snapshot()
+  withNew.data.members = withNew.data.members.concat([{ id: 'r-11', slot: 'member', state: 'live', permissions: ['vote'] }])
+  const merged2 = k.members.restore(withNew, { merge: true })
+  ok(merged2.added.includes('r-11') && k.members.roster().some((x) => x.id === 'r-11'),
+    '★★ the additive path really ADDS a member this kernel had never seen (freshness kept)', JSON.stringify(merged2.added))
+  let conflict = null
+  try { k.members.restore(stale) } catch (e) { conflict = e }
+  ok(conflict && conflict.code === 'VMU_RESUME_RESTORE_CONFLICT',
+    '★★ recovery (no merge) still REFUSES a different snapshot on a non-empty roster — the two modes did not collapse', conflict && conflict.code)
+  const idxSrc = await readFile(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
+  ok(/restoreReload: \(v\) => members\.restore\(v, \{ merge: true \}\)/.test(idxSrc),
+    '★ the members adapter exposes a reload-mode restorer', null)
+  ok(/const additive = typeof adapter\.restoreReload === 'function'/.test(idxSrc) && /const restorer = additive \? adapter\.restoreReload : adapter\.restore/.test(idxSrc),
+    '★★ and the read-refresh hook PREFERS it over the replacing one (otherwise the fix is decoration)', null)
+}
 console.log('=== VMU ROSTER DURABILITY: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) { for (const f of failures) console.log('  FAIL ' + f); process.exit(1) }

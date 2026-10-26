@@ -295,10 +295,48 @@ export function createMembers({
       }
     },
 
-    /** Put the roster back. Idempotent for the same snapshot; a different one needs { replace: true }. */
-    restore(snap, { replace = false } = {}) {
+    /**
+     * Put the roster back. Three modes, named so a caller cannot pick the wrong one by accident:
+     *   · { replace:false } (default) — idempotent for the SAME snapshot; a different one is refused by name.
+     *   · { replace:true }  — the recovery path: the snapshot becomes the roster, live rows included are DROPPED.
+     *   · { merge:true }    — the RELOAD path: the snapshot may ADD or UPDATE a member, NEVER delete one.
+     */
+    /**
+     * ★ WHY `merge` EXISTS (measured: `tests/vmu-meeting-invite.test.mjs` §10 flaked ~50%, losing three hired members).
+     * The reload hook re-reads the durable fold before every roster READ, and the members adapter restored it with
+     * `{replace:true}`. So any moment where the durable file lagged the live roster (a refused write-through, a file
+     * written before the hires) made a READ resurrect a PAST institute: the roster collapsed from 4 members to the 1
+     * declared seat, and the next `attend()` was refused `VMU_NOT_MEMBER` — a read destroying state. Freshness needs
+     * the fold to be able to ADD a member this kernel has not seen; it never needs it to REMOVE one this kernel hired.
+     * Deletion has its own name (`end()`), so a restore that deletes is not the reload path's business.
+     */
+    restore(snap, { replace = false, merge = false } = {}) {
       checkSnapshot('members', snap, ['members', 'reportLog'])
       const incoming = Array.isArray(snap.data.members) ? snap.data.members : []
+      if (merge) {
+        const skippedMerge = []
+        const liveBefore = [...members.keys()]
+        const incomingIds = new Set()
+        const added = []
+        const updated = []
+        for (const m of incoming) {
+          if (!m || typeof m.id !== 'string' || !MEMBER_ID.test(m.id)) { skippedMerge.push({ what: 'members[]', why: 'an entry with a missing or invalid id' }); continue }
+          incomingIds.add(m.id)
+          if (members.has(m.id)) updated.push(m.id)
+          else added.push(m.id)
+          members.set(m.id, JSON.parse(JSON.stringify(m)))
+        }
+        const kept = liveBefore.filter((id) => !incomingIds.has(id))
+        for (const pair of (Array.isArray(snap.data.reportLog) ? snap.data.reportLog : [])) {
+          if (!Array.isArray(pair) || pair.length !== 2) { skippedMerge.push({ what: 'reportLog[]', why: 'not an [id, rows] pair' }); continue }
+          const id = String(pair[0])
+          const rows = (Array.isArray(pair[1]) ? pair[1] : []).map((r) => JSON.parse(JSON.stringify(r)))
+          const existing = reportLog.get(id) || []
+          if (rows.length >= existing.length) reportLog.set(id, rows)
+        }
+        if (added.length || updated.length) observeIds('member', [...members.keys()])
+        return { ok: true, mode: 'merge', restored: added.length || updated.length ? ['members', 'reportLog'] : [], added, updated, kept, skipped: skippedMerge, idempotent: added.length === 0 && updated.length === 0 }
+      }
       if (members.size > 0 && !replace) {
         const same = JSON.stringify([...members.values()]) === JSON.stringify(incoming)
         if (same) return { ok: true, restored: [], skipped: [], idempotent: true }
