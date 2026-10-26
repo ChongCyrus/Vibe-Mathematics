@@ -55,8 +55,27 @@ const tables = (kernel) => {
     && kernel.status().settings.resolved['vmu.resume.projections']) || null
   const dv = declared && typeof declared === 'object' && declared.value !== undefined ? declared.value : declared
   const attached = (p.attached || []).map(face)
-  const viaAlias = (p.viaAlias || []).map(face)
-  const notAttached = (p.notAttached || [])
+  // ROUND 30 / task-5: `status().projections.viaAlias` is a list of PER-ROW RECORDS, not of faces -
+  // `kernel/index.js:1333` publishes `{ declared, attached, key }` (`declared` = the alias the pack declared,
+  // `attached` = the canonical face it landed on). `.map(face)` read `.face`, which no such row carries, so this column
+  // would have printed `undefined` - silently naming nothing - the day an alias face really attached. The name this
+  // table compares against `T.declared` below is the DECLARED one; a plain string row is still accepted for safety.
+  const viaAlias = (p.viaAlias || []).map((r) => (r && (r.declared || r.face)) || face(r))
+  // ROUND 30 / task-4: `p.notAttached` is an APPEND-ONLY LOG, not a state table - and this census publishes a
+  // STATE table. `attachDeclaredProjections()` (vibe-math-vmu/kernel/index.js:1203) runs TWICE: at the end of the
+  // factory (:1574, when `members` still has no target because the pack declares its slots later) and again after
+  // the pack declares them (:2439-2441). Its idempotence guard (:1227) only skips a face it ATTACHED, so the second
+  // run re-appends the FAILED rows (`phase`/`work` have no target in the kernel table, :1206) and the first run's
+  // stale `members:VMU_RESUME_NO_TARGET` row survives even though the second run attached `members`.
+  // Measured raw log: [members, phase, work, phase, work]; `unwiredKnown` = [phase, work] (a state query over
+  // PROJECTION_KEYS, kernel/resume.js:64 - the reading that is RIGHT). So FOLD the log: the last row per face wins
+  // (append-only => last = latest), and a face that ended up attached is not "not attached". The upstream defect (a
+  // non-idempotent failure row) is NOT papered over here - vibe-math-vmu/** is another owner's write scope this
+  // round - it is reported instead; this consumer only stops publishing a log as if it were a state.
+  const lastRowPerFace = new Map()
+  for (const row of p.notAttached || []) lastRowPerFace.set(face(row), row)
+  const attachedFaces = new Set(attached)
+  const notAttached = [...lastRowPerFace.values()].filter((row) => !attachedFaces.has(face(row)))
   return { declared: Array.isArray(dv) ? dv : [], attached, viaAlias, notAttached, known: p.known || [], unwired: p.unwiredKnown || [], wrapped: (p.wrappedMethods || []).map((w) => w.face) }
 }
 
@@ -77,8 +96,10 @@ ok(T.notAttached.every((n) => /zero-mechanism|nothing declared it/.test(String(n
   '★ and every reason names the ZERO-MECHANISM cause rather than inventing a target (D-01)', T.notAttached.map((n) => n.code))
 ok(T.known.length === T.declared.length && T.declared.every((d) => T.known.includes(d)),
   '`known` agrees with the declaration (no face is known that nobody declared, and none declared is unknown)', { known: T.known })
-ok(T.unwired.length === T.notAttached.length,
-  '`unwiredKnown` agrees with `notAttached` (the two readings cannot drift apart)', { unwired: T.unwired, not: T.notAttached.map((n) => n.face) })
+const unwiredFaces = [...T.unwired].sort()
+const notAttachedFaces = T.notAttached.map((n) => n.face).sort()
+ok(unwiredFaces.length === notAttachedFaces.length && unwiredFaces.every((f, i) => f === notAttachedFaces[i]),
+  '★★ `unwiredKnown` and `notAttached` name the SAME faces (SET equality, not a length coincidence: a face filed twice cannot pass)', { unwired: T.unwired, not: T.notAttached.map((n) => n.face) })
 
 console.log('=== 2. ZERO-MECHANISM: an UNDECLARED face has no instance and is not invented ===')
 ok(T.attached.every((a) => T.declared.includes(a)), 'nothing is attached that was never declared (the assembly does not invent authorities)', { attached: T.attached })

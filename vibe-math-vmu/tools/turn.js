@@ -93,7 +93,21 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       // The fallback now reads the roster the framework already maintains: live members become {id, role} with the
       // slot as the role. An explicit `members` still WINS when the caller supplies one - the framework defaults
       // sensibly and the deployment stays in control.
-      const explicit = Array.isArray(args.members) && args.members.length > 0
+      const listed = Array.isArray(args.members) && args.members.length > 0
+      // ★★★ LIVE RUN 29 (the institute's own acceptance brief, step ②, receipt seq 48): THE SINGULAR SHORTHAND WAS
+      // SILENTLY SWALLOWED BY THIS FACE. The framework's own chair-rail hint teaches
+      // `vibe_vmu_turn {op:"step", member:"academician-1"}`, and the orchestrator honours that shorthand — but only
+      // when `members` is EMPTY (kernel/turn/index.js:2288, "one place, honoured by both faces"). This face fills
+      // `members` from the roster whenever the caller omits them, so the singular id arrived beside a three-name
+      // default list and LOST: the receipt read `requestedMembers:[]` with
+      // `requestedMembersSource:"roster-default"`, and the loop woke whoever the cursor happened to point at. The
+      // brief had named a member; the receipt claimed nobody had. A caller that NAMED somebody is honoured or
+      // refused, never reinterpreted — so a lone `member` IS an explicit one-member selection here, and it travels
+      // as such (`membersFrom:"caller-selection"`, `membersInferred:false`) instead of as an inferred roster.
+      const singleMember = !listed && typeof args.member === 'string' && args.member.trim() !== ''
+        ? { id: args.member.trim() }
+        : null
+      const explicit = listed || singleMember !== null
       // ★★ A BARE-ID ARRAY IS NORMALISED, AND A WRONG ENTRY IS REFUSED BY NAME — never answered with a false
       // "no-members". MEASURED on a live run: a caller passed `members: ['member']` (an obvious reading of the
       // declared `[{id, role}]`) and got `stopped: 'no-members'` while the roster held a seated member, because
@@ -107,7 +121,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         return null
       }
       let explicitMembers = []
-      if (explicit) {
+      if (listed) {
         const bad = args.members.find((m) => memberEntry(m) === null)
         if (bad !== undefined) {
           return refused('VMU_INVALID_ARGUMENT',
@@ -115,6 +129,8 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
             'pass members:[{id, role}] or members:["m-1"] — omitting members entirely infers them from the roster')
         }
         explicitMembers = args.members.map(memberEntry)
+      } else if (singleMember !== null) {
+        explicitMembers = [singleMember]
       }
       const inferred = !explicit && kernel.members && typeof kernel.members.roster === 'function'
         // ★★★ PHASE 12 / R16 (the institute's run-15 prompt carried the TEMP charter section to a 常驻研究员):

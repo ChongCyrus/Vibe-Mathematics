@@ -150,6 +150,14 @@ export const DECLARED_SELF_REPORT_FIELDS = Object.freeze([
   // transport was injected, because "nothing was sent" must be readable from the call that failed - and a refusal is a
   // read face too. `neverDrives` rides along in the same declaration for the same reason (drives:false is a claim).
   'transportInjected',
+  // ROUND 30 (task-4): the blind spot this rule EXISTS to find, found in a live receipt. `kernel/meetings.js:1325`
+  // puts `countedMeans` on the vote receipt (and `:1326` forwards the same string onto `voteOut`), so the
+  // claim-family discovery sees `countedMeans` (the `counted[A-Za-z]*` prefix shape) and the declared table did not
+  // declare it. It is declared here WITH its meaning and its source, because the field exists precisely to stop a
+  // reader from over-reading `counted`: the string is "counted = the MEETING counted this vote in its own tally; it
+  // does not mean the ballot box mirrored it (see ballotNote)". The gate that scans it is
+  // `tests/vmu-run12-findings.test.mjs:45,55` (the vote RETURN carries the same readings as the receipt).
+  'countedMeans',
 ])
 
 /** Top-level keys of every `return { … }` object literal in one source. */

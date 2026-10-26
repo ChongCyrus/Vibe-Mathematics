@@ -2515,6 +2515,29 @@ export function createTurnOrchestrator({
       if (memberCallsReading.childSessionId && spec && typeof spec.member === 'string') {
         try { memberSessions.set(spec.member, memberCallsReading.childSessionId) } catch { /* diagnostics only */ }
       }
+      // ★★★ LIVE RUN 29 (the institute's own acceptance brief, step ⑥): the office asked
+      // `vibe_vmu_tools {member:"res-01"}` after two real turns and the answer still read
+      // `no live Agent for member res-01 (session=(none learned yet))` - and NOTHING in the run showed whether the step
+      // had taught the kernel a child id or not. The map is the only link between a member id and its child session, and
+      // it had no reading of its own: the fact could only be discovered by asking a DIFFERENT tool and parsing a
+      // refusal. Two fields close that hole. `memberSession` is what THIS kernel holds for the member AFTER this step
+      // (so a non-null value here and a refusal over there are a contradiction a reader can see, not guess at);
+      // `memberSessionMeans` states the scope (in-memory, per kernel instance) and what null means. Both are computed
+      // AFTER the learning above, deliberately: a field that reports the state as it was before the step would say
+      // "learned nothing" on the very step that learned it.
+      memberCallsReading.memberSession = (() => {
+        const id = spec && typeof spec.member === 'string' ? spec.member : null
+        if (!id) return null
+        try { return memberSessions.get(id) || null } catch { return null }
+      })()
+      memberCallsReading.memberSessionMeans = (() => {
+        const id = spec && typeof spec.member === 'string' ? spec.member : null
+        if (!id) return 'this step opened no turn (no member was selected), so there is no member session to report'
+        if (memberCallsReading.memberSession) {
+          return 'the child session this kernel holds for "' + id + '" (in memory, per kernel instance; learned from this or an earlier step receipt). `vibe_vmu_tools {member:"' + id + '"}` reads the same map - a null there while this field is non-null is a contradiction in this receipt, not a property of the member'
+        }
+        return 'NOT LEARNED YET for "' + id + '": the delivery seam reported no child id for this member on any turn THIS kernel ran. `vibe_vmu_tools` will refuse for it - that refusal describes the absence of a reading, never a member who sees nothing'
+      })()
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,

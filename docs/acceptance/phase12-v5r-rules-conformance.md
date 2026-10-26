@@ -4906,3 +4906,95 @@ for (const field of RECORDED_FIELDS) {
 
 提交：`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/tools.js`、`vibe-math-vmu/kit/handlers.js`、`tests/vmu-run28-findings.test.mjs`（新）、`tests/vmu-v5r-tools.test.mjs`。
 
+### §125.1 回填：那 8 条「未验证」逐条取证（只用 run 28 自己的日志）
+
+上一节把 8 条记为"未验证"，理由大多是"这一轮没跑到"。回头查日志发现：**其中 6 条当时就能判，只有 2 条是真需要下一轮**。证据源＝`_oneoff/vm-slv/full-1026-083238.jsonl`（21,960,268 B / 52,644 行，UTF-8；同目录 `.run.log` 是 UTF-16LE，用 UTF-8 读会得到乱码）。口径：按 `session|seq` 去重后 **586 事件 / 132 次工具调用（root 24 + member 108）**，工具回执 100% 配对。
+
+| # | 上一节记的条目 | 现在能判 | 证据（seq） | 一句话事实 |
+|---|---|---|---|---|
+| 1 | step 回执里的 `settlement` 键 | ✅ 键不存在 | 34（同 50/56/93） | 4 份 step 回执顶层恒 20 个键，真名是 `receipt.delivery`（+`receipt.delegation`）／`pending`／`superseded`／`selectionApplied`；取值 `pending:null, superseded:null, selectionApplied:true, delivery.path:"activation"`。`settlement` 全文件 45 处**全在提示词与助手文本里**，`tool/call`、`tool/result` 内 0 处 |
+| 2 | `memberToolCalls` / `memberToolCallsMeans` | ✅ 回执读不到，**日志读得到** | 34/50/56/93 | 两者恒 `null`；Means 逐字写着 `null here means NOT READABLE FROM THIS RECEIPT, never "zero calls"`。而 4 个子会话在本日志里完整可读：真实调用 **31／22／34／21（合计 108）**，与各自 `childSessionId` 一一对应。⇒ 上一节写成"不可读"过头了：**是这一层读不到，不是没有** |
+| 3 | 成员侧 `vibe_vmu_tools` 的原文 | ❌ 成员侧没出现 | 34→35（member `b0f990bf`） | 108 次成员调用共 29 个工具名，**不含** `vibe_vmu_tools`；但它在该子会话 header 的 70 个工具里**被声明**了 ⇒ "有面没调"。成员自己调 `vibe_v5_tool_help` 得到 `tools:null, liveAgent:false, VMU_NO_SUCH_OBJECT`；根侧 118/120 两次同拒 |
+| 4 | `verdict_ask` 的回执正文 | ✅ 有，**但没有 `askedWhy`** | 78 | `asked:["res-01","res-02"] askedSource:"roster+speech" rosterCount:3 speakerCount:0 delivered:["res-01","res-02"] failed:[] deliveredCount:2 failedCount:0 partialAsk:false`。而 wire（seq=11）明写 `and askedWhy says why` ⇒ 这是 §125 第 2 条修复**在 run 28 上的确证**（run 29 已有 `askedWhy`） |
+| 5 | 预约会议 | ❌ 本轮无预约 | 仅 39（普通会） | 132 次调用无一带 `at/scheduled/scheduledFor/start`；两次开会均 `type:"ordinary"`，回执 `scheduledFor:null, at:null, scheduleNote:null`；成员想让所办代开会被 `VMU_CHAIR_ACT_NOT_DELEGATED` 拒（正确：开会是院士行为） |
+| 6 | `verdict_final` | ❌ 未调用，但**根面可达** | 未调用；指引见 78、34 `rulingReading` | 132 次里 0 次；wire（seq=11）的 68 个 `vibe_*` 含它，成员面 60 个不含 ⇒ 结构性只有所办能汇总。提案卡停在 `p:0.99 / settled:false` |
+| 7 | `close`／归档／verified | ⚠️ 部分，且**三者被混为一谈** | 39（close 指引）、89/91（归档）、97→98（proof_state） | `vibe_v5_close` 这个工具名不存在（0 次），真实的关闭面是 `vibe_vmu_meeting{action:"close"}`，本轮**从未调用**（`"state":"closed"` 0 处，m1 终态仍 `open`）；归档有 2 条真回执（`oddSum` 定义、`oddSum_sq` 引理，count 1→2）；`verified` **从未写入**（`"verified":` 0 处、`verified_promote` 0 调用），唯一相关状态是调用参数 `proof_state:"complete"`，回执不回显，记录正文自述"不是 Verified" |
+| 8 | `op:"reply"` 的正向路径 | ✅ 判否：**只有拒绝** | 60/65/82/84/86 → 61/66/83/85/87 | 5 次 `op:"reply"` 全部 `VMU_TURN_NO_PENDING_MEMBER`；`"awaiting":true` 0 次、132 条回执内 0 个 `memberPrompt` 字段（只在 `pendingMeans`/`hint` 文字里被提及）、4 次 step 的 `pending` 恒 `null` |
+
+**这一节修正了 §125 的三处措辞**（不改结论，改的是判据强度）：
+- 第 2 条「子会话日志不可读」⇒ 实为**本内核读不到，证据在 run 日志里可读**。判据纪律再次生效：`null` 是"这一层没有"，不是"世界上没有"。
+- 第 7 条「close／归档／verified」原本并列，实测是**三件不同的事**：关闭面存在但没被调用、归档落了 2 条、verified 从未被写。台账里必须分开记，否则"归档成功"会被读成"命题已验证"。
+- 第 8 条「本部署不可达」⇒ 更强：**正向路径在 `activation` 投递下不存在**（5 次尝试、0 次 `awaiting`），不是"这次没走到"。
+
+一条旁证异常（留给下一轮验，别当结论）：4 个成员子会话内部跑的是 `p-odd-sum` 的 Lean 证明流，与根会话同轮下发的 `next_step:"确认自己的工具与身份"` 不符 ⇒ 成员侧内容不能当作"对根指令的响应"来读，这也正是 §125「成员回合回答与指派不符」那条待查项的另一种形态。
+
+
+
+### §126 真机跑 29（build `9dce66f0`）：§125 四项的实测判决、三条新缺陷、两处简报错误
+
+**口径**：证据源 `_oneoff/vm-slv/full-1026-092744.jsonl`（27.0 MB / 62,077 行，UTF-8；同目录 `.run.log` 是 UTF-16LE，用 UTF-8 读会得到乱码）。done 记录 `durationSec:1445`、`toolCalls:21`、`tokenCapHit:false`、`tokenTotal:8,317,540`；workspace 是 `D:\_tmp\slv-phase5\slvp12e-ws`（不是简报里写的 `slvp13b-ws`）。跑的是 `D:/_tmp/slv-phase5/pkg-9dce66f0/`，我已核该包 `vibe-math-vmu/kernel/turn/index.js:2516` 里确有 `memberSessions.set(spec.member, memberCallsReading.childSessionId)` ⇒ 下面判 ❌ 的项是**真缺陷**，不是"测了旧包"。日志里 `tool/result` 共 353 条。
+
+#### 1. §125 那四项修复在真机上到底成立不成立
+
+| §125 记的修复 | run 29 判决 | 回执原文（节选） |
+|---|---|---|
+| `vibe_v5_message` 新增 `member`，回执给 `from`/`relayedBy`/`fromMeans` | ✅ 成立 | 成员代笔：`from:"res-01"`、`relayedBy:"office"`、`fromMeans` 写明"声音属于 res-01、执笔是 office"；所办自述：`from:"office"`、`relayedBy:"office"`。两种回执可区分 |
+| `askedWhy` 由"承诺"变"真给" | ⚠️ 给了，但当时数字与集合口径对不上 | `askedSource:"roster+speech"`、`askedWhy:"the population is the UNION of the meeting roster (3) and the speech record (0) — …"`、`rosterCount:3`、`asked:["res-01","res-02"]` ⇒ 3 与 2 差 1，**没有任何字段说明差额是主席**（见 §126.2 缺陷 ②） |
+| `op:"reply"` 的拒绝必须说出通道 | ✅ 成立（且措辞比要求的更硬） | `code:"VMU_TURN_NO_PENDING_MEMBER"`，`hint` 含 `CHANNEL:` 段与 `REACHABLE INSTEAD:` 段，逐字："Under `activation` or `one-shot` delivery the member's turn SETTLES INSIDE the step — nothing is ever left pending, so this channel is permanently unreachable and retrying it cannot work." + "REACHABLE INSTEAD: let the member vote inside its OWN turn (`op:\"step\"` whose next_step asks for the closure vote), which is what the receipts show as `effects:[{kind:\"closure-vote\"}]`" |
+| `vibe_vmu_tools` 从回执自带的 `childSessionId` 学习子会话 | ❌ 不成立（连调两次，两次同答） | `{"ok":true,"member":"res-01","tools":null,"source":"no-live-agent","liveAgent":false,"cause":null,"childId":null,"refusal":{"code":"VMU_NO_SUCH_OBJECT","message":"no live Agent for member res-01 (session=(none learned yet))",…}}` |
+
+第四项为什么不成立，见下面缺陷 A（面层吞掉单数 `member`，学习只在"游标真轮到你"时发生）与缺陷 B（宿主 provider 的拒绝不带 `cause`）。
+
+#### 2. 三条新缺陷（本轮已修，各带行为断言）
+
+| # | 缺陷 | 机制（源码位置） | 证据 | 修法 |
+|---|---|---|---|---|
+| A | `op:"step"` 指名一个成员时，面层把它扩成整张名册，指名被吞 | `vibe-math-vmu/tools/turn.js:96` 只认 `members` 数组；`:125` 未给数组就填 `roster`；内核 `kernel/turn/index.js:2288` 的单数 `member` 简写要求 `members` **为空**才生效，永远不触发 | 4 次 step 调用都显式传了 `member:"acad-01"|"res-01"|"res-02"`，回执却恒 `requestedMembers:[]` + `requestedMembersSource:"roster-default"` + `resolvedMembers:["acad-01","res-01","res-02"]`；被唤醒的由游标决定 | 面层把"只给 `member`"认定为显式单选（`membersFrom:"caller-selection"`、`membersInferred:false`）；内核简写保留给直接调 orchestrator 的调用者 |
+| B | 成员工具面的拒绝丢掉了 `cause`/`learnedSession`，内核的三分支降级永远走通用那一支 | `kernel/index.js:2836-2852` 读 `e.cause`/`e.learnedSession`；而注册进内核的 provider 在 `host.js:1808-1819` 抛的 Error 只有 `code`+`hint`，`session=<…>` 只夹在 message 里。同一语义在 `host.js:1849-1870` 的 `adapter.visibleToolsOf()` 有完整实现（带 `cause:'child-session-not-live'\|'no-child-session-yet'`） | 上一行回执里 `cause:null`、`childId:null`，而 message 已知道 `session=(none learned yet)` | 抽出唯一判定 `memberWireRefusal(member)`，两个出口共用；拒绝时把 `cause`/`learnedSession`/`childId` 挂到 Error 上 |
+| C | step 回执不自报"学到了谁的子会话"，只能靠下一次调用倒推 | `kernel/turn/index.js:2515-2517` 学到 `memberSessions` 后不回报 | §125/§126 两次都要靠日志考古才能判 ⑥ | 回执新增 `memberSession`/`memberSessionMeans`（放在学习**之后**） |
+
+断言：`tests/vmu-run29-findings.test.mjs`（22 条，全绿）。其中 A 组含一条**反事实**断言——照旧行为调 `kernel.turn.step({members:[3 人], member:'m-c', membersInferred:true})`，确认指名确实被吞（把被修掉的缺陷钉死，防回归）。相邻套件：`vmu-turn` 271/0、`vmu-host` 203/0。
+
+#### 3. `verdict_ask` 的三条真缺陷（本轮已修，`vibe-math-vmu/packs/v5r/tools.js`）
+
+这一轮它**没有被拒**，回执是 `ok:true` 且投递了 2 封；但它做的三件事不该被允许：
+
+1. **`rosterCount:3` 与 `asked` 2 人的差额无字段解释**：`debatedMembersOf()` 有意把主席排除出 `members`，却把主席算进 `rosterCount`。⇒ 现在每个分支都带 `excluded:[{member,why:"presides"}]`、`accountedCount`、`rosterCountMeans`、`accounting{…}`（3 = 2 问 + 1 排除，可对账）。
+2. **邮件正文硬编码断言"已结束辩论"**：实际回执 `subject` 是"…（会议 m1 已结束辩论；收齐全部裁决后由主席用 vibe_v5_verdict_final 汇总…）"，而同一时刻 `vibe_vmu_meeting{action:"status"}` 的 `state` 是 `open`、从未 `close`。⇒ 正文改由真实状态生成（`closurePhase`/`closureMeans`/`mail.stateReadable` 一起回报）。（这一条 run 29 的执行者自己也在推理里记了一笔，值得表扬。）
+3. **任意 `proposition_id` 都被接受**：它拿动议 id `mo1` 当命题 id 用，命题库 `total:0`，回执照样 `ok:true`。⇒ 新增具名拒绝 `VMU_ASK_UNKNOWN_PROPOSITION`（hint 点名 `vibe_v5_record_proposition` 与文件引用形状 `.md/.lean/.txt/.tex/.json`）；拒绝发生在**投递之前**，一封邮件都不进邮箱。
+
+断言：`tests/vmu-run29-verdict-ask.test.mjs`（91 条，全绿）；`vmu-v5r-tools` 355/0、`vmu-meeting-ask` 17/0。
+
+#### 4. 简报又写错两处（这次有机械证据）
+
+`node scripts/check-task-brief.mjs D:/_tmp/slv-phase5/task-r29.txt --json` ⇒ `ok:false`，12 次调用里 2 个问题：
+
+| 行 | 工具 | 问题码 | 事实 |
+|---|---|---|---|
+| 20 | `vibe_vmu_turn` | `BRIEF_UNKNOWN_PARAM` | 参数 `prompt` 不存在；该面最近的参数叫 `limit`。真实投递内容只能走 `next_step` |
+| 34 | `vibe_v5_verdict_ask` | `BRIEF_MISSING_REQUIRED` | 漏了必填 `proposition_id`。执行者只好自己编一个（`mo1`），于是撞上缺陷 3 |
+
+校验器 `scripts/check-task-brief.mjs` 不手抄任何名字：包工具 48 个取自 `V5R_PACK_TOOLS`，宿主面 57 个靠真跑 `host.js` 的 `toolSpecs()` 派生（合计 105 个工具名），派生失败会抛 `CHECK_TASK_BRIEF_DERIVATION_FAILED` 而不静默降级。结论文档里同步写了它的覆盖缺口（不跨行拼接、只查深度 1 的键、不查类型）。
+
+上一轮 §125 记了 4 处手抄错误，这一轮降到 2 处，但**性质相同**：简报也是被执行的接口，写错的名字会变成"产品缺陷"。从本轮起，每一份任务书先过这个校验器，再拿去跑。
+
+#### 5. 更正我自己的一处误读
+
+§125 之后我曾把 run 29 的 `verdict_ask` 回执记成 `asked:["acad-01","res-01"]`。**这是错的**：原始回执是 `asked:["res-01","res-02"]`（不含主席，符合 `debatedMembersOf` 的排除逻辑），我记的那个数组来自我自己的简报设问，不是回执。教训写在判据纪律里：**读数只能抄回执原文；我自己的设问、期望值、记忆都不是证据。**
+
+#### 6. 非规范行为项（执行者的行为，不算框架缺陷）
+
+- 命题库为空、动议 `mo1` 尚未附议完，就对 `mo1` 发起最终裁决请求——参数校验缺位是框架的账（已修），但"明知库是空的还发起"是行为问题，下一轮简报里明确禁止。
+- 第一次开会得到 `VMU_CHAIR_ACT_NOT_DELEGATED`（"the chair acad-01 has no recorded turn in this kernel"）——**这是正确行为**，主席必须先有自己的回合；但简报让"你直接开会"，所以正确行为在简报里看起来像失败。
+- 结题票 `cast:false` ⇒ ⑦ 没有走到 `verdict_final`。这符合条件分支，但也意味着聚合与"通知命题卡持有者改卡"这轮**又没验到**（连续两轮）。
+- 会议 `status` 里没有 `closureVote` 字段；它只出现在 turn 回执里，且回执自己写明 `window:"session"`、`meetingId:null`、`windowMeans:"…No current face binds a turn to a meeting, so window:\"meeting\" is not reachable from the tool surface yet"`。⇒ **是已声明的限制，不是静默缺陷**，但"结题票无法指名会议"这件事必须写进文档的已知限制，否则读回执的人会以为它在描述某场会议。
+
+#### 7. 无法验证项
+
+`verdict_final` 的聚合与改卡通知（cast:false）；预约会议（本轮 0 次，仍只有普通会）；成员侧 `vibe_vmu_tools` 面的正向读数（A/B 修后尚未在真机跑，只能靠单元断言）；`members:[…]` 显式多选路径的真机读数（本轮全是单数写法）。
+
+#### 8. 本轮无实质残余：**否**
+
+A/B/C 三条与 `verdict_ask` 三条都已修并带断言，但"修完之后真机上还错不错"没有证据 —— 这正是 run 30 要回答的：① 单数 `member` 必须让 `requestedMembers` 回显那一个人；② `vibe_vmu_tools` 必须给 `childId` 且不再说 `learned yet`；③ `verdict_ask` 必须对未知命题具名拒、且邮件正文不得断言未发生的状态。
+
+提交：`vibe-math-vmu/tools/turn.js`、`vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/tools.js`、`tests/vmu-run29-findings.test.mjs`（新）、`tests/vmu-run29-verdict-ask.test.mjs`（新）、`scripts/check-task-brief.mjs`（新）、`tests/brief-check.test.mjs`（新）。

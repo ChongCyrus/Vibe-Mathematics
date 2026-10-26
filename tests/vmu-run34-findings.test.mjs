@@ -43,6 +43,10 @@ const boot = async ({ provider }) => {
       const e = new Error('no live Agent for member m-a (session=(none learned yet))')
       e.code = 'VMU_NO_SUCH_OBJECT'
       e.hint = 'deliver one turn first so the child session id is learned'
+      // ★ the provider states the CAUSE as a field; without it the receipt can only describe the failure it sees,
+      // which is what made run 34's first reading unusable (see the note contract below).
+      e.cause = 'no-child-session-yet'
+      e.learnedSession = null
       throw e
     },
   })
@@ -55,9 +59,35 @@ const boot = async ({ provider }) => {
     '★★ ① the provider\'s NAMED refusal is carried as a field — the honesty moves, it does not disappear', v.refusal)
   ok(typeof v.refusal.hint === 'string' && /deliver one turn first/.test(v.refusal.hint),
     '① the refusal keeps its hint (what the caller can do about it)', v.refusal.hint)
-  ok(typeof v.note === 'string' && /caller delivery/.test(v.note) && /tools:null/.test(v.note) && /NOT/.test(v.note),
-    '★ ① the note reads as prose: caller delivery has no child session; null is not "sees nothing"', v.note)
+  ok(v.cause === 'no-child-session-yet' && v.childId === null,
+    '★★ ① the receipt carries the CAUSE as a field (not only prose), and childId:null means "not learned", never a fake id', { cause: v.cause, childId: v.childId })
+  // ★★ THE NOTE CONTRACT (run 15 finding, still binding): an explanation that cannot be right in ALL delivery modes
+  // must not be written as if it were one. The old note claimed "caller delivery plays the member without a child
+  // session" — measured false in an ACTIVATION run. Now the note FOLLOWS the cause the provider reports.
+  ok(typeof v.note === 'string' && /no child session has been learned/.test(v.note) && /tools:null/.test(v.note) && /NOT/.test(v.note),
+    '★ ① the note follows the reported cause and still says null is not "sees nothing"', v.note)
+  ok(typeof v.note === 'string' && !/caller delivery/.test(v.note),
+    '★★ ① the note does NOT assert ONE cause for every delivery mode (the run 15 defect: a sentence true in one mode, false in another)', v.note)
   ok(v.override === null, '① with no override recorded, the field is null (the pack default for the seat), not undefined', v.override)
+}
+
+// ── ①b the OTHER cause gets the OTHER sentence: a learned child that has finished is a different fact ───
+{
+  const k = await boot({
+    provider: () => {
+      const e = new Error('no live Agent for member m-a (session=c-9)')
+      e.code = 'VMU_NO_SUCH_OBJECT'
+      e.hint = 'that child session has finished; its tool history is in the child session log'
+      e.cause = 'child-session-not-live'
+      e.learnedSession = 'c-9'
+      throw e
+    },
+  })
+  const v = k.toolsView({ member: 'm-a' })
+  ok(v.cause === 'child-session-not-live' && v.childId === 'c-9',
+    '★★ ①b a FINISHED child is reported as such (cause + the real child id), not as "never delivered"', { cause: v.cause, childId: v.childId })
+  ok(typeof v.note === 'string' && /c-9/.test(v.note) && /child session log/.test(v.note),
+    '★★ ①b the note names the learned child and says where its calls really are (the log, not this field)', v.note)
 }
 
 // ── ② the override record the loop WOULD apply is reported alongside the refusal ───────────────────────

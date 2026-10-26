@@ -1200,6 +1200,21 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     if (!target || typeof target !== 'object') return []
     return Object.keys(target).filter((k) => typeof target[k] === 'function' && !PROJECTION_READ_ONLY.has(k) && k.charAt(0) !== '_')
   }
+  // ★★ THE PROJECTION LOG IS A STATE TABLE, NOT A DIARY (round 3 of 2026-10-26, from the census's drift report).
+  // `attachDeclaredProjections()` runs TWICE (once at assembly, once after the pack declares its slots, because
+  // `members` has no target until then). Each run used to APPEND: a face that failed the first time and attached the
+  // second left a stale `attached:false` row beside the success row, and a face that never attaches (`phase`/`work`)
+  // got a second identical row. Every consumer of `status().projections.notAttached` then read duplicates and stale
+  // rows — a receipt that accumulates instead of reporting is the same defect class as a count nobody can reconcile.
+  // So a new row for a face REPLACES that face's previous non-attached row; success rows are kept as the record.
+  const recordProjection = (row, aliases) => {
+    const keys = new Set([row && row.face].concat(Array.isArray(aliases) ? aliases : []).filter(Boolean))
+    for (let i = attachedProjections.length - 1; i >= 0; i--) {
+      const prev = attachedProjections[i]
+      if (prev && keys.has(prev.face) && prev.attached !== true) attachedProjections.splice(i, 1)
+    }
+    attachedProjections.push(row)
+  }
   const attachDeclaredProjections = () => {
     const declaredProjections = Array.isArray(settings['vmu.resume.projections']) ? settings['vmu.resume.projections'] : []
     // The live instances each adapter wraps. `meeting`/`ballot` are excluded on purpose (per-session factories).
@@ -1230,21 +1245,21 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       // `createMembers` returns null unless slots/maxLiveMembers are declared (zero-mechanism), so there is genuinely
       // nothing to wrap - and saying that is different from reporting an internal refusal code.
       if (!targets[canonical] || typeof targets[canonical] !== 'object') {
-        attachedProjections.push({ face, attached: false, code: 'VMU_RESUME_NO_TARGET',
-          reason: 'this assembly has no ' + canonical + ' face to project: the service is null because nothing declared it (zero-mechanism - e.g. members needs slots/maxLiveMembers), so there is no target object to wrap; the key stays unwired rather than pretending' })
+        recordProjection({ face, attached: false, code: 'VMU_RESUME_NO_TARGET',
+          reason: 'this assembly has no ' + canonical + ' face to project: the service is null because nothing declared it (zero-mechanism - e.g. members needs slots/maxLiveMembers), so there is no target object to wrap; the key stays unwired rather than pretending' }, [canonical])
         continue
       }
       const make = RESUME_PROJECTION_ADAPTERS[canonical]
-      if (typeof make !== 'function') { attachedProjections.push({ face, attached: false, reason: 'no adapter in this assembly (the service does not expose a journal/snapshot seam yet)' }); continue }
+      if (typeof make !== 'function') { recordProjection({ face, attached: false, reason: 'no adapter in this assembly (the service does not expose a journal/snapshot seam yet)' }, [canonical]); continue }
       try {
         const adapter = make()
         // The INSTANCE method registers the projection so `hydrate()`/`snapshot()` can find it; the module-level
         // `attachProjection` would wrap the methods but leave the instance unaware of the key.
         const out = resume.attachProjection({ target: targets[canonical], methods: projectionMethods(canonical, targets[canonical]), key: adapter.key, mode: adapter.mode,
           list: adapter.list || null, snapshot: adapter.snapshot || null, restore: adapter.restore || null, replay: adapter.replay || null })
-        attachedProjections.push({ face: canonical, viaAlias, attached: true, mode: adapter.mode, key: adapter.key, methods: projectionMethods(canonical, targets[canonical]), wrapped: out.wrapped, missing: out.missing })
+        recordProjection({ face: canonical, viaAlias, attached: true, mode: adapter.mode, key: adapter.key, methods: projectionMethods(canonical, targets[canonical]), wrapped: out.wrapped, missing: out.missing }, [face, viaAlias])
       } catch (e) {
-        attachedProjections.push({ face, attached: false, reason: String((e && e.message) || e), code: (e && e.code) || null })
+        recordProjection({ face, attached: false, reason: String((e && e.message) || e), code: (e && e.code) || null }, [canonical])
       }
     }
   }

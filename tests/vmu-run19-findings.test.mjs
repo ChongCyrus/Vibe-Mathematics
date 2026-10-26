@@ -72,7 +72,11 @@ const rec = (m) => (key) => m[key]
     '②b. ★★ and the exclusion is COUNTED, not silently dropped', { droppedClosed: view.droppedClosed })
   ok(ids.includes('m-open'),
     '②c. ★ the live meeting survives the merge', { ids })
-  ok(view.meetings.filter((r) => String(r.id) === 'm-open').every((r) => r.state === 'scheduled' || r.state === 'open'),
+  // RULE E shape A (round 30 / task-4): `every()` on a receiver computed INSIDE the assertion is true on an empty
+  // set, so "no row matched" passed as "the matching row is fine". The rows are computed FIRST and their count is
+  // asserted (=== 1) before `every()` - the premise is a measurement now, and the assertion is strictly stronger.
+  const openRows = view.meetings.filter((r) => String(r.id) === 'm-open')
+  ok(openRows.length === 1 && openRows.every((r) => r.state === 'scheduled' || r.state === 'open'),
     '②d. ★★ its STATE is the service\'s schedule-aware state, not the stale marker label', view.meetings)
   ok(view.source === 'marker+service',
     '②e. ★ the receipt names that two sources were merged, so a reader is not told one view is the whole truth', { source: view.source })

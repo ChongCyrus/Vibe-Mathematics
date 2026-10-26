@@ -83,8 +83,23 @@ try {
   // ── ② SETUP: a real debate meeting, then refusals by name ──────────────────────────────────────────────────
   console.log('=== 2. REFUSALS BY NAME (the set of askers is a FACT, not a parameter) ===')
   await kernel.members.hire({ id: 'chair-1', slot: 'chair' })
+  // ★ THE CHAIR-ONLY MEETING IS CONVENED FIRST, before the two members are hired, so its roster snapshot really is
+  // "nobody but the chair". With the UNION population (roster ∪ speech, ROUND 19) "no speech yet" and "no debater"
+  // are two DIFFERENT states: a convened meeting with two seated members already has a population even before anyone
+  // speaks. So the "nobody to ask" refusal must be proven on a meeting whose roster is the chair alone.
+  const quiet = await call(b, 'vibe_v5_meeting', { agenda: '无辩论的会', kind: 'sync', member: 'chair-1' })
+  const qid = quiet.parsed && quiet.parsed.meeting
+  ok(quiet.parsed && quiet.parsed.ok === true && typeof qid === 'string' && qid !== '',
+    'setup: a chair-only meeting exists whose roster snapshot is the chair alone (the "no debater" state)', quiet.parsed && { meeting: qid, code: codeOf(quiet.parsed), roster: quiet.parsed && quiet.parsed.roster })
   await kernel.members.hire({ id: 'm-1', slot: 'member' })
   await kernel.members.hire({ id: 'm-2', slot: 'member' })
+  // ★ the CARD comes before the refusals that need a real target: with `propositionOf` in front of the population
+  // gate (RUN 29 ③), asking about an id that is neither a card nor a subject is refused as an UNKNOWN proposition, so
+  // a fixture that wants to prove "nobody to ask" must first give the ask something real to be about.
+  const card = await call(b, 'vibe_v5_record_proposition', { member: 'm-1', title: 'p-card', statement: '对任意 n>2，命题成立', value: 1, motive: '主线', p: 0.6 })
+  const cardId = card.parsed && (card.parsed.recordId || card.parsed.id || (card.parsed.card && card.parsed.card.id))
+  ok(card.parsed && card.parsed.ok === true && typeof cardId === 'string' && cardId !== '',
+    'setup: a proposition card exists (the ruling needs a target)', card.parsed && { id: cardId, code: codeOf(card.parsed) })
   const convened = await call(b, 'vibe_v5_meeting', { agenda: '辩论：命题 p-card 的布尔概率', type: 'debate', subject: 'p-card', member: 'chair-1' })
   const mid = convened.parsed && convened.parsed.meeting
   ok(convened.parsed && convened.parsed.ok === true && typeof mid === 'string' && mid !== '',
@@ -98,9 +113,10 @@ try {
   ok(codeOf(notChair.parsed) === 'VMU_NOT_PERMITTED' && /CHAIR/.test(String(notChair.parsed && notChair.parsed.message)),
     '★ 反: a non-chair cannot ask in the chair\'s name (an anonymous ask is not the framework asking)', notChair.parsed && notChair.parsed.message)
 
-  const noSpeech = await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: 'p-card' })
-  ok(codeOf(noSpeech.parsed) === 'VMU_STATE' && /no debate speech on record/.test(String(noSpeech.parsed && noSpeech.parsed.message)),
-    '★★ 反: a meeting with NO speech has nobody to ask — refused by name, not answered with an empty success (this is what proves the set comes from the minutes)',
+  const noSpeech = await call(b, 'vibe_v5_verdict_ask', { meeting: qid, proposition_id: cardId })
+  ok(codeOf(noSpeech.parsed) === 'VMU_STATE' && /nobody can be asked/.test(String(noSpeech.parsed && noSpeech.parsed.message))
+    && /CHAIR/.test(String(noSpeech.parsed && noSpeech.parsed.message)),
+    '★★ 反: a meeting that names nobody but the CHAIR has nobody to ask — refused by name (with the cause it actually read), not answered with an empty success',
     noSpeech.parsed && noSpeech.parsed.message)
   ok(noSpeech.parsed && /hold the debate first/.test(String(noSpeech.parsed.hint)),
     '★ and the refusal says what to do instead', noSpeech.parsed && noSpeech.parsed.hint)
@@ -118,10 +134,18 @@ try {
 
   const asked = await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: 'p-card' })
   ok(asked.parsed && asked.parsed.ok === true, '★★ 正: the chair can ask', asked.parsed && { code: codeOf(asked.parsed), message: asked.parsed && asked.parsed.message })
-  ok(asked.parsed && (asked.parsed.askedSource === 'spokeBy' || asked.parsed.askedSource === 'minutes'), '★★ the ask\'s member set came from the MEETING\'s recorded speeches (not from a parameter)', asked.parsed && asked.parsed.askedSource)
+  ok(asked.parsed && ['roster+speech', 'roster', 'spokeBy', 'minutes'].includes(asked.parsed.askedSource),
+    '★★ the ask\'s member set came from the MEETING\'s own population (roster ∪ speech record), never from a parameter', asked.parsed && asked.parsed.askedSource)
   ok(asked.parsed && Array.isArray(asked.parsed.asked) && asked.parsed.asked.length === 2
     && asked.parsed.asked.includes('m-1') && asked.parsed.asked.includes('m-2'),
-    '★★ exactly the two members who spoke were asked', asked.parsed && asked.parsed.asked)
+    '★★ every member who spoke was asked (and the roster adds nobody else here)', asked.parsed && asked.parsed.asked)
+  ok(asked.parsed && !asked.parsed.asked.includes('chair-1') && Array.isArray(asked.parsed.excluded)
+    && asked.parsed.excluded.some((r) => r && r.member === 'chair-1' && r.why === 'presides'),
+    '★★★ the CHAIR is excluded NAMED (excluded:[{member, why:"presides"}]) instead of silently dropped', asked.parsed && asked.parsed.excluded)
+  ok(asked.parsed && asked.parsed.accounting
+    && asked.parsed.accounting.askedCount === asked.parsed.asked.length
+    && asked.parsed.accounting.askedCount + asked.parsed.accounting.excludedCount === asked.parsed.accounting.accountedCount,
+    '★★★ the receipt RECONCILES: asked + excluded = what the meeting named (a count nobody can reconcile is a defect)', asked.parsed && asked.parsed.accounting)
   ok(asked.parsed && Array.isArray(asked.parsed.delivered) && asked.parsed.delivered.length === 2 && asked.parsed.failed.length === 0,
     '★★ the mail really went out (delivered lists both, failed is empty)', asked.parsed && { delivered: asked.parsed.delivered, failed: asked.parsed.failed })
   ok(asked.parsed && asked.parsed.from === 'chair-1' && asked.parsed.how === 'vibe_v5_verdict_final',
@@ -156,10 +180,7 @@ try {
 
   // ── ④ THE RULING REFUSES A PARTIAL SET BY NAME ────────────────────────────────────────────────────────────
   console.log('=== 4. vibe_v5_verdict_final REFUSES A PARTIAL RULING ===')
-  const card = await call(b, 'vibe_v5_record_proposition', { member: 'm-1', title: 'p-card', statement: '对任意 n>2，命题成立', value: 1, motive: '主线', p: 0.6 })
-  const cardId = card.parsed && (card.parsed.recordId || card.parsed.id || (card.parsed.card && card.parsed.card.id))
-  ok(card.parsed && card.parsed.ok === true && typeof cardId === 'string' && cardId !== '',
-    'setup: a proposition card exists (the ruling needs a target)', card.parsed && { id: cardId, code: codeOf(card.parsed) })
+  // (the card `cardId` was created earlier, above the refusal cases — the ask about it needs a real target)
 
   const partialMissing = await call(b, 'vibe_v5_verdict_final', { meeting: mid, proposition_id: cardId, verdicts: [{ member: 'm-1', p: 0.7, reason: 'm-1 的裁决' }] })
   ok(codeOf(partialMissing.parsed) === 'VMU_STATE' && /missing 1 of the 2/.test(String(partialMissing.parsed && partialMissing.parsed.message))
@@ -190,8 +211,6 @@ try {
 
   // ── ⑤ THE ANTI-OVERFITTING DIRECTION ──────────────────────────────────────────────────────────────────────
   console.log('=== 5. A MEETING WITH NO DEBATE MUST NOT BLOCK A PLAIN RULING ===')
-  const quiet = await call(b, 'vibe_v5_meeting', { agenda: '无辩论的会', kind: 'sync', member: 'chair-1' })
-  const qid = quiet.parsed && quiet.parsed.meeting
   const plain = await call(b, 'vibe_v5_verdict_final', { meeting: qid, proposition_id: cardId, verdicts: [{ member: 'chair-1', p: 0.9, reason: '主席一人裁定' }] })
   ok(plain.parsed && plain.parsed.ok === true && plain.parsed.coverage && plain.parsed.coverage.complete === true,
     '★★ an empty debated set does NOT refuse the ruling (nothing to enforce) — the check is about a REAL debate, not about every ruling',

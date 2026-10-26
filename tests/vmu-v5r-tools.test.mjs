@@ -94,7 +94,7 @@ try {
   // ── ② THE DECLARATION (the names come FROM the pack) ───────────────────────────────────────────────────────
   console.log('=== 2. WITH packs=["v5r"] THE THIRTY-EIGHT DECLARED NAMES ARE PUBLISHED ===')
   const PACK = v5r.PACK
-  ok(Array.isArray(PACK.tools) && PACK.tools.length === EXPECTED.length, 'the loaded manifest DECLARES every expected tool', PACK.tools && PACK.tools.length)
+  ok(Array.isArray(PACK.tools) && PACK.tools.length > 0 && EXPECTED.length > 0 && PACK.tools.length === EXPECTED.length, 'the loaded manifest DECLARES every expected tool (both sides PROVABLY non-empty: "both empty" cannot pass - RULE E shape B)', PACK.tools && PACK.tools.length)
   const declaredNames = PACK.tools.map((t) => t.name)
   ok(declaredNames.length > 0 && EXPECTED.filter((n) => declaredNames.includes(n)).length === EXPECTED.length,
     'the declaration is exactly the expected names', declaredNames)
@@ -104,8 +104,8 @@ try {
     'every expected tool is published through the real host adapter', { published: published.length, names: v5rBoot.names.length })
   ok(v5rBoot.handle.kernel.packTools().length === EXPECTED.length, 'the KERNEL holds every declaration', v5rBoot.handle.kernel.packTools().length)
   const kernelStatus = v5rBoot.handle.kernel.status({ detail: 'summary' })
-  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length === EXPECTED.length,
-    'kernel.status() reports the declared names (observable, not implicit)', kernelStatus.packTools && kernelStatus.packTools.length)
+  ok(Array.isArray(kernelStatus.packTools) && kernelStatus.packTools.length > 0 && EXPECTED.length > 0 && kernelStatus.packTools.length === EXPECTED.length,
+    'kernel.status() reports the declared names (observable, not implicit; both sides PROVABLY non-empty - RULE E shape B)', kernelStatus.packTools && kernelStatus.packTools.length)
   const hostNames = Object.values((await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'host.js')).href)).TOOL_NAMES)
   const leaked = EXPECTED.filter((n) => hostNames.includes(n))
   ok(leaked.length === 0, 'no v5r tool name exists in the framework tool table', leaked)
@@ -1421,8 +1421,8 @@ try {
 
   // ── ⑦e GOAL B-2 (PHASE 8): the pack IMPORTS the kit — one copy of the code, institution vocabulary stays in v5r ──
   console.log('=== 7e. B-2 WIRING: kit imports, zero local copies ===')
-  ok(PACK.tools.length === EXPECTED.length,
-    '★★ the declared tool COUNT is what the pack declares (institution vocabulary stays in the pack; 40 + inbox + wait)', PACK.tools.length)
+  ok(PACK.tools.length > 0 && EXPECTED.length > 0 && PACK.tools.length === EXPECTED.length,
+    '★★ the declared tool COUNT is what the pack declares (institution vocabulary stays in the pack; 40 + inbox + wait) - and the equality is evidence only because BOTH sides are provably non-empty (RULE E shape B)', PACK.tools.length)
   const packSrcW = (await import('node:fs')).readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
   const movedDecls = [
     'const str = (v)', 'const has = (v)', 'function refuse(', 'function settingsOf(', 'function declaredTracks(',
@@ -1557,7 +1557,9 @@ try {
   // (constant-anchored: the declared count is a contract asserted elsewhere, so "both sides empty" cannot pass here)
   const wireSorted39 = wireSpecs39.slice().sort()
   const kernelSorted39 = kernelNames39.slice().sort()
-  ok(wireSpecs39.length === EXPECTED.length && kernelNames39.length === EXPECTED.length && JSON.stringify(wireSorted39) === JSON.stringify(kernelSorted39),
+  // RULE E shape B: `both empty compare equal`, so the non-emptiness is ASSERTED (not only commented) before the
+  // equality - the comment above used to be the whole argument, and a comment is not a mechanism.
+  ok(wireSpecs39.length > 0 && kernelNames39.length > 0 && wireSpecs39.length === EXPECTED.length && kernelNames39.length === EXPECTED.length && JSON.stringify(wireSorted39) === JSON.stringify(kernelSorted39),
     '★★★ WIRE == LOGICAL: the registered v5r specs are exactly the tools the kernel holds (native; nothing replaced by run_code)', { wire: wireSpecs39.length, kernel: kernelNames39.length })
   ok(v5rBoot.state.specs.filter((s) => s.deferLoading !== undefined).length === 0,
     '★★ no spec carries deferLoading (the disproved defer mode is gone as well)', v5rBoot.state.specs.length)

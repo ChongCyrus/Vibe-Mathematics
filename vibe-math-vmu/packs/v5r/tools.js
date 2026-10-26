@@ -8,7 +8,10 @@ import { kitCardHandler, KIT_CARD_CONFIG } from '../../kit/tools.js'
 // pure: every refusal is raised in THIS file, and the declared keys a predicate consulted are copied into
 // `enforced`/`enforcedScope` by the wiring layer only (the consistency audit reads a mention of the word inside a
 // predicate module as a new blind spot, so it must not appear there).
-import { p1Intent, debateSubjectGate, singleWriter, fidelityAsked } from './verification-gates.js'
+// ★ RUN 29: `classifySubject` is imported for the SAME reason the four predicates are — it is the ONE authority for
+// "what shape is this debate object name" (`verification-gates.js:135`: card id / file reference / one-line statement).
+// A second copy of that regex in the ask face would be a second answer to one question, and the two would drift.
+import { p1Intent, debateSubjectGate, singleWriter, fidelityAsked, classifySubject } from './verification-gates.js'
 // ★ The VERIFIED carrier (B1 step 1): `findVerified` answers null instead of guessing, `promoteVerified` is the ONLY
 // writer on that track, and `parseCard` names a card it cannot judge (empty/truncated body) instead of half-parsing it.
 import { parseCard, findVerified, promoteVerified, VERIFIED_TRACK } from './verified.js'
@@ -1408,7 +1411,9 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
 function debatedMembersOf(kernel, meeting) {
   const face = kernel && kernel.meetings
   if (!face) {
-    return { readable: false, members: [], source: 'unreadable', why: 'the kernel publishes no meetings face, so who debated cannot be established' }
+    return { readable: false, members: [], excluded: [], accountedCount: null, source: 'unreadable', rosterCount: null,
+      rosterCountMeans: 'no meetings face was read at all, so there is no roster to count: `rosterCount:null` here means "nothing was read", NOT "zero seats"',
+      why: 'the kernel publishes no meetings face, so who debated cannot be established' }
   }
   // ★★★ ROUND 19 (live run 26): THE ROSTER IS THE DEBATE, NOT ONLY THE SPEAKERS. This helper used to read `spokeBy`
   // (or minutes) alone, so a rostered member who had NOT spoken yet was invisible: the ask went to one member of two
@@ -1432,19 +1437,55 @@ function debatedMembersOf(kernel, meeting) {
     if (v && v.chair) chair = String(v.chair)
   } catch { roster = null }
   if (roster && roster.length > 0) {
-    const seen = []
-    for (const m of roster) if (m && m !== chair && !seen.includes(m)) seen.push(m)
-    for (const m of speakSet.members) if (m && m !== chair && !seen.includes(m)) seen.push(m)
+    // ★★★ LIVE RUN 29 (the institute's report on run 29, the `rosterCount` / `asked` pair): the receipt published
+    // `rosterCount:3` beside an `asked` list of two members and NOTHING reconciled the difference — the third seat was
+    // the CHAIR, dropped by `m !== chair` with no record of the decision. A count a reader cannot reconcile is a number
+    // they must either mis-trust or silently translate, which is the defect class this project keeps removing. So the
+    // exclusion is NAMED (`excluded:[{member, why:"presides"}]`) and every count in the receipt adds up:
+    // asked + excluded = the members the meeting actually named (roster ∪ speech record).
+    const named = []
+    for (const m of roster) if (m && !named.includes(m)) named.push(m)
+    for (const m of speakSet.members) if (m && !named.includes(m)) named.push(m)
+    const members = []
+    const excluded = []
+    for (const m of named) {
+      if (m === chair) { excluded.push({ member: m, why: 'presides' }); continue }
+      members.push(m)
+    }
+    const offRoster = named.length - roster.length
     return {
-      readable: true, members: seen, source: speakSet.readable ? 'roster+speech' : 'roster',
+      readable: true, members, excluded, accountedCount: named.length,
+      source: speakSet.readable ? 'roster+speech' : 'roster',
       chair, rosterCount: roster.length, speakerCount: speakSet.members.length, why: null,
+      rosterCountMeans: 'the meeting view publishes a roster of ' + roster.length + ' seat(s), and the CHAIR holds one of'
+        + ' those seats — it is INSIDE `rosterCount` but NOT inside `asked`, because the chair signs the ask instead of'
+        + ' answering it (that is the `excluded` row with why:"presides"). The receipt therefore reconciles: asked '
+        + members.length + ' + excluded ' + excluded.length + ' = the members the meeting named ' + named.length
+        + (offRoster > 0
+            ? ' (the named set is larger than the roster because ' + offRoster + ' speaker(s) are not seated on it and are still reachable)'
+            : ' (every named speaker is also seated, so the named set IS the roster)') + '.',
     }
   }
   if (speakSet.readable) {
-    return { readable: true, members: speakSet.members.filter((m) => m && m !== chair), source: 'spokeBy', chair, rosterCount: null, speakerCount: speakSet.members.length, why: null }
+    const named = []
+    for (const m of speakSet.members) if (m && !named.includes(m)) named.push(m)
+    const members = []
+    const excluded = []
+    for (const m of named) {
+      if (m === chair) { excluded.push({ member: m, why: 'presides' }); continue }
+      members.push(m)
+    }
+    return { readable: true, members, excluded, accountedCount: named.length, source: 'spokeBy', chair,
+      rosterCount: null, speakerCount: speakSet.members.length, why: null,
+      rosterCountMeans: 'the meeting published NO roster, so there is no seat count to reconcile: `rosterCount:null` means'
+        + ' NOT PUBLISHED, never zero. The population is the ' + named.length + ' member(s) on speech record (`speakBy`),'
+        + ' of which the chair is excluded as the asker (`excluded` says why) — asked ' + members.length + ' + excluded '
+        + excluded.length + ' = ' + named.length + '.' }
   }
   if (typeof face.minutes !== 'function') {
-    return { readable: false, members: [], source: 'unreadable', why: 'the kernel publishes neither spokeBy() nor minutes(), so who debated cannot be established' }
+    return { readable: false, members: [], excluded: [], accountedCount: null, source: 'unreadable', rosterCount: null,
+      rosterCountMeans: 'nothing was read (no spokeBy(), no minutes(), and the view published no roster), so `rosterCount:null` means "unknown", not "zero seats"',
+      why: 'the kernel publishes neither spokeBy() nor minutes(), so who debated cannot be established' }
   }
   try {
     const m = face.minutes({ meeting })
@@ -1455,10 +1496,141 @@ function debatedMembersOf(kernel, meeting) {
       const who = e.member ? String(e.member) : ''
       if (who && !seen.includes(who)) seen.push(who)
     }
-    return { readable: true, members: seen.filter((x) => x !== chair), source: 'minutes', chair, rosterCount: null, speakerCount: seen.length, why: null }
+    return { readable: true, members: seen.filter((x) => x !== chair), excluded: seen.filter((x) => x === chair).map((member) => ({ member, why: 'presides' })),
+      accountedCount: seen.length, source: 'minutes', chair, rosterCount: null, speakerCount: seen.length, why: null,
+      rosterCountMeans: 'the meeting published NO roster, so there is no seat count to reconcile: `rosterCount:null` means'
+        + ' NOT PUBLISHED, never zero. The population is the ' + seen.length + ' member(s) whose speech the MINUTES record,'
+        + ' of which the chair is excluded as the asker (`excluded` says why) — asked ' + seen.filter((x) => x !== chair).length
+        + ' + excluded ' + seen.filter((x) => x === chair).length + ' = ' + seen.length + '.' }
   } catch (e) {
-    return { readable: false, members: [], source: 'unreadable', why: (e && e.message) || String(e) }
+    return { readable: false, members: [], excluded: [], accountedCount: null, source: 'unreadable', rosterCount: null,
+      rosterCountMeans: 'the minutes could not be read, so `rosterCount:null` means "unknown", not "zero seats"',
+      why: (e && e.message) || String(e) }
   }
+}
+
+/**
+ * ★ LIVE RUN 29 — THE ASK ACCEPTED ANY STRING AS "THE PROPOSITION" AND ASKED A WHOLE DEBATE ABOUT IT.
+ *
+ * Until this round `proposition_id` was only checked for PRESENCE (`!has(args.proposition_id)` in toolVerdictAsk);
+ * whatever the chair typed then went into every member's mail and into the target the ruling face aggregates. Measured
+ * on run 29 (build 9dce66f0, reproduced in tests/vmu-run29-verdict-ask.test.mjs): with the propositions library at
+ * `total:0`, the id `p-typo` — which is neither the meeting's declared debate subject nor any card — was accepted and
+ * two members were asked to rule on it. The mistake only surfaces later as "the verdicts match no card".
+ *
+ * WHAT THIS FUNCTION DECIDES (returned as `propositionKind` + `propositionVerified` + `propositionWhy`):
+ *   · a CARD row exists for the id                           → "card"            (verified: the ruling has a target)
+ *   · the name is shaped like a FILE REFERENCE               → "file-ref"        (v5r allows the debate object to be a
+ *                                                                                  file; this face has NO file face, so
+ *                                                                                  `fileChecked:false` — the SHAPE is
+ *                                                                                  accepted, the contents are not read)
+ *   · no such card, but it IS the meeting's declared subject → "meeting-subject" (verified by the meeting itself)
+ *   · `r-…` shape with a readable records face and no row    → REFUSED `VMU_ASK_UNKNOWN_PROPOSITION` (records, which
+ *                                                              MINTS `r-` ids — kernel/records.js:533 — is the
+ *                                                              authority, so absence there is a fact, not a guess)
+ *   · the meeting declared a DIFFERENT debate subject        → REFUSED the same code (absence relative to the declared
+ *                                                              object is also provable)
+ *   · nothing declared and nothing found                     → "unverified": the name may be a legal one-line
+ *                                                              proposition (「一句话命题」 is a legal v5r debate object)
+ *                                                              or a typo, and this face cannot tell the two apart —
+ *                                                              so it asks AND labels what it could not check instead
+ *                                                              of refusing a shape the rule allows.
+ * ★ THE SHAPE IS NOT RE-DERIVED HERE. `classifySubject` (verification-gates.js:135) is already the ONE authority for
+ * card id / file reference / statement, and the debate-subject gate uses it; a second regex would be a second answer to
+ * the same question and the two would drift (red line ③).
+ */
+function propositionOf(kernel, view, meeting, propositionId) {
+  const id = str(propositionId)
+  const records = kernel && kernel.records ? kernel.records : null
+  // ★ `readable` is about the FACE, not about the row: "no card exists" is a fact only when the library could be
+  // queried at all, and a stub kernel without `records` must not be described as an empty library.
+  const recordsReadable = !!(records && typeof records.get === 'function')
+  const card = recordsReadable ? cardProjectionOf(records, id) : null
+  const cls = classifySubject(id, card ? { card } : null)
+  if (card) {
+    return { kind: 'card', verified: true, cardId: card.id === undefined ? id : str(card.id),
+      why: 'the propositions track holds a card with this id, so every member is being asked about a target the ruling face can aggregate into'
+        + (card.unjudgeable ? ' — NOTE the row EXISTS but its body could not be parsed (' + str(card.unjudgeable) + '), so the target is real while its own p is not readable here' : '') }
+  }
+  if (cls.form === 'file') {
+    return { kind: 'file-ref', verified: false,
+      why: 'the name has the shape of a FILE REFERENCE (a path separator, or a .md/.lean/.txt/.tex/.json suffix) and v5r allows the debate object to be a FILE, so it is accepted as-is; this face publishes no file face, so the file was NOT read — `fileChecked:false` says the shape was accepted, never that the contents were checked' }
+  }
+  const declared = (view && view.subject !== undefined && view.subject !== null && str(view.subject).trim() !== '')
+    ? str(view.subject) : null
+  if (cls.form === 'card' && recordsReadable) {
+    throw refuse('VMU_ASK_UNKNOWN_PROPOSITION',
+      'proposition "' + id + '" is shaped like a records card id ("r-…") but the library holds NO such row — asking the debate to rule on it would collect verdicts for a target that does not exist'
+        + (declared === null ? '' : ' (this meeting declared its debate object as "' + declared + '")'),
+      'record the proposition first (vibe_v5_record_proposition) and pass the id it returns, or pass the object this debate is actually about — if the debate object is a FILE, pass the file reference instead (a path, or a name ending in .md/.lean/.txt/.tex/.json): this face accepts that shape and marks the receipt propositionKind:"file-ref"')
+  }
+  if (declared !== null) {
+    if (id === declared) {
+      return { kind: 'meeting-subject', verified: true,
+        why: 'this is exactly the object meeting ' + str(meeting) + ' was convened to debate (`meetingView.subject`), so the ask names the same object the debate did' }
+    }
+    throw refuse('VMU_ASK_UNKNOWN_PROPOSITION',
+      'proposition "' + id + '" names nothing this debate is about: meeting ' + str(meeting) + ' declared its debate object as "' + declared + '", ' + (recordsReadable ? 'the library holds no card "' + id + '"' : 'the records face could not be read here so no card could be found for "' + id + '"') + ', and the name is not a file reference — the members would be asked to rule on an object nobody debated',
+      'pass proposition_id:"' + declared + '" (the object this meeting was convened to debate), or record the card first with vibe_v5_record_proposition and pass its id; if the debate object really is a FILE, pass its path / file name (e.g. "docs/proof.md", "main.lean") — v5r allows that and the receipt then says propositionKind:"file-ref"')
+  }
+  return { kind: 'unverified', verified: false,
+    why: (recordsReadable ? 'no card with this id exists' : 'the records face was not readable, so no card could be looked up') + ' and meeting ' + str(meeting) + ' declared NO debate subject, so this face cannot tell a legal one-line proposition (「一句话命题」) from a typo — it sent the ask and records that limit here instead of refusing a shape the rule allows' }
+}
+
+/**
+ * ★ LIVE RUN 29 — THE ASK MAIL ASSERTED THE DEBATE WAS OVER WITHOUT EVER READING THE MEETING.
+ *
+ * The body carried a fixed clause 「（会议 <id> 已结束辩论；…）」. Measured on the run-29 build: the meeting's own
+ * `meetingView` reported `state:"open"` while the mail told every member the debate had ended — the pack asserting a
+ * fact it never read, and asking for a FINAL ruling on a debate that was still running.
+ *
+ * The state IS a published fact (`meetingView.state`, plus the kernel's own sentence in `meetingView.stateMeans` —
+ * kernel/meeting.js:29 and kernel/meetings.js:1921), so the sentence is DERIVED from it and each phase says only what
+ * the reader may conclude:
+ *   closed ⇒ the debate has ended · lapsed ⇒ the meeting lapsed (no conclusion is assumed) · open/in_session/recess ⇒
+ *   still running (the ask went out before the close) · scheduled/waiting ⇒ not started · unreadable ⇒ 「状态不可读」,
+ *   nothing is asserted.
+ * ★ THE VOCABULARY BELONGS TO THE KERNEL, NOT TO THIS FILE: kernel/meetings.js moves a meeting through
+ * scheduled|waiting|open|recess|closed (lines 559/577/875/1376/1669) and kernel/meeting.js:29 declares meanings for
+ * scheduled|waiting|in_session|closed|lapsed. A state this build does not name falls through to `unknown` ON PURPOSE:
+ * a future kernel state must never be silently read as "the debate ended". The `null` `stateMeans` that 'open' carries
+ * today is a real kernel gap and is DISCLOSED as such rather than papered over.
+ */
+function debateClosureOf(view, meeting) {
+  const mid = str(meeting)
+  const state = (view && view.state !== undefined && view.state !== null && str(view.state).trim() !== '') ? str(view.state) : null
+  const means = (view && view.stateMeans !== undefined && view.stateMeans !== null) ? str(view.stateMeans) : null
+  const meansClause = means === null
+    ? '；内核没有为这个状态声明 stateMeans，此处只陈述状态名、不解释其含义'
+    : '；内核对该状态的说明：' + means
+  if (state === null) {
+    return { phase: 'unknown', state: null, stateMeans: means, readable: false,
+      sentence: '会议 ' + mid + ' 的状态不可读（meetingView 没有给出 state），本条消息**不断言**辩论是否结束；请先确认会议状态再把裁决发回。',
+      why: 'meetingView published no `state` field, so whether the debate ended could not be read — the mail says so instead of asserting a closure' }
+  }
+  if (state === 'closed') {
+    return { phase: 'ended', state, stateMeans: means, readable: true,
+      sentence: '会议 ' + mid + ' 已结束辩论（state "closed"' + meansClause + '）。',
+      why: 'meetingView reports state "closed"' }
+  }
+  if (state === 'lapsed') {
+    return { phase: 'lapsed', state, stateMeans: means, readable: true,
+      sentence: '会议 ' + mid + ' 已失效（state "lapsed"' + meansClause + '），本条请求**不假设**这场辩论产生过结论。',
+      why: 'meetingView reports state "lapsed": the meeting ended without a conclusion, so the mail does not claim one' }
+  }
+  if (state === 'open' || state === 'in_session' || state === 'recess') {
+    return { phase: 'running', state, stateMeans: means, readable: true,
+      sentence: '会议 ' + mid + ' 仍在进行（state "' + state + '"' + meansClause + '），辩论**尚未**结束——这条裁决请求发得早于收口。',
+      why: 'meetingView reports a state in which the meeting has not closed, so the debate has not ended' }
+  }
+  if (state === 'scheduled' || state === 'waiting') {
+    return { phase: 'not_started', state, stateMeans: means, readable: true,
+      sentence: '会议 ' + mid + ' 尚未开始（state "' + state + '"' + meansClause + '），更谈不上结束辩论——这条请求发早了。',
+      why: 'meetingView reports a state before the meeting starts' }
+  }
+  return { phase: 'unknown', state, stateMeans: means, readable: false,
+    sentence: '会议 ' + mid + ' 的状态是 "' + state + '"，但本构建没有为这个状态名声明含义，本条消息**不断言**辩论是否结束。',
+    why: 'the state name "' + state + '" is not one this build gives a meaning, so no closure is asserted' }
 }
 
 /**
@@ -1498,6 +1670,10 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
       'pass proposition_id:"<records id of the proposition card>" — a member cannot answer a boolean probability without knowing the proposition')
   }
   const propositionId = str(args.proposition_id)
+  // ★ RUN 29 ③: a PRESENT `proposition_id` used to be treated as a VALID one (run 29: library `total:0`, the id asked
+  // about was neither a card nor the meeting's declared subject, and two members were still asked). The refusal is
+  // raised here, before the mailbox, because an ask about nothing must not reach anybody's inbox.
+  const proposition = propositionOf(kernel, view, meeting, propositionId)
   if (!kernel.mailbox || typeof kernel.mailbox.send !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no mailbox face: the framework cannot reach the members',
       'assemble a full kernel (vibe-math-vmu.js publishes vmu.mailbox) — without it an ask is not an ask')
@@ -1507,12 +1683,25 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
   const asked = explicit && explicit.length ? explicit.slice() : debated.members.slice()
   const source = explicit && explicit.length ? 'members' : debated.source
   if (asked.length === 0) {
-    throw refuse('VMU_STATE', 'nobody can be asked: meeting ' + meeting + ' has no debate speech on record'
-      + (debated.readable ? ' (' + debated.source + ' reports no speech by any member)' : ' (' + debated.why + ')'),
+    // ★★★ ROUND 19 made the population the UNION (roster ∪ speech), so "empty" no longer means only "nobody spoke":
+    // it can also mean "the meeting names nobody but the chair". The refusal says WHICH of the two it read, because a
+    // message that sends the chair hunting for a speech that is not the missing thing is the same defect class as a
+    // count nobody can reconcile (run 29 ①).
+    const emptyWhy = debated.readable
+      ? (debated.rosterCount !== null && debated.rosterCount > 0
+          ? 'names no debater but the CHAIR (roster ' + debated.rosterCount + ': the chair is excluded because it asks instead of answering) and holds no speech on record'
+          : 'reports no speech by any member and publishes no roster to draw a debater from')
+      : debated.why
+    throw refuse('VMU_STATE', 'nobody can be asked: meeting ' + meeting + ' ' + emptyWhy,
       'hold the debate first (members speak in the meeting), or pass members:[…] to name who must answer — the set of askers is a fact about the debate, so an empty one means there is nothing to rule on yet')
   }
+  // ★★ RUN 29 ②: the clause below used to be the fixed text 「（会议 <id> 已结束辩论；…）」 — a closure ASSERTED in
+  // every mail, whatever the meeting said. It is now generated by `debateClosureOf` from `meetingView.state`: the
+  // reader of the mail learns what the meeting actually reports, and an unreadable state produces 「状态不可读」 rather
+  // than a sentence the pack made up.
+  const closure = debateClosureOf(view, meeting)
   const text = '请你作为本次辩论的参与者，就命题 ' + propositionId + ' 给出最终裁决：布尔概率（[0,1]）+ 理由。'
-    + '（会议 ' + meeting + ' 已结束辩论；收齐全部裁决后由主席用 vibe_v5_verdict_final 汇总：全部一致为 1 或 0 则取该值，否则取算术平均，并通知命题卡持有者。）'
+    + '（' + closure.sentence + '收齐全部裁决后由主席用 vibe_v5_verdict_final 汇总：全部一致为 1 或 0 则取该值，否则取算术平均，并通知命题卡持有者。）'
   const delivered = []
   const failed = []
   // ★★ ROUND 19: THE MAILBOX IS A BAG OF BOXES, NOT AN ADDRESS BOOK — it will happily accept a message for an id that
@@ -1548,24 +1737,74 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
       'the mailbox refused every target (see codes above). A ruling asked of nobody is not a ruling — make the members reachable (hire/attend them so they are on this meeting\'s roster) and call again, or ask explicitly with members:[…]')
   }
   const partialAsk = failed.length > 0
+  // ★★★ RUN 29 ①: THE THREE NUMBERS MUST CLOSE. `rosterCount` counts the chair seat (the chair HOLDS a seat) while
+  // `asked` never contains it, so the two were unreconcilable on the receipt. These two locals are the fix: the
+  // excluded rows with a named reason, and one sentence in which asked + excluded equals what the meeting named.
+  const excluded = Array.isArray(debated.excluded) ? debated.excluded : []
+  const accountedRaw = debated.accountedCount === undefined || debated.accountedCount === null ? null : debated.accountedCount
+  const accounting = {
+    rosterCount: debated.rosterCount === undefined ? null : debated.rosterCount,
+    speakerCount: debated.speakerCount === undefined ? null : debated.speakerCount,
+    accountedCount: accountedRaw,
+    askedCount: asked.length,
+    excludedCount: excluded.length,
+    means: explicit && explicit.length
+      ? 'the caller named `members`, so this call population is that list (' + asked.length + '); the meeting-derived account (accountedCount) is not what was asked here — read `asked`, not the roster numbers'
+      : (accountedRaw === null
+          ? 'no rosters or minutes were readable, so there is nothing to reconcile: asked ' + asked.length + ' came from ' + source + ' and excluded ' + excluded.length + ' (see rosterCountMeans / askedWhy)'
+          : 'asked ' + asked.length + ' + excluded ' + excluded.length + ' = ' + accountedRaw + ' — every member the meeting named is either in `asked` or in `excluded` with a named reason, so no seat is unaccounted for'),
+  }
   return {
     ok: true, tool: 'vibe_v5_verdict_ask', meeting, chair, from: chair,
     proposition: propositionId,
+    // ★ RUN 29 ③: "the field is present" is not "the field was consumed". These three say WHAT the id was understood
+    // to be, and `propositionVerified:false` marks a file reference (shape accepted, contents not read) or an unverified
+    // one-line name — the reader can tell a checked target from a plausible-looking string.
+    propositionKind: proposition.kind,
+    propositionVerified: proposition.verified === true,
+    fileChecked: proposition.kind === 'file-ref' ? false : null,
+    propositionWhy: proposition.why,
     asked, askedSource: source,
     // ★★★★★★★ LIVE RUN 28 (the institute's own report, item 5): the DESCRIPTION promised `askedWhy says why` and the
     // receipt never carried it — a promise with no field is a described mechanism that does not exist, the exact
     // defect class this phase keeps removing. The label `roster+speech` names the RULE (a union), not which side
     // actually contributed, so a run with an EMPTY speech record still read "roster+speech". `askedWhy` therefore
     // states the rule AND what each side contributed in this call.
-    askedWhy: source === 'explicit'
+    // ★★★ LIVE RUN 29: the two branches below tested `source === 'explicit'` and `source === 'speech'` while this
+    // function has always emitted `'members'` / `'spokeBy'` / `'minutes'` — DEAD BRANCHES. An explicit `members:[…]`
+    // call was therefore described as a union it never used, and a minutes-only ask fell into the union wording too.
+    // The values here are now the values the code above actually assigns (and the declaration at the bottom of this
+    // file lists the same five), so the receipt and the description cannot disagree again.
+    askedWhy: source === 'members'
       ? 'the caller named `members`, so that list IS the population (it REPLACES the roster+speech set rather than widening it): ' + asked.length + ' member(s)'
       : (source === 'roster'
-          ? 'the meeting has a roster and NO speech on record, so the roster alone is the population (' + String(debated.rosterCount === undefined ? '?' : debated.rosterCount) + ' seated); a seated member owes a ruling even if it never spoke'
-          : (source === 'speech'
-              ? 'the meeting has no roster, so only the members on SPEECH RECORD could be reached (' + String(debated.speakerCount === undefined ? '?' : debated.speakerCount) + '); without a roster there is nobody else to ask'
-              : 'the population is the UNION of the meeting roster (' + String(debated.rosterCount === undefined ? '?' : debated.rosterCount) + ') and the speech record (' + String(debated.speakerCount === undefined ? '?' : debated.speakerCount) + ') — a seated member who never spoke still owes a ruling, and a speaker who left the roster is still reachable')),
+          ? 'the meeting has a roster and NO speech on record, so the roster alone is the population (' + String(debated.rosterCount === undefined ? '?' : debated.rosterCount) + ' seated); a seated member owes a ruling even if it never spoke — the chair seat is named in `excluded` because the chair signs the ask'
+          : ((source === 'spokeBy' || source === 'minutes')
+              ? 'the meeting has no roster, so only the members on SPEECH RECORD could be reached (' + String(debated.speakerCount === undefined ? '?' : debated.speakerCount) + ') from ' + (source === 'minutes' ? 'the minutes' : 'spokeBy()') + '; without a roster there is nobody else to ask, and the chair seat is named in `excluded`'
+              : 'the population is the UNION of the meeting roster (' + String(debated.rosterCount === undefined ? '?' : debated.rosterCount) + ') and the speech record (' + String(debated.speakerCount === undefined ? '?' : debated.speakerCount) + ') — a seated member who never spoke still owes a ruling, and a speaker who left the roster is still reachable; the chair seat is named in `excluded` because the chair signs the ask')),
     rosterCount: debated.rosterCount === undefined ? null : debated.rosterCount,
     speakerCount: debated.speakerCount === undefined ? null : debated.speakerCount,
+    // ★★★ LIVE RUN 29 ①: `rosterCount:3` sat beside `asked` of two members with no field saying WHO the third was or
+    // why it was skipped. `excluded` names it (`why:"presides"`), `rosterCountMeans` states what the count counts, and
+    // `accounting` is the single place the three numbers are shown to close: asked + excluded = the named set. A reader
+    // no longer has to reverse-engineer the arithmetic.
+    excluded,
+    excludedMeans: explicit && explicit.length
+      ? (excluded.length === 0
+          ? 'the caller replaced the derived population with `members`, and the derived set would have left nobody out, so this list is empty — it says nothing about who was skipped in THIS call'
+          : 'the caller replaced the derived population with `members`, so this list is what the DERIVED set would have left out (the chair presides); it does not describe who was skipped in THIS call')
+      : (excluded.length === 0
+          ? 'nobody the meeting named was left out: every member it named is in `asked`'
+          : 'the chair presides over the meeting, so it SIGNS the ask and does not ANSWER it — that is the only reason a member the meeting named is not in `asked`; nothing else is filtered'),
+    rosterCountMeans: debated.rosterCountMeans === undefined || debated.rosterCountMeans === null
+      ? null : debated.rosterCountMeans,
+    accounting,
+    meetingState: closure.state,
+    meetingStateMeans: closure.stateMeans,
+    closurePhase: closure.phase,
+    closureMeans: closure.why,
+    mail: { text, stateReadable: closure.readable, closurePhase: closure.phase, closureSentence: closure.sentence,
+      means: 'the clause inside `text` before the aggregation sentence is generated from meetingView.state: it states the debate ENDED only when the state is "closed", says the debate is still running for open/in_session/recess, says the meeting has not started for scheduled/waiting, and says 状态不可读 when the view publishes no state — this pack never writes a closure it did not read' },
     delivered, failed,
     deliveredCount: delivered.length,
     failedCount: failed.length,
@@ -1576,7 +1815,7 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
     how: 'vibe_v5_verdict_final',
     means: 'the ask is on the members record now; the RULING is a separate, explicit act by the chair (asking is not ruling) — '
       + 'and this pack keeps no hook on meetings.close, so a closed debate does not silently become a ruling',
-    next: 'collect each member {p, reason}, then call vibe_v5_verdict_final { meeting, proposition_id, verdicts } — it refuses when a member who debated has no verdict (pass partial:true + why to rule on a partial set explicitly)',
+    next: 'collect each member {p, reason}, then call vibe_v5_verdict_final { meeting, proposition_id, verdicts } — it refuses when a member who debated has no verdict (pass partial:true + why to rule on a partial set explicitly). If `closurePhase` is not "ended" the mail already told the members what `meetingState` says, so close the debate first (vibe_vmu_meeting { action:"close", id }) and ask again — "the debate ended" is then a fact the ask read instead of a sentence it wrote',
     enforced: enforcedOf([]), enforcedScope: ENFORCED_SCOPE,
     note: 'the framework asked; it did not decide. A member with no verdict cannot be averaged in.',
   }
@@ -2678,7 +2917,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_verdict_ask',
-    description: '★ ASK THE DEBATING MEMBERS FOR THEIR FINAL RULING (the CHAIR asks; this is the FIRST half of the rule: 「待辩论会议结束，v5r框架请各个辩论的各个成员给出最终裁决」). One mailbox message per DEBATING member asking for 「布尔概率（[0,1]）+ 理由」 on ONE proposition. ★ WHO COUNTS AS DEBATING IS THE MEETING\'S ROSTER PLUS ANYONE ON SPEECH RECORD — the receipt names which set was used in `askedSource` ("roster+speech" | "roster" | "speech" | "explicit") and `askedWhy` says why: a member seated for the debate who never spoke still owes a ruling (reading `spokeBy` alone made a live run ask NOBODY and the ruling face then reported a 0-member debate), while a meeting with no roster must still reach the people who did speak. meeting + proposition_id REQUIRED; `members` is an explicit OVERRIDE of that set (it REPLACES the population and the receipt says so in `askedSource:"explicit"` — it is not a widening). It does NOT aggregate and does NOT touch the card — asking is not ruling; the ruling is vibe_v5_verdict_final, which REFUSES by name when a member who debated has no verdict (pass partial:true + why to rule on a partial set deliberately). Refused by name: no chair to sign, a non-chair caller, no mailbox face, and a meeting with no roster AND no speech on record (nothing to rule on yet).',
+    description: '★ ASK THE DEBATING MEMBERS FOR THEIR FINAL RULING (the CHAIR asks; this is the FIRST half of the rule: 「待辩论会议结束，v5r框架请各个辩论的各个成员给出最终裁决」). One mailbox message per DEBATING member asking for 「布尔概率（[0,1]）+ 理由」 on ONE proposition. ★ WHO COUNTS AS DEBATING IS THE MEETING\'S ROSTER PLUS ANYONE ON SPEECH RECORD — the receipt names which set was used in `askedSource` ("roster+speech" | "roster" | "spokeBy" | "minutes" | "members") and `askedWhy` says why: a member seated for the debate who never spoke still owes a ruling (reading `spokeBy` alone made a live run ask NOBODY and the ruling face then reported a 0-member debate), while a meeting with no roster must still reach the people who did speak. meeting + proposition_id REQUIRED; `members` is an explicit OVERRIDE of that set (it REPLACES the population and the receipt says so in `askedSource:"members"` — it is not a widening). ★ THE SEAT COUNT RECONCILES OR IT IS NOT A COUNT (live run 29): `rosterCount` includes the chair seat, which is NOT in `asked`, so the receipt also carries `excluded:[{member, why}]` (why "presides"), `rosterCountMeans` and `accounting` — asked + excluded = the members the meeting named, so a reader sees WHO was skipped and WHY instead of doing the arithmetic alone. ★ THE PROPOSITION IS CHECKED, NOT MERELY REQUIRED: `proposition_id` must be a card the library holds (`propositionKind:"card"`), a FILE REFERENCE (`propositionKind:"file-ref"` with `fileChecked:false`: v5r allows the debate object to be a file, and this face does not read files), or the object this meeting was convened to debate (`propositionKind:"meeting-subject"`). Anything else is REFUSED as `VMU_ASK_UNKNOWN_PROPOSITION`, whose hint names the card to record and the file-reference shape; when nothing is declared this face cannot tell a legal one-line proposition from a typo and says so in `propositionKind:"unverified"` + `propositionWhy`. ★ THE MAIL IS GENERATED FROM THE MEETING STATE, NOT ASSERTED: `meetingState`/`meetingStateMeans`/`closurePhase` carry what `meetingView` reports and the closure clause inside `mail.text` is derived from it (live run 29 told the members the debate had ended while the view said state:"open"), and an unreadable state makes the mail say 状态不可读 instead of asserting a closure. It does NOT aggregate and does NOT touch the card — asking is not ruling; the ruling is vibe_v5_verdict_final, which REFUSES by name when a member who debated has no verdict (pass partial:true + why to rule on a partial set deliberately). Refused by name: no chair to sign, a non-chair caller, no mailbox face, a proposition that names nothing this debate is about (`VMU_ASK_UNKNOWN_PROPOSITION`), and a meeting with no roster AND no speech on record (nothing to rule on yet).',
     parameters: { meeting: { type: 'string', required: true }, proposition_id: { type: 'string', required: true }, members: { type: 'array' }, member: { type: 'string' }, why: { type: 'string' } },
     handler: toolVerdictAsk,
   },
