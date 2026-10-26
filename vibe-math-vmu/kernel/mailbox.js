@@ -21,6 +21,15 @@
 // returned as a named `VMU_ENGINE_UNAVAILABLE` result (never a silent success, never a thrown crash path for
 // a runtime gap). Durability is an OPTIONAL injected `store` port; without it the mailbox is honest about
 // being memory-only (`status().durable === false`).
+//
+// ★ ROUND 31 / task-11 — "DURABLE" ALSO HAS TO MEAN *VISIBLE TO THE OTHER KERNEL*. The institute runs every member
+// in its own sub-session, which is its own KERNEL INSTANCE over the same store ROOT (one `<root>/vmu/state.json`).
+// Run 31 measured the consequence: the office queued two entries (`vibe_v5_inbox` count 2 in the root session) and
+// the member's own inbox answered count 0, while the durable file held `mailbox: null` — nothing ever called
+// `persist()`/`restore()`, and nothing COULD: no assembly code called them. The five invariants above are all
+// PER-INSTANCE; this sixth one is not. A read face now PULLS (folds what the store holds into memory) and every
+// mutation WRITES THROUGH with a MERGE (see `mergeSnapshots`), so two kernels share one mailbox instead of each
+// holding a private one. Neither direction changes the shape of what the store holds.
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
 export const apiVersion = 1
@@ -76,6 +85,167 @@ const INSTANT_KEY = /(At)$/i
 const INSTANT_NAMES = Object.freeze(['until', 'expires', 'expiresAt', 'expiresOn', 'deadline'])
 const clone = (v) => JSON.parse(JSON.stringify(v))
 const bytesOf = (s) => Buffer.byteLength(String(s === undefined || s === null ? '' : s), 'utf8')
+
+/** Codes with which a filesystem REFUSES a transient operation — measured here on the store's atomic temp→target
+ *  rename while a second kernel in the same process was opening the same `vmu/state.json` (Windows: EPERM). At that
+ *  point the merged document is still in THIS instance's memory, so retrying is honest and losing the write is not.
+ *  The set is closed and small on purpose: every other failure is reported at once, never retried.
+ *  R30 / task-17 made this a FALLBACK, not the primary path: `kernel/store.js` now takes the SAME lock in `open()` and
+ *  retries a transient rename refusal itself (bounded, re-reading the file first, counted in `stats().writeRetries` /
+ *  `writeRetryGiveUps`), and it reports an exhausted retry as `VMU_STORE_FAILED`. This table therefore only fires for a
+ *  store implementation that still surfaces a raw transient code (e.g. an injected test store) — keep it, but it is no
+ *  longer what a real kernel relies on. */
+const TRANSIENT_WRITE_CODES = Object.freeze(['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY'])
+
+// ── ★ ROUND 31 / task-11 — merging TWO KERNELS' views of one `mailbox` key ────────────────────────────────────────
+// The helpers below exist because the durable key is SHARED (see the header): the office session and every member
+// sub-session are separate kernels over the same store root. A shared key turns "last writer wins" into silent data
+// loss unless every write is a MERGE, and a merge needs to decide, per id, whether it is looking at one message or at
+// two that were accidentally given the same name.
+
+/** A `mode:'state'` projection envelope (`kernel/resume.js` `stateEnvelope`) is NOT a mailbox snapshot, but it
+ *  CONTAINS one: a tolerant reader accepts both shapes, and a writer must not change the shape it found. */
+const isStateEnvelope = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && v.mode === 'state' &&
+  Object.prototype.hasOwnProperty.call(v, 'value')
+const snapshotValueOf = (raw) => (isStateEnvelope(raw) ? raw.value : raw)
+
+/** Two entries under the same id are the same MESSAGE only if the write face's own fields agree. The counter that
+ *  mints ids (`let seq`) is PER INSTANCE, so two kernels that have not synced yet both mint `ml-1` — for different
+ *  messages. Treating those as one entry would delete one of them. */
+const sameMessage = (a, b) => String(a.from) === String(b.from) && String(a.at) === String(b.at) &&
+  String(a.kind) === String(b.kind) && String(a.to === undefined ? '' : a.to) === String(b.to === undefined ? '' : b.to) &&
+  String(a.text) === String(b.text)
+
+/**
+ * Which copy of the SAME entry carries the newer member-owned flags (`read`/`todo`). `stateAt` is stamped by the only
+ * two writers of those flags (`open`, `setState`) from the injected clock in epoch-ms, and the LATER stamp wins — that
+ * is what lets a member UN-read or un-todo what another kernel marked (mail re-put in the pending queue). On a TIE
+ * (a constant clock, or an entry written before this field existed) the flags are OR-ed: "opened" is a fact, while two
+ * equal instants are not evidence of order. The cost of a wrong OR is a weaker notification; the cost of a wrong
+ * un-mark is a lost one.
+ */
+const mergeFlags = (a, b) => {
+  const stampOf = (e) => (Number.isFinite(Number(e.stateAt)) && e.stateAt !== null ? Number(e.stateAt) : null)
+  const ta = stampOf(a)
+  const tb = stampOf(b)
+  const readA = a.read === true
+  const readB = b.read === true
+  const todoA = a.todo === true
+  const todoB = b.todo === true
+  if (ta !== null && tb !== null && ta !== tb) {
+    const later = ta > tb ? a : b
+    return {
+      read: later.read === true,
+      todo: later.todo === true,
+      stateAt: later.stateAt,
+      changed: (readA !== readB) || (todoA !== todoB),
+    }
+  }
+  return {
+    read: readA || readB,
+    todo: todoA || todoB,
+    stateAt: ta !== null ? a.stateAt : (tb !== null ? b.stateAt : undefined),
+    changed: (readA !== (readA || readB)) || (todoA !== (todoA || todoB)),
+  }
+}
+
+/**
+ * FOLD TWO SNAPSHOTS INTO THE ONE TO WRITE BACK — the whole write side of task-11. Each law answers a way the old
+ * wholesale `persist()` (`patch(key, () => snap)`, ignoring `current`) lost mail:
+ *   1. UNION: members and entries held by the store AND by this instance both survive; an instance that has never
+ *      seen a message can never erase it.
+ *   2. NO RESURRECTION: an id the store's ACKED ledger records is never written back as pending — mail a member
+ *      settled in another kernel must not reappear here as unread.
+ *   3. ID COLLISION IS NAMED, NEVER DROPPED: see `sameMessage`; the stored message keeps its name, the incoming one
+ *      is re-keyed to the next free `ml-N`, and the rename is RETURNED so memory can adopt it and `status()` reports
+ *      it. Keeping one silently would delete a message; writing both under one name would make open/ack ambiguous.
+ *   4. THE COUNTER MOVES FORWARD ONLY, so a name is never reused.
+ * `injected` marks are NOT unioned: they are THIS instance's prompt bookkeeping ("already shown to a builder"), and a
+ * mark from another kernel's prompt would silence a notice this kernel has not shown yet.
+ * Pure: no clock, no store, mutates neither argument.
+ */
+function mergeSnapshots(stored, mine) {
+  const renamed = []
+  let droppedAcked = 0
+  const base = snapshotValueOf(stored)
+  const own = (mine && mine.data && typeof mine.data === 'object')
+    ? mine
+    : { at: null, counters: { seq: 0 }, data: { boxes: {}, acked: {}, injected: {} }, skipped: [] }
+  if (!base || base.face !== 'mailbox' || !base.data || typeof base.data !== 'object') {
+    // Nothing readable is stored (a first write, `mailbox: null`, or a value this version cannot read): what this
+    // instance holds IS the merge. `mine` is used unchanged so a caller's snapshot is never rewritten in place.
+    return { snap: mine, renamed, droppedAcked }
+  }
+  const out = {
+    apiVersion,
+    face: 'mailbox',
+    v: 1,
+    at: own.at,
+    counters: { seq: 0 },
+    data: { boxes: {}, acked: {}, injected: {} },
+    skipped: Array.isArray(own.skipped) ? own.skipped : (Array.isArray(base.skipped) ? base.skipped : []),
+  }
+  const baseBoxes = base.data.boxes || {}
+  const ownBoxes = (own.data && own.data.boxes) || {}
+  const baseAcked = base.data.acked || {}
+  const ownAcked = (own.data && own.data.acked) || {}
+  let top = Math.max(Number((base.counters && base.counters.seq) || 0), Number((own.counters && own.counters.seq) || 0))
+  for (const member of new Set([...Object.keys(baseBoxes), ...Object.keys(ownBoxes)])) {
+    const settled = new Set()
+    for (const row of [...(baseAcked[member] || []), ...(ownAcked[member] || [])]) {
+      if (row && row.id) settled.add(String(row.id))
+    }
+    const kept = []
+    const byId = new Map()
+    for (const row of baseBoxes[member] || []) {                                  // (2) stored, minus settled
+      if (!row || !row.id || settled.has(String(row.id))) continue
+      const copy = clone(row)
+      kept.push(copy)
+      byId.set(String(copy.id), copy)
+    }
+    for (const row of ownBoxes[member] || []) {
+      if (!row || !row.id) continue
+      const hit = byId.get(String(row.id))
+      if (!hit) {
+        if (settled.has(String(row.id))) { droppedAcked += 1; continue }         // (2) already acked elsewhere
+        const copy = clone(row)
+        kept.push(copy)
+        byId.set(String(copy.id), copy)
+        continue
+      }
+      if (!sameMessage(hit, row)) {                                              // (3) two messages, one name
+        top += 1
+        const copy = clone(row)
+        copy.id = 'ml-' + String(top)
+        copy.seq = top
+        renamed.push({ member: String(member), from: String(row.id), to: copy.id })
+        kept.push(copy)
+        byId.set(copy.id, copy)
+        continue
+      }
+      const flags = mergeFlags(hit, row)                                          // (1) same message, newer flags
+      hit.read = flags.read
+      hit.todo = flags.todo
+      if (flags.stateAt !== undefined) hit.stateAt = flags.stateAt
+    }
+    if (kept.length) out.data.boxes[member] = kept
+  }
+  for (const member of new Set([...Object.keys(baseAcked), ...Object.keys(ownAcked)])) {
+    const ledger = []
+    const seen = new Set()
+    for (const row of [...(baseAcked[member] || []), ...(ownAcked[member] || [])]) {
+      if (!row || !row.id || seen.has(String(row.id))) continue
+      seen.add(String(row.id))
+      ledger.push(clone(row))
+    }
+    if (ledger.length) out.data.acked[member] = ledger
+  }
+  out.data.injected = clone((own.data && own.data.injected) || {})
+  const ids = [...Object.values(out.data.boxes)].flat()
+    .map((e) => Number(e.seq) || Number(String(e.id).replace(/^ml-/, '')) || 0)
+  out.counters.seq = Math.max(top, ...ids)                                       // (4) forward only
+  return { snap: out, renamed, droppedAcked }
+}
 
 /**
  * `createMailbox({ clock, log, settings, store, deliver, resolveAudience })`.
@@ -240,6 +410,259 @@ export function createMailbox({
       'list() names the live entries; an acked entry has no retained body')
   }
 
+  // ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  // ★ ROUND 31 / task-11 — THE SHARED-KEY SEAM: PULL BEFORE A READ, MERGE ON A WRITE.
+  //
+  // The `mailbox` key is the one durable key this face owns, and TWO kernels of one run can own a handle on it (the
+  // office's session and each member's own sub-session are separate kernels over one store root). Three facts shape
+  // the code below:
+  //   · the store is BOUND at construction but OPENED later (`vibe-math-vmu.js` awaits `store.open()` after
+  //     `kernel.start()`), so reading at construction would always throw — hydration is LAZY and RETRIED on every
+  //     access until it succeeds (the same reason `kernel/index.js` hydrates `records` lazily);
+  //   · the store never PUSHES: `store.read()` reloads-if-stale on THIS instance, so freshness requires an explicit
+  //     read BEFORE a read face answers. A member that only ever calls `unread()` must still see the office's mail;
+  //   · a write is `store.patch(key, fn)` under a file lock, so it is safe to MERGE there — but only if the merge runs
+  //     on the value the store hands us (`current`), which is what `mergeSnapshots` is for.
+  // Failures are NAMED (`VMU_STORE_FAILED`, the store's own code), counted in `status().shared`, recorded in the
+  // audit trail and RETRIED; they are never thrown out of a read face (a broken store must not take a member's whole
+  // turn down) and never swallowed in silence.
+  // ════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  /** A member-owned flag write (`open`/`setState`) carries WHEN it happened, in epoch-ms, so two copies of one entry
+   *  can be ordered by `mergeFlags` instead of guessed at. */
+  const stateStamp = () => { const t = finiteStamp(clock()); return t === null ? 0 : t }
+  const storeReadable = () => !!store && typeof store.read === 'function'
+  const storeWritable = () => !!store && typeof store.patch === 'function'
+  const shared = {
+    pulls: 0, pullRefused: 0, pulledEntries: 0, adoptedFlags: 0, droppedAcked: 0,
+    pushes: 0, writeRefused: 0, writeRetries: 0, pushedEntries: 0, renamedOnCollision: 0, skippedEnvelope: 0,
+    lastError: null, lastPullAt: null, lastPushAt: null,
+  }
+  /**
+   * ★ 具名拒绝 (rule 2): the port is present but refused the operation. The code is the STORE's own code and the
+   * message keeps the store's words, because the caller's fix is at the store (path / permission / open timing), not
+   * at the mailbox. `enforced: []` — this decision read no settings key.
+   */
+  const storeRefused = (what, e) => {
+    const code = (e && typeof e.code === 'string' && e.code) || 'VMU_STORE_FAILED'
+    const message = String((e && e.message) || e)
+    shared.lastError = { what, code, message, at: clock() }
+    // NOT `note()`d as a refusal: during boot the store is simply not open yet, and a refusal counter that is non-zero
+    // on every healthy start would make the counter useless. It IS recorded in the audit trail, logged, counted in
+    // `status().shared`, and returned BY NAME to a caller that asked for a write (`persist()`), which is where the
+    // rule "named, never swallowed" applies to a caller.
+    record('store-refused', { what, code, message })
+    log('mailbox: the shared store refused ' + what + ' (' + code + '): ' + message)
+    return { code, message }
+  }
+
+  /**
+   * Fold what the STORE holds into this instance's memory. The rules:
+   *   · an entry the store holds and this instance never saw is ADDED (that missing add IS the run-31 defect);
+   *   · an entry both hold is matched by id AND identity (`sameMessage`): the same message merges its member-owned
+   *     flags through `mergeFlags`; a DIFFERENT message under an id this instance minted is a real collision and is
+   *     kept for the next push to re-key (never merged away, never silently overwritten);
+   *   · an entry the store's ACKED ledger records is REMOVED here — mail settled in another kernel must not come back
+   *     as pending in this one;
+   *   · `injected` marks are NOT adopted: they are the OTHER kernel's prompt bookkeeping, and adopting one would
+   *     silence a notice this kernel has not shown yet;
+   *   · `seq` moves FORWARD only, so a name is never reused.
+   * Returns what it changed (for `status().shared`).
+   */
+  const mergeShared = (raw) => {
+    const snap = snapshotValueOf(raw)
+    const out = { entries: 0, flags: 0, dropped: 0, collisions: 0 }
+    if (!snap || snap.face !== 'mailbox' || !snap.data || typeof snap.data !== 'object') return out
+    const remoteBoxes = snap.data.boxes || {}
+    const remoteAcked = snap.data.acked || {}
+    const settled = new Map()
+    for (const member of Object.keys(remoteAcked)) {
+      const ids = new Set()
+      for (const row of remoteAcked[member] || []) if (row && row.id) ids.add(String(row.id))
+      if (ids.size) settled.set(String(member), ids)
+    }
+    // The members that matter are the union of "has mail" and "has settled mail": an ACK removes the body from the
+    // store's box, so the ledger is the ONLY evidence left that this entry is no longer pending. Iterating the boxes
+    // alone left such an entry pending here forever (measured: A kept showing ml-1 after B acked it).
+    const members = new Set(Object.keys(remoteBoxes))
+    for (const member of Object.keys(remoteAcked)) members.add(String(member))
+    for (const member of members) {
+      const box = boxes.get(String(member)) || []
+      const done = settled.get(String(member)) || new Set()
+      for (let i = box.length - 1; i >= 0 && done.size; i -= 1) {
+        if (done.has(box[i].id)) { box.splice(i, 1); out.dropped += 1 }   // (2) settled elsewhere: never resurrect it here
+      }
+      for (const row of remoteBoxes[member] || []) {
+        if (!row || !row.id) continue
+        const id = String(row.id)
+        if (done.has(id)) continue
+        const hit = box.find((e) => e.id === id)
+        if (!hit) {
+          const copy = clone(row)
+          if (copy.stateAt === undefined) delete copy.stateAt
+          box.push(copy)
+          out.entries += 1
+          continue
+        }
+        if (!sameMessage(hit, row)) { out.collisions += 1; continue }   // (3) both survive; the push re-keys ours
+        const flags = mergeFlags(hit, row)
+        if (flags.changed) out.flags += 1
+        hit.read = flags.read
+        hit.todo = flags.todo
+        if (flags.stateAt !== undefined) hit.stateAt = flags.stateAt
+      }
+      if (!boxes.has(String(member)) && box.length) boxes.set(String(member), box)
+    }
+    const remoteSeq = Number((snap.counters && snap.counters.seq) || 0)
+    if (Number.isFinite(remoteSeq) && remoteSeq > seq) seq = remoteSeq
+    return out
+  }
+
+  /**
+   * Read the shared key and fold it in. Called at the START of every read face and every mutation, so an instance that
+   * has never spoken to the store still answers with mail another kernel queued. Never throws: the normal boot state
+   * ("store not open yet") and a genuinely broken store are both reported by name and retried on the next access.
+   */
+  const pullShared = (why) => {
+    if (!storeReadable()) return null
+    shared.pulls += 1
+    let raw
+    try {
+      raw = store.read(MAILBOX_STORE_KEY)
+    } catch (e) {                                             // not open yet, unreadable, or refused: named + retried
+      shared.pullRefused += 1
+      storeRefused('read "' + MAILBOX_STORE_KEY + '" for ' + why, e)
+      return null
+    }
+    if (raw && typeof raw.then === 'function') {
+      // The port contract is a SYNCHRONOUS `read` (`kernel/store.js` reads its in-memory fold). A promise here is a
+      // caller error, and folding it in would be the worst kind of bug: `durable` would claim a share that was never
+      // read. So it is refused BY NAME (and retried on the next access, like every other pull failure).
+      const bad = new Error('store.read returned a promise; the durable port reads synchronously')
+      bad.code = 'VMU_INVALID_ARGUMENT'
+      shared.pullRefused += 1
+      note('VMU_INVALID_ARGUMENT')
+      storeRefused('read "' + MAILBOX_STORE_KEY + '" for ' + why, bad)
+      return null
+    }
+    try {
+      const got = mergeShared(raw)
+      shared.pulledEntries += got.entries
+      shared.adoptedFlags += got.flags
+      shared.droppedAcked += got.dropped
+      shared.renamedOnCollision += got.collisions
+      if (raw !== undefined && raw !== null) durable = true
+      shared.lastPullAt = clock()
+      return got
+    } catch (e) {
+      // A stored value this version cannot merge is NOT a store failure; it is reported as such, so a reader can tell
+      // "the store said nothing" from "the store said something I cannot read".
+      shared.pullRefused += 1
+      note('VMU_STATE')
+      record('shared-merge-refused', { why, message: String((e && e.message) || e) })
+      log('mailbox: the stored snapshot could not be merged for ' + why + ': ' + String((e && e.message) || e))
+      return null
+    }
+  }
+
+  /** Adopt the names a merge gave to entries that collided with another kernel's ids, so the NEXT pull matches them by
+   *  id (otherwise the same message would be pulled in a second time under its new name). */
+  const adoptRenames = (renamed) => {
+    for (const r of renamed) {
+      const box = boxes.get(String(r.member))
+      const hit = box && box.find((e) => e.id === r.from)
+      if (!hit) continue
+      hit.id = r.to
+      const n = Number(String(r.to).replace(/^ml-/, ''))
+      if (Number.isFinite(n) && n > 0) hit.seq = n
+    }
+    if (renamed.length) shared.renamedOnCollision += renamed.length
+  }
+
+  let writeChain = Promise.resolve()
+  let queuedPush = null
+  /**
+   * WRITE THROUGH, MERGED — the write half of the shared key. Every mutation funnels here; the merge runs on
+   * `current` INSIDE `store.patch` (under the store's file lock), so two kernels writing at the same time each keep
+   * the other's mail instead of overwriting it. Writes are COALESCED: a mutation that lands while a push is queued
+   * but not yet started reuses it (the snapshot is taken when the callback runs, so it starts from the newest state),
+   * which is why marking five entries read is one write and not five.
+   *
+   * SHAPE IS NOT NEGOTIABLE: if the key holds a `mode:'state'` projection envelope (`kernel/resume.js`
+   * `stateEnvelope`, which hydrates through `mailbox.hydrate(env.value)`), this push DECLINES — it returns
+   * `undefined` so the store records "unchanged" and reports `skipped:'state-envelope'`. That projection owns the
+   * shape of the key in that process; replacing it with a bare snapshot would break its reader. In the shipped
+   * assembly (`kernel/index.js`) there is no such projection row, so the bare snapshot is what gets written — the
+   * shape `kernel/resume.js` counts unacked mail from.
+   */
+  const pushShared = (why) => {
+    if (!storeWritable()) {
+      return Promise.resolve({ ok: true, persisted: false, durable: false, reason: 'no store port is bound', key: MAILBOX_STORE_KEY })
+    }
+    if (queuedPush) return queuedPush
+    const run = writeChain.then(async () => {
+      queuedPush = null
+      let attempt = 0
+      for (;;) {
+        let renamedNow = []
+        let droppedNow = 0
+        let entriesNow = 0
+        let mergedTop = 0
+        let skipEnvelope = false
+        let res = null
+        try {
+          res = await store.patch(MAILBOX_STORE_KEY, (current) => {
+            if (isStateEnvelope(current)) { skipEnvelope = true; return undefined }
+            const mine = mailbox.snapshot()
+            const merged = mergeSnapshots(current, mine)
+            renamedNow = merged.renamed
+            droppedNow = merged.droppedAcked
+            mergedTop = Number((merged.snap.counters && merged.snap.counters.seq) || 0)
+            entriesNow = Object.values((mine.data || {}).boxes || {}).flat().length
+            return merged.snap
+          })
+        } catch (e) {
+          const code = String((e && e.code) || '')
+          // A TRANSIENT filesystem refusal is retried a BOUNDED number of times (TRANSIENT_WRITE_CODES): the merged
+          // document is still in this instance's memory, so a retry can still land it. Every retry is counted and
+          // logged, and the last attempt falls through to the named refusal below — a retry must never hide a failure.
+          // R30 / task-17: this is now the FALLBACK layer (the store retries the same rename inside its own mutex and
+          // reports give-up as VMU_STORE_FAILED); it stays so an injected store that surfaces a raw code still behaves.
+          if (!TRANSIENT_WRITE_CODES.includes(code) || attempt >= 2) throw e
+          attempt += 1
+          shared.writeRetries += 1
+          log('mailbox: transient ' + code + ' writing "' + MAILBOX_STORE_KEY + '" for ' + why +
+            '; retry ' + attempt + '/' + 2)
+          await new Promise((r) => setTimeout(r, 10 * attempt))
+          continue
+        }
+        if (skipEnvelope) {
+          shared.skippedEnvelope += 1
+          record('shared-skip', { why, reason: 'the "' + MAILBOX_STORE_KEY + '" key holds a state projection envelope; its owner (resume) owns the shape, so this write declined by name' })
+          return { ok: true, persisted: false, durable: true, key: MAILBOX_STORE_KEY, skipped: 'state-envelope',
+            reason: 'the durable key holds a state projection envelope (kernel/resume.js) — its shape is not this face\'s to change' }
+        }
+        adoptRenames(renamedNow)                              // names stay consistent with what the store now holds
+        if (Number.isFinite(mergedTop) && mergedTop > seq) seq = mergedTop
+        if (renamedNow.length) record('shared-id-collision', { why, renamed: renamedNow })
+        shared.pushes += 1
+        shared.pushedEntries += entriesNow
+        shared.droppedAcked += droppedNow
+        shared.lastPushAt = clock()
+        durable = true
+        return { ok: true, persisted: true, durable: true, key: MAILBOX_STORE_KEY, seq, changed: !!(res && res.changed), renamed: renamedNow }
+      }
+    }).catch((e) => {
+      queuedPush = null
+      shared.writeRefused += 1
+      const named = storeRefused('write "' + MAILBOX_STORE_KEY + '" for ' + why, e)
+      durable = false
+      return { ok: false, persisted: false, durable: false, code: named.code, message: named.message }
+    })
+    writeChain = run.then(() => undefined, () => undefined)
+    queuedPush = run
+    return run
+  }
+
 
   const rejectInstants = (args, what) => {
     const keys = Object.keys(args || {}).filter((k) => INSTANT_KEY.test(String(k)) || INSTANT_NAMES.includes(String(k)))
@@ -283,6 +706,9 @@ export function createMailbox({
         'the tool face passes this as `by`: {"action":"send","by":"<member id>","text":"…"} - a message with no sender is not auditable')
       const body = String(text === undefined || text === null ? '' : text)
       if (!body.trim()) throw refuse('VMU_INVALID_ARGUMENT', 'a message needs non-empty text', 'pass { text }')
+      // ★ task-11: pull BEFORE an id is minted, so `seq` accounts for mail another kernel already queued (a collision
+      // is repairable, but not creating one is cheaper), and before the per-box cap is judged against stale counts.
+      pullShared('send')
       rejectInstants({ replyTo }, 'send')
       const raw = to === null || to === undefined ? '' : to
       let targets = []
@@ -345,12 +771,19 @@ export function createMailbox({
         made.push({ id: entry.id, to: t, urgent: entry.urgent })
       }
       record('sent', { from: who, ids: made.map((m) => m.id), to: targets, kind: String(kind || 'dm'), urgent: isUrgent })
+      // ★ task-11: write through — the office's send is what the member's own kernel must be able to read. Fire and
+      // forget BY DESIGN (the receipt is synchronous and the mail is already queued in memory); a failed write is
+      // named in `status().shared` and in the audit trail instead of being pretended away.
+      pushShared('send')
       return { ok: true, ids: made.map((m) => m.id), to: targets, delivered: 0, queued: made.length,
         urgent: isUrgent, subject: sub.subject, subjectTruncated: sub.subjectTruncated, enforced: ['vmu.mailbox.urgentKinds'] }
     },
 
     /** Pending = queued and NOT acked. `freshOnly` also excludes what a prompt already carried. */
     pending(member, { freshOnly = false } = {}) {
+      // ★ task-11: THE read face that answered 0 in run 31 while the office held 2 — it now folds the shared key in
+      // first. Every other read face (unread/boxes/deliverable/plan/flush) reaches the store through this one.
+      pullShared('pending')
       const id = String(member)
       const box = boxes.get(id) || []
       const seen = injected.get(id) || new Set()
@@ -365,20 +798,28 @@ export function createMailbox({
 
     /** Mark entries as "already put in a prompt" (the once-per-prompt rule). Idempotent. */
     markInjected(member, ids) {
+      pullShared('markInjected')
       const id = String(member)
       const set = injected.get(id) || new Set()
       const list = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean)
       for (const x of list) set.add(x)
       injected.set(id, set)
+      if (list.length) pushShared('markInjected')
       return { ok: true, member: id, marked: list.length, injected: set.size }
     },
 
     /** Drop the injection marks: called on EVERY concluded attempt, so a failed wake re-prepends. */
     clearInjected(member) {
       const id = String(member === undefined || member === null ? '' : member)
-      if (id === '') { injected.clear(); return { ok: true, cleared: 'all' } }
+      if (id === '') {
+        const had = [...injected.values()].reduce((a, s) => a + s.size, 0)
+        injected.clear()
+        if (had) pushShared('clearInjected')
+        return { ok: true, cleared: 'all' }
+      }
       const had = injected.get(id) ? injected.get(id).size : 0
       injected.delete(id)
+      if (had) pushShared('clearInjected')
       return { ok: true, member: id, cleared: had }
     },
 
@@ -490,6 +931,10 @@ export function createMailbox({
      * name (an ack for mail that does not exist is a defect, not a no-op).
      */
     ack(member, ids) {
+      // ★ task-11: pull first, so the ack applies to the entry as the SHARED key holds it (an entry another kernel
+      // just edited must not be acked from a stale copy); write through last, so the settlement is what keeps the
+      // message from being re-delivered to this member by any kernel that pulls afterwards.
+      pullShared('ack')
       const id = String(member)
       const box = boxOf(id)
       const list = (Array.isArray(ids) ? ids : [ids]).map(String).filter(Boolean)
@@ -520,6 +965,7 @@ export function createMailbox({
         acked.set(id, ledger)
         ackedIds.push(e.id)
       }
+      pushShared('ack')
       return { ok: true, member: id, acked: ackedIds, remaining: box.length, ackedLedger: (acked.get(id) || []).length, enforced: ['vmu.mailbox.ackedLedgerCap'] }
     },
 
@@ -529,6 +975,7 @@ export function createMailbox({
      * `read` is the MEMBER's reading state — they are deliberately different, and `ack` no longer implies read.
      */
     list(member, { status = 'all' } = {}) {
+      pullShared('list')
       const id = String(member === undefined || member === null ? '' : member)
       const want = status === 'unread' || status === 'todo' ? status : 'all'
       const box = boxes.get(id) || []
@@ -539,16 +986,23 @@ export function createMailbox({
 
     /** Open ONE entry by id: returns the body and marks read=true (the body is NOT removed; ack does that). */
     open(member, id) {
+      // ★ task-11: a member opening mail it never queued is exactly the run-31 scenario, so pull first; and the
+      // `read` flag is a SHARED fact (the office must be able to see that the member read it), so write it through
+      // with a timestamp (`stateAt`) that lets a later un-read win the merge.
+      pullShared('open')
       const mid = String(member === undefined || member === null ? '' : member)
       const entry = findEntry(mid, id)
       if (!entry) noSuchEntry(mid, id)
       entry.read = true
+      entry.stateAt = stateStamp()
       record('opened', { member: mid, id: entry.id })
+      pushShared('open')
       return { ok: true, member: mid, entry: openView(entry), read: true }
     },
 
     /** Change the per-entry READ/TODO state. Unknown id is a named refusal; at least one boolean is required. */
     setState(member, { id, read, todo } = {}) {
+      pullShared('setState')
       const mid = String(member === undefined || member === null ? '' : member)
       if (id === undefined || id === null || String(id) === '') throw refuse('VMU_INVALID_ARGUMENT', 'setState needs an entry id', 'pass { id, read?, todo? }')
       if (typeof read !== 'boolean' && typeof todo !== 'boolean') {
@@ -558,7 +1012,9 @@ export function createMailbox({
       if (!entry) noSuchEntry(mid, id)
       if (typeof read === 'boolean') entry.read = read
       if (typeof todo === 'boolean') entry.todo = todo
+      entry.stateAt = stateStamp()
       record('entry-state', { member: mid, id: entry.id, read: entry.read === true, todo: entry.todo === true })
+      pushShared('setState')
       return { ok: true, member: mid, id: entry.id, read: entry.read === true, todo: entry.todo === true }
     },
 
@@ -567,6 +1023,7 @@ export function createMailbox({
      * not retained, so pretending to quote it would fabricate evidence.
      */
     anchor(id) {
+      pullShared('anchor')
       const want = String(id === undefined || id === null ? '' : id)
       for (const [, box] of boxes) {
         const hit = box.filter((e) => e.id === want)[0]
@@ -637,21 +1094,27 @@ export function createMailbox({
       return Object.fromEntries([...boxes.keys()].sort().map((k) => [k, { pending: mailbox.pending(k).length, acked: (acked.get(k) || []).length }]))
     },
 
-    /** Durability is OPTIONAL and never faked: without a store the snapshot stays in memory and says so. */
+    /**
+     * Durability is OPTIONAL and never faked: without a store the snapshot stays in memory and says so.
+     * ★ task-11: this used to REPLACE the whole key with this instance's world (`patch(key, () => snap)`), which on a
+     * shared key is a lost update — whatever another kernel queued since this one last read was erased. It now
+     * delegates to the merge-based write-through, so `persist()` means "make the SHARED key hold everything either
+     * side knows", and the public receipt keeps its old fields.
+     */
     async persist() {
-      const snap = mailbox.snapshot()
-      if (!store || typeof store.patch !== 'function') {
+      const entries = Object.keys(mailbox.snapshot().data.boxes).length
+      if (!storeReadable() || !storeWritable()) {
         durable = false
-        return { ok: true, persisted: false, durable: false, reason: 'no store port is bound', entries: Object.keys(snap.data.boxes).length }
+        return { ok: true, persisted: false, durable: false, reason: 'no store port is bound', entries }
       }
-      try {
-        await store.patch(MAILBOX_STORE_KEY, () => snap)
-        durable = true
-        return { ok: true, persisted: true, durable: true, key: MAILBOX_STORE_KEY, seq: snap.counters.seq }
-      } catch (e) {
-        durable = false
-        return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', persisted: false, durable: false, code: 'VMU_STORE_FAILED', message: String((e && e.message) || e) }
+      const r = await pushShared('persist')
+      if (r && r.ok === false) {
+        return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', persisted: false, durable: false,
+          code: r.code || 'VMU_STORE_FAILED', message: r.message || 'the durable write failed',
+          hint: 'check the store root and its permissions, and that the store is OPEN (kernel.ready()); the mailbox keeps its state in memory and retries on the next access' }
       }
+      return { ok: true, persisted: r.persisted !== false, durable: true, key: MAILBOX_STORE_KEY, seq,
+        skipped: (r && r.skipped) || null }
     },
 
     /**
@@ -662,7 +1125,7 @@ export function createMailbox({
      * A missing store is a NAMED result (never a fake success), and the projection path never touches the store.
      */
     async restore(snap) {
-      if (snap !== undefined && snap !== null) return mailbox.hydrate(snap)
+      if (snap !== undefined && snap !== null) return mailbox.hydrate(snapshotValueOf(snap))
       if (!store || typeof store.read !== 'function') {
         return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', restored: false, durable: false, code: 'VMU_ENGINE_UNAVAILABLE',
           message: 'no store port is bound: the mailbox cannot be restored by key', hint: 'inject { store }, or pass a snapshot: restore(snap)' }
@@ -670,7 +1133,9 @@ export function createMailbox({
       const fromStore = await store.read(MAILBOX_STORE_KEY)
       if (!fromStore) return { ok: false, enforced: [], enforcedScope: 'evaluated-so-far', restored: false, durable: true, code: 'VMU_NO_SUCH_OBJECT',
         message: 'the store holds no "' + MAILBOX_STORE_KEY + '" snapshot', hint: 'persist() first, or pass a snapshot: restore(snap)' }
-      return mailbox.hydrate(fromStore)
+      // ★ task-11: tolerant read — the key may hold the bare snapshot this face writes, or a `mode:'state'` projection
+      // envelope (`kernel/resume.js`) that CONTAINS one. Both are readable; neither shape is rewritten by this call.
+      return mailbox.hydrate(snapshotValueOf(fromStore))
     },
 
     /** The seam v5r-reader-a asked for: JSON-safe state, id counter at max+1, skipped items NAMED. */
@@ -715,6 +1180,11 @@ export function createMailbox({
     history() { return audit.map((a) => Object.assign({}, a)) },
 
     status() {
+      // ★ task-11: `vibe_vmu_mailbox {action:'status'}` is a READ face, and in run 31 it was the command that reported
+      // an empty mailbox to a member who had mail. It pulls like every other read face, and the pull's own health is
+      // part of what it reports (`shared` below) — "no store bound", "store refused", "writes are queued" are answers,
+      // not silence.
+      pullShared('status')
       const per = mailbox.boxes()
       return { ok: true, apiVersion,
         boxes: per, members: Object.keys(per).length,
@@ -723,6 +1193,12 @@ export function createMailbox({
         seq, durable,
         // G7 self-report (Round 9): whether a durable commit log is bound is READABLE, never inferred.
         durableLog: { bound: !!(durableQueue && durableQueue.durable === true) },
+        // ★ ROUND 31 / task-11: the shared-key health, so "is my mailbox the same one the office writes to?" is a
+        // fact in the receipt instead of an inference from an empty list.
+        shared: Object.assign(clone(shared), {
+          key: MAILBOX_STORE_KEY, storeBound: storeWritable(), readable: storeReadable(),
+          writeQueued: queuedPush !== null,
+        }),
         policy: { digestWindowMs: digestWindowOf(), digestMax: digestMaxOf(), urgentKinds: urgentKindsOf(),
           ackedLedgerCap: ackedCapOf(), wakeBudget: wakeBudgetOf(), deliverTimeoutMs: deliverTimeoutOf(), boxCap: MAILBOX_BOX_CAP },
         mechanism: { hasDeliverSeam: typeof deliver === 'function', hasAudienceSeam: typeof resolveAudience === 'function',

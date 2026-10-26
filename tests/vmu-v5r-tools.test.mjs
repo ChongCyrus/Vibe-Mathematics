@@ -37,6 +37,10 @@ const J = (o) => JSON.stringify(o)
 const entry = await import(pathToFileURL(ENTRY).href)
 const v5r = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'index.js')).href)
 const toolsMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js')).href)
+// RUN 31 / task-15: the seat faces are DECLARED (`packs/v5r/seat-faces.js`) and the role prompt sections are RENDERED from
+// that declaration. The role-section assertions below read the declaration instead of hard-typing a subset, so a policy
+// change lands in one place (and a prompt that drifts from it fails here).
+const seatMod = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'seat-faces.js')).href)
 
 /** The names the pack is expected to declare (bands 1–6: 6 + 6 + 7 + 7 + 11). */
 const EXPECTED = ['vibe_v5_record_progress', 'vibe_v5_record_proposition', 'vibe_v5_record_method',
@@ -1097,8 +1101,16 @@ try {
   const researcherSection = toolSections.filter((s) => s.scope && s.scope.role === 'member')[0]
   const acadSection = toolSections.filter((s) => s.scope && s.scope.role === 'chair')[0]
   ok(!!tempSection && !!researcherSection && !!acadSection, 'precondition: all three role sections are present', { temp: !!tempSection, res: !!researcherSection, acad: !!acadSection })
-  ok(!String(tempSection.text).includes('vibe_v5_record_proposition') && String(tempSection.text).includes('vibe_v5_record_progress'),
-    'the TEMP section lists only its own subset (progress + say, no library cards)', String(tempSection.text).length)
+  // THE SUBSET IS DERIVED FROM THE SEAT DECLARATION, NOT TYPED OUT. Rule 4 gives every seat its own proposition card, so the
+  // temp section DOES teach `record_proposition` now (run 31 denied it while task-15 requires "temp 能写自己的卡"), but still
+  // not method/subproblem (planning stays with the permanent seats) and not the office relay.
+  const declareNames = (PACK.tools || []).map((x) => x.name)
+  const taughtIn = (s) => [...new Set(String(s.text).split('\n').map((l) => l.trim()).filter((l) => l.startsWith('·')).flatMap((l) => l.match(/vibe_v5_[a-z0-9_]+/g) || []))].sort()
+  ok(J(taughtIn(tempSection)) === J(seatMod.seatAllowNames('temp', declareNames).sort()),
+    '★★ the TEMP section\'s bullet set EQUALS the temp seat\'s DECLARED allow set (derived from seat-faces.js: the prompt may not promise what the gate refuses, in either direction)',
+    { taught: taughtIn(tempSection).length, declared: seatMod.seatAllowNames('temp', declareNames).length })
+  ok(taughtIn(tempSection).includes('vibe_v5_record_proposition') && !taughtIn(tempSection).includes('vibe_v5_record_method') && !taughtIn(tempSection).includes('vibe_v5_record_subproblem'),
+    'the temp teaches its own card (record_proposition) and NOT the method/subproblem cards', taughtIn(tempSection).filter((n) => n.startsWith('vibe_v5_record_')))
   ok(String(tempSection.text).includes('vibe_v5_say') && !String(tempSection.text).includes('vibe_v5_message'),
     'the temp list has `say` and NOT the office-relay tool', String(tempSection.text).length)
   // The NEGATIVE role checks look for a TOOL BULLET (`· vibe_v5_x`), not for the bare name: the sections legitimately
@@ -1128,13 +1140,17 @@ try {
     'the researcher seat gets motion/poll_vote/verdict', String(researcherSection.text).length)
   ok(!bulletHas(tempSection.text, 'vibe_v5_poll_vote') && !bulletHas(tempSection.text, 'vibe_v5_poll_open') && !bulletHas(tempSection.text, 'vibe_v5_meeting'),
     '★ the temp seat\'s list carries NO meeting/voting tool (D8), matching the runtime refusal', String(tempSection.text).length)
-  // ROUND 6: lifecycle/configuration stay with the chair seat; the Lean five are research work (chair + researcher).
+  // ROUND 6 + ROUND 31: lifecycle/configuration stay with the chair seat; the Lean five belong to ALL THREE seats (rule 10.3
+  // gives Lean to every seat — run 31's deny list took it from the temp seat, which is the defect task-15 fixes).
   ok(bulletHas(acadSection.text, 'vibe_v5_start') && bulletHas(acadSection.text, 'vibe_v5_configure') && bulletHas(acadSection.text, 'vibe_v5_lean_run'),
     'the chair seat gets the lifecycle/config band AND the Lean five', String(acadSection.text).length)
   ok(bulletHas(researcherSection.text, 'vibe_v5_lean_run') && !bulletHas(researcherSection.text, 'vibe_v5_start') && !bulletHas(researcherSection.text, 'vibe_v5_configure'),
     'the researcher gets the Lean five but NOT the lifecycle/config band', String(researcherSection.text).length)
-  ok(!bulletHas(tempSection.text, 'vibe_v5_lean_run') && !bulletHas(tempSection.text, 'vibe_v5_set'),
-    'the temp seat gets neither the Lean five nor configuration', String(tempSection.text).length)
+  ok(bulletHas(tempSection.text, 'vibe_v5_lean_run') && !bulletHas(tempSection.text, 'vibe_v5_set') && !bulletHas(tempSection.text, 'vibe_v5_configure'),
+    '★★ RULE 10.3: the temp seat DOES get the Lean five (it computes like every other seat) but NOT the configuration band', String(tempSection.text).length)
+  const leanFive = declareNames.filter((n) => /^vibe_v5_lean_/.test(n))
+  ok(leanFive.length === 5 && seatMod.SEAT_IDS.every((s) => leanFive.every((n) => seatMod.seatDecision(s, n).allowed === true)),
+    '★ 反: all five Lean tools are declared for ALL THREE seats — checked against the declaration, not against a rendering', { leanFive: leanFive.length })
   ok(asTemp.includes('【本角色可用的工具｜临时成员】') && !asTemp.includes('【本角色可用的工具｜研究员】'),
     'the TEMP assembly carries its OWN marker and not another role\'s', asTemp.length)
   ok(!asResearcher.includes('【本角色可用的工具｜临时成员】') && !asAcademician.includes('【本角色可用的工具｜研究员】'),
@@ -1399,8 +1415,32 @@ try {
   const denyAll = [...faces.chair.deny, ...faces.member.deny, ...faces.temp.deny]
   ok(denyAll.length > 0 && denyAll.filter((n) => !n.startsWith('vibe_v5_')).length === 0 && denyAll.filter((n) => /^vibe_vmu_/.test(n)).length === 0,
     '★★ the deny lists contain ONLY v5r tools (vibe_v5_*) — no framework face (vibe_vmu_*) is ever denied by this pack', { deny: denyAll.length })
-  ok(faces.chair.deny.length === allDeclared.length - 40 && faces.member.deny.length === allDeclared.length - 23 && faces.temp.deny.length === allDeclared.length - 9,
-    '★★ the deny sizes are the complement of the BULLET sets (chair 1 / member 18 / temp 32 of the 40 declared)', { chair: faces.chair.deny.length, member: faces.member.deny.length, temp: faces.temp.deny.length })
+  // ★ RUN 31 / task-15 — THE SIZE PIN IS NOW DERIVED, NOT TYPED. This line used to hard-code the taught counts
+  // (`allDeclared.length - 40 / -23 / -9`), which is exactly what made the defect invisible: the number matched the prompt
+  // word-count and therefore RATIFIED a face that denied the chair its own adjudication tools. The expected size is now
+  // computed from the DECLARATION (`packs/v5r/seat-faces.js`), and the assertion additionally requires the two faces to be
+  // IDENTICAL — a count can coincide by luck, a set identity cannot. The counts themselves are still pinned, just derived:
+  // if somebody adds a row, this line reports the new numbers instead of failing on a stale literal.
+  // (`seatMod` is the declaration module imported at the top of this file: the role sections and the manifest faces are both
+  // read from it, so an assertion here cannot disagree with the mechanism it is pinning.)
+  const seatCatalogue = seatMod.seatTeachingCatalogue(allDeclared)
+  const derivedDeny = {
+    chair: seatMod.seatDenyNames('chair', allDeclared),
+    member: seatMod.seatDenyNames('member', allDeclared),
+    temp: seatMod.seatDenyNames('temp', allDeclared),
+  }
+  ok(seatCatalogue.ok === true,
+    '★★★ the SEAT DECLARATION is self-consistent: 48 declared tools ↔ 48 rows, every row cites a v5r rule with a reason, and each seat\'s bullet list EQUALS what it may call (both directions empty)',
+    { declared: seatCatalogue.declaredCount, rows: seatCatalogue.rowCount, missing: seatCatalogue.missing, extra: seatCatalogue.extra, badRows: seatCatalogue.badRows, seats: seatCatalogue.seats })
+  ok(JSON.stringify({ chair: [...faces.chair.deny], member: [...faces.member.deny], temp: [...faces.temp.deny] }) === JSON.stringify(derivedDeny),
+    '★★★ the manifest\'s deny lists ARE `declared − allow(seat)` computed from the declaration — the prompt is no longer the ACL, and the sizes are the complement of the DECLARED allow sets',
+    { sizes: { chair: derivedDeny.chair.length, member: derivedDeny.member.length, temp: derivedDeny.temp.length }, allow: { chair: seatCatalogue.seats.chair.allowCount, member: seatCatalogue.seats.member.allowCount, temp: seatCatalogue.seats.temp.allowCount } })
+  ok(faces.chair.deny.length > 0 && faces.member.deny.length > 0 && faces.temp.deny.length > 0
+    && faces.chair.deny.length === allDeclared.length - seatCatalogue.seats.chair.allowCount
+    && faces.member.deny.length === allDeclared.length - seatCatalogue.seats.member.allowCount
+    && faces.temp.deny.length === allDeclared.length - seatCatalogue.seats.temp.allowCount,
+    '★★ the deny sizes are the complement of the DECLARED allow sets (derived from seat-faces.js, never hand-typed)',
+    { chair: faces.chair.deny.length, member: faces.member.deny.length, temp: faces.temp.deny.length, allow: { chair: seatCatalogue.seats.chair.allowCount, member: seatCatalogue.seats.member.allowCount, temp: seatCatalogue.seats.temp.allowCount } })
   // every DENIED name is a DECLARED tool (a prose mention cannot narrow a face)
   const declaredNameSet = new Set((PACK.tools || []).map((t) => t.name))
   ok(denyAll.filter((n) => declaredNameSet.has(n)).length === denyAll.length,

@@ -31,6 +31,9 @@
 import { mkdtemp } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
+// ★ ROUND 31: the state vocabulary's ONE map — imported so this suite can prove the receipt publishes that map's
+// sentence rather than a second copy of it.
+import { MEETING_STATE_MEANING } from '../vibe-math-vmu/kernel/meeting.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -127,8 +130,9 @@ ok(typeof mail.closureSentence === 'string' && mail.closureSentence.length > 0 &
   '② the receipt exposes the exact generated clause inside the body, so a reader can attribute the sentence to a field', { sentence: mail.closureSentence })
 ok(mail.stateReadable === true && mail.closurePhase === 'running' && typeof mail.means === 'string' && mail.means.includes('never writes a closure it did not read'),
   '② `mail.means` states the generation rule, so the field is documented where it is read', { means: String(mail.means || '').slice(0, 180) })
-ok(first.meetingStateMeans === null && first.meetingStateMeans !== undefined,
-  '② `meetingStateMeans` is published as null for "open" — the kernel declares no meaning for that state, and the pack discloses the gap instead of filling it in', { meetingStateMeans: first.meetingStateMeans })
+ok(typeof first.meetingStateMeans === 'string' && first.meetingStateMeans.length > 0 && first.meetingStateMeans === MEETING_STATE_MEANING.open,
+  '② ★ R31: `meetingStateMeans` is the KERNEL\'s own sentence for "open". In run 29 this field was null, because MEETING_STATE_MEANING described only the primitive\'s words — a reader got a state name with no explanation. The pack still does not write its own wording: it publishes the map\'s sentence (the null-for-unknown behaviour is pinned in 2b).',
+  { meetingStateMeans: first.meetingStateMeans })
 ok(typeof first.next === 'string' && first.next.includes('closurePhase') && first.next.includes('close'),
   '② `next` agrees with the receipt: it tells the chair to close the debate when `closurePhase` is not "ended"', { next: String(first.next || '').slice(0, 200) })
 

@@ -317,6 +317,366 @@ export function createSharedCommitQueue({ resolveStore = null, clock = () => Dat
   }
 }
 
+// ── ROUND 31 / task-16 — THE TASK BOARD IS SHARED STATE, NOT ONE KERNEL'S MEMORY ──────────────────────────────
+// MEASURED, not argued: with `tasks` attached as a `mode:'journal'` projection, an office kernel that ran
+// `tasks.create()` held the row in its OWN `tasks` Map while a member sub-session (its own kernel over the same
+// `<root>/vmu/state.json`) listed 0 rows, and a third boot listed 0 rows too — the run-31 durable file has
+// `tasks: []` after a run whose office did create tasks. The v5r rules require the board to be ONE board (认领/交派
+// and the 状态板 read "who is doing what"), so a per-instance board is a rule violation, not a cache lag.
+//
+// The mechanism is the one the mailbox face already proved on the same class of defect (`kernel/mailbox.js`):
+//   · PULL before every read face (`store.read` is SYNC and reloads the fold if another instance wrote it), then
+//     MERGE the durable board into memory — never "replace": a read must not destroy state;
+//   · MERGE on write-back inside `store.patch`, so the callback sees `current` and two coexisting kernels cannot
+//     lose each other's rows (that lost update is exactly what `resume`'s state write-through would do: it writes
+//     `store.patch(key, () => snapshot)` wholesale, which is why this face is attached with `restore` but WITHOUT a
+//     `snapshot` seam — the assembly owns the key, and resume's after-hook must not clobber it);
+//   · a same-id row from two kernels is merged by `revision`, then by the later write (`createdAt`/last transition
+//     stamp), and every disagreement is REPORTED (`shared().conflicts`) — "later writer wins" with an explanation,
+//     never a silent overwrite; two kernels that minted the SAME id for DIFFERENT tasks are re-keyed so both rows
+//     survive (a re-key is reported, a dropped row is not allowed);
+//   · no store port ⇒ `durable:false` with a NAMED reason; a refused read/write is counted and named, never thrown
+//     from a read face and never quietly swallowed.
+// The board itself stays in `kernel/tasks.js` (mechanism, no store code); this seam only moves it between the face and
+// the injected store port, so `vibe-math-vmu/tools/task.js` keeps addressing `kernel.tasks` exactly as before.
+// NOTE (task-17): the transient-code retry below is a FALLBACK for Windows' atomic-rename refusal while ANOTHER
+// instance holds the store file; the store-layer mutex fix is `vibe-math-vmu/kernel/store.js`'s lane, and this
+// retry is what keeps a refused rename from silently losing a board write until that lands.
+const TRANSIENT_BOARD_WRITE_CODES = Object.freeze(['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY'])
+// NOT a `create*` factory, and the name is load-bearing: `tests/audit-vmu-services.test.mjs` reads a
+// `const x = createY(` binding as "a SERVICE was constructed here" and requires a registry row + a getter for it.
+// This seam constructs no service and exposes no `vmu.*` name — it ATTACHES the store to the already-registered
+// `vmu.tasks` face (exactly like `bindIds` binds `vmu.ids` without a create factory). Naming it `createX` would
+// either advertise a phantom service or force a registry row for something callers cannot address.
+function attachSharedBoard({ target, key = 'tasks', store = null, clock = () => Date.now(), log = () => {} } = {}) {
+  const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
+  const stampOf = (v) => { const t = Number(v); return Number.isFinite(t) ? t : null }
+  const readable = !!(store && typeof store.read === 'function')
+  const writable = !!(store && typeof store.patch === 'function')
+  const bound = readable && writable
+  const shared = {
+    key, bound, durable: false, source: bound ? 'store' : 'memory',
+    reason: bound ? null : 'no store port is bound: the kernel was constructed without { root }, so the board lives in this kernel instance only',
+    pulls: 0, pullRefused: 0, pulledRows: 0, pushes: 0, writeRefused: 0, writeRetries: 0,
+    adopted: 0, conflicts: 0, renamed: 0, lastError: null, lastPullAt: null, lastPushAt: null,
+  }
+  const failureOf = (what, why, e) => {
+    const code = (e && e.code) || 'VMU_STATE'
+    const message = String((e && e.message) || e)
+    const hint = (e && e.hint) || (what === 'read'
+      ? 'the host opens the store after construction; the board retries on the next access'
+      : 'the row stays in memory and is reported by shared().lastError; the next mutation retries the write-back')
+    return { code, message, hint, what, why }
+  }
+  // The store seeds this key with `[]`; a foreign shape is named rather than folded in as if it were a board.
+  const unwrap = (raw) => {
+    if (!raw || typeof raw !== 'object') return null
+    if (raw.mode === 'state' && raw.value && typeof raw.value === 'object') return raw.value
+    if (raw.face === key && raw.data && typeof raw.data === 'object') return raw
+    return null
+  }
+  const suffixOf = (id) => { const n = Number(String(id).replace(/^[a-z]+-/, '')); return Number.isFinite(n) ? n : 0 }
+  const lastWriteAt = (row) => {
+    let at = stampOf(row && row.createdAt)
+    if (at === null) at = 0
+    for (const step of (row && Array.isArray(row.transitions) ? row.transitions : [])) {
+      const t = stampOf(step && step.at)
+      if (t !== null && t > at) at = t
+    }
+    return at
+  }
+  // PURE fold of the durable board into this instance's board. `mine` wins nothing on its own: the durable copy is
+  // authoritative for rows that are strictly ahead, a later write wins on a tie, and every such decision is listed.
+  const mergeBoards = (stored, mine) => {
+    const report = { adopted: 0, conflicts: [], renamed: [], joined: [], changed: false }
+    if (!stored || !stored.data || !Array.isArray(stored.data.tasks)) return Object.assign({ snap: mine }, report)
+    const out = clone(mine)
+    const storedRows = new Map()
+    for (const row of stored.data.tasks) if (row && typeof row.id === 'string') storedRows.set(row.id, clone(row))
+    const mineRows = new Map()
+    for (const row of out.data.tasks) if (row && typeof row.id === 'string') mineRows.set(row.id, row)
+    // IDENTITY, not id: two kernels mint per-instance ids, so the SAME task can exist under `t-1` in this instance
+    // and `t-2` durably (this instance's row was re-keyed by an earlier write-back). Recognising it by what the task
+    // IS — every field its CREATOR set, not just the title — is what stops a second re-key from minting a THIRD id
+    // for the same row. Owner/state/revision are deliberately EXCLUDED: they change as work proceeds, and two rows
+    // that agree on all the creator-set fields are indistinguishable duplicates rather than two tasks.
+    const identityOf = (row) => JSON.stringify([
+      String(row && row.title), String(row && row.createdAt), String(row && row.objective),
+      Array.isArray(row && row.deps) ? row.deps.slice().sort() : [],
+      Array.isArray(row && row.writeScopes) ? row.writeScopes.slice().sort() : [],
+    ])
+    const storedIdByIdentity = new Map()
+    for (const [id, row] of storedRows) storedIdByIdentity.set(identityOf(row), id)
+    let top = 0
+    for (const id of storedRows.keys()) top = Math.max(top, suffixOf(id))
+    for (const id of mineRows.keys()) top = Math.max(top, suffixOf(id))
+    const prefix = (() => {
+      const id = (stored.data.tasks[0] && stored.data.tasks[0].id) || (out.data.tasks[0] && out.data.tasks[0].id) || 't-1'
+      return String(id).replace(/-\d+$/, '')
+    })()
+    const merged = new Map()
+    for (const [id, row] of storedRows) merged.set(id, row)
+    for (const [id, row] of mineRows) {
+      const current = merged.get(id)
+      if (!current) { merged.set(id, clone(row)); continue }
+      if (JSON.stringify(current) === JSON.stringify(row)) continue
+      // Two kernels minted the same id for DIFFERENT tasks: keep BOTH, re-key this instance's row, and say so.
+      if (String(current.title) !== String(row.title) || String(current.createdAt) !== String(row.createdAt)) {
+        // ... UNLESS the durable board already holds THIS task under another id: then this is not a third task, it is
+        // the same row after an earlier re-key, and minting a new id would duplicate it on every pull. Adopt the
+        // durable id (a JOINED row), keeping the later revision of the two.
+        const storedId = storedIdByIdentity.get(identityOf(row))
+        if (storedId && storedId !== id) {
+          const holder = merged.get(storedId) || null
+          const mineRev = Number(row.revision) || 0
+          const heldRev = Number(holder && holder.revision) || 0
+          merged.set(storedId, mineRev > heldRev
+            ? Object.assign(clone(row), { id: storedId })
+            : (holder ? clone(holder) : Object.assign(clone(row), { id: storedId })))
+          report.joined.push({ from: id, to: storedId })
+          continue
+        }
+        top += 1
+        const to = prefix + '-' + top
+        const renamedRow = clone(row)
+        renamedRow.id = to
+        merged.set(to, renamedRow)
+        report.renamed.push({ from: id, to })
+        continue
+      }
+      const revMine = Number(row.revision) || 0
+      const revStore = Number(current.revision) || 0
+      const mineAt = lastWriteAt(row)
+      const storeAt = lastWriteAt(current)
+      let winner = current
+      let reason = 'equal revision and equal write stamp: the durable board wins'
+      if (revMine > revStore) { winner = row; reason = 'later revision wins' }
+      else if (revMine < revStore) { winner = current; reason = 'the durable row is a later revision' }
+      else if (mineAt > storeAt) { winner = row; reason = 'equal revision: the later write wins' }
+      else if (mineAt < storeAt) { winner = current; reason = 'equal revision: the durable row was written later' }
+      merged.set(id, clone(winner))
+      if (winner === current) report.adopted += 1
+      report.conflicts.push({ id, kept: winner === row ? 'memory' : 'store', revision: Math.max(revMine, revStore), mineAt, storeAt, reason })
+    }
+    const rows = []
+    for (const id of mineRows.keys()) if (merged.has(id)) rows.push(merged.get(id))
+    for (const [id, row] of merged) if (!mineRows.has(id)) rows.push(row)
+    out.data.tasks = rows
+    // The history is an APPEND-ONLY log: union by identity so a replayed step is not written twice.
+    const history = []
+    const seen = new Set()
+    for (const step of (stored.data.history || [])) { const sig = JSON.stringify(step); if (!seen.has(sig)) { seen.add(sig); history.push(clone(step)) } }
+    for (const step of (out.data.history || [])) { const sig = JSON.stringify(step); if (!seen.has(sig)) { seen.add(sig); history.push(clone(step)) } }
+    out.data.history = history
+    // Briefs are per task: the LATER brief wins (a member may replace what another kernel wrote).
+    const briefs = new Map()
+    for (const pair of (stored.data.briefs || [])) if (Array.isArray(pair)) briefs.set(String(pair[0]), clone(pair[1]))
+    for (const pair of (out.data.briefs || [])) {
+      if (!Array.isArray(pair)) continue
+      const id = String(pair[0])
+      const mineBrief = pair[1]
+      const storedBrief = briefs.get(id)
+      if (storedBrief && JSON.stringify(storedBrief) !== JSON.stringify(mineBrief)) {
+        const a = stampOf(storedBrief && storedBrief.at)
+        const b = stampOf(mineBrief && mineBrief.at)
+        if (a !== null && b !== null && b < a) continue
+      }
+      briefs.set(id, clone(mineBrief))
+    }
+    out.data.briefs = [...briefs.entries()]
+    // The stage cursor is a position, not a counter: the snapshot taken LATER owns it. "Max" would resurrect a
+    // deliberate `rollback()`, so the snapshot stamp is the honest discriminator.
+    const storedAt = stampOf(stored.at)
+    const mineAt = stampOf(mine.at)
+    if (storedAt !== null && (mineAt === null || storedAt > mineAt)) {
+      if (typeof stored.data.stageIndex === 'number') out.data.stageIndex = stored.data.stageIndex
+      if (Array.isArray(stored.data.stages)) out.data.stages = clone(stored.data.stages)
+    }
+    out.counters = Object.assign({}, out.counters, {
+      task: Math.max(Number(stored.counters && stored.counters.task) || 0, Number(out.counters && out.counters.task) || 0, top),
+    })
+    report.changed = JSON.stringify(out) !== JSON.stringify(mine)
+    return Object.assign({ snap: out }, report)
+  }
+  const applyBoard = (snap) => {
+    if (typeof target.restore !== 'function') return false
+    const r = target.restore(snap, { replace: true })
+    return !(r && r.ok === false)
+  }
+  // A write-back that RE-KEYED this instance's row (two kernels minted the same id) must update the LIVE board too,
+  // or the next pull compares the durable `t-2` against a stale local `t-1` and mints yet another id for the same
+  // task. Only the ids are rewritten here; the row content is left exactly as this instance holds it.
+  const applyRenames = (renamed) => {
+    if (!Array.isArray(renamed) || renamed.length === 0) return
+    const snap = target.snapshot()
+    let touched = false
+    for (const row of (snap.data && Array.isArray(snap.data.tasks) ? snap.data.tasks : [])) {
+      const hit = renamed.find((r) => r && r.from === row.id && !renamed.some((o) => o && o.from === r.to))
+      if (hit) { row.id = hit.to; touched = true }
+    }
+    if (touched) applyBoard(snap)
+  }
+  let pulling = false
+  const pull = (why) => {
+    if (!bound || pulling) return
+    pulling = true
+    try {
+      shared.pulls += 1
+      const raw = store.read(key)
+      if (raw && typeof raw.then === 'function') {
+        const e = new Error('store.read returned a promise; the durable port reads synchronously')
+        e.code = 'VMU_INVALID_ARGUMENT'
+        throw e
+      }
+      const stored = unwrap(raw)
+      if (stored) {
+        const merged = mergeBoards(stored, target.snapshot())
+        if (merged.conflicts.length) {
+          shared.conflicts += merged.conflicts.length
+          try { log({ type: 'vmu/taskboard-conflict', at: clock(), key, why, conflicts: merged.conflicts.slice(0, 8) }) } catch { /* logging never breaks a read */ }
+        }
+        if (merged.renamed.length) {
+          shared.renamed += merged.renamed.length
+          try { log({ type: 'vmu/taskboard-id-collision', at: clock(), key, why, renamed: merged.renamed.slice(0, 8) }) } catch { /* logging never breaks a read */ }
+        }
+        if (merged.joined.length) shared.adopted += merged.joined.length
+        if (merged.changed) applyBoard(merged.snap)
+        shared.pulledRows += merged.adopted
+      }
+      shared.durable = true
+      shared.source = 'store'
+      shared.lastPullAt = clock()
+      shared.lastError = null
+    } catch (e) {
+      shared.pullRefused += 1
+      shared.durable = false
+      shared.lastError = failureOf('read', why, e)
+      try { log({ type: 'vmu/taskboard-read-refused', at: clock(), key, why, code: shared.lastError.code, message: shared.lastError.message }) } catch { /* logging never breaks a read */ }
+    } finally {
+      pulling = false
+    }
+  }
+  const envelopeOf = (snap) => ({
+    v: 1, mode: 'state', key,
+    seq: Array.isArray(snap.data && snap.data.history) ? snap.data.history.length : 0,
+    dropped: 0, incomplete: false, entries: [], value: snap, digest: null, wroteAt: clock(),
+  })
+  let writeChain = Promise.resolve()
+  let queued = null
+  const push = (why) => {
+    if (!writable) return Promise.resolve({ ok: true, persisted: false, durable: false, key, reason: shared.reason })
+    if (queued) { queued.why.push(why); return queued.promise }
+    const slot = { why: [why], promise: null, renamed: [], joined: [], conflicts: [] }
+    slot.promise = writeChain = writeChain.then(async () => {
+      queued = null
+      let attempt = 0
+      for (;;) {
+        try {
+          await store.patch(key, (current) => {
+            const merged = mergeBoards(unwrap(current), target.snapshot())
+            slot.renamed = merged.renamed
+            slot.joined = merged.joined
+            slot.conflicts = merged.conflicts
+            return envelopeOf(merged.snap)
+          })
+          shared.pushes += 1
+          shared.durable = true
+          shared.source = 'store'
+          shared.lastPushAt = clock()
+          shared.lastError = null
+          if (slot.conflicts.length) {
+            shared.conflicts += slot.conflicts.length
+            try { log({ type: 'vmu/taskboard-conflict', at: clock(), key, why: slot.why.join(','), conflicts: slot.conflicts.slice(0, 8) }) } catch { /* logging never breaks a write */ }
+          }
+          if (slot.renamed.length) {
+            shared.renamed += slot.renamed.length
+            try { log({ type: 'vmu/taskboard-id-collision', at: clock(), key, why: slot.why.join(','), renamed: slot.renamed.slice(0, 8) }) } catch { /* logging never breaks a write */ }
+            applyRenames(slot.renamed)
+            pull('after-rekey')
+          }
+          if (slot.joined && slot.joined.length) { shared.adopted += slot.joined.length; pull('after-join') }
+          return { ok: true, persisted: true, durable: true, key, reason: null, writtenFor: slot.why.join(',') }
+        } catch (e) {
+          const code = String((e && e.code) || '')
+          if (TRANSIENT_BOARD_WRITE_CODES.includes(code) && attempt < 2) {
+            attempt += 1
+            shared.writeRetries += 1
+            try { log({ type: 'vmu/taskboard-write-retry', at: clock(), key, code, attempt, why: slot.why.join(',') }) } catch { /* logging never breaks a write */ }
+            await new Promise((resolve) => setTimeout(resolve, 10 * attempt))
+            continue
+          }
+          shared.writeRefused += 1
+          shared.durable = false
+          shared.lastError = failureOf('write', slot.why.join(','), e)
+          try { log({ type: 'vmu/taskboard-write-refused', at: clock(), key, code: shared.lastError.code, message: shared.lastError.message, why: slot.why.join(',') }) } catch { /* logging never breaks a write */ }
+          return { ok: false, persisted: false, durable: false, key, code: shared.lastError.code, message: shared.lastError.message, hint: shared.lastError.hint }
+        }
+      }
+    }).catch((e) => {
+      queued = null
+      shared.lastError = failureOf('write', 'queued write', e)
+      return { ok: false, persisted: false, durable: false, key, code: shared.lastError.code, message: shared.lastError.message, hint: shared.lastError.hint }
+    })
+    queued = slot
+    return slot.promise
+  }
+  // `writeQueued` is read LIVE: a queued write-back is the difference between "durable" and "durable, still settling",
+  // and a caller that needs the disk to hold the row must not have to guess.
+  const view = () => Object.assign(clone(shared), { writeQueued: !!queued, storeBound: bound })
+  // The COMPACT form carried on every read/mutator receipt. It answers exactly the question a caller must not have to
+  // guess ("is this board shared, and is it durable?"), while the counters live on `status().shared`-free
+  // `tasks.sharing()`. Size is a real constraint here: `vibe_vmu_status` serializes `tasks.status()` inside its
+  // default summary, which the host caps at 8000 bytes (tests/vmu-host.test.mjs), so a full counter block on the
+  // tally would push a readable summary past the cap for a fact nobody asked twice for.
+  const fact = () => ({
+    key: shared.key, bound: shared.bound, durable: shared.durable, source: shared.source,
+    reason: shared.reason, writeQueued: !!queued,
+  })
+  // A hydration/reload seam that MERGES: the durable board is added to whatever this instance already holds, so a
+  // boot that created rows before recovery cannot lose them, and nothing is overwritten silently.
+  const adopt = (value) => {
+    try {
+      const stored = unwrap(value) || (value && value.data ? value : null)
+      if (!stored) return { ok: false, code: 'VMU_STATE', message: 'the durable "tasks" value is not a board snapshot', hint: 'the key holds no face/data pair this face can adopt' }
+      const merged = mergeBoards(stored, target.snapshot())
+      if (merged.renamed.length) shared.renamed += merged.renamed.length
+      if (merged.conflicts.length) shared.conflicts += merged.conflicts.length
+      if (merged.changed) applyBoard(merged.snap)
+      shared.durable = true
+      shared.source = 'store'
+      return { ok: true, restored: merged.changed ? ['tasks'] : [], skipped: [], merged: true, counters: { task: Number(merged.snap.counters && merged.snap.counters.task) || 0 } }
+    } catch (e) {
+      return { ok: false, code: (e && e.code) || 'VMU_STATE', message: String((e && e.message) || e) }
+    }
+  }
+  // A read receipt gets the shared fact even when it is NOT an `{ok:true}` receipt: `status()` answers with a bare
+  // tally object (`total/open/byState/...`), and "where does this board live, and is it durable?" is exactly the
+  // question a member kernel asks of it. Arrays (`list()`, `history()`, `writeScopeConflicts()`) and refusals
+  // (`{ok:false, code, message, hint}`) are returned UNTOUCHED - a refusal must stay a refusal, not gain a field.
+  // The field is the COMPACT `fact()` (see above): the counters are one `tasks.sharing()` call away.
+  const withShared = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+    if (value.ok === false) return value
+    return Object.assign({}, value, { shared: fact() })
+  }
+  const wrap = (name, mode) => {
+    const original = target[name]
+    if (typeof original !== 'function') return
+    target[name] = function sharedBoardFace(...args) {
+      pull(name)
+      const out = original.apply(target, args)
+      if (out && typeof out.then === 'function') {
+        return out.then((result) => { if (mode === 'write') push(name); return withShared(result) })
+      }
+      if (mode === 'write') push(name)
+      return withShared(out)
+    }
+  }
+  for (const name of ['list', 'status', 'stage', 'history', 'briefOf', 'writeScopeConflicts']) wrap(name, 'read')
+  for (const name of ['create', 'setDependencies', 'setPriority', 'assign', 'objectAssign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback']) wrap(name, 'write')
+  return { key, adopt, pull, push, view, unwrap, mergeBoards }
+}
+
 export function createKernel({
   host = null,
   // The institution policy for prompt-section switches; null means the framework switches nothing.
@@ -782,6 +1142,13 @@ export function createKernel({
     // (a runtime `vibe_vmu_set` must reach the next `objectAssign()`/`assign()`, not the next boot).
     settings: settingsView,
   })
+  // ROUND 31 / task-16: the board is SHARED state (see `attachSharedBoard` above). The seam wraps the face HERE,
+  // before `attachDeclaredProjections()` runs, so `resume`'s wrapper sits on top of it and both see one method.
+  const tasksShared = attachSharedBoard({ target: tasks, key: 'tasks', store, clock, log })
+  // The read-fact receipt surface: `tasks.sharing()` is the ONE place that says whether a row a caller just wrote is
+  // durable and visible to the other kernels, and WHY not when it is not. It is a read (no pull: `status()` and the
+  // mutator receipts already pulled for their own turn).
+  tasks.sharing = () => tasksShared.view()
 
   // IMPLEMENTATION PHASE, batch 1 (docs/11 搂9.8): the governance primitives (docs/08 搂2 agenda + motions),
   // the task board (docs/08 搂4 columns/WIP/swimlanes/aging) and minutes (docs/08 搂2 minutes/decrees/actions)
@@ -1083,7 +1450,17 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // ARGUMENT ARRAY, so `tasks.create([{title}])` was replayed as `create({title:undefined})` and hydrate refused
     // `VMU_INVALID_ARGUMENT`. The instance's own `replaySeam` does `fn.apply(target, entry.args)` (correct), so the
     // custom seam is DELETED rather than reimplemented.
-    tasks: () => ({ key: 'tasks', mode: 'journal', list: () => (typeof tasks.list === 'function' ? tasks.list() : []) }),
+    // ★ ROUND 31 / task-16: `tasks` moved from `mode:'journal'` to `mode:'state'` WITH A RESTORE AND WITHOUT A
+    // SNAPSHOT SEAM, and that asymmetry is the whole point. Measured defect (run 31): the journal described the
+    // office kernel's own commands and nothing else, so a member sub-session — its own kernel over the same
+    // `<root>/vmu/state.json` — listed 0 rows and the durable file held `tasks: []`. A journal is per-instance by
+    // construction; a BOARD has to be one board. Hydration now MERGES the durable board into memory
+    // (`attachSharedBoard().adopt` — a read must never destroy state, so this is not a replace), and the
+    // write-back is the assembly's own MERGE-ON-`current` push on every mutation. NO `snapshot` seam is passed on
+    // purpose: `resume`'s after-hook writes `store.patch(key, () => snapshot)` WHOLESALE (it cannot merge), which
+    // is the lost-update path this face must not have — and `flushJournals` skips non-journal keys, so nothing
+    // else can clobber the key either. The `list` seam stays for the recovery report.
+    tasks: () => ({ key: 'tasks', mode: 'state', restore: (v) => tasksShared.adopt(v), restoreReload: (v) => tasksShared.adopt(v), list: () => (typeof tasks.list === 'function' ? tasks.list() : []) }),
     // `work` NO LONGER HAS A PROJECTION ROW (Round 4 / task-25, reader-a's measured finding). `kernel/work.js` persists
     // the `work` key as a BARE ARRAY (`store.patch('work', () => list)`), not as a projection envelope
     // `{v,mode,key,seq,entries|value}` - so `hydrate()` refuses to adopt it and now NAMES it
@@ -1115,9 +1492,14 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // ROUND 4 / task-25 (reader-a's task-28): `budget` grew a PUBLIC `snapshot()/restore()` pair this round (its
     // internal formatter was renamed `viewOf`), so it is durable now instead of "hydratable but never written".
     budget: () => ({ key: 'budget', mode: 'state', snapshot: () => budget.snapshot(), restore: (v) => budget.restore(v), list: () => budget.list().items }),
-    // NAMED as NOT attachable (reader-a's review): `mailbox.js` is SELF-PERSISTING (it takes the store at construction
-    // and owns its `mailbox` key) so it needs no projection row; `meeting`/`ballot` are PER-SESSION factories with no
-    // single live instance owned here (wrapping "the" one would silently drop the others) - their owners decide.
+    // NAMED as NOT attachable (reader-a's review): `mailbox.js` is SELF-PERSISTING and needs no projection row — it
+    // takes the store at construction, owns the `mailbox` key, PULLS on every read face and WRITES THROUGH (merge, not
+    // replace) on every mutation. ★ task-11 / run 31: that sentence used to be half false — the face took the store but
+    // no assembly code ever called `persist()`/`restore()`, so a member sub-session (its OWN kernel over the same root)
+    // read an empty mailbox while the office session read `count:2`. The pull/write-through now lives in the face
+    // itself (`tests/vmu-run31-mailbox.test.mjs` is the proof); `kernel/meeting.js`/`ballot` stay out of this table for
+    // the older reason: they are PER-SESSION factories with no single live instance owned here (wrapping "the" one
+    // would silently drop the others) - their owners decide.
     // `members` is a SINGLETON that can be null (no declared slots): it stays in the table and the attach loop reports
     // it as `notAttached` with the reason, which is the named mechanism - never a hard-wired null seam.
   }
@@ -2626,7 +3008,21 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       const ov = memberToolOverrides.get(id)
       let allow = null
       if (ov) { if (ov.all) { deny.add('*'); sources.push('turn') } else { if (Array.isArray(ov.allow)) { allow = ov.allow.slice(); sources.push('turn') }; for (const n of ov.deny) { deny.add(n); sources.push('turn') } } }
-      return { ok: true, member: id, slot, all: deny.has('*'), deny: [...deny].filter((n) => n !== '*'), allow, source: sources.length ? sources : null }
+      // ★ ROUND 31 — "deny 只能收窄, never the other way round". An allow list applied ON TOP of a seat deny used to
+      // silently re-grant the denied names, because a consumer that sees an allow list filters by membership and stops
+      // asking deny (host.js wire filter: `.filter(t => resolved.allow.includes(...))`; kernel/memberface.js#faceGate: the
+      // same order, documented "as on the wire"). That is how a start-time `allow: MEMBER_SAFE_TOOLS` gave the member
+      // seat `vibe_v5_message` while the seat declares it office-only (measured, run 31) — the allow list was a GRANT.
+      // The fix belongs here, at the single resolver both consumers read: an override narrows, so its allow list is
+      // intersected with the deny the seat itself declares. A turn override can therefore never widen a face.
+      const narrowedByDeny = Array.isArray(allow) ? allow.filter((n) => deny.has(n)) : []
+      if (narrowedByDeny.length > 0 && !deny.has('*')) allow = allow.filter((n) => !deny.has(n))
+      return { ok: true, member: id, slot, all: deny.has('*'), deny: [...deny].filter((n) => n !== '*'), allow, source: sources.length ? sources : null,
+        allowNarrowedByDeny: narrowedByDeny,
+        allowNarrowedMeans: Array.isArray(allow) === false && narrowedByDeny.length === 0 ? null
+          : (narrowedByDeny.length === 0
+            ? 'the override allow list already excludes every name this seat denies, so nothing was narrowed'
+            : 'the override allow list named ' + JSON.stringify(narrowedByDeny) + ' which the SEAT denies: an override can only take tools away, so those names were removed from `allow` instead of being granted back') }
     },
     /**
      * ★ PHASE 12 / D7: THE CALL-TIME GATE. A hidden tool is not by itself a refused call — the wire says what the model

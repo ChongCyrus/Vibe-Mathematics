@@ -485,8 +485,25 @@ function toolHelp(args = {}, exec = {}) {
   const caller = exec && exec.agent ? exec.agent : null
   const agent = caller && typeof caller.id === 'string' && !caller.id.startsWith('session-') ? caller : null
   const view = kernel.toolsView({ member: str(args.member), agent })
-  return Object.assign({}, view, { tool: 'vibe_v5_tool_help',
-    note: 'thin forwarder: the kernel\'s toolsView reading (the member\'s VISIBLE set from the live provider), not the pack declaration; purpose:null means the host registered no description for that name' })
+  // ★★★ TASK-12 SUPPLEMENT (Lead, run 31 follow-up): THE SAME RUN COULD GIVE TWO ANSWERS TO "CAN I SEE MY OWN TOOLS".
+  // `vibe_vmu_tools` (tools/member-tools.js) now names the VOICE and the READING SCOPE on every answer — `voice`,
+  // `readingScope`, `callerIsThisMember`, `memberSession` + their means — while this forwarder returned the raw
+  // `toolsView` and none of them, so a member comparing the two receipts saw two口径 for one question and could only
+  // conclude one of them was broken. The fields are FORWARDED as-is when the kernel reading carries them, and `null`
+  // with a sentence in `note` when it does not — they are deliberately NOT recomputed here: a second implementation is
+  // exactly what this thin forwarder exists to avoid.
+  const SCOPED_FIELDS = ['voice', 'readingScope', 'callerIsThisMember', 'memberSession', 'memberSessionMeans', 'callerMeans']
+  const forwarded = {}
+  const absentFields = []
+  for (const field of SCOPED_FIELDS) {
+    const present = view && Object.prototype.hasOwnProperty.call(view, field) && view[field] !== undefined
+    forwarded[field] = present ? view[field] : null
+    if (!present) absentFields.push(field)
+  }
+  return Object.assign({}, view, forwarded, { tool: 'vibe_v5_tool_help',
+    note: 'thin forwarder: the kernel\'s toolsView reading (the member\'s VISIBLE set from the live provider), not the pack declaration; purpose:null means the host registered no description for that name'
+      + (absentFields.length === 0 ? ''
+        : '；' + absentFields.join('/') + ' 在本侧读数为 null：该读数在这一侧不存在（toolsView 没有带它），本面不自行推算——要读声音/视角就读 vibe_vmu_tools 的同名字段') })
 }
 
 /**
@@ -1251,7 +1268,7 @@ function toolVerifiedPromote(args = {}, { kernel } = {}) {
  * ruling is not a ruling), WHETHER the fidelity question was answered before a number is announced (④), and the
  * operator's receipt (`enforced`). It is an EXPLICIT act: nothing is hooked onto meetings.close.
  */
-function toolVerdictFinal(args = {}, { kernel } = {}) {
+async function toolVerdictFinal(args = {}, { kernel } = {}) {
   if (!has(args.meeting)) {
     throw refuse('VMU_INVALID_ARGUMENT', 'the final ruling needs the meeting it was taken in',
       'pass meeting:"<the id vibe_v5_meeting returned>" — the ruling is signed by that meeting\'s chair')
@@ -1276,10 +1293,23 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
       'pass proposition_id:"<records id of the proposition card>" — verdicts of different propositions are never mixed')
   }
   const propositionId = str(args.proposition_id)
-  const verdicts = Array.isArray(args.verdicts) ? args.verdicts : null
-  if (!verdicts || verdicts.length === 0) {
+  // ★★★ TASK-12 / RUN 31 — THE SUBMISSIONS ARE COLLECTED HERE, AND THE CHAIR NO LONGER HAS TO TYPE THEM.
+  // Before this, `verdicts` was REQUIRED, so the only way to produce a ruling was for the chair to write every
+  // member's number itself — and `coverage.complete:true` then measured the roster, not a submission (run 31: the
+  // receipt said complete while no member had submitted anything). The members now file their own rulings with
+  // `vibe_v5_verdict { meeting, proposition_id, verdict, reason }`, and this face READS THEM BACK from the library.
+  // `verdicts` stays available (a member with no card, a number the chair must record) — but an explicit empty array
+  // is still refused, because "I passed none" and "I passed an empty set" are different mistakes.
+  const filed = await rulingSubmissionsOf(kernel, { meeting, proposition: propositionId })
+  const typed = Array.isArray(args.verdicts) ? args.verdicts : null
+  if (typed && typed.length === 0) {
     throw refuse('VMU_INVALID_ARGUMENT', 'the final ruling needs the members\' verdicts — an empty set has no value',
-      'pass verdicts:[{member,p,reason}] (p is a boolean probability in [0,1]); the kernel aggregates: all agree ⇒ that value, otherwise the arithmetic mean')
+      'omit verdicts to adopt every ruling the members filed with vibe_v5_verdict { meeting, proposition_id, verdict, reason, member }, or pass verdicts:[{member,p,reason}] explicitly')
+  }
+  const verdicts = typed || filed.rows.map((r) => ({ member: r.member, p: r.verdict, reason: r.reason }))
+  if (verdicts.length === 0) {
+    throw refuse('VMU_RULING_NO_SUBMISSIONS', 'no member has filed a final ruling on ' + propositionId + (filed.readable ? '' : ' and the ledger could not be read (' + String(filed.why) + ')') + ', and no verdicts were passed, so there is nothing to aggregate',
+      'ask the members who debated (vibe_v5_verdict_ask { meeting, proposition_id }) — each answers with vibe_v5_verdict { meeting, proposition_id, verdict, reason, member }, and this face then collects them by itself')
   }
   // ★ THE RULE FIRST SENTENCE, ENFORCED: 「框架请各个辩论的各个成员给出最终裁决」 — so a ruling that silently
   // averages only the members the chair happened to collect is refused BY NAME, listing who is missing. The expected
@@ -1296,6 +1326,32 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
   if (partial && missing.length > 0 && !has(args.why)) {
     throw refuse('VMU_INVALID_ARGUMENT', 'a partial ruling must say why (the missing verdicts are ' + missing.join('、') + ')',
       'pass why:"<why the remaining members have no verdict in this number>" — a partial number without a reason reads like a full one')
+  }
+  // ★★★ TASK-12 — PER-ROW ATTRIBUTION: for every number in the tally, where it CAME FROM. A filed ruling is the
+  // member's own act; a typed row is the chair's transcription. The receipt has to say which is which, because "the
+  // chair typed 1 for res-01" and "res-01 filed 1" are different facts that used to look identical on this receipt.
+  const submittedByMember = new Map(filed.rows.map((r) => [r.member, r]))
+  const contradictions = []
+  const attribution = verdicts.map((row) => {
+    const m = row && has(row.member) ? str(row.member) : ''
+    const p = row && row.p !== undefined && row.p !== null ? Number(row.p) : null
+    const sub = submittedByMember.get(m) || null
+    if (sub && p !== null && Number(sub.verdict) !== p) {
+      contradictions.push({ member: m, typed: p, submitted: Number(sub.verdict), submission: { id: sub.id, path: sub.path, at: sub.at } })
+    }
+    return { member: m, verdict: p, source: sub ? 'submission' : 'chair-typed',
+      submission: sub ? { id: sub.id, path: sub.path, at: sub.at } : null,
+      at: sub ? sub.at : null,
+      reason: row && row.reason !== undefined && row.reason !== null ? String(row.reason) : null }
+  })
+  // A CHAIR MAY NOT REWRITE A MEMBER'S OWN RULING. Before this channel the chair typed everyone's number and nothing
+  // compared the two; now that a filed ruling exists, typing a different number is not a correction, it is an
+  // overwrite — refused by NAME, with both numbers, so the choice goes back to the member.
+  if (contradictions.length > 0) {
+    throw refuse('VMU_RULING_CONTRADICTS_SUBMISSION',
+      'the chair typed a different number for ' + contradictions.map((c) => '"' + c.member + '"').join('、') + ' than that member filed itself ('
+        + contradictions.map((c) => String(c.typed) + ' typed vs ' + String(c.submitted) + ' filed').join('; ') + ') — a filed ruling is the member\'s own act',
+      'drop that member\'s typed row and let the filed ruling stand (omit `verdicts` entirely to adopt every filed ruling); if the filed number is wrong, the member says so and the chair rules on the set the receipts show')
   }
   const records = kernel.records || null
   const cardRow = rowOrNull(records, propositionId)
@@ -1349,6 +1405,33 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
   // empty list there means "nothing to send", not "the delivery failed".
   const notified = delivery.attempted === true && delivery.ok === true ? [owner] : []
   const deliveryContradiction = selfAddressed && (delivery.attempted === true || delivery.ok === false)
+  // ★★★ TASK-12 / F4 — "notified" NEXT TO `delivery.result {delivered:0, queued:1}` READS AS "RECEIVED", AND IT IS NOT.
+  // The send port accepts a message into the holder's INBOX and reports `delivered:0, queued:1`; nothing has been
+  // PUSHED into a live turn and the holder has not read anything. A reader of this receipt could not tell that apart
+  // from "the owner has seen it" — the same class of reading defect as run 30's `satisfiedBy:false` beside `ok:true`.
+  // So the pair now carries its own disambiguator: `notificationState` names what actually happened, and the sentence
+  // says "there is a copy waiting in that mailbox", never "the owner was told".
+  const deliveryResult = delivery && delivery.result && typeof delivery.result === 'object' ? delivery.result : null
+  const deliveredCount = deliveryResult && Number.isFinite(Number(deliveryResult.delivered)) ? Number(deliveryResult.delivered) : null
+  const queuedCount = deliveryResult && Number.isFinite(Number(deliveryResult.queued)) ? Number(deliveryResult.queued) : null
+  const notificationState = selfAddressed ? 'self-addressed'
+    : delivery.attempted !== true ? 'not-attempted'
+      : delivery.ok !== true ? 'failed'
+        : (deliveredCount !== null && deliveredCount > 0 ? 'delivered'
+          : (queuedCount !== null && queuedCount > 0 ? 'queued' : 'accepted'))
+  const notificationMeans = notificationState === 'delivered'
+    ? 'the notice was PUSHED into ' + owner + '\'s live turn (the send port reported delivered=' + String(deliveredCount) + ') — that is the only state in which "the owner was told" is literally true'
+    : notificationState === 'queued'
+      ? 'the notice is IN ' + owner + '\'s INBOX but the owner has NOT read it: the send port queued it (delivered=0, queued=' + String(queuedCount) + '). `notified` therefore means "a copy is waiting in that mailbox", NOT "the owner has seen it" — they read it on their next turn'
+      : notificationState === 'self-addressed'
+        ? 'no mailbox copy was made: the owner IS the chair who signed, and a message may not be addressed to its own sender — the ruling is already on this receipt'
+        : notificationState === 'failed'
+          ? 'the send port REFUSED the message (see delivery.code): no copy exists in that mailbox and the owner was NOT told'
+          : notificationState === 'accepted'
+            ? 'the send port accepted the message but reported no delivered/queued counts, so whether it was pushed or is waiting cannot be told from this receipt (delivery.result is absent or partial)'
+            : 'no send port was bound, so no mailbox copy exists and the owner was not told'
+  const notification = { state: notificationState, recipient: owner, delivered: deliveredCount, queued: queuedCount,
+    inboxCopy: notified.length > 0, means: notificationMeans }
   // ★ LIVE RUN 7 (agent feedback item d): 「表决人数下限 = min(用户设置, 院士+常驻研究员)」 had NO landing point on this
   // receipt — the agent could read `n:2` and `mode` but never the floor the ruling was supposed to satisfy. The kernel
   // face already computes it (`meetings.quorum()` → the same `quorumOf` the close rail enforces), so it is READ here
@@ -1385,15 +1468,26 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
   // `debate_ruling` row, and the office reported "the framework said change it, but not with what". The rule
   // (「并通知命题卡持有者改卡」) makes the notice the framework's job and the edit the holder's; what was missing is the
   // one call that performs it, named with the values THIS ruling produced.
+  // ★ TASK-12: the proposition id IS the card id whether the card lives on the records track (run 30's shape) or in a
+  // member's library (a real file). Asking only in the records case made the library branch answer "no proposition id
+  // was given" for a card that plainly exists on disk.
+  const cardPath = await libraryCardPathOf(kernel, propositionId)
   const correction = {
     needed: true,
     recipient: owner,
     tool: 'vibe_v5_record_proposition',
-    cardId: cardRow ? propositionId : null,
+    cardId: (cardRow || cardPath.path) ? propositionId : null,
     onRecord: cardRow !== null,
+    // ★ TASK-12: WHERE the card is. "The framework said change it, but not with what" was run 30's finding (the values
+    // are in `call`); "…and not where" is the same defect one step on. A library card has a real file; a records row
+    // has none, and saying so is better than naming a path that does not exist.
+    path: cardPath.path,
+    pathMeans: cardPath.path || cardPath.why,
     call: cardRow
       ? 'vibe_v5_record_proposition { id: "' + propositionId + '", p: ' + String(ruled.value) + ', debate_ruling: { value: ' + String(ruled.value) + ', mode: "' + String(ruled.mode) + '", n: ' + String(ruled.n) + ', decided: ' + String(ruled.decided === true) + ', at: "<ISO time>", meeting: "' + str(meeting) + '", by: "' + chair + '" } }'
-      : 'this ruling has NO card to correct (the object was not on the records track): record the proposition first with vibe_v5_record_proposition { track: "propositions", statement, value, motive, p: ' + String(ruled.value) + ' } and then apply the ruling with the same call + debate_ruling',
+      : (cardPath.path
+        ? 'edit the card FILE at ' + cardPath.path + ' and set its probability to p = ' + String(ruled.value) + ' (this proposition is a library card, not a records row: no records face owns it, so the edit is a file edit by its holder)'
+        : 'this ruling has NO card to correct (the object was not on the records track): record the proposition first with vibe_v5_record_proposition { track: "propositions", statement, value, motive, p: ' + String(ruled.value) + ' } and then apply the ruling with the same call + debate_ruling'),
     means: 'the KERNEL notice tells the owner to correct the card; this field names the call that does it and the values this ruling produced, so "who changes the card, with what" is answerable from the receipt instead of inferred. This face does not write the card: the rule makes the notice the FRAMEWORK act and the edit the HOLDER act (and a card write here would be a second writer of the same row)',
   }
   return {
@@ -1408,19 +1502,53 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
     // (`cast`/`votesCast`) and the reading was reported missing. It is not missing - it is another mechanism. The
     // ruling answers 'what is the probability over this proposition', the closure vote answers 'did every member
     // judge the question solved'. Naming the neighbour is cheaper than letting two receipts look contradictory.
-    closureReading: 'NOT on this receipt: cast/votesCast are the CLOSURE vote and live on `vibe_vmu_meeting { action: "status" }` → closureVote (and on the turn seam receipt built by kernel/turn/index.js). floor.minVotes here is the vote floor that closing meeting also enforces',
+    // ★★★ TASK-12 / F3 — THIS POINTER WAS WRONG, AND A WRONG POINTER IS WORSE THAN NONE. It sent the reader to
+    // `vibe_vmu_meeting { action: "status" }` → `closureVote`, and that receipt carries NO such key: a meeting status
+    // answers the meeting OBJECT (state/roster/chair), while the closing tally is read from
+    // `vibe_vmu_status { detail: "closure" }` (host face: `closureVote` + `counts`), from the closing receipt
+    // `vibe_vmu_meeting { action: "close" }`, and from the turn status receipt. Verified against those three faces,
+    // not against the doc.
+    closureReading: 'NOT on this receipt: cast/votesCast are the CLOSURE vote and live on `vibe_vmu_status { detail: "closure" }` → closureVote (the closing receipt `vibe_vmu_meeting { action: "close" }` and the turn status receipt also carry it). `vibe_vmu_meeting { action: "status" }` does NOT — it answers the meeting object (state/roster/chair), not the quorum tally. floor.minVotes here is the vote floor that closing meeting also enforces',
     proposition: ruled.proposition, value: ruled.value, valueSource: ruled.valueSource,
     mode: ruled.mode, exact: ruled.exact, rounded: ruled.rounded, decided: ruled.decided,
     enforceable: ruled.enforceable, estimate: ruled.estimate, n: ruled.n, perMember: ruled.perMember,
     spread: ruled.spread, owner, notified, delivery,
-    coverage: { debated: debated.members, debatedSource: debated.source, provided, missing, partial,
-      partialWhy: partial ? (has(args.why) ? str(args.why) : null) : null, complete: missing.length === 0 },
-    // the reading that keeps an empty `notified` from being read as a delivery failure (see R21 above)
+    // ★ TASK-12 / F4: the state of the notice (see the block above). `notified` stays the list of mailboxes that hold a
+    // copy; `notification.state` says whether that copy was pushed into a turn or is only waiting, so the pair cannot
+    // be read as "the owner has seen it".
+    notification,
+    // ★ TASK-12: WHERE EACH NUMBER CAME FROM — one row per member in the tally (submission vs chair-typed), so "who
+    // filed it" is answerable per member instead of being inferred from `coverage.complete`.
+    attribution,
+    attributionMeans: 'one row per number in the tally: source:"submission" means that member filed it itself (the row names the card and its path); source:"chair-typed" means the chair wrote it because no card was filed; `coverage.missing` names the members who debated and appear in NEITHER',
+    // ★ TASK-12: the filing ledger this ruling was collected from — readable or not, and why.
+    submissions: { readable: filed.readable === true, why: filed.readable === true ? null : filed.why,
+      count: filed.rows.length, cards: filed.cards, duplicates: filed.duplicates,
+      rows: filed.rows.map((r) => ({ member: r.member, verdict: r.verdict, reason: r.reason, at: r.at, id: r.id, path: r.path, counted: provided.includes(r.member) })),
+      means: filed.readable === true
+        ? 'the rulings were read back from the library on disk (each member files its own card with vibe_v5_verdict { meeting, proposition_id, verdict, reason }); counted:true marks the ones this tally actually used'
+        : 'the filing ledger could not be read here, so NOTHING was collected from it: ' + String(filed.why) },
+    coverage: { debated: debated.members, debatedSource: debated.source, provided,
+      submitted: filed.rows.map((r) => r.member),
+      submittedCount: filed.rows.length,
+      adoptedFromSubmissions: attribution.filter((a) => a.source === 'submission').length,
+      typed: attribution.filter((a) => a.source === 'chair-typed').map((a) => a.member),
+      typedCount: attribution.filter((a) => a.source === 'chair-typed').length,
+      outsideDebate: filed.rows.filter((r) => !debated.members.includes(r.member)).map((r) => ({ member: r.member, verdict: r.verdict, id: r.id })),
+      missing,
+      missingMeans: missing.length === 0
+        ? 'every member the debate recorded is in this tally'
+        : 'these members debated and appear in NEITHER the filed rulings nor the typed verdicts: ' + missing.join('、') + ' — the tally is not the whole debate, which is exactly why coverage.partial needs a reason',
+      partial,
+      partialWhy: partial ? (has(args.why) ? str(args.why) : null) : null,
+      complete: missing.length === 0 },
+    // the reading that keeps an empty `notified` from being read as a delivery failure (see R21 above), and — F4 — that
+    // keeps a NON-empty one from being read as "the owner has seen it"
     notifiedMeans: selfAddressed
       ? 'no mailbox copy was made: the card owner is the chair who signed the ruling, so the ruling IS this receipt (a message may not be addressed to its own sender). An empty notified here means "nothing to send", not "the owner was not told" — see delivery.selfAddressed'
       : (notified.length
-        ? 'the card owner received a mailbox copy of the notice (notified lists the mailboxes that were written)'
-        : 'NO mailbox copy was written: delivery reported ok=' + String(delivery.ok) + ' — the number is on the record and the receipt says so, but the owner was not told (see delivery.code)'),
+        ? 'a copy of the notice is IN the card owner\'s mailbox — but "in the mailbox" is not "read": ' + notificationMeans
+        : 'NO mailbox copy was written: delivery reported ok=' + String(delivery.ok) + ' — the number is on the record and the receipt says so, but the owner was not told (see delivery.code); ' + notificationMeans),
     notice: ruled.notice && ruled.notice.text ? ruled.notice.text : null,
     fidelity: { consulted: pGate.applicable === true, resolved: pGate.resolved === true,
       required: pGate.required === true, answered: !!answered,
@@ -1431,7 +1559,10 @@ function toolVerdictFinal(args = {}, { kernel } = {}) {
     note: selfAddressed
       ? 'the ruling is on the record and the card owner (' + owner + ') is the chair who signed it, so the notice IS this receipt: a message may not be addressed to its own sender, no mailbox copy was made, and `notified` is empty for that reason (see `notifiedMeans` and `delivery.selfAddressed`)'
       : (notified.length
-        ? 'the ruling is on the record and the card owner (' + owner + ') was told through the mailbox face'
+        ? 'the ruling is on the record and the card owner (' + owner + ') has a copy waiting in their mailbox face — '
+          + (notificationState === 'queued'
+            ? 'QUEUED, not read: the owner picks it up on their next turn (`notified` lists mailboxes, it does not claim the owner has seen it)'
+            : 'state ' + notificationState + ' (see `notification`)')
         : '★ the ruling IS on the record but the card owner was NOT told: delivery reported ok=' + String(delivery.ok)
           + ' — the number is not hidden, the notice is simply missing (see `delivery`)'),
   }
@@ -1747,9 +1878,14 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
       : proposition.kind === 'file-ref'
         ? '（辩论对象是一个文件引用，本面**没有读取文件内容**（fileChecked:false）——裁决的对象以这条引用为准。）'
         : '（★ 命题 "' + propositionId + '" **尚未在命题库登记**：本面无法区分"规则允许的一句话命题"与"笔误"，因此照发并在此写明——裁决的对象仅为这条字符串，登记卡后重问才能对上命题库。）'
+  // ★★★ TASK-12 / RUN 31: THE MAIL USED TO ASK FOR A RULING AND NAME NO CALL THAT COULD DELIVER IT. Measured: the
+  // member answered with `vibe_v5_verdict { target: "p-r31" }`, got `VMU_NO_SUCH_OBJECT "no LIVE ballot with id p-r31"`,
+  // and concluded 「I cannot vote without a ballot」 — it was asked for something the tool face then refused. The mail is
+  // the member's instruction sheet, so it now names the exact call AND the exact shape (a filed ruling, not a ballot).
   const text = '请你作为本次辩论的参与者，就命题 ' + propositionId + ' 给出最终裁决：布尔概率（[0,1]）+ 理由。'
     + (propositionClause === null ? '' : propositionClause)
-    + '（' + closure.sentence + '收齐全部裁决后由主席用 vibe_v5_verdict_final 汇总：全部一致为 1 或 0 则取该值，否则取算术平均，并通知命题卡持有者。）'
+    + '（回答方式：调用 vibe_v5_verdict { meeting: "' + str(meeting) + '", proposition_id: "' + propositionId + '", verdict: <[0,1] 的数>, reason: "<理由>", member: "<你自己>" } —— 这是**你自己的裁决**，会落成你名下的一张卡并进入汇总；不要传 target（那是票箱，票箱只对"待核验对象"开放，命题卡不是票箱）。）'
+    + '（' + closure.sentence + '收齐全部裁决后由主席用 vibe_v5_verdict_final { meeting: "' + str(meeting) + '", proposition_id: "' + propositionId + '" } 汇总：全部一致为 1 或 0 则取该值，否则取算术平均，并通知命题卡持有者。）'
   const delivered = []
   const failed = []
   // ★★ ROUND 19: THE MAILBOX IS A BAG OF BOXES, NOT AN ADDRESS BOOK — it will happily accept a message for an id that
@@ -1864,10 +2000,18 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
     partialAskMeans: partialAsk
       ? 'the ask reached ' + delivered.length + ' of ' + asked.length + ' member(s); the rest are named in `failed` — they were NOT asked, so their silence is not a refusal to rule'
       : 'every member the framework meant to ask was reached',
+    // ★★★ TASK-12 / RUN 31: the receipt must name BOTH halves of the channel, because only one of them existed before.
+    // `memberCall` is the exact call the mail teaches (so the receipt and the mail cannot diverge the way run 30 ④
+    // measured on the proposition provenance).
+    memberCall: 'vibe_v5_verdict { meeting, proposition_id, verdict, reason, member }',
+    memberCallMeans: 'each asked member files ITS OWN final ruling with this call (no `target`: the ballot face is for LIVE ballots, and a proposition card is not one). The filing is a card under Members/<member>/Propos/, so it survives the member\'s session and the chair reads it back from disk',
     how: 'vibe_v5_verdict_final',
+    // ★ TASK-12: `how` stays the TOOL NAME (a caller reads it as a name — run 31's defect was that nobody could name a
+    // call at all), and the SHAPE lives next to it instead of inside it.
+    howMeans: 'the chair rules with vibe_v5_verdict_final { meeting, proposition_id } and OMITS `verdicts`: it adopts the rulings the members filed, and each row of `attribution` names the submission a number came from. Pass verdicts:[{member,p,reason}] only for a member who filed nothing',
     means: 'the ask is on the members record now; the RULING is a separate, explicit act by the chair (asking is not ruling) — '
       + 'and this pack keeps no hook on meetings.close, so a closed debate does not silently become a ruling',
-    next: 'collect each member {p, reason}, then call vibe_v5_verdict_final { meeting, proposition_id, verdicts } — it refuses when a member who debated has no verdict (pass partial:true + why to rule on a partial set explicitly). If `closurePhase` is not "ended" the mail already told the members what `meetingState` says, so close the debate first (vibe_vmu_meeting { action:"close", id }) and ask again — "the debate ended" is then a fact the ask read instead of a sentence it wrote',
+    next: 'wait for the members to file their own rulings (vibe_v5_verdict { meeting, proposition_id, verdict, reason, member }), then call vibe_v5_verdict_final { meeting, proposition_id } with NO `verdicts`: it collects every filed ruling, attributes each number to its submission, and names the members who debated but filed nothing. Pass `verdicts:[{member,p,reason}]` only for a member who has no card (a typed number that contradicts a filed ruling is refused by name). If `closurePhase` is not "ended" the mail already told the members what `meetingState` says, so close the debate first (vibe_vmu_meeting { action:"close", id }) and ask again — "the debate ended" is then a fact the ask read instead of a sentence it wrote',
     enforced: enforcedOf([]), enforcedScope: ENFORCED_SCOPE,
     note: 'the framework asked; it did not decide. A member with no verdict cannot be averaged in.',
   }
@@ -2316,16 +2460,211 @@ function toolPollClose(args = {}, { kernel } = {}) {
   return { ok: true, tool: 'vibe_v5_poll_close', ballotId: str(args.ballot_id), result: r && (r.outcome !== undefined ? r.outcome : r.result), tally: r && r.tally, receipt: r }
 }
 
-/** ★ `vibe_v5_verdict` — a boolean verdict on the object under verification ([0,1]: 1 true, 0 false, between = an
- * UNCERTAIN probability). The vmu verification ballot is a LIVE ballot (`kernel.liveBallot(id)`), so this resolves
- * `target` through it; no such live ballot is a NAMED refusal rather than an invented ballot. */
-function toolVerdict(args = {}, { kernel } = {}) {
+// ── ★★★ TASK-12 / RUN 31: THE CHANNEL A DEBATING MEMBER CAN ACTUALLY REACH ───────────────────────────────────────
+// THE MEASUREMENT (the institute's own run-31 transcript, member session 6e2e2e81, tool call seq 84): `res-01` was
+// asked by `vibe_v5_verdict_ask` to give its final ruling on `p-r31`, answered by calling `vibe_v5_verdict
+// { member:"res-01", target:"p-r31", verdict:1, reason }` and got `VMU_NO_SUCH_OBJECT "no LIVE ballot with id p-r31"` —
+// a TRUE refusal (a ballot verdict targets a LIVE ballot) that left the member with NO call to make. It wrote the
+// ruling into a progress body instead; the chair then typed everyone's numbers into `vibe_v5_verdict_final.verdicts`,
+// and `coverage.complete:true` counted the ROSTER rather than a submission. The rule being implemented is
+// 「请各个辩论的各个成员给出最终裁决（布尔概率+理由）」 — so a member must be able to SAY its own ruling.
+//
+// WHERE THE SUBMISSION IS FILED, AND WHY THERE. A member's turn can run in its OWN kernel instance (activation
+// delivery; measured in run 31 as a separate member session), so the submission must cross that boundary. In this
+// kernel `records`/`chat`/`panel`/`notify` are MEMORY-only, and the mailbox snapshot is a whole-file replace (two
+// kernels persisting at once would drop each other's rows). The one surface that is BOTH on disk and safe for
+// concurrent writers is the member's OWN library directory (`<root>/Members/<member>/Propos/`): each member writes
+// only inside its own folder and the chair rebuilds the index from disk. The tally never parses prose — the payload
+// rides in the card body as ONE `VMU-RULING {json}` line, and the human sentence stays above it.
+const RULING_STATUS = 'ruling'
+const RULING_MARK = 'VMU-RULING '
+const RULING_CHANNEL = 'ruling'
+const rulingSlugOf = (s) => String(s === undefined || s === null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item'
+const rulingIdOf = (a) => 'ruling-' + [a.meeting, a.proposition, a.member].map(rulingSlugOf).join('-')
+const rulingTitleOf = (a) => 'RULING ' + [a.meeting, a.proposition, a.member].map((x) => String(x)).join(' | ')
+/** The library face, or null. A kernel assembled without a durable root has no library at all — that is a REFUSAL on
+ *  the submit path, never a silent "filed" (a ruling nobody can read back would be the fake coverage this replaces). */
+function rulingLibraryOf(kernel) {
+  const lib = kernel && kernel.library
+  if (!lib || typeof lib.append !== 'function' || typeof lib.list !== 'function' || typeof lib.expand !== 'function') return null
+  return lib
+}
+/** The machine payload of a ruling card: one `VMU-RULING {…}` line in the body, nothing else is parsed. */
+function rulingPayloadOf(body) {
+  const lines = String(body === undefined || body === null ? '' : body).split('\n')
+  for (const line of lines) {
+    const t = line.trim()
+    if (t.indexOf(RULING_MARK) !== 0) continue
+    try {
+      const p = JSON.parse(t.slice(RULING_MARK.length))
+      return p && typeof p === 'object' ? p : null
+    } catch { return null }
+  }
+  return null
+}
+/** EVERY ruling filed for ONE (meeting, proposition), read back from the library on disk — the chair's read side.
+ *  The rows are a fact on disk, never a parameter: that is the difference between "the members said it" and "the
+ *  chair typed it". A second card for the same member with a DIFFERENT value is reported as a duplicate, never
+ *  silently collapsed. */
+async function rulingSubmissionsOf(kernel, { meeting, proposition }) {
+  const library = rulingLibraryOf(kernel)
+  if (!library) {
+    return { readable: false, why: 'this kernel has no library face (it was assembled without a durable root), so no filed ruling can be read back', rows: [], cards: 0, duplicates: [] }
+  }
+  let heads = []
+  try { heads = await library.list({ kind: 'proposition' }) } catch (e) {
+    return { readable: false, why: 'the library head list could not be read: ' + String((e && e.message) || e), rows: [], cards: 0, duplicates: [] }
+  }
+  const cards = (Array.isArray(heads) ? heads : []).filter((h) => h && String(h.status || '') === RULING_STATUS)
+  const rows = []
+  for (const h of cards) {
+    let body = null
+    let path = null
+    try { const ex = await library.expand(h.id); body = ex && ex.body; path = ex && ex.path } catch { continue }
+    const payload = rulingPayloadOf(body)
+    if (!payload) continue
+    if (String(payload.meeting || '') !== String(meeting) || String(payload.proposition || '') !== String(proposition)) continue
+    const member = payload.member ? String(payload.member) : (h.owner ? String(h.owner) : '')
+    const verdict = Number(payload.verdict)
+    if (!member || !Number.isFinite(verdict)) continue
+    rows.push({ member, verdict, reason: payload.reason === undefined || payload.reason === null ? '' : String(payload.reason),
+      at: h.updatedAt || null, id: String(h.id), path: path ? String(path) : null })
+  }
+  // OLDEST FIRST, then keep the LATEST per member: a re-filed card (which this face refuses, but another kernel could
+  // still have written) is not hidden — a disagreement lands in `duplicates` with both ids and both values.
+  rows.sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')) || String(a.id).localeCompare(String(b.id)))
+  const effective = new Map()
+  const duplicates = []
+  for (const r of rows) {
+    const prev = effective.get(r.member)
+    if (prev && Number(prev.verdict) !== Number(r.verdict)) {
+      duplicates.push({ member: r.member, kept: { id: r.id, verdict: r.verdict, at: r.at }, dropped: { id: prev.id, verdict: prev.verdict, at: prev.at },
+        means: 'this member has TWO ruling cards with different values; the LATEST (kept) is the one the tally uses, and both are reported so the disagreement is visible instead of averaged away' })
+    }
+    effective.set(r.member, r)
+  }
+  return { readable: true, why: null, rows: [...effective.values()], cards: cards.length, duplicates }
+}
+/** WHERE the card that has to be corrected LIVES. A records row has no file; a library card has one, and naming it is
+ *  the difference between "go fix it" and "fix it here". Never invents a path. */
+async function libraryCardPathOf(kernel, id) {
+  const library = rulingLibraryOf(kernel)
+  if (!library) return { path: null, why: 'this kernel has no library face (no durable root), so no card file can be named' }
+  if (!has(id)) return { path: null, why: 'no proposition id was given, so no card file can be named' }
+  try {
+    const heads = await library.list({ kind: 'proposition' })
+    // ★ A library card's index id carries a fingerprint suffix (`<slug>-<fp8>`), so the id a caller holds may be the
+    // exact index id OR the name the card was written with. Both are matched here (exact first) rather than answering
+    // "no file" for a card that plainly exists on disk.
+    const list = Array.isArray(heads) ? heads : []
+    const hit = list.filter((h) => h && String(h.id) === str(id))[0]
+      || list.filter((h) => h && String(h.id).indexOf(str(id) + '-') === 0)[0]
+    if (!hit) return { path: null, why: 'proposition "' + str(id) + '" is a records row, not a library card: there is no file to edit, so the correction is the call above (the records face owns that row)' }
+    const ex = await library.expand(hit.id)
+    return { path: ex && ex.path ? String(ex.path) : null, why: null }
+  } catch (e) { return { path: null, why: 'the library index could not be read: ' + String((e && e.message) || e) } }
+}
+/** THE MEMBER'S OWN ACT: file YOUR final debate ruling. Refusals are named and speak to the member (not to the
+ *  chair), because the member is the caller: a member that is not part of the debate, a ruling already filed with a
+ *  different value, and a session with no durable library are three DIFFERENT answers. */
+async function submitRuling({ kernel, member, meeting, proposition, verdict, reason }) {
+  if (!member) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'submitting YOUR final ruling needs the acting member id', 'pass member:"<your roster id>" — a pack handler has no agent→member map')
+  }
+  if (!meeting) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'the ruling needs the meeting it was debated in', 'pass meeting:"<the meeting id in the chair\'s final-ruling request>"')
+  }
+  if (!proposition) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'the ruling needs the proposition it judges', 'pass proposition_id:"<the proposition id in the chair\'s final-ruling request>"')
+  }
+  const library = rulingLibraryOf(kernel)
+  if (!library) {
+    throw refuse('VMU_RULING_NO_LEDGER', 'this session has no durable library, so YOUR ruling has nowhere to be filed — nothing was written and the chair will not see it',
+      'the deployment must assemble this kernel with a durable root (config.root): a ruling is a card under Members/<member>/Propos/, which is what lets the chair read it from ANOTHER kernel. A receipt that claimed "filed" without a ledger is the fake coverage.complete this channel exists to replace')
+  }
+  const debated = debatedMembersOf(kernel, meeting)
+  const listed = Array.isArray(debated.members) ? debated.members : []
+  // A CHECK ONLY WHEN THE FACT IS READABLE. In a member's own (activation) kernel the meeting's roster can be
+  // unreadable — the same honest gap run 31 measured. Refusing there would refuse the very members this channel is
+  // for, so the check happens when the chair collects (and the receipt says which of the two happened).
+  const rosterChecked = debated.readable === true && listed.length > 0
+  if (rosterChecked && !listed.includes(member)) {
+    if (String(debated.chair || '') === member) {
+      throw refuse('VMU_RULING_CHAIR_SIGNS', 'the chair signs the tally instead of filing a member ruling: "' + member + '" presides over ' + meeting,
+        'the members who debated submit their own rulings; the chair collects and adopts them with vibe_v5_verdict_final { meeting, proposition_id } — the chair does NOT type the members\' numbers')
+    }
+    throw refuse('VMU_RULING_NOT_DEBATER', '"' + member + '" did not debate ' + proposition + ', so it has no final ruling to file',
+      'the members this ruling will count are the ones the meeting recorded: ' + (listed.length ? listed.join('、') : '(none readable)') + ' — if you should be in that set, the meeting has to record you first (vibe_v5_meeting { action: "speak" })')
+  }
+  const filed = await rulingSubmissionsOf(kernel, { meeting, proposition })
+  const mine = filed.rows.filter((r) => r.member === member)
+  if (mine.length) {
+    const same = mine.filter((r) => Number(r.verdict) === Number(verdict) && String(r.reason || '') === String(reason || ''))[0]
+    if (same) {
+      // IDEMPOTENT: the same act twice is one ruling, not two cards (and not an error the member has to work around).
+      return { ok: true, tool: 'vibe_v5_verdict', channel: RULING_CHANNEL, idempotent: true, duplicate: true,
+        submission: { id: same.id, path: same.path, at: same.at, member, meeting, proposition, verdict: same.verdict, reason: same.reason },
+        means: 'this is YOUR final ruling on ' + proposition + ', and it was ALREADY filed exactly like this — nothing was written a second time, and the tally counts it once',
+        rosterChecked, rosterSource: debated.source,
+        next: 'the chair collects it with vibe_v5_verdict_final { meeting: "' + meeting + '", proposition_id: "' + proposition + '" }' }
+    }
+    throw refuse('VMU_RULING_ALREADY_FILED', 'you already filed a DIFFERENT ruling on ' + proposition + ' (verdict ' + String(mine[0].verdict) + ', filed ' + String(mine[0].at || 'at an unrecorded time') + '): this one (' + String(verdict) + ') was NOT filed and the chair will not see it',
+      'your filed ruling is the one that counts — it is ' + (mine[0].path ? 'the card ' + mine[0].path : 'card id ' + mine[0].id) + '. This face has no path that rewrites a filed ruling: if the number was wrong, say so to the chair, who rules on the set the receipts show (a chair does not rewrite a member\'s ruling either)')
+  }
+  const id = rulingIdOf({ meeting, proposition, member })
+  const title = rulingTitleOf({ meeting, proposition, member })
+  const statement = '对命题 ' + proposition + ' 的最终裁决：' + String(verdict) + '（会议 ' + meeting + '，裁决人 ' + member + '）'
+  const payload = { v: 1, kind: 'final-ruling', meeting, proposition, member, verdict, reason: reason || '' }
+  let added = null
+  try {
+    added = await library.append({ kind: 'proposition', id, title, statement, proof: RULING_MARK + JSON.stringify(payload),
+      visibility: 'public', status: RULING_STATUS }, { member })
+  } catch (e) {
+    throw refuse((e && e.code) || 'VMU_STATE', String((e && e.message) || 'the library refused this ruling'),
+      (e && e.hint) || 'the ruling card is written under Members/<member>/Propos/ — a refusal here is the write gate or the naming policy saying no, and the ruling was NOT filed')
+  }
+  // READ IT BACK: the receipt states a fact on disk (id, path, time), not a claim about what append was asked to do.
+  const after = await rulingSubmissionsOf(kernel, { meeting, proposition })
+  const row = after.rows.filter((r) => r.member === member)[0] || null
+  return {
+    ok: true, tool: 'vibe_v5_verdict', channel: RULING_CHANNEL,
+    submission: {
+      id: (row && row.id) || (added && added.id) || id,
+      path: (row && row.path) || (added && added.file) || null,
+      at: (row && row.at) || null,
+      member, meeting, proposition, verdict, reason: reason || '',
+    },
+    means: 'this is YOUR final ruling (' + String(verdict) + ' on ' + proposition + ') and it is now a card of your own on disk, so it SURVIVES your session and the chair adopts it from the tally — the chair does not write this number for you',
+    rosterChecked, rosterSource: debated.source,
+    rosterCheckedMeans: rosterChecked
+      ? 'the debate on ' + meeting + ' was readable in this session, so your membership in it was checked before the ruling was filed'
+      : 'this session could not read who debated ' + meeting + ' (' + String(debated.why || debated.source || 'unreadable') + '), so the membership check happens when the chair collects — submit, and the chair names any member who did not debate',
+    next: 'the chair collects every filed ruling with vibe_v5_verdict_final { meeting: "' + meeting + '", proposition_id: "' + proposition + '" } (all agree ⇒ that value, otherwise the arithmetic mean)',
+    note: 'the ruling is a card under Members/' + member + '/Propos/ — writing it inside YOUR OWN folder is what makes concurrent submissions safe and lets the chair read them from another kernel',
+  }
+}
+
+/** ★ `vibe_v5_verdict` — a boolean verdict, on ONE of TWO faces (the caller's context decides, never a silent default):
+ *  ① a BALLOT verdict on the object under verification ([0,1]: 1 true, 0 false, between = an UNCERTAIN probability).
+ *     The vmu verification ballot is a LIVE ballot (`kernel.liveBallot(id)`), so `target` is resolved through it; no
+ *     such live ballot is a NAMED refusal rather than an invented ballot. This face is unchanged.
+ *  ② a DEBATE RULING for the member itself: `meeting` + `proposition_id` (no `target`) files the member's own final
+ *     ruling, which the chair's `vibe_v5_verdict_final` collects and adopts (see the block above).
+ *  Neither context is a named refusal that shows both faces — the run-31 failure was a TRUE refusal that named only
+ *  the ballot, so a member holding no ballot had nowhere to go. */
+async function toolVerdict(args = {}, { kernel } = {}) {
   if (args.verdict === undefined || args.verdict === null) throw refuse('VMU_INVALID_ARGUMENT', 'verdict needs a number in [0,1]', 'pass verdict:1 / 0 / a probability')
   const v = Number(args.verdict)
   if (!Number.isFinite(v) || v < 0 || v > 1) {
     throw refuse('VMU_INVALID_ARGUMENT', 'verdict must be a number in [0,1]', '1 = true, 0 = false, anything else = an UNCERTAIN estimate')
   }
-  if (!has(args.target)) throw refuse('VMU_INVALID_ARGUMENT', 'verdict needs the target ballot id', 'pass target:"<live ballot id>"')
+  if (!has(args.target)) {
+    if (has(args.meeting) && has(args.proposition_id)) {
+      return await submitRuling({ kernel, member: str(args.member).trim(), meeting: str(args.meeting), proposition: str(args.proposition_id), verdict: v, reason: has(args.reason) ? str(args.reason) : '' })
+    }
+    throw refuse('VMU_RULING_NEEDS_CHANNEL', 'a verdict needs either the LIVE ballot it votes on, or the debate ruling it answers',
+      'pass target:"<live ballot id>" to vote on a ballot; pass meeting:"<meeting id>" + proposition_id:"<proposition id>" to file YOUR final debate ruling (布尔概率 + 理由), which the chair collects with vibe_v5_verdict_final')
+  }
   const member = requireVoter(kernel, args.member, 'verdict').id
   if (typeof kernel.liveBallot !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no live-ballot registry is published, so a verdict cannot be cast', 'assemble a full kernel (vibe-math-vmu.js)')
@@ -2957,14 +3296,17 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_verdict',
-    description: 'Cast your boolean verdict on the object under verification: verdict in [0,1] (1 = true, 0 = false, in between = an UNCERTAIN probability), on a LIVE ballot (target = its id).',
-    parameters: { target: { type: 'string', required: true }, verdict: { type: 'number', required: true }, reason: { type: 'string' }, member: { type: 'string', required: true } },
+    description: '★ TWO FACES, picked by what you pass (the caller\'s context decides — neither is a default). ① BALLOT VERDICT: pass target = the id of the LIVE ballot + verdict in [0,1] (1 = true, 0 = false, in between = an UNCERTAIN probability) to cast your vote on the object under verification; a target that is not a live ballot is refused by name. ② YOUR FINAL DEBATE RULING: pass meeting + proposition_id (and NO target) + verdict + reason to FILE YOUR OWN ruling on that debate\'s proposition — this is the member half of 「请各个辩论的各个成员给出最终裁决」, and it used to have no channel at all (run 31: a debating member could only reach the ballot face and got "no LIVE ballot", so the chair had to type everyone\'s number). A filed ruling is a card of your own on disk, survives your session, and the chair ADOPTS it with vibe_v5_verdict_final { meeting, proposition_id } — re-filing the same ruling is idempotent, filing a DIFFERENT one after it is refused by name (a filed ruling is your act, not a draft). A member who did not debate is refused by name; when the debate cannot be read from inside your session the receipt says `rosterChecked:false` and the chair checks it at collection.',
+    parameters: {
+      target: { type: 'string' }, verdict: { type: 'number', required: true }, reason: { type: 'string' },
+      meeting: { type: 'string' }, proposition_id: { type: 'string' }, member: { type: 'string', required: true },
+    },
     handler: toolVerdict,
   },
   {
     name: 'vibe_v5_verdict_final',
-    description: '★ TALLY THE DEBATE\'S FINAL RULING (the CHAIR signs it): collect the members\' boolean verdicts on ONE proposition, aggregate them (all agree ⇒ that value, otherwise the arithmetic mean) and tell the proposition card\'s owner to correct its probability. meeting + proposition_id + verdicts REQUIRED; verdicts = [{member,p,reason}] where p∈[0,1]. member is who signs (default: the meeting chair; anyone else is refused by name — an anonymous ruling is not a ruling). owner defaults to the card\'s author and is REQUIRED to be resolvable, because a ruling nobody is told changes nothing. ★ If a Lean run passed and the card\'s p is still not 1, you must ANSWER THE FIDELITY QUESTION first (pass fidelity:"conform" or "defect", with lean_job naming the run): the refusal carries the question and the two legal answers. The kernel face keeps the arithmetic/validation and refuses by name (duplicate member, p out of range, mixed propositions); delivery of the notice is reported honestly in `delivery` and `notified` (an empty `notified` means the number is on the record but nobody was told).',
-    parameters: { meeting: { type: 'string', required: true }, proposition_id: { type: 'string', required: true }, verdicts: { type: 'array', required: true }, member: { type: 'string' }, owner: { type: 'string' }, lean_job: { type: 'string' }, lean_passed: { type: 'boolean' }, fidelity: { type: 'string' }, template: { type: 'string' }, partial: { type: 'boolean' }, why: { type: 'string' } },
+    description: '★ TALLY THE DEBATE\'S FINAL RULING (the CHAIR signs it): collect the members\' boolean verdicts on ONE proposition, aggregate them (all agree ⇒ that value, otherwise the arithmetic mean) and tell the proposition card\'s owner to correct its probability. meeting + proposition_id REQUIRED. ★ THE MEMBERS\' OWN RULINGS ARE COLLECTED FOR YOU: omit `verdicts` and this face adopts every ruling the debating members filed with vibe_v5_verdict { meeting, proposition_id, verdict, reason } — each row of `attribution` says whose number came from a filed submission (with the card id/path) and whose was TYPED by the chair, and `coverage` separates `debated` / `submitted` / `typed` / `missing` (named). Run 31 measured the defect this replaces: with `verdicts` REQUIRED the chair had to type everyone\'s number, and `coverage.complete:true` counted the roster, not a submission. If you do pass verdicts = [{member,p,reason}] (p∈[0,1]) a typed number that CONTRADICTS that member\'s filed ruling is refused by name, not silently preferred. member is who signs (default: the meeting chair; anyone else is refused by name). owner defaults to the card\'s author and is REQUIRED to be resolvable, because a ruling nobody is told changes nothing. ★ If a Lean run passed and the card\'s p is still not 1, you must ANSWER THE FIDELITY QUESTION first (fidelity:"conform" or "defect", with lean_job naming the run). The kernel face keeps the arithmetic/validation and refuses by name (duplicate member, p out of range, mixed propositions). Delivery is reported honestly: `delivery` + `notified` (which mailboxes hold a copy) + `notification.state` ("delivered" = pushed into a live turn, "queued" = waiting in the inbox and NOT read) — do not read an empty `notified` as a failure nor a queued one as "the owner has seen it".',
+    parameters: { meeting: { type: 'string', required: true }, proposition_id: { type: 'string', required: true }, verdicts: { type: 'array' }, member: { type: 'string' }, owner: { type: 'string' }, lean_job: { type: 'string' }, lean_passed: { type: 'boolean' }, fidelity: { type: 'string' }, template: { type: 'string' }, partial: { type: 'boolean' }, why: { type: 'string' } },
     handler: toolVerdictFinal,
   },
   {

@@ -761,6 +761,16 @@ const acquireReleaseRun = runSelfProof('audit-acquire-release.mjs', '--selftest'
 ok(acquireReleaseRun && acquireReleaseRun.status === 0,
   'the acquire↔release --selftest really runs green (round 13, counts corrected round 15: four predicate cases, SEVEN refused + FOUR accepted directions of the five-word closed ruling vocabulary, R14\'s authority word with FIVE refused + TWO accepted directions, NINE planted violations driving the same real-tree `judgeTree()` plus an all-empty honest fixture, a real-file one-line injection that reddens BOTH granularities, and a positive control that the scanner is not blind)',
   acquireReleaseRun ? 'exit=' + acquireReleaseRun.status : 'not run')
+// ROUND 31 / task-18: `scripts/audit-tool-required-flags.mjs` is the BEHAVIOURAL half of the required-flag audit - it
+// calls every tool's real handler with an EMPTY payload and requires the declared-required parameters to refuse, then
+// proves each exemption row is load-bearing by dropping it and requiring the violation to reappear. Its `--selftest`
+// drives the same judges over synthesized accepted/refused/threw tools. A self-proof mode with no execution point is
+// exactly what RULE A exists to catch, so it is RUN here rather than only spawned by its own suite (a spawn from another
+// gate is not evidence this gate accepts).
+const requiredFlagsRun = runSelfProof('audit-tool-required-flags.mjs', '--selftest')
+ok(requiredFlagsRun && requiredFlagsRun.status === 0,
+  'the tool required-flags --selftest really runs green (round 31: it plants an accepted-without-a-required-param tool, a stale exemption row and a too-short reason and requires each to be reported)',
+  requiredFlagsRun ? 'exit=' + requiredFlagsRun.status : 'not run')
 const regenRun = runSelfProof('regen-all.mjs', '--check')
 ok(regenRun && regenRun.status === 0, 'regen-all --check really runs green (the aggregate chain now has an execution point)')
 

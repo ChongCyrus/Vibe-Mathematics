@@ -28,7 +28,12 @@ export function makeTaskSpec({ param, refused, TOOL_NAMES, kernel }) {
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
         try {
           const tasks = kernel.tasks
-          if (action === 'list') return Object.assign({ ok: true, action }, { tasks: await tasks.list() })
+          // ROUND 31 / task-16: the board is SHARED state (it pulls before a read face and merges its write-back into
+          // the store), so a read receipt has to say whether what it just showed is durable and visible to the other
+          // kernels. `tasks.sharing()` is the KERNEL's answer — this tool never infers or caches it, and the mutator
+          // branches already carry the same object because they spread the kernel's own receipt.
+          const sharing = () => (tasks && typeof tasks.sharing === 'function' ? { shared: tasks.sharing() } : {})
+          if (action === 'list') return Object.assign({ ok: true, action }, { tasks: await tasks.list() }, sharing())
           if (action === 'create') return Object.assign({ ok: true, action }, await tasks.create({ title: need(title, 'title'), objective: objective || null, owner: owner || null, deps: Array.isArray(deps) ? deps : null, writeScopes: Array.isArray(write_scopes) ? write_scopes : [] }))
           if (action === 'assign') return Object.assign({ ok: true, action }, await tasks.assign(need(id, 'id'), need(owner, 'owner')))
           if (action === 'transition') return Object.assign({ ok: true, action }, await tasks.transition(need(id, 'id'), need(to, 'to'), { reason: reason || null }))
@@ -38,7 +43,7 @@ export function makeTaskSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'stage') return Object.assign({ ok: true, action }, await tasks.stage())
           if (action === 'advance') return Object.assign({ ok: true, action }, await tasks.advance({ to: to || null, reason: reason || null }))
           if (action === 'brief') return Object.assign({ ok: true, action }, await tasks.brief(need(id, 'id')))
-          if (action === 'history') return Object.assign({ ok: true, action }, { history: await tasks.history(id || null) })
+          if (action === 'history') return Object.assign({ ok: true, action }, { history: await tasks.history(id || null) }, sharing())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint)

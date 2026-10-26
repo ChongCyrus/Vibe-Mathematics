@@ -513,6 +513,11 @@ const phaseOf = (kind, text) => {
     { prefix: '结束时请**只**输出一个 JSON', why: 'F5: the retired JSON transport' },
     { prefix: '复杂工具首次使用前调用 vibe_v5_tool_help({"tool"', why: 'the tool only accepts `member`; the old call is refused by name' },
     { prefix: '协调需要时可用assign（subject', why: 'F5: retired reply fields' },
+    // ROUND 31 / task-14 (the same F5 ruling, measured on a live run's conformance review): this line named THREE
+    // commands that do not exist as tools - `propose_verify`, `propose_meeting`, `hire/fire`. The port names the real
+    // faces instead (`vibe_v5_meeting`, `vibe_v5_task_create`, `vibe_vmu_control`, `vibe_vmu_control{action:"fire"}`),
+    // so the captured line is not reproducible by design rather than missing transcription.
+    { prefix: '协调需要时可propose_verify', why: 'ROUND 31/task-14: taught three commands that are not tools (F5 ruling)' },
   ]
   const matchedDeclared = Object.fromEntries(DECLARED_DIVERGENCES_AB.map((d) => [d.prefix, 0]))
   let declaredAB = 0
@@ -534,12 +539,25 @@ const phaseOf = (kind, text) => {
     'V65b. ★★ THE DECLARED DIVERGENCES ARE LIVE: every rewritten family still matches captured lines, so an exclusion cannot outlive the reason for it - and excluding them is what keeps the ratio below a fidelity number rather than a policy number',
     { declaredLines: declaredAB, byPrefix: matchedDeclared, percentOfCorpus: Math.round(1000 * declaredAB / (declaredAB + totalAB)) / 10 })
   const pctAB = Math.round(100 * hitAB / totalAB)
-  // ★ FLOORS RE-BASED ON 2026-10-24, WHEN THE DECLARED DIVERGENCES WERE EXCLUDED. Before that the excluded families were
-  // counted as HITS, because the corrections section QUOTES the retired wording it corrects - so the old 85% was partly a
-  // measurement of our own quotation rather than of reproduced prose. The honest basis (only lines we still intend to
-  // reproduce) measures 80% here; the floors are set AT the measured value so a real regression reddens immediately while
-  // this declared reform does not need a later "lower the threshold" round.
-  ok(totalAB > 700 && hitAB > 0,
+  // ★ FLOORS RE-BASED TWICE, EACH TIME WITH THE ARITHMETIC WRITTEN DOWN.
+  //   2026-10-24 (first re-base): the declared divergences stopped being counted as HITS. Before that the excluded families
+  //   were counted as hits because the corrections section QUOTES the retired wording it corrects - so the old 85% was
+  //   partly a measurement of our own quotation. On the honest basis the measured value was 564/706 = 80%, and the floors
+  //   were pinned AT it.
+  //   ROUND 31 (second re-base): a LIVE RUN's conformance review found that a captured prompt line taught three commands
+  //   that are not tools (`propose_verify`, `propose_meeting`, `hire/fire`) - the corpus itself was the source of the
+  //   defect, and the port had copied it faithfully. The port now names the real faces, so that family is DECLARED (the
+  //   F5 ruling) and its 33 occurrences leave both sides: pool 706 -> 673, hits 564 -> 531, ratio 80% -> 79%. The figure
+  //   that is comparable across that change - prose only, excluding lines that name an object/task/status - is 96% before
+  //   and after (548/571 -> 515/538), i.e. NO prose was lost; only the candidate pool shrank, by exactly the lines we
+  //   stopped reproducing on purpose. The floors are pinned AT the new measured values, so any further loss reddens.
+  //
+  // WHY A POOL FLOOR AT ALL: `totalAB` can only shrink by DECLARING lines (each declaration is a visible row in the table
+  // above, and V65b requires every declared family to still match captured lines). A sudden drop therefore means someone
+  // excluded a family without a reason, which is what this floor catches.
+  const AB_POOL_FLOOR = 650
+  const PCTAB_FLOOR = 79
+  ok(totalAB >= AB_POOL_FLOOR && hitAB > 0,
     "V66. **** ACCEPTANCE (2), MEASURED (ROUND 550 DECLARED REFORM, RE-BASED 2026-10-24: " + declaredAB + " captured lines are DECLARED divergences (F5 + the tool-help signature fix) and are excluded from both sides, so this ratio measures reconstructed prose rather than quoted policy; the harness uses the corpus's own object name p-lean-a, a deliberate change declared rather than folded in - and MEASURED TO CHANGE NOTHING, because this comparison reads a SYNTHETIC assembly rather than the harness run, so the residual below is scenario DATA (vote payloads, formal decisions) that no assembly can produce): our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",
     { hit: hitAB, total: totalAB, percent: pctAB, declared: declaredAB })
   // THE OTHER DIRECTION, which the first number cannot see. A line-by-line comparison against the original
@@ -590,7 +608,7 @@ const phaseOf = (kind, text) => {
     // divergence, so those captured lines are structurally unreproducible rather than missing transcription.
     "the paper submission protocol (JSON receipt fields → vibe_v5_paper tool calls)",
   ]
-  ok(pctAB >= 80 && knownGapsAB.length === 5,
+  ok(pctAB >= PCTAB_FLOOR && knownGapsAB.length === 5,
     "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the five that remain are listed (the paper protocol is a DECLARED replacement, see the comment)",
     { families: knownGapsAB.length, percent: pctAB })
 

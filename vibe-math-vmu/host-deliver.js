@@ -243,7 +243,22 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
       if (typeof deliverer !== 'function') {
         throw Object.assign(new Error('the delivery seam factory did not return a callable deliverer'), { code: 'VMU_ENGINE_UNAVAILABLE' })
       }
-      const delivery = Promise.resolve().then(() => deliverer({ turn, text }))
+      // ★★★★★★★ TASK-16: THE REPLY-CAPABLE RESUME, HANDED TO THE SEAM AS ITS THIRD ARGUMENT. Task-13 taught the seam to
+      // READ the continuation offer (`turn.continuation.session`) and to use a caller-supplied `child` resume when one is
+      // passed - but nothing in production passed one, so every run still opened a new child per turn. The factory below
+      // composes the three documented host capabilities that together DO return the child's answer (see its own header);
+      // `null` means this host cannot do it, and then the seam starts a fresh child and says so in its `continuation`
+      // reading instead of implying continuity it never got. Built per call because the parent, the deadline and the
+      // cancellation are per-call facts.
+      const resumeCapability = memberResumeCapability({ ctx, subs, parent })
+      const resumeChild = makeMemberResumeChild({ ctx, subs, parent, deadlineMs: Math.max(250, Math.floor(deliveryTimeoutMs * 0.98)) })
+      // The capability probe travels ON the turn (the only channel host-deliver and the seam share, because the seam's
+      // factory is called once and its deliverer is called per turn): the kernel's `continuation` reading then names the
+      // missing piece instead of only saying "this host offers no reply-capable continuation".
+      const turnForSeam = turn && typeof turn === 'object'
+        ? Object.assign({}, turn, { continuationCapability: resumeCapability })
+        : turn
+      const delivery = Promise.resolve().then(() => deliverer({ turn: turnForSeam, text, child: resumeChild || undefined }))
       // ★★★★★★★ LIVE RUN 2026-10-25 (the institute's own defect note): THE DEADLINE IS NOT A FAILURE VERDICT.
       // MEASURED: a real member turn (a subagent that really ran) settled at 197 913 ms against a 180 000 ms deadline.
       // The child had FINISHED - it had written its Lean file, its proposition card and its progress file - but the turn
@@ -347,4 +362,250 @@ export function createTurnDeliver({ ctx, config = {}, settings = {}, deliverViaS
     // subagents service mounts, and binding "absent" now would refuse every command forever). A host without the verb
     // produces the bridge's NAMED refusal; the kernel reports the seam as absent in `status().seams.sendMessage/interrupt`.
   return withMode(turnDeliver)
+}
+
+// ★★★★★★★ TASK-16 / LIVE RUN 31 (the institute's own defect note): THE MEMBER TURN, RESUMED IN THE MEMBER'S OWN SESSION.
+// WHAT RUN 31 SAID: twelve member turns, and `acad-01` and `res-01` each ran in TWO different child sessions — one new
+// session per turn, so no member had cross-turn memory, while the v5r pack asks every researcher to推进 its own line and
+// to 归档 progress/已尝试路线. Task-13 gave the delivery seam the reading (`turn.continuation.session`) and the application
+// (a caller-supplied `child({session,text,turn}) => {reply}`), but nothing in production passed one, so the receipt could
+// only say `applied:false, cause:'no-reply-capable-resume'`.
+// WHAT THE HOST ACTUALLY OFFERS (measured on DSH 0.2.1, the bundle this host runs — the shipped `subagents` service):
+//   · `startActivation({ childId })` treats the id as a RESERVED IDENTITY for a NEW child; the manager's
+//     `assertChildIdAvailable` throws `DUPLICATE_CHILD` for an existing id. Not a resume.
+//   · `sendMessage(sender, target, content)`, `prompt(request)`, `queuePrompt`, `steerPrompt` and the cold-resume path all
+//     resolve to an inbox MessageId — the shipped manager's own comment says "later execution is independent of this call"
+//     — so none of them can hand a reply back through `deliver({turn,text}) => reply`.
+//   · `startContinuable` does NOT exist on this host (`grep` over the shipped service, manager and index: 0 hits).
+// SO THERE IS NO VERB. There is a COMPOSITION of three documented capabilities, and that is what this factory returns:
+//   1. `subagents.prompt({ parentSessionId, childSessionId, mode:'continuable', delivery:'queue', content })` admits a
+//      next-turn prompt into the member's OWN session. A child that is not resident is cold-resumed from persistence —
+//      the host writes every locally started child's descriptor as `mode:'continuable'`, which is exactly the descriptor
+//      the cold-resume path requires (`NOT_RESUMABLE` otherwise).
+//   2. `ctx.get('agents').get(childSessionId).whenIdle()` is the host's documented quiescence await ("whenIdle() resolves
+//      after the whole agent reaches quiescence"), i.e. the completion signal the inbox id does not carry.
+//   3. `ctx.get('sessionQuery').observeSession(childSessionId, { projectionMode:'none' })` reads that session's log; the
+//      answer is the last non-empty `assistant/message` after the new `turn/end` — the same selection rule the host's own
+//      subagent backend applies in its `assistant-output` module. The log is a SNAPSHOT, so it is re-read, never subscribed.
+// The child is left RESIDENT after the resume: residency is what makes `whenIdle()` meaningful on the next turn, and vmu
+// has one child per member, so residency stays bounded by the roster.
+// ★ KNOWN BOUNDARY (task-16 裁决 3): the host's own cap is `maxActiveSubagents` (default 8), and every continued member
+// holds one resident child — a roster LARGER than that cap would need a host-side `drainChildren`/dispose policy, which is
+// NOT IMPLEMENTED here. The cap is not fought silently: past capacity the host refuses with `ACTIVATION_LIMIT_REACHED` /
+// `subagent/delivery-unavailable`, this factory turns that into a named resume refusal, and the seam then downgrades the
+// turn EXPLICITLY (task-16 裁决 1) instead of failing it.
+// `null` means this deployment cannot do it (no `subagents.prompt`, no `agents.get`, no `sessionQuery`, or no live parent
+// session). Then the seam starts a fresh child exactly as before and its `continuation` reading says `applied:false` with
+// the missing pieces named — never a claim of continuity that did not happen.
+function contextService(ctx, key) {
+  try {
+    return ctx && typeof ctx.get === 'function' ? (ctx.get(key) || null) : null
+  } catch {
+    return null
+  }
+}
+
+function sessionIdOf(agent) {
+  const session = agent && agent.session ? agent.session : null
+  if (!session) return null
+  const header = session.header && typeof session.header === 'object' ? session.header : null
+  const id = session.id || (header && header.id) || null
+  return typeof id === 'string' && id !== '' ? id : null
+}
+
+function messageOf(error) {
+  return String((error && error.message) || error || 'unknown error')
+}
+
+function namedError(code, message, hint) {
+  const err = new Error(message)
+  err.code = code
+  if (typeof hint === 'string' && hint !== '') err.hint = hint
+  return err
+}
+
+// Which pieces of the composed resume this deployment actually has. Exported because the facade reports it on the
+// continuation reading: "the host cannot resume" is a measurement, and a reader must be able to see WHICH piece is absent.
+export function memberResumeCapability({ ctx = null, subs = null, parent = null } = {}) {
+  const missing = []
+  if (!subs || typeof subs.prompt !== 'function') missing.push('subagents.prompt')
+  const agents = contextService(ctx, 'agents')
+  if (!agents || typeof agents.get !== 'function') missing.push('agents.get')
+  const query = contextService(ctx, 'sessionQuery')
+  if (!query || typeof query.observeSession !== 'function') missing.push('sessionQuery.observeSession')
+  const parentSessionId = sessionIdOf(parent)
+  if (parentSessionId === null) missing.push('a live parent session id (getRootAgent bound a root Agent)')
+  const capable = missing.length === 0
+  return {
+    capable,
+    missing,
+    verb: typeof (subs && subs.prompt) === 'function' ? 'subagents.prompt({ mode:"continuable", delivery:"queue" })' : null,
+    parentSessionId,
+    means: capable
+      ? 'this deployment can resume a member in its OWN session: `subagents.prompt` admits the next-turn prompt, `agents.get(id).whenIdle()` is the completion await, and `sessionQuery.observeSession(id)` reads the answer back out of that session\'s log'
+      : 'this deployment cannot resume a member in its own session: the composed resume needs ' + ['subagents.prompt', 'agents.get().whenIdle()', 'sessionQuery.observeSession()', 'a live parent session']
+        .filter((p) => missing.some((m) => m.indexOf(p.slice(0, 8)) === 0)).join(' + ') + '; missing=[' + missing.join(', ') + ']. A member turn therefore starts a FRESH child per turn, exactly as before',
+  }
+}
+
+export function makeMemberResumeChild({ ctx = null, subs = null, parent = null, deadlineMs = 180000, sleep = null, clock = null } = {}) {
+  const capability = memberResumeCapability({ ctx, subs, parent })
+  if (!capability.capable) return null
+  const agents = contextService(ctx, 'agents')
+  const query = contextService(ctx, 'sessionQuery')
+  const parentSessionId = capability.parentSessionId
+  const wait = typeof sleep === 'function' ? sleep : (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const now = typeof clock === 'function' ? clock : () => Date.now()
+  const budgetMs = Number.isFinite(Number(deadlineMs)) && Number(deadlineMs) > 0 ? Math.floor(Number(deadlineMs)) : 180000
+  const pollMs = 200
+
+  const leaseOf = async (childId) => {
+    const lease = await query.observeSession(childId, { projectionMode: 'none' })
+    return lease || null
+  }
+  const releaseOf = (lease) => {
+    if (!lease || typeof lease !== 'object') return
+    try {
+      if (typeof lease[Symbol.dispose] === 'function') lease[Symbol.dispose]()
+      else if (typeof lease.dispose === 'function') lease.dispose()
+    } catch { /* a lease that cannot be released must not fail the turn */ }
+  }
+  const cursorOf = (lease) => {
+    const cursor = Number(lease && lease.cursor)
+    return Number.isFinite(cursor) ? cursor : -1
+  }
+  const segmentOf = async (childId, baselineSeq) => {
+    const lease = await leaseOf(childId)
+    try {
+      const events = lease && Array.isArray(lease.events) ? lease.events : []
+      return events.filter((event) => Number(event && event.seq) > baselineSeq)
+    } finally {
+      releaseOf(lease)
+    }
+  }
+
+  return async function resumeMemberChild({ session, text, turn } = {}) {
+    const childId = typeof session === 'string' && session !== '' ? session : null
+    if (childId === null) {
+      throw namedError('VMU_INVALID_ARGUMENT', 'a continuation resume was asked for without a session id',
+        'the seam passes `turn.continuation.session`; an empty one means the kernel offered nothing, so nothing can be resumed')
+    }
+    const startedMs = now()
+    let baselineSeq
+    try {
+      const lease = await leaseOf(childId)
+      try { baselineSeq = cursorOf(lease) } finally { releaseOf(lease) }
+    } catch (e) {
+      throw namedError('VMU_ENGINE_UNAVAILABLE',
+        'the member session "' + childId + '" could not be read before resuming it: ' + messageOf(e),
+        'continuation reads the session log BEFORE the prompt so it can tell the resumed turn\'s events from the old ones; cause='
+          + String((e && e.code) || 'unknown') + '. Check that the sessionQuery service is loaded and that the session is live or persisted')
+    }
+    const requestId = 'vmu-cont-' + String((turn && (turn.id || turn.member)) || 'turn') + '-' + Date.now()
+    let accepted = null
+    try {
+      accepted = await subs.prompt({
+        parentSessionId,
+        childSessionId: childId,
+        mode: 'continuable',
+        delivery: 'queue',
+        requestId,
+        content: [{ type: 'text', text: String(text) }],
+      })
+    } catch (e) {
+      const hostCode = String((e && e.code) || '')
+      const hints = {
+        'subagent/not-resumable': 'the host refused to resume "' + childId + '": it has no continuation state recorded. The host writes `mode:"continuable"` for children IT starts locally, so this session was started another way (or is not a child of this parent) and cannot be resumed — vmu must start that member through the activation path first',
+        'subagent/parent-unavailable': 'the root Agent that owns the member is no longer live (parent session "' + parentSessionId + '"), so the host will not admit a prompt into its child. This is the office session having closed, not a missing member',
+        'subagent/unauthorized': 'the host refused the resume as unauthorized: the prompt must come from the member\'s exact live parent Agent',
+        'subagent/delivery-unavailable': 'the host had no delivery slot for this child (its active-subagent cap is reached) or no continuation state. Nothing was started and nothing was lost — the next turn can try again',
+        CONTINUATION_UNAVAILABLE: 'the host has no session query service (load @deepseek-ai/dsh-session-query), so a cold child cannot be resumed',
+      }
+      throw namedError('VMU_ENGINE_UNAVAILABLE',
+        'the host refused to admit a continuation prompt into the member session "' + childId + '"' + (hostCode ? ' (' + hostCode + ')' : '') + ': ' + messageOf(e),
+        (hints[hostCode] || 'the continuation prompt was not admitted; the member did NOT run this turn') + (typeof e === 'object' && e && e.hint ? ' — host hint: ' + e.hint : ''))
+    }
+    for (;;) {
+      const child = agents.get(childId)
+      if (child && typeof child.whenIdle === 'function') {
+        try { await child.whenIdle() } catch { /* the log below is the authority on whether the turn ended */ }
+      }
+      const segment = await segmentOf(childId, baselineSeq)
+      if (segment.some((event) => event && event.type === 'turn/end')) {
+        const reply = assistantReplyText(segment)
+        if (reply !== null) {
+          const waitedMs = now() - startedMs
+          return {
+            reply,
+            childId,
+            stopReason: null,
+            acceptedMessageId: accepted && typeof accepted.messageId === 'string' ? accepted.messageId : (typeof accepted === 'string' ? accepted : null),
+            waitedMs,
+            attribution: 'continuation: the prompt was queued into the member\'s OWN session (' + childId
+              + ') through `subagents.prompt` (mode "continuable", delivery "queue"), the resumed turn ended, and its final assistant text was read back out of that session\'s log after '
+              + String(waitedMs) + 'ms — no new child was started',
+          }
+        }
+        throw namedError('VMU_ENGINE_UNAVAILABLE',
+          'the resumed member turn in session "' + childId + '" ended without any assistant text',
+          'the child DID run and DID end its turn — this is a reading failure on the way back, not a missing member answer. The usual cause is a turn that only made tool calls; read that child session\'s log (its last `assistant/message`) before concluding the member said nothing')
+      }
+      const waitedMs = now() - startedMs
+      if (waitedMs >= budgetMs) {
+        const err = namedError('VMU_TURN_DELIVERY_TIMEOUT',
+          'the continuation of member session "' + childId + '" did not end within ' + budgetMs + 'ms',
+          'the prompt WAS admitted into the member\'s own session, so the member may still be working: this deadline bounded THIS CALL, not the child. Do not conclude the turn produced nothing — read the child session log (' + childId + ') and the member\'s files')
+        err.deliveryPath = 'continuation'
+        err.childId = childId
+        err.waitedMs = waitedMs
+        err.deliveryTimeoutMs = budgetMs
+        err.stillRunning = true
+        throw err
+      }
+      await wait(pollMs)
+    }
+  }
+}
+
+// The answer-selection rule of the host's own subagent backend (`assistant-output`): the LAST non-empty
+// `assistant/message` after the new turn, falling back to the accumulated streamed text of `assistant/message` /
+// `assistant/attempt` records when no complete message was recorded.
+function assistantReplyText(events) {
+  let settled = null
+  const streamed = []
+  for (const event of Array.isArray(events) ? events : []) {
+    if (!event || typeof event !== 'object') continue
+    const data = event.data && typeof event.data === 'object' ? event.data : null
+    if (!data) continue
+    if (event.type === 'assistant/message') {
+      const content = data.message && Array.isArray(data.message.content) ? data.message.content : null
+      const text = content ? textOfReplyBlocks(content) : ''
+      if (text !== '') settled = text
+      streamed.push(streamText(data.stream))
+    } else if (event.type === 'assistant/attempt') {
+      streamed.push(streamText(data.stream))
+    }
+  }
+  if (settled !== null) return settled
+  const joined = streamed.join('')
+  return joined === '' ? null : joined
+}
+
+function textOfReplyBlocks(blocks) {
+  const parts = []
+  for (const block of Array.isArray(blocks) ? blocks : []) {
+    if (!block || typeof block !== 'object') continue
+    if (typeof block.text === 'string' && (block.type === undefined || block.type === 'text')) parts.push(block.text)
+  }
+  return parts.join('')
+}
+
+function streamText(stream) {
+  const parts = []
+  for (const record of Array.isArray(stream) ? stream : []) {
+    if (!record || typeof record !== 'object') continue
+    if (record.type === 'text-chunks' && Array.isArray(record.texts)) parts.push(record.texts.join(''))
+    else if (record.type === 'text' && typeof record.text === 'string') parts.push(record.text)
+  }
+  return parts.join('')
 }

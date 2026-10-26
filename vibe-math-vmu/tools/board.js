@@ -1,6 +1,14 @@
 // vibe-math-vmu/tools/board.js — the board tool spec, split out of host.js (round 538) so the host file stays
 // inside the DECIDED 1200-line limit (docs/02). The spec is a factory: host.js supplies the shared helpers, and the guard
 // condition stays in host.js, because which intent declares a tool is policy and policy belongs with the host.
+//
+// ★★★ ROUND 30 / task-19 — WHERE THE STATUS BOARD IS READ, AND WHY NOT HERE. The four v5r fields (总任务/规划/各任务
+// 完成状态/当前小任务) are read by the TURN LOOP and rendered into the per-round status block
+// (`kernel/turn/index.js statusBoardReadings` + `renderStatusBoard`), i.e. where rule C3 puts the board: in the text
+// every member receives each round. This tool deliberately gains no eighth action: `tests/vmu-board-tool.test.mjs` §2
+// pins the enum to EXACTLY the kernel board service's method list ("neither can drift"), and a read face belongs to the
+// turn loop, not to the kanban service — so adding `statusBoard` here would have broken that invariant to duplicate a
+// reading the prompt already carries.
 export function makeBoardSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
       name: TOOL_NAMES.board,

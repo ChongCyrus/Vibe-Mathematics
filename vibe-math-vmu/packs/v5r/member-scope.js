@@ -15,20 +15,38 @@
  * THE DECLARATION IS THE ONLY SOURCE. `MEMBER_SAFE_TOOLS` / `OFFICE_ONLY_TOOLS` are derived from `TOOL_SCOPES`;
  * a second hand-written list would be the same "two copies drift" failure this project keeps paying for.
  *
+ * ★ THE OTHER AXIS — THIS TABLE ANSWERS "WHO CAN SEE IT", NOT "WHICH SEAT MAY CALL IT" (round 31, run 31 post-mortem).
+ * `seat-faces.js#SEAT_TOOL_FACES` answers the opposite question: which seat (chair / member / temp) may CALL a tool, and
+ * that is what `kernel/memberface.js#faceGate` enforces on a real call. This table decides whether a face belongs in a
+ * member's WIRE at all (preset `packToolAllow`, visible list). They are not redundant and neither may copy the other:
+ *   · a face can be seat-line yet chair-only (`vibe_v5_meeting`, `vibe_v5_assign`) — visible, gated by the seat face;
+ *   · a face can be office-only yet callable by one seat (`vibe_v5_report`, `verdict_final`) — the chair's, by role.
+ * The rule that keeps them from colliding: `applyMemberScope` pushes a DENY list DERIVED FROM `seat-faces.js` (never an
+ * `allow` array, and never this table's list), and it never overrides the chair seat. An `allow` array would stop the
+ * gate from reading `deny` (`kernel/memberface.js`), i.e. it would REPLACE the seat declaration — that is precisely the
+ * bug measured on run 31: the chair lost `verdict_final` / `verdict_ask` / `verified_promote` / `report` at `start` time
+ * and was handed `vibe_v5_message` on the same line.
+ * `seatFaceReconciliation` / `seatScopeDivergence` (seat-faces.js) list any disagreement BY NAME; the suite pins both.
+ *
  * SCOPES:
  *   'office' — 所办 only. Control/parameter/reporting faces (`report`, `overview`, `start/stop/pause/resume`,
- *              `configure`, `set`) and the three faces whose authority is not a seat's own business
+ *              `configure`, `set`), the three faces whose authority is not a seat's own business
  *              (`verified_promote`, `verdict_final`, and `verdict_ask`, which sends mail SIGNING AS THE CHAIR —
- *              the row in the table carries the full reason).
- *   'member' — a seat may call it. Every record/communication/task/meeting/lean/paper face is here, because the
- *              CHAIR is a seat too: meeting controls are gated by the kernel's permission rails, not by wire.
+ *              the row in the table carries the full reason), and the two faces that cannot be a seat's own
+ *              (`vibe_v5_message`, which relays in SOMEONE ELSE'S NAME, and `vibe_v5_script`, the run-script archive).
+ *   'member' — 席位线：一个席（不限于常驻研究员，主席席也是席）可能在它的线束里看到它。Every record/
+ *              communication/task/meeting/lean/paper face is here, because meeting controls etc. are gated by the KERNEL's
+ *              permission rails and by the seat face, not by the wire. This does NOT mean the member seat may call it —
+ *              that is `seat-faces.js`'s answer. Read the two together (see the ★ block above).
  *   'both'   — either side may call it (nothing in this pack is office-and-member-exclusive by nature).
  */
+
+import { SEAT_GOVERNED_SLOTS, seatDeclaredNames, seatDenyNames } from './seat-faces.js'
 
 /** The vocabulary, so a reader can tell what "office" means without reading this comment. */
 export const SCOPE_VOCAB = Object.freeze({
   office: '所办（主代理）专用：控制、参数、汇报，以及以「机构」而非「席位」为授权主体的面孔',
-  member: '席位可用：成员（含主席席位）的日常研究、记录、通信、会议、形式化、论文面孔',
+  member: '席位线：某个席（含主席席）的线束里会出现它——「看得见」不等于「这个席调得动」，后者由 seat-faces.js 决定',
   both: '两侧都可用',
 })
 
@@ -48,7 +66,13 @@ export const TOOL_SCOPES = Object.freeze({
   vibe_v5_feedback: 'member',
   // ── communication ──────────────────────────────────────────────────────────────────────────────────────
   vibe_v5_say: 'member',
-  vibe_v5_message: 'member',
+  // ★ WHY `message` IS 'office' (round 31, Lead 裁决 1 — it used to be 'member'): this face RELAYS A MESSAGE IN SOMEONE
+  // ELSE'S VOICE. `kit/handlers.js:352` sets `sender = args.member || 'office'` and never checks who is calling, so a seat
+  // holding it can send mail signed as the office or as any member. A member's real private channel is `say {to}`
+  // (`kind:'dm'`, same file :305), which resolves the sender from the caller. Declaring it 'member' would therefore put an
+  // impersonation face in the member's wire; `seat-faces.js` denies it to every seat but the chair, and that denial is what
+  // decides calls. Two axes, one name: 「线束里看得见」 ≠ 「席位调得动」 — see the SEAT_SCOPE_AXES note below.
+  vibe_v5_message: 'office',
   vibe_v5_inbox: 'member',
   vibe_v5_wait: 'member',
   // ── task board (creation/claim/assignment are gated by the kernel's rails, not by the wire) ─────────────
@@ -80,7 +104,6 @@ export const TOOL_SCOPES = Object.freeze({
   vibe_v5_lean_read: 'member',
   vibe_v5_lean_archive: 'member',
   vibe_v5_paper: 'member',
-  vibe_v5_script: 'member',
   vibe_v5_tool_help: 'member',
   // ── office only ────────────────────────────────────────────────────────────────────────────────────────
   vibe_v5_report: 'office',
@@ -93,6 +116,12 @@ export const TOOL_SCOPES = Object.freeze({
   vibe_v5_set: 'office',
   vibe_v5_verified_promote: 'office',
   vibe_v5_verdict_final: 'office',
+  // ★ WHY `script` IS 'office' (round 31): the script face archives / reads / lists run scripts — it is an OPERATING
+  // record, not a research face. `seat-faces.js` denies it to all three seats (SEAT_PENDING_RULINGS records that
+  // decision), so declaring it 'member' put a face in the member's wire that the gate refuses on every call: a dead entry.
+  // A seat-line name nobody may call is exactly what `seatScopeDivergence` reports as `stranded`, and this row is why
+  // that check exists.
+  vibe_v5_script: 'office',
   // ★ WHY `verdict_ask` IS 'office' AND NOT 'member' (ruled in round 30 / gate-debt D; do NOT re-decide this when the
   // next member-wire red appears). This face SENDS MAIL IN THE CHAIR'S NAME: its receipt signs `from: <chair>` and it
   // asks every debating seat for "布尔概率 + 理由". The tool body checks only its ARGUMENT — `member`, when passed, must
@@ -139,9 +168,42 @@ export function scopeCatalogue(availableNames = []) {
   return { ok: missing.length === 0 && extra.length === 0, declaredCount: declared.size, availableCount: available.size, missing, extra }
 }
 
+/** The live slot of one seat, read from the roster — the ONE fact the override must not guess. */
+const slotOfSeat = (kernel, member) => {
+  let roster = null
+  try {
+    roster = kernel && kernel.members && typeof kernel.members.roster === 'function' ? (kernel.members.roster() || []) : null
+  } catch (e) {
+    return { slot: '', why: 'roster-unreadable', detail: String((e && e.message) || e) }
+  }
+  if (!Array.isArray(roster)) return { slot: '', why: 'roster-unavailable',
+    detail: 'this kernel exposes no `members.roster()`; without a roster a seat has no declared SLOT, and guessing one is how the seat face gets replaced by a guess' }
+  const row = roster.find((m) => m && String(m.id) === member) || null
+  if (!row) return { slot: '', why: 'not-on-roster', detail: 'the id is not on the LIVE roster, so it has no seat face to narrow' }
+  const slot = String(row.slot || '')
+  if (!slot) return { slot: '', why: 'undeclared-slot',
+    detail: 'the roster row declares no slot, so no seat face applies to this id at all; the office must seat it (`slot`) before its wire can be scoped' }
+  return { slot, why: '', detail: '' }
+}
+
 /**
  * Apply the member scope to a set of seats, through the seam the host already reads
  * (`kernel.setMemberToolOverride` → `kernel.memberToolOverride` → `host.js` visible tools).
+ *
+ * ★ ROUND 31 REWRITE — THE OVERRIDE IS NOW DERIVED FROM `seat-faces.js`, AND IT IS A DENY LIST.
+ * What this function used to do was `setMemberToolOverride({ member, allow: MEMBER_SAFE_TOOLS })` for EVERY hired seat,
+ * the chair included. `kernel/memberface.js#faceGate` treats an `allow` array as the WHOLE truth (it stops reading
+ * `deny`), so on live run 31 that one line both CUT the chair seat's ruling faces (`verdict_final`, `verdict_ask`,
+ * `verified_promote`, `report`, …) and WIDENED it with `vibe_v5_message` — an allow list is a replacement, not a
+ * narrowing. Three rules now decide what happens to a seat:
+ *   ① the seat's SLOT is read from the LIVE roster (`kernel.members.roster()`), never assumed;
+ *   ② a NON-governed slot (today only `chair`; `SEAT_GOVERNED_SLOTS`) is NOT overridden at all — its capability is
+ *      exactly `SEAT_TOOL_FACES[slot]`, declared in `seat-faces.js` and enforced by the kernel's face gate;
+ *   ③ a governed slot (`member`, `temp`) receives `deny = seatDenyNames(slot, declared)` — computed from that same
+ *      declaration. A deny list can only ever NARROW, so this layer cannot grant a face by accident, which is what
+ *      makes "the member wire has a hole" impossible to introduce from here.
+ * Reports that vanish silently are why the receipt has three buckets (`applied` / `skipped` / `refused`) and names the
+ * reason for each: a seat that was NOT narrowed must not look like one that was.
  *
  * Returns a RECEIPT rather than nothing: "narrowed" is a state somebody may need to prove later, and a silent
  * mutation would make every later question ("is the member wire narrow?") unanswerable from outside.
@@ -153,26 +215,56 @@ export function scopeCatalogue(availableNames = []) {
 export function applyMemberScope({ kernel, members } = {}) {
   const ids = Array.isArray(members) ? members.map((m) => String(m)).filter((m) => m.length > 0) : []
   const hasSeam = Boolean(kernel && typeof kernel.setMemberToolOverride === 'function')
+  const declared = seatDeclaredNames()
   const applied = []
+  const skipped = []
+  const refused = []
   if (hasSeam) {
     for (const member of ids) {
+      const probed = slotOfSeat(kernel, member)
+      if (!probed.slot) {
+        skipped.push({ member, slot: null, why: probed.why, detail: probed.detail })
+        continue
+      }
+      if (!SEAT_GOVERNED_SLOTS.includes(probed.slot)) {
+        skipped.push({ member, slot: probed.slot, why: 'seat-authority',
+          detail: 'seat "' + probed.slot + '" is not governed by applyMemberScope: its face IS `seat-faces.js#SEAT_TOOL_FACES.'
+            + probed.slot + '`. An override here would either replace that declaration (the run-31 defect) or re-widen the seat' })
+        continue
+      }
+      const deny = seatDenyNames(probed.slot, declared)
       try {
-        kernel.setMemberToolOverride({ member, allow: MEMBER_SAFE_TOOLS.slice() })
-        applied.push(member)
-      } catch { /* one seat failing to narrow must not unseat the others; the receipt counts them */ }
+        kernel.setMemberToolOverride({ member, deny: deny.slice() })
+        applied.push({ member, slot: probed.slot, denyCount: deny.length })
+      } catch (e) {
+        refused.push({ member, slot: probed.slot, code: String((e && e.code) || 'VMU_SCOPE_REFUSED'), message: String((e && e.message) || e) })
+      }
     }
   }
+  const seatDenyCount = seatDenyNames('member', declared).length
   return {
     ok: true,
     seam: hasSeam ? 'kernel.setMemberToolOverride' : 'absent',
+    seamReads: hasSeam ? ['setMemberToolOverride', 'members.roster'] : [],
     applied,
     appliedCount: applied.length,
+    skipped,
+    skippedCount: skipped.length,
+    refused,
+    refusedCount: refused.length,
     askedCount: ids.length,
-    allowCount: MEMBER_SAFE_TOOLS.length,
+    declaredCount: declared.length,
+    denyCount: seatDenyCount,
+    allowCount: declared.length - seatDenyCount,
+    memberLineCount: MEMBER_SAFE_TOOLS.length,
     officeOnlyCount: OFFICE_ONLY_TOOLS.length,
+    governedSlots: SEAT_GOVERNED_SLOTS.slice(),
+    derivedFrom: 'vibe-math-vmu/packs/v5r/seat-faces.js#seatDenyNames',
     means: hasSeam
-      ? 'these seats now see ' + MEMBER_SAFE_TOOLS.length + ' pack tools; the ' + OFFICE_ONLY_TOOLS.length
-        + ' office-only faces are NOT in their wire (the host reads this override when it builds the visible list)'
+      ? 'governed seats (' + SEAT_GOVERNED_SLOTS.join(', ') + ') got a DENY list derived from seat-faces.js: the member seat loses '
+        + seatDenyCount + ' of ' + declared.length + ' pack tools (keeps ' + (declared.length - seatDenyCount)
+        + '); the chair seat is NOT overridden, so its ' + (declared.length - seatDenyNames('chair', declared).length)
+        + ' declared faces stay callable. ' + applied.length + ' applied, ' + skipped.length + ' skipped, ' + refused.length + ' refused'
       : 'no seam on this kernel: the scope was NOT applied, and `applied` is empty — the caller should treat the member wire as unscoped',
   }
 }

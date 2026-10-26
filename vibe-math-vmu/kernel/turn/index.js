@@ -331,19 +331,58 @@ export function extractFence(text) {
 }
 
 /**
+ * ★ ROUND 30 / task-19: THE STATUS BOARD'S READ LEGS. `facesFrom` used to take ONLY the WRITE operations the reply
+ * catalogue names (`records.put`, `tasks.create`, …), because the loop's job was to land state. That left the status
+ * block blind: `composeStatusBlock` could say who you are and what the vote floor is, but not what the institute's
+ * tasks are or what this member is doing (P3, the acceptance ledger's §「状态板四字段无来源」).
+ *
+ * These two READ operations are DECLARED (never invented) and they are the kernel's own vocabulary: `tasks.list()` and
+ * `records.list()` are the ledgers' documented read verbs, not institution words (R1 zero policy holds). They are
+ * bound here rather than in `kernel/index.js` because the bag handed to `facesFrom` ALREADY carries the two service
+ * instances (`{ tasks, records, … }` at `kernel/index.js:1619`), so no wiring outside this file is needed and a
+ * deployment without those services simply gets no read leg - the board then reports the source as unavailable
+ * instead of rendering an empty label.
+ */
+export const STATUS_BOARD_READ_OPS = Object.freeze({
+  'vmu.tasks': Object.freeze(['list']),
+  'vmu.records': Object.freeze(['list', 'get']),
+})
+
+/** The service instance for a face id, accepting both `{'vmu.tasks': …}` and `{ tasks: … }` (same rule as `facesFrom`). */
+function serviceOf(services, face) {
+  if (!services || typeof services !== 'object') return null
+  const bag = services[face] !== undefined ? services[face] : services[String(face).replace(/^vmu\./, '')]
+  if (typeof bag === 'function') { try { return bag({}) } catch { return null } }
+  return bag || null
+}
+
+/**
  * Build the face map from a kernel service bag, taking ONLY the operations the catalogue names - and taking them by
  * their real method names. A face the bag does not carry is simply absent from the map, so the dispatcher will report
  * the field as not executed rather than call something invented.
+ *
+ * ★ ROUND 30: plus the DECLARED read legs in `STATUS_BOARD_READ_OPS`, which the status block derives from. They are
+ * additive keys on the same face objects (`map['vmu.tasks'].list`), so the dispatcher - which looks up
+ * `map[field.face][owner.op]` for catalogue operations only - is unaffected; a caller can still override any operation
+ * through `resolveOwners`, and `statusSources` can bypass these legs entirely.
  */
 export function facesFrom(services = {}, owners = FIELD_OWNERS) {
   const map = {}
   for (const owner of Object.values(owners)) {
     if (!owner || !owner.face || !owner.op) continue
-    const bag = services[owner.face] !== undefined ? services[owner.face] : services[String(owner.face).replace(/^vmu\./, '')]
-    const instance = typeof bag === 'function' ? (() => { try { return bag({}) } catch { return null } })() : bag
+    const instance = serviceOf(services, owner.face)
     if (!instance || typeof instance[owner.op] !== 'function') continue
     if (!map[owner.face]) map[owner.face] = {}
     map[owner.face][owner.op] = instance[owner.op].bind(instance)
+  }
+  for (const face of Object.keys(STATUS_BOARD_READ_OPS)) {
+    const instance = serviceOf(services, face)
+    if (!instance) continue
+    for (const op of STATUS_BOARD_READ_OPS[face]) {
+      if (typeof instance[op] !== 'function') continue
+      if (!map[face]) map[face] = {}
+      if (!map[face][op]) map[face][op] = instance[op].bind(instance)
+    }
   }
   return map
 }
@@ -469,7 +508,19 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
       'inject { deliver } yourself to supply a seam (docs/26 stage 3)'
         + (subagents ? '; verbs this host does offer: ' + offeredVerbs : '; ctx.get(\'subagents\') returned nothing'))
   }
-  return async ({ turn, text, child }) => {
+  /**
+   * ★★★★★★★ TASK-13 / LIVE RUN 31 — THE `child` SLOT IS THE CONTINUATION SLOT, AND IT IS NOW READ.
+   * This deliverer has destructured a third argument, `child`, since the day the signature was written, and never read
+   * it: a caller COULD hand it a resume capability, and no caller did. Run 31 is what that emptiness cost — twelve member
+   * turns delivered, and acad-01 and res-01 each ran in TWO DIFFERENT child sessions, so every turn of a member started
+   * from zero: no memory of the progress it had archived, no memory of the routes it had already tried, which is exactly
+   * what v5r asks a researcher to carry across its own turns. The kernel already LEARNS the member's child session
+   * (`memberSessions`); what was missing is a seam that can do something with it.
+   * The body below is the pre-existing fresh-child delivery, unchanged and renamed. The wrapper after it offers the
+   * learned session to a caller-supplied resume, and when it cannot honour the offer it NAMES who cannot, why, and what
+   * would fix it — instead of silently starting yet another child and letting the receipt imply continuity it never got.
+   */
+  const deliverFresh = async ({ turn, text }) => {
     // ROUND 346: the spec carries the SAME three elements the original's wake carries - who, why, and what next -
     // because a host that only receives "here is some text" cannot supervise the turn it just started. Measured
     // against the original: its wake takes { to, why, next_step }, so the framework labels its own the same way.
@@ -694,6 +745,148 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host accepted the turn but handed back no reply',
       'give the loop an extractor, or deliver the reply through the loop as a later turn')
   }
+
+  // ★★★★★★★ TASK-13 — THE OFFER THIS SEAM RECEIVED, AND WHAT IT CAN HONESTLY SAY ABOUT IT.
+  // `turn.continuation` is written by the kernel (`deliverTurn`) from `memberSessions`, i.e. from the child session a
+  // previous settled turn of this member ran in. Reading it here is not a second continuation mechanism: it is the same
+  // seam, one property that the kernel put ON the turn — the channel that survives `host-deliver.js`, which forwards
+  // `turn` verbatim and drops any extra argument (that is why the offer is not a third parameter).
+  const continuationReading = (turn) => {
+    const c = turn && turn.continuation && typeof turn.continuation === 'object' ? turn.continuation : null
+    if (!c) return null
+    const session = typeof c.session === 'string' && c.session !== '' ? c.session : null
+    if (!session) return null
+    const parentSessionId = (() => {
+      const s = parent && parent.session ? parent.session : null
+      if (!s) return null
+      const h = s.header && typeof s.header === 'object' ? s.header : null
+      const id = s.id || (h && h.id) || null
+      return typeof id === 'string' && id !== '' ? id : null
+    })()
+    return {
+      session,
+      parentSessionId,
+      offeredMeans: typeof c.means === 'string' ? c.means : null,
+      // ★ TASK-16: the deployment's own probe of the composed resume (`subagents.prompt` + `agents.get(id).whenIdle()` +
+      // `sessionQuery.observeSession(id)`), attached to the turn by `host-deliver.js`. It is a MEASUREMENT, not a wish:
+      // when a piece is absent the receipt names it, so the next reader does not have to re-derive why nothing resumed.
+      capability: turn && turn.continuationCapability && typeof turn.continuationCapability === 'object'
+        ? turn.continuationCapability
+        : null,
+      // ★ NAMED, so the receipt says what the host ACTUALLY offers rather than what we wish it offered.
+      hostVerbs: ['startActivation', 'startContinuable', 'start', 'sendMessage']
+        .filter((k) => subagents && typeof subagents[k] === 'function'),
+    }
+  }
+
+  /**
+   * ★★★★★★★ TASK-13 — WHY THIS SEAM DOES NOT "JUST RESUME" BY PICKING A HOST VERB.
+   * MEASURED on DSH 0.2.1, the host run 31 ran on (its own service catalog plus the shipped subagent manager):
+   *   · `startActivation({ ..., childId })` takes a child id as a RESERVED IDENTITY for a NEW child. Passing the
+   *     member's learned session there makes the manager refuse — `assertChildIdAvailable` throws
+   *     `SubagentError('subagent "<id>" already exists', 'DUPLICATE_CHILD')` — so it is not a resume, it is a collision.
+   *   · `sendMessage(sender, targetId, content)` DOES continue a session (an idle target starts a turn; an absent direct
+   *     child cold-resumes from persistence), but it resolves to a MessageId, NOT to the child's answer. A member turn's
+   *     entire contract is `deliver({ turn, text }) => reply`; delivering into the member's own session through
+   *     `sendMessage` would therefore settle the turn with no reply, and the only honest outcomes would be "the host
+   *     handed back no reply" or an invented one.
+   * So a reply-capable resume is an INPUT, not something this seam can conjure: the caller passes `child` — the third
+   * argument that was always in the signature — as `async ({ session, text, turn }) => ({ reply, childId?, stopReason? })`.
+   * With it, the member runs in its own session and the answer comes back through the SAME deliver seam: no second
+   * continuation reading, no new store, one argument. Without it the turn runs in a fresh child exactly as before, and
+   * the return carries `continuation: { applied: false, cause, why, fix }` so no reader can again conclude that the
+   * framework forgot to continue a member when the boundary is in the host.
+   */
+  const continuationReport = (turn) => {
+    const c = continuationReading(turn)
+    if (!c) return null
+    const base = { session: c.session, offeredMeans: c.offeredMeans, parentSessionId: c.parentSessionId, hostVerbs: c.hostVerbs, capability: c.capability }
+    if (c.parentSessionId !== null && c.parentSessionId === c.session) {
+      return { ...base, applied: false, how: null, cause: 'learned-session-is-the-caller',
+        why: 'the session learned for this member IS the session delivering the turn (' + c.session + '): continuing there would be the caller talking to itself, so the learning point is wrong, not the continuation',
+        fix: 'the learning point must record the CHILD id the seam returned (`delivery.childId`), never the delivering session — check `memberSessions.set(...)` in `deliverTurn`/`step`' }
+    }
+    return { ...base, applied: false, how: null, cause: 'no-reply-capable-resume',
+      why: 'this host offers no reply-capable continuation: `sendMessage`/cold resume accepts the member\'s existing session (' + c.session + ') but resolves to an inbox MessageId, so the child\'s answer never comes back through the `deliver({ turn, text }) => reply` contract; and `startActivation({ childId })` is a reserved identity for a NEW child — the manager refuses an existing id with DUPLICATE_CHILD. hostVerbs=[' + c.hostVerbs.join(', ') + ']' + (c.capability ? '; this deployment\'s own resume probe reports capable=' + String(c.capability.capable) + (Array.isArray(c.capability.missing) && c.capability.missing.length > 0 ? ' missing=[' + c.capability.missing.join(', ') + ']' : '') + ' — the reply-capable resume is a COMPOSITION (subagents.prompt + agents.get(id).whenIdle() + sessionQuery.observeSession(id) reading the child\'s final assistant text), so whichever piece is missing is the thing to fix' : ''),
+      fix: 'two real fixes, both outside this seam\'s gift: (a) pass a resume capability as this seam\'s third argument `child` (async ({session,text,turn}) => ({reply,childId,stopReason})) from a caller that HAS a reply-capable resume verb, or (b) let the member report through the durable channel (the mailbox) and let the step settle as `awaiting` instead of a reply. Until one lands, this turn starts a FRESH child (' + c.session + ' is not reused) and the member has no cross-turn memory' }
+  }
+
+  /**
+   * ★ THE WRAPPER: OFFER, APPLY, OR NAME THE BOUNDARY — AND WHEN IT CANNOT APPLY, DOWNGRADE *EXPLICITLY*.
+   * A turn with no continuation offer goes straight to the old path — this changes nothing for any existing caller, which
+   * is deliberate: run-31's defect was an absent reading, not a wrong delivery. A turn WITH an offer either resumes (the
+   * caller supplied `child`) or delivers fresh and says why it could not resume.
+   * ★★ LEAD RULING (task-16, 裁决 1): a resume that FAILS does NOT fail the member's turn. One failed turn stops the
+   * institute, and what run-31 actually lost was not the downgrade but the SILENCE around it. So a throwing resume, and a
+   * resume that returns no reply text, both fall back to `deliverFresh`; the return carries the downgrade as data
+   * (`applied:false`, `cause`, `hostCode`, `why`, `fix`) on the same reading as a successful continuation would, so no
+   * reader can mistake it for continuity — and no reader has to reconstruct it from a transcript either.
+   * The ONE continuation failure that STAYS a failure is `VMU_TURN_DELIVERY_TIMEOUT`: there the member's own session may
+   * still be running, so delivering a second child would double-execute the member instead of downgrading it.
+   */
+  return async ({ turn, text, child }) => {
+    const continuation = continuationReport(turn)
+    if (continuation === null) return deliverFresh({ turn, text })
+    const resume = typeof child === 'function' ? child : null
+    if (resume === null) {
+      const fresh = await deliverFresh({ turn, text })
+      return { ...fresh, continuation }
+    }
+    let resumed
+    try {
+      resumed = await resume({ session: continuation.session, text: String(text), turn })
+    } catch (e) {
+      const hostCode = e && typeof e.code === 'string' && e.code !== '' ? e.code : null
+      // ★ THE ONE CONTINUATION FAILURE THAT STAYS A FAILURE (see the doc comment): the child may still be running.
+      if (hostCode === 'VMU_TURN_DELIVERY_TIMEOUT') throw e
+      const fresh = await deliverFresh({ turn, text })
+      return { ...fresh, continuation: {
+        ...continuation,
+        applied: false,
+        how: null,
+        cause: 'resume-failed',
+        hostCode,
+        why: 'the caller-supplied resume (`child`, this seam\'s third argument) was given session="' + continuation.session
+          + '" and threw' + (hostCode === null ? '' : ' [' + hostCode + ']') + ': ' + String((e && e.message) || e)
+          + '. This turn therefore ran in a FRESH child. That is an EXPLICIT downgrade, not a silent one: the receipt names the session it tried, the host code and the reason — which is exactly the part run-31 lacked',
+        fix: 'nothing to fix in this seam: make the resume capability succeed — (a) load @deepseek-ai/dsh-session-query (a cold resume refuses with CONTINUATION_UNAVAILABLE without it), (b) ensure the learned child was recorded mode:"continuable" (NOT_RESUMABLE otherwise), or (c) keep the parent Agent live for the turn (subagent/parent-unavailable). Until one is true, every turn of this member starts a fresh child',
+      } }
+    }
+    const reply = typeof resumed === 'string'
+      ? resumed
+      : (resumed && typeof resumed.reply === 'string' ? resumed.reply : null)
+    if (reply === null) {
+      const fresh = await deliverFresh({ turn, text })
+      return { ...fresh, continuation: {
+        ...continuation,
+        applied: false,
+        how: null,
+        cause: 'resume-no-reply',
+        hostCode: null,
+        why: 'the resume capability came back from session "' + continuation.session + '" (the member DID run there) but handed back no reply text, so this turn was delivered again as a FRESH child. Named, not silent: the missing piece is the reading on the way back, not a missing member answer',
+        fix: 'return a string, or { reply, childId, stopReason } from `child(...)`: the member ran in its own session, so an empty return is a reading failure of the resume capability (docs/26 §3.22)',
+      } }
+    }
+    const resumedChild = resumed && typeof resumed === 'object'
+      ? (typeof resumed.childId === 'string' && resumed.childId !== '' ? resumed.childId
+        : (typeof resumed.sessionId === 'string' && resumed.sessionId !== '' ? resumed.sessionId : null))
+      : null
+    return {
+      reply,
+      childId: resumedChild || continuation.session,
+      stopReason: resumed && typeof resumed.stopReason === 'string' ? resumed.stopReason : null,
+      structured: resumed && typeof resumed === 'object' && resumed.structured !== undefined ? resumed.structured : null,
+      attribution: 'continuation: the seam handed the member\'s learned child session (' + continuation.session
+        + ') to the caller-supplied resume capability and read the reply back from it — this turn CONTINUES the member instead of starting a new child',
+      deliveryPath: 'continuation',
+      continuation: { ...continuation, applied: true,
+        how: 'caller-supplied resume (`child`, this seam\'s third argument) ran the member in session ' + continuation.session,
+        cause: null,
+        why: 'the caller supplied a reply-capable resume, so the member ran in its own session (' + continuation.session
+          + ') and the answer came back through the same deliver seam',
+        fix: null },
+    }
+  }
 }
 
 /** The child/session id of a host handle, in the order the authoritative contract names the fields. */
@@ -832,7 +1025,245 @@ export function resolveOwners(bindings = null) {
 // can supply `statusBlock` itself (that is what the v3 pack's middleware does), in which case this composer is not
 // reached. Kept deliberately minimal - a seat, the round, the roster and the floor - because inventing more would
 // mean guessing facts the loop does not have.
-const composeStatusBlock = (turn) => {
+
+/**
+ * ★★★ ROUND 30 / task-19 — THE STATUS BOARD'S FOUR FIELDS, AND THE ONE SOURCE EACH ONE COMES FROM.
+ *
+ * The defect (P3, the acceptance ledger's §「状态板四字段无来源」): the institution's rule requires a
+ * member's status board to cover ① 总任务 ② 规划 ③ 各任务完成状态 ④ 当前小任务 (docs/acceptance/conformance/
+ * lane-rows-c.md §C3), while the loop's own status block carried only 「席位/轮次/阶段＋在册＋法定票数 m」 and the
+ * board tool taught nothing. A member therefore could not answer "what is the goal, what happens next, who is doing
+ * what" from anything the framework handed it.
+ *
+ * THE FIX IS NOT NEW STORAGE. Every field is DERIVED from a ledger that already existed before this row:
+ *   · 总任务        ← `vmu.turn.objective` (settings/schema.js:192, owner=office, default 「尚未设定」) when the office
+ *                     has set it, else the task board's DEPENDENCY-FREE ROOT tasks (their titles are the mission as the
+ *                     board states it). Both are existing declarations; neither is a copy of the other.
+ *   · 规划          ← `tasks.list()`: the unfinished tasks, split into 可开工 (no unmet dependency) and 被前置卡住
+ *                     (with the ids it waits on). That IS the plan of record - inventing a second plan ledger would put
+ *                     two writers on one fact.
+ *   · 各任务完成状态 ← `tasks.list()`: counts per declared state (open/assigned/doing/done/cancelled).
+ *   · 当前小任务     ← `records.list({ track: 'progress' })`: the member's MOST RECENT progress row (the records head
+ *                     list maps `owner` to the record's AUTHOR, so "whose row" is the ledger's own answer, not a guess).
+ *                     The row's `updatedAt` is the time information the rule asks for.
+ *
+ * HONESTY IS THE OTHER HALF (and it is the part a green test must be able to fail on): a field whose source cannot be
+ * read, or is simply empty, gets `value: null` PLUS a `why` naming the source that failed and what it returned -
+ * never an empty label and never invented text. The renderer prints 「该来源未提供：<why>」 for exactly that case.
+ */
+export const STATUS_BOARD_FIELDS = Object.freeze([
+  Object.freeze({ key: 'objective', label: '总任务', source: '设置键 vmu.turn.objective，或任务板上无依赖的根任务' }),
+  Object.freeze({ key: 'plan', label: '规划', source: 'vmu.tasks.list（未完成任务：可开工／被前置卡住）' }),
+  Object.freeze({ key: 'tasks', label: '各任务完成状态', source: 'vmu.tasks.list（按状态的计数）' }),
+  Object.freeze({ key: 'current', label: '当前小任务', source: "vmu.records.list({ track: 'progress' })（该成员最近一条）" }),
+])
+
+/** The task states `kernel/tasks.js` declares (TASK_STATES), in the order a reader expects; unknown states still print. */
+const TASK_STATE_ORDER = Object.freeze(['open', 'assigned', 'doing', 'done', 'cancelled'])
+const STATUS_BOARD_DEFAULT_LIMIT = 6
+/** The default value of `vmu.turn.objective` means "the office has not set one" - it is not a mission statement. */
+const OBJECTIVE_UNSET = '尚未设定'
+
+/** Accept a reader as a bound function, or as the service object itself (`kernel.tasks`), or null. */
+const readerOf = (bag, method) => {
+  if (typeof bag === 'function') return bag
+  if (bag && typeof bag[method] === 'function') return bag[method].bind(bag)
+  return null
+}
+/** Read one setting from either a settings VIEW (`get`) or a plain object; a setting that cannot be read is null. */
+const settingOf = (settings, key) => {
+  try {
+    if (!settings || typeof settings !== 'object') return null
+    const v = typeof settings.get === 'function' ? settings.get(key) : settings[key]
+    return v === undefined ? null : v
+  } catch { return null }
+}
+const idTitle = (row) => String(row && row.id) + '「' + String(row && row.title) + '」'
+const isPromise = (v) => Boolean(v) && typeof v.then === 'function'
+/** `updatedAt` is an epoch NUMBER or an ISO string depending on the deployable clock, so both the ORDER ("most recent")
+ *  and the RENDER have to go through one parser - comparing `Number(updatedAt)` would make every ISO row NaN and leave
+ *  the "newest" choice to whatever order the ledger happened to return. An unparseable stamp sorts as unknown (never as
+ *  "the newest") and is still shown as-is rather than being dropped. */
+const stampMs = (row) => {
+  const raw = row && row.updatedAt
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+  const parsed = Date.parse(String(raw === undefined || raw === null ? '' : raw))
+  return Number.isFinite(parsed) ? parsed : null
+}
+const stampIso = (row) => {
+  const raw = row && row.updatedAt
+  if (raw === undefined || raw === null || raw === '') return null
+  const ms = stampMs(row)
+  return ms === null ? String(raw) : new Date(ms).toISOString()
+}
+
+/**
+ * DERIVE the four status-board fields — a pure, SYNCHRONOUS read of the two ledgers the kernel already keeps (both
+ * `tasks.list()` and `records.list()` are synchronous; a reader that hands back a Promise is reported as unreadable
+ * rather than silently awaited, so the composer stays a pure function). Returns:
+ *   { ok, at?, fields: [{ key, label, source, value|null, why|null, at|null }], objective, plan, tasks, current,
+ *     available, unavailable }
+ * A caller that wants the board without any kernel (a test, a pack with its own board) can pass `statusSources`.
+ */
+export function statusBoardReadings({ tasks = null, records = null, member = null, settings = null, limit = STATUS_BOARD_DEFAULT_LIMIT, at = null } = {}) {
+  const cap = Number.isInteger(limit) && limit > 0 ? limit : STATUS_BOARD_DEFAULT_LIMIT
+  const readTasks = readerOf(tasks, 'list')
+  const readRecords = readerOf(records, 'list')
+  const readRecord = readerOf(records, 'get')
+  const gap = (why) => ({ value: null, why, at: null })
+  const said = (value, at2 = null) => ({ value, why: null, at: at2 })
+
+  // ── ONE read of the task board: 各任务完成状态, 规划 and the 总任务 fallback all derive from it, so a reader can
+  // never see two different board readings inside one block.
+  let rows = null
+  let boardWhy = null
+  if (!readTasks) boardWhy = '任务板不可读：没有注入任务面（tasks.list）'
+  else {
+    try {
+      const listed = readTasks()
+      if (isPromise(listed)) boardWhy = '任务板不可读：tasks.list() 返回了 Promise（状态板只读同步账本）'
+      else if (Array.isArray(listed)) rows = listed
+      else if (listed && Array.isArray(listed.tasks)) rows = listed.tasks
+      else boardWhy = '任务板不可读：tasks.list() 的返回既不是数组也不是 { tasks: […] }'
+    } catch (e) { boardWhy = '任务板不可读：' + String((e && e.message) || e) }
+  }
+
+  // ① 总任务: the office's declared objective first (that is the institution-wide mission every prompt already sees),
+  //    then the board's root tasks. Both are existing sources; which one fired is named in the receipt.
+  let objective = null
+  const objectiveSetting = settingOf(settings, 'vmu.turn.objective')
+  const objectiveText = typeof objectiveSetting === 'string' ? objectiveSetting.trim() : ''
+  if (objectiveText !== '' && objectiveText !== OBJECTIVE_UNSET) {
+    objective = { value: objectiveText, why: null, at: null, source: '设置键 vmu.turn.objective' }
+  } else if (!rows) {
+    objective = Object.assign(gap(boardWhy === null ? '任务板不可读' : boardWhy), { source: '任务板（无依赖的根任务）' })
+  } else if (rows.length === 0) {
+    objective = Object.assign(gap('任务板为空（0 条任务），且设置键 vmu.turn.objective 仍是「' + OBJECTIVE_UNSET + '」'),
+      { source: '设置键 vmu.turn.objective ＋ 任务板' })
+  } else {
+    const roots = rows.filter((r) => r && (r.state !== 'done' && r.state !== 'cancelled') && !(Array.isArray(r.deps) && r.deps.length > 0))
+    if (roots.length === 0) {
+      objective = Object.assign(gap('任务板上没有无依赖的根任务（每条未结任务都有前置），设置键 vmu.turn.objective 也未设定'),
+        { source: '任务板（无依赖的根任务）' })
+    } else {
+      const shown = roots.slice(0, cap).map(idTitle).join('；')
+      const more = roots.length > cap ? '；另 ' + String(roots.length - cap) + ' 条已省略' : ''
+      objective = { value: shown + more, why: null, at: null, source: '任务板（无依赖的根任务 ' + String(roots.length) + ' 条）' }
+    }
+  }
+
+  // ② 规划: the unfinished work in dependency order, with the two facts a member needs (may I start? what am I waiting on?).
+  let plan
+  if (!rows) plan = Object.assign(gap(boardWhy), { source: '任务板' })
+  else {
+    const byId = new Map(rows.filter((r) => r && r.id !== undefined).map((r) => [String(r.id), r]))
+    const unmet = (r) => (Array.isArray(r && r.deps) ? r.deps : []).filter((d) => {
+      const dep = byId.get(String(d))
+      return !dep || dep.state !== 'done'
+    }).map(String)
+    const live = rows.filter((r) => r && (r.state === 'open' || r.state === 'assigned' || r.state === 'doing'))
+    if (rows.length === 0) plan = Object.assign(gap('任务板为空（0 条任务），规划无从派生'), { source: '任务板' })
+    else if (live.length === 0) plan = Object.assign(gap('任务板上没有未完成任务（全部 done/cancelled），规划无从派生'), { source: '任务板' })
+    else {
+      const ready = live.filter((r) => unmet(r).length === 0)
+      const blocked = live.filter((r) => unmet(r).length > 0)
+      const bits = []
+      if (ready.length) bits.push('可开工：' + ready.slice(0, cap).map((r) => idTitle(r) + (r.owner ? '（' + String(r.owner) + '）' : '（未认领）')).join('；'))
+      if (blocked.length) bits.push('被前置卡住：' + blocked.slice(0, cap).map((r) => idTitle(r) + '（等 ' + unmet(r).join('/') + '）').join('；'))
+      const omitted = live.length - ready.slice(0, cap).length - blocked.slice(0, cap).length
+      plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + ' 条已省略' : ''), why: null, at: null, source: '任务板（未完成 ' + String(live.length) + ' 条）' }
+    }
+  }
+
+  // ③ 各任务完成状态: counts per state, with the state names the ledger itself reported (an unknown state still prints).
+  let tasksField
+  if (!rows) tasksField = Object.assign(gap(boardWhy), { source: '任务板' })
+  else if (rows.length === 0) tasksField = Object.assign(gap('任务板上一条任务都没有（tasks.list() 返回 0 行）'), { source: '任务板' })
+  else {
+    const counts = new Map()
+    for (const r of rows) {
+      const state = String((r && r.state) || '（未声明状态）')
+      counts.set(state, (counts.get(state) || 0) + 1)
+    }
+    const ordered = TASK_STATE_ORDER.filter((s) => counts.has(s)).concat([...counts.keys()].filter((s) => !TASK_STATE_ORDER.includes(s)))
+    const openCount = rows.filter((r) => r && (r.state === 'open' || r.state === 'assigned' || r.state === 'doing')).length
+    tasksField = {
+      value: '共 ' + String(rows.length) + ' 条（未结 ' + String(openCount) + '）：' + ordered.map((s) => s + ' ' + String(counts.get(s))).join(' · '),
+      why: null, at: null, source: '任务板（按状态的计数）',
+    }
+  }
+
+  // ④ 当前小任务: this member's most recent `progress` record. The head list's `owner` IS the record's author
+  //    (`kernel/records.js` view: `owner: rec.by`), so attribution is the ledger's, not ours; the sort is on
+  //    `updatedAt` here rather than assumed from the list order, because the records head order is deployable.
+  let current
+  if (!readRecords) current = Object.assign(gap("progress 轨不可读：没有注入 records.list"), { source: "records 的 progress 轨" })
+  else if (typeof member !== 'string' || member.trim() === '') {
+    current = Object.assign(gap('未指定成员：没有成员 id，无法定位「该成员最近的 progress 记录」'), { source: "records 的 progress 轨" })
+  } else {
+    let items = null
+    try {
+      const listed = readRecords({ track: 'progress' })
+      if (isPromise(listed)) current = Object.assign(gap('progress 轨不可读：records.list() 返回了 Promise（状态板只读同步账本）'), { source: "records 的 progress 轨" })
+      else if (Array.isArray(listed)) items = listed
+      else if (listed && Array.isArray(listed.items)) items = listed.items
+      else current = Object.assign(gap('progress 轨不可读：records.list({track:"progress"}) 的返回里没有 items 数组'), { source: "records 的 progress 轨" })
+    } catch (e) {
+      current = Object.assign(gap('progress 轨不可读：' + String((e && e.message) || e)), { source: "records 的 progress 轨" })
+    }
+    if (items !== null) {
+      const mine = items.filter((it) => it && String(it.owner === undefined || it.owner === null ? '' : it.owner) === member.trim())
+      if (mine.length === 0) {
+        current = Object.assign(gap('该成员（' + member.trim() + '）在 progress 轨上还没有记录（records.list 报 ' + String(items.length) + ' 条可见表头）'),
+          { source: "records 的 progress 轨" })
+      } else {
+        const newest = mine.slice().sort((a, b) => (stampMs(a) === null ? -1 : stampMs(a)) - (stampMs(b) === null ? -1 : stampMs(b)))[mine.length - 1]
+        let excerpt = null
+        if (readRecord) {
+          try {
+            const got = readRecord({ id: String(newest.id) })
+            const body = got && typeof got.body === 'string' ? got.body : (got && got.record && typeof got.record.body === 'string' ? got.record.body : null)
+            if (body !== null) {
+              const first = body.split('\n').map((l) => l.trim()).filter((l) => l !== '')[0]
+              if (first) excerpt = first.length > 80 ? first.slice(0, 80) + '…' : first
+            }
+          } catch { /* a row that expands badly keeps its head line; the excerpt is an extra, not the reading */ }
+        }
+        const stamp = stampIso(newest)
+        current = {
+          value: idTitle(newest) + '｜更新于 ' + String(stamp === null ? '（记录未回报时间）' : stamp) + (excerpt ? '｜' + excerpt : ''),
+          why: null, at: stamp === null ? null : String(stamp), source: "records 的 progress 轨（该成员最近一条）",
+        }
+      }
+    }
+  }
+
+  const raw = { objective, plan, tasks: tasksField, current }
+  const fields = STATUS_BOARD_FIELDS.map((decl) => {
+    const r = raw[decl.key] || { value: null, why: '内部错误：字段未计算', at: null }
+    return Object.freeze({ key: decl.key, label: decl.label, source: r.source || decl.source, value: r.value === undefined ? null : r.value, why: r.why === undefined ? null : r.why, at: r.at === undefined ? null : r.at })
+  })
+  const available = fields.filter((f) => typeof f.value === 'string' && f.value.trim() !== '').length
+  return { ok: true, at: at === null ? null : String(at), member: typeof member === 'string' ? member : null, fields, objective, plan, tasks: tasksField, current, available, unavailable: fields.length - available }
+}
+
+/**
+ * Render the four fields as the block's own labelled lines. A field with no value prints 「该来源未提供：<why>」 - the
+ * reason is REQUIRED, so an empty label is impossible (a board that says nothing where it should say why is the defect
+ * this whole row exists to remove).
+ */
+export function renderStatusBoard(readings) {
+  const fields = readings && Array.isArray(readings.fields) ? readings.fields : []
+  const byKey = new Map(fields.map((f) => [f.key, f]))
+  return STATUS_BOARD_FIELDS.map((decl) => {
+    const f = byKey.get(decl.key)
+    const value = f && typeof f.value === 'string' && f.value.trim() !== '' ? f.value : null
+    const why = f && typeof f.why === 'string' && f.why.trim() !== '' ? f.why : '状态板的读支路没有提供这个字段'
+    return '[' + decl.label + '] ' + (value === null ? '该来源未提供：' + why : value)
+  }).join('\n')
+}
+
+const composeStatusBlock = (turn, readings = null) => {
   if (!turn || typeof turn !== "object") return ""
   const who = turn.roleLabel ? String(turn.roleLabel) + "「" + String(turn.member) + "」" : String(turn.member)
   const round = turn.round ? "；本轮是第 " + String(turn.round) + " 轮" : ""
@@ -842,6 +1273,10 @@ const composeStatusBlock = (turn) => {
   if (turn.quorum !== null && turn.quorum !== undefined && Number.isFinite(Number(turn.quorum))) {
     lines.push("", "[表决] 法定票数 m = " + String(Number(turn.quorum)) + "。")
   }
+  // ★ ROUND 30 / task-19: THE FOUR FIELDS THE RULE REQUIRES. `readings` is produced by `statusBoardReadings` (the
+  // loop's read legs) or by a caller-supplied `statusSources`; when neither could produce a field, the line names the
+  // missing SOURCE and why it is missing rather than printing an empty tag.
+  lines.push("", "[状态板]", renderStatusBoard(readings))
   return lines.join("\n")
 }
 
@@ -879,7 +1314,16 @@ export function createTurnOrchestrator({
   // `{{ quorum }}`). The framework does not own these (who is on staff, and what the required vote floor m equals, are
   // the deployment's facts), so it takes them from this seam and refuses BY NAME when the seam fails rather than
   // rendering an empty slot. Absent ⇒ the historical behaviour (null ⇒ the slot reports itself as missing).
-  turnFacts = null } = {}) {
+  turnFacts = null,
+  // ★★★ ROUND 30 / task-19: THE STATUS BOARD'S SOURCE SEAM. The four fields (`STATUS_BOARD_FIELDS`) are DERIVED, so a
+  // caller that owns a different board can hand it here: a function `({ turn, faces, member }) => readings` (sync or
+  // async; it must return the `statusBoardReadings` shape) or a bag `{ tasks, records }`. Absent ⇒ the loop reads its
+  // own DECLARED read legs out of `faces` (`STATUS_BOARD_READ_OPS`: `tasks.list`, `records.list/get`, which
+  // `facesFrom` binds from the same service bag `kernel/index.js:1619` already passes), and a field that still cannot
+  // be read is rendered as 「该来源未提供：<why>」 rather than as an empty tag.
+  // A source that THROWS is a NAMED refusal (the `noticeSource` precedent): a board nobody produced must not be
+  // silently replaced by a plausible-looking one.
+  statusSources = null } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
   // ROUND 347: the wakeup POLICY (docs/26 section 3.2). The original preset recorded only WHO should be woken and
@@ -943,6 +1387,41 @@ export function createTurnOrchestrator({
   }
 
   const fail = (code, message, hint) => { counts.refused += 1; lastRefusal.code = code; lastRefusal.message = message; throw refuse(code, message, hint) }
+
+  /**
+   * ★★★ ROUND 30 / task-19: READ THE STATUS BOARD FOR THIS TURN. The precedence is the seam's:
+   *   1. `statusSources` as a FUNCTION — the caller owns the board (a pack with its own ledger, or a test);
+   *   2. `statusSources` as a BAG `{ tasks, records }` — the caller injects the two ledgers;
+   *   3. the DECLARED read legs on `faces` (`STATUS_BOARD_READ_OPS`) — what a real kernel gets for free, because
+   *      `facesFrom` binds them from the same service bag the write faces come from.
+   * A source that throws, or a function that returns something that is not the `statusBoardReadings` shape, is a
+   * NAMED refusal: the alternative is rendering a board nobody produced, which is the defect this row removes.
+   */
+  const statusReadingsFor = async (turn) => {
+    const member = turn && typeof turn.member === 'string' ? turn.member : null
+    if (typeof statusSources === 'function') {
+      let out = null
+      try { out = statusSources({ turn, faces, member, settings }) } catch (e) {
+        fail('VMU_ENGINE_UNAVAILABLE', 'the status board source failed for ' + String(member) + ': ' + String((e && e.message) || e),
+          'a status board source must return the statusBoardReadings shape ({ fields: [{ key, label, value|why }] }); the assembly refuses rather than rendering a board nobody produced')
+      }
+      if (isPromise(out)) {
+        try { out = await out } catch (e) {
+          fail('VMU_ENGINE_UNAVAILABLE', 'the async status board source failed for ' + String(member) + ': ' + String((e && e.message) || e),
+            'a status board source must resolve to the statusBoardReadings shape or reject; a rejected board is named, never rendered empty')
+        }
+      }
+      if (!out || !Array.isArray(out.fields)) {
+        fail('VMU_ENGINE_UNAVAILABLE', 'the status board source returned no fields for ' + String(member),
+          'return statusBoardReadings(...) (or the same shape); the four fields must be named even when they are unavailable')
+      }
+      return out
+    }
+    const bag = statusSources && typeof statusSources === 'object' ? statusSources : null
+    const taskFace = (bag && bag.tasks) || (faces && faces['vmu.tasks']) || null
+    const recordFace = (bag && bag.records) || (faces && faces['vmu.records']) || null
+    return statusBoardReadings({ tasks: taskFace, records: recordFace, member, settings, limit: STATUS_BOARD_DEFAULT_LIMIT })
+  }
 
   /** ① open a turn: who, which round, which phase, which task. */
   // ★★★ R13 (third pass, the part that made the earlier fix REAL): `rosterIds` and `chairId` were carried by the seam
@@ -1017,7 +1496,9 @@ export function createTurnOrchestrator({
       .filter((l) => typeof l === "string" && l.trim() !== "").join("\n")
     // ★ R15: a caller that supplies nothing gets the loop's own composition instead of a hole; a caller that DOES
     // supply one keeps full control (the pack words its own brief), so this is a fallback and not a second source.
-    const statusWithNotices = suppliedStatus !== "" ? suppliedStatus : composeStatusBlock(turn)
+    // ★ ROUND 30 / task-19: and when the loop does compose, the board is READ ONLY THEN - a caller that supplied its
+    // own statusBlock triggers no ledger read at all (byte-identical behaviour for every pack-supplied brief).
+    const statusWithNotices = suppliedStatus !== "" ? suppliedStatus : composeStatusBlock(turn, await statusReadingsFor(turn))
     const turnSettings = (settings || turn.facts) ? { ...(settings || {}), ...(turn.facts || {}) } : undefined
     // ROUND 407: THE FRAMEWORK OFFERS THE MECHANISM; THE PACK STATES THE POLICY (goal 2). Which optional blocks an
     // institution switches on, which reply catalogue it sends, which meeting speaker state applies and which
@@ -1061,6 +1542,81 @@ export function createTurnOrchestrator({
       instructionDelivered: instruction !== '' }
   }
 
+  /**
+   * ★★★★★★★ TASK-13 / LIVE RUN 31 — THE TURN IS HANDED THE CHILD SESSION THE MEMBER ALREADY HAS.
+   *
+   * THE DEFECT, IN THE INSTITUTE'S OWN WORDS. Run 31 delivered twelve member turns; the office then read the session list
+   * and found acad-01 and res-01 each running in TWO DIFFERENT child sessions. Each "turn" of a member therefore began
+   * with no memory of the turn before it — of the progress it had archived, or of the routes it had already tried — which
+   * is precisely what v5r asks a researcher to carry (independent advancement, archived progress, attempted routes). The
+   * kernel was not blind to the sessions: `memberSessions` already holds the child id learned from each settled turn
+   * (:1135 and :2541), and `vibe_vmu_tools`/`vibe_v5_tool_help` already read it. Nothing ever put it on a TURN.
+   *
+   * WHY THE OFFER TRAVELS INSIDE `turn`. The host bridge creates the deliverer and calls it as
+   * `deliverer({ turn, text })` — a third argument added to `deliver(...)` would be dropped before the seam ever saw it.
+   * `turn` is forwarded verbatim, so the offer is a property of the turn: it is created HERE (one place computes it, from
+   * the same map every reader uses), and `deliverViaSubagents` reads it off the turn it receives. That is the smallest
+   * change that reaches production, and it adds no new continuation store, no new verb and no second reading.
+   */
+  const continuationOfferFor = (turn) => {
+    const member = turn && typeof turn.member === 'string' && turn.member !== '' ? turn.member : null
+    if (member === null) return null
+    let session = null
+    try { session = memberSessions.get(member) || null } catch { session = null }
+    if (session === null || session === '') return null
+    return {
+      session: String(session),
+      learnedFrom: 'memberSessions (the child session an earlier settled turn of this member ran in, in THIS kernel instance)',
+      means: 'the child session this kernel already holds for "' + member + '". A delivery seam that CAN continue a session may run this turn there instead of starting a fresh child; a seam that cannot must say so in its returned `continuation` reading (applied/why/fix), so a receipt never implies continuity that did not happen. If the seam ignores this offer, the turn runs in a NEW child and the member has no cross-turn memory — that is the run-31 defect, and the receipt now names it',
+    }
+  }
+
+  /**
+   * ★ TASK-13 — ONE SHAPE FOR THE CONTINUATION READING, ON EVERY DELIVERY SHAPE (settled, caller-played, bare string).
+   * `offered` is what this kernel knew BEFORE the turn (null = nothing learned yet, so continuations were impossible);
+   * `applied` is the seam's OWN claim that it really ran the turn in that session; `why`/`fix` are the seam's named
+   * reason when it could not. An absent seam reading is reported as UNREADABLE, never as "did not continue": those are
+   * different findings and run 31 needed that distinction.
+   */
+  const continuationReceipt = (offer, delivered) => {
+    const seam = delivered && typeof delivered === 'object' && delivered.continuation && typeof delivered.continuation === 'object'
+      ? delivered.continuation : null
+    const offered = offer && typeof offer.session === 'string' && offer.session !== '' ? offer.session : null
+    const ranIn = delivered && typeof delivered === 'object' && typeof delivered.childId === 'string' && delivered.childId !== ''
+      ? delivered.childId : null
+    return {
+      offered,
+      offeredMeans: offered === null
+        ? 'nothing had been learned for this member before this turn, so no continuation could be offered (this turn necessarily started a fresh child)'
+        : (offer && offer.means ? offer.means : null),
+      applied: seam !== null && seam.applied === true,
+      ranIn,
+      // ★ a COMPARISON, not a claim: true only when the session the turn actually ran in IS the offered one; null when
+      // either side is unreadable ("unknown" is not "started fresh").
+      reused: offered === null || ranIn === null ? null : String(ranIn) === String(offered),
+      how: seam && typeof seam.how === 'string' ? seam.how : null,
+      cause: seam && typeof seam.cause === 'string' && seam.cause !== ''
+        ? seam.cause
+        : (offered === null ? 'nothing-learned-yet' : (seam === null ? 'seam-reported-no-continuation' : null)),
+      why: seam && typeof seam.why === 'string' && seam.why !== ''
+        ? seam.why
+        : (offered === null
+            ? 'no child session had been learned for this member yet, so this turn necessarily started a fresh child'
+            : 'the delivery seam returned no `continuation` reading at all, so whether this turn ran in the offered session is UNREADABLE from this return — not evidence that it started fresh, and not evidence that it continued'),
+      fix: seam && typeof seam.fix === 'string' && seam.fix !== '' ? seam.fix : null,
+      // ★ TASK-16 / 裁决 1: when a resume FAILED and the turn was therefore downgraded explicitly, the host's own error
+      // code travels here. `cause` says what class of failure it was (`resume-failed` / `resume-no-reply` /
+      // `no-reply-capable-resume`); `hostCode` says which host refusal produced it, so the fix is addressable.
+      hostCode: seam && typeof seam.hostCode === 'string' && seam.hostCode !== '' ? seam.hostCode : null,
+      // ★ TASK-16: the seam's MEASURED host facts travel on the same reading — which session was named, which
+      // continuation verbs the host actually offers, and which piece of the composed reply-capable resume this
+      // deployment is missing. A boundary that cannot be read is a boundary nobody can fix.
+      session: seam && typeof seam.session === 'string' && seam.session !== '' ? seam.session : offered,
+      hostVerbs: seam && Array.isArray(seam.hostVerbs) ? seam.hostVerbs.slice() : null,
+      capability: seam && seam.capability && typeof seam.capability === 'object' ? seam.capability : null,
+    }
+  }
+
   /** ③ deliver through the adapter seam. A missing adapter is refused, never faked. */
   const deliverTurn = async (turn, text) => {
     if (typeof deliver !== 'function') {
@@ -1068,8 +1624,11 @@ export function createTurnOrchestrator({
         'inject { deliver: async ({ turn, text }) => reply } (docs/26 §2 stage 3)')
     }
     let delivered
+    // ★★★★★★★ TASK-13: the offer is computed ONCE, here, from the map every reader already uses, and it travels INSIDE
+    // `turn` — see `continuationOfferFor` above for why a third argument to `deliver` would never reach the seam.
+    const continuation = continuationOfferFor(turn)
     try {
-      delivered = await deliver({ turn, text })
+      delivered = await deliver({ turn: continuation === null ? turn : { ...turn, continuation }, text })
     } catch (e) {
       // ★ RUN 12 item 1: attribute the stall. The timeout the seam raises already carries turn/member/waitedMs/
       // lastPhase; what it could NOT say was WHICH delivery path was attempted, and the status counters said
@@ -1092,7 +1651,11 @@ export function createTurnOrchestrator({
     // `{ reply, childId, stopReason, attribution }` that `deliverViaSubagents` now produces. A bare string is accepted
     // and NAMED as unattributed - the loop never invents a child id or a stop reason.
     if (typeof delivered === 'string') {
-      lastAttribution = { childId: null, stopReason: null, deliveryPath: null, attribution: 'the delivery adapter returned a bare string: no childId/stopReason (docs/26 §3.22)' }
+      lastAttribution = { childId: null, stopReason: null, deliveryPath: null,
+        attribution: 'the delivery adapter returned a bare string: no childId/stopReason (docs/26 §3.22)',
+        // ★ TASK-13: a bare string carries no reading of its own, so the continuation reading is built from the offer
+        // (what this kernel knew) and states that the seam said nothing — never that it "started fresh".
+        continuation: continuationReceipt(continuation, null) }
       return delivered
     }
     const reply0 = delivered && typeof delivered.reply === 'string' ? delivered.reply : null
@@ -1103,7 +1666,10 @@ export function createTurnOrchestrator({
     // envelope therefore travels through UNCHANGED, and `run` returns it rather than parsing an empty answer.
     if (delivered && delivered.awaiting === true) {
       lastAttribution = { childId: null, stopReason: null, deliveryPath: 'caller', attribution: 'the CALLING session plays this member turn (deliverByReturning): the assembled prompt was handed back, and the reply arrives on the next call' }
-      return { awaiting: true, memberPrompt: (delivered && delivered.memberPrompt) || null, reply: null, deliveryPath: 'caller' }
+      return { awaiting: true, memberPrompt: (delivered && delivered.memberPrompt) || null, reply: null, deliveryPath: 'caller',
+        // ★ TASK-13: the caller-played route can neither continue nor be read as having continued, and it must not be
+        // silent about it: the caller holds the member's prompt and can choose to play it in the member's learned session.
+        continuation: continuationReceipt(continuation, delivered) }
     }
     const reply = reply0
     // ★★★ ROUND 79: THE REPLY IS RECORDED AGAINST THE MEMBER IT ANSWERS, NOT AGAINST THIS TURN'S MEMBER. The
@@ -1131,6 +1697,11 @@ export function createTurnOrchestrator({
       // transcript histogram. It travels now, on every route, with the meaning attached.
       childPreset: delivered && typeof delivered.childPreset === 'string' ? delivered.childPreset : null,
       childPresetMeans: delivered && typeof delivered.childPresetMeans === 'string' ? delivered.childPresetMeans : null,
+      // ★★★★★★★ TASK-13 / LIVE RUN 31: did this turn CONTINUE the member, or start it over? This is the reading the
+      // institute had to reconstruct from the session list after the run, and could not: `offered` is the session this
+      // kernel already held for the member, `ranIn` is where the turn actually ran (`delivery.childId`), `reused` is the
+      // comparison, and `why`/`fix` name the boundary when the seam could not continue.
+      continuation: continuationReceipt(continuation, delivered),
     }
     if (lastAttribution.childId && turn && typeof turn.member === 'string') memberSessions.set(turn.member, lastAttribution.childId)
     if (reply === null) {
@@ -1876,6 +2447,11 @@ export function createTurnOrchestrator({
           stopReason: typeof a.stopReason === 'string' ? a.stopReason : null,
           childPreset: typeof a.childPreset === 'string' ? a.childPreset : null,
           childPresetMeans: typeof a.childPresetMeans === 'string' ? a.childPresetMeans : null,
+          // ★★★★★★★ TASK-13 / LIVE RUN 31: whether this turn CONTINUED the member's learned session or started a fresh
+          // child, with the seam's named reason when it could not. Same family as every field above: the answer existed
+          // one layer down (`lastAttribution`) and had to travel, or a reader is back to reconstructing it from the
+          // host's session list after the run.
+          continuation: a.continuation && typeof a.continuation === 'object' ? a.continuation : null,
           // ★ LIVE RUN 2026-10-25: the late-delivery facts are NUMBERS, and they travel as numbers (absent, not zero, when
           // the seam did not report them). `deliveredLate` is true only when the seam said so.
           deliveredLate: a.deliveredLate === true,
@@ -1899,6 +2475,9 @@ export function createTurnOrchestrator({
           // unreadable in the deployment that uses it. Same family as run 37's count-only `skipped`.
           childPreset: typeof d.childPreset === 'string' ? d.childPreset : null,
           childPresetMeans: typeof d.childPresetMeans === 'string' ? d.childPresetMeans : null,
+          // ★ TASK-13: the awaiting route carries the same reading, so the caller who plays the member turn can see which
+          // session the member already has and play it there (the caller-played seam cannot continue on its own).
+          continuation: d.continuation && typeof d.continuation === 'object' ? d.continuation : null,
           ...(d.deliveredLate === true ? { deliveredLate: true, deliveryWaitedMs: d.deliveryWaitedMs === undefined ? null : d.deliveryWaitedMs, deliveryDeadlineMs: d.deliveryDeadlineMs === undefined ? null : d.deliveryDeadlineMs, deliveryGraceMs: d.deliveryGraceMs === undefined ? null : d.deliveryGraceMs } : {}),
           attribution: typeof d.attribution === 'string' ? d.attribution : null,
           means: 'which seam executed this member turn: caller = the CALLING session played it and returned the reply; activation = an independent child session ran it through startActivation (childId + stopReason name that child); subagents = the same, through the older one-shot verb. This value is the verb the seam actually used, not a normalised category',
@@ -2563,6 +3142,72 @@ export function createTurnOrchestrator({
           return 'the child session this kernel holds for "' + id + '" (in memory, per kernel instance; learned from this or an earlier step receipt). `vibe_vmu_tools {member:"' + id + '"}` reads the same map - a null there while this field is non-null is a contradiction in this receipt, not a property of the member'
         }
         return 'NOT LEARNED YET for "' + id + '": the delivery seam reported no child id for this member on any turn THIS kernel ran. `vibe_vmu_tools` will refuse for it - that refusal describes the absence of a reading, never a member who sees nothing'
+      })()
+      // ★★★★★★★ TASK-13 / LIVE RUN 31 — THE READING THAT ANSWERS "DID THIS TURN CONTINUE THE MEMBER, OR START IT OVER?"
+      // Run 31's office had to answer that question by cross-reading the host's session list AFTER the run, and what it
+      // found was acad-01 and res-01 each running in two different child sessions: every turn restarted the member, so
+      // v5r's "advance independently and archive what you tried" had no carrier. The step receipt carried
+      // `childSessionId` (where this turn ran) and `memberSession` (what the kernel holds afterwards) and NEITHER said
+      // whether those are the same session — the comparison is the finding, and it lives here.
+      //   `offered` — the session the kernel handed the delivery seam BEFORE this turn (null = nothing learned yet);
+      //   `ranIn`   — where the turn actually ran, from the seam's own childId (`delivery.childId`);
+      //   `reused`  — the comparison: TRUE only when they are the same session; NULL when either side is unreadable.
+      // `why`/`fix` are the seam's named boundary when it could not continue (host lacks a reply-capable resume), so a
+      // reader is never left to conclude "the framework forgot".
+      memberCallsReading.continuation = (() => {
+        const fromReturn = (r && r.delivery && r.delivery.continuation && typeof r.delivery.continuation === 'object')
+          ? r.delivery.continuation
+          : ((r && r.continuation && typeof r.continuation === 'object') ? r.continuation : null)
+        const ranIn = memberCallsReading.childSessionId
+        if (!fromReturn) {
+          return {
+            offered: null, offeredMeans: null, ranIn, reused: null, applied: false,
+            how: null, cause: 'seam-reported-no-continuation',
+            why: 'the delivery returned no continuation reading, so whether this turn continued the member\'s learned session is UNREADABLE from this receipt — null is not "started fresh", and it is not "continued"',
+            fix: 'the reading is built by `deliverTurn` from the seam\'s `continuation` field; a seam that omits it makes the turn\'s continuity unreadable (docs/26 §3.22)',
+          }
+        }
+        const offered = typeof fromReturn.offered === 'string' && fromReturn.offered !== '' ? fromReturn.offered : null
+        return {
+          offered,
+          offeredMeans: typeof fromReturn.offeredMeans === 'string' ? fromReturn.offeredMeans : null,
+          ranIn,
+          reused: offered === null || ranIn === null ? null : String(ranIn) === String(offered),
+          applied: fromReturn.applied === true,
+          how: typeof fromReturn.how === 'string' ? fromReturn.how : null,
+          cause: typeof fromReturn.cause === 'string' ? fromReturn.cause : null,
+          why: typeof fromReturn.why === 'string' ? fromReturn.why : null,
+          fix: typeof fromReturn.fix === 'string' ? fromReturn.fix : null,
+          // ★ TASK-16 / 裁决 1: the host's own refusal code when a resume failed and the turn was downgraded explicitly.
+          hostCode: typeof fromReturn.hostCode === 'string' ? fromReturn.hostCode : null,
+          // ★ TASK-16: "the host cannot resume" is a MEASUREMENT, so the measured facts travel with it: which verbs the
+          // host actually offers, and which piece of the composed resume this deployment is missing. Without these the
+          // receipt could only say that nothing continued, and the next reader would have to re-derive why.
+          session: typeof fromReturn.session === 'string' ? fromReturn.session : null,
+          hostVerbs: Array.isArray(fromReturn.hostVerbs) ? fromReturn.hostVerbs.slice() : null,
+          capability: fromReturn.capability && typeof fromReturn.capability === 'object' ? fromReturn.capability : null,
+        }
+      })()
+      memberCallsReading.continuationMeans = (() => {
+        const c = memberCallsReading.continuation
+        if (c.reused === true) {
+          return 'THIS TURN CONTINUED THE MEMBER: it ran in ' + String(c.ranIn) + ', the session this kernel already held for the member, so the member kept its own memory of earlier turns (its archived progress and attempted routes). `applied:true` is the seam\'s own statement that it used the resume it was given'
+        }
+        if (c.offered === null) {
+          return 'NO CONTINUATION WAS POSSIBLE ON THIS TURN: nothing had been learned for this member before it (see `offered:null`), so a fresh child was necessarily started. The next turn of this member CAN continue — run one more step and read `continuation.reused`'
+        }
+        if (c.cause === 'resume-failed' || c.cause === 'resume-no-reply') {
+          return 'THE CONTINUATION FAILED, SO THIS TURN WAS DELIVERED BY A FRESH CHILD (offered=' + String(c.offered)
+            + ', ranIn=' + String(c.ranIn) + '): this is an EXPLICIT downgrade, not a silent one — cause=' + JSON.stringify(c.cause)
+            + (c.hostCode ? ', hostCode=' + c.hostCode : '') + ' (the host\'s own refusal, in `why`) and `fix` names what would make the '
+            + 'next turn continue. The institute kept running instead of losing the turn; the member simply has no cross-turn memory on it. '
+            + 'ONE continuation failure is NOT downgraded: if the resume runs out of budget the turn FAILS by name '
+            + '(`VMU_TURN_DELIVERY_TIMEOUT`, deliveryPath "continuation") instead of delivering twice, because that child may still be running'
+        }
+        if (c.reused === false) {
+          return 'THIS TURN STARTED A FRESH CHILD INSTEAD OF CONTINUING ' + c.offered + ' (ranIn=' + String(c.ranIn) + '): the member had no cross-turn memory on this turn. `continuation.why` names who could not continue and `fix` names what would change it — read them before concluding the framework ignored the session'
+        }
+        return 'UNREADABLE COMPARISON: the kernel offered ' + String(c.offered) + ' but the seam reported no child id for where the turn ran, so "continued" and "started fresh" cannot be told apart from this receipt (null means NOT READABLE, never either answer)'
       })()
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,

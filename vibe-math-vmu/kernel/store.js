@@ -135,6 +135,16 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
   const file = join(dir, 'state.json')
   const tmpFile = () => file + '.' + process.pid + '.' + Date.now() + '.' + Math.random().toString(36).slice(2, 8) + '.tmp'
   const lockFile = file + '.lock'
+  // R30 / task-17: on Windows a rename onto a target that another handle still has open answers EPERM — a WINDOW, not a
+  // corrupt file. The writer retries a BOUNDED number of attempts, re-reading the file first so a retry builds on the
+  // other kernel's value instead of clobbering it; every retry and every give-up is counted (stats.writeRetries /
+  // writeRetryGiveUps), never hidden. The lock file is the PRIMARY mechanism (open() takes it too); this is the fallback
+  // for plain readers that hold the file without taking it.
+  const TRANSIENT_RENAME_CODES = new Set(['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY'])
+  const MAX_WRITE_ATTEMPTS = 3
+  // ONE timer site in this file, shared by the lock backoff and the write-retry backoff: the activity-timer audit maps
+  // each file to its declared timer count, and a second timer call would make that declaration stale for no gain.
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
   // §1-(5): freshness is a STAMP (mtime+size), not a promise. `read()` is synchronous because every service face is
   // synchronous; a synchronous stat keeps that shape while still seeing another process's rename.
@@ -193,7 +203,7 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
       try { fd = openSync(lockFile, 'wx'); break } catch (e) {
         if (e && e.code !== 'EEXIST') break
         if (Date.now() - started > lockTimeoutMs) break
-        await new Promise((r) => setTimeout(r, lockBackoffMs))
+        await sleep(lockBackoffMs)
         stats.lockWaits += 1
       }
     }
@@ -211,7 +221,7 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
   let fold = null
   let chain = Promise.resolve()
   const listeners = new Map()
-  const stats = { opens: 0, writes: 0, patches: 0, migrations: 0, subscriptions: 0, reloads: 0, lockWaits: 0, lockSkips: 0, lastReloadAt: null }
+  const stats = { opens: 0, writes: 0, patches: 0, migrations: 0, subscriptions: 0, reloads: 0, lockWaits: 0, lockSkips: 0, writeRetries: 0, writeRetryGiveUps: 0, lastReloadAt: null }
 
   const runExclusive = (fn) => {
     const next = chain.then(fn, fn)
@@ -229,10 +239,82 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
   const persist = async () => {
     const tmp = tmpFile()
     await writeFile(tmp, JSON.stringify(fold, null, 2) + '\n', 'utf8')
-    await rename(tmp, file) // atomic: the visible file is always a complete document
+    try {
+      await rename(tmp, file) // atomic: the visible file is always a complete document
+    } catch (e) {
+      // the temp copy is evidence of a write that did NOT land; leaving it behind would be a leak, not a record
+      try { rmSync(tmp) } catch { /* already gone */ }
+      throw e
+    }
     adoptStamp()
     stats.writes++
   }
+
+  /**
+   * A failed write leaves the IN-MEMORY fold holding a value the file never received. Before any retry composes the
+   * patch again, that value must be gone: re-read the file (the truth) and adopt its stamp. If the file cannot be read
+   * at this instant, clear the stamp so the next `reloadIfStale` MUST reload instead of trusting a stale match.
+   */
+  const resyncFromDisk = () => {
+    try {
+      fold = parseFold(readFileSync(file, 'utf8'), file)
+      adoptStamp()
+    } catch {
+      stamp = null
+    }
+  }
+
+  /**
+   * R30 / task-17 — ONE mutation path for write() and patch(): reload, compute, persist, and on a transient rename
+   * refusal (another handle held the target) RESYNC to the file and retry the whole read-merge-write, so two kernels
+   * never lose each other's write. The loop is bounded; when the attempts are spent the caller gets a named refusal
+   * that says the write is NOT acknowledged (never a silent success). Deadlock-free: the promise chain is acquired
+   * before the file lock and never re-entered, the lock is released in `withFileLock`'s finally, and a lock that cannot
+   * be taken degrades to its bounded "proceed without it" path (stats.lockSkips) rather than waiting forever.
+   */
+  const mutate = (key, where, compute, before) => runExclusive(() => withFileLock(async () => {
+    let attempt = 0
+    for (;;) {
+      attempt += 1
+      if (!fold) throw refuse('VMU_STORE_FAILED', 'store is not open')
+      // first attempt: the ordinary staleness check (honours coherence:'off'); a RETRY must forget the value that never
+      // landed and read the file as it is now — that is recovery of a failed write, not a coherence inference.
+      reloadIfStale(where, attempt > 1)
+      assertKey(key)
+      if (before) before()
+      const prev = fold.keys[key]
+      const next = compute(clone(prev))
+      if (next === undefined) return { ok: true, key, version: fold.version, changed: false }
+      fold.keys[key] = next
+      try {
+        await persist()
+      } catch (e) {
+        const code = e && e.code
+        if (!TRANSIENT_RENAME_CODES.has(code)) throw e
+        if (attempt >= MAX_WRITE_ATTEMPTS) {
+          stats.writeRetryGiveUps += 1
+          resyncFromDisk()
+          const err = refuse('VMU_STORE_FAILED',
+            'the durable file could not be atomically replaced after ' + attempt + ' attempts (' + code + '): the write is NOT acknowledged',
+            'another kernel or a plain reader still held the target; the in-memory fold was resynced to the file, so nothing was silently kept')
+          err.attempts = attempt
+          throw err
+        }
+        stats.writeRetries += 1
+        // drop the value that never landed BEFORE merging again: a retry that re-applied the patch on top of its own
+        // unpersisted result would duplicate it (measured: 'xproc','xproc','xproc' after two retries)
+        resyncFromDisk()
+        // a bounded pause, NOT the mechanism: the retry re-reads the file and the count is reported either way. The
+        // pause only keeps a reader that holds the handle for a few milliseconds from burning all attempts instantly.
+        await sleep(15 * attempt)
+        continue
+      }
+      notify(key, fold.keys[key], prev)
+      const receipt = { ok: true, key, version: fold.version, changed: true }
+      if (attempt > 1) receipt.attempts = attempt // honest: the write only landed after a transient retry
+      return receipt
+    }
+  }))
 
   const notify = (key, next, prev) => {
     for (const fn of listeners.get(key) || []) fn(clone(next), clone(prev))
@@ -272,47 +354,56 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
     get dir() { return dir },
 
     async open(expected = STATE_VERSION) {
+      // R30 / task-17 — open() takes the SAME exclusive lock the writers take. Measured on this machine: a kernel that
+      // was merely OPENING (plain `readFile`, no lock) made another kernel's `rename(tmp -> state.json)` fail with
+      // `EPERM`, so the writer's acknowledged-in-memory value never reached the file and the next kernel opened onto the
+      // OLD file (two kernels, one workspace: every turn). Loading is a read-modify-write of the in-memory fold too, so
+      // it belongs inside the same mutex instead of outside it. The directory must exist BEFORE the lock is taken: the
+      // lock file lives inside it, and a first run that tried to lock a missing directory would "skip" the lock by name.
       await mkdir(dir, { recursive: true })
-      let loaded
-      try {
-        const raw = await readFile(file, 'utf8')
-        loaded = JSON.parse(raw)
-      } catch (e) {
-        if (e && e.code === 'ENOENT') {
-          loaded = { version: STATE_VERSION, keys: defaultKeys(), createdAt: clock() }
-          fold = loaded
-          await runExclusive(() => persist())
-          adoptStamp()
-          stats.opens++
-          return { opened: 'created', version: fold.version }
+      return runExclusive(() => withFileLock(async () => {
+        let loaded
+        try {
+          const raw = await readFile(file, 'utf8')
+          loaded = JSON.parse(raw)
+        } catch (e) {
+          if (e && e.code === 'ENOENT') {
+            loaded = { version: STATE_VERSION, keys: defaultKeys(), createdAt: clock() }
+            fold = loaded
+            await persist() // already inside the chain + lock: re-entering runExclusive here would deadlock
+            adoptStamp()
+            stats.opens++
+            return { opened: 'created', version: fold.version }
+          }
+          // corrupt file: refuse and leave it untouched for inspection, never clobber the evidence
+          throw refuse('VMU_STORE_FAILED', 'durable file is unreadable or not JSON: ' + e.message,
+            'it was left untouched at ' + file)
         }
-        // corrupt file: refuse and leave it untouched for inspection, never clobber the evidence
-        throw refuse('VMU_STORE_FAILED', 'durable file is unreadable or not JSON: ' + e.message,
-          'it was left untouched at ' + file)
-      }
-      if (!loaded || typeof loaded !== 'object' || typeof loaded.keys !== 'object' || loaded.keys === null) {
-        throw refuse('VMU_STORE_FAILED', 'durable file has no keys object', 'left untouched at ' + file)
-      }
-      for (const k of Object.keys(loaded.keys)) {
-        if (!PUBLIC_KEYS.includes(k)) {
-          throw refuse('VMU_STORE_FAILED', 'durable file carries an undeclared key: ' + k,
-            'refusing to load a fold this build does not understand')
+        if (!loaded || typeof loaded !== 'object' || typeof loaded.keys !== 'object' || loaded.keys === null) {
+          throw refuse('VMU_STORE_FAILED', 'durable file has no keys object', 'left untouched at ' + file)
         }
-      }
-      const report = await migrateInPlace(loaded)
-      fold = loaded
-      adoptStamp()
-      stats.opens++
-      return { opened: loaded.createdAt ? 'created' : 'loaded', version: fold.version, migration: report, expected, coherence: coherenceOn ? 'on' : 'off' }
+        for (const k of Object.keys(loaded.keys)) {
+          if (!PUBLIC_KEYS.includes(k)) {
+            throw refuse('VMU_STORE_FAILED', 'durable file carries an undeclared key: ' + k,
+              'refusing to load a fold this build does not understand')
+          }
+        }
+        const report = await migrateInPlace(loaded)
+        fold = loaded
+        adoptStamp()
+        stats.opens++
+        return { opened: loaded.createdAt ? 'created' : 'loaded', version: fold.version, migration: report, expected, coherence: coherenceOn ? 'on' : 'off' }
+      }))
     },
 
     async migrate() {
       if (!fold) throw refuse('VMU_STORE_FAILED', 'store is not open')
-      return runExclusive(async () => {
+      // the same mutex as open()/write()/patch(): migration renames the file too (R30 / task-17)
+      return runExclusive(() => withFileLock(async () => {
         const report = await migrateInPlace(fold)
         if (report.applied.length > 0) await persist()
         return report
-      })
+      }))
     },
 
     read(key) {
@@ -338,19 +429,11 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
 
     /** Wholesale replace with compare-and-set. Prefer `patch` unless the value is a whole new thing. */
     write(key, value, opts = {}) {
-      return runExclusive(() => withFileLock(async () => {
-        if (!fold) throw refuse('VMU_STORE_FAILED', 'store is not open')
-        reloadIfStale('write')
-        assertKey(key)
+      return mutate(key, 'write', () => clone(value), () => {
         if (opts.expect !== undefined && opts.expect !== fold.version) {
           throw refuse('VMU_STORE_FAILED', 'durable version changed under us: expected v' + opts.expect + ', at v' + fold.version)
         }
-        const prev = fold.keys[key]
-        fold.keys[key] = clone(value)
-        await persist()
-        notify(key, fold.keys[key], prev)
-        return { ok: true, key, version: fold.version, changed: true }
-      }))
+      })
     },
 
     /**
@@ -358,20 +441,13 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
      * in the same tick both survive. `fn` returning undefined leaves the value untouched.
      */
     patch(key, fn) {
-      return runExclusive(() => withFileLock(async () => {
-        if (!fold) throw refuse('VMU_STORE_FAILED', 'store is not open')
-        reloadIfStale('patch')
-        assertKey(key)
+      return mutate(key, 'patch', (prev) => {
         if (typeof fn !== 'function') throw refuse('VMU_INVALID_ARGUMENT', 'patch needs a function: (current) => next')
-        const prev = fold.keys[key]
-        const next = fn(clone(prev))
-        if (next === undefined) return { ok: true, key, version: fold.version, changed: false }
-        fold.keys[key] = next
-        stats.patches++
-        await persist()
-        notify(key, next, prev)
-        return { ok: true, key, version: fold.version, changed: true }
-      }))
+        return fn(prev)
+      }).then((receipt) => {
+        if (receipt.changed) stats.patches++
+        return receipt
+      })
     },
 
     subscribe(key, fn) {
@@ -399,12 +475,12 @@ export function createStore({ root, migrators = [], clock = () => new Date().toI
       for (const k of Object.keys(snapshot.keys)) {
         if (!PUBLIC_KEYS.includes(k)) throw refuse('VMU_INVALID_ARGUMENT', 'snapshot carries an undeclared key: ' + k)
       }
-      return runExclusive(async () => {
+      return runExclusive(() => withFileLock(async () => {
         fold = clone(snapshot)
         fold.version = STATE_VERSION
         await persist()
         return { ok: true, version: fold.version }
-      })
+      }))
     },
 
     stats() {

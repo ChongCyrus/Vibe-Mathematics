@@ -24,6 +24,7 @@ import { createBus } from '../vibe-math-vmu/kernel/bus.js'
 import { createChildBudget } from '../vibe-math-vmu/kernel/mathjobs.js'
 import { createHostSpawn } from '../vibe-math-vmu/host-spawn.js'
 import { createStore } from '../vibe-math-vmu/kernel/store.js'
+import { createMailbox } from '../vibe-math-vmu/kernel/mailbox.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
@@ -71,7 +72,7 @@ const VERDICT = {
   // byte-identical - the site is one clear plus one set, both inside the seam object, and the handle the scheduler gets
   // back is the same one Node returns, so `timerClear` really cancels it. Classified here because this test's rule is
   // that a new GLOBAL timer site cannot appear unnoticed.
-  'host-deliver.js': { timers: 1, clears: 2, verdict: 'finally-clear', note: 'SLV: the one-shot delivery deadline (declared setting vmu.turn.deliveryTimeoutMs) is cleared in `finally`; a hung turn rejects with VMU_TURN_DELIVERY_TIMEOUT and the serial dispatch queue continues. The SECOND clear is the grace-harvest clear: when the deadline fires the harness keeps waiting briefly for the child to settle (so a slow-but-alive child is not misreported as nothing), and that inner timer is cleared on BOTH paths - the pair is what the scan sees' },
+  'host-deliver.js': { timers: 2, clears: 2, verdict: 'finally-clear + bounded-await-poll', note: 'SLV: the one-shot delivery deadline (declared setting vmu.turn.deliveryTimeoutMs) is cleared in `finally`; a hung turn rejects with VMU_TURN_DELIVERY_TIMEOUT and the serial dispatch queue continues. The SECOND clear is the grace-harvest clear: when the deadline fires the harness keeps waiting briefly for the child to settle (so a slow-but-alive child is not misreported as nothing), and that inner timer is cleared on BOTH paths - the pair is what the scan sees. The SECOND TIMER SITE is TASK-16 (run 31 member continuity): `makeMemberResumeChild` queues the turn into the member own child session and then polls it between `whenIdle()` joins with a plain `await new Promise((resolve) => setTimeout(resolve, 200))`. It binds no handle, so it cannot be cancelled early - but like the store.js:191 backoff it ALWAYS fires (nothing races it), it is bounded by the resume budget (deadlineMs, itself under the delivery deadline), and it is what lets a continued turn finish instead of a fresh child being started under it. Classified `bounded-await-poll` for the same reason store.js is not a finding; measured in tests/vmu-run31-continuity.test.mjs section 6' },
   'vibe-math-vmu.js': { timers: 1, clears: 1, verdict: 'declared-only-seam', note: 'the platform timer is forwarded to the scheduler only when vmu.schedule.autoArm is true (K1); undeclared ⇒ no timer seam at all and status().seams.timerShape stays null' },
   // ★ ROUND 30 / gate-debt D — a NEW site that appeared AFTER this table was last written (`a572b5a4`, 20:17, is
   // younger than the round-11 pass at `3b646d39`, 18:31; the same "measurement drift" this file already names). The one
@@ -84,7 +85,24 @@ const VERDICT = {
   // Classified `bounded-await-backoff` and not `NAMED-FINDING-uncancellable` ON PURPOSE: a finding is a wait a caller
   // may need to CANCEL and has no API to ask for; here the caller cannot even express that wish, and the wait always
   // releases itself. If the store ever grows a cancellable wait path (an AbortSignal on `withFileLock`), re-read this.
+  // ★ TASK-16 (run 31, member/office shared task board): the board's write-back retries a TRANSIENT store refusal
+  // with a plain awaited sleep (`10 * attempt` ms, at most 2 retries, only for EPERM/EBUSY/EACCES/ENOTEMPTY). It binds
+  // no handle, so it cannot be cancelled early - but it always fires, it is bounded (<=30ms total), and after task-17
+  // fixed the store layer this is a FALLBACK, not the primary path: the mutex in kernel/store.js is what makes the
+  // write safe, and the retry only covers a transient rename race. Counted by the scan, classified the same way as
+  // store.js:191 (a bounded await is not a leak), and its effect is observable: the sharing counters expose
+  // writeRetried/writeRefused instead of hiding the retry.
+  'kernel/index.js': { timers: 1, clears: 0, verdict: 'bounded-await-backoff', note: 'the task-board write retry (index.js:605, `10 * attempt` ms, attempt <= 2) - no handle bound, always fires, bounded to <=30ms, and a FALLBACK now that task-17 made the store itself mutually exclusive; a refusal is named on the face (shared.writeRefused/lastError) and a retry is counted (shared.writeRetried), so the sleep cannot hide a lost write' },
   'kernel/store.js': { timers: 1, clears: 0, verdict: 'bounded-await-backoff', note: 'the lock-retry backoff at store.js:191 (inside withFileLock): no handle bound ⇒ uncancellable, but a plain awaited sleep that always fires, bounded by lockRetries×lockBackoffMs/lockTimeoutMs (store.js:124-125) and guarding a FILE lock released in a finally (store.js:203). §1b measures it with `process.getActiveResourcesInfo()`: a lock-contended patch really takes the sleep branch (lockWaits>0) and leaves no armed timeout' },
+  // ★ R30 / task-17 — the SECOND site this table was missing (`kernel/mailbox.js`, from shared-state's round-31 mailbox
+  // work): the bounded retry of a shared write whose atomic rename was refused sleeps with a plain awaited timeout at
+  // mailbox.js:635 (`10 * attempt` ms). Since task-17 the STORE retries the rename inside its own mutex, so this is now a
+  // FALLBACK layer (it only fires for a store implementation that still surfaces a raw transient code) — but it is a real
+  // GLOBAL timer site, so it is classified here instead of being left to a hand-grep. It binds no handle, yet it ALWAYS
+  // fires (nothing races it), it is bounded to 3 attempts, and the last attempt falls through to a NAMED refusal that
+  // keeps the original code. §1c MEASURES the row: the transient case really takes the sleep branch and the stubborn case
+  // really exhausts the budget — and neither leaves an armed timeout behind.
+  'kernel/mailbox.js': { timers: 1, clears: 0, verdict: 'bounded-await-backoff', note: 'the transient-write retry backoff at mailbox.js:635 (inside the push retry): no handle bound ⇒ uncancellable, but a plain awaited sleep that always fires, bounded to 3 attempts (10/20ms) and leaving the caller with the original refusal code (EPERM) rather than a swallowed failure. §1c measures it with `process.getActiveResourcesInfo()`: a forced transient refusal takes the sleep branch (`shared.writeRetries === 1`) and leaves no armed timeout; the stubborn case exhausts the budget in 3 attempts with nothing left armed either' },
 }
 {
   const files = walk('vibe-math-vmu').filter((f) => f.endsWith('.js'))
@@ -162,6 +180,46 @@ console.log('=== 1b. F15 MEASURED on the new `kernel/store.js` row: the lock bac
   } finally {
     await rm(storeRoot, { recursive: true, force: true })
   }
+}
+
+console.log('=== 1c. F15 MEASURED on the new `kernel/mailbox.js` row: the transient-retry backoff is a bounded sleep, not an armed timer ===')
+// WHY THIS PROBE (the §1b precedent applied to the second missing row): the classification above is CODE READING. The
+// measurements are:
+//   ① `shared.writeRetries === 1` — the sleep branch REALLY ran: a fake store refuses the FIRST `patch` with `EPERM`, so
+//      a path that never slept could not satisfy this;
+//   ② `after === before` — the awaited sleep released its Timeout before the push settled;
+//   ③ the STUBBORN half (every attempt refused) still ends in a NAMED refusal after exactly 3 attempts and still leaves
+//      nothing armed — the budget is bounded and a retry never hides a failure.
+{
+  const before = liveTimeouts()
+  const flaky = {
+    data: {},
+    attempts: 0,
+    read(key) { return this.data[key] },
+    async patch(key, fn) {
+      this.attempts += 1
+      if (this.attempts === 1) { const e = new Error('EPERM: operation not permitted, rename tmp -> state.json'); e.code = 'EPERM'; throw e }
+      this.data[key] = fn(this.data[key])
+      return { changed: true }
+    },
+  }
+  const retrying = createMailbox({ clock: () => 9000, settings: {}, log: () => {}, store: flaky })
+  retrying.send('acad-01', { to: ['res-01'], text: 'lands on the retry' })
+  const deadline = Date.now() + 3000
+  while (!flaky.data.mailbox && Date.now() < deadline) await new Promise((r) => setTimeout(r, 5))
+  const afterTransient = liveTimeouts()
+  const rst = retrying.status().shared
+  ok(rst.writeRetries === 1 && !!flaky.data.mailbox && afterTransient === before,
+    '★ MEASURED (mailbox.js:635): the transient-retry sleep REALLY ran (`shared.writeRetries===1`) and left NO armed timeout behind',
+    { writeRetries: rst.writeRetries, lands: !!flaky.data.mailbox, before, after: afterTransient })
+
+  const stubborn = { attempts: 0, read() { return null }, async patch() { this.attempts += 1; const e = new Error('EPERM: still locked'); e.code = 'EPERM'; throw e } }
+  const givingUp = createMailbox({ clock: () => 9100, settings: {}, log: () => {}, store: stubborn })
+  const refused = await givingUp.persist()
+  const afterStubborn = liveTimeouts()
+  ok(refused.ok === false && refused.code === 'EPERM' && stubborn.attempts === 3 && afterStubborn === before,
+    '★ MEASURED: the stubborn case is BOUNDED (3 attempts), reported by name, and leaves NO armed timeout behind',
+    { code: refused.code, attempts: stubborn.attempts, before, after: afterStubborn })
 }
 
 console.log('=== 2. F15 · THE SCHEDULER RELEASES ITS HANDLE ON THE FIRE BRANCH (and every other branch) ===')

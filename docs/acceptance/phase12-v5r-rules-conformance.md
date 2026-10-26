@@ -5080,3 +5080,213 @@ A/B/C 三条与 `verdict_ask` 三条都已修并带断言，但"修完之后真�
 1. 一条门禁红要先问"是代码错，还是量具/声明错"——本轮 11/13 是后者，改代码去迎合过时断言会造成真退化。
 2. 生成块里的声明若由生成器硬编码，机制变化时必须让**生成器从机制派生**，不能手改生成物（下次 regen 就漂）。
 3. 多个写者并行时，`regen-all --write` 只能由一个人在所有写者收工后跑；提前跑会把别人的中间态钉进生成物（本轮为此拒绝过两次队友的 `--write` 申请）。
+
+### §128 真机跑 31（build `f227120e`，2026-10-26 19:16）——§126 六项判决，外加 F1–F5
+
+> 证据：`_oneoff/vm-slv/full-1026-191645.jsonl`（7,693,921 B / 14,123 行，UTF-8）；驱动 `D:/_tmp/slv-phase5/slv-p13-cc.ps1`（克隆 `slvp31`、端口 19631、`git archive f227120e`、任务书 `task-r31.txt`，简报校验 `calls=30 / problems=[]`）；`DRIVE exit=0`、`durationSec 446`、`toolCalls 19`、`transcriptEvents 111`、`tokenCapHit=false`、`SUMMARY: 5 session(s), 0 with RED checks`、`cleanup: clone_gone=True port_listening=False C_free_GB=10.22`。
+> 提取器：`D:/_tmp/r31/dig31.mjs`（把 `tool/call` 的 `data.callId` 与 `tool/result` 的 `data.message.toolCallId` 配对，投影成 `D:/_tmp/r31/dig31.txt`，2,621 行）。机器读数：`NO_FENCE=16 UNKNOWN_FIELD=16 FIELD_NOT_APPLICABLE=0 BAD_JSON=0`。
+
+#### 128.1 §126 六项：六项全部生效（真机回执原文）
+
+| # | §126 修的是什么 | run 31 真机读数 | 判决 |
+|---|---|---|---|
+| ① | 面把单数 `member` 吞成 roster-default | `requestedMembers:["res-01"]`、`requestedMembersSource:"explicit"`、`resolvedMembers:["res-01"]`、`selectionApplied:true`、`receipt.membersFrom:"caller-selection"` | ✅ |
+| ② | note 说错调用者给了什么 | `requestedMembersNote` 现在以 “the caller named `member` (SINGULAR: one seat)” 开头 | ✅ |
+| ③ | step 回执不报学到了谁的会话 | 回执自带 `memberSession:"a412b1c7-…"` 与 `memberSessionMeans` | ✅ |
+| ④ | 拒信丢掉 `cause`/`childId` | `cause:"child-session-not-live"`、`childId:"a412b1c7-…"`、`message` 说 “has a learned child session … but no LIVE Agent” | ✅ |
+| ⑤ | verdict_ask 的三条（对账/邮件/未知命题） | 已登记卡：`propositionKind:"card"`、`propositionVerified:true`、`propositionClause:null`；未知 id：`unverified` + `propositionClause` 全文进 `mail.text` 且 `deliveredCount:2`；`accounting{rosterCount:3,accountedCount:3,askedCount:2,excludedCount:1}` 与 `rosterCountMeans` 对账 | ✅（但见 F1：信到了 root 视角，成员视角收不到） |
+| ⑥ | close 对"结题票"沉默 | `close` 回执带 `closureVote{cast:false,confirmed:false,votesCast:1,against:["res-01"],missing:["acad-01","res-02"]}` + `closureVoteNote` | ✅ |
+| ⑦ | verdict_final 的 floor 与改卡落地 | `floor.means` + `floorMeans` + `correction{needed:true,recipient:"res-01",tool:"vibe_v5_record_proposition",onRecord:true,call:"vibe_v5_record_proposition { id: \"p-r31\", p: 0.5, debate_ruling: {…} }"}` | ✅（但见 F2：这些裁决不是成员投的） |
+
+#### 128.2 新账 F1–F5
+
+| 编号 | 现象（真机读数） | 机制定位 | 状态 |
+|---|---|---|---|
+| **F1** | root 视角 `vibe_v5_inbox{member:"res-01",status:"all"}` 有 2 封（`ml-1`/`ml-3`）；res-01 **自己**的子会话里 `vibe_v5_inbox`（unread/all/todo）与 `vibe_vmu_mailbox`（list/unread）**全部 `count:0`**，`mailbox status` 显示 `boxes:{} members:0 sent:0`。而会议是共享的：同一个子会话 `vibe_vmu_meeting{action:"status",id:"m1"}` 读得到 state/roster。 | `vibe-math-vmu/kernel/mailbox.js` 的 `MAILBOX_STORE_KEY='mailbox'` 只在 `restore()`（≈:661）里读 store，而内核启动不调用 `restore()` ⇒ 每个新 kernel 实例（成员子会话 = 新实例）邮箱从空开始 | ❌ 缺口（task-11 在修：让新实例从 store 恢复；并取证哪些读面同样是"实例内存"） |
+| **F2** | res-01 调 `vibe_v5_verdict{member:"res-01",target:"p-r31",verdict:1,reason:"…"}` 被具名拒 `VMU_NO_SUCH_OBJECT "no LIVE ballot with id p-r31"`（该面是票箱语义）；主席只能在 `verdict_final{verdicts:[…]}` 里替两人写数值，而 `coverage.complete:true` 数的是**名册辩论集**，`debated:["res-01","res-02"] · provided:[同]` 并不等于有人真的提交过 | v5r 规则「辩论结束后框架请各辩论成员给最终裁决」**没有成员侧通道** | ❌ 缺口（task-12 在补通道 + 让 coverage 区分 debated/submitted） |
+| **F3** | `vibe_v5_verdict_final` 的 `closureReading` 让读者去 `vibe_vmu_meeting{action:"status"}` 找 `closureVote`，但 status 回执**没有**这个键（`close` 与 turn seam 回执才有）。run 31 的 agent 照做后记「缺」。 | `vibe-math-vmu/packs/v5r/tools.js:1411` 的指针文本过期 | ⚠️ 措辞错（task-12 修，句子必须指到真实存在的键） |
+| **F4** | 同一次 `verdict_final` 同时给 `notified:["res-01"]` 与 `delivery.result{delivered:0, queued:1}` ⇒ 读者会读成"已通知到人" | `notified` 把"排队等投递"说成了"已送达" | ⚠️ 措辞错（task-12 修） |
+| **F5** | 成员在自己所在子会话里调 `vibe_v5_tool_help{member:"res-01"}` 被拒 “no live Agent for member res-01 (session=(none learned yet))”；且每次 `step` 都开新子会话（run 31 里 acad-01 两个、res-01 两个不同 child session） | 子会话身份不连续 + 成员语气下工具面读数缺"这是你自己"的识别 | ⚠️ 观察（task-13 在处理续会话与成员语气读数） |
+
+#### 128.3 我这轮简报的问题（第三次记同样的教训）
+
+| 我写的 | 事实 | 教训 |
+|---|---|---|
+| 让 agent 从 `status{detail:"summary"}` 抄 `enabledGap` | 本轮该键**不存在**（run 30 有 22 行 ⇒ 只在非空时出现） | 简报要读数时必须写"可能不存在，不存在就抄 `note`/`counts` 说明"，不能把条件字段当必然 |
+| 让 agent 从 `vibe_vmu_meeting{action:"status"}` 抄 `closureVote` | status 无此键（见 F3） | 同理：指针本身要先自己验一遍 |
+
+**更根本的一条**：这两处错误都来自"我信了源码里的句子/上一轮的收据形态，而不是本轮包里的实际回执"。简报校验器（`scripts/check-task-brief.mjs`）只能核工具名/参数名/必填，核不到"某个回执字段这轮会不会出现"。⇒ 后续简报对条件字段一律加限定语，并且只引用**上一轮真机里出现过**的字段名。
+
+#### 128.4 非规范行为项（不是 vmu 的缺陷，但真机上真的发生了）
+
+1. 成员 res-01 在收到裁决请求之前就**自己投了结题票**（`effects:[{kind:"closure-vote",…,solved:true,source:"reply"}]`），它的 say 因 `no-meeting-bound` 被跳过而原文留在 `receipt.notes` 里 —— 这是"成员自主推进"的正常副作用，但意味着**读数不能假设"成员动作 = 对指令的响应"**。
+2. 两个成员子会话都在跑自己的 Lean 流（`vibe_v5_lean_run` / `lean_job{jobId:"lean-1"}`），引用自己子会话里的 `lean-3 exit 0`、`oddSum_eq_sq`，与本轮命题 `p-r31` 无关。⇒ 成员正文里的"事实"必须核对来源（§125 悬案"成员回合上下文继承"仍未定性；task-13 会给出机制层面的答案）。
+
+#### 128.5 无法验证项
+
+1. 成员**收到**裁决请求（F1 的正面路径）—— 邮箱不共享，这一步今天在真机上不可能成立。
+2. 成员**提交**裁决（F2 的正面路径）—— 通道不存在。
+3. `vibe_v5_tool_help` 在成员语气下的正向读数（F5）。
+4. `status{detail:"full"}` 的 `owners`/`turns`/`fields` 段（§127 F 已证：该回执不存在这些键；本轮尚未拿 `full` 与源码逐键对齐）。
+5. `vibe_v5_meeting` 的"预约/延长"两条正向路径（本轮仍未触发；`close` 的 `wallMs:333494` 只证明计时器在走）。
+
+#### 128.7 提示词 ↔ 规则 ↔ 机制：11 条规则全量对账（本轮新增，用户核心验收项）
+
+> 对账表全文（34 行，每行指到提示词 `文件:行` 与机制 `文件:行` 或"不存在"）：`D:/_tmp/r31/prompt-conformance.md`。判定汇总：**✅ 21 行 · ⚠️简化但机制正确 3 行 · ⚠️提示词与机制不符 4 行（已修） · ❌ 规则没人教 5 行 · 机制缺口若干**。
+
+**已修的 4 处提示词（都是"教了一个不存在的命令"）**
+
+| 位置 | 原来教的（不存在） | 改成（真实机制） |
+|---|---|---|
+| `packs/v5r/prompts/v5r-blocks-a.js:192-193` | `propose_verify` 发起辩论/选对象 | `vibe_v5_meeting { type:"debate", subject:"<命题卡 id>", agenda:"…" }`（非院士席位会被具名拒；另给 `vibe_v5_motion` 建议路径） |
+| `packs/v5r/prompts/v5r-blocks-b.js:233` | `propose_verify、propose_meeting` | `vibe_v5_meeting`／`vibe_v5_task_create`／`vibe_v5_assign` |
+| `packs/v5r/prompts/v5r-blocks-b.js:264-267` | `math_computation {op: probe|run|receipt|install}` | `vibe_vmu_mathtools`（action: plan→run、receiptsView）＋`vibe_vmu_mathjobs` |
+| `packs/v5r/prompts/v5r-core.js:624` | 只 listing legacy `kind=sync/division/verify-request/solve-vote` | 真 `type` 六类目录（ordinary/academic/debate/closure/paper/planning）＋ legacy `kind` 仍被接受 |
+
+**新发现的机制缺口（本轮只记账，其中 P0 已派 task-15）**
+
+| 级别 | 缺口 | 证据 |
+|---|---|---|
+| **P0** | 席位面由提示词散文派生：`deny[chair]` 实测 8 个，含 **`verdict_final`/`verdict_ask`/`blueprint`/`meeting_round`/`verified_promote`/`fidelity_conclude`** ⇒ 院士席位调不到自己的职责工具；`deny[member]` 25 个含 **`vibe_v5_message`**（成员不能私信）与 `vibe_v5_second`；`deny[temp]` 39 个含全部 `lean_*` 与 `record_proposition` | `vibe-math-vmu/host-pack-tools.js:134-142`（闸）+ `packs/v5r/prompts/v5r-core.js:800-826`（deny = 声明 − bullet）；探针 `D:/_tmp/r31/prompt-conformance/probe-faces.mjs` 实跑输出 |
+| **P1** | `vibe_v5_verified_promote` 三席全拒 ⇒ **verified 轨没有任何可达写入口**，而提示词教它"Verified/ 的唯一写入口"；另 `vibe_vmu_records`（内核面，不受 pack deny 管）可旁路直写 verified 轨 ⇒ "单写者"不成立 | 同上；`promoteVerified` 全树只有 `packs/v5r/tools.js:1238` 与 `:1143`（`fidelity_conclude`）两个调用者 |
+| **P2** | 规则没人教（机制在、提示词 0 字）：技术路线蓝图、会议关闭/延长上界、一次性连排多会议、人工干预/请示（`kernel/human.js` + `vibe_vmu_human` 齐备）、禁言/发言次数（`vmu.chat.admins/speakQuota/muteDefaultMs` 齐备，默认全 0） | `grep "blueprint\|总目标\|技术路线\|请示\|人工干预\|禁言"` 在 `packs/v5r/prompts/` 命中 0 |
+| **P3** | 状态板四字段无来源：提示词只说 `{{ statusBlock }}`，而 `kernel/turn/index.js:964-975 composeStatusBlock` 只产「席位/轮次/阶段＋在册＋法定票数 m」；看板工具 `vibe_vmu_board` 提示词 0 提及 | 同上 |
+| 审计盲区 | `audit-prompt-tool-names` 只扫带引号的 `vibe_v5_*`/`vibe_vmu_*`，**裸名**（`propose_verify`、`math_computation`）两个 audit 都抓不到；`audit-prompt-tool-params` 只验参数名不验流程语义 | 本轮 4 处死名全部靠人眼对账发现，门禁一个都没拦住 |
+
+**教训（第四条同类）**：这一轮的问题不是"提示词写了机制没有"，而是**提示词写了、机制存在、席位面够不着**。⇒ 登账与门禁都必须把"谁可以调"当成一等的声明（task-15 正在把它改成 `seat-faces` 声明派生）。
+
+#### 128.6 本轮无实质残余
+
+**否**。还剩两件必须在下一轮之前修掉的机制缺口（F1 成员收不到信、F2 成员无法提交裁决），以及两条会误导读者的措辞（F3/F4）。这三类都已经分派（task-11/12/13），修完再跑 run 32 验收，而不是"先记账继续跑"。
+
+---
+
+## §129 run 31 之后的机制修复（干净工作树，未跑第 32 轮）
+
+读法同 §0。本节记的是 **run 31 暴露的缺口被修到什么程度**，以及修的过程中又量出来的东西。判定词不变：**✅已实现／⚠️部分／❌缺口／待核**；每条都要指到 `文件:行` 或命令末行，否则记「待核」。
+
+### 129.1 处置表：run 31 交的五件（F1–F5）＋对账报告的四级（P0–P3）
+
+| # | 缺口 | 处置 | 证据（文件:行／门禁末行） | 状态 |
+|---|---|---|---|---|
+| **F1** | 成员读不到发给自己的信：邮箱的持久键只在 `restore()` 读，而 `restore()` 是 resume 接缝、启动不调 ⇒ 每个新内核（＝成员子会话）邮箱从空开始 | `kernel/mailbox.js` 改成「读面拉取 + 写面在 store 当前值上 merge 回写」（`mergeSnapshots`；同 id 不同信重新编号；acked 账本剔除；瞬态码有界重试） | `kernel/mailbox.js`（754→1223 行）；`tests/vmu-run31-mailbox.test.mjs` ⇒ `=== VMU RUN31 MAILBOX: 66 passed, 0 failed ===`；`tests/vmu-mailbox.test.mjs` 76/0；`VMU STORE COHERENCE 17/0` | ✅ |
+| **F2** | 成员**没有提交裁决的面**：`vibe_v5_verdict{target:"<命题 id>"}` 只认活票箱，被 `VMU_NO_SUCH_OBJECT` 拒；主席只能自己替成员写数字，而 `coverage.complete` 数的是名册不是提交 | `vibe_v5_verdict` 增加辩论裁决语义（`meeting`+`proposition_id`），裁决落命题卡 `debate_ruling` 边栏，主席 `verdict_final` **收集并采纳**；`coverage` 区分 `debated` 与 `submitted` 且 `complete` 含义写进回执 | `packs/v5r/tools.js`（新增 `rulingSubmissionsOf`/`rulingIdOf` 与六条 `VMU_RULING_*`）；新测试 `tests/vmu-run31-ruling-channel.test.mjs`；`VMU V5R TOOLS 359/0` | ✅（**真机未验**，见 129.6） |
+| **F3** | 措辞指错：`closureReading` 说「live on `vibe_vmu_meeting{action:"status"}` → closureVote」，而 status 回执**没有**该键 | 指针改成真实落点（`close` 回执与 turn seam 回执） | `packs/v5r/tools.js` 的 `closureReading` | ✅ |
+| **F4** | `notified:["res-01"]` 与 `delivery.result{delivered:0, queued:1}` 并存 ⇒ 读者读成"已收到" | `notified` 只列真投递成功者，queued 单独具名 | 同上（`verdict_final` 回执） | ✅ |
+| **F5** | 成员在自己的子会话里调 `vibe_v5_tool_help{member}` 被拒（`no live Agent … none learned yet`），不知道自己就是那个会话的主人 | 工具面只**装饰读数**：`voice:'member'|'office'`、`readingScope`、`callerIsThisMember`、`memberSession(+Means)`、`callerMeans`；kernel 原 `note` 用 ` | ` 保留不覆盖 | `tools/member-tools.js:40-110`；`tests/vmu-run31-continuity.test.mjs` 62/0 | ⚠️部分（仍是"读不到"，只是说得明白） |
+| **P0** | 席位面由提示词散文派生：院士 deny 8 个含自己六件职责工具，member deny 含私信，temp deny 含全部 Lean | 新增 `packs/v5r/seat-faces.js`（48 行声明 × `{rule, why, allow}`），deny 与提示词 bullet **都由它派生**；`applyMemberScope` 改为「只治理 member/temp、下发 deny 而非 allow」 | `seat-faces.js`；`tests/vmu-run31-seat-faces.test.mjs` 84/0；`MEMBER SCOPE 55/0` | ✅ |
+| **P0 第二因** | override 的 `allow` 叠在席位 deny 之上会**放宽**（`host.js` 与 `memberface.js` 见 allow 就不看 deny） | `kernel/index.js` 的 `resolveMemberToolDeny()` 把 override `allow` 与席位 deny 求交，回执给 `allowNarrowedByDeny`/`allowNarrowedMeans` | `tests/vmu-member-override-invariant.test.mjs` 22/0（含反事实：旧解析结果的 allow/deny 直喂谓词会被放行） | ✅ |
+| **P1** | `verified` 轨无任何可达写入口（三席全拒 `verified_promote`），而 `vibe_vmu_records` 可旁路 | `verified_promote` 归**院士席位**（声明 `{chair:true,member:false,temp:false}` + 理由）；"单写者"仍只有源码正则级证据 | `seat-faces.js` 的 `vibe_v5_verified_promote` 行；**旁路未收窄** | ⚠️部分 |
+| **P2** | 规则没人教：蓝图／会议关闭与延长／连排多会议／人工干预与请示／禁言 | **未修** | — | ❌缺口（派下一轮） |
+| **P3** | 状态板四字段无来源 | `kernel/turn/index.js` 新增 `STATUS_BOARD_READ_OPS`（声明式）+ `STATUS_BOARD_FIELDS`（四行各标单一事实源）+ `statusBoardReadings`/`renderStatusBoard`，每轮 `[状态板]` 渲染给每位成员；拿不到就写「该来源未提供：<原因>」 | `tests/vmu-run31-status-board.test.mjs` 58/0；`VMU TURN 271/0`；`BOARD TOOL 13/0` | ✅ |
+| **审计盲区** | 提示词裸名抓不到；没人检查 `required` 标志 | `audit-prompt-tool-names` 增加裸名三形态（call-shape/paren/verb）＋白名单上限 8＋`DEAD_NAME_BASELINE` 反事实（必须报出 `math_computation`）；新增 `scripts/audit-tool-required-flags.mjs`（**空载荷行为探针**，105 工具 124 必填参数 0 违规） | `=== PROMPT TOOL NAMES: 13 passed, 0 failed ===`；`=== AUDIT TOOL REQUIRED FLAGS: 105 tools, 124 required params, 0 violation(s) ===`；`SCANNER SELF-PROOF 4/0`（scanners=135 proven=65 named-debt=70） | ✅ |
+| **身份连续性** | 每次 step 都开新子会话；成员跨回合无记忆 | `kernel/turn/index.js` 续会话 seam（宿主 `subagents.prompt` 冷续）＋无能力时**具名降级**（`cause`/`hostCode`/`why`/`fix`）＋step 回执自报 `continuation`；超预算**不**降级 | `tests/vmu-run31-continuity.test.mjs` 62/0（含 `VMU RUN31 CONTINUITY`） | ✅（生产走 `deliveryPath:'continuation'`，**真机未验**） |
+
+### 129.2 修的过程中又量出来的机制缺陷（都不是 run 31 报的）
+
+1. **store 的 `open()` 与 `patch()` 不共享互斥**（`kernel/store.js`）：400 组「patch 撞 open」探针 ⇒ **259 次 `EPERM`、259 次已确认写从未落盘**，而 `agg.lockWaits=0`（写者的锁对 open 完全没生效）。根因＝`open()` 直接 `readFile` 不在互斥里，撞上写者 `await rename(tmp,file)` 在 Windows 上失败。修法＝把 `open/migrate/import` 收进同一把文件锁、写路径遇瞬态码**重读-合并-重试整轮**（≤3），耗尽抛具名 `VMU_STORE_FAILED` 并明说"该写未被确认"；`stats()` 增 `writeRetries`/`writeRetryGiveUps`。证据：`tests/vmu-store-coherence.test.mjs` 17/0（§5 `lockWaits≥1`、§6 120 组交错 0 拒 0 丢、§8 真第二进程持句柄）+ 连跑三次。
+2. **任务板不跨内核也不落盘**（`kernel/index.js` 的 tasks adapter 是 `mode:'journal'`）：run 31 磁盘 `tasks: []`；office 建任务后成员内核 `tasks.list().length===0`。修法＝照 mailbox 的"读前拉取+写后合并回写"，但**不让 resume 拿到 snapshot 缝**（resume 的 state 写透是整体替换＝丢更新），并新增三级裁决（revision → 写入时刻 → durable）+ `conflicts[]` 具名。证据：`tests/vmu-run31-taskboard.test.mjs` 53/0；`vmu-tasks*` 四套全绿；`VMU GOAL1 E2E 108/0`。
+3. **`applyMemberScope` 对院士也下 override**（见 P0 第二因）：`packs/v5r/member-scope.js:153-175` 对每个 hired（含 chair）`setMemberToolOverride({allow: MEMBER_SAFE_TOOLS})`，而 allow 数组会让 deny 失效 ⇒ 真机 `start` 之后院士立刻丢掉裁决权。这条是 **run 31 里"所办冒充院士"的第二因**。
+4. **`MEETING_STATE_MEANING` 少一半词**（`kernel/meeting.js:28`）：run 31 读到 `state:"open"` + `stateMeans:null`。补 `open/recess/suspended/idle/convened` 五句并注明"`open` 是 service 词、primitive 同一阶段叫 `in_session`"。证据：`tests/vmu-meeting-state-meaning.test.mjs` 10/0（状态词从两个模块自己的字面量派生，`status.stateMeans` 必须与映射逐字相等）。
+5. **审计门禁自己的形状债**：`tests/audit-declaration-criterion.test.mjs` 的 RULE E 在本轮新写的测试里抓出 13 处"空集合时断言体不执行/两边同空比较"（含我自己的 `for…of`），说明该门禁有效、也说明**新代码默认会空洞**。
+
+### 129.3 已知债（登记在案，不在本轮修）
+
+- `identityOf` 用创建者字段判同一条任务 ⇒ 两内核**同一毫秒**建内容**完全相同**的任务会被合并成一条（"无法区分"的极限情形）；正解是行上带 `createdBy`，超出本轮写域。
+- 常量时钟下的平手裁决以 **durable 行为准**并具名记 `conflicts[]`；真实时钟有毫秒差，此分支基本只在测试出现。
+- 双进程（不是双内核）同时写没有测试覆盖（`store` 的锁已覆盖进程内互斥与跨进程持句柄的两种情形）。
+- `vibe_vmu_script.action` / `vibe_vmu_control.action` 声明 required 而 handler 有缺省值（"声明比机制严"，归 host tools 面）。
+- `vibe_v5_verdict_final` 的 `floor` 把主席算进分母而裁决面不强制 floor（已给 `floorMeans` 说明"裁决不是表决"）——口径已诚实，机制未统一。
+- 生成的历史快照（`packs/v5r-prompts.js`/`v5r-persona.js`）里仍有 `math_computation` 字样，按契约不可改，裸名门禁对带 `SOURCE_SHA256` 的快照跳过。
+- `tests/vmu-activity-timers.test.mjs` 的表内行号会漂移（`kernel/store.js`/`kernel/mailbox.js` 都补了 verdict 行并实测；`kernel/index.js` 的任务板重试也补了），但表仍按行号引用而不是符号名。
+
+**顺带清掉的既有红**（都在干净 HEAD 工作树上确认过同红）：fs-purpose、no-silent-reads、vmu.store 文档、settings hot-truth（47 条 `vmu.meetings.*` 由构造期快照改为声明 H2）、scanner self-proof 登记、四个 findings 套件的过时断言（finally-falsify 26/0、run35 26/0、run8 27/0、verdict-final 63/0）、member-scope、activity timers。
+
+### 129.4 本轮我自己的错（与 §128.3 同类，累计第五条）
+
+1. 把 `enabledGap` 与 `vibe_vmu_meeting{action:"status"}` 的 `closureVote` 当成**必然存在**的键写进 run 31 简报 ⇒ agent 照抄"缺失"。教训：**条件字段必须带限定语**，且只引用上一轮真机实际打印过的键名。
+2. 从自己的提取器投影里只看到 `ok/action` 就判 `vibe_vmu_meeting{action:"list"}` 坏的 ⇒ 原始回执是完整的。教训：**先看原始回执，再看自己的投影**。
+3. 在 `packs/v5r/tools.js` 的单引号字符串里写了 `framework's` ⇒ `SyntaxError`，而报错是另一位队友发现的。教训：改完立即 `node --check`。
+4. 想替队友改一个正被它编辑的测试文件（编辑冲突），以及一次 `edit` 撞上生成器刚重写的文件。教训：**写面即所有权**，别人的文件只报告不动手。
+
+### 129.5 本轮门禁读数（工作区，逐条末行原文）
+
+`PREFLIGHT: PASS`；`regen-all --write` 16/16 → `--check` 16/16 in sync；`VMU DOCS AUDIT 103/0`；`DOC LINT: PASS`；`DECLARATION CRITERION 87/3`（三条 RULE E 形状债正在清，见 129.2-5）；`SCANNER SELF-PROOF 4/0`；`VMU TIMERS F15/F16 43/0`；`MEMBER SCOPE 55/0`；`VMU MEMBER WIRE 24/0`；`RUN31 SEAT FACES 84/0`；`RUN31 MAILBOX 66/0`；`RUN31 TASKBOARD 53/0`；`RUN31 CONTINUITY 62/0`；`RUN31 STATUS BOARD 58/0`；`STORE COHERENCE 17/0`；`V5R TOOLS 359/0`；`V5R VERDICT FINAL 63/0`；`TURN 271/0`；`HOST 203/0`；`KERNEL 260/0`；`MEETING PARITY 204/0`；`GOAL1 E2E 108/0`；`RUN30 30/0`；`RUN29 22/0`。
+
+### 129.6 无法验证项（下一轮才可能验）
+
+1. 成员**真机**能否收到裁决请求并提交自己的裁决（F1/F2 的端到端链路）：本轮只有 boot-twice/工具级证据。
+2. 续会话在生产路径上是否真的 `applied:true`（`subagents.prompt` 冷续）：测试里是注入 seam。
+3. 院士席位在真机上是否**真的**调到 `verdict_final`/`blueprint`/`verified_promote`（本轮修的是声明与求交，没跑 live）。
+4. `close` 之后 `closureVote` 与"结题票一致同意"在真机上的联合读数。
+5. 状态板 `[状态板]` 一节在真机提示词里的实际渲染字节。
+
+### 129.7 本轮无实质残余
+
+**否**。F1/F2/P0 这三条主缺口的**机制**已修并有测试，但**一条都还没在真机上验过**；P2（蓝图/关闭延长/连排会议/人工干预/请示/禁言）仍是"规则没人教"；`verified` 单写者仍有旁路。⇒ 下一轮：先跑 run 32（定向验收 F1/F2/P0/P3/续会话），再收 P2。
+
+---
+
+## §129 run 31 之后的机制修复（干净工作树，未跑第 32 轮）
+
+读法同 §0。本节记的是 **run 31 暴露的缺口被修到什么程度**，以及修的过程中又量出来的东西。判定词不变：**✅已实现／⚠️部分／❌缺口／待核**；每条都要指到 `文件:行` 或命令末行，否则记「待核」。
+
+### 129.1 处置表：run 31 交的五件（F1–F5）＋对账报告的四级（P0–P3）
+
+| # | 缺口 | 处置 | 证据（文件:行／门禁末行） | 状态 |
+|---|---|---|---|---|
+| **F1** | 成员读不到发给自己的信：邮箱的持久键只在 `restore()` 读，而 `restore()` 是 resume 接缝、启动不调 ⇒ 每个新内核（＝成员子会话）邮箱从空开始 | `kernel/mailbox.js` 改成「读面拉取 + 写面在 store 当前值上 merge 回写」（`mergeSnapshots`；同 id 不同信重新编号；acked 账本剔除；瞬态码有界重试） | `kernel/mailbox.js`（754→1223 行）；`tests/vmu-run31-mailbox.test.mjs` ⇒ `=== VMU RUN31 MAILBOX: 66 passed, 0 failed ===`；`tests/vmu-mailbox.test.mjs` 76/0；`VMU STORE COHERENCE 17/0` | ✅ |
+| **F2** | 成员**没有提交裁决的面**：`vibe_v5_verdict{target:"<命题 id>"}` 只认活票箱，被 `VMU_NO_SUCH_OBJECT` 拒；主席只能自己替成员写数字，而 `coverage.complete` 数的是名册不是提交 | `vibe_v5_verdict` 增加辩论裁决语义（`meeting`+`proposition_id`），裁决落命题卡 `debate_ruling` 边栏，主席 `verdict_final` **收集并采纳**；`coverage` 区分 `debated` 与 `submitted` 且 `complete` 含义写进回执 | `packs/v5r/tools.js`（新增 `rulingSubmissionsOf`/`rulingIdOf` 与六条 `VMU_RULING_*`）；新测试 `tests/vmu-run31-ruling-channel.test.mjs`；`VMU V5R TOOLS 359/0` | ✅（**真机未验**，见 129.6） |
+| **F3** | 措辞指错：`closureReading` 说「live on `vibe_vmu_meeting{action:"status"}` → closureVote」，而 status 回执**没有**该键 | 指针改成真实落点（`close` 回执与 turn seam 回执） | `packs/v5r/tools.js` 的 `closureReading` | ✅ |
+| **F4** | `notified:["res-01"]` 与 `delivery.result{delivered:0, queued:1}` 并存 ⇒ 读者读成"已收到" | `notified` 只列真投递成功者，queued 单独具名 | 同上（`verdict_final` 回执） | ✅ |
+| **F5** | 成员在自己的子会话里调 `vibe_v5_tool_help{member}` 被拒（`no live Agent … none learned yet`），不知道自己就是那个会话的主人 | 工具面只**装饰读数**：`voice:'member'/'office'`、`readingScope`、`callerIsThisMember`、`memberSession(+Means)`、`callerMeans`；kernel 原 `note` 用 `' | '` 保留不覆盖 | `tools/member-tools.js:40-110`；`tests/vmu-run31-continuity.test.mjs` 62/0 | ⚠️部分（仍是"读不到"，只是说得明白） |
+| **P0** | 席位面由提示词散文派生：院士 deny 8 个含自己六件职责工具，member deny 含私信，temp deny 含全部 Lean | 新增 `packs/v5r/seat-faces.js`（48 行声明 × `{rule, why, allow}`），deny 与提示词 bullet **都由它派生**；`applyMemberScope` 改为「只治理 member/temp、下发 deny 而非 allow」 | `seat-faces.js`；`tests/vmu-run31-seat-faces.test.mjs` 84/0；`MEMBER SCOPE 55/0` | ✅ |
+| **P0 第二因** | override 的 `allow` 叠在席位 deny 之上会**放宽**（`host.js` 与 `memberface.js` 见 allow 就不看 deny） | `kernel/index.js` 的 `resolveMemberToolDeny()` 把 override `allow` 与席位 deny 求交，回执给 `allowNarrowedByDeny`/`allowNarrowedMeans` | `tests/vmu-member-override-invariant.test.mjs` 22/0（含反事实：旧解析结果的 allow/deny 直喂谓词会被放行） | ✅ |
+| **P1** | `verified` 轨无任何可达写入口（三席全拒 `verified_promote`），而 `vibe_vmu_records` 可旁路 | `verified_promote` 归**院士席位**（声明 `{chair:true,member:false,temp:false}` + 理由）；"单写者"仍只有源码正则级证据 | `seat-faces.js` 的 `vibe_v5_verified_promote` 行；**旁路未收窄** | ⚠️部分 |
+| **P2** | 规则没人教：蓝图／会议关闭与延长／连排多会议／人工干预与请示／禁言 | **未修** | — | ❌缺口（派下一轮） |
+| **P3** | 状态板四字段无来源 | `kernel/turn/index.js` 新增 `STATUS_BOARD_READ_OPS`（声明式）+ `STATUS_BOARD_FIELDS`（四行各标单一事实源）+ `statusBoardReadings`/`renderStatusBoard`，每轮 `[状态板]` 渲染给每位成员；拿不到就写「该来源未提供：<原因>」 | `tests/vmu-run31-status-board.test.mjs` 58/0；`VMU TURN 271/0`；`BOARD TOOL 13/0` | ✅ |
+| **审计盲区** | 提示词裸名抓不到；没人检查 `required` 标志 | `audit-prompt-tool-names` 增加裸名三形态（call-shape/paren/verb）＋白名单上限 8＋`DEAD_NAME_BASELINE` 反事实（必须报出 `math_computation`）；新增 `scripts/audit-tool-required-flags.mjs`（**空载荷行为探针**，105 工具 124 必填参数 0 违规） | `=== PROMPT TOOL NAMES: 13 passed, 0 failed ===`；`=== AUDIT TOOL REQUIRED FLAGS: 105 tools, 124 required params, 0 violation(s) ===`；`SCANNER SELF-PROOF 4/0`（scanners=135 proven=65 named-debt=70） | ✅ |
+| **身份连续性** | 每次 step 都开新子会话；成员跨回合无记忆 | `kernel/turn/index.js` 续会话 seam（宿主 `subagents.prompt` 冷续）＋无能力时**具名降级**（`cause`/`hostCode`/`why`/`fix`）＋step 回执自报 `continuation`；超预算**不**降级 | `tests/vmu-run31-continuity.test.mjs` 62/0 | ✅（生产走 `deliveryPath:'continuation'`，**真机未验**） |
+
+### 129.2 修的过程中又量出来的机制缺陷（都不是 run 31 报的）
+
+1. **store 的 `open()` 与 `patch()` 不共享互斥**（`kernel/store.js`）：400 组「patch 撞 open」探针 ⇒ **259 次 `EPERM`、259 次已确认写从未落盘**，而 `agg.lockWaits=0`（写者的锁对 open 完全没生效）。根因＝`open()` 直接 `readFile` 不在互斥里，撞上写者 `await rename(tmp,file)` 在 Windows 上失败。修法＝把 `open/migrate/import` 收进同一把文件锁、写路径遇瞬态码**重读-合并-重试整轮**（≤3），耗尽抛具名 `VMU_STORE_FAILED` 并明说"该写未被确认"；`stats()` 增 `writeRetries`/`writeRetryGiveUps`。证据：`tests/vmu-store-coherence.test.mjs` 17/0（§5 `lockWaits≥1`、§6 120 组交错 0 拒 0 丢、§8 真第二进程持句柄）+ 连跑三次。
+2. **任务板不跨内核也不落盘**（`kernel/index.js` 的 tasks adapter 是 `mode:'journal'`）：run 31 磁盘 `tasks: []`；office 建任务后成员内核 `tasks.list().length===0`。修法＝照 mailbox 的"读前拉取+写后合并回写"，但**不让 resume 拿到 snapshot 缝**（resume 的 state 写透是整体替换＝丢更新），并新增三级裁决（revision → 写入时刻 → durable）+ `conflicts[]` 具名。证据：`tests/vmu-run31-taskboard.test.mjs` 53/0；`vmu-tasks*` 四套全绿；`VMU GOAL1 E2E 108/0`。
+3. **`applyMemberScope` 对院士也下 override**（见 P0 第二因）：`packs/v5r/member-scope.js:153-175` 对每个 hired（含 chair）`setMemberToolOverride({allow: MEMBER_SAFE_TOOLS})`，而 allow 数组会让 deny 失效 ⇒ 真机 `start` 之后院士立刻丢掉裁决权。这条是 **run 31 里"所办冒充院士"的第二因**。
+4. **`MEETING_STATE_MEANING` 少一半词**（`kernel/meeting.js:28`）：run 31 读到 `state:"open"` + `stateMeans:null`。补 `open/recess/suspended/idle/convened` 五句并注明"`open` 是 service 词、primitive 同一阶段叫 `in_session`"。证据：`tests/vmu-meeting-state-meaning.test.mjs` 10/0（状态词从两个模块自己的字面量派生，`status.stateMeans` 必须与映射逐字相等）。
+5. **审计门禁自己的形状债**：`tests/audit-declaration-criterion.test.mjs` 的 RULE E 在本轮新写的测试里抓出 13 处"空集合时断言体不执行/两边同空比较"（含我自己的 `for…of`），说明该门禁有效、也说明**新代码默认会空洞**。
+
+### 129.3 已知债（登记在案，不在本轮修）
+
+- `identityOf` 用创建者字段判同一条任务 ⇒ 两内核**同一毫秒**建内容**完全相同**的任务会被合并成一条（"无法区分"的极限情形）；正解是行上带 `createdBy`，超出本轮写域。
+- 常量时钟下的平手裁决以 **durable 行为准**并具名记 `conflicts[]`；真实时钟有毫秒差，此分支基本只在测试出现。
+- 双进程（不是双内核）同时写没有测试覆盖（`store` 的锁已覆盖进程内互斥与跨进程持句柄两种情形）。
+- `vibe_vmu_script.action` / `vibe_vmu_control.action` 声明 required 而 handler 有缺省值（"声明比机制严"，归 host tools 面）。
+- `vibe_v5_verdict_final` 的 `floor` 把主席算进分母而裁决面不强制 floor（已给 `floorMeans` 说明"裁决不是表决"）——口径已诚实，机制未统一。
+- 生成的历史快照（`packs/v5r-prompts.js`/`v5r-persona.js`）里仍有 `math_computation` 字样，按契约不可改，裸名门禁对带 `SOURCE_SHA256` 的快照跳过。
+- `tests/vmu-activity-timers.test.mjs` 的表仍按行号引用（`kernel/store.js`/`kernel/mailbox.js`/`kernel/index.js` 都补了 verdict 行并实测），行号会漂移。
+
+**顺带清掉的既有红**（都在干净 HEAD 工作树上确认过同红）：fs-purpose、no-silent-reads、vmu.store 文档、settings hot-truth（47 条 `vmu.meetings.*` 由构造期快照改为声明 H2）、scanner self-proof 登记、四个 findings 套件的过时断言（finally-falsify 26/0、run35 26/0、run8 27/0、verdict-final 63/0）、member-scope、activity timers。
+
+### 129.4 本轮我自己的错（与 §128.3 同类，累计第五条）
+
+1. 把 `enabledGap` 与 `vibe_vmu_meeting{action:"status"}` 的 `closureVote` 当成**必然存在**的键写进 run 31 简报 ⇒ agent 照抄"缺失"。教训：**条件字段必须带限定语**，且只引用上一轮真机实际打印过的键名。
+2. 从自己的提取器投影里只看到 `ok/action` 就判 `vibe_vmu_meeting{action:"list"}` 坏的 ⇒ 原始回执是完整的。教训：**先看原始回执，再看自己的投影**。
+3. 在 `packs/v5r/tools.js` 的单引号字符串里写了 `framework's` ⇒ `SyntaxError`，而报错是另一位队友发现的。教训：改完立即 `node --check`。
+4. 想替队友改一个正被它编辑的测试文件（编辑冲突），以及一次 `edit` 撞上生成器刚重写的文件。教训：**写面即所有权**，别人的文件只报告不动手。
+
+### 129.5 本轮门禁读数（工作区，逐条末行原文）
+
+`PREFLIGHT: PASS`；`regen-all --write` 16/16 → `--check` 16/16 in sync；`VMU DOCS AUDIT 103/0`；`DOC LINT: PASS`；`DECLARATION CRITERION 87/3`（三条 RULE E 形状债正在清，见 129.2-5）；`SCANNER SELF-PROOF 4/0`；`VMU TIMERS F15/F16 43/0`；`MEMBER SCOPE 55/0`；`VMU MEMBER WIRE 24/0`；`RUN31 SEAT FACES 84/0`；`RUN31 MAILBOX 66/0`；`RUN31 TASKBOARD 53/0`；`RUN31 CONTINUITY 62/0`；`RUN31 STATUS BOARD 58/0`；`STORE COHERENCE 17/0`；`V5R TOOLS 359/0`；`V5R VERDICT FINAL 63/0`；`TURN 271/0`；`HOST 203/0`；`KERNEL 260/0`；`MEETING PARITY 204/0`；`GOAL1 E2E 108/0`；`RUN30 30/0`；`RUN29 22/0`。
+
+### 129.6 无法验证项（下一轮才可能验）
+
+1. 成员**真机**能否收到裁决请求并提交自己的裁决（F1/F2 的端到端链路）：本轮只有 boot-twice/工具级证据。
+2. 续会话在生产路径上是否真的 `applied:true`（`subagents.prompt` 冷续）：测试里是注入 seam。
+3. 院士席位在真机上是否**真的**调到 `verdict_final`/`blueprint`/`verified_promote`（本轮修的是声明与求交，没跑 live）。
+4. `close` 之后 `closureVote` 与"结题票一致同意"在真机上的联合读数。
+5. 状态板 `[状态板]` 一节在真机提示词里的实际渲染字节。
+
+### 129.7 本轮无实质残余
+
+**否**。F1/F2/P0 这三条主缺口的**机制**已修并有测试，但**一条都还没在真机上验过**；P2（蓝图/关闭延长/连排会议/人工干预/请示/禁言）仍是"规则没人教"；`verified` 单写者仍有旁路。⇒ 下一轮：先跑 run 32（定向验收 F1/F2/P0/P3/续会话），再收 P2。

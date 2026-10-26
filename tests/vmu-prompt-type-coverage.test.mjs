@@ -259,7 +259,12 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   // which the tool REFUSES by name (it only accepts `member`; the port now passes `member` and warns). Naming them as a
   // class keeps the claim below honest: a gap appearing BEYOND the five named classes still means real transcription is
   // missing rather than a policy change being re-discovered as a defect.
-  const isRetiredByF5 = (l) => /^只输出一个合法 JSON 对象/.test(l) || /^结束时请\*\*只\*\*输出一个 JSON/.test(l) || /^复杂工具首次使用前调用 vibe_v5_tool_help\(\{"tool"/.test(l) || /^若你本轮做了形式化或给出难度判断，请一并加上/.test(l)
+  const isRetiredByF5 = (l) => /^只输出一个合法 JSON 对象/.test(l) || /^结束时请\*\*只\*\*输出一个 JSON/.test(l) || /^复杂工具首次使用前调用 vibe_v5_tool_help\(\{"tool"/.test(l) || /^若你本轮做了形式化或给出难度判断，请一并加上/.test(l) ||
+    // ★ ROUND 31 / task-14: this line taught THREE commands that do not exist as tools (`propose_verify`,
+    // `propose_meeting`, `hire/fire`) - the same F5 ruling (a prompt may not teach a mechanism the runtime lacks),
+    // measured in run 31's conformance review; the port now names the real faces (`vibe_v5_meeting`,
+    // `vibe_v5_task_create`, `vibe_vmu_control`).
+    /^协调需要时可propose_verify/.test(l)
   // ★ SIXTH STRUCTURAL CLASS (2026-10-24) — R14: a role-claiming section is now CHAIR-ONLY. The corpus put
   // 「作为院士，除了做研究，你还要统筹全所…」 into every member's prompt; measured on a live run, that told a
   // plain member it ran the institute. The section is still shipped (the chair really does lead), so the only

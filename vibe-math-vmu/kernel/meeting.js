@@ -31,6 +31,16 @@ export const MEETING_STATE_MEANING = Object.freeze({
   in_session: 'the meeting has started: speak/vote/hand are open',
   closed: 'the meeting is closed: its tally is frozen and its vote detail is hidden',
   lapsed: 'the meeting lapsed for want of participation; call revokelapse() to bring it back',
+  // ★ LIVE RUN 31 (2026-10-26): the SERVICE (`kernel/meetings.js`) runs a seven-state machine whose `open` is the
+  // everyday case — and it read `stateMeans: null`, because this map only ever described the PRIMITIVE's words. A
+  // reader asked to trust `state` while its explanation is missing is the "a reading nobody can read" class of defect.
+  // `tests/vmu-meeting-state-meaning.test.mjs` DERIVES the vocabulary from both modules' own literals and fails when a
+  // state they can emit has no sentence here, so this map cannot silently fall behind the machines again.
+  idle: 'the meeting object exists but has NOT been convened yet: no round is open and nothing may be spoken into it',
+  convened: 'the meeting has been convened (agenda and roster fixed); openRound() starts the first round and moves it to in_session',
+  open: 'the meeting is OPEN and running: speak/vote/hand are open (this is the SERVICE vocabulary; the primitive calls the same phase in_session)',
+  recess: 'the meeting is in recess: nothing may be said or voted until resume() (vmu.meetings.recessMaxMs / recessResumeRequiresMotion govern it)',
+  suspended: 'the meeting is suspended: its live handle was parked, and it must be resumed before anything is said or voted',
 })
 
 export function refuse(code, message, hint) {

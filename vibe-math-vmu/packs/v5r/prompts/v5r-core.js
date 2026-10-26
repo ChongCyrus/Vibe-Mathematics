@@ -42,6 +42,14 @@ import { V5R_ARTIFACT_COUNTER } from '../middleware/artifact-counter.js'
 // 0 declared). The six names live in `../tools.js` and are declared below as the manifest's `tools[]` - the SAME
 // mechanism `packs/v3` uses, so the kernel holds them and the host publishes them without learning any v5r name.
 import { V5R_PACK_TOOLS } from '../tools.js'
+// ★ RUN 31 / task-15 — THE SEAT FACE IS DECLARED, NOT REVERSE-DERIVED FROM THIS PROSE. Before this import, the manifest's
+// `toolFaces` was computed by scanning these sections' bullet lines (`· vibe_v5_…`), so the PROMPT was the ACL: any
+// capability nobody had written a bullet for was silently denied to the seat. Measured on a live run: the chair could not
+// tally a ruling / ask for rulings / advance a meeting round / adopt a blueprint / promote into Verified/ / close fidelity,
+// and the temp seat could not run Lean although rule 10.3 gives it to all three seats. The declaration is now
+// `../seat-faces.js` (one row per tool, one decision per seat, each with its v5r rule); the bullets below are RENDERED
+// from it, so the human-readable list and the machine-executed face cannot disagree — and a test compares them both ways.
+import { seatAllowNames, seatDenyNames, seatBulletLines, seatFaces } from '../seat-faces.js'
 // PHASE 7 round 8: THE PAPER PROMPTS (write / cross-review / final), phase-scoped and NON-source-derived.
 import { V5R_PAPER_PROMPT_SECTIONS } from './v5r-paper-prompts.js'
 // ★ GOAL ROUND 3 — THE PAPER REPLY DISPATCHER IS NO LONGER INSTALLED. It listened for `paper_part`/`paper_review`/
@@ -591,50 +599,26 @@ export const v5rFixtureTools = Object.freeze({
  * 'role vs tool-section mismatch' out of the rendered prompt is reading the two vocabularies as one. Measured: I did exactly that
  * while reviewing a real run's prompt (a `角色：member` line above a `# v5r-tools-researcher` heading), then verified the mapping here.
  *
- * WHY THE SUBSETS DIFFER: the pack's slots say what each kind is for (`chair`: convene/close/assign/grant/freeze -
- * it relays office messages too; `member`: propose/speak - it records and speaks; `temp`: speak only - a temporary
- * seat logs its progress and speaks, and does not open library cards of its own). That is PACK POLICY: it is stated
- * here as text and nowhere in the kernel, so another institution can pick different subsets by editing this section.
+ * WHY THE SUBSETS DIFFER — AND WHERE THEY ARE DECIDED: `../seat-faces.js` decides, one row per tool, one decision per seat,
+ * each with the v5r rule it rests on (denials included). Rule 1's layering is the shape: `chair` convenes/closes/assigns/
+ * adjudicates and relays office messages; `member` proposes, records, speaks, debates and votes; `temp` is hired to do the
+ * work — it speaks, logs its own progress and proposition, runs Lean (rule 10.3) and writes papers, but has no vote, does not
+ * convene, does not hire and does not plan. That is PACK POLICY, and it is now declared in ONE place instead of being a side
+ * effect of how many bullet lines somebody happened to write here.
  */
-export const v5rToolSectionAcademician = Object.freeze({
-  name: 'v5r-tools-academician',
-  order: 603,
-  range: 'pack',
-  source: 'v5r-fixture:tools',
-  scope: Object.freeze({ role: 'chair' }),
-  text: [
-    '【本角色可用的工具｜院士】',
-    '· vibe_v5_record_progress —— 写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state；证伪的路走 rejected，阻塞走 obstacles）。',
-    '· vibe_v5_record_proposition —— 写命题卡（statement、value、motive、p 四项必填；p 是你对它为真的概率，未定稿可以先写，草稿不会被当成已验证）。',
-    '· vibe_v5_record_method —— 写方法卡（content、value、motive、p 四项必填）。',
-    '· vibe_v5_record_subproblem —— 写子问题卡（statement、value、motive、p 四项必填）。',
-    '· vibe_v5_say —— 在群里说一句（省略 to）；to 填成员 id 即私信；填 meeting 则记进那场会议的发言。发言者必须是你自己的真名册 id。',
-    '· vibe_v5_message —— 以「所办/人类」的口吻给所内转达消息（to 可为成员 id、all 或 voters）。',
-    '· vibe_v5_task_create / vibe_v5_task_list / vibe_v5_task_update —— 建任务、看任务板、按修订号更新任务（认领/改派/完成/重开/改依赖）。',
-    '· vibe_v5_hire —— 招一名临时成员（需要 purpose 与 initial_task；会把人放进 temp 席并按需建一张任务）。',
-    '· vibe_v5_report —— 生成一份人类可读的所内报告（编制、任务板、会议、成果计数）。',
-    '· vibe_v5_overview —— 所内全局视图（名册、任务板、会议、成果与在办状态）；只有院士席位可以调用。',
-    '· vibe_v5_assign —— 分派：把一张任务（task_id）或新建的一张（subject）交给某成员，必须写明 why 与 acceptance。',
-    '· vibe_v5_fire —— 辞退一名成员（成员面 end ＋ 其未完成任务转 cancelled；邮件不会被清理，回执会说明）。',
-    '· vibe_v5_nudge —— 督办：唤醒某成员并给出理由与一个具体建议的下一步。',
-    '· vibe_v5_prioritize —— 设定全所优先级（有序的 {task_id, priority} 列表 ＋ why）；任务账本没有 priority 列，所以顺序作为耐久记录归档，回执会说明它没有改到任务板上。',
-    '· vibe_v5_feedback —— 工作经验／流程反馈库（不是研究结论）：op=add/update/list。',
-    '· vibe_v5_read_library —— 读任何人的成果库（只读）。',
-    '· vibe_v5_tool_help —— 回答"我现在能用什么"：清单取自内核自己的声明（packTools），并报告宿主可见计数。',
-    '· vibe_v5_meeting —— 召集会议（agenda 必填；kind=sync/division/verify-request/solve-vote）。原版还能由非院士席"提议开会"，本面没有 propose 路径，回执会具名说明。',
-    '· vibe_v5_motion / vibe_v5_second —— 在会中提动议（kind=topic/procedural/resolution；需给 meeting）／附议（需 meeting+motion_id；提案人不能附议自己）；op:\"withdraw\" 可撤回自己的动议。',
-    '· vibe_v5_poll_open —— 开选项投票（院士席）：question ＋ ≥2 个 options；§7.1 的逐票规则本内核只能在构造期设，所以回执会把"要了但没生效"的规则列在 unapplied。',
-    '· vibe_v5_poll_vote —— 在已开的选项投票上投票（只有常设席有票权；列席、受邀、临时工无票权 → 具名拒）。',
-    '· vibe_v5_poll_close —— 关票计票（院士席）；min_votes 未达时本次投票【不成立】，且具名说明它不是法定人数。',
-    '· vibe_v5_verdict —— 对验证对象投 [0,1] 的裁决（1=真、0=假、中间=不确定估计），target 是进行中票箱的 id。',
-    '· vibe_v5_start / vibe_v5_stop / vibe_v5_pause / vibe_v5_resume —— 建所并启动／停机／暂停／继续（全部走内核自己的控制状态；resume 走控制面，不是耐久投影）。',
-    '· vibe_v5_configure / vibe_v5_set —— 改【已声明】的设置键；回执会带该键的热级：H1 立即生效，H2 重启后生效；未声明的键与 H3 只读键都会被具名拒。',
-    '· vibe_v5_lean_run / vibe_v5_lean_job / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_archive —— 真的用内核 Lean 面编译既有 .lean 文件／查作业／看库／读归档／归档（kind: def/lemma/proof/blocked）；本包不自己起子进程。',
+/**
+ * ★ RUN 31 / task-15 — THIS SEAT'S BULLET LIST IS **RENDERED**, NOT HAND-WRITTEN. The one-line-per-tool decisions (and the v5r
+ * rule each rests on, denials included) live in `../seat-faces.js`; `seatBulletLines('chair')` renders the `· a / b —— 说明` lines
+ * from them, and the manifest's `toolFaces` is computed from the SAME table. So "what the seat is told it may call" and "what the
+ * face lets it call" are one decision, not two documents that can drift — and `tests/vmu-run31-seat-faces.test.mjs` compares them
+ * bidirectionally (a granted-but-untaught name and a taught-but-denied name are both failures).
+ *
+ * The PROSE below is the part written for a human: receipt samples, mailbox semantics, the environment-probe discipline and the
+ * sentinel. It is copied byte-for-byte from the pre-refactor section, so this change does not rewrite the institution's voice.
+ * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
+ */
+const V5R_PROSE_CHAIR = Object.freeze([
     '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"},"solved":false}；★ progress 必须是**一个对象**（不是字符串/数组），kind 只能是已声明的（如 progress）。',
-    '· vibe_v5_inbox —— 信箱（列表 / 打开 / 标记）：看列表不读正文；打开一封会自动标已读；需要跟进标待办。',
-    '· vibe_v5_wait —— 等别人回你（等到或超时即返回）；不要用反复轮询。',
-    '· vibe_vmu_env —— 探测本机的外部环境（action:\'probe\' 传 need，如 python／lean／xelatex；action:\'list\' 看全部需求；action:\'report\' 把缺失记成一条 finding 供主代理读）。它只探测与上报，【绝不安装、绝不联网、绝不改系统】。',
-    '· vibe_v5_paper —— 论文流程（start→part→advance→review→render）：用工具推进论文阶段，不要用回执字段假装已写；action=start（开题，需 target 与 participants）／part（写你那一份）／review（互审，deliverable 必填）／advance（推进阶段）／final（定稿，只有 chair 席会被内核接受）／render（产出 md／tex／meta 并如实报 missing）／status／compile／sections；阶段合法性与席位权限由内核判。',
     '★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可能多次（互审全票通过后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳过阶段。',
     '★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。',
     '★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。',
@@ -647,36 +631,34 @@ export const v5rToolSectionAcademician = Object.freeze({
     '★★★★ 未获授权前不要尝试安装、不要改用户的系统 —— 这条优先于"把任务做完"。',
     '★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位。。\n    若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准；没有该约束时，上表就是你现在真的能调用的工具。',
     '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
+])
+
+export const v5rToolSectionAcademician = Object.freeze({
+  name: 'v5r-tools-academician',
+  order: 603,
+  range: 'pack',
+  source: 'v5r-fixture:tools',
+  scope: Object.freeze({ role: 'chair' }),
+  text: [
+    '【本角色可用的工具｜院士】',
+    ...seatBulletLines('chair'),
+    ...V5R_PROSE_CHAIR,
   ].join('\n'),
 })
 
-export const v5rToolSectionResearcher = Object.freeze({
-  name: 'v5r-tools-researcher',
-  order: 604,
-  range: 'pack',
-  source: 'v5r-fixture:tools',
-  scope: Object.freeze({ role: 'member' }),
-  text: [
-    '【本角色可用的工具｜研究员】',
-    '· vibe_v5_record_progress —— 写你自己的研究日志（track 可选 progress/routes/obstacles/rejected/state）。',
-    '· vibe_v5_record_proposition —— 写命题卡（statement、value、motive、p 必填；草稿可先写，不会被当成已验证）。',
-    '· vibe_v5_record_method —— 写方法卡（content、value、motive、p 必填）。',
-    '· vibe_v5_record_subproblem —— 写子问题卡（statement、value、motive、p 必填）。',
-    '· vibe_v5_say —— 群里发言（省略 to）或私信（to 填成员 id）；发言者必须是你自己的真名册 id。',
-    '· vibe_v5_task_create / vibe_v5_task_list / vibe_v5_task_update —— 建任务、看任务板、按修订号更新任务。',
-    '· vibe_v5_hire —— 你作为常驻研究员可以给自己招一名临时成员（需要 purpose 与 initial_task）。',
-    '· vibe_v5_feedback —— 工作经验／流程反馈库：op=add/update/list（不是研究结论）。',
-    '· vibe_v5_read_library —— 读任何人的成果库（只读）。',
-    '· vibe_v5_tool_help —— 回答"我现在能用什么"：清单取自内核自己的声明（packTools）。',
-    '· vibe_v5_motion —— 在会中提动议（kind=topic/procedural/resolution；需给 meeting）；附议与撤回都已接上（second 需 meeting+motion_id）。',
-    '· vibe_v5_poll_vote —— 在已开的选项投票上投票（只有常设席有票权）。',
-    '· vibe_v5_verdict —— 对验证对象投 [0,1] 的裁决。',
-    '· vibe_v5_lean_run / vibe_v5_lean_job / vibe_v5_lean_lib / vibe_v5_lean_read / vibe_v5_lean_archive —— 用内核 Lean 面编译既有 .lean 文件／查作业／看库／读归档／归档（本包不自己起子进程；无宿主 spawn 接缝时具名拒）。',
+/**
+ * ★ RUN 31 / task-15 — THIS SEAT'S BULLET LIST IS **RENDERED**, NOT HAND-WRITTEN. The one-line-per-tool decisions (and the v5r
+ * rule each rests on, denials included) live in `../seat-faces.js`; `seatBulletLines('member')` renders the `· a / b —— 说明` lines
+ * from them, and the manifest's `toolFaces` is computed from the SAME table. So "what the seat is told it may call" and "what the
+ * face lets it call" are one decision, not two documents that can drift — and `tests/vmu-run31-seat-faces.test.mjs` compares them
+ * bidirectionally (a granted-but-untaught name and a taught-but-denied name are both failures).
+ *
+ * The PROSE below is the part written for a human: receipt samples, mailbox semantics, the environment-probe discipline and the
+ * sentinel. It is copied byte-for-byte from the pre-refactor section, so this change does not rewrite the institution's voice.
+ * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
+ */
+const V5R_PROSE_MEMBER = Object.freeze([
     '转达所办口吻的消息不是你的职责（那是院士的）；所内全局视图也不是（仅院士）。',
-    '· vibe_v5_inbox —— 信箱（列表 / 打开 / 标记）：看列表不读正文；打开一封会自动标已读；需要跟进标待办。',
-    '· vibe_v5_wait —— 等别人回你（等到或超时即返回）；不要用反复轮询。',
-    '· vibe_vmu_env —— 探测本机的外部环境（action:\'probe\' 传 need，如 python／lean／xelatex；action:\'list\' 看全部需求；action:\'report\' 把缺失记成一条 finding 供主代理读）。它只探测与上报，【绝不安装、绝不联网、绝不改系统】。',
-    '· vibe_v5_paper —— 论文流程（start→part→advance→review→render）：用工具推进论文阶段，不要用回执字段假装已写；action=start（开题，需 target 与 participants）／part（写你那一份）／review（互审，deliverable 必填）／advance（推进阶段）／final（定稿，只有 chair 席会被内核接受）／render（产出 md／tex／meta 并如实报 missing）／status／compile／sections；阶段合法性与席位权限由内核判。',
     '★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可能多次（互审全票通过后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳过阶段。',
     '★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。',
     '★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。',
@@ -690,27 +672,34 @@ export const v5rToolSectionResearcher = Object.freeze({
     '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"},"solved":false}；★ progress 必须是**一个对象**（不是字符串/数组）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
     '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
+])
+
+export const v5rToolSectionResearcher = Object.freeze({
+  name: 'v5r-tools-researcher',
+  order: 604,
+  range: 'pack',
+  source: 'v5r-fixture:tools',
+  scope: Object.freeze({ role: 'member' }),
+  text: [
+    '【本角色可用的工具｜研究员】',
+    ...seatBulletLines('member'),
+    ...V5R_PROSE_MEMBER,
   ].join('\n'),
 })
 
-export const v5rToolSectionTemp = Object.freeze({
-  name: 'v5r-tools-temp',
-  order: 605,
-  range: 'pack',
-  source: 'v5r-fixture:tools',
-  scope: Object.freeze({ role: 'temp' }),
-  text: [
-    '【本角色可用的工具｜临时成员】',
-    '· vibe_v5_record_progress —— 把你这一轮的进展写进研究日志（临时席位只记进展，不建自己的方法/命题库）。',
-    '· vibe_v5_say —— 在群里发言（省略 to）或私信（to 填成员 id）；发言者必须是你自己的真名册 id。',
-    '· vibe_v5_task_list / vibe_v5_task_update —— 看任务板、就地更新分给你的那张任务（认领/完成/重开）。',
-    '· vibe_v5_read_library —— 读任何人的成果库（只读）。',
-    '· vibe_v5_tool_help —— 回答"我现在能用什么"：清单取自内核自己的声明（packTools）。',
+/**
+ * ★ RUN 31 / task-15 — THIS SEAT'S BULLET LIST IS **RENDERED**, NOT HAND-WRITTEN. The one-line-per-tool decisions (and the v5r
+ * rule each rests on, denials included) live in `../seat-faces.js`; `seatBulletLines('temp')` renders the `· a / b —— 说明` lines
+ * from them, and the manifest's `toolFaces` is computed from the SAME table. So "what the seat is told it may call" and "what the
+ * face lets it call" are one decision, not two documents that can drift — and `tests/vmu-run31-seat-faces.test.mjs` compares them
+ * bidirectionally (a granted-but-untaught name and a taught-but-denied name are both failures).
+ *
+ * The PROSE below is the part written for a human: receipt samples, mailbox semantics, the environment-probe discipline and the
+ * sentinel. It is copied byte-for-byte from the pre-refactor section, so this change does not rewrite the institution's voice.
+ * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
+ */
+const V5R_PROSE_TEMP = Object.freeze([
     '招人、汇报与全局视图不是临时席位的职责（那是院士与常驻研究员的工具）。',
-    '· vibe_v5_inbox —— 信箱（列表 / 打开 / 标记）：看列表不读正文；打开一封会自动标已读；需要跟进标待办。',
-    '· vibe_v5_wait —— 等别人回你（等到或超时即返回）；不要用反复轮询。',
-    '· vibe_vmu_env —— 探测本机的外部环境（action:\'probe\' 传 need，如 python／lean／xelatex；action:\'list\' 看全部需求；action:\'report\' 把缺失记成一条 finding 供主代理读）。它只探测与上报，【绝不安装、绝不联网、绝不改系统】。',
-    '· vibe_v5_paper —— 论文流程（start→part→advance→review→render）：用工具推进论文阶段，不要用回执字段假装已写；action=start（开题，需 target 与 participants）／part（写你那一份）／review（互审，deliverable 必填）／advance（推进阶段）／final（定稿，只有 chair 席会被内核接受）／render（产出 md／tex／meta 并如实报 missing）／status／compile／sections；阶段合法性与席位权限由内核判。',
     '★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可能多次（互审全票通过后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳过阶段。',
     '★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。',
     '★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。',
@@ -724,6 +713,18 @@ export const v5rToolSectionTemp = Object.freeze({
     '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"}}；★ progress 必须是**一个对象**（不是字符串/数组）。',
     '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
     '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
+])
+
+export const v5rToolSectionTemp = Object.freeze({
+  name: 'v5r-tools-temp',
+  order: 605,
+  range: 'pack',
+  source: 'v5r-fixture:tools',
+  scope: Object.freeze({ role: 'temp' }),
+  text: [
+    '【本角色可用的工具｜临时成员】',
+    ...seatBulletLines('temp'),
+    ...V5R_PROSE_TEMP,
   ].join('\n'),
 })
 
@@ -787,42 +788,39 @@ export const v5rEffectiveToolsTemp = Object.freeze({
  * (docs/26 §3.7, round 374: "captured snapshots must not be used as a runtime source"). A caller that really means to
  * wire a section set must pass it through `assertRuntimeSafeSections`, which refuses this one BY NAME. */
 /**
- * ★ GOAL A (PHASE 8): the three role tool lists are the SINGLE SOURCE of the role-scoped tool face.
- * The `v5rToolSection*` texts are what a member reads; this derivation is what the manifest declares as `toolFaces`.
- * Names are filtered to the DECLARED tool set, so a prose mention can never widen what a face allows.
- * ★ ROUND 31: only LINE-STARTING BULLETS count (`· vibe_v5_…`). The earlier version scanned the whole section text, which
- * counted PROSE MENTIONS (e.g. "转达所办口吻的消息不是你的职责（那是院士的 …）") as if the seat held that tool — a real
- * drift measured on a live session: the member prompt's bullet list had 20 names while the request table had 22.
- */
-const roleToolNames = (section) => Object.freeze([...new Set(
-  String(section.text).split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('·'))
-    .flatMap((line) => line.match(/vibe_v5_[a-z0-9_]+/g) || []),
-)].filter((n) => V5R_PACK_TOOLS.some((tool) => tool && tool.name === n)))
-export const V5R_ROLE_TOOL_NAMES = Object.freeze({
-  chair: roleToolNames(v5rToolSectionAcademician),
-  member: roleToolNames(v5rToolSectionResearcher),
-  temp: roleToolNames(v5rToolSectionTemp),
-})
-
-/**
- * ★ ROUND 24 RULING — DENY, NOT ALLOW. `allow` would drop the framework faces (they are activated by THIS pack's
- * settings declaration, so hiding them would be one pack decision overriding another) and would silently hide any
- * framework face added later. The narrowing target is exactly the 38 v5r tools, so the face denies the role's
- * COMPLEMENT of them and leaves every other tool alone: `deny = declared(v5r) − roleSet`.
+ * ★ RUN 31 / task-15 — THE FACE IS DECLARED IN `../seat-faces.js`; THIS FILE ONLY HANDS IN THE CATALOGUE.
+ *
+ * WHAT THIS REPLACED, AND WHY IT WAS WRONG: until run 31 these three exports were DERIVED FROM THE PROSE above — scan each
+ * role section's lines, keep the ones starting with `·`, and treat the names found there as the seat's capability. The
+ * direction was backwards: the prompt became the ACL, and a capability nobody had written a bullet for was silently
+ * forbidden. Measured on a live run: the chair seat could not tally a ruling (verdict_final), ask for rulings (verdict_ask),
+ * advance a meeting round (meeting_round), adopt a blueprint (blueprint), promote into Verified/ (verified_promote) or close
+ * fidelity (fidelity_conclude); the temp seat could not run Lean although rule 10.3 gives Lean to all three seats; the
+ * permanent researcher was denied second and task_get. In each case the INSTITUTION'S RULES allowed it and the PROMPT's
+ * word count refused it (rule 11.2: 越权/规则不靠提示词).
+ *
+ * NOW: `v5rDeclaredToolNames` (the catalogue this pack declares) is handed to the declaration, which answers per seat; the
+ * sections above are rendered FROM the same table. So the two can no longer disagree, and the drift that remains possible
+ * (a row with no bullet, a bullet with no row — remember round 31's 20-vs-22 measurement) is caught by
+ * `tests/vmu-run31-seat-faces.test.mjs` in both directions instead of being discovered in a live session.
+ *
+ * ★ ROUND 24 RULING, STILL HONOURED — DENY, NOT ALLOW. `allow` would drop the framework faces (they are activated by THIS
+ * pack's settings declaration, so hiding them would be one pack decision overriding another) and would silently hide any
+ * framework face added later. So the seat's face is still expressed as `deny = declared(v5r) − allow(seat)`, computed by
+ * `seatDenyNames`, and every other tool is left alone.
  */
 const v5rDeclaredToolNames = Object.freeze((V5R_PACK_TOOLS || []).map((t) => t && t.name).filter((n) => typeof n === 'string'))
+export const V5R_ROLE_TOOL_NAMES = Object.freeze({
+  chair: Object.freeze(seatAllowNames('chair', v5rDeclaredToolNames)),
+  member: Object.freeze(seatAllowNames('member', v5rDeclaredToolNames)),
+  temp: Object.freeze(seatAllowNames('temp', v5rDeclaredToolNames)),
+})
 export const V5R_ROLE_TOOL_DENY = Object.freeze({
-  chair: Object.freeze(v5rDeclaredToolNames.filter((n) => !V5R_ROLE_TOOL_NAMES.chair.includes(n))),
-  member: Object.freeze(v5rDeclaredToolNames.filter((n) => !V5R_ROLE_TOOL_NAMES.member.includes(n))),
-  temp: Object.freeze(v5rDeclaredToolNames.filter((n) => !V5R_ROLE_TOOL_NAMES.temp.includes(n))),
+  chair: Object.freeze(seatDenyNames('chair', v5rDeclaredToolNames)),
+  member: Object.freeze(seatDenyNames('member', v5rDeclaredToolNames)),
+  temp: Object.freeze(seatDenyNames('temp', v5rDeclaredToolNames)),
 })
-export const V5R_TOOL_FACES = Object.freeze({
-  chair: Object.freeze({ deny: V5R_ROLE_TOOL_DENY.chair }),
-  member: Object.freeze({ deny: V5R_ROLE_TOOL_DENY.member }),
-  temp: Object.freeze({ deny: V5R_ROLE_TOOL_DENY.temp }),
-})
+export const V5R_TOOL_FACES = seatFaces(v5rDeclaredToolNames)
 
 export const v5rTurnSections = Object.freeze([...v5rPromptSections, v5rRoleSection])
 

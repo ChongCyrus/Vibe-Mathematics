@@ -277,7 +277,6 @@
           - vibe_v5_lean_run
           - vibe_v5_meeting
           - vibe_v5_meeting_round
-          - vibe_v5_message
           - vibe_v5_motion
           - vibe_v5_nudge
           - vibe_v5_paper
@@ -291,7 +290,6 @@
           - vibe_v5_record_proposition
           - vibe_v5_record_subproblem
           - vibe_v5_say
-          - vibe_v5_script
           - vibe_v5_second
           - vibe_v5_task_create
           - vibe_v5_task_get

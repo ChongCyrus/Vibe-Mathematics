@@ -230,7 +230,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // this one appears in thirty-three entries across eighteen kinds, while the other (`协调需要时可用assign（…）、
         // prioritize、nudge（to,why）、convene_meeting。`) appears in ten. The more common one is what a round normally
         // says; the other is kept below as its own section rather than deleted, because it is real output too.
-        '协调需要时可propose_verify、propose_meeting、hire/fire；具体字段查手册。',
+        '协调需要时可 hire/fire、创建或分派任务（vibe_v5_task_create／vibe_v5_assign）；开会由院士用 vibe_v5_meeting 召集（type 见会议类型目录），具体字段查手册。',
         '{"progress":"当前推导、证据及下一步","solved":false}',
         '复杂工具首次使用前调用 vibe_v5_tool_help({"member":"<你的成员 id>"}) 查阅方法（**只收 member；缺它会被具名拒绝**）；简单工具和工具回执直接使用。',
         'contextPct仅在有依据时填成员估计；compacted:true只表示已在progress保存摘要，不表示宿主已压缩。完整说明：{{ setting:vmu.turn.protocolPath }}',
@@ -261,10 +261,10 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '- 需要精确数值、符号化简、反例搜索、统计或线性代数时调用 math_computation：先 probe，再 run。',
-        '- 复核他人的数值结论时用 op:\'receipt\'（或 op:\'run\', mode:\'file\' 指向同一脚本）重跑，并把回执路径写进报告。',
+        '- 需要精确数值、符号化简、反例搜索、统计或线性代数时用 `vibe_vmu_mathtools`：先用 action: plan 看计划与沙箱上限，再用 action: run 执行，并把回执路径写进报告。',
+        '- 复核他人的数值结论时用 action: run 指向同一脚本（cacheKey 相同）重跑，或用 action: receiptsView 读历史回执，把回执路径写进报告。',
         '- 替代必须声明（诚实性）：当替代方案改变了**精确性或结论强度**时（精确符号解 → 数值近似、闭式解 → 采样/求积、改了精度/容差/假设、换了算法类），结论里**必须写明**，不得读起来像得到了原本（精确/所要求的）结果；拿不到精确结果就直说。',
-        '- math_computation {op: probe|run|receipt|install, engine, mode: code|file|expr, …} — 先 probe 预检引擎/包/许可，再调引擎计算并把脚本与输出归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。',
+        '- `vibe_vmu_mathtools`（action: plan|run|receiptsView|cacheView|status）与 `vibe_vmu_mathjobs`（后台数学作业）—— 沙箱上限、缓存与回执由内核强制；脚本与输出必须归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。',
       ].join('\n'),
     },
   },
