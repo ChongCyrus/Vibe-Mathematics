@@ -396,8 +396,9 @@ const faces = { 'vmu.meetings': { speak: async () => ({ ok: true }) } }
     s2 && s2.receipt && s2.receipt.delivery)
   ok(JSON.stringify(s2).includes('resumed in place'),
     '★★★ ⑥-9 the ANSWER CAME BACK: the text read out of the child session log is the reply this step settled with')
-  ok(disposed === 1,
-    '★ ⑥-10 the activation was disposed once (the resumed turn did not start a new activation to dispose)', { disposed })
+  ok(disposed === 0 && s1 && s1.receipt && s1.receipt.delivery && s1.receipt.delivery.residency === 'kept-resident-for-continuation',
+    '★★★ ⑥-10 ROUND 32 / F8: the activation was KEPT RESIDENT rather than disposed — this host reports a resume capability, and the run-32 refusal (`reading \'aborted\'`) came from resuming a child whose activation had already been torn down. The receipt names the choice in `delivery.residency`, so the measurement is readable instead of inferred',
+    { disposed, residency: s1 && s1.receipt && s1.receipt.delivery && s1.receipt.delivery.residency })
   ok(typeof s2.continuationMeans === 'string' && /CONTINUED THE MEMBER/.test(s2.continuationMeans),
     '★★ ⑥-11 and the sentence says so in words, not only in ids', s2 && s2.continuationMeans)
 }

@@ -627,14 +627,26 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
     // exactly the leak that later surfaces as "the host refuses to admit a new activation".
     if (path === 'activation') {
       const activation = handle
-      const disposeOnce = async () => {
+      // ★★★★★★★ ROUND 32 / F8 — THE DISPOSE BELOW IS WHY THE NEXT TURN CANNOT CONTINUE THE SAME CHILD.
+      // MEASURED (run 32, `full-1026-213122.jsonl`): the second turn of `res-01` offered the learned session
+      // `eafb8753-…` and the host refused the resume with `Cannot read properties of undefined (reading 'aborted')`,
+      // so the turn fell back to a FRESH child (`continuation.applied:false, cause:'resume-failed'`). An activation is
+      // disposed as soon as its reply is read (line below), and a disposed activation is exactly the object a later
+      // `subagents.prompt` resume would have to read a signal off. So: when the HOST SAYS IT CAN RESUME (`turn.continuationCapability.capable`),
+      // the activation is KEPT RESIDENT for the following turn instead of being disposed after its reply. This is a
+      // MEASURED BET, not a proven fix: the run that follows it must read `residency` below. The failure path still
+      // disposes (an activation whose run failed has no reply worth resuming, and an undisposed one holds an execution
+      // handle open); the residency is also disclosed in the receipt so a reader never has to guess whether it was kept.
+      const keepResident = !!(turn && turn.continuationCapability && turn.continuationCapability.capable === true)
+      const disposeOnce = async (force) => {
+        if (keepResident && force !== true) return
         try { if (activation && typeof activation.dispose === 'function') await activation.dispose() } catch { /* a failed dispose must not lose the reply */ }
       }
       let res = null
       try {
         res = activation && activation.result ? await activation.result : null
       } catch (e) {
-        await disposeOnce()
+        await disposeOnce(true)
         throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host activation for this member turn failed: ' + String((e && e.message) || e),
           'the activation was started and then disposed; the failure came from the child run itself, not from the delivery (docs/26 stage 3)', e)
       }
@@ -663,6 +675,10 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
             structured: activationStructured,
             attribution: 'activation: no text block; the child answered through its outputSchema, so the structured result IS the reply',
             deliveryPath: 'activation',
+            residency: keepResident ? 'kept-resident-for-continuation' : 'disposed-after-reply',
+            residencyMeans: keepResident
+              ? 'this activation was NOT disposed after its reply, because the host reported a resume capability: the next turn of this member may be admitted into THIS child session instead of starting a new one. A run reading `continuation.applied` next to this value is the measurement of whether that bet paid'
+              : 'this activation was disposed as soon as its reply was read, so the next turn of this member necessarily starts a fresh child (the host has no resume capability in this deployment)',
           }
         }
         const stopReason = res && typeof res.stopReason === 'string' ? res.stopReason : null
@@ -674,6 +690,7 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
             : (activationBlockTypes.every((t) => t === 'tool_use' || t === 'tool-call')
               ? 'the child spoke ONLY through tool calls and never emitted a text block'
               : 'the child produced blocks (' + activationBlockTypes.join(', ') + ') but none carried text'))
+        await disposeOnce(true)
         throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host accepted the activation but the child returned no text',
           whichChildEvent + '; blockTypes=[' + activationBlockTypes.join(', ') + '] stopReason=' + String(stopReason) +
           ' diagnostic=' + String(diagnostic) + '. The refusal is named on purpose: reporting an empty string as a member answer would be a silent fake success')
@@ -683,8 +700,14 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
         childId: (activation && (activation.childId || activation.id)) || null,
         stopReason: res && typeof res.stopReason === 'string' ? res.stopReason : null,
         structured: res && res.structured !== undefined ? res.structured : null,
-        attribution: 'activation: reply read from result.output, then dispose() called on the activation',
+        attribution: keepResident
+          ? 'activation: reply read from result.output; the activation was KEPT RESIDENT so a later turn can continue this child session'
+          : 'activation: reply read from result.output, then dispose() called on the activation',
         deliveryPath: 'activation',
+        residency: keepResident ? 'kept-resident-for-continuation' : 'disposed-after-reply',
+        residencyMeans: keepResident
+          ? 'this activation was NOT disposed after its reply, because the host reported a resume capability: the next turn of this member may be admitted into THIS child session instead of starting a new one. A run reading `continuation.applied` next to this value is the measurement of whether that bet paid'
+          : 'this activation was disposed as soon as its reply was read, so the next turn of this member necessarily starts a fresh child (the host has no resume capability in this deployment)',
       }
     }
     if (typeof extract === 'function') {
@@ -1697,6 +1720,11 @@ export function createTurnOrchestrator({
       // transcript histogram. It travels now, on every route, with the meaning attached.
       childPreset: delivered && typeof delivered.childPreset === 'string' ? delivered.childPreset : null,
       childPresetMeans: delivered && typeof delivered.childPresetMeans === 'string' ? delivered.childPresetMeans : null,
+      // ★★★★★★★ ROUND 32 / F8: whether the activation behind this turn was KEPT RESIDENT for a possible continuation
+      // or torn down with its reply. Run 32 could not tell "the host refused the resume" from "we disposed the child
+      // before the resume was attempted" — so the seam's own answer travels to the receipt (and to `deliveryFromAttribution`).
+      residency: delivered && typeof delivered.residency === 'string' ? delivered.residency : null,
+      residencyMeans: delivered && typeof delivered.residencyMeans === 'string' ? delivered.residencyMeans : null,
       // ★★★★★★★ TASK-13 / LIVE RUN 31: did this turn CONTINUE the member, or start it over? This is the reading the
       // institute had to reconstruct from the session list after the run, and could not: `offered` is the session this
       // kernel already held for the member, `ranIn` is where the turn actually ran (`delivery.childId`), `reused` is the
@@ -2447,6 +2475,8 @@ export function createTurnOrchestrator({
           stopReason: typeof a.stopReason === 'string' ? a.stopReason : null,
           childPreset: typeof a.childPreset === 'string' ? a.childPreset : null,
           childPresetMeans: typeof a.childPresetMeans === 'string' ? a.childPresetMeans : null,
+          residency: typeof a.residency === 'string' ? a.residency : null,
+          residencyMeans: typeof a.residencyMeans === 'string' ? a.residencyMeans : null,
           // ★★★★★★★ TASK-13 / LIVE RUN 31: whether this turn CONTINUED the member's learned session or started a fresh
           // child, with the seam's named reason when it could not. Same family as every field above: the answer existed
           // one layer down (`lastAttribution`) and had to travel, or a reader is back to reconstructing it from the
@@ -2475,6 +2505,11 @@ export function createTurnOrchestrator({
           // unreadable in the deployment that uses it. Same family as run 37's count-only `skipped`.
           childPreset: typeof d.childPreset === 'string' ? d.childPreset : null,
           childPresetMeans: typeof d.childPresetMeans === 'string' ? d.childPresetMeans : null,
+          // ★★ ROUND 32 / F8: whether the activation behind this turn was KEPT RESIDENT for the next turn or
+          // disposed with its reply. Without it, a run cannot tell "the host refused the resume" from "we tore the
+          // child down ourselves before the resume was even attempted" — the two need different fixes.
+          residency: typeof d.residency === 'string' ? d.residency : null,
+          residencyMeans: typeof d.residencyMeans === 'string' ? d.residencyMeans : null,
           // ★ TASK-13: the awaiting route carries the same reading, so the caller who plays the member turn can see which
           // session the member already has and play it there (the caller-played seam cannot continue on its own).
           continuation: d.continuation && typeof d.continuation === 'object' ? d.continuation : null,

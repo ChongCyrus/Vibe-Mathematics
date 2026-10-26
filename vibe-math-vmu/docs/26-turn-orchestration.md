@@ -739,6 +739,33 @@ counts.delivered += 1                              // ⇒ 抛了就到不了这�
 ★ **判据（真机可读）**：① 单数 `member` 的 `step` 回执里，`requestedMembersNote` 必须说 **SINGULAR**，不得再说「named `members`」；② `memberSession` 非 null 时，同一步的 `vibe_vmu_tools {member}` 不得再报「none learned yet」（两个面读同一张映射，矛盾即缺陷）；③ `close` 回执必须**同时**带 `closureVote` 与 `closureVoteNote`，且 note 里出现 `enforced`（哪套轨决定了关会）—— 三者缺一即「形状／读数仍靠读者猜」✗。
 ★ **门禁**：`tests/vmu-run30-findings.test.mjs`（对 `requestedMembersNote` 三句、`propositionClause`、`floorMeans`、`correction`、`closureVote` 逐条点名，本卷改动后实跑 **30 passed, 0 failed**）＋ `tests/vmu-run29-findings.test.mjs` 的 B1–B5（`memberSession` 与映射一致、`memberSessionMeans` 不谎报缺席）✓。
 
+**补充（ROUND 32 / F8）：`delivery.residency` —— 一个"没拆"必须能被读出来。** run 32 的续会话回合报
+`continuation.applied:false` 且宿主把它写成内部错（`Cannot read properties of undefined (reading 'aborted')`），
+而真因在内核这一侧：activation 分支拿到回复后**立刻 dispose**，resume 要读的 `signal` 就在被拆掉的那个对象上。
+现在 `keepResident = !!(turn.continuationCapability && turn.continuationCapability.capable === true)`：宿主能续就**不拆**
+（失败与"无文本"路径仍 force 拆，避免泄漏），并把选择写进 `delivery.residency`
+（`kept-resident-for-continuation` / `disposed-after-reply`）+ `delivery.residencyMeans`。
+它经 `lastAttribution` → `deliveryFromAttribution()` → `deliveryOf()` 三处白名单才到 step 回执 —— 这三处都必须复制，
+少一处就又是"回执读不到机制已经做出的决定"。判据两条一起读：`continuation.applied` 说"续上了吗"，
+`delivery.residency` 说"为什么可能续上"。
+
+## 3.44 ★★★★★ 状态板的四个字段必须**有来源**：提示词不是数据源（R31 的 P3）
+
+★ **真机病**：v5r 规则要求每一轮给成员一张状态板（总任务／规划／各任务完成状态／当前小任务），而 `{{ statusBlock }}` 的真实产出只有「席位／轮次／阶段＋在册＋法定票数 m」（`composeStatusBlock` 的旧体）。★ 规则在提示词里被写成"这些字段会被填好"，**而没有任何机制填它们** ⇒ 这是「提示词承诺了机制不存在」的第五种形态：**不是名字写错、不是席位够不着，而是数据源根本不存在**（台账 §129 的 P3）。
+
+★ **修法（声明读腿 ＋ 单一事实源 ＋ 缺席即具名）**：
+- `STATUS_BOARD_READ_OPS`（`kernel/turn/index.js:346`）是**声明**：「要看状态板，必须先读 `vmu.tasks.list` 与 `vmu.records.list/get`」。`facesFrom` 的第二趟（`:378-386`）按这张表把**活实例**绑进 `faces` ⇒ 读腿随声明走，装配方不必再手接一次 ✓。
+- `STATUS_BOARD_FIELDS`（`:1054`）四行，每行标**唯一事实源**与默认上限（`:1065 OBJECTIVE_UNSET = '尚未设定'`）：总任务＝`setting vmu.turn.objective`，缺则取任务板**无前置的根任务**；规划＝`tasks.list()` 的未结项按"可开工／被前置卡住（点名在等谁）"分栏；各任务完成状态＝按状态计数（未结单列）；当前小任务＝`records.list({track:'progress'})` 里 `head.owner` 等于**该成员**的最新一条。
+- `statusBoardReadings(...)`（`:1108`）只**读数**（任一来源缺席或抛错 ⇒ 该字段记 `{ok:false, why}`，不编造）；`renderStatusBoard(readings)`（`:1255`）只**渲染**；`composeStatusBlock(turn, readings)`（`:1266`）把 `[状态板]` 一节追加在既有块之后 ✓。
+- **拿不到就写出来**：每个字段缺数据时渲染成「`[标签] 该来源未提供：<原因>`」——**没有数据也是一个读数**，静默省略会让读者以为"这个字段不该有" ✗。
+- 工厂新缝 `statusSources`（`:1326`）与 `statusReadingsFor(turn)`（`:1400`）：**装配方自带 `statusBlock` 时一律不读账本**（pack 既有 brief 的字节因此不变 ✓），缝可给函数、可给对象、缺省走声明读腿。
+
+★ **没做（具名边界）**：`vibe_vmu_board` **不加第 8 个 action**——`tests/vmu-board-tool.test.mjs` §2 把服务的 action enum 与面表一对一钉死，多一个 action 就是"面表与服务各说一套" ✗；看板仍然只有 `list/get/create/claim/assign/transition/comment` 七个 ✓（`tools/board.js` 只加注释）。
+
+★ **判据（真机可读）**：① 每轮装配文本里 `[状态板]` 一节出现，且四行都在；② 任何一行缺数据时是「该来源未提供：…」而不是消失；③ 装配方自带 `statusBlock` 时**读账本次数为 0**（`:1400` 的分支），提示词字节不变。
+
+★ **门禁**：`tests/vmu-run31-status-board.test.mjs`（四字段各有有／无数据两种、缺席文案、§7 自带块不读账本、§8 缝的四种形态、§9 无新工具名）58/0；`tests/vmu-turn.test.mjs` 271/0；`tests/vmu-board-tool.test.mjs` 13/0；`tests/e2e-v5-round2.test.mjs` 679/0 ✓。
+
 ## 4. v1 的边界（**未做，明写** ✗）
 
 1. ★★★ **投递缝已接进内核（轮 339）＋ 宿主桥已提供（轮 344）＋ 入口已装配（轮 1／K3）** ✓✓✓：**vmu.turn 在 kernel/index.js 里建成** ✓，**投递缝是内核的 `deliverTurn` 选项** ✓（★ **轮 1 更正** ✗✓：原文只写 `host.deliverTurn` —— 而真实入口交给内核的 `host` 是 `host-math.js` 的适配器，**它没有 `deliverTurn`** ⇒ 于是**真机每一轮都在 `turn/index.js` 的缺缝分支具名拒** ✗；旧名仍兼容，但**不再是唯一来源** ✓）；★ **宿主不给缝 ⇒ 具名拒 VMU_ENGINE_UNAVAILABLE** ✓（**绝不假装成员答了** ✗，且**计数可见** ✓，`status().seams.turnDeliver`／`turnDeliverSource` 自曝 ✓）。★★★ **宿主桥 `deliverViaSubagents(subagents, extract?)`** ✓✓：**入口已按声明装配** —— `vibe-math-vmu.js` 把它接到 `ctx.get('subagents')`（**调用时解析**，因为 `apply()` 可能早于服务挂载 ✓），宿主**不需要自己写适配器** ✓；★ **它只送【装配后的文本】，绝不自拼** ✗；**标签带轮次 id（可追）** ✓；★ **不给缝 ⇒ 具名拒** ✓；★★ **宿主收下却不回回复 ⇒ 也是【具名拒**】✓（**绝不解析成"模型什么都没说"** ✗）。★ **实测（T35–T39）** ✓✓：**整轮走宿主缝跑通** —— 装配 ⇒ 桥投递 ⇒ 解析 ⇒ **任务台账真的增长** ✓✓；★ **到达缝的正是装配文本且带轮次标签** ✓（>1000 字 ✓）。★★ **轮 1 复测** ✓：以假宿主（`ctx.get('subagents')`）走**真实入口** `entry.apply(...)` ⇒ `seams.turnDeliver:true`，`kernel.turn.step({members:[{id}]})` **真的投递并分派**（`receipt.executed ≥ 1`，桥收到的 `label === 'vmu-turn-<id>'`）✓。

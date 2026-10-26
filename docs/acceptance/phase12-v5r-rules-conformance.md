@@ -5227,66 +5227,59 @@ A/B/C 三条与 `verdict_ask` 三条都已修并带断言，但"修完之后真�
 
 ---
 
-## §129 run 31 之后的机制修复（干净工作树，未跑第 32 轮）
+---
 
-读法同 §0。本节记的是 **run 31 暴露的缺口被修到什么程度**，以及修的过程中又量出来的东西。判定词不变：**✅已实现／⚠️部分／❌缺口／待核**；每条都要指到 `文件:行` 或命令末行，否则记「待核」。
+## §130 真机跑 32（build `e54b5108`，2026-10-26 21:31）——F1/F2/F4/F5 判决，F8 暴露真因
 
-### 129.1 处置表：run 31 交的五件（F1–F5）＋对账报告的四级（P0–P3）
+> 证据：`_oneoff/vm-slv/full-1026-213122.jsonl`（10,231,928 B / 18,195 行，UTF-8）；驱动 `D:/_tmp/slv-phase5/slv-p13-cc.ps1`（克隆 `slvp32`、端口 19631、`git archive e54b5108`、`v5r pack .js files=28`、任务书 `task-r32.txt`，简报校验 `calls=20 / problems=[]`）；`DRIVE exit=0`、`durationSec 445`、`toolCalls 22`、`transcriptEvents 128`、`tokenTotal 1,924,784`、`tokenCapHit=false`、`SUMMARY: 7 session(s), 0 with RED checks`、`cleanup: clone_gone=True C_free_GB=10.12`。
+> 提取器：`D:/_tmp/r31/dig31.mjs`（改输出路径）→ `D:/_tmp/r32/dig32.txt`（2,587 行）。机器读数：`NO_FENCE=24 UNKNOWN_FIELD=24 BAD_JSON=0`。
 
-| # | 缺口 | 处置 | 证据（文件:行／门禁末行） | 状态 |
-|---|---|---|---|---|
-| **F1** | 成员读不到发给自己的信：邮箱的持久键只在 `restore()` 读，而 `restore()` 是 resume 接缝、启动不调 ⇒ 每个新内核（＝成员子会话）邮箱从空开始 | `kernel/mailbox.js` 改成「读面拉取 + 写面在 store 当前值上 merge 回写」（`mergeSnapshots`；同 id 不同信重新编号；acked 账本剔除；瞬态码有界重试） | `kernel/mailbox.js`（754→1223 行）；`tests/vmu-run31-mailbox.test.mjs` ⇒ `=== VMU RUN31 MAILBOX: 66 passed, 0 failed ===`；`tests/vmu-mailbox.test.mjs` 76/0；`VMU STORE COHERENCE 17/0` | ✅ |
-| **F2** | 成员**没有提交裁决的面**：`vibe_v5_verdict{target:"<命题 id>"}` 只认活票箱，被 `VMU_NO_SUCH_OBJECT` 拒；主席只能自己替成员写数字，而 `coverage.complete` 数的是名册不是提交 | `vibe_v5_verdict` 增加辩论裁决语义（`meeting`+`proposition_id`），裁决落命题卡 `debate_ruling` 边栏，主席 `verdict_final` **收集并采纳**；`coverage` 区分 `debated` 与 `submitted` 且 `complete` 含义写进回执 | `packs/v5r/tools.js`（新增 `rulingSubmissionsOf`/`rulingIdOf` 与六条 `VMU_RULING_*`）；新测试 `tests/vmu-run31-ruling-channel.test.mjs`；`VMU V5R TOOLS 359/0` | ✅（**真机未验**，见 129.6） |
-| **F3** | 措辞指错：`closureReading` 说「live on `vibe_vmu_meeting{action:"status"}` → closureVote」，而 status 回执**没有**该键 | 指针改成真实落点（`close` 回执与 turn seam 回执） | `packs/v5r/tools.js` 的 `closureReading` | ✅ |
-| **F4** | `notified:["res-01"]` 与 `delivery.result{delivered:0, queued:1}` 并存 ⇒ 读者读成"已收到" | `notified` 只列真投递成功者，queued 单独具名 | 同上（`verdict_final` 回执） | ✅ |
-| **F5** | 成员在自己的子会话里调 `vibe_v5_tool_help{member}` 被拒（`no live Agent … none learned yet`），不知道自己就是那个会话的主人 | 工具面只**装饰读数**：`voice:'member'/'office'`、`readingScope`、`callerIsThisMember`、`memberSession(+Means)`、`callerMeans`；kernel 原 `note` 用 `' | '` 保留不覆盖 | `tools/member-tools.js:40-110`；`tests/vmu-run31-continuity.test.mjs` 62/0 | ⚠️部分（仍是"读不到"，只是说得明白） |
-| **P0** | 席位面由提示词散文派生：院士 deny 8 个含自己六件职责工具，member deny 含私信，temp deny 含全部 Lean | 新增 `packs/v5r/seat-faces.js`（48 行声明 × `{rule, why, allow}`），deny 与提示词 bullet **都由它派生**；`applyMemberScope` 改为「只治理 member/temp、下发 deny 而非 allow」 | `seat-faces.js`；`tests/vmu-run31-seat-faces.test.mjs` 84/0；`MEMBER SCOPE 55/0` | ✅ |
-| **P0 第二因** | override 的 `allow` 叠在席位 deny 之上会**放宽**（`host.js` 与 `memberface.js` 见 allow 就不看 deny） | `kernel/index.js` 的 `resolveMemberToolDeny()` 把 override `allow` 与席位 deny 求交，回执给 `allowNarrowedByDeny`/`allowNarrowedMeans` | `tests/vmu-member-override-invariant.test.mjs` 22/0（含反事实：旧解析结果的 allow/deny 直喂谓词会被放行） | ✅ |
-| **P1** | `verified` 轨无任何可达写入口（三席全拒 `verified_promote`），而 `vibe_vmu_records` 可旁路 | `verified_promote` 归**院士席位**（声明 `{chair:true,member:false,temp:false}` + 理由）；"单写者"仍只有源码正则级证据 | `seat-faces.js` 的 `vibe_v5_verified_promote` 行；**旁路未收窄** | ⚠️部分 |
-| **P2** | 规则没人教：蓝图／会议关闭与延长／连排多会议／人工干预与请示／禁言 | **未修** | — | ❌缺口（派下一轮） |
-| **P3** | 状态板四字段无来源 | `kernel/turn/index.js` 新增 `STATUS_BOARD_READ_OPS`（声明式）+ `STATUS_BOARD_FIELDS`（四行各标单一事实源）+ `statusBoardReadings`/`renderStatusBoard`，每轮 `[状态板]` 渲染给每位成员；拿不到就写「该来源未提供：<原因>」 | `tests/vmu-run31-status-board.test.mjs` 58/0；`VMU TURN 271/0`；`BOARD TOOL 13/0` | ✅ |
-| **审计盲区** | 提示词裸名抓不到；没人检查 `required` 标志 | `audit-prompt-tool-names` 增加裸名三形态（call-shape/paren/verb）＋白名单上限 8＋`DEAD_NAME_BASELINE` 反事实（必须报出 `math_computation`）；新增 `scripts/audit-tool-required-flags.mjs`（**空载荷行为探针**，105 工具 124 必填参数 0 违规） | `=== PROMPT TOOL NAMES: 13 passed, 0 failed ===`；`=== AUDIT TOOL REQUIRED FLAGS: 105 tools, 124 required params, 0 violation(s) ===`；`SCANNER SELF-PROOF 4/0`（scanners=135 proven=65 named-debt=70） | ✅ |
-| **身份连续性** | 每次 step 都开新子会话；成员跨回合无记忆 | `kernel/turn/index.js` 续会话 seam（宿主 `subagents.prompt` 冷续）＋无能力时**具名降级**（`cause`/`hostCode`/`why`/`fix`）＋step 回执自报 `continuation`；超预算**不**降级 | `tests/vmu-run31-continuity.test.mjs` 62/0 | ✅（生产走 `deliveryPath:'continuation'`，**真机未验**） |
+### 130.1 §129 四件真机判决
 
-### 129.2 修的过程中又量出来的机制缺陷（都不是 run 31 报的）
+| # | §129 修的是什么 | run 32 真机读数（原文） | 判决 |
+|---|---|---|---|
+| F1 | 成员子会话读不到发给自己的信 | **成员自己的子会话**里 `vibe_v5_inbox{member:"res-01"}` 三态都 `count:1`，`rows:[{id:"ml-1",from:"acad-01",subject:"请就 p-r32 准备裁决。",kind:"dm",bytes:28}]` | ✅ |
+| F2 | 成员没有提交裁决的面；主席只能自己填数 | res-01 `vibe_v5_verdict{meeting:"m1",proposition_id:"p-r32",verdict:0.6}` ⇒ `channel:"ruling"`、`submission.id:"ruling-m1-p-r32-res-01-8f326a08"`、`path:"…\Members\res-01\Propos\ruling-m1-p-r32-res-01-8f326a08.md"`；随后主席 `vibe_v5_verdict_final{meeting:"m1",proposition_id:"p-r32"}` ⇒ `mode:"mean"`、`value:0.7`、`n:2`、`coverage{submitted:["res-01","res-02"],adoptedFromSubmissions:2,typed:0,missing:[]}` | ✅（两个候选都从成员自己的提交采纳） |
+| P3 | 提示词没有状态板四字段 | 成员回合的指令正文里出现 `[状态板] [总任务] 本所本期目标：确立并证明『前 n 个奇数之和的封闭形式 n²』…` | ✅ |
+| F4 | `notified` 与 `delivered:0` 自相矛盾 | `delivered:[]`、`failed:[]`、`notified:[]`、`delivery{ok:true,result:{delivered:0,queued:1},selfAddressed:true}` | ✅ |
+| F5 | `verified_promote` 的拒绝 | `ok:false`、`code:"VMU_STATE"`、`message:"card p-r32 is not settled (p=0.5), so it cannot enter the verified track"`（行为正确），**但 `hint` 是半句话：`(ocks the step-2 gate)`** | ⚠️ → 已修文案（`vibe-math-vmu/packs/v5r/verified.js:393`，见 130.2） |
 
-1. **store 的 `open()` 与 `patch()` 不共享互斥**（`kernel/store.js`）：400 组「patch 撞 open」探针 ⇒ **259 次 `EPERM`、259 次已确认写从未落盘**，而 `agg.lockWaits=0`（写者的锁对 open 完全没生效）。根因＝`open()` 直接 `readFile` 不在互斥里，撞上写者 `await rename(tmp,file)` 在 Windows 上失败。修法＝把 `open/migrate/import` 收进同一把文件锁、写路径遇瞬态码**重读-合并-重试整轮**（≤3），耗尽抛具名 `VMU_STORE_FAILED` 并明说"该写未被确认"；`stats()` 增 `writeRetries`/`writeRetryGiveUps`。证据：`tests/vmu-store-coherence.test.mjs` 17/0（§5 `lockWaits≥1`、§6 120 组交错 0 拒 0 丢、§8 真第二进程持句柄）+ 连跑三次。
-2. **任务板不跨内核也不落盘**（`kernel/index.js` 的 tasks adapter 是 `mode:'journal'`）：run 31 磁盘 `tasks: []`；office 建任务后成员内核 `tasks.list().length===0`。修法＝照 mailbox 的"读前拉取+写后合并回写"，但**不让 resume 拿到 snapshot 缝**（resume 的 state 写透是整体替换＝丢更新），并新增三级裁决（revision → 写入时刻 → durable）+ `conflicts[]` 具名。证据：`tests/vmu-run31-taskboard.test.mjs` 53/0；`vmu-tasks*` 四套全绿；`VMU GOAL1 E2E 108/0`。
-3. **`applyMemberScope` 对院士也下 override**（见 P0 第二因）：`packs/v5r/member-scope.js:153-175` 对每个 hired（含 chair）`setMemberToolOverride({allow: MEMBER_SAFE_TOOLS})`，而 allow 数组会让 deny 失效 ⇒ 真机 `start` 之后院士立刻丢掉裁决权。这条是 **run 31 里"所办冒充院士"的第二因**。
-4. **`MEETING_STATE_MEANING` 少一半词**（`kernel/meeting.js:28`）：run 31 读到 `state:"open"` + `stateMeans:null`。补 `open/recess/suspended/idle/convened` 五句并注明"`open` 是 service 词、primitive 同一阶段叫 `in_session`"。证据：`tests/vmu-meeting-state-meaning.test.mjs` 10/0（状态词从两个模块自己的字面量派生，`status.stateMeans` 必须与映射逐字相等）。
-5. **审计门禁自己的形状债**：`tests/audit-declaration-criterion.test.mjs` 的 RULE E 在本轮新写的测试里抓出 13 处"空集合时断言体不执行/两边同空比较"（含我自己的 `for…of`），说明该门禁有效、也说明**新代码默认会空洞**。
+### 130.2 F5 的乱码 hint：一句被截断的句子
 
-### 129.3 已知债（登记在案，不在本轮修）
+`verified.js` 的 hint 原文只留下 `(ocks the step-2 gate)`——缺主语、缺前半句，读者无法知道"什么 gates 什么"。已改为
+「the card is written by `vibe_v5_record_proposition`, and a debate settlement is what turns it into 1. Promote AFTER that settlement, never before it」，并把"为什么这句话必须完整"的理由写进同一段注释（拒绝要能被执行，hint 是唯一的执行指引）。
 
-- `identityOf` 用创建者字段判同一条任务 ⇒ 两内核**同一毫秒**建内容**完全相同**的任务会被合并成一条（"无法区分"的极限情形）；正解是行上带 `createdBy`，超出本轮写域。
-- 常量时钟下的平手裁决以 **durable 行为准**并具名记 `conflicts[]`；真实时钟有毫秒差，此分支基本只在测试出现。
-- 双进程（不是双内核）同时写没有测试覆盖（`store` 的锁已覆盖进程内互斥与跨进程持句柄两种情形）。
-- `vibe_vmu_script.action` / `vibe_vmu_control.action` 声明 required 而 handler 有缺省值（"声明比机制严"，归 host tools 面）。
-- `vibe_v5_verdict_final` 的 `floor` 把主席算进分母而裁决面不强制 floor（已给 `floorMeans` 说明"裁决不是表决"）——口径已诚实，机制未统一。
-- 生成的历史快照（`packs/v5r-prompts.js`/`v5r-persona.js`）里仍有 `math_computation` 字样，按契约不可改，裸名门禁对带 `SOURCE_SHA256` 的快照跳过。
-- `tests/vmu-activity-timers.test.mjs` 的表仍按行号引用（`kernel/store.js`/`kernel/mailbox.js`/`kernel/index.js` 都补了 verdict 行并实测），行号会漂移。
+### 130.3 F8：续会话的**真因在我这一侧**（已改代码，待 run 33 判决）
 
-**顺带清掉的既有红**（都在干净 HEAD 工作树上确认过同红）：fs-purpose、no-silent-reads、vmu.store 文档、settings hot-truth（47 条 `vmu.meetings.*` 由构造期快照改为声明 H2）、scanner self-proof 登记、四个 findings 套件的过时断言（finally-falsify 26/0、run35 26/0、run8 27/0、verdict-final 63/0）、member-scope、activity timers。
+run 32 第二轮回 `res-01` 时 step 回执给的是：
 
-### 129.4 本轮我自己的错（与 §128.3 同类，累计第五条）
+```json
+"continuation": {"offered":"eafb8753-…","applied":false,"reused":false,"cause":"resume-failed",
+  "hostCode":"VMU_ENGINE_UNAVAILABLE",
+  "why":"the host refused to admit a continuation prompt into the member session …: Cannot read properties of undefined (reading 'aborted')",
+  "capability":{"capable":true,"verb":"subagents.prompt({ mode:\"continuable\", delivery:\"queue\" })","parentSessionId":"…"}}
+```
 
-1. 把 `enabledGap` 与 `vibe_vmu_meeting{action:"status"}` 的 `closureVote` 当成**必然存在**的键写进 run 31 简报 ⇒ agent 照抄"缺失"。教训：**条件字段必须带限定语**，且只引用上一轮真机实际打印过的键名。
-2. 从自己的提取器投影里只看到 `ok/action` 就判 `vibe_vmu_meeting{action:"list"}` 坏的 ⇒ 原始回执是完整的。教训：**先看原始回执，再看自己的投影**。
-3. 在 `packs/v5r/tools.js` 的单引号字符串里写了 `framework's` ⇒ `SyntaxError`，而报错是另一位队友发现的。教训：改完立即 `node --check`。
-4. 想替队友改一个正被它编辑的测试文件（编辑冲突），以及一次 `edit` 撞上生成器刚重写的文件。教训：**写面即所有权**，别人的文件只报告不动手。
+即**宿主有能力**（`capable:true`）却抛内部错。读码定因：`vibe-math-vmu/kernel/turn/index.js` 的 activation 分支在拿到回复后**立刻 `dispose()`**，而 resume 要读的正是那个 activation 的 `signal`；被拆掉的 activation 让宿主读到 `undefined.aborted`。
+改法（ROUND 32 / F8 注释在源码里）：
+1. `keepResident = !!(turn.continuationCapability && turn.continuationCapability.capable === true)`——宿主能续则**不拆**（失败路径与"返回无文本"路径仍 `force` 拆，避免泄漏）；
+2. activation 成功回执新增 `residency:'kept-resident-for-continuation' | 'disposed-after-reply'` 与 `residencyMeans`；
+3. 该字段经 `lastAttribution`（`kernel/turn/index.js` 的逐字段白名单）→ `deliveryFromAttribution()`（已 settle 路径的 `receipt.delivery` 就是从这两处重建的）→ `deliveryOf()` 一路带到 step 回执。
+判据（run 33 必须抄）：`continuation.applied` **与** `delivery.residency`——两者一起才能说"续上了"，只有前者可能是缓存命中，只有后者只是"没拆"。
 
-### 129.5 本轮门禁读数（工作区，逐条末行原文）
+### 130.4 本轮门禁读数（工作区）
 
-`PREFLIGHT: PASS`；`regen-all --write` 16/16 → `--check` 16/16 in sync；`VMU DOCS AUDIT 103/0`；`DOC LINT: PASS`；`DECLARATION CRITERION 87/3`（三条 RULE E 形状债正在清，见 129.2-5）；`SCANNER SELF-PROOF 4/0`；`VMU TIMERS F15/F16 43/0`；`MEMBER SCOPE 55/0`；`VMU MEMBER WIRE 24/0`；`RUN31 SEAT FACES 84/0`；`RUN31 MAILBOX 66/0`；`RUN31 TASKBOARD 53/0`；`RUN31 CONTINUITY 62/0`；`RUN31 STATUS BOARD 58/0`；`STORE COHERENCE 17/0`；`V5R TOOLS 359/0`；`V5R VERDICT FINAL 63/0`；`TURN 271/0`；`HOST 203/0`；`KERNEL 260/0`；`MEETING PARITY 204/0`；`GOAL1 E2E 108/0`；`RUN30 30/0`；`RUN29 22/0`。
+`DECLARATION CRITERION: 89 passed, 1 failed`（唯一红是 `regen-all --check`，因为此刻 `kernel/store.js` 正被 task-20 改）；
+`VMU RUN31 CONTINUITY 62/0`、`VMU TURN 271/0`、`VMU HOST 203/0`、`VMU RUN29 22/0`、`CHARTER CONTRACTS 22/0`、`VMU SETTINGS 49/0`、`VMU TIMERS F15/F16 43/0`、`PER-TYPE COVERAGE 14/0`、`VMU RUN 31 STATUS BOARD 58/0`、`RUN31 SEAT FACES 86/0`、`MEMBER OVERRIDE INVARIANT 22/0`、`VMU RUN30 30/0`、`RUN31 MAILBOX 66/0`、`DOC LINT: PASS`。
 
-### 129.6 无法验证项（下一轮才可能验）
+### 130.5 无法验证项（下一轮才可能验）
 
-1. 成员**真机**能否收到裁决请求并提交自己的裁决（F1/F2 的端到端链路）：本轮只有 boot-twice/工具级证据。
-2. 续会话在生产路径上是否真的 `applied:true`（`subagents.prompt` 冷续）：测试里是注入 seam。
-3. 院士席位在真机上是否**真的**调到 `verdict_final`/`blueprint`/`verified_promote`（本轮修的是声明与求交，没跑 live）。
-4. `close` 之后 `closureVote` 与"结题票一致同意"在真机上的联合读数。
-5. 状态板 `[状态板]` 一节在真机提示词里的实际渲染字节。
+1. **F8 的正向**：`keepResident` 之后 run 33 的同类回合是否真拿到 `applied:true`（本轮只能读代码与单测）。
+2. 成员续会话时的**上下文继承**（§125 悬案）：run 32 里 res-01 仍在跑自己的 Lean 流，与本轮任务无关——这在续会话生效后应变得可判断。
+3. `verdict_final` 采纳提交后的**改卡落地**：本轮 `correction` 给了可执行调用，但没有一步真的写卡。
+4. P2 六件（蓝图/关闭延长/连排会议/人工干预/请示/禁言）仍无真机覆盖。
+5. `task-20` 的 store 拆机竞态尚未收口（gate-a-store 在跑）。
 
-### 129.7 本轮无实质残余
+### 130.6 本轮无实质残余
 
-**否**。F1/F2/P0 这三条主缺口的**机制**已修并有测试，但**一条都还没在真机上验过**；P2（蓝图/关闭延长/连排会议/人工干预/请示/禁言）仍是"规则没人教"；`verified` 单写者仍有旁路。⇒ 下一轮：先跑 run 32（定向验收 F1/F2/P0/P3/续会话），再收 P2。
+**否**。F8 是本轮新暴露、且改动落在内核（有单测、无真机）的一条；P2 六件仍未被覆盖；`store.js` 收口未完成。

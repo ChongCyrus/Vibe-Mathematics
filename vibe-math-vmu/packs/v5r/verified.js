@@ -390,7 +390,7 @@ export function promoteVerified({ records, sourceId, warrant = null, at = null, 
   }
   if (card.p !== 1 && card.p !== 0) {
     throw refuse('VMU_STATE', 'card ' + key + ' is not settled (p=' + probText(card.p) + '), so it cannot enter the verified track',
-      'only 1 or 0 may be promoted: p in (0,1) is experience, not a conclusion — a debate settlement is what turns it into 1 (ocks the step-2 gate)')
+      'only 1 or 0 may be promoted: p in (0,1) is experience, not a conclusion — a debate settlement is what turns it into 1. Promote AFTER that settlement, never before it')
   }
   if (withdrawnBy(fidelity, logicalId)) {
     throw refuse('VMU_STATE', 'the archived proof of ' + logicalId + ' was WITHDRAWN by a fidelity defect marker, so it cannot be promoted (a withdrawal must not be undone by the next settlement)',
