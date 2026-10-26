@@ -115,7 +115,7 @@
 | F50 "未知就说未知" | **具备** | `kernel/arbitration.js:169,209,407`；`kernel/alerts.js:444` | 未知对象/未知类别/未知目标**一律具名拒**并给出已知集合，从不静默取默认 |
 | F51 重启标记 | **缺失** | 仅 `kernel/budget.js:9`（"重启无法重算的花费"）与 `ids.js`（id 不从 0 重启） | **未找到重启标记/世代号**；重启后能靠 resume/投影恢复**状态**，但没有"我重启过"的标记 |
 | F52 一次性 future-only 活动等待器 | **缺失**（按 Lead 提示核过） | `kernel/control.js:132-142` | Lead 指的 `control.js:133` 两处命中**不是等待器**：那是 `tune()` 里的 `cfg()`/`str()` 校验。**结论：该原语不存在**（避免了一次"看行号就以为有"的误判） |
-| F53 直接 fs 与策略 fs 的边界讲清 | **部分** | 直连 `node:fs` 仅 8 个模块：`host-math.js:24`、`vibe-math-vmu.js:39`、`kernel/{guard,index,lean,library,records,store}.js`；`kernel/storepolicy.js` **无 IO**（策略层） | 边界**事实上存在**（策略层不碰 fs，IO 由注入缝/model 承担），但**没有显式声明或守卫**把它钉住 |
+| F53 直接 fs 与策略 fs 的边界讲清 | **部分** | 直连 `node:fs` 仅 8 个模块：`host-math.js:24`、`vibe-math-vmu.js:39`、`kernel/{guard,index,lean,library,records,store}.js`；`kernel/storepolicy.js` **无 IO**（策略层）★ 该枚举是当时的读数、**已过期**（实测还含 `kernel/latex.js` 等 `node:fs/promises` 读者）：**清单以 `tests/audit-fs-purpose.test.mjs` 的扫描为准**，散文不写数字 | 边界**事实上存在**（策略层不碰 fs，IO 由注入缝/model 承担），但**没有显式声明或守卫**把它钉住 |
 
 **处置建议（★ R5 现状：**F49/F50 具备（本轮被加厚）**、**F51 由"缺失"改判【具备】**、**F52 维持"缺失（原语不存在）"**、**F53 维持"部分"**——见 §10.7）**：F51 ⇒ **具备**（耐久标记本体＝`resume` 键的 `recoveries[]`（`{id,at,reason,interrupted,unhydrated,readBack}`，`keepRecoveries` 裁最旧）＋只读视图 `status().restart`＝`{generation,restarted,at,reason,…}`；**跨进程断言** `generation===2` 在 `tests/vmu-resume-lock-and-marks.test.mjs`（**我复跑 49/0**））；**唯一具名缺口**＝v5r 的 **`meetingOpen`（"会议开了未收束"）域标记**在 vmu 无等价物（需会议投影带 `open` 标记；owner＝会议面），**其余维持**：F52 ⇒ 缺失（R4 已核 `control.js` 那两处是 `tune()` 校验、**不是**等待器）；F53 ⇒ 部分（直连 fs 模块集合未变、策略层无 IO，仍缺显式声明）。
 

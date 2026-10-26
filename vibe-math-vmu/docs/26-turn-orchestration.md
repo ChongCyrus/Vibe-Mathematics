@@ -710,6 +710,35 @@ counts.delivered += 1                              // ⇒ 抛了就到不了这�
 ★ **门禁**：`tests/vmu-run12-findings.test.mjs`（18 条）其中两条是**反假绿**：断言旧的单面计数器映射**已不存在**、断言 seam 拒绝**被原样 rethrow**。
 ★ **同类**：与 §3.40「一个字段承担两种事实」、`cast` 之类是同一族 —— **回执必须让读者能区分「没发生」与「发生了但没人认领」**。
 
+## 3.43 ★★★★★ 形状是**调用者**说的，不是内核猜的：`selectionShape`／`memberSession`／结题票（R30 的两条真机回执病）
+
+★ **真机病**：面层把单数 `member` 归一化成**一人列表**（`tools/turn.js:105-110`，run-29 的修：被点名的成员必须被尊重，不许被花名册默认吞掉 ✓），于是内核**只看得见自己收到的 `members`**，回执便写「the caller named `members`」—— **行为对、句子错** ✗：调用者根本没传 `members`，它传的是 `member`。同理 `vibe_vmu_tools {member:"res-01"}` 曾回「session=(none learned yet)」，而**那个 id 是内核自己在上一步学到的** ⇒ 读者无法判断「没学到」与「学到了但没能读出来」。
+
+★ **修①（形状上移给调用者）**：**形状只有面层知道**，所以它随调用一起走 —— `tools/turn.js:116` 算出
+`selectionShape = listed ? 'members' : (singleMember !== null ? 'member' : 'roster-default')`，
+并在两次 `kernel.turn.step({...})` 里送出（`tools/turn.js:334`／`tools/turn.js:397`）。
+★ 内核 `step` 的签名收它（`kernel/turn/index.js:2282` 的 `selectionShape = null`），派生口径在 `kernel/turn/index.js:2303-2305`：**`'member'`／`'members'` 是【调用者说的】⇒ 直接采信**；否则退回改写前的两个事实（`namedMemberList`／`namedSingleMember`，`kernel/turn/index.js:2295-2296`）—— **直接调内核（不经面）的调用者没有形状可送，那两个事实就是仅有的证据** ✓。
+★ **为什么必须在改写【之前】读**：单数简写会把 `members` 改写成一人列表（`kernel/turn/index.js:2306-2309`），改写之后「列表形状」对两种调用都为真 ⇒ 回执照抄就会撒谎 ✗（本卷 §3.40／§3.42 是同一族：**回执不许替读者补一句听起来成立的解释**）。
+
+★ **修②（三句 note，对应三种叫法）**：`requestedMembersNote` 在 `kernel/turn/index.js:2441-2447` ——
+- `roster-default`：「没给 `members`，所以 `requestedMembers` **按设计为空**（推断出来的选择不是请求），`resolvedMembers` 是本步真正提示的花名册默认」；
+- `members`：「调用者点名了 `members`；`requestedMembers` 与 `resolvedMembers` **归一化后是同一张表**（字符串／`{id}`／`{member}` 都落成 id）」；
+- `member`（**单数：一个席位**）：「`requestedMembers` 与 `resolvedMembers` 就是那**一个** id —— 这**不是**推断出来的选择、也**不是**一张表，而是『唤醒这一个成员』的简写」；
+- 兜底：「调用者用别的形状点了选择」。
+★ **同一对象里的两个问题、两张表**（`kernel/turn/index.js:2428-2436`）：`requestedMembers` 是**调用者要的**、`requestedMembersSource` 是它的来源、`resolvedMembers` 是**本步真正提示的** —— 一个字段答不了两个问题 ✓。
+
+★ **修③（`memberSession`：本内核自己学到了什么）**：`vibe_vmu_tools` 的「(none learned yet)」此前之所以不可核，是因为那张映射**没有自己的读数**。现在 `step` 回执带 `memberSession` ＋ `memberSessionMeans`（`kernel/turn/index.js:2554-2566`）：
+- `memberSession` = **本内核此刻**为该成员持有的子会话 id（读 `memberSessions` 映射，声明在 `kernel/turn/index.js:907`）；
+- 学习有**两条路**：`kernel/turn/index.js:1135`（投递归属的 `childId`）与 `kernel/turn/index.js:2542`（回执里的 `childSessionId` —— 激活投递路径不填前者，只靠前者时那张表在真机上一直是空的 ✗）；
+- **两个字段都在学习【之后】算**（理由写在 `kernel/turn/index.js:2551-2553`）：若在之前算，**学到它的那一步会报「没学到」** ✗；
+- `memberSessionMeans` 三句：无成员被选 ⇒「本步没开回合，没有成员会话可报」；已持有 ⇒「本内核为该 id 持有的子会话（**内存中、按内核实例**；从本步或更早的回执里学到的）。`vibe_vmu_tools {member:"…"}` 读的是**同一张映射** —— 那边 null 而这里非 null，是**这份回执里的矛盾**，不是成员的性质」；未持有 ⇒「**尚未学到**：投递缝在本内核跑过的任何回合都没为该成员报过子会话 id。`vibe_vmu_tools` 会为此具名拒 —— **那条拒绝描述的是读数缺席，绝不是『该成员什么都看不到』**」；
+- 对外面 `kernel.turn.memberSession(member)`（`kernel/turn/index.js:2665`）读**同一张映射** ⇒ 两个面不可能各说一套 ✓。
+
+★ **修④（结题票 ≠ 关会）**：`close` 回执新增 `closureVote` ＋ `closureVoteNote`（`tools/meeting.js:353-368`）：`closureVote` 是**同一个实例上**「每个有投票权的成员都判定该问题已解决」的**一致同意读数**（`cast/confirmed/votesCast/missing`，不可读时是 `{readable:false,why}`），`closureVoteNote` 明写它**不是**这次关会的要求、也**没被关会改动** —— 关会过的是 `enforced` 里点名的**会议策略轨**（`vmu.meetings.*`）⇒ **「closed」不等于「一致判定已解决」**（`tools/meeting.js:367`）；点名在 `missing` 里的人，正是「声称结题前该去问的人」✓。内核侧同一条边界写在 `kernel/turn/index.js:187` 的 `reason` 里：「silence blocks the **CLOSURE VOTE** … it does **NOT** block closing the meeting: the close rails are the meeting policies (vmu.meetings.*), and this reading never decides whether a close was legal」✓。★ 工具面（`vibe_vmu_meeting{action:"close"}`）的回执字段与细则见 `03` 号文档 §3.1a 末的 R30 注 ✓。
+
+★ **判据（真机可读）**：① 单数 `member` 的 `step` 回执里，`requestedMembersNote` 必须说 **SINGULAR**，不得再说「named `members`」；② `memberSession` 非 null 时，同一步的 `vibe_vmu_tools {member}` 不得再报「none learned yet」（两个面读同一张映射，矛盾即缺陷）；③ `close` 回执必须**同时**带 `closureVote` 与 `closureVoteNote`，且 note 里出现 `enforced`（哪套轨决定了关会）—— 三者缺一即「形状／读数仍靠读者猜」✗。
+★ **门禁**：`tests/vmu-run30-findings.test.mjs`（对 `requestedMembersNote` 三句、`propositionClause`、`floorMeans`、`correction`、`closureVote` 逐条点名，本卷改动后实跑 **30 passed, 0 failed**）＋ `tests/vmu-run29-findings.test.mjs` 的 B1–B5（`memberSession` 与映射一致、`memberSessionMeans` 不谎报缺席）✓。
+
 ## 4. v1 的边界（**未做，明写** ✗）
 
 1. ★★★ **投递缝已接进内核（轮 339）＋ 宿主桥已提供（轮 344）＋ 入口已装配（轮 1／K3）** ✓✓✓：**vmu.turn 在 kernel/index.js 里建成** ✓，**投递缝是内核的 `deliverTurn` 选项** ✓（★ **轮 1 更正** ✗✓：原文只写 `host.deliverTurn` —— 而真实入口交给内核的 `host` 是 `host-math.js` 的适配器，**它没有 `deliverTurn`** ⇒ 于是**真机每一轮都在 `turn/index.js` 的缺缝分支具名拒** ✗；旧名仍兼容，但**不再是唯一来源** ✓）；★ **宿主不给缝 ⇒ 具名拒 VMU_ENGINE_UNAVAILABLE** ✓（**绝不假装成员答了** ✗，且**计数可见** ✓，`status().seams.turnDeliver`／`turnDeliverSource` 自曝 ✓）。★★★ **宿主桥 `deliverViaSubagents(subagents, extract?)`** ✓✓：**入口已按声明装配** —— `vibe-math-vmu.js` 把它接到 `ctx.get('subagents')`（**调用时解析**，因为 `apply()` 可能早于服务挂载 ✓），宿主**不需要自己写适配器** ✓；★ **它只送【装配后的文本】，绝不自拼** ✗；**标签带轮次 id（可追）** ✓；★ **不给缝 ⇒ 具名拒** ✓；★★ **宿主收下却不回回复 ⇒ 也是【具名拒**】✓（**绝不解析成"模型什么都没说"** ✗）。★ **实测（T35–T39）** ✓✓：**整轮走宿主缝跑通** —— 装配 ⇒ 桥投递 ⇒ 解析 ⇒ **任务台账真的增长** ✓✓；★ **到达缝的正是装配文本且带轮次标签** ✓（>1000 字 ✓）。★★ **轮 1 复测** ✓：以假宿主（`ctx.get('subagents')`）走**真实入口** `entry.apply(...)` ⇒ `seams.turnDeliver:true`，`kernel.turn.step({members:[{id}]})` **真的投递并分派**（`receipt.executed ≥ 1`，桥收到的 `label === 'vmu-turn-<id>'`）✓。
