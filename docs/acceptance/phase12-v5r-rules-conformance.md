@@ -7863,3 +7863,48 @@ hashUnchangedMeans: "not measured: no compile ran for this job (VMU_LEAN_FILE_UN
 **§179.7 无实质残余？**
 
 本轮 0 新缺陷，四个已关家族同时复验通过；残余仍是记账项（§174.7 两条 + §178.6 三项 + 「历史行不迁移」）。
+
+## §180 真机跑 75（F-70 复验：三个面的计数器都说出「这是谁的数」）
+
+**§180.1 读数**
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | 56s |
+| 根会话 | `toolCalls 7`、`transcriptEvents 50`、`calls (7) vs results (7)` |
+| token | `tokenTotal 307,285`（cap 12,000,000、`tokenCapHit:false`） |
+| 会话 | 2（root + 成员 r-acad 一轮） |
+| 健康 | `0 with RED checks` |
+| 快照 | `_oneoff/vm-slv/full-1027-233211.jsonl`，1,224,566 B / 1,106 行 |
+| 围栏计数 | `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=8 BAD_JSON=12` |
+| 保全 | `D:\_tmp\slv-phase5\slv-logs\…20261027-233343` |
+
+**§180.2 判决：F-70 ✅（三个面同一套说法，且成员内核读到同一 token）**
+
+| 面 | 读数（逐字） | 结论 |
+| --- | --- | --- |
+| 群聊 `vibe_vmu_chat{action:"status"}` | `counts:{sends:0,audit:0,supplements:0}`、`countsScope:"this-kernel-instance"`、`countsMeans` 整句（"these counts are THIS chat instance's own book … not a total across kernels"） | ✅ |
+| 邮箱 `vibe_vmu_mailbox{action:"status"}` | `shared.key:"mailbox"`、`shared.pulls:1`、`shared.scope:"this-kernel-instance"`、`shared.scopeMeans` 整句（"these counters belong to THIS mailbox instance … the shared fact is the store key ('mailbox')"） | ✅ |
+| 记录 `vibe_vmu_records{action:"status"}`（ROUND 70 回归） | `shared.scope`、`shared.scopeMeans`、`shared.adoptedWithoutAuthor` 在场 | ✅ |
+| 成员内核 | 成员 r-acad 在自己的内核里读同一张面：`countsScope:"this-kernel-instance"` + `countsMeans` 整句 —— 与所办逐字一致 | ✅ |
+
+**§180.3 本轮简报**
+
+六步、7 次调用；`check-task-brief.mjs` 一次 0 问题（105 工具）。第 5 步「只调一次 `vibe_vmu_chat`、抄两个字段、最后用围栏交回」被成员照做（它确实只调了一次 chat status）。
+
+**§180.4 门禁**
+
+全量 `TOTAL 545 PASS 545 FAIL 0 (suites 481 · probes 64)`；`regen-all --check` 16/16；`DOC LINT: PASS`；`PREFLIGHT: PASS`；计数 `JOBS total=614 suites=506 probes=108`（新套件 `vmu-run75-counter-scope` 12/0 计入）。
+
+**§180.5 简报错**
+
+无。
+
+**§180.6 无法验证**
+
+沿用 §178.6 三项。
+
+**§180.7 无实质残余？**
+
+本轮 0 新缺陷；F-70 结清。残余仍是记账项：历史行不迁移、`check-task-brief` 不校验占位符、以及 §178.6 三项无法用生产工具面触发的旁支。
