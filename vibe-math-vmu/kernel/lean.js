@@ -324,6 +324,15 @@ export function createLeanFace(opts) {
   const view = (j) => ({
     id: j.id, state: j.state, file: j.file, statement: j.statement,
     exitCode: j.exitCode, hashUnchanged: j.hashUnchanged, passed: j.passed === true,
+    // ★ LIVE RUN 59 (a member read this flag as a cache signal and said so in feedback): `hashUnchanged` compares the
+    // file's content BEFORE and AFTER one compile — it answers "did the file change while it compiled", not "is this a
+    // cached result". The dedupe question is answered by `dedupedOf` instead. Naming the meaning next to the boolean is
+    // cheaper than making every reader guess.
+    hashUnchangedMeans: typeof j.hashUnchanged === 'boolean'
+      ? (j.hashUnchanged
+        ? 'the file content was the same before and after this compile (it is NOT a cache flag; dedupedOf answers "reused a passed compile")'
+        : 'the file content CHANGED while this compile ran, so its verdict is about a moving target and is never passed')
+      : null,
     startedAt: j.startedAt, endedAt: j.endedAt,
     attempts: Number(j.attempts) || 0,
     // F17 facts a reader must be able to see without reading the mirror.

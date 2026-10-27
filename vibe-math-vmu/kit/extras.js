@@ -177,7 +177,23 @@ const LEAN_ARCHIVE_KIND_MAP = Object.freeze({ def: 'def', lemma: 'lemma', proof:
 async function toolLeanRun(args = {}, { kernel } = {}) {
   if (!has(args.file)) throw refuse('VMU_INVALID_ARGUMENT', 'lean_run needs file', 'pass file:"Formal/x.lean"')
   const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_run')
-  const statement = has(args.target) ? str(args.target) : (has(args.statement) ? str(args.statement) : '')
+  // ★★ LIVE RUN 59 — THE ALIAS OUTRANKED THE FIELD IT ALIASES. `target` used to win over `statement`, so a call that
+  // gave ONLY `target` (a card id, e.g. "p-odd-sum") was accepted and the audit recorded that ID as the proposition
+  // text. Two slips in one line: the legacy alias silently shadowed the documented field, and a required field could be
+  // satisfied by a name that is not the thing it names. The rule now mirrors lean_archive's from/file rule — the
+  // documented field wins, two names that disagree are REFUSED by name, and `target` alone cannot stand in for the
+  // proposition (an object id is not a proposition).
+  const statementRaw = has(args.statement) ? str(args.statement).trim() : ''
+  const targetRaw = has(args.target) ? str(args.target).trim() : ''
+  if (statementRaw && targetRaw && statementRaw !== targetRaw) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'lean_run got BOTH statement and target with different values',
+      'pass statement (the proposition text) — target is a legacy alias and used to win silently; the audit records statement')
+  }
+  const statement = statementRaw || ''
+  if (!statement && targetRaw) {
+    throw refuse('VMU_LEAN_STATEMENT_REQUIRED', 'lean_run got target:"' + targetRaw + '" but no statement',
+      'pass statement:"<the proposition text>" — target names an OBJECT (a card id); the receipt and the audit are about the proposition, not about the object it lives on')
+  }
   const submitted = await lean.submit({ statement, file: str(args.file), member: has(args.member) ? str(args.member) : '' })
   return { ok: true, tool: 'vibe_v5_lean_run', job: submitted,
     unapplied: has(args.timeout_ms) ? [{ rule: 'timeout_ms', why: 'the Lean face times out on its declared vmu.math.leanTimeoutMs; a per-call timeout is not part of submit()' }] : [],
@@ -218,7 +234,17 @@ async function toolLeanArchive(args = {}, { kernel } = {}) {
   const file = fromRaw !== null ? fromRaw : (fileRaw !== null ? fileRaw : '')
   if (!file) throw refuse('VMU_INVALID_ARGUMENT', 'lean_archive needs the existing .lean file (from/file)', 'this face registers existing files; it does not take inline content')
   const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_archive')
-  const archived = await lean.archive({ name: str(args.name), kind: mapped, file, statement: has(args.target) ? str(args.target) : '' })
+  // ★ LIVE RUN 59: a member archived a compiled lemma with the proposition text in `note` and the library came back
+  // with `statement:""` — the archive face had no `statement` parameter at all and only ever filled the field from the
+  // legacy `target` alias. The registered entry must be able to answer "what does this file formalise", so the text is
+  // now a first-class argument (still accepting `target` as its legacy alias, and refusing two names that disagree).
+  const archStatementRaw = has(args.statement) ? str(args.statement).trim() : ''
+  const archTargetRaw = has(args.target) ? str(args.target).trim() : ''
+  if (archStatementRaw && archTargetRaw && archStatementRaw !== archTargetRaw) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'lean_archive got BOTH statement and target with different values',
+      'pass statement (the proposition text this file formalises) — target is its legacy alias')
+  }
+  const archived = await lean.archive({ name: str(args.name), kind: mapped, file, statement: archStatementRaw || archTargetRaw })
   return { ok: true, tool: 'vibe_v5_lean_archive', mappedKind: mapped, archived,
     note: has(args.content) ? 'content is NOT stored: the archive registers existing files by hash (write the file first)' : undefined }
 }

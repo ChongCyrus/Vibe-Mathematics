@@ -6942,3 +6942,44 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 - 围栏噪声 22/46 条的逐条归属。
 
 ### §161.7 无实质残余：否（残余 F-41c、F-43 的 agentId、F-13，以及围栏噪声的逐条归属）
+
+## §162 真机跑 59（复验 F-48；别名偷换审计对象，库丢掉命题）
+
+### §162.1 读数
+- 驱动：`DRIVE exit=0`、`durationSec 274`、根会话 `toolCalls 4`、`transcriptEvents 41`、`tokenTotal 1,721,921`（cap 12,000,000，未触顶）、2 个会话、`SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks`。
+- 快照：`_oneoff/vm-slv/full-1027-174130.jsonl` = 5,752,959 B / 12,913 行；围栏计数 `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=8 BAD_JSON=12`；日志保全戳 `20261027-174648`；`cleanup: clone_gone=True port_listening=False C_free_GB=10.35`。
+- 可见工具 95 个；`calls (4) vs results (4)`；根 prompt 8,942 字符。
+
+### §162.2 判决（逐项）
+| # | 这一轮要验的 | 结论 | 依据 |
+|---|---|---|---|
+| 1 | F-48a：缺 `statement` 必须具名拒 | ✅ | 成员第 25 步回执 `job.ok:false`、`code:"VMU_LEAN_STATEMENT_REQUIRED"`、message/hint 点名 statement |
+| 2 | F-48b：短路径拒收同时给两个路径 | ✅ | `lean-1` 结算 `VMU_LEAN_FILE_UNREADABLE`，message 同时含 `Formal/ShortPathProbe.lean` 与库根绝对路径；hint 点名库根与绝对路径逃生口 |
+| 3 | F-48c：库根路径能编译 | ✅ | `lean-4` state `settled`、`exitCode:0`、`passed:true`；`lean-5` 用**绝对路径**也通过（逃生口有效） |
+| 4 | 异步面两步（提交→结算） | ⚠️（简报错） | 简报让 root 只提交就抄 `code/message`，而 `lean_run` 只回 `ok:true,id:"lean-1",state:"queued"`；root 如实写「没有该字段」 |
+| 5 | 别名与正名 | ❌（新缺陷 F-49a） | `lean-1`…`lean-6` 与 `lean-2` 的 `statement` 分别是 `"p-probe-path"`/`"p-odd-sum"`——**命题卡 id**，不是命题原文 |
+| 6 | 归档能答「证明什么」 | ❌（新缺陷 F-49b） | `lean_archive` 回执 `statement:""`；`lean_lib` 读回同样为空，成员只能把命题塞进 `note` |
+| 7 | `hashUnchanged` 可读 | ❌（新缺陷 F-49c，读面） | 成员把它读成缓存标志并在反馈里写「hashUnchanged field suggests caching」；真义是「编译前后文件未变」 |
+| 8 | 成员自主工作 | ✅ | r-1 在库根外/内两种路径各做一次实测、写 `Formal/OddSum.lean`、`Lean` 三连跑（失败→失败→通过）、归档、记录、反馈；并独立抓出上面两条缺陷 |
+
+### §162.3 缺陷与修法
+- **F-49a（别名压过正名）**：`vibe-math-vmu/kit/extras.js#toolLeanRun` 原为 `has(args.target) ? target : statement`。修法：`statement` 优先；两个名字都给了且不一致 ⇒ `VMU_INVALID_ARGUMENT` 具名拒；只给 `target` ⇒ `VMU_LEAN_STATEMENT_REQUIRED` 并说明 `target` 命名的是一张卡、审计记的是命题。
+- **F-49b（归档丢命题）**：`vibe-math-vmu/kit/extras.js#toolLeanArchive` 原为 `statement: has(args.target) ? target : ''`，且声明里没有 `statement` 参数。修法：新增 `statement` 一等参数（`target` 保留为旧别名，二者不一致具名拒），条目记录原文；`vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_lean_archive` 声明 `statement` 并在描述里说明「库要能回答这个文件证明了什么」。
+- **F-49c（布尔含义要猜）**：`vibe-math-vmu/kernel/lean.js#view` 新增 `hashUnchangedMeans`（真：「编译前后文件内容一致，**不是**缓存标志；去重看 `dedupedOf`」；假：「文件在编译过程中变了，其结论针对的是移动目标，永不 passed」；未知：`null`）。
+
+### §162.4 门禁
+- 新套件 `tests/vmu-run59-lean-statement-alias.test.mjs` **8/0**（只给别名被具名拒、两名字不一致被拒、记录永远是原文、同值同名可接受、归档记原文且 `lib` 读回、归档两名字不一致被拒、`hashUnchangedMeans` 否认缓存读法并指向 `dedupedOf`、声明承载同一套规则）；相邻 `vmu-run58-lean-face-contract` 7/0、`vmu-lean` 21/0、`vmu-prompt-clean` 8/0。
+- 计数与全量 T1 见提交前读数。
+
+### §162.5 简报错
+1. 让 root 在 `vibe_v5_lean_run` 之后直接抄 `code/message/hint`，而该面只**入队**；验异步面必须成对写「提交 → `lean_job` 结算」。（root 的诚实回答「没有该字段」把一个简报错展示成了产品问题的一半。）
+2. 让 root 抄 `jobId`，而回执字段是嵌套的 `job.id`（顶层无 `jobId`）。
+3. 只让 root 验短路径，没让它先确认**文件是否存在**——「不存在」与「基准错」在提交时都表现为 `ok:true`，必须靠结算区分。
+
+### §162.6 无法验证
+- 围栏 `UNKNOWN_FIELD=8`/`FIELD_NOT_APPLICABLE=8` 的逐条归属。
+- `lean_archive` 的 `run:true` 分支（本轮未用）。
+- `hashUnchanged` 为 `false` 的实例（本轮没有在编译中改文件的场景，只有代码与单测覆盖）。
+- F-41c（采纳裁决的本地审计行）、F-43 的 `writer.agentId` 仍缺席。
+
+### §162.7 无实质残余：否（残余 F-41c、`writer.agentId`、F-13、围栏噪声逐条归属，以及本轮新增已修三项的下一轮复验）

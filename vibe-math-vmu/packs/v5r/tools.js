@@ -3464,7 +3464,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
     // (`VMU_LEAN_STATEMENT_REQUIRED`). Taught and done now say the same thing. The path rule is stated too, because
     // the teaching text used to promise a short form the face resolves against a different base.
     description: 'Compile one existing .lean file through the kernel\'s Lean face (the face owns the process, timeout and cancel path). ★ `statement` is REQUIRED: it is the proposition this file is supposed to formalise, and it is what the receipt and the audit are about (a submit without it is refused by name). ★ `file` is resolved against the LIBRARY ROOT (the `VibeMath/` directory), so a short path works only when it lives under that root — anywhere else pass an absolute path, and a file the face cannot read comes back with the absolute path it actually tried. Assembly without a host spawn seam ⇒ NAMED refusal; a per-call timeout_ms is reported as unapplied.',
-    parameters: { file: { type: 'string', required: true }, target: { type: 'string' }, statement: { type: 'string', required: true }, timeout_ms: { type: 'integer' }, member: { type: 'string' } },
+    parameters: { file: { type: 'string', required: true }, target: { type: 'string', description: 'legacy alias for statement - a card id is NOT the proposition, so passing only this is refused by name' }, statement: { type: 'string', required: true, description: 'the proposition text this file is supposed to formalise (the audit records this, not an object id)' }, timeout_ms: { type: 'integer' }, member: { type: 'string' } },
     handler: toolLeanRun,
   },
   {
@@ -3487,8 +3487,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_lean_archive',
-    description: 'Archive an existing .lean file: kind def/lemma/proof/blocked maps to the face\'s def/lemma/theorem/assumption; the face registers existing files by hash (inline content is not stored).',
-    parameters: { kind: { type: 'string', required: true }, name: { type: 'string', required: true }, target: { type: 'string' }, content: { type: 'string' }, from: { type: 'string' }, file: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } },
+    description: 'Archive an existing .lean file: kind def/lemma/proof/blocked maps to the face\'s def/lemma/theorem/assumption; the face registers existing files by hash (inline content is not stored). ★ pass `statement` (the proposition this file formalises) so the library can answer what the file proves - live run 59 archived a lemma and the entry came back with an empty statement because the argument did not exist.',
+    parameters: { kind: { type: 'string', required: true }, name: { type: 'string', required: true }, statement: { type: 'string', description: 'the proposition text this file formalises (recorded in the library entry)' }, target: { type: 'string', description: 'legacy alias for statement' }, content: { type: 'string' }, from: { type: 'string' }, file: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } },
     handler: toolLeanArchive,
   },
   {
