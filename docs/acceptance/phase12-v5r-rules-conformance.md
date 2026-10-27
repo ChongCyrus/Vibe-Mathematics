@@ -7243,3 +7243,63 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 ### §167.8 无实质残余
 
 否。残余：上述三项无法验证 + 成员席位读面（`memberToolCalls`）的可核性。
+
+## §168 真机跑 65（复验 F-56 铺开：通过；无新机制缺陷）
+
+### §168.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| build | `7ab14961` |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | `durationSec 490` |
+| 根会话调用 | `toolCalls 15`、`transcriptEvents 101`、`calls (15) vs results (15)` |
+| token | `tokenTotal 2,770,156`（cap 12,000,000，`tokenCapHit:false`） |
+| 会话 | 2 个（所办 + 成员 r-1） |
+| RED | `SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks` |
+| 快照 | `_oneoff/vm-slv/full-1027-200034.jsonl`，8,083,828 B / 17,554 行 |
+| 围栏计数 | `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=8 BAD_JSON=12` |
+| 保全戳 | `20261027-200923` |
+| 清理 | `clone_gone=True port_listening=False C_free_GB=10.26` |
+
+### §168.2 判决
+
+| # | 项 | 结果 | 回执原文（节选） |
+| --- | --- | --- | --- |
+| 1 | F-56 `lean_run` 顶层无 `job` | ✅ | `{"ok":true,"id":"lean-1","state":"queued","jobScope":"this-kernel-process","jobScopeMeans":"…","tool":"vibe_v5_lean_run","unapplied":[],"note":"…","receiptMeta":{…}}` —— 顶层 9 键，无 `job` |
+| 2 | F-56 `lean_job` 只有一层 | ✅ | `{"ok":true,"job":{"id":"lean-1","state":"settled",…"hashUnchanged":true,"hashUnchangedState":"measured","hashUnchangedReason":null,…},"tool":"vibe_v5_lean_job",…}`——`job` 里**没有**嵌套 `job` |
+| 3 | F-56 列表是数组 | ✅ | `{"ok":true,"count":2,"droppedEvents":0,"jobScope":…,"jobs":[{…},{…}],…}`，`jobs` 长度 2、每行四字段齐全 |
+| 4 | F-55 未测量分支 | ✅ | `lean-2`：`"hashUnchanged":null,"hashUnchangedState":"not-measured","hashUnchangedReason":"VMU_LEAN_FILE_UNREADABLE"` |
+| 5 | F-55 `pending` 分支 | ⚠️ 仅成员自述 | 成员原文：首次 `state:"running"` 时三值为 `null / "pending" / "job-not-finished"`；所办自己首次查询时已 `settled`，**未独立复核** |
+| 6 | 成员席位复读 | ✅ | 成员答「`job` 里面有没有嵌套的 `job` 键？没有」，并给出 `true`/`"measured"`/`null` |
+| 7 | `dedupedOf` 复用分支 | ⚠️ 本轮未取 | `hashUnchangedMeans` 指向的「复用已通过编译」那一半没人读到；下一轮补 |
+
+### §168.3 判断与结论
+
+- **无新的机制缺陷。** 本轮唯一有价值的新事实是「键名带 `job` 字不等于封套」（`jobScope`/`jobScopeMeans` 是平级说明字段），以及成员侧 `pending` 三值确实存在。
+- 成员回执经 `vibe_v5_say`/回执通道返回时被 600 字截断（`replyExcerptMeans` 自报 bounded），本轮内容恰好完整；这属于「已声明的截断」，不是缺陷，但下一轮若需要逐字全文应读子会话日志。
+
+### §168.4 门禁
+
+- 未改代码，仅文档：`node scripts/check-docs.mjs` `DOC LINT: PASS`；`node scripts/regen-all.mjs --check` 16/16 in sync；`node scripts/preflight.mjs` PASS。
+- 全量见 §168.5。
+
+### §168.5 三处简报错
+
+1. 第 2 步要求「顶层键名清单」但没说「值里是否又包一层结构」——所办如实抄回后还得自己判断封套层数；复验类简报应直接要求「`job` 键是否存在 / `job` 里是否还有 `job`」两问（第 3 步才问，晚了一步）。
+2. 第 6 步让成员「整段贴回」而没有给截断时的写法：回执通道会按上限截断并自报 `bounded`，简报应预先说明「若被截断就写『已截断』并附 `replyExcerptMeans`」。
+3. 第 5 步写「`jobs` 的长度或条目数」是同一个量写了两遍，属措辞冗余；应为「`jobs` 是数组还是对象 + 长度」。
+
+### §168.6 记账
+
+- 本轮无代码改动、无新套件；产物是文档两段（`vibe-math-vmu/docs/26-turn-orchestration.md` 的 `## ROUND 65` 与本节）。
+
+### §168.7 无法验证
+
+- 所办席位上的 `pending` 三值（只有成员自述）。
+- `dedupedOf` 复用分支。
+- 成员回执的逐字全文（被 600 字上限截断）。
+
+### §168.8 无实质残余
+
+否。残余：上述三项无法验证 + `closedByVerified` 未覆盖「同一份文档里的三处教学」。
