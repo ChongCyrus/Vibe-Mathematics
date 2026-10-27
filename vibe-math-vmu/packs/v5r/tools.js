@@ -649,7 +649,10 @@ const FEEDBACK_OP_WORDS = Object.freeze(['add', 'update', 'list'])
  * OPERATION, then stored `action：add` as the body field — the one thing the form asks for ("what should change") was
  * replaced by the verb that said which operation to run. ONE KEY, TWO MEANINGS is the defect, so: the operation is `op`;
  * the body field is `action` (legacy) or `recommendation` (preferred); and an `action` whose value is just an op word is
- * refused by name instead of being stored as a recommendation. */
+ * refused by name instead of being stored as a recommendation.
+ * ★ LIVE RUN 62 (the same member read the stored card back): the input parameter had been renamed but the DURABLE row
+ * still labelled the recommendation `action：` — the record itself kept teaching the old one-key-two-meanings shape to
+ * every later reader. The stored line is now `recommendation：`; the legacy INPUT key keeps working. */
 function feedbackBodyAction(args = {}) {
   const preferred = has(args.recommendation) ? str(args.recommendation).trim() : ''
   if (preferred) return preferred
@@ -694,7 +697,7 @@ function toolFeedback(args = {}, { kernel } = {}) {
         'pass assessment:"your judgement of the interpersonal situation" (required by the original)')
     }
     const body = ['category：' + str(args.category), 'route：' + str(args.route), 'context：' + str(args.context),
-      'phenomenon：' + str(args.phenomenon), 'impact：' + str(args.impact), 'action：' + bodyAction,
+      'phenomenon：' + str(args.phenomenon), 'impact：' + str(args.impact), 'recommendation：' + bodyAction,
       'assessment：' + str(args.assessment)].filter((l) => !l.endsWith('：')).join('\n')
     const written = records.put({ track: 'feedback', kind: 'feedback', title: str(args.category) + '/' + str(args.route), body, settled: false, by: str(args.member) || null /* ★ LIVE RUN 50 (F-32): a tool name is not an author. The office-side call carried no member, and the ledger recorded owner:"vibe_v5_feedback" while a member-side call recorded the member id - two answers to "who wrote this" from one tool. Null + the ledger's own bySource is the honest answer; the caller can pass member to say who it is. */ })
     return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: 'open' }
@@ -3342,7 +3345,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_feedback',
-    description: 'Work-experience / process feedback library (not research conclusions). op=add needs category/route/phenomenon/impact and the recommendation (pass `recommendation`, or the legacy body key `action` when its value is not an op word) — plus assessment on the interpersonal route; op=update closes with status/outcome/note; op=list returns the open items. ★ `op` is the OPERATION; `action` is the FIFTH BODY FIELD (what should change). Passing action:"add" is refused by name `VMU_FEEDBACK_ACTION_IS_THE_OPERATION`, because a receipt that stores the operation verb as the recommendation loses the one thing the form asks for.',
+    description: 'Work-experience / process feedback library (not research conclusions). op=add needs category/route/phenomenon/impact and the recommendation (pass `recommendation`, or the legacy body key `action` when its value is not an op word) — plus assessment on the interpersonal route; op=update closes with status/outcome/note; op=list returns the open items. ★ `op` is the OPERATION; the recommendation is the FIFTH BODY FIELD, stored on the card as `recommendation：` (the legacy INPUT key `action` still works — it is only refused when its value is just an op word). Passing action:"add" is refused by name `VMU_FEEDBACK_ACTION_IS_THE_OPERATION`, because a receipt that stores the operation verb as the recommendation loses the one thing the form asks for.',
     parameters: { op: { type: 'string', required: true }, id: { type: 'string' }, member: { type: 'string' }, category: { type: 'string' }, route: { type: 'string' }, context: { type: 'string' }, phenomenon: { type: 'string' }, impact: { type: 'string' }, action: { type: 'string' }, recommendation: { type: 'string' }, assessment: { type: 'string' }, outcome: { type: 'string' }, status: { type: 'string' }, note: { type: 'string' }, all: { type: 'boolean' }, limit: { type: 'integer' } },
     handler: toolFeedback,
   },

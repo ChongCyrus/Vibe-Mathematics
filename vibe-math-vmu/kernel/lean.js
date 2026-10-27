@@ -336,11 +336,19 @@ export function createLeanFace(opts) {
     // file's content BEFORE and AFTER one compile — it answers "did the file change while it compiled", not "is this a
     // cached result". The dedupe question is answered by `dedupedOf` instead. Naming the meaning next to the boolean is
     // cheaper than making every reader guess.
+    // ★ LIVE RUN 62 (a FAILED job whose file could not be read): the boolean was simply absent and the meaning was
+    // `null` — a reader cannot tell "not measured because no compile ran" from "the face forgot to explain". Absence has
+    // two causes and they are different facts: a job that has not finished has no comparison YET; a job that failed
+    // before compiling has none AT ALL, and neither one is the value `true`/`false`. Say which.
     hashUnchangedMeans: typeof j.hashUnchanged === 'boolean'
       ? (j.hashUnchanged
         ? 'the file content was the same before and after this compile (it is NOT a cache flag; dedupedOf answers "reused a passed compile")'
         : 'the file content CHANGED while this compile ran, so its verdict is about a moving target and is never passed')
-      : null,
+      : (j.state === 'queued' || j.state === 'running'
+        ? 'not measured yet: this job has not finished, so there is no before/after file content to compare'
+        : 'not measured: no compile ran for this job'
+          + ((j.receipt && j.receipt.code) ? ' (' + j.receipt.code + ')' : '')
+          + ', so there is no before/after file content to compare — this is NOT the value "unchanged"'),
     startedAt: j.startedAt, endedAt: j.endedAt,
     attempts: Number(j.attempts) || 0,
     // F17 facts a reader must be able to see without reading the mirror.

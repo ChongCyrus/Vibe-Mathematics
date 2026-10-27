@@ -78,7 +78,10 @@ try {
   ok(!!recId, 'op:add with a recommendation succeeds', good)
   const readBack = recId ? await callJSON(b, 'vibe_v5_read_library', { id: recId }, { kernel: k }) : null
   const body = JSON.stringify((readBack && readBack.parsed) || {})
-  ok(/action：把 task_update 的合法转移写进提示词/.test(body), 'the stored body carries the RECOMMENDATION as its action line', body.slice(0, 300))
+  // ★ LIVE RUN 62: the input parameter was renamed in round 61 but the DURABLE line still said `action：`, so the card
+  // itself kept teaching the old one-key-two-meanings shape. The stored label is `recommendation：` now.
+  ok(/recommendation：把 task_update 的合法转移写进提示词/.test(body), 'the stored body carries the RECOMMENDATION under its own label', body.slice(0, 300))
+  ok(!/action：/.test(body), 'and no line of the card still labels the advice `action：`', body.slice(0, 300))
   ok(!/action：add/.test(body), 'and never the operation verb', body.slice(0, 300))
 
   // ── ③ the legacy body key still works when its value is not an op word ──────────────────────────────────

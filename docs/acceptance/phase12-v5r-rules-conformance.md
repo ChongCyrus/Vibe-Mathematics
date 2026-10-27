@@ -7068,3 +7068,60 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 
 ### §164.7 无实质残余
 否：F-52a/b/c/d 已修但尚未真机复验（run 62 的验收点），加上 §164.6 四项。
+
+## §165 真机跑 62（复验 F-52a/b/c，露出 F-53/F-54）
+
+### §165.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| build | `5599d4cd` |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | `durationSec 76` |
+| 根会话调用 | `toolCalls 13`、`transcriptEvents 86`、`calls (13) vs results (13)` |
+| token | `tokenTotal 506,716`（cap 12,000,000，`tokenCapHit:false`） |
+| 会话 | 1 个（本轮只使唤所办自己） |
+| RED | `SUMMARY: 1 session(s), 0 with RED checks` |
+| 快照 | `_oneoff/vm-slv/full-1027-190916.jsonl`，493,847 B / 890 行 |
+| 围栏计数 | `NO_FENCE=0 UNKNOWN_FIELD=0 FIELD_NOT_APPLICABLE=0 BAD_JSON=0` |
+| 日志保全 | 戳 `20261027-191113` |
+| 清理 | `clone_gone=True port_listening=False C_free_GB=10.33` |
+
+### §165.2 判决
+
+| # | 项 | 结果 | 回执原文（节选） |
+| --- | --- | --- | --- |
+| 1 | F-52a：归档回执里的两个时点 | ✅ | `"persisted":true,"persistence":{"shared":true,"key":"leanlibrary","pulls":1,"written":1,...}` —— `written:1` 与 `persisted:true` 在同一张回执里，不再并排 `written:0` |
+| 2 | F-52b：作业号的范围 | ✅ | `lean_run` 与 `lean_job {}` 都带 `"jobScope":"this-kernel-process"` + `jobScopeMeans:"…the durable face is the job mirror (listMirrors(), Formal/Jobs/<id>.json) — a job number written into a card is not by itself a durable name"` |
+| 3 | F-52c：`action` 同键两义 | ✅ | `{"ok":false,"code":"VMU_FEEDBACK_ACTION_IS_THE_OPERATION","message":"feedback add got action:\"add\" — that is the OPERATION word, not the recommendation","hint":"pass the operation as op:\"add\" and the recommendation as recommendation:\"what should change\"…"}`；改用 `recommendation:` 后落盘 |
+| 4 | F-51 取证（失败作业的 `hashUnchanged`） | ❌ 新缺陷 F-53 | `lean-2`（不存在的文件）回 `{"state":"failed",…,"passed":false,"hashUnchangedMeans":null,…,"code":"VMU_LEAN_FILE_UNREADABLE"}` —— `hashUnchanged` 缺席、说明是 `null` |
+| 5 | F-54（同一张卡片的落盘标签） | ❌ 新缺陷 F-54 | `read_library{id:"rec-1"}` 的正文行是 `action：把反馈面的 op 与正文 action 分开，正文改用 recommendation` |
+| 6 | F-50 回归（跨内核库） | ✅ | `lean_lib` 的 `count:2`（`lean-1` 通过、`lean-2` 失败都在表内），`persistence.shared:true` |
+
+### §165.3 两处新缺陷与修法
+
+- **F-53（缺席有原因）**：`view()` 的 `hashUnchangedMeans` 在 `hashUnchanged` 非布尔时回 `null`。修法：三种时点三种说法——`queued`/`running` ⇒ `not measured yet: this job has not finished, …`；已终结且无比较 ⇒ `not measured: no compile ran for this job (VMU_LEAN_FILE_UNREADABLE), … this is NOT the value "unchanged"`；布尔仍在时保持 ROUND 59 的两句。写句子的代码要读 `j.receipt.code`（作业对象上没有 `code` 字段——本轮的第一次实现就是因为读了 `j.code` 而漏掉码名，被新套件当场抓住）。
+- **F-54（标签是教学）**：`toolFeedback` 落盘正文的第五行从 `action：` 改成 `recommendation：`；工具说明同步写明「卡片上存为 `recommendation：`，旧入参 `action` 仍可用」。旧卡片不改写（历史行是捕获证据）。
+- 新套件 `tests/vmu-run62-hash-means-and-label.test.mjs` **17/0**：失败作业有句子且点名码、失败作业不铸布尔、通过作业保持 ROUND 59 语义、在飞作业说 `not measured yet`、`list()` 里每个未测作业都有句子、卡片标签 `recommendation：`、正文无 `action：`、旧入参落在同一标签下。
+
+### §165.4 门禁
+
+- `tests/vmu-run62-hash-means-and-label.test.mjs` 17/0；`vmu-run61-feedback-body` 10/0；`vmu-run59-lean-statement-alias` 8/0；`vmu-lean` 21/0；`vmu-run58-lean-face-contract` 7/0。
+- `node scripts/preflight.mjs` PASS；`node scripts/regen-all.mjs --check` 16/16 in sync；`node scripts/check-docs.mjs` `DOC LINT: PASS`。
+- 全量 `TOTAL 538 PASS 538 FAIL 0 (suites 474 · probes 64)`。
+
+### §165.5 三处简报错
+
+1. 第 5 步写 `vibe_v5_lean_job {}` 表达「空参数取列表」，却被读成 `{"jobId":"{}"}`，第一次以 `VMU_LEAN_NOT_FOUND 找不到 Lean 作业 {}` 拒收；省参数的写法要明说「不要传 jobId」。
+2. 第 6 步让 root 抄「以 `action：` 开头的行」，而本轮修法正是把这一行改名 —— 简报与修法互相矛盾，root 只能如实回答旧行。
+3. 第 3 步没让 root 抄 `state` 之外的 `startedAt`/`endedAt`，于是「反证作业是同步的还是异步的」缺一个字段。
+
+### §165.6 无法验证
+
+- 进程真重启后 `leanlibrary` 是否能读回（本轮两个内核同进程树，与 ROUND 60 的验证同强度）。
+- 成员侧本轮未参与，F-51 的成员读法只有所办视角。
+- `jobScope` 的耐久面（`Formal/Jobs/<id>.json`）在本轮没有被真机读取。
+
+### §165.7 无实质残余
+
+否。残余：F-51 的成员侧读法、真进程重启后的库读取、`Formal/Jobs` 镜像面均待下一轮取证。
