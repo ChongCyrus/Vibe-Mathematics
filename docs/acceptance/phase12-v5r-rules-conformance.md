@@ -7998,3 +7998,25 @@ hashUnchangedMeans: "not measured: no compile ran for this job (VMU_LEAN_FILE_UN
 5. **别名不许压过正名，操作名不许当人名**（F-49a、F-61）。
 6. **修好一条读面就去读它的另一条路**（F-68）、**修好的事实必须落在读者能到的面上**（F-64）。
 7. **计数器要回答「这是谁的数」**（F-66/F-70）、**上限要说出自己被切过**（F-57）。
+
+## §183 机制补齐（G1）：计算面从「缺一条通道」到「两条通道 + 说出是哪条」
+
+> 本节不是一次真机轮次，而是逐句实现期的一处机制缺口收口：规则 L58「支持成员使用 Python 等数学计算工具」。真实情况是机制表、教学、工具面都在，但 48 轮真机里数学面**每次都**回 `VMU_ENGINE_UNAVAILABLE`——适配层只认宿主的 `subprocess` 服务，而这个部署没有该服务，Python 3.12.10 却就在机器上。
+
+### §183.1 读数（改动前）
+- `grep -r "subprocess"` 在 DSH 安装包内只命中 `dsh-vibe-math` 自己的清单行（`{ svc: 'subprocess', methods: ['spawn'], required: false }`——**可选**服务）与 vmu 自己的读取代码；宿主核心没有任何注册该服务的迹象。
+- `vibe-math-vmu/host-spawn.js` 的 `spawnSeam` 首句即拒：`VMU_ENGINE_UNAVAILABLE … no subprocess service`；`host-math.js` 的 `resolveExecutable` 同句拒绝 ⇒ 引擎探针与计算都停在门口。
+
+### §183.2 修法
+1. `host-spawn.js`：新增 `localFallback`（默认 **false**，沉默仍是具名拒绝）。为 true 且宿主无服务时，走同文件内的本地 seam：`node:child_process`，**同一套守卫**（可执行文件必填、`args` 必须数组、`inline` 拒绝、`vmu.safety.pathPolicy` 的 cwd 策略、按字节封顶的 stdout/stderr 并计数丢弃、预算到期真的 SIGKILL、`onHandle` 拿到 `terminate()` 句柄）；结果带 `seamKind: 'local-child-process'`，ENOENT 变成具名 `VMU_ENGINE_UNAVAILABLE` + `commandNotFound:true`。宿主有服务时**永远**优先（`seamKind: 'host-subprocess'`）。
+2. `host-math.js`：`createHostSpawn({ …, localFallback: true })`（该适配层只在 `vmu.math.*` 被声明时构造——声明就是许可）；`resolveExecutable` 在无宿主解析器时返回名字本身（让探针真的去跑，而不是这一层假装知道）；`spawn` 结果透出 `seamKind`；顺手修掉 `timeoutMs || 0` 把「无预算」写成「立刻杀」的假零（`timeoutMs:0` 在 seam 上是合法预算）。
+3. `kernel/index.js` 的 `status.math` 新增 `spawnSeamKind` + `spawnSeamKindMeans`；`host.js` 的有界 summary 保留该字段（省略可以，改名不行）。
+4. 教学：`packs/v5r/prompts/v5r-blocks-b.js` 的「计算与引擎」段改写成两条通道的真话，并指明 `status.math.spawnSeamKind`。
+
+### §183.3 测试与门禁
+- 新 `tests/vmu-run82-local-spawn.test.mjs` **31/0**：默认仍具名拒绝；本地通道真跑子进程并收 stdout、非零退出是结果不是异常、三条守卫、ENOENT 命名、预算真终止（`ms` 断言）、句柄 `terminate()`、输出封顶、宿主优先且不冒认 `seamKind`、`createHostMath` 的 `seamKindOf/resolveExecutable/spawn`、`status.math.spawnSeamKind`。
+- 相邻：`vmu-spawn` 15/0、`vmu-mathtools` 208/0、`vmu-mathjobs` 11/0、`vmu-env` 14/0、`vmu-lean` 21/0、`vmu-script` 18/0、`vmu-host` 203/0（summary 8055→7980 B 以内）、`vmu-kernel` 260/0、`audit-engine-faces` 19/0、`audit-kernel-claims-5/8` 33/0·44/0、`audit-no-silent-reads` 6/0、`audit-vmu-docs` 103/0、`vmu-activity-timers` 43/0（定时器表按实数更新为 3/2）。
+- 首轮全量 T1 抓到两处**我自己的**问题并已修：§11 用 `root: <repo>` 装配内核 ⇒ 探针在仓库根种下 `vmu/`（`audit-repo-leftovers` 抓的正是这件事），改为 tmpdir 根；定时器表需要按新代码更新计数。
+
+### §183.4 专项：live 仍是 0
+- 本节的机制与教学已闭合，但「成员用 Python 算过」的**真机**证据仍缺——这是台账 G1 保持 `PARTIAL` 的唯一原因。下一轮真机简报用 `vibe_vmu_mathtools{op:"run"}` 跑一次真实计算并回填 live。

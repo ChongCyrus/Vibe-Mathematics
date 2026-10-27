@@ -125,7 +125,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `G1` | L58 | 支持成员使用 Python 等数学计算工具 | ◐ PARTIAL | 2/1/1/0 | 数学面机制在（`kernel/mathtools.js` 服务 + `vibe_vmu_mathtools` 面；`mathadapters.js` 按 `PY_CANDIDATES [python3|python|py]` 解析解释器；并发受 `vmu.math.maxParallel` 限），缺的是可用引擎：真机 `VMU_ENGINE_UNAVAILABLE`。余项：本轮不建沙箱；下一轮设计「宿主引擎接缝」（`vmu.math.engines` 声明 → `kernel.mathadapters.register({name, spawn})`，受 maxParallel/超时/内存上限，缺引擎保持具名拒），估 3–5 人日；live 真机仍 0 次。 |
+| `G1` | L58 | 支持成员使用 Python 等数学计算工具 | ◐ PARTIAL | 4/2/1/0 | 机制已补齐两条通道（`host-spawn.js` 的 `localFallback` + `host-math.js` 的无解析器兜底 + 真实的预算/上限/可终止句柄；`status.math.spawnSeamKind` 明确报哪条；`tests/vmu-run82-local-spawn.test.mjs` 31/0）。余项：live 真机仍需用 `vibe_vmu_mathtools{op:"run"}` 跑一次 Python 计算取证（真机上 `PY_CANDIDATES` 命中 python 3.12.10）；F4 文字质量门仍按审阅清单处理。 |
 | `G2` | L59 | 所办可设工具并发数量限制防 CPU/OOM | ◐ PARTIAL | 1/1/1/0 | 教学错指成 vmu.turn.maxParallel（那是唤醒人数），应指 vmu.math.maxParallel ／ 真机未演练：`vmu.math.maxParallel` 无真机读数（next 记教学还错指成 `vmu.turn.maxParallel`）。 |
 | `G3` | L60 | 支持人工干预研究所决策与运行 | ✅ DONE | 1/1/1/1 | — |
 | `G4` | L60 | 支持断点续跑 | ◐ PARTIAL | 1/1/1/0 | 恢复原语在：`createResume`（写前必读 `VMU_RESUME_WRITE_BEFORE_READ`、中断具名绝不静默变 passed、回读一致性可查），`vibe_v5_resume` 走控制面。缺 live 真机 0 次：pause → resume → 续跑一轮。 ／ 真机未演练：`vibe_v5_resume` 全文 0 命中；next 原文「真机 0 次：pause→resume→续跑一轮」。 |

@@ -903,7 +903,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '【计算与引擎】数学面是 `vibe_vmu_mathtools`（plan/run/receiptsView/cacheView/status）与后台作业 `vibe_vmu_mathjobs`；**引擎由宿主注入**（`vmu.math.engines`，没有代码默认值），状态面报 `engines`／`available`；引擎接缝缺失时具名拒 `VMU_ENGINE_UNAVAILABLE`，不会假装算过。并发上限 `vmu.math.maxParallel`（默认 1），超限具名拒；shell 兜底不算归档。',
-        '· 本面当前**没有内置的 Python 执行接缝**：计算走宿主提供的引擎或工具，或把脚本归档后走复算；需要新包/新引擎时写进进展与请示，不要私下装。',
+        '· 引擎两条通道：宿主有 `subprocess` 服务用宿主；没有时，声明过 `vmu.math.*` 的部署走适配层自带的 `node:child_process`（同样守卫：可执行文件必填、参数数组、CWD 策略、输出上限、超时真终止），`status.math.spawnSeamKind` 明说这次走的哪条；两条都没有才具名拒 `VMU_ENGINE_UNAVAILABLE`。要新包/新引擎写进进展与请示，不要私下装。',
       ].join('\n'),
     },
   }),

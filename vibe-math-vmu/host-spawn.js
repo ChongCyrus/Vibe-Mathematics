@@ -24,6 +24,7 @@
 // Output caps are generous on purpose: the collected reader caps what it keeps, so a too-small cap would
 // silently truncate a receipt (the older preset learned this the hard way).
 
+import { spawn as nodeSpawn } from 'node:child_process'
 import { guardSpawnCwd } from './kernel/guard.js'
 
 /** Public-interface version of this module's surfaces (docs/03 §7, D13-O3). */
@@ -49,6 +50,9 @@ export function shapeSummary(shape, cap = 400) {
   if (text.length <= cap) return { text, droppedChars: 0 }
   return { text: text.slice(0, cap), droppedChars: text.length - cap }
 }
+
+// The name a receipt uses for the fallback path (G1). Two mechanisms must never be blended silently.
+export const LOCAL_SEAM_KIND = 'local-child-process'
 
 export const DEFAULT_STDOUT_CAP = 1 << 20 // 1 MiB
 // ROUND 4 / task-25: the module's OWN delay, so the budget race can tell "the default (cancellable here)" from "an
@@ -78,6 +82,9 @@ export function createHostSpawn({
   // the guard is only consulted when a root is known - so a seam built without them behaves exactly as before.
   settings = {},
   root = null,
+  // G1: a caller that DECLARED computation/scripts may ask for the local child_process path when the host has no
+  // subprocess service. Default false: silence keeps the conservative named refusal (see the seam's first branch).
+  localFallback = false,
 } = {}) {
   // The service is resolved AT CALL TIME, not at construction: the live run showed that a plugin's apply()
   // can run before the host's subprocess service is mounted, and binding "no service" at that instant made
@@ -109,11 +116,142 @@ export function createHostSpawn({
     }
     return null
   }
+  // ---- G1: THE LOCAL FALLBACK SEAM -------------------------------------------------------------------------
+  // Same request/result contract as the host path above, so callers (the script bridge and the math adapter) do
+  // not know which one ran: that is exactly what `seamKind` is for. What it does NOT share is the host's
+  // `resolveExecutable`: there is no host PATH scrubber here, so the name is handed to `node:child_process` and a
+  // missing program surfaces as a rejected `done` with `code:'ENOENT'` + `commandNotFound:true`.
+  const localSeam = async function localSeam(request = {}, onHandle = null) {
+    const started = clock()
+    const budget = Number.isInteger(request.timeoutMs) && request.timeoutMs >= 0 ? request.timeoutMs : null
+    const exe = typeof request.file === 'string' && request.file.length > 0
+      ? request.file
+      : (typeof request.command === 'string' && request.command.length > 0 ? request.command : null)
+    if (exe === null) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'a spawn needs an EXECUTABLE (file/command), not only arguments',
+        'pass { file: "<program>", args: [...] } (or command); arguments alone would make argv[0] an argument')
+    }
+    if (typeof request.inline === 'string' && request.inline.length > 0) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'an inline script cannot be spawned by argv: give a file',
+        'the seam spawns executables, not evaluated text')
+    }
+    const argList = request.args === undefined || request.args === null ? [] : request.args
+    if (!Array.isArray(argList)) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'spawn args must be an ARRAY of arguments, got ' + (typeof argList),
+        'pass args as an array (e.g. args: ["--version"]); a malformed call is refused instead of killing the host')
+    }
+    const argv = [exe, ...argList.map((a) => String(a))]
+    const cwd = typeof request.cwd === 'string' && request.cwd.length > 0 ? request.cwd
+      : (typeof defaultCwd === 'string' && defaultCwd.length > 0 ? defaultCwd : process.cwd())
+    // The SAME path policy applies: a cwd outside the declared roots is refused by name before anything runs.
+    if (root && typeof settings['vmu.safety.pathPolicy'] === 'string') guardSpawnCwd({ settings, root, cwd })
+    const rawEnv = request.env && typeof request.env === 'object' && !Array.isArray(request.env) ? request.env : {}
+    const env = {}
+    const envDropped = []
+    for (const [k, v] of Object.entries(rawEnv)) {
+      if (typeof v === 'string') env[k] = v
+      else if (typeof v === 'number' || typeof v === 'boolean') env[k] = String(v)
+      else envDropped.push(k)
+    }
+    let child = null
+    let settle = null
+    const done = new Promise((resolve) => { settle = resolve })
+    const out = { stdout: [], outBytes: 0, outDropped: 0 }
+    const err = { stdout: [], outBytes: 0, outDropped: 0 }
+    const collect = (box, cap) => (chunk) => {
+      const text = String(chunk)
+      if (box.outBytes >= cap) { box.outDropped += text.length; return }
+      const room = cap - box.outBytes
+      box.stdout.push(text.slice(0, room))
+      box.outBytes += Math.min(room, text.length)
+      if (text.length > room) box.outDropped += text.length - room
+    }
+    const outcome = { exitCode: null, signal: null, spawnError: null, timedOut: false, killed: null }
+    try {
+      child = nodeSpawn(argv[0], argv.slice(1), {
+        cwd,
+        env: Object.keys(env).length > 0 ? Object.assign({}, process.env, env) : process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
+    } catch (e) {
+      const e2 = refuse('VMU_INVALID_ARGUMENT', 'the local seam refused to spawn: ' + String((e && e.message) || e),
+        'node:child_process validates argv/cwd synchronously')
+      e2.spawnError = { code: (e && e.code) || null, message: String((e && e.message) || e) }
+      e2.commandNotFound = (e && e.code === 'ENOENT') || /not found|ENOENT|no such file/i.test(String((e && e.message) || e))
+      throw e2
+    }
+    child.stdout.on('data', collect(out, stdoutCapBytes))
+    child.stderr.on('data', collect(err, stderrCapBytes))
+    child.on('error', (e) => {
+      outcome.spawnError = { code: (e && e.code) || null, message: String((e && e.message) || e) }
+      settle()
+    })
+    child.on('close', (code, signal) => {
+      outcome.exitCode = typeof code === 'number' ? code : null
+      outcome.signal = signal || null
+      settle()
+    })
+    // THE KILLABLE HALF: the caller gets a handle it can terminate, exactly like the host's.
+    const handle = {
+      pid: child.pid === undefined ? null : child.pid,
+      terminate: () => { try { outcome.killed = 'terminate'; child.kill('SIGKILL') } catch { /* already gone */ } return true },
+      kill: (sig) => { try { outcome.killed = String(sig || 'SIGKILL'); child.kill(sig || 'SIGKILL') } catch { /* already gone */ } return true },
+      collected: {
+        stdout: { readFrom: () => ({ text: out.stdout.join(''), droppedChars: out.outDropped }) },
+        stderr: { readFrom: () => ({ text: err.stdout.join(''), droppedChars: err.outDropped }) },
+      },
+    }
+    if (typeof onHandle === 'function') {
+      try { onHandle(handle) } catch (e) {
+        timerCleanupErrors.push({ code: 'VMU_SPAWN_HANDLE_CALLBACK_FAILED', message: String((e && e.message) || e), at: clock() })
+      }
+    }
+    let timer = null
+    const timedOut = await Promise.race([
+      done.then(() => false),
+      budget === null ? new Promise(() => {}) : new Promise((resolve) => {
+        timer = setTimeout(() => { try { outcome.killed = 'budget'; child.kill('SIGKILL') } catch { /* gone */ } resolve(true) }, budget)
+        if (timer && typeof timer.unref === 'function') timer.unref()
+      }),
+    ])
+    if (timedOut) { outcome.timedOut = true; await done }
+    if (timer !== null) { try { clearTimeout(timer) } catch { /* cleared by exit */ } }
+    const ms = clock() - started
+    const textOf = (box) => box.stdout.join('')
+    // An ENOENT is a NAMED failure, the same way the host path names a failed `resolveExecutable`.
+    if (outcome.spawnError && !outcome.timedOut) {
+      const e2 = refuse('VMU_ENGINE_UNAVAILABLE', 'cannot run ' + argv[0] + ': ' + outcome.spawnError.message,
+        'the local seam hands the program to node:child_process; ENOENT means it is not on this machine')
+      e2.resolved = argv[0]
+      e2.spawnError = outcome.spawnError
+      e2.commandNotFound = outcome.spawnError.code === 'ENOENT'
+      e2.seamKind = LOCAL_SEAM_KIND
+      throw e2
+    }
+    return { code: outcome.exitCode, exitCode: outcome.exitCode,
+      stdout: textOf(out), stderr: textOf(err), timedOut: outcome.timedOut, ms,
+      signal: outcome.signal, resolved: argv[0], doneError: null, spawnError: outcome.spawnError, resolveError: null,
+      cwd, path: (typeof process !== 'undefined' && process.env && (process.env.PATH || process.env.Path)) || null,
+      doneValue: null, doneShape: outcome.exitCode === null ? 'signal' : 'exitCode', handleKeys: Object.keys(handle),
+      killed: outcome.killed, envDropped, seamKind: LOCAL_SEAM_KIND }
+  }
+
   const spawnSeam = async function spawnSeam(request = {}, onHandle = null) {
     const sub = subprocessOf()
     if (!sub || typeof sub.spawn !== 'function') {
-      throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host exposes no subprocess service, so no spawn seam is bound',
-        'the script bridge refuses by name in that deployment (the older preset reports NO_SUBPROCESS)')
+      // ★★★ G1 / ROUND 82 (the rules ledger's "计算与工具" limb): THE HOST MAY HAVE NO SUBPROCESS SERVICE AT ALL.
+      // The refusal below is the CONSERVATIVE default and stays the default: a deployment that said nothing gets a
+      // named refusal, never an invented mechanism. A caller that DECLARED it wants computation (the math face is
+      // only built when `vmu.math.*` is declared) or scripts passes `localFallback: true`, and then the same seam
+      // runs the child through `node:child_process` with the SAME guards (executable required, args array, cwd
+      // policy, output caps, killable handle, budget that really terminates). Every result says which path ran:
+      // `seamKind` is `host-subprocess` or `local-child-process` - a receipt must never blend two mechanisms.
+      if (!localFallback) {
+        throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host exposes no subprocess service, so no spawn seam is bound',
+          'the script bridge refuses by name in that deployment (the older preset reports NO_SUBPROCESS)')
+      }
+      return localSeam(request, onHandle)
     }
     const started = clock()
     // ★ PHASE 9 / round 1: REAL spwan-failure evidence, carried on the seam's result/error. Without these the kernel
@@ -324,5 +462,7 @@ export function createHostSpawn({
   }
   // The cleanup ledger travels on the seam, so "was the budget timer ever leaked" is answerable from outside.
   spawnSeam.timerCleanupErrors = timerCleanupErrors
+  // WHICH seam would run RIGHT NOW (asked per call, because the host's service can mount later).
+  spawnSeam.seamKindOf = () => (hasHostSpawn(ctx) ? 'host-subprocess' : (localFallback ? LOCAL_SEAM_KIND : null))
   return spawnSeam
 }

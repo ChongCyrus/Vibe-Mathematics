@@ -4415,6 +4415,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         math: {
           hostInjected: !!host,
           hostSeam: { register: !!(host && typeof host.register === 'function'), spawn: !!(host && typeof host.spawn === 'function') },
+          // G1: WHICH SPAWN MECHANISM is bound for the math surface: the host's own service, or the adapter's
+          // `node:child_process` fallback (used only when the host exposes none). null = no seam at all.
+          spawnSeamKind: (host && typeof host.seamKindOf === 'function' ? host.seamKindOf() : null),
+          spawnSeamKindMeans: 'host-subprocess = the host\'s subprocess service runs it; local-child-process = the adapter runs it through node:child_process because the host exposed no service (G1); null = neither, so the math face refuses VMU_ENGINE_UNAVAILABLE by name',
           means: 'the math surface needs its OWN register/spawn seam (createMathSurface); status.bridge.hasSpawnSeam describes the SCRIPT bridge and says nothing about this one - when this seam is absent the math face refuses VMU_ENGINE_UNAVAILABLE by name instead of computing nothing quietly',
         },
         registry: registry.status(),

@@ -54,7 +54,10 @@ export const MATH_PARAM_MAP = Object.freeze({
 
 export function createHostMath({ ctx, settings = {}, projectRoot = null, log = () => {} } = {}) {
   const root = projectRoot || (ctx && typeof ctx.workspace === 'string' && ctx.workspace) || process.cwd()
-  const seam = createHostSpawn({ ctx, defaultCwd: root, settings, root })
+  // ★★★ G1 / ROUND 82: THIS ADAPTER IS ONLY BUILT WHEN MATH IS DECLARED, so the declaration IS the permission for
+  // the local child_process fallback: a host with no `subprocess` service can still compute. The seam still names
+  // which path ran (`seamKind`), and the HOST service always wins when it exists.
+  const seam = createHostSpawn({ ctx, defaultCwd: root, settings, root, localFallback: true })
   const subprocessOf = () => { try { return ctx && typeof ctx.get === 'function' ? ctx.get('subprocess') : null } catch { return null } }
 
   /** Resolve a module-supplied (project-relative) path; the DECISION comes from the resolved policy. */
@@ -151,7 +154,10 @@ export function createHostMath({ ctx, settings = {}, projectRoot = null, log = (
       // Resolved AT CALL time through the host's service (a plugin can apply before it mounts: docs/11 §8).
       const sub = subprocessOf()
       if (!sub || typeof sub.resolveExecutable !== 'function') {
-        throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host exposes no subprocess service: no engine can be resolved')
+        // G1: NO HOST RESOLVER IS NOT "NO ENGINE". The local seam does not scrub PATH the way the host does, so the
+        // honest answer is the name itself: the engine probe then really runs it and a missing program comes back as
+        // a named ENOENT (VMU_ENGINE_UNAVAILABLE with commandNotFound), instead of this layer PRETENDING to know.
+        return String(cmd)
       }
       const p = await sub.resolveExecutable(String(cmd))
       if (typeof p !== 'string' || p.length === 0) throw refuse('VMU_ENGINE_UNAVAILABLE', 'cannot resolve engine ' + String(cmd))
@@ -159,10 +165,19 @@ export function createHostMath({ ctx, settings = {}, projectRoot = null, log = (
     },
     spawn: async ({ argv = [], cwd = null, timeoutMs = 0 } = {}) => {
       if (!Array.isArray(argv) || argv.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'a spawn needs an argv')
-      const out = await seam({ file: argv[0], args: argv.slice(1), cwd: cwd || root, timeoutMs: timeoutMs || 0 })
-      return { exit: out.code, timedOut: !!out.timedOut, killed: !!out.timedOut, ms: out.ms, stdout: out.stdout, stderr: out.stderr }
+      // ★★ G1 (found while wiring the fallback): `timeoutMs || 0` turned an ABSENT budget into an EXPLICIT ZERO,
+      // and `timeoutMs: 0` is a legal "kill immediately" budget at the seam - so a math run with no budget was
+      // killed at 0 ms and reported `timedOut:true, killed:true, exit:null` (measured). Absent stays absent here;
+      // only a positive integer is handed down as a budget.
+      const budget = Number.isInteger(timeoutMs) && timeoutMs > 0 ? timeoutMs : undefined
+      const out = await seam({ file: argv[0], args: argv.slice(1), cwd: cwd || root, ...(budget === undefined ? {} : { timeoutMs: budget }) })
+      return { exit: out.code, timedOut: !!out.timedOut, killed: !!out.timedOut, ms: out.ms, stdout: out.stdout, stderr: out.stderr,
+        // WHICH MECHANISM RAN (G1): two paths, one contract - a receipt must be able to tell them apart.
+        seamKind: out.seamKind || null }
     },
     log: (kind, msg) => log('math/' + String(kind) + ': ' + String(msg)),
+    /** G1: which spawn mechanism this adapter would use RIGHT NOW (`host-subprocess` | `local-child-process` | null). */
+    seamKindOf: () => (typeof seam.seamKindOf === 'function' ? seam.seamKindOf() : null),
   }
 
   return host

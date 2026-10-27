@@ -735,11 +735,12 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             // field-name drift that made run 53's provenance look absent. A summary may shorten a value; it may not
             // rename it.
             out.bridge = { hasSpawnSeam: out.bridge.hasSpawnSeam,
-              spawnSeamMeans: 'the SCRIPT bridge seam (vmu.script.*); the math surface has its OWN register/spawn seam at status.math.hostSeam - not evidence about math' }
+              spawnSeamMeans: 'the SCRIPT bridge seam; the math surface has its OWN seam at status.math - not evidence about math' }
           }
           if (out.math && typeof out.math === 'object') {
             out.math = { hostInjected: out.math.hostInjected, hostSeam: out.math.hostSeam,
-              means: 'the math surface\'s OWN seam; absent ⇒ the math face refuses VMU_ENGINE_UNAVAILABLE by name (not the same fact as bridge.hasSpawnSeam)' }
+              spawnSeamKind: out.math.spawnSeamKind,
+              means: 'the math surface\'s OWN seam; absent ⇒ named VMU_ENGINE_UNAVAILABLE (not bridge.hasSpawnSeam); spawnSeamKind = which mechanism runs it' }
           }
           if (Array.isArray(out.auditTail)) out.auditTail = out.auditTail.slice(-1)
           // ★ R26-family: `closureVote` grew LONG PROSE for the moment a member is about to vote

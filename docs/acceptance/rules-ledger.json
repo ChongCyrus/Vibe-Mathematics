@@ -1356,16 +1356,19 @@
       "rule": "L58",
       "text": "支持成员使用 Python 等数学计算工具",
       "status": "PARTIAL",
-      "next": "数学面机制在（`kernel/mathtools.js` 服务 + `vibe_vmu_mathtools` 面；`mathadapters.js` 按 `PY_CANDIDATES [python3|python|py]` 解析解释器；并发受 `vmu.math.maxParallel` 限），缺的是可用引擎：真机 `VMU_ENGINE_UNAVAILABLE`。余项：本轮不建沙箱；下一轮设计「宿主引擎接缝」（`vmu.math.engines` 声明 → `kernel.mathadapters.register({name, spawn})`，受 maxParallel/超时/内存上限，缺引擎保持具名拒），估 3–5 人日；live 真机仍 0 次。",
+      "next": "机制已补齐两条通道（`host-spawn.js` 的 `localFallback` + `host-math.js` 的无解析器兜底 + 真实的预算/上限/可终止句柄；`status.math.spawnSeamKind` 明确报哪条；`tests/vmu-run82-local-spawn.test.mjs` 31/0）。余项：live 真机仍需用 `vibe_vmu_mathtools{op:\"run\"}` 跑一次 Python 计算取证（真机上 `PY_CANDIDATES` 命中 python 3.12.10）；F4 文字质量门仍按审阅清单处理。",
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::没有内置的 Python 执行接缝"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::引擎两条通道"
       ],
       "mechanism": [
         "vibe-math-vmu/kernel/mathadapters.js::PY_CANDIDATES",
-        "vibe-math-vmu/kernel/mathtools.js::createMathTools"
+        "vibe-math-vmu/kernel/mathtools.js::createMathTools",
+        "vibe-math-vmu/host-spawn.js::localFallback",
+        "vibe-math-vmu/host-math.js::resolveExecutable"
       ],
       "tool": [
-        "vibe-math-vmu/host.js::vibe_vmu_mathtools"
+        "vibe-math-vmu/host.js::vibe_vmu_mathtools",
+        "vibe-math-vmu/kernel/index.js::spawnSeamKind"
       ]
     },
     {
