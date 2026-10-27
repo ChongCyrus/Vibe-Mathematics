@@ -2334,7 +2334,7 @@ function toolMeeting(args = {}, { kernel } = {}) {
   const state = opened && opened.state !== undefined ? opened.state : null
   const scheduledFor = opened && opened.scheduledFor !== undefined ? opened.scheduledFor : null
   const scheduleNote = state === 'scheduled'
-    ? '★ 这场会议是【预约】的（scheduledFor=' + String(scheduledFor) + '）：status/summary/meetingView 现在就能读，但开始时间之前任何动作都会被内核具名拒绝；到点后按法定人数转 open，或先进入等待阶段——等待期间有迟到者 attend 并凑满法定人数，那一次触碰就会让会议开始；到点的判定由内核对每次 `beat()` 跑的一趟 sweep 结算（框架没有定时器：没人 beat 的进程不会自己醒）。'
+    ? '★ 这场会议是【预约】的（scheduledFor=' + String(scheduledFor) + '）：status/summary/meetingView 现在就能读；开始时间之前的**治理动作**（发言、动议、表决、结会、会长动作）都会被内核具名拒绝。有一个例外要说清：`attend` 是座位登记，内核按设计**允许提前签到**（等待/预约状态里唯一被豁免的动作），它不会让会议提前开始——到点后按法定人数转 open，或先进入等待阶段，等待期间迟到者 attend 凑满法定人数，那一次触碰才会让会议开始；到点的判定由内核对每次 `beat()` 跑的一趟 sweep 结算（框架没有定时器：没人 beat 的进程不会自己醒）。'
     : null
   // ★ GOAL ROUND 3 — THE RECOMMENDED PROCEDURE. A type that the rule gave a skeleton gets it in the receipt, labelled
   // `binding:'recommendation'` so no reader can mistake it for a gate; a type with no skeleton reports null and WHY
@@ -3175,6 +3175,14 @@ async function toolPaper(args = {}, { kernel } = {}) {
   const paper = createPaperSubsystem({ kernel })
   const target = str(args.target || args.title || args.track || '')
   const tool = 'vibe_v5_paper'
+  // ROUND 200 (F-88b): every action except `sections` addresses ONE paper. Without a target the subsystem
+  // answered `no paper "" exists`, which reads like a bug in the reader instead of a missing argument — so a
+  // missing target is refused BY NAME here, naming the aliases and the read that lists papers.
+  const TARGET_ACTIONS = new Set(['status', 'start', 'part', 'review', 'advance', 'final', 'render', 'compile', 'consult', 'consult_state', 'sections_all'])
+  if (TARGET_ACTIONS.has(action) && !target) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'action "' + action + '" addresses ONE paper, and no target was given',
+      'pass target:"<paper id>" (title/track are aliases of the same value); vibe_v5_paper { action: "status" } with no target lists the papers that exist')
+  }
   switch (action) {
     case 'sections':
       return { ok: true, tool, action, sections: paper.sections() }

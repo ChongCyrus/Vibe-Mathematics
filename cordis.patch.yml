@@ -252,13 +252,6 @@
           # log is never written (docs/07 §1).
           - id: vibe-math-vmu
             name: 'dsh-vibe-math/vibe-math-vmu/vibe-math-vmu.js'
-            # ROUND 200: DECLARING MATH INTENT IS WHAT PUTS THE COMPUTATION SURFACE IN THE SESSION
-            # (`vibe-math-vmu.js`: `config.math !== undefined` switches the domain on; a default value is
-            # NOT a declaration). Without this line every clean-room run reported `hostInjected:false` and
-            # members could not run Python at all, while the framework's own prompt taught them to. The
-            # engines and the computation mode stay settings (`vmu.math.computation`, `vmu.math.engines`).
-            config:
-              math: {}
 
 # ── Vibe Math Unify · 成员席 ────────────────────────────────────────────────
 - insert:
@@ -422,10 +415,3 @@
               allowParallelInProgress: true
           - id: vibe-math-vmu
             name: 'dsh-vibe-math/vibe-math-vmu/vibe-math-vmu.js'
-            # ROUND 200: DECLARING MATH INTENT IS WHAT PUTS THE COMPUTATION SURFACE IN THE SESSION
-            # (`vibe-math-vmu.js`: `config.math !== undefined` switches the domain on; a default value is
-            # NOT a declaration). Without this line every clean-room run reported `hostInjected:false` and
-            # members could not run Python at all, while the framework's own prompt taught them to. The
-            # engines and the computation mode stay settings (`vmu.math.computation`, `vmu.math.engines`).
-            config:
-              math: {}
