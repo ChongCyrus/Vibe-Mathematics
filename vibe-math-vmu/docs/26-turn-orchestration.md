@@ -1642,3 +1642,19 @@ ROUND 62/63 把「没有比较值」拆成 `measured` / `pending` / `not-measure
 1. **一个缺席的句子，只能对被它覆盖的每一种状态都为真**。句子写成一句「没有编译」，就得保证这一支下面没有「跑过但没跑完」的状态。
 2. **难触发的分支要用构造式单测取证**，不能因为写不进简报就不测。真超时（预算到点）与真取消（`cancel({jobId})`）都能在单测里造出来；不造的代价是那句散文永远没人读。
 3. **兜底值不许同时代表两种事实**。`no-compile` 一旦成为「没有码可用时的默认」，它就不再是事实，而是占位符。
+
+## ROUND 74 — 同一条「缺席」，两种状态必须说两句不同的话（F-69 真机结清）
+
+F-69 的修法有两种验证方式：相信单测（构造真超时与真取消），或者真的把预算压到编译被切断。这一轮选了后者：
+
+1. `vibe_v5_set vmu.math.leanTimeoutMs = 40`（H0，立刻生效）
+2. 编译一个真文件 ⇒ `state:"timeout"`、`hashUnchangedState:"not-measured"`、`hashUnchangedReason:"VMU_LEAN_TIMEOUT"`、`hashUnchangedCutShort:true`，句子是「the compile RAN and was cut short at its budget … it is not "Lean never ran" either」
+3. 编译一个不存在的文件 ⇒ `state:"failed"`、`hashUnchangedReason:"VMU_LEAN_FILE_UNREADABLE"`，句子仍是「no compile ran for this job (…)」
+
+同一个字段在同一轮里说了两句不同、且都为真的话。所办的原话是：「第6步的 means 确实有 "no compile ran" —— 但那是读不到文件这条分支，正确。第5步没有。」
+
+判据（本轮新增）：
+
+1. **同一条「缺席」，两种状态必须说两句不同的话**。字段（`State`/`Reason`/`CutShort`）负责让程序能确定地问；散文负责让读者不必猜。两者都要按状态分。
+2. **一个上限/一个上限的变体，只有在它自己那条路上被走过才算验证**（ROUND 71 的判据在此复现：预算切断这条路一开始没人走过，所以句子错了两个月没人读）。
+3. **单测是「能造出来」的证明，真机是「真的会发生」的证明**。构造式单测让 F-69 可证伪，真机让它在生产形状下被读到，两者缺一不可。

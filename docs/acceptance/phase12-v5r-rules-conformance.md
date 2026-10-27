@@ -7754,3 +7754,67 @@ ROUND 62/63 的取证都在「文件读不到」与「还没跑完」两条路�
 **§177.7 无实质残余？**
 
 本轮 1 条（F-69）已修并取证；残余沿用 §174.7 两条 + §176.6 三项。
+
+## §178 真机跑 73（F-69 复验：预算切断与读不到文件，两条分支的句子分开了）
+
+**§178.1 读数**
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | 66s |
+| 根会话 | `toolCalls 8`、`transcriptEvents 61`、`calls (8) vs results (8)` |
+| token | `tokenTotal 318,090`（cap 12,000,000、`tokenCapHit:false`） |
+| 会话 | 1（root 自己完成，未派成员） |
+| 健康 | `0 with RED checks` |
+| 快照 | `_oneoff/vm-slv/full-1027-230959.jsonl`，466,301 B / 852 行 |
+| 围栏计数 | `NO_FENCE=0 UNKNOWN_FIELD=0 FIELD_NOT_APPLICABLE=0 BAD_JSON=0` |
+| 保全 | `D:\_tmp\slv-phase5\slv-logs\…20261027-231155` |
+
+**§178.2 判决：F-69 ✅（两条分支都读到了真话）**
+
+第 5 步（`vibe_v5_set vmu.math.leanTimeoutMs=40` 之后编译真文件，预算切断）逐字抄回：
+
+```
+state: "timeout"
+hashUnchanged: null
+hashUnchangedState: "not-measured"
+hashUnchangedReason: "VMU_LEAN_TIMEOUT"
+hashUnchangedCutShort: true
+hashUnchangedMeans: "not measured: the compile RAN and was cut short at its budget (VMU_LEAN_TIMEOUT), so there is no finished before/after comparison — this is NOT the value "unchanged", and it is not "Lean never ran" either"
+```
+
+第 6 步（编译不存在的文件）逐字抄回：
+
+```
+state: "failed"
+hashUnchangedReason: "VMU_LEAN_FILE_UNREADABLE"
+hashUnchangedMeans: "not measured: no compile ran for this job (VMU_LEAN_FILE_UNREADABLE), so there is no before/after file content to compare — this is NOT the value "unchanged""
+```
+
+所办自己的结论句（原文）：「第6步的 means 确实有 "no compile ran" —— 但那是读不到文件这条分支，正确。第5步没有。」
+⇒ 同一个字段在同一轮里对两种状态说了两句不同且都为真的话；`hashUnchangedCutShort:true` 让程序不必解析散文就能问「跑过但没跑完」。
+
+**§178.3 本轮简报（一次通过）**
+
+七步、8 次调用全部命中：`write` 落文件 → `vibe_v5_set` 压预算 → `vibe_v5_lean_run`（真文件）→ `vibe_v5_lean_job` → `vibe_v5_lean_run`（缺文件）→ `vibe_v5_lean_job` → `vibe_v5_stop`。`check-task-brief.mjs` 一次 0 问题（105 工具）。
+
+**§178.4 门禁**
+
+- 全量 `GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ `TOTAL 544 PASS 544 FAIL 0 (suites 480 · probes 64)`
+- `node scripts/regen-all.mjs --check` ⇒ 16/16 in sync；`node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`；`node scripts/preflight.mjs` ⇒ `PREFLIGHT: PASS`
+- 计数未变：`JOBS total=613 suites=505 probes=108`（本轮只写文档）
+
+**§178.5 简报错**
+
+无（本轮简报一次通过）。
+
+**§178.6 无法验证**
+
+1. `terminated:false` 旁支（宿主不提供可 kill handle 时超时的结算形状）——单测覆盖，真机未走到
+2. 取消（`VMU_JOB_CANCELLED`）分支——单测覆盖，真机未走到（工具面无 cancel）
+3. 跨进程重启后的 `pulls` 基准与 `mailbox`/`chat` 计数归属（沿用 §176.6）
+
+**§178.7 无实质残余？**
+
+本轮 0 新缺陷；F-69 结清。残余：§174.7 两条（`scope` 只加在 records 面、`check-task-brief` 不校验占位符与跨行拼接）+ 上面三项无法验证。
