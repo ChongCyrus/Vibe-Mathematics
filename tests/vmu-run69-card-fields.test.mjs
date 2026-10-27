@@ -139,6 +139,28 @@ try {
   ok(stp && typeof stp.note === 'string' && /bounded/.test(stp.note),
     'and it declares itself bounded (a status is not a dump)', stp && stp.note)
 
+  // ── ⑤b ROUND 70 / F-66: those counters are THIS kernel's folds, not the ledger's global numbers ─────────────
+  // Run 70 read the same ledger from two kernels: office said adoptedWithoutAuthor 0 (pulls 17), the member's own kernel
+  // said 1 (pulls 3). Both receipts looked like ledger facts, so a reader comparing them had no way to tell which one
+  // described the durable ledger. The counters must say whose they are.
+  ok(stp && stp.shared && stp.shared.scope === 'this-kernel-instance',
+    'the counters declare their scope (this kernel, not the ledger)', stp && stp.shared && stp.shared.scope)
+  ok(stp && stp.shared && typeof stp.shared.scopeMeans === 'string'
+    && /THIS kernel/.test(stp.shared.scopeMeans) && /two kernels/.test(stp.shared.scopeMeans),
+    'and the scope sentence says another kernel over the same store folds its own copy (two kernels may differ)',
+    stp && stp.shared && stp.shared.scopeMeans)
+  ok(stp && typeof stp.recordsMeans === 'string' && /own folds/.test(stp.recordsMeans) && /own view/.test(stp.recordsMeans),
+    'the row counts say they are what this kernel sees after its own folds', stp && stp.recordsMeans)
+
+  // …and a SECOND kernel over the same store reports the same declared scope (the number may differ; the scope may not).
+  const b2 = await boot({ root: dir, instance: 'shared' }, { sessionId: 'session-kernel-two' })
+  const st2 = await callJSON(b2, 'vibe_vmu_records', { action: 'status' })
+  ok(st2.parsed && st2.parsed.shared && st2.parsed.shared.scope === 'this-kernel-instance',
+    'a second kernel over the same store declares the same scope on its own counters',
+    st2.parsed && st2.parsed.shared && st2.parsed.shared.scope)
+  ok(st2.parsed && typeof st2.parsed.recordsMeans === 'string' && /own/.test(st2.parsed.recordsMeans),
+    'and its row counts carry the same per-kernel sentence', st2.parsed && st2.parsed.recordsMeans)
+
   // ── ⑥ unknown action still refused, and the refusal names the existing actions ──────────────────────────────
   const nope = await callJSON(b, 'vibe_vmu_records', { action: 'nope' })
   ok(nope.parsed && nope.parsed.ok === false && nope.parsed.code === 'VMU_INVALID_ARGUMENT',

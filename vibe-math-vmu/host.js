@@ -1001,12 +1001,15 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               ok: true, action,
               shared: {
                 attached: shared.attached === true, key: shared.key === undefined ? null : shared.key,
+                scope: shared.scope === undefined ? 'this-kernel-instance' : shared.scope,
+                scopeMeans: shared.scopeMeans,
                 pulls: shared.pulls, pulled: shared.pulled, refused: shared.refused, skipped: shared.skipped,
                 adoptedWithoutAuthor: shared.adoptedWithoutAuthor,
                 adoptedWithoutAuthorMeans: shared.adoptedWithoutAuthorMeans,
                 lastWhy: shared.lastWhy === undefined ? null : shared.lastWhy,
               },
               records: { total: recs.total, live: recs.live, byTrack: recs.byTrack },
+              recordsMeans: 'the row counts are what THIS kernel sees after its own folds; a second kernel over the same store reports its own view, so compare row ids (or the store file) when two kernels must agree',
               refusalsTotal: st.refusalsTotal, unwiredTotal: st.unwiredTotal, at: st.at,
               note: 'bounded status view: the shared seam, the adoption counters and the per-track row counts. The bytes maps, refusal histograms and wiring ledger stay on the kernel — this receipt is a status, not a dump.',
             }

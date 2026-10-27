@@ -147,20 +147,75 @@ export function parseCalls(text) {
     if (m.index > 0 && /[A-Za-z0-9_]/.test(text[m.index - 1])) continue
     if (!TOOL_NAME.test(name)) continue
     let j = m.index + name.length
-    while (j < text.length && (text[j] === ' ' || text[j] === '\t')) j++
-    if (text[j] !== '{') continue
-    const brace = matchBrace(text, j)
-    if (!brace) continue
+    while (j < text.length && (text[j] === ' ' || text[j] === '	')) j++
     const line = lineOf(text, m.index)
-    calls.push({
-      name,
-      line,
-      keys: topLevelKeys(brace.body),
-      lineText: lineTextOf(text, line),
-    })
-    TOOL_NAME_SCAN.lastIndex = Math.max(TOOL_NAME_SCAN.lastIndex, brace.end + 1)
+    if (text[j] === '{') {
+      const brace = matchBrace(text, j)
+      if (!brace) continue
+      calls.push({
+        name,
+        line,
+        keys: topLevelKeys(brace.body),
+        lineText: lineTextOf(text, line),
+        form: 'braces',
+      })
+      TOOL_NAME_SCAN.lastIndex = Math.max(TOOL_NAME_SCAN.lastIndex, brace.end + 1)
+      continue
+    }
+    // ★ ROUND 70 / F-67: the SECOND form a brief uses — `` `tool`，参数：`` followed by bullet lines. Run 70's brief
+    // named `vibe_v5_turn` (a name that does not exist; the face is `vibe_vmu_turn`) in exactly this form and the
+    // checker said "0 problems", because parseCalls only ever looked for `name {`. A validator that silently skips
+    // the lines it is meant to check reports a green it did not earn, so both forms are parsed here.
+    const bullet = bulletCall(text, m, name)
+    if (bullet) {
+      calls.push(Object.assign({ name, line, lineText: lineTextOf(text, line) }, bullet))
+      TOOL_NAME_SCAN.lastIndex = Math.max(TOOL_NAME_SCAN.lastIndex, bullet.end)
+    }
   }
   return calls
+}
+
+
+const BULLET_KEY = /^\s*[-*]\s*([A-Za-z_][A-Za-z0-9_]*)\s*[:：]/
+const BULLET_LEAD = /(?:，|,)?\s*(?:参数|parameters)?\s*[:：]\s*$/
+const CALL_LEAD = /vibe_[a-z0-9_]+`?\s*(?:，|,)?\s*(?:参数|parameters)?\s*[:：]\s*$/
+
+/**
+ * Parse the bullet form of a call: the tool name and `，参数：` on one line, then `  - key: value` lines.
+ * Returns `{ keys, end }` (end = text index after the last bullet) or null when the line is not a bullet-form call.
+ * A name mentioned in running prose (no `参数：` lead, no bullets) is NOT a call — only a claimed call is checked.
+ */
+function bulletCall(text, m, name) {
+  const lineEnd = text.indexOf('\n', m.index)
+  const stop = lineEnd === -1 ? text.length : lineEnd
+  const rest = text.slice(m.index + name.length, stop).replace(/`/g, '')
+  if (!BULLET_LEAD.test(rest)) return null
+  let cursor = stop + 1
+  const keys = []
+  let end = m.index + name.length
+  let indent = null
+  while (cursor < text.length) {
+    const nl = text.indexOf('\n', cursor)
+    const lineStop = nl === -1 ? text.length : nl
+    const line = text.slice(cursor, lineStop)
+    if (line.trim() === '') { cursor = lineStop + 1; if (keys.length > 0) break; continue }
+    const lead = line.length - line.trimStart().length
+    const hit = BULLET_KEY.exec(line)
+    if (hit) {
+      if (indent === null) indent = lead
+      if (lead < indent) break
+      keys.push(hit[1])
+      end = lineStop
+      cursor = lineStop + 1
+      continue
+    }
+    // A wrapped continuation of the previous bullet belongs to it; a line that STARTS ANOTHER CALL does not.
+    if (CALL_LEAD.test(line)) break
+    if (indent !== null && lead >= indent) { cursor = lineStop + 1; continue }
+    break
+  }
+  if (keys.length === 0) return null
+  return { keys, form: 'bullets', end }
 }
 
 /** Levenshtein distance — only used for the HINT, never for a decision. */
@@ -435,6 +490,27 @@ export function selfProbe(catalog) {
     cases.push({ name: 'control-empty-object', expected: [], text: clean.name + ' {}' })
   }
   cases.push({ name: 'plant-unknown-tool', expected: [CODES.unknownTool], text: 'vibe_zzz_self_probe_absent { member: "res-01" }' })
+  // ★ ROUND 70 / F-67: the bullet form must be parsed too, or the checker's green is unearned.
+  cases.push({
+    name: 'plant-unknown-tool-bullets',
+    expected: [CODES.unknownTool],
+    text: '1) 调用 `vibe_zzz_bullets_absent`，参数：\n   - member: "res-01"\n',
+  })
+  if (withParam) {
+    const keys = requiredOf(withParam)
+    cases.push({
+      name: 'plant-unknown-param-bullets',
+      expected: [CODES.unknownParam],
+      text: '1) 调用 `' + withParam.name + '`，参数：\n' + keys.map((k) => '   - ' + k + ': ' + dummyValue(withParam.parameters[k])).join('\n')
+        + '\n   - zzz_self_probe_absent_param: 1\n',
+    })
+    const legal = requiredOf(withParam).concat(optionalOf(withParam).slice(0, 1))
+    cases.push({
+      name: 'control-valid-bullets',
+      expected: [],
+      text: '1) 调用 `' + withParam.name + '`，参数：\n' + legal.map((k) => '   - ' + k + ': ' + dummyValue(withParam.parameters[k])).join('\n') + '\n',
+    })
+  }
   if (withParam) {
     const required = requiredOf(withParam)
     const keys = required.concat(['zzz_self_probe_absent_param'])

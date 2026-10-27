@@ -7539,3 +7539,69 @@ FIELD_NOT_APPLICABLE=8 BAD_JSON=12`；日志保全 `D:\_tmp\slv-phase5\slv-logs\
 ### §173.7 无实质残余：否
 残余两条：`vibe_vmu_records` 的 `status` 视图未包含 `historyRows`/`refusals` 直方图（刻意有界，已写进 `note`）；
 `cardFields` 只在 propositions 轨上投影，`methods`/`problems` 轨的同类心愿未做。
+
+---
+
+## §174 真机跑 70（ROUND 69 的读面落地，同时露出三条“另一条路”）
+
+### §174.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| build | `4d8da3d5`（clone `slvp70`，port 19648，驱动 job `pwsh-bbdfd4d0d7ab4d31`） |
+| 驱动 | `DRIVE exit=0`，`durationSec 94`，根 `toolCalls 9`，`transcriptEvents 66` |
+| token | `tokenTotal 437,980`（cap 12,000,000，`tokenCapHit:false`） |
+| 会话 | 2（`SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks`） |
+| 快照 | `_oneoff/vm-slv/full-1027-220456.jsonl`，1,487,817 B / 2,062 行 |
+| 围栏计数 | `NO_FENCE=59`、`UNKNOWN_FIELD=8`、`FIELD_NOT_APPLICABLE=8`、`BAD_JSON=12` |
+| 保全 | 日志戳 `20261027-220708`；`clone_gone=True`，C 盘剩 10.21 GB |
+
+### §174.2 判决（七行）
+
+| # | 目标 | 读数 | 判 |
+| --- | --- | --- | --- |
+| 1 | `read_library {id}` 给出 `cardFields` | `card.cardFields.p = 0.6`、`cardFields.statement` 在场、`cardFieldsMeans` 点名 `verified.js` 的解析结果且明说 null ≠ 0 | ✅ F-65 已修 |
+| 2 | `card.body` 仍是作者原文 | 正文里 `- p：0.6` 行仍在（所办自己确认“行首是列表符号 `- `，不是 `p：`”） | ✅ |
+| 3 | `records {action:"status"}` 可达 | `ok:true`、`shared.attached:true`、`adoptedWithoutAuthor:0`、`byTrack` 在场、`note` 含 bounded | ✅ F-64 已修 |
+| 4 | 计数器的归属 | 所办 `0`（`pulls:17`）／成员内核 `1`（`pulls:3`），回执**没有**说明这是“本内核折入”的数 | ❌ 新 F-66 |
+| 5 | 简报校验 | 简报写 `` `vibe_v5_turn`，参数：``，校验器报 “0 problems”，而该名字不存在 | ❌ 新 F-67 |
+| 6 | 拒绝路径的摘录上限 | `VMU_TURN_NO_FENCE` 回执有 `replyLength:314`、无 `replyTruncated`，而该路径的截断点是 500 | ❌ 新 F-68 |
+| 7 | F-57 回归 | 应用路径仍带 `replyTruncated`/`replyLimitChars`/`replyExcerptMeans` | ✅ |
+
+### §174.3 修法与测试
+
+- **F-66**（`vibe-math-vmu/kernel/records.js#sharedView` + `vibe-math-vmu/host.js` 的 records `status`）：`shared` 增
+  `scope:"this-kernel-instance"` 与 `scopeMeans`（另一个内核在同一 store 上折入自己的一份，两个内核可合法报不同数字，
+  共享的事实是 store 键）；行计数旁增 `recordsMeans`。
+- **F-67**（`scripts/check-task-brief.mjs`）：`parseCalls` 增列表形式（`` `name`，参数：`` + `- key: value`，遇到另一条
+  调用的引导行即停，避免把下一次调用的参数算进上一次）；`--self-probe` 增 `plant-unknown-tool-bullets` /
+  `plant-unknown-param-bullets` / `control-valid-bullets`；`tests/brief-check.test.mjs` 增 §6b（断言解析出的调用数、
+  未知工具、未知参数、两次列表式调用互不吞并）。
+- **F-68**（`vibe-math-vmu/kernel/turn/index.js`）：`REFUSAL_REPLY_EXCERPT_MAX = 500` 提到模块级；应用路径之外的两处拒绝
+  回执（dispatch 失败诊断、step 失败回执）都带 `replyTruncated` / `replyLimitChars` / `replyExcerptMeans`；
+  `tests/vmu-run66-reply-bound.test.mjs` 增 §6（长拒绝 ⇒ 切了且只切在 500；短拒绝 ⇒ `replyTruncated:false`；两种都带上限）。
+
+新增/扩展套件读数：`vmu-run69-card-fields` 31/0（原 26）、`brief-check` 47/0（原 41）、`vmu-run66-reply-bound` 26/0（原 18）。
+
+### §174.4 门禁
+
+- `node scripts/check-task-brief.mjs --self-probe` ⇒ `SELF-PROBE OK — 5 planted defect(s) caught, 4 control(s) stayed quiet (9 cases)`。
+- 同一校验器对历史简报：`task-r70.txt` 现在报 1 条真错（`BRIEF_UNKNOWN_TOOL vibe_v5_turn`，hint 指 `vibe_vmu_turn`），
+  `task-r60.txt` 报 1 条（`vibe_v5_lean_run` 缺 `statement`，而那次是“故意只给别名”的取证简报），`task-r61..r69` 全 0。
+
+### §174.5 三处简报错（我的，不是产品的）
+
+1. 第 5 步写 `` `vibe_v5_turn` ``——**这个名字不存在**（`vibe_vmu_turn` 才是面），而当时的校验器对这种列表写法失明（F-67）。
+2. `vibe_v5_assign` 不给 `task_id` 时必须给 `subject`，简报漏了；所办自己补上（它的判断是“补同一个调用的必填参数不算自由发挥”，正确）。
+3. 让成员“只写四行字段”，没有要求回执围栏 ⇒ 成员的回答被拒 `VMU_TURN_NO_FENCE`（它的读数只活在 `replyExcerpt` 里）。
+
+### §174.6 无法验证
+
+- 两内核同 store 时计数器“可以不同”这件事，本轮只观察到一次（`0` vs `1`），没有做多轮折入的定量复核。
+- `records.status` 的 `note` 自称 bounded，但“到底省了哪些字段”仍要读源码（`bytes`/直方图/接线账本），本轮未逐项核对。
+- F-67 修好后，历史 8 份简报里只有 r60/r70 报错；“之前那些 0 问题是否真的都读过”无法回溯证明（只能从现在起）。
+
+### §174.7 无实质残余：否
+
+残余两条：`shared` 的 `scope` 只加在 records 面，`mailbox`/`chat` 的同类计数尚未统一（记债）；
+`check-task-brief` 仍不校验“参数值是否为占位符”与“跨行拼接的调用”（原覆盖缺口，未扩大）。

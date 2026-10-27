@@ -91,6 +91,31 @@ console.log('=== VMU RUN66 REPLY BOUND (a declared cut, and where the rest lives
   ok(diag && typeof diag.replyExcerpt === 'string' && diag.replyExcerpt.length === 2000, '④ and the same bounded excerpt', diag && diag.replyExcerpt && diag.replyExcerpt.length)
 }
 
+// ── 6: ROUND 71 / F-68 — the REFUSAL receipt is a DIFFERENT bound, and it must declare itself too ───────────────
+// Run 70's office read a refused reply (`VMU_TURN_NO_FENCE`) and its receipt carried `replyLength` with NO truncation
+// field: "complete, 314 chars" and "cut at 500" were literally the same reading. ROUND 67 fixed the applied path; the
+// two refusal paths still answered an undeclared 500-character excerpt. A bound that does not travel with its text is
+// the same defect the applied path already closed.
+{
+  const prose = 'refused shape: pure prose, no fence. ' + 'q'.repeat(900)
+  const t = makeGov(prose)
+  const s = await t.step({ members: ['r-1'], why: 'refusal bound: long prose' })
+  ok(s && s.ok === false, '⑥ a reply with no parseable shape is refused (precondition)', s && s.code)
+  const rr = (s && s.receipt) || s
+  ok(rr && rr.replyTruncated === true, '⑥ the REFUSAL declares its cut (replyTruncated:true)', rr && { replyTruncated: rr.replyTruncated, replyLength: rr.replyLength })
+  ok(rr && rr.replyLimitChars === 500, '⑥ and names the refusal bound as a field (replyLimitChars:500)', rr && rr.replyLimitChars)
+  ok(rr && rr.replyLength === prose.length, '⑥ replyLength is still the FULL length', rr && { replyLength: rr.replyLength, expected: prose.length })
+  ok(rr && typeof rr.replyExcerpt === 'string' && rr.replyExcerpt.length === 500, '⑥ the excerpt is exactly the refusal bound long', rr && rr.replyExcerpt && rr.replyExcerpt.length)
+  ok(rr && typeof rr.replyExcerptMeans === 'string' && /REFUSAL excerpt/.test(rr.replyExcerptMeans), '⑥ the means says WHICH excerpt this is (a refusal bound, not the applied one)', rr && rr.replyExcerptMeans)
+
+  const short = 'refused shape: short prose.'
+  const t2 = makeGov(short)
+  const s2 = await t2.step({ members: ['r-1'], why: 'refusal bound: short prose' })
+  const rr2 = (s2 && s2.receipt) || s2
+  ok(rr2 && rr2.replyTruncated === false, '⑥ a short refused reply says replyTruncated:false (no false cut)', rr2 && rr2.replyTruncated)
+  ok(rr2 && rr2.replyLimitChars === 500, '⑥ and still carries the bound it was measured against', rr2 && rr2.replyLimitChars)
+}
+
 console.log('')
 console.log('=== VMU RUN66 REPLY BOUND: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) { console.log('FAILURES: ' + JSON.stringify(failures, null, 2)); process.exitCode = 1 }

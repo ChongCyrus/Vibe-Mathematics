@@ -200,6 +200,31 @@ if (clean) {
   ok(twoUp.calls === 2 && twoUp.problems.length === 0, 'two calls on one line are both seen, and both are legal', { calls: twoUp.calls, problems: twoUp.problems.length })
 }
 
+console.log('=== 6b. THE BULLET FORM (ROUND 70 / F-67): a brief that names a call this way is checked too ===')
+// Run 70's brief wrote step 5 as ``调用 `vibe_v5_turn`，参数：`` + bullet lines. That name does not exist (the face is
+// `vibe_vmu_turn`) and the checker reported "0 problems", because parseCalls only ever looked for `name {`. A validator
+// that silently skips the lines it is meant to check reports a green it did not earn - this section pins both branches.
+if (mixed && clean) {
+  const bulletKeys = requiredOf(mixed).concat(optionalOf(mixed).slice(0, 1))
+  const bulletText = '1) 调用 `' + mixed.name + '`，参数：\n'
+    + bulletKeys.map((k) => '   - ' + k + ': ' + dummyValue(mixed.parameters[k])).join('\n') + '\n'
+  const bulletReport = checkBriefText('<bullets>', bulletText, catalog)
+  ok(bulletReport.calls === 1, 'a bullet-form call is parsed as a call', { calls: bulletReport.calls })
+  ok(bulletReport.problems.length === 0, 'and a legal bullet-form call raises nothing', bulletReport.problems)
+  const mixedBullet = checkBriefText('<bullets-param>', '1) 调用 `' + mixed.name + '`，参数：\n   - zzz_brief_bullet_absent: 1\n', catalog)
+  ok(mixedBullet.problems.some((p) => p.code === CODES.unknownParam && p.param === 'zzz_brief_bullet_absent'),
+    'an undeclared bullet parameter is reported (the form is not a free pass)', mixedBullet.problems)
+  const bulletAbsent = checkBriefText('<bullets-tool>', '1) 调用 `' + absent + '`，参数：\n   - member: "res-01"\n', catalog)
+  ok(bulletAbsent.problems.some((p) => p.code === CODES.unknownTool && p.tool === absent),
+    'an undeclared tool name in bullet form is reported too', bulletAbsent.problems)
+  const nextCallText = '1) 调用 `' + mixed.name + '`，参数：\n'
+    + bulletKeys.map((k) => '   - ' + k + ': ' + dummyValue(mixed.parameters[k])).join('\n')
+    + '\n\n2) 然后调用 `' + absent + '`，参数：\n   - member: "res-01"\n'
+  const twoCalls = checkBriefText('<two-bullet-calls>', nextCallText, catalog)
+  ok(twoCalls.calls === 2, 'two bullet-form calls in one brief are both seen (the first does not swallow the second)', { calls: twoCalls.calls })
+  ok(twoCalls.problems.some((p) => p.code === CODES.unknownTool), 'and the second call is judged on its own name', twoCalls.problems)
+}
+
 console.log('=== 7. --self-probe: the checker proves it BITES (the task item 5 path) ===')
 const probeRun = run('--self-probe')
 ok(probeRun.status === 0, '--self-probe exits 0 when every planted defect was caught', { status: probeRun.status, stdout: String(probeRun.stdout).slice(0, 600) })

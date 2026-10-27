@@ -1011,6 +1011,8 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     return {
       attached: shared.attached, key: SHARED_STORE_KEY, stamp: shared.stamp,
       pulls: shared.pulls, pulled: shared.pulled, refused: shared.refused, skipped: shared.skipped,
+      scope: 'this-kernel-instance',
+      scopeMeans: 'these counters belong to THIS kernel: they count the folds THIS process has performed. Another kernel over the same store folds its own copy, so two kernels may legitimately report different `pulls`/`adoptedWithoutAuthor` for the same durable ledger — the shared fact is the store key, not this number',
       adoptedWithoutAuthor: shared.adoptedNoAuthor,
       adoptedWithoutAuthorMeans: 'rows adopted from the durable fold whose row did not name its writer: their `owner` reads null because the ROW did not say, not because nobody wrote it. This counter is the difference between that reading and no adoption at all',
       lastWhy: shared.lastWhy, lastDetail: shared.lastDetail, lastPullAt: shared.lastPullAt, lastSyncAt: shared.lastSyncAt,

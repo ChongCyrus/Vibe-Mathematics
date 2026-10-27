@@ -41,6 +41,12 @@ export const apiVersion = 1
  * doomed dispatch would be the declared-but-unreachable class, so the plan marks these fields not-applicable BY NAME
  * and the receipt says why. Nothing is pretended to have run.
  */
+// ★ ROUND 71 / F-68: the REFUSAL excerpt is a DIFFERENT, narrower bound (500 chars) than the applied one (2,000).
+// Run 70's office read a refused reply (`VMU_TURN_NO_FENCE`) whose receipt carried `replyLength: 314` and NO truncation
+// declaration, so "complete, 314 chars" and "cut at 500" were literally the same reading. Both bounds live here, at
+// module scope, because a bound that only one of three code paths knows is not a bound.
+const REFUSAL_REPLY_EXCERPT_MAX = 500
+
 const NO_REPLY_MEETING_SHAPE = Object.freeze({
   code: 'VMU_TURN_FIELD_NOT_APPLICABLE',
   message: 'this reply field carries no meeting reference, so the framework cannot dispatch it without inventing one',
@@ -2931,7 +2937,7 @@ export function createTurnOrchestrator({
         if (dispatchStats.recentCompleted.length > 10) dispatchStats.recentCompleted.shift()
         dispatchStats.lastError = { code, message, turn: item.turn.id, member: item.turn.member, at: Date.now(),
           ...(e && Number.isFinite(e.waitedMs) ? { waitedMs: e.waitedMs, deliveryTimeoutMs: e.deliveryTimeoutMs || null, requestSent: e.requestSent === true, lastPhase: e.lastPhase || null, phases: Array.isArray(e.phases) ? e.phases.slice(0, 12) : [] } : {}),
-          ...(e && typeof e.replyText === 'string' ? { replyLength: Number.isInteger(e.replyLength) ? e.replyLength : e.replyText.length, hadBrace: e.hadBrace === true, replyExcerpt: e.replyText.slice(0, 500), trackValue: e.trackValue === undefined ? null : e.trackValue } : {}) }
+          ...(e && typeof e.replyText === 'string' ? { replyLength: Number.isInteger(e.replyLength) ? e.replyLength : e.replyText.length, hadBrace: e.hadBrace === true, replyExcerpt: e.replyText.slice(0, REFUSAL_REPLY_EXCERPT_MAX), replyTruncated: e.replyText.length > REFUSAL_REPLY_EXCERPT_MAX, replyLimitChars: REFUSAL_REPLY_EXCERPT_MAX, replyExcerptMeans: 'the reply as the member wrote it, CUT at replyLimitChars (' + REFUSAL_REPLY_EXCERPT_MAX + ') when replyTruncated is true; this is the REFUSAL excerpt (the reply could not be parsed into the declared shape), and replyLength is the FULL length', trackValue: e.trackValue === undefined ? null : e.trackValue } : {}) }
         // ★ A dispatched turn that FAILED must not vanish: its named outcome stays in status; the awaiting handle rejects.
         item.reject(e)
       } finally {
@@ -3206,7 +3212,7 @@ export function createTurnOrchestrator({
     return { ok: false, code: e && e.code, message: String((e && e.message) || e), receipt: null, stack,
       ...(failureDelivery && (failureDelivery.deliveryPath || failureDelivery.deliveryPathMeans) ? failureDelivery : {}),
       ...(e && typeof e.hint === 'string' ? { hint: e.hint } : {}),
-      ...(e && typeof e.replyText === 'string' ? { replyLength: e.replyLength, hadBrace: e.hadBrace, replyExcerpt: e.replyText.slice(0, 500), trackValue: e.trackValue } : {}),
+      ...(e && typeof e.replyText === 'string' ? { replyLength: e.replyLength, hadBrace: e.hadBrace, replyExcerpt: e.replyText.slice(0, REFUSAL_REPLY_EXCERPT_MAX), replyTruncated: typeof e.replyText === 'string' ? e.replyText.length > REFUSAL_REPLY_EXCERPT_MAX : null, replyLimitChars: REFUSAL_REPLY_EXCERPT_MAX, replyExcerptMeans: 'the reply as the member wrote it, CUT at replyLimitChars (' + REFUSAL_REPLY_EXCERPT_MAX + ') when replyTruncated is true; this is the REFUSAL excerpt (the reply could not be parsed into the declared shape), and replyLength is the FULL length', trackValue: e.trackValue } : {}),
       // ★★★ ROUND 38: the refusal object carries the side-effect disclosure (see attachReplyDiagnostics); it must also
       // reach the FAILURE RECEIPT, because that is the object an operator actually reads. A disclosure that stops one
       // layer down is the same defect family as run 23's hint and run 29's child id.
