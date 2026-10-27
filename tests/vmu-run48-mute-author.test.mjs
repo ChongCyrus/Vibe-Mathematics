@@ -27,6 +27,20 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const REPO = process.cwd()
+
+// The store writes through fire-and-forget, so a teardown can meet a write that is still landing: run 61's gate saw
+// `ENOTEMPTY: directory not empty, rmdir '…\vmu'` AFTER every assertion in this suite had passed. A directory-listing
+// race at teardown is not a product defect (the rows under test were already read), so the removal waits the write out.
+async function removeTree(dir) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try { await rm(dir, { recursive: true, force: true }); return } catch (e) {
+      const code = e && e.code
+      if (code !== 'ENOTEMPTY' && code !== 'EPERM' && code !== 'EBUSY') throw e
+      await new Promise((done) => setTimeout(done, 25))
+    }
+  }
+  await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+}
 const m = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'kernel', 'index.js')).href)
 const { makeChatSpec } = await import(pathToFileURL(resolve(REPO, 'vibe-math-vmu', 'tools', 'chat.js')).href)
 
@@ -167,7 +181,7 @@ try {
   ok(office.chat.policy().mutes['r-9'] === undefined,
     '★ R48q: and the refused call wrote no mute (a refusal is not a half-applied order)', office.chat.policy().mutes['r-9'])
 } finally {
-  await rm(root, { recursive: true, force: true })
+  await removeTree(root)
 }
 
 console.log('=== VMU RUN48 MUTE AUTHOR: ' + passed + ' passed, ' + failed + ' failed ===')
