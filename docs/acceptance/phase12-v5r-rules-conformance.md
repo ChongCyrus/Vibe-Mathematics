@@ -6853,3 +6853,42 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 
 ### §159.7 无实质残余：否
 残余：F-41 的三项（`hasDeliverSeam` 真机读数、`turn` 单槽覆盖、采纳裁决的本地审计行）、F-43 的 `writer.agentId`（仍无下传缝，记债）。下一轮（57）主线：让 root 与成员各读 `vibe_vmu_mailbox` 与 `vibe_vmu_turn{op:"status"}` 相关字段（F-41 取证），并复验 F-47 的 task 板戳在真机上读得到。
+
+## §160 真机跑 57（复验 F-41a / F-47，露出 F-41b）
+
+### §160.1 读数
+- 驱动：`DRIVE exit=0`、`durationSec 36`、根会话 `toolCalls 6`、`transcriptEvents 47`、`tokenTotal 211,459`（cap 12,000,000，未触顶、`tokenCapHit:false`）、1 个会话、`SUMMARY: 1 session(s), 0 with RED checks`。
+- 快照：`_oneoff/vm-slv/full-1027-164414.jsonl` = 370,409 B / 609 行；围栏计数 `NO_FENCE=0 UNKNOWN_FIELD=0 FIELD_NOT_APPLICABLE=2 BAD_JSON=0`；日志保全戳 `20261027-164533`；`cleanup: clone_gone=True port_listening=False C_free_GB=10.41`。
+- 可见工具 95 个（57 host + 38 pack）；`AUTO CHECKS` 无 `RED`；`calls (6) vs results (6)`。
+
+### §160.2 判决（逐项）
+| # | 这一轮要验的 | 结论 | 依据 |
+|---|---|---|---|
+| 1 | F-41a：邮箱 `hasDeliverSeam` 的否定含义 | ✅ | step 2 回 `hasDeliverSeam:false` + `means`（原句点名 `open({deliver})`、回合循环 `deliveryPath`、「false 不是邮件不可见」） |
+| 2 | F-47：任务板信封的写入者 | ✅ | step 4 回 `projections.onDisk` 含 `tasks`；`writtenBy.tasks = {kernelSession:"session-8e66b3fa-…", at:1793090708522}`；`absent = ["ballotbox","chat","panel"]` |
+| 3 | F-47b：注册与文件事实分档 | ✅ | 同一回执里 `onDisk` 5 键、`absent` 3 键，二者互斥且并集覆盖注册表 |
+| 4 | F-41b：回合引擎的「最近一次投给谁」 | ❌ | `vibe_vmu_turn {op:"status"}` 回执只有 `status` 段，里面没有 `lastAttribution`/`memberLast`；根代理如实写「没有该字段」 |
+| 5 | F-43：小门在 2,000 字符内可读 | ✅ | 上一轮已验，本轮 `detail:"provenance"` 仍是同一条 < 2,000 字符回执 |
+| 6 | 简报本身的字段名 | ❌ | 第 5 步让 root 抄 `turn` 段，而回执把它放在 `status` 下（简报错，见 §160.5） |
+
+### §160.3 缺陷与修法（F-41b）
+- **真因**：`vibe-math-vmu/kernel/turn/index.js` 的 `status()` 从来没把 `lastAttribution` 放进读数。它是 `turn.attribution()` 的私有读数（投递路线/childId/stopReason/一句说明），而回执里的 `delivery` 块只复制了它的**部分**字段；`status` 里只有计数（`dispatch`/`woken`/`counts`）——**「引擎只留一个槽」这件事本身，以及这个槽属于谁，读者都读不到**。另外 `lastAttribution` 本来也不带成员 id：走 host 子会话时可以从 `childId` 反推，走 caller-played 路线时 `childId` 是 `null`，而那恰是无子代理宿主里唯一能走的路线。
+- **修法**：①`lastAttribution` 在把回合交给 seam 之前记下 `turn.member`（变量 `lastAttributionMember`），失败的投递也归到被尝试的成员；②`status.lastAttribution = {…lastAttribution, slot:'single', member}`；③新增 `attributionMeans`，明说「只有一个槽、只描述最近一次投递、历史不在这里，`woken`/`counts` 是计数不是历史」；④新增 `memberSessions`（成员 → 子会话，引擎真正保留的那张映射；无子代理时为空，不造假 id）。
+- **新套件** `tests/vmu-run57-turn-attribution.test.mjs`（20/0）：槽存在且 `slot:"single"`、投递前 `member:null`、两次投递后槽跟随第二个成员且第一个成员没被合并进去、`counts.delivered>=2` 与 `woken` 仍作为计数、无 host 时 `memberSessions` 为空、`detail:"closure"` 不因这次加法而变宽。
+
+### §160.4 门禁
+- `node scripts/preflight.mjs` ⇒ `PREFLIGHT: PASS`；`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ `TOTAL 533 PASS 533 FAIL 0`（见本轮提交前的最终读数）；`node scripts/regen-all.mjs --check` ⇒ `16/16 in sync`；`node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`。
+- 派生计数：`JOBS total=602 suites=494 probes=108`（shipped 393）。
+
+### §160.5 简报错（本轮）
+1. 让 root 抄 `vibe_vmu_turn{op:"status"}` 的 `turn` 段——回执的实际键是 `status`；根代理按字面回「没有该字段」，把简报错读成了产品错的一半（另一半是真缺陷 F-41b）。
+2. 让 root 用 `vibe_v5_assign` 传 `subject` 指派任务却不读回 `taskId`，于是第 5 步无从对照「任务板键是不是刚被写过」以外的证据（`t-1` 只在成员自己的回执里出现）。
+3. 六次调用里 `FIELD_NOT_APPLICABLE=2` 未在本轮追问（与简报要求抄的字段无关，属围栏面噪声），记在 §160.6。
+
+### §160.6 无法验证
+- F-41c（采纳的裁决是否在本地记录轨留审计行）：本轮简报未覆盖。
+- `FIELD_NOT_APPLICABLE=2` 的具体字段：未逐条提取。
+- 跨内核 `memberSessions`：本轮只有一个内核，未验第二内核视角。
+- F-43 的 `writer.agentId`：仍缺席（无下传缝），未验。
+
+### §160.7 无实质残余：否（残余 F-41c、F-43 的 agentId、F-13 记录 id、以及本轮未覆盖的三项）

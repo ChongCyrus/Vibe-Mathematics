@@ -1514,6 +1514,11 @@ export function createTurnOrchestrator({
   // ROUND 4 / F11: the attribution of the MOST RECENT delivery (`childId` + `stopReason`), so a caller can ask who a
   // receipt belongs to without re-reading the host handle.
   let lastAttribution = { childId: null, stopReason: null, deliveryPath: null, attribution: 'no turn has been delivered yet' }
+  // ★★ ROUND 57 (F-41b): WHICH MEMBER THE SLOT BELONGS TO. `lastAttribution` described HOW a delivery went (route,
+  // child id, stop reason) and never said WHO it went to, so the one record the engine keeps could not answer "whose
+  // turn was the last one?". Recorded where the turn is handed to the seam (so a FAILED delivery is attributed to the
+  // member it was attempted for, not to nobody).
+  let lastAttributionMember = null
   const memberSessions = new Map()
   let visibleToolsFor = null
   let seq = 0
@@ -1813,6 +1818,7 @@ export function createTurnOrchestrator({
         'the `turns` fold is what lets a SIBLING kernel (a member child session) see that this seat has taken a turn; `kernel/index.js` wires that seam over the durable store. Fix the store root/write path and retry this turn (docs/03 §6 `turns`)')
     }
     let delivered
+    lastAttributionMember = turn && turn.member ? String(turn.member) : null
     // ★★★★★★★ TASK-13: the offer is computed ONCE, here, from the map every reader already uses, and it travels INSIDE
     // `turn` — see `continuationOfferFor` above for why a third argument to `deliver` would never reach the seam.
     const continuation = continuationOfferFor(turn)
@@ -3694,6 +3700,15 @@ export function createTurnOrchestrator({
     /** ★ PHASE 8: record a closure vote through the SAME writer the reply path uses. */
     recordClosureVote: (memberId, solved, source = 'reply') => recordClosureVote(memberId, solved, source),
     status: ({ roster = [], may = null, permission = 'vote' } = {}) => ({ apiVersion, dispatch: dispatchStatus(), turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal },
+      // ★★ ROUND 57 (F-41b): THE TURN ENGINE KEEPS ONE ATTRIBUTION SLOT, AND NO READER COULD SEE EVEN THAT ONE. The
+      // orchestrator has always computed `lastAttribution` (who the most recent delivery went to, why it was delivered
+      // and how) - it is what the receipt's `delivery` block copies - but `status` never included it, so an operator
+      // asking "who did the last turn go to?" got counts and a per-member wake tally and nothing about the SLOT.
+      // Named `slot:'single'` and said in `attributionMeans`, because a reader who assumes per-member history will
+      // misread the one record that exists as if it were the latest of many.
+      lastAttribution: Object.assign({}, lastAttribution, { slot: 'single', member: lastAttributionMember }),
+      attributionMeans: 'the turn engine keeps ONE attribution slot: lastAttribution describes the MOST RECENT delivery only, not every member\'s last turn. Per-member history is not retained here - `woken` and `counts` are tallies, and `memberSessions` maps a member to the child session that played its last turn',
+      memberSessions: Object.fromEntries(memberSessions),
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING. Sixty-one meetings ran with no way to see that the one
       // field which closes the institute had never been emitted. `missing` names WHO, because silence is what blocks
       // closure and "somebody did not vote" is not actionable.
