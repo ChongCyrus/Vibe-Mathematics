@@ -1130,3 +1130,17 @@ run 43 让研究员写**一条** progress，它做了两件事：调 `vibe_v5_re
 **同一轮的 hint 缺陷（F-22）**：run 47 只修了 pack 面；成员真正走 `vibe_v5_say` ⇒ 落进内核 `requireMeeting`，那里的 hint 仍是一行 id，而 pack 会把它原样包进成员看到的 `hint`。内核那一句已改成：点名 PRIMITIVE / SERVICE 两张注册表、各给一条可复制调用、并提示两表形状不同（`type` vs `kind`、`agenda` vs `subject`）。
 
 **判据**：`tests/vmu-run48-card-text.test.mjs` 35/0（多段落卡解析/回读/过闸/不可判卡的两种说法/两处 hint）。
+
+**同一轮的口径差（§150.7 item 4）：两个数都叫 `turns`**。真机 run 48（原始日志 `_oneoff/vm-slv/full-1027-094115.jsonl`）：`vibe_vmu_meeting {action:"close"}` 对 `m-r48-debate` 回 `turns:0`（tool/result seq 197，`receipt.turns:0`，closedBy `r-acad`，wallMs 340828），而同一场会的 durable `state.json` 行写的是 `turns:1`——因为成员 r-2 的内核实例记过 1 次发言（`speak` 回执 seq 219，`turns:1`，`receipt.turns:1`）并写穿过自己的行。**这不是两个计数器打架**：它就是同一个字段 `m.turns`（发言数，唯一自增点是 `vibe-math-vmu/kernel/meetings.js` 的 `speak()` 里那一处 `m.turns += 1`；此处不引行号——行号会随本文件增长而漂移，`tests/vmu-run48-close-turns.test.mjs` 的 (D) 段以「全文件仅一处」钉住它），只是从两个**内核实例**各自的副本上读出来的（收束的所办实例没见过那次发言，于是把自己的 0 印进回执）；同一份 `state.json` 里另有两处同名但不是它：`keys.turns` 是成员轮次**账本**（`{member,turn,phase,round,at}` 数组），`vibe_vmu_turn {op:"status"}.turns` 是轮次编排器的 map 大小（`vibe-math-vmu/kernel/turn/index.js:2617`）。**修法是加名不改数**：`turns` 字段与名字保留（`speak.turns >= 1` 是既有断言，见 `tests/vmu-meeting-invite.test.mjs:215`），close / speak / status 三个读面统一补 `turnsCounts:"speeches"`（机器可读）与 `turnsMeans`（点名「本内核实例副本上的发言数」，显式否认成员轮次账本与 `vibe_vmu_turn`，并说明多内核部署下 durable 行可能比这份读数更大）。判据：`tests/vmu-run48-close-turns.test.mjs` 32/0（单实例同字段两读一致；双实例复现 run-48 的 0 vs 1 那一对；三处读面的名/义；唯一自增点）。
+
+## ROUND 49：闸门的裁决要活在行上；verified 是地方不是标签
+
+两条机制都在 run 49 的真机里被量到，且都不是"某个函数返回了错的值"——是**决定没有被记下来**、**决定没有被连起来**。
+
+**其一（F-25）：开会回执里的对象闸门事后读不到。** 主席在 `vibe_v5_meeting {type:"debate", subject:"rec-1"}` 的回执里读到 `subjectGate{allowed:true, proofBasis:"declaration-only", note:…}`——那句"这场辩论按什么证据被准入"。之后它试遍读面：`summary`/`status` 不带它、`snapshot` 只寻址 primitive 注册表（对 service id 具名拒）、`minutes` 动作不存在。主席只能把回执逐字打进一张 progress 卡（`rec-13`）让这个决定活下来。**机制**：闸门跑在面包层、裁决印在面包层的回执里，会议对象（各读面序列化的东西）从未听说过它。**修法**：`kernel/meetings.js` 的 `openSeq` 接收 `subjectGate`/`procedure` 并**冻结**成纯数据行（`gateRow()`/`procedureRow()` 只挑声明字段），`summary()`/`meetingView()` 读回；面包层把与回执同一个对象交给 `meetings.open`。读不重算——读到的就是当初冻结的那份。判据：同一场会议的 gate 在 `open` 回执、`summary`、`status`（`meetingView`）三处**逐字相同**，且 `close` 之后归档行仍能读到。
+
+**其二（F-25b）：`verified` 轨是地方，不是标签。** 成员看自己的 propositions 行时，决定"能否进 verified 轨"的唯一事实——账本里有没有一条 `verified` 行陈述**同一个命题**——在读面没有字段可看；缺席与 `false` 是同一个可观测量，成员无法区分"没人核验过"和"核验过了但我看不见"。run 49 里那张 verified 行存在（主席 promo 出来的），成员却只能按标题自己去找。**修法**：`kit/handlers.js` 的 `toolReadLibrary` 对 propositions 行算 `ready`（⇔ 存在 verified 行，其 `## 陈述` 与行的 `- statement：` 去空白后逐字相同），带 `readyOn`/`readyConclusion`/`readyMeans`/`readyWhy`，顶层带 `readyCount`/`verifiedReadable`/`verifiedClaimsSeen`。**只读**：不写、不 promotion、不改卡状态；"读不到 verified 轨"必须写成"读不到，所以不能判断"，不许写成"没核验"。注意 `records.list` 给的是 head 行（没有 body），所以按 id 取一次 body。
+
+**一条被驳回的宣称**：所办报告"读面把拒绝包成 `{ok:true, refused:true, hint:null}`"。全量 jsonl 里 `"refused":true` 出现 0 次、`dig49` 的 38 对调用/结果里也没有该形状 ⇒ 本轮**不修**，记为"待复现的宣称"，下一轮专找"带 `code`/`refused` 却没有 `ok:false`"的回执。**驳回的方式是去 transcript 里找，不是凭印象改代码。**
+
+**判据（下一轮验收用）**：①同一场辩论的 `subjectGate` 在 open 回执 / `summary` / `status` 三处逐字一致，关闭后归档仍可读；②成员 `read_library {track:"propositions"}` 的卡上 `ready` 与账本里的 verified 行一致，`readyOn` 指向真实 id；③无 verified 行时 `ready:false` 且 `readyWhy` 给出理由（不是裸 false）；④`status{detail:"summary"}` 与 `meetingView` 对同一会议给出同一份 gate。

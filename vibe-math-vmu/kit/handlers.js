@@ -387,6 +387,83 @@ function libraryFaceOf(kernel) {
 
 /** WHAT A FILE CARD IS, said once and carried on every receipt that reports the readout — an empty list must never be
  *  readable as "nothing was filed" without this sentence next to it. */
+// ── ROUND 49 / F-25 (the verified track is a place, not a label) ────────────────────────────────────────────────
+//
+// MEASURED (run 49, the chair's report, feedback rec-14 and the receipts beside it): the member looked at ITS OWN
+// proposition row and had no way to see the one fact that decides whether it is ready for the verified track —
+// whether a `verified` row in the same ledger states the SAME claim. In the live run that row came from the chair's
+// `vibe_v5_verified_promote` call about a card whose name was `rec-1`, not from the member's row, so the member's
+// proposition looked unverified while the ledger said the claim was concluded.
+//
+// WHAT IS GRANTED HERE: for a `propositions` row, `ready` is true exactly when a `verified` row in the SAME ledger
+// states the same claim (its `## 陈述` section equals the row's `- statement：` value, whitespace-normalised). This
+// is a READ: nothing is written, nothing is promoted, and a row with no matching verified row says so with a reason
+// instead of a bare `ready:false`. `readyOn` names the verified row; `readyConclusion` gives its conclusion
+// (true = concluded 真, false = concluded 假) — "verified" is a fact about the ledger, not a promise about the card.
+/** The multi-line `- statement：…` value of a records row body (continuation lines fold back, like `parseBody`). */
+function statementOfRowBody(body) {
+  const lines = String(body === undefined || body === null ? '' : body).split('\n')
+  let out = null
+  for (const raw of lines) {
+    const line = raw.replace('\r' + '$', '')
+    const m = /^-\s*statement\s*[：:=]\s*(.*)$/.exec(line)
+    if (m) { out = m[1]; continue }
+    if (out !== null && (/^-\s/.test(line) || /^##\s/.test(line))) break
+    if (out !== null) out += '\n' + line
+  }
+  return out === null ? null : out
+}
+
+/** The `## 陈述` section of a composed verified-row body (the field the promotion writer emits). */
+function statementOfVerifiedBody(body) {
+  const lines = String(body === undefined || body === null ? '' : body).split('\n')
+  const out = []
+  let inSection = false
+  for (const raw of lines) {
+    const line = raw.replace('\r' + '$', '')
+    if (/^##\s/.test(line)) { inSection = /^##\s*陈述\s*$/.test(line); continue }
+    if (inSection) out.push(line)
+  }
+  return out.length > 0 ? out.join('\n') : null
+}
+
+const normaliseClaim = (s) => String(s === undefined || s === null ? '' : s).replace(/\s+/g, ' ').trim()
+
+/** Every `verified` row this kernel can see, indexed by the claim it states. A failure to read is REPORTED, never
+ *  turned into "no verified rows exist" — that would make an empty readout indistinguishable from a silent refusal. */
+function verifiedClaimsOf(kernel) {
+  const records = recordsOf(kernel)
+  const claims = []
+  const out = { readable: false, claims, why: null }
+  if (!records || typeof records.list !== 'function') { out.why = 'this kernel publishes no records face'; return out }
+  let listed = null
+  try { listed = records.list({ track: 'verified', limit: 0 }) } catch (e) {
+    out.why = 'records.list({track:"verified"}) 失败：' + String((e && e.message) || e)
+    return out
+  }
+  const items = listed && Array.isArray(listed.items) ? listed.items : []
+  // ★ A head row carries no `body` (that is what `records.list` returns); the claim is IN the body, so a
+  //   verified head is fetched by id before it can be indexed. A body that cannot be read is skipped, never guessed.
+  for (const it of items) {
+    const row = it && it.record ? it.record : it
+    if (!row || typeof row !== 'object') continue
+    let body = row.body
+    if (body === undefined || body === null) {
+      try { const full = records.get({ id: row.id }); body = full && (full.record ? full.record.body : full.body) } catch { continue }
+    }
+    const claim = normaliseClaim(statementOfVerifiedBody(body))
+    if (!claim) continue
+    const title = normaliseClaim(row.title)
+    claims.push({ id: row.id === undefined || row.id === null ? null : String(row.id), claim,
+      conclusion: title.indexOf('假') >= 0 && title.indexOf('定论') >= 0 ? false : true })
+  }
+  out.readable = true
+  return out
+}
+
+const READY_MEANS = '`ready` 只说一件事：records 账本里**已经有一条 `verified` 行陈述同一个命题**（该行是 promotion 的唯一写入器写的，不是这张卡自己声明的）。它不是"这张卡已通过审查"，也不改卡的任何状态；`readyOn` 点名是哪条 verified 行、`readyConclusion` 给它的结论（true=已证为真、false=已证为假），`readyWhy` 说为什么还没有'
+const READY_NONE_MEANS = '这一批里没有 propositions 行（`ready` 只对 propositions 行计算）'
+
 const FILE_CARD_MEANS = '`libraryCards` 是**文件卡**（<root>/Members/<member>/{Propos,Methods,Subproblems}/ 下的 .md），不是 records 行：`count`/`cards` 只列 records 账本的行，文件卡另列在这里。文件卡没有 records 的 track，所以 `track`/`tracks`/`kind` 收窄的是 records 行，不收窄这里。数量来自库的 head list（受 vmu.records.headListAt 行帽），不是"全库"的保证'
 
 /** The member's library cards, as a SEPARATE readout. Never folded into `count`/`cards`: those stay records rows.
@@ -519,11 +596,44 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
   // ★ RUN 45 / DEFECT D: the file cards the member actually filed live in the LIBRARY, not in records — attached here
   // under their own names so `count`/`cards` above keep meaning exactly what they meant before (records rows only).
   const fileCards = await fileCardsOf(kernel, wanted, limit)
+  // ★ ROUND 49 / F-25: decorate the PROPOSITION rows with the one ledger fact that decides readiness.
+  const verified = verifiedClaimsOf(kernel)
+  let readyDecorated = 0
+  const cardsOut = returned.map((it) => {
+    if (!it || typeof it !== 'object' || String(it.track || '') !== 'propositions') return it
+    // list rows are HEADS: the statement lives in the body, so one get() per proposition row is the price of
+    // comparing claims at all. A body that cannot be read leaves the row undecided, with that fact in readyWhy.
+    let rowBody = it.body
+    if (rowBody === undefined || rowBody === null) {
+      try { const full = records.get({ id: it.id }); rowBody = full && (full.record ? full.record.body : full.body) } catch { rowBody = null }
+    }
+    const claim = normaliseClaim(statementOfRowBody(rowBody))
+    const hit = claim ? verified.claims.find((c) => c.claim === claim) || null : null
+    readyDecorated += 1
+    const out = Object.assign({}, it, { ready: hit !== null })
+    if (hit) {
+      out.readyOn = hit.id
+      out.readyConclusion = hit.conclusion
+      out.readyMeans = READY_MEANS
+    } else {
+      out.readyWhy = claim
+        ? (verified.readable
+          ? '这条命题还没有在任何一条 `verified` 行里被陈述过（账本里现在有 ' + verified.claims.length + ' 条 verified 行，没有一条的「陈述」与它相同）；要进 verified 轨，先走 promotion（' + "'vibe_v5_verified_promote'" + '），它会由唯一写入器写下定论行'
+          : '读不到 verified 轨，所以不能判断（' + verified.why + '）：`ready:false` 只说明这一次读不到，不能当作"没有定论"')
+        : '行体里没有找到 `- statement：` 字段，无法比对（这不是"没有定论"）'
+      out.readyMeans = READY_MEANS
+    }
+    return out
+  })
+  const readyOn = cardsOut.filter((c) => c && c.ready === true).map((c) => c.id)
   return { ok: true, tool: 'vibe_v5_read_library', member: wanted, kind: has(args.kind) ? str(args.kind) : null,
     tracks, declaredTracks: declared,
     total: cards.length, returned: returned.length, truncated: cards.length > returned.length,
     hint: cards.length > returned.length ? '只回了 ' + returned.length + '/' + cards.length + ' 张：传 limit 提高上限，或按 kind/member/track 收窄' : null,
-    count: returned.length, cards: returned, skippedTracks: skipped,
+    count: returned.length, cards: cardsOut, skippedTracks: skipped,
+    readyCount: readyOn.length, readyCards: readyOn,
+    readyMeans: readyDecorated > 0 ? READY_MEANS : READY_NONE_MEANS,
+    verifiedReadable: verified.readable, verifiedClaimsSeen: verified.claims.length, verifiedWhy: verified.why,
     libraryReadable: fileCards.libraryReadable, libraryCards: fileCards.libraryCards,
     libraryCardCount: fileCards.libraryCardCount, libraryCardsTruncated: fileCards.libraryCardsTruncated,
     libraryWhy: fileCards.libraryWhy, libraryCardsMeans: fileCards.libraryCardsMeans }

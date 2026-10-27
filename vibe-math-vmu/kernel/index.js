@@ -1560,13 +1560,19 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     // LEDGER HOLDS MESSAGES: `restore()` refuses a differing snapshot by name, so the fold's mutes enter through the
     // face's own `mute()` under the framework bootstrap gate — no private write into the mute book, and the audit row
     // says it was the framework, not an admin.
+    // ★ ROUND 48 / task-32: `restored: book` hands that call the DURABLE ROW's own author (and its ordering instant and
+    // expiry), because the adoption is not a new mute order. Without it `mute()` recorded `by:null` and THIS kernel's
+    // write-through then landed null OVER the author the office had written — measured in run 48: office memory
+    // `by:"r-acad"`, durable `by:null`, with this path's `(restored …)` marker as the fingerprint. The author cannot
+    // travel as `by:`: the framework bootstrap gate refuses to name an acting member, and naming r-acad as a MEMBER
+    // would demand that it be a chat admin. So it travels as the row, and the face copies it verbatim.
     for (const member of out.added) {
       const book = mergedMutes[member]
       const until = Number(book.until) || 0
       const durationMs = until > 0 ? Math.max(1, until - nowMs) : 0
       const reason = (book.reason ? String(book.reason) + ' ' : '') + '(restored from the durable fold on reload)'
       try {
-        chat.mute(member, { durationMs, reason, source: 'framework' })
+        chat.mute(member, { durationMs, reason, source: 'framework', restored: book })
         out.adopted.push(member)
       } catch (e) {
         out.ok = false
@@ -1583,7 +1589,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       out.note = 'the fold messages could not be merged: ' + String((e && e.message) || e)
     }
     out.mergedMessages = mergedMessages
-    out.note = 'the live ledger holds ' + liveMessages.length + ' message(s): the fold mutes were merged through the face own mute() (source:framework) instead of restore() (which refuses a non-empty ledger by name), and ' + mergedMessages + ' of the fold message(s) were adopted through _adoptShared (union by id, ordered by seq, bounded by vmu.chat.historyCap)'
+    out.note = 'the live ledger holds ' + liveMessages.length + ' message(s): the fold mutes were merged through the face own mute() (source:framework) instead of restore() (which refuses a non-empty ledger by name), each adopted row KEEPING its own author and ordering instant (restored: the durable row), and ' + mergedMessages + ' of the fold message(s) were adopted through _adoptShared (union by id, ordered by seq, bounded by vmu.chat.historyCap)'
     return out
   }
   const RESUME_PROJECTION_ADAPTERS = {

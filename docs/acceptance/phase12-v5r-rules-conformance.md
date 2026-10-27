@@ -6389,3 +6389,60 @@ F-17 是「作为报告者的所办读不到自己的账本」，属机制缺陷
 ### §150.8 无实质残余：否
 
 F-22 与 F-23 都是机制缺陷（一处「成员读到的 hint 与另一个面不一致」，一处「写卡与读卡对正文的理解不一致，且读面关于作者登记说了假话」），已修并有测试钉住；runs 43–48 的六轮真机里，每轮都还有新的机制缺陷 ⇒ 收敛未到。
+## §151 真机跑 49（build a8f2bf77，定向复验 F-23 / F-22 / 双门 / 共享账本）
+
+### §151.1 读数（驱动产物 + 机器判据）
+
+`DRIVE exit=0`、`durationSec 1786`、根会话 `toolCalls 38`、`transcriptEvents 189`、`tokenTotal 12,136,178`（**cap 12,000,000 撞顶**）、`tokenCapHit:true`、4 会话、`SUMMARY: 4 session(s), 1 with RED checks`、`calls (38) vs results (37)` **RED**；jsonl `_oneoff/vm-slv/full-1027-102129.jsonl` 39,532,690 B / 87,925 行；`NO_FENCE=108 UNKNOWN_FIELD=122 FIELD_NOT_APPLICABLE=76 BAD_JSON=108`；clone 已清、C 盘剩 10.54 GB。**唯一 RED 是撞 token 容导致的"最后一次调用没有结果落盘"，不是仓库缺陷**（第 4 次同类：`-MaxTokens` 与成员子会话开销不匹配）。
+
+### §151.2 判决表
+
+| # | 判据（简报要求） | 回执证据 | 结论 |
+|---|---|---|---|
+| 1 | F-23：多段落命题卡直接作为辩论对象 | `vibe_v5_meeting {type:"debate", subject:"rec-1"}` ⇒ `ok:true`，`subjectGate{allowed:true, form:"card", provenance:"declared", proofBasis:"declaration-only", note:"…作者自述（proofRef=Members/r-1/Propos/rec-1-proof.md）…"}`，`declaredProofRef` 指向真实文件 | ✅ 修好（run 48 只能"另立一张卡"） |
+| 2 | F-22：成员读到的 hint 点名两张注册表 | `vibe_v5_say {meeting:"m-does-not-exist-49"}` ⇒ hint 明写 `— no meeting carries this id in the PRIMITIVE registry (the table this face addresses)` 并给 PRIMITIVE / SERVICE 两处可复制调用 + `type` vs `kind`、`agenda` vs `subject` 的区别 | ✅ 修好 |
+| 3 | rulings 读面 | 先 `cards:0`（当时确实还没人交），后有 `cards:2`、`rows` 两人（`r-2:1`、`r-1:0.6`）、`duplicates:[]`、`means` 明说"读不汇总不裁决" | ✅ |
+| 4 | 禁言跨内核 | `mute {member:"r-2", by:"r-acad", durationMs:600000}` ⇒ `muted:["r-2"]`；`status` ⇒ `muted:["r-2"]`、`counts.audit:2`；r-2 自己内核 `send` ⇒ `VMU_CHAT_MUTED` | ✅ |
+| 5 | 群聊共享账本 | `messages:9`、`counts.sends:9`、`from:"r-acad"`、`admins:["chair"]` | ✅ |
+| 6 | 开会回执里的对象闸门**事后可读** | 全部读面都读不到 `subjectGate`（见 §151.3） | ❌ 新缺陷 F-25 |
+| 7 | 命题的"已核验"状态可读 | `read_library` 的 propositions 行没有任何 readiness 字段；成员只能看到"有一张 verified 行躺在账本里"（要自己按标题找） | ❌ 新缺陷 F-25b（读面缺一个连接） |
+| 8 | `vibe_v5_feedback` 的参数 | 成员按 `op:"add"` 提交成功 | ✅（简报里我写错过一次，见 §151.5） |
+
+### §151.3 F-25：闸门裁决只活在回执里
+
+所办原文（chat msg-7，逐字）：「开会回执里的 subjectGate 无法事后回读——它只在 `vibe_v5_meeting open()` 的即时回执里；`summary`/`status` 都不带它，`snapshot` 被 `VMU_NO_SUCH_OBJECT` 拒（只寻址 primitive 注册表），`minutes` 被 `VMU_INVALID_ARGUMENT` 拒（'unknown action: minutes'，而角色说明写着可读纪要）。我已把 m1 开会时的 subjectGate 逐字原文存进 progress 轨 rec-13（fingerprint bf42…）。」
+
+机制定位：闸门跑在**面包层**（`packs/v5r/tools.js` 的 `vibe_v5_meeting`），裁决印在面包层的回执里；会议对象（各读面序列化的那个东西）**从未听说过它**。于是"这场辩论按什么证据被准入"变成一条只有当事人记下来的事实，不是记录。
+
+修法（三处，见 §151.6）：`kernel/meetings.js` 的 `openSeq` 接收并冻结 `subjectGate`/`procedure` 两个纯数据行（`gateRow()`/`procedureRow()` 只挑声明字段，函数不进行）；`summary()`/`meetingView()` 各带 `subjectGate`（summary 另带 `subjectGateMeans`，null 时明确"这场会没有登记对象闸门裁决"）与 `procedure`；面包层把与回执同一个对象和 `procedureFor(type)` 交给 `meetings.open`。**读不重算**：读到的就是当初冻结的那份。
+
+### §151.4 F-25b：verified 轨是地方不是标签（读面缺一个连接）
+
+成员看自己的 propositions 行时，决定"能否进 verified 轨"的**唯一事实**——账本里有没有一条 `verified` 行陈述**同一个命题**——在 `read_library` 里没有字段可看。缺席与 false 是同一个可观测量：成员无法区分"没人核验过"和"核验过了但我看不见"。
+
+修法：`kit/handlers.js` 的 `toolReadLibrary` 对 `propositions` 行计算 `ready`（true ⇔ 存在 `verified` 行，其 `## 陈述` 与行的 `- statement：` 去空白后逐字相同），并带 `readyOn`（哪条 verified 行）/`readyConclusion`（true=定论为真）/`readyMeans`/`readyWhy`；回执顶层带 `readyCount`/`readyCards`/`verifiedReadable`/`verifiedClaimsSeen`/`verifiedWhy`。**只读**：不写、不 promotion、不改卡状态；读不到 verified 轨时 `ready:false` 的 `readyWhy` 明写"读不到，所以不能判断"，不许把"读不到"写成"没核验"。`records.list` 给的是 head 行（没有 body），所以按 id 取一次 body——一次读、一个 proposition 行一次 get。
+
+### §151.5 我的简报错（第 14/15 次同类）
+
+1. 简报第 3 步写「直接 `vibe_v5_meeting {type:"debate", subject}`」，但 `debate` 需要**主席先有一轮**（`vmu.meetings.chairActRequiresTurn`）——所办多花两轮才开成（它按 hint 补的）。
+2. 简报第 8 步写 `vibe_v5_feedback {action:"add"}`，真实参数是 `op`（`feedback needs op=add|update|list`）——所办被具名拒一次后改对。
+教训（第 N 次）：**简报不是说明书，是执行轨迹**。写简报前必须先读该工具声明的 `required` 与那个 face 自己会拒的条件（本次两处都可以用 `check-task-brief` 发现，但它只校验"参数名存在"，不校验"这一步在语义上可达"）。已把「debate 需要主席先有一轮」写进下轮简报的提示词，并把「参数名 vs 步骤可达性」列为简报自查的第二类。
+
+### §151.6 改动清单（本批，未提交前）
+
+- `vibe-math-vmu/kernel/meetings.js`：`openSeq` 新增 `subjectGate`/`procedure` 形参并冻结为行字段；`summary()`/`meetingView()` 读回；`gateRow()`/`procedureRow()` 纯数据化助手。
+- `vibe-math-vmu/packs/v5r/tools.js`：`vibe_v5_meeting` 的 open 把闸门裁决与建议程序交给 `kernel.meetings.open`。
+- `vibe-math-vmu/kit/handlers.js`：`toolReadLibrary` 的 propositions 行 readiness（+ 顶层 `readyCount` 等），`verifiedClaimsOf()`/`statementOfRowBody()`/`statementOfVerifiedBody()`/`normaliseClaim()`。
+- 新测试：`tests/vmu-run49-gate-reread.test.mjs`（7 组 15 断言）、`tests/vmu-run49-verified-ready.test.mjs`（18 断言）。
+
+### §151.7 无法验证 / 未修（如实）
+
+1. **F-26（"读面把拒绝包成 `ok:true`"）在所办回执里找不到证据**：全量 jsonl 里 `"refused":true` 出现 0 次，`dig49` 的 38 对调用/结果里也没有该形状；`R49-F*` 标签在 transcript 里 0 次。⇒ **不修**，记为"待复现的宣称"：若真存在，最可能是某个 face 把 `gateRefuse` 结果当正常回执返回（`{ok:true, …}`），下一轮要专门找"带 `code` 或 `refused` 却没有 `ok:false`"的回执。
+2. **稳健性/引擎三条债**（不在本轮写面，记台账）：入口 `normalise` 对每个字符串跑 4 万次随机突变的"全参数组合确定性"（约 60–90 秒/次，随字段增长）；`capabilities.roles` 与 `dailyClass` 的 10 行 `if-all-exhausted` 制表（外观债）；队列无背压（`drainPending` 全推）。
+3. **`[总任务]` 在成员视角会被截断**（run 49 r-1 看到 `…封…` 而非完整题面）：来源是成员提示词注入的状态板行宽，未定位是 `renderStatusBoard()` 还是 pack 的注入模板截断，下一轮要量。
+4. **回复通道泄漏**（本会话实测，不是 run 49 的机制）：同一轮内 `pairing` 不同却复用上一次的 `reply channel`（`mode:"envelope"` 的回执落到下一次激活的 reply 槽），是 DSH 宿主侧 bug，已记入本会话记录，VMU 侧无法修。
+5. **`vibe_v5_start` 的 `report.roster:0` 与 `started.already:true` 并存**（run 49 观察）：未判缺陷，可能要的就是"已经开过所"的语义。
+
+### §151.8 无实质残余：否
+
+run 49 的定向项（F-23/F-22/rulings/禁言/群聊）全部真机通过；但每轮都量到新的机制缺口（本轮 F-25、F-25b 两条并已修），且 8 条读面/写入面债仍在账上 ⇒ 收敛未到。

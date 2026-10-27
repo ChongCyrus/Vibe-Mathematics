@@ -586,18 +586,51 @@ export function createChat({
       return { ok: true, applied: clone(applied), at: row.at, by: by === null ? null : String(by), bootstrap: !!gate.bootstrap, policyGen, enforced: enforced.concat(gate.enforced) }
     },
 
-    /** Mute one member. `durationMs` 0/undefined ⇒ `vmu.chat.muteDefaultMs`; still 0 ⇒ no expiry. */
-    mute(member, { durationMs = null, reason = '', by = null, source = null } = {}) {
+    /**
+     * Mute one member. `durationMs` 0/undefined ⇒ `vmu.chat.muteDefaultMs`; still 0 ⇒ no expiry.
+     *
+     * ★ ROUND 48 / task-32 — `restored` is this method's ADOPTION form, used by ONE caller: the reload-merge hook
+     * (`kernel/index.js` `chatReloadMerge`, the branch for a kernel whose ledger already holds messages). That kernel
+     * cannot `restore()` a differing fold (the face refuses a differing snapshot on a non-empty ledger by name), so it
+     * re-enters here to adopt a durable mute row. The row it adopts is NOT a new order — and it already HAS an author:
+     * until this change the hook passed none, so the row was stored with `by:null`, and the adopting kernel's
+     * write-through landed that null OVER the author the office had written. Measured in run 48: office memory
+     * `by:"r-acad"`, durable row `by:null` (the `(restored from the durable fold on reload)` marker in the durable
+     * reason is the fingerprint of that single path).
+     *   The author may NOT travel as `by:` — the framework bootstrap gate refuses to name an acting member
+     *   (`requireAdmin` above), and the member path would demand that the ORIGINAL author be a chat admin. So it travels
+     *   as `restored` = the durable row itself: author, ordering instant and expiry are copied VERBATIM. `at` matters:
+     *   the merge compares it, and a re-minted instant could resurrect a mute another kernel had already lifted (the
+     *   lift test asks whether the local lift is newer than the durable row).
+     *   The public receipt and the `policy()` row shape are UNCHANGED; the provenance goes to the AUDIT row
+     *   (`restored:true`, `restoredBy`, `restoredAt`), which is the record a human reads when asking who ordered it.
+     */
+    mute(member, { durationMs = null, reason = '', by = null, source = null, restored = null } = {}) {
       const who = String(member === undefined || member === null ? '' : member)
       if (!who) throw refuse('VMU_INVALID_ARGUMENT', 'mute needs a member id', 'pass { member }')
       rejectInstants({ reason }, 'mute')
       const gate = requireAdmin(by, 'mute', source)
+      // An adoption is a FRAMEWORK reload decision, never a member action: a member supplying it would be laundering an
+      // authorship it does not own, so the member path is refused BY NAME before anything is written.
+      const adopting = restored !== null && restored !== undefined
+      if (adopting && !gate.bootstrap) throw refuse('VMU_INVALID_ARGUMENT', 'a restored mute may only be adopted through the framework bootstrap path', 'pass source:"framework" with by:null; a member mute names its own author', [])
+      if (adopting && (typeof restored !== 'object' || Array.isArray(restored))) throw refuse('VMU_INVALID_ARGUMENT', 'restored must be the durable mute row', 'pass { until, reason, by, at } from the durable fold', [])
       const asked = durationMs === null || durationMs === undefined ? null : Number(durationMs)
       if (asked !== null && (!Number.isFinite(asked) || asked < 0)) throw refuse('VMU_INVALID_ARGUMENT', 'durationMs must be a number >= 0', 'got ' + JSON.stringify(durationMs))
       const base = asked === null ? muteDefaultOf() : Math.floor(asked)
-      const until = base > 0 ? nowMs() + base : 0
-      mutes.set(who, { until, reason: String(reason || ''), by: by === null ? null : String(by), at: clock() })
-      record('muted', { member: who, until, durationMs: base, reason: String(reason || ''), bootstrap: !!gate.bootstrap }, by)
+      // ADOPTION keeps the durable expiry instant verbatim (no `now + (until - now)` round trip drifting by the clock
+      // granularity); a real mute starts its duration NOW.
+      const restoredUntil = adopting ? Number(restored.until) : NaN
+      const until = Number.isFinite(restoredUntil) && restoredUntil >= 0 ? restoredUntil : (base > 0 ? nowMs() + base : 0)
+      const author = adopting
+        ? (restored.by === null || restored.by === undefined || String(restored.by) === '' ? null : String(restored.by))
+        : (by === null ? null : String(by))
+      const restoredAt = adopting ? Number(restored.at) : NaN
+      const at = Number.isFinite(restoredAt) && restoredAt > 0 ? restoredAt : clock()
+      mutes.set(who, { until, reason: String(reason || ''), by: author, at })
+      const detail = { member: who, until, durationMs: base, reason: String(reason || ''), bootstrap: !!gate.bootstrap }
+      if (adopting) Object.assign(detail, { restored: true, restoredBy: author, restoredAt: at })
+      record('muted', detail, by)
       return { ok: true, member: who, until, durationMs: base, reason: String(reason || ''),
         // ★ ROUND 42 / F-14: the receipt reads the LIVE mute book back instead of only the row it just wrote.
         //    `vibe_vmu_chat {action:"status"}` and this receipt must answer the same question the same way — a caller

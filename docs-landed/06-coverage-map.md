@@ -167,3 +167,13 @@
 
 | 写卡的与读卡的必须对正文有同一个理解 | 多段落字段不能因为「不是 `- key：value` 行」而被当成坏行；不可判的卡不能报成「作者什么都没登记」。 | `tests/vmu-run48-card-text.test.mjs` §1–§4 |
 | 成员读到的 hint 是内核那一句 | pack 会把内核拒绝原样包进 `hint`：要修「成员看到的提示」，必须修内核的措辞，而不是只修 pack 面。 | `tests/vmu-run48-card-text.test.mjs` §5 |
+
+## 14. ★★★ 增量（R49）：闸门裁决活在行上 / verified 轨是地方
+
+- `vibe-math-vmu/kernel/meetings.js` → `openSeq` 把 `subjectGate`/`procedure` **冻结成纯数据行**（`gateRow()`/`procedureRow()` 只挑声明字段，函数不进行），`summary()`/`meetingView()` 读回；闸门裁决不再只活在开会回执里（run 49 / F-25）。
+- `vibe-math-vmu/packs/v5r/tools.js` → `vibe_v5_meeting` 的 open 把与回执**同一个** gate 对象与 `procedureFor(type)` 交给 `kernel.meetings.open`。
+- `vibe-math-vmu/kit/handlers.js` → `toolReadLibrary` 对 propositions 行算 `ready`/`readyOn`/`readyConclusion`/`readyWhy`，顶层带 `readyCount`/`readyCards`/`verifiedReadable`/`verifiedClaimsSeen`/`verifiedWhy`：成员能读出"我这条命题有没有被一条 verified 行陈述过"（只读，不写不 promotion）。
+- `tests/vmu-run49-gate-reread.test.mjs`、`tests/vmu-run49-verified-ready.test.mjs` — 两条判据的守护。
+
+| 决定要在行上，不在回执里 | 开会回执里印的裁决（`subjectGate`）必须能从事后读面（`summary`/`status`）逐字读回，关闭后归档仍可读。 | `tests/vmu-run49-gate-reread.test.mjs` §1–§6 |
+| verified 轨是地方不是标签 | 命题行的 `ready` 必须由账本里的 verified 行（同一陈述）决定，并点名哪一条；"读不到 verified 轨"必须写成"读不到"，不许写成"没核验"。 | `tests/vmu-run49-verified-ready.test.mjs` §1–§5 |

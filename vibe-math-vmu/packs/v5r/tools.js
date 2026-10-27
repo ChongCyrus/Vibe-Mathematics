@@ -2213,8 +2213,15 @@ function toolMeeting(args = {}, { kernel } = {}) {
   // hint ("choose another id") was advice this face could not follow. `id` now optionally names the meeting; the kernel
   // service refuses an id the other registry holds, BY NAME and naming that table.
   const wantedId = (has(args.id) && String(args.id).trim() !== '') ? str(args.id).trim() : null
+  // ★★ ROUND 49 / F-25: the verdict and the recommended procedure are handed to the meeting OBJECT, not only to the
+  // receipt. run 49 measured the chair having to type the open receipt's `subjectGate` into a progress card because
+  // no read face carried it afterwards. Nothing is recomputed here: the same objects the receipt prints are stored.
   const opened = kernel.meetings.open({ ...(wantedId !== null ? { id: wantedId } : {}), type, chair: member, actor: member, roster, materials: str(args.agenda), secretary,
-    subject: subject === null || subject === undefined ? null : subject, at, title, sequence })
+    subject: subject === null || subject === undefined ? null : subject, at, title, sequence,
+    subjectGate: subjectGate ? { allowed: true, applicable: subjectGate.applicable === true, form: subjectGate.form || null,
+      proofVia: subjectGate.proofVia || null, provenance: subjectGate.provenance || null, proofBasis: subjectGate.proofBasis || null,
+      proofChecked: subjectGate.proofChecked === true, note: subjectGate.note || null } : null,
+    procedure: procedureFor(type) })
   // ★ 可读回的事实：预约不是"一个被收下的参数"，而是会议对象的状态。`state`/`scheduledFor` 由内核回执给出，
   // 这一面只转述；`scheduleNote` 只在真的进入 scheduled 时出现（不要给立即召开的会议编一句预约说明）。
   const state = opened && opened.state !== undefined ? opened.state : null

@@ -287,6 +287,41 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
    * loud on every receipt AND every refusal, so nobody reads a "so far" list as the operation's whole key set.
    */
   const ENFORCED_SCOPE = 'evaluated-so-far'
+  // ★★★ RUN 48 (§150.7 item 4): TWO DIFFERENT NUMBERS WERE CALLED `turns`. `vibe_vmu_meeting {action:"close"}` on
+  // `m-r48-debate` answered `turns:0` while the durable `state.json` row for the same meeting said `turns:1`. They were
+  // not two counters disagreeing: they are the SAME field — `m.turns`, the count of SPEECHES on a meeting object — read
+  // off two different KERNEL INSTANCES (member r-2's instance recorded the speech and wrote its row through; the closing
+  // office instance had never seen it). The same state file also holds `keys.turns` = the durable member-turn LEDGER (an
+  // array of {member,turn,phase,round,at}), and `vibe_vmu_turn {op:"status"}` reports its own `turns` (map size in
+  // kernel/turn/index.js) — neither is a speech count. The number keeps its name (`speak.turns` is an asserted contract),
+  // so the ambiguity is closed by ADDING what it counts and which copy it was read off. (No line number is cited
+  // here: the increment site is `speak()`'s `m.turns += 1`, which is the ONLY one in this file — grep, don't count lines.)
+  const TURNS_COUNTS = 'speeches'
+  // ★★ ROUND 49 / F-25 — the two plain-data shapes stored on the meeting row. Kept here (not inline in openSeq) so the
+// read faces and the writer cannot drift: one shape, one place.
+function gateRow(g) {
+  if (g === null || g === undefined || typeof g !== 'object' || Array.isArray(g)) return null
+  return Object.freeze({
+    allowed: g.allowed === true,
+    applicable: g.applicable === true,
+    form: g.form === undefined ? null : (g.form === null ? null : String(g.form)),
+    proofVia: g.proofVia === undefined || g.proofVia === null ? null : String(g.proofVia),
+    provenance: g.provenance === undefined || g.provenance === null ? null : String(g.provenance),
+    proofBasis: g.proofBasis === undefined || g.proofBasis === null ? null : String(g.proofBasis),
+    proofChecked: g.proofChecked === true,
+    note: g.note === undefined || g.note === null ? null : String(g.note),
+  })
+}
+function procedureRow(p) {
+  if (p === null || p === undefined || typeof p !== 'object' || Array.isArray(p)) return null
+  return {
+    procedure: p.procedure === undefined ? null : p.procedure,
+    binding: p.binding === undefined ? null : p.binding,
+    note: p.note === undefined || p.note === null ? null : String(p.note),
+    pendingSteps: Array.isArray(p.pendingSteps) ? p.pendingSteps.map(String) : [],
+  }
+}
+const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the meeting (speak() holds its only increment site, `m.turns += 1`); it is NOT a count of member turns — the durable `state.json` `turns` (an array of {member,turn,phase,round,at}) and `vibe_vmu_turn {op:"status"}.turns` are different counters. In a multi-kernel deployment another instance may have delivered a speech it has not written back here, so the durable archived row can hold a larger number than this reading.'
   /** The meeting's OWN wall bound. `open()` freezes `wallLimitMs = hardLimitMs`; `extendWall()` raises it. A meeting
    *  opened by an older writer (or by a test) has no field, and then the configured hard limit is the bound — that
    *  fallback is why `extendWall` could be added without rewriting one existing meeting record. */
@@ -1128,10 +1163,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const budgetDeclared = soft !== null
       const budgetWhy = budgetDeclared ? null
         : 'no meeting budget was crossed and none is declared (vmu.meetings.budgetTurns/budgetTokens/budgetWallMs are 0, or their thresholds were not reached) — budget:null means "no verdict", not "plenty left"'
-      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, enforced, enforcedScope: ENFORCED_SCOPE }
+      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       say({ type: 'meetings/spoke', at: now, meeting: m.id, member: String(member), floor, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, ms: wanted, turns: m.turns, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Interrupt. `interruptAllow` + `interruptQuota` govern the floor. */
@@ -1730,7 +1765,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // second sight of a shared reference as "[circular]", so this receipt carried `enforced:"[circular]"`. Copies
       // (not a shared reference) keep both fields as readable key lists even for a serializer that marks repeats.
       const closedBy = (actor === null || actor === undefined) ? null : String(actor)
-      const receipt = { at: now, action: 'close', meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+      const receipt = { at: now, action: 'close', meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
       // ★★ PHASE 12 D6 — 「允许一次性设置连续展开的多个会议」: closing this meeting OPENS the next one it was convened
       // with. Two failure directions are treated differently on purpose: (1) a next meeting that cannot open (quota, a
       // type that left the catalogue) does NOT un-close this one — the closure already happened and reverting it would
@@ -1752,7 +1787,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // be policy the pack never asked for.
       if (advanced.meeting)
       say({ type: 'meetings/sequence-advanced', at: now, from: m.id, meeting: advanced.meeting, index: advanced.index, total: advanced.total, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, tokens: m.tokens, nextMeeting: advanced.meeting || null, nextMeetingError: advanced.error || null, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, nextMeeting: advanced.meeting || null, nextMeetingError: advanced.error || null, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
     },
 
     /**
@@ -1899,6 +1934,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         title: m.title === undefined ? null : m.title,
         materials: m.materials === undefined ? null : m.materials,
         subject: m.subject === undefined ? null : m.subject,
+        // ★★ ROUND 49 / F-25: the gate that ADMITTED this debate is part of the decision record, so it is readable
+        // long after the open receipt was scrolled past. `null` means none was recorded (pre-fix rows, non-debates).
+        subjectGate: m.subjectGate === undefined ? null : m.subjectGate,
+        subjectGateMeans: m.subjectGate === undefined || m.subjectGate === null
+          ? 'no subject gate verdict was recorded for this meeting (the face that convened it recorded none)'
+          : 'the verdict the debate-subject gate returned when this meeting was CONVENED, stored with the meeting: `allowed` says the object was admitted, `proofBasis` says on what evidence (declaration-only = the author declared a finished proof and no machine evidence was checked), `note` is what the gate itself said. Reading it now cannot change it',
+        procedure: m.procedure === undefined ? null : m.procedure,
         sequence: seqInfo(m),
         // ★ PHASE 12 D1: the schedule is part of the DECISION record — a reader must be able to tell a scheduled
         // meeting from a running one, and a late start from an on-time one, without asking a second face.
@@ -1949,6 +1991,9 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         title: m.title === undefined ? null : m.title,
         materials: m.materials === undefined ? null : m.materials,
         subject: m.subject === undefined ? null : m.subject,
+        // ★★ ROUND 49 / F-25: same record on the face members and the office actually read (status).
+        subjectGate: m.subjectGate === undefined ? null : m.subjectGate,
+        procedure: m.procedure === undefined ? null : m.procedure,
         // ★★★ LIVE RUN 15 (the institute's own report, item ①): `convenedBy` was written by the stall path and readable
         // only through `summary()` — NOT through this view, which is what `vibe_vmu_meeting { action:"status" }` actually
         // returns and what the run read. So the field that exists to say 「这场会不是院士召开的」 was unreachable on the
@@ -1968,6 +2013,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
         waitDueAt: waitDueOf(m),
         waitDecisionDue: m.waitDecisionDue === true,
+        // ★★★ RUN 48 (§150.7 item 4): the status face is where a reader looks BEFORE closing, and `turns` was
+        // reachable only on speak/close receipts — so a run could compare `state.json`'s row with a close receipt and
+        // find 0 vs 1 with nothing saying the number is per-instance. Naming it here too makes the same reading
+        // comparable without a close (and `turnsMeans` says the durable row may be larger).
+        turns: m.turns === undefined ? 0 : m.turns,
+        turnsCounts: TURNS_COUNTS,
+        turnsMeans: TURNS_MEANS,
         // ★ A READER MUST BE ABLE TO SEE WHO DEBATED WITHOUT CALLING minutes(): the fact, un-pruned.
         spokeBy: [...new Set(m.minutes.entries.filter((e) => e.kind === 'speech').map((e) => String(e.member)))],
         spokeByMeans: 'members with at least one recorded speech in THIS meeting (the fact; minutes() is a shaped view of it)',
@@ -2227,7 +2279,17 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
   // not a defect of the rail (the rail only guards a convene that INSTALLS a chair); it is a missing FACT: who convened.
   // `convenedBy` names the originator when it is not the caller's own act — 'v5r.stall-meeting' for the automatic path,
   // null when the caller acted directly. Without it, an automatic meeting and a chair's meeting are indistinguishable.
-  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null, adoptForeign = false, reuseArchivedId = false, convenedBy = null } = {}) {
+  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null, adoptForeign = false, reuseArchivedId = false, convenedBy = null,
+    // ★★ ROUND 49 / F-25 — THE GATE'S VERDICT MUST SURVIVE THE RECEIPT. run 49 measured the office reading
+      // `subjectGate` off the open receipt, then finding that NOTHING could read it afterwards: summary/status carried
+      // no gate, snapshot addresses the primitive registry (and refused), so the only record of "why this debate was
+      // allowed" was a progress card the chair typed by hand. A decision that cannot be re-read is not a record; it is
+      // a receipt someone happened to keep. The caller that computed the verdict now hands it over and the meeting
+      // object keeps it (plain data: no gate runs here, nothing is recomputed).
+      subjectGate = null,
+    // ★ the recommended procedure the convenor was shown, for the same reason: it is not a gate, but it IS part of
+    // what the convention promised at the moment it was made, and a read face should be able to say what that was.
+      procedure = null } = {}) {
 
     const enforced = []
     const ms = at === null ? clock() : atMs(at)
@@ -2418,6 +2480,10 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // `close()` advances this list; without it the rule sentence had no implementation at all.
       sequence: seqEntries, sequenceIndex: 0, sequenceTotal: seqEntries.length,
     }
+    // ★★ ROUND 49 / F-25: the verdict travels WITH the meeting (see the parameter note above). Frozen to a plain
+    // object here: the gate's own object may carry helpers, and a durable row must be serializable.
+    m.subjectGate = gateRow(subjectGate)
+    m.procedure = procedureRow(procedure)
     live.set(mid, m)
     markState(m, m.state)
     counters.opened += 1
