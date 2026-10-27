@@ -35,7 +35,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '【资源】本机可能资源紧张，请自觉控本回合开销：',
-        '  · 并发：框架每轮最多同时唤醒 {{ setting:vmu.turn.maxParallel }} 名成员（`maxParallel`）；**不要**为了提速而让你自己一次性铺开大量子代理。',
+        '  · 并发：框架每轮最多同时唤醒 {{ setting:vmu.turn.maxParallel }} 名成员（`vmu.turn.maxParallel`，这是**唤醒人数**，不是算力并发）；数学作业/Lean 编译的并发上限是 `vmu.math.maxParallel`（默认 1），超限会被具名拒——两个键别混用。**不要**为了提速而让你自己一次性铺开大量子代理。',
         '  · 工具预算：**本回合工具调用不超过 {{ setting:vmu.turn.toolCallsPerTurnCap }} 次**。',
         '  · 自监测：若观察到内存占用接近 {{ setting:vmu.turn.memoryCeilingMb }} MB，**先让出**：停止新起子代理、改用轻量路径（减少重复读写与大文件扫描）、把大任务切成更小的可交付步，并在回执里写明"因资源让出、剩余工作是什么"。',
         '  · 取舍：**正确性优先于产出量**；资源紧张时宁可少做一步并说明，也不要冒险把本机拖垮（OOM 会丢掉全部未落盘工作）。',
@@ -605,7 +605,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '',
         '所内一段时间没有新进展了。请**继续推进**这个问题，而不是停在原地：',
         '读一读同事的库、推进你的子问题/引理/方法、尝试一条新路线；',
-        '或者向团队发消息（say）、开一个议题（propose_meeting）、给某个方向开任务（task_create）。',
+        '或者向团队发消息（say）、**请院士召开或预约一场会议**（回执字段 `propose_meeting` 只是提议；真正召集是院士的工具 `vibe_v5_meeting`）、给某个方向开任务（task_create）。',
         '如果你确实已无路可走或认为原问题接近解决，请说明你的判断与理由。',
       ].join('\n'),
     },
@@ -682,7 +682,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
   // states, and a test asserts there are exactly four because the exclusivity IS the mechanism. The agenda is not a
   // state - it is the same in every meeting - so it lives in the turn namespace instead.
   // The values are the ones the corpus captured; the frame supplies its own for a real round.
-      meeting: '议程：分工与下一步（类型：sync）',
+      meeting: '议程：分工与下一步（类型：ordinary）',
     },
   },
   {
@@ -725,7 +725,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '（你是本次会议的第一位发言者，目前还没有别人发言。）',
-        '（流程：**先轮流发言**——每位常驻成员都会获得一次\"要不要发言\"的机会，**不强制**；随后进入**举手发言**阶段：想发言的人举手（`meeting_hand:true`），发言结束后**还可以再次举手**，可多轮。**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下\"已获得机会、选择未发言\"。框架每轮最多同时唤醒 maxParallel 名成员（默认 3），并把已收集到的发言附在提示里。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）',
+        '（流程：**先轮流发言**——每位常驻成员都会获得一次"要不要发言"的机会，**不强制**；随后进入**举手发言**阶段：想发言的人**用工具举手**——`vibe_vmu_meeting { action: "hand", id: "<会议 id>", member: "<你的 id>" }`（回执里写 `meeting_hand` 会被具名拒：回执不带会议 id），发言结束后**还可以再次举手**，可多轮。**无人举手**时会议收束。沉默本身**不会**触发任何截止；纪要会具名记下"已获得机会、选择未发言"。框架每轮最多同时唤醒 maxParallel 名成员（默认 3）；**别人的发言不在你的提示里**（见上一条：去纪要/群聊读）。收束时纪要与结论写入 Shared/Meetings/<会议id>.md 并同步到群聊。）',
       ].join('\n'),
     },
   },
@@ -743,9 +743,142 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。',
         '（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）',
         '**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为"选择未发言"）——不会因此被追问，也不会阻塞会议。',
-        '**想发言就举手**：填 "meeting_hand": true 表示你要发言（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言；填 "meeting_hand": false 可撤回举手。',
-        '**沉默不等于投票**：`vote_solved` 必须显式给出——如果你认为原问题已解决，请填 "vote_solved": true；只有当**全体有表决权者**都一致认为是真时，本所才会停下来；缺 `vote_solved`（沉默/未表态）会**阻止结题**。',
-        'input：发言；meeting_hand：是否举手；meeting_invite：{member,why}；vote_solved：明确的结题判断，沉默不计赞成。',
+        '**想发言就举手——举手是工具调用，不是回执字段**：`vibe_vmu_meeting { action: "hand", id: "<会议 id>", member: "<你的 id>" }`（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言。回执里写 "meeting_hand"/"meeting_invite" 会被**具名拒**（`VMU_TURN_FIELD_NOT_APPLICABLE`：回执不带会议 id，框架不会替你猜）。要请人发言由院士用工具 `vibe_vmu_meeting { action: "invite", id: "<会议 id>", member: "t-1", by: "<院士 id>", why: "…" }`——邀请**不是签到**，被邀者仍须自己 `attend` 才计入法定人数。',
+        '**沉默不等于投票**：`vote_solved` 必须显式给出——如果你认为原问题已解决，请填 "vote_solved": true；结题要求**表决人数达到法定人数 m = min(所办设定的上限, 院士+常驻研究员人数)**（以每轮状态块里的「法定票数」读数为准）**且无人投反对**；缺 `vote_solved`（沉默/未表态）会**阻止结题**，未表态名单会被列出。',
+        'input：发言；vote_solved：明确的结题判断，沉默不计赞成。举手/邀请走工具面 `vibe_vmu_meeting`（action: hand / invite），不要写进回执。',
+      ].join('\n'),
+    },
+  },
+  // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  // THE ZERO-TEACHING GAPS (acceptance ledger B4/B5/B6, C12, D3, D6/D7, E1/E2/E5/E7/E10/E11/E13/E15/E16/E18/E19/
+  // E21/E29, F1-F3, G2/G6). Each sentence is a claim about code that exists TODAY and is named in the sentence so a
+  // reader can check it: `packs/v5r/tools.js` (tool faces), `packs/v5r/blueprint.js` (30-day stale constant, chair
+  // adopt slot), `kernel/meetings.js` (quorumOf / hardLimitMs / lapse), `packs/v5r/meeting-procedures.js` (six types,
+  // ORDINARY_NO_SKELETON_REASON), `kernel/records.js` (the five default tracks), `kernel/chat.js` (six wired keys).
+  // Chair-only material is `kind: 'role'` + `academician`, so the member prompt does not pay for it (T99 cap 20000).
+  // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  {
+    name: 'v5r-turn-blueprint',
+    order: 830,
+    range: 'pack',
+    kind: 'role',
+    texts: {
+      academician: [
+        '【蓝图（全所长期方案）】',
+        '  · 任何**在册成员**都能用 `vibe_v5_blueprint { action: "propose", path: "…", text: "…" }` 提交草稿；草稿**不生效**，只是排队等采纳。',
+        '  · **只有院士席（chair）**能 `{ action: "adopt", draft: "<草稿 id>" }` 采纳：采纳后成为唯一生效版本，并取代上一版。别的席位调用会被具名拒。',
+        '  · `{ action: "state" }` 读生效版本、采纳时间与草稿队列；它同时报 `stale`——超过**30 天**未更新会标记逾期（只是提示，不拒绝任何动作）。蓝图行也能用 `vibe_v5_read_library { track: "blueprint" }` 读。',
+      ].join('\n'),
+      temp: [
+        '【蓝图】长期方案只能由院士席采纳；你可以用 `vibe_v5_blueprint { action: "propose" }` 提交草稿，`{ action: "state" }` 可读生效版本与逾期提示。',
+      ].join('\n'),
+      researcher: [
+        '【蓝图】全所的长期方案写在蓝图里，不在谁的脑子里：你可以用 `vibe_v5_blueprint { action: "propose", path: "…", text: "…" }` 提交草稿，但**只有院士席能 adopt**；`{ action: "state" }` 可读生效版本、采纳时间与逾期提示（30 天未更新标 stale）。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-turn-meeting-schedule',
+    order: 831,
+    range: 'pack',
+    kind: 'role',
+    texts: {
+      academician: [
+        '【开会与预约（你的手册）】会议类型六种：`ordinary`（正常/例行同步）｜`academic`（学术交流）｜`debate`（辩论，**必须**给 `subject`）｜`closure`（结题）｜`paper`（论文交流）｜`planning`（未来规划）；`sync` 是**动议 kind**，不是会议类型。',
+        '  · 预约：`vibe_v5_meeting { type, agenda, at: <epoch ms 或 ISO-8601> }` → 会议进入 `scheduled`；`status`/`summary`/`meetingView` **立刻可读**，**开始前每个动作都被具名拒**。到点人数不齐就 `waiting`，**迟到者 `attend` 即开**；框架没有定时器，这些状态由每轮 `beat()` 的 sweep 结算，`proceed` 可提前开始。',
+        '  · 一次连排多场：给 `sequence` 数组即可一次召集（逐项校验，每场可给各自的 `at`/`title`/`type`，回执给 `sequence.index/total/next`）；也可以给每场各自的 `at` **逐场召集**。',
+        '  · 时长与兜底：`extend` 是**发言延长**（ms，缺省读 `vmu.meetings.speechExtendMs`，仍为 0 则具名拒）；`extendlimit` 是**会议墙钟上界延长**；墙钟硬界 `vmu.meetings.hardLimitMs`（默认 1800000ms，钳制 300000–7200000，**没有"无界"**）。只有超过硬界才能用 `lapse` 具名收束（回执带 revocable），恢复用 `revokelapse`（必须给理由）。',
+        '  · `ordinary` 类型**故意不给推荐骨架**——这是具名决定：议程与顺序完全由你编排；其余五种的步骤只是**建议**，可跳过、可重排。',
+        '  · 议程与标题：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 只读议程条目列表，`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）。`title` 是**可选**的独立名称，与议程分开；给非字符串会被具名拒。',
+        '  · 发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` **按数组顺序批量**入队（邀请**不是签到**，被邀者仍须自己 `attend` 才计入法定人数）；`invitedspeak` 让被邀者走服务发言面；`order` 只读队列。`flow`（open/hands/round_robin/call_on）与 `overrideorder` 要求部署声明 `vmu.meetings.orderMode`，v5r 未声明 ⇒ 调用会被具名拒。',
+      ].join('\n'),
+      temp: [
+        '【会议类型与预约】六种类型（ordinary/academic/debate/closure/paper/planning），`sync` 是动议 kind；被邀请不等于签到，要自己 `attend` 才计入法定人数；临时工没有表决权。',
+      ].join('\n'),
+      researcher: [
+        '【会议类型与预约】六种：`ordinary`（正常/例行同步）｜`academic`（学术交流）｜`debate`（辩论，须 `subject`）｜`closure`（结题）｜`paper`（论文交流）｜`planning`（规划）；`sync` 是动议 kind，不是类型。用 `at` 预约的会议在开始前拒绝一切动作，到点人齐才开、迟到者 `attend` 即开；**被邀请不等于签到**，要自己 `attend` 才计入法定人数。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-turn-polls',
+    order: 832,
+    range: 'pack',
+    kind: 'role',
+    texts: {
+      academician: [
+        '【投票板（只有你能立）】`vibe_v5_poll_open { question, options: [≥2 个], min_votes?, max?, min?, mode?: "single"|"multi", allow_revote? }`；`min_votes` 是**投票成立**的门槛（缺省取 `vmu.ballot.minVotes`），**不是法定人数 m**；`secret`/`allow_abstain` 属部署层，不在单场参数里（回执 `unapplied` 会说明）。只有 chair/member 席有票权，临时工投票会被具名拒；`vibe_v5_poll_close` 未达 `min_votes` 会被具名拒——那次投票**不成立**。',
+        '  · **辩论不用投票板**：辩论是各自发言 + `vibe_v5_verdict_final` 裁决，不靠选项投票。',
+      ].join('\n'),
+      temp: [
+        '【投票板】临时工不是表决者，投票会被具名拒；辩论不走投票板——辩论是各自发言 + 最终裁决。',
+      ].join('\n'),
+      researcher: [
+        '【投票板】`vibe_v5_poll_vote { ballot_id, choices: […] 或 abstain: true }` 给选项板投票；临时工不是表决者，投了会被具名拒。辩论不走投票板——辩论是各自发言 + 最终裁决。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-turn-chat-admin',
+    order: 833,
+    range: 'pack',
+    kind: 'role',
+    texts: {
+      academician: [
+        '  · **单次发言版群聊**＝把 `speakQuota` 设成 1（每人每窗口只说一条）：配额到了会得到具名拒 `VMU_CHAT_QUOTA_EXCEEDED`，它是机制而不是口头约定。',
+        '【群聊管理（你是管理员）】用 `vibe_vmu_chat`：`mute`（成员 + `by` + 可选 `durationMs`；0 用 `vmu.chat.muteDefaultMs`，仍为 0 则**不过期**）、`unmute`、`quota`（设 `speakQuota`＝每窗口可发言条数，0 = 不限）、`setpolicy`（admins / speakQuota / speakQuotaWindowMs / muteDefaultMs / freezeExemptAdmins）、`admin`（授予或收回管理员）。表决冻结时群聊可随票箱冻结，`freezeExemptAdmins` 决定管理员是否豁免。撞上会得到具名拒：`VMU_CHAT_NOT_ADMIN`、`VMU_CHAT_MUTED`、`VMU_CHAT_QUOTA_EXCEEDED`。',
+      ].join('\n'),
+      temp: [
+        '【群聊规则由院士定】禁言与发言配额由群管理员（院士）设定；撞上会得到具名拒（`VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`）。',
+      ].join('\n'),
+      researcher: [
+        '【群聊规则由院士定】谁能发言、每人每窗口能说几条、谁被禁言，都由群管理员（院士）设定；撞上禁言或配额会得到具名拒（`VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`），不是消息悄悄丢了。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-turn-channels',
+    order: 834,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【三通道的紧急语义】`vibe_v5_say` 一个工具三种去处：不给 `to` = **群聊**（非紧急，全所都看得见）；给 `to` = **私信**（对方希望你尽早回复时用，且只有私信能带 `urgent: true`）；给 `meeting` = 会议发言（进纪要）。邮箱是**非紧急**通道：不进信封、留在收件箱等对方自己查；只有私信 + `urgent: true` 才会把正文推进对方这一轮的提示并要求送达回执。群聊与会议发言带 `urgent` 会被具名拒——那里没有要唤醒的收件人。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-turn-formal-verify',
+    order: 835,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【形式化开关 `vmu.math.formalVerify` 三档】`off`＝零策略（默认，不要求任何形式化）｜`encourage`＝鼓励（做了就归档，没做就在回执 `formal` 里写明难度判断）｜`require`＝强制（裁定必须附 Lean 结果或显式 blocked 记录，否则那次裁定**不生效**、对象留在原轨并进形式化待办）。`vmu.math.leanInitiative` 只是回显，不参与判定。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-turn-tracks',
+    order: 836,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【轨迹与状态板：你写什么、读什么】轨迹五种（`vmu.records.tracks`）：`progress`（默认，数学进展）｜`routes`（**尝试过的路线与进展**）｜`obstacles`（**阻塞与原因**）｜`rejected`（**已证伪的路**）｜`state`（状态板面板）。写用 `vibe_v5_record_progress { member: "<你的 id>", track, content, progress?, obstacles?, next?, help? }`——`track:"state"` 时 **progress/obstacles/next/help 四项必填**，缺一项会被具名拒（回执列出缺哪项）。',
+        '  · 提示词里的 `[状态板]` 四行（总任务/规划/各任务完成状态/当前小任务）是**派生**的，来自设置、任务板与你最近一条 progress——它们**不是**你写的 state 面板，两件事别混：注入的是读数，state 才是你自己写的面板。四行的英文键是 `objective`／`plan`／`tasks`／`current`，回执或读数里出现它们指的是同一件事。',
+        '  · 读别人的板：`vibe_v5_read_library` 的 list 形态（可按 `member`/`track`/`kind` 过滤）或 `vibe_vmu_records { action: "list", track: "state" }` 再 `{ action: "expand", id }`。进展写 `progress`，走不通的路写 `rejected`（别把证伪埋进 progress 当进展）。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-turn-tool-receipt',
+    order: 837,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【工具做事，回执汇报】开会/举手/邀请/投票/改任务/写轨迹都是**工具调用**；每轮末尾的 fenced JSON 是**回执通道**，它不携带会议 id、也不替你执行任何动作，只供框架收集你的发言、提议、投票与进度。工具做事，回执汇报。',
       ].join('\n'),
     },
   },

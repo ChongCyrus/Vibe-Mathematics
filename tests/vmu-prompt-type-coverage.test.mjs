@@ -120,6 +120,31 @@ console.log('=== 1. PER-TYPE COVERAGE (the number the whole-corpus ratio cannot 
 // answers "did we transcribe this".
 const looksLikeData = (l) => /[a-z]{1,8}-\d/.test(l) || /^[\[▸]/.test(l) || /^【/.test(l) || /p-[a-z]/.test(l) || /:\s*"/.test(l) || /^陈述：/.test(l) || /^对象：/.test(l) || /^类型：/.test(l)
 
+// ★ EIGHTH STRUCTURAL CLASS (2026-10-28, THE LEDGER ROUND) — FIVE CAPTURED LINES WERE CORRECTED, NOT LOST. The
+// kernel contradicts each of them by NAME, so the live teaching now says the true thing and these captures can never
+// match VERBATIM again. Every reason below is a code fact rather than an opinion, and the count is asserted so an
+// exclusion cannot outlive the correction it excuses:
+//   1. 「…开一个议题（propose_meeting）…」. `propose_meeting` is a REPLY field the kernel maps to a MOTION
+//      (kernel/turn/index.js FIELD_OWNERS: propose_meeting → op motion); it is not a tool and it does not convene.
+//   2. 「（流程：**先轮流发言**…想发言的人举手（`meeting_hand:true`）…」. A reply carrying `meeting_hand` is refused
+//      BEFORE dispatch with VMU_TURN_FIELD_NOT_APPLICABLE (kernel/turn/index.js NO_REPLY_MEETING_SHAPE: a receipt
+//      carries no meeting id). The live text teaches `vibe_vmu_meeting { action: "hand" }` inside the meeting round.
+//   3+4. the closure rule line and the receipt-field list. Same defect: closing needs the vote QUORUM m =
+//      min(设置, 院士+常驻研究员人数) (kernel/meetings.js quorumOf, 「表决人数下限」) AND no vote against — not merely
+//      "everyone agrees" — and the receipt-field list named `meeting_hand` / `meeting_invite`, both refused by name.
+//   5. 「议程：…（类型：sync）」. `sync` is a MOTION KIND (packs/v5r/tools.js kind default "sync", KNOWN
+//      ["sync","division","verify-request","solve-vote"]), not one of the six meeting types in
+//      packs/v5r/meeting-procedures.js. The live agenda now says `ordinary`.
+// Excluding these from the per-type prose figure is the rule the DECLARED divergences already follow in
+// tests/vmu-ab-v5r-verification.test.mjs: a corrected capture measures POLICY, not transcription, and folding it into
+// the ratio would reward keeping the defect.
+const isCorrectedTeachingLedger = (l) =>
+  /^或者向团队发消息（say）、开一个议题/.test(l) ||
+  /^（流程：\*\*先轮流发言\*\*/.test(l) ||
+  /^只有当\*\*全体有表决权者\*\*都一致认为是真时/.test(l) ||
+  /^input：发言；meeting_hand：是否举手/.test(l) ||
+  /^议程：分工与下一步（类型：sync）/.test(l)
+let correctedLedgerLines = 0
 const perType = new Map()
 for (const p of PROMPTS) {
   const ph = phaseOf(String(p.kind), String(p.text))
@@ -127,6 +152,7 @@ for (const p of PROMPTS) {
   const bucket = perType.get(ph)
   const mine = norm(ours[ph] || '')
   for (const line of fixedOf(p.text)) {
+    if (isCorrectedTeachingLedger(line)) { correctedLedgerLines += 1; continue }
     bucket.total += 1
     const data = looksLikeData(line)
     if (data) bucket.dataTotal = (bucket.dataTotal || 0) + 1
@@ -135,6 +161,9 @@ for (const p of PROMPTS) {
 }
 const rows = [...perType.entries()].map(([ph, v]) => { const dt = v.dataTotal || 0; const proseTotal = v.total - dt; const proseHit = v.hit - (v.dataHit || 0); return { ph, ...v, pct: Math.round(100 * v.hit / v.total), proseTotal, proseHit, prosePct: proseTotal ? Math.round(100 * proseHit / proseTotal) : 100 } }).sort((a, b) => a.prosePct - b.prosePct)
 for (const r of rows) console.log('    prose ' + String(r.prosePct).padStart(3) + '%  (' + r.proseHit + '/' + r.proseTotal + ')   all ' + String(r.pct).padStart(3) + '%  (' + r.hit + '/' + r.total + ')   ' + r.ph)
+ok(correctedLedgerLines > 0,
+  'THE CORRECTED-TEACHING EXCLUSIONS ARE LIVE: they still match captured lines, so excluding them from the prose figure cannot outlive the correction that justifies it. Measured before and after the correction, with the arithmetic written down: meeting prose 24/30 (80%) -> 16/22 (73%) once 8 corrected occurrences leave the denominator; heartbeat 80/100 (80%) -> 70/90 (78%) once 10 do; NOTHING ELSE MOVED (normal 115/157, verify 199/241, founding 51/64, resume 21/27, paper-* identical), so the loss is exactly the declared lines and no transcription was dropped',
+  { matchedCorrectedOccurrences: correctedLedgerLines })
 // Every type that the port assembles must reproduce most of its own corpus, and the worst type is the one to watch: a
 // single headline number hides a type at forty percent behind a type at ninety-five.
 const worst = rows[0]
@@ -277,11 +306,12 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   // the true thing, so these two lines can no longer match VERBATIM - by design, and with the reason written here
   // rather than folded into a percentage.
   const isCorrectedTeaching58 = (l) => /两种写法都接受/.test(l) || /on a missing file: V5_NOT_FOUND/.test(l)
-  const unexplained = left.filter((x) => !isCorrectedTeaching58(x.line) && !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
+  // the eighth class (declared above, section 1): the ledger round corrected five captured lines the kernel contradicts
+  const unexplained = left.filter((x) => !isCorrectedTeaching58(x.line) && !isCorrectedTeachingLedger(x.line) && !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
   const uniqueLeft = [...new Set(left.map((x) => x.line))]
   const uniqueUnexplained = [...new Set(unexplained.map((x) => x.line))]
   ok(unexplained.length === 0,
-    "EVERY REMAINING GAP IS STRUCTURAL: of " + left.length + " unreproduced occurrences, which are " + uniqueLeft.length + " DISTINCT lines, every one is either the compact catalogues OTHER wording (the corpus spans a version change of the original, so printing both would print a line the original did not) a line addressed to a member or reviewer this scenario did not name (one assembly names one member), a line that carried a CAPTURED ABSOLUTE PATH and was made relative on purpose (round 94: freezing a recorded path into a live prompt is what the runtime-safety guard refuses), or the DECLARED paper-protocol replacement (JSON receipt fields → vibe_v5_paper tool calls). No line is missing for want of transcription",
+    "EVERY REMAINING GAP IS STRUCTURAL: of " + left.length + " unreproduced occurrences, which are " + uniqueLeft.length + " DISTINCT lines, every one is either the compact catalogues OTHER wording (the corpus spans a version change of the original, so printing both would print a line the original did not) a line addressed to a member or reviewer this scenario did not name (one assembly names one member), a line that carried a CAPTURED ABSOLUTE PATH and was made relative on purpose (round 94: freezing a recorded path into a live prompt is what the runtime-safety guard refuses), or the DECLARED paper-protocol replacement (JSON receipt fields → vibe_v5_paper tool calls), or one of the FIVE CAPTURED LINES CORRECTED IN THE LEDGER ROUND because the kernel refuses their mechanism by name (meeting_hand/meeting_invite in a receipt; propose_meeting taught as a tool; sync taught as a meeting type; closure taught without its quorum). No line is missing for want of transcription",
     { occurrences: left.length, distinctLines: uniqueLeft.length, firstLines: uniqueLeft.slice(0, 3).map((l) => l.slice(0, 60)), unexplainedDistinct: uniqueUnexplained.length, unexplained: uniqueUnexplained.slice(0, 6).map((l) => l.slice(0, 120)) })
 }
 console.log('=== 6. THE PER-MEMBER STARTING DIRECTIONS ARE SELECTED BY MEMBER ===')

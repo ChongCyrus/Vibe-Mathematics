@@ -108,7 +108,7 @@ export const v5rPaperFinalSection = Object.freeze({
     '    vibe_v5_paper { action: "final", target: "本次论文的目标对象", member: "你的成员 id",',
     '                    decision: "deliverable", note: "定稿说明（含对最后分歧的处理）", conclusion: "论文结论的正式陈述" }',
     '· ★ 它**是**一个工具：早先靠回执字段 `paper_final` 提交的做法已经取消，回执里写那个字段会被判 `VMU_TURN_UNKNOWN_FIELD`。',
-    '· ★ **只有学术委员会主席席可以定稿**；其他席位调用 `final` 会被具名拒绝（VMU_NOT_PERMITTED，并指出你的席位）。',
+    '· ★ **定稿席位就是院士（chair 席）**：运行时纸面装配里 `finalizerSlot: "chair"`；不是 chair 席的人调用 `final` 会被具名拒绝（VMU_NOT_PERMITTED，并指出你的席位）。',
     '· ★ 产物四件：md / tex / pdf / meta。渲染会写出 md、tex、meta；**pdf 需要内核的 LaTeX 编译执行器**，本内核尚无此能力（会具名说明），所以定稿回执不会声称四件齐全。中文论文的引擎顺序是 ' + PAPER_ENGINE_ORDER.zh.join(' → ') + '。',
   ].join('\n'),
 })

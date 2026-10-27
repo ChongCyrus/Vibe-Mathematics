@@ -111,7 +111,7 @@ const allSectionText = SECTIONS.map((s) => String((s && s.text) || '')).join('\n
   ok(/status\/summary\/meetingView 立刻可读/.test(chair), '③ reads-before-start are taught (the capability an agent would otherwise miss)')
   ok(/具名拒绝/.test(chair), '★ ③ the pre-start refusal is taught as BY NAME, not as a silent no-op')
   ok(/beat\(\)/.test(chair), '③ and settlement is attributed to the kernel sweep, so nobody waits for a timer that does not exist')
-  ok(/没有 `sequence` 参数/.test(chair) && /逐场召集/.test(chair),
+  ok(/`sequence` 数组一次召集多场/.test(chair) && /逐场召集/.test(chair),
     '★ ③ 连排 is taught HONESTLY: this face has no sequence parameter, so schedule each meeting with its own `at`')
 
   // ④ human approvals — read on every seat; decide is the human's, via the office.

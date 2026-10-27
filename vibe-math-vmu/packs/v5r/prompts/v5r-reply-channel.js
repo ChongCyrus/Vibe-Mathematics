@@ -70,7 +70,7 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'task_create', face: 'vmu.tasks', op: 'create', common: true,
     note: '{subject,description,blocked_by?,write_scopes?}' }),
   Object.freeze({ field: 'task_update', face: 'vmu.tasks', op: 'transition', common: true,
-    note: '{task_id,expected_revision,action}（action 可为 complete/release/reopen/edit/set_dependencies/delete，过期版本会被拒）' }),
+    note: '{task_id,expected_revision,action}；action 只有 claim|reassign|assign|transition|complete|reopen|set_dependencies 七个（edit/delete/release 在这个内核里没有对应操作，会被具名拒）；合法流转只有 open→assigned|doing、assigned→doing|open、doing→done|assigned；修订号过期会被拒' }),
   Object.freeze({ field: 'proposal', face: 'vmu.meetings', op: 'motion',
     note: '动议；与 propose_verify 同一个属主面，对象里说明要做什么' }),
   Object.freeze({ field: 'motion', face: 'vmu.meetings', op: 'motion',

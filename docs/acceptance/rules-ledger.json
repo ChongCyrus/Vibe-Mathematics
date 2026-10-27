@@ -307,7 +307,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
       ],
-      "next": "补教学段（谁 propose、多久算逾期、adopt 的语义）；真机跑 blueprint state→propose→adopt"
+      "next": "补教学段（谁 propose、多久算逾期、adopt 的语义）；真机跑 blueprint state→propose→adopt",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::只有院士席（chair）**能"
+      ]
     },
     {
       "id": "B5",
@@ -320,7 +323,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
       ],
-      "next": "教学写清“任何 live 成员可 propose、院士 adopt”；真机验常驻 propose"
+      "next": "教学写清“任何 live 成员可 propose、院士 adopt”；真机验常驻 propose",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::只有院士席（chair）**能"
+      ]
     },
     {
       "id": "B6",
@@ -333,7 +339,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
       ],
-      "next": "同上教学 + 真机验“常驻 propose 被院士改后再 adopt”"
+      "next": "同上教学 + 真机验“常驻 propose 被院士改后再 adopt”",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::只有院士席（chair）**能"
+      ]
     },
     {
       "id": "C1",
@@ -501,7 +510,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_set"
       ],
-      "next": "补教学（off/encourage/require 三档含义）+ 真机"
+      "next": "补教学（off/encourage/require 三档含义）+ 真机",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::三档"
+      ]
     },
     {
       "id": "C13",
@@ -588,7 +600,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_message"
       ],
-      "next": "补一句语义教学（机制已有 urgent）"
+      "next": "补一句语义教学（机制已有 urgent）",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::三通道的紧急语义"
+      ]
     },
     {
       "id": "D4",
@@ -630,7 +645,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_read_library"
       ],
-      "next": "无定向入口（只能 list state 行）：加“读某成员状态板”形状 + 教学 + 真机"
+      "next": "无定向入口（只能 list state 行）：加“读某成员状态板”形状 + 教学 + 真机",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::读别人的板"
+      ]
     },
     {
       "id": "D7",
@@ -643,7 +661,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_progress"
       ],
-      "next": "成员写的是 state 面板四字段（progress/obstacles/next/help），与注入的派生四格不同：统一或教清区别"
+      "next": "成员写的是 state 面板四字段（progress/obstacles/next/help），与注入的派生四格不同：统一或教清区别",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::四项必填"
+      ]
     },
     {
       "id": "D8",
@@ -656,7 +677,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_vmu_turn"
       ],
-      "next": "英文键 objective/plan/tasks/current 与中文原文语义等价但名字不同：决定是否改名对齐"
+      "next": "英文键 objective/plan/tasks/current 与中文原文语义等价但名字不同：决定是否改名对齐",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::英文键是"
+      ]
     },
     {
       "id": "E1",
@@ -669,7 +693,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "教学 + 真机（at 预约→到点→状态转 open/waiting）"
+      "next": "教学 + 真机（at 预约→到点→状态转 open/waiting）",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::开始前每个动作都被具名拒"
+      ]
     },
     {
       "id": "E2",
@@ -682,7 +709,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "教学（框架无定时器，靠 beat 结算）+ 真机"
+      "next": "教学（框架无定时器，靠 beat 结算）+ 真机",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::到点人数不齐就"
+      ]
     },
     {
       "id": "E3",
@@ -721,7 +751,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "教学 + 真机（extend 后 upper bound 变大）"
+      "next": "教学 + 真机（extend 后 upper bound 变大）",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::发言延长"
+      ]
     },
     {
       "id": "E6",
@@ -734,7 +767,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "needs a lane: land the missing mechanism/tool/prompt and a live receipt"
+      "next": "needs a lane: land the missing mechanism/tool/prompt and a live receipt",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::可选**的独立名称"
+      ]
     },
     {
       "id": "E7",
@@ -747,7 +783,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "补六种类型的清单教学"
+      "next": "补六种类型的清单教学",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::故意不给推荐骨架"
+      ]
     },
     {
       "id": "E8",
@@ -760,7 +799,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "教学细化（agenda vs agendaitems）"
+      "next": "教学细化（agenda vs agendaitems）",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::agendaitems"
+      ]
     },
     {
       "id": "E9",
@@ -773,7 +815,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "教学改成工具形态（现教成回执字段且该字段非法）"
+      "next": "教学改成工具形态（现教成回执字段且该字段非法）",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::邀请**不是签到"
+      ]
     },
     {
       "id": "E10",
@@ -786,7 +831,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "教学 + 真机（hardLimitMs 截断发言）"
+      "next": "教学 + 真机（hardLimitMs 截断发言）",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::hardLimitMs"
+      ]
     },
     {
       "id": "E11",
@@ -799,7 +847,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "教学 + 真机（一次给定三场指标与开始时间）"
+      "next": "教学 + 真机（一次给定三场指标与开始时间）",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::逐场召集"
+      ]
     },
     {
       "id": "E12",
@@ -828,7 +879,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "补一览表教学（含 ordinary 无骨架的理由）"
+      "next": "补一览表教学（含 ordinary 无骨架的理由）",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::故意不给推荐骨架"
+      ]
     },
     {
       "id": "E14",
@@ -842,7 +896,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::举手"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::用工具举手"
       ],
       "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
     },
@@ -854,7 +908,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "教学改成工具形态 + 真机"
+      "next": "教学改成工具形态 + 真机",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::invitedspeak"
+      ]
     },
     {
       "id": "E16",
@@ -867,7 +924,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "教学（order/flow 两种机制）+ 真机"
+      "next": "教学（order/flow 两种机制）+ 真机",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::按数组顺序批量"
+      ]
     },
     {
       "id": "E17",
@@ -877,7 +937,10 @@
       "mechanism": [
         "vibe-math-vmu/packs/v5r/meeting-procedures.js::recommendation"
       ],
-      "next": "无独立工具、无并行隔离：决定是否加“批量独立表态”动作（破坏性重构允许）"
+      "next": "无独立工具、无并行隔离：决定是否加“批量独立表态”动作（破坏性重构允许）",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::单次发言版群聊"
+      ]
     },
     {
       "id": "E18",
@@ -890,14 +953,20 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_poll_open"
       ],
-      "next": "教学 + 真机（poll_open→vote→close，含 min/max 校验）"
+      "next": "教学 + 真机（poll_open→vote→close，含 min/max 校验）",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::poll_open"
+      ]
     },
     {
       "id": "E19",
       "rule": "L37",
       "text": "投票板不用于辩论",
       "status": "MISSING",
-      "next": "辩论中投票板没有具名拒（仅教学约定）：需加具名拒或明确裁定不需要"
+      "next": "辩论中投票板没有具名拒（仅教学约定）：需加具名拒或明确裁定不需要",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::辩论不用投票板"
+      ]
     },
     {
       "id": "E20",
@@ -923,7 +992,10 @@
       "mechanism": [
         "vibe-math-vmu/kernel/chat.js::mute"
       ],
-      "next": "机制齐全（admins/mute/quota/freeze）但教学零：补教学 + 真机验配额与禁言"
+      "next": "机制齐全（admins/mute/quota/freeze）但教学零：补教学 + 真机验配额与禁言",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::VMU_CHAT_MUTED"
+      ]
     },
     {
       "id": "E22",
@@ -978,7 +1050,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "无并行隔离：同 E17 决定"
+      "next": "无并行隔离：同 E17 决定",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::步骤只是**建议"
+      ]
     },
     {
       "id": "E26",
@@ -991,7 +1066,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "needs a lane: land the missing mechanism/tool/prompt and a live receipt"
+      "next": "needs a lane: land the missing mechanism/tool/prompt and a live receipt",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::发言序"
+      ]
     },
     {
       "id": "E27",
@@ -1027,7 +1105,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "机制无硬限，但提示词把轮数硬钉成设置键：改教学"
+      "next": "机制无硬限，但提示词把轮数硬钉成设置键：改教学",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::辩论轮数由院士决定"
+      ]
     },
     {
       "id": "F1",
@@ -1090,7 +1171,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_paper"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js::定稿"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js::定稿席位就是院士"
       ],
       "next": "教学里“院士席 vs 学术委员会主席席”有矛盾，需修 + 真机"
     },
@@ -1112,7 +1193,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_set"
       ],
-      "next": "教学错指成 vmu.turn.maxParallel（那是唤醒人数），应指 vmu.math.maxParallel"
+      "next": "教学错指成 vmu.turn.maxParallel（那是唤醒人数），应指 vmu.math.maxParallel",
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::vmu.math.maxParallel"
+      ]
     },
     {
       "id": "G3",
@@ -1162,7 +1246,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::V5R_PACK_TOOLS"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::回执"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::工具做事，回执汇报"
       ],
       "next": "围栏 JSON 仍是回执通道：需在教学中说清二者分工"
     },

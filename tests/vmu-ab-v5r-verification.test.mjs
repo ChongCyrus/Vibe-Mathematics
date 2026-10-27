@@ -518,6 +518,25 @@ const phaseOf = (kind, text) => {
     // faces instead (`vibe_v5_meeting`, `vibe_v5_task_create`, `vibe_vmu_control`, `vibe_vmu_control{action:"fire"}`),
     // so the captured line is not reproducible by design rather than missing transcription.
     { prefix: '协调需要时可propose_verify', why: 'ROUND 31/task-14: taught three commands that are not tools (F5 ruling)' },
+    // ★★★ 2026-10-28, THE LEDGER ROUND — THE SAME F5 RULING, APPLIED TO THE TEACHING THE KERNEL REFUTES. The rule
+    // ledger (docs/acceptance/rules-ledger.json, rows E9/E13/B6/G7) found five captured lines teaching mechanisms the
+    // kernel refuses BY NAME, so the live charter now says the true thing and these captures can no longer match
+    // verbatim. Counted on this run: 18 occurrences (10 in the heartbeat family, 8 in the meeting family), and the
+    // pool drops from 673 to 655 with the hits unchanged at 506 — 506/655 = 77%, pinned below. Each one names the code:
+    //   · `propose_meeting` is a REPLY field the kernel maps to a MOTION (kernel/turn/index.js FIELD_OWNERS), not a
+    //     tool; the live text says so and names `vibe_v5_meeting` / motion.
+    //   · `meeting_hand` in a receipt is refused BEFORE dispatch (VMU_TURN_FIELD_NOT_APPLICABLE,
+    //     kernel/turn/index.js NO_REPLY_MEETING_SHAPE — a reply carries no meeting id); live text teaches
+    //     `vibe_vmu_meeting { action: "hand" }` inside the meeting round. Same for `meeting_invite`.
+    //   · closure needs the vote quorum m = min(设置, 院士+常驻研究员人数) (kernel/meetings.js quorumOf), not merely
+    //     unanimity; the live line states the quorum and reads 「法定票数」 from the status block.
+    //   · `sync` is a MOTION KIND (packs/v5r/tools.js), not one of the six meeting types
+    //     (packs/v5r/meeting-procedures.js); the live agenda says `ordinary`.
+    { prefix: '或者向团队发消息（say）、开一个议题', why: 'LEDGER ROUND: propose_meeting taught as a tool; it is a reply/motion proposal' },
+    { prefix: '（流程：**先轮流发言**', why: 'LEDGER ROUND: meeting_hand in a receipt is refused by name; hand is a tool action' },
+    { prefix: '只有当**全体有表决权者**都一致认为是真时', why: 'LEDGER ROUND: closure needs the vote quorum m, not unanimity alone' },
+    { prefix: 'input：发言；meeting_hand：是否举手', why: 'LEDGER ROUND: the receipt field list named two fields the kernel refuses' },
+    { prefix: '议程：分工与下一步（类型：sync）', why: 'LEDGER ROUND: sync is a motion kind; the six types have no sync' },
   ]
   const matchedDeclared = Object.fromEntries(DECLARED_DIVERGENCES_AB.map((d) => [d.prefix, 0]))
   let declaredAB = 0
@@ -560,8 +579,14 @@ const phaseOf = (kind, text) => {
   //   exactly those 7 occurrences: 531 -> 524, pool UNCHANGED at 673 (nothing was excluded from measurement), ratio
   //   79% -> 78%. The floors are pinned AT the new measured values again, so a further loss - or a family quietly
   //   disappearing - still reddens.
+  //   2026-10-28 (fourth re-base, THE LEDGER ROUND): the five teaching defects the rule ledger names (docs/acceptance/
+  //   rules-ledger.json rows E9/E13/B6/G7) were corrected in the live charter because the kernel refuses their
+  //   mechanism BY NAME. Those 18 occurrences (10 heartbeat + 8 meeting) are DECLARED like the F5 families, so they
+  //   leave BOTH sides: declared 150 -> 168, pool 673 -> 655, hits 524 -> 506 (506/655 = 77.25%, measured 77%), and
+  //   the prose-only figure moves 508/538 (94%) -> 490/520 (94%) - the RATIO IS UNCHANGED, which is the check that
+  //   nothing but the declared lines was lost. Floors pinned AT the measurement: pool 655 >= 650, ratio 77 >= 77.
   const AB_POOL_FLOOR = 650
-  const PCTAB_FLOOR = 78
+  const PCTAB_FLOOR = 77
   ok(totalAB >= AB_POOL_FLOOR && hitAB > 0,
     "V66. **** ACCEPTANCE (2), MEASURED (ROUND 550 DECLARED REFORM, RE-BASED 2026-10-24: " + declaredAB + " captured lines are DECLARED divergences (F5 + the tool-help signature fix) and are excluded from both sides, so this ratio measures reconstructed prose rather than quoted policy; the harness uses the corpus's own object name p-lean-a, a deliberate change declared rather than folded in - and MEASURED TO CHANGE NOTHING, because this comparison reads a SYNTHETIC assembly rather than the harness run, so the residual below is scenario DATA (vote payloads, formal decisions) that no assembly can produce): our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",
     { hit: hitAB, total: totalAB, percent: pctAB, declared: declaredAB })
