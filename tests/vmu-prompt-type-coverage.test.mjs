@@ -270,7 +270,14 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   // plain member it ran the institute. The section is still shipped (the chair really does lead), so the only
   // reproducible difference is that non-chair assemblies no longer carry those two lines.
   const isChairOnlyRoleSection = (l) => /^作为院士，除了做研究/.test(l) || /^哪里是瓶颈；把工作拆成任务并用/.test(l)
-  const unexplained = left.filter((x) => !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
+  // ★ SEVENTH STRUCTURAL CLASS (ROUND 58) - THE LEAN FACE'S TEACHING WAS CORRECTED, NOT LOST. Live run 58's member
+  // filed two lines of the charter as wrong: (a) the promise that BOTH path forms work, when every path is resolved
+  // against the LIBRARY ROOT, and (b) a hint sample naming a refusal code (`V5_NOT_FOUND`) the face never returns
+  // (`VMU_LEAN_FILE_UNREADABLE`). The corpus keeps the old wording as the capture it is; the live teaching now says
+  // the true thing, so these two lines can no longer match VERBATIM - by design, and with the reason written here
+  // rather than folded into a percentage.
+  const isCorrectedTeaching58 = (l) => /两种写法都接受/.test(l) || /on a missing file: V5_NOT_FOUND/.test(l)
+  const unexplained = left.filter((x) => !isCorrectedTeaching58(x.line) && !isOtherCatalogueVersion(x.line) && !isAddressedToSomeoneElse(x.line) && !isDeFrozenCapturedPath(x.line) && !isReplacedPaperProtocol(x.line) && !isRetiredByF5(x.line) && !isChairOnlyRoleSection(x.line))
   const uniqueLeft = [...new Set(left.map((x) => x.line))]
   const uniqueUnexplained = [...new Set(unexplained.map((x) => x.line))]
   ok(unexplained.length === 0,

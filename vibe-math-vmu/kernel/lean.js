@@ -427,7 +427,12 @@ export function createLeanFace(opts) {
     await writeMirror(j)
     if (before === undefined) {
       j.state = 'failed'; j.endedAt = clock(); j.reason = 'file-unreadable'
-      j.receipt = refuse('VMU_LEAN_FILE_UNREADABLE', '读不到 Lean 产物文件：' + j.file, '先写出 .lean 文件；本面只编译既有文件')
+      // ★ LIVE RUN 58 (a member's own feedback): the taught text promised that a SHORT path worked, but every path
+      // here is resolved against the LIBRARY ROOT, so `Formal/x.lean` meant `<root>/Formal/x.lean`. The refusal kept
+      // the path the caller typed and threw away the one the face actually tried, which is the only fact that
+      // distinguishes "typo" from "wrong base". Now both are in the receipt.
+      j.receipt = refuse('VMU_LEAN_FILE_UNREADABLE', '读不到 Lean 产物文件：' + j.file + '（按库根解析为 ' + resolveFile(j.file) + '）',
+        '先写出 .lean 文件；本面只编译既有文件。file 参数按库根解析：短路径写在库根之下（例如库根/Formal/x.lean），库根之外请用绝对路径')
       note(j.id, 'failed:unreadable'); await writeMirror(j); return
     }
     // ── F45 去重：与 settle **同源**（dedupeKey ＝ 内容哈希 ＋ 构建上下文，即 settle 要复核的那两个事实）。

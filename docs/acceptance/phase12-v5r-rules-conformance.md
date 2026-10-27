@@ -6892,3 +6892,53 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 - F-43 的 `writer.agentId`：仍缺席（无下传缝），未验。
 
 ### §160.7 无实质残余：否（残余 F-41c、F-43 的 agentId、F-13 记录 id、以及本轮未覆盖的三项）
+
+## §161 真机跑 58（复验 F-41b；成员自己报出 F-48）
+
+### §161.1 读数
+- 驱动：`DRIVE exit=0`、`durationSec 574`、根会话 `toolCalls 8`、`transcriptEvents 62`、`tokenTotal 2,991,045`（cap 12,000,000，未触顶）、3 个会话、`SUMMARY: 3 session(s) in 1 file(s), 0 with RED checks`。
+- 快照：`_oneoff/vm-slv/full-1027-170130.jsonl` = 19,708,583 B / 49,328 行；围栏计数 `NO_FENCE=24 UNKNOWN_FIELD=46 FIELD_NOT_APPLICABLE=22 BAD_JSON=24`；日志保全戳 `20261027-171151`；`cleanup: clone_gone=True port_listening=False C_free_GB=10.38`。
+- 可见工具 95 个（57 host + 38 pack）；`calls (8) vs results (8)`；根会话 prompt 8,942 字符。
+
+### §161.2 判决（逐项）
+| # | 这一轮要验的 | 结论 | 依据 |
+|---|---|---|---|
+| 1 | F-41b：归因槽存在且命名 | ✅ | 第 2 步 `status.lastAttribution.slot:"single"`、`member:null`、`attributionMeans` 原句可读 |
+| 2 | F-41b：槽跟随投递、能回答「归给谁」 | ✅ | 第 6 步 `lastAttribution.member:"r-2"`、`counts.delivered:2`、`woken:{"r-1":1,"r-2":1}`、`memberSessions` 两个成员都在 |
+| 3 | F-47 回归：`onDisk` 仍含任务板 | ✅ | 第 7 步 `projections.onDisk = ["human","tasks","meetings","budget","chat","members"]` |
+| 4 | 简报字段名 | ❌（简报错） | 第 7 步让 root 抄 `projections.len`，该字段不存在；root 如实写「没有该字段」 |
+| 5 | F-48：Lean 面的「教的」与「做的」 | ❌（新缺陷） | 成员 r-2 在 `vibe_v5_feedback` 里报出两处自相矛盾，见 §161.3 |
+| 6 | 成员能否按岗位自主工作 | ✅ | r-1、r-2 各自跑了 Lean 编译（`lean-4/5/6`）、写记录卡、互相复验、给反馈；r-2 还独立重证并抓出 r-1 卡里「n·a=0」为假 |
+| 7 | 围栏噪声 | ⚠️ | `FIELD_NOT_APPLICABLE=22`、`UNKNOWN_FIELD=46` 未逐条提取，与简报要求无关 |
+
+### §161.3 缺陷与修法（F-48：Lean 面的三处「教错」）
+- **真因**（成员原话，`vibe_v5_feedback` 第 58 轮）：
+  1. `vibe_v5_lean_run` 的 `statement` 在 schema 里**可选**、在 description 里**未提**，但面在没有它时具名拒 `VMU_LEAN_STATEMENT_REQUIRED`（成员为此多花一次调用）；
+  2. charter 写「file 参数两种写法都接受：完整路径，或短的 `Formal/xxx.lean`」，但面把所有路径按**库根**解析，成员的工作目录是**会话工作目录** ⇒ 短写指向另一个文件，实测被拒 `VMU_LEAN_FILE_UNREADABLE`（r-1 的 `lean-1`）；
+  3. 同一批 charter 里的示例写着 `vibe_v5_lean_run on a missing file: V5_NOT_FOUND`，而真实码是 `VMU_LEAN_FILE_UNREADABLE`。
+- **修法**：
+  1. `packs/v5r/tools.js` 的 `vibe_v5_lean_run`：`statement` 标 `required: true`，description 明说它是这条回执与审计针对的命题，并写明路径基准（库根）与绝对路径这个逃生口；
+  2. `kernel/lean.js` 的 `VMU_LEAN_FILE_UNREADABLE`：message 同时回显「调用者写的路径」与「按库根解析到的绝对路径」，hint 点名基准与绝对路径；
+  3. `packs/v5r/prompts/v5r-blocks-b.js` 两处教学文本改成「按库根解析、库根之外写绝对路径」；示例里的错误码改成真码与真形状。
+- **新套件** `tests/vmu-run58-lean-face-contract.test.mjs`（7/0）：声明必填、描述写清基准、拒收回显两个路径、hint 点名基准与逃生口、库根之内的文件仍能编译（修法不破坏正常路径）、教学块不再承诺无限定的短写法。
+- **刻意不做**：不把「短路径」改成自动在两个基准下兜底——那会让「我按哪个基准理解了你」重新变成猜。诚实修法是让它被教对、并在拒收时自证。
+
+### §161.4 门禁（改教学之后的量具记账）
+- 本轮新增/改动套件全绿：`vmu-run58-lean-face-contract` 7/0、`vmu-lean` 21/0、`vmu-prompt-clean` 8/0、`vmu-ab-v5r` 73/0、`audit-prompt-invariants` 211/0；`regen-all --write` 16/16；`check-docs` ⇒ `DOC LINT: PASS`。
+- **量具记账（两条，都是「改的是教学、量具要记账」，不是把数字拧回去）：**
+  1. `tests/vmu-prompt-type-coverage.test.mjs` —— 语料里那两行旧措辞不再被活提示词复现，新增**第七类** `isCorrectedTeaching58`（路径承诺 + 假错误码）并写明原因（捕获快照是证据，活教学说真话）⇒ 14/0。
+  2. `tests/vmu-ab-v5r-verification.test.mjs` —— `knownGapsAB` 增第 6 个族（`the Lean teaching corrected in ROUND 58 (path base named, honest refusal code)`）；`PCTAB_FLOOR` 由 79 改为 **78**，第三次 re-base 的算术写进注释：hits 531 → 524（正好那 7 处出现：6+1），pool 不变 673，比值 79% → 78%；`AB_POOL_FLOOR` 仍 650（没有任何族被悄悄移出测量）；同族在 V71 的 `CLOSED_BY_VERIFIED` 里补第 6 行并指向真被修好的文件。
+- 派生计数与全量 T1 见本轮提交前的最终读数。
+
+### §161.5 简报错
+1. 第 7 步让 root 抄 `projections.len`——`detail:"provenance"` 没有这个字段（本轮只该抄 `onDisk`/`writtenBy`/`absent`）。
+2. 第 3/5 步让成员「等这一轮结束」，但没告诉它「这一轮只做这一件事」；两名成员都按岗位职责做了大量工作（这是好事），只是耗时远超预期（574s），且让读数与产品行为混在一起。
+3. 第 8 步让 root 先 `vibe_v5_stop` 再写五段，`stop` 之后的读数不再进快照，所以「停所之后再验一次」这类动作不可达。
+
+### §161.6 无法验证
+- F-41c（采纳裁决的本地审计行）：仍未取证。
+- F-13（记录 id 与成员 id 同形）：未验。
+- F-43 的 `writer.agentId`：仍缺席（无下传缝）。
+- 围栏噪声 22/46 条的逐条归属。
+
+### §161.7 无实质残余：否（残余 F-41c、F-43 的 agentId、F-13，以及围栏噪声的逐条归属）

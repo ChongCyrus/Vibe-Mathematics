@@ -3459,8 +3459,12 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_lean_run',
-    description: 'Compile one existing .lean file through the kernel\'s Lean face (the face owns the process, timeout and cancel path). Assembly without a host spawn seam ⇒ NAMED refusal; a per-call timeout_ms is reported as unapplied.',
-    parameters: { file: { type: 'string', required: true }, target: { type: 'string' }, statement: { type: 'string' }, timeout_ms: { type: 'integer' }, member: { type: 'string' } },
+    // ★ LIVE RUN 58 (a member filed this as feedback after burning a call): the schema said `statement` was optional
+    // and the description never mentioned it, while the face refuses a submit without it
+    // (`VMU_LEAN_STATEMENT_REQUIRED`). Taught and done now say the same thing. The path rule is stated too, because
+    // the teaching text used to promise a short form the face resolves against a different base.
+    description: 'Compile one existing .lean file through the kernel\'s Lean face (the face owns the process, timeout and cancel path). ★ `statement` is REQUIRED: it is the proposition this file is supposed to formalise, and it is what the receipt and the audit are about (a submit without it is refused by name). ★ `file` is resolved against the LIBRARY ROOT (the `VibeMath/` directory), so a short path works only when it lives under that root — anywhere else pass an absolute path, and a file the face cannot read comes back with the absolute path it actually tried. Assembly without a host spawn seam ⇒ NAMED refusal; a per-call timeout_ms is reported as unapplied.',
+    parameters: { file: { type: 'string', required: true }, target: { type: 'string' }, statement: { type: 'string', required: true }, timeout_ms: { type: 'integer' }, member: { type: 'string' } },
     handler: toolLeanRun,
   },
   {

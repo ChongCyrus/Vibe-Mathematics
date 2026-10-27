@@ -555,8 +555,13 @@ const phaseOf = (kind, text) => {
   // WHY A POOL FLOOR AT ALL: `totalAB` can only shrink by DECLARING lines (each declaration is a visible row in the table
   // above, and V65b requires every declared family to still match captured lines). A sudden drop therefore means someone
   // excluded a family without a reason, which is what this floor catches.
+  //   ROUND 58 (third re-base): live run 58's member filed the two prompt lines above as WRONG (a path promise the
+  //   face cannot honour, and a refusal code that does not exist). The pack stopped reproducing them, so hits drop by
+  //   exactly those 7 occurrences: 531 -> 524, pool UNCHANGED at 673 (nothing was excluded from measurement), ratio
+  //   79% -> 78%. The floors are pinned AT the new measured values again, so a further loss - or a family quietly
+  //   disappearing - still reddens.
   const AB_POOL_FLOOR = 650
-  const PCTAB_FLOOR = 79
+  const PCTAB_FLOOR = 78
   ok(totalAB >= AB_POOL_FLOOR && hitAB > 0,
     "V66. **** ACCEPTANCE (2), MEASURED (ROUND 550 DECLARED REFORM, RE-BASED 2026-10-24: " + declaredAB + " captured lines are DECLARED divergences (F5 + the tool-help signature fix) and are excluded from both sides, so this ratio measures reconstructed prose rather than quoted policy; the harness uses the corpus's own object name p-lean-a, a deliberate change declared rather than folded in - and MEASURED TO CHANGE NOTHING, because this comparison reads a SYNTHETIC assembly rather than the harness run, so the residual below is scenario DATA (vote payloads, formal decisions) that no assembly can produce): our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",
     { hit: hitAB, total: totalAB, percent: pctAB, declared: declaredAB })
@@ -607,10 +612,18 @@ const phaseOf = (kind, text) => {
     // `paper_part` / `paper_review` JSON, the pack now instructs tool calls instead. This is a deliberate
     // divergence, so those captured lines are structurally unreproducible rather than missing transcription.
     "the paper submission protocol (JSON receipt fields → vibe_v5_paper tool calls)",
+    // ★ ROUND 58 — THE MEMBER WAS RIGHT AND THE PROMPT WAS WRONG (live run 58, the member's own feedback).
+    // Two captured lines taught something the runtime does not do: (a) that the Lean `file` parameter accepts
+    // "both forms" when every path is resolved against the LIBRARY ROOT, and (b) a hint sample naming a
+    // `V5_NOT_FOUND` refusal that the face never returns (`VMU_LEAN_FILE_UNREADABLE`). The pack now teaches the
+    // true rule (library root; absolute path elsewhere) and the refusal prints both the typed and the resolved
+    // path, so those 7 occurrences (6 + 1) can no longer match the capture VERBATIM — the same class as the F5
+    // retirement: the corpus was the source, and reproducing it would be reproducing the defect.
+    "the Lean teaching corrected in ROUND 58 (path base named, honest refusal code)",
   ]
-  ok(pctAB >= PCTAB_FLOOR && knownGapsAB.length === 5,
+  ok(pctAB >= PCTAB_FLOOR && knownGapsAB.length === 6,
     "V67. **** and the gap is NAMED rather than rounded away, with a FLOOR on the measured ratio: the closed families are the compact catalogue, the refusal notice and the contextPct/compacted clarification, and the five that remain are listed (the paper protocol is a DECLARED replacement, see the comment)",
-    { families: knownGapsAB.length, percent: pctAB })
+    { families: knownGapsAB.length, percent: pctAB, hits: hitAB, pool: totalAB })
 
   // ROUND 549 - THE GAP LIST, CHECKED RATHER THAN TRUSTED. The four families above were each verified by hand and all four are
   // CLOSED: the notice chain has a producer (queueNotice, called by the turn loop and exposed as notify), a one-shot consumer
@@ -624,6 +637,10 @@ const phaseOf = (kind, text) => {
     { family: 'the two catalogues are alternatives', by: 'vibe-math-vmu/packs/v5r/middleware/prompt-switches.js', what: 'the same switch' },
     { family: 'the inbox header before the line', by: 'vibe-math-vmu/packs/v5r/notices.js', what: 'INBOX_HEADER' },
     { family: 'the paper submission protocol (JSON receipt fields → vibe_v5_paper tool calls)', by: 'vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js', what: 'paper part/review tool instructions (declared replacement)' },
+    // ★ ROUND 58 — the sixth row pairs with the sixth family above, and it names the teaching block that was fixed:
+    // the file-path rule ("resolved against the library root", not "both forms accepted") and the refusal code the
+    // face really returns. `by` must be a real path in the tree, so the row cannot outlive the fix it points at.
+    { family: 'the Lean teaching corrected in ROUND 58 (path base named, honest refusal code)', by: 'vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js', what: 'library-root path rule + honest refusal code' },
   ]
   // NON-EMPTY FIRST: two empty collections compare equal, which the declaration criterion calls shape B - the check would pass
   // by having nothing to check. And the existence clause is evaluated over a list now required to be non-empty.
