@@ -151,3 +151,7 @@
 | 一次行动可走两扇门 | `vibe-math-vmu/kernel/turn/index.js` 的 `alreadyWrittenThisTurn()`：同一回合里同 owner+同 track+同 title 的第二扇门不写（`skipped.reason="already-written-this-turn"` + `existingId`），账本读不到就不判断。 | `tests/vmu-run43-duplicate-write.test.mjs` |
 | 两扇门读同一本账 | 状态板 ④ 与 `read_library{member}` 读到的必须是**同一条**记录（run 43 证：两扇门各写一条时两者互相矛盾）。 | `tests/vmu-run43-duplicate-write.test.mjs` ① |
 | 回执要点名跳过的字段 | `skipped` 是计数、`skippedDetail` 是行；只给计数等于不给答案（run 37 教训）。 | `tests/vmu-run43-duplicate-write.test.mjs` ① |
+
+- `vibe-math-vmu/kernel/chat.js` → `status()`/`mute()` 的 `muted` 改由 `liveMuted()` 产出（`until === 0` 无期限；过期的行不列、但仍留在账本，剪枝只发生在 `send`/`unmute`）——run 46 的"状态说禁言、send 说放行"两读面打架，`tests/vmu-run46-readface.test.mjs` §1 钉住。
+- `vibe-math-vmu/tools/meeting.js` → 原始会议 `open` 拒 `kind` 时，hint 给出 **service 面的真实形状** `vibe_v5_meeting {type:"debate", agenda:"…", member:"<chair id>"}`（旧 hint 抄了 `action:"open", kind:"debate", subject`，该面不存在这些参数）——测试 §3。
+- `vibe-math-vmu/tools/human.js` → 代批拒绝句去掉混合语言："the DELEGATE is not an approver — the decision would be ATTRIBUTED to an actor that may not approve"，hint 两条出路同步改成英文——测试 §4 静态断言无 CJK。

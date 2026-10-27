@@ -132,11 +132,11 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
         : 'by:"' + delegate.by + '" resolves to role "' + delegate.role + '", which is not an approver'
       throw Object.assign(
         new Error('the human face decides for the institution: caller ' + caller + ' passed ' + named
-          + ', but 被代办者不是审批角色 — the decision would be ATTRIBUTED to an actor that may not approve; declared ' + key + ' = [' + roles.join(', ') + ']'),
+          + ', and the DELEGATE is not an approver — the decision would be ATTRIBUTED to an actor that may not approve; declared ' + key + ' = [' + roles.join(', ') + ']'),
         {
           code,
-          hint: 'two ways out: (1) 用自己的身份 — omit `by` (or name your own role "' + who.role + '"), so the decision is attributed to the caller; '
-            + '(2) 把决定权交给成员自己的席位 — let that member call ' + action + ' from its own turn, where the identity comes from the turn, not from the `by` argument. '
+          hint: 'two ways out: (1) decide in your own name — omit `by` (or name your own role "' + who.role + '"), so the decision is attributed to the caller; '
+            + '(2) hand the decision to that seat — let that member call ' + action + ' from its own turn, where the identity comes from the turn, not from the `by` argument. '
             + 'Who may approve is DECLARED, not hardcoded: ' + key + ' = [' + (roles.length ? roles.join(', ') : 'nobody, so nothing is granted') + '] in settings/schema.js',
           enforced: [key],
           caller: { role: who.role, member: who.member },

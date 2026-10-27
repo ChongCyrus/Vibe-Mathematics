@@ -132,6 +132,21 @@ export function createChat({
   const messages = []
   const audit = []
   const mutes = new Map()          // member -> { until, reason, by, at }
+  /**
+   * ★ ROUND 46 / G — the mutes that are IN FORCE, not merely recorded.
+   *   The send gate has always consulted `until` (an expired mute lets the message through), but the read
+   *   faces — `mute`'s receipt and `status.muted` — printed every key in the book. Live run 46 showed the
+   *   consequence: a mute whose `until` the wall clock had passed ~500s earlier still read as `muted:["r-1"]`,
+   *   until a later send lazily pruned it. Two faces of the same fact disagreed, and the one that disagreed
+   *   was the one a reader trusts. `until === 0` means "no expiry" (declared duration 0) and stays listed.
+   *   Nothing is deleted here: the book is the ledger, this is its live view.
+   */
+  const liveMuted = () => [...mutes.keys()].filter((m) => {
+    const row = mutes.get(m)
+    if (!row || !(row.until > 0)) return true
+    const untilMs = toMs(row.until)
+    return !Number.isFinite(untilMs) || nowMs() < untilMs
+  }).sort()
   const speaks = new Map()         // member -> [instant]
   const admins = new Set(declaredList('vmu.chat.admins', []))
   const dropped = { messages: 0, audit: 0, supplements: 0 }
@@ -588,8 +603,8 @@ export function createChat({
         //    `vibe_vmu_chat {action:"status"}` and this receipt must answer the same question the same way — a caller
         //    that muted two members and reads `muted` can check the whole state without a second call, and a reader
         //    comparing the two faces never has to guess whether a mute took.
-        muted: [...mutes.keys()].sort(),
-        mutedMeans: 'the members muted RIGHT NOW (the same live book action:"status" prints as status.muted), so "did the mute take" is answerable from this receipt',
+        muted: liveMuted(),
+        mutedMeans: 'the members muted RIGHT NOW (the same live book action:"status" prints as status.muted), so "did the mute take" is answerable from this receipt; a row whose `until` the clock has passed is NOT listed',
         enforced: gate.enforced.concat(asked === null ? ['vmu.chat.muteDefaultMs'] : []) }
     },
 
@@ -734,7 +749,8 @@ export function createChat({
       const fr = frozenNow()
       return { ok: true, apiVersion, messages: messages.length, policyGen, admins: [...admins],
         speakQuota: quotaOf(), speakQuotaWindowMs: quotaWindowOf(), muteDefaultMs: muteDefaultOf(),
-        freezeExemptAdmins: freezeExemptAdminsOn(), historyCap: capOf(), muted: [...mutes.keys()],
+        freezeExemptAdmins: freezeExemptAdminsOn(), historyCap: capOf(), muted: liveMuted(),
+        mutedMeans: 'the members muted RIGHT NOW (rows whose `until` the clock has passed are not listed; the row stays in the book until a send or unmute prunes it)',
         frozen: fr.frozen, frozenBy: fr.ballotId,
         mechanism: { hasFrozenSeam: typeof isFrozen === 'function', hasFreezeExemptSeam: typeof freezeExempt === 'function',
           hasAdminSeam: typeof isAdmin === 'function', clockInjected: true, hotSource: typeof (settings && settings.set) === 'function' ? 'settings' : 'memory' },

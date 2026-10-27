@@ -57,7 +57,7 @@ const DECIDER_KEY = 'vmu.human.deciderRoles'
 const INJECT_KEY = 'vmu.human.injectRoles'
 const DECIDER_CODE = 'VMU_HUMAN_DECIDER_ROLE'
 const INJECT_CODE = 'VMU_HUMAN_INJECT_ROLE'
-const DELEGATE_PHRASE = '被代办者不是审批角色'
+const DELEGATE_PHRASE = 'the DELEGATE is not an approver'
 const MEANS = ['self', 'delegate', 'unrecorded']
 
 const entry = await import(pathToFileURL(join(VMU, 'vibe-math-vmu.js')).href)
@@ -111,8 +111,8 @@ try {
       '…and the message names the DECLARED key it enforced (' + DECIDER_KEY + ') — the tool boundary forwards code/message/hint (host.js:447), so the key must be in the text to reach the caller', decided.message)
     ok(typeof decided.hint === 'string' && decided.hint.indexOf(DECIDER_KEY) !== -1,
       '★ the hint names the DECLARED key ' + DECIDER_KEY + ' (what to change, and that it is a declaration not code)', decided.hint)
-    ok(typeof decided.hint === 'string' && decided.hint.indexOf('自己的身份') !== -1 && decided.hint.indexOf('自己的席位') !== -1,
-      '★ the hint states BOTH ways out (用自己的身份 office/chair, or 让成员在自己的席位里决定)', decided.hint)
+    ok(typeof decided.hint === 'string' && decided.hint.indexOf('decide in your own name') !== -1 && decided.hint.indexOf('hand the decision to that seat') !== -1,
+      '★ the hint states BOTH ways out (decide in your own name as office/chair, or hand the decision to that seat)', decided.hint)
     ok(J(after.queue) === J(before.queue) && J(after.status) === J(before.status),
       'the refusal changed NOTHING (queue pending/total and veto counts identical) — a gate that still flips is not a gate', { before, after })
     const stillPending = await call({ action: 'approvalState', request_id: 'rq-r45' })

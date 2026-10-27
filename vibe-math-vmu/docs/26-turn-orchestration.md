@@ -1098,3 +1098,9 @@ run 43 让研究员写**一条** progress，它做了两件事：调 `vibe_v5_re
 **没通过**（详见台账 §147.3）：①**禁言没有生效**且 `mute`/`status`/`unmute` 三面自相矛盾（复现在单/双实例都正常 ⇒ 怀疑两次状态写穿落地顺序）；②`vibe_vmu_meeting {action:"open"}` **静默丢 `kind`/`subject`**、且传 `member:"r-acad"` 就能代主席开会（席位门看参数不看调用方）；③**primitive 与 service 两套会议注册表**：同一个 `m-r45` 一边 `in_session`、一边 `VMU_NO_OPEN_MEETING`，hint「去开会」不可执行；④成员自己提交的**裁决卡不进 `read_library`** 的 `propositions` 轨；⑤`approvalState` 不记 `decidedBy`；⑥`decide` 的席位闸门看调用者不看 `by`。
 
 **判据**：一条门"通过"必须有回执原文；"能走但读不出"与"走不通"分开记；跨面（服务面/内核面/pack 面）必须用**同一次真实动作**验证，不许用两面各调一次就当一致。
+
+## ROUND 46 — 读面要按事实过滤，hint 要给出真实形状
+
+（1）**`status.muted` 列的是此刻在生效的禁言，不是账本里所有的行**：`vibe-math-vmu/kernel/chat.js` 新增 `liveMuted()`——`until === 0` 是无期限（照列）；`until > 0` 且注入时钟已过 ⇒ 不列。**行不删**：账本是历史，剪枝只发生在 `send` 命中过期行（`mute-expired`）或 `unmute`。run 46 实测：到期约 500 秒后 `status` 仍报 `muted:["r-1"]`，而同一时刻 `send` 已被放行——两个读面在同一事实上打架，且错的是被信任的那一面。测试 `tests/vmu-run46-readface.test.mjs` §1（含"账本仍保留该行"）。
+（2）**拒 `kind` 的 hint 必须给出另一面的真实调用形状**：`vibe_vmu_meeting {action:"open", kind:"debate"}` 的 `kind` 是 ballot 概念、会议类型在 service 面；hint 原写 `vibe_v5_meeting {action:"open", kind:"debate", subject:…}`，而该面只有 `{type, agenda, member}`、没有 `action`——**一个指向不存在调用的 hint 比没有 hint 更糟**（run 46 的所办照它试过，收到第二次拒绝）。测试 §3 断言 hint 含 `type:"debate"`、含 `agenda`、且旧说法已消失。
+（3）**回执句子只能有一种语言**：代批拒绝句原样夹了半句中文（`…, but 被代办者不是审批角色 — the decision would be ATTRIBUTED …`），读者要拼两半才懂，而这句话既要给模型读也要给人看。测试 §4 静态断言该段无 CJK。

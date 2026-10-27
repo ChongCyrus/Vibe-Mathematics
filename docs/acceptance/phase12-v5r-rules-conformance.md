@@ -6221,3 +6221,51 @@ T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修
 **验证**：`tests/vmu-run45-ruling-visible.test.mjs` 修前 15/11 红（红在 D1「成员看得到自己提交的裁决卡」），修后 **26/0**；`v5r-tools 359/0`、`library 126/0`、`run31-ruling-channel 92/0`、`run36-records-shared 37/0`；P1 gate 未被污染（D14 断言 records 的 propositions 轨里没有 ruling 行）、`verdict_final` 读面不变（D13 `adoptedFromSubmissions:2`）。
 **已知边界**：`libraryCards` 受 `vmu.records.headListAt`（默认 7）行帽约束并置 `libraryCardsTruncated`；工具 description 未加 `libraryCards` 字样，可发现性目前靠回执里的 `readBack` 与 `vibe_v5_verdict` 的 `next`（下一轮若模型侧仍发现不了，再改描述词）。
 门禁：`update-doc-counts --write`（JOBS 582/suites 474/probes 108）、`regen-all --write` 16/16 → `--check` 16/16、`preflight` PASS。
+
+---
+
+## §148 真机跑 46（build 71a837c2，定向复验 A–G / D / F-15）
+
+### 148.1 读数
+
+- `DRIVE exit=0`、`durationSec 1354`、根会话 `toolCalls 42`、`transcriptEvents 232`、`tokenTotal 11,052,247`（cap 12,000,000，未撞）、4 会话、`SUMMARY: 4 session(s), 0 with RED checks`。
+- jsonl `_oneoff/vm-slv/full-1027-080857.jsonl` = 34,348,894 B / 76,087 行；机器读数 `NO_FENCE=96 UNKNOWN_FIELD=64 FIELD_NOT_APPLICABLE=68 BAD_JSON=108`；日志保全 `D:\_tmp\slv-phase5\slv-logs\…20261027-083207`；clone 已清、C 盘剩 10.57 GB。
+
+### 148.2 判决表
+
+| 门 | 结果 | 回执证据 |
+|---|---|---|
+| A 禁言跨回合（task-28） | ✅ 执行面生效，❌ **读面陈旧** | mute ⇒ `muted:["r-1"]`；立刻 send ⇒ `VMU_CHAT_MUTED`；跨回合 `vibe_vmu_turn` 里再 say 仍被拒；但到期后 ~500s 的 `status` 仍报 `muted:["r-1"]`，直到下一次 send 惰性剪枝才变 `[]` |
+| B `open` 不收 `kind`（task-30） | ✅ 具名拒，但 hint 指错面 | `VMU_INVALID_ARGUMENT` + 解释 kind 是 ballot 概念、应改用 service 面；**但 hint 写 `vibe_v5_meeting {action:"open", kind:"debate", subject:…}`——该面没有这些参数** |
+| C 两注册表可发现（task-30） | ✅ | 原始会议 `status` 回 `registry:"primitive"`、`dropped:[]`；pack 面 `vibe_v5_say{m-pr46}` ⇒ `VMU_NO_OPEN_MEETING` + hint 点名 PRIMITIVE 表并给出可执行调用 |
+| D 成员裁决卡可读（task-31） | ✅ | `vibe_v5_read_library{member:"r-1", track:"propositions"}` ⇒ `count:1`、`libraryCards:[{id:"ruling-m2-rec-7-r-1-69c984f9", status:"ruling", path:"…\Members\r-1\Propos\ruling-….md"}, {id:"p-n2"…}]`、`libraryCardCount:2` |
+| E 审批署名（task-29） | ✅ | `decide` ⇒ `decidedBy:"office"`；`approvalState` ⇒ `decidedBy:"office"` + `decidedByMeans:"self"` |
+| F 代批（task-29） | ✅ 拒，但**中英混排** | `decide{by:"r-1"}` ⇒ `VMU_HUMAN_DECIDER_ROLE`，message 里出现「but 被代办者不是审批角色 — the decision would be ATTRIBUTED…」两句语言粘在一起 |
+| G 解除否决冒名（task-29b） | ✅ | `liftVeto{by:"r-acad"}` ⇒ `VMU_HUMAN_LIFT_ROLE`；本人 `liftVeto` ⇒ `liftedBy:"office"` |
+| F-15 双门同名（32755809） | ✅ | 同回合工具门先写，围栏门第二次 ⇒ `executed:0, skipped:1`、`skippedDetail[0].reason:"already-written-this-turn"`、`existingId` 点名；`attributed`/`coercions` 同时出现 |
+
+### 148.3 本轮修掉的真缺陷（三处）
+
+1. **`status.muted` 不按 `until` 过滤**（`vibe-math-vmu/kernel/chat.js`）：新增 `liveMuted()` 视图（`until > 0` 且时钟未过才列；`until === 0` 是无期限），`status()` 与 `mute()` 回执都改用它，并各带一句 `mutedMeans` 说明"列的是此刻在生效的，`until` 已过的不列；行仍留在账本里，等下一次 send/unmute 剪枝"。测试 `tests/vmu-run46-readface.test.mjs` §1（含"账本仍保留该行"与"下一次 mute 回执只列活的"）。
+2. **`open` 拒 `kind` 的 hint 指向不存在的调用形状**（`vibe-math-vmu/tools/meeting.js`）：改成 service 面的真实形状 `vibe_v5_meeting {type:"debate", agenda:"…", member:"<chair id>"}`，并写明"该面没有 action/kind/subject，run 46 有人照旧 hint 试过、不存在"。测试 §3 三条（含"旧说法已消失"）。
+3. **代批拒绝句里夹中文**（`vibe-math-vmu/tools/human.js`）：整句改英文（`the DELEGATE is not an approver — the decision would be ATTRIBUTED to an actor that may not approve`），hint 两条出路改英文；测试 §4 静态断言该段无 CJK 且点明英文原句。
+
+### 148.4 简报错（我的）
+
+- 第 2 步让 office 直接 `vibe_vmu_meeting{action:"open", id:"m-pr46", kind:"debate"}` 再让院士开会：实测原始会议与 service 会议是两套地址空间，跨表 `say` 必然 `VMU_NO_OPEN_MEETING`（这正是 C 要验的），但我在简报里没写清"这一步必然被拒、要在第 ② 节如实报"。
+- 第 6 步让成员用 `vibe_v5_feedback{action:"add"}`：该面参数是 `op`，成员先被 `VMU_INVALID_ARGUMENT` 拒一次才改对（第 13 次同类）。
+- 第 5 步 F-15 探针没写清"工具门先写、围栏门后写都同标题"，成员自己发明了三个探针（同名同正文、同标题异正文、对齐探针），反而把"去重键是正文指纹"测清楚了——这是简报的收获，不是错，但下次直接写这三条。
+
+### 148.5 门禁
+
+- `VMU RUN 46 READ FACES 18/0`（新）、`VMU CHAT 79/0`、`VMU CHAT FALSIFY 8/0`、`RUN45 CHAT MUTE DURABLE 28/0`、`RUN45 HUMAN DECIDE AUDIT 62/0`、`RUN45 MEETING REGISTRY 36/0`、`RUN33 HUMAN GATE 62/0`、`meeting-parity 204/0`。
+- 收口链：`update-doc-counts --write` → `regen-all --write` 16/16 → `--check` 16/16 → `preflight` PASS → `DOC LINT` PASS → 全量 `GATE_SCOPE=vmu node tests/run-tests.mjs`。
+
+### 148.6 无法验证 / 下一轮
+
+- 无法验证：①禁言到期后成员"下一轮"的拒绝（本轮只验了跨回合内仍被拒，到期后那轮由所办补验成功）；②`status.muted` 在**另一内核**实例读到的值是否与本实例一致（只验了本实例）；③成员自己提交的裁决卡在 service 会议面是否仍不可见（会议面无 rulings/tally 读面，本轮未改）。
+- 下一轮：`vibe_vmu_turn{op:"status"}` 的 `counts`/`members` 语义、会议面 rulings 读面（或记债）、`vibe_v5_feedback` 的 `op` 参数在教学里点明。
+
+### 148.7 无实质残余：否
+
+- 三条读面/文案缺陷已修并加测试；会议面无 rulings 读面与 `status.muted` 跨实例一致性仍留在 §149 待办。
