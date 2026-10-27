@@ -348,7 +348,7 @@ const TRANSIENT_BOARD_WRITE_CODES = Object.freeze(['EPERM', 'EBUSY', 'EACCES', '
 // This seam constructs no service and exposes no `vmu.*` name — it ATTACHES the store to the already-registered
 // `vmu.tasks` face (exactly like `bindIds` binds `vmu.ids` without a create factory). Naming it `createX` would
 // either advertise a phantom service or force a registry row for something callers cannot address.
-function attachSharedBoard({ target, key = 'tasks', store = null, clock = () => Date.now(), log = () => {} } = {}) {
+function attachSharedBoard({ target, key = 'tasks', store = null, clock = () => Date.now(), log = () => {}, writer = null } = {}) {
   const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
   const stampOf = (v) => { const t = Number(v); return Number.isFinite(t) ? t : null }
   const readable = !!(store && typeof store.read === 'function')
@@ -556,11 +556,32 @@ function attachSharedBoard({ target, key = 'tasks', store = null, clock = () => 
       pulling = false
     }
   }
-  const envelopeOf = (snap) => ({
-    v: 1, mode: 'state', key,
-    seq: Array.isArray(snap.data && snap.data.history) ? snap.data.history.length : 0,
-    dropped: 0, incomplete: false, entries: [], value: snap, digest: null, wroteAt: clock(),
-  })
+  // ★ LIVE RUN 56 (F-43 follow-up): this helper builds a SECOND state envelope, so it has to stamp a writer too -
+  // otherwise a board row written by THIS kernel travels as an envelope with `wroteAt` but no one's name on it, and
+  // the provenance door reports "no stamp" for a key this very kernel just wrote. `writer` is a getter (the name may
+  // only become known after the first tool call), and a null result leaves the field ABSENT - absent means
+  // "not recorded", never "nobody wrote it".
+  const writerValue = () => {
+    if (typeof writer !== 'function') return null
+    let w = null
+    try { w = writer() } catch { return null }
+    if (!w || typeof w !== 'object') return null
+    const out = {}
+    if (typeof w.kernelSession === 'string' && w.kernelSession) out.kernelSession = w.kernelSession
+    if (typeof w.agentId === 'string' && w.agentId) out.agentId = w.agentId
+    if (typeof w.at === 'number' && Number.isFinite(w.at)) out.at = w.at
+    return Object.keys(out).length ? out : null
+  }
+  const envelopeOf = (snap) => {
+    const env = {
+      v: 1, mode: 'state', key,
+      seq: Array.isArray(snap.data && snap.data.history) ? snap.data.history.length : 0,
+      dropped: 0, incomplete: false, entries: [], value: snap, digest: null, wroteAt: clock(),
+    }
+    const w = writerValue()
+    if (w) env.writer = w
+    return env
+  }
   let writeChain = Promise.resolve()
   let queued = null
   const push = (why) => {
@@ -1169,7 +1190,8 @@ export function createKernel({
   })
   // ROUND 31 / task-16: the board is SHARED state (see `attachSharedBoard` above). The seam wraps the face HERE,
   // before `attachDeclaredProjections()` runs, so `resume`'s wrapper sits on top of it and both see one method.
-  const tasksShared = attachSharedBoard({ target: tasks, key: 'tasks', store, clock, log })
+  const tasksShared = attachSharedBoard({ target: tasks, key: 'tasks', store, clock, log,
+    writer: () => ({ kernelSession: kernelSessionValue(kernelSession), at: clock() }) })
   // The read-fact receipt surface: `tasks.sharing()` is the ONE place that says whether a row a caller just wrote is
   // durable and visible to the other kernels, and WHY not when it is not. It is a read (no pull: `status()` and the
   // mutator receipts already pulled for their own turn).

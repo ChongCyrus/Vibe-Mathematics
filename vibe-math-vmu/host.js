@@ -524,13 +524,23 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             const st = kernel.store
             if (keys.length && st && typeof st.read === 'function') {
               const map = {}
+              const onDisk = []
+              const absent = []
               for (const key of keys) {
                 let env = null
                 try { env = st.read(key) } catch { env = null }
+                // ★ LIVE RUN 56 (F-47): `keys` used to be read as "these are the tables in the file", so five keys
+                // that had simply never been flushed looked like five tables nobody had written. A registration is not
+                // a file fact: `onDisk` is the file fact, `absent` is the honest middle, and only on-disk keys can be
+                // asked who wrote them.
+                if (env === null || env === undefined) { absent.push(key); continue }
+                onDisk.push(key)
                 if (env && env.writer && typeof env.writer === 'object') map[key] = Object.assign({}, env.writer)
               }
-              writtenBy = { keys, writtenBy: map,
-                means: 'the writer stamped on the durable envelope THIS kernel can read; a key missing from the map has no stamp (an envelope written before writers were recorded), which does not mean nobody wrote it' }
+              writtenBy = { keys, onDisk, absent, writtenBy: map,
+                keysMeans: 'keys = projections ATTACHED in this kernel (a registration, not a fact about the file)',
+                absentMeans: 'absent = attached here but this kernel reads no value for the key in this store yet — nothing was flushed, which is not "written by nobody"',
+                means: 'the writer stamped on the durable envelope THIS kernel can read for the keys in onDisk; an on-disk key missing from the map has no stamp (an envelope written before writers were recorded), which does not mean nobody wrote it' }
             }
           } catch { writtenBy = null }
           return { ok: true, instance, detail: 'provenance',

@@ -175,5 +175,62 @@ const callJSON = async (b, name, args = {}) => {
   } finally { await rm(dir, { recursive: true, force: true }).catch(() => {}) }
 }
 
+// ── 7: the TASK BOARD builds its own state envelope - it has to stamp a writer too ──────────────────────────
+// LIVE RUN 56 (F-47): after `vibe_v5_start` + `vibe_v5_assign`, the provenance door showed `tasks` among `keys` but
+// NOT among `writtenBy`, and the raw file confirmed its envelope carried `wroteAt` but no writer. Root cause: the
+// board writes through its OWN envelope constructor (`attachSharedBoard`'s `envelopeOf`), which was not stamped when
+// the projection envelopes were. A second constructor for the same durable shape is a second place to forget.
+{
+  const dir = await mkdtemp(join(tmpdir(), 'vmu-r56-taskboard-'))
+  const a = await boot({ root: dir }, { sessionId: 'session-board-a' })
+  try {
+    const created = await callJSON(a, 'vibe_v5_task_create', { subject: 'board writer check' })
+    ok(created.parsed && created.parsed.ok === true, 'the board accepts a task (the precondition for a board write)', created.parsed)
+    let env = null
+    for (let i = 0; i < 60 && !env; i += 1) {
+      const raw = a.handle.kernel && a.handle.kernel.store ? a.handle.kernel.store.read('tasks') : null
+      if (raw && raw.writer) env = raw
+      if (!env) await new Promise((r) => setTimeout(r, 25))
+    }
+    ok(env !== null, 'the board envelope written by THIS kernel carries a writer', env && env.writer)
+    ok(env && env.writer && env.writer.kernelSession === 'session-board-a', 'the board writer names the kernel that wrote the row', env && env.writer)
+    ok(env && env.writer && typeof env.writer.at === 'number', 'the board writer carries the write stamp too', env && env.writer)
+    ok(env && env.value && Array.isArray(env.value.data && env.value.data.tasks) && env.value.data.tasks.length === 1,
+      'the board envelope keeps its value shape (the writer field is additive)', env && env.value && env.value.data)
+
+    // the small door must count that key as ON DISK and name its writer
+    const prov = await callJSON(a, 'vibe_vmu_status', { detail: 'provenance' })
+    const pr = prov.parsed || {}
+    const proj = pr.projections || {}
+    ok(Array.isArray(proj.onDisk) && proj.onDisk.includes('tasks'), 'the door lists `tasks` among the keys it can actually read', proj.onDisk)
+    ok(proj.writtenBy && proj.writtenBy.tasks && proj.writtenBy.tasks.kernelSession === 'session-board-a',
+      'the door names the board writer, so a reader never has to open the JSON', proj.writtenBy)
+    ok(Array.isArray(proj.absent) && !proj.absent.includes('tasks'), 'a key that IS on disk is never reported as absent', proj.absent)
+    ok(typeof proj.absentMeans === 'string' && proj.absentMeans.includes('nothing was flushed'),
+      'the door says what absence means instead of letting it read as "nobody wrote it"', proj.absentMeans)
+    ok(typeof proj.keysMeans === 'string' && proj.keysMeans.includes('ATTACHED'),
+      'the door says that `keys` is a registration, not a file fact', proj.keysMeans)
+  } finally { await rm(dir, { recursive: true, force: true }).catch(() => {}) }
+}
+
+// ── 8: a key that is attached but never flushed is ABSENT, not unstamped ────────────────────────────────────
+{
+  const dir = await mkdtemp(join(tmpdir(), 'vmu-r56-absent-'))
+  const a = await boot({ root: dir }, { sessionId: 'session-fresh-b' })
+  try {
+    const prov = await callJSON(a, 'vibe_vmu_status', { detail: 'provenance' })
+    const proj = (prov.parsed && prov.parsed.projections) || {}
+    ok(Array.isArray(proj.keys) && proj.keys.length > 0, 'the fresh kernel attaches projections', proj.keys)
+    const neverFlushed = proj.keys.filter((k) => !(proj.onDisk || []).includes(k))
+    ok(neverFlushed.length > 0, 'at least one attached projection has not been flushed yet (the shape this defect needs)', proj)
+    ok(neverFlushed.every((k) => (proj.absent || []).includes(k)),
+      'every attached-but-unflushed key is listed as absent (not silently dropped, not reported as unstamped)', { absent: proj.absent, neverFlushed })
+    ok(Object.keys(proj.writtenBy || {}).every((k) => (proj.onDisk || []).includes(k)),
+      'writtenBy only ever speaks about keys the door could actually read', proj.writtenBy)
+    const text = JSON.stringify(prov.parsed || {})
+    ok(text.length < 2000, 'the door still fits the readable budget with the extra fields', text.length)
+  } finally { await rm(dir, { recursive: true, force: true }).catch(() => {}) }
+}
+
 console.log('')
 if (failed) { console.error('RUN56 PROJECTION WRITER: ' + passed + ' passed, ' + failed + ' failed'); for (const f of failures) console.error('  - ' + f); process.exitCode = 1 } else console.log('RUN56 PROJECTION WRITER: ' + passed + ' passed, 0 failed')

@@ -1319,3 +1319,12 @@ run 54 与 run 55 两次真机都做了同一件事：不去问工具，直接�
 3. **缺席要专门说清，不能变成沉默。** 没有注册 writer 的裸投影（单测与工具调用方）写出的信封**没有** `writer` 字段；`adopt()` 对此回 `writtenBy: null`。⚠️ 这只表示「没盖」，不表示「没人写过」。`detail:"provenance"` 新增 `projections.keys` / `projections.writtenBy` / `projections.means`，把这句话直接写进回执：**没有戳的键不是空键**。
 4. **有界小门要能回答这个新问题。** 打开原始 `state.json` 是不可读的（一行 ~7 kB、宿主 2,000 字符处截断，run 55 已量到），所以写入者必须能在 `detail:"provenance"`（< 2,000 字符）里读到：本轮它给 `attached` 键逐个读盘上的信封再抄出 `writer`，读不到就**不列这个键**，而不是列一个 `null`。
 5. **仍未记入的东西要具名。** `writer.agentId` 目前为空：内核不保留「这一次调用是哪个 Agent」（工具执行的 agent 绑定在入口层，未下传到投影层）。字段**缺席**在这里等于「未登记」，与「没有人写」不可互换；这是 F-43 的剩余一半，下一轮若需要按 Agent 归因，就从工具执行缝把 agentId 下传到 `writer()`，而不是在文件里补一个猜出来的值。
+
+
+## ROUND 56 追加 — 同一个持久形状有两个构造者，就等于有两个地方会忘记盖章
+
+真机跑 56（build `bae2d2d7`）第一次用 `detail:"provenance"` 读写入者：root 内核在 6 次调用里读到了 `settings.resolvedIn.kernelSession`、`bridge.spawnSeamMeans`、`math.hostSeam` 与 `projections.writtenBy` —— 小门是通的（整条 1,645 B，远在 2,000 字符预算内），但它同时把两处新缺口摆在了回执里。
+
+1. **同一个持久形状有两个构造者，第二个忘了盖章。** 回执里 `projections.keys` 列了 8 个键，`writtenBy` 只有 3 个；`tasks` 恰恰是这一轮 `vibe_v5_assign` 刚写过的键。读原始 `state.json` 才看清：`tasks` 的信封有 `wroteAt`、没有 `writer`。原因是任务板不走 `createProjection` 的信封，它有自己的构造者 `attachSharedBoard()` 里的 `envelopeOf(snap)`（`vibe-math-vmu/kernel/index.js`）——ROUND 56 只给投影信封盖了章，第二个同形状的构造者没有。修法：`attachSharedBoard({ …, writer })` 收一个 writer getter，`envelopeOf` 用与 `createProjection` **同一套判定**（只接受非空字符串 `kernelSession`/`agentId` 与有限 `at`，拿不到就不盖），装配处传 `() => ({ kernelSession: kernelSessionValue(kernelSession), at: clock() })`。判据：**当同一个持久形状存在第二个构造者，盖章规则必须写一次、被两处引用；否则「加了写入者」只是给一半的信封加了。**
+2. **注册不是文件事实。** `projections.keys` 取自 `projections.attached`，那是「本内核注册了这些投影」，不是「这些键在文件里」。于是五个从未刷盘过的键（`ballotbox`/`budget`/`chat`/`panel`/`minutes` 一类）在读者眼里成了「五个没人写过的表」。修法：小门把三件事分开 —— `keys`（注册）、`onDisk`（此刻读得出值的键）、`absent`（注册了但这次没读到值），`writtenBy` 只对 `onDisk` 说话，并各带一句 `keysMeans`/`absentMeans`。判据：**一张回执同时列出「我知道的」与「文件里的」，就必须给三档而不是两档**；中间那档（注册了、还没落盘）是最容易被误读成「没有」的一档。
+3. **一个布尔说的是哪个 seam，要写在同一个回执里。** run 56 的成员把 `delivery.hasDeliverSeam: false` 读成「我的邮件没人送」并当成缺陷报回来：这个布尔问的是**是否给这张邮箱面注入了 push seam**（`open({deliver})`），而成员收到邮件走的是回合循环自己的 `deliveryPath`，两件事同时为真。修法：`kernel/mailbox.js` 的 `status.mechanism` 在布尔旁加一句 `means`，点名 `open({deliver})`、点名回合循环、并明说 `false` **不是**「邮件不可见」的证据。判据：**凡是回答「有没有某个能力」的布尔，都要在同一份回执里说清它对什么命题成立、以及它的否定不意味着什么。**

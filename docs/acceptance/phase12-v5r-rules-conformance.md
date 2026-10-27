@@ -6798,3 +6798,58 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 
 ### §158.7 无实质残余：否
 残余：F-43（投影写入者未登记，修法方向已定）、F-41 三项（`delivery.hasDeliverSeam:false` 的缺席声明、`turn` 单槽覆盖、采纳裁决不写本地审计行）、以及 §158.5 的简报错误。下一轮（56）以 F-43 的实现与 F-41 三项取证为主线，并用 `detail:"provenance"` 当 F-40/F-42 的读面。
+
+## §159 真机跑 56（每个持久信封写清谁写的：小门通了，信封漏了一半）
+
+### §159.1 读数
+| 项 | 值 |
+|---|---|
+| 构建 | `bae2d2d7`（run 56 的 F-43 修复版） |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | `durationSec 67` |
+| 根会话 | `toolCalls 6` · `transcriptEvents 51` |
+| token | `tokenTotal 326,996`（cap `12,000,000`，`tokenCapHit:false`） |
+| 会话 | `2 session(s) in 1 file(s), 0 with RED checks` |
+| 快照 | `_oneoff/vm-slv/full-1027-161837.jsonl` = 1,894,903 B / 3,454 行 |
+| 围栏计数 | `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=8 BAD_JSON=12` |
+| 日志 | 保全戳 `20261027-162037`；`clone_gone=True`、`C_free_GB=10.42` |
+
+### §159.2 判决表
+| # | 验的是 | 结果 | 读数 |
+|---|---|---|---|
+| 1 | F-43 小门可读（root） | ✅ | `vibe_vmu_status{detail:"provenance"}` 一整条 1,645 B：`settings.resolvedIn.kernelSession = session-c86d6805-…`、`bridge.spawnSeamMeans` 与 `math.hostSeam` 各就各位、`projections.writtenBy.members.kernelSession` 是 root 自己。**同一批事实在一张 < 2,000 字符的面上读全了。** |
+| 2 | F-43 跨内核可分辨 | ✅ | 成员回合之后同一条小门里 `projections.writtenBy.meetings.kernelSession = 53effabf-…`（**成员的子会话**），而 `members` 仍是 root。两个内核写同一个 store，文件里第一次能读出「谁写的」。 |
+| 3 | F-40 成员侧晚绑定 | ✅ | 成员回执里的 `settings.resolvedIn.kernelSession` 是它自己的子会话 id（`53effabf-…`），不再是 `null`。 |
+| 4 | F-47 `projections.keys` 与 `writtenBy` 不一致 | ❌ | root 第 2 步回执：`keys` 8 个，`writtenBy` 只有 `meetings`/`members` 两个；`tasks` 是这一轮 `vibe_v5_assign` **刚写过**的键，也没有戳。原始 `state.json` 证实 `keys.tasks` 有 `wroteAt`、无 `writer`。 |
+| 5 | F-41 `delivery.hasDeliverSeam:false` | ⚠️ 已修未真机复验 | 修法（`status.mechanism.means`）随本轮落地，但本轮简报没有让代理读 `vibe_vmu_mailbox`，无真机读数。 |
+| 6 | 简报自身是否可执行 | ❌ 三处 | ①让 root 抄 `task`（该面回的是 `taskId`/`created`，root 按规则诚实写「没有该字段」）；②让成员「只抄三个字段」，成员却用散文复述并自选了别的字段（`bridge.hasSpawnSeam`/`math.*`），root 第 5 步的比对因此做不成；③派单用 `vibe_v5_assign` 不带 `acceptance` 的字段名约束，成员把「验收」读成了可以自由发挥。 |
+
+### §159.3 缺陷与修法
+- **F-47（同一个持久形状有两个构造者，第二个忘了盖章）**：`tasks` 不走 `createProjection` 的 `stateEnvelope`，走 `attachSharedBoard()` 的 `envelopeOf(snap)`（`vibe-math-vmu/kernel/index.js`），后者只盖 `wroteAt`。修法：`attachSharedBoard({ …, writer })` 收 writer getter，`envelopeOf` 用与 `createProjection` **同一套判定**（只接受非空字符串 `kernelSession`/`agentId` 与有限 `at`，拿不到就不盖），装配处传 `() => ({ kernelSession: kernelSessionValue(kernelSession), at: clock() })`。判据：**同一持久形状的第二个构造者必须引用同一份盖章规则，否则「加了写入者」只是给一半信封加了。**
+- **F-47b（注册不是文件事实）**：`projections.keys` 取自 `projections.attached`（本内核注册了哪些投影），不是「文件里有这些键」。于是五个从未刷盘的键被读成「五个没人写过的表」。修法：小门把三档分开 —— `keys`（注册）、`onDisk`（此刻读得出值）、`absent`（注册了但这次没读到值），`writtenBy` 只对 `onDisk` 说话，并各带 `keysMeans`/`absentMeans`。判据：**同时列出「我知道的」与「文件里的」就必须给三档而不是两档**；中间那档最容易被误读成「没有」。
+- **F-41 部分（一个布尔说的是哪个 seam）**：`kernel/mailbox.js` 的 `status.mechanism` 在 `hasDeliverSeam` 旁加 `means`，点名 `open({deliver})`、点名成员收信走回合循环的 `deliveryPath`、并明说 `false` 不是「邮件不可见」的证据。真机复验留待 run 57。
+- 新套件 `tests/vmu-run56-mailbox-seam-means.test.mjs`（9/0）与 `tests/vmu-run56-projection-writer.test.mjs` 扩到 **44/0**（新增 §7 任务板信封带 writer、`onDisk` 含 `tasks`、`absent` 不含它、两句 `means` 在场；§8 全新内核的未刷盘键落在 `absent` 且 `writtenBy` 只谈 `onDisk`）。
+
+### §159.4 门禁
+- `node tests/vmu-run56-projection-writer.test.mjs` ⇒ **44/0**；`node tests/vmu-run56-mailbox-seam-means.test.mjs` ⇒ **9/0**
+- `node tests/vmu-run55-provenance-face.test.mjs` ⇒ **24/0**；`node tests/vmu-run54-kernel-session-late.test.mjs` ⇒ **19/0**；`node tests/vmu-run31-taskboard.test.mjs` ⇒ **53/0**；`node tests/vmu-host.test.mjs` ⇒ **203/0**（8000 B 预算未破，provenance 整条仍 < 2,000 字符）
+- `node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`
+- 工程教训（本轮踩到）：用 Python 文本模式改写仓库源码会把文件写成 CRLF（`io.open(p,'w')` 在 Windows 下默认 `
+`），而 `tests/_lib/falsify.mjs` 的多行 `find` 锚点按 `
+` 匹配 ⇒ `vmu-mailbox-falsify` 报 `MUTATION-NOT-APPLIED`。这与工作树里其它文件的 EOL 无关（`.gitattributes` 规定 `eol=lf`，提交后是 LF）；**改仓库源码必须保持 LF**（`newline=''` 或先读二进制再 `replace(b'
+', b'
+')`），否则测试会以「产品缺陷」的样子失败。
+
+### §159.5 简报错（本轮）
+1. **抄一个不存在的字段名**：让 root 抄 `task`，该面回的是 `taskId` 与 `created`。简报的字段名必须从该面的**声明**派生（`scripts/check-task-brief.mjs` 只校验工具与参数名，不校验回执字段名），所以「抄什么字段」这句本身也要在写简报前先读一次真回执。
+2. **让成员「只抄字段」但没把它的自由裁量关掉**：成员把任务理解成一次岗位工作，用散文复述并自选了三个自己认为重要的字段；root 因而拿不到可比对的数。要验读面，成员那一步的唯一任务应当是「调这一个工具、抄这三个字段、其余一个字都不写」，并在验收里列字段名本身。
+3. **验收写成了意图而不是字段名**：`acceptance` 写「回执里原样给出三个字段」时没有说清是哪三个，成员于是自选。验收标准要可判。
+
+### §159.6 无法验证
+1. F-41 的 `hasDeliverSeam` 新 `means` 的真机读数（本轮简报未覆盖）。
+2. F-41 的 `turn` 单槽覆盖与「采纳的裁决不写本地审计行」（两轮简报都未覆盖）。
+3. 成员在第 4 步到底读了什么：它的回答是散文，只有它自己抄的字段名可追，无法重建它的调用序列（子会话日志在 clone 里，已随 clone 删除，只留下 root 的转述）。
+4. `detail:"provenance"` 在 8 键全刷盘时的字节数上界（本轮实测 1,729 B，含 3 个戳）。
+
+### §159.7 无实质残余：否
+残余：F-41 的三项（`hasDeliverSeam` 真机读数、`turn` 单槽覆盖、采纳裁决的本地审计行）、F-43 的 `writer.agentId`（仍无下传缝，记债）。下一轮（57）主线：让 root 与成员各读 `vibe_vmu_mailbox` 与 `vibe_vmu_turn{op:"status"}` 相关字段（F-41 取证），并复验 F-47 的 task 板戳在真机上读得到。

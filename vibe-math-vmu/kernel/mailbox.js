@@ -1202,7 +1202,11 @@ export function createMailbox({
         policy: { digestWindowMs: digestWindowOf(), digestMax: digestMaxOf(), urgentKinds: urgentKindsOf(),
           ackedLedgerCap: ackedCapOf(), wakeBudget: wakeBudgetOf(), deliverTimeoutMs: deliverTimeoutOf(), boxCap: MAILBOX_BOX_CAP },
         mechanism: { hasDeliverSeam: typeof deliver === 'function', hasAudienceSeam: typeof resolveAudience === 'function',
-          hasStore: !!(store && typeof store.patch === 'function'), clockInjected: true },
+          hasStore: !!(store && typeof store.patch === 'function'), clockInjected: true,
+          // ★ LIVE RUN 56 (F-41): a member read `hasDeliverSeam: false` as "my mail is not being delivered" and
+          // reported it as a defect. The boolean is about a PUSH seam injected into THIS face; the turn loop carries
+          // prompts by its own path. Both facts are true at once, so the reading says which one it is.
+          means: 'hasDeliverSeam = whether a PUSH seam (open({deliver})) was injected into THIS mailbox face; false means mail is not pushed into a running member from here. Members still receive it on their next turn through the turn loop, whose receipts carry deliveryPath — false is NOT evidence that mail is invisible.' },
         delivery: Object.assign({}, deliveryStats),
         dropped: Object.assign({}, dropped), refusals: Object.fromEntries(refusals) }
     },
