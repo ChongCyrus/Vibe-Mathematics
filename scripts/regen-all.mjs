@@ -43,6 +43,10 @@ const STEPS = [
   ['zero-mechanism matrix (docs/11-§) ', 'scripts/generate-zero-mechanism-matrix.mjs', '--write'],
   ['kernel index (docs/02)', 'scripts/generate-kernel-index.mjs', '--write'],
   ['surface indexes (docs/03/04/05/18)', 'scripts/generate-surface-index.mjs', '--write'],
+  // 2026-10-28: the rule conformance matrix is the readable face of docs/acceptance/rules-ledger.json, and it must be
+  // generated for the same reason every other registry here is: a hand-written second copy drifts, while the ledger's
+  // claims are re-resolved by scripts/check-rules-coverage.mjs (structural always, --check as the closing gate).
+  ['rule conformance matrix (docs/acceptance/rule-conformance-matrix.md)', 'scripts/generate-rule-matrix.mjs', '--write'],
   // these two now check by default, so they are safe to run as part of regen-all's bare passes too
   ['pack prompts (packs/v5r-prompts.js) [check]', 'scripts/generate-pack-prompts.mjs'],
   ['pack persona (packs/v5r-persona.js) [check]', 'scripts/generate-pack-persona.mjs'],

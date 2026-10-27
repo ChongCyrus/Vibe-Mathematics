@@ -1,0 +1,1177 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "D:/wd/vibemath开发/宏观层面v5r运行规则.md",
+    "revision": "a5d9a6c1ff73ec109464d3ab29d07a402588c0e2b373d25016aac768b9998e59",
+    "lineCount": 63,
+    "note": "The rule file lives outside the repository (it is the user's document). This ledger is the in-repo claim about it: one atomic requirement per row, each needing four kinds of evidence. The checker cannot read the external file, so `ruleLines` below enumerates the inventory; a human re-reads the source and updates this file when the source rev changes."
+  },
+  "ruleLines": {
+    "L1-L2": [
+      "A1",
+      "A2",
+      "A3"
+    ],
+    "L3": [
+      "A4",
+      "A5",
+      "A6",
+      "A7"
+    ],
+    "L7-L8": [
+      "B1",
+      "B2",
+      "B3",
+      "B4",
+      "B5",
+      "B6"
+    ],
+    "L11-L12": [
+      "C1"
+    ],
+    "L13": [
+      "C2"
+    ],
+    "L14": [
+      "C3"
+    ],
+    "L15": [
+      "C4"
+    ],
+    "L16": [
+      "C5",
+      "C6",
+      "C7",
+      "C8"
+    ],
+    "L17": [
+      "C9"
+    ],
+    "L18": [
+      "C10",
+      "C11",
+      "C12"
+    ],
+    "L19": [
+      "C13"
+    ],
+    "L20": [
+      "C14"
+    ],
+    "L21": [
+      "C15"
+    ],
+    "L26": [
+      "D1"
+    ],
+    "L27": [
+      "D2",
+      "D3"
+    ],
+    "L28": [
+      "D4",
+      "D5",
+      "D6",
+      "D7",
+      "D8"
+    ],
+    "L32": [
+      "E1",
+      "E2"
+    ],
+    "L33": [
+      "E3",
+      "E4",
+      "E5",
+      "E6",
+      "E7",
+      "E8",
+      "E9",
+      "E10",
+      "E11"
+    ],
+    "L34": [
+      "E12"
+    ],
+    "L35": [
+      "E13"
+    ],
+    "L36": [
+      "E14",
+      "E15",
+      "E16",
+      "E17"
+    ],
+    "L37": [
+      "E18",
+      "E19"
+    ],
+    "L38": [
+      "E20"
+    ],
+    "L39": [
+      "E21"
+    ],
+    "L40": [
+      "E22"
+    ],
+    "L41": [
+      "E23"
+    ],
+    "L43-L44": [
+      "E24"
+    ],
+    "L47-L51": [
+      "E25",
+      "E26",
+      "E27",
+      "E28"
+    ],
+    "L52-L53": [
+      "E29"
+    ],
+    "L55": [
+      "F1",
+      "F2"
+    ],
+    "L56": [
+      "F3",
+      "F4",
+      "F5"
+    ],
+    "L58": [
+      "G1"
+    ],
+    "L59": [
+      "G2"
+    ],
+    "L60": [
+      "G3",
+      "G4"
+    ],
+    "L61": [
+      "G5"
+    ],
+    "L62": [
+      "G6"
+    ],
+    "L63": [
+      "G7"
+    ]
+  },
+  "items": [
+    {
+      "id": "A1",
+      "rule": "L1-L2",
+      "text": "所办＝主代理：用户的助手、媒介、传信者",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_message"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-assistant.js::所办"
+      ],
+      "next": "re-cite machine-resolvable evidence for: mechanism, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "A2",
+      "rule": "L1-L2",
+      "text": "有进展时自动唤起所办汇报",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/turn/index.js::woken"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_report"
+      ],
+      "next": "核实“进展→唤起所办”的触发链（是谁、按什么条件唤醒 office），缺则补机制，再把条件写进教学"
+    },
+    {
+      "id": "A3",
+      "rule": "L1-L2",
+      "text": "支持用户以自然语言让所办设参数、控制研究所",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_set"
+      ],
+      "next": "re-cite machine-resolvable evidence for: mechanism, prompt, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "A4",
+      "rule": "L3",
+      "text": "院士＝chair 席，统领研究所",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/seat-faces.js::chair"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_start"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-charter.js::院士"
+      ],
+      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "A5",
+      "rule": "L3",
+      "text": "常驻研究员＝member 席",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/seat-faces.js::member"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_hire"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::常驻研究员"
+      ],
+      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "A6",
+      "rule": "L3",
+      "text": "临时工：可被雇佣、无表决权、默认不参与会议、可解雇",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::temporary workers never vote"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_hire"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::临时工"
+      ],
+      "next": "教学补“默认不参会”（attend 只认 chair+member 是机制事实）；真机跑一次 hire→temp 不被邀请/不能投票→fire"
+    },
+    {
+      "id": "A7",
+      "rule": "L3",
+      "text": "临时工可被解雇",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/members.js::fire"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_fire"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::fire"
+      ],
+      "next": "真机一条 hire→fire（任务转 cancelled、席位消失）"
+    },
+    {
+      "id": "B1",
+      "rule": "L7-L8",
+      "text": "Verified 只收 p=1 的命题",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/verified.js::verified"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_verified_promote"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::Verified"
+      ],
+      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "B2",
+      "rule": "L7-L8",
+      "text": "参考文献中的命题也可直接入 Verified",
+      "status": "MISSING",
+      "next": "设计并实现引用入口（清单+引用行格式+验证方式），或由用户裁定不做（DECIDED）"
+    },
+    {
+      "id": "B3",
+      "rule": "L7-L8",
+      "text": "只有辩论能把 p 改为 1",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_verdict_final"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::辩论"
+      ],
+      "next": "提示词用“或”让 verified 轨独立满足 p=1，需收紧为“只有辩论”"
+    },
+    {
+      "id": "B4",
+      "rule": "L7-L8",
+      "text": "蓝图：总目标/技术路线/规划，按时更新",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/blueprint.js::stale"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+      ],
+      "next": "补教学段（谁 propose、多久算逾期、adopt 的语义）；真机跑 blueprint state→propose→adopt"
+    },
+    {
+      "id": "B5",
+      "rule": "L7-L8",
+      "text": "蓝图由院士+常驻研究员共同设计",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/blueprint.js::propose"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+      ],
+      "next": "教学写清“任何 live 成员可 propose、院士 adopt”；真机验常驻 propose"
+    },
+    {
+      "id": "B6",
+      "rule": "L7-L8",
+      "text": "蓝图最终编辑权在院士",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/tools.js::chair"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+      ],
+      "next": "同上教学 + 真机验“常驻 propose 被院士改后再 adopt”"
+    },
+    {
+      "id": "C1",
+      "rule": "L11-L12",
+      "text": "研究过程 progress 日志",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/records.js::progress"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_progress"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::progress"
+      ],
+      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "C2",
+      "rule": "L13",
+      "text": "已尝试路线/方法及其进度",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/settings/defaults.json::routes"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::routes"
+      ],
+      "next": "补“路线进 routes 轨”的教学；决定“进度”是否结构化（status/阶段枚举）"
+    },
+    {
+      "id": "C3",
+      "rule": "L14",
+      "text": "遇障路线/尝试/方法及障碍与原因归档",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/settings/defaults.json::obstacles"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::obstacles"
+      ],
+      "next": "补教学 + 真机一条（写 obstacles 并读回原因字段）"
+    },
+    {
+      "id": "C4",
+      "rule": "L15",
+      "text": "被否定的路线/结论归档",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/settings/defaults.json::rejected"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::rejected"
+      ],
+      "next": "补教学 + 真机一条"
+    },
+    {
+      "id": "C5",
+      "rule": "L16",
+      "text": "命题库：完整定义、p(0-1)、进度",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/verified.js::parseCardBody"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_proposition"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::命题"
+      ],
+      "next": "“进度”只有自由文本，无字段；需决定加结构化进度（或裁定不需要）"
+    },
+    {
+      "id": "C6",
+      "rule": "L16",
+      "text": "平时只记证明/证伪尝试，真正会证时才写正式证明字段",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::正式"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::正式"
+      ],
+      "next": "只有段落约定，无字段级门；需决定是否加字段与门"
+    },
+    {
+      "id": "C7",
+      "rule": "L16",
+      "text": "只有写完的正式证明才能用于辩论",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::证明"
+      ],
+      "next": "re-cite machine-resolvable evidence for: mechanism, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "C8",
+      "rule": "L16",
+      "text": "p=1 的命题要标记 verified",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/verified.js::verified"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_verified_promote"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::verified"
+      ],
+      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "C9",
+      "rule": "L17",
+      "text": "方法库（理论/方法/工具，抽象化产物）",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/settings/defaults.json::methods"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_method"
+      ],
+      "next": "re-cite machine-resolvable evidence for: prompt, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "C10",
+      "rule": "L18",
+      "text": "Lean 代码与编译结果归档",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/lean.js::leanlibrary"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_lean_archive"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::Lean"
+      ],
+      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "C11",
+      "rule": "L18",
+      "text": "lean 通过后辩论只查描述/定义是否符合原意",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_fidelity_conclude"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::fidelity"
+      ],
+      "next": "真机跑完整“lean 通过→辩论→fidelity→p=1”"
+    },
+    {
+      "id": "C12",
+      "rule": "L18",
+      "text": "鼓励开关：鼓励把小结/定义 Lean 化",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/settings/schema.js::formalVerify"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_set"
+      ],
+      "next": "补教学（off/encourage/require 三档含义）+ 真机"
+    },
+    {
+      "id": "C13",
+      "rule": "L19",
+      "text": "经分派后各自负责部分的论文",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/paper.js::PAPER_STATES"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_paper"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js::论文"
+      ],
+      "next": "真机 0 次：必须跑一轮论文阶段（分派→撰写→互审→定稿→渲染）"
+    },
+    {
+      "id": "C14",
+      "rule": "L20",
+      "text": "脚本文件等归档，不写 ad-hoc 脚本",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_script"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_script"
+      ],
+      "next": "补 Scripts/ 目录教学 + 真机一条（archive→read→recompute）"
+    },
+    {
+      "id": "C15",
+      "rule": "L21",
+      "text": "自反馈库（问题/冗余/障碍/可优化点/方案；院士含组织协作）",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/settings/defaults.json::feedback"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_feedback"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::反馈"
+      ],
+      "next": "“迭代优化行为模式”缺闭环（谁读、何时复盘）"
+    },
+    {
+      "id": "D1",
+      "rule": "L26",
+      "text": "各自推进各自的总任务",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/turn/index.js::deliverTurn"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_vmu_turn"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::状态板"
+      ],
+      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "D2",
+      "rule": "L27",
+      "text": "三通道：邮箱/私信/群聊",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/mailbox.js::mailbox"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_inbox"
+      ],
+      "next": "re-cite machine-resolvable evidence for: prompt, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "D3",
+      "rule": "L27",
+      "text": "三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/mailbox.js::urgent"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_message"
+      ],
+      "next": "补一句语义教学（机制已有 urgent）"
+    },
+    {
+      "id": "D4",
+      "rule": "L28",
+      "text": "状态版四字段：总任务/规划/任务完成状态/当前小任务",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/turn/index.js::STATUS_BOARD_FIELDS"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_vmu_turn"
+      ],
+      "next": "re-cite machine-resolvable evidence for: prompt, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "D5",
+      "rule": "L28",
+      "text": "四字段都含时间等基础信息",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/turn/index.js::statusBoardReadings"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_vmu_turn"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::状态板"
+      ],
+      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "D6",
+      "rule": "L28",
+      "text": "可查看其他成员当前状态版",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/tools.js::state"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_read_library"
+      ],
+      "next": "无定向入口（只能 list state 行）：加“读某成员状态板”形状 + 教学 + 真机"
+    },
+    {
+      "id": "D7",
+      "rule": "L28",
+      "text": "可自己修改更新自己的状态版",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/tools.js::state"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_progress"
+      ],
+      "next": "成员写的是 state 面板四字段（progress/obstacles/next/help），与注入的派生四格不同：统一或教清区别"
+    },
+    {
+      "id": "D8",
+      "rule": "L28",
+      "text": "四字段按规则原文实现（字段名与语义）",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/turn/index.js::objective"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_vmu_turn"
+      ],
+      "next": "英文键 objective/plan/tasks/current 与中文原文语义等价但名字不同：决定是否改名对齐"
+    },
+    {
+      "id": "E1",
+      "rule": "L32",
+      "text": "只能院士预约会议（可设预约时间）",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::scheduled"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "教学 + 真机（at 预约→到点→状态转 open/waiting）"
+    },
+    {
+      "id": "E2",
+      "rule": "L32",
+      "text": "到点人未到齐进入等待阶段；超时由院士决定",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::waitedMs"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "教学（框架无定时器，靠 beat 结算）+ 真机"
+    },
+    {
+      "id": "E3",
+      "rule": "L33",
+      "text": "只能院士召开会议并主持",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::open"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "re-cite machine-resolvable evidence for: prompt, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "E4",
+      "rule": "L33",
+      "text": "只能院士关闭会议",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::closed"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "re-cite machine-resolvable evidence for: prompt, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "E5",
+      "rule": "L33",
+      "text": "院士可延长会议时长上界",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::extendCeilingMs"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "教学 + 真机（extend 后 upper bound 变大）"
+    },
+    {
+      "id": "E6",
+      "rule": "L33",
+      "text": "院士设会议标题",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::title"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "needs a lane: land the missing mechanism/tool/prompt and a live receipt"
+    },
+    {
+      "id": "E7",
+      "rule": "L33",
+      "text": "院士设会议类型",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/meeting-procedures.js::MEETING_PROCEDURES"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "补六种类型的清单教学"
+    },
+    {
+      "id": "E8",
+      "rule": "L33",
+      "text": "院士设会议议程/事项安排",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::agenda"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "教学细化（agenda vs agendaitems）"
+    },
+    {
+      "id": "E9",
+      "rule": "L33",
+      "text": "院士邀请入会成员",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::invite"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "教学改成工具形态（现教成回执字段且该字段非法）"
+    },
+    {
+      "id": "E10",
+      "rule": "L33",
+      "text": "院士设会议时长上界",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::hardLimitMs"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "教学 + 真机（hardLimitMs 截断发言）"
+    },
+    {
+      "id": "E11",
+      "rule": "L33",
+      "text": "允许一次性连续召开多个会议",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/tools.js::sequence"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "教学 + 真机（一次给定三场指标与开始时间）"
+    },
+    {
+      "id": "E12",
+      "rule": "L34",
+      "text": "成员命令随会议类型与身份不同",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/tools.js::meeting_round"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting_round"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::会议"
+      ],
+      "next": "真机验一条“辩论下 lean 被收窄”"
+    },
+    {
+      "id": "E13",
+      "rule": "L35",
+      "text": "会议类型：正常/学术交流/辩论/结题/论文交流/未来规划",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/tools.js::ordinary"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "补一览表教学（含 ordinary 无骨架的理由）"
+    },
+    {
+      "id": "E14",
+      "rule": "L36",
+      "text": "常见命令：举手",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::hand"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::举手"
+      ],
+      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "E15",
+      "rule": "L36",
+      "text": "常见命令：邀请发言",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "教学改成工具形态 + 真机"
+    },
+    {
+      "id": "E16",
+      "rule": "L36",
+      "text": "常见命令：批量指定成员按顺序发言",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::order"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "教学（order/flow 两种机制）+ 真机"
+    },
+    {
+      "id": "E17",
+      "rule": "L36",
+      "text": "常见命令：单次发言版群聊（每人各说一次、不打断）",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/meeting-procedures.js::recommendation"
+      ],
+      "next": "无独立工具、无并行隔离：决定是否加“批量独立表态”动作（破坏性重构允许）"
+    },
+    {
+      "id": "E18",
+      "rule": "L37",
+      "text": "投票板：院士设选项与机制（最少/最多选几项）",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/ballot.js::min"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_poll_open"
+      ],
+      "next": "教学 + 真机（poll_open→vote→close，含 min/max 校验）"
+    },
+    {
+      "id": "E19",
+      "rule": "L37",
+      "text": "投票板不用于辩论",
+      "status": "MISSING",
+      "next": "辩论中投票板没有具名拒（仅教学约定）：需加具名拒或明确裁定不需要"
+    },
+    {
+      "id": "E20",
+      "rule": "L38",
+      "text": "任务板：设置与认领交派",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/tasks.js::tasks"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_task_create"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::任务"
+      ],
+      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "E21",
+      "rule": "L39",
+      "text": "群聊式交流：院士为群管理员，设每人权限/发言次数/禁言",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/chat.js::mute"
+      ],
+      "next": "机制齐全（admins/mute/quota/freeze）但教学零：补教学 + 真机验配额与禁言"
+    },
+    {
+      "id": "E22",
+      "rule": "L40",
+      "text": "辩论额外字段：对象或文件引用",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::辩论对象"
+      ],
+      "next": "re-cite machine-resolvable evidence for: mechanism, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "E23",
+      "rule": "L41",
+      "text": "辩论/结题表决人数＝min(用户设置, 院士+常驻)",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/meetings.js::quorumOf"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::表决"
+      ],
+      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "E24",
+      "rule": "L43-L44",
+      "text": "lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_fidelity_conclude"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::fidelity"
+      ],
+      "next": "needs a lane: land the missing mechanism/tool/prompt and a live receipt"
+    },
+    {
+      "id": "E25",
+      "rule": "L47-L51",
+      "text": "辩论骨架①各成员同时独立单次表态",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/meeting-procedures.js::debate"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "无并行隔离：同 E17 决定"
+    },
+    {
+      "id": "E26",
+      "rule": "L47-L51",
+      "text": "辩论骨架②轮流/举手/邀请展开",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/meeting-procedures.js::debate"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "needs a lane: land the missing mechanism/tool/prompt and a live receipt"
+    },
+    {
+      "id": "E27",
+      "rule": "L47-L51",
+      "text": "辩论骨架③结束前各成员最终裁决",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_verdict"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::裁决"
+      ],
+      "next": "re-cite machine-resolvable evidence for: mechanism, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "E28",
+      "rule": "L47-L51",
+      "text": "辩论骨架④全一致取该值、否则平均，并通知持有者改值",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_verdict_final"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::平均"
+      ],
+      "next": "需真机验“通知持有者改值”的链路（mailbox 提醒？）"
+    },
+    {
+      "id": "E29",
+      "rule": "L52-L53",
+      "text": "辩论轮数由院士决定",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+      ],
+      "next": "机制无硬限，但提示词把轮数硬钉成设置键：改教学"
+    },
+    {
+      "id": "F1",
+      "rule": "L55",
+      "text": "把原问题与所有有价值产物系统梳理",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/paper.js::writing"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_paper"
+      ],
+      "next": "真机 0 次：必须跑"
+    },
+    {
+      "id": "F2",
+      "rule": "L55",
+      "text": "合作撰写：分派各自内容并合并",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/paper.js::part"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_paper"
+      ],
+      "next": "needs a lane: land the missing mechanism/tool/prompt and a live receipt"
+    },
+    {
+      "id": "F3",
+      "rule": "L56",
+      "text": "互审",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/paper.js::reviewing"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_paper"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js::互审"
+      ],
+      "next": "needs a lane: land the missing mechanism/tool/prompt and a live receipt"
+    },
+    {
+      "id": "F4",
+      "rule": "L56",
+      "text": "面向读者：系统/正确/完整/严谨清晰",
+      "status": "MISSING",
+      "next": "质量四要求无任何机制：需定互审 checklist 门或由用户裁定不设门"
+    },
+    {
+      "id": "F5",
+      "rule": "L56",
+      "text": "讨论检查无误后定稿",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/paper.js::finalizerSlot"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_paper"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js::定稿"
+      ],
+      "next": "教学里“院士席 vs 学术委员会主席席”有矛盾，需修 + 真机"
+    },
+    {
+      "id": "G1",
+      "rule": "L58",
+      "text": "支持成员使用 Python 等数学计算工具",
+      "status": "MISSING",
+      "next": "数学面需 host 注入 register/spawn 引擎；真机 VMU_ENGINE_UNAVAILABLE：需要可用引擎或落一个受控计算面"
+    },
+    {
+      "id": "G2",
+      "rule": "L59",
+      "text": "所办可设工具并发数量限制防 CPU/OOM",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/settings/schema.js::maxParallel"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_set"
+      ],
+      "next": "教学错指成 vmu.turn.maxParallel（那是唤醒人数），应指 vmu.math.maxParallel"
+    },
+    {
+      "id": "G3",
+      "rule": "L60",
+      "text": "支持人工干预研究所决策与运行",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/human.js::openApproval"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::审批"
+      ],
+      "next": "re-cite machine-resolvable evidence for: tool, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "G4",
+      "rule": "L60",
+      "text": "支持断点续跑",
+      "status": "PARTIAL",
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_resume"
+      ],
+      "next": "真机 0 次：跑一轮 pause→resume（含会话续接）"
+    },
+    {
+      "id": "G5",
+      "rule": "L61",
+      "text": "特殊权限/请求经所办向用户询问",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/human.js::approvals"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-assistant.js::用户"
+      ],
+      "next": "re-cite machine-resolvable evidence for: tool, live (the gate stripped citations that no longer resolve)"
+    },
+    {
+      "id": "G6",
+      "rule": "L62",
+      "text": "绝大多数功能走工具而非每轮末尾输出 JSON",
+      "status": "PARTIAL",
+      "mechanism": [
+        "vibe-math-vmu/kernel/turn/index.js::FIELD_OWNERS"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::V5R_PACK_TOOLS"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::回执"
+      ],
+      "next": "围栏 JSON 仍是回执通道：需在教学中说清二者分工"
+    },
+    {
+      "id": "G7",
+      "rule": "L63",
+      "text": "提示词与规则完全相符、自洽",
+      "status": "MISSING",
+      "next": "6 处硬矛盾 + 5 类零教学：按 P0–P2 清单重写（meeting_hand 字段、结题门槛、轮数硬钉、task_update 词表、verified“或”、只教平均）"
+    }
+  ]
+}
