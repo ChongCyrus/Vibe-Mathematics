@@ -353,7 +353,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
           [])
       }
       if (live.size === 0) throw deny('VMU_NO_OPEN_MEETING', 'no meeting is open (id: ' + String(id) + ')', 'open() a meeting first — this layer refuses rather than inventing one (this is the PRIMITIVE registry: list it with vibe_vmu_meeting {action:"list"} and read one with vibe_vmu_meeting {action:"status", id:"<id>"}; a SERVICE meeting opened with vibe_v5_meeting is not speech-addressable — read it with vibe_v5_meeting {action:"status", id:"<id>"})', [])
-      throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + String(id), 'open: ' + [...live.keys()].sort().join(', '), [])
+      // ★★ LIVE RUN 48 (F-22): this refusal is what a MEMBER's own face reaches (`vibe_v5_say` on an id it mistyped).
+      // The old hint was one line of ids ("open: m1"), which neither said WHICH table the ids live in nor gave a call
+      // the reader could copy — the same defect run 47 fixed on the pack face (two registries named, copyable calls
+      // given). The pack wraps this refusal verbatim into its `hint`, so the kernel's wording IS what the member sees.
+      throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + String(id),
+        'no meeting carries this id in the PRIMITIVE registry (the table this face addresses). Ids live in two separate '
+        + 'tables: the PRIMITIVE one (vibe_vmu_meeting {action:"list"} / {action:"status", id:"<id>"}) and the SERVICE one '
+        + '(vibe_v5_meeting {action:"status", id:"<id>"}). '
+        + (live.size ? 'primitive ids in use: ' + [...live.keys()].sort().join(', ') + '. ' : 'no primitive meeting is open. ')
+        + 'Read both tables before retrying: vibe_vmu_meeting {action:"list"} then vibe_v5_meeting {action:"status", id:"<id>"} '
+        + 'for a service id — their shapes differ (`type` vs `kind`, `agenda` vs `subject`).',
+        [])
     }
     if (opts.readOnly !== true && m.state === 'lapsed') {
       throw deny('VMU_STATE', 'the meeting is LAPSED by its declared bound (' + MEETING_LAPSE_NAME + '): ' + String(opts.what || 'this act') + ' is refused',

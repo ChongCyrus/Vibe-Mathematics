@@ -236,6 +236,21 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
   const proofRef = c.proofRef === null || c.proofRef === undefined ? '' : String(c.proofRef).trim()
   const proofState = c.proofState === null || c.proofState === undefined ? '' : String(c.proofState).trim()
   const declared = proofRef !== '' && proofState === PROOF_STATE_COMPLETE
+  // ★★ LIVE RUN 48 (F-23): an UNJUDGEABLE card is its own answer, and it is NOT the same answer as "nothing was
+  // registered". Run 48 measured this exactly: a card whose statement was written over three paragraphs made the parser
+  // call its paragraph lines unparsable, the projection reported proofRef/proofState as empty, and this gate told the
+  // caller 「没有任何登记」 — about a body that carried `- proofRef：…` two lines down. The caller's only reading of that
+  // refusal is "register the proof again", so it wrote a second card (rec-9). Say what is true instead: the body could
+  // not be read as a card, and here is what its author wrote.
+  if (c.unjudgeable) {
+    return refuseGate(GATE_CODES.DEBATE_SUBJECT_UNPROVEN,
+      '辩论对象的卡 ' + cls.raw + ' 无法被判读：' + String(c.unjudgeable)
+      + (proofRef ? '；而卡体里作者自己写着 proofRef=' + proofRef + (proofState ? '、proofState="' + proofState + '"' : '') : '')
+      + '。这不是"没有登记证明"，是"这张卡的卡体读不出一张完整的卡"',
+      '先修卡体再重试（卡体是 `- key：value` 行；多行值可以直接续行，但不要把以 `- ` 开头的行写进值里，也不要重复同一字段）；'
+      + '用 `vibe_v5_read_library {id:"' + cls.raw + '", expand:true}` 读 body 原文核对；卡体能读成卡后，本闸按声明层放行（proofBasis:"declaration-only"）',
+      { form: 'card', subject: cls.raw, proofChecked: false, unjudgeable: true, declared: !!proofRef, declaredState: proofState || null })
+  }
   const verifiedHit = !!(ev.verified && ev.verified.conclusion !== undefined)
   const leanHit = !!(ev.lean && ev.lean.passed === true)
   const evidenced = verifiedHit || leanHit

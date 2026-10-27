@@ -6331,3 +6331,61 @@ T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修
 ### §149.8 无实质残余：否
 
 F-17 是「作为报告者的所办读不到自己的账本」，属机制缺陷且已修；F-21 已修；两条 hint 已修。下一轮（run 48）必须验：chat 读面跨内核真机读数、`rulings` 真机调用、两条 hint 的「一次调用成功」。
+
+## §150 真机跑 48（build 8ce60203）
+
+### §150.1 读数
+
+`DRIVE exit=0`、`durationSec 1139`、根会话 `toolCalls 56`、`transcriptEvents 256`、`tokenTotal 9,237,904`（cap 12,000,000 未撞）、4 会话、`SUMMARY: 4 session(s), 0 with RED checks`、`calls (56) vs results (56)`；jsonl `_oneoff/vm-slv/full-1027-094115.jsonl` = 20,534,350 B / 42,094 行；机器读数 `NO_FENCE=64 UNKNOWN_FIELD=59 FIELD_NOT_APPLICABLE=48 BAD_JSON=64`；日志保全 `D:\_tmp\slv-phase5\slv-logs\…20261027-100055`；clone 已清、C 盘剩 10.56 GB。
+
+### §150.2 判决表
+
+| # | 门 | 判决 | 依据（回执原文要点） |
+|---|---|---|---|
+| 1 | F-17 群聊是共享账本 | ✅ | 成员子会话 `vibe_v5_say{member:"r-1"}` 后，所办 `vibe_vmu_chat{action:"status"}` 读到 `messages:1→3, counts.sends:3`；`action:"list"` 里 from=r-1 正文完整；`state.json` 落盘 msg-1/2/3 |
+| 2 | F-14 禁言跨内核 | ✅ | `mute{member:"r-2",by:"r-acad",durationMs:600000}` 后 r-2 自己内核发两条 `vibe_v5_say` 均 `VMU_CHAT_MUTED`；所办 status 里 `refusals:{"VMU_CHAT_MUTED":2,"VMU_CHAT_NOT_ADMIN":1}`、`muted:["r-2"]` |
+| 3 | F-6 归档可寻址 | ✅ | `status` 回 `archived:true,state:"closed"`、`list` 回 `archivedMeetings:["m1"]` |
+| 4 | F-21 裁决读面 | ✅ | `vibe_v5_meeting{action:"rulings",id:"m-r48-debate",member:"r-acad",proposition_id:"rec-9"}` 读出 r-1 的 0.4 |
+| 5 | F-22 未知会议 id 的 hint | ❌→已修 | 成员入口 `vibe_v5_say{meeting:"m-not-exist"}` 的 hint 只有 `"open: m-r48-debate, m1"`（一行 id，不点名两张表、不是可复制调用）；而同 id 走内核面 `vibe_vmu_meeting{action:"status"}` 给的是完整两表 hint |
+| 6 | F-23 多段落命题卡的读法 | ❌→已修 | 卡片正文带 `- proofRef：…、- proofState：complete`，辩论闸却报 `proofRef=空、proofState=空`（见 §150.3） |
+
+### §150.3 F-23：同一张卡，「写卡的面」与「读卡的面」对正文的理解不一致
+
+- 真机现场：r-2 用 `vibe_v5_record_proposition{member,statement:三段式,value,p:0.9,proof_ref:"Formal/p-close3.lean#m_unanimous_3",proof_state:"complete"}` 立卡 ⇒ 回执 `ok:true, recordId:"rec-5"`；随后院士以 `rec-5` 为辩论对象开会被拒：`VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`，message 写「命题卡 rec-5 没有「正式证明或证伪已写完」的任何登记…proofRef=空、proofState=空」；而 `vibe_v5_read_library{id:"rec-5"}` 的 body 原文（1,598 B）里 `- proofRef：Formal/p-close3.lean#m_unanimous_3`、`- proofState：complete` 一字不缺。所办照 hint 用 `payload:{proofRef,proofState}` 重立 `rec-9`（正文单段落）后放行。
+- 两层成因：
+  1. **解析器**（`vibe-math-vmu/packs/v5r/verified.js` 的 `parseBody`）把「不以 `- ` 开头的行」一律记 `malformed`。三段式 `statement` 的段落行正是这种行 ⇒ `parseCardBody` 判 `ok:false`（问题清单含 `unparsable line(s)`）⇒ 整张卡不可判。
+  2. **投影**（`vibe-math-vmu/packs/v5r/tools.js` 的 `cardProjectionOf`）在「卡不可判」时把 `proofRef`/`proofState` 报成 `''`，辩论闸（`vibe-math-vmu/packs/v5r/verification-gates.js`）于是输出「没有任何登记」——**关于作者自己的登记，说了一句假话**；读者唯一能得出的结论是「再登记一次」，于是写了第二张卡（`rec-9`）。
+- 修法（两处，都不放松闸门）：
+  1. `parseBody` 支持**续行**：紧跟某个字段之后、不是 `- ` 开头的行，属于「上一个字段的续行」⇒ 折回该字段；空行折成段落分隔；`continuations` 计数如实返回；**没有字段可续的行仍是 `malformed`**，重复字段仍进 `dupes`（宽容只加在「真实数据需要的地方」）。
+  2. `cardProjectionOf` 在卡不可判时**保留部分字段**，并回 `unjudgeable` + 原因；辩论闸新增分支：`unjudgeable` ⇒ 具名拒并写明「这不是『没有登记证明』，是『这张卡的卡体读不出一张完整的卡』」＋引用作者写下的 `proofRef`/`proofState` ＋指路 `vibe_v5_read_library{expand:true}` 看正文。
+- 判据（`tests/vmu-run48-card-text.test.mjs`，35/0）：①段结构化正文的卡 `parseCardBody` 返回 ok 且 `fields.proofRef` 在；②经卡工具写的多段落卡 `parseCard` 读回 ok；③辩论闸对这张卡 `allowed:true, proofBasis:"declaration-only"`；④不可判卡（带声明/不带声明）分别报「无法被判读＋引用作者登记」与「无法被判读＋解析问题」；⑤`vibe_v5_say` 未知 id 的 hint 点名两张表且给可复制调用。
+
+### §150.4 F-22：内核面的 hint 是成员看到的那一句
+
+- 「修 hint」在 run 47 只做到 pack 面；成员真正走的是 `vibe_v5_say` ⇒ 落进内核 `requireMeeting`，那里的 hint 仍是一行 id。**pack 会把这句原样包进它的 `hint`**，所以「内核怎么说」就是「成员读到什么」。
+- 修法：`vibe-math-vmu/kernel/meetings.js` 的 `requireMeeting` 在「有活会议但 id 不对」分支改成点名两张注册表（PRIMITIVE / SERVICE）、分别给 `vibe_vmu_meeting {action:"list"|"status", id:"<id>"}` 与 `vibe_v5_meeting {action:"status", id:"<id>"}` 的可复制调用，并提示两表形状不同（`type` vs `kind`、`agenda` vs `subject`）。
+- 判据：同一测试 §⑤ 对内核 `speak` 与 pack `vibe_v5_say` 各断言一次（都含 PRIMITIVE、SERVICE 与两处可复制调用）。
+
+### §150.5 本轮的简报错
+
+1. 第 6 步让成员「按工具面文档」用顶层 `proof_ref`/`proof_state` 立卡——那一刻它是对的（工具面确实接受），但**验收的是「这张卡能不能被当成辩论对象」**，简报应当要求「立卡后用 `vibe_v5_meeting{action:"rulings"}`/`read_library{expand:true}` 读回正文核对」。这是第 13 次同类：**简报描述的是参数，验收要靠回执**。
+2. 第 4 步把「蹲到 20 秒的禁言窗口」当作跨回合证据——实际子会话启动就可能超过窗口，跨回合未到期这一段本轮**没验到**（所办自己在终答里如实注明）。轻微，但已记。
+
+### §150.6 本轮之后落的代码
+
+- `vibe-math-vmu/packs/v5r/verified.js`：`parseBody` 续行支持 + `continuations`。
+- `vibe-math-vmu/packs/v5r/tools.js`：`cardProjectionOf` 在不可判时保留声明字段并回 `unjudgeable`。
+- `vibe-math-vmu/packs/v5r/verification-gates.js`：`debateSubjectGate` 的不可判分支（引用作者登记、指名下一步）。
+- `vibe-math-vmu/kernel/meetings.js`：`requireMeeting` 的未知 id hint（两张表 + 可复制调用）。
+- `tests/vmu-run48-card-text.test.mjs`（35/0）。
+
+### §150.7 无法验证 / 下一轮必须验
+
+1. run 49 必须验：多段落卡**一次**立成、直接进辩论（不再需要第二次立卡）、回执 `proofBasis:"declaration-only"`；
+2. about `vibe_v5_say` 未知 id 的 hint 必须「一次调用成功」（照 hint 抄 `status` 就能读到）；
+3. 禁言窗口跨回合（窗口 ≥ 子会话启动时间）；
+4. `close` 回执 `turns:0` 与 `state.json` 的 `turns:1` 口径差（run 48 观察，未定因）。
+
+### §150.8 无实质残余：否
+
+F-22 与 F-23 都是机制缺陷（一处「成员读到的 hint 与另一个面不一致」，一处「写卡与读卡对正文的理解不一致，且读面关于作者登记说了假话」），已修并有测试钉住；runs 43–48 的六轮真机里，每轮都还有新的机制缺陷 ⇒ 收敛未到。

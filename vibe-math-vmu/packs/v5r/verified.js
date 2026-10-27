@@ -88,9 +88,11 @@ const timeText = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString() : '')
 
 // ── parse：bad cards are NAMED, never silently defaulted ────────────────────────────────────────────────────
 /**
- * Split a card body into header fields + `## section` blocks. Tolerant in the three ways real data needs:
- * `：` / `:` / `=` separators, surrounding whitespace, and a trailing CR. NOT tolerant in the way that lies:
- * a duplicate field and an unparsable line are both REPORTED (`dupes` / `malformed`), never resolved silently.
+ * Split a card body into header fields + `## section` blocks. Tolerant in the ways real data needs:
+ * `：` / `:` / `=` separators, surrounding whitespace, a trailing CR, and **multi-line field values** (a line that
+ * is not a header, following a header, continues that field — run 48 / F-23). NOT tolerant in the way that lies:
+ * a duplicate field, and a line with no field to continue, are both REPORTED (`dupes` / `malformed`) — never resolved
+ * silently. `continuations` counts how many lines were folded back into a field, so a reader can see the shape used.
  */
 export function parseBody(body) {
   const lines = text(body).split('\n')
@@ -99,16 +101,33 @@ export function parseBody(body) {
   const malformed = []
   const sections = {}
   let section = null
+  let lastKey = null
+  let continuations = 0
   for (const rawLine of lines) {
     const line = rawLine.replace(/\r$/, '')
     if (line.startsWith(SECTION_MARK)) {
       section = line.slice(SECTION_MARK.length).trim()
       if (!Object.prototype.hasOwnProperty.call(sections, section)) sections[section] = []
+      lastKey = null
       continue
     }
     if (section !== null) { sections[section].push(line); continue }
-    if (!line.trim()) continue
-    if (!line.startsWith(HEADER_MARK)) { malformed.push(line); continue }
+    if (!line.trim()) {
+      // a blank line inside a value is the author's paragraph break, not a broken line: keep it attached to the field
+      if (lastKey !== null) fields[lastKey] += '\n'
+      continue
+    }
+    if (!line.startsWith(HEADER_MARK)) {
+      // ★★ LIVE RUN 48 (F-23): a multi-line statement was written verbatim by the card writer, and the reader called
+      // every one of its paragraph lines "unparsable" — so the whole card became UNJUDGEABLE and the debate gate told
+      // the caller the card carried no proofRef at all (it did: `- proofRef：…` was two lines further down). A line
+      // that is not a header but follows a header is the PREVIOUS FIELD CONTINUING; it is appended, not reported as
+      // damage, and the count is returned so a reader can see the body used continuation lines. Only a line with no
+      // field to continue is malformed (there is nothing it could belong to).
+      if (lastKey !== null) { fields[lastKey] += '\n' + line.trim(); continuations += 1; continue }
+      malformed.push(line)
+      continue
+    }
     const rest = line.slice(HEADER_MARK.length)
     const positions = SEPARATORS.map((s) => rest.indexOf(s)).filter((i) => i >= 0)
     if (!positions.length) { malformed.push(line); continue }
@@ -116,10 +135,13 @@ export function parseBody(body) {
     const key = rest.slice(0, cut).trim()
     const value = rest.slice(cut + 1).trim()
     if (!key) { malformed.push(line); continue }
-    if (Object.prototype.hasOwnProperty.call(fields, key)) dupes.push(key)
-    else fields[key] = value
+    if (Object.prototype.hasOwnProperty.call(fields, key)) { dupes.push(key); continue }
+    fields[key] = value
+    lastKey = key
   }
-  return { fields, dupes, malformed, sections }
+  // trailing blank lines are spacing after the last value, not part of it
+  for (const key of Object.keys(fields)) fields[key] = fields[key].replace(/\n+$/, '')
+  return { fields, dupes, malformed, sections, continuations }
 }
 
 /** A card's `p` is a BOOLEAN probability: a finite number in [0,1]. Anything else is named, not coerced. */

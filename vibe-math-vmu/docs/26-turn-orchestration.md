@@ -1119,3 +1119,14 @@ run 43 让研究员写**一条** progress，它做了两件事：调 `vibe_v5_re
 **判据**：`tests/vmu-run47-chat-read-face.test.mjs` 14/0——另一内核写 fold 后，本内核 `status` 的计数/`counts.sends` 跟随；禁言被读面列出且 `send` 具名拒（`VMU_CHAT_MUTED`）；重复读不漂移；`unmute` 后读面清空且可发言。
 
 **同一轮另外两件**：`vibe_v5_meeting {action:"rulings"}` 读面（读成员提交到文件库的裁决卡：`cards/count/rows/duplicates/means`，不汇总不裁决；`tests/vmu-run47-meeting-rulings.test.mjs` 30/0）；两处 hint 链——「会议不存在」现在点名两张注册表并各给一条可复制调用，`kind` 拒绝补「debate 还需 subject、主席须先有一轮」（`tests/vmu-run47-hint-chain.test.mjs` 10/0）。
+## ROUND 48 — 一张卡，两个面：写卡的面把正文原样写下去，读卡的面却说「段落行是坏行」
+
+**真机（run 48 / F-23）**：成员用 `vibe_v5_record_proposition` 立了一张三段式 `statement` 的命题卡 ⇒ `recordId:"rec-5"`、正文 1,598 B，`- proofRef：…`、`- proofState：complete` 都在；院士拿同一张卡开辩论会，闸回 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`：「没有「正式证明或证伪已写完」的任何登记…proofRef=空、proofState=空」。所办只能照 hint 再立一张（`rec-9`，单段落）才放行。
+
+**两层成因**：①`parseBody` 把「不以 `- ` 开头的行」一律记 `malformed`，而多段落正文的段落行正是这种行 ⇒ `parseCardBody` 判 `ok:false` ⇒ 整卡不可判；②`cardProjectionOf` 在「卡不可判」时把 `proofRef`/`proofState` 报成空，辩论闸据此输出「没有任何登记」——**关于作者自己的登记说了一句假话**，于是读者得去重复一件已经做成的事。
+
+**修法**：`parseBody` 支持续行（紧跟字段之后、非 `- ` 开头的行折回该字段，空行折成段落分隔，`continuations` 计数如实返回；没有字段可续的行仍是 `malformed`，重复字段仍进 `dupes`）；`cardProjectionOf` 在不可判时保留部分字段并回 `unjudgeable`；辩论闸新增不可判分支，写明「这不是『没有登记证明』，是『卡体读不出一张完整的卡』」，引用作者写下的 `proofRef`/`proofState`，并指路 `vibe_v5_read_library{expand:true}`。闸门本身一处没放松：能读成卡后仍按 `proofBasis:"declaration-only"` 放行，证据层判据不变。
+
+**同一轮的 hint 缺陷（F-22）**：run 47 只修了 pack 面；成员真正走 `vibe_v5_say` ⇒ 落进内核 `requireMeeting`，那里的 hint 仍是一行 id，而 pack 会把它原样包进成员看到的 `hint`。内核那一句已改成：点名 PRIMITIVE / SERVICE 两张注册表、各给一条可复制调用、并提示两表形状不同（`type` vs `kind`、`agenda` vs `subject`）。
+
+**判据**：`tests/vmu-run48-card-text.test.mjs` 35/0（多段落卡解析/回读/过闸/不可判卡的两种说法/两处 hint）。

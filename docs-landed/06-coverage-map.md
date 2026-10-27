@@ -160,3 +160,10 @@
 | 读不删禁言 | 合并只加；解除只能走面上的 `unmute`（`until` 过期只影响「是否列在读面」）。 | `tests/vmu-run47-chat-read-face.test.mjs` §3/§5 |
 | 会议裁决读面可达 | 成员提交到文件库的裁决卡，会议面必须能读：`vibe_v5_meeting {action:"rulings"}`（`cards/count/rows/duplicates/means`，不汇总不裁决）。 | `tests/vmu-run47-meeting-rulings.test.mjs` §1–§4 |
 | 拒绝要说清「这是哪张表」 | 未知会议/未知 id 的 hint 必须点名 registry 并各给一条可复制调用；`kind` 拒绝要列出后续条件（subject、主席先有一轮）。 | `tests/vmu-run47-hint-chain.test.mjs` §1/§2 |
+- `vibe-math-vmu/packs/v5r/verified.js` → `parseBody` 支持**续行**：紧跟字段之后、不以 `- ` 开头的行属于上一个字段（多段落 `statement` 不再是「坏行」）；空行折成段落分隔；`continuations` 计数如实返回——写卡的面与读卡的面终于对正文的理解一致（run 48 / F-23）。
+- `vibe-math-vmu/packs/v5r/tools.js` → `cardProjectionOf` 在卡不可判时**保留作者写下的字段**并回 `unjudgeable`（旧行为把 `proofRef`/`proofState` 报成空）。
+- `vibe-math-vmu/packs/v5r/verification-gates.js` → `debateSubjectGate` 的不可判分支：「这不是『没有登记证明』，是『卡体读不出一张完整的卡』」＋引用作者登记＋指路 `vibe_v5_read_library{expand:true}`。
+- `vibe-math-vmu/kernel/meetings.js` → `requireMeeting` 的「id 不对」hint 点名 PRIMITIVE / SERVICE 两张注册表、各给一条可复制调用（成员走 `vibe_v5_say` 时看到的正是这一句）。
+
+| 写卡的与读卡的必须对正文有同一个理解 | 多段落字段不能因为「不是 `- key：value` 行」而被当成坏行；不可判的卡不能报成「作者什么都没登记」。 | `tests/vmu-run48-card-text.test.mjs` §1–§4 |
+| 成员读到的 hint 是内核那一句 | pack 会把内核拒绝原样包进 `hint`：要修「成员看到的提示」，必须修内核的措辞，而不是只修 pack 面。 | `tests/vmu-run48-card-text.test.mjs` §5 |

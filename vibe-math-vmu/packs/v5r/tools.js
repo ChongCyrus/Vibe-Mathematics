@@ -941,8 +941,20 @@ function cardProjectionOf(records, id) {
   if (!row) return null
   const parsed = parseCard(row)
   if (!parsed || parsed.ok !== true || !parsed.card) {
-    return { id: has(id) ? str(id) : null, p: null, proofRef: '', proofState: '', bodyTruncated: row.bodyTruncated === true,
-      unjudgeable: parsed && parsed.reason ? str(parsed.reason) : 'the card body could not be parsed' }
+    // ★★ LIVE RUN 48 (F-23): "this card cannot be judged" is NOT "its author declared nothing". The old projection
+    // reported proofRef/proofState as '' here, and the debate gate forwarded that as 「没有任何登记」 — while the card
+    // body plainly carried `- proofRef：…、- proofState：complete`. That is a readout lying about its own subject: the
+    // gate must be able to say "unjudgeable, and here is what the author wrote", or the caller cannot tell a missing
+    // registration from a parser problem (and will re-register a card that was already registered).
+    const partial = (parsed && parsed.fields) || {}
+    return { id: has(id) ? str(id) : null, p: null,
+      proofRef: partial.proofRef === undefined ? '' : str(partial.proofRef),
+      proofState: partial.proofState === undefined ? '' : str(partial.proofState),
+      declaredYet: partial.proofRef !== undefined || partial.proofState !== undefined,
+      bodyTruncated: row.bodyTruncated === true,
+      unjudgeable: parsed && parsed.reason ? str(parsed.reason)
+        : (parsed && Array.isArray(parsed.problems) && parsed.problems.length ? parsed.problems.join('; ')
+          : 'the card body could not be parsed') }
   }
   const fields = parsed.fields || {}
   return { id: row.id, p: parsed.card.p,
