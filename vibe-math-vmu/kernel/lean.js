@@ -338,10 +338,16 @@ export function createLeanFace(opts) {
   const hashView = (j) => {
     const measured = typeof j.hashUnchanged === 'boolean'
     const pending = !measured && (j.state === 'queued' || j.state === 'running')
+    // F-69: a compile that RAN and was cut short is a different fact from "no compile ran". `timeout`/`interrupted`
+    // are terminal states in which Lean did run (or was started and killed), so the fallback reason must not be
+    // `no-compile` when the receipt carries no code — name the state-owned cause instead.
+    const cutShort = !measured && !pending && (j.state === 'timeout' || j.state === 'interrupted')
+    const stateCode = j.state === 'timeout' ? 'VMU_LEAN_TIMEOUT' : (j.state === 'interrupted' ? 'VMU_JOB_CANCELLED' : 'no-compile')
     return {
       hashUnchanged: measured ? j.hashUnchanged : null,
       hashUnchangedState: measured ? 'measured' : (pending ? 'pending' : 'not-measured'),
-      hashUnchangedReason: measured ? null : (pending ? 'job-not-finished' : ((j.receipt && j.receipt.code) || 'no-compile')),
+      hashUnchangedReason: measured ? null : (pending ? 'job-not-finished' : ((j.receipt && j.receipt.code) || stateCode)),
+      hashUnchangedCutShort: cutShort,
     }
   }
 
@@ -362,9 +368,13 @@ export function createLeanFace(opts) {
         : 'the file content CHANGED while this compile ran, so its verdict is about a moving target and is never passed')
       : (j.state === 'queued' || j.state === 'running'
         ? 'not measured yet: this job has not finished, so there is no before/after file content to compare'
-        : 'not measured: no compile ran for this job'
-          + ((j.receipt && j.receipt.code) ? ' (' + j.receipt.code + ')' : '')
-          + ', so there is no before/after file content to compare — this is NOT the value "unchanged"'),
+        : j.state === 'timeout'
+          ? 'not measured: the compile RAN and was cut short at its budget (VMU_LEAN_TIMEOUT), so there is no finished before/after comparison — this is NOT the value "unchanged", and it is not "Lean never ran" either'
+          : j.state === 'interrupted'
+            ? 'not measured: the job was CANCELLED mid-flight (VMU_JOB_CANCELLED), so there is no finished before/after comparison — this is NOT the value "unchanged", and it is not "Lean never ran" either'
+            : 'not measured: no compile ran for this job'
+              + ((j.receipt && j.receipt.code) ? ' (' + j.receipt.code + ')' : '')
+              + ', so there is no before/after file content to compare — this is NOT the value "unchanged"'),
     startedAt: j.startedAt, endedAt: j.endedAt,
     attempts: Number(j.attempts) || 0,
     // F17 facts a reader must be able to see without reading the mirror.

@@ -1611,3 +1611,34 @@ run 71 只做一件事：把我上一轮修好的三种「另一条路」拿到�
 2. **给读者的指令必须和产品自己的投递教导兼容**。当简报要求「不要写围栏」而交付教导要求「用围栏交 report」时，读者会二选一；要么产品给出解法，要么简报明确覆盖它（「这一轮不需要 report」）。
 3. **两个不同的计数可以同时为真**，前提是回执说出了「这是谁的数」。真机的 `0`/`16` 与 `1`/`18` 并排站着，没有一句需要被发明。
 4. **复验轮也要给校验器留位置**：本轮产品 0 缺陷，但校验器抓到了我自己的一个错——这类「工程侧的绿」要记进台账，不能混进产品判决。
+
+## ROUND 72 — 走到那条路，上限才有意义（F-68 结清）
+
+run 71 只差一步：它读到了应用路径的 `replyLimitChars:2000`，却没走到拒绝路径的 500。run 72 的事件顺序很简单——先把冲突显式覆盖，再让成员交回一段没有围栏的散文——于是同一张面上先后出现了两个不同的上限：
+
+- 第一次 step：`{"ok":false,"code":"VMU_TURN_NO_FENCE","replyLength":2123,"replyTruncated":true,"replyLimitChars":500,"replyExcerptMeans":"… CUT at replyLimitChars (500) … this is the REFUSAL excerpt …","sideEffectsUnverified":true}`
+- 第二次 step（同一张面，成员这次交回了围栏）：`"replyLength":226,"replyTruncated":false,"replyLimitChars":2000`，`replyExcerptMeans` 说 `complete`
+
+判据（本轮新增）：
+
+1. **「走到那条路」是可以被写进简报的**。上一轮我把预期值（500）写进简报，得到的是对简报的验证；这一轮我把「怎样才算走进拒绝路径」写进简报（不写围栏、不调工具、无视投递教导并说明），得到的是对产品的验证。
+2. **同一个概念的两个上限，必须在同一张面上能以同一组字段被区分**。500 与 2000 不是两个数的巧合：`replyLimitChars` 说的是「这次切片用的是哪个上限」，`replyTruncated` 说的是「这次切片有没有切掉东西」，`replyExcerptMeans` 说的是「这是哪种摘录」。三者凑齐，读者不需要猜。
+3. **同一个字段在两路上都必须出现**。上一轮 ROUND 70 修的是「拒绝路径根本没有 `replyTruncated`」，这一轮验证的正是那个缺口。修完要专门找一条路把它走过去——不是看代码里有没有写，而是看真机回执里有没有。
+4. **环境债要单独记账**：同一轮里助教为「数 120 个字符」三次撞上 `pwsh` 的 `STATUS_DLL_INIT_FAILED`。它不是 vmu 的规则缺陷，但它会伪装成「助手不听话」；记账后简报里不再要求任何 shell 步骤。
+
+## ROUND 73 — 被预算切断的编译，不是「没有编译」（F-69）
+
+ROUND 62/63 把「没有比较值」拆成 `measured` / `pending` / `not-measured` 三态，并把原因写进 `hashUnchangedReason`。这次盘点剩下的分支时发现：句子只分了两支——「还没跑完」与「没有编译」。而 `not-measured` 里还有两个**编译真的跑过**的状态：
+
+- `timeout`：编译启动后超预算被结算（`VMU_LEAN_TIMEOUT`）
+- `interrupted`：作业被取消（`VMU_JOB_CANCELLED`），可能已经编译了一部分
+
+这两个状态原来的句子都是 `not measured: no compile ran for this job (…)`。字段是对的，句子的第一句是错的；而 `interrupted` 若在写 receipt 之前就被取消，连 reason 都会落回 `no-compile` —— 同一个词替两个不同事实作证。
+
+修法：`hashView` 的兜底按状态点名（`VMU_LEAN_TIMEOUT` / `VMU_JOB_CANCELLED` / `no-compile`），句子按四支分开写，并新增 `hashUnchangedCutShort` 让程序不必解析散文就能问「这次是不是跑过但没跑完」。
+
+判据（本轮新增）：
+
+1. **一个缺席的句子，只能对被它覆盖的每一种状态都为真**。句子写成一句「没有编译」，就得保证这一支下面没有「跑过但没跑完」的状态。
+2. **难触发的分支要用构造式单测取证**，不能因为写不进简报就不测。真超时（预算到点）与真取消（`cancel({jobId})`）都能在单测里造出来；不造的代价是那句散文永远没人读。
+3. **兜底值不许同时代表两种事实**。`no-compile` 一旦成为「没有码可用时的默认」，它就不再是事实，而是占位符。

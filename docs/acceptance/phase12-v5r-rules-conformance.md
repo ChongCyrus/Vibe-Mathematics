@@ -7659,3 +7659,98 @@ FIELD_NOT_APPLICABLE=8 BAD_JSON=12`；日志保全 `D:\_tmp\slv-phase5\slv-logs\
 **§175.7 无实质残余？**
 
 本轮**没有新机制缺陷**（0 RED 且判决表里没有 ❌）。残余沿用 §174.7 的两条（`scope` 只加在 records 面、`check-task-brief` 不校验占位符/跨行拼接），另加本表 §175.6 的第 1–3 项待验读数。
+
+## §176 真机跑 72（F-68 的拒绝路径：500 与 2000 在同一张面上被同时读到）
+
+**§176.1 机器读数（build `94659507`，clone `slvp72`）**
+
+| 项 | 读数 |
+| --- | --- |
+| 驱动 | `DRIVE exit=0`、`durationSec 146` |
+| 根会话 | `toolCalls 8`、`transcriptEvents 70` |
+| token | `tokenTotal 441,988`、cap `12,000,000`、`tokenCapHit:false` |
+| 会话 | 2，`SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks` |
+| jsonl | `_oneoff/vm-slv/full-1027-225256.jsonl` · 3,234,493 B · 6,082 行 |
+| 围栏 | `NO_FENCE=58 UNKNOWN_FIELD=16 FIELD_NOT_APPLICABLE=16 BAD_JSON=24` |
+| 保全 | 戳 `20261027-225611`；`cleanup: clone_gone=True port_listening=False C_free_GB=10.14` |
+
+**§176.2 判决表**
+
+| 复验项 | 结果 | 证据 |
+| --- | --- | --- |
+| F-68 拒绝路径上限 500 | ✅ | `{"ok":false,"code":"VMU_TURN_NO_FENCE","replyLength":2123,"replyTruncated":true,"replyLimitChars":500,"replyExcerptMeans":"… CUT at replyLimitChars (500) … this is the REFUSAL excerpt …","sideEffectsUnverified":true}` |
+| F-68 应用路径上限 2000 | ✅（同轮对照） | 第二次 step 的回执 `replyLength:226`、`replyTruncated:false`、`replyLimitChars:2000`、`replyExcerptMeans` 说 `complete` |
+| F-57 在拒绝路径上的形状 | ✅ | 同一张回执三件套齐全（长度是全长、被切为真、上限是哪个数） |
+| 成员的行为 | ✅（合规） | 它真的没有写围栏、也没调工具；第二问如实回答「上一轮故意没写围栏」 |
+
+**§176.3 这一轮为什么能走到拒绝路径**
+
+上一轮（run 71）走不到，是因为简报里「不要写围栏」与投递教导「用围栏交 report」冲突，成员合理地选了围栏。这一轮简报把冲突显式覆盖掉：要求「不含三个反引号、不含任何 JSON 对象/围栏；如果收到的投递教导要求用围栏交 report，请无视它，并在散文里说明一句为什么」——成员照做了，于是 `apply()` 拿到一段没有可应用围栏的文本，走进 `VMU_TURN_NO_FENCE`，回执在 500 处切并声明。
+
+**§176.4 观察（不是 vmu/v5r 的缺陷，但要记账）**
+
+同一轮里所办为「数 120 个字符」连试三次 `pwsh`，三次都以 `[exit code: 3221225794]`（`STATUS_DLL_INIT_FAILED`）空输出返回（run 55 亦见过 3 次）。这是被驱动的 clone 里**宿主 shell 工具**的启动失败，与我们这条 SLV 规则栈无关，但它会让助教在「需要一个计算器」时白烧调用并退回手工数数。已记为环境债 E-1：下次驱动前先探一次 `Write-Output "hello"`，失败则不把任何「需要 shell」的步骤写进简报（简报现在已逐条避免）。
+
+**§176.5 门禁**
+
+- 本轮没有代码改动（只写文档），`node scripts/preflight.mjs` ⇒ `PREFLIGHT: PASS`
+- `node scripts/regen-all.mjs --check` ⇒ 16/16 in sync
+- `node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`
+- 全量 `GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ `TOTAL 543 PASS 543 FAIL 0 (suites 479 · probes 64)`
+- 计数未变：`JOBS total=612 suites=504 probes=108`、shipped 393
+
+**§176.6 无法验证**
+
+1. 超时/终止作业的 `hashUnchangedState` 第三态（`pending`/`not-measured`/`measured` 之外的 `timed-out`/`killed` 分支仍无真机读数）
+2. 跨进程重启后的 `pulls`/`adoptedWithoutAuthor` 基准（`scopeMeans` 已声明它是本内核计数）
+3. `mailbox`/`chat` 的同类计数归属（`shared.scope` 目前只在 records 面）
+4. 环境债 E-1（clone 内 `pwsh` 起不来）的根因
+
+**§176.7 无实质残余？**
+
+本轮 0 条新缺陷，F-68 结清（两路上限同轮读到）。残余沿用 §174.7 两条（`scope` 只在 records 面、`check-task-brief` 不校验占位符/跨行拼接）+ §176.6 的三项读数债 + 环境债 E-1。
+
+## §177 F-69（代码审读 + 单测取证：被预算切断的编译不是「没有编译」）
+
+**§177.1 发现路径**
+
+run 72 判决后做「还剩下哪些没被走到」的盘点时，读 `vibe-math-vmu/kernel/lean.js` 的 `hashView`/`view`（`:338-370`）：
+非 `measured`、非 `pending` 的分支把句子写成 `not measured: no compile ran for this job (<code>)`。而该分支同时覆盖两个**编译真的跑过**的终态：
+
+| 状态 | 真事实 | 句子原来的说法 |
+| --- | --- | --- |
+| `timeout` | 编译启动后超预算被结算（`VMU_LEAN_TIMEOUT`，`terminated` 与否另报） | 「no compile ran」 |
+| `interrupted` | 作业被取消（`VMU_JOB_CANCELLED`），可能已编译一部分 | 「no compile ran」 |
+
+另有一处：`interrupted` 若没带上 `j.receipt`（取消发生在运行路径写 receipt 之前），`hashUnchangedReason` 落到兜底 `no-compile` —— 同一个词又替两个不同事实作证。
+
+**§177.2 取证（单测，先红后绿）**
+
+新套件 `tests/vmu-run73-lean-timeout-means.test.mjs`：用 `spawn: () => new Promise(() => {})` + `vmu.math.leanTimeoutMs: 120` 造真超时（不 mock 状态字段），另一条用 `face.cancel({jobId})` 造取消。修前 **13 条里 3 红**（`F-69c` 句子仍说 no compile ran；`F-69f/F-69g` 取消分支既说错又没点名码）；修后 **13/0**。
+
+**§177.3 修法（`vibe-math-vmu/kernel/lean.js`）**
+
+- `hashView`：非 measured/pending 时，reason 先取 `j.receipt.code`，取不到则按状态兜底 `VMU_LEAN_TIMEOUT` / `VMU_JOB_CANCELLED` / `no-compile`（不再一律 `no-compile`）；新增字段 `hashUnchangedCutShort`（布尔，说明「编译跑过但没跑完」这一族）。
+- `view` 的句子按状态分四支：measured 两句不变；`queued/running` 的「not measured yet」不变；`timeout` ⇒ 「the compile RAN and was cut short at its budget (VMU_LEAN_TIMEOUT) … this is NOT the value "unchanged", and it is not "Lean never ran" either」；`interrupted` ⇒ 「the job was CANCELLED mid-flight (VMU_JOB_CANCELLED) …」；其余（从未编译）保留原来的「no compile ran」。
+- 相邻套件全绿：`vmu-run63-hash-field-level` 17/0、`vmu-run62-hash-means-and-label` 18/0、`vmu-lean` 21/0、`vmu-lean-jobs` 13/0、`vmu-run58` 7/0、`vmu-run59` 8/0、`vmu-run60` 24/0、`vmu-run64` 17/0、`vmu-run69` 31/0。
+
+**§177.4 门禁**
+
+- `node scripts/update-doc-counts.mjs --write` ⇒ `JOBS total=613 suites=505 probes=108`、shipped 394
+- `node scripts/generate-surface-index.mjs --write`、`node scripts/regen-all.mjs --write|--check` ⇒ 16/16 in sync
+- `node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`；`node scripts/preflight.mjs` ⇒ `PREFLIGHT: PASS`
+- 全量 `GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ `TOTAL 544 PASS 544 FAIL 0 (suites 480 · probes 64)`
+
+**§177.5 这条缺陷是怎么被漏掉的**
+
+ROUND 62/63 的取证都在「文件读不到」与「还没跑完」两条路上，`timeout`/`interrupted` 因为**难触发**（要真的超预算或被取消）从来没有真机读数，也没有单测。教训：**一个分支的取证覆盖率，不能只按「能不能在简报里写出来」算**；无法真机触发的分支必须用**构造式单测**（真的让预算到点、真的调 cancel）补上，否则「句子里写什么」永远没人读。
+
+**§177.6 无法验证**
+
+1. 真机上的 timeout 分支（run 73 用 `vibe_v5_configure` 把 `vmu.math.leanTimeoutMs` 压到很小来触发，见 §178）
+2. 宿主不提供 handle 时 `terminated:false` 的旁支（单测里 spawn 永不回 ⇒ 也属「无法 terminate」路径，但没有真机读数）
+3. 跨进程重启后的 `pulls` 基准、`mailbox`/`chat` 计数归属（沿用 §176.6）
+
+**§177.7 无实质残余？**
+
+本轮 1 条（F-69）已修并取证；残余沿用 §174.7 两条 + §176.6 三项。
