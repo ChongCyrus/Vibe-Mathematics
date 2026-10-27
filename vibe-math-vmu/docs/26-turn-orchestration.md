@@ -1297,3 +1297,14 @@ vibe_vmu_status { detail: "summary" }
 2. **两个 seam 不是一个念。** `bridge.hasSpawnSeam`（script bridge 的 `{file,args}`）与 math 的 `register/spawn` 是两套不同的注入；一个为 true 不代表另一个可用。修法是在各自边上写清自己是什么（`spawnSeamMeans` 一句），并且在 `status.math` 里把构造事实拆成 `hostInjected` 与 `hostSeam` 两个布尔——这样「没注入 host」与「注入了但不会算」在读数上可分。默认面保留两个 seam 的布尔与一句话，丢掉 `stats/recent`，仍在 8000 B 预算内（8038 → 收短两句后约 7980）。
 
 3. **投影账本里谁写的没有登记（记债）。** run 54 成员还读到 `VibeMath/vmu/state.json` 里 `hasSpawnSeam:false` 而同一刻 `status` 说 `true`——两份都是真读数：状态投影是**每内核各写一份**的键，最后写的那个内核（成员内核没有 math host）赢了，而投影条目**不记是谁写的**。这与 ROUND 52 的「设置按内核解析」是同一族：跨内核共享的是文件，不是视图；读一方必须能指出「这份快照属于哪个内核」。本轮不修，记为 F-43，下一轮修法方向是让投影条目带上写入者（`writer: { kernelSession, agentId }`）。
+
+
+## ROUND 55 — 有界视图要有小门，字段名是读者的指令不是实现细节
+
+真机跑 55（build `b8156742`）只做一件事：让 root 与成员各读几处字段，核对「内核名字 / 两套 seam / 投影写入者」。读数把两个**读面**缺陷顶了出来，机制侧一处都没错。
+
+1. **回执再小，也要有一个能读的门。** `detail:"settings"` 是把设置表加 `settingsMerge.sources` 打成的**一行** ~7 kB JSON；宿主自己的 `grep`/`read` 在 2,000 字符处截断一个行，于是 `settings.resolvedIn` **在回执里**、却**读不到**——root 先 grep、再 `read`、再换 `detail:"summary"`、再去翻安装包源码，烧了十几次调用，最后只能写「无法验证」。修法不是把表删小（3.3 kB 的键表是合法事实），而是给同一批事实开一扇**小门**：`detail:"provenance"` 只回 `settings.resolvedIn`/`resolvedInMeans`、`bridge.hasSpawnSeam`/`spawnSeamMeans`、`math.hostInjected`/`hostSeam`/`means`，一整条 < 2,000 字符。判据：**一份回执的可读性由读者手里的工具决定，不由服务端的字节数决定；当一张面大到必须嵌套，就得有一张只装归属的小面。**
+
+2. **有界视图可以缩短一个值，不可以改一个字段名。** 默认面把 `bridge` 压成 `{hasSpawnSeam, note}`、`math` 压成 `{hostInjected, hostSeam, note}`；读者拿到的指令写的是 `bridge.spawnSeamMeans`，于是在默认面上诚实地回「没有该字段」——句子在场，只是改了名。修法：压缩时保留原名（`spawnSeamMeans`/`means`，各一句短话）。判据：**字段名是跨面的契约；省略可以，改名不行**——这与 ROUND 53 的「省略要自证」是同一族，但错得更便宜也更隐蔽。
+
+3. **投影写入者仍未登记（F-43，仍记债）。** root 直接读了 `VibeMath/vmu/state.json`：`keys.members` 只有 `wroteAt`，没有 `writer`/`by`/`kernelSession`；`bridge`/`math` 根本不是投影（文件里没有这两键）。所以「同一文件里写着 hasSpawnSeam:false」这个具体说法本轮没有复现，但「文件里没有任何字段能指认写入者」复现了。修法方向已定：`createProjection({ writer })` 把 `{ kernelSession, agentId, at }` 写进 `envelope()`/`stateEnvelope()`，`adopt()` 回 `writtenBy`。`detail:"provenance"` 是小门，不是这个修法。

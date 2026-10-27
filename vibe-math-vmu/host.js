@@ -473,7 +473,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       // ★★ ROUND 34 (measured): the resolved settings map made this receipt larger than the host's limit on a real
       // machine, so the host truncated it and the sections a reader most needed were the ones cut. The default is a
       // bounded summary; the complete map is one word away. Nothing is lost - only requested.
-      detail: param('string', 'summary（默认，紧凑可读，<4000 字符）｜full／settings（完整逐键表）｜closure（只回结题读数）'),
+      detail: param('string', 'summary（默认，紧凑可读，<4000 字符）｜provenance（只回"这张表是谁的"：设置归属与两套接缝）｜full／settings（完整逐键表）｜closure（只回结题读数）'),
     },
     run: async (req = {}) => {
       try {
@@ -488,7 +488,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         // `full` / `settings` were always the real vocabulary. The pack-contributed per-segment view is a FUTURE
         // feature (the kernel doc-comment already describes it as pack-contributed); until it exists, asking for it is
         // an error with the legal list, not a 154 KB surprise.
-        const DETAILS = ['summary', 'full', 'settings', 'closure']
+        const DETAILS = ['summary', 'full', 'settings', 'closure', 'provenance']
         if (DETAILS.indexOf(detail) === -1) {
           // ★ A REFUSAL RECEIPT, not a throw: the face-level wrapper around `run` turns a thrown error into
           // VMU_MIDDLEWARE_FAILED and drops its code/hint (measured), which would have re-created the very defect this
@@ -503,6 +503,21 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         if (detail === 'closure') {
           const cv = typeof kernel.closureVoteView === 'function' ? kernel.closureVoteView() : (kernel.status().closureVote || null)
           return { ok: true, instance, closureVote: cv, counts: { tools: 1 }, note: "detail:'closure' returns only the closing reading; detail:'full' for everything" }
+        }
+        // ★ ROUND 55 (F-44): THE PROVENANCE FACE. The `detail:"settings"` receipt is ONE JSON line of ~7 kB, and the
+        // harness's own `grep`/`read` truncate a line at 2,000 chars — so a nested field (`settings.resolvedIn`) was
+        // PRESENT yet unreadable, and the root session spent ~15 calls hunting it before reporting "cannot verify".
+        // A bounded face needs a small door: this one answers only "whose table is this, and which seam is which".
+        if (detail === 'provenance') {
+          const full = typeof kernel.status === 'function' ? kernel.status({ detail: 'full' }) : {}
+          const rIn = (full.settings && full.settings.resolvedIn) || null
+          const br = full.bridge || null
+          const ma = full.math || null
+          return { ok: true, instance, detail: 'provenance',
+            settings: { resolvedIn: rIn, resolvedInMeans: (full.settings && full.settings.resolvedInMeans) || null },
+            bridge: br ? { hasSpawnSeam: br.hasSpawnSeam === true, spawnSeamMeans: br.spawnSeamMeans || null } : null,
+            math: ma ? { hostInjected: ma.hostInjected === true, hostSeam: ma.hostSeam || null, means: ma.means || null } : null,
+            note: "this face answers only 'whose table is this and which seam is which'; detail:'settings' for the key map, detail:'summary' for the rest" }
         }
         const out = Object.assign({ ok: true, instance }, kernel.status({ detail }))
         // ROUND 1 / K1 (D-01): WHICH faces exist and WHY the other ones do not. A face that silently disappears is
@@ -684,12 +699,16 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           // Measured byte cost: the un-shortened bridge+math pushed the v5r summary from ~7.9 kB to 8,529 B, over the
           // 8,000 B readability bound the host test asserts.
           if (out.bridge && typeof out.bridge === 'object') {
+            // ★ ROUND 55 (F-46): the bounded face RENAMED this sentence to `note`, so a reader told to check
+            // `bridge.spawnSeamMeans` (the name the full face uses) got "没有该字段" from the default face — the same
+            // field-name drift that made run 53's provenance look absent. A summary may shorten a value; it may not
+            // rename it.
             out.bridge = { hasSpawnSeam: out.bridge.hasSpawnSeam,
-              note: 'the SCRIPT bridge seam (vmu.script.*); the math surface has its OWN register/spawn seam at status.math.hostSeam - not evidence about math' }
+              spawnSeamMeans: 'the SCRIPT bridge seam (vmu.script.*); the math surface has its OWN register/spawn seam at status.math.hostSeam - not evidence about math' }
           }
           if (out.math && typeof out.math === 'object') {
             out.math = { hostInjected: out.math.hostInjected, hostSeam: out.math.hostSeam,
-              note: 'the math surface\'s OWN seam; absent ⇒ the math face refuses VMU_ENGINE_UNAVAILABLE by name (not the same fact as bridge.hasSpawnSeam)' }
+              means: 'the math surface\'s OWN seam; absent ⇒ the math face refuses VMU_ENGINE_UNAVAILABLE by name (not the same fact as bridge.hasSpawnSeam)' }
           }
           if (Array.isArray(out.auditTail)) out.auditTail = out.auditTail.slice(-1)
           // ★ R26-family: `closureVote` grew LONG PROSE for the moment a member is about to vote

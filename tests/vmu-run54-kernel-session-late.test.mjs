@@ -171,10 +171,12 @@ try {
     const b = await boot({ root: dir, instance: 'face' })
     const r = await callJSON(b, 'vibe_vmu_status', {})
     const p = r.parsed || {}
-    ok(p.bridge && typeof p.bridge.hasSpawnSeam === 'boolean' && typeof p.bridge.note === 'string' && p.bridge.note.includes('SCRIPT'),
+    // ROUND 55 (F-46): the bounded face used to RENAME these sentences to `note`; a reader told to check
+    // `bridge.spawnSeamMeans` (the name the full face uses) then reported 「没有该字段」. The names are stable now.
+    ok(p.bridge && typeof p.bridge.hasSpawnSeam === 'boolean' && typeof p.bridge.spawnSeamMeans === 'string' && p.bridge.spawnSeamMeans.includes('SCRIPT'),
       '⑰ the DEFAULT face keeps the script seam boolean and says which seam it is', p.bridge)
     ok(p.math && p.math.hostSeam && typeof p.math.hostSeam.register === 'boolean' &&
-      typeof p.math.note === 'string' && p.math.note.includes('OWN'),
+      typeof p.math.means === 'string' && p.math.means.includes('OWN'),
       '⑱ and reports the math surface\'s own seam beside it, so one boolean can no longer be read as the other',
       p.math)
     ok(!p.bridge.recent && !p.bridge.stats,

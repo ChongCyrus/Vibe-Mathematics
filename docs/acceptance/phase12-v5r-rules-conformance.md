@@ -6744,3 +6744,57 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 
 ### §157.7 无实质残余：否
 残余：F-43（投影写入者未登记）、F-41 三项（`delivery.hasDeliverSeam:false` 的缺席声明、`turn` 单槽覆盖、采纳的裁决不写本地审计行）、以及 §157.5 的简报错误。下一轮（55）以 F-43 为主线，附带这三项取证。
+
+## §158 真机跑 55（内核名字、两套 seam、投影写入者取证）
+
+### §158.1 读数
+| 项 | 值 |
+|---|---|
+| 构建 | `b8156742`（run 54 的修复版） |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | `durationSec 327` |
+| 根会话 | `toolCalls 29` · `transcriptEvents 180` |
+| token | `tokenTotal 2,069,309`（cap `12,000,000`，`tokenCapHit:false`） |
+| 会话 | `2 session(s) in 1 file(s), 0 with RED checks` |
+| 快照 | `_oneoff/vm-slv/full-1027-154147.jsonl` = 3,260,070 B / 7,059 行 |
+| 围栏计数 | `NO_FENCE=0 UNKNOWN_FIELD=0 FIELD_NOT_APPLICABLE=0 BAD_JSON=0` |
+| 日志 | 保全戳 `20261027-154758`；`clone_gone=True`、`C_free_GB=10.42` |
+
+### §158.2 判决表
+| # | 验的是 | 结果 | 读数 |
+|---|---|---|---|
+| 1 | F-40 内核名字可读（root 自己） | ⚠️ | 回执 `line 1` 里 `"resolvedIn":{"kernelSession":"session-8e417568-…"}` **确实在场**（两条 grep 都命中）；但整份 `detail:"settings"` 是**一行 ~7 kB JSON**，宿主自己的 `grep`/`read` 在 2,000 字符处截断 ⇒ root 读不到那个嵌套字段，改用 `detail:"summary"` 也因同样截断失败，最后去翻安装包源码。**字段在、读不到** = 新缺陷 F-44。 |
+| 2 | F-40 在成员内核（r-1） | ✅ | 成员回 `settings.resolvedIn.kernelSession: null`，与 F-40 的「这个内核还没有能报出来的名字」一致（它的内核确实没被教会会话 id）；这是**诚实缺席**，不是猜。 |
+| 3 | F-42 两套 seam 分得开 | ✅ / ❌ 各半 | 成员回 `bridge.hasSpawnSeam: true`、`math.hostInjected: false`、`math.hostSeam.register: false` —— 两个 seam 的**事实**分开了；但第 3 项被要求读的 `bridge.spawnSeamMeans` 回「没有该字段」，因为**默认面把这句话改名成 `note`** ⇒ F-46。 |
+| 4 | F-43 投影写入者 | ❌ | root 直接 `read` 了 `VibeMath/vmu/state.json`：`keys.members` 的条目只有 `wroteAt`（`members` 面自己的时间），**没有 `writer`/`by`/`kernelSession`**；`bridge`、`math` **不是投影**（state.json 里没有这两键）。所以「同一文件里写着 hasSpawnSeam:false」这个说法在本轮**没有复现**，但「文件里没有任何字段能指认写入者」**复现了**。 |
+| 5 | F-41 三项 | ⚠️ 未取证 | `delivery.hasDeliverSeam:false` 仍在（成员没见 deliver seam）；`turn` 单槽覆盖与「采纳的裁决不写本地审计行」本轮简报没覆盖，无读数。 |
+| 6 | chat `adminsResolved` 真机 | ✅ | `vibe_vmu_chat{action:"status"}` 回 `admins:["chair"]`（声明原文）+ `adminsResolved:[{entry:"chair",kind:"seat",slot:"chair",members:["r-acad"]}]` + 两段 `means`。 |
+| 7 | 简报自身是否可执行 | ❌ | 两处「字段名与该面不匹配」：让 root 用 `detail:"settings"` 读嵌套字段（被截断）、让成员在 `detail:"summary"` 上读 `bridge.spawnSeamMeans`（该面当时叫 `note`）。都是「简报也必须从声明派生」的同一类错。 |
+
+### §158.3 缺陷与修法
+- **F-44（一行的回执，模型读不出来）**：`vibe_v5_status`/`vibe_vmu_status` 的 `detail:"settings"` 是把设置表加 `settingsMerge.sources` 打成一行的 ~7 kB JSON；宿主的 `grep`/`read` 在 2,000 字符处截断，嵌套字段等于不可见。修法不是「让回执更小」（3.3 kB 的表是合法事实），而是**同一批事实的小门**：新增 `detail:"provenance"`，只回 `settings.resolvedIn`/`resolvedInMeans`、`bridge.hasSpawnSeam`/`spawnSeamMeans`、`math.hostInjected`/`hostSeam`/`means`，并明说「这面只回答『这张表是谁的、哪个 seam 是哪个』；键表去 `detail:"settings"`」。
+- **F-46（有界视图可以缩短值，不可以改字段名）**：默认面把 `bridge` 压成 `{hasSpawnSeam, note}`、`math` 压成 `{hostInjected, hostSeam, note}`；而读者拿到的指令写的是 `bridge.spawnSeamMeans`。修法：压缩时**保留原名**（`spawnSeamMeans`/`means`，各一句短话），与全量面同名同义。
+- **F-43 记债更新**：`state.json` 的投影信封结构是 `{v,mode,key,seq,dropped,incomplete,entries,value:{apiVersion,face,v,at,data,counters,skipped},digest,wroteAt}`；`members` 面自己在 `data` 里没有写入者字段。修法方向（下一轮）：`createProjection({writer})` 把 `{kernelSession, agentId, at}` 写进信封（`envelope()`/`stateEnvelope()` 都带），并在 `adopt()` 回执里回 `writtenBy`，让「谁写的」可判；本轮的 `provenance` 面是小门，不是这个修法。
+- 新套件 `tests/vmu-run55-provenance-face.test.mjs`（24/0）：小门合法且 < 2,000 字符、带会话 id/归属句/两个 seam 的原名字段、不带键表、默认面保留 `spawnSeamMeans`/`means` 且均为短值、无会话 id 时 `kernelSession:null` 且句子承认「无法按名字对上」、未知 detail 仍具名拒且合法清单含 `provenance`。
+- 连带修：`tests/vmu-run54-kernel-session-late.test.mjs` 的 ⑰⑱ 断言原本钉 `p.bridge.note`/`p.math.note`，改为钉新字段名（同一理由：字段名是读者的指令，不是实现细节）。
+
+### §158.4 门禁
+- `node tests/vmu-run55-provenance-face.test.mjs` ⇒ **24/0**
+- `node tests/vmu-host.test.mjs` ⇒ **203/0**（含真装配（v5r）下默认面 < 8000 字节的硬断言 —— 改名后仍是短值，预算未破）
+- `node tests/vmu-run53-summary-provenance.test.mjs` ⇒ **15/0**；`node tests/vmu-run54-kernel-session-late.test.mjs` ⇒ **19/0**
+- `node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`
+- 全量 T1、派生计数、regen 见 §158.4a（提交前跑）
+
+### §158.5 简报错（本轮）
+1. 让 root 用 `detail:"settings"` 读一个嵌套字段 —— 该面是一行 7 kB，宿主截断在 2,000 字符 ⇒ 应改用 `detail:"provenance"` 或让 root 用 `read` 的 offset 分段读。
+2. 让成员在 `detail:"summary"` 上读 `bridge.spawnSeamMeans` —— 当时该面叫 `note` ⇒ 简报的字段名必须从**该面**派生，不是从全量面派生。
+3. 让 root 用 `pwsh` 从 spill 文件里提取字段 —— 真机里 `pwsh` 三次都以 `exit code 3221225794`（DLL 初始化失败）返回空输出，白烧 3 次调用；读大回执要用 `grep`/`read` 的分段能力，不要依赖进程启动。
+
+### §158.6 无法验证
+1. F-43 的「谁写的」：`state.json` 里没有写入者字段（本轮已确认），无法指认最后一次投影写入的内核。
+2. F-41 的 `turn` 单槽覆盖与「采纳的裁决不写本地审计行」：简报未覆盖，无读数。
+3. 成员内核的 `[总任务]` 与 root 的一致性：本轮成员只读 status，没让它读状态板。
+4. `detail:"settings"` 在真机上的实际字节数与截断行为：本轮只从 root 的 grep/read 表现推断（截断在 2,000 字符），没有直接测宿主截断阈值。
+
+### §158.7 无实质残余：否
+残余：F-43（投影写入者未登记，修法方向已定）、F-41 三项（`delivery.hasDeliverSeam:false` 的缺席声明、`turn` 单槽覆盖、采纳裁决不写本地审计行）、以及 §158.5 的简报错误。下一轮（56）以 F-43 的实现与 F-41 三项取证为主线，并用 `detail:"provenance"` 当 F-40/F-42 的读面。
