@@ -712,6 +712,13 @@ const keyShapeRun = runSelfProof('generate-wired-schema.mjs', '--selftest')
 ok(keyShapeRun && keyShapeRun.status === 0,
   'the wired-schema KEY_SHAPE --selftest really runs green (round 3: the "a key quoted in a COMMENT is not a key" probe has an execution point)',
   keyShapeRun ? 'exit=' + keyShapeRun.status : 'not run')
+// ROUND 202: `scripts/check-rule-parity.mjs --selftest` was DECLARED but never RUN by a gate — the exact case
+// this rule exists for. It plants a doc-hash change, a stale pin, an orphan teaching, a structural line without
+// a reason and a wholesale rule change, so the gate only stays green if it really executes.
+const ruleParityRun = runSelfProof('check-rule-parity.mjs', '--selftest')
+ok(ruleParityRun && ruleParityRun.status === 0,
+  'check-rule-parity --selftest really runs green (round 202: the parity gate now HAS an execution point)',
+  ruleParityRun ? 'exit=' + ruleParityRun.status : 'not run')
 const inspectRun = runSelfProof('slv-inspect.mjs', '--selftest')
 ok(inspectRun && inspectRun.status === 0, 'slv-inspect --selftest really runs green (it plants prompt/wire/unknown-call mismatches and must report them)')
 const noConsumerRun = runSelfProof('audit-readers.mjs', '--selftest')

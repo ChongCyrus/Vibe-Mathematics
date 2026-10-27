@@ -94,10 +94,18 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r89-'))
       refs.push({ bad, refused: false })
     } catch (e) { refs.push({ bad, refused: true, code: e.code, hint: String(e.hint || '') }) }
   }
-  ok(refs.every((r) => r.refused === true), 'every unusable time is refused (none is coerced to "now")', refs)
-  ok(refs.every((r) => r.code === 'VMU_INVALID_ARGUMENT'), 'the refusal code is VMU_INVALID_ARGUMENT', refs.map((r) => r.code))
-  ok(refs.every((r) => /relative offset/.test(r.hint)), 'the hint names the relative form', refs.map((r) => r.hint))
-  ok(refs.every((r) => /epoch|ISO-8601/.test(r.hint)), 'the hint still names absolute forms', refs.map((r) => r.hint))
+  // ★ an `.every(...)` over a list that could be EMPTY passes vacuously (audit-declaration-criterion RULE E caught
+  // this one). The list is the subject of the test, so BOTH its size and the joined values are asserted — a join of
+  // an empty list is '', which cannot equal any expected string.
+  ok(refs.length >= 4, 'all four unusable time forms were actually tried', refs.length)
+  ok(refs.map((r) => r.refused === true).join(',') === 'true,true,true,true',
+    'every unusable time is refused (none is coerced to "now")', refs.map((r) => r.refused))
+  ok(refs.map((r) => r.code).join(',') === 'VMU_INVALID_ARGUMENT,VMU_INVALID_ARGUMENT,VMU_INVALID_ARGUMENT,VMU_INVALID_ARGUMENT',
+    'the refusal code is VMU_INVALID_ARGUMENT', refs.map((r) => r.code))
+  ok(refs.map((r) => /relative offset/.test(r.hint)).join(',') === 'true,true,true,true',
+    'the hint names the relative form', refs.map((r) => r.hint))
+  ok(refs.map((r) => /epoch|ISO-8601/.test(r.hint)).join(',') === 'true,true,true,true',
+    'the hint still names absolute forms', refs.map((r) => r.hint))
 }
 
 // ── §3 acting on a scheduled meeting is still refused by name, and the message says SCHEDULED ───────────────────

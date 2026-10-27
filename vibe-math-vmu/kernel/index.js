@@ -4432,6 +4432,13 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // `node:child_process` fallback (used only when the host exposes none). null = no seam at all.
           spawnSeamKind: (host && typeof host.seamKindOf === 'function' ? host.seamKindOf() : null),
           spawnSeamKindMeans: 'host-subprocess = the host\'s subprocess service runs it; local-child-process = the adapter runs it through node:child_process because the host exposed no service (G1); null = neither, so the math face refuses VMU_ENGINE_UNAVAILABLE by name',
+          // ROUND 202 (measured on the clean-room host): the shared tool is reached by TWO callers — the adapter at
+          // assembly and `createMathSurface` from the kernel — so publication is idempotent by name. These readings say
+          // WHICH names were published and how many would-be publishers were folded, so a registration collision can
+          // never again look like a broken computation.
+          toolsPublished: (host && typeof host.publishedNames === 'function' ? host.publishedNames() : null),
+          publicationReuse: (host && typeof host.reuseCount === 'function' ? host.reuseCount() : null),
+          publicationMeans: 'toolsPublished = the tool names THIS math adapter handed to the host; publicationReuse = how many second publications were folded into the first handle (they must never reach the host twice: the host refuses a duplicate name with VMU_STATE, which used to surface on an ordinary read of the face)',
           means: 'the math surface needs its OWN register/spawn seam (createMathSurface); status.bridge.hasSpawnSeam describes the SCRIPT bridge and says nothing about this one - when this seam is absent the math face refuses VMU_ENGINE_UNAVAILABLE by name instead of computing nothing quietly',
         },
         registry: registry.status(),

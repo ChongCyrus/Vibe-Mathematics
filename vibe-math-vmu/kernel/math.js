@@ -20,6 +20,7 @@
 // engine-present and the engine-absent paths are reproducible on any machine.
 
 import {
+  bindMathComputation,
   registerMathComputation,
   probeMathEngines,
   mathAvailabilityLine,
@@ -108,7 +109,10 @@ export function createMathSurface({ host, settings = {} } = {}) {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the math surface needs a host with register() and spawn()',
       'inject a host adapter (docs/11 §4.1); tests use tests/helpers/math-computation-fake-seam.mjs')
   }
-  const bound = registerMathComputation(host)
+  // ROUND 202: a host that ALREADY carries the tool (host-math.js publishes it at assembly) binds without a second
+  // publication — see host-math.js `register` for the measured refusal this avoids.
+  const alreadyPublished = typeof host.hasTool === 'function' && host.hasTool(MATH_TOOL_NAME)
+  const bound = bindMathComputation(host, { publish: !alreadyPublished })
   const registered = { name: bound.toolName, parameters: bound.parameters }
 
   return {

@@ -84,11 +84,25 @@ export function createHostMath({ ctx, settings = {}, projectRoot = null, log = (
     return p
   }
 
+  // ★★★ ROUND 202 (measured in the clean-room host): the shared module reaches the host through TWO callers —
+  // `createHostMath` publishes the tool once at assembly, and `createMathSurface` (kernel/math.js) calls
+  // `registerMathComputation(host)` which publishes AGAIN through this same adapter. The second publication hit the
+  // host's "tool ... is already registered in this scope" refusal, and that refusal surfaced on an ordinary
+  // `vibe_vmu_mathtools {action:"run"}` receipt — a read of the surface looked like a broken tool. Publication is
+  // therefore IDEMPOTENT BY NAME: the first caller publishes, later callers REUSE the handle, and the reuse is
+  // counted so `status.math` can say how many publishers reached the same name.
+  const published = new Map()
+  let reusedPublications = 0
   const host = {
     /** Register the module's tool with the HOST, in the exact shape the live host accepts. */
     register(name, description, parameters, handler) {
       if (!ctx || !ctx.tools || typeof ctx.tools.register !== 'function') {
         throw refuse('VMU_ENGINE_UNAVAILABLE', 'the host context has no tools.register: the math tool cannot be published')
+      }
+      if (published.has(name)) {
+        reusedPublications += 1
+        log('the shared math tool was already published; reusing the existing handle: ' + name)
+        return { ok: true, name, reused: true }
       }
       const schema = Object.assign({ type: 'object', properties: {} }, parameters || {})
       // Minimal normalisation only: the shared module already ships a host-shaped schema, so it is passed
@@ -105,9 +119,16 @@ export function createHostMath({ ctx, settings = {}, projectRoot = null, log = (
       const doRegister = () => ctx.tools.register(spec)
       if (typeof ctx.effect === 'function') ctx.effect(doRegister, 'vmu:math-tool:' + name)
       else doRegister()
+      published.set(name, spec)
       log('registered the shared math tool with the host: ' + name)
       return { ok: true, name }
     },
+    /** Has this adapter already published `name`? Callers that would publish a second time ask FIRST. */
+    hasTool(name) { return published.has(name) },
+    /** Names this adapter has published (a receipt reading, not a guess). */
+    publishedNames() { return [...published.keys()] },
+    /** How many would-be publishers were folded into an existing handle. */
+    reuseCount() { return reusedPublications },
     params() {
       const out = {}
       for (const [key, param] of Object.entries(MATH_PARAM_MAP)) {
