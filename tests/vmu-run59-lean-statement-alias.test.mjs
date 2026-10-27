@@ -96,16 +96,16 @@ await test('two names that disagree are refused (the archive from/file rule, app
 await test('the recorded statement is ALWAYS the statement - never the alias', async () => {
   const { kernel, face } = await mkKernel('k3')
   const res = await specOf('vibe_v5_lean_run').handler({ file: 'Formal/A.lean', statement: '∀ n : ℕ, n + n = 2 * n' }, { kernel })
-  assert(res.ok === true && res.job && res.job.id, 'submit must return the queued job: ' + JSON.stringify(res))
-  const view = face.status(res.job.id).job
+  assert(res.ok === true && res.id, 'submit must return the queued job (flat receipt, F-56): ' + JSON.stringify(res))
+  const view = face.status(res.id).job
   assert(view.statement === '∀ n : ℕ, n + n = 2 * n', 'the audit object is the proposition text, got ' + JSON.stringify(view.statement))
 })
 
 await test('the SAME value through both names is accepted (agreeing aliases are not a trap)', async () => {
   const { kernel, face } = await mkKernel('k4')
   const res = await specOf('vibe_v5_lean_run').handler({ file: 'Formal/A.lean', statement: 'True', target: 'True' }, { kernel })
-  assert(res.ok === true && res.job && res.job.id, 'agreeing names must be accepted: ' + JSON.stringify(res))
-  assert(face.status(res.job.id).job.statement === 'True', 'the recorded statement is still the text, once')
+  assert(res.ok === true && res.id, 'agreeing names must be accepted (flat receipt, F-56): ' + JSON.stringify(res))
+  assert(face.status(res.id).job.statement === 'True', 'the recorded statement is still the text, once')
 })
 
 // ── 4: the archive keeps the proposition, and the library can read it back ──────────────────────────
@@ -113,10 +113,10 @@ await test('`lean_archive` records the proposition text and `lean_lib` reads it 
   const { kernel, root } = await mkKernel('k5')
   await writeFile(join(root, 'Formal', 'OddSum.lean'), 'theorem oddSum_eq_sq (n : Nat) : oddSum n = n * n := by sorry\n', 'utf8')
   const arch = await specOf('vibe_v5_lean_archive').handler({ kind: 'lemma', name: 'oddSum_eq_sq', file: 'Formal/OddSum.lean', statement: '前 n 个奇数之和为 n²' }, { kernel })
-  assert(arch && arch.archived, 'archive must return the registered entry: ' + JSON.stringify(arch))
-  assert(arch.archived.statement === '前 n 个奇数之和为 n²', 'the entry must carry the proposition, got ' + JSON.stringify(arch.archived.statement))
+  assert(arch && arch, 'archive must return the registered entry: ' + JSON.stringify(arch))
+  assert(arch.statement === '前 n 个奇数之和为 n²', 'the entry must carry the proposition, got ' + JSON.stringify(arch.statement))
   const lib = await specOf('vibe_v5_lean_lib').handler({ refresh: true }, { kernel })
-  const entry = (lib.lib.entries || []).find((e) => e.name === 'oddSum_eq_sq')
+  const entry = (lib.entries || []).find((e) => e.name === 'oddSum_eq_sq')
   assert(entry, 'the library must list the archived entry')
   includes(entry.statement, 'n²', 'the library entry answers "what does this file formalise" (run 59 read back statement:"")')
 })
@@ -134,9 +134,9 @@ await test('`hashUnchanged` says what it means and points the dedupe question at
   const { kernel, face, root } = await mkKernel('k7')
   await writeFile(join(root, 'Formal', 'Ok.lean'), 'theorem t : True := trivial\n', 'utf8')
   const res = await specOf('vibe_v5_lean_run').handler({ file: 'Formal/Ok.lean', statement: 'True' }, { kernel })
-  const settled = await face.settle(res.job.id)
+  const settled = await face.settle(res.id)
   assert(settled.passed === true, 'the good path must pass: ' + JSON.stringify(settled.receipt || null))
-  const view = face.status(res.job.id).job
+  const view = face.status(res.id).job
   assert(typeof view.hashUnchangedMeans === 'string', 'a boolean whose meaning must be guessed is not readable: ' + JSON.stringify(view))
   includes(view.hashUnchangedMeans, 'NOT a cache flag', 'the sentence must deny the reading the member actually made')
   includes(view.hashUnchangedMeans, 'dedupedOf', 'and it must point at the field that answers that question')

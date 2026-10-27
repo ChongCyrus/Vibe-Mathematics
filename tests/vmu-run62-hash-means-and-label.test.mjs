@@ -80,7 +80,7 @@ const viewOf = async (face, id) => {
 await (async () => {
   const { kernel, face } = await mkKernel('k1')
   const res = await specOf('vibe_v5_lean_run').handler({ file: 'Formal/missing.lean', statement: 'True' }, { kernel })
-  const view = await viewOf(face, res.job.id)
+  const view = await viewOf(face, res.id)
   ok(view.state === 'failed', 'setup: the unreadable file produces a FAILED job', view.state)
   ok(view.code === 'VMU_LEAN_FILE_UNREADABLE', 'setup: the failure is named', view.code)
   ok(view.hashUnchanged === null,
@@ -102,7 +102,7 @@ await (async () => {
   const { kernel, face, root } = await mkKernel('k2')
   await writeFile(join(root, 'Formal', 'Ok.lean'), 'theorem ok : True := trivial\n', 'utf8')
   const res = await specOf('vibe_v5_lean_run').handler({ file: 'Formal/Ok.lean', statement: 'True' }, { kernel })
-  const view = await viewOf(face, res.job.id)
+  const view = await viewOf(face, res.id)
   ok(view.hashUnchanged === true, 'setup: a real compile records the boolean', view.hashUnchanged)
   ok(has(view.hashUnchangedMeans, 'same before and after') && has(view.hashUnchangedMeans, 'NOT a cache flag'),
     'F-53e (regression): a measured job still explains what the boolean is NOT', view.hashUnchangedMeans)
@@ -116,7 +116,7 @@ await (async () => {
     spawn: () => new Promise((res) => { hang = res }),
   })
   const res = await specOf('vibe_v5_lean_run').handler({ file: 'Formal/running.lean', statement: 'True' }, { kernel })
-  const view = await viewOf(face, res.job.id)
+  const view = await viewOf(face, res.id)
   const inFlight = view.state === 'queued' || view.state === 'running'
   ok(inFlight, 'setup: the async job is still in flight when it is read', view.state)
   ok(has(view.hashUnchangedMeans, 'not measured yet'),
@@ -130,7 +130,7 @@ await (async () => {
   await specOf('vibe_v5_lean_run').handler({ file: 'Formal/one.lean', statement: 'True' }, { kernel })
   await specOf('vibe_v5_lean_run').handler({ file: 'Formal/two.lean', statement: 'True' }, { kernel })
   const list = await specOf('vibe_v5_lean_job').handler({}, { kernel })
-  const rows = (list.jobs && list.jobs.jobs) || []
+  const rows = (Array.isArray(list.jobs) ? list.jobs : (list.jobs && list.jobs.jobs) || [])
   ok(rows.length === 2, 'setup: two jobs are listed', rows.length)
   const mute = rows.filter((r) => r.hashUnchanged === null && (typeof r.hashUnchangedMeans !== 'string' || typeof r.hashUnchangedState !== 'string'))
   ok(mute.length === 0,

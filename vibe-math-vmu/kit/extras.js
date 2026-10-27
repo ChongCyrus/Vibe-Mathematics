@@ -195,24 +195,34 @@ async function toolLeanRun(args = {}, { kernel } = {}) {
       'pass statement:"<the proposition text>" — target names an OBJECT (a card id); the receipt and the audit are about the proposition, not about the object it lives on')
   }
   const submitted = await lean.submit({ statement, file: str(args.file), member: has(args.member) ? str(args.member) : '' })
-  return { ok: true, tool: 'vibe_v5_lean_run', job: submitted,
+  // ★★ LIVE RUN 64 · F-56 — ONE ENVELOPE, NOT TWO. The face already answers in an envelope (`{ok, id, state}`, and for
+  // status `{ok, job}` / for list `{ok, count, jobs}`). Wrapping that envelope AGAIN under a key put the same facts one
+  // level deeper and at a DIFFERENT path per tool: `lean_run` answered `job.id` (because the inner object happened to
+  // carry `id`), while `lean_job {jobId}` answered `job.job.hashUnchanged`. A reader that asked the field-level question
+  // we had just made determinate (F-55) got `undefined` again — the exact bug class ROUND 63 closed, reintroduced by the
+  // pack's own wrapper. So every lean tool now SPREADS the face's envelope into the receipt and names itself with `tool`;
+  // the shape is the same for run, status and list, and `receipt.<field>` is where the field is.
+  return { ...submitted, ok: true, tool: 'vibe_v5_lean_run',
     unapplied: has(args.timeout_ms) ? [{ rule: 'timeout_ms', why: 'the Lean face times out on its declared vmu.math.leanTimeoutMs; a per-call timeout is not part of submit()' }] : [],
     note: 'the process, the timeout and the cancel path belong to the Lean face (spawn seam); this tool only submits' }
 }
 async function toolLeanJob(args = {}, { kernel } = {}) {
   const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_job')
-  if (has(args.jobId)) return { ok: true, tool: 'vibe_v5_lean_job', job: lean.status(str(args.jobId)) }
-  return { ok: true, tool: 'vibe_v5_lean_job', jobs: lean.list(),
+  // Same rule as lean_run (F-56): spread the face's envelope, never nest it. `job` is therefore the RECORD, and the
+  // field-level questions (`hashUnchanged` / `hashUnchangedState` / `hashUnchangedReason`) sit at `receipt.job.*`.
+  if (has(args.jobId)) return { ...lean.status(str(args.jobId)), tool: 'vibe_v5_lean_job' }
+  return { ...lean.list(), tool: 'vibe_v5_lean_job',
     note: has(args.waitMs) ? 'waitMs is not applied: the job queue returns its current state; observe again after a wake' : undefined }
 }
 async function toolLeanLib(args = {}, { kernel } = {}) {
   const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_lib')
-  return { ok: true, tool: 'vibe_v5_lean_lib', lib: await lean.lib({ refresh: args.refresh === true }) }
+  return { ...(await lean.lib({ refresh: args.refresh === true })), tool: 'vibe_v5_lean_lib' }
 }
 async function toolLeanRead(args = {}, { kernel } = {}) {
   if (!has(args.name)) throw refuse('VMU_INVALID_ARGUMENT', 'lean_read needs name', 'pass name:"<archived name>" (see lean_lib)')
   const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_read')
-  return { ok: true, tool: 'vibe_v5_lean_read', card: await lean.read({ name: str(args.name) }),
+  // ★ F-56 also applies here: same spread-not-nest rule as lean_run / lean_job — the face's envelope IS the receipt.
+  return { ...(await lean.read({ name: str(args.name) })), tool: 'vibe_v5_lean_read',
     note: has(args.kind) ? 'kind (auto/lib/proved) is not applied: this kernel keeps ONE archive namespace (def/lemma/theorem/assumption)' : undefined }
 }
 async function toolLeanArchive(args = {}, { kernel } = {}) {
@@ -245,7 +255,8 @@ async function toolLeanArchive(args = {}, { kernel } = {}) {
       'pass statement (the proposition text this file formalises) — target is its legacy alias')
   }
   const archived = await lean.archive({ name: str(args.name), kind: mapped, file, statement: archStatementRaw || archTargetRaw })
-  return { ok: true, tool: 'vibe_v5_lean_archive', mappedKind: mapped, archived,
+  // ★ F-56: spread the face's answer (it already carries ok/name/kind/file/statement/hash/persisted/persistence).
+  return { ...archived, tool: 'vibe_v5_lean_archive', mappedKind: mapped,
     note: has(args.content) ? 'content is NOT stored: the archive registers existing files by hash (write the file first)' : undefined }
 }
 

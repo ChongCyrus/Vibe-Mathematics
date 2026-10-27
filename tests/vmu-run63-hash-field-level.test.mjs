@@ -72,7 +72,7 @@ const viewOf = async (face, id) => {
 await (async () => {
   const { kernel, face } = await mkKernel('k1')
   const res = await specOf('vibe_v5_lean_run').handler({ file: 'Formal/missing.lean', statement: 'True' }, { kernel })
-  const view = await viewOf(face, res.job.id)
+  const view = await viewOf(face, res.id)
   ok(view.state === 'failed' && view.code === 'VMU_LEAN_FILE_UNREADABLE',
     'setup: the unreadable file produces a named failure', view.state + '/' + view.code)
   ok('hashUnchanged' in view && view.hashUnchanged === null,
@@ -92,7 +92,7 @@ await (async () => {
   const { kernel, face, root } = await mkKernel('k2')
   await writeFile(join(root, 'Formal', 'Ok.lean'), 'theorem ok : True := trivial\n', 'utf8')
   const res = await specOf('vibe_v5_lean_run').handler({ file: 'Formal/Ok.lean', statement: 'True' }, { kernel })
-  const view = await viewOf(face, res.job.id)
+  const view = await viewOf(face, res.id)
   ok(view.hashUnchanged === true && view.hashUnchangedState === 'measured' && view.hashUnchangedReason === null,
     'F-55e: a measured job has the boolean, state=measured and no reason',
     [view.hashUnchanged, view.hashUnchangedState, view.hashUnchangedReason])
@@ -108,7 +108,7 @@ await (async () => {
     spawn: () => new Promise((res) => { hang = res }),
   })
   const res = await specOf('vibe_v5_lean_run').handler({ file: 'Formal/running.lean', statement: 'True' }, { kernel })
-  const view = await viewOf(face, res.job.id)
+  const view = await viewOf(face, res.id)
   ok(view.state === 'queued' || view.state === 'running', 'setup: the async job is still in flight', view.state)
   ok(view.hashUnchanged === null && view.hashUnchangedState === 'pending' && view.hashUnchangedReason === 'job-not-finished',
     'F-55g: an unfinished job says PENDING — that is a different cause from "no compile ran"',
@@ -122,7 +122,7 @@ await (async () => {
   await specOf('vibe_v5_lean_run').handler({ file: 'Formal/one.lean', statement: 'True' }, { kernel })
   await specOf('vibe_v5_lean_run').handler({ file: 'Formal/two.lean', statement: 'True' }, { kernel })
   const list = await specOf('vibe_v5_lean_job').handler({}, { kernel })
-  const rows = (list.jobs && list.jobs.jobs) || []
+  const rows = (Array.isArray(list.jobs) ? list.jobs : (list.jobs && list.jobs.jobs) || [])
   ok(rows.length === 2, 'setup: two jobs are listed', rows.length)
   const mute = rows.filter((r) => !('hashUnchanged' in r) || typeof r.hashUnchangedState !== 'string' || !('hashUnchangedReason' in r))
   ok(mute.length === 0,
@@ -134,11 +134,11 @@ await (async () => {
 await (async () => {
   const { kernel, face } = await mkKernel('k5')
   const failed = await specOf('vibe_v5_lean_run').handler({ file: 'Formal/nope.lean', statement: 'True' }, { kernel })
-  const fv = await viewOf(face, failed.job.id)
+  const fv = await viewOf(face, failed.id)
   const measuredKernel = await mkKernel('k5b')
   await writeFile(join(measuredKernel.root, 'Formal', 'Ok.lean'), 'theorem ok : True := trivial\n', 'utf8')
   const good = await specOf('vibe_v5_lean_run').handler({ file: 'Formal/Ok.lean', statement: 'True' }, { kernel: measuredKernel.kernel })
-  const gv = await viewOf(measuredKernel.face, good.job.id)
+  const gv = await viewOf(measuredKernel.face, good.id)
   for (const [tag, v] of [['failed', fv], ['measured', gv]]) {
     ok(v.hashUnchanged === false || v.hashUnchanged === true || v.hashUnchanged === null,
       'F-55i: `===` comparison is determinate (' + tag + ')', v.hashUnchanged)

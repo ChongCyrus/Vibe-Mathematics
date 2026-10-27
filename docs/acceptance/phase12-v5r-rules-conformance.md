@@ -7182,3 +7182,64 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 ### §166.7 无实质残余
 
 否。残余：`terminated` 作业的状态取值、跨进程重启的库读回、成员调用的回执可核性。
+
+## §167 真机跑 64（复验 F-55 字段级：通过；露出 F-56：封套套了两层）
+
+### §167.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| build | `67454e81` |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | `durationSec 122` |
+| 根会话调用 | `toolCalls 10`、`transcriptEvents 72`、`calls (10) vs results (10)` |
+| token | `tokenTotal 589,424`（cap 12,000,000，`tokenCapHit:false`） |
+| 会话 | 2 个（所办 + 成员 r-1） |
+| RED | `SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks` |
+| 快照 | `_oneoff/vm-slv/full-1027-194031.jsonl`，2,282,935 B / 4,002 行 |
+| 围栏计数 | `NO_FENCE=12 UNKNOWN_FIELD=18 FIELD_NOT_APPLICABLE=8 BAD_JSON=12` |
+| 日志保全 | 戳 `20261027-194312` |
+| 清理 | `clone_gone=True port_listening=False C_free_GB=10.31` |
+
+### §167.2 判决
+
+| # | 项 | 结果 | 回执原文（节选） |
+| --- | --- | --- | --- |
+| 1 | F-55 未测量分支 | ✅ | `"hashUnchanged":null,"hashUnchangedState":"not-measured","hashUnchangedReason":"VMU_LEAN_FILE_UNREADABLE"`，`hashUnchangedMeans` 仍说 `— this is NOT the value "unchanged"` |
+| 2 | F-55 已测量分支 | ✅ | `"hashUnchanged":true,"hashUnchangedState":"measured","hashUnchangedReason":null`（作业 `state:"settled"`、`exitCode:0`、`passed:true`） |
+| 3 | F-55 列表分支 | ✅ | 列表每行都带三字段（未测作业同样给 `not-measured` + 码） |
+| 4 | 成员在席位复读 | ✅ | 成员原文：`hashUnchanged: null / hashUnchangedState: "not-measured" / hashUnchangedReason: "VMU_LEAN_FILE_UNREADABLE"`；并答「能判断『从来没编译过』的是 `hashUnchangedState`」 |
+| 5 | F-56 封套深度 | ❌ 新缺陷 | `lean_run` 回执 `{"ok":true,"tool":"vibe_v5_lean_run","job":{"ok":true,"id":"lean-1",…}}`；`lean_job` 回执 `job` 里又是 `{ok:true, job:{…}}` ⇒ 字段在 `receipt.job.job.*`；`lean_job {}` 的列表在 `jobs.jobs`。所办报告原文：「the four fields live at `job.job`」 |
+| 6 | 术语教学 | ⚠️ 观察 | `lean_archive` 的条目同样被包在 `archived` 里（`archived.statement` / `archived.persisted`），与 `lean_run` 的 `job.id` 深度不同——同一族三个深度 |
+
+### §167.3 修法与测试
+
+- **F-56**：`vibe-math-vmu/kit/extras.js` 的五个 Lean 打包工具一律「铺开脸的答案」——`lean_run` → `{...submitted, tool}`（`id`/`state` 到顶层）；`lean_job {jobId}` → `{...lean.status(id), tool}`（`job` 就是记录本身，不再是封套）；`lean_job {}` → `{...lean.list(), tool}`（`jobs` 就是行数组）；`lean_lib` → `{...lib(), tool}`（`entries` 到顶层）；`lean_read` → `{...read(), tool}`；`lean_archive` → `{...archive(), tool}`（`statement`/`persisted` 到顶层）。拒绝同样铺开，具名码留在顶层。
+- 新套件 `tests/vmu-run64-lean-receipt-shape.test.mjs` **17/0**：`lean_run` 顶层有 `id` 且**没有** `job` 封套；`lean_job` 的 `job` 是记录且 `job.job === undefined`；F-55 三字段可在此深度读到；列表 `jobs` 是数组且每行都是记录；`lean_archive` 顶层有 `statement`/`persisted` 且无 `archived` 封套；`lean_lib` 的 `entries` 是数组；`lean_read` 顶层有 `content` 且无 `card` 封套；未知作业在顶层具名拒 `VMU_LEAN_NOT_FOUND` 且不带空壳 `job`。
+- 相应更新：`tests/vmu-run59-lean-statement-alias.test.mjs`（`arch.archived*` → `arch.*`、`lib.lib.entries` → `lib.entries`、`res.job.id` → `res.id`）⇒ 8/0；`tests/vmu-run62-hash-means-and-label.test.mjs`（`res.job.id` → `res.id`、列表读平）⇒ 18/0；`tests/vmu-run63-hash-field-level.test.mjs`（同上）⇒ 17/0。
+
+### §167.4 门禁
+
+- `tests/vmu-run64-lean-receipt-shape.test.mjs` 17/0；`vmu-run59-lean-statement-alias` 8/0；`vmu-run62-hash-means-and-label` 18/0；`vmu-run63-hash-field-level` 17/0；`vmu-run58-lean-face-contract` 7/0；`vmu-run60-lean-library-durable` 24/0；`vmu-run61-feedback-body` 10/0；`vmu-lean` 21/0；`vmu-lean-jobs` 13/0；`vmu-v5r-tools` 359/0。
+- `node scripts/preflight.mjs` PASS；`node scripts/regen-all.mjs --check` 16/16 in sync；`node scripts/check-docs.mjs` `DOC LINT: PASS`。
+- 全量见 §167.6 记账。
+
+### §167.5 三处简报错
+
+1. 第 2/3 步让所办「从 `job` 对象里抄字段」——这句话在**旧形状**下才有确定含义（那时 `job` 是封套、字段在 `job.job`）；新形状下 `job` 就是记录。简报不该假设层级，应说「整份回执原样抄回，不要猜层级」。
+2. 第 4 步写 `jobs.jobs`，而列表回执的键是 `jobs`（旧形状里是 `jobs.jobs`）——简报照抄了上一轮观察到的形状，等于把缺陷写成了验收标准（这正是本轮 F-56 的入口）。
+3. 第 3 步没有要求所办读「已测量作业的三字段」，只能靠它自己顺带抄回；复验类简报应把两支（未测量/已测量）都写成明确字段。
+
+### §167.6 记账
+
+- 本轮新增套件 1 个（`tests/vmu-run64-lean-receipt-shape.test.mjs`），派生计数见计数门禁；全量 `TOTAL 540 PASS 540 FAIL 0`。
+
+### §167.7 无法验证
+
+- `terminated`（超时/终止）作业的 `hashUnchangedState` 仍未取证。
+- 跨进程重启后 `leanlibrary` 读回仍未取证。
+- 成员调用的可核性（`memberToolCalls:null`）仍未取证。
+
+### §167.8 无实质残余
+
+否。残余：上述三项无法验证 + 成员席位读面（`memberToolCalls`）的可核性。
