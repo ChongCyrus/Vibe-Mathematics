@@ -1446,7 +1446,13 @@ async function dispatch(H, rawArgs) {
   return out
 }
 
-export function registerMathComputation(host) {
+/**
+ * Bind the shared module to a host adapter. `publish` controls whether the tool is PUBLISHED through the adapter:
+ * a host that already carries the tool (host-math.js `hasTool`) binds without publishing a second copy, because
+ * publishing twice is a named host refusal ("already registered in this scope") that used to surface on an
+ * ordinary read of the math face.
+ */
+export function bindMathComputation(host, { publish = true } = {}) {
   const H = adaptHost(host)
   H.__mathHost = true
   const handler = async function (args) {
@@ -1456,12 +1462,16 @@ export function registerMathComputation(host) {
       return fail('MATH_INVALID_ARGUMENT', null, 'math_computation 内部错误：' + String((e && e.message) || e))
     }
   }
-  H.register(MATH_TOOL_NAME, MATH_TOOL_DESCRIPTION, MATH_TOOL_SCHEMA, handler)
+  if (publish) H.register(MATH_TOOL_NAME, MATH_TOOL_DESCRIPTION, MATH_TOOL_SCHEMA, handler)
   const probe = async function (opts) {
     const h = await probeMathEngines(H, opts)
     return h
   }
-  return { toolName: MATH_TOOL_NAME, description: MATH_TOOL_DESCRIPTION, parameters: MATH_TOOL_SCHEMA, handler: handler, probe: probe, host: H }
+  return { toolName: MATH_TOOL_NAME, description: MATH_TOOL_DESCRIPTION, parameters: MATH_TOOL_SCHEMA, handler: handler, probe: probe, host: H, published: publish }
+}
+
+export function registerMathComputation(host) {
+  return bindMathComputation(host, { publish: true })
 }
 
 export function mathAvailabilityLine(probe, lang, mathMode) {
