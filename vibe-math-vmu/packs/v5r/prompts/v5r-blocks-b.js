@@ -790,6 +790,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · 时长与兜底：`extend` 是**发言延长**（ms，缺省读 `vmu.meetings.speechExtendMs`，仍为 0 则具名拒）；`extendlimit` 是**会议墙钟上界延长**；墙钟硬界 `vmu.meetings.hardLimitMs`（默认 1800000ms，钳制 300000–7200000，**没有"无界"**）。只有超过硬界才能用 `lapse` 具名收束（回执带 revocable），恢复用 `revokelapse`（必须给理由）。',
         '  · `ordinary` 类型**故意不给推荐骨架**——这是具名决定：议程与顺序完全由你编排；其余五种的步骤只是**建议**，可跳过、可重排。',
         '  · 议程与标题：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 只读议程条目列表，`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）。`title` 是**可选**的独立名称，与议程分开；给非字符串会被具名拒。',
+        '  · 召集与关闭：`vibe_v5_meeting` 的**召集只对 chair 席开放**（`vmu.meetings.conveneRequiresChair`）；`vibe_vmu_meeting { action: "close" }` 的**关闭也只有 chair 席能调**（`closeRequiresChair`，默认 true）——其他席位调用会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁来做。',
         '  · 发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` **按数组顺序批量**入队（邀请**不是签到**，被邀者仍须自己 `attend` 才计入法定人数）；`invitedspeak` 让被邀者走服务发言面；`order` 只读队列。`flow`（open/hands/round_robin/call_on）与 `overrideorder` 要求部署声明 `vmu.meetings.orderMode`，v5r 未声明 ⇒ 调用会被具名拒。',
       ].join('\n'),
       temp: [
@@ -866,6 +867,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '【轨迹与状态板：你写什么、读什么】轨迹五种（`vmu.records.tracks`）：`progress`（默认，数学进展）｜`routes`（**尝试过的路线与进展**）｜`obstacles`（**阻塞与原因**）｜`rejected`（**已证伪的路**）｜`state`（状态板面板）。写用 `vibe_v5_record_progress { member: "<你的 id>", track, content, progress?, obstacles?, next?, help? }`——`track:"state"` 时 **progress/obstacles/next/help 四项必填**，缺一项会被具名拒（回执列出缺哪项）。',
+        '· 方法库另有一张卡：理论／方法／工具用 `vibe_v5_record_method`（content/value/motive/p 四项必填）——它记录的是**抽象化产物**，与 `routes` 轨「试过什么」分开。',
         '  · 提示词里的 `[状态板]` 四行（总任务/规划/各任务完成状态/当前小任务）是**派生**的，来自设置、任务板与你最近一条 progress——它们**不是**你写的 state 面板，两件事别混：注入的是读数，state 才是你自己写的面板。四行的英文键是 `objective`／`plan`／`tasks`／`current`，回执或读数里出现它们指的是同一件事。',
         '  · 读别人的板：`vibe_v5_read_library` 的 list 形态（可按 `member`/`track`/`kind` 过滤）或 `vibe_vmu_records { action: "list", track: "state" }` 再 `{ action: "expand", id }`。进展写 `progress`，走不通的路写 `rejected`（别把证伪埋进 progress 当进展）。',
       ].join('\n'),
@@ -882,4 +884,27 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       ].join('\n'),
     },
   },
+  Object.freeze({
+    name: 'v5r-turn-scripts',
+    order: 838,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【脚本归档】写过的脚本要留档，不要每轮现编现跑：`vibe_v5_script { op: "archive", name, text }` 把整段文本按内核指纹存成 `scripts` 轨的卡（body 逐字保存）；`op: "read"` 按 id 或 name 原样读回，`op: "list"` 看已归档的。临时脚本**不能** ad-hoc 执行（本包具名拒绝）；要复算就重跑归档文本并比对指纹——不是相信备注。',
+      ].join('\n'),
+    },
+  }),
+  Object.freeze({
+    name: 'v5r-turn-compute',
+    order: 839,
+    range: 'pack',
+    kind: 'shared',
+    texts: {
+      shared: [
+        '【计算与引擎】数学面是 `vibe_vmu_mathtools`（plan/run/receiptsView/cacheView/status）与后台作业 `vibe_vmu_mathjobs`；**引擎由宿主注入**（`vmu.math.engines`，没有代码默认值），状态面报 `engines`／`available`；引擎接缝缺失时具名拒 `VMU_ENGINE_UNAVAILABLE`，不会假装算过。并发上限 `vmu.math.maxParallel`（默认 1），超限具名拒；shell 兜底不算归档。',
+        '· 本面当前**没有内置的 Python 执行接缝**：计算走宿主提供的引擎或工具，或把脚本归档后走复算；需要新包/新引擎时写进进展与请示，不要私下装。',
+      ].join('\n'),
+    },
+  }),
 ])

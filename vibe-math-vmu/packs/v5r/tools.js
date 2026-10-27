@@ -2474,11 +2474,46 @@ function toolSecond(args = {}, { kernel } = {}) {
  *   · `secret` / `allow_abstain` have NO per-box rule in this kernel (secrecy and abstention are deployment-level), so
  *     they stay in `unapplied` with that reason — asked-vs-applied stays explicit.
  */
+/** ★ RULE E19（宏观规则 L46–L48「辩论阶段不使用投票板」）: WHICH still-open meeting makes the ballot board the wrong
+ * instrument. This is the PACK's policy half on purpose — the ballot box is type-agnostic by design (it knows nothing
+ * about meetings, and teaching it meeting TYPEs would make the kernel carry institution vocabulary). The refusal is
+ * raised at the one `poll_open` face, so the sentence in the prompt and the gate in the runtime cannot drift.
+ * Reads only published faces: `kernel.meetings.openMeetings()` (the durable marker, which excludes `closed` rows and
+ * COUNTS what it left out) and `kernel.meetings.meetingView({meeting})` (the same view `vibe_vmu_meeting
+ * {action:"status"}` returns, `:1980` in kernel/meetings.js). A `lapsed` debate still counts: it is a debate that
+ * needs attention (it can be revived), not one that is over. Missing faces ⇒ null (this check never invents a block). */
+function openDebateMeeting(kernel) {
+  const face = kernel && kernel.meetings
+  if (!face || typeof face.openMeetings !== 'function' || typeof face.meetingView !== 'function') return null
+  let list = null
+  try { list = face.openMeetings() } catch { list = null }
+  const rows = list && Array.isArray(list.meetings) ? list.meetings : []
+  for (const row of rows) {
+    const id = row && row.id !== undefined && row.id !== null ? String(row.id) : ''
+    if (id === '') continue
+    let view = null
+    try { view = face.meetingView({ meeting: id }) } catch { view = null }
+    const type = view && view.type !== undefined ? view.type : (view && view.meeting && view.meeting.type)
+    if (String(type || '') === 'debate') return id
+  }
+  return null
+}
+
 function toolPollOpen(args = {}, { kernel } = {}) {
   if (!has(args.question)) throw refuse('VMU_INVALID_ARGUMENT', 'poll_open needs a question', 'pass question:"…"')
   const options = Array.isArray(args.options) ? args.options.map(String).filter((x) => x !== '') : []
   if (options.length < 2) throw refuse('VMU_INVALID_ARGUMENT', 'poll_open needs at least two options', 'pass options:["A","B"] (the ballot box refuses <2 by name)')
   requireChairSeat(kernel, args.member, 'poll_open')
+  // ★★★ E19 (macro rules L46–L48): 辩论阶段不使用投票板. Until this guard existed the rule lived ONLY in the teaching
+  // sentence — a poll could be opened in the middle of a debate and nothing said no. A debate settles with verdicts
+  // (`vibe_v5_verdict` / `vibe_v5_verdict_ask`) plus the collected ruling, so the board is refused BY NAME here, with
+  // the open debate's own id in the message and the two real ways forward in the hint.
+  const debateOpen = openDebateMeeting(kernel)
+  if (debateOpen) {
+    throw refuse('VMU_NOT_PERMITTED',
+      'the ballot board is not used while a debate is open: meeting "' + debateOpen + '" is a debate, and a debate settles with verdicts (vibe_v5_verdict / vibe_v5_verdict_ask), not with a poll',
+      'settle it with vibe_v5_verdict { meeting: "' + debateOpen + '", proposition_id: "…", verdict: <0..1>, reason: "…" }, or close the debate first (chair: vibe_vmu_meeting { action: "close", id: "' + debateOpen + '" })')
+  }
   if (!kernel.ballotbox || typeof kernel.ballotbox.open !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no ballot box face is published, so a poll cannot be opened', 'assemble a kernel with the ballot box service')
   }

@@ -14,6 +14,13 @@ import { fileURLToPath } from 'node:url'
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const script = join(REPO, 'scripts/check-rules-coverage.mjs')
 const ledgerPath = join(REPO, 'docs/acceptance/rules-ledger.json')
+// ── SELF-PROOF (`--selftest`) ──────────────────────────────────────────────────────────────────────────────
+// This suite is a SCANNER of a scanner: "0 problems" from a gate that stopped checking looks exactly like a clean
+// ledger. So every planted fault below is counted, and `--selftest` only exits 0 when at least four distinct faults
+// were caught BY NAME. Running the suite normally also exercises them; the flag is what makes the proof explicit.
+const SELFTEST = process.argv.includes('--selftest')
+let planted = 0
+let caught = 0
 let passed = 0
 let failed = 0
 const ok = (name, cond, detail) => {
@@ -37,6 +44,8 @@ const probe = (label, mutate) => {
   const file = join(scratch, label + '.json')
   writeFileSync(file, JSON.stringify(led))
   const r = run(['--ledger', file, '--json'])
+  planted += 1
+  if (r.status === 1) caught += 1
   let out = {}
   try { out = JSON.parse(r.stdout) } catch { out = { problems: [] } }
   return { status: r.status, codes: (out.problems || []).map((p) => p.code) }
@@ -78,5 +87,10 @@ if (unfinished > 0) {
 }
 
 rmSync(scratch, { recursive: true, force: true })
+if (SELFTEST) {
+  const good = failed === 0 && planted >= 4 && caught === planted
+  console.log('SELFTEST: ' + (good ? 'ok' : 'FAILED') + ' — planted faults caught by name: ' + caught + '/' + planted)
+  process.exit(good ? 0 : 1)
+}
 console.log('RULE COVERAGE GATE: ' + passed + ' passed, ' + failed + ' failed')
 process.exitCode = failed === 0 ? 0 : 1

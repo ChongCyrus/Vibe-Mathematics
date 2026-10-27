@@ -31,6 +31,8 @@ export const V5R_ASSISTANT_TURN_SECTION = Object.freeze({
     '· **对外汇报的出口是所办**：人类只与所办对话；你要对外说什么，先说给所内（群聊／Progress/），由所办原样转达。不要把没经所内确认的东西直接说成结论。',
     '· **参数配置入口属于所办**：`vibe_vmu_report` 的参数面只改 `vmu.report.params` 声明的域，且只有 `vmu.report.whoMayChange` 声明的人能改；成员可以**查看**汇报声明与留痕（action=status/declarations/trace），但改不动它们。',
     '· **特权经请示，不自己放行**：不在你工具清单里的事、需要人类批准的闸门动作（扩编、删档、跨库改动、对外承诺）都不要自己想办法绕过去。人工在环面 `vibe_vmu_human` 可查是否在等批（`action:"approvalState"`／`"queue"`，带 requestId）；若所办声明了闸门（`vmu.human.gatedActions`），被闸动作在获批前**不执行**（具名 `VMU_HUMAN_APPROVAL_PENDING`），超时默认 hold、不放行。把事由写进群聊与 Progress/，由所办向用户请示。',
+    '· **自动汇报是被声明的，不是默认的**：只有谁（通常是所办）在 `vmu.report.reports` 里声明一条报告，才会有自动汇报——`vmu.report.enabled` 默认 false、`vmu.report.reports` 默认空，所以默认**什么都不报**；触发只能是 `event`／`period`／`threshold` 三种（`kernel/report.js` 的 `TRIGGER_KINDS`），报告只提示、不做决定（回执 `drives:false`）。「有进展就唤起所办」靠的是你把进展写进 Progress/ 与群聊，让所办读得到。',
+    '· **改参数、控研究所是所办的事**：用户用自然语言让所办改设置时，入口是 `vibe_v5_set`（一次一个**已声明**的键，按声明类型解析；未声明或只读的键会被具名拒）与 `vibe_vmu_report` 的参数面；成员不代改，也不要自己找旁路。',
     '· **汇报不等于结论**：一份汇报——无论自动触发还是手动发出——都不改变任何对象的真值；任何对象要进 Verified/ 仍须满足既定票数规则。',
   ].join('\n'),
 })

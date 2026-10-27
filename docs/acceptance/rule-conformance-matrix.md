@@ -14,9 +14,9 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 0 | all four citations resolve |
-| ◐ PARTIAL | 72 | the row states exactly which of M/T/P/R is missing |
-| ❌ MISSING | 5 | no mechanism at all yet |
+| ✅ DONE | 38 | all four citations resolve |
+| ◐ PARTIAL | 39 | the row states exactly which of M/T/P/R is missing |
+| ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
 **A goal may not close while any row is ◐ or ❌.**
@@ -25,113 +25,113 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `A1` | L1-L2 | 所办＝主代理：用户的助手、媒介、传信者 | ◐ PARTIAL | 0/1/1/0 | re-cite machine-resolvable evidence for: mechanism, live (the gate stripped citations that no longer resolve) |
-| `A2` | L1-L2 | 有进展时自动唤起所办汇报 | ◐ PARTIAL | 1/1/0/0 | 核实“进展→唤起所办”的触发链（是谁、按什么条件唤醒 office），缺则补机制，再把条件写进教学 |
-| `A3` | L1-L2 | 支持用户以自然语言让所办设参数、控制研究所 | ◐ PARTIAL | 0/1/0/0 | re-cite machine-resolvable evidence for: mechanism, prompt, live (the gate stripped citations that no longer resolve) |
-| `A4` | L3 | 院士＝chair 席，统领研究所 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) |
-| `A5` | L3 | 常驻研究员＝member 席 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) |
-| `A6` | L3 | 临时工：可被雇佣、无表决权、默认不参与会议、可解雇 | ◐ PARTIAL | 1/1/1/0 | 教学补“默认不参会”（attend 只认 chair+member 是机制事实）；真机跑一次 hire→temp 不被邀请/不能投票→fire |
-| `A7` | L3 | 临时工可被解雇 | ◐ PARTIAL | 1/1/1/0 | 真机一条 hire→fire（任务转 cancelled、席位消失） |
+| `A1` | L1-L2 | 所办＝主代理：用户的助手、媒介、传信者 | ✅ DONE | 2/2/1/1 | — |
+| `A2` | L1-L2 | 有进展时自动唤起所办汇报 | ◐ PARTIAL | 1/1/1/0 | 教学已如实写明边界（报告须被声明、`vmu.report.enabled` 默认 false、触发仅 event/period/threshold、回执 drives:false、成员把进展写进 Progress/ 与群聊）；仍缺 live：真机一次「声明报告→有进展→收到汇报」往返，以及 office 侧若有唤醒链需机制车道确认 ／ 真机未演练：run 29–78 无 `vibe_v5_report` 真机回执；`report` 词形只出现在机制表与 run 6–8 时代，无法证明「声明报告→有进展→收到汇报」往返。 |
+| `A3` | L1-L2 | 支持用户以自然语言让所办设参数、控制研究所 | ✅ DONE | 2/2/1/1 | — |
+| `A4` | L3 | 院士＝chair 席，统领研究所 | ✅ DONE | 1/1/1/1 | — |
+| `A5` | L3 | 常驻研究员＝member 席 | ✅ DONE | 1/1/1/1 | — |
+| `A6` | L3 | 临时工：可被雇佣、无表决权、默认不参与会议、可解雇 | ◐ PARTIAL | 1/1/1/0 | 教学补“默认不参会”（attend 只认 chair+member 是机制事实）；真机跑一次 hire→temp 不被邀请/不能投票→fire ／ 真机未演练：run 29–78 无 hire→temp 回执；`attendDeniedSeats` 只出现在机制表（25 行）与旧节（1090/1092）。 |
+| `A7` | L3 | 临时工可被解雇 | ◐ PARTIAL | 1/1/1/0 | 真机一条 hire→fire（任务转 cancelled、席位消失） ／ 真机未演练：全文 0 次 `vibe_v5_fire`；`fire` 只作为 `RECORDED_FIELDS` 元素出现（4829），无解雇真机回执。 |
 
 ## B. 公共文件
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `B1` | L7-L8 | Verified 只收 p=1 的命题 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) |
-| `B2` | L7-L8 | 参考文献中的命题也可直接入 Verified | ❌ MISSING | 0/0/0/0 | 设计并实现引用入口（清单+引用行格式+验证方式），或由用户裁定不做（DECIDED） |
-| `B3` | L7-L8 | 只有辩论能把 p 改为 1 | ◐ PARTIAL | 0/1/1/0 | 提示词用“或”让 verified 轨独立满足 p=1，需收紧为“只有辩论” |
-| `B4` | L7-L8 | 蓝图：总目标/技术路线/规划，按时更新 | ◐ PARTIAL | 1/1/1/0 | 补教学段（谁 propose、多久算逾期、adopt 的语义）；真机跑 blueprint state→propose→adopt |
-| `B5` | L7-L8 | 蓝图由院士+常驻研究员共同设计 | ◐ PARTIAL | 1/1/1/0 | 教学写清“任何 live 成员可 propose、院士 adopt”；真机验常驻 propose |
-| `B6` | L7-L8 | 蓝图最终编辑权在院士 | ◐ PARTIAL | 1/1/1/0 | 同上教学 + 真机验“常驻 propose 被院士改后再 adopt” |
+| `B1` | L7-L8 | Verified 只收 p=1 的命题 | ✅ DONE | 1/1/1/1 | — |
+| `B2` | L7-L8 | 参考文献中的命题也可直接入 Verified | ◐ PARTIAL | 0/0/1/0 | 规则允许文献命题直接入 Verified，内核没有该入口：verified 轨唯一写者 `promoteVerified` 要求 warrant（辩论一致／Lean+符合性）。最小可建方案：①命题卡增加 `reference` 字段（作者/年份/定理号，非空才计）②`promoteVerified` 增第四种 `warrant_kind:"literature"`，缺 `reference` 或未署名 ⇒ 具名拒 ③`vibe_v5_verified_promote` 暴露该 kind ④测试钉住「无 reference 必拒、有 reference 才入轨」；或由用户裁定 DECIDED（不引入文献入口）。live 仍 0 次。 ／ 真机未演练：内核无「文献命题直接入 Verified」入口（next 已记机制缺口），run 29–78 无对应回执。 |
+| `B3` | L7-L8 | 只有辩论能把 p 改为 1 | ✅ DONE | 1/1/1/1 | — |
+| `B4` | L7-L8 | 蓝图：总目标/技术路线/规划，按时更新 | ✅ DONE | 1/1/1/1 | — |
+| `B5` | L7-L8 | 蓝图由院士+常驻研究员共同设计 | ◐ PARTIAL | 1/1/1/0 | 教学写清“任何 live 成员可 propose、院士 adopt”；真机验常驻 propose ／ 真机未演练：真机只见院士（主席席）propose（5345/6143）；常驻 propose 的链路 0 次。 |
+| `B6` | L7-L8 | 蓝图最终编辑权在院士 | ◐ PARTIAL | 1/1/1/0 | 同上教学 + 真机验“常驻 propose 被院士改后再 adopt” ／ 真机未演练：`adopt` 的「最终编辑权在院士」没有真机回执（5345 只到「adopt 需 draft」一步）。 |
 
 ## C. 个人文件
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `C1` | L11-L12 | 研究过程 progress 日志 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) |
-| `C2` | L13 | 已尝试路线/方法及其进度 | ◐ PARTIAL | 1/1/0/0 | 补“路线进 routes 轨”的教学；决定“进度”是否结构化（status/阶段枚举） |
-| `C3` | L14 | 遇障路线/尝试/方法及障碍与原因归档 | ◐ PARTIAL | 1/1/0/0 | 补教学 + 真机一条（写 obstacles 并读回原因字段） |
-| `C4` | L15 | 被否定的路线/结论归档 | ◐ PARTIAL | 1/1/0/0 | 补教学 + 真机一条 |
-| `C5` | L16 | 命题库：完整定义、p(0-1)、进度 | ◐ PARTIAL | 1/1/1/0 | “进度”只有自由文本，无字段；需决定加结构化进度（或裁定不需要） |
-| `C6` | L16 | 平时只记证明/证伪尝试，真正会证时才写正式证明字段 | ◐ PARTIAL | 1/0/1/0 | 只有段落约定，无字段级门；需决定是否加字段与门 |
-| `C7` | L16 | 只有写完的正式证明才能用于辩论 | ◐ PARTIAL | 0/1/1/0 | re-cite machine-resolvable evidence for: mechanism, live (the gate stripped citations that no longer resolve) |
-| `C8` | L16 | p=1 的命题要标记 verified | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) |
-| `C9` | L17 | 方法库（理论/方法/工具，抽象化产物） | ◐ PARTIAL | 1/1/0/0 | re-cite machine-resolvable evidence for: prompt, live (the gate stripped citations that no longer resolve) |
-| `C10` | L18 | Lean 代码与编译结果归档 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) |
-| `C11` | L18 | lean 通过后辩论只查描述/定义是否符合原意 | ◐ PARTIAL | 0/1/1/0 | 真机跑完整“lean 通过→辩论→fidelity→p=1” |
-| `C12` | L18 | 鼓励开关：鼓励把小结/定义 Lean 化 | ◐ PARTIAL | 1/1/1/0 | 补教学（off/encourage/require 三档含义）+ 真机 |
-| `C13` | L19 | 经分派后各自负责部分的论文 | ◐ PARTIAL | 1/1/1/0 | 真机 0 次：必须跑一轮论文阶段（分派→撰写→互审→定稿→渲染） |
-| `C14` | L20 | 脚本文件等归档，不写 ad-hoc 脚本 | ◐ PARTIAL | 1/1/0/0 | 补 Scripts/ 目录教学 + 真机一条（archive→read→recompute） |
-| `C15` | L21 | 自反馈库（问题/冗余/障碍/可优化点/方案；院士含组织协作） | ◐ PARTIAL | 1/1/1/0 | “迭代优化行为模式”缺闭环（谁读、何时复盘） |
+| `C1` | L11-L12 | 研究过程 progress 日志 | ✅ DONE | 1/1/1/1 | — |
+| `C2` | L13 | 已尝试路线/方法及其进度 | ◐ PARTIAL | 1/1/1/0 | 教学已在轨迹段落地（`routes`＝尝试过的路线与进展）；仍缺 live 真机：写一条 route 卡后在状态板/轨迹读数可见 ／ 真机未演练：`routes` 轨无真机写入回执；next 仍记「写一条 route 卡后可见」为缺。 |
+| `C3` | L14 | 遇障路线/尝试/方法及障碍与原因归档 | ◐ PARTIAL | 1/1/1/0 | 教学已在轨迹段落地（`obstacles`＝阻塞与原因）；仍缺 live 真机：阻塞卡归档后可在轨迹读数中检索 ／ 真机未演练：`obstacles` 轨无真机写入回执；next 仍记为缺。 |
+| `C4` | L15 | 被否定的路线/结论归档 | ◐ PARTIAL | 1/1/1/0 | 教学已在轨迹段落地（`rejected`＝已证伪的路）；仍缺 live 真机：被否证路线归档进 rejected 轨 ／ 真机未演练：`rejected` 轨无真机写入回执；next 仍记为缺。 |
+| `C5` | L16 | 命题库：完整定义、p(0-1)、进度 | ✅ DONE | 1/1/1/1 | — |
+| `C6` | L16 | 平时只记证明/证伪尝试，真正会证时才写正式证明字段 | ✅ DONE | 1/1/1/1 | — |
+| `C7` | L16 | 只有写完的正式证明才能用于辩论 | ✅ DONE | 1/1/1/1 | — |
+| `C8` | L16 | p=1 的命题要标记 verified | ✅ DONE | 1/1/1/1 | — |
+| `C9` | L17 | 方法库（理论/方法/工具，抽象化产物） | ◐ PARTIAL | 1/1/1/0 | 教学已落地（`vibe_v5_record_method` 记录抽象化产物、content/value/motive/p 必填，与 routes 轨区分）；仍缺 live 真机写入一条方法卡 ／ 真机未演练：`vibe_v5_record_method` 只在教学/机制（37/1950），run 29–78 0 次真机写入。 |
+| `C10` | L18 | Lean 代码与编译结果归档 | ✅ DONE | 1/1/1/1 | — |
+| `C11` | L18 | lean 通过后辩论只查描述/定义是否符合原意 | ◐ PARTIAL | 2/1/1/0 | 机制在：fidelity 注册表（`createFidelityRegistry`）承载「追问是否已放回辩论」的状态，未追问就下结论 ⇒ 具名 `VMU_PACK_V5R_FIDELITY_ASK_REQUIRED`；缺真机链路 lean 通过 → 辩论 → fidelity → p=1（0 次）。 ／ 真机未演练：`fidelity` 词形只出现在 run 31 的 deny 清单（5150/5151）；无「lean 通过→辩论→fidelity→p=1」真机链路。 |
+| `C12` | L18 | 鼓励开关：鼓励把小结/定义 Lean 化 | ◐ PARTIAL | 1/1/1/0 | 补教学（off/encourage/require 三档含义）+ 真机 ／ 真机未演练：`encourageFormal`/`formalVerify` 0 次真机调用（仅机制表 38 行）。 |
+| `C13` | L19 | 经分派后各自负责部分的论文 | ◐ PARTIAL | 1/1/1/0 | 真机 0 次：必须跑一轮论文阶段（分派→撰写→互审→定稿→渲染） ／ 真机未演练：`vibe_v5_paper` 只在机制表/教学（1/61/79/298/309/494），run 29–78 无论文阶段真机回执。 |
+| `C14` | L20 | 脚本文件等归档，不写 ad-hoc 脚本 | ◐ PARTIAL | 1/1/1/0 | 教学已落地（`vibe_v5_script` op archive/read/list、整段文本按内核指纹存档于 `scripts` 轨、临时脚本不得 ad-hoc 执行、复算＝重跑归档文本比指纹）；仍缺 live 真机 archive→read→recompute ／ 真机未演练：`vibe_v5_script` 只在机制表与教学（40/375/3616）；next 记「仍缺 archive→read→recompute」。 |
+| `C15` | L21 | 自反馈库（问题/冗余/障碍/可优化点/方案；院士含组织协作） | ✅ DONE | 1/1/1/1 | — |
 
 ## D. 平时研究推进
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `D1` | L26 | 各自推进各自的总任务 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) |
-| `D2` | L27 | 三通道：邮箱/私信/群聊 | ◐ PARTIAL | 1/1/0/0 | re-cite machine-resolvable evidence for: prompt, live (the gate stripped citations that no longer resolve) |
-| `D3` | L27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ◐ PARTIAL | 1/1/1/0 | 补一句语义教学（机制已有 urgent） |
-| `D4` | L28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ◐ PARTIAL | 1/1/0/0 | re-cite machine-resolvable evidence for: prompt, live (the gate stripped citations that no longer resolve) |
-| `D5` | L28 | 四字段都含时间等基础信息 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) |
-| `D6` | L28 | 可查看其他成员当前状态版 | ◐ PARTIAL | 1/1/1/0 | 无定向入口（只能 list state 行）：加“读某成员状态板”形状 + 教学 + 真机 |
-| `D7` | L28 | 可自己修改更新自己的状态版 | ◐ PARTIAL | 1/1/1/0 | 成员写的是 state 面板四字段（progress/obstacles/next/help），与注入的派生四格不同：统一或教清区别 |
-| `D8` | L28 | 四字段按规则原文实现（字段名与语义） | ◐ PARTIAL | 1/1/1/0 | 英文键 objective/plan/tasks/current 与中文原文语义等价但名字不同：决定是否改名对齐 |
+| `D1` | L26 | 各自推进各自的总任务 | ✅ DONE | 1/1/1/1 | — |
+| `D2` | L27 | 三通道：邮箱/私信/群聊 | ✅ DONE | 1/1/1/1 | — |
+| `D3` | L27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ◐ PARTIAL | 1/1/1/0 | 补一句语义教学（机制已有 urgent） ／ 真机未演练：`urgent` 只在 4893 的参数字面（`{to,content,subject,urgent}`）出现，无真机「urgent 私信」回执。 |
+| `D4` | L28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 1/1/1/1 | — |
+| `D5` | L28 | 四字段都含时间等基础信息 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) ／ 真机未演练：run 29–78 的回执里没有状态板四字段的时间读数；`updatedAt` 只出现在 5388 的排序机制说明。 |
+| `D6` | L28 | 可查看其他成员当前状态版 | ◐ PARTIAL | 1/1/1/0 | 无定向入口（只能 list 出 `state` 行）：余项＝加「读某成员状态板」形状 + 教学 + live 真机演练，或由用户裁定记为「借道 read_library 已够用」。 |
+| `D7` | L28 | 可自己修改更新自己的状态版 | ✅ DONE | 1/1/1/1 | — |
+| `D8` | L28 | 四字段按规则原文实现（字段名与语义） | ✅ DONE | 1/1/1/1 | — |
 
 ## E. 会议
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `E1` | L32 | 只能院士预约会议（可设预约时间） | ◐ PARTIAL | 1/1/1/0 | 教学 + 真机（at 预约→到点→状态转 open/waiting） |
-| `E2` | L32 | 到点人未到齐进入等待阶段；超时由院士决定 | ◐ PARTIAL | 1/1/1/0 | 教学（框架无定时器，靠 beat 结算）+ 真机 |
-| `E3` | L33 | 只能院士召开会议并主持 | ◐ PARTIAL | 1/1/0/0 | re-cite machine-resolvable evidence for: prompt, live (the gate stripped citations that no longer resolve) |
-| `E4` | L33 | 只能院士关闭会议 | ◐ PARTIAL | 1/1/0/0 | re-cite machine-resolvable evidence for: prompt, live (the gate stripped citations that no longer resolve) |
-| `E5` | L33 | 院士可延长会议时长上界 | ◐ PARTIAL | 1/1/1/0 | 教学 + 真机（extend 后 upper bound 变大） |
-| `E6` | L33 | 院士设会议标题 | ◐ PARTIAL | 1/1/1/0 | needs a lane: land the missing mechanism/tool/prompt and a live receipt |
-| `E7` | L33 | 院士设会议类型 | ◐ PARTIAL | 1/1/1/0 | 补六种类型的清单教学 |
-| `E8` | L33 | 院士设会议议程/事项安排 | ◐ PARTIAL | 1/1/1/0 | 教学细化（agenda vs agendaitems） |
-| `E9` | L33 | 院士邀请入会成员 | ◐ PARTIAL | 1/1/1/0 | 教学改成工具形态（现教成回执字段且该字段非法） |
-| `E10` | L33 | 院士设会议时长上界 | ◐ PARTIAL | 1/1/1/0 | 教学 + 真机（hardLimitMs 截断发言） |
-| `E11` | L33 | 允许一次性连续召开多个会议 | ◐ PARTIAL | 1/1/1/0 | 教学 + 真机（一次给定三场指标与开始时间） |
-| `E12` | L34 | 成员命令随会议类型与身份不同 | ◐ PARTIAL | 1/1/1/0 | 真机验一条“辩论下 lean 被收窄” |
-| `E13` | L35 | 会议类型：正常/学术交流/辩论/结题/论文交流/未来规划 | ◐ PARTIAL | 1/1/1/0 | 补一览表教学（含 ordinary 无骨架的理由） |
-| `E14` | L36 | 常见命令：举手 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) |
-| `E15` | L36 | 常见命令：邀请发言 | ◐ PARTIAL | 0/1/1/0 | 教学改成工具形态 + 真机 |
-| `E16` | L36 | 常见命令：批量指定成员按顺序发言 | ◐ PARTIAL | 1/1/1/0 | 教学（order/flow 两种机制）+ 真机 |
-| `E17` | L36 | 常见命令：单次发言版群聊（每人各说一次、不打断） | ◐ PARTIAL | 1/0/1/0 | 无独立工具、无并行隔离：决定是否加“批量独立表态”动作（破坏性重构允许） |
-| `E18` | L37 | 投票板：院士设选项与机制（最少/最多选几项） | ◐ PARTIAL | 1/1/1/0 | 教学 + 真机（poll_open→vote→close，含 min/max 校验） |
-| `E19` | L37 | 投票板不用于辩论 | ❌ MISSING | 0/0/1/0 | 辩论中投票板没有具名拒（仅教学约定）：需加具名拒或明确裁定不需要 |
-| `E20` | L38 | 任务板：设置与认领交派 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) |
-| `E21` | L39 | 群聊式交流：院士为群管理员，设每人权限/发言次数/禁言 | ◐ PARTIAL | 1/0/1/0 | 机制齐全（admins/mute/quota/freeze）但教学零：补教学 + 真机验配额与禁言 |
-| `E22` | L40 | 辩论额外字段：对象或文件引用 | ◐ PARTIAL | 0/1/1/0 | re-cite machine-resolvable evidence for: mechanism, live (the gate stripped citations that no longer resolve) |
-| `E23` | L41 | 辩论/结题表决人数＝min(用户设置, 院士+常驻) | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) |
-| `E24` | L43-L44 | lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意 | ◐ PARTIAL | 0/1/1/0 | needs a lane: land the missing mechanism/tool/prompt and a live receipt |
-| `E25` | L47-L51 | 辩论骨架①各成员同时独立单次表态 | ◐ PARTIAL | 1/1/1/0 | 无并行隔离：同 E17 决定 |
-| `E26` | L47-L51 | 辩论骨架②轮流/举手/邀请展开 | ◐ PARTIAL | 1/1/1/0 | needs a lane: land the missing mechanism/tool/prompt and a live receipt |
-| `E27` | L47-L51 | 辩论骨架③结束前各成员最终裁决 | ◐ PARTIAL | 0/1/1/0 | re-cite machine-resolvable evidence for: mechanism, live (the gate stripped citations that no longer resolve) |
-| `E28` | L47-L51 | 辩论骨架④全一致取该值、否则平均，并通知持有者改值 | ◐ PARTIAL | 0/1/1/0 | 需真机验“通知持有者改值”的链路（mailbox 提醒？） |
-| `E29` | L52-L53 | 辩论轮数由院士决定 | ◐ PARTIAL | 0/1/1/0 | 机制无硬限，但提示词把轮数硬钉成设置键：改教学 |
+| `E1` | L32 | 只能院士预约会议（可设预约时间） | ✅ DONE | 1/1/1/1 | — |
+| `E2` | L32 | 到点人未到齐进入等待阶段；超时由院士决定 | ◐ PARTIAL | 1/1/1/0 | 教学（框架无定时器，靠 beat 结算）+ 真机 ／ 真机未演练：无定时器/beat 结算真机读数；§20.4 R3/R4（行 726/727）明说「未到齐进 waiting 不可达」「到点推进是触碰驱动」，等待阶段只有 `unansweredList`（5354）。 |
+| `E3` | L33 | 只能院士召开会议并主持 | ✅ DONE | 1/1/1/1 | — |
+| `E4` | L33 | 只能院士关闭会议 | ✅ DONE | 1/1/1/1 | — |
+| `E5` | L33 | 院士可延长会议时长上界 | ✅ DONE | 1/1/1/1 | — |
+| `E6` | L33 | 院士设会议标题 | ✅ DONE | 1/1/1/1 | — |
+| `E7` | L33 | 院士设会议类型 | ✅ DONE | 1/1/1/1 | — |
+| `E8` | L33 | 院士设会议议程/事项安排 | ✅ DONE | 1/1/1/1 | — |
+| `E9` | L33 | 院士邀请入会成员 | ✅ DONE | 1/1/1/1 | — |
+| `E10` | L33 | 院士设会议时长上界 | ◐ PARTIAL | 1/1/1/0 | 教学 + 真机（hardLimitMs 截断发言） ／ 真机未演练：`hardLimitMs` 只在机制表 57 行出现；真机只读到 `wallLimitMs`（5346 的延长），没有「设上界」回执。 |
+| `E11` | L33 | 允许一次性连续召开多个会议 | ✅ DONE | 1/1/1/1 | — |
+| `E12` | L34 | 成员命令随会议类型与身份不同 | ◐ PARTIAL | 1/1/1/0 | 真机验一条“辩论下 lean 被收窄” ／ 真机未演练：`deny[chair]`/`deny[member]` 读数是 run 31 的缺陷观测（5150），不是「命令随类型与身份不同」的正向真机回执。 |
+| `E13` | L35 | 会议类型：正常/学术交流/辩论/结题/论文交流/未来规划 | ◐ PARTIAL | 1/1/1/0 | 补一览表教学（含 ordinary 无骨架的理由） ／ 真机未演练：六类里只有 ordinary（4919）、academic（6139）、debate（6402）有真机读数；closure/paper/planning 0 次。 |
+| `E14` | L36 | 常见命令：举手 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) ／ 真机未演练：`hand`（举手）0 次真机调用；只在教学段（63/68/143/289）。 |
+| `E15` | L36 | 常见命令：邀请发言 | ◐ PARTIAL | 1/1/1/0 | 邀请在 SERVICE 会议面真的可达（`meeting.js#invite(member,{by,why})`，主席可单个或按数组批量入队；邀请≠签到，被邀者仍须自己 `attend` 才计入法定人数，受邀发言只记纪要、不计票、不阻塞收束）。缺 live 真机一轮含受邀发言的会议。 ／ 真机未演练：邀请发言无工具形态（next 记「教学改成工具形态」），0 次真机。 |
+| `E16` | L36 | 常见命令：批量指定成员按顺序发言 | ◐ PARTIAL | 1/1/1/0 | 教学（order/flow 两种机制）+ 真机 ／ 真机未演练：`overrideorder` 只在 58 行机制说明；0 次真机批量排序发言。 |
+| `E17` | L36 | 常见命令：单次发言版群聊（每人各说一次、不打断） | ◐ PARTIAL | 1/1/1/0 | 骨架是 `binding:'recommendation'`（非门禁）；「每人各说一次」可用 `vibe_v5_say {meeting}` 逐人记录，但**并行隔离/不打断不可强制**（无独立工具、无隔离机制）⇒ 若要强制需新增「批量独立表态」动作（允许破坏性重构），否则如实记为缺口；live 仍 0 次。 ／ 真机未演练：next 记「无独立工具、无并行隔离」=机制缺口；0 次真机。 |
+| `E18` | L37 | 投票板：院士设选项与机制（最少/最多选几项） | ◐ PARTIAL | 1/1/1/0 | 教学 + 真机（poll_open→vote→close，含 min/max 校验） ／ 真机未演练：`poll` 词形在 run 29–78 为 0 命中；唯一的 ballot 回执是辩论票箱（4569 的 `kernel/ballot.js` 崩溃），不是投票板。 |
+| `E19` | L37 | 投票板不用于辩论 | ◐ PARTIAL | 1/1/1/0 | 机制已建（本轮）：`toolPollOpen` 在主席闸之后调用 `openDebateMeeting(kernel)`（读 `kernel.meetings.openMeetings()` + `meetingView({type})`），只要有一场非 `closed` 的 `type:"debate"` 就具名拒 `VMU_NOT_PERMITTED`，message 带该会议 id、hint 给两条出路（`vibe_v5_verdict` 裁决 / 主席 `vibe_vmu_meeting {action:"close"}`），拒绝发生在开箱之前（箱数不变）；普通会议不拦。测试 `tests/vmu-run36-poll-debate-guard.test.mjs` 24/24（基线开票、辩论拒、关闭后放行、普通会议放行、非主席先撞主席闸）。缺 live 真机。 ／ 真机未演练：status=MISSING：辩论中投票板没有具名拒（next 原文）；0 次真机。 |
+| `E20` | L38 | 任务板：设置与认领交派 | ✅ DONE | 1/1/1/1 | — |
+| `E21` | L39 | 群聊式交流：院士为群管理员，设每人权限/发言次数/禁言 | ✅ DONE | 1/1/1/1 | — |
+| `E22` | L40 | 辩论额外字段：对象或文件引用 | ✅ DONE | 1/1/1/1 | — |
+| `E23` | L41 | 辩论/结题表决人数＝min(用户设置, 院士+常驻) | ✅ DONE | 1/1/1/1 | — |
+| `E24` | L43-L44 | lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意 | ◐ PARTIAL | 1/1/1/0 | 机制在（fidelity 注册表 + `VMU_PACK_V5R_FIDELITY_ASK_REQUIRED` 闸），缺 live 端到端一次「lean 通过 → 辩论只查描述符合性 → p=1」。 ／ 真机未演练：`fidelity` 词形只在 5150/5151；无 lean-pass 且 p≠1 的辩论真机回执。 |
+| `E25` | L47-L51 | 辩论骨架①各成员同时独立单次表态 | ✅ DONE | 1/1/1/1 | — |
+| `E26` | L47-L51 | 辩论骨架②轮流/举手/邀请展开 | ◐ PARTIAL | 1/1/1/0 | needs a lane: land the missing mechanism/tool/prompt and a live receipt ／ 真机未演练：轮流/举手/邀请展开无真机回执；`hand` 词形只在教学段。 |
+| `E27` | L47-L51 | 辩论骨架③结束前各成员最终裁决 | ✅ DONE | 1/1/1/1 | — |
+| `E28` | L47-L51 | 辩论骨架④全一致取该值、否则平均，并通知持有者改值 | ✅ DONE | 1/1/1/1 | — |
+| `E29` | L52-L53 | 辩论轮数由院士决定 | ◐ PARTIAL | 1/1/1/0 | 机制只设**上界**：`vmu.meetings.verdictMaxRounds`（默认 3，界内钳制；超上限 ⇒ `VMU_RESOURCE_BUDGET`），界内推进节奏由院士掌握；而提示词把轮数钉成设置键值 ⇒ 教学车道需改成「界内由院士决定」。缺 live 真机。 ／ 真机未演练：next 记「机制无硬限，但提示词把轮数硬钉成设置键」=教学缺陷，无「院士定轮数」真机回执。 |
 
 ## F. 论文阶段
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `F1` | L55 | 把原问题与所有有价值产物系统梳理 | ◐ PARTIAL | 1/1/0/0 | 真机 0 次：必须跑 |
-| `F2` | L55 | 合作撰写：分派各自内容并合并 | ◐ PARTIAL | 1/1/0/0 | needs a lane: land the missing mechanism/tool/prompt and a live receipt |
-| `F3` | L56 | 互审 | ◐ PARTIAL | 1/1/1/0 | needs a lane: land the missing mechanism/tool/prompt and a live receipt |
-| `F4` | L56 | 面向读者：系统/正确/完整/严谨清晰 | ❌ MISSING | 0/0/0/0 | 质量四要求无任何机制：需定互审 checklist 门或由用户裁定不设门 |
-| `F5` | L56 | 讨论检查无误后定稿 | ◐ PARTIAL | 1/1/1/0 | 教学里“院士席 vs 学术委员会主席席”有矛盾，需修 + 真机 |
+| `F1` | L55 | 把原问题与所有有价值产物系统梳理 | ◐ PARTIAL | 1/1/1/0 | 教学已落地（撰写阶段要求系统梳理原问题与全部有价值产物：命题卡/方法卡/子问题卡/进展日志/表决记录/形式化证据）；仍缺 live 真机 0 次 ／ 真机未演练：论文阶段 0 次真机（`vibe_v5_paper` 只在机制/教学）；next 原文「真机 0 次」。 |
+| `F2` | L55 | 合作撰写：分派各自内容并合并 | ◐ PARTIAL | 1/1/1/0 | 教学已落地（章节分派各写 `action:"part"`、定稿代表合并成一篇、不改写他人章节）；仍缺 live 真机一次多成员 part→合并 ／ 真机未演练：多成员 part→合并 0 次真机；next 仍记为缺。 |
+| `F3` | L56 | 互审 | ◐ PARTIAL | 1/1/1/0 | needs a lane: land the missing mechanism/tool/prompt and a live receipt ／ 真机未演练：互审无机制车道（next: needs a lane），0 次真机。 |
+| `F4` | L56 | 面向读者：系统/正确/完整/严谨清晰 | ◐ PARTIAL | 2/1/1/0 | 质检门保留原样：`paper.js:144` 调 `checkQuality`，`QUALITY_CODES` 四条 = 章节缺失 / CITATION_UNKNOWN / EVIDENCE_MISSING / VERIFIED_MISSING（证据·引用·已核实结论不得缺）。「系统/正确/完整/严谨清晰」四句文字质量是审阅清单（教学车道已写），不是自动闸——Lead 裁决：不加文字质量门。余项：live 真机演练一次「质检失败被具名拒 → 修订 → 通过」。 |
+| `F5` | L56 | 讨论检查无误后定稿 | ◐ PARTIAL | 1/1/1/0 | 教学里“院士席 vs 学术委员会主席席”有矛盾，需修 + 真机 ／ 真机未演练：定稿/渲染无真机回执；next 记「院士席 vs 学术委员会主席席」教学矛盾待修。 |
 
 ## G. 额外要求
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `G1` | L58 | 支持成员使用 Python 等数学计算工具 | ❌ MISSING | 0/0/0/0 | 数学面需 host 注入 register/spawn 引擎；真机 VMU_ENGINE_UNAVAILABLE：需要可用引擎或落一个受控计算面 |
-| `G2` | L59 | 所办可设工具并发数量限制防 CPU/OOM | ◐ PARTIAL | 1/1/1/0 | 教学错指成 vmu.turn.maxParallel（那是唤醒人数），应指 vmu.math.maxParallel |
-| `G3` | L60 | 支持人工干预研究所决策与运行 | ◐ PARTIAL | 1/0/1/0 | re-cite machine-resolvable evidence for: tool, live (the gate stripped citations that no longer resolve) |
-| `G4` | L60 | 支持断点续跑 | ◐ PARTIAL | 0/1/0/0 | 真机 0 次：跑一轮 pause→resume（含会话续接） |
-| `G5` | L61 | 特殊权限/请求经所办向用户询问 | ◐ PARTIAL | 1/0/1/0 | re-cite machine-resolvable evidence for: tool, live (the gate stripped citations that no longer resolve) |
-| `G6` | L62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ◐ PARTIAL | 1/1/1/0 | 围栏 JSON 仍是回执通道：需在教学中说清二者分工 |
-| `G7` | L63 | 提示词与规则完全相符、自洽 | ❌ MISSING | 0/0/0/0 | 6 处硬矛盾 + 5 类零教学：按 P0–P2 清单重写（meeting_hand 字段、结题门槛、轮数硬钉、task_update 词表、verified“或”、只教平均） |
+| `G1` | L58 | 支持成员使用 Python 等数学计算工具 | ◐ PARTIAL | 2/1/1/0 | 数学面机制在（`kernel/mathtools.js` 服务 + `vibe_vmu_mathtools` 面；`mathadapters.js` 按 `PY_CANDIDATES [python3|python|py]` 解析解释器；并发受 `vmu.math.maxParallel` 限），缺的是可用引擎：真机 `VMU_ENGINE_UNAVAILABLE`。余项：本轮不建沙箱；下一轮设计「宿主引擎接缝」（`vmu.math.engines` 声明 → `kernel.mathadapters.register({name, spawn})`，受 maxParallel/超时/内存上限，缺引擎保持具名拒），估 3–5 人日；live 真机仍 0 次。 |
+| `G2` | L59 | 所办可设工具并发数量限制防 CPU/OOM | ◐ PARTIAL | 1/1/1/0 | 教学错指成 vmu.turn.maxParallel（那是唤醒人数），应指 vmu.math.maxParallel ／ 真机未演练：`vmu.math.maxParallel` 无真机读数（next 记教学还错指成 `vmu.turn.maxParallel`）。 |
+| `G3` | L60 | 支持人工干预研究所决策与运行 | ✅ DONE | 1/1/1/1 | — |
+| `G4` | L60 | 支持断点续跑 | ◐ PARTIAL | 1/1/1/0 | 恢复原语在：`createResume`（写前必读 `VMU_RESUME_WRITE_BEFORE_READ`、中断具名绝不静默变 passed、回读一致性可查），`vibe_v5_resume` 走控制面。缺 live 真机 0 次：pause → resume → 续跑一轮。 ／ 真机未演练：`vibe_v5_resume` 全文 0 命中；next 原文「真机 0 次：pause→resume→续跑一轮」。 |
+| `G5` | L61 | 特殊权限/请求经所办向用户询问 | ✅ DONE | 1/1/1/1 | — |
+| `G6` | L62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ✅ DONE | 1/1/1/1 | — |
+| `G7` | L63 | 提示词与规则完全相符、自洽 | ◐ PARTIAL | 1/0/1/0 | 上一轮 6 处硬矛盾已修且逐条有 `path::pattern` 引用；本轮补上 E19 的机制侧（`poll_open` 辩论具名拒，见 E19 行）；仍待：①`packs/v5r/seat-faces.js:404` 的 sequence 说法与 `tests/vmu-run33-p2-teaching.test.mjs` 对应断言（提示词面已在 `v5r-turn-meeting-schedule` 教 truthful 版本）②尚无端到端「规则行→提示词断言」全量检查器（parity/ab 只覆盖已声明分歧）③live 面需真机复跑。 ／ 真机未演练：规则↔提示词的端到端检查器不存在（next ②）；真机只有逐条佐证（6403/6768），不构成 G7 的真机回执。 |
 
 ## How to move a row
 
