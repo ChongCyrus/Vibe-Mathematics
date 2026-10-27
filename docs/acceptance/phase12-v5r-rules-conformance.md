@@ -6269,3 +6269,65 @@ T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修
 ### 148.7 无实质残余：否
 
 - 三条读面/文案缺陷已修并加测试；会议面无 rulings 读面与 `status.muted` 跨实例一致性仍留在 §149 待办。
+
+## §149 真机跑 47（build 80393366）
+
+### §149.1 读数
+
+- `DRIVE exit=0`、`durationSec 1174`、根会话 `toolCalls 38`、`transcriptEvents 196`、`tokenTotal 8,119,951`（cap 12,000,000 未撞）、4 会话、`SUMMARY: 4 session(s), 0 with RED checks`、`calls (38) vs results (38)`。
+- jsonl `_oneoff/vm-slv/full-1027-084956.jsonl` = 23,947,625 B / 53,005 行；机器读数 `NO_FENCE=60 UNKNOWN_FIELD=40 FIELD_NOT_APPLICABLE=42 BAD_JSON=60`；日志保全 `D:\_tmp\slv-phase5\slv-logs\…20261027-091008`；clone 已清、C 盘剩 10.58 GB。
+- 所办终答全文 31,247 字符（`D:/_tmp/r47/office-final.txt`），它自己逐条给了判据与原文。
+
+### §149.2 判决表（十条门）
+
+| # | 门 | 判决 | 依据 |
+|---|---|---|---|
+| 1 | 禁言记忆面的到期过滤（F-17 回归） | ✅ | 回执 `until=1793062273449`、`durationMs:20000`、`muted:["r-1"]` + `mutedMeans`；到期后 `status.muted:[]`；到期前 `send` ⇒ `VMU_CHAT_MUTED`，到期后同句发出（`msg-2` 落盘） |
+| 2 | `kind` 被具名拒（F-18 回归） | ⚠️ 拒对了，hint 链不完整 | 照 hint 改用 service 面形状后又两次被拒（`a debate meeting needs a subject`、`VMU_CHAIR_ACT_NOT_DELEGATED`），**三次调用才成功** |
+| 3 | 代批拒绝句语言（F-19 回归） | ✅ | `VMU_HUMAN_DECIDER_ROLE` 的 message/hint 逐字核对无中文 |
+| 4 | 跨注册表 hint（F-20 回归） | ❌ 不可执行 | `vibe_v5_say{meeting:"m-r47-pr"}`（该 id 在 service 表里）⇒ `VMU_NO_SUCH_OBJECT`，hint 只有 `"open: m1"`（primitive 表的 id，既没点名两表也没有可复制调用） |
+| 5 | 两注册表 `status` 归属 | ✅ | `vibe_vmu_meeting{action:"status"}` 回 `registry:"primitive"`；service 面回 `registry:"service"`；`close` 回 `closeSemantics:"service-archives"` |
+| 6 | 会议服务的关会 | ✅ | close 回执正常、之后 `status` 不再说 open |
+| 7 | 参数守卫（`vibe_v5_feedback`） | ✅ | 用 `action:"add"` 被具名拒并给 `op:"add"` |
+| 8 | 状态板四行 | ✅（成员侧） | 成员逐字抄出 `[总任务]`/`[规划]`/`[各任务完成状态]`/`[当前小任务]`（含来源标注与「其中 0 条属于该成员」） |
+| 9 | 人工审批 | ✅（口径） | `openApproval`/`approvalState` 回 actionable 字段 |
+| 10 | 群聊读面 | ❌ 机制缺陷 | 所办 `vibe_vmu_chat{action:"status"}` 三次读数 `messages:0 → 1 → 1`、`counts.sends:1`、`mechanism.hotSource:"memory"`，而 durable `VibeMath/vmu/state.json` 的 chat 有 5 条消息、`counters.chat:5` |
+
+### §149.3 新缺陷 F-17：群聊读面是「实例内的一本书」（两处叠加）
+
+1. **读面从不刷新**：`chat` 是 `mode:'state'` 投影，另一实例写进 fold 的行只有靠 `store.read('chat')` 触发 reload 钩子才会被合并；读方法（`status`/`history`/`read`）一个都不调它 ⇒ 读者看到的永远是本内核自己的 `messages` 数组。
+2. **还原钩子从未对 state 面生效**：`kernel/index.js` 的 `onReload` 钩子拿 `store.read(key)` 的返回值，却按 `{mode:'state', value}` 信封来判断（`if (!env || env.mode !== 'state') continue`）——而 `store.read` 返回的是**键的值本身**（对 state 投影就是 `snapshot()`），所以每个 state 面都被**静默跳过**。这条同时意味着「成员名册/禁言跨实例刷新」从来没走过这个钩子，只是被别的路径兜住了。
+
+修法（三处，缺一不可）：
+- `kernel/chat.js` 新 `_adoptShared(rows)`：按 id 求并集、按 `seq` 排序、受 `vmu.chat.historyCap` 约束且计数丢弃、id 计数器只前进；非数组/无 id 行具名拒（读面不抛给调用者）。
+- `kernel/index.js` 的 `chatReloadMerge` 在**非空账本**分支调用它（旧注释「this kernel keeps its own lines」正是缺陷本体），回执带 `mergedMessages`。
+- `kernel/index.js` 的 reload 钩子改为**接受裸快照**（`payload = env.mode === 'state' && 'value' in env ? env.value : env`），并且不再有静默 `continue`（拿不到 payload 也算一条具名 `VMU_RESUME_SNAPSHOT_INCOMPLETE`）。
+- 另加 `chatReadsReadFresh`（读方法先 `store.read('chat')`）+ 安装点；不变量：**读永远不删禁言**（合并只加，解除只能走面上的 `unmute`）。
+
+证据：`tests/vmu-run47-chat-read-face.test.mjs` **14/0**（两内核同 root，另一内核写 fold 后：读面计数、`counts.sends`、禁言生效、`send` 具名拒、重复读不漂移、`unmute` 后面上清空且可发言；`tests/vmu-run45-chat-mute-durable.test.mjs` 的 §1 setup 随之改成「用 `snapshot()` 度量内存陈旧」——`status()` 现在会同步共享账本，用它度量就测不出陈旧了）。
+
+### §149.4 会议裁决读面（F-21：成员提交的裁决在会议面不可读）
+
+`vibe_v5_meeting{action:"rulings", id, proposition_id}` 已落地（`packs/v5r/tools.js` 的 `toolMeetingRulings` + `validateMeetingArgs` + schema 两参 + description）；读的是**成员提交到文件库的裁决卡**（`rulingSubmissionsOf`），回 `{readable, why, cards, count, rows, duplicates, means}`，means 明说「不汇总、不裁决、`readable:false` ≠ 没人交」。教学挂在 `seat-faces.js:414` 的 `vibe_v5_verdict_final`。测试 `tests/vmu-run47-meeting-rulings.test.mjs` **30/0**（两张卡、同人二次提交进 `duplicates` 且 kept 是最新、第二内核读到同样两行、缺参具名拒、未提交命题 `count:0`、读两次不改卡）。
+
+### §149.5 两条 hint 链修好（F-18/F-20）
+
+- `kernel/meetings.js` 的两处「会议不存在 / 一场会都没开」拒绝，hint 现在点名**两张注册表**并各给一条可复制调用（`vibe_vmu_meeting {action:"list"|"status", id}`；service 面 `vibe_v5_meeting {action:"status", id}`）。
+- `tools/meeting.js` 的 `kind` 拒绝 hint：除 service 面真实形状外，补「debate 还需 subject」「主席须先有一轮（`VMU_CHAIR_ACT_NOT_DELEGATED`）」，并写明 run 47 量到的是三次调用。
+- 测试 `tests/vmu-run47-hint-chain.test.mjs` **10/0**（两条拒绝各自的 code、两表点名、两条可执行调用、`subject`/`VMU_CHAIR_ACT_NOT_DELEGATED` 两个后续条件）。
+
+### §149.6 门禁
+
+- 定向：`VMU CHAT 79/0`、`RUN45 CHAT MUTE DURABLE 28/0`、`RUN45 MEETING REGISTRY 36/0`、`RUN47 MEETING RULINGS 30/0`、`RUN47 CHAT READ FACE 14/0`、`RUN47 HINT CHAIN 10/0`、`MEETING INVITE 69/0`、`V5R TOOLS 359/0`、`PACK PROMPTS 24/0`、`RUN31 SEAT FACES 86/0`。
+- 全量：`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ 见 §149.9 收口（与 §150 一起）。
+
+### §149.7 无法验证 / 下一轮
+
+1. 禁言**未到期时跨回合**：run 47 的 20s 窗口比子会话启动还短，这一段由同一内核的 (b)(c) 覆盖，真机未验；
+2. 群聊读面**跨内核**的真机读数：已由 `run47-chat-read-face`（两内核同 root）覆盖，但真机上「所办读成员子会话写的行」还需一次真机取证；
+3. 会议裁决读面的真机读数：字段形状由 30 条测试钉住，**尚未在真机上被所办调用过**；
+4. `status.muted` 的跨实例一致性（依赖同一处 reload 钩子修复，理论已覆盖，真机未取）。
+
+### §149.8 无实质残余：否
+
+F-17 是「作为报告者的所办读不到自己的账本」，属机制缺陷且已修；F-21 已修；两条 hint 已修。下一轮（run 48）必须验：chat 读面跨内核真机读数、`rulings` 真机调用、两条 hint 的「一次调用成功」。

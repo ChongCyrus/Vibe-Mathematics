@@ -155,3 +155,8 @@
 - `vibe-math-vmu/kernel/chat.js` → `status()`/`mute()` 的 `muted` 改由 `liveMuted()` 产出（`until === 0` 无期限；过期的行不列、但仍留在账本，剪枝只发生在 `send`/`unmute`）——run 46 的"状态说禁言、send 说放行"两读面打架，`tests/vmu-run46-readface.test.mjs` §1 钉住。
 - `vibe-math-vmu/tools/meeting.js` → 原始会议 `open` 拒 `kind` 时，hint 给出 **service 面的真实形状** `vibe_v5_meeting {type:"debate", agenda:"…", member:"<chair id>"}`（旧 hint 抄了 `action:"open", kind:"debate", subject`，该面不存在这些参数）——测试 §3。
 - `vibe-math-vmu/tools/human.js` → 代批拒绝句去掉混合语言："the DELEGATE is not an approver — the decision would be ATTRIBUTED to an actor that may not approve"，hint 两条出路同步改成英文——测试 §4 静态断言无 CJK。
+
+| 群聊是「一本共享账本」 | 另一内核写进 fold 的消息必须出现在本内核 `status` 的计数里（run 47：所办整轮读到 1 条而文件里 5 条）。读面同步 + reload 钩子接受裸快照，二者缺一不可。 | `tests/vmu-run47-chat-read-face.test.mjs` §1/§2 |
+| 读不删禁言 | 合并只加；解除只能走面上的 `unmute`（`until` 过期只影响「是否列在读面」）。 | `tests/vmu-run47-chat-read-face.test.mjs` §3/§5 |
+| 会议裁决读面可达 | 成员提交到文件库的裁决卡，会议面必须能读：`vibe_v5_meeting {action:"rulings"}`（`cards/count/rows/duplicates/means`，不汇总不裁决）。 | `tests/vmu-run47-meeting-rulings.test.mjs` §1–§4 |
+| 拒绝要说清「这是哪张表」 | 未知会议/未知 id 的 hint 必须点名 registry 并各给一条可复制调用；`kind` 拒绝要列出后续条件（subject、主席先有一轮）。 | `tests/vmu-run47-hint-chain.test.mjs` §1/§2 |

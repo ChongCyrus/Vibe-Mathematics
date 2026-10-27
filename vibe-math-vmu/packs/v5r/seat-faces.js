@@ -411,7 +411,7 @@ export const SEAT_TEACHING = Object.freeze({
     { names: ['vibe_v5_poll_vote'], text: '在已开的选项投票上投票（只有常设席有票权；列席、受邀、临时工无票权 → 具名拒）。' },
     { names: ['vibe_v5_poll_close'], text: '关票计票（院士席）；min_votes 未达时本次投票【不成立】，且具名说明它不是法定人数。' },
     { names: ['vibe_v5_verdict'], text: '对验证对象投 [0,1] 的裁决（1=真、0=假、中间=不确定估计），target 是进行中票箱的 id。' },
-    { names: ['vibe_v5_verdict_final'], text: '汇总裁决：读各席位用 vibe_v5_verdict 提交的裁决行，由会议主席席落成最终结论；没交裁决的席位会被具名列出，只有显式 partial 才允许部分汇总。' },
+    { names: ['vibe_v5_verdict_final'], text: '汇总裁决：读各席位用 vibe_v5_verdict 提交的裁决行，由会议主席席落成最终结论；没交裁决的席位会被具名列出，只有显式 partial 才允许部分汇总。★ 收裁决之前可以先「看谁交了」：`vibe_v5_meeting {action:"rulings", id:"<会议>", proposition_id:"<命题>"}` 读已经落盘的裁决卡（rows 每位成员一条最新、cards 扫描数、duplicates 同一成员两次不同值），不汇总、不落账、不改卡——别等到 verdict_final 才第一次看见提交情况。' },
     { names: ['vibe_v5_verdict_ask'], text: '以会议主席席的名义请各辩论席位交「布尔概率＋理由」；主持人不问自己（回执的 excluded 会写明原因），发不出去会具名说没有信箱面。' },
     { names: ['vibe_v5_verified_promote'], text: '把一条已验证的命题升进 Verified/ 轨（需要 warrant 与 warrant_kind，写之前要先过保真收口）；这是定论的唯一写入口，重复升同一条是幂等的。' },
     { names: ['vibe_v5_fidelity_conclude'], text: '保真收口：Lean 通过不等于命题为真，收口要给出「代码里的命题、各种定义是否描述符合所需」的判定（院士席）。' },

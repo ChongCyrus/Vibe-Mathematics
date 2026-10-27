@@ -1573,7 +1573,17 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         out.refused.push({ member, code: (e && e.code) || 'VMU_CHAT_MUTE_FAILED', message: String((e && e.message) || e) })
       }
     }
-    out.note = 'the live ledger holds ' + liveMessages.length + ' message(s), so the fold\'s mutes were merged through the face\'s own mute() (source:"framework") instead of restore(), which refuses a non-empty ledger by name; the fold\'s MESSAGES are not merged by a read (this kernel keeps its own lines)'
+    let mergedMessages = 0
+    try {
+      const adopted = chat._adoptShared(fold.messages || [])
+      if (adopted && adopted.ok) mergedMessages = Number(adopted.added) || 0
+      else { out.ok = false; out.note = 'the fold messages were refused: ' + String((adopted && adopted.message) || 'unknown') }
+    } catch (e) {
+      out.ok = false
+      out.note = 'the fold messages could not be merged: ' + String((e && e.message) || e)
+    }
+    out.mergedMessages = mergedMessages
+    out.note = 'the live ledger holds ' + liveMessages.length + ' message(s): the fold mutes were merged through the face own mute() (source:framework) instead of restore() (which refuses a non-empty ledger by name), and ' + mergedMessages + ' of the fold message(s) were adopted through _adoptShared (union by id, ordered by seq, bounded by vmu.chat.historyCap)'
     return out
   }
   const RESUME_PROJECTION_ADAPTERS = {
@@ -1746,6 +1756,33 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     try { Object.defineProperty(target, '__vmuChatReadFresh', { value: true, enumerable: false }) } catch (e) { /* marker only */ }
     return names
   }
+  // ★★★ ROUND 47 — THE READ FACE MUST SEE THE SHARED BOOK TOO (live run 47, the institute's own report). The chat
+  // `status` of the OFFICE kernel reported `messages:1, sends:1` while the durable store held FIVE messages written by
+  // member kernels: its hot book is per-instance memory and only MUTATORS read fresh (the wrapper above), so a read
+  // role — the office, whose whole job is reporting — could not read the chat book at all, and `mutedMeans` claimed
+  // "the same live book action:status prints" about a book that was instance-local. Reads now refresh from the fold
+  // first: `store.read('chat')` is the engine's own stale check, and a read face never fails because the book could
+  // not be refreshed (the write-through/resume report names that case). A re-entrancy counter keeps the onReload hook
+  // (which itself calls chat.history()) from recursing back into this wrapper.
+  let chatReadDepth = 0
+  const chatReadsReadFresh = (target) => {
+    if (!target || target.__vmuChatReadFreshReads === true) return null
+    if (!store || typeof store.read !== 'function') return null
+    const names = ['status', 'history', 'read'].filter((n) => typeof target[n] === 'function')
+    for (const name of names) {
+      const original = target[name]
+      target[name] = function chatReadFreshThenRead(...args) {
+        if (chatReadDepth === 0) {
+          chatReadDepth++
+          try { store.read('chat') } catch (e) { /* a read never fails because the fold could not be re-read */ }
+          finally { chatReadDepth-- }
+        }
+        return original.apply(this, args)
+      }
+    }
+    try { Object.defineProperty(target, '__vmuChatReadFreshReads', { value: true, enumerable: false }) } catch (e) { /* marker only */ }
+    return names
+  }
   // ★★ THE PROJECTION LOG IS A STATE TABLE, NOT A DIARY (round 3 of 2026-10-26, from the census's drift report).
   // `attachDeclaredProjections()` runs TWICE (once at assembly, once after the pack declares its slots, because
   // `members` has no target until then). Each run used to APPEND: a face that failed the first time and attached the
@@ -1801,7 +1838,8 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         const adapter = make()
         // RUN 45 / task-28: the read-freshness wrapper must be UNDER resume's wrapper (ordering rule at index.js:1146),
         // so it is installed here, before `attachProjection` wraps every mutator of the same face.
-        if (canonical === 'chat') { try { chatMutatorsReadFresh(targets[canonical]) } catch (e) { /* the attach row below reports what broke */ } }
+        if (canonical === 'chat') { try { chatMutatorsReadFresh(targets[canonical]) } catch (e) { /* the attach row below reports what broke */ }
+          try { chatReadsReadFresh(targets[canonical]) } catch (e) { /* reads refresh best-effort; a broken wrapper must not break attach */ } }
         // The INSTANCE method registers the projection so `hydrate()`/`snapshot()` can find it; the module-level
         // `attachProjection` would wrap the methods but leave the instance unaware of the key.
         const out = resume.attachProjection({ target: targets[canonical], methods: projectionMethods(canonical, targets[canonical]), key: adapter.key, mode: adapter.mode,
@@ -1851,10 +1889,17 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
           if (!restorer) continue
           let env = null
           try { env = store.read(adapter.key) } catch (e) { done.push({ face: row.face, ok: false, code: (e && e.code) || 'VMU_STORE_FAILED' }); continue }
-          if (!env || typeof env !== 'object' || env.mode !== 'state') continue
+          // ★ ROUND 47 / run 47 (measured on THIS probe, not inferred): `store.read(key)` returns the KEY'S VALUE, and for
+          // a `mode:'state'` projection the value IS the face's `snapshot()` — there is no `{ mode:'state', value }`
+          // envelope in the fold. This hook used to `continue` unless `env.mode === 'state'`, so EVERY state-mode face
+          // was silently skipped on reload: the office kernel read `chat.messages:1` for a whole live run while the file
+          // held 5, and the roster/mute refreshes the hook exists for never ran through it either. Accept both shapes
+          // (a bare snapshot, or an envelope if a future writer ever stores one) and never skip a face silently.
+          const payload = env && typeof env === 'object' && env.mode === 'state' && 'value' in env ? env.value : env
+          if (payload === null || payload === undefined) { done.push({ face: row.face, ok: false, code: 'VMU_RESUME_SNAPSHOT_INCOMPLETE' }); continue }
           try {
-            const out = restorer(env.value)
-            done.push({ face: row.face, ok: true, seq: env.seq === undefined ? null : env.seq, additive: additive ? true : null, added: out && Array.isArray(out.added) ? out.added.length : null, updated: out && Array.isArray(out.updated) ? out.updated.length : null, kept: out && Array.isArray(out.kept) ? out.kept.length : null })
+            const out = restorer(payload)
+            done.push({ face: row.face, ok: true, seq: env && env.seq === undefined ? null : (env && env.seq) || null, additive: additive ? true : null, added: out && Array.isArray(out.added) ? out.added.length : null, updated: out && Array.isArray(out.updated) ? out.updated.length : null, kept: out && Array.isArray(out.kept) ? out.kept.length : null, mergedMessages: out && out.mergedMessages !== undefined ? out.mergedMessages : null })
           } catch (e) { done.push({ face: row.face, ok: false, code: (e && e.code) || 'VMU_RESUME_RESTORE_FAILED', message: String((e && e.message) || e) }) }
         }
         if (done.length) { try { lastRehydrate = { at: clock(), faces: done } } catch { /* clock guards */ } }

@@ -352,7 +352,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
             + (live.size ? ' — service ids in use: ' + [...live.keys()].sort().join(', ') : ' — no service meeting is open'),
           [])
       }
-      if (live.size === 0) throw deny('VMU_NO_OPEN_MEETING', 'no meeting is open (id: ' + String(id) + ')', 'open() a meeting first — this layer refuses rather than inventing one', [])
+      if (live.size === 0) throw deny('VMU_NO_OPEN_MEETING', 'no meeting is open (id: ' + String(id) + ')', 'open() a meeting first — this layer refuses rather than inventing one (this is the PRIMITIVE registry: list it with vibe_vmu_meeting {action:"list"} and read one with vibe_vmu_meeting {action:"status", id:"<id>"}; a SERVICE meeting opened with vibe_v5_meeting is not speech-addressable — read it with vibe_v5_meeting {action:"status", id:"<id>"})', [])
       throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + String(id), 'open: ' + [...live.keys()].sort().join(', '), [])
     }
     if (opts.readOnly !== true && m.state === 'lapsed') {
@@ -858,7 +858,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     proceed({ meeting = null, actor = null, by = null, member = null, at = null, why = null } = {}) {
       const mid = String(meeting)
       const m = meetingOf(mid)
-      if (!m) throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + mid, 'open: ' + ([...live.keys()].sort().join(', ') || '(none)'), [])
+      if (!m) throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + mid, 'open: ' + ([...live.keys()].sort().join(', ') || '(none)') + ' (PRIMITIVE registry only; a SERVICE meeting opened with vibe_v5_meeting is not speech-addressable — read it with vibe_v5_meeting {action:"status", id:"<id>"} or vibe_vmu_meeting {action:"status", id:"<id>"} for the primitive one)', [])
       const now = at === null ? clock() : atMs(at)
       syncMeeting(m, now)
       const enforced = []

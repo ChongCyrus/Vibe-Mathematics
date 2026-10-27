@@ -1104,3 +1104,18 @@ run 43 让研究员写**一条** progress，它做了两件事：调 `vibe_v5_re
 （1）**`status.muted` 列的是此刻在生效的禁言，不是账本里所有的行**：`vibe-math-vmu/kernel/chat.js` 新增 `liveMuted()`——`until === 0` 是无期限（照列）；`until > 0` 且注入时钟已过 ⇒ 不列。**行不删**：账本是历史，剪枝只发生在 `send` 命中过期行（`mute-expired`）或 `unmute`。run 46 实测：到期约 500 秒后 `status` 仍报 `muted:["r-1"]`，而同一时刻 `send` 已被放行——两个读面在同一事实上打架，且错的是被信任的那一面。测试 `tests/vmu-run46-readface.test.mjs` §1（含"账本仍保留该行"）。
 （2）**拒 `kind` 的 hint 必须给出另一面的真实调用形状**：`vibe_vmu_meeting {action:"open", kind:"debate"}` 的 `kind` 是 ballot 概念、会议类型在 service 面；hint 原写 `vibe_v5_meeting {action:"open", kind:"debate", subject:…}`，而该面只有 `{type, agenda, member}`、没有 `action`——**一个指向不存在调用的 hint 比没有 hint 更糟**（run 46 的所办照它试过，收到第二次拒绝）。测试 §3 断言 hint 含 `type:"debate"`、含 `agenda`、且旧说法已消失。
 （3）**回执句子只能有一种语言**：代批拒绝句原样夹了半句中文（`…, but 被代办者不是审批角色 — the decision would be ATTRIBUTED …`），读者要拼两半才懂，而这句话既要给模型读也要给人看。测试 §4 静态断言该段无 CJK。
+
+## ROUND 47 — 作为「报告者」的所办读不到自己的群聊账本：读面必须同步共享账本，还原本就不存在「信封」
+
+**现象（真机 run 47，所办自述 + 文件证据）**：所办内核的 `vibe_vmu_chat {action:"status"}` 整轮返回 `messages:0 → 1 → 1`、`counts.sends:1`、`mechanism.hotSource:"memory"`，而 durable `VibeMath/vmu/state.json` 的 `chat` 键里有 5 条成员内核写入的消息、`counters.chat:5`。所办在终答里把它列为「机制还缺什么」的第一条：它自己是**负责汇报的角色**，却读不到自己的群聊账本。
+
+**两处叠加的机制缺陷（缺一不可）**：
+
+1. `chat` 是 `mode:'state'` 投影：另一实例写进 fold 的消息，只有 `store.read('chat')` 触发 reload 钩子时才会被合并，而读方法（`status`/`history`/`read`）都不调它。
+2. `kernel/index.js` 的 `onReload` 钩子按 `{mode:'state', value}` 信封判断，但 `store.read(key)` 返回的是**键的值本身**（对 state 投影即 `snapshot()`）——于是每个 state 面都在钩子里被**静默 `continue`**，还原从未发生。这条同时解释了「名册/禁言跨实例刷新」为什么一直靠别的路径兜底。
+
+**修法**：`kernel/chat.js` 的 `_adoptShared(rows)`（按 id 并集、按 `seq` 排序、受 `vmu.chat.historyCap` 约束、丢弃计数、计数器只前进）；`chatReloadMerge` 的非空账本分支调用它并回 `mergedMessages`；reload 钩子接受裸快照且不再静默跳过（拿不到 payload 记具名 `VMU_RESUME_SNAPSHOT_INCOMPLETE`）；读方法先 `store.read('chat')`。不变量：**读永远不删禁言**（合并只加；解除只能走面上的 `unmute`）。
+
+**判据**：`tests/vmu-run47-chat-read-face.test.mjs` 14/0——另一内核写 fold 后，本内核 `status` 的计数/`counts.sends` 跟随；禁言被读面列出且 `send` 具名拒（`VMU_CHAT_MUTED`）；重复读不漂移；`unmute` 后读面清空且可发言。
+
+**同一轮另外两件**：`vibe_v5_meeting {action:"rulings"}` 读面（读成员提交到文件库的裁决卡：`cards/count/rows/duplicates/means`，不汇总不裁决；`tests/vmu-run47-meeting-rulings.test.mjs` 30/0）；两处 hint 链——「会议不存在」现在点名两张注册表并各给一条可复制调用，`kind` 拒绝补「debate 还需 subject、主席须先有一轮」（`tests/vmu-run47-hint-chain.test.mjs` 10/0）。

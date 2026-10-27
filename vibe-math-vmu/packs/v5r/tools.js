@@ -2031,6 +2031,9 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
  */
 function validateMeetingArgs(args = {}) {
   if (args.action === undefined || args.action === null) return null
+  // ★ ROUND 47: `action:"rulings"` IS dispatched here (see toolMeetingRulings) — the read face of the filed ruling
+  // cards. Everything else still gets the "this face only convenes" refusal with the kernel face named.
+  if (String(args.action) === 'rulings') return null
   return {
     ok: false,
     code: 'VMU_INVALID_ARGUMENT',
@@ -2039,7 +2042,41 @@ function validateMeetingArgs(args = {}) {
   }
 }
 
+/**
+ * ★★★ ROUND 47 — THE CHAIR'S READ SIDE OF THE DEBATE RULINGS. Run 45/46 measured the same hole from two ends: a member
+ * filed its ruling card (`Members/<member>/Propos/ruling-<meeting>-<proposition>-*.md`) and the meeting face reported
+ * `spokeBy:[]`, `present:1` — nothing about the filing, so the chair could not see WHO had filed WHAT until it ran
+ * `vibe_v5_verdict_final` (which tallys, and refuses when somebody is missing). The cards were on disk the whole time;
+ * what was missing was a READ. This action is that read: same source as the tally (`rulingSubmissionsOf`), no
+ * aggregation, no card written, and it says `readable:false` + why when the kernel has no library face instead of
+ * returning an empty list that looks like "nobody filed".
+ */
+async function toolMeetingRulings(args = {}, { kernel } = {}) {
+  const meeting = has(args.id) ? str(args.id).trim() : ''
+  if (meeting === '') {
+    throw refuse('VMU_INVALID_ARGUMENT', 'reading the filed rulings needs the meeting id',
+      'pass id:"<meeting>" — the id the meeting was convened with (the open receipt carries it)')
+  }
+  const proposition = has(args.proposition_id) ? str(args.proposition_id).trim() : ''
+  if (proposition === '') {
+    throw refuse('VMU_INVALID_ARGUMENT', 'reading the filed rulings needs the proposition',
+      'pass proposition_id:"<the proposition this debate is about>" — each filing card names its proposition, so the read needs the same name (vibe_v5_verdict_ask\'s receipt names it)')
+  }
+  const filed = await rulingSubmissionsOf(kernel, { meeting, proposition })
+  return {
+    ok: true, tool: 'vibe_v5_meeting', action: 'rulings', meeting, proposition,
+    readable: filed.readable === true, why: filed.readable === true ? null : filed.why,
+    cards: Number.isFinite(filed.cards) ? filed.cards : 0,
+    count: Array.isArray(filed.rows) ? filed.rows.length : 0,
+    rows: Array.isArray(filed.rows) ? filed.rows : [],
+    duplicates: Array.isArray(filed.duplicates) ? filed.duplicates : [],
+    means: 'these are the ruling CARDS filed for this (meeting, proposition) by the members themselves (vibe_v5_verdict { meeting, proposition_id, verdict, reason, member }): `rows` is the latest filing per member, `cards` counts every scanned proposition card and `duplicates` reports a member who filed two different values (the latest is the one the tally uses). Reading does NOT tally and does NOT decide — the chair still signs with vibe_v5_verdict_final. `readable:false` means no filing could be read (see `why`), which is NOT the same as "nobody filed"',
+  }
+}
+
 function toolMeeting(args = {}, { kernel } = {}) {
+  // ★★ ROUND 47: the rulings READ lives on this face (the pack owns the ruling cards it teaches members to file).
+  if (String(args.action) === 'rulings') return toolMeetingRulings(args, { kernel })
   // ★★ FINDING (j) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12): the agent opened a SCHEDULED
   // meeting and then read it back with `{action:'status', id}` on THIS face; it got
   // 「VMU_INVALID_ARGUMENT: meeting needs an agenda」 and reasonably suspected that status had fallen through to the
@@ -3279,8 +3316,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_meeting',
-    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary) and a debate REQUIRES subject (its object: a card id, a file reference, or one line). ★ `title` is an OPTIONAL separate name (omit it and the agenda stays as the subject; non-string is refused by name). ★ `at` SCHEDULES it: epoch milliseconds or an ISO-8601 string (e.g. "2026-10-24T10:00:00+08:00"); a future time puts the meeting in the `scheduled` state — status/summary/meetingView read it right away, but every action before the start time is refused BY NAME, and when the start time arrives with too few present it waits (a latecomer attending then starts it). The receipt reads the real state back (`state`, `scheduledFor`). ★ A DEBATE\'S SUBJECT MUST CARRY A FINISHED PROOF: a card id must have `proofRef`+`proofState:"complete"` (or a verified row / a passed Lean run), a file reference needs `subject_evidence.file = {readable:true, bytes:N, name}` (the gate only proves "exists and is non-empty" — content completeness is judged by the members in the debate), and a one-line proposition is legal but the receipt records `subjectGate.provenance:"none"` because nothing can be checked. A type that the institution gave a recommended procedure returns it in `procedure` — ★ it is a RECOMMENDATION, never a gate: skipping or reordering it is allowed and unchecked. Steps the framework has NOT implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES - status/summary/close/flow live on vibe_vmu_meeting { action, id }. The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name. ★ `id` optionally NAMES the meeting (omit it and the service mints one); an id already held by the OTHER (primitive) meeting registry is refused by name, naming that table. ★ `target` is an ALIAS of `subject` on THIS face (one value, one meaning) — but on `vibe_vmu_meeting` `target` is a VOTE\'s object, so do not carry the habit between faces; a subject/target on a type that debates nothing is refused by name. ★ `sequence` CONVENES SEVERAL MEETINGS IN ONE CALL: an array of descriptors for the meetings that FOLLOW this one (e.g. [{ type: "academic", agenda: "..." }, { type: "planning", agenda: "..." }]); the kernel validates each descriptor and refuses a bad one by name (naming the key it did not recognise), and the receipt reads the declared run back (`sequence.index/total/next`). Omitting `at` convenes them all now; giving `at` schedules this one and the declared run follows it.',
-    parameters: { agenda: { type: 'string', required: true }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true }, at: { type: 'string' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' } },
+    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary) and a debate REQUIRES subject (its object: a card id, a file reference, or one line). ★ `title` is an OPTIONAL separate name (omit it and the agenda stays as the subject; non-string is refused by name). ★ `at` SCHEDULES it: epoch milliseconds or an ISO-8601 string (e.g. "2026-10-24T10:00:00+08:00"); a future time puts the meeting in the `scheduled` state — status/summary/meetingView read it right away, but every action before the start time is refused BY NAME, and when the start time arrives with too few present it waits (a latecomer attending then starts it). The receipt reads the real state back (`state`, `scheduledFor`). ★ A DEBATE\'S SUBJECT MUST CARRY A FINISHED PROOF: a card id must have `proofRef`+`proofState:"complete"` (or a verified row / a passed Lean run), a file reference needs `subject_evidence.file = {readable:true, bytes:N, name}` (the gate only proves "exists and is non-empty" — content completeness is judged by the members in the debate), and a one-line proposition is legal but the receipt records `subjectGate.provenance:"none"` because nothing can be checked. A type that the institution gave a recommended procedure returns it in `procedure` — ★ it is a RECOMMENDATION, never a gate: skipping or reordering it is allowed and unchecked. Steps the framework has NOT implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES (plus ONE read: `action:"rulings"` reads the ruling cards the members filed for a debate — pass id + proposition_id; it shows rows/cards/duplicates and never tallys). status/summary/close/flow live on vibe_vmu_meeting { action, id }. The original could also PROPOSE a meeting from a non-chair seat — this face has no propose path, and the receipt says so by name. ★ `id` optionally NAMES the meeting (omit it and the service mints one); an id already held by the OTHER (primitive) meeting registry is refused by name, naming that table. ★ `target` is an ALIAS of `subject` on THIS face (one value, one meaning) — but on `vibe_vmu_meeting` `target` is a VOTE\'s object, so do not carry the habit between faces; a subject/target on a type that debates nothing is refused by name. ★ `sequence` CONVENES SEVERAL MEETINGS IN ONE CALL: an array of descriptors for the meetings that FOLLOW this one (e.g. [{ type: "academic", agenda: "..." }, { type: "planning", agenda: "..." }]); the kernel validates each descriptor and refuses a bad one by name (naming the key it did not recognise), and the receipt reads the declared run back (`sequence.index/total/next`). Omitting `at` convenes them all now; giving `at` schedules this one and the declared run follows it.',
+    parameters: { agenda: { type: 'string', required: true }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string', required: true }, at: { type: 'string' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' } },
     handler: toolMeeting,
     // ★ LIVE RUN 29: the funnel refuses undeclared keys generically; this face can say WHY it is the wrong face.
     validate: validateMeetingArgs,

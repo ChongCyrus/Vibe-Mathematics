@@ -1568,7 +1568,7 @@
 | `VMU_RESUME_READBACK_DRIFT` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_RESTORE_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/kernel/budget.js`、`vibe-math-vmu/kernel/human.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/kernel/tasks.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_RESTORE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
-| `VMU_RESUME_SNAPSHOT_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
+| `VMU_RESUME_SNAPSHOT_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_SNAPSHOT_VERSION` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/kernel/resumeflush.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_WRITE_BEFORE_READ` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/kernel/resumeflush.js` | 代码里有该码字符串 ✓ |

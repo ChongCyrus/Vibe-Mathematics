@@ -84,8 +84,11 @@ try {
   const peer = await openKernel()
   peer.chat.send('r-1', 'a line that makes the officer stale', {})
   await flush(peer)
-  ok(officer.chat.status().messages === 0, 'setup: the officer has not read the peer line yet (its fold is stale)',
-    officer.chat.status().messages)
+  // ★ ROUND 47: a `status()` READ now syncs the shared book (run 47's own defect: it did not), so the staleness this
+  // setup needs is measured on the MEMORY (`snapshot()`, which is not a read of the book), not through `status()`.
+  // What the silence means is unchanged: the officer's ledger still holds 0 lines until something reads through.
+  ok(officer.chat.snapshot().data.messages.length === 0, 'setup: the officer has not merged the peer line yet (its memory is still empty)',
+    officer.chat.snapshot().data.messages.length)
 
   const muted = officer.chat.mute('r-2', { durationMs: 600000, reason: 'run 45 replay', by: 'r-1' })
   await flush(officer)

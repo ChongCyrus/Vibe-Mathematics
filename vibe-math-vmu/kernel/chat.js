@@ -714,6 +714,44 @@ export function createChat({
     },
 
     /**
+     * ADOPT SHARED LINES (the reload-merge seam, and the reason this face can be ONE book across instances).
+     *
+     * ★ ROUND 47 / run 47 (the institute's own report, with file evidence): the OFFICE kernel's `vibe_vmu_chat
+     * {action:"status"}` answered `messages:1` for a whole run while the durable `state.json` held FIVE messages
+     * written by member kernels — and the office is the role whose job IS reporting. The reload hook could not
+     * deliver them because `restore()` correctly REFUSES a differing snapshot on a non-empty ledger (a silent
+     * half-overwrite would lose lines), so the hook only merged MUTES and every kernel kept its own lines.
+     *
+     * The merge is a UNION BY id (immutable rows: an id that is already here is never rewritten), ordered by
+     * `seq`, bounded by the declared `vmu.chat.historyCap` (drops are COUNTED), and the id counter only moves
+     * forward. Named refusals for a non-array / a row with no id — a read must never throw into a caller.
+     * Underscored so the projection wrappers (which skip `_`-prefixed keys) never record it as a mutation.
+     */
+    _adoptShared(rows) {
+      if (!Array.isArray(rows)) return { ok: false, code: 'VMU_INVALID_ARGUMENT', message: 'the shared chat book is not an array' }
+      const seen = new Set(messages.map((m) => String(m.id)))
+      const added = []
+      for (const row of rows) {
+        if (!row || typeof row !== 'object') return { ok: false, code: 'VMU_INVALID_ARGUMENT', message: 'the shared chat book holds a row that is not an object' }
+        const id = row.id === undefined || row.id === null ? '' : String(row.id)
+        if (!id) return { ok: false, code: 'VMU_INVALID_ARGUMENT', message: 'the shared chat book holds a row with no id' }
+        if (seen.has(id)) continue
+        seen.add(id)
+        messages.push(clone(row))
+        added.push(id)
+      }
+      if (added.length) {
+        messages.sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0))
+        const cap = capOf()
+        const over = messages.length - cap
+        if (over > 0) { messages.splice(0, over); dropped.messages += over; log('chat: history cap ' + cap + ' reached — dropped ' + over + ' adopted message(s) (total ' + dropped.messages + ')') }
+        const maxSeq = messages.reduce((mx, m) => Math.max(mx, Number(m.seq) || Number(String(m.id || '').replace(/^msg-/, '')) || 0), 0)
+        seq = Math.max(seq, maxSeq)
+      }
+      return { ok: true, added: added.length, total: messages.length, dropped: dropped.messages }
+    },
+
+    /**
      * Hydrate a `snapshot()`. Merge-safe while the ledger is EMPTY, idempotent on the same snapshot, and a NAMED
      * conflict otherwise — a half-overwritten chat would silently lose messages.
      */
