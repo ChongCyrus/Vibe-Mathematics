@@ -6618,3 +6618,44 @@ run 49 的定向项（F-23/F-22/rulings/禁言/群聊）全部真机通过；但
 ### §154.7 无实质残余：否
 
 run 52 把 run 51 的两条修法验掉了，但同一族（「别人的内核里的事实」）又露出 settings 与「采纳归属」两处；且本轮新增的 `adminsResolved` 只有单测没有真机读数。下一轮应把 chat 真机读数、`speeches`、`adminsResolved`、token cap 截断一并定向。
+
+## §155 真机跑 53（第一次：一个回合都没跑起来）
+
+### §155.1 读数
+
+- 驱动：`D:\_tmp\slv-phase5\slv-p13-cc.ps1 -CloneName slvp53 -Port 19634 -TaskFile task-r53.txt`（build `dc9d2ab0`）；**`DRIVE exit=1`**，推进到 `session/create` 就失败，**0 个回合、0 个工具调用**。
+- 失败原文（`20261027-135723-drive.log`）：
+  `Error: session/create: {"code":"agent-preset/invalid","message":"vibe-math-vmu (dsh-vibe-math/vibe-math-vmu/vibe-math-vmu.js): cannot get property \"sessionId\" without inject","details":{"agentPreset":"vibe-math-vmu","reason":"… cannot get property \"sessionId\" without inject"}}`
+- 无 jsonl（没有会话），日志保全戳 `20261027-135723`。
+
+### §155.2 判决
+
+| # | 上轮目标 | run 53 实测 | 判 |
+|---|---|---|---|
+| 1 | F-37 设置按内核解析 | 未跑到第一回合 | 无法验证 |
+| 2 | F-35b 采纳归属 | 未跑到第一回合 | 无法验证 |
+| 3 | F-38（新）：装配处读语境 | `apply()` 内 `ctx.sessionId` 抛 `cannot get property "sessionId" without inject` ⇒ `agent-preset/invalid`，preset 组装失败 | ❌ 新缺陷 |
+
+### §155.3 修法（F-38）
+
+- `vibe-math-vmu/vibe-math-vmu.js`：新增 `sessionIdOfCtx(ctx)`，把「我是哪个会话」当成**两个问题、两次尝试**——①属性 `ctx.sessionId`（受管上下文会抛，抛了就进第 2 问）；②`ctx.get('sessions')` 问宿主会话台账，**只有一个 live 会话**才采纳其 id；③都不能答 ⇒ `null`（不许崩、不许在多会话里挑一个）。装配处改为 `kernelSession: sessionIdOfCtx(ctx)`。
+- 一次返工：首版把两问包在**同一条 try** 里，属性那问抛出后整条 try 退出，`get('sessions')` 回退从未被问到（守卫测试量到「普通上下文有 id、受管上下文 null」）；拆成两条 try 后通过。
+- 新 `tests/vmu-run53-ctx-guard.test.mjs` **8/0**：受管上下文（读未注入属性即抛）不炸 `apply()`、守卫回 `null`；普通上下文带 `sessionId` 照旧；仅 `get('sessions')` 且恰一个 live 会话时采纳；两个 live 会话不猜。
+- 文档：`vibe-math-vmu/docs/26-turn-orchestration.md` 追加 `## ROUND 53 — 一个语境读法是一问，不是一个假设`（含「测试替身比真机宽容」这条教训与四条判据）。
+
+### §155.4 门禁
+
+- `GATE_SCOPE=vmu node tests/run-tests.mjs` 首跑 **527 项 / 2 红**，均为新增套件导致的派生计数漂移（`audit-readme-counts`、`audit-declaration-criterion` 的 `regen-all --check`）；`update-doc-counts --write`（`JOBS total=596 suites=488 probes=108`、shipped 393）+ `regen-all --write` 16/16 后五条派生套件单跑全绿（`README COUNTS 19/0`、`DECLARATION CRITERION 90/0`、`GENERATORS CURRENT 23/0`、`CODE STATUS 23/0`、`SURFACE INDEX 20/0`）。
+- `node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`。
+
+### §155.5 我的简报错
+
+本轮 0 次工具调用，简报未被真正执行；但它照抄的 `session/create` 前序步骤暴露的不是简报错，而是**我上一轮把「会话 id 一定读得到」当成了装配前提**。
+
+### §155.6 无法验证
+
+F-37、F-35b、chat `adminsResolved`、`speeches` 计数 —— 本轮一个回合都没跑到，全部顺延。
+
+### §155.7 无实质残余：否
+
+修完守卫后**必须重跑** run 53：这一轮的读数证明「单测全绿 ≠ 真机能装配」，而守卫本身也只有真机才能确认 `session/create` 不再因读语境失败。

@@ -57,6 +57,28 @@ export const inject = ['tools']
 
 /** The shape a dotted settings key must have (a `vmu.*` path of plain identifiers). */
 const SETTING_KEY_SHAPE = /^vmu\.[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$/
+/**
+ * ★★ ROUND 53 (a live machine, before the first turn ran): THE PLUGIN CONTEXT IS A GUARDED OBJECT, NOT A PLAIN BAG.
+ * `createKernel({ kernelSession: ctx.sessionId })` (round 52) threw `cannot get property "sessionId" without inject`
+ * INSIDE `apply()`, so `session/create` failed and run 53 could not open a session at all. The unit tests passed because
+ * they hand `apply` a plain object that answers every property — exactly the shape the framework never provides.
+ * The rule this file already followed elsewhere (`host-children.js#parentId`) is: a context read is a QUESTION, and a
+ * context that cannot answer is "no session id", never a crash. Keep that here and use the same one-session fallback.
+ */
+const sessionIdOfCtx = (ctx) => {
+  // ★ TWO QUESTIONS, TWO TRIES. One try around both was a measured bug in this very fix: a guarded context THROWS on
+  // `sessionId` (not injected), the throw left the try, and the `get('sessions')` fallback below was never asked — the
+  // guard test caught the fallback returning null while a plain context returned the id.
+  try {
+    if (ctx && typeof ctx.sessionId === 'string' && ctx.sessionId) return ctx.sessionId
+  } catch { /* the property is not injected here: ask the host instead */ }
+  try {
+    const store = ctx && typeof ctx.get === 'function' ? ctx.get('sessions') : null
+    const live = store && typeof store.list === 'function' ? store.list() : null
+    if (Array.isArray(live) && live.length === 1 && live[0] && typeof live[0].id === 'string' && live[0].id) return live[0].id
+  } catch { /* a context that refuses the question is reported as "no session id" */ }
+  return null
+}
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype
 
 /**
@@ -522,7 +544,7 @@ export function apply(ctx, config = {}) {
     // ★★ ROUND 52: the DSH session this kernel serves. Settings resolve per kernel, and the status board names WHOSE
     // resolution it prints; without this id a member cannot tell "the board and my own status read disagree" from "two
     // kernels, two honest resolutions" (run 52's measured confusion).
-    kernelSession: (ctx && typeof ctx.sessionId === 'string' && ctx.sessionId !== '') ? ctx.sessionId : null,
+    kernelSession: sessionIdOfCtx(ctx),
     // ★★★★★★★ PHASE 6 / K1 COMPLETION: THE KERNEL HALF WAS DONE AND THE WIRING WAS NOT.
     // `createScheduler` accepted a `timer` seam all along, and K1 added `autoArm()` plus the `vmu.schedule.autoArm`
     // switch - but THIS assembly never passed a timer, so on a real machine `autoArm=true` could only ever answer

@@ -1247,3 +1247,24 @@ seat seam 在行为发生时解析"——读者问"现在谁能管群聊"仍要�
 - 设置键分支必须有 `resolvedBy`，渲染必须点名本内核会话且仍点名声明来源；无名内核写「本内核的解析值」；回退分支不得出现「本内核」；
 - 两个内核同 root：A 跑 start 后 A 的解析值是 RUN、B 仍是 pack 默认、两者 `resolvedIn.kernelSession` 各是各的；
 - 采纳决定的读者回 `read-from-shared-ledger` + `decidedInThisKernel:false` + 采纳时间；决定者回 `self` + `true`。
+
+## ROUND 53 — 一个语境读法是一问，不是一个假设
+
+真机第一次跑 53 时**一个回合都没跑起来**：`session/create` 回
+`{"code":"agent-preset/invalid","message":"vibe-math-vmu (…/vibe-math-vmu.js): cannot get property \"sessionId\" without inject"}`。
+插件上下文是**受管对象**：没在 `inject` 里声明的值，读它直接抛。上一轮把 `kernelSession: ctx.sessionId` 写进装配处，
+于是整个 preset 装配失败——而单测全绿，因为单测交给 `apply()` 的是**普通对象**，能回答任何属性。这是同一类病：
+测试替身的形状比真机更宽容。
+
+修法是把「读语境」当成**两个问题、两次尝试**（`vibe-math-vmu/vibe-math-vmu.js#sessionIdOfCtx`）：
+
+1. 先问属性 `ctx.sessionId`（受管上下文在这里会抛，抛了就走第 2 问，不是放弃）；
+2. 再用 `ctx.get('sessions')` 问宿主的会话台账，**只有一个 live 会话**时才认它的 id；
+3. 两问都不能答 ⇒ `null`。**不许崩、不许猜**——多会话时宁可没有 id（状态板写「本内核的解析值」），也不从名册里挑一个。
+
+第一次修还栽了一次：把两问包在**同一条 try 里**，属性那问抛出后直接跳出 try，`get('sessions')` 的回退**从未被问到**（守卫测试
+量到「普通上下文有 id、受管上下文 null」）。拆成两条 try 后 8/0。
+
+判据（`tests/vmu-run53-ctx-guard.test.mjs` 8 条）：受管上下文（读未注入属性即抛）**不炸** `apply()` 且守卫回执给出 `null`；
+普通上下文带 `sessionId` 照旧；只有 `get('sessions')` 且恰好一个 live 会话时采纳该 id；两个 live 会话**不猜**（`null`）。
+这条规则与 `host-children.js#parentId` 早已采用的一致：语境读法是问题，答不上来是「没有」，不是崩溃。
