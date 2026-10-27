@@ -96,6 +96,11 @@ export function createChat({
   // `acad-01`, …) — but a SEAT can (`chair`). `seatOf(memberId) → slot|null` lets the SAME declaration carry either
   // form; the list is still the only policy, so `enforced` keeps naming `vmu.chat.admins` (no seam is injected).
   seatOf = null,
+  // ★ ROUND 51 — THE OTHER DIRECTION. `seatOf(memberId) → slot` answers "is THIS member an admin?"; the status
+  // read reports the DECLARED entries (`admins:["chair"]`), so a reader could not tell WHO may administer right now
+  // (run 47/50 both flagged it: a declared token is not the resolved set). `seatsOf() → { slot: [memberId, …] }` is
+  // the roster the kernel already holds, so the SAME declaration is reported both as written and as resolved.
+  seatsOf = null,
   // G1 (Round 7): the optional PRIVATE-MESSAGE seam `{ senderOf(id) }`. With it, `supplement()` verifies that the
   // signer really sent the private message; without it the record says `authorship:'claimed-unverified'` — the
   // face never pretends it verified something it could not.
@@ -223,6 +228,30 @@ export function createChat({
       } catch { /* an unreadable roster is NOT an admin grant */ }
     }
     return false
+  }
+
+  /**
+   * The declared admin entries RESOLVED against the live roster: a member id names that member, a seat token names
+   * whoever currently sits in it, and an entry that is neither is reported as `unresolved` (never silently dropped,
+   * never pretended to be an admin). Without a roster seam the answer is `null` — "cannot resolve here", not "nobody".
+   */
+  const adminsResolved = () => {
+    if (typeof seatsOf !== 'function') return null
+    let map
+    try { map = seatsOf() } catch { return null }
+    if (!map || typeof map !== 'object') return null
+    const members = new Set()
+    for (const slot of Object.keys(map)) {
+      const rows = Array.isArray(map[slot]) ? map[slot] : []
+      for (const id of rows) members.add(String(id))
+    }
+    return [...admins].map((entry) => {
+      const key = String(entry)
+      const seatRows = map[key]
+      if (Array.isArray(seatRows)) return { entry: key, kind: 'seat', slot: key, members: seatRows.map(String) }
+      if (members.has(key)) return { entry: key, kind: 'member', slot: null, members: [key] }
+      return { entry: key, kind: 'unresolved', slot: null, members: [] }
+    })
   }
 
   /** The freeze predicate, normalised: boolean, `{frozen}`, or ballot-style `{frozen, ballotId}`. */
@@ -841,8 +870,13 @@ export function createChat({
             : 'the member or SEAT token that imposed this mute'
         }))
         .sort((a, b) => (a.member < b.member ? -1 : a.member > b.member ? 1 : 0))
+      const resolvedAdmins = adminsResolved()
       return { ok: true, apiVersion, messages: messages.length, policyGen, admins: [...admins],
         adminsMeans: 'the declared `vmu.chat.admins` entries as written: a MEMBER id names that member, a SEAT token (e.g. "chair") names whoever CURRENTLY holds that seat — the declaration is by seat, the admin set is resolved by the kernel\'s seat seam at the moment of the act',
+        adminsResolved: resolvedAdmins,
+        adminsResolvedMeans: resolvedAdmins
+          ? 'the SAME declaration resolved against the live roster at this read: kind:"member" names that member, kind:"seat" lists whoever currently sits in that slot (an empty `members` means the seat is empty right now, so the entry grants nobody), kind:"unresolved" is an entry that matches neither a member nor a seat (it grants nobody and is reported rather than dropped)'
+          : 'this assembly injected no roster seam, so the declared entries cannot be resolved here — that is "cannot resolve", NOT "nobody is an admin"',
         speakQuota: quotaOf(), speakQuotaWindowMs: quotaWindowOf(), muteDefaultMs: muteDefaultOf(),
         freezeExemptAdmins: freezeExemptAdminsOn(), historyCap: capOf(), muted: liveMuted(),
         mutedMeans: 'the members muted RIGHT NOW (rows whose `until` the clock has passed are not listed; the row stays in the book until a send or unmute prunes it)',

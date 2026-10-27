@@ -519,6 +519,10 @@ export function apply(ctx, config = {}) {
   // later, which needs the face to hand its counts to the provider instead of the provider asking the face. Not done yet.
   let reportFeedbackState = null
   const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
+    // ★★ ROUND 52: the DSH session this kernel serves. Settings resolve per kernel, and the status board names WHOSE
+    // resolution it prints; without this id a member cannot tell "the board and my own status read disagree" from "two
+    // kernels, two honest resolutions" (run 52's measured confusion).
+    kernelSession: (ctx && typeof ctx.sessionId === 'string' && ctx.sessionId !== '') ? ctx.sessionId : null,
     // ★★★★★★★ PHASE 6 / K1 COMPLETION: THE KERNEL HALF WAS DONE AND THE WIRING WAS NOT.
     // `createScheduler` accepted a `timer` seam all along, and K1 added `autoArm()` plus the `vmu.schedule.autoArm`
     // switch - but THIS assembly never passed a timer, so on a real machine `autoArm=true` could only ever answer

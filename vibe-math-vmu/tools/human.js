@@ -110,6 +110,12 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
   const MEANS_SELF = 'self'
   const MEANS_DELEGATE = 'delegate'
   const MEANS_UNRECORDED = 'unrecorded'
+  // ★ ROUND 52 / F-35b (run 52's member report): a decision this kernel adopted from the shared ledger was reported as
+  // `decidedByMeans:'unrecorded'` beside a local audit that had no line for it — honest words that point nowhere. The
+  // kernel now remembers which rows it adopted (`humanAdoptedDecisions()`), so this face can say the thing the reader
+  // needs: the act happened in ANOTHER kernel, the row was read from the ledger, and this kernel's audit never saw it.
+  const MEANS_ADOPTED = 'read-from-shared-ledger'
+  const MEANS_ADOPTED_MEANS = 'another kernel decided this request and the decision row (decidedBy/decidedAt) was read from the shared ledger; this kernel\'s own audit has no line for the act, and this face never authorised it'
   const MEANS_OF = new Map() // requestId → 'self' | 'delegate' (how THIS face authorised the attribution)
   const rememberMeans = (requestId, means) => { if (requestId && means) MEANS_OF.set(String(requestId), means) }
   /** Resolve `by` to { by, role, means }: omitted ⇒ the caller itself; a declared role or roster seat ⇒ delegate. */
@@ -291,16 +297,37 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
           const row = requestId ? ledgerRow(requestId) : null
           const decided = !!(row && row.decidedAt !== undefined && row.decidedAt !== null)
           const decidedBy = decided && row.decidedBy !== undefined && row.decidedBy !== null ? String(row.decidedBy) : null
+          // ROUND 52 / F-35b: "decided outside this face" was the whole truth the read-back could tell a member whose
+          // kernel had ADOPTED the decision from the shared ledger — and beside a local audit with no line for it, the
+          // word `unrecorded` invites the wrong conclusion ("the gate was skipped here"). Ask the kernel which rows it
+          // adopted and name that instead: the act is real, it happened elsewhere, and this kernel never saw it happen.
+          const adoptedRow = decided && requestId && k && typeof k.humanAdoptedDecisions === 'function'
+            ? (k.humanAdoptedDecisions().filter((r) => String(r && r.requestId) === String(requestId))[0] || null)
+            : null
+          const localMeans = MEANS_OF.get(String(requestId)) || null
+          const decidedByMeans = decided ? (localMeans || (adoptedRow ? MEANS_ADOPTED : MEANS_UNRECORDED)) : null
           return Object.assign({ ok: true, action }, st, {
             decidedBy,
             decidedByMeans: decided
-              ? (MEANS_OF.get(String(requestId)) || MEANS_UNRECORDED)
+              ? decidedByMeans
               // ★ LIVE RUN 50 (the office's report, item ⑨): pending answered `decidedByMeans:null`, which reads as
               // "the field the reader needs is absent" rather than "nobody has decided". Say it: with no decision there
               // is no actor, and the absence is the fact.
               : (String(st && st.state) === 'pending'
                 ? 'nobody has decided this request yet (state=pending), so there is no actor to name'
                 : 'this request has no recorded decision and is not pending either (state=' + String(st && st.state) + '), so no actor can be named'),
+            // The sentence beside the code, so a reader who only sees `decidedByMeans` still knows what it means and
+            // where to look. `decidedInThisKernel` is deliberately `null` when it cannot be known: a row this face did
+            // not authorise and the kernel does not report as adopted could have come from a pack acting on the kernel
+            // API, and guessing either way would be worse than the gap.
+            decidedByMeansMeans: decided
+              ? (decidedByMeans === MEANS_ADOPTED ? MEANS_ADOPTED_MEANS
+                : decidedByMeans === MEANS_SELF ? 'this face authorised the attribution: the caller acted as itself'
+                  : decidedByMeans === MEANS_DELEGATE ? 'this face authorised the attribution: the caller acted for a different approver'
+                    : 'this face did not authorise the attribution and the kernel reports no row adopted from the shared ledger, so the deciding act happened somewhere this face cannot name (e.g. a pack acting on the kernel API); the row itself is the live ledger\'s')
+              : null,
+            decidedInThisKernel: decided ? (adoptedRow ? false : (localMeans ? true : null)) : null,
+            adoptedFromSharedLedgerAt: adoptedRow ? (adoptedRow.adoptedAt === undefined ? null : adoptedRow.adoptedAt) : null,
           })
         }
         if (action === 'decide') {

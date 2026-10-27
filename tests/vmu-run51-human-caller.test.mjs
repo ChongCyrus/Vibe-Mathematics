@@ -77,6 +77,15 @@ try {
   ok(readB2 && String(readB2.state) === 'allowed', 'the earlier kernel sees allowed, not pending', readB2 && readB2.state)
   ok(readB2 && readB2.decidedBy === 'office', 'the decision is attributed to office', readB2 && readB2.decidedBy)
 
+  // ── 5. F-35b (run 52's member report): the ADOPTING kernel must say where the act happened ───────────────────
+  ok(readB2 && readB2.decidedByMeans === 'read-from-shared-ledger', 'the adopting kernel says the decision was read from the shared ledger', readB2 && readB2.decidedByMeans)
+  ok(readB2 && readB2.decidedInThisKernel === false, 'it does not claim the act happened in this kernel', readB2 && readB2.decidedInThisKernel)
+  ok(readB2 && String(readB2.decidedByMeansMeans || '').indexOf('another kernel') !== -1, 'the sentence names the other kernel and the missing audit line', readB2 && readB2.decidedByMeansMeans)
+  ok(readB2 && readB2.adoptedFromSharedLedgerAt !== null && readB2.adoptedFromSharedLedgerAt !== undefined, 'it reports when this kernel adopted the row', readB2 && readB2.adoptedFromSharedLedgerAt)
+  const readA = await call(a, 'vibe_vmu_human', { action: 'approvalState', request_id: 'rq-f35' })
+  ok(readA && readA.decidedByMeans === 'self', 'the DECIDING kernel still reports self (unchanged)', readA && readA.decidedByMeans)
+  ok(readA && readA.decidedInThisKernel === true, 'the deciding kernel says the act happened here', readA && readA.decidedInThisKernel)
+
   // ── 2. F-36: a non-root caller this kernel cannot resolve is NOT the office ───────────────────────────────────
   const opened2 = await call(a, 'vibe_vmu_human', { action: 'openApproval', by: 'r-acad', requestId: 'rq-f36', subject: '待批2' })
   ok(opened2 && opened2.ok === true, 'the office opened rq-f36', opened2 && opened2.code)

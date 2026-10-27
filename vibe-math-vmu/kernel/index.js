@@ -691,6 +691,11 @@ export function createKernel({
   reportFeedback = null,
   settings = {},
   root = null,
+  // ★★ ROUND 52: the DSH session this kernel serves (the entry knows it through `ctx.sessionId`). Settings resolve
+  // PER KERNEL, so a member's own kernel can hold a different `vmu.turn.objective` than the kernel that delivered the
+  // turn; the status board prints WHOSE resolution it shows, which requires knowing this id. Absent ⇒ the board still
+  // says 「本内核的解析值」 without naming it (never a silent lie, just a coarser true statement).
+  kernelSession = null,
   // THE FACTORY DEFAULT CLOCK IS A NUMBER OF MILLISECONDS. It used to return an ISO string, which the clock guard
   // (correctly) rejects as non-finite - so with no injected clock every one of the ten guarded services refused by
   // name, an honest refusal caused by a default that the guard could never accept. A number is also what every
@@ -1262,13 +1267,31 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // ROUND 34: `seatOf` lets `vmu.chat.admins` name a SEAT (`chair`) instead of a minted member id — see chat.js. Without
   // it the declared list could only ever hold ids that no deployment can know in advance, which is why the chat
   // administration surface was unreachable in EVERY live run (measured: `admins: []`, every verb not-admin).
-  const chat = createChat({ clock: guardedClock, log, settings: settingsView, bus, seatOf: (id) => {
+  // ★ ROUND 51: the roster in BOTH directions, kept as named seams so the call site below stays one line a reader can
+  // check: `seatOf(id)` resolves a member to its seat (the declared `vmu.chat.admins` entries are seats), and
+  // `seatsOf()` resolves each seat to the members holding it. Named consts (not inline closures) also keep the chat
+  // construction readable — a call site nobody can scan is where an injected `isAdmin` predicate once hid.
+  const chatSeatOf = (id) => {
     try {
       const rows = members && typeof members.roster === 'function' ? members.roster() : []
       const row = rows.find((m) => m && String(m.id) === String(id))
       return row ? String(row.slot) : null
     } catch { return null }
-  } })
+  }
+  const chatSeatsOf = () => {
+    try {
+      const rows = members && typeof members.roster === 'function' ? members.roster() : []
+      const map = {}
+      for (const m of rows) {
+        if (!m || m.slot === undefined || m.slot === null) continue
+        const slot = String(m.slot)
+        if (!Array.isArray(map[slot])) map[slot] = []
+        map[slot].push(String(m.id))
+      }
+      return map
+    } catch { return {} }
+  }
+  const chat = createChat({ clock: guardedClock, log, settings: settingsView, bus, seatOf: chatSeatOf, seatsOf: chatSeatsOf })
   // ROUND 2 (task-14): the durable per-recipient mailbox and the member state panel. `resolveAudience` is a REAL
   // seam only for `to:'all'` (the roster); `to:'voters'` has no ballot context in this assembly, so it REFUSES by
   // name instead of quietly handing back the roster (a voter set that is not the voter set is worse than a refusal).
@@ -1824,6 +1847,13 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // now refreshes the fold first, exactly as chat (run 47) and meetings (run 50) do. The re-entrancy counter keeps the
   // onReload hook (which calls human.restore) from recursing through the wrapper.
   let humanReadDepth = 0
+  // ★ ROUND 52 / F-35b (run 52's member report: "the decision became visible across kernels, but `decidedByMeans`
+  // said `unrecorded` and the local audit had no such line"): a decision this kernel holds ONLY because it read the
+  // fold is a different fact from a decision this kernel made. The read-back already distinguishes self/delegate from
+  // "decided outside this face", but "outside" points at nothing a reader can act on. This map remembers WHICH rows
+  // were adopted from the shared ledger (never cleared: a row once read from the fold stays a row this kernel did not
+  // decide), so the human face can say "made in another kernel" instead of the opaque "unrecorded".
+  const humanAdoptedFromFold = new Map()
   const humanReadsReadFresh = (target) => {
     if (!target || target.__vmuHumanReadFreshReads === true) return null
     if (!store || typeof store.read !== 'function') return null
@@ -1855,11 +1885,15 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
               const merged = new Map(localRows)
               for (const [id, row] of foldRows) {
                 const mine = merged.get(id)
-                if (!mine) { merged.set(id, row); continue }
+                if (!mine) {
+                  merged.set(id, row)
+                  if (row && row.decidedAt !== null && row.decidedAt !== undefined) humanAdoptedFromFold.set(id, { requestId: id, adoptedAt: clock(), decidedAt: row.decidedAt, decidedBy: row.decidedBy === undefined ? null : row.decidedBy })
+                  continue
+                }
                 const foldDecided = row && row.decidedAt !== null && row.decidedAt !== undefined
                 const mineDecided = mine && mine.decidedAt !== null && mine.decidedAt !== undefined
-                if (foldDecided && !mineDecided) merged.set(id, row)
-                else if (foldDecided && mineDecided && Number(row.decidedAt) > Number(mine.decidedAt)) merged.set(id, row)
+                if (foldDecided && !mineDecided) { merged.set(id, row); humanAdoptedFromFold.set(id, { requestId: id, adoptedAt: clock(), decidedAt: row.decidedAt, decidedBy: row.decidedBy === undefined ? null : row.decidedBy }) }
+                else if (foldDecided && mineDecided && Number(row.decidedAt) > Number(mine.decidedAt)) { merged.set(id, row); humanAdoptedFromFold.set(id, { requestId: id, adoptedAt: clock(), decidedAt: row.decidedAt, decidedBy: row.decidedBy === undefined ? null : row.decidedBy }) }
               }
               const localVetoes = new Map((Array.isArray(local && local.data && local.data.vetoes) ? local.data.vetoes : []).map((v) => [String(v && v.id), v]))
               for (const v of (Array.isArray(fold.data.vetoes) ? fold.data.vetoes : [])) if (v && v.id && !localVetoes.has(String(v.id))) localVetoes.set(String(v.id), v)
@@ -2372,6 +2406,8 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     sectionPolicy: sectionPolicy || null,
     noticeBlock: noticeBlock || null,
     extraPhases: extraPhases || null,
+    // ★★ ROUND 52: the status board prints whose settings resolution it shows, so the loop needs this kernel's id.
+    kernelSession: typeof kernelSession === 'string' && kernelSession !== '' ? kernelSession : null,
     // ★★★★★★★ PHASE 6 / K10 WIRING: THE LOOP'S BUS WAS NEVER HANDED OVER, SO `turn/reply-parsed` COULD NOT FIRE.
     // `kernel/turn/index.js:1009` emits that hook (the ONLY producer in the tree) inside `if (bus && ...)`, and the
     // orchestrator defaults `bus = null` - measured: a real kernel ran two turns and the hook's hit counter stayed 0,
@@ -2931,6 +2967,14 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // A method (not a getter) because it takes the aggregate/window the caller wants; it reads, never writes.
     metricValues,
     get audit() { return audit },
+    /**
+     * ★ ROUND 52 / F-35b: WHICH APPROVAL DECISIONS THIS KERNEL HOLDS ONLY BY READING THE SHARED LEDGER. A reader asking
+     * "who decided this" gets `decidedBy` from the row either way; what the row cannot say is WHERE the act happened,
+     * and a kernel whose audit trail has no line for it must not let that silence read as "the gate was skipped here".
+     * Rows are reported once and never removed (a decision read from the fold stays foreign even after the local copy
+     * catches up), each with the id, when this kernel adopted it, and the decision it adopted.
+     */
+    humanAdoptedDecisions() { return [...humanAdoptedFromFold.values()].map((r) => Object.assign({}, r)) },
 
     /** ROUND 247: the domain compliance packs (docs/20 §9.1-§9.4), reachable like every other service. */
     get legalentity() { return legalEntity },
@@ -4211,6 +4255,14 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // never have to guess whether an absent key is unset or merely elided.
           resolvedDetail: resolvedNote,
           resolved: resolvedView,
+          // ★★ ROUND 52: WHICH KERNEL RESOLVED THIS MAP. Settings are per kernel (a member's own kernel holds the pack
+          // defaults while the kernel that delivered its turn holds the run's objective), so a reader comparing a
+          // status receipt with a `[总任务]` line must be able to see whether the two came from the same kernel. Run 52:
+          // a member compared them without this field and could only conclude the board's source label was false.
+          resolvedIn: { kernelSession: kernelSession === null ? null : String(kernelSession) },
+          resolvedInMeans: kernelSession === null
+            ? 'this kernel was built without a session id, so the map is this kernel\'s own resolution and cannot be matched to a session by name'
+            : 'this map is THIS kernel\'s resolution of the declared keys; another kernel over the same workspace resolves its own (pack defaults included), so a value read here is not evidence about what any other kernel would return',
           // TASK-163: the hot-grading promise is SELF-DISCLOSED here, and the last runtime write is shown with
           // what it really applied — the receipt and this line are the same fact, not two opinions.
           hotGrading: 'H0/H1 runtime writes are applied LIVE (and the receipt names the consumers); an H2 write is stored now and takes effect on the next start, and its receipt carries requiresRestart:true; H3 keys are framework-owned and REFUSED by name on BOTH paths (kernel API and tool face)',

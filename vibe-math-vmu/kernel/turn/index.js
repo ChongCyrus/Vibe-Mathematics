@@ -1142,7 +1142,7 @@ const stampIso = (row) => {
  *     available, unavailable }
  * A caller that wants the board without any kernel (a test, a pack with its own board) can pass `statusSources`.
  */
-export function statusBoardReadings({ tasks = null, records = null, member = null, settings = null, limit = STATUS_BOARD_DEFAULT_LIMIT, at = null } = {}) {
+export function statusBoardReadings({ tasks = null, records = null, member = null, settings = null, limit = STATUS_BOARD_DEFAULT_LIMIT, at = null, kernel = null } = {}) {
   const cap = Number.isInteger(limit) && limit > 0 ? limit : STATUS_BOARD_DEFAULT_LIMIT
   const readTasks = readerOf(tasks, 'list')
   const readRecords = readerOf(records, 'list')
@@ -1171,7 +1171,12 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
   const objectiveSetting = settingOf(settings, 'vmu.turn.objective')
   const objectiveText = typeof objectiveSetting === 'string' ? objectiveSetting.trim() : ''
   if (objectiveText !== '' && objectiveText !== OBJECTIVE_UNSET) {
-    objective = { value: objectiveText, why: null, at: null, source: '设置键 vmu.turn.objective' }
+    // ★★ ROUND 52 (live run 52, and the run-51 member's claim this row finally decided): A SETTING IS PER-KERNEL.
+    // The same key resolved to the run's objective in the delivering kernel and to the pack default in the member's own
+    // kernel, so a member comparing `[总任务]` with its own `vibe_vmu_status{detail:'settings'}` read saw two values and
+    // reported the board's source label as false. It was not false - it was unqualified: the value came from THIS
+    // kernel's settings, and `resolvedBy` says so on the field, so the renderer can name the kernel that resolved it.
+    objective = { value: objectiveText, why: null, at: null, source: '设置键 vmu.turn.objective', resolvedBy: kernel }
   } else if (!rows) {
     objective = Object.assign(gap(boardWhy === null ? '任务板不可读' : boardWhy), { source: '任务板（无依赖的根任务）' })
   } else if (rows.length === 0) {
@@ -1295,7 +1300,11 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
   const raw = { objective, plan, tasks: tasksField, current }
   const fields = STATUS_BOARD_FIELDS.map((decl) => {
     const r = raw[decl.key] || { value: null, why: '内部错误：字段未计算', at: null }
-    return Object.freeze({ key: decl.key, label: decl.label, source: r.source || decl.source, value: r.value === undefined ? null : r.value, why: r.why === undefined ? null : r.why, at: r.at === undefined ? null : r.at })
+    const field = { key: decl.key, label: decl.label, source: r.source || decl.source, value: r.value === undefined ? null : r.value, why: r.why === undefined ? null : r.why, at: r.at === undefined ? null : r.at }
+    // ★★ ROUND 52: a settings-derived value carries the kernel that resolved it; the key is copied only when the read leg
+    // produced it, so a fallback branch can never look like a settings resolution.
+    if (Object.prototype.hasOwnProperty.call(r, 'resolvedBy')) field.resolvedBy = r.resolvedBy === undefined ? null : r.resolvedBy
+    return Object.freeze(field)
   })
   const available = fields.filter((f) => typeof f.value === 'string' && f.value.trim() !== '').length
   return { ok: true, at: at === null ? null : String(at), member: typeof member === 'string' ? member : null, fields, objective, plan, tasks: tasksField, current, available, unavailable: fields.length - available }
@@ -1320,7 +1329,17 @@ export function renderStatusBoard(readings) {
     // carries `source` (statusBoardReadings fills it for every branch); this prints it ONLY next to a value, so the
     // 「该来源未提供：<why>」 lines keep saying exactly that (their `why` already names the sources it tried).
     const source = f && typeof f.source === 'string' && f.source.trim() !== '' ? f.source.trim() : null
-    const shown = value === null ? null : (source === null ? value : value + '（来源：' + source + '）')
+    // ★★ ROUND 52: A SETTINGS VALUE BELONGS TO THE KERNEL THAT RESOLVED IT. Run 52 showed the two facts living in two
+    // kernels (the delivering kernel had the run objective, the member's own kernel had the pack default) and one line
+    // claiming a single source, so a member comparing them could only conclude the label lied. The label stays the
+    // declared source; the parenthetical now says WHOSE resolution it is, and names the kernel when it knows it.
+    const scope = f && Object.prototype.hasOwnProperty.call(f, 'resolvedBy')
+      ? (typeof f.resolvedBy === 'string' && f.resolvedBy.trim() !== ''
+        ? '本内核 ' + f.resolvedBy.trim() + ' 的解析值'
+        : '本内核的解析值')
+      : null
+    const paren = source === null ? null : (scope === null ? source : source + ' · ' + scope)
+    const shown = value === null ? null : (paren === null ? value : value + '（来源：' + paren + '）')
     return '[' + decl.label + '] ' + (shown === null ? '该来源未提供：' + why : shown)
   }).join('\n')
 }
@@ -1394,7 +1413,12 @@ export function createTurnOrchestrator({
   // "the chair r-acad has no recorded turn in this kernel") although the turn had just run. The seam is
   // `{ record(fact), count(memberId) }` over the shared durable fold (`kernel/index.js` owns both halves; `count` is
   // what `chairActed` calls). Absent ⇒ this loop behaves EXACTLY as before (memory only, byte for byte).
-  turnLedger = null } = {}) {
+  turnLedger = null,
+  // ★★ ROUND 52: WHICH KERNEL THIS IS. Settings resolve per kernel, so a board line that quotes a settings value must
+  // be able to say which kernel's resolution it shows (run 52: the delivering kernel had the run objective, the member's
+  // own kernel the pack default, and the unqualified label read as a lie). Absent ⇒ the scope sentence still says
+  // 「本内核的解析值」, it just cannot name the kernel.
+  kernelSession = null } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
   // ROUND 347: the wakeup POLICY (docs/26 section 3.2). The original preset recorded only WHO should be woken and
@@ -1559,7 +1583,7 @@ export function createTurnOrchestrator({
     const bag = statusSources && typeof statusSources === 'object' ? statusSources : null
     const taskFace = (bag && bag.tasks) || (faces && faces['vmu.tasks']) || null
     const recordFace = (bag && bag.records) || (faces && faces['vmu.records']) || null
-    return statusBoardReadings({ tasks: taskFace, records: recordFace, member, settings, limit: STATUS_BOARD_DEFAULT_LIMIT })
+    return statusBoardReadings({ tasks: taskFace, records: recordFace, member, settings, limit: STATUS_BOARD_DEFAULT_LIMIT, kernel: kernelSession })
   }
 
   /** ① open a turn: who, which round, which phase, which task. */

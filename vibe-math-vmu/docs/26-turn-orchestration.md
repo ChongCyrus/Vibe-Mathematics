@@ -1208,3 +1208,42 @@ LIVE RUN 50（build ce5ec8f9，实验室所办自己的报告与 34 条回执）
 - B 先启动、A 后开审批，B 的 `approvalState` 必须读到 pending，A 决定后必须读到 allowed 且 `decidedBy:"office"`；
 - 陌生非 root agent 调 `decide` 必须被 `VMU_HUMAN_CALLER_UNKNOWN` 拒，message 点名该 agent id，且请求仍 pending；
 - `session-…` 形状（root）仍可决定；席位成员仍被角色码拒（两种"不能批"不许混成一个码）。
+
+### ROUND 51 追加 — 声明不是解析：`admins` 旁边给出 `adminsResolved`
+
+`chat status` 从 run 47 起就把 `vmu.chat.admins` 的**声明原文**（`["chair"]`）当答案打印，`adminsMeans` 只说"席位由
+seat seam 在行为发生时解析"——读者问"现在谁能管群聊"仍要自己去对名册（run 50 记为呈现债）。本轮给 `createChat` 加了
+同一名册的**反方向** seam `seatsOf() → { slot: [memberId, …] }`，`status()` 现在并列给出：
+
+- `admins`：声明原文（`kind` 语义不变，仍是策略本身）；
+- `adminsResolved`：同一声明在这次读取时解析成谁 —— `kind:"member"` 就是那个人；`kind:"seat"` 列出**当前**坐在该席位上的
+  全部成员（空数组 = 席位此刻没人，这条不给任何人权限）；`kind:"unresolved"` 是既非成员也非席位的条目（**报告**而不是
+  丢弃，也绝不当作授权）；
+- 没有名册 seam 的装配回 `adminsResolved:null` + "cannot resolve here" 的说明 —— 这与 "nobody is an admin" 是两件事。
+
+判据（`tests/vmu-run51-chat-admins-resolved.test.mjs`，9 条）：席位条目必须报到当前持有人、成员条目报到本人、未匹配条目
+必须是 `unresolved` 且 `members` 为空、同一席位第二个人入职后读面必须同时列出两人、裸 chat face 必须回 `null` 并说明原因。
+
+## ROUND 52 — 设置是按内核解析的，采纳来的决定要说清发生在哪
+
+真机第 52 轮验掉了 run 51 的两条修法（跨内核审批读面、调用者身份），同时量出一条新的读数矛盾和一个残留缺口：
+
+1. **`[总任务]` 的来源与它的值不是同一个内核的答案**（F-37）。成员的 `[总任务]` 行写着「（来源：设置键 vmu.turn.objective）」，
+   值是 root 内核 `vibe_v5_start` 写的运行时 override；而它在**自己**内核里读 `vibe_vmu_status{detail:"settings"}`，
+   同一个键打的是 pack 默认、`source:"pack:v5r"`、`overridden:[]`。两个读数都是真的——每个会话装配**自己的**内核，
+   运行时 override 不跨内核。缺的不是值，是「这个值属于哪个内核」。
+   修法全在派生侧：`statusBoardReadings()` 的设置键分支带上 `resolvedBy`（内核会话 id），渲染写成
+   「（来源：设置键 vmu.turn.objective · 本内核 `<session>` 的解析值）」；任务板回退分支**永不**冒充这个措辞；
+   status 的 `settings` 桶给 `resolvedIn: { kernelSession }` + `resolvedInMeans`；装配处把 `ctx.sessionId` 透成
+   `kernelSession`；pack 教学补一句「设置值是按内核解析的，核对前先看 `resolvedIn.kernelSession` 是不是同一个内核」。
+2. **采纳来的决定说「unrecorded」，读者会读成「这里跳过了闸门」**（F-35b）。成员在自己的内核里读到了别的内核的决定
+   （`decidedBy:"office"`、时间、理由都在），但 `decidedByMeans` 是 `unrecorded`，本地审计没有那一行——字都对，
+   却指向无处。内核现在记住自己**从共享账本采纳过**哪些行（`humanAdoptedDecisions()`），人脸在 `decidedByMeans` 里
+   回 `read-from-shared-ledger`，并给三件读者真正要的：`decidedByMeansMeans`（说明决定发生在另一个内核、本内核审计
+   没有这一行、本脸从未授权）、`decidedInThisKernel:false`、`adoptedFromSharedLedgerAt`。本地决定仍回 `self`/`delegate`
+   且 `decidedInThisKernel:true`；既非授权也非采纳的行仍回 `unrecorded` 并把「本脸无法命名」说出来——不猜。
+
+判据（`tests/vmu-run52-settings-scope.test.mjs` 14 条 + `tests/vmu-run51-human-caller.test.mjs` 24 条）：
+- 设置键分支必须有 `resolvedBy`，渲染必须点名本内核会话且仍点名声明来源；无名内核写「本内核的解析值」；回退分支不得出现「本内核」；
+- 两个内核同 root：A 跑 start 后 A 的解析值是 RUN、B 仍是 pack 默认、两者 `resolvedIn.kernelSession` 各是各的；
+- 采纳决定的读者回 `read-from-shared-ledger` + `decidedInThisKernel:false` + 采纳时间；决定者回 `self` + `true`。

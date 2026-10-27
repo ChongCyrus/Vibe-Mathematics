@@ -6566,3 +6566,55 @@ run 49 的定向项（F-23/F-22/rulings/禁言/群聊）全部真机通过；但
 ### §153.8 无实质残余：否
 
 七条读面缺陷全部转 ✅，但本轮又抓到两条"别人的内核里的事实"（审批账本、调用者身份），说明**跨内核可见性**仍是这一族的主要来源：records/turns/chat/meetings/human 五处已修，settings 与"身份"两处仍是设计债。
+
+
+## §154 真机跑 52
+
+### §154.1 读数
+
+- 驱动：`D:\_tmp\slv-phase5\slv-p13-cc.ps1 -CloneName slvp52 -Port 19633 -TaskFile task-r52.txt`；`DRIVE exit=0`、`durationSec 1055`。
+- 根会话：`toolCalls 8`、`transcriptEvents 62`、`tokenTotal 12,187,136`（cap 12,000,000，**`tokenCapHit:true`**）；`SUMMARY: 2 session(s) in 1 file(s), 1 with RED checks`。
+- 唯一 RED ＝ 根会话 `calls (8) vs results (7) COUNT MISMATCH`：最后一次 `vibe_vmu_turn` 发出后会话被 token cap 截断，没有配对结果。
+- JSON：`_oneoff/vm-slv/full-1027-130336.jsonl` = 18,588,654 B / 38,988 行；`NO_FENCE=60 UNKNOWN_FIELD=52 FIELD_NOT_APPLICABLE=44 BAD_JSON=60`；日志保全戳 `20261027-132157`；`cleanup: clone_gone=True port_listening=False C_free_GB=10.49`。
+
+### §154.2 判决
+
+| # | 本轮定向目标 | run 52 实测 | 判 |
+|---|---|---|---|
+| 1 | F-35 审批账本跨内核读旧 | 成员内核 step 3 读 `rq-r52` ⇒ `state:"pending"`、`decidedBy:null`（「没有任何人被点名」）；step 6 再读（成员原话）「可见性（同一 requestId，本内核前后对比）……**成立**」 | ✅ |
+| 2 | F-36 不认识的调用者被当 office | 成员在自己内核里不带 `by` 调 `decide` ⇒ `decideNoBy: VMU_HUMAN_CALLER_UNKNOWN` | ✅ |
+| 3 | 跨内核决定后的读面归属 | 成员同时报「`decidedByMeans=unrecorded` 且本地审计无该行」 | ❌ 新缺陷 |
+| 4 | 设置视图与 `[总任务]` 一致性 | 成员 `vibe_vmu_status{detail:"settings"}` 的 `vmu.turn.objective` 是 pack 默认、`source:"pack:v5r"`；其提示词 `[总任务]` 却是 root 写的 override 并自称来源同一设置键 | ❌ 新缺陷 |
+| 5 | chat `adminsResolved`（本轮增补） | 本轮未定向验（无 chat 步） | 未验 |
+
+### §154.3 修法
+
+- **F-37（设置按内核解析）**：`kernel/turn/index.js` 的 `statusBoardReadings({kernel})` 给设置键分支带 `resolvedBy`，`renderStatusBoard` 写「· 本内核 `<session>` 的解析值」，任务板回退分支不冒充；`createTurnOrchestrator({kernelSession})`/`createKernel({kernelSession})` 透传；status `settings` 桶给 `resolvedIn{ kernelSession }` + `resolvedInMeans`；装配处传 `ctx.sessionId`；pack 教学补一句。新测试 `tests/vmu-run52-settings-scope.test.mjs` 14/0（含两内核同 root 各报各的）。
+- **F-35b（采纳的决定要说清发生在哪）**：`kernel/index.js` 新增 `humanAdoptedFromFold` 记录 + `humanAdoptedDecisions()`；`tools/human.js` 的 `approvalState` 增 `decidedByMeans:'read-from-shared-ledger'`、`decidedByMeansMeans`（点名另一个内核与本内核审计无该行）、`decidedInThisKernel`、`adoptedFromSharedLedgerAt`；本地决定仍 `self`/`delegate` + `true`。`tests/vmu-run51-human-caller.test.mjs` 18→**24/0**。
+- **顺手回绿**：`tests/vmu-run34-findings.test.mjs` 用正则抓 `createChat({…})` 调用点、限制 400 字符；`seatOf`/`seatsOf` 内联后抓空 ⇒ 假红。改为命名常量 `chatSeatOf`/`chatSeatsOf`（少一行正是注入谓词能藏身的地方）⇒ 26/0。
+
+### §154.4 门禁
+
+- `node scripts/preflight.mjs` ⇒ `PREFLIGHT: PASS - safe to run a gate`。
+- `GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ `TOTAL 526 PASS 526 FAIL 0 (suites 462 · probes 64)`。
+- 生成物：`update-doc-counts --write`（`JOBS total=595 suites=487 probes=108`、shipped 393）、`generate-surface-index --write`、`regen-all --write` 16/16、`regen-all --check` 16/16 in sync。
+- `node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`。
+- 相邻套件：`RUN51 HUMAN CALLER 24/0`、`RUN52 SETTINGS SCOPE 15/0`、`RUN51 CHAT ADMINS RESOLVED 9/0`、`HUMAN GATE 89/0`、`RUN33 HUMAN GATE 62/0`、`RUN45 HUMAN DECIDE AUDIT 62/0`、`HUMAN FALSIFY 12/0`、`RUN34 FINDINGS 26/0`、`RUN31 STATUS BOARD 58/0`。
+- 自伤红一处（已修）：新套件的 `if (started.missing) { ok(false, …) } else { … }` 被 `audit-declaration-criterion` 判为 RULE E shape C（断言藏在条件里，分支不跑就静默跳过）⇒ 改成无条件断言，15/0。
+
+### §154.5 我的简报错
+
+1. 第 7 步让成员「抄 `detail:settings` 的 `vmu.turn.objective`」——它抄回来的值与提示词里的 `[总任务]` 是两个内核的答案，这正是本轮要抓的矛盾；错不在简报，而在**简报假设「同一个键只有一个值」**。
+2. 根会话只用 8 次工具就撞到 12M token cap（`toolCalls 8`）：本轮定向步数少但每步回执大（成员子会话 + 状态板），说明 cap 余量应随定向轮调整，而不是沿用固定 12M。
+3. `vibe_v5_feedback` 的 `op` 参数这轮没有用错（未调 feedback）。
+
+### §154.6 无法验证
+
+1. chat `adminsResolved` 的真机读数（本轮无 chat 步，仅单测 9/0）。
+2. `speeches` 计数改名（run 48 lane）仍未复验。
+3. `status.admins` 只打声明 token 的呈现债（run 47 起）仍在——`adminsResolved` 是并列补充，不是替换。
+4. token cap 截断是否会让「最后一次 turn 的产物」整体丢失（RED 只说明没有配对结果）。
+
+### §154.7 无实质残余：否
+
+run 52 把 run 51 的两条修法验掉了，但同一族（「别人的内核里的事实」）又露出 settings 与「采纳归属」两处；且本轮新增的 `adminsResolved` 只有单测没有真机读数。下一轮应把 chat 真机读数、`speeches`、`adminsResolved`、token cap 截断一并定向。

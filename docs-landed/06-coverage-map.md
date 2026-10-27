@@ -194,3 +194,5 @@
 | 读面要给同一组事实 | 拒绝（`VMU_CHAT_MUTED`）已经带了 until/reason，成功的读面就必须带同样的事实；`null` 要说明它为什么是 null。 | `tests/vmu-run50-readbacks.test.mjs` §4/§7 |
 | 工具名不是作者 | 一个工具自己的名字不能当行的作者；没有成员就是 `null`，作者字段只回答"是谁"。 | `tests/vmu-run50-readbacks.test.mjs` §5 |
 | 截断要说自己是摘录 | 板上的摘录必须点名完整正文的记录 id，读者要能过去读全文。 | `tests/vmu-run50-readbacks.test.mjs` §6 |
+| 设置按内核解析 | 同一个 workspace 上每个会话装配自己的内核，运行时 override 不跨内核；引用一个设置值时必须点名"哪个内核的解析值"，否则两块板会互相矛盾而两边都是真的。 | `tests/vmu-run52-settings-scope.test.mjs` |
+| 采纳的决定要说清发生在哪 | 从共享账本读到的决定不是本内核的决定：读面必须回 `read-from-shared-ledger` + `decidedInThisKernel:false` + 采纳时间，不能让 `unrecorded` 被读成"这里跳过了闸门"。 | `tests/vmu-run51-human-caller.test.mjs` §5 |
