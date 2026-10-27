@@ -484,6 +484,7 @@
 | **R2 · `VMU_HUMAN_LIFT_ROLE`** | 解除否决者不在 `vmu.human.vetoLiftRoles` | 审批闸 | ✅（须给**允许角色**） |
 | **R31 · `VMU_HUMAN_DECIDER_ROLE`** | **人工审批面的调用者角色不在 `vmu.human.deciderRoles`** ⇒ 具名拒 `decide`／`withdraw`／`veto`，**在任何状态变更之前**；角色＝roster 席位（非成员／root 才是 `office`），所以"填 `by:'office'` 冒充"改不了闸；`enforced[]` 点名声明键（task-22）。**R45 · 同一码也判被代办者**：`by` 缺省＝调用者自己；`by` 是角色名（如 `chair`）或名册成员 id 时，其解析出的角色**也**必须在 `vmu.human.deciderRoles` 里，否则同一码具名拒（message 点名 by 值与解析出的角色，hint 给"用自己的身份"与"把决定权交给成员自己的席位"两条路）——否则 root 会话可 `decide {by:"<member>"}` 把审批记到成员名下（run 45 真机） | 人工审批面（`vibe-math-vmu/tools/human.js` 的 `gateVerb`/`delegateOf`，闸在 `run()` 的 `try` 第一行） | ✅（须给**允许角色**、**声明键**与"默认只有 office"） |
 | **R52 · `VMU_HUMAN_CALLER_UNKNOWN`** | **人工审批面的调用者不是 root、也不是本内核认得的成员** ⇒ 具名拒 `decide`／`withdraw`／`veto`／`inject`，**在任何状态变更之前**。`resolveTurnMember` 对"root 会话"与"本内核没见过的非 root agent（成员自己的内核）"都回 null，若把后者当 `office`，成员就能不带 `by` 调 `decide` 把决定记到所办名下（run 51 成员自报，`approval-1`）。判据用 agent id 形状（root 是 `session-…` 或无 id），message 点名该 agent id，hint 指向"在 root 会话做决定"或"让成员自己的回合调用" | 人工审批面（`vibe-math-vmu/tools/human.js` 的 `callerRole`/`gateVerb`） | ✅（须说明调用者 id 与允许角色声明键） |
+| **R61 · `VMU_FEEDBACK_ACTION_IS_THE_OPERATION`** | **反馈面把「操作动词」当成了正文的第五个必填字段**：原文的 `action`（「你建议怎么改」）与调度层的 `action`（`op` 的别名）同键 ⇒ 成员写 `{action:"add", …}` 时回执 `ok:true`，落盘行却是 `action：add`，唯一承载建议的字段被写着操作动词（**数据丢失**，run 61 成员自报）。修法：操作是 `op`；正文用 `recommendation`（首选）或旧键 `action`（值不是 add/update/list 时照旧可用）；把操作词写进正文则具名拒本码，hint 点名两个字段 | 反馈面（`vibe-math-vmu/packs/v5r/tools.js` 的 `feedbackBodyAction`/`toolFeedback`） | ✅（须说明 `op` 是操作、建议走 `recommendation`，并说明旧键在什么条件下仍收） |
 | **R45 · `VMU_CHAT_SNAPSHOT_INCOMPLETE`** | 持久里的 chat 值不是 v1 快照（`messages`/`mutes` 缺失）⇒ 合并恢复**什么都没采纳、也没动活内存**（`kernel/index.js` 的 `chatReloadMerge`） | 群聊状态的持久化恢复（task-28） | ✅（须说"什么都没采纳也没动活的"） |
 | **R45 · `VMU_CHAT_RESTORE_FAILED`** | 合并后的快照交给 `chat.restore()` 时抛错（内核没给码）⇒ 报 `VMU_CHAT_RESTORE_FAILED` + `note` 原文（`kernel/index.js` 的 `reload` 适配） | 同上 | ✅（须给底层原文，不许只报"restore 失败"） |
 | **R45 · `VMU_CHAT_RESTORE_REFUSED`** | `chat.restore()` 按名字拒绝合并后的快照（例如 live 已有消息而快照不同）⇒ 报该面自己的码或 `VMU_CHAT_RESTORE_REFUSED` + `note`（`kernel/index.js` 的 `chatReloadMerge`） | 同上 | ✅（须点名"不能半覆盖、消息不丢"） |
@@ -1173,7 +1174,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **469** 个码，**逐行**给出状态 ✓：其中 **430** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **470** 个码，**逐行**给出状态 ✓：其中 **431** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1303,6 +1304,7 @@
 | `VMU_EXTERNAL_RECEIPT_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/kernel/external.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXTERNAL_STALE` | **已实现 ✓** | `vibe-math-vmu/kernel/external.js` | 代码里有该码字符串 ✓ |
 | `VMU_EXTERNAL_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/external.js`、`vibe-math-vmu/kernel/formal.js`、`vibe-math-vmu/kernel/latex.js`、`vibe-math-vmu/kernel/lifecycle.js`、`vibe-math-vmu/kernel/mathadapters.js`、`vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/records.js`、`vibe-math-vmu/kernel/report.js`、`vibe-math-vmu/kernel/reportfeedback.js`、`vibe-math-vmu/kernel/reportfeedbackdelivery.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
+| `VMU_FEEDBACK_ACTION_IS_THE_OPERATION` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_FORMAL_ADAPTER_UNSUPPORTED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
 | `VMU_FORMAL_AXIOM_UNTRUSTED` | **已实现 ✓** | `vibe-math-vmu/kernel/formal.js`、`vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
 | `VMU_FORMAL_DISAGREEMENT` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |

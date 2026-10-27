@@ -7025,3 +7025,46 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 
 ### §163.7 无实质残余
 否：F-50 已修但尚未真机复验（run 61 的验收点），加上 §163.6 四项。
+
+## §164 真机跑 61（验收 F-50，机制自己交回三处缺陷）
+
+### §164.1 读数
+- `DRIVE exit=0`、`durationSec 591`、根会话 `toolCalls 12`、`transcriptEvents 82`、`tokenTotal 3,963,048`（cap 12,000,000，未触顶）、2 个会话、`SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks`；`calls (12) vs results (12)`。
+- 快照 `_oneoff/vm-slv/full-1027-182654.jsonl` = 13,225,893 B / 31,311 行；围栏计数 `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=8 BAD_JSON=12`；日志保全戳 `20261027-183732`；`cleanup: clone_gone=True  port_listening=False  C_free_GB=10.32`。
+
+### §164.2 判决
+| # | 验的是什么 | 读数 | 判 |
+| --- | --- | --- | --- |
+| 1 | 归档回执声明持久化 | `vibe_v5_lean_archive {kind:"lemma", name:"r61_self", file:"Formal/r61.lean", statement:"∀ n : Nat, n + n = 2 * n"}` ⇒ `archived.statement` 为原文、`persisted:true`、`persistence:{shared:true, key:"leanlibrary", means:"this library is durable through the store key \"leanlibrary\": a kernel that starts later reads the same rows back"}` | ✅ |
+| 2 | 磁盘上真有这个键 | `grep {pattern:"leanlibrary", path:"VibeMath/vmu/state.json"}` ⇒ `Found 1 match`，`Line 151: "leanlibrary": [` | ✅ |
+| 3 | 同内核读回 | `vibe_v5_lean_lib {}` ⇒ `count:1`、条目 `r61_self` 的 `statement` 为原文、`persistence.shared:true` | ✅ |
+| 4 | **跨内核读回（本轮核心）** | 成员在其内核里归档 `f50_probe` 之后，root 内核再 `lean_lib {}` ⇒ `count:2`，第二条是 `{"name":"f50_probe","file":"Formal/f50-probe.lean","statement":"∀ n : Nat, n + 0 = n"}`，`persistence.pulls` 3 / `written` 1 | ✅ |
+| 5 | 归档回执的计数与 `persisted` 同时点 | 同一张回执写 `persisted:true` 却写 `written:0`，紧接的 `lean_lib` 才是 `written:1`（F-52a） | ❌ |
+| 6 | 作业号的范围 | 成员读 `lean_job`/`lean_lib` 后指出：`ids.counters.lean` 是持久化的，作业表却只在本内核内存里 ⇒ 卡里写作业号不可耐久引用（F-52b） | ❌ |
+| 7 | 反馈面第五个必填字段 | 成员写 `vibe_v5_feedback {action:"add", member, category, route, phenomenon, impact}` ⇒ `ok:true, op:"add"`，落盘行 `action：add`（建议丢失，F-52c） | ❌ |
+| 8 | 任务板教学与状态机 | 成员照提示词 `task_update` 直接 complete ⇒ `illegal transition assigned -> done`，补 `transition→doing` 才成（F-52d） | ⚠️ |
+
+### §164.3 缺陷与修法
+- **F-52a（回执两个时点）**：`vibe-math-vmu/kernel/lean.js` 的 `writeSharedRows()` 把行交给 store 就返回，`archive()` 没等票据就拼回执 ⇒ `persisted:true` 与 `written:0` 并排。修法：`writeSharedRows()` 交回 `settled` 票据，`archive()` `await` 后才取 `persistence()`；断言写进 `tests/vmu-run60-lean-library-durable.test.mjs`（「`persisted:true` 不允许挨着 `written:0`」）。
+- **F-52b（作业号范围）**：`run`/`list` 回执新增 `jobScope:"this-kernel-process"` 与 `jobScopeMeans`（点名耐久读面是作业镜像 `listMirrors()`/`Formal/Jobs/<id>.json`，明说写进卡的作业号本身不是耐久名字）。**刻意不搬库**：把作业表持久化是另一个设计决定，先让回执说真话。
+- **F-52c（`action` 同键两义）**：`vibe-math-vmu/packs/v5r/tools.js` 新增 `feedbackBodyAction()`、`FEEDBACK_OP_WORDS` 与 `VMU_FEEDBACK_ACTION_IS_THE_OPERATION`；`op` 是操作，正文取 `recommendation`（首选）或旧键 `action`（值不是 add/update/list 时照旧）；声明补 `recommendation` 参数并把这条规则写进 description；`docs/03 §8` 登记 R61 行。
+- **F-52d（教学缺口用补行）**：`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js` 保留被捕获的原句**逐字不动**，另加一行「任务的合法转移：open→assigned|doing、assigned→doing|open、doing→done|assigned；从 assigned 不能直接 done…」。第一次尝试改写原句会让 `vmu-ab-v5r`（V70 44 行、整体 71%）与 `vmu-prompt-type-coverage`（1 条 unexplained）同时红——被钉为保真基线的句子，缺口用补行解决；只有原文本身错（R58/R59）才改写。
+- 测试：`tests/vmu-run61-feedback-body.test.mjs` **9/0**（操作词写进正文具名拒、hint 点名 `recommendation`、`recommendation` 落盘为正文、旧键在非操作词时仍收、五个必填仍闸住并点名第五个、`op:list` 能读到两行）；`tests/vmu-run60-lean-library-durable.test.mjs` 21→**24/0**。
+
+### §164.4 门禁
+- 相邻：`vmu-v5r-tools 359/0`、`vmu-phase12-closures 49/0`、`vmu-ab-v5r-meetings 121/0`、`v5-tool-help`（42 工具/B 级缩减 82%）、`audit-persona-surface 278/0`、`vmu-prompt-type-coverage 14/0`、`vmu-ab-v5r-verification`（V67 78% / V70 最大族 9 行 / V71 七行全指向真文件）、`vmu-prompt-clean 8/0`。
+- 派生计数与全量 T1 在本节写入后重跑（`update-doc-counts --write`、`generate-surface-index --write`、`regen-all --write`、`GATE_SCOPE=vmu node tests/run-tests.mjs`）。
+
+### §164.5 简报三错
+1. 第 2 步让 root 先 `lean_run` 再 `write` 文件 —— 顺序照做了，第一次提交必然吃 `VMU_LEAN_FILE_UNREADABLE`（浪费一次调用）；「先写文件再编译」应当是简报的显式顺序。
+2. 第 4 步让 root 用 `grep` 找 `leanlibrary` 并抄「第一条命中行的前 120 字符」——这条是对的，但没让它抄**行号**；行号（Line 151）其实比行内容更能证明「键在文件里」。
+3. 第 6 步要求成员「只调一个工具、只抄四个读数」，成员仍然做了岗位工作（写 Lean 文件、归档 `f50_probe`、更新任务板、写反馈）。**这正是本轮最有价值的部分**（三处缺陷都是它发现的），所以简报「只许做一件事」的框定与「让它自由发挥」之间存在张力：要验读面就框死，要淘缺陷就得放开——两种目的不能写在同一步里。
+
+### §164.6 无法验证
+1. 进程重启后的读回（`state.json` 白名单键 + `[]` 缺省）仍未在真机验证（真机是两个内核同 root、同一进程树）。
+2. `jobScopeMeans` 点名的作业镜像面 `listMirrors()` 在真机没有被调用（成员只看 `lean_job`）。
+3. 围栏噪声（`NO_FENCE=12` 等）逐条归属仍未做。
+4. 失败作业的 `hashUnchanged` 缺席时 `hashUnchangedMeans` 为 `null`（ROUND 60 §163.3 记的债）本轮重现，仍未修。
+
+### §164.7 无实质残余
+否：F-52a/b/c/d 已修但尚未真机复验（run 62 的验收点），加上 §164.6 四项。

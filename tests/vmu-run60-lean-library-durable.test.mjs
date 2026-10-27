@@ -73,6 +73,12 @@ try {
   ok(wroteReceipt && wroteReceipt.ok === true, 'archive() succeeds with the port attached', wroteReceipt)
   ok(wroteReceipt.persisted === true, 'and the receipt says the row reached the durable port (persisted:true)', wroteReceipt.persisted)
   ok(wroteReceipt.persistence && wroteReceipt.persistence.shared === true, 'the receipt names the shared scope', wroteReceipt.persistence)
+  // ★ LIVE RUN 61 / F-52a (a member counted the receipt): the same receipt said `persisted:true` while `written:0`, and
+  // the very next `lib()` said `written:1`. The counters were a snapshot of the moment BEFORE the asynchronous port
+  // accepted the rows, so one receipt described two moments. The write is now awaited, and the numbers say what happened.
+  ok(wroteReceipt.persistence.written >= 1,
+    'the receipt counters describe the POST-write moment (persisted:true cannot sit next to written:0)',
+    wroteReceipt.persistence)
 
   const onDisk = store.read('leanlibrary')
   ok(Array.isArray(onDisk) && onDisk.length === 1, 'the archive row is on the shared key (one row after one archive)', onDisk)
@@ -103,6 +109,15 @@ try {
   const dup = await reader.archive({ name: 'add_self', kind: 'lemma', file: 'Formal/add_self.lean', statement: 'something else' })
   ok(dup && dup.ok === false && dup.code === 'VMU_LEAN_ARCHIVE_NAME_TAKEN', 'a known name is still refused by name (no silent overwrite across processes)', dup && dup.code)
   ok(store.read('leanlibrary').filter((r) => r.name === 'add_self')[0].statement === '∀ n, n + n = 2 * n', 'and the durable row was not touched by the refused archive', store.read('leanlibrary'))
+
+  // ★ LIVE RUN 61 / F-52b (a member tried to cite a job number in a card and could not tell which kernel owned it):
+  // the in-memory job table answers for THIS kernel only while a durable mirror exists beside it, so the list has to
+  // say which of the two a reader is holding.
+  const listReceipt = face().list()
+  ok(listReceipt && /this-kernel/.test(String(listReceipt.jobScope || '')),
+    'list() names the scope of its job ids (this kernel, not the durable mirror)', listReceipt && listReceipt.jobScope)
+  ok(/mirror/i.test(String(listReceipt.jobScopeMeans || '')),
+    'and the sentence names the durable face that does answer across kernels', listReceipt && listReceipt.jobScopeMeans)
 
   // ── 4) a mismatched seam is a NAMED result, not a crash (a boot path must not throw over an optional port) ──
   const badAttach = face().attachStore({ read: () => [] })

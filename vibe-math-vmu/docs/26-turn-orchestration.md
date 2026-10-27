@@ -1373,3 +1373,18 @@ run 54 与 run 55 两次真机都做了同一件事：不去问工具，直接�
 按 name 合并、绝不覆盖（重复名仍走 `VMU_LEAN_ARCHIVE_NAME_TAKEN` 具名拒）。
 判据四 · **缺席要有句子**。没有耐久接缝时 `persistence().shared === false` 且 `means` 明说「只在本进程内」；
 这比让读者去猜「为什么重启后库空了」便宜得多。
+
+## ROUND 61 — 同一张回执里的两个时点，同一个键上的两个意思
+
+run 61 只做一件事（验收 F-50），机构自己却在这一件事里交回三处机制缺陷。三处都不是「功能没做」，而是**同一个回执里两个字段说的是两个时点、同一句话里有两种身份**：
+
+1. **回执里的计数是「写前快照」（F-52a）**。`vibe_v5_lean_archive` 的成功回执同时给出 `persisted:true` 与 `persistence:{pulls:4, written:0}`，紧接着的 `vibe_v5_lean_lib` 才是 `written:1`——成员把这读成「没有写入」，只好再调一次反推。真因是持久端口是异步的：`writeSharedRows()` 把行交给 store 就返回，`archive()` 没有等它就拼回执。修法：`writeSharedRows()` 交回一张 `settled` 票据，`archive()` 等票据落地后再取计数——**一张回执只能描述一个时点**，`persisted:true` 不允许和 `written:0` 并排。
+2. **作业号的范围没人说（F-52b）**。成员想在卡里写一个 Lean 作业号，却发现 `lean_job` 的 `list()` 只看得见本内核的两个作业，而共享 `state.json` 里的 `ids.counters.lean` 是持久化的：号是全局增长的，作业表却是内核内存的，于是「作业号」这个名词在卡里并不耐久。修法不求一次性搬库，而是**把范围写出来**：`run`/`list` 回执带 `jobScope:"this-kernel-process"` 与 `jobScopeMeans`（点名耐久的读面是作业镜像 `listMirrors()` / `Formal/Jobs/<id>.json`，并明说「写进卡的作业号本身不是耐久名字」）。
+3. **`action` 在这张脸上有两个意思（F-52c）**。反馈表原文的第五个必填字段就叫 `action`（「你建议怎么改」），而调度层同时把 `action` 当作 `op` 的别名——成员按直觉写 `{action:"add", …}`，回执 `ok:true`，落盘的行却是 `action：add`：**唯一承载「该改什么」的字段被写着操作动词**，建议就这么无声地丢了。修法：`op` 是操作；正文用 `recommendation`（首选）或旧键 `action`（值不是 add/update/list 时照旧可用）；把操作动词写进正文则具名拒 `VMU_FEEDBACK_ACTION_IS_THE_OPERATION`，hint 点名两个字段。
+4. **教学的缺口要用「补一行」而不是「改原文」（F-52d）**。成员照提示词 `task_update：{task_id,expected_revision,action}` 直接 complete，被状态机具名拒（`illegal transition assigned -> done`），补一次 `transition→doing` 才成。这句被钉为保真基线，改写它会让「重述原文」的读数塌掉；而缺口本身是**少一个事实**（合法转移表），不是原文说错。修法是在同一块里**加一行**状态表，并保留被捕获的原句逐字不动。
+
+判据：
+- 一张回执只能有一个时点：先落地再把数字写进它。
+- 名词的耐久度要么由实现兑现，要么由回执声明范围（作业号 vs 归档行是两种名词）。
+- 同一个键不许既是操作又是内容；冲突时具名拒，不要「先接受再猜」。
+- 被钉为保真基线的句子，缺口用补行解决；只有当原文**本身是错的**（ROUND 58 的路径承诺、ROUND 59 的别名）才改写它并重新记账。

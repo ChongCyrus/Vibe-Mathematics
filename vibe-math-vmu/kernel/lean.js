@@ -1,3 +1,11 @@
+// ★ LIVE RUN 61 (a member tried to reference a Lean job number across kernels and found it ambiguous): the in-memory
+// job table (`jobs`) answers for THIS kernel only — a job minted in another kernel is reachable through the on-disk
+// mirror face (`listMirrors()`, `Formal/Jobs/<id>.json`), never through `list()`. Naming the scope next to the list is
+// cheaper than making each reader infer it from a count that happens to be 0.
+const JOB_SCOPE = 'this-kernel-process'
+const JOB_SCOPE_MEANS = 'these job ids are minted and kept by THIS kernel process; the durable face is the job mirror ' +
+  '(listMirrors(), Formal/Jobs/<id>.json) — a job number written into a card is not by itself a durable name'
+
 // vibe-math-vmu — P3 Lean 形式化面（8 键的真消费者）。
 //
 // 设计边界（与 docs/09 的既有声明逐条一致，零机制）：
@@ -653,10 +661,10 @@ export function createLeanFace(opts) {
         ['vmu.math.jobs.persist', 'vmu.math.jobs.dir'])
     }
     emit('lean/job-submitted', { jobId: id, file })
-    if (c.leanAsync) { Promise.resolve().then(pump); return { ok: true, id, state: 'queued' } }
+    if (c.leanAsync) { Promise.resolve().then(pump); return { ok: true, id, state: 'queued', jobScope: JOB_SCOPE, jobScopeMeans: JOB_SCOPE_MEANS } }
     // 同步路径：**等待本次结算**（不影响其他作业；leanAsync=false ⇒ 调用方拿到终态）
     await runOne(j)
-    return { ok: true, id, state: j.state, sync: true }
+    return { ok: true, id, state: j.state, sync: true, jobScope: JOB_SCOPE, jobScopeMeans: JOB_SCOPE_MEANS }
   }
 
   const status = (id) => {
@@ -668,7 +676,7 @@ export function createLeanFace(opts) {
     }
     return { ok: true, job: view(j) }
   }
-  const list = () => ({ ok: true, count: order.length, droppedEvents, jobs: order.map((id) => view(jobs.get(id))) })
+  const list = () => ({ ok: true, count: order.length, droppedEvents, jobScope: JOB_SCOPE, jobScopeMeans: JOB_SCOPE_MEANS, jobs: order.map((id) => view(jobs.get(id))) })
 
   // ── 恢复（ROUND 2 · 四分支；语义对齐 v5r 的 recoverLeanJobs）────────────────────────────────────
   /** 镜像目录列表（只读；缺 fs 接缝 ⇒ 具名不可用）。 */
@@ -993,17 +1001,22 @@ export function createLeanFace(opts) {
     for (const r of rows) if (r && typeof r === 'object' && r.name) byName.set(String(r.name), r)
     for (const r of sharedRows()) if (!byName.has(r.name)) byName.set(r.name, r)
     const merged = [...byName.values()]
+    let settled = null
     try {
       const out = shared.store.write(SHARED_LIBRARY_KEY, merged)
-      if (out && typeof out.then === 'function') out.then(() => { shared.written += 1 }, () => { shared.refused += 1 })
-      else shared.written += 1
+      // ★ LIVE RUN 61 (a member counted the receipt and found written:0 while persisted:true): the store port is
+      // asynchronous, so a receipt built right after handing it the rows describes the state BEFORE the write landed.
+      // A caller that awaits the returned ticket sees post-write counters; `persisted` still means "the write was
+      // accepted", and the numbers next to it now describe the same moment.
+      if (out && typeof out.then === 'function') settled = out.then(() => { shared.written += 1 }, () => { shared.refused += 1 })
+      else { shared.written += 1; settled = Promise.resolve() }
     } catch (e) {
       shared.refused += 1
       shared.lastWhy = String((e && e.code) || 'VMU_STORE_FAILED')
       return { ok: false, why: 'write-refused' }
     }
     shared.signature = sharedSignature(merged)
-    return { ok: true, count: merged.length }
+    return { ok: true, count: merged.length, settled }
   }
   const persistence = () => ({
     shared: shared.attached === true,
@@ -1035,6 +1048,7 @@ export function createLeanFace(opts) {
     archived.set(name, entry)
     note('archive:' + name, kind)
     const sharedWrite = writeSharedRows()
+    if (sharedWrite.settled) { try { await sharedWrite.settled } catch (e) { /* counted by the ticket */ } }
     return { ok: true, name, kind, file, hash, statement, at: entry.at, count: archived.size,
       persistence: persistence(), persisted: sharedWrite.ok === true }
   }

@@ -262,6 +262,12 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // remaining-gap report from "structural, explained by class" into two unexplained lines.
         'progress：数学进展/阻塞及下一步；record：成果卡数组（kind,id,title,statement或content,value,motive,p）；say：必要消息或{to,text}。',
         'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
+        // ★ LIVE RUN 61 (a member lost a round to the line above): the field list reads as "action=complete is the way to
+        // finish", but the board's own table is open→assigned→doing→done, so a completion from `assigned` is refused BY
+        // NAME (`illegal transition assigned -> done`) and the member has to read the hint and call again with
+        // transition→doing first. The captured sentence is kept VERBATIM (it is the fidelity baseline) and the state table
+        // is stated on its own line, because the ambiguity is a missing fact, not a wrong one.
+        '任务的合法转移：open→assigned|doing、assigned→doing|open、doing→done|assigned；从 assigned 不能直接 done（需先 transition 到 doing），transition 必须带 to。',
         // THE MORE COMMON OF TWO WORDINGS. The corpus carries this line in two forms and they are not interchangeable:
         // this one appears in thirty-three entries across eighteen kinds, while the other (`协调需要时可用assign（…）、
         // prioritize、nudge（to,why）、convene_meeting。`) appears in ten. The more common one is what a round normally

@@ -643,11 +643,26 @@ const FEEDBACK_ADD_REQUIRED = Object.freeze(['category', 'route', 'phenomenon', 
 /** ★ `vibe_v5_feedback` — the work-experience/process feedback library (not research conclusions). Mapped onto the
  * records face with a `feedback` track: `add` writes, `update` writes a revision with status/outcome, `list` returns
  * the open ones. The original REQUIRED five fields for `add` and `assessment` on the interpersonal route. */
+const FEEDBACK_OP_WORDS = Object.freeze(['add', 'update', 'list'])
+/** The fifth REQUIRED body field of the original feedback form is literally called `action` — "what you recommend".
+ * ★ LIVE RUN 61 (a member's own feedback): the caller passed `{ action:"add", … }` and the face accepted it as the
+ * OPERATION, then stored `action：add` as the body field — the one thing the form asks for ("what should change") was
+ * replaced by the verb that said which operation to run. ONE KEY, TWO MEANINGS is the defect, so: the operation is `op`;
+ * the body field is `action` (legacy) or `recommendation` (preferred); and an `action` whose value is just an op word is
+ * refused by name instead of being stored as a recommendation. */
+function feedbackBodyAction(args = {}) {
+  const preferred = has(args.recommendation) ? str(args.recommendation).trim() : ''
+  if (preferred) return preferred
+  const legacy = has(args.action) ? str(args.action).trim() : ''
+  if (!legacy) return ''
+  if (FEEDBACK_OP_WORDS.indexOf(legacy) !== -1) return ''
+  return legacy
+}
 function toolFeedback(args = {}, { kernel } = {}) {
   const records = recordsOf(kernel)
-  const op = has(args.op) ? str(args.op) : ''
+  const op = has(args.op) ? str(args.op) : (FEEDBACK_OP_WORDS.indexOf(str(args.action).trim()) !== -1 ? str(args.action).trim() : '')
   if (op !== 'add' && op !== 'update' && op !== 'list') {
-    throw refuse('VMU_INVALID_ARGUMENT', 'feedback needs op=add|update|list', 'pass op:"add" / "update" / "list"')
+    throw refuse('VMU_INVALID_ARGUMENT', 'feedback needs op=add|update|list', 'pass op:"add" / "update" / "list" — the `action` key is the BODY field (what you recommend), not the operation')
   }
   if (op === 'list') {
     // ★ ONE RULE, ONE PLACE: the same classifier the report/overview counters use decides what "open" means here, so the
@@ -663,17 +678,23 @@ function toolFeedback(args = {}, { kernel } = {}) {
       items: args.all === true ? items : open }
   }
   if (op === 'add') {
-    const missing = FEEDBACK_ADD_REQUIRED.filter((k) => !has(args[k]))
+    const bodyAction = feedbackBodyAction(args)
+    if (!bodyAction && (has(args.action) || has(args.recommendation))) {
+      throw refuse('VMU_FEEDBACK_ACTION_IS_THE_OPERATION',
+        'feedback add got action:"' + str(args.action) + '" — that is the OPERATION word, not the recommendation',
+        'pass the operation as op:"add" and the recommendation as recommendation:"what should change" (the legacy body key `action` still works when its value is not an op word)')
+    }
+    const missing = FEEDBACK_ADD_REQUIRED.filter((k) => k !== 'action' && !has(args[k])).concat(bodyAction ? [] : ['action'])
     if (missing.length > 0) {
       throw refuse('VMU_INVALID_ARGUMENT', 'feedback add is missing REQUIRED field(s): ' + missing.join(', '),
-        'the original required category/route/phenomenon/impact/action')
+        'the original required category/route/phenomenon/impact/action — pass the fifth one as recommendation or action')
     }
     if (str(args.route) === 'interpersonal' && !has(args.assessment)) {
       throw refuse('VMU_INVALID_ARGUMENT', 'the interpersonal route REQUIRES assessment',
         'pass assessment:"your judgement of the interpersonal situation" (required by the original)')
     }
     const body = ['category：' + str(args.category), 'route：' + str(args.route), 'context：' + str(args.context),
-      'phenomenon：' + str(args.phenomenon), 'impact：' + str(args.impact), 'action：' + str(args.action),
+      'phenomenon：' + str(args.phenomenon), 'impact：' + str(args.impact), 'action：' + bodyAction,
       'assessment：' + str(args.assessment)].filter((l) => !l.endsWith('：')).join('\n')
     const written = records.put({ track: 'feedback', kind: 'feedback', title: str(args.category) + '/' + str(args.route), body, settled: false, by: str(args.member) || null /* ★ LIVE RUN 50 (F-32): a tool name is not an author. The office-side call carried no member, and the ledger recorded owner:"vibe_v5_feedback" while a member-side call recorded the member id - two answers to "who wrote this" from one tool. Null + the ledger's own bySource is the honest answer; the caller can pass member to say who it is. */ })
     return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: 'open' }
@@ -3321,8 +3342,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_feedback',
-    description: 'Work-experience / process feedback library (not research conclusions). op=add needs category/route/phenomenon/impact/action (and assessment on the interpersonal route); op=update closes with status/outcome/note; op=list returns the open items.',
-    parameters: { op: { type: 'string', required: true }, id: { type: 'string' }, member: { type: 'string' }, category: { type: 'string' }, route: { type: 'string' }, context: { type: 'string' }, phenomenon: { type: 'string' }, impact: { type: 'string' }, action: { type: 'string' }, assessment: { type: 'string' }, outcome: { type: 'string' }, status: { type: 'string' }, note: { type: 'string' }, all: { type: 'boolean' }, limit: { type: 'integer' } },
+    description: 'Work-experience / process feedback library (not research conclusions). op=add needs category/route/phenomenon/impact and the recommendation (pass `recommendation`, or the legacy body key `action` when its value is not an op word) — plus assessment on the interpersonal route; op=update closes with status/outcome/note; op=list returns the open items. ★ `op` is the OPERATION; `action` is the FIFTH BODY FIELD (what should change). Passing action:"add" is refused by name `VMU_FEEDBACK_ACTION_IS_THE_OPERATION`, because a receipt that stores the operation verb as the recommendation loses the one thing the form asks for.',
+    parameters: { op: { type: 'string', required: true }, id: { type: 'string' }, member: { type: 'string' }, category: { type: 'string' }, route: { type: 'string' }, context: { type: 'string' }, phenomenon: { type: 'string' }, impact: { type: 'string' }, action: { type: 'string' }, recommendation: { type: 'string' }, assessment: { type: 'string' }, outcome: { type: 'string' }, status: { type: 'string' }, note: { type: 'string' }, all: { type: 'boolean' }, limit: { type: 'integer' } },
     handler: toolFeedback,
   },
   {
