@@ -299,6 +299,7 @@ export function apply(ctx, config = {}) {
     try { process.stderr.write('[dsh-vibe-math] vmu: math intent NOT declared — the computation surface stays out (declare config.math, or a vmu.math.* setting). config keys seen: ' + mathIntent.configKeys.join(',') + String.fromCharCode(10)) } catch { /* stderr may be gone */ }
   }
   let mathHost = null
+  let mathHostError = null
   if (mathDeclared && settings['vmu.core.enabled'] !== false && ctx && ctx.tools && typeof ctx.tools.register === 'function' && settings['vmu.math.computation'] !== 'off') {
     try {
       mathHost = createHostMath({
@@ -306,7 +307,13 @@ export function apply(ctx, config = {}) {
         projectRoot: typeof config.workspace === 'string' ? config.workspace : null,
         log: (m) => { try { process.stderr.write('vmu ' + String(m) + '\n') } catch { /* stderr may be gone */ } },
       })
-    } catch (e) { mathHost = null }
+    } catch (e) {
+      // ROUND 201: the declaration ARRIVED and the assembly still failed — that is a loudly-named failure, never a
+      // silent null. Before this, a broken assembly looked exactly like "nobody asked for math".
+      mathHost = null
+      mathHostError = { code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) }
+      try { process.stderr.write('[dsh-vibe-math] vmu: math host construction FAILED — ' + mathHostError.code + ': ' + mathHostError.message + String.fromCharCode(10)) } catch { /* stderr may be gone */ }
+    }
   }
 
   // GOAL 2: A PACK'S settings/ FOLDER STATES WHAT IT WANTS THE KNOBS TO BE. The kernel reads settings when it is
@@ -1309,7 +1316,7 @@ export function apply(ctx, config = {}) {
     // ROUND 21 / task-129 (H2): whether the declared prompt text reached the host — and, when it did not, the
     // NAMED reason (this is what used to kill preset assembly instead of being readable).
     promptSection: () => Object.assign({}, promptSectionState),
-    status: () => Object.assign(adapter.status(), { installError, mathIntent, promptSection: Object.assign({}, promptSectionState), settingsUnparsed: settingsUnparsed.slice(), settingsConflicts: settingsConflicts.slice(), packsLoading }),
+    status: () => Object.assign(adapter.status(), { installError, mathIntent, mathHostError, promptSection: Object.assign({}, promptSectionState), settingsUnparsed: settingsUnparsed.slice(), settingsConflicts: settingsConflicts.slice(), packsLoading }),
     installError: () => installError,
     /** Round 6 B: what the entry could NOT turn into a setting, and what was declared in both shapes. */
     settingsUnparsed: () => settingsUnparsed.slice(),
