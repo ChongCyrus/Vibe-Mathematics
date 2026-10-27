@@ -31,13 +31,13 @@ const entry = await import(pathToFileURL(ENTRY).href)
 const roots = []
 const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-mathintent-')); roots.push(d); return d }
 
-const boot = async (config) => {
+const boot = async (config, extraCtx = {}) => {
   const specs = []
-  const ctx = {
+  const ctx = Object.assign({
     effect(fn) { return fn() },
     on() { return () => {} },
     tools: { register: async (s) => { specs.push(s.name); return () => {} } },
-  }
+  }, extraCtx)
   const handle = entry.apply(ctx, Object.assign({ clock: () => 1000, packs: ['v5r'] }, config))
   await handle.ready()
   return { handle, specs }
@@ -75,6 +75,25 @@ const boot = async (config) => {
   ok(intent && intent.declared === true, 'a vmu.math.* setting ⇒ declared', intent)
   ok(intent && intent.via === 'vmu.math.computation', 'and the route names the setting that declared it', intent && intent.via)
   ok(b.specs.includes('math_computation'), 'the computation tool IS registered here too', b.specs.filter((n) => /math/.test(n)))
+  await rm(root, { recursive: true, force: true, maxRetries: 10 })
+}
+
+// §5 — a context whose `workspace` property THROWS (an un-injected cordis service) must still assemble
+{
+  const root = await mkRoot()
+  // the stub must throw on PROPERTY ACCESS, and it must be attached after the context exists (Object.assign would
+  // call the getter while copying, which is exactly the trap this test is about).
+  const throwing = {}
+  Object.defineProperty(throwing, 'workspace', {
+    enumerable: false,
+    get() { const e = new Error('cannot get property "workspace" without inject'); e.code = 'VMU_ENGINE_UNAVAILABLE'; throw e },
+  })
+  const b = await boot({ root, math: {} }, throwing)
+  const st = b.handle.status()
+  ok(st.mathHostError === null || st.mathHostError === undefined,
+    'an un-injected `workspace` does not abort the math assembly', st.mathHostError)
+  ok(b.specs.includes('math_computation'),
+    'the computation tool IS registered even when ctx.workspace throws', b.specs.filter((n) => /math/.test(n)))
   await rm(root, { recursive: true, force: true, maxRetries: 10 })
 }
 

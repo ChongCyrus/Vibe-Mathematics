@@ -53,7 +53,16 @@ export const MATH_PARAM_MAP = Object.freeze({
 })
 
 export function createHostMath({ ctx, settings = {}, projectRoot = null, log = () => {} } = {}) {
-  const root = projectRoot || (ctx && typeof ctx.workspace === 'string' && ctx.workspace) || process.cwd()
+  // ★★★ ROUND 202 (measured on the clean-room host): reading an UN-INJECTED service off a cordis context THROWS
+  // (`cannot get property "workspace" without inject`). This line used to read `ctx.workspace` directly, so the
+  // whole math adapter threw during assembly, the entry caught it (correctly) and set `host = null` — and every
+  // member then saw `hostInjected:false`, i.e. "math was never declared", for a deployment that HAD declared it.
+  // A reader that may be absent must be probed, not assumed: the fallback chain is projectRoot → ctx.workspace →
+  // process.cwd(), and an absent/unreadable service simply loses its turn in that chain.
+  const ctxWorkspace = (() => {
+    try { return ctx && typeof ctx.workspace === 'string' && ctx.workspace ? ctx.workspace : null } catch { return null }
+  })()
+  const root = projectRoot || ctxWorkspace || process.cwd()
   // ★★★ G1 / ROUND 82: THIS ADAPTER IS ONLY BUILT WHEN MATH IS DECLARED, so the declaration IS the permission for
   // the local child_process fallback: a host with no `subprocess` service can still compute. The seam still names
   // which path ran (`seamKind`), and the HOST service always wins when it exists.
