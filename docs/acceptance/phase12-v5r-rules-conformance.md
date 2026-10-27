@@ -7908,3 +7908,93 @@ hashUnchangedMeans: "not measured: no compile ran for this job (VMU_LEAN_FILE_UN
 **§180.7 无实质残余？**
 
 本轮 0 新缺陷；F-70 结清。残余仍是记账项：历史行不迁移、`check-task-brief` 不校验占位符、以及 §178.6 三项无法用生产工具面触发的旁支。
+
+## §181 真机跑 76（广度确认：四个已关家族同时在场，0 新缺陷）
+
+**§181.1 读数**
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | 40s |
+| 根会话 | `toolCalls 6`、`transcriptEvents 50`、`calls (6) vs results (6)` |
+| token | `tokenTotal 247,106`（cap 12,000,000、`tokenCapHit:false`） |
+| 会话 | 1（root 自读，未派成员） |
+| 健康 | `0 with RED checks` |
+| 快照 | `_oneoff/vm-slv/full-1027-234313.jsonl`，308,338 B / 440 行 |
+| 围栏计数 | `NO_FENCE=0 UNKNOWN_FIELD=0 FIELD_NOT_APPLICABLE=2 BAD_JSON=0` |
+| 保全 | `D:\_tmp\slv-phase5\slv-logs\…20261027-234432` |
+
+**§181.2 判决：四个家族一次读完，全部通过**
+
+| 家族 | 回执（逐字） | 结论 |
+| --- | --- | --- |
+| F-41b 回合归因槽 | `status.lastAttribution.slot:"single"`、`member:null`、`attributionMeans:"the turn engine keeps ONE attribution slot: lastAttribution describes the MOST RECENT delivery only, not every member's last turn. Per-member history is not retained here - \`woken\` and \`counts\` are tallies, and \`memberSessions\` maps a member to the child session that played its last turn"`、`counts.delivered:0`、`woken:{}` | ✅ |
+| F-52b 作业号范围 | `count:0`、`jobScope:"this-kernel-process"`、`jobScopeMeans:"these job ids are minted and kept by THIS kernel process; the durable face is the job mirror (listMirrors(), Formal/Jobs/<id>.json) — a job number written into a card is not by itself a durable name"` | ✅ |
+| F-50 Lean 库持久 | `count:0`、`persistence:{shared:true,key:"leanlibrary",pulls:1,written:0,refused:0,means:"this library is durable through the store key \"leanlibrary\": a kernel that starts later reads the same rows back"}` | ✅ |
+| F-35 / F-34 人工审批队列 | `ok:true`、`action:"queue"`、`total:0`、`pending:0`、`shown:0`、`dropped:0`、`queueCap:100`、`requests:[]`、`enforced:["vmu.human.gatedActions","vmu.human.approvalQueueCap"]` | ✅ |
+
+**§181.3 简报错（本轮唯一记账）**
+
+第 5 步让所办抄 `pendingMeans` —— 该字段**不存在**（`queue()` 回 `total`/`pending`/`shown`/`dropped`/`requests`）。所办如实写「没有该字段」，所以这不是产品缺陷，是我的简报假设了一个字段名。`FIELD_NOT_APPLICABLE=2` 对应这两格。
+
+**§181.4 门禁**
+
+全量 `TOTAL 545 PASS 545 FAIL 0 (suites 481 · probes 64)`；`regen-all --check` 16/16；`DOC LINT: PASS`；`PREFLIGHT: PASS`。
+
+**§181.5 无法验证**
+
+沿用 §178.6 三项。
+
+**§181.6 无实质残余？**
+
+本轮 0 新缺陷。至此 run 73、74、75、76 连续四轮无新增产品缺陷，且每轮都有逐字读数。
+
+## §182 收敛结题（run 29 → 76）
+
+**§182.1 判据与结论**
+
+收敛判据（本阶段自定并全程沿用）：连续两轮以上真机运行**没有新增产品缺陷**，且最近关闭的家族在**广度轮**里同时复验通过、每格都有逐字读数；残余只能是记账项。
+
+- run 73：0 新缺陷（F-69 预算切断分支真机结清）
+- run 74：0 新缺陷（F-61/F-63/F-64/F-65/F-66 五族同轮复验）
+- run 75：0 新缺陷（F-70 修好并同轮真机复验，三面计数器同 token）
+- run 76：0 新缺陷（F-41b/F-52b/F-50/F-35 四族同轮复验）
+
+⇒ **判据满足，本阶段收敛。** 共 48 轮真机（run 29 → run 76），编号发现 F-1 → F-70（含 a/b/c/d 子项）。
+
+**§182.2 每一条发现都由「真机读数 + 可复现测试」定案**
+
+本阶段的纪律：任何一条缺陷必须先有回执原文（谁在什么上下文里读到什么），再用单测把它钉住，然后在下一轮真机里复验；没有读数的「我觉得这里不对」不记为缺陷（ROUND 59 的教训，写进 docs/26 `## ROUND 59`）。
+
+**§182.3 残余（记账项，不是缺陷）**
+
+| # | 项 | 为什么留 |
+| --- | --- | --- |
+| 1 | 历史行不迁移（旧记录的作者/标签保持写入时的样子） | 改写历史行会让「当时的捕获证据」消失，比保留更难解释 |
+| 2 | `scripts/check-task-brief.mjs` 不校验占位符与跨行拼接 | 它的职责是「工具名/参数名必须来自声明」；占位符语义属于简报作者 |
+| 3 | `terminated` 旁支（宿主不提供可 kill handle 时超时的结算形状）、取消分支（`VMU_JOB_CANCELLED`）、跨进程重启后的计数基准 | 生产工具面走不到；由构造式单测守着（`tests/vmu-run73-lean-timeout-means.test.mjs`） |
+| 4 | 简报错与产品缺陷分开记（§181.3 的 `pendingMeans`） | 简报是接口，但「我猜了一个字段名」不等于产品说假话 |
+
+**§182.4 最终门禁**
+
+- `GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ `TOTAL 545 PASS 545 FAIL 0 (suites 481 · probes 64)`
+- `node scripts/preflight.mjs` ⇒ `PREFLIGHT: PASS`
+- `node scripts/regen-all.mjs --check` ⇒ 16/16 in sync
+- `node scripts/update-doc-counts.mjs --check` ⇒ files changed=0
+- `node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`
+- 计数：`JOBS total=614 suites=506 probes=108`（shipped FILES 393）
+
+**§182.5 结题时的提交（最近六条）**
+
+`d0281479` F-66/F-67/F-68 → `94659507` run 71 记录 → `f2111d1c` F-69 → `ce14ec2c` run 73 记录 → `660cbfbb` F-70 → `47bac2b4` run 75 记录（本段另有一次 docs 提交）。
+
+**§182.6 本阶段的方法学小结（写给下一个接手的人）**
+
+1. **真机是唯一裁判**：单测全绿而真机长句读错，是每一轮都在发生的形状（F-23、F-39、F-53、F-56、F-57、F-63、F-65）。
+2. **一张回执只许有一个时点、一个含义**（F-52a/F-52c/F-53）。
+3. **声明不是解析**（adminsResolved）、**注册不是文件事实**（F-47b）、**构造者不止一个就要都盖章**（F-47/F-43）。
+4. **缺席要有原因、要有字段、要否认最近的误读**（F-53/F-55/F-69）。
+5. **别名不许压过正名，操作名不许当人名**（F-49a、F-61）。
+6. **修好一条读面就去读它的另一条路**（F-68）、**修好的事实必须落在读者能到的面上**（F-64）。
+7. **计数器要回答「这是谁的数」**（F-66/F-70）、**上限要说出自己被切过**（F-57）。
