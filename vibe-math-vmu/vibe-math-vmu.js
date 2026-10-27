@@ -435,9 +435,28 @@ export function apply(ctx, config = {}) {
   // ★ THE DEPLOYMENT'S DRIVER IS BOUND HERE, NOT GUESSED PER DELIVERY. A host tool call carries `exec.agent` — the
   // one place the root Agent is observable without an initiator boundary. Tick/timer deliveries then have a real parent.
   let rootAgentBound = null
+  // ★★★ ROUND 54 (live run 54, measured): WHERE THE KERNEL LEARNS ITS OWN NAME. The entry used to hand
+  // `createKernel` the result of `sessionIdOfCtx(ctx)` ONCE - at `apply()`, when the host's `sessions` service has not
+  // mounted and the guarded context throws on the property - so the id was `null` for the rest of the kernel's life and
+  // every receipt said "this kernel's resolution" without ever naming it, while the host knew the name. The tool
+  // execution seam is the one place the Agent (and therefore its session) is observable at CALL time: `exec.agent`
+  // already binds `rootAgentBound` above, and `exec.*.session.id` is read here with the same care. Whatever is learned
+  // is asked for at READ time by the kernel (`kernelSessionValue`), so a name that arrives on the fourth call still
+  // names the fourth call's receipts. Nothing here invents an id: an unreadable seam leaves it null.
+  let kernelSessionBound = null
+  const noteSessionFromExec = (exec) => {
+    if (!exec || typeof exec !== 'object') return null
+    const candidates = []
+    try { candidates.push(exec.sessionId) } catch { /* guarded context */ }
+    try { if (exec.agent && exec.agent.session && typeof exec.agent.session.id === 'string') candidates.push(exec.agent.session.id) } catch { /* guarded */ }
+    try { if (typeof exec.agentId === 'string' && exec.agentId.startsWith('session-')) candidates.push(exec.agentId) } catch { /* guarded */ }
+    for (const c of candidates) if (typeof c === 'string' && c !== '') { kernelSessionBound = c; return c }
+    return null
+  }
   // ★ SLV: bind the root Agent from the tool-execution seam (see host.setToolExecObserver). This is attached by the
   // ADAPTER, not by a middleware bus hook, so it works even when a pack declares no tool hooks at all.
   setToolExecObserver((exec) => {
+    noteSessionFromExec(exec)
     try { if (exec && exec.agent && typeof exec.agent === 'object' && exec.agent.options && exec.agent.session) rootAgentBound = exec.agent } catch { /* best effort */ }
   })
   const turnDeliver = createTurnDeliver({ ctx, config, settings, deliverViaSubagents, deliverByReturning, getRootAgent: () => rootAgentBound })
@@ -544,7 +563,11 @@ export function apply(ctx, config = {}) {
     // ★★ ROUND 52: the DSH session this kernel serves. Settings resolve per kernel, and the status board names WHOSE
     // resolution it prints; without this id a member cannot tell "the board and my own status read disagree" from "two
     // kernels, two honest resolutions" (run 52's measured confusion).
-    kernelSession: sessionIdOfCtx(ctx),
+    // ★★★ ROUND 54: A GETTER, not the value `sessionIdOfCtx(ctx)` returns right now. At `apply()` the context usually
+    // cannot answer yet (the host service has not mounted; the property is guarded), and the run-54 kernel stayed
+    // anonymous forever because of that one early read. Order: what a tool call has taught us, else whatever the
+    // context can answer at this instant.
+    kernelSession: () => kernelSessionBound || sessionIdOfCtx(ctx),
     // ★★★★★★★ PHASE 6 / K1 COMPLETION: THE KERNEL HALF WAS DONE AND THE WIRING WAS NOT.
     // `createScheduler` accepted a `timer` seam all along, and K1 added `autoArm()` plus the `vmu.schedule.autoArm`
     // switch - but THIS assembly never passed a timer, so on a real machine `autoArm=true` could only ever answer

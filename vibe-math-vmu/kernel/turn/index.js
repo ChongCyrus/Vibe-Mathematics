@@ -1418,6 +1418,9 @@ export function createTurnOrchestrator({
   // be able to say which kernel's resolution it shows (run 52: the delivering kernel had the run objective, the member's
   // own kernel the pack default, and the unqualified label read as a lie). Absent ⇒ the scope sentence still says
   // 「本内核的解析值」, it just cannot name the kernel.
+  // ★★★ ROUND 54: a GETTER is accepted and asked at every render, because a kernel can learn its own session id after
+  // it is constructed (the host's session service mounts later; the first tool call carries the Agent). Capturing the
+  // value here instead would freeze the anonymous answer the run-54 kernel gave for its whole life.
   kernelSession = null } = {}) {
   const owners = resolveOwners(bindings)
   const known = Object.keys(owners)
@@ -1583,7 +1586,12 @@ export function createTurnOrchestrator({
     const bag = statusSources && typeof statusSources === 'object' ? statusSources : null
     const taskFace = (bag && bag.tasks) || (faces && faces['vmu.tasks']) || null
     const recordFace = (bag && bag.records) || (faces && faces['vmu.records']) || null
-    return statusBoardReadings({ tasks: taskFace, records: recordFace, member, settings, limit: STATUS_BOARD_DEFAULT_LIMIT, kernel: kernelSession })
+    // ★★★ ROUND 54: ask the getter here, per render. `statusBoardReadings` needs a plain string (it has no business
+    // knowing how a kernel learns its name), and a context that refuses to answer becomes "unnamed", never a crash.
+    const kernelNow = typeof kernelSession === 'function'
+      ? (() => { try { const v = kernelSession(); return typeof v === 'string' && v !== '' ? v : null } catch { return null } })()
+      : kernelSession
+    return statusBoardReadings({ tasks: taskFace, records: recordFace, member, settings, limit: STATUS_BOARD_DEFAULT_LIMIT, kernel: kernelNow })
   }
 
   /** ① open a turn: who, which round, which phase, which task. */

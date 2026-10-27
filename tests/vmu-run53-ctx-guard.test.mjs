@@ -79,7 +79,12 @@ try {
     if (handle) {
       const st = handle.kernel.status({ detail: 'settings' })
       ok(st && st.settings && st.settings.resolvedIn && st.settings.resolvedIn.kernelSession === null, 'the receipt says this kernel has no name', st && st.settings && st.settings.resolvedIn)
-      ok(typeof st.settings.resolvedInMeans === 'string' && st.settings.resolvedInMeans.includes('without a session id'), 'the receipt explains what the unnamed map is', st.settings.resolvedInMeans)
+      // ROUND 54 (F-40) reworded this note: the kernel name is now read LATE (a getter on every read), so "no
+      // session id" is honest only as "it can name none yet". The assertion pins the MEANING (this map is my own
+      // resolution and cannot be matched to a session by name), not the old sentence — pinning the sentence made an
+      // improvement look like a gate regression.
+      const means = st.settings.resolvedInMeans
+      ok(typeof means === 'string' && means.includes('no session id') && means.includes('own resolution') && !/undefined|\[object Object\]/.test(means), 'the receipt explains what the unnamed map is', means)
     }
   }
 

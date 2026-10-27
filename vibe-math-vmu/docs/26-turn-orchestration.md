@@ -1286,3 +1286,14 @@ vibe_vmu_status { detail: "summary" }
 3. **可读预算是一份预算，不是每人一份。** 真机 v5r 装配下默认面的硬上限是 **8000 字节**（宿主可读、不被截断）。第一次修法只往 `settings` 里加字段，默认面从 7956 涨到 8266/8094，直接撞红「默认面 < 8000」这条既有断言；正解不是抬上限，而是**在同一张面上做减法**：把其它已省略区段的 `note` 收短（`faces`/`bus`/`packTools`/`loader` 四处共省约 110 B），把预算让给新字段。
 4. **读面测试要按真机问法写。** 单位测试一直用 `detail:"settings"` 读 `resolvedIn`（run 52 套件 15/0），真机简报却写 `detail:"summary"` —— 这不是产品缺陷，是**简报没有按读面的真实分档写**；修法一是补默认面（本轮），二是下一轮简报改问 `detail:"settings"`。
 
+
+
+## ROUND 54 — 一个名字在装配时还问不到，不等于这个内核没有名字
+
+真机跑 54 的两条读数都关于「内核是谁」：root 内核自己报 `settings.resolvedIn.kernelSession: null`（同一份回执里 `[状态板]` 却自称来自本内核的解析），成员又同时读到 `status.bridge.hasSpawnSeam: true` 与 `vmu.math` 的 `VMU_ENGINE_UNAVAILABLE`，把两个 seam 当成一个。
+
+1. **一次性绑定把「还没问」变成「没有」。** `createKernel` 的 `kernelSession` 原先在 `apply()` 里读一次 `ctx.sessionId`；真机 `apply()` 时刻上下文的服务还没挂载、属性也没注入，于是这个名字被固化成了 `null`，而内核**事后**通过工具执行其实学得到它。修法是把这个参数变成**提问**：字符串照旧当构造时快照，函数则每次读时求值（`kernelSessionValue()` 统一处理抛异常/空串），并让 `vibe-math-vmu.js` 在工具执行观察器里记下 `exec.sessionId` / `exec.agent.session.id` / `session-` 形状的 `agentId`，读时先看学到的、再问 ctx。判据：**名字要在能问到它的地方问，读回执必须重新求值，读不到要认错（"has no session id it can name yet"）而不是断言自己没有名字。**
+
+2. **两个 seam 不是一个念。** `bridge.hasSpawnSeam`（script bridge 的 `{file,args}`）与 math 的 `register/spawn` 是两套不同的注入；一个为 true 不代表另一个可用。修法是在各自边上写清自己是什么（`spawnSeamMeans` 一句），并且在 `status.math` 里把构造事实拆成 `hostInjected` 与 `hostSeam` 两个布尔——这样「没注入 host」与「注入了但不会算」在读数上可分。默认面保留两个 seam 的布尔与一句话，丢掉 `stats/recent`，仍在 8000 B 预算内（8038 → 收短两句后约 7980）。
+
+3. **投影账本里谁写的没有登记（记债）。** run 54 成员还读到 `VibeMath/vmu/state.json` 里 `hasSpawnSeam:false` 而同一刻 `status` 说 `true`——两份都是真读数：状态投影是**每内核各写一份**的键，最后写的那个内核（成员内核没有 math host）赢了，而投影条目**不记是谁写的**。这与 ROUND 52 的「设置按内核解析」是同一族：跨内核共享的是文件，不是视图；读一方必须能指出「这份快照属于哪个内核」。本轮不修，记为 F-43，下一轮修法方向是让投影条目带上写入者（`writer: { kernelSession, agentId }`）。

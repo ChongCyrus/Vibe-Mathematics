@@ -677,6 +677,20 @@ function attachSharedBoard({ target, key = 'tasks', store = null, clock = () => 
   return { key, adopt, pull, push, view, unwrap, mergeBoards }
 }
 
+/**
+ * ASK "WHICH SESSION IS THIS KERNEL?" AT THE MOMENT THE ANSWER IS USED, NEVER AT THE MOMENT IT WAS CONSTRUCTED.
+ * `kernelSession` accepts a string (a kernel a test names) or a FUNCTION (a kernel whose host learns its id later, e.g.
+ * from the tool-execution seam). Asking late is the difference between naming the kernel and claiming to: live run 54
+ * showed a kernel whose entry read `ctx.sessionId` once, before the host service existed, so every receipt for the rest
+ * of its life said "this kernel's resolution" without a name while the host knew the name all along.
+ */
+const kernelSessionValue = (kernelSession) => {
+  if (typeof kernelSession === 'function') {
+    try { const v = kernelSession(); return typeof v === 'string' && v !== '' ? v : null } catch { return null }
+  }
+  return typeof kernelSession === 'string' && kernelSession !== '' ? kernelSession : null
+}
+
 export function createKernel({
   host = null,
   // The institution policy for prompt-section switches; null means the framework switches nothing.
@@ -695,6 +709,12 @@ export function createKernel({
   // PER KERNEL, so a member's own kernel can hold a different `vmu.turn.objective` than the kernel that delivered the
   // turn; the status board prints WHOSE resolution it shows, which requires knowing this id. Absent ⇒ the board still
   // says 「本内核的解析值」 without naming it (never a silent lie, just a coarser true statement).
+  // ★★★ ROUND 54 (live run 54, measured): A STRING CAPTURED AT CONSTRUCTION IS NOT THE SAME THING AS A NAME. The entry
+  // used to hand `sessionIdOfCtx(ctx)` here - one synchronous read at `apply()`, when the host's `sessions` service has
+  // not mounted yet and the guarded context refuses the property - so the id was `null` for the WHOLE LIFE of the kernel
+  // and every board said "this kernel's resolution" without ever naming it. A FUNCTION is accepted instead and is asked
+  // at READ time (`kernelSessionValue`), which is the same late-binding rule every other seam in this plugin follows: a
+  // question answered once at assembly time is an assumption, and this one was measurably wrong.
   kernelSession = null,
   // THE FACTORY DEFAULT CLOCK IS A NUMBER OF MILLISECONDS. It used to return an ISO string, which the clock guard
   // (correctly) rejects as non-finite - so with no injected clock every one of the ten guarded services refused by
@@ -2407,7 +2427,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     noticeBlock: noticeBlock || null,
     extraPhases: extraPhases || null,
     // ★★ ROUND 52: the status board prints whose settings resolution it shows, so the loop needs this kernel's id.
-    kernelSession: typeof kernelSession === 'string' && kernelSession !== '' ? kernelSession : null,
+    // ★★★ ROUND 54: handed over as a GETTER, not a string - the loop asks per render, so a kernel whose id only becomes
+    // known later (host service mounts / first tool call carries the Agent) starts naming itself instead of staying
+    // anonymous forever. `statusBoardReadings` still receives a plain string, resolved at that render.
+    kernelSession: () => kernelSessionValue(kernelSession),
     // ★★★★★★★ PHASE 6 / K10 WIRING: THE LOOP'S BUS WAS NEVER HANDED OVER, SO `turn/reply-parsed` COULD NOT FIRE.
     // `kernel/turn/index.js:1009` emits that hook (the ONLY producer in the tree) inside `if (bus && ...)`, and the
     // orchestrator defaults `bus = null` - measured: a real kernel ran two turns and the hook's hit counter stayed 0,
@@ -4259,9 +4282,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // defaults while the kernel that delivered its turn holds the run's objective), so a reader comparing a
           // status receipt with a `[总任务]` line must be able to see whether the two came from the same kernel. Run 52:
           // a member compared them without this field and could only conclude the board's source label was false.
-          resolvedIn: { kernelSession: kernelSession === null ? null : String(kernelSession) },
-          resolvedInMeans: kernelSession === null
-            ? 'this kernel was built without a session id, so the map is this kernel\'s own resolution and cannot be matched to a session by name'
+          // ★★★ ROUND 54: resolved AT READ TIME (see `kernelSessionValue`): a name learned after construction is still
+          // this kernel's name, and a kernel that never learns one says exactly that instead of pretending it has none.
+          resolvedIn: { kernelSession: kernelSessionValue(kernelSession) },
+          resolvedInMeans: kernelSessionValue(kernelSession) === null
+            ? 'this kernel has no session id it can name yet (its context does not expose one and no tool call has carried the Agent\'s session), so the map is THIS kernel\'s own resolution and cannot be matched to a session by name'
             : 'this map is THIS kernel\'s resolution of the declared keys; another kernel over the same workspace resolves its own (pack defaults included), so a value read here is not evidence about what any other kernel would return',
           // TASK-163: the hot-grading promise is SELF-DISCLOSED here, and the last runtime write is shown with
           // what it really applied — the receipt and this line are the same fact, not two opinions.
@@ -4349,6 +4374,16 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         shutdown: exitFlushRecord ? Object.assign({}, exitFlushRecord) : null,
         loader: loader.status(),
         bridge: bridge.status(),
+        // ★★ ROUND 54 (live run 54, member r-1): THE OTHER SEAM, NAMED WHERE THE FIRST ONE IS REPORTED. A member read
+        // `bridge.hasSpawnSeam: true` and `vmu.math` refusing with "needs a host with register() and spawn()" as two
+        // contradicting readings. They are two seams, and the receipt used to name only one of them. This is the math
+        // surface's OWN seam state (the pair `createMathSurface` requires), reported as construction facts so a reader
+        // can tell "no host injected at all" from "a host that cannot compute".
+        math: {
+          hostInjected: !!host,
+          hostSeam: { register: !!(host && typeof host.register === 'function'), spawn: !!(host && typeof host.spawn === 'function') },
+          means: 'the math surface needs its OWN register/spawn seam (createMathSurface); status.bridge.hasSpawnSeam describes the SCRIPT bridge and says nothing about this one - when this seam is absent the math face refuses VMU_ENGINE_UNAVAILABLE by name instead of computing nothing quietly',
+        },
         registry: registry.status(),
         seams: { host: !!host, store: !!store, library: !!library, members: !!members, spawn: !!spawn,
           // E2: both facts are CONSTRUCTION facts. `deliverConsumedBy` lists the services that were actually

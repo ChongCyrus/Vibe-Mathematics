@@ -678,6 +678,19 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (out.bus && typeof out.bus === 'object' && Array.isArray(out.bus.entries)) {
             out.bus = { entries: out.bus.entries.length, note: 'detail:"full" for the bus table' }
           }
+          // ★★ RUN 54: TWO SEAMS, AND THE BOUNDED FACE MUST STILL NAME BOTH. The member's contradiction was read off
+          // THIS face (`bridge.hasSpawnSeam: true` beside a math refusal), so the summary keeps the booleans and the one
+          // sentence that says which seam is which, and drops the history/stats prose (available on detail:"full").
+          // Measured byte cost: the un-shortened bridge+math pushed the v5r summary from ~7.9 kB to 8,529 B, over the
+          // 8,000 B readability bound the host test asserts.
+          if (out.bridge && typeof out.bridge === 'object') {
+            out.bridge = { hasSpawnSeam: out.bridge.hasSpawnSeam,
+              note: 'the SCRIPT bridge seam (vmu.script.*); the math surface has its OWN register/spawn seam at status.math.hostSeam - not evidence about math' }
+          }
+          if (out.math && typeof out.math === 'object') {
+            out.math = { hostInjected: out.math.hostInjected, hostSeam: out.math.hostSeam,
+              note: 'the math surface\'s OWN seam; absent ⇒ the math face refuses VMU_ENGINE_UNAVAILABLE by name (not the same fact as bridge.hasSpawnSeam)' }
+          }
           if (Array.isArray(out.auditTail)) out.auditTail = out.auditTail.slice(-1)
           // ★ R26-family: `closureVote` grew LONG PROSE for the moment a member is about to vote
           // (`castMeaning`, `windowMeans`, `candidateBasis`, `votesCastMeaning`, …). The summary is read at

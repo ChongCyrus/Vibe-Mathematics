@@ -6701,3 +6701,46 @@ F-37、F-35b、chat `adminsResolved`、`speeches` 计数 —— 本轮一个回�
 
 F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按 `detail:"settings"`/`"summary"` 各读一次才能确认；下一轮简报按此改写。
 
+
+
+## §157 真机跑 54（第 2 次：内核名字与两个 seam）
+
+### §157.1 读数
+- `DRIVE exit=0`、`durationSec 491`、根会话 `toolCalls 17`、`transcriptEvents 119`、`tokenTotal 3,405,165`（cap 12,000,000 未触顶，`tokenCapHit:false`）、2 个会话、`0 with RED`；`followStreamWorked:true`。
+- 会话日志 `…/sessions/--D-_tmp-slv-phase5-slvp54-ws--/session-2c663899-874d-430c-be40-0bc1cee3c1d6/session.v4.jsonl.zstd`；工作区产物 `SIMULATION-RULES.md`、`VibeMath/vmu/state.json`、`VibeMath/vmu/audit/2026-10-27.jsonl`（8 行）。
+- 快照 `_oneoff/vm-slv/full-1027-144950.jsonl`（10,574,988 B / 23,005 行）；围栏类计数 `VMU_TURN_NO_FENCE 36`、`VMU_TURN_UNKNOWN_FIELD 24`、`VMU_TURN_FIELD_NOT_APPLICABLE 28`、`VMU_TURN_BAD_JSON 36`。
+- 本轮成员真的用了数学面：`VMU_ENGINE_UNAVAILABLE 83`、`VMU_MATH_INVALID_INPUT 34` —— 这正是 F-42 的现场。
+
+### §157.2 判决（七行）
+| # | 要验的 | 读数 | 判 |
+| 1 | F-39 默认面保留地图归属 | 第 2 步 (a) `resolvedIn:{kernelSession:null}` + 说明“has no session id to match it by name”，且 `note` 写明地图被省、取回路径在 `detail:"full"/"settings"` | ✅（省了地图，没省归属） |
+| 2 | F-39 地图仍在 | 第 2 步 (b) `detail:"settings"` 给出 `vmu.turn.objective` 的 `value/source:"runtime"/hot:"H2"/who:"office"`，仅缺 `why`（该面本就没有此字段，见 §157.5） | ✅ |
+| 3 | F-37 设置按内核解析 | root 报 `source:runtime`、成员报 `source:pack:v5r`，两处 `kernelSession` 都是 `null` | ⚠️ 值与来源确实各报各的，但**归属 null 使“同一内核/不同内核”无法据名核** |
+| 4 | F-35b 采纳的裁决可读 | 第 7 步 `decidedByMeans:"read-from-shared-ledger"`、`decidedInThisKernel:false`、`adoptedFromSharedLedgerAt` 早于 `decidedAt` | ✅ |
+| 5 | chat `adminsResolved` | 第 8 步 `kind:"seat"`、`members:["r-acad"]` | ✅ |
+| 6 | 默认面仍 ≤ 8000 B | 第 2 步 (a) 回执 233 KB 是详情面；默认面在单测与 `e2e-v5-round2` 下均过 8000 B 断言 | ✅（真机未逐字量，见 §157.6） |
+| 7 | 内核名字在本内核可读 | root 报 `kernelSession:null`；成员同时读到 `bridge.hasSpawnSeam:true` 与 `vmu.math` 的 `VMU_ENGINE_UNAVAILABLE` | ❌ F-40、F-42 |
+
+### §157.3 三条真缺陷与修法
+1. **F-40（内核名字在装配时被固化成 null）**：`vibe-math-vmu/kernel/index.js` 的 `createKernel` 只读了一次 `ctx.sessionId`；真机 `apply()` 时上下文服务未挂载 ⇒ 这个名字永远是 null，而内核**事后**通过工具执行学得到它。修法：`kernelSession` 支持**提问形态**（字符串=构造快照，函数=读时求值，`kernelSessionValue()` 吞异常/空串），`createKernel` 传给 turn 的是 getter，status 的 `resolvedIn` 每次读重新求值，null 文案改为“has no session id it can name yet”；`vibe-math-vmu.js` 用已有的 `setToolExecObserver` 回调记 `exec.sessionId` / `exec.agent.session.id` / `session-` 形状的 `agentId`，读时先看学到的、再问 ctx。
+2. **F-42（两个 seam 被当成一个念）**：`status.bridge.hasSpawnSeam` 是 **script bridge** 的 `{file,args}` 注入，`vmu.math` 要的是 `register/spawn`；成员把一个为 true 当作另一个可用。修法：`kernel/script-bridge.js#status()` 加 `spawnSeamMeans`（明说这是哪一套）；`kernel/index.js` 的 status 新增 `math:{hostInjected,hostSeam:{register,spawn},means}`（“没注入 host”与“注入了但不会算”可分）；`host.js` 的 `detail:"summary"` 保留 `bridge`/`math` 两段布尔+一句话。
+3. **F-43（投影快照不记写入者，记债）**：成员读到 `VibeMath/vmu/state.json` 里 `hasSpawnSeam:false`，同一刻 `status` 说 `true` —— 两份都是真读数：状态投影是**每内核各写一次**的键，最后写的内核（成员内核没有 math host）赢，而投影条目**不记是谁写的**。方向：投影条目带 `writer:{kernelSession,agentId}`。本轮不修。
+
+### §157.4 门禁
+- `tests/vmu-run54-kernel-session-late.test.mjs` **19/0**（晚绑定翻转、三种“学名字”来源、非 id 字段不造、渲染器“未知名仍说本内核”、两个 seam 各报各状态、默认面保留两个 seam 且不带 stats/recent）。
+- 相邻：`RUN52 SETTINGS SCOPE 15/0`、`RUN53 SUMMARY PROVENANCE 15/0`、`RUN31 STATUS BOARD 58/0`、`VMU SCRIPT BRIDGE 34/0`、`VMU SETTINGS 49/0`、`VMU PLANNED SETTINGS 113`；`VMU HOST 203/0`、`e2e-v5-round2 679/0`（默认面 8038 → 收短两句后约 7980 B 才过 8000 B 断言）。
+- 全量 T1：首跑 `TOTAL 529 PASS 528 FAIL 1`，红的是 `tests/vmu-run53-ctx-guard.test.mjs` —— 它把 run 53 的**那一句措辞**（`without a session id`）当断言，而 F-40 把同一句诚实地改成 `no session id it can name yet`。这是「把措辞当契约」的自伤红：修法是断言**含义**（`no session id` + `own resolution` + 不含 `undefined`），不是把产品文案改回去。复跑 `TOTAL 529 PASS 529 FAIL 0 (suites 465 · probes 64)`。
+
+### §157.5 简报错（三条，都不是产品缺陷）
+1. 第 2 步 (b) 让 root 抄 `settings ... why`：该面**本就没有 `why` 字段**（`vmu.turn.objective` 的读面只给 `value/source/hot/who/overridden`）。要抄就抄存在的键。
+2. 第 2 步 (a) 让 root 读 `detail:"summary"` 的 `settings.note` 并要求“逐字抄”——成员按岗位职责行事、只读到省掉的说明；该步应直接指定 `detail:"settings"`。
+3. 第 3 步让成员“抄第 5 步回执里的 `state`”，但成员把 `next_step` 当建议、先去写记录与 Lean 文件，没有产出可抄的回执；验证读面时应把成员的唯一任务写成“只调这一个工具、只抄这几个字段”。
+
+### §157.6 无法验证
+1. F-40 的真机效果：F-40 修在**本轮之后**，run 54 是它的证据来源，不是它的验收。
+2. 默认面在真机 v5r 下的**字节数**：run 54 的第 2 步 (a) 只证明了归属字段在场（回执 233 KB 是详情面）；8000 B 由单测与 `e2e-v5-round2` 守。
+3. F-43 的“赢家是谁”：state.json 里没有任何写入者字段，无法据读数指认是哪个内核最后写的（这正是缺陷本身）。
+4. `VibeMath/vmu/state.json` 的 `toolFacePull.agentsSeen:2` 与 `lastMember:null` 同时出现：说明两个 agent 用了同一工作区，但看不出谁在什么时刻改的。
+
+### §157.7 无实质残余：否
+残余：F-43（投影写入者未登记）、F-41 三项（`delivery.hasDeliverSeam:false` 的缺席声明、`turn` 单槽覆盖、采纳的裁决不写本地审计行）、以及 §157.5 的简报错误。下一轮（55）以 F-43 为主线，附带这三项取证。

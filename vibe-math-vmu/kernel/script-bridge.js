@@ -257,6 +257,14 @@ export function createScriptBridge({ spawn = null, spawnHandle = null, timer = n
         dryRun,
         defaultTimeoutMs,
         hasSpawnSeam: typeof spawn === 'function',
+        // ★★ ROUND 54 (live run 54, member r-1): THIS KEY WAS READ AS A FACT ABOUT THE MATH FACE AND IT IS NOT ONE.
+        // The same status receipt reported `bridge.hasSpawnSeam: true` while `vmu.math` authoritatively refused
+        // `VMU_ENGINE_UNAVAILABLE` ("the math surface needs a host with register() and spawn()") — because these are TWO
+        // different seams: this one carries `{file, args}` for the SCRIPT bridge, the math surface has its own
+        // `register`/`spawn` pair, and one being wired says nothing about the other. The member could not tell which
+        // seam the boolean described, so it reported a contradiction between two true readings. The name now says what
+        // it is; the math seam's own state is reported next to it in status (`math.hostSeam`).
+        spawnSeamMeans: 'this is the SCRIPT bridge\'s seam ({file, args} for vmu.script.*); the math surface has a SEPARATE register/spawn seam, reported as status.math.hostSeam - a true value here is not evidence about math',
         stats: Object.assign({}, stats),
         recent: history.slice(-10).map((h) => Object.assign({}, h)),
         promptSurface: false,
