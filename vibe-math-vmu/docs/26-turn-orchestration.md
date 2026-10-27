@@ -1186,3 +1186,25 @@ LIVE RUN 50（build ce5ec8f9，实验室所办自己的报告与 34 条回执）
 - 同一工具两次写入，无 member 的行 `owner` 必须是 `null`、有 member 的必须是那个成员；
 - 截断的板行必须写「摘录；完整正文见记录 <id>」；
 - pending 的 `decidedByMeans` 必须说明"还没人裁决"。
+
+## ROUND 51 — 审批账本也是共享账本，调用者身份不许猜
+
+真机第 51 轮把 run 50 的七条读面修法全部验过（跨内核关闭、闸门卡支措辞、关会回执、禁言读面、作者归属、状态板摘录、pending 归属），
+同时抓到两条新的"别人的内核里的事实"：
+
+1. **审批账本跨内核读旧**。所办在 root 内核开的审批，先启动的成员内核读 `approvalState` 回「unknown approval」——请求已经写穿到
+   fold，读者的副本更旧，而审批读方法从不看盘。修法与 chat（run 47）/meetings（run 50）同形：
+   `humanReadsReadFresh` 让 `approvalState/queue/observerView/dashboard/list/approvalDecision` 先 `store.read('human')`，
+   再把 fold 的行**并进**本地账本（只加不丢：已决覆盖待批、较新的决定覆盖较旧的、本地 pending 与 fold pending 并存、veto 按 id 并集），
+   最后 `restore(merged, {replace:true})`。
+   两个实现坑：①`store.read(key)` 返回的是 fold 的**条目**（`{v,mode,key,seq,entries,value}`），要取 `entry.value`；
+   ②写穿是 **fire-and-forget**，跨内核读者看到的是"最终一致"，所以判据要轮询而不是"调用返回即断言"。
+2. **不认识的调用者不是 office**。`resolveTurnMember` 对「root 会话」和「本内核没见过的非 root agent」都回 `null`，
+   而人工审批闸把这个 `null` 读成 `office`——成员在**自己的内核**里不带 `by` 调 `decide`，决定被记到所办名下。
+   新增注册码 `VMU_HUMAN_CALLER_UNKNOWN`：`callerRole` 多回 `root`（agent id 为空或 `session-…`）与 `agentId`，
+   非 root 且解析不到成员 ⇒ **在角色判断之前**具名拒；席位成员仍走原来的 `VMU_HUMAN_DECIDER_ROLE`。
+
+判据（新测试 `tests/vmu-run51-human-caller.test.mjs`，18 条）：
+- B 先启动、A 后开审批，B 的 `approvalState` 必须读到 pending，A 决定后必须读到 allowed 且 `decidedBy:"office"`；
+- 陌生非 root agent 调 `decide` 必须被 `VMU_HUMAN_CALLER_UNKNOWN` 拒，message 点名该 agent id，且请求仍 pending；
+- `session-…` 形状（root）仍可决定；席位成员仍被角色码拒（两种"不能批"不许混成一个码）。

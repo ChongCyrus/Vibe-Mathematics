@@ -482,6 +482,7 @@
 | **R2 · `VMU_HUMAN_QUEUE_FULL`** | 待批队列触界（`vmu.human.approvalQueueCap`） | 审批闸 | ✅（须给**当前与上限**） |
 | **R2 · `VMU_HUMAN_LIFT_ROLE`** | 解除否决者不在 `vmu.human.vetoLiftRoles` | 审批闸 | ✅（须给**允许角色**） |
 | **R31 · `VMU_HUMAN_DECIDER_ROLE`** | **人工审批面的调用者角色不在 `vmu.human.deciderRoles`** ⇒ 具名拒 `decide`／`withdraw`／`veto`，**在任何状态变更之前**；角色＝roster 席位（非成员／root 才是 `office`），所以"填 `by:'office'` 冒充"改不了闸；`enforced[]` 点名声明键（task-22）。**R45 · 同一码也判被代办者**：`by` 缺省＝调用者自己；`by` 是角色名（如 `chair`）或名册成员 id 时，其解析出的角色**也**必须在 `vmu.human.deciderRoles` 里，否则同一码具名拒（message 点名 by 值与解析出的角色，hint 给"用自己的身份"与"把决定权交给成员自己的席位"两条路）——否则 root 会话可 `decide {by:"<member>"}` 把审批记到成员名下（run 45 真机） | 人工审批面（`vibe-math-vmu/tools/human.js` 的 `gateVerb`/`delegateOf`，闸在 `run()` 的 `try` 第一行） | ✅（须给**允许角色**、**声明键**与"默认只有 office"） |
+| **R52 · `VMU_HUMAN_CALLER_UNKNOWN`** | **人工审批面的调用者不是 root、也不是本内核认得的成员** ⇒ 具名拒 `decide`／`withdraw`／`veto`／`inject`，**在任何状态变更之前**。`resolveTurnMember` 对"root 会话"与"本内核没见过的非 root agent（成员自己的内核）"都回 null，若把后者当 `office`，成员就能不带 `by` 调 `decide` 把决定记到所办名下（run 51 成员自报，`approval-1`）。判据用 agent id 形状（root 是 `session-…` 或无 id），message 点名该 agent id，hint 指向"在 root 会话做决定"或"让成员自己的回合调用" | 人工审批面（`vibe-math-vmu/tools/human.js` 的 `callerRole`/`gateVerb`） | ✅（须说明调用者 id 与允许角色声明键） |
 | **R45 · `VMU_CHAT_SNAPSHOT_INCOMPLETE`** | 持久里的 chat 值不是 v1 快照（`messages`/`mutes` 缺失）⇒ 合并恢复**什么都没采纳、也没动活内存**（`kernel/index.js` 的 `chatReloadMerge`） | 群聊状态的持久化恢复（task-28） | ✅（须说"什么都没采纳也没动活的"） |
 | **R45 · `VMU_CHAT_RESTORE_FAILED`** | 合并后的快照交给 `chat.restore()` 时抛错（内核没给码）⇒ 报 `VMU_CHAT_RESTORE_FAILED` + `note` 原文（`kernel/index.js` 的 `reload` 适配） | 同上 | ✅（须给底层原文，不许只报"restore 失败"） |
 | **R45 · `VMU_CHAT_RESTORE_REFUSED`** | `chat.restore()` 按名字拒绝合并后的快照（例如 live 已有消息而快照不同）⇒ 报该面自己的码或 `VMU_CHAT_RESTORE_REFUSED` + `note`（`kernel/index.js` 的 `chatReloadMerge`） | 同上 | ✅（须点名"不能半覆盖、消息不丢"） |
@@ -1171,7 +1172,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **468** 个码，**逐行**给出状态 ✓：其中 **429** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **469** 个码，**逐行**给出状态 ✓：其中 **430** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1319,6 +1320,7 @@
 | `VMU_HUMAN_APPROVAL_DENIED` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_HUMAN_APPROVAL_PENDING` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_HUMAN_APPROVAL_TIMEOUT` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
+| `VMU_HUMAN_CALLER_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/tools/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_HUMAN_DASHBOARD_DOMAIN` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_HUMAN_DASHBOARD_SCOPE` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_HUMAN_DECIDER_ROLE` | **已实现 ✓** | `vibe-math-vmu/tools/human.js` | 代码里有该码字符串 ✓ |

@@ -1815,6 +1815,74 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     try { Object.defineProperty(target, '__vmuMeetingsReadFreshReads', { value: true, enumerable: false }) } catch (e) { /* marker only */ }
     return names
   }
+
+  // ★ LIVE RUN 51 (F-35, measured on the real machine): THE HUMAN LEDGER HAS THE SAME SHAPE. An approval opened in the
+  // office's kernel, and a kernel booted EARLIER (a member's own session) answered `approvalState` with
+  // `VMU_INVALID_ARGUMENT "unknown approval: rq-r51"` - the request existed, had been written through to the fold, and
+  // the reader's copy was simply older than the fold. The write-through works (a kernel booted AFTER the open reads it),
+  // so the only missing piece was the read: the approval verbs answered from the instance's own queue. Every human read
+  // now refreshes the fold first, exactly as chat (run 47) and meetings (run 50) do. The re-entrancy counter keeps the
+  // onReload hook (which calls human.restore) from recursing through the wrapper.
+  let humanReadDepth = 0
+  const humanReadsReadFresh = (target) => {
+    if (!target || target.__vmuHumanReadFreshReads === true) return null
+    if (!store || typeof store.read !== 'function') return null
+    const names = ['approvalState', 'queue', 'observerView', 'dashboard', 'list', 'approvalDecision'].filter((n) => typeof target[n] === 'function')
+    for (const name of names) {
+      const original = target[name]
+      target[name] = function humanReadFreshThenRead(...args) {
+        if (humanReadDepth === 0) {
+          humanReadDepth++
+          try {
+            // The fold is read first (that is the engine's own stale check, and it is what notifies other faces). The
+            // human ledger needs one more step: when THIS kernel holds nothing yet, adopt the fold's ledger verbatim.
+            // `human.restore` already refuses to overwrite a non-empty ledger, so "adopt only when empty" is its own
+            // policy rather than a second opinion. Run 51's member kernel was exactly this case: booted before the
+            // request, empty ledger, fold had it - and `approvalState` answered "unknown approval".
+            // ★ `store.read(key)` returns the folded ENTRY (`{v, mode, key, seq, entries, value}`), not the snapshot:
+            // the run-51 probe read `raw.data` and therefore never adopted anything (an empty ledger stayed empty and the
+            // refusal persisted). Take `value` when the entry carries one, else the raw shape.
+            const entry = store.read('human')
+            const fold = entry && entry.value && entry.value.data ? entry.value : (entry && entry.data ? entry : null)
+            if (fold && typeof target.restore === 'function' && typeof target.snapshot === 'function' && typeof target.queue === 'function') {
+              const local = target.snapshot()
+              const localRows = new Map((Array.isArray(local && local.data && local.data.approvals) ? local.data.approvals : []).map((p) => [String(p[0]), p[1]]))
+              const foldRows = new Map((Array.isArray(fold.data.approvals) ? fold.data.approvals : []).map((p) => [String(p[0]), p[1]]))
+              // A DECISION IS MONOTONIC (pending → decided, never back), so the fold wins for any row it has decided and
+              // for any row this kernel has not seen at all; a row this kernel holds PENDING survives when the fold is
+              // equally pending, because both describe the same wait. Vetoes are unioned by id. This is the same
+              // "only add, never lose" law the chat ledger merge uses (run 47), applied to the approval rows.
+              const merged = new Map(localRows)
+              for (const [id, row] of foldRows) {
+                const mine = merged.get(id)
+                if (!mine) { merged.set(id, row); continue }
+                const foldDecided = row && row.decidedAt !== null && row.decidedAt !== undefined
+                const mineDecided = mine && mine.decidedAt !== null && mine.decidedAt !== undefined
+                if (foldDecided && !mineDecided) merged.set(id, row)
+                else if (foldDecided && mineDecided && Number(row.decidedAt) > Number(mine.decidedAt)) merged.set(id, row)
+              }
+              const localVetoes = new Map((Array.isArray(local && local.data && local.data.vetoes) ? local.data.vetoes : []).map((v) => [String(v && v.id), v]))
+              for (const v of (Array.isArray(fold.data.vetoes) ? fold.data.vetoes : [])) if (v && v.id && !localVetoes.has(String(v.id))) localVetoes.set(String(v.id), v)
+              const sameApprovals = JSON.stringify([...localRows.entries()]) === JSON.stringify([...merged.entries()])
+              const sameVetoes = localVetoes.size === (Array.isArray(local && local.data && local.data.vetoes) ? local.data.vetoes.length : 0)
+              if (!sameApprovals || !sameVetoes) {
+                target.restore({
+                  apiVersion: (local && local.apiVersion) || 1, face: 'human', v: (local && local.v) || 1, at: (local && local.at) || 0,
+                  data: { vetoes: [...localVetoes.values()], approvals: [...merged.entries()] },
+                  counters: Object.assign({}, (local && local.counters) || {}, (fold && fold.counters) || {}),
+                  skipped: [],
+                }, { replace: true })
+              }
+            }
+          } catch (e) { /* a read never fails because the fold could not be re-read */ }
+          finally { humanReadDepth-- }
+        }
+        return original.apply(this, args)
+      }
+    }
+    try { Object.defineProperty(target, '__vmuHumanReadFreshReads', { value: true, enumerable: false }) } catch (e) { /* marker only */ }
+    return names
+  }
   // ★★ THE PROJECTION LOG IS A STATE TABLE, NOT A DIARY (round 3 of 2026-10-26, from the census's drift report).
   // `attachDeclaredProjections()` runs TWICE (once at assembly, once after the pack declares its slots, because
   // `members` has no target until then). Each run used to APPEND: a face that failed the first time and attached the
@@ -1896,6 +1964,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         key: 'human', mode: 'state', snapshot: () => human.snapshot(), restore: (v) => human.restore(v),
         list: () => (typeof human.queue === 'function' ? human.queue().requests : []) })
       attachedProjections.push({ face: 'human', attached: true, mode: 'state', key: 'human', wrapped: out.wrapped, missing: out.missing })
+      // ★ LIVE RUN 51 / F-35: the human READ verbs refresh the fold first (see `humanReadsReadFresh` above). Applied
+      // AFTER attachProjection so the projection's own mutator wrappers are not re-wrapped by this one.
+      try { humanReadsReadFresh(human) } catch (e) { /* reads refresh best-effort; a broken wrapper must not break attach */ }
     } catch (e) {
       attachedProjections.push({ face: 'human', attached: false, reason: String((e && e.message) || e), code: (e && e.code) || null })
     }

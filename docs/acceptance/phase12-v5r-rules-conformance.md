@@ -6504,3 +6504,65 @@ run 49 的定向项（F-23/F-22/rulings/禁言/群聊）全部真机通过；但
 ### §152.7 无实质残余：否
 
 七条都是"读面与事实不一致"这一族（读得慢、读得少、读得假、读得不说）。机制侧已补"读之前先看盘""回执说结果""没核就说没核"，但同一族仍会在别的面出现（例如 `[总任务]` 截断、`speeches` 口径），所以收敛未到。
+
+## §153 真机跑 51（build 957e9107，定向复验 F-28 / F-29 卡支 / F-30 / F-31 / F-32 / F-33 / F-34）
+
+### §153.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `DRIVE exit=0`、`durationSec 1120`、根会话 `toolCalls 36`、`transcriptEvents 204` |
+| 账单 | `tokenTotal 10,404,127`（cap 12,000,000，`tokenCapHit:false`） |
+| 会话 | `SUMMARY: 4 session(s) in 1 file(s), 0 with RED checks`、`calls (36) vs results (36)` |
+| 产物 | `_oneoff/vm-slv/full-1027-121612.jsonl` 23,378,466 B / 43,988 行 |
+| 机器判据 | `NO_FENCE=144 UNKNOWN_FIELD=96 FIELD_NOT_APPLICABLE=96 BAD_JSON=144`；可见工具 95 |
+| 环境 | clone 已清、C 盘剩 10.53 GB；日志保全 `D:\_tmp\slv-phase5\slv-logs\…20261027-123534` |
+
+### §153.2 判决
+
+| # | 门 | 回执原文（摘） | 判 |
+| --- | --- | --- | --- |
+| 1 | F-28 跨内核关闭读面 | 院士内核关 m1；所办 `vibe_vmu_meeting{action:"status",id:"m1"}` 直接回 `state:"closed"`、`archived:true`、`registry:"service"`（`summary` 同） | ✅ |
+| 2 | F-29 闸门措辞（卡支） | `subject:"rec-4"` 的 debate summary 里 `subjectGate.proofBasis:"declaration-only"`、`proofChecked:false`、note 明写「本闸只核了卡上这两个字段……**没核 ≠ 没通过**」 | ✅ |
+| 3 | F-30 关会回执自带结果 | 院士内核的 close 回执（子会话日志 seq 61 前）含 `state:"closed"`、`stateMeans`、`archived:true`、`archivedMeans`、`subjectGate:null`、`subjectGateMeans`、`closureVote` | ✅ |
+| 4 | F-31 禁言读面 | `chat{status}` 回 `mutedDetail:[{member:"r-2",until:…,untilMeans,reason:"第51轮：禁言读面复验",by:"r-acad",byMeans}]` + `adminsMeans`（席位 token 由 seat seam 解析） | ✅ |
+| 5 | F-32 作者归属 | 所办 `vibe_v5_feedback{op:"add"}` ⇒ `rec-15.owner:null`；成员同一 op ⇒ `rec-13.owner:"r-1"`（工具名不再当作者） | ✅ |
+| 6 | F-33 状态板摘录 | 成员回抄的四行里 `[当前小任务] rec-17「…」…（摘录；完整正文见记录 rec-17）`，按 id 回读 `rec-17` 得完整正文（972 B，`bodyTruncated:false`）；`keepChars` 把 "owner" 截成 "own" 是声明过的字符级截断 | ✅ |
+| 7 | F-34 pending 归属 | `approvalState{rq-r51}` ⇒ `state:"pending"`、`decidedBy:null`、`decidedByMeans:"nobody has decided this request yet (state=pending), so there is no actor to name"` | ✅ |
+
+### §153.3 本轮新发现（F-35 / F-36）与一条未复现
+
+1. **F-35（读面：审批账本跨内核读旧）**。所办在 root 内核 `openApproval` 建了 `rq-r51`；**先启动**的成员内核（r-1 的会话）读 `approvalState{rq-r51}` 回 `VMU_INVALID_ARGUMENT "unknown approval: rq-r51"`——请求存在、已写穿到 fold，读者的副本更旧。写穿本身是通的（**之后**启动的内核读得到），缺的是读：审批读方法从不看盘。probe（两个内核同 root、B 先启动）复现 100%。
+2. **F-36（闸门：不认识的调用者被当成 office）**。成员在**自己的内核**里调 `vibe_v5_human{action:"decide"}` 不带 `by`，回执 `ok:true`、`decidedBy:"office"`（成员自报 `approval-1` 被记成所办决定）。真因：`resolveTurnMember` 对「root 会话」和「本内核没见过的非 root agent」都回 `null`，而 `gateVerb` 把这个 `null` 读成 `office`；成员子 agent 的 id 不是 `session-…` 形状，本内核又没学过它的会话来路，于是被当成所办。
+3. **未复现**：成员在反馈 rec-19 里称「状态板 `[总任务]` 声称来源是设置键，但该键解析值是『前 n 个奇数之和 = n²』的四步归纳目标，与板上文本不同」。所办内核 grep 自己的 resolved settings **没有**「奇数」字样；成员自己回抄的板上文本正是所办设定的「整数平方和：n²+n 恒偶（第 51 轮）」，两者一致。判为成员措辞/误读（其 kernel 的 `settings` 详情它没有逐字回抄），**不改机制**，记为观察。
+
+### §153.4 修法
+
+- **`kernel/index.js` 新增 `humanReadsReadFresh`**（装在人脸投影 attach 之后）：`approvalState/queue/observerView/dashboard/list/approvalDecision` 先 `store.read('human')`；随后把 fold 的行**并进本地账本**（只加不丢）：
+  · `store.read(key)` 返回的是 fold 的**条目**（`{v,mode,key,seq,entries,value}`）而不是快照，代码里必须取 `entry.value`（probe 里先写成 `raw.data`，因此「并」永远没发生）；
+  · 合并规则 = 决定是**单调**的（pending → decided）：fold 已决而行本地 pending ⇒ 取 fold；两边都决 ⇒ 取 `decidedAt` 更新的；本地 pending 而 fold 也 pending ⇒ 保留本地；fold 没有的行保留本地；veto 按 id 并集；
+  · 最后用 `restore(merged, {replace:true})` 写回——`replace` 是显式覆盖，但 merged 已把本地行全带上，不存在"静默丢掉待批"；
+  · 与 chat（run 47）/meetings（run 50）同一形状：**读之前先看盘**，且重入计数防止 reload 钩子递归。
+- **`tools/human.js` 新增注册码 `VMU_HUMAN_CALLER_UNKNOWN`**（`docs/03` §8 R52 行）：`callerRole` 多回 `root`（agent id 为空或 `session-…`）与 `agentId`；`gateVerb` 在角色判断**之前**，对「非 root 且解析不到成员」的调用者具名拒，message 点名该 agent id，hint 指「在 root 会话做决定」或「让成员自己的回合调用」。席位成员（如 `r-acad` 直接作 agent id）仍走原 `VMU_HUMAN_DECIDER_ROLE`。
+- 新测试 `tests/vmu-run51-human-caller.test.mjs` —— **18/0**：①B 先启动也能读到 pending 与后续 allowed/decidedBy；②陌生非 root 调用者被 `VMU_HUMAN_CALLER_UNKNOWN` 拒、且请求仍 pending；③`session-…`（root）仍可决定并记 office；④席位成员仍被角色码拒。
+
+### §153.5 门禁
+
+`GATE_SCOPE=vmu node tests/run-tests.mjs` 全量：新增套件与 docs/03 新行触发五处生成物漂移（`audit-code-status`/`audit-declaration-criterion`/`audit-generators-current`/`audit-readme-counts`/`audit-surface-index`），按 `update-doc-counts --write` + `generate-surface-index --write` + `regen-all --write` 重生成后复跑全绿（`TOTAL 524 PASS 524 FAIL 0`）；`preflight PASS`、`regen-all 16/16 in sync`、`DOC LINT PASS`；相邻套件：`RUN51 HUMAN CALLER 18/0`、`RUN50 READBACKS 32/0`、`RUN47 CHAT READ FACE 14/0`、`HUMAN GATE 89/0`、`RUN33 HUMAN GATE 62/0`、`RUN45 HUMAN DECIDE AUDIT 62/0`、`HUMAN FALSIFY 12/0`。
+
+### §153.6 我的简报错（第 15 次同类）
+
+1. `vibe_v5_feedback` 仍写成 `action:"add"`（应为 `op`）——run 48/50 已各记一次，这轮又错一次。
+2. debate 的 `subject` 让院士传了「一句话命题」而不是卡 id `rec-4`，`subjectGate` 落到 `provenance:"none"`，重试一次才验到卡支。
+3. 让所办/院士"凭会话记忆回抄"成员内核的 close 回执——回执 `memberToolCalls:null` 已声明（"NOT READABLE FROM THIS RECEIPT"），但简报不该把**唯一证据**寄托在成员记忆上：应让成员把它写进围栏 JSON（本轮后来正是这么做的）。
+
+### §153.7 无法验证
+
+1. F-35 的**真机**复验：需要「成员内核先启动、所办后开审批、成员再读」的时序，run 51 是成员读时已报 unknown（bug 在场），修后需 run 52 量。
+2. `settings` 来源不一致那条（见 §153.3.3）成员未逐字回抄其内核的 `detail:settings`，无法证实/证伪。
+3. `speeches` 计数值（run 48 lane 改名）本轮未复验。
+4. `status.admins` 只打声明 token 的呈现债（run 47 起记）仍未处理。
+
+### §153.8 无实质残余：否
+
+七条读面缺陷全部转 ✅，但本轮又抓到两条"别人的内核里的事实"（审批账本、调用者身份），说明**跨内核可见性**仍是这一族的主要来源：records/turns/chat/meetings/human 五处已修，settings 与"身份"两处仍是设计债。

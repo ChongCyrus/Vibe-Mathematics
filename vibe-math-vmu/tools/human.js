@@ -50,6 +50,13 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
   const INJECT_KEY = 'vmu.human.injectRoles'
   const DECIDER_CODE = 'VMU_HUMAN_DECIDER_ROLE'
   const INJECT_CODE = 'VMU_HUMAN_INJECT_ROLE'
+  // ★ LIVE RUN 51 (F-36, a member's own report): A CALLER THIS KERNEL CANNOT IDENTIFY IS NOT THE OFFICE. `resolveTurnMember`
+  // answers null for two very different callers — the ROOT session (which really is the office) and a NON-ROOT agent whose
+  // session this kernel never learned (a member running in its own kernel). Treating the second as `office` let a member
+  // call `decide` with no `by` and have the decision ATTRIBUTED to the office. The reader cannot tell a root caller from an
+  // unknown one by the roster alone, so the agent id shape is the tie-breaker (`agentIdOf`'s own criterion): root agent ids
+  // are `session-…` (or absent); a member's child agent id is not.
+  const CALLER_CODE = 'VMU_HUMAN_CALLER_UNKNOWN'
   // ★ A MAP, NOT A TABLE SUBSCRIPTED BY THE ACTION — and the reason is a real gate, not taste.
   // `tests/audit-face-actions.mjs`'s `isGenericDispatch()` scans the SOURCE TEXT (comments included) for a
   // table-subscript-by-action pattern, or for a rest-parameter catch-all, and reads either as "this face
@@ -88,11 +95,14 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
   /** office (no member ⇒ root/host actor, exactly `resolveTurnMember`'s null) or the live roster SLOT. */
   const seatOf = (row) => (row && typeof row.slot === 'string' && row.slot.trim() ? row.slot.trim() : null)
   const callerRole = (exec) => {
+    const agentId = String((exec && exec.agent && exec.agent.id) || '')
+    // `root` is the criterion `resolveTurnMember`/`host.js` already use: no agent id, or a session-shaped one.
+    const root = agentId === '' || agentId.startsWith('session-')
     const member = resolveTurnMember(kernel, exec)
-    if (!member) return { member: null, role: 'office', seat: 'office' }
+    if (!member) return { member: null, role: 'office', seat: 'office', root, agentId }
     const row = rosterRow(member)
     const seat = seatOf(row) || '(no seat)'
-    return { member, role: seat, seat }
+    return { member, role: seat, seat, root, agentId }
   }
   // ── THE DELEGATE (ROUND 45 / task-29) — see the file header. `by` names WHO the decision is attributed to; the
   // caller gate alone let a root session write a seat's name onto the receipt. Resolution order matches the caller
@@ -121,6 +131,19 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
     const who = callerRole(exec)
     const caller = who.member ? '"' + who.seat + '" (' + who.member + ')' : '"' + who.seat + '"'
     const what = WHAT_OF_CODE.get(code)
+    // ★ LIVE RUN 51 / F-36: refuse to GUESS. A non-root caller whose identity this kernel cannot resolve to a roster
+    // member is not the office; naming it `office` would attribute the decision to an actor that may not approve.
+    if (!who.root && who.member === null) {
+      throw Object.assign(
+        new Error('the human face decides for the institution: this caller is a non-root agent (' + (who.agentId || '(no id)') + ') that this kernel cannot resolve to a roster member, so it is NOT the office and may not ' + what),
+        {
+          code: CALLER_CODE,
+          hint: 'run the human decision from the office (root) session, or from a member turn this kernel has learned '
+            + '(the member writes `member:"<id>"` in its steps and the kernel maps its session). Who may approve is DECLARED: ' + key + ' = [' + (roles.length ? roles.join(', ') : 'nobody, so nothing is granted') + ']',
+          enforced: [key],
+          caller: { role: null, member: null, agentId: who.agentId || null, root: false },
+        })
+    }
     if (roles.indexOf(who.role) !== -1) {
       // ★ THE CALLER MAY DECIDE — but the delegate must be an approver too (ROUND 45). Returned so the branch can
       // attribute the receipt: `by` is what the ledger will record, `means` is how that attribution was authorised.
