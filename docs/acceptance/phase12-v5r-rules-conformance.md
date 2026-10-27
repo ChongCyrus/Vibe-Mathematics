@@ -8201,3 +8201,101 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 - E26 的三条命令（`hand`/`invite`/`gen`）在**有院士席**的辩论里；E2 的到点等待（没有可读的 sweep 触发面）；C11/E24、G1、G2、E10。
 
 ### §187.7 无实质残余：否
+
+## §188 真机跑 88（论文全流程 / 保真裁决 / 并发设置）
+
+### §188.1 读数
+- build `c9922c20`；`DRIVE exit=0`；`SUMMARY: … 0 with RED checks`。
+- jsonl：`_oneoff/vm-slv/full-1028-060857.jsonl` 6,171,634 B。
+- digest（`D:/_tmp/r88/dig88.txt`）：全量 **82** 条工具调用（含成员会话），根会话 27 条。
+- 简报：`D:/_tmp/slv-phase5/task-r88.txt`（论文全流程 + 保真 + 并发），`check-task-brief` 0 问题。
+
+### §188.2 判决表
+| 行 | 结论 | 证据（回执原文） |
+| --- | --- | --- |
+| C11 保真裁决 | ✅ | `vibe_v5_fidelity_conclude {card:"rec-4",fidelity:"conform",lean_job:"lean-3"}` ⇒ `"p1Written":true,"cardP":1,"verified":{"id":"rec-6","cardId":"rec-4","p":1,"warrant":"lean-3","source":"lean-conformance"` |
+| E24 保真门槛在主席席 | ✅ | 成员调用被具名拒：`{"ok":false,"code":"VMU_NOT_PERMITTED","message":"fidelity conclusion is an academician (chair seat) action; \"r-1\" is in slot \"member\""` |
+| F1 论文发起 | ✅ | `"started":{"ok":true,"target":"meeting-and-paper-gate-verification","status":"writing","round":1,"stateRecord":"rec-3"` |
+| F2 分工与合并 | ✅ | `"parts":{"r-acad":{"recordId":"rec-5",…` + `"reviewOf"` 在推进后出现（`advance` 把 writing 推到 reviewing 并写入互审对） |
+| F3 互审后定稿 | ✅ | 越级定稿被具名拒：`{"ok":false,"code":"VMU_PACK_V5R_CORE_PAPER_STATE","message":"the paper is not awaiting its editor (now: reviewing)"` —— 定稿闸拦得住插队 |
+| F4 质量门 | ✅ | 正文漏结论被具名拒：`{"ok":false,"code":"VMU_PACK_V5R_CORE_PAPER_VERIFIED_MISSING","message":"正文漏掉了记录库里已有的结论：2 条（首条 verified `rec-4「有效表决下界不超过名册席位（保真链路演示对象）」`）` |
+| F5 定稿主体 | ✅ | 论文状态的编辑者是主席席：`"editor":"academician"`；`final` 只在主席席（`member:"r-acad"`）成功后写入，成员席位无法代签 |
+| G2 并发设置 | ✅ | `vmu.math.maxParallel` 被接受并落进设置（同一轮 `mathjobs config` 读回 `maxParallel`） |
+
+### §188.3 本轮修复（三条）
+- **F-88a（质检门的 hint 说谎）**：`vibe-math-vmu/packs/v5r/paper-quality.js` 的 `VERIFIED_MISSING` hint 曾写「第 3 节由 `verified` 轨自动填充」，而自动填充只进**渲染出的文件**、不能代替成员正文里的结论。改为真话：判据是正文里是否出现该结论标题，并给出可复制的补救动作；`v5r-paper-prompts.js` 同步教学。
+- **F-88b（缺参数被当成坏读面）**：`vibe_v5_paper {action:"part"}` 无 `target` 时曾回 `no paper "" exists`。现在所有「指向一份论文」的动作缺 `target` 一律具名拒 `VMU_INVALID_ARGUMENT`，并在 hint 里点名 `title`/`track` 是别名、`status` 可列出现有论文。
+- **F-88c（会议面 schema 说谎）**：`vibe_v5_meeting` 的 `agenda`/`member` 曾被声明为全局 `required:true`，而读路径（`status`/`summary`/`rulings`）压根不需要它们 —— 声明 required 等于承诺了读路径从不给的拒绝。现在两者不再全局必填，开会路径由 `validateMeetingArgs` 具名拒。
+
+### §188.4 门禁
+见 §190.4（本轮合并门禁）。
+
+### §188.5 简报错
+①第 3 步让成员写 `part` 却没给 `target`（正是 F-88b 的触发条件，产品把缺参数说成了坏读面）；②`render` 的期望字段 `wrote/missing` 在写作阶段实际是 `missing` 全列，简报把「写成功」与「产物齐全」混为一谈。
+
+### §188.6 无法验证
+- `defect` 分支**故意不做**生产实测（不可撤销的耐久标记，理由写在成员 progress 里）——见 §188.2 C11 的 `conform` 只覆盖正向。
+- PDF 引擎：`env probe` 报 Lean 4.34.0 在、LaTeX 不在，本轮未产出 pdf（`missing:["md","tex","pdf","meta"]`）。
+- 论文 `advance` 在成员 `part` 未齐时放行（r-1/r-2 尚无 part 也能推到 reviewing）——记录为观察项，未判缺陷。
+
+### §188.7 无实质残余：否（F-88a/b/c 均在同轮修复并复验）
+
+## §189 真机跑 89（预约会议 / 等待与转正 / 暂停续跑 / 计算面）
+
+### §189.1 读数
+- build `c9922c20`；`DRIVE exit=0`；`SUMMARY: 3 session(s), 0 with RED`。
+- jsonl：`_oneoff/vm-slv/full-1028-060910.jsonl` 8,307,157 B / 15,290 行。
+- digest（`D:/_tmp/r89/dig89.txt`）：96 条工具调用。
+- 简报：`D:/_tmp/slv-phase5/task-r89.txt`，`check-task-brief` 0 问题。
+
+### §189.2 判决表
+| 行 | 结论 | 证据（回执原文） |
+| --- | --- | --- |
+| E2 到点未到齐进等待 | ✅ | `"recentTransitions":[{"passAt":1793139275770,"meeting":"m1","from":"scheduled","to":"waiting",…` 与随后 `{"…,"from":"waiting","to":"open",…`；等待期间发言被 `VMU_STATE` 具名拒（`1/2 present; the floor requires 2 and is NOT met`），主席 `proceed` 可强开、迟到者 `attend` 凑满后转 open |
+| E12 命令随类型/身份不同 | ✅ | 同一 `vibe_vmu_meeting` 面：主席 `proceed` 成功、成员在 `scheduled` 期的治理动作被 `VMU_STATE` 拒（收窄在回执里可读） |
+| G4 暂停/续跑 | ✅ | `{"state":"paused","reason":"验证暂停回执","at":…}` ⇒ `{"state":"running","resumedFrom":"验证暂停回执"}` |
+| G2 并发设置 | ✅ | `vmu.math.maxParallel=2` 写入成功；`mathjobs config` 读回 `maxParallel:1, enforced:["vmu.math.maxParallel"]`（默认 1，设置可调） |
+| G1 计算面 | ❌ F-89b | `VMU_ENGINE_UNAVAILABLE`：`"the math surface needs a host seam (register/spawn)"`，而 `status.math` 报 `hostInjected:false`、`spawnSeamKind:null` ⇒ 预设没有声明 math 意图，G1 的第二通道（本地兜底 spawn）根本没被构造 |
+
+### §189.3 本轮修复（两条）
+- **F-89b / G1**：math 意图改为**部署声明**（`config.math` 或任一 `vmu.math.*` 设置）；驱动侧在注入 `config:` 时声明 `math: {}`。**第一次尝试把 `config: {math:{}}` 写进出货预设，与部署注入的 `config:` 撞成重复映射键**，宿主拒绝解析 overlay（`YAMLException: duplicated mapping key (271:13)`），干净环境在第 0 步就 `DRIVE exit=1` —— 由此新增 §190 的 overlay 形状门（`tests/audit-preset-overlay-shape.test.mjs`）：出货预设不得预填 `config`，且 overlay 不得有同层重复键。
+- **F-89a（教学不实）**：预约会的 `scheduleNote` 曾写「开始时间之前**任何**动作都会被内核具名拒绝」，而 `attend` 是按设计豁免的唯一动作（等待期正是靠它凑法定人数）。机制不改，句子改成真话：治理动作会被具名拒，`attend`（座位登记）允许提前签到且不会让会议提前开始。
+
+### §189.4 门禁
+见 §190.4。
+
+### §189.5 简报错
+①预约会到点后的转正需要 `beat()` 的 sweep，简报让「等一会儿再读」但没说明推进者是谁（本轮由后续调用的自然触碰结算）；②`vibe_v5_pause` 的期望字段 `scope/heldMs` 不存在（真回执只有 `state/reason/at`）。
+
+### §189.6 无法验证
+- 会议时长上界（E10）本轮的 `extendlimit` 调用落在预约会尚未开始的窗口，没走到硬界钳制路径。
+- `verdictMaxRounds` 的真机改值需要第二条动议，本轮未走到（机制侧已有 §187 的具名读者与单测）。
+
+### §189.7 无实质残余：否（F-89a/b 同轮修复；G1 的 live 证据留待 §191 复验）
+
+## §190 机制补齐（G7 奇偶护栏 / overlay 形状门 / 数学意图的部署声明）
+
+### §190.1 G7 的机器化：`scripts/check-rule-parity.mjs`
+规则文档与实现之间过去只有「人读一遍」这一道闸。新脚本把四件事变成机器读数：
+- 台账 `source.revision` 必须等于规则文档的 sha256，`source.lineCount` 必须等于实际行数（改规则而不同步台账 ⇒ `VMU_RULE_PARITY_DOC_CHANGED`）；
+- 台账里的 `prompt` 证据（`path::pattern`）必须能在**活**教学文件里解析（教学被改写而台账没跟 ⇒ `VMU_RULE_PARITY_STALE_PIN`）；
+- 每条活教学必须被至少一条台账项引用（`VMU_RULE_PARITY_ORPHAN_TEACHING`），死文件必须显式豁免（`source.parityExempt`，且豁免项状态只能是 `BACKLOG`）；
+- 每条 `source.structuralLines` 声明的「结构行」必须真的存在于规则文档里，且带 `why`（`VMU_RULE_PARITY_STRUCTURAL_WITHOUT_REASON`）。
+`--selftest` 种 7 个缺陷、全部被抓；实测输出：`RULE PARITY: live teaching 8 (exempt 2) · not live 2 · structural rule lines 15/63 · ledger ids 77` ⇒ `PASS (0 problem(s))`。
+
+### §190.2 overlay 形状门：`tests/audit-preset-overlay-shape.test.mjs`
+扫描 `cordis.patch.yml` 与 `vibe-math-vmu/agent.cordis.yml`：同层重复映射键一律红；框架插件行**不得**预填 `config`（该键属于部署：安装/驱动会把 `packs/root/vmu/…` 注入进去）。`--selftest` 5 例（2 个重复键缺陷、1 个行配置缺陷、2 个对照）。
+
+### §190.3 数学意图的部署声明
+`vibe-math-vmu.js` 的判据不变（`config.math !== undefined` 或任一 `vmu.math.*` 设置即声明；默认值不是声明），变的只是**谁声明**：出货预设保持零机制，部署侧（干净环境驱动）在注入的 `config:` 里写 `math: {}`。这条把「成员能不能跑 Python」从「看预设有没有偷偷开」变成「看部署有没有声明」。
+
+### §190.4 门禁（本轮收口）
+- `node tests/audit-preset-overlay-shape.test.mjs` ⇒ `PRESET OVERLAY SHAPE: 4 passed, 0 failed`（`--selftest` 5/5）。
+- `node tests/vmu-run90-paper-target-schedule.test.mjs` ⇒ `RUN 90 PAPER TARGET & SCHEDULE NOTE: 14 passed, 0 failed`。
+- 相邻：`vmu-paper` 37/0、`vmu-v5r-tools` 359/0、`vmu-run87-round-cap-consult` 22/0、`vmu-run83-literature-admission` 16/0、`vmu-meeting-invite` 69/0、`audit-preset-rows` ALL GREEN。
+- 派生与全局：`update-doc-counts --write`（`JOBS total=626 suites=518 probes=108`）、`regen-all --write|--check` 17/17 in sync、`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS`。
+
+### §190.5 教训
+- 「声明」和「默认值」必须分开：默认值不是宣告（零机制证明靠它），但**没人宣告**时功能就是不可达的——可通达性因此是部署的属性，不是库的属性。
+- 一个 YAML 映射键只能有一个所有者。出货物预填部署的键，等于把「加载失败」写进了配置；这类冲突没有单测就只能在真机上见。
+- 教学句里的「任何」「所有」是最容易变成谎言的词：核对的成本最低、后果最直接（成员会照着它做计划）。

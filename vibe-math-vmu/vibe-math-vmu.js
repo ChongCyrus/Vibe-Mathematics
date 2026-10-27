@@ -285,6 +285,19 @@ export function apply(ctx, config = {}) {
   // No declaration ⇒ no math tool, exactly like scripts/packs/middleware: a default value is not a
   // declaration, and the zero-mechanism proof ("one read-only tool") must survive (docs/11 §7).
   const mathDeclared = config.math !== undefined || Object.keys(settings).some((k) => k.startsWith('vmu.math.'))
+  // ROUND 201: "math is off" must be answerable. A deployment that meant to declare the computation surface but
+  // put the key at the wrong level (or named it differently) used to see exactly the same thing as a deployment
+  // that never asked for it: no math tool. This says which keys DID arrive, once, at boot, and the same reading
+  // is on the handle (`status().mathIntent`).
+  const mathSeedKeys = Object.keys(settings).filter((k) => k.startsWith('vmu.math.'))
+  const mathIntent = Object.freeze({
+    declared: mathDeclared,
+    via: config.math !== undefined ? 'config.math' : (mathSeedKeys[0] || null),
+    configKeys: Object.keys(config || {}).filter((k) => k !== 'settings'),
+  })
+  if (!mathDeclared) {
+    try { process.stderr.write('[dsh-vibe-math] vmu: math intent NOT declared — the computation surface stays out (declare config.math, or a vmu.math.* setting). config keys seen: ' + mathIntent.configKeys.join(',') + String.fromCharCode(10)) } catch { /* stderr may be gone */ }
+  }
   let mathHost = null
   if (mathDeclared && settings['vmu.core.enabled'] !== false && ctx && ctx.tools && typeof ctx.tools.register === 'function' && settings['vmu.math.computation'] !== 'off') {
     try {
@@ -1296,7 +1309,7 @@ export function apply(ctx, config = {}) {
     // ROUND 21 / task-129 (H2): whether the declared prompt text reached the host — and, when it did not, the
     // NAMED reason (this is what used to kill preset assembly instead of being readable).
     promptSection: () => Object.assign({}, promptSectionState),
-    status: () => Object.assign(adapter.status(), { installError, promptSection: Object.assign({}, promptSectionState), settingsUnparsed: settingsUnparsed.slice(), settingsConflicts: settingsConflicts.slice(), packsLoading }),
+    status: () => Object.assign(adapter.status(), { installError, mathIntent, promptSection: Object.assign({}, promptSectionState), settingsUnparsed: settingsUnparsed.slice(), settingsConflicts: settingsConflicts.slice(), packsLoading }),
     installError: () => installError,
     /** Round 6 B: what the entry could NOT turn into a setting, and what was declared in both shapes. */
     settingsUnparsed: () => settingsUnparsed.slice(),
