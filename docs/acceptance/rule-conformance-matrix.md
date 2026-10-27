@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 38 | all four citations resolve |
-| ◐ PARTIAL | 39 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 46 | all four citations resolve |
+| ◐ PARTIAL | 31 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -38,7 +38,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `B1` | L7-L8 | Verified 只收 p=1 的命题 | ✅ DONE | 1/1/1/1 | — |
-| `B2` | L7-L8 | 参考文献中的命题也可直接入 Verified | ◐ PARTIAL | 0/0/1/0 | 规则允许文献命题直接入 Verified，内核没有该入口：verified 轨唯一写者 `promoteVerified` 要求 warrant（辩论一致／Lean+符合性）。最小可建方案：①命题卡增加 `reference` 字段（作者/年份/定理号，非空才计）②`promoteVerified` 增第四种 `warrant_kind:"literature"`，缺 `reference` 或未署名 ⇒ 具名拒 ③`vibe_v5_verified_promote` 暴露该 kind ④测试钉住「无 reference 必拒、有 reference 才入轨」；或由用户裁定 DECIDED（不引入文献入口）。live 仍 0 次。 ／ 真机未演练：内核无「文献命题直接入 Verified」入口（next 已记机制缺口），run 29–78 无对应回执。 |
+| `B2` | L7-L8 | 参考文献中的命题也可直接入 Verified | ◐ PARTIAL | 2/2/1/0 | 机制已落地（tests/vmu-run83-literature-admission 16/0）：写卡带 `literature_ref` + p=1 过闸，`vibe_v5_verified_promote{warrant_kind:"literature", literature_ref}` 入轨、行上 warrant 即引用。live 仍 0：需一轮真机用文献命题走完「写卡 → 入 Verified → 读回 ready」。 |
 | `B3` | L7-L8 | 只有辩论能把 p 改为 1 | ✅ DONE | 1/1/1/1 | — |
 | `B4` | L7-L8 | 蓝图：总目标/技术路线/规划，按时更新 | ✅ DONE | 1/1/1/1 | — |
 | `B5` | L7-L8 | 蓝图由院士+常驻研究员共同设计 | ◐ PARTIAL | 1/1/1/0 | 教学写清“任何 live 成员可 propose、院士 adopt”；真机验常驻 propose ／ 真机未演练：真机只见院士（主席席）propose（5345/6143）；常驻 propose 的链路 0 次。 |
@@ -72,8 +72,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `D2` | L27 | 三通道：邮箱/私信/群聊 | ✅ DONE | 1/1/1/1 | — |
 | `D3` | L27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ◐ PARTIAL | 1/1/1/0 | 补一句语义教学（机制已有 urgent） ／ 真机未演练：`urgent` 只在 4893 的参数字面（`{to,content,subject,urgent}`）出现，无真机「urgent 私信」回执。 |
 | `D4` | L28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 1/1/1/1 | — |
-| `D5` | L28 | 四字段都含时间等基础信息 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) ／ 真机未演练：run 29–78 的回执里没有状态板四字段的时间读数；`updatedAt` 只出现在 5388 的排序机制说明。 |
-| `D6` | L28 | 可查看其他成员当前状态版 | ◐ PARTIAL | 1/1/1/0 | 无定向入口（只能 list 出 `state` 行）：余项＝加「读某成员状态板」形状 + 教学 + live 真机演练，或由用户裁定记为「借道 read_library 已够用」。 |
+| `D5` | L28 | 四字段都含时间等基础信息 | ✅ DONE | 1/1/1/1 | — |
+| `D6` | L28 | 可查看其他成员当前状态版 | ✅ DONE | 1/1/1/1 | — |
 | `D7` | L28 | 可自己修改更新自己的状态版 | ✅ DONE | 1/1/1/1 | — |
 | `D8` | L28 | 四字段按规则原文实现（字段名与语义） | ✅ DONE | 1/1/1/1 | — |
 
@@ -93,13 +93,13 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E10` | L33 | 院士设会议时长上界 | ◐ PARTIAL | 1/1/1/0 | 教学 + 真机（hardLimitMs 截断发言） ／ 真机未演练：`hardLimitMs` 只在机制表 57 行出现；真机只读到 `wallLimitMs`（5346 的延长），没有「设上界」回执。 |
 | `E11` | L33 | 允许一次性连续召开多个会议 | ✅ DONE | 1/1/1/1 | — |
 | `E12` | L34 | 成员命令随会议类型与身份不同 | ◐ PARTIAL | 1/1/1/0 | 真机验一条“辩论下 lean 被收窄” ／ 真机未演练：`deny[chair]`/`deny[member]` 读数是 run 31 的缺陷观测（5150），不是「命令随类型与身份不同」的正向真机回执。 |
-| `E13` | L35 | 会议类型：正常/学术交流/辩论/结题/论文交流/未来规划 | ◐ PARTIAL | 1/1/1/0 | 补一览表教学（含 ordinary 无骨架的理由） ／ 真机未演练：六类里只有 ordinary（4919）、academic（6139）、debate（6402）有真机读数；closure/paper/planning 0 次。 |
-| `E14` | L36 | 常见命令：举手 | ◐ PARTIAL | 1/1/1/0 | re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) ／ 真机未演练：`hand`（举手）0 次真机调用；只在教学段（63/68/143/289）。 |
-| `E15` | L36 | 常见命令：邀请发言 | ◐ PARTIAL | 1/1/1/0 | 邀请在 SERVICE 会议面真的可达（`meeting.js#invite(member,{by,why})`，主席可单个或按数组批量入队；邀请≠签到，被邀者仍须自己 `attend` 才计入法定人数，受邀发言只记纪要、不计票、不阻塞收束）。缺 live 真机一轮含受邀发言的会议。 ／ 真机未演练：邀请发言无工具形态（next 记「教学改成工具形态」），0 次真机。 |
-| `E16` | L36 | 常见命令：批量指定成员按顺序发言 | ◐ PARTIAL | 1/1/1/0 | 教学（order/flow 两种机制）+ 真机 ／ 真机未演练：`overrideorder` 只在 58 行机制说明；0 次真机批量排序发言。 |
-| `E17` | L36 | 常见命令：单次发言版群聊（每人各说一次、不打断） | ◐ PARTIAL | 1/1/1/0 | 骨架是 `binding:'recommendation'`（非门禁）；「每人各说一次」可用 `vibe_v5_say {meeting}` 逐人记录，但**并行隔离/不打断不可强制**（无独立工具、无隔离机制）⇒ 若要强制需新增「批量独立表态」动作（允许破坏性重构），否则如实记为缺口；live 仍 0 次。 ／ 真机未演练：next 记「无独立工具、无并行隔离」=机制缺口；0 次真机。 |
-| `E18` | L37 | 投票板：院士设选项与机制（最少/最多选几项） | ◐ PARTIAL | 1/1/1/0 | 教学 + 真机（poll_open→vote→close，含 min/max 校验） ／ 真机未演练：`poll` 词形在 run 29–78 为 0 命中；唯一的 ballot 回执是辩论票箱（4569 的 `kernel/ballot.js` 崩溃），不是投票板。 |
-| `E19` | L37 | 投票板不用于辩论 | ◐ PARTIAL | 1/1/1/0 | 机制已建（本轮）：`toolPollOpen` 在主席闸之后调用 `openDebateMeeting(kernel)`（读 `kernel.meetings.openMeetings()` + `meetingView({type})`），只要有一场非 `closed` 的 `type:"debate"` 就具名拒 `VMU_NOT_PERMITTED`，message 带该会议 id、hint 给两条出路（`vibe_v5_verdict` 裁决 / 主席 `vibe_vmu_meeting {action:"close"}`），拒绝发生在开箱之前（箱数不变）；普通会议不拦。测试 `tests/vmu-run36-poll-debate-guard.test.mjs` 24/24（基线开票、辩论拒、关闭后放行、普通会议放行、非主席先撞主席闸）。缺 live 真机。 ／ 真机未演练：status=MISSING：辩论中投票板没有具名拒（next 原文）；0 次真机。 |
+| `E13` | L35 | 会议类型：正常/学术交流/辩论/结题/论文交流/未来规划 | ✅ DONE | 1/1/1/1 | — |
+| `E14` | L36 | 常见命令：举手 | ✅ DONE | 1/1/1/1 | — |
+| `E15` | L36 | 常见命令：邀请发言 | ✅ DONE | 1/1/1/1 | — |
+| `E16` | L36 | 常见命令：批量指定成员按顺序发言 | ✅ DONE | 1/1/1/1 | — |
+| `E17` | L36 | 常见命令：单次发言版群聊（每人各说一次、不打断） | ◐ PARTIAL | 1/1/1/0 | 余项：live 真机演练（机制＋测试已就位：`kernel/chat.js::speakRound` 轮记账、同轮第二次具名拒 `VMU_CHAT_ALREADY_SPOKE`、pack `vibe_v5_say` 的 `round` 参数、教学「单次发言版群聊两法」、`tests/vmu-run85-say-round.test.mjs` 47/0）。「不打断」是**事后具名拒**不是并行隔离，教学与回执 `means` 都如此声明。 |
+| `E18` | L37 | 投票板：院士设选项与机制（最少/最多选几项） | ✅ DONE | 1/1/1/1 | — |
+| `E19` | L37 | 投票板不用于辩论 | ✅ DONE | 1/1/1/1 | — |
 | `E20` | L38 | 任务板：设置与认领交派 | ✅ DONE | 1/1/1/1 | — |
 | `E21` | L39 | 群聊式交流：院士为群管理员，设每人权限/发言次数/禁言 | ✅ DONE | 1/1/1/1 | — |
 | `E22` | L40 | 辩论额外字段：对象或文件引用 | ✅ DONE | 1/1/1/1 | — |

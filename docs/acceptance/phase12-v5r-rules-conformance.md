@@ -8020,3 +8020,64 @@ hashUnchangedMeans: "not measured: no compile ran for this job (VMU_LEAN_FILE_UN
 
 ### §183.4 专项：live 仍是 0
 - 本节的机制与教学已闭合，但「成员用 Python 算过」的**真机**证据仍缺——这是台账 G1 保持 `PARTIAL` 的唯一原因。下一轮真机简报用 `vibe_vmu_mathtools{op:"run"}` 跑一次真实计算并回填 live。
+
+## §184 真机跑 84（会议机械 / 面板互读 / 投票 / 五个席位面）
+
+> 本轮目的：给逐句台账里「会议机械（E13/E14/E15/E16/E18/E19）」「面板互读（D5/D6）」补**真机**证据，
+> 同时把上一轮 G1 的两条引擎通道、B2 的文献入口放到真机里过一遍。
+
+### §184.1 读数
+
+| 项 | 读数 |
+| --- | --- |
+| build | `631a5747` |
+| 驱动 | `DRIVE exit=0`，`durationSec 247` |
+| 根会话 | `toolCalls 33`，`transcriptEvents 184`，`tokenTotal 2,091,969`（cap 12,000,000） |
+| 会话 | `SUMMARY: 2 session(s), 0 with RED` |
+| 围栏 | `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=12 BAD_JSON=12` |
+| 日志保全 | `20261028-040207`（`D:/_tmp/slv-phase5/slv-logs/…`），jsonl 2,991,054 B / 5,553 行 |
+| 磁盘 | C 盘余 10.12 GB；clone 已清 |
+
+### §184.2 逐条判决（八条）
+
+| # | 规则句 | 判决 | 真机证据（原话） |
+| --- | --- | --- | --- |
+| 1 | L28 可查看其他成员当前状态版（D6） | ✅ | `vibe_vmu_panel{action:"view",viewer:"r-acad",ids:["r-1"]}` 回 `roster:[{member:"r-1",known:true,overall,subtasks:[…],times:{…},updatedBy:""}]`、`count:1`、`running:2`、`auditTail:[{at,by:"r-acad",saw:["r-1"]}]` —— 一个成员读另一个成员的状态板这件事，面板读面答得出来，且留下一行「谁看了谁」的审计尾 |
+| 2 | L28 四字段都含时间等基础信息（D5） | ✅ | 同一次读里四个字段各带自己的时间：`times":{"overallAt":1793131172223,"subgoalAt":1793131172223,"planAt":1793131172223,"subtasksAt":1793131172223}`；写入方另有 `updatedAt:1793131097165` 与 `updatedBy`，所以「什么时候写的、谁写的」是回执的一等字段，不是猜的 |
+| 3 | L35 会议类型六种，院士可设（E13） | ✅ | 本轮真机设了三种：`ordinary`（m4）、`planning`（m1，主席席召集）、`debate`（m3，带 `subject`）；`at` 预约的那场回 `state:"scheduled"`、`scheduledFor":1793235600000`。六种类型的**枚举校验**由 `tests/vmu-meeting-types.test.mjs`（153/0）钉住，真机已演练 3/6 |
+| 4 | L36 常见命令：举手（E14） | ✅ | `vibe_vmu_meeting{action:"hand",id,member:"r-1"}` 回 `queued:true,"order":["r-1"]`、`mode:"fifo"`、`modeSource:"setting"` —— 举手真的进了发言队列，不是只写一行日志 |
+| 5 | L36 常见命令：邀请发言（E15） | ✅ | `invite{id,member:"r-2",why}` 回 `invited:["r-2"]`；缺 `why` 时被具名拒（`VMU_INVALID_ARGUMENT` "why is required"），补上才生效；回执 note 明说「邀请**不**改法定人数」 |
+| 6 | L36 批量指定成员按顺序发言（E16） | ✅ | `invite{id,members:["r-1","r-2"],why}` 回 `invited:["r-1","r-2"]`,`order:["r-1","r-2"]` —— 数组顺序即发言顺序 |
+| 7 | L37 投票板：院士设选项与机制（E18） | ✅ | `vibe_v5_poll_open{question,options:[…],min:1,max:1}` 回 `rulesDeclared:true`、`rules":{"maxChoices":1,"minChoices":1}`、`applied:["max","min"]`、`unapplied:[]`；投票 `vibe_v5_poll_vote` 回 `sealed:false`；关票 `vibe_v5_poll_close` 回 `result:"继续"` 与 `tally:{cast:1,votes:1,abstain:0,absent:0,floor:0,floorBase:1,ranked:[{option:"继续",n:1}]}` 并列出 `enforced` 五个键 |
+| 8 | L37 投票板不用于辩论（E19） | ✅ | 辩论 m3 期间 `vibe_v5_poll_open` 回 `VMU_NOT_PERMITTED`，原话 `the ballot board is not used while a debate is open`，hint 给出两条出路（成员 `vibe_v5_verdict`、主席 `close`） |
+
+### §184.3 四条新缺陷与修法
+
+1. **F-84a（误导）**：`vibe_vmu_meeting{action:"lapse",id:"m2"}`（m2 只在 SERVICE 注册表）回 `VMU_NO_SUCH_OBJECT "no live meeting with id m2"`，而**同一回执**的 hint 承认它在 service 并列出交叉动作表，且表里没有被问的 `lapse`。
+   修法：`vibe-math-vmu/tools/meeting.js` 把交叉集合提到模块级 `SERVICE_CROSSING_ACTIONS`（从 `run()` 分支派生），新增导出 `primitiveMissError({id,inService,action})`：消息改成「不在**本表**、id 在另一张表」，hint 明说**被问动作是否交叉**并给真实交叉表，回执带 `registry/askedAction/actionCrosses`。
+2. **F-84b（顶层撒谎）**：`vibe_v5_meeting_round{phase:"round"}` 回**顶层** `ok:true`，内层 `turn:{ok:false,code:"VMU_INVALID_ARGUMENT",message:"unknown phase: round"}` —— `kernel.turn.step()` 把拒绝当**返回值**，包装面照抄成功。
+   修法：`packs/v5r/tools.js#toolMeetingRound` 在 `step.ok === false` 时返回 `ok:false` + 提上 `code/message/hint` + `turnFailed:true`，`turn` 保留全读；`phase` 参数补 11 个合法值枚举（描述里列全）。
+3. **F-84c（自己的动词被自己拒）**：`vibe_v5_meeting{action:"convene"}` 被回「only CONVENES… has no "convene" action」。修法：`validateMeetingArgs` 对 `convene` 返回 `null`（与工具动词对齐，照常派发）；`toolMeeting` 读到 `null` 不再 `.code`（那是 TypeError）。
+4. **教学缺口（同轮）**：`v5r-blocks-b.js` 的会议段补「预约会没有墙钟上界可延」「`invite` 必须给 `why`」「`invitedspeak` 前要 `attend`」「`close/extendlimit` 要带 `actor`」「`phase` 只能取 11 个值，写错⇒顶层 `ok:false`」。
+
+### §184.4 测试与门禁
+
+- 新 `tests/vmu-run84-meeting-reads.test.mjs` **8/0**：回合失败必须 `ok:false`（并把 step 的 code/message/hint 提到顶层）、成功的一轮仍 `ok:true`、`convene` 不再被自己的面拒、别的动词仍具名拒且 hint 指 `vibe_vmu_meeting`、`lapse` 打在 service id 上的四种说法（含 `③d` 交叉表与 `run()` 分支一致）。
+- 相邻套件：`vmu-meeting*` 全套 26 个文件全绿（`vmu-meeting` 50/0、`vmu-meetings` 214/0、`vmu-meeting-types` 153/0、`vmu-meeting-parity` 204/0、`vmu-meeting-type-tools` 51/0 等）；`vmu-run36-poll-debate-guard` 24/0；`vmu-prompt-clean` 8/0；`vmu-prompt-type-coverage` 15/0；`audit-prompt-tool-params` 81/0；`brief-check` 47/0。
+
+### §184.5 简报与提取
+
+- 简报（`task-r84.txt`）由 `scripts/check-task-brief.mjs` 预检两次，共抓出 **12 + 7 个真错**（`vibe_v5_meeting` 每次要 `agenda`+`member`；会议 id 参数是 `id` 不是 `meeting`；`vibe_v5_paper` 的论文 id 走 `target`；`vibe_v5_poll_close` 要 `member`）——校验器的价值就是这些。
+- **提取坑**：drive 写出的 jsonl 里中文是替换字符（`\ufffd`），全保真副本是 dsh 会话目录里的 `session.v4.jsonl.zstd`，且**多帧拼接**，解压必须按魔数 `28 b5 2f fd` 逐帧解（`D:/_tmp/r84/dec3.mjs`），再抽 `tool/call` 与 `tool/result` 配对。
+- 简报错（三条）：①把「round」当成合法 `phase`（真值是 11 个词里的 `normal`）；②没有告诉 agent「服务会议的动作要在 `vibe_vmu_meeting` 面做，`lapse` 不交叉」，所以它拿 lapse 试了个必定被拒的词；③预约会议后立刻要求它「等会开」，而框架没有定时器。
+
+### §184.6 无法验证（诚实列表）
+
+- 六种会议类型里的 `academic`/`closure`/`paper` 本轮未在真机里召集（枚举与流程由单测覆盖）。
+- `E2` 等待阶段（到点人未齐 ⇒ `waiting`，超时由院士决定）本轮没走到：预约会后 agent 直接改做别的，`waitOnDueMs` 从未出现在回执里。
+- `E12` 「辩论下成员面被收窄」没有正向真机读数：本轮唯一的 `meeting_round` 打在 ordinary 上（`narrowed:false` 是**正确**读数，但不构成 E12 的证据）。
+- `E10` `hardLimitMs` 本轮没有真机读数。
+
+### §184.7 无实质残余：否
+
+E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只读到拒绝路径；面板 `updatedBy` 在同一内核写入后读出为空（`""`），跨内核读回的归属句需要另一轮验证。

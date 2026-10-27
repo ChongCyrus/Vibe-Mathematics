@@ -44,7 +44,39 @@ import { BLUEPRINT_ADOPT_SLOT, BLUEPRINT_PATH_KEY, BLUEPRINT_TRACK, adoptBluepri
 // ★ PHASE 8 / B-2 step 2: the kit owns the implementations; v5r keeps only INSTITUTION vocabulary (names, descriptions,
 // parameters) and its policy. The 8 generic helpers come from the kit so the tree has exactly ONE copy.
 const { str, has, refuse, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker } = KIT_HELPERS
-const toolSay = KIT_SOCIAL.say
+// ★ RUN 85 / E17 (规则 L36「单次发言版群聊：每人各说一次、不打断」): THE ONE-SPEECH-PER-MEMBER ROUND.
+// The kit's `say` records a speech per call and knows nothing about rounds. The round rule is therefore a PACK
+// convention carried by KERNEL bookkeeping: `round` names a page of the chat ledger, the kernel records who spoke on
+// it, and the SAME member's second speech in the SAME round is refused by name (`VMU_CHAT_ALREADY_SPOKE`) before
+// anything is appended. What it is NOT: a turn queue. It does not order or isolate the members' messages, so
+// 「不打断」 is a room convention this book enforces AFTER the fact — every round receipt's `means` says exactly that,
+// and this file must not claim more (a prompt-only promise would be the "写了 ≠ 机制存在" defect the repo forbids).
+const toolSayBase = KIT_SOCIAL.say
+function toolSay(args = {}, ctx = {}) {
+  const round = has(args.round) ? str(args.round).trim() : ''
+  if (!round) return toolSayBase(args, ctx)
+  // `round` is the group-chat rule; the other two forms have their own notion of who/ordering and are refused BY NAME
+  // rather than silently ignored (a silently dropped argument is the defect this face exists to avoid).
+  if (has(args.to) || has(args.meeting)) {
+    throw refuse('VMU_INVALID_ARGUMENT',
+      '`round` is the GROUP-CHAT single-speech rule: it cannot be combined with `to` (a private message has a recipient, not a round) or `meeting` (a meeting speech is ordered by the meeting)',
+      'call vibe_v5_say { round: "<round>", member: "<your id>", text: "…" } for the group chat, or drop `round` for the DM/meeting form')
+  }
+  const kernel = ctx && ctx.kernel
+  if (!kernel || !kernel.chat || typeof kernel.chat.speakRound !== 'function') {
+    throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel publishes no chat round book, so the one-speech-per-round rule cannot be enforced here',
+      'assemble a kernel whose chat face provides speakRound (the v5r host does); without it the round argument would be a silent no-op')
+  }
+  const member = requireSpeaker(kernel, args.member)
+  const declared = Array.isArray(args.members) ? args.members : null
+  if (!has(args.text)) {
+    // A ROUND READ: opens no page and says nothing — it answers "who has spoken / who is still owed a turn".
+    const read = kernel.chat.roundStatus({ round, members: declared })
+    return Object.assign({ tool: 'vibe_v5_say', via: 'chat', read: true, member }, read)
+  }
+  const res = kernel.chat.speakRound({ round, from: member, text: str(args.text), members: declared })
+  return Object.assign({ tool: 'vibe_v5_say', via: 'chat', member }, res)
+}
 const toolMessage = KIT_SOCIAL.message
 /**
  * packs/v5r/tools.js — PHASE 7 / goal 2: THE TOOL FACE OF THE v5r INSTITUTION (first batch: 6 tools).
@@ -1011,6 +1043,15 @@ function leanEvidenceOf(kernel, args = {}) {
 }
 /** The debate EVIDENCE a write may claim (caller-supplied by design: the gate proves "no evidence ⇒ refuse", never
  *  "this evidence is true" — see docs/acceptance/conformance/lane-verified-design.md §10.6). Only known fields pass. */
+/** ★ B2: the LITERATURE evidence a card write may claim — `literature_ref` is the citation itself (a non-empty
+ *  string). Like the debate/lean forms, the gate proves "no citation ⇒ refuse"; it cannot prove the citation is
+ *  real, and the verified row records the citation as its warrant so "why is this settled" names a source. */
+function literatureEvidenceOf(args = {}) {
+  const reference = has(args.literature_ref) ? str(args.literature_ref).trim() : ''
+  if (!reference) return null
+  const subject = has(args.card_id) ? str(args.card_id) : (has(args.id) ? str(args.id) : null)
+  return { reference, subject }
+}
 function debateEvidenceOf(args = {}) {
   const raw = args.debate_ruling
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
@@ -1247,11 +1288,12 @@ function gatedCardHandler(toolName) {
     const writerRefusal = gateRefuse(writerGate)
     if (writerRefusal) return writerRefusal
     const gates = [writerGate]
+    let p1Form = null
     if (toolName === 'vibe_v5_record_proposition') {
       // The three evidences the rule accepts. `debate` and `lean` come from the CALLER's args (a card write cannot go
       // and hold a debate); `verified` is read from the records face, so it is not claimable by argument at all.
       const evidence = { verified: verifiedRowOf(records, cardId, kernel && kernel.fidelity),
-        debate: debateEvidenceOf(args), lean: leanEvidenceOf(kernel, args) }
+        debate: debateEvidenceOf(args), lean: leanEvidenceOf(kernel, args), literature: literatureEvidenceOf(args) }
       // `card` carries the id for evidence matching and the truncation FACT, but NOT the old p: the value under judgement
       // is the one being written (p1Intent:95 prefers card.p, so handing it the stored row would judge yesterday's value).
       const stored = cardProjectionOf(records, cardId)
@@ -1260,10 +1302,12 @@ function gatedCardHandler(toolName) {
       const pRefusal = gateRefuse(pGate)
       if (pRefusal) return pRefusal
       gates.push(pGate)
+      p1Form = pGate.evidenceForm === undefined ? null : pGate.evidenceForm
     }
     const res = inner(args, ctx)
     if (!res || typeof res !== 'object' || Array.isArray(res)) return res
-    return Object.assign({}, res, { enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE })
+    return Object.assign({}, res, { enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE },
+      p1Form === null ? {} : { p1Evidence: p1Form })
   }
 }
 
@@ -1284,15 +1328,27 @@ function toolVerifiedPromote(args = {}, { kernel } = {}) {
   const writerGate = singleWriter({ records, cardId: sourceId, by: member, writer: 'promoteVerified', track: VERIFIED_TRACK })
   const writerRefusal = gateRefuse(writerGate)
   if (writerRefusal) return writerRefusal
-  if (!has(args.warrant) || !has(args.warrant_kind)) {
+  const warrantKind = has(args.warrant_kind) ? str(args.warrant_kind).trim() : ''
+  // ★ B2: a literature promotion names its SOURCE as the warrant. The caller still passes warrant_kind:"literature"
+  //   and `literature_ref`; the row's warrant id becomes the citation, so "why settled" = "it is theorem X of Y".
+  let warrantId = has(args.warrant) ? str(args.warrant).trim() : ''
+  if (warrantKind === 'literature') {
+    const reference = has(args.literature_ref) ? str(args.literature_ref).trim() : ''
+    if (!reference) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'a literature promotion needs the citation it comes from',
+        'pass literature_ref:"<作者, 出处, 定理/页码>" (warrant_kind:"literature" without a source is an assertion, not a promotion)')
+    }
+    warrantId = reference
+  }
+  if (!warrantId || !warrantKind) {
     throw refuse('VMU_INVALID_ARGUMENT', 'promote needs the warrant that produced this conclusion — the judge, not a preference',
       'pass warrant:"<debate/ballot ruling id>" warrant_kind:"debate-unanimous" (or "lean-conformance" once that ruling exists)')
   }
   const promoted = promoteVerified({ records, sourceId,
-    warrant: { id: str(args.warrant), kind: str(args.warrant_kind), subject: sourceId },
+    warrant: { id: warrantId, kind: warrantKind, subject: sourceId },
     by: member, fidelity: kernel && kernel.fidelity ? kernel.fidelity : null })
   return Object.assign({ ok: true, tool: 'vibe_v5_verified_promote', card: sourceId,
-    warrant: { id: str(args.warrant), kind: str(args.warrant_kind) },
+    warrant: { id: warrantId, kind: warrantKind },
     enforced: enforcedOf([writerGate]), enforcedScope: ENFORCED_SCOPE,
     note: 'the verified row is a SECOND carrier beside the card: the card keeps its p, the verified row keeps the JUDGE (warrant), so "why is this settled" is answerable instead of asserted' }, promoted)
 }
@@ -2070,6 +2126,11 @@ function validateMeetingArgs(args = {}) {
   // ★ ROUND 47: `action:"rulings"` IS dispatched here (see toolMeetingRulings) — the read face of the filed ruling
   // cards. Everything else still gets the "this face only convenes" refusal with the kernel face named.
   if (String(args.action) === 'rulings') return null
+  // ★ RUN 84: the face's OWN verb was refused. An agent read "convene a meeting" and passed action:"convene" (the word
+  // the refusal hint itself uses); the face said it "has no convene action" and lectured it about convening. Naming the
+  // verb the tool performs is ALIGNED with the tool, not a wrong action: it dispatches, and the receipt still carries no
+  // `meeting_round`-style side effects. (A different verb — close/extend/status — is still refused below.)
+  if (String(args.action) === 'convene') return null
   return {
     ok: false,
     code: 'VMU_INVALID_ARGUMENT',
@@ -2122,7 +2183,10 @@ function toolMeeting(args = {}, { kernel } = {}) {
   // (or the read-only keys a status call carries) is now refused BY NAME and pointed at the face that answers it.
   if (args.action !== undefined && args.action !== null) {
     const refusal = validateMeetingArgs(args)
-    throw refuse(refusal.code, refusal.message, refusal.hint)
+    // ★ RUN 84: `validateMeetingArgs` returns NULL when the word is ALIGNED with this face (convene = its own verb:
+    // it dispatches, the receipt still carries no round). Reading `.code` off null turned an aligned call into a
+    // TypeError — declaring alignment and then crashing on it is the same defect in a new costume.
+    if (refusal) throw refuse(refusal.code, refusal.message, refusal.hint)
   }
   if (!has(args.agenda)) throw refuse('VMU_INVALID_ARGUMENT', 'meeting needs an agenda', 'pass agenda:"what this meeting is for"')
   // ★ PHASE 12 — before this line, `requireSeat` let ANY member convene and 「会议只能由院士召开」 was only a sentence in
@@ -2338,6 +2402,21 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
       failure.narrowing = { type, narrowed: face.narrowed === true, reason: face.reason, members: applied.rows }
     }
     throw failure
+  }
+  // ★ RUN 84: `kernel.turn.step()` REPORTS its refusal as a value (`{ok:false,code,…}`), it does not throw — so the
+  // round receipt said `ok:true` for a turn that never ran (`unknown phase: "round"`), and an agent reading only the top
+  // level would believe the round happened. A face may not report success for a step that failed: the step's code and
+  // message move to the top level, and `turn` keeps the whole reading.
+  if (step && step.ok === false) {
+    return {
+      ok: false, tool: 'vibe_v5_meeting_round', meeting, type, chair, phase: str(args.phase || 'meeting'),
+      code: step.code || 'VMU_STATE', message: step.message || 'the member turn failed',
+      hint: step.hint || null, turnFailed: true, turn: step,
+      narrowed: face.narrowed === true,
+      narrowing: { type, narrowed: face.narrowed === true, reason: face.reason, expected: face.allow, members: applied.rows },
+      members: ids,
+      note: 'the meeting-type face was applied and CLEARED (it lives for one round only), but the member turn itself failed: read `turn.error`/`code` before retrying',
+    }
   }
   return {
     ok: true, tool: 'vibe_v5_meeting_round', meeting, type, chair, phase: str(args.phase || 'meeting'),
@@ -3307,9 +3386,10 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_record_proposition',
     description: 'Record a proposition/lemma card in your library. REQUIRES statement, value, motive and p (your probability that it is true); the card is settled when p is 1 or 0. ★ p=1 IS A CONCLUSION, NOT A PREFERENCE: writing 1 is refused BY NAME unless the write carries one of the three conclusions the rule accepts — a promoted verified row on THIS card (the kernel record, not an argument), a unanimous debate ruling (`debate_ruling:{mode:"unanimous", value:1, subject:"<this card id>", ballotId}`), or a passed Lean run PLUS the conformance ruling (`lean_job` + `lean_conformance:"conform"`). Estimating in (0,1) is always allowed. '
-      + '★ PROOF REGISTRATION (B6): pass `proof_ref` (where the proof/refutation lives, e.g. "Members/<m>/Propos/<pid>.md#正式证明") and `proof_state:"complete"|"draft"` — this is a SELF-REPORT, recorded and traceable, NOT a verification: a debate on this card still needs machine evidence (a passed Lean run on it, or a verified row). Only `proof_ref` ⇒ state is recorded as draft.'
+      + '★ LITERATURE (B2): a proposition taken from a reference may enter the verified track directly — pass `literature_ref:"<author, source, theorem/page>"` together with `p:1` (the gate accepts this citation as the fourth evidence form), then `vibe_v5_verified_promote{card, warrant_kind:"literature", literature_ref:"<the same citation>"}`; the verified row warrant IS the citation, so "why is this settled" answers with a source instead of "someone decided". An empty citation is not a citation. '
++ '★ PROOF REGISTRATION (B6): pass `proof_ref` (where the proof/refutation lives, e.g. "Members/<m>/Propos/<pid>.md#正式证明") and `proof_state:"complete"|"draft"` — this is a SELF-REPORT, recorded and traceable, NOT a verification: a debate on this card still needs machine evidence (a passed Lean run on it, or a verified row). Only `proof_ref` ⇒ state is recorded as draft.'
       + ' ★ 代记（REGISTRAR DUTY）：研究所的正式记录本由**所办**登记。收完一位成员的回执后，用本工具并传 `member:"<该成员id>"` 把该成员声明的卡片登记进去——`member` 就是卡的作者（owner），**必须是该成员而不是你自己**；否则持有者会变成所办，后续通知/认领都会指错人。',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, track: { type: 'string' }, payload: { type: 'object' }, debate_ruling: { type: 'object' }, member: { type: 'string' } },
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, literature_ref: { type: 'string' }, track: { type: 'string' }, payload: { type: 'object' }, debate_ruling: { type: 'object' }, member: { type: 'string' } },
     handler: gatedCardHandler('vibe_v5_record_proposition'),
   },
   {
@@ -3326,9 +3406,12 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_say',
-    description: 'Speak in the group chat (omit `to`), send a private message (`to`: a member id / "all" / "voters"), or record a meeting speech (`meeting`: the open meeting id). The speaker must be a REAL roster id: this tool never invents one. '
+    description: 'Speak in the group chat (omit `to` and `meeting`), send a private message (`to`: a member id / "all" / "voters"), or record a meeting speech (`meeting`: the open meeting id). The speaker must be a REAL roster id: this tool never invents one. '
+      + '★ SINGLE-SPEECH ROUND (`round`): name the round and each member may speak ONCE on it — the same member\'s second speech in the SAME round is refused by name (`VMU_CHAT_ALREADY_SPOKE`, nothing recorded), while a NEW round id allows speaking again. With `round` and NO `text` the call is a READ: it opens no page and answers `spokenBy` (who has already spoken) and `remaining` (who is still owed a turn; `null` when no participant list is known). `members` declares the round\'s participants; without it the kernel roster seam supplies them. '
+      + '★ WHAT THIS IS: bookkeeping + a named refusal — the receipt\'s `means` says it plainly. It is NOT isolation: messages are not queued or ordered against each other, so 「不打断」 is the room convention this book enforces after the fact. '
+      + '★ `round` cannot be combined with `to` or `meeting` (those forms have a recipient/ordering of their own) — that combination is refused by name. '
       + '★ `urgent:true` is available ONLY on the private-message form (it is the sender\'s explicit intent, carried by the mailbox\'s own urgency semantics and reflected in the recipient\'s inbox row); the group-chat and meeting forms are refused by name when `urgent` is set, because neither has a recipient to wake.',
-    parameters: { member: { type: 'string', required: true }, text: { type: 'string', required: true }, to: { type: 'string' }, meeting: { type: 'string' }, urgent: { type: 'boolean' } },
+    parameters: { member: { type: 'string', required: true }, text: { type: 'string' }, to: { type: 'string' }, meeting: { type: 'string' }, urgent: { type: 'boolean' }, round: { type: 'string' }, members: { type: 'array' } },
     handler: toolSay,
   },
   {
@@ -3460,8 +3543,9 @@ export const V5R_PACK_TOOLS = Object.freeze([
       + 'During a DEBATE, recording tools such as vibe_v5_paper / lean / hiring / settings are NOT callable by members (they are another meeting\'s business); in a type that declares no narrowing (ordinary/academic/closure/paper/planning) the member keeps the identity face and the receipt says so by name. '
       + 'The CHAIR is never narrowed (order-keeping is the seat\'s duty). The override lives for exactly this one round and is cleared in a finally, so the next turn starts from the identity face again. '
       + 'A type with no declared narrowing is a NAMED decision (default face), never a silent empty set; an empty intersection is refused by name (a bad configuration is not "strictness"). '
-      + 'Defaults: members = every live member except the chair; phase = "meeting".',
-    parameters: { meeting: { type: 'string', required: true }, members: { type: 'array' }, phase: { type: 'string' }, why: { type: 'string' } },
+      + 'Defaults: members = every live member except the chair; phase = "meeting". '
+      + '★ phase must be one the turn engine knows: founding / normal / checkpoint / verify / verify-debate / meeting / resume / heartbeat / paper-write / paper-review / paper-final — any other word is refused by name (and this face then returns ok:false carrying that step code, it does not claim the round happened).',
+    parameters: { meeting: { type: 'string', required: true }, members: { type: 'array' }, phase: { type: 'string', enum: ['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'meeting', 'resume', 'heartbeat', 'paper-write', 'paper-review', 'paper-final'] }, why: { type: 'string' } },
     handler: toolMeetingRound,
   },
   {
@@ -3517,8 +3601,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_verified_promote',
-    description: '★ PROMOTE A PROPOSITION CARD TO THE VERIFIED TRACK — the ONLY writer of that track, and the place where a settled p is carried together with its JUDGE. card REQUIRED (a propositions/proposition card whose p is exactly 1 or 0); warrant + warrant_kind REQUIRED (which debate/ruling decided it, e.g. kind "debate-unanimous"). Refused by name: a card that is not a proposition card, a truncated card, a card whose p is neither 1 nor 0 ("a preference is not a conclusion"), a withdrawn proof, and a missing warrant. The card keeps its own p; the verified row records the warrant, so "why is this settled" is answerable instead of asserted.',
-    parameters: { card: { type: 'string', required: true }, warrant: { type: 'string', required: true }, warrant_kind: { type: 'string', required: true }, member: { type: 'string' } },
+    description: '★ PROMOTE A PROPOSITION CARD TO THE VERIFIED TRACK — the ONLY writer of that track, and the place where a settled p is carried together with its JUDGE. card REQUIRED (a propositions/proposition card whose p is exactly 1 or 0); warrant_kind REQUIRED (which kind of conclusion decided it: "debate-unanimous" | "lean-conformance" | "literature"); warrant REQUIRED for the first two (the debate/ruling id) — for warrant_kind:"literature" pass `literature_ref:"<author, source, theorem/page>"` INSTEAD and it becomes the warrant id of that row (a citation with no source is refused by name). Refused by name: a card that is not a proposition card, a truncated card, a card whose p is neither 1 nor 0 ("a preference is not a conclusion"), a withdrawn proof, and a missing warrant. The card keeps its own p; the verified row records the warrant, so "why is this settled" is answerable instead of asserted.',
+    parameters: { card: { type: 'string', required: true }, warrant: { type: 'string' }, warrant_kind: { type: 'string', required: true }, literature_ref: { type: 'string' }, member: { type: 'string' } },
     handler: toolVerifiedPromote,
   },
   {

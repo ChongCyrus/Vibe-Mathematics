@@ -20,6 +20,38 @@
 // itself: the chair is visible here (`meetingView().chair`) while the service's `queue()` has no chair rail except
 // under call_on, so "only the chair invites" is enforced at this gate and nowhere else. An invitation never marks the
 // invitee PRESENT — attendance is what the quorum counts, so forging it would silently change the denominator.
+/**
+ * ★ RUN 84: which primitive actions also reach the SERVICE registry, derived from the branches of `run()` below —
+ * kept at module scope because the refusal has to say it out loud, and a test has to be able to read it without
+ * assembling a kernel.
+ */
+export const SERVICE_CROSSING_ACTIONS = Object.freeze(['speak', 'hand', 'hands', 'invite', 'invitedspeak', 'order', 'attend', 'status', 'summary', 'close', 'extendlimit', 'proceed', 'second', 'withdraw', 'flow', 'overrideorder'])
+
+/**
+ * ★ RUN 84: a primitive action asked for a meeting that lives in the SERVICE registry used to read
+ * "no live meeting with id m2" — a sentence a reader takes as "that meeting does not exist", while the hint in the
+ * SAME receipt said it lives in the service. Both facts have to be true at once: the id exists (somewhere else), and
+ * the asked action does or does NOT cross registries. Exported so a test can read the sentence without a kernel.
+ */
+export function primitiveMissError({ id, inService, action, crossing = SERVICE_CROSSING_ACTIONS }) {
+  const asked = String(action || 'this action')
+  const set = Array.isArray(crossing) ? crossing : []
+  const crosses = set.includes(asked)
+  return Object.assign(new Error(inService
+    ? 'no PRIMITIVE meeting with id ' + String(id) + ' (the id exists in the SERVICE registry)'
+    : 'no live meeting with id ' + String(id)), {
+    code: 'VMU_NO_SUCH_OBJECT',
+    hint: inService
+      ? 'meeting ' + String(id) + ' lives in the meetings SERVICE registry; ' + asked + (crosses
+        ? ' DOES cross registries, but only when the service exposes that method'
+        : ' addresses the PRIMITIVE registry only and does NOT cross') + '. Actions that cross: ' + set.join('/') + '. For this id use action=status (read) first, then one of the crossing actions.'
+      : 'use action=list (it reports both registries: meetings, serviceMeetings, unionMeetings)',
+    registry: inService ? 'service' : null,
+    askedAction: asked,
+    actionCrosses: crosses,
+  })
+}
+
 export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
   // ★ G7 (real machine): a ballot opened from this face is bound to (service meeting, motion) so that cast votes can
   // be mirrored into the ONE authoritative tally. Keyed by ballot id, per spec instance.
@@ -71,6 +103,8 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         mode: param('string', 'flow/overrideorder 的模式（flow：open｜hands｜round_robin｜call_on；overrideorder：fifo｜round-robin｜chair｜random）', { enum: ['open', 'hands', 'round_robin', 'call_on', 'fifo', 'round-robin', 'chair', 'random'] }),
       },
       run: async ({ action, id, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, subject, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor } = {}) => {
+        // ★ RUN 84: the crossing set lives at module scope (SERVICE_CROSSING_ACTIONS) so the refusal, this loop and the
+        // test that reads the sentence all agree on it.
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
         // ★ G7 (real machine): `meeting` and `id` name the same object but only `id` was read, so a caller that used
         // the documented-in-the-task `meeting:"m1"` got `no live meeting with id undefined`. BOTH are accepted now; a
@@ -94,12 +128,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
               } catch { return [] }
             })()
             const inService = svcIds.includes(String(id))
-            throw Object.assign(new Error('no live meeting with id ' + String(id)), {
-              code: 'VMU_NO_SUCH_OBJECT',
-              hint: inService
-                ? 'meeting ' + String(id) + ' lives in the SERVICE registry: list/speak/summary/close/status/extendlimit/second/withdraw/flow/overrideorder/hand/invite/invitedspeak/order/attend cross registries, but ' + String(what || 'this action') + ' addresses the primitive registry only'
-                : 'use action=list (it reports both registries: meetings, serviceMeetings, unionMeetings)',
-            })
+            throw primitiveMissError({ id, inService, action: what })
           }
           return meeting
         }

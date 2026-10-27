@@ -307,9 +307,17 @@
       "rule": "L7-L8",
       "text": "参考文献中的命题也可直接入 Verified",
       "status": "PARTIAL",
-      "next": "规则允许文献命题直接入 Verified，内核没有该入口：verified 轨唯一写者 `promoteVerified` 要求 warrant（辩论一致／Lean+符合性）。最小可建方案：①命题卡增加 `reference` 字段（作者/年份/定理号，非空才计）②`promoteVerified` 增第四种 `warrant_kind:\"literature\"`，缺 `reference` 或未署名 ⇒ 具名拒 ③`vibe_v5_verified_promote` 暴露该 kind ④测试钉住「无 reference 必拒、有 reference 才入轨」；或由用户裁定 DECIDED（不引入文献入口）。live 仍 0 次。 ／ 真机未演练：内核无「文献命题直接入 Verified」入口（next 已记机制缺口），run 29–78 无对应回执。",
+      "next": "机制已落地（tests/vmu-run83-literature-admission 16/0）：写卡带 `literature_ref` + p=1 过闸，`vibe_v5_verified_promote{warrant_kind:\"literature\", literature_ref}` 入轨、行上 warrant 即引用。live 仍 0：需一轮真机用文献命题走完「写卡 → 入 Verified → 读回 ready」。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::参考文献中的命题"
+      ],
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/verification-gates.js::literature-reference",
+        "vibe-math-vmu/packs/v5r/tools.js::literatureEvidenceOf"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::literature_ref",
+        "vibe-math-vmu/packs/v5r/tools.js::warrantKind === 'literature'"
       ]
     },
     {
@@ -710,7 +718,7 @@
       "id": "D5",
       "rule": "L28",
       "text": "四字段都含时间等基础信息",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/turn/index.js::statusBoardReadings"
       ],
@@ -720,22 +728,26 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::状态板"
       ],
-      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) ／ 真机未演练：run 29–78 的回执里没有状态板四字段的时间读数；`updatedAt` 只出现在 5388 的排序机制说明。"
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::四个字段各带自己的时间"
+      ]
     },
     {
       "id": "D6",
       "rule": "L28",
       "text": "可查看其他成员当前状态版",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/tools.js::state"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_read_library"
       ],
-      "next": "无定向入口（只能 list 出 `state` 行）：余项＝加「读某成员状态板」形状 + 教学 + live 真机演练，或由用户裁定记为「借道 read_library 已够用」。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::读别人的板"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::一个成员读另一个成员的状态板这件事，面板读面答得出来"
       ]
     },
     {
@@ -988,23 +1000,25 @@
       "id": "E13",
       "rule": "L35",
       "text": "会议类型：正常/学术交流/辩论/结题/论文交流/未来规划",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/tools.js::ordinary"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "补一览表教学（含 ordinary 无骨架的理由） ／ 真机未演练：六类里只有 ordinary（4919）、academic（6139）、debate（6402）有真机读数；closure/paper/planning 0 次。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::故意不给推荐骨架"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::真机已演练 3/6"
       ]
     },
     {
       "id": "E14",
       "rule": "L36",
       "text": "常见命令：举手",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::hand"
       ],
@@ -1014,38 +1028,44 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::用工具举手"
       ],
-      "next": "re-cite machine-resolvable evidence for: live (the gate stripped citations that no longer resolve) ／ 真机未演练：`hand`（举手）0 次真机调用；只在教学段（63/68/143/289）。"
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::举手真的进了发言队列"
+      ]
     },
     {
       "id": "E15",
       "rule": "L36",
       "text": "常见命令：邀请发言",
-      "status": "PARTIAL",
+      "status": "DONE",
       "tool": [
         "vibe-math-vmu/tools/meeting.js::invite"
       ],
-      "next": "邀请在 SERVICE 会议面真的可达（`meeting.js#invite(member,{by,why})`，主席可单个或按数组批量入队；邀请≠签到，被邀者仍须自己 `attend` 才计入法定人数，受邀发言只记纪要、不计票、不阻塞收束）。缺 live 真机一轮含受邀发言的会议。 ／ 真机未演练：邀请发言无工具形态（next 记「教学改成工具形态」），0 次真机。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::invitedspeak"
       ],
       "mechanism": [
         "vibe-math-vmu/kernel/meeting.js::invite"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::回执 note 明说「邀请**不**改法定人数」"
       ]
     },
     {
       "id": "E16",
       "rule": "L36",
       "text": "常见命令：批量指定成员按顺序发言",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::order"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "教学（order/flow 两种机制）+ 真机 ／ 真机未演练：`overrideorder` 只在 58 行机制说明；0 次真机批量排序发言。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::按数组顺序批量"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::数组顺序即发言顺序"
       ]
     },
     {
@@ -1054,11 +1074,11 @@
       "text": "常见命令：单次发言版群聊（每人各说一次、不打断）",
       "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/meeting-procedures.js::recommendation"
+        "vibe-math-vmu/kernel/chat.js::speakRound"
       ],
-      "next": "骨架是 `binding:'recommendation'`（非门禁）；「每人各说一次」可用 `vibe_v5_say {meeting}` 逐人记录，但**并行隔离/不打断不可强制**（无独立工具、无隔离机制）⇒ 若要强制需新增「批量独立表态」动作（允许破坏性重构），否则如实记为缺口；live 仍 0 次。 ／ 真机未演练：next 记「无独立工具、无并行隔离」=机制缺口；0 次真机。",
+      "next": "余项：live 真机演练（机制＋测试已就位：`kernel/chat.js::speakRound` 轮记账、同轮第二次具名拒 `VMU_CHAT_ALREADY_SPOKE`、pack `vibe_v5_say` 的 `round` 参数、教学「单次发言版群聊两法」、`tests/vmu-run85-say-round.test.mjs` 47/0）。「不打断」是**事后具名拒**不是并行隔离，教学与回执 `means` 都如此声明。",
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::单次发言版群聊"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::round:\"<id>\""
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_say"
@@ -1068,24 +1088,25 @@
       "id": "E18",
       "rule": "L37",
       "text": "投票板：院士设选项与机制（最少/最多选几项）",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/ballot.js::min"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_poll_open"
       ],
-      "next": "教学 + 真机（poll_open→vote→close，含 min/max 校验） ／ 真机未演练：`poll` 词形在 run 29–78 为 0 命中；唯一的 ballot 回执是辩论票箱（4569 的 `kernel/ballot.js` 崩溃），不是投票板。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::poll_open"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::并列出 `enforced` 五个键"
       ]
     },
     {
       "id": "E19",
       "rule": "L37",
       "text": "投票板不用于辩论",
-      "status": "PARTIAL",
-      "next": "机制已建（本轮）：`toolPollOpen` 在主席闸之后调用 `openDebateMeeting(kernel)`（读 `kernel.meetings.openMeetings()` + `meetingView({type})`），只要有一场非 `closed` 的 `type:\"debate\"` 就具名拒 `VMU_NOT_PERMITTED`，message 带该会议 id、hint 给两条出路（`vibe_v5_verdict` 裁决 / 主席 `vibe_vmu_meeting {action:\"close\"}`），拒绝发生在开箱之前（箱数不变）；普通会议不拦。测试 `tests/vmu-run36-poll-debate-guard.test.mjs` 24/24（基线开票、辩论拒、关闭后放行、普通会议放行、非主席先撞主席闸）。缺 live 真机。 ／ 真机未演练：status=MISSING：辩论中投票板没有具名拒（next 原文）；0 次真机。",
+      "status": "DONE",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::辩论不用投票板"
       ],
@@ -1094,6 +1115,9 @@
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_poll_open"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::the ballot board is not used while a debate is open"
       ]
     },
     {

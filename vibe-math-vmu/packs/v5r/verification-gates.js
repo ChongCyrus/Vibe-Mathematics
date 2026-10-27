@@ -56,6 +56,10 @@ const P1_EVIDENCE_FORMS = Object.freeze([
   'debate-unanimous：一场辩论的裁决集合**全体一致**为 1（`{mode:"unanimous", value:1, ballotId}`）',
   'verified-row：该命题卡已在 `verified` 轨上有一条 `conclusion:true` 的行（`{cardId, conclusion:true}`）',
   'lean-conformance：Lean 作业通过 **且** 辩论已裁定「代码中的命题/定义与所需一致」（`{jobId, passed:true, conformance:{decision:"conform"}}`）',
+  // ★ B2：规则的第四种来源 —— 规则 L7-L8「参考文献中的命题也可直接入 Verified」。来源是**引用**而不是本所裁决，
+  //   所以它必须带着引用本身进闸：`reference` 就是这条定论的 warrant id，verified 行上的 source 记 'literature'，
+  //   「为什么这条算定论」的答案是「它出自文献第几条」，而不是「有人说了算」。空引用不是引用。
+  'literature-reference：命题直接取自参考文献，写入带引用（`{reference:"<作者/出处/定理号>"}`，须非空）',
 ])
 
 function refuseGate(code, message, hint, extra) {
@@ -80,11 +84,11 @@ function asP(value) {
  *   · `tool`   想写概率的那次调用（只用于在拒绝文案里点名，不参与判定）
  *   · `args`   该次调用的参数（`p` 或 `value`）
  *   · `card`   目标卡行的读结果（`records.get()` 的投影；用于取"读到的现值"与截断事实）
- *   · `evidence` 调用方已查到的定论证据（三种形态见 `P1_EVIDENCE_FORMS`）
+ *   · `evidence` 调用方已查到的定论证据（四种形态见 `P1_EVIDENCE_FORMS`）
  * 输出：`{ ok, allowed, applicable, code?, message?, hint?, p, evidenceForm?, keys }`
  *
  * 三条判定：① 读不完整的卡**先具名拒**（不许拿半张卡判断"有没有证明"）；② p≠1 与本闸无关（放行，
- * `applicable:false`）；③ p=1 必须命中三种定论证据之一，否则 `VMU_PACK_V5R_P1_NEEDS_DEBATE`。
+ * `applicable:false`）；③ p=1 必须命中四种定论证据之一，否则 `VMU_PACK_V5R_P1_NEEDS_DEBATE`。
  */
 export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } = {}) {
   const who = tool ? String(tool) : 'a write path'
@@ -99,7 +103,7 @@ export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } 
   if (p === null) return allow({ applicable: false, p: null, note: '这次写入没有带概率：与本闸无关' })
   if (p !== 1) return allow({ applicable: false, p, note: 'p≠1：规则只约束"改成 1"的那条路径，0 与 (0,1) 不受本闸约束' })
 
-  // 三种定论证据，逐种核「指向的是不是这张卡」——证据存在但指向别的对象等于没有证据。
+  // 四种定论证据，逐种核「指向的是不是这张卡」——证据存在但指向别的对象等于没有证据。
   const cardId = card && card.id ? String(card.id) : (args.card_id ? String(args.card_id) : null)
   const out = { p: 1, cardId }
   const ev = evidence || {}
@@ -110,6 +114,10 @@ export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } 
   if (ev.debate && String(ev.debate.mode) === 'unanimous' && asP(ev.debate.value) === 1) {
     const target = ev.debate.subject !== undefined ? String(ev.debate.subject) : null
     if (!target || !cardId || target === cardId) return allow(Object.assign(out, { evidenceForm: 'debate-unanimous', ballotId: ev.debate.ballotId || null }))
+  }
+  if (ev.literature && typeof ev.literature.reference === 'string' && ev.literature.reference.trim() !== '') {
+    const target = ev.literature.subject === undefined || ev.literature.subject === null ? null : String(ev.literature.subject)
+    if (!target || !cardId || target === cardId) return allow(Object.assign(out, { evidenceForm: 'literature-reference', reference: ev.literature.reference.trim() }))
   }
   if (ev.lean && ev.lean.passed === true && ev.lean.conformance && String(ev.lean.conformance.decision) === 'conform') {
     const target = ev.lean.subject !== undefined ? String(ev.lean.subject) : (ev.lean.cardId !== undefined ? String(ev.lean.cardId) : null)
@@ -126,7 +134,7 @@ export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } 
   return refuseGate(GATE_CODES.P1_NEEDS_DEBATE,
     '把命题卡的布尔概率改成 1 需要**已经存在的定论来源**；' + who + ' 这次写入没有（card=' + String(cardId) + '）'
     + (nearMiss.length ? '。★ 近失原因：' + nearMiss.join('；') : ''),
-    '三种合法来源：\n  · ' + P1_EVIDENCE_FORMS.join('\n  · ')
+    '四种合法来源：\n  · ' + P1_EVIDENCE_FORMS.join('\n  · ')
     + '\n非辩论路径把 p 设成 1 一律具名拒；lean 通过是**另一条**合法路径，但必须连同符合性裁定一起给。',
     out)
 }

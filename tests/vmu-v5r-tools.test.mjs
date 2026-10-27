@@ -1471,8 +1471,17 @@ try {
     'function toolReadLibrary(', 'function toolRecordProgress(',
   ]
   const leftovers = movedDecls.filter((p) => packSrcW.split(p).length - 1 > 0)
-  ok(movedDecls.length === 14 && leftovers.length === 0,
-    '★★★ ZERO local declarations left for the 8 helpers + 6 handlers moved into the kit (probe over the pack source)', { checked: movedDecls.length, leftovers })
+  // ★ RUN 85 / E17 — 「零本地声明」这个量具原本只数出现次数，于是**合法的 pack 策略包装**（v5r 要给 `vibe_v5_say` 加
+  //   「每轮每人只说一次」的议事规则，而 kit 的 `say` 不懂轮次）会被判成「把实现又抄了一遍」。量具的意图不是「这个名字
+  //  一次都不许出现」，而是「被搬进 kit 的那 14 个实现不许在 pack 里**重新实现**」。因此这里改成：允许出现，但必须
+  //  出示**委托证明**——名字必须有一个 `…Base = KIT_…` 的别名，并且包装体真的调用了它。没有证明的残留仍然红（放行不是
+  //  靠注释，是靠可被 grep 的证据）；并且证明表本身非空即被使用，避免「一张空许可表 = 永远通过」。
+  const delegationProof = {
+    'function toolSay(': ['const toolSayBase = KIT_SOCIAL.say', 'toolSayBase('],
+  }
+  const unproven = leftovers.filter((p) => !(delegationProof[p] || []).every((needle) => packSrcW.includes(needle)))
+  ok(movedDecls.length === 14 && unproven.length === 0,
+    '★★★ no moved declaration is RE-IMPLEMENTED in the pack: each of the 14 is either absent, or a wrapper that visibly DELEGATES to the kit (a leftover without a delegation proof reds)', { checked: movedDecls.length, leftovers, unproven })
   ok(packSrcW.includes("from '../../kit/handlers.js'") && packSrcW.includes("from '../../kit/tools.js'"),
     '★★ the pack IMPORTS the kit (handlers + the card factory) — "deleted" cannot quietly mean "forgot to import"', null)
   const kitModW = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kit', 'handlers.js')).href)

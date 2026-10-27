@@ -35,7 +35,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '【资源】本机可能资源紧张，请自觉控本回合开销：',
-        '  · 并发：框架每轮最多同时唤醒 {{ setting:vmu.turn.maxParallel }} 名成员（`vmu.turn.maxParallel`，这是**唤醒人数**，不是算力并发）；数学作业/Lean 编译的并发上限是 `vmu.math.maxParallel`（默认 1），超限会被具名拒——两个键别混用。**不要**为了提速而让你自己一次性铺开大量子代理。',
+        '  · 并发：框架每轮最多同时唤醒 {{ setting:vmu.turn.maxParallel }} 名成员（`vmu.turn.maxParallel`，这是**唤醒人数**，不是算力并发）；数学作业/Lean 编译等**引擎/计算侧**的并发上限是 `vmu.math.maxParallel`（默认 1，**所办可设**），超限会被具名拒——那是计算并发，不是会议唤醒数，两个键别混用。**不要**为了提速而让你自己一次性铺开大量子代理。',
         '  · 工具预算：**本回合工具调用不超过 {{ setting:vmu.turn.toolCallsPerTurnCap }} 次**。',
         '  · 自监测：若观察到内存占用接近 {{ setting:vmu.turn.memoryCeilingMb }} MB，**先让出**：停止新起子代理、改用轻量路径（减少重复读写与大文件扫描）、把大任务切成更小的可交付步，并在回执里写明"因资源让出、剩余工作是什么"。',
         '  · 取舍：**正确性优先于产出量**；资源紧张时宁可少做一步并说明，也不要冒险把本机拖垮（OOM 会丢掉全部未落盘工作）。',
@@ -555,7 +555,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '    vibe_v5_paper { action: "final", target: "<论文 target>", member: "{{ member }}",',
         '                    decision: "deliverable", note: "定稿说明：你如何审阅、统一术语与符号、是否发现并纠正了问题",',
         '                    conclusion: "（可选）定稿代表对原问题的最终结论（只写有证据的）" }',
-        '★ decision="revise" 会退回继续修订（有轮次上限）。**只有学术委员会主席席可以定稿**，其他席位调用会被具名拒绝。',
+        '★ decision="revise" 会退回继续修订（有轮次上限）。**只有主席席（即院士）可以定稿**；其他席位与所办调用都会被具名拒绝。',
       ].join('\n'),
     },
   },
@@ -784,20 +784,21 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'role',
     texts: {
       academician: [
-        '【开会与预约（你的手册）】会议类型六种：`ordinary`（正常/例行同步）｜`academic`（学术交流）｜`debate`（辩论，**必须**给 `subject`）｜`closure`（结题）｜`paper`（论文交流）｜`planning`（未来规划）；`sync` 是**动议 kind**，不是会议类型。',
+        '【开会与预约（你的手册）】会议类型六种：`ordinary`（正常/例行同步）｜`academic`（学术交流）｜`debate`（辩论，**必须**给 `subject`）｜`closure`（结题）｜`paper`（论文交流）｜`planning`（未来规划）；`sync` 是**动议 kind**，不是会议类型。可用的命令随类型与身份不同：辩论须先给 `subject`，结题/辩论表决用 `vote_solved`，论文交流走 `vibe_v5_paper`，临时工无表决权。',
         '  · 预约：`vibe_v5_meeting { type, agenda, at: <epoch ms 或 ISO-8601> }` → 会议进入 `scheduled`；`status`/`summary`/`meetingView` **立刻可读**，**开始前每个动作都被具名拒**。到点人数不齐就 `waiting`，**迟到者 `attend` 即开**；框架没有定时器，这些状态由每轮 `beat()` 的 sweep 结算，`proceed` 可提前开始。',
         '  · 一次连排多场：给 `sequence` 数组即可一次召集（逐项校验，每场可给各自的 `at`/`title`/`type`，回执给 `sequence.index/total/next`）；也可以给每场各自的 `at` **逐场召集**。',
-        '  · 时长与兜底：`extend` 是**发言延长**（ms，缺省读 `vmu.meetings.speechExtendMs`，仍为 0 则具名拒）；`extendlimit` 是**会议墙钟上界延长**；墙钟硬界 `vmu.meetings.hardLimitMs`（默认 1800000ms，钳制 300000–7200000，**没有"无界"**）。只有超过硬界才能用 `lapse` 具名收束（回执带 revocable），恢复用 `revokelapse`（必须给理由）。',
+        '  · 时长与兜底：`extend` 是**发言延长**（ms，缺省读 `vmu.meetings.speechExtendMs`，仍为 0 则具名拒）；`extendlimit` 是**会议墙钟上界延长**；墙钟硬界 `vmu.meetings.hardLimitMs`（默认 1800000ms，钳制 300000–7200000，**没有"无界"**）。只有超过硬界才能用 `lapse` 具名收束（回执带 revocable），恢复用 `revokelapse`（必须给理由）。`at` 预约、还没开始的会没有墙钟在走，`extendlimit` 要等会议真正开始后才能用（开始前一切动作都被具名拒）。',
         '  · `ordinary` 类型**故意不给推荐骨架**——这是具名决定：议程与顺序完全由你编排；其余五种的步骤只是**建议**，可跳过、可重排。',
         '  · 议程与标题：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 只读议程条目列表，`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）。`title` 是**可选**的独立名称，与议程分开；给非字符串会被具名拒。',
         '  · 召集与关闭：`vibe_v5_meeting` 的**召集只对 chair 席开放**（`vmu.meetings.conveneRequiresChair`）；`vibe_vmu_meeting { action: "close" }` 的**关闭也只有 chair 席能调**（`closeRequiresChair`，默认 true）——其他席位调用会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁来做。',
-        '  · 发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` **按数组顺序批量**入队（邀请**不是签到**，被邀者仍须自己 `attend` 才计入法定人数）；`invitedspeak` 让被邀者走服务发言面；`order` 只读队列。`flow`（open/hands/round_robin/call_on）与 `overrideorder` 要求部署声明 `vmu.meetings.orderMode`，v5r 未声明 ⇒ 调用会被具名拒。',
+        '  · 发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` **按数组顺序批量**入队（邀请**不是签到**，被邀者仍须自己 `attend` 才计入法定人数；`invite` 还**必须**给 `why`，供日后审计）；`invitedspeak` 让被邀者走服务发言面（被邀者**没签到**时会被具名拒，先 `attend`）；`order` 只读队列。`flow`（open/hands/round_robin/call_on）与 `overrideorder` 要求部署声明 `vmu.meetings.orderMode`，v5r 未声明 ⇒ 调用会被具名拒。',
+        '  · 推进一轮：`vibe_v5_meeting_round { meeting, members?, phase? }` 让成员按序各跑一个回合（members 缺省＝除主席外的全体在册成员）；`phase` 只能是 founding/normal/checkpoint/verify/verify-debate/meeting/resume/heartbeat/paper-write/paper-review/paper-final（缺省 `meeting`），写错会具名拒，且回执**顶层 `ok:false`+`turnFailed:true`**——这一轮没有发生，不要当成功；`close`/`extendlimit` 要带 `actor`（＝主席本人），`vibe_v5_meeting { action:"convene", … }` 与不带 action 的召集等价。',
       ].join('\n'),
       temp: [
         '【会议类型与预约】六种类型（ordinary/academic/debate/closure/paper/planning），`sync` 是动议 kind；被邀请不等于签到，要自己 `attend` 才计入法定人数；临时工没有表决权。',
       ].join('\n'),
       researcher: [
-        '【会议类型与预约】六种：`ordinary`（正常/例行同步）｜`academic`（学术交流）｜`debate`（辩论，须 `subject`）｜`closure`（结题）｜`paper`（论文交流）｜`planning`（规划）；`sync` 是动议 kind，不是类型。用 `at` 预约的会议在开始前拒绝一切动作，到点人齐才开、迟到者 `attend` 即开；**被邀请不等于签到**，要自己 `attend` 才计入法定人数。',
+        '【会议类型与预约】六种：`ordinary`（正常/例行同步）｜`academic`（学术交流）｜`debate`（辩论，须 `subject`）｜`closure`（结题）｜`paper`（论文交流）｜`planning`（规划）；`sync` 是动议 kind，不是类型。可用命令随会议类型与你的身份不同（辩论须先有 `subject`、结题表决用 `vote_solved`、论文交流走 `vibe_v5_paper`；临时工没有表决权）。用 `at` 预约的会议在开始前拒绝一切动作，到点人齐才开、迟到者 `attend` 即开；**被邀请不等于签到**，要自己 `attend` 才计入法定人数。',
       ].join('\n'),
     },
   },
@@ -826,14 +827,14 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'role',
     texts: {
       academician: [
-        '  · **单次发言版群聊**＝把 `speakQuota` 设成 1（每人每窗口只说一条）：配额到了会得到具名拒 `VMU_CHAT_QUOTA_EXCEEDED`，它是机制而不是口头约定。',
+        '  · **单次发言版群聊**两法：`speakQuota:1`（每人每窗口一条，超了 `VMU_CHAT_QUOTA_EXCEEDED`）或 `vibe_v5_say {round:"<id>",text}`（同轮第二次 `VMU_CHAT_ALREADY_SPOKE`，换新 round id 再说；不带 text 是读本轮还欠谁）；两者都是**机制**不是口头约定，也都不等于并行隔离。',
         '【群聊管理（你是管理员）】用 `vibe_vmu_chat`：`mute`（成员 + `by` + 可选 `durationMs`；0 用 `vmu.chat.muteDefaultMs`，仍为 0 则**不过期**）、`unmute`、`quota`（设 `speakQuota`＝每窗口可发言条数，0 = 不限）、`setpolicy`（admins / speakQuota / speakQuotaWindowMs / muteDefaultMs / freezeExemptAdmins）、`admin`（授予或收回管理员）。表决冻结时群聊可随票箱冻结，`freezeExemptAdmins` 决定管理员是否豁免。撞上会得到具名拒：`VMU_CHAT_NOT_ADMIN`、`VMU_CHAT_MUTED`、`VMU_CHAT_QUOTA_EXCEEDED`。',
       ].join('\n'),
       temp: [
         '【群聊规则由院士定】禁言与发言配额由群管理员（院士）设定；撞上会得到具名拒（`VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`）。',
       ].join('\n'),
       researcher: [
-        '【群聊规则由院士定】谁能发言、每人每窗口能说几条、谁被禁言，都由群管理员（院士）设定；撞上禁言或配额会得到具名拒（`VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`），不是消息悄悄丢了。',
+        '【群聊规则由院士定】谁能发言、每人每窗口能说几条、谁被禁言，都由群管理员（院士）设定；撞上禁言或配额会得到具名拒（`VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`），不是消息悄悄丢了。单次发言轮（`round`）同理：同一轮第二次发言会被具名拒 `VMU_CHAT_ALREADY_SPOKE`，换一个新的 round id 才能再说。',
       ].join('\n'),
     },
   },
@@ -844,7 +845,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【三通道的紧急语义】`vibe_v5_say` 一个工具三种去处：不给 `to` = **群聊**（非紧急，全所都看得见）；给 `to` = **私信**（对方希望你尽早回复时用，且只有私信能带 `urgent: true`）；给 `meeting` = 会议发言（进纪要）。邮箱是**非紧急**通道：不进信封、留在收件箱等对方自己查；只有私信 + `urgent: true` 才会把正文推进对方这一轮的提示并要求送达回执。群聊与会议发言带 `urgent` 会被具名拒——那里没有要唤醒的收件人。',
+        '【三通道的紧急语义】`vibe_v5_say` 一个工具三种去处：不给 `to` = **群聊**（非紧急，全所都看得见）；给 `to` = **私信**（对方希望你尽早回复时用，且只有私信能带 `urgent: true`）；给 `meeting` = 会议发言（进纪要）。邮箱是**非紧急**通道：不进信封、留在收件箱等对方自己查；只有私信 + `urgent: true` 才会把正文推进对方这一轮的提示并要求送达回执。群聊与会议发言带 `urgent` 会被具名拒——那里没有要唤醒的收件人。判据一句话：要对方**这一轮就看到**→私信（真急着办就 `urgent: true`）；只是留个记录、有空再看→邮箱；全所都该知道的进展→群聊。',
       ].join('\n'),
     },
   },
@@ -855,7 +856,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【形式化开关 `vmu.math.formalVerify` 三档】`off`＝零策略（默认，不要求任何形式化）｜`encourage`＝鼓励（做了就归档，没做就在回执 `formal` 里写明难度判断）｜`require`＝强制（裁定必须附 Lean 结果或显式 blocked 记录，否则那次裁定**不生效**、对象留在原轨并进形式化待办）。`vmu.math.leanInitiative` 只是回显，不参与判定。',
+        '【形式化开关 `vmu.math.formalVerify` 三档】`off`＝零策略（默认，不要求任何形式化）｜`encourage`＝鼓励（做了就归档，没做就在回执 `formal` 里写明难度判断）｜`require`＝强制（裁定必须附 Lean 结果或显式 blocked 记录，否则那次裁定**不生效**、对象留在原轨并进形式化待办）。这个键由**所办**改；`vmu.math.leanInitiative` 只是回显，不参与判定。',
       ].join('\n'),
     },
   },

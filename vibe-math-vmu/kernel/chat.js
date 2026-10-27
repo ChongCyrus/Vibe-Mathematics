@@ -26,6 +26,16 @@ export const CHAT_KINDS = Object.freeze(['chat', 'announce'])
 /** Per-message quote cap (a reminder to thread, not a wall: the full text is never copied). */
 export const CHAT_QUOTE_MAX = 4
 
+/**
+ * ★ RUN 85 / E17 (规则 L36「单次发言版群聊：每人各说一次、不打断」) — how many SPEECH ROUNDS this book keeps.
+ *
+ * A round is a named page of the ledger: who spoke in it. The rule the pack teaches is "one speech per member per
+ * round", and keeping every round forever would make the page grow without bound for no reader, so the newest
+ * `ROUND_BOOK_CAP` rounds stay and an evicted round is COUNTED (never silently forgotten). Deliberately NOT a
+ * settings key: it is a bookkeeping bound, not a policy an institute tunes.
+ */
+const ROUND_BOOK_CAP = 50
+
 /** Every `vmu.chat.*` key this module reads (docs/04). */
 export const CHAT_KEYS = Object.freeze([
   'vmu.chat.admins',
@@ -153,8 +163,22 @@ export function createChat({
     return !Number.isFinite(untilMs) || nowMs() < untilMs
   }).sort()
   const speaks = new Map()         // member -> [instant]
+  /**
+   * ★ RUN 85 / E17 — THE ROUND BOOK (one speech per member per round).
+   *
+   * `round id -> { id, openedAt, members: [ids]|null, spoke: [{member, at, id, seq}] }`. It is a LEDGER page, not a
+   * scheduler: nothing here holds a turn, orders two members, or stops a message that is already on its way. What it
+   * does make a MACHINE FACT is the one thing the rule can be checked against — "this member has already spoken in
+   * this round" — and a second speech is refused BY NAME (`VMU_CHAT_ALREADY_SPOKE`) before anything is appended, so
+   * the ledger cannot record a member twice in one round. The honest boundary is printed in every receipt's `means`
+   * (a room convention enforced after the fact, not isolation between speakers).
+   *
+   * `members` is the round's participant list when the caller declares one (or the roster seam supplies it): only with
+   * a list can the book answer "who is STILL OWED a turn" (`remaining`) instead of merely "who has spoken".
+   */
+  const rounds = new Map()
   const admins = new Set(declaredList('vmu.chat.admins', []))
-  const dropped = { messages: 0, audit: 0, supplements: 0 }
+  const dropped = { messages: 0, audit: 0, supplements: 0, rounds: 0 }
   /**
    * G1 (Round 7) — THE SUPPLEMENT BOOK. v5r kept private messages OUT of the public face, and let the sender
    * bring one in deliberately with `supplement_of` + a `why`; the quote then resolved through the supplement
@@ -363,6 +387,94 @@ export function createChat({
       'pass a RELATIVE duration instead (durationMs / windowMs); the framework writes the instant')
   }
 
+  // ── ★ RUN 85 / E17 — the round book's helpers: validate the page, resolve its roster, read who spoke ─────────
+  /** The round's own id, as a trimmed non-empty string. A round with no name is not a page of the ledger. */
+  const roundKey = (round) => {
+    const id = round === null || round === undefined ? '' : String(round).trim()
+    if (!id) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'a speech round needs a non-empty round id',
+        'pass round:"<round name>" - every member who speaks in that round passes the SAME id')
+    }
+    if (id.length > 120) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'a round id must be 120 characters or fewer, got ' + id.length,
+        'use a short name (e.g. "r1"), not a paragraph')
+    }
+    return id
+  }
+  /**
+   * The round's participants. A declared `members` list wins; otherwise the kernel's own roster seam (`seatsOf()`) is
+   * flattened; a kernel with neither gets `null`, which means "this page can say who HAS spoken but not who is still
+   * owed a turn" — never a guessed list.
+   */
+  const roundRoster = (members) => {
+    if (Array.isArray(members)) {
+      const ids = members.map((m) => (m === null || m === undefined ? '' : String(m).trim())).filter(Boolean)
+      const uniq = [...new Set(ids)]
+      if (!uniq.length) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'a round declared `members` but named nobody: the list is empty',
+          'pass members:["<member id>", …], or omit `members` and let the roster seam fill it')
+      }
+      return uniq
+    }
+    if (typeof seatsOf !== 'function') return null
+    let map
+    try { map = seatsOf() } catch { return null }
+    if (!map || typeof map !== 'object') return null
+    const out = []
+    for (const slot of Object.keys(map)) {
+      const list = Array.isArray(map[slot]) ? map[slot] : []
+      for (const raw of list) {
+        const id = raw === null || raw === undefined ? '' : String(raw).trim()
+        if (id && out.indexOf(id) < 0) out.push(id)
+      }
+    }
+    return out.length ? out : null
+  }
+  /** Who spoke in a page (ids only). */
+  const spokenOf = (row) => (row && Array.isArray(row.spoke) ? row.spoke.map((s) => s.member) : [])
+  /** Who is still owed a turn: the declared roster minus the speakers, or `null` when no roster is known. */
+  const remainingOf = (row) => {
+    if (!row || !Array.isArray(row.members) || !row.members.length) return null
+    const spoke = spokenOf(row)
+    return row.members.filter((m) => spoke.indexOf(m) < 0)
+  }
+  /** Get-or-open a page. A round may learn its roster LATE (a read before the list was declared). */
+  const roundPage = (id, members) => {
+    let row = rounds.get(id)
+    if (!row) {
+      row = { id, openedAt: clock(), members: roundRoster(members), spoke: [] }
+      rounds.set(id, row)
+      while (rounds.size > ROUND_BOOK_CAP) {
+        const oldest = rounds.keys().next().value
+        rounds.delete(oldest)
+        dropped.rounds += 1
+      }
+      record('round-opened', { round: id, members: row.members ? row.members.length : null })
+    } else if (!row.members && members) {
+      row.members = roundRoster(members)
+      record('round-roster', { round: id, members: row.members ? row.members.length : null })
+    }
+    return row
+  }
+  /**
+   * The one sentence every round receipt carries. A mechanism that refuses a second speech is NOT isolation, and saying
+   * so in the receipt is part of the mechanism (the same discipline `status().countsScope` follows).
+   */
+  const ROUND_MEANS = 'this is BOOKKEEPING + A NAMED REFUSAL, not isolation: the kernel records who has spoken in this '
+    + 'round and refuses that member\'s SECOND speech by name (VMU_CHAT_ALREADY_SPOKE), appending nothing. It does not '
+    + 'schedule or interleave members\' turns, so "不打断" is the room CONVENTION this book enforces AFTER the fact - a '
+    + 'first speaker is not protected from arriving second, and two DIFFERENT members may still write at the same instant.'
+  /** The public shape of one page (shared by `roundStatus`, `rounds()` and `status()`). */
+  const roundView = (row) => ({
+    round: row.id,
+    openedAt: row.openedAt,
+    members: row.members ? row.members.slice() : null,
+    spokenBy: spokenOf(row),
+    spoke: row.spoke.map((s) => Object.assign({}, s)),
+    remaining: remainingOf(row),
+    complete: remainingOf(row) ? remainingOf(row).length === 0 : null,
+  })
+
   const chat = {
     get policyGen() { return policyGen },
 
@@ -467,6 +579,71 @@ export function createChat({
       if (typeof isAdmin !== 'function') enforced.push('vmu.chat.admins')
       return { ok: true, id: row.id, seq, at: row.at, from: who, kind: k, replyTo: row.replyTo, quotes: clone(kept),
         quota: { used: used + 1, limit, remaining: limit > 0 ? Math.max(0, limit - used - 1) : null }, enforced }
+    },
+
+    /**
+     * ★ RUN 85 / E17 — SPEAK ONCE PER ROUND (规则 L36「单次发言版群聊：每人各说一次、不打断」).
+     *
+     * `round` names the page; the first speech by a member in that round is recorded, and a SECOND speech by the SAME
+     * member in the SAME round is refused BY NAME (`VMU_CHAT_ALREADY_SPOKE`, nothing appended — the same discipline a
+     * refused `send` follows). The speech itself still goes through `send()`, so mute, quota and the ballot freeze
+     * keep their own refusals and their own order: a muted member hears MUTED, not ALREADY_SPOKE.
+     *
+     * WHAT IT IS (and what the receipt's `means` keeps saying): a LEDGER PAGE + A REFUSAL. It is not a turn queue and
+     * not isolation — no member's message is held back or ordered against another's, so the room convention "nobody is
+     * interrupted" is enforced after the fact, on the one thing the book can check.
+     *
+     * `members` (or the kernel's roster seam) makes the page able to answer `remaining` — who is still owed a turn.
+     * Without either, `remaining` is `null` ("unknown"), never a fabricated list.
+     */
+    speakRound({ round = null, from = null, text = '', members = null, kind = 'chat' } = {}) {
+      const id = roundKey(round)
+      const who = from === null || from === undefined ? '' : String(from).trim()
+      if (!who) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'a round speech needs a non-empty speaker id',
+          'the tool face passes this as `member`: vibe_v5_say { round, member, text }')
+      }
+      const row = rounds.get(id) || null
+      const earlier = row ? row.spoke.filter((s) => s.member === who)[0] : null
+      if (earlier) {
+        note('VMU_CHAT_ALREADY_SPOKE', { member: who, round: id })
+        record('round-refused', { member: who, round: id, reason: 'already-spoke', messageId: earlier.id })
+        const owed = remainingOf(row)
+        throw refuse('VMU_CHAT_ALREADY_SPOKE',
+          who + ' has already spoken in round "' + id + '" (message ' + String(earlier.id) + '): one speech per member per round',
+          '本轮已发言，下轮再说 —— the next round is a NEW round id'
+            + (owed && owed.length ? ('; this page is still waiting on: ' + owed.join(', ')) : '; everyone on this page has spoken'),
+          [])
+      }
+      // The speech goes through `send()` FIRST, so a muted/quota/frozen member hears THAT refusal and the round page is
+      // never opened by a speech that was refused (a page must not claim a member spoke when nothing was recorded).
+      const sent = chat.send(who, text, { kind })
+      const page = roundPage(id, members)
+      page.spoke.push({ member: who, at: sent.at, id: sent.id, seq: sent.seq })
+      record('round-spoke', { member: who, round: id, messageId: sent.id })
+      const view = roundView(page)
+      return Object.assign({}, sent, {
+        round: id, spoke: true, spokenBy: view.spokenBy, remaining: view.remaining, complete: view.complete,
+        means: ROUND_MEANS,
+      })
+    },
+
+    /** Read ONE round page: who has spoken, who is still owed a turn. Never opens or alters a page. */
+    roundStatus({ round = null, members = null } = {}) {
+      const id = roundKey(round)
+      const row = rounds.get(id) || null
+      if (!row) {
+        const declared = roundRoster(members)
+        return { ok: true, round: id, known: false, openedAt: null, members: declared, spokenBy: [], spoke: [],
+          remaining: declared ? declared.slice() : null, complete: declared ? declared.length === 0 : null,
+          means: ROUND_MEANS }
+      }
+      return Object.assign({ ok: true, known: true, means: ROUND_MEANS }, roundView(row))
+    },
+
+    /** Every round page this book still holds, oldest first (the reader behind `status().rounds`). */
+    rounds() {
+      return [...rounds.values()].map((row) => roundView(row))
     },
 
     /** Resolve a reply/quote anchor against the ledger. A dangling anchor is a NAMED refusal (never silent). */
@@ -769,6 +946,9 @@ export function createChat({
           messages: messages.map((m) => clone(m)),
           mutes: Object.fromEntries([...mutes.entries()].map(([k, v]) => [k, clone(v)])),
           speaks: Object.fromEntries([...speaks.entries()].map(([k, v]) => [k, v.slice()])),
+          // ★ RUN 85 / E17: the round pages travel with the ledger, because "who spoke in round X" is a fact about the
+          // conversation (another kernel over the same store must be able to read it), not a per-session counter.
+          rounds: Object.fromEntries([...rounds.entries()].map(([k, v]) => [k, clone(v)])),
           policyGen,
         },
         counters: { chat: seq },
@@ -836,12 +1016,25 @@ export function createChat({
       for (const [k, v] of Object.entries(d.mutes || {})) mutes.set(k, clone(v))
       speaks.clear()
       for (const [k, v] of Object.entries(d.speaks || {})) speaks.set(k, (Array.isArray(v) ? v : []).slice())
+      // ★ RUN 85 / E17: the round pages are OPTIONAL in a snapshot, and a snapshot that cannot DESCRIBE them must not
+      // erase them. Two writers exist: `hydrate` restores a fold (which carries `rounds`), while the reload-merge path in
+      // `kernel/index.js` builds a merged snapshot from the message/mute books only — restoring THAT used to clear the
+      // round book, which would have made a refusal disappear after any reload (the exact "the guard was right, the
+      // BOOK was erased" shape of run 45). So: `rounds` present ⇒ replace; absent ⇒ keep what this kernel knows.
+      if (d.rounds !== undefined) {
+        rounds.clear()
+        for (const [k, v] of Object.entries(d.rounds || {})) {
+          const page = v && typeof v === 'object' ? clone(v) : null
+          if (page && page.id) rounds.set(String(page.id), page)
+        }
+      }
       policyGen = Number(d.policyGen || 0) || 0
       const fromSnap = Number((snap.counters && snap.counters.chat) || 0)
       const maxSeq = messages.reduce((mx, m) => Math.max(mx, Number(m.seq) || Number(String(m.id || '').replace(/^msg-/, '')) || 0), 0)
       const before = seq
       seq = Math.max(seq, fromSnap, maxSeq)
-      return { ok: true, restored: true, restored_items: ['messages', 'mutes', 'speaks'],
+      return { ok: true, restored: true,
+        restored_items: ['messages', 'mutes', 'speaks'].concat(d.rounds === undefined ? [] : ['rounds']),
         seqBefore: before, seqAfter: seq, counters: { chat: seq }, skipped: (snap.skipped || []).slice() }
     },
 
@@ -889,7 +1082,16 @@ export function createChat({
         // ★ ROUND 75 (F-70): same rule as the mailbox and records faces — a counter must say whose count it is.
         countsScope: 'this-kernel-instance',
         countsMeans: "these counts are THIS chat instance's own book (messages it currently holds, audit rows it wrote, supplements it made). Lines written by another kernel over the same store are folded in on read, so a count here is this VIEW's count, not a total across kernels.",
-        dropped: Object.assign({}, dropped), refusals: Object.fromEntries(refusals) }
+        dropped: Object.assign({}, dropped), refusals: Object.fromEntries(refusals),
+        // ★ RUN 85 / E17: what a round reader needs BEFORE speaking — which rounds exist and who has already spoken in
+        // each. This is a READ (no page is opened), and `remaining` stays `null` rather than a guess when no roster is
+        // known, so "I cannot tell" is never printed as "everybody has spoken".
+        rounds: [...rounds.values()].map((row) => roundView(row)),
+        roundsMeans: 'the speech rounds this book still holds (oldest first, at most ' + ROUND_BOOK_CAP + '): `spokenBy` '
+          + 'answers "who has ALREADY spoken in this round" (ask it when the round opens), `remaining` answers "who is '
+          + 'still owed a turn" (null when the page never learned its roster), `complete` is true only when a declared '
+          + 'roster is fully spoken for. A round is a LEDGER PAGE + A NAMED REFUSAL, not a scheduler — see the `means` '
+          + 'on any round receipt.' }
     },
 
     keysUsed() {
