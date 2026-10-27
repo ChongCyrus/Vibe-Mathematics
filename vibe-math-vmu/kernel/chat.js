@@ -886,6 +886,9 @@ export function createChat({
         mechanism: { hasFrozenSeam: typeof isFrozen === 'function', hasFreezeExemptSeam: typeof freezeExempt === 'function',
           hasAdminSeam: typeof isAdmin === 'function', clockInjected: true, hotSource: typeof (settings && settings.set) === 'function' ? 'settings' : 'memory' },
         counts: { sends: messages.length, audit: audit.length, supplements: supplements.size },
+        // ★ ROUND 75 (F-70): same rule as the mailbox and records faces — a counter must say whose count it is.
+        countsScope: 'this-kernel-instance',
+        countsMeans: "these counts are THIS chat instance's own book (messages it currently holds, audit rows it wrote, supplements it made). Lines written by another kernel over the same store are folded in on read, so a count here is this VIEW's count, not a total across kernels.",
         dropped: Object.assign({}, dropped), refusals: Object.fromEntries(refusals) }
     },
 

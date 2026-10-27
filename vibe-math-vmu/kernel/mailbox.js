@@ -1198,6 +1198,11 @@ export function createMailbox({
         shared: Object.assign(clone(shared), {
           key: MAILBOX_STORE_KEY, storeBound: storeWritable(), readable: storeReadable(),
           writeQueued: queuedPush !== null,
+          // ★ ROUND 75 (F-70): the counters above (`pulls`/`pulledEntries`/`adoptedFlags`/...) belong to THIS
+          // kernel's own folds. Two kernels over one store legitimately report different numbers, exactly as
+          // `records{action:"status"}` says about its own (ROUND 70): the shared fact is the store KEY.
+          scope: 'this-kernel-instance',
+          scopeMeans: 'these counters belong to THIS mailbox instance: how many times THIS kernel folded the shared key, how many entries/flags it adopted and how many writes it refused. Another kernel over the same store folds its own and may legitimately report different numbers — the shared fact is the store key (' + MAILBOX_STORE_KEY + '), not any counter here.'
         }),
         policy: { digestWindowMs: digestWindowOf(), digestMax: digestMaxOf(), urgentKinds: urgentKindsOf(),
           ackedLedgerCap: ackedCapOf(), wakeBudget: wakeBudgetOf(), deliverTimeoutMs: deliverTimeoutOf(), boxCap: MAILBOX_BOX_CAP },

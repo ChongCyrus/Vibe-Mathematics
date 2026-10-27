@@ -7818,3 +7818,48 @@ hashUnchangedMeans: "not measured: no compile ran for this job (VMU_LEAN_FILE_UN
 **§178.7 无实质残余？**
 
 本轮 0 新缺陷；F-69 结清。残余：§174.7 两条（`scope` 只加在 records 面、`check-task-brief` 不校验占位符与跨行拼接）+ 上面三项无法验证。
+
+## §179 真机跑 74（广度复验：作者归因、卡片字段、计数器归属一起读）
+
+**§179.1 读数**
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | 78s |
+| 根会话 | `toolCalls 7`、`transcriptEvents 56`、`calls (7) vs results (7)` |
+| token | `tokenTotal 365,706`（cap 12,000,000、`tokenCapHit:false`） |
+| 会话 | 2（root + 成员 r-1 一轮） |
+| 健康 | `0 with RED checks` |
+| 快照 | `_oneoff/vm-slv/full-1027-231958.jsonl`，1,491,902 B / 2,072 行 |
+| 围栏计数 | `NO_FENCE=12 UNKNOWN_FIELD=18 FIELD_NOT_APPLICABLE=8 BAD_JSON=12` |
+| 保全 | `D:\_tmp\slv-phase5\slv-logs\…20261027-232152` |
+
+**§179.2 判决：四个已关家族在同一轮里同时复验通过**
+
+| 家族 | 读数（逐字） | 结论 |
+| --- | --- | --- |
+| F-65 卡片字段 | `card.cardFields.p: 0.7`、`card.cardFields.statement: "对任意整数 n，n^2 + n 是偶数"`、`card.cardFields.proofState: null`、`card.cardFieldsMeans` 整句、`card.owner: "r-1"`；`card.body` 里仍有 `- p：0.7` 行 | ✅ |
+| F-64 / F-66 计数器可达与归属 | `shared.attached: true`、`shared.scope: "this-kernel-instance"`、`shared.scopeMeans` 整句、`shared.adoptedWithoutAuthor: 0`、`shared.pulls: 17`、`shared.recordsMeans` 整句、`shared.note` 整句 | ✅ |
+| F-61 跨内核同 id | 成员 r-1 在自己的内核读同一张卡：`card.cardFields.p = 0.7`、`card.owner = "r-1"`、`shared.adoptedWithoutAuthor = 0`、`shared.scope = "this-kernel-instance"` —— 与 root 的两个读数逐字一致 | ✅ |
+| F-57 截断声明（回归） | 成员回执 `replyLength: 1007`、`replyTruncated: false`、`replyLimitChars: 2000` | ✅ |
+
+**§179.3 本轮简报**
+
+六步、7 次调用；`check-task-brief.mjs` 一次 0 问题（105 工具）。简报第 5 步要求「只调两个工具、照实抄、最后用围栏交回」，成员照做（回执里它自己先并行调了两个读工具再写围栏）。
+
+**§179.4 门禁**
+
+全量 `TOTAL 544 PASS 544 FAIL 0 (suites 480 · probes 64)`；`regen-all --check` 16/16；`DOC LINT: PASS`；`PREFLIGHT: PASS`；计数未变（`JOBS total=613 suites=505 probes=108`）。
+
+**§179.5 简报错**
+
+无。
+
+**§179.6 无法验证**
+
+沿用 §178.6 三项（`terminated` 旁支、取消分支、跨进程重启计数基准）。
+
+**§179.7 无实质残余？**
+
+本轮 0 新缺陷，四个已关家族同时复验通过；残余仍是记账项（§174.7 两条 + §178.6 三项 + 「历史行不迁移」）。
