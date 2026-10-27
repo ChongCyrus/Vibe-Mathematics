@@ -149,7 +149,7 @@ const CORE_DEFS = Object.freeze([
   // different semantic made a deployment believe there were two knobs when only one is wired. Removal order was
   // measured, not guessed: the pack manifest values and the volumes that spelled the full name (docs/08, docs/10,
   // docs/12) were reworded FIRST, because the docs gates require every `vmu.*` name written in a volume to exist here.
-  { key: 'vmu.meetings.verdictMaxRounds', type: 'positiveInteger', def: 3, hot: HOT.H2, who: 'role:chair', doc: 'P3：同一对象的复算轮次上限（不得无限复算）' },
+  { key: 'vmu.meetings.verdictMaxRounds', type: 'positiveInteger', def: 3, hot: HOT.H1, who: 'role:chair', doc: 'P3：同一对象的复算轮次上限（不得无限复算）；院士可在会话中改，内核每次动议重读' },
   { key: 'vmu.meetings.hardLimitMs', type: 'natural', def: 1800000, hot: HOT.H2, who: 'office', doc: 'P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"**' },
   { key: 'vmu.meetings.wakeRetries', type: 'natural', def: 5, hot: HOT.H2, who: 'office', doc: 'P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会"' },
   { key: 'vmu.meetings.roundTimeoutMs', type: 'natural', def: 0, hot: HOT.H2, who: 'office', doc: '单轮超时；0＝不限' },

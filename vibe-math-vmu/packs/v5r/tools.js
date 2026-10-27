@@ -924,7 +924,26 @@ function requireVoter(kernel, member, what) {
 // depth). Its value is that the refusal can name the roster fact ("r-1 is in slot member") and the declared roles
 // BEFORE the durable consult ledger is touched — and that a member id which does not exist cannot claim to be the office.
 function requireConsultAnswerer(kernel, member) {
-  const row = requireSeat(kernel, member, 'paper consult (answering the office pre-finalisation question)')
+  // ★★ ROUND 87 / LIVE RUN 86 (F-86a): THE GATE'S ONLY DECLARED ANSWERER WAS UNREACHABLE. `vmu.paper.officeConsult`
+  // defaults to "required", so `final` asks the OFFICE a question; `PAPER_CONSULT_ROLES` declares "office" as the one
+  // answerer; and `consult {member:"office"}` was refused `VMU_NO_SUCH_OBJECT "no member office on this roster"` — a
+  // roster is about RESEARCHERS, while the office is the session running the work. The gate therefore could only time
+  // out (or the chair had to turn the policy off), which is exactly the "mechanism with no reachable consumer" shape.
+  // The declared ROLE token is now answerable without a seat, and the receipt SAYS which kind of identity answered.
+  const declaredRole = PAPER_CONSULT_ROLES.filter((r) => String(r) === String(member))[0] || null
+  let row = null
+  if (declaredRole) {
+    try {
+      row = requireSeat(kernel, member, 'paper consult (answering the office pre-finalisation question)')
+      row.answererKind = 'roster-seat'
+    } catch (e) {
+      row = { id: String(member), slot: null, state: 'live', onRoster: false, answererKind: 'declared-role' }
+    }
+  } else {
+    row = requireSeat(kernel, member, 'paper consult (answering the office pre-finalisation question)')
+    row.answererKind = 'roster-seat'
+  }
+  if (row.onRoster === false) return row
   if (row.state !== undefined && String(row.state) !== 'live') {
     throw refuse('VMU_STATE', 'member "' + String(row.id) + '" is ' + String(row.state) + ', so it cannot answer the office consult',
       'the roster holds the live ids (roster() reports state); seat a live office member, or answer from one')
@@ -3284,12 +3303,16 @@ async function toolPaper(args = {}, { kernel } = {}) {
         e.waiting = waiting.map((r) => r.id)
         throw e
       }
-      requireConsultAnswerer(kernel, by)
+      const answerer = requireConsultAnswerer(kernel, by)
       const answered = paper.recordConsult({ target, by, note: str(args.note || args.notes || ''),
         answer: has(args.answer) ? str(args.answer) : null })
       const after = paper.consultState({ target })
       return { ok: true, tool, action, target: after.target, consult: {
         requestId: answered.requestId, answeredBy: answered.answeredBy, answeredRole: answered.answeredRole || null,
+        answererKind: answerer.answererKind || 'roster-seat',
+        answererMeans: answerer.answererKind === 'declared-role'
+          ? 'the office answered by its DECLARED ROLE (PAPER_CONSULT_ROLES), not by a roster seat: the office is the session running the work, so it has no seat id to match'
+          : 'a live roster seat answered (matched by id or slot against PAPER_CONSULT_ROLES)',
         cleared: answered.cleared === true, answeredTotal: answered.answered, note: answered.note || null,
         // Read back through the READER, not from the write receipt: "the write said ok" is not "the gate sees an answer".
         armed: after.armed === true, awaiting: after.awaiting, latestAnswer: after.answered,

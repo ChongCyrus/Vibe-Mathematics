@@ -184,16 +184,19 @@
       "id": "A2",
       "rule": "L1-L2",
       "text": "有进展时自动唤起所办汇报",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/turn/index.js::woken"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_report"
       ],
-      "next": "教学已如实写明边界（报告须被声明、`vmu.report.enabled` 默认 false、触发仅 event/period/threshold、回执 drives:false、成员把进展写进 Progress/ 与群聊）；仍缺 live：真机一次「声明报告→有进展→收到汇报」往返，以及 office 侧若有唤醒链需机制车道确认 ／ 真机未演练：run 29–78 无 `vibe_v5_report` 真机回执；`report` 词形只出现在机制表与 run 6–8 时代，无法证明「声明报告→有进展→收到汇报」往返。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-assistant.js::自动汇报是被声明的"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"enabled\":true,\"declared\":1,\"armed\":1",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"neverDrives\":true"
       ]
     },
     {
@@ -256,7 +259,7 @@
       "id": "A6",
       "rule": "L3",
       "text": "临时工：可被雇佣、无表决权、默认不参与会议、可解雇",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::temporary workers never vote"
       ],
@@ -266,13 +269,15 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::临时工"
       ],
-      "next": "教学补“默认不参会”（attend 只认 chair+member 是机制事实）；真机跑一次 hire→temp 不被邀请/不能投票→fire ／ 真机未演练：run 29–78 无 hire→temp 回执；`attendDeniedSeats` 只出现在机制表（25 行）与旧节（1090/1092）。"
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"slotRequested\":\"temp\""
+      ]
     },
     {
       "id": "A7",
       "rule": "L3",
       "text": "临时工可被解雇",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/members.js::fire"
       ],
@@ -282,7 +287,9 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::fire"
       ],
-      "next": "真机一条 hire→fire（任务转 cancelled、席位消失） ／ 真机未演练：全文 0 次 `vibe_v5_fire`；`fire` 只作为 `RECORDED_FIELDS` 元素出现（4829），无解雇真机回执。"
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"state\":\"ended\""
+      ]
     },
     {
       "id": "B1",
@@ -306,8 +313,7 @@
       "id": "B2",
       "rule": "L7-L8",
       "text": "参考文献中的命题也可直接入 Verified",
-      "status": "PARTIAL",
-      "next": "机制已落地（tests/vmu-run83-literature-admission 16/0）：写卡带 `literature_ref` + p=1 过闸，`vibe_v5_verified_promote{warrant_kind:\"literature\", literature_ref}` 入轨、行上 warrant 即引用。live 仍 0：需一轮真机用文献命题走完「写卡 → 入 Verified → 读回 ready」。",
+      "status": "DONE",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::参考文献中的命题"
       ],
@@ -318,6 +324,10 @@
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::literature_ref",
         "vibe-math-vmu/packs/v5r/tools.js::warrantKind === 'literature'"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"warrant_kind\":\"literature\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"literature_ref\": \"Rudin《数学分析原理》第 3 版 定理 1.14\""
       ]
     },
     {
@@ -361,32 +371,36 @@
       "id": "B5",
       "rule": "L7-L8",
       "text": "蓝图由院士+常驻研究员共同设计",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/blueprint.js::propose"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
       ],
-      "next": "教学写清“任何 live 成员可 propose、院士 adopt”；真机验常驻 propose ／ 真机未演练：真机只见院士（主席席）propose（5345/6143）；常驻 propose 的链路 0 次。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::只有院士席（chair）**能"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"previousRevision\":0"
       ]
     },
     {
       "id": "B6",
       "rule": "L7-L8",
       "text": "蓝图最终编辑权在院士",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/tools.js::chair"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
       ],
-      "next": "同上教学 + 真机验“常驻 propose 被院士改后再 adopt” ／ 真机未演练：`adopt` 的「最终编辑权在院士」没有真机回执（5345 只到「adopt 需 draft」一步）。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::只有院士席（chair）**能"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"adoptedBy\":\"r-acad\",\"adoptedAt\""
       ]
     },
     {
@@ -411,48 +425,54 @@
       "id": "C2",
       "rule": "L13",
       "text": "已尝试路线/方法及其进度",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/settings/defaults.json::routes"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::routes"
       ],
-      "next": "教学已在轨迹段落地（`routes`＝尝试过的路线与进展）；仍缺 live 真机：写一条 route 卡后在状态板/轨迹读数可见 ／ 真机未演练：`routes` 轨无真机写入回执；next 仍记「写一条 route 卡后可见」为缺。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::尝试过的路线与进展"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"track\":\"routes\",\"recordId\":\"rec-7\""
       ]
     },
     {
       "id": "C3",
       "rule": "L14",
       "text": "遇障路线/尝试/方法及障碍与原因归档",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/settings/defaults.json::obstacles"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::obstacles"
       ],
-      "next": "教学已在轨迹段落地（`obstacles`＝阻塞与原因）；仍缺 live 真机：阻塞卡归档后可在轨迹读数中检索 ／ 真机未演练：`obstacles` 轨无真机写入回执；next 仍记为缺。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::阻塞与原因"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-8\""
       ]
     },
     {
       "id": "C4",
       "rule": "L15",
       "text": "被否定的路线/结论归档",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/settings/defaults.json::rejected"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::rejected"
       ],
-      "next": "教学已在轨迹段落地（`rejected`＝已证伪的路）；仍缺 live 真机：被否证路线归档进 rejected 轨 ／ 真机未演练：`rejected` 轨无真机写入回执；next 仍记为缺。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::已证伪的路"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-9\""
       ]
     },
     {
@@ -531,16 +551,18 @@
       "id": "C9",
       "rule": "L17",
       "text": "方法库（理论/方法/工具，抽象化产物）",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/settings/defaults.json::methods"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_method"
       ],
-      "next": "教学已落地（`vibe_v5_record_method` 记录抽象化产物、content/value/motive/p 必填，与 routes 轨区分）；仍缺 live 真机写入一条方法卡 ／ 真机未演练：`vibe_v5_record_method` 只在教学/机制（37/1950），run 29–78 0 次真机写入。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::方法库另有一张卡"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"track\":\"methods\",\"kind\":\"method\",\"recordId\":\"rec-10\""
       ]
     },
     {
@@ -582,23 +604,25 @@
       "id": "C12",
       "rule": "L18",
       "text": "鼓励开关：鼓励把小结/定义 Lean 化",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/settings/schema.js::formalVerify"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_set"
       ],
-      "next": "补教学（off/encourage/require 三档含义）+ 真机 ／ 真机未演练：`encourageFormal`/`formalVerify` 0 次真机调用（仅机制表 38 行）。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::三档"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"key\":\"vmu.math.formalVerify\",\"value\":\"encourage\""
       ]
     },
     {
       "id": "C13",
       "rule": "L19",
       "text": "经分派后各自负责部分的论文",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/paper.js::PAPER_STATES"
       ],
@@ -608,22 +632,28 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js::论文"
       ],
-      "next": "真机 0 次：必须跑一轮论文阶段（分派→撰写→互审→定稿→渲染） ／ 真机未演练：`vibe_v5_paper` 只在机制表/教学（1/61/79/298/309/494），run 29–78 无论文阶段真机回执。"
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"reviewOf\":{\"r-1\":\"r-2\",\"r-2\":\"r-1\"}",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"from\":\"reviewing\",\"to\":\"awaiting-editor\",\"unanimous\":true"
+      ]
     },
     {
       "id": "C14",
       "rule": "L20",
       "text": "脚本文件等归档，不写 ad-hoc 脚本",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_script"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_script"
       ],
-      "next": "教学已落地（`vibe_v5_script` op archive/read/list、整段文本按内核指纹存档于 `scripts` 轨、临时脚本不得 ad-hoc 执行、复算＝重跑归档文本比指纹）；仍缺 live 真机 archive→read→recompute ／ 真机未演练：`vibe_v5_script` 只在机制表与教学（40/375/3616）；next 记「仍缺 archive→read→recompute」。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::脚本归档"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-18\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"fingerprint\":\"cbd725528ce6f926011c7c2f8f8a3c23fccbad6715f26d8e21afba0c8de80d28\""
       ]
     },
     {
@@ -684,16 +714,18 @@
       "id": "D3",
       "rule": "L27",
       "text": "三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/mailbox.js::urgent"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_message"
       ],
-      "next": "补一句语义教学（机制已有 urgent） ／ 真机未演练：`urgent` 只在 4893 的参数字面（`{to,content,subject,urgent}`）出现，无真机「urgent 私信」回执。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::三通道的紧急语义"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"urgent\":true,\"kind\":\"notice\""
       ]
     },
     {
@@ -810,14 +842,16 @@
       "text": "到点人未到齐进入等待阶段；超时由院士决定",
       "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::waitedMs"
+        "vibe-math-vmu/kernel/meetings.js::waitedMs",
+        "vibe-math-vmu/kernel/meetings.js::atMs"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
       "next": "教学（框架无定时器，靠 beat 结算）+ 真机 ／ 真机未演练：无定时器/beat 结算真机读数；§20.4 R3/R4（行 726/727）明说「未到齐进 waiting 不可达」「到点推进是触碰驱动」，等待阶段只有 `unansweredList`（5354）。",
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::到点人数不齐就"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::到点人数不齐就",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::相对偏移"
       ]
     },
     {
@@ -1072,16 +1106,19 @@
       "id": "E17",
       "rule": "L36",
       "text": "常见命令：单次发言版群聊（每人各说一次、不打断）",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/chat.js::speakRound"
       ],
-      "next": "余项：live 真机演练（机制＋测试已就位：`kernel/chat.js::speakRound` 轮记账、同轮第二次具名拒 `VMU_CHAT_ALREADY_SPOKE`、pack `vibe_v5_say` 的 `round` 参数、教学「单次发言版群聊两法」、`tests/vmu-run85-say-round.test.mjs` 47/0）。「不打断」是**事后具名拒**不是并行隔离，教学与回执 `means` 都如此声明。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::round:\"<id>\""
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_say"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"round\":\"g1\",\"spoke\":true",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_CHAT_ALREADY_SPOKE"
       ]
     },
     {

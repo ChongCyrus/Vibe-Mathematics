@@ -83,6 +83,15 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     try { bus.emit(name, event) } catch (e) { say({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
   }
   const n = (v, def = 0) => (Number.isFinite(v) ? v : def)
+  // ★ ROUND 87 (E29): THE CHAIR DECIDES THE ROUNDS. The whole `vmu.meetings.*` block is frozen into `K` at
+  // construction (see CONSTRUCTION_ONLY_KEYS in kernel/index.js), and that is right for quorum/limits — but the round
+  // ceiling is a POLICY the chair shapes per debate, so a runtime write has to reach it. This ONE key is re-read here,
+  // and `LIVE_READERS_EXACT` names that measurement so the setting receipt cannot keep claiming a restart.
+  const verdictMaxRoundsNow = () => {
+    const raw = sget('vmu.meetings.verdictMaxRounds')
+    const v = (raw === undefined || raw === null || raw === '') ? 3 : n(raw)
+    return Math.max(1, v)
+  }
   /**
    * A MEETING TIME, AS A NUMBER OF MILLISECONDS. `at` used to be stored exactly as it arrived, so an ISO-8601 string
    * from a model silently became a STRING `openedAt` (and `ms + budgetWallMs` string-CONCATENATED, turning a wall bound
@@ -98,6 +107,18 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // ★ R2 of the phase-12 live run: a JSON round-trip turns a number into a STRING, and the live run passed
       // `at: "1792779800000"` — a perfectly usable epoch-millisecond instant that was refused. A time that can be
       // recovered exactly must not be refused for its spelling; `Date.parse` alone does not recognise it.
+      // ★ ROUND 89: an agent has no clock of its own. `at` used to accept only an ABSOLUTE instant, so the only way
+      // to say "in two minutes" was to do arithmetic on an epoch number the model had to get from somewhere — and the
+      // scheduling rule in the rules file says "a time", not "a timestamp the model must compute". A relative offset
+      // is the form a reader with no clock can actually produce, so it is accepted by name (and converted HERE, by the
+      // kernel's own clock, which is the only clock that matters).
+      const rel = /^\+\s*(\d+(?:\.\d+)?)\s*(ms|s|m|h)$/.exec(trimmed)
+      if (rel) {
+        const unit = { ms: 1, s: 1000, m: 60000, h: 3600000 }[rel[2]]
+        const delta = Math.round(Number(rel[1]) * unit)
+        if (!Number.isFinite(delta) || delta < 0) throw deny('VMU_INVALID_ARGUMENT', 'at is not a usable time: "' + trimmed + '"', 'pass a non-negative relative offset such as "+90s"', [])
+        return Date.now() + delta
+      }
       if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
         const asNumber = Number(trimmed)
         if (Number.isFinite(asNumber)) return asNumber
@@ -105,7 +126,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       const parsed = Date.parse(trimmed)
       if (Number.isFinite(parsed)) return parsed
       throw deny('VMU_INVALID_ARGUMENT', what + ' is not a usable time: "' + trimmed + '"',
-        'pass epoch milliseconds (number or numeric string), or an ISO-8601 timestamp such as "2026-10-24T10:00:00+08:00"', [])
+        'pass epoch milliseconds (number or numeric string), an ISO-8601 timestamp such as "2026-10-24T10:00:00+08:00", or a relative offset such as "+90s" (the kernel adds it to its own clock)', [])
     }
     throw deny('VMU_INVALID_ARGUMENT', what + ' must be epoch milliseconds or an ISO-8601 string; got ' + (value === null ? 'null' : typeof value),
       'pass epoch milliseconds, or an ISO-8601 timestamp string', [])
@@ -241,11 +262,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     wakeRetries: Math.min(10, Math.max(0, n(sget('vmu.meetings.wakeRetries')))),
     // ROUND 199: the motion (verdict round) ceiling. `|| 3` is explicit: an unset key reads as 0 here, and the
     // contract is int >= 1 with default 3.
-    verdictMaxRounds: (() => {
-      const raw = sget('vmu.meetings.verdictMaxRounds')
-      const v = (raw === undefined || raw === null || raw === '') ? 3 : n(raw)
-      return Math.max(1, v)
-    })(),
+    verdictMaxRounds: verdictMaxRoundsNow(),
   }
 
   const counters = { opened: 0, closed: 0, speeches: 0, motions: 0, votes: 0, appeals: 0, warnings: 0, mutes: 0, refused: 0, prunedMinutes: 0, prunedVerbatim: 0, skippedWakes: 0, softBudget: 0 }
@@ -1249,10 +1266,11 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // ROUND 199: `vmu.meetings.verdictMaxRounds` - the ceiling on how many times one meeting may be put to a
       // motion. The "object" of deliberation in this face is the meeting itself (a motion carries no target), and
       // saying so is the point: the ceiling is per meeting, checked before anything is created.
-      if (m.motions.length >= K.verdictMaxRounds) {
+      const roundCap = verdictMaxRoundsNow()
+      if (m.motions.length >= roundCap) {
         mark(enforced, 'vmu.meetings.verdictMaxRounds')
-        throw deny('VMU_RESOURCE_BUDGET', 'the motion ceiling is reached for this meeting: ' + m.motions.length + ' / ' + K.verdictMaxRounds,
-          'raise vmu.meetings.verdictMaxRounds, or close this meeting and open a new one (vmu.meetings.verdictMaxRounds)', enforced)
+        throw deny('VMU_RESOURCE_BUDGET', 'the motion ceiling is reached for this meeting: ' + m.motions.length + ' / ' + roundCap,
+          'raise vmu.meetings.verdictMaxRounds (the CHAIR may do it mid-session: this key is re-read on every motion), or close this meeting and open a new one', enforced)
       }
       const q = quorumOf(m)
       let need = q.required

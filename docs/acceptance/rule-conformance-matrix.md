@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 46 | all four citations resolve |
-| ◐ PARTIAL | 31 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 61 | all four citations resolve |
+| ◐ PARTIAL | 16 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -26,42 +26,42 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `A1` | L1-L2 | 所办＝主代理：用户的助手、媒介、传信者 | ✅ DONE | 2/2/1/1 | — |
-| `A2` | L1-L2 | 有进展时自动唤起所办汇报 | ◐ PARTIAL | 1/1/1/0 | 教学已如实写明边界（报告须被声明、`vmu.report.enabled` 默认 false、触发仅 event/period/threshold、回执 drives:false、成员把进展写进 Progress/ 与群聊）；仍缺 live：真机一次「声明报告→有进展→收到汇报」往返，以及 office 侧若有唤醒链需机制车道确认 ／ 真机未演练：run 29–78 无 `vibe_v5_report` 真机回执；`report` 词形只出现在机制表与 run 6–8 时代，无法证明「声明报告→有进展→收到汇报」往返。 |
+| `A2` | L1-L2 | 有进展时自动唤起所办汇报 | ✅ DONE | 1/1/1/2 | — |
 | `A3` | L1-L2 | 支持用户以自然语言让所办设参数、控制研究所 | ✅ DONE | 2/2/1/1 | — |
 | `A4` | L3 | 院士＝chair 席，统领研究所 | ✅ DONE | 1/1/1/1 | — |
 | `A5` | L3 | 常驻研究员＝member 席 | ✅ DONE | 1/1/1/1 | — |
-| `A6` | L3 | 临时工：可被雇佣、无表决权、默认不参与会议、可解雇 | ◐ PARTIAL | 1/1/1/0 | 教学补“默认不参会”（attend 只认 chair+member 是机制事实）；真机跑一次 hire→temp 不被邀请/不能投票→fire ／ 真机未演练：run 29–78 无 hire→temp 回执；`attendDeniedSeats` 只出现在机制表（25 行）与旧节（1090/1092）。 |
-| `A7` | L3 | 临时工可被解雇 | ◐ PARTIAL | 1/1/1/0 | 真机一条 hire→fire（任务转 cancelled、席位消失） ／ 真机未演练：全文 0 次 `vibe_v5_fire`；`fire` 只作为 `RECORDED_FIELDS` 元素出现（4829），无解雇真机回执。 |
+| `A6` | L3 | 临时工：可被雇佣、无表决权、默认不参与会议、可解雇 | ✅ DONE | 1/1/1/1 | — |
+| `A7` | L3 | 临时工可被解雇 | ✅ DONE | 1/1/1/1 | — |
 
 ## B. 公共文件
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `B1` | L7-L8 | Verified 只收 p=1 的命题 | ✅ DONE | 1/1/1/1 | — |
-| `B2` | L7-L8 | 参考文献中的命题也可直接入 Verified | ◐ PARTIAL | 2/2/1/0 | 机制已落地（tests/vmu-run83-literature-admission 16/0）：写卡带 `literature_ref` + p=1 过闸，`vibe_v5_verified_promote{warrant_kind:"literature", literature_ref}` 入轨、行上 warrant 即引用。live 仍 0：需一轮真机用文献命题走完「写卡 → 入 Verified → 读回 ready」。 |
+| `B2` | L7-L8 | 参考文献中的命题也可直接入 Verified | ✅ DONE | 2/2/1/2 | — |
 | `B3` | L7-L8 | 只有辩论能把 p 改为 1 | ✅ DONE | 1/1/1/1 | — |
 | `B4` | L7-L8 | 蓝图：总目标/技术路线/规划，按时更新 | ✅ DONE | 1/1/1/1 | — |
-| `B5` | L7-L8 | 蓝图由院士+常驻研究员共同设计 | ◐ PARTIAL | 1/1/1/0 | 教学写清“任何 live 成员可 propose、院士 adopt”；真机验常驻 propose ／ 真机未演练：真机只见院士（主席席）propose（5345/6143）；常驻 propose 的链路 0 次。 |
-| `B6` | L7-L8 | 蓝图最终编辑权在院士 | ◐ PARTIAL | 1/1/1/0 | 同上教学 + 真机验“常驻 propose 被院士改后再 adopt” ／ 真机未演练：`adopt` 的「最终编辑权在院士」没有真机回执（5345 只到「adopt 需 draft」一步）。 |
+| `B5` | L7-L8 | 蓝图由院士+常驻研究员共同设计 | ✅ DONE | 1/1/1/1 | — |
+| `B6` | L7-L8 | 蓝图最终编辑权在院士 | ✅ DONE | 1/1/1/1 | — |
 
 ## C. 个人文件
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `C1` | L11-L12 | 研究过程 progress 日志 | ✅ DONE | 1/1/1/1 | — |
-| `C2` | L13 | 已尝试路线/方法及其进度 | ◐ PARTIAL | 1/1/1/0 | 教学已在轨迹段落地（`routes`＝尝试过的路线与进展）；仍缺 live 真机：写一条 route 卡后在状态板/轨迹读数可见 ／ 真机未演练：`routes` 轨无真机写入回执；next 仍记「写一条 route 卡后可见」为缺。 |
-| `C3` | L14 | 遇障路线/尝试/方法及障碍与原因归档 | ◐ PARTIAL | 1/1/1/0 | 教学已在轨迹段落地（`obstacles`＝阻塞与原因）；仍缺 live 真机：阻塞卡归档后可在轨迹读数中检索 ／ 真机未演练：`obstacles` 轨无真机写入回执；next 仍记为缺。 |
-| `C4` | L15 | 被否定的路线/结论归档 | ◐ PARTIAL | 1/1/1/0 | 教学已在轨迹段落地（`rejected`＝已证伪的路）；仍缺 live 真机：被否证路线归档进 rejected 轨 ／ 真机未演练：`rejected` 轨无真机写入回执；next 仍记为缺。 |
+| `C2` | L13 | 已尝试路线/方法及其进度 | ✅ DONE | 1/1/1/1 | — |
+| `C3` | L14 | 遇障路线/尝试/方法及障碍与原因归档 | ✅ DONE | 1/1/1/1 | — |
+| `C4` | L15 | 被否定的路线/结论归档 | ✅ DONE | 1/1/1/1 | — |
 | `C5` | L16 | 命题库：完整定义、p(0-1)、进度 | ✅ DONE | 1/1/1/1 | — |
 | `C6` | L16 | 平时只记证明/证伪尝试，真正会证时才写正式证明字段 | ✅ DONE | 1/1/1/1 | — |
 | `C7` | L16 | 只有写完的正式证明才能用于辩论 | ✅ DONE | 1/1/1/1 | — |
 | `C8` | L16 | p=1 的命题要标记 verified | ✅ DONE | 1/1/1/1 | — |
-| `C9` | L17 | 方法库（理论/方法/工具，抽象化产物） | ◐ PARTIAL | 1/1/1/0 | 教学已落地（`vibe_v5_record_method` 记录抽象化产物、content/value/motive/p 必填，与 routes 轨区分）；仍缺 live 真机写入一条方法卡 ／ 真机未演练：`vibe_v5_record_method` 只在教学/机制（37/1950），run 29–78 0 次真机写入。 |
+| `C9` | L17 | 方法库（理论/方法/工具，抽象化产物） | ✅ DONE | 1/1/1/1 | — |
 | `C10` | L18 | Lean 代码与编译结果归档 | ✅ DONE | 1/1/1/1 | — |
 | `C11` | L18 | lean 通过后辩论只查描述/定义是否符合原意 | ◐ PARTIAL | 2/1/1/0 | 机制在：fidelity 注册表（`createFidelityRegistry`）承载「追问是否已放回辩论」的状态，未追问就下结论 ⇒ 具名 `VMU_PACK_V5R_FIDELITY_ASK_REQUIRED`；缺真机链路 lean 通过 → 辩论 → fidelity → p=1（0 次）。 ／ 真机未演练：`fidelity` 词形只出现在 run 31 的 deny 清单（5150/5151）；无「lean 通过→辩论→fidelity→p=1」真机链路。 |
-| `C12` | L18 | 鼓励开关：鼓励把小结/定义 Lean 化 | ◐ PARTIAL | 1/1/1/0 | 补教学（off/encourage/require 三档含义）+ 真机 ／ 真机未演练：`encourageFormal`/`formalVerify` 0 次真机调用（仅机制表 38 行）。 |
-| `C13` | L19 | 经分派后各自负责部分的论文 | ◐ PARTIAL | 1/1/1/0 | 真机 0 次：必须跑一轮论文阶段（分派→撰写→互审→定稿→渲染） ／ 真机未演练：`vibe_v5_paper` 只在机制表/教学（1/61/79/298/309/494），run 29–78 无论文阶段真机回执。 |
-| `C14` | L20 | 脚本文件等归档，不写 ad-hoc 脚本 | ◐ PARTIAL | 1/1/1/0 | 教学已落地（`vibe_v5_script` op archive/read/list、整段文本按内核指纹存档于 `scripts` 轨、临时脚本不得 ad-hoc 执行、复算＝重跑归档文本比指纹）；仍缺 live 真机 archive→read→recompute ／ 真机未演练：`vibe_v5_script` 只在机制表与教学（40/375/3616）；next 记「仍缺 archive→read→recompute」。 |
+| `C12` | L18 | 鼓励开关：鼓励把小结/定义 Lean 化 | ✅ DONE | 1/1/1/1 | — |
+| `C13` | L19 | 经分派后各自负责部分的论文 | ✅ DONE | 1/1/1/2 | — |
+| `C14` | L20 | 脚本文件等归档，不写 ad-hoc 脚本 | ✅ DONE | 1/1/1/2 | — |
 | `C15` | L21 | 自反馈库（问题/冗余/障碍/可优化点/方案；院士含组织协作） | ✅ DONE | 1/1/1/1 | — |
 
 ## D. 平时研究推进
@@ -70,7 +70,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | --- | --- | --- | --- | --- | --- |
 | `D1` | L26 | 各自推进各自的总任务 | ✅ DONE | 1/1/1/1 | — |
 | `D2` | L27 | 三通道：邮箱/私信/群聊 | ✅ DONE | 1/1/1/1 | — |
-| `D3` | L27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ◐ PARTIAL | 1/1/1/0 | 补一句语义教学（机制已有 urgent） ／ 真机未演练：`urgent` 只在 4893 的参数字面（`{to,content,subject,urgent}`）出现，无真机「urgent 私信」回执。 |
+| `D3` | L27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ✅ DONE | 1/1/1/1 | — |
 | `D4` | L28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 1/1/1/1 | — |
 | `D5` | L28 | 四字段都含时间等基础信息 | ✅ DONE | 1/1/1/1 | — |
 | `D6` | L28 | 可查看其他成员当前状态版 | ✅ DONE | 1/1/1/1 | — |
@@ -82,7 +82,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `E1` | L32 | 只能院士预约会议（可设预约时间） | ✅ DONE | 1/1/1/1 | — |
-| `E2` | L32 | 到点人未到齐进入等待阶段；超时由院士决定 | ◐ PARTIAL | 1/1/1/0 | 教学（框架无定时器，靠 beat 结算）+ 真机 ／ 真机未演练：无定时器/beat 结算真机读数；§20.4 R3/R4（行 726/727）明说「未到齐进 waiting 不可达」「到点推进是触碰驱动」，等待阶段只有 `unansweredList`（5354）。 |
+| `E2` | L32 | 到点人未到齐进入等待阶段；超时由院士决定 | ◐ PARTIAL | 2/1/2/0 | 教学（框架无定时器，靠 beat 结算）+ 真机 ／ 真机未演练：无定时器/beat 结算真机读数；§20.4 R3/R4（行 726/727）明说「未到齐进 waiting 不可达」「到点推进是触碰驱动」，等待阶段只有 `unansweredList`（5354）。 |
 | `E3` | L33 | 只能院士召开会议并主持 | ✅ DONE | 1/1/1/1 | — |
 | `E4` | L33 | 只能院士关闭会议 | ✅ DONE | 1/1/1/1 | — |
 | `E5` | L33 | 院士可延长会议时长上界 | ✅ DONE | 1/1/1/1 | — |
@@ -97,7 +97,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E14` | L36 | 常见命令：举手 | ✅ DONE | 1/1/1/1 | — |
 | `E15` | L36 | 常见命令：邀请发言 | ✅ DONE | 1/1/1/1 | — |
 | `E16` | L36 | 常见命令：批量指定成员按顺序发言 | ✅ DONE | 1/1/1/1 | — |
-| `E17` | L36 | 常见命令：单次发言版群聊（每人各说一次、不打断） | ◐ PARTIAL | 1/1/1/0 | 余项：live 真机演练（机制＋测试已就位：`kernel/chat.js::speakRound` 轮记账、同轮第二次具名拒 `VMU_CHAT_ALREADY_SPOKE`、pack `vibe_v5_say` 的 `round` 参数、教学「单次发言版群聊两法」、`tests/vmu-run85-say-round.test.mjs` 47/0）。「不打断」是**事后具名拒**不是并行隔离，教学与回执 `means` 都如此声明。 |
+| `E17` | L36 | 常见命令：单次发言版群聊（每人各说一次、不打断） | ✅ DONE | 1/1/1/2 | — |
 | `E18` | L37 | 投票板：院士设选项与机制（最少/最多选几项） | ✅ DONE | 1/1/1/1 | — |
 | `E19` | L37 | 投票板不用于辩论 | ✅ DONE | 1/1/1/1 | — |
 | `E20` | L38 | 任务板：设置与认领交派 | ✅ DONE | 1/1/1/1 | — |

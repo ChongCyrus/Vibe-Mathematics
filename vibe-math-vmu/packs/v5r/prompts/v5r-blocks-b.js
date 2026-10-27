@@ -785,7 +785,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       academician: [
         '【开会与预约（你的手册）】会议类型六种：`ordinary`（正常/例行同步）｜`academic`（学术交流）｜`debate`（辩论，**必须**给 `subject`）｜`closure`（结题）｜`paper`（论文交流）｜`planning`（未来规划）；`sync` 是**动议 kind**，不是会议类型。可用的命令随类型与身份不同：辩论须先给 `subject`，结题/辩论表决用 `vote_solved`，论文交流走 `vibe_v5_paper`，临时工无表决权。',
-        '  · 预约：`vibe_v5_meeting { type, agenda, at: <epoch ms 或 ISO-8601> }` → 会议进入 `scheduled`；`status`/`summary`/`meetingView` **立刻可读**，**开始前每个动作都被具名拒**。到点人数不齐就 `waiting`，**迟到者 `attend` 即开**；框架没有定时器，这些状态由每轮 `beat()` 的 sweep 结算，`proceed` 可提前开始。',
+        '  · 预约：`vibe_v5_meeting { type, agenda, at: <epoch ms / ISO-8601 / 相对偏移如 "+120s"> }`（代理没有自己的钟，写相对偏移即可，内核用自己的钟换算） → 会议进入 `scheduled`；`status`/`summary`/`meetingView` **立刻可读**，**开始前每个动作都被具名拒**。到点人数不齐就 `waiting`，**迟到者 `attend` 即开**；框架没有定时器，这些状态由每轮 `beat()` 的 sweep 结算，`proceed` 可提前开始。',
         '  · 一次连排多场：给 `sequence` 数组即可一次召集（逐项校验，每场可给各自的 `at`/`title`/`type`，回执给 `sequence.index/total/next`）；也可以给每场各自的 `at` **逐场召集**。',
         '  · 时长与兜底：`extend` 是**发言延长**（ms，缺省读 `vmu.meetings.speechExtendMs`，仍为 0 则具名拒）；`extendlimit` 是**会议墙钟上界延长**；墙钟硬界 `vmu.meetings.hardLimitMs`（默认 1800000ms，钳制 300000–7200000，**没有"无界"**）。只有超过硬界才能用 `lapse` 具名收束（回执带 revocable），恢复用 `revokelapse`（必须给理由）。`at` 预约、还没开始的会没有墙钟在走，`extendlimit` 要等会议真正开始后才能用（开始前一切动作都被具名拒）。',
         '  · `ordinary` 类型**故意不给推荐骨架**——这是具名决定：议程与顺序完全由你编排；其余五种的步骤只是**建议**，可跳过、可重排。',

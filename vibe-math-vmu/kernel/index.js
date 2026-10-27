@@ -209,6 +209,16 @@ export const LIVE_READERS = Object.freeze({
 // measured consequence: the institute set it to `caller`, the receipt promised immediate effect, and the run kept
 // running activation delivery. A prefix claim is a promise about a FAMILY, and a family always has exceptions; they are
 // named here instead of being hoped away.
+/**
+ * ROUND 87 (live run 87, E29): THE EXCEPTION THAT RUNS THE OTHER WAY. The family entry below says every
+ * `vmu.meetings.*` key is snapshotted at construction. Run 87 measured the cost of that sentence: the chair set
+ * `vmu.meetings.verdictMaxRounds` mid-session and the receipt answered "next start" — while the RULE says the
+ * CHAIR decides how many rounds a debate gets. A family promise has to be overridable BY NAME when a face is
+ * changed to re-read one key, otherwise the receipt keeps reporting the old mechanism forever.
+ */
+export const LIVE_READERS_EXACT = Object.freeze({
+  'vmu.meetings.verdictMaxRounds': 'kernel/meetings (the verdict round ceiling is re-read on every motion)',
+})
 export const CONSTRUCTION_ONLY_KEYS = Object.freeze({
   // ★★ LIVE RUN 47: `vmu.turn.childPreset` was declared H1 ("next turn") while host-deliver.js reads it ONCE at
   // construction, so a runtime write was reported as `applied:"next-turn"` and did nothing until a restart. The
@@ -224,10 +234,13 @@ export const CONSTRUCTION_ONLY_KEYS = Object.freeze({
   // mechanism (construction snapshot) must be the same sentence.
   'vmu.meetings.': 'createMeetings() snapshots the whole vmu.meetings.* block into its `K` object at construction (148 read sites), so a runtime write changes nothing until the next start; set these through deployment config / the launch brief instead of a runtime face',
 })
-const liveReadersOf = (key) => (CONSTRUCTION_ONLY_KEYS[key] ? [] : Object.entries(LIVE_READERS).filter(([p]) => String(key).startsWith(p)).map(([, who]) => who))
+const liveReadersOf = (key) => (LIVE_READERS_EXACT[key]
+  ? [LIVE_READERS_EXACT[key]]
+  : (CONSTRUCTION_ONLY_KEYS[key] ? [] : Object.entries(LIVE_READERS).filter(([p]) => String(key).startsWith(p)).map(([, who]) => who)))
 /** The construction-only reason for a key, longest prefix first, so a family entry (`vmu.meetings.`) can exist beside a
  *  single-key exception. Returns `null` when the key has a real live reader. */
 export function constructionOnlyReasonOf(key) {
+  if (LIVE_READERS_EXACT[key]) return null
   if (CONSTRUCTION_ONLY_KEYS[key]) return CONSTRUCTION_ONLY_KEYS[key]
   const prefixes = Object.keys(CONSTRUCTION_ONLY_KEYS).filter((p) => p.endsWith('.') && String(key).startsWith(p))
   if (!prefixes.length) return null

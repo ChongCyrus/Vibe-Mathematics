@@ -111,8 +111,12 @@ const allSectionText = SECTIONS.map((s) => String((s && s.text) || '')).join('\n
   ok(/status\/summary\/meetingView 立刻可读/.test(chair), '③ reads-before-start are taught (the capability an agent would otherwise miss)')
   ok(/具名拒绝/.test(chair), '★ ③ the pre-start refusal is taught as BY NAME, not as a silent no-op')
   ok(/beat\(\)/.test(chair), '③ and settlement is attributed to the kernel sweep, so nobody waits for a timer that does not exist')
-  ok(/`sequence` 数组一次召集多场/.test(chair) && /逐场召集/.test(chair),
-    '★ ③ 连排 is taught HONESTLY: this face has no sequence parameter, so schedule each meeting with its own `at`')
+  // ★ RUN 85 — 这条断言原本钉的是「本面没有 `sequence` 参数」，而事实变了：`packs/v5r/tools.js` 的 `vibe_v5_meeting` 现在**声明并读取** `sequence`（`openSeq` 的后续场次），回执带 `sequence.index/total/next`。所以量具改成「教学与**声明**一致」：
+  //   声明里有 sequence ⇒ 教学必须讲「一次召集多场」並说明每场也能各自 `at` 逐场召集；声明里没有 ⇒ 教学不许提。这样无论哪一边先变，红的是漂移而不是意图。
+  const meetSpec = (PACK.tools || []).find((t) => t.name === 'vibe_v5_meeting') || {}
+  const declaresSequence = Boolean(meetSpec.parameters && meetSpec.parameters.sequence)
+  ok(declaresSequence === /`sequence` 数组一次召集多场/.test(chair) && /逐场召集/.test(chair),
+    '★ ③ 连排 is taught HONESTLY: the teaching names `sequence` exactly when the DECLARATION has it (never a promise the face cannot keep)', { declaresSequence })
 
   // ④ human approvals — read on every seat; decide is the human's, via the office.
   for (const [seat, text] of [['chair', chair], ['member', member], ['temp', temp]]) {
@@ -176,8 +180,13 @@ const allSectionText = SECTIONS.map((s) => String((s && s.text) || '')).join('\n
     'no non-chair seat is invited to administer the chat')
   ok(!/你(可以|能)(批准|放行|自批)/.test(allSectionText), 'no section tells a seat it may approve or lift a gate for itself')
   // The honest gap stays honest: the convening face must not be described as able to schedule a SEQUENCE.
-  ok(!/vibe_v5_meeting[^\n]*sequence\s*[:,]/.test(allSectionText),
-    'no section teaches a `sequence` parameter on vibe_v5_meeting (the pack face has none — kernel openSeq does)')
+  // The honest gap stays honest — and it MOVED: the convening face now DECLARES `sequence`, so the rule is not
+  // 「never mention it」 but 「mention it only when the declaration backs it」 (derived, never copied).
+  const meetSpec2 = (PACK.tools || []).find((t) => t.name === 'vibe_v5_meeting') || {}
+  const declaresSeq2 = Boolean(meetSpec2.parameters && meetSpec2.parameters.sequence)
+  const teachesSeq = /vibe_v5_meeting[^\n]*sequence\s*[:,]/.test(allSectionText) || /`sequence` 数组一次召集多场/.test(allSectionText)
+  ok(declaresSeq2 === teachesSeq,
+    'a section may teach the `sequence` parameter on vibe_v5_meeting exactly when the pack DECLARES it (derived from the spec, so teaching and declaration cannot drift apart)', { declaresSeq2, teachesSeq })
 }
 
 // ── 5. END TO END: a REAL kernel turn hands every seat a prompt whose status board is THERE ──────────────────────

@@ -1766,3 +1766,58 @@ ROUND 75 关掉 F-70 之后，这一轮不再修东西，只确认「已经关�
 
 教学同轮补了四句：预约会**没有墙钟上界可延**、`invite` 必须给 `why`、`invitedspeak` 前要 `attend`、
 `close`/`extendlimit` 要带 `actor`，以及 `phase` 只能取 11 个值（写错⇒顶层 `ok:false`）。
+
+## ROUND 86 — 一道闸的「唯一合法答复者」必须真的能作答（F-86a / F-86b）
+
+真机跑 86 把论文流程推到了 `awaiting-editor`：分工撰写、双向互审、`advance` 都成立。然后定稿被
+`VMU_OFFICE_CONSULT_REQUIRED` 拦住 —— **这是规则（C-30）要的闸**，问题在闸的另一端：`officeConsult` 声明
+「问所办」，`PAPER_CONSULT_ROLES` 声明「只有 office 能答」，而 `consult{member:"office"}` 回
+`VMU_NO_SUCH_OBJECT "no member office on this roster"`。**名册讲的是研究员；所办是运行本所的会话**。于是这条机制
+只有两个出口：等超时，或者把闸关掉。
+
+四条判据：
+- **声明里的「谁」要能被真实身份对上**：角色 token（`office`）与座位 id（`r-acad`）是两种身份，闸的声明必须
+  说清是哪一种，并且那一种必须可达。
+- **答复回执要说清「哪种身份答的」**：`answererKind:"declared-role"` 与 `"roster-seat"` 是不同的事实，
+  同一条 `answeredBy` 在两种身份下长得一样。
+- **机器门的字段必须出现在写作者的示例里**：`EVIDENCE_MISSING` 是硬门，而 `part` 示例里没有 `evidence` ——
+  要求可以严格，但不能只藏在闸里。
+- **闸拦住的调用也是教学的一部分**：被拦的那一轮要把「下一步该谁做什么」写成工具面可执行的动作，而不是
+  「请咨询所办」这种没有电话的联系方式。
+
+ROUND 86 修法：`requireConsultAnswerer` 放行声明角色（`onRoster:false` 显式标注）、`consult` 回执加
+`answererKind`/`answererMeans`；`v5r-paper-prompts.js` 的 `part` 示例补 `evidence`，并写明缺证据会让
+`render` 具名拒。
+
+## ROUND 87 — 家族声明要能被具名单键覆盖（F-87a）
+
+`vibe_v5_set{key:"vmu.meetings.verdictMaxRounds",value:1}` 的回执说 `appliesAt` 是下一次启动，因为
+`CONSTRUCTION_ONLY_KEYS['vmu.meetings.']` 是一句**家族**承诺。但规则 L44 把「辩论跑几轮」交给院士 ——
+家族承诺对 quorum 之类的键是对的，对这条策略键就是错的。**一句家族声明必须允许一个具名例外，而且例外要自己
+留读数**：否则设置回执会永远照着旧机制说话。
+
+四条判据：
+- **家族承诺 vs 具名单键**：`LIVE_READERS_EXACT` 先于 `CONSTRUCTION_ONLY_KEYS` 求值；`constructionOnlyReasonOf`
+  见到具名读者回 `null`，家族条目对**没有**具名读者的键继续生效（测试用 `vmu.meetings.quorumRule` 反证）。
+- **会读的键要在每次用时重读**：`verdictMaxRoundsNow()` 在每次动议时读 `sget`，不是构造期快照 `K`。
+- **拒绝文案要告诉调用者「这个旋钮现在能拧」**：`VMU_RESOURCE_BUDGET` 的 hint 明说主席可在会话中改。
+- **声明的冷热等级要与机制同步**：机制从构造期改成活读，`settings/schema.js` 的 `H2 → H1` 必须同轮改，
+  否则回执会把「可改」说成「要重启」。
+
+## ROUND 89 — 没有钟的读者，不能要求它算出一个时间戳（E2 的 `at`）
+
+规则 L32 说「预约一场会，到点再等」，而 `at` 只接受 epoch 毫秒与 ISO-8601 两种形式——**两种都需要一个当前时刻**，而
+代理没有自己的钟（`clock` 是内核的接缝，不是成员的能力）。于是一条有机制、有回执、有具名拒绝的规则，唯一合法的输入
+形式对它的使用者不可达；取证简报只能写「把某个数字加 90」，那是在考算术，不是在验规则。
+
+判据（写在这里，下次别忘）：
+
+1. **输入形式要跟读者的能力匹配。** 一个需要「现在几点」的字段，至少要接受一种不需要读者知道现在几点的写法；
+   `"+90s"` 由内核用自己的钟换算，读数仍然是绝对瞬间（回执里的 `scheduledFor` 是数字）。
+2. **换算只发生在一个地方。** `atMs()` 是唯一的解析点；它拒绝 `"soon"`、`"+5 minutes"`、`"-30s"` 这类写法并
+   点名三种合法形式，不把坏值悄悄变成「现在开会」。
+3. **相对形式的回执不撒谎。** 回执与 `meetingView` 报同一个 `scheduledFor`，`status` 立刻可读
+   `state:"scheduled"`；开始前的动作仍被 `VMU_STATE` 具名拒，消息里带 `SCHEDULED for <时间>`。
+4. **族的声明不许被一个例外悄悄推翻。** `vmu.meetings.*` 长期是「重启才生效」的家族；`verdictMaxRounds` 因为
+   规则把轮数判给院士而成了唯一具名活读键（R87），所以 `audit-settings-hot-truth` 从「这个家族没有任何活键」
+   改成「家族里任何声称即时生效的键都必须点名读者」——**允许例外，但例外必须是具名的**，而且数量与身份都被钉住。

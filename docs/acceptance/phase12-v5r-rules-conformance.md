@@ -8081,3 +8081,123 @@ hashUnchangedMeans: "not measured: no compile ran for this job (VMU_LEAN_FILE_UN
 ### §184.7 无实质残余：否
 
 E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只读到拒绝路径；面板 `updatedBy` 在同一内核写入后读出为空（`""`），跨内核读回的归属句需要另一轮验证。
+
+## §185 真机跑 85（成员/社交/蓝图/轨道/临时工/状态板）
+
+### §185.1 读数
+| 项 | 值 |
+| --- | --- |
+| build | `382bdd0e` |
+| 结果 | `DRIVE exit=0`，`SUMMARY: 3 session(s) in 1 file(s), 0 with RED checks` |
+| 时长 / 调用 | `durationSec 402`、根会话 `toolCalls 39`、`transcriptEvents 215` |
+| token | `tokenTotal 3,647,727`（cap 12,000,000，未触顶） |
+| 围栏 | `NO_FENCE=24 UNKNOWN_FIELD=38 FIELD_NOT_APPLICABLE=24 BAD_JSON=24` |
+| jsonl | 5,998,587 B / 11,362 行；保全戳 `20261028-050527` |
+| 机器 | C 盘剩 10.08 GB，clone 已清 |
+
+### §185.2 判决表（9 行转 DONE）
+| 行 | 规则要点 | 判决 | 真机依据 |
+| --- | --- | --- | --- |
+| A6 | 临时工可雇、无表决权、默认不参会 | ✅ | `vibe_v5_hire` 回 `"slotRequested":"temp"`；投票被拒且点名「临时工没有表决权」 |
+| A7 | 临时工可解雇 | ✅ | `vibe_v5_fire` 回 `"ended":{"ok":true,"id":"t-1","state":"ended"` 并列出 `cancelledTasks` |
+| B5 | 蓝图由院士+常驻共同设计 | ✅ | 研究员 `propose`（rec-1 草案）+ 主席 `adopt`（rec-2 生效） |
+| B6 | 蓝图最终编辑权在院士 | ✅ | 只有主席席 `adopt` 才产出 `"status":"current","adoptedBy":"r-acad","adoptedAt"`；草案行留 `status:"draft"` |
+| C2 | 已尝试路线及其进度 | ✅ | `"track":"routes","recordId":"rec-7"`，随后 `read_library{track:"routes"}` 读回 |
+| C3 | 遇障路线与原因 | ✅ | `"recordId":"rec-8"`（obstacles 轨，正文写「计算量爆炸」） |
+| C4 | 被否定路线归档 | ✅ | `"recordId":"rec-9"`（rejected 轨，正文写「与有限集假设冲突」） |
+| C9 | 方法库（抽象化产物） | ✅ | `"track":"methods","kind":"method","recordId":"rec-10"`，`methods` 轨读回 |
+| D3 | 三通道紧急语义 | ✅ | 私信回执 `"urgent":true,"kind":"notice"`，并写明 `kind does NOT decide urgency` |
+
+其余步骤（投票板、邀请排队、状态面板、会议）与既有行一致，未新增行；本轮**没有**覆盖 A2 自动汇报、C13 论文分段、E17 单次发言轮 —— 其中 A2/C13/E17 分别留给 r87 与后续轮。
+
+### §185.3 证据摘录（逐字）
+- 临时工席位：`{"ok":true,"member":"t-1","slot":"temp","slotRequested":"temp","hired":{"ok":true,"id":"t-1","slot":"temp","occupied":1,"capacity":12,"unlimited":false}}`
+- 席位权限派生：`governed seats (member, temp) got a DENY list derived from seat-faces.js: the member seat loses 22 of 48 pack tools (keeps 26); the chair seat is NOT overridden, so its 47 declared faces stay callable.`
+- 临时工无票：`{"ok":false,"code":"VMU_NOT_PERMITTED","message":"列席／受邀／临时工没有表决权（原版 V5_NOT_VOTER／D8）：\"t-1\" 在 \"temp\" 席","hint":"只有声明的表决席有票权（本机构声明：chair / member）；授权也不能把票权授出去（H12/R36）——本面没有授权路径，所以结构上无从授出"}`
+- 解雇：`{"ok":true,"id":"t-1","state":"ended"` + `cancelledTasks:["t-1"]`，并注明邮件不清理（`mail is not purged … reported, not pretended`）
+- 蓝图落成：`{"ok":true,"action":"adopt","id":"rec-2","path":"Shared/Protocol.md","revision":1,"status":"current","adoptedBy":"r-acad","adoptedAt":1793134787377,"proposalId":"rec-1","superseded":null,"previousRevision":0,...}`；`statusMeans`：`draft = 已提出、未生效，current = 曾被落成（是否现行见 currentRevision 与 history）`
+- 蓝图读回：`"fingerprintOk":true,"fingerprintRecomputed":"81435a42014f3225ff69e8c341b1030bb640cadf349f9301bc192050df2170b2"`
+- 轨道写回执：`{"ok":true,"track":"routes","recordId":"rec-7","owner":"r-1"}`（obstacles → rec-8、rejected → rec-9 同形）
+- 方法卡：`{"ok":true,"track":"methods","kind":"method","recordId":"rec-10","settled":false}`
+- 加急私信：`{"ok":true,"from":"r-acad","relayedBy":"office","to":"r-1","subject":"第85轮 加急私信","urgent":true,"kind":"notice","note":"kind does NOT decide urgency (kind \"note\" for non-urgent, \"notice\" only when urgent:true); urgent defaults to FALSE"}`
+- 汇报面：`{"counts":{"roster":4,"live":3,"tasks":3,"openTasks":2,"openMeetings":1,"feedback":{"open":0,"closed":0,"total":0,"declared":true}}}`，note 明说 `read-only composition of the published faces`
+
+### §185.4 门禁
+- 本轮的代码改动是 E17 轮记账与教学（提交 `382bdd0e`），对应套件 `tests/vmu-run85-say-round.test.mjs` 47/0、`tests/vmu-run33-p2-teaching.test.mjs` 111/0。
+- 全量 T1 与派生计数在提交 `382bdd0e` 之前跑过：`TOTAL 551 PASS 551 FAIL 0`（随后补的两处测试修正是 `audit-declaration-criterion` 竞争与 sequence 断言派生）。
+
+### §185.5 简报与工具坑
+- 简报 r85 首版被 `scripts/check-task-brief.mjs` 抓到 12 个未声明参数（`vibe_v5_meeting` 必填 `agenda`+`member`、会议 id 参数是 `id` 不是 `meeting`、`vibe_v5_poll_close` 必填 `member`），修正后 0 问题 —— 校验器现在会读列表形式与括号形式两种调用。
+- 提取：驱动写出的 jsonl 里中文是替换字符，真源是 `session.v4.jsonl.zstd`（多帧，按魔数 `28 b5 2f fd` 切帧逐帧解压）。
+- 真机里 3 个会话共 79 次调用，成员会话的读面仍会把 `memberToolCalls` 报成 null 并自带 `means`（"NOT READABLE FROM THIS RECEIPT, never zero calls"）—— 这是设计，不是缺陷。
+
+### §185.6 无法验证
+- A2 的「有进展时自动唤起汇报」需要一次真实的触发（event/period 到期），本轮只读到了 `vibe_v5_report` 的手动合成面。
+- C13 论文分段的真机演练、E17 单次发言轮的真机演练留待 r87（简报已写好并通过校验）。
+
+### §185.7 无实质残余：否
+- 仍有 22 行 PARTIAL（A2/B2/C11/C12/C13/C14/E2/E10/E12/E17/E24/E26/E29/F1–F5/G1/G2/G4 等），它们要么等 r86/r87 的真机读数，要么需要先补机制（E2 等待阶段推进）。
+
+## §186 真机跑 86（论文全流程 / 脚本归档 / 暂停续跑）
+
+### §186.1 读数
+- build `382bdd0e`，clone `slvp86`，port 19686，驱动 job `pwsh-c9a93541f27a4651`；`DRIVE exit=0`、1245s、`toolCalls 38`、`transcriptEvents 204`、`tokenTotal 12,178,268`（cap 12M，`tokenCapHit:true` ⇒ 最后一个结果被宿主截断，`calls(38) vs results(37)` 的 RED 是**量具**而不是产品缺陷）。
+- jsonl 29,097,089 B / 66,651 行；围栏 `NO_FENCE=24 UNKNOWN_FIELD=16 FIELD_NOT_APPLICABLE=28 BAD_JSON=24`；日志保全戳 `20261028-052705`。
+
+### §186.2 判决表
+| 规则行 | 判决 | 证据（逐字） |
+| --- | --- | --- |
+| C13 经分派后各自负责部分的论文 | ✅ | `paper start`（`status:"writing", round:1`）→ r-1 `rec-14`、r-2 `rec-15` 两份 `part` → `advance` `"from":"writing","to":"reviewing","reviewOf":{"r-1":"r-2","r-2":"r-1"}` → 双向 `deliverable:true` → `"from":"reviewing","to":"awaiting-editor","unanimous":true` |
+| C14 脚本归档与复算 | ✅ | `vibe_v5_script{op:"archive"}` → `"recordId":"rec-18","fingerprint":"cbd725528ce6f926011c7c2f8f8a3c23fccbad6715f26d8e21afba0c8de80d28"`；`op:"read"` 回来 `"text":"print(sum(i for i in range(7) if i % 2 == 0))\n"` 与同一指纹 |
+| G4 暂停/续跑 | ⚠️ | `pause` → `"state":"paused"`，`resume` → `"state":"running","resumedFrom":"第86轮：验证暂停/续跑"`；简报期望的 `scope`/`heldMs` 顶层字段**不存在**（简报错，非缺陷） |
+| F1–F5 论文 | ⚠️ 被 F-86a 阻断 | 互审与 `awaiting-editor` 都到了，`final` 被 `VMU_OFFICE_CONSULT_REQUIRED` 拒（这是规则 C-30 要求的闸），而**闸的唯一答复者不可达** |
+| G1 计算面 / G2 并发 / E10 延长 / C11·E24 fidelity | — 未演练 | 本轮无 `mathtools`/`mathjobs`/`maxParallel`/`extendlimit`/`fidelity_conclude` 调用 |
+
+### §186.3 缺陷与修法
+- **F-86a（所办答复者不在名册上）**：`vmu.paper.officeConsult="required"` ⇒ `final` 问所办；`PAPER_CONSULT_ROLES=['office']` 声明唯一合法答复者；而 `vibe_v5_paper{action:"consult",member:"office"}` 被拒 `VMU_NO_SUCH_OBJECT "no member \"office\" on this roster"`，不带 member 时回执说 `no paper "" exists`，`member:"r-acad"` 代签被拒 `VMU_NOT_PERMITTED "「r-acad」不能答复所办问询：只有 office 可以"`。**名册讲的是研究员，所办是运行本所的会话** ⇒ 闸只能等超时或被关掉，这是「机制存在但没有可达消费者」。
+  修法：`vibe-math-vmu/packs/v5r/tools.js#requireConsultAnswerer` 在 `member` 命中声明的 `PAPER_CONSULT_ROLES` 而没有该席时构造 `{id, slot:null, state:'live', onRoster:false, answererKind:'declared-role'}` 放行；`consult` 回执新增 `answererKind`/`answererMeans`（说清是「按声明角色作答」还是「按座位作答」）。
+- **F-86b（交付门的字段不在写作者的示例里）**：`render` 在 `awaiting-editor` 被拒 `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING`（"2 位成员的 evidence 列表都是空的"），而 `v5r-paper-prompts.js` 的 `part` 调用示例里没有 `evidence` 字段。修法：示例补 `evidence: ["Members/<你的 id>/Propos/p-x.md"]`，并写明「不写 evidence 的部分会让 `render` 被具名拒」，同时补所办咨询的答复姿势（`member:"office"`、`request_id`、回执 `answererKind`）。
+
+### §186.4 门禁
+`tests/vmu-run87-round-cap-consult.test.mjs` 22/0（含 §186 的 consult 形状）、`vmu-paper` 37/0、`vmu-meeting-types` 153/0、`vmu-settings` 49/0、`audit-settings-channels` 59/0、`audit-enforced-consistency` 344/0、`vmu-kernel` 260/0、`vmu-turn` 272/0、`vmu-prompt-clean` 8/0、`vmu-prompt-type-coverage` 15/0；本轮改动前的全量 T1 = `TOTAL 552 PASS 552 FAIL 0`。
+
+### §186.5 简报错
+- `resume` 回执按简报期望读 `scope/resumed/heldMs` 顶层字段，实际是 `state/resumedFrom`（简报错）。
+- 让成员在 `awaiting-editor` 之前就 `final`（闸本身是规则要的，顺序该等 `advance`）。
+
+### §186.6 无法验证
+- F4/F5 的**定稿与渲染**（被 F-86a 阻断，修后待下一轮真机）；C11/E24 `fidelity_conclude`；G1/G2/E10（未演练）。
+
+### §186.7 无实质残余：否
+
+## §187 真机跑 87（文献入 Verified / 形式化开关 / 单次发言轮 / 自动汇报 / 开会席位 / 辩论轮数）
+
+### §187.1 读数
+- build `382bdd0e`，clone `slvp87`，port 19687，驱动 job `pwsh-5db6a1a709a44e76`；`DRIVE exit=0`、111s、`toolCalls 19`、`transcriptEvents 110`、`tokenTotal 976,214`；1 会话、`calls(19) vs results(19)`、**0 RED**、围栏**全零**（`NO_FENCE=0 UNKNOWN_FIELD=0 FIELD_NOT_APPLICABLE=0 BAD_JSON=0`）。
+- jsonl 996,841 B / 1,959 行；日志保全戳 `20261028-052107`；`prompt chars 6729`。
+
+### §187.2 判决表
+| 规则行 | 判决 | 证据（逐字） |
+| --- | --- | --- |
+| B2 参考文献中的命题可直接入 Verified | ✅ | 写卡带 `"literature_ref": "Rudin《数学分析原理》第 3 版 定理 1.14"` 且 p=1 通过；`verified_promote` 用 `"warrant_kind":"literature"` 入轨，行上 `"warrant":{"id":"Rudin《数学分析原理》第 3 版 定理 1.14"`；不带引用的 p=1 卡被拒 `VMU_PACK_V5R_P1_NEEDS_DEBATE` |
+| C12 鼓励开关 | ✅ | `vibe_v5_set{key:"vmu.math.formalVerify",value:"encourage"}` ⇒ 回执 `"key":"vmu.math.formalVerify","value":"encourage"`（H2：`appliesAt:"next session (restart required)"`，与声明一致） |
+| E17 单次发言版群聊 | ✅ | `vibe_v5_say{round:"g1"}` ⇒ `"round":"g1","spoke":true,"spokenBy":["r-1"],"complete":true`，`means` 明说「BOOKKEEPING + A NAMED REFUSAL, not isolation」；同轮第二次 ⇒ `VMU_CHAT_ALREADY_SPOKE`（"r-1 has already spoken in round \"g1\" (message msg-1)"）；换 `"round":"g2"` 再发成功（`msg-2`） |
+| A2 有进展时自动唤起所办汇报 | ✅ | `vmu.report.enabled=true`（`liveReadBy:["kernel/report (settings.get on every call)"]`）＋声明 `vmu.report.reports` 一条 period 报告；`vibe_vmu_report{action:"status"}` ⇒ `"enabled":true,"declared":1,"armed":1,"problems":[],"drives":false,"neverDrives":true,"channels":[inbox,digest,log]` |
+| E26 辩论骨架（轮流/举手/邀请） | ❌ 未取证 | `vibe_v5_meeting{type:"debate",member:"acad"}` ⇒ `VMU_NO_SUCH_OBJECT "no member \"acad\" on this roster"`；改 `member:"r-1"` ⇒ `VMU_NOT_PERMITTED "convening is an academician (chair seat) action"`（本跑 `academician:false`，没有院士席 ⇒ 简报错，产品行为正确） |
+| E29 辩论轮数由院士决定 | ❌ F-87a | `vibe_v5_set{key:"vmu.meetings.verdictMaxRounds",value:1}` ⇒ `"applied":"next-session","requiresRestart":true,"constructionOnly":"createMeetings() snapshots the whole vmu.meetings.* block … (148 read sites)","liveReadBy":[]` ⇒ **规则给主席的旋钮在本会话不可达** |
+
+### §187.3 缺陷与修法
+- **F-87a（家族声明压过了具名单键）**：`CONSTRUCTION_ONLY_KEYS['vmu.meetings.']` 是家族承诺，而 `verdictMaxRounds` 现在是主席按辩论定的策略。修法：`vibe-math-vmu/kernel/index.js` 新增 `export const LIVE_READERS_EXACT`（精确键优先于家族），`constructionOnlyReasonOf` 见到具名读者回 `null`；`vibe-math-vmu/kernel/meetings.js` 新增 `verdictMaxRoundsNow()`（每次动议重读 `sget`），动议上限与拒绝文案都用它（提示明说主席可在会话中改）；`vibe-math-vmu/settings/schema.js` 该键 `HOT.H2 → HOT.H1`。家族规则对 quorum 等**真正**只在构造期读的键仍然生效（测试 §1 用 `vmu.meetings.quorumRule` 反证）。
+- E26 的修法在**简报**侧：要演练辩论骨架，必须先让院士坐席（`vibe_v5_start{academician:"acad"}`）。
+
+### §187.4 门禁
+`tests/vmu-run87-round-cap-consult.test.mjs` 22/0（轮上限中途可改、拒绝文案 1 / 1 与 2 / 2、家族规则反证、所办按声明角色答复、教学钉子）；相关套件见 §186.4。
+
+### §187.5 简报错
+- 第 3 步让 `vibe_v5_meeting` 用 `member:"acad"`（本跑未坐院士席）；真参数是 `members` 数组/`chair` 席位。
+- 第 5 步用 `vibe_v5_say{round:"g1",text:"…"}` 的 `text` 字段名正确，但未写「换 round id 才是一次新轮」的教学。
+
+### §187.6 无法验证
+- E26 的三条命令（`hand`/`invite`/`gen`）在**有院士席**的辩论里；E2 的到点等待（没有可读的 sweep 触发面）；C11/E24、G1、G2、E10。
+
+### §187.7 无实质残余：否

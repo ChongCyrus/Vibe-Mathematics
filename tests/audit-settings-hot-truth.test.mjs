@@ -26,7 +26,7 @@
 // measurement, not a reading of the table that makes the claim.
 import { SETTING_DEFS } from '../vibe-math-vmu/settings/schema.js'
 import { PLANNED_DEFS } from '../vibe-math-vmu/settings/planned.js'
-import { constructionOnlyReasonOf } from '../vibe-math-vmu/kernel/index.js'
+import { constructionOnlyReasonOf, LIVE_READERS_EXACT } from '../vibe-math-vmu/kernel/index.js'
 import { createMeetings } from '../vibe-math-vmu/kernel/meetings.js'
 
 let passed = 0
@@ -65,7 +65,18 @@ ok(quorum && quorum.hot === 'H2', '2b the key whose runtime write was ignored is
 const meetingsHot = defs.filter((d) => d && typeof d.key === 'string' && d.key.startsWith('vmu.meetings.') && !plannedKeys.has(d.key))
 const meetingsLivePromises = meetingsHot.filter((d) => d.hot === 'H0' || d.hot === 'H1')
 ok(meetingsHot.length > 50, '2c the meetings family is really covered (more than fifty keys)', meetingsHot.length)
-ok(meetingsLivePromises.length === 0, '2d NO vmu.meetings.* key promises an immediate/next-turn effect', meetingsLivePromises.map((d) => d.key).slice(0, 5))
+// ★ ROUND 89: the family invariant is not "nothing here is ever live" — that was the shape of the 2026-10-13 bug, not
+// a law. It is "a live PROMISE must have a NAMED live reader": `vmu.meetings.verdictMaxRounds` is re-read on every
+// motion (LIVE_READERS_EXACT) and is the rule's own chair-decided knob (rule L44), so it may promise H1. Every other
+// member of the family that claims H0/H1 must still name a reader, or this audit refuses it.
+const meetingsLiveWithoutReader = meetingsLivePromises.filter((d) => !Object.prototype.hasOwnProperty.call(LIVE_READERS_EXACT, d.key))
+ok(meetingsLiveWithoutReader.length === 0, '2d every vmu.meetings.* key that promises an immediate effect NAMES a live reader',
+  meetingsLiveWithoutReader.map((d) => d.key).slice(0, 5))
+const liveNamed = meetingsHot.filter((d) => Object.prototype.hasOwnProperty.call(LIVE_READERS_EXACT, d.key))
+ok(liveNamed.length === 1 && liveNamed[0].key === 'vmu.meetings.verdictMaxRounds' && liveNamed[0].hot === 'H1',
+  '2e exactly one family member is the named exception, and it is declared H1', liveNamed.map((d) => [d.key, d.hot]))
+ok(typeof LIVE_READERS_EXACT['vmu.meetings.verdictMaxRounds'] === 'string' && LIVE_READERS_EXACT['vmu.meetings.verdictMaxRounds'].includes('kernel/meetings'),
+  '2f the named reader says WHERE the key is read', LIVE_READERS_EXACT['vmu.meetings.verdictMaxRounds'])
 
 // ── 3. synthetic TEETH: the same rule applied to hand-made rows, so a broken predicate cannot hide ───────────────────
 const ruleHolds = (row, predicate) => {
