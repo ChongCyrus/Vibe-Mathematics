@@ -531,6 +531,6 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 56 | `mathadapters` | `vibe_vmu_mathadapters` |
 | 57 | `mathjobs` | `vibe_vmu_mathjobs` |
 
-> ★★ 合计 **57** 个工具 ✓；★ **action 枚举 **5** 组／**16** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **57** 个工具 ✓；★ **action 枚举 **5** 组／**17** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append/status` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->

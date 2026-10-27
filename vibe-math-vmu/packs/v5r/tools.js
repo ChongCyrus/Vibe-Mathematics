@@ -14,7 +14,7 @@ import { kitCardHandler, KIT_CARD_CONFIG } from '../../kit/tools.js'
 import { p1Intent, debateSubjectGate, singleWriter, fidelityAsked, classifySubject } from './verification-gates.js'
 // ★ The VERIFIED carrier (B1 step 1): `findVerified` answers null instead of guessing, `promoteVerified` is the ONLY
 // writer on that track, and `parseCard` names a card it cannot judge (empty/truncated body) instead of half-parsing it.
-import { parseCard, findVerified, promoteVerified, VERIFIED_TRACK } from './verified.js'
+import { parseCard, parseCardBody, findVerified, promoteVerified, VERIFIED_TRACK } from './verified.js'
 // ★ GOAL ROUND 3: the paper subsystem's RUNTIME ENTRY. It lives in this pack (`./paper.js` → `kit/paper.js` is the flow);
 // the face below is only the missing READ POINT — before it, `paper.start` existed but nothing in production called it.
 // ★ E4 (真缺陷): `PAPER_CONSULT_ROLES` is imported, not re-typed. The kit owns the consult STATE TRANSITION; the pack owns
@@ -3207,6 +3207,59 @@ async function toolPaper(args = {}, { kernel } = {}) {
  * (`lean_run` file/target/timeout_ms, `lean_job` jobId/waitMs, `lean_lib` refresh, `lean_read` name/kind,
  * `lean_archive` kind/name/target/content/from/note/run).
  */
+/**
+ * ★ ROUND 69 / F-65: THE CARD'S VALUES WERE ONLY PROSE TO A READER.
+ *
+ * Measured on the real machine (run 69, build 5c5b3532): the office read back the proposition card it had just written
+ * and `read_library` answered with `card.body` ("- statement：…
+- p：0.6 …") but NO `p`, no `value`, no `proofState`
+ * on the row. The framework itself had those values — `verified.js#parseCardBody` parses the SAME prose for the debate
+ * and verified gates — so the product held two copies of one fact and gave the agent only the copy it cannot compute
+ * with. An agent that must re-parse another tool's prose is being asked to be the parser.
+ *
+ * WHAT THIS DOES (no new parser): the rows and the single-card read of `vibe_v5_read_library` get `cardFields` — the
+ * fields the ONE authority (`parseCardBody`) already reports for that body — plus `cardFieldsMeans`. The body stays
+ * exactly the author's text (it is the author's field, not ours); a card that CANNOT be judged keeps `p: null` and
+ * carries `cardUnjudgeable` with the parser's own reason, so "no p" is never silently indistinguishable from "p is 0".
+ */
+async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
+  const out = await toolReadLibrary(args, { kernel })
+  if (!out || out.ok !== true) return out
+  const records = recordsOf(kernel)
+  const decorate = (row) => {
+    if (!row || typeof row !== 'object') return row
+    if (String(row.track || '') !== 'propositions') return row
+    let body = row.body
+    if (body === undefined || body === null) {
+      try {
+        const full = records.get({ id: row.id })
+        body = full && (full.record ? full.record.body : full.body)
+      } catch { body = null }
+    }
+    const parsed = parseCardBody(body)
+    const fields = parsed && parsed.fields ? parsed.fields : {}
+    const text = (v) => (v === undefined || v === null ? null : String(v))
+    const next = Object.assign({}, row, {
+      cardFields: {
+        p: parsed && parsed.card ? parsed.card.p : null,
+        statement: text(fields.statement), value: text(fields.value), motive: text(fields.motive),
+        proofRef: text(fields.proofRef), proofState: text(fields.proofState),
+      },
+      cardFieldsMeans: "`cardFields` are the fields of the card BODY, parsed by the one authority the debate/verified gates use (verified.js#parseCardBody). `card.body` stays the author's text — these are the same facts as program values, not a second declaration. `cardFields.p === null` with `cardUnjudgeable` set means the body could not be judged; it does NOT mean p is zero.",
+    })
+    if (parsed && parsed.ok !== true) {
+      next.cardUnjudgeable = (Array.isArray(parsed.problems) && parsed.problems.length > 0)
+        ? parsed.problems.join('; ')
+        : String(parsed.reason || 'the card body could not be parsed')
+    }
+    return next
+  }
+  const next = Object.assign({}, out)
+  if (Array.isArray(out.cards)) next.cards = out.cards.map(decorate)
+  if (out.card && typeof out.card === 'object') next.card = decorate(out.card)
+  return next
+}
+
 export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_record_progress',
@@ -3355,7 +3408,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
       + '★ An undeclared track name is refused by name with the declared set in `declared`; a declared track the records face itself refuses is reported in `skippedTracks`, never silently dropped. '
       + '★ TWO NOUNS, TWO SHAPES (round 42): a RECORD id is minted as `rec-<n>` and a MEMBER id as `r-<n>` — `id` reads a RECORD, `member` reads a PERSON’s library. Passing a member id as `id` is refused by name and the hint tells you to pass `member:"<id>"`; legacy `r-<n>` records still read (ids are names, nothing was migrated).',
     parameters: { member: { type: 'string' }, kind: { type: 'string' }, id: { type: 'string' }, list: { type: 'boolean' }, limit: { type: 'integer' }, track: { type: 'string' }, tracks: { type: 'array' } },
-    handler: toolReadLibrary,
+    handler: toolReadLibraryWithCardFields,
   },
   {
     name: 'vibe_v5_meeting',

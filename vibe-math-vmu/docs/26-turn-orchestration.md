@@ -1534,3 +1534,32 @@ run 67 留下来一个「两个内核读同一张卡得到两个答案」的观�
 
 5. **写回执要回显读者马上要用的那一格。** 一个回执如果答不出「我刚写的这行属于谁」，读者就必须再读一次，
    而「再读一次」正是上一个缺陷的入口。
+
+## ROUND 69 — 读面要么给程序一个值，要么什么都不给（F-64 / F-65）
+
+run 69（build `5c5b3532`）关掉了 ROUND 68 的两条：`F-61`（折入行被盖上操作名当作者）与 `F-63`（写回执不回显 `owner`）。
+两次同 id 读（所办 + 成员内核）都回 `owner:null`、`fingerprint` 逐字相同；匿名写卡的回执带 `owner:null` +
+`ownerMeans` 原句；记名写卡带 `owner:"r-acad"`。同轮的 F-57（截断声明）也回归通过。**然后它露出两条同族的新缺陷**：
+
+- **F-64：修好的计数器，工具面上读不到。** `vibe_vmu_records { action:"status" }` 被判 `VMU_INVALID_ARGUMENT
+  unknown action: status` —— 枚举是 `list|expand|append`，而 `records.status().shared` 从 ROUND 68 起就带着
+  `adoptedWithoutAuthor`。所办照着路标去 grep 工作区与安装包都没找到它，只能写「这条计数器我无法验证」。一个只有测试能读的
+  事实，不是产品能报告的事实。修法：同一张面加 `status` 动作，回**有界的**视图（`shared` 的折入计数 + 每轨行数 + 一句
+  `note` 说明「这是状态，不是转储」），拒绝时仍点名现存动作。
+- **F-65：卡的值对读者只是一段散文。** `read_library {id}` 回 `card` 顶层有 `id/track/kind/title/…/body`，
+  **没有 `p`**；`p：0.6` 只活在 `card.body` 的正文里。而框架自己有 `verified.js#parseCardBody`，辩论/verified 闸门
+  一直在解析同一段散文 —— 同一个事实两份，交给 agent 的正是不好算的那份。修法：读面（单卡与列表）给 propositions 行
+  附带 `cardFields`（`p`/`statement`/`value`/`motive`/`proofRef`/`proofState`），值与解析**复用同一权威**
+  `parseCardBody`（不写第二个解析器），`card.body` 原样保留（正文是作者的字，不是我们的）；解析不了的卡给
+  `p:null` 加 `cardUnjudgeable` 原句，绝不让「没有 p」与「p 是 0」同形。
+
+四条判据：
+
+1. **修好的事实必须落在读者能到的那张面上。** 计数器加进 `status()` 而工具枚举没有 `status`，等于没加；一处
+   修法成立的标准是「调用方能不能在自己的工具表里读到它」，不是「单测能不能断言它」。
+2. **同一事实只许一个权威。** 读面投影必须调用闸门用的那个解析器，写第二个 `md` 解析器就是把两份事实重新造出来
+   （生成器/量具的教训在 docs/11，这里是它的读面版本）。
+3. **程序可读的形状与作者原文是两件事，都要留。** `cardFields` 给比较用，`card.body` 给下一次改写与审计用；把正文
+   改写成 JSON 会失去「作者当时写了什么」，只给正文则让读者去当解析器。
+4. **空值要带原因，且要否认最近的误读。** `p:null` 旁边必须有 `cardUnjudgeable` 的解析器原句；`cardFieldsMeans`
+   必须明说「null 不是 0」——读者最容易做的推断要由读面自己先否认。

@@ -941,9 +941,9 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('records') && kernel.library) {
     specs.push({
       name: TOOL_NAMES.records,
-      description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹）。',
+      description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹）｜status（共享折入与计数器的有界视图：谁折入过、多少行没有登记作者、本实例计数）。',
       parameters: {
-        action: param('string', 'list（默认）｜expand｜append', { required: true, enum: ['list', 'expand', 'append'] }),
+        action: param('string', 'list（默认）｜expand｜append｜status', { required: true, enum: ['list', 'expand', 'append', 'status'] }),
         id: param('string', '记录 id（expand 必填）'),
         limit: param('integer', 'list 的最大条数（0 = 全部；省略用内核 vmu.records.headListAt）'),
         track: param('string', 'list：只列某一轨（省略＝全部；合法值见 vmu.records.tracks，内核会具名拒未知轨）'),
@@ -984,6 +984,32 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           if (action === 'expand') {
             if (rc && typeof rc.get === 'function') return Object.assign({ ok: true, action }, rc.get({ id }))
             return Object.assign({ ok: true, action }, await kernel.library.expand(id))
+          }
+          // ★ ROUND 69 / F-64: `status` is the SAME read the kernel already answers (`records.status().shared`), reachable
+          // from the tool face. Before this the tool's enum was list|expand|append, so the adoption counters added in
+          // ROUND 68 (`adoptedWithoutAuthor`) could be written but never read by an agent: a fact that exists only for
+          // tests is not a fact the product can report. The view is BOUNDED on purpose (it is a status face, not a dump).
+          if (action === 'status') {
+            if (!rc || typeof rc.status !== 'function') {
+              return refused('VMU_NO_SUCH_OBJECT', 'this kernel has no records status face',
+                'the records projection is not attached in this deployment, so there is no shared-fold state to report')
+            }
+            const st = rc.status() || {}
+            const shared = st.shared && typeof st.shared === 'object' ? st.shared : {}
+            const recs = st.records && typeof st.records === 'object' ? st.records : {}
+            return {
+              ok: true, action,
+              shared: {
+                attached: shared.attached === true, key: shared.key === undefined ? null : shared.key,
+                pulls: shared.pulls, pulled: shared.pulled, refused: shared.refused, skipped: shared.skipped,
+                adoptedWithoutAuthor: shared.adoptedWithoutAuthor,
+                adoptedWithoutAuthorMeans: shared.adoptedWithoutAuthorMeans,
+                lastWhy: shared.lastWhy === undefined ? null : shared.lastWhy,
+              },
+              records: { total: recs.total, live: recs.live, byTrack: recs.byTrack },
+              refusalsTotal: st.refusalsTotal, unwiredTotal: st.unwiredTotal, at: st.at,
+              note: 'bounded status view: the shared seam, the adoption counters and the per-track row counts. The bytes maps, refusal histograms and wiring ledger stay on the kernel — this receipt is a status, not a dump.',
+            }
           }
           if (action === 'append') return Object.assign({ ok: true, action }, await kernel.library.append({ kind, statement, proof }))
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))

@@ -7486,3 +7486,56 @@ FIELD_NOT_APPLICABLE=8 BAD_JSON=12`；保全戳 `20261027-205211`；`clone_gone=
 §172.7 无实质残余：**否**。留一笔：不迁移旧值 —— 已经折入内存的伪造 `owner:"restore"` 行不重写（历史行是证据，
 修复从下一次折入开始，且 `adoptedWithoutAuthor` 只对修好之后的行计数）。F-63（回执回显作者）本轮已修，
 下一轮 run 69 需要在真机上看到它与 F-61 一起成立。
+
+## §173 真机跑 69（F-61/F-63 收口，露出 F-64/F-65）
+
+### §173.1 读数
+`DRIVE exit=0`、`durationSec 189`、根 `toolCalls 23`、`transcriptEvents 134`、`tokenTotal 1,023,973`（cap 12,000,000、
+未触顶）、2 会话、`SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks`、`calls (23) vs results (23)`；
+快照 `_oneoff/vm-slv/full-1027-213105.jsonl` 2,593,031 B / 4,844 行；围栏计数 `NO_FENCE=12 UNKNOWN_FIELD=8
+FIELD_NOT_APPLICABLE=8 BAD_JSON=12`；日志保全 `D:\_tmp\slv-phase5\slv-logs\…20261027-213502`；
+`clone_gone=True C_free_GB=10.21`。
+
+### §173.2 判决（build 5c5b3532）
+
+| # | 上一轮的缺陷 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | F-63 写回执不回显作者 | ✅ | 匿名卡 `{"recordId":"rec-1",…,"owner":null,"ownerMeans":"this row records NO author: …"}`；记名卡 `"owner":"r-acad","ownerMeans":null`；所办照抄并答对「`ownerMeans` 只在未知时出现」 |
+| 2 | F-61 跨内核 owner 一致 | ✅ | 所办与成员各自内核读同一 `rec-1` 都回 `owner:null`，`fingerprint` 同为 `581c68bb…6f71` |
+| 3 | F-57 截断声明回归 | ✅ | `vibe_vmu_turn{op:"step"}` 回 `replyLength:2771`、`replyTruncated:true`、`replyLimitChars:2000`、means 原文含 `CUT at replyLimitChars (2000)` |
+| 4 | **F-64 新增**：计数器工具面不可达 | ❌ | `vibe_vmu_records {action:"status"}` → `VMU_INVALID_ARGUMENT "unknown action: status"`；所办 grep 工作区与安装包均未找到 `adoptedWithoutAuthor` |
+| 5 | **F-65 新增**：卡值是散文不是字段 | ❌ | `read_library {id:"rec-1"}` 的 `card` 顶层无 `p`；`p：0.6` 只在 `card.body` 文本里（`parseCardBody` 内部却解得出来） |
+
+其它：`vibe_v5_start` 回执没有顶层 `roster`（只有 `hired`/`started`/`memberScope`…），这是简报让我抄的字段，属简报错；
+`ownerMeans` 在有作者时为 `null`，成员注意到并写进反馈（设计如此，已在 docs 说明）。
+
+### §173.3 修法
+
+- **F-64**（`vibe-math-vmu/host.js`）：`records` 工具的 `action` 枚举加 `status`（description 同步），run 分支回有界视图：
+  `shared.{attached,key,pulls,pulled,refused,skipped,adoptedWithoutAuthor,adoptedWithoutAuthorMeans,lastWhy}`、
+  `records.{total,live,byTrack}`、`refusalsTotal/unwiredTotal/at`、`note` 明说「bounded status view … not a dump」。
+- **F-65**（`vibe-math-vmu/packs/v5r/tools.js`）：新增 `toolReadLibraryWithCardFields`（`vibe_v5_read_library` 的 handler），
+  调用 kit 的 `toolReadLibrary` 后，对 `track === 'propositions'` 的行（单卡与列表）附带
+  `cardFields:{p,statement,value,motive,proofRef,proofState}` + `cardFieldsMeans`；解析复用 `verified.js#parseCardBody`，
+  不可判时报 `cardUnjudgeable`（解析器原句），`card.body` 不动。
+- 新套件 `tests/vmu-run69-card-fields.test.mjs` **26/0**：`cardFields.p === 0.6` 且 `card.body` 仍含 `p：`；写法缺席的字段读
+  `null`；means 点名唯一权威并否认「null 即 0」；列表只给 propositions 行；不可判卡给 `p:null` + 原因；`status` 动作可达且
+  计数器是数字、有 means、`note` 自称 bounded；未知动作仍具名拒并点名现有动作。
+
+### §173.4 门禁
+`vmu-run69-card-fields` 26/0；`vmu-run68-shared-author` 28/0；`vmu-records` 271/0；`vmu-v5r-tools` 359/0；
+`vmu-run52-settings-scope` 15/0；`vmu-host` 203/0。全量 T1 在收口段记录（下文 §173.6 若有红则补）。
+
+### §173.5 简报错（本轮三条）
+1. 让所办抄 `vibe_v5_start` 的顶层 `roster` —— 回执只有 `hired`/`started`/`memberScope`（真实字段）。
+2. 让所办「抄成员整段回答」而回执只带 `replyExcerpt` —— 与 F-57 同源，应让读者抄 `replyTruncated`/`replyLength`。
+3. 第 2 步没让所办先 `read_library {id}` 再写卡 —— 顺序反了会让 `p` 的取证落在 `record_proposition` 的回执上（那里本就没有）。
+
+### §173.6 无法验证
+- `ownerMeans` 的 `null`（有作者时）是否会被成员读成「缺少字段」：只有一次证言，未做二分复验。
+- F-65 的 `cardFields` 在「多段落卡」（ROUND 48 的续行支持）上的解析：本轮卡是单段，未覆盖续行形状。
+- 辩论闸门路径是否也受益于 `cardFields`（闸门用的是 `cardProjectionOf`，与读面共用 `parseCardBody`，但未在真机走辩论）。
+
+### §173.7 无实质残余：否
+残余两条：`vibe_vmu_records` 的 `status` 视图未包含 `historyRows`/`refusals` 直方图（刻意有界，已写进 `note`）；
+`cardFields` 只在 propositions 轨上投影，`methods`/`problems` 轨的同类心愿未做。
