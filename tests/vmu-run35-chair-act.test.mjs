@@ -132,9 +132,19 @@ const before5 = A.kernel.store.read('turns').filter((r) => r && String(r.member)
 const t2 = A.kernel.turn.open({ member: 'r-acad', phase: 'normal', round: 2 })
 const t3 = A.kernel.turn.open({ member: 'r-acad', phase: 'normal', round: 3 })
 const t4 = A.kernel.turn.open({ member: 'r-acad', phase: 'normal', round: 4 })
-// The write is asynchronous by design (the loop awaits it before delivery), so wait for the tracked promise to land.
-await new Promise((r) => setTimeout(r, 60))
-const after5 = A.kernel.store.read('turns').filter((r) => r && String(r.member) === 'r-acad')
+// The write is asynchronous by design (the loop awaits it before delivery), so WAIT for the tracked promise to
+// land instead of sleeping a fixed 60ms: under load that sleep is a race, and a race here reads as "the ledger froze
+// the first row" (observed as 1 failed assertion while two live drives saturated the CPU).
+const after5 = await (async () => {
+  const deadline = Date.now() + 4000
+  for (;;) {
+    const rows = A.kernel.store.read('turns').filter((r) => r && String(r.member) === 'r-acad')
+    const latest = rows[0] && rows[0].turn
+    if (rows.length === 1 && (latest === t2.turn.id || latest === t3.turn.id || latest === t4.turn.id)) return rows
+    if (Date.now() > deadline) return rows
+    await new Promise((r) => setTimeout(r, 20))
+  }
+})()
 ok(before5 === 1 && after5.length === 1,
   '⑤★★★ THREE more turns leave ONE row for that seat (the ledger answers a boolean question, so it must not grow with the run)', { before: before5, after: after5.length })
 ok(after5[0] && (after5[0].turn === t4.turn.id || after5[0].turn === t3.turn.id || after5[0].turn === t2.turn.id),

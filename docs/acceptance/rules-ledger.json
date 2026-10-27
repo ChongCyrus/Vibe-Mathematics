@@ -4,7 +4,79 @@
     "file": "D:/wd/vibemath开发/宏观层面v5r运行规则.md",
     "revision": "a5d9a6c1ff73ec109464d3ab29d07a402588c0e2b373d25016aac768b9998e59",
     "lineCount": 63,
-    "note": "The rule file lives outside the repository (it is the user's document). This ledger is the in-repo claim about it: one atomic requirement per row, each needing four kinds of evidence. The checker cannot read the external file, so `ruleLines` below enumerates the inventory; a human re-reads the source and updates this file when the source rev changes."
+    "note": "The rule file lives outside the repository (it is the user's document). This ledger is the in-repo claim about it: one atomic requirement per row, each needing four kinds of evidence. The checker cannot read the external file, so `ruleLines` below enumerates the inventory; a human re-reads the source and updates this file when the source rev changes.",
+    "structuralLines": [
+      {
+        "line": "L4",
+        "why": "horizontal rule (---) separating sections"
+      },
+      {
+        "line": "L5",
+        "why": "section heading: 文件与归档（包括但不限于）"
+      },
+      {
+        "line": "L6",
+        "why": "subsection heading: 公共的"
+      },
+      {
+        "line": "L9",
+        "why": "blank line"
+      },
+      {
+        "line": "L10",
+        "why": "subsection heading: 院士、常驻研究员各自的文件"
+      },
+      {
+        "line": "L22",
+        "why": "blank line"
+      },
+      {
+        "line": "L23",
+        "why": "section heading: 流程（包括但不限于）"
+      },
+      {
+        "line": "L24",
+        "why": "blank line"
+      },
+      {
+        "line": "L25",
+        "why": "subsection heading: 平时研究推进阶段"
+      },
+      {
+        "line": "L29",
+        "why": "horizontal rule (---) separating sections"
+      },
+      {
+        "line": "L30",
+        "why": "blank line"
+      },
+      {
+        "line": "L31",
+        "why": "subsection heading: 会议阶段"
+      },
+      {
+        "line": "L46",
+        "why": "blank line"
+      },
+      {
+        "line": "L54",
+        "why": "blank line"
+      },
+      {
+        "line": "L57",
+        "why": "blank line"
+      }
+    ],
+    "parityExempt": [
+      {
+        "file": "v5r-core.js",
+        "why": "assembly module: it orders/labels the sections and renders the tool manifest; its rule-bearing sentences are the reply skeleton, asserted by tests/vmu-ledger-teaching-pins.test.mjs and cited through the sections it assembles (citing it again would double-count the same sentence). BACKLOG: give it its own ledger row when the skeleton gets a live receipt."
+      },
+      {
+        "file": "v5r-corrections.js",
+        "why": "corrections module: every section restates a SUPERSEDED wording together with its replacement (order 890-894); the replacement is what the rule rows assert, so citing the retired half would claim a rule with the sentence it retires. BACKLOG: pin each correction to the rule row it amends."
+      }
+    ]
   },
   "ruleLines": {
     "L1-L2": [
@@ -102,18 +174,11 @@
       "E16",
       "E17"
     ],
-    "L37": [
-      "E18",
-      "E19"
-    ],
     "L38": [
       "E20"
     ],
     "L39": [
       "E21"
-    ],
-    "L40": [
-      "E22"
     ],
     "L41": [
       "E23"
@@ -157,6 +222,13 @@
     ],
     "L63": [
       "G7"
+    ],
+    "L42": [
+      "E18",
+      "E19"
+    ],
+    "L45": [
+      "E22"
     ]
   },
   "items": [
@@ -1123,7 +1195,7 @@
     },
     {
       "id": "E18",
-      "rule": "L37",
+      "rule": "L42",
       "text": "投票板：院士设选项与机制（最少/最多选几项）",
       "status": "DONE",
       "mechanism": [
@@ -1141,7 +1213,7 @@
     },
     {
       "id": "E19",
-      "rule": "L37",
+      "rule": "L42",
       "text": "投票板不用于辩论",
       "status": "DONE",
       "prompt": [
@@ -1195,7 +1267,7 @@
     },
     {
       "id": "E22",
-      "rule": "L40",
+      "rule": "L45",
       "text": "辩论额外字段：对象或文件引用",
       "status": "DONE",
       "tool": [
