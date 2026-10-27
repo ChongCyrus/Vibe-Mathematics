@@ -1714,6 +1714,13 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // it later measured as `Cannot access 'childrenSeam' before initialization`.
   const childrenSeam = children && typeof children.parentId === 'function' && typeof children.list === 'function' ? children : null
   const resume = createResume({ store, work: workLedger, control, identity, settings: settingsView, bus,
+    // ★ ROUND 56 / F-43: EVERY ENVELOPE NAMES ITS WRITER. Runs 54/55 read `VibeMath/vmu/state.json` and found only
+    // `wroteAt`; the last kernel to write a key wins, so a reader could tell WHEN but not WHO - and "two honest
+    // readings that disagree" looked exactly like "one of them is stale". A getter, not a value: envelopes written
+    // before a tool call taught this kernel its session are honest (`kernelSession` absent) instead of frozen as
+    // anonymous (the ROUND 54 shape). `agentId` is empty until the assembly supplies one: the field is then ABSENT,
+    // which means "not registered", never "nobody wrote it".
+    writer: () => ({ kernelSession: kernelSessionValue(kernelSession), at: clock() }),
     lock: storepolicySeam,
     // ROUND 4 / task-25 (reader-a's 5②): the CHILDREN port. It reconciles "members that hold a childId" against the
     // host's LIVE direct children and names every one that is missing (`restart.missingChildren`); the engine never

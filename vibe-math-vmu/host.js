@@ -513,10 +513,31 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           const rIn = (full.settings && full.settings.resolvedIn) || null
           const br = full.bridge || null
           const ma = full.math || null
+          // ★ ROUND 56 (F-43): WHO WROTE EACH DURABLE KEY. Run 54 and run 55 both had to read
+          // `VibeMath/vmu/state.json` by hand to answer "which kernel wrote this projection", and the file answered
+          // only with `wroteAt`. The envelopes now stamp a writer; this face surfaces the stamp for the keys this
+          // kernel's own face map knows. It says NOTHING when the store cannot be read - absent is "cannot ask here".
+          let writtenBy = null
+          try {
+            const proj = full.projections && typeof full.projections === 'object' ? full.projections : null
+            const keys = proj && Array.isArray(proj.attached) ? proj.attached.filter((k) => typeof k === 'string') : []
+            const st = kernel.store
+            if (keys.length && st && typeof st.read === 'function') {
+              const map = {}
+              for (const key of keys) {
+                let env = null
+                try { env = st.read(key) } catch { env = null }
+                if (env && env.writer && typeof env.writer === 'object') map[key] = Object.assign({}, env.writer)
+              }
+              writtenBy = { keys, writtenBy: map,
+                means: 'the writer stamped on the durable envelope THIS kernel can read; a key missing from the map has no stamp (an envelope written before writers were recorded), which does not mean nobody wrote it' }
+            }
+          } catch { writtenBy = null }
           return { ok: true, instance, detail: 'provenance',
             settings: { resolvedIn: rIn, resolvedInMeans: (full.settings && full.settings.resolvedInMeans) || null },
             bridge: br ? { hasSpawnSeam: br.hasSpawnSeam === true, spawnSeamMeans: br.spawnSeamMeans || null } : null,
             math: ma ? { hostInjected: ma.hostInjected === true, hostSeam: ma.hostSeam || null, means: ma.means || null } : null,
+            projections: writtenBy,
             note: "this face answers only 'whose table is this and which seam is which'; detail:'settings' for the key map, detail:'summary' for the rest" }
         }
         const out = Object.assign({ ok: true, instance }, kernel.status({ detail }))

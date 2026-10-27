@@ -139,12 +139,30 @@ export function checkSnapshot(face, snap, required = []) {
  * A journal that had to drop old entries is marked `incomplete`: replay can no longer rebuild the state, and
  * `hydrate` refuses it by name instead of producing a plausible, wrong institute.
  */
-export function createProjection({ key, mode = 'journal', snapshot = null, restore = null, list = null, replay = null, cap = 5000 } = {}) {
+export function createProjection({ key, mode = 'journal', snapshot = null, restore = null, list = null, replay = null, cap = 5000, writer = null } = {}) {
   if (!str(key)) throw refuse('VMU_INVALID_ARGUMENT', 'a projection needs a key', 'pass { key: "tasks" }')
   if (mode !== 'journal' && mode !== 'state') throw refuse('VMU_INVALID_ARGUMENT', 'unknown projection mode: ' + String(mode), 'one of journal, state')
   let seq = 0
   let dropped = 0
   const entries = []
+  // ★ ROUND 56 / F-43: WHO WROTE THIS ENVELOPE. Run 54 and run 55 both read `VibeMath/vmu/state.json` and could only see
+  // `wroteAt`: the last kernel to write a key is the one whose values the next reader sees, and nothing in the file named
+  // it. That made "two honest readings that disagree" indistinguishable from "one reading is stale". The fix belongs
+  // HERE, at the point where the envelope is shaped, not in one face's status: `writer` is a function (a getter, for the
+  // same reason ROUND 54 made `kernelSession` one) so an envelope written before the kernel learned its name is honest
+  // about it rather than frozen as anonymous. A bare projection has no writer (tests and unit callers) and then the
+  // field is ABSENT - absent means "this writer was not registered", never "no one wrote it".
+  const writerValue = () => {
+    if (typeof writer !== 'function') return null
+    let out = null
+    try { out = writer() } catch { return null }
+    if (!out || typeof out !== 'object') return null
+    const w = {}
+    try { if (typeof out.kernelSession === 'string' && out.kernelSession !== '') w.kernelSession = out.kernelSession } catch { /* guarded */ }
+    try { if (typeof out.agentId === 'string' && out.agentId !== '') w.agentId = out.agentId } catch { /* guarded */ }
+    try { if (out.at !== undefined && out.at !== null) w.at = out.at } catch { /* guarded */ }
+    return Object.keys(w).length ? w : null
+  }
   const st = { key, mode, seq, entries, dropped, incomplete: false, restored: 0, at: null }
 
   const projection = {
@@ -182,7 +200,12 @@ export function createProjection({ key, mode = 'journal', snapshot = null, resto
     /** Is this journal replayable end to end? A dropped head makes it incomplete, and that is REPORTED. */
     replayable() { return mode !== 'journal' || !this.incomplete },
     /** The envelope this projection persists under its durable key. */
-    envelope() { return { v: 1, mode: this.mode, key: this.key, seq: this.seq, dropped: this.dropped, incomplete: this.incomplete, entries: entries.map((e) => Object.assign({}, e)), value: undefined, digest: null } },
+    envelope() {
+      const env = { v: 1, mode: this.mode, key: this.key, seq: this.seq, dropped: this.dropped, incomplete: this.incomplete, entries: entries.map((e) => Object.assign({}, e)), value: undefined, digest: null }
+      const w = writerValue()
+      if (w) env.writer = w
+      return env
+    },
     /** Restore an envelope read from the store (a restarted process sees exactly what the previous one wrote). */
     adopt(env) {
       if (!env || typeof env !== 'object' || env.key !== key) return { ok: false, reason: 'envelope does not belong to this projection' }
@@ -192,10 +215,18 @@ export function createProjection({ key, mode = 'journal', snapshot = null, resto
       this.incomplete = env.incomplete === true
       entries.length = 0
       if (Array.isArray(env.entries)) for (const e of env.entries) entries.push(Object.assign({}, e))
-      return { ok: true, seq: this.seq, entries: entries.length, incomplete: this.incomplete }
+      // ★ ROUND 56: adoption reports WHY the file looked the way it did. `writtenBy:null` means the envelope carries no
+      // writer (written by an older kernel, or by a bare projection in a unit test) - it does NOT mean nobody wrote it.
+      const writtenBy = env && env.writer && typeof env.writer === 'object' ? Object.assign({}, env.writer) : null
+      return { ok: true, seq: this.seq, entries: entries.length, incomplete: this.incomplete, writtenBy }
     },
     /** A state-mode envelope (the other durable shape). */
-    stateEnvelope(value) { return { v: 1, mode: 'state', key: this.key, seq: this.seq, dropped: this.dropped, incomplete: false, entries: [], value: clone(value), digest: contentDigest(value) } },
+    stateEnvelope(value) {
+      const env = { v: 1, mode: 'state', key: this.key, seq: this.seq, dropped: this.dropped, incomplete: false, entries: [], value: clone(value), digest: contentDigest(value) }
+      const w = writerValue()
+      if (w) env.writer = w
+      return env
+    },
     /**
      * Is the journal replayable end to end? A dropped head makes it incomplete; a NON-REPLAYABLE command (one
      * with side effects outside the face: host IO, a clock-dependent branch, an external call) makes the replay
@@ -295,7 +326,10 @@ export function attachProjection({ target, methods = [], projection, onError = n
 }
 
 export function createResume({ store = null, work = null, control = null, identity = null, mailbox = null, watchdogs = null,
-  lock = null, children = null, roster = null, reassign = null, faces = {}, settings = {}, bus = null, clock = () => 0, log = null, listCap = 100 } = {}) {
+  lock = null, children = null, roster = null, reassign = null, faces = {}, settings = {}, bus = null, clock = () => 0, log = null, listCap = 100,
+  // ★ ROUND 56 / F-43: the getter that names the writer of every envelope this resume face persists. Defaults to null
+  // so a kernel assembled without it is byte-identical to before (absent field, zero mechanism).
+  writer = null } = {}) {
   const sget = (key, def) => {
     if (settings && typeof settings.get === 'function') { const v = settings.get(key); return v === undefined ? def : v }
     if (settings && Object.prototype.hasOwnProperty.call(settings, key)) return settings[key]
@@ -367,7 +401,9 @@ export function createResume({ store = null, work = null, control = null, identi
   const projectionFor = (key, adapter) => {
     if (projections.has(key)) return projections.get(key).projection
     const a = adapter || {}
-    const p = createProjection({ key, mode: a.mode === 'state' ? 'state' : 'journal', snapshot: a.snapshot || null, restore: a.restore || null, list: a.list || null, replay: a.replay || null, cap: cfg().journalCap })
+    const p = createProjection({ key, mode: a.mode === 'state' ? 'state' : 'journal', snapshot: a.snapshot || null, restore: a.restore || null, list: a.list || null, replay: a.replay || null, cap: cfg().journalCap,
+      // A per-face writer wins over the resume-wide one: a face can know better than the assembly (it must be a function).
+      writer: typeof a.writer === 'function' ? a.writer : writer })
     projections.set(key, { projection: p, adapter: a, target: null, wrapper: null })
     return p
   }

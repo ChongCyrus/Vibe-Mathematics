@@ -1308,3 +1308,14 @@ vibe_vmu_status { detail: "summary" }
 2. **有界视图可以缩短一个值，不可以改一个字段名。** 默认面把 `bridge` 压成 `{hasSpawnSeam, note}`、`math` 压成 `{hostInjected, hostSeam, note}`；读者拿到的指令写的是 `bridge.spawnSeamMeans`，于是在默认面上诚实地回「没有该字段」——句子在场，只是改了名。修法：压缩时保留原名（`spawnSeamMeans`/`means`，各一句短话）。判据：**字段名是跨面的契约；省略可以，改名不行**——这与 ROUND 53 的「省略要自证」是同一族，但错得更便宜也更隐蔽。
 
 3. **投影写入者仍未登记（F-43，仍记债）。** root 直接读了 `VibeMath/vmu/state.json`：`keys.members` 只有 `wroteAt`，没有 `writer`/`by`/`kernelSession`；`bridge`/`math` 根本不是投影（文件里没有这两键）。所以「同一文件里写着 hasSpawnSeam:false」这个具体说法本轮没有复现，但「文件里没有任何字段能指认写入者」复现了。修法方向已定：`createProjection({ writer })` 把 `{ kernelSession, agentId, at }` 写进 `envelope()`/`stateEnvelope()`，`adopt()` 回 `writtenBy`。`detail:"provenance"` 是小门，不是这个修法。
+
+
+## ROUND 56 — 每个持久信封都要说自己是谁写的（F-43 结清）
+
+run 54 与 run 55 两次真机都做了同一件事：不去问工具，直接去读 `VibeMath/vmu/state.json`，想知道「这份投影是谁写的」。两次都只能读到 `wroteAt` —— 时间有，人没有。于是同一个 workspace 上的两个内核各写一份投影、后写的那份赢，而**读的一方能证明「文件是什么时候写的」，不能证明「是谁写的」**；「两条都诚实的读数互相矛盾」和「其中一条是旧的」在文件层面不可区分。
+
+1. **写入者登在信封上，不在某一张脸的回执里。** 修法落在 `createProjection`（`vibe-math-vmu/kernel/resume.js`），因为信封就是持久化单位：`envelope()` 与 `stateEnvelope(value)` 都盖上 `writer: { kernelSession, at }`，`adopt(env)` 回 `writtenBy`（**副本**，读者改它不会改到持久事实）。放在某张脸的 `status` 里就只能答一半：只有那张脸知道自己那份。
+2. **写入者是一个提问，不是一个快照。** `writer` 是函数（同 ROUND 54 的 `kernelSession`）：内核在学到自己的会话名字之前写出的信封，如实**不盖** `kernelSession`，而不是盖一个 `null` 再让后人误读成「没有会话」。名字后到，后续信封就会带上它 —— 与 run 54 的「读时重新求值」是同一条规则，只是这次对象是**写**的一侧。
+3. **缺席要专门说清，不能变成沉默。** 没有注册 writer 的裸投影（单测与工具调用方）写出的信封**没有** `writer` 字段；`adopt()` 对此回 `writtenBy: null`。⚠️ 这只表示「没盖」，不表示「没人写过」。`detail:"provenance"` 新增 `projections.keys` / `projections.writtenBy` / `projections.means`，把这句话直接写进回执：**没有戳的键不是空键**。
+4. **有界小门要能回答这个新问题。** 打开原始 `state.json` 是不可读的（一行 ~7 kB、宿主 2,000 字符处截断，run 55 已量到），所以写入者必须能在 `detail:"provenance"`（< 2,000 字符）里读到：本轮它给 `attached` 键逐个读盘上的信封再抄出 `writer`，读不到就**不列这个键**，而不是列一个 `null`。
+5. **仍未记入的东西要具名。** `writer.agentId` 目前为空：内核不保留「这一次调用是哪个 Agent」（工具执行的 agent 绑定在入口层，未下传到投影层）。字段**缺席**在这里等于「未登记」，与「没有人写」不可互换；这是 F-43 的剩余一半，下一轮若需要按 Agent 归因，就从工具执行缝把 agentId 下传到 `writer()`，而不是在文件里补一个猜出来的值。
