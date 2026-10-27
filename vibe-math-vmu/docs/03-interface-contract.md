@@ -481,7 +481,11 @@
 | **R5 · `VMU_TASK_DEPENDENCY_CYCLE`** | **依赖边会使任务图成环**（自环／两节点环／三跳长环）⇒ 具名拒；`detail.cycle` 给**环路径**（如 `['t-3','t-1','t-2','t-3']`） | 任务台账（`kernel/tasks.js:59-63` 的 `cycleRefusal`；抛出点 `:214` `create`／`:240` `setDependencies`） | ✅（须给**环路径**与"删掉环上任一条边"的出路） |
 | **R2 · `VMU_HUMAN_QUEUE_FULL`** | 待批队列触界（`vmu.human.approvalQueueCap`） | 审批闸 | ✅（须给**当前与上限**） |
 | **R2 · `VMU_HUMAN_LIFT_ROLE`** | 解除否决者不在 `vmu.human.vetoLiftRoles` | 审批闸 | ✅（须给**允许角色**） |
-| **R31 · `VMU_HUMAN_DECIDER_ROLE`** | **人工审批面的调用者角色不在 `vmu.human.deciderRoles`** ⇒ 具名拒 `decide`／`withdraw`／`veto`，**在任何状态变更之前**；角色＝roster 席位（非成员／root 才是 `office`），所以"填 `by:'office'` 冒充"改不了闸；`enforced[]` 点名声明键（task-22） | 人工审批面（`vibe-math-vmu/tools/human.js` 的 `gateVerb`，闸在 `run()` 的 `try` 第一行） | ✅（须给**允许角色**、**声明键**与"默认只有 office"） |
+| **R31 · `VMU_HUMAN_DECIDER_ROLE`** | **人工审批面的调用者角色不在 `vmu.human.deciderRoles`** ⇒ 具名拒 `decide`／`withdraw`／`veto`，**在任何状态变更之前**；角色＝roster 席位（非成员／root 才是 `office`），所以"填 `by:'office'` 冒充"改不了闸；`enforced[]` 点名声明键（task-22）。**R45 · 同一码也判被代办者**：`by` 缺省＝调用者自己；`by` 是角色名（如 `chair`）或名册成员 id 时，其解析出的角色**也**必须在 `vmu.human.deciderRoles` 里，否则同一码具名拒（message 点名 by 值与解析出的角色，hint 给"用自己的身份"与"把决定权交给成员自己的席位"两条路）——否则 root 会话可 `decide {by:"<member>"}` 把审批记到成员名下（run 45 真机） | 人工审批面（`vibe-math-vmu/tools/human.js` 的 `gateVerb`/`delegateOf`，闸在 `run()` 的 `try` 第一行） | ✅（须给**允许角色**、**声明键**与"默认只有 office"） |
+| **R45 · `VMU_CHAT_SNAPSHOT_INCOMPLETE`** | 持久里的 chat 值不是 v1 快照（`messages`/`mutes` 缺失）⇒ 合并恢复**什么都没采纳、也没动活内存**（`kernel/index.js` 的 `chatReloadMerge`） | 群聊状态的持久化恢复（task-28） | ✅（须说"什么都没采纳也没动活的"） |
+| **R45 · `VMU_CHAT_RESTORE_FAILED`** | 合并后的快照交给 `chat.restore()` 时抛错（内核没给码）⇒ 报 `VMU_CHAT_RESTORE_FAILED` + `note` 原文（`kernel/index.js` 的 `reload` 适配） | 同上 | ✅（须给底层原文，不许只报"restore 失败"） |
+| **R45 · `VMU_CHAT_RESTORE_REFUSED`** | `chat.restore()` 按名字拒绝合并后的快照（例如 live 已有消息而快照不同）⇒ 报该面自己的码或 `VMU_CHAT_RESTORE_REFUSED` + `note`（`kernel/index.js` 的 `chatReloadMerge`） | 同上 | ✅（须点名"不能半覆盖、消息不丢"） |
+| **R45 · `VMU_CHAT_MUTE_FAILED`** | 采纳持久里的禁言行时 `chat.mute()` 自己拒绝（例如成员不存在）⇒ 进 `refused[]` 并带 `code/message`，**不阻断其它行**（`kernel/index.js` 的 `chatReloadMerge`） | 同上 | ✅（须说明是逐行采纳、一行被拒不等于整批失败） |
 | **R31 · `VMU_HUMAN_INJECT_ROLE`** | **以人类口吻 `inject` 发言的调用者角色不在 `vmu.human.injectRoles`** ⇒ 具名拒（该面 `sender = from \|\| 'office'`，不校验调用者，所以"人类干预"必须由人类／所办署名送出） | 同上（`inject` 分支） | ✅（须给**允许角色**与**声明键**） |
 | **R33 · `VMU_RESUME_HOSTCONTRACT`** | **宿主用自己内部的 TypeError 盖住了真实的续会话拒绝**：`subagents.prompt(request, signal)` 的准入路径第一句是 `options.signal.throwIfAborted()`，而失败路径 `rejectPrompt`→`isCancellation` 又直接读 `signal.aborted`（无 undefined 保护）⇒ 桥少传一个 signal 时，先抛 TypeError、再在拒绝路径抛 `Cannot read properties of undefined (reading 'aborted')`，**真实原因不可见**。本码只在“宿主仍以该形状失败”时出现，message 点名这是宿主缺陷对拒绝的 mask，hint 明说**本回合成员没有运行**（task-23） | 成员回合的续会话桥（`vibe-math-vmu/host-deliver.js` 的 `makeMemberResumeChild`；同一条规则也适用于 `kernel/turn/index.js` 的 `sendViaSubagents`） | ✅（须给**尝试的 session**、**被 mask 的宿主错误**与“成员未运行”） |
 | **R2 · `VMU_LEAN_JOBS_MIRROR_UNWIRED`** | Lean 作业镜像声明了但缺 `fs` 缝 ⇒ **不静默**，`admission().fileMirror=false` | 形式化面（`kernel/lean.js`） | ✅（须给**注入方式**） |
@@ -1167,7 +1171,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **464** 个码，**逐行**给出状态 ✓：其中 **425** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **468** 个码，**逐行**给出状态 ✓：其中 **429** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1234,8 +1238,12 @@
 | `VMU_CHAT_CAP_REACHED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_CHAT_FROZEN` | **已实现 ✓** | `vibe-math-vmu/kernel/chat.js` | 代码里有该码字符串 ✓ |
 | `VMU_CHAT_MUTED` | **已实现 ✓** | `vibe-math-vmu/kernel/chat.js` | 代码里有该码字符串 ✓ |
+| `VMU_CHAT_MUTE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_CHAT_NOT_ADMIN` | **已实现 ✓** | `vibe-math-vmu/kernel/chat.js` | 代码里有该码字符串 ✓ |
 | `VMU_CHAT_QUOTA_EXCEEDED` | **已实现 ✓** | `vibe-math-vmu/kernel/chat.js` | 代码里有该码字符串 ✓ |
+| `VMU_CHAT_RESTORE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_CHAT_RESTORE_REFUSED` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_CHAT_SNAPSHOT_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_CITATIONS_FIELD_MISSING` | **已实现 ✓** | `vibe-math-vmu/kernel/citations.js` | 代码里有该码字符串 ✓ |
 | `VMU_CITATIONS_IDENTIFIER_MISSING` | **已实现 ✓** | `vibe-math-vmu/kernel/citations.js` | 代码里有该码字符串 ✓ |
 | `VMU_CITATIONS_STYLE_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/citations.js` | 代码里有该码字符串 ✓ |
@@ -1317,7 +1325,7 @@
 | `VMU_HUMAN_DEFAULT_ALLOW_NOT_ACKNOWLEDGED` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_HUMAN_INJECT_ROLE` | **已实现 ✓** | `vibe-math-vmu/tools/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_HUMAN_LIFT_REASON_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
-| `VMU_HUMAN_LIFT_ROLE` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
+| `VMU_HUMAN_LIFT_ROLE` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js`、`vibe-math-vmu/tools/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_HUMAN_OBSERVER_SCOPE` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_HUMAN_QUEUE_FULL` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_HUMAN_VETOED` | **已实现 ✓** | `vibe-math-vmu/kernel/human.js` | 代码里有该码字符串 ✓ |

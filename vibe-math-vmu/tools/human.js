@@ -27,6 +27,20 @@
 //   · THE DEFAULT IS READ FROM THE DECLARATION (`SETTING_DEFS`), not written here: a live view value wins (hot
 //     settings really move the gate), the declared `def` is the fallback, and an undeclared key grants NOBODY
 //     (fail closed — the failure mode of a deleted declaration must not be "everyone may approve").
+//
+// ★ ROUND 45 / task-29 — THE DELEGATE GATE. Run 45 (build fe98b36f) measured, on the real entry:
+//     root session: decide { request_id:"rq-r45", allow:true, by:"r-1" } → { ok:true, decidedBy:"r-1" }
+// i.e. the researcher's identity carried the human's decision, and `approvalState` did not even report who
+// decided. The caller gate above judged the CALLER and never resolved the model-supplied `by` argument — which is
+// the name that lands on the receipt. So there are TWO authorities in one decision (the caller who acts, and the
+// actor the decision is attributed to) and a name on a receipt is an authority claim: BOTH must be in the declared
+// approver set. `by` absent means "the caller itself" (the existing office path); a seat id is resolved through
+// the LIVE roster to its slot and judged by that slot; an id that is neither a declared role nor a roster seat is
+// an invented actor and is refused. `inject` is deliberately out of this rule: it names its speaker with `from`,
+// owns its own declaration (`vmu.human.injectRoles`), and run 45 measured nothing about it.
+//   · AND THE READ-BACK: `approvalState` now returns `decidedBy` (from the live ledger — the request arguments
+//     are never echoed) and `decidedByMeans` = 'self' (the decider acted as itself) | 'delegate' (the caller
+//     acted for a DIFFERENT approver) | 'unrecorded' (decided outside this face — the face does not guess).
 import { resolveTurnMember } from '../host-pack-tools.js'
 import { SETTING_DEFS } from '../settings/schema.js'
 export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
@@ -72,23 +86,63 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
     return null
   }
   /** office (no member ⇒ root/host actor, exactly `resolveTurnMember`'s null) or the live roster SLOT. */
+  const seatOf = (row) => (row && typeof row.slot === 'string' && row.slot.trim() ? row.slot.trim() : null)
   const callerRole = (exec) => {
     const member = resolveTurnMember(kernel, exec)
     if (!member) return { member: null, role: 'office', seat: 'office' }
     const row = rosterRow(member)
-    const seat = row && typeof row.slot === 'string' && row.slot.trim() ? row.slot.trim() : '(no seat)'
+    const seat = seatOf(row) || '(no seat)'
     return { member, role: seat, seat }
   }
+  // ── THE DELEGATE (ROUND 45 / task-29) — see the file header. `by` names WHO the decision is attributed to; the
+  // caller gate alone let a root session write a seat's name onto the receipt. Resolution order matches the caller
+  // gate: same declaration, same live roster. The argument never grants authority by being written down.
+  const MEANS_SELF = 'self'
+  const MEANS_DELEGATE = 'delegate'
+  const MEANS_UNRECORDED = 'unrecorded'
+  const MEANS_OF = new Map() // requestId → 'self' | 'delegate' (how THIS face authorised the attribution)
+  const rememberMeans = (requestId, means) => { if (requestId && means) MEANS_OF.set(String(requestId), means) }
+  /** Resolve `by` to { by, role, means }: omitted ⇒ the caller itself; a declared role or roster seat ⇒ delegate. */
+  const delegateOf = (byArg, who, roles) => {
+    if (byArg === undefined || byArg === null || String(byArg).trim() === '') return { by: who.member || who.role, role: who.role, means: MEANS_SELF }
+    const named = String(byArg).trim()
+    if (named === who.role || (who.member && named === String(who.member))) return { by: named, role: who.role, means: MEANS_SELF }
+    if (roles.indexOf(named) !== -1) return { by: named, role: named, means: MEANS_DELEGATE }
+    const row = rosterRow(named)
+    if (row) return { by: named, role: seatOf(row), means: seatOf(row) ? MEANS_DELEGATE : MEANS_UNRECORDED }
+    return { by: named, role: null, means: MEANS_UNRECORDED }
+  }
   /** Throws a NAMED refusal in the caller's own vocabulary when this caller may not perform `action`. */
-  const gateVerb = (action, exec) => {
+  const gateVerb = (action, exec, byArg) => {
     const code = GATED_VERBS.get(action)
     if (!code) return null
     const key = KEY_OF_CODE.get(code)
     const roles = declaredRoles(key)
     const who = callerRole(exec)
-    if (roles.indexOf(who.role) !== -1) return who
     const caller = who.member ? '"' + who.seat + '" (' + who.member + ')' : '"' + who.seat + '"'
     const what = WHAT_OF_CODE.get(code)
+    if (roles.indexOf(who.role) !== -1) {
+      // ★ THE CALLER MAY DECIDE — but the delegate must be an approver too (ROUND 45). Returned so the branch can
+      // attribute the receipt: `by` is what the ledger will record, `means` is how that attribution was authorised.
+      if (code !== DECIDER_CODE) return { caller: who, by: undefined, role: who.role, means: null }
+      const delegate = delegateOf(byArg, who, roles)
+      if (delegate.role !== null && roles.indexOf(delegate.role) !== -1) return Object.assign({ caller: who }, delegate)
+      const named = delegate.role === null
+        ? 'by:"' + delegate.by + '" is neither a declared role nor a seat on the roster'
+        : 'by:"' + delegate.by + '" resolves to role "' + delegate.role + '", which is not an approver'
+      throw Object.assign(
+        new Error('the human face decides for the institution: caller ' + caller + ' passed ' + named
+          + ', but 被代办者不是审批角色 — the decision would be ATTRIBUTED to an actor that may not approve; declared ' + key + ' = [' + roles.join(', ') + ']'),
+        {
+          code,
+          hint: 'two ways out: (1) 用自己的身份 — omit `by` (or name your own role "' + who.role + '"), so the decision is attributed to the caller; '
+            + '(2) 把决定权交给成员自己的席位 — let that member call ' + action + ' from its own turn, where the identity comes from the turn, not from the `by` argument. '
+            + 'Who may approve is DECLARED, not hardcoded: ' + key + ' = [' + (roles.length ? roles.join(', ') : 'nobody, so nothing is granted') + '] in settings/schema.js',
+          enforced: [key],
+          caller: { role: who.role, member: who.member },
+          delegate: { by: delegate.by, role: delegate.role, seated: delegate.role !== null },
+        })
+    }
     throw Object.assign(
       new Error('the human face decides for the institution: ' + caller + ' may NOT ' + what + ' — declared ' + key + ' = [' + roles.join(', ') + ']'),
       {
@@ -97,6 +151,21 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
           + (roles.length ? roles.join(', ') + ' only' : 'nobody, so nothing is granted') + ', and no seat may approve out of the box)',
         enforced: [key],
       })
+  }
+  /** The LIVE ledger record for an approval (snapshot first — the queue view is capped). null = not readable. */
+  const ledgerRow = (requestId) => {
+    if (requestId === undefined || requestId === null || String(requestId) === '') return null
+    const id = String(requestId)
+    try {
+      const snap = human().snapshot()
+      const pairs = snap && snap.data && Array.isArray(snap.data.approvals) ? snap.data.approvals : []
+      for (const pair of pairs) if (Array.isArray(pair) && String(pair[0]) === id && pair[1] && typeof pair[1] === 'object') return pair[1]
+    } catch { /* fall through to the capped queue view */ }
+    try {
+      const q = human().queue()
+      for (const row of Array.isArray(q && q.requests) ? q.requests : []) if (row && String(row.requestId) === id) return row
+    } catch { /* no ledger view: the state still comes back, the attribution stays null rather than invented */ }
+    return null
   }
   const human = () => {
     const h = kernel && kernel.human
@@ -128,7 +197,7 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
       member_id: param('string', 'gate 的主体（被闸对象 id，可省）'),
       request_id: param('string', 'approvalState/decide/withdraw/explainVeto 的审批 id'),
       allow: param('boolean', 'decide：true＝批准、false＝否决（否决立即生效）'),
-      by: param('string', '做出该决定/解除否决/撤回的角色（liftVeto 必填；受 vmu.human.vetoLiftRoles 约束）'),
+      by: param('string', 'decide/withdraw/veto：这个决定记在谁名下（角色名或成员 id；省略＝调用者自己）。★ 被记名者必须也是审批角色（vmu.human.deciderRoles），否则具名拒 VMU_HUMAN_DECIDER_ROLE——替别人决定必须那本人也能决定。liftVeto 必填，受 vmu.human.vetoLiftRoles 约束'),
       subject: param('string', 'openApproval/gate 的主体说明'),
       domains: param('string', 'dashboard：逗号分隔的可见域；空＝仅聚合（private/dm 永不可见）'),
       requestId: param('string', 'openApproval 的调用方自定义 id（可省）'),
@@ -147,22 +216,78 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
       try {
         // ★ THE CALLER GATE runs BEFORE any state changes: a refused verb must leave the human table exactly as it
         // found it (a refusal that still flipped the approval would pass an "did it error?" test and be worthless).
-        gateVerb(action, exec)
+        // ROUND 45: it also resolves `by` — a caller that may decide cannot attribute the decision to an actor that
+        // may not, and the refusal still happens before any state changes.
+        const gate = gateVerb(action, exec, notEmpty(by))
         if (action === 'status') return Object.assign({ ok: true, action }, human().status())
-        if (action === 'veto') return Object.assign({ ok: true, action }, human().veto({ by: notEmpty(by) || null, scope: notEmpty(scope) || null, target: notEmpty(target) || null, reason: notEmpty(reason) || null, emergency: emergency === true }))
+        if (action === 'veto') return Object.assign({ ok: true, action }, human().veto({ by: gate ? gate.by : (notEmpty(by) || null), scope: notEmpty(scope) || null, target: notEmpty(target) || null, reason: notEmpty(reason) || null, emergency: emergency === true }))
         if (action === 'explainVeto') return Object.assign({ ok: true, action }, human().explainDecision({ vetoId: notEmpty(veto_id) || null, requestId: notEmpty(request_id) || null, reason: notEmpty(reason) || null }))
-        if (action === 'liftVeto') return Object.assign({ ok: true, action }, human().liftVeto({ vetoId: notEmpty(veto_id), by: notEmpty(by) || null, reason: notEmpty(reason) || null }))
+        if (action === 'liftVeto') {
+          // ★ ROUND 45 / task-29b — THE LIFT IS ATTRIBUTED TO WHO PERFORMED IT. `liftVeto` names its actor with the
+          // SAME `by` argument, but only `vmu.human.vetoLiftRoles` was checked — the caller was never resolved. So a
+          // root session (the office) could lift a veto IN A SEAT'S NAME (`by:"chair"`) whenever that role happened to
+          // be declared in vetoLiftRoles, and the ledger would record the seat as the actor. Same defect class as
+          // `decide` (task-29), same rule: the name on the receipt is an authority claim about the actor, so a caller
+          // may only lift in its OWN name. Delegation is not a thing here: lifting is an act, not a decision made on
+          // someone's behalf, and the actor who performs it is exactly the actor who can lift it (the kernel still
+          // decides whether that role is allowed: `vmu.human.vetoLiftRoles`).
+          const who = callerRole(exec)
+          const named = notEmpty(by) || null
+          const namedRole = named === null ? null : (seatOf(rosterRow(named)) || named)
+          const selfId = who.member === undefined || who.member === null ? null : String(who.member)
+          const ownName = named === null || named === who.role || (selfId !== null && named === selfId)
+          if (!ownName) {
+            throw Object.assign(
+              new Error('the human face lifts a veto: caller ' + (who.member ? '"' + who.seat + '" (' + who.member + ')' : '"' + who.seat + '"')
+                + ' may NOT lift it in the name of "' + named + '" — a lift is ATTRIBUTED to the actor that PERFORMED it, and this caller is not that actor'),
+              {
+                code: 'VMU_HUMAN_LIFT_ROLE',
+                hint: 'lift in your own name (by:"' + who.role + '"), or let that actor call liftVeto from its own turn (its identity then comes from the turn, not from `by`); who may lift is DECLARED: vmu.human.vetoLiftRoles = [' + declaredRoles('vmu.human.vetoLiftRoles').join(', ') + ']',
+                enforced: ['vmu.human.vetoLiftRoles'],
+                caller: { role: who.role, member: who.member },
+                named: { by: named, role: namedRole },
+              })
+          }
+          return Object.assign({ ok: true, action }, human().liftVeto({
+            vetoId: notEmpty(veto_id),
+            by: named === null || (selfId !== null && named === selfId) ? who.role : named,
+            reason: notEmpty(reason) || null,
+          }))
+        }
         if (action === 'observerView') return Object.assign({ ok: true, action }, human().observerView({ scope: notEmpty(scope) || null }))
         if (action === 'openApproval') return Object.assign({ ok: true, action }, human().openApproval({ subject: subject === undefined ? null : subject, requestId: notEmpty(requestId) || null }))
         if (action === 'approvalState') {
           const at = Number.isFinite(Number(timeout_ms)) ? Number(timeout_ms) : null
-          return Object.assign({ ok: true, action }, human().approvalState({ requestId: notEmpty(request_id), at }))
+          const requestId = notEmpty(request_id)
+          const st = human().approvalState({ requestId, at })
+          // ★ ROUND 45 — THE READ-BACK MUST SAY WHO DECIDED, and it is read from the LIVE LEDGER, never echoed from
+          // the request arguments (otherwise a caller shapes the audit by choosing `by`). `decidedByMeans` is 'self'
+          // or 'delegate' when THIS face authorised the attribution, and 'unrecorded' when it did not (decided
+          // outside the face — e.g. a pack against the kernel API): the face does not guess, and it never calls an
+          // ungated act "self". Pending — or timed out, where NOBODY decided — reports null/null.
+          const row = requestId ? ledgerRow(requestId) : null
+          const decided = !!(row && row.decidedAt !== undefined && row.decidedAt !== null)
+          const decidedBy = decided && row.decidedBy !== undefined && row.decidedBy !== null ? String(row.decidedBy) : null
+          return Object.assign({ ok: true, action }, st, {
+            decidedBy,
+            decidedByMeans: decided ? (MEANS_OF.get(String(requestId)) || MEANS_UNRECORDED) : null,
+          })
         }
-        if (action === 'decide') return Object.assign({ ok: true, action }, human().decide({ requestId: notEmpty(request_id), allow: allow === true, reason: notEmpty(reason) || null, by: notEmpty(by) || null }))
+        if (action === 'decide') {
+          // ROUND 45: the receipt's `by` is the GATE's answer, not the raw argument: omitted ⇒ the caller itself, a
+          // seat id ⇒ that seat, a declared role ⇒ that role — and every one of them was just checked as an approver.
+          const r = human().decide({ requestId: notEmpty(request_id), allow: allow === true, reason: notEmpty(reason) || null, by: gate ? gate.by : (notEmpty(by) || null) })
+          if (gate) rememberMeans(r.id, gate.means)
+          return Object.assign({ ok: true, action }, r)
+        }
         // PHASE 6（目标 3 审计）: a PENDING approval can be WITHDRAWN through the tool face — the same path as every
         // other human verb (no direct kernel call needed). Missing reason / second withdrawal surface as named
         // refusals through the outer catch (VMU_INVALID_ARGUMENT / VMU_STATE).
-        if (action === 'withdraw') return Object.assign({ ok: true, action }, human().withdrawApproval({ requestId: notEmpty(request_id), by: notEmpty(by) || null, reason: notEmpty(reason) || null }))
+        if (action === 'withdraw') {
+          const r = human().withdrawApproval({ requestId: notEmpty(request_id), by: gate ? gate.by : (notEmpty(by) || null), reason: notEmpty(reason) || null })
+          if (gate) rememberMeans(r.id, gate.means)
+          return Object.assign({ ok: true, action }, r)
+        }
         if (action === 'queue') return Object.assign({ ok: true, action }, human().queue())
         if (action === 'gate') {
           const at = Number.isFinite(Number(timeout_ms)) ? Number(timeout_ms) : null

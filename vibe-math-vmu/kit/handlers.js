@@ -361,6 +361,83 @@ function toolMessage(args = {}, { kernel } = {}) {
 
 
 
+// ── ★★★ LIVE RUN 45 / DEFECT D: THE RECORDS LEDGER AND THE FILE LIBRARY ARE TWO LEDGERS, AND ONE READ MUST SAY SO ───
+// THE MEASUREMENT (run 45, build fe98b36f). `r-2` filed its own final ruling with `vibe_v5_verdict { meeting,
+// proposition_id, verdict:0.4, reason, member:"r-2" }` and got `ok:true, channel:"ruling", submission.path =
+// …\Members\r-2\Propos\ruling-m-r45b-p-r45-r-2-bac61307.md`; the chair then adopted it (`coverage.adoptedFromSubmissions:1`,
+// `submissions.cards:4`), so the card was really on disk. The same member then asked its OWN library
+// `{ member:"r-2", track:"propositions" }` and got `count:0, rows:[]` — and had no way left to answer 「我提交过裁决吗」.
+// WHY: `vibe_v5_verdict` files the ruling as a LIBRARY CARD (durable, under the member's own directory, readable from
+// another kernel), while this handler lists the RECORDS ledger, and a file card is not a records row — by construction.
+// ★ THE FIX IS (a), NOT (b) (writing a records row from the verdict tool), and the reason is structural:
+//   ① a records row in a member's own kernel is MEMORY, while the card must cross the kernel boundary to reach the
+//      chair — two sources of truth for one fact would drift, and the one that drifts is the one nobody reads;
+//   ② the records `propositions` track is the P1/B1 carrier (`verified` accepts only p=1/p=0 proposition cards), so a
+//      ruling (which is a verdict ON a proposition, not a proposition) written into that track would put a non-
+//      proposition card in front of the proof gate — the gate's meaning, not just its shape, would be wrong.
+// So the file cards are ATTACHED HERE under their own names (`libraryCards` / `libraryCardCount`), the old
+// `count`/`cards` keep their old meaning (records rows only), and the receipt says which is which.
+/** The library face (file cards under `Members/<member>/`), or null when this kernel publishes none. The kit composes
+ *  the PUBLISHED face only (`list` + `expand`); a fake kernel without it must still answer a read, never crash one. */
+function libraryFaceOf(kernel) {
+  const lib = kernel && kernel.library
+  if (!lib || typeof lib.list !== 'function' || typeof lib.expand !== 'function') return null
+  return lib
+}
+
+/** WHAT A FILE CARD IS, said once and carried on every receipt that reports the readout — an empty list must never be
+ *  readable as "nothing was filed" without this sentence next to it. */
+const FILE_CARD_MEANS = '`libraryCards` 是**文件卡**（<root>/Members/<member>/{Propos,Methods,Subproblems}/ 下的 .md），不是 records 行：`count`/`cards` 只列 records 账本的行，文件卡另列在这里。文件卡没有 records 的 track，所以 `track`/`tracks`/`kind` 收窄的是 records 行，不收窄这里。数量来自库的 head list（受 vmu.records.headListAt 行帽），不是"全库"的保证'
+
+/** The member's library cards, as a SEPARATE readout. Never folded into `count`/`cards`: those stay records rows.
+ *  `path` comes from `expand` so a card the member filed has a real, openable address (run 45's receipt had one; the
+ *  read side must be able to say the same thing). A card whose body cannot be expanded still counts — the head list
+ *  already proves it exists, and `path:null` says only that its address could not be read this time. */
+async function fileCardsOf(kernel, member, limit) {
+  const cap = Number.isFinite(limit) && limit > 0 ? limit : 20
+  const base = { libraryCardsMeans: FILE_CARD_MEANS }
+  if (!member) {
+    return Object.assign({}, base, { libraryCards: null, libraryCardCount: null, libraryCardsTruncated: false, libraryReadable: false,
+      libraryWhy: '没有给 member：文件卡按成员目录存放、不属于任何 track，所以不猜——传 member:"<id>" 才会附带该成员的文件卡' })
+  }
+  const lib = libraryFaceOf(kernel)
+  if (!lib) {
+    return Object.assign({}, base, { libraryCards: null, libraryCardCount: null, libraryCardsTruncated: false, libraryReadable: false,
+      libraryWhy: '这个 kernel 没有 library face（装配时没有持久 root），所以 <root>/Members/' + member + '/ 下的文件卡这一次**读不到**：'
+        + '`count:0`/`cards:[]` 只说明 records 账本里没有行，**不能**说明该成员没有提交过裁决卡' })
+  }
+  let heads = []
+  try { heads = await lib.list({ member }) } catch (e) {
+    return Object.assign({}, base, { libraryCards: null, libraryCardCount: null, libraryCardsTruncated: false, libraryReadable: false,
+      libraryWhy: 'library face 存在但读不出 head list：' + String((e && e.message) || e) + ' —— 同理，count:0 不能当作"没有文件卡"' })
+  }
+  // `list({member})` already narrows by directory member; the owner check is the CONTRACT (a card belongs to a member
+  // by its owner field), so a head that disagrees is dropped rather than attributed to someone who did not write it.
+  const mine = (Array.isArray(heads) ? heads : []).filter((h) => h && String(h.owner || '') === member)
+  const shown = mine.slice(0, cap)
+  const out = []
+  for (const h of shown) {
+    const one = { id: h.id === undefined ? null : String(h.id), kind: h.kind === undefined ? null : String(h.kind),
+      title: h.title === undefined ? null : String(h.title), status: h.status === undefined ? null : String(h.status),
+      owner: member, updatedAt: h.updatedAt === undefined ? null : h.updatedAt, path: null }
+    try {
+      const ex = await lib.expand(one.id)
+      if (ex) {
+        one.path = ex.path === undefined || ex.path === null ? null : String(ex.path)
+        const head = ex.head && typeof ex.head === 'object' ? ex.head : null
+        if (head) {
+          if (head.title !== undefined && head.title !== null) one.title = String(head.title)
+          if (head.status !== undefined && head.status !== null) one.status = String(head.status)
+        }
+      }
+    } catch { /* the head list already proves the card exists; only its ADDRESS is unknown */ }
+    out.push(one)
+  }
+  return Object.assign({}, base, { libraryCards: out, libraryCardCount: mine.length, libraryCardsTruncated: mine.length > out.length,
+    libraryReadable: true, libraryWhy: null,
+    libraryCardsMeans: FILE_CARD_MEANS + (mine.length > out.length ? '（本次只回了 ' + out.length + '/' + mine.length + ' 张：传更大的 limit）' : '') })
+}
+
 /** ★ `vibe_v5_read_library` — read anyone's library, READ-ONLY: `id` reads one card; the list form reads the given
  *  tracks and filters by kind and by the card's author. A track this deployment does not declare is SKIPPED because the
  *  records face refused it by name — the skip is the face's answer, not a swallowed exception.
@@ -373,7 +450,7 @@ function toolMessage(args = {}, { kernel } = {}) {
  *  declaration the write side validates against, and `track` / `tracks` narrow it explicitly. An undeclared name in
  *  `track` is a NAMED refusal (the declaration is the only vocabulary); a declared track the deployment's records face
  *  refuses is still skipped and reported. */
-function toolReadLibrary(args = {}, { kernel } = {}) {
+async function toolReadLibrary(args = {}, { kernel } = {}) {
   const records = recordsOf(kernel)
   if (has(args.id)) {
     const id = str(args.id)
@@ -439,11 +516,17 @@ function toolReadLibrary(args = {}, { kernel } = {}) {
     }
   }
   const returned = cards.slice(0, limit)
+  // ★ RUN 45 / DEFECT D: the file cards the member actually filed live in the LIBRARY, not in records — attached here
+  // under their own names so `count`/`cards` above keep meaning exactly what they meant before (records rows only).
+  const fileCards = await fileCardsOf(kernel, wanted, limit)
   return { ok: true, tool: 'vibe_v5_read_library', member: wanted, kind: has(args.kind) ? str(args.kind) : null,
     tracks, declaredTracks: declared,
     total: cards.length, returned: returned.length, truncated: cards.length > returned.length,
     hint: cards.length > returned.length ? '只回了 ' + returned.length + '/' + cards.length + ' 张：传 limit 提高上限，或按 kind/member/track 收窄' : null,
-    count: returned.length, cards: returned, skippedTracks: skipped }
+    count: returned.length, cards: returned, skippedTracks: skipped,
+    libraryReadable: fileCards.libraryReadable, libraryCards: fileCards.libraryCards,
+    libraryCardCount: fileCards.libraryCardCount, libraryCardsTruncated: fileCards.libraryCardsTruncated,
+    libraryWhy: fileCards.libraryWhy, libraryCardsMeans: fileCards.libraryCardsMeans }
 }
 
 

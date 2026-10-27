@@ -317,9 +317,41 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
    * FAILS CLOSED once a meeting is lapsed: F28's fallback only means something if it actually stops the meeting,
    * and ONE guard here keeps that from having to be repeated (and forgotten) on every acting rail.
    */
+  /**
+   * ★★★ RUN 45 — THE OTHER REGISTRY'S LIVE IDS, AS A READ (the host seam `foreignIds`).
+   * `vibe_vmu_meeting {action:"open"}` builds a PER-OBJECT PRIMITIVE meeting in `kernel/meeting.js`; `openSeq` above
+   * builds a record in THIS service. Two tables, one visible name space. `foreignIds` is how the host lets this one see
+   * the other's live ids, and it is used in three places now: id minting/collision (openSeq), this refusal, and
+   * status(). Read defensively: a deployment without the seam must still boot, and then the honest answer is "cannot
+   * see the other table" - never a guess. ONE definition, three call sites: the three cannot disagree about what the
+   * other table holds.
+   */
+  const otherRegistryIds = () => {
+    try {
+      const v = typeof foreignIds === 'function' ? foreignIds() : null
+      return Array.isArray(v) ? v.map(String) : []
+    } catch { return [] }
+  }
   const requireMeeting = (id, opts = {}) => {
     const m = meetingOf(id)
     if (!m) {
+      // ★★★ LIVE RUN 45 (the institute's own report): THE REFUSAL SAID "NO MEETING IS OPEN" ABOUT A MEETING THAT WAS
+      // OPEN — in the OTHER table. The run opened `m-r45` through `vibe_vmu_meeting {action:"open"}` (PRIMITIVE
+      // registry), then addressed it from the pack face (`vibe_v5_say` / `vibe_v5_verdict_final`, SERVICE registry) and
+      // got `VMU_NO_OPEN_MEETING` with the hint "open() a meeting first" — advice the caller had ALREADY carried out. A
+      // refusal that names the wrong remedy is worse than a bare "unknown id": it sends the agent round a loop it has
+      // already completed, and the follow-up `status` read (which DOES see the primitive object) then looks like a
+      // contradiction. The id is looked up in the other table FIRST, and when it is there the refusal says exactly
+      // that: which table holds it, which face reads it, and which face this one is. The tables are still separate
+      // (nothing is merged here); what changes is that a caller can no longer be told to redo an act that succeeded.
+      const otherIds = otherRegistryIds()
+      if (otherIds.includes(String(id))) {
+        throw deny('VMU_NO_OPEN_MEETING',
+          'meeting ' + String(id) + ' is NOT in the MEETINGS SERVICE registry this face addresses — it is OPEN in the PRIMITIVE meeting registry (vibe_vmu_meeting {action:"open"}), which is a different table',
+          'that id IS open — in the PRIMITIVE meeting registry (a different table from this one): read or act on it through the kernel face — vibe_vmu_meeting {action:"status", id:"' + String(id) + '"} / {action:"summary", id:"' + String(id) + '"} (also speak/hand/invite/close there). This pack face addresses SERVICE meetings only: open one with vibe_v5_meeting, then re-address it here'
+            + (live.size ? ' — service ids in use: ' + [...live.keys()].sort().join(', ') : ' — no service meeting is open'),
+          [])
+      }
       if (live.size === 0) throw deny('VMU_NO_OPEN_MEETING', 'no meeting is open (id: ' + String(id) + ')', 'open() a meeting first — this layer refuses rather than inventing one', [])
       throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + String(id), 'open: ' + [...live.keys()].sort().join(', '), [])
     }
@@ -1893,6 +1925,12 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
       // vibe_v5_meeting creates service meetings. So the wording has to exist on both read faces or it is a mechanism
       // with no consumer for the only path that mattered.
       return { ok: true, meeting: m.id, type: m.type, state: m.state,
+        // ★★★ RUN 45: this view is what `vibe_vmu_meeting {action:"status"}` returns for a SERVICE id, and until now it
+        // did not say WHICH registry answered — so the same tool could report a primitive object (`kind/general`, no
+        // `subject`) and a service object with identical-looking shape, and a reader could not tell why the pack face
+        // accepted the service id and refused the primitive one. `registry` names the table; the primitive read face
+        // carries the same field with the other value.
+        registry: 'service',
         liveWhileArchived: viewTwin !== null,
         liveWhileArchivedMeans: viewTwin === null
           ? 'only one object carries this id here (no archived record with the same name)'
@@ -1951,6 +1989,19 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         wiredNotDeclared: declared.count > 0 ? wired.filter((k) => !declared.keys.includes(k)) : [],
         complementOk: plannedKeys.length + wired.length === declared.count && plannedKeys.filter((k) => wired.includes(k)).length === 0,
         liveMeetings: [...live.keys()].sort(), archived: archive.length,
+        // ★★★ RUN 45 (the institute's own report): `liveMeetings` is THIS TABLE's list, and a reader of a bare
+        // `liveMeetings: []` has no way to tell "nothing is open anywhere" from "nothing is open HERE" — the run read
+        // exactly this while a primitive meeting sat open under the same visible name space, and the pack face kept
+        // refusing `m-r45` as "no meeting is open". `registry` says which table answered; `otherRegistry` is the one
+        // OTHER table's live ids (read through the host seam), so the two lists can be compared from one receipt
+        // instead of being inferred from two refusals. Still two tables: nothing is merged, only made visible.
+        registry: 'service',
+        otherRegistry: {
+          name: 'primitive',
+          face: 'vibe_vmu_meeting',
+          liveIds: otherRegistryIds(),
+          means: 'live meetings in the PRIMITIVE registry (`vibe_vmu_meeting {action:"open"}`) — a different table; list/speak/status/summary/close on those go through vibe_vmu_meeting, while vibe_v5_say / vibe_v5_verdict_final address THIS registry only',
+        },
         // ★ PHASE 12 D1: a scheduled / waiting meeting is live but NOT runnable, and an operator must be able to see
         // the difference without opening each one. `waitDecisionDue` is the actionable half: those are the meetings
         // where the framework is deliberately waiting for a human decision.
@@ -2293,7 +2344,7 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     // (`vibe_vmu_meeting {action:"open", id}` creates the primitive meeting first and then records the SAME id here so a
     // tool-declared secretary can be honoured — tools/meeting.js). That call is one deliberate act; two SEPARATE opens
     // that happen to pick the same name are the defect this guard exists for. The flag is the bridge saying so out loud.
-    const foreign = adoptForeign ? [] : (() => { try { const v = typeof foreignIds === 'function' ? foreignIds() : null; return Array.isArray(v) ? v.map(String) : [] } catch { return [] } })()
+    const foreign = adoptForeign ? [] : otherRegistryIds()
     const taken = (x) => live.has(x) || foreign.includes(x)
     if (wanted !== null && taken(wanted)) {
       throw deny('VMU_CONFLICT', 'a live meeting already uses id ' + String(wanted),

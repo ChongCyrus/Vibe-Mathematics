@@ -49,13 +49,17 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         ms: param('number', 'extend 的延长毫秒数（缺省读 vmu.meetings.speechExtendMs，仍为 0 ⇒ 具名拒）'),
         agenda: param('string', 'open 的议程文本'),
         roster: param('array', 'open 的成员清单（默认取该会议的既定语料）'),
+        // ★★★ RUN 45: `subject` was not even declared — the live run passed `subject:"…"` to `open`, the argument never
+        // reached any record, and the receipt still said `ok:true`. It is a parameter of the OPEN act on the SERVICE
+        // face (`openSeq({subject})`), so it is documented here and DISCLOSED as dropped by the primitive open.
+        subject: param('string', 'open：本会议"在议什么"的引用（v5r 的 debate 必须有它）。★ 原语会议记录**没有** subject 字段：本面**不假装设置**它——回执把它列进 `dropped` 并指向真正承载它的面（v5 服务的 `open` / pack 的 convene）'),
         secretary: param('string', 'open：声明本会议的记录人（记录权；不带来表决权）'),
         motion: param('string', 'second/withdraw：动议 id'),
         rules: param('object', 'boxopen：逐票箱规则 { minVotes, allowRevote, maxChoices, minChoices, mode }'),
         options: param('array', 'boxopen 的选项清单（≥2；也可用 roster 传）'),
         target: param('string', 'ballot 的标的（必填）'),
         value: param('string', 'vote 的票值（必填）'),
-        kind: param('string', 'vote 的票型（默认 decisive）', { enum: ['decisive', 'advisory'] }),
+        kind: param('string', 'vote 的票型（默认 decisive）。★ **不是会议 kind**：`open` 上收到 `kind` 会**具名拒**（同一参数名两个含义，见 open 的 hint）', { enum: ['decisive', 'advisory'] }),
         // Round 8 (A): the hand-queue management face (chair-only, audited; clear/revoke need a reason).
         op: param('string', 'hands：grant｜revoke｜clear｜list', { enum: ['grant', 'revoke', 'clear', 'list'] }),
         scope: param('string', 'hands clear/revoke 的作用域（all｜round）', { enum: ['all', 'round'] }),
@@ -66,7 +70,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         // 读 speechExtendMs/Max；`extendlimit` 是【会议墙钟上界】延长，读 extendCeilingMs。两个上界两个面。
         mode: param('string', 'flow/overrideorder 的模式（flow：open｜hands｜round_robin｜call_on；overrideorder：fifo｜round-robin｜chair｜random）', { enum: ['open', 'hands', 'round_robin', 'call_on', 'fifo', 'round-robin', 'chair', 'random'] }),
       },
-      run: async ({ action, id, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor } = {}) => {
+      run: async ({ action, id, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, subject, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor } = {}) => {
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
         // ★ G7 (real machine): `meeting` and `id` name the same object but only `id` was read, so a caller that used
         // the documented-in-the-task `meeting:"m1"` got `no live meeting with id undefined`. BOTH are accepted now; a
@@ -143,9 +147,44 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (svcL && typeof svcL.archivedIds === 'function') {
               try { archivedMeetings = svcL.archivedIds().slice() } catch (e) { archivedMeetings = [] }
             }
-            return Object.assign({ ok: true, action }, prim, { serviceMeetings: services, archivedMeetings, unionMeetings })
+            // ★★★ RUN 45 (the institute's own report): `unionMeetings` ALREADY listed the primitive meeting, but the
+            // receipt never said so — the run had opened `m-r45` through this same tool and still read
+            // `unionMeetings` as if it were the service list, then hit `VMU_NO_OPEN_MEETING` from the pack face with no
+            // way to tell "not open" from "open in the other table". The UNION is the answer, and it must say what it
+            // is: which registry each list comes from, and (the question a reader actually had) whether ARCHIVED ids
+            // are in it. They are NOT: an archived record is closed, `archivedMeetings` reports those separately.
+            const primitiveMeetings = (prim.meetings || []).slice()
+            return Object.assign({ ok: true, action }, prim, {
+              registry: 'both',
+              primitiveMeetings,
+              serviceMeetings: services,
+              archivedMeetings,
+              unionMeetings,
+              unionMeetingsIncludesArchived: false,
+              registriesMeans: '`meetings`/`primitiveMeetings` = the PRIMITIVE registry (`vibe_vmu_meeting {action:"open"}`, per-object kernel/meeting.js); `serviceMeetings` = the vmu.meetings SERVICE (`vibe_v5_meeting {action:"open"}`, the one the pack face addresses); `unionMeetings` = their LIVE union, so it contains NO archived id — `archivedMeetings` lists closed service records separately (they stay readable through summary)',
+            })
           }
           if (action === 'open') {
+            // ★★★ LIVE RUN 45 (the institute's own report): `open` ACCEPTED ARGUMENTS IT COULD NOT HONOUR AND SAID
+            // `ok:true` ABOUT THE RESULT. The run called `open { id:"m-r45", kind:"debate", subject:"…" }` and got
+            // `{ok:true, state:"in_session"}` with the receipt's `kind` silently reverted to the primitive default
+            // `"general"` and `subject` nowhere at all; the follow-up `status` then reported `kind:"general"` as if that
+            // were what had been asked for. Silent argument loss on a SUCCESS receipt is the same defect family as a
+            // false green, so the two arguments get two different answers (both were silence before):
+            //   · `kind` is AMBIGUOUS ON THIS FACE: it is the BALLOT's kind (`vote`: decisive|advisory), while a
+            //     MEETING kind (debate/academic/…) is a field of the meetings SERVICE record. Guessing which one the
+            //     caller meant is exactly how "debate" became "general" with ok:true, so an explicit `kind` on `open`
+            //     is REFUSED BY NAME, with the face that does carry it — never dropped, never guessed.
+            //   · `subject` is a pointer, not a kind: this primitive record has no subject field at all, and failing
+            //     the whole open over it would throw away a meeting that is perfectly usable. So the open proceeds and
+            //     the receipt names it in `dropped` (with where it belongs). `dropped:[]` on every open receipt is the
+            //     invariant: an empty list means "nothing was thrown away", not "we did not look".
+            const kindText = (kind === undefined || kind === null) ? '' : String(kind).trim()
+            if (kindText !== '') {
+              return refused('VMU_INVALID_ARGUMENT',
+                'action open does not take `kind`: on this face `kind` is the BALLOT kind (vote: decisive|advisory), while a MEETING kind (debate/academic/…) is a field of the meetings SERVICE record — and this action builds a per-object PRIMITIVE meeting whose kind is fixed at "general"',
+                'refusing rather than guessing which meaning you meant (live run 45: kind:"debate" came back as a "general" meeting on an ok:true receipt). For a meeting KIND use the service face — vibe_v5_meeting {action:"open", kind:"debate", subject:"<what is debated>"} — or omit kind here and open the primitive meeting as it is')
+            }
             const meeting = kernel.meeting({ id: id || undefined, roster: Array.isArray(roster) ? roster : undefined })
             if (typeof secretary === 'string' && secretary !== '') meeting.secretary = secretary
             // ★★★ LIVE RUN 31 (the institute's own report): a REFUSED convene must leave no record. `kernel.meeting()`
@@ -172,8 +211,20 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                 catch (e) { serviceError = { code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) } }
               } else serviceError = { code: 'VMU_ENGINE_UNAVAILABLE', message: 'kernel.meetings service is not mounted' }
             }
+            // ★ RUN 45: the arguments this act CANNOT store are NAMED in the receipt instead of vanishing. Same
+            // discipline as the `dropped` list in the resume/restore reports: an empty list is an assertion that
+            // nothing was thrown away, and a non-empty one is a pointer to the face that does carry it.
+            const dropped = []
+            const droppedWhere = {}
+            const subjectText = (subject === undefined || subject === null) ? '' : String(subject).trim()
+            if (subjectText !== '') {
+              dropped.push('subject')
+              droppedWhere.subject = 'the PRIMITIVE meeting record has NO subject field (kernel/meeting.js keeps id/kind/state/agenda/roster, and `subject` is read back only from the SERVICE record). It was NOT stored: pass it to the service face instead — vibe_v5_meeting {action:"open", subject:"…"} (or the pack convene face, which requires it for a debate). This open still created the primitive meeting, so the pointer is disclosed as dropped rather than failing the call'
+            }
             return { ok: true, action, id: meeting.id, state: meeting.state, phase: meeting.phase, secretary: meeting.secretary || null,
-              serviceMeeting, ...(serviceError ? { serviceError } : {}) }
+              registry: 'primitive', serviceMeeting, dropped,
+              ...(dropped.length ? { droppedNote: droppedWhere } : {}),
+              ...(serviceError ? { serviceError } : {}) }
           }
           if (action === 'speak') {
             const pid = sid(id)
@@ -304,7 +355,18 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             const pid = sid(id)
             if (!pid) return meetingFieldRefusal('status')
             const primitive = kernel.liveMeeting(pid)
-            if (primitive) return Object.assign({ ok: true, action }, primitive.status())
+            if (primitive) {
+              // ★★★ RUN 45 (the institute's own report): the receipt did not say WHICH TABLE answered, so the same id
+              // read `state:"in_session"` here while the pack face (`vibe_v5_say` / `vibe_v5_verdict_final`) refused it
+              // as "no meeting is open" — two true statements about two different registries, with nothing in either
+              // receipt naming the split. `registry` is that name (the service branch already carries
+              // `registry:"service"`); `registryMeans` says what it implies for the caller's next act, the way the
+              // README-level docs would. Still two tables: this field only makes the receipt say which one it read.
+              return Object.assign({
+                ok: true, action, registry: 'primitive',
+                registryMeans: 'this record lives in the PRIMITIVE meeting registry (`vibe_vmu_meeting {action:"open"}`, per-object kernel/meeting.js): read/act on it through THIS face (status/summary/speak/hand/invite/close). The pack face — vibe_v5_say / vibe_v5_verdict_final / vibe_v5_meeting — addresses the meetings SERVICE (`vibe_v5_meeting {action:"open"}`), and it refuses a primitive id by name rather than acting on the wrong table',
+              }, primitive.status())
+            }
             // A2: the SERVICE view. `meetingView` is the service's own observable read (state/chair/secretary/motions);
             // the quorum view is added when available. `registry:'service'` tells the caller WHICH object answered —
             // the primitive status shape is deliberately left exactly as it was.
@@ -348,7 +410,9 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             const pid = sid(id)
             if (!pid) return meetingFieldRefusal('summary')
             const primitive = kernel.liveMeeting(pid)
-            if (primitive) return Object.assign({ ok: true, action }, primitive.summary())
+            // ★ RUN 45: the same registry disclosure as `status` — this is one of the two read faces the refusal hint
+            // names, so a reader that follows the hint sees which table answered here too.
+            if (primitive) return Object.assign({ ok: true, action, registry: 'primitive' }, primitive.summary())
             const svc = kernel && kernel.meetings ? kernel.meetings : null
             if (svc && typeof svc.summary === 'function') {
               return Object.assign({ ok: true, action }, svc.summary({ meeting: pid }))

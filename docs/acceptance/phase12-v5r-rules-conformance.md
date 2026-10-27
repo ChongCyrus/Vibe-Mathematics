@@ -6196,3 +6196,28 @@ T1 全量：**`TOTAL 507  PASS 507  FAIL 0`（suites 443 · probes 64）**。修
 ### §147.8 无实质残余？
 
 **否** —— §147.3 的 A/B/C/F 都是真缺陷，已按其写面分派修复。
+
+### §147.9 task-30（会议两表口径）的落地与两条口径决定（Lead 整合时记）
+`gate-meeting` 交付（写面 3 文件：`vibe-math-vmu/kernel/meetings.js` +53、`vibe-math-vmu/tools/meeting.js` +76/−7、新 `tests/vmu-run45-meeting-registry.test.mjs` 36/0）。根因三层：`requireMeeting` 只查 service 表、`foreignIds` 已注入但只用于 id 冲突；`open` 签名缺 `subject`、`kind` 未透传且 `ok:true` 无披露；`status`/`list` 不署名注册表。
+
+**两条口径决定（Lead）**：
+1. **`kind` 具名拒、`subject` 披露丢弃**——批准。理由：同一参数名在 `vote` 上是票型（decisive|advisory），而 `open` 造的是 `kind` 固定 `"general"` 的 primitive 对象；把 `kind:"debate"` 悄悄当票型或悄悄丢掉都等于造一个 run 45 那样的假绿。`dropped` 每次都给（空数组＝断言什么都没丢）是更好的口径：不是"这次没提"，而是"我知道没丢"。
+2. **primitive 会议面允许存在，但 v5r 的规则会议只许用服务面召开**——采纳它的判断并在提示词里落一句（`vibe-math-vmu/packs/v5r/seat-faces.js` 的会议教学：规则会议只用 `vibe_v5_meeting`；`vibe_vmu_meeting` 开会后 `vibe_v5_say`/`verdict_final` 寻址不到，`status` 会回 `registry:"primitive"`）。理由：primitive 面没有 subject/type/title、close 不进 service archive、pack 面不寻址 ⇒ 规则从"可验证"退化成"没人能查"；但删它或合并表是错的（它是零机制内核原语，pack 政策不该反向规定内核原语）。
+3. **`update-doc-counts` 由我在三条 lane 全部落地后跑一次**（脚本幂等），不归 lane。
+
+门禁：新测试 36/0、meeting-type-tools 51/0、meeting-id-archive 16/0、run36-close 39/0、run37-archive-reads 17/0、turn 272/0、parity 204/0 + 65/65 + 5/0；preflight 仅剩文档计数 3 条（差 3 个 run45 新测试，整合时一并生成）。
+
+### §147.10 三条 lane 的收口（task-28/29/30 + 29b）与它们自报的相邻债
+**task-28 `chat-mute-durable`（禁言不生效）**：根因＝chat 投影只有 `restore`（整体替换）、没有 `restoreReload`，`§1-(5)` 的 reload 钩子回落成 replace ⇒ 禁言之后的第一次写穿在"已抓快照、未落地"之间触发 `store.patch` 的 `reloadIfStale`→onReload，用**不含 mute 的旧快照**把内存账本清空；随后每次 send 的写穿再把无 mute 快照写回 fold。修法（`kernel/index.js` chat 段 +157/−1）：`chatReloadMerge` 作 `restoreReload`（读只加/更新 mute，删除只属于 `unmute()`；`history()` 的 unmuted/mute-expired 当墓碑；空账本 ⇒ 合并后快照交 `restore()`，非空账本 ⇒ 经 `chat.mute(source:'framework')` 采纳并记 `bootstrap:true`），`chatMutatorsReadFresh` 让每个 mutator 先 `store.read('chat')`。新测试 `tests/vmu-run45-chat-mute-durable.test.mjs` 在修前 11/17 红（红点正是 run 45 的形状），修后 28/0；回归 chat 79/0、chat-falsify 8/0、resume 系 108/73/67/16/14/19/41 全绿。**它明确不保证的**：写穿仍非 merge-on-current（两内核同窗互写可丢后写）、墓碑受 `vmu.chat.historyCap`（200）限制。
+**task-29 `human-decide-audit`（代批）**：根因＝`gateVerb` 只判调用者，不判 `by` 解析出的角色；`approvalState` 不回 `decidedBy`。修法：`delegateOf()`（by 缺省＝调用者；角色名/名册 id 都解析成角色；未知 id 具名拒）＋`gateVerb` 对 decide/withdraw/veto 同时判调用者与被代办者角色，复用**已登记** `VMU_HUMAN_DECIDER_ROLE`；`approvalState` 从活账本回 `decidedBy` + `decidedByMeans`（self/delegate/unrecorded，pending 为 null）。修前 13/37 红，修后 51/0；run33-human-gate 62/0、human-gate 89/0 无回归。
+**task-29b（我在 lane 收工后补的同一形状）**：`liftVeto` 的 `by` 只被 `vmu.human.vetoLiftRoles` 校角色名、从不看调用者 ⇒ root 可 `liftVeto {by:"chair"}` 把"解除否决"记到别人名下。修法（`tools/human.js` 的 liftVeto 分支）：先解析调用者，只允许**以自己的名义**解除（by 缺省/等于自己角色/等于自己 id），否则 `VMU_HUMAN_LIFT_ROLE` 具名拒且状态不变；内核的 `vetoLiftRoles` 闸原样保留（两个闸两个名字）。测试补进 `tests/vmu-run45-human-decide-audit.test.mjs` 第 ⑧ 节（62/0）。
+**task-30 `meeting-registry`（两表互不可见 + 静默丢参）**：`requireMeeting` 先查另一张表并给可执行 hint（`vibe_vmu_meeting{action:"status"|"summary",id}`），`open` 对 `kind` 具名拒、对 `subject` 回 `dropped:["subject"]`+`droppedNote`（空数组＝断言没丢），`status`/`meetingView` 回 `registry`、`list` 回 `registry:"both"`+`primitiveMeetings`+`unionMeetingsIncludesArchived:false`。新测试 36/0；meeting 系 51/16/39/17 全绿。
+**相邻债（只报不修，下一轮或按需开 lane）**：①其它 state 投影同样没有 `restoreReload`（`panel`/`ballotbox`/`minutes`/`budget`/`human`）——同一"一次读可能毁内存状态"类；②写穿整体非 merge-on-current（任意两面同窗互写都可能丢后写）；③`vmu.library` 的 `fingerprint/registerVocabulary/checkTags` 等未写进 03 契约（doc linter D16 提示）；④`status.admins` 只打 token 不打解析后的成员 id。
+门禁：三 lane 落地后 `update-doc-counts --write`（JOBS 581/suites 473/probes 108）、`generate-planned-codes --write`（282）、`regen-all --write` 16/16、`preflight` **PASS**。
+
+### §147.11 task-31（缺陷 D：成员读不到自己提交的裁决卡）的落地与选型理由
+**选 (a)**：`vibe_v5_read_library` 在 kernel 有 library face 时**附带**该成员的 library 文件卡（`libraryReadable`/`libraryCards`/`libraryCardCount`/`libraryCardsTruncated`/`libraryWhy`/`libraryCardsMeans`），而 `count`/`cards`/`total`/`returned`/`truncated` 仍是 records 行语义、一字未改；`vibe_v5_verdict` 的裁决回执与幂等回执加 `readBack {tool, call, field:'libraryCards', means}`。
+**否决 (b)（verdict 同时写 records 行）的理由**：①成员自己内核的 records 是内存态、跨不过内核边界，会与文件库形成两本迟早漂移、而漂移了没人读的账；②records 的 `propositions` 轨是 P1/B1 载体（`verified` 只收 p=1/p=0 的命题卡），把"对一个命题的裁决"塞进该轨等于让非命题卡站到证明闸前——错的不是形状，是闸的语义。
+**验证**：`tests/vmu-run45-ruling-visible.test.mjs` 修前 15/11 红（红在 D1「成员看得到自己提交的裁决卡」），修后 **26/0**；`v5r-tools 359/0`、`library 126/0`、`run31-ruling-channel 92/0`、`run36-records-shared 37/0`；P1 gate 未被污染（D14 断言 records 的 propositions 轨里没有 ruling 行）、`verdict_final` 读面不变（D13 `adoptedFromSubmissions:2`）。
+**已知边界**：`libraryCards` 受 `vmu.records.headListAt`（默认 7）行帽约束并置 `libraryCardsTruncated`；工具 description 未加 `libraryCards` 字样，可发现性目前靠回执里的 `readBack` 与 `vibe_v5_verdict` 的 `next`（下一轮若模型侧仍发现不了，再改描述词）。
+门禁：`update-doc-counts --write`（JOBS 582/suites 474/probes 108）、`regen-all --write` 16/16 → `--check` 16/16、`preflight` PASS。

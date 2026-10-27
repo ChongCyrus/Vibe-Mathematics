@@ -1453,6 +1453,129 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
   // `mode:'journal'` records the COMMANDS and replays them through the PUBLIC methods on hydrate (so a real counter
   // advances to max+1 and an id is never reused); `mode:'state'` needs a snapshot/restore pair on the service, which
   // the owning teammate adds. Faces whose service does not expose the pair yet are simply absent here - named.
+  // ★★★ RUN 45 / task-28 — A RELOAD MUST NOT UN-MUTE ANYBODY. Measured on the real machine (build fe98b36f):
+  // `vibe_vmu_chat {action:"mute", by:"r-1", member:"r-2", durationMs:600000}` answered `muted:["r-2"]`, and the very
+  // next `send` by r-2 was ACCEPTED four times; `status` then printed `muted:[]` and `unmute` said `wasMuted:false`.
+  // The guard was never wrong (a single-kernel mute→send is refused `VMU_CHAT_MUTED`); the BOOK was erased. The eraser
+  // is the reload hook below: `chat` had no `restoreReload`, so it fell back to `restore()`, which REPLACES the
+  // ledger, and `restore()` accepts ANY snapshot while `messages.length === 0` — exactly the run-45 state (a mute
+  // before the first line). A mute is written, the write's own `store.patch` reloads a fold that predates it, the hook
+  // restores that fold wholesale, `mutes.clear()` runs on the live book, and the next `send` sees an empty mute book.
+  // The write-through payload was already captured (resume snapshots at the mutation, not at the landing), so the
+  // file and the memory disagree in the one direction that matters: the file is right and the guard is blind.
+  //
+  // THE SHAPE OF THE FIX (the same two-restorer split `members`/`meetings` already use — see the TWO RESTORERS
+  // comment below): `restoreReload` MERGES. A read may ADD or UPDATE a mute the durable fold holds; it may NEVER
+  // DELETE one — deletion has its own name (`unmute()`), and the kernel that calls it is the one that writes the fold.
+  //   • a mute the LIVE book holds is not overwritten by an OLDER fold entry (`at` decides which book is newer);
+  //   • a fold mute this kernel already LIFTED (`unmuted`/`mute-expired` rows in `chat.history()`) is not resurrected
+  //     by a stale snapshot, and an EXPIRED fold mute (`until` in the past) is not adopted at all;
+  //   • on an EMPTY ledger the fold is still adopted wholesale (that hydration is why the hook exists) — but the
+  //     snapshot handed to `restore()` carries the MERGED mute book, so the wholesale restore cannot drop a live mute;
+  //   • on a ledger that HOLDS MESSAGES `restore()` refuses any differing snapshot by name (correct: a silent
+  //     half-overwrite would lose lines), so the fold's mutes are adopted through the face's own `mute()` with the
+  //     framework bootstrap gate (`source:'framework'`, the same door the pack uses to declare policy at load). The
+  //     audit row says `bootstrap:true`, so the adoption is readable in `history()` instead of pretending this kernel
+  //     had been told by an admin. Adopting through `mute()` re-bases the expiry by the milliseconds elapsed since the
+  //     fold row was written (the receipt's `until` drifts by that much; "is r-2 muted NOW" does not change).
+  //
+  // WHAT THIS DOES NOT GUARANTEE (named, not hidden): the write-through payload is still captured at the MUTATION and
+  // landed later by `store.patch`, so two kernels mutating `chat` inside the same window can still lose the other's
+  // last write. The merge below makes the MUTE book monotone (add/update only); it does not make the payload a
+  // merge-on-current rewrite. That would need a writer in `resume`/`store` that composes against the fold under the
+  // lock — out of this fix's write scope (the chat section of `kernel/index.js` only), so it is reported, not faked.
+  // Also: a lift older than `vmu.chat.historyCap` rows can be forgotten by `history()`, in which case a very old
+  // durable mute could be re-adopted after a reload — the cap is the face's own declared memory, so the boundary is
+  // the declaration, not a hidden assumption.
+  const chatReloadMerge = (snap) => {
+    // The factory scopes `clone` at module level only (inside `attachSharedBoard`), so this helper carries its own;
+    // a shared helper would have been a second dependency for a section that owns no other file.
+    const cloneValue = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
+    const out = { ok: true, mode: 'merge', restored: false, kept: [], added: [], updated: [], adopted: [], skipped: [], refused: [], note: null }
+    const fold = snap && typeof snap === 'object' && snap.data && typeof snap.data === 'object' ? snap.data : null
+    if (!fold || !Array.isArray(fold.messages) || !fold.mutes || typeof fold.mutes !== 'object') {
+      out.ok = false
+      out.code = 'VMU_CHAT_SNAPSHOT_INCOMPLETE'
+      out.note = 'the durable chat value is not a v1 snapshot (messages/mutes missing): nothing was adopted and nothing live was touched'
+      return out
+    }
+    // Whose lift may this kernel honour? Its OWN audit says when it lifted a mute; a fold row older than that lift is
+    // a stale resurrection, not news. (`mute-expired` is the face's own expiry bookkeeping, same authority.)
+    const liftedAt = new Map()
+    try {
+      for (const row of chat.history()) {
+        if (!row || !row.member) continue
+        if (row.what !== 'unmuted' && row.what !== 'mute-expired') continue
+        const at = Number(row.at)
+        if (!Number.isFinite(at)) continue
+        const member = String(row.member)
+        const prev = liftedAt.has(member) ? liftedAt.get(member) : -Infinity
+        liftedAt.set(member, Math.max(prev, at))
+      }
+    } catch (e) { /* a history read never makes a merge fail */ }
+    const live = chat.snapshot()
+    const liveData = live.data || {}
+    const liveMessages = Array.isArray(liveData.messages) ? liveData.messages : []
+    const nowMs = clock()
+    const mergedMutes = {}
+    for (const [member, book] of Object.entries(liveData.mutes || {})) mergedMutes[member] = cloneValue(book)
+    for (const [member, book] of Object.entries(fold.mutes)) {
+      if (!book || typeof book !== 'object') continue
+      const liveBook = mergedMutes[member]
+      if (liveBook) {
+        if (Number(book.at) > Number(liveBook.at)) { mergedMutes[member] = cloneValue(book); out.updated.push(member) } else out.kept.push(member)
+        continue
+      }
+      const until = Number(book.until) || 0
+      if (until > 0 && until <= nowMs) { out.skipped.push({ member, why: 'the durable mute has already expired (until ' + until + ')' }); continue }
+      const lifted = liftedAt.get(member)
+      if (lifted !== undefined && lifted >= (Number(book.at) || 0)) {
+        out.skipped.push({ member, why: 'this kernel lifted this mute at ' + lifted + ', which is newer than the durable row (at ' + String(book.at) + ')' })
+        continue
+      }
+      mergedMutes[member] = cloneValue(book)
+      out.added.push(member)
+    }
+    if (liveMessages.length === 0) {
+      // EMPTY LEDGER: adopt the fold wholesale — the hydration this hook exists for — with the MERGED mute book, so the
+      // wholesale `restore()` (which clears `mutes` before re-filling it) cannot drop a mute this kernel just set.
+      const mergedSnap = {
+        apiVersion: live.apiVersion, face: 'chat', v: 1, at: nowMs,
+        data: {
+          messages: (fold.messages || []).map((m) => cloneValue(m)),
+          mutes: mergedMutes,
+          speaks: fold.speaks && typeof fold.speaks === 'object' ? fold.speaks : {},
+          policyGen: Math.max(Number(liveData.policyGen) || 0, Number(fold.policyGen) || 0),
+        },
+        counters: { chat: Math.max(Number(live.counters && live.counters.chat) || 0, Number(snap.counters && snap.counters.chat) || 0) },
+        skipped: [],
+      }
+      let r = null
+      try { r = chat.restore(mergedSnap) } catch (e) { out.ok = false; out.code = (e && e.code) || 'VMU_CHAT_RESTORE_FAILED'; out.note = String((e && e.message) || e); return out }
+      if (!r || r.ok === false) { out.ok = false; out.code = (r && r.code) || 'VMU_CHAT_RESTORE_REFUSED'; out.note = (r && r.message) || 'the merged snapshot was refused by name'; return out }
+      out.restored = true
+      out.note = 'the live ledger was empty, so the fold was adopted wholesale with the merged mute book (a read never deletes a mute)'
+      return out
+    }
+    // LEDGER HOLDS MESSAGES: `restore()` refuses a differing snapshot by name, so the fold's mutes enter through the
+    // face's own `mute()` under the framework bootstrap gate — no private write into the mute book, and the audit row
+    // says it was the framework, not an admin.
+    for (const member of out.added) {
+      const book = mergedMutes[member]
+      const until = Number(book.until) || 0
+      const durationMs = until > 0 ? Math.max(1, until - nowMs) : 0
+      const reason = (book.reason ? String(book.reason) + ' ' : '') + '(restored from the durable fold on reload)'
+      try {
+        chat.mute(member, { durationMs, reason, source: 'framework' })
+        out.adopted.push(member)
+      } catch (e) {
+        out.ok = false
+        out.refused.push({ member, code: (e && e.code) || 'VMU_CHAT_MUTE_FAILED', message: String((e && e.message) || e) })
+      }
+    }
+    out.note = 'the live ledger holds ' + liveMessages.length + ' message(s), so the fold\'s mutes were merged through the face\'s own mute() (source:"framework") instead of restore(), which refuses a non-empty ledger by name; the fold\'s MESSAGES are not merged by a read (this kernel keeps its own lines)'
+    return out
+  }
   const RESUME_PROJECTION_ADAPTERS = {
     // `tasks` already exposes `list()`; its journal replays through the SAME public methods it records.
     // ROUND 3 / task-20 (reader-a's review): the custom `replay` was WRONG - the wrapper records `entry.args` as an
@@ -1498,7 +1621,11 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     meetings: () => ({ key: 'meetings', mode: 'state', snapshot: () => meetings.snapshot(), restore: (v) => meetings.restore(v), restoreReload: (v) => meetings.restoreReload(v), list: () => [] }),
     ballotbox: () => ({ key: 'ballotbox', mode: 'state', snapshot: () => ballotbox.snapshot(), restore: (v) => ballotbox.restore(v), list: () => [] }),
     minutes: () => ({ key: 'minutes', mode: 'state', snapshot: () => minutes.snapshot(), restore: (v) => minutes.restore(v), list: () => [] }),
-    chat: () => ({ key: 'chat', mode: 'state', snapshot: () => chat.snapshot(), restore: (v) => chat.restore(v), list: () => [] }),
+    // ★★★ RUN 45 / task-28: `restore` is the RECOVERY path (replace: a boot onto an empty ledger adopts the fold);
+    // `restoreReload` is the READ-REFRESH path and MERGES (add/update only, never delete) — without it a plain stale
+    // read cleared the mute book and the run-45 mute vanished while the file kept it. See `chatReloadMerge` above for
+    // the whole evidence chain, incl. what it does NOT guarantee.
+    chat: () => ({ key: 'chat', mode: 'state', snapshot: () => chat.snapshot(), restore: (v) => chat.restore(v), restoreReload: (v) => chatReloadMerge(v), list: () => [] }),
     panel: () => ({ key: 'panel', mode: 'state', snapshot: () => panel.snapshot(), restore: (v) => panel.restore(v), list: () => [] }),
     // ROUND 4 / task-25 (reader-a's task-28): `budget` grew a PUBLIC `snapshot()/restore()` pair this round (its
     // internal formatter was renamed `viewOf`), so it is durable now instead of "hydratable but never written".
@@ -1593,6 +1720,32 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     if (!target || typeof target !== 'object') return []
     return Object.keys(target).filter((k) => typeof target[k] === 'function' && !PROJECTION_READ_ONLY.has(k) && k.charAt(0) !== '_')
   }
+  // ★★★ RUN 45 / task-28 — A CHAT MUTATOR MUST READ THE FOLD BEFORE IT DECIDES. `restoreReload` above repairs the
+  // book AFTER a read/an already-running write refreshes it; this wrapper makes the refresh happen at the ENTRY of
+  // every chat mutator, so the decision (and the snapshot the write-through captures afterwards) is made from the
+  // fold as it is on disk, not from a book that is one write old. Without it the FIRST `send` by a member another
+  // kernel had just muted still passed (measured in the run-45 test: the reload that would have taught this kernel
+  // the mute only runs when something reads the store, and `send` did not). The wrapper is installed BEFORE
+  // `resume.attachProjection` so resume's own wrapper sits on TOP of it (index.js:1146's ordering rule) and both see
+  // one method; the marker is non-enumerable, so the wrapped-method list `status().projections` prints is unchanged.
+  // Ordering inside the mutator matters: the read runs FIRST and then the verb, so a reload that adopts a mute has
+  // already landed when `send` consults the book. `store.read` is the engine's own stale check (`reloadIfStale`); a
+  // store that is not open yet simply throws and the verb proceeds (the write-through names that case separately).
+  const chatMutatorsReadFresh = (target) => {
+    if (!target || target.__vmuChatReadFresh === true) return null
+    if (!store || typeof store.read !== 'function') return null
+    const names = projectionMethods('chat', target)
+    for (const name of names) {
+      const original = target[name]
+      if (typeof original !== 'function') continue
+      target[name] = function chatReadFreshThenAct(...args) {
+        try { store.read('chat') } catch (e) { /* named by the write-through/resume report, never by a broken verb */ }
+        return original.apply(this, args)
+      }
+    }
+    try { Object.defineProperty(target, '__vmuChatReadFresh', { value: true, enumerable: false }) } catch (e) { /* marker only */ }
+    return names
+  }
   // ★★ THE PROJECTION LOG IS A STATE TABLE, NOT A DIARY (round 3 of 2026-10-26, from the census's drift report).
   // `attachDeclaredProjections()` runs TWICE (once at assembly, once after the pack declares its slots, because
   // `members` has no target until then). Each run used to APPEND: a face that failed the first time and attached the
@@ -1646,6 +1799,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       if (typeof make !== 'function') { recordProjection({ face, attached: false, reason: 'no adapter in this assembly (the service does not expose a journal/snapshot seam yet)' }, [canonical]); continue }
       try {
         const adapter = make()
+        // RUN 45 / task-28: the read-freshness wrapper must be UNDER resume's wrapper (ordering rule at index.js:1146),
+        // so it is installed here, before `attachProjection` wraps every mutator of the same face.
+        if (canonical === 'chat') { try { chatMutatorsReadFresh(targets[canonical]) } catch (e) { /* the attach row below reports what broke */ } }
         // The INSTANCE method registers the projection so `hydrate()`/`snapshot()` can find it; the module-level
         // `attachProjection` would wrap the methods but leave the instance unaware of the key.
         const out = resume.attachProjection({ target: targets[canonical], methods: projectionMethods(canonical, targets[canonical]), key: adapter.key, mode: adapter.mode,

@@ -2497,6 +2497,20 @@ const RULING_CHANNEL = 'ruling'
 const rulingSlugOf = (s) => String(s === undefined || s === null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item'
 const rulingIdOf = (a) => 'ruling-' + [a.meeting, a.proposition, a.member].map(rulingSlugOf).join('-')
 const rulingTitleOf = (a) => 'RULING ' + [a.meeting, a.proposition, a.member].map((x) => String(x)).join(' | ')
+/** ★★★ LIVE RUN 45 / DEFECT D: WHERE THE FILER CAN READ ITS OWN CARD BACK. This tool files a LIBRARY CARD, and
+ *  `vibe_v5_read_library` lists records rows in `count`/`cards` — so in run 45 a member that had just filed a ruling
+ *  read `count:0` and concluded it had filed nothing. The receipt now NAMES the field the card appears in, so the
+ *  question 「我提交过裁决吗」 has an answer the filer is handed at the moment it files. */
+function rulingReadBackOf(member, proposition) {
+  return {
+    tool: 'vibe_v5_read_library',
+    call: 'vibe_v5_read_library { member: "' + String(member) + '" }',
+    field: 'libraryCards',
+    means: 'the ruling on ' + String(proposition) + ' is a FILE card of yours (Members/' + String(member) + '/Propos/), so '
+      + '`vibe_v5_read_library { member: "' + String(member) + '" }` lists it in `libraryCards`/`libraryCardCount` — NOT in `count`/`cards`, '
+      + 'which only list records rows. A `count:0` there is not "I filed no ruling": look at `libraryCards` (and `libraryReadable`/"no library face" in `libraryWhy`) before concluding anything',
+  }
+}
 /** The library face, or null. A kernel assembled without a durable root has no library at all — that is a REFUSAL on
  *  the submit path, never a silent "filed" (a ruling nobody can read back would be the fake coverage this replaces). */
 function rulingLibraryOf(kernel) {
@@ -2621,6 +2635,7 @@ async function submitRuling({ kernel, member, meeting, proposition, verdict, rea
         submission: { id: same.id, path: same.path, at: same.at, member, meeting, proposition, verdict: same.verdict, reason: same.reason },
         means: 'this is YOUR final ruling on ' + proposition + ', and it was ALREADY filed exactly like this — nothing was written a second time, and the tally counts it once',
         rosterChecked, rosterSource: debated.source,
+        readBack: rulingReadBackOf(member, proposition),
         next: 'the chair collects it with vibe_v5_verdict_final { meeting: "' + meeting + '", proposition_id: "' + proposition + '" }' }
     }
     throw refuse('VMU_RULING_ALREADY_FILED', 'you already filed a DIFFERENT ruling on ' + proposition + ' (verdict ' + String(mine[0].verdict) + ', filed ' + String(mine[0].at || 'at an unrecorded time') + '): this one (' + String(verdict) + ') was NOT filed and the chair will not see it',
@@ -2651,6 +2666,7 @@ async function submitRuling({ kernel, member, meeting, proposition, verdict, rea
     },
     means: 'this is YOUR final ruling (' + String(verdict) + ' on ' + proposition + ') and it is now a card of your own on disk, so it SURVIVES your session and the chair adopts it from the tally — the chair does not write this number for you',
     rosterChecked, rosterSource: debated.source,
+    readBack: rulingReadBackOf(member, proposition),
     rosterCheckedMeans: rosterChecked
       ? 'the debate on ' + meeting + ' was readable in this session, so your membership in it was checked before the ruling was filed'
       : 'this session could not read who debated ' + meeting + ' (' + String(debated.why || debated.source || 'unreadable') + '), so the membership check happens when the chair collects — submit, and the chair names any member who did not debate',
