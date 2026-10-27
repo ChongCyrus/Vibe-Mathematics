@@ -6659,3 +6659,45 @@ F-37、F-35b、chat `adminsResolved`、`speeches` 计数 —— 本轮一个回�
 ### §155.7 无实质残余：否
 
 修完守卫后**必须重跑** run 53：这一轮的读数证明「单测全绿 ≠ 真机能装配」，而守卫本身也只有真机才能确认 `session/create` 不再因读语境失败。
+## §156 真机跑 53（第二次：9 步跑完，暴露 ROUND 52 的收尾缺口）
+
+### §156.1 读数
+
+- 驱动：`slv-p13-cc.ps1 -CloneName slvp53b -Port 19635 -TaskFile task-r53.txt`（build `5f0bebea`）；`DRIVE exit=0`、`durationSec 824`、根会话 `toolCalls 9`、`transcriptEvents 72`、`tokenTotal 7,716,863`（cap 12,000,000，未触顶）、2 个会话、`SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks`。
+- jsonl `_oneoff/vm-slv/full-1027-141628.jsonl` = 15,559,487 B / 34,908 行；机器读数 `NO_FENCE=36 UNKNOWN_FIELD=34 FIELD_NOT_APPLICABLE=28 BAD_JSON=36`；日志保全戳 `20261027-143057`；`cleanup: clone_gone=True port_listening=False C_free_GB=10.47`。
+- 上一轮的失败已经消失：`session/create` 成功、preset 正常装配 —— **F-38 判 ✅**。
+
+### §156.2 判决
+
+| # | 目标 | run 53 实测 | 判 |
+|---|---|---|---|
+| 1 | F-38 `ctx.sessionId` 守卫 | 装配成功、9 步全部执行 | ✅ |
+| 2 | F-35b 采纳归属 | 成员读回 `decidedByMeans:"read-from-shared-ledger"`、`decidedInThisKernel:false`、共享台账里由外部写入 | ✅ |
+| 3 | chat `adminsResolved` | `admins:["chair"]`、`adminsResolved:[{entry:"chair",kind:"seat",slot:"chair",members:["r-acad"]}]` | ✅ |
+| 4 | F-37 真机读数 | root 按简报读 `detail:"summary"`，该分档**没有** `resolvedIn`（也没有 `resolved` 地图）⇒ 无法核 | 简报错，改问 `detail:"settings"` |
+| 5 | F-39（新） | 默认面把 `resolvedIn`/`resolvedInMeans` 一并省掉，只留计数 | ❌ 新缺陷，已修 |
+
+### §156.3 F-39 修法与那条 8000 字节预算
+
+- `vibe-math-vmu/host.js` 的 `detail === 'summary'` 重塑处：`settings` 保留 `resolvedIn` + 一句短 `resolvedInMeans`，`note` 改为「地图省了（`detail:"full"`/`"settings"`），归属留下」。
+- 第一次修法只做加法 ⇒ 撞红既有断言「真装配（v5r）下默认面 < 8000 字节」（8266→8094 B）。正解是在同一张面上做减法：把 `faces`/`bus`/`packTools`/`loader` 四处已在省略的 `note` 收短（共约 110 B），把预算让给归属字段；改完 `VMU HOST 203/0`、`e2e-v5-round2 679/0`。
+- 新 `tests/vmu-run53-summary-provenance.test.mjs` **15/0**：默认面必须带 `resolvedIn.kernelSession` 与含 "own" 的说明、地图仍省略且 `note` 点名取回路径、`detail:"settings"` 同时给出地图与同一份归属、无会话 id 的内核必须 `kernelSession:null`（缺失与省略可区分）、两个内核同 root 各报各的归属且底层地图确实不同。
+
+### §156.4 门禁
+
+`GATE_SCOPE=vmu node tests/run-tests.mjs` 见 §156.8 的收口记录；`check-docs` ⇒ `DOC LINT: PASS`；`regen-all --check` 16/16。
+
+### §156.5 我的简报错（三处）
+
+1. 简报头写 `build dc9d2ab0`，实际跑的是 `5f0bebea`（贴在简报里的版本标签过期）。
+2. 第 2/3 步让 root 与成员都用 `detail:"summary"` 去读只存在于 `detail:"settings"`/`"full"` 的字段 —— 读者只能报「被省略」。
+3. 让成员「逐字抄进围栏 JSON」：成员把 `next_step` 当**建议**，先去做了岗位工作（写 `rec-5`、写 Lean 文件），没有产出围栏 JSON ⇒ 第 5 步的 `state` 也没抄回来。教训：**传话给成员的那一步，必须假设它可能按岗位职责行事**；要验读面字段，就让成员的唯一任务是「只调这一个工具、只抄这三个字段」，并在 root 侧把回执原文也读一遍（root 自己的 `vibe_vmu_turn` 回执里没有成员的工具结果）。
+
+### §156.6 无法验证
+
+- F-37 的**真机**读数（本轮简报问错分档）；第 5 步成员 `approvalState` 的 `state` 原文（成员未按格式回抄）。
+
+### §156.7 无实质残余：否
+
+F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按 `detail:"settings"`/`"summary"` 各读一次才能确认；下一轮简报按此改写。
+

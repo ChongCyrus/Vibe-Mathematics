@@ -1268,3 +1268,21 @@ seat seam 在行为发生时解析"——读者问"现在谁能管群聊"仍要�
 判据（`tests/vmu-run53-ctx-guard.test.mjs` 8 条）：受管上下文（读未注入属性即抛）**不炸** `apply()` 且守卫回执给出 `null`；
 普通上下文带 `sessionId` 照旧；只有 `get('sessions')` 且恰好一个 live 会话时采纳该 id；两个 live 会话**不猜**（`null`）。
 这条规则与 `host-children.js#parentId` 早已采用的一致：语境读法是问题，答不上来是「没有」，不是崩溃。
+
+## ROUND 53 追加 — 有界视图可以省掉地图，不能省掉地图的主人
+
+第二次真机跑 53 走到了第 9 步（9 次调用、0 RED），但第 2 步的读数暴露了 ROUND 52 修法的**收尾缺口**：root 按简报用默认面
+
+```
+vibe_vmu_status { detail: "summary" }
+```
+
+拿到的 `settings` 是 `{"keys":87,"engineEnabled":true,"dryRun":false,"resolvedCount":75,"note":"summary: counts only; …"}` —— **`resolvedIn.kernelSession` 与 `resolvedInMeans` 都被省掉了**。那正是 ROUND 52 为「这个值属于哪个内核」新加的两个字段，于是读者拿到计数、丢掉归属，只能像上一轮那样再说一遍「无法验证是否同一内核」。
+
+**判据（这一轮把它写死）：**
+
+1. **有界面可以省略体积，不能省略归属。** 地图（`resolved`，约 3.3 kB）该省；「这份地图是哪个内核解析的」是两小段文字，必须留下 —— 否则默认面自己就成了「值没有主人」的又一例。
+2. **省略要自证。** 省掉的那半必须由 `note` 点名并给出取回路径（`detail:"full"` / `detail:"settings"`），留下的那半必须写明它是谁的（`resolvedIn` + 一句短说明）。读到 `resolvedIn: { kernelSession: null }` 与读到「字段不存在」必须可区分。
+3. **可读预算是一份预算，不是每人一份。** 真机 v5r 装配下默认面的硬上限是 **8000 字节**（宿主可读、不被截断）。第一次修法只往 `settings` 里加字段，默认面从 7956 涨到 8266/8094，直接撞红「默认面 < 8000」这条既有断言；正解不是抬上限，而是**在同一张面上做减法**：把其它已省略区段的 `note` 收短（`faces`/`bus`/`packTools`/`loader` 四处共省约 110 B），把预算让给新字段。
+4. **读面测试要按真机问法写。** 单位测试一直用 `detail:"settings"` 读 `resolvedIn`（run 52 套件 15/0），真机简报却写 `detail:"summary"` —— 这不是产品缺陷，是**简报没有按读面的真实分档写**；修法一是补默认面（本轮），二是下一轮简报改问 `detail:"settings"`。
+

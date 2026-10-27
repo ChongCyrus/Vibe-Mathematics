@@ -651,17 +651,32 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             disabled: (out.faces && out.faces.disabled) || [],
             published: (out.faces && out.faces.published) || [],
             count: out.faces && Array.isArray(out.faces.published) ? out.faces.published.length : 0,
-            note: 'summary: names only; detail:"full" for per-tool provenance and disabled reasons',
+            note: 'detail:"full" for per-tool provenance',
           }
           // Bulky KERNEL sections are SUMMARY-shaped here too (measured with v5r: settings 3.3k, bus 2.3k,
           // auditTail 2.3k, packTools 1.8k, loader 1.0k). Field names stay; detail moves behind detail:"full".
           if (out.settings && typeof out.settings === 'object') {
+            // ★ RUN 53: the bounded summary kept the COUNT and dropped the PROVENANCE. Run 52 added
+            // `settings.resolvedIn` precisely so a reader could tell whether the map it is comparing against a
+            // `[总任务]` line came from the SAME kernel - and the default (`detail:'summary'`) face reshaped
+            // `settings` down to keys/engineEnabled/dryRun/resolvedCount, so the member that run 52 was about read
+            // the default face and reported the provenance as "省略", concluding it could not compare kernels at
+            // all. A bounded view may drop the map (it is 3.3 kB); it may not drop the two fields that say WHOSE
+            // map the count is. Both are short, so they stay.
+            const rIn = out.settings.resolvedIn || null
+            const rSession = rIn && rIn.kernelSession ? String(rIn.kernelSession) : null
             out.settings = { keys: out.settings.keys, engineEnabled: out.settings.engineEnabled, dryRun: out.settings.dryRun,
               resolvedCount: out.settings.resolved && typeof out.settings.resolved === 'object' ? Object.keys(out.settings.resolved).length : 0,
-              note: 'summary: counts only; detail:"full" or detail:"settings" for the resolved map' }
+              resolvedIn: rIn,
+              // A SHORT sentence, because the summary has a byte bound (the host face is read by models, and the
+              // full `resolvedInMeans` is prose that detail:"settings" already carries verbatim).
+              resolvedInMeans: rSession
+                ? 'THIS kernel\'s own resolution; another kernel over the same workspace resolves its own'
+                : 'THIS kernel\'s own resolution; it has no session id to match it by name',
+              note: 'summary: resolved map elided (detail:"full"/"settings"); PROVENANCE kept' }
           }
           if (out.bus && typeof out.bus === 'object' && Array.isArray(out.bus.entries)) {
-            out.bus = { entries: out.bus.entries.length, note: 'summary: count only; detail:"full" for the bus table' }
+            out.bus = { entries: out.bus.entries.length, note: 'detail:"full" for the bus table' }
           }
           if (Array.isArray(out.auditTail)) out.auditTail = out.auditTail.slice(-1)
           // ★ R26-family: `closureVote` grew LONG PROSE for the moment a member is about to vote
@@ -684,8 +699,8 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             }
             out.closureVote = kept
           }
-          if (Array.isArray(out.packTools)) out.packTools = { count: out.packTools.length, note: 'summary: count only; detail:"full" for names' }
-          if (out.loader && typeof out.loader === 'object') out.loader = { loaded: Array.isArray(out.loader.modules) ? out.loader.modules.length : null, note: 'summary: count only; detail:"full"' }
+          if (Array.isArray(out.packTools)) out.packTools = { count: out.packTools.length, note: 'detail:"full" for names' }
+          if (out.loader && typeof out.loader === 'object') out.loader = { loaded: Array.isArray(out.loader.modules) ? out.loader.modules.length : null, note: 'detail:"full"' }
           out.prompt = out.prompt && typeof out.prompt === 'object'
             ? { sections: Array.isArray(out.prompt.sections) ? out.prompt.sections.length : null,
                 chars: typeof out.prompt.text === 'string' ? out.prompt.text.length : null,
