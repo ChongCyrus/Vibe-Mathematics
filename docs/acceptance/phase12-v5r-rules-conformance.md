@@ -7605,3 +7605,57 @@ FIELD_NOT_APPLICABLE=8 BAD_JSON=12`；日志保全 `D:\_tmp\slv-phase5\slv-logs\
 
 残余两条：`shared` 的 `scope` 只加在 records 面，`mailbox`/`chat` 的同类计数尚未统一（记债）；
 `check-task-brief` 仍不校验“参数值是否为占位符”与“跨行拼接的调用”（原覆盖缺口，未扩大）。
+
+## §175 真机跑 71（ROUND 70 复验：归属句读到了，拒绝路径的上限没被走到）
+
+**§175.1 机器读数（build `d0281479`，clone `slvp71`）**
+
+| 项 | 读数 |
+| --- | --- |
+| 驱动 | `DRIVE exit=0`、`durationSec 141` |
+| 根会话 | `toolCalls 6`、`transcriptEvents 51` |
+| token | `tokenTotal 565,891`、cap `12,000,000`、`tokenCapHit:false` |
+| 会话 | 2（root + r-1），`SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks` |
+| jsonl | `_oneoff/vm-slv/full-1027-224004.jsonl` · 2,411,490 B · 4,330 行 |
+| 围栏 | `NO_FENCE=42 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=8 BAD_JSON=12` |
+| 保全 | 戳 `20261027-224306`；`cleanup: clone_gone=True port_listening=False C_free_GB=10.2` |
+
+**§175.2 判决表**
+
+| 复验项 | 结果 | 证据 |
+| --- | --- | --- |
+| F-66 归属句 | ✅ | `shared.scope:"this-kernel-instance"`、`scopeMeans` 整句、`recordsMeans` 整句都在这张面里 |
+| F-66 两内核计数不同 | ✅ | 所办 `adoptedWithoutAuthor:0`/`pulls:16`；成员内核 `1`/`18`，`scopeMeans` 已预告这是合法的 |
+| F-68 拒绝路径声明上限 | ⚠️ 未走到 | 回执是**应用路径**：`replyLength:2469`、`replyTruncated:true`、`replyLimitChars:2000` |
+| F-67 简报校验器 | ✅（量具侧） | 同一份简报第一次被抓住 `vibe_v5_stop` 的未声明参数 `summary`（正解 `reason`） |
+| F-64 / F-65 回归 | ✅ | `records{action:"status"}` 可达；`card.cardFields.p:0.7` 可读 |
+
+**§175.3 读数原文（所办 `vibe_vmu_records{action:"status"}`，摘录）**
+
+`{"ok":true,"action":"status","shared":{"attached":true,"key":"records","scope":"this-kernel-instance","scopeMeans":"these counters belong to THIS kernel: they count the folds THIS process has performed. Another kernel over the same store folds its own copy, so two kernels may legitimately report different `pulls`/`adoptedWithoutAuthor` for the same durable ledger — the shared fact is the store key, not this number","pulls":16,"pulled":0,"refused":0,"skipped":15,"adoptedWithoutAuthor":0,…},"records":{"total":1,"live":1,"byTrack":{"propositions":1,…}},"recordsMeans":"the row counts are what THIS kernel sees after its own folds; a second kernel over the same store reports its own view, so compare row ids (or the store file) when two kernels must agree","note":"bounded status view: the shared seam, the adoption counters and the per-track row counts. The bytes maps, refusal histograms and wiring ledger stay on the kernel — this receipt is a status, not a dump.","receiptMeta":{"truncated":false,"elided":[],"originalBytes":1442,…}}`
+
+成员内核同一张面的读法：`adoptedWithoutAuthor:1`、`pulls:18` —— 与所办不同，且 `scopeMeans` 已经把「两个内核合法报不同数」写在回执里。
+
+**§175.4 简报两错（我的问题，不是产品缺陷）**
+
+1. 我让所办抄 `replyLimitChars` 并期待它是 `500` —— 但那一轮成员**产出了围栏**，走的是应用路径（2000）。拒绝路径（500）只有成员真的不产围栏时才会被走到；把「预期值」写进简报会让复验变成对简报的验证。
+2. 同一份简报让成员「只用散文、不要输出任何 JSON 块/围栏」，而 FM 自己的投递教导要求「把要交回的 report 作为最终文本交上来（整段 JSON 或 ```json 围栏）」。成员在推理里明确记下这两条指令冲突并选择了围栏 —— 它是对的（围栏是它的交付形状），代价是拒绝路径没被演练。⇒ 要演练拒绝路径，简报必须同时说清「这一轮你不需要交付 report，只要一段散文」，或直接要求它「不要调用任何工具、不要写围栏」。
+
+**§175.5 门禁**
+
+- `node scripts/preflight.mjs` ⇒ `PREFLIGHT: PASS`
+- `node scripts/regen-all.mjs --check` ⇒ 16/16 in sync
+- `node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`
+- 全量 `GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ `TOTAL 543 PASS 543 FAIL 0 (suites 479 · probes 64)`
+- 计数未变（本轮只扩旧套件 + 文档）：`JOBS total=612 suites=504 probes=108`、shipped 393
+
+**§175.6 无法验证**
+
+1. 拒绝路径的 `replyLimitChars:500`（本轮未走到，下一轮定向演练）
+2. 超时/终止作业的 `hashUnchangedState` 分支（`pending`/`not-measured` 之外的第三态）
+3. 跨进程重启后的 `pulls`/`adoptedWithoutAuthor`（`scopeMeans` 已声明它是本内核计数，但重启后的基准没有真机读数）
+4. `mailbox`/`chat` 的同类计数归属（`shared.scope` 目前只加在 records 面）
+
+**§175.7 无实质残余？**
+
+本轮**没有新机制缺陷**（0 RED 且判决表里没有 ❌）。残余沿用 §174.7 的两条（`scope` 只加在 records 面、`check-task-brief` 不校验占位符/跨行拼接），另加本表 §175.6 的第 1–3 项待验读数。
