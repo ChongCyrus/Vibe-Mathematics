@@ -7125,3 +7125,60 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 ### §165.7 无实质残余
 
 否。残余：F-51 的成员侧读法、真进程重启后的库读取、`Formal/Jobs` 镜像面均待下一轮取证。
+
+## §166 真机跑 63（复验 F-53/F-54，露出 F-55：散文说清了、字段还没说）
+
+### §166.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| build | `796f2f44` |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | `durationSec 161` |
+| 根会话调用 | `toolCalls 13`、`transcriptEvents 90`、`calls (13) vs results (13)` |
+| token | `tokenTotal 907,647`（cap 12,000,000，`tokenCapHit:false`） |
+| 会话 | 2 个（所办 + 成员 r-1，成员两轮：`activation` 与 `continuation`） |
+| RED | `SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks` |
+| 快照 | `_oneoff/vm-slv/full-1027-192450.jsonl`，2,729,960 B / 4,628 行 |
+| 围栏计数 | `NO_FENCE=24 UNKNOWN_FIELD=16 FIELD_NOT_APPLICABLE=18 BAD_JSON=24` |
+| 日志保全 | 戳 `20261027-192811` |
+| 清理 | `clone_gone=True port_listening=False C_free_GB=10.31` |
+
+### §166.2 判决
+
+| # | 项 | 结果 | 回执原文（节选） |
+| --- | --- | --- | --- |
+| 1 | F-53：失败作业的缺席说明 | ✅（散文层） | `"hashUnchangedMeans":"not measured: no compile ran for this job (VMU_LEAN_FILE_UNREADABLE), so there is no before/after file content to compare — this is NOT the value \"unchanged\""`；`"hashUnchanged"` **没有该字段** |
+| 2 | F-54：反馈卡第五行标签 | ✅ | `recommendation：回执与卡片使用同一个字段名`；无任何 `action：` 开头的行；成员在自己席位读回「第五行标签 = recommendation」 |
+| 3 | F-52b 回归：作业号范围 | ✅ | `"jobScope":"this-kernel-process"` + `jobScopeMeans`（点名 `listMirrors()`/`Formal/Jobs/<id>.json` 是耐久面） |
+| 4 | F-55：缺席的字段级读法 | ❌ 新缺陷 | 所办报告原文：「`hashUnchanged` 在失败作业上不是 `false`，而是『没有该字段』……`if (job.hashUnchanged === false)` 这类读法会把缺席作业漏过去，读到的是 `undefined`——**唯一接住它的是 `hashUnchangedMeans` 那句散文**」 |
+| 5 | 跨内核作业号撞号 | ⚠️ 已声明 | root 的 `lean-1/lean-2` 与成员的 `lean-1/lean-2` 是两组作业；`jobScope`/`jobScopeMeans` 已声明 id 只在造它的进程内成立 |
+| 6 | 成员调用列表 | ⚠️ 已声明 | `memberToolCalls:null`、`memberToolCallsMeans` 明说「成员跑在另一个内核实例，列表在子会话日志里；null 是『本回执读不到』，绝不是『零次调用』」 |
+
+### §166.3 修法与测试
+
+- **F-55**：`vibe-math-vmu/kernel/lean.js` 的 `view()` 抽出 `hashView(j)` —— 量到布尔时 `hashUnchanged: <bool>`、`hashUnchangedState:'measured'`、`hashUnchangedReason:null`；未量到时 `hashUnchanged: null`、`hashUnchangedState: 'pending' | 'not-measured'`、`hashUnchangedReason: 'job-not-finished' | <具名拒收码> | 'no-compile'`。散文 `hashUnchangedMeans` 原样保留。
+- 新套件 `tests/vmu-run63-hash-field-level.test.mjs` **17/0**：键存在且为显式 `null`、`state`/`reason` 两字段机器可读、不铸布尔、散文回归、量到作业 `measured` 且 reason 为 `null`、在飞作业是 `pending`/`job-not-finished`、`list()` 每行都带三字段、两种形态下 `===`/`in` 都是确定答案。
+- `tests/vmu-run62-hash-means-and-label.test.mjs` 相应更新（原「不铸布尔」断言改为「显式 null + 原因字段」）⇒ **18/0**。
+
+### §166.4 门禁
+
+- `tests/vmu-run63-hash-field-level.test.mjs` 17/0；`vmu-run62-hash-means-and-label` 18/0；`vmu-lean` 21/0；`vmu-run58-lean-face-contract` 7/0；`vmu-run59-lean-statement-alias` 8/0；`vmu-run61-feedback-body` 10/0。
+- `node scripts/preflight.mjs` PASS；`node scripts/regen-all.mjs --check` 16/16 in sync；`node scripts/check-docs.mjs` `DOC LINT: PASS`。
+- 全量 `TOTAL 539 PASS 539 FAIL 0 (suites 475 · probes 64)`。
+
+### §166.5 三处简报错
+
+1. 第 5 步让成员「做两件事」，把**格式**留给它自己判断 ⇒ 第一轮它把指定路径换成自造的 `Formal/p-r63-definitely-missing.lean`、把长句改写成转述；要求「路径逐字、整句原文」后才合格。复验类简报必须把格式写死。
+2. 第 3 步让 root 抄 `hashUnchanged` 而没预告「本轮它还缺席」（只写了「没有就写没有该字段」），读者容易把设计上的缺席读成缺陷——事实上它确实成了 F-55 的入口，但入口应当是明确的。
+3. 第 5 步没让 root 抄 `memberToolCalls` 与 `memberToolCallsMeans`，于是「成员到底调了什么」在本轮完全依赖成员自述，回执的可核性少了一半。
+
+### §166.6 无法验证
+
+- 真进程重启后 `leanlibrary` 的读回（本轮仍无跨进程重启）。
+- 成员两轮之间的会话连续性对「作业号」的影响（两个内核实例的号各自从 `lean-1` 起，撞号是形式上的事实）。
+- `hashUnchangedState` 在 `terminated`（超时终止）作业上的取值未取证。
+
+### §166.7 无实质残余
+
+否。残余：`terminated` 作业的状态取值、跨进程重启的库读回、成员调用的回执可核性。

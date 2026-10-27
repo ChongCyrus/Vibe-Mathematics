@@ -329,9 +329,25 @@ export function createLeanFace(opts) {
     } catch (e) { /* hydration is best-effort; a failure must not break recovery */ }
   }
 
+  // ★ LIVE RUN 63 (the root kernel read the receipt field-by-field and said so): the ROUND 62 fix explained the
+  // absence in PROSE, and left the key itself absent. A reader doing `job.hashUnchanged === false` then gets
+  // `undefined`, and `'hashUnchanged' in job` is false — three deterministic questions, three unstable answers. The
+  // boolean therefore becomes an explicit `null` when it was never measured, and the two causes of "no value" get their
+  // own machine-readable fields: `hashUnchangedState` says pending-vs-never-measured, `hashUnchangedReason` names the job
+  // state or the refusal code. The prose stays: it is what a human reads; these are what a program reads.
+  const hashView = (j) => {
+    const measured = typeof j.hashUnchanged === 'boolean'
+    const pending = !measured && (j.state === 'queued' || j.state === 'running')
+    return {
+      hashUnchanged: measured ? j.hashUnchanged : null,
+      hashUnchangedState: measured ? 'measured' : (pending ? 'pending' : 'not-measured'),
+      hashUnchangedReason: measured ? null : (pending ? 'job-not-finished' : ((j.receipt && j.receipt.code) || 'no-compile')),
+    }
+  }
+
   const view = (j) => ({
     id: j.id, state: j.state, file: j.file, statement: j.statement,
-    exitCode: j.exitCode, hashUnchanged: j.hashUnchanged, passed: j.passed === true,
+    exitCode: j.exitCode, ...hashView(j), passed: j.passed === true,
     // ★ LIVE RUN 59 (a member read this flag as a cache signal and said so in feedback): `hashUnchanged` compares the
     // file's content BEFORE and AFTER one compile — it answers "did the file change while it compiled", not "is this a
     // cached result". The dedupe question is answered by `dedupedOf` instead. Naming the meaning next to the boolean is

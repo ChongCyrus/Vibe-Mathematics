@@ -83,9 +83,12 @@ await (async () => {
   const view = await viewOf(face, res.job.id)
   ok(view.state === 'failed', 'setup: the unreadable file produces a FAILED job', view.state)
   ok(view.code === 'VMU_LEAN_FILE_UNREADABLE', 'setup: the failure is named', view.code)
-  ok(view.hashUnchanged !== true && view.hashUnchanged !== false,
-    'F-53a: a compile that never ran does not pretend the file was unchanged (no boolean is minted)',
+  ok(view.hashUnchanged === null,
+    'F-53a: a compile that never ran does not pretend the file was unchanged (explicit null, never false)',
     view.hashUnchanged)
+  ok(view.hashUnchangedState === 'not-measured' && view.hashUnchangedReason === 'VMU_LEAN_FILE_UNREADABLE',
+    'F-53a2 (round 63): the null is MACHINE-readable too - state says why there is no value, reason names the code',
+    view.hashUnchangedState + '/' + view.hashUnchangedReason)
   ok(typeof view.hashUnchangedMeans === 'string' && has(view.hashUnchangedMeans, 'not measured'),
     'F-53b: the meaning is a SENTENCE, not null (absence has a cause)', view.hashUnchangedMeans)
   ok(has(view.hashUnchangedMeans, 'VMU_LEAN_FILE_UNREADABLE'),
@@ -129,7 +132,7 @@ await (async () => {
   const list = await specOf('vibe_v5_lean_job').handler({}, { kernel })
   const rows = (list.jobs && list.jobs.jobs) || []
   ok(rows.length === 2, 'setup: two jobs are listed', rows.length)
-  const mute = rows.filter((r) => (r.hashUnchanged !== true && r.hashUnchanged !== false) && typeof r.hashUnchangedMeans !== 'string')
+  const mute = rows.filter((r) => r.hashUnchanged === null && (typeof r.hashUnchangedMeans !== 'string' || typeof r.hashUnchangedState !== 'string'))
   ok(mute.length === 0,
     'F-53g: EVERY unmeasured job carries a sentence (the list face cannot be quieter than the single-job face)',
     mute.map((r) => r.id))
