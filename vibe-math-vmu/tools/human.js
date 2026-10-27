@@ -270,7 +270,14 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
           const decidedBy = decided && row.decidedBy !== undefined && row.decidedBy !== null ? String(row.decidedBy) : null
           return Object.assign({ ok: true, action }, st, {
             decidedBy,
-            decidedByMeans: decided ? (MEANS_OF.get(String(requestId)) || MEANS_UNRECORDED) : null,
+            decidedByMeans: decided
+              ? (MEANS_OF.get(String(requestId)) || MEANS_UNRECORDED)
+              // ★ LIVE RUN 50 (the office's report, item ⑨): pending answered `decidedByMeans:null`, which reads as
+              // "the field the reader needs is absent" rather than "nobody has decided". Say it: with no decision there
+              // is no actor, and the absence is the fact.
+              : (String(st && st.state) === 'pending'
+                ? 'nobody has decided this request yet (state=pending), so there is no actor to name'
+                : 'this request has no recorded decision and is not pending either (state=' + String(st && st.state) + '), so no actor can be named'),
           })
         }
         if (action === 'decide') {

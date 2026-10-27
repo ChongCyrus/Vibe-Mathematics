@@ -62,7 +62,17 @@ const archiveIds = (snap) => decode(snap.data.archive).map((m) => String(m.id)).
   }))
   ok(learned.ok === true && learned.adoptedArchive === 1, 'twin setup[+]: a reload brings the archived record of the SAME id', JSON.stringify(learned))
   ok(liveIds(t.snapshot()).length === 0, 'snapshot[+]: the local live row is NOT serialised once the archive records the closure', liveIds(t.snapshot()).join(','))
-  ok(t.snapshot().counters.droppedLiveWhileArchived === 1, 'snapshot[+]: the drop is counted, not silent', String(t.snapshot().counters.droppedLiveWhileArchived))
+  // ★ LIVE RUN 50 / F-28 changed WHERE the drop is counted: a closure learned from the shared ledger now ENDS the
+  // local live row at reload time (`evictedLiveWhileArchived`), so by the time the state is serialised there is no twin
+  // left to drop and `droppedLiveWhileArchived` legitimately stays 0. The invariant this assertion guards — the drop is
+  // COUNTED somewhere, never silent — still holds; the counter just moved to the door that actually did it.
+  {
+    const after = t.snapshot()
+    const atSerialisation = Number(after && after.counters && after.counters.droppedLiveWhileArchived) || 0
+    const atEviction = Number(learned && learned.evictedLiveWhileArchived) || 0
+    ok(atSerialisation + atEviction >= 1, 'snapshot[+]: the drop is counted, not silent (at eviction or at serialisation)',
+      { atEviction, atSerialisation })
+  }
   ok(archiveIds(t.snapshot()).join(',') === 'm1', 'snapshot[+]: the archived record IS serialised (the closure is durable)', archiveIds(t.snapshot()).join(','))
 }
 

@@ -292,15 +292,20 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
   if (declared) {
     return allow({ form: 'card', subject: cls.raw, proofChecked: false, proofBasis: 'declaration-only',
       provenance: 'declared', declared: true, declaredState: proofState, declaredProofRef: proofRef,
-      note: '辩论对象的证明目前只有**作者自述**（proofRef=' + proofRef + '、proofState="complete"），没有机器证据：'
-        + 'Lean 作业未通过、`verified` 轨也没有这张卡的定论行。规则要的是"已登记为写完"，所以本闸放行；'
-        + '但自述不等于已证 —— 回执记 proofBasis:"declaration-only"，而这场辩论正是把它送进证据层的正当路径，'
-        + '进 `verified` 轨仍要过 p1Intent 与单写者两道闸' })
+      // ★ LIVE RUN 50 (the chair's own report, with evidence): this note used to ASSERT "Lean 作业未通过" while the
+      // cardinal had just run a Lean job on the very file the card points at (exit 0, passed, `dedupedOf` the earlier
+      // job) and the archive held the theorem. The gate had not looked — it simply never received that evidence — and
+      // a durable verdict that states an unmeasured fact is the same defect as a receipt that hides one. Say what was
+      // checked: the card's two declared fields; nothing else was handed to this gate.
+      note: '辩论对象的证明目前只有**作者自述**（proofRef=' + proofRef + '、proofState="complete"）。本闸只核了卡上的这两个字段：'
+        + '这次调用没有把 Lean 作业或 `verified` 轨的证据交给闸（ev.lean / ev.verified 未提供），所以 proofChecked:false、'
+        + 'proofBasis:"declaration-only" —— 「没核」不等于「没通过」。规则要的是"已登记为写完"，故放行；'
+        + '自述不等于已证，而这场辩论正是把它送进证据层的正当路径，进 `verified` 轨仍要过 p1Intent 与单写者两道闸' })
   }
   return refuseGate(GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
-    '命题卡 ' + cls.raw + ' 没有「正式证明或证伪**已写完**」的任何登记，也没有机器证据：proofRef=' + (proofRef || '空')
-    + '、proofState=' + (proofState || '空') + '、verified 轨无定论行、Lean 作业未通过'
-    + '。规则：只有含正式证明/证伪（且已写完而非半成品）的卡才能进入辩论；"证明尝试"只是候选，不是辩论对象',
+    '命题卡 ' + cls.raw + ' 没有「正式证明或证伪**已写完**」的任何登记：proofRef=' + (proofRef || '空')
+    + '、proofState=' + (proofState || '空') + '；本闸同时没有收到 Lean 作业与 `verified` 轨的定论行作为证据（这次调用没把它们交进来）。'
+    + '规则：只有含正式证明/证伪（且已写完而非半成品）的卡才能进入辩论；"证明尝试"只是候选，不是辩论对象',
     '先登记证明引用（写卡时传 `payload:{proofRef:"Members/<m>/Propos/<id>.md#正式证明", proofState:"complete"|"draft"}`，'
     + '或工具面的 `proof_ref`/`proof_state`），再跑 Lean 或走辩论；声明与证据齐了才可开辩论。'
     + '三种合法形态：命题卡 id（声明 + 机器证据）/ 文件引用（存在且非空）/ 一句话命题（本闸判不了证明，放行但记 provenance:none）',

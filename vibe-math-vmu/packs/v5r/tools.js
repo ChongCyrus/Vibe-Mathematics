@@ -675,14 +675,14 @@ function toolFeedback(args = {}, { kernel } = {}) {
     const body = ['category：' + str(args.category), 'route：' + str(args.route), 'context：' + str(args.context),
       'phenomenon：' + str(args.phenomenon), 'impact：' + str(args.impact), 'action：' + str(args.action),
       'assessment：' + str(args.assessment)].filter((l) => !l.endsWith('：')).join('\n')
-    const written = records.put({ track: 'feedback', kind: 'feedback', title: str(args.category) + '/' + str(args.route), body, settled: false, by: str(args.member) || 'vibe_v5_feedback' })
+    const written = records.put({ track: 'feedback', kind: 'feedback', title: str(args.category) + '/' + str(args.route), body, settled: false, by: str(args.member) || null /* ★ LIVE RUN 50 (F-32): a tool name is not an author. The office-side call carried no member, and the ledger recorded owner:"vibe_v5_feedback" while a member-side call recorded the member id - two answers to "who wrote this" from one tool. Null + the ledger's own bySource is the honest answer; the caller can pass member to say who it is. */ })
     return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: 'open' }
   }
   if (!has(args.id)) throw refuse('VMU_INVALID_ARGUMENT', 'feedback update needs id', 'pass id:"<feedback record id>"')
   const body = ['status：' + (has(args.status) ? str(args.status) : 'closed'), 'outcome：' + str(args.outcome), 'note：' + str(args.note)]
     .filter((l) => !l.endsWith('：')).join('\n')
   const written = records.put({ id: str(args.id), track: 'feedback', kind: 'feedback', title: str(args.id), body,
-    settled: has(args.status) && str(args.status) === 'closed', by: str(args.member) || 'vibe_v5_feedback' })
+    settled: has(args.status) && str(args.status) === 'closed', by: str(args.member) || null /* ★ LIVE RUN 50 (F-32): a tool name is not an author. The office-side call carried no member, and the ledger recorded owner:"vibe_v5_feedback" while a member-side call recorded the member id - two answers to "who wrote this" from one tool. Null + the ledger's own bySource is the honest answer; the caller can pass member to say who it is. */ })
   return { ok: true, tool: 'vibe_v5_feedback', op, recordId: written && written.id, status: has(args.status) ? str(args.status) : 'closed' }
 }
 

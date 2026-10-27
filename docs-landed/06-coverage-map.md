@@ -177,3 +177,20 @@
 
 | 决定要在行上，不在回执里 | 开会回执里印的裁决（`subjectGate`）必须能从事后读面（`summary`/`status`）逐字读回，关闭后归档仍可读。 | `tests/vmu-run49-gate-reread.test.mjs` §1–§6 |
 | verified 轨是地方不是标签 | 命题行的 `ready` 必须由账本里的 verified 行（同一陈述）决定，并点名哪一条；"读不到 verified 轨"必须写成"读不到"，不许写成"没核验"。 | `tests/vmu-run49-verified-ready.test.mjs` §1–§5 |
+
+## 15. ★★★ 增量（R50）：读之前先看盘 / 没核到的事实不许写成结论
+
+- `vibe-math-vmu/kernel/meetings.js` → `restoreReload` 在采纳 archive 后**逐出本地 live 中已被归档的 id**（`evictedLiveWhileArchived`），会议 id 不可复用所以不会误逐合法重开的会。
+- `vibe-math-vmu/kernel/index.js` → `meetingsReadsReadFresh`：`status/summary/meetingView/list/quorum` 读前先 `store.read('meetings')`（重入计数防 reload 钩子递归），与 R47 的 chat 读面同形状。
+- `vibe-math-vmu/packs/v5r/verification-gates.js` → 闸门 note 只说它**核了什么**（卡上两个声明字段）、说明没交进来的证据（`proofChecked:false`），明写「没核 ≠ 没通过」。
+- `vibe-math-vmu/tools/meeting.js` → service close 归档后读回该行，回执自带 `state/archived/subjectGate` 与 `…Means`。
+- `vibe-math-vmu/kernel/chat.js` → `status()` 增 `mutedDetail`（until/durationMs/reason/by）与 `adminsMeans`（名字空间是席位 token）。
+- `vibe-math-vmu/packs/v5r/tools.js` → feedback 的 `by` 空值兜底从工具名改为 `null`。
+- `vibe-math-vmu/kernel/turn/index.js` → `[当前小任务]` 摘录截断时写「摘录；完整正文见记录 <id>」。
+- `vibe-math-vmu/tools/human.js` → `approvalState` 在 pending 时说明"还没人裁决"，不再只给 `null`。
+
+| 读之前先看盘 | 一个投影的读面必须在读之前触发共享账本刷新（`store.read(key)`），否则别的内核的写入永远读不到。 | `tests/vmu-run50-readbacks.test.mjs` §1 |
+| 没核到的事实不许写成结论 | 闸门/拒绝的措辞只能陈述它真正检查过的证据，未交进来的证据要写成"没核"，不能写成"不通过"。 | `tests/vmu-run50-readbacks.test.mjs` §2/§3 |
+| 读面要给同一组事实 | 拒绝（`VMU_CHAT_MUTED`）已经带了 until/reason，成功的读面就必须带同样的事实；`null` 要说明它为什么是 null。 | `tests/vmu-run50-readbacks.test.mjs` §4/§7 |
+| 工具名不是作者 | 一个工具自己的名字不能当行的作者；没有成员就是 `null`，作者字段只回答"是谁"。 | `tests/vmu-run50-readbacks.test.mjs` §5 |
+| 截断要说自己是摘录 | 板上的摘录必须点名完整正文的记录 id，读者要能过去读全文。 | `tests/vmu-run50-readbacks.test.mjs` §6 |

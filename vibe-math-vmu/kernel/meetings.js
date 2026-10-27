@@ -2220,6 +2220,17 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         if (!archive.some((x) => String(x.id) === String(a.id))) { archive.push(a); adoptedArchive += 1 }
       }
       const archivedIds = new Set(archive.map((m) => String(m.id)))
+      // ★ LIVE RUN 50 (the office's own reading): the incoming archive was adopted but THIS instance's live copy of the
+      // same id stayed, so `summary`/`status` printed `state:"open"` with `liveWhileArchived:true` — the closure had
+      // been decided and stated, and the main field still said the opposite. The skip below only stops a STORED live
+      // row from coming back; it does not end a live row this instance was already holding. Closing happens in the
+      // instance that runs the chair's turn, so the reader (the office's kernel) is exactly the one that keeps the
+      // stale copy. A closure learned from the shared ledger ENDS the local copy — meeting ids are not reusable (see
+      // the id-space note on `open`), so this can never evict a legitimately re-opened meeting.
+      let evictedLive = 0
+      for (const id of [...live.keys()]) {
+        if (archivedIds.has(String(id))) { live.delete(String(id)); evictedLive += 1 }
+      }
       let adoptedLive = 0
       let droppedLive = 0
       for (const [id, m] of (storedLive instanceof Map ? storedLive : new Map())) {
@@ -2229,8 +2240,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         adoptedLive += 1
       }
       return { ok: true, restored: true, restored_items: ['live', 'archive'],
-        adoptedLive, adoptedArchive, droppedLiveWhileArchived: droppedLive,
+        adoptedLive, adoptedArchive, droppedLiveWhileArchived: droppedLive, evictedLiveWhileArchived: evictedLive,
         droppedLiveMeans: 'stored live meetings whose id this instance ALREADY holds in its archive — a closure is not undone by a reload',
+        evictedLiveMeans: 'live meetings THIS instance was holding whose id the incoming archive records closed — the closure learned from the shared ledger ends the local copy (a meeting id is not reusable)',
         liveMeetings: [...live.keys()].sort() }
     },
 

@@ -446,8 +446,24 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                 } catch (e) { return { readable: false, why: (e && e.message) || String(e) } }
               })()
               const closeEnforced = Array.isArray(out && out.enforced) ? out.enforced : []
+              // ★ LIVE RUN 50 (the chair's own report): the close receipt carried `closeSemantics: "service-archives"`
+              // and NOTHING else a reader could check it against — no `state`, no `subjectGate`. The chair had to make
+              // a second call (`summary`) to learn what the meeting had become, and the run's whole question was
+              // whether a decision can be read back. The close KNOWS both facts (it just archived the row), so it
+              // states them: the read right after the close is the receipt's own evidence, not a second guess.
+              const afterClose = (() => {
+                try { return svc && typeof svc.summary === 'function' ? svc.summary({ meeting: pid }) : null } catch (e) { return null }
+              })()
               return Object.assign({ ok: true, action, id: pid, registry: 'service', closeSemantics: 'service-archives' }, out, {
                 note: 'closed in the meetings SERVICE: the meeting moved to the service ARCHIVE (not the primitive live table); its MOTIONS and the minutes vote events remain readable via action=summary (a BALLOT-BOX decision is a different record: read the box face for its tally)',
+                state: afterClose && afterClose.state ? afterClose.state : 'closed',
+                stateMeans: 'the meeting AFTER this close, as its own record reads it (the value is read from the archived row, not assumed): a closed meeting has a frozen tally and hidden vote detail',
+                archived: true,
+                archivedMeans: 'the record left the service live table and is held by the service ARCHIVE; `summary`/`status` read it back by id',
+                subjectGate: afterClose && afterClose.subjectGate !== undefined ? afterClose.subjectGate : null,
+                subjectGateMeans: afterClose && afterClose.subjectGate === undefined
+                  ? 'this close cannot read the archived gate verdict (the archive read failed); the open receipt is still the record of it'
+                  : 'the debate-subject verdict stored with the meeting when it was CONVENED — the close receipt repeats it so a closer does not have to make a second call; reading cannot change it',
                 // the CLOSURE VOTE is a different mechanism from the close, and this receipt is where a reader meets both
                 closureVote: closeClosureVote,
                 closureVoteNote: closeClosureVote === null || closeClosureVote === undefined

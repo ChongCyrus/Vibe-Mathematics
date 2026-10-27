@@ -1789,6 +1789,32 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     try { Object.defineProperty(target, '__vmuChatReadFreshReads', { value: true, enumerable: false }) } catch (e) { /* marker only */ }
     return names
   }
+  // ★ LIVE RUN 50 (F-28, the office's own report): the SAME reason applies to the MEETING read faces. A close runs in
+  // the instance that holds the chair's turn; the office's kernel keeps its own live copy of that meeting and `summary`/
+  // `status` printed `state:"open"` beside `liveWhileArchived:true` — the closure had been decided and stated, and the
+  // main field still said the opposite. `restoreReload` can evict that copy, but only the reload hook runs it, and the
+  // hook only runs when something reads the fold: the office read meetings and nothing else. Reads now refresh first
+  // (`store.read('meetings')` is the engine's own stale check), so a read cannot report a fact that was decided
+  // elsewhere. A re-entrancy counter keeps the onReload hook (which calls meetings.restoreReload) from recursing.
+  let meetingsReadDepth = 0
+  const meetingsReadsReadFresh = (target) => {
+    if (!target || target.__vmuMeetingsReadFreshReads === true) return null
+    if (!store || typeof store.read !== 'function') return null
+    const names = ['status', 'summary', 'meetingView', 'list', 'quorum'].filter((n) => typeof target[n] === 'function')
+    for (const name of names) {
+      const original = target[name]
+      target[name] = function meetingsReadFreshThenRead(...args) {
+        if (meetingsReadDepth === 0) {
+          meetingsReadDepth++
+          try { store.read('meetings') } catch (e) { /* a read never fails because the fold could not be re-read */ }
+          finally { meetingsReadDepth-- }
+        }
+        return original.apply(this, args)
+      }
+    }
+    try { Object.defineProperty(target, '__vmuMeetingsReadFreshReads', { value: true, enumerable: false }) } catch (e) { /* marker only */ }
+    return names
+  }
   // ★★ THE PROJECTION LOG IS A STATE TABLE, NOT A DIARY (round 3 of 2026-10-26, from the census's drift report).
   // `attachDeclaredProjections()` runs TWICE (once at assembly, once after the pack declares its slots, because
   // `members` has no target until then). Each run used to APPEND: a face that failed the first time and attached the
@@ -1846,6 +1872,9 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         // so it is installed here, before `attachProjection` wraps every mutator of the same face.
         if (canonical === 'chat') { try { chatMutatorsReadFresh(targets[canonical]) } catch (e) { /* the attach row below reports what broke */ }
           try { chatReadsReadFresh(targets[canonical]) } catch (e) { /* reads refresh best-effort; a broken wrapper must not break attach */ } }
+        // LIVE RUN 50 / F-28: meeting reads refresh from the fold first, so a closure decided in another kernel is not
+        // reported as `state:"open"` by the reader's own live copy.
+        if (canonical === 'meetings') { try { meetingsReadsReadFresh(targets[canonical]) } catch (e) { /* reads refresh best-effort */ } }
         // The INSTANCE method registers the projection so `hydrate()`/`snapshot()` can find it; the module-level
         // `attachProjection` would wrap the methods but leave the instance unaware of the key.
         const out = resume.attachProjection({ target: targets[canonical], methods: projectionMethods(canonical, targets[canonical]), key: adapter.key, mode: adapter.mode,

@@ -118,7 +118,9 @@ try {
     const stillPending = await call({ action: 'approvalState', request_id: 'rq-r45' })
     ok(stillPending.state === 'pending', '…and the approval is still PENDING (nothing was granted under someone else\'s name)', stillPending)
     ok(stillPending.decidedBy === null, '…so approvalState reports decidedBy:null (no attribution was written)', stillPending.decidedBy)
-    ok(stillPending.decidedByMeans === null, '…and decidedByMeans:null while pending (a pending request has no means of decision)', stillPending.decidedByMeans)
+    // ★ LIVE RUN 50 / F-34 changed this contract: a bare `null` read as "the field the reader needs is absent"; the
+    // means now SAY why there is no name (nobody decided yet). The field is still null-honest about the ACTOR.
+    ok(/nobody has decided/.test(String(stillPending.decidedByMeans)), '…and decidedByMeans says in words that nobody has decided (a pending request has no actor)', stillPending.decidedByMeans)
 
     // ★ The seat resolving to a NON-declared role is refused too, even when that role LOOKS like an approver.
     const other = await call({ action: 'openApproval', subject: 'budget.increase' })
@@ -261,7 +263,7 @@ try {
     const a2 = await call({ action: 'openApproval', subject: 'pending-read' })
     const s2 = await call({ action: 'approvalState', request_id: a2.id })
     ok(own(s2, 'decidedBy') && own(s2, 'decidedByMeans'), '★ approvalState ALWAYS carries both attribution fields (pending included)', Object.keys(s2))
-    ok(s2.decidedBy === null && s2.decidedByMeans === null, '…null/null while pending', { decidedBy: s2.decidedBy, decidedByMeans: s2.decidedByMeans })
+    ok(s2.decidedBy === null && /nobody has decided/.test(String(s2.decidedByMeans)), '…null actor + a sentence saying no decision exists while pending', { decidedBy: s2.decidedBy, decidedByMeans: s2.decidedByMeans })
     const unknown = await call({ action: 'approvalState', request_id: 'rq-does-not-exist' })
     ok(unknown.ok === false && unknown.code === 'VMU_INVALID_ARGUMENT',
       'an unknown request id is still the kernel\'s named VMU_INVALID_ARGUMENT (the new fields never mask a real refusal)', unknown)

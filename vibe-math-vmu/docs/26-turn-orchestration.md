@@ -1144,3 +1144,45 @@ run 43 让研究员写**一条** progress，它做了两件事：调 `vibe_v5_re
 **一条被驳回的宣称**：所办报告"读面把拒绝包成 `{ok:true, refused:true, hint:null}`"。全量 jsonl 里 `"refused":true` 出现 0 次、`dig49` 的 38 对调用/结果里也没有该形状 ⇒ 本轮**不修**，记为"待复现的宣称"，下一轮专找"带 `code`/`refused` 却没有 `ok:false`"的回执。**驳回的方式是去 transcript 里找，不是凭印象改代码。**
 
 **判据（下一轮验收用）**：①同一场辩论的 `subjectGate` 在 open 回执 / `summary` / `status` 三处逐字一致，关闭后归档仍可读；②成员 `read_library {track:"propositions"}` 的卡上 `ready` 与账本里的 verified 行一致，`readyOn` 指向真实 id；③无 verified 行时 `ready:false` 且 `readyWhy` 给出理由（不是裸 false）；④`status{detail:"summary"}` 与 `meetingView` 对同一会议给出同一份 gate。
+
+## ROUND 50 — 关会在别人的内核里读成「仍在开」：读之前先看盘；没核到的事实不许写成结论
+
+LIVE RUN 50（build ce5ec8f9，实验室所办自己的报告与 34 条回执）量出七条同族的读面缺陷（F-28…F-34），
+每条都是「读得慢 / 读得少 / 读得假 / 读得不说」，而写入面本身是对的：
+
+1. **关闭只发生在执行它的那个内核里**。`close` 在院士的内核运行，`kernel/meetings.js` 把它从该实例的 `live`
+   删掉并推进 archive；所办的内核仍持有自己的 live 副本，于是 `summary`/`status` 主字段 `state:"open"`，
+   只有 `liveWhileArchived:true` 与 `archivedView.state:"closed"` 说相反的话。修法两层：
+   `restoreReload` 采纳 archive 后**逐出本地已被归档的 live id**（会议 id 不可复用，故不会误逐合法重开的会）；
+   `kernel/index.js` 新增 `meetingsReadsReadFresh`，让 `status/summary/meetingView/list/quorum` 在读之前先
+   `store.read('meetings')`（即 `reloadIfStale` 的入口，触发 `onReload`→`restoreReload`）。这与 ROUND 47 的
+   chat 读面是**同一形状**：一个只靠「写的时候顺手刷」的投影，读的人永远读不到别人的写。
+
+2. **闸门替没量到的事实下结论**。`subjectGate.note` 写着「Lean 作业未通过」，而此刻归档里正有院士刚跑成功的
+   Lean 定理；那一次调用根本没有把 Lean/verified 证据交给闸。现在 note 只说它核了什么（卡上的两个声明字段）、
+   说明了什么没交进来（`proofChecked:false`）、并明写「没核 ≠ 没通过」；`DEBATE_SUBJECT_NO_PROOF` 的拒句同样
+   去掉了预设结论。**一个裁决的措辞不能比它的证据更重。**
+
+3. **关会回执要说结果**。service close 在归档后读回那一行，回执补 `state`/`archived`/`subjectGate` 与各自的
+   `…Means`：读者不必再调一次 `summary` 才知道会变成什么。
+
+4. **禁言的读面要给同一组事实**。`status.muted` 只列名字时，读者唯一能学到达期与理由的方式是"发一条试试"；
+   现在 `mutedDetail` 每行都给 `until/durationMs/reason/by`（与 `VMU_CHAT_MUTED` 拒绝一致），`admins` 也声明
+   自己的名字空间是**席位 token**、由 seat seam 在行为发生时解析。
+
+5. **工具名不是作者**。feedback 的 `by` 空值兜底写成工具名，于是同一工具一次写 `owner:"r-2"`、一次写
+   `owner:"vibe_v5_feedback"`；现在空就是 `null`，作者要么是成员要么没有。
+
+6. **截断要说自己是摘录**。状态板 `[当前小任务]` 的正文摘录现在以「…（摘录；完整正文见记录 <id>）」收尾。
+
+7. **pending 的"没有名字"要说出来**。`approvalState` 在 pending 时给的是「nobody has decided this request yet
+   (state=pending), so there is no actor to name」，而不是一个孤零零的 `null`。
+
+判据（新测试 `tests/vmu-run50-readbacks.test.mjs`，32 条）：
+- 一个内核关掉的会，另一个内核的 `summary` 必须读到 `closed`，且不出现 `liveWhileArchived`（两个内核同 root 真复现）；
+- 闸门 note 不得出现它没量过的结论（"Lean 作业未通过"），必须出现"没核"；
+- 关会回执必须自带 `state:"closed"` 与 `archived`，普通会议 `subjectGate` 必须是 `null` 而不是编的；
+- `mutedDetail` 每行必须带 until/reason/by；`admins` 必须说明名字空间；
+- 同一工具两次写入，无 member 的行 `owner` 必须是 `null`、有 member 的必须是那个成员；
+- 截断的板行必须写「摘录；完整正文见记录 <id>」；
+- pending 的 `decidedByMeans` 必须说明"还没人裁决"。

@@ -1275,7 +1275,11 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
             const body = got && typeof got.body === 'string' ? got.body : (got && got.record && typeof got.record.body === 'string' ? got.record.body : null)
             if (body !== null) {
               const first = body.split('\n').map((l) => l.trim()).filter((l) => l !== '')[0]
-              if (first) excerpt = first.length > 80 ? first.slice(0, 80) + '…' : first
+              // ★ LIVE RUN 50 (the member's own reading): the board printed a mid-sentence piece of the progress body
+              // with an ellipsis at the end but nothing saying it WAS a cut, so a reader could not tell "the text is
+              // short" from "the text was truncated here". The line now says it is an excerpt and names the record that
+              // holds the whole body (`vibe_v5_read_library {id:"<id>", expand:true}` reads it).
+              if (first) excerpt = first.length > 80 ? first.slice(0, 80) + '…（摘录；完整正文见记录 ' + String(newest.id) + '）' : first
             }
           } catch { /* a row that expands badly keeps its head line; the excerpt is an extra, not the reading */ }
         }

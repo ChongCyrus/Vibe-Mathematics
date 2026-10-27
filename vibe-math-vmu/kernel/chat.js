@@ -818,10 +818,36 @@ export function createChat({
 
     status() {
       const fr = frozenNow()
+      // ★ LIVE RUN 50 (the office's report, item ⑥): `muted:["r-2"]` named WHO and nothing else — no expiry, no
+      // reason, no author — so the only way to learn when a mute lapses (and why it was imposed) was to send once and
+      // read the refusal. A successful read must answer the same question a refused send does (`VMU_CHAT_MUTED`
+      // already carries `until` + the reason). Same rows, same live filter as `muted`, one row per member.
+      const mutedDetail = [...mutes.entries()]
+        .filter(([m]) => {
+          const row = mutes.get(m)
+          if (!row || !(row.until > 0)) return true
+          const untilMs = toMs(row.until)
+          return !Number.isFinite(untilMs) || nowMs() < untilMs
+        })
+        .map(([m, row]) => ({
+          member: String(m),
+          until: row.until === undefined ? null : row.until,
+          untilMeans: 'the instant this mute lapses (0 = no expiry; compare against the injected clock)',
+          durationMs: row.durationMs === undefined ? null : row.durationMs,
+          reason: row.reason === undefined ? null : row.reason,
+          by: row.by === undefined ? null : row.by,
+          byMeans: row.by === undefined || row.by === null
+            ? 'this mute row does not name who imposed it (rows restored from an older book may not)'
+            : 'the member or SEAT token that imposed this mute'
+        }))
+        .sort((a, b) => (a.member < b.member ? -1 : a.member > b.member ? 1 : 0))
       return { ok: true, apiVersion, messages: messages.length, policyGen, admins: [...admins],
+        adminsMeans: 'the declared `vmu.chat.admins` entries as written: a MEMBER id names that member, a SEAT token (e.g. "chair") names whoever CURRENTLY holds that seat — the declaration is by seat, the admin set is resolved by the kernel\'s seat seam at the moment of the act',
         speakQuota: quotaOf(), speakQuotaWindowMs: quotaWindowOf(), muteDefaultMs: muteDefaultOf(),
         freezeExemptAdmins: freezeExemptAdminsOn(), historyCap: capOf(), muted: liveMuted(),
         mutedMeans: 'the members muted RIGHT NOW (rows whose `until` the clock has passed are not listed; the row stays in the book until a send or unmute prunes it)',
+        mutedDetail,
+        mutedDetailMeans: 'one row per member muted RIGHT NOW: who, until when (0 = no expiry), how long, why, and who imposed it — the same facts a refused send prints; rows whose `until` the clock has passed are NOT listed here',
         frozen: fr.frozen, frozenBy: fr.ballotId,
         mechanism: { hasFrozenSeam: typeof isFrozen === 'function', hasFreezeExemptSeam: typeof freezeExempt === 'function',
           hasAdminSeam: typeof isAdmin === 'function', clockInjected: true, hotSource: typeof (settings && settings.set) === 'function' ? 'settings' : 'memory' },

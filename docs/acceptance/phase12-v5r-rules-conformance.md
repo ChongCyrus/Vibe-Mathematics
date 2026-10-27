@@ -6446,3 +6446,61 @@ F-22 与 F-23 都是机制缺陷（一处「成员读到的 hint 与另一个面
 ### §151.8 无实质残余：否
 
 run 49 的定向项（F-23/F-22/rulings/禁言/群聊）全部真机通过；但每轮都量到新的机制缺口（本轮 F-25、F-25b 两条并已修），且 8 条读面/写入面债仍在账上 ⇒ 收敛未到。
+
+
+## §152 真机跑 50（build ce5ec8f9，定向复验 F-25 / F-25b / F-26 / 状态板 / 禁言 / 代批）
+
+### §152.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `DRIVE exit=0`、`durationSec 1147`、根会话 `toolCalls 34`、`transcriptEvents 196` |
+| 账单 | `tokenTotal 8,602,962`（cap 20,000,000，`tokenCapHit:false`） |
+| 会话 | `SUMMARY: 4 session(s) in 1 file(s), 0 with RED checks`、`calls (34) vs results (34)` |
+| 产物 | `_oneoff/vm-slv/full-1027-112617.jsonl` 26,220,225 B / 55,762 行 |
+| 机器判据 | `NO_FENCE=120 UNKNOWN_FIELD=96 FIELD_NOT_APPLICABLE=82 BAD_JSON=130`；可见工具 95 |
+| 环境 | clone 已清、C 盘剩 10.51 GB；日志保全 `D:\_tmp\slv-phase5\slv-logs\…20261027-114603` |
+
+### §152.2 判决
+
+| # | 门 | 回执原文（摘） | 判 |
+| --- | --- | --- | --- |
+| 1 | F-25 闸门回读 | `subjectGate` 在「open 回执 / 封会前 summary / status / 关会后 summary」四处**逐字相同**（`allowed:true, proofBasis:"declaration-only", subjectGateMeans:"…cannot change it"`），`procedure.binding:"recommendation"` 也在 | ✅ |
+| 2 | F-25b 就绪度（负向） | 两卡 `ready:false` 且带 `readyWhy:"账本里现在 0 条 verified 行"`，顶层 `readyCount:0/verifiedReadable:true/verifiedClaimsSeen:0` | ✅（一半） |
+| 3 | F-25b 就绪度（正向） | `ready:true → readyOn/readyConclusion` 一支**未走到**：promote 两次 `VMU_STATE`（p=0.9 不是结论，行为正确） | 未验证 |
+| 4 | F-26 | 5 条拒绝全是 `ok:false + code`，无「ok:true 却带 refused」形状 | ✅ 未出现 |
+| 5 | 代批拒绝 | `decide{by:"r-1"}` ⇒ `VMU_HUMAN_DECIDER_ROLE`，message/hint 全英文、两条出路 | ✅ |
+| 6 | 禁言 | `mute` ⇒ `muted:["r-2"] + until + mutedMeans`；`status.muted:["r-2"]`；r-2 自己 say ⇒ `VMU_CHAT_MUTED`（带 until/reason） | ✅ |
+| 7 | 状态板（成员视角） | 四行都在（`来源`/`其中 0 条属于该成员`/摘录） | ✅ |
+
+### §152.3 本轮修掉的七条（F-28…F-34）
+
+1. **F-28（最重）关闭在别人的内核里读成「仍在开」**：close 发生在院士内核；所办内核的本地 live 副本没被清掉，`summary`/`status` 主字段 `state:"open"`（只有 `liveWhileArchived:true` 与 `archivedView` 能看出已关）。两处修：`kernel/meetings.js` 的 `restoreReload` 在采纳 archive 后**逐出本地 live 中已被归档的 id**（`evictedLiveWhileArchived` + 说明；会议 id 不可复用，故不会误逐合法重开的会）；`kernel/index.js` 新增 `meetingsReadsReadFresh`（`status/summary/meetingView/list/quorum` 先 `store.read('meetings')`，重入计数防止 reload 钩子递归）—— 与 run 47 chat 读面同一形状：**读之前先看盘**。
+2. **F-29 闸门替没量到的事实下结论**：`packs/v5r/verification-gates.js` 的 declared 分支 note 原写「Lean 作业未通过」，而那一次调用根本没有把 Lean/verified 证据交给闸。改成「本闸只核了卡上两个字段；这次调用没把 Lean 作业或 verified 轨证据交进来（ev.lean/ev.verified 未提供），所以 proofChecked:false、proofBasis:"declaration-only" —— **没核 ≠ 没通过**」；`DEBATE_SUBJECT_NO_PROOF` 拒句同样去掉预设结论。
+3. **F-30 关会回执不说结果**：`tools/meeting.js` 的 service close 在归档后**读回归档行**，回执补 `state`/`stateMeans`/`archived`/`archivedMeans`/`subjectGate`/`subjectGateMeans`（一次调用就够，不必第二次 `summary`）。
+4. **F-31 禁言读面只给名字**：`kernel/chat.js` 的 `status()` 新增 `mutedDetail:[{member,until,untilMeans,durationMs,reason,by,byMeans}]` 与 `mutedDetailMeans`（与 `VMU_CHAT_MUTED` 拒绝同一组事实），并给 `admins` 补 `adminsMeans`：声明的是**席位 token**、由 seat seam 在行为发生时解析。
+5. **F-32 工具名当作者**：`packs/v5r/tools.js` 两处 feedback 的 `by` 由 `str(args.member) || 'vibe_v5_feedback'` 改为 `|| null`（同工具一次写 `owner:"r-2"`、一次写 `owner:"vibe_v5_feedback"`，两个答案都不该有）。
+6. **F-33 摘录不说自己是摘录**：`kernel/turn/index.js` 的 `[当前小任务]` 摘录截断时写 `…（摘录；完整正文见记录 <id>）`。
+7. **F-34 pending 的 `decidedByMeans:null` 读成「字段缺失」**：`tools/human.js` 的 `approvalState` 在 pending 时明写「nobody has decided this request yet (state=pending), so there is no actor to name」，非 pending 无记录时说明状态。
+
+新测试 `tests/vmu-run50-readbacks.test.mjs` —— **32/0**，七组与上面七条一一对应（F-28 用两个内核同 root 真复现"A 关、B 读"；F-33 用真 `statusBoardReadings`/`renderStatusBoard`）。
+
+### §152.4 我的简报错（第 14 次同类）
+
+`vibe_v5_meeting {type:"debate"}` 需要主席**先有一轮**（`chairActRequiresTurn`），而 run 50 简报让院士"先开会再派一轮"；`vibe_v5_feedback` 的参数是 `op` 不是 `action`（run 48 已记过，这次仍写错一次）。
+
+### §152.5 门禁
+
+`GATE_SCOPE=vmu node tests/run-tests.mjs` 全量在两轮修红后：提交前最后一版 `TOTAL 523 PASS 523 FAIL 0 (suites 459 · probes 64)`；相邻套件逐条：`RUN50 READBACKS 32/0`、`RUN45 HUMAN DECIDE AUDIT 62/0`、`CHAT 79/0`、`RUN45 CHAT MUTE DURABLE 28/0`、`RUN47 CHAT READ FACE 14/0`、`RUN49 GATE REREAD 24/0`、`VERIFIED TRACK 72/0`、`RUN33 HUMAN GATE 62/0`、`RUN31 STATUS BOARD 58/0`、`MEETING REGISTRY 36/0`、`RULINGS 31/0`、`RUN48 CARD TEXT 35/0`、`MUTE AUTHOR 21/0`、`CLOSE TURNS 32/0`、`RUN35 READOUTS 26/0`、`RUN34 FINDINGS 26/0`、`MEETING INVITE 69/0`、`MEETING ID ARCHIVE 16/0`；`regen-all 16/16 in sync`、`preflight PASS`、`DOC LINT PASS`。
+
+### §152.6 无法验证 / 下一轮
+
+1. `ready:true → readyOn` 一支仍未走到（需要 p=1 的命题卡与辩论定论同时成立，run 50 的 p=0.9 被正确拒绝）。
+2. F-28 的修复只在测试里用「两个内核同 root」复现；**真机上"读之前先看盘"的效果**要 run 51 的 close→status 环节量。
+3. `subjectGate` 的 `proofChecked:false` 是否会在**未来**接上 Lean/verified 证据（本轮的修法只保证"没接到就说没接到"）。
+4. 状态板 `[总任务]` 在成员视角被截断（run 49/50 都看到），本轮未动。
+5. `close` 回执的 `turns` 已改名 `speeches`+`TURNS_MEANS`（run 48 lane），本轮未复验数值本身。
+
+### §152.7 无实质残余：否
+
+七条都是"读面与事实不一致"这一族（读得慢、读得少、读得假、读得不说）。机制侧已补"读之前先看盘""回执说结果""没核就说没核"，但同一族仍会在别的面出现（例如 `[总任务]` 截断、`speeches` 口径），所以收敛未到。
