@@ -935,8 +935,88 @@ export function createLeanFace(opts) {
   // 由此"可复用"与"内容同一性"同时成立，且不存在两份会各自漂移的副本。
   const archived = new Map()
 
+  // ★ LIVE RUN 60: `archived` was a bare Map — a library that outlives no kernel. A member archived a compiled lemma,
+  // went looking for where it went (`state.json` had no such key), and reported the archive as unpersisted: exactly the
+  // shape of an unmarked in-memory record that READS as durable. The rows now travel through the SAME durable port the
+  // other projections use (`store.read`/`store.write` on the `leanlibrary` key): folded in before a read, merged on
+  // write (never clobbering a name another kernel added), and the receipt says WHICH persistence answered instead of
+  // leaving the reader to infer it.
+  const SHARED_LIBRARY_KEY = 'leanlibrary'
+  const shared = { store: null, attached: false, pulls: 0, refused: 0, written: 0, lastWhy: null, signature: null }
+  const sharedRows = () => [...archived.values()].map((e) => ({ name: e.name, kind: e.kind, file: e.file, hash: e.hash, statement: e.statement, at: e.at }))
+  const sharedSignature = (rows) => rows.map((r) => [r.name, r.kind, r.file, r.hash, r.statement, r.at].join('|')).sort().join('\n')
+  function attachStore(store) {
+    if (!store || typeof store.read !== 'function' || typeof store.write !== 'function') {
+      return { ok: false, reason: 'not-a-store', hint: 'attachStore needs the durable port (store.read/store.write); the archive keeps answering from this process alone and says so', enforced: [], fired: [] }
+    }
+    shared.store = store
+    shared.attached = true
+    shared.signature = null
+    return { ok: true, reason: null, attached: true, key: SHARED_LIBRARY_KEY, enforced: [], fired: [] }
+  }
+  function readSharedRows(why) {
+    if (!shared.store) return { synced: false, why: 'no-store', op: why }
+    let raw
+    try { raw = shared.store.read(SHARED_LIBRARY_KEY) } catch (e) {
+      shared.refused += 1
+      shared.lastWhy = String((e && e.code) || 'VMU_STORE_FAILED')
+      return { synced: false, why: 'store-unavailable', op: why }
+    }
+    if (raw === undefined || raw === null) raw = []
+    const rows = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.entries) ? raw.entries : null)
+    if (!rows) { shared.refused += 1; shared.lastWhy = 'not-a-library'; return { synced: false, why: 'not-a-library', op: why } }
+    shared.pulls += 1
+    const signature = sharedSignature(rows.filter((r) => r && typeof r === 'object' && r.name))
+    if (signature === shared.signature) return { synced: false, why: 'unchanged', op: why }
+    shared.signature = signature
+    let added = 0
+    for (const r of rows) {
+      if (!r || typeof r !== 'object') continue
+      const name = String(r.name || '').trim()
+      if (!name || archived.has(name)) continue            // never overwrite a name this process already answers for
+      archived.set(name, { name, kind: String(r.kind || 'def'), file: String(r.file || ''), statement: String(r.statement || ''),
+        hash: String(r.hash || ''), at: typeof r.at === 'number' ? r.at : clock(), adopted: true })
+      added += 1
+    }
+    return { synced: added > 0, why: added > 0 ? 'newer-on-disk' : 'nothing-new', op: why, added }
+  }
+  function writeSharedRows() {
+    if (!shared.store) return { ok: false, why: 'no-store' }
+    let raw = []
+    try { raw = shared.store.read(SHARED_LIBRARY_KEY) } catch (e) {
+      shared.refused += 1
+      shared.lastWhy = String((e && e.code) || 'VMU_STORE_FAILED')
+      return { ok: false, why: 'store-unavailable' }
+    }
+    const rows = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.entries) ? raw.entries : [])
+    const byName = new Map()
+    for (const r of rows) if (r && typeof r === 'object' && r.name) byName.set(String(r.name), r)
+    for (const r of sharedRows()) if (!byName.has(r.name)) byName.set(r.name, r)
+    const merged = [...byName.values()]
+    try {
+      const out = shared.store.write(SHARED_LIBRARY_KEY, merged)
+      if (out && typeof out.then === 'function') out.then(() => { shared.written += 1 }, () => { shared.refused += 1 })
+      else shared.written += 1
+    } catch (e) {
+      shared.refused += 1
+      shared.lastWhy = String((e && e.code) || 'VMU_STORE_FAILED')
+      return { ok: false, why: 'write-refused' }
+    }
+    shared.signature = sharedSignature(merged)
+    return { ok: true, count: merged.length }
+  }
+  const persistence = () => ({
+    shared: shared.attached === true,
+    key: SHARED_LIBRARY_KEY,
+    pulls: shared.pulls, written: shared.written, refused: shared.refused,
+    means: shared.attached
+      ? 'this library is durable through the store key "leanlibrary": a kernel that starts later reads the same rows back'
+      : 'no durable port is attached: this library lives in THIS kernel process only, and nothing on disk answers for it',
+  })
+
   const archive = async (a) => {
     const args = a || {}
+    readSharedRows('archive')
     const name = String(args.name || '').trim()
     const kind = String(args.kind || 'def').trim()
     const file = String(args.file || '').trim()
@@ -954,12 +1034,15 @@ export function createLeanFace(opts) {
     const entry = { name, kind, file, statement, hash, at: clock() }
     archived.set(name, entry)
     note('archive:' + name, kind)
-    return { ok: true, name, kind, file, hash, statement, at: entry.at, count: archived.size }
+    const sharedWrite = writeSharedRows()
+    return { ok: true, name, kind, file, hash, statement, at: entry.at, count: archived.size,
+      persistence: persistence(), persisted: sharedWrite.ok === true }
   }
 
   const read = async (a) => {
     const args = a || {}
     const name = String(args.name || '').trim()
+    readSharedRows('read')
     const e = archived.get(name)
     if (!e) return refuse('VMU_LEAN_ARCHIVE_NOT_FOUND', '归档里没有 ' + name, '先用 lib() 列出条目')
     const now = await readHash(e.file)
@@ -981,15 +1064,20 @@ export function createLeanFace(opts) {
     }
   }
 
-  const lib = () => ({
-    ok: true,
-    count: archived.size,
-    kinds: [...new Set([...archived.values()].map((e) => e.kind))].sort(),
-    entries: [...archived.values()].map((e) => ({ name: e.name, kind: e.kind, file: e.file, hash: e.hash, statement: e.statement, at: e.at })),
-  })
+  const lib = (a) => {
+    readSharedRows('lib')
+    return {
+      ok: true,
+      count: archived.size,
+      kinds: [...new Set([...archived.values()].map((e) => e.kind))].sort(),
+      entries: [...archived.values()].map((e) => ({ name: e.name, kind: e.kind, file: e.file, hash: e.hash, statement: e.statement, at: e.at })),
+      persistence: persistence(),
+    }
+  }
 
   return {
     submit, status, list, settle, archive, read, lib, keysUsed, policy, commandFor,
+    attachStore, persistence,
     jobsMaxParallel: () => cfg().leanJobsMaxParallel,
     // ROUND 4 (target 5 B): durable jobs; ROUND 6: jobId-level cancel
     recover, listMirrors, admission, dispose, cancel,

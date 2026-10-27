@@ -6983,3 +6983,45 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 - F-41c（采纳裁决的本地审计行）、F-43 的 `writer.agentId` 仍缺席。
 
 ### §162.7 无实质残余：否（残余 F-41c、`writer.agentId`、F-13、围栏噪声逐条归属，以及本轮新增已修三项的下一轮复验）
+
+## §163 真机跑 60（复验 Lean 面三处修复，露出「库活在进程里」）
+
+### §163.1 读数
+- `DRIVE exit=0`、`durationSec 255`、根会话 `toolCalls 4`、`transcriptEvents 41`、`tokenTotal 1,279,195`（cap 12,000,000，未触顶）、2 个会话、`SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks`；`calls (4) vs results (4)`。
+- 快照 `_oneoff/vm-slv/full-1027-180146.jsonl` = 6,142,235 B / 13,795 行；围栏计数 `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=8 BAD_JSON=12`；日志保全戳 `20261027-180643`；`cleanup: clone_gone=True  port_listening=False  C_free_GB=10.34`。
+
+### §163.2 判决
+| # | 验的是什么 | 读数 | 判 |
+| --- | --- | --- | --- |
+| 1 | F-49a 别名不能替正名作证 | root `vibe_v5_lean_run {file:"Formal/round60.lean", target:"p-1"}`（无 statement）⇒ `ok:false`、顶层 `code`/`message`/`hint`：`lean_run got target:"p-1" but no statement`，hint 明说 target 命名的是对象、回执与审计针对命题；连 file 都没有时先拒 `lean_run needs file` | ✅ |
+| 2 | F-49b 库记得命题原文 | r-1 `lean_archive {kind:"lemma", name:"add_self", file:"Formal/p60/add_self.lean", statement:"∀ n : Nat, n + n = 2 * n"}` ⇒ `archived.statement` 为原文；随后 `lean_lib {}` ⇒ `count:1`、条目 `statement` 为原文；`lean_read {name:"add_self"}` ⇒ 卡片 `statement` 为原文 | ✅ |
+| 3 | F-49c `hashUnchanged` 自带含义 | `lean_job {jobId:"lean-3"}` ⇒ `state:"settled"`、`exitCode:0`、`passed:true`、`hashUnchanged:true`、`hashUnchangedMeans:"the file content was the same before and after this compile (it is NOT a cache flag; dedupedOf answers \"reused a passed compile\")"`、`dedupedOf:"lean-2"` | ✅ |
+| 4 | 异步结算 | `lean_run` 只回 `{ok:true, job:{ok:true, id:"lean-1", state:"queued"}}`（无顶层 jobId）；轮询 3 次 `lean_job` 后 `lean-2`/`lean-3` 都 `settled`，`lean-3` 以 `dedupedOf:"lean-2"` 复用已通过的编译 | ✅ |
+| 5 | 库的耐久度（本轮新缺陷 F-50） | 成员归档后去 `VibeMath/vmu/state.json` 找 `add_self`：`glob VibeMath/**` 无该键、`grep state.json` 无、`read offset:110 limit:80` 也无；它自己的 `lib()` 回 `count:1`，而这是同一进程 | ❌ |
+| 6 | 简报与回执形状 | root 第 2 步按简报抄 `job.code/job.message/job.hint`，而拒收回执**没有** `job` 字段（只有顶层 `code/message/hint`），root 如实回「没有该字段」 | ⚠️ 简报错 |
+
+### §163.3 缺陷与修法
+**F-50（新，真缺陷）：Lean 归档是 `Map`，`leanlibrary` 键不在白名单，库活不过一个内核。**
+- 真因：`vibe-math-vmu/kernel/lean.js` 的归档状态是 `const archived = new Map()`；`vibe-math-vmu/kernel/store.js` 的 `PUBLIC_KEYS` 没有 `leanlibrary`，因此既没有写入者也没有读取者。成员按简报归档后无法在任何持久面找到它，自己的读面又因为同进程而「正常」——这正好是「两个都真的读数互相矛盾」的形状：进程内的 `lib()` 说 1、磁盘说没有。
+- 修法：①`kernel/lean.js` 新增 `SHARED_LIBRARY_KEY = 'leanlibrary'`、`attachStore(store)`（鸭子类型，缺 `read`/`write` 用具名 `not-a-store` 拒）、`readSharedRows(why)`（读前折入，永不覆盖本地名字）、`writeSharedRows()`（读当前值 → 按 name 合并 → 写回；promise 计数 `written`/`refused`）、`persistence()`（`shared`/`key`/`pulls`/`written`/`refused`/`means`）；`archive()` 写后回执带 `persisted` 与 `persistence`，`read()`/`lib()` 读前折入，`lib()` 回执带 `persistence`。②`kernel/index.js` 在 `records.attachStore(recordsStore)` 旁 `lean.attachStore(recordsStore)`。③`kernel/store.js` 的 `PUBLIC_KEYS` 增 `leanlibrary`（行数组、`[]` 缺省），`docs/03 §6` 同行登记写入者/读取者/降级语义。
+- 测试：`tests/vmu-run60-lean-library-durable.test.mjs` **21/0**（无接缝时 `shared:false` 且 means 说「本进程」；`store.read('leanlibrary')` 不抛即证明键已声明——这条放在最前，因为 undeclared key 会让整个修法在生产路径上变成空操作；第二个 face 读回第一个 face 的条目与 statement；合并后两名字都在、旧行 statement 不被覆盖；重复名仍 `VMU_LEAN_ARCHIVE_NAME_TAKEN`；`attachStore({read})` 具名拒）。
+- 相邻：`vmu-lean 21/0`、`vmu-run58-lean-face-contract 7/0`、`vmu-run59-lean-statement-alias 8/0`、`vmu-run56-projection-writer 44/0`、`vmu-kernel 260/0`、`vmu-store-coherence 17/0`。
+- 已知残余（记为债，不改）：失败作业的 `hashUnchanged` 字段缺席、`hashUnchangedMeans` 为 `null`——「没有布尔可解释」与「解释是未知」在回执上同形，下一轮若成员再问再修。
+
+### §163.4 门禁
+- `tests/vmu-run60-lean-library-durable.test.mjs` 21/0；相邻套件见 §163.3；`node scripts/check-docs.mjs` ⇒ `DOC LINT: PASS`。
+- 派生计数与全量 T1 在本节写入后重跑（`update-doc-counts --write`、`generate-surface-index --write`、`regen-all --write`、`GATE_SCOPE=vmu node tests/run-tests.mjs`）。
+
+### §163.5 简报三错
+1. 让 root 抄 `job.code/job.message/job.hint` —— 具名拒绝走的是顶层 `code/message/hint`（没有 `job`），root 只好回「没有该字段」；验收字段必须按被验的那一层的真实形状写。
+2. 让成员「不做岗位工作」，却没说「库是否持久」是它可以查的事实 —— 它花了十几次调用去 `glob`/`grep` DSH 安装包找 `lean_archive` 实现。验收任务要写清「这件事用哪个读面回答」，否则成员会去翻宿主的源码树。
+3. 第 (3) 步让成员「最多重试 3 次」轮询 `lean_job`，没说第一次 `lean_lib` 在归档之前调用会回 `count:0`（时间顺序），成员间歇把它误读成「库坏了」。
+
+### §163.6 无法验证
+1. 真机单进程内「另一个内核读回」：本轮两个 face 同 root 的读回只在单测里验过，真机没有第二个内核在归档后启动。
+2. 进程重启后的读回（`state.json` 白名单键 + `[]` 缺省）未在真机验证。
+3. 围栏噪声（`NO_FENCE=12` 等）逐条归属仍未做。
+4. 失败作业 `hashUnchanged` 缺席的语义是否会让成员误判（§163.3 记为债）。
+
+### §163.7 无实质残余
+否：F-50 已修但尚未真机复验（run 61 的验收点），加上 §163.6 四项。

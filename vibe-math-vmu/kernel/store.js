@@ -109,6 +109,13 @@ export const PUBLIC_KEYS = Object.freeze([
   // which now answers true for "THIS instance has a turn" OR "the fold records one"). The whitelist and docs/03 §6 move
   // together (the per-key table there is the Lead's edit), exactly as the notices above require.
   'turns',
+  // ROUND 60 / F-50 (live run 60): `leanlibrary` - the Lean ARCHIVE (name → {kind, file, hash, statement, at}). It used to
+  // be a bare `Map` inside `kernel/lean.js`, so a lemma the office archived was visible to the kernel that archived it and
+  // to nobody else, and nothing on disk answered for it. A member went looking in `state.json` for the entry it had just
+  // archived and found no such key. Writer: `kernel/lean.js` (`archive()`, merged against the current fold so two kernels
+  // cannot clobber each other's names). Readers: the same face before `lib()`/`read()`. Rows are `[]`-seeded like the other
+  // row-array keys. The whitelist and docs/03 §6 move together.
+  'leanlibrary',
 ])
 
 /** Named refusal (codes are registered in docs/03 §8). */

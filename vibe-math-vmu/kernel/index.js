@@ -2324,6 +2324,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // could not read the members' cards at all. `records.attachStore` lets the projection re-read by stamp before a read;
   // the seam is duck-typed so a records face without it (tests that build one by hand) is untouched.
   if (recordsStore && typeof records.attachStore === 'function') records.attachStore(recordsStore)
+  // ★ LIVE RUN 60 (F-50): the Lean archive was a bare Map inside the face, so a lemma the office archived was gone for
+  // any kernel that started later — and nothing on disk said where it had gone. The face now takes the SAME durable port:
+  // it folds `leanlibrary` in before a read and merges on write, and its `persistence()` says which answer applies.
+  if (lean && recordsStore && typeof lean.attachStore === 'function') lean.attachStore(recordsStore)
   const recordTracks = (() => {
     const t = settings && settings['vmu.records.tracks']
     return Array.isArray(t) && t.length > 0 ? t.slice() : null

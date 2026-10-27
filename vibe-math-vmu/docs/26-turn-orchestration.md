@@ -1354,3 +1354,22 @@ run 54 与 run 55 两次真机都做了同一件事：不去问工具，直接�
 2. **库找不到命题，就等于没归档。** `vibe_v5_lean_archive` 根本没有 `statement` 参数，只从 `target` 别名取；成员把命题原文写进 `note` 归档，`lean_lib` 读回来是 `statement:""`——库能证明「有一个文件、一个哈希」，却答不出「它形式化的是哪句话」。修法：`statement` 成为一等参数，条目记原文，`lib` 能读回。判据：**归档面要能回答"这个文件证明了什么"，答不出来的条目只是一条文件清单。**
 3. **布尔的名字不等于布尔的意思。** 成员把 `hashUnchanged: true` 读成"命中缓存"，还据此猜测重跑会被去重。它的真义是「这次编译前后文件内容没变」（真假都只关乎这一次编译），去重问的是 `dedupedOf`。修法：在作业视图里给这个布尔配一句 `hashUnchangedMeans`，并在句子里**否认**读者实际做出的那个误读（"NOT a cache flag"）并指向正确字段。判据：**一个必须靠猜才能看懂其含义的布尔，即使值是对的，也是读面缺陷；把"它不是什么"写出来比只写"它是什么"更省读者的弯路。**
 4. **异步面的拒收回执，要在简报里被要求去取。** 本轮简报让 root 提交后立刻抄 `code/message/hint`，而 `lean_run` 只负责**入队**（`ok:true, id:"lean-1", state:"queued"`），真正的拒绝在 `lean_job` 的结算里。root 如实写了「没有该字段」——这是**简报**的错：验一个两步面，就要在简报里写第二步。判据：**凡是"提交/结算"分离的面，验收步骤必须成对出现；否则读者看到的永远是"还没结算"而不是"是否成立"。**
+
+## ROUND 60 — 一个「库」如果活不过内核，就必须自己说出来
+
+真机原文（run 60，成员 r-1 的进度记录与 root 的读数）：成员按简报归档了一条已编译的引理
+（`vibe_v5_lean_archive { kind:"lemma", name:"add_self", file:"Formal/p60/add_self.lean", statement:"∀ n, n + n = 2 * n" }`），
+回执 `archived.statement` 正确；**随后它去找这条记录去了哪里**——`glob VibeMath/**`、`grep VibeMath/vmu/state.json`、
+`read state.json offset:110 limit:80`，全都没有 `add_self`，于是它在进度里写下「库可能只活在进程内存里」。
+它是对的：`kernel/lean.js` 的归档是 `const archived = new Map()`，一个进程一个库，`leanlibrary` 这个键在
+`store.PUBLIC_KEYS` 里根本不存在。
+
+判据一 · **名词的耐久度由实现兑现，或由回执说清**。`archive()` 是「登记进库」，不是「缓存进内存」；一个 Map 撑起的库
+读起来像耐久账本，读者只能靠翻实现才知道真相——这正是「两个都真的读数互相矛盾」的源头。
+判据二 · **白名单是一份契约，而且单元测试不覆盖它**。只碰 face 本身的测试永远绿（它就在同一个进程里），
+新键必须同时进 `store.PUBLIC_KEYS` 与 `docs/03 §6`，否则生产路径上写不进去、读出来是 `VMU_INVALID_ARGUMENT`。
+本轮的套件因此**第一条断言就是** `store.read('leanlibrary')` 不抛：一个 undeclared key 会让整个修法在生产路径上变成空操作。
+判据三 · **共享写要合并**。合并不是「先读再整份写」就算：读到的当前值里的名字一个都不能丢，本地名字一个都不能被别人的旧快照覆盖，
+按 name 合并、绝不覆盖（重复名仍走 `VMU_LEAN_ARCHIVE_NAME_TAKEN` 具名拒）。
+判据四 · **缺席要有句子**。没有耐久接缝时 `persistence().shared === false` 且 `means` 明说「只在本进程内」；
+这比让读者去猜「为什么重启后库空了」便宜得多。
