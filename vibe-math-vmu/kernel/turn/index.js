@@ -2808,6 +2808,15 @@ export function createTurnOrchestrator({
       //     existing refusal diagnostics use.
       const REPLY_EXCERPT_MAX = 2000
       const rawText = String(raw === undefined || raw === null ? '' : raw)
+      // ★ ROUND 67 / F-57 (live run 66): a bound that is not DECLARED is a silent cut. The office read a 2,679-character
+      // reply, saw the excerpt end mid-object, and had to infer both that it was cut and that the rest existed — while
+      // `replyLength` alone does not say which. So the bound declares itself (`replyTruncated`, `replyLimitChars`) and,
+      // when it cuts, names where the remainder lives: this kernel keeps only the excerpt, the rest stays with the
+      // member's own session (`delivery.childId` / `lastAttribution.memberSessions` on the status face).
+      const replyTruncated = rawText.length > REPLY_EXCERPT_MAX
+      const replyExcerptMeans = replyTruncated
+        ? 'the reply as the member wrote it, CUT at replyLimitChars (' + REPLY_EXCERPT_MAX + ') — replyTruncated is true and replyLength is the FULL length. This kernel does not keep the remainder: it stays in that member\'s own session (receipt `delivery.childId`, also `vibe_vmu_turn {op:"status"}` → lastAttribution.memberSessions), which this kernel does not copy'
+        : 'the reply as the member wrote it, complete (replyTruncated is false, so replyLength equals the excerpt length); `fields` below is what the framework could use from it, so a field missing here is visible as prose instead of silently absent'
       let parsed
       try {
         parsed = replyFromChannels(raw, attributedTo || turn.member)
@@ -2822,6 +2831,8 @@ export function createTurnOrchestrator({
             message: e && e.message ? String(e.message).slice(0, 400) : String(e),
             replyLength: rawText.length,
             replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX),
+            replyTruncated,
+            replyLimitChars: REPLY_EXCERPT_MAX,
             sideEffectsUnverified: true,
             means: 'the member ANSWERED (this text is what it wrote) and the reply could not be parsed into the declared shape, so the REPLY was not applied. This is NOT a silent member and NOT a delivery failure — and it is NOT a claim that nothing happened: a tool the child session ran is not visible from this kernel (read the record tracks to settle it)' }
         } catch { /* diagnostics must not replace the refusal */ }
@@ -2845,7 +2856,7 @@ export function createTurnOrchestrator({
       }
       return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
         replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX), replyLength: rawText.length,
-        replyExcerptMeans: 'the reply as the member wrote it, bounded (a receipt is not a log file); `fields` below is what the framework could use from it, so a field missing here is visible as prose instead of silently absent', ...tail }
+        replyTruncated, replyLimitChars: REPLY_EXCERPT_MAX, replyExcerptMeans, ...tail }
     } finally {
       inFlightTurn = null
     }
@@ -3608,6 +3619,12 @@ export function createTurnOrchestrator({
         // and the run-16 delivery-path omission: the answer existed one layer down and did not travel.
         replyExcerpt: typeof r.replyExcerpt === 'string' ? r.replyExcerpt : null,
         replyLength: Number.isFinite(Number(r.replyLength)) ? Number(r.replyLength) : null,
+        // ★ ROUND 67 / F-57: the two fields that DECLARE the bound must travel with it. This whitelist is exactly where
+        // they died the first time — the orchestrator returned them and the step receipt rebuilt itself from a fixed key
+        // list, so the live reading would have looked unchanged (the "answer existed one layer down and did not travel"
+        // family this same list already has two comments about).
+        replyTruncated: r.replyTruncated === true,
+        replyLimitChars: Number.isFinite(Number(r.replyLimitChars)) ? Number(r.replyLimitChars) : null,
         replyExcerptMeans: typeof r.replyExcerptMeans === 'string' ? r.replyExcerptMeans : null,
         instructionDelivered: r.instructionDelivered === true, turn: r.turn.id,
         toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,

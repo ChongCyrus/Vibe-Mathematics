@@ -158,7 +158,11 @@ console.log('\n=== 4. A PARSED REPLY CARRIES ITS EXCERPT ON THE RECEIPT ===')
     '★★★ ④-3 AND the office can read the sentence the member actually wrote', s && s.receipt && s.receipt.replyExcerpt)
   ok(s && s.receipt && s.receipt.replyLength >= said.length && s.receipt.replyExcerpt.length <= 2000,
     '④-4 the excerpt is bounded, the length is not', s && s.receipt && { len: s.receipt.replyLength })
-  ok(s && s.receipt && typeof s.receipt.replyExcerptMeans === 'string' && /bounded/.test(s.receipt.replyExcerptMeans),
+  // ★ ROUND 67 / F-57: the sentence no longer says "bounded" in the abstract — a bound that is not declared is a silent
+  // cut (live run 66 read a 2,679-character reply and had to notice the cut by eye). It now says whether THIS text is
+  // the whole reply (`replyTruncated` false here) and, when it is not, names where the remainder lives. Pin the MEANING,
+  // not one wording.
+  ok(s && s.receipt && typeof s.receipt.replyExcerptMeans === 'string' && /complete|CUT at/.test(s.receipt.replyExcerptMeans),
     '★ ④-5 and a sentence says what the excerpt is and is not (so it is not mistaken for a log)', s && s.receipt && s.receipt.replyExcerptMeans)
   const st = await t.status()
   ok(!st.counts.replyParseFailedLast || st.counts.replyParseFailed === 0,

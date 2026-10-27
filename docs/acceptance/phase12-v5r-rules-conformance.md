@@ -7303,3 +7303,136 @@ F-39 已修并有单测，但「默认面归属可读」只有真机第 2 步按
 ### §168.8 无实质残余
 
 否。残余：上述三项无法验证 + `closedByVerified` 未覆盖「同一份文档里的三处教学」。
+
+## §169 真机跑 66（复验 dedupedOf 复用分支：通过；pending 未观测到，属测量窗口）
+
+### §169.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| build | `853ed7bf` |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | `durationSec 254` |
+| 根会话调用 | `toolCalls 14`、`transcriptEvents 92`、`calls (14) vs results (14)` |
+| token | `tokenTotal 1,353,079`（cap 12,000,000，`tokenCapHit:false`） |
+| 会话 | 2 个（所办 + 成员 r-1） |
+| RED | `SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks` |
+| 快照 | `_oneoff/vm-slv/full-1027-201844.jsonl`，4,899,650 B / 10,697 行 |
+| 围栏计数 | `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=8 BAD_JSON=12` |
+| 保全戳 | `20261027-202350` |
+| 清理 | `clone_gone=True port_listening=False C_free_GB=10.24` |
+
+### §169.2 判决
+
+| # | 项 | 结果 | 回执原文（节选） |
+| --- | --- | --- | --- |
+| 1 | `dedupedOf` 复用分支 | ✅ | `lean-1`（首次）：`startedAt:1793103591136,endedAt:1793103592347,hadHandle:true,dedupedOf:null`；`lean-2`（同文件同 statement 再提交）：`startedAt:1793103602316,endedAt:1793103602323,hadHandle:false,dedupedOf:"lean-1"`，`hashUnchanged:true`/`"measured"`/`null` |
+| 2 | `hashUnchangedMeans` 与 `dedupedOf` 互相印证 | ✅ | `"the file content was the same before and after this compile (it is NOT a cache flag; dedupedOf answers \"reused a passed compile\")"`，而 `dedupedOf:"lean-1"` 正指向首次作业 |
+| 3 | `pending` 三值 | ⚠️ 未观测 | 所办连查两次均落在 settle 之后（编译约 1.06–1.21 s，工具往返 1–2 s）；所办结论原文「没出现」，并说明「无法读 checkout（asar）核实该分支是否存在」 |
+| 4 | F-56 回归（平铺回执） | ✅ | `lean_job` 仍是 `{ok, job:{…}, tool}` 单层；`lean_run` 顶层无 `job` |
+| 5 | 读不到文件的分支 | ✅ | `lean-3`：`"hashUnchanged":null,"hashUnchangedState":"not-measured","hashUnchangedReason":"VMU_LEAN_FILE_UNREADABLE"` |
+| 6 | 成员回执截断的声明 | ✅ | 本轮被截断时所办按简报写了「已截断」并附 `replyExcerptMeans` 原文（上一轮补的规则生效） |
+
+### §169.3 结论
+
+- **无新的机制缺陷**（连续第二轮 0 红 + 无新缺陷）。
+- `pending` 未被观测到是**测量窗口**问题，不是字段缺失：编译快于工具往返时，单次查询必然落在 settle 之后。判据记为「能观测 ≠ 存在」；复验类简报不得把中间态写成硬验收。
+
+### §169.4 门禁
+
+- 本轮无代码改动，仅文档：`node scripts/check-docs.mjs` `DOC LINT: PASS`；`node scripts/regen-all.mjs --check` 16/16 in sync；`node scripts/preflight.mjs` PASS。
+
+### §169.5 三处简报错
+
+1. 第 2 步写「**立刻**用 A 调 `lean_job`」——真机上「立刻」不可能早于编译结束；应写成「提交后立刻查；若已 settle 就写『没落在中间态』并附 `job.state`」。
+2. 第 3(b) 步要求「同文件同 statement 再提交」正确，但没有说明复用作业的 `hadHandle` 会是 `false`——这是复用的第二个可核字段，漏了。
+3. 第 5 步的「若被截断就写已截断」生效了，但简报没要求在截断时附**成员原文长度**（`replyLength`），读者无法判断缺了多少。
+
+### §169.6 记账
+
+- 本轮无代码改动、无新套件；产物是文档两段（`vibe-math-vmu/docs/26-turn-orchestration.md` 的 `## ROUND 66` 与本节）。
+
+### §169.7 无法验证
+
+- `pending` 中间态（两轮均未在工具往返内观测到；成员自述见过一次）。
+- `terminated`（超时/终止）作业的 `hashUnchangedState`。
+- 跨进程重启后的 `leanlibrary` 读回。
+
+### §169.8 无实质残余
+
+否。残余同上三项。
+
+## §170 真机跑 66（F-56 结清；回复摘录的截断没有声明）
+
+§170.1 读数。`DRIVE exit=0`、`durationSec 254`、根 `toolCalls 14`、`transcriptEvents 92`、`tokenTotal 1,353,079`
+（cap 12M、`tokenCapHit:false`）、2 会话、`0 with RED`；jsonl `_oneoff/vm-slv/full-1027-201844.jsonl` 4,899,650 B /
+10,697 行；保全戳 `20261027-202350`；`clone_gone=True C_free_GB=10.24`。
+
+§170.2 判决表。
+
+| # | 项 | 结果 |
+| --- | --- | --- |
+| 1 | F-56 平铺（`lean_run` 顶层 `id`，无 `job` 封套） | ✅ 顶层键 `ok id state jobScope jobScopeMeans tool unapplied note receiptMeta` |
+| 2 | F-56 平铺（`lean_job {jobId}` 单层 `job`） | ✅ 回执 `{ok, job:{…}, tool}`，字段在 `job` 直接可读 |
+| 3 | F-56 平铺（`lean_job {}` 的 `jobs` 是行数组） | ✅ `jobs` 为数组、每行是记录 |
+| 4 | F-55 三值（缺文件作业） | ✅ `hashUnchanged:null`、`hashUnchangedState:"not-measured"`、`hashUnchangedReason:"VMU_LEAN_FILE_UNREADABLE"` |
+| 5 | `dedupedOf` 复用分支 | ✅ 同文件同 statement 再提交 ⇒ `dedupedOf:"lean-1"`、`hadHandle:false`、7ms |
+| 6 | 作业号跨席位同名（`jobScope`） | ✅ 成员自报的 `lean-1` 是它自己内核的号，`jobScope` 已声明该事实 |
+| 7 | 回复摘录的边界 | ❌ 成员回 2,679 字符，回执只给 2,000 字摘录与 `replyLength`，**没有声明“被截断”也没有说全文在哪**（F-57） |
+
+§170.3 F-57 与修法。`vibe-math-vmu/kernel/turn/index.js`：新增 `replyTruncated`（`rawText.length > 2000`）与
+`replyLimitChars`，`replyExcerptMeans` 分两支（截断支点名“CUT at replyLimitChars”、全文长度、以及全文住在成员自己的会话
+`delivery.childId`；完整支明说 `replyTruncated:false`）；解析失败的诊断（`counts.replyParseFailedLast`）同带两字段；
+★ step 回执的白名单（同一文件里“答案在一层之下没有旅行上来”的老位置）也要收这两个字段——第一版只改编排器，
+回执看起来没变化，被 `tests/vmu-run66-reply-bound.test.mjs` 抓住。新套件 **18/0**（长/短/解析失败三分支 + 字段仍到达）。
+
+§170.4 门禁。相邻套件：`vmu-run35-readouts` **26/0**（④-5 的措辞改钉含义）、`vmu-run39-attribution` 19/0、
+`vmu-run57-turn-attribution` 20/0、`vmu-run47-chat-read-face` 14/0；全量 `TOTAL 541 PASS 541 FAIL 0`。
+
+§170.5 简报错（本轮记三条）。①让所办去抓 `pending` 中间态——`lean_job` 的读发生在编译结算之后，该值在该部署里实际不可达，
+简报把一个时序当成了字段；②把 `vibe_v5_lean_job` 的列表形写成 `{}`（正确，但没说明它和 `{jobId}` 是两个形状）；
+③让所办抄“成员的整段原文”，而回执本来就只带摘录（这正是本轮缺陷，但简报应先声明这一点，否则所办会把设计当异常）。
+
+§170.6 无法验证。`pending` 值本身是否可达（时序窗口）；`hashUnchangedState` 在上游编译器极慢时的表现；成员侧
+`vibe_vmu_tool_help` 的席位面；`jobs` 列表的截断计数（本轮未触发上限）。
+
+§170.7 无实质残余：**否**。遗留：F-57 的“全文可取”仍是语义指针（内核不复制全文，只能在成员会话里读），已在
+docs/26 ROUND 67 判据 2 写明。
+
+## §171 真机跑 67（广度复验：记录 / 任务 / 会议 / 归属 / 成员回合）
+
+§171.1 读数。`DRIVE exit=0`、`durationSec 361`、根 `toolCalls 21`、`transcriptEvents 115`、`tokenTotal 1,924,276`
+（cap 12M、`tokenCapHit:false`）、3 会话、`SUMMARY: 3 session(s) in 1 file(s), 0 with RED checks`；jsonl
+`_oneoff/vm-slv/full-1027-202822.jsonl` 6,054,560 B / 12,007 行；围栏计数 `NO_FENCE=24 UNKNOWN_FIELD=16
+FIELD_NOT_APPLICABLE=20 BAD_JSON=24`；保全戳 `20261027-203526`；`clone_gone=True port_listening=False C_free_GB=10.24`。
+
+§171.2 判决表（广度轮：每一条链路各走一次）。
+
+| # | 链路 | 结果 |
+| --- | --- | --- |
+| 1 | `vibe_v5_start` | ✅ `hired:["r-acad","r-1","r-2"]` |
+| 2 | 记录面写卡（`record_proposition {p:1}`） | ✅ 具名拒 `VMU_PACK_V5R_P1_NEEDS_DEBATE`（p=1 需要裁决证据），改写 `p:0.99` 后成卡 |
+| 3 | 记录面读卡（root `read_library {id:"rec-1"}`） | ⚠️ 回执形状是 `card.*`（`card.id`/`card.owner`），且 `card.owner` 为 `null` |
+| 4 | 任务面（`assign` + `task_list`） | ✅ 任务建出、可列；`assign` 需要 `why`/`acceptance`（简报首版漏了，checker 抓住） |
+| 5 | 会议面（`convene` → `status` → `close`） | ⚠️ 需要先给主席一轮（`VMU_CHAIR_ACT_NOT_DELEGATED`），`kind` 与 `title` 都要给；开后由 `vibe_vmu_meeting {action:"status"/"close", id:"m2"}` 收束，回执 `state:"closed"`、`archived:true` |
+| 6 | 归属小门（`vibe_vmu_status {detail:"provenance"}`） | ✅ 可读（`projections.onDisk`/`writtenBy`/`absent`） |
+| 7 | 成员回合（M1 只做一次卡片回读） | ⚠️ 成员的读回执与所办的读回执**互相矛盾**（见 §171.3） |
+
+§171.3 本轮新观察（未定案，下一轮的直接目标）。同一个 `rec-1`：
+- 所办读（root 内核）得到 `card.owner: null`、`p: 0.99`、`fingerprint 4e42e…`，且它自己先说“没有 `record.id` 这个键，键名是 `card.id`”；
+- 成员 M1 在自己的内核读同一 id，报 `record.owner: "r-acad"`、`record.id: "rec-1"`、`p: 1`、`fingerprint 5a4005…`；
+- 所办随后 `read_library {list:true}` 看到 6 张卡：`rec-1`（owner null，它的）+ 成员内核写的 `rec-2..rec-6`，其中 `rec-3` 是
+  `r-acad` 为 `rec-1` 写的 verified 行。
+三条待查假设，下一轮用字段级观测区分：(a) 两个内核给同一张卡算出的视图不同（`card` vs `record` 命名 + 是否先折入共享行）；
+(b) 成员的“读”其实读到了 `rec-3`（verified 行）并把它当成 `rec-1`；(c) 成员自报里有转述（它自己也在序列化时改写过键名）。
+**不在此轮下结论**：没有直接证据前不把“两个读数不同”写成产品缺陷（同 ROUND 59 的教训：先取证再定名）。
+
+§171.4 简报错（三条，都是 checker 或真机当场抓住的）。①`record_proposition {p:1}` 与 v5r 的“p=1 是结论不是偏好”冲突；
+②`vibe_v5_meeting` 的 `convene` 需要 `agenda` + `member`，且必须先给主席一轮；③让所办“抄成员的整段原文”而回执只带摘录（与 §170 的 F-57 同源）。
+
+§171.5 门禁。本轮改动（F-57）单独提交前的全量：`TOTAL 541 PASS 541 FAIL 0`（见提交信息）；派生计数
+`JOBS total=610 suites=502 probes=108`、`regen-all` 16/16 in sync、`preflight PASS`、`DOC LINT: PASS`。
+
+§171.6 无法验证。假设 (a)/(b)/(c) 三者的区分；`rec-3` 的 verified 行为何出现在成员视图；成员内核的记录 id 计数器与共享 `ids` 键的关系。
+
+§171.7 无实质残余：**否**（下一轮从 §171.3 开始）。
