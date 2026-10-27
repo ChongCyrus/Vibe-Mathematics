@@ -124,6 +124,29 @@ function stateStamp(records, id) {
   } catch { return null }
 }
 /**
+ * ★ ROUND 68 (F-63): A WRITE RECEIPT MUST ECHO THE ONE FACT THE CALLER JUST CHOSE — THE AUTHOR.
+ *
+ * Run 68 asked the office to report the `owner` of the card it had just written; the receipt carried `recordId` but no
+ * author, so the only way to answer was a second read (the member then quoted a DIFFERENT owner, which is how F-61 was
+ * found). The author is decided BY THIS CALL (`member`), so echoing it costs nothing — and when the caller named nobody,
+ * the receipt must say that too: `owner:null` plus a sentence that denies the reading "nobody wrote it".
+ */
+function ownerEcho(records, id) {
+  let owner = null
+  try {
+    const got = records.get({ id })
+    const head = got && got.record ? got.record : got
+    const v = head ? head.owner : null
+    owner = v === undefined || v === null || v === '' ? null : String(v)
+  } catch { owner = null }
+  return {
+    owner,
+    ownerMeans: owner === null
+      ? 'this row records NO author: the caller did not name `member`, so the record does not know who wrote it (that is not the same fact as "nobody wrote it")'
+      : null,
+  }
+}
+/**
  * Append to the member's research log. `track` picks the file, exactly like the original (narrative = `progress`
  * by default; route/obstacle/rejected/state append their own track so NEGATIVE knowledge stays archived).
  * An unknown track is refused BY NAME with the declared list — the records face declares the allowed set.
@@ -177,7 +200,7 @@ function toolRecordProgress(args = {}, { kernel } = {}) {
       by: has(args.member) ? str(args.member) : null,
       bySource: has(args.member) ? 'argument' : 'unknown',
     })
-    return {
+    return Object.assign({
       ok: true, tool: 'vibe_v5_record_progress', track,
       recordId: writtenState.id, rev: writtenState.rev,
       state: { fields: STATE_FIELDS.slice(), values: state },
@@ -186,7 +209,7 @@ function toolRecordProgress(args = {}, { kernel } = {}) {
       // than guessed from the clock — a receipt that prints a time the record does not hold would be a second truth.
       at: stateStamp(records, writtenState.id),
       note: 'the state panel is stored as the four required sections plus any extra elements; a panel missing one of the four is refused by name',
-    }
+    }, ownerEcho(records, writtenState.id))
   }
   if (!has(args.content)) {
     throw refuse('VMU_INVALID_ARGUMENT', 'record_progress needs the progress text',
@@ -211,11 +234,11 @@ function toolRecordProgress(args = {}, { kernel } = {}) {
     by: has(args.member) ? str(args.member) : null,
     bySource: has(args.member) ? 'argument' : 'unknown',
   })
-  return {
+  return Object.assign({
     ok: true, tool: 'vibe_v5_record_progress', track,
     recordId: written.id, rev: written.rev,
     note: 'appended to the ' + track + ' track; the original wrote one file per track for the same reason',
-  }
+  }, ownerEcho(records, written.id))
 }
 
 /**
@@ -253,14 +276,14 @@ function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extr
       body,
       settled: isSettled,
       // ★ same rule as record_progress: a tool name is not an author
-    by: has(args.member) ? str(args.member) : null,
-    bySource: has(args.member) ? 'argument' : 'unknown',
+      by: has(args.member) ? str(args.member) : null,
+      bySource: has(args.member) ? 'argument' : 'unknown',
     })
-    return {
+    return Object.assign({
       ok: true, tool, track, kind,
       recordId: written.id, rev: written.rev, settled: isSettled,
       note: 'the card body carries the original fields (value/motive/p); settling follows p=1 or p=0',
-    }
+    }, ownerEcho(records, written.id))
   }
 }
 

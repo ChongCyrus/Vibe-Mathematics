@@ -251,6 +251,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   const shared = {
     attached: false, store: null, stamp: null, signature: null,
     pulls: 0, pulled: 0, refused: 0, skipped: 0,
+    // ★ ROUND 68 (F-61): how many rows this instance adopted from the durable fold WITHOUT the row saying who wrote it.
+    // The count exists so "owner is null" can be distinguished from "this instance never adopted the row at all".
+    adoptedNoAuthor: 0,
     lastWhy: null, lastDetail: null, lastPullAt: null, lastSyncAt: null,
   }
 
@@ -970,10 +973,17 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       if (!id || !row.track || !row.kind) continue         // a malformed row is skipped, never invented into a record
       if (records.has(id)) continue                         // ★ never overwrite/delete what this instance knows
       try {
+        // ★ ROUND 68 (F-61): AN UNKNOWN AUTHOR IS NOT A NAME. This used to fall back to the literal `'restore'`, so an
+        // adopted row reported `owner:"restore"` — a writer that never existed — and the same row read `owner:null`
+        // through the instance that wrote it. Two readers, one row, two answers, and the wrong one looked specific.
+        // The row is accepted with `by:null`; `shared.adoptedNoAuthor` counts how often that happened so a reader can
+        // tell "the row did not say" from "nothing was ever adopted".
+        const writer = row.by !== undefined && row.by !== null ? row.by : (row.owner !== undefined && row.owner !== null ? row.owner : null)
+        if (writer === null) shared.adoptedNoAuthor += 1
         putInternal.call(api, { id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, settled: true,
           // the writer is carried by `by` on the row; `owner` is accepted as well because that is the name the VIEW
           // exposes it under (a snapshot that copies the view - kernel/index.js does - can only carry `owner`).
-          by: row.by !== undefined && row.by !== null ? row.by : (row.owner !== undefined && row.owner !== null ? row.owner : 'restore') })
+          by: writer === null ? null : String(writer) })
         added += 1
       } catch (e) {
         shared.refused += 1
@@ -1001,6 +1011,8 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     return {
       attached: shared.attached, key: SHARED_STORE_KEY, stamp: shared.stamp,
       pulls: shared.pulls, pulled: shared.pulled, refused: shared.refused, skipped: shared.skipped,
+      adoptedWithoutAuthor: shared.adoptedNoAuthor,
+      adoptedWithoutAuthorMeans: 'rows adopted from the durable fold whose row did not name its writer: their `owner` reads null because the ROW did not say, not because nobody wrote it. This counter is the difference between that reading and no adoption at all',
       lastWhy: shared.lastWhy, lastDetail: shared.lastDetail, lastPullAt: shared.lastPullAt, lastSyncAt: shared.lastSyncAt,
     }
   }

@@ -7436,3 +7436,53 @@ FIELD_NOT_APPLICABLE=20 BAD_JSON=24`；保全戳 `20261027-203526`；`clone_gone
 §171.6 无法验证。假设 (a)/(b)/(c) 三者的区分；`rec-3` 的 verified 行为何出现在成员视图；成员内核的记录 id 计数器与共享 `ids` 键的关系。
 
 §171.7 无实质残余：**否**（下一轮从 §171.3 开始）。
+
+## §172 真机跑 68（F-57 结清；F-58 的真身是 F-61：一个操作名被当成了写入者）
+
+§172.1 读数。`DRIVE exit=0`、`durationSec 105`、根 `toolCalls 6`、`transcriptEvents 51`、`tokenTotal 339,019`
+（cap 12M、`tokenCapHit:false`）、2 会话、`SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks`；jsonl
+`_oneoff/vm-slv/full-1027-204943.jsonl` 2,841,877 B / 5,972 行；围栏计数 `NO_FENCE=12 UNKNOWN_FIELD=8
+FIELD_NOT_APPLICABLE=8 BAD_JSON=12`；保全戳 `20261027-205211`；`clone_gone=True port_listening=False C_free_GB=10.22`。
+
+§172.2 判决表。
+
+| # | 项 | 结果 |
+| --- | --- | --- |
+| 1 | F-57：有界回复声明截断 | ✅ `replyLength=3516`、`replyTruncated=true`、`replyLimitChars=2000`、`member="r-1"` |
+| 2 | F-57：摘录确实在 2000 处断开且回执说了这一点 | ✅ 所办原文引用了断点（`…**规则 8**（硬规则`），并说明剩余部分在该成员会话 |
+| 3 | 写入回执的字段面 | ⚠️ `vibe_v5_record_proposition` 回执只有 `ok/tool/track/kind/recordId/settled/note/enforced/enforcedScope`，没有 `owner`、没有 `p`（回答「刚写的卡长什么样」要再读一次） |
+| 4 | ★ 同一张卡的两个读数 | ❌ 成员内核读 `rec-1` 得 `owner:"restore"`，所办 `list` 读同一行得 `owner:null`（F-61 的直接证据） |
+| 5 | `vibe_v5_assign` 的参数面 | ✅ 拒绝是正确的：`VMU_INVALID_ARGUMENT`「assign without task_id needs a subject」，hint 给出 `task_id` 与 `subject` 两条路（本轮简报漏了，记在 §172.5） |
+| 6 | 成员两轮读同一 id | ✅ 两次回执同形状、同 fingerprint（`668cff18…`），说明成员内核里那张卡是稳定的 —— 错的是 owner 这一格 |
+
+§172.3 F-61 的真因与修法。`vibe-math-vmu/kernel/records.js` 的共享折入（`synchronize`）在持久行既无 `by` 又无
+`owner` 时用字面量 `'restore'` 作作者 —— 折入这个**操作**的名字被当成了**写入者**的名字。修法：
+
+1. 作者来源只认行上的 `by`/`owner`，都没有就是 `null`（`records.put` 本来就接受 `by:null`，`owner` 视图照实回 null）；
+2. 新增 `shared.adoptedWithoutAuthor` 计数器 + `adoptedWithoutAuthorMeans`（「这些行的 owner 读作 null 是因为
+   **这一行没说**，不是因为没人写过」）—— 把「未知」与「没采纳」分开；
+3. 新套件 `tests/vmu-run68-shared-author.test.mjs` **28/0**：无作者行 ⇒ `owner:null` 且**绝不**是 `"restore"`；
+   带 `by` 的行保留那个名字；只有视图名 `owner` 的行也认；计数器区分两种事实；★ run 68 的形状复现：两个实例同 root，
+   `get` 与 `list` 对同一行必须给同一个 owner，且该答案只能是 null/真实名字；重复折入不重盖章、计数器只计一次。
+
+§172.3b F-63（同一份证据里的第二处）。写卡/写日志的回执只回 `recordId`，不回显 `owner`/`p` —— 读者要回答「这张卡是谁的」
+只能再读一次，而这就是 §172.2 里两个内核读到两个 owner 的那条路径。修法：`vibe-math-vmu/kit/handlers.js` 新增
+`ownerEcho(records, id)`（读回 `records.get({id}).owner`），`cardTool()` 与 `toolRecordProgress()` 的返回都包上它：
+有作者 ⇒ `owner:"<id>"` 且 `ownerMeans:null`；无作者 ⇒ `owner:null` 且 `ownerMeans` 明说「这一行没有登记作者」。
+同一个新套件的 §6 就是这条断言（`owner==='r-4'` / `owner===null` + `NO author`）。
+
+§172.4 门禁。`vmu-records` **271/0**、`vmu-run36-records-shared` 37/0、`vmu-run31-status-board` 58/0、
+`vmu-run56-projection-writer` 44/0、`vmu-kernel` 260/0；全量见提交前的 `TOTAL`。
+
+§172.5 简报错（三条）。①`record_proposition` 只给了 `title/statement/value/motive/p`，而简报要读 `owner`/`p` ——
+写回执本来就不回显这两格（本轮已作为 F-63 修掉，见 §172.3b）；②`vibe_v5_assign` 没给 `subject`，被具名拒（行为正确，
+简报漏参数，checker 也拦不住"语义上该给"的参数）；③让成员「回答不少于 2600 字符」时没说清「不足会怎样」，它照做了，
+但这属于要求而非契约，下一轮要写「少于 2600 就算没完成」。
+
+§172.6 无法验证。`repair` 之后旧行里已经折入的 `owner:"restore"` 是否还能被现存状态的读者看到（本轮没有做迁移，
+旧实例内存里的伪造值不重写）；`adoptedWithoutAuthor` 在多内核高并发下的偏斜；成员内核 `get` 与 `list` 在更老的
+实例上是否同样一致。
+
+§172.7 无实质残余：**否**。留一笔：不迁移旧值 —— 已经折入内存的伪造 `owner:"restore"` 行不重写（历史行是证据，
+修复从下一次折入开始，且 `adoptedWithoutAuthor` 只对修好之后的行计数）。F-63（回执回显作者）本轮已修，
+下一轮 run 69 需要在真机上看到它与 F-61 一起成立。
