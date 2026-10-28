@@ -343,6 +343,19 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
    *  opened by an older writer (or by a test) has no field, and then the configured hard limit is the bound — that
    *  fallback is why `extendWall` could be added without rewriting one existing meeting record. */
   const wallLimitOf = (m) => (m && Number.isFinite(m.wallLimitMs)) ? m.wallLimitMs : K.hardLimitMs
+  /**
+   * ★★ ROUND 104 / F-104a: A READING THAT DESCRIBES A BOUND MUST DESCRIBE THE BOUND THIS KERNEL HOLDS.
+   * Run 104 read the status receipt and found `wallLimitNote` corrected while its sibling `wallLimitMeans` still said
+   * "clamped [300000, 7200000]" — the same stale number one field over, because the sentence had been written twice
+   * against a constant instead of against the two bounds this kernel actually enforces (`K.hardLimitMs` when opening,
+   * `K.extendCeilingMs` for extensions, the latter an ADDITIVE ceiling that refuses the whole request past it).
+   * It is a function of the live config, so a deployment that changes either key reads its own numbers back.
+   */
+  const wallLimitMeansText = () => 'the meeting’s OWN upper bound, frozen at open: wallLimitMsSource "convene" = the chair ' +
+    'set it (durationMs), "vmu.meetings.hardLimitMs" = the deployment default (`' + String(K.hardLimitMs) + '` ms here); ' +
+    'extendlimit ADDS to the current bound and reports extendedMs, and a request that would pass `vmu.meetings.extendCeilingMs` ' +
+    '(`' + String(K.extendCeilingMs) + '` ms here) is refused WHOLE by name (`VMU_RESOURCE_BUDGET`) — nothing is clamped ' +
+    'to the boundary, and there is no unbounded choice'
   const cap = (code, label, value, limit, key, evaluated) => {
     const keys = Array.isArray(evaluated) ? evaluated.slice() : []
     mark(keys, key)
@@ -1970,7 +1983,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         wallLimitMs: wallLimitOf(m),
         wallLimitMsSource: m.wallLimitMsSource === undefined ? 'vmu.meetings.hardLimitMs' : m.wallLimitMsSource,
         extendedMs: Number.isFinite(m.extendedMs) ? m.extendedMs : 0,
-        wallLimitMeans: 'the meeting\u2019s OWN upper bound, frozen at open: wallLimitMsSource "convene" = the chair set it (durationMs), "vmu.meetings.hardLimitMs" = the deployment default; extendlimit raises it and reports extendedMs; clamped [300000, 7200000] \u2014 there is no unbounded choice',
+        wallLimitMeans: wallLimitMeansText(),
         activatedAt: m.activatedAt === undefined ? null : m.activatedAt,
         startedLate: m.startedLate === true,
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
@@ -2041,7 +2054,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         wallLimitMs: wallLimitOf(m),
         wallLimitMsSource: m.wallLimitMsSource === undefined ? 'vmu.meetings.hardLimitMs' : m.wallLimitMsSource,
         extendedMs: Number.isFinite(m.extendedMs) ? m.extendedMs : 0,
-        wallLimitMeans: 'the meeting\u2019s OWN upper bound, frozen at open: wallLimitMsSource "convene" = the chair set it (durationMs), "vmu.meetings.hardLimitMs" = the deployment default; extendlimit raises it and reports extendedMs; clamped [300000, 7200000] \u2014 there is no unbounded choice',
+        wallLimitMeans: wallLimitMeansText(),
         activatedAt: m.activatedAt === undefined ? null : m.activatedAt,
         startedLate: m.startedLate === true,
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,

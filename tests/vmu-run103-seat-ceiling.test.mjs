@@ -135,6 +135,30 @@ const STATE4 = { progress: '读了两篇', obstacles: '无', next: '继续', hel
   ok(!/14400000/.test(note2), 'and not the framework default', note2.slice(0, 240))
 }
 
+// ── §4 ROUND 104 / F-104a: the SIBLING reading of the same bound must describe the live bounds too ─────────────
+{
+  console.log('§4 the status receipt sibling field reads the two live bounds (no stale constant one field over)')
+  const root = await mkRoot()
+  const b = await boot({ root })
+  await start(b, root)
+  const ctx = { kernel: b.handle.kernel }
+  const r = await call(b, 'vibe_v5_meeting', { agenda: '兄弟字段', member: 'r-acad', type: 'ordinary' }, ctx)
+  const p = r.parsed || {}
+  ok(p.ok === true, 'the meeting opens', p.code || p)
+  const st = await call(b, 'vibe_vmu_meeting', { action: 'status', id: p.meeting }, ctx)
+  const means = String((st.parsed && st.parsed.wallLimitMeans) || '')
+  ok(means.length > 40, 'the status receipt carries wallLimitMeans', means.slice(0, 80))
+  ok(!/7200000/.test(means), '★ it no longer prints the number nobody enforces (7200000)', means.slice(0, 240))
+  ok(/adds|ADDS/.test(means) && /refused WHOLE/.test(means), 'it says extensions are additive and an over-ceiling request is refused WHOLE', means.slice(0, 300))
+  const ceiling = String(b.handle.kernel.settingsSnapshot()['vmu.meetings.extendCeilingMs'] === undefined ? '' : '')
+  ok(ceiling === '', 'sanity: the deployment need not declare the key for the sentence to be honest (it prints the kernel value)', null)
+  const none = await boot({ root, 'vmu.meetings.extendCeilingMs': 5000000 })
+  const r2 = await call(none, 'vibe_v5_meeting', { agenda: '窄上界兄弟', member: 'r-acad', type: 'ordinary' }, { kernel: none.handle.kernel })
+  const st2 = await call(none, 'vibe_vmu_meeting', { action: 'status', id: (r2.parsed || {}).meeting }, { kernel: none.handle.kernel })
+  const means2 = String((st2.parsed && st2.parsed.wallLimitMeans) || '')
+  ok(/5000000/.test(means2), '★ a deployment that declares 5000000 reads 5000000 back from the sibling field too', means2.slice(0, 300))
+}
+
 for (const d of roots) { try { await rm(d, { recursive: true, force: true }) } catch { /* best effort */ } }
 console.log('\n=== RUN 103 SEAT + CEILING: ' + passed + ' passed, ' + failed + ' failed ===')
 process.exit(failed === 0 ? 0 : 1)

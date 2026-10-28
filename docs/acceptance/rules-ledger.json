@@ -1158,7 +1158,7 @@
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::wallLimitMs = null",
         "vibe-math-vmu/kernel/meetings.js::wallLimitMsSource: wallLimitRequested === null",
-        "vibe-math-vmu/kernel/meetings.js::wallLimitMeans"
+        "vibe-math-vmu/kernel/meetings.js::wallLimitMeansText"
       ],
       "tool": [
         "vibe_v5_meeting",

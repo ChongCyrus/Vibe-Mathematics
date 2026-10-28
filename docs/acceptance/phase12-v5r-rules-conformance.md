@@ -8773,3 +8773,48 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 - `vibe_vmu_panel` 与 records state 轨有没有**共同的读面**（F-102b）——本轮只记录了 `members:0` 这个谎，没有设计合并方案。
 
 ### §203.7 无实质残余：是（三条修法待真机复验）
+
+## §204 真机跑 104（兄弟字段还留着旧数字 / primitive 原语被教成服务会议的动作）
+
+### §204.1 读数
+
+| 读数 | 值 |
+| --- | --- |
+| build | `a33c1978` |
+| 驱动 | `DRIVE exit=0`、1370s、`toolCalls 7` / results 6、`tokenTotal 12,124,320`（cap 12,000,000，`tokenCapHit:true`）、4 会话 |
+| 围栏 | `NO_FENCE=36 UNKNOWN_FIELD=30 FIELD_NOT_APPLICABLE=36 BAD_JSON=36` |
+| jsonl | 27,068,038 B / 58,447 行 |
+| RED | 2 个会话有 RED，其中一处 **是 cap 打断造成的 calls≠results**（不是产品缺陷），另一处是成员会话的计数差 |
+
+### §204.2 判决表
+
+| 行 | 判决 | 逐字读数 |
+| --- | --- | --- |
+| F-103a（上界 note） | ✅ | 召集 `m2`（`type:"debate"`，`durationMs:900000`）⇒ `wallLimitMs:900000`、`wallLimitMsSource:"convene"`；`wallLimitNote` **不再出现 `7200000`**、点名 `extendCeilingMs`；`vibe_vmu_meeting {action:"status",id:"m2"}` 读回同一个 900000 |
+| **F-104a（兄弟字段）** | ❌ 失败 → 本轮修 | 同一份 status 里 `wallLimitMeans` 仍写「clamped [300000, 7200000] — there is no unbounded choice」——修正只做到一个字段，旧数字整体挪到了隔壁 |
+| F-103b（空交集） | ✅ | `vibe_v5_meeting_round {meeting:"m2", phase:"meeting"}` ⇒ `ok:true`，`narrowed:true`，每成员 `narrowing.applied:false`、`reason:"empty-intersect"`、`expectedAllowed:20`、`identityFaceVisible:0`、`visible:0`、`allow` 长度 0、`dropped:[]`；会议照常推进（收窄失效但整轮跑起来了） |
+| **F-104b（教学 vs 原语）** | ❌ 失败 → 本轮修 | 提示词教「`extend` 是发言延长（缺省读 `speechExtendMs`）」，而实测对 SERVICE 会议 `vibe_vmu_meeting {action:"extend", id:"m2"}` ⇒ `VMU_REGISTRY_BOUNDARY`（`extend` 是 primitive 会面的原语），照提示词排查会被引到 id/参数上 |
+| D7 / C3 / C4 / E36 | ⏳ 未跑到 | 这一跑在 `tokenCapHit` 处被截断（12.1M / 12M），第 4–7 步（成员自写面板、越权探针、障碍归档、辩论骨架）**没有回执**，四条余项维持 PARTIAL |
+
+### §204.3 两条修法与判据
+
+- **F-104a**：`vibe-math-vmu/kernel/meetings.js` 的 `wallLimitMeans` 原本是两处**同一句硬编码**；改成 `wallLimitMeansText()` 一个来源，从 `K.hardLimitMs`（开启时的界）与 `K.extendCeilingMs`（扩展的**加法**上界）现取数字，并说清「超过 ceiling 整笔下拒（`VMU_RESOURCE_BUDGET`），不是钳到边上」。判据：**同一件事的第二个读数不是副本，是第二个证人** —— 两处各写一句，就会一处改了一处没改。
+- **F-104b**：`packs/v5r/seat-faces.js` 的 `vibe_vmu_meeting` 席位面说明与 `packs/v5r/prompts/v5r-blocks-b.js` 的「时长与兜底」一句，都补明 `extend`／`silent`／`end`／`hands` 是 **primitive** 原语：SERVICE 会议（`vibe_v5_meeting` 召集的）上它们被具名拒 `VMU_REGISTRY_BOUNDARY`，成员的发言界改读 `vibe_v5_say` 回执里的 `speechBound`。判据：**教一个动作时，必须同时教它在哪张面上不适用** —— 否则「按文档排查」本身就是陷阱。
+
+### §204.4 测试与门禁
+
+- `tests/vmu-run103-seat-ceiling.test.mjs` 追加 §4（兄弟字段）：status 的 `wallLimitMeans` 不含 `7200000`、说「加法 + 整笔下拒」、声明 5000000 的部署读回 5000000 ⇒ **32/0**。
+- 相邻绿：`vmu-meeting` 50/0、`vmu-meeting-types` 153/0、`vmu-run101-meeting-bound` 28/0、`vmu-run84-meeting-reads` 8/0、`vmu-prompt-clean` 8/0、`vmu-prompt-type-coverage` 15/0、`vmu-turn` 272/0、`vmu-run31-seat-faces` 86/0、`vmu-ab-v5r-verification` 0 FAIL、`vmu-ledger-teaching-pins` 58/0。
+
+### §204.5 简报错
+
+1. 我在简报里写「`vibe_v5_meeting_round` 不要传 type」，但没写 `phase` 的合法值（`debate` 不是 phase）——产品侧已按 `phase` 枚举具名拒，简报该给 `meeting`。
+2. 简报 7 步对 12M token 上限太长：`vibe_vmu_turn` 的成员回合会把整份成员提示词灌进上下文，第 3 步之后 token 就吃满了，后四步永远跑不到 ⇒ 下一轮拆成两跑，每跑 ≤4 步。
+
+### §204.6 无法验证
+
+- F-104a / F-104b 的修法本身**没有真机读数**（本轮只到单测）。
+- D7 的修复（`callerMember`）、C3/C4 的分桶读回、E36 的辩论骨架：被 cap 截断，**都没有真机读数**。
+- 「主席回合」与根内核不是同一个内核实例（`chairActRequiresTurn` 的读数在子会话里），这一条本轮只观察到现象，没有设计结论。
+
+### §204.7 无实质残余：是（四条余项待一轮更短的复验）

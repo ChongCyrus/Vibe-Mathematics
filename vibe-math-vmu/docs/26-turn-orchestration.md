@@ -1972,3 +1972,11 @@ run 100 把三条「看起来已在」的东西称了一遍，得到的都是回
 
 **教训**：一个判据如果被写在两处（形状 vs 语义），它就有两个答案；一条便利如果会杀死它想服务的那件事，它就不是便利。
 
+
+## ROUND 104 — 同一件事的第二个读数不是副本，是第二个证人
+
+**缺陷**：r104 读到 `wallLimitNote` 已修好，而同一份 status 里的 `wallLimitMeans` 还写着「clamped [300000, 7200000]」——修复只做到一个字段，旧数字整体挪到了隔壁。**修法**：`meetings.js` 的两处硬编码合成一个 `wallLimitMeansText()`，数字从 `K.hardLimitMs`/`K.extendCeilingMs` 现取，并改对动词（扩展是加法，越界是整笔下拒）。
+
+**第二条**：提示词教「`extend` 是发言延长」，而 SERVICE 会议上 `extend` 被具名拒 `VMU_REGISTRY_BOUNDARY`（它是 primitive 原语）——教一个动作时没教它在哪张面上不适用，按文档排查本身就是陷阱。两处教学都补了「primitive only + 去读 `speechBound`」。
+
+**教训**：读数成对出现时（note/means、as/at、label/value），要么让它们来自同一个来源，要么它们迟早会朝两个方向说话。
