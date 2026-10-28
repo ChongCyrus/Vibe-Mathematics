@@ -938,10 +938,10 @@
       "id": "D7",
       "rule": "28",
       "text": "可自己修改更新自己的状态版",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kit/handlers.js::only that member may rewrite it",
-        "vibe-math-vmu/kit/handlers.js::panelOwner"
+        "vibe-math-vmu/kit/handlers.js::panelTarget !== caller"
       ],
       "tool": [
         "vibe_v5_record_progress"
@@ -949,9 +949,12 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::只能改自己的"
       ],
-      "live": [],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::panelOwnerMeans:\"the call carried member seat r-1\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::成员只能写自己的面板"
+      ],
       "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。",
-      "next": "余项：live —— 第 99 轮真机：成员不带 member 写自己的面板成功（`panelOwner` 是自己），写别人的面板具名拒 `VMU_NOT_PERMITTED`。"
+      "next": ""
     },
     {
       "id": "D8",

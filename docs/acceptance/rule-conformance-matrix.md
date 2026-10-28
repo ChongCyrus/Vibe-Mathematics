@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 82 | all four citations resolve |
-| ◐ PARTIAL | 4 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 83 | all four citations resolve |
+| ◐ PARTIAL | 3 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -76,7 +76,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `D4` | 28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
 | `D5` | 28 | 四字段都含时间等基础信息 | ✅ DONE | 2/2/1/2 | — |
 | `D6` | 28 | 可查看其他成员当前状态版 | ✅ DONE | 1/1/1/1 | — |
-| `D7` | 28 | 可自己修改更新自己的状态版 | ◐ PARTIAL | 2/1/1/0 | 余项：live —— 第 99 轮真机：成员不带 member 写自己的面板成功（`panelOwner` 是自己），写别人的面板具名拒 `VMU_NOT_PERMITTED`。 |
+| `D7` | 28 | 可自己修改更新自己的状态版 | ✅ DONE | 2/1/1/2 | — |
 | `D8` | 28 | 四字段按规则原文实现（字段名与语义） | ✅ DONE | 2/1/1/1 | — |
 
 ## E. 会议

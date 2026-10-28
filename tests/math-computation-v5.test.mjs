@@ -354,8 +354,13 @@ section('3 op=run: argv assembly, cwd, receipt paths (institute root)')
   // mode=expr: ONE argv element, never shell-concatenated.
   const rExpr = await h.callMath({ op: 'run', engine: 'python', mode: 'expr', expr: '2 ** 10' })
   const exprCall = seam.runCalls[seam.runCalls.length - 1]
-  assert(rExpr.ok === true && exprCall.argv.indexOf('2 ** 10') !== -1 && exprCall.argv.indexOf('-c') !== -1,
-    'mode=expr substitutes the expression into ONE argv element (' + JSON.stringify(exprCall.argv) + ')')
+  // ROUND 94 changed the contract on purpose: the expression is wrapped in the engine's `exprPrint` template
+  // (`print(<expr>)`) so the value is observable — computing without printing cannot report a value. The point
+  // this assertion defends is unchanged: the expression travels as ONE argv element and is never split by a shell.
+  const exprHits = exprCall.argv.filter((a) => a.includes('2 ** 10'))
+  assert(rExpr.ok === true && exprHits.length === 1 && exprCall.argv.indexOf('-c') !== -1
+    && exprCall.argv.indexOf('2') === -1 && exprCall.argv.indexOf('**') === -1 && exprCall.argv.indexOf('10') === -1,
+    'mode=expr carries the expression in ONE argv element, never split (' + JSON.stringify(exprCall.argv) + ')')
   // mode=file: inside the institute is allowed, outside is refused.
   mkdirSync(join(INST(h), 'Problems'), { recursive: true })
   writeFileSync(join(INST(h), 'Problems', 'calc.py'), 'print(1)\n', 'utf8')

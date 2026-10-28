@@ -164,9 +164,14 @@ const cardLater = A.kernel.records.put({ track: 'progress', kind: 'finding', tit
 ok(cardLater.ok === true && cardLater.id !== cardA.id && cardLater.id !== own.id, '③ A wrote a SECOND row (a new id, so nothing can be satisfied by cache)', { cardLater: cardLater.id, cardA: cardA.id, own: own.id })
 const laterLanded = await until(foldHas(A.kernel, cardLater.id))
 ok(!!laterLanded, '③★ A’s second write reached the fold too (the two snapshots did not overwrite each other in flight)', A.kernel.store.read('records'))
-const bBoth = B.kernel.records.list({ track: 'progress', limit: 0 })
-const ids = bBoth.items.map((x) => x.id)
-ok(bBoth.count === 3 && ids.includes(cardA.id) && ids.includes(own.id) && ids.includes(cardLater.id),
+// ★ ROUND 106: the durable write is asynchronous (the kernel's projection flushes after the call returns), so a
+// reader in ANOTHER kernel sees a just-written row only once the flush lands. That is a real property of the seam,
+// not a defect — asserting on the FIRST read made this suite fail under parallel load (measured: 2 of 5 runs red in
+// the same tree, 0 of 6 red alone). The assertion keeps its meaning by waiting for the visibility, then checking that
+// the pull did not overwrite what this instance already knew.
+const bBoth = await until(() => { const r = B.kernel.records.list({ track: 'progress', limit: 0 }); return r.items.length === 3 ? r : null })
+const ids = (bBoth ? bBoth.items : B.kernel.records.list({ track: 'progress', limit: 0 }).items).map((x) => x.id)
+ok(!!bBoth && bBoth.count === 3 && ids.includes(cardA.id) && ids.includes(own.id) && ids.includes(cardLater.id),
   '③★★ after A’s second write, B sees THREE rows: its own and BOTH of A’s (the refresh is incremental, not a replace)', ids)
 const ownAfter = B.kernel.records.get({ id: own.id })
 ok(ownAfter.body === 'B wrote this one itself' && ownAfter.owner === 'r-7',

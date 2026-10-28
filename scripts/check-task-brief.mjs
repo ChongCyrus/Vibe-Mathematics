@@ -123,14 +123,19 @@ export function topLevelKeys(body) {
   let depth = 0
   while (i < body.length) {
     const ch = body[i]
-    if (ch === '"' || ch === "'" || ch === '`') { i = skipQuoted(body, i); continue }
-    if (ch === '{' || ch === '[' || ch === '(') { depth++; i++; continue }
-    if (ch === '}' || ch === ']' || ch === ')') { depth = Math.max(0, depth - 1); i++; continue }
+    // ★ ROUND 106 / F-106a (the THIRD half, and the reason the first two halves were not enough): the key is tried
+    // BEFORE a quoted run is skipped. A JSON body — `{"reason":"…"}` — quotes its KEYS, so the old order skipped the
+    // key itself and found no parameter at all: the braces path (`name {…}`) was blind to every JSON call, which is
+    // how a fully quoted brief stayed green. A quoted VALUE never matches KEY_AT (no `:` after it), so trying first
+    // cannot invent a key.
     if (depth === 0) {
       KEY_AT.lastIndex = i
       const m = KEY_AT.exec(body)
       if (m) { keys.push(String(m[1] || m[2])); i = KEY_AT.lastIndex; continue }
     }
+    if (ch === '"' || ch === "'" || ch === '`') { i = skipQuoted(body, i); continue }
+    if (ch === '{' || ch === '[' || ch === '(') { depth++; i++; continue }
+    if (ch === '}' || ch === ']' || ch === ')') { depth = Math.max(0, depth - 1); i++; continue }
     i++
   }
   return keys
@@ -148,6 +153,13 @@ export function parseCalls(text) {
     if (!TOOL_NAME.test(name)) continue
     let j = m.index + name.length
     while (j < text.length && (text[j] === ' ' || text[j] === '	')) j++
+    // ★ ROUND 106 / F-106a: a brief writes a call as `` `tool` { … } `` as often as `tool { … }` — the closing backtick
+    // sat between the name and its body, so the braces form never matched and the JSON after it was read as prose. Skip
+    // the name's own closing delimiter before deciding the form.
+    if (text[j] === '`') {
+      j++
+      while (j < text.length && (text[j] === ' ' || text[j] === '	')) j++
+    }
     const line = lineOf(text, m.index)
     if (text[j] === '{') {
       const brace = matchBrace(text, j)
@@ -170,6 +182,13 @@ export function parseCalls(text) {
     if (bullet) {
       calls.push(Object.assign({ name, line, lineText: lineTextOf(text, line) }, bullet))
       TOOL_NAME_SCAN.lastIndex = Math.max(TOOL_NAME_SCAN.lastIndex, bullet.end)
+      continue
+    }
+    // ★ ROUND 106 / F-106a: the THIRD form — one inline sentence with `，参数：k: v, k: v` (no braces, no bullets).
+    const inline = inlineCall(text, m, name)
+    if (inline) {
+      calls.push(Object.assign({ name, line, lineText: lineTextOf(text, line) }, inline))
+      TOOL_NAME_SCAN.lastIndex = Math.max(TOOL_NAME_SCAN.lastIndex, inline.end)
     }
   }
   return calls
@@ -216,6 +235,78 @@ function bulletCall(text, m, name) {
   }
   if (keys.length === 0) return null
   return { keys, form: 'bullets', end }
+}
+
+const INLINE_LEAD = /^(?:，|,|。)?\s*(?:参数|parameters)\s*[:：]\s*/
+
+/** Split a `a: 1, b: "x，y", c: [1,2]` body at TOP-LEVEL separators (quotes and brackets respected). */
+function splitInlineKeys(body) {
+  const parts = []
+  let start = 0
+  let i = 0
+  let depth = 0
+  while (i < body.length) {
+    const ch = body[i]
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const q = ch
+      i++
+      while (i < body.length) {
+        if (body[i] === '\\') { i += 2; continue }
+        if (body[i] === q) { i++; break }
+        i++
+      }
+      continue
+    }
+    if (ch === '{' || ch === '[' || ch === '(' || ch === '（') { depth++; i++; continue }
+    if (ch === '}' || ch === ']' || ch === ')' || ch === '）') { depth = Math.max(0, depth - 1); i++; continue }
+    if (depth === 0 && (ch === ',' || ch === '，' || ch === ';' || ch === '；')) {
+      parts.push(body.slice(start, i))
+      start = i + 1
+      i++
+      continue
+    }
+    i++
+  }
+  parts.push(body.slice(start))
+  return parts
+}
+
+/**
+ * Parse the INLINE form of a call: `` `tool`，参数：key: value, key: value。 `` — one sentence, no braces, no bullets.
+ * ★ ROUND 106 / F-106a: runs 105 and 106 were both poisoned at step 1 by `vibe_v5_start {reason:…}` written in exactly
+ * this form, and THIS CHECKER said "0 problem(s)" both times — `parseCalls` only knew `name {…}` and the bullet form,
+ * so the inline form was silently invisible. A validator that skips a form it is meant to check reports a green it
+ * did not earn (same family as ROUND 70's bullet blindness). Keys come from a quote/bracket-aware split, so a value
+ * containing `，`/`；`/`：` cannot manufacture a phantom key.
+ */
+function inlineCall(text, m, name) {
+  const lineEnd = text.indexOf('\n', m.index)
+  const stop = lineEnd === -1 ? text.length : lineEnd
+  const rest = text.slice(m.index + name.length, stop).replace(/`/g, '')
+  const lead = INLINE_LEAD.exec(rest)
+  if (!lead) return null
+  const after = rest.slice(lead[0].length)
+  const term = after.search(/。(?:\s|$)|\n/)
+  const body = (term === -1 ? after : after.slice(0, term)).trim()
+  if (body === '') return null
+  // ★ ROUND 106 / F-106a (the second half): the live briefs of runs 105/106 carried the call as a JSON OBJECT after the
+  // lead — `` `vibe_v5_start`，参数：`{"reason":"…"}` `` — and a key splitter that only reads `k: v` found none, so the
+  // form was parsed but its parameters were invisible (still a green it did not earn). Braces after the lead are the
+  // SAME call, so they go through `topLevelKeys`, the reader the `name {…}` form already uses.
+  if (body[0] === '{') {
+    const brace = matchBrace(body, 0)
+    if (!brace) return null
+    const keysInBraces = topLevelKeys(brace.body)
+    if (keysInBraces.length === 0) return null
+    return { keys: keysInBraces, form: 'inline-braces', end: m.index + name.length + lead[0].length + brace.end + 1 }
+  }
+  const keys = []
+  for (const part of splitInlineKeys(body)) {
+    const hit = /^\s*(?:"([A-Za-z_$][\w$.-]*)"|([A-Za-z_$][\w$]*))\s*[:：]/.exec(part)
+    if (hit) keys.push(String(hit[1] || hit[2]))
+  }
+  if (keys.length === 0) return null
+  return { keys, form: 'inline', end: m.index + name.length + lead[0].length + body.length }
 }
 
 /** Levenshtein distance — only used for the HINT, never for a decision. */
@@ -515,6 +606,48 @@ export function selfProbe(catalog) {
     const required = requiredOf(withParam)
     const keys = required.concat(['zzz_self_probe_absent_param'])
     cases.push({ name: 'plant-unknown-param', expected: [CODES.unknownParam], text: renderCall(withParam, keys) })
+    // ★ ROUND 106 / F-106a: the INLINE form must be parsed too (a body with a comma inside a quoted value still
+    // yields exactly one phantom key, not three).
+    const inlineLegal = requiredOf(withParam)
+    const inlineBody = (inlineLegal.length > 0 ? inlineLegal.map((k) => k + ': ' + dummyValue(withParam.parameters[k])).join('，') + '，' : '')
+      + 'zzz_self_probe_absent_param: "一，二；三"'
+    cases.push({
+      name: 'plant-unknown-param-inline',
+      expected: [CODES.unknownParam],
+      text: '1) `' + withParam.name + '`，参数：' + inlineBody + '。\n',
+    })
+    if (inlineLegal.length > 0) {
+      cases.push({
+        name: 'control-valid-inline',
+        expected: [],
+        text: '1) `' + withParam.name + '`，参数：' + inlineLegal.map((k) => k + ': ' + dummyValue(withParam.parameters[k])).join('，') + '。\n',
+      })
+    }
+  }
+  // ★ ROUND 106 / F-106a: a JSON body quotes its KEYS, and the old `topLevelKeys` skipped a quoted run before it
+  // tried the key pattern — so `{"reason":"…"}` yielded NO parameter and every fully quoted brief stayed green (that is
+  // exactly how runs 105/106 passed the checker and died at step 1). Both JSON shapes are planted here.
+  if (withParam) {
+    const jsonKeys = requiredOf(withParam).concat(['zzz_self_probe_absent_param'])
+    cases.push({
+      name: 'plant-unknown-param-json-braces',
+      expected: [CODES.unknownParam],
+      text: '1) `' + withParam.name + '` {"zzz_self_probe_absent_param": 1}\n',
+    })
+    cases.push({
+      name: 'plant-unknown-param-json-inline',
+      expected: [CODES.unknownParam],
+      text: '1) 调用 `' + withParam.name + '`，参数：`{"zzz_self_probe_absent_param":1}`。\n',
+    })
+    void jsonKeys
+  }
+  if (clean) {
+    const key = optionalOf(clean)[0]
+    cases.push({
+      name: 'control-valid-json-inline',
+      expected: [],
+      text: '1) 调用 `' + clean.name + '`，参数：`{"' + key + '":' + JSON.stringify(dummyValue(clean.parameters[key])) + '}`。\n',
+    })
   }
   if (mixed) {
     const optional = optionalOf(mixed)

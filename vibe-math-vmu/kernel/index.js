@@ -2387,7 +2387,32 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, by: r.owner !== undefined && r.owner !== null ? r.owner : r.by })
         }
       }
-      const wrote = recordsStore.write('records', rows)
+      // ★★★ ROUND 106 / F-106d: this used to be `write('records', rows)` — a WHOLESALE REPLACE computed from THIS
+      // instance's live rows. Measured in `tests/vmu-run36-records-shared.test.mjs` (2 of 10 runs under load, then
+      // reproduced deterministically): kernel A writes rec-1, kernel B writes rec-2, A writes rec-3 WITHOUT having
+      // pulled rec-2 (its own write path never re-read the durable array) — and A's snapshot overwrote the file, so
+      // B's row was erased from disk and the next reader could not get it back. `patch` computes inside the exclusive
+      // section (the same merge-on-current pattern tasks/chat/mailbox use) and the merge keeps every row this
+      // instance does not hold: local rows win for ids it does hold (they are the newer edit), durable-only rows are
+      // PRESERVED rather than dropped. A row can be added twice with the same id, never lost.
+      const wrote = typeof recordsStore.patch === 'function'
+        ? recordsStore.patch('records', (prev) => {
+          const out = Array.isArray(rows) ? rows.slice() : []
+          const seen = new Set(out.map((r) => (r && r.id !== undefined && r.id !== null ? String(r.id) : null)).filter(Boolean))
+          let kept = 0
+          if (Array.isArray(prev)) {
+            for (const row of prev) {
+              if (!row || row.id === undefined || row.id === null) continue
+              if (seen.has(String(row.id))) continue
+              out.push(row)
+              seen.add(String(row.id))
+              kept += 1
+            }
+          }
+          if (kept > 0) log('vmu records persist: kept ' + kept + ' row(s) another kernel wrote')
+          return out
+        })
+        : recordsStore.write('records', rows)
       if (wrote && typeof wrote.catch === 'function') wrote.catch((e) => log('vmu records persist: ' + String((e && e.message) || e)))
     } catch (e) { log('vmu records persistence: ' + String((e && e.message) || e)) }
   }

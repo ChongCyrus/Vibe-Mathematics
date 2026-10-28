@@ -65,6 +65,31 @@ export function unknownParametersOf(entry = null, args = null) {
 }
 
 /**
+ * Declared `enum` values a call violates. A declaration that says `enum: [...]` and a description that says
+ * "any other word is refused by name" are PROMISES; without a gate they are prose.
+ * ★ ROUND 106 / F-106c: live run 106 called `vibe_v5_meeting_round {phase:"debate"}` — a word that is NOT in the
+ * declared enum (founding/normal/checkpoint/verify/verify-debate/meeting/resume/heartbeat/paper-write/paper-review/
+ * paper-final) — and the call was not refused for the word: it fell through to the business layer and returned
+ * `VMU_NO_OPEN_MEETING`, so the caller could not tell "wrong vocabulary" from "no meeting". One gate here makes every
+ * declared enum in this file truthful at once (the seat-gate precedent: the ONE funnel every pack tool crosses).
+ * Only `enum` on a DIRECT parameter is enforced; an absent/`undefined` value is not a violation (required-ness has its
+ * own rule and a handler may legitimately default).
+ */
+export function badEnumParametersOf(entry = null, args = null) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return []
+  const declared = entry && entry.parameters && typeof entry.parameters === 'object' ? entry.parameters : {}
+  const bad = []
+  for (const [key, decl] of Object.entries(declared)) {
+    if (!decl || typeof decl !== 'object' || !Array.isArray(decl.enum) || decl.enum.length === 0) continue
+    if (!Object.prototype.hasOwnProperty.call(args, key)) continue
+    const value = args[key]
+    if (value === undefined) continue
+    if (!decl.enum.includes(value)) bad.push({ name: key, value, legal: decl.enum.slice() })
+  }
+  return bad
+}
+
+/**
  * The pack tools whose names the host already publishes as its OWN tools. A collision is a
  * named refusal (the adapter records it in `failures` with a registered code), never a silent
  * shadow: two tools with one name would make "which one does the model call" unanswerable.
@@ -237,6 +262,15 @@ export function makePackToolSpec({ entry, kernel = null, packId = null } = {}) {
           throw Object.assign(new Error(verdict.message || ('pack tool ' + name + ' refused this call')),
             { code: verdict.code || 'VMU_INVALID_ARGUMENT', hint: verdict.hint || null })
         }
+      }
+      // ★ ROUND 106 / F-106c: a declared `enum` is a promise; a word outside it is refused HERE, by name, listing
+      // the legal words — before the business layer can answer with a different complaint.
+      const badEnum = badEnumParametersOf(entry, args)
+      if (badEnum.length > 0) {
+        const first = badEnum[0]
+        throw Object.assign(new Error('pack tool ' + name + ' got an undeclared value for parameter(s) ' + badEnum.map((b) => '"' + b.name + '"=' + JSON.stringify(b.value)).join(', ') +
+          '; it accepts only: ' + badEnum.map((b) => b.name + ' ∈ [' + b.legal.join(', ') + ']').join('; ')),
+        { code: 'VMU_INVALID_ARGUMENT', hint: 'this parameter declares an enum — the legal words are listed in the refusal; a word outside the list is not a business refusal, it is the wrong vocabulary' })
       }
       const unknown = unknownParametersOf(entry, args)
       if (unknown.length > 0) {

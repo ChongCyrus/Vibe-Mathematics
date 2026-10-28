@@ -8794,7 +8794,7 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 | **F-104a（兄弟字段）** | ❌ 失败 → 本轮修 | 同一份 status 里 `wallLimitMeans` 仍写「clamped [300000, 7200000] — there is no unbounded choice」——修正只做到一个字段，旧数字整体挪到了隔壁 |
 | F-103b（空交集） | ✅ | `vibe_v5_meeting_round {meeting:"m2", phase:"meeting"}` ⇒ `ok:true`，`narrowed:true`，每成员 `narrowing.applied:false`、`reason:"empty-intersect"`、`expectedAllowed:20`、`identityFaceVisible:0`、`visible:0`、`allow` 长度 0、`dropped:[]`；会议照常推进（收窄失效但整轮跑起来了） |
 | **F-104b（教学 vs 原语）** | ❌ 失败 → 本轮修 | 提示词教「`extend` 是发言延长（缺省读 `speechExtendMs`）」，而实测对 SERVICE 会议 `vibe_vmu_meeting {action:"extend", id:"m2"}` ⇒ `VMU_REGISTRY_BOUNDARY`（`extend` 是 primitive 会面的原语），照提示词排查会被引到 id/参数上 |
-| D7 / C3 / C4 / E36 | ⏳ 未跑到 | 这一跑在 `tokenCapHit` 处被截断（12.1M / 12M），第 4–7 步（成员自写面板、越权探针、障碍归档、辩论骨架）**没有回执**，四条余项维持 PARTIAL |
+| 行 D7、C3、C4、E36 | ⏳ 未跑到 | 这一跑在 token 上限处被截断（12.1M / 12M，`calls(7) vs results(6)`），量具读数本身不算缺陷，第 4–7 步（成员自写面板、越权探针、障碍归档、辩论骨架）**没有回执**，四条余项维持 PARTIAL |
 
 ### §204.3 两条修法与判据
 
@@ -8818,3 +8818,66 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 - 「主席回合」与根内核不是同一个内核实例（`chairActRequiresTurn` 的读数在子会话里），这一条本轮只观察到现象，没有设计结论。
 
 ### §204.7 无实质残余：是（四条余项待一轮更短的复验）
+
+## §205 真机跑 105 / 106（校验器看不见最常用的写法 / 声明的枚举不是门 / 一次没读过就覆盖别人的行）
+
+### §205.1 读数
+
+**run 105**（build `1bcab2a1`，clone `slvp105`，port 19705）：`DRIVE exit=0`、`durationSec 447`、`toolCalls 11` / results 11、
+`tokenTotal 2,543,595`（cap 8,000,000）、3 会话、`SUMMARY: 3 session(s), 0 with RED`；jsonl 8,304,788 B；`NO_FENCE=6
+UNKNOWN_FIELD=4 FIELD_NOT_APPLICABLE=6 BAD_JSON=6`。判定四步里只走到第二、三步（其余被拒绝链挡住）。
+
+**run 106**（build `1bcab2a1`，clone `slvp106`，port 19706）：`DRIVE exit=0`、`durationSec 85`、`toolCalls 11` / results 11、
+`tokenTotal 437,069`、1 会话、0 RED；`NO_FENCE=0 UNKNOWN_FIELD=0 FIELD_NOT_APPLICABLE=0 BAD_JSON=0`（十一步全是拒绝）。
+
+### §205.2 判决表
+
+| # | 断言 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | D7：成员能写自己的状态面板（工具面把调用者判成成员） | ✅ | run 105：`vibe_v5_record_progress {track:"state"}` 成功，回执 `panelOwner:"r-1"` / `panelOwnerMeans:"the call carried member seat r-1"`；越权探针（`member:"r-acad"`）被 `VMU_NOT_PERMITTED` 具名拒，hint 指「成员只能写自己的面板」 |
+| 2 | F-105a：成员写下的卡能被所办在 `read_library` 里读到 | ✅（旧缺陷已修） | run 105：所办 `records list` 读到 `rec-11`(owner r-1)、`rec-13`(owner r-acad) |
+| 3 | F-105b：Lean 前端扫描「这张卡在库里有」 | ⚠️ **转述未取证（不计为缺陷）** | run 105 的成员总结里提到「the toolkit's scan of the Lean front door reported records 0」，但本 build 里没有任何工具带 `frontdoor` 动作（`grep -rn frontdoor vibe-math-vmu` = 0），`full-1028-153826.jsonl` 里也没有这次调用 ⇒ 这是**转述**，不是读数。按本项目的判据（没有回执就没有缺陷）记为待取证问题，不改代码 |
+| 4 | 名册为空时聊天仍按名册外成员落账 | ⚠️ 观察 | run 105：`vibe_v5_status` 报 `members:0`（名册面与 task 面各读各的），而 `vibe_v5_chat {by:"r-2"}` 被接受并落账。不是聊天错：它按「声明的座位」判，而名册面只报「本内核登记的成员」——同一个词两个数，需在 §205.3 具名披露（installment） |
+| 5 | E36 辩论骨架（hand/invite/order/say round + 第二轮同一发言者） | ⚠️ 未走到 | run 106 第 1 步就被 `vibe_v5_start` 的参数拒挡住，后十步全是 `VMU_NO_OPEN_MEETING`/`VMU_NO_SUCH_OBJECT` 的连锁拒绝 |
+| 6 | 简报校验器能拦住它自己的错误 | ❌ **F-106a** | 两份简报 `node scripts/check-task-brief.mjs` 都答 `0 problem(s)`，而真机第 1 步就被 `vibe_v5_start {reason}` 拒（`VMU_INVALID_ARGUMENT`） |
+| 7 | 声明的枚举值不是合法值时在工具层具名拒 | ❌ **F-106c** | run 106：`vibe_v5_meeting_round {phase:"debate"}` 没被工具层拦（`debate` 不在声明枚举里），只在业务层得 `VMU_NO_OPEN_MEETING` |
+| 8 | 一个内核的写不抹掉另一个内核写的行 | ❌ **F-106d** | `tests/vmu-run36-records-shared.test.mjs` 负载下 10 次有 2 次红（丢行），随后确定性复现 |
+
+### §205.3 三条修法与判据
+
+**F-106a（校验器失明）**：`scripts/check-task-brief.mjs` 只认 `name {…}`、`参数：` 后跟项目符号两种形式。真简报写的是
+``调用 `vibe_v5_start`，参数：`{"reason":"…"}` ``，以及 `` `tool` {…} ``（名字后面还有一个反引号）。三处修：①`parseCalls`
+在决定形式前跳过名字自己的收尾反引号（否则 `{` 永远看不到）；②`inlineCall` 见到 `参数：` 后是 JSON 对象时走
+`topLevelKeys`（同一个读者，不写第二份解析器）；③`topLevelKeys` 先试键模式再跳引号串——JSON 的**键**是带引号的，
+旧顺序把键自己当成字符串跳过，于是每个 JSON 调用都「没有参数」（这才是两份简报全绿的直接原因）。判据：**校验器必须
+对右的简报沉默、对错的简报点名；沉默若来自「没看见」而不是「没问题」，那份绿是偷来的。** `--self-probe` 由 11 例扩到
+14 例（两处 JSON 种植 + 一处 JSON 控制）。
+
+**F-106c（枚举不是门）**：`host-pack-tools.js` 新增 `badEnumParametersOf(tool, args)`（取 `parameters[k].enum`，值不在表内即
+拒），派发前统一执行；拒绝回执给出**非法值本身**与**合法词表**（`legal` 字段），hint 说明「声明里有 enum，就该在调用时被
+执行」。宿主面（`tools/*.js`）早有此门，pack 面没有：同一份声明两处执行，缺一处就是把词表当注释。
+
+**F-106d（没读过就覆盖）**：`kernel/index.js#snapshotRecords` 的 `recordsStore.write('records', rows)` 是整份替换
+（本地视图），另一个内核写的行会被抹掉。改成 `patch('records', prev => merge)`：本地持有 id 的以本地为准（更新的编辑），
+本地没持有的行**保留**并计数（`kept N row(s)`）。与 tasks/chat/mailbox 同一形状：**共享数组的写必须是 merge-on-current，
+不是 snapshot-replace**。
+
+### §205.4 测试门禁
+
+`tests/vmu-run106-brief-enum-records.test.mjs` **16/0**（校验器行内 JSON 三种植入各点名 + 正确简报沉默 + 枚举拒绝点名
+非法值与合法集 + 合法值到达业务层 + 两内核丢行复现与第三内核读回作者）；`tests/brief-check.test.mjs` **47/0**、
+`--self-probe` 14 例全过；`tests/vmu-run36-records-shared.test.mjs` 连跑 8 次 37/0（修前 10 次 2 次红）。
+
+### §205.5 简报错
+
+1. `vibe_v5_start` 没有 `reason` 参数——这是产品侧当场告诉我的，但**校验器当时也说没问题**，于是两份简报都在第 1 步倒下。
+2. `vibe_v5_assign` 的目标参数是 `to`、必填 `why`/`acceptance`，简报写了 `member`。
+3. `phase:"debate"` 不是合法阶段词（合法词表见工具声明），简报凭 r103/r104 的先例想当然。
+
+### §205.6 无法验证
+
+- E36 辩论骨架（hand/invite/order/say round）这一轮**没有真机读数**：run 106 在第 1 步就被参数门挡住。
+- C3/C4（obstacles / rejected 分桶）仍无真机读数：run 105 的四步里没走到写卡。
+- 上面第 3 行的「Lean 前端扫描」只有成员转述、没有回执，本轮**没有取证**（不据此修代码）。
+
+### §205.7 无实质残余：否（C3/C4/E36 三条仍缺 live；名册与座位两套数待披露；一条转述待取证）
