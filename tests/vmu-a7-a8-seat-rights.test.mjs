@@ -64,20 +64,23 @@ console.log('=== 0. the declaration is still the ONE source (every target has a 
 {
   ok(DECLARED.length > 0 && DECLARED.length === Object.keys(seatMod.SEAT_TOOL_FACES).length,
     'the pack declares one row per tool (no row is missing, none is stale)', { declared: DECLARED.length, rows: Object.keys(seatMod.SEAT_TOOL_FACES).length })
+  ok(A8_TARGETS.length === 8, 'A8 names exactly eight faces (non-vacuous guard for the two every() below)')
   ok(A8_TARGETS.every((n) => row(n) !== undefined && DECLARED.includes(n)),
     'all eight A8 targets are declared pack tools with a row here', A8_TARGETS.filter((n) => !row(n)))
+  ok(TEMP_MUST_KEEP.length > 0, 'the keep-list is not empty (non-vacuous guard)')
   ok(TEMP_MUST_KEEP.every((n) => row(n) !== undefined && DECLARED.includes(n)),
     'all the temp read/keep faces are declared pack tools', TEMP_MUST_KEEP.filter((n) => !row(n)))
   // the derived lists are COMPUTED from the table, not a second hand-maintained whitelist
-  for (const seat of seatMod.SEAT_IDS) {
+  for (const seat of ['chair', 'member', 'temp']) {
     const derived = seatMod.seatDenyNames(seat, DECLARED)
-    ok(derived.length === denyList(seat).length && derived.every((n, i) => n === denyList(seat)[i]),
+    ok(derived.length > 0 && derived.length === denyList(seat).length && derived.every((n, i) => n === denyList(seat)[i]),
       'V5R_ROLE_TOOL_DENY.' + seat + ' is exactly `declared − allow` from this table (no second list)',
       { derived: derived.length, exported: denyList(seat).length })
-    ok(nameList(seat).every((n) => allow(seat, n)) && denyList(seat).every((n) => !allow(seat, n)),
+    ok(nameList(seat).length > 0 && denyList(seat).length > 0 && nameList(seat).every((n) => allow(seat, n)) && denyList(seat).every((n) => !allow(seat, n)),
       'V5R_ROLE_TOOL_NAMES.' + seat + ' and DENY.' + seat + ' agree with seatDecision row by row')
   }
   ok(core.V5R_TOOL_FACES.temp.deny.length === denyList('temp').length
+    && core.V5R_TOOL_FACES.temp.deny.length > 0
     && core.V5R_TOOL_FACES.temp.deny.every((n, i) => n === denyList('temp')[i]),
     'the manifest toolFaces.temp deny list is the same computed list (manifest and ACL cannot drift)')
 }
@@ -115,9 +118,11 @@ console.log('=== 2. A8 — a temp worker does not write the institute\'s researc
   ok(allow('temp', 'vibe_v5_record_method') === false && allow('temp', 'vibe_v5_record_subproblem') === false,
     'the three libraries already closed to temp (method / subproblem) stay closed — A8 added rows, it did not reopen any')
   const taught = seatMod.seatTaughtNames('temp').v5
+  ok(A8_TARGETS.length === 8, 'non-vacuous guard: the eight faces really are the list scanned below')
   ok(A8_TARGETS.every((n) => !taught.includes(n)),
     'the temp prompt no longer TEACHES a denied library face (bullets and ACL move together)', A8_TARGETS.filter((n) => taught.includes(n)))
-  for (const tool of A8_TARGETS) {
+  for (const tool of ['vibe_v5_record_proposition', 'vibe_v5_record_progress', 'vibe_v5_lean_run', 'vibe_v5_lean_job',
+    'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive', 'vibe_v5_paper']) {
     const why = String(row(tool).why)
     ok(why.includes('A8') && why.includes('临时工') && (why.includes('研究结论') || why.includes('所里的库') || why.includes('所里 Lean 库')),
       'why of ' + tool + ' states the A8 criterion: a temp worker only does the assigned temporary task, it does not write research conclusions into the institute\'s libraries',
@@ -142,15 +147,16 @@ console.log('=== 3. the row the brief and the table disagreed about: feedback ==
 console.log('=== 4. every changed why is non-empty and cites its rule (no silent cell edit) ===')
 {
   const changed = ['vibe_v5_fire', ...A8_TARGETS]
+  ok(changed.length === 9, 'nine rows changed in this lane (fire + the eight A8 faces)')
   for (const tool of changed) {
     const r = row(tool)
     ok(String(r.why).trim().length > 20 && String(r.rule).trim().length > 0,
       tool + ': rule + non-empty why (>20 chars) — a decision without a reason is the "just open it" failure mode', String(r.why).length)
-    ok(String(r.rule).split(',').map((s) => s.trim()).filter((s) => s !== '')
+    ok(String(r.rule).trim().length > 0 && String(r.rule).split(',').map((s) => s.trim()).filter((s) => s !== '')
       .every((k) => Object.prototype.hasOwnProperty.call(seatMod.RULE_INDEX, k)),
       tool + ': every cited rule key exists in RULE_INDEX (a dangling citation is a lie about the rule)', r.rule)
   }
-  ok(changed.every((t) => /A[78]/.test(String(row(t).why))), 'every changed row names its audit id (A7 / A8)')
+  ok(changed.length === 9 && changed.every((t) => /A[78]/.test(String(row(t).why))), 'every changed row names its audit id (A7 / A8)')
 }
 
 console.log('=== 5. the two halves still agree (the mechanism this file exists for, re-run end to end) ===')
@@ -158,7 +164,7 @@ console.log('=== 5. the two halves still agree (the mechanism this file exists f
   const catalogue = seatMod.seatTeachingCatalogue(DECLARED)
   ok(catalogue.ok === true, '★★ seatTeachingCatalogue.ok — no missing/extra row, and no seat teaches a denied name or is granted an untaught one',
     { missing: catalogue.missing, extra: catalogue.extra, badRows: catalogue.badRows })
-  for (const seat of seatMod.SEAT_IDS) {
+  for (const seat of ['chair', 'member', 'temp']) {
     const s = catalogue.seats[seat]
     ok(s.taughtNotAllowed.length === 0 && s.allowedNotTaught.length === 0,
       seat + ': prompt bullets and declaration agree in BOTH directions', s)

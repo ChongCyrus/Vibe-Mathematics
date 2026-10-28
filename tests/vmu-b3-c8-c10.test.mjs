@@ -93,6 +93,7 @@ try {
     '① 规则原文允许的三条路都在 P1_ROUTES 里', P1_ROUTES)
   ok(P1_ROUTES.includes('verified-row'),
     '② 第四条 verified-row 也具名列出（它不是新来源，是"早就定过了"的重述）', P1_ROUTES)
+  ok(P1_ROUTES.length === 4, 'P1_ROUTES 声明正好四条路（非空守卫）')
   ok(P1_ROUTES.every((r) => typeof P1_ROUTE_MEANS[r] === 'string' && P1_ROUTE_MEANS[r].trim() !== ''),
     '③ 每一条路都有一句非空的中文说明（路由名不能是个没有含义的 enum）', P1_ROUTE_MEANS)
 
@@ -154,6 +155,7 @@ try {
 
   const routes = [litRoute.route, debateRoute.route, leanRoute.route, verifiedRoute.route]
   ok(new Set(routes).size === 4, '⑤ 四条路产生四个**不同**的 p1Route（不是共用一个"有证据"的字符串）', routes)
+  ok(routes.length > 0, '⑥ 本轮回执真的报了路（非空守卫）')
   ok(routes.every((r) => P1_ROUTES.includes(r)), '⑥ 每个 p1Route 都在声明的 P1_ROUTES 里', routes)
 
   // ── 2. B3：有证据却归不到路 ⇒ 具名拒，且拒绝文案写出规则原文允许的那三条路 ─────────────────────────────────
@@ -177,7 +179,8 @@ try {
     card: { id: 'rec-direct' }, evidence: { verified: { conclusion: false, cardId: 'rec-direct' } } })
   ok(direct.ok === false && direct.code === 'VMU_PACK_V5R_P1_NEEDS_DEBATE' && direct.p1Route === null,
     '④ p1Intent：证据命中却不构成定论 ⇒ 具名拒且 p1Route:null（不是"放行但不说路"）', direct)
-  ok(Array.isArray(direct.p1Routes) && direct.p1Routes.length === P1_ROUTES.length,
+  ok(Array.isArray(direct.p1Routes) && direct.p1Routes.length > 0
+    && direct.p1Routes.join('|') === P1_ROUTES.join('|'),
     '⑤ 拒绝回执本身带着 p1Routes，读者不必去翻源码才知道有哪三条路', direct.p1Routes)
 
   // ── 3. C8：p=1 的命题卡读出来要指回 Verified 那一行 ───────────────────────────────────────────────────────

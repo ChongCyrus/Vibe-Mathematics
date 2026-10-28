@@ -252,6 +252,7 @@ const unknownDraft = await call({ action: 'adopt', member: 'acad', draft: 'no-su
 const legacyDraft = await call({ action: 'propose', member: 'r-1', path: PATH_WRONG, text: '一版只有单个作者的草案。' })
 const wrongPath = await call({ action: 'adopt', member: 'acad', path: PATH, draft: legacyDraft.parsed.id })
 const collect = [emptyText, ghost, noAuthor, badAction, unknownDraft, wrongPath]
+ok(collect.length === 6, 'the refusal set really holds six entries (non-vacuous guard)')
 ok(collect.every((r) => r.ok === false), 'all six refusals below really refused (RULE E: the set is non-empty and negative)', collect.map((r) => r.code))
 ok(collect.every((r) => triple(r)), '★ every refusal carries code + message + hint (the three-piece contract)', collect.map((r) => ({ code: r.code, hint: String(r.hint || '').slice(0, 40) })))
 ok(collect.every((r) => typeof r.code === 'string' && /^VMU_[A-Z_]{4,}$/.test(r.code)), 'every refusal code is a named VMU_* code, never a bare exception', collect.map((r) => r.code))

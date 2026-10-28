@@ -55,7 +55,7 @@ import { makeMathadaptersSpec } from './tools/mathadapters.js'
 import { makeMathjobsSpec } from './tools/mathjobs.js'
 import { boundedToolResult, MAX_TOOL_RESULT_BYTES } from './kernel/receiptbounds.js'
 // PHASE 6 / P0-10: the host half of a PACK-DECLARED tool face, extracted (this file is at the 1200-line ceiling).
-import { appendPackToolSpecs, packToolFailureRows } from './host-pack-tools.js'
+import { appendPackToolSpecs, packToolFailureRows, resolveTurnMember } from './host-pack-tools.js'
 //
 // TOOL SHAPE (learned from the REAL HOST, not from our own assumptions): the first scripted live run
 // (SLV) showed the preset active but NO vmu tools in the agent's tool list. The cause was this file: the
@@ -938,7 +938,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('records') && kernel.library) {
     specs.push({
       name: TOOL_NAMES.records,
-      description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹）｜status（共享折入与计数器的有界视图：谁折入过、多少行没有登记作者、本实例计数）。',
+      description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹；这是 pack 里 `vibe_v5_record_<kind>` 的同一个动作，所以按那张席位面判权：席位被关的那些库，这里也写不进去）｜status（共享折入与计数器的有界视图：谁折入过、多少行没有登记作者、本实例计数）。',
       parameters: {
         action: param('string', 'list（默认）｜expand｜append｜status', { required: true, enum: ['list', 'expand', 'append', 'status'] }),
         id: param('string', '记录 id（expand 必填）'),
@@ -948,7 +948,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         statement: param('string', 'append：陈述'),
         proof: param('string', 'append：证明/方法正文'),
       },
-      run: async ({ action = 'list', id, limit, track, kind, statement, proof } = {}) => {
+      run: async ({ action = 'list', id, limit, track, kind, statement, proof } = {}, exec = null) => {
         try {
           // ★ SLV (measured): this face read `kernel.library` while the v3 data plane writes `kernel.records` - two
           // different stores, so every card was invisible here (`records: []` beside a non-zero journal). The RECORDS
@@ -1011,7 +1011,41 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               note: 'bounded status view: the shared seam, the adoption counters and the per-track row counts. The bytes maps, refusal histograms and wiring ledger stay on the kernel — this receipt is a status, not a dump.',
             }
           }
-          if (action === 'append') return Object.assign({ ok: true, action }, await kernel.library.append({ kind, statement, proof }))
+          // ★ RUN 113 (measured on a real machine): the pack says "a temp worker does not write these libraries", its
+          // tool face denies `vibe_v5_record_proposition`, and a temp worker still wrote a proposition — through THIS
+          // face, because `append` here is the same act under a different tool name and the face never asked. The rule
+          // is not "this tool is closed": it is "this WRITE is closed to this seat", so the write asks the seat's own
+          // gate. The tool name is DERIVED from the pack's declarations (`vibe_v5_record_<kind>` exists or it does not),
+          // never a second hand-kept list; a kind the pack does not publish keeps today's behaviour, and a caller that
+          // is not a member (the office/human path) is not governed by a member face.
+          if (action === 'append') {
+            const caller = (() => { try { return resolveTurnMember(kernel, exec) } catch { return null } })()
+            const packToolsOf = () => {
+              try {
+                const declared = kernel && typeof kernel.packTools === 'function' ? kernel.packTools() : []
+                return (Array.isArray(declared) ? declared : []).map((t) => (typeof t === 'string' ? t : t && t.name)).filter((n) => typeof n === 'string' && n !== '')
+              } catch { return [] }
+            }
+            const nameOfKind = caller && kind ? 'vibe_v5_record_' + String(kind) : null
+            const gated = nameOfKind && packToolsOf().includes(nameOfKind) ? nameOfKind : null
+            if (gated && kernel && typeof kernel.memberFaceGate === 'function') {
+              let verdict = null
+              try { verdict = kernel.memberFaceGate({ member: caller, toolName: gated }) }
+              catch (e) { verdict = { ok: false, code: (e && e.code) || 'VMU_NOT_PERMITTED', message: String((e && e.message) || e), hint: (e && e.hint) || null } }
+              if (verdict && verdict.ok === false) {
+                return refused(verdict.code || 'VMU_NOT_PERMITTED', verdict.message || ('this seat may not write ' + String(kind) + ' through the records face'),
+                  (verdict.hint ? verdict.hint + ' — ' : '')
+                  + `the same act is the pack tool ${gated}: this face does not widen the seat face it mirrors (member ${caller})`,
+                  { seatFace: { member: caller, tool: gated, kind: String(kind) }, seatFaceMeans: 'the write was refused by the SAME seat gate the pack tool uses, not by a rule of this face' })
+              }
+            }
+            const appended = Object.assign({ ok: true, action }, await kernel.library.append({ kind, statement, proof }))
+            if (gated) {
+              appended.seatFace = { member: caller, tool: gated, kind: String(kind), allowed: true }
+              appended.seatFaceMeans = 'a member write through this face is allowed only when the pack tool that owns the same library would be allowed to that seat'
+            }
+            return appended
+          }
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
           return refused(e.code || 'VMU_INVALID_ARGUMENT', String(e.message), e.hint)

@@ -8987,3 +8987,69 @@ UNKNOWN_FIELD=4 FIELD_NOT_APPLICABLE=6 BAD_JSON=6`。判定四步里只走到第
 ### §207.6 台账改真：15 行 DONE → PARTIAL
 
 A7、A8、B3、B4、B5、C2、C4、C8、C10、D1、E9、E16、E29、G6、G7 全部降级，`next` 写明下一轮要读到的逐字回执。**这不是退步**：旧 DONE 的依据是「引用活着的机制」，而这 15 条里有多条的机制当时并不实现规则句（E16 的队列没人读、A8 只被堵在三类库、B5 的机制恰好是「谁都能提」）。一条规则只有在机制、工具、教学、真机四件都对上时才算 DONE——审计前我们把「引用活着」当成了「规则成立」，这正是 G7 说的事。
+
+## §208 真机跑 113 —— 它的席位面是真的，另一个名字的同一个动作不是
+
+### §208.1 读数
+
+- 版本：build `89197446`（clone `slvp113`，port 19713）。`DRIVE exit=0`、`durationSec 246`、`toolCalls 12` / results 12、
+  `tokenTotal 892,108`（cap 12,000,000，`tokenCapHit:false`）、`transcriptEvents 76`、3 会话、`SUMMARY: 3 session(s), 0 with RED`。
+- 这一轮是**定向**跑（12 次调用，四组判据），不是铺开跑：目的是把 A8/席位面与通用面的关系、动议上限、蓝图共同设计三条
+  规则各自逼到「回执里能读到」的程度。
+
+### §208.2 判决表
+
+| # | 判据 | 结果 | 依据（逐字） |
+|---|---|---|---|
+| 1 | A8 临时工的写面被席位面关上 | ❌ **真缺陷** | 工具面 `vibe_v5_record_proposition` 对 `r-t1` 是 `hidden`（`reason:"turn"`、`source:"turn-override"`），而 `r-t1` 改调 `vibe_vmu_records {action:"append", kind:"proposition"}` **写成功**，行落在 `VibeMath/Members/shared/Propos/item-b8e900b0.md` |
+| 2 | 动议上限按 `vmu.meetings.verdictMaxRounds` 生效 | ✅ | `verdictMaxRounds:1` 后第二条动议 `VMU_RESOURCE_BUDGET`，message 印 `1 / 1` |
+| 3 | 单人蓝图草案不能被采纳（B5） | ✅ | `adopt` 被 `VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN` 拒，message 点名缺常驻研究员席 |
+| 4 | 席位面拒绝说清是哪张面拒的 | ⚠ 半 | 包工具的拒绝说了 face 与 slot；**通用面没有拒绝可言**（缺陷 1） |
+| 5 | 成员解雇越权（A7） | ⏳ 未走到 | 简报只让成员解雇自己的临时工，没写「解雇他人的」那一步 |
+| 6 | 发言顺序（E16） | ⏳ 未走到 | 本轮没排定 order |
+| 7 | 蓝图的 freshness 读回（B4） | ⏳ 未走到 | 简报没读 `action:"read"` |
+| 8 | Lean 档案带编译结果（C10） | ⏳ 未走到 | 本轮没跑 lean 面（12 次调用已用掉预算方向） |
+
+### §208.3 缺陷与修法（F-113a）
+
+**F-113a：同一个动作换个名字就绕过席位面。** 机制事实：宿主的通用记录面 `vibe_vmu_records`
+
+`action === "append"` 直接调用 `kernel.library.append({kind, statement, proof})`，**从不知道调用者是谁**（`vibe-math-vmu/host.js:1014`）。
+而席位面只关它自己那个工具名（`packs/v5r/seat-faces.js` 里 `vibe_v5_record_proposition` 对 temp 为 deny），两者之间没有连线。
+于是「临时工不写这些库」这条规则在**工具面**成立、在**数据面**不成立 —— 用户能在真机里做到规则禁止的事。
+
+修法（不做第二张手维表）：通用面在执行 append 前自己问同一份判据 ——
+1. `caller = resolveTurnMember(kernel, exec)`（`host-pack-tools.js` 已有的单一判据，`exec.agent.id` + 回合成员 + 名册）；
+2. 从 `kernel.packTools()` 派生命名 `vibe_v5_record_<kind>`，**存在才判权**（包没发布的库不发明闸门）；
+3. `kernel.memberFaceGate({member, toolName})` 判定；拒绝时回执带 `seatFace:{member,tool,kind}` + `seatFaceMeans`
+   （"the write was refused by the SAME seat gate the pack tool uses, not by a rule of this face"），hint 保留闸门自己那句并补
+   「通用面不扩大它所镜像的席位面」；放行时回执带 `seatFace.allowed:true` 与含义句；网关抛错收成具名拒绝（保留其 code）；
+4. 非成员（`exec.agent.id` 为空或以 `session-` 开头）不被会员席位面治理 —— 所办路径行为不变。
+
+判据（为什么是这三步而不是「把 append 关掉」）：规则的主体是**这张席位能不能写这个库**，不是「这个工具名能不能用」。
+工具名是包装，库是事实；两个包装（`vibe_v5_record_<kind>` 与 `vibe_vmu_records{append}`）指向同一份事实时必须问同一份判据，
+否则每加一个包装就多一个洞。
+
+### §208.4 测试与门禁
+
+- 新 `tests/vmu-run113-records-seat-gate.test.mjs` **17/0**（真插件 boot：真内核、真 pack、真席位闸）：临时工经通用面追加被
+  `VMU_TOOL_NOT_IN_FACE` 拒且库未增行、回执点名 `seatFace.tool/member` 与 SAME 句；成员追加成功且回执 `seatFace.allowed:true`；
+  所办路径不判权且不声称判权；把包的工具发布拿走一瞬，同一 kind 不再被判权（证明闸门是**派生**的，不是手维表）；
+  库不认识的 kind 由库自己具名拒。
+- 相邻：`vmu-a7-a8-seat-rights` 62/0、`vmu-a7-fire-scope` 34/0、`vmu-run113-a7-hire-attribution` 19/0、
+  `vmu-run92-temp-seat-and-hire` 12/0、`vmu-run31-seat-faces` 86/0、`vmu-v5r-tools` 360/0、`vmu-records` 271/0。
+
+### §208.5 简报自身错一处
+
+第 2 步让成员「把 `[状态板]` 逐字抄进 report」——成员回合的 report 通道能收下，但**它不是我读回执的地方**；状态板从来在
+`vibe_vmu_turn {op:"step"}` 的 prompt 里，读它应该由 **root** 的 step 回执读，而不是让成员转述。下一轮改成「root 在同一轮
+里读两名成员的 step prompt」。
+
+### §208.6 本轮无法验证
+
+- A7 的两条（解雇自己的 / 解雇他人的）：简报没写第二步。
+- E16 / E29（发言顺序、动议上限的读回）：E29 只在根会话见到一次拒，没读到 `queueRead` 形态。
+- B4 / C10：简报未覆盖。
+- 「临时工经通用面写 lean/paper 库」：同一机制，未逐一取证。
+
+### §208.7 无实质残余：否
