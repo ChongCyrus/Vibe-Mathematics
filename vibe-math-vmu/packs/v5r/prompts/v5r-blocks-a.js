@@ -389,6 +389,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '  · **永远不要为了让流程往前走而投出你不相信的 1 或 0。** 诚实的"不确定"远好过',
         '    虚假的"一致"。本所宁可留下未定论，也不要一个骗人的 Verified。',
         '  · 你享有与所有有表决权者相同的**一票**，不享有更高票权，也不能单方面定论。',
+        '  · 裁决落地靠**通知**：`vibe_v5_verdict_final` 回执的 `attribution`/`coverage` 说明每个数从哪来，`delivery`/`notified`/`notification.state` 说明通知到谁（`delivered`＝已推进对方这一轮，`queued`＝仍在收件箱未读）——**没人被告知，裁决就不算落地**；要先请成员给裁决用 `vibe_v5_verdict_ask`。',
       ].join('\n'),
       researcher: [
         '【五、表决与定论（求真门槛）】',

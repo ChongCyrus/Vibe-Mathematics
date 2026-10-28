@@ -23,10 +23,6 @@
         "why": "blank line"
       },
       {
-        "line": "L10",
-        "why": "subsection heading: 院士、常驻研究员各自的文件"
-      },
-      {
         "line": "L22",
         "why": "blank line"
       },
@@ -234,7 +230,7 @@
   "items": [
     {
       "id": "A1",
-      "rule": "L1-L2",
+      "rule": "3",
       "text": "所办＝主代理：用户的助手、媒介、传信者",
       "status": "DONE",
       "tool": [
@@ -245,20 +241,22 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-assistant.js::所办"
       ],
       "mechanism": [
-        "vibe-math-vmu/settings/schema.js::who: 'office'",
-        "vibe-math-vmu/kernel/report.js::whoMayChange"
+        "vibe-math-vmu/tools/human.js::role: 'office', seat: 'office', root, agentId",
+        "vibe-math-vmu/packs/v5r/member-scope.js::vibe_v5_message: 'office',"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_v5_message{member:\"res-01\",to:\"res-02\"}` ⇒ `from:\"res-01\"`、`relayedBy:\"office\"`"
-      ]
+      ],
+      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。"
     },
     {
       "id": "A2",
-      "rule": "L1-L2",
+      "rule": "3",
       "text": "有进展时自动唤起所办汇报",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/turn/index.js::woken"
+        "vibe-math-vmu/kernel/report.js::due = asked !== '' && asked === it.event",
+        "vibe-math-vmu/vibe-math-vmu.js::event: 'turn-end', metrics: metricsOf"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_report"
@@ -269,11 +267,12 @@
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"enabled\":true,\"declared\":1,\"armed\":1",
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"neverDrives\":true"
-      ]
+      ],
+      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。"
     },
     {
       "id": "A3",
-      "rule": "L1-L2",
+      "rule": "3",
       "text": "支持用户以自然语言让所办设参数、控制研究所",
       "status": "DONE",
       "tool": [
@@ -281,23 +280,25 @@
         "vibe-math-vmu/host.js::vibe_vmu_report"
       ],
       "mechanism": [
-        "vibe-math-vmu/kernel/report.js::whoMayChange",
-        "vibe-math-vmu/settings/schema.js::who: 'office'"
+        "vibe-math-vmu/kernel/report.js::c.whoMayChange.includes",
+        "vibe-math-vmu/kernel/report.js::outside the declared parameter domain"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-assistant.js::改参数、控研究所是所办的事"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_v5_set vmu.math.leanTimeoutMs=40` 之后编译真文件，预算切断"
-      ]
+      ],
+      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。"
     },
     {
       "id": "A4",
-      "rule": "L3",
+      "rule": "3",
       "text": "院士＝chair 席，统领研究所",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/seat-faces.js::chair"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-core.js::label: '院士', capacity: 1,",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-core.js::'convene', 'close', 'assign', 'grant', 'freeze', 'vote'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_start"
@@ -307,15 +308,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::后一步撞 `VMU_RESOURCE_BUDGET \"role slot chair is full: 1/1\"`"
-      ]
+      ],
+      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。"
     },
     {
       "id": "A5",
-      "rule": "L3",
+      "rule": "3",
       "text": "常驻研究员＝member 席",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/seat-faces.js::member"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-core.js::label: '常驻研究员', capacity: 0,",
+        "vibe-math-vmu/packs/v5r/seat-faces.js::member: '常驻研究员席位：主张、记录、通信、辩论与表决、形式化、论文',"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_hire"
@@ -325,11 +328,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::已经自动建所并 hire 三人"
-      ]
+      ],
+      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。"
     },
     {
       "id": "A6",
-      "rule": "L3",
+      "rule": "3",
       "text": "临时工：可被雇佣、无表决权、默认不参与会议、可解雇",
       "status": "DONE",
       "mechanism": [
@@ -343,15 +347,16 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"slotRequested\":\"temp\""
-      ]
+      ],
+      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。"
     },
     {
       "id": "A7",
-      "rule": "L3",
+      "rule": "3",
       "text": "临时工可被解雇",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/members.js::fire"
+        "vibe-math-vmu/packs/v5r/tools.js::dismissed by vibe_v5_fire"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_fire"
@@ -361,15 +366,16 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"state\":\"ended\""
-      ]
+      ],
+      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。"
     },
     {
       "id": "B1",
-      "rule": "L7-L8",
+      "rule": "7",
       "text": "Verified 只收 p=1 的命题",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/verified.js::verified"
+        "vibe-math-vmu/packs/v5r/verified.js::card.p !== 1 && card.p !== 0"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_verified_promote"
@@ -379,11 +385,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::only 1 or 0 may be promoted"
-      ]
+      ],
+      "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。"
     },
     {
       "id": "B2",
-      "rule": "L7-L8",
+      "rule": "7",
       "text": "参考文献中的命题也可直接入 Verified",
       "status": "DONE",
       "prompt": [
@@ -400,11 +407,12 @@
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"warrant_kind\":\"literature\"",
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"literature_ref\": \"Rudin《数学分析原理》第 3 版 定理 1.14\""
-      ]
+      ],
+      "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。"
     },
     {
       "id": "B3",
-      "rule": "L7-L8",
+      "rule": "7",
       "text": "只有辩论能把 p 改为 1",
       "status": "DONE",
       "tool": [
@@ -414,20 +422,23 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::辩论"
       ],
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/verification-gates.js::P1_NEEDS_DEBATE"
+        "vibe-math-vmu/packs/v5r/verification-gates.js::export function p1Intent",
+        "vibe-math-vmu/packs/v5r/verification-gates.js::GATE_CODES.P1_NEEDS_DEBATE,"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::具名拒 `VMU_PACK_V5R_P1_NEEDS_DEBATE`（p=1 需要裁决证据）"
       ],
-      "note": "三种凭据都是辩论产物；规则句的「只有辩论」在本实现里等于「只接受辩论产物」——Lead 裁决：不收紧闸。"
+      "note": "三种凭据都是辩论产物；规则句的「只有辩论」在本实现里等于「只接受辩论产物」——Lead 裁决：不收紧闸。",
+      "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。"
     },
     {
       "id": "B4",
-      "rule": "L7-L8",
+      "rule": "8",
       "text": "蓝图：总目标/技术路线/规划，按时更新",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/blueprint.js::stale"
+        "vibe-math-vmu/packs/v5r/blueprint.js::ageMs > BLUEPRINT_STALE_AFTER_MS",
+        "vibe-math-vmu/packs/v5r/blueprint.js::staleAfterMs: BLUEPRINT_STALE_AFTER_MS"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
@@ -437,15 +448,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::蓝图 propose→adopt→read"
-      ]
+      ],
+      "ruleText": "- 实现总目标的完整技术路线设计策划蓝图。按时更新、调整。由院士+常驻研究员共同设计策划、决定如何调整。最终编辑权交给院士。"
     },
     {
       "id": "B5",
-      "rule": "L7-L8",
+      "rule": "8",
       "text": "蓝图由院士+常驻研究员共同设计",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/blueprint.js::propose"
+        "vibe-math-vmu/packs/v5r/blueprint.js::export function proposeBlueprint",
+        "vibe-math-vmu/packs/v5r/tools.js::const proposed = proposeBlueprint"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
@@ -455,15 +468,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"previousRevision\":0"
-      ]
+      ],
+      "ruleText": "- 实现总目标的完整技术路线设计策划蓝图。按时更新、调整。由院士+常驻研究员共同设计策划、决定如何调整。最终编辑权交给院士。"
     },
     {
       "id": "B6",
-      "rule": "L7-L8",
+      "rule": "8",
       "text": "蓝图最终编辑权在院士",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/tools.js::chair"
+        "vibe-math-vmu/packs/v5r/tools.js::const member = requireChairSeat",
+        "vibe-math-vmu/packs/v5r/blueprint.js::BLUEPRINT_ADOPT_SLOT = 'chair'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
@@ -473,11 +488,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"adoptedBy\":\"r-acad\",\"adoptedAt\""
-      ]
+      ],
+      "ruleText": "- 实现总目标的完整技术路线设计策划蓝图。按时更新、调整。由院士+常驻研究员共同设计策划、决定如何调整。最终编辑权交给院士。"
     },
     {
       "id": "C1",
-      "rule": "L11-L12",
+      "rule": "11",
       "text": "研究过程 progress 日志",
       "status": "DONE",
       "mechanism": [
@@ -491,65 +507,72 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::r-1 只用围栏写 progress（不调工具）⇒ `vibe_v5_read_library{member:\"r-1\",kind:\"progress\"}` 读到该行"
-      ]
+      ],
+      "ruleText": "- 研究过程经历progress。"
     },
     {
       "id": "C2",
-      "rule": "L13",
+      "rule": "12",
       "text": "已尝试路线/方法及其进度",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/settings/defaults.json::routes"
+        "vibe-math-vmu/kernel/records.js::'progress', 'routes', 'obstacles', 'rejected', 'state'",
+        "vibe-math-vmu/kit/handlers.js::unknown progress track"
       ],
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::routes"
+        "vibe_v5_record_progress"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::尝试过的路线与进展"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"track\":\"routes\",\"recordId\":\"rec-7\""
-      ]
+      ],
+      "ruleText": "- 已尝试的各种可能路线、方法及它们的进度。"
     },
     {
       "id": "C3",
-      "rule": "L14",
+      "rule": "13",
       "text": "遇障路线/尝试/方法及障碍与原因归档",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/settings/defaults.json::obstacles"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-core.js::'progress', 'routes', 'obstacles', 'rejected', 'state'",
+        "vibe-math-vmu/kit/handlers.js::unknown progress track"
       ],
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::obstacles"
+        "vibe_v5_record_progress"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::阻塞与原因"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-8\""
-      ]
+      ],
+      "ruleText": "- 遇障路线、尝试、方法及遇到的各种障碍及其原因等的归档。"
     },
     {
       "id": "C4",
-      "rule": "L15",
-      "text": "被否定的路线/结论归档",
+      "rule": "13",
+      "text": "遇到的各种障碍及其原因（归档内容的一部分）",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/settings/defaults.json::rejected"
+        "vibe-math-vmu/kernel/library.js::'progress', 'routes', 'obstacles', 'rejected', 'state'",
+        "vibe-math-vmu/kit/handlers.js::unknown progress track"
       ],
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::rejected"
+        "vibe_v5_record_progress"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::已证伪的路"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-9\""
-      ]
+      ],
+      "ruleText": "- 遇障路线、尝试、方法及遇到的各种障碍及其原因等的归档。"
     },
     {
       "id": "C5",
-      "rule": "L16",
+      "rule": "14",
       "text": "命题库：完整定义、p(0-1)、进度",
       "status": "DONE",
       "mechanism": [
@@ -563,11 +586,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`read_library {id:\"rec-1\"}` 的 `card` 顶层无 `p`；`p：0.6` 只在 `card.body` 文本里"
-      ]
+      ],
+      "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。"
     },
     {
       "id": "C6",
-      "rule": "L16",
+      "rule": "14",
       "text": "平时只记证明/证伪尝试，真正会证时才写正式证明字段",
       "status": "DONE",
       "mechanism": [
@@ -581,11 +605,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`subjectGate{allowed:true, form:\"card\", provenance:\"declared\", proofBasis:\"declaration-only\""
-      ]
+      ],
+      "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。"
     },
     {
       "id": "C7",
-      "rule": "L16",
+      "rule": "14",
       "text": "只有写完的正式证明才能用于辩论",
       "status": "DONE",
       "tool": [
@@ -595,19 +620,22 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::证明"
       ],
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/verification-gates.js::debateSubjectGate"
+        "vibe-math-vmu/packs/v5r/verification-gates.js::export function debateSubjectGate",
+        "vibe-math-vmu/packs/v5r/verification-gates.js::const cls = classifySubject"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::message 写「命题卡 rec-5 没有「正式证明或证伪已写完」的任何登记"
-      ]
+      ],
+      "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。"
     },
     {
       "id": "C8",
-      "rule": "L16",
+      "rule": "14",
       "text": "p=1 的命题要标记 verified",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/verified.js::verified"
+        "vibe-math-vmu/packs/v5r/verified.js::title: VERIFIED_TITLE_PREFIX",
+        "vibe-math-vmu/packs/v5r/verified.js::VERIFIED_TITLE_PREFIX = '已验证｜'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_verified_promote"
@@ -617,29 +645,32 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::成员只能看到\"有一张 verified 行躺在账本里\""
-      ]
+      ],
+      "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。"
     },
     {
       "id": "C9",
-      "rule": "L17",
+      "rule": "15",
       "text": "方法库（理论/方法/工具，抽象化产物）",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/settings/defaults.json::methods"
+        "vibe-math-vmu/kernel/library.js::proposition: 'Propos', method: 'Methods', subproblem: 'Subproblems'",
+        "vibe-math-vmu/kernel/library.js::unknown record kind"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_method"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::方法库另有一张卡"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::方法库另一张卡"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"track\":\"methods\",\"kind\":\"method\",\"recordId\":\"rec-10\""
-      ]
+      ],
+      "ruleText": "- 方法库。平时研究过程中尝试去构建的、尝试一般化或推广的或抽象化的工具、理论框架。（就像群论的发明那样，在解决一个实际问题中发明出封装出有价值的一般化理论体系、技术、方法论）"
     },
     {
       "id": "C10",
-      "rule": "L18",
+      "rule": "16",
       "text": "Lean 代码与编译结果归档",
       "status": "DONE",
       "mechanism": [
@@ -653,11 +684,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`persisted:true`、`persistence:{shared:true, key:\"leanlibrary\""
-      ]
+      ],
+      "ruleText": "- 平时的一些命题的证明、对象的定义之类的lean代码及其编译结果。以减轻后续工作量。且只要lean通过的命题那么剩下的（在辩论时）只是检查代码中的命题、各种定义是否描述符合所需，只要符合那么就是完全正确的、布尔概率直接赋值为1、可以把相应命题（及其依赖的对象定义）加入verified。（通过参数可以开启鼓励开关：鼓励它们把平时一些小结论、小命题、定义给进行lean形式化、编译，来减少后续工作量。）"
     },
     {
       "id": "C11",
-      "rule": "L18",
+      "rule": "16",
       "text": "lean 通过后辩论只查描述/定义是否符合原意",
       "status": "DONE",
       "tool": [
@@ -667,16 +699,17 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::fidelity"
       ],
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/verification-gates.js::FIDELITY_ASK_REQUIRED",
-        "vibe-math-vmu/kernel/fidelity.js::createFidelityRegistry"
+        "vibe-math-vmu/packs/v5r/verification-gates.js::export function fidelityAsked",
+        "vibe-math-vmu/packs/v5r/verification-gates.js::reason: 'Lean 已通过但概率仍非 1（p="
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"warrant\":\"lean-3\",\"source\":\"lean-conformance\""
-      ]
+      ],
+      "ruleText": "- 平时的一些命题的证明、对象的定义之类的lean代码及其编译结果。以减轻后续工作量。且只要lean通过的命题那么剩下的（在辩论时）只是检查代码中的命题、各种定义是否描述符合所需，只要符合那么就是完全正确的、布尔概率直接赋值为1、可以把相应命题（及其依赖的对象定义）加入verified。（通过参数可以开启鼓励开关：鼓励它们把平时一些小结论、小命题、定义给进行lean形式化、编译，来减少后续工作量。）"
     },
     {
       "id": "C12",
-      "rule": "L18",
+      "rule": "16",
       "text": "鼓励开关：鼓励把小结/定义 Lean 化",
       "status": "DONE",
       "mechanism": [
@@ -690,11 +723,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"key\":\"vmu.math.formalVerify\",\"value\":\"encourage\""
-      ]
+      ],
+      "ruleText": "- 平时的一些命题的证明、对象的定义之类的lean代码及其编译结果。以减轻后续工作量。且只要lean通过的命题那么剩下的（在辩论时）只是检查代码中的命题、各种定义是否描述符合所需，只要符合那么就是完全正确的、布尔概率直接赋值为1、可以把相应命题（及其依赖的对象定义）加入verified。（通过参数可以开启鼓励开关：鼓励它们把平时一些小结论、小命题、定义给进行lean形式化、编译，来减少后续工作量。）"
     },
     {
       "id": "C13",
-      "rule": "L19",
+      "rule": "17",
       "text": "经分派后各自负责部分的论文",
       "status": "DONE",
       "mechanism": [
@@ -709,15 +743,17 @@
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"reviewOf\":{\"r-1\":\"r-2\",\"r-2\":\"r-1\"}",
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"from\":\"reviewing\",\"to\":\"awaiting-editor\",\"unanimous\":true"
-      ]
+      ],
+      "ruleText": "- 经分派后各自负责部分的论文。"
     },
     {
       "id": "C14",
-      "rule": "L20",
+      "rule": "18",
       "text": "脚本文件等归档，不写 ad-hoc 脚本",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_script"
+        "vibe-math-vmu/packs/v5r/tools.js::this deployment declares no scripts track",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-core.js::id: 'v5r-core-no-adhoc-scripts',"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_script"
@@ -728,15 +764,16 @@
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-18\"",
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"fingerprint\":\"cbd725528ce6f926011c7c2f8f8a3c23fccbad6715f26d8e21afba0c8de80d28\""
-      ]
+      ],
+      "ruleText": "- 一些脚本文件等。"
     },
     {
       "id": "C15",
-      "rule": "L21",
+      "rule": "19",
       "text": "自反馈库（问题/冗余/障碍/可优化点/方案；院士含组织协作）",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/settings/defaults.json::feedback"
+        "vibe-math-vmu/packs/v5r/tools.js::track: 'feedback', kind: 'feedback'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_feedback"
@@ -746,15 +783,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::所办 `vibe_v5_feedback{op:\"add\"}` ⇒ `rec-15.owner:null`"
-      ]
+      ],
+      "ruleText": "- 自反馈库。用于记录平时工作时的一些存在的问题、耗时的冗余的地方、障碍、可优化的地方和方案，不断根据实际的经验、实际的反馈（如一些工作的耗时、障碍），用来不断自我反馈迭代优化自己的行为模式、纪律，改进、优化日后工作，提高效率。这对于院士而言，还包含了对队友组织协作方面（框架流程的各个阶段，如平时推进阶段，会议阶段、辩论阶段、...）的自反馈优化、管理方面的优化。（举个例子，比如成员在发现某个脚本比较耗时那么就可以尝试异步进行，避免阻塞，或者尝试改进脚本、优化效率甚至尝试其它方案或思路。再比如根据过去经验、复盘之前的一些流程工作流，如果发现不够好、是非常障碍性的，那么就尝试改进、不断迭代优化流程）"
     },
     {
       "id": "D1",
-      "rule": "L26",
+      "rule": "26",
       "text": "各自推进各自的总任务",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/turn/index.js::deliverTurn"
+        "vibe-math-vmu/kernel/turn/index.js::const deliverTurn = async",
+        "vibe-math-vmu/kernel/turn/index.js::member, lastAttribution"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_vmu_turn"
@@ -764,15 +803,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::成员「抄 `detail:settings` 的 `vmu.turn.objective`」——它抄回来的值与提示词里的"
-      ]
+      ],
+      "ruleText": "- 各自推进各自的总任务。"
     },
     {
       "id": "D2",
-      "rule": "L27",
+      "rule": "27",
       "text": "三通道：邮箱/私信/群聊",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/mailbox.js::mailbox"
+        "vibe-math-vmu/kernel/mailbox.js::to = null, text = '', kind = 'dm'",
+        "vibe-math-vmu/kernel/chat.js::replyTo = null, quotes ="
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_inbox"
@@ -782,15 +823,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_v5_inbox{action:\"list\",member:\"res-01\"}` ⇒ `count:1`"
-      ]
+      ],
+      "ruleText": "- 各自交流通过：邮箱（非紧急。一般不需要立即查看邮箱消息），私信（希望对方尽早回复时），群聊（非紧急。一般不需要立即查看群聊消息），...。"
     },
     {
       "id": "D3",
-      "rule": "L27",
+      "rule": "27",
       "text": "三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/mailbox.js::urgent"
+        "vibe-math-vmu/kernel/mailbox.js::const urgentOf =",
+        "vibe-math-vmu/kernel/mailbox.js::'【紧急｜对方希望尽快回复】'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_message"
@@ -800,15 +843,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"urgent\":true,\"kind\":\"notice\""
-      ]
+      ],
+      "ruleText": "- 各自交流通过：邮箱（非紧急。一般不需要立即查看邮箱消息），私信（希望对方尽早回复时），群聊（非紧急。一般不需要立即查看群聊消息），...。"
     },
     {
       "id": "D4",
-      "rule": "L28",
+      "rule": "28",
       "text": "状态版四字段：总任务/规划/任务完成状态/当前小任务",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/turn/index.js::STATUS_BOARD_FIELDS"
+        "vibe-math-vmu/kernel/turn/index.js::export const STATUS_BOARD_FIELDS = Object",
+        "vibe-math-vmu/kernel/turn/index.js::key: 'plan', label: '规划'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_vmu_turn"
@@ -818,15 +863,16 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::两名成员都抄到含「其中 0 条属于该成员」/「来源：」的行"
-      ]
+      ],
+      "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。"
     },
     {
       "id": "D5",
-      "rule": "L28",
+      "rule": "28",
       "text": "四字段都含时间等基础信息",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/turn/index.js::statusBoardReadings"
+        "vibe-math-vmu/kernel/turn/index.js::why === undefined"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_vmu_turn"
@@ -836,15 +882,16 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::四个字段各带自己的时间"
-      ]
+      ],
+      "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。"
     },
     {
       "id": "D6",
-      "rule": "L28",
+      "rule": "28",
       "text": "可查看其他成员当前状态版",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/tools.js::state"
+        "vibe-math-vmu/kit/handlers.js::== wanted"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_read_library"
@@ -854,15 +901,16 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::一个成员读另一个成员的状态板这件事，面板读面答得出来"
-      ]
+      ],
+      "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。"
     },
     {
       "id": "D7",
-      "rule": "L28",
+      "rule": "28",
       "text": "可自己修改更新自己的状态版",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/tools.js::state"
+        "vibe-math-vmu/kit/handlers.js::the state panel needs all four contents"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_progress"
@@ -872,15 +920,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::it declares: content, track, title, member, progress, obstacles, next, help, state"
-      ]
+      ],
+      "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。"
     },
     {
       "id": "D8",
-      "rule": "L28",
+      "rule": "28",
       "text": "四字段按规则原文实现（字段名与语义）",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/turn/index.js::objective"
+        "vibe-math-vmu/kernel/turn/index.js::key: 'objective', label: '总任务'",
+        "vibe-math-vmu/kernel/turn/index.js::key: 'tasks', label: '各任务完成状态'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_vmu_turn"
@@ -890,15 +940,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`detail:\"settings\"` 给出 `vmu.turn.objective` 的 `value/source:\"runtime\"/hot:\"H2\"/who:\"office\"`"
-      ]
+      ],
+      "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。"
     },
     {
       "id": "E1",
-      "rule": "L32",
+      "rule": "32",
       "text": "只能院士预约会议（可设预约时间）",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::scheduled"
+        "vibe-math-vmu/kernel/meetings.js::const scheduledFor = ms > clock",
+        "vibe-math-vmu/kernel/meetings.js::'it starts by itself when the clock reaches that time"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -908,16 +960,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`at` ⇒ `state:\"scheduled\"`、`scheduledFor`、到点前动作被具名拒"
-      ]
+      ],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
     {
       "id": "E2",
-      "rule": "L32",
+      "rule": "32",
       "text": "到点人未到齐进入等待阶段；超时由院士决定",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::waitedMs",
-        "vibe-math-vmu/kernel/meetings.js::atMs"
+        "vibe-math-vmu/kernel/meetings.js::waitStartedAt < K",
+        "vibe-math-vmu/kernel/meetings.js::'the framework does not decide: the chair proceeds"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -928,15 +981,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"from\":\"scheduled\",\"to\":\"waiting\""
-      ]
+      ],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
     {
       "id": "E3",
-      "rule": "L33",
+      "rule": "32",
       "text": "只能院士召开会议并主持",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::open"
+        "vibe-math-vmu/kernel/meetings.js::conveneRequiresChair=true: a convene that installs a chair must name that chair as its actor',",
+        "vibe-math-vmu/kernel/meetings.js::'only the member who takes the chair may convene this meeting: actor '"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -946,15 +1001,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::需要先给主席一轮（`VMU_CHAIR_ACT_NOT_DELEGATED`）"
-      ]
+      ],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
     {
       "id": "E4",
-      "rule": "L33",
+      "rule": "32",
       "text": "只能院士关闭会议",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::closed"
+        "vibe-math-vmu/kernel/meetings.js::// PHASE 12 - only the chair closes: capability here, policy in the pack",
+        "vibe-math-vmu/kernel/meetings.js::'only the declared chair may close this meeting: '"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -964,15 +1021,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::由 `vibe_vmu_meeting {action:\"status\"/\"close\", id:\"m2\"}` 收束，回执 `state:\"closed\"`、`archived:true`"
-      ]
+      ],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
     {
       "id": "E5",
-      "rule": "L33",
+      "rule": "32",
       "text": "院士可延长会议时长上界",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::extendCeilingMs"
+        "vibe-math-vmu/kernel/meetings.js::extendCeilingMs', 14400000",
+        "vibe-math-vmu/kernel/meetings.js::after > K"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -982,15 +1041,16 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_vmu_meeting{action:\"extendlimit\",actor:\"r-acad\",id:\"m1\",ms:60000}` ⇒ `ok:true`，回执读 `wallLimitMs`/`extendedMs`"
-      ]
+      ],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
     {
       "id": "E6",
-      "rule": "L33",
+      "rule": "32",
       "text": "院士设会议标题",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::title"
+        "vibe-math-vmu/kernel/meetings.js::title !== null && title !== undefined && typeof title !== 'string'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -1000,11 +1060,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`kind` 与 `title` 都要给"
-      ]
+      ],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
     {
       "id": "E7",
-      "rule": "L33",
+      "rule": "32",
       "text": "院士设会议类型",
       "status": "DONE",
       "mechanism": [
@@ -1018,15 +1079,16 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_v5_meeting {type:\"debate\", subject:\"rec-1\"}` ⇒ `ok:true`"
-      ]
+      ],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
     {
       "id": "E8",
-      "rule": "L33",
+      "rule": "32",
       "text": "院士设会议议程/事项安排",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::agenda"
+        "vibe-math-vmu/kernel/meetings.js::typeof materials !== 'string'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -1036,11 +1098,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_v5_meeting` 的 `convene` 需要 `agenda`"
-      ]
+      ],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
     {
       "id": "E9",
-      "rule": "L33",
+      "rule": "32",
       "text": "院士邀请入会成员",
       "status": "DONE",
       "mechanism": [
@@ -1054,15 +1117,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::邀请不标到场、不影响 quorum"
-      ]
+      ],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
     {
       "id": "E10",
-      "rule": "L33",
+      "rule": "32",
       "text": "院士设会议时长上界",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::hardLimitMs"
+        "vibe-math-vmu/kernel/meetings.js::wallStartMs > wallLimitOf",
+        "vibe-math-vmu/kernel/meetings.js::const wallLimitOf ="
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -1072,15 +1137,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"wallLimitMs\":2400000"
-      ]
+      ],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
     {
       "id": "E11",
-      "rule": "L33",
+      "rule": "32",
       "text": "允许一次性连续召开多个会议",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/tools.js::sequence"
+        "vibe-math-vmu/kernel/meetings.js::const seqEntries = normalizeSequence",
+        "vibe-math-vmu/kernel/meetings.js::'sequence must be an ARRAY of meeting descriptors"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -1090,15 +1157,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::open 回执 `sequence{index:0,total:3,next:{…}}`"
-      ]
+      ],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
     },
     {
       "id": "E12",
-      "rule": "L34",
+      "rule": "34",
       "text": "成员命令随会议类型与身份不同",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/tools.js::meeting_round"
+        "vibe-math-vmu/packs/v5r/meeting-tool-face.js::export const MEETING_TYPE_TOOL_FACES = Object",
+        "vibe-math-vmu/packs/v5r/meeting-tool-face.js::member, all: false, allow: row"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting_round"
@@ -1108,15 +1177,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::the floor requires 2 and is NOT met"
-      ]
+      ],
+      "ruleText": "会议中各成员可执行命令或工具按会议类型（如学术交流、任务安排策划（一起策划）与分配、辩论会议、结题会议、...）和成员身份会有差异。"
     },
     {
       "id": "E13",
-      "rule": "L35",
+      "rule": "37",
       "text": "会议类型：正常/学术交流/辩论/结题/论文交流/未来规划",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/tools.js::ordinary"
+        "vibe-math-vmu/kernel/meetings.js::'VMU_NO_SUCH_OBJECT', 'meeting type \"'",
+        "vibe-math-vmu/packs/v5r/meeting-procedures.js::id: 'debate', label: '辩论'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -1126,15 +1197,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::真机已演练 3/6"
-      ]
+      ],
+      "ruleText": "正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。"
     },
     {
       "id": "E14",
-      "rule": "L36",
+      "rule": "39",
       "text": "常见命令：举手",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::hand"
+        "vibe-math-vmu/kernel/meeting.js::member, round: currentRound",
+        "vibe-math-vmu/kernel/meeting.js::handUp"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -1144,11 +1217,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::举手真的进了发言队列"
-      ]
+      ],
+      "ruleText": "会议的一些常见命令或工具包括但不限于（需注意各命令的使用权限，有些是只有主持人具有的命令或工具）：举手发言，邀请发言，批量指定成员按一定顺序发言，单次发言版群聊，...。"
     },
     {
       "id": "E15",
-      "rule": "L36",
+      "rule": "39",
       "text": "常见命令：邀请发言",
       "status": "DONE",
       "tool": [
@@ -1158,19 +1232,22 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::invitedspeak"
       ],
       "mechanism": [
-        "vibe-math-vmu/kernel/meeting.js::invite"
+        "vibe-math-vmu/kernel/meeting.js::, why: String",
+        "vibe-math-vmu/kernel/meeting.js::'an invitation needs a non-empty why'"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::回执 note 明说「邀请**不**改法定人数」"
-      ]
+      ],
+      "ruleText": "会议的一些常见命令或工具包括但不限于（需注意各命令的使用权限，有些是只有主持人具有的命令或工具）：举手发言，邀请发言，批量指定成员按一定顺序发言，单次发言版群聊，...。"
     },
     {
       "id": "E16",
-      "rule": "L36",
+      "rule": "39",
       "text": "常见命令：批量指定成员按顺序发言",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::order"
+        "vibe-math-vmu/kernel/meetingmarker.js::== 'chair'",
+        "vibe-math-vmu/kernel/meetingmarker.js::return base.sort((a, b) => (used(a) - used(b)) || (a < b ? -1 : 1))"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -1180,11 +1257,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::数组顺序即发言顺序"
-      ]
+      ],
+      "ruleText": "会议的一些常见命令或工具包括但不限于（需注意各命令的使用权限，有些是只有主持人具有的命令或工具）：举手发言，邀请发言，批量指定成员按一定顺序发言，单次发言版群聊，...。"
     },
     {
       "id": "E17",
-      "rule": "L36",
+      "rule": "39",
       "text": "常见命令：单次发言版群聊（每人各说一次、不打断）",
       "status": "DONE",
       "mechanism": [
@@ -1199,15 +1277,17 @@
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"round\":\"g1\",\"spoke\":true",
         "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_CHAT_ALREADY_SPOKE"
-      ]
+      ],
+      "ruleText": "会议的一些常见命令或工具包括但不限于（需注意各命令的使用权限，有些是只有主持人具有的命令或工具）：举手发言，邀请发言，批量指定成员按一定顺序发言，单次发言版群聊，...。"
     },
     {
       "id": "E18",
-      "rule": "L42",
+      "rule": "42",
       "text": "投票板：院士设选项与机制（最少/最多选几项）",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/ballot.js::min"
+        "vibe-math-vmu/kernel/ballotbox.js::'VMU_BALLOT_CHOICE_COUNT', '选择数 '",
+        "vibe-math-vmu/kernel/ballotbox.js::'VMU_BALLOT_CHOICE_COUNT', '选择数 '"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_poll_open"
@@ -1217,11 +1297,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::并列出 `enforced` 五个键"
-      ]
+      ],
+      "ruleText": "投票（院士设置投票板各选项，及投票机制如最多最少选几项之类的。不一定是用于辩论，辩论是那个各自发言而非通过投票来辩论），任务板设置与认领交派，群聊式交流（院士为群管理员，可以设定每个人的权限和发言次数、禁言等），...。"
     },
     {
       "id": "E19",
-      "rule": "L42",
+      "rule": "42",
       "text": "投票板不用于辩论",
       "status": "DONE",
       "prompt": [
@@ -1235,15 +1316,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::the ballot board is not used while a debate is open"
-      ]
+      ],
+      "ruleText": "投票（院士设置投票板各选项，及投票机制如最多最少选几项之类的。不一定是用于辩论，辩论是那个各自发言而非通过投票来辩论），任务板设置与认领交派，群聊式交流（院士为群管理员，可以设定每个人的权限和发言次数、禁言等），...。"
     },
     {
       "id": "E20",
-      "rule": "L38",
+      "rule": "42",
       "text": "任务板：设置与认领交派",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/tasks.js::tasks"
+        "vibe-math-vmu/kernel/tasks.js::expectedRevision = null, by = null, bySource = null",
+        "vibe-math-vmu/kernel/tasks.js::state = 'assigned'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_task_create"
@@ -1253,15 +1336,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::illegal transition assigned -> done"
-      ]
+      ],
+      "ruleText": "投票（院士设置投票板各选项，及投票机制如最多最少选几项之类的。不一定是用于辩论，辩论是那个各自发言而非通过投票来辩论），任务板设置与认领交派，群聊式交流（院士为群管理员，可以设定每个人的权限和发言次数、禁言等），...。"
     },
     {
       "id": "E21",
-      "rule": "L39",
+      "rule": "42",
       "text": "群聊式交流：院士为群管理员，设每人权限/发言次数/禁言",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/chat.js::mute"
+        "vibe-math-vmu/kernel/chat.js::const mute = activeMute",
+        "vibe-math-vmu/kernel/chat.js::used >= limit"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::VMU_CHAT_MUTED"
@@ -1271,11 +1356,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::r-2 自己内核 `send` ⇒ `VMU_CHAT_MUTED`"
-      ]
+      ],
+      "ruleText": "投票（院士设置投票板各选项，及投票机制如最多最少选几项之类的。不一定是用于辩论，辩论是那个各自发言而非通过投票来辩论），任务板设置与认领交派，群聊式交流（院士为群管理员，可以设定每个人的权限和发言次数、禁言等），...。"
     },
     {
       "id": "E22",
-      "rule": "L45",
+      "rule": "45",
       "text": "辩论额外字段：对象或文件引用",
       "status": "DONE",
       "tool": [
@@ -1289,15 +1375,16 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`declaredProofRef` 指向真实文件"
-      ]
+      ],
+      "ruleText": "院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。"
     },
     {
       "id": "E23",
-      "rule": "L41",
+      "rule": "47",
       "text": "辩论/结题表决人数＝min(用户设置, 院士+常驻)",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::quorumOf"
+        "vibe-math-vmu/kernel/meetings.js::quorumCap, capUniverse"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -1307,11 +1394,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`voteFloor.effective:3`、`unanimity.met:false`"
-      ]
+      ],
+      "ruleText": "辩论、结题表决的人数至少为某一定数量，这个数量取用户设置的数量和“院士+常驻研究员”数量的最小值。"
     },
     {
       "id": "E24",
-      "rule": "L43-L44",
+      "rule": "49",
       "text": "lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意",
       "status": "DONE",
       "tool": [
@@ -1325,11 +1413,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::fidelity conclusion is an academician"
-      ]
+      ],
+      "ruleText": "对于lean已经通过的但是布尔概率还非1的命题，辩论时主要是辩论lean代码中对命题的描述、定义是否符合原意。"
     },
     {
       "id": "E25",
-      "rule": "L47-L51",
+      "rule": "51",
       "text": "辩论骨架①各成员同时独立单次表态",
       "status": "DONE",
       "mechanism": [
@@ -1343,11 +1432,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::后有 `cards:2`、`rows` 两人（`r-2:1`、`r-1:0.6`）"
-      ]
+      ],
+      "ruleText": "先进行各成员同时进行“单次发言版群聊”，独立发表各自的“布尔概率（[0,1]），理由，...”，再进行轮流发言或者各自举手发言或邀请发言，来展开辩论。辩论的轮数由院士自己决策。"
     },
     {
       "id": "E26",
-      "rule": "L47-L51",
+      "rule": "51",
       "text": "辩论骨架②轮流/举手/邀请展开",
       "status": "DONE",
       "mechanism": [
@@ -1361,11 +1451,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"registry\":\"service\",\"source\":\"self\",\"mode\":\"fifo\""
-      ]
+      ],
+      "ruleText": "先进行各成员同时进行“单次发言版群聊”，独立发表各自的“布尔概率（[0,1]），理由，...”，再进行轮流发言或者各自举手发言或邀请发言，来展开辩论。辩论的轮数由院士自己决策。"
     },
     {
       "id": "E27",
-      "rule": "L47-L51",
+      "rule": "53",
       "text": "辩论骨架③结束前各成员最终裁决",
       "status": "DONE",
       "tool": [
@@ -1375,15 +1466,17 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::裁决"
       ],
       "mechanism": [
-        "vibe-math-vmu/kernel/meetingverdict.js::aggregateVerdicts"
+        "vibe-math-vmu/kernel/meetingverdict.js::const allOne = ps",
+        "vibe-math-vmu/kernel/meetingverdict.js::'unanimous' : 'mean'"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`channel:\"ruling\"`、`submission.id:\"ruling-m1-p-r32-res-01-8f326a08\"`"
-      ]
+      ],
+      "ruleText": "机制：待辩论会议结束，v5r框架请刚刚各个辩论的各个成员给出最终裁决“布尔概率（[0,1]），理由，...”，若它们给出的布尔概率全部一致为1（或一致为0）则最终该命题的布尔概率为1（或0），否则取平均值。并发通知告诉该命题卡的持有者“由于...，该命题最终布尔概率裁定为...，故请把相应命题卡的布尔概率改为该概率值”。"
     },
     {
       "id": "E28",
-      "rule": "L47-L51",
+      "rule": "53",
       "text": "辩论骨架④全一致取该值、否则平均，并通知持有者改值",
       "status": "DONE",
       "tool": [
@@ -1393,15 +1486,17 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::平均"
       ],
       "mechanism": [
-        "vibe-math-vmu/kernel/meetingverdict.js::rulePropositionProbability"
+        "vibe-math-vmu/kernel/meetingverdict.js::const value = mode === 'unanimous'",
+        "vibe-math-vmu/kernel/meetingverdict.js::verdicts, propositionId: id, at"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`verdict_final` ⇒ 均值 `0.65`、`decided:false,estimate:true`、`floor.minVotes:3`"
-      ]
+      ],
+      "ruleText": "机制：待辩论会议结束，v5r框架请刚刚各个辩论的各个成员给出最终裁决“布尔概率（[0,1]），理由，...”，若它们给出的布尔概率全部一致为1（或一致为0）则最终该命题的布尔概率为1（或0），否则取平均值。并发通知告诉该命题卡的持有者“由于...，该命题最终布尔概率裁定为...，故请把相应命题卡的布尔概率改为该概率值”。"
     },
     {
       "id": "E29",
-      "rule": "L52-L53",
+      "rule": "51",
       "text": "辩论轮数由院士决定",
       "status": "DONE",
       "tool": [
@@ -1411,15 +1506,17 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::辩论轮数由院士决定"
       ],
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::verdictMaxRounds"
+        "vibe-math-vmu/kernel/meetings.js::const roundCap = verdictMaxRoundsNow()",
+        "vibe-math-vmu/kernel/meetings.js::length >= roundCap"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::the motion ceiling is reached for this meeting: 2 / 2"
-      ]
+      ],
+      "ruleText": "先进行各成员同时进行“单次发言版群聊”，独立发表各自的“布尔概率（[0,1]），理由，...”，再进行轮流发言或者各自举手发言或邀请发言，来展开辩论。辩论的轮数由院士自己决策。"
     },
     {
       "id": "F1",
-      "rule": "L55",
+      "rule": "56",
       "text": "把原问题与所有有价值产物系统梳理",
       "status": "DONE",
       "mechanism": [
@@ -1433,15 +1530,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"status\":\"writing\",\"round\":1,\"stateRecord\":\"rec-3\""
-      ]
+      ],
+      "ruleText": "把原总问题及所有研究所中有价值的产物系统梳理，合作撰写最终论文。合作写论文（如安排写各自负责内容最后系统地合并），互审，论文是面向读者的，要保证内容系统、正确、完整、严谨清晰。最后讨论、检查无误后定稿。"
     },
     {
       "id": "F2",
-      "rule": "L55",
+      "rule": "56",
       "text": "合作撰写：分派各自内容并合并",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/paper.js::part"
+        "vibe-math-vmu/kit/paper.js::round, at: 1, title: part",
+        "vibe-math-vmu/kit/paper.js::const SECTIONS = sections, SECTION_FIELDS = sectionFields, MAX_ROUNDS = maxRounds, ENGINE_ORDER = engineOrder, REPAIR_CORE = repairCore, TRACK = track, CODES = codes"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_paper"
@@ -1451,11 +1550,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"parts\":{\"r-acad\":{\"recordId\":\"rec-5\""
-      ]
+      ],
+      "ruleText": "把原总问题及所有研究所中有价值的产物系统梳理，合作撰写最终论文。合作写论文（如安排写各自负责内容最后系统地合并），互审，论文是面向读者的，要保证内容系统、正确、完整、严谨清晰。最后讨论、检查无误后定稿。"
     },
     {
       "id": "F3",
-      "rule": "L56",
+      "rule": "56",
       "text": "互审",
       "status": "DONE",
       "mechanism": [
@@ -1469,11 +1569,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::not awaiting its editor"
-      ]
+      ],
+      "ruleText": "把原总问题及所有研究所中有价值的产物系统梳理，合作撰写最终论文。合作写论文（如安排写各自负责内容最后系统地合并），互审，论文是面向读者的，要保证内容系统、正确、完整、严谨清晰。最后讨论、检查无误后定稿。"
     },
     {
       "id": "F4",
-      "rule": "L56",
+      "rule": "56",
       "text": "面向读者：系统/正确/完整/严谨清晰",
       "status": "DONE",
       "prompt": [
@@ -1488,11 +1589,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_PACK_V5R_CORE_PAPER_VERIFIED_MISSING"
-      ]
+      ],
+      "ruleText": "把原总问题及所有研究所中有价值的产物系统梳理，合作撰写最终论文。合作写论文（如安排写各自负责内容最后系统地合并），互审，论文是面向读者的，要保证内容系统、正确、完整、严谨清晰。最后讨论、检查无误后定稿。"
     },
     {
       "id": "F5",
-      "rule": "L56",
+      "rule": "56",
       "text": "讨论检查无误后定稿",
       "status": "DONE",
       "mechanism": [
@@ -1506,21 +1608,20 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"editor\":\"academician\""
-      ]
+      ],
+      "ruleText": "把原总问题及所有研究所中有价值的产物系统梳理，合作撰写最终论文。合作写论文（如安排写各自负责内容最后系统地合并），互审，论文是面向读者的，要保证内容系统、正确、完整、严谨清晰。最后讨论、检查无误后定稿。"
     },
     {
       "id": "G1",
-      "rule": "L58",
+      "rule": "59",
       "text": "支持成员使用 Python 等数学计算工具",
       "status": "DONE",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::引擎两条通道"
       ],
       "mechanism": [
-        "vibe-math-vmu/kernel/mathadapters.js::PY_CANDIDATES",
-        "vibe-math-vmu/kernel/mathtools.js::createMathTools",
-        "vibe-math-vmu/host-spawn.js::localFallback",
-        "vibe-math-vmu/host-math.js::resolveExecutable"
+        "vibe-math-vmu/kernel/mathadapters.js::const PY_CANDIDATES = Object",
+        "vibe-math-vmu/host-math.js::resolveExecutable: async"
       ],
       "tool": [
         "vibe-math-vmu/host.js::vibe_vmu_mathtools",
@@ -1528,15 +1629,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"stdout\":\"1025"
-      ]
+      ],
+      "ruleText": "- 支持成员使用一些数学计算工具（如Python等），但支持所办通过参数设置工具的并发数量等限制，避免cpu过载、oom。"
     },
     {
       "id": "G2",
-      "rule": "L59",
+      "rule": "59",
       "text": "所办可设工具并发数量限制防 CPU/OOM",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/settings/schema.js::maxParallel"
+        "vibe-math-vmu/kernel/mathjobs.js::await new Promise",
+        "vibe-math-vmu/kernel/mathjobs.js::maxParallel: Math"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_set"
@@ -1546,15 +1649,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::maxParallel:1, enforced:"
-      ]
+      ],
+      "ruleText": "- 支持成员使用一些数学计算工具（如Python等），但支持所办通过参数设置工具的并发数量等限制，避免cpu过载、oom。"
     },
     {
       "id": "G3",
-      "rule": "L60",
+      "rule": "60",
       "text": "支持人工干预研究所决策与运行",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/human.js::openApproval"
+        "vibe-math-vmu/kernel/human.js::by = null, scope = null, target = null, reason = null, emergency = false",
+        "vibe-math-vmu/kernel/human.js::vetoId, by = null, reason = null"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::审批"
@@ -1564,11 +1669,12 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`approvalState` ⇒ `decidedBy:\"office\"`"
-      ]
+      ],
+      "ruleText": "- 支持人工干预决策、运行，断点续跑等。"
     },
     {
       "id": "G4",
-      "rule": "L60",
+      "rule": "60",
       "text": "支持断点续跑",
       "status": "DONE",
       "tool": [
@@ -1582,15 +1688,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"state\":\"running\",\"resumedFrom\":\"验证暂停回执\""
-      ]
+      ],
+      "ruleText": "- 支持人工干预决策、运行，断点续跑等。"
     },
     {
       "id": "G5",
-      "rule": "L61",
+      "rule": "61",
       "text": "特殊权限/请求经所办向用户询问",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/human.js::approvals"
+        "vibe-math-vmu/kernel/human.js::subject, requestId = null",
+        "vibe-math-vmu/kernel/human.js::'VMU_RESUME_RESTORE_CONFLICT', 'this human ledger already holds '"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-assistant.js::用户"
@@ -1600,15 +1708,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_vmu_human{action:\"openApproval\",by:\"r-acad\",requestId:\"rq-r33\",subject:\"…\"}` ⇒ `ok:true`"
-      ]
+      ],
+      "ruleText": "- 研究所的一些特殊权限或请求，可以通过报告主代理（所办）来向用户询问、请求。"
     },
     {
       "id": "G6",
-      "rule": "L62",
+      "rule": "62",
       "text": "绝大多数功能走工具而非每轮末尾输出 JSON",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/turn/index.js::FIELD_OWNERS"
+        "vibe-math-vmu/kernel/turn/index.js::const unknown = keys",
+        "vibe-math-vmu/kernel/turn/index.js::export const FIELDS = Object"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::V5R_PACK_TOOLS"
@@ -1618,18 +1728,17 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::七步、8 次调用全部命中：`write` 落文件 → `vibe_v5_set` 压预算"
-      ]
+      ],
+      "ruleText": "- 绝大多数功能都直接通过代理可执行命令（工具）实现，而非最终每轮结束时输出json实现。"
     },
     {
       "id": "G7",
-      "rule": "L63",
+      "rule": "63",
       "text": "提示词与规则完全相符、自洽",
       "status": "DONE",
       "mechanism": [
-        "scripts/check-rule-parity.mjs::VMU_RULE_PARITY_DOC_CHANGED",
-        "scripts/check-rule-parity.mjs::VMU_RULE_PARITY_DEAD_TEACHING",
-        "tests/vmu-rule-parity-gate.test.mjs::--selftest",
-        "tests/audit-preset-overlay-shape.test.mjs::duplicateKeys"
+        "scripts/check-rule-parity.mjs::== String",
+        "scripts/check-rule-parity.mjs::'VMU_RULE_PARITY_ORPHAN_TEACHING'"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::action 只有 claim",
@@ -1640,6 +1749,106 @@
       ],
       "tool": [
         "scripts/check-rule-parity.mjs::VMU_RULE_PARITY_"
+      ],
+      "ruleText": "- 确保所有代理接收到的提示词完全与上述规则相符、自洽 。"
+    },
+    {
+      "id": "A8",
+      "rule": "10",
+      "text": "院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/tools.js::is not one of the faces the",
+        "vibe-math-vmu/packs/v5r/seat-faces.js::vibe_v5_record_method"
+      ],
+      "tool": [
+        "vibe_v5_record_method",
+        "vibe_v5_record_subproblem"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::临时工不写这些库"
+      ],
+      "status": "PARTIAL",
+      "next": "F-92a 的机理已修（被归属者的席位参与面门，`tests/vmu-run92-temp-seat-and-hire.test.mjs` 11/0）；缺**合规 live**：修后真机要看到 temp 写方法卡被拒、命题卡仍通。",
+      "ruleText": "### 院士、常驻研究员各自的文件："
+    },
+    {
+      "id": "A9",
+      "rule": "3",
+      "text": "临时工的用途约束：被院士或常驻研究员雇佣用于特殊任务/临时任务",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/tools.js::hire needs purpose"
+      ],
+      "tool": [
+        "vibe_v5_hire"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::vibe_v5_hire { purpose, initial_task, to }"
+      ],
+      "status": "DONE",
+      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。",
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"slotRequested\":\"temp\""
+      ]
+    },
+    {
+      "id": "E30",
+      "rule": "32",
+      "text": "院士通过命令自组织会议进行中的一切内容、控制、活动（兜底授权，动词不穷举）",
+      "mechanism": [
+        "vibe-math-vmu/tools/meeting.js::action === 'extendlimit'",
+        "vibe-math-vmu/tools/meeting.js::SERVICE_CROSSING_ACTIONS"
+      ],
+      "tool": [
+        "vibe_vmu_meeting",
+        "vibe_v5_meeting"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::会议进行中的一切内容、控制、活动都由你的命令决定"
+      ],
+      "status": "DONE",
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"wallLimitMs\":2400000,\"extendedMs\":600000"
+      ]
+    },
+    {
+      "id": "E31",
+      "rule": "32",
+      "text": "框架推荐的会议流程骨架只是建议：具体实施、决定、是否遵循完全由院士决定",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/meeting-procedures.js::binding: procedure",
+        "vibe-math-vmu/packs/v5r/tools.js::procedureBinding: proc.binding, procedureNote: proc.note"
+      ],
+      "tool": [
+        "vibe_v5_meeting",
+        "vibe_vmu_meeting"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::步骤只是**建议"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::procedureNote"
+      ],
+      "status": "DONE",
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
+    },
+    {
+      "id": "E32",
+      "rule": "53",
+      "text": "辩论裁定的并发通知：告诉命题卡持有者最终概率并请其改值",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/tools.js::onRecord: cardRow !== null,"
+      ],
+      "tool": [
+        "vibe_v5_verdict_final"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::裁决落地靠"
+      ],
+      "status": "DONE",
+      "ruleText": "机制：待辩论会议结束，v5r框架请刚刚各个辩论的各个成员给出最终裁决“布尔概率（[0,1]），理由，...”，若它们给出的布尔概率全部一致为1（或一致为0）则最终该命题的布尔概率为1（或0），否则取平均值。并发通知告诉该命题卡的持有者“由于...，该命题最终布尔概率裁定为...，故请把相应命题卡的布尔概率改为该概率值”。",
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"correction\":{\"needed\":true,\"recipient\":\"r-acad\""
       ]
     }
   ]

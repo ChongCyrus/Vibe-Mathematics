@@ -85,7 +85,15 @@ try {
   ok(A.k.members.roster().map((r) => r.id).indexOf('member-3') !== -1, 'A sees C\'s hire too',
     A.k.members.roster().map((r) => r.id).join(','))
 } finally {
-  await rm(root, { recursive: true, force: true })
+  // The store writes on a fire-and-forget channel, so a directory can still be being written when the
+  // suite tears it down (round 92: EBUSY rmdir under the full-suite parallel load). Wait for the write to
+  // settle instead of failing the suite on a teardown race.
+  for (let i = 0; i < 40; i++) {
+    try { await rm(root, { recursive: true, force: true, maxRetries: 10 }); break } catch (e) {
+      if (!['ENOTEMPTY', 'EPERM', 'EBUSY'].includes(e && e.code)) throw e
+      await new Promise((res) => setTimeout(res, 25))
+    }
+  }
 }
 
 

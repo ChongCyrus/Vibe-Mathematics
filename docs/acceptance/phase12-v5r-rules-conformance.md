@@ -8330,3 +8330,91 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 
 ### §191.6 无实质残余：否（F-90c/F-90d 的复验轮尚未跑）
 
+
+## §192 真机跑 91b（数学面：回执持久化、静默 null、墙钟上界）
+
+§192.1 读数（build `e07d3eb4`，clone `slvp91b`，port 19692，preserve 戳 `20261028-081237`）
+- `DRIVE exit=0`、`durationSec 355`、`toolCalls 22` / `transcriptEvents 119`、`tokenTotal 2,010,151`（cap 12,000,000，未触顶）、2 会话、`SUMMARY: 2 session(s), 0 with RED checks`。
+- jsonl 5,478,104 B / 11,297 行；围栏 `NO_FENCE=12 UNKNOWN_FIELD=18 FIELD_NOT_APPLICABLE=16 BAD_JSON=12`；`prompt chars 13884 (score 0)`；C 盘余 10.03 GB。
+- 会话根：`vibe_v5_start {researcherCount:1, academician:true}` → `math_computation {op:"probe"}` → `math_computation {op:"run", mode:"code", code:"print(6*7)"}` → `vibe_vmu_mathtools {action:"status"}` → `vibe_vmu_mathtools {action:"run", op:"numeric", args:{expr:"6*7"}}` ×3 → `vibe_v5_set {key:"vmu.math.jobs.persist", value:"true"}` → `vibe_v5_meeting` → `vibe_vmu_turn {op:"step"}` → `vibe_v5_meeting` → `vibe_vmu_meeting {action:"extendlimit", ms:99999999}` / `{ms:60000}` → `vibe_vmu_status` → `vibe_v5_stop`。
+
+§192.2 判决
+| # | 计划 | 结论 | 逐字依据 |
+|---|---|---|---|
+| 1 | F-90d 已修：数学回执持久化不再打死宿主 | ✅ | 全程无 `dsh: fatal load failure`；`tokenCapHit:false`；22 calls = 22 results；`0 with RED` |
+| 2 | `math_computation` 探针/运行 | ✅ | `{"ok":true,"engine":"python","available":true,…"version":"3.12.10"}`；`code:"print(6*7)"` 回 `exit:0` |
+| 3 | `vibe_vmu_mathtools` 未知 op 必须具名拒 | ❌→已修 | 三次回 `{"ok":true,"action":"run","value":null}`（`op:"numeric"`、`args:{expr}`，另两次换 `value:42`/`plan`）——**静默 null 冒充成功** |
+| 4 | `extendlimit` 钳制 | ✅ | `ms:99999999` 被钳到 `wallLimitMs`（会话自述），随后 `ms:60000` 成功追加 |
+| 5 | 数学面 `status` 的 engines/spawnSeamKind 读数 | ⚠️ 未取证 | `vibe_vmu_mathtools {action:"status"}` 只回 `limits`，没有 `engines`/`available`/`spawnSeamKind`（惰性读数债，写在 §192.6） |
+
+§192.3 F-91a 真因与修法（`vibe-math-vmu/kernel/mathtools.js`）
+- 真因：`run()` 只判 `raw.ok === undefined && raw.result === undefined`（"接缝不说数学词汇"），**从不看 `raw.ok === false`**。数学接缝把接缝层拒绝规范成 `{ok:false, code, message, hint}`（`classifyOutcome`），`result` 缺失于是被读成"没有值" ⇒ 走完成功轨道，返回 `{ok:true, result:null}`。成员于是无法区分"接缝拒绝了我的词汇"与"这次计算的答案是 null"。
+- 修法：在结果轨道前加一道**拒绝直通**——`if (raw.ok === false) throw deny(raw.code || 'VMU_ENGINE_UNAVAILABLE', raw.message || …, raw.hint || raw.next?.hint || …, p.enforced)`；`vibe-math-vmu/tools/mathtools.js` 的 schema 描述同步改成"`op` 的取值由**接缝**校验，本工具不发明运算名；接缝的拒绝原样带回它的 code/message/hint"。
+- 证据：`tests/vmu-run91b-seam-refusal.test.mjs` **18/0**（接缝拒绝保留 code/message/hint 且不计入 `counters.ran`；成功路径不变；匿名失败给 `VMU_ENGINE_UNAVAILABLE`；工具包装回具名拒绝而不是 `ok:true`；描述里点名接缝词汇）。
+
+§192.4 门禁
+- `vmu-run91b-seam-refusal` 18/0；`vmu-mathtools-tool` 14/0；`vmu-math` 27/0；`vmu-math-adapters` 21/0；`vmu-mathjobs` 11/0；`vmu-mathjobs-persist` 21/0；`vmu-run90f-math-single-publication` 16/0；`vmu-math-intent-readback` 15/0；`vmu-spawn` 15/0；`vmu-run82-local-spawn` 31/0。
+
+§192.5 简报错（本轮）
+1. 我在第 5 步预报 `vibe_vmu_mathtools status` 会回 `engines/available/spawnSeamKind`——它没有（那是 `math_computation` 探针与内核 `status.math` 的字段，不是这一面的）。
+2. 我在第 7 步把 `args` 的键写成 `expr`（`math_computation` 的 `op:"run"` 要 `mode+code/expr`），而 `vibe_vmu_mathtools` 的 `op` 是另一个词汇——简报把两个面的 `op` 混成一个。
+
+§192.6 无法验证
+1. 数学回执落盘的**端到端**（`Math/Jobs` 镜像文件内容与 `receiptsView.persisted` 计数）本轮没读回（只验了不打死宿主）。
+2. `vmu.math.jobs.persist` 的 `receiptsView` 计数（`persisted/unwired/failed`）没有被单独抄回。
+3. `vibe_vmu_mathtools` 在成功路径上的 `value` 形状（正确 op 时的回执结构）本轮没验。
+4. `extendlimit` 的拒绝路径（超过 7,200,000 上限）本轮没验。
+
+§192.7 无实质残余：**否**（残留：数学面读数为惰性、receiptsView 计数未取证）。
+
+## §193 真机跑 92（临时工约束 / 会议指挥权 / 裁决通知 / 数学拒绝）
+
+§193.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| build | `e07d3eb4`（git HEAD，**不含**未提交的 F-91a 修补 ⇒ F-91a 在本次真机按设计复现） |
+| clone / port | `slvp92` / 19692 |
+| `DRIVE` | `exit=0`（111s 前序 + 265s 本轮，`SUMMARY: 2 session(s), 0 with RED checks`） |
+| 调用 | 28 calls / 28 results |
+| token | `tokenTotal 1,682,559`（cap 12,000,000，未触顶） |
+| 围栏读数 | `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=12 BAD_JSON=12` |
+| 会话 | jsonl 4,230,261 B / 8,921 行；保全戳 `20261028-083925`；C 盘 9.94 GB |
+
+§193.2 判决
+
+| 规则 | 判决 | 逐字证据（节选） |
+| --- | --- | --- |
+| A9 临时工用途约束 | ✅ | `"slotRequested":"temp"`；缺 `purpose` 时 `{"ok":false,"code":"VMU_INVALID_ARGUMENT","message":"hire needs purpose","hint":"pass purpose:\"why this worker exists\""}` |
+| E30 院士的兜底指挥权 | ✅ | `"wallLimitMs":2400000,"extendedMs":600000`（主席 `extendlimit` 改了会议墙钟；`"enforced":["vmu.meetings.extendRequiresChair"]`，见 §191） |
+| E32 裁决的并发通知 | ✅ | `"correction":{"needed":true,"recipient":"r-acad","tool":"vibe_v5_record_proposition","cardId":"rec-3","onRecord":true,...}`；成员的 `vibe_v5_verdict` 落 `channel:"ruling"`、`submission.path` 指向 `Members/r-1/Propos/ruling-…md` |
+| A8 临时工不写这些库 | ❌ 缺陷 F-92a | 见 §193.3 |
+| F-91a 数学面静默 null | ⚠️ 复现（HEAD 未含修补） | `{"ok":true,"result":null,...}`；成员自己指出「这不是 0，也不是拒绝」 |
+| 数学任务持久化 | ⚠️ 同前 | `"persistCode":"VMU_MATH_JOBS_MIRROR_UNWIRED"` 被成员读到并点名 |
+
+§193.3 两条新缺陷与修法
+
+- **F-92a（席位权威按调用者判，不按被归属者判）**：`vibe_v5_hire { to: "<已在册的院士 id>" }` 把院士就地改席成 `temp`（回执 `"hired":{"ok":true,"id":"r-acad","slot":"temp"`），随后 `vibe_v5_record_method { member: "r-acad" }` **成功**写出 `"recordId":"rec-1","owner":"r-acad"` —— 而 `seat-faces.js` 对 `vibe_v5_record_method` 声明 `allow.temp === false`。两个缺陷同源：
+  - 修法 1（按被归属者的席位判）：`packs/v5r/tools.js` 的 `gatedCardHandler` 在算出 `by` 后查 `membersOf(kernel).roster()`，用 `seatDecision(seatRow.slot, toolName)` 判定；不允许则具名拒 `VMU_NOT_PERMITTED`，hint 引声明（`rule 4: …`）并给出「省略 `member` 由所办自己写」的出路。**按面判而不是按席判**：同一 temp 席写命题卡（`allow.temp === true`）仍然放行。
+  - 修法 2（hire 不再重排已有成员）：`toolHire` 在参数校验后拒绝已在册的 `to`，`VMU_INVALID_ARGUMENT` + `"hire mints a NEW temp member; \"<id>\" is already on the roster in slot \"chair\""`，hint 指向 `vibe_vmu_control { action: "hire", member_id, slot }`（重排座位是另一件事，由那道面明示地做）。
+- **F-91a（数学面把接缝拒绝读成「没有值」）**：`kernel/mathtools.js#run` 只看 `result === undefined`，不看 `raw.ok === false` ⇒ `{ok:true,result:null}`。修法：`if (raw.ok === false) throw deny(raw.code || 'VMU_ENGINE_UNAVAILABLE', raw.message, raw.hint || raw.next?.hint, p.enforced)`；面描述改为「`op` 由接缝校验，本工具不发明运算名；接缝拒绝原样带回 code/message/hint」。
+
+§193.4 测试与门禁
+
+- 新 `tests/vmu-run92-temp-seat-and-hire.test.mjs` **11/0**：hire 拒已在册 id 且不动座位、新 id 仍可 hire；temp 写方法卡被拒（点名面与席位、hint 引 `rule 4`、给 omission 出路）、同一 temp 写命题卡仍通、常驻写方法卡仍通、所办自己写卡 `owner === null`。
+- 新 `tests/vmu-run91b-seam-refusal.test.mjs` **18/0**（F-91a 的拒绝直通：具名码/消息/hint 原样、`enforced` 透传、成功路径不变）。
+
+§193.5 简报错误（本轮的容错清单）
+
+1. 让代理用「带 `purpose`/`initial_task`/`to`」的 `hire` 时把 `to` 写成院士自己的 id（真实语义是**新成员 id**）——这条简报错误本身把 F-92b 找了出来。
+2. 期望 `vibe_vmu_mathtools status` 有 `engines`/`available`（真实面只有 `limits`，`probe` 在 `math_computation` 上）。
+3. 把两个数学面的 `op` 混写成一个（`vibe_vmu_mathtools` 的 `op` 由接缝校验，`math_computation` 的 `op` 是 `probe|run|receipt|install`）。
+
+§193.6 无法验证
+
+- A8 的**合规**证据（本轮只拿到违规证据；修后需再跑一轮）。
+- E30 的「内容类」指挥（本轮证的是控制类：墙钟上限）。
+- 临时工的默认不参会（本轮未开会）。
+- 辩论期间投票板仍拒（上轮已验，本轮未复验）。
+
+§193.7 无实质残余：否（F-92a/F-92b 已修未跑；A8 的 live 缺合规证据）。

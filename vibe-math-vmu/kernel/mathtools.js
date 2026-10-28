@@ -650,6 +650,19 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
           'the injected computation seam does not speak the math vocabulary (op/args/seed/backend/limits): it answered with the keys ' + JSON.stringify(Object.keys(raw).slice(0, 8)),
           'inject the MATH seam (math-computation), not the script bridge - the script bridge answers {exit,stdout,stderr} and would otherwise be read as a null result', p.enforced)
       }
+      // ★★★ ROUND 91b (measured on the live run): A SEAM REFUSAL IS NOT A SUCCESSFUL COMPUTATION. The math seam
+      // answers a named failure as `{ok:false, code, message, hint}` (classifyOutcome keeps exactly that shape), and
+      // this function used to ignore `ok` entirely — it read `raw.result` (undefined) as "no value", carried on
+      // through the result rails and returned `{ok:true, result:null}`. A member who typed an operation the seam does
+      // not speak (`op:"numeric"`) therefore got `{"ok":true,"value":null}`: the refusal had been converted into a
+      // silent null, which is the one outcome a computation face must never invent. Hand the refusal back with its
+      // own code/message/hint, exactly like every other rail in this file.
+      if (raw.ok === false) {
+        throw deny(raw.code || 'VMU_ENGINE_UNAVAILABLE',
+          raw.message || ('the injected computation seam refused this run: ' + p.plan.op),
+          raw.hint || (raw.next && raw.next.hint) || 'read the seam\'s own refusal (its `receipt`/`next` names what it accepts); a refusal is not a result',
+          p.enforced)
+      }
       const result = raw.result === undefined ? null : raw.result
       const enforced = p.enforced.slice()
       // ⑫ RESULT-CONDITIONAL RAILS (each one belongs to a wired key)

@@ -5,7 +5,7 @@ export function makeMathtoolsSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
       name: TOOL_NAMES.mathtools,
       description: 'vmu 数学工具面：action=plan|run|cacheMarkCorrupt|cacheView|receiptsView|status。' +
-        '沙箱上限、缓存与回执都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略（★ `op` 的取值与参数形状由服务校验 ✓）。',
+        '沙箱上限、缓存与回执都由内核服务强制；本工具只做**寻址与调用**，不复制任何策略（★ `op` 的取值与参数形状由接缝校验，本工具不另行发明运算名 —— 当前接缝是 `math_computation`，它认 op: probe|run|receipt|install 加 mode: code|file|expr + engine/code/file/expr；接缝的拒绝会原样带回它的 code/message/hint ✓）。',
       parameters: {
         action: param('string', 'plan｜run｜cacheMarkCorrupt｜cacheView｜receiptsView｜status', { required: true,
           enum: ['plan', 'run', 'cacheMarkCorrupt', 'cacheView', 'receiptsView', 'status'] }),

@@ -1840,3 +1840,20 @@ dsh: fatal load failure: Error: unknown record kind: math-run
 2. **回执的每一个「已完成」都要跟着结果走，而不是跟着设置走**：`keptDetail` 现在等于 `persisted === true`，镜像没写成时它是 `false` 并带 `persistCode`/`persistMeans`（「算成功了、回执在内存、镜像没写成——这不是计算失败」）。
 3. **持久化走它自己的公证处**：`Math/Jobs` 镜像（`jobs.write`），三态计数 `persisted`/`unwired`/`failed` 进 `status().counters` 与 `receipts`，读的人不需要猜是「没设置」「设置错了」还是「写失败」。
 
+## ROUND 91 — 一个「成功」可以是谎话，而「谁归属」与「谁能写」不是同一件事（F-91a）
+
+四条判据：
+
+1. **接缝的拒绝必须走失败轨道**：`kernel/mathtools.js#run` 原来只看「有没有 result」，`{ok:false, code, message, hint}` 被读成「没有值」⇒ 上层把具名拒绝打包成 `{ok:true, result:null}`。返回形状里的 `ok:false` 是接缝在说「我没做」，把它读成空值等于替它撒谎。（run 91b 真机：成员自己指出 `value:null` 既不是 0 也不是拒绝。）
+2. **同一个词在两个面上可以是不同的东西**：`vibe_vmu_mathtools` 的 `op` 由接缝校验（本工具不发明运算名），`math_computation` 的 `op` 是 `probe|run|receipt|install`。教学把两个 `op` 混写成一个，读者就只能靠猜；修法不是加一句提示，而是把「哪个面校验什么」写清。
+3. **上限要能回答「这是谁的上限」**：`persistCode:"VMU_MATH_JOBS_MIRROR_UNWIRED"` 出现而 `persisted` 计数不动时，回执必须说明这条通道没接线——否则「0 个持久化」会被读成「没有回执要持久化」。
+4. **自伤红也是被测产品的一部分**：本轮 T1 的四条红全部来自我们自己的量具（声明了却没人执行的 `--selftest`、audit-* 未登记自证、空数组上的 `.every()` 恒真）。修法是改量具或按算术 re-base，不是改基线。
+
+## ROUND 92 — 席位声明要按「被归属的人」判，而 `to` 只是新 id（F-92a / F-92b）
+
+四条判据：
+
+1. **席位权威的主体是「写谁的卡」**：卡面 `member` 指向谁，就按**那一位的席位**查声明表（`seat-faces.js`），而不是按调用者。所办没有席位，于是「所办代为写入」曾是对席位声明的静默绕过——run 92 里 temp 名下的方法卡写成功了，而声明明写 `allow.temp === false`。
+2. **按面判，不按席判**：同一个 temp 席写命题卡仍要允许（规则 4 让临时工的 Lean 结论有地方安放）。一条席位规则如果只能整体放行或整体拒绝，它就还没被实现。
+3. **任何会改变名册形状的参数都要先问「这是新东西还是已有东西」**：`hire { to }` 的 `to` 是**新成员 id**；对已在册的 id 就该具名拒，而不是就地改席。破坏性操作要有一条能被读到的出路（`vibe_vmu_control {action:"hire"}`）。
+4. **虚构的 id 与口头的授权都是缺陷**：r92 的简报把 `to` 写成院士自己的 id，机制照做了（把院士改席成 temp），会议因此不可召集——简报也是被执行的接口，错一处就让整场跑偏，所以简报要过 `check-task-brief`，而机制要对语义错误的参数具名拒绝。

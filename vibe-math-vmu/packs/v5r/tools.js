@@ -28,6 +28,11 @@ import { MEETING_TYPE_IDS, meetingTypeOf, procedureFor } from './meeting-procedu
 // INstitution vocabulary, so the table lives in this pack and the derived lists come from it — one source, two
 // readers (the narrowing below and the gate in tests/audit-member-scope.test.mjs).
 import { applyMemberScope, MEMBER_SCOPE_NOTE } from './member-scope.js'
+// ★ ROUND 92 / F-92a: the seat table is the DECLARED authority for "which seat may call which face".
+// A card attributed to a seat must be a card that seat is allowed to write, so the card faces consult
+// the same table the member face gate is derived from — not the caller's identity (the office is not
+// subject to a seat, so before this a card could be attributed to a temp worker by the office).
+import { seatDecision as seatDecisionOf } from './seat-faces.js'
 // ★ PHASE 12 / D7 (second sentence)：「成员可用的命令按会议类型不同」。`kernel/turn.step` 早就能收窄一轮的工具面
 // （`{tools:{allow}}` → `setMemberToolOverride`），但 pack 侧没有生产者 —— 提示词不是门禁。`./meeting-tool-face.js`
 // 是这张**机构政策表**（哪类会议收窄、收窄到哪些工具）＋"只能收窄不能扩大"的求交；本文件只负责把它装到一轮上。
@@ -247,6 +252,18 @@ async function toolHire(args = {}, { kernel } = {}) {
   if (!has(args.purpose)) throw refuse('VMU_INVALID_ARGUMENT', 'hire needs purpose', 'pass purpose:"why this worker exists"')
   if (!has(args.initial_task)) throw refuse('VMU_INVALID_ARGUMENT', 'hire needs initial_task', 'pass initial_task:"the first task"')
   if (!has(args.to)) throw refuse('VMU_INVALID_ARGUMENT', 'hire needs the new member id', 'pass to:"<new member id>" (this pack never invents an id)')
+  // ★ ROUND 92 / F-92b (live run 92): `to` names a NEW member. Calling this face with an id that is already
+  // on the roster re-seated that member in place — the chair was moved into the temp seat, and every later
+  // call then failed with `is in slot "temp"`. Re-seating is a different act, so it is refused BY NAME and
+  // the receipt points at the face that does it on purpose.
+  {
+    const existing = membersOf(kernel).roster().filter((m) => String(m.id) === str(args.to))[0] || null
+    if (existing) {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'hire mints a NEW temp member; "' + str(args.to) + '" is already on the roster in slot "' + str(existing.slot) + '"',
+        'pass to:"<a new member id>" — moving an existing member between seats is a different act: vibe_vmu_control { action: "hire", member_id, slot } (this face refuses instead of silently re-seating)')
+    }
+  }
   // ★ LIVE RUN 7 (agent feedback item e): the rule wants the SLOT stated explicitly (「显式给 slot…」), and this face used to
   // hardcode `temp` without ever reading a `slot` argument, so a caller could not tell whether its slot had been honoured
   // or overridden. The slot is now read, defaulted (temp), and REFUSED BY NAME when it names a seat this face does not
@@ -1302,6 +1319,22 @@ function gatedCardHandler(toolName) {
       if (state) payload.proofState = state
       else if (has(args.proof_ref) && !has(payload.proofState)) payload.proofState = 'draft'
       args = Object.assign({}, args, { payload })
+    }
+    // ★ ROUND 92 / F-92a (live run 92): the seat gate keyed on the CALLER, and the office has no seat, so
+    // `vibe_v5_record_method { member: "<a temp worker>" }` was accepted while seat-faces.js declares
+    // `allow.temp === false` for that face — a card attributed to a seat that seat may not write. The
+    // attributed member's seat is checked here, against the declared table, by NAME.
+    if (by) {
+      const seatRow = membersOf(kernel).roster().filter((m) => String(m.id) === by)[0] || null
+      if (seatRow) {
+        const decision = seatDecisionOf(String(seatRow.slot), toolName)
+        if (decision.allowed !== true) {
+          throw refuse('VMU_NOT_PERMITTED',
+            toolName + ' is not one of the faces the ' + String(seatRow.slot) + ' seat holds: "' + by + '" is in slot "' + String(seatRow.slot) + '"',
+            'rule ' + str(decision.rule || '?') + ': ' + str(decision.why || 'no declared decision')
+              + ' — a card attributed to a seat is a card that seat must be allowed to write; pass member:"<a seat that holds this face>" or write the card as the office (omit member)')
+        }
+      }
     }
     const writerGate = singleWriter({ records, cardId, by, writer: toolName, track })
     const writerRefusal = gateRefuse(writerGate)

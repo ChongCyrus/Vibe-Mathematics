@@ -59,7 +59,7 @@ ok(blocksB.includes('所办可设'), 'G2: the office can set the compute concurr
 
 // ── D3: one-line decision rule for the three channels ────────────────────────
 PIN('v5r-blocks-b.js', blocksB, '三通道的紧急语义', 'D3')
-ok(blocksB.includes('要对方**这一轮就看到**') && blocksB.includes('留个记录'), 'D3 pin: the channel choice rule is executable')
+ok(blocksB.includes('要对方**这一轮就看到**') && blocksB.includes('只留记录'), 'D3 pin: the channel choice rule is executable')
 ok(blocksB.includes('urgent: true'), 'D3 pin: urgent is the DM flag')
 
 // ── E10: the duration ceiling and what is extendable ─────────────────────────
@@ -103,6 +103,36 @@ ok(blocksB.includes('故意不给推荐骨架'), 'E13 pin: ordinary has no skele
 // ── the envelope division (G6) stays taught ─────────────────────────────────
 ok(blocksB.includes('工具做事，回执汇报'), 'G6 pin: tools act, the envelope reports')
 ok(!/"(?:meeting_hand|meeting_invite)":\s*(?:true|false|\{)/.test(blocksB), 'G6: no receipt-field instruction for hand/invite remains')
+
+// ── THE LEDGER-TEACHING ROUND (2026-10-28, second pass): four rule lines that had NO teaching,
+//    plus the five rows whose evidence used to land in a comment or an unrelated paragraph.
+//    Each assert is the sentence the ledger's `prompt` pattern should now point at. ─────────────────
+// L10 (rule: 院士、常驻研究员各自的文件) — the temp boundary is taught where the libraries are taught
+ok(blocksB.includes('临时工不写这些库'), 'L10 pin: the temp worker does not write the member libraries (seat-faces.js denies record_method/record_subproblem for temp)')
+ok(blocksB.includes('产出由指派者归档'), 'L10 pin: the assigner archives a temp worker\'s output')
+// L32 (rule: 院士通过命令…决策会议进行中的一切内容、控制、活动) — chair authority is the FALLBACK authority
+ok(blocksB.includes('都由你的命令决定'), 'L32 pin: inside a running meeting, the chair\'s commands decide content/control/activity')
+ok(blocksB.includes('只是常用手段，不是穷举'), 'L32 pin: the listed verbs are common means, not an exhaustive list')
+// L32 (rule: 框架推荐流程骨架…是否遵循完全由院士决定) — the skeleton is ADVISORY, not a gate
+ok(blocksB.includes('`procedureNote` 是**建议**'), 'L32 pin: procedure/procedureNote in the open receipt are advice (meeting-procedures.js binding:\'recommendation\')')
+ok(blocksB.includes('`binding:"recommendation"`'), 'L32 pin: the advisory binding is cited by name')
+// L3 (rule: 临时工…用于特殊任务临时任务) — hiring states a purpose, temp is not a standing seat
+ok(blocksB.includes('vibe_v5_hire { purpose, initial_task, to }'), 'L3 pin: hiring requires purpose + initial_task + to')
+ok(blocksB.includes('不是常设席位'), 'L3 pin: a temp is for special/temporary tasks, not a standing seat')
+// L53 (rule: 并发通知命题卡持有者改值) — a ruling nobody is told changes nothing
+ok(blocksA.includes('裁决落地靠**通知**'), 'L53 pin: the ruling is only landed once the holder is notified')
+ok(blocksA.includes('`notification.state`') && blocksA.includes('`queued`'), 'L53 pin: the receipt reports delivered vs queued (still in the inbox, unread)')
+// A2 (item: 有进展时自动唤起所办汇报) — the trigger chain is declared, not automatic
+ok(readFileSync(resolve(PROMPTS, 'v5r-assistant.js'), 'utf8').includes('「有进展就唤起所办」不会自己发生'),
+  'A2 pin: the report trigger is declarative (vmu.report.reports; kernel/report.js TRIGGER_KINDS), not automatic')
+// A4 (item: 院士＝chair 席) — the seat mapping is taught in prose, not only in a code comment
+ok(blocksB.includes('院士＝`chair`'), 'A4 pin: the seat mapping (院士=chair, 常驻研究员=member, 临时工=temp) is taught')
+// D1/D5 (items: 各自推进各自的总任务 / 四字段含时间等基础信息)
+ok(blocksB.includes('每人各自推进各自的'), 'D1 pin: each member advances their OWN 总任务')
+ok(blocksB.includes('四行都带**时间等基础信息**'), 'D5 pin: the four board rows carry time as basic information')
+// C10/C11/E24 (items: Lean 代码与编译结果归档 / 忠实性审查 is the debate focus when p≠1)
+ok(blocksB.includes('Lean 代码与这次运行的结果'), 'C10 pin: the Lean code AND the run result are archived together')
+ok(blocksB.includes('忠实性审查'), 'C11/E24 pin: the debate after a passed Lean run reviews FIDELITY (definitions/conclusions vs the original proposition)')
 
 console.log('=== LEDGER TEACHING PINS: ' + pass + ' passed, ' + fail + ' failed ===')
 if (fail > 0) process.exitCode = 1

@@ -181,7 +181,11 @@ function check(ledgerPath) {
   // P1 is DOCUMENT-GROUNDED: when the rule document is readable we check that the ledger is a claim about THIS
   // version of it (revision = sha256, lineCount = lines) and that every line declared structural really is a blank
   // line, a `---` separator or a heading. A silent edit of the document therefore reds the gate instead of drifting.
-  const docFile = ledger.source && typeof ledger.source.file === 'string' ? ledger.source.file : ''
+  // The document path is declared under whichever key the ledger shape uses: a migrated ledger writes `source.path`,
+  // an older one `source.pathRelative`, and today's writes `source.file`. All three are read, in that order.
+  const docFile = ['path', 'pathRelative', 'file']
+    .map((key) => (ledger.source && typeof ledger.source[key] === 'string' ? ledger.source[key].trim() : ''))
+    .find((value) => value) || ''
   if (!docFile) {
     fail('VMU_RULE_PARITY_NO_SOURCE_FILE', 'source.file must point at the rule document')
   } else if (!existsSync(docFile)) {
@@ -204,6 +208,22 @@ function check(ledgerPath) {
         fail('VMU_RULE_PARITY_STRUCTURAL_NOT_STRUCTURAL', 'L' + n + ' is declared structural (' + why + ') but the document line is text: ' + JSON.stringify(trimmed.slice(0, 40)))
       }
       if (lines.has(n)) fail('VMU_RULE_PARITY_LINE_BOTH', 'rule line L' + n + ' is both claimed and declared structural')
+    }
+    // P1 also accepts ANCHOR claims. A migrated ledger replaces `ruleLines` with `ruleText` quotes; the anchor's own
+    // line IS the declaration, so without this fallback the migration would red the gate on lines nobody can claim.
+    if (!Object.keys(ledger.ruleLines || {}).length) {
+      const docText = docLines.join(String.fromCharCode(10))
+      let anchoredLines = 0
+      for (const item of ledger.items) {
+        if (!item || typeof item.ruleText !== 'string' || !item.ruleText.trim()) continue
+        const quote = item.ruleText
+        const hits = []
+        for (let i = docText.indexOf(quote); i >= 0; i = docText.indexOf(quote, i + 1)) hits.push(i)
+        if (hits.length !== 1) continue
+        lines.add(docText.slice(0, hits[0]).split(String.fromCharCode(10)).length)
+        anchoredLines += 1
+      }
+      note.push('ruleLines absent: ' + anchoredLines + ' claim line(s) derived from ruleText anchors')
     }
   }
 

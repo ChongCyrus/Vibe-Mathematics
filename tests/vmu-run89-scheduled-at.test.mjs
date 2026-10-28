@@ -133,7 +133,9 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r89-'))
   const { readFile } = await import('node:fs/promises')
   const src = await readFile(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-blocks-b.js'), 'utf8')
   ok(src.includes('"+120s"'), 'the schedule teaching shows the relative form', src.length)
-  ok(/代理没有自己的钟/.test(src), 'the teaching says WHY (an agent has no clock of its own)')
+  ok(/没有自己的钟/.test(src), 'the teaching says WHY (an agent has no clock of its own)')
+  ok(/相对偏移/.test(src), 'and it names the capability that reason implies (a relative offset, converted by the kernel)')
+  ok(/治理动作都被具名拒/.test(src) && /attend` 是座位登记/.test(src), 'the pre-start sentence names the governance refusal AND the attend exemption (run 92 F-89a)')
 }
 
 for (const d of roots) await rm(d, { recursive: true, force: true, maxRetries: 10 })

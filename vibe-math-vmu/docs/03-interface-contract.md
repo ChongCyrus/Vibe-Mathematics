@@ -208,11 +208,11 @@
 | `vibe_v5_paper` ★ G7 重点 | **论文的唯一运行入口**：`start/part/advance/review/final/render/status/compile/sections`（9 action）。`final` **只有 chair 席**能过（成员 ⇒ `VMU_NOT_PERMITTED`）；`render` 回 `wrote/missing/complete/pdf`；`status` 回同一 `PaperArtifacts` 的 `missing/complete/pdf`（不写产物）；PDF 失败回执带 **`triedEngines:[{engine,phase,code}]`**（可读的结构化引擎尝试列表，不再 `[object Object]`） | `action`、`target`、`member`、`participants`、`part/title`、`body`、`deliverable`、`notes`、`decision` | ★ R86：`action:"consult"` 可由**声明的答复角色**（`PAPER_CONSULT_ROLES`，当前 `office`）作答，即使名册没有该 id —— 所办是运行本所的会话；回执 `answererKind:"declared-role"`/`"roster-seat"` 与 `answererMeans` 说清身份。
 | `vibe_v5_inbox` | 信箱：`list/open/mark`；`list` 行 **9 字段（含 `urgent`）无正文**，`open` 置 `read:true`，`mark` 改 read/todo。与 `vibe_vmu_mailbox` **同一套存储**（非紧急提示无正文；紧急只有发送方 `urgent:true` 才带正文）；★ **R30 · `open` 的回执形状**：正文**只在 `message.text`**（`message` 另带 `id/from/at/subject/kind/urgent/read:true/todo`），`list` 的 `rows` **永不带正文**（`packs/v5r/tools.js:160` 的 note 明写 rows carry NO body）—— 先按发件人／时间／主题／urgent／read／todo triage（`urgent:null` 是「面读不出」**而非**「不紧急」✓），再 `open` **一封**（`packs/v5r/tools.js:163-174`）✓ | `action`、`member`、`status`、`id`、`read`、`todo` |
 | `vibe_v5_wait` | 等待：`wait/status`；**面名是 `activity`（不是 `wait`）**；回执 `timedOut/waitedMs/timeoutMs`；无 peer 接缝时 `peerCheck:"no-seam"` | `action`、`timeout_ms`、`member`、`reason` |
-| `vibe_v5_record_*` | 研究日志/成果卡（内容指纹去重） | `content`/`statement`、`value`、`motive`、`p`、`track` |
+| `vibe_v5_record_*` | 研究日志/成果卡（内容指纹去重）。★ RUN 92：**卡面 `member` 指向谁，就按那一位的席位判能不能写**（`seat-faces.js` 的声明表）——所办没有席位，所以「所办代写」不再是绕过席位声明的路：temp 写方法/子问题卡具名拒 `VMU_NOT_PERMITTED`（hint 引 `rule 4/3` 与声明原话，并给出「省略 `member` 由所办自己写」的出路），写命题卡仍允许（按面判，不按席判） | `content`/`statement`、`value`、`motive`、`p`、`track` |
 | `vibe_v5_message` / `_say` | 所办转达/群聊私信；`urgent` 默认 **false**（kind 不自动紧急） | `to`、`content`、`subject`、`urgent` |
 | `vibe_v5_meeting` / `_motion` / `_second` / `_poll_*` / `_verdict` | 机构会议/投票面；与 `vibe_vmu_meeting` 的 service 注册表/ballot 镜像见 `docs/08 §27`；★ **R30**：v5r-pack 的 `vibe_v5_verdict_ask`／`_verdict_final` 回执增量（`propositionClause`／`accounting`／`excluded`／`mail`、`floorMeans`／`correction`）见 §3.1a 末的 R30 注 ✓ | 见 `packs/v5r/tools.js` |
 | `vibe_v5_lean_run` / `_job` / `_lib` / `_read` / `_archive` | Lean 面：无宿主 spawn 时**具名 `VMU_ENGINE_UNAVAILABLE`**，不假装编译 | `file`、`statement`、`jobId`、`kind` |
-| `vibe_v5_task_*` / `_hire` / `_assign` / `_fire` / `_nudge` / `_prioritize` / `_feedback` / `_read_library` / `_overview` / `_report` / `_start` / `_stop` / `_pause` / `_resume` / `_configure` / `_set` / `_tool_help` | 任务板/招聘/所务管理/控制；被具名拒时保留原码 | 见 manifest |
+| `vibe_v5_task_*` / `_hire` ★ RUN 92（`to` 是**新成员 id**：已在册的 id 具名拒 `VMU_INVALID_ARGUMENT`，hint 指向 `vibe_vmu_control {action:"hire"}` 那道明示重排座位的面——静默把院士改席成 temp 曾让整场会议不可召集） / `_assign` / `_fire` / `_nudge` / `_prioritize` / `_feedback` / `_read_library` / `_overview` / `_report` / `_start` / `_stop` / `_pause` / `_resume` / `_configure` / `_set` / `_tool_help` | 任务板/招聘/所务管理/控制；被具名拒时保留原码 | 见 manifest |
 
 ★ **框架侧的同名能力**（`vibe_vmu_*`）仍在 §3.1；两套并存的边界以“谁是当前 pack 的 manifest 工具”为准，**不要用一张手写清单代替 manifest**。
 
@@ -560,6 +560,7 @@
 | `VMU_MATH_UNSUPPORTED_OP` | 请求的数学操作在**当前引擎**无实现（须给可用引擎/替代 ✓） | 计算面 | ✅ |
 | `VMU_MATH_DIMENSION_MISMATCH` | 量纲/维度不匹配 | 计算面 | ✅（须给**两侧量纲**） |
 | `VMU_MATH_SINGULAR_MATRIX` | 奇异矩阵/不可逆 | 计算面 | ✅ |
+| `VMU_MATH_PERSIST_FAILED` | 数学回执/任务镜像**写不进去**（只出现在 `persistCode` 字段里：回执本身已产出，失败的是持久化那一步——**不要读成「计算失败」**） | 计算面 | ✅ |
 | `VMU_MATH_NONCONVERGENT` | 迭代/求解**不收敛**（须给迭代数/残差 ✓） | 计算面 | ✅ |
 | `VMU_MATH_RESIDUAL_TOO_LARGE` | 残差超容差（结果不可用，**不得当作答案** ✗） | 计算面 | ✅ |
 | `VMU_MATH_PRECISION_LOST` | 精度损失超阈值（须给丢失位数/条件数 ✓） | 计算面 | ✅ |
@@ -1176,7 +1177,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **471** 个码，**逐行**给出状态 ✓：其中 **432** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **472** 个码，**逐行**给出状态 ✓：其中 **433** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1403,6 +1404,7 @@
 | `VMU_MATH_LIB_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/mathadapters.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_NONCONVERGENT` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MATH_NOT_CONVERGED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
+| `VMU_MATH_PERSIST_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_PRECISION_LOST` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MATH_REPRO_MISMATCH` | **已实现 ✓** | `vibe-math-vmu/kernel/formal.js`、`vibe-math-vmu/kernel/repropack.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_RESIDUAL_TOO_LARGE` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |

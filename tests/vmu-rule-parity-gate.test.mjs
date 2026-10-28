@@ -8,10 +8,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const repo = resolve(here, '..')
@@ -68,4 +69,37 @@ test('§5 every structural line is declared with a reason, not merely assumed', 
     assert.match(String(entry.line), /^L\d+$/, `bad structuralLines entry: ${JSON.stringify(entry)}`)
     assert.ok(String(entry.why || '').trim().length >= 4, `structural line ${entry.line} needs a reason`)
   }
+})
+
+// ── the MIGRATION paths: the ledger is being moved off `source.file` + `ruleLines` onto `source.path` + anchors ──────
+// Without these two cases the gate would be green on today's ledger and red on the one the migration produces — a gate
+// that fails precisely when the work it guards is finished.
+function copyLedger(mutate) {
+  const ledger = JSON.parse(readFileSync(ledgerFile, 'utf8'))
+  mutate(ledger)
+  const dir = mkdtempSync(join(tmpdir(), 'vmu-parity-mig-'))
+  const file = join(dir, 'ledger.json')
+  writeFileSync(file, JSON.stringify(ledger, null, 2))
+  return file
+}
+
+test('§6 the rule document is found through source.path when source.file is gone', () => {
+  const file = copyLedger((ledger) => {
+    ledger.source.path = ledger.source.file
+    delete ledger.source.pathRelative
+    delete ledger.source.file
+  })
+  const r = run(['--ledger', file])
+  assert.equal(r.code, 0, `--ledger with source.path only failed:\n${r.out}`)
+})
+
+test('§7 claim lines are derived from ruleText anchors when ruleLines is gone', () => {
+  const file = copyLedger((ledger) => {
+    const anchored = ledger.items.every((i) => typeof i.ruleText === 'string' && i.ruleText.trim())
+    assert.ok(anchored, 'this case needs an every-row-anchored ledger')
+    delete ledger.ruleLines
+  })
+  const r = run(['--ledger', file])
+  assert.equal(r.code, 0, `--ledger without ruleLines failed:\n${r.out}`)
+  assert.match(r.out, /claim line\(s\) derived from ruleText anchors/, r.out)
 })

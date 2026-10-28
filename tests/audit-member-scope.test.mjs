@@ -165,7 +165,10 @@ ok(divergence.ok === true, '★★ every seat-line name in TOOL_SCOPES is callab
 const toolsSrc = readFileSync(join(REPO, 'vibe-math-vmu/packs/v5r/tools.js'), 'utf8')
 ok(toolsSrc.includes('applyMemberScope'), 'tools.js imports the producer')
 ok(/async function toolStart[\s\S]{0,2000}applyMemberScope\(/.test(toolsSrc), 'vibe_v5_start applies the scope at seating time')
-ok(/async function toolHire[\s\S]{0,3000}applyMemberScope\(/.test(toolsSrc), 'vibe_v5_hire applies the scope to the new seat')
+// RUN 92: the hire face now refuses an id already on the roster BEFORE seating anyone (F-92b), so the
+// structural window has to reach past that guard. The assertion is unchanged: the face that seats a member
+// also applies the scope to it.
+ok(/async function toolHire[\s\S]{0,4200}applyMemberScope\(/.test(toolsSrc), 'vibe_v5_hire applies the scope to the new seat')
 ok(toolsSrc.includes('memberScope'), 'both receipts carry the scope receipt (narrowing is provable from outside)')
 
 // ── ⑥ 生产者侧的第二条证据：这个包从不生产 `allow:` overrides（纯静态，不启内核、不写盘）────────────────
