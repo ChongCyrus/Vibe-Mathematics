@@ -8562,3 +8562,33 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 **§197.6 五项无法验证（本轮未演练）**：pdf 编排（`compile` 未被调用）、`sections`/`qualityGate` 读面、参考文献直入（B2，见 §187）、`paper` 之外的 `poll_*`、tmp worker 的并发上限。
 
 **§197.7 无实质残余：否** —— F-95a/F-95b 的修法由 `tests/vmu-run95-part-evidence.test.mjs` 覆盖，但还缺一次真机复验（下一轮 r96 的简报已含这两步）。
+
+## §198 真机跑 96（r94/r95 修法的现场复验）
+
+§198.1 读数：build `d5858148`、`DRIVE exit=0`、622s、`toolCalls 21`、`transcriptEvents 125`、`tokenTotal 4,440,396`（cap 12M，未触顶）、2 会话、`SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks`；jsonl 12,407,554 B / 29,096 行；围栏 `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=12 BAD_JSON=12`；保全戳 `20261028-103146`；C 盘剩 9.94 GB；`visible tools: 96`。
+
+§198.2 判决表（逐字回执见 `D:/_tmp/r96/dig96.txt`）
+
+| 项 | 判据 | 真机结果 | 判 |
+| --- | --- | --- | --- |
+| F-94a 值 | `2**10+1` 应为 `"1025"` | `"result":{"value":"1025","valueMissing":null,...}`，`argv:["…python.EXE","-c","print(2**10+1)"]` | ✅ |
+| F-94a 空输出 | 不打印 ⇒ `value:null` + `valueMissing` | `"value":null,"valueMissing":"stdout-empty","valueMeans":"…a 0 here would have been invented"` | ✅ |
+| F-94c 领头人 | start 坐席即记 `vmu.turn.leaderId` | `applied` 含 `vmu.turn.leaderId=r-acad`，`status.settings` 读回 `r-acad`（`source:"runtime"`） | ✅ |
+| F-94b 边界 | 拒绝第一句点注册表边界 | `boundaryOnly` 未进回执；message 为 `action "this action" addresses the PRIMITIVE registry only and never crosses, while meeting m1 lives in the SERVICE registry` | ⚠️ 方向对、身份丢 |
+| F-95a 证据指针 | `part` 当刻核对 | `{"ok":false,"code":"VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING","message":"these evidence pointers do not resolve against the records face: \"Members/r-1/Propos/p-does-not-exist.md\" (no-such-record, expected track propositions)"}`；换成真记录后 `ok:true` + `evidence.resolved:["rec-5"]` | ✅ |
+| F-95b 写在哪 | `wroteWhere.disk` 空 | `"wroteWhere":{"records":["md","tex","meta"],"disk":[],"means":"…only when compile runs…"}` | ✅ |
+| 新 F-96a | 拒绝回执要带边界事实 | `code:"VMU_NO_SUCH_OBJECT"`（对象明明存在）、`askedAction`/`boundaryOnly`/`registry`/`actionCrosses` 全被回执重建丢掉、动作名是 `"this action"` | ❌ |
+| 新 F-96b | 值只有一个形状 | `math_computation` 自己的回执没有 `value`/`valueMissing`，而 `vibe_vmu_mathtools` 有（成员在 progress 里点名“两个入口的回执形状不同”） | ❌ |
+
+§198.3 两条缺陷与修法
+- **F-96a**（拒绝的身份与事实）：`vibe-math-vmu/tools/meeting.js` 的 `live()` 改为 `live(what = action)`；新增 `refusalDetails(e)` 把 `boundaryOnly`/`askedAction`/`registry`/`actionCrosses` 从错误对象搬到回执（包装层只重建 code/message/hint，之前全丢）；边界拒绝改用新码 **`VMU_REGISTRY_BOUNDARY`**（对象存在时不再说“no such object”），并在 `docs/03` §8 登记。
+- **F-96b**（值只有一个答复）：`vibe-math-vmu/math-computation.js` 新增导出 `printedValueOf(stdout)`（`value`/`valueMissing`/`valueMeans` 唯一来源），成功回执展开它；`kernel/math.js` 改用它（删掉自己那份 inline 规则）；六份拷贝同步。
+- 判据：**拒绝里的主语必须是真的**（是哪个动词、对象在哪张表）；**同一个读数不许有两个形状**；码不能替对象说谎。
+
+§198.4 门禁：新 `tests/vmu-run96-receipt-fidelity.test.mjs` **9/0**（边界的码/三事实/回执不丢字段/无常量占位符；`printedValueOf` 七份拷贝行为一致；低层回执展开它；`kernel/math.js` 无第二份规则；码已登记）。相邻：`vmu-run84-meeting-reads` 8/0、`vmu-run94-math-expr-leader` 7/0、`math-computation-shared` 419/0、`audit-math-computation-parity` 137/0、`audit-math-computation-contract` 232/0、`vmu-meeting` 50/0、`vmu-mathtools-tool` 14/0、`vmu-math` 27/0、`vmu-kernel` 260/0、`audit-vmu-docs` 103/0、`audit-rule-coverage` 22/0。
+
+§198.5 简报三错：①以为 `start` 回执带 `leadership`（它只在 `status`/`overview` 上，`start` 只回 `applied`）；②让院士“直接开会”，而部署注入 `vmu.meetings.chairActRequiresTurn:true` 要求先有自己的回合（成员自己 `vibe_v5_set` 改回默认才继续，这是模拟里合法的一步）；③把两套计算词汇（`op:"numeric"` 与 `args:{expr}`）混写成一步。
+
+§198.6 无法验证：`compile` 跑通 PDF（需要 TeX 引擎）、多人并行 `maxParallel>1` 的实际并发、`chairActRequiresTurn` 在“先有回合”路径上的正面用例、会议议程项追加的完整序列。
+
+§198.7 无实质残余：否（本轮修的两处刚落地，需要下一轮真机复验；会议面仍有 `code` 之外的历史码沿用 `VMU_NO_SUCH_OBJECT`）。

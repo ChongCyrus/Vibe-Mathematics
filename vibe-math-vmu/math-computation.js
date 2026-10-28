@@ -56,6 +56,17 @@ export const MATH_FAILURE_CODES = Object.freeze([
 
 export const MATH_CAPS = Object.freeze({ stdout: 64 * 1024, stderr: 64 * 1024, file: 4 * 1024 * 1024 })
 
+// ★ ROUND 96: "what value did this run print?" was answered in two places — the policy face (kernel/math.js)
+// answered null-with-a-reason for an empty stdout, while this low-level receipt answered nothing at all, so a
+// member reading `math_computation`'s own result could not tell a missing VALUE from a missing FIELD. One helper,
+// both faces: expression modes print nothing unless the template prints, and 0 would be invented.
+export function printedValueOf(stdout) {
+  const printed = typeof stdout === 'string' ? stdout.trim() : ''
+  return printed !== ''
+    ? { value: printed, valueMissing: null, valueMeans: null }
+    : { value: null, valueMissing: 'stdout-empty', valueMeans: "the engine exited 0 but printed nothing, so NO value was reported: expression modes evaluate without printing. Use a print in the script (or mode 'code') to get a value; a 0 here would have been invented" }
+}
+
 // Archive retention (P2a item 5): a documented CAP that only ever WARNS - the tool never deletes.
 // Per-run: the attempt number that may be created for one archive id (attempt 1 lives in
 // Computation/<id>/, later attempts in Computation/<id>/attempts/<n>/). Per-project: only checked
@@ -1185,6 +1196,7 @@ async function opRun(H, args, params) {
     cliScriptAppended: !!(receipt.cli && receipt.cli.scriptAppended),
     packages: pk.found,
     exit: receipt.exit, timedOut: receipt.timedOut, ms: receipt.ms,
+    ...printedValueOf(String(fullOut).slice(0, MATH_CAPS.stdout)),
     stdout: fullOut.slice(0, MATH_CAPS.stdout), stderr: fullErr.slice(0, MATH_CAPS.stderr),
     truncated: receipt.truncated, artifacts: receipt.artifacts, receipt: receiptRef,
     warnings: warnings,

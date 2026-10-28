@@ -77,7 +77,9 @@ test('§3 an empty stdout is NO value — the kernel no longer invents a zero', 
   assert.equal(out.result.value, null, 'nothing was printed, so there is no value')
   assert.equal(out.result.valueMissing, 'stdout-empty')
   assert.match(out.result.valueMeans, /NO value was reported/)
-  assert.match(out.result.valueMeans, /mode 'expr'/)
+  // ★ ROUND 96: the sentence is shared with math_computation.js#printedValueOf, so it names the CAUSE (expression
+  // modes print nothing), not the request field.
+  assert.match(out.result.valueMeans, /expression modes evaluate without printing/)
   assert.match(out.result.valueMeans, /invented/)
 })
 
@@ -94,7 +96,8 @@ test('§5 a verb that never crosses registries says THAT first, not "the meeting
   assert.match(e.message, /lives in the SERVICE registry/)
   assert.equal(e.message.startsWith('no PRIMITIVE meeting with id'), false, 'the boundary fact leads')
   assert.equal(e.boundaryOnly, true)
-  assert.equal(e.code, 'VMU_NO_SUCH_OBJECT')
+  // ★ ROUND 96: the id exists in the other registry, so "no such object" was the wrong CODE for a boundary.
+  assert.equal(e.code, 'VMU_REGISTRY_BOUNDARY')
   assert.match(e.hint, /PRIMITIVE registry only and does NOT cross/)
   // a verb that DOES cross keeps the old shape (its problem is the other registry's method list)
   const crossing = primitiveMissError({ id: 'm2', inService: true, action: 'status' })
@@ -143,7 +146,10 @@ test('§6 seating the chair records who leads (and never overwrites an operator 
 test('§7 the source keeps the three lessons as comments a reader can find', () => {
   const km = readFileSync(join(ROOT, 'vibe-math-vmu/kernel/math.js'), 'utf8')
   assert.equal(km.includes('★ ROUND 94'), true)
-  assert.equal(km.includes('a 0 here would have been invented'), true)
+  // ★ ROUND 96: the sentence moved to math-computation.js#printedValueOf (ONE answer for both faces).
+  assert.equal(km.includes('printedValueOf(raw.stdout)'), true)
+  const mc = readFileSync(join(ROOT, 'vibe-math-vmu/math-computation.js'), 'utf8')
+  assert.equal(mc.includes('would have been invented'), true)
   const pt = readFileSync(join(ROOT, 'vibe-math-vmu/packs/v5r/tools.js'), 'utf8')
   assert.equal(pt.includes('chair-seated-but-leaderId-empty'), true)
   const mt = readFileSync(join(ROOT, 'vibe-math-vmu/tools/meeting.js'), 'utf8')

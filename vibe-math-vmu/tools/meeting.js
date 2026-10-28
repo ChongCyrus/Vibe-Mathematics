@@ -46,7 +46,7 @@ export function primitiveMissError({ id, inService, action, crossing = SERVICE_C
     : (inService
       ? 'no PRIMITIVE meeting with id ' + String(id) + ' (the id exists in the SERVICE registry)'
       : 'no live meeting with id ' + String(id))), {
-    code: 'VMU_NO_SUCH_OBJECT',
+    code: boundaryOnly ? 'VMU_REGISTRY_BOUNDARY' : 'VMU_NO_SUCH_OBJECT',
     hint: inService
       ? 'meeting ' + String(id) + ' lives in the meetings SERVICE registry; ' + asked + (crosses
         ? ' DOES cross registries, but only when the service exposes that method'
@@ -57,6 +57,18 @@ export function primitiveMissError({ id, inService, action, crossing = SERVICE_C
     boundaryOnly,
     actionCrosses: crosses,
   })
+}
+
+// ★ ROUND 96 (real machine): the boundary refusal carried `boundaryOnly`/`askedAction`/`registry`/`actionCrosses`
+// on the ERROR object, but the receipt was rebuilt from code/message/hint alone — so docs/03 promised fields a
+// program never received, and the message named the verb "this action" because `live()` was called without one.
+export function refusalDetails(e) {
+  if (!e || typeof e !== 'object') return null
+  const out = {}
+  for (const k of ['registry', 'askedAction', 'actionCrosses', 'boundaryOnly']) {
+    if (e[k] !== undefined) out[k] = e[k]
+  }
+  return Object.keys(out).length ? out : null
 }
 
 export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
@@ -122,7 +134,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             'pass ONE meeting id; `meeting` is an alias of `id` (both are accepted for the same object)')
         }
         if (action !== 'open' && !idText(id) && idText(meetingArg)) id = idText(meetingArg)
-        const live = (what) => {
+        const live = (what = action) => {
           const meeting = kernel.liveMeeting(need(id, 'id'))
           // ★ THE REFUSAL MUST NOT MISLEAD. A meeting opened through the SERVICE registry really exists, but most
           // actions still address the primitive registry only, so a bare "no live meeting with id" reads as "that
@@ -742,7 +754,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           }
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {
-          return refused(e.code || 'VMU_STATE', String(e.message), e.hint)
+          return refused(e.code || 'VMU_STATE', String(e.message), e.hint, refusalDetails(e))
         }
       },
   }

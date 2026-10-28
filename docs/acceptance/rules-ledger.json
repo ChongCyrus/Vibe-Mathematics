@@ -1632,7 +1632,8 @@
         "vibe-math-vmu/kernel/index.js::spawnSeamKind"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"stdout\":\"1025"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"stdout\":\"1025",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"value\":\"1025\",\"valueMissing\":null"
       ],
       "ruleText": "- 支持成员使用一些数学计算工具（如Python等），但支持所办通过参数设置工具的并发数量等限制，避免cpu过载、oom。"
     },

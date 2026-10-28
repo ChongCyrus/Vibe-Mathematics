@@ -134,7 +134,8 @@ function primFaceKernel() {
 
 test('③ lapse 打在只在 service 的 id 上：消息说「不在本表」、hint 点名另一张表、且明说该动作不交叉', () => {
   const err = primitiveMissError({ id: 'm2', inService: true, action: 'lapse' })
-  assert.equal(err.code, 'VMU_NO_SUCH_OBJECT')
+  // ★ ROUND 96: the id DOES exist, so the code may not say "no such object" — the boundary has its own name.
+  assert.equal(err.code, 'VMU_REGISTRY_BOUNDARY')
   // ★ ROUND 94: a verb that NEVER crosses must say so FIRST — the old opening ("no PRIMITIVE meeting with id m2")
   // read as "the meeting is missing" when the real answer is "this verb cannot address that kind of meeting".
   assert.match(err.message, /addresses the PRIMITIVE registry only and never crosses/)

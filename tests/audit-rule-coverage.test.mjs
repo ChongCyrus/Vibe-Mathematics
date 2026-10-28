@@ -199,16 +199,23 @@ ok('a hand-edited fingerprint with an unchanged revision is refused by name',
   (driftOut.problems || []).map((p) => p.code).join(','))
 
 // ── strict-live: a row whose only live evidence is a refusal code ──────────────────────────────────────────
-const strictLive = run(['--check', '--strict-live', '--json'])
-const strictLiveOut = parse(strictLive.stdout)
-const refusalRows = (base.items || []).filter((i) => (i.live || []).length === 1 && /VMU_/.test(String((i.live || [''])[0])))
-if (refusalRows.length) {
-  ok('--strict-live refuses a row whose only live evidence is a refusal code',
-    strictLive.status === 1 && (strictLiveOut.problems || []).some((p) => p.code === 'VMU_RULES_LIVE_IS_ONLY_A_REFUSAL'),
-    (strictLiveOut.problems || []).map((p) => p.code).join(','))
-} else {
-  ok('--strict-live refuses a row whose only live evidence is a refusal code', true)
-}
+// PLANTED, not read off the real ledger: the real ledger's refusal-shaped `live` entries carry prose too, so keying
+// this case off the real data made it depend on whichever lane last edited a row. The fixture takes a DONE row and
+// replaces its single live citation with a code that really occurs in the conformance ledger.
+const refusalProbe = probe('strict-live-refusal', (led) => {
+  const row = led.items.find((i) => i.status === 'DONE' && i.id === 'E17') || led.items[0]
+  row.live = ['docs/acceptance/phase12-v5r-rules-conformance.md::VMU_CHAT_ALREADY_SPOKE']
+}, ['--check', '--strict-live'])
+ok('--strict-live refuses a row whose only live evidence is a refusal code',
+  refusalProbe.status === 1 && refusalProbe.codes.indexOf('VMU_RULES_LIVE_IS_ONLY_A_REFUSAL') >= 0, refusalProbe.codes)
+
+// CONTROL: the same fixture without --strict-live must be a WARNING, not a problem — otherwise the flag is a lie.
+const refusalControl = probe('strict-live-control', (led) => {
+  const row = led.items.find((i) => i.status === 'DONE' && i.id === 'E17') || led.items[0]
+  row.live = ['docs/acceptance/phase12-v5r-rules-conformance.md::VMU_CHAT_ALREADY_SPOKE']
+}, ['--check'])
+ok('the same refusal-only row is only a warning without --strict-live',
+  refusalControl.codes.indexOf('VMU_RULES_LIVE_IS_ONLY_A_REFUSAL') < 0, refusalControl.codes)
 
 // ── control: without the in-flight citation gaps, the same gate is GREEN on the real ledger ────────────────
 // The control removes exactly the entries the real run reported as unresolved, and marks the rows it emptied as

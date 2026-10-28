@@ -1914,3 +1914,19 @@ Criteria that this round adds:
 - **判据一：同一份合同，越早拒越好。** `part` 收下 evidence 却把第一次解析留到 `render` 的质检闸，结果是：论文写完、互审完、所办咨询完、定稿完，才在最后一步被告知「你引的那条记录不存在」。证据指针现在**写入当刻**就被 `paper-quality.js#checkEvidencePointers` 解析（同一份 `MEMBER_FILE`/`TRACK_OF_CATEGORY`/`recordOf`，不写第二份解析器），坏指针当场具名拒 —— 而「无证据」仍归交付门（≥1 条、每条有指纹），草稿照旧可自由渲染。
 - **判据二：回执字段的名字必须说清它数的是什么。** `render` 的 `wrote:["md","tex","meta"]` 是 paper 轨的**记录种类**，不是磁盘文件；`.tex` 要等 `compile` 才进 `Paper/<id>/`。字段名不变，另加 `wroteWhere{records,disk,means}` 把「写在哪」讲明 —— 读者不必再去读 `kit/paper.js` 才能消解一个自相矛盾的观测。
 - **判据三：拒绝要能指明「下一个动作」。** 坏指针的 hint 不是「检查你的 evidence」，而是「先用 `vibe_v5_record_proposition` 建记录，再用它产生的指针重写这一段」，因为那正是唯一的出路。
+
+## ROUND 96 — 拒绝要说清「是哪个动词」，值要说清「谁在回答」
+
+真机跑 96（build d5858148）验证 r94/r95 的五条修法，四条全过，并在拒绝面与计算面各抓到一条「形状说谎」：
+
+1. **拒绝必须点名被拒的那个动词**。会议面在服务会议 id 上用不跨注册表的动词时，回执 message 是
+   `action "this action" addresses the PRIMITIVE registry only …` —— `live()` 被无参调用，占位符直接进了成员眼睛。
+   修法：`live(what = action)` 让缺省就是本轮动作；并新增 `refusalDetails(e)` 把 `boundaryOnly`/`askedAction`/
+   `registry`/`actionCrosses` 从错误对象搬到回执（docs/03 早就承诺过这些字段，回执重建时被丢了）。
+2. **码不能替对象说谎**。边界拒绝原来回 `VMU_NO_SUCH_OBJECT`，而那个会议**确实存在**（只是住在另一张表）。
+   新码 `VMU_REGISTRY_BOUNDARY`，只有真正找不到对象时才说 no-such-object。
+3. **同一个问题只许有一个答复**。「这次有没有算出值」原先由策略面（`kernel/math.js`）回答 null+原因，而低层
+   `math_computation` 的回执**什么都没有** —— 成员在两个入口看到两种形状。修法：`math-computation.js` 导出
+   `printedValueOf(stdout)`，低层回执直接展开它，策略面改用它，六份拷贝同步（`audit-math-computation-parity` 是合同）。
+
+判据：**拒绝里的主语必须是真的；同一个读数不许有两个形状。**

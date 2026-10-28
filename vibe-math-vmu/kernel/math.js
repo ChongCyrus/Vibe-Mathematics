@@ -27,6 +27,7 @@ import {
   MATH_TOOL_NAME,
   MATH_FAILURE_CODES,
   MATH_PARAM_DEFAULTS,
+  printedValueOf,
 } from '../math-computation.js'
 import { declaredDefault } from './settings-defaults.js'
 
@@ -183,15 +184,13 @@ export function createMathSurface({ host, settings = {} } = {}) {
       // the engine evaluates the expression and prints nothing, so that rule reported `0` for `2**10+1` — a
       // number the engine never produced, on the SUCCESS path, with no way for a reader to tell. A run that
       // printed nothing has no value: say so, name it, and let the caller re-run with mode:'code'.
-      const printed = typeof raw.stdout === 'string' ? raw.stdout.trim() : ''
-      const value = printed !== '' ? printed : null
-      const valueMissing = printed === '' ? 'stdout-empty' : null
+      const { value, valueMissing, valueMeans } = printedValueOf(raw.stdout)
       return {
         ok: true,
         isRefutation: false,
         result: {
           value, valueMissing,
-          valueMeans: valueMissing === null ? null : 'the engine exited 0 but printed nothing, so NO value was reported: mode \'expr\' evaluates an expression without printing it. Use mode \'code\' with a print (e.g. print(2**10+1)) to get a value; a 0 here would have been invented',
+          valueMeans,
           engine: raw.engine || null, exit: raw.exit === undefined ? null : raw.exit,
           stdout: raw.stdout === undefined ? null : raw.stdout, stderr: raw.stderr === undefined ? null : raw.stderr,
           mode: raw.mode || null, runId: raw.runId || null, ms: raw.ms === undefined ? null : raw.ms,

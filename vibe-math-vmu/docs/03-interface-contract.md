@@ -205,7 +205,7 @@
 
 | 工具 | 要点 | 参数/返回 |
 |---|---|---|
-| `vibe_v5_paper` ★ G7 重点 | **论文的唯一运行入口**：`start/part/advance/review/final/render/status/compile/sections`（9 action）。`final` **只有 chair 席**能过（成员 ⇒ `VMU_NOT_PERMITTED`）；`render` 回 `wrote/missing/complete/pdf`；`status` 回同一 `PaperArtifacts` 的 `missing/complete/pdf`（不写产物）；PDF 失败回执带 **`triedEngines:[{engine,phase,code}]`**（可读的结构化引擎尝试列表，不再 `[object Object]`） | `action`、`target`、`member`、`participants`、`part/title`、`body`、`deliverable`、`notes`、`decision` | ★ R86：`action:"consult"` 可由**声明的答复角色**（`PAPER_CONSULT_ROLES`，当前 `office`）作答，即使名册没有该 id —— 所办是运行本所的会话；回执 `answererKind:"declared-role"`/`"roster-seat"` 与 `answererMeans` 说清身份。★ R95：`action:"part"` 的 `evidence` 指针**写入当刻**就对着 records 面解析（`paper-quality.js#checkEvidencePointers`），指向不存在或轨不对的记录 ⇒ 当场具名拒 `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING`；回执 `evidence{provided,checked,resolved}`。`render` 的 `wrote` 是**记录种类**不是磁盘文件，`wroteWhere{records,disk,means}` 说明 `.tex`/`.pdf` 只在 `compile` 后落盘。
+| `vibe_v5_paper` ★ G7 重点 | **论文的唯一运行入口**：`start/part/advance/review/final/render/status/compile/sections`（9 action）。`final` **只有 chair 席**能过（成员 ⇒ `VMU_NOT_PERMITTED`）；`render` 回 `wrote/missing/complete/pdf`；`status` 回同一 `PaperArtifacts` 的 `missing/complete/pdf`（不写产物）；PDF 失败回执带 **`triedEngines:[{engine,phase,code}]`**（可读的结构化引擎尝试列表，不再 `[object Object]`） | `action`、`target`、`member`、`participants`、`part/title`、`body`、`deliverable`、`notes`、`decision` | ★ R86：`action:"consult"` 可由**声明的答复角色**（`PAPER_CONSULT_ROLES`，当前 `office`）作答，即使名册没有该 id —— 所办是运行本所的会话；回执 `answererKind:"declared-role"`/`"roster-seat"` 与 `answererMeans` 说清身份。★ R95：`action:"part"` 的 `evidence` 指针**写入当刻**就对着 records 面解析（`paper-quality.js#checkEvidencePointers`），指向不存在或轨不对的记录 ⇒ 当场具名拒（`paper-quality.js` 的 `EVIDENCE_MISSING` 家族码，见 §8 的 pack 族前缀）；回执 `evidence{provided,checked,resolved}`。`render` 的 `wrote` 是**记录种类**不是磁盘文件，`wroteWhere{records,disk,means}` 说明 `.tex`/`.pdf` 只在 `compile` 后落盘。
 | `vibe_v5_inbox` | 信箱：`list/open/mark`；`list` 行 **9 字段（含 `urgent`）无正文**，`open` 置 `read:true`，`mark` 改 read/todo。与 `vibe_vmu_mailbox` **同一套存储**（非紧急提示无正文；紧急只有发送方 `urgent:true` 才带正文）；★ **R30 · `open` 的回执形状**：正文**只在 `message.text`**（`message` 另带 `id/from/at/subject/kind/urgent/read:true/todo`），`list` 的 `rows` **永不带正文**（`packs/v5r/tools.js:160` 的 note 明写 rows carry NO body）—— 先按发件人／时间／主题／urgent／read／todo triage（`urgent:null` 是「面读不出」**而非**「不紧急」✓），再 `open` **一封**（`packs/v5r/tools.js:163-174`）✓ | `action`、`member`、`status`、`id`、`read`、`todo` |
 | `vibe_v5_wait` | 等待：`wait/status`；**面名是 `activity`（不是 `wait`）**；回执 `timedOut/waitedMs/timeoutMs`；无 peer 接缝时 `peerCheck:"no-seam"` | `action`、`timeout_ms`、`member`、`reason` |
 | `vibe_v5_record_*` | 研究日志/成果卡（内容指纹去重）。★ RUN 92：**卡面 `member` 指向谁，就按那一位的席位判能不能写**（`seat-faces.js` 的声明表）——所办没有席位，所以「所办代写」不再是绕过席位声明的路：temp 写方法/子问题卡具名拒 `VMU_NOT_PERMITTED`（hint 引 `rule 4/3` 与声明原话，并给出「省略 `member` 由所办自己写」的出路），写命题卡仍允许（按面判，不按席判） | `content`/`statement`、`value`、`motive`、`p`、`track` |
@@ -257,7 +257,7 @@
 
 | 工具名 | 来源 | 实现位置 | 说明 |
 |---|---|---|---|
-| **`math_computation`** ✓**已接入（2026-10-09 完成 ✓）** | **共享模块**（清点判决"原样复用" ✓） | `vibe-math-vmu/math-computation.js` ＋ `kernel/math.js` 适配 ＋ **`host-math.js` 真宿主接缝** ✓ | 名字**不改为** `vibe_vmu_*` ✗：改名会破坏各预设的**字节一致性**（`audit-math-computation-parity` ✓），且 v2–v5r 全用此名 ✓；旧名↔新名的映射由 **pack 别名层**（D6）负责 ✓。**出现条件**：插件行声明 `math: true` 或任一 `vmu.math.*` 键 ✓（未声明 ⇒ 不发布 ✓，零机制 ✓）；接缝提供 `register/params/projectRoot/writeText/readText/exists/listDir/resolveExecutable/spawn/log` ✓，`spawn` 走 `host-spawn.js`（调用时解析 ✓）；宿主无 `subprocess` 服务时，声明过 `vmu.math.*` 的部署走同一文件里的 `localFallback`（`node:child_process`，**同一套守卫**：可执行文件必填／参数数组／CWD 策略／输出上限／真能终止的预算），结果带 `seamKind`，`status.math.spawnSeamKind` 明说这次走的哪条（G1 ✓）。★ **R94**：`value` 是**引擎打印出来的那段文本**；`mode:"expr"` 走各引擎的 `exprPrint`（求值**并打印**），什么都没打印时回执是 `value:null` + `valueMissing:"stdout-empty"` + `valueMeans` —— **绝不把空输出读成 0**（`mathEngineOverride` 也接受 `exprPrint`） |
+| **`math_computation`** ✓**已接入（2026-10-09 完成 ✓）** | **共享模块**（清点判决"原样复用" ✓） | `vibe-math-vmu/math-computation.js` ＋ `kernel/math.js` 适配 ＋ **`host-math.js` 真宿主接缝** ✓ | 名字**不改为** `vibe_vmu_*` ✗：改名会破坏各预设的**字节一致性**（`audit-math-computation-parity` ✓），且 v2–v5r 全用此名 ✓；旧名↔新名的映射由 **pack 别名层**（D6）负责 ✓。**出现条件**：插件行声明 `math: true` 或任一 `vmu.math.*` 键 ✓（未声明 ⇒ 不发布 ✓，零机制 ✓）；接缝提供 `register/params/projectRoot/writeText/readText/exists/listDir/resolveExecutable/spawn/log` ✓，`spawn` 走 `host-spawn.js`（调用时解析 ✓）；宿主无 `subprocess` 服务时，声明过 `vmu.math.*` 的部署走同一文件里的 `localFallback`（`node:child_process`，**同一套守卫**：可执行文件必填／参数数组／CWD 策略／输出上限／真能终止的预算），结果带 `seamKind`，`status.math.spawnSeamKind` 明说这次走的哪条（G1 ✓）。★ **R94**：`value` 是**引擎打印出来的那段文本**；★ **R96**：`math_computation` 自己的回执也带 `value`/`valueMissing`（与策略面共用 `math-computation.js#printedValueOf`，不再是一个入口一个形状）；`mode:"expr"` 走各引擎的 `exprPrint`（求值**并打印**），什么都没打印时回执是 `value:null` + `valueMissing:"stdout-empty"` + `valueMeans` —— **绝不把空输出读成 0**（`mathEngineOverride` 也接受 `exprPrint`） |
 
 > **纪律**：`vibe_vmu_*` 是 **vmu 自建工具**的命名空间 ✓；**继承面**以原名登记在本表 ✓，不得悄悄改名 ✗（改名 = 破坏性变更，须走 03-§7 的版本与迁移流程 ✓）。
 
@@ -390,6 +390,7 @@
 | **`VMU_PACK_LOADER_UNAVAILABLE`** | **内核没有装载器可委托**：`kernel.usePack()` 只有一个实现（`kernel/pack.js`），无 `packApplier` 注入时**具名拒**而不是走第二条静默路径（D-02 唯一实现） | 装载（`kernel/index.js` 的 `usePack`） | ✅（须给**注入方式**与替代入口） |
 | **`VMU_PACK_PROMPT_POLICY_UNCONSUMED`** | **pack 声明了 `promptPolicies` 但没有消费者**：装载器未拿到 `onPromptPolicy` sink 时具名拒（策略要么被真正接进提示管线，要么别声明） | pack 装载（`kernel/pack.js` 的 `apply`／`plan` warnings） | ✅（须点名**缺哪个 sink**与如何提供） |
 | **`VMU_PACK_PROMPT_POLICY_FAILED`** | ★ **PHASE 6 · 轮 11**：★ **一条 pack 提示词策略在合成或 apply 时抛错** —— ★ 由 `composePromptPolicies` 捕获并**点名 policy id ＋ 原始错误**；★ 回合循环把它变成**具名拒**，★ **绝不静默跳过** | 提示词管线（`kernel/pack.js` 的 `composePromptPolicies` → `kernel/turn/index.js` 装配） | ✅（★ 须同时给出 policy id 与原始原因；★ **不许把策略错误当成"没有策略"**） |
+| **R96 · `VMU_REGISTRY_BOUNDARY`** | 一个**不跨注册表**的动词被用来指向**另一张注册表**里确实存在的对象（拒绝码不再谎称「对象不存在」；`boundaryOnly:true` + `askedAction` + `registry` + `actionCrosses:false` 都在回执上） | 会议面（`tools/meeting.js#primitiveMissError`） | ✅（须给**真实的动作名**与**交叉集合**；消息第一句就说「只认 PRIMITIVE 表、绝不交叉」） |
 | **R85 · `VMU_CHAT_ALREADY_SPOKE`** | 同一个 `round` 里同一成员**第二次**发言（「单次发言版群聊」的轮记账；当天换新的 round id 才能再说） | 群聊（`kernel/chat.js` 的 `speakRound`；pack 面 `vibe_v5_say` 带 `round` 时） | ✅（须给**本轮已发言的消息 id**与**这一轮还欠谁**；并明说它是**记账＋具名拒**，不是并行隔离） |
 | **R2 · `VMU_CHAT_MUTED`** | 发言者在禁言期内发言 | 群聊（`kernel/chat.js` 的 `send`） | ✅（须给**解除时刻**） |
 | **R2 · `VMU_CHAT_QUOTA_EXCEEDED`** | 超出 `vmu.chat.speakQuota` 发言配额 | 群聊 | ✅（须给**已用/上限/窗口**） |
@@ -1178,7 +1179,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **473** 个码，**逐行**给出状态 ✓：其中 **434** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **474** 个码，**逐行**给出状态 ✓：其中 **435** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1546,6 +1547,7 @@
 | `VMU_RECRUIT_SLOT_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
 | `VMU_RECUSAL_REQUIRED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_REF_DANGLING` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
+| `VMU_REGISTRY_BOUNDARY` | **已实现 ✓** | `vibe-math-vmu/tools/meeting.js` | 代码里有该码字符串 ✓ |
 | `VMU_REOPEN_FLOOR_NOT_MET` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_REOPEN_WRONG_INITIATOR` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_REPORT_ACTION_NOT_ALLOWED` | **已实现 ✓** | `vibe-math-vmu/kernel/report.js` | 代码里有该码字符串 ✓ |

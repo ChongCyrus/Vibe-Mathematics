@@ -918,9 +918,10 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【计算与引擎】数学面是 `vibe_vmu_mathtools`（plan/run/…）与 `vibe_vmu_mathjobs`；**引擎由宿主注入**（`vmu.math.engines` 无代码默认值），状态面报 `engines`/`available`，接缝缺失时具名拒 `VMU_ENGINE_UNAVAILABLE`，不假装算过。并发上限 `vmu.math.maxParallel`（默认 1），超限具名拒；shell 兜底不算归档。',
-        '· `mode:"expr"` 是**求值并打印**：`value` 就是引擎打印的那段文本（`{expr:"2**10+1"}` ⇒ `"1025"`）；引擎什么都没打印时回执是 `value:null` + `valueMissing:"stdout-empty"` + `valueMeans`，**不会**把空输出读成 0——想要值就用 `code` 里写 print，或确认该引擎的 `exprPrint` 模板在。',
-        '· 引擎两条通道：有宿主 `subprocess` 服务时走宿主，否则声明过 `vmu.math.*` 的部署走适配层自带的 `node:child_process`（同样守卫：可执行必填、参数数组、CWD、输出上限、超时真终止），`status.math.spawnSeamKind` 说明走的哪条；都没有才具名拒。要新包/引擎写进进展与请示。',
+        '【计算与引擎】`vibe_vmu_mathtools`（plan/run/…）与 `vibe_vmu_mathjobs`；**引擎由宿主注入**（无代码默认值），状态报 `engines`/`available`，接缝缺失时具名拒 `VMU_ENGINE_UNAVAILABLE`，不假装算过。并发 `vmu.math.maxParallel`（默认 1），超限具名拒；shell 兜底不算归档。',
+        '· `math_computation` 与 `vibe_vmu_mathtools` **回执同形**：都有 `value`/`valueMissing`（`printedValueOf`）。',
+        '· `mode:"expr"` 是**求值并打印**：`value` 是引擎打印的文本（`{expr:"2**10+1"}` ⇒ `"1025"`）；没打印时回执是 `value:null` + `valueMissing:"stdout-empty"`，**不会**读成 0；要值就在 `code` 里写 print。',
+        '· 引擎两条通道：有宿主 `subprocess` 服务时走宿主，否则声明过 `vmu.math.*` 的部署走适配层自带的 `node:child_process`（同守卫），`status.math.spawnSeamKind` 说明走的哪条；都没有才具名拒。要新包/引擎写进进展与请示。',
       ].join('\n'),
     },
   }),
