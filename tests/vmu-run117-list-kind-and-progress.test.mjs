@@ -119,6 +119,14 @@ try {
     const fresh = b.K.meetings.meetingView({ meeting })
     ok(fresh && fresh.procedureProgress && fresh.procedureProgress.motions === 0,
       '⑧ a quiet meeting reports zero counts honestly (0 is a measurement, not a missing field)', fresh && fresh.procedureProgress)
+    // ★ LIVE RUN 118 (F-118a): `present` was read as an Array while the quorum reader and `open()` keep a Set — so the
+    // same kernel answered `quorum.present: 3` and `procedureProgress.present: 0` about the SAME meeting. One fact, two
+    // readers: the assertion below is the invariant, not a magic number.
+    const qView = b.K.meetings.quorum({ meeting })
+    const qPresent = qView && typeof qView.present === 'number' ? qView.present : -1
+    ok(fresh && fresh.procedureProgress && fresh.procedureProgress.present === qPresent && qPresent > 0,
+      '⑨★ the presence COUNT agrees with the quorum reader (run 118 read 0 while quorum said 1: a Set read as an Array)',
+      fresh && { procedureProgress: fresh.procedureProgress && fresh.procedureProgress.present, quorum: qPresent })
   }
 
   // ── §3 a refused p=1 write carries the routes the gate computed (ledger B3 promised `p1Routes` on the refusal)
@@ -141,6 +149,20 @@ try {
       '④ the means slot exists too (null is an answer here, not a missing field)', r && typeof r.p1RouteMeans)
     ok(typeof r.hint === 'string' && r.hint.length > 0 && Array.isArray(r.enforced),
       '⑤ the rest of the refusal shape is unchanged (hint + enforced)', r && { hintLen: r.hint && r.hint.length, enforced: r.enforced })
+  }
+  // ── §4 an unknown action on the HOST face names the PACK face that owns the act (run 118: three identical refusals)
+  {
+    console.log('§4 unknown actions point at the face that owns the act')
+    const root = await mkRoot()
+    const b = await boot(root)
+    const out = await call(b, 'vibe_vmu_meeting', { action: 'motion', meeting: 'm1', motion: '第 1 条动议' })
+    const r = out.parsed || out
+    ok(r && r.ok === false && r.code === 'VMU_INVALID_ARGUMENT',
+      '① the host face still refuses by name (it does not silently do the act)', r && r.code)
+    ok(typeof r.hint === 'string' && r.hint.indexOf('vibe_v5_motion') >= 0,
+      '②★ its hint NAMES the pack face that owns the act (run 118 pointed at the docs only)', r && r.hint)
+    ok(/own PACK face|another face/.test(String(r.message)),
+      '③ the message says the act is not missing, it lives elsewhere', r && r.message)
   }
 } finally {
   for (const d of roots) { try { await rm(d, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }) } catch {} }

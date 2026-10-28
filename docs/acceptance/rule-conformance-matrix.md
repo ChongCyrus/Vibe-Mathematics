@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 80 | all four citations resolve |
-| ◐ PARTIAL | 6 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 83 | all four citations resolve |
+| ◐ PARTIAL | 3 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -41,7 +41,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | --- | --- | --- | --- | --- | --- |
 | `B1` | 7 | Verified 只收 p=1 的命题 | ✅ DONE | 1/1/1/1 | — |
 | `B2` | 7 | 参考文献中的命题也可直接入 Verified | ✅ DONE | 2/2/1/2 | — |
-| `B3` | 7 | 只有辩论能把 p 改为 1 | ◐ PARTIAL | 2/2/1/0 | r113：带 literature_ref 的 p=1 写入 → 回执 p1Route:"literature"；多数决 p=1 → 具名拒 VMU_PACK_V5R_P1_NEEDS_DEBATE 且回执带 p1Routes。两条逐字进台账。 |
+| `B3` | 7 | 只有辩论能把 p 改为 1 | ✅ DONE | 2/2/1/1 | — |
 | `B4` | 8 | 蓝图：总目标/技术路线/规划，按时更新 | ✅ DONE | 2/1/1/1 | — |
 | `B5` | 8 | 蓝图由院士+常驻研究员共同设计 | ✅ DONE | 2/1/1/1 | — |
 | `B6` | 8 | 蓝图最终编辑权在院士 | ✅ DONE | 2/1/1/1 | — |
@@ -111,14 +111,14 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E26` | 51 | 辩论骨架②轮流/举手/邀请展开 | ✅ DONE | 1/1/1/1 | — |
 | `E27` | 53 | 辩论骨架③结束前各成员最终裁决 | ✅ DONE | 2/1/1/1 | — |
 | `E28` | 53 | 辩论骨架④全一致取该值、否则平均，并通知持有者改值 | ✅ DONE | 2/1/1/1 | — |
-| `E29` | 51 | 辩论轮数由院士决定 | ◐ PARTIAL | 2/1/1/0 | r113：chair 设 verdictMaxRounds=1 后提第二条动议 → 具名拒 VMU_RESOURCE_BUDGET 且 message 给 n/cap；上调后同一动议成功。逐字进台账。 |
+| `E29` | 51 | 辩论轮数由院士决定 | ✅ DONE | 2/1/1/1 | — |
 | `E30` | 32 | 院士通过命令自组织会议进行中的一切内容、控制、活动（兜底授权，动词不穷举） | ✅ DONE | 5/2/1/1 | — |
 | `E31` | 32 | 框架推荐的会议流程骨架只是建议：具体实施、决定、是否遵循完全由院士决定 | ✅ DONE | 2/2/1/1 | — |
 | `E32` | 53 | 辩论裁定的并发通知：告诉命题卡持有者最终概率并请其改值 | ✅ DONE | 1/1/1/1 | — |
 | `E33` | undefined | 会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。 | ✅ DONE | 1/1/1/2 | — |
 | `E34` | undefined | 会议进行中的一些特殊活动包括但不限于：投票（院士设置投票板选项与机制）、任务板设置与认领交派、群聊式交流，...。 | ✅ DONE | 2/1/1/2 | — |
 | `E35` | undefined | 关于辩论：院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。 | ✅ DONE | 1/1/1/1 | — |
-| `E36` | undefined | 辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。 | ◐ PARTIAL | 1/1/1/0 | 余项：live —— r108 要在回执里读到群聊轮次簿的 roundSurface:"chat" 与一句指向会议发言面的话，再在辩论会里读到骨架推进（单次发言→举手/邀请），两者都逐字进台账后才可转 DONE。 |
+| `E36` | undefined | 辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。 | ✅ DONE | 2/1/1/1 | — |
 
 ## F. 论文阶段
 

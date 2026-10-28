@@ -776,7 +776,23 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             return refused('VMU_INVALID_ARGUMENT', 'this face needs an action; none was given',
               'pass action:"<one of the actions above>" — the legal actions are listed in this tool\'s description and in docs/03; a parameter set without `action` cannot be dispatched')
           }
-          return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+          // ★ LIVE RUN 118 (F-118b): `action:"motion"` was refused as an unknown action THREE times with a hint that
+          // only pointed at the docs. The act exists — on the PACK face `vibe_v5_motion` — so a refusal that does not
+          // name the face that owns the act costs the caller a round trip per guess. The nearest face is DERIVED from
+          // the registered pack tools (`vibe_v5_<action>`), never from a second hand-kept table.
+          {
+            const wanted = 'vibe_v5_' + String(action).trim()
+            let packHas = false
+            try {
+              const tools = kernel && typeof kernel.packTools === 'function' ? kernel.packTools() : []
+              packHas = (Array.isArray(tools) ? tools : []).some((t) => t && (t.name === wanted || (t.spec && t.spec.name === wanted)))
+            } catch { packHas = false }
+            if (packHas) {
+              return refused('VMU_INVALID_ARGUMENT', 'this face has no action: ' + String(action) + ' — that act has its own PACK face',
+                'call `' + wanted + '` (a pack tool) — this face dispatches only on the actions its description lists; the act is not missing, it lives on another face')
+            }
+            return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+          }
         } catch (e) {
           return refused(e.code || 'VMU_STATE', String(e.message), e.hint, refusalDetails(e))
         }

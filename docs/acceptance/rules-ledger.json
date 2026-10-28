@@ -447,7 +447,7 @@
       "id": "B3",
       "rule": "7",
       "text": "只有辩论能把 p 改为 1",
-      "status": "PARTIAL",
+      "status": "DONE",
       "tool": [
         "vibe_v5_record_proposition",
         "vibe_v5_verified_promote"
@@ -457,12 +457,14 @@
       ],
       "mechanism": [
         "vibe-math-vmu/packs/v5r/verification-gates.js::export const P1_ROUTES",
-        "vibe-math-vmu/packs/v5r/tools.js::p1Route"
+        "vibe-math-vmu/packs/v5r/tools.js::quieter kind of the run-52 defect"
       ],
-      "live": [],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::四种证据形态都写在拒绝里了"
+      ],
       "note": "三种凭据都是辩论产物；规则句的「只有辩论」在本实现里等于「只接受辩论产物」——Lead 裁决：不收紧闸。",
       "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。",
-      "next": "r113：带 literature_ref 的 p=1 写入 → 回执 p1Route:\"literature\"；多数决 p=1 → 具名拒 VMU_PACK_V5R_P1_NEEDS_DEBATE 且回执带 p1Routes。两条逐字进台账。"
+      "next": ""
     },
     {
       "id": "B4",
@@ -1564,7 +1566,7 @@
       "id": "E29",
       "rule": "51",
       "text": "辩论轮数由院士决定",
-      "status": "PARTIAL",
+      "status": "DONE",
       "tool": [
         "vibe_v5_meeting"
       ],
@@ -1575,9 +1577,11 @@
         "vibe-math-vmu/kernel/meetings.js::const roundCap = verdictMaxRoundsNow()",
         "vibe-math-vmu/kernel/meetings.js::the motion ceiling is reached"
       ],
-      "live": [],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::the motion ceiling is reached for this meeting: 1 / 1"
+      ],
       "ruleText": "先进行各成员同时进行“单次发言版群聊”，独立发表各自的“布尔概率（[0,1]），理由，...”，再进行轮流发言或者各自举手发言或邀请发言，来展开辩论。辩论的轮数由院士自己决策。",
-      "next": "r113：chair 设 verdictMaxRounds=1 后提第二条动议 → 具名拒 VMU_RESOURCE_BUDGET 且 message 给 n/cap；上调后同一动议成功。逐字进台账。"
+      "next": ""
     },
     {
       "id": "F1",
@@ -1989,9 +1993,10 @@
     {
       "id": "E36",
       "ruleText": "辩论类型的会议下，v5r框架默认推荐给院士的流程是：",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/meeting-procedures.js::轮数由院士自己决策"
+        "vibe-math-vmu/kernel/meetings.js::function procedureProgressOf",
+        "vibe-math-vmu/kernel/chat.js::const ROUND_SURFACE_MEANS"
       ],
       "tool": [
         "vibe_v5_say"
@@ -1999,8 +2004,10 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::单次发言版群聊"
       ],
-      "live": [],
-      "next": "余项：live —— r108 要在回执里读到群聊轮次簿的 roundSurface:\"chat\" 与一句指向会议发言面的话，再在辩论会里读到骨架推进（单次发言→举手/邀请），两者都逐字进台账后才可转 DONE。",
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"advancing\":true"
+      ],
+      "next": "",
       "text": "辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。"
     }
   ]

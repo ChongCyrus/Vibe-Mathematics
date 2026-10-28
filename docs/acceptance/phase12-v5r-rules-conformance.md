@@ -9281,3 +9281,59 @@ r115（build `b49be545`）E16（`vibe_v5_say {member:"r-2",meeting:"m1"}`）：
 - **D1（每人份额）**：r116 成员回合读到状态板 ② 行首 `属于你（r-acad，未完成 0 条）`，③ 行首 `属于你（r-acad）0 条：state 0`；
   所办一侧的全局面板由**唯一**一处 `statusBoardReadings({...})` 调用产生（`vibe-math-vmu/kernel/turn/index.js`，`member` 缺席时
   没有第二条调用点），因此不存在"两份互不相干的面板"。
+
+---
+
+## §212 真机跑 118 —— 同一个事实的两个读者必须读同一份形状
+
+### §212.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| build | `0cef8de9` |
+| clone / port | `slvp118` / 19718 |
+| 驱动 | `DRIVE exit=0`，254 s，17 calls / 17 results |
+| token | 1,612,213（cap 12,000,000，未触顶） |
+| 会话 | 2（根 + 主席），`SUMMARY: 2 session(s), 0 with RED` |
+| jsonl | 3,464,809 B / 6,754 行；`NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=12 BAD_JSON=12` |
+
+### §212.2 判决表
+
+| 规则 | 本轮读到的 | 判定 |
+| --- | --- | --- |
+| B3 只有辩论能把 p 改为 1 | `vibe_v5_record_proposition {p:1}`（无凭据）⇒ `VMU_PACK_V5R_P1_NEEDS_DEBATE`，回执带 `p1Route:null`、`p1Routes:["debate","literature","lean-conformance","verified-row"]` | ✅ DONE |
+| E29 辩论轮数由院士定 | `vibe_v5_set {key:"vmu.meetings.verdictMaxRounds", value:"1"}` ⇒ `applied:"immediate"`、`liveReadBy:["kernel/meetings (the verdict round ceiling is re-read on every motion)"]`；第 1 条动议成功，第 2 条 ⇒ `VMU_RESOURCE_BUDGET「the motion ceiling is reached for this meeting: 1 / 1」` | ✅ DONE |
+| E36 辩论骨架可读 | `vibe_vmu_meeting {action:"status"}` 回执带 `procedureProgress:{speeches:1,motions:0,queued:0,advancing:true,…}` 与 `procedure.procedure`（`binding:"recommendation"`、`pendingSteps:[]`） | ✅ DONE |
+| F-118a 出席计数 | 同一份 status 里 `quorum.present:1` 而 `procedureProgress.present:0` | ❌ 已修（见 §212.3） |
+| F-118b 未知动作指路 | `vibe_vmu_meeting {action:"motion"}` 连拒三次，hint 只指 docs/18，不指 `vibe_v5_motion` | ❌ 已修（见 §212.4） |
+
+**四种证据形态都写在拒绝里了**：`p1Routes` 把 debate / literature / lean-conformance / verified-row 一起带出，`p1RouteMeans:null`
+表示这次调用没走任何一条路——判据是「拒绝不能比闸门知道的少」。
+
+### §212.3 F-118a：一个计数、两个读者、两种形状
+
+`kernel/meetings.js` 的参会席位是 `Set`（`open()` 与 `attend()` 都写 `m.present`，quorum 读 `m.present.size`），而
+`procedureProgressOf()` 写的是 `Array.isArray(m.present) ? m.present.length : 0` ⇒ 同一场会，quorum 说「1 人在场」，
+procedureProgress 说「0」。这不是两个事实，是**一个事实被两份代码用两种形状读**。修法：按 `size` 优先、数组兜底，
+测试断言的不变量是「两边数字必须相等」，不是某个魔法数。
+
+### §212.4 F-118b：拒绝要说那张面在哪
+
+`vibe_vmu_meeting` 的动作表里没有 `motion`（动议是 pack 面的 `vibe_v5_motion`），而拒绝只说「unknown action: motion」并指向
+docs/18 §1。调用者在第 2/3 次仍照原样重试。修法：未知动作先按 `vibe_v5_<action>` 在**已注册的 pack 工具**里查一次（派生，
+不写第二份表），命中就回「这个动作有它自己的 PACK 面」并把工具名写进 hint。
+
+### §212.5 测试与门禁
+
+- `tests/vmu-run117-list-kind-and-progress.test.mjs` 扩到 **26/0**：⑨ 断言 `procedureProgress.present === quorum.present`；§4 断言
+  `vibe_vmu_meeting {action:"motion"}` 的 hint 含 `vibe_v5_motion`、message 说「动作没消失，在另一张面上」。
+- 相邻：`vmu-meeting` 50/0、`vmu-meeting-types` 153/0。
+
+### §212.6 简报自身错
+
+- 召集辩论缺 `agenda`（回 `VMU_INVALID_ARGUMENT "meeting needs an agenda"`）与 `member`（「needs the acting member id」）；
+  对 `chairActRequiresTurn=true` 的部署还得先给主席一个回合（回 `VMU_CHAIR_ACT_NOT_DELEGATED`，hint 给了两半）。
+- 动议不在 `vibe_vmu_meeting` 上（在 `vibe_v5_motion`）——§212.4 的拒绝现在会指名。
+- 没给 `procedure`，所以 `skeletonSteps:0`：骨架是**召集时可选**的，可读性不该依赖它。
+
+### §212.7 无实质残余：是（四条待下一轮：C4 / C8 / G6 与 E36 的群聊侧）

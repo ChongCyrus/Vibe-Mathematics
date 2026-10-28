@@ -581,7 +581,12 @@ function procedureProgressOf(m) {
   const speeches = entries.filter((e) => e && e.kind === 'speech').length
   const motions = m && Array.isArray(m.motions) ? m.motions.length : 0
   const queued = m && Array.isArray(m.queue) ? m.queue.length : 0
-  const present = m && Array.isArray(m.present) ? m.present.length : 0
+  // ★ LIVE RUN 118 (F-118a): presence is a SET (`m.present.size`) — the quorum reader knows that, this one asked
+  // `Array.isArray(...)` and therefore reported 0 right after a successful `attend` that the same kernel answered as
+  // present:1. Two readers of one fact must read it the same way, or one of them is quietly wrong.
+  const present = m && m.present
+    ? (typeof m.present.size === 'number' ? m.present.size : (Array.isArray(m.present) ? m.present.length : 0))
+    : 0
   return {
     skeletonSteps: steps.length,
     skeletonBinding: skeleton && typeof skeleton.binding === 'string' ? skeleton.binding : null,

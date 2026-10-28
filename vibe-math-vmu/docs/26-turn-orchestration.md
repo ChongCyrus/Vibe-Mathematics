@@ -2090,3 +2090,21 @@ run 115 的读数：成员 r-1 **在自己的回合里** `hire` 了一个临时�
 
 教训两句：「给了参数却当没看见」是拒绝的孪生缺陷（拒绝至少会说话）；「报第几步」在框架里没有事实可得，
 能报的是**建议的动作各发生了几次**。
+
+## ROUND 118 — 一个事实、两个读者、两种形状
+
+两个新缺陷是同一句话的两半：**同一个事实被两份代码读到，而它们读的形状不一样**。
+
+1. 参会席位在 `kernel/meetings.js` 里是 `Set`（`open()` 与 `attend()` 写 `m.present`，quorum 读 `.size`），而
+   `procedureProgressOf()` 读的是 `Array.isArray(m.present) ? m.present.length : 0`。于是同一场会，quorum 说「1 人在场」、
+   骨架推进说「0 人」。一份数据两种形状不是「兼容」，是**其中一个读者错了**（run 118 F-118a）。
+2. 动议不在 `vibe_vmu_meeting` 上（在 pack 面 `vibe_v5_motion`），而未知动作的拒绝只说「unknown action」并指向 docs。
+   调用者连试三次。拒绝必须**说出该去哪张面**，而且那张面要**从已注册的工具派生**（`vibe_v5_<action>`），不能另写一张表
+   （run 118 F-118b）。
+
+同轮取证：`VMU_PACK_V5R_P1_NEEDS_DEBATE` 把四条路 `p1Routes:["debate","literature","lean-conformance","verified-row"]`
+一起带出来；院士在会话内把 `vmu.meetings.verdictMaxRounds` 改为 1 后，第二条动议被 `VMU_RESOURCE_BUDGET「1 / 1」` 具名拒；
+`vibe_vmu_meeting {action:"status"}` 能读到 `procedureProgress`（发言计数 + `advancing`）与真正的骨架（`binding:"recommendation"`）。
+
+教训两句：「读同一个事实的第二个读者不是副本，是第二个证人」——证人说了别的数，就是有人看错了；
+「拒绝里没写的那张面，调用者只能靠猜」。
