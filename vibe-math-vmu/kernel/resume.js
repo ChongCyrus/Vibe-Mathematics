@@ -472,7 +472,24 @@ export function createResume({ store = null, work = null, control = null, identi
     // does not keep a second list, because a second list is how a key gets lost.
     const at = stamp()
     const payload = Object.assign({}, clone(value), { wroteAt: at })
-    await store.patch(String(key), () => payload)
+    // ROUND 107 / F-108b: a state projection may declare a MERGE seam for its durable value. Without one the write is
+    // a wholesale replace, which is how a member kernel's `hand` erased the office kernel's floor queue (run 107): the
+    // last writer decided what the other kernel's rows were. The seam is per-adapter and additive; the digest is
+    // recomputed here so a merged envelope never carries the digest of a value it no longer describes.
+    const holderM = projections.get(String(key))
+    const mergeM = holderM && holderM.adapter && typeof holderM.adapter.merge === 'function' ? holderM.adapter.merge : null
+    if (mergeM) {
+      await store.patch(String(key), (currentV) => {
+        let out
+        try { out = mergeM(currentV, payload) } catch (e) { out = payload }
+        if (out && typeof out === 'object' && out.mode === 'state' && out.value !== undefined) {
+          out = Object.assign({}, out, { digest: contentDigest(out.value) })
+        }
+        return out
+      })
+    } else {
+      await store.patch(String(key), () => payload)
+    }
     writes += 1
     expectations.set(String(key), contentDigest(payload))
     return { ok: true, key: String(key), at, digest: contentDigest(payload) }
@@ -551,8 +568,11 @@ export function createResume({ store = null, work = null, control = null, identi
   // NOTE: the FACE seam is destructured as `snapshotSeam` — calling it `snapshot` would shadow this engine's own
   // `snapshot({key})` writer, and the write-through would then call the face's seam (returning a value, not a
   // promise) instead of persisting anything. That defect was measured by the round-3 durable-ledger suite.
-  function attachProjectionTo({ target, methods = [], key, mode = 'journal', snapshot: snapshotSeam = null, restore = null, list = null, replay = null, nonReplayable = [] } = {}) {
-    const p = projectionFor(key, { mode, snapshot: snapshotSeam, restore, list, replay })
+  function attachProjectionTo({ target, methods = [], key, mode = 'journal', snapshot: snapshotSeam = null, restore = null, list = null, replay = null, nonReplayable = [], merge = null } = {}) {
+    // ROUND 107 / F-108b: the WRITE-THROUGH merge seam has to travel with the adapter into `projectionFor` - it lived
+    // only on the assembly's adapter table and the attach path built a fresh descriptor without it, so `write()` never
+    // saw it (measured: the merged flag was absent from the durable value and r-2 was still lost).
+    const p = projectionFor(key, { mode, snapshot: snapshotSeam, restore, list, replay, merge })
     const holder = projections.get(key)
     holder.target = target || null
     const onProjectionError = (e) => {

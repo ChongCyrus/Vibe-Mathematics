@@ -87,7 +87,7 @@ import { createHash } from 'node:crypto'
 import { createClockGuard } from './clockguard.js'
 import { createMathTools } from './mathtools.js'
 import { createProjectionMigrator } from './projmigrate.js'
-import { createMeetings } from './meetings.js'
+import { createMeetings, mergeDurableMeetings } from './meetings.js'
 import { createBallotBox } from './ballotbox.js'
 import { createRecords } from './records.js'
 // ★ PHASE 12 / D15: the LAST step of a debate — what the members' final boolean probabilities ADD UP TO (all agree ⇒ that
@@ -1712,7 +1712,10 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     members: () => ({ key: 'members', mode: 'state', snapshot: () => members.snapshot(), restore: (v) => members.restore(v, { replace: true }), restoreReload: (v) => members.restore(v, { merge: true }), list: () => (typeof members.roster === 'function' ? members.roster() : []) }),
     // ★★ ROUND 36: `restoreReload` (additive, archive wins) is the READ-REFRESH path — without it a live twin of a
     // closed meeting was re-read from the durable fold and reported `state:"open"` on the next kernel (run 36).
-    meetings: () => ({ key: 'meetings', mode: 'state', snapshot: () => meetings.snapshot(), restore: (v) => meetings.restore(v), restoreReload: (v) => meetings.restoreReload(v), list: () => [] }),
+    // ★★★ ROUND 107 / F-108b: `merge` is the WRITE-THROUGH merge seam (`resume.write` calls it with the durable value
+    // this kernel last read). Measured on run 107: the office kernel's invite and the member kernel's `hand` are two
+    // halves of ONE floor queue, and a wholesale state write let the later writer erase the other half.
+    meetings: () => ({ key: 'meetings', mode: 'state', snapshot: () => meetings.snapshot(), restore: (v) => meetings.restore(v), restoreReload: (v) => meetings.restoreReload(v), merge: (cur, next) => mergeDurableMeetings(cur, next), list: () => [] }),
     ballotbox: () => ({ key: 'ballotbox', mode: 'state', snapshot: () => ballotbox.snapshot(), restore: (v) => ballotbox.restore(v), list: () => [] }),
     minutes: () => ({ key: 'minutes', mode: 'state', snapshot: () => minutes.snapshot(), restore: (v) => minutes.restore(v), list: () => [] }),
     // ★★★ RUN 45 / task-28: `restore` is the RECOVERY path (replace: a boot onto an empty ledger adopts the fold);
@@ -1808,7 +1811,13 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
     'roles', 'roster', 'may', 'selfReports', 'selfReportHistory', 'fieldsOf', 'timesOf',
     'remaining', 'totals', 'perTaskShare', 'quorum', 'receiptsView', 'tier', 'isLight',
     'truthWriteRefusal', 'lapseDue', 'gaps', 'zones', 'resolutions', 'supplements', 'supplementOf',
-    'minutes', 'verbatim', 'queue',
+    'minutes', 'verbatim',
+    // ★★★ ROUND 107 / F-108c: `queue` USED TO BE HERE, and that was wrong: it is a VERB, not a read. Measured on run
+    // 107 (and reproduced on a probe): `meetings.queue()` pushes the caller onto `m.queue` and returns a receipt, yet a
+    // method listed as read-only is never wrapped by the projection's write-through, so the change reached the durable
+    // fold only if SOME LATER mutation happened to snapshot the face — and the ordering race is what lost the office's
+    // invitation when a member kernel handed itself in between. A verb that mutates belongs outside this set; the set
+    // keeps the genuine readers (and `minutes`/`verbatim`, which only format what is already there).
   ])
   // The JOURNAL command lists (explicit on purpose: an over-broad list would record reads as commands).
   const PROJECTION_COMMANDS = { tasks: ['create', 'assign', 'transition', 'brief', 'clearBrief', 'advance', 'rollback'], work: [] }
@@ -2042,7 +2051,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
         // The INSTANCE method registers the projection so `hydrate()`/`snapshot()` can find it; the module-level
         // `attachProjection` would wrap the methods but leave the instance unaware of the key.
         const out = resume.attachProjection({ target: targets[canonical], methods: projectionMethods(canonical, targets[canonical]), key: adapter.key, mode: adapter.mode,
-          list: adapter.list || null, snapshot: adapter.snapshot || null, restore: adapter.restore || null, replay: adapter.replay || null })
+          list: adapter.list || null, snapshot: adapter.snapshot || null, restore: adapter.restore || null, replay: adapter.replay || null, merge: adapter.merge || null })
         recordProjection({ face: canonical, viaAlias, attached: true, mode: adapter.mode, key: adapter.key, methods: projectionMethods(canonical, targets[canonical]), wrapped: out.wrapped, missing: out.missing }, [face, viaAlias])
       } catch (e) {
         recordProjection({ face, attached: false, reason: String((e && e.message) || e), code: (e && e.code) || null }, [canonical])

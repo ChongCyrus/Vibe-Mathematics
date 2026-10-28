@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 83 | all four citations resolve |
-| ◐ PARTIAL | 3 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 85 | all four citations resolve |
+| ◐ PARTIAL | 1 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -52,8 +52,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | --- | --- | --- | --- | --- | --- |
 | `C1` | 11 | 研究过程 progress 日志 | ✅ DONE | 1/1/1/1 | — |
 | `C2` | 12 | 已尝试路线/方法及其进度 | ✅ DONE | 2/1/1/1 | — |
-| `C3` | 13 | 遇障路线/尝试/方法及障碍与原因归档 | ◐ PARTIAL | 2/1/1/0 | 余项：live —— 写一条 track:"obstacles" 的障碍卡（含原因），再从 read_library 读回，证明它落在 Obstacles 桶而不是 Routes；旧的 live（recordId rec-9 之类）指的是 routes 行的 id，不能证明遇障路线与障碍原因。 |
-| `C4` | 13 | 遇到的各种障碍及其原因（归档内容的一部分） | ◐ PARTIAL | 2/1/1/0 | 余项：live —— 写一条 track:"obstacles" 的障碍卡（含原因），再从 read_library 读回，证明它落在 Obstacles 桶而不是 Routes；旧的 live（recordId rec-9 之类）指的是 routes 行的 id，不能证明障碍及其原因。 |
+| `C3` | 13 | 遇障路线/尝试/方法及障碍与原因归档 | ✅ DONE | 2/1/1/2 | — |
+| `C4` | 13 | 遇到的各种障碍及其原因（归档内容的一部分） | ✅ DONE | 2/1/1/2 | — |
 | `C5` | 14 | 命题库：完整定义、p(0-1)、进度 | ✅ DONE | 2/1/1/1 | — |
 | `C6` | 14 | 平时只记证明/证伪尝试，真正会证时才写正式证明字段 | ✅ DONE | 1/1/1/1 | — |
 | `C7` | 14 | 只有写完的正式证明才能用于辩论 | ✅ DONE | 2/1/1/1 | — |
@@ -118,7 +118,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E33` | undefined | 会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。 | ✅ DONE | 1/1/1/2 | — |
 | `E34` | undefined | 会议进行中的一些特殊活动包括但不限于：投票（院士设置投票板选项与机制）、任务板设置与认领交派、群聊式交流，...。 | ✅ DONE | 2/1/1/2 | — |
 | `E35` | undefined | 关于辩论：院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。 | ✅ DONE | 1/1/1/1 | — |
-| `E36` | undefined | 辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。 | ◐ PARTIAL | 1/1/1/0 | 推荐骨架（单次发言→轮流/举手/邀请，轮数由院士定）在 procedures 与 E17 轮记账里：真机只走过 say round，补一条辩论会里骨架推进的回执作 live |
+| `E36` | undefined | 辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。 | ◐ PARTIAL | 1/1/1/0 | 余项：live —— r108 要在回执里读到群聊轮次簿的 roundSurface:"chat" 与一句指向会议发言面的话，再在辩论会里读到骨架推进（单次发言→举手/邀请），两者都逐字进台账后才可转 DONE。 |
 
 ## F. 论文阶段
 

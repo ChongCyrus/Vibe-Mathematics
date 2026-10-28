@@ -56,6 +56,146 @@ const RING = 200
 // used by every rail, so the vocabulary cannot drift rail by rail.
 const ACTOR_ALIASES = 'the actor is accepted as actor, by or member (the three names are the same person)'
 
+/**
+ * ROUND 107 / F-108b — MERGING TWO DURABLE MEETINGS VALUES, not replacing one with the other.
+ *
+ * Measured on a live run (r107): the office kernel invited two members onto a floor queue, a member kernel (its own
+ * kernel over the SAME durable key) then `hand`ed itself, and the office's next read reported `order:["r-acad"]` —
+ * the invitation was GONE from the file. The cause is the same class as r106's records loss: a state projection's
+ * write-through serialises the whole face (`snapshot()`), and `resume.write()` replaced the durable value wholesale,
+ * so whichever kernel wrote last decided what the other kernel's rows were.
+ *
+ * This is the merge seam for that value. It is deliberately narrow and additive — `restore()` keeps its replace
+ * semantics (a recovery adopts the fold) and `restoreReload()` keeps its add-only semantics; this is the third case,
+ * WRITE-THROUGH, where two live kernels legitimately hold different halves of one queue.
+ *
+ * Rules, in the order they are applied:
+ *   · ARCHIVE — union by meeting id. A closure recorded by either kernel stays recorded (a meeting id is never
+ *     reused), and where both sides hold the id the NEWER write's fields win.
+ *   · LIVE — the union by meeting id, each meeting deep-merged (arrays union: the incoming order first, then anything
+ *     only the durable copy had; Maps/Sets union; plain objects merged key by key; primitives take the new write).
+ *   · A live row whose id the merged archive records as closed is DROPPED (`droppedLiveWhileArchived` counts it) —
+ *     the round-36 rule still holds after a merge.
+ *   · RECEIPTS — union by content identity, oldest first; the ring cap is re-applied by the face on restore.
+ *   · COUNTERS — the maximum of the two, so an id is never handed out twice.
+ * A value that cannot be parsed is returned as the NEW one (a broken durable copy must not block a write), and
+ * `mergeDurableMeetings()` reports that in `skipped` rather than pretending it merged.
+ */
+export function mergeDurableMeetings(current, next) {
+  if (!next || typeof next !== 'object') return next
+  if (!current || typeof current !== 'object') return next
+  const snapOf = (env) => {
+    if (!env || typeof env !== 'object') return null
+    if (env.value && typeof env.value === 'object') return env.value
+    if (env.data && typeof env.data === 'object') return env
+    return null
+  }
+  const cur = snapOf(current)
+  const nxt = snapOf(next)
+  if (!cur || !nxt || !cur.data || !nxt.data) return next
+  const parse = (s) => {
+    try {
+      return JSON.parse(String(s === undefined || s === null ? '[]' : s), (k, val) => {
+        if (val && typeof val === 'object') {
+          if (Array.isArray(val.__map)) return new Map(val.__map)
+          if (Array.isArray(val.__set)) return new Set(val.__set)
+        }
+        return val
+      })
+    } catch (e) { return { __unparsable: String((e && e.message) || e) } }
+  }
+  const isParsed = (x) => x !== null && x !== undefined && !(x && typeof x === 'object' && x.__unparsable === true)
+  const ser = (v) => JSON.stringify(v, (k, val) => {
+    if (val instanceof Map) return { __map: [...val.entries()] }
+    if (val instanceof Set) return { __set: [...val.values()] }
+    return val
+  })
+  const identity = (v) => { try { return ser(v) } catch (e) { return String(v) } }
+  const unionArray = (a, b) => {
+    const out = Array.isArray(b) ? b.slice() : []
+    const seen = new Set(out.map(identity))
+    for (const x of (Array.isArray(a) ? a : [])) { const k = identity(x); if (!seen.has(k)) { seen.add(k); out.push(x) } }
+    return out
+  }
+  const deepUnion = (a, b) => {
+    if (b === undefined) return a
+    if (a === undefined) return b
+    if (Array.isArray(a) && Array.isArray(b)) return unionArray(a, b)
+    if (a instanceof Map && b instanceof Map) {
+      const out = new Map(a)
+      for (const [k, v] of b) out.set(k, out.has(k) ? deepUnion(out.get(k), v) : v)
+      return out
+    }
+    if (a instanceof Set && b instanceof Set) return new Set([...a, ...b])
+    if (a && b && typeof a === 'object' && typeof b === 'object') {
+      const out = Object.assign({}, a)
+      for (const k of Object.keys(b)) out[k] = deepUnion(a[k], b[k])
+      return out
+    }
+    return b
+  }
+  const curArch = parse(cur.data.archive)
+  const nxtArch = parse(nxt.data.archive)
+  const curLive = parse(cur.data.live)
+  const nxtLive = parse(nxt.data.live)
+  const curRec = parse(cur.data.receipts)
+  const nxtRec = parse(nxt.data.receipts)
+  const skipped = []
+  const archiveById = new Map()
+  for (const src of [curArch, nxtArch]) {
+    if (!isParsed(src)) { skipped.push('archive-unparsable'); continue }
+    if (!Array.isArray(src)) { skipped.push('archive-not-an-array'); continue }
+    for (const m of src) {
+      if (!m || m.id === undefined) continue
+      const id = String(m.id)
+      archiveById.set(id, archiveById.has(id) ? deepUnion(archiveById.get(id), m) : m)
+    }
+  }
+  const liveById = new Map()
+  for (const src of [curLive, nxtLive]) {
+    if (!isParsed(src)) { skipped.push('live-unparsable'); continue }
+    const entries = src instanceof Map ? src : null
+    if (!entries) { skipped.push('live-not-a-map'); continue }
+    for (const [id, m] of entries) {
+      const k = String(id)
+      liveById.set(k, liveById.has(k) ? deepUnion(liveById.get(k), m) : m)
+    }
+  }
+  let droppedLiveWhileArchived = 0
+  for (const id of [...liveById.keys()]) {
+    if (archiveById.has(id)) { liveById.delete(id); droppedLiveWhileArchived += 1 }
+  }
+  const recByIdentity = new Map()
+  for (const src of [curRec, nxtRec]) {
+    if (!isParsed(src)) { skipped.push('receipts-unparsable'); continue }
+    if (!Array.isArray(src)) { skipped.push('receipts-not-an-array'); continue }
+    for (const r of src) recByIdentity.set(identity(r), r)
+  }
+  const archive = [...archiveById.values()]
+  const receipts = [...recByIdentity.values()]
+  const maxOf = (a, b) => {
+    const out = Object.assign({}, (a && typeof a === 'object') ? a : {})
+    for (const [k, v] of Object.entries((b && typeof b === 'object') ? b : {})) {
+      const n = Number(v)
+      if (Number.isFinite(n)) out[k] = Math.max(Number(out[k]) || 0, n)
+      else if (out[k] === undefined) out[k] = v
+    }
+    return out
+  }
+  const curMax = (cur.counters && Number(cur.counters.meeting)) || 0
+  const nxtMax = (nxt.counters && Number(nxt.counters.meeting)) || 0
+  const value = Object.assign({}, nxt, {
+    data: Object.assign({}, nxt.data, { live: ser(liveById), archive: ser(archive), receipts: ser(receipts) }),
+    counters: Object.assign({}, nxt.counters || {}, { meeting: Math.max(curMax, nxtMax) }),
+    session: Object.assign({}, nxt.session || {}, {
+      counters: maxOf(cur.session && cur.session.counters, nxt.session && nxt.session.counters),
+      receiptDropped: Math.max(Number(cur.session && cur.session.receiptDropped) || 0, Number(nxt.session && nxt.session.receiptDropped) || 0),
+    }),
+    mergedDurable: { applied: true, droppedLiveWhileArchived, liveMeetings: [...liveById.keys()].sort(), skipped },
+  })
+  return Object.assign({}, next, { value })
+}
+
 export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null, boxFor = null, foreignIds = null, chairActed = null } = {}) {
   if (typeof clock !== 'function') {
     // No key has been consulted at construction time: the list is explicitly EMPTY (never undefined).

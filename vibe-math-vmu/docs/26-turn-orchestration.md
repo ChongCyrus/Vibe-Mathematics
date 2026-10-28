@@ -1995,3 +1995,13 @@ run 100 把三条「看起来已在」的东西称了一遍，得到的都是回
    拒绝时**印出非法值与合法词表**。
 3. **共享数组的写不是替换**。记录轨的落盘是「本内核视图整份替换」，另一个内核写的行会被抹掉（负载下 10 次 2 次丢行）。
    修法：`patch` + merge-on-current，本地没持有的行保留并计数。与 tasks/chat/mailbox 同一条铁律。
+
+## ROUND 107 — 一句话只能有一处拼写；共享的持久数组只能并进，不能替换
+
+两件真机事故，两个不同的根因，但判据是一条。
+
+**(1) 一个轮次簿不说自己在哪张桌上。** `vibe_v5_say { member, round }`（没有 `meeting`）写的是**群聊**轮次簿，`vibe_v5_say { meeting, member }` 写的是会议的辩论轮次。r107 里所办用第一种写，拿到 `round:"debate-1"`、`spokenBy:["r-acad"]`、`remaining:["r-1","r-2"]`，就把这页当成它刚召集的那场辩论的轮次页，并据此判断辩论程序——而这两种页在回执上长得一模一样。修法不是加一个布尔，而是让**这句话只有一处拼写**：`chat.js` 定义 `ROUND_SURFACE_MEANS`，写回执（`speakRound`）与两个读入口（`roundStatus` 的已知页/未知页）以及所有页渲染（`roundView` → `rounds()`/`status()`）都用它。测试断言写与读返回的句子**逐字相等**，因为两个拼写迟早会漂移成两句话。
+
+**(2) 共享的持久数组被另一内核的整份快照替换。** 所办邀请 r-1/r-2 之后，成员内核 hand 一下，办公室再读 `order` 只剩 `["r-acad"]`。两层原因：`resume.write` 对 state 投影是整份替换；而我早前挂在 `meetings` 适配器上的 `merge` **根本没有到达写路径**——`attachProjectionTo` 另建了一个不带 `merge` 的 descriptor（装配里的 `merge: adapter.merge` 才是真正需要的那一根线）。第三层是时序：`PROJECTION_READ_ONLY` 集合里躺着 `'queue'`，而 `queue()` 是会改状态的动词 ⇒ 它从没被写穿包装，队列只能等别的 mutation 顺带落盘。修法：`merge` 沿 `attachProjectionTo → projectionFor` 传下去；`mergeDurableMeetings` 做 archive 并集 / live 深合并 / 已归档者在 live 里的孪生剔除 / receipts 内容并集 / counters 取 max，并点名 `mergedDurable.skipped`；`queue` 从只读集合移出。
+
+**这一轮学到的话：** 一句要给读者（人或代理）看的话，只能由**一个**常量渲染——写和读各写一遍，两遍就会分家；共享数组永远只能「并到现有的那本上」，任何「写回我以为的那本」都是丢更新，且丢得毫无声音。

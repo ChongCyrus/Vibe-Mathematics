@@ -8881,3 +8881,68 @@ UNKNOWN_FIELD=4 FIELD_NOT_APPLICABLE=6 BAD_JSON=6`。判定四步里只走到第
 - 上面第 3 行的「Lean 前端扫描」只有成员转述、没有回执，本轮**没有取证**（不据此修代码）。
 
 ### §205.7 无实质残余：否（C3/C4/E36 三条仍缺 live；名册与座位两套数待披露；一条转述待取证）
+
+## §206 真机跑 107（一个轮次簿不说自己在哪张桌上 / 邀请被另一个内核的整份快照抹掉）
+
+### §206.1 读数（build `fa8ea56f`，clone `slvp107`，port 19707）
+
+| 读数 | 值 |
+| --- | --- |
+| 驱动 | `DRIVE exit=0` |
+| 墙钟 | `durationSec 255` |
+| 工具调用 | `toolCalls 13` / results 13 |
+| 转录事件 | `transcriptEvents 87` |
+| token | `tokenTotal 1,555,727`（cap `12,000,000`，`tokenCapHit:false`） |
+| 会话 | 3（根 + 两名成员子会话），`SUMMARY: 3 session(s), 0 with RED` |
+| 工作区文件 | `SIMULATION-RULES.md`、`VibeMath/vmu/state.json`、`VibeMath/vmu/audit/2026-10-28.jsonl` |
+| 用的工具 | `vibe_v5_start`、`vibe_v5_assign`、`vibe_v5_message`、`vibe_vmu_turn`、`vibe_v5_read_library`、`vibe_v5_meeting`、`vibe_v5_say`、`vibe_vmu_meeting` |
+
+### §206.2 判决表（八行）
+
+| # | 验证项 | 结果 | 证据（逐字） |
+| --- | --- | --- | --- |
+| 1 | C3 障碍卡归档（成员写、读回） | ✅ | 成员 `vibe_v5_record_progress{track:"obstacles"}` ⇒ `"recordId":"rec-1"`；所办 `vibe_v5_read_library{member:"r-1",track:"obstacles"}` ⇒ `"total":1`，行 `"track":"obstacles","owner":"r-1"`，`"skippedTracks":[]` |
+| 2 | C4 障碍卡的正文可读回 | ✅ | `vibe_vmu_records{action:"expand",id:"rec-1"}` ⇒ `"fingerprintOk":true`、`"bodyTruncated":false`、`"bytes":1115` |
+| 3 | E36 辩论骨架（成员回合里发言） | ✅ | 成员回合 `vibe_v5_say{meeting:"m1",member:"r-1",text:…}` 成功；根会话再 `vibe_vmu_meeting{action:"status",id:"m1"}` 读回 `"state":"open","type":"debate"` |
+| 4 | E36 辩论会的人数下限 | ✅（诚实拒绝） | `vibe_v5_meeting{durationMs:…}` 的 `present:1`/`required:3`、`unanimity.met:false`——记录**没有**凑数 |
+| 5 | **F-108a 群聊轮次被当成会议辩论轮次** | ❌ | 根会话 `vibe_v5_say{member:"r-acad",round:"debate-1"}` ⇒ `"ok":true,"via":"chat","round":"debate-1","spokenBy":["r-acad"],"remaining":["r-1","r-2"]`——回执里**没有一个字段**说这是群聊簿；它随后在报告里写「the say receipt is chat-level, not meeting-level」是靠自己推断 |
+| 6 | **F-108b 另一个内核的整份快照抹掉邀请** | ❌ | 办公室内核 `invite{member:"r-1"}`/`invite{member:"r-2"}` 之后，`order` 本应 `["r-1","r-2"]`；成员内核 hand 之后办公室读回 `"order":["r-acad"]`——邀请消失 |
+| 7 | F-104b 的 primitive 动词提示 | ✅（未走到，但未误导） | 本轮没有呼叫 `extend/silent/end/hands`，因此该教学未被执行验证（记入 §206.6） |
+| 8 | 状态板 `/ 读面` 可用性 | ✅ | `vibe_vmu_meeting{action:"list"}` ⇒ `"serviceMeetings":["m1"],"unionMeetings":["m1"]` |
+
+### §206.3 两条修法与判据
+
+**(a) 一个轮次簿必须在回执里说自己属于哪张桌（F-108a）。** `vibe-math-vmu/kernel/chat.js` 现在只有**一句**话（`ROUND_SURFACE_MEANS`），同时出现在三个渲染点：`speakRound`（写回执）、`roundStatus`（已知页与未知页两种返回）、`roundView`（`rounds()` 与 `status()` 的页）。回执带 `roundSurface:"chat"`，句子点名「这是群聊轮次簿；会议辩论轮次走 `vibe_vmu_meeting { action: "speak" }` / `vibe_v5_say { meeting }`」。`tests/vmu-run107-round-surface.test.mjs` **22/0** 钉住：写与读的句子逐字相同（一句话，不是两种拼法）、未知页也带、`rounds()`/`status()` 的页都带、机制没被削弱（同轮第二次发言仍 `VMU_CHAT_ALREADY_SPOKE` 且什么都没追加）。
+
+**(b) 共享的持久数组，写入必须并到「现在的值」上（F-108b）。** 真因是两层：`vibe-math-vmu/kernel/resume.js` 的 `write()` 对 state 投影做**整份替换**；而 `meetings` 适配器上我先前加的 `merge` 根本传不到 `write()`——`attachProjectionTo` 另建了一个不带 `merge` 的 descriptor。修法：`attachProjectionTo` 接 `merge` 并传给 `projectionFor`，`kernel/index.js` 的装配把 `adapter.merge` 一起传进去；`merge` 由 `meetings.js` 的新导出 `mergeDurableMeetings(current, next)` 提供（archive 按 id 并集、live 深合并、已归档的 live 孪生剔除并计数、receipts 按内容并集、counters 取 max、不可解析的一侧点名进 `mergedDurable.skipped`）。另修 F-108c：`PROJECTION_READ_ONLY` 里躺着 `'queue'`，而 `meetings.queue()` 是会改状态的动词 ⇒ 它从没被写穿包装，队列改动只能等别的 mutation 顺带落盘（这是 r107 丢邀请的时序根因）；已移除并注明。`tests/vmu-run107-durable-merge.test.mjs` **17/0**，其中 §2 用两个内核复现 r107 的顺序（A 邀请 r-1 → B adopt → A 邀请 r-2 → B hand r-acad ⇒ fold 读出 `["r-1","r-acad","r-2"]`，修前只剩 `["r-1","r-acad"]`）。
+
+**判据（写下来，下一轮还会用到）：** 一句表意的话只能有一处拼写——写回执和读回执必须由**同一个常量**渲染，否则两处会各自漂移；共享数组的写永远不能是「替换成我这本」，只能是「并到现有一本上」。
+
+### §206.4 门禁
+
+| 门 | 结果 |
+| --- | --- |
+| `node tests/vmu-run107-round-surface.test.mjs` | 22 / 0 |
+| `node tests/vmu-run107-durable-merge.test.mjs` | 17 / 0 |
+| 相邻 | `vmu-run85-say-round` 47/0、`vmu-run47-chat-read-face` 14/0、`vmu-meeting` 50/0 |
+| `node scripts/check-rules-coverage.mjs` | PASS（3 条 PARTIAL：C3? 见 §206.7） |
+| `node scripts/check-rule-parity.mjs` | PASS |
+| `node scripts/regen-all.mjs --check` | 17/17 in sync |
+| `node scripts/preflight.mjs` | PASS |
+| `node scripts/check-docs.mjs` | DOC LINT: PASS |
+
+### §206.5 简报自身的问题（不算产品缺陷）
+
+1. 简报第 2 步写「`vibe_v5_assign` 建任务」，却没写它要求 `subject`（或缺 `task_id`）⇒ 回执 `VMU_INVALID_ARGUMENT 'assign without task_id needs a subject (the original created the task here)'`。是我简报漏了参数，不是工具错。
+2. 简报让根会话直接 `vibe_v5_meeting` 召集辩论，忘了 `vmu.meetings.chairActRequiresTurn=true` ⇒ 回执 `VMU_CHAIR_ACT_NOT_DELEGATED` 并给出可执行 hint（先给主席一轮）。工具是对的，是我没先读它自己的 hint 链。
+
+### §206.6 无法验证的四项
+
+1. **F-104b 的 primitive 教学**：本轮没有走到 `extend/silent/end/hands`，那句话没有被执行验证。
+2. **`vibe_v5_say{meeting}` 的会议发言是否进入 minutes**：本轮只验证到 `status` 的 `state/type`，没有读 `summary` 的 minutes 行。
+3. **跨内核的 live 会议在关会后是否真的从另一内核的 `liveMeetings` 消失**：本轮成员内核没有 `close` 动作。
+4. **多成员同时 hand 的排队顺序**：本轮只有一名成员 hand。
+
+### §206.7 无实质残余：否
+
+两处真缺陷已修（F-108a/F-108b + 时序根因 F-108c），但 F-108a/F-108b 的修复**尚未真机复验**（下一轮 r108 的判据已写好在 `D:/_tmp/slv-phase5/task-r108.txt` 的思路里）；台账仍有 C3/C4/E36 三行 PARTIAL——C3/C4 本轮真机通过（证据见 §206.2 第 1/2 行），但 live 回执要到本轮 §206 落库后才可钉；E36 的辩论骨架通过了，而「辩论不能把群聊轮次当自己的轮次」这条今天才修，所以 E36 仍记 PARTIAL 直到 r108 读到 `roundSurface`。

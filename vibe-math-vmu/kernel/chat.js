@@ -464,6 +464,10 @@ export function createChat({
     + 'round and refuses that member\'s SECOND speech by name (VMU_CHAT_ALREADY_SPOKE), appending nothing. It does not '
     + 'schedule or interleave members\' turns, so "不打断" is the room CONVENTION this book enforces AFTER the fact - a '
     + 'first speaker is not protected from arriving second, and two DIFFERENT members may still write at the same instant.'
+  // ROUND 107 / F-108a: the same sentence for the write receipt AND the read of the same book — a round that never
+  // names its surface is how run 107's caller took `remaining: ["r-1","r-2"]` for the meeting's debate round.
+  const ROUND_SURFACE_MEANS = 'this round is a CHAT round book (group chat only): it never opens or advances a MEETING round, '
+    + 'and a meeting speech is recorded through vibe_vmu_meeting { action: "speak" } / vibe_v5_say { meeting } instead'
   /** The public shape of one page (shared by `roundStatus`, `rounds()` and `status()`). */
   const roundView = (row) => ({
     round: row.id,
@@ -473,6 +477,9 @@ export function createChat({
     spoke: row.spoke.map((s) => Object.assign({}, s)),
     remaining: remainingOf(row),
     complete: remainingOf(row) ? remainingOf(row).length === 0 : null,
+    // ROUND 107 / F-108a: EVERY reader of a page learns which surface it belongs to (rounds(), status(), roundStatus).
+    roundSurface: 'chat',
+    roundSurfaceMeans: ROUND_SURFACE_MEANS,
   })
 
   const chat = {
@@ -624,6 +631,11 @@ export function createChat({
       const view = roundView(page)
       return Object.assign({}, sent, {
         round: id, spoke: true, spokenBy: view.spokenBy, remaining: view.remaining, complete: view.complete,
+        // ROUND 107 / F-108a: a `round` token here is a CHAT round book. Measured on run 107, a caller read the
+        // `remaining:["r-1","r-2"]` list as "the meeting's debate round" and had no field to tell the two apart. The
+        // surface is named, and the sentence names where a MEETING speech is actually recorded.
+        roundSurface: 'chat',
+        roundSurfaceMeans: ROUND_SURFACE_MEANS,
         means: ROUND_MEANS,
       })
     },
@@ -636,6 +648,9 @@ export function createChat({
         const declared = roundRoster(members)
         return { ok: true, round: id, known: false, openedAt: null, members: declared, spokenBy: [], spoke: [],
           remaining: declared ? declared.slice() : null, complete: declared ? declared.length === 0 : null,
+          // ROUND 107 / F-108a: the READ names its surface too — a caller that only saw `remaining` could not tell a
+          // chat round from a meeting debate round (measured on run 107).
+          roundSurface: 'chat', roundSurfaceMeans: ROUND_SURFACE_MEANS,
           means: ROUND_MEANS }
       }
       return Object.assign({ ok: true, known: true, means: ROUND_MEANS }, roundView(row))

@@ -559,7 +559,7 @@
       "id": "C3",
       "rule": "13",
       "text": "遇障路线/尝试/方法及障碍与原因归档",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-core.js::'progress', 'routes', 'obstacles', 'rejected', 'state'",
         "vibe-math-vmu/kit/handlers.js::unknown progress track"
@@ -570,15 +570,18 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::阻塞与原因"
       ],
-      "live": [],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::C3 障碍卡归档（成员写、读回）",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"track\":\"obstacles\",\"owner\":\"r-1\""
+      ],
       "ruleText": "- 遇障路线、尝试、方法及遇到的各种障碍及其原因等的归档。",
-      "next": "余项：live —— 写一条 track:\"obstacles\" 的障碍卡（含原因），再从 read_library 读回，证明它落在 Obstacles 桶而不是 Routes；旧的 live（recordId rec-9 之类）指的是 routes 行的 id，不能证明遇障路线与障碍原因。"
+      "next": ""
     },
     {
       "id": "C4",
       "rule": "13",
       "text": "遇到的各种障碍及其原因（归档内容的一部分）",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/library.js::'progress', 'routes', 'obstacles', 'rejected', 'state'",
         "vibe-math-vmu/kit/handlers.js::unknown progress track"
@@ -589,9 +592,12 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::已证伪的路"
       ],
-      "live": [],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"fingerprintOk\":true",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"bytes\":1115"
+      ],
       "ruleText": "- 遇障路线、尝试、方法及遇到的各种障碍及其原因等的归档。",
-      "next": "余项：live —— 写一条 track:\"obstacles\" 的障碍卡（含原因），再从 read_library 读回，证明它落在 Obstacles 桶而不是 Routes；旧的 live（recordId rec-9 之类）指的是 routes 行的 id，不能证明障碍及其原因。"
+      "next": ""
     },
     {
       "id": "C5",
@@ -1973,7 +1979,7 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::单次发言版群聊"
       ],
       "live": [],
-      "next": "推荐骨架（单次发言→轮流/举手/邀请，轮数由院士定）在 procedures 与 E17 轮记账里：真机只走过 say round，补一条辩论会里骨架推进的回执作 live",
+      "next": "余项：live —— r108 要在回执里读到群聊轮次簿的 roundSurface:\"chat\" 与一句指向会议发言面的话，再在辩论会里读到骨架推进（单次发言→举手/邀请），两者都逐字进台账后才可转 DONE。",
       "text": "辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。"
     }
   ]

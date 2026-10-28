@@ -332,7 +332,14 @@ section('3 op=run: argv assembly, cwd, receipt + argv echo, project file mode')
   const norm = p => String(p).replace(/\\/g, '/').replace(/\/$/, '')
   assert(norm(sp.cwd) === norm(h.projectRoot), '★ spawn cwd is the PROJECT root (' + JSON.stringify(sp.cwd) + ' vs ' + JSON.stringify(h.projectRoot) + ')')
   const runArgv = h.state.runs[h.state.runs.length - 1].argv
-  assert(runArgv.length === 3 && runArgv[0] === 'X:/fake/bin/python3' && runArgv[1] === '-c' && runArgv[2] === '2**10', '★ mode=expr puts the expression in exactly ONE argv element (no shell quoting, no split)')
+  // ★ ROUND 94 (kept honest here): mode=expr must EVALUATE AND PRINT - `python -c '2**10'` computes and
+  // discards the value, so the engine's own `exprPrint` template wraps it (`print(2**10)`) and the caller's
+  // expression is substituted INSIDE that ONE element. What this assertion defends is the property the
+  // template must not break: the expression never becomes several argv elements and nothing is shell-quoted.
+  assert(runArgv.length === 3 && runArgv[0] === 'X:/fake/bin/python3' && runArgv[1] === '-c' && runArgv[2] === 'print(2**10)',
+    '★ mode=expr sends ONE argv element holding the engine print template with the caller expression substituted verbatim (no split, no shell quoting)')
+  assert(String(runArgv[2]).indexOf('2**10') > 0 && !/["'`]/.test(String(runArgv[2])),
+    '★ the expression is inside that element unquoted (any quoting would be the shell talking, not the module)')
   assert(JSON.stringify(r.argv) === JSON.stringify(runArgv), '★ the return shell echoes the ACTUAL executed argv')
   assert(r.receipt && r.receipt.dir && existsSync(join(h.projectRoot, r.receipt.dir, 'receipt.json')), 'the receipt is archived under Computation/<id>/')
   const rec = JSON.parse(readIf(join(h.projectRoot, r.receipt.dir, 'receipt.json')))
