@@ -46,6 +46,14 @@ import { leadershipReading, leadershipWarning, LEADER_SLOT } from './leadership.
 // blueprint was a path with no edit right attached. `./blueprint.js` is the data face (a records track + propose/adopt);
 // this import is its REACHABLE consumer (red line ④).
 import { BLUEPRINT_ADOPT_SLOT, BLUEPRINT_PATH_KEY, BLUEPRINT_TRACK, adoptBlueprint, blueprintState, proposeBlueprint, readBlueprint } from './blueprint.js'
+// ★ A7 (round 31 follow-up): WHO IS CALLING, read from the one non-forgeable source there is. `vibe_v5_fire` has to
+// know whether the caller is a member seat (whose dismissal right is scoped to its own temp worker) or the office /
+// a chair (unscoped), and the ONLY trustworthy answer is the agent→member resolution the seat face gate itself uses:
+// `host-pack-tools.js#resolveTurnMember` (turn-tool record → learned member session → exact roster id; `null` is a
+// REAL answer meaning root/office). `args.member` is NOT read for this: it is model-typed text, which is exactly the
+// run-29 lesson member-scope.js records for `verdict_ask`. `host-pack-tools.js` imports nothing, so this edge adds no
+// cycle (it cannot import this file back).
+import { resolveTurnMember } from '../../host-pack-tools.js'
 // ★ PHASE 8 / B-2 step 2: the kit owns the implementations; v5r keeps only INSTITUTION vocabulary (names, descriptions,
 // parameters) and its policy. The 8 generic helpers come from the kit so the tree has exactly ONE copy.
 const { str, has, refuse, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker } = KIT_HELPERS
@@ -248,7 +256,7 @@ async function toolWait(args = {}, { kernel } = {}) {
  * than inventing a third. `direction`/`term` are onboarding TEXT in the original; this kernel keeps a member's
  * direction in roster data, so they are accepted, reported as not stored, and never silently dropped.
  */
-async function toolHire(args = {}, { kernel } = {}) {
+async function toolHire(args = {}, { kernel, exec = null } = {}) {
   if (!has(args.purpose)) throw refuse('VMU_INVALID_ARGUMENT', 'hire needs purpose', 'pass purpose:"why this worker exists"')
   if (!has(args.initial_task)) throw refuse('VMU_INVALID_ARGUMENT', 'hire needs initial_task', 'pass initial_task:"the first task"')
   if (!has(args.to)) throw refuse('VMU_INVALID_ARGUMENT', 'hire needs the new member id', 'pass to:"<new member id>" (this pack never invents an id)')
@@ -277,7 +285,11 @@ async function toolHire(args = {}, { kernel } = {}) {
       + 'vibe_vmu_control { action: "hire", member_id, slot } — this face refuses instead of silently seating a temp worker')
   }
   const members = membersOf(kernel)
-  const hired = await members.hire({ id: str(args.to), slot })
+  // ★ A7: WHO hires is a fact of the CALL, read from the turn-tool record (the same non-forgeable evidence the
+  // face gate uses) — never from `args.member`, which is text the model wrote. Recorded on the roster row so a
+  // later `fire` can tell "my own temp worker" from someone else's without trusting the caller again.
+  const hiredBy = resolveTurnMember(kernel, exec)
+  const hired = await members.hire({ id: str(args.to), slot, by: hiredBy })
   let task = null
   if (kernel.tasks && typeof kernel.tasks.create === 'function') {
     task = await kernel.tasks.create({ title: str(args.initial_task), objective: str(args.purpose), owner: str(args.to), deps: null, writeScopes: [] })
@@ -293,7 +305,12 @@ async function toolHire(args = {}, { kernel } = {}) {
       idMeans: 'task ids are minted by the TASK board (`t-<n>`); the TURN store mints `t-<n>` from ITS own counter, so a bare id is ambiguous across receipts — this field names the table, and `memberPrompt.turnIdRegistry` names the other one',
     })
   const memberScope = applyMemberScope({ kernel, members: [str(args.to)] })
-  return { ok: true, tool: 'vibe_v5_hire', member: str(args.to), slot, slotRequested: slot, hired, task: taskWithRegistry, memberScope,
+  const hiredByRow = (members.roster().filter((m) => String(m.id) === str(args.to))[0] || {}).hiredBy || null
+  return { ok: true, tool: 'vibe_v5_hire', member: str(args.to), slot, slotRequested: slot, hired, hiredBy: hiredByRow,
+    hiredByMeans: hiredByRow === null
+      ? 'the roster row carries no `hiredBy`: this call ran outside a member turn (a root/office call has no member seat), so no attribution could be recorded — a later `fire` reports ownership "unrecorded" rather than guessing'
+      : 'who hired this seat, recorded on the roster row at hire time from the turn-tool record (not from any argument)',
+    task: taskWithRegistry, memberScope,
     note: 'direction/term are onboarding prose in the original and roster data here, so they are not stored by this tool' }
 }
 
@@ -592,16 +609,123 @@ async function toolAssign(args = {}, { kernel } = {}) {
     note: 'priority/due_in/origin of the original have no column here; the why/acceptance travel to the assignee as mail (named, not dropped)' }
 }
 
+/** The roster fields a kernel MAY use to publish "who hired this member". This kernel publishes none of them (see the
+ *  block above `toolFire`), so this list is a READ list, not a writer's schema: it lets a kernel that DOES keep the
+ *  record answer the ownership question without a second table in the pack. */
+const FIRE_ATTRIBUTION_FIELDS = Object.freeze(['hiredBy', 'invitedBy', 'owner'])
+
+/** Who does the roster SAY hired this member? `null` = it does not say. A row may carry the id as a string or as
+ *  `{id}`; anything else is not an attribution (guessing here would invent the very fact being checked). */
+function fireAttribution(row) {
+  if (!row || typeof row !== 'object') return null
+  for (const field of FIRE_ATTRIBUTION_FIELDS) {
+    const raw = row[field]
+    const by = typeof raw === 'string' ? raw.trim() : (raw && typeof raw.id === 'string' ? raw.id.trim() : '')
+    if (by !== '' && by !== str(row.id)) return { by, field }
+  }
+  return null
+}
+
 /**
  * ★ `vibe_v5_fire` — dismiss a TEMP worker for real. The members face has `end(id, reason)`, and the task ledger can
  * move that member's open tasks to `cancelled` — both published capabilities, so the handler composes them. The
  * original also DROPPED its mail; the mailbox face has no per-member purge this pack may call, so it is reported.
+ *
+ * ★★ A7 — THE FACE NOW NAMES ITS SCOPE (round 31 follow-up, Lead order after the seat-face declaration landed).
+ * `seat-faces.js` declares `vibe_v5_fire: allow {chair:true, member:true, temp:false}` and the sentence behind that
+ * decision is 「院士、常驻研究员各自的…」/「常驻研究员解雇**自己雇的**那名临时工」. Until these two guards existed the face
+ * ended ANY live roster row, so a member seat could dismiss the academician and the declaration's sentence was prose
+ * with nothing behind it. Both guards read faces the kernel ALREADY publishes (the roster row and the turn-tool
+ * record) — no new kernel state, no new code:
+ *   ① THE ACADEMICIAN SEAT IS NOT DISMISSABLE BY A TOOL CALL. The chair seat is settled by the flow / the office, so
+ *      the face refuses BY NAME and points at the face that does re-seat (`vibe_vmu_control {action:"fire"}`). This
+ *      guard applies to EVERY caller, office included: a tool that can end the institute's chair is a foot-gun, and
+ *      the office has a face that says what it is doing.
+ *   ② A MEMBER-SEAT CALLER dismisses TEMP seats only, and (where the kernel records it) only a temp worker of its own.
+ * WHERE THE ATTRIBUTION COMES FROM — AND WHAT IT CANNOT SAY. `kernel.members.roster()` rows are
+ * `{id, slot, state, since, wakes, endedAt, endedReason}` (kernel/members.js:118-123): this kernel records WHO HIRED
+ * WHOM NOWHERE — members.js keeps no `by`, tasks.js keeps no creator, and `recruit.staff`'s `by` is neither published
+ * by `recruit.state()` nor reachable from v5r's hire/start path (both go through `members.hire`). So the ownership
+ * question is answered from the roster row IF the kernel publishes an attribution field, otherwise the receipt says
+ * `ownership: "unrecorded"`, the call is ALLOWED, and `ownershipMeans` states plainly that this roster keeps no hiring
+ * record. Both halves are deliberate: refusing on a fact the roster does not hold would make a temp worker
+ * un-dismissable (the very defect that put this guard here), and staying silent about it would pretend a check ran.
+ * The `own`/`not-own` branches are reachable exactly on a kernel that publishes the field — the test proves both on a
+ * stub roster AND the live path on this kernel's real one. Making the LIVE distinction real is a hire-time record
+ * (kernel/members.js or `toolHire`), which is outside this card's write face and is reported, not done here.
+ * CALLER. `exec` → `resolveTurnMember` (see the import note above); `null` is a real answer (root/office), so the call
+ * is not refused on it — it is DISCLOSED (`callerUnknown: true`) and only guard ① applies. The three disclosure
+ * fields travel on the REFUSAL TOO (as a returned receipt, not a throw: `host.js` keeps code/message/hint on a throw
+ * and this refusal must carry the same three facts the success path carries).
  */
-async function toolFire(args = {}, { kernel } = {}) {
+async function toolFire(args = {}, { kernel, exec = null } = {}) {
   if (!has(args.id)) throw refuse('VMU_INVALID_ARGUMENT', 'fire needs the member id', 'pass id:"<roster id>"')
   const id = str(args.id)
-  const row = membersOf(kernel).roster().filter((m) => m.id === id)[0]
+  const roster = membersOf(kernel).roster()
+  const row = roster.filter((m) => m.id === id)[0]
   if (!row) throw refuse('VMU_NO_SUCH_OBJECT', 'no member "' + id + '" on this roster', 'the roster holds the live ids')
+  const targetSeat = str(row.slot)
+  // ── the caller: the turn-tool record, never `args.member` (model-typed text) ─────────────────────────────────
+  const caller = resolveTurnMember(kernel, exec)
+  const callerRow = caller === null ? null : (roster.filter((m) => str(m.id) === str(caller))[0] || null)
+  const callerSeat = callerRow === null ? null : str(callerRow.slot)
+  const attribution = fireAttribution(row)
+  const ownership = attribution === null
+    ? 'unrecorded'
+    : (caller !== null && attribution.by === str(caller) ? 'own' : 'not-own')
+  const ownershipMeans = attribution !== null
+    ? 'the roster attributes "' + id + '" to "' + attribution.by + '" (field `' + attribution.field + '`)'
+      + (ownership === 'own' ? ' — this is the caller\'s own temp worker.' : ' — not to the caller "' + str(caller || '(unknown)') + '".')
+    : 'this roster records NO hiring attribution ("' + id + '" is '
+      + JSON.stringify({ id: str(row.id), slot: targetSeat, state: row.state === undefined ? null : row.state })
+      + ' and nothing else): members.js keeps no `hiredBy`, the task board keeps no creator, so "is this temp worker mine" cannot be answered from what this kernel publishes. '
+      + 'The call is ALLOWED and reported as unrecorded rather than refused on a fact the roster does not hold (a seat that cannot read attribution must not pretend it can, and must not make a temp worker un-dismissable).'
+  const disclosure = {
+    targetSeat,
+    ownership,
+    ownershipMeans,
+    caller,
+    callerSeat,
+    callerUnknown: caller === null,
+  }
+  // ── ① THE CHAIR SEAT IS NOT DISMISSABLE BY A TOOL (any caller, office included) ───────────────────────────────
+  if (targetSeat === 'chair') {
+    return Object.assign({}, disclosure, {
+      ok: false,
+      code: 'VMU_NOT_PERMITTED',
+      message: 'the academician seat is not dismissable through vibe_v5_fire: "' + id + '" holds slot "chair"',
+      hint: 'the chair seat is settled by the flow / the office, not by a member tool call — use vibe_vmu_control { action: "fire", member_id: "' + id + '" } if the institute really is to lose its chair (this face refuses instead of silently ending it)',
+    })
+  }
+  // ── ② A MEMBER-SEAT CALLER: temp seats only, and (where recorded) only its own ─────────────────────────────────
+  if (callerSeat === 'member') {
+    if (targetSeat !== 'temp') {
+      return Object.assign({}, disclosure, {
+        ok: false,
+        code: 'VMU_NOT_PERMITTED',
+        message: 'a member seat may only dismiss TEMP workers: "' + id + '" holds slot "' + targetSeat + '"',
+        hint: 'dismissing a fellow member / the chair is not a member right (seat-faces.js: `vibe_v5_fire` is scoped to temp workers) — raise it with the academician or the office instead',
+      })
+    }
+    if (ownership === 'not-own') {
+      return Object.assign({}, disclosure, {
+        ok: false,
+        code: 'VMU_NOT_PERMITTED',
+        message: 'a member seat may only dismiss ITS OWN temp worker: "' + id + '" is attributed to "' + attribution.by + '", not to the caller',
+        hint: 'ask that member (or the academician, who runs the institute\'s staffing) to dismiss it — ownership is read from the roster field the kernel publishes, and this call is not the owner',
+      })
+    }
+  }
+  if (callerSeat !== null && callerSeat !== 'member' && callerSeat !== 'chair') {
+    // A temp seat has no dismissal right at all (the declaration says `allow.temp === false`; the seat face gate
+    // already refuses the call before it gets here — this is the same rule when a seam calls the handler directly).
+    return Object.assign({}, disclosure, {
+      ok: false,
+      code: 'VMU_NOT_PERMITTED',
+      message: 'slot "' + callerSeat + '" has no dismissal right: only the academician and a member seat may dismiss a temp worker',
+      hint: 'the seat face already refuses this face for slot "' + callerSeat + '" (seat-faces.js declares fire: { chair: true, member: true, temp: false })',
+    })
+  }
   const ended = await membersOf(kernel).end(id, str(args.reason) || 'dismissed by vibe_v5_fire')
   const cancelled = []
   const tasks = kernel.tasks && typeof kernel.tasks.list === 'function' ? rowsOf(await kernel.tasks.list()) : []
@@ -614,8 +738,10 @@ async function toolFire(args = {}, { kernel } = {}) {
       cancelled.push(t.id)
     } catch (e) { cancelled.push(t.id + ':refused:' + ((e && e.code) || 'unknown')) }
   }
-  return { ok: true, tool: 'vibe_v5_fire', id, slot: row.slot, ended, cancelledTasks: cancelled,
-    note: 'mail is not purged (the mailbox face exposes no per-member purge this pack may call) — reported, not pretended' }
+  return Object.assign({}, disclosure, {
+    ok: true, tool: 'vibe_v5_fire', id, slot: row.slot, ended, cancelledTasks: cancelled,
+    note: 'mail is not purged (the mailbox face exposes no per-member purge this pack may call) — reported, not pretended',
+  })
 }
 
 /** ★ `vibe_v5_nudge` — supervision: wake one member with a reason and a concrete next step, through the mailbox. */
@@ -1341,6 +1467,8 @@ function gatedCardHandler(toolName) {
     if (writerRefusal) return writerRefusal
     const gates = [writerGate]
     let p1Form = null
+    let p1Route = null
+    let p1RouteMeans = null
     if (toolName === 'vibe_v5_record_proposition') {
       // The three evidences the rule accepts. `debate` and `lean` come from the CALLER's args (a card write cannot go
       // and hold a debate); `verified` is read from the records face, so it is not claimable by argument at all.
@@ -1355,11 +1483,14 @@ function gatedCardHandler(toolName) {
       if (pRefusal) return pRefusal
       gates.push(pGate)
       p1Form = pGate.evidenceForm === undefined ? null : pGate.evidenceForm
+      // ★ B3：回执必须说清本行 p=1 的凭据是**哪一条路**（辩论 / 参考文献 / Lean conform / 已有 verified 行）。
+      p1Route = pGate.p1Route === undefined ? null : pGate.p1Route
+      p1RouteMeans = pGate.p1RouteMeans === undefined ? null : pGate.p1RouteMeans
     }
     const res = inner(args, ctx)
     if (!res || typeof res !== 'object' || Array.isArray(res)) return res
     return Object.assign({}, res, { enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE },
-      p1Form === null ? {} : { p1Evidence: p1Form })
+      p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans })
   }
 }
 
@@ -1446,6 +1577,11 @@ function toolVerifiedPromote(args = {}, { kernel } = {}) {
   return Object.assign({ ok: true, tool: 'vibe_v5_verified_promote', card: sourceId,
     warrant: { id: warrantId, kind: warrantKind },
     p1Evidence: pGate === null ? 'debate-unanimous (p=0 disproof)' : pGate.evidenceForm,
+    // ★ B3：p=0 的否证也由辩论裁决产生，所以它同样有一条路名，并说清它与 p=1 的三条路的关系。
+    p1Route: pGate === null ? 'debate' : (pGate.p1Route === undefined ? null : pGate.p1Route),
+    p1RouteMeans: pGate === null
+      ? '`debate`：这条 p=0 定论的凭据是**全体一致的否证裁决**（mode:"unanimous", value:0）—— 它不是 p=1 的路径，但同样是辩论定的，不是自述。'
+      : (pGate.p1RouteMeans === undefined ? null : pGate.p1RouteMeans),
     enforced: enforcedOf(pGate === null ? [writerGate] : [writerGate, pGate]), enforcedScope: ENFORCED_SCOPE,
     note: 'the verified row is a SECOND carrier beside the card: the card keeps its p, the verified row keeps the JUDGE (warrant), so "why is this settled" is answerable instead of asserted' }, promoted)
 }
@@ -3531,6 +3667,41 @@ async function toolPaper(args = {}, { kernel } = {}) {
  * exactly the author's text (it is the author's field, not ours); a card that CANNOT be judged keeps `p: null` and
  * carries `cardUnjudgeable` with the parser's own reason, so "no p" is never silently indistinguishable from "p is 0".
  */
+/**
+ * ★ C8（独立审计，2026-10）：「命题库……那些布尔概率为 1 的命题卡需标记为已 verified。」
+ *
+ * 现状是 p=1 的卡会在 Verified 轨上得到一行（`verified.js#promoteVerified` 写的，标题带 `已验证｜`），但**卡自己**
+ * 读出来看不出这件事，也指不回那一行：读者只看到 `p:1`，无从判断"这条已经 verified 了"还是"只是一个等于 1 的估计"。
+ *
+ * 这里只做**读**：用已有的读函数 `findVerified`（不是第二份解析器、不是新存储）按 `- cardId：` 找那一行，把
+ * `{id,title,at}` 挂到卡上。找不到就诚实给 `null`，并由 `verifiedRefMeans` 说明"是没找到，还是这次读不到"——
+ * 撤回过的证明（fidelity registry）在 `findVerified` 里本来就不可见，所以 `verifiedRef` 也跟着一起隐藏。
+ */
+function verifiedRefOf(records, cardId, kernel) {
+  const none = (why) => ({ ref: null, means: '`verifiedRef:null`：' + why })
+  if (!records || !cardId) {
+    return none('这张卡这次读不出 id，无法按 `- cardId：` 在 Verified 库里比对 —— `null` 只说明这次没比对成，不是"没有定论行"。')
+  }
+  let found = null
+  try {
+    found = findVerified(records, String(cardId), { fidelity: kernel && kernel.fidelity ? kernel.fidelity : null })
+  } catch (e) {
+    return none('这一次读不到 Verified 库（' + String((e && (e.code || e.message)) || e) + '），所以无法判断它有没有对应的定论行 —— 不是"没有"。')
+  }
+  if (!found) {
+    return none('没在 Verified 库里找到与这张卡对应的行（按卡 id 比对 `- cardId：`，不靠标题或位置猜）。规则 C8 要求 p=1 的命题卡被标记为已 verified：这张卡还没有那一行。')
+  }
+  const v = found.verified && typeof found.verified === 'object' ? found.verified : {}
+  return {
+    ref: {
+      id: found.id === undefined || found.id === null ? null : String(found.id),
+      title: found.title === undefined || found.title === null ? null : String(found.title),
+      at: v.at === undefined || v.at === null ? null : v.at,
+    },
+    means: '`verifiedRef` 指回 **Verified 库**里与这张命题卡对应的那一条定论行（id/title/at 都是那一行的实际字段）：规则 C8 要求 p=1 的命题卡被标记为已 verified，这里给的就是它已经落库的那一行，`at` 是那一行自己的时间。`null` 只表示没找到（或这次读不到库，见本字段的说明）。',
+  }
+}
+
 async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
   const out = await toolReadLibrary(args, { kernel })
   if (!out || out.ok !== true) return out
@@ -3561,6 +3732,10 @@ async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
         ? parsed.problems.join('; ')
         : String(parsed.reason || 'the card body could not be parsed')
     }
+    // ★ C8：这张卡在 Verified 库里对应哪一行（读面自己说，不要求读者去另一张表里猜）。
+    const verifiedRef = verifiedRefOf(records, row.id, kernel)
+    next.verifiedRef = verifiedRef.ref
+    next.verifiedRefMeans = verifiedRef.means
     return next
   }
   const next = Object.assign({}, out)
@@ -3694,7 +3869,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_fire',
-    description: 'Dismiss a member for real: seat ended through the members face, and that member\'s open tasks moved to cancelled. Mail is not purged (no per-member purge is exposed) — reported, not pretended.',
+    description: 'Dismiss a TEMP worker for real: seat ended through the members face, and that member\'s open tasks moved to cancelled. The academician seat is NOT dismissable through this face (the flow/office settles it), and a member seat may only dismiss its own temp workers — the receipt carries `targetSeat`/`ownership`/`ownershipMeans` and says `unrecorded` on a roster that keeps no hiring attribution. Mail is not purged (no per-member purge is exposed) — reported, not pretended.',
     parameters: { id: { type: 'string', required: true }, reason: { type: 'string' } },
     handler: toolFire,
   },
@@ -3870,19 +4045,19 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_lean_lib',
-    description: 'List the Lean archive/library (def/lemma/theorem/assumption entries) through the Lean face.',
+    description: 'List the Lean archive/library (def/lemma/theorem/assumption entries) through the Lean face. ★ Every entry now carries its COMPILE RESULT: `outcome` (ok/failed/timeout/interrupted/not-measured), `exitCode`, `diagnosticsTail` (last characters of that job\'s diagnostics), `jobId`, `compileAt` (when the job ended), `at` (when it was archived) and `outcomeMeans` — so "archived" never has to be read as "compiled".',
     parameters: { refresh: { type: 'boolean' } },
     handler: toolLeanLib,
   },
   {
     name: 'vibe_v5_lean_read',
-    description: 'Read one archived Lean entry VERBATIM by name (kind auto/lib/proved is reported as not applied: this kernel keeps one archive namespace).',
+    description: 'Read one archived Lean entry VERBATIM by name (kind auto/lib/proved is reported as not applied: this kernel keeps one archive namespace). The receipt also carries that entry\'s compile result (`outcome`/`exitCode`/`diagnosticsTail`/`jobId`/`compileAt`/`outcomeMeans`), so the text and "did it compile" are read together.',
     parameters: { name: { type: 'string', required: true }, kind: { type: 'string' } },
     handler: toolLeanRead,
   },
   {
     name: 'vibe_v5_lean_archive',
-    description: 'Archive an existing .lean file: kind def/lemma/proof/blocked maps to the face\'s def/lemma/theorem/assumption; the face registers existing files by hash (inline content is not stored). ★ pass `statement` (the proposition this file formalises) so the library can answer what the file proves - live run 59 archived a lemma and the entry came back with an empty statement because the argument did not exist.',
+    description: 'Archive an existing .lean file: kind def/lemma/proof/blocked maps to the face\'s def/lemma/theorem/assumption; the face registers existing files by hash (inline content is not stored). ★ pass `statement` (the proposition this file formalises) so the library can answer what the file proves - live run 59 archived a lemma and the entry came back with an empty statement because the argument did not exist. ★ The entry ALSO records the COMPILE RESULT of that file: it is read from a Lean job this kernel already ran on the same file (nothing is re-run) and comes back as `outcome`/`exitCode`/`diagnosticsTail`/`jobId`/`compileAt`/`outcomeMeans`; with no such job the entry says `outcome:"not-measured"` instead of pretending the proof compiled.',
     parameters: { kind: { type: 'string', required: true }, name: { type: 'string', required: true }, statement: { type: 'string', description: 'the proposition text this file formalises (recorded in the library entry)' }, target: { type: 'string', description: 'legacy alias for statement' }, content: { type: 'string' }, from: { type: 'string' }, file: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } },
     handler: toolLeanArchive,
   },

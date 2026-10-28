@@ -1,15 +1,15 @@
 ============================================================
 ACCEPT-C (verifier-c) — 孤儿任务派发独立验收
-时间: 2026-10-28T09:32:15.110Z
+时间: 2026-10-28T12:00:41.252Z
 cwd: D:\wd\vibemath开发\Vibe-Mathematics
 repo: D:\wd\vibemath开发\Vibe-Mathematics\
-HEAD = fa8ea56fdade588daabe72003d44be6a41edade6
+HEAD = 425c4463f0e3f7e686b48ce0d5ec3a5b52f1e0ef
 对照使用当前被测代码的单点变异副本，只禁用无主任务派发分支；不依赖移动的 HEAD。
 被测文件 = D:\wd\vibemath开发\Vibe-Mathematics\archive\legacy-presets\vibe-math-v5\vibe-math-v5.js
 被测文件 size = 660722  sha256 = f225ac93335cac6c79bd27ff85efbe37873a7a692fed3443470eddfb1fc4e85e
 git status --porcelain -- 被测文件: ""
 
-对照组(禁用无主任务派发) 提取: dir=D:\_tmp\v5head-acc-c-LAU2hU
+对照组(禁用无主任务派发) 提取: dir=D:\_tmp\v5head-acc-c-SUkWjr
   git status=null error="" bytes=660731
   对照组 sha256 = 18afc408d7441fa38f7cd20742c906d92c12bb54c66e960dccf814705faf2717
   node --check 对照组 = exit 0
@@ -36,7 +36,7 @@ import: 被测 apply=function / 对照 apply=function
   v5state.json 里 to==='office' 的记录 = [{"id":"msg-2","from":"r-1","kind":"dm","text":"CONTROL-CHANNEL-C 成员向所办留言（对照：这条通道是好的）"}]
   群聊镜像文件 = ["<WS>\\VibeMath\\Projects\\default\\Institutes\\institute\\Shared\\Chat\\2026-10-28.md"]（非空行 3）
   镜像里提到无主任务 t-1 的行 = 1 条:
-      [<WS>\VibeMath\Projects\default\Institutes\institute\Shared\Chat\2026-10-28.md] - 09:32:17｜【任务板】t-1「ORPHAN-C1 清理未归档引理清单」无人认领，已自动派发 3 次仍无进展（上限 orphanDispatchMaxAttempts=3）：停止自动派发，需要人（或院士）重新分派或删除它。
+      [<WS>\VibeMath\Projects\default\Institutes\institute\Shared\Chat\2026-10-28.md] - 12:00:43｜【任务板】t-1「ORPHAN-C1 清理未归档引理清单」无人认领，已自动派发 3 次仍无进展（上限 orphanDispatchMaxAttempts=3）：停止自动派发，需要人（或院士）重新分派或删除它。
   无主派发提示文本(逐条首行/标题行/task_claim 行): 
     -> member=acad round=0
        首行="【待认领任务 —— 院士 acad】"
@@ -111,7 +111,7 @@ import: 被测 apply=function / 对照 apply=function
   ok - C3 补充 vibe_v5_set 返回的 params 也读得回该键（实测 3）
   ok - C3 停止后任务仍留在公告栏上等人（{"s":"pending","o":""}）
   ok - C3 群聊镜像存在且非空（["<WS>\\VibeMath\\Projects\\default\\Institutes\\institute\\Shared\\Chat\\2026-10-28.md"]，非空行 3）
-  ok - C3 群聊镜像里恰好留**一条**可见停止记录（提到任务 t-1 的行数=1，行=["- 09:32:17｜【任务板】t-1「ORPHAN-C1 清理未归档引理清单」无人认领，已自动派发 3 次仍无进展（上限 orphanDispatchMaxAttempts=3）：停止自动派发，需要人（或院士）重新分派或删除它。"]）
+  ok - C3 群聊镜像里恰好留**一条**可见停止记录（提到任务 t-1 的行数=1，行=["- 12:00:43｜【任务板】t-1「ORPHAN-C1 清理未归档引理清单」无人认领，已自动派发 3 次仍无进展（上限 orphanDispatchMaxAttempts=3）：停止自动派发，需要人（或院士）重新分派或删除它。"]）
   ok - C3 记录里含任务 id（t-1）
   ok - C3 记录里含派发次数（"已自动派发 3 次"）
   ok - C3 记录里含上限值（"orphanDispatchMaxAttempts=3"）
@@ -122,7 +122,7 @@ import: 被测 apply=function / 对照 apply=function
 
 ---- C3 附加：上限真的是被参数驱动的（orphanDispatchMaxAttempts=1）----
   max=1 场景：派发=1，之后 6 轮后=1，分支计数={"normal":12,"a.2-orphan":1,"checkpoint":19}，无主任务终点={"s":"pending","o":""}
-  max=1 场景镜像记录 = ["- 09:32:31｜【任务板】t-1「ORPHAN-C1 清理未归档引理清单」无人认领，已自动派发 1 次仍无进展（上限 orphanDispatchMaxAttempts=1）：停止自动派发，需要人（或院士）重新分派或删除它。"]
+  max=1 场景镜像记录 = ["- 12:00:57｜【任务板】t-1「ORPHAN-C1 清理未归档引理清单」无人认领，已自动派发 1 次仍无进展（上限 orphanDispatchMaxAttempts=1）：停止自动派发，需要人（或院士）重新分派或删除它。"]
   ok - C3+ 配置 orphanDispatchMaxAttempts=1 ⇒ 只派发 1 次（实测 1）
   ok - C3+ 配置 1 时后续 6 轮也不再派发（实测 1）
   ok - C3+ 上限=1 时镜像记录也恰好一条且写着上限 1（行数=1）
@@ -154,8 +154,8 @@ import: 被测 apply=function / 对照 apply=function
   参数: {"activityTimeoutMs":300,"maxParallel":3,"chatDigestMs":60}
   规范化波(canon, 不计入比对) = ["r-2/normal","r-2/normal","r-2/normal","acad/checkpoint","r-1/checkpoint"]
   比对段逐轮唤醒 = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
-  失速会议(stall, 分支 d) 原序 = ["acad/meeting","r-1/meeting","r-2/meeting"]
-  比对段分支计数 = {"normal":12,"checkpoint":9}  成员/分支 = {"r-2/normal":8,"acad/checkpoint":3,"r-1/checkpoint":6,"acad/normal":4,"acad/meeting":1,"r-1/meeting":1,"r-2/meeting":1}
+  失速会议(stall, 分支 d) 原序 = ["r-2/meeting","acad/meeting","r-1/meeting"]
+  比对段分支计数 = {"normal":12,"checkpoint":9}  成员/分支 = {"r-2/normal":8,"acad/checkpoint":3,"r-1/checkpoint":6,"acad/normal":4,"r-2/meeting":1,"acad/meeting":1,"r-1/meeting":1}
   成功唤醒总数 = 24  debug={"scheduling":false,"reschedule":false,"passes":36,"schedEnter":36,"schedSkip":0,"arm":36,"begin":0}  orphanWakes=0
 
 -- 运行 [head-run1] --
@@ -163,8 +163,8 @@ import: 被测 apply=function / 对照 apply=function
   参数: {"activityTimeoutMs":300,"maxParallel":3,"chatDigestMs":60}
   规范化波(canon, 不计入比对) = ["r-2/normal","r-2/normal","r-2/normal","acad/checkpoint","r-1/checkpoint"]
   比对段逐轮唤醒 = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
-  失速会议(stall, 分支 d) 原序 = ["acad/meeting","r-1/meeting","r-2/meeting"]
-  比对段分支计数 = {"normal":12,"checkpoint":9}  成员/分支 = {"r-2/normal":8,"acad/checkpoint":3,"r-1/checkpoint":6,"acad/normal":4,"acad/meeting":1,"r-1/meeting":1,"r-2/meeting":1}
+  失速会议(stall, 分支 d) 原序 = ["r-2/meeting","acad/meeting","r-1/meeting"]
+  比对段分支计数 = {"normal":12,"checkpoint":9}  成员/分支 = {"r-2/normal":8,"acad/checkpoint":3,"r-1/checkpoint":6,"acad/normal":4,"r-2/meeting":1,"acad/meeting":1,"r-1/meeting":1}
   成功唤醒总数 = 24  debug={"scheduling":false,"reschedule":false,"passes":36,"schedEnter":36,"schedSkip":0,"arm":36,"begin":0}  orphanWakes=0
 
 -- 运行 [head-run2] --
@@ -172,8 +172,8 @@ import: 被测 apply=function / 对照 apply=function
   参数: {"activityTimeoutMs":300,"maxParallel":3,"chatDigestMs":60}
   规范化波(canon, 不计入比对) = ["r-2/normal","r-2/normal","r-2/normal","acad/checkpoint","r-1/checkpoint"]
   比对段逐轮唤醒 = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
-  失速会议(stall, 分支 d) 原序 = ["acad/meeting","r-2/meeting","r-1/meeting"]
-  比对段分支计数 = {"normal":12,"checkpoint":9}  成员/分支 = {"r-2/normal":8,"acad/checkpoint":3,"r-1/checkpoint":6,"acad/normal":4,"acad/meeting":1,"r-2/meeting":1,"r-1/meeting":1}
+  失速会议(stall, 分支 d) 原序 = ["r-2/meeting","r-1/meeting","acad/meeting"]
+  比对段分支计数 = {"normal":12,"checkpoint":9}  成员/分支 = {"r-2/normal":8,"acad/checkpoint":3,"r-1/checkpoint":6,"acad/normal":4,"r-2/meeting":1,"r-1/meeting":1,"acad/meeting":1}
   成功唤醒总数 = 24  debug={"scheduling":false,"reschedule":false,"passes":36,"schedEnter":36,"schedSkip":0,"arm":36,"begin":0}  orphanWakes=0
 
 ---- C4 断言 ----
@@ -196,7 +196,7 @@ import: 被测 apply=function / 对照 apply=function
   逐轮唤醒 HEAD2 = r0[acad/normal] r1[r-2/normal,acad/normal,r-1/checkpoint] r2[r-2/normal,acad/normal,r-1/checkpoint] r3[r-2/normal,acad/normal,r-1/checkpoint] r4[r-2/normal,acad/checkpoint,r-1/checkpoint]
   ok - C4 逐轮唤醒序列（成员+分支+顺序）四组运行完全相同
   (d) 会议唤醒集合: 新1=acad/meeting|r-1/meeting|r-2/meeting 新2=acad/meeting|r-1/meeting|r-2/meeting / HEAD1=acad/meeting|r-1/meeting|r-2/meeting HEAD2=acad/meeting|r-1/meeting|r-2/meeting
-  (d) 会议唤醒原序: 新1=["r-2/meeting","r-1/meeting","acad/meeting"] HEAD1=["acad/meeting","r-1/meeting","r-2/meeting"] HEAD2=["acad/meeting","r-2/meeting","r-1/meeting"]（顺序由 Math.random 洗牌决定，既有的随机性，不是本次改动引入）
+  (d) 会议唤醒原序: 新1=["r-2/meeting","r-1/meeting","acad/meeting"] HEAD1=["r-2/meeting","acad/meeting","r-1/meeting"] HEAD2=["r-2/meeting","r-1/meeting","acad/meeting"]（顺序由 Math.random 洗牌决定，既有的随机性，不是本次改动引入）
   ok - C4 (d) 失速会议分支同样到达，且唤醒集合完全相同（acad/meeting|r-1/meeting|r-2/meeting）
   ok - C4 (d) 会议分支计数 新=3 HEAD=3
   ok - C4 (a)/(b)/(c) normal 分支与 (e) checkpoint 分支都被走到（normal=12 checkpoint=9）

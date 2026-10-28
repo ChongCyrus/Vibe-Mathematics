@@ -119,11 +119,16 @@ export function createMembers({
       return [...members.values()].map((m) => ({
         id: m.id, slot: m.slot, state: m.state, since: m.since, wakes: m.wakes,
         endedAt: m.endedAt || null, endedReason: m.endedReason || null,
+        // ★ A7 (seat rights): a temp worker is fired by the person who hired it, so the roster has to be able to
+        // ANSWER who that is. Until this field existed the pack could only say `ownership:"unrecorded"` for every
+        // live row, and a rule about "your own temp worker" had no mechanism behind it at all. Stamped when the
+        // seat is created (`assignRole` attribution) and null for seats created without an attribution (founding).
+        hiredBy: m.hiredBy || null,
       }))
     },
 
     /** Place a member into a slot, enforcing that slot's capacity by name. */
-    async assignRole(id, slotId) {
+    async assignRole(id, slotId, attribution = null) {
       if (typeof id !== 'string' || !MEMBER_ID.test(id)) {
         throw refuse('VMU_INVALID_ARGUMENT', 'member id is required and must be path-safe: ' + String(id))
       }
@@ -154,6 +159,10 @@ export function createMembers({
       const rec = existing
         ? Object.assign(existing, { slot: slotId, state: 'live', since: clock() })
         : { id, slot: slotId, state: 'live', since: clock(), wakes: 0 }
+      // ★ A7: the attribution is recorded on the row, not kept in the caller. A receipt that says "you hired it"
+      // is worth nothing if the next call cannot re-derive who that was, and `fire` needs the row itself (it runs
+      // in a different call, often in a different kernel instance).
+      if (attribution && typeof attribution.by === 'string' && attribution.by !== '') rec.hiredBy = attribution.by
       // ★ PHASE 6 fix: `task/assign` is declared BLOCKABLE. This producer used to emit AFTER `members.set` and
       // ignore the result — so a deny could not prevent the assignment, and the hook only looked load-bearing.
       // The assignment is now the effect of an allowed decision: emit first, refuse by name, mutate only when
@@ -177,13 +186,13 @@ export function createMembers({
      * call would GROW the roster, so a no-op re-hire is never refused). The verifier's second round caught both
      * the duplicated gate read and the resulting false refusal; this is the single-point fix.
      */
-    async hire({ id, slot } = {}) {
+    async hire({ id, slot, by = null } = {}) {
       if (maxLiveMembers > 0 && live().length >= maxLiveMembers && !members.has(id)) {
         throw refuse('VMU_RESOURCE_BUDGET',
           'live members at the ceiling: ' + live().length + '/' + maxLiveMembers,
           'vmu.limits.maxLiveMembers is machine-enforced (docs/04 §11)')
       }
-      return this.assignRole(id, slot)
+      return this.assignRole(id, slot, typeof by === 'string' && by !== '' ? { by } : null)
     },
 
     /** End a member. The reason is recorded, so "why is it gone" is answerable later. */

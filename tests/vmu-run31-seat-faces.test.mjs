@@ -7,6 +7,9 @@
 //     (meeting_round), adopt a blueprint (blueprint), promote into Verified/ (verified_promote) or close fidelity;
 //   · member: denied `second` and `task_get`;
 //   · temp: denied ALL FIVE Lean tools although rule 10.3 gives Lean to all three seats.
+//     (Round 33's A8 revisited that last one ON PURPOSE: Lean output is written into the institute's libraries, so the
+//      temp seat no longer holds Lean or any card-writing face — a DECLARED narrowing with a cited reason, not a word count.
+//      The expectations in ③/④ below follow the declaration, which is why they read `false` there now.)
 // In every case the institution's rule allowed it and the prompt's WORD COUNT refused it — rule 11.2 (越权/规则不靠提示词).
 //
 // WHAT THIS SUITE PROVES, in the order a reader needs it:
@@ -137,11 +140,18 @@ try {
     ['member', 'vibe_v5_say', true], ['member', 'vibe_v5_second', true], ['member', 'vibe_v5_task_get', true],
     ['member', 'vibe_v5_verdict', true], ['member', 'vibe_v5_poll_vote', true], ['member', 'vibe_v5_motion', true],
     ['member', 'vibe_v5_blueprint', true], ['member', 'vibe_v5_lean_run', true],
+    // ★ A7 (round 33, Lead-ruled): a permanent researcher HIRES the temp worker it needs, so it must be able to END one too
+    // (`fire` ends the member face and cancels its unfinished tasks; the file of that temp stays in the institute's history).
+    ['member', 'vibe_v5_fire', true],
     ['member', 'vibe_v5_message', false], ['member', 'vibe_v5_verdict_final', false], ['member', 'vibe_v5_meeting', false],
     ['member', 'vibe_v5_meeting_round', false], ['member', 'vibe_v5_start', false], ['member', 'vibe_v5_verified_promote', false],
-    ['temp', 'vibe_v5_lean_run', true], ['temp', 'vibe_v5_lean_job', true], ['temp', 'vibe_v5_lean_lib', true],
-    ['temp', 'vibe_v5_lean_read', true], ['temp', 'vibe_v5_lean_archive', true],
-    ['temp', 'vibe_v5_record_proposition', true], ['temp', 'vibe_v5_record_progress', true], ['temp', 'vibe_v5_task_get', true],
+    // ★ A8 (round 33, Lead-ruled) — "temp 只做被指派的临时任务": a temp worker performs the task it was hired for and
+    // reports through it. Cards, Lean output and papers are RESEARCH CONCLUSIONS that land in the institute's libraries,
+    // and those stay with the permanent seats (its observations travel via `task_update`, it does not open a card itself).
+    ['temp', 'vibe_v5_lean_run', false], ['temp', 'vibe_v5_lean_job', false], ['temp', 'vibe_v5_lean_lib', false],
+    ['temp', 'vibe_v5_lean_read', false], ['temp', 'vibe_v5_lean_archive', false],
+    ['temp', 'vibe_v5_record_proposition', false], ['temp', 'vibe_v5_record_progress', false], ['temp', 'vibe_v5_paper', false],
+    ['temp', 'vibe_v5_task_get', true],
     ['temp', 'vibe_v5_say', true],
     ['temp', 'vibe_v5_verdict', false], ['temp', 'vibe_v5_poll_vote', false], ['temp', 'vibe_v5_motion', false],
     ['temp', 'vibe_v5_second', false], ['temp', 'vibe_v5_meeting', false], ['temp', 'vibe_v5_hire', false],
@@ -172,11 +182,12 @@ try {
   ok(kernel.memberFaceGate({ member: seats.member, toolName: 'vibe_v5_task_get' }).ok === true,
     '★★ member: can READ one task card (the acceptance criteria live there, not in the board list) — run 31 denied it')
   const leanNames = Object.keys(seatMod.SEAT_TOOL_FACES).filter((n) => /^vibe_v5_lean_/.test(n))
-  ok(leanNames.length === 5 && leanNames.every((n) => kernel.memberFaceGate({ member: seats.temp, toolName: n }).ok === true),
-    '★★★ temp: ALL FIVE Lean tools reachable — rule 10.3 says Lean is for all three seats; run 31 denied every one of them', leanNames)
-  ok(kernel.memberFaceGate({ member: seats.temp, toolName: 'vibe_v5_record_proposition' }).ok === true,
-    '★★ temp: can record its OWN proposition card (so "what did I claim, what is my p" has a home) — and NOT method/subproblem (planning stays with the permanent seats)',
-    { method: kernel.memberFaceGate({ member: seats.temp, toolName: 'vibe_v5_record_method' }).ok })
+  ok(leanNames.length === 5 && leanNames.every((n) => kernel.memberFaceGate({ member: seats.temp, toolName: n }).ok === false),
+    '★★★ temp: NONE of the Lean five (A8: Lean 产出属于研究所的库，临时工不写库) — run 31 denied them as a word-count accident, round 33 denies them BY DECLARATION with a cited reason', leanNames)
+  const tempWrites = ['vibe_v5_record_proposition', 'vibe_v5_record_progress']
+  ok(tempWrites.every((n) => kernel.memberFaceGate({ member: seats.temp, toolName: n }).ok === false),
+    '★★ temp: CANNOT record a proposition card (A8) — 卡是研究与裁决的对象，「谁主张了什么、p 是多少」留在院士与常驻研究员各自的库里；临时工的观察走 task_update 汇报，不自己立卡（method/subproblem 同样仍关）',
+    { proposition: kernel.memberFaceGate({ member: seats.temp, toolName: 'vibe_v5_record_proposition' }).ok, method: kernel.memberFaceGate({ member: seats.temp, toolName: 'vibe_v5_record_method' }).ok })
   ok(['vibe_v5_verdict', 'vibe_v5_poll_vote', 'vibe_v5_motion', 'vibe_v5_second', 'vibe_v5_meeting', 'vibe_v5_hire', 'vibe_v5_fire']
     .every((n) => kernel.memberFaceGate({ member: seats.temp, toolName: n }).ok === false),
     '★★★ 反: temp STILL cannot vote (verdict/poll_vote), move/second, convene, hire or fire — rule 1 layering is preserved, this was not "just open everything"')
@@ -187,8 +198,9 @@ try {
 
   // ★ Lead 裁决 5 (round 31): `verified_promote` belongs to the CHAIR seat alone — verified/ is the institute's record
   // that a proposition is proved or refuted FOR GOOD, and v5r hands that closing step (Lean passes → the debate checks the
-  // description → probability=1 → admitted into verified/) to the debate and the academician. member/temp promote by
-  // WRITING A CARD (record_proposition) and winning the ruling, not by closing the record themselves.
+  // description → probability=1 → admitted into verified/) to the debate and the academician. A member promotes by
+  // WRITING A CARD (record_proposition) and winning the ruling, never by closing the record itself; a temp (A8) writes no
+  // card at all — its observations travel through the task it was hired for.
   {
     const vpChair = kernel.memberFaceGate({ member: seats.chair, toolName: 'vibe_v5_verified_promote' })
     const vpMember = kernel.memberFaceGate({ member: seats.member, toolName: 'vibe_v5_verified_promote' })
@@ -395,8 +407,8 @@ try {
     { before: beforeScope.member, after: memberAfter })
   const tempAfter = measure(seats.temp)
   ok(tempAfter.vibe_v5_verdict_final === false && tempAfter.vibe_v5_message === false
-    && kernel.memberFaceGate({ member: seats.temp, toolName: 'vibe_v5_lean_run' }).ok === true,
-    '★ temp: still cannot rule or impersonate, still can run Lean — the scope neither widens nor steals a declared face')
+    && kernel.memberFaceGate({ member: seats.temp, toolName: 'vibe_v5_lean_run' }).ok === false,
+    '★ temp: still cannot rule or impersonate, and A8 keeps Lean closed too — the scope neither widens nor steals a declared face (it can only take tools away)')
 } finally {
   await rm(root, { recursive: true, force: true })
 }

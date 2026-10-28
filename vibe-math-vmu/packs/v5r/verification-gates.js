@@ -18,6 +18,9 @@
 //
 // ★ THE FOUR GATES（逐条对应规则原文，见 docs/acceptance/phase12-v5r-rules-conformance.md 行 B1/B8/D13）
 //   ① `p1Intent`          —— 「只有辩论才能把命题卡的布尔概率修改为 1」：p=1 必须有**已经存在的定论来源**。
+//                            ★ B3 更正：这句是**提示词的收窄**；规则原文允许三条路（辩论裁决 / 参考文献中的命题 /
+//                            Lean 通过 + 符合性裁定），第四种只是"该卡已有 verified 定论行"的重述。机制按规则原文
+//                            放行三条路，回执用 `p1Route`/`p1RouteMeans` 点名本行 p=1 的凭据是哪一条。
 //   ② `debateSubjectGate` —— 「只有命题卡中含有正式证明或证伪内容（且已经写完了）才能用于后续辩论」：
 //                            辩论会议的 subject 必须能解析到**有证明引用**的对象；文件引用与一句话命题的
 //                            合法用法**不许被误拒**，所以三种形态各自说明"怎么才算满足"。
@@ -34,6 +37,9 @@ import { meetingTypeOf } from './meeting-procedures.js'
 
 /** 四条闸的具名码。**每个码在 docs/03-interface-contract.md 的两张表里都成对登记**（§8 语义表 + 实现状态表）。 */
 export const GATE_CODES = Object.freeze({
+  // 码名保留历史（首版提示词只写了辩论一条路）；规则原文（docs 里已引）允许**三条**把 p 改成 1 的路：
+  // ①辩论裁决全体一致为 1；②参考文献中的命题；③Lean 通过 + 符合性裁定 conform。码名不改，语义与三条路见
+  // `P1_ROUTES`／`p1Intent`：这三条路都放行，但回执必须点名走的是哪一条（`p1Route`）。
   P1_NEEDS_DEBATE: 'VMU_PACK_V5R_P1_NEEDS_DEBATE',
   DEBATE_SUBJECT_NO_PROOF: 'VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF',
   // ★ B6: the SECOND refusal of the same gate, because "没写证明" and "写了但拿不出证据"是两种缺失、两条改法。
@@ -62,6 +68,30 @@ const P1_EVIDENCE_FORMS = Object.freeze([
   'literature-reference：命题直接取自参考文献，写入带引用（`{reference:"<作者/出处/定理号>"}`，须非空）',
 ])
 
+/**
+ * ★ B3（独立审计，2026-10）：回执必须说清「本行 p=1 的凭据是哪一条路」。
+ *
+ * 规则原文允**三条**路把命题卡的布尔概率改成 1：
+ *   ① `debate`            辩论裁决的裁决集合**全体一致**为 1（`{mode:"unanimous", value:1, ballotId}`）；
+ *   ② `literature`        命题**直接取自参考文献**，写入带非空引用（规则 L7–L8）；
+ *   ③ `lean-conformance`  Lean 作业通过**且**辩论已裁定「代码中的命题/定义与所需一致」（规则 C10：
+ *                        「只要 lean 通过……布尔概率直接赋值为 1、可以加入 verified」）。
+ *
+ * 第四条 `verified-row` **不是新来源**：该卡已经在 `verified` 轨上有一条 `conclusion:true` 的定论行（由唯一写入器
+ * `promoteVerified` 写下），本次写入只是重述同一事实。它单列，是因为读者必须能区分「这次辩论定的」与「早就定过了」。
+ *
+ * 提示词只写「只能由辩论」——那是提示词的收窄，不是规则原文；机制层按原文放行三条路，靠这个路名把两者对齐。
+ */
+export const P1_ROUTES = Object.freeze(['debate', 'literature', 'lean-conformance', 'verified-row'])
+
+/** 每条路一句中文：读者据此知道 p=1 的凭据**是什么**，而不是只知道"有个证据"。 */
+export const P1_ROUTE_MEANS = Object.freeze({
+  debate: '`debate`：本行 p=1 的凭据是**一场辩论的裁决** —— 该辩论的裁决集合全体一致为 1（mode:"unanimous", value:1），且裁决对象就是这张卡；不是有人"觉得"它对。',
+  literature: '`literature`：本行 p=1 的凭据是**参考文献中的命题** —— 命题直接取自一次带非空引用的文献（reference），不是本所辩论出来的结论；引用本身是这条定论的 warrant。',
+  'lean-conformance': '`lean-conformance`：本行 p=1 的凭据是**Lean 已通过 + 符合性裁定 conform** —— 规则 C10 明写「只要 lean 通过……布尔概率直接赋值为 1、可以加入 verified」；"代码里的命题/定义是否与所需一致"由同一次裁定回答，lean 通过本身不单独构成 p=1。',
+  'verified-row': '`verified-row`：这张卡**已经在 Verified 轨上有一条 conclusion:true 的定论行**（唯一写入器 promotion 写的），本次写入只是重述同一事实 —— 凭据是那一行，不是这次调用新造的证据。',
+})
+
 function refuseGate(code, message, hint, extra) {
   return Object.assign({ ok: false, allowed: false, applicable: true, code, message, hint: hint || null, keys: [] }, extra || {})
 }
@@ -85,10 +115,13 @@ function asP(value) {
  *   · `args`   该次调用的参数（`p` 或 `value`）
  *   · `card`   目标卡行的读结果（`records.get()` 的投影；用于取"读到的现值"与截断事实）
  *   · `evidence` 调用方已查到的定论证据（四种形态见 `P1_EVIDENCE_FORMS`）
- * 输出：`{ ok, allowed, applicable, code?, message?, hint?, p, evidenceForm?, keys }`
+ * 输出：`{ ok, allowed, applicable, code?, message?, hint?, p, evidenceForm?, p1Route?, p1RouteMeans?, keys }`
  *
  * 三条判定：① 读不完整的卡**先具名拒**（不许拿半张卡判断"有没有证明"）；② p≠1 与本闸无关（放行，
- * `applicable:false`）；③ p=1 必须命中四种定论证据之一，否则 `VMU_PACK_V5R_P1_NEEDS_DEBATE`。
+ * `applicable:false`）；③ p=1 必须命中定论证据之一，否则 `VMU_PACK_V5R_P1_NEEDS_DEBATE`。
+ *
+ * ★ B3：命中证据还不够 —— 放行时必须同时给出 `p1Route`（`P1_ROUTES` 之一）与 `p1RouteMeans`（一句中文，
+ * 说明本行 p=1 的凭据是哪条路）。归不到路名的证据**具名拒**，不静默接受。
  */
 export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } = {}) {
   const who = tool ? String(tool) : 'a write path'
@@ -107,21 +140,32 @@ export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } 
   const cardId = card && card.id ? String(card.id) : (args.card_id ? String(args.card_id) : null)
   const out = { p: 1, cardId }
   const ev = evidence || {}
+  // ★ B3：唯一的放行出口。路名必须在 `P1_ROUTES` 里 —— 一条命中了证据、却归不到规则允许的那几条路的写入，
+  //   在这里**具名拒**，而不是被静默接受（"有证据"与"凭的是哪条路"是两件事，回执两件都要说）。
+  const routed = (route, extra) => {
+    if (P1_ROUTES.indexOf(route) === -1) {
+      return refuseGate(GATE_CODES.P1_NEEDS_DEBATE,
+        '这次写入的 p=1 证据命中了，但归不到规则允许的三条路（辩论 / 参考文献 / Lean 通过）之一：route=' + String(route),
+        '三条路见 P1_ROUTES：' + P1_ROUTES.join(' / ') + '；归不了路的证据不能当作定论来源',
+        Object.assign({}, out, { p1Route: null, p1RouteMeans: null, p1Routes: P1_ROUTES }))
+    }
+    return allow(Object.assign({}, out, { p1Route: route, p1RouteMeans: P1_ROUTE_MEANS[route] }, extra || {}))
+  }
   if (ev.verified && ev.verified.conclusion === true) {
     const target = ev.verified.cardId !== undefined ? String(ev.verified.cardId) : (ev.verified.sourceId !== undefined ? String(ev.verified.sourceId) : null)
-    if (target && cardId && target === cardId) return allow(Object.assign(out, { evidenceForm: 'verified-row' }))
+    if (target && cardId && target === cardId) return routed('verified-row', { evidenceForm: 'verified-row' })
   }
   if (ev.debate && String(ev.debate.mode) === 'unanimous' && asP(ev.debate.value) === 1) {
     const target = ev.debate.subject !== undefined ? String(ev.debate.subject) : null
-    if (!target || !cardId || target === cardId) return allow(Object.assign(out, { evidenceForm: 'debate-unanimous', ballotId: ev.debate.ballotId || null }))
+    if (!target || !cardId || target === cardId) return routed('debate', { evidenceForm: 'debate-unanimous', ballotId: ev.debate.ballotId || null })
   }
   if (ev.literature && typeof ev.literature.reference === 'string' && ev.literature.reference.trim() !== '') {
     const target = ev.literature.subject === undefined || ev.literature.subject === null ? null : String(ev.literature.subject)
-    if (!target || !cardId || target === cardId) return allow(Object.assign(out, { evidenceForm: 'literature-reference', reference: ev.literature.reference.trim() }))
+    if (!target || !cardId || target === cardId) return routed('literature', { evidenceForm: 'literature-reference', reference: ev.literature.reference.trim() })
   }
   if (ev.lean && ev.lean.passed === true && ev.lean.conformance && String(ev.lean.conformance.decision) === 'conform') {
     const target = ev.lean.subject !== undefined ? String(ev.lean.subject) : (ev.lean.cardId !== undefined ? String(ev.lean.cardId) : null)
-    if (!target || !cardId || target === cardId) return allow(Object.assign(out, { evidenceForm: 'lean-conformance', jobId: ev.lean.jobId || null }))
+    if (!target || !cardId || target === cardId) return routed('lean-conformance', { evidenceForm: 'lean-conformance', jobId: ev.lean.jobId || null })
   }
   const nearMiss = []
   if (ev.lean && ev.lean.passed === true && !(ev.lean.conformance && ev.lean.conformance.decision === 'conform')) {
@@ -134,9 +178,14 @@ export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } 
   return refuseGate(GATE_CODES.P1_NEEDS_DEBATE,
     '把命题卡的布尔概率改成 1 需要**已经存在的定论来源**；' + who + ' 这次写入没有（card=' + String(cardId) + '）'
     + (nearMiss.length ? '。★ 近失原因：' + nearMiss.join('；') : ''),
-    '四种合法来源：\n  · ' + P1_EVIDENCE_FORMS.join('\n  · ')
-    + '\n非辩论路径把 p 设成 1 一律具名拒；lean 通过是**另一条**合法路径，但必须连同符合性裁定一起给。',
-    out)
+    // ★ B3：规则原文不是"只能由辩论" —— 三条路都算定论来源，拒绝文案必须把三条都写出来，
+    //   否则被拒的人只会以为"没辩论成"，而手里其实可能正握着一条文献引用或一次 Lean 通过的作业。
+    '规则原文允许把 p 改成 1 的三条路：\n  · 辩论裁决（裁决集合**全体一致**为 1）\n'
+    + '  · 参考文献中的命题（写入带**非空**引用 reference）\n'
+    + '  · Lean 通过 **且** 符合性裁定 conform（C10：只要 lean 通过，布尔概率直接赋值为 1、可以加入 verified）\n'
+    + '第四条不是新来源：该卡已经在 Verified 轨上有一条 conclusion:true 的定论行（本次只是重述同一事实）。\n'
+    + '四种证据形态：\n  · ' + P1_EVIDENCE_FORMS.join('\n  · '),
+    Object.assign({}, out, { p1Route: null, p1RouteMeans: null, p1Routes: P1_ROUTES }))
 }
 
 /** 判断辩论 subject 的形态。三种形态的**满足方式完全不同**，所以先分类再判。 */
@@ -408,7 +457,9 @@ export function fidelityAsked({ cardId = null, leanPassed = false, p = null, wit
 /** 只读的闸目录（供文档/接线层列举；不参与判定）。 */
 export function gateCatalog() {
   return Object.freeze([
-    Object.freeze({ id: 'p1Intent', code: GATE_CODES.P1_NEEDS_DEBATE, rule: '只有辩论才能把命题卡的布尔概率修改为 1', appliesTo: '写 p=1 的任何调用' }),
+    // ★ B3：`rule` 保留提示词原话（它是被引用的规则文本，不是本文件的主张）；`routes` 才是机制实际放行的三条路。
+    Object.freeze({ id: 'p1Intent', code: GATE_CODES.P1_NEEDS_DEBATE, rule: '只有辩论才能把命题卡的布尔概率修改为 1', appliesTo: '写 p=1 的任何调用',
+      routes: P1_ROUTES, routesMeans: '规则原文允许三条路：辩论裁决 / 参考文献中的命题 / Lean 通过 + 符合性裁定 conform；`verified-row` 是"该卡已有 verified 定论行"的重述，不是新来源。回执用 p1Route 点名走的是哪一条。' }),
     // ★ B6: 一个闸、两个拒绝码 —— 「声明了证明但拿不出证据」与「根本没登记」是两种缺失、两条改法。
     Object.freeze({ id: 'debateSubjectGate', code: GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
       codes: Object.freeze([GATE_CODES.DEBATE_SUBJECT_NO_PROOF, GATE_CODES.DEBATE_SUBJECT_UNPROVEN]),

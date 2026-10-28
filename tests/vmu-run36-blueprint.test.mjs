@@ -90,6 +90,19 @@ const DRAFT_TEXT = [
   '采纳只由主席席执行；采纳后本蓝图即为现行版。任何成员可 propose 下一版，revision 自动加一；旧版留在历史里，不改写。',
 ].join('\n')
 
+/**
+ * B5 共同设计: `adopt` requires BOTH seats to have written into the draft. The chair writes ITS OWN section (it never
+ * rewrites the proposer's text), so the document that gets adopted is `base + ## 共同设计补充｜<author> + note`.
+ * ADOPTED_TEXT is that concatenation spelled out — the old pin "adopted text === proposed text, verbatim" is kept at
+ * full strength by comparing against BOTH halves instead of the base alone.
+ */
+const ACAD_NOTE = [
+  '## 共同设计补充（院士席）',
+  '本席复核后补两条：① 复核必须给出重算命令与输出摘要，不许只写结论；② 任一条反例成立即回退到上一版，并在正文里记明理由。',
+].join('\n')
+const CODESIGN_HEADER = BLUEPRINT.BLUEPRINT_CODESIGN_SECTION + 'acad'
+const ADOPTED_TEXT = DRAFT_TEXT.trim() + '\n\n' + CODESIGN_HEADER + '\n' + ACAD_NOTE.trim()
+
 const main = await boot()
 const kernel = main.handle.kernel
 const spec = main.specOf('vibe_v5_blueprint')
@@ -144,16 +157,29 @@ const draftBytes = draftRow && draftRow.bytes
 ok(draftBytes > 800, 'the draft row is stored at its real size (storage does not truncate: seq 485 bytes:4134)', draftBytes)
 
 console.log('=== 2. ADOPTION MOVES THE DOCUMENT VERBATIM — THE CURRENT ROW IS NOT BORN INCOMPLETE ===')
+// B5 共同设计: r-1 is a member seat, so the chair alone cannot adopt this draft — the gate is measured, not assumed.
+const chairAlone = await call({ action: 'adopt', member: 'acad', draft: draftId })
+ok(chairAlone.ok === false && chairAlone.code === BLUEPRINT.BLUEPRINT_NEEDS_CODESIGN,
+  '★ 反：a single-author draft is refused even for the chair (VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN)',
+  chairAlone.code || chairAlone.text)
+const chairAloneHint = String((chairAlone.parsed && chairAlone.parsed.hint) || '')
+ok(/action: "propose"/.test(chairAloneHint) && /action: "adopt"/.test(chairAloneHint) && chairAloneHint.includes(String(draftId)),
+  '★ the refusal hint is copy-pasteable next calls naming THIS draft (propose the missing section, then adopt)',
+  chairAloneHint)
+const chairContinued = await call({ action: 'propose', member: 'acad', text: ACAD_NOTE })
+ok(chairContinued.ok && chairContinued.parsed && chairContinued.parsed.continued === true && chairContinued.parsed.id === draftId,
+  '★ the chair CONTINUES the same draft id (one document, two seats writing) instead of opening a competing r1',
+  chairContinued.parsed && { id: chairContinued.parsed.id, continued: chairContinued.parsed.continued })
 const adopted1 = await call({ action: 'adopt', member: 'acad', draft: draftId })
-ok(adopted1.ok && adopted1.parsed.status === 'current' && adopted1.parsed.revision === 1, '★ 正：the chair adopts draft r1', adopted1.parsed || adopted1.text)
+ok(adopted1.ok && adopted1.parsed.status === 'current' && adopted1.parsed.revision === 1, '★ 正：after the co-design round the chair adopts draft r1', adopted1.parsed || adopted1.text)
 const currentId = adopted1.parsed && adopted1.parsed.id
 ok(currentId !== draftId, 'adoption mints a NEW row (append-only: the draft row is never rewritten)', { draftId, currentId })
 const currentRow = currentId ? kernel.records.get({ id: currentId }) : null
 ok(currentRow && currentRow.ok === true, 'the current row is READ BACK from the real records face', currentRow && currentRow.ok)
 const parsedCurrent = currentRow ? BLUEPRINT.parseBlueprint(currentRow) : null
-ok(parsedCurrent && parsedCurrent.text === DRAFT_TEXT.trim(),
-  '★★★ THE DEFECT: the adopted text IS the proposed text, verbatim (seq 497/506: 4134 bytes became 939; run 36 lost 一～六 here)',
-  parsedCurrent && { got: parsedCurrent.text.length, want: DRAFT_TEXT.trim().length, tail: parsedCurrent.text.slice(-40) })
+ok(parsedCurrent && parsedCurrent.text === ADOPTED_TEXT,
+  '★★★ the adopted text IS both authors\' text, verbatim: the run-36 base + the 共同设计补充 section (seq 497/506: 4134 bytes became 939; run 36 lost 一～六 here)',
+  parsedCurrent && { got: parsedCurrent.text.length, want: ADOPTED_TEXT.length, tail: parsedCurrent.text.slice(-40) })
 const missingInCurrent = sections.filter((s) => !parsedCurrent.text.includes(s))
 ok(parsedCurrent && missingInCurrent.length === 0,
   'all six inner `## ` headings survive adoption', parsedCurrent && missingInCurrent)
@@ -172,8 +198,12 @@ const missingInLib = sections.filter((s) => !libBody.includes(s))
 ok(libCurrent && libCurrent.ok && libCurrent.parsed.card && missingInLib.length === 0,
   '★ the run-36 read surface (read_library {id}) now shows the whole body, `## 一、`…`## 六、` included', libCurrent && { bytes: libCurrent.parsed.card && libCurrent.parsed.card.bytes, bodyTruncated: libCurrent.parsed.card && libCurrent.parsed.card.bodyTruncated, missing: missingInLib })
 const readCurrent = currentId ? await call({ action: 'read', id: currentId }) : null
-ok(readCurrent && readCurrent.ok && readCurrent.parsed.text === DRAFT_TEXT.trim(),
-  'the blueprint tool\'s own read action returns the whole text too (it reads through parseBlueprint)', readCurrent && { got: readCurrent.parsed && readCurrent.parsed.text.length, want: DRAFT_TEXT.trim().length })
+ok(readCurrent && readCurrent.ok && readCurrent.parsed.text === ADOPTED_TEXT,
+  'the blueprint tool\'s own read action returns the whole text too (it reads through parseBlueprint)', readCurrent && { got: readCurrent.parsed && readCurrent.parsed.text.length, want: ADOPTED_TEXT.length })
+const authorsOnCurrent = String((parsedCurrent && parsedCurrent.fields && parsedCurrent.fields.authors) || '')
+ok(authorsOnCurrent.includes('acad') && authorsOnCurrent.includes('r-1'),
+  '★ the adopted row records BOTH seats in its `authors` header field (the co-design survives adoption as a fact on disk)',
+  authorsOnCurrent)
 
 console.log('=== 3. THE MECHANISM: THE TEXT SECTION IS "TO THE END", AND THE SHARED PRIMITIVE IS NOT TOUCHED ===')
 const body = currentRow && currentRow.body
@@ -182,8 +212,8 @@ const sharedText = (shared.sections && shared.sections[BLUEPRINT.BLUEPRINT_TEXT_
 ok(sharedText.length > 0 && !sharedText.join('\n').includes('## 六、'),
   '★ the SHARED parseBody STILL cuts the text at the first inner `## ` — this is the root cause, and it must stay that way (three other parsers depend on its segment semantics)',
   { sectionLines: sharedText.length })
-ok(typeof BLUEPRINT.blueprintTextOf === 'function' && body && BLUEPRINT.blueprintTextOf(body) === DRAFT_TEXT.trim(),
-  'the carrier reads the `## 正文` section itself, to the END of the body (blueprintTextOf)', body && typeof BLUEPRINT.blueprintTextOf === 'function' ? { got: BLUEPRINT.blueprintTextOf(body).length, want: DRAFT_TEXT.trim().length } : { hasHelper: typeof BLUEPRINT.blueprintTextOf })
+ok(typeof BLUEPRINT.blueprintTextOf === 'function' && body && BLUEPRINT.blueprintTextOf(body) === ADOPTED_TEXT,
+  'the carrier reads the `## 正文` section itself, to the END of the body (blueprintTextOf) — including the co-design section', body && typeof BLUEPRINT.blueprintTextOf === 'function' ? { got: BLUEPRINT.blueprintTextOf(body).length, want: ADOPTED_TEXT.length } : { hasHelper: typeof BLUEPRINT.blueprintTextOf })
 const composed = BLUEPRINT.composeBlueprintBody({ path: PATH, status: 'draft', revision: 9, proposedBy: 'r-1', proposedAt: 1000, text: DRAFT_TEXT })
 ok(composed.endsWith(DRAFT_TEXT.trim()), '★ the carrier does NOT rewrite the user text: no prefix, no escaping, the composed body ends with it verbatim')
 ok(composed.split('\n').filter((l) => l === '## ' + BLUEPRINT.BLUEPRINT_TEXT_SECTION).length === 1,
@@ -226,6 +256,12 @@ ok(draft2.ok && draft2.parsed.revision === 2, 'a new proposal after adoption is 
 const stateDraft2 = (await call({ action: 'state' })).parsed
 ok(stateDraft2.revisions === 3 && stateDraft2.currentRevision === 1 && stateDraft2.draftsWaiting === 1,
   '★ propose alone adds ONE row: revisions 2 → 3 while currentRevision stays 1 (the arithmetic in revisionsMeans, measured)', { revisions: stateDraft2.revisions, currentRevision: stateDraft2.currentRevision, drafts: stateDraft2.draftsWaiting })
+// B5 repeats on every round: r2 is single-author too (r-1), so the chair must add its section before adopting.
+const DRAFT2_NOTE = '院士席的设计补充：第二版起，每个「复核」结论都要附可复现的命令。'
+const draft2Continued = await call({ action: 'propose', member: 'acad', text: DRAFT2_NOTE })
+ok(draft2Continued.ok && draft2Continued.parsed.continued === true && draft2Continued.parsed.id === draft2.parsed.id,
+  '★ the co-design round repeats on r2 (the same draft id is continued, the revision numbers below stay the same)',
+  draft2Continued.parsed && { id: draft2Continued.parsed.id, continued: draft2Continued.parsed.continued })
 const adopted2 = await call({ action: 'adopt', member: 'acad', draft: draft2.parsed.id })
 ok(adopted2.ok && adopted2.parsed.revision === 2 && adopted2.parsed.previousRevision === 1, 'the chair adopts r2 over r1', adopted2.parsed && { revision: adopted2.parsed.revision, previous: adopted2.parsed.previousRevision })
 const stateEnd = (await call({ action: 'state' })).parsed

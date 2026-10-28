@@ -379,20 +379,20 @@
       "id": "A7",
       "rule": "3",
       "text": "临时工可被解雇",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/tools.js::dismissed by vibe_v5_fire"
+        "vibe-math-vmu/packs/v5r/seat-faces.js::vibe_v5_fire",
+        "vibe-math-vmu/packs/v5r/tools.js::function toolFire"
       ],
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_fire"
+        "vibe_v5_fire"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::fire"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::可自主雇佣/解雇自己的临时工"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"state\":\"ended\""
-      ],
-      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。"
+      "live": [],
+      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。",
+      "next": "r113：常驻研究员在自己回合解雇自己雇的临时工 → 回执读到 fire 成功与 targetSeat/ownership；再让成员解雇他人的临时工读到具名拒（VMU_NOT_PERMITTED + ownership:\"not-own\"）。两条逐字进台账后才转 DONE。"
     },
     {
       "id": "B1",
@@ -439,62 +439,60 @@
       "id": "B3",
       "rule": "7",
       "text": "只有辩论能把 p 改为 1",
-      "status": "DONE",
+      "status": "PARTIAL",
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_verdict_final"
+        "vibe_v5_record_proposition",
+        "vibe_v5_verified_promote"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::辩论"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::必须有**具名凭据**"
       ],
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/verification-gates.js::export function p1Intent",
-        "vibe-math-vmu/packs/v5r/verification-gates.js::GATE_CODES.P1_NEEDS_DEBATE,"
+        "vibe-math-vmu/packs/v5r/verification-gates.js::export const P1_ROUTES",
+        "vibe-math-vmu/packs/v5r/tools.js::p1Route"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::具名拒 `VMU_PACK_V5R_P1_NEEDS_DEBATE`（p=1 需要裁决证据）"
-      ],
+      "live": [],
       "note": "三种凭据都是辩论产物；规则句的「只有辩论」在本实现里等于「只接受辩论产物」——Lead 裁决：不收紧闸。",
-      "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。"
+      "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。",
+      "next": "r113：带 literature_ref 的 p=1 写入 → 回执 p1Route:\"literature\"；多数决 p=1 → 具名拒 VMU_PACK_V5R_P1_NEEDS_DEBATE 且回执带 p1Routes。两条逐字进台账。"
     },
     {
       "id": "B4",
       "rule": "8",
       "text": "蓝图：总目标/技术路线/规划，按时更新",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/blueprint.js::ageMs > BLUEPRINT_STALE_AFTER_MS",
+        "vibe-math-vmu/packs/v5r/blueprint.js::function blueprintFreshness",
         "vibe-math-vmu/packs/v5r/blueprint.js::staleAfterMs: BLUEPRINT_STALE_AFTER_MS"
       ],
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+        "vibe_v5_blueprint"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::只有院士席（chair）**能"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::按时更新"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::蓝图 propose→adopt→read"
-      ],
-      "ruleText": "- 实现总目标的完整技术路线设计策划蓝图。按时更新、调整。由院士+常驻研究员共同设计策划、决定如何调整。最终编辑权交给院士。"
+      "live": [],
+      "ruleText": "- 实现总目标的完整技术路线设计策划蓝图。按时更新、调整。由院士+常驻研究员共同设计策划、决定如何调整。最终编辑权交给院士。",
+      "next": "r113：vibe_v5_blueprint {action:\"state\"} 回执带 freshness（ageMs/staleAfterMs/overdueDays）；adopt 逾期版回执带 overdueUpdate，逐字进台账。"
     },
     {
       "id": "B5",
       "rule": "8",
       "text": "蓝图由院士+常驻研究员共同设计",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/blueprint.js::export function proposeBlueprint",
-        "vibe-math-vmu/packs/v5r/tools.js::const proposed = proposeBlueprint"
+        "vibe-math-vmu/packs/v5r/blueprint.js::VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN",
+        "vibe-math-vmu/packs/v5r/blueprint.js::function blueprintCodesignStatus"
       ],
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+        "vibe_v5_blueprint"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::只有院士席（chair）**能"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::共同设计"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"previousRevision\":0"
-      ],
-      "ruleText": "- 实现总目标的完整技术路线设计策划蓝图。按时更新、调整。由院士+常驻研究员共同设计策划、决定如何调整。最终编辑权交给院士。"
+      "live": [],
+      "ruleText": "- 实现总目标的完整技术路线设计策划蓝图。按时更新、调整。由院士+常驻研究员共同设计策划、决定如何调整。最终编辑权交给院士。",
+      "next": "r113：单人 propose 后 chair adopt → 具名拒 VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN；另一席对同 path propose 续写后再 adopt 成功，且 adopted text 逐字含两段署名文字，逐字进台账。"
     },
     {
       "id": "B6",
@@ -539,21 +537,20 @@
       "id": "C2",
       "rule": "12",
       "text": "已尝试路线/方法及其进度",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kernel/records.js::'progress', 'routes', 'obstacles', 'rejected', 'state'",
-        "vibe-math-vmu/kit/handlers.js::unknown progress track"
+        "vibe-math-vmu/kit/handlers.js::const progressArg",
+        "vibe-math-vmu/kit/handlers.js::- 进度："
       ],
       "tool": [
         "vibe_v5_record_progress"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::尝试过的路线与进展"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::阻塞与原因"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"track\":\"routes\",\"recordId\":\"rec-7\""
-      ],
-      "ruleText": "- 已尝试的各种可能路线、方法及它们的进度。"
+      "live": [],
+      "ruleText": "- 已尝试的各种可能路线、方法及它们的进度。",
+      "next": "r113：vibe_v5_record_progress 在 obstacles/routes 轨带 progress → 回执 progress 与正文「- 进度：」都在，读回也看得见，逐字进台账。"
     },
     {
       "id": "C3",
@@ -581,23 +578,20 @@
       "id": "C4",
       "rule": "13",
       "text": "遇到的各种障碍及其原因（归档内容的一部分）",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kernel/library.js::'progress', 'routes', 'obstacles', 'rejected', 'state'",
-        "vibe-math-vmu/kit/handlers.js::unknown progress track"
+        "vibe-math-vmu/kit/handlers.js::const progressArg",
+        "vibe-math-vmu/kernel/records.js::'progress', 'routes', 'obstacles', 'rejected', 'state'"
       ],
       "tool": [
-        "vibe_v5_record_progress"
+        "vibe_v5_read_library"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::已证伪的路"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::阻塞与原因"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"fingerprintOk\":true",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"bytes\":1115"
-      ],
+      "live": [],
       "ruleText": "- 遇障路线、尝试、方法及遇到的各种障碍及其原因等的归档。",
-      "next": ""
+      "next": "r113：写 obstacles 卡（含原因段与 progress 行）→ expand 读回正文两段都在，且 progress 行未被吞；逐字进台账。"
     },
     {
       "id": "C5",
@@ -662,21 +656,21 @@
       "id": "C8",
       "rule": "14",
       "text": "p=1 的命题要标记 verified",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/verified.js::title: VERIFIED_TITLE_PREFIX",
-        "vibe-math-vmu/packs/v5r/verified.js::VERIFIED_TITLE_PREFIX = '已验证｜'"
+        "vibe-math-vmu/packs/v5r/tools.js::function verifiedRefOf",
+        "vibe-math-vmu/packs/v5r/tools.js::next.verifiedRef"
       ],
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_verified_promote"
+        "vibe_v5_read_library",
+        "vibe_v5_verified_promote"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::verified"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::Verified/ 的写入只有 `vibe_v5_verified_promote`"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::成员只能看到\"有一张 verified 行躺在账本里\""
-      ],
-      "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。"
+      "live": [],
+      "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。",
+      "next": "r113：p=1 命题卡单卡读与列表读都带 verifiedRef:{id,title,at}；未验证卡带 verifiedRef:null + means（“没在 Verified 库里找到”）。逐字进台账。"
     },
     {
       "id": "C9",
@@ -702,20 +696,21 @@
       "id": "C10",
       "rule": "16",
       "text": "Lean 代码与编译结果归档",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kernel/lean.js::leanlibrary"
+        "vibe-math-vmu/kernel/lean.js::function compileResultFor",
+        "vibe-math-vmu/kernel/lean.js::outcome: e.outcome === undefined"
       ],
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_lean_archive"
+        "vibe_v5_lean_archive",
+        "vibe_v5_lean_read"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::Lean"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::运行结果在 `vibe_v5_lean_run/job` 回执"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::`persisted:true`、`persistence:{shared:true, key:\"leanlibrary\""
-      ],
-      "ruleText": "- 平时的一些命题的证明、对象的定义之类的lean代码及其编译结果。以减轻后续工作量。且只要lean通过的命题那么剩下的（在辩论时）只是检查代码中的命题、各种定义是否描述符合所需，只要符合那么就是完全正确的、布尔概率直接赋值为1、可以把相应命题（及其依赖的对象定义）加入verified。（通过参数可以开启鼓励开关：鼓励它们把平时一些小结论、小命题、定义给进行lean形式化、编译，来减少后续工作量。）"
+      "live": [],
+      "ruleText": "- 平时的一些命题的证明、对象的定义之类的lean代码及其编译结果。以减轻后续工作量。且只要lean通过的命题那么剩下的（在辩论时）只是检查代码中的命题、各种定义是否描述符合所需，只要符合那么就是完全正确的、布尔概率直接赋值为1、可以把相应命题（及其依赖的对象定义）加入verified。（通过参数可以开启鼓励开关：鼓励它们把平时一些小结论、小命题、定义给进行lean形式化、编译，来减少后续工作量。）",
+      "next": "r113：lean_run → lean_archive 后 lean_read 读到 outcome/exitCode/jobId/diagnosticsTail；未跑过的文件读出 outcome:\"not-measured\" + means。逐字进台账。"
     },
     {
       "id": "C11",
@@ -821,21 +816,20 @@
       "id": "D1",
       "rule": "26",
       "text": "各自推进各自的总任务",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kernel/turn/index.js::const deliverTurn = async",
-        "vibe-math-vmu/kernel/turn/index.js::member, lastAttribution"
+        "vibe-math-vmu/kernel/turn/index.js::const mineRows",
+        "vibe-math-vmu/kernel/turn/index.js::属于你（"
       ],
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::vibe_vmu_turn"
+        "vibe_vmu_turn"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::状态板"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::属于你（<member>）"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::成员「抄 `detail:settings` 的 `vmu.turn.objective`」——它抄回来的值与提示词里的"
-      ],
-      "ruleText": "- 各自推进各自的总任务。"
+      "live": [],
+      "ruleText": "- 各自推进各自的总任务。",
+      "next": "r113：两个成员各拿到自己的 [状态板]，② 行读到「你的（r-1，未完成 N 条）」而所办（无 member）读不到该行；① 行带 scopeNote「全所总任务」。逐字进台账。"
     },
     {
       "id": "D2",
@@ -1144,20 +1138,19 @@
       "id": "E9",
       "rule": "32",
       "text": "院士邀请入会成员",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::invite"
+        "vibe-math-vmu/kernel/meeting.js::invite(member, { by = null, why = '' }"
       ],
       "tool": [
-        "vibe_vmu_meeting"
+        "vibe_v5_meeting"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::邀请**不是签到"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::邀请不标到场、不影响 quorum"
-      ],
-      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。"
+      "live": [],
+      "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
+      "next": "r113：chair 调 invite{member,why} → 回执 invited 与 order 变化，且被邀者未 attend 时 quorum 不变（邀请≠签到）。逐字进台账。"
     },
     {
       "id": "E10",
@@ -1287,21 +1280,21 @@
       "id": "E16",
       "rule": "39",
       "text": "常见命令：批量指定成员按顺序发言",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetingmarker.js::== 'chair'",
-        "vibe-math-vmu/kernel/meetingmarker.js::return base.sort((a, b) => (used(a) - used(b)) || (a < b ? -1 : 1))"
+        "vibe-math-vmu/kernel/meetings.js::VMU_FLOOR_OUT_OF_ORDER",
+        "vibe-math-vmu/kernel/meetings.js::const queueRead = orderEff.queueOpen"
       ],
       "tool": [
-        "vibe_vmu_meeting"
+        "vibe_v5_say",
+        "vibe_v5_meeting"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::按数组顺序批量"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::数组顺序即发言顺序"
-      ],
-      "ruleText": "会议的一些常见命令或工具包括但不限于（需注意各命令的使用权限，有些是只有主持人具有的命令或工具）：举手发言，邀请发言，批量指定成员按一定顺序发言，单次发言版群聊，...。"
+      "live": [],
+      "ruleText": "会议的一些常见命令或工具包括但不限于（需注意各命令的使用权限，有些是只有主持人具有的命令或工具）：举手发言，邀请发言，批量指定成员按一定顺序发言，单次发言版群聊，...。",
+      "next": "r113：chair 用 invite members:[\"r-1\",\"r-2\"] 排定顺序后让 r-2 先发言 → 具名拒 VMU_FLOOR_OUT_OF_ORDER 且 hint 印出 order；r-1 发言回执带 queueRead.position:1。逐字进台账。"
     },
     {
       "id": "E17",
@@ -1543,21 +1536,20 @@
       "id": "E29",
       "rule": "51",
       "text": "辩论轮数由院士决定",
-      "status": "DONE",
+      "status": "PARTIAL",
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
+        "vibe_v5_meeting"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::辩论轮数由院士决定"
       ],
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::const roundCap = verdictMaxRoundsNow()",
-        "vibe-math-vmu/kernel/meetings.js::length >= roundCap"
+        "vibe-math-vmu/kernel/meetings.js::the motion ceiling is reached"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::the motion ceiling is reached for this meeting: 2 / 2"
-      ],
-      "ruleText": "先进行各成员同时进行“单次发言版群聊”，独立发表各自的“布尔概率（[0,1]），理由，...”，再进行轮流发言或者各自举手发言或邀请发言，来展开辩论。辩论的轮数由院士自己决策。"
+      "live": [],
+      "ruleText": "先进行各成员同时进行“单次发言版群聊”，独立发表各自的“布尔概率（[0,1]），理由，...”，再进行轮流发言或者各自举手发言或邀请发言，来展开辩论。辩论的轮数由院士自己决策。",
+      "next": "r113：chair 设 verdictMaxRounds=1 后提第二条动议 → 具名拒 VMU_RESOURCE_BUDGET 且 message 给 n/cap；上调后同一动议成功。逐字进台账。"
     },
     {
       "id": "F1",
@@ -1762,68 +1754,59 @@
       "id": "G6",
       "rule": "62",
       "text": "绝大多数功能走工具而非每轮末尾输出 JSON",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kernel/turn/index.js::const unknown = keys",
-        "vibe-math-vmu/kernel/turn/index.js::export const FIELDS = Object"
+        "vibe-math-vmu/kernel/turn/index.js::export const FIELD_OWNERS",
+        "vibe-math-vmu/host-pack-tools.js::function badEnumParametersOf"
       ],
       "tool": [
         "vibe_vmu_turn"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::工具做事，回执汇报"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::工具做事，回执汇报",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::action 只有 claim"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::七步、8 次调用全部命中：`write` 落文件 → `vibe_v5_set` 压预算"
-      ],
-      "ruleText": "- 绝大多数功能都直接通过代理可执行命令（工具）实现，而非最终每轮结束时输出json实现。"
+      "live": [],
+      "ruleText": "- 绝大多数功能都直接通过代理可执行命令（工具）实现，而非最终每轮结束时输出json实现。",
+      "next": "r113：一轮里工具与围栏字段各做一件事 → step 回执 executed 点名派发了什么；围栏写不认识的字段 → 回执点名该字段。逐字进台账。"
     },
     {
       "id": "G7",
       "rule": "63",
       "text": "提示词与规则完全相符、自洽",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
         "scripts/check-rule-parity.mjs::== String",
-        "scripts/check-rule-parity.mjs::'VMU_RULE_PARITY_ORPHAN_TEACHING'"
+        "tests/vmu-prompt-clean.test.mjs::VMU PROMPT CLEAN"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::action 只有 claim",
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::引擎"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::必须有**具名凭据**"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::RULE PARITY: live teaching 8"
-      ],
-      "tool": [
-        "scripts/check-rule-parity.mjs::VMU_RULE_PARITY_"
-      ],
-      "ruleText": "- 确保所有代理接收到的提示词完全与上述规则相符、自洽 。"
+      "live": [],
+      "tool": [],
+      "ruleText": "- 确保所有代理接收到的提示词完全与上述规则相符、自洽 。",
+      "next": "把审计列出的其余错教逐条修完（A4 钉子钉在注释上、E30 一条规则 11 子句只钉 extendlimit、verification-gates.js 头注释自称死代码而 tools.js 是活调用方），再让 parity 与 prompt-clean 两门重新绿，之后一次真机复读四句原文；逐字进台账后才转 DONE。"
     },
     {
       "id": "A8",
       "rule": "10",
       "text": "院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列",
       "mechanism": [
-        "vibe-math-vmu/kernel/records.js::'progress', 'routes', 'obstacles', 'rejected', 'state'",
-        "vibe-math-vmu/kernel/library.js::proposition: 'Propos', method: 'Methods', subproblem: 'Subproblems'",
-        "vibe-math-vmu/packs/v5r/seat-faces.js::vibe_v5_record_method"
+        "vibe-math-vmu/packs/v5r/seat-faces.js::vibe_v5_record_proposition",
+        "vibe-math-vmu/packs/v5r/seat-faces.js::A8——临时工只做被指派的临时任务"
       ],
       "tool": [
-        "vibe_v5_record_progress",
+        "vibe_v5_record_proposition",
         "vibe_v5_lean_run",
-        "vibe_v5_script",
-        "vibe_v5_feedback",
         "vibe_v5_paper"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::五类各有一等机制"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::临时工不写这些库"
       ],
-      "status": "DONE",
+      "status": "PARTIAL",
       "ruleText": "### 院士、常驻研究员各自的文件：",
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"track\":\"routes\",\"recordId\":\"rec-7\"",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-10\""
-      ]
+      "live": [],
+      "next": "r113：临时工调用 vibe_v5_record_proposition / vibe_v5_lean_run / vibe_v5_paper 各被具名拒，回执点名 face 与 slot \"temp\"，逐字进台账。"
     },
     {
       "id": "A9",

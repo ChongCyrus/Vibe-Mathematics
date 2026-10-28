@@ -196,6 +196,99 @@ export function mergeDurableMeetings(current, next) {
   return Object.assign({}, next, { value })
 }
 
+/**
+ * ★★★ LIVE RUN 109 (F-109a, measured on the real machine): TWO KERNELS, ONE MEETING. A member's own kernel attended
+ * `m2` and spoke in it (`present 1→2`, `turns:1` in ITS copy), and the office's kernel — which held the same `m2` in its
+ * own `live` map — kept reporting `present:1, turns:0, spokeBy:[]`. `restoreReload` skipped every stored live row whose
+ * id it already held (`if (live.has(id)) continue`), so "I already have this meeting" silently meant "nothing about it
+ * was ever written by another instance".
+ *
+ * A meeting is a SCOREBOARD, not a document: two instances legitimately each know part of the floor (one seated a
+ * member, one recorded the speech), and the durable fold holds the union. This merges the stored row INTO the local one
+ * additively — floor sets UNION, counters MAX, lists joined by identity, closures never undone. It never deletes: a
+ * member this instance saw present stays present even when the stored row is older.
+ */
+function mergeLiveMeeting(local, stored) {
+  if (!local || typeof local !== 'object' || !stored || typeof stored !== 'object') return { merged: false, changed: [] }
+  const changed = []
+  const idsOf = (v) => JSON.stringify(v)
+  const joinArray = (field, keyOf) => {
+    const a = local[field]
+    const b = stored[field]
+    if (!Array.isArray(a) || !Array.isArray(b)) return
+    const seen = new Set(a.map((x) => idsOf(keyOf ? keyOf(x) : x)))
+    let added = 0
+    for (const x of b) {
+      const k = idsOf(keyOf ? keyOf(x) : x)
+      if (seen.has(k)) continue
+      seen.add(k)
+      a.push(x)
+      added += 1
+    }
+    if (added > 0) changed.push(field + '+' + added)
+  }
+  const unionSet = (field) => {
+    const a = local[field]
+    const b = stored[field]
+    if (!(a instanceof Set) || !(b instanceof Set)) return
+    let added = 0
+    for (const v of b) if (!a.has(v)) { a.add(v); added += 1 }
+    if (added > 0) changed.push(field + '.' + added)
+  }
+  const mergeMap = (field) => {
+    const a = local[field]
+    const b = stored[field]
+    if (!(a instanceof Map) || !(b instanceof Map)) return
+    let added = 0
+    for (const [k, v] of b) {
+      if (!a.has(k)) { a.set(k, v); added += 1; continue }
+      const mine = a.get(k)
+      if (typeof mine === 'number' && typeof v === 'number' && v > mine) { a.set(k, v); added += 1; continue }
+      if (mine && v && typeof mine === 'object' && typeof v === 'object') {
+        const later = (x) => Number(x.until || x.at || 0)
+        if (later(v) > later(mine)) { a.set(k, v); added += 1 }
+      }
+    }
+    if (added > 0) changed.push(field + '.' + added)
+  }
+  // floor facts: who is here and what was said — union, never replace
+  unionSet('present')
+  unionSet('muteTopics')
+  joinArray('queue', (x) => (x && typeof x === 'object') ? x.member : x)
+  joinArray('transcript', (x) => (x && typeof x === 'object') ? { at: x.at, action: x.action, member: x.member } : x)
+  joinArray('motions', (x) => (x && typeof x === 'object') ? { id: x.id, movedBy: x.movedBy, at: x.at } : x)
+  joinArray('appeals', (x) => (x && typeof x === 'object') ? { id: x.id, at: x.at } : x)
+  joinArray('dissent', (x) => (x && typeof x === 'object') ? { member: x.member, at: x.at } : x)
+  if (local.minutes && stored.minutes && typeof local.minutes === 'object') {
+    const before = JSON.stringify(local.minutes)
+    for (const part of ['entries', 'refused', 'actions']) {
+      const a = local.minutes[part]
+      const b = stored.minutes[part]
+      if (!Array.isArray(a) || !Array.isArray(b)) continue
+      const seen = new Set(a.map(idsOf))
+      for (const x of b) { const k = idsOf(x); if (!seen.has(k)) { seen.add(k); a.push(x) } }
+    }
+    if (JSON.stringify(local.minutes) !== before) changed.push('minutes')
+  }
+  // speech bookkeeping: per-member maxima (a speech is a monotone fact)
+  mergeMap('speechUsed')
+  mergeMap('interrupts')
+  mergeMap('warnings')
+  mergeMap('mutes')
+  // counters and cursors: MAX (never lose a speech another instance counted)
+  for (const k of ['turns', 'tokens', 'extendedMs', 'sequenceIndex']) {
+    const mine = Number(local[k]) || 0
+    const theirs = Number(stored[k]) || 0
+    if (theirs > mine) { local[k] = theirs; changed.push(k) }
+  }
+  // fields this instance never filled in: adopt, do not overwrite local knowledge
+  for (const k of ['subject', 'title', 'materials', 'reason', 'committeeReport', 'recess', 'startedLate', 'waitStartedAt', 'waitDecisionDue', 'previousConfirmed']) {
+    const empty = (v) => v === null || v === undefined || v === false
+    if (empty(local[k]) && !empty(stored[k])) { local[k] = stored[k]; changed.push(k) }
+  }
+  return { merged: true, changed }
+}
+
 export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null, boxFor = null, foreignIds = null, chairActed = null } = {}) {
   if (typeof clock !== 'function') {
     // No key has been consulted at construction time: the list is explicitly EMPTY (never undefined).
@@ -1250,6 +1343,32 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         throw denyIn(m, 'VMU_MEETING_DISCIPLINE_DENIED', 'member is muted until ' + mute.until + ': ' + String(member),
           'vmu.meetings.disciplineMuteMs=' + K.disciplineMuteMs + ' (muted at ' + mute.at + ')', enforced)
       }
+      // ★★ AUDIT HOLE E16: "batch-designated members speak IN ORDER" was only a queue with a read-back — `speak()` never
+      // consulted it, so a queued member could jump ahead and the receipt reported ok. The rule is about ORDER, so the
+      // act that spends a turn is where it has to bite: a member who IS in an open queue and is not at its head gets a
+      // named refusal carrying the order, and a member who is not in the queue speaks as a slip with the queue disclosed
+      // (a floor with nobody waiting is the ordinary case — it must not refuse).
+      const orderEff = orderControls.effective(m)
+      const orderNow = orderEff.queueOpen && Array.isArray(m.queue) ? orderControls.orderFor(m, m.queue) : []
+      const rawPos = orderNow.indexOf(String(member))
+      // ★ LIVE RUN 113 (E16 refinement, measured by `tests/vmu-meeting-invite.test.mjs`): a queue entry who is NOT
+      // PRESENT cannot be "next". The service refuses an absent speaker by itself (`VMU_NOT_MEMBER "attend() first"`),
+      // so reserving the head for them blocks the floor forever — run 113's invited voice sat at #2 behind an absent
+      // r-1 and every speech was refused `VMU_FLOOR_OUT_OF_ORDER`. Order is therefore taken among the PRESENT waiters,
+      // and the absent ones ahead are NAMED in the receipt (`skippedAbsent`) instead of being silently skipped.
+      const aheadOfMe = rawPos > 0 ? orderNow.slice(0, rawPos) : []
+      const skippedAbsent = aheadOfMe.filter((id) => !m.present.has(String(id)))
+      const waiters = orderNow.filter((id) => m.present.has(String(id)))
+      const queuedMe = rawPos === -1 ? -1 : waiters.indexOf(String(member))
+      if (orderEff.queueOpen && waiters.length > 0 && queuedMe > 0) {
+        mark(enforced, 'vmu.meetings.orderMode')
+        throw denyIn(m, 'VMU_FLOOR_OUT_OF_ORDER',
+          'the floor queue is not at your turn: ' + String(member) + ' is #' + (queuedMe + 1) + ' of ' + waiters.length + ' present waiter(s)',
+          'the effective order among PRESENT members is [' + waiters.join(', ') + '] (mode ' + String(orderEff.mode) + ', from ' + String(orderEff.source) + ')'
+          + (skippedAbsent.length ? '; ahead of you and NOT present (so not holding a turn): [' + skippedAbsent.join(', ') + ']' : '')
+          + '; the chair may reorder with vibe_v5_meeting { action: "order", meeting: "' + String(m.id) + '", ... }, otherwise wait until it is your turn',
+          enforced)
+      }
       // speech time
       const wanted = speechMs === null ? K.speechDefaultMs : n(speechMs)
       if (K.speechMaxMs > 0 && wanted > K.speechMaxMs) {
@@ -1333,10 +1452,15 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       const budgetDeclared = soft !== null
       const budgetWhy = budgetDeclared ? null
         : 'no meeting budget was crossed and none is declared (vmu.meetings.budgetTurns/budgetTokens/budgetWallMs are 0, or their thresholds were not reached) — budget:null means "no verdict", not "plenty left"'
-      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, enforced, enforcedScope: ENFORCED_SCOPE }
+      // ★★ AUDIT HOLE E16: the receipt says WHICH queue judged this speech — 「按顺序发言」 is only verifiable if the
+      // order that was in force is printed next to the speech that followed it.
+      const queueRead = orderEff.queueOpen
+        ? { open: true, mode: orderEff.mode, source: orderEff.source, before: orderNow.length, presentWaiters: waiters.length, position: queuedMe === -1 ? null : queuedMe + 1, slipped: queuedMe === -1 && orderNow.length > 0, skippedAbsent, means: 'the effective order is [' + orderNow.join(', ') + '] and the turn is held among the PRESENT waiters [' + waiters.join(', ') + ']: an absent member ahead of you does not hold the floor (they would be refused `attend() first` anyway)' + (skippedAbsent.length ? '; not yet present and therefore passed over: [' + skippedAbsent.join(', ') + ']' : '') + '; a member who is NOT in the queue at all speaks as a slip (position:null, slipped:true), never as a turn' }
+        : { open: false, mode: orderEff.mode, source: orderEff.source, before: 0, position: null, slipped: false, means: 'this floor keeps NO queue (orderMode ' + String(orderEff.mode) + '): nobody can be out of turn' }
+      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       say({ type: 'meetings/spoke', at: now, meeting: m.id, member: String(member), floor, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Interrupt. `interruptAllow` + `interruptQuota` govern the floor. */
@@ -2420,14 +2544,28 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       }
       let adoptedLive = 0
       let droppedLive = 0
+      // ★★★ LIVE RUN 109 (F-109a): a stored live row whose id this instance ALREADY holds used to be skipped outright
+      // ("I have this meeting ⇒ nothing new to learn"), which is exactly backwards for a floor: the other kernel's
+      // attendance and speeches live on the SAME row. Merge additively instead (see mergeLiveMeeting above).
+      let mergedLive = 0
+      const mergedFields = []
       for (const [id, m] of (storedLive instanceof Map ? storedLive : new Map())) {
         if (archivedIds.has(String(id))) { droppedLive += 1; continue }
-        if (live.has(String(id))) continue
+        const mine = live.get(String(id))
+        if (mine !== undefined) {
+          const out = mergeLiveMeeting(mine, m)
+          if (out.merged) {
+            mergedLive += 1
+            if (out.changed.length) mergedFields.push(String(id) + ':' + out.changed.join(','))
+          }
+          continue
+        }
         live.set(String(id), m)
         adoptedLive += 1
       }
       return { ok: true, restored: true, restored_items: ['live', 'archive'],
-        adoptedLive, adoptedArchive, droppedLiveWhileArchived: droppedLive, evictedLiveWhileArchived: evictedLive,
+        adoptedLive, adoptedArchive, mergedLive, mergedFields, droppedLiveWhileArchived: droppedLive, evictedLiveWhileArchived: evictedLive,
+        mergedLiveMeans: 'stored live meetings whose id this instance already held, merged additively: the floor (present/queue/turns/transcript) is a SCOREBOARD two kernels each write part of, so a same-id row is not a duplicate to skip',
         droppedLiveMeans: 'stored live meetings whose id this instance ALREADY holds in its archive — a closure is not undone by a reload',
         evictedLiveMeans: 'live meetings THIS instance was holding whose id the incoming archive records closed — the closure learned from the shared ledger ends the local copy (a meeting id is not reusable)',
         liveMeetings: [...live.keys()].sort() }

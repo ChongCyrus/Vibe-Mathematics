@@ -271,13 +271,20 @@ function toolRecordProgress(args = {}, { kernel, agent, callerMember } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'record_progress needs the progress text',
       'pass content:"what you tried, the routes and obstacles, and the next step"')
   }
+  // ★★ AUDIT HOLE C2 ("已尝试路线/方法及其进度"): the rule names the PROGRESS of a tried route as part of what the log
+  // holds, and this branch used to write `args.content` alone — a caller passing `progress:"50%"` with
+  // `track:"routes"` got a receipt that neither kept the figure nor said it had been dropped. A parameter the tool
+  // publishes must be either kept or REFUSED BY NAME; silence is the (乙) class defect. It is now kept as its own
+  // labelled line inside the record body (so it survives into the durable row and every read face) and echoed back.
+  const progressArg = args.progress !== undefined && args.progress !== null && String(args.progress).trim() !== '' ? String(args.progress).trim() : null
+  const bodyText = str(args.content) + (progressArg === null ? '' : '\n- 进度：' + progressArg)
   const written = records.put({
     track,
     // `kind` must be one the institution DECLARES: the records face refuses anything outside `vmu.records.allowedKinds`
     // by name, so a progress log line uses the `progress` kind rather than an invented `note`.
     kind: 'progress',
     title: str(args.title) || 'progress ' + track,
-    body: str(args.content),
+    body: bodyText,
     // A PROGRESS LOG LINE IS FINAL for its own round: the v5r pack declares `vmu.records.requireSettledRecords: true`
     // (packs/v5r/prompts/v5r-core.js), so an archival entry must say it is settled — that is the institution's own
     // stance, read from the declaration rather than overridden here.
@@ -294,6 +301,13 @@ function toolRecordProgress(args = {}, { kernel, agent, callerMember } = {}) {
     ok: true, tool: 'vibe_v5_record_progress', track,
     recordId: written.id, rev: written.rev,
     note: 'appended to the ' + track + ' track; the original wrote one file per track for the same reason',
+    // ★★ AUDIT HOLE C2: the receipt says whether a progress figure came in and what was done with it — a caller who
+    // passed one must be able to read back that it was kept, and a caller who passed none must not be left guessing
+    // whether it was dropped.
+    progress: progressArg,
+    progressMeans: progressArg === null
+      ? 'no `progress` figure was passed with this call, so the record body holds only `content` (this is said here, not left to be inferred from a missing field)'
+      : 'the `progress` figure was kept as its own labelled line ("- 进度：…") inside the record body, so it survives into the durable row and every read face',
     ...(track === 'state' ? {
       panelOwner: panelTarget,
       memberCheck,

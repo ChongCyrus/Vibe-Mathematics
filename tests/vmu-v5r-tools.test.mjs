@@ -1101,16 +1101,18 @@ try {
   const researcherSection = toolSections.filter((s) => s.scope && s.scope.role === 'member')[0]
   const acadSection = toolSections.filter((s) => s.scope && s.scope.role === 'chair')[0]
   ok(!!tempSection && !!researcherSection && !!acadSection, 'precondition: all three role sections are present', { temp: !!tempSection, res: !!researcherSection, acad: !!acadSection })
-  // THE SUBSET IS DERIVED FROM THE SEAT DECLARATION, NOT TYPED OUT. Rule 4 gives every seat its own proposition card, so the
-  // temp section DOES teach `record_proposition` now (run 31 denied it while task-15 requires "temp 能写自己的卡"), but still
-  // not method/subproblem (planning stays with the permanent seats) and not the office relay.
+  // THE SUBSET IS DERIVED FROM THE SEAT DECLARATION, NOT TYPED OUT. A8 (round 33, Lead-ruled) took the card-writing faces
+  // out of the TEMP seat: a card is the object that research and rulings are made of, and a temp worker only performs the
+  // assigned temporary task (its observations travel back through `task_update`). So the temp section teaches NO record_*
+  // card, and the gate refuses them too — prompt and mechanism are one table.
   const declareNames = (PACK.tools || []).map((x) => x.name)
   const taughtIn = (s) => [...new Set(String(s.text).split('\n').map((l) => l.trim()).filter((l) => l.startsWith('·')).flatMap((l) => l.match(/vibe_v5_[a-z0-9_]+/g) || []))].sort()
   ok(J(taughtIn(tempSection)) === J(seatMod.seatAllowNames('temp', declareNames).sort()),
     '★★ the TEMP section\'s bullet set EQUALS the temp seat\'s DECLARED allow set (derived from seat-faces.js: the prompt may not promise what the gate refuses, in either direction)',
     { taught: taughtIn(tempSection).length, declared: seatMod.seatAllowNames('temp', declareNames).length })
-  ok(taughtIn(tempSection).includes('vibe_v5_record_proposition') && !taughtIn(tempSection).includes('vibe_v5_record_method') && !taughtIn(tempSection).includes('vibe_v5_record_subproblem'),
-    'the temp teaches its own card (record_proposition) and NOT the method/subproblem cards', taughtIn(tempSection).filter((n) => n.startsWith('vibe_v5_record_')))
+  ok(!taughtIn(tempSection).some((n) => /^vibe_v5_record_/.test(n)),
+    'A8: the temp teaches NO card — record_proposition included (rule 4 keeps the proposition library with the seats that research and rule; a temp reports in its task, it does not open a card)',
+    taughtIn(tempSection).filter((n) => n.startsWith('vibe_v5_record_')))
   ok(String(tempSection.text).includes('vibe_v5_say') && !String(tempSection.text).includes('vibe_v5_message'),
     'the temp list has `say` and NOT the office-relay tool', String(tempSection.text).length)
   // The NEGATIVE role checks look for a TOOL BULLET (`· vibe_v5_x`), not for the bare name: the sections legitimately
@@ -1128,8 +1130,10 @@ try {
   ok(helpBullets.length === 3 && helpBullets.every(Boolean), '★ `vibe_v5_tool_help` is listed in ALL THREE role sections (self-referential)', helpBullets)
   ok(bulletHas(acadSection.text, 'vibe_v5_assign') && bulletHas(acadSection.text, 'vibe_v5_fire') && bulletHas(acadSection.text, 'vibe_v5_nudge') && bulletHas(acadSection.text, 'vibe_v5_prioritize'),
     'the chair seat gets assign/fire/nudge/prioritize (the coordinating band)', String(acadSection.text).length)
-  ok(!bulletHas(researcherSection.text, 'vibe_v5_fire') && !bulletHas(researcherSection.text, 'vibe_v5_assign') && bulletHas(researcherSection.text, 'vibe_v5_feedback'),
-    'the researcher gets feedback/read_library but NOT fire/assign', String(researcherSection.text).length)
+  ok(bulletHas(researcherSection.text, 'vibe_v5_fire') && bulletHas(researcherSection.text, 'vibe_v5_feedback') && !bulletHas(researcherSection.text, 'vibe_v5_assign'),
+    'A7: the permanent researcher holds `fire` (it hired that temp, so it can end one) plus feedback, and NOT `assign` (assigning work stays with the chair)', String(researcherSection.text).length)
+  ok(!taughtIn(tempSection).some((n) => /^vibe_v5_(record_|lean_)/.test(n) || n === 'vibe_v5_paper'),
+    'A8: the temp holds none of the research-writing faces (cards / the Lean five / paper) — it does the assigned task and reports through it', taughtIn(tempSection).filter((n) => /^vibe_v5_(record_|lean_)/.test(n) || n === 'vibe_v5_paper'))
   ok(!bulletHas(tempSection.text, 'vibe_v5_fire') && !bulletHas(tempSection.text, 'vibe_v5_prioritize') && bulletHas(tempSection.text, 'vibe_v5_read_library'),
     'the temp seat gets read_library but NOT fire/prioritize', String(tempSection.text).length)
   // ROUND 5: the meeting/voting band is distributed by seat — the chair convenes/opens/closes, permanent members
@@ -1140,17 +1144,20 @@ try {
     'the researcher seat gets motion/poll_vote/verdict', String(researcherSection.text).length)
   ok(!bulletHas(tempSection.text, 'vibe_v5_poll_vote') && !bulletHas(tempSection.text, 'vibe_v5_poll_open') && !bulletHas(tempSection.text, 'vibe_v5_meeting'),
     '★ the temp seat\'s list carries NO meeting/voting tool (D8), matching the runtime refusal', String(tempSection.text).length)
-  // ROUND 6 + ROUND 31: lifecycle/configuration stay with the chair seat; the Lean five belong to ALL THREE seats (rule 10.3
-  // gives Lean to every seat — run 31's deny list took it from the temp seat, which is the defect task-15 fixes).
+  // ROUND 6 + ROUND 31 + ROUND 33/A8: lifecycle/configuration stay with the chair seat; the Lean five belong to the two
+  // PERMANENT seats. Round 31 took Lean back from the temp seat by accident (a prompt word count); A8 later took it away
+  // ON PURPOSE, because Lean output is written into the institute's libraries — so "who computes" and "whose library it
+  // lands in" were separated deliberately, and the declaration below is what says so.
   ok(bulletHas(acadSection.text, 'vibe_v5_start') && bulletHas(acadSection.text, 'vibe_v5_configure') && bulletHas(acadSection.text, 'vibe_v5_lean_run'),
     'the chair seat gets the lifecycle/config band AND the Lean five', String(acadSection.text).length)
   ok(bulletHas(researcherSection.text, 'vibe_v5_lean_run') && !bulletHas(researcherSection.text, 'vibe_v5_start') && !bulletHas(researcherSection.text, 'vibe_v5_configure'),
     'the researcher gets the Lean five but NOT the lifecycle/config band', String(researcherSection.text).length)
-  ok(bulletHas(tempSection.text, 'vibe_v5_lean_run') && !bulletHas(tempSection.text, 'vibe_v5_set') && !bulletHas(tempSection.text, 'vibe_v5_configure'),
-    '★★ RULE 10.3: the temp seat DOES get the Lean five (it computes like every other seat) but NOT the configuration band', String(tempSection.text).length)
+  ok(!bulletHas(tempSection.text, 'vibe_v5_lean_run') && !bulletHas(tempSection.text, 'vibe_v5_set') && !bulletHas(tempSection.text, 'vibe_v5_configure'),
+    'A8: the temp seat gets NONE of the Lean five (its output lands in the institute\'s libraries) and no configuration band either', String(tempSection.text).length)
   const leanFive = declareNames.filter((n) => /^vibe_v5_lean_/.test(n))
-  ok(leanFive.length === 5 && seatMod.SEAT_IDS.every((s) => leanFive.every((n) => seatMod.seatDecision(s, n).allowed === true)),
-    '★ 反: all five Lean tools are declared for ALL THREE seats — checked against the declaration, not against a rendering', { leanFive: leanFive.length })
+  ok(leanFive.length === 5 && ['chair', 'member'].every((s) => leanFive.every((n) => seatMod.seatDecision(s, n).allowed === true))
+    && leanFive.every((n) => seatMod.seatDecision('temp', n).allowed === false),
+    'A8: the Lean five are declared for chair + member ONLY (temp excluded) — checked against the declaration, not against a rendering', { leanFive: leanFive.length })
   ok(asTemp.includes('【本角色可用的工具｜临时成员】') && !asTemp.includes('【本角色可用的工具｜研究员】'),
     'the TEMP assembly carries its OWN marker and not another role\'s', asTemp.length)
   ok(!asResearcher.includes('【本角色可用的工具｜临时成员】') && !asAcademician.includes('【本角色可用的工具｜研究员】'),

@@ -21,6 +21,12 @@
  *      BIDIRECTIONALLY in `tests/vmu-run31-seat-faces.test.mjs`: a name a seat may call but the prompt never teaches is
  *      a drift, and a taught name the seat may not call is the same drift in the other direction.
  *
+ * ★ A7/A8 (two audit gaps fixed, still one row each): (A7) the member may now call `vibe_v5_fire` — the rule hires temp
+ * workers from BOTH the academician and the permanent researcher, and a seat that can hire but cannot dismiss makes hiring
+ * irreversible; (A8) the temp seat no longer writes the institute's research-conclusion libraries (`record_proposition` /
+ * `record_progress` / the five `lean_*` / `paper`) — a temp worker only does the assigned temporary task and reports on its
+ * task receipt, while its READ faces (`read_library` / `inbox` / `task_get`) stay untouched.
+ *
  * WHY THE TABLE IS EXPLICIT AND NOT DERIVED FROM THE TOOL BODIES: a reader must be able to answer "may a member call
  * this, and why not?" by reading ONE line. The handler-level guards (`requireChairSeat`, `requireVoter`) are NOT a
  * substitute: they check the `member` ARGUMENT inside the call (which the model supplies), while the face gate checks the
@@ -55,7 +61,7 @@ export const SEAT_GOVERNED_SLOTS = Object.freeze(['member', 'temp'])
 export const SEAT_VOCAB = Object.freeze({
   chair: '院士席位（主席席）：召集与推进会议、汇总裁决、采纳蓝图、升 Verified、保真收口',
   member: '常驻研究员席位：主张、记录、通信、辩论与表决、形式化、论文',
-  temp: '临时成员席位：被指派做工，可发言/记录/跑 Lean/写论文，无表决权、不召集会议、不招人',
+  temp: '临时成员席位：被指派做工，可发言、就地更新任务、读别人的成果库与收信；无表决权、不召集会议、不招人，也不往所里的研究结论库写卡（命题／进展／Lean／论文）',
 })
 
 /**
@@ -93,13 +99,16 @@ export const SEAT_TOOL_FACES = Object.freeze({
   // ── 自己的成果库（每条都以调用者自己的名册 id 落到 owner）────────────────────────────────────────────
   vibe_v5_record_progress: Object.freeze({
     rule: '4',
-    why: '规则 4 私有成果库：三席都以自己的 id 写自己的进展轨；临时工职责最窄，但「记录本轮进展」仍是它的合法产出',
-    allow: Object.freeze({ chair: true, member: true, temp: true }),
+    why: '规则 4 私有成果库：院士与常驻研究员各自写自己的进展轨（「院士、常驻研究员各自的文件」）；'
+      + 'A8——临时工只做被指派的临时任务，不往所里的库写研究结论，它的本轮结果用 task_update 落在分给它的那张任务上，故 temp 不给',
+    allow: Object.freeze({ chair: true, member: true, temp: false }),
   }),
   vibe_v5_record_proposition: Object.freeze({
     rule: '4, 10.3',
-    why: '规则 4 ＋ 10.3：命题卡是 Lean 与裁决的对象，「谁主张了什么、p 是多少」必须能被记录；临时工也要能主张自己的命题（否则它跑 Lean 的结论无处安放）。方法卡与子问题卡仍不给临时工',
-    allow: Object.freeze({ chair: true, member: true, temp: true }),
+    why: '规则 4 ＋ 10.3：命题卡是研究与裁决的对象，「谁主张了什么、p 是多少」要留在院士与常驻研究员各自的库里；'
+      + 'A8——临时工只做被指派的临时任务，不往所里的库写研究结论（它在任务里得到的观察走 task_update 汇报，不自己立卡），'
+      + '故 temp 不给；方法卡与子问题卡同样不给临时工',
+    allow: Object.freeze({ chair: true, member: true, temp: false }),
   }),
   vibe_v5_record_method: Object.freeze({
     rule: '4',
@@ -164,8 +173,10 @@ export const SEAT_TOOL_FACES = Object.freeze({
   }),
   vibe_v5_fire: Object.freeze({
     rule: '1',
-    why: '规则 1：辞退是院士席的人事职责（回执负责把未完成任务转 cancelled 并说明），常驻研究员只申请、不辞退',
-    allow: Object.freeze({ chair: true, member: false, temp: false }),
+    why: '规则 1 的用人分层（A7）：院士与常驻研究员都能解雇临时工（临时工只由这两类席位雇佣）——'
+      + '院士统筹全所用人，常驻研究员解雇自己雇的那名临时工（雇了却辞不掉，等于把「雇」变成不可撤销）。'
+      + '工具体只要求调用者是常设席（临时工不能辞退任何人）；回执负责把未完成任务转 cancelled 并说明',
+    allow: Object.freeze({ chair: true, member: true, temp: false }),
   }),
   // ── 脚本轨 ────────────────────────────────────────────────────────────────────────────────────────────
   vibe_v5_script: Object.freeze({
@@ -283,7 +294,7 @@ export const SEAT_TOOL_FACES = Object.freeze({
     why: '规则 2：升 Verified/ 是机构的信任动作。规则把「Lean 通过后由辩论核描述是否符合原意、符合即概率=1 并允许入 verified」'
       + '整条工序交给辩论与院士 ⇒ 收口权在主席席。verified 轨只有一个写入口（verified.js:426 的 promoteVerified，'
       + '由 verification-gates.singleWriter 只放行 writer:"promoteVerified"），机制没破；但「谁说了算」不能滑到自查自升：'
-      + 'member/temp 的正当入口是 record_proposition 写卡 + 辩论裁决，verified_promote 是收口动作，故 member/temp 皆 deny。'
+      + 'member 的正当入口是 record_proposition 写卡 + 辩论裁决（temp 按 A8 连卡都不写，只交任务回执），verified_promote 是收口动作，故 member/temp 皆 deny。'
       + '[Lead ruling, round 31: chair allow, member deny, temp deny]',
     allow: Object.freeze({ chair: true, member: false, temp: false }),
   }),
@@ -339,35 +350,41 @@ export const SEAT_TOOL_FACES = Object.freeze({
   // ── 形式化（Lean）─────────────────────────────────────────────────────────────────────────────────────
   vibe_v5_lean_run: Object.freeze({
     rule: '10.3',
-    why: '规则 10.3 明写 Lean 五工具三席可用；run31 实测临时工被全部 deny —— 这是提示词漏写造成的面，不是规则的意思',
-    allow: Object.freeze({ chair: true, member: true, temp: true }),
+    why: 'A8：Lean 面是形式化产出落到所里 Lean 库的写入口（编译产物、归档、库登记），不是临时工的临时任务面——'
+      + '临时工只做被指派的临时任务，不往所里的库写研究结论，故 temp 不给；院士与常驻研究员仍全开。'
+      + '（规则 10.3 的三席可用是「形式化可以跨席分工」，本条只回答 temp 能否自己往 Lean 库落东西）',
+    allow: Object.freeze({ chair: true, member: true, temp: false }),
   }),
   vibe_v5_lean_job: Object.freeze({
     rule: '10.3',
-    why: '规则 10.3：查作业状态，跑过 Lean 的席位都要能查',
-    allow: Object.freeze({ chair: true, member: true, temp: true }),
+    why: '规则 10.3：查作业状态，跑形式化的席位都要能查——A8 起跑形式化的只有院士与常驻研究员；'
+      + '临时工只做被指派的临时任务，不往所里的库写研究结论，它没有形式化作业要查，故 temp 不给',
+    allow: Object.freeze({ chair: true, member: true, temp: false }),
   }),
   vibe_v5_lean_lib: Object.freeze({
     rule: '10.3',
-    why: '规则 10.3：看本所 Lean 库，是形式化的公共读数面',
-    allow: Object.freeze({ chair: true, member: true, temp: true }),
+    why: '规则 10.3：看本所 Lean 库是形式化的公共读数面，A8 起随 Lean 面只给院士与常驻研究员；'
+      + '临时工只做被指派的临时任务，不往所里的库写研究结论，它的读面是 read_library／inbox／task_get，不需要 Lean 库这一面',
+    allow: Object.freeze({ chair: true, member: true, temp: false }),
   }),
   vibe_v5_lean_read: Object.freeze({
     rule: '10.3',
-    why: '规则 10.3：读既有 .lean 文件，是三席共同的读面',
-    allow: Object.freeze({ chair: true, member: true, temp: true }),
+    why: '规则 10.3：读既有 .lean 文件——A8 起随 Lean 面一起只给院士与常驻研究员；'
+      + '临时工只做被指派的临时任务，不往所里的库写研究结论（三席共同的读面是 read_library，不是 Lean 源码库）',
+    allow: Object.freeze({ chair: true, member: true, temp: false }),
   }),
   vibe_v5_lean_archive: Object.freeze({
     rule: '10.3',
-    why: '规则 10.3：归档（def/lemma/proof/blocked）是形式化产出的落地动作，做形式化的席位都要能归档',
-    allow: Object.freeze({ chair: true, member: true, temp: true }),
+    why: '规则 10.3：归档（def/lemma/proof/blocked）是形式化产出落到所里 Lean 库的落地动作；'
+      + 'A8——临时工只做被指派的临时任务，不往所里的库写研究结论，故 temp 不给',
+    allow: Object.freeze({ chair: true, member: true, temp: false }),
   }),
   // ── 论文 ──────────────────────────────────────────────────────────────────────────────────────────────
   vibe_v5_paper: Object.freeze({
     rule: '9',
-    why: '规则 9：论文流程由工具推进，而阶段合法性与席位权限由内核判（final 只接受 chair 席，其余阶段面向所有作者）'
-      + '⇒ 声明把这一面给三席，逐阶段的差别留给内核',
-    allow: Object.freeze({ chair: true, member: true, temp: true }),
+    why: '规则 9：论文流程由工具推进，而阶段合法性与席位权限由内核判（final 只接受 chair 席，其余阶段面向作者）'
+      + '；A8——论文是研究结论的对外产出，临时工只做被指派的临时任务，不往所里的库写研究结论，故 temp 不给，作者面只给院士与常驻研究员',
+    allow: Object.freeze({ chair: true, member: true, temp: false }),
   }),
 })
 
@@ -433,6 +450,7 @@ export const SEAT_TEACHING = Object.freeze({
     { names: ['vibe_v5_task_create', 'vibe_v5_task_list', 'vibe_v5_task_update'], text: '建任务、看任务板、按修订号更新任务。' },
     { names: ['vibe_v5_task_get'], text: '按 id 读一张任务卡（状态、接受标准、指派人、修订号）——看板只给列表。' },
     { names: ['vibe_v5_hire'], text: '你作为常驻研究员可以给自己招一名临时成员（需要 purpose 与 initial_task）。' },
+    { names: ['vibe_v5_fire'], text: '辞退临时工（A7）：临时工只由院士与常驻研究员雇佣，所以这两类席位都能解雇——你解雇自己雇的那名；成员面 end ＋ 其未完成任务转 cancelled，回执会说明（档案留在所史里，代号永不复用）。' },
     { names: ['vibe_v5_feedback'], text: '工作经验／流程反馈库：op=add/update/list（不是研究结论）。' },
     { names: ['vibe_v5_read_library'], text: '读任何人的成果库（只读）。' },
     { names: ['vibe_v5_tool_help'], text: '回答"我现在能用什么"：清单取自内核自己的声明（packTools）。' },
@@ -449,19 +467,15 @@ export const SEAT_TEACHING = Object.freeze({
     { names: ['vibe_v5_paper'], text: '论文流程（start→part→advance→review→render）：用工具推进论文阶段，不要用回执字段假装已写；action=start（开题，需 target 与 participants）／part（写你那一份）／review（互审，deliverable 必填）／advance（推进阶段）／final（定稿，只有 chair 席会被内核接受）／render（产出 md／tex／meta 并如实报 missing）／status／compile／sections；阶段合法性与席位权限由内核判。' },
   ]),
   temp: Object.freeze([
-    { names: ['vibe_v5_record_progress'], text: '把你这一轮的进展写进研究日志（临时席位记录自己的进展与命题；方法卡与子问题卡不是它的职责）。★ 传 member:"<你的 id>"——不传的话作者是 unknown。' },
-    { names: ['vibe_v5_record_proposition'], text: '写命题卡（statement、value、motive、p 必填；草稿可先写，不会被当成已验证）——你主张了什么、p 是多少，要留在册上。' },
     { names: ['vibe_vmu_human'], framework: true, text: '人工在环的**读**（规则 11·反脆弱）：action="approvalState" 查审批状态（带 requestId）；若所办在 `vmu.human.gatedActions` 里声明了闸门，被闸动作在获批前不执行（具名 `VMU_HUMAN_APPROVAL_PENDING`），超时默认 hold。你没有表决权、也不批任何事：需要权限就在群聊说明，由所办向用户请示。' },
     { names: ['vibe_v5_say'], text: '在群里发言（省略 to）或私信（to 填成员 id）；发言者必须是你自己的真名册 id。' },
-    { names: ['vibe_v5_task_list', 'vibe_v5_task_update'], text: '看任务板、就地更新分给你的那张任务（认领/完成/重开）。' },
+    { names: ['vibe_v5_task_list', 'vibe_v5_task_update'], text: '看任务板、就地更新分给你的那张任务（认领/完成/重开）——你的本轮结果就落在这张任务的回执上，不另立研究卡。' },
     { names: ['vibe_v5_task_get'], text: '按 id 读一张任务卡（状态、接受标准、指派人、修订号）——先看清接受标准再动手。' },
     { names: ['vibe_v5_read_library'], text: '读任何人的成果库（只读）。' },
     { names: ['vibe_v5_tool_help'], text: '回答"我现在能用什么"：清单取自内核自己的声明（packTools）。' },
-    { names: ['vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive'], text: '用内核 Lean 面编译既有 .lean 文件／查作业／看库／读归档／归档（本包不自己起子进程；无宿主 spawn 接缝时具名拒）。' },
     { names: ['vibe_v5_inbox'], text: '信箱（列表 / 打开 / 标记）：看列表不读正文；打开一封会自动标已读；需要跟进标待办。' },
     { names: ['vibe_v5_wait'], text: '等别人回你（等到或超时即返回）；不要用反复轮询。' },
     { names: ['vibe_vmu_env'], framework: true, text: "探测本机的外部环境（action:'probe' 传 need，如 python／lean／xelatex；action:'list' 看全部需求；action:'report' 把缺失记成一条 finding 供主代理读）。它只探测与上报，【绝不安装、绝不联网、绝不改系统】。" },
-    { names: ['vibe_v5_paper'], text: '论文流程（start→part→advance→review→render）：用工具推进论文阶段，不要用回执字段假装已写；action=start（开题，需 target 与 participants）／part（写你那一份）／review（互审，deliverable 必填）／advance（推进阶段）／final（定稿，只有 chair 席会被内核接受）／render（产出 md／tex／meta 并如实报 missing）／status／compile／sections；阶段合法性与席位权限由内核判。' },
   ]),
 })
 

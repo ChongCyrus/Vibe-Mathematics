@@ -98,7 +98,8 @@ ok(before.parsed && before.parsed.pathSource === 'setting:' + BLUEPRINT.BLUEPRIN
 ok(before.parsed && before.parsed.readSurface && before.parsed.readSurface.includes('track'),
   'the read-out NAMES the surface that lists the rows (read_library + track)', before.parsed && before.parsed.readSurface)
 
-const draft1 = await call({ action: 'propose', member: 'r-1', text: '第一版蓝图：\n1. 每轮先报进度。\n2. 命题必须可证伪。' })
+const DRAFT1_TEXT = '第一版蓝图：\n1. 每轮先报进度。\n2. 命题必须可证伪。'
+const draft1 = await call({ action: 'propose', member: 'r-1', text: DRAFT1_TEXT })
 ok(draft1.ok && draft1.parsed.ok === true, '★ 正：ANY live member may propose (a draft is not in force)', draft1.parsed || draft1.text)
 ok(draft1.parsed && draft1.parsed.revision === 1 && draft1.parsed.status === 'draft', 'the proposal is revision 1 and status draft', draft1.parsed && { revision: draft1.parsed.revision, status: draft1.parsed.status })
 ok(draft1.parsed && draft1.parsed.inForce === null,
@@ -128,12 +129,65 @@ const afterRefusal = await call({ action: 'state' })
 ok(afterRefusal.parsed && afterRefusal.parsed.hasCurrent === false && afterRefusal.parsed.draftsWaiting === 1,
   '★ a refused adoption changes nothing: still no current, still one waiting draft', afterRefusal.parsed && { hasCurrent: afterRefusal.parsed.hasCurrent, drafts: afterRefusal.parsed.draftsWaiting })
 
-console.log('=== 3. THE CHAIR ADOPTS; THE ROW BECOMES THE VERSION IN FORCE ===')
+console.log('=== 3. THE CO-DESIGN GATE (B5): THE CHAIR ALONE CANNOT ADOPT, AND THE REFUSAL IS NAMED ===')
+// B5 共同设计: `adopt` requires BOTH seats to have written into the draft (院士席 + 常驻研究员席). draft1 has ONE author
+// (r-1, a member seat), so the missing side is the 院士席 — and the refusal must NAME it and hand back copy-pasteable
+// next calls. This pin replaces the old "the chair adopts a single-author draft" expectation.
+const codesignRefusal = await call({ action: 'adopt', member: 'acad', draft: draft1.parsed.id })
+ok(codesignRefusal.ok === false && codesignRefusal.code === BLUEPRINT.BLUEPRINT_NEEDS_CODESIGN,
+  '★ 反：the chair seat alone may not adopt a single-author draft (co-design is a precondition, not a courtesy)',
+  codesignRefusal.code || codesignRefusal.text)
+const codesignMessage = String((codesignRefusal.parsed && codesignRefusal.parsed.message) || '')
+const codesignHint = String((codesignRefusal.parsed && codesignRefusal.parsed.hint) || '')
+ok(/还缺[^。]*院士席/.test(codesignMessage) && /chair/.test(codesignMessage),
+  '★ the refusal NAMES the seat that is missing（院士席/chair）— a refusal a member cannot act on is a wall', codesignMessage)
+ok(codesignMessage.includes(String(draft1.parsed.id)) && (codesignMessage + codesignHint).includes(PATH),
+  'the refusal names the draft it inspected, and the path is in the actionable half (caller never has to guess)', { draft: draft1.parsed.id, path: PATH })
+ok(/action: "propose"/.test(codesignHint) && /action: "adopt"/.test(codesignHint) && codesignHint.includes(String(draft1.parsed.id)) && codesignHint.includes(PATH),
+  '★ the hint carries COPY-PASTEABLE next calls (propose for the missing seat, then adopt this draft at this path)', codesignHint)
+ok(/院士|chair/.test(codesignHint) && /研究员|member/.test(codesignHint),
+  'the hint asks for the two SEATS by role (not just "find another member")', codesignHint)
+const afterCodesign = await call({ action: 'state' })
+ok(afterCodesign.parsed && afterCodesign.parsed.hasCurrent === false && afterCodesign.parsed.draftsWaiting === 1,
+  '★ the refused adoption wrote nothing: still no current and still exactly one waiting draft',
+  afterCodesign.parsed && { hasCurrent: afterCodesign.parsed.hasCurrent, drafts: afterCodesign.parsed.draftsWaiting })
+
+console.log('=== 3b. THE OTHER SEAT CONTINUES THE SAME DRAFT (ONE DOCUMENT, NOT TWO) ===')
+const CHAIR_NOTE = '院士席的设计补充：除每轮报进度外，还要公布本轮判定阈值，便于复核。'
+const continued1 = await call({ action: 'propose', member: 'acad', text: CHAIR_NOTE })
+ok(continued1.ok && continued1.parsed && continued1.parsed.continued === true && continued1.parsed.id === draft1.parsed.id,
+  '★ 正：the 院士 propose CONTINUES the open draft (same id) instead of opening a competing r1',
+  continued1.parsed && { id: continued1.parsed.id, continued: continued1.parsed.continued, revision: continued1.parsed.revision })
+const continuedRow = draft1.parsed.id ? kernel.records.get({ id: draft1.parsed.id }) : null
+const continuedDraft = continuedRow ? BLUEPRINT.parseBlueprint(continuedRow) : null
+ok(continuedDraft && continuedDraft.fields.status === 'draft' && String(continuedDraft.fields.revision) === '1' && continuedDraft.text.includes(CHAIR_NOTE),
+  'the continuation is still ONE draft at revision 1, and the 院士\'s words are IN it',
+  continuedDraft && { status: continuedDraft.fields.status, revision: continuedDraft.fields.revision, hasNote: continuedDraft.text.includes(CHAIR_NOTE) })
+ok(continuedDraft && continuedDraft.text.startsWith(DRAFT1_TEXT),
+  '★ the FIRST author\'s text is still the head of the document verbatim (continuing appends, it never rewrites)',
+  continuedDraft && continuedDraft.text.slice(0, 30))
+
+console.log('=== 3c. THE CHAIR ADOPTS; THE ROW BECOMES THE VERSION IN FORCE, CARRYING BOTH AUTHORS\' TEXT ===')
 const adopted1 = await call({ action: 'adopt', member: 'acad', draft: draft1.parsed.id })
 ok(adopted1.ok && adopted1.parsed.ok === true && adopted1.parsed.status === 'current',
-  '★ 正：the chair seat adopts the draft', adopted1.parsed || adopted1.text)
+  '★ 正：after the co-design round the chair seat adopts the draft', adopted1.parsed || adopted1.text)
 ok(adopted1.parsed && adopted1.parsed.revision === 1 && adopted1.parsed.adoptedBy === 'acad',
   'the adopted row carries WHO adopted it (a signature, not a side effect)', adopted1.parsed && { by: adopted1.parsed.adoptedBy, revision: adopted1.parsed.revision })
+const EXPECTED_TEXT1 = DRAFT1_TEXT + '\n\n' + BLUEPRINT.BLUEPRINT_CODESIGN_SECTION + 'acad\n' + CHAIR_NOTE
+const currentRow1 = adopted1.parsed && adopted1.parsed.id ? kernel.records.get({ id: adopted1.parsed.id }) : null
+const parsedCurrent1 = currentRow1 ? BLUEPRINT.parseBlueprint(currentRow1) : null
+ok(parsedCurrent1 && parsedCurrent1.text === EXPECTED_TEXT1,
+  '★★ the adopted text IS both authors\' text verbatim: the proposer\'s base + the 共同设计补充 section, nothing rewritten',
+  parsedCurrent1 && { got: parsedCurrent1.text, want: EXPECTED_TEXT1 })
+ok(parsedCurrent1 && parsedCurrent1.text.includes(DRAFT1_TEXT) && parsedCurrent1.text.includes(BLUEPRINT.BLUEPRINT_CODESIGN_SECTION + 'acad') && parsedCurrent1.text.includes(CHAIR_NOTE),
+  '★ both halves are present and named: the first author\'s body and the `## 共同设计补充｜acad` section',
+  parsedCurrent1 && parsedCurrent1.text.slice(-60))
+const authorsOnRow1 = String((parsedCurrent1 && parsedCurrent1.fields && parsedCurrent1.fields.authors) || '')
+ok(authorsOnRow1.includes('acad') && authorsOnRow1.includes('r-1'),
+  'the adopted row records BOTH authors in its header (`authors`), so the co-design is a fact on disk', authorsOnRow1)
+ok(adopted1.parsed && Array.isArray(adopted1.parsed.authors) && new Set(adopted1.parsed.authors.map((a) => String(a.member))).size === 2 && adopted1.parsed.authors.some((a) => String(a.member) === 'acad') && adopted1.parsed.authors.some((a) => String(a.member) === 'r-1'),
+  '★ the adopt receipt lists both seats it counted as co-designers (the gate is answered in the receipt, not implied)',
+  adopted1.parsed && adopted1.parsed.authors)
 const state1 = await call({ action: 'state' })
 ok(state1.parsed && state1.parsed.hasCurrent === true && state1.parsed.current.revision === 1,
   '★ the read-out now names the revision in force', state1.parsed && state1.parsed.current)
@@ -141,11 +195,23 @@ ok(state1.parsed && Number.isFinite(state1.parsed.updatedAt) && state1.parsed.st
   '★ the read-out carries updatedAt + staleAfterMs and is not stale right after adoption (a signal, with its threshold visible)', state1.parsed && { updatedAt: state1.parsed.updatedAt, staleAfterMs: state1.parsed.staleAfterMs })
 
 console.log('=== 4. A SECOND REVISION: "IN FORCE" IS DERIVED, NOT A STORED POINTER ===')
-const draft2 = await call({ action: 'propose', member: 'r-2', text: '第二版蓝图：\n1. 每轮先报进度。\n2. 命题必须可证伪。\n3. 结论必须可复现。' })
+const DRAFT2_TEXT = '第二版蓝图：\n1. 每轮先报进度。\n2. 命题必须可证伪。\n3. 结论必须可复现。'
+const draft2 = await call({ action: 'propose', member: 'r-2', text: DRAFT2_TEXT })
 ok(draft2.ok && draft2.parsed.revision === 2, 'a second proposal is revision 2 (the revision counts the ADOPTED history)', draft2.parsed && draft2.parsed.revision)
+// B5 applies to EVERY round: r2 was written by r-2 alone, so the chair writes its own section before adopting.
+const CHAIR_NOTE2 = '院士席的设计补充：自第二版起，每条结论都附复现命令与运行时长。'
+const continued2 = await call({ action: 'propose', member: 'acad', text: CHAIR_NOTE2 })
+ok(continued2.ok && continued2.parsed && continued2.parsed.continued === true && continued2.parsed.id === draft2.parsed.id,
+  'the co-design round repeats on r2 (the gate is not a one-off on the first revision)',
+  continued2.parsed && { id: continued2.parsed.id, continued: continued2.parsed.continued })
 const adopted2 = await call({ action: 'adopt', member: 'acad', draft: draft2.parsed.id })
 ok(adopted2.ok && adopted2.parsed.revision === 2 && adopted2.parsed.previousRevision === 1,
   '★ adopting r2 names the revision it replaces', adopted2.parsed && { revision: adopted2.parsed.revision, previous: adopted2.parsed.previousRevision })
+const currentRow2 = adopted2.parsed && adopted2.parsed.id ? kernel.records.get({ id: adopted2.parsed.id }) : null
+const parsedCurrent2 = currentRow2 ? BLUEPRINT.parseBlueprint(currentRow2) : null
+ok(parsedCurrent2 && parsedCurrent2.text === DRAFT2_TEXT + '\n\n' + BLUEPRINT.BLUEPRINT_CODESIGN_SECTION + 'acad\n' + CHAIR_NOTE2,
+  'r2\'s adopted text is the same verbatim concatenation (the co-design rule holds for every revision)',
+  parsedCurrent2 && parsedCurrent2.text)
 ok(adopted2.parsed && adopted2.parsed.superseded && adopted2.parsed.superseded.rev >= 2,
   '★ the replaced row is superseded through the records face (its own history keeps the reason)', adopted2.parsed && adopted2.parsed.superseded)
 const state2 = await call({ action: 'state' })

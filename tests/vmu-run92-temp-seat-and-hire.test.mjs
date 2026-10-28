@@ -93,11 +93,15 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r92-'))
     'the message names the face and the seat the attributed member holds', tempMethod.parsed && tempMethod.parsed.message)
   ok(tempMethod.parsed && /rule 4/.test(String(tempMethod.parsed.hint)) && /omit member/.test(String(tempMethod.parsed.hint)),
     'the hint cites the declaration and offers the office-attributed path', tempMethod.parsed && tempMethod.parsed.hint)
-  // the same seat IS allowed a proposition card (allow.temp === true there) — the rail is per-face
+  // A8 (round 33, Lead-ruled): a temp worker writes no research-conclusion card at all (its observations travel back
+  // through the task it was hired for), so the proposition card is refused too — and the refusal is still PER-FACE (the
+  // face, not the seat, is what the rail checks), as the resident writing a methods card below shows.
   const tempProp = await call(b, 'vibe_v5_record_proposition',
     { statement: 'temp claims a proposition', value: 1, motive: 'probe', p: 0.6, member: 'r-t1' }, ctx)
-  ok(tempProp.parsed && tempProp.parsed.ok === true,
-    'a proposition card from the same temp seat is still accepted (per-face, not per-seat)', tempProp.parsed || tempProp)
+  ok(tempProp.parsed && tempProp.parsed.ok === false && tempProp.parsed.code === 'VMU_NOT_PERMITTED',
+    'A8: a proposition card from the temp seat is REFUSED as VMU_NOT_PERMITTED (cards belong to the seats that research and rule)', tempProp.parsed || tempProp)
+  ok(tempProp.parsed && /record_proposition/.test(String(tempProp.parsed.message)) && /slot "temp"/.test(String(tempProp.parsed.message)),
+    'A8: the refusal still names the face and the seat the attributed member holds (same rail, not a blanket temp ban)', tempProp.parsed && tempProp.parsed.message)
   const memberMethod = await call(b, 'vibe_v5_record_method',
     { content: 'resident writes a methods card', value: 1, motive: 'probe', p: 0.5, member: 'r-1' }, ctx)
   ok(memberMethod.parsed && memberMethod.parsed.ok === true,

@@ -8946,3 +8946,44 @@ UNKNOWN_FIELD=4 FIELD_NOT_APPLICABLE=6 BAD_JSON=6`。判定四步里只走到第
 ### §206.7 无实质残余：否
 
 两处真缺陷已修（F-108a/F-108b + 时序根因 F-108c），但 F-108a/F-108b 的修复**尚未真机复验**（下一轮 r108 的判据已写好在 `D:/_tmp/slv-phase5/task-r108.txt` 的思路里）；台账仍有 C3/C4/E36 三行 PARTIAL——C3/C4 本轮真机通过（证据见 §206.2 第 1/2 行），但 live 回执要到本轮 §206 落库后才可钉；E36 的辩论骨架通过了，而「辩论不能把群聊轮次当自己的轮次」这条今天才修，所以 E36 仍记 PARTIAL 直到 r108 读到 `roundSurface`。
+
+## §207 机制补齐：独立审计第二轮的 7 个 HOLE（A7/A8/B3/B4/B5/C2/C8/C10/D1/E16/E29/G6/G7）
+
+### §207.1 这一轮不是真机，而是「把审计指出的洞补成机制」
+
+§205/§206 之后的第二轮只读审计（`D:/_tmp/reaudit2/lane-a.md`、`lane-cf.md`、`lane-de.md`、`lane-e.md`）一共报出 **13 个 HOLE**：A7、A8、B3、B4、B5、C2、C4、C8、C10、D1、E16、E29、G6、G7。它们此前在台账里都是 **DONE**，因为旧判据只验「机制引用活着」——这正是审计判据缺失的那一半。本轮按各 lane 的最小取证逐条补机制或补教学，并把台账**如实降级**（见 §207.6）。
+
+### §207.2 补进机制的六处
+
+1. **A7/A8（席位权限）**：`vibe-math-vmu/packs/v5r/seat-faces.js` —— `vibe_v5_fire.allow.member` 改为 true（规则说院士**或常驻**可解雇）；temp 的 8 个写面（`record_proposition`、`record_progress`、`lean_run`、`lean_job`、`lean_lib`、`lean_read`、`lean_archive`、`paper`）`allow.temp` 改为 false（A8：临时的产出走指派者归档）。8+1 条旧钉由 lane 改为 A8 口径（`vmu-run31-seat-faces` 86/0、`vmu-v5r-tools` 360/0、`vmu-run92` 12/0、A7/A8 套件 58/0）。A7 理由文字里「只解雇自己的临时工」这一半尚未被机制约束（`toolFire` 不校验目标槽位/归属），已单独立项，不在本轮。
+2. **B3（p=1 的路名）**：`verification-gates.js` 新增 `P1_ROUTES`（debate / literature / lean-conformance / verified-row）与唯一放行口 `routed()`；回执带 `p1Route`/`p1RouteMeans`，归不到路名时具名拒 `VMU_PACK_V5R_P1_NEEDS_DEBATE` 并随回执给 `p1Routes`。`vmu-b3-c8-c10` 42/0（四条路各一次真调用，p1Route 互不相同）。
+3. **C8（命题卡指回 Verified 行）**：`tools.js#verifiedRefOf` 复用 `verified.js#findVerified`（按 `- cardId：` 比对，不写第二份解析器），单卡读与列表读都带 `verifiedRef:{id,title,at}|null` + `verifiedRefMeans`。
+4. **C10（归档登记编译结果）**：`kernel/lean.js#compileResultFor` 只用本内核已存在的作业表（文件归一同路径 + 哈希比对，绝不重跑），归档条目与 `lean_read`/`lean_lib` 读回带 `outcome`/`exitCode`/`diagnosticsTail`/`jobId`/`compileAt`/`outcomeMeans`；无作业 → `outcome:"not-measured"` 并说明原因。
+5. **C2（工具参数被吞）**：`kit/handlers.js` 非 state 轨把 `progress` 保留为正文里的 `- 进度：…` 一行，回执回显 `progress`/`progressMeans`——「工具声明的参数要么被保留、要么被具名拒」，沉默是缺陷。
+6. **E16（按顺序发言）**：`kernel/meetings.js#speak()` 此前从不读 `m.queue`，排定顺序后任何人可抢麦且回执 `ok:true`。现在：队列开着且说话者**在队列里但不是队头** ⇒ 具名拒 `VMU_FLOOR_OUT_OF_ORDER`（message 给位次、hint 印出整条 order 与 chair 改序的调用）；**不在队列里**的成员照常发言但回执 `queueRead.slipped:true`；队头发言回执带 `queueRead.position`。新套件 `tests/vmu-run112-floor-order.test.mjs` 16/0（含「被拒的一枪不落回执、不花轮次」）。
+
+其余三处（B4 及时更新 / B5 共同设计 / D1 各自推进）由 lane 落地：`blueprint.js` 新增 `blueprintFreshness`（纯读，返回年龄/阈值/逾期）与 `blueprintCodesignStatus`（两席齐备才可 adopt，缺一具名拒 `VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN`）、续写同一草稿（`## 共同设计补充｜<member>`）；`kernel/turn/index.js#statusBoardReadings` 给 ①②③ 加「属于你（<member>）…」的份额前缀、给 ① 加 `scopeNote`，④ 仍是自己的面板。
+
+### §207.3 补进教学的四处（每一句都要付预算）
+
+1. **G7 自相矛盾**：`v5r-blocks-a.js` 原文「这个 1 **只能由辩论裁决授予**」与下一句「参考文献中的命题直接进 Verified（不经辩论）」互相打脸 ⇒ 改为「这个 1 必须有**具名凭据**」，由后文的三种凭据去定义。B3 的 hint 同步改成「规则原文允许的三条路 + 第四种不是新来源」。
+2. **E29 语义**：原文「框架不设默认轮数，也不在轮数用尽时拒绝对话」与机制相反（默认 3，到限具名拒 `VMU_RESOURCE_BUDGET`）。改为「院士用 `vmu.meetings.verdictMaxRounds` 定这场会议最多被提几次动议（每次辩论一条动议，该键每次重读）；默认 3；到限后新增动议被具名拒」——把「轮数」说成它真实计数的东西（动议），不再暗示「发言会被掐断」。
+3. **G6 反向教学**：原文「fenced JSON… 不替你执行动作」与 `FIELD_OWNERS` 的真实派发相反 ⇒ 改为「只写框架字段表列明的少数派生字段（`executed` 点名真派发了什么），不带会议 id、不能代替工具」。
+4. **D1 / B4 / B5 教学**：状态板三行说明「①②③ 是所级总量，你的份额看行首『属于你（<member>）…』」；蓝图教学补「共同设计（两席署名才可采纳、另一席续写同一份）」与「按时更新（`state` 的 `freshness` 给年龄与逾期，逾期采纳回执带 `overdueUpdate`）」。
+
+**预算这一课（真实代价）**：`vmu-turn` 的 T99 要求成员收到的提示词 < 20000 字符，本轮每加一句就得在别处删等量字——最后落到 **19993**（起点 20207）。为此删掉的是重复叙述（状态板行说明、蓝图 state 里与 freshness 重复的「30 天 stale」句、`extendlimit` 段里重复的 primitive 说明）。**教学不是免费的**：预算是一份，加一句就必须指出谁让位。
+
+### §207.4 门禁读数
+
+- `node scripts/check-rules-coverage.mjs` → `DONE 70 · PARTIAL 16 · MISSING 0`；`--check` 报 16 行未结（每行都有 `next`）。
+- `node scripts/check-rule-parity.mjs` → `PASS`（`v5r-reply-channel.js` 的活教学已由 G6 行认领）。
+- `tests/vmu-turn.test.mjs` **272/0**（T99 回到 <20000）；`vmu-ledger-teaching-pins` 58/0；`vmu-prompt-clean` 8/0；`vmu-prompt-type-coverage` 15/0；`prompt-v5-integrity` ALL GREEN。
+- `vmu-meeting` 50/0、`vmu-meeting-types` 153/0、`vmu-run101-meeting-bound` 28/0、`vmu-run109-live-meeting-merge` 12/0、`vmu-blueprint` 69/0、`vmu-run36-blueprint` 47/0、`vmu-b4-b5-blueprint` 68/0、`vmu-b3-c8-c10` 42/0、`vmu-run111-board-own-share` 22/0、`vmu-run112-floor-order` 16/0。
+
+### §207.5 未验证（下一轮 r113 的判据）
+
+这 16 行降级为 PARTIAL 的原因都是同一种：**机制与教学改了，真机还没读过新回执**。r113 的简报要覆盖其中 9 条可从根会话取证的：A7（成员解雇自己的临时工）、A8（临时工写卡被具名拒）、B3（literature 路 p1Route）、B5（单人 adopt 被拒 → 续写后成功）、C2（obstacles 轨 progress 回显）、C8（verifiedRef）、C10（归档 outcome）、E16（抢麦被拒 + 队头 position）、E29（动议上限具名拒）。其余 6 条（A7b/C4/D1/B4/G6/G7）需要成员侧或跨轮读数，排在 r114。
+
+### §207.6 台账改真：15 行 DONE → PARTIAL
+
+A7、A8、B3、B4、B5、C2、C4、C8、C10、D1、E9、E16、E29、G6、G7 全部降级，`next` 写明下一轮要读到的逐字回执。**这不是退步**：旧 DONE 的依据是「引用活着的机制」，而这 15 条里有多条的机制当时并不实现规则句（E16 的队列没人读、A8 只被堵在三类库、B5 的机制恰好是「谁都能提」）。一条规则只有在机制、工具、教学、真机四件都对上时才算 DONE——审计前我们把「引用活着」当成了「规则成立」，这正是 G7 说的事。

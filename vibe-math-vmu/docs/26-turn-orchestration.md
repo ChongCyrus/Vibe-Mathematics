@@ -2005,3 +2005,9 @@ run 100 把三条「看起来已在」的东西称了一遍，得到的都是回
 **(2) 共享的持久数组被另一内核的整份快照替换。** 所办邀请 r-1/r-2 之后，成员内核 hand 一下，办公室再读 `order` 只剩 `["r-acad"]`。两层原因：`resume.write` 对 state 投影是整份替换；而我早前挂在 `meetings` 适配器上的 `merge` **根本没有到达写路径**——`attachProjectionTo` 另建了一个不带 `merge` 的 descriptor（装配里的 `merge: adapter.merge` 才是真正需要的那一根线）。第三层是时序：`PROJECTION_READ_ONLY` 集合里躺着 `'queue'`，而 `queue()` 是会改状态的动词 ⇒ 它从没被写穿包装，队列只能等别的 mutation 顺带落盘。修法：`merge` 沿 `attachProjectionTo → projectionFor` 传下去；`mergeDurableMeetings` 做 archive 并集 / live 深合并 / 已归档者在 live 里的孪生剔除 / receipts 内容并集 / counters 取 max，并点名 `mergedDurable.skipped`；`queue` 从只读集合移出。
 
 **这一轮学到的话：** 一句要给读者（人或代理）看的话，只能由**一个**常量渲染——写和读各写一遍，两遍就会分家；共享数组永远只能「并到现有的那本上」，任何「写回我以为的那本」都是丢更新，且丢得毫无声音。
+
+## ROUND 112 — 「按顺序发言」的闸装在花轮次的那一步，而教学要付预算
+
+**审计说 E16 是装饰品，它是对的。** 台账钉的是 `queue()` 与 `order` 的读回，而 `speak()` 从来没读过 `m.queue`：排定 `["r-1","r-2"]` 之后让 r-2 先说话，回执照样 `ok:true, turns:1`，既不拒也不披露。修法不是加一句注释，而是把闸装在**花掉轮次的那一步**：在队列里却不是队头 → `VMU_FLOOR_OUT_OF_ORDER`（给位次，hint 印整条 order）；不在队列里 → 照常说话但回执 `queueRead.slipped:true`（没有队列时不许拒——那会是对没发生的事撒谎）；队头 → 回执 `queueRead.position`。判据：**先说清"这个动作在谁的账上扣了什么"，再谈拒绝**；被拒的一枪不落回执、不花轮次。
+
+**教学不是免费的。** T99 要求成员收到的提示词 < 20000 字符。这一轮为了让 B5/B4/D1/G6/E29 的句子说真话，加了约 600 字符，于是必须从别处删等量：删掉的是重复叙述（状态板行重复说明、蓝图 state 里重复的 30 天句、`extendlimit` 段里重复的 primitive 说明），最后 **19993**。教训：加一句教学前先想好谁让位，否则「更好的教学」会以超预算失败收场，或者更糟——被人把预算上限调高，从此没人再量。

@@ -1210,6 +1210,16 @@ objective = { value: shown + more, why: null, at: readAt, source: '任务板（�
     }
   }
 
+  // ★★ AUDIT HOLE D1 (rule 26: 各自推进各自的总任务): the board used to answer ② and ③ from ONE institute-wide reading
+  // for every member, while the prompt taught each member "`[总任务]` 是「你」的总任务：每人各自推进各自的" — so a member
+  // could not see which part of the plan was ITS part. The institute objective (①) legitimately has one value, but the
+  // plan and the completion state now print THE CALLER'S OWN SLICE FIRST and the institute totals after it, so "各自"
+  // is readable off the board instead of only off the prose. A board read with no `member` keeps the old single view
+  // byte for byte (the office's board is the institute's board).
+  const mineRows = (member !== null && typeof member === 'string' && member.trim() !== '' && Array.isArray(rows))
+    ? rows.filter((r) => r && String(r.owner === undefined || r.owner === null ? '' : r.owner) === member.trim())
+    : null
+
   // ② 规划: the unfinished work in dependency order, with the two facts a member needs (may I start? what am I waiting on?).
   let plan
   if (!rows) plan = Object.assign(gap(boardWhy), { source: '任务板' })
@@ -1226,10 +1236,22 @@ objective = { value: shown + more, why: null, at: readAt, source: '任务板（�
       const ready = live.filter((r) => unmet(r).length === 0)
       const blocked = live.filter((r) => unmet(r).length > 0)
       const bits = []
+      // ★★ AUDIT HOLE D1: the caller's own slice goes first, so "各自推进各自的总任务" is readable from this line.
+      if (mineRows !== null) {
+        const mineLive = mineRows.filter((r) => r && (r.state === 'open' || r.state === 'assigned' || r.state === 'doing'))
+        const mineReady = mineLive.filter((r) => unmet(r).length === 0)
+        const mineBlocked = mineLive.filter((r) => unmet(r).length > 0)
+        const own = []
+        if (mineReady.length) own.push('可开工：' + mineReady.slice(0, cap).map((r) => idTitle(r)).join('；'))
+        if (mineBlocked.length) own.push('被前置卡住：' + mineBlocked.slice(0, cap).map((r) => idTitle(r) + '（等 ' + unmet(r).join('/') + '）').join('；'))
+        bits.push(mineLive.length === 0
+          ? '你的（' + member.trim() + '）：任务板上没有分派给你且未完成的任务'
+          : '你的（' + member.trim() + '，未完成 ' + String(mineLive.length) + ' 条）：' + own.join('；'))
+      }
       if (ready.length) bits.push('可开工：' + ready.slice(0, cap).map((r) => idTitle(r) + (r.owner ? '（' + String(r.owner) + '）' : '（未认领）')).join('；'))
       if (blocked.length) bits.push('被前置卡住：' + blocked.slice(0, cap).map((r) => idTitle(r) + '（等 ' + unmet(r).join('/') + '）').join('；'))
       const omitted = live.length - ready.slice(0, cap).length - blocked.slice(0, cap).length
-plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + ' 条已省略' : ''), why: null, at: readAt, source: '任务板（未完成 ' + String(live.length) + ' 条）' }
+plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + ' 条已省略' : '') + (mineRows !== null ? '｜全所：未完成 ' + String(live.length) + ' 条' : ''), why: null, at: readAt, source: '任务板（未完成 ' + String(live.length) + ' 条）' }
     }
   }
 
@@ -1245,8 +1267,21 @@ plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + 
     }
     const ordered = TASK_STATE_ORDER.filter((s) => counts.has(s)).concat([...counts.keys()].filter((s) => !TASK_STATE_ORDER.includes(s)))
     const openCount = rows.filter((r) => r && (r.state === 'open' || r.state === 'assigned' || r.state === 'doing')).length
+    // ★★ AUDIT HOLE D1: same rule as ② — the caller's own completion state first, then the institute's totals.
+    let mineText = ''
+    if (mineRows !== null) {
+      const mineCounts = new Map()
+      for (const r of mineRows) {
+        const state = String((r && r.state) || '（未声明状态）')
+        mineCounts.set(state, (mineCounts.get(state) || 0) + 1)
+      }
+      const mineOrdered = TASK_STATE_ORDER.filter((s) => mineCounts.has(s)).concat([...mineCounts.keys()].filter((s) => !TASK_STATE_ORDER.includes(s)))
+      mineText = '属于你（' + member.trim() + '）' + String(mineRows.length) + ' 条：'
+        + (mineRows.length === 0 ? '（任务板上没有 owner 是你的任务）' : mineOrdered.map((s) => s + ' ' + String(mineCounts.get(s))).join(' · '))
+        + '｜全所：'
+    }
     tasksField = {
-      value: '共 ' + String(rows.length) + ' 条（未结 ' + String(openCount) + '）：' + ordered.map((s) => s + ' ' + String(counts.get(s))).join(' · '),
+      value: mineText + '共 ' + String(rows.length) + ' 条（未结 ' + String(openCount) + '）：' + ordered.map((s) => s + ' ' + String(counts.get(s))).join(' · '),
       why: null, at: readAt, source: '任务板（按状态的计数）',
     }
   }
@@ -1319,6 +1354,12 @@ plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + 
   if (objective && objective.at === null && !objective.timeWhy) {
     objective.timeWhy = '设置键没有内容时间戳（本行来自设置或计算，不是账本行）'
   }
+  // ★★ AUDIT HOLE D1: ① is the INSTITUTE's objective and there is one of it in this kernel, so a member reading it as
+  // "my own task" mismatched the plan/completion lines right below (which now lead with its own slice). The row says
+  // whose value this is, instead of letting the reader assume.
+  if (objective && mineRows !== null && typeof objective.value === 'string' && objective.value.trim() !== '' && !objective.scopeNote) {
+    objective.scopeNote = '全所总任务，内核只有一份；你自己的份额是 owner 是你的那些任务，见 规划 与 各任务完成状态 两行'
+  }
   const raw = { objective, plan, tasks: tasksField, current }
   const fields = STATUS_BOARD_FIELDS.map((decl) => {
     const r = raw[decl.key] || { value: null, why: '内部错误：字段未计算', at: null }
@@ -1329,6 +1370,8 @@ plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + 
     // ★★ ROUND 102 / D5: carry the reason a row has no content time; a frozen field that dropped it made the renderer
     // stay silent about time on a row the rule says carries time information.
     if (typeof r.timeWhy === 'string' && r.timeWhy.trim() !== '') field.timeWhy = r.timeWhy.trim()
+    // ★★ AUDIT HOLE D1: a row shared by the whole institute says WHOSE value it is, so "my task" cannot be read into it.
+    if (typeof r.scopeNote === 'string' && r.scopeNote.trim() !== '') field.scopeNote = r.scopeNote.trim()
     return Object.freeze(field)
   })
   const available = fields.filter((f) => typeof f.value === 'string' && f.value.trim() !== '').length
@@ -1370,7 +1413,9 @@ export function renderStatusBoard(readings) {
     // ★★ ROUND 102 / D5: "no time" is itself information. A row whose source has no content timestamp says WHY rather
     // than printing a value with no time at all - otherwise "no time" and "time not printed" look identical.
     const timeWhy = f && when === null && typeof f.timeWhy === 'string' && f.timeWhy.trim() !== '' ? f.timeWhy.trim() : null
-    const shown0 = value === null ? null : (paren === null ? value : value + '（来源：' + paren + '）')
+    // ★★ AUDIT HOLE D1: a shared institute row prints whose it is, so the four lines cannot be read as one member's.
+    const scopeNote = f && typeof f.scopeNote === 'string' && f.scopeNote.trim() !== '' ? f.scopeNote.trim() : null
+    const shown0 = value === null ? null : (paren === null ? value : value + '（来源：' + paren + '）') + (scopeNote === null ? '' : '（' + scopeNote + '）')
     const shown = shown0 === null ? null : (when !== null
       ? shown0 + '（读于 ' + when + '）'
       : (timeWhy === null ? shown0 : shown0 + '（时间未提供：' + timeWhy + '）'))

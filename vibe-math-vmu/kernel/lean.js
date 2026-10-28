@@ -985,8 +985,12 @@ export function createLeanFace(opts) {
   // leaving the reader to infer it.
   const SHARED_LIBRARY_KEY = 'leanlibrary'
   const shared = { store: null, attached: false, pulls: 0, refused: 0, written: 0, lastWhy: null, signature: null }
-  const sharedRows = () => [...archived.values()].map((e) => ({ name: e.name, kind: e.kind, file: e.file, hash: e.hash, statement: e.statement, at: e.at }))
-  const sharedSignature = (rows) => rows.map((r) => [r.name, r.kind, r.file, r.hash, r.statement, r.at].join('|')).sort().join('\n')
+  const sharedRows = () => [...archived.values()].map((e) => ({ name: e.name, kind: e.kind, file: e.file, hash: e.hash, statement: e.statement, at: e.at,
+    outcome: e.outcome === undefined ? 'not-measured' : e.outcome, exitCode: e.exitCode === undefined ? null : e.exitCode,
+    diagnosticsTail: e.diagnosticsTail === undefined ? null : e.diagnosticsTail, jobId: e.jobId === undefined ? null : e.jobId,
+    compileAt: e.compileAt === undefined ? null : e.compileAt, outcomeMeans: e.outcomeMeans === undefined ? null : e.outcomeMeans }))
+  const sharedSignature = (rows) => rows.map((r) => [r.name, r.kind, r.file, r.hash, r.statement, r.at,
+    r.outcome === undefined ? 'not-measured' : r.outcome, r.exitCode, r.jobId, r.compileAt].join('|')).sort().join('\n')
   function attachStore(store) {
     if (!store || typeof store.read !== 'function' || typeof store.write !== 'function') {
       return { ok: false, reason: 'not-a-store', hint: 'attachStore needs the durable port (store.read/store.write); the archive keeps answering from this process alone and says so', enforced: [], fired: [] }
@@ -1017,7 +1021,16 @@ export function createLeanFace(opts) {
       const name = String(r.name || '').trim()
       if (!name || archived.has(name)) continue            // never overwrite a name this process already answers for
       archived.set(name, { name, kind: String(r.kind || 'def'), file: String(r.file || ''), statement: String(r.statement || ''),
-        hash: String(r.hash || ''), at: typeof r.at === 'number' ? r.at : clock(), adopted: true })
+        hash: String(r.hash || ''), at: typeof r.at === 'number' ? r.at : clock(), adopted: true,
+        // ★ C10：旧档案行没有编译结果字段 —— 读回时如实补 `not-measured`，不能说成 ok，也不能假装这个字段从来不存在。
+        outcome: ['ok', 'failed', 'timeout', 'interrupted'].indexOf(String(r.outcome)) === -1 ? 'not-measured' : String(r.outcome),
+        exitCode: r.exitCode === null || r.exitCode === undefined ? null : (Number.isFinite(Number(r.exitCode)) ? Number(r.exitCode) : null),
+        diagnosticsTail: r.diagnosticsTail === undefined || r.diagnosticsTail === null ? null : String(r.diagnosticsTail),
+        jobId: r.jobId === undefined || r.jobId === null ? null : String(r.jobId),
+        compileAt: r.compileAt === undefined || r.compileAt === null ? null : r.compileAt,
+        outcomeMeans: typeof r.outcomeMeans === 'string' && r.outcomeMeans.trim() !== ''
+          ? r.outcomeMeans
+          : '这一行是从持久层读回的档案行，里面没有编译结果字段（旧档案只登记 name/kind/file/hash/statement/at）：outcome=not-measured —— 不代表编译通过，也不代表失败。' })
       added += 1
     }
     return { synced: added > 0, why: added > 0 ? 'newer-on-disk' : 'nothing-new', op: why, added }
@@ -1061,6 +1074,66 @@ export function createLeanFace(opts) {
       : 'no durable port is attached: this library lives in THIS kernel process only, and nothing on disk answers for it',
   })
 
+  // ★ C10（独立审计，2026-10）：「命题的证明、对象的定义之类的 lean 代码**及其编译结果**」。
+  // 归档原先只登记 name/kind/file/hash/statement/at —— 一条"已归档的引理"读回来只说"文件当时是这个哈希"，
+  // 不说"它编过没有、编译器说了什么"。这里把**已经发生过的**那次编译结果一并登记：只读本内核作业表里同一文件的
+  // 那条作业（或调用方显式给的 jobId），**绝不重新跑 Lean**；没有结果可比对时如实写 `outcome:'not-measured'`，
+  // 绝不把"没跑过"写成 ok。
+  const COMPILE_TAIL_MAX = 400
+  const tailOf = (s) => { const t = String(s === undefined || s === null ? '' : s); return t.length > COMPILE_TAIL_MAX ? t.slice(t.length - COMPILE_TAIL_MAX) : t }
+  const sameLeanFile = (a, b) => {
+    try { return resolveFile(String(a)) === resolveFile(String(b)) } catch (e) { return String(a) === String(b) }
+  }
+  function compileResultFor(file, hash, explicitJobId) {
+    const unmeasured = (why) => ({ outcome: 'not-measured', exitCode: null, diagnosticsTail: null,
+      jobId: explicitJobId === undefined || explicitJobId === null ? null : String(explicitJobId), compileAt: null, outcomeMeans: why })
+    let job = null
+    if (explicitJobId !== undefined && explicitJobId !== null && String(explicitJobId).trim() !== '') {
+      job = jobs.get(String(explicitJobId)) || null
+      if (!job) return unmeasured('调用方给的 jobId "' + String(explicitJobId) + '" 在本内核的作业表里查不到（作业 id 只在产生它的内核里回答）：outcome=not-measured，不冒充 ok。')
+      if (job.file && !sameLeanFile(job.file, file)) {
+        return unmeasured('作业 ' + String(job.id) + ' 编译的是 ' + String(job.file) + '，与本次归档的 ' + file + ' 不是同一个文件：不能当作它的编译结果。')
+      }
+    } else {
+      for (let i = order.length - 1; i >= 0 && !job; i -= 1) {
+        const cand = jobs.get(order[i])
+        if (cand && cand.file && sameLeanFile(cand.file, file)) job = cand
+      }
+      if (!job) {
+        return unmeasured('归档之前没有在同一 .lean 文件上跑过 Lean（本内核的作业表里没有 file=' + file + ' 的作业，调用也没带 jobId）：outcome=not-measured —— 档案如实说"编译器有没有通过未知"，不冒充 ok。')
+      }
+    }
+    const h = String(hash || '')
+    const jobHash = String(job.hashAfter || job.hashBefore || '')
+    if (h && jobHash && jobHash !== h) {
+      return unmeasured('作业 ' + String(job.id) + ' 编译的是另一次文件内容（作业哈希 ' + jobHash.slice(0, 12) + '…，归档的是 ' + h.slice(0, 12) + '…）：内容已变，那次结果不能挪用到这条归档上。')
+    }
+    const receipt = job.receipt && typeof job.receipt === 'object' ? job.receipt : {}
+    const stderrText = receipt.stderrTail === undefined || receipt.stderrTail === null ? '' : String(receipt.stderrTail)
+    const raw = stderrText !== '' ? receipt.stderrTail : receipt.stdoutTail
+    const base = {
+      exitCode: Number.isFinite(Number(job.exitCode)) ? Number(job.exitCode) : null,
+      diagnosticsTail: raw === undefined || raw === null ? null : tailOf(raw),
+      jobId: job.id === undefined || job.id === null ? null : String(job.id),
+      compileAt: job.endedAt === undefined ? null : job.endedAt,
+    }
+    const state = String(job.state || '')
+    const detail = '作业 ' + String(base.jobId) + '（state=' + state + '，exitCode=' + String(base.exitCode) + '）'
+    if (state === 'settled') {
+      return Object.assign(base, { outcome: 'ok', outcomeMeans: '本条的编译结果来自本内核**已经存在**的那次 ' + detail + '：归档只登记那次结果，不重新编译。diagnosticsTail 是那次作业诊断输出的末 ' + String(COMPILE_TAIL_MAX) + ' 个字符；compileAt 是那次作业结束的时间，at 是归档时间。' })
+    }
+    if (state === 'failed') {
+      return Object.assign(base, { outcome: 'failed', outcomeMeans: '本条归档的编译结果是 **failed**：' + detail + ' —— 这条登记的事实是"编译不通过"，不是"已证明"。' })
+    }
+    if (state === 'timeout') {
+      return Object.assign(base, { outcome: 'timeout', outcomeMeans: '本条归档的编译结果是 **timeout**：' + detail + ' —— 超时不等于通过，也不等于失败；没有可用结论。' })
+    }
+    if (state === 'interrupted') {
+      return Object.assign(base, { outcome: 'interrupted', outcomeMeans: '本条归档的编译结果是 **interrupted**：' + detail + ' —— 作业被中止，没有可用结论。' })
+    }
+    return Object.assign(base, { outcome: 'not-measured', outcomeMeans: detail + ' 还没跑完：此刻没有结果可比对，outcome=not-measured（不是 ok，也不是 failed）；等它结算后再 archive() 一次才会登记结果。' })
+  }
+
   const archive = async (a) => {
     const args = a || {}
     readSharedRows('archive')
@@ -1078,12 +1151,13 @@ export function createLeanFace(opts) {
     }
     const hash = await readHash(file)
     if (hash === undefined) return refuse('VMU_LEAN_FILE_UNREADABLE', '读不到要归档的 Lean 文件：' + file, '先写出 .lean 文件再归档')
-    const entry = { name, kind, file, statement, hash, at: clock() }
+    const compile = compileResultFor(file, hash, args.jobId !== undefined ? args.jobId : args.job_id)
+    const entry = { name, kind, file, statement, hash, at: clock(), ...compile }
     archived.set(name, entry)
     note('archive:' + name, kind)
     const sharedWrite = writeSharedRows()
     if (sharedWrite.settled) { try { await sharedWrite.settled } catch (e) { /* counted by the ticket */ } }
-    return { ok: true, name, kind, file, hash, statement, at: entry.at, count: archived.size,
+    return { ok: true, name, kind, file, hash, statement, at: entry.at, ...compile, count: archived.size,
       persistence: persistence(), persisted: sharedWrite.ok === true }
   }
 
@@ -1107,6 +1181,10 @@ export function createLeanFace(opts) {
     const truncated = content.length > ARCHIVE_READ_MAX
     return {
       ok: true, name, kind: e.kind, file: e.file, hash: e.hash, statement: e.statement, at: e.at,
+      // ★ C10：读回一条归档时，编译结果与内容一起给 —— 读者不必再猜"这条引理编过没有"。
+      outcome: e.outcome === undefined ? 'not-measured' : e.outcome, exitCode: e.exitCode === undefined ? null : e.exitCode,
+      diagnosticsTail: e.diagnosticsTail === undefined ? null : e.diagnosticsTail, jobId: e.jobId === undefined ? null : e.jobId,
+      compileAt: e.compileAt === undefined ? null : e.compileAt, outcomeMeans: e.outcomeMeans === undefined ? null : e.outcomeMeans,
       content: truncated ? content.slice(0, ARCHIVE_READ_MAX) : content,
       dropped: { bytes: truncated ? content.length - ARCHIVE_READ_MAX : 0 }, // 截断必计数（纪律）
     }
@@ -1118,7 +1196,10 @@ export function createLeanFace(opts) {
       ok: true,
       count: archived.size,
       kinds: [...new Set([...archived.values()].map((e) => e.kind))].sort(),
-      entries: [...archived.values()].map((e) => ({ name: e.name, kind: e.kind, file: e.file, hash: e.hash, statement: e.statement, at: e.at })),
+      entries: [...archived.values()].map((e) => ({ name: e.name, kind: e.kind, file: e.file, hash: e.hash, statement: e.statement, at: e.at,
+        outcome: e.outcome === undefined ? 'not-measured' : e.outcome, exitCode: e.exitCode === undefined ? null : e.exitCode,
+        diagnosticsTail: e.diagnosticsTail === undefined ? null : e.diagnosticsTail, jobId: e.jobId === undefined ? null : e.jobId,
+        compileAt: e.compileAt === undefined ? null : e.compileAt, outcomeMeans: e.outcomeMeans === undefined ? null : e.outcomeMeans })),
       persistence: persistence(),
     }
   }
