@@ -229,6 +229,45 @@ function citationsOf(state, records) {
 }
 
 /**
+ * ★ ROUND 95 — FAIL FAST AT `part`, NOT AT `render`. `recordPart` accepted any `evidence` array, and the FIRST time a
+ * pointer was resolved was the quality gate on `render` — i.e. after the paper had been written, cross-reviewed,
+ * consulted and finalised. A fabricated pointer therefore cost the whole chain (measured on a live run: the member
+ * wrote the paper, ran the consult, and only the last step named the bad citation). This resolves the pointers NOW,
+ * against the same records face the gate reads; the pack shell turns `!ok` into a named refusal. Pure: (evidence,
+ * records view) in, verdict out — no clock, no filesystem, the same contract as `checkQuality`.
+ */
+export function checkEvidencePointers({ evidence, records, codes = QUALITY_CODES } = {}) {
+  if (!records) throw Object.assign(new Error('checkEvidencePointers needs the records-backed view'), { code: 'VMU_INVALID_ARGUMENT' })
+  const list = Array.isArray(evidence) ? evidence.map(str).filter((s) => s !== '') : []
+  const resolved = []
+  const unknown = []
+  for (const pointer of list) {
+    const m = pointer.match(MEMBER_FILE)
+    if (!m) {
+      unknown.push({ pointer, reason: 'not-a-member-file-pointer',
+        expected: 'Members/<member>/(Propos|Methods|Subproblems|Progress)/<id>.md' })
+      continue
+    }
+    const category = m[1]
+    const cardId = m[2]
+    const expectedTrack = TRACK_OF_CATEGORY[category]
+    // The records face THROWS for an unknown id (`VMU_NO_SUCH_OBJECT unknown record: …`) — a fail-fast check must turn
+    // that into a per-pointer reason, not let one bad pointer abort the whole list.
+    let row = null
+    try { row = recordOf(records, cardId) } catch { row = null }
+    if (!row) { unknown.push({ pointer, cardId, expectedTrack, reason: 'no-such-record' }); continue }
+    const actualTrack = str(row.track)
+    if (actualTrack !== expectedTrack) {
+      unknown.push({ pointer, cardId, expectedTrack, actualTrack: actualTrack || null, reason: 'wrong-track' })
+      continue
+    }
+    resolved.push({ pointer, cardId, track: expectedTrack, fingerprint: str(row.fingerprint) || null })
+  }
+  return { ok: unknown.length === 0, provided: list.length, resolved, unknown,
+    means: 'the pointers are resolved against the records face the moment the part is written, so a fabricated or mistracked citation is refused HERE instead of at render; the gate still owns the deliverable (it also requires >=1 evidence entry per part and a fingerprint for every citation)' }
+}
+
+/**
  * E3: THE QUALITY GATE. Pure: (md, state, view) in, verdict out. The caller (the pack shell) turns a `!ok` verdict
  * into a named refusal, so the codes live here and the throw lives there — the same split the E4 consult gate uses.
  *

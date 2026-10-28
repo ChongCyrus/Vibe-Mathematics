@@ -743,7 +743,8 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"reviewOf\":{\"r-1\":\"r-2\",\"r-2\":\"r-1\"}",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"from\":\"reviewing\",\"to\":\"awaiting-editor\",\"unanimous\":true"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"from\":\"reviewing\",\"to\":\"awaiting-editor\",\"unanimous\":true",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::render {format:\"md\"}"
       ],
       "ruleText": "- 经分派后各自负责部分的论文。"
     },
@@ -1530,7 +1531,8 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js::系统梳理"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"status\":\"writing\",\"round\":1,\"stateRecord\":\"rec-3\""
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"status\":\"writing\",\"round\":1,\"stateRecord\":\"rec-3\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-2\""
       ],
       "ruleText": "把原总问题及所有研究所中有价值的产物系统梳理，合作撰写最终论文。合作写论文（如安排写各自负责内容最后系统地合并），互审，论文是面向读者的，要保证内容系统、正确、完整、严谨清晰。最后讨论、检查无误后定稿。"
     },
@@ -1550,7 +1552,8 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js::分工与合并"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"parts\":{\"r-acad\":{\"recordId\":\"rec-5\""
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"parts\":{\"r-acad\":{\"recordId\":\"rec-5\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"unanimous\":true"
       ],
       "ruleText": "把原总问题及所有研究所中有价值的产物系统梳理，合作撰写最终论文。合作写论文（如安排写各自负责内容最后系统地合并），互审，论文是面向读者的，要保证内容系统、正确、完整、严谨清晰。最后讨论、检查无误后定稿。"
     },
@@ -1582,14 +1585,14 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js::四项质量要求"
       ],
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/paper.js::checkQuality",
-        "vibe-math-vmu/packs/v5r/paper-quality.js::QUALITY_CODES"
+        "vibe-math-vmu/kit/paper.js::OFFICE_CONSULT_REQUIRED"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_paper"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_PACK_V5R_CORE_PAPER_VERIFIED_MISSING"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_PACK_V5R_CORE_PAPER_VERIFIED_MISSING",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::answererKind:\"declared-role\""
       ],
       "ruleText": "把原总问题及所有研究所中有价值的产物系统梳理，合作撰写最终论文。合作写论文（如安排写各自负责内容最后系统地合并），互审，论文是面向读者的，要保证内容系统、正确、完整、严谨清晰。最后讨论、检查无误后定稿。"
     },

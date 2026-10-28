@@ -213,7 +213,7 @@ export function effectiveMathParams(raw) {
 const ALLOWED_ARGS = ['op', 'engine', 'mode', 'code', 'file', 'expr', 'packages', 'timeoutMs', 'captureFiles', 'record', 'cli', 'scope', 'dryRun', 'confirm', 'mathEngineOverride']
 // AUDIT-B FIX (HIGH): validate the override shape in the same closed-argument spirit as everything
 // else, so the escape hatch is usable but cannot smuggle arbitrary junk into argv assembly.
-const OVERRIDE_ARGV_KEYS = ['versionArgv', 'scriptArgv', 'evalArgv']
+const OVERRIDE_ARGV_KEYS = ['versionArgv', 'scriptArgv', 'evalArgv', 'exprPrint']
 function validateEngineOverride(ov) {
   if (!isObj(ov)) return bad('mathEngineOverride must be an object keyed by engine name')
   for (const name of Object.keys(ov)) {
@@ -787,8 +787,12 @@ function assembleArgv(det, mode, payload) {
     return { argv: [det.exe].concat((d.scriptArgv || []).map((a) => String(a).split('<script>').join(payload.scriptAbs))) }
   }
   if (mode === 'expr') {
-    if (!d.evalArgv) return { refused: 'engine does not support mode=expr' }
-    return { argv: [det.exe].concat(d.evalArgv.map((a) => String(a).split('<expr>').join(payload.expr))) }
+    // ★ ROUND 94: an expression must be EVALUATED AND PRINTED or there is no value to read back.
+    // `exprPrint` is that template; `evalArgv` stays as the fallback for descriptors that predate it
+    // (the value then reads as null + valueMissing:'stdout-empty', never as an invented 0).
+    const exprTmpl = Array.isArray(d.exprPrint) ? d.exprPrint : (Array.isArray(d.evalArgv) ? d.evalArgv : null)
+    if (!exprTmpl) return { refused: 'engine does not support mode=expr' }
+    return { argv: [det.exe].concat(exprTmpl.map((a) => String(a).split('<expr>').join(payload.expr))) }
   }
   return { refused: 'unknown mode' }
 }
@@ -820,6 +824,9 @@ function applyOverride(det, params, args) {
     versionArgv: Array.isArray(o.versionArgv) ? o.versionArgv.slice() : d.versionArgv,
     scriptArgv: Array.isArray(o.scriptArgv) ? o.scriptArgv.slice() : d.scriptArgv,
     evalArgv: Array.isArray(o.evalArgv) ? o.evalArgv.slice() : d.evalArgv,
+    // ★ ROUND 94: mode:'expr' now runs through `exprPrint` (evaluate AND print). An override that names
+    // only `evalArgv` would silently stop affecting expr mode, so the new key takes an override too.
+    exprPrint: Array.isArray(o.exprPrint) ? o.exprPrint.slice() : d.exprPrint,
     packageProbe: isObj(o.packageProbe) ? o.packageProbe : d.packageProbe,
   })
 }

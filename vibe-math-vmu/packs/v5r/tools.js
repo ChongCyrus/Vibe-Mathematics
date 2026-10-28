@@ -2990,6 +2990,14 @@ async function toolVerdict(args = {}, { kernel } = {}) {
 
 /** ★ `vibe_v5_start` — found the institute: start the kernel, seat the academician, and seat N researchers. The
  * original also carried problem/seedDirections; a member's direction is roster DATA here, so it is reported. */
+/** The leader the institute currently recognises ('' = nobody: the setting is unset or blank). */
+function leaderIdNow(kernel) {
+  const view = kernel && typeof kernel.settingsView === 'function' ? kernel.settingsView() : null
+  if (!view || typeof view.get !== 'function') return ''
+  const v = view.get('vmu.turn.leaderId')
+  return v === undefined || v === null ? '' : String(v)
+}
+
 async function toolStart(args = {}, { kernel } = {}) {
   const n = Number.isInteger(args.researcherCount) ? args.researcherCount : 3
   if (n < 0 || n > 50) throw refuse('VMU_INVALID_ARGUMENT', 'researcherCount must be between 0 and 50', 'the original seeded a small permanent staff')
@@ -3004,6 +3012,13 @@ async function toolStart(args = {}, { kernel } = {}) {
   }
   const started = typeof kernel.start === 'function' ? await kernel.start() : null
   const applied = []
+  // ★ ROUND 94: seating the chair and leaving `vmu.turn.leaderId` empty made every prompt open with
+  // `chair-seated-but-leaderId-empty` — the roster HAD an academician while the charter said the institute had
+  // none, and the agent had to discover a `vibe_v5_configure` call to repair a state this tool created. The act
+  // that seats the chair records who leads (only when nobody leads yet: an operator's choice is never overwritten).
+  if (hired.includes('r-acad') && leaderIdNow(kernel) === '') {
+    applied.push(applyDeclaredSetting(kernel, 'vmu.turn.leaderId', 'r-acad'))
+  }
   if (has(args.problem)) applied.push(applyDeclaredSetting(kernel, 'vmu.turn.objective', str(args.problem)))
   // ★ The seats seeded here are the ones a run will actually drive, so the scope is applied AT SEATING TIME rather
   // than left to whichever later call happens to remember. `memberScope` carries the seam's answer by name.
@@ -3240,6 +3255,16 @@ async function toolPaper(args = {}, { kernel } = {}) {
       return { ok: true, tool, action, started }
     }
     case 'part': {
+      // ★ ROUND 95: a fabricated evidence pointer used to be accepted here and refused by the quality gate at `render`
+      // — after the paper had been written, cross-reviewed and consulted (the most expensive possible moment). The
+      // pointers are resolved NOW; the gate keeps its own requirements (>=1 entry per part, a fingerprint per citation).
+      const evidence = Array.isArray(args.evidence) ? args.evidence : []
+      const pointers = typeof paper.evidencePointers === 'function' ? paper.evidencePointers(evidence) : null
+      if (pointers && pointers.ok !== true) {
+        throw refuse('VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING',
+          'these evidence pointers do not resolve against the records face: ' + pointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? ', expected track ' + u.expectedTrack : '') + ')').join('; '),
+          'write the record first (vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem), then re-write this part with the pointer it produced; a pointer is Members/<member>/(Propos|Methods|Subproblems|Progress)/<record id>.md')
+      }
       const part = paper.recordPart({
         target,
         member: str(args.member),
@@ -3248,9 +3273,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
         methods: str(args.methods || ''),
         rules: str(args.rules || ''),
         limits: str(args.limits || ''),
-        evidence: Array.isArray(args.evidence) ? args.evidence : [],
+        evidence,
       })
-      return { ok: true, tool, action, part }
+      return { ok: true, tool, action, part,
+        evidence: pointers === null ? null : { provided: pointers.provided, checked: true,
+          resolved: pointers.resolved.map((r) => r.cardId), means: pointers.means } }
     }
     case 'review': {
       const review = paper.recordReview({
@@ -3303,6 +3330,13 @@ async function toolPaper(args = {}, { kernel } = {}) {
       const arts = rendered.artifacts || null
       return { ok: true, tool, action, target, renderOk: rendered.ok === true,
         wrote: Array.isArray(rendered.wrote) ? rendered.wrote.slice() : [],
+        // ★ ROUND 95: `wrote` lists RECORD kinds written into the paper track; render() writes no file, so a reader
+        // who looks at `Paper/<id>/` and finds only a .tex (written by compile) used to conclude the receipt lied.
+        wroteWhere: {
+          records: Array.isArray(rendered.wrote) ? rendered.wrote.slice() : [],
+          disk: [],
+          means: '`wrote` lists the RECORD kinds written into the paper track (md/tex/meta). render() writes NO file: a .tex/.pdf reaches Paper/<id>/ only when compile runs, which is when the disk list would carry it',
+        },
         missing: Array.isArray(rendered.missing) ? rendered.missing.slice() : [],
         complete: arts ? arts.complete === true : false,
         present: arts && arts.present ? Object.assign({}, arts.present) : null,

@@ -135,9 +135,12 @@ function primFaceKernel() {
 test('③ lapse 打在只在 service 的 id 上：消息说「不在本表」、hint 点名另一张表、且明说该动作不交叉', () => {
   const err = primitiveMissError({ id: 'm2', inService: true, action: 'lapse' })
   assert.equal(err.code, 'VMU_NO_SUCH_OBJECT')
-  assert.match(err.message, /no PRIMITIVE meeting with id m2/)
-  assert.match(err.message, /SERVICE registry/, 'the message must say the id exists somewhere else')
-  assert.doesNotMatch(err.message, /no live meeting with id m2$/, 'the old sentence read as "it does not exist"')
+  // ★ ROUND 94: a verb that NEVER crosses must say so FIRST — the old opening ("no PRIMITIVE meeting with id m2")
+  // read as "the meeting is missing" when the real answer is "this verb cannot address that kind of meeting".
+  assert.match(err.message, /addresses the PRIMITIVE registry only and never crosses/)
+  assert.match(err.message, /lives in the SERVICE registry/, 'the message must say the id exists somewhere else')
+  assert.equal(err.boundaryOnly, true, 'a non-crossing verb on a service id is a boundary, not a missing meeting')
+  assert.doesNotMatch(err.message, /^no PRIMITIVE meeting with id/, 'the old opening read as "it does not exist"')
   assert.match(err.hint, /lapse addresses the PRIMITIVE registry only and does NOT cross/)
   assert.match(err.hint, /Actions that cross:/, 'the hint must name the crossing set, not just say "different registry"')
   assert.equal(err.registry, 'service')
@@ -148,6 +151,7 @@ test('③ lapse 打在只在 service 的 id 上：消息说「不在本表」、
 test('③b 同一个拒绝在交叉动作上要说「这动作会交叉」——否则两种情形读起来一样', () => {
   const err = primitiveMissError({ id: 'm2', inService: true, action: 'status' })
   assert.equal(err.actionCrosses, true)
+  assert.equal(err.boundaryOnly, false, 'a crossing verb is not a boundary refusal')
   assert.match(err.hint, /status DOES cross registries/)
   assert.match(err.hint, /only when the service exposes that method/, 'crossing is not a promise that it will work')
 })

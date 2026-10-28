@@ -896,7 +896,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【临时工】临时工是**特殊/临时任务**用的，不是常设席位：`vibe_v5_hire { purpose, initial_task, to }` 三项必填；只开 temp 席；无表决权、默认不参会，产出由指派者归档，别让 temp 写命题/方法库。',
+        '【临时工】临时工是**特殊/临时任务**用的，不是常设席位：`vibe_v5_hire { purpose, initial_task, to }` 三项必填；只开 temp 席；无表决权、默认不参会，产出由指派者归档，别让 temp 写命题/方法库。所办**开所**用 `vibe_v5_start { problem, researcherCount, academician }`：它坐好院士席、并把该席记为 `vmu.turn.leaderId`（已有领头人时不覆盖），不需要再单独 `configure`。',
       ].join('\n'),
     },
   },
@@ -919,6 +919,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '【计算与引擎】数学面是 `vibe_vmu_mathtools`（plan/run/…）与 `vibe_vmu_mathjobs`；**引擎由宿主注入**（`vmu.math.engines` 无代码默认值），状态面报 `engines`/`available`，接缝缺失时具名拒 `VMU_ENGINE_UNAVAILABLE`，不假装算过。并发上限 `vmu.math.maxParallel`（默认 1），超限具名拒；shell 兜底不算归档。',
+        '· `mode:"expr"` 是**求值并打印**：`value` 就是引擎打印的那段文本（`{expr:"2**10+1"}` ⇒ `"1025"`）；引擎什么都没打印时回执是 `value:null` + `valueMissing:"stdout-empty"` + `valueMeans`，**不会**把空输出读成 0——想要值就用 `code` 里写 print，或确认该引擎的 `exprPrint` 模板在。',
         '· 引擎两条通道：有宿主 `subprocess` 服务时走宿主，否则声明过 `vmu.math.*` 的部署走适配层自带的 `node:child_process`（同样守卫：可执行必填、参数数组、CWD、输出上限、超时真终止），`status.math.spawnSeamKind` 说明走的哪条；都没有才具名拒。要新包/引擎写进进展与请示。',
       ].join('\n'),
     },

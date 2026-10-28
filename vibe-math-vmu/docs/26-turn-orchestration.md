@@ -1887,3 +1887,30 @@ Criteria that this round adds:
    facts and passes `engine`/`packages`/`timeoutMs` through; it does not drop what it cannot map.
 4. **A helper that decides what a request MEANS has to be testable on its own** — `planToComputationRequest`
    is exported so the translation table (and its named refusal) can be pinned without an engine.
+
+## ROUND 94 — 空输出不是零，边界要先说边界，创建状态的工具要对它创造的状态负责（F-94a / F-94b / F-94c）
+
+三条读数，三条判据：
+
+1. **空输出不是零。** `mode:"expr"` 把表达式交给引擎**求值而不打印**，于是 `stdout` 为空、退出码 0，
+   而 `kernel/math.js` 把「空」读成了 `value:0` —— `2**10+1` 得到 0，且在**成功**路径上、没有任何字段能让
+   读者看出这不是算出来的。现在每个能求值的引擎都有 `exprPrint` 模板（求值**并打印**），没有打印出来的东西
+   就如实报 `value:null` + `valueMissing:"stdout-empty"`。判据：**一个值的来源必须能在回执里指出来**；
+   「没有值」与「值是 0」不能长得一样。
+2. **拒绝的第一句必须是这个动作做不到的那件事。** `agendaitems` 从不跨注册表，而它的拒绝以
+   「no PRIMITIVE meeting with id m2」开头 —— 读者先看到的是「这会不存在」，真相在第二句。边界型拒绝现在
+   先点名边界（`action "X" addresses the PRIMITIVE registry only and never crosses, while meeting m2 lives in
+   the SERVICE registry`，字段 `boundaryOnly:true`）。判据：**读者按第一句行动**，所以第一句不能有影射。
+3. **创建状态的工具要对它创造的状态负责。** `vibe_v5_start` 坐好院士席却不记 `vmu.turn.leaderId`，于是
+   每一份提示词都以 `chair-seated-but-leaderId-empty` 开场、章程说本所没有院士，而修法是让**成员自己**发现
+   一次 `configure`。现在坐席的那一下同时也记下谁领头（已有领头人不覆盖）。判据：**工具不留给读者一个只有
+   它自己能修的洞**。
+
+配套：`mathEngineOverride` 接受 `exprPrint`（否则旧 override 会悄悄失去作用，而 override 的存在意义正是
+覆盖模板）；`vmu-v5r` 的临时工教学补一句 `vibe_v5_start` 会记 `leaderId`，不需要再 configure。
+
+## ROUND 95 — 闸门开在最贵的那一步之前，字段名要说它数的是什么（F-95a / F-95b）
+
+- **判据一：同一份合同，越早拒越好。** `part` 收下 evidence 却把第一次解析留到 `render` 的质检闸，结果是：论文写完、互审完、所办咨询完、定稿完，才在最后一步被告知「你引的那条记录不存在」。证据指针现在**写入当刻**就被 `paper-quality.js#checkEvidencePointers` 解析（同一份 `MEMBER_FILE`/`TRACK_OF_CATEGORY`/`recordOf`，不写第二份解析器），坏指针当场具名拒 —— 而「无证据」仍归交付门（≥1 条、每条有指纹），草稿照旧可自由渲染。
+- **判据二：回执字段的名字必须说清它数的是什么。** `render` 的 `wrote:["md","tex","meta"]` 是 paper 轨的**记录种类**，不是磁盘文件；`.tex` 要等 `compile` 才进 `Paper/<id>/`。字段名不变，另加 `wroteWhere{records,disk,means}` 把「写在哪」讲明 —— 读者不必再去读 `kit/paper.js` 才能消解一个自相矛盾的观测。
+- **判据三：拒绝要能指明「下一个动作」。** 坏指针的 hint 不是「检查你的 evidence」，而是「先用 `vibe_v5_record_proposition` 建记录，再用它产生的指针重写这一段」，因为那正是唯一的出路。

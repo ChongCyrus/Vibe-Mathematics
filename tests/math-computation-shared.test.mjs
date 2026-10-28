@@ -343,7 +343,9 @@ console.log('-- math_computation shared contract --')
     const r3 = await state.call({ op: 'run', engine: 'python', mode: 'expr', expr: '1+1' })
     ok(r3.ok === true, 'expr mode runs through the eval template')
     const argv = state.spawns[state.spawns.length - 1].argv
-    ok(argv[argv.length - 1] === '1+1' && argv.indexOf('-c') !== -1, 'expr occupies exactly one argv element after -c')
+    // ★ ROUND 94: the expression is EVALUATED AND PRINTED, so the single argv element is `print(1+1)`
+    // (one element, still after -c) — an unprinted evaluation is what used to report value 0.
+    ok(argv[argv.length - 1] === 'print(1+1)' && argv.indexOf('-c') !== -1, 'expr occupies exactly one printed argv element after -c')
   })
 }
 
@@ -657,8 +659,12 @@ console.log('-- math_computation shared contract --')
   {
     const se = makeFakeHost({})
     M.registerMathComputation(se.host)
-    const r = await se.call({ op: 'run', engine: 'python', mode: 'expr', expr: '1+1', mathEngineOverride: { python: { evalArgv: ['-X', 'utf8', '-c', '<expr>'] } } })
-    eq(r.argv.slice(1, 4), ['-X', 'utf8', '-c'], 'the overridden evalArgv is used for mode=expr')
+    // ★ ROUND 94: mode:'expr' runs through `exprPrint` (evaluate AND print), so an override must name
+    // THAT key to change the expression argv; an evalArgv-only override no longer reaches expr mode.
+    const r = await se.call({ op: 'run', engine: 'python', mode: 'expr', expr: '1+1', mathEngineOverride: { python: { exprPrint: ['-X', 'utf8', '-c', 'print(<expr>)'] } } })
+    eq(r.argv.slice(1, 5), ['-X', 'utf8', '-c', 'print(1+1)'], 'the overridden exprPrint is used for mode=expr')
+    const legacy = await se.call({ op: 'run', engine: 'python', mode: 'expr', expr: '1+1', mathEngineOverride: { python: { evalArgv: ['-Z', '<expr>'] } } })
+    eq(legacy.argv.indexOf('-Z'), -1, 'an evalArgv-only override does not silently strip the printing template')
   }
 
   // 17c. The override stays CLOSED: bad shapes are refused with MATH_INVALID_ARGUMENT.

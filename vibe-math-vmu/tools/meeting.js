@@ -37,9 +37,15 @@ export function primitiveMissError({ id, inService, action, crossing = SERVICE_C
   const asked = String(action || 'this action')
   const set = Array.isArray(crossing) ? crossing : []
   const crosses = set.includes(asked)
-  return Object.assign(new Error(inService
-    ? 'no PRIMITIVE meeting with id ' + String(id) + ' (the id exists in the SERVICE registry)'
-    : 'no live meeting with id ' + String(id)), {
+  // ★ ROUND 94: a verb that NEVER crosses registries opened with "no PRIMITIVE meeting with id m2 (the id
+  // exists in the SERVICE registry)" — a reader takes the first clause as "the meeting is missing", while the
+  // real answer is "this verb cannot address that kind of meeting". Name the boundary FIRST when it applies.
+  const boundaryOnly = inService && !crosses
+  return Object.assign(new Error(boundaryOnly
+    ? 'action "' + asked + '" addresses the PRIMITIVE registry only and never crosses, while meeting ' + String(id) + ' lives in the SERVICE registry'
+    : (inService
+      ? 'no PRIMITIVE meeting with id ' + String(id) + ' (the id exists in the SERVICE registry)'
+      : 'no live meeting with id ' + String(id))), {
     code: 'VMU_NO_SUCH_OBJECT',
     hint: inService
       ? 'meeting ' + String(id) + ' lives in the meetings SERVICE registry; ' + asked + (crosses
@@ -48,6 +54,7 @@ export function primitiveMissError({ id, inService, action, crossing = SERVICE_C
       : 'use action=list (it reports both registries: meetings, serviceMeetings, unionMeetings)',
     registry: inService ? 'service' : null,
     askedAction: asked,
+    boundaryOnly,
     actionCrosses: crosses,
   })
 }

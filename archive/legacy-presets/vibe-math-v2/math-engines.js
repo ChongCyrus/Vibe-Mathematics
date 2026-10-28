@@ -12,6 +12,10 @@
 export const MATH_ENGINE_ORDER = ['python', 'r', 'octave', 'julia', 'matlab', 'maple', 'wolfram', 'cli']
 
 // Usage/option-error heuristics: when an engine exits non-zero and its output looks like one of
+// ★ ROUND 94: `exprPrint` is the template that EVALUATES AND PRINTS one expression. Before it, mode:'expr'
+// reached the engine's `evalArgv` (`python -c 2**10+1`), which computes the value and prints NOTHING — so the
+// receipt carried `value:0` for an expression that is not zero. Evaluating without printing cannot report a
+// value; the templates below make the value observable, and `kernel/math.js` no longer invents one.
 // these, the tool returns MATH_ENGINE_BAD_ARGV (pointing at mathEngineOverride) instead of a bare
 // MATH_NONZERO_EXIT. This is what makes a version-mismatched commercial template diagnosable.
 const ARG_ERROR_HINTS = ['unknown option', 'invalid option', 'unrecognized option', 'unrecognized argument', 'usage:', 'Usage:', 'illegal option']
@@ -22,6 +26,7 @@ export const MATH_ENGINES = {
     candidates: ['python3', 'python', 'py'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+\\.\\d+)',
     scriptArgv: ['<script>'], evalArgv: ['-c', '<expr>'], ext: '.py',
+    exprPrint: ['-c', 'print(<expr>)'],
     // round-7 (live): NO shell metacharacters (`|`, `%`) in any probe argv - a real host rejected
     // them with a null spawn. One line per package: "name ok|missing".
     probeCode: "import importlib.util,sys\nfor p in sys.argv[1:]: print(p, 'ok' if importlib.util.find_spec(p) is not None else 'missing')",
@@ -71,6 +76,7 @@ export const MATH_ENGINES = {
     candidates: ['Rscript', 'R'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+\\.\\d+)',
     scriptArgv: ['<script>'], evalArgv: ['-e', '<expr>'], ext: '.R',
+    exprPrint: ['-e', 'print(<expr>)'],
     // round-7 (live): line-per-package, no `|` in the argv.
     probeCode: "for (p in strsplit('__PKGS__',',')[[1]]) cat(p, if (requireNamespace(p, quietly=TRUE)) 'ok' else 'missing', '\\n')",
     packageProbe: { argv: ['-e', '<probeCode>'], parse: 'pairs' },
@@ -89,6 +95,7 @@ export const MATH_ENGINES = {
     candidates: ['octave', 'octave-cli'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+\\.\\d+)',
     scriptArgv: ['--no-gui', '--quiet', '<script>'], evalArgv: ['--no-gui', '--quiet', '--eval', '<expr>'],
+    exprPrint: ['--no-gui', '--quiet', '--eval', 'disp(<expr>)'],
     ext: '.m',
     // round-7 (live): line-per-package via disp, no `|` and no `%` in the argv.
     probeCode: "s=pkg('list'); n={'__QPKGS__'}; for i=1:numel(n); if any(cellfun(@(x) strcmp(x.name,n{i}),s)); disp([n{i} ' ok']); else; disp([n{i} ' missing']); end; end",
@@ -107,6 +114,7 @@ export const MATH_ENGINES = {
     candidates: ['julia'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+\\.\\d+)',
     scriptArgv: ['<script>'], evalArgv: ['-e', '<expr>'], ext: '.jl',
+    exprPrint: ['-e', 'println(<expr>)'],
     probeCode: 'for p in [__QPKGS__]; println(p, ":", Base.find_package(p) === nothing ? "missing" : "ok"); end',
     packageProbe: { argv: ['-e', '<probeCode>'], parse: 'pairs' },
     license: 'free', argErrorHints: ARG_ERROR_HINTS,
@@ -123,6 +131,7 @@ export const MATH_ENGINES = {
     candidates: ['matlab'],
     versionArgv: ['-batch', 'disp(version)'], versionRe: '(\\d+\\.\\d+)',
     scriptArgv: ['-batch', "run('<script>')"], evalArgv: ['-batch', '<expr>'], ext: '.m',
+    exprPrint: ['-batch', 'disp(<expr>)'],
     // round-7 (live): no `|`/`%` in any probe argv (a real host rejected such argv with a null spawn).
     probeCode: "t={'__QPKGS__'}; for i=1:numel(t); if license('test',t{i}); disp([t{i} ' ok']); else; disp([t{i} ' missing']); end; end",
     packageProbe: { argv: ['-batch', '<probeCode>'], parse: 'pairs' },
@@ -136,6 +145,7 @@ export const MATH_ENGINES = {
     candidates: ['maple'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+)',
     scriptArgv: ['-q', '<script>'], evalArgv: ['-q', '-c', '<expr>'], ext: '.mpl',
+    exprPrint: ['-q', '-c', 'print(<expr>)'],
     // round-7 (live): `print` instead of printf so the argv carries no `|`/`%`.
     probeCode: 'for p in ["__PKGS__"] do try with(p) catch: print(p, " missing"); next end try; print(p, " ok") end do',
     packageProbe: { argv: ['-q', '-c', '<probeCode>'], parse: 'pairs' },
@@ -150,6 +160,7 @@ export const MATH_ENGINES = {
     candidates: ['wolframscript', 'WolframKernel', 'math'],
     versionArgv: ['-code', '$Version'], versionRe: '(\\d+\\.\\d+(\\.\\d+)?)',
     scriptArgv: ['-file', '<script>'], evalArgv: ['-code', '<expr>'], ext: '.wl',
+    exprPrint: ['-code', 'Print[<expr>]'],
     probeCode: 'Do[Print[p,":",If[Quiet[Check[Needs[p];True,False]],"ok","missing"]],{p,{__QPKGS__}}]',
     packageProbe: { argv: ['-code', '<probeCode>'], parse: 'pairs' },
     license: 'commercial', argErrorHints: ARG_ERROR_HINTS,
@@ -176,6 +187,7 @@ export const MATH_P2_ENGINES = {
     name: 'sage', phase: 'P2', candidates: ['sage'],
     versionArgv: ['--version'], versionRe: '(\\d+\\.\\d+)',
     scriptArgv: ['<script>'], evalArgv: ['-c', '<expr>'], ext: '.sage',
+    exprPrint: ['-c', 'print(<expr>)'],
     probeCode: null, packageProbe: { argv: ['-pip', 'list'], parse: 'lines' },
     license: 'free', argErrorHints: ARG_ERROR_HINTS, install: null,
   },

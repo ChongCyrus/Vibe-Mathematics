@@ -17,7 +17,7 @@ import { createPaperFlow } from '../../kit/paper.js'
 // ★ E1＋E3 (phase 12): the record-backed sections and the quality gate live in their own module because the export
 // surface below is PINNED (`tests/vmu-v5r-tools.test.mjs` ⑦h) — new machinery may never widen it. This file imports and
 // wires; `paper-quality.js` owns the reads, the fills and the four refusal codes.
-import { QUALITY_CODES, createRecordsView, fillRecordSections, checkQuality } from './paper-quality.js'
+import { QUALITY_CODES, createRecordsView, fillRecordSections, checkQuality, checkEvidencePointers } from './paper-quality.js'
 
 export const PAPER_MAX_ROUNDS = 3
 /** The original's nine sections, in order (verbatim from `vibe-math-v5r.js:238-248`). */
@@ -116,6 +116,13 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
   flow.sectionAudit = (args = {}) => {
     const fill = filledMd(args)
     return { ok: fill.ok, sections: fill.sections, problems: fill.problems }
+  }
+
+  /** ★ ROUND 95 — resolve a part's `evidence` pointers NOW, before the part is recorded (see
+   *  `paper-quality.js#checkEvidencePointers`). The tool face refuses on `!ok`; this method never writes anything. */
+  flow.evidencePointers = (evidence) => {
+    const view = recordsView()
+    return checkEvidencePointers({ evidence, records: view && view.records, codes: QUALITY_CODES })
   }
 
   /** ★ E3 — the quality verdict WITHOUT refusing (the reviewer/the editor may ask before committing). */

@@ -8479,3 +8479,86 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 §195.4 相邻套件。`vmu-math` 27/0、`vmu-math-adapters` 21/0、`vmu-mathtools-tool` 14/0、`vmu-run91b-seam-refusal` 18/0、`vmu-run90f-math-single-publication` 16/0、`vmu-math-intent-readback` 15/0、`vmu-mathjobs` 11/0、`vmu-mathjobs-persist` 21/0、`vmu-spawn` 15/0、`vmu-run82-local-spawn` 31/0、`vmu-meeting` 50/0、`vmu-run84-meeting-reads` 8/0、`vmu-turn` 272/0、`vmu-prompt-clean` 8/0、`vmu-prompt-type-coverage` 15/0、`audit-prompt-tool-params` 81/0、`vmu-ledger-teaching-pins` 58/0、`vmu-run33-p2-teaching` 111/0。
 
 §195.5 无实质残余：否（两条修法都要在下一轮真机上复验；`runPlan` 只在 `expr/code/file` 三种体上翻译，规划后端的真注入仍是未接的接缝）。
+
+## §196 真机跑 94（数学 expr 的值 / 议程动词的注册表边界 / 谁领头）
+
+§196.1 读数。build `b80aad76`，clone `slvp94`，port 19694；`DRIVE exit=0`、186s、`toolCalls 11`、`tokenTotal 1,008,663`（cap 12M）、2 会话、`0 RED`；jsonl 3,716,112 B／7,171 行；围栏 `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=12 BAD_JSON=12`；保全戳 `20261028-094233`；C 盘余 9.97 GB。
+
+§196.2 判决表。
+
+| # | 要点 | 结果 | 证据（逐字） |
+| --- | --- | --- | --- |
+| 1 | `vibe_vmu_mathtools` 的 plan 词表要被翻译成引擎词表（F-93a 的真机复验） | ✅ | `"vocabulary":"computation","planOp":"run","translated":{"from":"plan","to":"computation","body":"expr","planOp":"run"}`；无 `unknown argument: args` |
+| 2 | `mode:"expr"` 的 `value` 必须是真的值 | ❌ **F-94a** | `{"ok":true,...,"result":{"value":0,"engine":"python","exit":0,"stdout":"","mode":"expr"` —— `2**10+1` 读到 **0**；同接缝 `code` 模式 `{"value":"1025","stdout":"1025\r\n"}` |
+| 3 | 面把成员自己写的东西当数据（本所核对底稿） | ✅ | `status` 报 `wired 75 键 / plannedKeys 34 键`（`vmu.math.engines` 在 planned）、`limits/policy`；`plan` 给 `{plan:{op,args,seed,backend,workspace,enforced,cacheKey,cached},limits}` |
+| 4 | 一个**不跨注册表**的动词被问在 service 会上，要说这句话本身 | ❌ **F-94b** | `vibe_vmu_meeting{action:"agendaitems",id:"m2"}` ⇒ `"no PRIMITIVE meeting with id m2 (the id exists in the SERVICE registry)"` —— 首句读成「这会不存在」 |
+| 5 | 服务会议程可读 | ✅ | `vibe_vmu_meeting{action:"summary",id:"m1"}` ⇒ `"materials":"核对数学面（vmu.math）与会议议程…"`（议程文本在 `materials`） |
+| 6 | 服务会的 status/summary 形状自洽 | ✅ | `status` 带 `quorum{required:2,present:1,rule:"m-unanimous",unanimity.met:false,voteFloor.effective:2}`；`summary` 无 quorum 块、`votesSource:"none-recorded-on-this-face"` |
+| 7 | 开所时坐好的院士席就是领头人 | ❌ **F-94c** | 本所自述：「`leadership.code = chair-seated-but-leaderId-empty`（席位有人但 `vmu.turn.leaderId` 为空，章程会误称本所无院士）」；它自己用 `vibe_v5_configure {vmu.turn.leaderId:"r-acad"}` 修好了 |
+| 8 | pack 面只召集、其余动词在另一面（简报错，非缺陷） | ✅ | `vibe_v5_meeting{action:"status"}` ⇒ `VMU_INVALID_ARGUMENT "...only CONVENES a meeting; it has no "status" action"` + hint 指 `vibe_vmu_meeting` |
+| 9 | 拒绝里要有「哪张表」的名字 | ✅ | 同一回执 `"this action addresses the PRIMITIVE registry only and does NOT cross. Actions that cross: speak/hand/…"`（hint 正确，消息首句错——见 #4） |
+
+§196.3 三条缺陷与修法。
+
+1. **F-94a `mode:"expr"` 静默给 0。** `math-engines.js` 给每个能求值的引擎加 `exprPrint` 模板（python `-c print(<expr>)`、r `-e print(<expr>)`、octave `--eval disp(<expr>)`、julia `-e println(<expr>)`、matlab `-batch disp(<expr>)`、maple `-q -c print(<expr>)`、wolfram `-code Print[<expr>]`；P2 的 sage `-c print(<expr>)`），`math-computation.js` 的 `assembleArgv` 对 expr 优先用它（`evalArgv` 只作旧描述符回退），`mathEngineOverride` 也接受 `exprPrint`。同时 `kernel/math.js` **不再发明值**：`stdout` 打印为空 ⇒ `value:null` + `valueMissing:"stdout-empty"` + `valueMeans`（明说 expr 是「求值不打印」、0 会是编的、要值就用 `code` 带 print）。判据：**空输出不是零**；一个数的来源必须能在回执里指出来。
+2. **F-94b 边界先说边界。** `tools/meeting.js#primitiveMissError` 新增 `boundaryOnly`：当被问动作**不在**交叉集合而 id 在 service 表时，消息以「`action "X" addresses the PRIMITIVE registry only and never crosses, while meeting m2 lives in the SERVICE registry`」开头，hint 保留交叉集合与 read-first 出路。判据：**拒绝的第一句必须是这个动作做不到的那件事**，而不是一个读起来像「对象不存在」的影射。
+3. **F-94c 坐席的那一下要记下谁领头。** `packs/v5r/tools.js#toolStart` 在 `r-acad` 入席且当前 `vmu.turn.leaderId` 为空时，用同一个声明式写入把 `r-acad` 记为领头人（回执 `applied[]` 里可见）；**名册已有领头人时绝不覆盖**。测试用假内核钉住这两半。判据：**创建状态的工具要对它创造的状态负责**——本所不该靠一次 `configure` 去修开所造出来的不一致。
+
+§196.4 测试与门禁。新 `tests/vmu-run94-math-expr-leader.test.mjs` **7 组全绿**（`exprPrint` 覆盖八个引擎、expr 的 argv 真是 `print(2**10+1)` 且值 `"1025"`、空 stdout ⇒ `value:null`+`valueMissing`、`code` 模式不变、边界拒绝两半、`toolStart` 两半、源码课钉）。相邻：`vmu-math` 27/0、`vmu-math-adapters` 21/0、`vmu-mathtools-tool` 14/0、`vmu-run93b-math-vocabulary` 7/0、`vmu-run84-meeting-reads` 8/0（③ 两条断言按新句重写）、`vmu-meeting` 50/0、`vmu-v5r-tools` 359/0、`vmu-kernel` 260/0、`vmu-run82-local-spawn` 31/0、`math-computation-shared` 419/0（expr argv 断言改成 `print(1+1)`，override 两支）、`audit-math-computation-parity` 137/0、`audit-math-computation-contract` 232/0、`audit-math-computation-sensitivity` 22 探针 0 问题。
+
+§196.5 简报三错（本轮简报是我写的，错在我）。① 让 `vibe_v5_meeting` 做 `status` —— **pack 面只召集**，读/驱动都在 `vibe_vmu_meeting`（它当场被拒并拿到正解 hint；这条错反而证明 #8 的 hint 有价值）。② `vibe_vmu_mathtools{action:"run",op:"numeric"}` 混用两套词汇（plan 的 `op` 与 run 的 `mode`）—— 真机被 `VMU_MATH_VOCABULARY` 具名拒，说明 F-93a 的翻译只覆盖 plan 面。③ 把「核对 agenda 条目」做成对 service 会问 `agendaitems` —— 这个动词按设计只认原语会（教学已写），简报该改用 `summary`/`lists`；它的拒绝正好暴露 F-94b 的消息顺序问题。
+
+§196.6 四项无法验证。论文定稿的 happy path（`consult` 由所办作答后 `final`）仍未演练；`vibe_vmu_meeting{action:"status"}` 的 `turns`/`turnsCounts` 与耐久 `state.json` 的差在本次窗口内无可比对样本；`vmu.meetings.chairActRequiresTurn` 的 session 覆盖来自部署，不是产品默认；`expr` 的其它引擎（r/octave/julia/matlab/maple/wolfram/sage）只做了 argv 级断言，本机只装了 python。
+
+§196.7 无实质残余：否（三条修法都要在 r95 复验；论文定稿路径与 r95 的 `render` 证据仍是未闭合的一环）。
+
+
+## §197 真机跑 95（论文从分工到成品的整条链路 / 所办咨询真机作答 / 证据指针的时机）
+
+**§197.1 读数**（build `b80aad76`，clone `slvp95`，port 19695）
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `DRIVE exit=0` |
+| 时长 | 224 s |
+| 根会话调用 | 36 calls（`calls (36) vs results (36)`） |
+| token | `tokenTotal 1,769,835`（cap 12,000,000，未触顶） |
+| 会话 | 1（`SUMMARY: 1 session(s), 0 with RED checks`） |
+| jsonl | 1,420,114 B / 2,977 行 |
+| 围栏 | `NO_FENCE=0 UNKNOWN_FIELD=0 FIELD_NOT_APPLICABLE=0 BAD_JSON=0`（全零） |
+| 保全戳 | `20261028-100323` |
+| C 盘 | 9.88 GB |
+
+**§197.2 判决表**
+
+| 规则 | 判决 | 逐字证据（节选） |
+| --- | --- | --- |
+| F1 论文系统梳理 `vibe_v5_paper` | ✅ | `action:"start"` 建稿；`part` 两节各记一条 `part` 记录（`"recordId":"rec-2"`/`"rec-3"`、`"fingerprint":"cc4b58f0…"`） |
+| F2 分工与合并 | ✅ | `advance` → `"to":"reviewing","reviewOf":{"r-1":"r-2","r-2":"r-1"}`；两次 `review {deliverable:true}` 后 `advance` 到 `awaiting-editor`（`"unanimous":true`） |
+| F3 论文三段与四项质量要求 | ✅ | `review` 意见含四项质量判断；`final` 被 `VMU_OFFICE_CONSULT_REQUIRED` 拒并生成 `consult-<target>-1`（先咨询后定稿的顺序真的被机器强制） |
+| F4 所办前置咨询（E4 气闸） | ✅ | `consult {member:"office"}` **成功**（`answererKind:"declared-role"`，F-86a 的真机复核）；随后 `final` 通过 |
+| C13 论文产物（md/tex/meta，pdf 需引擎） | ✅/⚠️ | `render {format:"md"}` 回 `ok:true`、`wrote` 含 `md/tex/meta`；磁盘只有 `.tex`（md 在 records 轨）——见 F-95b |
+| F-95a（新）| ❌→已修 | `part` 对 `evidence:["Members/r-1/Propos/p-95.md"]` 无条件 `ok:true`，直到 `render` 才被质检闸拒 |
+| F-95b（新）| ⚠️→已修 | `render` 的 `wrote` 是**记录种类**（md/tex/meta 写进 paper 轨），不是磁盘文件；`.tex` 落盘要等 `compile` |
+
+**§197.3 两条缺陷与修法**
+
+- **F-95a 闸门开在最贵的那一步**：`kit/paper.js#recordPart` 收下任何 `evidence` 数组，第一次解析指针是在 `render` 的 qualityGate —— 那时论文已写完、互审完、所办咨询完、定稿完。成员自己把它写成 feedback 卡：**"整条链路要走完全部阶段才在最后一步发现引用是伪造/无效的形状，返工成本最高"**。
+  修法：`packs/v5r/paper-quality.js` 新增纯函数 `checkEvidencePointers({evidence,records})`（复用同一个 `MEMBER_FILE`/`TRACK_OF_CATEGORY`/`recordOf`，不写第二份解析器），`packs/v5r/paper.js` 以 `flow.evidencePointers` 暴露（只读），`packs/v5r/tools.js` 的 `case 'part'` 在 `recordPart` **之前**解析并具名拒 `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING`（消息点名每条坏指针与原因 `no-such-record`/`wrong-track`/`not-a-member-file-pointer`，hint 指明「先建记录再写 part」）；`part` 回执新增 `evidence{provided,checked,resolved,means}`。records 面对未知 id 会抛 `VMU_NO_SUCH_OBJECT`，解析器逐条 try/catch 把它变成每条指针的 reason，而不是让一条坏指针中断整张列表。
+  判据：**闸门要开在最便宜的那一刻**——同一份合同，越早拒越好；而「无证据」仍由交付门的 `≥1 条 + 每条有指纹` 拥有（草稿可自由渲染）。
+- **F-95b 字段名要说它数的是什么**：`render` 的 `wrote:["md","tex","meta"]` 读起来像「写了三个文件」，而 `Paper/<id>/` 里只有 `.tex`；成员靠读 `kit/paper.js` 源码才消解。修法：`render` 回执新增 `wroteWhere{records,disk,means}`，`means` 明说「`wrote` 是 paper 轨的记录种类；`render()` 不写文件，`.tex`/`.pdf` 要等 `compile` 才进 `Paper/<id>/`」。
+
+**§197.4 测试与门禁**
+
+- 新 `tests/vmu-run95-part-evidence.test.mjs` **22/0**：伪造指针当场拒（点名 `no-such-record`）、**没有写入任何记录**（records 行数不变 ⇒ 流程没有在谎言上前进）、错轨拒（`wrong-track` + `expected track methods`）、同指针正轨收下且回执 `evidence.resolved` 点名记录、无 evidence 也收下但回执说 `provided:0`、`render` 的 `wroteWhere{records,disk:[]}` 与 `compile` 说明、源码合同（解析器只此一份、教学钉、docs/03 登记）。
+- 相邻全绿：`vmu-paper` 37/0、`vmu-v5r-tools` 359/0、`vmu-run90-paper-target-schedule` 14/0、`vmu-run94-math-expr-leader` 7/0、`vmu-prompt-clean` 8/0、`vmu-prompt-type-coverage` 15/0、`vmu-ledger-teaching-pins` 58/0、`vmu-run33-p2-teaching` 111/0、`audit-prompt-tool-params` 81/0。
+- 台账门：`RULES COVERAGE: PASS (0 problem(s), 2 warning(s))`、`RULE PARITY: PASS (0 problem(s))`。
+
+**§197.5 本轮简报的两处偏差**
+
+1. 我写「`part` 回执里有 `part`/`status` 顶层字段」——实际形状是 `part:{ok,recorded,round,recordId,fingerprint,replaced}`，`status` 在 `status` 动作里（成员按实际形状读，没有卡住）。
+2. 我没让成员在 `consult` 前先读 `consult_state`（它自己补上了，`request_id` 因此对得上）。
+
+**§197.6 五项无法验证（本轮未演练）**：pdf 编排（`compile` 未被调用）、`sections`/`qualityGate` 读面、参考文献直入（B2，见 §187）、`paper` 之外的 `poll_*`、tmp worker 的并发上限。
+
+**§197.7 无实质残余：否** —— F-95a/F-95b 的修法由 `tests/vmu-run95-part-evidence.test.mjs` 覆盖，但还缺一次真机复验（下一轮 r96 的简报已含这两步）。

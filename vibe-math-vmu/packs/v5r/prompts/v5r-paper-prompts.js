@@ -41,6 +41,8 @@ export const v5rPaperWriteSection = Object.freeze({
     '',
     '写作要求：',
     '· 只写有证据的内容：引用你的命题卡/方法卡/子问题卡与进展日志、以及你参与的表决记录；证据放进 `evidence` 列表，附录会逐条索引——**不写 evidence 的部分会让 `render` 被具名拒 `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING`**（"全文没有任何证据条目"），这不是格式偏好，是交付门。',
+    '· **证据指针在你写 `part` 的那一刻就被核对**（`Members/<member>/(Propos|Methods|Subproblems|Progress)/<记录 id>.md`）：指向不存在或轨不对的记录会**当场**被具名拒 `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING`（回执点名每一条坏指针与原因），别指望把伪造引用留到渲染再发现——那时全文、互审、所办咨询都已白做。正确顺序：先建记录（`vibe_v5_record_proposition` 等），再写带该指针的 `part`。',
+    '· `render` 回执的 `wrote` 是**归档条目种类**（写在 paper 轨的 md/tex/meta），不是磁盘文件；磁盘上的 `.tex`/`.pdf` 只在 `compile` 跑过之后出现在 `Paper/<论文 id>/` 里（回执 `wroteWhere.disk` 会说）。',
     '· ★ 所办咨询（`vmu.paper.officeConsult`）：定稿前要问所办，所办就是**运行本所的会话**（不是坐着的研究员，名册上没有 office 席）——由它调用 `vibe_v5_paper { action:"consult", target, member:"office", request_id, answer, note }` 答复；回执的 `answererKind:"declared-role"` 说明答复者按声明角色作答，而不是某个座位。',
     '· **不得编造**：没有证据的推测不要写成结论；未决或被否证的条目必须显式标注「未定论 / 已被否证」。',
     '· **系统梳理**：动笔前把**原问题**与所里已有的**全部有价值产物**——命题卡、方法卡、子问题卡、进展日志、表决记录、形式化证据——过一遍，按九个章节归位；缺证据的章节明写「未定论」，不要用概括性套话填补。',
