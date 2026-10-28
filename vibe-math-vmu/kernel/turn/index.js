@@ -1186,7 +1186,13 @@ const said = (value, at2 = null) => ({ value, why: null, at: at2 === null || at2
     // kernel, so a member comparing `[总任务]` with its own `vibe_vmu_status{detail:'settings'}` read saw two values and
     // reported the board's source label as false. It was not false - it was unqualified: the value came from THIS
     // kernel's settings, and `resolvedBy` says so on the field, so the renderer can name the kernel that resolved it.
-objective = { value: objectiveText, why: null, at: readAt, source: '设置键 vmu.turn.objective', resolvedBy: kernel }
+objective = {
+      value: objectiveText, why: null, at: null,
+      // ★★ ROUND 102 / D5: a settings key is CONFIGURATION, not a ledger row - it has no updatedAt. Saying nothing
+      // about time let a member read a stale objective as a current one (run 100 did exactly that). The row now names
+      // the absence, which is the same honesty the "该来源未提供" rows already carry.
+      timeWhy: '设置键没有内容时间戳（vmu.turn.objective 是配置，不是账本行；它何时被写不在这条值里）',
+      source: '设置键 vmu.turn.objective', resolvedBy: kernel }
   } else if (!rows) {
     objective = Object.assign(gap(boardWhy === null ? '任务板不可读' : boardWhy), { source: '任务板（无依赖的根任务）' })
   } else if (rows.length === 0) {
@@ -1307,6 +1313,12 @@ plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + 
     }
   }
 
+  // ★★ ROUND 102 / D5: a row with no content time must say WHY it has none - the objective comes from a settings key
+  // (configuration has no updatedAt), and a silent row reads as a current one. One fallback covers every branch that
+  // produced a row without `timeWhy`, so no future branch can reintroduce the silence.
+  if (objective && objective.at === null && !objective.timeWhy) {
+    objective.timeWhy = '设置键没有内容时间戳（本行来自设置或计算，不是账本行）'
+  }
   const raw = { objective, plan, tasks: tasksField, current }
   const fields = STATUS_BOARD_FIELDS.map((decl) => {
     const r = raw[decl.key] || { value: null, why: '内部错误：字段未计算', at: null }
@@ -1314,6 +1326,9 @@ plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + 
     // ★★ ROUND 52: a settings-derived value carries the kernel that resolved it; the key is copied only when the read leg
     // produced it, so a fallback branch can never look like a settings resolution.
     if (Object.prototype.hasOwnProperty.call(r, 'resolvedBy')) field.resolvedBy = r.resolvedBy === undefined ? null : r.resolvedBy
+    // ★★ ROUND 102 / D5: carry the reason a row has no content time; a frozen field that dropped it made the renderer
+    // stay silent about time on a row the rule says carries time information.
+    if (typeof r.timeWhy === 'string' && r.timeWhy.trim() !== '') field.timeWhy = r.timeWhy.trim()
     return Object.freeze(field)
   })
   const available = fields.filter((f) => typeof f.value === 'string' && f.value.trim() !== '').length
@@ -1351,9 +1366,14 @@ export function renderStatusBoard(readings) {
     const paren = source === null ? null : (scope === null ? source : source + ' · ' + scope)
     // ★★ ROUND 99 / D5: the rule says the four contents carry time information, so a row that KNOWS when it was
     // read prints it. A row without a read time prints nothing extra — it must not borrow the board stamp as its own.
-    const when = f && (typeof f.at === 'string' ? f.at.trim() : (Number.isFinite(f.at) ? String(f.at) : '')) || null
+    const when = f && ((typeof f.at === 'string' ? f.at.trim() : (Number.isFinite(f.at) ? String(f.at) : '')) || null)
+    // ★★ ROUND 102 / D5: "no time" is itself information. A row whose source has no content timestamp says WHY rather
+    // than printing a value with no time at all - otherwise "no time" and "time not printed" look identical.
+    const timeWhy = f && when === null && typeof f.timeWhy === 'string' && f.timeWhy.trim() !== '' ? f.timeWhy.trim() : null
     const shown0 = value === null ? null : (paren === null ? value : value + '（来源：' + paren + '）')
-    const shown = shown0 === null ? null : (when === null ? shown0 : shown0 + '（读于 ' + when + '）')
+    const shown = shown0 === null ? null : (when !== null
+      ? shown0 + '（读于 ' + when + '）'
+      : (timeWhy === null ? shown0 : shown0 + '（时间未提供：' + timeWhy + '）'))
     return '[' + decl.label + '] ' + (shown === null ? '该来源未提供：' + why : shown)
   }).join('\n')
 }
@@ -1610,6 +1630,15 @@ export function createTurnOrchestrator({
     const kernelNow = typeof kernelSession === 'function'
       ? (() => { try { const v = kernelSession(); return typeof v === 'string' && v !== '' ? v : null } catch { return null } })()
       : kernelSession
+    // ★★ ROUND 101: the four lines are a READING, so the prompt path must say WHEN it read them. D5 taught
+    // statusBoardReadings to carry `at`, but this call site - the one that actually builds a member's
+    // `[状态板]` - never passed it, so every line came out with `at: null` and the member correctly reported
+    // (run 99) that no line carried a read time. The mechanism existed; its ONLY production caller did not use
+    // it. Passed here (not inside the function) because the orchestrator owns the clock: one read, one clock.
+    // ★★ ROUND 102: the prompt path must NOT print when we looked. `vmu-assistant-e2e` compares two assemblies of the
+    // same round byte for byte (that is what makes a prompt diff readable), and a read clock makes every assembly
+    // unique. Time therefore comes from the CONTENT (a record carries `updatedAt`) or the row says why it has none -
+    // `timeWhy` - instead of borrowing the moment of reading as if it were the moment of the fact.
     return statusBoardReadings({ tasks: taskFace, records: recordFace, member, settings, limit: STATUS_BOARD_DEFAULT_LIMIT, kernel: kernelNow })
   }
 

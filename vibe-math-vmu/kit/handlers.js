@@ -166,6 +166,29 @@ function toolRecordProgress(args = {}, { kernel, agent } = {}) {
   // seat, so an office/human call keeps the registrar path (it may write on behalf, and the receipt names the panel owner).
   const caller = agent && typeof agent.id === 'string' && !agent.id.startsWith('session-') ? agent.id : null
   const panelTarget = track === 'state' ? (has(args.member) ? str(args.member) : caller) : null
+  // ★★ ROUND 102 / F-100a: A PANEL BELONGS TO A MEMBER WHO EXISTS. Run 100 wrote a state panel for "r-2" - a name
+  // that was never hired (the roster was r-acad + r-1) - and the write succeeded, so the ledger grew a panel owned by a
+  // ghost and nobody could tell it from a real one. The existence check is done where the roster is READABLE: when the
+  // kernel exposes no members face (small test kernels, a pack with its own roster) the check is SKIPPED and said so in
+  // the receipt rather than pretended (`memberCheck: 'skipped'`), because inventing a refusal from an unread roster
+  // would be the same class of lie in the other direction.
+  let memberCheck = 'not-applicable'
+  if (track === 'state' && panelTarget !== null) {
+    const rosterIds = (() => {
+      try {
+        const face = membersOf(kernel)
+        if (!face || typeof face.roster !== 'function') return null
+        const list = face.roster()
+        if (!Array.isArray(list)) return null
+        return list.map((m) => String(m && m.id !== undefined ? m.id : m)).filter((id) => id !== '')
+      } catch { return null }
+    })()
+    if (rosterIds === null) memberCheck = 'skipped'
+    else if (!rosterIds.includes(panelTarget)) {
+      throw refuse('VMU_NO_SUCH_OBJECT', 'there is no member "' + panelTarget + '" on this roster, so there is no panel to write',
+        'the roster is: ' + (rosterIds.length ? rosterIds.join(', ') : '(empty)') + ' - hire the member first (vibe_v5_hire { purpose, initial_task, to }), then write their panel; writing a panel for a name nobody hired is refused here so the ledger cannot grow owners that do not exist')
+    } else memberCheck = 'checked'
+  }
   if (track === 'state' && caller !== null && panelTarget !== null && panelTarget !== caller) {
     throw refuse('VMU_NOT_PERMITTED', 'this state panel belongs to "' + panelTarget + '" and only that member may rewrite it',
       'read it with vibe_v5_read_library { member: "' + panelTarget + '", track: "state" } — reading a panelled member is allowed, rewriting it is not; write your own with member:"' + caller + '" (or leave member out and the caller is used)')
@@ -226,6 +249,12 @@ function toolRecordProgress(args = {}, { kernel, agent } = {}) {
       // ★★ ROUND 99 / D7: name the panel that was just rewritten. Without it the office registering a member panel and a
       // member editing itself produce identical receipts, and a reader cannot tell whose four contents just changed.
       panelOwner: panelTarget,
+      memberCheck,
+      memberCheckMeans: memberCheck === 'checked'
+        ? 'the named member exists on this roster (a panel for an unhired name is refused, not written)'
+        : (memberCheck === 'skipped'
+          ? 'no members face is readable from here, so the named member was NOT checked against a roster'
+          : 'this write is not a state panel, so no member existence check applies'),
       panelOwnerMeans: caller === null
         ? 'written through the office/human path: no member seat was on the call, so the panel was written on behalf of the member named'
         : (panelTarget === caller
@@ -262,6 +291,12 @@ function toolRecordProgress(args = {}, { kernel, agent } = {}) {
     note: 'appended to the ' + track + ' track; the original wrote one file per track for the same reason',
     ...(track === 'state' ? {
       panelOwner: panelTarget,
+      memberCheck,
+      memberCheckMeans: memberCheck === 'checked'
+        ? 'the named member exists on this roster (a panel for an unhired name is refused, not written)'
+        : (memberCheck === 'skipped'
+          ? 'no members face is readable from here, so the named member was NOT checked against a roster'
+          : 'this write is not a state panel, so no member existence check applies'),
       panelOwnerMeans: caller === null
         ? 'written through the office/human path: no member seat was on the call, so the panel was written on behalf of the member named'
         : (panelTarget === caller

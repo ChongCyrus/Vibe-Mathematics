@@ -898,14 +898,16 @@
       "text": "四字段都含时间等基础信息",
       "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kernel/turn/index.js::const readAt = at === null || at === undefined ? null : String(at)",
-        "vibe-math-vmu/kernel/turn/index.js::（读于 "
+        "vibe-math-vmu/kernel/turn/index.js::timeWhy",
+        "vibe-math-vmu/kernel/turn/index.js::时间未提供",
+        "vibe-math-vmu/kit/handlers.js::memberCheck"
       ],
       "tool": [
-        "vibe_vmu_turn"
+        "vibe_vmu_turn",
+        "vibe_v5_record_progress"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::每行带「读于」时间"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::时间未提供：为什么"
       ],
       "live": [],
       "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。",
@@ -962,7 +964,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_vmu_turn"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::objective/plan/tasks/current"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::[状态板]` 四行是**派生读数**"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`detail:\"settings\"` 给出 `vmu.turn.objective` 的 `value/source:\"runtime\"/hot:\"H2\"/who:\"office\"`"
@@ -1152,20 +1154,22 @@
       "text": "院士设会议时长上界",
       "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::wallStartMs > wallLimitOf",
-        "vibe-math-vmu/kernel/meetings.js::const wallLimitOf ="
+        "vibe-math-vmu/kernel/meetings.js::wallLimitMs = null",
+        "vibe-math-vmu/kernel/meetings.js::wallLimitMsSource: wallLimitRequested === null",
+        "vibe-math-vmu/kernel/meetings.js::wallLimitMeans"
       ],
       "tool": [
+        "vibe_v5_meeting",
         "vibe_vmu_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::hardLimitMs"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::durationMs"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"wallLimitMs\":2400000"
       ],
       "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
-      "next": "only the MEETING wall clock exists (hardLimitMs + extendlimit); the rule also asks for a 30-minute SPEECH duration, and no code bounds a single speech (audit lane 1) → 修法：bound one speech (record its start, refuse/close past the declared speech budget) or record explicitly that speech duration is out of scope, then update rules and gaps together"
+      "next": "余项只有 live：让院士用 vibe_v5_meeting { durationMs: 900000 } 召集并逐字抄回执的 wallLimitMs/wallLimitMsSource，再用 vibe_vmu_meeting { action:\"status\" } 读回同一个值（机制/教学/门禁已就绪，见 §201）"
     },
     {
       "id": "E11",

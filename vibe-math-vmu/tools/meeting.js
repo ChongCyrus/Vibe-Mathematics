@@ -77,7 +77,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
   const ballotRefs = new Map()
   return {
       name: TOOL_NAMES.meeting,
-      description: 'vmu 会议/表决面：action=list|open|speak|silent|hand|refuse|invite|invitedspeak|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|revokelapse|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen|boxlapse|boxrevokelapse|flow|overrideorder。' +
+      description: 'vmu 会议/表决面：action=list|types|open|speak|silent|hand|refuse|invite|invitedspeak|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|revokelapse|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen|boxlapse|boxrevokelapse|flow|overrideorder。' +
         '会议与表决是**逐对象原语**（内核给工厂、pack 给政策）；本工具只用**内核已登记的实例 id** 寻址（未知 id 具名拒）。' +
         '★ **A2（轮 1）：一个会议对象，两个面都能寻址。** `list` 返回两套注册表：`meetings`（原语）、`serviceMeetings`（`vmu.meetings` 服务，即 `vibe_v5_meeting` 建的那些）、`unionMeetings`（并集）；`status`/`speak`/`close` **先找原语、找不到再找服务**（服务侧的 `status` 带 `registry:"service"` 与动议视图，`speak` 走服务的发言面，`close` 走服务的收束并**进归档**，回执带 `registry` 与 `closeSemantics`）。两处都没有 ⇒ 具名 `VMU_NO_SUCH_OBJECT`，hint **逐条列出两个 id 空间**。' +
         '★ **D9（轮 12）：邀请/举手/发言序在 SERVICE 会议上真的可达。** `hand`（成员**自荐**入发言队列）、`invite`（**只有主席**：`member` 单个或 `members` 数组**按给定顺序批量**入队，回执 `order` 读回真实队列）、`invitedspeak`（走服务的发言面，回执带 `wasQueued` 说明他是否真在队列里）、`order`（**只读**发言序 `{mode,source,order,queueOpen}`）、`attend`（**发言的前提**：服务的 `speak` 要求在场，而 `open` 只让主席在席）。这五个 action **先找原语、找不到再找服务**，服务侧回执带 `registry:"service"`；**邀请≠签到**（邀请不改 quorum，被邀者须自己 `attend` 后才 `speak`）。`hands` 的**队列管理**（grant/revoke/clear）在服务面上**不存在**，因此**具名拒**并说明缺哪块，绝不假装成功。' +
@@ -89,7 +89,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         '**发言序/地面（B③/B④，Round 14）**：`flow` 设**四种地面模式**（open 无队列｜hands 按举手序｜round_robin 按已发言次数｜call_on 主席指定），`overrideorder` **覆盖发言序**（fifo｜round-robin｜chair｜random，random 为**确定性**洗牌：种子与结果 order 都写进回执）。**两者都只由主席做、都必须给 reason**，且**未声明 `vmu.meetings.orderMode` 的部署一律具名拒**（默认不可覆盖）。★ 这两个 action 寻址的是 **`vmu.meetings` 服务记录**（`kernel/meetings.js`），**不是**上面 `open` 造的逐对象会议 id —— 未知 id 由服务**具名拒**（hint 列出在活记录）。',
       parameters: {
         action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜order｜refuse｜invite｜invitedspeak｜attend｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜extend｜extendlimit｜proceed｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
-          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order', 'refuse', 'invite', 'invitedspeak', 'attend', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit', 'proceed'] }),
+          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order', 'refuse', 'invite', 'invitedspeak', 'attend', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit', 'proceed', 'types'] }),
         id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定）'),
         meeting: param('string', '会议 id 的【别名】：与 id 同义（两者都接受；同时给且不一致 ⇒ 具名拒）。ballot 用它把票绑定到服务会议，见 summary/close 与 ballot 的读数'),
         ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
@@ -185,6 +185,30 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         const meetingFieldRefusal = (a) => refused('VMU_INVALID_ARGUMENT', 'action ' + a + ' needs a meeting id (got neither id nor meeting)',
           'pass id:"<meeting id>" — `meeting:"<id>"` is an accepted alias; action=list shows the primitive and service ids')
         try {
+          // ★★ ROUND 102 / F-100e: A MEMBER'S SEAT HAS THIS FACE, NOT THE PACK'S. Run 100's member tried to convene with
+          // `kind:"academic"` and got "this face's kind is the BALLOT kind" while the six MEETING types (declared by the
+          // institution in vmu.meetings.typeCatalog) existed only on `vibe_v5_meeting`, which the member's seat does not
+          // hold. The vocabulary a member must obey was unreadable from the seat that must obey it. `types` reads the
+          // DECLARED catalog (settings) and says which registry owns it — it does not invent a vocabulary of its own.
+          if (action === 'types') {
+            const declared = (() => {
+              try {
+                const view = kernel.settingsView && kernel.settingsView()
+                const v = view && typeof view.get === 'function' ? view.get('vmu.meetings.typeCatalog') : null
+                return Array.isArray(v) ? v.map(String) : []
+              } catch { return [] }
+            })()
+            return {
+              ok: true, action: 'types',
+              declaredMeetingTypes: declared,
+              declaredSource: 'vmu.meetings.typeCatalog',
+              ballotKinds: ['decisive', 'advisory'],
+              ballotKindMeans: 'this face\u2019s `kind` is the BALLOT kind (what a vote decides), not the meeting type: `open`/`ballot` take decisive|advisory',
+              meetingTypeOwner: 'vibe_v5_meeting',
+              meetingTypeOwnerMeans: 'meeting TYPES (ordinary/academic/debate/closure/paper/planning by default) are a field of the meetings SERVICE record, so they are declared and validated by `vibe_v5_meeting`; this primitive face refuses a meeting type by name rather than guessing',
+              means: 'the declared meeting types are the vocabulary the SERVICE face validates - read them here, then convene with vibe_v5_meeting { type }; an empty list means the institution declared none, and then the service face uses its own default set',
+            }
+          }
           if (action === 'list') {
             const prim = kernel.liveList()
             const services = serviceIds()

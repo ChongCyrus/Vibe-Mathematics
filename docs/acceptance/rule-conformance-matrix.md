@@ -74,7 +74,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `D2` | 27 | 三通道：邮箱/私信/群聊 | ✅ DONE | 2/1/1/1 | — |
 | `D3` | 27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ✅ DONE | 2/1/1/1 | — |
 | `D4` | 28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
-| `D5` | 28 | 四字段都含时间等基础信息 | ◐ PARTIAL | 2/1/1/0 | 余项：live —— 第 99 轮真机读 `[状态板]`，每一行带「读于 <时刻>」；同一读数里不可读字段不得借这个时刻。 |
+| `D5` | 28 | 四字段都含时间等基础信息 | ◐ PARTIAL | 3/2/1/0 | 余项：live —— 第 99 轮真机读 `[状态板]`，每一行带「读于 <时刻>」；同一读数里不可读字段不得借这个时刻。 |
 | `D6` | 28 | 可查看其他成员当前状态版 | ✅ DONE | 1/1/1/1 | — |
 | `D7` | 28 | 可自己修改更新自己的状态版 | ◐ PARTIAL | 2/1/1/0 | 余项：live —— 第 99 轮真机：成员不带 member 写自己的面板成功（`panelOwner` 是自己），写别人的面板具名拒 `VMU_NOT_PERMITTED`。 |
 | `D8` | 28 | 四字段按规则原文实现（字段名与语义） | ✅ DONE | 2/1/1/1 | — |
@@ -92,7 +92,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E7` | 32 | 院士设会议类型 | ✅ DONE | 1/1/1/1 | — |
 | `E8` | 32 | 院士设会议议程/事项安排 | ✅ DONE | 1/1/1/1 | — |
 | `E9` | 32 | 院士邀请入会成员 | ✅ DONE | 1/1/1/1 | — |
-| `E10` | 32 | 院士设会议时长上界 | ◐ PARTIAL | 2/1/1/1 | only the MEETING wall clock exists (hardLimitMs + extendlimit); the rule also asks for a 30-minute SPEECH duration, and no code bounds a single speech (audit lane 1) → 修法：bound one speech (record its start, refuse/close past the declared speech budget) or record explicitly that speech duration is out of scope, then update rules and gaps together |
+| `E10` | 32 | 院士设会议时长上界 | ◐ PARTIAL | 3/2/1/1 | 余项只有 live：让院士用 vibe_v5_meeting { durationMs: 900000 } 召集并逐字抄回执的 wallLimitMs/wallLimitMsSource，再用 vibe_vmu_meeting { action:"status" } 读回同一个值（机制/教学/门禁已就绪，见 §201） |
 | `E11` | 32 | 允许一次性连续召开多个会议 | ✅ DONE | 2/1/1/1 | — |
 | `E12` | 34 | 成员命令随会议类型与身份不同 | ✅ DONE | 2/1/1/1 | — |
 | `E13` | 37 | 会议类型：正常/学术交流/辩论/结题/论文交流/未来规划 | ✅ DONE | 2/1/1/1 | — |

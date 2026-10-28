@@ -8645,3 +8645,75 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 - `D5`/`D7` 的真机 live 还没有（第 99 轮真机要在 `[状态板]` 行里读到「读于」，并让成员自己写面板、试写别人的面板被拒）。
 - 审计剩余项仍在：`E10`（发言时长上界）、`E33–E36`（会议类型/特殊活动/辩论对象/推荐流程）四条 PARTIAL 等真机组合回执；MECH-WEAK 23 条与 KEYWORD-PROMPT 8 条按 §199.5 顺序继续。
 **无实质残余：否**（本轮只修 D5/D7 两条机制与教学）。
+
+## §201 机制补齐（E10：院士自己设定会议时长上界）
+
+四路只读审计的第二类结论（lane 1，`D:/_tmp/reaudit/lane1.md`）：E10 的 `ruleText`（规则 L32）写着「院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、**会议时长上界**」，而内核把会议墙钟上界只当成**部署设置** `vmu.meetings.hardLimitMs`（`settings/schema.js` 的 `hot: H2`、`who: 'office'`，构造期读一次），召集人（院士席）**没有**任何一把能设定「这一场上界」的旋钮；`extendlimit` 只能延长**已经开着**的会议。也就是说：规则里的一个主语（院士）在机制里没有对应的动词。
+
+§201.1 修法（一个参数、一个冻结值、三处可读回）
+- `vibe-math-vmu/kernel/meetings.js` 的 `openSeq` 新增 `wallLimitMs`：整数、钳制 **[300000, 7200000]**（与部署设置同一区间：没有「无界」这个选项），越界**当场具名拒** `VMU_INVALID_ARGUMENT`（不是静默钳到边界）。会议行新增 `wallLimitMsSource`（`"convene"` = 院士定的 / `"vmu.meetings.hardLimitMs"` = 用部署默认）与 `wallLimitMsDefaultMs`。
+- `vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_meeting` 新增 `durationMs`（整数 ms，同一区间、同一具名拒），召集时穿透到 `meetings.open({ wallLimitMs })`；**回执读回** `wallLimitMs`/`wallLimitMsSource`/`wallLimitMsDefaultMs`/`wallLimitNote`（E10b：旋钮存在但回执不说，等于没有）。
+- `vibe-math-vmu/kernel/meetings.js` 的 `summary()` 与 `meetingView()`（即 `vibe_vmu_meeting { action:"status" }` 对服务会议返回的那个视图）都新增 `wallLimitMs`/`wallLimitMsSource`/`extendedMs`/`wallLimitMeans`（E10c：只在开会的**那一刻**可读，不算可读——规则说院士设它，读面就必须能事后核对）。
+- 教学 `v5r-blocks-b.js` 会议段写清「你自己就能给这一场定上界：`durationMs`，钳制 30 分钟–2 小时，回执读回 `wallLimitMs`/`wallLimitMsSource`」。
+
+§201.2 门禁
+- 新 `tests/vmu-run101-meeting-bound.test.mjs` **28/0**：①院士用 `durationMs: 900000` 召集，回执 `wallLimitMs: 900000`、`wallLimitMsSource: "convene"`，`status` 事后读回同一个值；②不给 `durationMs` ⇒ 部署默认（1200000）且来源写成 `vmu.meetings.hardLimitMs`；③越界（1000 / 7200001 / 300000.5）三条都具名拒并点名区间与「没有无界选项」；④`extendlimit` 在院士定的 600000 之上再 +600000 = 1200000；⑤内核门自己那一侧同样拒 1000、接 600000 并报来源；⑥`vibe_v5_meeting` 声明了 `durationMs: integer`、描述与活教学都点名。
+- 相邻：`vmu-meeting` 50/0、`vmu-meeting-types` 153/0、`vmu-v5r-tools` 359/0、`vmu-turn` 272/0、`vmu-run84-meeting-reads` 8/0、`vmu-run89-scheduled-at` 20/0、`vmu-run90-paper-target-schedule` 14/0、`vmu-run96-receipt-fidelity` 9/0、`vmu-ledger-teaching-pins` 58/0、`audit-prompt-tool-params` 81/0、`vmu-prompt-clean` 8/0、`vmu-prompt-type-coverage` 15/0、`vmu-run33-p2-teaching` 111/0。
+
+§201.3 判据
+- 「规则里有一个主语，机制里就要有一个动词」——审计发现的不是字段缺失，而是**主语丢失**（院士设上界 vs 部署设上界）。
+- 一个参数必须在**三处**可读回：它被接受的那一刻（回执）、它被保存的那一刻（`status`/`summary`）、它被改变的那一刻（`extendlimit` 回执）。任何一处缺席，「院士设过」就只能靠记忆。
+- 钳制的第一原则仍是**拒而不是钳**：静默钳到边界会让调用方以为自己拿到了想要的界。
+
+§201.4 残余
+- 真机证据（live）仍缺一行：需要在 r101 的简报里让院士用 `durationMs` 召集并逐字抄回执（机制/教学/门禁都已就绪，E10 保持 `PARTIAL`，`next` 已改成这一条）。
+
+## §202 真机跑 100（状态板的时间 / 幽灵面板 / 席位上读不到的会议类型 / 类型与上界的边界）
+
+### §202.1 读数
+
+| 读数 | 值 |
+| --- | --- |
+| build | `ae84e353` |
+| 驱动 | `DRIVE exit=0`、1039s、`toolCalls 28` / results 28、`tokenTotal 6,912,406`（cap 12,000,000）、3 会话 |
+| 围栏 | `NO_FENCE=18 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=18 BAD_JSON=18` |
+| jsonl | 5,690,734 B / 13,275 行；保全戳 `20261028-124511` |
+| 可见工具 | 96 |
+
+### §202.2 判决表
+
+| 行 | 判决 | 逐字读数 |
+| --- | --- | --- |
+| D5（四字段各带时间） | ⚠️ 失败 → 本轮修 | `[总任务]` 行**一点时间信息都没有**（它来自 `vmu.turn.objective` 设置键，`at` 恒 null），而提示词说四行都带时间信息 |
+| F-100a（面板写不在册的人） | ❌ 失败 → 本轮修 | 所办对 `r-2` 写 state 面板**成功**（`owner:"r-2"`），而名册只有 `r-acad` + `r-1` |
+| F-100b（面板偏离四字段） | ✅ | 缺 `next` ⇒ `VMU_INVALID_ARGUMENT "the state panel needs its four contents"` + `missing:["next"]` |
+| F-100c（成员读他人面板） | ✅ | `vibe_v5_read_library{member:"r-acad",track:"state"}` 读到；写 `r-acad` 面板 ⇒ `VMU_NOT_PERMITTED` + hint 指读法 |
+| F-100d（状态板≠state 面板） | ✅ | 提示词与回执都把两件事分开：`[状态板]` 是派生读数，state 是成员自写 |
+| F-100e（会议类型在席位上读不到） | ❌ 失败 → 本轮修 | 成员席只挂 `vibe_vmu_meeting`；它问「六种会议类型」只能靠自己背，`vibe_v5_meeting` 的 `type` 载于 pack 面 |
+| E13（六种类型） | ✅（机制侧） | `types` 目录已在 settings 声明，服务面按 `type` 校验（r98 已验三种，r100 验到拒式） |
+| E10（会议时长上界） | ✅（r101 已真机） | `durationMs` 钳制与越界具名拒在 r101 验到 |
+
+### §202.3 三条修法与判据
+
+- **F-100a**：`kit/handlers.js#toolRecordProgress` 在 state 轨写之前**核对名册**（`kernel.members.roster()`）；不在册 ⇒ `VMU_NO_SUCH_OBJECT`，消息里**印出它核对的名册**，hint 指 `vibe_v5_hire`；内核没有 members 面时 `memberCheck:"skipped"` 并说明「不猜」（不拿未读的名册编造拒绝）。判据：**「有权写」与「存在可写」是两件事**，账本不能让一个不存在的 owner 长出面板。
+- **F-100e**：`tools/meeting.js` 新增 `action:"types"`（枚举、描述、docs/03 同步），读 `vmu.meetings.typeCatalog` 这份**声明**并回 `declaredMeetingTypes`/`declaredSource`/`meetingTypeOwner:"vibe_v5_meeting"`；同时把 `kind`（本面的**票**类型）与会议类型分开说（`ballotKindMeans`）。判据：**成员必须遵守的词汇表，必须在成员持有的那张面上读得到** —— 这条同时解释了 r100 之前为什么「只演了三类」。
+- **D5**：`statusBoardReadings` 给「没有内容时间」的行加 `timeWhy`，`renderStatusBoard` 把它渲染成 `（时间未提供：<为什么>）`；同时**读时钟移出提示词路径**（`at` 由调用者传入，装配两次渲染逐字相同）。判据：**沉默不是中性** —— 一行「时间未提供」比一行「看起来像刚读的」更诚实，而提示词必须可逐字复现（`tests/vmu-assistant-e2e` 的逐字断言就是这条的守门）。
+
+### §202.4 测试与门禁
+
+- 新 `tests/vmu-run102-panel-types.test.mjs` **33/0**（面板存在性 / 跳过要说明 / 成员读他人面板 / 状态板确定性 / 渲染具名缺席 / 教学钉）。
+- 相邻绿：`vmu-turn` 272/0、`vmu-run31-status-board` 58/0、`vmu-run99-status-ownership` 23/0、`vmu-assistant-e2e` 55/0、`vmu-meeting-types` 153/0、`vmu-records` 271/0、`vmu-run101-meeting-bound` 28/0、`vmu-prompt-clean` 8/0、`vmu-prompt-type-coverage` 15/0、`vmu-ledger-teaching-pins` 58/0、`audit-doc-actions` 61/0。
+
+### §202.5 简报错
+
+1. 我让成员把 `vibe_v5_record_progress` 当「自己的 time field」写，但它的 state 面板需要**四个内容**（简报漏了 `obstacles/next/help` 中哪些必需）。
+2. 我让成员用 `vibe_v5_meeting{action:"status"}` 读会议，而那张面没有 `status`（`vibe_vmu_meeting` 才有）—— 本跑此前已记过一次同类错。
+3. 简报没有说明「院士席」需要先 `vibe_v5_start{academician:true}`，成员因此先 chr(99)all convene 时才撞到「本会话没有院士」的真实原因。
+
+### §202.6 无法验证
+
+- 六种会议类型里 `closure`/`paper`/`planning` 的真机召集仍未演练（r100 只到拒式）。
+- `[状态板]` 的时间在**成员自己的会话**里是否也带（本轮只读了所办的装配）。
+- 面板 `state` 轨的 **rev/审计链**（谁改的、改了几次）未在真机读回。
+
+### §202.7 无实质残余：否

@@ -1963,6 +1963,14 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         // ★ PHASE 12 D1: the schedule is part of the DECISION record — a reader must be able to tell a scheduled
         // meeting from a running one, and a late start from an on-time one, without asking a second face.
         scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor,
+        // ★★ ROUND 101 (E10): the meeting's OWN wall bound, with WHO froze it. The chair can set it when convening
+        // (`durationMs`) and raise it with `extendlimit`; without this line the only readable bound was the open
+        // receipt (a moment) or the store file. The rule says the chair SETS it, so a reader must be able to check it
+        // later from the same face it reads everything else.
+        wallLimitMs: wallLimitOf(m),
+        wallLimitMsSource: m.wallLimitMsSource === undefined ? 'vmu.meetings.hardLimitMs' : m.wallLimitMsSource,
+        extendedMs: Number.isFinite(m.extendedMs) ? m.extendedMs : 0,
+        wallLimitMeans: 'the meeting\u2019s OWN upper bound, frozen at open: wallLimitMsSource "convene" = the chair set it (durationMs), "vmu.meetings.hardLimitMs" = the deployment default; extendlimit raises it and reports extendedMs; clamped [300000, 7200000] \u2014 there is no unbounded choice',
         activatedAt: m.activatedAt === undefined ? null : m.activatedAt,
         startedLate: m.startedLate === true,
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
@@ -2026,6 +2034,14 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         sequence: seqInfo(m),
         // ★ PHASE 12 D1: the schedule's state on the view the live run actually reads.
         scheduledFor: m.scheduledFor === undefined ? null : m.scheduledFor,
+        // ★★ ROUND 101 (E10): the meeting's OWN wall bound, with WHO froze it. The chair can set it when convening
+        // (`durationMs`) and raise it with `extendlimit`; without this line the only readable bound was the open
+        // receipt (a moment) or the store file. The rule says the chair SETS it, so a reader must be able to check it
+        // later from the same face it reads everything else.
+        wallLimitMs: wallLimitOf(m),
+        wallLimitMsSource: m.wallLimitMsSource === undefined ? 'vmu.meetings.hardLimitMs' : m.wallLimitMsSource,
+        extendedMs: Number.isFinite(m.extendedMs) ? m.extendedMs : 0,
+        wallLimitMeans: 'the meeting\u2019s OWN upper bound, frozen at open: wallLimitMsSource "convene" = the chair set it (durationMs), "vmu.meetings.hardLimitMs" = the deployment default; extendlimit raises it and reports extendedMs; clamped [300000, 7200000] \u2014 there is no unbounded choice',
         activatedAt: m.activatedAt === undefined ? null : m.activatedAt,
         startedLate: m.startedLate === true,
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
@@ -2319,7 +2335,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       subjectGate = null,
     // ★ the recommended procedure the convenor was shown, for the same reason: it is not a gate, but it IS part of
     // what the convention promised at the moment it was made, and a read face should be able to say what that was.
-      procedure = null } = {}) {
+      procedure = null, wallLimitMs = null } = {}) {
 
     const enforced = []
     const ms = at === null ? clock() : atMs(at)
@@ -2478,6 +2494,16 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       while (taken(mid) && guard < 10000) { counters.opened += 1; mid = 'm' + (counters.opened + 1); guard += 1 }
     }
     if (live.has(mid)) throw deny('VMU_CONFLICT', 'a live meeting already uses id ' + String(mid), 'open: ' + [...live.keys()].sort().join(', '), enforced)
+    // ★★ ROUND 101 (rule L32 / ledger E10): 「院士可以设置…会议时长上界」。The bound used to be ONLY the
+    // deployment setting (`vmu.meetings.hardLimitMs`, construction-time, `who:'office'`), so the chair that convened a
+    // meeting could not set ITS upper bound and `extendlimit` could only raise a meeting that was already open. A
+    // per-meeting bound is the chair's own decision, frozen at open exactly like the default, and the same clamp
+    // applies (there is no unbounded choice - the deployment setting's contract says so, ROUND 200).
+    const wallLimitRequested = wallLimitMs === null || wallLimitMs === undefined ? null : wallLimitMs
+    if (wallLimitRequested !== null && (!Number.isInteger(wallLimitRequested) || wallLimitRequested < 300000 || wallLimitRequested > 7200000)) {
+      throw deny('VMU_INVALID_ARGUMENT', 'wallLimitMs must be an integer inside [300000, 7200000]; got ' + JSON.stringify(wallLimitRequested),
+        'pass the meeting\u2019s own upper bound in milliseconds (30 minutes .. 2 hours), or omit it to use vmu.meetings.hardLimitMs (extendlimit raises an OPEN meeting\u2019s bound; there is no unbounded choice)', enforced)
+    }
     const m = {
       id: mid, type: String(type), kind: kind === null ? null : String(kind), chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),
       roster: arr(roster).map(String), present: new Set(chair === null ? [] : [String(chair)]),
@@ -2489,7 +2515,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       scheduledFor, activatedAt: scheduledFor === null ? ms : null, startedLate: false,
       waitStartedAt: null, waitDecisionDue: false,
       // ★ the meeting's OWN wall bound (frozen at open) plus who convened it; `extend()` raises the first.
-      wallLimitMs: K.hardLimitMs, openedBy: (actor === null || actor === undefined) ? null : String(actor), extendedMs: 0,
+      wallLimitMs: wallLimitRequested === null ? K.hardLimitMs : wallLimitRequested,
+      // ★ ROUND 101: WHERE the frozen bound came from - the deployment setting or the chair that convened this one.
+      wallLimitMsSource: wallLimitRequested === null ? 'vmu.meetings.hardLimitMs' : 'convene', wallLimitMsDefaultMs: K.hardLimitMs,
+      openedBy: (actor === null || actor === undefined) ? null : String(actor), extendedMs: 0,
       // ★ WHO convened it when that was NOT the caller's own act (see the note on `openSeq`): 'v5r.stall-meeting' names
       // the pack's automatic path, so "the chair convened this" and "the framework convened this on the chair's behalf"
       // stop looking identical in every read face.
@@ -2522,7 +2551,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     say({ type: m.state === 'scheduled' ? 'meetings/scheduled' : 'meetings/opened', at: ms, meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, scheduledFor: m.scheduledFor, enforced, enforcedScope: ENFORCED_SCOPE })
     // ★ type/subject are ALSO at the top level, not only inside `receipt`: a caller that asked for them should not
     // have to know the receipt envelope's shape to read back what it just set (the same reason `attend` returns `late`).
-    return { ok: true, meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, wallLimitMs: m.wallLimitMs, sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+    return { ok: true, meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, wallLimitMs: m.wallLimitMs, wallLimitMsSource: m.wallLimitMsSource, sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     
   }
 
