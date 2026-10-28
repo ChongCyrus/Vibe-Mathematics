@@ -562,6 +562,35 @@ function gateRow(g) {
     note: g.note === undefined || g.note === null ? null : String(g.note),
   })
 }
+/**
+ * ★★ RUN 117 (E36): the recommended skeleton versus what this floor ACTUALLY did.
+ *
+ * The convene receipt prints a four-step skeleton with `binding: "recommendation"` — deliberately not a gate. A reader
+ * asking "is the debate advancing?" therefore cannot be answered with a step index (the framework holds nobody to one,
+ * so such an index would be invented). It can be answered with COUNTS of the acts the skeleton proposes: speech
+ * recorded, invitation queued, motion raised, present seats. That is what this returns, with the caveat spelled out.
+ */
+function procedureProgressOf(m) {
+  const skeleton = m && m.procedure && typeof m.procedure === 'object' ? m.procedure : null
+  // `procedureRow()` stores the STEP LIST under `procedure` (the convene caller passes it as `procedure:` and the row
+  // keeps `{procedure, binding, note, pendingSteps}`) — so read BOTH spellings: a skeleton the store holds in one shape
+  // and a caller passing the other is exactly how "0 steps proposed" would become a false statement.
+  const steps = skeleton === null ? []
+    : (Array.isArray(skeleton.procedure) ? skeleton.procedure : (Array.isArray(skeleton.steps) ? skeleton.steps : []))
+  const entries = m && m.minutes && Array.isArray(m.minutes.entries) ? m.minutes.entries : []
+  const speeches = entries.filter((e) => e && e.kind === 'speech').length
+  const motions = m && Array.isArray(m.motions) ? m.motions.length : 0
+  const queued = m && Array.isArray(m.queue) ? m.queue.length : 0
+  const present = m && Array.isArray(m.present) ? m.present.length : 0
+  return {
+    skeletonSteps: steps.length,
+    skeletonBinding: skeleton && typeof skeleton.binding === 'string' ? skeleton.binding : null,
+    speeches, motions, queued, present,
+    advancing: speeches + motions + queued > 0,
+    means: 'the procedure is a RECOMMENDATION, not a gate: these are counts of what this floor actually did (speeches recorded in the minutes, motions raised, members on the floor queue, seats present) — not a step index, because the framework never holds a meeting to a step and would have to invent one to report it',
+  }
+}
+
 function procedureRow(p) {
   if (p === null || p === undefined || typeof p !== 'object' || Array.isArray(p)) return null
   return {
@@ -2236,6 +2265,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           ? 'no subject gate verdict was recorded for this meeting (the face that convened it recorded none)'
           : 'the verdict the debate-subject gate returned when this meeting was CONVENED, stored with the meeting: `allowed` says the object was admitted, `proofBasis` says on what evidence (declaration-only = the author declared a finished proof and no machine evidence was checked), `note` is what the gate itself said. Reading it now cannot change it',
         procedure: m.procedure === undefined ? null : m.procedure,
+        procedureProgress: procedureProgressOf(m),
         sequence: seqInfo(m),
         // ★ PHASE 12 D1: the schedule is part of the DECISION record — a reader must be able to tell a scheduled
         // meeting from a running one, and a late start from an on-time one, without asking a second face.
@@ -2297,6 +2327,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         // ★★ ROUND 49 / F-25: same record on the face members and the office actually read (status).
         subjectGate: m.subjectGate === undefined ? null : m.subjectGate,
         procedure: m.procedure === undefined ? null : m.procedure,
+        // ★★ RUN 117 (E36): same reading on the face `vibe_vmu_meeting { action:"status" }` returns.
+        procedureProgress: procedureProgressOf(m),
         // ★★★ LIVE RUN 15 (the institute's own report, item ①): `convenedBy` was written by the stall path and readable
         // only through `summary()` — NOT through this view, which is what `vibe_vmu_meeting { action:"status" }` actually
         // returns and what the run read. So the field that exists to say 「这场会不是院士召开的」 was unreachable on the

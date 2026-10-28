@@ -9002,7 +9002,7 @@ A7、A8、B3、B4、B5、C2、C4、C8、C10、D1、E9、E16、E29、G6、G7 全�
 | # | 判据 | 结果 | 依据（逐字） |
 |---|---|---|---|
 | 1 | A8 临时工的写面被席位面关上 | ❌ **真缺陷** | 工具面 `vibe_v5_record_proposition` 对 `r-t1` 是 `hidden`（`reason:"turn"`、`source:"turn-override"`），而 `r-t1` 改调 `vibe_vmu_records {action:"append", kind:"proposition"}` **写成功**，行落在 `VibeMath/Members/shared/Propos/item-b8e900b0.md` |
-| 2 | 动议上限按 `vmu.meetings.verdictMaxRounds` 生效 | ✅ | `verdictMaxRounds:1` 后第二条动议 `VMU_RESOURCE_BUDGET`，message 印 `1 / 1` |
+| 2 | 动议上限按 `vmu.meetings.verdictMaxRounds` 生效 | ⚠ 窄 | 有且只有根会话的一次拒绝：`VMU_RESOURCE_BUDGET`、message 印 `1 / 1`、hint 说该键每次重读；**没有**读到「会话中把 1 改成 5 之后同一场会接受第二条动议」，所以「改键立即生效」这一半仍是 §191 的读数，不计入本轮 |
 | 3 | 单人蓝图草案不能被采纳（B5） | ✅ | `adopt` 被 `VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN` 拒，message 点名缺常驻研究员席 |
 | 4 | 席位面拒绝说清是哪张面拒的 | ⚠ 半 | 包工具的拒绝说了 face 与 slot；**通用面没有拒绝可言**（缺陷 1） |
 | 5 | 成员解雇越权（A7） | ⏳ 未走到 | 简报只让成员解雇自己的临时工，没写「解雇他人的」那一步 |
@@ -9202,3 +9202,82 @@ r115（build `b49be545`）E16（`vibe_v5_say {member:"r-2",meeting:"m1"}`）：
 - A8 的通用面判权也在同一套件里被钉住：临时工经 `vibe_vmu_records {action:"append",kind:"proposition"}` ⇒
   `VMU_TOOL_NOT_IN_FACE` + `seatFace:{member,tool}` + `seatFaceMeans` 说「与 pack 工具同一个闸」；办公室路径（无成员席位）
   仍放行；常驻研究员用自己的席位面放行且回执带 `seatFace.allowed`。
+
+---
+
+## §211 真机跑 117 —— 席位判据在第一个回合里就成立，通用面与包面用的是同一张脸
+
+### §211.1 读数
+
+- 版本：build `8373df06`（clone `slvp117`，port 19717）。`DRIVE exit=0`、`durationSec 1396`、`toolCalls 58` / results 58、
+  `tokenTotal 7,355,864`（cap 12,000,000，`tokenCapHit:false`）、`transcriptEvents 327`、4 会话、
+  `SUMMARY: 4 session(s), 0 with RED`；jsonl 17,123,159 B / 32,648 行。
+- 围栏读数：`NO_FENCE=74 UNKNOWN_FIELD=50 FIELD_NOT_APPLICABLE=72 BAD_JSON=74`；clone 已清、C 盘余 10.91 GB。
+- 这一轮是**定向**跑：席位归属（A7）、通用面判权（A8）、Lean 档案（C10）、以及两个读面计数的对照。
+
+### §211.2 判决表
+
+| 规则 | 本轮读到的（逐字） | 判定 |
+| --- | --- | --- |
+| A7 成员雇/解雇自己的临时工 | 首个回合：`"hiredBy":"r-1"`；解雇 `"ownership":"own"`、`"caller":"r-1"`、`"callerSeat":"member"`、`"callerUnknown":false`、`"ok":true` | ✅ DONE |
+| A7 另一成员解雇别人的临时工 | `"targetSeat":"temp","ownership":"not-own"`、`"caller":"r-2","callerSeat":"member"`、`"ok":false`、`"code":"VMU_NOT_PERMITTED"`、`"callerUnknown":false` | ✅ DONE |
+| A8 临时工经通用面写命题被拒 | `"code":"VMU_TOOL_NOT_IN_FACE"`、`"seatFace":{"member":"r-t1","tool":"vibe_v5_record_proposition","kind":"proposition"}`、`"seatFaceMeans":"the write was refused by the SAME seat gate the pack tool uses, not by a rule of this face"` | ✅ DONE |
+| C10 Lean 档案登记编译结果 | `"kind":"theorem"`、`"mappedKind":"theorem"`、`"outcome":"ok"`、`"exitCode":0`、`"jobId":"lean-2"`、`"diagnosticsTail":null`、`"persisted":true` | ✅ DONE |
+| C10 文件路径读不到时点名 | 第一次 `"file":"lagrange.lean"` ⇒ 失败态回执点出库根解析结果；用回执点到的绝对路径重试成功 | ✅ DONE |
+| 读面计数（记录轨 vs 成员库） | `vibe_v5_read_library{kind:"proposition"}` ⇒ `count:0`；`vibe_vmu_records{action:"list",limit:0}` ⇒ `total:9` | ⚠ 见 F-117a |
+
+### §211.3 三条修法（F-117a / E36 进度可读 / 拒绝不吞闸门字段）
+
+**F-117a：`list` 收下 `kind` 却当没看见。** 简报让调用者 `vibe_vmu_records {action:"list", kind:"proposition"}`，回执回了
+9 条、五种 kind 的行——`kind` 只被声明给 `append`，`list` 分支静默忽略。这是 run 106/113 同一族（「调用者给了参数、面
+从没用过」）。修法：`list` 按**同一个词**过滤（`kind`），回执新增 `kindFilter` 与 `kindFilterMeans`（不传时说"没有过滤"，
+传了时说"`total` 仍计全表，`returned < total` 可能是过滤也可能是上限——读 `truncated`"）。
+
+**E36：骨架推进必须可读。** 骨架只在召集回执里印一次（`binding:"recommendation"`），此后任何面都读不到「这场会在推进吗」。
+修法：`meetingView()` 与 `summary()` 都新增 `procedureProgress`：
+
+```
+{"skeletonSteps":4,"skeletonBinding":"recommendation","speeches":1,"motions":0,"queued":0,"present":2,"advancing":true,
+ "means":"the procedure is a RECOMMENDATION, not a gate: these are counts of what this floor actually did … not a step index, because the framework never holds a meeting to a step and would have to invent one to report it"}
+```
+
+判据：**不能报"你在第几步"，因为框架从不要求你在某一步；能报的是骨架建议的动作各发生了几次。**
+
+**B3：拒绝回执吞掉闸门已经算出的字段。** 闸门在拒绝时已经算出 `p1Route:null`、`p1RouteMeans`、`p1Routes:[…]`，而
+`gateRefuse()` 只按四个字段重建回执 ⇒ 调用者读到的拒绝对"有哪几条路"一无所知（run 113 的实测：回执里没有 `p1Routes`）。
+修法：`gateRefuse()` 把闸门报告的**其余字段**原样带上（保留字段只有 `allowed/code/message/hint/reason/question/options/keys`）。
+判据：**拒绝说过的话，不能比闸门知道的少。**
+
+### §211.4 测试与门禁
+
+- 新 `tests/vmu-run117-list-kind-and-progress.test.mjs` **22/0**：①`kind` 过滤真生效（每条返回行都是那个 kind）、
+  `kindFilter`/`kindFilterMeans` 在、无 kind 时 `kindFilter:null`、无行时是**空表不是全表**；②`meetingView` 与
+  `summary` 都带 `procedureProgress`，`speaking` 被计数、`binding` 是 `recommendation`、`advancing` 为 true、
+  `means` 说清"是计数不是步号"；③p=1 多数决拒绝带 `p1Routes`（含 `debate`/`literature`）、`p1Route` 存在且为 `null`。
+- 相邻：`vmu-meeting` 50/0、`vmu-meeting-types` 153/0、`vmu-records` 271/0、`vmu-v5r-tools` 360/0、
+  `vmu-b3-c8-c10` 44/0、`vmu-run117-a8-probes` 20/0、`vmu-run116-early-child-caller` 14/0、
+  `vmu-run31-status-board` 58/0、`vmu-turn` 272/0。
+
+### §211.5 简报自身错三处
+
+- `vibe_v5_assign` 的目标是 `to`（我第 4 步先写给 `r-t1` 时它还**不在名册上**：`VMU_NO_SUCH_OBJECT "no member \"r-t1\" on this
+  roster"` —— 简报应当先让人雇 r-t1 再分派）。
+- `vibe_vmu_records {action:"list"}` 回执的计数键是 `total`/`returned`，不是 `count`（`count` 是 `read_library` 的键）。
+- `vibe_vmu_records` 的 `kind` 在本轮之前只对 `append` 有效（本轮已让它对 `list` 也生效）。
+
+### §211.6 无实质残余：否（B3 拒绝支、C4/C8/E29/G6 四条仍需下一轮回执）
+
+### §211.7 附：run 115 的两条「同族规则」回执（E9 / G7）
+
+这两条不是 run 117 的产物，是同族规则的定向取证，写在这里是为了让台账的 live 钉子有一个**仓库内**的落点：
+
+- **E9（邀请不签到）**：`vibe_vmu_meeting {action:"invite", members:["r-2"]}` ⇒ `"invited":["r-2"]`、
+  `"order":["r-1","r-1","r-2"]`、`"note":"an invitation puts them ON THE FLOOR QUEUE, nothing else: it does NOT mark them present
+  and it never changes the quorum (attendance is attend())"`；同一份 `status` 里 `"present":1,"waiting":2` 而 `"quorum":2` ⇒
+  邀请没有把人算进在场，也没有把人算进法定人数。
+- **G7（真正的会议）**：`vibe_v5_meeting {type:"debate", subject:"命题：…"}` ⇒ `{"id":"m3","meeting":"m3","type":"debate",
+  "typeCatalogSource":"vmu.meetings.typeCatalog", "procedure":{"steps":[…4…],"binding":"recommendation"},"agenda":[["宣读命题（agenda）",…]],
+  "formalAgenda":["宣读命题（agenda）"]}` —— 有 id、有类型、有议程、有骨架，并且 `binding` 明说骨架不是门禁。
+- **D1（每人份额）**：r116 成员回合读到状态板 ② 行首 `属于你（r-acad，未完成 0 条）`，③ 行首 `属于你（r-acad）0 条：state 0`；
+  所办一侧的全局面板由**唯一**一处 `statusBoardReadings({...})` 调用产生（`vibe-math-vmu/kernel/turn/index.js`，`member` 缺席时
+  没有第二条调用点），因此不存在"两份互不相干的面板"。

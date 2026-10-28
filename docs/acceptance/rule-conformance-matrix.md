@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 74 | all four citations resolve |
-| ◐ PARTIAL | 12 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 80 | all four citations resolve |
+| ◐ PARTIAL | 6 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -31,8 +31,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `A4` | 3 | 院士＝chair 席，统领研究所 | ✅ DONE | 2/1/2/1 | — |
 | `A5` | 3 | 常驻研究员＝member 席 | ✅ DONE | 2/1/1/1 | — |
 | `A6` | 3 | 临时工：可被雇佣、无表决权、默认不参与会议、可解雇 | ✅ DONE | 1/1/1/1 | — |
-| `A7` | 3 | 临时工可被解雇 | ◐ PARTIAL | 9/1/1/0 | r117：成员在**首个**回合里 hire 临时工 → `hiredBy` 是该成员（不再是 null）；同成员 fire 它 → `ownership:"own"` 且放行；另一成员在**首个**回合 fire 它 → 具名拒 `VMU_NOT_PERMITTED` + `ownership:"not-own"`；无法映射的非 root 会话 → `VMU_FIRE_CALLER_UNKNOWN`；root/office 调用 → 放行且 `ownership:"unrecorded"`。 |
-| `A8` | 10 | 院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列 | ◐ PARTIAL | 3/3/1/0 | r114：临时工经 vibe_vmu_records {action:"append", kind:"proposition"} 写命题 → 具名拒 VMU_TOOL_NOT_IN_FACE 且回执带 seatFace:{member:"r-t1",tool:"vibe_v5_record_proposition"}；再让它用自己席位看得见的写面做临时任务成功。两条逐字进台账。 |
+| `A7` | 3 | 临时工可被解雇 | ✅ DONE | 4/1/1/3 | — |
+| `A8` | 10 | 院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列 | ✅ DONE | 2/3/1/1 | — |
 | `A9` | 3 | 临时工的用途约束：被院士或常驻研究员雇佣用于特殊任务/临时任务 | ✅ DONE | 1/1/1/1 | — |
 
 ## B. 公共文件
@@ -59,7 +59,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `C7` | 14 | 只有写完的正式证明才能用于辩论 | ✅ DONE | 2/1/1/1 | — |
 | `C8` | 14 | p=1 的命题要标记 verified | ◐ PARTIAL | 2/2/1/0 | r113：p=1 命题卡单卡读与列表读都带 verifiedRef:{id,title,at}；未验证卡带 verifiedRef:null + means（“没在 Verified 库里找到”）。逐字进台账。 |
 | `C9` | 15 | 方法库（理论/方法/工具，抽象化产物） | ✅ DONE | 2/1/1/1 | — |
-| `C10` | 16 | Lean 代码与编译结果归档 | ◐ PARTIAL | 2/2/1/0 | r113：lean_run → lean_archive 后 lean_read 读到 outcome/exitCode/jobId/diagnosticsTail；未跑过的文件读出 outcome:"not-measured" + means。逐字进台账。 |
+| `C10` | 16 | Lean 代码与编译结果归档 | ✅ DONE | 2/2/1/2 | — |
 | `C11` | 16 | lean 通过后辩论只查描述/定义是否符合原意 | ✅ DONE | 2/1/1/1 | — |
 | `C12` | 16 | 鼓励开关：鼓励把小结/定义 Lean 化 | ✅ DONE | 1/1/1/1 | — |
 | `C13` | 17 | 经分派后各自负责部分的论文 | ✅ DONE | 1/1/1/3 | — |
@@ -70,7 +70,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `D1` | 26 | 各自推进各自的总任务 | ◐ PARTIAL | 2/1/1/0 | r113：两个成员各拿到自己的 [状态板]，② 行读到「你的（r-1，未完成 N 条）」而所办（无 member）读不到该行；① 行带 scopeNote「全所总任务」。逐字进台账。 |
+| `D1` | 26 | 各自推进各自的总任务 | ✅ DONE | 2/1/1/2 | — |
 | `D2` | 27 | 三通道：邮箱/私信/群聊 | ✅ DONE | 2/1/1/2 | — |
 | `D3` | 27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ✅ DONE | 2/1/1/1 | — |
 | `D4` | 28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
@@ -91,7 +91,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E6` | 32 | 院士设会议标题 | ✅ DONE | 1/1/1/1 | — |
 | `E7` | 32 | 院士设会议类型 | ✅ DONE | 1/1/1/1 | — |
 | `E8` | 32 | 院士设会议议程/事项安排 | ✅ DONE | 1/1/1/1 | — |
-| `E9` | 32 | 院士邀请入会成员 | ◐ PARTIAL | 1/1/1/0 | r113：chair 调 invite{member,why} → 回执 invited 与 order 变化，且被邀者未 attend 时 quorum 不变（邀请≠签到）。逐字进台账。 |
+| `E9` | 32 | 院士邀请入会成员 | ✅ DONE | 1/1/1/1 | — |
 | `E10` | 32 | 院士设会议时长上界 | ✅ DONE | 3/2/1/2 | — |
 | `E11` | 32 | 允许一次性连续召开多个会议 | ✅ DONE | 2/1/1/1 | — |
 | `E12` | 34 | 成员命令随会议类型与身份不同 | ✅ DONE | 2/1/1/1 | — |
@@ -140,7 +140,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `G4` | 60 | 支持断点续跑 | ✅ DONE | 1/1/1/1 | — |
 | `G5` | 61 | 特殊权限/请求经所办向用户询问 | ✅ DONE | 2/1/1/1 | — |
 | `G6` | 62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ◐ PARTIAL | 2/1/2/0 | r113：一轮里工具与围栏字段各做一件事 → step 回执 executed 点名派发了什么；围栏写不认识的字段 → 回执点名该字段。逐字进台账。 |
-| `G7` | 63 | 提示词与规则完全相符、自洽 | ◐ PARTIAL | 3/0/1/0 | r115：在同一轮里读到 (a) 会议 agenda/type/title 由召集回执逐字回述 (b) 骨架是推荐不是门禁（procedureBinding:"recommendation"）(c) 发言顺序在回执里可读。三条逐字进台账后才转 DONE。 |
+| `G7` | 63 | 提示词与规则完全相符、自洽 | ✅ DONE | 3/1/1/1 | — |
 
 ## How to move a row
 

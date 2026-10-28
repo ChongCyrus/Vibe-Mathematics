@@ -944,7 +944,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         id: param('string', '记录 id（expand 必填）'),
         limit: param('integer', 'list 的最大条数（0 = 全部；省略用内核 vmu.records.headListAt）'),
         track: param('string', 'list：只列某一轨（省略＝全部；合法值见 vmu.records.tracks，内核会具名拒未知轨）'),
-        kind: param('string', 'append：proposition｜method｜subproblem', { enum: ['proposition', 'method', 'subproblem'] }),
+        kind: param('string', 'append 的 kind（proposition｜method｜subproblem）；list 时同一个词就是过滤条件（不传 = 不过滤）', { enum: ['proposition', 'method', 'subproblem'] }),
         statement: param('string', 'append：陈述'),
         proof: param('string', 'append：证明/方法正文'),
       },
@@ -968,11 +968,22 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               // list looked like the whole catalog (r-20 was expandable but absent). NEVER hide the cap: report total,
               // returned, truncated and how to ask for more.
               const listed = rc.list({ track: (typeof track === 'string' && track.trim() !== '') ? track.trim() : null, limit: Number.isInteger(limit) ? limit : null })
-              const items = Array.isArray(listed.items) ? listed.items : []
-              const total = Number.isInteger(listed.available) ? listed.available : items.length
-              const truncated = listed.truncated === true || total > items.length
+              const all = Array.isArray(listed.items) ? listed.items : []
+              // ★★ RUN 117 (F-117a): `kind` was declared for `append` and this branch ignored it IN SILENCE — the run's
+              // own words: "the `kind` filter was apparently IGNORED", nine rows of five different kinds came back. A
+              // parameter the caller passed and the face never used is the silent-drop class (run 106/113 family):
+              // either honour it or refuse it by name. It is cheap to honour, so a list filters by the SAME word append
+              // takes, and says so.
+              const kindArg = (typeof kind === 'string' && kind.trim() !== '') ? kind.trim() : null
+              const items = kindArg === null ? all : all.filter((r) => r && typeof r.kind === 'string' && r.kind === kindArg)
+              const total = Number.isInteger(listed.available) ? listed.available : all.length
+              const truncated = listed.truncated === true || total > all.length
               return Object.assign({
                 ok: true, action, total, returned: items.length, truncated,
+                kindFilter: kindArg,
+                kindFilterMeans: kindArg === null
+                  ? 'no kind filter was given, so every row the head list returned is here regardless of its kind'
+                  : 'only rows whose own `kind` equals ' + JSON.stringify(kindArg) + ' are here; `total` still counts the whole head list, so returned < total can mean the filter or the cap — read `truncated` for the cap',
                 hint: truncated ? '只回了 ' + items.length + '/' + total + ' 条：传 limit:0 取全部，或先按 track 收窄（本面已支持 track 参数），再用 action:expand + id 取正文' : null,
               }, { records: items })
             }

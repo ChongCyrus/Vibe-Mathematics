@@ -1153,10 +1153,21 @@ function gateRefuse(gate) {
   // necessity. It stays a receipt because v5r's callers read it as DATA (a receipt is a value the turn can inspect and
   // a hook cannot swallow), and because it carries the gate's own facts (`enforced`, `enforcedScope`) without building
   // an exception object per refusal. The gate itself still stays a pure predicate: allowed / code / keys.
-  return { ok: false, code: gate.code || 'VMU_STATE', message,
+  // ★★ RUN 113 (lane evidence, B3): the gate HAD computed the answers a caller needs (`p1Route:null`,
+  // `p1RouteMeans`, `p1Routes: [...]`) and this function rebuilt the receipt from four fields, so the refusal said less
+  // than the gate knew. A refusal that drops the gate's own facts is a second, quieter kind of the run-52 defect.
+  const out = { ok: false, code: gate.code || 'VMU_STATE', message,
     hint: gate.hint || 'the rule requires evidence this call did not carry; record the estimate and let the debate produce the conclusion',
     enforced: Array.isArray(gate.keys) ? gate.keys.slice() : [], enforcedScope: ENFORCED_SCOPE }
+  for (const k of Object.keys(gate)) {
+    if (GATE_RECEIPT_RESERVED.indexOf(k) >= 0) continue
+    if (gate[k] === undefined) continue
+    out[k] = gate[k]
+  }
+  return out
 }
+/** Keys the receipt above already speaks for; every OTHER key the gate reported is carried through verbatim. */
+const GATE_RECEIPT_RESERVED = ['allowed', 'ok', 'code', 'message', 'hint', 'reason', 'question', 'options', 'keys']
 /** The union of the keys the gates of ONE call consulted (order-preserving, no duplicates). */
 function enforcedOf(gates) {
   const out = []
