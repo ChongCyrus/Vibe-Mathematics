@@ -48,7 +48,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     //   VMU_TURN_NO_PENDING_MEMBER and kernel/turn/index.js:445-450 appends the same delivery note.
     //   ★ ROUND 35 inverted this correction's direction: it had told members the fence was only for subagents.
     text: [
-      '【更正·回复形状】旧措辞「每轮手写一段 json 代码围栏只适用于子代理交付」把方向说反了：本所成员回合由宿主派发（activation 投递），没有待回的回合，`op:"reply"` 只会得到 VMU_TURN_NO_PENDING_MEMBER——真正可用的通道就是回复正文末尾的那段 json 围栏（缺 ⇒ VMU_TURN_NO_FENCE，不合法 ⇒ VMU_TURN_BAD_JSON）。两条通道并存且同字段不同值 ⇒ VMU_TURN_REPLY_CONFLICT。会议里的举手/邀请请用 vibe_vmu_meeting——回复字段 meeting_hand 与 meeting_invite 没有可用形状（notApplicable）。',
+      '【更正·回复形状】旧措辞「每轮手写一段 json 代码围栏只适用于子代理交付」说反了：成员回合由宿主派发（activation 投递），没有待回回合，`op:"reply"` 只会得到 VMU_TURN_NO_PENDING_MEMBER——可用通道就是回复正文末尾那段 json 围栏（缺 ⇒ VMU_TURN_NO_FENCE，坏 ⇒ VMU_TURN_BAD_JSON）；两通道同字段不同值 ⇒ VMU_TURN_REPLY_CONFLICT。会议里的举手/邀请用 vibe_vmu_meeting（回执字段 meeting_hand/meeting_invite 无可用形状）。',
     ].join('\n'),
   }),
   Object.freeze({
@@ -98,7 +98,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // (capture layer frozen by T71 parity), so the missing half is the OFFICE'S DUTY — stated here, read back by
     // vibe_v5_overview.leadership (packs/v5r/leadership.js) so it cannot fail silently.
     text: [
-      '【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空）。把人安置到 chair 席位**不等于**设置了领头人：只 hire 不写，章程会走 leaderless 版并说「本所当前没有在册院士」，那是假的。安置院士后立刻 `vibe_v5_set { key: "vmu.turn.leaderId", value: "<同一个代号>", why: "安置院士" }`（等价写法：`vibe_v5_configure { params: { "vmu.turn.leaderId": "<同一个代号>" } }` —— 两条通道写的是同一个声明键）；院士离开时清空。`vibe_v5_overview` 的 `leadership.code` 会具名说出当前情形（chair-seated-but-leaderId-empty 就是「席位有人但没写」）。先修数据，别改章程措辞。',
+      '【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空）。`vibe_v5_start` 坐好院士席时会**自动**写入；手动 `hire` 到 chair 席位**不会**——那就自己 `vibe_v5_set { key:"vmu.turn.leaderId", value:"<同一代号>", why:"安置院士" }`（等价：`vibe_v5_configure{params:{"vmu.turn.leaderId":…}}`），院士离开时清空；`vibe_v5_overview.leadership.code` 会具名说出情形（`chair-seated-but-leaderId-empty` 即「席位有人但没写」）。先修数据，别改章程措辞。（旧说法「本所当前没有在册院士」现由 `leadership.code` 点名，读到就去补数据。）',
     ].join('\n'),
   }),
 ])

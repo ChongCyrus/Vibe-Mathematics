@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 82 | all four citations resolve |
-| ◐ PARTIAL | 0 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 79 | all four citations resolve |
+| ◐ PARTIAL | 7 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -32,7 +32,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `A5` | 3 | 常驻研究员＝member 席 | ✅ DONE | 2/1/1/1 | — |
 | `A6` | 3 | 临时工：可被雇佣、无表决权、默认不参与会议、可解雇 | ✅ DONE | 1/1/1/1 | — |
 | `A7` | 3 | 临时工可被解雇 | ✅ DONE | 1/1/1/1 | — |
-| `A8` | 10 | 院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列 | ✅ DONE | 2/2/1/2 | — |
+| `A8` | 10 | 院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列 | ✅ DONE | 3/5/1/2 | — |
 | `A9` | 3 | 临时工的用途约束：被院士或常驻研究员雇佣用于特殊任务/临时任务 | ✅ DONE | 1/1/1/1 | — |
 
 ## B. 公共文件
@@ -74,9 +74,9 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `D2` | 27 | 三通道：邮箱/私信/群聊 | ✅ DONE | 2/1/1/1 | — |
 | `D3` | 27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ✅ DONE | 2/1/1/1 | — |
 | `D4` | 28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
-| `D5` | 28 | 四字段都含时间等基础信息 | ✅ DONE | 1/1/1/1 | — |
+| `D5` | 28 | 四字段都含时间等基础信息 | ◐ PARTIAL | 2/1/1/0 | 余项：live —— 第 99 轮真机读 `[状态板]`，每一行带「读于 <时刻>」；同一读数里不可读字段不得借这个时刻。 |
 | `D6` | 28 | 可查看其他成员当前状态版 | ✅ DONE | 1/1/1/1 | — |
-| `D7` | 28 | 可自己修改更新自己的状态版 | ✅ DONE | 1/1/1/1 | — |
+| `D7` | 28 | 可自己修改更新自己的状态版 | ◐ PARTIAL | 2/1/1/0 | 余项：live —— 第 99 轮真机：成员不带 member 写自己的面板成功（`panelOwner` 是自己），写别人的面板具名拒 `VMU_NOT_PERMITTED`。 |
 | `D8` | 28 | 四字段按规则原文实现（字段名与语义） | ✅ DONE | 2/1/1/1 | — |
 
 ## E. 会议
@@ -92,7 +92,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E7` | 32 | 院士设会议类型 | ✅ DONE | 1/1/1/1 | — |
 | `E8` | 32 | 院士设会议议程/事项安排 | ✅ DONE | 1/1/1/1 | — |
 | `E9` | 32 | 院士邀请入会成员 | ✅ DONE | 1/1/1/1 | — |
-| `E10` | 32 | 院士设会议时长上界 | ✅ DONE | 2/1/1/1 | — |
+| `E10` | 32 | 院士设会议时长上界 | ◐ PARTIAL | 2/1/1/1 | only the MEETING wall clock exists (hardLimitMs + extendlimit); the rule also asks for a 30-minute SPEECH duration, and no code bounds a single speech (audit lane 1) → 修法：bound one speech (record its start, refuse/close past the declared speech budget) or record explicitly that speech duration is out of scope, then update rules and gaps together |
 | `E11` | 32 | 允许一次性连续召开多个会议 | ✅ DONE | 2/1/1/1 | — |
 | `E12` | 34 | 成员命令随会议类型与身份不同 | ✅ DONE | 2/1/1/1 | — |
 | `E13` | 37 | 会议类型：正常/学术交流/辩论/结题/论文交流/未来规划 | ✅ DONE | 2/1/1/1 | — |
@@ -115,6 +115,10 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E30` | 32 | 院士通过命令自组织会议进行中的一切内容、控制、活动（兜底授权，动词不穷举） | ✅ DONE | 2/2/1/1 | — |
 | `E31` | 32 | 框架推荐的会议流程骨架只是建议：具体实施、决定、是否遵循完全由院士决定 | ✅ DONE | 2/2/1/1 | — |
 | `E32` | 53 | 辩论裁定的并发通知：告诉命题卡持有者最终概率并请其改值 | ✅ DONE | 1/1/1/1 | — |
+| `E33` | undefined | 会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。 | ◐ PARTIAL | 1/1/1/0 | 六种类型里真机只演练过 ordinary/academic/debate/closure（§184/§190）：给 paper/planning 各补一次真机 convene 回执作 live |
+| `E34` | undefined | 会议进行中的一些特殊活动包括但不限于：投票（院士设置投票板选项与机制）、任务板设置与认领交派、群聊式交流，...。 | ◐ PARTIAL | 2/1/1/0 | 投票板与单次发言版群聊都有机制与回执，但真机里「会议进行中」这一组合只走过投票板（§184）：补一次会议内 say round 的 live |
+| `E35` | undefined | 关于辩论：院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。 | ◐ PARTIAL | 1/1/1/0 | 辩论会需要 subject（对象或文件引用），机制在 pack 的 convene 校验里：给一条真机回执（含 subject 与缺席时的具名拒）作 live |
+| `E36` | undefined | 辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。 | ◐ PARTIAL | 1/1/1/0 | 推荐骨架（单次发言→轮流/举手/邀请，轮数由院士定）在 procedures 与 E17 轮记账里：真机只走过 say round，补一条辩论会里骨架推进的回执作 live |
 
 ## F. 论文阶段
 
@@ -130,7 +134,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `G1` | 59 | 支持成员使用 Python 等数学计算工具 | ✅ DONE | 2/2/1/2 | — |
+| `G1` | 59 | 支持成员使用 Python 等数学计算工具 | ✅ DONE | 2/1/1/2 | — |
 | `G2` | 59 | 所办可设工具并发数量限制防 CPU/OOM | ✅ DONE | 2/1/1/1 | — |
 | `G3` | 60 | 支持人工干预研究所决策与运行 | ✅ DONE | 2/1/1/1 | — |
 | `G4` | 60 | 支持断点续跑 | ✅ DONE | 1/1/1/1 | — |

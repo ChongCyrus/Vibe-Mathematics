@@ -161,7 +161,8 @@ try {
   const settledCard = await card('c-false', 0, { statement: '被证伪的命题' })
   ok(settledCard.parsed && settledCard.parsed.ok === true && settledCard.parsed.settled === true,
     '前置：p=0 的卡已定稿（另一个合法的定稿值）', settledCard.parsed && settledCard.parsed.settled)
-  const promoted = await receipt(v5rBoot, 'vibe_v5_verified_promote', { card: 'c-false', warrant: 'ballot-42', warrant_kind: 'debate-unanimous', member: M1 })
+  const promoted = await receipt(v5rBoot, 'vibe_v5_verified_promote', { card: 'c-false', warrant: 'ballot-42', warrant_kind: 'debate-unanimous', member: M1,
+    debate_ruling: { mode: 'unanimous', value: 0, ballotId: 'ballot-42', subject: 'c-false' } })
   ok(promoted.parsed && promoted.parsed.ok === true, '★★★ 正：带法官的 promote 成功', promoted.parsed && (promoted.parsed.code || 'ok'))
   ok(promoted.parsed && promoted.parsed.warrant && promoted.parsed.warrant.id === 'ballot-42',
     '★ 正：回执写明法官（warrant.id），"为什么它算定论"可从记录回答', promoted.parsed && promoted.parsed.warrant)
@@ -174,7 +175,8 @@ try {
   console.log('=== 3. ① 定论行是可读的证据：已 promote 的卡再写 p=1 ⇒ 不再需要自报辩论 ===')
   const promotedTrue = await card('c-true', 1, { debate_ruling: { mode: 'unanimous', value: 1, subject: 'c-true', ballotId: 'b-c-true' } })
   ok(promotedTrue.parsed && promotedTrue.parsed.ok === true, '前置：先用辩论裁决把 c-true 写成 p=1', promotedTrue.parsed && codeOf(promotedTrue.parsed))
-  const promoteTrue = await receipt(v5rBoot, 'vibe_v5_verified_promote', { card: 'c-true', warrant: 'ballot-7', warrant_kind: 'debate-unanimous', member: M1 })
+  const promoteTrue = await receipt(v5rBoot, 'vibe_v5_verified_promote', { card: 'c-true', warrant: 'ballot-7', warrant_kind: 'debate-unanimous', member: M1,
+    debate_ruling: { mode: 'unanimous', value: 1, subject: 'c-true', ballotId: 'ballot-7' } })
   ok(promoteTrue.parsed && promoteTrue.parsed.ok === true, '前置：把 c-true promote 到定论轨', promoteTrue.parsed && codeOf(promoteTrue.parsed))
   const rewrite = await card('c-true', 1, { statement: 'c-true 的陈述（修订）' })
   ok(rewrite.parsed && rewrite.parsed.ok === true,

@@ -187,7 +187,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '    （= 研究所根下的 Formal/。**file 参数按「库根」解析**（库根＝仓库里的 `VibeMath/`）：`Formal/xxx.lean` 等于 `<库根>/Formal/xxx.lean`；库根之外请写**绝对路径**，否则具名拒 `VMU_LEAN_FILE_UNREADABLE`。）',
         '  · **一旦 Lean 通过，你唯一需要确认的就是忠实性**：定义 / 对象 / 条件 / 假设 / 结论是否与',
         '    命题原文逐条一致。请把注意力放在这种核对上，而不是重新做一遍推导。',
-        '  · 归档前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run），并把**Lean 代码与这次运行的结果**一起留档（只留代码或只写「通过了」都不算证据）；跑不通不要入库。',
+        '  · 归档前先跑通（vibe_v5_lean_archive run=true 或先 vibe_v5_lean_run）。归档行是**索引** `{name,kind,file,statement,hash,at}`：代码以 `file` 为准（库**不复制正文**，原文用 `vibe_v5_lean_read`），运行结果在 `vibe_v5_lean_run/job` 回执（`state`/`passed`/`hashUnchanged`）里；只写「通过了」不算证据。',
         '  · 宿主没有 Lean 工具链（LEAN_NOT_FOUND）或根本没有 subprocess 服务（NO_SUBPROCESS）时：把代码写下来归档，并把"宿主无 Lean 工具链"写成**阻塞记录**（vibe_v5_lean_archive kind=\'blocked\' note=… 或回执 formal:{decision:\'blocked\', note:…}）——这算显式阻塞原因，定论门禁可以据此放行。',
       ].join('\n'),
     },
@@ -795,13 +795,13 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · 议程与标题：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 只读议程条目列表、`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）——这两个动词只认**内核原语会**（`vibe_vmu_meeting { action: "open" }` 开的那种）；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程，服务会 id 上问这两个动词会得到「这张表里没有」的具名拒绝。`title` 是**可选**的独立名称（非字符串会被具名拒）。',
         '  · 召集与关闭：`vibe_v5_meeting` 的**召集只对 chair 席开放**（`vmu.meetings.conveneRequiresChair`）；`vibe_vmu_meeting { action: "close" }` 的**关闭也只有 chair 席能调**（`closeRequiresChair`，默认 true）——其他席位调用会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁来做。',
         '  · 发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` **按数组顺序批量**入队（邀请不是签到，被邀者仍须自己 `attend` 才计入法定人数；`why` 必填）；`invitedspeak` 让被邀者走服务发言面（被邀者**没签到**时会被具名拒，先 `attend`）；`order` 只读队列。`flow`（open/hands/round_robin/call_on）与 `overrideorder` 要求部署声明 `vmu.meetings.orderMode`，v5r 未声明 ⇒ 调用会被具名拒。',
-        '  · 推进一轮：`vibe_v5_meeting_round { meeting, members?, phase? }` 让成员按序各跑一个回合（members 缺省＝除主席外的全体在册成员）；`phase` 只能是 founding/normal/checkpoint/verify/verify-debate/meeting/resume/heartbeat/paper-write/paper-review/paper-final（缺省 `meeting`），写错会具名拒，且回执 `ok:false`+`turnFailed:true`＝这一轮没发生，别当成功；`close`/`extendlimit` 要带 `actor`（＝主席本人），`vibe_v5_meeting { action:"convene", … }` 与不带 action 的召集等价。',
+        '  · 推进一轮：`vibe_v5_meeting_round { meeting, members?, phase? }` 按序各跑一回合（members 缺省＝除主席外全体在册）；`phase` 取值以工具声明为准，写错具名拒；回执 `ok:false`+`turnFailed:true`＝这轮没发生，别当成功；`close`/`extendlimit` 要带 `actor`（主席本人）；`action:"convene"` 与直接召集等价。',
       ].join('\n'),
       temp: [
         '【会议类型与预约】六种类型（ordinary/academic/debate/closure/paper/planning），`sync` 是动议 kind；被邀请不等于签到，要自己 `attend` 才计入法定人数；临时工没有表决权。',
       ].join('\n'),
       researcher: [
-        '【会议类型与预约】六种：`ordinary`︱`academic`︱`debate`（须 `subject`）︱`closure`︱`paper`︱`planning`；`sync` 是动议 kind，不是类型。可用命令随会议类型与你的身份不同（辩论须先有 `subject`、结题表决用 `vote_solved`、论文交流走 `vibe_v5_paper`；临时工没有表决权）。用 `at` 预约的会议在开始前拒绝**治理动作**（`attend` 可提前签到，但不会让会议提前开始），到点人齐才开、迟到者 `attend` 即开；**被邀请不等于签到**，要自己 `attend` 才计入法定人数。',
+        '【会议类型与预约】六种：`ordinary`︱`academic`︱`debate`（须 `subject`）︱`closure`︱`paper`︱`planning`；`sync` 是动议 kind。命令随类型与身份不同（辩论须先 `subject`、结题表决 `vote_solved`、论文交流走 `vibe_v5_paper`；临时工无表决权）。`at` 预约会开始前拒**治理动作**（`attend` 可提前签到、不会提前开会），到点人齐才开；被邀请≠签到。',
       ].join('\n'),
     },
   },
@@ -831,13 +831,13 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       academician: [
         '  · **单次发言版群聊**两法：`speakQuota:1`（每人每窗口一条，超了 `VMU_CHAT_QUOTA_EXCEEDED`）或 `vibe_v5_say {round:"<id>",text}`（同轮第二次 `VMU_CHAT_ALREADY_SPOKE`，换新 round id 再说；不带 text 是读本轮还欠谁）；两者都是**机制**不是口头约定，也都不等于并行隔离。',
-        '【群聊管理（你是管理员）】用 `vibe_vmu_chat`：`mute`（成员 + `by` + 可选 `durationMs`；0 用 `vmu.chat.muteDefaultMs`，仍为 0 则**不过期**）、`unmute`、`quota`（设 `speakQuota`＝每窗口可发言条数，0 = 不限）、`setpolicy`（admins / speakQuota / speakQuotaWindowMs / muteDefaultMs / freezeExemptAdmins）、`admin`（授予或收回管理员）。表决冻结时群聊可随票箱冻结，`freezeExemptAdmins` 决定管理员是否豁免。撞上会得到具名拒：`VMU_CHAT_NOT_ADMIN`、`VMU_CHAT_MUTED`、`VMU_CHAT_QUOTA_EXCEEDED`。',
+        '【群聊管理（你是管理员）】`vibe_vmu_chat`：`mute`（成员 + `by` + 可选 `durationMs`；0 用 `vmu.chat.muteDefaultMs`，仍 0 则**不过期**）、`unmute`、`quota`（`speakQuota`＝每窗口条数，0=不限）、`setpolicy`（admins/speakQuota/speakQuotaWindowMs/muteDefaultMs/freezeExemptAdmins）、`admin`。冻结时群聊随票箱冻结，`freezeExemptAdmins` 决定管理员豁免；撞上具名拒 `VMU_CHAT_NOT_ADMIN`／`VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`。',
       ].join('\n'),
       temp: [
         '【群聊规则由院士定】禁言与发言配额由群管理员（院士）设定；撞上会得到具名拒（`VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`）。',
       ].join('\n'),
       researcher: [
-        '【群聊规则由院士定】谁能发言、每窗口几条、谁被禁言由群管理员（院士）定；撞上会得到具名拒（`VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`）。单次发言轮同理：同一 `round` 第二次发言被拒 `VMU_CHAT_ALREADY_SPOKE`，换新 round id 再说。',
+        '【群聊规则由院士定】谁能发言、每窗口几条、谁被禁言由群管理员（院士）定；撞上具名拒（`VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`）。单次发言轮：同 `round` 第二次被拒 `VMU_CHAT_ALREADY_SPOKE`，换新 round id 再说。',
       ].join('\n'),
     },
   },
@@ -848,7 +848,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【三通道的紧急语义】`vibe_v5_say` 三种去处：不给 `to`＝**群聊**（非紧急）；给 `to`＝**私信**（希望尽早回复，且只有它能带 `urgent: true`）；给 `meeting`＝会议发言。邮箱**非紧急**：不进信封、留在收件箱等对方自己查；只有私信 + `urgent: true` 才把正文推进对方这一轮。群聊/会议发言带 `urgent` 会被具名拒。判据一句话：要对方**这一轮就看到**→私信（急就 `urgent: true`）；只留记录→邮箱；全所都该知道→群聊。',
+        '【三通道的紧急语义】`vibe_v5_say` 三种去处：不给 `to`＝**群聊**（非紧急）；给 `to`＝**私信**（希望尽早回复，只有它能带 `urgent: true`）；给 `meeting`＝会议发言。邮箱**非紧急**：留在收件箱等对方查；只有私信 + `urgent` 才把正文推进对方这一轮；群聊/会议发言带 `urgent` 具名拒。判据：要对方**这一轮就看到**→私信（急就 `urgent`）；只留记录→邮箱；全所都该知道→群聊。',
       ].join('\n'),
     },
   },
@@ -870,11 +870,12 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【轨迹与状态板】轨迹五种（`vmu.records.tracks`）：`progress`（默认）｜`routes`（**尝试过的路线与进展**）｜`obstacles`（**阻塞与原因**）｜`rejected`（**已证伪的路**）｜`state`（状态板面板）。写用 `vibe_v5_record_progress { member: "<你的 id>", track, content, progress?, obstacles?, next?, help? }`——`track:"state"` 时 **progress/obstacles/next/help 四项必填**，缺一项会被具名拒。',
-        '· 方法库另一张卡：`vibe_v5_record_method`（content/value/motive/p 必填）——抽象化产物。',
-        '  · 提示词里的 `[状态板]` 四行（总任务/规划/各任务完成状态/当前小任务）是**派生**的，来自设置、任务板与你最近一条 progress——它们**不是**你写的 state 面板：注入的是读数，state 才是你自己写的面板。四行的英文键是 `objective`／`plan`／`tasks`／`current`，回执或读数里出现它们指的是同一件事。',
-        '  · 读别人的板：`vibe_v5_read_library` list 形态（可按 `member`/`track`/`kind` 过滤）或 `vibe_vmu_records { action:"list", track:"state" }` 再 `expand`。进展写 `progress`，走不通的路写 `rejected`（别把证伪埋进 progress 当进展）。',
-        '  · **临时工不写这些库**：命题/方法/子问题/进度/汇报属院士与常驻研究员；临时工做被指派的特殊任务，产出由指派者归档（工具面对 temp 会拒 `record_method`/`record_subproblem`）。',
+        '【轨迹与状态板】轨迹五种（`vmu.records.tracks`）：`progress`（默认）｜`routes`（**尝试过的路线与进展**）｜`obstacles`（**阻塞与原因**）｜`rejected`（**已证伪的路**）｜`state`（状态板面板）。写用 `vibe_v5_record_progress {member,track,content,progress?,obstacles?,next?,help?}`；`track:"state"` 时 progress/obstacles/next/help **四项必填**，缺一具名拒。',
+        '· 五类各有一等机制：`routes`/`obstacles` 是上面两条轨；Lean 代码与编译 = `vibe_v5_lean_run`→`lean_job`→`lean_archive`，库存 `lean_lib`（编译过≠命题真）；论文那段 = `vibe_v5_paper { action:"part" }`；脚本 = `vibe_v5_script { op }`；自反馈 = `vibe_v5_feedback`（feedback 轨）。',
+        '· 方法库卡：`vibe_v5_record_method`（content/value/motive/p 必填）。',
+        '  · `[状态板]` 四行（objective/plan/tasks/current）是**派生读数**（每行带「读于」时间），不是你写的 state 面板；state 才自己写，且**只能改自己的**（改别人的具名拒，回执 `panelOwner` 说明替谁写）。',
+        '  · 读别人的板：`vibe_v5_read_library {member,track}`；进展写 `progress`，走不通的路写 `rejected`（别把证伪当进展）。',
+        '  · **临时工不写这些库**：命题/方法/子问题/进度/汇报属院士与常驻研究员；临时工做指派任务，产出由指派者归档（工具面对 temp 拒）。',
       ].join('\n'),
     },
   },
@@ -885,7 +886,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【工具做事，回执汇报】开会/举手/邀请/投票/改任务/写轨迹都是**工具调用**；每轮末尾的 fenced JSON 是**回执通道**，它不携带会议 id、也不替你执行任何动作，只供框架收集发言/提议/投票/进度。工具做事，回执汇报。',
+        '【工具做事，回执汇报】开会/举手/邀请/投票/改任务/写轨迹都是**工具调用**；每轮末尾的 fenced JSON 是**回执通道**，不带会议 id、不替你执行动作，只供框架收集发言/提议/投票/进度。工具做事，回执汇报。',
       ].join('\n'),
     },
   },
@@ -896,7 +897,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【临时工】临时工是**特殊/临时任务**用的，不是常设席位：`vibe_v5_hire { purpose, initial_task, to }` 三项必填；只开 temp 席；无表决权、默认不参会，产出由指派者归档，别让 temp 写命题/方法库。所办**开所**用 `vibe_v5_start { problem, researcherCount, academician }`：它坐好院士席、并把该席记为 `vmu.turn.leaderId`（已有领头人时不覆盖），不需要再单独 `configure`。',
+        '【临时工】临时工是**特殊/临时任务**用的，不是常设席位：`vibe_v5_hire { purpose, initial_task, to }` 三项必填；只开 temp 席；无表决权、默认不参会，产出由指派者归档。所办**开所**用 `vibe_v5_start { problem, researcherCount, academician }`：它坐好院士席并记为 `vmu.turn.leaderId`（已有则不覆盖）。',
       ].join('\n'),
     },
   },
@@ -920,7 +921,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       shared: [
         '【计算与引擎】`vibe_vmu_mathtools`（plan/run/…）与 `vibe_vmu_mathjobs`；**引擎由宿主注入**（无代码默认值），状态报 `engines`/`available`，接缝缺失时具名拒 `VMU_ENGINE_UNAVAILABLE`，不假装算过。并发 `vmu.math.maxParallel`（默认 1），超限具名拒；shell 兜底不算归档。',
         '· `math_computation` 与 `vibe_vmu_mathtools` **回执同形**：都有 `value`/`valueMissing`（`printedValueOf`）。',
-        '· `mode:"expr"` 是**求值并打印**：`value` 是引擎打印的文本（`{expr:"2**10+1"}` ⇒ `"1025"`）；没打印时回执是 `value:null` + `valueMissing:"stdout-empty"`，**不会**读成 0；要值就在 `code` 里写 print。',
+        '· `mode:"expr"` 是**求值并打印**：`value` 是引擎打印的文本；没打印时回执是 `value:null` + `valueMissing:"stdout-empty"`，**不会**读成 0；要值就在 `code` 里写 print。',
         '· 引擎两条通道：有宿主 `subprocess` 服务时走宿主，否则声明过 `vmu.math.*` 的部署走适配层自带的 `node:child_process`（同守卫），`status.math.spawnSeamKind` 说明走的哪条；都没有才具名拒。要新包/引擎写进进展与请示。',
       ].join('\n'),
     },

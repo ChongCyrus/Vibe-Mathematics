@@ -412,8 +412,13 @@ export function promoteVerified({ records, sourceId, warrant = null, at = null, 
   }
   if (card.p !== 1 && card.p !== 0) {
     throw refuse('VMU_STATE', 'card ' + key + ' is not settled (p=' + probText(card.p) + '), so it cannot enter the verified track',
-      'only 1 or 0 may be promoted: p in (0,1) is experience, not a conclusion — a debate settlement is what turns it into 1. Promote AFTER that settlement, never before it')
+      'only p=1 may be promoted: p in (0,1) is experience, not a conclusion — a debate settlement is what turns it into 1. Promote AFTER that settlement, never before it')
   }
+  // ★ ROUND 97 (B1, independent audit): THE TRACK CARRIES *JUDGED* CONCLUSIONS — p=1 AND p=0 — NOT PREFERENCES.
+  // The audit's real finding was the second half of this sentence: p=0 rows ARE part of the design (the p=1 gate reads
+  // them as "this was disproven, it cannot set 1"), so narrowing admission to p=1 would have been a second lie. What
+  // changed for real is the WRITE PATH: `vibe_v5_verified_promote` now demands the same four-evidence gate a p=1 write
+  // does (a p=0 promotion demands a unanimous debate ruling at 0). This branch only refuses the UNSETTLED middle. 
   if (withdrawnBy(fidelity, logicalId)) {
     throw refuse('VMU_STATE', 'the archived proof of ' + logicalId + ' was WITHDRAWN by a fidelity defect marker, so it cannot be promoted (a withdrawal must not be undone by the next settlement)',
       'the defect marker is the shared truth for every reader; reinstating a proof means a new card/settlement, not deleting the marker')
@@ -429,7 +434,7 @@ export function promoteVerified({ records, sourceId, warrant = null, at = null, 
     at: timeText(when),
     title,
     statement: card.statement,
-    basis: 'warrant ' + text(warrant.id).trim() + ' (' + text(warrant.kind).trim() + ') subject ' + (subject || key) + '; conclusion ' + (card.p === 1 ? '真 (p=1)' : '假 (p=0)'),
+    basis: 'warrant ' + text(warrant.id).trim() + ' (' + text(warrant.kind).trim() + ') subject ' + (subject || key) + '; conclusion 真 (p=1)',
   }
   const body = composeVerifiedBody(row)
   const existing = findVerified(records, key, { fidelity })

@@ -8592,3 +8592,56 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 §198.6 无法验证：`compile` 跑通 PDF（需要 TeX 引擎）、多人并行 `maxParallel>1` 的实际并发、`chairActRequiresTurn` 在“先有回合”路径上的正面用例、会议议程项追加的完整序列。
 
 §198.7 无实质残余：否（本轮修的两处刚落地，需要下一轮真机复验；会议面仍有 `code` 之外的历史码沿用 `VMU_NO_SUCH_OBJECT`）。
+
+## §199 审计修正（四路只读审计 → B1 修复 · 台账诚实化 · 行覆盖门）
+
+**为什么有这一段**：2026-10-28，四路只读审计（`lane1.md`–`lane4.md`，全部只读、未改仓库）独立复核了「82 项全 DONE / 0 PARTIAL」的台账，结论一致：**82/82 是虚绿**。本轮不改规则文档、不改语气，只做三件事：修真缺陷、把台账改回真话、把漏检的地方补成机器门。
+
+### §199.1 审计结论（四路合看）
+- **MECH-FALSE（机制不是在说那句话）**：`B1`（`vibe_v5_verified_promote` 调 `promoteVerified({records, sourceId})` 不传 judge，`verified.js` 却把 `'restore'` 规章给 p=0 的卡 ⇒ 调用工具本身就能把任意卡写进定论轨，不需要任何辩论）；`D5`（状态板四行只有 current 行带时间戳）；`D7`（状态面板写入没有调用者身份，任何成员可写他人面板）；`E10`（规则要发言时长上界，代码只有会议墙钟 `hardLimitMs`）。
+- **TOOL-FALSE（tool 字段指向不存在的名字）**：`D2`（`vibe_v5_inbox` 是只读面，写信的是 `vibe_v5_message`）、`E4/E5/E9/E10/E14/E15/E16`（机制在服务面 `tools/meeting.js`，却被记成 pack 面 `vibe_v5_meeting`）、`G1`（`math_computation` 不在两个工具声明表里，它是数学接缝的工具名）。
+- **KEYWORD-PROMPT（钉在注释里）**：`A2/A4/C10/C11/D1/D5/E12/E24` 的 prompt 证据撞在源码注释或无关段落，例如 `A1` 的机制证据 `who: 'office'` 在 schema 里命中 1126 行。
+- **RULE-GAP**：`L36`（会议类型）、`L41`（会议中的特殊活动）、`L44`（关于辩论：）、`L50`（辩论推荐流程）四条规则句**没有任何台账行**。
+- **门自身不诚实**：`check-rule-parity` 的 P1 不区分「提示词证据」与「源码注释证据」（8 条 KEYWORD-PROMPT 全是这么过的）；台账自称覆盖 63 行规则，实际只逐行核对过 14 条结构行，**82 行与 63 行之间没有对账**。
+
+### §199.2 B1：定论轨的旁路（已修，真缺陷）
+- 修法：`vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_verified_promote` 现在与 p=1 卡写入共用同一道四证据闸（`debate-unanimous` 须 `debate_ruling{mode:'unanimous',value:1,subject}`；`lean-conformance` 须通过的 `lean_job` + `lean_conformance:'conform'`；`literature` 须非空 `literature_ref`），p=0 的证伪也须带「一致为 0 的那次裁决」（否则 `VMU_PACK_V5R_VERIFIED_NEEDS_JUDGE`），0<p<1 先以「偏好不是定论」拒（`VMU_STATE`）；参数 `debate_ruling`/`lean_conformance`/`literature_ref` 已声明（未声明的参数会被宿主以 `VMU_INVALID_ARGUMENT` 拒，所以声明与行为必须一起改）。
+- 测试：新 `tests/vmu-run97-verified-gate.test.mjs` 25/0（工具路径的四种凭据、p=0 无裁决拒、p∈(0,1) 拒、行数不增、同一条闸被两个入口共用）；`tests/vmu-v5r-verdict-final.test.mjs` 63/0（用户自己的规则测试仍然过）。
+
+### §199.3 台账改回真话（86 行）
+- 三条 MECH-FALSE（`D5/D7/E10`）→ `PARTIAL` 并写具体 `next`；四条 RULE-GAP 新增 `E33/E34/E35/E36`（会议类型 / 会议内特殊活动 / 辩论对象字段 / 辩论推荐流程），也标 `PARTIAL`（机制与教学在，真机组合回执还缺）。
+- 七条 TOOL-FALSE 的 `tool` 改成**声明名或 `name{action:"x"}`**（`vibe_v5_message`、`vibe_vmu_meeting`、`vibe_v5_paper`、`vibe_vmu_mathtools`）`E23` 的机制证据改为内核 `voteFloor` 公式本体（`min(max(quorumMin, ceil(quorumRatio*roster)), quorumCap, eligible universe)` —— 规则 L47 的「min(用户设置, 院士+常驻)」就是它）。
+- 结果：`RULE LEDGER: 86 · DONE 79 · PARTIAL 7 · MISSING 0 · DECIDED 0`；`check-rules-coverage --check` 因此**如实红 7 条**（D5/D7/E10/E33/E34/E35/E36），不再假绿。
+
+### §199.4 门升级（把漏检变成机器检查）
+- `scripts/check-rules-coverage.mjs` 新增 **`VMU_RULES_LINE_UNCLAIMED`**：规则文档每一行要么被至少一行台账的 `ruleText` 逐字认领，要么带理由声明为 `structuralLines`（现在 20/63）。这条门装上后立刻列出了 L1/L2/L21/L44/L55/L58 六条无认领行，前五条是真标题/分隔线，第六条（`关于辩论：`）正是审计说的 RULE-GAP 之一。
+- `scripts/check-rule-parity.mjs` 的标题行判定放宽为「空行 / `---` / `#` 开头 / 短小且以冒号结尾无句读」，并**不再**把「标题行同时被某行引用」判为矛盾（被引用的标题是合法证据）；内容行仍不许冒充结构行。
+
+### §199.5 门禁与下一步
+- 本轮：`check-rules-coverage` 结构 PASS（86 行、锚点 86/86、指纹匹配）、`check-rule-parity` PASS、`audit-rule-coverage` 22/0、`vmu-rule-parity-gate` 通过；`--check` 红 7 条是**预期**（诚实状态）。
+- 下一步：①实现 D5（四行各带时间/来源）与 D7（面板写入带调用者身份、拒冒充）；②E10 二选一（给发言加上界，或把「发言时长」从规则摘出并同步 gaps）；③给 E33–E36 补真机组合 live；④继续按 lane 报告修 KEYWORD-PROMPT 8 条与 MECH-WEAK 23 条；⑤再跑一轮真机后重算 §200。
+
+**无实质残余：否**（本轮只修了 B1 与台账/门，其余审计项按上面顺序继续）。
+
+## §200 审计修正第二轮（D5 四行各带时间 / D7 面板只归本人 / 行覆盖与诚实门禁）
+
+**为什么有这一段**：§199 把台账从「82/82 全绿」打回真话后，剩下七条 PARTIAL 里有两条是审计点名的 MECH-FALSE —— 规则 L28「状态版：**可查看他人、可改自己**，四个必需内容（当前进度／遇到的障碍／下一步计划／需要的帮助）**＋时间信息**」。原状态：`statusBoardReadings` 的四个读支路都写 `at: null`（只有 `current` 行带记录自带的时间戳），`renderStatusBoard` 也不打印时间；状态面板写入路径（`kit/handlers.js#toolRecordProgress`）完全没有调用者身份，任何成员都能写另一位成员的面板，且回执不说改的是谁的面板。本轮只做这两件事，外加把「四类文件（S1）」与「各自文件（A8）」的教学/台账对齐。
+
+### §200.1 D5：四个内容各带时间（已修）
+- `vibe-math-vmu/kernel/turn/index.js#statusBoardReadings` 新增 `readAt`（`at` 归一为字符串，读不到就是 `null`），`said()` 缺省就用 `readAt`：设置来源 / 根任务 / 未完成任务 / 按状态计数四个支路现在都带**这次读的时刻**；`current` 仍用它自己记录上的时间戳（记录的时间属于记录，不属于这次读）。
+- `renderStatusBoard` 在有时间的行尾打印「（读于 <时刻>）」；不可读字段的「该来源未提供：<原因>」行**不**借这个时刻（没有时钟的读也不打印，读者不许发明时间）。
+- 测试：`tests/vmu-run99-status-ownership.test.mjs` §D5 十二项（四字段齐、三个任务板字段带读时刻、不可读字段不带、渲染行打印、无时钟不打印、`current` 打的是记录时间戳）。
+
+### §200.2 D7：面板只归本人写（已修）
+- `vibe-math-vmu/kit/handlers.js#toolRecordProgress` 现在接收执行侧 `agent`（与 `tools/member-tools.js#toolHelp` 同一条「caller agent」路径）：非 root 会话的 agent id 就是调用者；`track:"state"` 时若调用者是成员而 `member` 指向别人 ⇒ 具名拒 `VMU_NOT_PERMITTED`（消息点名那块板属于谁，hint 给「读用 `vibe_v5_read_library {member,track:"state"}`、写自己的不带 member」）；不带 `member` 的成员写就是写自己（回执 `panelOwner` 是自己）；所办/人类（root 会话、无 agent id）保留代写路径，回执 `panelOwner` 点名替谁写的。
+- 测试：同一测试文件 §D7 十一项（自己写成功且行 owner 是调用者、写别人的具名拒且行数不变、所办代写成功且回执点名、普通 `progress` 行不受影响）。
+
+### §200.3 教学与台账
+- `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js` 的「轨迹与状态板」段：`[状态板]` 四行标为**派生读数**且「每行带『读于』时间」，`state` 面板「只能改自己的（改别人的具名拒，回执 `panelOwner` 说明替谁写）」，读别人的板给一条 `vibe_v5_read_library {member,track}`。
+- 台账 `docs/acceptance/rules-ledger.json`：`D5` 的 mechanism 指向 `readAt` 与渲染行、prompt 指向「每行带『读于』时间」；`D7` 的 mechanism 指向 `only that member may rewrite it` 与 `panelOwner`、prompt 指向「只能改自己的」。两条仍为 **PARTIAL**：只差真机回执（`next` 写明第 99 轮要看什么）。`RULE LEDGER: 86 · DONE 79 · PARTIAL 7` 不变，`--check` 的 7 条红是诚实的。
+- 门禁：`scripts/check-rules-coverage.mjs` 结构 PASS（86 行 · 锚点 86/86 · 指纹匹配）、`scripts/check-rule-parity.mjs` PASS；`tests/vmu-run99-status-ownership.test.mjs` 23/0、`vmu-run31-status-board` 58/0、`vmu-turn` 272/0（T99 仍 <20000）、`vmu-v5r-tools` 359/0、`vmu-kernel` 260/0、`vmu-records` 271/0、`vmu-prompt-clean` 8/0、`vmu-prompt-type-coverage` 15/0、`vmu-ledger-teaching-pins` 58/0、`vmu-run33-p2-teaching` 111/0。
+
+### §200.4 仍未做（诚实清单）
+- `D5`/`D7` 的真机 live 还没有（第 99 轮真机要在 `[状态板]` 行里读到「读于」，并让成员自己写面板、试写别人的面板被拒）。
+- 审计剩余项仍在：`E10`（发言时长上界）、`E33–E36`（会议类型/特殊活动/辩论对象/推荐流程）四条 PARTIAL 等真机组合回执；MECH-WEAK 23 条与 KEYWORD-PROMPT 8 条按 §199.5 顺序继续。
+**无实质残余：否**（本轮只修 D5/D7 两条机制与教学）。

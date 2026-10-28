@@ -1377,6 +1377,7 @@ function toolVerifiedPromote(args = {}, { kernel } = {}) {
       'pass card:"<records id of a propositions/proposition card whose p is exactly 1 or 0>"')
   }
   const member = has(args.member) ? requireSeat(kernel, args.member, 'verified promote').id : null
+  const stored = cardProjectionOf(records, sourceId)
   const writerGate = singleWriter({ records, cardId: sourceId, by: member, writer: 'promoteVerified', track: VERIFIED_TRACK })
   const writerRefusal = gateRefuse(writerGate)
   if (writerRefusal) return writerRefusal
@@ -1396,12 +1397,56 @@ function toolVerifiedPromote(args = {}, { kernel } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'promote needs the warrant that produced this conclusion — the judge, not a preference',
       'pass warrant:"<debate/ballot ruling id>" warrant_kind:"debate-unanimous" (or "lean-conformance" once that ruling exists)')
   }
+  // ★ ROUND 97 (B1, independent audit): A CALLER-SUPPLIED WARRANT USED TO MINT A VERIFIED ROW WITHOUT THE GATE.
+  // `promoteVerified` is a second write path into the same track as a p=1 card write, and it only checked the SHAPE of
+  // the argument (id + kind) — so `warrant_kind:"debate-unanimous"` with no debate at all produced a verified row.
+  // The four admissible evidences are the SAME ones a p=1 write must show; the gate now runs here too, and the row's
+  // `source` must name the evidence that actually passed (the kind is what makes "why is this settled" answerable).
+  const promoteCard = stored
+    ? { id: sourceId, p: stored.p, bodyTruncated: !!stored.bodyTruncated }
+    : { id: sourceId }
+  const promoteEvidence = {
+    verified: null,
+    debate: debateEvidenceOf(args),
+    lean: leanEvidenceOf(kernel, args),
+    literature: literatureEvidenceOf({ card_id: sourceId, literature_ref: has(args.literature_ref) ? args.literature_ref : null }),
+  }
+  const FORM_OF_KIND = { 'debate-unanimous': 'debate-unanimous', 'lean-conformance': 'lean-conformance', literature: 'literature-reference' }
+  const expectedForm = FORM_OF_KIND[warrantKind] || null
+  if (!expectedForm) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'warrant_kind "' + warrantKind + '" is not one of the admitted conclusion forms',
+      'the three forms a verdict can be promoted with are: debate-unanimous, lean-conformance, literature')
+  }
+  if (stored && Number.isFinite(Number(stored.p)) && Number(stored.p) !== 1 && Number(stored.p) !== 0) {
+    throw refuse('VMU_STATE', 'card ' + sourceId + ' is not settled (p=' + String(stored.p) + '), so it cannot enter the verified track',
+      'only a settled conclusion (p=1, or p=0 with the unanimous ruling that refuted it) may be promoted: p in (0,1) is a preference, not a conclusion')
+  }
+  let pGate = null
+  if (promoteCard.p === 0) {
+    // A disproof is a conclusion too, and it needs the ruling that produced it: unanimous, at value 0, about THIS card.
+    const ruling = debateEvidenceOf(args)
+    const unanimousZero = ruling && String(ruling.mode) === 'unanimous' && Number(ruling.value) === 0
+    const subjectOk = !ruling || !ruling.subject || ruling.subject === sourceId
+    if (!unanimousZero || !subjectOk || expectedForm !== 'debate-unanimous') {
+      throw refuse('VMU_PACK_V5R_VERIFIED_NEEDS_JUDGE', 'promoting the DISPROOF of card ' + sourceId + ' needs the unanimous ruling that refuted it (mode:"unanimous", value:0' + (ruling && ruling.subject ? ', subject:' + sourceId : '') + ')',
+        'pass debate_ruling:{mode:"unanimous", value:0, subject:"' + sourceId + '", ballotId:"<the ruling id>"} with warrant_kind:"debate-unanimous" — a p=0 row claims "we know this is false", so it must name what decided that too')
+    }
+  } else {
+    pGate = p1Intent({ tool: 'vibe_v5_verified_promote', args, card: promoteCard, evidence: promoteEvidence })
+    const pRefusal = gateRefuse(pGate)
+    if (pRefusal) return pRefusal
+    if (pGate.evidenceForm !== expectedForm) {
+      throw refuse('VMU_PACK_V5R_P1_NEEDS_DEBATE', 'the promotion claims warrant_kind "' + warrantKind + '" but the evidence that passed is "' + String(pGate.evidenceForm) + '"',
+        'pass the evidence the kind names: a debate ruling (mode unanimous, value 1) for debate-unanimous, a passed Lean job WITH its conformance decision for lean-conformance, a non-empty literature_ref for literature')
+    }
+  }
   const promoted = promoteVerified({ records, sourceId,
     warrant: { id: warrantId, kind: warrantKind, subject: sourceId },
     by: member, fidelity: kernel && kernel.fidelity ? kernel.fidelity : null })
   return Object.assign({ ok: true, tool: 'vibe_v5_verified_promote', card: sourceId,
     warrant: { id: warrantId, kind: warrantKind },
-    enforced: enforcedOf([writerGate]), enforcedScope: ENFORCED_SCOPE,
+    p1Evidence: pGate === null ? 'debate-unanimous (p=0 disproof)' : pGate.evidenceForm,
+    enforced: enforcedOf(pGate === null ? [writerGate] : [writerGate, pGate]), enforcedScope: ENFORCED_SCOPE,
     note: 'the verified row is a SECOND carrier beside the card: the card keeps its p, the verified row keeps the JUDGE (warrant), so "why is this settled" is answerable instead of asserted' }, promoted)
 }
 
@@ -3702,8 +3747,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_verified_promote',
-    description: '★ PROMOTE A PROPOSITION CARD TO THE VERIFIED TRACK — the ONLY writer of that track, and the place where a settled p is carried together with its JUDGE. card REQUIRED (a propositions/proposition card whose p is exactly 1 or 0); warrant_kind REQUIRED (which kind of conclusion decided it: "debate-unanimous" | "lean-conformance" | "literature"); warrant REQUIRED for the first two (the debate/ruling id) — for warrant_kind:"literature" pass `literature_ref:"<author, source, theorem/page>"` INSTEAD and it becomes the warrant id of that row (a citation with no source is refused by name). Refused by name: a card that is not a proposition card, a truncated card, a card whose p is neither 1 nor 0 ("a preference is not a conclusion"), a withdrawn proof, and a missing warrant. The card keeps its own p; the verified row records the warrant, so "why is this settled" is answerable instead of asserted.',
-    parameters: { card: { type: 'string', required: true }, warrant: { type: 'string' }, warrant_kind: { type: 'string', required: true }, literature_ref: { type: 'string' }, member: { type: 'string' } },
+    description: '★ PROMOTE A PROPOSITION CARD TO THE VERIFIED TRACK — the ONLY writer of that track, and the place where a settled p is carried together with its JUDGE. card REQUIRED (a propositions/proposition card whose p is exactly 1 — this track carries what is PROVEN TRUE; a p=0 refutation is refused by name and belongs to the rejected track); warrant_kind REQUIRED, and it must be the kind the EVIDENCE actually shows: "debate-unanimous" + `debate_ruling:{mode:"unanimous",value:1,subject:<card id>}` (+ `warrant:"<ruling id>"`), "lean-conformance" + `lean_job` (+ `lean_conformance:"conform"`), or "literature" + `literature_ref:"<author, source, theorem/page>"` (the citation then becomes the row\'s warrant id). Passing a warrant with NO evidence is refused by name by the SAME p=1 gate a card write uses (`VMU_PACK_V5R_P1_NEEDS_DEBATE`), and a kind that disagrees with the evidence is refused by name too. Other refusals: a card that is not a proposition card, a truncated card, a p in (0,1) ("a preference is not a conclusion"), a withdrawn proof. The card keeps its own p; the verified row records the warrant, so "why is this settled" is answerable instead of asserted.',
+    parameters: { card: { type: 'string', required: true }, warrant: { type: 'string' }, warrant_kind: { type: 'string', required: true }, literature_ref: { type: 'string' }, debate_ruling: { type: 'object' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, member: { type: 'string' } },
     handler: toolVerifiedPromote,
   },
   {

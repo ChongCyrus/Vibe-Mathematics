@@ -1153,8 +1153,12 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
   const readTasks = readerOf(tasks, 'list')
   const readRecords = readerOf(records, 'list')
   const readRecord = readerOf(records, 'get')
+  // ★★ ROUND 99 / D5: the four contents all carry TIME. Rows carried `at` but every read branch wrote `at: null`,
+  // so a member saw four values with one board-level stamp. `readAt` is the moment THIS board was read: one read, one
+  // clock, and the line says so (four different clocks would claim a precision this reader does not have).
+  const readAt = at === null || at === undefined ? null : String(at)
   const gap = (why) => ({ value: null, why, at: null })
-  const said = (value, at2 = null) => ({ value, why: null, at: at2 })
+const said = (value, at2 = null) => ({ value, why: null, at: at2 === null || at2 === undefined ? readAt : String(at2) })
 
   // ── ONE read of the task board: 各任务完成状态, 规划 and the 总任务 fallback all derive from it, so a reader can
   // never see two different board readings inside one block.
@@ -1182,7 +1186,7 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
     // kernel, so a member comparing `[总任务]` with its own `vibe_vmu_status{detail:'settings'}` read saw two values and
     // reported the board's source label as false. It was not false - it was unqualified: the value came from THIS
     // kernel's settings, and `resolvedBy` says so on the field, so the renderer can name the kernel that resolved it.
-    objective = { value: objectiveText, why: null, at: null, source: '设置键 vmu.turn.objective', resolvedBy: kernel }
+objective = { value: objectiveText, why: null, at: readAt, source: '设置键 vmu.turn.objective', resolvedBy: kernel }
   } else if (!rows) {
     objective = Object.assign(gap(boardWhy === null ? '任务板不可读' : boardWhy), { source: '任务板（无依赖的根任务）' })
   } else if (rows.length === 0) {
@@ -1196,7 +1200,7 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
     } else {
       const shown = roots.slice(0, cap).map(idTitle).join('；')
       const more = roots.length > cap ? '；另 ' + String(roots.length - cap) + ' 条已省略' : ''
-      objective = { value: shown + more, why: null, at: null, source: '任务板（无依赖的根任务 ' + String(roots.length) + ' 条）' }
+objective = { value: shown + more, why: null, at: readAt, source: '任务板（无依赖的根任务 ' + String(roots.length) + ' 条）' }
     }
   }
 
@@ -1219,7 +1223,7 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
       if (ready.length) bits.push('可开工：' + ready.slice(0, cap).map((r) => idTitle(r) + (r.owner ? '（' + String(r.owner) + '）' : '（未认领）')).join('；'))
       if (blocked.length) bits.push('被前置卡住：' + blocked.slice(0, cap).map((r) => idTitle(r) + '（等 ' + unmet(r).join('/') + '）').join('；'))
       const omitted = live.length - ready.slice(0, cap).length - blocked.slice(0, cap).length
-      plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + ' 条已省略' : ''), why: null, at: null, source: '任务板（未完成 ' + String(live.length) + ' 条）' }
+plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + ' 条已省略' : ''), why: null, at: readAt, source: '任务板（未完成 ' + String(live.length) + ' 条）' }
     }
   }
 
@@ -1237,7 +1241,7 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
     const openCount = rows.filter((r) => r && (r.state === 'open' || r.state === 'assigned' || r.state === 'doing')).length
     tasksField = {
       value: '共 ' + String(rows.length) + ' 条（未结 ' + String(openCount) + '）：' + ordered.map((s) => s + ' ' + String(counts.get(s))).join(' · '),
-      why: null, at: null, source: '任务板（按状态的计数）',
+      why: null, at: readAt, source: '任务板（按状态的计数）',
     }
   }
 
@@ -1345,7 +1349,11 @@ export function renderStatusBoard(readings) {
         : '本内核的解析值')
       : null
     const paren = source === null ? null : (scope === null ? source : source + ' · ' + scope)
-    const shown = value === null ? null : (paren === null ? value : value + '（来源：' + paren + '）')
+    // ★★ ROUND 99 / D5: the rule says the four contents carry time information, so a row that KNOWS when it was
+    // read prints it. A row without a read time prints nothing extra — it must not borrow the board stamp as its own.
+    const when = f && (typeof f.at === 'string' ? f.at.trim() : (Number.isFinite(f.at) ? String(f.at) : '')) || null
+    const shown0 = value === null ? null : (paren === null ? value : value + '（来源：' + paren + '）')
+    const shown = shown0 === null ? null : (when === null ? shown0 : shown0 + '（读于 ' + when + '）')
     return '[' + decl.label + '] ' + (shown === null ? '该来源未提供：' + why : shown)
   }).join('\n')
 }

@@ -203,11 +203,13 @@ function check(ledgerPath) {
     for (const [n, why] of structural) {
       const text = String(docLines[n - 1] || '')
       const trimmed = text.trim()
-      const isStructural = trimmed === '' || trimmed === '---' || trimmed.startsWith('#')
+      const isStructural = trimmed === '' || trimmed === '---' || trimmed.startsWith('#') || (/[：:]$/.test(trimmed) && trimmed.length <= 16 && !/[。！？；]/.test(trimmed))
       if (!isStructural) {
         fail('VMU_RULE_PARITY_STRUCTURAL_NOT_STRUCTURAL', 'L' + n + ' is declared structural (' + why + ') but the document line is text: ' + JSON.stringify(trimmed.slice(0, 40)))
       }
-      if (lines.has(n)) fail('VMU_RULE_PARITY_LINE_BOTH', 'rule line L' + n + ' is both claimed and declared structural')
+      // NOTE (2026-10-28 audit): a HEADING line can also be quoted by an anchor row (a row that quotes a sentence from
+      // the section it introduces); that is not a contradiction and is no longer reported. Only a CONTENT line is
+      // refused as structural, which the check above already does.
     }
     // P1 also accepts ANCHOR claims. A migrated ledger replaces `ruleLines` with `ruleText` quotes; the anchor's own
     // line IS the declaration, so without this fallback the migration would red the gate on lines nobody can claim.

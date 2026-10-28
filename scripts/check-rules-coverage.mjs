@@ -494,6 +494,28 @@ if (!ledger) {
       }
     }
 
+    // ── LINE COVERAGE: every content line of the document must be claimed by a row, or declared structural ──
+    if (docLines && docLines.length) {
+      const claimed = new Set()
+      for (const item of ledger.items) {
+        if (!item || typeof item.ruleText !== 'string') continue
+        const q = item.ruleText.trim()
+        if (!q) continue
+        for (let n = 1; n <= docLines.length; n += 1) if (String(docLines[n - 1]).includes(q)) claimed.add(n)
+      }
+      const structuralSet = new Set()
+      for (const entry of Array.isArray(source.structuralLines) ? source.structuralLines : []) {
+        const m = /^L(\d+)$/.exec(String(typeof entry === 'string' ? entry : entry && entry.line))
+        if (m) structuralSet.add(Number(m[1]))
+      }
+      for (let n = 1; n <= docLines.length; n += 1) {
+        const raw = String(docLines[n - 1])
+        if (!raw.trim()) continue
+        if (structuralSet.has(n)) continue
+        if (claimed.has(n)) continue
+        fail('VMU_RULES_LINE_UNCLAIMED', 'rule line L' + n + ' carries no ledger row and is not declared structural: ' + JSON.stringify(raw.trim().slice(0, 48)) + ' — a rule sentence nobody claims is where an unimplemented requirement hides')
+      }
+    }
     // ── ruleLines: legacy inventory mapping, still reconciled while it is present ──────────────────────────
     if (ledger.ruleLines) {
       const claimed = new Map()

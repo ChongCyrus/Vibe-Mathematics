@@ -131,7 +131,7 @@ ok(blocksB.includes('院士＝`chair`'), 'A4 pin: the seat mapping (院士=chair
 ok(blocksB.includes('每人各自推进各自的'), 'D1 pin: each member advances their OWN 总任务')
 ok(blocksB.includes('四行都带**时间等基础信息**'), 'D5 pin: the four board rows carry time as basic information')
 // C10/C11/E24 (items: Lean 代码与编译结果归档 / 忠实性审查 is the debate focus when p≠1)
-ok(blocksB.includes('Lean 代码与这次运行的结果'), 'C10 pin: the Lean code AND the run result are archived together')
+ok(blocksB.includes('运行结果在 `vibe_v5_lean_run/job` 回执'), 'C10 pin: the Lean code AND the run result are archived together (the archive line is an INDEX; the result lives in the run/job receipt)')
 ok(blocksB.includes('忠实性审查'), 'C11/E24 pin: the debate after a passed Lean run reviews FIDELITY (definitions/conclusions vs the original proposition)')
 
 console.log('=== LEDGER TEACHING PINS: ' + pass + ' passed, ' + fail + ' failed ===')

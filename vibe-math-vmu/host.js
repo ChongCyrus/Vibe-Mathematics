@@ -445,11 +445,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
     VMU_MEETING_TOO_SMALL: 'add participants until the declared quorum is met — the threshold is policy (pack/middleware), the code is registered by the kernel (docs/08 §3)',
   })
   const refused = (code, message, hint, extra = null) => Object.assign({ ok: false, code, message, hint: hint || DEFAULT_HINTS[code] || null },
-    extra && typeof extra === 'object'
-      ? Object.assign({},
-        extra.hostStack ? { hostStack: String(extra.hostStack).slice(0, 2000) } : {},
-        extra.shape ? { shape: extra.shape } : {})
-      : {})
+    extra && typeof extra === 'object' ? refusalFacts(extra) : {})
   const specs = []
   // D-01: ONE resolution, computed here and handed to every gate below as `on(face)`. `faceFlags` carries the legacy
   // `<face>Tool` booleans; `faces` is an already-resolved set from the adapter (so install() and plan() agree).
@@ -1310,6 +1306,42 @@ function refusalAttribution(e) {
   return out
 }
 
+/** ★ RUN 97 (measured on a real machine): the boundary refusal carried `boundaryOnly`/`askedAction`/
+ * `actionCrosses`/`registry` on the ERROR object, docs/03 promised them in the receipt, and the member got none of
+ * them — because BOTH the face-level `refused()` helper and this file's `toHostSpec` catch rebuilt the receipt from
+ * `ok/code/message/hint` plus a SHORT allow-list (`hostStack`/`shape` here, `enforced*` there). A refusal is a
+ * contract, so the rule is inverted: copy every own enumerable fact the thrower attached, and exclude only what is
+ * machinery (the four envelope keys, `name`, `stack`) — absent stays absent, and a fact the thrower set reaches the
+ * receipt unchanged. Values must be JSON-representable; unrepresentable ones are dropped rather than crashing the
+ * refusal, and a very long string is capped because a receipt is a reading, not a log.
+ *
+ * WHY A GENERAL COPY instead of adding four names: R52 measured `enforced`/`settingValues`, R95 measured `cause`/
+ * `learnedSession`, R97 measured four more. The same bug keeps reappearing because the allow-list has to be edited
+ * for every new fact; the contract should be "what the thrower says is what the caller reads". */
+export const REFUSAL_FACT_RESERVED = Object.freeze(['ok', 'code', 'message', 'hint', 'name', 'stack'])
+export function refusalFacts(e) {
+  const out = {}
+  if (!e || typeof e !== 'object') return out
+  for (const key of Object.keys(e)) {
+    if (REFUSAL_FACT_RESERVED.includes(key)) continue
+    if (key === 'hostStack') {
+      if (typeof e[key] === 'string' && e[key] !== '') out.hostStack = e[key].slice(0, 2000)
+      continue
+    }
+    const v = e[key]
+    // `enforced` is an enumerable list of setting names — a non-array is not that fact and must not be forwarded
+    // (the older per-field helper `refusalAttribution` has the same rule; both paths answer the same way).
+    if (key === 'enforced' && !Array.isArray(v)) continue
+    if (v === undefined || typeof v === 'function' || typeof v === 'symbol') continue
+    if (v instanceof Error) continue
+    let json = null
+    try { json = JSON.stringify(v) } catch { continue }
+    if (json === undefined) continue
+    out[key] = typeof v === 'string' && v.length > 4000 ? v.slice(0, 4000) : v
+  }
+  return out
+}
+
 /** Turn an internal spec into the HOST's shape (the one the real host accepted for v5r). */
 export function toHostSpec(spec) {
   return {
@@ -1336,7 +1368,7 @@ export function toHostSpec(spec) {
           code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED',
           message: String((e && e.message) || e),
           hint: (e && e.hint) || null,
-        }, refusalAttribution(e)))
+        }, refusalAttribution(e), refusalFacts(e)))
       }
     },
   }

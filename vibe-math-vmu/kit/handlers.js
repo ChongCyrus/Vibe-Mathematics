@@ -151,13 +151,24 @@ function ownerEcho(records, id) {
  * by default; route/obstacle/rejected/state append their own track so NEGATIVE knowledge stays archived).
  * An unknown track is refused BY NAME with the declared list — the records face declares the allowed set.
  */
-function toolRecordProgress(args = {}, { kernel } = {}) {
+function toolRecordProgress(args = {}, { kernel, agent } = {}) {
   const records = recordsOf(kernel)
   const tracks = declaredTracks(kernel)
   const track = has(args.track) ? str(args.track) : 'progress'
   if (!tracks.includes(track)) {
     throw refuse('VMU_INVALID_ARGUMENT', 'unknown progress track "' + track + '"',
       'vmu.records.tracks declares: ' + tracks.join(', '))
+  }
+  // ★★ ROUND 99 / D7 (rule L34): "状态版：可查看他人、可改自己" — READABLE FOR OTHERS, WRITABLE ONLY BY ITS OWNER. Before
+  // this gate `member` was taken at face value from whoever called: a member (or the office) could name another member and
+  // rewrite THAT member's four contents, and nothing in the receipt said whose panel had just changed. The caller Agent is
+  // already in `exec` (`tools/member-tools.js` reads `exec.agent` for the same reason): a root session id is not a member
+  // seat, so an office/human call keeps the registrar path (it may write on behalf, and the receipt names the panel owner).
+  const caller = agent && typeof agent.id === 'string' && !agent.id.startsWith('session-') ? agent.id : null
+  const panelTarget = track === 'state' ? (has(args.member) ? str(args.member) : caller) : null
+  if (track === 'state' && caller !== null && panelTarget !== null && panelTarget !== caller) {
+    throw refuse('VMU_NOT_PERMITTED', 'this state panel belongs to "' + panelTarget + '" and only that member may rewrite it',
+      'read it with vibe_v5_read_library { member: "' + panelTarget + '", track: "state" } — reading a panelled member is allowed, rewriting it is not; write your own with member:"' + caller + '" (or leave member out and the caller is used)')
   }
   // ★ PHASE 12 / C3: THE STATE PANEL HAS FOUR REQUIRED CONTENTS, AND UNTIL THIS GATE THEM WERE FREE TEXT.
   // The rule: "状态版：可查看他人、可改自己、四个必需内容（当前进度／遇到的障碍／下一步计划／需要的帮助）＋时间信息".
@@ -167,6 +178,9 @@ function toolRecordProgress(args = {}, { kernel } = {}) {
   // refused BY NAME with the missing keys in `e.missing`, never written as a state that silently omits what blocks it.
   // `content` is still allowed on top of the four (free text), but it can no longer SUBSTITUTE for them.
   if (track === 'state') {
+    // ★★ ROUND 99 / D7: writing your own board needs no id — the caller IS the owner. The receipt says which panel it
+    // rewrote (`panelOwner`), so the office registering for somebody cannot be confused with a member editing itself.
+    if (panelTarget !== null && !has(args.member)) args.member = panelTarget
     const nested = args.state && typeof args.state === 'object' && !Array.isArray(args.state) ? args.state : null
     const state = {}
     const missing = []
@@ -209,6 +223,14 @@ function toolRecordProgress(args = {}, { kernel } = {}) {
       // than guessed from the clock — a receipt that prints a time the record does not hold would be a second truth.
       at: stateStamp(records, writtenState.id),
       note: 'the state panel is stored as the four required sections plus any extra elements; a panel missing one of the four is refused by name',
+      // ★★ ROUND 99 / D7: name the panel that was just rewritten. Without it the office registering a member panel and a
+      // member editing itself produce identical receipts, and a reader cannot tell whose four contents just changed.
+      panelOwner: panelTarget,
+      panelOwnerMeans: caller === null
+        ? 'written through the office/human path: no member seat was on the call, so the panel was written on behalf of the member named'
+        : (panelTarget === caller
+          ? 'written by the panel owner itself (the caller)'
+          : 'written on behalf: the caller is not a member seat'),
     }, ownerEcho(records, writtenState.id))
   }
   if (!has(args.content)) {
@@ -238,6 +260,14 @@ function toolRecordProgress(args = {}, { kernel } = {}) {
     ok: true, tool: 'vibe_v5_record_progress', track,
     recordId: written.id, rev: written.rev,
     note: 'appended to the ' + track + ' track; the original wrote one file per track for the same reason',
+    ...(track === 'state' ? {
+      panelOwner: panelTarget,
+      panelOwnerMeans: caller === null
+        ? 'written through the office/human path: no member seat was on the call, so the panel was written on behalf of the member named'
+        : (panelTarget === caller
+          ? 'written by the panel owner itself (the caller)'
+          : 'written on behalf: the caller is not a member seat'),
+    } : {}),
   }, ownerEcho(records, written.id))
 }
 
