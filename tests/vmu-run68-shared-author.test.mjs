@@ -135,16 +135,25 @@ const landed = await until(foldHas(A.kernel, wrote.id))
 ok(!!landed, '⑤★ the row really is in the durable fold (what makes the next read a READ)', A.kernel.store.read('records'))
 
 const aGet = serr(() => A.kernel.records.get({ id: wrote.id })).value || {}
-const bGet = serr(() => B.kernel.records.get({ id: wrote.id })).value || {}
+// ★ T1 LOAD (2026-10-28): under the full suite this file failed three assertions while passing alone 3/3 — the reader
+// kernel had simply not adopted the other kernel's row yet, and the store write is asynchronous. A fixed sleep is not
+// a clock, so the reader is polled until it can see the row (bounded, then the assertion fails as before).
+const bGet = (await until(() => {
+  const v = serr(() => B.kernel.records.get({ id: wrote.id })).value
+  return v && v.id === wrote.id ? v : null
+})) || {}
 ok(aGet.owner === bGet.owner, '⑤★★ the writer and the reader report the SAME owner for the same id (run 68: `null` vs `"restore"`)', { a: aGet.owner, b: bGet.owner })
 ok(bGet.owner === null || bGet.owner === undefined, '⑤★ and that shared answer is "unknown", never an invented name', { owner: bGet.owner })
 ok(bGet.owner !== 'restore', '⑤★ no instance in this fixture reports the operation word as an owner', { owner: bGet.owner })
-const bList = B.kernel.records.list({ track: 'propositions', limit: 0 })
-const listed = Array.isArray(bList.items) ? bList.items.filter((r) => r && r.id === wrote.id)[0] : null
+const listed = await until(() => {
+  const bList = B.kernel.records.list({ track: 'propositions', limit: 0 })
+  return Array.isArray(bList.items) ? bList.items.filter((r) => r && r.id === wrote.id)[0] || null : null
+})
 ok(!!listed && listed.owner === bGet.owner,
   '⑤★★ `list` and `get` agree about the same row\'s owner (the two faces run-68 quoted at each other)', { listed: listed && listed.owner, get: bGet.owner })
-ok(B.kernel.records.status().shared.adoptedWithoutAuthor >= 1,
-  '⑤★ B counts the adoption of the author-less row (evidence, not a silent convention)', B.kernel.records.status().shared)
+const adopted = await until(() => (B.kernel.records.status().shared.adoptedWithoutAuthor >= 1 ? B.kernel.records.status().shared : null))
+ok(adopted && adopted.adoptedWithoutAuthor >= 1,
+  '⑤★ B counts the adoption of the author-less row (evidence, not a silent convention)', adopted || B.kernel.records.status().shared)
 
 console.log('=== 5. NO ADOPTED ROW IS EVER STAMPED WITH AN OPERATION WORD, ACROSS REPEATED PULLS ===')
 const rows2 = () => [

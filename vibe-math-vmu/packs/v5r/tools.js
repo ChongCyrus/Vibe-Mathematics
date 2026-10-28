@@ -688,6 +688,24 @@ async function toolFire(args = {}, { kernel, exec = null } = {}) {
     callerSeat,
     callerUnknown: caller === null,
   }
+  // ── ⓪ A SESSION WE CANNOT NAME IS NOT THE OFFICE (F-116b, run 116) ──────────────────────────────────────────
+  // Measured on a real machine: r-2 fired r-1's temp worker and the receipt said `ownership:"not-own"` with
+  // `caller:null` — while `ok` stayed true. Every member rule here is keyed on a caller, so an unnamed caller walked
+  // past them; and "not-own with no caller" is exactly the shape of a member whose session was not mapped.
+  // The distinction that IS available: the office calls arrive with no `exec` at all, and a tool call from a SESSION
+  // carries `exec.agent.id`, whose root form starts with `session-` (member child sessions do not — the same shape
+  // `kit/handlers.js#toolRecordProgress` already keys on). So: attributed target + unmapped NON-root session ⇒ refuse
+  // by name instead of allowing on a fact we do not hold. `looksLikeOffice` stays true when there is no exec.
+  const agentId = exec && exec.agent && typeof exec.agent.id === 'string' ? exec.agent.id : null
+  const looksLikeOffice = agentId === null || agentId === '' || agentId.startsWith('session-')
+  if (caller === null && attribution !== null && !looksLikeOffice) {
+    return Object.assign({}, disclosure, {
+      ok: false,
+      code: 'VMU_FIRE_CALLER_UNKNOWN',
+      message: 'this call came from a session this kernel cannot map to a member (' + agentId + '), and "' + id + '" is attributed to "' + attribution.by + '": an unnamed caller may not dismiss a temp worker it cannot prove it hired',
+      hint: 'the kernel of the calling member must be able to name its own session (kernel.memberBySession - see docs/26 ROUND 115); if you are the office, fire through a root call (no member session) or ask "' + attribution.by + '" to dismiss it',
+    })
+  }
   // ── ① THE CHAIR SEAT IS NOT DISMISSABLE BY A TOOL (any caller, office included) ───────────────────────────────
   if (targetSeat === 'chair') {
     return Object.assign({}, disclosure, {

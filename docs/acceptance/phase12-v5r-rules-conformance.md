@@ -9119,3 +9119,86 @@ FIELD_NOT_APPLICABLE=48 BAD_JSON=64`；两轮 clone 都已清、C 盘余 10.96 G
   临时工（这只会走到「找不到目标」那一支）。
 
 ### §209.6 无实质残余：否（C10/B5 拒支/D1 三条待下一轮）
+
+---
+
+## §210 真机跑 116 —— 子会话 id 在子代开始时就是事实
+
+### §210.1 读数
+
+| 轮次 | build | 时长 | 调用 | token | 会话 | RED | jsonl |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 116 | `97a0724d` | 858 s | 21 / 21 | 5,119,107 | 3 | 0 | 14,118,844 B / 24,910 行 |
+
+围栏读数 `NO_FENCE=73 UNKNOWN_FIELD=49 FIELD_NOT_APPLICABLE=72 BAD_JSON=73`；日志保全
+`D:\_tmp\slv-phase5\slv-logs\…20261028-220221`；clone 已清、C 盘余 10.93 GB。
+
+### §210.2 判决表（A7 逐支）
+
+| 支 | r116 读到的 | 判定 |
+| --- | --- | --- |
+| 院士雇临时工 | `hire` ⇒ `hiredBy:"r-1"`（**续接回合**） | ✅ |
+| 成员首轮雇临时工 | 首轮 `hire` ⇒ `hiredBy:null`，回执自述 "this call ran outside a member turn … no attribution could be recorded" | ❌ F-116a |
+| 成员解雇自己的临时工 | 续接回合 `fire` ⇒ `caller:"r-1"`, `callerSeat:"member"`, `ownership:"own"` | ✅ |
+| **另一成员首轮解雇它** | `fire` ⇒ `caller:null`, `callerUnknown:true`, `ownership:"not-own"`，**却 `ok:true`** | ❌ F-116b |
+
+### §210.3 两条修法与判据
+
+**F-116a（学得太晚）**：成员会话→成员的那对映射原来只在回合**回复结算之后**才学；成员自己的工具调用全部发生在结算
+之前，于是首轮每个调用都问不出「谁在调用」。子会话 id 在子代开始的那一刻就已经在 handle 上（`childIdOf(handle)`），
+所以：`deliverTurn` 构造 `turnForDeliver = {…turn, onChild: learnChild}` 交给 seam，`deliverViaSubagents` 一拿到 handle
+就 `turn.onChild(childIdOf(handle))`。判据：**「谁在调用」这个事实的产生时刻是子代开始，不是子代结束**。
+
+**F-116b（不知道调用者时不许当它是办公室）**：`toolFire` 的成员守卫全建立在 `caller` 非空上；`caller===null` 时它
+落到"办公室路径"放行。修法：新增 ⓪ 号守卫 —— 当目标**有归属**、`caller` 为 `null`、而调用者又是**非 root 的会话 id**
+（`session-…` 或别的 agent 形状）时，具名拒 `VMU_FIRE_CALLER_UNKNOWN`（message 点名 agentId 与被归属者，hint 指
+`kernel.memberBySession` 与两条合法路）。判据：**"不知道"不是"是办公室"；未知必须具名，不能静默当特权**。
+
+### §210.4 四条前轮回执（C2 / B4 / B5 / E16 的关闭凭据，逐字）
+
+r114（build `3b2cfb6a`）C2：
+
+```
+"progress":"已试两种度量，均失败","progressMeans":"the `progress` figure was kept as its own labelled line (\"- 进度：…\") inside the record body, so it survives into the durable row and every read face"
+```
+
+r114 B4（`blueprint {action:"state"}`）：
+
+```
+"freshness":{"ok":true,"available":true,…,"stale":false,…,"ageMs":14345,"staleAfterMs":2592000000,"overdueDays":0,"means":"未逾期：现行版 r1 在 30 天窗口内（ageMs=14345）。本次读数不写 lastStaleSeenAt，也不阻止任何调用。","persist":{"attempted":false,"written":false,"error":null}}
+```
+
+r114 B5（`adopt {draft:"rec-2"}`）：
+
+```
+"codesign":{"ok":true,"hasChair":true,"hasResident":true,"missing":[],"chair":["r-acad"],"resident":["r-1"]}
+```
+
+r115（build `b49be545`）E16（`vibe_v5_say {member:"r-2",meeting:"m1"}`）：
+
+```
+"queueRead":{"open":true,"mode":"fifo","source":"setting","before":2,"presentWaiters":1,"position":1,"slipped":false,"skippedAbsent":["r-1"],"means":"…the turn is held among the PRESENT waiters [r-2]: an absent member ahead of you does not hold the floor…"}
+```
+
+### §210.5 测试与门禁
+
+- 新 `tests/vmu-run116-early-child-caller.test.mjs` **14/0**：seam 一拿到 handle 就 `onChild` ⇒ 子代工作期间
+  `memberBySession` 已答出成员；该对子进共享账本（第二个内核可读）；未映射的非 root 会话在 `fire` 时被
+  `VMU_FIRE_CALLER_UNKNOWN` 具名拒，而 root 会话与无 `exec` 的办公室路径仍放行、且回执仍披露 `ownership`。
+- 相邻：`vmu-a7-fire-scope` 34/0、`vmu-run115-member-session-map` 10/0、`vmu-run113-a7-hire-attribution` 19/0、
+  `vmu-a7-a8-seat-rights` 62/0、`vmu-run31-seat-faces` 86/0、`vmu-v5r-tools` 360/0。
+
+### §210.6 无实质残余：是（A7 待 r117 用修好的判据重验三支）
+
+### §210.7 两条声明的回验（r117 探针，单位测试）
+
+- `vibe_v5_lean_run` 的注册 schema（不是手写声明）：`required:["file","statement"]`、`target` 的说明逐字是
+  "legacy alias for statement - a card id is NOT the proposition…"，描述里写明 `file` 按 `LIBRARY ROOT` 解析。**声明与
+  面一致**这条下限守住了。同时记下一条**次序事实**：没有任何 Lean 面时，先报 `VMU_ENGINE_UNAVAILABLE`（点名缺
+  spawn seam），参数检查在面内部 ⇒ 「先有面，才谈参数」是当前设计，不是遗漏。
+- `vibe_v5_paper` 的 `start` 无 target 被 `VMU_INVALID_ARGUMENT` 具名拒，message 逐字 "action \"start\" addresses ONE
+  paper, and no target was given"，hint 点名 `target` 与 `{action:"status"}` 列表读；`sections` 不需要 target。四条在一个
+  真插件 boot 里断言（`tests/vmu-run117-a8-probes.test.mjs` **20/0**）。
+- A8 的通用面判权也在同一套件里被钉住：临时工经 `vibe_vmu_records {action:"append",kind:"proposition"}` ⇒
+  `VMU_TOOL_NOT_IN_FACE` + `seatFace:{member,tool}` + `seatFaceMeans` 说「与 pack 工具同一个闸」；办公室路径（无成员席位）
+  仍放行；常驻研究员用自己的席位面放行且回执带 `seatFace.allowed`。

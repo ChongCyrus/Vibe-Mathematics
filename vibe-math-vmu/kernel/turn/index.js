@@ -624,6 +624,13 @@ export function deliverViaSubagents(subagents, extract = null, { provider = null
           'the host\'s subagent registry would not admit a new activation; the first failure was "' + first + '". It refuses while a previous activation is still being torn down, so retry later or serialise deliveries so each turn waits for the last teardown (docs/26 §3.22)', e2)
       }
     }
+    // ★ F-116a (run 116): REPORT THE CHILD THE HOST JUST STARTED, BEFORE ITS RESULT IS AWAITED. `SubagentActivation`
+    // carries `childId` and a one-shot handle carries one too, so the kernel can learn "this member session is that
+    // member" while the member is still working — which is exactly when its tool calls ask who is calling.
+    try {
+      const earlyChild = childIdOf(handle)
+      if (earlyChild && turn && typeof turn.onChild === 'function') turn.onChild(String(earlyChild))
+    } catch { /* learning the child id is a convenience, never a blocker */ }
     // ★★★★★★★ PHASE 6: AN ACTIVATION IS NOT A HANDLE - IT MUST BE AWAITED AND DISPOSED, AND ITS TEXT LIVES IN `output`.
     //   SubagentActivation = { childId, messageId?, result: Promise<SubagentResult>, dispose() }
     //   SubagentResult     = { output: ContentBlock[], structured?, diagnostic?, stopReason }
@@ -1920,8 +1927,24 @@ export function createTurnOrchestrator({
     // ★★★★★★★ TASK-13: the offer is computed ONCE, here, from the map every reader already uses, and it travels INSIDE
     // `turn` — see `continuationOfferFor` above for why a third argument to `deliver` would never reach the seam.
     const continuation = continuationOfferFor(turn)
+    // ★ F-116a (run 116): THE CHILD ID IS A FACT THE MOMENT THE CHILD STARTS, SO IT IS LEARNED THEN. The learning point
+    // after the reply settles (see the block further down) is too LATE for the member's own first turn: measured on a
+    // real machine, r-1's first hire answered `hiredBy:null` and r-2's first fire answered `caller:null,
+    // callerUnknown:true` — every tool call of that turn ran while this kernel's map was still empty, and a member that
+    // cannot be named in its own first turn cannot be attributed at all. The seam reports the id through
+    // `turn.onChild` (channel choice: `host-deliver.js` forwards `turn` verbatim and drops extra arguments, which is
+    // the same reason the continuation offer travels inside `turn`).
+    const learnChild = (child) => {
+      const childId = String(child === undefined || child === null ? '' : child)
+      if (childId === '' || !turn || typeof turn.member !== 'string') return
+      sessionOwners.set(childId, String(turn.member))
+      memberSessions.set(turn.member, childId)
+      try { if (typeof onMemberSession === 'function') onMemberSession(String(turn.member), childId) } catch { /* attribution is a convenience, never a blocker */ }
+    }
+    const turnForDeliver = Object.assign({}, turn, { onChild: learnChild })
+    if (continuation !== null) turnForDeliver.continuation = continuation
     try {
-      delivered = await deliver({ turn: continuation === null ? turn : { ...turn, continuation }, text })
+      delivered = await deliver({ turn: turnForDeliver, text })
     } catch (e) {
       // ★ RUN 12 item 1: attribute the stall. The timeout the seam raises already carries turn/member/waitedMs/
       // lastPhase; what it could NOT say was WHICH delivery path was attempted, and the status counters said

@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 70 | all four citations resolve |
-| ◐ PARTIAL | 16 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 74 | all four citations resolve |
+| ◐ PARTIAL | 12 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -31,7 +31,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `A4` | 3 | 院士＝chair 席，统领研究所 | ✅ DONE | 2/1/2/1 | — |
 | `A5` | 3 | 常驻研究员＝member 席 | ✅ DONE | 2/1/1/1 | — |
 | `A6` | 3 | 临时工：可被雇佣、无表决权、默认不参与会议、可解雇 | ✅ DONE | 1/1/1/1 | — |
-| `A7` | 3 | 临时工可被解雇 | ◐ PARTIAL | 6/1/1/0 | r116：成员在自己的回合里 hire 临时工 → 回执 `hiredBy:"<member>"`；同一成员 fire 它 → `ownership:"own"` 且放行；另一成员 fire 它 → `VMU_NOT_PERMITTED` + `ownership:"not-own"`；root/office 调用 → 明说没有成员席位、`ownership:"unrecorded"`。子内核里 `resolveTurnMember` 必须解析到成员（不是 null）。 |
+| `A7` | 3 | 临时工可被解雇 | ◐ PARTIAL | 9/1/1/0 | r117：成员在**首个**回合里 hire 临时工 → `hiredBy` 是该成员（不再是 null）；同成员 fire 它 → `ownership:"own"` 且放行；另一成员在**首个**回合 fire 它 → 具名拒 `VMU_NOT_PERMITTED` + `ownership:"not-own"`；无法映射的非 root 会话 → `VMU_FIRE_CALLER_UNKNOWN`；root/office 调用 → 放行且 `ownership:"unrecorded"`。 |
 | `A8` | 10 | 院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列 | ◐ PARTIAL | 3/3/1/0 | r114：临时工经 vibe_vmu_records {action:"append", kind:"proposition"} 写命题 → 具名拒 VMU_TOOL_NOT_IN_FACE 且回执带 seatFace:{member:"r-t1",tool:"vibe_v5_record_proposition"}；再让它用自己席位看得见的写面做临时任务成功。两条逐字进台账。 |
 | `A9` | 3 | 临时工的用途约束：被院士或常驻研究员雇佣用于特殊任务/临时任务 | ✅ DONE | 1/1/1/1 | — |
 
@@ -42,8 +42,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `B1` | 7 | Verified 只收 p=1 的命题 | ✅ DONE | 1/1/1/1 | — |
 | `B2` | 7 | 参考文献中的命题也可直接入 Verified | ✅ DONE | 2/2/1/2 | — |
 | `B3` | 7 | 只有辩论能把 p 改为 1 | ◐ PARTIAL | 2/2/1/0 | r113：带 literature_ref 的 p=1 写入 → 回执 p1Route:"literature"；多数决 p=1 → 具名拒 VMU_PACK_V5R_P1_NEEDS_DEBATE 且回执带 p1Routes。两条逐字进台账。 |
-| `B4` | 8 | 蓝图：总目标/技术路线/规划，按时更新 | ◐ PARTIAL | 2/1/1/0 | r113：vibe_v5_blueprint {action:"state"} 回执带 freshness（ageMs/staleAfterMs/overdueDays）；adopt 逾期版回执带 overdueUpdate，逐字进台账。 |
-| `B5` | 8 | 蓝图由院士+常驻研究员共同设计 | ◐ PARTIAL | 2/1/1/0 | r113：单人 propose 后 chair adopt → 具名拒 VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN；另一席对同 path propose 续写后再 adopt 成功，且 adopted text 逐字含两段署名文字，逐字进台账。 |
+| `B4` | 8 | 蓝图：总目标/技术路线/规划，按时更新 | ✅ DONE | 2/1/1/1 | — |
+| `B5` | 8 | 蓝图由院士+常驻研究员共同设计 | ✅ DONE | 2/1/1/1 | — |
 | `B6` | 8 | 蓝图最终编辑权在院士 | ✅ DONE | 2/1/1/1 | — |
 
 ## C. 个人文件
@@ -51,7 +51,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `C1` | 11 | 研究过程 progress 日志 | ✅ DONE | 1/1/1/1 | — |
-| `C2` | 12 | 已尝试路线/方法及其进度 | ◐ PARTIAL | 2/1/1/0 | r113：vibe_v5_record_progress 在 obstacles/routes 轨带 progress → 回执 progress 与正文「- 进度：」都在，读回也看得见，逐字进台账。 |
+| `C2` | 12 | 已尝试路线/方法及其进度 | ✅ DONE | 2/1/1/1 | — |
 | `C3` | 13 | 遇障路线/尝试/方法及障碍与原因归档 | ✅ DONE | 2/1/1/2 | — |
 | `C4` | 13 | 遇到的各种障碍及其原因（归档内容的一部分） | ◐ PARTIAL | 2/1/1/0 | r113：写 obstacles 卡（含原因段与 progress 行）→ expand 读回正文两段都在，且 progress 行未被吞；逐字进台账。 |
 | `C5` | 14 | 命题库：完整定义、p(0-1)、进度 | ✅ DONE | 2/1/1/1 | — |
@@ -98,7 +98,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E13` | 37 | 会议类型：正常/学术交流/辩论/结题/论文交流/未来规划 | ✅ DONE | 2/1/1/1 | — |
 | `E14` | 39 | 常见命令：举手 | ✅ DONE | 2/1/1/1 | — |
 | `E15` | 39 | 常见命令：邀请发言 | ✅ DONE | 2/1/1/1 | — |
-| `E16` | 39 | 常见命令：批量指定成员按顺序发言 | ◐ PARTIAL | 2/2/1/0 | r113：chair 用 invite members:["r-1","r-2"] 排定顺序后让 r-2 先发言 → 具名拒 VMU_FLOOR_OUT_OF_ORDER 且 hint 印出 order；r-1 发言回执带 queueRead.position:1。逐字进台账。 |
+| `E16` | 39 | 常见命令：批量指定成员按顺序发言 | ✅ DONE | 2/2/1/1 | — |
 | `E17` | 39 | 常见命令：单次发言版群聊（每人各说一次、不打断） | ✅ DONE | 1/1/1/2 | — |
 | `E18` | 42 | 投票板：院士设选项与机制（最少/最多选几项） | ✅ DONE | 2/1/1/1 | — |
 | `E19` | 42 | 投票板不用于辩论 | ✅ DONE | 1/1/1/1 | — |
