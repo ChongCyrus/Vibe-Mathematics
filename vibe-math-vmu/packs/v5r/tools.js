@@ -2504,7 +2504,8 @@ function toolMeeting(args = {}, { kernel } = {}) {
  * 三条语义（每一条都有门禁）：
  *   · 只**收窄**：allow 是「身份可见表 ∩ pack 声明的类型允许集」，读不到身份面就具名拒（不猜、不扩权）；
  *   · 未声明收窄的类型**具名决定走默认**（不设 override），不是空集；
- *   · 收窄后为空 ⇒ 具名拒（空工具面是坏配置，不是"严格"）。
+ *   · 收窄后为空 ⇒ **跳过收窄并披露**（R103：空工具面是坏配置，但坏配置不该杀掉整场会；回执 `narrowing.applied:false`
+ *     与两个计数说清"声明了但没生效"，且不装 override）。
  * 主席**不收窄**：他要在会议里维持秩序（关会、流程、投票箱），那是他的席位职责，不是议题内容。
  */
 // ★ PHASE 12 / 2026-10-25 (the first REAL multi-agent run, the institute's own diagnosis): this handler called
@@ -3739,7 +3740,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
       + 'It resolves the meeting\'s `type`, then narrows each participating member\'s tool face to 「identity visible set ∩ the pack-declared allow list for that type」 — it can only get SMALLER (a widening is impossible: the intersection is taken against the member\'s own visible face, and an unreadable identity face is refused by name instead of guessed). '
       + 'During a DEBATE, recording tools such as vibe_v5_paper / lean / hiring / settings are NOT callable by members (they are another meeting\'s business); in a type that declares no narrowing (ordinary/academic/closure/paper/planning) the member keeps the identity face and the receipt says so by name. '
       + 'The CHAIR is never narrowed (order-keeping is the seat\'s duty). The override lives for exactly this one round and is cleared in a finally, so the next turn starts from the identity face again. '
-      + 'A type with no declared narrowing is a NAMED decision (default face), never a silent empty set; an empty intersection is refused by name (a bad configuration is not "strictness"). '
+      + 'A type with no declared narrowing is a NAMED decision (default face), never a silent empty set; when the intersection with the identity face of that member is EMPTY the narrowing is SKIPPED (no override is installed, so nothing is widened) and the round receipt carries `narrowing:{applied:false, reason:"empty-intersect", expectedAllowed, identityFaceVisible}` — a broken configuration must not kill the meeting. '
       + 'Defaults: members = every live member except the chair; phase = "meeting". '
       + '★ phase must be one the turn engine knows: founding / normal / checkpoint / verify / verify-debate / meeting / resume / heartbeat / paper-write / paper-review / paper-final — any other word is refused by name (and this face then returns ok:false carrying that step code, it does not claim the round happened).',
     parameters: { meeting: { type: 'string', required: true }, members: { type: 'array' }, phase: { type: 'string', enum: ['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'meeting', 'resume', 'heartbeat', 'paper-write', 'paper-review', 'paper-final'] }, why: { type: 'string' } },
