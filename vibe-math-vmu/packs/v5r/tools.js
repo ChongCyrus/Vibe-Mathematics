@@ -2268,6 +2268,39 @@ async function toolMeetingRulings(args = {}, { kernel } = {}) {
   }
 }
 
+// ★★ ROUND 103 / F-103a: THE CEILING IS A SETTING, SO THE NOTE MUST READ IT. Run 103 measured `extendlimit ms:10000000`
+// lifting the bound to 11800000 and only 300000000 being refused against 14400000, while this face's note said
+// "clamped [300000, 7200000]" — a number nobody enforced and a verb ("clamped") that names the wrong behaviour (the
+// request is refused whole, not clamped to the edge). The phrase reads the live ceiling; when the deployment declares
+// none, the note says so instead of inventing a number (a note that lies is the defect the number was meant to fix).
+// ★★ ROUND 103 / F-103b: one sentence for "did the narrowing take", decided from the rows (not from the declaration).
+function narrowNoteOf(face, notNarrowed) {
+  const skipped = Array.isArray(notNarrowed) ? notNarrowed : []
+  if (face.narrowed !== true) return '这一轮**没有**按会议类型收窄（' + face.reason + '）：工具面等于该成员的身份面。'
+  if (skipped.length === 0) {
+    return '★ 这一轮按会议类型收窄了成员工具面：下发的是「身份可见表 ∩ pack 声明的允许集」，不是手写名单 —— 只能变小。主席不在收窄范围内（他要维持会议秩序）。override 已在 finally 撤掉，不影响下一轮。'
+  }
+  const first = skipped[0].narrowing || {}
+  return '★ 会议类型「' + face.type + '」声明了收窄，但**本部署没有生效**：第 ' + String(first.identityFaceVisible) + ' 个身份面可见工具与「' +
+    String(first.expectedAllowed) + '」个允许项交集为 0（narrowing.reason="empty-intersect"）。本轮按各成员的身份面照常跑，没有下发任何 allow —— 这是披露，不是"更严格"。' +
+    '要让收窄生效，部署需要装工具可见性提供者（身份面非空）。'
+}
+
+function wallCeilingPhrase(kernel) {
+  let ceiling = null
+  try {
+    const raw = settingsOf(kernel)['vmu.meetings.extendCeilingMs']
+    const n = Number(raw)
+    if (Number.isFinite(n) && n > 0) ceiling = n
+  } catch { /* an unreadable deployment is "no declared ceiling", said below */ }
+  // NOT DECLARED HERE IS A FACT, NOT A HOLE: this deployment's settings snapshot carries no ceiling key, so the note
+  // names the KEY and points at the refusal that prints both numbers (the refusal reads the kernel's own clamped
+  // ceiling) — printing a framework default the kernel had not resolved would be the same lie in a new place.
+  return ceiling === null
+    ? '`vmu.meetings.extendCeilingMs` (this deployment declares no value, so the runtime ceiling applies; the refusal itself prints the ceiling it used, as `after / ceiling`)'
+    : '`vmu.meetings.extendCeilingMs` (' + String(ceiling) + ' ms)'
+}
+
 function toolMeeting(args = {}, { kernel } = {}) {
   // ★★ ROUND 47: the rulings READ lives on this face (the pack owns the ruling cards it teaches members to file).
   if (String(args.action) === 'rulings') return toolMeetingRulings(args, { kernel })
@@ -2441,7 +2474,7 @@ function toolMeeting(args = {}, { kernel } = {}) {
     wallLimitMsSource: opened && opened.wallLimitMsSource !== undefined ? opened.wallLimitMsSource : null,
     wallLimitMsDefaultMs: opened && opened.wallLimitMsDefaultMs !== undefined ? opened.wallLimitMsDefaultMs : null,
     wallLimitNote: opened && Number.isFinite(opened.wallLimitMs)
-      ? 'the meeting\u2019s OWN upper bound, frozen at open: `wallLimitMs` is the value, `wallLimitMsSource` says who froze it (`convene` = the chair set it with durationMs, `vmu.meetings.hardLimitMs` = the deployment default), and `extendlimit` can raise it later (never unbounded: clamped [300000, 7200000])'
+      ? 'the meeting\u2019s OWN upper bound, frozen at open: `wallLimitMs` is the value, `wallLimitMsSource` says who froze it (`convene` = the chair set it with durationMs, `vmu.meetings.hardLimitMs` = the deployment default), and `extendlimit` can raise it later: extensions ADD to the current bound, and a request that would pass ' + wallCeilingPhrase(kernel) + ' is refused BY NAME (`VMU_RESOURCE_BUDGET`) — nothing is clamped to the boundary. `extendCeilingMs` is the ceiling in effect for THAT refusal.'
       : null,
     // ★ ROUND 33 / P2-③: the sequence read back. `index`/`total` describe WHERE this meeting sits in the declared
     // run; `next` names the meeting that advances it (null = this is the last). No reader should have to infer
@@ -2503,6 +2536,7 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
   }
   const face = meetingTypeFace(type)
   const applied = applyMeetingTypeFace({ kernel, type, members: ids, refuse })
+  const notNarrowed = (applied.rows || []).filter((r) => r && r.narrowing && r.narrowing.applied === false)
   let step = null
   let failure = null
   try {
@@ -2538,9 +2572,7 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
     ok: true, tool: 'vibe_v5_meeting_round', meeting, type, chair, phase: str(args.phase || 'meeting'),
     narrowed: face.narrowed === true, narrowing: { type, narrowed: face.narrowed === true, reason: face.reason, expected: face.allow, members: applied.rows },
     members: ids, turn: step,
-    note: face.narrowed === true
-      ? '★ 这一轮按会议类型收窄了成员工具面：下发的是「身份可见表 ∩ pack 声明的允许集」，不是手写名单 —— 只能变小。主席不在收窄范围内（他要维持会议秩序）。override 已在 finally 撤掉，不影响下一轮。'
-      : '这一轮**没有**按会议类型收窄（' + face.reason + '）：工具面等于该成员的身份面。',
+    note: narrowNoteOf(face, notNarrowed),
   }
 }
 

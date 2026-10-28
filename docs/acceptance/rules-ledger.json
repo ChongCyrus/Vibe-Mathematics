@@ -559,7 +559,7 @@
       "id": "C3",
       "rule": "13",
       "text": "遇障路线/尝试/方法及障碍与原因归档",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-core.js::'progress', 'routes', 'obstacles', 'rejected', 'state'",
         "vibe-math-vmu/kit/handlers.js::unknown progress track"
@@ -570,16 +570,15 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::阻塞与原因"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-8\""
-      ],
-      "ruleText": "- 遇障路线、尝试、方法及遇到的各种障碍及其原因等的归档。"
+      "live": [],
+      "ruleText": "- 遇障路线、尝试、方法及遇到的各种障碍及其原因等的归档。",
+      "next": "余项：live —— 写一条 track:\"obstacles\" 的障碍卡（含原因），再从 read_library 读回，证明它落在 Obstacles 桶而不是 Routes；旧的 live（recordId rec-9 之类）指的是 routes 行的 id，不能证明遇障路线与障碍原因。"
     },
     {
       "id": "C4",
       "rule": "13",
       "text": "遇到的各种障碍及其原因（归档内容的一部分）",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
         "vibe-math-vmu/kernel/library.js::'progress', 'routes', 'obstacles', 'rejected', 'state'",
         "vibe-math-vmu/kit/handlers.js::unknown progress track"
@@ -590,10 +589,9 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::已证伪的路"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-9\""
-      ],
-      "ruleText": "- 遇障路线、尝试、方法及遇到的各种障碍及其原因等的归档。"
+      "live": [],
+      "ruleText": "- 遇障路线、尝试、方法及遇到的各种障碍及其原因等的归档。",
+      "next": "余项：live —— 写一条 track:\"obstacles\" 的障碍卡（含原因），再从 read_library 读回，证明它落在 Obstacles 桶而不是 Routes；旧的 live（recordId rec-9 之类）指的是 routes 行的 id，不能证明障碍及其原因。"
     },
     {
       "id": "C5",
@@ -601,7 +599,8 @@
       "text": "命题库：完整定义、p(0-1)、进度",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/verified.js::parseCardBody"
+        "vibe-math-vmu/packs/v5r/verified.js::parseCardBody",
+        "vibe-math-vmu/packs/v5r/verification-gates.js::只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_proposition"
@@ -848,7 +847,8 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::三通道的紧急语义"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_v5_inbox{action:\"list\",member:\"res-01\"}` ⇒ `count:1`"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"urgent\":true,\"kind\":\"notice\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::kind does NOT decide urgency"
       ],
       "ruleText": "- 各自交流通过：邮箱（非紧急。一般不需要立即查看邮箱消息），私信（希望对方尽早回复时），群聊（非紧急。一般不需要立即查看群聊消息），...。"
     },
@@ -896,11 +896,10 @@
       "id": "D5",
       "rule": "28",
       "text": "四字段都含时间等基础信息",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/turn/index.js::timeWhy",
-        "vibe-math-vmu/kernel/turn/index.js::时间未提供",
-        "vibe-math-vmu/kit/handlers.js::memberCheck"
+        "vibe-math-vmu/kernel/turn/index.js::（时间未提供：",
+        "vibe-math-vmu/kernel/turn/index.js::timeWhy = '设置键没有内容时间戳"
       ],
       "tool": [
         "vibe_vmu_turn",
@@ -909,9 +908,12 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::时间未提供：为什么"
       ],
-      "live": [],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::读于 2026-10-28T06:20:12",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::时间未提供：设置键没有内容时间戳"
+      ],
       "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。",
-      "next": "余项：live —— 第 99 轮真机读 `[状态板]`，每一行带「读于 <时刻>」；同一读数里不可读字段不得借这个时刻。"
+      "next": ""
     },
     {
       "id": "D6",
@@ -1152,7 +1154,7 @@
       "id": "E10",
       "rule": "32",
       "text": "院士设会议时长上界",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::wallLimitMs = null",
         "vibe-math-vmu/kernel/meetings.js::wallLimitMsSource: wallLimitRequested === null",
@@ -1166,10 +1168,11 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::durationMs"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"wallLimitMs\":2400000"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"wallLimitMs\":2400000",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"wallLimitMs\":900000,\"wallLimitMsSource\":\"convene\""
       ],
       "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
-      "next": "余项只有 live：让院士用 vibe_v5_meeting { durationMs: 900000 } 召集并逐字抄回执的 wallLimitMs/wallLimitMsSource，再用 vibe_vmu_meeting { action:\"status\" } 读回同一个值（机制/教学/门禁已就绪，见 §201）"
+      "next": ""
     },
     {
       "id": "E11",
@@ -1415,7 +1418,9 @@
       "text": "辩论/结题表决人数＝min(用户设置, 院士+常驻)",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::voteFloor: {"
+        "vibe-math-vmu/kernel/meetings.js::voteFloor: {",
+        "vibe-math-vmu/kernel/meetings.js::辩论/结题表决人数下限",
+        "vibe-math-vmu/kernel/meetings.js::quorumCap, eligible universe"
       ],
       "tool": [
         "vibe_v5_verdict_final"
@@ -1894,7 +1899,7 @@
     {
       "id": "E33",
       "ruleText": "会议类型包括但不限于：",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/tools.js::这一轮按会议类型收窄了成员工具面"
       ],
@@ -1904,14 +1909,17 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::会议类型六种"
       ],
-      "live": [],
-      "next": "六种类型里真机只演练过 ordinary/academic/debate/closure（§184/§190）：给 paper/planning 各补一次真机 convene 回执作 live",
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"meeting\":\"m2\",\"type\":\"paper\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"meeting\":\"m3\",\"type\":\"planning\""
+      ],
+      "next": "",
       "text": "会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。"
     },
     {
       "id": "E34",
       "ruleText": "会议进行中的一些特殊活动包括但不限于：",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/ballotbox.js::export function createBallotBox",
         "vibe-math-vmu/kernel/chat.js::speakRound"
@@ -1922,14 +1930,17 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::【投票板（只有你能立）】"
       ],
-      "live": [],
-      "next": "投票板与单次发言版群聊都有机制与回执，但真机里「会议进行中」这一组合只走过投票板（§184）：补一次会议内 say round 的 live",
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"round\":\"mg1\",\"spoke\":true",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_CHAT_ALREADY_SPOKE"
+      ],
+      "next": "",
       "text": "会议进行中的一些特殊活动包括但不限于：投票（院士设置投票板选项与机制）、任务板设置与认领交派、群聊式交流，...。"
     },
     {
       "id": "E35",
       "ruleText": "院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/tools.js::THE DEBATE'S EXTRA FIELD"
       ],
@@ -1939,8 +1950,10 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::debate`（须 `subject`）"
       ],
-      "live": [],
-      "next": "辩论会需要 subject（对象或文件引用），机制在 pack 的 convene 校验里：给一条真机回执（含 subject 与缺席时的具名拒）作 live",
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::a debate meeting needs a subject: the object of the debate"
+      ],
+      "next": "",
       "text": "关于辩论：院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。"
     },
     {

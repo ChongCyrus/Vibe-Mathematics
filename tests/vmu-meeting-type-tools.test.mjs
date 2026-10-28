@@ -166,11 +166,19 @@ try {
   ok(halfBroken.calls.overrides.length === 0,
     '★ NO override survives a refusal: the round computes every face first and only then applies (a half-applied narrowing is worse than none)',
     halfBroken.calls.overrides)
+  // ★★ ROUND 103 / F-103b: 交集为空 = 本轮的披露，不是整场会开不起来。run 103 的 `vibe_v5_meeting_round {type:"debate"}`
+  // 死在这里，会议一轮都没跑；收窄只是一轮的便利，不是会议本身。现在跳过收窄、不装 override（因此不扩权），并在回执里说明。
   const emptyIsect = makeKernel({ type: 'debate', visible: { 'r-1': ['vibe_v5_paper'] } })
   const r3 = await runRound(emptyIsect.kernel, { meeting: 'm1', members: ['r-1'] })
-  ok(r3.ok === false && r3.code === 'VMU_STATE', '★ an EMPTY intersection is refused (an empty face is a bad configuration, not strictness)', r3.code)
-  ok(/空的/.test(String(r3.message)) && /交集 0/.test(String(r3.message)), 'the refusal prints the numbers (declared / visible / intersection)', String(r3.message).slice(0, 120))
-  ok(emptyIsect.calls.overrides.length === 0, 'and it applied nothing', emptyIsect.calls.overrides.length)
+  ok(r3.ok === true, '★ an EMPTY intersection no longer kills the round (the narrowing is a per-round convenience, not the meeting)', r3.code)
+  ok(emptyIsect.calls.overrides.length === 0, 'and it installs NO override (nothing is widened: the member keeps its identity face)', emptyIsect.calls.overrides.length)
+  const r3row = (r3.receipt && r3.receipt.narrowing && r3.receipt.narrowing.members ? r3.receipt.narrowing.members : [])[0] || {}
+  ok(r3row.narrowing && r3row.narrowing.applied === false && r3row.narrowing.reason === 'empty-intersect',
+    'the receipt says the narrowing did NOT take, and why', r3row.narrowing)
+  ok(r3row.narrowing && r3row.narrowing.expectedAllowed > 0 && r3row.narrowing.identityFaceVisible === 1,
+    'the disclosure prints both counts (declared allows / identity face visible)', r3row.narrowing)
+  ok(/没有生效/.test(String(r3.receipt.note)) && /empty-intersect/.test(String(r3.receipt.note)),
+    'and the note says so in words (a receipt nobody reads as a disclosure is not one)', String(r3.receipt.note).slice(0, 140))
 
   // ── ④ 双向：辩论收窄 / 正常会议不误伤 / 主席不收窄 ──────────────────────────────────────────────────────
   console.log('=== 4. BOTH DIRECTIONS: a debate really narrows, an ordinary meeting is really untouched ===')

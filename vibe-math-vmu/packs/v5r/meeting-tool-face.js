@@ -124,15 +124,24 @@ export function applyMeetingTypeFace({ kernel, type, members, refuse }) {
     const names = (view && Array.isArray(view.tools) ? view.tools : []).map((t) => t && t.name).filter((n) => typeof n === 'string')
     const { allow, dropped, unavailable } = intersectFace(names, face)
     if (allow.length === 0) {
-      throw refuse('VMU_STATE',
-        '会议类型「' + face.type + '」收窄后的工具面是空的（期望允许 ' + face.allow.length + ' 个，身份面可见 ' + names.length + ' 个，交集 0）',
-        '空工具面不是"严格"而是坏配置：要么这张 pack 策略表与该席位的身份面不匹配，要么该部署没有装工具可见性提供者；收到这条时不要继续推进这一轮')
+      // ★★ ROUND 103 / F-103b: AN EMPTY INTERSECTION IS A DISCLOSURE, NOT A REFUSAL OF THE ROUND. Run 103's
+      // `vibe_v5_meeting_round {type:"debate"}` died here (`VMU_STATE`) and the round never ran, because this
+      // deployment's identity face was empty (no toolsView provider ⇒ 0 visible) — "strict" had turned into "this
+      // deployment cannot hold a meeting". The narrowing is one round's convenience, not the meeting: skip it for
+      // this member, install NO override (so the member keeps exactly its identity face — nothing is widened), and
+      // carry `narrowing.applied:false` plus both counts into the receipt so nobody believes a narrowing happened.
+      planned.push({ member: id, visible: names.length, allow: [], dropped, unavailable,
+        narrowing: { applied: false, reason: 'empty-intersect', expectedAllowed: face.allow.length, identityFaceVisible: names.length } })
+      continue
     }
     planned.push({ member: id, visible: names.length, allow, dropped, unavailable })
   }
   const rows = []
   for (const row of planned) {
-    kernel.setMemberToolOverride({ member: row.member, all: false, allow: row.allow.slice() })
+    // A row whose narrowing was NOT applied keeps its identity face: installing an empty allow would hide every tool.
+    if (!(row.narrowing && row.narrowing.applied === false)) {
+      kernel.setMemberToolOverride({ member: row.member, all: false, allow: row.allow.slice() })
+    }
     rows.push(row)
   }
   return {

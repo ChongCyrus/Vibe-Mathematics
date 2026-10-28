@@ -253,7 +253,13 @@ export function makePackToolSpec({ entry, kernel = null, packId = null } = {}) {
       if (gate.ok === false) {
         throw Object.assign(new Error(gate.message), { code: gate.code, hint: gate.hint, face: gate.face })
       }
-      const out = await handler(args && typeof args === 'object' ? args : {}, { kernel, exec: exec || null, packId: id })
+      // ★★ ROUND 103 / F-102a: THE DISPATCH MUST SAY WHICH SEAT THE CALL IS FOR. This handed the handler
+      // `{kernel, exec, packId}` while `kit/handlers.js` reads `agent` — so `agent` was `undefined` on every call,
+      // the caller was read as the office, and run 102's member wrote ANOTHER member's state panel while the receipt
+      // said "written through the office/human path". The member is resolved here with the SAME criterion the seat-face
+      // gate above uses, so what the caller MAY write and what the caller CAN see cannot disagree.
+      const out = await handler(args && typeof args === 'object' ? args : {},
+        { kernel, agent: (exec && exec.agent) || null, callerMember: resolveTurnMember(kernel, exec), exec: exec || null, packId: id })
       // THE CONTRACT: a handler returns an OBJECT (or returns nothing). A non-object is wrapped
       // rather than passed through, because a bare string would be JSON-encoded a SECOND time by
       // the one serializer downstream (`boundedToolResult` stringifies a string as a JSON string).

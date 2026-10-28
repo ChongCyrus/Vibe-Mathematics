@@ -151,7 +151,7 @@ function ownerEcho(records, id) {
  * by default; route/obstacle/rejected/state append their own track so NEGATIVE knowledge stays archived).
  * An unknown track is refused BY NAME with the declared list — the records face declares the allowed set.
  */
-function toolRecordProgress(args = {}, { kernel, agent } = {}) {
+function toolRecordProgress(args = {}, { kernel, agent, callerMember } = {}) {
   const records = recordsOf(kernel)
   const tracks = declaredTracks(kernel)
   const track = has(args.track) ? str(args.track) : 'progress'
@@ -164,7 +164,12 @@ function toolRecordProgress(args = {}, { kernel, agent } = {}) {
   // rewrite THAT member's four contents, and nothing in the receipt said whose panel had just changed. The caller Agent is
   // already in `exec` (`tools/member-tools.js` reads `exec.agent` for the same reason): a root session id is not a member
   // seat, so an office/human call keeps the registrar path (it may write on behalf, and the receipt names the panel owner).
-  const caller = agent && typeof agent.id === 'string' && !agent.id.startsWith('session-') ? agent.id : null
+  // ★★ ROUND 103 / F-102a: THE SEAT IS TOLD TO US. `callerMember` is resolved by the pack dispatch with the same
+  // criterion as the seat-face gate; the `agent.id` branch stays for a caller that wires this spec without the
+  // dispatch (a test kernel). Reading only `agent` made every member call look like the office.
+  const caller = (typeof callerMember === 'string' && callerMember !== '')
+    ? callerMember
+    : (agent && typeof agent.id === 'string' && !agent.id.startsWith('session-') ? agent.id : null)
   const panelTarget = track === 'state' ? (has(args.member) ? str(args.member) : caller) : null
   // ★★ ROUND 102 / F-100a: A PANEL BELONGS TO A MEMBER WHO EXISTS. Run 100 wrote a state panel for "r-2" - a name
   // that was never hired (the roster was r-acad + r-1) - and the write succeeded, so the ledger grew a panel owned by a

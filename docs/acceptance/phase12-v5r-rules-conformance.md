@@ -8717,3 +8717,59 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 - 面板 `state` 轨的 **rev/审计链**（谁改的、改了几次）未在真机读回。
 
 ### §202.7 无实质残余：否
+
+## §203 真机跑 102 / 103（席位被当成所办 / 文档里的上界数字 / 空交集让整轮开会跑不起来）
+
+### §203.1 读数
+
+| 读数 | r102 | r103 |
+| --- | --- | --- |
+| build | `c7aff128` | `c7aff128` |
+| 驱动 | `DRIVE exit=0`、565s、24 calls / 24 results、`tokenTotal 2,924,679`、3 会话 | `DRIVE exit=0`、309s、17 calls / 17 results、`tokenTotal 1,799,723`、2 会话 |
+| 围栏 | `NO_FENCE=36 UNKNOWN_FIELD=24 FIELD_NOT_APPLICABLE=44 BAD_JSON=36` | `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=16 BAD_JSON=12` |
+| jsonl | 9,478,289 B / 18,911 行 | 6,251,109 B / 13,888 行 |
+
+### §203.2 判决表
+
+| 行 | 判决 | 逐字读数 |
+| --- | --- | --- |
+| D5（四字段各带时间） | ✅ | `[状态板]` 的四行各带时间：有内容时间的行印 `读于 2026-10-28T06:20:12.763`，没有内容时间的行印 `时间未提供：设置键没有内容时间戳`（`vmu.turn.objective` 是配置，不是账本行）—— 两种都被成员逐字抄回 |
+| F-100a（幽灵面板） | ✅ | 对不在册的 `r-2` 写 state 面板 ⇒ `VMU_NO_SUCH_OBJECT`，回执印出核对过的名册 |
+| F-100e（会议类型在席位可读） | ✅ | 成员席上 `vibe_vmu_meeting { action:"types" }` 回六类并声明源 `vmu.meetings.typeCatalog` |
+| **F-102a（席位被当成所办）** | ❌ 失败 → 本轮修 | 成员 r-1 在自己的回合里写 `vibe_v5_record_progress { track:"state", member:"r-acad", … }` **成功**，回执 `panelOwner:"r-acad"`、`panelOwnerMeans:"written through the office/human path: no member seat was on the call"` —— 调用者明明是成员席位 |
+| **F-102b（两套面板注册表）** | ❌ 失败 → 本轮修 | `vibe_vmu_panel { action:"status" }` 报 `members:0`，而 records 的 state 轨已有面板行；读面用 0 冒充「没有人」 |
+| **F-103a（上界数字）** | ❌ 失败 → 本轮修 | 召集回执 `wallLimitNote` 硬编码「never unbounded: clamped [300000, 7200000]」；实测 `extendlimit ms:10000000` 把墙钟从 1800000 抬到 **11800000**（加法，无 7200000 钳制），再 `ms:300000000` 才被 `VMU_RESOURCE_BUDGET "the extended wall bound would pass the ceiling: 311800000 / 14400000"` 拒 ⇒ 真值 14400000，差一倍；且越界是整笔下拒，不是「钳到边上」 |
+| **F-103b（空交集杀掉整轮）** | ❌ 失败 → 本轮修 | `vibe_v5_meeting_round { meeting:"m4", phase:"debate" }` ⇒ `VMU_STATE '会议类型「debate」收窄后的工具面是空的（期望允许 20 个，身份面可见 0 个，交集 0）'`，会议一轮都没跑 |
+| E33（六种类型） | ✅ | `"meeting":"m2","type":"paper"` 与 `"meeting":"m3","type":"planning"` 都召集成功，回执带 `procedure.steps[]`（每条 `status:"supported"`）、`procedureBinding:"recommendation"`、`procedureNote`（「推荐不是门禁」） |
+| E10（院士设时长上界） | ✅ | `"wallLimitMs":900000,"wallLimitMsSource":"convene"`；`vibe_vmu_meeting { action:"status", id:"m3" }` 读回同一个值 |
+| E35（辩论必须有对象） | ✅ | 无 subject 的 debate ⇒ `"code":"VMU_INVALID_ARGUMENT","message":"a debate meeting needs a subject: the object of the debate…"`；带一句话命题后建成 m4 |
+| E34（会议内的特殊活动） | ✅ | 会议进行中 `vibe_v5_say { round:"mg1" }` ⇒ `"round":"mg1","spoke":true,"spokenBy":["r-1"],"remaining":["r-acad","r-2"]`，同人第二次 ⇒ `VMU_CHAT_ALREADY_SPOKE` |
+| E36（辩论骨架） | ⏳ | 本轮 m4 是辩论会，但 F-103b 让 `meeting_round` 死掉 ⇒ 骨架推进没有真机读数，下一轮补 |
+
+### §203.3 三条修法与判据
+
+- **F-102a**：根的根在**传参形状**：`vibe-math-vmu/host-pack-tools.js` 的包派发只给 `{ kernel, exec, packId }`，而 `vibe-math-vmu/kit/handlers.js#toolRecordProgress` 解构的是 `{ kernel, agent }` ⇒ `agent` **永远是 undefined**，调用者永远读成所办（D7 的闸只挡住了「具名成别人」，没挡住「席位被当成所办」）。修法：派发时用**已经存在的那一个判据** `resolveTurnMember(kernel, exec)`（同文件 `:106`，席位面闸用的就是它）算出 `callerMember` 一并传下去；kit 侧 `caller` 优先取 `callerMember`，`agent.id` 只作为「不经派发直接装配」的兜底。判据：**「谁能看」与「谁能写」必须用同一个判据**，两个判据就有两个答案。
+- **F-103a**：`vibe-math-vmu/packs/v5r/tools.js` 的 `wallLimitNote` 改成从设置快照读 `vmu.meetings.extendCeilingMs`（`wallCeilingPhrase()`）；部署没声明该键时**不编数字**，只点名键、并指向真正会印出上下限的那条拒绝（`VMU_RESOURCE_BUDGET … after / ceiling`——它读的是内核钳制后的 `K.extendCeilingMs`）；同时把动词改对：扩展是**加法累计**，越界是**整笔下拒**，不是钳到边上。判据：**一个数字如果没人按它执行，它就不该出现在回执里**；读不到真值时点名键比印一个默认值诚实。
+- **F-103b**：`vibe-math-vmu/packs/v5r/meeting-tool-face.js#applyMeetingTypeFace` 在交集为空时**不再抛**，而是跳过收窄、**不装 override**（因此不扩权：成员保持原身份面），把 `narrowing:{applied:false, reason:"empty-intersect", expectedAllowed, identityFaceVisible}` 放进行里；`packs/v5r/tools.js` 的回合回执用 `narrowNoteOf(face, notNarrowed)` 说「声明了收窄但本部署没生效，为什么」——失败路径原本已挂 `failure.narrowing`，成功路径这次也挂。判据：**收窄是一轮的便利，不是会议本身**；一个便利失效时该披露，不该把整场会一起杀掉。
+
+### §203.4 测试与门禁
+
+- 新 `tests/vmu-run103-seat-ceiling.test.mjs` **25/0**：`resolveTurnMember` 三档（roster id / 学会的子会话 / root 与无 agent 都是 null）、成员写自己面板 `panelOwner` 是本人、写别人面板 `VMU_NOT_PERMITTED`、所办可代笔且回执说明路径、`wallLimitNote` 读真值（声明 5000000 就印 5000000）且未声明时不编默认值、不把下拒说成 clamped。
+- 改：`tests/vmu-meeting-type-tools.test.mjs`（53/0）的空交集断言从「整轮拒绝」改为「本轮照跑 + 不装 override + 回执披露两个计数 + note 说没生效」——`F-103b` 的判据变了，测的期望也必须跟着变。
+- 相邻绿：`vmu-v5r-tools` 359/0、`vmu-member-face` 46/0、`vmu-run31-seat-faces` 86/0、`vmu-run45-human-decide-audit` 62/0、`vmu-run51-human-caller` 24/0、`vmu-run99-status-ownership` 23/0、`vmu-run101-meeting-bound` 28/0、`vmu-run102-panel-types` 33/0、`vmu-meeting-round-await` 10/0、`vmu-run84-meeting-reads` 8/0。
+
+### §203.5 简报错（不算产品缺陷）
+
+1. `vibe_v5_configure` 的键是 `project/institute/problem/params`，简报写成了 `objective`。
+2. `vibe_v5_assign` 的目标参数是 `to`，简报写成了 `member`。
+3. `kind:"subject"` 不是会议 kind（合法值 `sync/division/verify-request/solve-vote`），会议类型与 ballot 的 `kind` 是两个词。
+4. `vibe_v5_say` 必须带 `member`（包处理面没有 agent→member 映射）；「所办以自己身份发言」目前无路可走——记为观察，未修。
+
+### §203.6 无法验证
+
+- F-102a / F-103a / F-103b 的三条修法本身**没有真机读数**（本节只记了缺陷取证与单测）；下一轮定向复验。
+- `C3/C4`（障碍/被拒轨的归档与读回）在 r102 里只看到一次 `"track":"obstacles","recordId":"rec-11"` 的写入回执，没有读回的卡面。
+- E36 的辩论骨架推进（见上表）。
+- `vibe_vmu_panel` 与 records state 轨有没有**共同的读面**（F-102b）——本轮只记录了 `members:0` 这个谎，没有设计合并方案。
+
+### §203.7 无实质残余：是（三条修法待真机复验）
