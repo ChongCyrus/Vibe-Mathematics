@@ -8418,3 +8418,64 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 - 辩论期间投票板仍拒（上轮已验，本轮未复验）。
 
 §193.7 无实质残余：否（F-92a/F-92b 已修未跑；A8 的 live 缺合规证据）。
+
+## §194 真机跑 93（临时工席位面 / 数学面两套键 / 会议命令交叉集合）
+
+§194.1 读数。build `416ea45a`，clone `slvp93`，`DRIVE exit=0`，14 calls，0 RED，围栏 `NO_FENCE=8 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=8 BAD_JSON=8`，jsonl `1,011,395 B / 2,067 行`，保全戳 `20261028-085642`。会话里坐了一名院士（`r-acad`）与一名临时工（`r-t9`）。
+
+§194.2 判决表。
+
+| 规则 | 判决 | 依据 |
+| --- | --- | --- |
+| A8 临时工不写这些库 | ✅ | 见 §194.3 |
+| A9 hire 的席位与初始任务 | ✅ | `slotRequested:"temp"` + `task.id:"t-1"`（§193 已验，本轮复验） |
+| E30 会议进行中的命令 | ⚠️ 部分 | 辩论会话里只读到 `convene`/`agendaitems` 两条路 |
+| E32 裁决通知 | ✅ | §193 已验，本轮复阅 |
+| F-92a（temp 面门） | ✅ | 见 §194.3 |
+| F-92b（hire 重排座位） | ✅ | 见 §194.3 |
+| F-91a（数学面静默 null） | ✅ | 见 §194.3 |
+| F-93a（数学面参数形状） | ❌ 新缺陷 | 见 §194.4 |
+| F-93b（会议命令交叉集合） | ❌ 新缺陷 | 见 §194.4 |
+
+§194.3 三条已修缺陷的真机证据（逐字）。
+
+- **A8 / F-92a**：临时工被点名写方法卡时，面门拒绝了它，并把规则理由写在 hint 里：
+  `vibe_v5_record_method is not one of the faces the temp seat holds: "r-t9" is in slot "temp"`
+  同一位临时工写命题卡仍然通过（席位面收的是「这本库」而不是「这个人」）：
+  `"recordId":"rec-1","settled":false` —— 回执同时给 `"owner":"r-t9"`。
+- **F-92b**：把已在册的院士当成 `to` 去 hire，面层拒绝并指出正解：
+  `hire mints a NEW temp member; "r-acad" is already on the roster in slot "chair"`（hint 指向 `vibe_vmu_control` 的换席动作）。
+- **F-91a**：数学接缝的具名拒绝不再被读成「没有值」：
+  `MATH_INVALID_ARGUMENT` + `unknown argument: args` + hint `a refusal is not a result`。
+  这说明「拒绝直通」确实生效（此前同一输入回 `{"ok":true,"value":null}`）。
+
+§194.4 两条新缺陷。
+
+- **F-93a**：`vibe_vmu_mathtools { action: "run", op: "numeric" }` 无论带不带 `args` 都回
+  `unknown argument: args` —— 面把**面级参数名** `args` 原样透传给接缝，而接缝只接受 `op` 与运算自己的字段；
+  `op` 因此从未被判定过。两套键名不一致（面：`op` + `args`；接缝：`op` 自带运算名）。
+- **F-93b**：`vibe_vmu_meeting { action: "agendaitems", id: "m2" }` 回
+  `no PRIMITIVE meeting with id m2 (the id exists in the SERVICE registry)`，而 hint 的交叉动作清单里没有 `agendaitems`
+  —— 交叉集合是手写的 16 项，服务面新增的动词（`agendaitems`/`agendaclose` 等）没跟上。
+
+§194.5 门禁。修复后的相邻套件：`vmu-mathtools-tool` 14/0、`vmu-math` 27/0、`vmu-run84-meeting-reads` 8/0、`vmu-meeting` 153/0、`vmu-host` 203/0；全量 T1 `TOTAL 562 PASS 562 FAIL 0`。
+
+§194.6 简报错。①`leader` 字段不存在（正解 `member`/`by`）；②没讲清院士必须先有自己的 turn 才能召集（`VMU_CHAIR_ACT_NOT_DELEGATED`）；③`agendaitems` 不是交叉动作却按交叉动作写；④把面级 `op` 与接缝 `op` 混成一个；⑤没写清 `vibe_v5_meeting`（pack 面）与 `vibe_vmu_meeting`（service 面）的表归属。
+
+§194.7 无实质残余：否（F-93a/F-93b 修后需复验）。
+
+## §195 机制补齐（数学面两套词汇 / 议程动词的注册表归属）
+
+§195.1 真机来源。run 93（§194）两条缺陷：F-93a（`vibe_vmu_mathtools {action:"run"}` 回 `unknown argument: args`）、F-93b（`agendaitems` 在服务会 id 上被拒，而教学没有说它只认原语会）。
+
+§195.2 修法。
+- `vibe-math-vmu/kernel/math.js`：新增导出 `planToComputationRequest(req)`（把 `{op,args,seed,backend,limits}` 译成 `{op:"run",mode,code|file|expr,engine?,packages?,timeoutMs?}`，把 `seed/backend/planOp` 记进 `translated`；没有引擎可执行体时回 `VMU_MATH_VOCABULARY`，hint 指向 `args{code|expr|file}` 或 `math_computation`，并明说规划后端需要另行注入）；`createMathSurface` 新增 `runPlan(req)`（翻译 + 与 `run()` 同一分类）与 `planVocabulary()`（`seam:'engine-execution'`、`seamOp`、`seamBody`、`translate`）。
+- `vibe-math-vmu/kernel/index.js`：`spawn: (req) => mathSurface().runPlan(req)`（策略层的 spawn 走翻译入口）。
+- `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js`：议程段补「`agendaitems`/`agendaclose` 只认内核原语会（`vibe_vmu_meeting{action:"open"}` 开的那种）；服务会要用 `status`/`summary` 读议程，服务会 id 上问这两个动词会得到「这张表里没有」的具名拒绝」。
+- 不扩大 `SERVICE_CROSSING_ACTIONS`：`agendaitems` 确实不跨注册表，扩大它会让原语面替它看不见的注册表作答。
+
+§195.3 测试。新 `tests/vmu-run93b-math-vocabulary.test.mjs` **7/0**：①带 `expr/code/file` 的规划请求被译成计算请求（含 `engine`/`packages` 透传、`translated.planOp`）；②没有引擎可执行体的请求回 `VMU_MATH_VOCABULARY` 且 hint 点名 `math_computation` 与 PLANNING backend；③`runPlan` 端到端（假主机先答版本探针、再答执行）拿到 `value:"1025"`、`vocabulary:"computation"`、argv 里带 `2**10+1`；④空体/无 `args` 也具名拒；⑤`planVocabulary()` 形状；⑥内核确实接线 `runPlan(req)`（且不再存 `run(req)` 这一行）；⑦议程教学与原语/服务归属（交叉集合不含 `agendaitems`）。
+
+§195.4 相邻套件。`vmu-math` 27/0、`vmu-math-adapters` 21/0、`vmu-mathtools-tool` 14/0、`vmu-run91b-seam-refusal` 18/0、`vmu-run90f-math-single-publication` 16/0、`vmu-math-intent-readback` 15/0、`vmu-mathjobs` 11/0、`vmu-mathjobs-persist` 21/0、`vmu-spawn` 15/0、`vmu-run82-local-spawn` 31/0、`vmu-meeting` 50/0、`vmu-run84-meeting-reads` 8/0、`vmu-turn` 272/0、`vmu-prompt-clean` 8/0、`vmu-prompt-type-coverage` 15/0、`audit-prompt-tool-params` 81/0、`vmu-ledger-teaching-pins` 58/0、`vmu-run33-p2-teaching` 111/0。
+
+§195.5 无实质残余：否（两条修法都要在下一轮真机上复验；`runPlan` 只在 `expr/code/file` 三种体上翻译，规划后端的真注入仍是未接的接缝）。

@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 81 | all four citations resolve |
-| ◐ PARTIAL | 1 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 82 | all four citations resolve |
+| ◐ PARTIAL | 0 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -32,7 +32,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `A5` | 3 | 常驻研究员＝member 席 | ✅ DONE | 2/1/1/1 | — |
 | `A6` | 3 | 临时工：可被雇佣、无表决权、默认不参与会议、可解雇 | ✅ DONE | 1/1/1/1 | — |
 | `A7` | 3 | 临时工可被解雇 | ✅ DONE | 1/1/1/1 | — |
-| `A8` | 10 | 院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列 | ◐ PARTIAL | 2/2/1/0 | F-92a 的机理已修（被归属者的席位参与面门，`tests/vmu-run92-temp-seat-and-hire.test.mjs` 11/0）；缺**合规 live**：修后真机要看到 temp 写方法卡被拒、命题卡仍通。 |
+| `A8` | 10 | 院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列 | ✅ DONE | 2/2/1/2 | — |
 | `A9` | 3 | 临时工的用途约束：被院士或常驻研究员雇佣用于特殊任务/临时任务 | ✅ DONE | 1/1/1/1 | — |
 
 ## B. 公共文件

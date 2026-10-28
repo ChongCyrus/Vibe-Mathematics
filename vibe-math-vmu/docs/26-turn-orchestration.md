@@ -1857,3 +1857,33 @@ dsh: fatal load failure: Error: unknown record kind: math-run
 2. **按面判，不按席判**：同一个 temp 席写命题卡仍要允许（规则 4 让临时工的 Lean 结论有地方安放）。一条席位规则如果只能整体放行或整体拒绝，它就还没被实现。
 3. **任何会改变名册形状的参数都要先问「这是新东西还是已有东西」**：`hire { to }` 的 `to` 是**新成员 id**；对已在册的 id 就该具名拒，而不是就地改席。破坏性操作要有一条能被读到的出路（`vibe_vmu_control {action:"hire"}`）。
 4. **虚构的 id 与口头的授权都是缺陷**：r92 的简报把 `to` 写成院士自己的 id，机制照做了（把院士改席成 temp），会议因此不可召集——简报也是被执行的接口，错一处就让整场跑偏，所以简报要过 `check-task-brief`，而机制要对语义错误的参数具名拒绝。
+
+## ROUND 93 — 一条缝上有两套词汇，而「这张表里没有」不是「没有」（F-93a / F-93b）
+
+Measured on run 93. Two faces were asked for things the machine *could* do and answered in a vocabulary
+that belonged to the other side of the seam.
+
+- `vibe_vmu_mathtools { action: "run", op: "numeric", args: { expr: "2**10+1" } }` answered
+  `MATH_INVALID_ARGUMENT: unknown argument: args`. The POLICY layer speaks `{op, args, seed, backend,
+  limits}`; the ENGINE surface speaks `{op: run, mode, code|file|expr}`. `kernel/index.js` wires the
+  second as the first one's `spawn`, so `args` was handed to a closed schema that has never heard of it,
+  and `op` was never judged at all. Round 91b fixed what happened to a REFUSAL (it was being read as a
+  silent null); this round fixed what the request even was: `planToComputationRequest()` translates the
+  plan request when it carries an engine body, and refuses by name (`VMU_MATH_VOCABULARY`) when it does
+  not, saying which vocabulary the seam speaks.
+- `vibe_vmu_meeting { action: "agendaitems", id: "m2" }` answered "no PRIMITIVE meeting with id m2 (the
+  id exists in the SERVICE registry)". That sentence was honest: `agendaitems`/`agendaclose` are
+  primitive-meeting verbs and the crossing set never claimed otherwise. What was wrong was the TEACHING,
+  which promised the read without saying which registry it belongs to, so the reader had to choose
+  between "the product is broken" and "I used the wrong face". Fixed in the teaching, not by widening
+  the crossing set (widening would have made the primitive face answer for a registry it cannot see).
+
+Criteria that this round adds:
+1. **When two layers meet, name the vocabulary of each in the refusal.** A sentence that names a key the
+   caller never invented ("unknown argument: args") is evidence of a wiring mismatch, not of a bad call.
+2. **A refusal that is right is not the same as a teaching that is wrong.** Before widening a crossing
+   set, ask whether the truth is "it does not cross" — and then fix what promised it did.
+3. **Translate, don't flatten.** The translating shim keeps `seed`/`backend` as recorded translation
+   facts and passes `engine`/`packages`/`timeoutMs` through; it does not drop what it cannot map.
+4. **A helper that decides what a request MEANS has to be testable on its own** — `planToComputationRequest`
+   is exported so the translation table (and its named refusal) can be pinned without an engine.

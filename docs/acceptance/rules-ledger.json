@@ -72,7 +72,8 @@
         "file": "v5r-corrections.js",
         "why": "corrections module: every section restates a SUPERSEDED wording together with its replacement (order 890-894); the replacement is what the rule rows assert, so citing the retired half would claim a rule with the sentence it retires. BACKLOG: pin each correction to the rule row it amends."
       }
-    ]
+    ],
+    "fingerprint": "9e79d8a4037ae2b3f8a2e443b29583dd792ba247ffd4e8206753b972d11365d8"
   },
   "ruleLines": {
     "L1-L2": [
@@ -956,7 +957,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::开始前每个动作都被具名拒"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::开始前的治理动作都被具名拒"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::`at` ⇒ `state:\"scheduled\"`、`scheduledFor`、到点前动作被具名拒"
@@ -1767,9 +1768,12 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::临时工不写这些库"
       ],
-      "status": "PARTIAL",
-      "next": "F-92a 的机理已修（被归属者的席位参与面门，`tests/vmu-run92-temp-seat-and-hire.test.mjs` 11/0）；缺**合规 live**：修后真机要看到 temp 写方法卡被拒、命题卡仍通。",
-      "ruleText": "### 院士、常驻研究员各自的文件："
+      "status": "DONE",
+      "ruleText": "### 院士、常驻研究员各自的文件：",
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::vibe_v5_record_method is not one of the faces the temp seat holds",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-1\",\"settled\":false"
+      ]
     },
     {
       "id": "A9",

@@ -2150,7 +2150,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
 // is exactly the seam this face wants. It is resolved LAZILY (a kernel with no math host must still construct), and
 // `mathtools` already refuses by name when no seam is available.
 const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedClock, log, library: libraryRef, jobs: mathjobs,
-  spawn: (req) => mathSurface().run(req) })
+  spawn: (req) => mathSurface().runPlan(req) })
   // `projmigrate` is built EARLIER now: the idempotency ledger needs it at construction so an old on-disk
   // projection is migrated instead of silently discarded.
   // ROUND 22: three more declared-knob families become behaviour, each following the mathtools standard (the

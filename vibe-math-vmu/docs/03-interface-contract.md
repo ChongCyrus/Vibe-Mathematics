@@ -435,6 +435,7 @@
 | **R2 · `VMU_MATH_JOBS_DIR_UNSAFE`** | 镜像目录越出 root（路径逃逸） | 数学作业 | ✅（须给**被拒路径与 root**） |
 | **R2 · `VMU_MATH_JOB_INVALID_STATE`** | 作业状态不允许该操作（对照四态） | 数学作业 | ✅（须给**当前状态**） |
 | **R2 · `VMU_MATH_ADAPTER_OP_UNKNOWN`** | 请求的适配操作不在声明集合 | 数学适配 | ✅（须给**可用操作**） |
+| **R93 · `VMU_MATH_VOCABULARY`** | 规划层的请求没有引擎可执行体（`args` 里没有 `code`/`file`/`expr`），而接进来的缝是**引擎执行**词汇（`op:run` + `mode`） | 数学面（`kernel/math.js` 的 `planToComputationRequest`） | ✅（须给**两种写法**与 `math_computation` 的出路） |
 | **R2 · `VMU_REPORT_NO_TRANSPORT`** | 汇报要投递但缺 `deliver` 缝（先留痕，再具名拒；绝不假装发出） | 汇报（`kernel/report.js`） | ✅（须给**注入方式**） |
 | **R2 · `VMU_REPORT_ACTION_NOT_ALLOWED`** | 汇报声明里出现动作字段（`action|then|run|drive|decide|execute`）⇒ **汇报不是触发器** | 汇报 | ✅（须说明**汇报只报告**） |
 | **R2 · `VMU_REPORT_TEMPLATE_VAR_UNKNOWN`** | 模板引用了未提供的变量 | 汇报 | ✅（须给**已知变量**） |
@@ -1177,7 +1178,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **472** 个码，**逐行**给出状态 ✓：其中 **433** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **473** 个码，**逐行**给出状态 ✓：其中 **434** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1415,6 +1416,7 @@
 | `VMU_MATH_SHAPE_UNKNOWN` | **已实现 ✓** | `vibe-math-vmu/kernel/mathadapters.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_SINGULAR_MATRIX` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MATH_UNSUPPORTED_OP` | **已实现 ✓** | `vibe-math-vmu/kernel/mathadapters.js`、`vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
+| `VMU_MATH_VOCABULARY` | **已实现 ✓** | `vibe-math-vmu/kernel/math.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETINGS_MARKER_UNREADABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/meetingmarker.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_APPEAL_OUT_OF_SCOPE` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_BOX_BINDING_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/meetingmarker.js` | 代码里有该码字符串 ✓ |

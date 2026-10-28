@@ -104,6 +104,37 @@ export function settled(outcome, { hashBefore = null, hashAfter = null } = {}) {
  * Create the surface over an injected host. `settings` is the resolved settings map; the only keys this
  * surface reads are the harmless capability switches (docs/04 §11), never a policy about truth.
  */
+/**
+ * ★ ROUND 93 (measured on the live run): TWO VOCABULARIES ON ONE SEAM. The engine surface speaks
+ * `{ op: probe|run|receipt|install, mode: code|file|expr, code|file|expr, engine, packages, timeoutMs }`;
+ * the policy layer (`kernel/mathtools.js`) speaks `{ op: <plan name>, args, seed, backend, limits }`.
+ * `kernel/index.js` wires the second into the first, so every plan run used to hand `args` to a closed
+ * schema that has never heard of it and came back `MATH_INVALID_ARGUMENT: unknown argument: args` — a
+ * refusal whose sentence names a key the CALLER never invented. Translate the request when the caller
+ * gave an engine-executable body; otherwise refuse by name and say which vocabulary the seam speaks.
+ */
+const COMPUTATION_BODIES = ['code', 'file', 'expr']
+export function planToComputationRequest(req = {}) {
+  const args = req && req.args && typeof req.args === 'object' ? req.args : null
+  const body = args ? COMPUTATION_BODIES.filter((k) => typeof args[k] === 'string' && args[k].trim() !== '')[0] : null
+  if (!body) {
+    return {
+      ok: false,
+      code: 'VMU_MATH_VOCABULARY',
+      reason: 'the wired seam EXECUTES engines, so its `op` is run and its body is one of code/file/expr; this request carried none of them (plan op: ' + String(req && req.op) + ')',
+      next: {
+        hint: 'pass args { code: "print(2**10)" } | { expr: "2**10+1" } | { file: "Computation/x.py" } (engine/packages/timeoutMs are passed through), or call `math_computation` directly; the planning vocabulary (op + args + seed + backend) needs a PLANNING backend injected',
+      },
+    }
+  }
+  const out = { op: 'run', mode: body === 'code' ? 'code' : body === 'file' ? 'file' : 'expr' }
+  out[body] = args[body]
+  for (const k of ['engine', 'packages']) if (args[k] !== undefined) out[k] = args[k]
+  const wall = req && req.limits ? Number(req.limits.wallMs) : NaN
+  if (Number.isFinite(wall) && wall >= 1000) out.timeoutMs = Math.min(Math.round(wall), 3600000)
+  return { ok: true, args: out, translated: { from: 'plan', to: 'computation', body, planOp: req && req.op, seed: req && req.seed, backend: req && req.backend } }
+}
+
 export function createMathSurface({ host, settings = {} } = {}) {
   if (!host || typeof host.register !== 'function' || typeof host.spawn !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the math surface needs a host with register() and spawn()',
@@ -135,6 +166,43 @@ export function createMathSurface({ host, settings = {} } = {}) {
     async run(args) {
       const raw = await bound.handler(args)
       return Object.assign({ raw }, classifyOutcome(raw))
+    },
+
+    /**
+     * ★ ROUND 93: the entry `kernel/index.js` wires the policy layer into. Same classification rules as
+     * `run()`; the only addition is the vocabulary translation above, and its refusal is a NAMED one
+     * (`VMU_MATH_VOCABULARY`) instead of a silent null.
+     */
+    async runPlan(req = {}) {
+      const shim = planToComputationRequest(req)
+      if (!shim.ok) return { raw: shim, ok: false, code: shim.code, message: shim.reason, hint: shim.next && shim.next.hint, isRefutation: false }
+      const raw = await bound.handler(shim.args)
+      const out = classifyOutcome(raw)
+      if (out.ok === false) return Object.assign({ raw }, out)
+      const value = typeof raw.stdout === 'string' && raw.stdout.trim() !== '' ? raw.stdout.trim() : (raw.exit === 0 ? 0 : raw.exit)
+      return {
+        ok: true,
+        isRefutation: false,
+        result: {
+          value, engine: raw.engine || null, exit: raw.exit === undefined ? null : raw.exit,
+          stdout: raw.stdout === undefined ? null : raw.stdout, stderr: raw.stderr === undefined ? null : raw.stderr,
+          mode: raw.mode || null, runId: raw.runId || null, ms: raw.ms === undefined ? null : raw.ms,
+          receipt: raw.receipt || null, vocabulary: 'computation', planOp: req && req.op,
+          translated: shim.translated,
+        },
+        raw,
+      }
+    },
+
+    /** Which vocabulary the injected seam speaks (a reader must not have to guess it from a refusal). */
+    planVocabulary() {
+      return {
+        seam: 'engine-execution',
+        seamOp: ['probe', 'run', 'receipt', 'install'],
+        seamBody: COMPUTATION_BODIES.slice(),
+        planOp: 'accepted but translated: args { code|file|expr } becomes op "run"',
+        translate: 'kernel/index.js wires this surface as the policy layer\'s spawn, so a plan run is translated here',
+      }
     },
 
     /** The availability line for prompt injection (docs/09 §7); policy-free, wording only. */
