@@ -126,6 +126,23 @@ const legalParsed = legal.parsed || legal
 ok(legalParsed && legalParsed.ok === false && legalParsed.code === 'VMU_NO_OPEN_MEETING',
   '② a LEGAL value passes the gate and reaches the business layer (which refuses `VMU_NO_OPEN_MEETING` for a meeting nobody opened) — the gate is narrow, not a wall', legalParsed)
 
+// ── §2b F-114b: `vibe_v5_lean_archive.kind` declared no value list while the implementation had one ────────────────
+// Measured on run 114: the tool description said "kind def/lemma/proof/blocked maps to the face's def/lemma/theorem/
+// assumption", the parameter declared only `type:'string'`, and the implementation accepted exactly four words. A caller
+// who wrote `kind:"theorem"` (the LIBRARY's own word, printed in the same sentence) was refused by the library with
+// "unknown archive kind: theorem" — a closed set that nobody declared is a closed set the caller has to guess.
+console.log('=== 2b. A CLOSED SET IN THE IMPLEMENTATION MUST BE DECLARED IN THE PARAMETER ===')
+const archBad = await call(b, 'vibe_v5_lean_archive', { kind: 'theorem', name: 'lagrange', file: 'lagrange.lean' }, { kernel: b.handle.kernel })
+const archBadParsed = archBad.parsed || archBad
+ok(archBadParsed && archBadParsed.ok === false && archBadParsed.code === 'VMU_INVALID_ARGUMENT',
+  '②b★ `kind:"theorem"` is refused at the TOOL LAYER (the declared enum), not only by the library', archBadParsed)
+ok(String(archBadParsed && archBadParsed.message || '').includes('theorem') && /def/.test(String(archBadParsed && (archBadParsed.message || '') + ' ' + (archBadParsed.hint || ''))) && /blocked/.test(String(archBadParsed && (archBadParsed.message || '') + ' ' + (archBadParsed.hint || ''))),
+  '②b★ the refusal names the value AND the whole legal set (def/lemma/proof/blocked)', archBadParsed)
+const archLegal = await call(b, 'vibe_v5_lean_archive', { kind: 'proof', name: 'lagrange', file: 'lagrange.lean' }, { kernel: b.handle.kernel })
+const archLegalParsed = archLegal.parsed || archLegal
+ok(archLegalParsed && archLegalParsed.code !== 'VMU_INVALID_ARGUMENT',
+  '②b a LEGAL kind passes the enum gate and reaches the library (which then answers in its own words about the file)', archLegalParsed)
+
 // ── §3 F-106d: a write that never read must not erase another kernel's rows ───────────────────────────────────────
 console.log('=== 3. ★★ TWO KERNELS, ONE state.json: a write that never read must not erase the other writer’s row ===')
 const shared = await mkRoot()
@@ -169,7 +186,7 @@ const owners = [r1.id, r2.id, r3.id].map((id) => (byId.get(String(id)) || {}).ow
 ok(owners[0] === 'r-1' && owners[1] === 'r-2' && owners[2] === 'r-1',
   '③★ each row still carries ITS OWN author (r-1 / r-2 / r-1): preserving a row must preserve who wrote it', { owners })
 
-for (const r of roots) await rm(r, { recursive: true, force: true })
+for (const r of roots) await rm(r, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
 
 console.log('')
 if (failed > 0) { console.error('FAILURES:'); for (const f of failures) console.error(' - ' + f) }

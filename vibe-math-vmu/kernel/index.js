@@ -2520,6 +2520,19 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // the zero-mechanism path is unchanged; a deployment that injects its own turn keeps the loop's own `typeof`
     // probes and degrades exactly as before.
     bus,
+    // ★ LIVE RUN 115 (F-115a): a member turn runs in its OWN kernel, so "which member is this child session?" has
+    // to travel through durable state — the child cannot ask the parent. Written here, read by `memberBySession`.
+    onMemberSession: (member, session) => {
+      try {
+        if (!recordsStore || typeof recordsStore.patch !== 'function') return
+        const out = recordsStore.patch('member_sessions', (prev) => {
+          const rows = (Array.isArray(prev) ? prev : []).filter((r) => r && r.session !== session && r.member !== member)
+          rows.push({ member, session })
+          return rows
+        })
+        if (out && typeof out.catch === 'function') out.catch(() => { /* the fold is a convenience: a failed write must not break the turn */ })
+      } catch { /* same: attribution is a reading, never a gate */ }
+    },
     prompt,
     faces: facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs }),
     // ROUND 1 / K3: the TURN delivery seam is its own kernel option (`deliverTurn`), because the wake envelope a
@@ -3531,6 +3544,29 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
      * request time; a member hired AFTER apply therefore gets the face. Returns {member,slot,all,deny,source}; unknown
      * member is a NAMED refusal (the hook records it instead of silently skipping).
      */
+    /**
+     * ★ LIVE RUN 115 (F-115a): WHICH MEMBER RAN IN THIS CHILD SESSION? A member turn runs in its own kernel, so
+     * `exec.agent.id` there is the CHILD SESSION id and `currentTurnMember()` is null — the child cannot say who it
+     * is from its own memory. The parent learned the pair and wrote it to the shared fold, so this reads the local
+     * map first and then the fold (restoring what it finds). `null` is a real answer: a root/office session, or a
+     * child nobody recorded — never a guess.
+     */
+    memberBySession(sessionId) {
+      const sid = typeof sessionId === 'string' ? sessionId : ''
+      if (sid === '') return null
+      const local = turn && typeof turn.memberBySession === 'function' ? turn.memberBySession(sid) : null
+      if (local) return local
+      try {
+        if (recordsStore && typeof recordsStore.read === 'function' && turn && typeof turn.restoreMemberSessions === 'function') {
+          const rows = recordsStore.read('member_sessions')
+          if (Array.isArray(rows) && rows.length > 0) {
+            turn.restoreMemberSessions(rows)
+            return typeof turn.memberBySession === 'function' ? turn.memberBySession(sid) : null
+          }
+        }
+      } catch (e) { log('vmu member_sessions read: ' + String((e && e.message) || e)) }
+      return null
+    },
     resolveMemberToolDeny(member) {
       const id = typeof member === 'string' ? member.trim() : ''
       if (!id) throw refuse('VMU_INVALID_ARGUMENT', 'resolveMemberToolDeny needs a member', 'pass member:"<roster id>"')

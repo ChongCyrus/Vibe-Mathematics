@@ -31,7 +31,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `A4` | 3 | 院士＝chair 席，统领研究所 | ✅ DONE | 2/1/2/1 | — |
 | `A5` | 3 | 常驻研究员＝member 席 | ✅ DONE | 2/1/1/1 | — |
 | `A6` | 3 | 临时工：可被雇佣、无表决权、默认不参与会议、可解雇 | ✅ DONE | 1/1/1/1 | — |
-| `A7` | 3 | 临时工可被解雇 | ◐ PARTIAL | 3/1/1/0 | r114：常驻研究员在自己回合解雇自己雇的临时工 → 回执 targetSeat/ownership:"own"；再让它解雇他人的临时工 → VMU_NOT_PERMITTED + ownership:"not-own"；雇人的回执带 hiredBy/hiredByMeans。逐字进台账后才转 DONE。 |
+| `A7` | 3 | 临时工可被解雇 | ◐ PARTIAL | 6/1/1/0 | r116：成员在自己的回合里 hire 临时工 → 回执 `hiredBy:"<member>"`；同一成员 fire 它 → `ownership:"own"` 且放行；另一成员 fire 它 → `VMU_NOT_PERMITTED` + `ownership:"not-own"`；root/office 调用 → 明说没有成员席位、`ownership:"unrecorded"`。子内核里 `resolveTurnMember` 必须解析到成员（不是 null）。 |
 | `A8` | 10 | 院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列 | ◐ PARTIAL | 3/3/1/0 | r114：临时工经 vibe_vmu_records {action:"append", kind:"proposition"} 写命题 → 具名拒 VMU_TOOL_NOT_IN_FACE 且回执带 seatFace:{member:"r-t1",tool:"vibe_v5_record_proposition"}；再让它用自己席位看得见的写面做临时任务成功。两条逐字进台账。 |
 | `A9` | 3 | 临时工的用途约束：被院士或常驻研究员雇佣用于特殊任务/临时任务 | ✅ DONE | 1/1/1/1 | — |
 

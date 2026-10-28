@@ -1455,6 +1455,9 @@ export function createTurnOrchestrator({
   // policy and previously emitted by nobody - can actually fire, at the one point where inspecting a parsed reply can still
   // change the outcome: after parsing, before dispatch.
   bus = null,
+  // ★ LIVE RUN 115 (F-115a): called when this loop learns "member X ran in child session Y", so the kernel can write
+  // that pair to durable state. Null keeps the in-memory-only behaviour (and every unit test that builds a loop alone).
+  onMemberSession = null,
   // Phases the PACK declares, beyond the framework's own. See PHASES: which phases exist is institution
   // vocabulary, so the framework validates and the pack names.
   extraPhases = null,
@@ -1599,6 +1602,13 @@ export function createTurnOrchestrator({
   // member it was attempted for, not to nobody).
   let lastAttributionMember = null
   const memberSessions = new Map()
+  // ★ LIVE RUN 115 (F-115a): the map above is member -> child session, and it lived ONLY in this instance's memory.
+  // A member turn runs in its OWN kernel (activation delivery), so the child could not answer "which member am I?" —
+  // measured: `vibe_v5_hire` called from r-1's own turn recorded `hiredBy:null` with the note "this call ran outside a
+  // member turn", and `vibe_v5_fire` then reported `ownership:"unrecorded"` for the very temp worker that member had
+  // hired. The reverse direction (child session -> member) is the fact a TOOL CALL can be checked against, so it is
+  // kept, and the kernel writes it to the shared fold (onMemberSession) so later kernels can read it.
+  const sessionOwners = new Map()
   let visibleToolsFor = null
   let seq = 0
   // ★ ROUND 79: which member the most recent caller-supplied reply answers, so the closure vote is recorded against
@@ -1991,7 +2001,11 @@ export function createTurnOrchestrator({
       // comparison, and `why`/`fix` name the boundary when the seam could not continue.
       continuation: continuationReceipt(continuation, delivered),
     }
-    if (lastAttribution.childId && turn && typeof turn.member === 'string') memberSessions.set(turn.member, lastAttribution.childId)
+    if (lastAttribution.childId && turn && typeof turn.member === 'string') {
+      memberSessions.set(turn.member, lastAttribution.childId)
+      sessionOwners.set(String(lastAttribution.childId), String(turn.member))
+      try { if (typeof onMemberSession === 'function') onMemberSession(String(turn.member), String(lastAttribution.childId)) } catch { /* attribution is a convenience, never a blocker */ }
+    }
     if (reply === null) {
       fail('VMU_ENGINE_UNAVAILABLE', 'the delivery adapter returned no reply text',
         'return a string, or { reply, childId, stopReason } (docs/26 §3.22)')
@@ -3779,6 +3793,19 @@ export function createTurnOrchestrator({
       return hit ? Object.assign({}, hit) : null
     },
     promptTurns: () => Array.from(promptArchive.keys()),    memberSession: (member) => memberSessions.get(String(member)) || null,
+    // ★ F-115a: which member ran in this child session? `null` is a real answer (root/office session, or a child this
+    // kernel never learned). Read from the LOCAL map first; the kernel may also fill it from the shared fold.
+    memberBySession: (sessionId) => sessionOwners.get(String(sessionId)) || null,
+    memberSessionPairs: () => Array.from(sessionOwners.entries()).map(([session, member]) => ({ session, member })),
+    restoreMemberSessions: (rows) => {
+      let restored = 0
+      for (const row of Array.isArray(rows) ? rows : []) {
+        if (!row || typeof row.session !== 'string' || row.session === '' || typeof row.member !== 'string' || row.member === '') continue
+        sessionOwners.set(row.session, row.member)
+        restored += 1
+      }
+      return { ok: true, restored }
+    },
     setVisibleToolsProvider: (fn) => { visibleToolsFor = typeof fn === 'function' ? fn : null; return { ok: true, installed: typeof visibleToolsFor === 'function' } },
     /** ★ PHASE 7: ask what a member can REALLY see. No provider / no answer is a NAMED refusal, not []. */
     visibleToolsOf: (member) => {

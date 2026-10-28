@@ -1816,6 +1816,12 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       if (m.id === id) return m.id
       try { const ms = (kernel.turn && kernel.turn.memberSession) || kernel.memberSession; if (typeof ms === 'function' && ms(m.id) === id) return m.id } catch { /* keep looking */ }
     }
+    // ★ LIVE RUN 115 (F-115a): same answer as `host-pack-tools#resolveTurnMember` — in a member's OWN kernel the agent
+    // id is that member's child session, so the pair has to come from the shared fold (the parent recorded it).
+    try {
+      const bySession = typeof kernel.memberBySession === 'function' ? kernel.memberBySession(id) : null
+      if (typeof bySession === 'string' && bySession !== '') return bySession
+    } catch { /* keep the honest null */ }
     return null
   }
   const pullMemberToolFace = async (assembly, context, next) => {

@@ -144,6 +144,16 @@ export function resolveTurnMember(kernel = null, exec = null) {
     if (row.id === agentId) return row.id
     try { const ms = (kernel.turn && kernel.turn.memberSession) || kernel.memberSession; if (typeof ms === 'function' && ms(row.id) === agentId) return row.id } catch { /* keep looking */ }
   }
+  // ★ LIVE RUN 115 (F-115a): a MEMBER turn runs in its own kernel, where the agent id is that member's CHILD SESSION
+  // (it starts with `session-`, exactly like root) and `currentTurnMember()` is null — so every criterion above fails and
+  // a member's own `hire` recorded `hiredBy:null` while its `fire` answered `ownership:"unrecorded"`. The parent learned
+  // "this child session plays this member" and wrote it to the shared fold; ask the kernel for that pair. When nobody
+  // recorded it the answer stays `null` (a real answer: root, or a child nobody mapped) — the fail-closed decision stays
+  // in `packToolFaceGate`, this function never guesses.
+  try {
+    const bySession = typeof kernel.memberBySession === 'function' ? kernel.memberBySession(agentId) : null
+    if (typeof bySession === 'string' && bySession !== '') return bySession
+  } catch { /* keep the honest null */ }
   return null
 }
 

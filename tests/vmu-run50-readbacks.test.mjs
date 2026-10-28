@@ -85,8 +85,14 @@ try {
 
   const closed = kA.meetings.close({ meeting: mid, actor: 'r-a' })
   ok(closed && closed.thrown !== true, 'the first kernel closed it', closed)
-  await sleep(60)
-  const after = kB.meetings.summary({ meeting: mid })
+  // the reader refreshes on read, but the WRITE from the other kernel settles asynchronously (a durable write is a
+  // promise, not a line of code). Under the full gate the machines are loaded and 60 ms is not enough, so wait for the
+  // read to catch up instead of assuming one fixed sleep is a clock — the assertion is about the state, not the delay.
+  let after = kB.meetings.summary({ meeting: mid })
+  for (let i = 0; i < 40 && !(after && after.state === 'closed'); i += 1) {
+    await sleep(50)
+    after = kB.meetings.summary({ meeting: mid })
+  }
   ok(after && after.state === 'closed', 'the reader kernel now reads it CLOSED (the live copy was ended by the closure it learned, and the read refreshed first)', after && { state: after.state, liveWhileArchived: after.liveWhileArchived })
   ok(after && !after.liveWhileArchived, 'and the contradictory flag is gone (nothing says "live but archived" any more)', after && after.liveWhileArchived)
 

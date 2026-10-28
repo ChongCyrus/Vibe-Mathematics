@@ -2030,3 +2030,20 @@ run 100 把三条「看起来已在」的东西称了一遍，得到的都是回
 
 反面教材也在同一轮：A7 的 `vibe_v5_fire` 曾让成员完全不可解雇（教学却教成员可以），那是「关得比对规则更狠」；
 A8 是「关得比规则更松」。两条都在提醒：座位面不是权限表的感觉，它是规则句子的逐字实现，松一档和紧一档都是错。
+
+## ROUND 115 — 「谁在调用」是事实，事实必须落盘
+
+run 115 的读数：成员 r-1 **在自己的回合里** `hire` 了一个临时工，回执写 `hiredBy:null`，紧跟的 `fire` 写
+`caller:null, callerSeat:null, callerUnknown:true, ownership:"unrecorded"`——A7 的守卫写得再细也判不了，因为
+「这是谁雇的」与「谁在调用」两件事都没被记下来。
+
+原因不是守卫写漏了，是**判据的存放位置**：`resolveTurnMember` 的三档（本回合成员 / `turn.memberSession(id)` / 名册 id）
+都要求那对「成员 ↔ 子会话」映射在本进程内存里，而它只活在**父内核**的 `memberSessions` Map 中。成员回合在独立内核里跑，
+工具调用的 agent id 是子会话 id ⇒ 三档全落空。
+
+修法是把事实放到它能被另一个进程读到的地方：回合落定时 `onMemberSession(member, session)` 写
+`recordsStore.patch('member_sessions', …)`，`store.js` 把 `member_sessions` 列进 `PUBLIC_KEYS`；两个解析器
+（`host-pack-tools.js#resolveTurnMember`、`host.js`）末尾各加一档 `kernel.memberBySession(agentId)`，未记录仍是 `null`
+（失败关门依旧由 `packToolFaceGate` 做）。
+
+判据：**跨内核的状态不是靠参数传过去的，是靠持久账本传过去的；只活在内存里的判据，在另一个内核里等于不存在。**

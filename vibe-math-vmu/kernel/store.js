@@ -68,6 +68,10 @@ export const PUBLIC_KEYS = Object.freeze([
   // the only test that touches the projection injects a FAKE store. Measured against the real createStore before
   // this line existed: `work` ⇒ ok, `idempotency` ⇒ refused. The whitelist and docs/03 §6 move together.
   'idempotency',
+  // ★ LIVE RUN 115 (F-115a): "member X ran in child session Y" is a fact of the DEPLOYMENT, not of one kernel's
+  // memory: a member turn runs in its own kernel, and that kernel must be able to answer "which member am I?" from
+  // what the deployment published. Written when a turn settles, read by the tool dispatch that resolves the caller.
+  'member_sessions',
   // ROUND 2 (task-14): the two keys this round's faces actually write.
   //   · `mailbox`  - kernel/mailbox.js: durable per-recipient mail (ack only after a successful delivery);
   //   · `resume`   - kernel/resume.js: recovery records + per-face id counters + journal index (the id-reuse fix).

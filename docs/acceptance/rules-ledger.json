@@ -385,7 +385,10 @@
       "mechanism": [
         "vibe-math-vmu/packs/v5r/seat-faces.js::vibe_v5_fire",
         "vibe-math-vmu/packs/v5r/tools.js::function toolFire",
-        "vibe-math-vmu/packs/v5r/tools.js::hiredByMeans"
+        "vibe-math-vmu/packs/v5r/tools.js::hiredByMeans",
+        "vibe-math-vmu/kernel/turn/index.js::onMemberSession",
+        "vibe-math-vmu/host-pack-tools.js::kernel.memberBySession",
+        "vibe-math-vmu/kernel/index.js::const local = turn && typeof turn.memberBySession"
       ],
       "tool": [
         "vibe_v5_fire"
@@ -395,7 +398,7 @@
       ],
       "live": [],
       "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。",
-      "next": "r114：常驻研究员在自己回合解雇自己雇的临时工 → 回执 targetSeat/ownership:\"own\"；再让它解雇他人的临时工 → VMU_NOT_PERMITTED + ownership:\"not-own\"；雇人的回执带 hiredBy/hiredByMeans。逐字进台账后才转 DONE。"
+      "next": "r116：成员在自己的回合里 hire 临时工 → 回执 `hiredBy:\"<member>\"`；同一成员 fire 它 → `ownership:\"own\"` 且放行；另一成员 fire 它 → `VMU_NOT_PERMITTED` + `ownership:\"not-own\"`；root/office 调用 → 明说没有成员席位、`ownership:\"unrecorded\"`。子内核里 `resolveTurnMember` 必须解析到成员（不是 null）。"
     },
     {
       "id": "B1",

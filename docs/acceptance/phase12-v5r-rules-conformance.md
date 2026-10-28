@@ -9053,3 +9053,69 @@ A7、A8、B3、B4、B5、C2、C4、C8、C10、D1、E9、E16、E29、G6、G7 全�
 - 「临时工经通用面写 lean/paper 库」：同一机制，未逐一取证。
 
 ### §208.7 无实质残余：否
+
+---
+
+## §209 真机跑 114 / 115 —— 成员在自己的内核里也要能被认出来
+
+### §209.1 读数
+
+| 轮次 | build | 时长 | 调用 | token | 会话 | RED | jsonl |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 114 | `3b2cfb6a` | 154 s | 15 / 15 | 790,147 | 2 | 0 | 2,258,026 B / 4,161 行 |
+| 115 | `b49be545` | 364 s | 15 / 15 | 1,445,501 | 4 | 0 | 6,817,299 B / 12,120 行 |
+
+两轮的围栏读数：r114 `NO_FENCE=12 UNKNOWN_FIELD=18 FIELD_NOT_APPLICABLE=12 BAD_JSON=12`，r115 `NO_FENCE=48 UNKNOWN_FIELD=48
+FIELD_NOT_APPLICABLE=48 BAD_JSON=64`；两轮 clone 都已清、C 盘余 10.96 GB。
+
+### §209.2 判决表
+
+| 规则 | 本轮读到的 | 判定 |
+| --- | --- | --- |
+| C2 obstacles 轨的 `progress` | r114：回执带 `progress` 与 `progressMeans`（"kept as its own labelled line … inside the record body"）、`recordId:"rec-1"` | ✅ DONE |
+| B5 共同设计 | r114：`authors` 一行 → 两行（`continued:true`，正文含 `## 共同设计补充｜r-acad`），`adopt {draft}` ⇒ `codesign.ok:true` | ✅ DONE（拒的那支见 §209.5） |
+| B4 按时更新 | r114：`blueprint{action:"state"}` 回 `freshness:{ok:true,ageMs:14345,staleAfterMs:2592000000,overdueDays:0,persist:{attempted:false}}` | ✅ DONE |
+| C10 Lean 档案登记编译结果 | r114：`lean_run` 因**文件不存在** `VMU_LEAN_FILE_UNREADABLE`，`lean_archive{kind:"theorem"}` 被枚举门拒 | ⏳ 未取证（§209.5） |
+| D1 每人读自己那一份 | r114：任务板 0 条，状态板 ②③ 印「该来源未提供：任务板为空」 | ⚠️ 未行使 |
+| E16 发言顺序 | r115：未签到者 `VMU_NOT_MEMBER`；签到后 `queueRead:{open:true,mode:"fifo",source:"setting",before:2,presentWaiters:1,position:1,slipped:false,skippedAbsent:["r-1"]}` | ✅ DONE |
+| A7 成员解雇自己的临时工 | r115：成员回合里 `hire` 回 `hiredBy:null`，`fire` 回 `caller:null, ownership:"unrecorded"` | ❌ F-115a |
+
+### §209.3 F-115a：席位判据只活在一个进程里
+
+`vibe_v5_hire` 与 `vibe_v5_fire` 都从 `resolveTurnMember(kernel, exec)` 取「这次调用是谁」。三档判据（本轮当前回合成员、
+`kernel.turn.memberSession(id)` 映射、名册 id 精确匹配）**全部要求那对映射在本进程内存里**，而这个映射只有**父内核**在
+`kernel/turn/index.js` 的 `memberSessions = new Map()` 里学过。成员回合在**另一个内核**里跑，工具调用的 `exec.agent.id` 是
+子会话 id，于是每一档都落空 ⇒ 归因是 null，`fire` 只能答 `ownership:"unrecorded"`（花名册没有归属，机制不能凭空拒绝，这条
+诚实是对的；错在上面那份事实没被写下来）。
+
+修法（一处学、一处存、两处读）：
+
+1. `kernel/turn/index.js`：学习点同时写 `sessionOwners`，并新增选项 `onMemberSession(member, session)`、API
+   `memberBySession` / `memberSessionPairs()` / `restoreMemberSessions(rows)`；
+2. `kernel/index.js`：把 `onMemberSession` 接到 `recordsStore.patch('member_sessions', …)`，并给内核加
+   `memberBySession(sessionId)`（先问 turn，再懒读共享账本并 restore）；
+3. `kernel/store.js`：`PUBLIC_KEYS` 加 `'member_sessions'`（**持久事实要能被另一个进程读到**）；
+4. `host-pack-tools.js#resolveTurnMember` 与 `host.js` 的同名解析器：末尾各加一档
+   `kernel.memberBySession(agentId)`。未记录仍是 `null`——失败关门仍由 `packToolFaceGate` 做，解析器不猜。
+
+判据一句话：**「谁在调用」是事实，事实必须落盘；只活在内存里的判据，在另一个内核里等于不存在。**
+
+### §209.4 测试与门禁
+
+- 新 `tests/vmu-run115-member-session-map.test.mjs` **10/0**：①回合落定后 `memberBySession('session-child-a')` 是 `r-1` 且
+  该对子进入 `memberSessionPairs()`；②**第二个内核**（成员内核的形状）只凭共享账本解出 `session-child-b → r-2`，没人记录的
+  session 与不在名册的 id 都是 `null`；③子内核上解出的 caller 与父内核花名册的 `hiredBy` 一致 ⇒ 归属可判 `own`。
+- 相邻：`vmu-run113-a7-hire-attribution` 19/0、`vmu-a7-fire-scope` 34/0、`vmu-a7-a8-seat-rights` 62/0、
+  `vmu-run31-continuity` 63/0、`vmu-run32-resume` 41/0、`vmu-turn` 272/0。
+
+### §209.5 本轮无法验证 / 简报自身错
+
+- **C10 未取证**：简报让成员跑 `file:"lagrange.lean"`，库里没有这个文件（按库根解析到 `VibeMath\lagrange.lean`），
+  `lean_run` 诚实地回 `VMU_LEAN_FILE_UNREADABLE` + `hashUnchangedState:"not-measured"`——**这不是产品缺陷，是简报没有先造文件**。
+- **B5 的拒支未取证**：`adopt {path}` 不带 `draft` 会先被「落成蓝图要指名草案」拒，`VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN`
+  这一支仍没有真机回执。
+- **D1 未行使**：简报没先建任务，成员读到的 ②③ 是「任务板为空」。
+- 简报自身：r114 把 `blueprint{action:"read"}` 写成带 `path`（读面要**记录 id**）；r115 让成员在 hire 前先 fire 一个不存在的
+  临时工（这只会走到「找不到目标」那一支）。
+
+### §209.6 无实质残余：否（C10/B5 拒支/D1 三条待下一轮）
