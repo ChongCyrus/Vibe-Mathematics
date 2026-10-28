@@ -329,12 +329,14 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_start"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-charter.js::院士"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::你是院士席：可以",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-charter.js::本所的领头人是"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::后一步撞 `VMU_RESOURCE_BUDGET \"role slot chair is full: 1/1\"`"
       ],
-      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。"
+      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。",
+      "note": "prompt 两条：第一条是真正在席位上教「你是院士席」的句子（reply-channel 的 REPLY_SEAT_NOTES）；第二条只为声明 v5r-charter.js 这个仍在提示词集合里的文件归属（该文件当前只有注释与无席替换文本，没有行为句 —— 这是 G7 审计记录的事实，不假装它是教学）。"
     },
     {
       "id": "A5",
@@ -1777,8 +1779,9 @@
       "text": "提示词与规则完全相符、自洽",
       "status": "PARTIAL",
       "mechanism": [
-        "scripts/check-rule-parity.mjs::== String",
-        "tests/vmu-prompt-clean.test.mjs::VMU PROMPT CLEAN"
+        "scripts/check-rule-parity.mjs::function liveTeachingFiles",
+        "scripts/check-rule-parity.mjs::VMU_RULE_PARITY_ORPHAN_TEACHING",
+        "vibe-math-vmu/packs/v5r/verification-gates.js::WHERE EACH GATE IS ACTUALLY CALLED"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::必须有**具名凭据**"
@@ -1786,7 +1789,7 @@
       "live": [],
       "tool": [],
       "ruleText": "- 确保所有代理接收到的提示词完全与上述规则相符、自洽 。",
-      "next": "把审计列出的其余错教逐条修完（A4 钉子钉在注释上、E30 一条规则 11 子句只钉 extendlimit、verification-gates.js 头注释自称死代码而 tools.js 是活调用方），再让 parity 与 prompt-clean 两门重新绿，之后一次真机复读四句原文；逐字进台账后才转 DONE。"
+      "next": "r115：在同一轮里读到 (a) 会议 agenda/type/title 由召集回执逐字回述 (b) 骨架是推荐不是门禁（procedureBinding:\"recommendation\"）(c) 发言顺序在回执里可读。三条逐字进台账后才转 DONE。"
     },
     {
       "id": "A8",
@@ -1835,7 +1838,10 @@
       "text": "院士通过命令自组织会议进行中的一切内容、控制、活动（兜底授权，动词不穷举）",
       "mechanism": [
         "vibe-math-vmu/tools/meeting.js::action === 'extendlimit'",
-        "vibe-math-vmu/tools/meeting.js::SERVICE_CROSSING_ACTIONS"
+        "vibe-math-vmu/tools/meeting.js::SERVICE_CROSSING_ACTIONS",
+        "vibe-math-vmu/packs/v5r/tools.js::scheduleNote",
+        "vibe-math-vmu/packs/v5r/tools.js::THE RECOMMENDED PROCEDURE",
+        "vibe-math-vmu/kernel/meetings.js::procedureRow"
       ],
       "tool": [
         "vibe_vmu_meeting",

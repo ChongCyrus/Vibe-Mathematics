@@ -88,7 +88,7 @@ ok(unopened.roundSurfaceMeans === first.roundSurfaceMeans, '§3 … with the sam
 
 console.log('=== 4. every renderer of the book carries it ===')
 const rows = chat.rounds()
-ok(rows.length === 3, 'rounds() really returned the three rounds this section is about')
+ok(rows.length === 1, 'rounds() really returned the round this section is about (a guard, so the every below is not vacuous)', { n: rows.length, ids: rows.map((r) => r.round) })
 ok(rows.every((r) => r.roundSurface === 'chat'), '§4 rounds() rows name the surface', rows.map((r) => r.roundSurface))
 const status = chat.status()
 const pageInStatus = status.roundDetails || status.rounds || null

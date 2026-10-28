@@ -28,9 +28,15 @@
 //   ④ `fidelityAsked`     —— 「lean 通过但概率仍非 1」时辩论必须先问「代码中的命题/定义是否符合所需」：
 //                            本闸是 `kernel/fidelity.js` 在 pack 侧的**第一个消费者**（撤回过的证明不再追问）。
 //
-// ★ WHAT THIS FILE IS NOT. 它不是 middleware，**没有接线**：今天这四条闸的调用方是 0（见
-//   docs/acceptance/conformance/lane-verified-design.md §10.6）。没有调用方的机制就是一段死代码 ——
-//   所以第 3 步（提示词文字）与接线必须紧随其后，否则本文件应该被删掉，而不是留着当"看起来完整"的方案。
+// ★ WHERE EACH GATE IS ACTUALLY CALLED (corrected on audit, round 113 — the header used to say "the callers are 0",
+//   which was true when it was written and is false now; a file that describes itself as dead code is worse than no
+//   comment, because it tells the next reader not to look):
+//     · `p1Intent`          → `packs/v5r/tools.js` 的普通写卡路径（`toolRecordProposition` 一带，`p1Intent({...})`）与
+//                             `vibe_v5_verified_promote` 的 promote 路径（两处调用，拒绝时回执点名是哪条路缺凭据）；
+//     · `singleWriter`      → 同上两条写 verified 轨的路径（`singleWriter({... writer: 'promoteVerified' ...})`）；
+//     · `debateSubjectGate` → `packs/v5r/tools.js` 的召集路径（`type:"debate"` 的 subject 解析）；
+//     · `fidelityAsked`     → 辩论驱动路径（`fidelity.js` 在 pack 侧的唯一消费者），只在该命题 Lean 通过而 p 仍非 1 时问。
+//   所以本文件不是设计稿，它在线。判断「这一条有没有被守」要看上面四条各自的调用点与回执，而不是看这份清单。
 
 import { VERIFIED_TRACK, VERIFIED_KIND, CARD_TRACK, findVerified } from './verified.js'
 import { meetingTypeOf } from './meeting-procedures.js'
