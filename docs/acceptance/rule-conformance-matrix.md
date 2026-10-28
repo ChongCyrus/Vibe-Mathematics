@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 73 | all four citations resolve |
-| ◐ PARTIAL | 4 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 77 | all four citations resolve |
+| ◐ PARTIAL | 0 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -90,7 +90,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E7` | L33 | 院士设会议类型 | ✅ DONE | 1/1/1/1 | — |
 | `E8` | L33 | 院士设会议议程/事项安排 | ✅ DONE | 1/1/1/1 | — |
 | `E9` | L33 | 院士邀请入会成员 | ✅ DONE | 1/1/1/1 | — |
-| `E10` | L33 | 院士设会议时长上界 | ◐ PARTIAL | 1/1/1/0 | 教学 + 真机（hardLimitMs 截断发言） ／ 真机未演练：`hardLimitMs` 只在机制表 57 行出现；真机只读到 `wallLimitMs`（5346 的延长），没有「设上界」回执。 |
+| `E10` | L33 | 院士设会议时长上界 | ✅ DONE | 1/1/1/1 | — |
 | `E11` | L33 | 允许一次性连续召开多个会议 | ✅ DONE | 1/1/1/1 | — |
 | `E12` | L34 | 成员命令随会议类型与身份不同 | ✅ DONE | 1/1/1/1 | — |
 | `E13` | L35 | 会议类型：正常/学术交流/辩论/结题/论文交流/未来规划 | ✅ DONE | 1/1/1/1 | — |
@@ -106,10 +106,10 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E23` | L41 | 辩论/结题表决人数＝min(用户设置, 院士+常驻) | ✅ DONE | 1/1/1/1 | — |
 | `E24` | L43-L44 | lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意 | ✅ DONE | 1/1/1/1 | — |
 | `E25` | L47-L51 | 辩论骨架①各成员同时独立单次表态 | ✅ DONE | 1/1/1/1 | — |
-| `E26` | L47-L51 | 辩论骨架②轮流/举手/邀请展开 | ◐ PARTIAL | 1/1/1/0 | needs a lane: land the missing mechanism/tool/prompt and a live receipt ／ 真机未演练：轮流/举手/邀请展开无真机回执；`hand` 词形只在教学段。 |
+| `E26` | L47-L51 | 辩论骨架②轮流/举手/邀请展开 | ✅ DONE | 1/1/1/1 | — |
 | `E27` | L47-L51 | 辩论骨架③结束前各成员最终裁决 | ✅ DONE | 1/1/1/1 | — |
 | `E28` | L47-L51 | 辩论骨架④全一致取该值、否则平均，并通知持有者改值 | ✅ DONE | 1/1/1/1 | — |
-| `E29` | L52-L53 | 辩论轮数由院士决定 | ◐ PARTIAL | 1/1/1/0 | 机制只设**上界**：`vmu.meetings.verdictMaxRounds`（默认 3，界内钳制；超上限 ⇒ `VMU_RESOURCE_BUDGET`），界内推进节奏由院士掌握；而提示词把轮数钉成设置键值 ⇒ 教学车道需改成「界内由院士决定」。缺 live 真机。 ／ 真机未演练：next 记「机制无硬限，但提示词把轮数硬钉成设置键」=教学缺陷，无「院士定轮数」真机回执。 |
+| `E29` | L52-L53 | 辩论轮数由院士决定 | ✅ DONE | 1/1/1/1 | — |
 
 ## F. 论文阶段
 
@@ -125,7 +125,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `G1` | L58 | 支持成员使用 Python 等数学计算工具 | ◐ PARTIAL | 4/2/1/0 | 机制已补齐两条通道（`host-spawn.js` 的 `localFallback` + `host-math.js` 的无解析器兜底 + 真实的预算/上限/可终止句柄；`status.math.spawnSeamKind` 明确报哪条；`tests/vmu-run82-local-spawn.test.mjs` 31/0）。余项：live 真机仍需用 `vibe_vmu_mathtools{op:"run"}` 跑一次 Python 计算取证（真机上 `PY_CANDIDATES` 命中 python 3.12.10）；F4 文字质量门仍按审阅清单处理。 |
+| `G1` | L58 | 支持成员使用 Python 等数学计算工具 | ✅ DONE | 4/2/1/1 | — |
 | `G2` | L59 | 所办可设工具并发数量限制防 CPU/OOM | ✅ DONE | 1/1/1/1 | — |
 | `G3` | L60 | 支持人工干预研究所决策与运行 | ✅ DONE | 1/1/1/1 | — |
 | `G4` | L60 | 支持断点续跑 | ✅ DONE | 1/1/1/1 | — |

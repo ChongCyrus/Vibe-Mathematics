@@ -189,7 +189,7 @@ function roundTo(value, digits, mode, rounding) {
  * createMathTools — the knob-reading policy layer. Every dependency except `clock` is optional:
  * `spawn` (the computation seam), `library` (receipt persistence, 07), `log`/`bus` (advisory).
  */
-export function createMathTools({ clock = () => 0, log = null, settings = {}, bus = null, spawn = null, library = null } = {}) {
+export function createMathTools({ clock = () => 0, log = null, settings = {}, bus = null, spawn = null, library = null, jobs = null } = {}) {
   if (typeof clock !== 'function') {
     throw refuse('VMU_INVALID_ARGUMENT', 'createMathTools needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock')
   }
@@ -271,7 +271,7 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
   function numf(v, def) { return typeof v === 'number' && Number.isFinite(v) ? v : def }
   function str(v) { return typeof v === 'string' ? v : '' }
 
-  const counters = { planned: 0, ran: 0, refused: 0, cacheHits: 0, cacheStores: 0, cacheEvictions: 0, cacheCorrupt: 0, droppedLogLines: 0, droppedWarnings: 0, persisted: 0, persistSkipped: 0, refusedAtQuota: 0, rangeRuns: 0 }
+  const counters = { planned: 0, ran: 0, refused: 0, cacheHits: 0, cacheStores: 0, cacheEvictions: 0, cacheCorrupt: 0, droppedLogLines: 0, droppedWarnings: 0, persisted: 0, persistSkipped: 0, persist: 0, persistUnwired: 0, persistFailed: 0, refusedAtQuota: 0, rangeRuns: 0 }
   const refusals = new Map()
   const cache = new Map()
   const cacheOrder = []
@@ -772,14 +772,40 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
         warnings, warningsDropped: !K.warnings && Array.isArray(raw.warnings) ? raw.warnings.length : 0,
         language: K.language, style: K.style,
       }
-      if (!K.persist) { counters.persistSkipped += 1; receipt.keptDetail = false } else { counters.persist += 1; receipt.keptDetail = true }
+      if (!K.persist) { counters.persistSkipped += 1; receipt.keptDetail = false }
       if (K.packOnSuccess) receipt.reproPack = { seed: p.plan.seed, cacheKey: p.plan.cacheKey, op: p.plan.op, argsHash: createHash('sha256').update(JSON.stringify(p.plan.args)).digest('hex').slice(0, 16) }
       receipt.rendered = render(receipt, K)
       if (!K.includeRepro) { delete receipt.renderedRepro; receipt.reproInReport = false } else { receipt.reproInReport = !!receipt.reproPack }
-      // persist the receipt through the LIBRARY seam (07) when asked; counted either way
+      // ★★★ ROUND 202 (measured on the clean-room host): THIS BLOCK USED TO TAKE THE SESSION DOWN. It archived the
+      // receipt through the CARD library (`library.append({kind:'math-run'})`), whose three kinds are
+      // proposition/method/subproblem — the append was refused by name, and because the call was NOT awaited the
+      // rejection escaped the surrounding try/catch as an unhandled rejection ("dsh: fatal load failure: unknown
+      // record kind: math-run"). A computation must never be able to kill the host, and `vmu.math.jobs.persist`
+      // does not mean "make a card": docs/04 §vmu.math.jobs.persist says the MIRROR (Math/Jobs) is written and a
+      // job can be recovered from it. So the receipt goes to the mathjobs mirror seam, and every outcome is COUNTED
+      // (written / unwired / failed) instead of being announced as done.
       if (K.persist) {
-        if (library && typeof library.append === 'function') { try { library.append({ kind: 'math-run', statement: p.plan.op, proof: JSON.stringify({ cacheKey: p.plan.cacheKey, seed: p.plan.seed }) }) } catch (e) { counters.persistFailed = (counters.persistFailed || 0) + 1 } }
-        else counters.persistUnwired = (counters.persistUnwired || 0) + 1
+        receipt.persisted = false
+        if (jobs && typeof jobs.write === 'function') {
+          const rel = 'run-' + String(p.plan.cacheKey || at)
+          try {
+            const res = await jobs.write(rel, JSON.stringify({ at, op: p.plan.op, args: p.plan.args, cacheKey: p.plan.cacheKey, seed: p.plan.seed, receipt }))
+            receipt.persisted = !!(res && res.ok !== false)
+            receipt.persistedVia = 'Math/Jobs mirror (vmu.math.jobs.dir)'
+            receipt.persistedRel = rel
+            if (receipt.persisted) counters.persist += 1
+            else { counters.persistUnwired += 1; receipt.persistCode = (res && res.code) || 'VMU_MATH_JOBS_MIRROR_UNWIRED' }
+          } catch (e) {
+            counters.persistFailed += 1
+            receipt.persistCode = (e && e.code) || 'VMU_MATH_PERSIST_FAILED'
+            receipt.persistMessage = String((e && e.message) || e)
+          }
+        } else { counters.persistUnwired += 1; receipt.persistCode = 'VMU_MATH_JOBS_MIRROR_UNWIRED' }
+        // keptDetail is the RECEIPT's claim, so it must follow the outcome, never the setting: an unwired mirror
+        // means the detail is in memory only, and saying otherwise is the same lie as announcing an instant that
+        // had not happened.
+        receipt.keptDetail = receipt.persisted === true
+        if (!receipt.persisted) receipt.persistMeans = 'the run SUCCEEDED and the receipt is in memory; the durable mirror was NOT written (see persistCode) — this is not a computation failure'
       }
       if (K.cacheEnabled) store(p.plan.cacheKey, { result: shaped, receipt })
       if (K.cacheEnabled && counters.cacheEvictions > 0) mark(enforced, 'vmu.math.cache.maxEntries')   // an eviction changed the cache
@@ -835,7 +861,7 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
         refusals: Object.fromEntries([...refusals.keys()].sort().map((k) => [k, refusals.get(k)])),
         refusalsTotal: [...refusals.values()].reduce((a, b) => a + b, 0),
         cache: { entries: cache.size, maxEntries: K.cacheMax, evictions: counters.cacheEvictions, hits: counters.cacheHits, corrupt: counters.cacheCorrupt },
-        receipts: { kept: receipts.length, ringDropped: receiptDropped.n, persist: K.persist },
+        receipts: { kept: receipts.length, ringDropped: receiptDropped.n, persist: K.persist, persisted: counters.persist, unwired: counters.persistUnwired, failed: counters.persistFailed, means: 'persist is the SETTING; persisted/unwired/failed are what this kernel actually did with it (a mirror that was never wired is not a computation failure)' },
         at: clock(),
         note: 'every key in `wired` changes an observable result (asserted by tests/vmu-mathtools.test.mjs); every key in `plannedKeys` is NOT wired yet and carries its reason — reading a key without changing behaviour is forbidden here',
       }

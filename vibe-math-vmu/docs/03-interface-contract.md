@@ -179,7 +179,7 @@
 | `vibe_vmu_projmigrate` | 迁移面：`action=register\|read\|upgrade\|status` ✓ —— **只做寻址与调用** ✓ | `action`(必填，枚举)、`kind`、`version`、`migrate`、`doc`、`to` | `projmigrateTool` 为真 | **服务自己的码原样透传** ✓（缺 `kind` ⇒ `VMU_INVALID_ARGUMENT` ＋ 调用样例 hint ✓） |
 | `vibe_vmu_bridge` | 脚本面（M3）：`action=validate\|plan\|run\|status\|history` ✓ —— **只做寻址与调用** ✓（★ **`request` 对象原样转发、不解释字段** ✓） | `action`(必填，枚举)、`request`(对象；★ 形状见 `docs/05 §6.2` ✓) | `bridgeTool` 为真 | **服务自己的码原样透传** ✓（`VMU_ENGINE_UNAVAILABLE`／`VMU_INVALID_ARGUMENT` ✓） |
 | `vibe_vmu_external` | 外部面：`action=fetchOne\|fetchMany\|normalize\|cache\|receipts\|status` ✓ —— **只做寻址与调用** ✓（★ **六个调用全部 await** ✓ —— ★ 该服务的 `fetchOne`/`fetchMany` 是**真异步** ✓） | `action`(必填，枚举)、`source`、`id`、`query`、`by`、`cacheDir`、`refs`、`results`、`raw`、`enforced` | `externalTool` 为真 | **服务自己的码原样透传** ✓（`VMU_EXTERNAL_UNAVAILABLE` ＋ 已声明来源清单 ✓） |
-| `vibe_vmu_mathtools` | **数学工具面**：`action=plan\|run\|cacheMarkCorrupt\|cacheView\|receiptsView\|status` ✓ —— **只做寻址与调用** ✓ | `action`(必填，枚举)、`op`、`args`、`cacheKey` | `mathtoolsTool` 为真 | **服务自己的码原样透传** ✓（`VMU_MATH_INVALID_INPUT` ＋ 可用的调用示例 ✓） |
+| `vibe_vmu_mathtools` | **数学工具面**：`action=plan\|run\|cacheMarkCorrupt\|cacheView\|receiptsView\|status` ✓ —— **只做寻址与调用** ✓（R202：`run` 的持久化写 `Math/Jobs` 镜像，回执带 `persisted`/`persistedVia`/`persistCode`/`persistMeans`；三态计数在 `status().receipts`，`keptDetail` 跟随结果不跟随设置） | `action`(必填，枚举)、`op`、`args`、`cacheKey` | `mathtoolsTool` 为真 | **服务自己的码原样透传** ✓（`VMU_MATH_INVALID_INPUT` ＋ 可用的调用示例 ✓） |
 | `vibe_vmu_auditchain` | **审计链面**：`action=append\|verifyChain\|link\|checkpoint\|status\|refresh` ✓ —— **只做寻址与调用** ✓（★ 一条**真哈希链**：`prevHash`／`hash`／`GENESIS` ✓） | `action`(必填，枚举)、`entry`、`seq`、`note`、`key` | `auditchainTool` 为真 | **服务自己的码原样透传** ✓ |
 | `vibe_vmu_notify` | **通知面**：`action=watch\|unwatch\|emit\|flush\|list\|status` ✓ —— **只做寻址与调用** ✓（★ **默认关**：零配置下 `defaultOff:true`／`enabled:false` ✓） | `action`(必填，枚举)、`subject`、`id`、`event`、`payload`、`channel` | `notifyTool` 为真 | **服务自己的码原样透传** ✓（缺参数 ⇒ `VMU_INVALID_ARGUMENT` ＋ 可用调用示例 ✓） |
 | `vibe_vmu_transaction` | **事务面**：`action=begin\|run\|status\|list\|history\|compensate` ✓ —— **只做寻址与调用** ✓（★ 失败走**补偿**而非静默 ✓） | `action`(必填，枚举)、`id`、`steps` | `transactionTool` 为真 | **服务自己的码原样透传** ✓（`VMU_NO_SUCH_OBJECT` ＋ "known: (none)" ✓） |
@@ -1395,7 +1395,7 @@
 | `VMU_MATH_INTERVAL_EMPTY` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MATH_INVALID_INPUT` | **已实现 ✓** | `vibe-math-vmu/kernel/fidelity.js`、`vibe-math-vmu/kernel/formal.js`、`vibe-math-vmu/kernel/mathadapters.js`、`vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/tools/fidelity.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_JOBS_DIR_UNSAFE` | **已实现 ✓** | `vibe-math-vmu/kernel/mathjobs.js` | 代码里有该码字符串 ✓ |
-| `VMU_MATH_JOBS_MIRROR_UNWIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/fidelity.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/mathjobs.js` | 代码里有该码字符串 ✓ |
+| `VMU_MATH_JOBS_MIRROR_UNWIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/fidelity.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/mathjobs.js`、`vibe-math-vmu/kernel/mathtools.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_JOB_ID_TAKEN` | **已实现 ✓** | `vibe-math-vmu/kernel/lean.js`、`vibe-math-vmu/kernel/mathjobs.js` | 代码里有该码字符串 ✓ |
 | `VMU_MATH_JOB_INVALID_STATE` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MATH_JOB_PERSIST_FAILED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |

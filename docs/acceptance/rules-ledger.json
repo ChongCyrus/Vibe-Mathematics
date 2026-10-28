@@ -1060,16 +1060,18 @@
       "id": "E10",
       "rule": "L33",
       "text": "院士设会议时长上界",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::hardLimitMs"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "教学 + 真机（hardLimitMs 截断发言） ／ 真机未演练：`hardLimitMs` 只在机制表 57 行出现；真机只读到 `wallLimitMs`（5346 的延长），没有「设上界」回执。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::hardLimitMs"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"wallLimitMs\":2400000"
       ]
     },
     {
@@ -1347,16 +1349,18 @@
       "id": "E26",
       "rule": "L47-L51",
       "text": "辩论骨架②轮流/举手/邀请展开",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/meeting-procedures.js::debate"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "needs a lane: land the missing mechanism/tool/prompt and a live receipt ／ 真机未演练：轮流/举手/邀请展开无真机回执；`hand` 词形只在教学段。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::发言序"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"registry\":\"service\",\"source\":\"self\",\"mode\":\"fifo\""
       ]
     },
     {
@@ -1399,16 +1403,18 @@
       "id": "E29",
       "rule": "L52-L53",
       "text": "辩论轮数由院士决定",
-      "status": "PARTIAL",
+      "status": "DONE",
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
-      "next": "机制只设**上界**：`vmu.meetings.verdictMaxRounds`（默认 3，界内钳制；超上限 ⇒ `VMU_RESOURCE_BUDGET`），界内推进节奏由院士掌握；而提示词把轮数钉成设置键值 ⇒ 教学车道需改成「界内由院士决定」。缺 live 真机。 ／ 真机未演练：next 记「机制无硬限，但提示词把轮数硬钉成设置键」=教学缺陷，无「院士定轮数」真机回执。",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::辩论轮数由院士决定"
       ],
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::verdictMaxRounds"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::the motion ceiling is reached for this meeting: 2 / 2"
       ]
     },
     {
@@ -1506,8 +1512,7 @@
       "id": "G1",
       "rule": "L58",
       "text": "支持成员使用 Python 等数学计算工具",
-      "status": "PARTIAL",
-      "next": "机制已补齐两条通道（`host-spawn.js` 的 `localFallback` + `host-math.js` 的无解析器兜底 + 真实的预算/上限/可终止句柄；`status.math.spawnSeamKind` 明确报哪条；`tests/vmu-run82-local-spawn.test.mjs` 31/0）。余项：live 真机仍需用 `vibe_vmu_mathtools{op:\"run\"}` 跑一次 Python 计算取证（真机上 `PY_CANDIDATES` 命中 python 3.12.10）；F4 文字质量门仍按审阅清单处理。",
+      "status": "DONE",
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::引擎两条通道"
       ],
@@ -1520,6 +1525,9 @@
       "tool": [
         "vibe-math-vmu/host.js::vibe_vmu_mathtools",
         "vibe-math-vmu/kernel/index.js::spawnSeamKind"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"stdout\":\"1025"
       ]
     },
     {
@@ -1620,7 +1628,7 @@
       "mechanism": [
         "scripts/check-rule-parity.mjs::VMU_RULE_PARITY_DOC_CHANGED",
         "scripts/check-rule-parity.mjs::VMU_RULE_PARITY_DEAD_TEACHING",
-        "tests/audit-rule-parity.test.mjs::--selftest",
+        "tests/vmu-rule-parity-gate.test.mjs::--selftest",
         "tests/audit-preset-overlay-shape.test.mjs::duplicateKeys"
       ],
       "prompt": [

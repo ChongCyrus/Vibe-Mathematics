@@ -71,7 +71,11 @@ const orphan = probe('unclaimed-item', (led) => {
 ok('an item no ruleLines entry claims is refused by name', orphan.status === 1 && orphan.codes.indexOf('VMU_RULES_UNCLAIMED_ITEM') >= 0)
 
 const noNext = probe('partial-no-next', (led) => {
-  for (const it of led.items) if (it.status === 'PARTIAL') { delete it.next; break }
+  // the ledger is fully DONE now, so the mutation must CREATE the PARTIAL row it is about (a mutation that
+  // silently matches nothing would make this check vacuous — which is the very failure this suite guards).
+  const it = led.items[0]
+  it.status = 'PARTIAL'
+  delete it.next
 })
 ok('a PARTIAL row without a stated gap is refused by name', noNext.status === 1 && noNext.codes.indexOf('VMU_RULES_NO_NEXT') >= 0)
 

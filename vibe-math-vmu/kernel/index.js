@@ -2149,7 +2149,7 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
 // it also armed the unhandled rejection that took the host process down. The math surface is built from `host` and
 // is exactly the seam this face wants. It is resolved LAZILY (a kernel with no math host must still construct), and
 // `mathtools` already refuses by name when no seam is available.
-const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedClock, log, library: libraryRef,
+const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedClock, log, library: libraryRef, jobs: mathjobs,
   spawn: (req) => mathSurface().run(req) })
   // `projmigrate` is built EARLIER now: the idempotency ledger needs it at construction so an old on-disk
   // projection is migrated instead of silently discarded.

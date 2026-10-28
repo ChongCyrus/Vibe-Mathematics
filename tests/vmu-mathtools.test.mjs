@@ -28,7 +28,7 @@ const errOf = async (fn) => { try { await fn(); return null } catch (e) { return
 import { makeRecorder } from './helpers/settings-recorder.mjs'
 const ALL = []
 const mk = ({ settings = {}, seam = null, library = null, clock = () => 1000 } = {}) => {
-  const calls = { spawn: 0, appends: 0 }
+  const calls = { spawn: 0, appends: 0, mirrorWrites: 0 }
   const spawn = (req) => {
     calls.spawn += 1
     if (typeof seam === 'function') return seam(req, calls)
@@ -37,7 +37,10 @@ const mk = ({ settings = {}, seam = null, library = null, clock = () => 1000 } =
   const lib = library === null ? { append: () => { calls.appends += 1; return { ok: true, id: 'r-' + calls.appends } } } : library
   const rec = makeRecorder(settings)
   ALL.push(rec.reads)
-  const t = createMathTools({ clock, settings: rec.settings, spawn, library: lib })
+  // ROUND 202: `vmu.math.jobs.persist` writes the Math/Jobs MIRROR, not a card — the old helper counted
+  // `library.append` calls, which is exactly the seam that was wrong (a math run is not a card).
+  const jobs = { write: async (rel) => { calls.mirrorWrites += 1; return { ok: true, rel } } }
+  const t = createMathTools({ clock, settings: rec.settings, spawn, library: lib, jobs })
   return { t, calls }
 }
 const opt = { 'vmu.math.optim.backend': 'ipopt' }
@@ -85,11 +88,11 @@ const opt = { 'vmu.math.optim.backend': 'ipopt' }
   // persist
   const keep = mk({ settings: { 'vmu.math.jobs.persist': true } })
   await keep.t.run({ op: 'stats/mean' })
-  ok(keep.calls.appends === 1 && keep.t.receiptsView().receipts[0].keptDetail === true,
-    'jobs.persist[+]: the receipt is persisted through the library seam and keeps detail')
+  ok(keep.calls.mirrorWrites === 1 && keep.calls.appends === 0 && keep.t.receiptsView().receipts[0].keptDetail === true,
+    'jobs.persist[+]: the receipt goes to the Math/Jobs mirror (and never to the card library) and keeps detail')
   const skip = mk({ settings: { 'vmu.math.jobs.persist': false } })
   const sr = await skip.t.run({ op: 'stats/mean' })
-  ok(skip.calls.appends === 0 && sr.receipt.keptDetail === false && sr.receipt.log === undefined && skip.t.status().counters.persistSkipped >= 1,
+  ok(skip.calls.mirrorWrites === 0 && skip.calls.appends === 0 && sr.receipt.keptDetail === false && sr.receipt.log === undefined && skip.t.status().counters.persistSkipped >= 1,
     'jobs.persist[-]: with persist=false the library is NOT written and the detail is not kept (only counts)')
 }
 

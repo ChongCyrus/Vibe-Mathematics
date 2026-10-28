@@ -1821,3 +1821,22 @@ ROUND 86 修法：`requireConsultAnswerer` 放行声明角色（`onRoster:false`
 4. **族的声明不许被一个例外悄悄推翻。** `vmu.meetings.*` 长期是「重启才生效」的家族；`verdictMaxRounds` 因为
    规则把轮数判给院士而成了唯一具名活读键（R87），所以 `audit-settings-hot-truth` 从「这个家族没有任何活键」
    改成「家族里任何声称即时生效的键都必须点名读者」——**允许例外，但例外必须是具名的**，而且数量与身份都被钉住。
+## ROUND 90g — 一个普通计算不该有能力杀掉宿主
+
+数学面第一次真跑（§191 的 `print(2**10+1)`）之后，回执的**持久化**把整个 profile 打死了：
+
+```
+dsh: fatal load failure: Error: unknown record kind: math-run
+    at fingerprint (vibe-math-vmu/kernel/library.js:146)
+    at Object.append (vibe-math-vmu/kernel/library.js:349)
+    at Object.run (vibe-math-vmu/kernel/mathtools.js:781)
+```
+
+两处错叠一行：①数学回执被塞进**卡片库**（只有 proposition/method/subproblem 三 kind）；②`library.append` 是 async，而那次调用**没有 await**，于是拒绝不是被 `try/catch` 接住，而是作为 unhandled rejection 把宿主拖垮。`vmu.math.jobs.persist` 的文档语义从来不是「造一张卡」，而是「额外写 `Math/Jobs` 镜像并允许从镜像恢复」。
+
+修法与三条判据：
+
+1. **对一个可能异步的接缝，`try/catch` 必须包在 `await` 外面**——不 await 的 try 只是装饰。
+2. **回执的每一个「已完成」都要跟着结果走，而不是跟着设置走**：`keptDetail` 现在等于 `persisted === true`，镜像没写成时它是 `false` 并带 `persistCode`/`persistMeans`（「算成功了、回执在内存、镜像没写成——这不是计算失败」）。
+3. **持久化走它自己的公证处**：`Math/Jobs` 镜像（`jobs.write`），三态计数 `persisted`/`unwired`/`failed` 进 `status().counters` 与 `receipts`，读的人不需要猜是「没设置」「设置错了」还是「写失败」。
+

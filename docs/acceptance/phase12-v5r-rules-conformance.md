@@ -8299,3 +8299,34 @@ E2/E10/E12 的 live 仍缺；`lapse`/`revokelapse` 的服务侧语义本轮只�
 - 「声明」和「默认值」必须分开：默认值不是宣告（零机制证明靠它），但**没人宣告**时功能就是不可达的——可通达性因此是部署的属性，不是库的属性。
 - 一个 YAML 映射键只能有一个所有者。出货物预填部署的键，等于把「加载失败」写进了配置；这类冲突没有单测就只能在真机上见。
 - 教学句里的「任何」「所有」是最容易变成谎言的词：核对的成本最低、后果最直接（成员会照着它做计划）。
+## §191 真机跑 90f（数学面首次可用的读数：G1 / E10 / E26 / E29 / E12 复查）
+
+**build** `c734c73c` · clone `slvp90f` · port 19695 · `DRIVE exit=0` · 237s · 28 calls / 28 results ·
+`tokenTotal 1,883,787`（cap 12M）· 2 会话 · `SUMMARY: 2 session(s) in 1 file(s), 0 with RED checks` ·
+可见工具 96（含 `math_computation`）· jsonl 4,367,970 B / 8,936 行 · 围栏 `NO_FENCE=22 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=12 BAD_JSON=12` · 保全戳 `20261028-072917`。
+
+### §191.1 数学面第一次真的算了一行 Python（G1）
+- `math_computation {op:"probe"}` → `"engine":"python","engineInfo":{"name":"python","path":"C:\Users\admin\AppData\Local\Programs\Python\Python312\python.EXE","version":"3.12.10","foundVia":"path"},"available":true`，其余七个引擎各带 `why` 说为什么没有。
+- `math_computation {op:"run", mode:"code", engine:"python", code:"print(2**10+1)"}` → `"stdout":"1025
+"`、`exit:0`、`ms:674`、`runId:"vibe-math-vmu-D-_tmp-slv-phase5-slvp90f-ws-7ff84e5b3826"`，并落一份 receipt（`dir`/`json`/`md`/`sha256`）。
+- 结论：**G1 的 live 是这一条回执**——数学面第一次在本机真实的 Python 3.12.10 上跑完并交回 stdout。
+
+### §191.2 会议机械的两条窄门（E10 / E26 / E29 / E12）
+- E10（墙钟上界）：`vibe_vmu_meeting {action:"extendlimit", id:"m2", ms:600000, actor:"r-acad"}` → `"wallLimitMs":2400000,"extendedMs":600000,"extensions":1`（基值 1,800,000 + 600,000），`enforced:["vmu.meetings.extendRequiresChair"]`。
+- E26（辩论骨架在服务面可达）：`hand{id:m3,member:r-1}` → `"action":"hand","id":"m3","registry":"service","source":"self","mode":"fifo","modeSource":"setting","queued":true,"order":["r-1"]`；`invite` 不带 `by` 被具名拒；带 `by` 后 `invited:["r-2"]`，且回执说明「邀请不等于在场」；`order` 报 FIFO 队列与 `queueOpen`；`invitedspeak` 把 `floor.waiting` 从 1 降到 0。
+- E29（院士界内决定轮数，超界具名拒）：`vibe_v5_set{key:"vmu.meetings.verdictMaxRounds",value:"2"}` 之后三条动议：前两条 `ok:true`，第三条 `{"code":"VMU_RESOURCE_BUDGET","message":"the motion ceiling is reached for this meeting: 2 / 2","hint":"raise vmu.meetings.verdictMaxRounds (the CHAIR may do it mid-session: this key is re-read on every motion), or close this meeting and open a new one","enforced":["vmu.meetings.verdictMaxRounds"]}`——这是 F-87a 修好之后「会话中改得动」的真机证据。
+- E12（命令随类型与身份不同，复查）：`close{id:m3,by:"r-1"}` → `only the declared chair may close this meeting: r-1 != r-acad`（`enforced:["vmu.meetings.closeRequiresChair"]`）；ordinary 会回执带 `procedureNote`（本类型没有推荐骨架）、`sequence`+`sequenceMeans`（只能 convene，其余动词去服务面）。
+
+### §191.3 本轮同时抓到的两条读面缺陷（F-90c / F-90d）
+- **F-90c**：`vibe_vmu_mathtools {action:"run", op:"numeric"}` 两次都回 `{"ok":false,"code":"VMU_STATE","message":"tool \"math_computation\" is already registered in this scope"}`——同一个工具名被插件层与内核层各发布一次；修法是 `host-math.js` 的 `register()` 幂等（同名 `reused:true`、不碰宿主）+ `status.math.toolsPublished/publicationReuse/publicationMeans`。
+- **F-90d**：`kernel/mathtools.js` 用**卡片库**持久化数学回执（`kind:"math-run"` 不在 proposition/method/subproblem 三 kind 里），且 `library.append` 是 async 而调用**没 await** ⇒ 拒绝变成 unhandled rejection，把整个 profile load 打死（`dsh: fatal load failure: unknown record kind: math-run`）。修法是改走 `Math/Jobs` 镜像（`vmu.math.jobs.persist` 的文档语义），并把「持久化」三态计数（`persisted`/`unwired`/`failed`）写在回执上：`keptDetail` 跟随**结果**而不是设置。
+
+### §191.4 简报与门禁
+- 简报错：`vibe_vmu_mathtools` 的 `action` 枚举含 `status/plan/run`（不含 `mathjobs`）；`math_computation` 的 `op` 是 `probe|run|receipt|install`、`mode` 是 `code|file|expr`（简报把 `numeric` 当 `op`，实际是 `vibe_vmu_mathtools` 的 op 词）。
+- 门禁：`vmu-mathtools` 208/0、`vmu-mathtools-tool` 14/0、`vmu-run90f-math-single-publication` 15/0、`vmu-run90g-mathtools-persist` 21/0、`vmu-kernel` 260/0、`audit-math-computation-contract` 232/0。
+
+### §191.5 无法验证
+- `vibe_vmu_mathjobs`（真正入队/取消/租约）本轮只有 config 读数；`math_computation {op:"install"}` 未演练；E10 的**自动**截断（发言超 `hardLimitMs` 被截）仍无回执。
+
+### §191.6 无实质残余：否（F-90c/F-90d 的复验轮尚未跑）
+

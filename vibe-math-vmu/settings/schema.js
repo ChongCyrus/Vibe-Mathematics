@@ -1086,7 +1086,7 @@ const CORE_DEFS = Object.freeze([
   // `vmu.math.jobs.logMax` and `vmu.math.jobs.persist` twice as well, because `mathjobs.js` AND `mathtools.js` both
   // read them). One declaration each, with the readers named.
   { key: 'vmu.math.jobs.logMax', type: 'natural', def: 200, hot: HOT.H1, who: 'office', doc: '作业日志保留条数（溢出必计数）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`（两者默认一致：200）。' },
-  { key: 'vmu.math.jobs.persist', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js:118/194`。' },
+  { key: 'vmu.math.jobs.persist', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '作业持久化：false＝只留回执详情；true＝额外写 `Math/Jobs` 镜像并允许恢复（`vmu.math.jobs.recover` 决定何时恢复）。读者：`kernel/mathjobs.js`、`kernel/mathtools.js`（R202：回执写的是镜像，不是造一张卡；三态计数 persisted/unwired/failed 在回执与 status().receipts 上）。' },
   // ROUND 3 / task-20 A: the SECOND half of the maxParallel pair, under the hand-written table so the boundary is
   // stated ONCE (the generator treats it as pre-existing and emits no duplicate row).
   // ROUND 4 / task-25 D — **REMOVED BY LEAD RULING**: the old `math.jobs.*` second name for math-run

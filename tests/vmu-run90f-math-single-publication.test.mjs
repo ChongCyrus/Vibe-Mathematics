@@ -123,7 +123,12 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-mathpub
   const kstBefore = handle.kernel && typeof handle.kernel.status === 'function' ? handle.kernel.status().math : null
   const kstAfter = handle.kernel && typeof handle.kernel.status === 'function' ? handle.kernel.status().math : null
   ok(specs.length === before, 'reading the status surfaces publishes nothing new', { before, after: specs.length })
-  ok(JSON.stringify(kstBefore) === JSON.stringify(kstAfter), 'the math reading is STABLE across two reads (no lazy re-publish)')
+  // RULE E shape B: two objects that are both absent compare equal, so the stability claim must be made on
+  // fields that are PROVEN to be there first — otherwise "stable" would also pass if the reading did not exist.
+  ok(kstBefore && Array.isArray(kstBefore.toolsPublished) && kstBefore.toolsPublished.length === 1,
+     'the math reading exists and lists exactly one published tool', kstBefore && kstBefore.toolsPublished)
+  ok(kstAfter && kstAfter.toolsPublished.join(',') === kstBefore.toolsPublished.join(',') && kstAfter.publicationReuse === kstBefore.publicationReuse,
+     'the math reading is STABLE across two reads (no lazy re-publish)', { before: kstBefore && kstBefore.toolsPublished, after: kstAfter && kstAfter.toolsPublished })
   await rm(root, { recursive: true, force: true, maxRetries: 10 })
 }
 
