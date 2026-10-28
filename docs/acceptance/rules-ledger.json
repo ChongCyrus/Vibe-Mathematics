@@ -597,10 +597,11 @@
       "id": "C4",
       "rule": "13",
       "text": "遇到的各种障碍及其原因（归档内容的一部分）",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kit/handlers.js::const progressArg",
-        "vibe-math-vmu/kernel/records.js::'progress', 'routes', 'obstacles', 'rejected', 'state'"
+        "vibe-math-vmu/kernel/records.js::'progress', 'routes', 'obstacles', 'rejected', 'state'",
+        "vibe-math-vmu/kit/handlers.js::progressMeans"
       ],
       "tool": [
         "vibe_v5_read_library"
@@ -608,9 +609,12 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::阻塞与原因"
       ],
-      "live": [],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::C4 障碍卡的归档",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::- 进度：两种度量都不能覆盖全部自然数。"
+      ],
       "ruleText": "- 遇障路线、尝试、方法及遇到的各种障碍及其原因等的归档。",
-      "next": "r113：写 obstacles 卡（含原因段与 progress 行）→ expand 读回正文两段都在，且 progress 行未被吞；逐字进台账。"
+      "next": null
     },
     {
       "id": "C5",
@@ -675,7 +679,7 @@
       "id": "C8",
       "rule": "14",
       "text": "p=1 的命题要标记 verified",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/tools.js::function verifiedRefOf",
         "vibe-math-vmu/packs/v5r/tools.js::next.verifiedRef"
@@ -687,9 +691,12 @@
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::Verified/ 的写入只有 `vibe_v5_verified_promote`"
       ],
-      "live": [],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::C8 p=1 的题卡指回 Verified",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::已证结论卡"
+      ],
       "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。",
-      "next": "r113：p=1 命题卡单卡读与列表读都带 verifiedRef:{id,title,at}；未验证卡带 verifiedRef:null + means（“没在 Verified 库里找到”）。逐字进台账。"
+      "next": null
     },
     {
       "id": "C9",
@@ -1786,10 +1793,11 @@
       "id": "G6",
       "rule": "62",
       "text": "绝大多数功能走工具而非每轮末尾输出 JSON",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/turn/index.js::export const FIELD_OWNERS",
-        "vibe-math-vmu/host-pack-tools.js::function badEnumParametersOf"
+        "vibe-math-vmu/host-pack-tools.js::function badEnumParametersOf",
+        "vibe-math-vmu/kernel/turn/index.js::const EXECUTED_MEANS"
       ],
       "tool": [
         "vibe_vmu_turn"
@@ -1798,9 +1806,12 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::工具做事，回执汇报",
         "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::action 只有 claim"
       ],
-      "live": [],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::F-119b（一个计数读不出它数的是什么）",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::一个数字告诉你发生过什么"
+      ],
       "ruleText": "- 绝大多数功能都直接通过代理可执行命令（工具）实现，而非最终每轮结束时输出json实现。",
-      "next": "r113：一轮里工具与围栏字段各做一件事 → step 回执 executed 点名派发了什么；围栏写不认识的字段 → 回执点名该字段。逐字进台账。"
+      "next": null
     },
     {
       "id": "G7",

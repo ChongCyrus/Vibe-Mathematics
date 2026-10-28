@@ -153,12 +153,30 @@ async function toolTaskGet(args = {}, { kernel } = {}) {
   // facts: the row always exists once its id matches, the brief may legitimately not.
   // ★ AND THE FAILURE IS NOT SWALLOWED: when the brief lookup itself throws (rather than returning nothing), that is reported
   // in `briefNote` - the read succeeds, and the reason the brief is missing stays visible instead of being lost.
+  let briefMeans = null
   if (kernel.tasks && typeof kernel.tasks.briefOf === 'function') {
-    try { brief = kernel.tasks.briefOf(id) } catch (e) { brief = null; briefNote = 'brief lookup failed: ' + String((e && e.code) || (e && e.message) || e) }
+    try { brief = kernel.tasks.briefOf(id) } catch (e) {
+      brief = null
+      const code = e && e.code ? String(e.code) : null
+      const msg = String((e && e.message) || e || '')
+      // ★ LIVE RUN 119 (F-119a): an OPTIONAL part that is simply ABSENT is not a FAILED LOOKUP. The board's own refusal for
+      // "this task has no brief" (VMU_NO_SUCH_OBJECT, message "task t-1 has no brief") used to surface here as
+      // `briefNote:"brief lookup failed: VMU_NO_SUCH_OBJECT"`, which reads like a broken read: on the live run the member
+      // said (in its own words) "the brief lookup failed", and built a whole obstacle card around a mechanism problem that
+      // did not exist. Absence gets its own sentence naming the setter; only a REAL failure keeps the "lookup failed:" form.
+      if (code === 'VMU_NO_SUCH_OBJECT' && /has no brief/.test(msg)) {
+        briefNote = null
+        briefMeans = 'this task has no brief attached: the board holds none for it. A brief is OPTIONAL (docs/08) and is set by the '
+          + 'owner path with vibe_vmu_task { action: "brief", id, text }. No brief ≠ a broken lookup: this answer was read, not refused.'
+      } else {
+        briefNote = 'brief lookup failed: ' + String(code || msg)
+      }
+    }
   } else {
-    briefNote = 'this assembly publishes no briefOf, so the task has no brief to read'
+    briefMeans = 'this assembly publishes no briefOf, so the task has no brief to read'
   }
-  return { ok: true, tool: 'vibe_v5_task_get', task: row, brief, ...(briefNote ? { briefNote } : {}) }
+  return { ok: true, tool: 'vibe_v5_task_get', task: row, brief,
+    ...(briefNote ? { briefNote } : {}), ...(briefMeans ? { briefMeans } : {}) }
 }
 
 function leanFaceOrRefuse(kernel, what) {

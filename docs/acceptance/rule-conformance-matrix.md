@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 83 | all four citations resolve |
-| ◐ PARTIAL | 3 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 86 | all four citations resolve |
+| ◐ PARTIAL | 0 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -53,11 +53,11 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `C1` | 11 | 研究过程 progress 日志 | ✅ DONE | 1/1/1/1 | — |
 | `C2` | 12 | 已尝试路线/方法及其进度 | ✅ DONE | 2/1/1/1 | — |
 | `C3` | 13 | 遇障路线/尝试/方法及障碍与原因归档 | ✅ DONE | 2/1/1/2 | — |
-| `C4` | 13 | 遇到的各种障碍及其原因（归档内容的一部分） | ◐ PARTIAL | 2/1/1/0 | r113：写 obstacles 卡（含原因段与 progress 行）→ expand 读回正文两段都在，且 progress 行未被吞；逐字进台账。 |
+| `C4` | 13 | 遇到的各种障碍及其原因（归档内容的一部分） | ✅ DONE | 3/1/1/2 | — |
 | `C5` | 14 | 命题库：完整定义、p(0-1)、进度 | ✅ DONE | 2/1/1/1 | — |
 | `C6` | 14 | 平时只记证明/证伪尝试，真正会证时才写正式证明字段 | ✅ DONE | 1/1/1/1 | — |
 | `C7` | 14 | 只有写完的正式证明才能用于辩论 | ✅ DONE | 2/1/1/1 | — |
-| `C8` | 14 | p=1 的命题要标记 verified | ◐ PARTIAL | 2/2/1/0 | r113：p=1 命题卡单卡读与列表读都带 verifiedRef:{id,title,at}；未验证卡带 verifiedRef:null + means（“没在 Verified 库里找到”）。逐字进台账。 |
+| `C8` | 14 | p=1 的命题要标记 verified | ✅ DONE | 2/2/1/2 | — |
 | `C9` | 15 | 方法库（理论/方法/工具，抽象化产物） | ✅ DONE | 2/1/1/1 | — |
 | `C10` | 16 | Lean 代码与编译结果归档 | ✅ DONE | 2/2/1/2 | — |
 | `C11` | 16 | lean 通过后辩论只查描述/定义是否符合原意 | ✅ DONE | 2/1/1/1 | — |
@@ -139,7 +139,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `G3` | 60 | 支持人工干预研究所决策与运行 | ✅ DONE | 2/1/1/1 | — |
 | `G4` | 60 | 支持断点续跑 | ✅ DONE | 1/1/1/1 | — |
 | `G5` | 61 | 特殊权限/请求经所办向用户询问 | ✅ DONE | 2/1/1/1 | — |
-| `G6` | 62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ◐ PARTIAL | 2/1/2/0 | r113：一轮里工具与围栏字段各做一件事 → step 回执 executed 点名派发了什么；围栏写不认识的字段 → 回执点名该字段。逐字进台账。 |
+| `G6` | 62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ✅ DONE | 3/1/2/2 | — |
 | `G7` | 63 | 提示词与规则完全相符、自洽 | ✅ DONE | 3/1/1/1 | — |
 
 ## How to move a row

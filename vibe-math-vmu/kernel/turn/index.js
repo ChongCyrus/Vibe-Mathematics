@@ -2398,6 +2398,10 @@ export function createTurnOrchestrator({
   //   is recorded here and travels on every receipt shape that already carries `effects`.
   const turnCoercions = []         // reset per apply(); entries {field, member, from, to}
   const COERCIONS_MEANS = 'values this turn TRANSLATED instead of refusing: each entry names the field, the member, what arrived and what it became. An empty list means nothing was translated - it does not mean the list was dropped'
+  // ★ ROUND 119 (live run 119 / F-119b): `executed` was a COUNT on the main step receipt, so a caller could not read WHICH
+  // actions the turn dispatched — the same defect family as run 37's count-only `skipped`. One receipt path already carried
+  // `executedDetail`; the two main paths did not. A count tells you that something happened, never what.
+  const EXECUTED_MEANS = 'the actions this turn actually dispatched, one row per field: field, face, op and what the face answered. Bounded to 5 rows; `executed` is the COUNT and this list is the detail. An empty list means nothing was dispatched - it does not mean the list was dropped'
   const visibleToolsByMember = new Map() // ★ last assembled visible set per member (this turn)
   const toolVotedThisTurn = new Set()    // ★ members who already voted THROUGH THE TOOL this turn
   const solvedThisRound = new Map() // ★ `solved` per member: the per-round convergence reading, NOT closure
@@ -3247,7 +3251,7 @@ export function createTurnOrchestrator({
           meetingMeans: (done.meeting === undefined || done.meeting === null)
             ? 'the completed report was not bound to a meeting'
             : 'the completed report was bound to the named meeting; its say became that member\'s speech (see executed[].onBehalf)',
-          fields: done.fields, executed: (done.executed || []).length, skipped: (done.skipped || []).length, effects: (done.effects || []).slice(), coercions: (done.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
+          fields: done.fields, executed: (done.executed || []).length, executedDetail: (done.executed || []).slice(0, 5), executedDetailTruncated: (done.executed || []).length > 5, executedMeans: EXECUTED_MEANS, skipped: (done.skipped || []).length, effects: (done.effects || []).slice(), coercions: (done.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
           turn: done.turn ? done.turn.id : null, source: 'tool' }
       } catch (e) {
         const code = (e && e.code) || null
@@ -3711,7 +3715,11 @@ export function createTurnOrchestrator({
           : (deliveredThrough === 'caller'
               ? 'the CALLING session played this member turn in this kernel (deliverByReturning), so the reply came back on the next call'
               : 'a SEPARATE kernel instance ran this member turn (path "' + String(deliveredThrough) + '"); its call list is not visible here'),
-        receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
+        receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length,
+        executedDetail: r.executed.slice(0, 5),
+        executedDetailTruncated: r.executed.length > 5,
+        executedMeans: EXECUTED_MEANS,
+        skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
         // ★ PHASE 12 / live run 37 (the institute's own report): this receipt reduced `skipped` to a NUMBER, so the reason
         // and the kept line were unreadable - the member saw "skipped:1" and could not learn which field, why, or what it
         // had said. A COUNT is a diagnostic that costs nothing and tells nothing; the detail travels with it, BOUNDED.

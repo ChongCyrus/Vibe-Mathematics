@@ -9337,3 +9337,56 @@ docs/18 §1。调用者在第 2/3 次仍照原样重试。修法：未知动作�
 - 没给 `procedure`，所以 `skeletonSteps:0`：骨架是**召集时可选**的，可读性不该依赖它。
 
 ### §212.7 无实质残余：是（四条待下一轮：C4 / C8 / G6 与 E36 的群聊侧）
+
+---
+
+## §213 真机跑 119 —— 一个数字读不出它数的是什么，一次缺席也不该读成一次失败
+
+### §213.1 读数
+
+build `a3170d52`（clone `slvp119`，port 19719）：`DRIVE exit=0`、`durationSec 235`、`toolCalls 10`（calls 与 results 各 10）、
+`tokenTotal 899,905`（cap `12,000,000`，`tokenCapHit:false`）、`transcriptEvents 74`、2 会话、`SUMMARY: 2 session(s), 0 with
+RED`；jsonl 4,710,341 B / 8,705 行；`NO_FENCE=24 UNKNOWN_FIELD=16 FIELD_NOT_APPLICABLE=24 BAD_JSON=24`；clone 已清、C 盘余
+10.88 GB。
+
+### §213.2 判决表
+
+| 规则 | 本轮读到的 | 判定 |
+| --- | --- | --- |
+| C4 障碍卡的归档（写、读回） | `vibe_v5_record_progress{track:"obstacles",content,progress,member:"r-1"}` ⇒ `recordId:"rec-3"`、`progressMeans`；`vibe_v5_read_library{id:"rec-3"}` 读回 `kind:"progress"`、`track:"obstacles"`、`fingerprintOk:true`、`body` 里含 `- 进度：两种度量都不能覆盖全部自然数。` | ✅ DONE |
+| C8 p=1 的题卡指回 Verified | `vibe_v5_verified_promote{card:"p-lit"}` ⇒ `id:"rec-4"`、`written:true`、`p1Route:"literature"`；`read_library{id:"p-lit"}` 读回 `verifiedRef:{id:"rec-4",title:"已证结论卡：n+n=2n",at:…}` 与 `verifiedRefMeans`、`cardFields`/`cardFieldsMeans` | ✅ DONE |
+| G6 工具优先 / 兜底 JSON 的回执要能读 | 围栏 JSON 里 `progress` 被派发（records 轨追加成功），step 回执却只给 `executed:0`、`skipped:0`，**没有 `executedDetail`** | ❌ F-119b |
+| A7/A8（回归） | 上一轮的席位判据在此轮无新反例 | ✅ 保持 |
+
+### §213.3 两条修法与判据
+
+**F-119b（一个计数读不出它数的是什么）**：`vibe-math-vmu/kernel/turn/index.js` 的两处主 step 回执（回合循环与完成报告）
+只写 `executed: (…).length`；同一形状的第三条路径（"no pending member"）早已带 `executedDetail`。修法：把 `executed` 的明细
+列表补到两处主路径，并新增模块常量 `EXECUTED_MEANS`：
+
+- `executedDetail: [ { field, face, op, result } … ]`（有界 5 行）+ `executedDetailTruncated`；
+- `executedMeans`：说明「`executed` 是计数、这份列表是明细；空列表表示**什么都没派发**，绝不表示列表被吞」。
+
+判据：**一个数字告诉你发生过什么，永远不告诉你发生了什么；同一个回执形状有两个构造者，就必须只有一个诚实的形状。**
+
+**F-119a（一次缺席不是一次失败）**：真实回合里，成员读自己的任务得到
+`hasBrief:false, brief:null, briefNote:"brief lookup failed: VMU_NO_SUCH_OBJECT"`——它据此以为机制坏了，整轮都在写一张
+"说明 brief 读不到"的障碍卡。真相是：那份任务本来就没有 brief（`docs/08` 里 brief 是可选的）。修法在
+`vibe-math-vmu/kit/extras.js#toolTaskGet`：把 "has no brief" 这一种拒绝单独认出来，答 `briefNote:null` +
+`briefMeans:"this task has no brief attached … set with vibe_vmu_task { action: "brief", id, text }. No brief ≠ a broken
+lookup: this answer was read, not refused."`；**其它**失败仍原样给 `briefNote:"brief lookup failed: <code>"`。
+
+判据：**缺席要有一句说"这里本来就没有"的话，并点名把它补上的那个动作；只有真的失败才配叫失败。** 这一条与 §210 的
+"不知道不是办公室"、§209 的"事实必须落盘"同族：读面替调用者下结论，就是把沉默变成了谎。
+
+### §213.4 测试与门禁
+
+- `tests/vmu-run119-brief-absence.test.mjs` **17/0**：①无 brief ⇒ `brief:null`、无 `briefNote`、`briefMeans` 点名 setter 且含
+  "No brief ≠ a broken lookup"；②**真失败**仍给 `brief lookup failed: VMU_STORE_FAILED`（修法没有把坏读吞掉）；③另一个内核
+  读得到别人写的 brief（缺席的话术不能变成失明）。
+- `tests/vmu-run119-executed-detail.test.mjs` **11/0**：主 step 回执带 `executedDetail`（`field:"progress"`、`face:"vmu.records"`、
+  `op:"put"`、`result.ok:true`），计数与明细一致，`executedMeans` 说明两槽的分工；只说不动的那一行进 `skipped`
+  （`field:"say"`、`reason:"no-meeting-bound"`），两张列表不混。
+- 相邻：`vmu-turn` 272/0、`vmu-run36-records-shared` 37/0、`vmu-run51-*` 全绿（收口时全量 T1 复验）。
+
+### §213.5 无实质残余：是（C4/C8/G6 三条 PARTIAL 全部收口到 DONE）
