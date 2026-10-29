@@ -2896,10 +2896,18 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
   const face = meetingTypeFace(type)
   const applied = applyMeetingTypeFace({ kernel, type, members: ids, refuse })
   const notNarrowed = (applied.rows || []).filter((r) => r && r.narrowing && r.narrowing.applied === false)
+  // ★ RUN 132 (F-132a): the verb that OPENS a debate round could not name its own meeting type — `phase:"debate"` was
+  // refused by the enum ("it accepts o…"), so the chair had to guess `verify-debate`. The turn engine's vocabulary is
+  // its own (verify-debate is the debate round there); the alias is accepted HERE and DISCLOSED in the receipt, because
+  // a word that works but is rewritten silently is the same defect one level down.
+  const phaseGiven = str(args.phase || 'meeting')
+  const PHASE_ALIASES = { debate: 'verify-debate' }
+  const phaseUsed = PHASE_ALIASES[phaseGiven] || phaseGiven
+  const phaseAliased = PHASE_ALIASES[phaseGiven] ? { given: phaseGiven, used: phaseUsed, why: 'the turn engine calls a debate round "verify-debate"; "debate" is accepted on this face and mapped for you' } : null
   let step = null
   let failure = null
   try {
-    step = await kernel.turn.step({ members: ids.map((id) => ({ id })), phase: str(args.phase || 'meeting'), why: str(args.why || '') })
+    step = await kernel.turn.step({ members: ids.map((id) => ({ id })), phase: phaseUsed, why: str(args.why || '') })
   } catch (err) {
     failure = err
   } finally {
@@ -2918,7 +2926,7 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
   // message move to the top level, and `turn` keeps the whole reading.
   if (step && step.ok === false) {
     return {
-      ok: false, tool: 'vibe_v5_meeting_round', meeting, type, chair, phase: str(args.phase || 'meeting'),
+      ok: false, tool: 'vibe_v5_meeting_round', meeting, type, chair, phase: phaseUsed, phaseAliased,
       code: step.code || 'VMU_STATE', message: step.message || 'the member turn failed',
       hint: step.hint || null, turnFailed: true, turn: step,
       narrowed: face.narrowed === true,
@@ -2928,7 +2936,7 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
     }
   }
   return {
-    ok: true, tool: 'vibe_v5_meeting_round', meeting, type, chair, phase: str(args.phase || 'meeting'),
+    ok: true, tool: 'vibe_v5_meeting_round', meeting, type, chair, phase: phaseUsed, phaseAliased,
     narrowed: face.narrowed === true, narrowing: { type, narrowed: face.narrowed === true, reason: face.reason, expected: face.allow, members: applied.rows },
     members: ids, turn: step,
     note: narrowNoteOf(face, notNarrowed),
@@ -4171,8 +4179,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
       + 'The CHAIR is never narrowed (order-keeping is the seat\'s duty). The override lives for exactly this one round and is cleared in a finally, so the next turn starts from the identity face again. '
       + 'A type with no declared narrowing is a NAMED decision (default face), never a silent empty set; when the intersection with the identity face of that member is EMPTY the narrowing is SKIPPED (no override is installed, so nothing is widened) and the round receipt carries `narrowing:{applied:false, reason:"empty-intersect", expectedAllowed, identityFaceVisible}` — a broken configuration must not kill the meeting. '
       + 'Defaults: members = every live member except the chair; phase = "meeting". '
-      + '★ phase must be one the turn engine knows: founding / normal / checkpoint / verify / verify-debate / meeting / resume / heartbeat / paper-write / paper-review / paper-final — any other word is refused by name (and this face then returns ok:false carrying that step code, it does not claim the round happened).',
-    parameters: { meeting: { type: 'string', required: true }, members: { type: 'array' }, phase: { type: 'string', enum: ['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'meeting', 'resume', 'heartbeat', 'paper-write', 'paper-review', 'paper-final'] }, why: { type: 'string' } },
+      + '★ phase must be one the turn engine knows: founding / normal / checkpoint / verify / verify-debate / meeting / resume / heartbeat / paper-write / paper-review / paper-final — plus the ALIAS "debate" (RUN 132: the verb that opens a debate could not name "debate"; the receipt then says `phaseAliased:{given:"debate", used:"verify-debate"}`, so the alias is disclosed, not silent). Any other word is refused by name (and this face then returns ok:false carrying that step code, it does not claim the round happened).',
+    parameters: { meeting: { type: 'string', required: true }, members: { type: 'array' }, phase: { type: 'string', enum: ['founding', 'normal', 'checkpoint', 'verify', 'verify-debate', 'debate', 'meeting', 'resume', 'heartbeat', 'paper-write', 'paper-review', 'paper-final'] }, why: { type: 'string' } },
     handler: toolMeetingRound,
   },
   {

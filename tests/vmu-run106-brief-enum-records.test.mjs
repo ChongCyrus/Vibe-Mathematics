@@ -112,12 +112,20 @@ const b = await boot({ root })
 const s = await call(b, 'vibe_v5_start', { problem: '枚举', researcherCount: 2, academician: true }, { kernel: b.handle.kernel })
 ok(s.parsed && s.parsed.ok !== false, '② the institute starts (the enum gate is not blocking the normal path)', s.parsed || s)
 
-const bad = await call(b, 'vibe_v5_meeting_round', { meeting: 'm-none', phase: 'debate', member: 'r-acad' }, { kernel: b.handle.kernel })
+// ★ RUN 132 (F-132a) MOVED THE WALL, IT DID NOT REMOVE IT: `debate` used to be undeclared (this assertion pinned the
+// refusal). The verb that opens a debate round must accept the meeting type it is in, so `debate` is now legal and
+// passes the gate; the gate still refuses words nobody declared, and still prints the legal set. Both directions are
+// pinned: a word that is STILL not declared must be refused by name, and `debate` must now reach the business layer.
+const bad = await call(b, 'vibe_v5_meeting_round', { meeting: 'm-none', phase: 'argue', member: 'r-acad' }, { kernel: b.handle.kernel })
 const badParsed = bad.parsed || bad
 ok(badParsed && badParsed.ok === false && badParsed.code === 'VMU_INVALID_ARGUMENT',
-  '②★ `phase:"debate"` (a word run 103/104 used and that is NOT in the enum) is refused at the TOOL LAYER, not by the business layer', badParsed)
-ok(String(badParsed && badParsed.message || '').includes('debate') && /founding|heartbeat|verify-debate/.test(String(badParsed && (badParsed.message || '') + ' ' + (badParsed.hint || ''))),
+  '②★ `phase:"argue"` (a word nobody declared) is refused at the TOOL LAYER, not by the business layer', badParsed)
+ok(String(badParsed && badParsed.message || '').includes('argue') && /founding|heartbeat|verify-debate/.test(String(badParsed && (badParsed.message || '') + ' ' + (badParsed.hint || ''))),
   '②★ the refusal names the value it refused AND the legal set (a gate that refuses without saying the accepted words is a riddle)', badParsed)
+const aliased = await call(b, 'vibe_v5_meeting_round', { meeting: 'm-none', phase: 'debate', members: ['r-acad'] }, { kernel: b.handle.kernel })
+const aliasedParsed = aliased.parsed || aliased
+ok(aliasedParsed && aliasedParsed.code === 'VMU_NO_OPEN_MEETING',
+  '②★ `phase:"debate"` now PASSES the tool gate (RUN 132: the verb that opens a debate must accept the meeting type) and is refused by the business layer instead', aliasedParsed)
 ok(!/NO_OPEN_MEETING/.test(String(badParsed && badParsed.code || '')),
   '② the refusal is NOT `VMU_NO_OPEN_MEETING` — "your phase word is not a phase" and "no meeting is open" must not be one answer', badParsed && badParsed.code)
 

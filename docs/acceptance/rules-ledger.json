@@ -654,7 +654,7 @@
       "id": "C6",
       "rule": "14",
       "text": "平时只记证明/证伪尝试，真正会证时才写正式证明字段",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/verification-gates.js::PROOF_STATE_COMPLETE"
       ],
@@ -665,10 +665,12 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_proposition"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::`subjectGate{allowed:true, form:\"card\", provenance:\"declared\", proofBasis:\"declaration-only\""
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"jobId\":\"lean-3\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::the kernel read this job as PASSED before the card was written"
       ],
       "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。",
-      "next": "r131：先 vibe_v5_lean_run{file,statement} 拿 lean_job（F-130a 修后应成功），带 lean_job 写 proof_state:\"complete\" 的卡必须被接受，且 read_library 回显 lean 证据字段"
+      "next": "已由 r132 全证（lean-3 passed ⇒ 带 lean_job 的 proof_state:\"complete\" 被接受，回执带 proofStateEvidence；无证据的 p-c6b 在 r130 被具名拒）；后续轮次只做回归。",
+      "note": "r130 的反向支 + r132 的正向支合起来才是「真正会证时才写正式证明字段」。"
     },
     {
       "id": "C7",
@@ -922,7 +924,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"urgent\":true,\"kind\":\"notice\""
       ],
       "ruleText": "- 各自交流通过：邮箱（非紧急。一般不需要立即查看邮箱消息），私信（希望对方尽早回复时），群聊（非紧急。一般不需要立即查看群聊消息），...。",
-      "next": "r120：邮箱带 urgent 时是否唤醒接收者要与教学一致（当前教学说只有私信+urgent 才推正文）——修好教学或修好投递，再读回一次。"
+      "next": "r133：`vibe_v5_message { to:\"r-1\", urgent:true }` 后读 r-1 收件行（urgent:true）与是否推正文；群聊侧读一行非紧急；三句各有回执后翻 DONE。"
     },
     {
       "id": "D4",
@@ -985,7 +987,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::一个成员读另一个成员的状态板这件事，面板读面答得出来"
       ],
       "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。",
-      "next": "r132：同一成员上两个读面互指——read_library{member,kind:\"state\"} 的 panelPointer.call 含 vibe_vmu_panel，panel{action:\"get\"} 的 libraryPointer.call 含 vibe_v5_read_library（单测 vmu-run131-cross-face-pointers 23/0 已钉机制，仍需真机回执）。"
+      "next": "r133：`vibe_vmu_panel { action:\"get\", member:\"r-1\" }` 的 libraryPointer 活体（read_library 侧 panelPointer 已由 r132 取证）。"
     },
     {
       "id": "D7",
@@ -1504,7 +1506,7 @@
       "id": "E24",
       "rule": "49",
       "text": "lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意",
-      "status": "PARTIAL",
+      "status": "DONE",
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_fidelity_conclude"
       ],
@@ -1515,16 +1517,18 @@
         "vibe-math-vmu/kernel/fidelity.js::createFidelityRegistry"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::fidelity conclusion is an academician"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_PACK_V5R_FIDELITY_ASK_REQUIRED",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::Lean 已通过但概率仍非 1（p=0.9）"
       ],
       "ruleText": "对于lean已经通过的但是布尔概率还非1的命题，辩论时主要是辩论lean代码中对命题的描述、定义是否符合原意。",
-      "next": "r120：lean 通过但 p≠1 的命题上强行 fidelity_conclude 要被具名拒 FIDELITY_ASK_REQUIRED，读回该拒绝。"
+      "next": "已由 r132 全证（Lean 已过 + p=0.9 的裁决汇总被 FIDELITY_ASK_REQUIRED 具名拒，hint 指辩论裁定）；后续轮次只做回归。",
+      "note": "闸在裁决汇总面（verdict_final），不在 fidelity_conclude：Lean 通过 + 一致性裁定 ⇒ p=1 是 C10 的正路（r132 回执 p1Written:true）。"
     },
     {
       "id": "E25",
       "rule": "51",
       "text": "辩论骨架①各成员同时独立单次表态",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/meeting-procedures.js::debate"
       ],
@@ -1535,10 +1539,12 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::步骤只是**建议"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::后有 `cards:2`、`rows` 两人（`r-2:1`、`r-1:0.6`）"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_CHAT_ALREADY_SPOKE",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::one speech per member per round"
       ],
       "ruleText": "先进行各成员同时进行“单次发言版群聊”，独立发表各自的“布尔概率（[0,1]），理由，...”，再进行轮流发言或者各自举手发言或邀请发言，来展开辩论。辩论的轮数由院士自己决策。",
-      "next": "r120：辩论开场同时发言轮（单次发言版群聊）读回 cards/rows 与各自 p，再轮流的第二轮。"
+      "next": "已由 r132 全证（群聊轮内 r-1 第二次发言被 VMU_CHAT_ALREADY_SPOKE 拒；会议面按 speeches 计分属记分板，不是这条规则的面）；后续轮次只做回归。",
+      "note": "单次表态规则的面是「群聊单次发言轮」（round），不是会议发言面——两者都读到了，只有前者拦重复。"
     },
     {
       "id": "E26",
@@ -1679,7 +1685,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::not awaiting its editor"
       ],
       "ruleText": "把原总问题及所有研究所中有价值的产物系统梳理，合作撰写最终论文。合作写论文（如安排写各自负责内容最后系统地合并），互审，论文是面向读者的，要保证内容系统、正确、完整、严谨清晰。最后讨论、检查无误后定稿。",
-      "next": "r123：单成员论文 review 自审（已过，r122b 具名拒）之外，还要读到 finalise 在互审未一致时被具名拒；两成员互审后再 finalise 成功。"
+      "next": "r133：不一致 → advance 退回 writing 后**再 advance** 回 reviewing → 两人 true → advance 到 awaiting-editor → final 成功；两类回执一起读。"
     },
     {
       "id": "F4",
@@ -1846,7 +1852,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::一个数字告诉你发生过什么"
       ],
       "ruleText": "- 绝大多数功能都直接通过代理可执行命令（工具）实现，而非最终每轮结束时输出json实现。",
-      "next": "r120：围栏 JSON 只派发声明白名单字段（say/progress/record/verdict），越界字段要具名拒；教学与回执一致。"
+      "next": "r133：让成员在自己的回合里往围栏 JSON 多写一个未声明字段，读回具名拒（根会话无法伪造，见 §227.2）。"
     },
     {
       "id": "G7",
@@ -1868,7 +1874,7 @@
         "vibe_v5_meeting"
       ],
       "ruleText": "- 确保所有代理接收到的提示词完全与上述规则相符、自洽 。",
-      "next": "r120：在活教学里植入一句与规则相反的话，parity 门必须红（或如实声明只能查名字/覆盖，矛盾由审计 lane 承担）。"
+      "next": "待定：parity 门已自述边界（RULE PARITY SCOPE 的 NOT PROVEN HERE 行）；是否以此为 DONE 判据由用户裁定。"
     },
     {
       "id": "A8",

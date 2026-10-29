@@ -155,8 +155,13 @@ try {
     '★ vibe_v5_paper is dropped from r-1 allow (the bidirectional half: what the type removes is readable)', r1row && { allow: r1row.allow, dropped: r1row.dropped })
   ok(c4.overrides.length === 2 && c4.cleared.length === 2 && c4.cleared.every((m) => c4.overrides.some((o) => o.member === m)),
     'two overrides installed, and exactly those two cleared after the round', { overrides: c4.overrides.length, cleared: c4.cleared })
-  ok(c4.steps.length === 1 && c4.steps[0].phase === 'debate' && c4.steps[0].members.length === 2,
-    'the turn was stepped for exactly the invited members with the phase the caller asked for', c4.steps[0])
+  // ★ RUN 132 (F-132a): `phase:"debate"` is ACCEPTED on this face and mapped to the engine's own word `verify-debate`,
+  // with the rewrite disclosed (`phaseAliased`). The round is still the round the caller asked for; the engine simply
+  // calls it something else.
+  ok(c4.steps.length === 1 && c4.steps[0].phase === 'verify-debate' && c4.steps[0].members.length === 2,
+    'the turn was stepped for exactly the invited members with the engine word for the phase they asked for', c4.steps[0])
+  ok(debate.receipt && debate.receipt.phase === 'verify-debate' && debate.receipt.phaseAliased && debate.receipt.phaseAliased.given === 'debate',
+    '★ the receipt says which word was used AND that the caller wrote another one', debate.receipt && { phase: debate.receipt.phase, phaseAliased: debate.receipt.phaseAliased })
 
   // ── ⑤ 真正空的交集：披露，不是拒会 ────────────────────────────────────────────────────────────────────────
   console.log('=== 5. AN EMPTY INTERSECTION IS STILL A DISCLOSURE (the OTHER "not applied") ===')

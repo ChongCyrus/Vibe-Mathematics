@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 78 | all four citations resolve |
-| ◐ PARTIAL | 8 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 81 | all four citations resolve |
+| ◐ PARTIAL | 5 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -55,7 +55,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `C3` | 13 | 遇障路线/尝试/方法及障碍与原因归档 | ✅ DONE | 2/1/1/2 | — |
 | `C4` | 13 | 遇到的各种障碍及其原因（归档内容的一部分） | ✅ DONE | 3/1/1/2 | — |
 | `C5` | 14 | 命题库：完整定义、p(0-1)、进度 | ✅ DONE | 1/1/1/2 | — |
-| `C6` | 14 | 平时只记证明/证伪尝试，真正会证时才写正式证明字段 | ◐ PARTIAL | 1/1/1/1 | r131：先 vibe_v5_lean_run{file,statement} 拿 lean_job（F-130a 修后应成功），带 lean_job 写 proof_state:"complete" 的卡必须被接受，且 read_library 回显 lean 证据字段 |
+| `C6` | 14 | 平时只记证明/证伪尝试，真正会证时才写正式证明字段 | ✅ DONE | 1/1/1/2 | 已由 r132 全证（lean-3 passed ⇒ 带 lean_job 的 proof_state:"complete" 被接受，回执带 proofStateEvidence；无证据的 p-c6b 在 r130 被具名拒）；后续轮次只做回归。 |
 | `C7` | 14 | 只有写完的正式证明才能用于辩论 | ✅ DONE | 2/1/1/1 | — |
 | `C8` | 14 | p=1 的命题要标记 verified | ✅ DONE | 1/2/1/1 | — |
 | `C9` | 15 | 方法库（理论/方法/工具，抽象化产物） | ✅ DONE | 2/1/1/1 | — |
@@ -72,10 +72,10 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | --- | --- | --- | --- | --- | --- |
 | `D1` | 26 | 各自推进各自的总任务 | ✅ DONE | 2/1/1/5 | 已由 r131 取证（r-1 状态板 ①②③ 先印自己那份并标注全所），office 视图逐字不变由 vmu-run111-board-own-share 钉住；后续轮次只做回归。 |
 | `D2` | 27 | 三通道：邮箱/私信/群聊 | ✅ DONE | 2/1/1/2 | — |
-| `D3` | 27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ◐ PARTIAL | 2/1/1/1 | r120：邮箱带 urgent 时是否唤醒接收者要与教学一致（当前教学说只有私信+urgent 才推正文）——修好教学或修好投递，再读回一次。 |
+| `D3` | 27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ◐ PARTIAL | 2/1/1/1 | r133：`vibe_v5_message { to:"r-1", urgent:true }` 后读 r-1 收件行（urgent:true）与是否推正文；群聊侧读一行非紧急；三句各有回执后翻 DONE。 |
 | `D4` | 28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
 | `D5` | 28 | 四字段都含时间等基础信息 | ✅ DONE | 2/2/1/1 | — |
-| `D6` | 28 | 可查看其他成员当前状态版 | ◐ PARTIAL | 2/2/1/1 | r132：同一成员上两个读面互指——read_library{member,kind:"state"} 的 panelPointer.call 含 vibe_vmu_panel，panel{action:"get"} 的 libraryPointer.call 含 vibe_v5_read_library（单测 vmu-run131-cross-face-pointers 23/0 已钉机制，仍需真机回执）。 |
+| `D6` | 28 | 可查看其他成员当前状态版 | ◐ PARTIAL | 2/2/1/1 | r133：`vibe_vmu_panel { action:"get", member:"r-1" }` 的 libraryPointer 活体（read_library 侧 panelPointer 已由 r132 取证）。 |
 | `D7` | 28 | 可自己修改更新自己的状态版 | ✅ DONE | 2/1/1/1 | — |
 | `D8` | 28 | 四字段按规则原文实现（字段名与语义） | ✅ DONE | 2/1/1/1 | — |
 
@@ -106,8 +106,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E21` | 42 | 群聊式交流：院士为群管理员，设每人权限/发言次数/禁言 | ✅ DONE | 2/1/1/1 | — |
 | `E22` | 45 | 辩论额外字段：对象或文件引用 | ✅ DONE | 1/1/1/1 | — |
 | `E23` | 47 | 辩论/结题表决人数＝min(用户设置, 院士+常驻) | ✅ DONE | 3/1/1/1 | — |
-| `E24` | 49 | lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意 | ◐ PARTIAL | 1/1/1/1 | r120：lean 通过但 p≠1 的命题上强行 fidelity_conclude 要被具名拒 FIDELITY_ASK_REQUIRED，读回该拒绝。 |
-| `E25` | 51 | 辩论骨架①各成员同时独立单次表态 | ◐ PARTIAL | 1/1/1/1 | r120：辩论开场同时发言轮（单次发言版群聊）读回 cards/rows 与各自 p，再轮流的第二轮。 |
+| `E24` | 49 | lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意 | ✅ DONE | 1/1/1/2 | 已由 r132 全证（Lean 已过 + p=0.9 的裁决汇总被 FIDELITY_ASK_REQUIRED 具名拒，hint 指辩论裁定）；后续轮次只做回归。 |
+| `E25` | 51 | 辩论骨架①各成员同时独立单次表态 | ✅ DONE | 1/1/1/2 | 已由 r132 全证（群聊轮内 r-1 第二次发言被 VMU_CHAT_ALREADY_SPOKE 拒；会议面按 speeches 计分属记分板，不是这条规则的面）；后续轮次只做回归。 |
 | `E26` | 51 | 辩论骨架②轮流/举手/邀请展开 | ✅ DONE | 1/1/1/1 | — |
 | `E27` | 53 | 辩论骨架③结束前各成员最终裁决 | ✅ DONE | 2/1/1/1 | — |
 | `E28` | 53 | 辩论骨架④全一致取该值、否则平均，并通知持有者改值 | ✅ DONE | 2/1/1/1 | — |
@@ -126,7 +126,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | --- | --- | --- | --- | --- | --- |
 | `F1` | 56 | 把原问题与所有有价值产物系统梳理 | ✅ DONE | 1/1/1/2 | — |
 | `F2` | 56 | 合作撰写：分派各自内容并合并 | ✅ DONE | 2/1/1/2 | — |
-| `F3` | 56 | 互审 | ◐ PARTIAL | 1/1/1/1 | r123：单成员论文 review 自审（已过，r122b 具名拒）之外，还要读到 finalise 在互审未一致时被具名拒；两成员互审后再 finalise 成功。 |
+| `F3` | 56 | 互审 | ◐ PARTIAL | 1/1/1/1 | r133：不一致 → advance 退回 writing 后**再 advance** 回 reviewing → 两人 true → advance 到 awaiting-editor → final 成功；两类回执一起读。 |
 | `F4` | 56 | 面向读者：系统/正确/完整/严谨清晰 | ✅ DONE | 1/1/1/2 | — |
 | `F5` | 56 | 讨论检查无误后定稿 | ✅ DONE | 1/1/1/1 | — |
 
@@ -139,8 +139,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `G3` | 60 | 支持人工干预研究所决策与运行 | ✅ DONE | 2/1/1/1 | — |
 | `G4` | 60 | 支持断点续跑 | ✅ DONE | 1/1/1/1 | — |
 | `G5` | 61 | 特殊权限/请求经所办向用户询问 | ✅ DONE | 2/1/1/1 | — |
-| `G6` | 62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ◐ PARTIAL | 3/1/2/2 | r120：围栏 JSON 只派发声明白名单字段（say/progress/record/verdict），越界字段要具名拒；教学与回执一致。 |
-| `G7` | 63 | 提示词与规则完全相符、自洽 | ◐ PARTIAL | 3/1/1/1 | r120：在活教学里植入一句与规则相反的话，parity 门必须红（或如实声明只能查名字/覆盖，矛盾由审计 lane 承担）。 |
+| `G6` | 62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ◐ PARTIAL | 3/1/2/2 | r133：让成员在自己的回合里往围栏 JSON 多写一个未声明字段，读回具名拒（根会话无法伪造，见 §227.2）。 |
+| `G7` | 63 | 提示词与规则完全相符、自洽 | ◐ PARTIAL | 3/1/1/1 | 待定：parity 门已自述边界（RULE PARITY SCOPE 的 NOT PROVEN HERE 行）；是否以此为 DONE 判据由用户裁定。 |
 
 ## How to move a row
 

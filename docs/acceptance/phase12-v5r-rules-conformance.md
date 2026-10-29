@@ -10156,3 +10156,86 @@ hint 给出两条正路（群聊 `round:"<round>"`；会议发言按会议排序
 ### §226.8 无实质残余：否
 
 余下九行都要真机回执；其中 C6/F3 的机制在树里，缺的是「通过支」与「互审不一致被拒 + 一致后成功」两条活体路径。
+
+## §227 真机跑 132 —— Lean 通过之后的定论、单次表态与「开辩论轮」自己的词
+
+### §227.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| build | `1c7923a0`（D6 两读面互指 + B4 窗口设置的树） |
+| clone / port | `slvp132` / 19733 |
+| `DRIVE` | `exit=0`，`durationSec 1036` |
+| 根会话 | 30 calls / 30 results，`tokenTotal 7,227,591`（cap 12M） |
+| 会话 | 3，`SUMMARY: 3 session(s), 0 with RED` |
+| jsonl | `_oneoff/vm-slv/full-1029-183152.jsonl`，15,427,098 B / 31,818 行 |
+| 机器读数 | `NO_FENCE=24 UNKNOWN_FIELD=26 FIELD_NOT_APPLICABLE=24 BAD_JSON=24` |
+| 提取 | `D:/_tmp/r132/tools.json`（204 对 / 116 唯一） |
+
+### §227.2 判决表
+
+| 行 | 判 | 依据 |
+| --- | --- | --- |
+| C6 平时只记尝试、真会证才写正式证明字段 | ✅ | 带 `lean_job` 的 `proof_state:"complete"` 被接受，回执带 `proofStateEvidence` |
+| E24 lean 已过但 p≠1 的辩论焦点 | ✅ | `verdict_final` 具名拒 `VMU_PACK_V5R_FIDELITY_ASK_REQUIRED` |
+| E25 辩论骨架①各成员同时独立单次表态 | ✅ | 群聊单次发言轮第二次发言被 `VMU_CHAT_ALREADY_SPOKE` 具名拒 |
+| D3 三通道紧急语义 | ⏳ | 只读到收件行 `urgent:false,kind:"notice"`；私信 `urgent:true` 的推正文路径未行使 |
+| D6 可查看其他成员当前状态版 | 半 | `read_library` 侧 `panelPointer` 已回；`panel{action:"get"}` 侧未行使 |
+| F3 互审 | ⏳ | 不一致时 `advance` 退回 `writing`（refusers 明说）；一致后 finalise 成功未走到 |
+| G6 绝大多数功能走工具而非围栏 JSON | ⏳ | 根会话无法伪造成员围栏：`op:"reply"` 拒 `VMU_TURN_NO_PENDING_MEMBER`、`op:"step"` 拒「seam does not accept a caller-supplied reply」 |
+| F-132a 开辩论轮的可选词 | ❌→已修 | 见 §227.5 |
+
+### §227.3 逐字回执
+
+C6（Lean 通过后写正式证明字段被接受，且回执报出证据来源）：
+
+```
+"recordId":"p-c6-ok" … "proofState":"complete","proofStateEvidence":{"kind":"lean-job","measured":true,"jobId":"lean-3","means":"the kernel read this job as PASSED before the card was written"}
+```
+
+E24（Lean 已过、p=0.9，定论面要求先辩「描述/定义是否符合」）：
+
+```
+"ok":false,"code":"VMU_PACK_V5R_FIDELITY_ASK_REQUIRED","message":"Lean 已通过但概率仍非 1（p=0.9）：必须先在辩论中裁定「Lean 代码里的命题与定义是否与所需一致」 …"
+"hint":"the rule requires evidence this call did not carry; record the estimate and let the debate produce the conclusion"
+```
+
+E25（单次表态在**群聊轮**上真的执行；会议面按 speeches 计分，不拦重复）：
+
+```
+"ok":false,"code":"VMU_CHAT_ALREADY_SPOKE","message":"r-1 has already spoken in round \"e25-round-1\" (message msg-3): one speech per member per round"
+```
+
+F3（不一致 → 退回写作；写作阶段的 review/final 都被具名拒）：
+
+```
+"code":"VMU_PACK_V5R_CORE_PAPER_STATE","message":"the paper is not in its cross-review stage (now: writing)"
+"code":"VMU_PACK_V5R_CORE_PAPER_STATE","message":"the paper is not awaiting its editor (now: writing)"
+```
+
+### §227.4 F3 的读法（不是缺陷，是流程）
+
+`advance` 在未一致时把论文退回 `writing` 并回 `refusers`；「退回写作后要再 `advance` 一次回到 `reviewing`，才允许重新投票」——两条拒的 hint 都指向 `advance`。本轮 agent 在 `writing` 里反复 review/final，没再 advance，所以「一致后 finalise 成功」缺回执。**下一轮只需按 hint 走两遍**。
+
+### §227.5 F-132a：verb 打不开自己那类会
+
+- 实测：`vibe_v5_meeting_round { meeting:"m1", phase:"debate" }` ⇒
+  `VMU_INVALID_ARGUMENT 'pack tool vibe_v5_meeting_round got an undeclared value for parameter(s) "phase"="debate"; it accepts o…'`。
+- 真因：turn engine 里这一轮叫 `verify-debate`，声明枚举照抄了引擎词表，而**工具的存在理由就是「按会议类型推进一轮」**——处在 debate 会里的调用者唯一会试的词就是 `debate`。
+- 修法：枚举增加 `debate`，handler 内 `PHASE_ALIASES = { debate: 'verify-debate' }`，只映射这一个词；回执新增 `phaseAliased:{given,used,why}`，`phase` 字段报**实际使用的词**；失败路径同样带 `phaseAliased`（不许因为失败就丢掉披露）。
+- 教学：`v5r-blocks-b.js` 的 meeting_round 行补「辩论轮可直接写 `debate`，回执会说明它按 `verify-debate` 跑」。
+- 测试 `tests/vmu-run132-debate-phase-alias.test.mjs` **5/0**（枚举含 debate；debate→verify-debate 且披露；其余词逐字透传且 `phaseAliased:null`；失败路径保留披露；未声明词仍被拒且不发明映射）。
+
+### §227.6 门禁
+
+`RULES COVERAGE`、`RULE PARITY`、`update-doc-counts --write`、`regen-all --write|--check` 17/17、`PREFLIGHT`、全量 T1 见 §227.7。
+
+### §227.7 简报错三处
+
+1. `vibe_v5_meeting { type:"debate" }` 必须带 `agenda`（先被 `meeting needs an agenda` 拒）。
+2. 会议发言前必须 `attend`（`VMU_NOT_MEMBER "speaker is not present: r-1"` + `attend() first`）。
+3. `vibe_v5_say { meeting, round:true }` 不合法：`round` 是群聊规则，不能与 `meeting` 同用（hint 给两条正路）。
+
+### §227.8 无实质残余：否
+
+余 5 行（D3/D6/F3/G6/G7）都缺活体回执。

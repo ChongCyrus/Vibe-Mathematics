@@ -797,7 +797,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · 议程与标题：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 只读议程条目列表、`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）——这两个动词只认**内核原语会**（`vibe_vmu_meeting { action: "open" }` 开的那种）；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程，服务会 id 上问这两个动词会得到「这张表里没有」的具名拒绝。`title` 是**可选**的独立名称（非字符串会被具名拒）。',
         '  · 召集与关闭：`vibe_v5_meeting` 的**召集只对 chair 席开放**（`vmu.meetings.conveneRequiresChair`）；`vibe_vmu_meeting { action: "close" }` 的**关闭也只有 chair 席能调**（`closeRequiresChair`，默认 true）——其他席位调用会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁来做。',
         '  · 发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` **按数组顺序批量**入队（邀请不是签到，被邀者仍须自己 `attend` 才计入法定人数；`why` 必填）；`invitedspeak` 让被邀者走服务发言面（被邀者**没签到**时会被具名拒，先 `attend`）；`order` 只读队列。`flow`（open/hands/round_robin/call_on）与 `overrideorder` 要求部署声明 `vmu.meetings.orderMode`，v5r 未声明 ⇒ 调用会被具名拒。',
-        '  · 推进一轮：`vibe_v5_meeting_round { meeting, members?, phase? }` 按序各跑一回合（members 缺省＝除主席外全体在册）；`phase` 取值以工具声明为准，写错具名拒；回执 `ok:false`+`turnFailed:true`＝这轮没发生，别当成功；`close`/`extendlimit` 要带 `actor`（主席本人）；`action:"convene"` 与直接召集等价。',
+        '  · 推进一轮：`vibe_v5_meeting_round { meeting, members?, phase? }` 按序各跑一回合（members 缺省＝除主席外全体在册）；`phase` 取值以工具声明为准（辩论轮可直接写 `debate`，回执会说明它按 `verify-debate` 跑），写错具名拒；回执 `ok:false`+`turnFailed:true`＝这轮没发生，别当成功；`close`/`extendlimit` 要带 `actor`（主席本人）；`action:"convene"` 与直接召集等价。',
       ].join('\n'),
       temp: [
         '【会议类型与预约】六种类型（ordinary/academic/debate/closure/paper/planning），`sync` 是动议 kind；被邀请不等于签到，要自己 `attend` 才计入法定人数；临时工没有表决权。',

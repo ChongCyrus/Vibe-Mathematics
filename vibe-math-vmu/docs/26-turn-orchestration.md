@@ -2237,3 +2237,10 @@ trace 每条 `"delivered":true,"refused":null`，办公室收件箱里出现 `"f
 - 判据：**两个读面回答同一个问题时，必须在回执里互相指认**——`panelPointer` / `libraryPointer` 是可复制的调用，不是散文；`known:false` 只能读成「本内核没登记」，不能读成「没有状态」。
 - 判据：**可调窗口把「按时更新」从常量变成规则**（`vmu.blueprint.staleAfterMs`，默认 30 天；回执必带 `staleAfterMsSource`）。
 - 判据：成员自己的份额必须排在所级总量之前（`属于你（<id>，未完成 N 条）` → `全所可开工：` / `全所：未完成 N 条`），办公室视图逐字不变。
+
+## ROUND 132 —— 一个环节自己的词（会议轮与「辩论」）
+
+- 事实：`vibe_v5_meeting_round` 声明的 `phase` 枚举照抄 turn engine 词表（含 `verify-debate`），但不含 `debate`；而它的存在理由就是「按会议类型推进一轮」——在辩论会里的调用者唯一会试的词就是会议类型本身。实测据此被拒，agent 只能猜 `verify-debate`。
+- 判据：**一个环节的入参词表可以借引擎的词，但不能缺掉调用者所在语境的词；缺了就要么接受并披露映射，要么在声明里点名「用哪个词」。**
+- 落法：枚举加 `debate`，`PHASE_ALIASES` 只映射这一个词，回执新增 `phaseAliased:{given,used,why}` 且 `phase` 报实际使用的词（失败路径也保留披露）；教学同步补一句。
+- 附带的读法：群聊的「单次表态」与会议的「发言」是两面——前者拦重复（`VMU_CHAT_ALREADY_SPOKE`），后者是记分板（按 speeches 计数，不拦）；两者都在 r132 读到。
