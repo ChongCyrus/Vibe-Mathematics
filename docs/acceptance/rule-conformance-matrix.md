@@ -140,7 +140,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `G4` | 60 | 支持断点续跑 | ✅ DONE | 1/1/1/1 | — |
 | `G5` | 61 | 特殊权限/请求经所办向用户询问 | ✅ DONE | 2/1/1/1 | — |
 | `G6` | 62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ✅ DONE | 3/1/2/2 | 已由 r133 全证（成员回合围栏多写未声明字段 ⇒ VMU_TURN_UNKNOWN_FIELD + hint 印全部已知字段）。 |
-| `G7` | 63 | 提示词与规则完全相符、自洽 | ◐ PARTIAL | 3/1/1/1 | 待定：parity 门已自述边界（RULE PARITY SCOPE 的 NOT PROVEN HERE 行）；是否以此为 DONE 判据由用户裁定。 |
+| `G7` | 63 | 提示词与规则完全相符、自洽 | ◐ PARTIAL | 3/1/1/1 | 规则原文与活教学之间的一致性只能审：第八轮真机后由只读代理独立审计，结论 CONTRADICTIONS(5)（判据=辩论对象形态/论文定稿条件/脚本面/LaTeX 键名/形式化开关），五条已在 phase12 §229.3 修完，并把 C3/C4 两类机器化进 check-rule-parity 的 P6/P7。G7 记 DONE 的条件是：修完后**再派一次只读审计，结论零矛盾**（"审过一次通过"不是判据，"审出问题、修完再审仍干净"才是）。 |
 
 ## How to move a row
 

@@ -1,6 +1,6 @@
 export const LATEX_ENGINE_NOTE = [
           '（**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）',
-          '检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 paperLatexCommand 并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。\n\n补充（这里的真名）：本仓库里这个设置键是 `vmu.paper.latexCommand`（值＝引擎可执行文件的绝对路径，例如 `D:/texlive/2025/bin/windows/xelatex.exe`），写法 `vibe_v5_set { key:"vmu.paper.latexCommand", value:"<绝对路径>" }` —— 设好之后内核把这条命令当作**唯一**引擎候选（不再按 `vmu.paper.latexEngineOrder` 探测）；把该键清空即恢复按顺序探测。',
+          '检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 **`vmu.paper.latexCommand`**（仅院士席可 `vibe_v5_set { key:"vmu.paper.latexCommand", value:"<绝对路径>" }`）并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。\n\n该键是引擎可执行文件绝对路径（如 `D:/texlive/2025/bin/windows/xelatex.exe`）；设好后为**唯一**引擎候选，清空即恢复。',
 ]
 
 /**
@@ -199,7 +199,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
       shared: [
         '  8. **辩论/验证的开启与辩论对象的选择由院士决定**：其他成员可以提出建议（群聊里说，有表决权的席位也可用 `vibe_v5_motion` 提动议），',
         '     但开会与选对象必须由院士本人发起——`vibe_v5_meeting { type: "debate", subject: "<命题卡 id>", agenda: "…" }`（非院士席位调用会被具名拒绝）。',
-        '  9. **辩论对象须是已知命题卡或可读证明文件**；一句话命题不能单独当辩论对象。',
+        '  9. **辩论对象**：命题卡（须含**已写完**的证明/证伪或已通过 Lean）、证明文件，或一句话命题（不可核验）。',
         ' 10. **正式证明/证伪只在确信时登记**：`proofState:"complete"` 须附 Lean 通过证据，否则具名拒绝；登记即定稿、卡 id 锁定，改动换新卡号。p=1 另需定论来源与 `vibe_v5_verified_promote` 的标记。',
       ].join('\n'),
     },

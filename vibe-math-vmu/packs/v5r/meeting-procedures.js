@@ -119,7 +119,7 @@ export const CLOSURE_PROCEDURE = Object.freeze({
       '点名缺口：缺什么、为什么缺、补它需要什么。不许用"基本完成"略过。',
       ['vibe_v5_task_create { ... }', 'vibe_v5_record_progress { ... }']),
     step(3, 'take-the-vote', 'vibe_v5_poll_open',
-      '对「是否达标」表决：先开票，再由有资格者各自投，最后取票。人数下限仍是一条**未实现**的规则（见 `MEETING_PROCEDURE_GAPS` 的 min-voters）。',
+      '对「是否达标」表决：先开票，再由有资格者各自投，最后取票。人数下限**已实现**：`kernel/meetings.js` 的 `quorumOf` 计算 m = min(所设上限, 在册有表决权人数)，`vibe_v5_verdict_final` 的 floor 与会议关闭栏读同一个函数。',
       ['vibe_v5_poll_open { ... }', 'vibe_v5_poll_vote { ... }', 'vibe_v5_poll_close { ... }']),
     step(4, 'archive-the-verdict', 'vibe_v5_report',
       '把结题结论归档：结论、依据、遗留项各一段，交给机构记录而不是留在会议记录里。',
@@ -211,9 +211,9 @@ export const MEETING_PROCEDURE_GAPS = Object.freeze([
   Object.freeze({
     id: 'min-voters',
     rule: '辩论、结题表决的人数至少为某一定数量，这个数量取「用户设置的数量」和「院士+常驻研究员 的数量」的最小值。',
-    now: 'ballot 原语已有 minEligible 门槛（人数不足时 VMU_STATE 具名拒），但没有任何调用方给它传值：既是内核的 ballot 工具面没有透传，也没有任何地方计算 min(用户设置, 院士+常驻研究员)。',
+    now: '已实现：m = min(所设上限, 在册有表决权人数) 由 kernel/meetings.js 的 quorumOf 计算（v5r: quorumFloorSource "universe"、quorumCap 3、eligibleSeats [chair, member]），vibe_v5_verdict_final 的 floor 与关闭栏都读它；poll 的门槛由 ballot 原语的 minEligible 执行，poll_open 已透传 min_votes/min。',
     owner: 'kernel 透传 minEligible + pack 计算下限',
-    status: 'not-implemented',
+    status: 'implemented',
   }),
 ])
 

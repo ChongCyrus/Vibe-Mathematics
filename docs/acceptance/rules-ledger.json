@@ -1882,7 +1882,8 @@
         "vibe_v5_meeting"
       ],
       "ruleText": "- 确保所有代理接收到的提示词完全与上述规则相符、自洽 。",
-      "next": "待定：parity 门已自述边界（RULE PARITY SCOPE 的 NOT PROVEN HERE 行）；是否以此为 DONE 判据由用户裁定。"
+      "next": "规则原文与活教学之间的一致性只能审：第八轮真机后由只读代理独立审计，结论 CONTRADICTIONS(5)（判据=辩论对象形态/论文定稿条件/脚本面/LaTeX 键名/形式化开关），五条已在 phase12 §229.3 修完，并把 C3/C4 两类机器化进 check-rule-parity 的 P6/P7。G7 记 DONE 的条件是：修完后**再派一次只读审计，结论零矛盾**（\"审过一次通过\"不是判据，\"审出问题、修完再审仍干净\"才是）。",
+      "note": "§229：审计基线 HEAD 9cbea9cc，规则 63 行 sha256 a5d9a6c1ff73…8e59；活教学只认 v5r-blocks-a/b.js、v5r-core.js、seat-faces.js、v5r-paper-prompts.js，capture 快照不作依据；本轮新发现 F-135a（写面校验 lean_job 却不落盘）。"
     },
     {
       "id": "A8",

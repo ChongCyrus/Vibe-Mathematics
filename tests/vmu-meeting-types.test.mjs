@@ -146,11 +146,12 @@ try {
   ok(unknown.known === false && unknown.hasProcedure === false && /legal:/.test(unknown.note),
     'an unknown type is unknown-by-name and lists the legal values (never a silent empty)', unknown.note)
   const gaps = proc.MEETING_PROCEDURE_GAPS
-  // 聚合缺口已闭合（`verdict-aggregation` 从 GAPS 里删除，因为它不再是缺口）；剩下的是人数下限那条。
+  // 聚合缺口已闭合（`verdict-aggregation` 从 GAPS 里删除，因为它不再是缺口）；人数下限那条也已闭合（`quorumOf`），
+  // 但条目保留并把 status 改为 implemented——删掉它会让「这条规则曾经是缺口」这段历史消失，也会让读者以为它从未被想过。
   ok(Array.isArray(gaps) && gaps.length === 1 && gaps[0].id === 'min-voters',
-    'exactly the ONE still-unimplemented rule is registered as a gap (the aggregation gap was closed, not hidden)', gaps && gaps.map((g) => g.id))
-  ok(gaps.every((g) => g.status === 'not-implemented' && typeof g.rule === 'string' && typeof g.owner === 'string'),
-    'each gap carries the rule text, its status and who must implement it', gaps.map((g) => g.id))
+    'the ONE registered gap is still the quorum floor (closed, not hidden)', gaps && gaps.map((g) => g.id))
+  ok(gaps.every((g) => g.status === 'implemented' && typeof g.rule === 'string' && typeof g.owner === 'string'),
+    'the registered gap now says implemented, and still carries its rule text and owner (a closed gap is recorded, not erased)', gaps.map((g) => g.id + ':' + g.status))
 
   // ── ③ THE KERNEL CARRIES TYPE + SUBJECT AND READS THEM BACK ────────────────────────────────────────────────
   console.log('=== 3. TYPE AND SUBJECT SURVIVE THE KERNEL AND COME BACK ON THREE READ FACES ===')

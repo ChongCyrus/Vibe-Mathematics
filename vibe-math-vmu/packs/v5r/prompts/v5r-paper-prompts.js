@@ -80,7 +80,7 @@ export const v5rPaperReviewSection = Object.freeze({
     '★ `deliverable` 的确切含义（这条决定论文能不能往下走）：',
     '· `deliverable: true` = 「这一部分现在就可以原样进入最终稿」；',
     '· `deliverable: false` = 「必须修改」（把要改什么写进 comments）；',
-    '· **只有全体参与成员都投 true**，论文才会进入定稿（awaiting-editor）；任何一个人 false，就回到写作再打磨一轮（上限 ' + PAPER_MAX_ROUNDS + ' 轮）。',
+    '· **只有全体参与成员都投 true**，论文才会进入定稿（awaiting-editor）；任何一个人 false，就回到写作再打磨一轮（上限 ' + PAPER_MAX_ROUNDS + ' 轮）；到上限仍未全体一致时，未处理的 false 作为**警告**列出、论文仍进定稿（`forcedAfterCap`）——那不是「全体可交付」，回执会写明。',
     '· **互审必须由别人做**（这条和上面那条合起来才算数）：审自己写的部分会被具名拒（`VMU_INVALID_ARGUMENT`，message 说「a paper part cannot be reviewed by its author」）；而且至少要**两位不同**的成员各自审了**别人的**部分并投 true，论文才算通过互审。单人论文（participants 只有一位）永远进不了 awaiting-editor，会被具名拒「一位参与者的论文无法通过互审」——修复只有两条：再邀请一位成员参与（start 的 participants 至少两位），或让另一位成员评审这一部分（review 的 `of` 指向别人的 part）。',
     '· **必须显式二选一**：含糊的「差不多可以」不算可交付；`deliverable` 必须是 true 或 false，缺省/字符串会被具名拒（"未表态不算可交付"）。',
     '',
@@ -102,7 +102,7 @@ export const v5rPaperFinalSection = Object.freeze({
   scope: Object.freeze({ phase: 'paper-final' }),
   text: [
     '【最终论文·定稿】',
-    '全体参与成员已在互审中表示「可交付」。请定稿代表做**最后一次**把关：核对合并稿与互审意见，确认没有编造、没有未标注的未决项、没有与表决记录矛盾之处，然后给出决定。',
+    '全体参与成员已在互审中表示“可交付”。请你作为定稿代表做**最后一次**把关：核对合并稿与互审意见，确认没有编造、没有未标注的未决项、没有与表决记录矛盾之处，然后给出决定。若已到互审轮次上限，未处理的 false 会作为警告列出——那种情况下定稿仍可进行，但回执会写明这是上限强制，不是「全体可交付」。',
     '',
     '谁可以拍板：',
     '· 本流程的**定稿席位就是院士（即主席席）**——运行时纸面装配里 `finalizerSlot: "chair"`；其他席位调用 `final` 会被具名拒（`VMU_NOT_PERMITTED`，回执指出你的席位）。',

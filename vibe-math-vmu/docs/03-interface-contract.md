@@ -860,6 +860,7 @@
 | `VMU_PACK_V5R_CORPUS_NOT_RUNTIME` | **捕获快照不得进运行时装配**（`v5rTurnSections` 等）⇒ 具名拒；实现于 `packs/v5r/prompts/v5r-core.js` 的 `assertRuntimeSafeSections` | 整合包·提示词 | ✅（**已实现** ✓；`packs/v5r/prompts/v5r-core.js` ✓） |
 | `VMU_PACK_V5R_P1_NEEDS_DEBATE` | v5r **p=1 缺定论来源**：把命题卡的布尔概率改成 1，却没有「辩论全体一致为 1」／`verified` 轨定论行／「Lean 通过＋描述符合性裁定」三者之一（实现于 `packs/v5r/verification-gates.js` 的 `p1Intent`）；★ **尚无生产调用方**（接线在 B1 第 3 步） | 记录·整合包 | ✅（返回 `{code,message,hint}`，hint 列出三种合法来源；★ 归属字段由接线层填） |
 | `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF` | v5r **辩论对象无已写完的证明**：`type=debate` 的会议 subject 解析到的命题卡没有「正式证明/证伪已写完」的承载（`proofRef` 空／`proofState≠complete`／无 `verified` 行／Lean 未通过），或文件引用不可读、为空（实现于 `packs/v5r/verification-gates.js` 的 `debateSubjectGate`）；★ **尚无生产调用方** | 会议·整合包 | ✅（拒绝文案逐一说明**三种 subject 形态**如何才算满足：卡 id／文件引用／一句话命题） |
+| `VMU_PACK_V5R_FORMAL_REQUIRED` | v5r **形式化开关 `vmu.math.formalVerify=require` 时裁定缺少形式化凭据**：`vibe_v5_verdict_final` 要求被裁定的命题卡带「已通过的 Lean 作业」或已登记的 `blocked` 决定，否则具名拒（实现于 `packs/v5r/tools.js#toolVerdictFinal`，策略读 `formalVerifyPolicyOf`）；message 点名缺 Lean 还是缺 blocked，hint 给 `vibe_v5_lean_run`→`vibe_v5_lean_job` 与 blocked 两条路 | 裁决·整合包 | ✅（返回 `{code,message,hint}`，hint 两条可执行路径） |
 | `VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED` | v5r **忠实性收口缺少可通过的 Lean 依据**：`vibe_v5_fidelity_conclude` 的 `fidelity:'conform'` 要求带一个**已通过**的 Lean 作业；缺 `lean_job`、作业 id 面不认识、或作业未通过（消息点名实收 `state`，并区分「面不认识该作业」与「作业没通过」）三处共用一个码（实现于 `packs/v5r/tools.js` 的 `toolFidelityConclude`）；★ **属"证据层"而非"声明层"**：模型自述"我核对了"不算依据 | 会议·整合包 | ✅（`tests/vmu-fidelity-conclude.test.mjs` 8 节；`tests/vmu-v5r-tools.test.mjs` 46 工具计数） |
 | `VMU_PACK_V5R_DEBATE_SUBJECT_UNPROVEN` | v5r **辩论对象「声明已写完」但无机器证据**：卡上写了 `proofRef`＋`proofState=complete`，却既无 Lean 通过也无 `verified` 轨定论行（实现于 `packs/v5r/verification-gates.js` 的 `debateSubjectGate` 证据层分支）；★ **两种缺失两个码**：本码＝「自述写了≠真的写完」，`_NO_PROOF`＝「连自述都没有」；★ **尚无生产调用方**（接线在 B1 第 3 步） | 会议·整合包 | ✅（拒绝文案点名 `proofRef`/`proofState` 的实收值并给两条合法路径：跑 Lean 且 passed／走完辩论在 `verified` 轨留下定论行） |
 | `VMU_PACK_V5R_VERIFIED_SINGLE_WRITER` | v5r **定论多写了**：`verified` 轨只能由 `promoteVerified` 写，其它入口（含未声明写入器的裸写）⇒ 具名拒（实现于 `packs/v5r/verification-gates.js` 的 `singleWriter`）；★ **尚无生产调用方** | 记录·整合包 | ✅（须点名**违规入口**与唯一写入器） |
@@ -1188,7 +1189,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **476** 个码，**逐行**给出状态 ✓：其中 **437** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **477** 个码，**逐行**给出状态 ✓：其中 **438** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1520,6 +1521,7 @@
 | `VMU_PACK_V5R_DEBATE_SUBJECT_UNPROVEN` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/verification-gates.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_FIDELITY_ASK_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/verification-gates.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V5R_FORMAL_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_P1_NEEDS_DEBATE` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/tools.js`、`vibe-math-vmu/packs/v5r/verification-gates.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_VERIFIED_NEEDS_JUDGE` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_VERIFIED_SINGLE_WRITER` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/verification-gates.js` | 代码里有该码字符串 ✓ |

@@ -3,7 +3,8 @@
 // The gap this closes was found in a clean-room run: a dead prompt module (`v5r-persona.js`) still carried
 // hard-coded vote bases and a 3-round ceiling, and nothing machine-checked that the prompts the runtime
 // actually renders still say what the ledger claims they say. The gate is only worth having if it fails on
-// planted defects, so its `--selftest` plants seven of them and requires all seven to be caught.
+// planted defects, so its `--selftest` plants them and requires every one to be caught (ROUND 135 added the
+// seat-face ACL probes P6 and the prompt/settings probes P7: twelve as of §229).
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -32,10 +33,10 @@ test('§1 the parity gate exists and passes on the real ledger', () => {
   assert.match(r.out, /RULE PARITY: PASS \(0 problem\(s\)\)/, r.out)
 })
 
-test('§2 the gate fails on planted defects (7/7 selftest)', () => {
+test('§2 the gate fails on planted defects (12/12 selftest)', () => {
   const r = run(['--selftest'])
   assert.equal(r.code, 0, r.out)
-  assert.match(r.out, /RULE PARITY SELFTEST: 7\/7 as expected/, r.out)
+  assert.match(r.out, /RULE PARITY SELFTEST: 12\/12 as expected/, r.out)
 })
 
 test('§3 dead prompt data and historical corpus are NOT counted as live teaching', () => {

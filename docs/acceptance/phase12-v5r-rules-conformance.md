@@ -10345,3 +10345,56 @@ vibe_vmu_turn { op:"step", member:"r-1", phase:"normal", why:"…请在你回合
 ### §228.7 无实质残余：仅剩 G7 一条判据待用户裁定
 
 余 1 行：G7「提示词与规则完全相符、自洽」。
+
+## §229 G7 独立审计 —— 五条矛盾、一条缺口，以及「保真基线不许被改写」
+
+G7 是台账最后一行判据（「提示词与规则完全相符、自洽」），也是唯一一条机制门证不了的判据：它说的是**两份文本之间**的关系（规则 63 行 ↔ 活教学），而两道机器门（`check-rule-parity` 查引用活性、`check-rules-coverage` 查每行有没有证据）都只能证「有引用」，证不了「两句话互相矛盾」。第八次跑真机之后的裁定是：**不改判据、不改口径，另派一名只读代理独立审计，零矛盾才记 DONE。**
+
+### §229.1 审计口径
+
+- 真源：`D:\wd\vibemath开发\宏观层面v5r运行规则.md`（63 行，sha256 `a5d9a6c1ff73…8e59`，即台账 `source` 记的 rev）。
+- 活教学（唯一依据）：`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js`、`v5r-blocks-b.js`、`vibe-math-vmu/packs/v5r/v5r-core.js`、`vibe-math-vmu/packs/v5r/seat-faces.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js`。
+- **不作依据**：`v5r-prompts.js`、`v5r-persona.js`、`v5r-paper-prompts.js` 里被标为 capture 的段落 —— 它们是被冻结的历史快照（`scripts/regen-all.mjs` 从捕获物重建、sha 钉住），改写它们等于篡改证据。
+- 只读代理不许改仓库、不许跑真机；结论落到 `D:/_tmp/g7-audit.md`（181 行，逐行给 `规则行 → 教学位置 → 机制位置 → 判定`）。
+
+### §229.2 审计结论：`G7 VERDICT: CONTRADICTIONS(5)`（另有 1 条缺口、1 条工具面文本失真）
+
+| # | 规则行 | 矛盾是什么 | 机制的真话 |
+|---|--------|-----------|-----------|
+| C1 | L45 / L14 | 辩论对象形态有**三份活文本三种规则**：`v5r-blocks-a.js:202`「卡或可读证明文件；一句话不行」、`seat-faces.js:421`「必须是已定稿的命题卡」、`tools.js:4160`/`meeting-procedures.js:52`「一句话命题也可以」 | `verification-gates.js#debateSubjectGate` 三种都放行，一句话命题回 `proofBasis:"unverifiable-statement"`、`provenance:"none"`、`proofContentChecked:false` |
+| C2 | L56 | 论文定稿：教学说「全体参与成员都投 true 才能定稿」，机制在**轮次上限后**以 `forcedAfterCap` 进定稿（≥2 位不同非作者 true 即可） | 上限强制是合法路径，但教学从未说它有例外 |
+| C3 | L18 | 脚本：`v5r-blocks-b.js:876/:913` 教并要求调用 `vibe_v5_script{op}`，而 `seat-faces.js:182-188` 三席全 deny，且 `seat-faces.js:506-511` 的 ruling 理由写「现行三席提示词一次也没教过它」——与文本事实相反 | `TOOL_SCOPES.vibe_v5_script==='office'`（`tests/audit-member-scope.test.mjs:65-73` 钉着） |
+| C4 | L63 | LaTeX 注：`v5r-blocks-a.js:3` 先命令写**不存在的键** `paperLatexCommand`，末尾才补真名 `vmu.paper.latexCommand`；且该注渲染给全体参与者，而 `vibe_v5_set` 只对院士席开放 | 键在 `settings/schema.js:1083`（who:'office'）；不存在的键会让调用者撞 `unknown setting:` |
+| C5 | L16 | 形式化开关：`v5r-blocks-b.js:864` 说 `formalVerify=require` 时「缺 Lean/blocked ⇒ 裁定不生效」，而该键只被 `kernel/lean.js` 读成 policy、被 `vibe_v5_fidelity_conclude` 回显，`vibe_v5_verdict_final` **零消费者** | 裁定路径从不问形式化，承诺形同虚设 |
+
+缺口（L14，不计入 5 条）：`blocks-a:202` 只说「已知命题卡」，没教「卡内须含**已写完**的正式证明/证伪（或已通过的 Lean 作业 / verified 定论行）」。工具面文本（不计入 5 条）：`meeting-procedures.js:122` 的结题骨架与 `:210-218` 的 min-voters gap 仍称人数下限「未实现」，而 `kernel/meetings.js:860-958#quorumOf` 早已实现（`min(3, 院士+研究员)`）——**回执在说机制还没写完，机制其实写完了**。
+
+### §229.3 五条修法（判据：教学对齐机制；机制对齐规则）
+
+- **C1 + 缺口**：改教学、**不收闸**。理由：r133 的 C7 行 live 正是 `"proofBasis":"unverifiable-statement"`，收紧闸要重跑真机改钉，等于用一次真机把已有裁决推翻；而教学本来就该教「三种合法形态各自的代价」。`blocks-a:202` 改为三种形态 + 「只有『证明尝试/草稿』的卡不能当对象」+ 一句话命题的披露字段；`seat-faces.js:421` 同步成同一口径。
+- **C2**：教学补**例外句**（上限强制进定稿、回执写明是上限强制），并把被冻结的捕获句**逐字保留**、把例外作为**另一句**追加。第一版直接改写原句，`vmu-prompt-type-coverage` 立刻红（`16 unexplained`：两句都在 corpus 里）——这条门守的是「captured baseline 不许被改写」，所以正解是「原句一字不动 + 补一行真话」。
+- **C3**：走**删除教学**路线，不动 ACL。`seat-faces` 的 ruling 理由本来就断言「三席提示词没教过它」，而 `blocks-b:876/:913` 恰恰教了；单开 ACL 会牵动 `audit-member-scope` 与三席提示词两处。改法是把脚本教学改成「机构归档的 `scripts` 轨（所办/控制面归档与读回）」并明说**临时脚本不能 ad-hoc 执行**（`VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS`）。
+- **C4**：`LATEX_ENGINE_NOTE` 只留真名 `vmu.paper.latexCommand`，并写明「由院士席用 `vibe_v5_set` 写；常驻研究员/临时工把路径发给院士席或报所办」；删掉末尾「补充（这里的真名）」重复块（一个键在一句文本里出现两个名字，本身就是矛盾源）。
+- **C5**：**给开关装上消费者**。`packs/v5r/tools.js` 的 `toolVerdictFinal` 在解析出 `propositionId` 之后读策略：`formalVerifyPolicyOf(kernel)`（新 helper：优先 `kernel.lean.policy()`，无 Lean 面时回落到**声明值** `kernel.settingOf('vmu.math.formalVerify')`——只有装了编译器才生效的开关不算开关），`requireFormal===true` 时要求该卡有「已通过的 Lean 作业」或「blocked 记录」，否则具名拒 `VMU_PACK_V5R_FORMAL_REQUIRED`，message 点名缺的是哪一半（`names no lean_job` / `lean_job "…" has not passed (state: …)`），hint 给两条出路（`vibe_v5_lean_run`→`vibe_v5_lean_job` 读到 `passed:true`；或记录规则自己允许的 blocked 决定）。
+- **工具面文本**：`meeting-procedures.js` 结题骨架第 3 步与 `MEETING_PROCEDURE_GAPS` 的 min-voters 改成 `status:'implemented'` 并点名 `quorumOf`；`tests/vmu-meeting-types.test.mjs` 相应改钉（**闭合的缺口要留档，不要删条目**）。
+
+### §229.4 新测试，与「写时校验过、写后就不见了」的 F-135a（已修）
+
+`tests/vmu-run135-formal-required.test.mjs` **21/0**：§0 零机制（无 pack 无裁定面）、§1 真名册/真会议/真命题卡、§2 声明键可写且内核 `settingOf` 读回 `require`、§3 `require` 下裁定被 `VMU_PACK_V5R_FORMAL_REQUIRED` **具名**拒且点名卡 id 与缺的 `lean_job`、hint 同时给 lean 路与 blocked 路、§4 设回 `off` 同一次裁定成功（闸不是恒拒）、§5 带无法核验作业号的卡同样被拒。
+
+写 §5 时发现 **F-135a**：`vibe_v5_record_proposition` 会校验调用方给的 `lean_job`，但**不把该指针落盘**在持久行上，于是后来的读者（这道闸、以及任何审计）无法从卡上读到「它声称的 Lean 证据是哪一个作业」。本轮的诚实处理是让拒绝如实说 `names no lean_job at all`，并把 F-135a 记入下一轮（写面要保留被校验过的事实，否则「校验过」等于没校验）；测试里两条断言互相咬住，任何一半单独修复都会红。
+
+**F-135a 已修（同日）**：`gatedCardHandler` 在写卡片体时把 `lean_job`/`lean_conformance` 一并写进 `payload`（`leanJob`/`leanConformance`），`cardProjectionOf` 两处分支都读回 `leanJob`（行字段优先、其次卡体），`vibe_v5_verdict_final` 的 C5 闸改用「行字段或卡体」双读 —— 于是 `vmu.math.formalVerify:"require"` 的拒绝能点名作者写过的作业号，而不是谎称「一个都没写」。`tests/vmu-run135-formal-required.test.mjs` 增 §6（卡体里留下 `lean-777`、裁定回执点名它、且不再出现 `names no lean_job at all`）⇒ 该套件 27/0。
+
+### §229.5 门禁与新增保护
+
+- `tests/vmu-prompt-type-coverage.test.mjs` 修好后 **15/0**（原句逐字保留 + 补行）。
+- `scripts/check-rule-parity.mjs` 增两门（见 §229.6）：P6「席位教学只许点名该席位真拿得到的工具」`SEAT_FACE_BULLET_NOT_ALLOWED`、P7「提示词点名的设置键必须在 `settings/schema.js` 声明」`PROMPT_NAMES_UNDECLARED_SETTING`——这正是 C3/C4 两类的机器化。
+- `node scripts/regen-all.mjs --write` 17/17 → `--check` 17/17；`node scripts/preflight.mjs` PASS；`node scripts/update-doc-counts.mjs --write` 后 `JOBS 686 / suites 578 / probes 108`。
+- 相邻套件：`vmu-v5r-verdict-final` 64/0、`vmu-verified-gates` 103/0、`vmu-run117-a8-probes` 20/0、`vmu-mathjobs-exclusive` 5/0、`vmu-prompt-clean` 8/0、`vmu-ledger-teaching-pins` 58/0、`vmu-meeting-types`（min-voters 改钉后）绿。
+
+### §229.6 G7 的处置
+
+审计给出五条真实矛盾，所以这一轮**G7 仍记 PARTIAL**。台账 `next` 改为：修完 C1–C5 后**再派一次只读审计**，零矛盾才记 DONE——「审计一次通过」不是判据，「审计把问题挑出来、修完再审仍然干净」才是。台账现在是 **85 DONE / 1 PARTIAL（G7）**。
+
+### §229.7 无实质残余：否（G7 待再审）

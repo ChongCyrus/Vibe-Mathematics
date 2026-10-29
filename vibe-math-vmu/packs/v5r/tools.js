@@ -1195,6 +1195,7 @@ function cardProjectionOf(records, id) {
     // registration from a parser problem (and will re-register a card that was already registered).
     const partial = (parsed && parsed.fields) || {}
     return { id: has(id) ? str(id) : null, p: null,
+      leanJob: partial.leanJob === undefined ? (row.lean_job === undefined || row.lean_job === null ? '' : str(row.lean_job)) : str(partial.leanJob),
       proofRef: partial.proofRef === undefined ? '' : str(partial.proofRef),
       proofState: partial.proofState === undefined ? '' : str(partial.proofState),
       declaredYet: partial.proofRef !== undefined || partial.proofState !== undefined,
@@ -1205,6 +1206,7 @@ function cardProjectionOf(records, id) {
   }
   const fields = parsed.fields || {}
   return { id: row.id, p: parsed.card.p,
+    leanJob: fields.leanJob === undefined ? (row.lean_job === undefined || row.lean_job === null ? '' : str(row.lean_job)) : str(fields.leanJob),
     proofRef: fields.proofRef === undefined ? '' : str(fields.proofRef),
     proofState: fields.proofState === undefined ? '' : str(fields.proofState),
     bodyTruncated: false }
@@ -1275,6 +1277,21 @@ function leanPolicyOf(kernel) {
   const face = kernel && kernel.lean
   if (!face || typeof face.policy !== 'function') return null
   try { const p = face.policy(); return p && typeof p === 'object' ? p : null } catch (e) { return null }
+}
+/** ★★ G7 AUDIT C5 — the DECLARED switch, readable on a kernel that has no Lean face. `leanPolicyOf` answers "what does
+ *  the assembled Lean face believe"; a deployment with no spawn seam has no such face, yet the setting is still declared
+ *  and still means what it says. The ruling gate prefers the face (one owner of the computed policy) and falls back to
+ *  the declaration, so `require` is honoured whether or not this deployment can run Lean — a switch that only works when
+ *  a compiler happens to be installed is not a switch. */
+function formalVerifyPolicyOf(kernel) {
+  const face = leanPolicyOf(kernel)
+  if (face && face.formalVerify !== undefined) return face
+  try {
+    const raw = typeof kernel.settingOf === 'function' ? kernel.settingOf('vmu.math.formalVerify') : undefined
+    const v = raw === undefined || raw === null ? '' : String(raw).trim().toLowerCase()
+    if (!v) return null
+    return { formalVerify: v, requireFormal: v === 'require', encourageFormal: v === 'encourage' }
+  } catch (e) { return null }
 }
 /** The fidelity registry's withdrawal predicate in the shape the ④ gate wants (a function), or null when unpublished.
  *  ★ B8：内核返回的是**标记对象**（`{withdrawn:true,…}`）而不是布尔 `true`，所以两种形状都认。 */
@@ -1504,6 +1521,11 @@ function gatedCardHandler(toolName) {
           'pass proof_state:"complete" only if the proof/refutation is finished — it is a self-report, and a debate still needs machine evidence (Lean passed or a verified row)')
       }
       const payload = args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload) ? Object.assign({}, args.payload) : {}
+      // ★★ G7 AUDIT (F-135a): the write VALIDATED `lean_job` and then dropped it — the later reader (and the
+      // formalisation gate of `vibe_v5_verdict_final`) could only say "names no lean_job at all" about a card whose
+      // author had named one. A field that decided the write's legality must survive the write.
+      if (has(args.lean_job)) payload.leanJob = str(args.lean_job)
+      if (has(args.lean_conformance)) payload.leanConformance = str(args.lean_conformance)
       if (has(args.proof_ref)) payload.proofRef = str(args.proof_ref)
       if (state) payload.proofState = state
       else if (has(args.proof_ref) && !has(payload.proofState)) payload.proofState = 'draft'
@@ -1741,6 +1763,33 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
       'pass proposition_id:"<records id of the proposition card>" — verdicts of different propositions are never mixed')
   }
   const propositionId = str(args.proposition_id)
+  // ★★ G7 AUDIT C5 (rule L16) — THE FORMALISATION SWITCH GETS ITS CONSUMER. `vmu.math.formalVerify:"require"` used to be
+  // read only by the Lean face (`kernel/lean.js` policy) and echoed back by `vibe_v5_fidelity_conclude`, while the
+  // teaching promised 「缺 Lean 结果或 blocked 记录则裁定不生效」. A promise the ruling path never keeps is worse than no
+  // promise: the chair could sign a final ruling on a proposition whose Lean run had never passed, and the receipt looked
+  // identical to a formalised one. The ruling now refuses BY NAME, and the refusal names which of the two evidences the
+  // card lacks — a "blocked" decision is the rule's own escape hatch for a claim that cannot be formalised at all.
+  const formalPolicy = formalVerifyPolicyOf(kernel)
+  if (formalPolicy && formalPolicy.requireFormal === true) {
+    const cardRow = rowOrNull(kernel && kernel.records, propositionId) || null
+    const proj = cardProjectionOf(kernel && kernel.records, propositionId) || null
+    // F-135a: the job id may live on the row column OR in the card body the write persisted — both are the author's.
+    const leanJobId = cardRow && cardRow.lean_job !== undefined && cardRow.lean_job !== null ? str(cardRow.lean_job)
+      : (proj && proj.leanJob ? str(proj.leanJob) : '')
+    const leanVerdict = leanJobId ? leanPassedOf(kernel, leanJobId) : null
+    const leanOk = !!(leanVerdict && leanVerdict.passed === true)
+    const formalDecision = proj && proj.formal && proj.formal.decision ? str(proj.formal.decision) : ''
+    if (!leanOk && formalDecision !== 'blocked') {
+      throw refuse('VMU_PACK_V5R_FORMAL_REQUIRED',
+        'this institute requires formalisation (vmu.math.formalVerify:"require") and ' + propositionId
+          + ' has neither a PASSED Lean run nor a recorded "blocked" decision'
+          + (leanJobId
+            ? ' — its lean_job "' + leanJobId + '" has not passed'
+              + (leanVerdict ? ' (state: ' + str(leanVerdict && leanVerdict.state) + ')' : ' (this deployment exposes no Lean face, so no job can be read)')
+            : ' — it names no lean_job at all'),
+        'run vibe_v5_lean_run on the card\'s file, wait for vibe_v5_lean_job to read passed:true, then rule; or, when the claim cannot be formalised at all, record the "blocked" decision the rule allows so the ruling can say why. The office sets vmu.math.formalVerify (off/encourage/require)')
+    }
+  }
   // ★★★ TASK-12 / RUN 31 — THE SUBMISSIONS ARE COLLECTED HERE, AND THE CHAIR NO LONGER HAS TO TYPE THEM.
   // Before this, `verdicts` was REQUIRED, so the only way to produce a ruling was for the chair to write every
   // member's number itself — and `coverage.complete:true` then measured the roster, not a submission (run 31: the

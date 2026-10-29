@@ -517,7 +517,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '★ 用法：这一步【不再】靠回执字段提交（`paper_review` 已不被解析器接受）。请调用工具：',
         '    vibe_v5_paper { action: "review", target: "<论文 target>", member: "{{ member }}",',
         '                    deliverable: true, comments: "具体意见" }',
-        '★ deliverable 必须是 true（可交付）或 false（不可交付，需修改）。只有**全体参与成员**都投 true，定稿代表才能定稿。',
+        '★ deliverable 必须是 true（可交付）或 false（不可交付，需修改）。只有**全体参与成员**都投 true，定稿代表才能定稿。**例外**：上限后仍未全体一致时，未处理的 false 作为**警告**列出、仍可定稿。',
       ].join('\n'),
     },
   },
@@ -547,7 +547,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       'paper-final': [
         ...LATEX_ENGINE_NOTE,
         '【最终论文·定稿（{{ roleLabel }}）—— {{ member }}】',
-        '全体参与成员已在互审中表示“可交付”。请你作为定稿代表做**最后一次**把关：',
+        '全体参与成员已在互审中表示“可交付”。请你作为定稿代表做**最后一次**把关：核对合并稿与互审意见，然后给出决定。',
         '核对合并稿与互审意见，确认没有编造、没有未标注的未决项、没有与表决记录矛盾之处，然后给出决定。',
         '',
         '------------ 合并稿（各成员部分）------------',
@@ -873,7 +873,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '【轨迹与状态板】轨迹五种（`vmu.records.tracks`）：`progress`（默认）｜`routes`（**尝试过的路线与进展**）｜`obstacles`（**阻塞与原因**）｜`rejected`（**已证伪的路**）｜`state`（状态板面板）。写用 `vibe_v5_record_progress {member,track,content,progress?,obstacles?,next?,help?}`；`track:"state"` 时 progress/obstacles/next/help **四项必填**，缺一具名拒。',
-        '· 五类各有一等机制：`routes`/`obstacles` 是上面两条轨；Lean 代码与编译 = `vibe_v5_lean_run`→`lean_job`→`lean_archive`，库存 `lean_lib`（编译过≠命题真）；论文那段 = `vibe_v5_paper { action:"part" }`；脚本 = `vibe_v5_script { op }`；自反馈 = `vibe_v5_feedback`（feedback 轨）。',
+        '· 五类各有一等机制：`routes`/`obstacles` 是上面两条轨；Lean 代码与编译 = `vibe_v5_lean_run`→`lean_job`→`lean_archive`，库存 `lean_lib`（编译过≠命题真）；论文那段 = `vibe_v5_paper { action:"part" }`；脚本 = `scripts` 轨（所办归档，席位不直接调用）；自反馈 = `vibe_v5_feedback`（feedback 轨）。',
         '· 方法库卡：`vibe_v5_record_method`（content/value/motive/p 必填）。',
         '  · `[状态板]` 四行是**派生读数**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。这不是 state 面板；state 自己写：**成员席位只能改自己的**，**所办/人类代笔**可替人写并回执 `panelOwner` 说明替谁；**不在名册**的 id 具名拒（先 `vibe_v5_hire`）。',
         '  · 读别人的板：`vibe_v5_read_library {member,track}`；进展写 `progress`，走不通的路写 `rejected`（别把证伪当进展）。',
@@ -910,7 +910,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【脚本归档】脚本要留档，不要每轮现编现跑：`vibe_v5_script { op: "archive", name, text }` 把整段文本按内核指纹存成 `scripts` 轨的卡；`op: "read"` 、`op: "list"` 列表读回。临时脚本**不能** ad-hoc 执行（具名拒）；复算＝重跑归档文本比指纹，不是相信备注。',
+        '【脚本归档】脚本要留档，不要每轮现编现跑：留档由所办/控制面按 `scripts` 轨归档并按指纹读回（席位提示词不点名脚本面——本面三个席位的 ACL 都不开放它）；临时脚本**不能** ad-hoc 执行（具名拒 `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS`）；复算＝重跑归档文本比指纹，不是相信备注。',
       ].join('\n'),
     },
   }),

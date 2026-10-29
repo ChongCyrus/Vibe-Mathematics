@@ -120,7 +120,7 @@ console.log('=== 1. PER-TYPE COVERAGE (the number the whole-corpus ratio cannot 
 // answers "did we transcribe this".
 const looksLikeData = (l) => /[a-z]{1,8}-\d/.test(l) || /^[\[▸]/.test(l) || /^【/.test(l) || /p-[a-z]/.test(l) || /:\s*"/.test(l) || /^陈述：/.test(l) || /^对象：/.test(l) || /^类型：/.test(l)
 
-// ★ EIGHTH STRUCTURAL CLASS (2026-10-28, THE LEDGER ROUND) — FIVE CAPTURED LINES WERE CORRECTED, NOT LOST. The
+// ★ EIGHTH STRUCTURAL CLASS (2026-10-28, THE LEDGER ROUND) — SIX CAPTURED LINES WERE CORRECTED, NOT LOST. The
 // kernel contradicts each of them by NAME, so the live teaching now says the true thing and these captures can never
 // match VERBATIM again. Every reason below is a code fact rather than an opinion, and the count is asserted so an
 // exclusion cannot outlive the correction it excuses:
@@ -135,6 +135,10 @@ const looksLikeData = (l) => /[a-z]{1,8}-\d/.test(l) || /^[\[▸]/.test(l) || /^
 //   5. 「议程：…（类型：sync）」. `sync` is a MOTION KIND (packs/v5r/tools.js kind default "sync", KNOWN
 //      ["sync","division","verify-request","solve-vote"]), not one of the six meeting types in
 //      packs/v5r/meeting-procedures.js. The live agenda now says `ordinary`.
+//   6. the LaTeX-engine note's 「② 找到绝对路径后写入 paperLatexCommand 并重新检测」. `paperLatexCommand` is not
+//      a declared setting: settings/schema.js declares `vmu.paper.latexCommand` (who:'office'), and the name in the
+//      capture has zero hits in settings/kernel/kit. A teaching sentence that names a key the kernel never reads is
+//      a dead end (the G7 audit, C4): the live text now writes the real key AND says the setter is chair-only.
 // Excluding these from the per-type prose figure is the rule the DECLARED divergences already follow in
 // tests/vmu-ab-v5r-verification.test.mjs: a corrected capture measures POLICY, not transcription, and folding it into
 // the ratio would reward keeping the defect.
@@ -143,7 +147,8 @@ const isCorrectedTeachingLedger = (l) =>
   /^（流程：\*\*先轮流发言\*\*/.test(l) ||
   /^只有当\*\*全体有表决权者\*\*都一致认为是真时/.test(l) ||
   /^input：发言；meeting_hand：是否举手/.test(l) ||
-  /^议程：分工与下一步（类型：sync）/.test(l)
+  /^议程：分工与下一步（类型：sync）/.test(l) ||
+  /^检测不到 LaTeX 引擎时/.test(l)
 let correctedLedgerLines = 0
 const perType = new Map()
 for (const p of PROMPTS) {
@@ -311,7 +316,7 @@ console.log('=== 5. EVERY REMAINING GAP IS STRUCTURAL, and this says which ===')
   const uniqueLeft = [...new Set(left.map((x) => x.line))]
   const uniqueUnexplained = [...new Set(unexplained.map((x) => x.line))]
   ok(unexplained.length === 0,
-    "EVERY REMAINING GAP IS STRUCTURAL: of " + left.length + " unreproduced occurrences, which are " + uniqueLeft.length + " DISTINCT lines, every one is either the compact catalogues OTHER wording (the corpus spans a version change of the original, so printing both would print a line the original did not) a line addressed to a member or reviewer this scenario did not name (one assembly names one member), a line that carried a CAPTURED ABSOLUTE PATH and was made relative on purpose (round 94: freezing a recorded path into a live prompt is what the runtime-safety guard refuses), or the DECLARED paper-protocol replacement (JSON receipt fields → vibe_v5_paper tool calls), or one of the FIVE CAPTURED LINES CORRECTED IN THE LEDGER ROUND because the kernel refuses their mechanism by name (meeting_hand/meeting_invite in a receipt; propose_meeting taught as a tool; sync taught as a meeting type; closure taught without its quorum). No line is missing for want of transcription",
+    "EVERY REMAINING GAP IS STRUCTURAL: of " + left.length + " unreproduced occurrences, which are " + uniqueLeft.length + " DISTINCT lines, every one is either the compact catalogues OTHER wording (the corpus spans a version change of the original, so printing both would print a line the original did not) a line addressed to a member or reviewer this scenario did not name (one assembly names one member), a line that carried a CAPTURED ABSOLUTE PATH and was made relative on purpose (round 94: freezing a recorded path into a live prompt is what the runtime-safety guard refuses), or the DECLARED paper-protocol replacement (JSON receipt fields → vibe_v5_paper tool calls), or one of the SIX CAPTURED LINES CORRECTED IN THE LEDGER ROUND because the kernel refuses their mechanism by name (meeting_hand/meeting_invite in a receipt; propose_meeting taught as a tool; sync taught as a meeting type; closure taught without its quorum; a setting key the schema never declares). No line is missing for want of transcription",
     { occurrences: left.length, distinctLines: uniqueLeft.length, firstLines: uniqueLeft.slice(0, 3).map((l) => l.slice(0, 60)), unexplainedDistinct: uniqueUnexplained.length, unexplained: uniqueUnexplained.slice(0, 6).map((l) => l.slice(0, 120)) })
 }
 console.log('=== 6. THE PER-MEMBER STARTING DIRECTIONS ARE SELECTED BY MEMBER ===')
