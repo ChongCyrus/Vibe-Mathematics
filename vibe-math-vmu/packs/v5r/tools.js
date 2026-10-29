@@ -1563,6 +1563,16 @@ function gatedCardHandler(toolName) {
       // ⇒ a text proof could never become a debate object. The registration is the written proof the author points at;
       // Lean stays the STRONGER evidence (machine-checked) and p=1 still needs the sanctioned sources below.
       const declaredProofRef = has(args.proof_ref) ? str(args.proof_ref).trim() : ''
+      // ★★★ G7 AUDIT #8 (G4): the gate used to accept a FAILED `lean_job` beside a conformance word: `leanRegistered`
+      // was non-null (so the "no job" branch was skipped) and the conformance word satisfied the other branch — a card
+      // could be locked as `complete` on evidence the framework itself had measured as not passed. A conclusion the
+      // kernel measured as failed is not evidence of completeness, so it is refused by name with the job's state.
+      if (leanRegistered && leanPassed !== true) {
+        throw refuse('VMU_INVALID_ARGUMENT',
+          'lean_job "' + String(leanRegistered.jobId || '') + '" did not pass (state: ' + String(leanRegistered.state || 'unknown') + '), so it cannot support proof_state "complete"'
+          + (cardId === null ? '' : ' (card ' + cardId + ')'),
+          'settle that job until it reports passed:true (`vibe_v5_lean_job { jobId }`), or point the card at the written proof with `proof_ref`, or write the card with proof_state:"draft"')
+      }
       if (!leanPassed && conformanceWord !== '' && !leanRegistered) {
         throw refuse('VMU_INVALID_ARGUMENT',
           'lean_conformance "' + conformanceWord + '" is a claim, not evidence: the same write names no `lean_job` the kernel could read as PASSED'
@@ -2050,6 +2060,11 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
       typed: attribution.filter((a) => a.source === 'chair-typed').map((a) => a.member),
       typedCount: attribution.filter((a) => a.source === 'chair-typed').length,
       outsideDebate: filed.rows.filter((r) => !debated.members.includes(r.member)).map((r) => ({ member: r.member, verdict: r.verdict, id: r.id })),
+      // ★★★ LIVE RUN 139 (F-139a): the electorate is now derived from the seat table, so the members the meeting
+      // NAMED but who cannot file (the chair presides; a temp seat's `vibe_v5_verdict` is closed to it) must be
+      // NAMED here too — asked + excluded reconciles against the roster instead of quietly shrinking it.
+      excluded: debated.excluded || [],
+      excludedMeans: 'the members this meeting named who are NOT in the electorate above: the chair PRESIDES (it signs the ask instead of answering it), and a seat whose ruling face is closed cannot file a ruling at all (a temp seat: `vibe_v5_verdict` is closed to it) — so `debated` + `excluded` reconciles against the roster, and a missing member in `missing` is always somebody who COULD have filed',
       missing,
       missingMeans: missing.length === 0
         ? 'every member the debate recorded is in this tally'
@@ -2089,6 +2104,24 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
  * meeting, not a parameter: deriving it here keeps one authority (a caller can still widen it explicitly with
  * members:[…], and the receipt records which of the two was used).
  */
+// ★★★ LIVE RUN 139 (F-139a): a seat that cannot FILE a ruling is not a debater — the temp seats sit on the
+// meeting roster, and the completeness gate then demanded a submission from a seat whose `vibe_v5_verdict`
+// face is closed to it: the chair could only escape by `partial:true`, which turned the rule's normal path
+// into an exception. The population is derived from the DECLARED seat table (`seatDecision`), never guessed.
+function seatOfMemberId(kernel, memberId) {
+  const id = String(memberId || '')
+  if (id === '') return { seat: null, known: false, why: 'the member id is empty' }
+  let rows = []
+  try {
+    const m = kernel && kernel.members
+    rows = (m && typeof m.roster === 'function') ? (m.roster() || []) : []
+  } catch { rows = [] }
+  for (const row of rows) {
+    if (row && String(row.id) === id) return { seat: String(row.slot || ''), known: true, why: null }
+  }
+  return { seat: null, known: false, why: 'the roster publishes no seat for ' + id }
+}
+
 function debatedMembersOf(kernel, meeting) {
   const face = kernel && kernel.meetings
   if (!face) {
@@ -2131,6 +2164,11 @@ function debatedMembersOf(kernel, meeting) {
     const excluded = []
     for (const m of named) {
       if (m === chair) { excluded.push({ member: m, why: 'presides' }); continue }
+      const at = seatOfMemberId(kernel, m)
+      if (at.known && at.seat !== '' && !seatDecisionOf(at.seat, 'vibe_v5_verdict').allowed) {
+        excluded.push({ member: m, seat: at.seat, why: 'seat "' + at.seat + '" cannot file a ruling (`vibe_v5_verdict` is closed to it), so it is not part of the electorate' })
+        continue
+      }
       members.push(m)
     }
     const offRoster = named.length - roster.length
@@ -2154,6 +2192,11 @@ function debatedMembersOf(kernel, meeting) {
     const excluded = []
     for (const m of named) {
       if (m === chair) { excluded.push({ member: m, why: 'presides' }); continue }
+      const at = seatOfMemberId(kernel, m)
+      if (at.known && at.seat !== '' && !seatDecisionOf(at.seat, 'vibe_v5_verdict').allowed) {
+        excluded.push({ member: m, seat: at.seat, why: 'seat "' + at.seat + '" cannot file a ruling (`vibe_v5_verdict` is closed to it), so it is not part of the electorate' })
+        continue
+      }
       members.push(m)
     }
     return { readable: true, members, excluded, accountedCount: named.length, source: 'spokeBy', chair,
@@ -4304,7 +4347,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_verified_promote',
-    description: '★ PROMOTE A PROPOSITION CARD TO THE VERIFIED TRACK — the ONLY writer of that track, and the place where a settled p is carried together with its JUDGE. card REQUIRED (a propositions/proposition card whose p is exactly 1 — this track carries what is PROVEN TRUE; a p=0 refutation is refused by name and belongs to the rejected track); warrant_kind REQUIRED, and it must be the kind the EVIDENCE actually shows: "debate-unanimous" + `debate_ruling:{mode:"unanimous",value:1,subject:<card id>}` (+ `warrant:"<ruling id>"`), "lean-conformance" + `lean_job` (+ `lean_conformance:"conform"`), or "literature" + `literature_ref:"<author, source, theorem/page>"` (the citation then becomes the row\'s warrant id). Passing a warrant with NO evidence is refused by name by the SAME p=1 gate a card write uses (`VMU_PACK_V5R_P1_NEEDS_DEBATE`), and a kind that disagrees with the evidence is refused by name too. Other refusals: a card that is not a proposition card, a truncated card, a p in (0,1) ("a preference is not a conclusion"), a withdrawn proof. The card keeps its own p; the verified row records the warrant, so "why is this settled" is answerable instead of asserted.',
+    description: '★ PROMOTE A PROPOSITION CARD TO THE VERIFIED TRACK — the ONLY writer of that track, and the place where a settled p is carried together with its JUDGE. card REQUIRED (a propositions/proposition card whose p is exactly 1 — this track carries what is PROVEN TRUE; a p=0 refutation is refused by name and belongs to the rejected track); warrant_kind REQUIRED, and it must be the kind the EVIDENCE actually shows: "debate-unanimous" + `debate_ruling:{mode:"unanimous",value:1,subject:<card id>}` (+ `warrant:"<ruling id>"`), "lean-conformance" + `lean_job` + `lean_conformance:"conform"` (BOTH required together: the job must report passed:true AND the conformance word must be "conform"), or "literature" + `literature_ref:"<author, source, theorem/page>"` (the citation then becomes the row\'s warrant id). Passing a warrant with NO evidence is refused by name by the SAME p=1 gate a card write uses (`VMU_PACK_V5R_P1_NEEDS_DEBATE`), and a kind that disagrees with the evidence is refused by name too. Other refusals: a card that is not a proposition card, a truncated card, a p in (0,1) ("a preference is not a conclusion"), a withdrawn proof. The card keeps its own p; the verified row records the warrant, so "why is this settled" is answerable instead of asserted.',
     parameters: { card: { type: 'string', required: true }, warrant: { type: 'string' }, warrant_kind: { type: 'string', required: true }, literature_ref: { type: 'string' }, debate_ruling: { type: 'object' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, member: { type: 'string' } },
     handler: toolVerifiedPromote,
   },

@@ -55,7 +55,7 @@ export const DEBATE_PROCEDURE = Object.freeze({
       '各成员各自独立表态：给出该命题当前的布尔概率([0,1])、理由、以及证明/证伪进展。先不互相反驳、不互相引用（「独立」是**尽力而为的约定**，不是内核保证的隔离 —— 见 notes）。',
       ['vibe_vmu_meeting { action: "speak" }', 'vibe_v5_say']),
     step(2, 'debate', 'vibe_vmu_meeting',
-      '展开辩论：轮流发言 / 举手后发言 / 主席邀请发言。★ 轮数由院士自行决定；本部署只给**动议次数**设了上限 `vmu.meetings.verdictMaxRounds`（默认 3，每次辩论一条动议）——到限后新增动议会被具名拒 `VMU_RESOURCE_BUDGET`，要更多轮就改这个设置或由主席显式延长。',
+      '展开辩论：轮流发言 / 举手后发言 / 主席邀请发言。★ 轮数由院士自行决定；本部署只给**动议次数**设了上限 `vmu.meetings.verdictMaxRounds`（默认 3，每次辩论一条动议）——到限后新增动议会被具名拒 `VMU_RESOURCE_BUDGET`；额度只由这个设置决定——`extend` 延长的是发言、`extendlimit` 延长的是墙钟，两者都不增加动议额度，关会再开一场是另一场会议（额度从头算）。',
       ['vibe_vmu_meeting { action: "hand" }', 'vibe_vmu_meeting { action: "invite" }', 'vibe_vmu_meeting { action: "speak" }']),
     step(3, 'final-verdicts', 'vibe_v5_verdict',
       '会议结束前，每位参加辩论的成员用 `vibe_v5_verdict` 交最终裁决：「布尔概率([0,1])，理由」——传 `meeting` + `proposition_id`（**不要传 `target`**：`target` 只认活票箱的 id，命题卡 id 会被具名拒）、`member` 填自己；主席可以用 `vibe_v5_verdict_ask` 通知还没交的人。'

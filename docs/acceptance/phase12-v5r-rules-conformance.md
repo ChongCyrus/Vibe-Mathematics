@@ -10804,3 +10804,50 @@ C1(6) 的机械对账（description 点名的卡参数必须在该面 `parameter
 提示词）。三条都记在审计报告 `D:/_tmp/g7a7/audit7.md` 的 GAP 表里，进台账 note，不作为 G7 的阻塞条件。
 
 §236.7 无实质残余：否 —— G7 仍为 PARTIAL，按用户裁定「修完再派一次只读审计、结论零矛盾才 DONE」，第八次审计已派出。
+
+---
+
+## §237 G7 第八次独立审计 — 两条「同一读者被告知两件互斥的事」
+
+§237.1 口径与读数。审计基线 HEAD `17492bb2`；63 行逐行表 + 矛盾详表 + GAP 表 + **26 条既有结论复核表**（§229–§236 的全部
+判决），报告在 `D:/_tmp/g7a8/audit8.md`（25,754 B）。首行判定 `G7 VERDICT: CONTRADICTIONS(2)`。26 条既有结论中 **24 条修净**，
+残留两条正是本轮新报的 C1/C2（另有 §236 C3 的措辞缺口降为 GAP G4/G5）。审计期间工作树被并发写入（F-139a 的
+`seatOfMemberId`/`debatedMembersOf` 过滤 + 新测试），报告如实记录并按 HEAD 取行号。
+
+§237.2 两条矛盾与修法。
+
+| # | 同一位读者读到的两句 | 机制事实 | 修法 |
+|---|---|---|---|
+| C1 | `meeting-procedures.js:58`：「到限后新增动议会被具名拒 `VMU_RESOURCE_BUDGET`，要更多轮就改这个设置**或由主席显式延长**」 | `motions` 单调（`kernel/meetings.js:1677`，无删除）；`extend` 只延长发言、`extendlimit` 只动墙钟（`:2218-2248`）、`reopen` 只作用于票箱（`tools/meeting.js:827/853`）；内核自己的 hint 只给「改设置 / 关会重开」——「延长」换不到更多动议 | 末句改成「额度只由这个设置决定——`extend` 延长的是发言、`extendlimit` 延长的是墙钟，两者都不增加动议额度，关会再开一场是另一场会议（额度从头算）」 |
+| C2 | `v5r-blocks-b.js:700` 受邀帧：「席位不参会（`attend` 被具名拒），会议内发言不可达——意见走群聊 `vibe_v5_say`」；同一轮**恒注入**的 `v5r-meeting-ask`：「请就议程发表你的意见」「想发言就举手（`hand`）」「填 `input` 即视为交付本次发言」 | `input` → `FIELD_OWNERS.input` → `meetings.speak()` 的第一闸要求 `m.present`（`kernel/meetings.js:1457`），而 temp 席 `attend` 被 `attendDeniedSeats:["temp"]` 拒；`meeting-ask` 无选择器（`prompt-switches.js` 只切 invited/others/first 三态，ask 恒开）⇒ 两条交付对 temp 读者都必然具名拒 | ask 块补一条**席位条件句**：「★ 席位不参会（临时工：`attend` 被拒）时 `input`/`hand` 都会被具名拒——意见走群聊 `vibe_v5_say`，不计票不阻塞」；帧不动（它已用 ★ 否定「受邀发言」并改道可达通道） |
+
+§237.3 一条机制修法（GAP G4 转成真缺陷并修掉）。第八次审计把它记成 GAP：「`proof_state:"complete"` 的闸接受**失败**的
+`lean_job` + 任意 `lean_conformance` 词并锁卡，与三处 description 承诺的『a settled **PASSED** run』不符」。逐条核对
+`packs/v5r/tools.js` 的闸：`leanRegistered` 非空（命名了作业）就跳过「没有 Lean 证据」那一支，`conformanceWord !== ''`
+又满足另一支 ⇒ **被判定没过**的作业 + 一个声明词，就能把卡锁成 complete。这已经超出措辞缺口：框架自己量到「没通过」的
+结论被当成通过的证据。修法是新增一支具名拒（`VMU_INVALID_ARGUMENT`，message 带作业号与真实状态，hint 给「把作业跑到
+passed / 用 `proof_ref` / 退回 `draft`」三条出路）；查不到的作业仍走「没有可读证据」那条路（不谎称「没通过」）。
+新套件 `tests/vmu-run140-complete-needs-passed.test.mjs` **9/0**（§0 无 Lean 面部署不误伤、§1 失败作业被拒且点名状态、
+§2 同一作业改为 passed 则写成功、§3 查不到的作业按「无证据」拒）。
+
+§237.4 GAP 复核（不计入矛盾数）。G1 席位无脚本面（旧账）；G2 辩论会无人数闸（旧账）；G3 生成语料旧键（不进活提示词）；
+**G6 本轮复核为「不可复现」**：`v5r-blocks-b.js:817` 的 `secret`/`allow_abstain` 教学句在 HEAD 与工作树里都在（「可以传，
+但内核没有单场规则……回执 `unapplied` 会逐条说明」），`vibe_v5_poll_open` 的 description 也点名 `unapplied`——审计
+报告按 §235 的措辞比对判为「修法消失」，实际是那句话换了位置没换意思；G7 `meeting-ask` 无选择器（C2 的机制成因，改为
+条件句后读者不再被告知不可达路径，选择器仍记债）；G8 = F-139a（工作树已修，见 §237.5）。
+
+§237.5 同轮的机制缺陷 F-139a（r139 真机发现）。回归真机 build `17492bb2`（clone `slvp139`，654 s，25 calls，0 RED）里，
+临时工 t-1 在辩论名册上 ⇒ `vibe_v5_verdict_final` 回 `VMU_STATE "the ruling is missing 1 of the 2 member(s) who debated:
+t-1"`，而 `vibe_v5_verdict` 对 temp 席关闭（`seat-faces.js` 的 `allow.temp:false`）——正常路径被一个交不出裁决的席位堵死，
+主席只能 `partial:true`。修法：`debatedMembersOf()` 用 `seatOfMemberId()` 读名册席位，凡席位对 `vibe_v5_verdict` 关闭者
+移出选民集并按名记入 `excluded:[{member,seat,why}]`；成功回执的 `coverage` 增 `excluded`/`excludedMeans`（asked +
+excluded 对得上名册）。新套件 `tests/vmu-run139-debater-seats.test.mjs` **16/0**（temp 在名册上主席仍能正常收尾、
+excluded 点名理由、真有表决权的成员没交仍被具名拒、`partial:true` 出路不被堵死）。
+
+§237.6 门禁。`vmu-g7-concordance` 64/0、`vmu-run139-debater-seats` 16/0、`vmu-run140-complete-needs-passed` 9/0、
+`vmu-turn` **272/0**（T99：成员提示词 **19999** 字符，C2 的新句由四处同义冗余腾出预算）、`vmu-v5r-tools` 360/0、
+`vmu-verified-gates` 102/0、`vmu-run97-verified-gate` 25/0、`vmu-run135-formal-required` 全绿、`vmu-run49-verified-ready`
+18/0、`vmu-prompt-clean` 8/0、`vmu-ledger-teaching-pins` 58/0、`vmu-meeting-invite` 69/0、`regen-all` 17/17、`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS`、全量 T1 **622/0**（suites 558 · probes 64，`/d/_tmp/t1-r141/t1.log`）。
+
+§237.7 无实质残余：否 —— G7 仍 PARTIAL，第九次决定性审计在本提交之后派出。
+

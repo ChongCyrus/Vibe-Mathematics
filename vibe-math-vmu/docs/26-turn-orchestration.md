@@ -2361,3 +2361,18 @@ Rules that came out of this round:
    made one of them a claim. Write the one that survives.
 4. **Keep the discriminating phrase.** T122/T125 pin 「受邀发言」 as the name of a state; an honest rewrite may keep a
    phrase it no longer over-claims, as long as the sentence around it stops promising the unreachable path.
+
+## ROUND 136h（第八次独立审计：动议上限不能"延长"，ask 块不能对不参会的席位卖不可达路径）
+
+- 第八次审计 `CONTRADICTIONS(2)`（第 26 条复核之外），报告 `D:/_tmp/g7a8/audit8.md`：
+  ① `meeting-procedures.js:58` 教「要更多轮改设置或由主席显式延长」，但 `motions` 单调、`extend`/`extendlimit` 都不增加
+  动议额度 ⇒ 删掉「显式延长」，说清两种延长各自延长什么；
+  ② 受邀临时工帧说「会议内发言不可达」，同一轮恒注入的 `v5r-meeting-ask` 却教「填 `input`/举手交付发言」，而 `input`→
+  `speak()` 要求 `m.present`、temp 的 `attend` 被具名拒 ⇒ ask 块补席位条件句（temp 读者改走群聊），帧不动。
+- 同时把审计记成 GAP 的 G4 升格为真缺陷并修：`proof_state:"complete"` 曾接受**被判没过**的 `lean_job` + 一个
+  `lean_conformance` 声明词 ⇒ 新增具名拒（点名作业号与状态），`tests/vmu-run140-complete-needs-passed.test.mjs` 9/0。
+- F-139a（r139 真机）：辩论名册上的 temp 席没有裁决面，却被完整性闸要求交裁决 ⇒ 选民集按声明席位表收窄并按名记录
+  `excluded`（`tests/vmu-run139-debater-seats.test.mjs` 16/0）。
+- 教训：**「延长」是个动词，必须指出它延长什么**；**能力边界要写成条件句**（"若你的席位不参会……"），因为同一段提示词
+  会发给不同席位的读者；**声明词不是测量**——框架自己量到"没通过"的作业不能被一个词翻案。
+
