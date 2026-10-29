@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 81 | all four citations resolve |
-| ◐ PARTIAL | 5 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 85 | all four citations resolve |
+| ◐ PARTIAL | 1 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -72,10 +72,10 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | --- | --- | --- | --- | --- | --- |
 | `D1` | 26 | 各自推进各自的总任务 | ✅ DONE | 2/1/1/5 | 已由 r131 取证（r-1 状态板 ①②③ 先印自己那份并标注全所），office 视图逐字不变由 vmu-run111-board-own-share 钉住；后续轮次只做回归。 |
 | `D2` | 27 | 三通道：邮箱/私信/群聊 | ✅ DONE | 2/1/1/2 | — |
-| `D3` | 27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ◐ PARTIAL | 2/1/1/1 | r133：`vibe_v5_message { to:"r-1", urgent:true }` 后读 r-1 收件行（urgent:true）与是否推正文；群聊侧读一行非紧急；三句各有回执后翻 DONE。 |
+| `D3` | 27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ✅ DONE | 2/1/1/2 | 已由 r133 全证（urgent:true ⇒ kind:"notice" + note「kind does NOT decide urgency」；收件行 ml-15 urgent:true；r-2 的非紧急行 urgent:false、kind:assign/dm；群聊 round 无 urgent）。 |
 | `D4` | 28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
 | `D5` | 28 | 四字段都含时间等基础信息 | ✅ DONE | 2/2/1/1 | — |
-| `D6` | 28 | 可查看其他成员当前状态版 | ◐ PARTIAL | 2/2/1/1 | r133：`vibe_vmu_panel { action:"get", member:"r-1" }` 的 libraryPointer 活体（read_library 侧 panelPointer 已由 r132 取证）。 |
+| `D6` | 28 | 可查看其他成员当前状态版 | ✅ DONE | 2/2/1/2 | 已由 r133 全证（两侧互指：panel get ⇒ libraryPointer.call；read_library{kind:"state"} ⇒ panelPointer.call；known:false 带 means）。 |
 | `D7` | 28 | 可自己修改更新自己的状态版 | ✅ DONE | 2/1/1/1 | — |
 | `D8` | 28 | 四字段按规则原文实现（字段名与语义） | ✅ DONE | 2/1/1/1 | — |
 
@@ -126,7 +126,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | --- | --- | --- | --- | --- | --- |
 | `F1` | 56 | 把原问题与所有有价值产物系统梳理 | ✅ DONE | 1/1/1/2 | — |
 | `F2` | 56 | 合作撰写：分派各自内容并合并 | ✅ DONE | 2/1/1/2 | — |
-| `F3` | 56 | 互审 | ◐ PARTIAL | 1/1/1/1 | r133：不一致 → advance 退回 writing 后**再 advance** 回 reviewing → 两人 true → advance 到 awaiting-editor → final 成功；两类回执一起读。 |
+| `F3` | 56 | 互审 | ✅ DONE | 1/1/1/3 | 已由 r133 全证（一致→advance→awating-editor→final finalized:true；不一致那一轮先 deliverable:false 退回 writing，再 advance 回 reviewing 并 round 2）。 |
 | `F4` | 56 | 面向读者：系统/正确/完整/严谨清晰 | ✅ DONE | 1/1/1/2 | — |
 | `F5` | 56 | 讨论检查无误后定稿 | ✅ DONE | 1/1/1/1 | — |
 
@@ -139,7 +139,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `G3` | 60 | 支持人工干预研究所决策与运行 | ✅ DONE | 2/1/1/1 | — |
 | `G4` | 60 | 支持断点续跑 | ✅ DONE | 1/1/1/1 | — |
 | `G5` | 61 | 特殊权限/请求经所办向用户询问 | ✅ DONE | 2/1/1/1 | — |
-| `G6` | 62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ◐ PARTIAL | 3/1/2/2 | r133：让成员在自己的回合里往围栏 JSON 多写一个未声明字段，读回具名拒（根会话无法伪造，见 §227.2）。 |
+| `G6` | 62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ✅ DONE | 3/1/2/2 | 已由 r133 全证（成员回合围栏多写未声明字段 ⇒ VMU_TURN_UNKNOWN_FIELD + hint 印全部已知字段）。 |
 | `G7` | 63 | 提示词与规则完全相符、自洽 | ◐ PARTIAL | 3/1/1/1 | 待定：parity 门已自述边界（RULE PARITY SCOPE 的 NOT PROVEN HERE 行）；是否以此为 DONE 判据由用户裁定。 |
 
 ## How to move a row

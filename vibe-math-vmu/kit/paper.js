@@ -755,15 +755,32 @@ export function createPaperFlow({
         if (t && typeof t === 'object') return [t.engine, t.phase, t.code].filter((x) => x !== undefined && x !== null && x !== '').join(':')
         return String(t)
       }).filter((x) => x !== '')
+      // ★ LIVE RUN 133 (F-133b): "the compile failed" without ONE line of what the compiler said is a receipt the caller cannot
+      // act on (measured: the agent got PDF_FAILED, could not see stderr, and could not tell a font/package problem from a
+      // broken .tex). The face already carries a bounded stderr tail; the RECEIPT did not. So one collapsed line travels in the
+      // message itself - bounded, single-line, no paths invented - and the full tail stays on the error for the host.
+      const diagOf = (v) => {
+        const raw = v === undefined || v === null ? '' : String(v)
+        const flat = raw.split(String.fromCharCode(13)).join('').split(String.fromCharCode(10))
+          .map((s) => s.trim()).filter((s) => s !== '')
+        if (flat.length === 0) return ''
+        // Prefer the first line that looks like TeX's own error report; otherwise the LAST line (the summary line).
+        const hit = flat.find((s) => s.startsWith('!')) || flat[flat.length - 1]
+        return hit.slice(0, 240)
+      }
+      const triedList = (r && Array.isArray(r.tried) ? r.tried : [])
+      const lastWithErr = (() => { for (let i = triedList.length - 1; i >= 0; i -= 1) { const e = triedList[i]; if (e && e.stderr) return e.stderr } return null })()
+      const diag = diagOf((r && r.stderr) || lastWithErr || (r && r.stdout) || '')
       const failure = refuse(CODES.PDF_FAILED,
         'LaTeX 编译失败：' + String((r && r.code) || 'unknown') + (r && r.engine ? '（engine=' + r.engine + '）' : '') +
-          (engineList.length ? '；已试引擎=' + engineList.join(', ') : ''),
+          (engineList.length ? '；已试引擎=' + engineList.join(', ') : '') +
+          (diag ? '；编译器说：' + diag : ''),
         // ★★ THE HINT MUST NAME SOMETHING THE READER CAN ACTUALLY SEE. It used to say "把 stderrTail 交给人看", and measured on a
         // full live run the agent could not: the compiler's stderr tail IS attached to this thrown error (see `failure.stderrTail`
         // below), but the TOOL RECEIPT carries only code/message/hint - the host does not relay custom error fields. So the hint
         // pointed at a name that existed on an object the receipt had already flattened away, which is the "looks correct but is
         // unusable" shape this phase keeps removing. It now says what the receipt DOES carry and what the operator can do with it.
-        '这不是"论文为假"，只是**没编译出来**：回执只带 code/message/hint；编译器 stderr 的尾部在【这条错误的 `stderrTail`】上，宿主回执不转述它 —— 请把这条 message 交给人，或直接用 LaTeX 手工重跑该 .tex；回执不声称有 pdf')
+        '这不是"论文为假"，只是**没编译出来**：回执这次带了一行编译器原话（在 message 的「编译器说：」之后，已压成单行、上限 240 字符）；完整 stderr 尾部在【这条错误的 `stderrTail`】上，宿主回执不转述它 —— 按那句原话修 .tex/换引擎（或把绝对路径写进 `vmu.paper.latexCommand`）后重试，或直接把这条 message 交给人；回执不声称有 pdf')
       // the face's own diagnostics travel ON the error (bounded), so the caller can put them into a receipt
       failure.faceCode = (r && r.code) || null
       failure.tried = (r && Array.isArray(r.tried)) ? r.tried.slice() : []

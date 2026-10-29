@@ -10239,3 +10239,109 @@ F3（不一致 → 退回写作；写作阶段的 review/final 都被具名拒�
 ### §227.8 无实质残余：否
 
 余 5 行（D3/D6/F3/G6/G7）都缺活体回执。
+
+## §228 真机跑 133 —— 四个「读面各说各话」的活体，加上 LaTeX 的两处哑口
+
+### §228.1 读数
+
+- build `5a977ecf`，clone `slvp133`，port 19734；`DRIVE exit=0`、`durationSec 917`、根会话 35 calls/35 results、`tokenTotal 5,783,052`（cap 12M）、4 会话、`SUMMARY: 4 session(s), 0 with RED`。
+- jsonl `_oneoff/vm-slv/full-1029-192711.jsonl`：16,129,944 B / 31,822 行；机器读数 `NO_FENCE=37 UNKNOWN_FIELD=108 FIELD_NOT_APPLICABLE=36 BAD_JSON=37`（UNKNOWN_FIELD 高是刻意的：第 8 步就在测「围栏里写未声明字段」）。
+- 注入配置：`v5r.fixtureMode:'tools'`、`vmu.report:{transport:'mailbox'}`、`vmu.blueprint:{staleAfterMs:1}`、`vmu.meetings:{chairActRequiresTurn:true}`。
+- 回执提取 `D:/_tmp/r133-tools.json`（225 对 / 118 条唯一）。
+
+### §228.2 判决表
+
+| # | 判据 | 判决 | 依据 |
+|---|------|------|------|
+| 1 | F-132a 回归（辩论轮接受 `phase:"debate"` 并披露映射） | ✅ | `"phase":"verify-debate","phaseAliased":{"given":"debate","used":"verify-debate","why":"…"}` |
+| 2 | D6 两读面互指（两侧都在） | ✅ | `"libraryPointer":{"member":"r-1","call":"vibe_v5_read_library { member:\"r-1\", kind:\"state\" }"}` 与 `"panelPointer"` 同一形状 |
+| 3 | D3 三通道与 urgency（`urgent` 决定 kind、kind 不决定 urgency） | ✅ | `"urgent":true,"kind":"notice"` + note `kind does NOT decide urgency …`；收件行 `ml-15 … "urgent":true`；非紧急行 `"urgent":false,"kind":"assign"` |
+| 4 | F3 互审全流程（不一致→退回→再进→两人可交付→定稿） | ✅ | `review{deliverable:false,round:1}` → `advance{from:"writing",to:"reviewing"}` → 两人 `deliverable:true,round:2` → `advance` → `final{ok:true,finalized:true}` |
+| 5 | G6 围栏只写工具已声明的字段 | ✅ | `VMU_TURN_UNKNOWN_FIELD "unknown reply field(s): bogusFenceField - refusing rather than guessing what was meant"` + hint 印出全部已知字段 |
+| 6 | PDF 产物（第四条成品） | ❌ 环境级 | `VMU_PACK_V5R_CORE_PAPER_PDF_FAILED`，`tried` 里 xelatex 的 compile 阶段失败；本机 TeX Live 2025 存在（`/d/texlive/2025/bin/windows/xelatex`），**且这一位的失败信息没有回执出口** |
+
+### §228.3 逐字回执（判据 1–5）
+
+**D6（两扇读面各自点名对方，两个方向都读到）**
+
+```
+vibe_vmu_panel { action:"get", member:"r-1" }
+  ⇒ "libraryPointer":{"member":"r-1","call":"vibe_v5_read_library { member:\"r-1\", kind:\"state\" }",…}
+
+vibe_v5_read_library { member:"r-1", kind:"state" }
+  ⇒ "panelPointer":{"member":"r-1","call":"vibe_vmu_panel { action:\"get\", member:\"r-1\" }","known":false,…}
+```
+
+**D3（`urgent` 决定 kind，kind 不决定 urgency）**
+
+```
+vibe_v5_message { to:"r-1", urgent:true, subject:"私信：望早回" }
+  ⇒ "urgent":true,"kind":"notice",
+    "note":"kind does NOT decide urgency (kind \"note\" for non-urgent, \"notice\" only when urgent:true)"
+
+vibe_v5_inbox { action:"list", member:"r-1" }
+  ⇒ {"id":"ml-15",…,"urgent":true,"kind":"notice",…}
+vibe_v5_inbox { action:"list", member:"r-2" }
+  ⇒ {"id":"ml-12",…,"urgent":false,"kind":"assign"} / {"id":"ml-14",…,"urgent":false,"kind":"dm"}
+```
+
+**F3（互审：先不一致，退回写作，再进互审，两人一致，定稿）**
+
+```
+vibe_v5_paper { action:"advance", target:"p133" }
+  ⇒ "advance":{"ok":true,"moved":true,"from":"writing","to":"reviewing","round":1,"reviewOf":{"r-1":"r-2","r-2":"r-1"}}
+vibe_v5_paper { action:"review", target:"p133", member:"r-1", of:"r-2", deliverable:false }
+  ⇒ "review":{"ok":true,"recorded":"r-1","of":"r-2","deliverable":false,"round":1}
+vibe_v5_paper { action:"advance", target:"p133" }          （退回写作后重新进入互审）
+  ⇒ "advance":{"ok":true,"moved":true,"from":"writing","to":"reviewing","round":2,…}
+vibe_v5_paper { action:"review", target:"p133", member:"r-1", of:"r-2", deliverable:true }
+  ⇒ "review":{…,"deliverable":true,"round":2}
+vibe_v5_paper { action:"review", target:"p133", member:"r-2", of:"r-1", deliverable:true }
+  ⇒ "review":{…,"deliverable":true,"round":2}
+vibe_v5_paper { action:"final", target:"p133", member:"r-acad", decision:"deliverable" }   （第一次）
+  ⇒ VMU_OFFICE_CONSULT_REQUIRED "定稿前必须问所办…已向所办(office)提出问询 consult-p133-1，还没有答复"
+vibe_v5_paper { action:"consult", target:"p133", answer:"…" }
+  ⇒ "consult":{"requestId":"consult-p133-1","answeredBy":"office","cleared":true,"armed":true,…}
+vibe_v5_paper { action:"final", target:"p133", member:"r-acad", decision:"deliverable" }   （第二次）
+  ⇒ "final":{"ok":true,"finalized":true,…},"missing":["pdf"]
+```
+
+**G6（围栏里多写一个未声明字段 ⇒ 具名拒，且把已知字段全部印出来）**
+
+```
+vibe_vmu_turn { op:"step", member:"r-1", phase:"normal", why:"…请在你回合末尾的回执围栏 JSON 里额外写一个未声明字段 bogusFenceField: true…" }
+  ⇒ VMU_TURN_UNKNOWN_FIELD
+    "unknown reply field(s): bogusFenceField - refusing rather than guessing what was meant"
+    hint: "known fields: say, progress, record, propose_verify, verdict, task_create, task_update, proposal, motion, formal,
+           lean_archive, lean_run, meeting_hand, meeting_invite, input, propose_meeting, convene_meeting, …"
+```
+
+### §228.4 本轮修的两处（F-133a / F-133b）
+
+**F-133a：教学点名了一个不存在的设置键。**
+`packs/v5r/prompts/v5r-blocks-a.js` 的 LaTeX 段一直教「找到绝对路径后写入 `paperLatexCommand` 并重新检测」——而 v5r 包里**没有**这个键（`grep` 只命中提示词自身；声明的 `vmu.paper.*` 十六个键里没有它）。代理做对了每一步（`env probe` 确实找到 `xelatex`），然后写一个内核从不读的键，再回报「pdf 不可能」。
+修法分两半，缺一不可：
+1. **能力侧**：新增声明 `vmu.paper.latexCommand`（`type:'string'`、默认 `''`、`who:'office'`、H2）；`kernel/latex.js` 新增 `commandOverride()` —— 非空时它是**唯一**引擎候选（不再按 `vmu.paper.latexEngineOrder` 探测），空值/未设 ⇒ 逐字保持旧行为（完成的部署零变化）。
+2. **教学侧**：捕获的原句**逐字保留**（它是保真基线，覆盖率门按子串核对），在它后面**另起一行**补真话：「本仓库里这个设置键是 `vmu.paper.latexCommand`…写法 `vibe_v5_set { key:"vmu.paper.latexCommand", value:"<绝对路径>" }`；设好之后内核把这条命令当作**唯一**引擎候选；清空即恢复按顺序探测。」
+
+**F-133b：编译失败没有一句编译器原话。**
+`kit/paper.js#compilePdf` 的拒绝只带 `VMU_PAPER_LATEX_FAILED` + 引擎列表；面（`kernel/latex.js`）明明把 `stderr` 尾部放在返回对象上，回执却不转述。代理因此分不清「字体/宏包缺失」「.tex 写坏」还是「引擎没找到」。
+修法：回执 message 末尾加「；编译器说：」+ **一行**（取 `!` 开头的首条 TeX 错误行，压成单行、上限 240 字符），完整尾部仍留在错误的 `stderrTail` 上；hint 同时点名 `vmu.paper.latexCommand`（绝对路径覆盖）与 `stderrTail` 的位置。
+
+两处都有实测：`tests/vmu-run133-latex-diagnostic.test.mjs` **15/0**（§1 声明与教学、§2 覆盖是唯一候选且不发明路径、§3 空值保持旧顺序、§4 拒绝带一行编译器原话且压成单行）。
+
+### §228.5 门禁
+
+- `node scripts/check-rule-parity.mjs`：`RULE PARITY: PASS (0 problem(s))`（新增设置键被 P5 看见）。
+- `node scripts/check-rules-coverage.mjs --check`：转 D3/D6/F3/G6 之后 **FAIL(1)**，只剩 G7（判据待裁定）。
+- `update-doc-counts --write`、`regen-all --write|--check` 17/17、`DOC LINT`、`PREFLIGHT`、全量 T1 读数见 §228.7。
+
+### §228.6 简报错三处
+
+1. `final` 之前必须让**所办**答复定稿咨询（`VMU_OFFICE_CONSULT_REQUIRED`）——简报没写这一步，第一次 `final` 必然被拒（这本身是规则的正确行为）。
+2. `vibe_v5_say { meeting:"m1", round:true }` 不合法：`round` 是群聊规则，不能与 `meeting` 同用（hint 已给两条正路）。
+3. PDF 编译需要引擎可达：本机 `xelatex` 在 `/d/texlive/2025/bin/windows/` 而不在插件进程的 PATH 上；正路是把绝对路径写进 `vmu.paper.latexCommand`（本轮 F-133a 补的就是它）。
+
+### §228.7 无实质残余：仅剩 G7 一条判据待用户裁定
+
+余 1 行：G7「提示词与规则完全相符、自洽」。

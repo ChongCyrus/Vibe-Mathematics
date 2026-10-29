@@ -35,7 +35,19 @@ export function createLatexFace(opts = {}) {
   const fs = fsSeam || defaultFs
   // Per-box rules, per face here: the ENGINE ORDER is data; the default (pdflatex then xelatex) is a neutral fallback,
   // NOT a Chinese-first policy. A pack that wants xelatex first declares it in its settings data.
+  // ★ LIVE RUN 133 (F-133a): `vmu.paper.latexCommand` is an ABSOLUTE PATH override for the engine. When it is set, it is the
+  // ONLY candidate - the whole point is that the binary is not reachable by bare name. An empty/whitespace value means "no
+  // override", so a finished deployment that never set it keeps probing the declared order exactly as before.
+  const commandOverride = () => {
+    let raw = null
+    try { raw = readKey('vmu.paper.latexCommand') } catch { raw = null }
+    if (raw === undefined || raw === null) return null
+    const s = String(raw).trim()
+    return s === '' ? null : s
+  }
   const engineOrder = () => {
+    const override = commandOverride()
+    if (override && !(Array.isArray(opts.engineOrder) && opts.engineOrder.length > 0)) return [override]
     const declared = readKey('vmu.paper.latexEngineOrder')
     const fromOpt = Array.isArray(opts.engineOrder) ? opts.engineOrder : null
     const raw = fromOpt || (Array.isArray(declared) ? declared : null)

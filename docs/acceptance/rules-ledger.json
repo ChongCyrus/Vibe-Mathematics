@@ -909,7 +909,7 @@
       "id": "D3",
       "rule": "27",
       "text": "三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/mailbox.js::const urgentOf =",
         "vibe-math-vmu/kernel/mailbox.js::'【紧急｜对方希望尽快回复】'"
@@ -921,10 +921,12 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::三通道的紧急语义"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"urgent\":true,\"kind\":\"notice\""
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"urgent\":true,\"kind\":\"notice\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::kind does NOT decide urgency"
       ],
       "ruleText": "- 各自交流通过：邮箱（非紧急。一般不需要立即查看邮箱消息），私信（希望对方尽早回复时），群聊（非紧急。一般不需要立即查看群聊消息），...。",
-      "next": "r133：`vibe_v5_message { to:\"r-1\", urgent:true }` 后读 r-1 收件行（urgent:true）与是否推正文；群聊侧读一行非紧急；三句各有回执后翻 DONE。"
+      "next": "已由 r133 全证（urgent:true ⇒ kind:\"notice\" + note「kind does NOT decide urgency」；收件行 ml-15 urgent:true；r-2 的非紧急行 urgent:false、kind:assign/dm；群聊 round 无 urgent）。",
+      "note": "三通道（私信/群聊/任务派发）各自的 urgency 语义在同一次运行里读到；kind 只是呈现，urgent 才是那条规则。"
     },
     {
       "id": "D4",
@@ -971,7 +973,7 @@
       "id": "D6",
       "rule": "28",
       "text": "可查看其他成员当前状态版",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kit/handlers.js::const panelPointer = panelPointerOf",
         "vibe-math-vmu/tools/panel.js::libraryPointerMeans: LIBRARY_POINTER_MEANS"
@@ -984,10 +986,12 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::读别人的板"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::一个成员读另一个成员的状态板这件事，面板读面答得出来"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"libraryPointer\":{\"member\":\"r-1\",\"call\":\"vibe_v5_read_library",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"panelPointer\":{\"member\":\"r-1\",\"call\":\"vibe_vmu_panel"
       ],
       "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。",
-      "next": "r133：`vibe_vmu_panel { action:\"get\", member:\"r-1\" }` 的 libraryPointer 活体（read_library 侧 panelPointer 已由 r132 取证）。"
+      "next": "已由 r133 全证（两侧互指：panel get ⇒ libraryPointer.call；read_library{kind:\"state\"} ⇒ panelPointer.call；known:false 带 means）。",
+      "note": "两个读面各答一半（面板是内核活视图、state 轨是落盘卡行），互指而不是合并。"
     },
     {
       "id": "D7",
@@ -1671,7 +1675,7 @@
       "id": "F3",
       "rule": "56",
       "text": "互审",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/paper.js::reviewing"
       ],
@@ -1682,10 +1686,13 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js::互审"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::not awaiting its editor"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"deliverable\":false,\"round\":1",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"from\":\"writing\",\"to\":\"reviewing\",\"round\":2",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"finalized\":true"
       ],
       "ruleText": "把原总问题及所有研究所中有价值的产物系统梳理，合作撰写最终论文。合作写论文（如安排写各自负责内容最后系统地合并），互审，论文是面向读者的，要保证内容系统、正确、完整、严谨清晰。最后讨论、检查无误后定稿。",
-      "next": "r133：不一致 → advance 退回 writing 后**再 advance** 回 reviewing → 两人 true → advance 到 awaiting-editor → final 成功；两类回执一起读。"
+      "next": "已由 r133 全证（一致→advance→awating-editor→final finalized:true；不一致那一轮先 deliverable:false 退回 writing，再 advance 回 reviewing 并 round 2）。",
+      "note": "互审不是打勾：不一致要真的退回再进，且定稿前有 office consult 闸（VMU_OFFICE_CONSULT_REQUIRED）。"
     },
     {
       "id": "F4",
@@ -1834,7 +1841,7 @@
       "id": "G6",
       "rule": "62",
       "text": "绝大多数功能走工具而非每轮末尾输出 JSON",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/turn/index.js::export const FIELD_OWNERS",
         "vibe-math-vmu/host-pack-tools.js::function badEnumParametersOf",
@@ -1848,11 +1855,12 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::action 只有 claim"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::F-119b（一个计数读不出它数的是什么）",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::一个数字告诉你发生过什么"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::bogusFenceField - refusing rather than guessing what was meant",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::known fields: say, progress, record"
       ],
       "ruleText": "- 绝大多数功能都直接通过代理可执行命令（工具）实现，而非最终每轮结束时输出json实现。",
-      "next": "r133：让成员在自己的回合里往围栏 JSON 多写一个未声明字段，读回具名拒（根会话无法伪造，见 §227.2）。"
+      "next": "已由 r133 全证（成员回合围栏多写未声明字段 ⇒ VMU_TURN_UNKNOWN_FIELD + hint 印全部已知字段）。",
+      "note": "围栏只写工具已声明的派生字段；未声明字段是具名拒，不是忽略。"
     },
     {
       "id": "G7",

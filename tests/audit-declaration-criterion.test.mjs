@@ -452,6 +452,7 @@ export const MULTILINE_C_BASELINE_FINGERPRINTS = Object.freeze([
   'audit-preset-declaration-group.test.mjs:C2:conditional',
   'audit-readme-counts.mjs:C2:conditional',
   'audit-readme-counts.mutants.mjs:C2:conditional',
+  'audit-rule-coverage.test.mjs:C2:conditional',
   'audit-settings-channels.test.mjs:C2:conditional',
   'audit-status-report-fields.mjs:C2:conditional',
   'audit-status-report-fields.mutants.mjs:C2:conditional',
@@ -498,7 +499,13 @@ export const MULTILINE_C_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-registry.test.mjs:C2:conditional',
   'vmu-resume-e2e.test.mjs:C2:conditional',
   'vmu-rules.test.mjs:C2:conditional',
+  'vmu-run102-panel-types.test.mjs:C2:conditional',
+  'vmu-run129-codesign-cross-kernel.test.mjs:C2:conditional',
   'vmu-run33-human-gate.test.mjs:C2:conditional',
+  'vmu-run53-ctx-guard.test.mjs:C2:conditional',
+  'vmu-run55-provenance-face.test.mjs:C2:conditional',
+  'vmu-run68-shared-author.test.mjs:C2:conditional',
+  'vmu-run73-lean-timeout-means.test.mjs:C2:conditional',
   'vmu-script-bridge.test.mjs:C2:conditional',
   'vmu-script-service.test.mjs:C2:conditional',
   'vmu-script.test.mjs:C2:conditional',
@@ -507,6 +514,7 @@ export const MULTILINE_C_BASELINE_FINGERPRINTS = Object.freeze([
   'vmu-store.test.mjs:C2:conditional',
   'vmu-v3-prompts.test.mjs:C2:conditional',
   'vmu-v5r-tools.test.mjs:C2:conditional',
+  'vmu-wave2-meeting-types.test.mjs:C2:conditional',
 ])
 // MULTILINE-C-BASELINE-END
 /** Kept for visibility: the COUNT is reported, but the enforcement is the fingerprint SET below. */

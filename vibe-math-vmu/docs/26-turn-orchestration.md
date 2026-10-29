@@ -2244,3 +2244,10 @@ trace 每条 `"delivered":true,"refused":null`，办公室收件箱里出现 `"f
 - 判据：**一个环节的入参词表可以借引擎的词，但不能缺掉调用者所在语境的词；缺了就要么接受并披露映射，要么在声明里点名「用哪个词」。**
 - 落法：枚举加 `debate`，`PHASE_ALIASES` 只映射这一个词，回执新增 `phaseAliased:{given,used,why}` 且 `phase` 报实际使用的词（失败路径也保留披露）；教学同步补一句。
 - 附带的读法：群聊的「单次表态」与会议的「发言」是两面——前者拦重复（`VMU_CHAT_ALREADY_SPOKE`），后者是记分板（按 speeches 计数，不拦）；两者都在 r132 读到。
+
+## ROUND 133
+
+- **四个「读面各说各话」的活体**：D6 两读面互指（`panelPointer` / `libraryPointer` 两侧都读到）、D3 三通道 urgency（`urgent:true` ⇒ `kind:"notice"`，且 note 明说 kind 不决定 urgency）、F3 互审全流程（不一致 ⇒ 退回写作 ⇒ 再进互审 ⇒ 两人可交付 ⇒ 定稿 `finalized:true`）、G6 围栏未声明字段具名拒（`VMU_TURN_UNKNOWN_FIELD` + 已知字段清单）。
+- **判据**：一个「两扇门」的修复必须两侧都读到才算数——D6 的两种指针、F3 的退回与再进、G6 的拒绝与字段清单，都是同一个道理：**只说一半等于没说**。
+- **F-133a**：教学点名了不存在的设置键（`paperLatexCommand`），代理做对每一步仍报「pdf 不可能」⇒ 补声明 `vmu.paper.latexCommand`（非空即唯一引擎候选，空值保持旧行为），教学**在原句之后另起一行**补真名（保真基线不重写，缺口用补行）。
+- **F-133b**：编译失败的回执没有一句编译器原话 ⇒ message 里带一行（`!` 开头的首条 TeX 错误行，压成单行、上限 240 字符），完整尾部留在错误的 `stderrTail` 上。
