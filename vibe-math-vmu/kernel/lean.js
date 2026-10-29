@@ -685,7 +685,35 @@ export function createLeanFace(opts) {
     jobs.set(id, j); order.push(id)
     note(id, 'queued')
     // CROSS-PROCESS CLAIM (N5): with the exclusive seam, taking the mirror is what makes this job OURS.
-    const claimed = await writeMirror(j)
+    // ★ LIVE RUN 130 (F-130a): A COUNTER THAT LIVES IN ONE KERNEL IS NOT A NAME IN THE SHARED DIRECTORY. Two kernels
+    // over the same root each mint `lean-1`, and the mirror directory is the only thing that can tell them apart: the
+    // second kernel's claim refused a job the caller never asked for (an AUTO id), and the institute's first Lean run
+    // was dead on arrival. An auto id that is taken on disk is simply the wrong guess about a shared name — mint the
+    // next one, bounded, and say so. An id the CALLER named stays refused: that id was its choice, not our guess.
+    let claimed = await writeMirror(j)
+    let rederived = 0
+    if (claimed && claimed.ok === false && claimed.code === 'VMU_MATH_JOB_ID_TAKEN' && !requestedId) {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        jobs.delete(j.id)
+        const k = order.indexOf(j.id); if (k !== -1) order.splice(k, 1)
+        note(j.id, 'rejected:job-id-taken')
+        observeJobIds([j.id])
+        rederived += 1
+        j.id = mintJobId()
+        jobs.set(j.id, j); order.push(j.id)
+        note(j.id, 'queued (id re-minted: the auto id was already in the shared mirror directory)')
+        claimed = await writeMirror(j)
+        if (!(claimed && claimed.ok === false && claimed.code === 'VMU_MATH_JOB_ID_TAKEN')) break
+      }
+      if (claimed && claimed.ok === false && claimed.code === 'VMU_MATH_JOB_ID_TAKEN') {
+        jobs.delete(j.id)
+        const k = order.indexOf(j.id); if (k !== -1) order.splice(k, 1)
+        note(j.id, 'rejected:job-id-taken')
+        return refuse('VMU_MATH_JOB_ID_TAKEN', '自动编号连续 ' + rederived + ' 次都撞上共享镜像目录里已有的作业号（最后一次 ' + j.id + '）',
+          '显式传 jobId:"<你的号>" 以别的名字提交；或清空 vmu.math.jobs.dir 下的旧镜像后重试；本面绝不覆盖别人的镜像 ✗',
+          ['vmu.math.jobs.persist', 'vmu.math.jobs.dir'])
+      }
+    }
     if (claimed && claimed.ok === false && claimed.code === 'VMU_MATH_JOB_ID_TAKEN') {
       jobs.delete(id)
       const k = order.indexOf(id); if (k !== -1) order.splice(k, 1)
@@ -694,11 +722,16 @@ export function createLeanFace(opts) {
         '换一个 jobId，或让 id 计数器真正持久（kernel/ids.js 绑定 store）后再提交；本面绝不覆盖别人的镜像 ✗',
         ['vmu.math.jobs.persist', 'vmu.math.jobs.dir'])
     }
-    emit('lean/job-submitted', { jobId: id, file })
-    if (c.leanAsync) { Promise.resolve().then(pump); return { ok: true, id, state: 'queued', jobScope: JOB_SCOPE, jobScopeMeans: JOB_SCOPE_MEANS } }
+    const jobId = j.id
+    if (rederived > 0) j.rederivedId = rederived
+    emit('lean/job-submitted', { jobId: jobId, file })
+    const rederivedNote = rederived > 0
+      ? { idReMinted: rederived, idReMintedMeans: 'the auto job id was already in the shared mirror directory (another kernel over the same root minted it); the next free id was taken instead - the caller never asked for that number' }
+      : {}
+    if (c.leanAsync) { Promise.resolve().then(pump); return { ok: true, id: jobId, state: 'queued', jobScope: JOB_SCOPE, jobScopeMeans: JOB_SCOPE_MEANS, ...rederivedNote } }
     // 同步路径：**等待本次结算**（不影响其他作业；leanAsync=false ⇒ 调用方拿到终态）
     await runOne(j)
-    return { ok: true, id, state: j.state, sync: true, jobScope: JOB_SCOPE, jobScopeMeans: JOB_SCOPE_MEANS }
+    return { ok: true, id: jobId, state: j.state, sync: true, jobScope: JOB_SCOPE, jobScopeMeans: JOB_SCOPE_MEANS, ...rederivedNote }
   }
 
   const status = (id) => {

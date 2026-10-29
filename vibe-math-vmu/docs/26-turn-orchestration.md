@@ -2225,3 +2225,9 @@ trace 每条 `"delivered":true,"refused":null`，办公室收件箱里出现 `"f
 - 教训（LESSONS 记一条）：**「已持有就跳过」是一种你不拥有的变更检测**。要判共享账本的变更，用内容指纹；时间戳若没落盘，就别假装有。
 - 测试：`tests/vmu-run129-codesign-cross-kernel.test.mjs` 19/0（双内核、成员续写、办公室 adopt 成功、生效正文两段、1 ms 窗口 stale、`shared.refreshed>=1`、两内核读到同一重写正文且二次读稳定）。
 - 记账：A1（信箱署名）与 D7（面板归属）本轮在真机拿到**逐字拒收**，转 DONE；B4 只量到 `staleAfterMsSource:"setting"`（本轮无生效版），`next` 写明 r130 要 1 ms 窗口 + 先 adopt。
+
+## ROUND 130 · 自动编号是猜测，共享目录是事实
+
+- **F-130a**：`vibe_v5_lean_run` 的自动作业号由**每内核**内存计数器铸造，而镜像目录是同根多内核共享的事实 ⇒ 第二台内核第一次 Lean 跑就被 `VMU_MATH_JOB_ID_TAKEN` 拒。修法：自动号撞盘 ⇒ 换号（≤5 次）并在回执 `idReMinted` 说明；点名号撞盘仍拒（那是调用方的选择）。
+- 判据：**「号是我铸的」不是「号在共享目录里是我的」**。猜错的号换一个；猜测失败不能报成调用方的错。
+- 台账：A3/C7/E18/E20 转 DONE；B4 的 `overdueUpdate` 与 C6 的 Lean 正路留给 r131。

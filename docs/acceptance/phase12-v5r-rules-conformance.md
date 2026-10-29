@@ -10021,3 +10021,66 @@ D6（两读面互指认）仍未取证；A1/D7（署名与代理权）的**修�
 ### §224.8 有无实质残余
 
 **否。** F-129a/F-129b 均已修并验收；B4 的 stale 路径明写「留给 run 130」，不是掩盖；A1/D7 本轮拿到逐字拒收证据，转 DONE。
+
+## §225 真机跑 130 —— 一个内核里的计数器，不是共享目录里的名字
+
+### §225.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| build | `1087e6c1`（F-129a/F-129b 已入库） |
+| clone / port | `slvp130` / 19731 |
+| `DRIVE` | `exit=0` |
+| 时长 / 根会话调用 | 1339 s / 31 calls（31 results） |
+| token | 4,928,919（cap 12,000,000） |
+| 会话 | 3，`SUMMARY: 3 session(s), 0 with RED` |
+| jsonl | `_oneoff/vm-slv/full-1029-165707.jsonl` 11,770,062 B / 17,353 行 |
+| 机器读数 | `NO_FENCE=48 UNKNOWN_FIELD=32 FIELD_NOT_APPLICABLE=48 BAD_JSON=48` |
+| 回执 | `D:/_tmp/r130/tools.json`（139 对） |
+
+### §225.2 判决表
+
+| 项 | 判 | 证据 |
+| --- | --- | --- |
+| A3 设置只认声明键 | ✅ | `unknown setting: vmu.r130.not-a-real-key` + hint「only DECLARED keys are settable」；声明键 `vmu.turn.leaderId` 改成功（`"hot":"H2"`） |
+| C7 形式化闸判不了要说 | ✅ | 辩论召集 `subjectGate:{"allowed":true,"form":"statement","proofBasis":"unverifiable-statement","proofChecked":false,…,"note":"…本闸**判不了**…"}` |
+| C6 声明 complete 需 Lean 证据 | ⏳（机制已对） | 无证据的 `proof_state:"complete"` 被具名拒；Lean 正路第一次调用就撞 F-130a |
+| E18 投票板选项上限 | ✅ | `poll_open{max:1}` ⇒ `"maxChoices":1`；r-1 投两项 ⇒ `VMU_BALLOT_CHOICE_COUNT`「选择数 2 多于规则 maxChoices=1」 |
+| E20 任务状态机 | ✅ | `claim{expected_revision:0}` ⇒ `stale write refused: task t-7 is at revision 1, you expected 0`；按 1 重试成功；`complete{expected_revision:0}` 同款拒 |
+| B4 蓝本按时更新 | 机制 ✅ / 后果 ⏳ | 两席共同设计后 `adopt` ⇒ `codesign{ok:true,hasChair:true,hasResident:true,judged:true}`、`previousAgeMs:null`；`state` ⇒ `ageMs:6128,stale:true,staleAfterMs:1,staleAfterMsSource:"setting"`。**`overdueUpdate:true` 那一支还没走到**（落成时草案是新的），留 r131 |
+
+### §225.3 F-130a（真缺陷）：自动作业号撞上共享镜像目录
+
+主席第一次 `vibe_v5_lean_run{file:"lagrange.lean",…,member:"r-acad"}`：
+
+```
+{"ok":false,"code":"VMU_MATH_JOB_ID_TAKEN","message":"作业号 lean-1 已被另一个进程占用（独占创建拒绝）"}
+```
+
+取证：同一个根目录的 `Formal/Jobs/lean-1..lean-4` 是 17:03–17:05 由**另一个内核**（成员回合）写的镜像；办公室内核 17:14 又铸 `lean-1`。真因：`vibe-math-vmu/kernel/lean.js` 的 `mintJobId` 是**每内核内存计数器**，而镜像目录是两边唯一的共同事实；`submit()` 撞号即拒——**哪怕这个号不是调用方点名的**。
+
+修法（`kernel/lean.js#submit`）：自动号撞上 ⇒ 依次换号（每轮删旧队列条目、`observeJobIds`、重铸、重试），最多 5 次；成功回执带 `idReMinted` + `idReMintedMeans`（「the caller never asked for that number」）；5 次仍撞 ⇒ `VMU_MATH_JOB_ID_TAKEN`「自动编号连续 5 次都撞上共享镜像目录里已有的作业号」+ hint（显式 `jobId` 或清空 `vmu.math.jobs.dir`）。**调用方点名的号撞上仍旧原样拒**：那是它的选择，不是我们的猜测。
+
+判据（写入 LESSONS）：**「号是我自己铸的」不等于「号在共享目录里是我的」**；猜错的号要换，不能把猜测失败报成调用方的错。
+
+### §225.4 C6 的三步 hint（逐字）
+
+```
+a card may not declare proof_state "complete" without Lean evidence: this write carries no lean_job and no lean_conformance
+hint: 1) vibe_v5_lean_run{file,statement} → 2) read lean_job on the receipt until passed:true → 3) write the card again with lean_job
+```
+
+### §225.5 门禁
+
+- `tests/vmu-run130-lean-remint.test.mjs`（新，4/0）：自动号撞盘 ⇒ 换号成功并说明；点名号撞 ⇒ 仍拒且镜像逐字未动；连续撞 ⇒ 具名拒「连续 5 次」；水合仍取 max+1。
+- 旧钉子按新语义改写：`tests/vmu-mathjobs-exclusive.test.mjs` §5 改为「**点名**的号必须拒；自动号不得因共享目录被拒」⇒ 5/0。
+- 相邻：`vmu-lean-jobs` 13/0、`vmu-lean-killable` 7/0、`vmu-g2-math-concurrency` 27/0、`vmu-run82-local-spawn` 31/0。
+
+### §225.6 简报错两处
+
+1. `vmu.turn.maxRounds` 不是声明键（真名在 `vmu.meetings.*`/`vmu.turn.*` 的 schema 里），A3 的对照键改用 `vmu.turn.leaderId`；
+2. `vibe_v5_lean_archive` 不吃 `member`（`kind/name/statement/target/content/from/file/note/run`），归档不需要署名。
+
+### §225.7 有无实质残余
+
+**否。** A3/C7/E18/E20 转 DONE；B4 与 C6 的 `next` 写明 r131 要量到的逐字回执（`overdueUpdate:true` 与 `lean_job` 正路），F-130a 已修且测试钉住。

@@ -306,7 +306,7 @@
       "id": "A3",
       "rule": "3",
       "text": "支持用户以自然语言让所办设参数、控制研究所",
-      "status": "PARTIAL",
+      "status": "DONE",
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_set",
         "vibe-math-vmu/host.js::vibe_vmu_report"
@@ -319,10 +319,9 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-assistant.js::改参数、控研究所是所办的事"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::`vibe_v5_set vmu.math.leanTimeoutMs=40` 之后编译真文件，预算切断"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::unknown setting: vmu.r130.not-a-real-key"
       ],
-      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。",
-      "next": "r120：先 vibe_v5_set 一个未声明的键（应具名拒），再改一个声明键并读回生效；两次回执都要。"
+      "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。"
     },
     {
       "id": "A4",
@@ -495,7 +494,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"staleAfterMs\":2592000000,\"overdueDays\":0"
       ],
       "ruleText": "- 实现总目标的完整技术路线设计策划蓝图。按时更新、调整。由院士+常驻研究员共同设计策划、决定如何调整。最终编辑权交给院士。",
-      "next": "r130（下一个）：注入 vmu.blueprint.staleAfterMs=1，先 adopt 一版让 hasCurrent=true，1 ms 后用 state 读回 freshness.stale=true + staleAfterMsSource:\"setting\"，并读到 adopt 的 overdueUpdate=true。r129 只量到 staleAfterMsSource:\"setting\"（无生效版）。",
+      "next": "r131：注入 vmu.blueprint.staleAfterMs=1，先两席共同设计并 adopt，改稿后再次 adopt ⇒ overdueUpdate:true + previousAgeMs>0（当前只量到 state.stale:true/staleAfterMsSource:\"setting\"）",
       "note": "r114 回执逐字：freshness 是读数、不阻止调用，逾期与否都带 means（§210.4）"
     },
     {
@@ -668,13 +667,13 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::`subjectGate{allowed:true, form:\"card\", provenance:\"declared\", proofBasis:\"declaration-only\""
       ],
       "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。",
-      "next": "r120：proof_state=\"complete\" 无 Lean 证据要具名拒；有 Lean 通过证据才许 complete；complete 后再写同 id 要具名拒（locked）。"
+      "next": "r131：先 vibe_v5_lean_run{file,statement} 拿 lean_job（F-130a 修后应成功），带 lean_job 写 proof_state:\"complete\" 的卡必须被接受，且 read_library 回显 lean 证据字段"
     },
     {
       "id": "C7",
       "rule": "14",
       "text": "只有写完的正式证明才能用于辩论",
-      "status": "PARTIAL",
+      "status": "DONE",
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
@@ -686,10 +685,9 @@
         "vibe-math-vmu/packs/v5r/verification-gates.js::const cls = classifySubject"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::message 写「命题卡 rec-5 没有「正式证明或证伪已写完」的任何登记"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"proofBasis\":\"unverifiable-statement\""
       ],
-      "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。",
-      "next": "r122a：以一句自由文本作辩论对象召集 debate 会**成功**，回执 subjectGate 带 form:\"statement\"、provenance:\"none\"、proofContentChecked:false，note 明说「本闸判不了」并给两条可被核的路；若换成已登记带证明的卡，则 proofContentChecked:true。（§216.3 的裁决：闸宁可承认判不了，也不删掉一种合法用法。）"
+      "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。"
     },
     {
       "id": "C8",
@@ -1383,7 +1381,7 @@
       "id": "E18",
       "rule": "42",
       "text": "投票板：院士设选项与机制（最少/最多选几项）",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/ballotbox.js::'VMU_BALLOT_CHOICE_COUNT', '选择数 '",
         "vibe-math-vmu/kernel/ballotbox.js::'VMU_BALLOT_CHOICE_COUNT', '选择数 '"
@@ -1395,10 +1393,9 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::poll_open"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::并列出 `enforced` 五个键"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"maxChoices\":1"
       ],
-      "ruleText": "投票（院士设置投票板各选项，及投票机制如最多最少选几项之类的。不一定是用于辩论，辩论是那个各自发言而非通过投票来辩论），任务板设置与认领交派，群聊式交流（院士为群管理员，可以设定每个人的权限和发言次数、禁言等），...。",
-      "next": "r120：在 max=1 的投票板上投两项，要被具名拒 VMU_BALLOT_CHOICE_COUNT，并读回合法选择数。"
+      "ruleText": "投票（院士设置投票板各选项，及投票机制如最多最少选几项之类的。不一定是用于辩论，辩论是那个各自发言而非通过投票来辩论），任务板设置与认领交派，群聊式交流（院士为群管理员，可以设定每个人的权限和发言次数、禁言等），...。"
     },
     {
       "id": "E19",
@@ -1423,7 +1420,7 @@
       "id": "E20",
       "rule": "42",
       "text": "任务板：设置与认领交派",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/tasks.js::expectedRevision = null, by = null, bySource = null",
         "vibe-math-vmu/kernel/tasks.js::state = 'assigned'"
@@ -1435,10 +1432,9 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::任务"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::illegal transition assigned -> done"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::stale write refused: task t-7 is at revision 1, you expected 0"
       ],
-      "ruleText": "投票（院士设置投票板各选项，及投票机制如最多最少选几项之类的。不一定是用于辩论，辩论是那个各自发言而非通过投票来辩论），任务板设置与认领交派，群聊式交流（院士为群管理员，可以设定每个人的权限和发言次数、禁言等），...。",
-      "next": "r120：任务板 create → claim → assign 三条成功回执 + 一次非法转移具名拒。"
+      "ruleText": "投票（院士设置投票板各选项，及投票机制如最多最少选几项之类的。不一定是用于辩论，辩论是那个各自发言而非通过投票来辩论），任务板设置与认领交派，群聊式交流（院士为群管理员，可以设定每个人的权限和发言次数、禁言等），...。"
     },
     {
       "id": "E21",

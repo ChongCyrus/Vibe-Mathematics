@@ -122,21 +122,29 @@ test('updates by the SAME process still overwrite (exclusivity is only the first
   passed += 1
 })
 
-// ── 5. Lean 面同形：注入 ids 让下一个号可预知，预置别人占了的镜像 ⇒ 具名拒 ────────────────────
-test('the Lean face refuses the same collision by name (and leaves the other mirror untouched)', async () => {
+// ── 5. Lean 面同形：注入 ids 让下一个号可预知。**点名**的号撞上 ⇒ 具名拒；自动号撞上 ⇒ 换号（F-130a）──
+test('the Lean face refuses a NAMED collision by name (and leaves the other mirror untouched)', async () => {
   const ids = createIds({ clock: () => 0 })
   ids.observe('lean', ['lean-41'])                       // hydrate: the next mint is lean-42
   const otherMirror = JSON.stringify({ schema: 'vmu/lean-job@1', jobId: 'lean-42', state: 'running', owner: 'other' }) + '\n'
   const fs = memFs({ exclusive: true, seed: { 'Formal/Jobs/lean-42.json': otherMirror } })
   const face = createLeanFace({ settings: mkSettings().settings, clock: () => 0, spawn: spawnOk, fs, ids })
-  const r = await face.submit({ statement: 'True', file: '/tmp/x.lean' })
-  assert.equal(r.ok, false, '同号提交必须被拒：' + JSON.stringify(r))
+  const r = await face.submit({ statement: 'True', file: '/tmp/x.lean', jobId: 'lean-42' })
+  assert.equal(r.ok, false, '点名同号提交必须被拒：' + JSON.stringify(r))
   assert.equal(r.code, 'VMU_MATH_JOB_ID_TAKEN')
   assert.equal(r.enforcedScope, 'evaluated-so-far')
   assert.equal(fs.store.get('Formal/Jobs/lean-42.json'), otherMirror, '★ 别人占的镜像必须逐字未动')
   assert.equal(face.list().count, 0, '被拒的作业不得留在队列里')
   assert.equal(face.admission().exclusiveCreate, true)
   assert.equal(face.admission().crossProcess, 'enforced-by-exclusive-create')
+  // …and the auto number is still OUR guess: ROUND 130 · F-130a makes a taken auto id a re-mint, never a refusal
+  // (this fixture's counter has already moved past lean-42, so the next auto id is free — the re-mint branch itself
+  // is covered end-to-end by tests/vmu-run130-lean-remint.test.mjs §1/§3).
+  const auto = await face.submit({ statement: 'True', file: '/tmp/y.lean' })
+  assert.equal(auto.ok, true, '自动号不得因为共享目录而拒：' + JSON.stringify(auto))
+  assert.equal(auto.id === 'lean-42', false, '不得占用别人的号')
+  assert.equal(fs.store.get('Formal/Jobs/lean-42.json'), otherMirror, '★ 别人的镜像永远逐字未动')
+  assert.equal(face.list().count, 1, '成功的那笔作业应当留在自己的队列里')
   // …and without the seam the Lean face also degrades BY NAME:
   const bare = createLeanFace({ settings: mkSettings().settings, clock: () => 0, spawn: spawnOk, fs: memFs({ exclusive: false }), ids })
   assert.equal(bare.admission().exclusiveCreate, false)
