@@ -282,7 +282,12 @@
       "status": "PARTIAL",
       "mechanism": [
         "vibe-math-vmu/kernel/report.js::due = asked !== '' && asked === it.event",
-        "vibe-math-vmu/vibe-math-vmu.js::event: 'turn-end', metrics: metricsOf"
+        "vibe-math-vmu/kernel/records.js::onProgress = null",
+        "vibe-math-vmu/kernel/index.js::onProgress: progressReport",
+        "vibe-math-vmu/vibe-math-vmu.js::event: 'turn-end', metrics: metricsOf",
+        "vibe-math-vmu/kernel/reporttransport.js::export function createMailboxReportTransport",
+        "vibe-math-vmu/vibe-math-vmu.js::createMailboxReportTransport({ getKernel: () => kernelBox.value",
+        "vibe-math-vmu/settings/schema.js::key: 'vmu.report.transport'"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_report"
@@ -295,7 +300,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"neverDrives\":true"
       ],
       "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。",
-      "next": "r120：让所办在 turn-end 之外收到一次 progress 事件（或让 v5r-report 声明 progress 触发），读回 fired=true 的回执；今天没有任何 progress 发射点。"
+      "next": "r127：成员/院士写一条 progress 后，(a) 汇报回执 `delivered:true` 且 `refused:null`；(b) 办公室席位 `vibe_v5_inbox{action:\"list\"}` 列出 `from:\"report\"` 的 notice（正文是渲染后的【有进展】）。两条缺一即仍算未接线：写了 durable queue 不等于收件人收到。"
     },
     {
       "id": "A3",

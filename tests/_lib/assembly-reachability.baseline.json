@@ -102,6 +102,7 @@
     "vibe-math-vmu/kernel/report.js",
     "vibe-math-vmu/kernel/reportfeedback.js",
     "vibe-math-vmu/kernel/reportfeedbackdelivery.js",
+    "vibe-math-vmu/kernel/reporttransport.js",
     "vibe-math-vmu/kernel/repropack.js",
     "vibe-math-vmu/kernel/resource.js",
     "vibe-math-vmu/kernel/resume.js",

@@ -367,8 +367,13 @@ console.log('=== 9. THE PACK\'S OWN POLICY IS VALID (it cannot ship a broken dec
   ok(d.declared >= 3 && d.problems.length === 0,
     'those declarations normalise with ZERO problems (a broken declaration would be a pack defect, not a test finding)', d.problems)
   const kinds = d.items.map((it) => it.kind).sort().join(',')
-  ok(kinds === 'event,period,threshold',
-    'and the pack exercises all three trigger kinds, so the whole surface is policy-driven rather than test-only', kinds)
+  // ★ LIVE RUN 126 (A2): the pack now declares FOUR reports — one per trigger kind plus a second `event` listener for
+  // `progress`, because the kernel started emitting that event and an event nobody waits for is not a report. The
+  // assertion is therefore "every kind of the three is exercised", not a hard-coded count of listeners.
+  const kindSet = [...new Set(d.items.map((it) => it.kind))].sort().join(',')
+  ok(kindSet === 'event,period,threshold' && d.items.filter((it) => it.kind === 'event').length >= 2,
+    'and the pack exercises all three trigger kinds (with a progress listener among the events), so the whole surface is policy-driven rather than test-only',
+    kinds)
   // NON-EMPTY FIRST (RULE E): `every()` on an empty list is true, so the guard and the check live in ONE expression.
   ok(d.items.length > 0 && d.items.every((it) => it.to.includes('office')),
     'every pack report is addressed to the office, which is v5r\'s external interface', { reports: d.items.length })

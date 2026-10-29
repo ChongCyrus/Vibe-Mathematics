@@ -9612,3 +9612,153 @@ build `6b04a8ea`，clone `slvp123`，port 19725。`DRIVE exit=0`、`durationSec 
 `vibe_vmu_meeting{action:"open"}` 会议要用 primitive 面读（回执 `registry:"primitive"` + `registryMeans`）。
 
 ### §219.6 无实质残余：否（E18/E20/E24/B6 四条待下一轮）
+
+## §220 真机跑 125 —— 一个动作两扇门，门只装了一扇
+
+### §220.1 读数
+
+| 轮次 | build | 时长 | 调用 | token | 会话 | RED | 判据来源 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 125 | `33bafb9c` | 777 s | 32 / 32（89 条唯一回执） | 4,750,729 | 4 | 0 | `_oneoff/vm-slv/full-1029-123249.jsonl`（`D:/_tmp/r125-uniq.json`） |
+
+### §220.2 判决表
+
+| 规则 | 真机读到的 | 判定 |
+| --- | --- | --- |
+| B5 共同设计 | `propose` 不带 member ⇒ `VMU_INVALID_ARGUMENT "blueprint (proposal) needs the acting member id"`；委员续写 `continued:true`；`adopt` ⇒ `"codesign":{"ok":true,"hasChair":true,"hasResident":true}` | ✅ DONE |
+| B6 只由 chair 采纳 | 委员冒用 `member:"r-acad"` ⇒ `a member cannot adopt in another member name (the seat is read from the CALLER)`；本人 ⇒ `blueprint (adoption) is an academician (chair seat) action; "r-1" is in slot "member"` | ✅ DONE |
+| C6 完成态必须有 Lean 证据 | 声明 `proof_state:"complete"` 无 lean_job/lean_conformance ⇒ `VMU_INVALID_ARGUMENT` + 三步 hint | ✅ DONE |
+| B1 定论只能由裁决 | `verified_promote{literature_ref}` ⇒ `VMU_PACK_V5R_VERIFIED_NEEDS_JUDGE`（要求一致裁决 value:0） | ✅ DONE |
+| A2 有进展即汇报 | 本轮全部 progress 写入后报告面**零次** `event:"progress"`（见 §220.3） | ❌ 已修 |
+| E24 忠诚性词表 | `fidelity:"diverge"` ⇒ `fidelity must be "conform" or "defect"`（闭集回显） | ✅ 闭集；「p≠1 强下结论」仍未走到 ⏳ |
+| F-125a 席位门 | 委员 r-2 经**原语面** `open`/`silent{member:主席}`/`close` **三次全成功**，同一会话服务面却正当拒收 | ❌ 已修（§220.3） |
+
+### §220.3 F-125a：同一动作的两扇门只装了一扇
+
+真机回执（r125 原样）：
+
+- 服务面：`vibe_v5_meeting{action:"convene"}` ⇒ `"meeting (convening) is an academician (chair seat) action..."`
+- 原语面（同一成员 r-2）：`vibe_vmu_meeting{action:"open", id:"mtg-r2-attempt-1"}` ⇒ `"ok":true,"state":"in_session"`
+- 原语面（同一成员 r-2）：`silent{member:"r-acad", by:"r-2"}` ⇒ `"ok":true` —— **委员把主席静音了**
+- 原语面（同一成员 r-2）：`close{actor:"r-2"}` ⇒ `"ok":true,"state":"closed"`
+
+真因：`vmu.meetings.conveneRequiresChair` / `closeRequiresChair` 由 v5r 声明为 `true`，但门只装在内核的 **service** 层
+（`kernel/meetings.js` 的 `closeRequiresChair` 检查）；**primitive** 层是 pack-agnostic 工厂（`kernel/meeting.js`），
+它按设计不读设置 —— 而 `tools/meeting.js` 这扇门从未问过设置。教学（`v5r-blocks-b.js:798`）写的是「召集与关闭只对
+chair 席开放」，规则声明为真，门却只装了一扇。
+
+修法（三处，都在 `vibe-math-vmu/tools/meeting.js`，内核只加只读取数）：
+
+1. `kernel/index.js` 新增 `settingOf(key)`（读 settingsView 单键）与 `seatOfMember(id)`（名册 id → slot）；
+2. `tools/meeting.js` 模块级 `chairGateOf({ kernel, setting, caller })` ⇒ `{setting,on,caller,seat,enforced,refuse?,why}`：
+   设置关 ⇒ 不比；调用者不具名 ⇒ **不拒但 `enforced:false` + why**（办公室路径照常工作，且回执说清门没跑）；
+   seat ≠ chair ⇒ 具名拒 `VMU_NOT_PERMITTED`，hint 明说「两扇门同一道闸」；
+3. `open` 前查 `conveneRequiresChair`、`close` 前查 `closeRequiresChair`（primitive 分支），成功回执带 `chairGate`；
+   `silent` 加**归属守卫**（`by` 与 `member` 不同且 `by` 非 chair ⇒ `a member may withdraw only its OWN speech`）——
+   这一条不读设置，是「谁能为谁说话」的归属规则（与 blueprint 冒名采纳同族）。
+4. 顺带补 `force`：primitive `close` 的本意支持 `{force:true}` 提前收会（它自己的 hint 就这么教），而这面的参数表
+   从未声明 `force` ⇒ hint 指了一扇没有钥匙的门。现在声明并转发。
+
+新 `tests/vmu-run125-primitive-seat-gate.test.mjs` **20/0**：设置确为 true；委员 open 拒 + 主席 open 接受且回执带
+`chairGate`；委员冒名静音拒 + 委员自静音与主席静音均成功；委员 close 拒 + 主席 `force` close 接受；办公室不点名不拒
+但披露 `enforced:false`。相邻 10 套全绿（`vmu-meeting` 50、`vmu-meeting-types` 155、`vmu-run36-meeting-close` 39、
+`vmu-run109-live-meeting-merge` 12 等）。
+
+判据：**一条规则必须装在同一动作的每一扇门上；装在服务面而漏掉原语面，等于教人怎么绕过它。**
+
+第二遍（T1 抓到的一处过度执法）：`chairGateOf` 对**空名册**的部署也必须放行并披露 `enforced:false`
+（「这张名册没有席位，读不出谁是主席，闸没有跑」）—— 空名册不是「此人是委员」的证据，而是「此部署没有席位」的证据
+（无 pack 的内核 fixture 与 `vmu-run45-meeting-registry` 正是这种）。同时 `vmu-run45-meeting-registry` 的三次
+primitive `open` 从委员 id 改为主席 id：它的 setup 本来就建了 `r-chair` 席，此前的 open 只是碰巧没被执法。
+
+### §220.4 A2：事件词汇一直有，「有进展时汇报」这件事没人发
+
+`kernel/report.js` 早就懂 `trigger.kind:'event'` + `event:'progress'`，但全仓唯一的自动触发是 `turn-end`
+（`vibe-math-vmu.js:854`）。修法：`kernel/records.js#createRecords({ onProgress })` 在 `put()` 成功后（仅 `track:'progress'`）
+调钩子，失败被 try/catch 吞掉（「铃响失败不能连累已提交的写入」）；`kernel/index.js` 注入 `progressReport` 调
+`report.tick({ at: guardedClock(), event: 'progress' })`。新 `tests/vmu-a2-progress-report.test.mjs` **16/0**；
+真机取证留到 r126（写一条 progress，回执读报告面 tick 计数）。
+
+### §220.5 简报错两处
+
+`vibe_v5_fidelity_conclude` 的 `fidelity` 闭集是 `conform|defect`（简报写 `diverge`）；`vibe_v5_meeting` 的服务面召集
+参数里没有 `kind`（本轮两次召集用了默认 kind，见 §217 的 `kindSource` 机制）。
+
+### §220.6 无实质残余：否（A2 待真机、E18/E20/E24/B6 待下一轮）
+
+## §221 真机跑 126 —— 汇报面：发射点在、监听器在、运输不在
+
+### §221.1 读数（build `33bafb9c`，clone `slvp126`，port 19730，job `pwsh-…`，2026-10-29 13:21）
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `DRIVE exit=0`，675 s，35 calls / 35 results，`tokenTotal 3,918,433`（cap 12M） |
+| 会话 | 4 个，`SUMMARY: 4 session(s), 0 with RED`，`calls(35)=results(35)` |
+| jsonl | `_oneoff/vm-slv/full-1029-132926.jsonl` 8,191,706 B / 16,039 行 |
+| 机器读数 | `NO_FENCE=36 UNKNOWN_FIELD=24 FIELD_NOT_APPLICABLE=36 BAD_JSON=36` |
+| 回执 | `D:/_tmp/r126-tools.json`（35 对；解码脚本 `D:/_tmp/dec126.mjs`） |
+| 环境 | clone 已清、C 盘 10.75 GB、日志保全 `D:\_tmp\slv-phase5\slv-logs\20261029-132127` |
+
+**本轮跑的是旧代码，这是读数的一部分而不是意外**：驱动从 git HEAD 打 tarball，`TARBALL build=33bafb9c`，而 F-125a
+与 A2 的修复还在工作树里。于是 r126 正好**复现了缺陷本体**：
+
+- 委员 `r-2` 经**原语面** `vibe_vmu_meeting{action:"open", id:"mtg-126-member"}` ⇒ 先 `VMU_MEETING_TOO_SMALL`（要 ≥2 人），
+  补 `roster:["r-1","r-2"]` 后 `ok:true, state:"in_session"`；
+- `silent{member:"r-1", by:"r-2"}` ⇒ `ok:true`（委员把别人静音成功）；
+- `close{actor:"r-2"}` ⇒ `VMU_STATE the round is not complete`；再 `close{force:true}` **仍被同一句拒** —— 证明旧代码连
+  `force` 都没交下去；
+- 主席 `open` 同样成功，但回执**没有** `chairGate` 字段（新代码才有）。
+
+### §221.2 判决表
+
+| # | 判据 | 结果 | 证据 |
+| --- | --- | --- | --- |
+| 1 | F-125a 席位门是否两扇门都装 | ❌ 旧 build 只有服务面 | 上面四条 |
+| 2 | 汇报面是否声明了 progress 监听器 | ❌ 三条声明（period/event/threshold）无一条听 `progress` | `vibe_vmu_report{action:"declarations"}` ⇒ `fired:[]` |
+| 3 | 汇报是否真的送得出去 | ❌ `transportInjected:false`，每条 firing 带 `VMU_REPORT_NO_TRANSPORT` | `status()` 与 firing 回执同证据 |
+| 4 | 会议关闭/延长的上限披露 | ✅ `extendCeilingMs` 与 `wallLimitNote` 同前 | §220.4 |
+
+### §221.3 A2 的第三件事：把汇报送出进程（`kernel/reporttransport.js`）
+
+前两步（发射点、监听器）在 §220.4 与会话 125/126 已落地；r126 证明**第三步缺着**，于是补上：
+
+- 新叶子模块 `vibe-math-vmu/kernel/reporttransport.js#createMailboxReportTransport({ getKernel, officeSeats })`：
+  一条汇报 = 办公室席位的**一封持久邮件**（`mailbox.send`，`kind:'notice'`），因此 `delivered` 的语义被写明为
+  **「已入队到所办邮箱」**而不是「所办已读」（`transport.transportMeans`）。两种「做不成」都是具名拒：
+  没有 kernel/mailbox ⇒ `VMU_REPORT_NO_TRANSPORT`；名册里没有办公室席位 ⇒ `VMU_MAILBOX_NO_SUCH_RECIPIENT`
+  （绝不拿第一个成员/发送者/全体当替代收件人）。
+- 接缝是**部署声明**，不是默认猜测：`vmu.report.transport = 'mailbox'`（`settings/schema.js` 新行，默认 `''` 保留旧的
+  具名拒）。原因写在代码里：`deliver` 是 `createReport` 的**构造期**选项，而 pack 清单的设置是**构造后**才应用 ——
+  清单里声明会「看起来配置了，其实什么都没做」，正是这个仓库反复抓的「陈旧显式值」。因此驱动（模拟部署）在
+  `config.vmu` 注入 `report: { transport: 'mailbox' }`。
+- `vibe-math-vmu/vibe-math-vmu.js`：`kernelBox` 晚绑定（transport 构造时 kernel 还不存在）+ `OFFICE_SLOTS=['chair']`
+  （办公室=主席席，v5r 的 `vibe_v5_inbox` 读的就是席位的箱子）。
+- 新 `tests/vmu-a2-report-transport.test.mjs` **23/0**：①无 kernel/无 mailbox 的具名拒；②真插件真 pack 启动后，写一条
+  progress ⇒ 声明监听器 firing ⇒ 办公室席位**恰好新增一封**邮件（`from:"report"`、`kind:"notice"`、正文是渲染后的汇报），
+  成员席位一封都没有；③没有办公室席位 ⇒ 具名拒且不找替代收件人；④`to:["r-1"]` 只到 r-1、`to:["office","r-1"]` 两边都到；
+  ⑤未声明运输 ⇒ 监听器仍然 firing、回执带 `VMU_REPORT_NO_TRANSPORT`、邮箱里没有新行（两种状态可区分）。
+- 注册：`installer.js` 与 `package.json` 的文件清单加入新模块（否则 `audit-package-membership` 报「相对 import 未随包发布」，
+  preflight 会红）。
+
+### §221.4 门禁
+
+`update-doc-counts --write`（`JOBS 677 / suites 569 / probes 108`）、`regen-all --write` 16/17（一条 write 与 check 同跑的口径差，
+`--check` 复核用）、`PREFLIGHT: PASS`、`DOC LINT: PASS`、`vmu-a2-report-transport` 23/0、`vmu-a2-progress-report` 21/0、
+`vmu-run125-primitive-seat-gate` 20/0；全量 T1 见 §221.5。
+
+### §221.5 全量 T1
+
+- 首跑（`/d/_tmp/t1-r126/t1.log`，HEAD `33bafb9c` + 工作树）：`TOTAL 608 PASS 602 FAIL 6`。六红**全部**是本轮自己引进的，
+  没有一条是旧债：`audit-assembly-reachability-snapshot`（新模块未进快照）、`audit-generators-current` 与
+  `audit-settings-channels` G2.g/G2.g2（docs/11 的 planned backlog 段未重生成）、`audit-declaration-criterion`（它复核
+  `regen-all --check`，被上一条连带）、`vmu-assistant-e2e` 与 `vmu-assistant-report`（pack 从 3 条汇报变 4 条，夹具还在数 3）。
+- 逐条修完：`generate-zero-mechanism-matrix --write`、`audit-assembly-reachability-snapshot --write`、两套夹具按**路径**分别断言
+  （pack 四条 / 部署自有三条是「替换不是合并」的两条路）。
+- 二跑（`/d/_tmp/t1-r126b/t1.log`）：`TOTAL 608 PASS 608 FAIL 0 (suites 544 · probes 64)`，`EXIT=0`。
+
+### §221.6 简报错两处
+
+`vibe_v5_meeting` 的 `open` 需要 ≥2 人的 roster（简报只写「召集」）；`vibe_v5_fidelity_conclude` 的闭集是
+`conform|defect`（再次）。两条都不是产品缺陷，是简报应当照抄声明。
+
+### §221.7 无实质残余：否（A2 待 r127 真机、E18/E20/E24/B6 待下一轮）

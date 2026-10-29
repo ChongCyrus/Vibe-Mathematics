@@ -26,7 +26,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `A1` | 3 | 所办＝主代理：用户的助手、媒介、传信者 | ◐ PARTIAL | 2/2/1/1 | r120：从成员会话调 vibe_v5_message 被席位面具名拒（含 seatFace 字段），再从主席席转发一次并存回执；两次回执都要读回。 |
-| `A2` | 3 | 有进展时自动唤起所办汇报 | ◐ PARTIAL | 2/1/1/2 | r120：让所办在 turn-end 之外收到一次 progress 事件（或让 v5r-report 声明 progress 触发），读回 fired=true 的回执；今天没有任何 progress 发射点。 |
+| `A2` | 3 | 有进展时自动唤起所办汇报 | ◐ PARTIAL | 7/1/1/2 | r127：成员/院士写一条 progress 后，(a) 汇报回执 `delivered:true` 且 `refused:null`；(b) 办公室席位 `vibe_v5_inbox{action:"list"}` 列出 `from:"report"` 的 notice（正文是渲染后的【有进展】）。两条缺一即仍算未接线：写了 durable queue 不等于收件人收到。 |
 | `A3` | 3 | 支持用户以自然语言让所办设参数、控制研究所 | ◐ PARTIAL | 2/2/1/1 | r120：先 vibe_v5_set 一个未声明的键（应具名拒），再改一个声明键并读回生效；两次回执都要。 |
 | `A4` | 3 | 院士＝chair 席，统领研究所 | ✅ DONE | 2/1/2/1 | — |
 | `A5` | 3 | 常驻研究员＝member 席 | ✅ DONE | 1/1/1/1 | — |

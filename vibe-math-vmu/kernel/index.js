@@ -2299,7 +2299,17 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // instance, one ticket sequence, so a recovery replay has a single order to follow. Absent store ⇒ the board's
   // `cast` runs unchanged (named degradation, no pretend durability).
   const ballotbox = createBallotBox({ settings: settingsView, bus, clock: guardedClock, log, durableQueue: sharedCommitLog })
-  const records = createRecords({ settings: settingsView, bus, clock: guardedClock, log })
+  // ★ AUDIT A2 — 「有进展时自动唤起所办汇报」. `kernel/records.js` calls this hook AFTER a `progress` row is
+  // committed; the hook rings the reporting face with `event:'progress'` (the vocabulary `kernel/report.js` has
+  // always had, and which nothing in the tree emitted). Guarded twice: a missing reporting face, or a face that
+  // refuses, must never turn a committed row into a failed write.
+  const progressReport = (row) => {
+    if (!report || typeof report.tick !== 'function') return
+    try { report.tick({ at: guardedClock(), event: 'progress', metrics: metricValues({}) }) } catch (e) {
+      try { log && log({ type: 'records/progress-report-failed', at: guardedClock(), id: row && row.id, code: (e && e.code) || null, message: String((e && e.message) || e) }) } catch { /* logger may be gone */ }
+    }
+  }
+  const records = createRecords({ settings: settingsView, bus, clock: guardedClock, log, onProgress: progressReport })
   // ★★★★★★★ PHASE 12 / D15: THE DEBATE'S FINAL RULING, CLOSED INTO THE INSTITUTE'S OWN CHANNEL.
   // THE HOLE THAT WAS MEASURED: the single-member halves existed (`vibe_v5_verdict` casts, `kernel/ballot.js`'s
   // `defaultTally` turns booleans into a boolean) and NOTHING added up a set of per-member [0,1] rulings, and nothing told
@@ -3091,6 +3101,21 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
      * catches up), each with the id, when this kernel adopted it, and the decision it adopted.
      */
     humanAdoptedDecisions() { return [...humanAdoptedFromFold.values()].map((r) => Object.assign({}, r)) },
+    /** ★ RUN 125 / F-125a: a read of ONE declared setting by dotted key, for faces that live outside this kernel's
+     *  own modules (the primitive meeting/vote faces are pack-agnostic primitives, but the POLICY that says "only the
+     *  chair convenes" is a declared setting, not a pack-private constant). Undeclared keys answer `undefined`; a key
+     *  the settings view refuses is not swallowed into a silent `false` — it is rethrown by the caller's own guard. */
+    settingOf(key) { try { return settingsView[key] } catch (e) { return undefined } },
+    /** ★ RUN 125 / F-125a: which SLOT holds this member id (`chair`/`member`/`temp`), or null when the roster has no
+     *  such row. Same reading `chatSeatOf` uses, exposed because a second face needs the same fact (two readers of one
+     *  fact must not each own a copy). */
+    seatOfMember(id) {
+      try {
+        const rows = members && typeof members.roster === 'function' ? members.roster() : []
+        const row = rows.find((m) => m && String(m.id) === String(id))
+        return row ? String(row.slot) : null
+      } catch (e) { return null }
+    },
 
     /** ROUND 247: the domain compliance packs (docs/20 §9.1-§9.4), reachable like every other service. */
     get legalentity() { return legalEntity },

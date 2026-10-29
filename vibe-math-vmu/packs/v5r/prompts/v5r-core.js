@@ -161,6 +161,11 @@ export const PACK = Object.freeze({
     // progress worth reporting). Recipients use v5r's own id for the office - the pseudo-id its mailbox is addressed
     // by - and every template placeholder is one the report renderer knows.
     'vmu.report.enabled': true,
+    // ★ LIVE RUN 126 (A2, part 3): WHY THE TRANSPORT IS NOT DECLARED HERE. The plugin decides its report transport at
+    // CONSTRUCTION (`deliver` is a createReport option), while a manifest's settings are applied AFTER construction -
+    // so a value written here would be read too late and would look configured while doing nothing (the exact "stale
+    // explicit value" failure this file's header warns about). The transport is therefore a DEPLOYMENT choice
+    // (`config.vmu['vmu.report.transport'] = 'mailbox'`), which is where the host's own delivery ability lives anyway.
     'vmu.report.reports': [
       {
         name: 'v5r-outward-progress',
@@ -168,6 +173,19 @@ export const PACK = Object.freeze({
         template: '【自动汇报 {{ count }}】{{ name }}（{{ at }}）：本所仍在推进，详情见所内 Progress/。',
         to: ['office'],
         channel: 'digest',
+      },
+      {
+        // ★ LIVE RUN 126 (A2): the report face has always had `progress` in its EVENT_VOCAB, and the kernel now EMITS it
+        // when a record lands on the progress track (`kernel/records.js#onProgress` -> `report.tick({event:'progress'})`).
+        // Measured in r126: `vibe_vmu_report{action:"declarations"}` declared three reports and NONE of them listened to
+        // `progress`, so the emitted event fired nothing (`fired:[]`) — an event nobody waits for is not a report. The
+        // rule says the office is woken when there IS progress, so this institution declares exactly that listener; the
+        // office dedupes its inbox (the report is a notification, not a task).
+        name: 'v5r-progress-notice',
+        trigger: { kind: 'event', event: 'progress' },
+        template: '【有进展】{{ name }}（{{ at }}）：所内写了一条进展记录，请判断是否需要对外汇报。',
+        to: ['office'],
+        channel: 'inbox',
       },
       {
         name: 'v5r-meeting-closed',

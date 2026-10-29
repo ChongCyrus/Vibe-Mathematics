@@ -172,7 +172,12 @@ export function chunkBody(body, chunkBytes) {
  * createRecords — the record-track projection. `store`/`library` are optional seams (persistence stays with
  * them, 07): this module owns the KNOBS and the accounting, never the durable layer.
  */
-export function createRecords({ clock = () => 0, log = null, settings = {}, bus = null, exists = null } = {}) {
+export function createRecords({ clock = () => 0, log = null, settings = {}, bus = null, exists = null, onProgress = null } = {}) {
+  // ★ AUDIT A2 — 「有进展时自动唤起所办汇报」. The institute's own rule says a PROGRESS ROW rings the office's bell; the
+  // reporting face (`kernel/report.js`) has always understood `event:'progress'`, but NOTHING emitted that event — the
+  // only automatic trigger measured in the tree was `turn-end`. The hook is injected (this module must not import the
+  // reporting face) and it is called only AFTER a row is committed, inside a try/catch: a bell that fails must never
+  // fail the write that rang it.
   if (typeof clock !== 'function') {
     const e = refuse('VMU_INVALID_ARGUMENT', 'createRecords needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock')
     e.enforced = []   // rule ①: a thrown refusal ALWAYS carries an array (possibly empty), never undefined
@@ -598,6 +603,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       record_({ type: 'records/put', id, track, kind: rec.kind, slug, bytes, fingerprint: fp })
       say({ type: 'records/put', at, id, track, fingerprint: fp })
       fire('records/put', { id, track, fingerprint: fp })
+      if (typeof onProgress === 'function' && track === 'progress') {
+        try { onProgress({ id, track, kind, at, by: by === undefined ? null : by }) } catch { /* reported, never fatal */ }
+      }
       return { ok: true, deduplicated: false, id, slug, fingerprint: fp, bytes, tier: tierOf(rec, at), enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at }
     },
 

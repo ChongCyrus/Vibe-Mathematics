@@ -123,8 +123,11 @@ stage('1. THE REAL ENTRY PUBLISHES THE FACE A MANIFEST DECLARES (D-01, F1 fixed 
   ok(packOnly.state.specs.some((s) => s.name === 'vibe_vmu_report'),
     'F1 (hard): `entry.apply(ctx, { packs:[\'v5r\'] })` ALONE registers `vibe_vmu_report` - a manifest-declared intent publishes its face',
     packOnly.state.specs.map((s) => s.name))
-  ok(st0.armed === 3 && st0.enabled === true,
-    'while the pack\'s own three declarations are armed, with no deployment key at all', { armed: st0.armed, enabled: st0.enabled })
+  // ★ LIVE RUN 126 (A2): v5r declares FOUR reports now - one per trigger kind PLUS the `progress` event listener, since
+  // the kernel started emitting `progress` when a record lands on that track (an event nobody waits for is not a
+  // report). The count is the pack's policy, not a framework constant; what must hold is that every declared report arms.
+  ok(st0.armed === 4 && st0.enabled === true,
+    'while the pack\'s own four declarations are armed, with no deployment key at all', { armed: st0.armed, enabled: st0.enabled })
   // F5, NOW FIXED AT THE ROOT AND ASSERTED HARD: the periodic clock's gate IS the published face, evaluated AFTER the
   // tools are registered (so a pack manifest's settings have landed). A pack-only assembly therefore arms its reports
   // AND attaches the host clock - "declared" and "driven" are the same fact.
@@ -137,6 +140,8 @@ stage('1. THE REAL ENTRY PUBLISHES THE FACE A MANIFEST DECLARES (D-01, F1 fixed 
   const a = await boot()
   ok(a.handle.packErrors().length === 0, 'the v5r pack loads through the real entry', JSON.stringify(a.handle.packErrors()).slice(0, 180))
   const st = a.report().status()
+  // The DEPLOYMENT path is a different owner: it declares its own three reports (the pack's four are replaced wholesale,
+  // never merged), so the count stays three - the two paths are asserted separately, not as alternatives.
   ok(st.enabled === true && st.declared === 3 && st.armed === 3 && st.problems.length === 0,
     'the deployment\'s three declarations are armed and problem-free', { declared: st.declared, armed: st.armed })
   ok(a.state.specs.some((s) => s.name === 'vibe_vmu_report'),
@@ -272,7 +277,7 @@ stage('6. C-THE TWO OFF SWITCHES: ZERO INJECTION, NAMED OFF-STATE, BYTE-IDENTICA
   // same tool - and the off state must be REPORTED, not silent.
   const reportTool = a.call('vibe_vmu_report')
   const on = await reportTool({ action: 'status' })
-  ok(on.enabled === true && on.declared === 3, 'reporting starts on, with three declarations', { enabled: on.enabled, declared: on.declared })
+  ok(on.enabled === true && on.declared === 3, 'reporting starts on, with the deployment\'s three declarations', { enabled: on.enabled, declared: on.declared })
   const offSet = await reportTool({ action: 'set', key: 'vmu.report.enabled', value: 'false', by: 'office', reason: 'quiet hours' })
   ok(offSet.ok === true, 'the switch is turned off through the tool', offSet.ok)
   const off = await reportTool({ action: 'status' })

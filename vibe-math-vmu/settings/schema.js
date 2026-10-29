@@ -1034,6 +1034,11 @@ const CORE_DEFS = Object.freeze([
   // ★ A1 step 1 · Part A (phase 2): the reporting FEEDBACK LOOP. ★ The framework adds the switch; it does NOT flip any
   // pack's default. Part A reads these keys and reports them in the receipt; the delivery call itself was WIRED in Part B
   // (`systemPrompt.context()`), so the receipt NAMES the layer that armed the switch - or claims NO layer when its position cannot know one - instead of guessing.
+  // ★ ROUND 126 / AUDIT A2: the report face had a `deliver` seam and NOBODY filled it in a shipped deployment, so every
+  // fired report carried `VMU_REPORT_NO_TRANSPORT`. The value `'mailbox'` installs the real transport
+  // (`kernel/reporttransport.js`: a report becomes a durable mail row for the office seat). Default `''` keeps the named
+  // refusal: "no transport" must stay a state a receipt can tell apart from "queued in the office inbox".
+  { key: 'vmu.report.transport', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '汇报投递通道：默认空＝未接线（每次 firing 以 VMU_REPORT_NO_TRANSPORT 具名拒，但仍在留痕里）；`mailbox`＝把汇报写成办公室席位的一封持久邮件（kernel/reporttransport.js，回报里的 delivered 意指"已入队到所办邮箱"，不是"所办已读"）' },
   { key: 'vmu.report.feedback', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '汇报反馈回路开关（A1 第一步）：默认 false＝零机制；开＝把汇报的受众与回执经宿主动态 context 回给模型（投递调用已由入口在 Part B 接线（已落地）—— 未接线期间回执以真话具名）' },
   { key: 'vmu.report.audience', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '汇报的受众（谁应当收到）：默认空串；开关开而受众为空时具名失败，不静默' },
   { key: 'vmu.report.minIntervalMs', type: 'natural', def: 60000, hot: HOT.H1, who: 'office', doc: '周期汇报的最小周期；低于即钳到此值并在回执里报出（钳制不静默）' },

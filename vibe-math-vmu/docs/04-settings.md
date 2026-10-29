@@ -1045,6 +1045,7 @@ vmu.packs.active: [v5r]
 | `vmu.report.reports` | obj[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/report.js` | 汇报声明清单；每项 {name, trigger:{kind:event|period|threshold, …}, template, to:[], channel, enabled?}；空＝零机制（不声明就什么都不发生） |
 | `vmu.report.channels` | string[] | `[inbox,digest,log]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 允许的汇报通道；不在集合内具名拒 VMU_REPORT_CHANNEL_UNKNOWN |
 | `vmu.report.recipients` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 允许的收件人白名单；空＝不限制（空收件人＋非 log 通道即具名拒） |
+| `vmu.report.transport` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 汇报投递通道：默认空＝未接线（每次 firing 以 VMU_REPORT_NO_TRANSPORT 具名拒，但仍在留痕里）；`mailbox`＝把汇报写成办公室席位的一封持久邮件（kernel/reporttransport.js，回报里的 delivered 意指"已入队到所办邮箱"，不是"所办已读"） |
 | `vmu.report.feedback` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 汇报反馈回路开关（A1 第一步）：默认 false＝零机制；开＝把汇报的受众与回执经宿主动态 context 回给模型（投递调用已由入口在 Part B 接线（已落地）—— 未接线期间回执以真话具名） |
 | `vmu.report.audience` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 汇报的受众（谁应当收到）：默认空串；开关开而受众为空时具名失败，不静默 |
 | `vmu.report.minIntervalMs` | int ≥0 | `60000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 周期汇报的最小周期；低于即钳到此值并在回执里报出（钳制不静默） |
@@ -1560,7 +1561,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1157** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1158** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1652,7 +1653,7 @@ vmu.packs.active: [v5r]
 | `vmu.refs.*` | 3 |
 | `vmu.replay.*` | 5 |
 | `vmu.replication.*` | 2 |
-| `vmu.report.*` | 13 |
+| `vmu.report.*` | 14 |
 | `vmu.repro.*` | 7 |
 | `vmu.resource.*` | 17 |
 | `vmu.resume.*` | 6 |

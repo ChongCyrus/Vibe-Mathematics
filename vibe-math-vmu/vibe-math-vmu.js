@@ -25,6 +25,7 @@ import { createKernel } from './kernel/index.js'
 // ★ A1 step 1 · Part B: the report-feedback DELIVERY call. It lives in a module of its own (this file is at its
 // 1200-line budget, and the call carries enough reasoning to belong there); the entry passes its own `ctx`/`effect` down.
 import { deliverReportFeedbackFrom } from './kernel/reportfeedbackdelivery.js'
+import { createMailboxReportTransport } from './kernel/reporttransport.js'
 import { deliverViaSubagents, deliverByReturning, sendViaSubagents, interruptViaSubagents } from './kernel/turn/index.js'
 import { createTurnDeliver } from './host-deliver.js'
 import { createHostAdapter, setToolExecObserver } from './host.js'
@@ -579,6 +580,22 @@ export function apply(ctx, config = {}) {
   // value layer armed and delivered, manifest silently stayed off. Arming from a pack therefore needs the read to happen
   // later, which needs the face to hand its counts to the provider instead of the provider asking the face. Not done yet.
   let reportFeedbackState = null
+  // ★★ ROUND 126 / AUDIT A2 (part 3): THE MISSING TRANSPORT. `report.js` emitted, the pack declared, and every fired
+  // report carried `VMU_REPORT_NO_TRANSPORT` because this assembly passed `deliver:null` whenever the deployment named
+  // no transport. The default is now a REAL one (the mailbox face, `kernel/reporttransport.js`) - but ONLY when the
+  // deployment asks for it: `vmu.report.transport:'mailbox'`. DECLARATION IS THE CONFIGURATION, still: an undeclared
+  // deployment keeps the named refusal byte-for-byte, so "no transport" stays a distinguishable state rather than
+  // silently becoming "mailbox" everywhere (which would also make every existing receipt lie about its seams).
+  // The kernel does not exist yet when the transport is constructed, so the transport resolves it AT CALL TIME.
+  const kernelBox = { value: null }
+  // WHICH SEAT IS "THE OFFICE": the v5r chair seat owns the office view of the institute (`vibe_v5_inbox` reads a
+  // seat's box). Named here rather than inside the transport module, which must not guess a pack's vocabulary.
+  const OFFICE_SLOTS = ['chair']
+  const reportTransport = typeof config.deliver === 'function'
+    ? config.deliver
+    : (String(settingsWithPackDefaults['vmu.report.transport'] || '') === 'mailbox'
+        ? createMailboxReportTransport({ getKernel: () => kernelBox.value, officeSeats: OFFICE_SLOTS })
+        : null)
   const kernel = createKernel(Object.assign({ sectionPolicy, noticeBlock, extraPhases, settings: settingsWithPackDefaults, root, spawn: spawnSeam, host: mathHost, deliverTurn: turnDeliver,
     // ★★ ROUND 52: the DSH session this kernel serves. Settings resolve per kernel, and the status board names WHOSE
     // resolution it prints; without this id a member cannot tell "the board and my own status read disagree" from "two
@@ -625,7 +642,7 @@ export function apply(ctx, config = {}) {
     // because the report/member envelopes differ from a turn's `{turn,text}` and guessing a shape would be exactly the
     // "pretend it was delivered" failure the framework refuses. With no `config.deliver`, the seam stays absent and the
     // named refusal remains the honest answer.
-    deliver: typeof config.deliver === 'function' ? config.deliver : null,
+    deliver: reportTransport,
     // ROUND 4 / F9+F10: the two ongoing-command seams (see their assembly above). Both are always functions here, so
     // `status().seams.sendMessage/interrupt` reads true; the NAMED refusal happens when the host lacks the verb.
     sendMessage,
@@ -640,6 +657,9 @@ export function apply(ctx, config = {}) {
     // a packs DATA-declared prompt text joins what the configuration supplies; the pipelines own `order` places it
     sections: [...packSections, ...promptSections], bindings: [...packBindings, ...promptBindings], overrides: promptOverrides, whoMayOverride, readFile: readRel },
   clock ? { clock } : {}))
+  // The transport above resolves the kernel through this box; assigning here (not inside apply's closures) keeps the
+  // one object every later call sees.
+  kernelBox.value = kernel
   // DECLARATION IS THE CONFIGURATION. With nothing declared the preset must not even offer a settings
   // tool (the documented way to switch the first thing on is the profile's cordis.patch.yml), and the
   // middleware the configuration declares has to be ACTIVATED - that is what start() is for.

@@ -71,6 +71,42 @@ export function refusalDetails(e) {
   return Object.keys(out).length ? out : null
 }
 
+/**
+ * ★ RUN 125 / F-125a — THE PRIMITIVE DOOR MUST HONOUR THE SAME SEAT GATE AS THE SERVICE DOOR.
+ *
+ * WHAT WAS MEASURED (run 125): the pack declares `vmu.meetings.conveneRequiresChair` /
+ * `vmu.meetings.closeRequiresChair` = true and the teaching says so (`packs/v5r/prompts/v5r-blocks-b.js:798`), the
+ * SERVICE face refused a member's convene by name — and the same member opened, muted and CLOSED a PRIMITIVE meeting
+ * through this face with `ok:true` receipts (`mtg-r2-attempt-1`). A rule about "only the chair convenes/closes" was
+ * enforced on one of two doors; the other door was open.
+ *
+ * WHY THE GATE LIVES HERE AND NOT IN `kernel/meeting.js`: the primitive object is intentionally pack-agnostic (a
+ * factory, no seats). The POLICY is a declared setting that a pack turns on, so the face that speaks to seats reads
+ * the setting and the roster through two kernel accessors (`settingOf`, `seatOfMember`) — no policy constant is
+ * copied into this file, and a deployment with the settings off keeps the old behaviour exactly.
+ *
+ * WHAT IT DOES NOT DECIDE: a caller that names NO member (the office/root path, and every fixture that has no seats)
+ * is not refused — this face cannot tell a chair from a member without a name, and inventing one would refuse work
+ * that was never in question. That case is DISCLOSED in the receipt (`chairGate.enforced:false` + why) rather than
+ * passing silently, so "the gate did not run" is never mistaken for "the gate passed".
+ */
+function chairGateOf({ kernel, setting, caller }) {
+  let on = false
+  try { on = typeof kernel.settingOf === 'function' ? kernel.settingOf(setting) === true : false } catch { on = false }
+  if (!on) return null
+  const who = caller === undefined || caller === null || String(caller) === '' ? null : String(caller)
+  if (!who) return { setting, on: true, caller: null, seat: null, enforced: false, why: 'no caller was named (member/by/actor): this face cannot read a seat, so the chair gate did not run — pass the acting member id to have it enforced' }
+  // ★ RUN 125 (second pass, caught by the pack-agnostic fixtures): an EMPTY roster is not evidence that this caller
+  // is a non-chair — it is evidence that this deployment has no seats at all (a kernel boot without the v5r pack, and
+  // every fixture that never hires). Refusing there would enforce a policy against objects that do not exist. The
+  // gate reports that it did not run, by name, for the same reason the no-caller case does.
+  const rosterSize = (() => { try { const r = kernel.members && typeof kernel.members.roster === 'function' ? kernel.members.roster() : null; return Array.isArray(r) ? r.length : -1 } catch { return -1 } })()
+  if (rosterSize === 0) return { setting, on: true, caller: who, seat: null, enforced: false, why: 'the roster is empty: this deployment has no seats, so this face cannot tell the chair from anyone else — the chair gate did not run' }
+  const seat = (() => { try { return typeof kernel.seatOfMember === 'function' ? kernel.seatOfMember(who) : null } catch { return null } })()
+  if (seat === 'chair') return { setting, on: true, caller: who, seat, enforced: true }
+  return { setting, on: true, caller: who, seat, enforced: true, refuse: true, why: seat === null ? 'the roster holds no seat row for this id, so it is not the chair' : 'slot "' + seat + '" is not the chair seat' }
+}
+
 export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
   // ★ G7 (real machine): a ballot opened from this face is bound to (service meeting, motion) so that cast votes can
   // be mirrored into the ONE authoritative tally. Keyed by ballot id, per spec instance.
@@ -97,6 +133,9 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         members: param('array', 'invite 的**批量形**：按数组顺序把一串成员放进发言队列（「批量指定成员按一定顺序发言」）。与 member 互斥（同时给 ⇒ 具名拒）；顺序就是队列顺序，回执 order 读回真实队列'),
         text: param('string', '发言内容（speak/refuse/invitedspeak 必填）'),
         reason: param('string', 'silent/close/reopen/refuse/end/freeze/unfreeze/boxreopen/**revokelapse/boxrevokelapse** 的原因（end 与两个撤销必填：无理由的结束/撤销正是这条规则要防的静默动作）'),
+        // ★ RUN 125: `force` was not declared on this face at all, so the ONE thing the primitive close needs to end a
+        // round early (`force:true`, offered by its own hint) could not be passed here — the hint named a door with no key.
+        force: param('boolean', 'close 的**强制提前收会**：回合没跑完时内核默认拒（仲裁者/主席可能要等全员），`force:true` 才允许提前收（这是有意的两段式，不是绕过门）'),
         ms: param('number', 'extend 的延长毫秒数（缺省读 vmu.meetings.speechExtendMs，仍为 0 ⇒ 具名拒）'),
         agenda: param('string', 'open 的议程文本'),
         roster: param('array', 'open 的成员清单（默认取该会议的既定语料）'),
@@ -121,7 +160,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         // 读 speechExtendMs/Max；`extendlimit` 是【会议墙钟上界】延长，读 extendCeilingMs。两个上界两个面。
         mode: param('string', 'flow/overrideorder 的模式（flow：open｜hands｜round_robin｜call_on；overrideorder：fifo｜round-robin｜chair｜random）', { enum: ['open', 'hands', 'round_robin', 'call_on', 'fifo', 'round-robin', 'chair', 'random'] }),
       },
-      run: async ({ action, id, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, subject, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor } = {}) => {
+      run: async ({ action, id, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, subject, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor, force } = {}) => {
         // ★ RUN 84: the crossing set lives at module scope (SERVICE_CROSSING_ACTIONS) so the refusal, this loop and the
         // test that reads the sentence all agree on it.
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
@@ -257,6 +296,13 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                 'action open does not take `kind`: on this face `kind` is the BALLOT kind (vote: decisive|advisory), while a MEETING kind (debate/academic/…) is a field of the meetings SERVICE record — and this action builds a per-object PRIMITIVE meeting whose kind is fixed at "general"',
                 'refusing rather than guessing which meaning you meant (live run 45: kind:"debate" came back as a "general" meeting on an ok:true receipt). For a meeting KIND use the SERVICE face — vibe_v5_meeting {type:"debate", agenda:"<what is discussed>", member:"<chair id>"} — or omit kind here and open the primitive meeting as it is (this face has no action/kind/subject on the service path: a live run 46 caller tried exactly that shape and it does not exist). On the service face a debate ALSO needs subject ("a debate meeting needs a subject") and the chair must have a recorded turn first (VMU_CHAIR_ACT_NOT_DELEGATED) — run 47 measured three calls to get through all three checks')
             }
+            // ★ RUN 125 / F-125a: the PRIMITIVE door honours the same seat gate the service door does.
+            const openGate = chairGateOf({ kernel, setting: 'vmu.meetings.conveneRequiresChair', caller: member !== undefined && member !== null && String(member) !== '' ? member : by })
+            if (openGate && openGate.refuse) {
+              return refused('VMU_NOT_PERMITTED',
+                openGate.setting + '=true: convening is an academician (chair seat) action; "' + openGate.caller + '" is ' + (openGate.seat === null ? 'not on the roster' : 'in slot "' + openGate.seat + '"'),
+                'call it from a member seated in the chair slot (the chair gate is declared by the pack and enforced on BOTH doors: the service face `vibe_v5_meeting` and this primitive face); the office (root) may convene without a member seat')
+            }
             const meeting = kernel.meeting({ id: id || undefined, roster: Array.isArray(roster) ? roster : undefined })
             if (typeof secretary === 'string' && secretary !== '') meeting.secretary = secretary
             // ★★★ LIVE RUN 31 (the institute's own report): a REFUSED convene must leave no record. `kernel.meeting()`
@@ -295,6 +341,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             }
             return { ok: true, action, id: meeting.id, state: meeting.state, phase: meeting.phase, secretary: meeting.secretary || null,
               registry: 'primitive', serviceMeeting, dropped,
+              ...(openGate ? { chairGate: openGate } : {}),
               ...(dropped.length ? { droppedNote: droppedWhere } : {}),
               ...(serviceError ? { serviceError } : {}) }
           }
@@ -311,7 +358,23 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             }
             throw noSuchMeeting(pid)
           }
-          if (action === 'silent') return Object.assign({ ok: true, action, id }, await live().markSilent(need(member, 'member'), reason || 'no input'))
+          if (action === 'silent') {
+            // ★ RUN 125 / F-125a (second half, measured the same run): r-2 marked the CHAIR silent (`silent {member:"r-acad", by:"r-2"}`)
+            // with an ok:true receipt. Withdrawing someone ELSE's speech is an attribution act, not a floor act: a
+            // member may withdraw its own, only the chair may withdraw another's. This guard is seat-independent (it is
+            // about who may speak FOR whom, like blueprint adopt naming another member), so it does not read a setting.
+            const who = member === undefined || member === null ? '' : String(member)
+            const actorId = by === undefined || by === null || String(by) === '' ? (actor !== undefined && actor !== null && String(actor) !== '' ? String(actor) : '') : String(by)
+            if (who !== '' && actorId !== '' && actorId !== who) {
+              const actorSeat = (() => { try { return typeof kernel.seatOfMember === 'function' ? kernel.seatOfMember(actorId) : null } catch { return null } })()
+              if (actorSeat !== 'chair') {
+                return refused('VMU_NOT_PERMITTED',
+                  "silent names member \"" + who + "\" but the caller is \"" + actorId + "\" (" + (actorSeat === null ? "not on the roster" : "slot \"" + actorSeat + "\"") + "): a member may withdraw only its OWN speech; withdrawing another member's speech is the chair seat's act",
+                  'call silent with your own member id (or omit `by` and pass only your own id), or let the chair withdraw that speech')
+              }
+            }
+            return Object.assign({ ok: true, action, id }, await live().markSilent(need(member, 'member'), reason || 'no input'))
+          }
           // ── D9: 举手 ────────────────────────────────────────────────────────────────────────────────────────────
           // A primitive meeting raises a hand (`handUp`, which respects the round's ask list). A SERVICE meeting has
           // no hand-up at all — its floor is a QUEUE, so "raising a hand" IS "put myself in the queue" (`queue`).
@@ -496,7 +559,16 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             const pid = sid(id)
             if (!pid) return meetingFieldRefusal('close')
             const primitive = kernel.liveMeeting(pid)
-            if (primitive) return Object.assign({ ok: true, action, id }, await primitive.close(reason || 'closed'))
+            if (primitive) {
+              const closeGate = chairGateOf({ kernel, setting: 'vmu.meetings.closeRequiresChair', caller: actor !== undefined && actor !== null && String(actor) !== '' ? actor : (by !== undefined && by !== null && String(by) !== '' ? by : member) })
+              if (closeGate && closeGate.refuse) {
+                return refused('VMU_NOT_PERMITTED',
+                  closeGate.setting + '=true: closing is an academician (chair seat) action; "' + closeGate.caller + '" is ' + (closeGate.seat === null ? 'not on the roster' : 'in slot "' + closeGate.seat + '"'),
+                  'let the chair close it (pass actor:"<chair id>"), or finish the primitive meeting through the service face; the office (root) may close without a member seat')
+              }
+              const out = await primitive.close(reason || 'closed', { force: force === true, by: actor !== undefined && actor !== null && String(actor) !== '' ? String(actor) : (by !== undefined && by !== null && String(by) !== '' ? String(by) : null) })
+              return Object.assign({ ok: true, action, id }, out, closeGate ? { chairGate: closeGate } : {})
+            }
             // A2: closing a SERVICE meeting uses the service's own close (its rails apply). The two close semantics
             // DIFFER and the receipt says so: the service moves the meeting to its ARCHIVE (it leaves the service
             // live table; `summary` stays the archive read face), while a primitive close keeps it in the live map.

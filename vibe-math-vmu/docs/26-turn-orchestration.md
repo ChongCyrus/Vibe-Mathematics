@@ -2146,3 +2146,38 @@ primitive 面一扇门，而教学点名的 SERVICE 面拒了规则自己的词�
   比在散文里复述一遍更硬；而钉子里的 `[]`、`()`、`+` 会被 checker 当正则编译——能编译但匹配不到的字面量，是最难发现的假绿。
 
 判据：**声明必须列出 handler 已经读的词；一条规则的门，必须在这个面的词表里。**
+
+## ROUND 125 — 一个动作两扇门，门只装了一扇
+
+r125 真机里同一个成员做了三件被规则禁止的事，全部成功：经**原语面**开了一场会（`mtg-r2-attempt-1`）、把主席静音
+（`silent{member:"r-acad",by:"r-2"}`）、关掉那场会。同一会话里服务面对它的召集正当拒收。`vmu.meetings.conveneRequiresChair`
+/ `closeRequiresChair` 由 v5r 声明为 `true`，教学也写「召集与关闭只对 chair 席开放」，但闸只装在服务面（`kernel/meetings.js`），
+原语面 `tools/meeting.js` 从未问过设置。
+
+修法是把「谁坐哪个席」做成读数（`kernel.settingOf` / `kernel.seatOfMember`），再把同一道 `chairGateOf()` 装到原语 `open`
+与 `close` 两条路上，成功回执带 `chairGate`；调用者不具名时**不拒但 `enforced:false` 并说明原因**（办公室路径照常）。
+`silent` 另加归属守卫：委员不能撤销别人的发言，只能撤销自己的（不读设置——这是归属，不是政策）。顺带补上 primitive
+`close` 从未声明的 `force`：hint 一直教 `force:true` 能提前收会，而这层没有这个键。
+
+同轮落地 A2 的一半：`kernel/records.js` 在 progress 写入成功后回调 `onProgress`，`kernel/index.js` 据此发
+`report.tick({ event:'progress' })` —— 报告面一直有这个事件词汇，全仓却只有 `turn-end` 一个发射点。
+
+教训：**一条规则必须装在同一动作的每一扇门上。** 装在服务面而漏掉原语面，不是「少一层防护」，是给了转载教学一条
+绕过路线 —— 而且绕过的动作还会印 `ok:true`。
+
+## ROUND 126 — 汇报要真的出门（A2 第三步：运输）
+
+**读数**：r126 跑的是 git HEAD 的 `33bafb9c`（工作树的 F-125a/A2 修复没进 tarball），所以它同时是缺陷复现：
+委员经原语面 open/silent/close 三个都成功、`close{force:true}` 被同一句 `VMU_STATE` 拒、回执没有 `chairGate`。
+
+**缺的第三步**：`kernel/report.js` 有 `deliver` 接缝，v5r 清单有 `v5r-progress-notice` 监听器，但部署从没给运输 ⇒
+每条 firing 都带 `VMU_REPORT_NO_TRANSPORT`。补上的是 `kernel/reporttransport.js`：一条汇报 = **办公室席位的一封持久邮件**
+（复用 `mailbox.send`，不新开第二条通道）；「送达」被明确写成「已入队到所办邮箱」，没有 kernel/mailbox 或名册里没有
+办公室席位都是具名拒，**绝不拿第一个成员当替代收件人**。
+
+**为什么是部署声明**：`deliver` 是构造期选项，而 pack 清单的设置是构造后才应用；在清单里声明会「看起来配置了、
+其实什么都没做」——那正是本仓库反复抓的陈旧显式值。因此 `vmu.report.transport:'mailbox'` 由**部署**在 `config.vmu`
+里给（驱动已经这样注入），默认 `''` 保持旧的具名拒，让「没有运输」与「已在所办邮箱里」是两种可区分的事实。
+
+**判据**：一个机制要么有路径到用户，要么说清它没有。这句在本轮的具体形状是：**发出去的东西必须能被收件人读到**，
+而「向 durable queue 里写成功」不是「收件人知道」——所以 `delivered` 的含义写在回执里，不靠读者猜。

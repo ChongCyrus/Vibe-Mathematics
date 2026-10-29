@@ -210,6 +210,11 @@ const EXPECT = {
   // (`ctx`/`effect`/`status`) - NO `create*` factory, no service, nothing to probe - which the closed value list maps to
   // `EXPECT_NA`. Recorded because a module that EXISTS without a row is a FINDING, so the extraction forced this row.
   reportfeedbackdelivery: G('EXPECT_NA', '纯函数式模块（**无 `create*` 工厂、无服务、无可探针物** ⇒ 矩阵不适用 ✓）；轮 13（第二阶段 A1 第一步 Part B）**新增**（★ 从 `vibe-math-vmu.js` **抽取**：该文件加完此块后 **1205 行越过 1200** ⇒ 抽取，**未往 `KNOWN` 加名字** ✓，入口 **1205→1148**）：报告反馈回路的**投递调用** —— 一个导出函数 `deliverReportFeedback({ ctx, effect, status })`，四种具名结局（关＝零机制／**开而受众为空＝具名失败**／宿主不可达或无 `.context`＝具名失败／否则 `delivered:true`），★ 投递文本是**运行时快照**且明写"不是指令"。'),
+
+  // ROUND 126 / AUDIT A2 (part 3): the report TRANSPORT. New leaf module (no `create*` service, no probe-able state):
+  // one exported factory returning a `deliver(report)` function. Two NAMED refusals and one real send; the only state it
+  // touches is the mailbox face's (already adjudicated above), so the matrix does not apply to this file by itself.
+  reporttransport: G('EXPECT_NA', '纯函数式模块（**无服务、无可探针物** ⇒ 矩阵不适用 ✓）；轮 126（A2 第三步）**新增**：`createMailboxReportTransport({ getKernel, officeSeats })` 把一条汇报写成办公室席位的**一封持久邮件**（复用 `mailbox.send`，不新开第二条通道）——没有 kernel/mailbox ⇒ 具名拒 `VMU_REPORT_NO_TRANSPORT`；名册里没有办公室席位 ⇒ 具名拒 `VMU_MAILBOX_NO_SUCH_RECIPIENT`（**不拿第一个成员当替代收件人**）；`transportMeans` 把"delivered"写成"已入队到所办邮箱"而非"所办已读"。设置键 `vmu.report.transport`（schema 新行，默认空＝保留旧的具名拒）由**部署**在 `config.vmu` 声明，因为 `deliver` 是构造期选项而 pack 清单的设置构造后才应用（在清单里写会"看起来配置了、其实没做"）。'),
 }
 
 const shape = (v) => {

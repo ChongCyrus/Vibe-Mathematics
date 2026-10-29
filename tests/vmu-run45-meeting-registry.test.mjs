@@ -89,7 +89,7 @@ try {
 
   // §2 — the run's open WITHOUT the kind: the primitive meeting really opens (that part was never broken), and the
   // `subject` pointer it cannot store is DISCLOSED instead of vanishing.
-  const opened = await call(b, 'vibe_vmu_meeting', { action: 'open', id: 'm-r45', member: 'r-acad', roster, subject: 'run 45 的议题引用', agenda: 'y' })
+  const opened = await call(b, 'vibe_vmu_meeting', { action: 'open', id: 'm-r45', member: 'r-chair', roster, subject: 'run 45 的议题引用', agenda: 'y' })
   ok(opened.parsed && opened.parsed.ok === true && opened.parsed.state === 'in_session', '§2 open (no kind) really opens the primitive meeting', opened.parsed && (opened.parsed.code || opened.parsed.state))
   ok(opened.parsed && Array.isArray(opened.parsed.dropped) && opened.parsed.dropped.includes('subject'),
     '§2 ★ the argument it cannot store is NAMED in `dropped` (never a silent loss on an ok:true receipt)', opened.parsed && opened.parsed.dropped)
@@ -97,7 +97,7 @@ try {
     '§2 … with WHERE it belongs (`droppedNote.subject` names the service face that stores a subject)', opened.parsed && opened.parsed.droppedNote)
   ok(opened.parsed && opened.parsed.registry === 'primitive', '§2 the open receipt says which registry it WROTE to (registry:"primitive")', opened.parsed && opened.parsed.registry)
 
-  const clean = await call(b, 'vibe_vmu_meeting', { action: 'open', id: 'm-r45-clean', member: 'r-acad', roster, agenda: 'nothing dropped here' })
+  const clean = await call(b, 'vibe_vmu_meeting', { action: 'open', id: 'm-r45-clean', member: 'r-chair', roster, agenda: 'nothing dropped here' })
   ok(clean.parsed && clean.parsed.ok === true && Array.isArray(clean.parsed.dropped) && clean.parsed.dropped.length === 0,
     '§2 ★ `dropped:[]` is present on every open — an EMPTY list asserts "nothing was thrown away"', clean.parsed && clean.parsed.dropped)
 
