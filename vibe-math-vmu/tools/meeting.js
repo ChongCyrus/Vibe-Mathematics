@@ -1,3 +1,5 @@
+import { resolveTurnMember } from '../host-pack-tools.js'
+
 // vibe-math-vmu/tools/meeting.js — the meeting tool spec, split out of host.js (round 538) so the host file stays
 // inside the DECIDED 1200-line limit (docs/02). The spec is a factory: host.js supplies the shared helpers, and the guard
 // condition stays in host.js, because which intent declares a tool is policy and policy belongs with the host.
@@ -90,21 +92,21 @@ export function refusalDetails(e) {
  * that was never in question. That case is DISCLOSED in the receipt (`chairGate.enforced:false` + why) rather than
  * passing silently, so "the gate did not run" is never mistaken for "the gate passed".
  */
-function chairGateOf({ kernel, setting, caller }) {
+function chairGateOf({ kernel, setting, caller, callerSource = 'argument' }) {
   let on = false
   try { on = typeof kernel.settingOf === 'function' ? kernel.settingOf(setting) === true : false } catch { on = false }
   if (!on) return null
   const who = caller === undefined || caller === null || String(caller) === '' ? null : String(caller)
-  if (!who) return { setting, on: true, caller: null, seat: null, enforced: false, why: 'no caller was named (member/by/actor): this face cannot read a seat, so the chair gate did not run — pass the acting member id to have it enforced' }
+  if (!who) return { setting, on: true, caller: null, callerSource, seat: null, enforced: false, why: 'no caller was named (member/by/actor) and the turn context named no member either: this face cannot read a seat, so the chair gate did not run — pass the acting member id to have it enforced' }
   // ★ RUN 125 (second pass, caught by the pack-agnostic fixtures): an EMPTY roster is not evidence that this caller
   // is a non-chair — it is evidence that this deployment has no seats at all (a kernel boot without the v5r pack, and
   // every fixture that never hires). Refusing there would enforce a policy against objects that do not exist. The
   // gate reports that it did not run, by name, for the same reason the no-caller case does.
   const rosterSize = (() => { try { const r = kernel.members && typeof kernel.members.roster === 'function' ? kernel.members.roster() : null; return Array.isArray(r) ? r.length : -1 } catch { return -1 } })()
-  if (rosterSize === 0) return { setting, on: true, caller: who, seat: null, enforced: false, why: 'the roster is empty: this deployment has no seats, so this face cannot tell the chair from anyone else — the chair gate did not run' }
+  if (rosterSize === 0) return { setting, on: true, caller: who, callerSource, seat: null, enforced: false, why: 'the roster is empty: this deployment has no seats, so this face cannot tell the chair from anyone else — the chair gate did not run' }
   const seat = (() => { try { return typeof kernel.seatOfMember === 'function' ? kernel.seatOfMember(who) : null } catch { return null } })()
-  if (seat === 'chair') return { setting, on: true, caller: who, seat, enforced: true }
-  return { setting, on: true, caller: who, seat, enforced: true, refuse: true, why: seat === null ? 'the roster holds no seat row for this id, so it is not the chair' : 'slot "' + seat + '" is not the chair seat' }
+  if (seat === 'chair') return { setting, on: true, caller: who, callerSource, seat, enforced: true }
+  return { setting, on: true, caller: who, callerSource, seat, enforced: true, refuse: true, why: seat === null ? 'the roster holds no seat row for this id, so it is not the chair' : 'slot "' + seat + '" is not the chair seat' }
 }
 
 export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
@@ -160,7 +162,24 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         // 读 speechExtendMs/Max；`extendlimit` 是【会议墙钟上界】延长，读 extendCeilingMs。两个上界两个面。
         mode: param('string', 'flow/overrideorder 的模式（flow：open｜hands｜round_robin｜call_on；overrideorder：fifo｜round-robin｜chair｜random）', { enum: ['open', 'hands', 'round_robin', 'call_on', 'fifo', 'round-robin', 'chair', 'random'] }),
       },
-      run: async ({ action, id, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, subject, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor, force } = {}) => {
+      run: async (args = {}, exec = null) => {
+        const { action, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, subject, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor, force } = args
+        // ★ RUN 127 (regression caught by `vmu-v5r-verdict-final`): `id` is REASSIGNED below from the `meeting`
+        // alias, and as a destructuring PARAMETER that was legal — as a `const` it threw 'Assignment to constant
+        // variable', which the host reports as VMU_MIDDLEWARE_FAILED. The alias path needs a binding it may write.
+        let id = args.id
+        // ★ LIVE RUN 127 (F-127a, measured): root opened `m-gate-test-2` from this PRIMITIVE face without naming a
+        // member and the receipt said `chairGate{enforced:false, why:"no caller was named"}` — the pack declared
+        // conveneRequiresChair=true and the office is NOT exempt (it is root, which has no seat and is allowed by
+        // design), but the gate could not tell root from an unnamed member. The host HANDS this spec the execution
+        // context (`toHostSpec().execute(args, exec)`), and the same resolver the pack face uses knows which member
+        // a child session plays (`host-pack-tools#resolveTurnMember`: turn tool record -> learned session -> roster
+        // id; `null` is a real answer = root or unmapped). So the gate asks WHEN NOBODY WAS NAMED, and the receipt
+        // says where the name came from (`callerSource`). This adds no new policy: the setting still decides.
+        const callerFromTurn = () => {
+          try { return resolveTurnMember(kernel, exec) } catch { return null }
+        }
+        const namedCaller = (v) => (v === undefined || v === null || String(v) === '' ? null : String(v))
         // ★ RUN 84: the crossing set lives at module scope (SERVICE_CROSSING_ACTIONS) so the refusal, this loop and the
         // test that reads the sentence all agree on it.
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
@@ -297,7 +316,9 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                 'refusing rather than guessing which meaning you meant (live run 45: kind:"debate" came back as a "general" meeting on an ok:true receipt). For a meeting KIND use the SERVICE face — vibe_v5_meeting {type:"debate", agenda:"<what is discussed>", member:"<chair id>"} — or omit kind here and open the primitive meeting as it is (this face has no action/kind/subject on the service path: a live run 46 caller tried exactly that shape and it does not exist). On the service face a debate ALSO needs subject ("a debate meeting needs a subject") and the chair must have a recorded turn first (VMU_CHAIR_ACT_NOT_DELEGATED) — run 47 measured three calls to get through all three checks')
             }
             // ★ RUN 125 / F-125a: the PRIMITIVE door honours the same seat gate the service door does.
-            const openGate = chairGateOf({ kernel, setting: 'vmu.meetings.conveneRequiresChair', caller: member !== undefined && member !== null && String(member) !== '' ? member : by })
+            const openNamed = namedCaller(member) || namedCaller(by)
+            const openTurn = openNamed ? null : callerFromTurn()
+            const openGate = chairGateOf({ kernel, setting: 'vmu.meetings.conveneRequiresChair', caller: openNamed || openTurn, callerSource: openNamed ? 'argument' : openTurn ? 'turn-context' : 'none' })
             if (openGate && openGate.refuse) {
               return refused('VMU_NOT_PERMITTED',
                 openGate.setting + '=true: convening is an academician (chair seat) action; "' + openGate.caller + '" is ' + (openGate.seat === null ? 'not on the roster' : 'in slot "' + openGate.seat + '"'),
@@ -364,7 +385,11 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             // member may withdraw its own, only the chair may withdraw another's. This guard is seat-independent (it is
             // about who may speak FOR whom, like blueprint adopt naming another member), so it does not read a setting.
             const who = member === undefined || member === null ? '' : String(member)
-            const actorId = by === undefined || by === null || String(by) === '' ? (actor !== undefined && actor !== null && String(actor) !== '' ? String(actor) : '') : String(by)
+            // ★ RUN 127 (F-127a, same shape): with `by` omitted the caller fell back to '', so `silent {member:"<another>"}`
+            // from a member session skipped the guard entirely. Ask the turn context for the acting member exactly
+            // like the two chair gates do; a root/office context still answers null and the guard keeps its old
+            // behaviour (an office may withdraw anyone's speech).
+            const actorId = namedCaller(by) || namedCaller(actor) || namedCaller(callerFromTurn()) || ''
             if (who !== '' && actorId !== '' && actorId !== who) {
               const actorSeat = (() => { try { return typeof kernel.seatOfMember === 'function' ? kernel.seatOfMember(actorId) : null } catch { return null } })()
               if (actorSeat !== 'chair') {
@@ -560,7 +585,9 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (!pid) return meetingFieldRefusal('close')
             const primitive = kernel.liveMeeting(pid)
             if (primitive) {
-              const closeGate = chairGateOf({ kernel, setting: 'vmu.meetings.closeRequiresChair', caller: actor !== undefined && actor !== null && String(actor) !== '' ? actor : (by !== undefined && by !== null && String(by) !== '' ? by : member) })
+              const closeNamed = namedCaller(actor) || namedCaller(by) || namedCaller(member)
+              const closeTurn = closeNamed ? null : callerFromTurn()
+              const closeGate = chairGateOf({ kernel, setting: 'vmu.meetings.closeRequiresChair', caller: closeNamed || closeTurn, callerSource: closeNamed ? 'argument' : closeTurn ? 'turn-context' : 'none' })
               if (closeGate && closeGate.refuse) {
                 return refused('VMU_NOT_PERMITTED',
                   closeGate.setting + '=true: closing is an academician (chair seat) action; "' + closeGate.caller + '" is ' + (closeGate.seat === null ? 'not on the roster' : 'in slot "' + closeGate.seat + '"'),

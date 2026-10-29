@@ -9762,3 +9762,130 @@ primitive `open` 从委员 id 改为主席 id：它的 setup 本来就建了 `r-
 `conform|defect`（再次）。两条都不是产品缺陷，是简报应当照抄声明。
 
 ### §221.7 无实质残余：否（A2 待 r127 真机、E18/E20/E24/B6 待下一轮）
+
+## §222 真机跑 127 —— 一扇门没问「谁在敲」，另一扇门把汇报送出了进程
+
+### §222.1 读数
+
+- build `3bbc5c37`（A2 的运输已提交）、clone `slvp127`、port 19727、驱动 job `pwsh-e010168c39064087`，2026-10-29。
+- `DRIVE exit=0`、`durationSec 375`、根会话 17 calls/17 results、`tokenTotal 1,972,203`（上限 12,000,000）、3 会话、`SUMMARY: 3 session(s), 0 with RED`。
+- 回执摘录 `D:/_tmp/r127-tools.json`（57 条去重）。本轮**没有**重跑机器读数（`NO_FENCE` 等四档），它们属于驱动器那一行；本节只引用回执原文。
+
+### §222.2 判决表
+
+| # | 规则 | 判 | 依据 |
+|---|---|---|---|
+| 1 | A2 有进展即汇报（事件触发 + 运输到人） | ✅ | 写一条 progress 后 `vibe_vmu_report{action:"status"}` 读到 `"fires":5,"delivered":5,"transportInjected":true`，trace 每条 `"delivered":true,"refused":null`，办公室邮箱出现 `"from":"report"` 的行 |
+| 2 | E3 召集是主席席的动作（两扇门） | ✅ | 委员 `open{by:"r-1"}` ⇒ `VMU_NOT_PERMITTED`，hint 明说 `BOTH doors`；主席 `open{by:"r-acad"}` ⇒ `chairGate{enforced:true,seat:"chair"}` |
+| 3 | E4 关闭是主席席的动作 | ✅ | 委员 `close{by:"r-1"}` ⇒ `VMU_NOT_PERMITTED`；主席 `close{force:true}` ⇒ `"state":"closed","forced":true` |
+| 4 | 原语面的席位门在**没点名**时也要问「谁在敲」 | ❌ F-127a | 办公室（root）`open{id:"m-gate-test-2"}` 回 `"chairGate":{"caller":null,...,"enforced":false,"why":"no caller was named ..."}`，而同一把门在点名委员时是拒的 |
+
+### §222.3 A2：汇报真的出了进程（逐字回执）
+
+写进展（`vibe_v5_record_progress`）之后，办公室读汇报面：
+
+```
+vibe_vmu_report {action:"status"}
+→ "fires":5,"skipped":0,"delivered":5,"failures":0,"truncated":0,"drives":false,"neverDrives":true,
+  "transportInjected":true,"auditInjected":true,"descriptorInjected":true,"trace":{"kept":5,"cap":64,"dropped":0}
+```
+
+同一次读的 trace 行（第一条）：
+
+```
+{"id":"rep-1","name":"v5r-progress-notice","trigger":"event","event":"progress","at":1793254940922,
+ "channel":"inbox","to":["office"],"text":"【有进展】v5r-progress-notice（1793254940922）：所内写了一条进展记录，请判断是否需要对外汇报。",
+ "truncated":0,"delivered":true,"drives":false,"error":null,"refused":null}
+```
+
+办公室的收件箱里因此出现了运输者自己写的信（`from` 是汇报面，不是任何成员）：
+
+```
+vibe_v5_inbox {action:"list", member:"r-acad"}
+→ "count":9,"rows":[{"id":"ml-4","from":"report","at":1793254892732,"subject":"v5r-progress-notice",
+  "read":false,"todo":false,"urgent":false,"kind":"notice","bytes":125}, …]
+```
+
+判据：**「有进展要汇报」不是一句教学，它必须是三件事同时在场**——事件有人发（`onProgress`）、汇报面有人收（`tick`）、
+信有人送（transport）。r126 测到前两件在、第三件不在（`transportInjected:false`，`delivered:0`），本轮三件都在。
+
+### §222.4 E3/E4：同一动作两扇门，这次两扇都问席位（逐字回执）
+
+```
+vibe_vmu_meeting {action:"open", id:"mtg-gate-r1", by:"r-1"}
+→ ok:false, code:"VMU_NOT_PERMITTED",
+  message:'vmu.meetings.conveneRequiresChair=true: convening is an academician (chair seat) action; "r-1" is in slot "member"',
+  hint:'... (the chair gate is declared by the pack and enforced on BOTH doors: the service face `vibe_v5_meeting` and this primitive face); the office (root) may convene without a member seat'
+
+vibe_vmu_meeting {action:"open", agenda:"r127 原语面/服务面席位门核对", by:"r-acad", id:"mtg-a2", roster:["r-acad","r-1"]}
+→ ok:true, "state":"in_session", "chairGate":{"setting":"vmu.meetings.conveneRequiresChair","on":true,"caller":"r-acad","seat":"chair","enforced":true}
+
+vibe_vmu_meeting {action:"close", by:"r-1", id:"mtg-a2"}
+→ ok:false, code:"VMU_NOT_PERMITTED",
+  message:'vmu.meetings.closeRequiresChair=true: closing is an academician (chair seat) action; "r-1" is in slot "member"'
+
+vibe_vmu_meeting {action:"close", by:"r-acad", force:true, id:"mtg-a2"}
+→ ok:true, "state":"closed", "forced":true,
+  "chairGate":{"setting":"vmu.meetings.closeRequiresChair","on":true,"caller":"r-acad","seat":"chair","enforced":true}
+```
+
+### §222.5 F-127a：门装好了，但有一类敲门「没有名字」
+
+同一个 build 里出现了自相矛盾的两条回执：
+
+```
+vibe_vmu_meeting {action:"open", agenda:"门测试：常驻研究员尝试召集会议（参会人齐）", id:"m-gate-test-2", roster:["r-1","r-2"]}
+→ ok:true, "state":"in_session",
+  "chairGate":{"setting":"vmu.meetings.conveneRequiresChair","on":true,"caller":null,"seat":null,"enforced":false,
+               "why":"no caller was named (member/by/actor): this face cannot read a seat, so the chair gate did not run — pass the acting member id to have it enforced"}
+```
+
+真因不在策略，在**信道的宽度**：`vibe-math-vmu/tools/meeting.js` 的 `run` 签名是
+`run: async ({ action, id, member, by, actor, … } = {}) =>`，它把宿主一直递过来的第二个参数（执行上下文 `exec`）丢掉了
+（`host.js#toHostSpec` 的 `execute: async (args, exec) => spec.run(args, exec)`）。于是「谁在敲」只能来自调用者自己写的
+`member`/`by`/`actor`；不写就分不清「办公室」与「没点名的委员」——而这两者对同一道门的答案正好相反。
+
+修法（`tools/meeting.js`，三处同一口径）：
+
+1. `run: async (args = {}, exec = null) => { const { … } = args; … }`，并新增
+   `callerFromTurn = () => resolveTurnMember(kernel, exec)`（复用 `host-pack-tools.js` 的**同一**判据：回合工具记录 → 学到的
+   子会话映射 → 精确名册 id；`null` 是真实答案 = root 或没人登记过的子会话）。
+2. 两处主席门（`open`/`close`）与 `silent` 的归属守卫在**参数没写**时才问回合；参数写了就以参数为准。
+   `chairGate` 因此多一个字段 `callerSource: "argument" | "turn-context" | "none"`。
+3. 无调用者的 `why` 改成「没有参数、回合上下文也没给出成员」，把「我问过了」这件事写进回执，而不是留白。
+
+修后单测 `tests/vmu-run127-primitive-caller-context.test.mjs` **23/0**：委员子会话不点名 open ⇒ 具名拒且 message 点名
+`"r-1"`；主席子会话不点名 open ⇒ `callerSource:"turn-context"`；root ⇒ `enforced:false, callerSource:"none"`；
+委员子会话不点名 `silent` 别人 ⇒ 归属守卫具名拒；委员子会话 close ⇒ 拒，主席子会话 close ⇒ 成且 `callerSource:"turn-context"`；
+显式传 `member` 时 `callerSource:"argument"`。
+
+### §222.6 门禁
+
+- 全量 T1 首跑 `TOTAL 609 PASS 608 FAIL 1`：唯一红是 `vmu-tools-action-arity`——那条守卫用 `run:\s*async\s*\(\{` 文本匹配
+  「这个面有没有给 `action` 起名字」，而 F-127a 的修法把签名改成 `run: async (args = {}, exec = null)`（第二参数就是
+  执行上下文），于是守卫看不见它。修法是让守卫**两种形状都读**（`runNamesOf()`：内联解构，或 `args = {}` 之后再
+  `const { … } = args`），并把「这段话本来要防的事」加了一枪：`args/exec` 形状缺 `action` 也必须红（防缝合动作把守卫
+  悄悄放空）。
+- 同一轮第二个自伤红（更贵）：把参数解构改写成 `const { … } = args` 后，`id` 从「可赋值的参数」变成「常量」，而
+  `close`/`status` 等动作会把 `meeting` 别名写回 `id`（`if (action !== 'open' && !idText(id) && idText(meetingArg)) id = idText(meetingArg)`）
+  ⇒ `TypeError: Assignment to constant variable` ⇒ 宿主回 `VMU_MIDDLEWARE_FAILED`。抓它的是 `vmu-v5r-verdict-final`
+  的一条前置（「主席能把会议关掉」）。修法是把 `id` 单独留成 `let id = args.id`，并在注释里写清「这条路径要写它」。
+- 两轮 T1 复跑后 `TOTAL 609 PASS 609 FAIL 0`；相邻套件全绿（清单见上）。
+
+- `node scripts/check-rules-coverage.mjs --check`、`node scripts/check-rule-parity.mjs`：见本轮收口行。
+- 相邻套件全绿：`vmu-run125-primitive-seat-gate` 20/0、`vmu-run45-meeting-registry` 36/0、`vmu-meeting` 50/0、
+  `vmu-meeting-types` 155/0、`vmu-run109-live-meeting-merge` 12/0、`vmu-wave2-meeting-types`、`vmu-wave2-meeting-roster-label-counts`、
+  `vmu-run113-records-seat-gate` 17/0、`vmu-run101-meeting-bound` 28/0、`vmu-run36-meeting-close` 39/0。
+
+### §222.7 简报错处（我的，不是产品的）
+
+1. `round` 与 `meeting` 不能同时给：`vibe_v5_say{round, meeting}` 被具名拒（"`round` is the GROUP-CHAT single-speech rule"），
+   会议发言走 `vibe_v5_say{meeting, text}`。
+2. `vibe_v5_start` 不收 `reason`；`chairActRequiresTurn` 让主席多花一个回合才有权召集。
+3. 成员侧读了会议发言、办公室侧没读回：简报少了「读回同一事实」这一步——这不是产品缺陷，是取证缺口。
+
+### §222.8 无实质残余：否
+
+剩余 23 行 PARTIAL 的证据计划已按三组整理（席位门与代理权 / 写入闸与状态机 / 汇报运输·围栏·教学一致性），
+见 `D:/_tmp/ledger-gap-analysis.md`；其中 A2、E3、E4 本轮已取得逐字回执（§222.3/§222.4），B6 也应随 §220.2 一并转 DONE。
+

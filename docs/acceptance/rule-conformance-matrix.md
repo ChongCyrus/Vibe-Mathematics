@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 63 | all four citations resolve |
-| ◐ PARTIAL | 23 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 67 | all four citations resolve |
+| ◐ PARTIAL | 19 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -26,7 +26,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `A1` | 3 | 所办＝主代理：用户的助手、媒介、传信者 | ◐ PARTIAL | 2/2/1/1 | r120：从成员会话调 vibe_v5_message 被席位面具名拒（含 seatFace 字段），再从主席席转发一次并存回执；两次回执都要读回。 |
-| `A2` | 3 | 有进展时自动唤起所办汇报 | ◐ PARTIAL | 7/1/1/2 | r127：成员/院士写一条 progress 后，(a) 汇报回执 `delivered:true` 且 `refused:null`；(b) 办公室席位 `vibe_v5_inbox{action:"list"}` 列出 `from:"report"` 的 notice（正文是渲染后的【有进展】）。两条缺一即仍算未接线：写了 durable queue 不等于收件人收到。 |
+| `A2` | 3 | 有进展时自动唤起所办汇报 | ✅ DONE | 7/1/1/2 | — |
 | `A3` | 3 | 支持用户以自然语言让所办设参数、控制研究所 | ◐ PARTIAL | 2/2/1/1 | r120：先 vibe_v5_set 一个未声明的键（应具名拒），再改一个声明键并读回生效；两次回执都要。 |
 | `A4` | 3 | 院士＝chair 席，统领研究所 | ✅ DONE | 2/1/2/1 | — |
 | `A5` | 3 | 常驻研究员＝member 席 | ✅ DONE | 1/1/1/1 | — |
@@ -44,7 +44,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `B3` | 7 | 只有辩论能把 p 改为 1 | ✅ DONE | 2/2/1/1 | — |
 | `B4` | 8 | 蓝图：总目标/技术路线/规划，按时更新 | ◐ PARTIAL | 2/1/1/1 | r120：造一份 30 天以上的蓝图草案（把 now 拨快或写一份旧行），读回 freshness.stale=true 且 adopt 给出 overdueUpdate=true。 |
 | `B5` | 8 | 蓝图由院士+常驻研究员共同设计 | ✅ DONE | 2/1/1/2 | — |
-| `B6` | 8 | 蓝图最终编辑权在院士 | ◐ PARTIAL | 2/1/1/1 | r120：成员会话调 vibe_v5_blueprint{action:"adopt", member:"<chair id>"}，必须按「谁在调用」拒，不能只看 args.member。 |
+| `B6` | 8 | 蓝图最终编辑权在院士 | ✅ DONE | 2/1/1/1 | — |
 
 ## C. 个人文件
 
@@ -85,8 +85,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | --- | --- | --- | --- | --- | --- |
 | `E1` | 32 | 只能院士预约会议（可设预约时间） | ✅ DONE | 2/1/1/1 | — |
 | `E2` | 32 | 到点人未到齐进入等待阶段；超时由院士决定 | ✅ DONE | 2/1/2/1 | — |
-| `E3` | 32 | 只能院士召开会议并主持 | ◐ PARTIAL | 2/1/1/1 | r120：非主席成员调用 requireChairSeat 的工具，要被具名拒（不是 task 租约那一种）。 |
-| `E4` | 32 | 只能院士关闭会议 | ◐ PARTIAL | 2/1/1/1 | r120：非主席成员召集会议被具名拒，读回 code/message。 |
+| `E3` | 32 | 只能院士召开会议并主持 | ✅ DONE | 2/1/1/2 | — |
+| `E4` | 32 | 只能院士关闭会议 | ✅ DONE | 2/1/1/2 | — |
 | `E5` | 32 | 院士可延长会议时长上界 | ✅ DONE | 2/1/1/1 | — |
 | `E6` | 32 | 院士设会议标题 | ✅ DONE | 2/1/1/1 | — |
 | `E7` | 32 | 院士设会议类型 | ✅ DONE | 1/1/1/1 | — |

@@ -34,21 +34,31 @@ const EXEMPT = {
   'member-tools.js': 'single-purpose introspection face: no action/op by design, it takes only member — and line 45 below proves the exemption is real',
   'turn.js': 'dispatches on op rather than action; the host translates op to the turn engine s own verbs' }
 
+// ★ RUN 127 (F-127a): a tool's `run` may take the tool-execution context as a SECOND argument
+// (`run: async (args = {}, exec = null) => { const { action, … } = args }`) so a seat gate can ask WHO is
+// calling. The guard reads BOTH shapes; the question it asks is unchanged: does this face name `action` in the
+// factory or in the run destructuring?
+const runNamesOf = (text) => {
+  const inline = /run:\s*async\s*\(\{([^}]*)\}/.exec(text)
+  if (inline) return inline[1]
+  const shell = /run:\s*async\s*\(\s*args\s*=\s*\{\}\s*,\s*exec\s*=\s*null\s*\)\s*=>\s*\{([\s\S]{0,800})/.exec(text)
+  if (!shell) return null
+  const inner = /const\s*\{([^}]*)\}\s*=\s*args/.exec(shell[1])
+  return inner ? inner[1] : null
+}
+
 for (const f of files) {
   const src = readFileSync(join(DIR, f), 'utf8')
-  // the factory signature and the run signature
   const factory = /export function make\w+Spec\(\{([^}]*)\}\)/.exec(src)
-  const runSig = /run:\s*async\s*\(\{([^}]*)\}/.exec(src)
-  // ROUND 542: turn.js dispatches on `op`, not `action`, and its block was self-contained before the split - so it is
-  // EXEMPT BY NAME WITH A REASON rather than silently skipped, and the exemption itself is asserted to be real below.
-  if (!factory || !runSig) {
+  const runNames = runNamesOf(src)
+  if (!factory || runNames === null) {
     if (!EXEMPT[f]) offenders.push(f + ': no factory or run signature found')
     continue
   }
-  if (EXEMPT[f] && !/\baction\b/.test(factory[1] + runSig[1])) { checked += 1; continue }
+  if (EXEMPT[f] && !/\baction\b/.test(factory[1] + runNames)) { checked += 1; continue }
   checked += 1
   // `action` may come from the factory or be destructured in run; one of the two must name it
-  if (!/\baction\b/.test(factory[1]) && !/\baction\b/.test(runSig[1])) offenders.push(f + ': neither the factory nor run destructures action')
+  if (!/\baction\b/.test(factory[1]) && !/\baction\b/.test(runNames)) offenders.push(f + ': neither the factory nor run destructures action')
 }
 ok(checked + Object.keys(EXEMPT || {}).length >= files.length - 1, 'every module was parsed or exempted by name', { checked, of: files.length })
 ok(offenders.length === 0,
@@ -56,16 +66,20 @@ ok(offenders.length === 0,
 
 console.log('=== 3. THE GUARD WOULD BITE ===')
 {
-  // a synthetic module with the defect must be reported by the same predicate
-  const bad = "export function makeBadSpec({ param }) {\n  return { run: async ({ id } = {}) => ({}) }\n}\n"
-  const factory = /export function make\w+Spec\(\{([^}]*)\}\)/.exec(bad)
-  const runSig = /run:\s*async\s*\(\{([^}]*)\}/.exec(bad)
-  const wouldBite = !!(factory && runSig && !/\baction\b/.test(factory[1]) && !/\baction\b/.test(runSig[1]))
-  ok(!!wouldBite, 'a module missing action IS reported by the same predicate, so the check is not vacuous', { wouldBite })
-  const good = "export function makeGoodSpec({ param }) {\n  return { run: async ({ action, id } = {}) => ({}) }\n}\n"
-  const gf = /export function make\w+Spec\(\{([^}]*)\}\)/.exec(good)
-  const gr = /run:\s*async\s*\(\{([^}]*)\}/.exec(good)
-  ok(!!(gf && gr && (/\baction\b/.test(gf[1]) || /\baction\b/.test(gr[1]))), 'and a module that has it is not', {})
+  // a synthetic module with the defect must be reported by the same predicate — in BOTH run shapes
+  const badInline = "export function makeBadSpec({ param }) {\n  return { run: async ({ id } = {}) => ({}) }\n}\n"
+  const badShell = "export function makeBadSpec({ param }) {\n  return { run: async (args = {}, exec = null) => {\n    const { id, force } = args\n    return { id, force }\n  } }\n}\n"
+  const bites = (text) => {
+    const f = /export function make\w+Spec\(\{([^}]*)\}\)/.exec(text)
+    const names = runNamesOf(text)
+    return !!(f && names !== null && !/\baction\b/.test(f[1]) && !/\baction\b/.test(names))
+  }
+  ok(bites(badInline), 'a module missing action IS reported (destructuring shape), so the check is not vacuous', {})
+  ok(bites(badShell), 'a module missing action IS reported (args/exec shape) - the seam F-127a added is covered', {})
+  const goodInline = "export function makeGoodSpec({ param }) {\n  return { run: async ({ action, id } = {}) => ({}) }\n}\n"
+  const goodShell = "export function makeGoodSpec({ param }) {\n  return { run: async (args = {}, exec = null) => {\n    const { action } = args\n    return action\n  } }\n}\n"
+  ok(!bites(goodInline), 'and a module that has it is not (destructuring shape)', {})
+  ok(!bites(goodShell), 'and a module that has it is not (args/exec shape)', {})
 }
 
 console.log('=== TOOLS ACTION ARITY: ' + passed + ' passed, ' + failed + ' failed ===')

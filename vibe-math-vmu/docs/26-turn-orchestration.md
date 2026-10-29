@@ -2181,3 +2181,22 @@ r125 真机里同一个成员做了三件被规则禁止的事，全部成功：
 
 **判据**：一个机制要么有路径到用户，要么说清它没有。这句在本轮的具体形状是：**发出去的东西必须能被收件人读到**，
 而「向 durable queue 里写成功」不是「收件人知道」——所以 `delivered` 的含义写在回执里，不靠读者猜。
+
+## ROUND 127 — 席位门要问「谁在敲」，而不是等对方报名字
+
+**读数**：r127（build `3bbc5c37`）0 RED。A2 第一次在真机里成立：写一条进展 ⇒ 汇报面 `"fires":5,"delivered":5,"transportInjected":true`，
+trace 每条 `"delivered":true,"refused":null`，办公室收件箱里出现 `"from":"report"` 的信。E3/E4 的两扇门也第一次同时有
+逐字回执：委员 `open{by:"r-1"}`/`close{by:"r-1"}` 具名拒，主席 `open`/`close{force:true}` 成且回执带 `chairGate{enforced:true,seat:"chair"}`。
+
+**F-127a**：同一轮里，办公室 `open{id:"m-gate-test-2"}`（不点名）拿到 `"chairGate":{…"enforced":false,"why":"no caller was named …"}`。
+门没坏，是**信道太窄**：`tools/meeting.js` 的 `run` 只解构参数对象，把宿主一直递来的执行上下文 `exec` 丢了，
+于是「谁在敲」只能靠调用者自觉写 `member`/`by`。办公室与「没点名的委员」对同一道门答案相反，靠回执里的
+`enforced:false` 披露是不够的 —— 一个能被默认走通的旁路，迟早会被当作许可。
+
+**修法**：`run(args, exec)`；`callerFromTurn()` 复用 `host-pack-tools#resolveTurnMember` 的同一判据（回合工具记录 → 学到的
+子会话映射 → 精确名册 id，`null` 是真实答案）。两处主席门与 `silent` 的归属守卫**只在参数没写时**问回合，参数优先。
+`chairGate` 新增 `callerSource:"argument"|"turn-context"|"none"` —— 回执不只说读到了什么席位，还说这个席位是**从哪读来的**。
+
+**判据**：**披露不能代替执行。** 「门没跑，我告诉你了」在一个默认形态（办公室代所有人操作）下等于「门形同虚设」；
+正确的顺序是先尽一切可能确定调用者，确实无法确定时才披露。单测 `tests/vmu-run127-primitive-caller-context.test.mjs` 23/0。
+
