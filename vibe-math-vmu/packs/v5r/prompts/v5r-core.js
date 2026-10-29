@@ -649,7 +649,7 @@ const V5R_PROSE_CHAIR = Object.freeze([
     '★ 动手前先探环境：要跑 python／Lean／LaTeX 之前，先用 vibe_vmu_env {action:\'probe\', need:\'…\'} 探一次；探通了再跑。',
     '★★ 探不通不要硬试：探测失败是【正常结果】（ok:false），不要换着花样反复重试，更不要自己改系统或安装任何东西 —— 框架不会替你安装，也不会静默假装成功。',
     '★★ 探不通就上报：用 vibe_vmu_env {action:\'report\', need:\'…\', why:\'为什么这轮需要它\'} 记一条 environment-missing 的 finding ⇒ 主代理会读到它。',
-    '★★★ 你是主代理（院士席）：读到 environment-missing 的 finding 时，向用户报告缺什么、给出 installCommand（可先用 vibe_vmu_env {action:\'probe\', need:\'…\'} 回执里的 installCommand），并请求授权（引导用户自己装，或经用户明确授权后再部署）。',
+    '★★★ 主代理（所办，不是院士席）职责：读到 environment-missing 的 finding 时，向用户报告缺什么、给出 installCommand（可先用 vibe_vmu_env {action:\'probe\', need:\'…\'} 回执里的 installCommand），并请求授权（引导用户自己装，或经用户明确授权后再部署）。',
     '★★★★ 未获授权前不要尝试安装、不要改用户的系统 —— 这条优先于"把任务做完"。',
     '★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位。。\n    若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准；没有该约束时，上表就是你现在真的能调用的工具。',
     '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// G7 THIRD AUDIT (2026-10-30) — the four contradictions the third independent read-only audit found,
+// G7 THIRD/FOURTH/FIFTH AUDITS (2026-10-30) — the contradictions those independent read-only audits found,
 // each one two sentences inside ONE prompt/receipt pair that cannot both be true. This suite pins the
 // RESOLVED state of every pair, and it fails if either side drifts back.
 //
@@ -134,7 +134,77 @@ const GATES = read('vibe-math-vmu/packs/v5r/verification-gates.js')
     'C4c and names the mechanism that refuses it', {})
 }
 
-console.log('\n=== G7 CONCORDANCE (third audit, four pairs): ' + pass + ' passed, ' + fails.length + ' failed ===')
+// ── FIFTH AUDIT (2026-10-30): L07 / L14 / L53 / L61 ─────────────────────────────────────────────────────
+// Four contradictions the fifth independent audit found. Three of them live in ENGLISH tool descriptions,
+// which is exactly why this file now carries English assertions: a Chinese-only probe was blind to them.
+{
+  // L07: "any object needs formal proof + a true debate ruling" vs the literature bypass (no debate).
+  const abs = BLOCKS_A.match(/任何对象要进 Verified\/[^\n]*/g) || []
+  ok(abs.length >= 1, 'L07 precondition: the "any object into Verified" sentence exists', { n: abs.length })
+  // The absolute phrasing ("formal proof + a true debate ruling") is the one that lost the rule's bypass:
+  // every remaining copy of it must carry the exception on the same line.
+  const formal = abs.filter((l) => l.includes('正式证明 + 辩论裁决为真'))
+  ok(formal.length === 1 && formal[0].includes('唯一例外'),
+    'L07a the absolute "formal proof + true debate ruling" sentence carries the rule\'s own exception',
+    { n: formal.length, line: (formal[0] || '').slice(0, 160) })
+  ok(formal.length === 1 && formal[0].includes('literature_ref'),
+    'L07b and names the word the bypass entry needs (so the exception is checkable)', {})
+  // The two "still must satisfy §五" sentences delegate to the section that holds the bypass, so they are
+  // allowed to stay absolute-looking — but only if the bypass really is inside that section.
+  const delegates = abs.filter((l) => l.includes('仍然必须满足【五】'))
+  ok(delegates.length === 2 && BLOCKS_A.indexOf('参考文献中的命题', BLOCKS_A.indexOf('【五、表决与定论')) > 0,
+    'L07b2 the delegating sentences point at a section that really contains the bypass', { n: delegates.length })
+  ok(/参考文献中的命题[^\n]{0,40}直接进 Verified/.test(BLOCKS_A),
+    'L07c the bypass itself is still taught — the exception is real, not a promise', {})
+  ok(TOOLS.includes('warrant_kind:"literature"'),
+    'L07d the machinery still has that bypass entry (the exception is not aspirational)', {})
+}
+
+{
+  // L14: three English descriptions said `proof_state:"complete"` needs Lean evidence ONLY, while the gate
+  // accepts a finished proof behind `proof_ref` (and the card faces have no `lean_job` parameter at all).
+  ok(/name: 'vibe_v5_record_proposition'/.test(TOOLS), 'L14 precondition: the proposition face is declared here', {})
+  ok(!TOOLS.includes('ONLY WITH LEAN EVIDENCE'),
+    'L14a no description claims complete is "admitted only with Lean evidence"', {})
+  ok(TOOLS.includes('IS ADMITTED ONLY WITH EVIDENCE'),
+    'L14b it now says evidence, and the next clause names both kinds', {})
+  ok(TOOLS.includes('`proof_ref` (pointing at the finished proof'),
+    'L14c the description names proof_ref as the first accepted kind', {})
+  const leanOnly = TOOLS.split('needs Lean evidence (`lean_job` of a settled passed run').length - 1
+  ok(leanOnly === 0, 'L14d the method/sub-problem descriptions no longer require Lean alone', { n: leanOnly })
+  const evidence = TOOLS.split('needs evidence (`proof_ref` on a finished proof').length - 1
+  ok(evidence === 2, 'L14e exactly the two card faces that lack lean_job now accept a finished proof', { n: evidence })
+  ok(/declaredProofRef/.test(TOOLS), 'L14f the gate really does accept that registration (sentence matches code)', {})
+}
+
+{
+  // L53: step 3 told the chair to open a live ballot, while final verdicts are FILED cards, and the ballot
+  // box only accepts 1/0 for pending-verification objects.
+  ok(PROCEDURES.includes('final-verdicts'), 'L53 precondition: the debate skeleton has a final-verdicts step', {})
+  ok(!PROCEDURES.includes('主席先开一个 live 票'),
+    'L53a step 3 no longer starts the verdicts with a ballot box', {})
+  ok(PROCEDURES.includes('票箱不是裁决通道'),
+    'L53b it now says plainly that the ballot box is not the ruling path', {})
+  ok(PROCEDURES.includes('target: "<命题卡 id>"'),
+    'L53c and gives the call the mechanism actually reads (target = the card id)', {})
+  ok(/rulingSubmissions/.test(TOOLS),
+    'L53d the final-verdict face still reads FILED rulings (so the corrected step matches the kernel)', {})
+}
+
+{
+  // L61: the core told its reader 「你是主代理（院士席）」 while the rule (and member-scope) make the OFFICE
+  // the main agent — the chair has no channel to the user at all.
+  const CORE = read('vibe-math-vmu/packs/v5r/prompts/v5r-core.js')
+  ok(CORE.includes('environment-missing'), 'L61 precondition: the environment-report sentence exists', {})
+  ok(!CORE.includes('你是主代理（院士席）'),
+    'L61a the core no longer equates the main agent with the chair seat', {})
+  ok(CORE.includes('主代理（所办，不是院士席）'),
+    'L61b it now names the office as the main agent', {})
+  ok(/office[^\n]{0,24}主代理/.test(read('vibe-math-vmu/packs/v5r/member-scope.js')),
+    'L61c the mechanism-side note says the same about the office', {})
+}
+
+console.log('\n=== G7 CONCORDANCE (third, fourth and fifth audits: thirteen pairs): ' + pass + ' passed, ' + fails.length + ' failed ===')
 if (fails.length) {
   for (const f of fails) console.log('  · ' + f)
   process.exit(1)

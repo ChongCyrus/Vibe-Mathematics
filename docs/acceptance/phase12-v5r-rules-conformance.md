@@ -10654,3 +10654,57 @@ G7 仍 **PARTIAL**（第四次审计 2 条已修，但按用户裁定"零矛盾�
 审计确认干净的点（报告 §四逐条复核）：第三次的 C1 临时工写库、C2 两个票入口、C4 temp attend；第二次 5 条与第一次
 5 条均未被改回。GAP 7 条维持（脚本面、断点续跑不可寻址、裁决面不设 m 闸、无并发隔离、等待阶段无自决动作、卡无独立
 verified 位、会议动作级权限无单表）——它们是"没写到"，不是"互相矛盾"，不计入结论数字。
+
+## §234 G7 第五次独立审计（2026-10-30）
+
+### §234.1 口径
+
+基线 `HEAD = fcc33a5f`（工作树干净），规则真源 `宏观层面v5r运行规则.md` 63 行、sha256 前 16 位
+`a5d9a6c1ff73ec10`。审计逐行读了 `v5r-blocks-a.js`(661)、`v5r-blocks-b.js`(931)、`v5r-core.js`(889)、
+`v5r-reply-channel.js`(208)、`v5r-paper-prompts.js`(128)、`seat-faces.js`(746)、`meeting-procedures.js`(255)
+的全部 agent 可读文本，以及 `tools.js`(4484) 的每条 description / 缺参 hint / 拒绝 message 与 hint，
+外加机制侧 `kernel/env.js`、`kernel/latex.js`、`tools/meeting.js`、`middleware/prompt-switches.js`、
+`settings/schema.js`；判定口径按用户裁定只报**硬矛盾**（同一读者无法同时按两句话行动，或某句话承诺的路径
+机制上不可达），「没写到/没实现」记 GAP 单列。
+
+结论：**`G7 VERDICT: CONTRADICTIONS(4)`**（L07、L14、L53、L61），其余 59 行 OK；GAP 9 条（audit4 的 7 条
+复核维持 + GAP-8 论文 pdf 产物不可生成 + GAP-9 默认 `fixtureMode=no-tools` 下 L62 不成立 informational）；
+第三、四次审计的六处（T:4227 同串互斥、T:2258 why + T:2401 邮件、§233 的两条）复读确认**已修净**。
+
+### §234.2 四条矛盾与修法（全部落在「渲染给 agent 的文本」上，机制未动）
+
+| 行 | 两句话 | 为何不能同真 | 修法 |
+|---|---|---|---|
+| L07 | `blocks-a:275-276`「**任何对象**要进 Verified/ 仍须「正式证明 + 辩论裁决为真」」× `blocks-a:375-400`「参考文献中的命题直接进 Verified（不经辩论）」 | 文献卡没有 proof carrier，按 276 召集辩论必 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`（路径不可达）；按 375 直接 promote 则成功（§212 C8 真机 `p1Route:"literature"`） | 那句绝对句带上规则自己开的例外：「——**唯一例外**是规则自己开的那条旁路：参考文献中的命题凭 `literature_ref` 直接入轨、不经辩论（见第五节）」；两处「仍然必须满足【五】」保留（它们指向的 §五 里就写着这条旁路） |
+| L14 | `tools.js:4082`「`proof_state:"complete"` IS ADMITTED **ONLY WITH LEAN EVIDENCE**…otherwise refused by name, nothing is written」× `blocks-a:203`「须给 `proof_ref` **或** Lean 通过」× `gates:263` 的拒绝 hint | 内核 `tools:1572` 实放行 `proof_ref`（回执 `proofStateEvidence.kind="proof-ref"`）；`:4091/:4097` 两张卡面**根本没有** `lean_job` 参数，按字面无法满足 | `:4082` 改成「IS ADMITTED ONLY WITH EVIDENCE：`proof_ref`（指向这张卡声明的、已写完的证明/证伪——闸记录指针，内容由辩论中的人判）**或** Lean 证据（`lean_job`/`lean_conformance`）」，并写明「规则 L14 要的是已写完的正式证明，不要求它是 Lean」；`:4091/:4097` 改成「needs evidence（`proof_ref` on a finished proof, or Lean `lean_job`/`lean_conformance`）」 |
+| L53 | `meeting-procedures:60-63` step3「主席先开一个 live 票（target=辩论对象），成员再各自写入自己的概率」× `tools:2403` 邮件「**不要传 target**」 | `verdict_final` 只读成员 filed 的裁决卡（`rulingSubmissionsOf`），不读票箱 ⇒ 照 step3 做必 `VMU_RULING_NO_SUBMISSIONS`；且票箱只认 1/0，`[0,1]` 带不进均值 | step3 改为「每位参加辩论的成员用 `vibe_v5_verdict` 交最终裁决（`target` 填**命题卡 id**、`member` 填自己），主席可用 `vibe_v5_verdict_ask` 催未交者」，并明写「票箱只对『待核验对象』开放、只认 1/0，**票箱不是裁决通道**」；示例调用同步换成 `verdict`/`verdict_ask` |
+| L61（连带 L03） | `core:652`「★★★ **你是主代理（院士席）**：…向用户报告…并请求授权」× 规则 L03/L61「所办（即主代理）」＋`blocks-a:271`「通过所办向外部汇报」＋`member-scope:48`「office: 所办（主代理）专用」 | 同一头衔给了两个角色；`kernel/env.js:8` 的 finding 通道收件人是所办，院士既读不到也没有对用户的通道 ⇒ 该句承诺的路径对该读者不可达 | 改为「★★★ 主代理（所办，不是院士席）职责：读到 environment-missing 的 finding 时，向用户报告缺什么…」 |
+
+### §234.3 探针加固（第四次审计的建议已落实）
+
+`tests/vmu-g7-concordance.test.mjs` 从 22 条加到 **44 条**，新增四对（L07/L14/L53/L61）并把**英文**断言补上
+（L14 这类冲突全在英文 description 里，纯中文正则一轮都扫不到）：
+
+* L07：绝对句「正式证明 + 辩论裁决为真」全文件只出现一次，且同行带 `唯一例外` 与 `literature_ref`；
+  两处「仍然必须满足【五】」被允许保留，但断言 §五 里真的写着那条旁路（`indexOf` 从 §五 头开始找）。
+* L14：`ONLY WITH LEAN EVIDENCE` 必须 0 次；`IS ADMITTED ONLY WITH EVIDENCE` 必须在；两张没有 `lean_job`
+  的卡面恰好各有一条 `needs evidence (`proof_ref` on a finished proof`；机制侧 `declaredProofRef` 必须在
+  （句子与代码同源）。
+* L53：`主席先开一个 live 票` 必须 0 次；`票箱不是裁决通道` 必须在；示例调用必须是 `target: "<命题卡 id>"`；
+  `rulingSubmissions` 必须在（骨架指向的通道就是内核真正读的那条）。
+* L61：`你是主代理（院士席）` 必须 0 次；`主代理（所办，不是院士席）` 必须在；`packs/v5r/member-scope.js`
+  的 office 注必须仍写「主代理」。
+
+### §234.4 门禁读数
+
+* `tests/vmu-g7-concordance.test.mjs` 44/0；`vmu-prompt-type-coverage` 15/0；`vmu-prompt-clean` 8/0；
+  `vmu-ledger-teaching-pins` 58/0；`vmu-turn` **272/0**（T99 预算未破）；`audit-prompt-tool-names` 13/0；
+  `vmu-debate-subject-proof` 45/0；`vmu-verified-gates` 102/0；`vmu-meeting-types` 155/0；
+  `vmu-run29-verdict-ask` 51/0；`vmu-c5-c8-card-integrity` 44/0；`vmu-v5r-verdict-final` 64/0。
+* 旧钉子 `tests/vmu-v5r-tools.test.mjs` 的 chair 段断言原钉「`你是主代理`」——那正是 L61 被审计推翻的读法；改为断言「主代理（所办，不是院士席）职责」并**否定**「你是主代理」⇒ 该套件 **360/0**（自伤红，不碰机制）。
+* 台账仍 **DONE 85 / PARTIAL 1（G7）**，`next` 写「第六次独立审计零矛盾」。
+
+### §234.5 残余
+
+G7 仍 **PARTIAL**（按用户裁定：修完再跑一次独立审计、零矛盾才记 DONE）。GAP 9 条维持不变——它们是「没写到」，
+不是「互相矛盾」，不计入结论数字。

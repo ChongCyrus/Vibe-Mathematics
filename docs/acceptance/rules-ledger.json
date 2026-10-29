@@ -1881,14 +1881,16 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::必须有**具名凭据**"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"typeCatalogSource\":\"vmu.meetings.typeCatalog\""
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"typeCatalogSource\":\"vmu.meetings.typeCatalog\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::IS ADMITTED ONLY WITH EVIDENCE",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::票箱不是裁决通道"
       ],
       "tool": [
         "vibe_v5_meeting"
       ],
       "ruleText": "- 确保所有代理接收到的提示词完全与上述规则相符、自洽 。",
-      "next": "规则原文与活教学之间的一致性只能审：第八轮真机后由只读代理独立审计，结论 CONTRADICTIONS(5)（判据=辩论对象形态/论文定稿条件/脚本面/LaTeX 键名/形式化开关），五条已在 phase12 §229.3 修完，并把 C3/C4 两类机器化进 check-rule-parity 的 P6/P7。G7 记 DONE 的条件是：修完后**再派一次只读审计，结论零矛盾**（\"审过一次通过\"不是判据，\"审出问题、修完再审仍干净\"才是）。",
-      "note": "§229：审计基线 HEAD 9cbea9cc，规则 63 行 sha256 a5d9a6c1ff73…8e59；活教学只认 v5r-blocks-a/b.js、v5r-core.js、seat-faces.js、v5r-paper-prompts.js，capture 快照不作依据；本轮新发现 F-135a（写面校验 lean_job 却不落盘）。"
+      "next": "规则原文与活教学之间的一致性只能审：已连跑五次独立只读审计（§229 CONTRADICTIONS(5) → §230 CONTRADICTIONS(5) → §232 CONTRADICTIONS(4) → §233 CONTRADICTIONS(2) → §234 CONTRADICTIONS(4)），共 20 条矛盾全部修净并机器化进 tests/vmu-g7-concordance.test.mjs（44 条，含英文断言）与 check-rule-parity 的 P1–P7。G7 记 DONE 的条件（用户裁定）：修完后再派一次独立审计、结论零矛盾。",
+      "note": "§229–§234：审计基线依次 9cbea9cc / 659bf726 / b44c146f / 20ac0786 / fcc33a5f；规则 63 行 sha256 前 16 a5d9a6c1ff73ec10；活教学只认 v5r-blocks-a/b.js、v5r-core.js、seat-faces.js、meeting-procedures.js 与 tools.js 的 description/hint，capture 快照不作依据。§234 的四条是 L07 绝对句吃掉文献旁路、L14 英文 description 只认 Lean、L53 推荐骨架指向票箱而内核读裁决卡、L61 把主代理写成院士席；GAP 9 条（\"没写到\"）不计入矛盾数。"
     },
     {
       "id": "A8",
@@ -2016,7 +2018,8 @@
       ],
       "text": "会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。",
       "next": "",
-      "note": "r124a：types 读面读回六型 + 目录来源"
+      "note": "r124a：types 读面读回六型 + 目录来源",
+      "rule": "36"
     },
     {
       "id": "E34",
@@ -2037,7 +2040,8 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_CHAT_ALREADY_SPOKE"
       ],
       "next": "",
-      "text": "会议进行中的一些特殊活动包括但不限于：投票（院士设置投票板选项与机制）、任务板设置与认领交派、群聊式交流，...。"
+      "text": "会议进行中的一些特殊活动包括但不限于：投票（院士设置投票板选项与机制）、任务板设置与认领交派、群聊式交流，...。",
+      "rule": "41"
     },
     {
       "id": "E35",
@@ -2056,7 +2060,8 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::a debate meeting needs a subject: the object of the debate"
       ],
       "next": "",
-      "text": "关于辩论：院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。"
+      "text": "关于辩论：院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。",
+      "rule": "45"
     },
     {
       "id": "E36",
@@ -2076,7 +2081,8 @@
       ],
       "next": "",
       "text": "辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。",
-      "note": "r122a：status 与 summary 都读回 procedureProgress 的计数与 means（§217.4）"
+      "note": "r122a：status 与 summary 都读回 procedureProgress 的计数与 means（§217.4）",
+      "rule": "50"
     }
   ]
 }

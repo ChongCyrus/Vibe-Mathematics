@@ -1834,10 +1834,13 @@ try {
   ok(stepRowsL.length === 3 && stepRowsL.filter((r) => r.probe && r.noForce && r.report && r.authorize && r.inBullet).length === 3,
     '★★★ 正：三段角色提示词都写了四步（先探 → 不硬试 → 上报 → 未授权前不装），且名字出现在该角色的 `·` bullet 里', stepRowsL)
   const chairTextL = String((roleSecs.find((s) => s && s.scope && s.scope.role === 'chair') || {}).text || '')
-  ok(chairTextL.includes('你是主代理') && chairTextL.includes('installCommand') && chairTextL.includes('请求授权') &&
+  // G7#5 L61: the main agent is the OFFICE, not the chair seat (the chair has no channel to the user at all).
+  // So the sentence must name the office duty and must NOT tell this reader 「你是主代理」.
+  ok(!chairTextL.includes('你是主代理') && chairTextL.includes('主代理（所办，不是院士席）') &&
+    chairTextL.includes('installCommand') && chairTextL.includes('请求授权') &&
     chairTextL.includes('未获授权前不要尝试安装'),
-    '★★★★ 正（主代理那一步）：chair 段写着"读到 environment-missing 的 finding → 报告缺什么 ＋ 给 installCommand ＋ 请求授权"，并逐字含着"未获授权前不要尝试安装"',
-    { mainAgent: chairTextL.includes('你是主代理'), install: chairTextL.includes('installCommand'), verbatim: chairTextL.includes('未获授权前不要尝试安装') })
+    '★★★★ 正（主代理那一步）：chair 段写着"主代理（所办，不是院士席）职责：读到 environment-missing 的 finding → 报告缺什么 ＋ 给 installCommand ＋ 请求授权"，并逐字含着"未获授权前不要尝试安装"',
+    { claimsChairIsMainAgent: chairTextL.includes('你是主代理'), officeDuty: chairTextL.includes('主代理（所办，不是院士席）'), install: chairTextL.includes('installCommand'), verbatim: chairTextL.includes('未获授权前不要尝试安装') })
   // ★ 反：NO hard-coded absolute path may reach the model from these sections ("no hard-coded paths" must be checkable
   // at the PROMPT layer, not only in code). The detector is proved NON-BLIND on a planted control before the zero counts.
   const absReL = /[A-Za-z]:[\\/]|\/usr\/bin\/|\/usr\/local\/bin\/|\\Users\\|\\\\[A-Za-z0-9_.-]+\\/
