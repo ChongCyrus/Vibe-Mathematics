@@ -497,7 +497,7 @@
       "id": "B5",
       "rule": "8",
       "text": "蓝图由院士+常驻研究员共同设计",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/blueprint.js::VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN",
         "vibe-math-vmu/packs/v5r/blueprint.js::function blueprintCodesignStatus"
@@ -509,10 +509,12 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::共同设计"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"hasChair\":true,\"hasResident\":true"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::缺少共同设计留痕：还缺 院士席（chair）",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::adopt 是院士的最终编辑权，不能替代共同设计",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"missing\":[],\"chair\":[\"r-acad\"]"
       ],
       "ruleText": "- 实现总目标的完整技术路线设计策划蓝图。按时更新、调整。由院士+常驻研究员共同设计策划、决定如何调整。最终编辑权交给院士。",
-      "next": "r120：单席 propose 后 adopt 被具名拒 VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN（读回 missing 两席），再由另一席续写后 adopt 成功。",
+      "next": "",
       "note": "r114 回执逐字：单席提案 codesign.ok=false（缺 chair/member），另一席续写后 adopt 才 ok=true（§210.4）"
     },
     {

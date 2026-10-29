@@ -35,32 +35,36 @@ const ok = (cond, label, detail) => {
 }
 
 const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href)
+const roots = []
 const boot = async () => {
+  const root = mkdtempSync(join(tmpdir(), 'vmu-label-'))
+  roots.push(root)
   const state = { specs: [] }
   const ctx = {
     effect(fn) { return fn() },
     on() { return () => {} },
+    get: () => undefined,
     tools: { register: async (spec) => { state.specs.push(spec); return () => {} } },
   }
-  const root = mkdtempSync(join(tmpdir(), 'vmu-label-'))
   const handle = entry.apply(ctx, { clock: () => 1000, packs: ['v5r'], root })
   await handle.ready()
   const kernel = handle.kernel
-  await kernel.store.open()
-  const call = async (args, extra = {}) => {
-    const spec = state.specs.find((x) => x.name === 'vibe_v5_meeting')
-    ok(!!spec, 'the pack publishes vibe_v5_meeting (a missing face cannot be tested)', spec && spec.name)
-    try { return JSON.parse(await spec.execute(args, Object.assign({ kernel }, extra))) } catch (err) { return { ok: false, code: err && err.code, message: err && err.message } }
+  const call = async (name, args = {}) => {
+    const spec = state.specs.find((x) => x.name === name)
+    ok(!!spec, 'the pack publishes ' + name + ' (a missing face cannot be tested)', spec && spec.name)
+    try { return JSON.parse(await spec.execute(args, { kernel })) } catch (err) { return { ok: false, code: err && err.code, message: err && err.message } }
   }
-  await kernel.members.hire({ id: 'r-acad', slot: 'chair', by: null })
-  return { kernel, call }
+  const started = await call('vibe_v5_start', { problem: '标签来源', researcherCount: 1, academician: true })
+  ok(started && started.ok === true, 'the institute starts (the chair seat must exist before anyone convenes)', started && (started.code || started.ok))
+  const chair = (kernel.members.roster().filter((m) => m.slot === 'chair')[0] || {}).id || null
+  return { kernel, call, chair }
 }
 
 try {
   console.log('§1 no label at all — the meeting still opens, and says the label was NOT chosen')
   {
     const b = await boot()
-    const r = await b.call({ member: 'r-acad', agenda: '一次没有标签的会', type: 'academic' })
+    const r = await b.call('vibe_v5_meeting', { member: b.chair, agenda: '一次没有标签的会', type: 'academic' })
     ok(r && r.ok === true, 'an unlabelled convene still opens (the default label is legal)', r)
     ok(r.kind === 'sync', 'the kind read back is the framework default `sync`', r.kind)
     ok(r.kindSource === 'default', '★ kindSource says the label was FILLED IN, not chosen', r.kindSource)
@@ -72,7 +76,7 @@ try {
   console.log('§2 a title is a label the caller chose — the kind is still the default')
   {
     const b = await boot()
-    const r = await b.call({ member: 'r-acad', agenda: '议题', type: 'academic', title: '第一次学术交流' })
+    const r = await b.call('vibe_v5_meeting', { member: b.chair, agenda: '议题', type: 'academic', title: '第一次学术交流' })
     ok(r && r.ok === true, 'the convene opens', r && r.ok)
     ok(r.title === '第一次学术交流', 'the title reads back exactly as written', r.title)
     ok(r.kindSource === 'default', 'a title does not make the kind a chosen one', r.kindSource)
@@ -81,7 +85,7 @@ try {
   console.log('§3 a kind the caller names is read back as theirs')
   {
     const b = await boot()
-    const r = await b.call({ member: 'r-acad', agenda: '分工会议', type: 'academic', kind: 'division' })
+    const r = await b.call('vibe_v5_meeting', { member: b.chair, agenda: '分工会议', type: 'academic', kind: 'division' })
     ok(r && r.ok === true, 'the convene opens', r && r.ok)
     ok(r.kind === 'division', 'the kind reads back the handed word', r.kind)
     ok(r.kindSource === 'args', '★ kindSource says the caller named it', r.kindSource)
@@ -92,7 +96,7 @@ try {
   console.log('§4 the vocabulary is still enforced (a default value did not replace validation)')
   {
     const b = await boot()
-    const r = await b.call({ member: 'r-acad', agenda: 'x', type: 'academic', kind: 'weekly-sync' })
+    const r = await b.call('vibe_v5_meeting', { member: b.chair, agenda: 'x', type: 'academic', kind: 'weekly-sync' })
     ok(r && r.ok === false && r.code === 'VMU_INVALID_ARGUMENT', 'an undeclared kind is refused by name', r && r.code)
     ok(typeof r.message === 'string' && r.message.includes('weekly-sync'),
       'the refusal names the word it got', r.message)
@@ -101,7 +105,7 @@ try {
   console.log('§5 the strict rail belongs to the pack face, not to the kernel (stated, not implied)')
   {
     const b = await boot()
-    const opened = b.kernel.meetings.open({ type: 'academic', chair: 'r-acad', actor: 'r-acad', members: ['r-acad'], materials: 'x' })
+    const opened = b.kernel.meetings.open({ type: 'academic', chair: b.chair, actor: b.chair, members: [b.chair], materials: 'x' })
     ok(!!opened && typeof opened.meeting === 'string', 'the kernel itself convenes without a label (opt-in rail)', opened && opened.meeting)
   }
 } catch (err) {

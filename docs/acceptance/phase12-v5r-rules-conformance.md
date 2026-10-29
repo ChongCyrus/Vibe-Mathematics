@@ -9515,3 +9515,47 @@ vibe_v5_paper {action:"review",of:"r-1",member:"r-1"} ⇒ {"ok":false,"code":"VM
 3. `vibe_v5_meeting` 的 `member` 是必填（"meeting (convening) needs the acting member id"），简报前两次漏传。
 
 ### §217.7 无实质残余：否（B5/B6/F4 的拒支与 C10 待下一轮带 chair 席 + 真 Lean 文件复验）
+
+---
+
+## §218 真机跑 123 —— 两条门都开了，第三条门的提示把人指回了原地
+
+### §218.1 读数
+
+build `6b04a8ea`，clone `slvp123`，port 19725。`DRIVE exit=0`、`durationSec 263`、28 calls / 28 results、
+`tokenTotal 1,997,094`（uncached 29,039 + output 8,208 + cacheRead 1,453,696；cap 12,000,000，`tokenCapHit:false`）、
+`transcriptEvents 159`、2 会话、`SUMMARY: 2 session(s), 0 with RED`；jsonl 2,970,464 B / 5,283 行；
+`NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=12 BAD_JSON=12`；clone 已清、C 盘余 10.74 GB。
+
+### §218.2 判决表
+
+| 规则 | 本轮读到的（逐字见 §218.3） | 判定 |
+| --- | --- | --- |
+| B5 院士+常驻研究员共同设计蓝图 | 两席提案后续写同一 draft；adopt 先被 `VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN` 拒（点名缺「院士席（chair）」），补写后同一调用 `"codesign":{"ok":true,"hasChair":true,"hasResident":true}` | ✅ DONE |
+| C10 Lean 档案登记编译结果 | `lean_run` ⇒ job `lean-1`；`lean_job{waitMs:8000}` ⇒ `"state":"settled","exitCode":0,"hashUnchangedState":"measured"`；`lean_archive` ⇒ `"outcome":"ok","compileAt":…,"jobId":"lean-1"`；`lean_read` 回读同一 `outcome` | ✅ DONE |
+| E6 会议标签 | 带 title 不带 kind ⇒ `"kindSource":"default"` + means「the label is legal but nobody chose it」；带 `kind:"division"` ⇒ `"kindSource":"args"` | ✅ DONE |
+| E9 邀请子集收窄 | 本轮只用 `invite`（不改名册）；`open{members:[…]}` 的收窄支没有在真机被行使（`"rosterNarrowed":false,"rosterSource":"roster"`） | ⏳ 未取证 |
+| F4 定稿要过证据门 | `paper{action:"final"}` 在 `reviewing` 状态被 `VMU_PACK_V5R_CORE_PAPER_STATE` 拒 ⇒ 状态门先挡，证据门没有被走到 | ⏳ 未取证 |
+| F-123a 状态拒的 hint | 拒给的是「advance() until the cross-review is unanimous」——`advance()` 只在 writing/reviewing 之间搬流程，**从不评审任何部分** | ❌ 已修（§218.3） |
+
+### §218.3 F-123a 与三处修法
+
+`vibe-math-vmu/kit/paper.js` 的 `recordFinal` 在非 `awaiting-editor` 状态给的那句 hint 把调用者指向一个重复多少次都
+不会改变答案的动作。修法：新增 `nextMoveFor(state)`，按状态给**可执行的下一步**：
+
+- `writing` ⇒ `vibe_v5_paper { action: "part", target, part, body, member }`，再由 `advance()` 进入 reviewing；
+- `reviewing` ⇒ `vibe_v5_paper { action: "review", target, of: "<author id>", member: "<reviewer id>", deliverable: true }`
+  ——并明说「advance() only moves the flow, it does not review for you」；
+- `finalized` ⇒ 已定稿：换 target 或读状态。
+
+新 `tests/vmu-run123-paper-state-hint.test.mjs` **12/0**（三种状态的 hint 各自点名可执行调用；旧句不再出现；两状态 hint
+不是同一句）。相邻：`vmu-f3-f4-paper-integrity` 50/0、`vmu-paper` 37/0、`vmu-run122-label-provenance` 29/0。
+
+判据：**拒绝不是一句解释，是一张下一步的地图；地图指到死路，等于没有地图。**
+
+### §218.4 简报自身错两处
+
+- `vibe_v5_meeting` 召集时 `member` 必填（`VMU_INVALID_ARGUMENT "meeting (convening) needs the acting member id"`）；
+- `vibe_v5_blueprint {action:"propose"}` 同样要 `member`（`needs the acting member id`），`action:"read"` 要 `id` 不是 `path`。
+
+### §218.5 无实质残余：否（E9 收窄支、F4 证据门两处待下一轮）

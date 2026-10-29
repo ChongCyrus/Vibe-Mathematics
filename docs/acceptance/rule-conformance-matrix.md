@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 57 | all four citations resolve |
-| ◐ PARTIAL | 29 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 58 | all four citations resolve |
+| ◐ PARTIAL | 28 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -43,7 +43,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `B2` | 7 | 参考文献中的命题也可直接入 Verified | ✅ DONE | 2/2/1/2 | — |
 | `B3` | 7 | 只有辩论能把 p 改为 1 | ✅ DONE | 2/2/1/1 | — |
 | `B4` | 8 | 蓝图：总目标/技术路线/规划，按时更新 | ◐ PARTIAL | 2/1/1/1 | r120：造一份 30 天以上的蓝图草案（把 now 拨快或写一份旧行），读回 freshness.stale=true 且 adopt 给出 overdueUpdate=true。 |
-| `B5` | 8 | 蓝图由院士+常驻研究员共同设计 | ◐ PARTIAL | 2/1/1/1 | r120：单席 propose 后 adopt 被具名拒 VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN（读回 missing 两席），再由另一席续写后 adopt 成功。 |
+| `B5` | 8 | 蓝图由院士+常驻研究员共同设计 | ✅ DONE | 2/1/1/3 | — |
 | `B6` | 8 | 蓝图最终编辑权在院士 | ◐ PARTIAL | 2/1/1/1 | r120：成员会话调 vibe_v5_blueprint{action:"adopt", member:"<chair id>"}，必须按「谁在调用」拒，不能只看 args.member。 |
 
 ## C. 个人文件

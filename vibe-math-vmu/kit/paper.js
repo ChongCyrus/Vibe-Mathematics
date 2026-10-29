@@ -516,10 +516,23 @@ export function createPaperFlow({
     return { ok: true, moved: transitions.length > 0, transitions, stopped: 'max-steps' }
   }
 
+  /** ★ F-123a: what a caller can DO from the paper's current status. A refusal that names an action the flow cannot
+   *  take is a dead end; these three sentences each name the call that changes the answer. */
+  function nextMoveFor(state) {
+    const target = state.target
+    if (state.status === 'writing') return 'a paper in "writing" needs its parts first: vibe_v5_paper { action: "part", target: "' + target + '", part: "<name>", body: "<json body>", member: "<author>" } — then advance() moves it to reviewing'
+    if (state.status === 'reviewing') return 'a paper in "reviewing" needs every part reviewed by a member who is NOT its author: vibe_v5_paper { action: "review", target: "' + target + '", of: "<author id>", member: "<reviewer id>", deliverable: true } — advance() only moves the flow, it does not review for you'
+    if (state.status === 'finalized') return 'this paper is already finalized: start a new target, or read it with vibe_v5_paper { action: "status", target: "' + target + '" }'
+    return 'the flow is ' + state.status + '; only writing/reviewing advance on their own'
+  }
+
   /** ⑥ the final decision: academician only, decision deliverable|revise (the original's two values). */
   async function recordFinal({ target, member, decision, note = '', conclusion = '' } = {}) {
     const { state } = requireState(target)
-    if (state.status !== 'awaiting-editor') throw refuse(CODES.STATE, 'the paper is not awaiting its editor (now: ' + state.status + ')', 'advance() until the cross-review is unanimous or the round cap is reached')
+    // ★ F-123a: the hint has to name the action that can actually change the answer. `advance()` only moves the flow
+    // between writing/reviewing — it never reviews a part, so "advance() until the cross-review is unanimous" told the
+    // caller (run 123) to repeat a call that cannot help. Each state names its own legal next move.
+    if (state.status !== 'awaiting-editor') throw refuse(CODES.STATE, 'the paper is not awaiting its editor (now: ' + state.status + ')', nextMoveFor(state))
     if (state.editor !== editorDefault) {
       throw refuse('VMU_NOT_PERMITTED', 'paperEditor is "' + state.editor + '": this paper is not the academician\'s to finalise', 'the original lets the office finalize only after consulting the institute — that path is a named gap here')
     }

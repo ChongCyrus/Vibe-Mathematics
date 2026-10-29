@@ -2118,3 +2118,16 @@ run 115 的读数：成员 r-1 **在自己的回合里** `hire` 了一个临时�
 
 同一个回合还量到反面的一刀：成员读自己的任务得到 `briefNote:"brief lookup failed: VMU_NO_SUCH_OBJECT"`，于是整轮在写一张
 "机制坏了"的障碍卡——而那份任务本来就没有 brief。缺席与失败是两件事，读面必须为缺席准备一句自己的话，并点名把它补上的动作。
+
+## ROUND 123 — 拒绝不是解释，是一张下一步的地图
+
+真机 123 把三条一直靠 fixture 证明的规则搬上了台面：蓝图的两席共同设计（B5）、Lean 档案登记编译结果（C10）、
+会议标签的来源（E6）。B5 拒绝了两次才通过（缺「院士席」→ 补写 section → adopt 成功），C10 的链是
+`lean_run → lean_job{waitMs} → lean_archive → lean_read`，每一步都在回执里带着上一次的事实：`hashUnchangedState:"measured"`、
+`outcome:"ok"`、`compileAt` 与 `jobId` 一起被归档，读面回读同一份结果。判据：**归档登记的是"那次编译"，不是"又编译了一次"。**
+
+同轮暴露的 F-123a 是一条 hint 缺陷：`paper{action:"final"}` 在 `reviewing` 状态拒绝，hint 却写
+「advance() until the cross-review is unanimous」——`advance()` 只在 writing/reviewing 之间搬流程，**它从不评审任何部分**。
+照这句话重复调用永远不会改变答案。修法不是换一句更好听的解释，而是给每个状态一张可执行的地图：
+`writing ⇒ action:"part"`、`reviewing ⇒ action:"review"（of = 作者，member = 评审者）`、`finalized ⇒ 换 target 或读状态`，
+并在 reviewing 那句里明说「advance() only moves the flow, it does not review for you」。判据：**地图指到死路，等于没有地图。**
