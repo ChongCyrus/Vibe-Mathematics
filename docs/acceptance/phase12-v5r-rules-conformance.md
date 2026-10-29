@@ -10452,3 +10452,89 @@ G7 是台账最后一行判据（「提示词与规则完全相符、自洽」�
 ### §230.7 无实质残余：否
 
 - C7 需要一次真机回执（拒绝 + 卡形态放行两侧）；G7 需要第三次只读审计零矛盾才可记 DONE。这两条之外，本轮五条矛盾已全部消解。
+
+## §231 真机跑 136 —— 一句话命题被具名拒，写完的证明成了合法的辩论对象（C7 两侧）
+
+### §231.1 读数
+
+| 项 | 值 |
+|---|---|
+| build | `3be1b2f0`（第二次审计五条修完之后） |
+| clone / port | `slvp136` / 19736 |
+| `DRIVE exit` | 0 · 480 s · 8 calls / 8 results |
+| token | 2,565,757（cap 12,000,000，未触顶） |
+| 会话 | 2（root + 1 成员子会话）· `0 with RED` · transcriptEvents 58 |
+| jsonl | `_oneoff/vm-slv/full-1029-232204.jsonl` 6,336,617 B / 12,079 行 |
+| 机器读数 | `NO_FENCE=12 UNKNOWN_FIELD=8 FIELD_NOT_APPLICABLE=14 BAD_JSON=12` |
+
+### §231.2 判决
+
+| 规则行 | 判据 | 判决 |
+|---|---|---|
+| C7（L14） | 一句话命题召集辩论 ⇒ 具名拒 | ✅ |
+| C7（L14） | 带 `proof_ref`+`proof_state:"complete"` 的卡作对象 ⇒ 放行 | ✅ |
+| C4（L16） | `complete` 卡可以靠**写好的证明**登记，不必先跑 Lean | ✅ |
+| C6 | 没有凭据的 `complete` 卡仍被拒 | ✅ |
+| F-136a/b/c | 椅子自报的三处「同一回执两个说法」 | ❌ → 本回合已修（§231.4） |
+
+### §231.3 逐字回执
+
+一句话命题（`type:"debate"`，`subject:"每个偶数都是两个素数之和"`）：
+
+```json
+{"ok":false,"code":"VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF",
+ "message":"辩论对象是一句话命题（form:\"statement\"），而规则只允许两种形态：含**已写完**的正式证明/证伪的**命题卡**，或辩论对象的**文件引用**……",
+ "hint":"两条合法路：①先写成命题卡 `vibe_v5_record_proposition { id, title, statement, value, motive, p, proof_ref:\"Members/<m>/Propos/<id>.md#正式证明\", proof_state:\"complete\" }`，再以卡 id 召集辩论；②把证明写成文件，以**文件引用**作对象……",
+ "applicable":true,"form":"statement","subject":"每个偶数都是两个素数之和",
+ "proofChecked":false,"proofContentChecked":false,"provenance":"none"}
+```
+
+同一张卡作为对象（`subject:"p-r136-proof"`）：
+
+```json
+{"ok":true,"meeting":"m2","type":"debate","subject":"p-r136-proof",
+ "subjectGate":{"allowed":true,"applicable":true,"form":"card","proofVia":null,
+   "provenance":"declared","proofBasis":"declaration-only","proofChecked":false,
+   "proofContentChecked":false,"looksLikeIdentifier":false,
+   "note":"辩论对象的证明目前只有**作者自述**（proofRef=…、proofState=\"complete\"）。本闸只核了卡上的这两个字段……「没核」不等于「没通过」……"}}
+```
+
+带写好的证明登记卡（委托面）：
+
+```json
+{"ok":true,"recordId":"p-r136-proof","proofState":"complete","proofStateEvidence":null}
+```
+
+没有凭据的 `complete` 卡（反面）：被 `VMU_INVALID_ARGUMENT` 具名拒（message 说这张卡既没有 Lean 也
+没有 conformance，也没有证明引用），hint 给 Lean 与 `proof_ref` 两条路。
+
+### §231.4 椅子自报的三处「同一回执两个说法」
+
+- **F-136a**：上面第三条回执 `"proofState":"complete"` 与 `"proofStateEvidence":null` **同现**——闸明明是按
+  「写好的证明」放行的，凭据字段却说 null。修法：`gatedCardHandler` 的 `proofStateEvidence` 新增
+  `proof-ref` 一支（`measured:false`、回显 `ref`、means 说明「内容由辩论中的人读」）。
+- **F-136b**：`vibe_v5_nudge` 回执 `"urgent":false` 与同对象的 note「delivered as urgent mail（v5r 把 nudge
+  列在 urgent 类里）」矛盾。真因：note 是常量句，而 urgent 由部署声明 `vmu.mailbox.urgentKinds` 决定（默认为空）。
+  修法：note 改读 `sent.urgent`，两个方向都写清；description 同步（「是否 urgent 由部署声明，回执回读 `sent.urgent`」）。
+- **F-136c**：`seat-faces.js:417` 的 prioritize 教学仍说「任务账本没有 priority 列，所以顺序作为耐久记录归档，
+  回执会说明它没有改到任务板上」，而回执实际给出 `applied:[{from,to,revision}]`。修法：教学改成
+  「带 priority 的条目会真改任务板（比较并交换），回执逐条报 from→to；不带 priority 的条目只归档顺序」。
+
+新测试 `tests/vmu-run136-nudge-prioritize-proofref.test.mjs` **18/0**（三节：proof-ref 凭据与 null 的不变式、
+nudge 两个方向读 flag、prioritize 教学与 description 与回执一致）⇒ 三处都可机器复验，不再靠审计嘴说。
+
+### §231.5 门禁
+
+- 新套件 18/0；相邻全绿：`vmu-v5r-tools` 360/0、`vmu-c5-c8-card-integrity` 44/0、`vmu-verified-gates` 102/0、
+  `vmu-prompt-type-coverage` 15/0、`vmu-ledger-teaching-pins` 58/0、`vmu-run31-seat-faces` 86/0。
+- `check-rule-parity` PASS（P1–P7 全绿）。
+
+### §231.6 简报错两处
+
+1. `vibe_v5_start` 的回执没有 `members` 字段（是 `hired:["r-acad","r-1","r-2"]`），也没有回显 `academician`。
+2. `vibe_vmu_turn { op:"step" }` 的回执没有 `status` 字段（有 `receipt.round`）；简报让抄 `status`，椅子只能抄 `ok`。
+
+### §231.7 无实质残余：否
+
+G7 仍是 PARTIAL：按用户裁定，第二次审计修完后要**再派一次只读审计、零矛盾**才记 DONE。C7 本轮两侧都有逐字证据，
+可以从 PARTIAL 转 DONE。

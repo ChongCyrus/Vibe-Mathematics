@@ -414,7 +414,7 @@ export const SEAT_TEACHING = Object.freeze({
     { names: ['vibe_v5_assign'], text: '分派：把一张任务（task_id）或新建的一张（subject）交给某成员，必须写明 why 与 acceptance。' },
     { names: ['vibe_v5_fire'], text: '辞退一名成员（成员面 end ＋ 其未完成任务转 cancelled；邮件不会被清理，回执会说明）。' },
     { names: ['vibe_v5_nudge'], text: '督办：唤醒某成员并给出理由与一个具体建议的下一步。' },
-    { names: ['vibe_v5_prioritize'], text: '设定全所优先级（有序的 {task_id, priority} 列表 ＋ why）；任务账本没有 priority 列，所以顺序作为耐久记录归档，回执会说明它没有改到任务板上。' },
+    { names: ['vibe_v5_prioritize'], text: '设定全所优先级（有序的 {task_id, priority} 列表 ＋ why）：带 priority 的条目会真改任务板的优先级（比较并交换），回执逐条报 from→to；不带 priority 的条目只归档顺序、不改任务。' },
     { names: ['vibe_v5_feedback'], text: '工作经验／流程反馈库（不是研究结论）：op=add/update/list。' },
     { names: ['vibe_v5_read_library'], text: '读任何人的成果库（只读）。' },
     { names: ['vibe_v5_tool_help'], text: '回答"我现在能用什么"：清单取自内核自己的声明（packTools），并报告宿主可见计数。' },

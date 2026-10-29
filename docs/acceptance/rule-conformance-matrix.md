@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 84 | all four citations resolve |
-| ◐ PARTIAL | 2 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 85 | all four citations resolve |
+| ◐ PARTIAL | 1 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -56,7 +56,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `C4` | 13 | 遇到的各种障碍及其原因（归档内容的一部分） | ✅ DONE | 3/1/1/2 | — |
 | `C5` | 14 | 命题库：完整定义、p(0-1)、进度 | ✅ DONE | 1/1/1/2 | — |
 | `C6` | 14 | 平时只记证明/证伪尝试，真正会证时才写正式证明字段 | ✅ DONE | 1/1/1/2 | 已由 r132 全证（lean-3 passed ⇒ 带 lean_job 的 proof_state:"complete" 被接受，回执带 proofStateEvidence；无证据的 p-c6b 在 r130 被具名拒）；后续轮次只做回归。 |
-| `C7` | 14 | 只有写完的正式证明才能用于辩论 | ◐ PARTIAL | 2/1/1/0 | r136 真机：以一句话命题 `vibe_v5_meeting { type:"debate", subject:"<一句话>" }` 召集 ⇒ 具名 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`（message 说规则只允许两种形态、hint 给 record_proposition 调用）；再以 `proof_ref`+`proof_state:"complete"` 的卡为对象 ⇒ 放行且 subjectGate.form:"card" |
+| `C7` | 14 | 只有写完的正式证明才能用于辩论 | ✅ DONE | 2/1/1/3 | — |
 | `C8` | 14 | p=1 的命题要标记 verified | ✅ DONE | 1/2/1/1 | — |
 | `C9` | 15 | 方法库（理论/方法/工具，抽象化产物） | ✅ DONE | 2/1/1/1 | — |
 | `C10` | 16 | Lean 代码与编译结果归档 | ✅ DONE | 2/2/1/2 | — |

@@ -776,7 +776,14 @@ function toolNudge(args = {}, { kernel } = {}) {
   const text = '【督办】' + str(args.why) + (has(args.next_step) ? '\n建议下一步：' + str(args.next_step) : '')
   const sent = kernel.mailbox.send('office', { to, kind: 'nudge', text })
   return { ok: true, tool: 'vibe_v5_nudge', to, sent,
-    note: row.state === 'live' ? 'delivered as urgent mail (v5r lists nudge among its urgent kinds)' : 'member is ' + String(row.state) + '; the mail waits for its next wake' }
+    // ★ KEEP-THE-RECEIPT-HONEST: the row's urgent flag comes from `vmu.mailbox.urgentKinds`, and that list is EMPTY by
+    // default — so a note that always said "urgent mail" contradicted `sent.urgent:false` in the SAME receipt (a chair
+    // read that and filed it as a defect). The note now reads the flag back instead of asserting a policy nobody set.
+    note: row.state !== 'live'
+      ? 'member is ' + String(row.state) + '; the mail waits for its next wake'
+      : (sent && sent.urgent === true
+        ? 'delivered as urgent mail (this deployment lists nudge among vmu.mailbox.urgentKinds)'
+        : 'delivered as ORDINARY mail: this deployment does not list nudge among vmu.mailbox.urgentKinds (the row reads urgent:false — urgency is the deployment declaration, not the kind name)') }
 }
 
 /**
@@ -1624,6 +1631,12 @@ function gatedCardHandler(toolName) {
       if (lean && lean.passed === true) return { kind: 'lean-job', measured: true, jobId: has(args.lean_job) ? str(args.lean_job) : null, means: 'the kernel read this job as PASSED before the card was written' }
       if (row) return { kind: 'verified-row', measured: true, rowId: row.id === undefined ? null : row.id, means: 'the card already carries a settled verification row' }
       if (has(args.lean_conformance)) return { kind: 'lean-conformance-claim', measured: false, means: 'the caller named a conformance word; this gate cannot verify it — a conformance word is not a measurement' }
+      // ★ G7 ROUND 136: the gate above ALSO admits a finished TEXT proof named through `proof_ref` (rule L14). When it
+      // does, this field used to stay null — the receipt then said "complete" with no evidence at all, which is the
+      // "a claim without its warrant" shape the ledger keeps catching. Shape-checked, not content-checked: say which.
+      const refHere = has(args.proof_ref) ? str(args.proof_ref).trim() : ''
+      if (refHere !== '') return { kind: 'proof-ref', measured: false, ref: refHere,
+        means: 'the caller pointed the card at a written proof (`proof_ref`); this gate checked only that the reference is non-empty — the content is read by the members in the debate' }
       return null
     })()
     const res = inner(args, ctx)
@@ -4185,7 +4198,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_nudge',
-    description: 'Supervise: wake one member with a stated reason and a concrete suggested next step (prefer a specific step over a bare "hurry up"). Delivered as urgent mail.',
+    description: 'Supervise: wake one member with a stated reason and a concrete suggested next step (prefer a specific step over a bare "hurry up"). Delivered by mail; whether the row is URGENT is declared by the deployment (`vmu.mailbox.urgentKinds`, empty by default) and the receipt reads `sent.urgent` back — a nudge is not urgent by name alone.',
     parameters: { to: { type: 'string', required: true }, why: { type: 'string', required: true }, next_step: { type: 'string' } },
     handler: toolNudge,
   },

@@ -2276,3 +2276,9 @@ G7 是台账最后一行：**提示词与规则完全相符、自洽**。它是�
    也让文本证明闭环无处登记。`proof_ref` 非空即可登记 complete，Lean 仍是最强证据。
 3. **保真基线不重写，缺口用补行，矛盾用「已修正教学」登记。** founding 两行与论文定稿句进入 `vmu-prompt-type-coverage`
    的第八结构类（第 7–9 条），理由逐条写成代码事实；T99 的预算靠裁重复叙述拿回，不靠删事实。
+
+## ROUND 136b —— 同一条回执里的两个说法，是一种能被机器抓住的缺陷
+
+run 136 的椅子自己报了三处「一句话与另一句话打架」，三处都在**同一个回执对象里**：`complete` 与
+`proofStateEvidence:null` 同现、`urgent:false` 与 note 的「urgent mail」同现、prioritize 的 description/教学说
+「不改任务板」而 `applied` 明明改了。判据：**回执内的字段与叙述必须由同一个事实生成**——叙述者不许比字段知道得更多。
