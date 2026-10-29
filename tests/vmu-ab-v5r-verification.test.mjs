@@ -537,6 +537,21 @@ const phaseOf = (kind, text) => {
     { prefix: '只有当**全体有表决权者**都一致认为是真时', why: 'LEDGER ROUND: closure needs the vote quorum m, not unanimity alone' },
     { prefix: 'input：发言；meeting_hand：是否举手', why: 'LEDGER ROUND: the receipt field list named two fields the kernel refuses' },
     { prefix: '议程：分工与下一步（类型：sync）', why: 'LEDGER ROUND: sync is a motion kind; the six types have no sync' },
+    // ★★★ 2026-10-29 (G7 AUDIT #2 ROUND): the second independent read-only audit found five places where the live teaching
+    // told a story the machinery refuses. Fixing them changed four captured lines (seven occurrences), so they are DECLARED
+    // like the families above - each row names the audit item and the sentence the live charter now carries:
+    //   · C1 the founding block addressed EVERY seat as the academician; the live line is seat-neutral and points at the identity
+    //     section, so the captured 「你是本所的院士。」 can no longer match.
+    //   · C2 the same block told every seat it cannot vote or hire/fire; rights are per seat (packs/v5r/seat-faces.js), so the
+    //     live line names which seat may hire/fire and vote.
+    //   · C5 the review cap can force finalisation (kit/paper.js forcedAfterCap), so the live deliverable line adds the caveat;
+    //     the captured sentence asserted unanimity unconditionally.
+    //   · ROUND 133/136: the LaTeX note now names `vmu.paper.latexCommand` (the key kernel/latex.js actually reads) and drops the
+    //     `latexmk --version` probe the face never runs; the captured note promised a key that did not exist.
+    { prefix: '你是本所的院士。', why: 'G7 AUDIT #2 C1: the founding block addressed every seat as the academician; the live line is seat-neutral' },
+    { prefix: '你没有表决权及hire/fire权限', why: 'G7 AUDIT #2 C2: voting and hire/fire are per seat (seat-faces.js); the live line names the seat rights' },
+    { prefix: '全体参与成员已在互审中表示“可交付”', why: 'G7 AUDIT #2 C5: the review cap can force finalisation; the live line adds that caveat' },
+    { prefix: '检测不到 LaTeX 引擎时：① 只', why: 'ROUND 133/136: the live note names vmu.paper.latexCommand and drops the latexmk probe the face never runs' },
   ]
   const matchedDeclared = Object.fromEntries(DECLARED_DIVERGENCES_AB.map((d) => [d.prefix, 0]))
   let declaredAB = 0
@@ -585,7 +600,12 @@ const phaseOf = (kind, text) => {
   //   leave BOTH sides: declared 150 -> 168, pool 673 -> 655, hits 524 -> 506 (506/655 = 77.25%, measured 77%), and
   //   the prose-only figure moves 508/538 (94%) -> 490/520 (94%) - the RATIO IS UNCHANGED, which is the check that
   //   nothing but the declared lines was lost. Floors pinned AT the measurement: pool 655 >= 650, ratio 77 >= 77.
-  const AB_POOL_FLOOR = 650
+  //   ROUND 136 (fifth re-base, G7 AUDIT #2): the second read-only audit retired four captured teaching lines (seven
+  //   occurrences: founding seat 1 + founding rights 1 + paper deliverable 1 + LaTeX note 3 - the note appears in three
+  //   prompts). They are DECLARED above like every earlier family, so they leave BOTH sides: pool 655 -> 649, hits unchanged
+  //   at 500 (500/649 = 77.04%, measured 77%) - the ratio is UNCHANGED, which is the check that nothing but the declared
+  //   lines was lost. Floors pinned AT the measurement: pool 649 >= 649, ratio 77 >= 77.
+  const AB_POOL_FLOOR = 649
   const PCTAB_FLOOR = 77
   ok(totalAB >= AB_POOL_FLOOR && hitAB > 0,
     "V66. **** ACCEPTANCE (2), MEASURED (ROUND 550 DECLARED REFORM, RE-BASED 2026-10-24: " + declaredAB + " captured lines are DECLARED divergences (F5 + the tool-help signature fix) and are excluded from both sides, so this ratio measures reconstructed prose rather than quoted policy; the harness uses the corpus's own object name p-lean-a, a deliberate change declared rather than folded in - and MEASURED TO CHANGE NOTHING, because this comparison reads a SYNTHETIC assembly rather than the harness run, so the residual below is scenario DATA (vote payloads, formal decisions) that no assembly can produce): our assembly reproduces " + hitAB + " of the " + totalAB + " fixed lines in the prompts the original really delivered (" + pctAB + "%). OF THE PROSE ALONE - excluding lines that name an object, a task or a status, which no scenario can reproduce whatever it does - " + proseHitAB + " of " + proseTotalAB + " (" + Math.round(100 * proseHitAB / Math.max(1, proseTotalAB)) + "%), which is the figure comparable to the per-type table",

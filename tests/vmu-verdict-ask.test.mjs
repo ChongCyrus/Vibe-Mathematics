@@ -100,6 +100,12 @@ try {
   const cardId = card.parsed && (card.parsed.recordId || card.parsed.id || (card.parsed.card && card.parsed.card.id))
   ok(card.parsed && card.parsed.ok === true && typeof cardId === 'string' && cardId !== '',
     'setup: a proposition card exists (the ruling needs a target)', card.parsed && { id: cardId, code: codeOf(card.parsed) })
+  // ★★★ G7 AUDIT #2 (rule L14): a debate's object must carry a finished proof — the gate reads the CARD's registration
+  // (`proofRef` + `proofState:"complete"`), not a caller-supplied claim about it.
+  kernel.records.put({ id: 'p-card', track: 'propositions', kind: 'proposition', title: 'p-card',
+    body: ['- statement：对任意 n>2，命题成立', '- value：成立', '- motive：主线', '- p：0.6',
+    '- proofRef：Members/chair-1/Propos/p-card.md#正式证明', '- proofState：complete'].join(String.fromCharCode(10)),
+    by: 'chair-1', settled: true })
   const convened = await call(b, 'vibe_v5_meeting', { agenda: '辩论：命题 p-card 的布尔概率', type: 'debate', subject: 'p-card', member: 'chair-1' })
   const mid = convened.parsed && convened.parsed.meeting
   ok(convened.parsed && convened.parsed.ok === true && typeof mid === 'string' && mid !== '',

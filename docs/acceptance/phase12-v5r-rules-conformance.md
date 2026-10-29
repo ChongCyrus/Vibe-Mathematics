@@ -10398,3 +10398,57 @@ G7 是台账最后一行判据（「提示词与规则完全相符、自洽」�
 审计给出五条真实矛盾，所以这一轮**G7 仍记 PARTIAL**。台账 `next` 改为：修完 C1–C5 后**再派一次只读审计**，零矛盾才记 DONE——「审计一次通过」不是判据，「审计把问题挑出来、修完再审仍然干净」才是。台账现在是 **85 DONE / 1 PARTIAL（G7）**。
 
 ### §229.7 无实质残余：否（G7 待再审）
+
+## §230 G7 第二次独立审计 —— 五条「两句话互相打架」，修在机制与教学两侧
+
+### §230.1 审计口径（与第一次相同，独立代理、只读）
+
+- 规则真源：`D:\wdibemath开发\宏观层面v5r运行规则.md`（63 行，rev `a5d9a6c1ff73`，sha256 与台账 `source` 一致）。
+- 活教学：`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js`、`v5r-blocks-b.js`、`packs/v5r/v5r-core.js`、`packs/v5r/seat-faces.js`
+  （`v5r-prompts.js` 是历史捕获快照、`v5r-persona.js` 是死数据，都不是渲染源）。
+- 基线：HEAD `659bf726`（第一次审计的五条修法已进树）。结论：**`G7 VERDICT: CONTRADICTIONS(5)`**，另有 GAP 5 条与工具面文本失真 1 处。
+- 报告：`D:/_tmp/g7-audit2.md`（63 行逐行表 + 五条矛盾的最小修法 + 对第一次五条的复核）。
+
+### §230.2 五条矛盾与修法
+
+| # | 规则 | 互斥点 | 修法 |
+|---|---|---|---|
+| C1 | L3 成员分层 | `v5r-blocks-b.js` 的 founding 段向**所有席位**说「你是本所的院士」 | 改成「你是本所的一名成员（席位见身份段）」，席位由身份段给 |
+| C2 | L3 / L47 | 同一段向所有席位说「你没有表决权及 hire/fire 权限」，与 `seat-faces.js` 的三席面及 m = min(设置, 院士+常驻研究员) 相反 | 改成「权限按席位：院士席可 hire/fire 并表决，常驻研究员可表决，临时工席都没有」 |
+| C3 | L14 | 「一句话命题」被列为合法辩论对象（`verification-gates.js#debateSubjectGate` 放行 + 披露），而 L14 只允许含已写完证明的卡（L45 另允许文件引用） | 闸把 `statement` 改为**具名拒** `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`，message 说清两种形态，hint 给「写成卡（`record_proposition` + `proof_ref`/`proof_state`）」与「文件引用」两条路 |
+| C4 | L14（L16 佐证） | `proof_state:"complete"` 必须有 Lean 证据，而辩论对象又要 complete ⇒ 不跑 Lean 的**文本证明闭环不可登记**，L16 的「鼓励」变成强制 | 登记的凭据是「写完的证明」本身：`proof_ref` 非空即可登记 complete；Lean 仍是更强证据；两条都没有才具名拒（hint 同时给 proof_ref 与 lean_run 两条路） |
+| C5 | L56 | `:520` 允许到轮次上限后带未处理 false 定稿，`:550` 却断言「全体参与成员已表示可交付」 | `:550` 改成「（到了轮次上限时为警告列出后的“可交付”）」，与 `kit/paper.js` 的 `forcedAfterCap` 事实一致 |
+
+工具面失真一处：`verification-gates.js` 的 `STATEMENT` 分支注释仍称「一句话命题→具名拒」而代码放行——本次改法让注释重新成为事实（拒的就是它）。
+
+### §230.3 机制代码（三处）与教学（两文件）
+
+- `vibe-math-vmu/packs/v5r/verification-gates.js`：`debateSubjectGate` 的 statement 分支 ⇒ `refuseGate(DEBATE_SUBJECT_NO_PROOF, …)`，
+  回执仍带 `form:"statement"`、`provenance:"none"`、`proofContentChecked:false`（拒绝也要说清读到了什么）。
+- `vibe-math-vmu/packs/v5r/tools.js#gatedCardHandler`：新增 `declaredProofRef`，complete 的放行条件 = `leanPassed || conformance || alreadyVerified || proof_ref 非空`；
+  hint 改为「用 `proof_ref` 指向写完的证明，或登记 Lean 证据」。
+- `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js`：辩论对象一行改为「命题卡（须含**已写完**的证明或 Lean/verified 定论）、或**文件引用**；一句话命题不能作对象」；
+  正式证明登记一行改为「`proofState:"complete"` 须给 `proof_ref` 或 Lean 通过证据」。
+- `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js`：founding 两行改席位中立（见 §230.2 C1/C2）；`:550` 补上限例外（C5）。
+
+### §230.4 测试与钉子
+
+- 三条旧裁定钉按新读法改写并留理由：`tests/vmu-debate-subject-proof.test.mjs`（45/0，§4 从「放行+披露」改为「具名拒 + hint 两条路」）、
+  `tests/vmu-v5r-verdict-final.test.mjs`（64/0）、`tests/vmu-c5-c8-card-integrity.test.mjs`（44/0，§3 改为「proof_ref 可登记 complete」「两者皆无才拒」）。
+- `tests/vmu-verified-gates.test.mjs`（102/0）同步改钉；`tests/vmu-prompt-type-coverage.test.mjs`（15/0）把 founding 两行与论文定稿句登记为**已修正教学**（第 7–9 条，理由写在该文件注释里），
+  保真基线不重写、只补行；`tests/vmu-ledger-teaching-pins.test.mjs` 的 E29 钉仍逐字命中（「辩论轮数由院士决定」）。
+- `tests/vmu-turn.test.mjs` 的 T99（成员提示词 <20000 字符）在改完教学后重新收紧到 **19997**：裁的是重复叙述，不是事实。
+
+### §230.5 门禁读数（本轮）
+
+- `check-rule-parity`：P1–P7 全绿（P6/P7 是上一次收口新增的两类机器化检查：席位 bullet ⊆ 该席 ACL、提示词点名的设置键必须已声明）。
+- `check-rules-coverage --check`：**FAIL（2 problem）** —— C7 与 G7 都是 PARTIAL，如实列出（C7 的旧 live 回执属于被推翻的 run-103 裁决，已降级并写明 r136 要取的新回执）。
+- 全量 T1 见 §230.6。
+
+### §230.6 全量 T1
+
+（见提交说明里的读数；`TOTAL 617 PASS 617 FAIL 0` 之后本次改动新增三条改钉与两处机制，按 §230.4 全绿。）
+
+### §230.7 无实质残余：否
+
+- C7 需要一次真机回执（拒绝 + 卡形态放行两侧）；G7 需要第三次只读审计零矛盾才可记 DONE。这两条之外，本轮五条矛盾已全部消解。

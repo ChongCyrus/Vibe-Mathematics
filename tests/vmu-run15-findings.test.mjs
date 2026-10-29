@@ -176,15 +176,16 @@ const hookFrame = (services, over = {}) => Object.assign({}, STALL, { api: { ser
     '③ ③i ★ with card evidence the debate subject is judged AS A CARD (not as an unprovable statement)',
     JSON.stringify({ form: allowed.form, allowed: allowed.allowed }))
   const bare = debateSubjectGate({ meeting: debate, subject: 'p-chair-rail', evidence: {} })
-  // ★ AUDIT C7 → ARBITRATED: C7 flipped this verdict to a named refusal; the arbitration (rule L1 「对象或辩论对象的文件引用」,
-  // L14 的证明要求针对卡形态, run 103 live receipt) keeps it ADMITTED with the un-checkability DISCLOSED. The
-  // discrimination ③ did is kept: still classified a statement, still marked as identifier-shaped, still told how to
-  // become checkable — only the verdict is "allowed, nothing about proof was checked".
-  ok(bare.allowed === true && bare.form === 'statement' && bare.proofContentChecked === false,
-    '③ ③j a bare name with no evidence is ADMITTED as a statement, with "content not checked" disclosed', bare.code || bare.allowed)
+  // ★★ G7 AUDIT #2 (C3/C4): this verdict flipped BACK to a named refusal. Two independent read-only audits read the run-103
+  // arbitration ("admitted, disclosed as unchecked") as the gate refusing to keep the rule it quotes: L14 names a proposition
+  // card that CONTAINS a finished proof, L45 a file reference — a bare sentence is neither, so the gate's own answer is the
+  // refusal, and the hint must hand back both legal routes. The discrimination ③ measured is kept (still classified a
+  // statement, still marked identifier-shaped, still says what would make it checkable).
+  ok(bare.allowed === false && bare.code === 'VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF' && bare.form === 'statement' && bare.proofContentChecked === false,
+    '③ ③j a bare name with no evidence is REFUSED by name as a statement (the rule admits a card with a finished proof, or a file reference)', bare.code || bare.allowed)
   ok(bare.looksLikeIdentifier === true, '③ ③k ★ and the receipt MARKS that the name looks like an identifier', String(bare.looksLikeIdentifier))
-  ok(typeof bare.note === 'string' && /命题卡/.test(bare.note) && /判不了/.test(bare.note),
-    '③ ③l and the note names the two calls that make it checkable (a proposition card, or a file reference)', bare.note)
+  ok(typeof bare.hint === 'string' && /vibe_v5_record_proposition/.test(bare.hint) && /文件引用/.test(bare.hint),
+    '③ ③l and the hint names the two calls that make it admissible (a proposition card with a proof, or a file reference)', bare.hint)
   ok(debateSubjectGate({ meeting: { type: 'ordinary' }, subject: 'p-chair-rail', evidence: {} }).applicable === false,
     '③ ③m an ordinary meeting is out of the gate\'s scope (it debates nothing)')
 }

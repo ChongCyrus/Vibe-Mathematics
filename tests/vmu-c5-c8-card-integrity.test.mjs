@@ -151,17 +151,24 @@ try {
   ok(noProgress.ok === true && noProgress.progress === null && /no `progress` figure/i.test(String(noProgress.progressMeans)),
     '没传 progress 时回执诚实地说没传（不是静默给个空串）', noProgress && noProgress.progressMeans)
 
-  // ── §3 C6a：complete 必须带 Lean 证据 ────────────────────────────────────────────────────────────────────
-  console.log('\n=== §3 C6a：proof_state:"complete" 没 Lean 证据 ⇒ 具名拒；带 Lean 通过作业 ⇒ 收 ===')
+  // ── §3 C6a：complete 的登记凭据 = 「写完的证明」或「Lean 通过」 ────────────────────────────────────
+  // ★★ G7 AUDIT #2 (rule L14): the rule registers a card 「含有正式证明或证伪内容（且已经写完了）」. Requiring Lean on top
+  // made that path unregistrable (proof_ref + complete was refused while complete was required for debate), so a WRITTEN
+  // proof the card points at is a registration too — and a card with neither is refused by name.
+  console.log('\n=== §3 C6a：complete 须有登记凭据（proof_ref 或 Lean 通过）；两者都没有 ⇒ 具名拒 ===')
   const MARK_3 = 'C6a-声明完成但没 Lean'
-  const noLean = await call(b, 'vibe_v5_record_proposition', {
+  const withProofRef = await call(b, 'vibe_v5_record_proposition', {
     statement: MARK_3, value: 'V', motive: 'M', p: 0.9, proof_ref: 'Formal/c5c8-card.lean#thm',
     proof_state: 'complete', member: 'r-1' })
-  ok(refusedWith(noLean, 'VMU_INVALID_ARGUMENT'), '声明 complete 但没有 Lean 登记 ⇒ VMU_INVALID_ARGUMENT', noLean && (noLean.code || noLean.ok))
-  ok(/Lean/i.test(String(noLean.message)) && /debate/i.test(String(noLean.message)),
-    '拒绝文案说清「没有 Lean 登记的 declared-complete 不能进辩论」', noLean && noLean.message)
-  ok(/vibe_v5_lean_run/.test(String(noLean.hint)), 'hint 点名登记 Lean 证据的那个调用（vibe_v5_lean_run）', noLean && noLean.hint)
-  ok(bodyOf('propositions', MARK_3).length === 0, '被拒的 complete 卡没有落盘')
+  ok(withProofRef.ok === true && !!withProofRef.recordId,
+    '★ L14 的「写完的证明」：带 proof_ref 的 complete 卡能登记（否则规则的这条路永远走不通）',
+    withProofRef && (withProofRef.code || withProofRef.recordId))
+  const noBasis = await call(b, 'vibe_v5_record_proposition', {
+    statement: MARK_3 + '-无凭据', value: 'V', motive: 'M', p: 0.9, proof_state: 'complete', member: 'r-1' })
+  ok(refusedWith(noBasis, 'VMU_INVALID_ARGUMENT'), '声明 complete 但没有任何登记凭据 ⇒ VMU_INVALID_ARGUMENT', noBasis && (noBasis.code || noBasis.ok))
+  ok(/proof_ref/i.test(String(noBasis.message)) || /Lean/i.test(String(noBasis.message)),
+    '拒绝文案点名两条路（proof_ref 的写完证明，或 Lean 证据）', noBasis && noBasis.message)
+  ok(/vibe_v5_lean_run/.test(String(noBasis.hint)), 'hint 点名登记 Lean 证据的那个调用（vibe_v5_lean_run）', noBasis && noBasis.hint)
 
   const leanRun = await call(b, 'vibe_v5_lean_run', { statement: 'True', file: LEAN_FILE })
   const jobId = leanRun && typeof leanRun.id === 'string' ? leanRun.id : null
@@ -191,17 +198,14 @@ try {
     id: 'rec-c5c8-proof-v2', statement: 'C6a-带 Lean 的完成卡：True。（新卡号的改正版）', value: 'V', motive: 'M', p: 0.5, member: 'r-1' })
   ok(freshId.ok === true && freshId.recordId === 'rec-c5c8-proof-v2', '★ 换一个新卡号可以写（改正有出路）', freshId && (freshId.code || freshId.recordId))
 
-  // ── §5 C7 裁决：一句话命题是合法形态，闸必须说清「没核过」；带证明登记的卡仍按证据层判 ────────────────────
-  console.log('\n=== §5 C7：一句话命题（自由文本）⇒ 放行但披露未核；带证明登记的卡 ⇒ 按证据层判 ===')
+  // ── §5 G7#2：一句话命题不是规则允许的两种形态之一 ⇒ 具名拒；带 Lean 证据的卡 ⇒ 开会 ─────────────────
+  console.log('\n=== §5 G7#2：一句话命题 ⇒ 具名拒（规则只有卡/文件引用）；带 Lean 证据的卡 ⇒ 开会 ===')
   const freeText = await call(b, 'vibe_v5_meeting', {
     type: 'debate', kind: 'sync', subject: '任意一个猜想：每个偶数都是两个素数之和', agenda: '§5 自由文本对象', member: 'r-acad' })
-  ok(freeText && freeText.ok === true, '自由文本辩论对象 ⇒ 放行（规则允许「对象或文件引用」两种形态）', freeText && (freeText.code || freeText.ok))
-  ok(freeText && freeText.subjectGate && freeText.subjectGate.form === 'statement' && freeText.subjectGate.provenance === 'none'
-    && freeText.subjectGate.proofChecked === false,
-    '回执如实标 form:"statement" / provenance:"none" / proofChecked:false（读面不需要第二套分类）',
-    freeText && freeText.subjectGate)
-  ok(freeText && /命题卡/.test(String(freeText.subjectGate && freeText.subjectGate.note)),
-    'note 说清要能被核就得写成命题卡（或给文件引用）', freeText && freeText.subjectGate && freeText.subjectGate.note)
+  ok(freeText && freeText.ok === false && freeText.code === 'VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF',
+    '自由文本辩论对象 ⇒ 具名 VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF（不是静默放行）', freeText && (freeText.code || freeText.ok))
+  ok(freeText && /两种形态/.test(String(freeText.message)) && /vibe_v5_record_proposition/.test(String(freeText.hint || '')),
+    '拒绝说清规则只允许两种形态，并给出写成卡的可执行调用', freeText && String(freeText.message || '').slice(0, 80))
 
   const byCard = await call(b, 'vibe_v5_meeting', {
     type: 'debate', subject: CARD_3, agenda: '§5 有 Lean 证据的卡', member: 'r-acad' })

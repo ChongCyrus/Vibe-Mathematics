@@ -191,11 +191,17 @@ function cardRow(records, { p = 0.5, title = '命题-平方和' } = {}) {
   refused(debateSubjectGate({ meeting: debate, subject: 'Members/pi/Propos/p-1.md' }), GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
     'a file reference with NO evidence is refused (not assumed readable)', 'file:')
 
-  const stmt = permitted(debateSubjectGate({ meeting: debate, subject: '对任意 n，1+3+…+(2n-1)=n²' }),
-    '★ a one-line proposition is LEGAL per the rule and must NOT be refused')
-  eq(stmt.provenance, 'none', 'but its provenance is recorded as none (no addressable carrier)')
-  eq(stmt.proofChecked, false, 'and the receipt says the proof was not checked')
-  ok(String(stmt.note).includes('命题卡 id'), 'the note tells the caller how to become checkable (pass a card id or file ref)')
+  // ★★ G7 AUDIT #2 (rule L14 + L45): TWO independent read-only audits read the earlier arbitration (run 103: let a bare
+  // sentence through with a disclosure note) as this gate refusing to keep the rule it quotes. The rule names exactly two
+  // debate-object forms — 「命题卡…含有正式证明或证伪内容（且已经写完了）」 and 「辩论对象的文件引用」 — so the sentence is
+  // refused by name, and the refusal hands back both legal ways instead of a note about one of them.
+  const stmt = refused(debateSubjectGate({ meeting: debate, subject: '对任意 n，1+3+…+(2n-1)=n²' }),
+    GATE_CODES.DEBATE_SUBJECT_NO_PROOF, '★ a one-line proposition is NOT one of the two forms the rule names, so it is refused by name',
+    '一句话命题')
+  ok(String(stmt.hint).includes('vibe_v5_record_proposition') && String(stmt.hint).includes('文件引用'),
+    'the refusal hands back BOTH legal routes (write the finished card, or use a file reference)')
+  eq(debateSubjectGate({ meeting: debate, subject: '对任意 n，1+3+…+(2n-1)=n²' }).form, 'statement',
+    '★ and the refusal still says WHICH form it read the subject as, so the author knows what to rewrite into')
 }
 
 // ── ④ singleWriter：定论只有一个写入器 ────────────────────────────────────────────────────────────────────

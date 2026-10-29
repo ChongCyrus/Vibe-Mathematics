@@ -85,7 +85,15 @@ const kernel = b.handle.kernel
 for (const id of ['acad-01', 'res-01', 'res-02']) {
   await kernel.members.hire({ id, slot: id === 'acad-01' ? 'chair' : 'member' })
 }
+// ★★★ G7 AUDIT #2 (rule L14): a debate's object must be a card that CARRIES a finished proof (or a file reference); a
+// one-line name is refused by name now. So the fixture registers the card it debates, exactly as the rule requires, and
+// the gate reads that registration back from the records face (subject_evidence.card is NOT a thing this face accepts).
+kernel.records.put({ id: 'p-unknown', track: 'propositions', kind: 'proposition', title: 'p-unknown',
+  body: ['- statement：对一切自然数 n，n + n = 2 * n', '- value：成立', '- motive：主线', '- p：0.6',
+    '- proofRef：Members/acad-01/Propos/p-unknown.md#正式证明', '- proofState：complete'].join(String.fromCharCode(10)),
+  by: 'acad-01', settled: true })
 const convened = await call(b, 'vibe_v5_meeting', { agenda: '辩论 p-unknown', type: 'debate', subject: 'p-unknown', member: 'acad-01' })
+if (process.env.R29_DEBUG) console.error('CONVENED', JSON.stringify(convened))
 const mid = R(convened).meeting
 for (const m of ['acad-01', 'res-01', 'res-02']) await call(b, 'vibe_vmu_meeting', { action: 'attend', id: mid, member: m })
 // The chair SPEAKS — so its later absence from `asked` cannot be explained as "it never debated".
@@ -238,7 +246,7 @@ for (const m of ['acad-01', 'res-01', 'res-02']) await call(b, 'vibe_vmu_meeting
 await call(b, 'vibe_vmu_meeting', { action: 'speak', id: mid2, member: 'res-01', text: 'evidence' })
 const library = await call(b, 'vibe_v5_read_library', { track: 'propositions' })
 const libraryTotal = R(library).total
-ok(libraryTotal === 0, '3. the propositions library is REALLY empty here — the next refusal is about absence, not about a missing field', { total: libraryTotal })
+ok(libraryTotal === 1, '3. the propositions library holds EXACTLY the card this meeting debates — the refusals below are about other ids, not about a missing field', { total: libraryTotal })
 
 const typo = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid2, proposition_id: 'p-typo' }))
 ok(typo.ok === false && typo.code === 'VMU_ASK_UNKNOWN_PROPOSITION',
@@ -260,10 +268,13 @@ ok(fakeOutcome.code === 'VMU_ASK_UNKNOWN_PROPOSITION' && fakeRefuse.sent.length 
 
 console.log('=== 3b. THE THREE SHAPES THAT ARE ACCEPTED, EACH LABELLED ===')
 const asSubject = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid2, proposition_id: 'p-unknown' }))
-ok(asSubject.ok === true && asSubject.propositionKind === 'meeting-subject' && asSubject.propositionVerified === true && asSubject.fileChecked === null,
-  "③ the meeting's own declared debate object is accepted as `meeting-subject` and marked verified BY the meeting", { kind: asSubject.propositionKind, verified: asSubject.propositionVerified })
-ok(typeof asSubject.propositionWhy === 'string' && asSubject.propositionWhy.includes('meetingView.subject'),
-  '③ `propositionWhy` names the field the verification read (no verification claim without its evidence)', { why: String(asSubject.propositionWhy || '').slice(0, 200) })
+// ★★★ G7 AUDIT #2: a debate no longer convenes on a bare one-line name — its object must be a card carrying a finished
+// proof (rule L14). So the object of THIS meeting is a real card on the propositions track, and the face labels it as one;
+// the "meeting-subject" label is what a meeting whose object is no card and no file would get, and that shape is gone.
+ok(asSubject.ok === true && asSubject.propositionKind === 'card' && asSubject.propositionVerified === true && asSubject.fileChecked === null,
+  "③ the meeting's own declared debate object is a real card, accepted as `card` and marked verified (the ruling has a target)", { kind: asSubject.propositionKind, verified: asSubject.propositionVerified })
+ok(typeof asSubject.propositionWhy === 'string' && asSubject.propositionWhy.includes('propositions track'),
+  '③ `propositionWhy` names the evidence the verification read (no verification claim without its evidence)', { why: String(asSubject.propositionWhy || '').slice(0, 200) })
 
 const asFile = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid2, proposition_id: 'docs/proof.md' }))
 ok(asFile.ok === true && asFile.propositionKind === 'file-ref' && asFile.propositionVerified === false && asFile.fileChecked === false,
@@ -345,7 +356,7 @@ const receiptFields = ['propositionKind', 'propositionVerified', 'fileChecked', 
   'rosterCountMeans', 'accounting', 'meetingState', 'meetingStateMeans', 'closurePhase', 'closureMeans', 'mail']
 const missing = receiptFields.filter((f) => !(f in first))
 ok(missing.length === 0, '⑤ every field this round adds is actually IN the receipt (a promised field with no value is the run-28 defect again)', { missing })
-ok(first.propositionKind === 'meeting-subject' && first.propositionVerified === true && first.fileChecked === null,
+ok(first.propositionKind === 'card' && first.propositionVerified === true && first.fileChecked === null,
   '⑤ the receipt carries the proposition labels too — the two faces (declaration and receipt) agree', { kind: first.propositionKind, verified: first.propositionVerified, fileChecked: first.fileChecked })
 
 console.log('\n=== VMU RUN 29 VERDICT ASK: ' + passed + ' passed, ' + failed + ' failed ===')

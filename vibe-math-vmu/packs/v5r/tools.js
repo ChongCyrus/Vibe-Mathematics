@@ -1551,17 +1551,22 @@ function gatedCardHandler(toolName) {
       const leanPassed = !!(leanRegistered && leanRegistered.passed === true)
       // ★ WAVE 2 (audit C6a, tightened): a `lean_conformance` word alone is a CLAIM — presence used to satisfy this gate.
       const conformanceWord = has(args.lean_conformance) ? str(args.lean_conformance).trim() : ''
+      // ★★ G7 AUDIT #2 (C4, rule L14): the rule admits a card 「含有正式证明或证伪内容…」 — a WRITTEN proof. Demanding a
+      // Lean job on top made that path unregistrable: proof_ref + complete was refused, complete was required for debate
+      // ⇒ a text proof could never become a debate object. The registration is the written proof the author points at;
+      // Lean stays the STRONGER evidence (machine-checked) and p=1 still needs the sanctioned sources below.
+      const declaredProofRef = has(args.proof_ref) ? str(args.proof_ref).trim() : ''
       if (!leanPassed && conformanceWord !== '' && !leanRegistered) {
         throw refuse('VMU_INVALID_ARGUMENT',
           'lean_conformance "' + conformanceWord + '" is a claim, not evidence: the same write names no `lean_job` the kernel could read as PASSED'
           + (cardId === null ? '' : ' (card ' + cardId + ')'),
           'pass lean_job:"<jobId of a settled, passed Lean run>" together with lean_conformance, or register the run first with `vibe_v5_lean_run`')
       }
-      if (!leanPassed && conformanceWord === '' && !alreadyVerified) {
+      if (!leanPassed && conformanceWord === '' && !alreadyVerified && declaredProofRef === '') {
         throw refuse('VMU_INVALID_ARGUMENT',
           'a card may not declare proof_state "complete" without Lean evidence: this write carries no `lean_job` pointing at a settled, PASSED Lean run and no `lean_conformance` registration'
           + (cardId === null ? '' : ' (card ' + cardId + ')') + ' — a card may not enter debate on a declared-complete proof with no Lean registration',
-          'register the Lean evidence first: `vibe_v5_lean_run { file:"Formal/<name>.lean", statement:"…" }`, read the job with `vibe_v5_lean_job { jobId }` until passed:true, then write the card with lean_job:"<jobId>" (or pass lean_conformance:"conform" from a `vibe_v5_fidelity_conclude` ruling)')
+          'point the card at the finished proof with `proof_ref` (the rule admits a written proof:「含有正式证明或证伪内容」), or register Lean evidence: `vibe_v5_lean_run { file:"Formal/<name>.lean", statement:"…" }` → `vibe_v5_lean_job { jobId }` until passed:true, then write the card with lean_job:"<jobId>" (or pass lean_conformance:"conform" from a `vibe_v5_fidelity_conclude` ruling)')
       }
     }
     // ★ ROUND 92 / F-92a (live run 92): the seat gate keyed on the CALLER, and the office has no seat, so

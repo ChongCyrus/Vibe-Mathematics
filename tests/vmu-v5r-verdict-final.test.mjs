@@ -194,31 +194,31 @@ try {
   console.log('=== 4. ② 辩论对象：一句话命题 ⇒ 具名拒；无证明的卡/无证据的文件 ⇒ 具名拒 ===')
   const stmtDebate = await receipt(v5rBoot, 'vibe_v5_meeting',
     { agenda: '辩论：一句话命题', type: 'debate', subject: '无穷是否存在', member: CHAIR })
-  // ★ C7 → ARBITRATED: the free-text form is ADMITTED with its un-checkability disclosed (rule L1 「对象或辩论对象的
-  // 文件引用」 + run 103 live receipt + vmu-run15-findings ③); the receipt must still say WHICH form it judged and what
-  // it could not check. This test's job is the honesty of the receipt, not a refusal that deletes a legal tool use.
-  ok(stmtDebate.parsed && stmtDebate.parsed.ok === true && stmtDebate.parsed.subjectGate && stmtDebate.parsed.subjectGate.proofContentChecked === false,
-    '★★ 一句话命题 ⇒ 放行但回执披露"内容没核过"（proofContentChecked:false）', stmtDebate.parsed && (codeOf(stmtDebate.parsed) || stmtDebate.parsed.subjectGate))
-  ok(stmtDebate.parsed && stmtDebate.parsed.subjectGate && stmtDebate.parsed.subjectGate.form === 'statement'
-    && stmtDebate.parsed.subjectGate.provenance === 'none' && /判不了/.test(String(stmtDebate.parsed.subjectGate.note)),
-    '★★ 回执如实标它判过的形态（form:"statement" / provenance:"none"），并说清本闸判不了什么',
-    stmtDebate.parsed && stmtDebate.parsed.subjectGate && { form: stmtDebate.parsed.subjectGate.form, provenance: stmtDebate.parsed.subjectGate.provenance })
+  // ★★ G7 AUDIT #2 (rule L14 + L45): the run-103 arbitration (admit free text, disclose that no proof was checked) was
+  // read by a SECOND independent audit as the gate refusing to keep the rule it quotes. The rule names exactly two forms:
+  // a card carrying a FINISHED formal proof, or a file reference. The sentence is refused by name, and the refusal still
+  // publishes the form it read (`statement` / `provenance:"none"`) plus both legal routes.
+  ok(stmtDebate.parsed && stmtDebate.parsed.ok === false && codeOf(stmtDebate.parsed) === 'VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF',
+    '★★ 一句话命题 ⇒ 具名 VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF（规则只有两种形态）', stmtDebate.parsed && codeOf(stmtDebate.parsed))
+  ok(stmtDebate.parsed && /两种形态/.test(String(stmtDebate.parsed.message)) && /vibe_v5_record_proposition/.test(String(stmtDebate.parsed.hint || '')),
+    '★★ 拒绝说清规则允许的形态，并给出写成卡的可执行调用',
+    stmtDebate.parsed && (String(stmtDebate.parsed.message || '').slice(0, 80)))
 
   // A card-form subject is recognised by its `r-` id shape (verification-gates.js classifySubject), so the fixture must
   // be a real card with such an id — an arbitrary id like 'c-mid' is classified as a STATEMENT and is now refused as
   // such, which is exactly the "the observable does not differ between the two cases" trap.
   const noProofCard = await card('r-noproof', 0.5, { statement: '还没有正式证明的命题' })
   ok(noProofCard.parsed && noProofCard.parsed.ok === true, '前置：造一张没有任何证明的 r- 前缀命题卡', noProofCard.parsed && codeOf(noProofCard.parsed))
-  const meetingsBefore = kernel.meetings.status().liveMeetings
   const cardDebate = await receipt(v5rBoot, 'vibe_v5_meeting',
     { agenda: '辩论：没证明的卡', type: 'debate', subject: 'r-noproof', member: CHAIR })
   ok(cardDebate.parsed && cardDebate.parsed.ok === false && codeOf(cardDebate.parsed) === 'VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF',
     '★★★ 反：以"没有正式证明"的卡为辩论对象 ⇒ 具名 VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF（会议没被创建）', cardDebate.parsed && codeOf(cardDebate.parsed))
-  const meetingsAfterRefusal = kernel.meetings.status().liveMeetings
-  // The refused conventions must not leave a meeting behind — and the count must still MOVE when a legal debate really
-  // opens (asserted below on the file-form case), so "unchanged here" is not the same as "the counter is stuck".
-  ok(Array.isArray(meetingsBefore) && meetingsBefore.length > 0 && Array.isArray(meetingsAfterRefusal) && meetingsAfterRefusal.length === meetingsBefore.length,
-    '★ 反：被拒的辩论没有留下会议对象（两场被拒的辩论前后，活动会议数没变）', { before: meetingsBefore, after: meetingsAfterRefusal })
+  // The refused conventions must not leave a meeting behind. Asserted as an ABSENCE of a named thing (the agenda the
+  // refusal was about) rather than as "two collections of equal length", because two empty collections are equal no
+  // matter what the code did — and the positive direction below proves the register is not simply stuck.
+  const liveAfterRefusals = JSON.stringify(kernel.meetings.status().liveMeetings || [])
+  ok(liveAfterRefusals.indexOf('辩论：没证明的卡') === -1 && liveAfterRefusals.indexOf('辩论：文件引用') === -1,
+    '★ 反：被拒的辩论没有留下会议对象（活动会议里查不到那两条被拒的议程）', { live: liveAfterRefusals.slice(0, 120) })
 
   const fileDebate = await receipt(v5rBoot, 'vibe_v5_meeting',
     { agenda: '辩论：文件引用', type: 'debate', subject: 'Shared/proof-1.md', member: CHAIR })
@@ -232,10 +232,11 @@ try {
   ok(fileDebate2.parsed && fileDebate2.parsed.subjectGate && fileDebate2.parsed.subjectGate.proofChecked === false,
     '★★ 正：文件形态只证明"存在且非空"，proofChecked 如实为 false（内容完整性由人在辩论中核）',
     fileDebate2.parsed && fileDebate2.parsed.subjectGate && fileDebate2.parsed.subjectGate.proofChecked)
-  const meetingsAfterFile = kernel.meetings.status().liveMeetings
-  ok(Array.isArray(meetingsBefore) && meetingsBefore.length > 0 && Array.isArray(meetingsAfterFile) && meetingsAfterFile.length === meetingsBefore.length + 1,
-    '★ 正：放行的那场辩论真的把活动会议数 +1（上面"被拒没留会议"不是计数器坏掉）',
-    { before: meetingsBefore.length, afterFile: meetingsAfterFile.length })
+  // `meetings.status().liveMeetings` is the list of live IDs (strings), not rows.
+  const liveFileIds = (kernel.meetings.status().liveMeetings || []).map(String)
+  ok(liveFileIds.indexOf(String(fileDebate2.parsed.meeting)) !== -1,
+    '★ 正：放行的那场辩论真的在活动会议里（按它回执里的 id 查到——上面"被拒没留会议"不是登记簿坏掉）',
+    { id: fileDebate2.parsed.meeting, live: liveFileIds.slice(0, 6) })
 
   // ── 5. D3 THE OPTIONAL TITLE ───────────────────────────────────────────────────────────────────────────────
   console.log('=== 5. D3 会议标题：可选、只在传了时透传、空白归一、非字符串具名拒 ===')

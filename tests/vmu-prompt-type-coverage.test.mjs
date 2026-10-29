@@ -120,7 +120,8 @@ console.log('=== 1. PER-TYPE COVERAGE (the number the whole-corpus ratio cannot 
 // answers "did we transcribe this".
 const looksLikeData = (l) => /[a-z]{1,8}-\d/.test(l) || /^[\[▸]/.test(l) || /^【/.test(l) || /p-[a-z]/.test(l) || /:\s*"/.test(l) || /^陈述：/.test(l) || /^对象：/.test(l) || /^类型：/.test(l)
 
-// ★ EIGHTH STRUCTURAL CLASS (2026-10-28, THE LEDGER ROUND) — SIX CAPTURED LINES WERE CORRECTED, NOT LOST. The
+// ★ EIGHTH STRUCTURAL CLASS (2026-10-28, THE LEDGER ROUND) — EIGHT CAPTURED LINES WERE CORRECTED, NOT LOST.
+//   (7 and 8 were added by the SECOND G7 audit: the founding block was role-neutral in the capture and seat-speak now.) The
 // kernel contradicts each of them by NAME, so the live teaching now says the true thing and these captures can never
 // match VERBATIM again. Every reason below is a code fact rather than an opinion, and the count is asserted so an
 // exclusion cannot outlive the correction it excuses:
@@ -148,7 +149,16 @@ const isCorrectedTeachingLedger = (l) =>
   /^只有当\*\*全体有表决权者\*\*都一致认为是真时/.test(l) ||
   /^input：发言；meeting_hand：是否举手/.test(l) ||
   /^议程：分工与下一步（类型：sync）/.test(l) ||
-  /^检测不到 LaTeX 引擎时/.test(l)
+  /^检测不到 LaTeX 引擎时/.test(l) ||
+  // ★ G7 AUDIT #2 (C1/C2, rule L3/L47): the founding block told EVERY seat 「你是本所的院士」 and 「你没有表决权及hire/fire权限」.
+  // Both contradict `packs/v5r/seat-faces.js` (unit: a member is not the chair; m = min(设置, 院士+常驻研究员)) and the
+  // three-seat face itself, so the live text now says 「你是本所的一名成员（你的具体席位见身份段）」 and 「权限按席位…」.
+  // The capture stays as the capture; the divergence is declared here, exactly like class 5-8 above.
+  /^你是本所的院士。/.test(l) ||
+  /^你没有表决权及hire\/fire权限/.test(l) ||
+  // 9. G7 AUDIT #2 (C5, rule L56): :550 asserted 「全体参与成员…表示可交付」 even on the capped path, where kit/paper.js
+  //    goes to the editor with warnings. The live line now says that out loud, so the capture can no longer match.
+  /^全体参与成员已在互审中表示/.test(l)
 let correctedLedgerLines = 0
 const perType = new Map()
 for (const p of PROMPTS) {

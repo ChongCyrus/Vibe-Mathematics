@@ -676,7 +676,7 @@
       "id": "C7",
       "rule": "14",
       "text": "只有写完的正式证明才能用于辩论",
-      "status": "DONE",
+      "status": "PARTIAL",
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
@@ -687,10 +687,10 @@
         "vibe-math-vmu/packs/v5r/verification-gates.js::export function debateSubjectGate",
         "vibe-math-vmu/packs/v5r/verification-gates.js::const cls = classifySubject"
       ],
-      "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"proofBasis\":\"unverifiable-statement\""
-      ],
-      "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。"
+      "live": [],
+      "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。",
+      "next": "r136 真机：以一句话命题 `vibe_v5_meeting { type:\"debate\", subject:\"<一句话>\" }` 召集 ⇒ 具名 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`（message 说规则只允许两种形态、hint 给 record_proposition 调用）；再以 `proof_ref`+`proof_state:\"complete\"` 的卡为对象 ⇒ 放行且 subjectGate.form:\"card\"",
+      "note": "SECOND G7 AUDIT OVERTURNED THE run-103 ARBITRATION: two independent read-only audits read 「放行一句话命题 + 披露未核」 as the gate refusing to keep the rule it quotes (L14 「命题卡…含有正式证明或证伪内容（且已经写完了）」；L45 「对象或辩论对象的文件引用」). The gate now refuses a bare sentence by name and hands back both legal routes (phase12 §230.2/§230.3)."
     },
     {
       "id": "C8",

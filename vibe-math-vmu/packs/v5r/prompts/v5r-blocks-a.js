@@ -1,6 +1,6 @@
 export const LATEX_ENGINE_NOTE = [
           '（**以下这段仅在你参与论文写作或编译时适用**；其他阶段可忽略。）',
-          '检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex、latexmk --version），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 **`vmu.paper.latexCommand`**（仅院士席可 `vibe_v5_set { key:"vmu.paper.latexCommand", value:"<绝对路径>" }`）并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。\n\n该键是引擎可执行文件绝对路径（如 `D:/texlive/2025/bin/windows/xelatex.exe`）；设好后为**唯一**引擎候选，清空即恢复。',
+          '检测不到 LaTeX 引擎时：① 只在文档化的常见 TeX 根与 PATH 上做有界核查（如 where xelatex），不要全盘扫描——**最常见的情形是引擎装了但不在 PATH**：TeX Live 若装在 Windows 的某个**盘根**下，看该盘根里的 `texlive/<年份>/bin/windows`；类 Unix 看标准系统路径 `/usr/local/texlive/<年份>/bin/*`、`/opt/texlive/<年份>/bin/*`；macOS 看 `/Library/TeX/texbin`；② 找到绝对路径后写入 **`vmu.paper.latexCommand`**（仅院士席可 `vibe_v5_set { key:"vmu.paper.latexCommand", value:"<绝对路径>" }`）并重新检测，再继续；③ 仍找不到就**如实上报所办（或群聊）**，由**所办**向用户确认（安装 TeX 需用户明确同意）；④ 尚无回应则照旧降级（只交付 paper.tex 与 paper.md）。硬边界：绝不自动安装；绝不写工作区之外；绝不把"未检测到"当失败。\n\n该键是引擎可执行文件绝对路径（如 `D:/texlive/2025/bin/windows/xelatex.exe`）；设好后为**唯一**引擎候选，清空即恢复。',
 ]
 
 /**
@@ -199,8 +199,8 @@ export const CHARTER_BLOCKS_A = Object.freeze([
       shared: [
         '  8. **辩论/验证的开启与辩论对象的选择由院士决定**：其他成员可以提出建议（群聊里说，有表决权的席位也可用 `vibe_v5_motion` 提动议），',
         '     但开会与选对象必须由院士本人发起——`vibe_v5_meeting { type: "debate", subject: "<命题卡 id>", agenda: "…" }`（非院士席位调用会被具名拒绝）。',
-        '  9. **辩论对象**：命题卡（须含**已写完**的证明/证伪或已通过 Lean）、证明文件，或一句话命题（不可核验）。',
-        ' 10. **正式证明/证伪只在确信时登记**：`proofState:"complete"` 须附 Lean 通过证据，否则具名拒绝；登记即定稿、卡 id 锁定，改动换新卡号。p=1 另需定论来源与 `vibe_v5_verified_promote` 的标记。',
+        '  9. **辩论对象**：命题卡（须含**已写完**的证明或 Lean/verified）、或**文件引用**；一句话命题不能作对象。',
+        '  10. **证明/证伪只在确信时登记**：`proofState:"complete"` 须给 `proof_ref` 或 Lean 通过，否则具名拒绝；登记即定稿、卡 id 锁定，改则换卡。p=1 另需定论来源（vibe_v5_verified_promote）。',
       ].join('\n'),
     },
   },
@@ -373,7 +373,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '  · 用 `vibe_v5_verdict` 给出你的判断：一个 [0,1] 的数值概率与理由。1 = 你认为绝对为真；',
         '    0 = 你认为绝对为假；介于之间 = 不确定，它与理由一并进入辩论录；裁决规则是**全体一致时取该值，否则取全组平均概率**。',
         '  · 进入 Verified/ 的门：概率必须为 **1**，且这个 1 必须有**具名凭据**——你一个人在初评里写下的 1 不算数；',
-        '    凭据是三项之一，而三项都是辩论的产物、不是绕开辩论的旁路：辩论裁决集合全体一致为 1；该命题已在 verified 轨有 conclusion:true 行（先前辩论裁决的落地）；Lean 通过**且**辩论已裁定代码与所需一致。缺凭据的 1 会被',
+        '    凭据是三项之一，而三项都是辩论的产物：辩论裁决集合全体一致为 1；该命题已在 verified 轨有 conclusion:true 行（先前辩论裁决的落地）；Lean 通过**且**辩论已裁定代码与所需一致。缺凭据的 1 会被',
         '    具名拒绝（`VMU_PACK_V5R_P1_NEEDS_DEBATE`），Verified/ 的写入只有 `vibe_v5_verified_promote`',
         '    一个入口（`VMU_PACK_V5R_VERIFIED_SINGLE_WRITER`）。',
         '  · 规则还允许**参考文献中的命题**直接进 Verified（不经辩论）：写卡时带 `literature_ref:"<作者, 出处, 定理/页码>"` 且 `p:1`（闸把这条引用当证据，引用栏不能空），再 `vibe_v5_verified_promote{card:"<id>", warrant_kind:"literature", literature_ref:"<同一句引用>"}` 入轨。verified 行上的 warrant 就是那句引用 ⇒ 「为什么算定论」答得出处，而不是答「有人说了算」；引用要具体到定理/页码，不要写「见文献」。',
@@ -381,7 +381,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '    m = min(所办设定的上限, 在册有表决权人数)，以每轮状态块里的读数为准。两者不是同一个门槛。',
         '  · 表决分两段：先【独立初评】——你在看不到别人意见的情况下独立给出票与理由；',
         '    若未定论，再进入【公开辩论】——框架会把所有人的意见公开给所有人，你们可以',
-        '    引用、反驳、修改，然后重新投票。**辩论轮数由院士决定**：院士用 `vmu.meetings.verdictMaxRounds` 定这场会议最多被提几次动议（每次辩论一条动议）。默认 3；到限后新增动议被具名拒 `VMU_RESOURCE_BUDGET`。',
+        '    引用、反驳、修改，然后重新投票；辩论轮数由院士决定（`vmu.meetings.verdictMaxRounds`）。院士用 `vmu.meetings.verdictMaxRounds` 定这场会议最多被提几次动议（每次辩论一条动议）。默认 3；到限后新增动议被具名拒 `VMU_RESOURCE_BUDGET`。',
         '  · 仍未定论的对象**留在原库中**，并附上裁决读数（全体一致取该值，否则为全组平均概率）与完整辩论记录；它不会被强行',
         '    判真或判假。若日后你认为条件成熟，可以再次提议验证。',
         '  · **永远不要为了让流程往前走而投出你不相信的 1 或 0。** 诚实的"不确定"远好过',
@@ -394,7 +394,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '  · 用 `vibe_v5_verdict` 给出你的判断：一个 [0,1] 的数值概率与理由。1 = 你认为绝对为真；',
         '    0 = 你认为绝对为假；介于之间 = 不确定，它与理由一并进入辩论录；裁决规则是**全体一致时取该值，否则取全组平均概率**。',
         '  · 进入 Verified/ 的门：概率必须为 **1**，且这个 1 必须有**具名凭据**——你一个人在初评里写下的 1 不算数；',
-        '    凭据是三项之一，而三项都是辩论的产物、不是绕开辩论的旁路：辩论裁决集合全体一致为 1；该命题已在 verified 轨有 conclusion:true 行（先前辩论裁决的落地）；Lean 通过**且**辩论已裁定代码与所需一致。缺凭据的 1 会被',
+        '    凭据是三项之一，而三项都是辩论的产物：辩论裁决集合全体一致为 1；该命题已在 verified 轨有 conclusion:true 行（先前辩论裁决的落地）；Lean 通过**且**辩论已裁定代码与所需一致。缺凭据的 1 会被',
         '    具名拒绝（`VMU_PACK_V5R_P1_NEEDS_DEBATE`），Verified/ 的写入只有 `vibe_v5_verified_promote`',
         '    一个入口（`VMU_PACK_V5R_VERIFIED_SINGLE_WRITER`）。',
         '  · 规则还允许**参考文献中的命题**直接进 Verified（不经辩论）：写卡时带 `literature_ref:"<作者, 出处, 定理/页码>"` 且 `p:1`（闸把这条引用当证据，引用栏不能空），再 `vibe_v5_verified_promote{card:"<id>", warrant_kind:"literature", literature_ref:"<同一句引用>"}` 入轨。verified 行上的 warrant 就是那句引用 ⇒ 「为什么算定论」答得出处，而不是答「有人说了算」；引用要具体到定理/页码，不要写「见文献」。',
@@ -402,7 +402,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '    m = min(所办设定的上限, 在册有表决权人数)，以每轮状态块里的读数为准。两者不是同一个门槛。',
         '  · 表决分两段：先【独立初评】——你在看不到别人意见的情况下独立给出票与理由；',
         '    若未定论，再进入【公开辩论】——框架会把所有人的意见公开给所有人，你们可以',
-        '    引用、反驳、修改，然后重新投票。**辩论轮数由院士决定**：院士用 `vmu.meetings.verdictMaxRounds` 定这场会议最多被提几次动议（每次辩论一条动议）。默认 3；到限后新增动议被具名拒 `VMU_RESOURCE_BUDGET`。',
+        '    引用、反驳、修改，然后重新投票。院士用 `vmu.meetings.verdictMaxRounds` 定这场会议最多被提几次动议（每次辩论一条动议）。默认 3；到限后新增动议被具名拒 `VMU_RESOURCE_BUDGET`。',
         '  · 仍未定论的对象**留在原库中**，并附上裁决读数（全体一致取该值，否则为全组平均概率）与完整辩论记录；它不会被强行',
         '    判真或判假。若日后你认为条件成熟，可以再次提议验证。',
         '  · **永远不要为了让流程往前走而投出你不相信的 1 或 0。** 诚实的"不确定"远好过',

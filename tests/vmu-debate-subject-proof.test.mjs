@@ -18,7 +18,8 @@
 //   ①b 声明与机器证据**矛盾**（指向的 Lean 作业没通过）⇒ `DEBATE_SUBJECT_UNPROVEN`；
 //   ② 连声明都没有（或只标 draft）⇒ 拒，码是 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`（两种缺失两个码）；
 //   ③ 有机器证据（lean 通过 / verified 定论行）⇒ 放行，且回执点名证据来源 `proofVia`；
-//   ④ 一句话命题是规则允许的合法形态 ⇒ 不被这个闸拦（`provenance:'none'` 如实记）；
+//   ④ 一句话命题**不是**规则允许的两种形态之一（L14 卡/证明、L45 卡或文件引用）⇒ 具名拒 `DEBATE_SUBJECT_NO_PROOF`，
+//      并在拒绝里给出两条合法路。第二份 G7 审计把 run 103 的「放行 + 披露」裁决读成「闸不守它引用的规则」；
 //   ⑤ 真机：卡上的声明能写进去、能读回来（`proof_ref`/`proof_state` 别名不被吞）；辩论开会时**真的**被拦；
 //   ⑥ TEETH：把声明喂成"没有证据"的三种变体，闸必须分别报出应有的码（不是恒绿）。
 //
@@ -147,20 +148,22 @@ console.log('=== 3. 机器证据 ⇒ 放行（两种证据各一次）===')
   ok(byVerified.proofVia === 'verified-row', '回执点名证据来源 = verified-row', byVerified.proofVia)
 }
 
-console.log('=== 4. 一句话命题是合法形态，但闸必须说清「没核过」（C7 收口后的裁决）===')
+console.log('=== 4. 一句话命题不是规则允许的形态 ⇒ 具名拒，并给出两条合法路 ===')
 {
-  // ★ C7 原本把这一形态判成具名拒绝；全量 T1 里 `vmu-verified-gates` 的钉子（「一句话命题是规则允许的合法形态，
-  //   不许被拒」）与本文件自己的头注 ④ 都指向另一读法，且 r103 真机回执就是「放行 + provenance:none」。裁决：
-  //   规则 L1 说辩论对象可以是「对象或文件引用」；L14 的证明要求针对**卡形态**（卡上声明写完的证明）。一句话
-  //   命题没有可寻址的载体 ⇒ 本闸判不了，**如实披露**（proofContentChecked:false / provenance:none），而不是
-  //   把一种合法用法删掉。要能被核，就写成卡（或给文件引用）——那两句话写在 note 里。
+  // ★★ G7 AUDIT #2 (rule L14 + L45, second independent read-only audit): the rule names exactly two debate-object forms —
+  // 「命题卡…含有正式证明或证伪内容（且已经写完了）」 and 「辩论对象的文件引用」. §4 used to encode the run-103 arbitration
+  // (let a bare sentence through with provenance:'none'), and that arbitration is what the audit called the gate refusing
+  // to keep the rule it quotes. The sentence is now refused BY NAME; the refusal names the two legal forms instead of a note.
   const stmt = gates.debateSubjectGate({ meeting: DEBATE, subject: '任意一个猜想：每个偶数都是两个素数之和' })
-  ok(stmt.allowed === true && stmt.proofContentChecked === false,
-    '★★ 一句话命题 ⇒ 放行，但明确标记「内容没核过」', { allowed: stmt.allowed, proofContentChecked: stmt.proofContentChecked })
-  ok(stmt.form === 'statement' && stmt.provenance === 'none' && stmt.proofChecked === false,
-    '并如实记 provenance:none —— 自由文本没有可寻址的载体', stmt)
-  ok(typeof stmt.note === 'string' && /命题卡/.test(stmt.note) && /判不了/.test(stmt.note),
-    'note 说清「判不了」并指出可被核的两条路（写成卡 / 文件引用）', stmt.note)
+  ok(stmt.allowed === false && stmt.code === gates.GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
+    '★★ 一句话命题 ⇒ 具名拒 DEBATE_SUBJECT_NO_PROOF（不是静默放行，也不是发明新码）',
+    { allowed: stmt.allowed, code: stmt.code })
+  ok(stmt.form === 'statement' && stmt.provenance === 'none',
+    '并如实记它读到的形态（form:statement / provenance:none）——拒绝也要说清读到了什么', stmt)
+  ok(/两种形态/.test(String(stmt.message)) && /已写完/.test(String(stmt.message)),
+    '拒绝文案说清规则只允许哪种形态（含「已写完」的卡或文件引用）', stmt.message)
+  ok(/vibe_v5_record_proposition/.test(String(stmt.hint)) && /文件引用/.test(String(stmt.hint)),
+    'hint 给出两条合法路：写成卡（带 proof_ref/proof_state）或以文件引用作对象', stmt.hint)
   const nonDebate = gates.debateSubjectGate({ meeting: { type: 'ordinary' }, subject: CARD_ID, evidence: cardEvidence() })
   ok(nonDebate.allowed === true && nonDebate.applicable === false, '非辩论会议 ⇒ 本闸不适用（不被误伤）', nonDebate)
 }
@@ -218,9 +221,9 @@ try {
 
   const stmtMeeting = await receipt(b, 'vibe_v5_meeting', { member: 'acad', agenda: '辩论一句话命题', type: 'debate', kind: 'sync',
     subject: '任意一个猜想：素数是无穷多的' })
-  ok(stmtMeeting.ok === true && stmtMeeting.subjectGate && stmtMeeting.subjectGate.form === 'statement'
-    && stmtMeeting.subjectGate.provenance === 'none' && stmtMeeting.subjectGate.proofChecked === false,
-    '★★ 真机：一句话命题能开会，且回执如实标 form:statement / provenance:none / proofChecked:false', stmtMeeting.subjectGate || stmtMeeting)
+  ok(stmtMeeting.ok === false && stmtMeeting.code === 'VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF',
+    '★★ 真机：一句话命题**开不了**辩论（闸在召集时就拒，而不是等到开会后才说没核过）',
+    { ok: stmtMeeting.ok, code: stmtMeeting.code })
 } finally {
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 }

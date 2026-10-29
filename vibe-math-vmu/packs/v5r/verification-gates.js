@@ -249,20 +249,18 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
   const ev = evidence || {}
 
   if (cls.form === 'statement') {
-    // ★ AUDIT C7 → ARBITRATED (rule L1 + run 103 + vmu-run15-findings:179): C7 refused a free-text subject by name,
-    // reading 「只有命题卡中含有正式证明或证伪内容…才能用于后续辩论」 as "a bare sentence may never be a debate object".
-    // L1 says the object may be 「对象或辩论对象的文件引用」; L14 proof requirement is about the CARD form; run 103
-    // convened on a sentence and the receipt honestly carried form:"statement" / provenance:"none" — which the
-    // acceptance ledger cites as compliant. Refusing deletes a legal tool use; the honest guard for this form is
-    // DISCLOSURE (nothing about proof was checked), never a fake strictness.
-    return allow({ form: 'statement', subject: cls.raw, proofChecked: false, proofContentChecked: false,
-      provenance: 'none', proofBasis: 'unverifiable-statement',
-      // ★ C7 的判别工作保留（名字看起来像标识符 ⇒ 说清它找不到任何卡），只是判决回到「放行 + 披露」。
-      looksLikeIdentifier: /^[A-Za-z][A-Za-z0-9_-]*$/.test(cls.raw),
-      note: '一句话命题（form:"statement"）：它没有可寻址的载体，本闸**判不了**它有没有写完的正式证明 —— 回执如实标 '
-        + 'proofContentChecked:false、provenance:"none"、proofBasis:"unverifiable-statement"，这不是"核过了"，也不是"拒了"。'
-        + '要一张能被核的辩论对象：先写成**命题卡**（vibe_v5_record_proposition），开会时传 `命题卡 id`；'
-        + '或把证明写成文件并以**文件引用**作对象（文件形态只核"可读且非空"，内容由人在辩论里核）。' })
+    // ★★ G7 AUDIT #2 (C3, rule L14 + L45): the rule names exactly two debate-object forms — 「命题卡…含有正式证明或证伪内容
+    // （且已经写完了）」 and 「辩论对象的文件引用」. A bare sentence carries neither, so it may not be convened on. The earlier
+    // arbitration (run 103) let it through with a disclosure note, and TWO independent read-only audits read that as the
+    // gate refusing to keep the rule it quotes. The refusal is the rule's own answer, and the hint names both legal ways.
+    return refuseGate(GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
+      '辩论对象是一句话命题（form:"statement"），而规则只允许两种形态：含**已写完**的正式证明/证伪的**命题卡**，或辩论对象的**文件引用** —— '
+      + '一句话没有可寻址的载体，既登记不了证明，也没法被人核',
+      '两条合法路：①先写成命题卡 `vibe_v5_record_proposition { id, title, statement, value, motive, p, proof_ref:"Members/<m>/Propos/<id>.md#正式证明", proof_state:"complete" }`，'
+      + '再以卡 id 召集辩论；②把证明写成文件，以**文件引用**（路径或 .md/.lean/.txt/.tex/.json 名）作对象。'
+      + '本闸对卡核"有没有登记证明"、对文件核"可读且非空"，内容是否写完由辩论中的人核',
+      { form: 'statement', subject: cls.raw, proofChecked: false, proofContentChecked: false,
+        provenance: 'none', looksLikeIdentifier: /^[A-Za-z][A-Za-z0-9_-]*$/.test(cls.raw) })
   }
 
   if (cls.form === 'file') {
