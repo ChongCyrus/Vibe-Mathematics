@@ -140,7 +140,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `G4` | 60 | 支持断点续跑 | ✅ DONE | 1/1/1/1 | — |
 | `G5` | 61 | 特殊权限/请求经所办向用户询问 | ✅ DONE | 2/1/1/1 | — |
 | `G6` | 62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ✅ DONE | 3/1/2/2 | 已由 r133 全证（成员回合围栏多写未声明字段 ⇒ VMU_TURN_UNKNOWN_FIELD + hint 印全部已知字段）。 |
-| `G7` | 63 | 提示词与规则完全相符、自洽 | ◐ PARTIAL | 3/1/1/3 | 规则原文与活教学之间的一致性只能审：已连跑五次独立只读审计（§229 CONTRADICTIONS(5) → §230 CONTRADICTIONS(5) → §232 CONTRADICTIONS(4) → §233 CONTRADICTIONS(2) → §234 CONTRADICTIONS(4)），共 20 条矛盾全部修净并机器化进 tests/vmu-g7-concordance.test.mjs（44 条，含英文断言）与 check-rule-parity 的 P1–P7。G7 记 DONE 的条件（用户裁定）：修完后再派一次独立审计、结论零矛盾。 |
+| `G7` | 63 | 提示词与规则完全相符、自洽 | ◐ PARTIAL | 3/1/1/4 | 七轮独立只读审计：§229(5) → §230(5) → §232(4) → §233(2) → §234(4) → §235(2) → §236(4)，共 26 条矛盾全部修净，并机器化进 tests/vmu-g7-concordance.test.mjs（64 条）与 check-rule-parity P1–P7。G7 记 DONE 的条件（用户裁定）：再派一次独立审计、结论零矛盾。 |
 
 ## How to move a row
 

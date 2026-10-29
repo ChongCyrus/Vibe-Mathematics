@@ -208,7 +208,86 @@ const GATES = read('vibe-math-vmu/packs/v5r/verification-gates.js')
     'L61c the mechanism-side note says the same about the office', {})
 }
 
-console.log('\n=== G7 CONCORDANCE (third, fourth and fifth audits: thirteen pairs): ' + pass + ' passed, ' + fails.length + ' failed ===')
+{
+  // SIXTH AUDIT, C1 — mechanically: a description that NAMES a card parameter the face does not declare is a
+  // promise the caller cannot keep (the dispatch funnel refuses undeclared params by name before the handler).
+  // This scans every `vibe_v5_record_*` spec block and reconciles its description against its own parameters.
+  const blocks = TOOLS.split(/name: 'vibe_v5_record_/).slice(1)
+    .map((chunk) => 'vibe_v5_record_' + chunk.slice(0, chunk.indexOf('handler:')))
+  ok(blocks.length >= 4, 'C1(6) precondition: the card faces are found in tools.js', { n: blocks.length })
+  const NAMES = ['lean_job', 'lean_conformance', 'proof_ref', 'proof_state']
+  const offenders = []
+  for (const block of blocks) {
+    const cut = block.indexOf('parameters:')
+    ok(cut > 0, 'C1(6) precondition: this face declares parameters', { head: block.slice(0, 40) })
+    const desc = block.slice(0, cut)
+    const params = block.slice(cut)
+    for (const n of NAMES) {
+      const named = new RegExp('`' + n + '`').test(desc)
+      if (named && !new RegExp('\\b' + n + ':').test(params)) offenders.push({ face: block.slice(0, 34), missing: n })
+    }
+  }
+  ok(offenders.length === 0,
+    'C1(6) every card parameter a description names is really declared by that face (no unreachable half)', { offenders })
+  // Self-proof: the probe must bite on a synthetic face whose description names an undeclared parameter.
+  const synthetic = "name: 'vibe_v5_record_x', description: 'pass `lean_job` to prove it', parameters: { id: { type: 'string' } }, handler: x,"
+  const synthBlock = 'vibe_v5_record_' + synthetic.slice(0, synthetic.indexOf('handler:'))
+  const synthDesc = synthBlock.slice(0, synthBlock.indexOf('parameters:'))
+  const synthParams = synthBlock.slice(synthBlock.indexOf('parameters:'))
+  ok(new RegExp('`lean_job`').test(synthDesc) && !/\\blean_job:/.test(synthParams),
+    'C1(6) probe bites on a face that names an undeclared parameter (self-proof)', {})
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// SEVENTH AUDIT — four pairs where one reader was told two incompatible things. Each block checks BOTH sides:
+// the sentence that was wrong is gone, the sentence that is true is present, and the mechanism really behaves
+// the way the surviving sentence says.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+{
+  // C1 (L14) — the debate procedure claimed the framework sets no round ceiling and refuses nothing;
+  // this deployment caps MOTIONS per meeting at vmu.meetings.verdictMaxRounds (default 3) and refuses by name.
+  const proc7 = read('vibe-math-vmu/packs/v5r/meeting-procedures.js')
+  ok(!/不设默认轮数/.test(proc7), 'C1(7) the procedure no longer claims the framework sets no round ceiling', {})
+  ok(/verdictMaxRounds/.test(proc7) && /VMU_RESOURCE_BUDGET/.test(proc7),
+    'C1(7) the procedure names the real ceiling and the refusal it produces', {})
+  const meetingsSrc7 = read('vibe-math-vmu/kernel/meetings.js')
+  ok(/verdictMaxRounds/.test(meetingsSrc7) && /VMU_RESOURCE_BUDGET/.test(meetingsSrc7),
+    'C1(7) mechanism side: the cap really refuses with that code', {})
+}
+{
+  // C2 (L32) — the chair manual promised that meetings.orderMode (default fifo) decides the baseline while the
+  // marker refuses flow/overrideorder outright when the pack never declares orderMode.
+  const b7 = read('vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js')
+  ok(!/基线顺序由 `vmu\.meetings\.orderMode`/.test(b7),
+    'C2(7) the manual no longer says orderMode decides the baseline', {})
+  ok(/基线顺序就是\*\*入队顺序\*\*/.test(b7) && /本部署未声明/.test(b7) && /VMU_ENGINE_UNAVAILABLE/.test(b7),
+    'C2(7) the manual says the reachable baseline is the queue and names the refusal', {})
+  const marker7 = read('vibe-math-vmu/kernel/meetingmarker.js')
+  ok(/VMU_ENGINE_UNAVAILABLE/.test(marker7), 'C2(7) mechanism side: the marker really refuses that way', {})
+}
+{
+  // C3 (L39) — card faces promised `lean_conformance` as evidence that stands alone; the gate rejects a
+  // conformance word with no PASSED lean_job ("a claim, not evidence").
+  const t7 = read('vibe-math-vmu/packs/v5r/tools.js')
+  ok(!/`lean_job` of a settled PASSED run, or `lean_conformance`/.test(t7),
+    'C3(7) no description lists lean_conformance as an alternative to a PASSED lean_job', {})
+  ok(!/Lean `lean_job`\/`lean_conformance`/.test(t7),
+    'C3(7) the two card faces no longer say the two are interchangeable', {})
+  ok(t7.includes('lean_conformance` alone is a claim, not evidence') && t7.includes('is a claim, not evidence: the same write names no'),
+    'C3(7) description and refusal now say the same thing about a conformance word', {})
+}
+{
+  // C4 (L51) — an invited temp worker was told to attend and speak; this deployment refuses attend for temp seats.
+  const b7 = read('vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js')
+  ok(!/你的发言只记入会议纪要与群聊/.test(b7),
+    'C4(7) the invited-temp frame no longer promises a speech that lands in the minutes', {})
+  ok(/席位不参会/.test(b7) && /attend/.test(b7) && /vibe_v5_say/.test(b7),
+    'C4(7) the frame says the reachable channel is the group chat', {})
+  const defaults7 = read('vibe-math-vmu/packs/v5r/settings/defaults.json')
+  ok(/attendDeniedSeats/.test(defaults7), 'C4(7) mechanism side: the deployment really denies attend for temp seats', {})
+}
+
+console.log('\n=== G7 CONCORDANCE (third through seventh audits: eighteen pairs): ' + pass + ' passed, ' + fails.length + ' failed ===')
 if (fails.length) {
   for (const f of fails) console.log('  · ' + f)
   process.exit(1)

@@ -2341,3 +2341,23 @@ run 136 的椅子自己报了三处「一句话与另一句话打架」，三处
    `meeting` + `proposition_id`。判据：**教学里每个参数名都要能在那个 handler 的读取路径上找到对应分支**。
 3. 量具侧：这类「半句不可达」只有把**句子里的每个名字**与声明表对账才抓得到 —— 于是本轮的 concordance
    套件从「整句匹配」推进到「句子里的参数名 ∈ 声明」与「示例调用里的参数名 ∈ 声明」。
+
+## ROUND 136g — a promise to a seat has to be a promise that seat can keep
+
+The seventh independent audit found four more pairs, and three of them were **promises made to a seat that cannot
+reach the promised door**: the debate procedure told the chair the framework never refuses a round (the deployment
+caps motions), the chair manual told him `orderMode` decides the baseline (this deployment never declares it, so
+`flow`/`overrideorder` are refused outright), the card faces told every writer that a `lean_conformance` word is
+evidence (the gate requires a settled PASSED `lean_job`), and the invited-temp frame told a temp worker to speak in a
+meeting it cannot even attend (`attendDeniedSeats`).
+
+Rules that came out of this round:
+
+1. **A teaching sentence must be reachable by the seat it is rendered to.** If the seat cannot attend, do not teach it
+   to speak in the room; name the channel it does have.
+2. **A schema `def` is not a declaration.** `def:'fifo'` reads like a default; the marker's refusal proves it is not.
+   When the mechanism refuses, the manual says so and names the refusal code.
+3. **"Either" is a promise about two paths — prove both.** `lean_job` OR `lean_conformance` looked symmetric; the gate
+   made one of them a claim. Write the one that survives.
+4. **Keep the discriminating phrase.** T122/T125 pin 「受邀发言」 as the name of a state; an honest rewrite may keep a
+   phrase it no longer over-claims, as long as the sentence around it stops promising the unreachable path.

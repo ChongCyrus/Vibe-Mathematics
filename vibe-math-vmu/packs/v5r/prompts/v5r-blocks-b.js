@@ -696,8 +696,8 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '（你是**受邀发言**的临时工：{{ setting:vmu.turn.invitedBy }} 邀请你发言，理由：{{ setting:vmu.turn.invitedWhy }}。',
-        '你的发言只记入会议纪要与群聊、**不计票**；你不发言也不会阻塞会议。）',
+        '（你是**受邀发言**的临时工：{{ setting:vmu.turn.invitedBy }} 邀请你参与，理由：{{ setting:vmu.turn.invitedWhy }}。',
+        '★ 席位不参会（`attend` 被具名拒），会议内发言不可达——意见走**群聊** `vibe_v5_say`；只记群聊、不计票、不阻塞。',
       ].join('\n'),
     },
   },
@@ -746,7 +746,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。',
         '（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）',
         '**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为"选择未发言"）——不会因此被追问，也不会阻塞会议。',
-        '**想发言就举手——举手是工具调用，不是回执字段**：`vibe_vmu_meeting { action: "hand", id: "<会议 id>", member: "<你的 id>" }`（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言。回执里写 "meeting_hand"/"meeting_invite" 会被**具名拒**（`VMU_TURN_FIELD_NOT_APPLICABLE`：回执不带会议 id，框架不会替你猜）。要请人发言由院士用工具 `vibe_vmu_meeting { action: "invite", id: "<会议 id>", member: "t-1", by: "<院士 id>", why: "…" }`——邀请**不是签到**，被邀者仍须自己 `attend` 才计入法定人数。',
+        '**想发言就举手——举手是工具调用，不是回执字段**：`vibe_vmu_meeting { action: "hand", id: "<会议 id>", member: "<你的 id>" }`（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言。回执里写 "meeting_hand"/"meeting_invite" 会被**具名拒**（`VMU_TURN_FIELD_NOT_APPLICABLE`：回执不带会议 id，框架不会替你猜）。要请人发言由院士用工具 `vibe_vmu_meeting { action: "invite", id: "<会议 id>", member: "t-1", by: "<院士 id>", why: "…" }`——邀请≠签到，被邀者仍须自己 `attend` 才计入法定人数（临时工不参会）。',
         '**沉默不等于投票**：`vote_solved` 必须显式给出——如果你认为原问题已解决，请填 "vote_solved": true；结题要求**表决人数达到法定人数 m = min(所办设定的上限, 院士+常驻研究员人数)**（以每轮状态块里的「法定票数」读数为准）**且无人投反对**；缺 `vote_solved`（沉默/未表态）会**阻止结题**，未表态名单会被列出。',
         'input：发言；vote_solved：明确的结题判断，沉默不计赞成。',
       ].join('\n'),
@@ -796,7 +796,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · `open` 回执里的 `procedure`/`procedureNote` 是**建议**（`meeting-procedures.js` 的 `binding:"recommendation"`），不是闸：是否遵循完全由你决定。`ordinary` 类型**故意不给推荐骨架**——这是具名决定：议程与顺序完全由你编排；其余五种的步骤只是**建议**，可跳过、可重排。',
         '  · 议程与标题：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 只读议程条目列表、`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）——这两个动词只认**内核原语会**（`vibe_vmu_meeting { action: "open" }` 开的那种）；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程，服务会 id 上问这两个动词会得到「这张表里没有」的具名拒绝。`title` 是**可选**的独立名称（非字符串会被具名拒）。',
         '  · 召集与关闭：`vibe_v5_meeting` 的**召集只对 chair 席开放**（`vmu.meetings.conveneRequiresChair`）；`vibe_vmu_meeting { action: "close" }` 的**关闭也只有 chair 席能调**（`closeRequiresChair`，默认 true）——其他席位调用会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁来做。',
-        '  · 发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` **按数组顺序批量**入队（邀请不是签到，被邀者仍须自己 `attend` 才计入法定人数；`why` 必填）；`invitedspeak` 让被邀者走服务发言面（被邀者**没签到**时会被具名拒，先 `attend`）；`order` 只读队列。`flow`（open/hands/round_robin/call_on）与 `overrideorder` **只由主席做、必须给 reason**；它们寻址的是**服务会议记录**（`vibe_v5_meeting` 开的 id，不是原语 id）；基线顺序由 `vmu.meetings.orderMode`（默认 `fifo`）决定，`overrideorder` 覆盖它并把结果 order 写进回执。',
+        '  · 发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` **按数组顺序批量**入队（邀请不是签到，被邀者仍须自己 `attend` 才计入法定人数；`why` 必填）；`invitedspeak` 让被邀者走服务发言面（被邀者**没签到**时会被具名拒，先 `attend`）；`order` 只读队列。`flow`（open/hands/round_robin/call_on）与 `overrideorder` **只由主席做、必须给 reason**；它们寻址的是**服务会议记录**（`vibe_v5_meeting` 开的 id，不是原语 id）。基线顺序就是**入队顺序**（`invite` 的数组顺序、`hand` 的先后）——`vmu.meetings.orderMode` 与 `overrideorder` 在**本部署未声明**，调用会被具名拒 `VMU_ENGINE_UNAVAILABLE`（工具说明里写明这条边界）。',
         '  · 推进一轮：`vibe_v5_meeting_round { meeting, members?, phase? }` 按序各跑一回合（members 缺省＝除主席外全体在册）；`phase` 取值以工具声明为准（辩论轮可直接写 `debate`，回执会说明它按 `verify-debate` 跑），写错具名拒；回执 `ok:false`+`turnFailed:true`＝这轮没发生，别当成功；`close`/`extendlimit` 要带 `actor`（主席本人）；`action:"convene"` 与直接召集等价。',
       ].join('\n'),
       temp: [

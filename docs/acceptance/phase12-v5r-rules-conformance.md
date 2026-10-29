@@ -10768,3 +10768,39 @@ L53 的非参数各半（`verdict_ask` 只 chair 可调、`verdict_final` 读成
 G7 仍 **PARTIAL**：按用户裁定，需**再派一次独立审计、零矛盾**才记 DONE（第六次又抓出两条，
 其中一条被第五次修法「浅修」——把不可达的半句留在句子里——正是审计存在的理由）。GAP 里剩下的两条
 （`blocks-b:795` 的 hands 承诺已在工作树修复；`blocks-b:799` 与 `:817` 已修）不再计入。
+
+## §236 G7 第七次独立审计 — 四条「同一读者被告知两件互斥的事」
+
+§236.1 口径。第七次只读审计（基线 HEAD `ddbc2b85`，规则原文 63 行 sha256 前 16 位 `a5d9a6c1ff73ec10`）报告
+`G7 VERDICT: CONTRADICTIONS(4)`，落 L14/L32/L39/L51 四行（L63 为派生）。判定口径与前六次相同：只报「同一读者无法
+同时按两句话行动」或「某句承诺的路径机制上不可达」；「没写到」记 GAP、不计入。审计同时复核前六轮 22 条既有结论：
+18 条已修净，4 条残留（§232 C4、§234 C2、§235 C1、§235 的 blocks-b:799）。
+
+§236.2 四条矛盾与修法（全部落在文本一侧，机制是权限权威）。
+
+| # | 位置 | 两句原文 | 机制事实 | 修法 |
+|---|---|---|---|---|
+| C1 | `packs/v5r/meeting-procedures.js` step2（随 `open` 回执发给主席） | 「框架不设默认轮数、也不在轮数用尽时拒绝任何调用」 | `vmu.meetings.verdictMaxRounds` 默认 3，到限新增动议 `VMU_RESOURCE_BUDGET`（`kernel/meetings.js`） ⇒ 与 `v5r-blocks-a.js` 的 E29 句互斥 | step2 改为「轮数由院士自行决定；本部署只给**动议次数**设了上限 `vmu.meetings.verdictMaxRounds`（默认 3，每次辩论一条动议）——到限后新增动议会被具名拒 `VMU_RESOURCE_BUDGET`」 |
+| C2 | `packs/v5r/prompts/v5r-blocks-b.js:799`（主席手册） | 「基线顺序由 `vmu.meetings.orderMode`（默认 `fifo`）决定，`overrideorder` 覆盖它」 | v5r 从未声明 `orderMode` ⇒ `kernel/meetingmarker.js` 对 `flow`/`overrideorder` 一律 `VMU_ENGINE_UNAVAILABLE`；`schema.def` 不是 declaration | 改为「基线顺序就是**入队顺序**（`invite` 数组顺序、`hand` 先后）；`orderMode` 与 `overrideorder` 在本部署**未声明**，调用被具名拒 `VMU_ENGINE_UNAVAILABLE`」 |
+| C3 | `packs/v5r/tools.js:4082/:4091/:4097` 与 `:1577` hint | 「`lean_conformance` 本身就是证据（或与 `lean_job` 二选一）」 | 闸 `leanEvidenceOf`（`:1238-1242`）无 PASSED `lean_job` 时恒 null，只给 `lean_conformance` 必被拒「a claim, not evidence」 | 三处 description 与拒绝 hint 统一为「`lean_job` 指向 settled PASSED 作业；`lean_conformance` 单独只是声明，不能替代它」 |
+| C4 | `packs/v5r/prompts/v5r-blocks-b.js` 受邀临时工帧 + `:749` | 「你是受邀发言的临时工…你的发言只记入会议纪要与群聊」＋「被邀者仍须自己 `attend`」 | `vmu.meetings.attendDeniedSeats:["temp"]` ⇒ 临时工 `attend` 必被拒，会议内发言的唯一前置不可达（§232 C4 只改了 `:803` 一句） | 受邀帧改为「临时工席位**不参会**（`attend` 被具名拒），会议内发言不可达——意见走**群聊** `vibe_v5_say`；只记群聊、不计票」；`:749` 的「邀请≠签到」补「（临时工不参会）」 |
+
+§236.3 量具。`tests/vmu-g7-concordance.test.mjs` 由 52 条增到 **64 条 / 0 fail**，新增第七轮四对（`C1(7)`…`C4(7)`），
+每对同样查三侧：错句已消失、真句存在、机制真那样做（`kernel/meetings.js` 的 `verdictMaxRounds`/`VMU_RESOURCE_BUDGET`、
+`kernel/meetingmarker.js` 的 `VMU_ENGINE_UNAVAILABLE`、`packs/v5r/settings/defaults.json` 的 `attendDeniedSeats`）。
+C1(6) 的机械对账（description 点名的卡参数必须在该面 `parameters` 里声明）也在同一套里。
+
+§236.4 自伤与预算。改文本撞到两处自家门禁：① `vmu-turn` 的 T99 成员提示词上限 20000 字符被推到 **20045**
+（受邀帧 + 会议 ask 句增长）⇒ 先删重复括注、再把「邀请不是签到」那句的临时工括注缩成「（临时工不参会）」，落到
+**19999**；② `vmu-turn` 的 T122/T125 钉住「受邀发言」这一短语（不受欢迎但它就是该状态的**可判别名**）⇒ 受邀帧保留该短语、
+把「会议内发言面对你不可达」缩成「会议内发言不可达」，两条断言转绿（**272/0**）。
+
+§236.5 门禁。`vmu-g7-concordance` 64/0、`vmu-turn` 272/0、`vmu-prompt-type-coverage` 15/0、`vmu-prompt-clean` 8/0、
+`vmu-ledger-teaching-pins` 58/0、`vmu-meeting-types` 155/0、`vmu-meeting-invite` 69/0、`vmu-b3-c8-c10` 44/0、
+`vmu-c5-c8-card-integrity` 44/0、`vmu-wave2-card-guards` 16/0、`audit-prompt-tool-names` 13/0。
+
+§236.6 GAP（不计入矛盾数，第七次报 3 条）。席位无脚本面（全 deny，仅所办归档）；辩论会本身无人数闸（`quorumOf` 只接
+结题/关闭，`verdict_final` 的 floor 自述不是闸）；生成语料 `packs/v5r-prompts.js` 里仍留 `paperLatexCommand` 旧键（不进活
+提示词）。三条都记在审计报告 `D:/_tmp/g7a7/audit7.md` 的 GAP 表里，进台账 note，不作为 G7 的阻塞条件。
+
+§236.7 无实质残余：否 —— G7 仍为 PARTIAL，按用户裁定「修完再派一次只读审计、结论零矛盾才 DONE」，第八次审计已派出。

@@ -1216,7 +1216,7 @@
         "vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::邀请**不是签到"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::邀请≠签到"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"rosterNarrowed\":true,\"rosterSource\":\"members\""
@@ -1890,7 +1890,7 @@
         "vibe_v5_meeting"
       ],
       "ruleText": "- 确保所有代理接收到的提示词完全与上述规则相符、自洽 。",
-      "next": "六轮独立只读审计：§229(5) → §230(5) → §232(4) → §233(2) → §234(4) → §235(2)，共 22 条矛盾全部修净，并机器化进 tests/vmu-g7-concordance.test.mjs（45 条）与 check-rule-parity P1–P7。G7 记 DONE 的条件（用户裁定）：再派一次独立审计、结论零矛盾。",
+      "next": "七轮独立只读审计：§229(5) → §230(5) → §232(4) → §233(2) → §234(4) → §235(2) → §236(4)，共 26 条矛盾全部修净，并机器化进 tests/vmu-g7-concordance.test.mjs（64 条）与 check-rule-parity P1–P7。G7 记 DONE 的条件（用户裁定）：再派一次独立审计、结论零矛盾。",
       "note": "§229–§235：审计基线依次 9cbea9cc / 659bf726 / b44c146f / 20ac0786 / fcc33a5f / 1f59f85d；规则 63 行 sha256 前 16 a5d9a6c1ff73ec10。§235 的两条是 1f59f85d 自己引入的「半句不可达」：method/subproblem 卡面说可用 Lean 证据却没声明 lean_job/lean_conformance（已补声明）；step3 让 target 填卡 id 而 target 只认活票箱（已改为 meeting+proposition_id）。同轮还修了 4 条 GAP 假陈述（:1574/:1528 的 Lean-only 措辞、blocks-b:799 的 orderMode、:817 的 secret/allow_abstain）。"
     },
     {
