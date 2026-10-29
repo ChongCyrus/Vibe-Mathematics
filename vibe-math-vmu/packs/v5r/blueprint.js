@@ -371,7 +371,16 @@ export function blueprintCodesignStatus(authors = [], adopter = '') {
     resident,
     authors: list,
     seats: BLUEPRINT_SEATS.slice(),
-    inference: 'seat 未记录的 authors 按 adopt 人解析：adopt 人（' + (who || '（未指定）') + '）已由调用方校验为院士席 ⇒ 与之同 id 的作者算院士侧，其余算常驻研究员侧。记录了 seat 的作者按 seat 原样判定。',
+    // ★ LIVE RUN 129 (F-129b): WITH NO ADOPTER THERE IS NOTHING TO JUDGE AGAINST. The sentence used to say
+    // "adopt 人（（未指定））已由调用方校验为院士席" — it named the adopter as unspecified in the same breath as it
+    // claimed the caller had verified that adopter was a chair, which is not a fact anyone had. `ok:false` here means
+    // "cannot be judged yet" at propose time; `pending` says so, and the adopt-time call (which HAS the adopter) is the
+    // one that decides.
+    judged: who !== '',
+    pending: who === '',
+    inference: who === ''
+      ? '此刻还没有 adopt 人，所以 seat 未记录的 authors 判不了院士侧／常驻侧（seat 记录在案的作者按 seat 原样判定）。`ok:false` 只表示「还没有 adopt 人可比对」，不是「缺共同设计」；adopt 时会用 adopt 人的席位解析。'
+      : 'seat 未记录的 authors 按 adopt 人解析：adopt 人（' + who + '）已由调用方校验为院士席 ⇒ 与之同 id 的作者算院士侧，其余算常驻研究员侧。记录了 seat 的作者按 seat 原样判定。',
   }
 }
 

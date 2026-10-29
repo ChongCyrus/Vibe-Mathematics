@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 68 | all four citations resolve |
-| ◐ PARTIAL | 18 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 70 | all four citations resolve |
+| ◐ PARTIAL | 16 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -25,7 +25,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `A1` | 3 | 所办＝主代理：用户的助手、媒介、传信者 | ◐ PARTIAL | 2/2/1/1 | r129：成员会话 mailbox{action:"send",from:"office"} 读回 VMU_NOT_PERMITTED（点名调用者与署名），from=本人成功；办公室 root 代发与 pack 转发路径不变。r128 已量到该门开着（§223.2 R128-b）。 |
+| `A1` | 3 | 所办＝主代理：用户的助手、媒介、传信者 | ✅ DONE | 2/2/1/1 | — |
 | `A2` | 3 | 有进展时自动唤起所办汇报 | ✅ DONE | 7/1/1/2 | — |
 | `A3` | 3 | 支持用户以自然语言让所办设参数、控制研究所 | ◐ PARTIAL | 2/2/1/1 | r120：先 vibe_v5_set 一个未声明的键（应具名拒），再改一个声明键并读回生效；两次回执都要。 |
 | `A4` | 3 | 院士＝chair 席，统领研究所 | ✅ DONE | 2/1/2/1 | — |
@@ -42,7 +42,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `B1` | 7 | Verified 只收 p=1 的命题 | ◐ PARTIAL | 1/1/1/1 | r122b：把一张 p=0 的卡交给 vibe_v5_verified_promote 会被具名拒（反证不进 verified 轨，进 rejected 轨）；另读回 carrier 对 p=0 行的结论文案是「假 (p=0) — disproved: warrant …」，不是复制的「真 (p=1)」。 |
 | `B2` | 7 | 参考文献中的命题也可直接入 Verified | ✅ DONE | 2/2/1/2 | — |
 | `B3` | 7 | 只有辩论能把 p 改为 1 | ✅ DONE | 2/2/1/1 | — |
-| `B4` | 8 | 蓝图：总目标/技术路线/规划，按时更新 | ◐ PARTIAL | 2/1/1/1 | r120：造一份 30 天以上的蓝图草案（把 now 拨快或写一份旧行），读回 freshness.stale=true 且 adopt 给出 overdueUpdate=true。 |
+| `B4` | 8 | 蓝图：总目标/技术路线/规划，按时更新 | ◐ PARTIAL | 2/1/1/1 | r130（下一个）：注入 vmu.blueprint.staleAfterMs=1，先 adopt 一版让 hasCurrent=true，1 ms 后用 state 读回 freshness.stale=true + staleAfterMsSource:"setting"，并读到 adopt 的 overdueUpdate=true。r129 只量到 staleAfterMsSource:"setting"（无生效版）。 |
 | `B5` | 8 | 蓝图由院士+常驻研究员共同设计 | ✅ DONE | 2/1/1/2 | — |
 | `B6` | 8 | 蓝图最终编辑权在院士 | ✅ DONE | 2/1/1/1 | — |
 
@@ -76,7 +76,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `D4` | 28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
 | `D5` | 28 | 四字段都含时间等基础信息 | ◐ PARTIAL | 2/2/1/2 | r120：状态板四行在 at 缺省时都要带 timeWhy（不能两行既无时间也无理由）。 |
 | `D6` | 28 | 可查看其他成员当前状态版 | ◐ PARTIAL | 1/1/1/1 | r129：read_library 与 panel 两个读面在同一成员上互相指认（一个说「去另一个面看」并给可执行调用）。 |
-| `D7` | 28 | 可自己修改更新自己的状态版 | ◐ PARTIAL | 2/1/1/2 | r129：成员会话 panel{action:"set",member:"<他人>"} 读回 VMU_NOT_PERMITTED（拒句点名调用者与目标），本人写成功且 history 作者=调用者；r128 已量到该门开着（§223.2 R128-c），修法已落地待活体。 |
+| `D7` | 28 | 可自己修改更新自己的状态版 | ✅ DONE | 2/1/1/1 | — |
 | `D8` | 28 | 四字段按规则原文实现（字段名与语义） | ✅ DONE | 2/1/1/1 | — |
 
 ## E. 会议

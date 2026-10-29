@@ -9936,3 +9936,88 @@ vibe_vmu_meeting {action:"open", agenda:"门测试：常驻研究员尝试召集
 
 ### §223.7 无实质残余：否
 D6（两读面互指认）仍未取证；A1/D7（署名与代理权）的**修法**已落地并有单测，但活体回执要到 r129 才能读到修复后的行为——台账不为未观察到的行为记 DONE。
+
+## §224 真机跑 129 —— 两本账：一个内核重写的行，另一个内核永远读不到
+
+本节记录 run 129（build `15ddce1f`，clone `slvp129`，port 19729）：A1（信箱署名）与 D7（面板归属）在真机里**有逐字拒收证据**，而「共同设计」的蓝图草案在**两个内核之间**丢了一半作者——因为共享账本的变更信号只认**行 id 集合**，而 `supersede` 保持 id 不变。
+
+### §224.1 读数
+
+| 项 | 值 |
+| --- | --- |
+| `TARBALL build` | `15ddce1f` |
+| `DRIVE exit` | `0` |
+| `durationSec` | `831` |
+| 根会话工具调用 | `14` calls / `14` results |
+| `tokenTotal` | `4,359,605`（cap 12,000,000） |
+| 会话 | 3（root + 主席子会话 + 委员子会话），`0 with RED` |
+| jsonl | `_oneoff/vm-slv/full-1029-161802.jsonl`，`17,186,371 B` / `35,676` 行 |
+| 机器读数 | `NO_FENCE=36 UNKNOWN_FIELD=24 FIELD_NOT_APPLICABLE=36 BAD_JSON=36` |
+| 回执语料 | `D:/_tmp/r129/tools.json`（158 对） |
+
+### §224.2 判决表
+
+| 判据 | 结果 | 证据 |
+| --- | --- | --- |
+| A1 信箱只能署自己的名 | ✅ | `§224.3`（1）委员会话却署 `office` ⇒ 具名拒，`caller`/`callerSource` 都在回执里 |
+| D7 面板只能写自己的 | ✅ | `§224.3`（2）委员写 `r-2` 的面板 ⇒ 具名拒；随后办公室读 `r-2` 仍是 `known:false`（没有被写进去） |
+| B4 窗口可调且读数说来源 | ⏳ | `"staleAfterMs":1,"staleAfterMsSource":"setting"` 已在真机读到，但这一轮**没有生效版**（`hasCurrent:false`），stale 路径未走到 ⇒ 留给 run 130（1 ms 窗口 + 先 adopt 一版） |
+| F-129a 共同设计跨内核 | ❌→已修 | 办公室 adopt 被拒，理由说缺常驻研究员席，而研究员**在自己的内核里**刚续写完（`continued:true`） |
+| F-129b 提案回执的推断句 | ❌→已修 | 同一句里既说「adopt 人（（未指定））」，又说「已由调用方校验为院士席」 |
+
+### §224.3 逐字回执
+
+（1）A1，委员会话里用自己的身份发信（`vibe_v5_say` 面外的信箱调用）：
+
+```json
+{"ok":false,"code":"VMU_NOT_PERMITTED","message":"a member may send only under its OWN name: this turn belongs to \"r-1\", the mail names \"office\"","caller":"r-1","callerSource":"turn-context","from":"office"}
+```
+
+（2）D7，委员会话里写别人的面板：
+
+```json
+{"ok":false,"code":"VMU_NOT_PERMITTED","message":"a member may write only its OWN panel: the caller of this turn is \"r-1\", the write names \"r-2\"","caller":"r-1","target":"r-2"}
+```
+
+（3）B4，窗口设置真的到达了 pack 面（但本轮无生效版）：
+
+```json
+{"staleAfterMs":1,"staleAfterMsSource":"setting","hasCurrent":false,"currentRevision":0}
+```
+
+（4）F-129a，办公室 adopt 拒绝它自己刚参与写成的草稿：
+
+```json
+{"ok":false,"code":"VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN","message":"蓝图草案 rec-4（r1）缺少共同设计留痕：还缺 常驻研究员席（member）。…（当前 authors：r-acad（seat 未记录））"}
+```
+
+同一轮里 r-1 在内核 B 的续写回执是 `"continued":true,"authors":[{"member":"r-acad"},{"member":"r-1"}]`。
+
+### §224.4 F-129a 的真因与修法
+
+- **信号太窄**：`vibe-math-vmu/kernel/records.js` 的 `sharedSignature(rows)` 只拼行 id 集合，`synchronize()` 对**已持有的行**直接 `continue`（注释写着 never overwrite what this instance knows）。而 `supersede` 按设计**保持 id 不变**（版本链靠 `rev`/`updatedAt`），于是「另一个内核把这一行重写了」在本实例看来**完全不可见**：办公室内存里仍是首次加载的草案（只有一个作者），共同设计闸读到 `authors` 少一席，就拒掉两人刚一起写成的草案。
+- **修法的关键事实**：持久行是**表头**（`id/track/kind/title/body/tags/by`），**没有 `updatedAt`/`createdAt`/`rev`/`fingerprint`** ⇒ 不能靠时间戳判新旧。于是判据换成**内容**：
+  - 新增 `rowContentStamp(row)`（`track|kind|title|body|by|tags` 的拼接），`sharedSignature` 每行追加它；
+  - 持行内容与其不一致 ⇒ 采纳盘上版本（`title/body/bytes/tags/rev/updatedAt/by/fingerprint`），并按 track 重建 fingerprint 索引，计数 `shared.refreshed`；
+  - 新增 `shared.refreshedMeans`，明说「本实例看到的、别人重写的行数」，`scope` 仍是本实例。
+- **代价与边界**：读路径仍从不写盘（只会更新本实例的副本），`put` 自己写完立刻回写整份数组，所以稳定态下两边内容一致；一旦不一致，**盘上是共享副本**，本实例接受它——这与「本地胜」相反，但对「两本账」才是对的。
+- 测试 `tests/vmu-run129-codesign-cross-kernel.test.mjs` **19/0**：双内核 boot、成员内核能读到办公室的草案、续写后作者两席、办公室 adopt 成功且 `codesign{ok:true,hasChair:true,hasResident:true}`、生效正文含**两段**作者文字、1 ms 窗口下 `freshness.stale:true`、`shared.refreshed>=1` 且 `refreshedMeans` 可读、两内核读到的重写正文**逐字相同**且二次读稳定（不来回翻）。
+
+### §224.5 F-129b 的修法
+
+`vibe-math-vmu/packs/v5r/blueprint.js#blueprintCodesignStatus`：无 adopt 人时回 `judged:false, pending:true`，`inference` 改为「此刻还没有 adopt 人，所以 seat 未记录的 authors 判不了院士侧／常驻侧……`ok:false` 只表示『还没有 adopt 人可比对』，不是『缺共同设计』」——**一个判不了的东西不能留下一个像结论的句子**。
+
+### §224.6 门禁
+
+- 新测试 19/0；相邻九套：`vmu-records` 271/0、`vmu-run36-records-shared` 37/0、`vmu-run106-brief-enum-records` 19/0、`vmu-run113-records-seat-gate` 17/0、`vmu-blueprint` 69/0、`vmu-run36-blueprint` 47/0、`vmu-b4-b5-blueprint` 69/0、`vmu-b4-stale-window-setting` 29/0。
+- 教训（写进 LESSONS）：**「已持有就跳过」是一种你不拥有的变更检测**：只要标识可以原地重写（supersede、rename、在别人名下追加），行 id 就不是变更信号；共享账本的新旧判据必须是内容，而不是时间戳（表头不存时间），更不是 id 集合。
+
+### §224.7 简报错了什么
+
+- `vibe_v5_blueprint{action:"propose"}` 的 `member` 是**必填**（简报第一稿没写，办公室杂活「起草蓝图」那一轮直接被拒）。
+- `vibe_v5_read_library{id}` 读不到时，回执的 `known ids` 只列**本实例**见过的 id（简报让代理「用 id 去读」时没告诉它：别的内核写的行要先 `list` 才会折进来）。
+- 简报让委员「直接 adopt」——adopt 是院士席动作，委员只能续写（这一条是简报的错，产品拒得对）。
+
+### §224.8 有无实质残余
+
+**否。** F-129a/F-129b 均已修并验收；B4 的 stale 路径明写「留给 run 130」，不是掩盖；A1/D7 本轮拿到逐字拒收证据，转 DONE。

@@ -2212,3 +2212,16 @@ trace 每条 `"delivered":true,"refused":null`，办公室收件箱里出现 `"f
 - **F-128e 拒句里的人话**：席位裁决的 `face` 是对象，`String(face)` 让拒句印出 `[object Object]` —— 成员被拒时读到的那一句正是它的全部情报。修法：从对象里读 name/id/face/slot，读不到回落到 `seat`。
 - 台账纪律（本轮最重要的一条）：D7 原记 DONE（records 路径已挡），但 r128 量到**另一扇门**（原语 panel）仍开着 ⇒ **D7 回降 PARTIAL**，等 r129 的活体回执。一条规则被一扇门满足不等于被满足。
 - 测试坑：`kernel.turn.restoreMemberSessions` 是**替换**语义（一次传两条）；`resolveTurnMember` 返回名册 id **字符串**，读 `.id` 得 `null`。
+
+## ROUND 129 —— 两本账：一个内核重写的行，另一个内核永远读不到（r129 / build 15ddce1f）
+
+**判据：共享账本的「变了没有」不能拿行 id 当信号 —— 只要标识可以原地重写（supersede、改名、在别人名下追加），id 集合就永远不变，而内容已经变了。**
+
+- **F-129a 共同设计跨内核丢作者**：办公室与委员各装配一个内核；委员在**自己的内核**里续写人才刚提出的蓝图草案（`supersede`：同一个 id、正文换成两段作者文字），回执 `continued:true, authors:[r-acad, r-1]`。办公室内核随后 adopt，却读到「还缺常驻研究员席」——它内存里仍是**首次加载**的那一版，只有一个作者。
+  - 真因：`kernel/records.js#synchronize()` 的变更信号是 `sharedSignature(rows)`（行 id 集合），且「已持有就 `continue`」。`supersede` 保持 id ⇒ 重写不可见。
+  - 关键事实：持久行是**表头**（`id/track/kind/title/body/tags/by`），**没有 `updatedAt`/`createdAt`/`rev`/`fingerprint`** —— 所以不能靠时间戳判新旧，只能靠**内容**。
+  - 修法：`rowContentStamp(row)` 参与签名；内容不一致即采纳盘上版本（同 id 重算 fingerprint 并重建索引），计数 `shared.refreshed` + `refreshedMeans`（scope 仍是本实例）。方向是「盘上是共享副本」，不是「本地胜」。
+- **F-129b 判不了的句子**：`propose` 的 `codesign.inference` 在还没有 adopt 人时印「adopt 人（（未指定））已由调用方校验为院士席」——半句承认判不了、半句像结论。修法：`judged:false, pending:true` + 「`ok:false` 只表示『还没有 adopt 人可比对』」。
+- 教训（LESSONS 记一条）：**「已持有就跳过」是一种你不拥有的变更检测**。要判共享账本的变更，用内容指纹；时间戳若没落盘，就别假装有。
+- 测试：`tests/vmu-run129-codesign-cross-kernel.test.mjs` 19/0（双内核、成员续写、办公室 adopt 成功、生效正文两段、1 ms 窗口 stale、`shared.refreshed>=1`、两内核读到同一重写正文且二次读稳定）。
+- 记账：A1（信箱署名）与 D7（面板归属）本轮在真机拿到**逐字拒收**，转 DONE；B4 只量到 `staleAfterMsSource:"setting"`（本轮无生效版），`next` 写明 r130 要 1 ms 窗口 + 先 adopt。

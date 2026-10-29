@@ -255,7 +255,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   const SHARED_STORE_KEY = 'records'   // the store.PUBLIC_KEYS name this projection snapshots
   const shared = {
     attached: false, store: null, stamp: null, signature: null,
-    pulls: 0, pulled: 0, refused: 0, skipped: 0,
+    pulls: 0, pulled: 0, refreshed: 0, refused: 0, skipped: 0,
     // ★ ROUND 68 (F-61): how many rows this instance adopted from the durable fold WITHOUT the row saying who wrote it.
     // The count exists so "owner is null" can be distinguished from "this instance never adopted the row at all".
     adoptedNoAuthor: 0,
@@ -975,11 +975,41 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     }
     shared.signature = signature
     let added = 0
+    let refreshed = 0
     for (const row of raw) {
       if (!row || typeof row !== 'object') continue
       const id = row.id === undefined || row.id === null ? null : String(row.id)
       if (!id || !row.track || !row.kind) continue         // a malformed row is skipped, never invented into a record
-      if (records.has(id)) continue                         // ★ never overwrite/delete what this instance knows
+      const held = records.get(id)
+      if (held) {
+        // ★ LIVE RUN 129 (F-129a): A BODY REWRITE IS A CHANGE. The signature used to be the SET of row ids, so a row
+        // another kernel REWROTE (supersede keeps the id) never reached this loop: the office's adopt read the draft as
+        // it stood when this instance first saw it, so the co-design author the member kernel had just added was absent
+        // from `authors` and adopt refused the very draft the run had just built together. The stored rows are HEADS with
+        // no stamp, so the comparison is on CONTENT: a differing row is a rewrite this instance has not seen, and the
+        // fold is the shared copy every instance pushes into.
+        if (rowContentStamp(row) !== rowContentStamp(held)) {
+          const prevFp = held.fingerprint
+          const fpIndex = byFingerprint.get(held.track)
+          if (fpIndex && prevFp) fpIndex.delete(prevFp)
+          held.title = row.title !== undefined && row.title !== null ? String(row.title) : held.title
+          held.body = String(row.body)
+          held.bytes = bytesOf(held.body)
+          if (Array.isArray(row.tags)) held.tags = listOf(row.tags, held.tags)
+          if (Number.isInteger(row.rev) && row.rev > held.rev) held.rev = row.rev
+          // The stored row is a HEAD (id/track/kind/title/body/tags/by): it carries no stamp, so the fold cannot tell us
+          // WHEN it was rewritten — only THAT its content differs. The fold is the shared copy every instance pushes
+          // into, so a differing content is a rewrite this instance has not seen; the local copy is updated now and the
+          // local stamp moves with it (a reader asking "when did I last see this change" must not read the old time).
+          held.updatedAt = now()
+          const writer = row.by !== undefined && row.by !== null ? row.by : (row.owner !== undefined && row.owner !== null ? row.owner : null)
+          if (writer !== null) held.by = String(writer)
+          held.fingerprint = fingerprintOf(held)
+          if (fpIndex) fpIndex.set(held.fingerprint, held.id)
+          refreshed += 1
+        }
+        continue                                            // ★ never DELETE what this instance knows; a newer body is adopted above
+      }
       try {
         // ★ ROUND 68 (F-61): AN UNKNOWN AUTHOR IS NOT A NAME. This used to fall back to the literal `'restore'`, so an
         // adopted row reported `owner:"restore"` — a writer that never existed — and the same row read `owner:null`
@@ -1000,7 +1030,8 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       }
     }
     shared.pulled += added
-    return { synced: added > 0, why: added > 0 ? 'newer-on-disk' : 'nothing-new', op: why, added, stamp: shared.stamp }
+    shared.refreshed += refreshed
+    return { synced: added > 0 || refreshed > 0, why: added > 0 ? 'newer-on-disk' : (refreshed > 0 ? 'rewritten-on-disk' : 'nothing-new'), op: why, added, refreshed, stamp: shared.stamp }
   }
 
   /**
@@ -1008,9 +1039,16 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
    * exactly when the rows do; a body-only rewrite of a row that this instance ALREADY has is deliberately not adopted
    * (rule 1 above: this instance's copy wins for ids it already holds).
    */
+  /** What a stored row SAYS (a supersede keeps id AND rev: only the content tells a rewrite from the row it replaced). */
+  function rowContentStamp(row) {
+    const parts = [row && row.track, row && row.kind, row && row.title, row && row.body, row && row.by,
+      Array.isArray(row && row.tags) ? (row.tags.join('')) : (row && row.tags)]
+    return parts.map((v) => (v === undefined || v === null ? '' : String(v))).join('')
+  }
+
   function sharedSignature(rows) {
     let out = String(rows.length)
-    for (const row of rows) out += ',' + (row && row.id !== undefined && row.id !== null ? String(row.id) : '?')
+    for (const row of rows) out += ',' + (row && row.id !== undefined && row.id !== null ? String(row.id) : '?') + '#' + rowContentStamp(row)
     return out
   }
 
@@ -1018,7 +1056,8 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   function sharedView() {
     return {
       attached: shared.attached, key: SHARED_STORE_KEY, stamp: shared.stamp,
-      pulls: shared.pulls, pulled: shared.pulled, refused: shared.refused, skipped: shared.skipped,
+      pulls: shared.pulls, pulled: shared.pulled, refreshed: shared.refreshed, refused: shared.refused, skipped: shared.skipped,
+      refreshedMeans: 'rows THIS instance already held whose stored copy was rewritten by another kernel and was newer: the local copy is replaced by the newer body (a supersede keeps the id, so an id-set signature could never see it). Read a decision that depends on the CURRENT body (blueprint adopt, card gates) after this count moves, instead of trusting the row this instance first loaded',
       scope: 'this-kernel-instance',
       scopeMeans: 'these counters belong to THIS kernel: they count the folds THIS process has performed. Another kernel over the same store folds its own copy, so two kernels may legitimately report different `pulls`/`adoptedWithoutAuthor` for the same durable ledger — the shared fact is the store key, not this number',
       adoptedWithoutAuthor: shared.adoptedNoAuthor,
