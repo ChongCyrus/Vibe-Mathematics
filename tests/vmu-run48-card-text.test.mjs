@@ -21,7 +21,7 @@
 // THE OTHER DEFECT IN THE SAME RUN (F-22): `vibe_v5_say` on an unknown meeting id got the PRIMITIVE kernel's old
 // one-line hint (`open: m1`) through the pack face, while the pack face itself had been taught (run 47) to name BOTH
 // registries. The kernel's wording IS what the member sees, so the kernel refusal was brought up to the same bar.
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
@@ -49,7 +49,13 @@ const { parseBody, parseCardBody, parseCard, CARD_TRACK, CARD_KIND } = verified
 let NOW = 1000
 const boot = async (config = {}) => {
   const state = { specs: [] }
-  const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (spec) => { state.specs.push(spec); return () => {} } } }
+  // C6a admits `proof_state:"complete"` only when the write carries Lean registration, so the fixture needs a
+  // real Lean face — the host injects a `subprocess` seam exactly as tests/vmu-b3-c8-c10.test.mjs does.
+  const subprocess = {
+    resolveExecutable: async (name) => '/fake/bin/' + String(name),
+    spawn: () => ({ done: Promise.resolve({ exitCode: 0, signal: null, stdout: 'Build completed successfully.\n', stderr: '' }), terminate() {} }),
+  }
+  const ctx = { effect(fn) { return fn() }, on() { return () => {} }, get: (what) => (what === 'subprocess' ? subprocess : undefined), tools: { register: async (spec) => { state.specs.push(spec); return () => {} } } }
   const handle = entry.apply(ctx, Object.assign({ clock: () => NOW, root: config.root, packs: ['v5r'] }, config))
   await handle.ready()
   return { handle, specOf: (n) => state.specs.find((s) => s.name === n) }
@@ -104,9 +110,17 @@ try {
 
   // ── ② a card written by the CARD TOOL with a multi-paragraph statement is readable as a card ────────────────
   const multi = '第 48 轮的命题。\n\n【范围声明】只形式化 m = 3。\n\n【执行语义】27 种组合穷举。'
+  // C6a: "完整证明" 现在要有 Lean 登记撑腰，所以先真跑一次（接缝注入，退出码 0），再拿这次作业当证据写卡。
+  await mkdir(join(root, 'Formal'), { recursive: true })
+  await writeFile(join(root, 'Formal', 'p-close3.lean'), 'theorem m_unanimous_3 : True := trivial\n', 'utf8')
+  const leanRun = await callJSON(b, 'vibe_v5_lean_run', { statement: 'True', file: 'Formal/p-close3.lean' }, { kernel })
+  const leanJob = leanRun.parsed && leanRun.parsed.id
+  const settled = leanJob ? await kernel.lean.settle(leanJob) : null
+  ok(!!settled && settled.passed === true, 'setup: a Lean run is settled and PASSED (the registration the card will cite)', settled)
   const written = await callJSON(b, 'vibe_v5_record_proposition', {
     member: 'r-c1', statement: multi, value: 0.75, motive: 'run 48 复验：多段落正文',
     p: 0.9, proof_ref: 'Formal/p-close3.lean#m_unanimous_3', proof_state: 'complete',
+    lean_job: leanJob,
   }, { kernel })
   const rid = written.parsed && written.parsed.recordId
   ok(!!rid, 'the card tool accepted the multi-paragraph statement and minted an id', written)

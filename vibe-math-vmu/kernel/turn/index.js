@@ -1148,12 +1148,38 @@ const stampIso = (row) => {
 }
 
 /**
+ * ★★★ D5, STRUCTURALLY: A STATUS-BOARD ROW IS A READING, SO EVERY ROW MUST ANSWER ABOUT TIME - either with the time
+ * its CONTENT carries (`at`) or with a sentence naming why that content has no time (`timeWhy`). The rule used to be
+ * enforced branch by branch (only the objective row got a `timeWhy`), so rows ② 规划 and ③ 各任务完成状态 were built
+ * with `at: readAt` and, because the ONE production caller passes no `at` (the prompt must stay diffable, ROUND 102),
+ * they rendered with NEITHER `（读于 …）` NOR `（时间未提供：…）` - "I have no time" and "I did not print a time" read
+ * identically. This helper is the ONLY writer of either field, and `statusBoardReadings` sweeps ALL its rows through
+ * it before returning, so a fifth row cannot forget. It never invents a stamp: a row with no content time SAYS so.
+ */
+const TIME_WHY_UNSTATED = '这一行没有内容时间戳（来源没有回报时间，本次读取也没有提供读取时刻）'
+const stampedTime = (row, at = null, why = null) => {
+  if (!row || typeof row !== 'object') return row
+  const stamp = at === null || at === undefined ? '' : String(at).trim()
+  if (stamp !== '') {
+    row.at = stamp
+    delete row.timeWhy
+    return row
+  }
+  row.at = null
+  const named = typeof why === 'string' ? why.trim() : ''
+  row.timeWhy = named === '' ? TIME_WHY_UNSTATED : named
+  return row
+}
+
+/**
  * DERIVE the four status-board fields — a pure, SYNCHRONOUS read of the two ledgers the kernel already keeps (both
  * `tasks.list()` and `records.list()` are synchronous; a reader that hands back a Promise is reported as unreadable
  * rather than silently awaited, so the composer stays a pure function). Returns:
- *   { ok, at?, fields: [{ key, label, source, value|null, why|null, at|null }], objective, plan, tasks, current,
- *     available, unavailable }
- * A caller that wants the board without any kernel (a test, a pack with its own board) can pass `statusSources`.
+ *   { ok, at?, fields: [{ key, label, source, value|null, why|null, at|null, timeWhy? }], objective, plan, tasks,
+ *     current, available, unavailable }
+ * Every row carries exactly one of `at` (its content time) or `timeWhy` (why the content has no time); see
+ * `stampedTime`. A caller that wants the board without any kernel (a test, a pack with its own board) can pass
+ * `statusSources`.
  */
 export function statusBoardReadings({ tasks = null, records = null, member = null, settings = null, limit = STATUS_BOARD_DEFAULT_LIMIT, at = null, kernel = null } = {}) {
   const cap = Number.isInteger(limit) && limit > 0 ? limit : STATUS_BOARD_DEFAULT_LIMIT
@@ -1164,8 +1190,11 @@ export function statusBoardReadings({ tasks = null, records = null, member = nul
   // so a member saw four values with one board-level stamp. `readAt` is the moment THIS board was read: one read, one
   // clock, and the line says so (four different clocks would claim a precision this reader does not have).
   const readAt = at === null || at === undefined ? null : String(at)
-  const gap = (why) => ({ value: null, why, at: null })
-const said = (value, at2 = null) => ({ value, why: null, at: at2 === null || at2 === undefined ? readAt : String(at2) })
+  // ★★ D5: a row with NO value has no content time either, and says so by name (its `why` already explains the missing
+  // reading; this adds the time half of the same honesty). Both constructors go through `stampedTime` so no branch can
+  // produce a row that is silent about time.
+  const gap = (why) => stampedTime({ value: null, why }, null, '这一行没有读数（原因见本行的「该来源未提供」），因此也没有内容时间戳')
+  const said = (value, at2 = null) => stampedTime({ value, why: null }, at2 === null || at2 === undefined ? readAt : String(at2))
 
   // ── ONE read of the task board: 各任务完成状态, 规划 and the 总任务 fallback all derive from it, so a reader can
   // never see two different board readings inside one block.
@@ -1193,13 +1222,13 @@ const said = (value, at2 = null) => ({ value, why: null, at: at2 === null || at2
     // kernel, so a member comparing `[总任务]` with its own `vibe_vmu_status{detail:'settings'}` read saw two values and
     // reported the board's source label as false. It was not false - it was unqualified: the value came from THIS
     // kernel's settings, and `resolvedBy` says so on the field, so the renderer can name the kernel that resolved it.
-objective = {
-      value: objectiveText, why: null, at: null,
+objective = stampedTime({
+      value: objectiveText, why: null,
       // ★★ ROUND 102 / D5: a settings key is CONFIGURATION, not a ledger row - it has no updatedAt. Saying nothing
       // about time let a member read a stale objective as a current one (run 100 did exactly that). The row now names
       // the absence, which is the same honesty the "该来源未提供" rows already carry.
-      timeWhy: '设置键没有内容时间戳（vmu.turn.objective 是配置，不是账本行；它何时被写不在这条值里）',
-      source: '设置键 vmu.turn.objective', resolvedBy: kernel }
+      source: '设置键 vmu.turn.objective', resolvedBy: kernel,
+    }, null, '设置键没有内容时间戳（vmu.turn.objective 是配置，不是账本行；它何时被写不在这条值里）')
   } else if (!rows) {
     objective = Object.assign(gap(boardWhy === null ? '任务板不可读' : boardWhy), { source: '任务板（无依赖的根任务）' })
   } else if (rows.length === 0) {
@@ -1213,7 +1242,8 @@ objective = {
     } else {
       const shown = roots.slice(0, cap).map(idTitle).join('；')
       const more = roots.length > cap ? '；另 ' + String(roots.length - cap) + ' 条已省略' : ''
-objective = { value: shown + more, why: null, at: readAt, source: '任务板（无依赖的根任务 ' + String(roots.length) + ' 条）' }
+objective = stampedTime({ value: shown + more, why: null, source: '任务板（无依赖的根任务 ' + String(roots.length) + ' 条）' },
+        readAt, '总任务取自任务板的根任务，是按当前任务板现算的读数，不是一条账本记录；任务板没有回报内容时间戳，本次读取也没有提供读取时刻')
     }
   }
 
@@ -1226,6 +1256,15 @@ objective = { value: shown + more, why: null, at: readAt, source: '任务板（�
   const mineRows = (member !== null && typeof member === 'string' && member.trim() !== '' && Array.isArray(rows))
     ? rows.filter((r) => r && String(r.owner === undefined || r.owner === null ? '' : r.owner) === member.trim())
     : null
+  // ★★ D1 (one idea, one spelling): the pack prompt teaches ONE lead-in for a member's own share -
+  // `属于你（<member>，未完成 N 条）` - but ② 规划 spelled it `你的（…）` while ③ 各任务完成状态 spelled it `属于你（…）`,
+  // so a member reading the two rows could not match "my share" without translating. BOTH rows now build their lead-in
+  // here, from the SAME count: the caller's own UNFINISHED tasks. The office view (no `member`) never calls it, so the
+  // institute board stays byte-identical.
+  const ownShare = (unfinished) => '属于你（' + member.trim() + '，未完成 ' + String(unfinished) + ' 条）'
+  const mineLive = mineRows === null
+    ? null
+    : mineRows.filter((r) => r && (r.state === 'open' || r.state === 'assigned' || r.state === 'doing'))
 
   // ② 规划: the unfinished work in dependency order, with the two facts a member needs (may I start? what am I waiting on?).
   let plan
@@ -1244,21 +1283,24 @@ objective = { value: shown + more, why: null, at: readAt, source: '任务板（�
       const blocked = live.filter((r) => unmet(r).length > 0)
       const bits = []
       // ★★ AUDIT HOLE D1: the caller's own slice goes first, so "各自推进各自的总任务" is readable from this line.
+      // ★★ D1 (unified prefix): the lead-in comes from `ownShare`, the same helper row ③ uses.
       if (mineRows !== null) {
-        const mineLive = mineRows.filter((r) => r && (r.state === 'open' || r.state === 'assigned' || r.state === 'doing'))
         const mineReady = mineLive.filter((r) => unmet(r).length === 0)
         const mineBlocked = mineLive.filter((r) => unmet(r).length > 0)
         const own = []
         if (mineReady.length) own.push('可开工：' + mineReady.slice(0, cap).map((r) => idTitle(r)).join('；'))
         if (mineBlocked.length) own.push('被前置卡住：' + mineBlocked.slice(0, cap).map((r) => idTitle(r) + '（等 ' + unmet(r).join('/') + '）').join('；'))
-        bits.push(mineLive.length === 0
-          ? '你的（' + member.trim() + '）：任务板上没有分派给你且未完成的任务'
-          : '你的（' + member.trim() + '，未完成 ' + String(mineLive.length) + ' 条）：' + own.join('；'))
+        bits.push(ownShare(mineLive.length) + '：' + (mineLive.length === 0
+          ? '任务板上没有分派给你且未完成的任务'
+          : own.join('；')))
       }
       if (ready.length) bits.push('可开工：' + ready.slice(0, cap).map((r) => idTitle(r) + (r.owner ? '（' + String(r.owner) + '）' : '（未认领）')).join('；'))
       if (blocked.length) bits.push('被前置卡住：' + blocked.slice(0, cap).map((r) => idTitle(r) + '（等 ' + unmet(r).join('/') + '）').join('；'))
       const omitted = live.length - ready.slice(0, cap).length - blocked.slice(0, cap).length
-plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + ' 条已省略' : '') + (mineRows !== null ? '｜全所：未完成 ' + String(live.length) + ' 条' : ''), why: null, at: readAt, source: '任务板（未完成 ' + String(live.length) + ' 条）' }
+      plan = stampedTime({
+        value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + ' 条已省略' : '') + (mineRows !== null ? '｜全所：未完成 ' + String(live.length) + ' 条' : ''),
+        why: null, source: '任务板（未完成 ' + String(live.length) + ' 条）',
+      }, readAt, '规划是按当前任务板现算的读数，不是一条账本记录；任务板没有回报内容时间戳，本次读取也没有提供读取时刻')
     }
   }
 
@@ -1283,14 +1325,16 @@ plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + 
         mineCounts.set(state, (mineCounts.get(state) || 0) + 1)
       }
       const mineOrdered = TASK_STATE_ORDER.filter((s) => mineCounts.has(s)).concat([...mineCounts.keys()].filter((s) => !TASK_STATE_ORDER.includes(s)))
-      mineText = '属于你（' + member.trim() + '）' + String(mineRows.length) + ' 条：'
+      // ★★ D1 (unified prefix): the SAME `ownShare` lead-in as ②, with the same unfinished count, so one idea has one
+      // spelling on both rows; the per-state breakdown (which still includes the member's DONE rows) follows it.
+      mineText = ownShare(mineLive.length) + '：'
         + (mineRows.length === 0 ? '（任务板上没有 owner 是你的任务）' : mineOrdered.map((s) => s + ' ' + String(mineCounts.get(s))).join(' · '))
         + '｜全所：'
     }
-    tasksField = {
+    tasksField = stampedTime({
       value: mineText + '共 ' + String(rows.length) + ' 条（未结 ' + String(openCount) + '）：' + ordered.map((s) => s + ' ' + String(counts.get(s))).join(' · '),
-      why: null, at: readAt, source: '任务板（按状态的计数）',
-    }
+      why: null, source: '任务板（按状态的计数）',
+    }, readAt, '各任务完成状态是按当前任务板现算的计数，不是一条账本记录；任务板没有回报内容时间戳，本次读取也没有提供读取时刻')
   }
 
   // ④ 当前小任务: this member's most recent `progress` record. The head list's `owner` IS the record's author
@@ -1347,27 +1391,30 @@ plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + 
           } catch { /* a row that expands badly keeps its head line; the excerpt is an extra, not the reading */ }
         }
         const stamp = stampIso(newest)
-        current = {
+        current = stampedTime({
           value: idTitle(newest) + '｜更新于 ' + String(stamp === null ? '（记录未回报时间）' : stamp) + (excerpt ? '｜' + excerpt : ''),
-          why: null, at: stamp === null ? null : String(stamp), source: "records 的 progress 轨（该成员最近一条）",
-        }
+          why: null, source: "records 的 progress 轨（该成员最近一条）",
+        }, stamp, '该 progress 记录没有回报 updatedAt/createdAt，取不到它的内容时间戳')
       }
     }
   }
 
-  // ★★ ROUND 102 / D5: a row with no content time must say WHY it has none - the objective comes from a settings key
-  // (configuration has no updatedAt), and a silent row reads as a current one. One fallback covers every branch that
-  // produced a row without `timeWhy`, so no future branch can reintroduce the silence.
-  if (objective && objective.at === null && !objective.timeWhy) {
-    objective.timeWhy = '设置键没有内容时间戳（本行来自设置或计算，不是账本行）'
-  }
   // ★★ AUDIT HOLE D1: ① is the INSTITUTE's objective and there is one of it in this kernel, so a member reading it as
   // "my own task" mismatched the plan/completion lines right below (which now lead with its own slice). The row says
   // whose value this is, instead of letting the reader assume.
   if (objective && mineRows !== null && typeof objective.value === 'string' && objective.value.trim() !== '' && !objective.scopeNote) {
     objective.scopeNote = '全所总任务，内核只有一份；你自己的份额是 owner 是你的那些任务，见 规划 与 各任务完成状态 两行'
   }
+  // ★★ ROUND 102 / D5, NOW STRUCTURAL: a row with no content time must say WHY it has none - a silent row reads as a
+  // current one. The rule used to be a one-off fallback for the objective row only, so ② and ③ (built with
+  // `at: readAt`, and the production caller passes no `at`) said nothing at all. Every row is built through
+  // `stampedTime` above, and this sweep covers the WHOLE set - including a row a future edit adds - so no branch can
+  // reintroduce the silence, and a row can never carry both fields or neither.
   const raw = { objective, plan, tasks: tasksField, current }
+  for (const key of Object.keys(raw)) {
+    const row = raw[key]
+    raw[key] = stampedTime(row, row && row.at, row && row.timeWhy)
+  }
   const fields = STATUS_BOARD_FIELDS.map((decl) => {
     const r = raw[decl.key] || { value: null, why: '内部错误：字段未计算', at: null }
     const field = { key: decl.key, label: decl.label, source: r.source || decl.source, value: r.value === undefined ? null : r.value, why: r.why === undefined ? null : r.why, at: r.at === undefined ? null : r.at }
@@ -1377,6 +1424,10 @@ plan = { value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + 
     // ★★ ROUND 102 / D5: carry the reason a row has no content time; a frozen field that dropped it made the renderer
     // stay silent about time on a row the rule says carries time information.
     if (typeof r.timeWhy === 'string' && r.timeWhy.trim() !== '') field.timeWhy = r.timeWhy.trim()
+    // ★★ D5 (the frozen boundary): the sweep above stamps the four rows this function BUILDS; this stamps a DECLARED
+    // row it did not build (the internal-error placeholder), so "a row with neither time nor reason" cannot leave here
+    // even if a future edit declares a fifth field without teaching `raw` about it.
+    if (field.at === null && typeof field.timeWhy !== 'string') field.timeWhy = TIME_WHY_UNSTATED
     // ★★ AUDIT HOLE D1: a row shared by the whole institute says WHOSE value it is, so "my task" cannot be read into it.
     if (typeof r.scopeNote === 'string' && r.scopeNote.trim() !== '') field.scopeNote = r.scopeNote.trim()
     return Object.freeze(field)

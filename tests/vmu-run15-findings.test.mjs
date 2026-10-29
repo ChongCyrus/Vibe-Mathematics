@@ -176,10 +176,15 @@ const hookFrame = (services, over = {}) => Object.assign({}, STALL, { api: { ser
     '③ ③i ★ with card evidence the debate subject is judged AS A CARD (not as an unprovable statement)',
     JSON.stringify({ form: allowed.form, allowed: allowed.allowed }))
   const bare = debateSubjectGate({ meeting: debate, subject: 'p-chair-rail', evidence: {} })
-  ok(bare.allowed === true && bare.form === 'statement', '③ ③j with no evidence it is admitted as a statement', bare.form)
+  // ★ AUDIT C7 → ARBITRATED: C7 flipped this verdict to a named refusal; the arbitration (rule L1 「对象或辩论对象的文件引用」,
+  // L14 的证明要求针对卡形态, run 103 live receipt) keeps it ADMITTED with the un-checkability DISCLOSED. The
+  // discrimination ③ did is kept: still classified a statement, still marked as identifier-shaped, still told how to
+  // become checkable — only the verdict is "allowed, nothing about proof was checked".
+  ok(bare.allowed === true && bare.form === 'statement' && bare.proofContentChecked === false,
+    '③ ③j a bare name with no evidence is ADMITTED as a statement, with "content not checked" disclosed', bare.code || bare.allowed)
   ok(bare.looksLikeIdentifier === true, '③ ③k ★ and the receipt MARKS that the name looks like an identifier', String(bare.looksLikeIdentifier))
-  ok(typeof bare.note === 'string' && bare.note.includes('vibe_v5_read_library'),
-    '③ ③l and tells the caller how to turn it into a card judgement', bare.note)
+  ok(typeof bare.note === 'string' && /命题卡/.test(bare.note) && /判不了/.test(bare.note),
+    '③ ③l and the note names the two calls that make it checkable (a proposition card, or a file reference)', bare.note)
   ok(debateSubjectGate({ meeting: { type: 'ordinary' }, subject: 'p-chair-rail', evidence: {} }).applicable === false,
     '③ ③m an ordinary meeting is out of the gate\'s scope (it debates nothing)')
 }

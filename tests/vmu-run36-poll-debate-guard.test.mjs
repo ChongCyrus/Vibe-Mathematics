@@ -25,7 +25,7 @@
 //      inventing a block), and every collection assertion is non-empty (RULE E: a loop over an empty list proves none).
 //
 // Run: node tests/vmu-run36-poll-debate-guard.test.mjs
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
@@ -48,7 +48,13 @@ const entry = await import(pathToFileURL(ENTRY).href)
 let NOW = 1000
 const boot = async (config = {}) => {
   const state = { specs: [] }
-  const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (spec) => { state.specs.push(spec); return () => {} } } }
+  // C6a: the debate subject card declares a complete proof, which now needs Lean registration on the same write —
+  // so the host injects the `subprocess` seam (as tests/vmu-b3-c8-c10.test.mjs does) and §2 settles a real run.
+  const subprocess = {
+    resolveExecutable: async (name) => '/fake/bin/' + String(name),
+    spawn: () => ({ done: Promise.resolve({ exitCode: 0, signal: null, stdout: 'Build completed successfully.\n', stderr: '' }), terminate() {} }),
+  }
+  const ctx = { effect(fn) { return fn() }, on() { return () => {} }, get: (what) => (what === 'subprocess' ? subprocess : undefined), tools: { register: async (spec) => { state.specs.push(spec); return () => {} } } }
   const handle = entry.apply(ctx, Object.assign({ clock: () => NOW }, config))
   await handle.ready()
   return { handle, specOf: (n) => state.specs.find((s) => s.name === n) }
@@ -92,10 +98,27 @@ try {
   ok(boxesNow() === 1, '§1 exactly one box exists after that call (the board count is observable)', boxesNow())
 
   console.log('=== 2. A REAL pack-convened DEBATE is open (the guard has an input) ===')
+  // ★ C7: a one-line proposition is no longer a legal debate subject. The fixture therefore records the card the
+  // debate is about (declared proof + Lean registration) and convenes on its id; what §2 needs — a REAL open
+  // debate — is unchanged, and the subject now has a carrier the gate could judge.
+  await mkdir(join(root, 'Formal'), { recursive: true })
+  await writeFile(join(root, 'Formal', 'p36.lean'), 'theorem odd_sum_square : True := trivial\n', 'utf8')
+  const leanRun = await call(b, 'vibe_v5_lean_run', { statement: 'True', file: 'Formal/p36.lean' })
+  const leanJob = leanRun.parsed && leanRun.parsed.id
+  const settled = leanJob ? await kernel.lean.settle(leanJob) : null
+  ok(!!settled && settled.passed === true, '§2 a Lean run is settled and PASSED (the registration the card cites)', settled)
+  const proofCard = await call(b, 'vibe_v5_record_proposition', {
+    statement: '表上奇数之和恒为平方', value: '该命题为真则原表可判定', motive: 'run-36：给辩论一个真实的卡号',
+    p: 0.9, proof_ref: 'Members/r-1/Propos/p36.md#正式证明', proof_state: 'complete',
+    lean_job: leanJob, member: 'r-1',
+  })
+  const debateSubject = proofCard.parsed && proofCard.parsed.recordId
+  ok(typeof debateSubject === 'string' && debateSubject !== '',
+    '§2 a REAL card with a declared proof exists (a free-text subject is refused now)', proofCard.parsed)
   const debate = await call(b, 'vibe_v5_meeting', {
-    agenda: '辩论：一句话命题的证明是否写完',
+    agenda: '辩论：表上奇数之和是否恒为平方（证明是否写完）',
     type: 'debate',
-    subject: '表上奇数和恒为平方：一句话命题形态（本闸对一句话命题放行，provenance:none）',
+    subject: debateSubject,
     member: 'r-chair',
   })
   const debateId = debate.parsed && debate.parsed.meeting

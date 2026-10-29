@@ -21,7 +21,7 @@
 // survives `close` (archive row); (5) an ordinary meeting records no gate and says so; (6) a non-object gate never
 // reaches the row (the face's own refusal stays the only path in); (7) the procedure the convenor was shown is on
 // the row too, not just in the receipt.
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
@@ -43,7 +43,13 @@ const entry = await import(pathToFileURL(ENTRY).href)
 let NOW = 1000
 const boot = async (config = {}) => {
   const state = { specs: [] }
-  const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (spec) => { state.specs.push(spec); return () => {} } } }
+  // C6a: a declared-complete proof needs Lean registration on the same write, so the host injects the `subprocess`
+  // seam (as tests/vmu-b3-c8-c10.test.mjs does) and the fixture really settles a Lean job.
+  const subprocess = {
+    resolveExecutable: async (name) => '/fake/bin/' + String(name),
+    spawn: () => ({ done: Promise.resolve({ exitCode: 0, signal: null, stdout: 'Build completed successfully.\n', stderr: '' }), terminate() {} }),
+  }
+  const ctx = { effect(fn) { return fn() }, on() { return () => {} }, get: (what) => (what === 'subprocess' ? subprocess : undefined), tools: { register: async (spec) => { state.specs.push(spec); return () => {} } } }
   const handle = entry.apply(ctx, Object.assign({ clock: () => NOW, packs: ['v5r'] }, config))
   await handle.ready()
   return { handle, specOf: (n) => state.specs.find((s) => s.name === n) }
@@ -64,11 +70,20 @@ try {
   const kernel = b.handle.kernel
   await kernel.members.hire({ id: 'r-gate', slot: 'chair' })
 
+  // C6a: 声明 complete 要带 Lean 登记 —— 先真跑一次（接缝退出码 0），作业 id 就是这次写的证据。
+  await mkdir(join(root, 'Formal'), { recursive: true })
+  await writeFile(join(root, 'Formal', 'p49.lean'), 'theorem even_n2p : True := trivial\n', 'utf8')
+  const leanRun = await callJSON(b, 'vibe_v5_lean_run', { statement: 'True', file: 'Formal/p49.lean' }, { kernel })
+  const leanJob = leanRun.parsed && leanRun.parsed.id
+  const settled = leanJob ? await kernel.lean.settle(leanJob) : null
+  ok(!!settled && settled.passed === true, 'setup: a Lean run is settled and PASSED (the registration the card cites)', settled)
+
   const written = await callJSON(b, 'vibe_v5_record_proposition', {
     member: 'r-gate',
     statement: '第 49 轮的命题：对任意整数 n，n^2+n 是偶数。\n\n【范围声明】只用普通数学，不形式化。\n\n【执行语义】归纳证明，见 Formal/p49.lean。',
     value: 0.75, motive: 'run 49 复验：闸门裁决要活过回执', p: 0.9,
     proof_ref: 'Formal/p49.lean#even_n2p', proof_state: 'complete',
+    lean_job: leanJob,
   }, { kernel })
   const card = written.parsed && written.parsed.recordId
   ok(!!card, 'a card with a declared proof exists to convene a debate on', written)

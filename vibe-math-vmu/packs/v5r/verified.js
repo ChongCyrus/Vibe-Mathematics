@@ -84,6 +84,14 @@ function refuse(code, message, hint) {
 const text = (v) => String(v === undefined || v === null ? '' : v)
 const hasText = (v) => text(v).trim() !== ''
 const probText = (n) => (Number.isFinite(n) ? String(n) : '—')
+/**
+ * B1: the sentence a verified row carries about its OWN `p`. The carrier admits p=1 AND p=0 (see the guard below), so
+ * a hard-coded `真 (p=1)` next to `- p：0` made the row contradict itself — and a reader who quoted the sentence
+ * promoted a REFUTATION as a theorem. A p=0 row is a disproof, and it names the warrant that settled it at 0.
+ */
+const conclusionText = (p, warrantId, warrantKind) => (p === 0
+  ? '假 (p=0) — disproved: warrant ' + warrantId + ' (' + warrantKind + ') settled it at 0'
+  : '真 (p=1)')
 const timeText = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString() : '')
 
 // ── parse：bad cards are NAMED, never silently defaulted ────────────────────────────────────────────────────
@@ -412,7 +420,7 @@ export function promoteVerified({ records, sourceId, warrant = null, at = null, 
   }
   if (card.p !== 1 && card.p !== 0) {
     throw refuse('VMU_STATE', 'card ' + key + ' is not settled (p=' + probText(card.p) + '), so it cannot enter the verified track',
-      'only p=1 may be promoted: p in (0,1) is experience, not a conclusion — a debate settlement is what turns it into 1. Promote AFTER that settlement, never before it')
+      'only a SETTLED conclusion may be promoted: p=1 (真) or p=0 (假, with the unanimous ruling that refuted it). p in (0,1) is experience, not a conclusion — a debate settlement is what turns it into 1 or 0. Promote AFTER that settlement, never before it')
   }
   // ★ ROUND 97 (B1, independent audit): THE TRACK CARRIES *JUDGED* CONCLUSIONS — p=1 AND p=0 — NOT PREFERENCES.
   // The audit's real finding was the second half of this sentence: p=0 rows ARE part of the design (the p=1 gate reads
@@ -434,7 +442,8 @@ export function promoteVerified({ records, sourceId, warrant = null, at = null, 
     at: timeText(when),
     title,
     statement: card.statement,
-    basis: 'warrant ' + text(warrant.id).trim() + ' (' + text(warrant.kind).trim() + ') subject ' + (subject || key) + '; conclusion 真 (p=1)',
+    basis: 'warrant ' + text(warrant.id).trim() + ' (' + text(warrant.kind).trim() + ') subject ' + (subject || key)
+      + '; conclusion ' + conclusionText(card.p, text(warrant.id).trim(), text(warrant.kind).trim()),
   }
   const body = composeVerifiedBody(row)
   const existing = findVerified(records, key, { fidelity })

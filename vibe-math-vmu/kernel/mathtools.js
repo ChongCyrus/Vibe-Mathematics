@@ -2,6 +2,7 @@
 // Spec: docs/09 (mathematical formalisation) and the toolbox volume docs/15. Content identity is hashed with
 // node:crypto and paths are resolved strictly, because a tool result is evidence and must be reproducible.
 import { SETTING_DEFS } from '../settings/schema.js'
+import { readSetting } from './settings-defaults.js'
 // vmu kernel · mathtools — the POLICY + GUARD layer that finally READS the `vmu.math.*` knobs.
 //
 // WHY THIS FILE EXISTS (the honest-gap slice): `settings/planned.js` declares 171 `vmu.math.*` keys, the
@@ -150,6 +151,31 @@ const DEFAULTS = Object.freeze({
 
 const DENSE_SIZE_SOFT_CAP = 1000        // documented constant for `linalg.sparse=true` (dense-only refusal)
 
+/** The canonical key name, exported so a caller never re-types (and never re-invents) it. */
+export const MAX_PARALLEL_KEY = 'vmu.math.maxParallel'
+
+/**
+ * THE ONE READER for the math concurrency cap (G2 / ledger line 59: 数学工具可用，但并发上限由所办设置，避免 CPU/OOM).
+ *
+ * WHY IT IS A NAMED EXPORT AND NOT A LINE IN THE `K` SNAPSHOT (measured defect): `vmu.math.maxParallel` is a live
+ * H1 key, and TWO faces enforce it — this policy layer (`plan()`'s ⑩ rail) and the job queue (`kernel/mathjobs.js`
+ * `cfg().maxParallel`). Reading it into `K` at construction made the two readers disagree: in a live run the office
+ * set `vmu.math.maxParallel=2` with `vibe_v5_set`, `mathjobs` honoured 2, and this face kept refusing the second
+ * concurrent run against the stale snapshot — the status face even read back `maxParallel:1`. The setting is
+ * therefore read AT CALL TIME, through THIS function, by BOTH faces (mathjobs imports it), so there is one answer.
+ *
+ * The fallback chain is the canonical one: the live view's `get` trap → the declared default
+ * (`settings/schema.js`, one declaration) → 1. A non-finite / <1 value clamps to 1 (a cap of 0 would be a
+ * permanent wedge, the same floor the job queue applies); fractions floor because a slot is not divisible.
+ */
+export function readMaxParallel(settings) {
+  const raw = readSetting(settings, MAX_PARALLEL_KEY)
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1
+}
+
+
+
 /** Append a key to an evaluation trail (mutates and returns the SAME array). It must mutate: the shaping
  *  rails call it as a statement, and a value-returning helper would silently become a no-op there (caught by
  *  the round-11 assertions — "read but not listed" is exactly the defect class being fixed). */
@@ -213,7 +239,12 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
   const K = {
     network: sget('vmu.math.sandbox.network'), memoryMb: num(sget('vmu.math.sandbox.memoryMb')), cpuMs: num(sget('vmu.math.sandbox.cpuMs')),
     wallMs: num(sget('vmu.math.sandbox.wallMs')), threads: num(sget('vmu.math.sandbox.threads')),
-    maxParallel: num(sget('vmu.math.maxParallel'), 1), jobsDir: str(sget('vmu.math.jobs.dir')), logMax: num(sget('vmu.math.jobs.logMax'), 200),
+    // ★ G2 / ONE READER: the concurrency cap is NOT cached here. `K` holds only the value seen at construction,
+    // for the status face's disclosure; every rail reads `readMaxParallel(settings)` at CALL time (see the
+    // function's comment for the measured two-readers defect). Keeping it out of `K` is deliberate: a future
+    // `K.maxParallel` reference would be a cached cap again, and the whole batch of `num(sget(...))` neighbours
+    // would make that slip invisible in review.
+    maxParallelAtConstruction: readMaxParallel(settings), jobsDir: str(sget('vmu.math.jobs.dir')), logMax: num(sget('vmu.math.jobs.logMax'), 200),
     persist: sget('vmu.math.jobs.persist') === true,
     requireSeed: sget('vmu.math.repro.requireSeed') === true, seed: sget('vmu.math.repro.seed'), deterministic: sget('vmu.math.repro.deterministic') === true,
     packOnSuccess: sget('vmu.math.repro.packOnSuccess') === true,
@@ -317,7 +348,8 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
   const keysSnapshot = () => ({
     'vmu.math.sandbox.network': K.network, 'vmu.math.sandbox.memoryMb': K.memoryMb, 'vmu.math.sandbox.cpuMs': K.cpuMs,
     'vmu.math.sandbox.wallMs': K.wallMs, 'vmu.math.sandbox.threads': K.threads,
-    'vmu.math.maxParallel': K.maxParallel, 'vmu.math.jobs.dir': K.jobsDir, 'vmu.math.jobs.logMax': K.logMax, 'vmu.math.jobs.persist': K.persist,
+    // LIVE, like the rail itself: `status().keys` must not show a value the kernel would refuse against.
+    [MAX_PARALLEL_KEY]: readMaxParallel(settings), 'vmu.math.jobs.dir': K.jobsDir, 'vmu.math.jobs.logMax': K.logMax, 'vmu.math.jobs.persist': K.persist,
     'vmu.math.repro.requireSeed': K.requireSeed, 'vmu.math.repro.seed': K.seed, 'vmu.math.repro.deterministic': K.deterministic, 'vmu.math.repro.packOnSuccess': K.packOnSuccess,
     'vmu.math.cache.enabled': K.cacheEnabled, 'vmu.math.cache.maxEntries': K.cacheMax, 'vmu.math.cache.onCorrupt': K.cacheOnCorrupt, 'vmu.math.cache.crossProject': K.crossProject,
     'vmu.math.precision.digits': K.digits, 'vmu.math.precision.mode': K.pMode, 'vmu.math.precision.rounding': K.rounding, 'vmu.math.precision.tolerance': K.pTolerance,
@@ -585,8 +617,11 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       }
       // ⑩ CONCURRENCY (vmu.math.maxParallel — the CANONICAL name; the legacy name (`math.jobs.maxParallel`,
       // removed from the schema in R4) is mirrored onto it by the kernel, so this is one value, one reader).
-      evalKey('vmu.math.maxParallel')
-      if (active >= K.maxParallel) capRefusal('VMU_RESOURCE_BUDGET', 'active runs', active, K.maxParallel, 'vmu.math.maxParallel', enforced)
+      // ★ G2: read HERE, at call time, through the SAME function the job queue uses. A construction-time snapshot
+      // made this rail refuse against `1` while the office's freshly-set `2` was already in force in the queue.
+      const maxParallel = readMaxParallel(settings)
+      evalKey(MAX_PARALLEL_KEY)
+      if (active >= maxParallel) capRefusal('VMU_RESOURCE_BUDGET', 'active runs', active, maxParallel, MAX_PARALLEL_KEY, enforced)
       // ⑪ SPARSE POLICY (linalg.sparse)
       if (K.sparse && req.dense !== undefined) evalKey('vmu.math.linalg.sparse')
       if (K.sparse && req.dense === true && num(req.size) > DENSE_SIZE_SOFT_CAP) {
@@ -607,7 +642,7 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       }
       plan.cached = K.cacheEnabled && hit !== undefined && !hit.corrupt
       say({ type: 'mathtools/planned', at: plan.at, op: plan.op, cacheKey: plan.cacheKey, cached: plan.cached, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, plan, limits: { memoryMb: K.memoryMb, cpuMs: K.cpuMs, wallMs: K.wallMs, threads: K.threads, timeLimitMs: limit, maxParallel: K.maxParallel }, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, plan, limits: { memoryMb: K.memoryMb, cpuMs: K.cpuMs, wallMs: K.wallMs, threads: K.threads, timeLimitMs: limit, maxParallel }, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /**
@@ -859,6 +894,10 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
       const planned = plannedKeys()
       const wired = WIRED_KEYS.slice()
       const overlap = planned.keys.filter((k) => wired.includes(k))
+      // ★ G2: the cap this face REPORTS is the cap it would ENFORCE on the next `plan()` — read now, not at
+      // construction. `snapshotAtConstruction` is disclosed beside it so an operator can see that a stale `K`
+      // value is NOT what rails on (the status face used to read `1` for minutes after the office set `2`).
+      const maxParallel = readMaxParallel(settings)
       return {
         ok: true, apiVersion,
         wired, wiredCount: wired.length,
@@ -867,7 +906,18 @@ export function createMathTools({ clock = () => 0, log = null, settings = {}, bu
         complementOk: overlap.length === 0 && planned.keys.length + wired.length === planned.declaredMathKeys,
         overlap,
         declaredMathKeys: planned.declaredMathKeys,
-        limits: { memoryMb: K.memoryMb, cpuMs: K.cpuMs, wallMs: K.wallMs, threads: K.threads, maxParallel: K.maxParallel, maxRuns: K.maxRuns, maxFileMb: K.maxFileMb, maxAttemptsPerRun: K.maxAttempts },
+        limits: { memoryMb: K.memoryMb, cpuMs: K.cpuMs, wallMs: K.wallMs, threads: K.threads, maxParallel, maxRuns: K.maxRuns, maxFileMb: K.maxFileMb, maxAttemptsPerRun: K.maxAttempts },
+        concurrency: {
+          key: MAX_PARALLEL_KEY,
+          maxParallel,
+          maxParallelSource: 'setting-live',
+          readAt: clock(),
+          // Informational only: this is the value `K` captured at construction. It is NOT enforced any more.
+          snapshotAtConstruction: K.maxParallelAtConstruction,
+          enforcedBy: ['kernel/mathtools.js plan() ⑩', 'kernel/mathjobs.js slot gate'],
+          reader: 'readMaxParallel() — the one function both faces call',
+          note: 'the value is read AT CALL TIME through readMaxParallel() (the same helper kernel/mathjobs.js uses), so an operator write is in force on the very next plan()/status(); `snapshotAtConstruction` is disclosed only to show it is stale-by-design and does not rail',
+        },
         policy: { network: K.network, seedRequired: K.requireSeed, deterministic: K.deterministic, cacheEnabled: K.cacheEnabled, crossProject: K.crossProject, onCorrupt: K.cacheOnCorrupt, sorryPolicy: K.sorryPolicy, strictDimensions: K.strictDimensions, convergence: K.convergence, stability: K.stability, style: K.style, language: K.language },
         keys: keysSnapshot(),
         counters: Object.assign({}, counters),

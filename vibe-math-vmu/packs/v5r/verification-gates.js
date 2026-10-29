@@ -182,7 +182,8 @@ export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } 
   }
   if (ev.verified && ev.verified.conclusion !== true) nearMiss.push('`verified` 行给了，但 `conclusion` 不是 true（p=0 的定论不能把卡设成 1）')
   return refuseGate(GATE_CODES.P1_NEEDS_DEBATE,
-    '把命题卡的布尔概率改成 1 需要**已经存在的定论来源**；' + who + ' 这次写入没有（card=' + String(cardId) + '）'
+    'p=1 的命题卡必须带 **verified 标记**（Verified 轨上一条由 `vibe_v5_verified_promote` 写下的 conclusion:true 定论行）；'
+    + '把命题卡的布尔概率改成 1 还需要**已经存在的定论来源**，' + who + ' 这次写入两者都没有（card=' + String(cardId) + '）'
     + (nearMiss.length ? '。★ 近失原因：' + nearMiss.join('；') : ''),
     // ★ B3：规则原文不是"只能由辩论" —— 三条路都算定论来源，拒绝文案必须把三条都写出来，
     //   否则被拒的人只会以为"没辩论成"，而手里其实可能正握着一条文献引用或一次 Lean 通过的作业。
@@ -190,7 +191,9 @@ export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } 
     + '  · 参考文献中的命题（写入带**非空**引用 reference）\n'
     + '  · Lean 通过 **且** 符合性裁定 conform（C10：只要 lean 通过，布尔概率直接赋值为 1、可以加入 verified）\n'
     + '第四条不是新来源：该卡已经在 Verified 轨上有一条 conclusion:true 的定论行（本次只是重述同一事实）。\n'
-    + '四种证据形态：\n  · ' + P1_EVIDENCE_FORMS.join('\n  · '),
+    + '四种证据形态：\n  · ' + P1_EVIDENCE_FORMS.join('\n  · ')
+    + '\n★ 标记这一步只有一条写入器：`vibe_v5_verified_promote {card:"<命题卡 id>", warrant_kind:"debate-unanimous"|"lean-conformance"|"literature", …}`'
+    + ' —— 没有它的 p=1 卡在 Verified 轨上不可见，所以 p=1 与"已标记"必须成对出现。',
     Object.assign({}, out, { p1Route: null, p1RouteMeans: null, p1Routes: P1_ROUTES }))
 }
 
@@ -232,8 +235,9 @@ export function classifySubject(subject, evidence) {
  *     ⇒ `DEBATE_SUBJECT_UNPROVEN`；声明也没有 ⇒ `DEBATE_SUBJECT_NO_PROOF`（两种缺失两个码）
  *   · 文件引用 → 证据说文件**可读且非空**；★ 但"它是不是一份写完的证明"本闸**判不了**，回执必须写
  *     `proofContentChecked:false` —— 宁可承认判不了，也不要给一个看起来严的假闸。
- *   · 一句话命题 → 无法承载证明引用 ⇒ **放行**（它是规则允许的合法形态），但回执记 `provenance:'none'`、
- *     `proofChecked:false`，并把"要受证明闸约束就改传卡 id / 文件引用"写进 `note`。
+ *   · 一句话命题 → 没有可寻址的载体 ⇒ **具名拒**（`DEBATE_SUBJECT_NO_PROOF`：既不是带证明的卡，也不是携带证明登记的命题）；
+ *     修复办法写在 hint 里：先用 `vibe_v5_record_proposition` 写成卡，再以卡号开会。C7 之前这里"合法放行、只记
+ *     provenance:none" —— 那等于闸门自己承认没核过却仍然开辩。
  */
 export function debateSubjectGate({ meeting = null, subject = null, evidence = {} } = {}) {
   const typeInfo = meetingTypeOf(meeting && meeting.type !== undefined ? meeting.type : null)
@@ -245,15 +249,20 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
   const ev = evidence || {}
 
   if (cls.form === 'statement') {
-    // ★ LIVE RUN 15: a bare identifier that is neither shaped like a kernel record id (`r-…`) nor carries a dot/slash is
-    // AMBIGUOUS — it may be the pack's own card id (`p-chair-rail`), a file stem, or a one-line proposition. This gate
-    // cannot tell them apart without evidence, and the old receipt said `form:"statement", provenance:"none"` flatly,
-    // which a reader could only read as "the framework treated a card as a phrase". The ambiguity is NAMED instead.
-    const looksLikeIdentifier = /^[A-Za-z][A-Za-z0-9_-]*$/.test(cls.raw)
-    return allow({ form: 'statement', subject: cls.raw, proofChecked: false, provenance: 'none', looksLikeIdentifier,
-      note: looksLikeIdentifier
-        ? '这个 subject 是一个裸名字（没有扩展名、没有路径分隔、也不是内核卡片 id `r-…`），本闸无法判定它是一句话命题、一个文件名，还是包自己的卡片 id ⇒ 按"一句话命题"放行，回执如实记 provenance:none；如果它其实是卡片，先 `vibe_v5_read_library {id}` 读到该卡并把读结果作为 evidence（本闸见到卡片证据就按卡片判）'
-        : '一句话命题没有可寻址的载体，本闸对它**无法**核证明（合法放行，但回执如实记 provenance:none）；要受「正式证明已写完」约束，请把 subject 改成命题卡 id 或一个文件引用' })
+    // ★ AUDIT C7 → ARBITRATED (rule L1 + run 103 + vmu-run15-findings:179): C7 refused a free-text subject by name,
+    // reading 「只有命题卡中含有正式证明或证伪内容…才能用于后续辩论」 as "a bare sentence may never be a debate object".
+    // L1 says the object may be 「对象或辩论对象的文件引用」; L14 proof requirement is about the CARD form; run 103
+    // convened on a sentence and the receipt honestly carried form:"statement" / provenance:"none" — which the
+    // acceptance ledger cites as compliant. Refusing deletes a legal tool use; the honest guard for this form is
+    // DISCLOSURE (nothing about proof was checked), never a fake strictness.
+    return allow({ form: 'statement', subject: cls.raw, proofChecked: false, proofContentChecked: false,
+      provenance: 'none', proofBasis: 'unverifiable-statement',
+      // ★ C7 的判别工作保留（名字看起来像标识符 ⇒ 说清它找不到任何卡），只是判决回到「放行 + 披露」。
+      looksLikeIdentifier: /^[A-Za-z][A-Za-z0-9_-]*$/.test(cls.raw),
+      note: '一句话命题（form:"statement"）：它没有可寻址的载体，本闸**判不了**它有没有写完的正式证明 —— 回执如实标 '
+        + 'proofContentChecked:false、provenance:"none"、proofBasis:"unverifiable-statement"，这不是"核过了"，也不是"拒了"。'
+        + '要一张能被核的辩论对象：先写成**命题卡**（vibe_v5_record_proposition），开会时传 `命题卡 id`；'
+        + '或把证明写成文件并以**文件引用**作对象（文件形态只核"可读且非空"，内容由人在辩论里核）。' })
   }
 
   if (cls.form === 'file') {

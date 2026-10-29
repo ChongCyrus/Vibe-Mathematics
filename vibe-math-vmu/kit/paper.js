@@ -402,6 +402,45 @@ export function createPaperFlow({
         : null }
   }
 
+  /**
+   * ★ F3a — who reviewed SOMEBODY ELSE'S part? A review whose subject is the reviewer themself (or a review with no
+   * subject at all) is not a cross-review, no matter which way it votes: the point of 互审 is a second pair of eyes.
+   * Distinct reviewers, in the order the reviews were recorded.
+   */
+  function crossReviewers(state, { deliverableOnly = false } = {}) {
+    const out = []
+    const reviews = (state && state.reviews) || {}
+    const ids = Object.keys(reviews)
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = ids[i]
+      const reviewed = reviews[id]
+      if (!reviewed) continue
+      const of = str(reviewed.of)
+      if (!of || of === str(id)) continue
+      if (deliverableOnly && reviewed.deliverable !== true) continue
+      if (!out.includes(str(id))) out.push(str(id))
+    }
+    return out
+  }
+
+  /**
+   * ★ F3a — the ONE rule both the reviewing→awaiting-editor step and the finalisation step apply: a paper may only be
+   * called unanimously reviewed when at least TWO DISTINCT members reviewed somebody else's part and voted deliverable.
+   * With a single participant the rotation points at the participant themself, so the old check was vacuously
+   * unanimous — that is the defect this refuses. The refusal names the missing half and the exact repair.
+   */
+  function requireCrossReview(state, where) {
+    const crossers = crossReviewers(state, { deliverableOnly: true })
+    if (crossers.length >= 2) return crossers
+    const participants = state.participants.slice()
+    const message = participants.length < 2
+      ? '一位参与者的论文无法通过互审：只有 ' + participants.length + ' 位参与者（' + (participants.join('、') || '无') + '），他只能审自己的部分，互审因此是自审（a paper with one participant cannot pass 互审）'
+      : '互审必须由两位不同的、非该作者的成员完成：' + participants.length + ' 位参与者里只有 ' + crossers.length + ' 位审了别人的部分（' + (crossers.join('、') || '无') + '），其余选票没有评审对象，不能算全体一致'
+    throw refuse('VMU_INVALID_ARGUMENT', message,
+      '再邀请一位成员参与（start 的 participants 至少两位），并让另一位成员评审这个部分（review 的 of 指向别人的 part）；自审不算互审',
+      { where, participants, crossReviewers: crossers, required: 2 })
+  }
+
   /** ③ a review: deliverable must be a real boolean ("未表态不算可交付", the original's wording). */
   function recordReview({ target, member, deliverable, comments = '', of = null } = {}) {
     const { state } = requireState(target)
@@ -411,7 +450,16 @@ export function createPaperFlow({
       throw refuse('VMU_INVALID_ARGUMENT', 'deliverable must be true or false (an unstated verdict is NOT deliverable)', 'pass deliverable:true/false — "未表态不算可交付"')
     }
     const assigned = state.reviewOf[String(member)] || null
-    const review = { member: str(member), of: str(of || assigned || ''), round: state.round, deliverable: deliverable === true, comments: str(comments).slice(0, 8000) }
+    const ofId = str(of || assigned || '')
+    // ★ F3a: 互审 is by SOMEBODY ELSE. Refuse a review of one's own part BY NAME rather than filing it as a review —
+    // with one participant the rotation had made `reviewOf[member] === member`, so this is the self-review defect.
+    if (ofId && ofId === str(member)) {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        '互审必须由另一位成员完成：' + str(member) + ' 不能评审自己写的部分——作者就是评审人，题目、证据与推导都由同一个人看过，互审没有发生（a paper part cannot be reviewed by its author）',
+        '让另一位参与者评审这一部分（review 的 of 指向别人的 part）；要过互审，start 时至少要两位参与者',
+        { member: str(member), of: ofId, participants: state.participants.slice() })
+    }
+    const review = { member: str(member), of: ofId, round: state.round, deliverable: deliverable === true, comments: str(comments).slice(0, 8000) }
     const put = records.put({ track: TRACK, kind: 'paper-review', title: recordName(state.target, 'review|' + review.member), body: JSON.stringify(review), by: author })
     state.reviews[review.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, deliverable: review.deliverable, of: review.of, round: state.round }
     state.updatedAt = 1
@@ -433,6 +481,10 @@ export function createPaperFlow({
     if (state.status === 'reviewing') {
       const refusers = state.participants.filter((id) => !(state.reviews[id] && state.reviews[id].deliverable === true))
       if (refusers.length === 0) {
+        // ★ F3a: "everyone voted deliverable" is NOT enough when nobody reviewed anybody else's part. With one participant
+        // the rotation reviews the participant themself, so the filter above was vacuously unanimous. The gate runs BEFORE
+        // any mutation, so a refusal leaves the paper exactly where it was (still reviewing, nothing written).
+        requireCrossReview(state, 'advance')
         state.status = 'awaiting-editor'; state.stage = 'awaiting-editor'
         writeState(state)
         return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true }
@@ -479,13 +531,31 @@ export function createPaperFlow({
     if (decision !== 'deliverable' && decision !== 'revise') throw refuse('VMU_INVALID_ARGUMENT', 'decision must be deliverable|revise', 'the original accepts exactly these two')
     const fin = { by: str(member), decision, note: str(note).slice(0, 4000), conclusion: str(conclusion).slice(0, 20000) }
     if (decision === 'deliverable') {
+      // ★ F3a: a finalisation must rest on two DISTINCT cross-reviews by non-authors. `advance` already refuses to go
+      // unanimous on a self-review, but the round-cap path can still reach awaiting-editor (a lone participant forced
+      // there after MAX_ROUNDS), so the editor's gate re-applies the same rule instead of trusting the state label.
+      requireCrossReview(state, 'final')
       // ★ E4: 定稿前必须问所办. The gate runs BEFORE any mutation, so a refusal leaves the paper exactly where it was
       // (except the durable request it just opened — the question has to survive a crash, that is the point of asking).
       const gate = consultGate({ state, member: fin.by })
       if (!gate.allowed) throw gate.error
+      const before = { hadFinal: Object.prototype.hasOwnProperty.call(state, 'final'), final: state.final, status: state.status, stage: state.stage }
       state.final = fin; state.status = 'finalized'; state.stage = 'finalized'
       writeState(state)
-      const rendered = render({ target })
+      // ★ F4: the path that FINALISES must be the path that is GATED. `render` is the pack's overridden face (the quality
+      // gate lives there), so call it through the returned API — one call site serves both a bare render and recordFinal,
+      // and the old lexical copy (which skipped the pack's gate) is gone. A refusal restores the pre-final state, because
+      // a "finalized" paper whose body failed the gate is exactly the lie this defect produced.
+      let rendered = null
+      try {
+        rendered = api.render({ target })
+      } catch (e) {
+        if (before.hadFinal) state.final = before.final
+        else delete state.final
+        state.status = before.status; state.stage = before.stage
+        writeState(state)
+        throw e
+      }
       // The PDF is the one artefact the KERNEL must make. Its absence is reported, never hidden: a receipt that says
       // "finalized" while the fourth artefact is missing is the paper-world version of crying wolf.
       let pdf = null
@@ -716,9 +786,13 @@ export function createPaperFlow({
       artifacts: PaperArtifacts({ target }), missing: PaperArtifacts({ target }).missing }
   }
 
-  return { start, recordPart, recordReview, advance, pass, recordFinal, PaperMd, PaperMdRaw: rawMd, PaperTex, PaperArtifacts, render, compilePdf,
+  // ★ F4: `recordFinal` renders THROUGH this object (not through a lexical copy), so a pack that wraps `render` to add a
+  // gate sees the finalising path too. Declared before the return so both definitions share one binding.
+  let api = null
+  api = { start, recordPart, recordReview, advance, pass, recordFinal, PaperMd, PaperMdRaw: rawMd, PaperTex, PaperArtifacts, render, compilePdf,
     recordConsult, consultState,
     sections: () => SECTIONS.slice(), state: (target) => readState(target) }
+  return api
 }
 
 export default createPaperFlow

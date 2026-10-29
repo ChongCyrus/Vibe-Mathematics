@@ -11,7 +11,7 @@ import { kitCardHandler, KIT_CARD_CONFIG } from '../../kit/tools.js'
 // ★ RUN 29: `classifySubject` is imported for the SAME reason the four predicates are — it is the ONE authority for
 // "what shape is this debate object name" (`verification-gates.js:135`: card id / file reference / one-line statement).
 // A second copy of that regex in the ask face would be a second answer to one question, and the two would drift.
-import { p1Intent, debateSubjectGate, singleWriter, fidelityAsked, classifySubject } from './verification-gates.js'
+import { p1Intent, debateSubjectGate, singleWriter, fidelityAsked, classifySubject, PROOF_STATE_COMPLETE } from './verification-gates.js'
 // ★ The VERIFIED carrier (B1 step 1): `findVerified` answers null instead of guessing, `promoteVerified` is the ONLY
 // writer on that track, and `parseCard` names a card it cannot judge (empty/truncated body) instead of half-parsing it.
 import { parseCard, parseCardBody, findVerified, promoteVerified, VERIFIED_TRACK } from './verified.js'
@@ -1417,7 +1417,11 @@ async function toolFidelityConclude(args = {}, { kernel } = {}) {
     const writeCard = gatedCardHandler('vibe_v5_record_proposition')
     const writeArgs = { id: cardId, title: str(cardRow.title || fields.title || ''),
       statement: fields.statement, value: fields.value, motive: fields.motive, p: 1,
-      lean_job: jobId, lean_conformance: 'conform', member: chair.id }
+      lean_job: jobId, lean_conformance: 'conform', member: chair.id,
+      // ★ C6b: the card may already be locked (a member declared the proof complete before the Lean run settled). This
+      // is not an edit of the card's content — it is the machine writing the p=1 the passed Lean run already justifies
+      // — so the internal lock exemption is passed here. It is NOT a declared tool parameter, so no caller can send it.
+      fidelity_conclude: true }
     if (projection.proofRef) writeArgs.proof_ref = projection.proofRef
     writeArgs.proof_state = 'complete'
     cardWrite = await writeCard(writeArgs, { kernel })
@@ -1459,12 +1463,42 @@ function gatedCardHandler(toolName) {
     const track = has(args.track) ? str(args.track) : cardTrackOf(toolName)
     const cardId = has(args.id) ? str(args.id) : null
     const by = has(args.member) ? str(args.member) : null
+    // ★ WAVE 2 (audit C5): `p` is the card's CONCLUSION and must be a LITERAL JSON number — `Number(args.p)` turned
+    // "0.6", true and "" into plausible values, so the caller could not tell whether the face read its estimate or
+    // invented one.
+    if (args.p !== undefined && args.p !== null && (typeof args.p !== 'number' || !Number.isFinite(args.p))) {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'p must be a literal JSON number (0..1); this call passed ' + JSON.stringify(args.p) + ' (' + typeof args.p + ')',
+        'pass p:0.6 — not p:"0.6" and not p:true; a coerced conclusion is a conclusion nobody stated')
+    }
+    // ★ AUDIT C6b (rule L14: 「登记即定稿，之后不再更改（locked）」): declaring the proof complete used to change
+    // NOTHING — the same card id could be rewritten the next minute, so "final" was a word in a receipt. A card whose
+    // recorded proofState is complete is now locked: any later write to that id is refused BY NAME, and the correction
+    // path is a NEW card id (a changed proposition is a different proposition, and the locked one stays as history).
+    // The ONE internal exception is the fidelity conclusion below, which is not an edit of the card's content but the
+    // machine taking the card from p<1 to the p=1 its passed Lean run already justifies (it passes `fidelity_conclude`,
+    // a key the tool schema does not publish, so no caller can reach it).
+    if (cardId !== null && args.fidelity_conclude !== true) {
+      const lockedRow = rowOrNull(records, cardId)
+      if (lockedRow) {
+        const lockedParsed = parseCardBody(str(lockedRow.body))
+        const lockedState = lockedParsed && lockedParsed.fields && lockedParsed.fields.proofState !== undefined
+          ? str(lockedParsed.fields.proofState).trim() : ''
+        if (lockedState.toLowerCase() === PROOF_STATE_COMPLETE) {
+          throw refuse('VMU_STATE',
+            'card "' + cardId + '" is locked: its proof was registered as complete, so the card is final and no later write may change it',
+            'a completed card is NOT rewritten — write the correction under a NEW card id (a different claim is a different card) and keep the locked card as history; if the card must be promoted into the verified track, use `vibe_v5_verified_promote` (promotion is not a card edit)')
+        }
+      }
+    }
     // ★ PHASE 12 / B6 声明层：卡上的 `proofRef`/`proofState` 是**作者自述**（"我的证明写在哪、写完了没有"）。
     // 它不构成证明 —— 证据层在 `verification-gates.js` 的 `debateSubjectGate`（Lean 通过 或 verified 定论行）。
     // 两个别名收在这里，调用方不必知道 kit 的 payload 机制；只给 proofRef 不给状态 ⇒ 一律记 'draft'
     // （"只写了个引用"不能被读成"已经写完"）。
     if (has(args.proof_ref) || has(args.proof_state)) {
-      const state = has(args.proof_state) ? str(args.proof_state).trim() : ''
+      // ★ WAVE 2 (audit C6a): the value is CASE-FOLDED to the two words the face publishes — "COMPLETE" was rejected
+      // by the old string comparison while "complete" was accepted, so the same state read as an unknown word.
+      const state = has(args.proof_state) ? str(args.proof_state).trim().toLowerCase() : ''
       if (state && state !== 'complete' && state !== 'draft') {
         throw refuse('VMU_INVALID_ARGUMENT', 'proof_state must be "complete" or "draft"; got "' + state + '"',
           'pass proof_state:"complete" only if the proof/refutation is finished — it is a self-report, and a debate still needs machine evidence (Lean passed or a verified row)')
@@ -1474,6 +1508,39 @@ function gatedCardHandler(toolName) {
       if (state) payload.proofState = state
       else if (has(args.proof_ref) && !has(payload.proofState)) payload.proofState = 'draft'
       args = Object.assign({}, args, { payload })
+    }
+    // ★ AUDIT C6a (rule L14: 「只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容……只有命题卡中含有
+    // 正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论」 + prompt rule 10's promise 「归档 Lean 通过证据」):
+    // `proof_state:"complete"` used to be accepted with NOTHING behind it — a self-report was enough to make a card look
+    // debate-ready. The state is now admitted only when the SAME write carries Lean registration: a `lean_job` that the
+    // kernel's Lean face records as PASSED, or a `lean_conformance` decision (the fidelity path's own registration), or
+    // the card already sits on the verified track (someone already judged it). The declared value can also arrive inside
+    // `payload` (the back-compat shape), so both spellings are read here.
+    const declaredProofState = (() => {
+      const direct = has(args.proof_state) ? str(args.proof_state).trim() : ''
+      if (direct) return direct
+      const p = args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload) ? args.payload : null
+      return p && p.proofState !== undefined && p.proofState !== null ? str(p.proofState).trim() : ''
+    })()
+    const declaredProofStateFolded = declaredProofState.toLowerCase()
+    if (declaredProofStateFolded === PROOF_STATE_COMPLETE) {
+      const leanRegistered = leanEvidenceOf(kernel, args)
+      const alreadyVerified = cardId === null ? null : verifiedRowOf(records, cardId, kernel && kernel.fidelity)
+      const leanPassed = !!(leanRegistered && leanRegistered.passed === true)
+      // ★ WAVE 2 (audit C6a, tightened): a `lean_conformance` word alone is a CLAIM — presence used to satisfy this gate.
+      const conformanceWord = has(args.lean_conformance) ? str(args.lean_conformance).trim() : ''
+      if (!leanPassed && conformanceWord !== '' && !leanRegistered) {
+        throw refuse('VMU_INVALID_ARGUMENT',
+          'lean_conformance "' + conformanceWord + '" is a claim, not evidence: the same write names no `lean_job` the kernel could read as PASSED'
+          + (cardId === null ? '' : ' (card ' + cardId + ')'),
+          'pass lean_job:"<jobId of a settled, passed Lean run>" together with lean_conformance, or register the run first with `vibe_v5_lean_run`')
+      }
+      if (!leanPassed && conformanceWord === '' && !alreadyVerified) {
+        throw refuse('VMU_INVALID_ARGUMENT',
+          'a card may not declare proof_state "complete" without Lean evidence: this write carries no `lean_job` pointing at a settled, PASSED Lean run and no `lean_conformance` registration'
+          + (cardId === null ? '' : ' (card ' + cardId + ')') + ' — a card may not enter debate on a declared-complete proof with no Lean registration',
+          'register the Lean evidence first: `vibe_v5_lean_run { file:"Formal/<name>.lean", statement:"…" }`, read the job with `vibe_v5_lean_job { jobId }` until passed:true, then write the card with lean_job:"<jobId>" (or pass lean_conformance:"conform" from a `vibe_v5_fidelity_conclude` ruling)')
+      }
     }
     // ★ ROUND 92 / F-92a (live run 92): the seat gate keyed on the CALLER, and the office has no seat, so
     // `vibe_v5_record_method { member: "<a temp worker>" }` was accepted while seat-faces.js declares
@@ -1498,7 +1565,13 @@ function gatedCardHandler(toolName) {
     let p1Form = null
     let p1Route = null
     let p1RouteMeans = null
-    if (toolName === 'vibe_v5_record_proposition') {
+    if (toolName === 'vibe_v5_record_proposition' || track === 'propositions') {
+      // ★ AUDIT C8 (rule L14: 「那些布尔概率为1的命题卡需标记为已verified」 — the read face's `verifiedRef` was
+      // decoration and NOTHING held a writer to it): p=1 could be written into the propositions track without any
+      // conclusion source, and `vibe_v5_record_method {p:1, track:"propositions"}` reached the same track through a
+      // second tool that skipped this gate entirely. So the gate is keyed on the RESULTING TRACK, not on the tool name:
+      // any p=1 write into the propositions track must name one of the four sanction来源 (which is what the eventual
+      // `vibe_v5_verified_promote` will record as the mark), and the refusal names the promote call.
       // The three evidences the rule accepts. `debate` and `lean` come from the CALLER's args (a card write cannot go
       // and hold a debate); `verified` is read from the records face, so it is not claimable by argument at all.
       const evidence = { verified: verifiedRowOf(records, cardId, kernel && kernel.fidelity),
@@ -1516,10 +1589,31 @@ function gatedCardHandler(toolName) {
       p1Route = pGate.p1Route === undefined ? null : pGate.p1Route
       p1RouteMeans = pGate.p1RouteMeans === undefined ? null : pGate.p1RouteMeans
     }
+    // ★ WAVE 2 (audit C6a): WHICH half admitted a "complete" proof_state — a measured Lean run, the caller's
+    // conformance word (a claim), or an existing verified row. Evidence of different weight must not print as one word.
+    const proofStateEvidence = declaredProofState === '' ? null : (() => {
+      const row = cardId === null ? null : verifiedRowOf(records, cardId, kernel && kernel.fidelity)
+      const lean = leanEvidenceOf(kernel, args)
+      if (lean && lean.passed === true) return { kind: 'lean-job', measured: true, jobId: has(args.lean_job) ? str(args.lean_job) : null, means: 'the kernel read this job as PASSED before the card was written' }
+      if (row) return { kind: 'verified-row', measured: true, rowId: row.id === undefined ? null : row.id, means: 'the card already carries a settled verification row' }
+      if (has(args.lean_conformance)) return { kind: 'lean-conformance-claim', measured: false, means: 'the caller named a conformance word; this gate cannot verify it — a conformance word is not a measurement' }
+      return null
+    })()
     const res = inner(args, ctx)
     if (!res || typeof res !== 'object' || Array.isArray(res)) return res
-    return Object.assign({}, res, { enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE },
-      p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans })
+    // ★ C8: a p=1 write with a sanctioned route is only half the rule — the card must END UP marked. The receipt says
+    // whether the mark is already on the verified track, and if not, it names the ONE call that puts it there.
+    const verifiedMark = p1Form === null ? null : (() => {
+      const row = cardId === null ? null : verifiedRowOf(records, cardId, kernel && kernel.fidelity)
+      return row
+        ? { required: true, present: true, rowId: row.id === undefined ? null : row.id }
+        : { required: true, present: false, call: 'vibe_v5_verified_promote',
+            means: 'p=1 的卡必须带 verified 标记：现在还没有定论行，调用 `vibe_v5_verified_promote {card:"<id>", warrant_kind:"…", …}` 写下它；没有这一行的 p=1 卡在 Verified 轨上不可见' }
+    })()
+    return Object.assign({}, res, {
+      enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE,
+      proofState: declaredProofState === '' ? null : declaredProofStateFolded, proofStateEvidence,
+    }, p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, verifiedMark })
   }
 }
 
@@ -2388,6 +2482,10 @@ function validateMeetingArgs(args = {}) {
   // ★ ROUND 47: `action:"rulings"` IS dispatched here (see toolMeetingRulings) — the read face of the filed ruling
   // cards. Everything else still gets the "this face only convenes" refusal with the kernel face named.
   if (String(args.action) === 'rulings') return null
+  // ★ WAVE 2 (audit E33): `types` is the SECOND read on this face (the type catalogue). The host funnel runs THIS
+  // validator BEFORE the handler, so a read that only `toolMeeting` knows about is refused here and never dispatches —
+  // the alignment must be declared in both places, and this one runs first.
+  if (String(args.action) === 'types') return null
   // ★ RUN 84: the face's OWN verb was refused. An agent read "convene a meeting" and passed action:"convene" (the word
   // the refusal hint itself uses); the face said it "has no convene action" and lectured it about convening. Naming the
   // verb the tool performs is ALIGNED with the tool, not a wrong action: it dispatches, and the receipt still carries no
@@ -2466,9 +2564,59 @@ function wallCeilingPhrase(kernel) {
     : '`vmu.meetings.extendCeilingMs` (' + String(ceiling) + ' ms)'
 }
 
+/** ★ WAVE 2 (audit E33): the six declared meeting types as a READ. Before this, the vocabulary was only readable
+ * by convening with a WRONG word and reading the refusal's `the declared types are: ...`. Each row carries its `kind`,
+ * the `procedure.steps` count the catalogue BINDS it to, and the tool-face narrowing it applies.
+ *
+ * WHERE THE ROWS COME FROM — no second hand-maintained table: the types and their steps are
+ * `packs/v5r/meeting-procedures.js` (`MEETING_TYPES` / `MEETING_PROCEDURES`, read through `procedureFor`), the narrowing
+ * is `packs/v5r/meeting-tool-face.js` (`MEETING_TYPE_TOOL_FACES`, read through `meetingTypeFace`). `typeCatalogSource`
+ * names both files, because a read face that cannot say where its rows live is a table pretending to be a fact.
+ */
+function meetingTypeCatalog() {
+  const types = MEETING_TYPE_IDS.map((id) => {
+    const row = meetingTypeOf(id)
+    const procedure = procedureFor(id)
+    const face = meetingTypeFace(id)
+    const steps = procedure && procedure.procedure && Array.isArray(procedure.procedure.steps)
+      // the declared steps are OBJECTS ({ step, why, ... }) — handed back as declared, never flattened to prose here
+      ? procedure.procedure.steps.map((step) => (step && typeof step === 'object' ? Object.assign({}, step) : step))
+      : []
+    return {
+      type: String(id),
+      kind: str(row && row.kind ? row.kind : 'meeting-type'),
+      label: row ? str(row.label || '') : '',
+      purpose: row ? str(row.purpose || '') : '',
+      declared: Boolean(face && face.declared),
+      subjectRequired: Boolean(procedure && procedure.subjectRequired),
+      hasProcedure: steps.length > 0,
+      procedureSteps: steps.length,
+      procedure: { steps, count: steps.length },
+      narrowed: Boolean(face && face.narrowed === true),
+      narrowingTo: face && face.narrowed === true && Array.isArray(face.allow) ? face.allow.length : null,
+      allowedTools: face && face.narrowed === true && Array.isArray(face.allow) ? face.allow.slice() : null,
+      narrowingReason: face && face.reason ? String(face.reason) : null,
+      undeclared: Boolean(procedure && procedure.known === false),
+    }
+  })
+  return {
+    ok: true,
+    tool: 'vibe_v5_meeting',
+    action: 'types',
+    count: types.length,
+    types,
+    typeCatalogSource: 'packs/v5r/meeting-procedures.js::MEETING_TYPES + MEETING_PROCEDURES (kind / procedure.steps / subjectRequired) × packs/v5r/meeting-tool-face.js::MEETING_TYPE_TOOL_FACES (工具面收窄)',
+    means: '六型就是从这两张声明里读出来的，这里没有第二份手维表。convene 时 type 对着同一份目录校验，工具面收窄也在同一轮打开（applyMeetingTypeFace）；`procedureSteps` 是该型被绑定的必走步数，空就是「不绑步骤」而不是「没有程序」（看 `hasProcedure`）。',
+  }
+}
+
 function toolMeeting(args = {}, { kernel } = {}) {
   // ★★ ROUND 47: the rulings READ lives on this face (the pack owns the ruling cards it teaches members to file).
   if (String(args.action) === 'rulings') return toolMeetingRulings(args, { kernel })
+  // ★ WAVE 2 (audit E33): `action:"types"` is a READ of that same catalogue — six rows, their declared
+  // `procedure.steps` count and the narrowing each applies to the tool face. It dispatches BEFORE `validateMeetingArgs`
+  // because that validator owns the *convene* vocabulary and would refuse a word that means "read".
+  if (String(args.action) === 'types') return meetingTypeCatalog()
   // ★★ FINDING (j) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12): the agent opened a SCHEDULED
   // meeting and then read it back with `{action:'status', id}` on THIS face; it got
   // 「VMU_INVALID_ARGUMENT: meeting needs an agenda」 and reasonably suspected that status had fallen through to the
@@ -2490,7 +2638,12 @@ function toolMeeting(args = {}, { kernel } = {}) {
   // (`vmu.meetings.conveneRequiresChair`: a convene that installs a chair must name that chair as its actor) — two
   // locks, because a member calling the kernel directly is the other door, and neither lock claims to be the whole door.
   const member = requireChairSeat(kernel, args.member, 'meeting (convening)').id
-  const roster = membersOf(kernel).roster().filter((m) => m.state === 'live').map((m) => m.id)
+  const liveRoster = membersOf(kernel).roster().filter((m) => m.state === 'live').map((m) => m.id)
+  // ★ WAVE 2 (audit E9): 「设定了会议参与人员就在范围内」 had no door on this face — the roster was ALWAYS every live
+  // member, so a chair narrowing the meeting could not narrow anything. `members` (and its alias `roster`) is now read
+  // here and handed to the kernel, which validates it (index-naming refusals) and records where it came from.
+  const declaredRoster = has(args.members) ? args.members : (has(args.roster) ? args.roster : null)
+  const roster = declaredRoster === null ? liveRoster : declaredRoster
   // ★ GOAL ROUND 3 — THE TYPE. Until now this line was `type: 'ordinary'` HARDCODED into the call below: the rule says
   // 「院士可以设置会议的类型」 and the academician could not set it at all. The type is now a parameter, validated against
   // the pack's own catalog with the legal list named in the refusal; the kernel ADDITIONALLY validates it against the
@@ -2609,11 +2762,18 @@ function toolMeeting(args = {}, { kernel } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'durationMs must be an integer inside [300000, 7200000] (30 minutes .. 2 hours); got ' + JSON.stringify(durationMsRaw),
       'pass this meeting\u2019s own upper bound in ms, or omit it to use vmu.meetings.hardLimitMs (extendlimit raises an OPEN meeting\u2019s bound; there is no unbounded choice)')
   }
-  const opened = kernel.meetings.open({ ...(wantedId !== null ? { id: wantedId } : {}), type, chair: member, actor: member, roster, materials: str(args.agenda), secretary, wallLimitMs: durationMs,
+  const opened = kernel.meetings.open({ ...(wantedId !== null ? { id: wantedId } : {}), type, chair: member, actor: member,
+    ...(declaredRoster === null ? { roster } : { members: declaredRoster }),
+    // ★ WAVE 2 (audit E6): 「会议要有有意义的标签」 is enforced on the face the rule talks about. The kernel rail is
+    // opt-in (`labelRequired`) so direct service callers and the ~70 unlabelled fixtures keep working; a PACK face that
+    // is the rule's own tool passes true and gets the named refusal when neither `kind` nor `title` was given.
+    labelRequired: true, kind, materials: str(args.agenda), secretary, wallLimitMs: durationMs,
     subject: subject === null || subject === undefined ? null : subject, at, title, sequence,
     subjectGate: subjectGate ? { allowed: true, applicable: subjectGate.applicable === true, form: subjectGate.form || null,
       proofVia: subjectGate.proofVia || null, provenance: subjectGate.provenance || null, proofBasis: subjectGate.proofBasis || null,
-      proofChecked: subjectGate.proofChecked === true, note: subjectGate.note || null } : null,
+      // ★ 闸判过的形态与它「没核过什么」一起发布：只给 proofChecked 的话，`proofContentChecked:false` 这条披露就消失在回执里。
+      proofChecked: subjectGate.proofChecked === true, proofContentChecked: subjectGate.proofContentChecked === true,
+      looksLikeIdentifier: subjectGate.looksLikeIdentifier === true, note: subjectGate.note || null } : null,
     procedure: procedureFor(type) })
   // ★ 可读回的事实：预约不是"一个被收下的参数"，而是会议对象的状态。`state`/`scheduledFor` 由内核回执给出，
   // 这一面只转述；`scheduleNote` 只在真的进入 scheduled 时出现（不要给立即召开的会议编一句预约说明）。
@@ -2631,6 +2791,13 @@ function toolMeeting(args = {}, { kernel } = {}) {
     title: opened && opened.title !== undefined ? opened.title : title,
     procedure: proc.procedure, procedureBinding: proc.binding, procedureNote: proc.note, pendingSteps: proc.pendingSteps,
     kind, agenda: str(args.agenda), formalAgenda: args.formal_agenda === true, secretary,
+    // ★ WAVE 2 (E9/E6): the roster a narrowed meeting was convened with must be READABLE, not just accepted.
+    roster: opened && Array.isArray(opened.roster) ? opened.roster : null,
+    rosterNarrowed: opened && opened.rosterNarrowed === true,
+    rosterSource: opened && opened.rosterSource !== undefined ? opened.rosterSource : null,
+    rosterMeans: opened && opened.rosterMeans !== undefined ? opened.rosterMeans : (opened && Array.isArray(opened.roster)
+      ? 'this meeting was convened over exactly this roster (`rosterNarrowed` says whether it is narrower than the live roster, `rosterSource` says who supplied it). The roster bounds who may be counted present and who is on the order queue'
+      : null),
     state, scheduledFor, at, scheduleNote,
     // ★★ ROUND 101 (E10b): the chair set the bound, so the receipt must READ IT BACK. The kernel returns it on
     // the open receipt; this face used to drop it, so `durationMs` would have been a parameter nobody could verify
@@ -2653,7 +2820,9 @@ function toolMeeting(args = {}, { kernel } = {}) {
       // ★ run-8 finding A: the gate now ADMITS a declared-only proof, so the receipt must carry the honesty the gate
       // bought — otherwise the read face would be more flattering than the decision that produced it.
       proofBasis: subjectGate.proofBasis || null,
-      proofChecked: subjectGate.proofChecked === true, note: subjectGate.note || null } : null,
+      // ★ 闸判过的形态与它「没核过什么」一起发布：只给 proofChecked 的话，`proofContentChecked:false` 这条披露就消失在回执里。
+      proofChecked: subjectGate.proofChecked === true, proofContentChecked: subjectGate.proofContentChecked === true,
+      looksLikeIdentifier: subjectGate.looksLikeIdentifier === true, note: subjectGate.note || null } : null,
     enforced: enforcedOf([subjectGate]), enforcedScope: ENFORCED_SCOPE,
     note: 'the original could also PROPOSE a meeting from a non-chair seat and let the chair convene it; this face has no propose path (named gap: procedure/propose). ★★ THIS FACE ONLY CONVENES: for status/summary/snapshot/close/extend/extendlimit/proceed/lapse/ballot/speak/hand/hands/order/invite/invitedspeak/attend/flow/overrideorder use vibe_vmu_meeting { action, id } - the kernel face, which reaches the same meeting object. Measured on a full live run: an agent tried summary/close HERE, got nothing, and reported it as a missing capability; the capability existed one face over and nothing said so. ★ D9 邀请面 (this round): hand/invite/invitedspeak/order/attend now really reach a SERVICE meeting through that face — hand = a member queues itself, invite = the CHAIR puts one member or an ordered list (members:[…]) on the floor queue, order = reads the real queue back, invitedspeak = the invited voice speaks in the minutes, attend = marks a member present (an invitation NEVER marks anybody present: attendance is its own act and only it counts for the quorum). silent/end/hands stay primitive-only and the kernel face refuses them on a service meeting BY NAME. ★ A floor-order override (flow/overrideorder) still needs vmu.meetings.orderMode declared by the deployment; v5r does not declare it, so on a real run it is refused by name rather than silently ignored. ★ The recommended procedure is a RECOMMENDATION: skipping it, reordering it, or ignoring it entirely is allowed and unchecked.' }
 }
@@ -2752,7 +2921,7 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
 // slot may `adopt` (`BLUEPRINT_ADOPT_SLOT` in `./blueprint.js`, compared against the roster row — the kernel never learns
 // the name, same rule as `PAPER_CONSULT_ROLES`). Staleness is a SIGNAL: `state` reports `updatedAt/ageMs/stale`; nothing
 // here refuses because a blueprint is old (a reminder that blocks work is a gate nobody asked for).
-function toolBlueprint(args = {}, { kernel } = {}) {
+function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
   const action = str(args.action || 'state').trim()
   const records = recordsOf(kernel)
   const pathFromArg = has(args.path) ? str(args.path).trim() : ''
@@ -2797,7 +2966,19 @@ function toolBlueprint(args = {}, { kernel } = {}) {
     })
   }
   if (action === 'adopt') {
-    const member = requireChairSeat(kernel, args.member || args.by, 'blueprint (adoption)')
+    // ★ WAVE 2 (audit B6): adopt judged the CALLER-SUPPLIED `args.member`, so a resident could adopt by naming the
+    // chair id. The seat is a fact of the CALL.
+    const callerMember = resolveTurnMember(kernel, exec)
+    const namedForAdopt = has(args.member) ? str(args.member) : (has(args.by) ? str(args.by) : null)
+    if (callerMember !== null && namedForAdopt !== null && namedForAdopt !== callerMember) {
+      throw refuse('VMU_NOT_PERMITTED',
+        'blueprint adopt was called by member "' + callerMember + '" but names "' + namedForAdopt + '": a member cannot adopt in another member name (the seat is read from the CALL, not from the request text)',
+        'adopt as yourself (omit member), or let the chair call adopt; the office (root) may adopt without a member seat')
+    }
+    // ★ WAVE 2 (audit B6): the CALLER is judged FIRST — a resident that names NO member still cannot adopt, and the
+    // refusal names the seat it read from the call (`is in slot "member"`) instead of asking it for a member id.
+    // Office/root calls resolve to `null` here, so they keep resolving the named member exactly as before.
+    const member = requireChairSeat(kernel, callerMember || args.member || args.by, 'blueprint (adoption)')
     const draft = str(args.draft || args.id || '').trim()
     if (draft === '') {
       throw refuse('VMU_INVALID_ARGUMENT', '落成蓝图需要指名哪一份草案（draft）',
@@ -3786,21 +3967,23 @@ export const V5R_PACK_TOOLS = Object.freeze([
     name: 'vibe_v5_record_proposition',
     description: 'Record a proposition/lemma card in your library. REQUIRES statement, value, motive and p (your probability that it is true); the card is settled when p is 1 or 0. ★ p=1 IS A CONCLUSION, NOT A PREFERENCE: writing 1 is refused BY NAME unless the write carries one of the three conclusions the rule accepts — a promoted verified row on THIS card (the kernel record, not an argument), a unanimous debate ruling (`debate_ruling:{mode:"unanimous", value:1, subject:"<this card id>", ballotId}`), or a passed Lean run PLUS the conformance ruling (`lean_job` + `lean_conformance:"conform"`). Estimating in (0,1) is always allowed. '
       + '★ LITERATURE (B2): a proposition taken from a reference may enter the verified track directly — pass `literature_ref:"<author, source, theorem/page>"` together with `p:1` (the gate accepts this citation as the fourth evidence form), then `vibe_v5_verified_promote{card, warrant_kind:"literature", literature_ref:"<the same citation>"}`; the verified row warrant IS the citation, so "why is this settled" answers with a source instead of "someone decided". An empty citation is not a citation. '
-+ '★ PROOF REGISTRATION (B6): pass `proof_ref` (where the proof/refutation lives, e.g. "Members/<m>/Propos/<pid>.md#正式证明") and `proof_state:"complete"|"draft"` — this is a SELF-REPORT, recorded and traceable, NOT a verification: a debate on this card still needs machine evidence (a passed Lean run on it, or a verified row). Only `proof_ref` ⇒ state is recorded as draft.'
++ '★ PROOF REGISTRATION (B6): pass `proof_ref` (where the proof/refutation lives, e.g. "Members/<m>/Propos/<pid>.md#正式证明") and `proof_state:"complete"|"draft"` — this is a SELF-REPORT, recorded and traceable, NOT a verification. ★ BUT `proof_state:"complete"` IS ADMITTED ONLY WITH LEAN EVIDENCE: the same write must carry `lean_job` pointing at a settled PASSED Lean run, or `lean_conformance` (the fidelity ruling) — otherwise it is refused by name (VMU_INVALID_ARGUMENT) and nothing is written, because a declared-complete proof with no Lean registration may not enter debate. ★ ONCE A CARD IS COMPLETE IT IS LOCKED: a later write to the SAME card id is refused (VMU_STATE) — correct it under a NEW card id and keep the locked card as history. Only `proof_ref` ⇒ state is recorded as draft. '
+      + '★ 进度 (PROGRESS) IS A CARD FIELD: pass `progress:"<where the work stands>"` (e.g. "证明写到第 3 步，缺引理 L") and it is kept as its own labelled line `- 进度：…` inside the card body — it survives into the durable row and every read face — and the receipt echoes it back with `progressMeans`. The rule L14 names 进度 as one of the card records, so it is not a passing remark. '
+      + '★ p must be a NUMBER IN [0,1]: an out-of-range value (e.g. p:1.5) is refused by name and the card is NOT written.'
       + ' ★ 代记（REGISTRAR DUTY）：研究所的正式记录本由**所办**登记。收完一位成员的回执后，用本工具并传 `member:"<该成员id>"` 把该成员声明的卡片登记进去——`member` 就是卡的作者（owner），**必须是该成员而不是你自己**；否则持有者会变成所办，后续通知/认领都会指错人。',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, literature_ref: { type: 'string' }, track: { type: 'string' }, payload: { type: 'object' }, debate_ruling: { type: 'object' }, member: { type: 'string' } },
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, literature_ref: { type: 'string' }, progress: { type: 'string' }, track: { type: 'string' }, payload: { type: 'object' }, debate_ruling: { type: 'object' }, member: { type: 'string' } },
     handler: gatedCardHandler('vibe_v5_record_proposition'),
   },
   {
     name: 'vibe_v5_record_method',
-    description: 'Record a theory/method/tool card in your library. REQUIRES content, value, motive and p.',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, content: { type: 'string', required: true }, notation: { type: 'string' }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, member: { type: 'string' } },
+    description: 'Record a theory/method/tool card in your library. REQUIRES content, value, motive and p. ★ p must be in [0,1] (an out-of-range p is refused by name and the card is NOT written). ★ 进度 (PROGRESS) IS A CARD FIELD: an optional `progress` is kept as its own labelled line `- 进度：…` inside the card body and echoed in the receipt with `progressMeans`. ★ `proof_state:"complete"` needs Lean evidence (`lean_job` of a settled passed run, or `lean_conformance`) and LOCKS the card id afterwards.',
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, content: { type: 'string', required: true }, notation: { type: 'string' }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, progress: { type: 'string' }, member: { type: 'string' } },
     handler: gatedCardHandler('vibe_v5_record_method'),
   },
   {
     name: 'vibe_v5_record_subproblem',
-    description: 'Record a sub-problem card in your library. REQUIRES statement, value, motive and p.',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, member: { type: 'string' } },
+    description: 'Record a sub-problem card in your library. REQUIRES statement, value, motive and p. ★ p must be in [0,1] (an out-of-range p is refused by name and the card is NOT written). ★ 进度 (PROGRESS) IS A CARD FIELD: an optional `progress` is kept as its own labelled line `- 进度：…` inside the card body and echoed in the receipt with `progressMeans`. ★ `proof_state:"complete"` needs Lean evidence (`lean_job` of a settled passed run, or `lean_conformance`) and LOCKS the card id afterwards.',
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, progress: { type: 'string' }, member: { type: 'string' } },
     handler: gatedCardHandler('vibe_v5_record_subproblem'),
   },
   {

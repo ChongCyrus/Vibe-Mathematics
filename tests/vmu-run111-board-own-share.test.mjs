@@ -45,25 +45,25 @@ const fieldOf = (r, key) => (r.fields || []).find((f) => f.key === key) || {}
   const a = read('r-1')
   const plan = fieldOf(a, 'plan')
   const value = String(plan.value || '')
-  ok(value.startsWith('你的（r-1'), '§1.1 ② leads with the caller\'s own slice', value)
+  ok(value.startsWith('属于你（r-1，未完成 2 条）'), '§1.1 ② leads with the caller\'s own slice, in the ONE prefix the prompt teaches', value)
   ok(value.includes('t-1') && !/t-2（/.test(value.split('｜全所')[0] || ''), '§1.2 the own slice lists r-1\'s tasks, not r-2\'s',
     value.split('｜全所')[0])
   ok(value.includes('全所：未完成'), '§1.3 the institute total is still printed after the own slice', value)
   const b = read('r-2')
   const valueB = String(fieldOf(b, 'plan').value || '')
   ok(valueB !== value, '§1.4 two members read two different plans (the old board gave one)', { r1: value, r2: valueB })
-  ok(valueB.startsWith('你的（r-2') && valueB.includes('t-2'), '§1.5 r-2 sees its own share', valueB)
+  ok(valueB.startsWith('属于你（r-2，未完成 1 条）') && valueB.includes('t-2'), '§1.5 r-2 sees its own share', valueB)
 }
 
 // ── §2 ③ counts the caller's own states before the institute's ───────────────────────────────────────────────────
 {
   const a = read('r-1')
   const tasks3 = String(fieldOf(a, 'tasks').value || '')
-  ok(tasks3.startsWith('属于你（r-1）'), '§2.1 ③ leads with the caller\'s own counts', tasks3)
-  ok(tasks3.includes('属于你（r-1）2 条'), '§2.2 the own count is the ledger\'s (r-1 owns t-1/t-3)', tasks3)
+  ok(tasks3.startsWith('属于你（r-1，未完成 2 条）：'), '§2.1 ③ leads with the caller\'s own counts', tasks3)
+  ok(tasks3.includes('属于你（r-1，未完成 2 条）：open 1 · doing 1'), '§2.2 the own count is the ledger\'s (r-1 owns t-1/t-3)', tasks3)
   ok(tasks3.includes('｜全所：共 4 条'), '§2.3 the institute totals follow', tasks3)
   const b = read('r-2')
-  ok(String(fieldOf(b, 'tasks').value || '').includes('属于你（r-2）2 条'), '§2.4 r-2\'s own count is its own (t-2/t-4)',
+  ok(String(fieldOf(b, 'tasks').value || '').includes('属于你（r-2，未完成 1 条）：open 1 · done 1'), '§2.4 r-2\'s own count is its own (t-2/t-4)',
     fieldOf(b, 'tasks').value)
 }
 
@@ -75,17 +75,17 @@ const fieldOf = (r, key) => (r.fields || []).find((f) => f.key === key) || {}
     '§3.1 ① carries a scopeNote naming it as the institute\'s single copy', objective)
   const rendered = renderStatusBoard(a)
   ok(rendered.includes('全所总任务，内核只有一份'), '§3.2 the renderer prints the scope note', rendered.split('\n')[0])
-  ok(rendered.includes('你的（r-1'), '§3.3 the rendered block carries the own slice', rendered)
+  ok(rendered.includes('属于你（r-1，未完成 2 条）'), '§3.3 the rendered block carries the own slice', rendered)
 }
 
 // ── §4 a member with NO assigned task still gets an honest line ──────────────────────────────────────────────────
 {
   const a = read('r-acad')
   const plan = String(fieldOf(a, 'plan').value || '')
-  ok(plan.startsWith('你的（r-acad）'), '§4.1 a member with no tasks still leads with its own (empty) slice', plan)
+  ok(plan.startsWith('属于你（r-acad，未完成 0 条）'), '§4.1 a member with no tasks still leads with its own (empty) slice', plan)
   ok(plan.includes('没有分派给你且未完成的任务'), '§4.2 the empty slice says so in words, not by omission', plan)
   const tasks3 = String(fieldOf(a, 'tasks').value || '')
-  ok(tasks3.includes('属于你（r-acad）0 条'), '§4.3 the count line names zero rather than dropping the member', tasks3)
+  ok(tasks3.includes('属于你（r-acad，未完成 0 条）：'), '§4.3 the count line names zero rather than dropping the member', tasks3)
 }
 
 // ── §5 the INSTITUTE view (no member) is unchanged: no own-slice text, and two reads are byte-identical ──────────
@@ -94,7 +94,7 @@ const fieldOf = (r, key) => (r.fields || []).find((f) => f.key === key) || {}
   const b = read(null)
   const plan = String(fieldOf(a, 'plan').value || '')
   const tasks3 = String(fieldOf(a, 'tasks').value || '')
-  ok(!plan.includes('你的（'), '§5.1 the office board has no member slice', plan)
+  ok(!plan.includes('你的（') && !plan.includes('属于你（'), '§5.1 the office board has no member slice', plan)
   ok(!tasks3.includes('属于你（'), '§5.2 the office board has no member counts', tasks3)
   ok(!fieldOf(a, 'objective').scopeNote, '§5.3 the office board does not claim a scope note', fieldOf(a, 'objective'))
   ok(JSON.stringify(a.fields) === JSON.stringify(b.fields), '§5.4 the board is a pure read: same input, same fields')

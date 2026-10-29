@@ -105,7 +105,9 @@ ok(statusAfter.parsed && statusAfter.parsed.ok === true && statusAfter.parsed.st
 
 // ── ③ REUSING THE NAME IS REFUSED, AND THE REFUSAL QUOTES THE ARCHIVE ─────────────────────────────────────────
 console.log('=== 3. AN ARCHIVED NAME IS NOT SILENTLY REUSABLE ===')
-const reuse = await call(b, 'vibe_v5_meeting', { agenda: 'R19 试图用回同一个 id', kind: 'verify-request', type: 'debate', member: 'r-chair', subject: 'p-demo', id: mid })
+// ★ WAVE 2 (E6 + debateSubjectGate): an unlabelled debate is refused BEFORE the id rail and a free-text debate
+// subject is refused too, so this probe convenes the same TYPE the first call used — the point here is the ID.
+const reuse = await call(b, 'vibe_v5_meeting', { agenda: 'R19 试图用回同一个 id', kind: 'sync', member: 'r-chair', id: mid })
 const refused = reuse.parsed && reuse.parsed.ok === false ? reuse.parsed : null
 ok(refused !== null && refused.code === 'VMU_MEETING_ID_ARCHIVED',
   '③ the pack face refuses the archived id by name (`VMU_MEETING_ID_ARCHIVED`)', reuse.parsed && { ok: reuse.parsed.ok, code: reuse.parsed.code })

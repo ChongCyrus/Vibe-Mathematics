@@ -156,26 +156,56 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
   // into the archive): a quality claim that cannot stop the deliverable from being produced is a comment, not a gate. The
   // gate runs BEFORE the delegate, so a refusal writes nothing at all — the archive keeps the previous state.
   //
-  // WHY `render` AND NOT `recordFinal`: finalisation is already owned by the E4 office-consult gate, and the flow's own
-  // editor path is exercised by papers with no parts (E4 tests drive consult-only papers); a quality rule that fires there
-  // would judge text that does not exist yet. `render` is also the face the tool layer calls for `action:"render"`, so the
-  // gate has a real consumer today (no new mechanism without a consumer).
+  // ★ F4 — TWO ENTRY POINTS, ONE CHECK. `render` alone is not enough: the kit's `recordFinal` writes the `finalized`
+  // state and only THEN renders, so a quality refusal arrived after the mutation and depended on the kit's rollback
+  // landing in the ledger (measured: the restore PUT is issued, but the next read returned the `finalized` body, i.e. a
+  // refused paper was durably recorded as delivered). So `recordFinal` is wrapped here as well and PRE-PASSES the same
+  // gate before the delegate runs: nothing is written on the refusing path. Both entry points throw the refusal built by
+  // `gateError` from the one verdict, so the code/message/hint are identical by construction, not by copy — and the gate
+  // is consulted exactly ONCE per finalisation (`gatePassed` suppresses the nested `render` check).
   //
   // Why "no parts ⇒ skip" is not a hole: with no parts there is no body to check, and `render` on such a paper is already
   // incomplete for its own reasons (reported in `missing`). With parts, one of the three rules always applies — and a paper
-  // that cites nothing, holds no evidence, or drops the institute's own verified results is refused BY NAME (the id and the
-  // member are in the message). `flow.qualityGate` exposes the same verdict without throwing.
+  // that cites nothing, holds no evidence (per part, ★ F3b), or drops the institute's own verified results is refused BY
+  // NAME (the id / the empty part and the member are in the message). `flow.qualityGate` exposes the same verdict without
+  // throwing.
+  // ONE refusal shape for every path: `render` and `recordFinal` throw the SAME object shape, so "the same code" is not a
+  // copied string that can drift - both are built here, from the verdict the single gate returned.
+  const gateError = (verdict) => {
+    const error = new Error(verdict.message)
+    error.code = verdict.code
+    error.hint = verdict.hint
+    if (Array.isArray(verdict.missing)) error.missing = verdict.missing
+    // ★ F3b: the thrown refusal carries the machine-readable list too, so a caller (recordFinal included) can name the
+    // empty parts without parsing the sentence.
+    if (Array.isArray(verdict.emptyParts)) error.emptyParts = verdict.emptyParts
+    if (Array.isArray(verdict.members)) error.members = verdict.members
+    return error
+  }
+  // A finalisation PRE-PASSES the gate and then lets the delegate render through the already-passed gate: the gate is
+  // consulted exactly once per finalisation (never twice, never zero times), and the delegate never re-judges the text it
+  // was handed. Counted rather than boolean so a nested/re-entrant call cannot swallow the gate.
+  let gatePassed = 0
   const kitRender = flow.render
   flow.render = (args = {}) => {
-    const verdict = flow.qualityGate(args)
-    if (!verdict.ok) {
-      const error = new Error(verdict.message)
-      error.code = verdict.code
-      error.hint = verdict.hint
-      if (Array.isArray(verdict.missing)) error.missing = verdict.missing
-      throw error
+    if (gatePassed === 0) {
+      const verdict = flow.qualityGate(args)
+      if (!verdict.ok) throw gateError(verdict)
     }
     return kitRender(args)
+  }
+  // ★ F4 (the second half): hanging the gate on `render` alone still lets the FINALISING path mutate the paper before a
+  // refusal - the state is written `finalized`, then the delegate's render refuses, and whether the caller ever sees the
+  // paper un-finalised depends on the kit's rollback landing in the ledger. Measured: after a refused finalisation the
+  // state read back `finalized` (the restore PUT is issued, the read returns the pre-restore body), i.e. the annex still
+  // carried the lie the gate exists to stop. So `recordFinal` is gated BEFORE the delegate runs: a refusal now writes
+  // nothing at all, and the refusal is the render gate's own code/message/hint (built by `gateError`, not restated).
+  const kitFinal = flow.recordFinal
+  flow.recordFinal = async (args = {}) => {
+    const verdict = flow.qualityGate(args)
+    if (!verdict.ok) throw gateError(verdict)
+    gatePassed += 1
+    try { return await kitFinal(args) } finally { gatePassed -= 1 }
   }
 
   return flow

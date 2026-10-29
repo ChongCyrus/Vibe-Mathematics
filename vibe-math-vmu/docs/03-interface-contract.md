@@ -393,6 +393,7 @@
 | **`VMU_PACK_PROMPT_POLICY_FAILED`** | ★ **PHASE 6 · 轮 11**：★ **一条 pack 提示词策略在合成或 apply 时抛错** —— ★ 由 `composePromptPolicies` 捕获并**点名 policy id ＋ 原始错误**；★ 回合循环把它变成**具名拒**，★ **绝不静默跳过** | 提示词管线（`kernel/pack.js` 的 `composePromptPolicies` → `kernel/turn/index.js` 装配） | ✅（★ 须同时给出 policy id 与原始原因；★ **不许把策略错误当成"没有策略"**） |
 | **R96 · `VMU_REGISTRY_BOUNDARY`** | 一个**不跨注册表**的动词被用来指向**另一张注册表**里确实存在的对象（拒绝码不再谎称「对象不存在」；`boundaryOnly:true` + `askedAction` + `registry` + `actionCrosses:false` 都在回执上） | 会议面（`tools/meeting.js#primitiveMissError`） | ✅（须给**真实的动作名**与**交叉集合**；消息第一句就说「只认 PRIMITIVE 表、绝不交叉」） |
 | **R96 · `VMU_REGISTRY_BOUNDARY`** | 一个**不跨注册表**的动词被用来指向**另一张注册表**里确实存在的对象（拒绝码不再谎称「对象不存在」；`boundaryOnly:true` + `askedAction` + `registry` + `actionCrosses:false` 都在回执上） | 会议面（`tools/meeting.js#primitiveMissError`） | ✅（须给**真实的动作名**与**交叉集合**；消息第一句就说「只认 PRIMITIVE 表、绝不交叉」） |
+| **R120 · `VMU_MEETING_LABEL_MISSING`** | 会议行没有标签人话名 —— 召集者在调用上打开了 `labelRequired`（v5r pack 面**固定打开**，见 `packs/v5r/tools.js` 的召集分支），而这次调用既没给 `title` 也没给 `kind` ⇒ 具名拒，回执点名缺的是「标题或类型」并给两条可复制修法（补 `title` 再召集；或用 `kind` 说明它属于哪类）。服务面默认不要求标签（`labelRequired:false`），所以服务调用与既有夹具不受影响 | 会议召集（`kernel/meetings.js` 的 `openSeq`） | ✅ |
 | **R97 · `VMU_PACK_V5R_VERIFIED_NEEDS_JUDGE`** | `vibe_v5_verified_promote` 想把一张 p=0 的卡写进定论轨，但没有带上「一致为 0 的那次裁决」：证伪也是定论，必须说清是哪场辩论判的（p=1 沿用同一道四证据闸） | `vibe_v5_verified_promote` / `verified.js#promoteVerified` | ✅（`debate_ruling{mode:"unanimous",value:0,subject}`；缺它具名拒） |
 
 **R97 · 拒绝回执的附加事实（所有 `VMU_*` 拒绝共用）**：一个拒绝在抛出/返回时附带的事实（`boundaryOnly`、`askedAction`、`actionCrosses`、`registry`、`enforced`、`settingValues`、`shape`、`cause` 以及后续任何新事实）必须原样到达调用者；回执只排除**信封自身的键**（`ok`/`code`/`message`/`hint`）与机器细节（`name`/`stack`），不可表示的值得丢弃而不是让拒绝失败，超长字符串截断。实现只有一处：`vibe-math-vmu/host.js` 的 `refusalFacts()`（面级 `refused()` 与宿主桥 `toHostSpec()` 共用）。
@@ -1187,7 +1188,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **475** 个码，**逐行**给出状态 ✓：其中 **436** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **476** 个码，**逐行**给出状态 ✓：其中 **437** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1234,7 +1235,7 @@
 | `VMU_AUDIT_WRITE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/alerts.js`、`vibe-math-vmu/kernel/audit.js`、`vibe-math-vmu/kernel/paper.js` | 代码里有该码字符串 ✓ |
 | `VMU_AWARD_RATIONALE_REQUIRED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_BALLOT_ABSTAIN_NOT_ALLOWED` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
-| `VMU_BALLOT_CHOICE_COUNT` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
+| `VMU_BALLOT_CHOICE_COUNT` | **已实现 ✓** | `vibe-math-vmu/kernel/ballot.js`、`vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_BALLOT_FROZEN` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_BALLOT_METHOD_UNSUPPORTED` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js` | 代码里有该码字符串 ✓ |
 | `VMU_BALLOT_MIN_VOTES_NOT_MET` | **已实现 ✓** | `vibe-math-vmu/kernel/ballotbox.js`、`vibe-math-vmu/packs/v3/middleware/verify.js`、`vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
@@ -1436,6 +1437,7 @@
 | `VMU_MEETING_EMERGENCY_NOT_ALLOWED` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_ID_ARCHIVED` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_INTERRUPT_DENIED` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
+| `VMU_MEETING_LABEL_MISSING` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_LIGHT_NO_TRUTH` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/minutes.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_ORDER_DENIED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MEETING_QUORUM_LOST` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |

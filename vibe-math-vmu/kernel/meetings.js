@@ -282,7 +282,9 @@ function mergeLiveMeeting(local, stored) {
     if (theirs > mine) { local[k] = theirs; changed.push(k) }
   }
   // fields this instance never filled in: adopt, do not overwrite local knowledge
-  for (const k of ['subject', 'title', 'materials', 'reason', 'committeeReport', 'recess', 'startedLate', 'waitStartedAt', 'waitDecisionDue', 'previousConfirmed']) {
+  // ★★ ROUND 120: `kind` and the roster's provenance are carried facts too — a row written by another instance that
+  // knew them must be ADOPTED, not lost by the merge.
+  for (const k of ['subject', 'title', 'kind', 'materials', 'reason', 'committeeReport', 'recess', 'startedLate', 'waitStartedAt', 'waitDecisionDue', 'previousConfirmed', 'rosterNarrowed', 'rosterSource']) {
     const empty = (v) => v === null || v === undefined || v === false
     if (empty(local[k]) && !empty(stored[k])) { local[k] = stored[k]; changed.push(k) }
   }
@@ -380,6 +382,66 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     return (raw === undefined || raw === null || raw === '') ? def : n(raw)
   }
   const arr = (v) => (Array.isArray(v) ? v.slice() : [])
+  // ★★ ROUND 120 (E9 — 「邀请入会的成员」 must be able to NARROW the list): the caller of `open` was handing over the
+  // WHOLE live bench, so a chair that invited two colleagues still got a meeting whose roster named everyone, and no
+  // read face could tell "everyone was invited" from "two were". The roster is a carried FACT with its own provenance
+  // now, and the voter universe is intersected with it instead of the bench. The wording lives in ONE place because
+  // three faces (the open receipt, summary, meetingView) must tell the same story in the same words.
+  const ROSTER_MEANS = 'the roster is the INVITATION LIST of this meeting (who was convened), not the bench. ' +
+    'rosterNarrowed:true means convene was given an explicit subset (`members`, or a non-empty `roster`) and the ' +
+    'meeting read back exactly those members; benchSize is how many live members the deployment had when it was ' +
+    'convened (0 = this deployment exposes no membership seam, so no narrowing can be shown). The CHAIR is seated by ' +
+    'opening even when it is not on the list — that is why `present` can name a member outside `roster`; `attend()` ' +
+    'later adds a member, and then the roster is the invitation PLUS the members who joined. `eligible` is who may ' +
+    'vote: the declared voter seats (vmu.meetings.eligibleSeats) intersected with THIS meeting roster, or the whole ' +
+    'roster when no seat rule is declared. A count cannot answer "who": these fields are the ids themselves.'
+  /** The deployment's LIVE BENCH — rows when the membership seam answers (best-effort: a seam that throws must not
+   *  stop a convene). A deployment with no seam has no bench; the read face then says `benchSize:0` rather than
+   *  inventing a universe. */
+  const benchRowsOf = () => {
+    try {
+      const rows = (members && typeof members.roster === 'function') ? (members.roster() || []) : []
+      return Array.isArray(rows) ? rows : []
+    } catch (e) { return [] }
+  }
+  const benchIdsOf = () => benchRowsOf()
+    .map((x) => String(x && typeof x === 'object' ? x.id : x))
+    .filter((s) => s !== '')
+  /** Who may VOTE — the declared seats intersected with a meeting's roster (the whole live bench when no meeting is
+   *  named). ★★ E9: this used to read the bench only, so a member who was NOT invited still appeared as eligible in
+   *  the ballot face; the narrowed roster had no voter consequence at all. */
+  const eligibleFor = (m) => {
+    const rows = benchRowsOf()
+    if (!K.eligibleSeats.length) return { restricted: false, seats: [], ids: [], universe: 'no-seat-rule' }
+    const rosterSet = (m && Array.isArray(m.roster)) ? new Set(m.roster.map(String)) : null
+    const ids = rows
+      .filter((x) => x && String(x.state) === 'live' && K.eligibleSeats.includes(String(x.slot)) && (rosterSet === null || rosterSet.has(String(x.id))))
+      .map((x) => String(x.id))
+    return { restricted: true, seats: K.eligibleSeats.slice(), ids, universe: rosterSet === null ? 'the live bench' : 'this meeting roster' }
+  }
+  /** The roster / present / eligible block shared by `summary()` and `meetingView()` — one fact, one wording. */
+  const rosterBlockOf = (m) => {
+    const roster = Array.isArray(m && m.roster) ? m.roster.map(String) : []
+    const present = (m && m.present && typeof m.present.size === 'number') ? [...m.present].map(String).sort() : []
+    const elig = eligibleFor(m)
+    return {
+      roster,
+      rosterNarrowed: !!(m && m.rosterNarrowed === true),
+      rosterSource: (m && typeof m.rosterSource === 'string') ? m.rosterSource : 'default',
+      rosterMeans: ROSTER_MEANS,
+      benchSize: (m && Number.isFinite(Number(m.rosterBench))) ? Number(m.rosterBench) : 0,
+      present,
+      presentCount: present.length,
+      presentOutsideRoster: present.filter((id) => !roster.includes(id)),
+      eligible: elig.restricted ? elig.ids : roster,
+      eligibleRestricted: elig.restricted,
+      eligibleSeats: elig.seats,
+      eligibleUniverse: elig.universe,
+      eligibleMeans: elig.restricted
+        ? 'who may vote here: the declared voter seats (' + (elig.seats.join(', ') || '(none)') + ') intersected with THIS meeting roster — a member on the bench but not invited is not eligible here'
+        : 'no voter-seat rule is declared (vmu.meetings.eligibleSeats is empty), so every member on this meeting roster may vote',
+    }
+  }
 
   // ROUND 31 (task-149 C③): the ELEVEN strict `vmu.meetings.*` domains live in
   // `kernel/meetingdomain.js` (read side REFUSES BY NAME instead of clamping); `D.values` supplies the keys
@@ -563,6 +625,21 @@ function gateRow(g) {
   })
 }
 /**
+ * The STEP LIST of a procedure, in whichever legitimate shape carries it: a bare array, `{steps:[…]}`, or the
+ * `{procedure:{steps:[…]}}` that `procedureRow()` actually stores from a pack `procedureFor()`. ★★ ROUND 120 (E36):
+ * the reader below only accepted two of those shapes, so a debate convened with a four-step recommendation reported
+ * `skeletonSteps: 0` — the field said "nothing was proposed" about a skeleton the same receipt had just printed.
+ */
+function stepsOf(p) {
+  if (p === null || p === undefined) return []
+  if (Array.isArray(p)) return p
+  if (typeof p !== 'object') return []
+  if (Array.isArray(p.steps)) return p.steps
+  if (Array.isArray(p.procedure)) return p.procedure
+  if (p.procedure && typeof p.procedure === 'object' && Array.isArray(p.procedure.steps)) return p.procedure.steps
+  return []
+}
+/**
  * ★★ RUN 117 (E36): the recommended skeleton versus what this floor ACTUALLY did.
  *
  * The convene receipt prints a four-step skeleton with `binding: "recommendation"` — deliberately not a gate. A reader
@@ -573,10 +650,9 @@ function gateRow(g) {
 function procedureProgressOf(m) {
   const skeleton = m && m.procedure && typeof m.procedure === 'object' ? m.procedure : null
   // `procedureRow()` stores the STEP LIST under `procedure` (the convene caller passes it as `procedure:` and the row
-  // keeps `{procedure, binding, note, pendingSteps}`) — so read BOTH spellings: a skeleton the store holds in one shape
-  // and a caller passing the other is exactly how "0 steps proposed" would become a false statement.
-  const steps = skeleton === null ? []
-    : (Array.isArray(skeleton.procedure) ? skeleton.procedure : (Array.isArray(skeleton.steps) ? skeleton.steps : []))
+  // keeps `{procedure, binding, note, pendingSteps}`), and a pack skeleton nests it once more (`{binding, steps}`) —
+  // so every legitimate spelling is read by `stepsOf`, and a count that used to be 0 now describes the skeleton.
+  const steps = stepsOf(skeleton)
   const entries = m && m.minutes && Array.isArray(m.minutes.entries) ? m.minutes.entries : []
   const speeches = entries.filter((e) => e && e.kind === 'speech').length
   const motions = m && Array.isArray(m.motions) ? m.motions.length : 0
@@ -589,10 +665,18 @@ function procedureProgressOf(m) {
     : 0
   return {
     skeletonSteps: steps.length,
-    skeletonBinding: skeleton && typeof skeleton.binding === 'string' ? skeleton.binding : null,
+    skeletonBinding: (skeleton && typeof skeleton.binding === 'string') ? skeleton.binding
+      : ((skeleton && skeleton.procedure && typeof skeleton.procedure === 'object' && typeof skeleton.procedure.binding === 'string') ? skeleton.procedure.binding : null),
     speeches, motions, queued, present,
     advancing: speeches + motions + queued > 0,
-    means: 'the procedure is a RECOMMENDATION, not a gate: these are counts of what this floor actually did (speeches recorded in the minutes, motions raised, members on the floor queue, seats present) — not a step index, because the framework never holds a meeting to a step and would have to invent one to report it',
+    // ★★ ROUND 120 (E36): every field here is a COUNT, and the sentence must say so field by field — a reader who
+    // mistook `skeletonSteps` for "the step we are on" would read a recommendation as a progress bar.
+    means: 'the procedure is a RECOMMENDATION, not a gate: every field here is a COUNT of what is on record — ' +
+      'skeletonSteps counts the steps the recommended skeleton LISTS (a property of the recommendation, not progress ' +
+      'through it), speeches counts speech entries in the minutes, motions counts motions raised, queued counts ' +
+      'members waiting on the floor queue, present counts seated members, and advancing is true when any of those ' +
+      'counts is above zero. None of them is a step index: the framework never holds a meeting to a step and would ' +
+      'have to invent one to report it',
   }
 }
 
@@ -2201,13 +2285,18 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
      * (the framework imposes none); `restricted:true` + `ids` is the eligible list a ballot takes. This is the
      * SECOND consumer of the one criterion (`K.eligibleSeats`) — the first is the `vote()` gate above.
      */
-    eligibleVoterIds() {
-      if (!K.eligibleSeats.length) return { ok: true, restricted: false, seats: [], ids: [] }
-      const roster = (members && typeof members.roster === 'function') ? (members.roster() || []) : []
-      const ids = roster
-        .filter((x) => x && String(x.state) === 'live' && K.eligibleSeats.includes(String(x.slot)))
-        .map((x) => String(x.id))
-      return { ok: true, restricted: true, seats: K.eligibleSeats.slice(), ids }
+    eligibleVoterIds({ meeting = null } = {}) {
+      // ★★ ROUND 120 (E9): an optional meeting narrows the eligible list to ITS roster (see `eligibleFor`). Reading
+      // only the bench made a member who was NOT invited eligible in the ballot face, so a narrowed roster had no
+      // voter consequence at all. No meeting named ⇒ the deployment-wide list, exactly as before.
+      const wanted = (meeting === null || meeting === undefined) ? null : String(meeting)
+      const m = wanted === null ? null : (live.get(wanted) || archive.filter((x) => String(x.id) === wanted)[0] || null)
+      if (wanted !== null && m === null) {
+        throw deny('VMU_NO_SUCH_OBJECT', 'no such meeting: ' + wanted,
+          'omit the meeting to read the deployment-wide eligible list, or name a live/archived meeting')
+      }
+      const e = eligibleFor(m)
+      return { ok: true, restricted: e.restricted, seats: e.seats, ids: e.ids, meeting: m ? m.id : null, universe: e.universe }
     },
 
     /**
@@ -2261,6 +2350,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         stateMeans: MEETING_STATE_MEANING[m.state] || null, reason: m.reason === undefined ? null : m.reason,
         convenedBy: m.convenedBy === undefined ? null : m.convenedBy,
         title: m.title === undefined ? null : m.title,
+        // ★★ ROUND 120 (E9): the INVITATION LIST with its provenance, plus the present/eligible universe read from the
+        // same fact — the summary could name a meeting but not who was invited to it, and `title` alone cannot say
+        // whether the list was narrowed. One shared block, one wording (see `rosterBlockOf`).
+        ...rosterBlockOf(m),
         materials: m.materials === undefined ? null : m.materials,
         subject: m.subject === undefined ? null : m.subject,
         // ★★ ROUND 49 / F-25: the gate that ADMITTED this debate is part of the decision record, so it is readable
@@ -2322,6 +2415,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         // accepted the service id and refused the primitive one. `registry` names the table; the primitive read face
         // carries the same field with the other value.
         registry: 'service',
+        // ★★ ROUND 120 (E6): the KIND the convene carried, readable back on the face members read. `title` was echoed
+        // here and `kind` was not, so a reader could not tell a division from a sync meeting unless the title happened
+        // to say so — one carried label was readable and the other was write-only.
+        kind: m.kind === undefined ? null : m.kind,
         liveWhileArchived: viewTwin !== null,
         liveWhileArchivedMeans: viewTwin === null
           ? 'only one object carries this id here (no archived record with the same name)'
@@ -2374,8 +2471,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         // ★ ROUND 19: the roster as a READABLE FACT, next to the speakers. A count (quorum().roster) cannot answer
         // "who", and minutes() drops silent members — so a member who was rostered but did not speak was invisible to
         // "ask every debating member", and the ask face had to guess from speakers alone (live run 26 asked 1 of 2).
-        roster: (Array.isArray(m.roster) ? m.roster.map(String) : []),
-        presentCount: (m.present && typeof m.present.size === 'number') ? m.present.size : 0,
+        // ★★ ROUND 120 (E9): the roster as an INVITATION LIST with its provenance, and the present/eligible universe
+        // read from the same fact. `rosterNarrowed`/`rosterMeans` say whether convene honoured an explicit subset, so
+        // "everyone was invited" and "two were" stop looking identical in the face a member actually reads.
+        ...rosterBlockOf(m),
         stateMeans: MEETING_STATE_MEANING[m.state] || null,
         loop: 'meeting-ask-answer',
         note: '★ motions/votes/state here describe the MEETING’s own ask()+answer()+motion cycle. A member answering a vibe_vmu_turn prompt is a DIFFERENT loop: read vibe_vmu_turn’s receipts (awaiting/memberPrompt/deliveryPath) for that one. hasDeliverSeam on the primitive face refers to open({deliver}), not to the turn loop’s deliveryPath.', reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,
@@ -2653,7 +2752,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   // not a defect of the rail (the rail only guards a convene that INSTALLS a chair); it is a missing FACT: who convened.
   // `convenedBy` names the originator when it is not the caller's own act — 'v5r.stall-meeting' for the automatic path,
   // null when the caller acted directly. Without it, an automatic meeting and a chair's meeting are indistinguishable.
-  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null, adoptForeign = false, reuseArchivedId = false, convenedBy = null,
+  function openSeq({ id = null, type = 'ordinary', chair = null, roster = [], members = null, labelRequired = false, size = null, materials = null, kind = null, secretary = null, at = null, reason = null, subject = null, title = null, actor = null, sequence = null, adoptForeign = false, reuseArchivedId = false, convenedBy = null,
     // ★★ ROUND 49 / F-25 — THE GATE'S VERDICT MUST SURVIVE THE RECEIPT. run 49 measured the office reading
       // `subjectGate` off the open receipt, then finding that NOTHING could read it afterwards: summary/status carried
       // no gate, snapshot addresses the primitive registry (and refused), so the only record of "why this debate was
@@ -2832,9 +2931,62 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       throw deny('VMU_INVALID_ARGUMENT', 'wallLimitMs must be an integer inside [300000, 7200000]; got ' + JSON.stringify(wallLimitRequested),
         'pass the meeting\u2019s own upper bound in milliseconds (30 minutes .. 2 hours), or omit it to use vmu.meetings.hardLimitMs (extendlimit raises an OPEN meeting\u2019s bound; there is no unbounded choice)', enforced)
     }
+    // ★★ ROUND 120 (E9 — 「邀请入会的成员」 must be able to NARROW the list): an EXPLICIT list is honoured exactly, and
+    // the narrowing is a FACT the receipts carry. `members` is the same list as `roster` under the name the convene
+    // rule uses; both names are accepted rather than one silently winning. An explicitly empty list is refused by
+    // name: "invite nobody" does not describe a meeting, and reading it as "everyone" would be the old defect again.
+    const explicitMembers = members !== null && members !== undefined
+    const explicitRoster = explicitMembers || (Array.isArray(roster) && roster.length > 0)
+    if (explicitMembers && !Array.isArray(members)) {
+      throw deny('VMU_INVALID_ARGUMENT', 'members must be an ARRAY of member ids (the SUBSET this meeting invites, not the whole bench); got ' + typeof members,
+        'pass members: ["r-1", "r-2"], or omit it and pass roster (the same list under its other name)', enforced)
+    }
+    if (roster !== null && roster !== undefined && !Array.isArray(roster)) {
+      throw deny('VMU_INVALID_ARGUMENT', 'roster must be an ARRAY of member ids; got ' + typeof roster,
+        'pass roster: ["r-1", "r-2"], or omit it to keep the caller-supplied list', enforced)
+    }
+    const rosterList = []
+    const rosterSeen = new Set()
+    ;(explicitMembers ? members : arr(roster)).forEach((x, i) => {
+      if (typeof x !== 'string' || x.trim() === '') {
+        throw deny('VMU_INVALID_ARGUMENT', (explicitMembers ? 'members' : 'roster') + '[' + i + '] must be a member id (a non-empty string); got ' + (x === null ? 'null' : typeof x),
+          'e.g. { members: ["r-1", "r-acad"] } — ids, not member objects', enforced)
+      }
+      const id = x.trim()
+      if (rosterSeen.has(id)) return
+      rosterSeen.add(id)
+      rosterList.push(id)
+    })
+    if (explicitRoster && rosterList.length === 0) {
+      throw deny('VMU_INVALID_ARGUMENT', (explicitMembers ? 'members' : 'roster') + ' was given but names nobody: an explicitly empty invitation list cannot describe a meeting',
+        'name at least one member id, or omit the list to keep the caller-supplied roster', enforced)
+    }
+    const bench = benchIdsOf()
+    const sameIdSet = (list, other) => {
+      const want = new Set(other)
+      if (want.size !== list.length) return false
+      return list.every((id) => want.has(id))
+    }
+    // A list that happens to BE the whole bench is not a narrowing: the default behaviour must keep reading
+    // `rosterNarrowed:false`, or the flag would be true for every convene and would stop meaning anything.
+    const rosterNarrowed = (explicitRoster && bench.length > 0) ? !sameIdSet(rosterList, bench) : false
+    const rosterSource = explicitMembers ? 'members' : (explicitRoster ? 'roster' : 'default')
+    // ★★ ROUND 120 (E6 — A MEETING MUST BE NAMED BY SOMETHING): `kind` and `title` are TWO carried labels, and `kind`
+    // was neither echoed on the open receipt nor readable on the status face, so the one field that says what SORT of
+    // meeting this is could only be seen by opening the store. `labelRequired` is the policy switch: it is OPT-IN
+    // because the kernel's own callers convene with neither label and a mandatory rail would refuse them all; the
+    // pack's convene face is the caller that turns it on.
+    const kindRef = (kind === null || kind === undefined || String(kind).trim() === '') ? null : String(kind).trim()
+    if (labelRequired === true && titleRef === null && kindRef === null) {
+      throw deny('VMU_MEETING_LABEL_MISSING',
+        'a meeting must carry a meaningful label, and neither `kind` nor `title` was given — no reader could tell what this meeting is or find it in a list',
+        'pass kind:"<what sort of meeting>" (e.g. sync, division, verify-request) or title:"<one line naming it>"; an unlabelled meeting is only readable to the person who convened it', enforced)
+    }
     const m = {
-      id: mid, type: String(type), kind: kind === null ? null : String(kind), chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),
-      roster: arr(roster).map(String), present: new Set(chair === null ? [] : [String(chair)]),
+      id: mid, type: String(type), kind: kindRef, chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),
+      roster: rosterList, present: new Set(chair === null ? [] : [String(chair)]),
+      // ★★ ROUND 120 (E9): WHO was invited, whether that list is narrower than the bench, and which input named it.
+      rosterNarrowed, rosterSource, rosterBench: bench.length,
       openedAt: ms, state: scheduledFor === null ? 'open' : 'scheduled', turns: 0, tokens: 0, wallStartMs: ms,
       // ★ PHASE 12 D1 — the schedule's own state. `startedLate` is not decoration: a scheduled meeting that had to
       // wait is a different institutional fact from one that started on time, and the minutes must be able to say so.
@@ -2874,12 +3026,15 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     live.set(mid, m)
     markState(m, m.state)
     counters.opened += 1
-    const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, convenedBy: m.convenedBy, state: m.state, scheduledFor: m.scheduledFor, confidentiality: m.confidentiality, sequence: { index: 0, total: 1 + seqEntries.length }, enforced, enforcedScope: ENFORCED_SCOPE }
+    const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, convenedBy: m.convenedBy, state: m.state, scheduledFor: m.scheduledFor, confidentiality: m.confidentiality, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, sequence: { index: 0, total: 1 + seqEntries.length }, enforced, enforcedScope: ENFORCED_SCOPE }
     pushReceipt(receipt)
-    say({ type: m.state === 'scheduled' ? 'meetings/scheduled' : 'meetings/opened', at: ms, meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, scheduledFor: m.scheduledFor, enforced, enforcedScope: ENFORCED_SCOPE })
+    say({ type: m.state === 'scheduled' ? 'meetings/scheduled' : 'meetings/opened', at: ms, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, scheduledFor: m.scheduledFor, rosterNarrowed: m.rosterNarrowed === true, enforced, enforcedScope: ENFORCED_SCOPE })
     // ★ type/subject are ALSO at the top level, not only inside `receipt`: a caller that asked for them should not
     // have to know the receipt envelope's shape to read back what it just set (the same reason `attend` returns `late`).
-    return { ok: true, meeting: mid, type: m.type, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, wallLimitMs: m.wallLimitMs, wallLimitMsSource: m.wallLimitMsSource, sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+    // ★★ ROUND 120 (E6/E9): `kind` and the roster's provenance are echoed next to `title`, because a caller that asked
+    // for them should not have to know the receipt envelope's shape to read back what it just set (the same reason
+    // `attend` returns `late`). `rosterMeans` says what the list IS, in the one wording all three faces share.
+    return { ok: true, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, wallLimitMs: m.wallLimitMs, wallLimitMsSource: m.wallLimitMsSource, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     
   }
 

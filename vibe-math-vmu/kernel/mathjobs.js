@@ -33,6 +33,11 @@
 
 import { mint as mintId, observeIds } from './ids.js'
 import { declaredDefault } from './settings-defaults.js'
+// G2: the ONE reader for `vmu.math.maxParallel`, shared with the policy layer. Importing it (rather than
+// re-deriving the value here) is the fix: two readers of one setting must read the same thing. The key name
+// stays spelled out in `MATH_KEYS` below (that list is what this face CLAIMS to read, and the settings index
+// resolves carriers from it).
+import { readMaxParallel } from './mathtools.js'
 
 export const MATH_KEYS = Object.freeze([
   'vmu.math.computation',
@@ -460,7 +465,12 @@ export function createMathJobs(opts) {
       mode: String(readKey('vmu.math.mode') || 'typed'),
       engines: Array.isArray(enginesRaw) ? enginesRaw.map(String) : [],
       timeoutMs: n('vmu.math.timeoutMs', 120000),
-      maxParallel: Math.max(1, n('vmu.math.maxParallel', 1)),
+      // ★ G2 / ONE READER: NOT a local `Math.max(1, n('vmu.math.maxParallel', 1))` any more. This queue and
+      // `kernel/mathtools.js` plan() rail are the two enforcers of the same live key; each had its own reader and
+      // they disagreed after an operator write (queue: 2, policy layer: the construction-time 1 — the status face
+      // reported the stale one). Both now call `readMaxParallel()`, which takes the same canonical fallback chain
+      // (live view → declared default → 1) and the same floor. `cfg()` is built per job, so this stays live.
+      maxParallel: readMaxParallel(o.settings),
       maxJobs: n('vmu.math.maxJobs', 0),                                // 0＝不限
       keepReceipts: n('vmu.math.keepReceipts', 50),
       requireSeedForRandom: readKey('vmu.math.requireSeedForRandom') !== false,

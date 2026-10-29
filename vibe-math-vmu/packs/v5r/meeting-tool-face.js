@@ -10,10 +10,14 @@
  *      过滤），所以这里绝不直接下发一张手写名单；先把身份可见表（`kernel.toolsView({member})`）读出来求交，
  *      交集才是 allow。读不到身份面就**具名拒**（`VMU_ENGINE_UNAVAILABLE`），因为"看不见身份面"时算出的任何
  *      allow 都可能是扩权。
- *   ② **未声明的类型走默认，且是具名决定**。没有在这张表里的类型 ⇒ `declared:false` + `reason`，不设 override，
- *      按身份面原样执行 —— 不许静默下发空集（那会让成员"什么都调不了"，看起来像故障）。
- *   ③ **收窄后为空 ⇒ 跳过收窄并披露**（`narrowing:{applied:false, reason:"empty-intersect", …}`）。空工具面不是"严格"，
- *      是坏配置——但坏配置不该把整场会杀掉：收窄只服务这一轮，失效时如实说、不装 override（因此不扩权）。
+ *   ② **没声明收窄的类型 ⇒ 原样身份面 + 具名说明**（`narrowing:{applied:false, reason:"type-declares-no-narrowing"}`）。
+ *      「按类型收窄」是一个**决议**：本类型决议为"不收窄"，于是这一轮的工具面就是该成员的身份面，一个都不动；
+ *      回执必须写明是这条决议，而不是让人从"没有 override"里猜。表里没有的未知类型同理（`declared:false`），
+ *      但理由文字不同 —— 两者都不设 override。★ 这是 RUN 120 的 E12 修复点：此前这里直接返回 `rows: []`，
+ *      回执没有任何一句"为什么没生效"，读起来和"收窄了但没人看"完全相同。
+ *   ③ **声明了收窄、求交后却为空 ⇒ 跳过收窄并披露**（`narrowing:{applied:false, reason:"empty-intersect", …}`）。
+ *      空工具面不是"严格"，是坏配置——但坏配置不该把整场会杀掉：收窄只服务这一轮，失效时如实说、不装 override
+ *      （因此不扩权）。注意这是**唯一**一种"收窄没生效"的空集：②根本不求交，所以不会产生空集。
  *
  * 这张表是机构政策（pack），内核不认识任何会议类型 id（第一原则：换机构＝换 pack）。
  */
@@ -103,12 +107,51 @@ export function intersectFace(visibleNames, face) {
  * 把收窄装到这一轮的成员上。返回 `{face, rows, clear}`；`clear()` 必须被调用（`finally`），否则 override 会留到
  * 下一个回合（host 的 `vibe_vmu_turn` 会清掉它自己设的那些，清不掉我们设的）。
  *
- * 读不到身份面 ⇒ `VMU_ENGINE_UNAVAILABLE`（具名：谁、为什么、怎么改）。收窄后为空 ⇒ `VMU_STATE`。
+ * 读不到身份面 ⇒ `VMU_ENGINE_UNAVAILABLE`（具名：谁、为什么、怎么改）—— **只对声明了收窄的类型**：那种情况下
+ * 算不出的 allow 可能扩权。声明"不收窄"的类型一个 override 都不设，读不到身份面只影响回执里那句说明，不影响
+ * 这一轮能否开（`visible:null` + `identityFaceUnreadable` 如实说，而不是把整轮变成 `VMU_STATE`）。
+ * 收窄后为空 ⇒ **不拒这一轮**，跳过收窄并披露（`narrowing.applied:false`，见 ③）。
  */
 export function applyMeetingTypeFace({ kernel, type, members, refuse }) {
   const face = meetingTypeFace(type)
-  if (face.narrowed !== true) return { face, rows: [], clear: () => {} }
   const ids = Array.isArray(members) ? members.map((m) => String(m && typeof m === 'object' ? m.id : m)).filter((id) => id !== '') : []
+  // ★★ ROUND 120 (E12 — 「收窄」只对声明了收窄的类型才有意义): A TYPE THAT DECLARES NO NARROWING IS NOT A ROUND
+  // THAT CANNOT RUN. This used to return `rows: []` and say nothing, so a debate round (and every other non-narrowing
+  // type) went out with an empty narrowing disclosure: the caller could not tell "this type decided not to narrow"
+  // from "the narrowing silently did nothing". The face here IS the member's own identity face — unchanged, no
+  // override installed, nothing widened. We read the identity face BEST-EFFORT only to be able to SAY what was left
+  // untouched: an unreadable visibility provider must not kill a round that narrows nothing (there is no allow to get
+  // wrong), so it is reported as `visible:null` + `identityFaceUnreadable` instead of `VMU_ENGINE_UNAVAILABLE`.
+  if (face.narrowed !== true) {
+    const rows = ids.map((id) => {
+      let visible = null
+      let unreadable = null
+      try {
+        const view = kernel.toolsView({ member: id })
+        visible = (view && Array.isArray(view.tools) ? view.tools : []).map((t) => t && t.name).filter((n) => typeof n === 'string')
+      } catch (err) {
+        unreadable = (err && err.message ? err.message : String(err))
+      }
+      return {
+        member: id,
+        // `null` (not 0) when the identity face could not be read: a count of 0 would claim "he sees nothing".
+        visible: visible === null ? null : visible.length,
+        // `allow:null` (not `[]`) is the whole point: NOTHING was computed, so no receipt can read as "allowed nothing".
+        allow: null,
+        dropped: [],
+        unavailable: [],
+        narrowing: {
+          applied: false,
+          reason: 'type-declares-no-narrowing',
+          declared: face.declared === true,
+          typeReason: face.reason,
+          identityFaceVisible: visible === null ? null : visible.length,
+          identityFaceUnreadable: unreadable,
+        },
+      }
+    })
+    return { face, rows, clear: () => {} }
+  }
   // ★ 两阶段：先把每个人的 allow 都算出来（任何一个人算不出来就整体拒），**再**设置 override。
   // 一边算一边设会让"第二个成员读不到身份面"这种情况把第一个成员的 override 留在那里 —— 拒绝之后还留着收窄，
   // 是比不收窄更糟的状态（没人知道它为什么在）。
@@ -138,16 +181,21 @@ export function applyMeetingTypeFace({ kernel, type, members, refuse }) {
     planned.push({ member: id, visible: names.length, allow, dropped, unavailable })
   }
   const rows = []
+  // ★ Only the overrides THIS call installed are cleared. A row whose narrowing was disclosed as NOT applied keeps its
+  // identity face and must never be un-set here: clearing a member we never touched would drop an override the host
+  // itself installed, and the receipt would claim we cleaned up something that was never ours.
+  const installed = []
   for (const row of planned) {
     // A row whose narrowing was NOT applied keeps its identity face: installing an empty allow would hide every tool.
     if (!(row.narrowing && row.narrowing.applied === false)) {
       kernel.setMemberToolOverride({ member: row.member, all: false, allow: row.allow.slice() })
+      installed.push(row.member)
     }
     rows.push(row)
   }
   return {
     face,
     rows,
-    clear: () => { for (const r of rows) kernel.clearMemberToolOverride(r.member) },
+    clear: () => { for (const member of installed) kernel.clearMemberToolOverride(member) },
   }
 }

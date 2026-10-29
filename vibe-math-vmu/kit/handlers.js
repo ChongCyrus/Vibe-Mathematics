@@ -344,7 +344,25 @@ function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extr
         'vmu.records.tracks declares: ' + tracks.join(', '))
     }
     const kind = has(args.kind) ? str(args.kind) : defaultKind
+    // ★ AUDIT C5a (v5r rule L14: 「布尔概率估计（0-1）」): the range used to be checked ONLY by the READER
+    // (`packs/v5r/verified.js:parseCardBody`), so this writer accepted `p:1.5` and put it on disk — the read face then
+    // named a row the write face had created. The check belongs at the ONE place every card write passes through, and
+    // the refusal says the card was NOT written: a caller who mistakes a silent clamp for a success writes twice.
+    if (has(args.p)) {
+      const pNum = Number(args.p)
+      if (!Number.isFinite(pNum) || pNum < 0 || pNum > 1) {
+        throw refuse('VMU_INVALID_ARGUMENT',
+          'p must be a number in [0,1] (布尔概率估计); got ' + JSON.stringify(args.p),
+          'the card was NOT written — pass p between 0 and 1 (e.g. p:0.6); p=1 additionally needs the verified mark, see `vibe_v5_verified_promote`')
+      }
+    }
+    // ★ AUDIT C5b (rule L14: 「进度」 is one of the card's records): a proposition card had NO progress field at all.
+    // It is kept the SAME way the progress track keeps one — its own labelled line inside the body, so it survives into
+    // the durable row and every read face instead of living only in a receipt.
+    const progressArg = args.progress !== undefined && args.progress !== null && String(args.progress).trim() !== ''
+      ? String(args.progress).trim() : null
     const body = cardBody(args, required, extra)
+      + (progressArg === null ? '' : '\n- 进度：' + progressArg)
       + (has(args.payload) && args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload)
         ? '\n' + Object.entries(args.payload).map(([k, v]) => '- ' + k + '：' + str(v)).join('\n')
         : '')
@@ -366,6 +384,12 @@ function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extr
     return Object.assign({
       ok: true, tool, track, kind,
       recordId: written.id, rev: written.rev, settled: isSettled,
+      // ★ AUDIT C5b: the receipt says whether a progress figure came in and WHERE it was kept — a card's 进度 is now a
+      // card field, not a passing remark. Same shape as `vibe_v5_record_progress`'s own echo.
+      progress: progressArg,
+      progressMeans: progressArg === null
+        ? 'no `progress` figure was passed with this call, so the card body holds only the card fields (this is said here, not left to be inferred from a missing field)'
+        : 'the `progress` figure was kept as its own labelled line ("- 进度：…") inside the card body, so it survives into the durable row and every read face',
       note: 'the card body carries the original fields (value/motive/p); settling follows p=1 or p=0',
     }, ownerEcho(records, written.id))
   }

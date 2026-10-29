@@ -63,6 +63,19 @@ export function refuse(code, message, hint) {
   return err
 }
 
+/**
+ * E18 — HOW MANY CHOICES ONE CAST CARRIES. A scalar is one choice; an ARRAY (a ranked/preference list, the shape
+ * `instantRunoffTally` reads) is its length; an object carrying `choices` is that list's length (the shape the poll
+ * board's rule speaks about). PURE, and the ONLY count this face uses: a rule enforced in one place and counted in
+ * another is exactly how `maxChoices: 1` came to be falsified.
+ */
+const choiceCount = (value) => {
+  if (Array.isArray(value)) return value.length
+  if (value && typeof value === 'object' && Array.isArray(value.choices)) return value.choices.length
+  if (value === undefined || value === null || value === '') return 0
+  return 1
+}
+
 /** The default tally: unanimous booleans decide, anything else stays undecided WITH a reason. */
 export function defaultTally({ votes, eligible, quorumRule }) {
   // F26: the decisive set is defined by the FIXED kind vocabulary (`for`/`against`), with the legacy `decisive`
@@ -74,6 +87,15 @@ export function defaultTally({ votes, eligible, quorumRule }) {
   if (eligible.length > 0 && decisive.length < eligible.length) {
     return { outcome: 'undecided', reason: 'not every eligible member has voted yet',
       detail: { voted: decisive.length, eligible: eligible.length } }
+  }
+  // ★ E18: a MULTI-CHOICE cast is a ranked list, not a boolean, so this tally has NO rule for it. Before this the
+  // box answered "votes are split" — a false reason for a real refusal (nothing was split; the tally is blind here).
+  // Named instead, so the caller selects `instantRunoffTally` (or injects a tally) rather than being told a lie.
+  const multiChoice = decisive.filter((v) => Array.isArray(v.value))
+  if (multiChoice.length) {
+    return { outcome: 'undecided', reason: 'a multi-choice cast needs a multi-choice tally: ' + multiChoice.length
+      + ' decisive vote(s) carry a ranked list and defaultTally only reads 1/0',
+      detail: { rule: quorumRule, multiChoice: multiChoice.length, decisive: decisive.length } }
   }
   const allFor = decisive.every((v) => v.value === DECISIVE_VOTE.FOR)
   const allAgainst = decisive.every((v) => v.value === DECISIVE_VOTE.AGAINST)
@@ -221,6 +243,11 @@ export function createBallot({
   openers = null,
   minEligible = 0,
   requiresTarget = false,
+  // E18 (independent audit): a ballot MAY declare how many choices ONE cast carries — `maxChoices`, with `max` as its
+  // alias (the spelling the poll board's rules use). Before this the cap existed ONLY in `kernel/ballotbox.js`, so
+  // `kernel.ballot({ maxChoices: 1 })` silently dropped it and a two-choice cast was recorded under a one-choice rule.
+  maxChoices = null,
+  max = null,
   // F31+ (Round 6): the durable commit log (`createDurableCommitLog`). Injected because the STORE is the host's;
   // this face supplies the protocol. Absent ⇒ `status().gate.durable === false`, named rather than assumed.
   durableQueue = null,
@@ -252,6 +279,20 @@ export function createBallot({
   const dedupMs = Number.isFinite(Number(dedupWindowMs)) && Number(dedupWindowMs) > 0 ? Math.floor(Number(dedupWindowMs)) : 0
   const openerList = Array.isArray(openers) ? openers.map((x) => String(x)) : null
   const minElectorate = Number.isFinite(Number(minEligible)) && Number(minEligible) > 0 ? Math.floor(Number(minEligible)) : 0
+  // E18: the declared choice cap, resolved ONCE. `null` = this ballot declares NO cap (it is not silently 1: the
+  // m-vote's 1/0 is one choice by construction). A cap is a NUMBER of choices, so a negative/fractional declaration
+  // is refused where it is made instead of being rounded into a different rule — and the alias `max` is gone by the
+  // time anything else reads it.
+  let choiceCap = (() => {
+    const declared = maxChoices === null || maxChoices === undefined ? max : maxChoices
+    if (declared === null || declared === undefined) return null
+    const n = Number(declared)
+    if (!Number.isFinite(n) || n < 0 || Math.floor(n) !== n) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'maxChoices must be a whole number >= 0 (got ' + JSON.stringify(declared) + ')',
+        'declare how many choices ONE cast may carry (1 = a single-choice ballot); omit it to declare no cap at all')
+    }
+    return n
+  })()
 
   const record = (what, detail) => {
     const row = Object.assign({ at: clock(), what }, detail)
@@ -299,13 +340,43 @@ export function createBallot({
       record('cast-refused', { member, reason: 'duplicate' })
       throw refuse('VMU_STATE', 'this member already voted: ' + String(member), 'one vote per member per ballot')
     }
-    if (kind === 'decisive' && !castValid(member, value)) {
+    // ★ E18: THE CHOICE COUNT IS ENFORCED HERE, ON THE CAST, FOR EVERY RECORDED CHOICE. `maxChoices`/`max` is a rule
+    // of THIS ballot, so a rule written down in `status()` and checked nowhere is a comment. The refusal uses the same
+    // code as the poll board (`VMU_BALLOT_CHOICE_COUNT`) and BOTH the message and the hint print the legal count, so
+    // the caller learns the rule rather than only the complaint.
+    const choices = choiceCount(value)
+    if (choiceCap !== null && choices > choiceCap) {
+      record('cast-refused', { member, value, reason: 'too-many-choices', choices, maxChoices: choiceCap })
+      const tooMany = refuse('VMU_BALLOT_CHOICE_COUNT', '选择数 ' + choices + ' 多于规则 maxChoices=' + choiceCap,
+        '按该票箱规则最多选 ' + choiceCap + ' 个：这次投了 ' + choices
+          + ' 个选择 (this ballot allows at most ' + choiceCap + ' choice(s) per cast; got ' + choices + ')')
+      // The numbers travel as FIELDS as well as in the sentence: a receipt can print the legal count without parsing
+      // prose, and a caller can branch on the rule instead of matching Chinese text (host refusal facts copy them).
+      tooMany.choices = choices
+      tooMany.maxChoices = choiceCap
+      tooMany.legalChoices = choiceCap
+      throw tooMany
+    }
+    // A MULTI-CHOICE cast (a ranked/preference list) is ONE vote whose value IS the list, so validity runs PER CHOICE
+    // (a list with one bad entry is not a vote). Only a ballot that DECLARED a cap accepts a list: without a declared
+    // cap there is no multi-choice rule to count against, and quietly accepting one would be the same falsified max.
+    const multi = Array.isArray(value) && choiceCap !== null
+    if (kind === 'decisive' && multi) {
+      const bad = value.filter((choice) => !castValid(member, choice))
+      if (bad.length) {
+        record('cast-refused', { member, value, reason: 'invalid-choice', bad })
+        throw refuse('VMU_INVALID_ARGUMENT', 'every choice in a decisive cast must be one this ballot accepts',
+          "refused choice(s) " + JSON.stringify(bad) + ' — the validity predicate is the castValid declared for this ballot')
+      }
+    } else if (kind === 'decisive' && !castValid(member, value)) {
       record('cast-refused', { member, value, reason: 'invalid-value' })
       throw refuse('VMU_INVALID_ARGUMENT', 'a decisive vote must be the boolean 1 or 0',
         'got ' + JSON.stringify(value) + ' (the m-vote rule)')
     }
     // F26: every stored ballot carries EXACTLY ONE of the five fixed kinds — never a free-form label.
-    const voteKind = classifyVote(value, kind)
+    // E18: a multi-choice decisive cast is `decisive` by construction (classifyVote only knows 1/0), which is the kind
+    // `instantRunoffTally` reads — the tally that exists for a ranked list. No sixth vote kind is invented.
+    const voteKind = multi ? 'decisive' : classifyVote(value, kind)
     if (voteKind === null) {
       record('cast-refused', { member, value, kind, reason: 'unclassifiable' })
       throw refuse('VMU_INVALID_ARGUMENT', 'a cast must be one of the declared kinds: ' + VOTE_KINDS.join('/') + ' (or a process reading)',
@@ -319,18 +390,18 @@ export function createBallot({
      * kept for the audit. Nothing is silent: the receipt says `byFidelity`, the row keeps `declared`, and the
      * registry's own trail/bus event names the marker.
      */
-    let stored = { value, kind: voteKind, at: clock() }
-    if (fidelity && kind === 'decisive' && typeof fidelity.applyAbstention === 'function') {
+    let stored = { value: multi ? value.slice() : value, kind: voteKind, at: clock(), choices }
+    if (fidelity && kind === 'decisive' && !multi && typeof fidelity.applyAbstention === 'function') {
       const enforce = fidelity.applyAbstention({ target, by: member, declared: value })
       if (enforce && enforce.enforced === true) {
-        stored = { value: enforce.vote, kind: 'abstain', at: clock(), declared: value,
+        stored = { value: enforce.vote, kind: 'abstain', at: clock(), declared: value, choices,
           byFidelity: true, markerId: enforce.marker === undefined ? null : enforce.marker, reason: enforce.reason || 'fidelity-defect' }
       }
     }
     votes.set(member, stored)
-    record('cast', { member, value: stored.value, kind: stored.kind, declared: value, byFidelity: !!stored.byFidelity })
+    record('cast', { member, value: stored.value, kind: stored.kind, declared: value, choices, byFidelity: !!stored.byFidelity })
     return { ok: true, accepted: true, member, value: stored.value, voteKind: stored.kind, declared: value, kind: stored.kind,
-      byFidelity: !!stored.byFidelity, markerId: stored.markerId || null, votes: votes.size,
+      choices, maxChoices: choiceCap, byFidelity: !!stored.byFidelity, markerId: stored.markerId || null, votes: votes.size,
       note: stored.byFidelity ? 'the declared value was rewritten to an abstention by C-45 (declared fidelity defect)' : undefined }
   }
 
@@ -533,8 +604,8 @@ export function createBallot({
           queue.complete(rec, 'skipped-duplicate')
           continue
         }
-        votes.set(String(op.member), { value: op.value, kind: classifyVote(op.value, op.kind) || 'abstain',
-          at: rec.at, recovered: true, ticket: rec.ticket })
+        votes.set(String(op.member), { value: op.value, kind: Array.isArray(op.value) ? 'decisive' : (classifyVote(op.value, op.kind) || 'abstain'),
+          choices: choiceCount(op.value), at: rec.at, recovered: true, ticket: rec.ticket })
         record('cast-recovered', { member: String(op.member), ticket: rec.ticket, value: op.value })
         queue.complete(rec, 'recovered')
         replayed += 1
@@ -554,6 +625,10 @@ export function createBallot({
         votes: Object.fromEntries([...votes.entries()].map(([k, v]) => [k, { value: v.value, kind: v.kind, recovered: !!v.recovered }])),
         voteCount: votes.size,
         byKind,
+        // E18: the declared choice cap and the choices actually recorded. A cap that is not REPORTED is
+        // indistinguishable from an absent one — and "max 1" is precisely what a reader must be able to check.
+        choices: { max: choiceCap, recorded: [...votes.values()].reduce((n, v) => n + choiceCount(v.value), 0),
+          byVote: [...votes.entries()].map(([k, v]) => ({ member: k, choices: choiceCount(v.value) })) },
         voteKinds: VOTE_KINDS.slice(),
         // F31: the commit gate is observable state (how deep its queue currently is, how much it committed) and
         // F31+ says whether that gate is DURABLE (a store-backed log) or in-process only.
@@ -589,7 +664,7 @@ export function createBallot({
      */
     snapshot() {
       return { apiVersion, face: 'ballot', v: 1, at: clock(),
-        data: { target, quorumRule, eligible: eligible.slice(), frozen, state, outcome: outcome ? JSON.parse(JSON.stringify(outcome)) : null,
+        data: { target, quorumRule, eligible: eligible.slice(), frozen, state, maxChoices: choiceCap, outcome: outcome ? JSON.parse(JSON.stringify(outcome)) : null,
           openedAt, closedAt, votes: Object.fromEntries([...votes.entries()].map(([k, v]) => [k, JSON.parse(JSON.stringify(v))])),
           // F32: the previous settlement travels, so the fold window survives a restart instead of re-announcing.
           lastClose: lastClose ? JSON.parse(JSON.stringify(lastClose)) : null, dedupedVerdicts,
@@ -613,6 +688,19 @@ export function createBallot({
         return { ok: false, restored: false, code: RESUME_CODE.restoreConflict,
           message: 'this ballot already holds ' + votes.size + ' live vote(s): refusing to half-overwrite it',
           hint: 'use a fresh ballot instance, or restore the snapshot that matches the live state' }
+      }
+      // E18: the cap is part of the rule set the snapshot was taken under, so a restore must not silently drop it.
+      // A DIFFERENT cap on a ballot that declared one is a named conflict, never a quiet overwrite of a construction
+      // decision; an undeclared cap adopts the snapshot's, so a resumed ballot keeps enforcing the rule voters saw.
+      if (d.maxChoices !== undefined && d.maxChoices !== null) {
+        if (choiceCap !== null && Number(d.maxChoices) !== choiceCap) {
+          return { ok: false, restored: false, code: RESUME_CODE.restoreConflict,
+            message: 'the snapshot was taken under maxChoices=' + String(d.maxChoices) + ', but this ballot declares ' + String(choiceCap),
+            hint: 'restore into a ballot built with the same maxChoices, or into one that declares none' }
+        }
+        choiceCap = Number(d.maxChoices)
+      } else if (d.maxChoices === null) {
+        choiceCap = null
       }
       state = String(d.state)
       frozen = !!d.frozen

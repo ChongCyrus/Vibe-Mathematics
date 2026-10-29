@@ -120,11 +120,22 @@ try {
   const started = await receipt(v5rBoot, 'vibe_v5_paper', { action: 'start', target: T, participants: [ACAD, R1] })
   ok(started.parsed && started.parsed.ok === true && started.parsed.started && started.parsed.started.status === 'writing',
     '★ 正：start 建出论文并进入 writing', started.parsed && started.parsed.started)
+  // ★ F3b: the part below is walked to a real finalisation, so its evidence must be REAL — a card on the records face that
+  // the pointer resolves against. Written first, through the same tool face a member would use.
+  const card = await receipt(v5rBoot, 'vibe_v5_record_proposition', { id: 'p-pc1', statement: '论文只整理已有证据，不得编造', value: 0.5, motive: '定稿前的证据核对', p: 0.5 })
+  ok(card.parsed && card.parsed.ok === true && card.parsed.recordId === 'p-pc1',
+    '前置：论文要引用的那条证据是记录面上的真卡片（下面的指针能解析）', card.parsed && card.parsed.code)
   const part = await receipt(v5rBoot, 'vibe_v5_paper', {
-    action: 'part', target: T, member: ACAD, part: '第一部分', solution: '测试用的解法正文',
+    // ★ F3b/F4: this paper is walked all the way to a REAL finalisation, and the delivered gate now requires EVERY part
+    // to carry evidence — and the part face resolves each evidence pointer against the records face the moment the part is
+    // written (ROUND 95). So the fixture writes a real proposition card first and cites the pointer it produced, instead of
+    // a decorative string that no record backs.
+    action: 'part', target: T, member: ACAD, part: '第一部分', solution: '测试用的解法正文', evidence: ['Members/' + ACAD + '/Propos/p-pc1.md'],
   })
   ok(part.parsed && part.parsed.ok === true && part.parsed.part && part.parsed.part.ok === true,
-    '★ 正：part 记下一份写作（参与者在写）', part.parsed && part.parsed.part)
+    '★ 正：part 记下一份写作（参与者在写）', part.parsed && part.parsed.part && part.parsed.part.code)
+  ok(part.parsed && part.parsed.evidence && part.parsed.evidence.checked === true && Array.isArray(part.parsed.evidence.resolved) && part.parsed.evidence.resolved.indexOf('p-pc1') !== -1,
+    '★ 正：这条证据指针在写 part 的那一刻就解析到了真卡片（不是等到 render 才发现）', part.parsed && part.parsed.evidence)
   const adv1 = await receipt(v5rBoot, 'vibe_v5_paper', { action: 'advance', target: T })
   ok(adv1.parsed && adv1.parsed.advance && adv1.parsed.advance.to === 'reviewing',
     '★ 正：advance 把 writing 推进到 reviewing', adv1.parsed && adv1.parsed.advance)

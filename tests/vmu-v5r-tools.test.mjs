@@ -677,8 +677,9 @@ try {
     '★ ② a malformed part is recorded as a NAMED failure (not silently dropped) and nothing lands', { code: malformed.code })
   ok(dispatchMod.paperDispatchStatus().last && dispatchMod.paperDispatchStatus().last.ok === false,
     '★ ④ the last refusal is VISIBLE through paperDispatchStatus() (what status() reports)', dispatchMod.paperDispatchStatus().last)
-  // ③ a REAL write reply: dispatched to paper.recordPart
-  const goodAnswer = { paper_part: { target: T2, title: '回执标题', solution: '回执正文' } }
+  // ③ a REAL write reply: dispatched to paper.recordPart. ★ F3b: the reply carries evidence, because this paper is
+  // walked to a real finalisation and the delivered gate now refuses BY NAME a part whose evidence list is empty.
+  const goodAnswer = { paper_part: { target: T2, title: '回执标题', solution: '回执正文', evidence: ['r-1 的命题卡'] } }
   const dispatched = await dispatchMod.dispatchPaperReply({ phase: 'paper-write', turn: 't-good', member: 'r-1', flat: { kernel }, reply: goodAnswer })
   ok(dispatched.ok === true && dispatched.field === 'paper_part' && partsOf() === 1 && dispatched.result && dispatched.result.recorded === 'r-1',
     '★ 正: a paper-write reply is really recorded through paper.recordPart (the prompt contract now has a consumer)', { parts: partsOf() })
@@ -1569,7 +1570,7 @@ try {
       kernel: { records: recordsStub, settingsSnapshot: () => ({ 'vmu.records.tracks': ['paper'] }), members: { roster: () => [{ id: 'acad', slot: 'chair' }] }, latex: { check: async () => failure } },
       codes: PAPER_CODES, sections: ['题与摘要'], maxRounds: 3, track: 'paper', engineOrder: PAPER_ENGINE_ORDER,
     })
-    flow.start({ target: 'g7-paper', participants: ['r-1'] })
+    flow.start({ target: 'g7-paper', participants: ['r-1', 'r-2'] })
     let err = null
     try { await flow.compilePdf({ target: 'g7-paper' }) } catch (e) { err = e }
     ok(err && err.code === PAPER_CODES.PDF_FAILED && /xelatex/.test(String(err.message)) && /latexmk/.test(String(err.message)) &&
@@ -1584,8 +1585,11 @@ try {
       '★ G7 ③ 正：失败错误上带结构化的 triedEngines:[{engine,phase,code}]（可程序化判断试过谁、哪个错）',
       err && err.triedEngines)
     // and the FINAL receipt's `pdf` carries it (the user-facing projection, not only the thrown error)
+    // the state row is walked to the editor BY HAND here (the subject of this block is the PDF receipt), so the ★F3a
+    // cross-review evidence is written with it: two distinct members, each reviewing the OTHER's part. Without it the
+    // editor gate must refuse, and a synthetic state that skips 互审 would be asserting a finalisation nobody earned.
     const stateRow = [...rows.values()].find((r) => String(r.title || '').endsWith('|state'))
-    if (stateRow) { const st = JSON.parse(stateRow.body); st.status = 'awaiting-editor'; st.stage = 'awaiting-editor'; stateRow.body = JSON.stringify(st) }
+    if (stateRow) { const st = JSON.parse(stateRow.body); st.status = 'awaiting-editor'; st.stage = 'awaiting-editor'; st.reviewOf = { 'r-1': 'r-2', 'r-2': 'r-1' }; st.reviews = { 'r-1': { of: 'r-2', deliverable: true, round: 1 }, 'r-2': { of: 'r-1', deliverable: true, round: 1 } }; stateRow.body = JSON.stringify(st) }
     const finalized = await flow.recordFinal({ target: 'g7-paper', member: 'acad', decision: 'deliverable' })
     ok(finalized && finalized.pdf && finalized.pdf.ok === false && Array.isArray(finalized.pdf.triedEngines) &&
       finalized.pdf.triedEngines.some((x) => x.engine === 'xelatex') && finalized.pdf.triedEngines.some((x) => x.engine === 'latexmk') &&

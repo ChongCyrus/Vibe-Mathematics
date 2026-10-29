@@ -309,15 +309,30 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
     }
   }
 
-  // ② evidence
+  // ② evidence — PER PART. Counting the whole paper's evidence was the F3b defect: one member's evidence shielded every
+  // other member's empty appendix entry, so a paper with one evidenced part and nine blank ones passed. The appendix
+  // indexes evidence by member, so the check is per member and NAMES the empty parts.
   const evidenceEntries = cites.filter((c) => c.origin === 'evidence')
-  if (evidenceEntries.length === 0) {
-    const members = Object.keys((state && state.parts) || {})
+  const partMembers = Object.keys((state && state.parts) || {})
+  const emptyParts = partMembers.filter((m) => !evidenceEntries.some((c) => c.member === m))
+  if (partMembers.length > 0 && emptyParts.length > 0) {
+    const withEvidence = partMembers.length - emptyParts.length
     return {
       ok: false, code: codes.EVIDENCE_MISSING,
-      message: '论文没有任何证据条目：' + members.length + ' 位成员的 evidence 列表都是空的，附录因此无法索引任何证据（规则要求"证据/引用/不得编造"）',
-      hint: '在 recordPart 的 evidence 里写明你引用的证据路径（Members/<member>/Propos/p-x.md 这种形状会被逐条核实）',
-      missing: [], members,
+      message: '论文有 ' + emptyParts.length + ' 个部分没有任何证据条目：' + emptyParts.join('、')
+        + '（另有 ' + withEvidence + ' 个部分有证据，但不能替它们作证——附录按【每个部分】索引证据，规则要求"证据/引用/不得编造"）',
+      hint: '让 ' + emptyParts.join('、') + ' 各自在 recordPart 的 evidence 里写明引用的证据路径（Members/<member>/Propos/p-x.md 这种形状会被逐条核实）；一个部分有证据不算另一个部分有证据',
+      missing: [], members: partMembers, emptyParts,
+    }
+  }
+  if (partMembers.length === 0) {
+    // Honest about the zero case instead of borrowing the "everyone's evidence is empty" sentence: with no part written,
+    // there is nothing to index and nothing to review — the paper has no body at all.
+    return {
+      ok: false, code: codes.EVIDENCE_MISSING,
+      message: '论文没有任何部分：0 位成员写了 part，附录因此没有任何可索引的证据（论文至少要有一段由参与者写的正文）',
+      hint: '先让参与者 recordPart 写各自的正文与 evidence；没有正文的"论文"没有可定稿的内容',
+      missing: [], members: [], emptyParts: [],
     }
   }
   const noFingerprint = evidenceEntries

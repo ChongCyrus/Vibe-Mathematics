@@ -21,7 +21,7 @@
 // the archive fact and the gate verdict; (4) the mute read carries until/reason/by; (5) feedback rows record an author or
 // null, never a tool name; (6) a truncated board line says it is an excerpt and names the record; (7) pending approvals
 // say in words that nobody has decided.
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { statusBoardReadings, renderStatusBoard } from '../vibe-math-vmu/kernel/turn/index.js'
@@ -45,7 +45,13 @@ const entry = await import(pathToFileURL(ENTRY).href)
 let NOW = 1000
 const boot = async (config = {}) => {
   const state = { specs: [] }
-  const ctx = { effect(fn) { return fn() }, on() { return () => {} }, tools: { register: async (spec) => { state.specs.push(spec); return () => {} } } }
+  // C6a: a declared-complete proof needs Lean registration on the same write — inject the `subprocess` seam so the
+  // Lean face exists and the fixture can settle a real (fake-engine) run.
+  const subprocess = {
+    resolveExecutable: async (name) => '/fake/bin/' + String(name),
+    spawn: () => ({ done: Promise.resolve({ exitCode: 0, signal: null, stdout: 'Build completed successfully.\n', stderr: '' }), terminate() {} }),
+  }
+  const ctx = { effect(fn) { return fn() }, on() { return () => {} }, get: (what) => (what === 'subprocess' ? subprocess : undefined), tools: { register: async (spec) => { state.specs.push(spec); return () => {} } } }
   const handle = entry.apply(ctx, Object.assign({ clock: () => NOW, packs: ['v5r'] }, config))
   await handle.ready()
   return { handle, specOf: (n) => state.specs.find((s) => s.name === n) }
@@ -66,9 +72,18 @@ try {
   const kA = a.handle.kernel
   await kA.members.hire({ id: 'r-a', slot: 'chair' })
 
+  // C6a: 先真跑一次 Lean（接缝退出码 0），再把这次作业当作卡片"写完了"的登记。
+  await mkdir(join(root, 'Formal'), { recursive: true })
+  await writeFile(join(root, 'Formal', 'p50.lean'), 'theorem div6 : True := trivial\n', 'utf8')
+  const leanRun = await callJSON(a, 'vibe_v5_lean_run', { statement: 'True', file: 'Formal/p50.lean' }, { kernel: kA })
+  const leanJob = leanRun.parsed && leanRun.parsed.id
+  const settled = leanJob ? await kA.lean.settle(leanJob) : null
+  ok(!!settled && settled.passed === true, 'setup: a Lean run is settled and PASSED (the registration the card cites)', settled)
+
   const card = await callJSON(a, 'vibe_v5_record_proposition', {
     member: 'r-a', statement: '第50轮：对任意整数 n，n^3-n 可被 6 整除。', value: 0.8, motive: 'run 50 复验', p: 0.9,
     proof_ref: 'Formal/p50.lean#div6', proof_state: 'complete',
+    lean_job: leanJob,
   }, { kernel: kA })
   const cardId = card.parsed && card.parsed.recordId
   ok(!!cardId, 'a card with a declared proof exists (F-29/F-30 fixture)', card)

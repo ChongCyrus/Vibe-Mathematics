@@ -36,12 +36,12 @@ ok(roles.includes('chair') && roles.includes('member') && !roles.includes('offic
 
 // ── 2. office-facing registrar duty, on the tool the office must use
 const toolsSource = read('vibe-math-vmu/packs/v5r/tools.js')
-const cardDefs = toolsSource.match(/name: 'vibe_v5_record_proposition'[\s\S]{0,2600}/)
+const cardDefs = toolsSource.match(/name: 'vibe_v5_record_proposition'[\s\S]{0,5200}/)
 ok(!!cardDefs, '5 the proposition-card tool definition is findable')
 const cardBlock = cardDefs ? cardDefs[0] : ''
 ok(cardBlock.includes('REGISTRAR DUTY'), '6 the office duty paragraph is in the TOOL DESCRIPTION (prompt-visible)')
 ok(cardBlock.includes('owner') && cardBlock.includes('member'), '7 the duty says the owner is the `member` argument')
-ok(/member:\s*\{\s*type:\s*'string'\s*\}/.test(cardBlock), '8 `member` is a DECLARED parameter (not an undeclared argument)')
+ok(/member:\s*\{\s*type:\s*'string'/.test(cardBlock), '8 `member` is a DECLARED parameter (not an undeclared argument)')
 
 // ── 3. attribution source: the one place that turns `member` into the record's owner
 ok(/const by = has\(args\.member\) \? str\(args\.member\) : null/.test(toolsSource),

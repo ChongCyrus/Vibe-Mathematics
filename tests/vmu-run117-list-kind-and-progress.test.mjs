@@ -109,7 +109,9 @@ try {
     ok(prog && prog.skeletonSteps === 2, '③ it names how many steps the skeleton proposed', prog && prog.skeletonSteps)
     ok(prog && prog.speeches >= 1, '④★ the speech the floor actually made is COUNTED (E36: advancement is readable)', prog && { speeches: prog.speeches, motions: prog.motions, queued: prog.queued, present: prog.present })
     ok(prog && prog.advancing === true, '⑤ advancing is true when something happened', prog && prog.advancing)
-    ok(prog && typeof prog.means === 'string' && /RECOMMENDATION/.test(prog.means) && /not a step index/i.test(prog.means),
+    // ★ WAVE 2 (E36) rewrote this sentence: it now ends "None of them is a step index" (an index is what the framework
+    // would have to INVENT to report one), so both spellings are the same claim.
+    ok(prog && typeof prog.means === 'string' && /RECOMMENDATION/.test(prog.means) && /(?:never holds|None of them is) a? ?step index/i.test(prog.means),
       '⑥ the field explains that these are COUNTS, not a step index (the framework never holds a meeting to a step)', prog && prog.means)
 
     const summary = b.K.meetings.summary({ meeting })

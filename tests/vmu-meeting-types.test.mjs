@@ -20,7 +20,7 @@
 // it says nothing about whether a model follows the recommendation. That is a real-machine question.
 //
 // RULE E: every loop/every() below is preceded by an explicit NON-EMPTY assertion.
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
@@ -42,9 +42,16 @@ const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-
 
 const boot = async (config = {}) => {
   const state = { specs: [] }
+  // C6a: a declared-complete proof needs Lean registration on the same write, so the host injects the `subprocess`
+  // seam (as tests/vmu-b3-c8-c10.test.mjs does) and §4 settles one real fake-engine run to cite.
+  const subprocess = {
+    resolveExecutable: async (name) => '/fake/bin/' + String(name),
+    spawn: () => ({ done: Promise.resolve({ exitCode: 0, signal: null, stdout: 'Build completed successfully.\n', stderr: '' }), terminate() {} }),
+  }
   const ctx = {
     effect(fn) { return fn() },
     on() { return () => {} },
+    get: (what) => (what === 'subprocess' ? subprocess : undefined),
     tools: { register: async (spec) => { state.specs.push(spec); return () => {} } },
   }
   const handle = entry.apply(ctx, Object.assign({ clock: () => 1000 }, config))
@@ -208,10 +215,32 @@ try {
 
   // ── ④ THE PACK TOOL: TYPE + SUBJECT REACH THE KERNEL ───────────────────────────────────────────────────────
   console.log('=== 4. THE TOOL FACE PASSES THE TYPE AND THE SUBJECT THROUGH ===')
-  const typed = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '辩论 p-2 的定义是否符合原意', type: 'debate', subject: 'p-2' })
+  // ★ C7: a bare subject name is NOT a card, so the debate gate refuses it by name. The fixture therefore writes the
+  // card the debate is about and passes its id; the promise under test ("type and subject reach the kernel and come
+  // back") is unchanged — only the subject's provenance becomes real instead of a free-floating label.
+  // C6a: 声明 complete 须附 Lean 通过登记 —— 真跑一次（接缝退出码 0），两张卡都引用同一次作业。
+  await mkdir(join(root, 'Formal'), { recursive: true })
+  await writeFile(join(root, 'Formal', 'meeting-types.lean'), 'theorem debate_subject : True := trivial\n', 'utf8')
+  const leanRun = await call(b, 'vibe_v5_lean_run', { statement: 'True', file: 'Formal/meeting-types.lean' })
+  const leanJob = leanRun.parsed && leanRun.parsed.id
+  const settled = leanJob ? await kernel.lean.settle(leanJob) : null
+  ok(!!settled && settled.passed === true, 'a Lean run is settled and PASSED (the registration both cards cite)', settled)
+  const cardP2 = await call(b, 'vibe_v5_record_proposition', { member: 'r-acad',
+    statement: 'p-2 的定义：每个大于 2 的偶数都是两个素数之和（辩论对象示例）', value: '定义是否符合原意',
+    motive: 'meeting-types：给辩论一个真实的卡号', p: 0.9,
+    proof_ref: 'Members/r-acad/Propos/p-2.md#正式证明', proof_state: 'complete', lean_job: leanJob })
+  const subj2 = cardP2.parsed && cardP2.parsed.recordId
+  ok(typeof subj2 === 'string' && subj2 !== '',
+    'a REAL card exists to serve as the debate subject (free text is no longer a legal subject)', cardP2.parsed)
+  const cardP3 = await call(b, 'vibe_v5_record_proposition', { member: 'r-acad',
+    statement: 'p-3 的定义：别名测试用的第二个命题', value: '别名测试',
+    motive: 'meeting-types：target 别名的辩论对象', p: 0.8,
+    proof_ref: 'Members/r-acad/Propos/p-3.md#正式证明', proof_state: 'complete', lean_job: leanJob })
+  const subj3 = cardP3.parsed && cardP3.parsed.recordId
+  const typed = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '辩论 p-2 的定义是否符合原意', type: 'debate', subject: subj2 })
   ok(typed.parsed && typed.parsed.ok === true, 'the tool convenes a debate', typed.parsed)
   ok(typed.parsed && typed.parsed.type === 'debate', 'the receipt carries the requested type (it is no longer hardcoded)', typed.parsed && typed.parsed.type)
-  ok(typed.parsed && typed.parsed.subject === 'p-2', 'the receipt carries the subject', typed.parsed && typed.parsed.subject)
+  ok(typed.parsed && typed.parsed.subject === subj2, 'the receipt carries the subject', typed.parsed && typed.parsed.subject)
   ok(typed.parsed && typed.parsed.procedure && typed.parsed.procedureBinding === 'recommendation',
     '★ a debate receives the recommended skeleton and its binding is printed on the receipt', typed.parsed && typed.parsed.procedureBinding)
   ok(typed.parsed && Array.isArray(typed.parsed.pendingSteps) && typed.parsed.pendingSteps.length === 0,
@@ -219,7 +248,7 @@ try {
   ok(typed.parsed && /推荐/.test(String(typed.parsed.procedureNote)) && /不是门禁/.test(String(typed.parsed.procedureNote)),
     'the receipt says, in words, that the skeleton is a recommendation and not a gate', typed.parsed && typed.parsed.procedureNote)
   const backSum = kernel.meetings.summary({ meeting: typed.parsed.meeting })
-  ok(backSum.type === 'debate' && backSum.subject === 'p-2', '★ read-back from the service confirms what the tool claimed', { type: backSum.type, subject: backSum.subject })
+  ok(backSum.type === 'debate' && backSum.subject === subj2, '★ read-back from the service confirms what the tool claimed', { type: backSum.type, subject: backSum.subject })
   const plain = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '一般议事' })
   ok(plain.parsed && plain.parsed.ok === true && plain.parsed.type === 'ordinary', 'the default type is ordinary (old callers keep working)', plain.parsed && plain.parsed.type)
   ok(plain.parsed && plain.parsed.procedure === null && plain.parsed.procedureBinding === null
@@ -233,8 +262,8 @@ try {
   ok(badType.parsed && badType.parsed.ok === false && badType.parsed.code === 'VMU_INVALID_ARGUMENT' && /ordinary, academic, debate/.test(String(badType.parsed.hint)),
     '★ an unknown type is refused with the legal list in the hint', badType.parsed && badType.parsed.hint)
   // `target` stays a working alias (it was the declared-but-unread parameter; now it has a consumer in both spellings)
-  const alias = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '辩论别名', type: 'debate', target: 'p-3' })
-  ok(alias.parsed && alias.parsed.ok === true && alias.parsed.subject === 'p-3', '★ `target` is a live alias for the debate object (it was dead before)', alias.parsed && alias.parsed.subject)
+  const alias = await call(b, 'vibe_v5_meeting', { member: 'r-acad', agenda: '辩论别名', type: 'debate', target: subj3 })
+  ok(alias.parsed && alias.parsed.ok === true && alias.parsed.subject === subj3, '★ `target` is a live alias for the debate object (it was dead before)', alias.parsed && alias.parsed.subject)
 
   // ── ⑤ THE CHAIR RAILS (会议只能由院士召开 / 关闭 / 延长) ──────────────────────────────────────────────────────
   // Why this block exists: the rule has THREE verbs, and the first implementation guarded only the shape the kernel

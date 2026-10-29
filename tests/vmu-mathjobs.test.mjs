@@ -2,6 +2,7 @@
 // 运行：`node tests/vmu-mathjobs.test.mjs`（末行 `=== VMU MATHJOBS: N passed, M failed ===`）。
 
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { createMathJobs, MATH_KEYS } from '../vibe-math-vmu/kernel/mathjobs.js'
 import { declaredDefault } from '../vibe-math-vmu/kernel/settings-defaults.js'
 
@@ -150,7 +151,14 @@ test('keysUsed() lists every math key and each is really read', async () => {
   const used = gov.keysUsed()
   assert.equal(used.length, MATH_KEYS.length)
   for (const k of MATH_KEYS) assert.ok(used.indexOf(k) !== -1, '缺失：' + k)
-  for (const k of used) assert.ok(o.reads.indexOf(k) !== -1, '键须真读：' + k)
+  // ★ WAVE 2 (G2): `vmu.math.maxParallel` has ONE reader now (`kernel/mathtools.js#readMaxParallel`) and mathjobs
+  // calls it instead of re-reading the key with its own string — so the read is real but it is not a `settings.n('<key>')`
+  // call in this file. The key is checked where it is actually read; here the check is that this module routes through
+  // that one reader (a file that still read the key itself would be the second reader G2 removed).
+  const src = readFileSync(new URL('../vibe-math-vmu/kernel/mathjobs.js', import.meta.url), 'utf8')
+  const throughOneReader = /import\s*\{[^}]*readMaxParallel[^}]*\}\s*from\s*'\.\/mathtools\.js'/.test(src)
+    && /maxParallel:\s*readMaxParallel\(/.test(src)
+  for (const k of used) assert.ok(o.reads.indexOf(k) !== -1 || (k === 'vmu.math.maxParallel' && throughOneReader), '键须真读：' + k)
   passed += 1
 })
 

@@ -26,7 +26,7 @@
 //
 // RULE E: every loop/every() below is preceded by an explicit NON-EMPTY assertion.
 
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
@@ -50,9 +50,16 @@ const entry = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-
 
 const boot = async (config = {}) => {
   const state = { specs: [] }
+  // C6a: a declared-complete proof needs Lean registration on the SAME write, so §5 injects the `subprocess` seam
+  // (host contract, as tests/vmu-b3-c8-c10.test.mjs does) and settles one real fake-engine run to cite.
+  const subprocess = {
+    resolveExecutable: async (name) => '/fake/bin/' + String(name),
+    spawn: () => ({ done: Promise.resolve({ exitCode: 0, signal: null, stdout: 'Build completed successfully.\n', stderr: '' }), terminate() {} }),
+  }
   const ctx = {
     effect(fn) { return fn() },
     on() { return () => {} },
+    get: (what) => (what === 'subprocess' ? subprocess : undefined),
     tools: { register: async (spec) => { state.specs.push(spec); return () => {} } },
   }
   const handle = entry.apply(ctx, Object.assign({ clock: () => 1000 }, config))
@@ -140,12 +147,20 @@ console.log('=== 3. 机器证据 ⇒ 放行（两种证据各一次）===')
   ok(byVerified.proofVia === 'verified-row', '回执点名证据来源 = verified-row', byVerified.proofVia)
 }
 
-console.log('=== 4. 一句话命题不受此闸 ===')
+console.log('=== 4. 一句话命题是合法形态，但闸必须说清「没核过」（C7 收口后的裁决）===')
 {
+  // ★ C7 原本把这一形态判成具名拒绝；全量 T1 里 `vmu-verified-gates` 的钉子（「一句话命题是规则允许的合法形态，
+  //   不许被拒」）与本文件自己的头注 ④ 都指向另一读法，且 r103 真机回执就是「放行 + provenance:none」。裁决：
+  //   规则 L1 说辩论对象可以是「对象或文件引用」；L14 的证明要求针对**卡形态**（卡上声明写完的证明）。一句话
+  //   命题没有可寻址的载体 ⇒ 本闸判不了，**如实披露**（proofContentChecked:false / provenance:none），而不是
+  //   把一种合法用法删掉。要能被核，就写成卡（或给文件引用）——那两句话写在 note 里。
   const stmt = gates.debateSubjectGate({ meeting: DEBATE, subject: '任意一个猜想：每个偶数都是两个素数之和' })
-  ok(stmt.allowed === true, '★★ 一句话命题（规则允许的形态）⇒ 放行', stmt)
+  ok(stmt.allowed === true && stmt.proofContentChecked === false,
+    '★★ 一句话命题 ⇒ 放行，但明确标记「内容没核过」', { allowed: stmt.allowed, proofContentChecked: stmt.proofContentChecked })
   ok(stmt.form === 'statement' && stmt.provenance === 'none' && stmt.proofChecked === false,
-    '并如实记 provenance:none —— 本闸对它判不了，不假装判过', stmt)
+    '并如实记 provenance:none —— 自由文本没有可寻址的载体', stmt)
+  ok(typeof stmt.note === 'string' && /命题卡/.test(stmt.note) && /判不了/.test(stmt.note),
+    'note 说清「判不了」并指出可被核的两条路（写成卡 / 文件引用）', stmt.note)
   const nonDebate = gates.debateSubjectGate({ meeting: { type: 'ordinary' }, subject: CARD_ID, evidence: cardEvidence() })
   ok(nonDebate.allowed === true && nonDebate.applicable === false, '非辩论会议 ⇒ 本闸不适用（不被误伤）', nonDebate)
 }
@@ -161,9 +176,18 @@ try {
   const roster = kernel.members.roster()
   ok(Array.isArray(roster) && roster.length >= 2, '名册非空且够开会（guard: 没有成员的会议无法验证任何事）', Array.isArray(roster) ? roster.length : typeof roster)
 
+  // C6a: 声明 complete 现在须附 Lean 通过登记 —— 真跑一次（接缝退出码 0），把作业 id 写进卡。
+  await mkdir(join(root, 'Formal'), { recursive: true })
+  const LEAN = 'Formal/r-pv-1.lean'
+  await writeFile(join(root, LEAN), 'theorem r_pv_1 : True := trivial\n', 'utf8')
+  const leanRun = await receipt(b, 'vibe_v5_lean_run', { statement: 'True', file: LEAN })
+  const leanJob = leanRun && leanRun.id
+  const settled = leanJob ? await kernel.lean.settle(leanJob) : null
+  ok(!!settled && settled.passed === true, 'setup: Lean 作业已结算并通过（卡要引用的登记）', settled)
+
   const declared = await receipt(b, 'vibe_v5_record_proposition', { member: 'acad', id: CARD_ID,
     statement: '命题卡：该算法在 O(n log n) 内停机', value: '该命题为真则算法可判定', motive: '为验证 B6 的声明层', p: 0.5,
-    proof_ref: 'Members/acad/Propos/' + CARD_ID + '.md#正式证明', proof_state: 'complete' })
+    proof_ref: 'Members/acad/Propos/' + CARD_ID + '.md#正式证明', proof_state: 'complete', lean_job: leanJob })
   ok(declared.ok === true, '★ 卡写入成功（proof_ref/proof_state 不被 schema 拒）', declared)
   const row = kernel.records.get({ id: CARD_ID })
   const card = verified.parseCard(row)
@@ -192,10 +216,11 @@ try {
   ok(badState.ok === false && badState.code === 'VMU_INVALID_ARGUMENT',
     '★ 域外 proof_state ⇒ 具名 VMU_INVALID_ARGUMENT（不静默当成 draft）', badState)
 
-  const stmtMeeting = await receipt(b, 'vibe_v5_meeting', { member: 'acad', agenda: '辩论一句话命题', type: 'debate',
+  const stmtMeeting = await receipt(b, 'vibe_v5_meeting', { member: 'acad', agenda: '辩论一句话命题', type: 'debate', kind: 'sync',
     subject: '任意一个猜想：素数是无穷多的' })
-  ok(stmtMeeting.ok === true && typeof stmtMeeting.meeting === 'string',
-    '★★ 真机：一句话命题仍可开辩论（规则允许的形态不被误杀）', stmtMeeting)
+  ok(stmtMeeting.ok === true && stmtMeeting.subjectGate && stmtMeeting.subjectGate.form === 'statement'
+    && stmtMeeting.subjectGate.provenance === 'none' && stmtMeeting.subjectGate.proofChecked === false,
+    '★★ 真机：一句话命题能开会，且回执如实标 form:statement / provenance:none / proofChecked:false', stmtMeeting.subjectGate || stmtMeeting)
 } finally {
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 }

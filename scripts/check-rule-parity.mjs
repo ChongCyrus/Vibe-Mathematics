@@ -27,7 +27,7 @@
 // ✓ node scripts/check-rule-parity.mjs --selftest     # plants the four failures in temp copies; 4/4 must be caught
 //
 // Exit codes: 0 = all four parities hold; 1 = at least one problem (or a selftest case was not caught).
-import { readFileSync, existsSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, existsSync, writeFileSync, mkdtempSync, rmSync, readdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname, join, resolve, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -89,6 +89,83 @@ function liveTeachingFiles() {
   }
   live.sort((a, b) => a.file.localeCompare(b.file))
   return { live, excluded, edges }
+}
+
+/** Declared capability names: the tools a seat can call and the settings keys a deployment can set. */
+function capabilityNames() {
+  const tools = new Set()
+  const settings = new Set()
+  const sources = ['vibe-math-vmu/tools', 'vibe-math-vmu/packs/v5r/tools.js', 'vibe-math-vmu/kit']
+  const addFrom = (text) => {
+    for (const m of text.matchAll(/name:\s*'(vibe_[a-z0-9_]+)'/g)) tools.add(m[1])
+    for (const m of text.matchAll(/'(vibe_[a-z0-9_]+)'/g)) tools.add(m[1])
+  }
+  const readDir = (dir) => {
+    const abs = join(REPO, dir)
+    if (!existsSync(abs)) return
+    for (const f of readdirSync(abs)) {
+      if (!f.endsWith('.js')) continue
+      try { addFrom(readFileSync(join(abs, f), 'utf8')) } catch { /* unreadable file is not a teaching fact */ }
+    }
+  }
+  readDir('vibe-math-vmu/tools')
+  readDir('vibe-math-vmu/kit')
+  for (const f of ['vibe-math-vmu/packs/v5r/tools.js', 'vibe-math-vmu/host.js', 'vibe-math-vmu/host-pack-tools.js']) {
+    try { addFrom(readFileSync(join(REPO, f), 'utf8')) } catch { /* declared set stays short, and that shows up as a red */ }
+  }
+  // An alias is a name the pack accepts, so it is a declared name too (`from: 'vibe_v5_x', to: 'vmu.y'`).
+  const walk = (dirAbs) => {
+    if (!existsSync(dirAbs)) return
+    for (const entry of readdirSync(dirAbs, { withFileTypes: true })) {
+      const abs = join(dirAbs, entry.name)
+      if (entry.isDirectory()) { walk(abs); continue }
+      if (!entry.name.endsWith('.js')) continue
+      try {
+        const text = readFileSync(abs, 'utf8')
+        for (const m of text.matchAll(/from:\s*'(vibe_[a-z0-9_]+)'/g)) tools.add(m[1])
+      } catch { /* skip unreadable file */ }
+    }
+  }
+  walk(join(REPO, 'vibe-math-vmu/packs/v5r'))
+  for (const f of ['vibe-math-vmu/packs/v5r/settings/defaults.json', 'vibe-math-vmu/packs/v5r/settings/schema.js', 'vibe-math-vmu/packs/v5r/settings/defaults.js', 'vibe-math-vmu/packs/v5r/settings/planned.js']) {
+    const abs = join(REPO, f)
+    if (!existsSync(abs)) continue
+    let text = ''
+    try { text = readFileSync(abs, 'utf8') } catch { continue }
+    for (const m of text.matchAll(/"(vmu\.[A-Za-z0-9_.]+)"/g)) settings.add(m[1])
+    for (const m of text.matchAll(/'(vmu\.[A-Za-z0-9_.]+)'/g)) settings.add(m[1])
+  }
+  return { tools }
+}
+
+/**
+ * P5 — NAMES. A teaching sentence may mention a tool or a setting; if it names one that no seat can call and no
+ * deployment can set, the sentence teaches a capability that does not exist. This is mechanical and narrow on
+ * purpose: it proves the NAMES, not the meaning. Semantic contradiction between two sentences is audited by the
+ * closing lanes (see docs/acceptance/phase12-v5r-rules-conformance.md), and this gate says so instead of implying
+ * it covers it.
+ */
+function checkTeachingNames(live, exempt) {
+  const { tools } = capabilityNames()
+  const unknown = (token) => {
+    for (const e of exempt) if (e.name === token) return false
+    return true
+  }
+  for (const item of live) {
+    const abs = join(PROMPTS_DIR, item.file)
+    let text = ''
+    try { text = readFileSync(abs, 'utf8') } catch { continue }
+    const lines = text.split(String.fromCharCode(10))
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      for (const m of line.matchAll(/(vibe_[a-z0-9_]+)/g)) {
+        const token = m[1]
+        if (tools.has(token)) continue
+        if (!unknown(token)) continue
+        fail('VMU_RULE_PARITY_UNKNOWN_NAME', PROMPTS_REL + '/' + item.file + ':' + (i + 1) + ' teaches the tool `' + token + '`, which no face declares', item.file)
+      }
+    }
+  }
 }
 
 function loadLedger(path) {
@@ -250,6 +327,9 @@ function check(ledgerPath) {
     if (!cited.has(file)) fail('VMU_RULE_PARITY_ORPHAN_TEACHING', PROMPTS_REL + '/' + file + ' is live teaching but no ledger item claims it', file)
   }
 
+  const nameExempt = Array.isArray(ledger.source && ledger.source.teachingNameExempt) ? ledger.source.teachingNameExempt : []
+  checkTeachingNames(live, nameExempt)
+
   const pins = pinIds()
   if (pins.missingFile) fail('VMU_RULE_PARITY_NO_PINS', PINS_TEST + ' does not exist, so the teaching pins are not executed')
   for (const id of pins.ids) {
@@ -268,6 +348,7 @@ function report(ok, summary) {
   }
   if (summary) {
     console.log('RULE PARITY: live teaching ' + summary.live + ' (exempt ' + summary.exempt + ') · not live ' + summary.excluded + ' · structural rule lines ' + summary.structural + '/' + summary.lineCount + ' · ledger ids ' + summary.ids)
+    console.log('  scope: P1-P4 = every rule line claimed, every citation live, no orphan teaching, no orphan pin; P5 = every tool/setting a teaching names exists. Contradiction between two sentences is audited by the closing lanes, not proven here.')
     for (const e of summary.excludedList) console.log('  not live: ' + PROMPTS_REL + '/' + e.file + ' — ' + e.why)
   }
   for (const n of note) console.log('  note: ' + n)

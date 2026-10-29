@@ -8046,7 +8046,7 @@ hashUnchangedMeans: "not measured: no compile ran for this job (VMU_LEAN_FILE_UN
 | 2 | L28 四字段都含时间等基础信息（D5） | ✅ | 同一次读里四个字段各带自己的时间：`times":{"overallAt":1793131172223,"subgoalAt":1793131172223,"planAt":1793131172223,"subtasksAt":1793131172223}`；写入方另有 `updatedAt:1793131097165` 与 `updatedBy`，所以「什么时候写的、谁写的」是回执的一等字段，不是猜的 |
 | 3 | L35 会议类型六种，院士可设（E13） | ✅ | 本轮真机设了三种：`ordinary`（m4）、`planning`（m1，主席席召集）、`debate`（m3，带 `subject`）；`at` 预约的那场回 `state:"scheduled"`、`scheduledFor":1793235600000`。六种类型的**枚举校验**由 `tests/vmu-meeting-types.test.mjs`（153/0）钉住，真机已演练 3/6 |
 | 4 | L36 常见命令：举手（E14） | ✅ | `vibe_vmu_meeting{action:"hand",id,member:"r-1"}` 回 `queued:true,"order":["r-1"]`、`mode:"fifo"`、`modeSource:"setting"` —— 举手真的进了发言队列，不是只写一行日志 |
-| 5 | L36 常见命令：邀请发言（E15） | ✅ | `invite{id,member:"r-2",why}` 回 `invited:["r-2"]`；缺 `why` 时被具名拒（`VMU_INVALID_ARGUMENT` "why is required"），补上才生效；回执 note 明说「邀请**不**改法定人数」 |
+| 5 | L36 常见命令：邀请发言（E15） | ✅ | `invite{id,member:"r-2",why:"请 r-2 就座"}` 回 `invited:["r-2"]` 与 `order`；回执 note 明说「邀请**不**改法定人数」。缺 `why` 的拒绝**本轮没有走到**（本行此前把一句没测过的回执写成 `VMU_INVALID_ARGUMENT "why is required"`，HEAD 里没有这句话；真话是 `an invitation needs a non-empty why`，见 `kernel/meeting.js:533`，由单测覆盖） |
 | 6 | L36 批量指定成员按顺序发言（E16） | ✅ | `invite{id,members:["r-1","r-2"],why}` 回 `invited:["r-1","r-2"]`,`order:["r-1","r-2"]` —— 数组顺序即发言顺序 |
 | 7 | L37 投票板：院士设选项与机制（E18） | ✅ | `vibe_v5_poll_open{question,options:[…],min:1,max:1}` 回 `rulesDeclared:true`、`rules":{"maxChoices":1,"minChoices":1}`、`applied:["max","min"]`、`unapplied:[]`；投票 `vibe_v5_poll_vote` 回 `sealed:false`；关票 `vibe_v5_poll_close` 回 `result:"继续"` 与 `tally:{cast:1,votes:1,abstain:0,absent:0,floor:0,floorBase:1,ranked:[{option:"继续",n:1}]}` 并列出 `enforced` 五个键 |
 | 8 | L37 投票板不用于辩论（E19） | ✅ | 辩论 m3 期间 `vibe_v5_poll_open` 回 `VMU_NOT_PERMITTED`，原话 `the ballot board is not used while a debate is open`，hint 给出两条出路（成员 `vibe_v5_verdict`、主席 `close`） |
@@ -8962,14 +8962,14 @@ UNKNOWN_FIELD=4 FIELD_NOT_APPLICABLE=6 BAD_JSON=6`。判定四步里只走到第
 5. **C2（工具参数被吞）**：`kit/handlers.js` 非 state 轨把 `progress` 保留为正文里的 `- 进度：…` 一行，回执回显 `progress`/`progressMeans`——「工具声明的参数要么被保留、要么被具名拒」，沉默是缺陷。
 6. **E16（按顺序发言）**：`kernel/meetings.js#speak()` 此前从不读 `m.queue`，排定顺序后任何人可抢麦且回执 `ok:true`。现在：队列开着且说话者**在队列里但不是队头** ⇒ 具名拒 `VMU_FLOOR_OUT_OF_ORDER`（message 给位次、hint 印出整条 order 与 chair 改序的调用）；**不在队列里**的成员照常发言但回执 `queueRead.slipped:true`；队头发言回执带 `queueRead.position`。新套件 `tests/vmu-run112-floor-order.test.mjs` 16/0（含「被拒的一枪不落回执、不花轮次」）。
 
-其余三处（B4 及时更新 / B5 共同设计 / D1 各自推进）由 lane 落地：`blueprint.js` 新增 `blueprintFreshness`（纯读，返回年龄/阈值/逾期）与 `blueprintCodesignStatus`（两席齐备才可 adopt，缺一具名拒 `VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN`）、续写同一草稿（`## 共同设计补充｜<member>`）；`kernel/turn/index.js#statusBoardReadings` 给 ①②③ 加「属于你（<member>）…」的份额前缀、给 ① 加 `scopeNote`，④ 仍是自己的面板。
+其余三处（B4 及时更新 / B5 共同设计 / D1 各自推进）由 lane 落地：`blueprint.js` 新增 `blueprintFreshness`（纯读，返回年龄/阈值/逾期）与 `blueprintCodesignStatus`（两席齐备才可 adopt，缺一具名拒 `VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN`）、续写同一草稿（`## 共同设计补充｜<member>`）；`kernel/turn/index.js#statusBoardReadings` 给 ②③ 加统一的「属于你（<member>，未完成 N 条）」份额前缀、给 ① 加 `scopeNote`，④ 仍是自己的面板。
 
 ### §207.3 补进教学的四处（每一句都要付预算）
 
 1. **G7 自相矛盾**：`v5r-blocks-a.js` 原文「这个 1 **只能由辩论裁决授予**」与下一句「参考文献中的命题直接进 Verified（不经辩论）」互相打脸 ⇒ 改为「这个 1 必须有**具名凭据**」，由后文的三种凭据去定义。B3 的 hint 同步改成「规则原文允许的三条路 + 第四种不是新来源」。
 2. **E29 语义**：原文「框架不设默认轮数，也不在轮数用尽时拒绝对话」与机制相反（默认 3，到限具名拒 `VMU_RESOURCE_BUDGET`）。改为「院士用 `vmu.meetings.verdictMaxRounds` 定这场会议最多被提几次动议（每次辩论一条动议，该键每次重读）；默认 3；到限后新增动议被具名拒」——把「轮数」说成它真实计数的东西（动议），不再暗示「发言会被掐断」。
 3. **G6 反向教学**：原文「fenced JSON… 不替你执行动作」与 `FIELD_OWNERS` 的真实派发相反 ⇒ 改为「只写框架字段表列明的少数派生字段（`executed` 点名真派发了什么），不带会议 id、不能代替工具」。
-4. **D1 / B4 / B5 教学**：状态板三行说明「①②③ 是所级总量，你的份额看行首『属于你（<member>）…』」；蓝图教学补「共同设计（两席署名才可采纳、另一席续写同一份）」与「按时更新（`state` 的 `freshness` 给年龄与逾期，逾期采纳回执带 `overdueUpdate`）」。
+4. **D1 / B4 / B5 教学**：状态板说明「②③ 行首是『属于你（<member>，未完成 N 条）』，① 只有 `scopeNote`」；蓝图教学补「共同设计（两席署名才可采纳、另一席续写同一份）」与「按时更新（`state` 的 `freshness` 给年龄与逾期，逾期采纳回执带 `overdueUpdate`）」。
 
 **预算这一课（真实代价）**：`vmu-turn` 的 T99 要求成员收到的提示词 < 20000 字符，本轮每加一句就得在别处删等量字——最后落到 **19993**（起点 20207）。为此删掉的是重复叙述（状态板行说明、蓝图 state 里与 freshness 重复的「30 天 stale」句、`extendlimit` 段里重复的 primitive 说明）。**教学不是免费的**：预算是一份，加一句就必须指出谁让位。
 
@@ -9278,7 +9278,7 @@ r115（build `b49be545`）E16（`vibe_v5_say {member:"r-2",meeting:"m1"}`）：
 - **G7（真正的会议）**：`vibe_v5_meeting {type:"debate", subject:"命题：…"}` ⇒ `{"id":"m3","meeting":"m3","type":"debate",
   "typeCatalogSource":"vmu.meetings.typeCatalog", "procedure":{"steps":[…4…],"binding":"recommendation"},"agenda":[["宣读命题（agenda）",…]],
   "formalAgenda":["宣读命题（agenda）"]}` —— 有 id、有类型、有议程、有骨架，并且 `binding` 明说骨架不是门禁。
-- **D1（每人份额）**：r116 成员回合读到状态板 ② 行首 `属于你（r-acad，未完成 0 条）`，③ 行首 `属于你（r-acad）0 条：state 0`；
+- **D1（每人份额）**：r116 成员回合读到状态板 ② 行首 `属于你（r-acad，未完成 0 条）`，③ 行首 `属于你（r-acad，未完成 0 条）：state 0`；
   所办一侧的全局面板由**唯一**一处 `statusBoardReadings({...})` 调用产生（`vibe-math-vmu/kernel/turn/index.js`，`member` 缺席时
   没有第二条调用点），因此不存在"两份互不相干的面板"。
 
@@ -9390,3 +9390,61 @@ lookup: this answer was read, not refused."`；**其它**失败仍原样给 `bri
 - 相邻：`vmu-turn` 272/0、`vmu-run36-records-shared` 37/0、`vmu-run51-*` 全绿（收口时全量 T1 复验）。
 
 ### §213.5 无实质残余：是（C4/C8/G6 三条 PARTIAL 全部收口到 DONE）
+
+---
+
+## §216 收口审计后的第一波机制落地（wave 2）—— 三处「声明在、执行不在」被补齐，一处裁决被记录
+
+### §216.1 这轮改的是什么
+
+五路只读收口审计（§211 之后）把 86 行逐行按四问重判，结论是 **46 行 CONFIRMED / 40 行仍有缺口**，台账因此回降到
+46 DONE · 40 PARTIAL。本节的 wave 2 只做「代码级可修」的那批，按文件所有权分四路并行（互不改同一文件）：
+
+| 规则 | 原来缺的那一半 | 现在的机制 | 新测试 |
+| --- | --- | --- | --- |
+| C5a / C5b | `p` 可被 `"0.6"`/`true` 强转；`progress` 参数在非 state 轨被静默吞掉 | 字面 JSON 数字守卫（`VMU_INVALID_ARGUMENT` 点名字面量要求）；`- 进度：…` 正文行 + `progressMeans` 回执 | `vmu-c5-c8-card-integrity` 45/0 |
+| C6a / C6b | `proof_state:"COMPLETE"` 绕开「要有 Lean 证据」；完成卡可被同名改写 | 大小写 fold 到同一状态；`VMU_STATE` 锁定已完成的卡号并指出「写新卡号」的出路 | 同上 |
+| C7 | 一句话命题曾被具名拒（拒掉了规则的合法形态） | **裁决：放行 + 披露**（见 §216.3） | `vmu-debate-subject-proof` 44/0、`vmu-run15-findings` 42/0、`vmu-verified-gates` 103/0 |
+| C8 | `p=1` 可无定论来源写入 | 裸 `p=1` 具名拒并点名 `vibe_v5_verified_promote`；`verifiedMark` 回执字段 | `vmu-c5-c8-card-integrity` |
+| A5 / A9 | `hire` 只查 `purpose` 非空、`hiredBy` 记了没人读 | `hire` 只 seat temp（点名 `vibe_v5_start`）；`hiredBy` 用 `resolveTurnMember` 记账并回 `hiredByMeans` | `vmu-wave2-seat-honesty` ALL GREEN |
+| B6 | `adopt` 只看调用者自报的 `member` 文本 | 席位从**调用**解析（`resolveTurnMember`）+ 回显守卫；越名点人均具名拒 | 同上 |
+| E6 | `kind` 从不回显 | `kind` 在 return/receipt/`summary`/`meetingView` 四处可读；`labelRequired` 由 pack 面开启 | `vmu-wave2-meeting-roster-label-counts` 54/0 |
+| E9 | `members` 参数在服务面不存在（名册永远是全员） | `open` 接受 `members`/`roster`（校验到下标）、记 `rosterNarrowed`/`rosterSource`/`benchSize`，`eligibleVoterIds({meeting})` 认这份名册 | 同上 |
+| E12 | 「辩论会收窄工具面」空交集时整轮具名拒 | 未声明收窄的类型 ⇒ 每成员一行 `narrowing.applied:false` + `reason:"type-declares-no-narrowing"`，整轮照跑；只有**真空交集**才是 `empty-intersect` | `vmu-wave2-meeting-face-narrowing` 35/0 |
+| E33 | 会议类型词表没有读面 | `vibe_v5_meeting {action:"types"}` 读六类（每类带 kind/流程步数/收窄面）并给 `typeCatalogSource` | `vmu-wave2-meeting-types` ALL GREEN |
+| E36 | `procedureProgress.skeletonSteps` 恒为 0（骨架被存成对象、读面只认数组） | `stepsOf()` 认三种拼法；counts 句写清「没有一个是步号」 | `vmu-run117-list-kind-and-progress` 26/0 |
+| F3 | 互审可以用自审凑数 | 自审具名拒（「a paper part cannot be reviewed by its author」）；一致通过需 ≥2 位**不同**的非作者 | `vmu-f3-f4-paper-integrity` 50/0 |
+| F4 | 定稿路径绕过了质量门 | `recordFinal` 走同一个 `render`（唯一受门调用点），拒时状态逐字回滚 | 同上 |
+| G2 | `vmu.math.maxParallel` 只读构造期快照 | `readMaxParallel(settings)` 单一读者（plan/status/mathjobs），`concurrency` 块披露「构造期快照已过期」 | `vmu-g2-math-concurrency` 27/0 |
+| G6 | 教学说「回执不派发动作」，而 `FIELD_OWNERS` 真的派发 | 教学改成真话：围栏是「便捷桥」，带属主的字段**真的**派发，`executed` 是计数不是可写字段 | `vmu-prompt-clean`/`ledger-teaching-pins` |
+
+### §216.2 一条工程教训（不是产品缺陷）
+
+四路并行里有三路同时改 `packs/v5r/tools.js`，代价是它一度被写成 **CRLF**，而 falsify/锚点补丁按 `\n` 匹配 ⇒ 补丁静默失配。
+处理：改完仓库源码一律把 EOL 归一为 LF，且「这个文件（4184→4249 行、mtime 在动）」是「有别人在写」的廉价探针，
+`node --check` 是判断「半成品还是可运行」的廉价探针。
+
+### §216.3 裁决：辩论对象可以是一句话命题，闸必须说「没核过」
+
+审计 lane-c 把 C7 改成「自由文本 ⇒ 具名拒 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`」。**这个改动被本裁决撤回**，理由三条：
+
+1. 规则原句（E35/D11）写的是「会议会有个额外字段用于设置**辩论的对象**或辩论对象的文件引用」——「对象」并不限于卡；
+2. 「只有命题卡中含有正式证明或证伪内容才能用于后续辩论」约束的是**卡形态**（一张卡要能被辩论用，它得有写完的证明），不是「一句话不许当对象」；
+3. `tests/vmu-run15-findings.test.mjs` 的 ③ 与 **run 103 真机回执**（`form:"statement"` + `provenance:"none"`，已被 §203 记为合规）都指向放行。
+
+因此本闸对自由文本的判决是 **放行 + 披露**：`proofChecked:false` / `proofContentChecked:false` / `provenance:"none"` /
+`proofBasis:"unverifiable-statement"`，并在 `note` 里写清「本闸判不了它有没有写完的正式证明」以及两条能被核的路
+（写成命题卡并以卡号开会 / 给文件引用）。判据一句话：**闸宁可承认判不了，也不要删掉一种合法用法**；
+「看起来更严」不是证据，「如实」才是。
+
+### §216.4 门禁
+
+`vmu-c5-c8-card-integrity` 45/0、`vmu-debate-subject-proof` 44/0、`vmu-run15-findings` 42/0、`vmu-verified-gates` 103/0、
+`vmu-wave2-card-guards` 16/0、`vmu-wave2-seat-honesty` ALL GREEN、`vmu-wave2-meeting-types` ALL GREEN、
+`vmu-wave2-meeting-face-narrowing` 35/0、`vmu-wave2-meeting-roster-label-counts` 54/0、`vmu-f3-f4-paper-integrity` 50/0、
+`vmu-g2-math-concurrency` 27/0、`vmu-d1-d5-board-times` 35/0、`vmu-meeting` 50/0、`vmu-meeting-types` 155/0、
+`vmu-meeting-id-archive` 16/0、`vmu-turn` 272/0；`PREFLIGHT: PASS`、`RULE PARITY: PASS`、`regen-all 17/17`。
+`check-rules-coverage --check` 仍是 **FAIL (42)** —— 这 42 行是审计判定的真实缺口，每行 `next` 写着要哪一条真机回执；
+不把 DONE 写成 PENDING 的反向操作（把没有回执的行标 DONE）才是这轮要防的事。
+
+### §216.5 无实质残余：否（42 行等真机回执）

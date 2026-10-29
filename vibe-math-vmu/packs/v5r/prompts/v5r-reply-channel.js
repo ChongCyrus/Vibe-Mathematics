@@ -149,6 +149,14 @@ export function replyChannelLines() {
   // T99 caps a charter assembly at 20 000 chars, so the paragraph states the four facts once and spends nothing on
   // restating them: fence-in-body is the channel, one parseable fence wins, the tool call is unreachable, and the
   // failures are named. (The previous wording was ~130 chars longer and pushed the assembly over that cap.)
+  // ★ G6 (round 35, measured): this paragraph is NOT the place that used to lie. `REPLY_FIELD_ROWS` above already says,
+  // row by row, which field really dispatches and to which face (`face:null` ⇒ "只记进轮次状态，不派发"), so the
+  // envelope's dispatch is documented here by declaration, not by a second hand-written sentence. The false teaching was
+  // `v5r-blocks-b.js` (`v5r-turn-tool-receipt`), which called the envelope "回执通道 … 不能代替工具" and named `executed`
+  // as a writable field; that section now states the real split (tools are the main route; the envelope carries only the
+  // declared fields, and the ones with an owner really dispatch). No sentence is added here: the member assembly measured
+  // 20 062 chars against T99's 20 000 cap while that sentence was in, so the truth belongs where the lie was — the section
+  // that was wrong now carries it, in fewer characters than a second copy would have cost.
   return [
     '【本轮怎么交回】① 回复正文末尾一段代码围栏（三个反引号，标记可省）包一个 JSON 对象，这是唯一可靠通道；裸对象也能解析，但围栏最稳。' +
     '② 围栏前可写说明，解析器取**最后一个**可解析围栏。③ **不要调用** `' + f.unreachable.tool +
