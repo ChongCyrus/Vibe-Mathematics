@@ -10602,3 +10602,55 @@ r137（build `b44c146f`，clone `slvp137`，port 19737，10 calls）是一次**�
 剩余 1 行：G7（等第四次审计零矛盾）。7 条 GAP 已在审计报告第四节逐条列出（席位无脚本写面、断点续跑不可寻址、
 辩论裁决不受 m 约束、无并发/隔离、等待超时无自决路径等），它们是「没写到」而非「互相矛盾」，按用户裁定的口径不阻塞
 台账，但要一并交给下一轮判断。
+
+## §233 G7 第四次独立审计 —— 同一句 description 自己跟自己相反，以及一个看不见英文的量具
+
+第四次只读审计（基线 HEAD `20ac0786`，规则 63 行 / sha256 前 16 位 `a5d9a6c1ff73ec10`，报告
+`D:/_tmp/g7a4/audit4.md`）结论 **`G7 VERDICT: CONTRADICTIONS(2)`**，两条都是第三次 C3 的**残留面**：
+
+### §233.1 两条矛盾
+
+| # | 行 | 两句话 | 为什么不能同时为真 |
+|---|---|---|---|
+| C1 | L45 | `vibe-math-vmu/packs/v5r/tools.js:4227` 的 `vibe_v5_meeting.description` —— **同一个 JS 字符串**：句首「a one-line proposition is REFUSED by name `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`」，后段「and a one-line proposition is legal but the receipt records `subjectGate.provenance:"none"`」 | 同一形态不可能既被具名拒又"合法"；且 B 句描述的回执路径**不可达**（`verification-gates.js:251-264` 对 `form:"statement"` 直接 `refuseGate`，`tools.js:2791-2792` 在 `meetings.open` 之前返回）——承诺永远无法兑现。`git show 20ac0786 -- tools.js` 证明上一轮只改了句首、后段一字未动 |
+| C2 | L14/L45 | `tools.js:2258`（渲染进裁决请求回执的 `why`）「…cannot tell **a legal one-line proposition** … instead of refusing **a shape the rule allows**」与 `tools.js:2395`（渲染进成员读到的邮件正文）「本面无法区分"**规则允许的一句话命题**"与"笔误"」 | 对侧的 `v5r-blocks-a.js:202`、`seat-faces.js:421`、`meeting-procedures.js:52`、`verification-gates.js:257-258/381` 全说「只允许两种形态、一句话命题不是对象」；机制具名拒。同一个机构对同一形态给出两个判定，成员按邮件准备、到门上被拒 |
+| — | L63 | 元行「提示词完全与规则相符、自洽」 | C1 属"同一份 agent 可读文本里两句互斥"，故同标 |
+
+审计同时点破**为什么 `tests/vmu-g7-concordance.test.mjs` 仍 18/0**：它的探测器是纯中文正则
+`/一句话命题[^\n]{0,24}合法/`，命中不了英文的 `a one-line proposition is legal` / `a legal one-line proposition`，
+而且它只在四个面里找**否定式**——一个"同一行先拒后卖"的句子可以同时满足两边。
+
+### §233.2 修法
+
+1. `tools.js:4227` 后段改成：`…and a one-line proposition has no addressable proof carrier, so it is REFUSED by name
+   (VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF) — pass a card id whose written proof is finished, or a file reference.`
+2. `tools.js:2258` 的 `why` 改成「cannot tell a one-line proposition from a typo … 并明说一句话命题**不是**合法
+   辩论对象（具名拒码）、这次请求只针对被点名的那条字符串」。
+3. `tools.js:2395` 邮件正文改成「无法区分"一句话命题"与"笔误"……另注：一句话命题**不能**作辩论对象（会被具名拒 …）」。
+4. `tools.js:2214` 的数据流注释与 `tools.js:4300` 的 `verdict_ask` description 同步改成「一句话命题不是合法对象」。
+5. `verification-gates.js:61` 的 `SUBJECT_FORMS` 注释改为「规则只允许两种形态；`statement` 仍被识别但**具名拒**，
+   保留在词表里是为了"识别并拒绝"，不是第三种合法形态」；`:345` 的历史注释「two of the three legal subject forms」
+   改「the two legal subject forms」。
+6. **量具也要能咬住自己**（`tests/vmu-g7-concordance.test.mjs`，18→**22/0**）：
+   - 探测面从 4 个扩到 **6 个**（新增 blocks-a / blocks-b 两份提示词源码）；
+   - `SELLS` 同时覆盖中英两种写法（`一句话命题…合法`、`规则允许的一句话命题`、`a one-line proposition is legal|allowed`、
+     `a legal one-line proposition`）；`RESOLVED` **只**豁免「不是合法」这句已修好的措辞——**不**因同一行/同一文件别处有拒绝句
+     就放过（第四次审计的最坏情形正是"一行先拒后卖"）；
+   - 新增四条自证：英文卖点要红、中文卖点要红、**同一行别处有拒绝句也仍要红**、已修好的否定句不许红。
+   - 实测证明：把这套探针指向 `20ac0786` 的旧 `tools.js`，恰好命中 **4 行**（其中就是审计点名的 4227 那一行）。
+
+### §233.3 门禁
+
+`vmu-g7-concordance` 22/0、`vmu-verified-gates` 102/0（钉子随 `SUBJECT_FORMS` 注释改成"三种**被识别的**形态"）、
+`vmu-run29-verdict-ask` 51/0、`vmu-run30-findings` 30/0、`vmu-debate-subject-proof` 45/0、`vmu-v5r-tools` 360/0、
+`vmu-v5r-verdict-final` 64/0、`vmu-meeting-types` 155/0、`vmu-prompt-type-coverage` 15/0、`vmu-prompt-clean` 8/0、
+`vmu-ledger-teaching-pins` 58/0、`audit-prompt-tool-names` 13/0、`vmu-run135-formal-required` 27/0、
+`vmu-run136-nudge-prioritize-proofref` 18/0、`vmu-c5-c8-card-integrity` 44/0；`regen-all` 17/17、`preflight PASS`、
+全量 T1 见 §233.4。
+
+### §233.4 台账与残余
+
+G7 仍 **PARTIAL**（第四次审计 2 条已修，但按用户裁定"零矛盾才 DONE"，需再跑第五次独立审计）。其余 85 行维持 DONE。
+审计确认干净的点（报告 §四逐条复核）：第三次的 C1 临时工写库、C2 两个票入口、C4 temp attend；第二次 5 条与第一次
+5 条均未被改回。GAP 7 条维持（脚本面、断点续跑不可寻址、裁决面不设 m 闸、无并发隔离、等待阶段无自决动作、卡无独立
+verified 位、会议动作级权限无单表）——它们是"没写到"，不是"互相矛盾"，不计入结论数字。

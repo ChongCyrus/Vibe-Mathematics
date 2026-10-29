@@ -48,7 +48,7 @@ function cardRow(records, { p = 0.5, title = '命题-平方和' } = {}) {
   ok(codes.length > 0 && codes.every((c) => c.startsWith('VMU_PACK_V5R_')), 'every gate code wears the pack prefix (' + codes.join(', ') + ')')
   ok(new Set(codes).size === 5, 'the five codes are distinct')
   ok(Object.isFrozen(GATE_CODES) && Object.isFrozen(SUBJECT_FORMS), 'the surface is frozen (no runtime mutation of the vocabulary)')
-  eq(SUBJECT_FORMS.join(','), 'card,file,statement', 'the three legal subject forms are the ones the rule names')
+  eq(SUBJECT_FORMS.join(','), 'card,file,statement', 'the three RECOGNISED subject forms (the rule allows card/file; statement is refused by name)')
   eq(SINGLE_WRITER, 'promoteVerified', 'the single writer is named by contract, not by convention')
   eq(PROOF_STATE_COMPLETE, 'complete', 'the "proof is finished" state is a named constant, not a magic string buried in a branch')
   const cat = gateCatalog()

@@ -304,7 +304,7 @@ const unverified = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid3, propo
 ok(unverified.ok === true && unverified.propositionKind === 'unverified' && unverified.propositionVerified === false,
   '③ with nothing declared, a one-line proposition is still accepted — it is a LEGAL v5r debate object — and labelled `unverified`', { kind: unverified.propositionKind, ok: unverified.ok })
 ok(typeof unverified.propositionWhy === 'string' && unverified.propositionWhy.includes('一句话命题'),
-  '③ `propositionWhy` says the face cannot tell a legal one-line proposition from a typo (the limit is disclosed, not hidden)', { why: String(unverified.propositionWhy || '').slice(0, 220) })
+  '③ `propositionWhy` says the face cannot tell a one-line proposition from a typo (the limit is disclosed, not hidden)', { why: String(unverified.propositionWhy || '').slice(0, 220) })
 
 // ── ④ THE DEAD `askedWhy` BRANCHES ──────────────────────────────────────────────────────────────────────────────────
 console.log('=== 4. `askedWhy` NOW BRANCHES ON THE VALUES THE CODE ACTUALLY ASSIGNS ===')

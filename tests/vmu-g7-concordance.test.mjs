@@ -78,14 +78,39 @@ const GATES = read('vibe-math-vmu/packs/v5r/verification-gates.js')
     ['seat-faces bullet', SEAT_FACES],
     ['meeting-procedures', PROCEDURES],
     ['verification-gates hint', GATES],
+    ['blocks-a teaching', BLOCKS_A],
+    ['blocks-b teaching', BLOCKS_B],
   ]
-  // A surface "sells" the one-liner when it calls it legal, or lists it as a shape. Naming it only to REFUSE
-  // it (「一句话命题**不是**合法对象」) is the resolved state, so the negation is excluded explicitly rather
-  // than by a looser pattern that would also pass an empty match.
-  const sells = (src) => /一句话命题[^\n]{0,24}合法/.test(src)
-    && !/一句话命题[^\n]{0,16}不是[^\n]{0,4}合法/.test(src)
+  // A surface "sells" the one-liner when it calls it legal — IN EITHER LANGUAGE. The first version of this probe
+  // was Chinese-only, so the FOURTH audit found three English sentences still calling it legal while this suite
+  // stayed green. Selling and refusing are matched LINE BY LINE (not file-wide): a big source that refuses in one
+  // place and sells in another must still fail.
+  const SELLS = [
+    /一句话命题[^\n]{0,24}合法/,
+    /规则允许的一句话命题/,
+    /a one-line proposition is (?:legal|allowed)/i,
+    /a legal one-line proposition/i,
+  ]
+  // Only the RESOLVED WORDING itself is exempt (「一句话命题不是合法对象」) — NOT the presence of a refusal
+  // somewhere on the same line. The fourth audit's worst case was ONE description line that refused in its
+  // first half and sold in its second, so a file-wide or line-wide "it also refuses" escape would have
+  // masked exactly the bug this probe exists to catch.
+  const RESOLVED = [/一句话命题[^\n]{0,16}不是[^\n]{0,4}合法/]
+  const offending = (src) => src.split('\n')
+    .filter((line) => SELLS.some((re) => re.test(line)) && !RESOLVED.some((re) => re.test(line)))
+  const sells = (src) => offending(src).length > 0
   const legalOneLiner = surfaces.filter(([, src]) => sells(src))
-  ok(surfaces.length === 4, 'C3 precondition: four teaching surfaces are read', { n: surfaces.length })
+  ok(surfaces.length === 6, 'C3 precondition: six rendered surfaces are read (tools/seat/procedures/gates/prompts)', { n: surfaces.length })
+  // Rule E self-proof: the probe must flag a synthetic line in BOTH languages (the first version was blind to
+  // English for a whole audit round), and must not flag the resolved wording.
+  ok(sells('a one-line proposition is legal but the receipt records provenance:none'),
+    'C3 probe bites on the English wording (self-proof)', { })
+  ok(sells('本面无法区分"规则允许的一句话命题"与"笔误"'),
+    'C3 probe bites on the Chinese wording (self-proof)', { })
+  ok(sells('x: a one-line proposition is REFUSED by name, and elsewhere a one-line proposition is legal'),
+    'C3 probe is not escaped by a refusal elsewhere on the same line', { })
+  ok(!sells('一句话命题不是合法辩论对象'),
+    'C3 probe leaves the resolved wording alone (negative control)', { })
   ok(legalOneLiner.length === 0,
     'C3a no teaching surface still sells a one-line proposition as a legal debate object (the gate refuses it)',
     { offenders: legalOneLiner.map(([n]) => n) })

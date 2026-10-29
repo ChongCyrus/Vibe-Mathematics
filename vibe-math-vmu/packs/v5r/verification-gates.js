@@ -58,7 +58,11 @@ export const GATE_CODES = Object.freeze({
 /** 唯一被允许写定论的写入器（`packs/v5r/verified.js` 的 `promoteVerified`）。名字是**契约**，不是提示。 */
 export const SINGLE_WRITER = 'promoteVerified'
 
-/** 辩论对象的三种合法形态（规则原文：「命题卡 id / 一个文件引用 / 一句话命题」）。 */
+/**
+ * 被识别的辩论对象形态。规则只允许两种：「命题卡 id（须含已写完的正式证明/证伪）」或「一个文件引用」。
+ * `statement`（一句话命题）仍被识别，但内核**具名拒**它（`VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`）——
+ * 词表里保留它是为了「识别并拒绝」，不是把它当成第三种合法形态（第四次审计 L45/C1 的残留面）。
+ */
 export const SUBJECT_FORMS = Object.freeze(['card', 'file', 'statement'])
 
 /** 「正式证明已写完」的可判标记：卡面 `proofState` 的终态值。半成品（`draft`/`attempt`）不算。 */
@@ -342,7 +346,7 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
   }
   // ★ PHASE 12 / live run 8 finding A — THIS BRANCH USED TO REFUSE, AND THAT WAS A DEADLOCK.
   // The rule's condition for a debate subject is 「含正式证明且已写完」, and the DECLARATION (proofRef + proofState
-  // "complete") is exactly that registration. Demanding machine evidence ON TOP made two of the three legal subject
+  // "complete") is exactly that registration. Demanding machine evidence ON TOP made the two legal subject
   // forms unreachable in a real deployment: the only machine-evidence paths are (a) a `verified` row — which requires
   // a FINISHED DEBATE, i.e. the thing being gated — and (b) a passed Lean job — which requires a `.lean` file that the
   // preset has no tool to create. Measured in run 8: a card registered precisely as rule ⑩ requires was refused with
