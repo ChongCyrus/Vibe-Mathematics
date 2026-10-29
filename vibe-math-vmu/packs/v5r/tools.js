@@ -2654,7 +2654,14 @@ function toolMeeting(args = {}, { kernel } = {}) {
       'the declared types are: ' + MEETING_TYPE_IDS.join(', ') + ' — declare vmu.meetings.typeCatalog to change the vocabulary')
   }
   const type = typeInfo.type
-  const kind = has(args.kind) ? str(args.kind) : 'sync'
+  // ★ LIVE RUN 122 (E6, second half): `kind` DEFAULTED to 'sync'. That default is what let the label rail stay
+  // unreachable on the only face that turns it on (r122a convened m2 with neither title nor kind and read back
+  // "kind":"sync"). The default is KEPT — `sync` is a legal kind and a framework that always has a word for the
+  // meeting is easier to live with than one that refuses every unlabelled convene — but its PROVENANCE is now printed
+  // (`kindSource`), so 「'sync' 这条标签是谁写的」 can be read off the receipt instead of guessed. A caller that passes
+  // no label at all therefore gets: a legal kind, and an explicit "default, not chosen".
+  const kindGiven = has(args.kind) && String(args.kind).trim() !== ''
+  const kind = kindGiven ? str(args.kind) : 'sync'
   const KNOWN = ['sync', 'division', 'verify-request', 'solve-vote']
   if (!KNOWN.includes(kind)) {
     throw refuse('VMU_INVALID_ARGUMENT', 'unknown meeting kind: ' + kind, 'the original offered: ' + KNOWN.join(', '))
@@ -2791,6 +2798,12 @@ function toolMeeting(args = {}, { kernel } = {}) {
     title: opened && opened.title !== undefined ? opened.title : title,
     procedure: proc.procedure, procedureBinding: proc.binding, procedureNote: proc.note, pendingSteps: proc.pendingSteps,
     kind, agenda: str(args.agenda), formalAgenda: args.formal_agenda === true, secretary,
+    // ★ LIVE RUN 122 (E6): WHERE the label came from. `kind` defaults to 'sync' so every meeting always has a word for
+    // what it is — and that default is exactly why a reader must be able to tell a chosen label from a filled-in one.
+    kindSource: kindGiven ? 'args' : 'default',
+    kindSourceMeans: kindGiven
+      ? 'the caller named this meeting’s kind'
+      : 'no kind was passed: the framework filed this meeting under its default kind \"sync\". The label is legal but nobody chose it — pass kind (sync/division/verify-request/solve-vote) or title to name the meeting yourself',
     // ★ WAVE 2 (E9/E6): the roster a narrowed meeting was convened with must be READABLE, not just accepted.
     roster: opened && Array.isArray(opened.roster) ? opened.roster : null,
     rosterNarrowed: opened && opened.rosterNarrowed === true,

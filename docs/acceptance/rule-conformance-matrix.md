@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 49 | all four citations resolve |
-| ◐ PARTIAL | 37 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 57 | all four citations resolve |
+| ◐ PARTIAL | 29 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -29,7 +29,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `A2` | 3 | 有进展时自动唤起所办汇报 | ◐ PARTIAL | 2/1/1/2 | r120：让所办在 turn-end 之外收到一次 progress 事件（或让 v5r-report 声明 progress 触发），读回 fired=true 的回执；今天没有任何 progress 发射点。 |
 | `A3` | 3 | 支持用户以自然语言让所办设参数、控制研究所 | ◐ PARTIAL | 2/2/1/1 | r120：先 vibe_v5_set 一个未声明的键（应具名拒），再改一个声明键并读回生效；两次回执都要。 |
 | `A4` | 3 | 院士＝chair 席，统领研究所 | ✅ DONE | 2/1/2/1 | — |
-| `A5` | 3 | 常驻研究员＝member 席 | ◐ PARTIAL | 2/1/1/1 | r120：vibe_v5_hire 对 slot="member" 被具名拒（成员席只由 vibe_v5_start 建），并存一份 "slot":"member" 的建席回执与 hire 拒回执。 |
+| `A5` | 3 | 常驻研究员＝member 席 | ✅ DONE | 1/1/1/1 | — |
 | `A6` | 3 | 临时工：可被雇佣、无表决权、默认不参与会议、可解雇 | ✅ DONE | 1/1/1/1 | — |
 | `A7` | 3 | 临时工可被解雇 | ✅ DONE | 4/1/1/3 | — |
 | `A8` | 10 | 院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列 | ✅ DONE | 2/3/1/1 | — |
@@ -41,7 +41,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | --- | --- | --- | --- | --- | --- |
 | `B1` | 7 | Verified 只收 p=1 的命题 | ◐ PARTIAL | 1/1/1/1 | r122b：把一张 p=0 的卡交给 vibe_v5_verified_promote 会被具名拒（反证不进 verified 轨，进 rejected 轨）；另读回 carrier 对 p=0 行的结论文案是「假 (p=0) — disproved: warrant …」，不是复制的「真 (p=1)」。 |
 | `B2` | 7 | 参考文献中的命题也可直接入 Verified | ✅ DONE | 2/2/1/2 | — |
-| `B3` | 7 | 只有辩论能把 p 改为 1 | ◐ PARTIAL | 2/2/1/1 | r122b：literature 路带真引用 promote 成功（warrant 是引用）；同一张卡用 warrant_kind:"lean-conformance" 而 call 里没有 lean_job 时被具名拒（kind 与证据不符）；此刻唯一能产出 p=1 的路仍要有具名凭据。 |
+| `B3` | 7 | 只有辩论能把 p 改为 1 | ✅ DONE | 2/2/1/1 | — |
 | `B4` | 8 | 蓝图：总目标/技术路线/规划，按时更新 | ◐ PARTIAL | 2/1/1/1 | r120：造一份 30 天以上的蓝图草案（把 now 拨快或写一份旧行），读回 freshness.stale=true 且 adopt 给出 overdueUpdate=true。 |
 | `B5` | 8 | 蓝图由院士+常驻研究员共同设计 | ◐ PARTIAL | 2/1/1/1 | r120：单席 propose 后 adopt 被具名拒 VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN（读回 missing 两席），再由另一席续写后 adopt 成功。 |
 | `B6` | 8 | 蓝图最终编辑权在院士 | ◐ PARTIAL | 2/1/1/1 | r120：成员会话调 vibe_v5_blueprint{action:"adopt", member:"<chair id>"}，必须按「谁在调用」拒，不能只看 args.member。 |
@@ -54,10 +54,10 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `C2` | 12 | 已尝试路线/方法及其进度 | ✅ DONE | 2/1/1/1 | — |
 | `C3` | 13 | 遇障路线/尝试/方法及障碍与原因归档 | ✅ DONE | 2/1/1/2 | — |
 | `C4` | 13 | 遇到的各种障碍及其原因（归档内容的一部分） | ✅ DONE | 3/1/1/2 | — |
-| `C5` | 14 | 命题库：完整定义、p(0-1)、进度 | ◐ PARTIAL | 2/1/1/1 | r120：写 p=1.5 的命题卡要具名拒且不落盘；带 progress 写卡后读回 `- 进度：…` 行。 |
+| `C5` | 14 | 命题库：完整定义、p(0-1)、进度 | ✅ DONE | 2/1/1/2 | — |
 | `C6` | 14 | 平时只记证明/证伪尝试，真正会证时才写正式证明字段 | ◐ PARTIAL | 1/1/1/1 | r120：proof_state="complete" 无 Lean 证据要具名拒；有 Lean 通过证据才许 complete；complete 后再写同 id 要具名拒（locked）。 |
 | `C7` | 14 | 只有写完的正式证明才能用于辩论 | ◐ PARTIAL | 2/1/1/1 | r122a：以一句自由文本作辩论对象召集 debate 会**成功**，回执 subjectGate 带 form:"statement"、provenance:"none"、proofContentChecked:false，note 明说「本闸判不了」并给两条可被核的路；若换成已登记带证明的卡，则 proofContentChecked:true。（§216.3 的裁决：闸宁可承认判不了，也不删掉一种合法用法。） |
-| `C8` | 14 | p=1 的命题要标记 verified | ◐ PARTIAL | 2/2/1/2 | r120：直接写 p=1 的命题卡（不走 promote）要被具名拒并指路 vibe_v5_verified_promote；p=0.6 仍可写。 |
+| `C8` | 14 | p=1 的命题要标记 verified | ✅ DONE | 1/2/1/1 | — |
 | `C9` | 15 | 方法库（理论/方法/工具，抽象化产物） | ✅ DONE | 2/1/1/1 | — |
 | `C10` | 16 | Lean 代码与编译结果归档 | ✅ DONE | 2/2/1/2 | — |
 | `C11` | 16 | lean 通过后辩论只查描述/定义是否符合原意 | ✅ DONE | 2/1/1/1 | — |
@@ -88,13 +88,13 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E3` | 32 | 只能院士召开会议并主持 | ◐ PARTIAL | 2/1/1/1 | r120：非主席成员调用 requireChairSeat 的工具，要被具名拒（不是 task 租约那一种）。 |
 | `E4` | 32 | 只能院士关闭会议 | ◐ PARTIAL | 2/1/1/1 | r120：非主席成员召集会议被具名拒，读回 code/message。 |
 | `E5` | 32 | 院士可延长会议时长上界 | ✅ DONE | 2/1/1/1 | — |
-| `E6` | 32 | 院士设会议标题 | ◐ PARTIAL | 1/1/1/1 | r120：会议 kind/title 都缺时被具名拒；都给时读回同一形状（title 出现在回执里）。 |
+| `E6` | 32 | 院士设会议标题 | ✅ DONE | 2/1/1/2 | — |
 | `E7` | 32 | 院士设会议类型 | ✅ DONE | 1/1/1/1 | — |
 | `E8` | 32 | 院士设会议议程/事项安排 | ✅ DONE | 1/1/1/1 | — |
 | `E9` | 32 | 院士邀请入会成员 | ◐ PARTIAL | 1/1/1/1 | r120：主席邀请入会的子集（roster 只含 r-1）后读回 roster，证明「邀请入会的成员」真的能收窄名单；今天 convene 把全员塞进 roster。 |
 | `E10` | 32 | 院士设会议时长上界 | ✅ DONE | 3/2/1/2 | — |
 | `E11` | 32 | 允许一次性连续召开多个会议 | ✅ DONE | 2/1/1/1 | — |
-| `E12` | 34 | 成员命令随会议类型与身份不同 | ◐ PARTIAL | 2/1/1/1 | r120：辩论会议上 meeting_round 收窄要真的生效（narrowing.applied=true 或具名说明为何不能），不能只对 debate 声明。 |
+| `E12` | 34 | 成员命令随会议类型与身份不同 | ✅ DONE | 1/1/1/1 | — |
 | `E13` | 37 | 会议类型：正常/学术交流/辩论/结题/论文交流/未来规划 | ✅ DONE | 2/1/1/1 | — |
 | `E14` | 39 | 常见命令：举手 | ✅ DONE | 2/1/1/1 | — |
 | `E15` | 39 | 常见命令：邀请发言 | ✅ DONE | 2/1/1/1 | — |
@@ -118,7 +118,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E33` | undefined | 会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。 | ◐ PARTIAL | 1/1/1/2 | r120：types 读面读回六类（每类带 kind 与收窄后工具面），并读回 typeCatalogSource。 |
 | `E34` | undefined | 会议进行中的一些特殊活动包括但不限于：投票（院士设置投票板选项与机制）、任务板设置与认领交派、群聊式交流，...。 | ✅ DONE | 2/1/1/2 | — |
 | `E35` | undefined | 关于辩论：院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。 | ✅ DONE | 1/1/1/1 | — |
-| `E36` | undefined | 辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。 | ◐ PARTIAL | 2/1/1/1 | r120：辩论会读回 procedureProgress（skeletonSteps/speeches/motions/present）与 roundSurface:"chat" 的区分。 |
+| `E36` | undefined | 辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。 | ✅ DONE | 1/1/1/1 | — |
 
 ## F. 论文阶段
 
@@ -126,7 +126,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | --- | --- | --- | --- | --- | --- |
 | `F1` | 56 | 把原问题与所有有价值产物系统梳理 | ✅ DONE | 1/1/1/2 | — |
 | `F2` | 56 | 合作撰写：分派各自内容并合并 | ✅ DONE | 2/1/1/2 | — |
-| `F3` | 56 | 互审 | ◐ PARTIAL | 1/1/1/1 | r120：单成员论文 review 自审要被具名拒、finalise 不能 unanimous；两成员互审后才许 finalise。 |
+| `F3` | 56 | 互审 | ◐ PARTIAL | 1/1/1/1 | r123：单成员论文 review 自审（已过，r122b 具名拒）之外，还要读到 finalise 在互审未一致时被具名拒；两成员互审后再 finalise 成功。 |
 | `F4` | 56 | 面向读者：系统/正确/完整/严谨清晰 | ◐ PARTIAL | 1/1/1/2 | r120：recordFinal 在 evidence 缺失时必须与 render 同等拒绝（同一 code）。 |
 | `F5` | 56 | 讨论检查无误后定稿 | ✅ DONE | 1/1/1/1 | — |
 
@@ -135,7 +135,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `G1` | 59 | 支持成员使用 Python 等数学计算工具 | ✅ DONE | 2/1/1/2 | — |
-| `G2` | 59 | 所办可设工具并发数量限制防 CPU/OOM | ◐ PARTIAL | 1/1/1/1 | r120：所办把 vmu.math.maxParallel 设 2，下一次读数学面就读到 2，且并发真的允许 2（或说明为何不能）。 |
+| `G2` | 59 | 所办可设工具并发数量限制防 CPU/OOM | ✅ DONE | 1/1/1/1 | — |
 | `G3` | 60 | 支持人工干预研究所决策与运行 | ✅ DONE | 2/1/1/1 | — |
 | `G4` | 60 | 支持断点续跑 | ✅ DONE | 1/1/1/1 | — |
 | `G5` | 61 | 特殊权限/请求经所办向用户询问 | ◐ PARTIAL | 2/1/1/1 | r120：office 通过 vibe_vmu_human{action:"openApproval"} 向用户提问，读回 pending 与 decid 后的 decidedBy；席位不得冒名。 |

@@ -345,10 +345,9 @@
       "id": "A5",
       "rule": "3",
       "text": "常驻研究员＝member 席",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-core.js::label: '常驻研究员', capacity: 0,",
-        "vibe-math-vmu/packs/v5r/seat-faces.js::member: '常驻研究员席位：主张、记录、通信、辩论与表决、形式化、论文',"
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_hire seats TEMP seats only"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_hire"
@@ -357,10 +356,11 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::常驻研究员"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::已经自动建所并 hire 三人"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::::vibe_v5_hire seats TEMP seats only"
       ],
       "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。",
-      "next": "r120：vibe_v5_hire 对 slot=\"member\" 被具名拒（成员席只由 vibe_v5_start 建），并存一份 \"slot\":\"member\" 的建席回执与 hire 拒回执。"
+      "next": "",
+      "note": "r122a：slot=\"member\" 被具名拒，hint 指 vibe_v5_start 与所办 hire 通道（§217.4）"
     },
     {
       "id": "A6",
@@ -452,7 +452,7 @@
       "id": "B3",
       "rule": "7",
       "text": "只有辩论能把 p 改为 1",
-      "status": "PARTIAL",
+      "status": "DONE",
       "tool": [
         "vibe_v5_record_proposition",
         "vibe_v5_verified_promote"
@@ -461,15 +461,15 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::必须有**具名凭据**"
       ],
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/verification-gates.js::export const P1_ROUTES",
-        "vibe-math-vmu/packs/v5r/tools.js::quieter kind of the run-52 defect"
+        "vibe-math-vmu/packs/v5r/verification-gates.js::p1Intent",
+        "vibe-math-vmu/packs/v5r/tools.js::promote needs the warrant that produced this conclusion"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::四种证据形态都写在拒绝里了"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::::promote needs the warrant that produced this conclusion"
       ],
-      "note": "三种凭据都是辩论产物；规则句的「只有辩论」在本实现里等于「只接受辩论产物」——Lead 裁决：不收紧闸。",
+      "note": "r122b：文献引用 p=1 成功（p1Route literature）、无 warrant 的 lean-conformance 被具名拒、带引用 promote 成功（§217.2）",
       "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。",
-      "next": "r122b：literature 路带真引用 promote 成功（warrant 是引用）；同一张卡用 warrant_kind:\"lean-conformance\" 而 call 里没有 lean_job 时被具名拒（kind 与证据不符）；此刻唯一能产出 p=1 的路仍要有具名凭据。"
+      "next": ""
     },
     {
       "id": "B4",
@@ -626,10 +626,10 @@
       "id": "C5",
       "rule": "14",
       "text": "命题库：完整定义、p(0-1)、进度",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/verified.js::parseCardBody",
-        "vibe-math-vmu/packs/v5r/verification-gates.js::只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论"
+        "vibe-math-vmu/packs/v5r/tools.js::p must be a literal JSON number",
+        "vibe-math-vmu/packs/v5r/tools.js::is a number in [0,1]"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_proposition"
@@ -638,10 +638,12 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::命题"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::`read_library {id:\"rec-1\"}` 的 `card` 顶层无 `p`；`p：0.6` 只在 `card.body` 文本里"
+        "docs/acceptance/phase12-v5r-rules-conformance.md:::::got 1.5",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::::\"p\":0.6"
       ],
       "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。",
-      "next": "r120：写 p=1.5 的命题卡要具名拒且不落盘；带 progress 写卡后读回 `- 进度：…` 行。"
+      "next": "",
+      "note": "r122b：p=1.5 具名拒且卡未落盘；p=0.6 成功并读回（§217.4）"
     },
     {
       "id": "C6",
@@ -688,10 +690,9 @@
       "id": "C8",
       "rule": "14",
       "text": "p=1 的命题要标记 verified",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/tools.js::function verifiedRefOf",
-        "vibe-math-vmu/packs/v5r/tools.js::next.verifiedRef"
+        "vibe-math-vmu/packs/v5r/tools.js::VMU_PACK_V5R_P1_NEEDS_DEBATE"
       ],
       "tool": [
         "vibe_v5_read_library",
@@ -701,11 +702,11 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::Verified/ 的写入只有 `vibe_v5_verified_promote`"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::C8 p=1 的题卡指回 Verified",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::已证结论卡"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::::VMU_PACK_V5R_P1_NEEDS_DEBATE"
       ],
       "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。",
-      "next": "r120：直接写 p=1 的命题卡（不走 promote）要被具名拒并指路 vibe_v5_verified_promote；p=0.6 仍可写。"
+      "next": "",
+      "note": "r122b：裸 p=1 被具名拒，hint 列四条合法路（§217.4）"
     },
     {
       "id": "C9",
@@ -1127,9 +1128,10 @@
       "id": "E6",
       "rule": "32",
       "text": "院士设会议标题",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::title !== null && title !== undefined && typeof title !== 'string'"
+        "vibe-math-vmu/packs/v5r/tools.js::kindSource: kindGiven",
+        "vibe-math-vmu/kernel/meetings.js::VMU_MEETING_LABEL_MISSING"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -1138,10 +1140,12 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::可选**的独立名称"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::`kind` 与 `title` 都要给"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::::\"kind\":\"sync\" 出现在一份调用者既没给 kind 也没给 title 的回执里",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::::kindSource: 'args' | 'default'"
       ],
       "ruleText": "会议只能由院士 预约会议（可以设置预约时间，当会议时间到但是人未到齐时可以进入等待阶段，但如果超过一定时间仍未到齐，则此时院士自行决定怎么做）、召开和关闭、延长会议时长上界，院士作为主持。院士可以设置会议标题、会议的类型、内容事项安排、邀请入会的成员、会议时长上界。院士通过命令自组织进行、决策会议进行中的一切内容、控制、活动。一些特殊类型会议下框架会初始时给予院士推荐的会议进行流程骨架，但是具体实施、决定、是否要遵循完全由院士自己决定。允许一次性设置连续展开的多个会议（例如先进行学术交流会议再开展未来规划交流和任务安排分配会议）。",
-      "next": "r120：会议 kind/title 都缺时被具名拒；都给时读回同一形状（title 出现在回执里）。"
+      "next": "",
+      "note": "r122a 量到默认 kind 冒充标签（F-122a）；修法=保留默认值并把来源印成 kindSource/kindSourceMeans，判据「默认值可以是合法的，但它必须说自己是被填上的」（§217.3）"
     },
     {
       "id": "E7",
@@ -1249,10 +1253,9 @@
       "id": "E12",
       "rule": "34",
       "text": "成员命令随会议类型与身份不同",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/meeting-tool-face.js::export const MEETING_TYPE_TOOL_FACES = Object",
-        "vibe-math-vmu/packs/v5r/meeting-tool-face.js::member, all: false, allow: row"
+        "vibe-math-vmu/packs/v5r/meeting-tool-face.js::applyMeetingTypeFace"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting_round"
@@ -1261,10 +1264,11 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::会议"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::the floor requires 2 and is NOT met"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::::辩论会议期间收窄到"
       ],
       "ruleText": "会议中各成员可执行命令或工具按会议类型（如学术交流、任务安排策划（一起策划）与分配、辩论会议、结题会议、...）和成员身份会有差异。",
-      "next": "r120：辩论会议上 meeting_round 收窄要真的生效（narrowing.applied=true 或具名说明为何不能），不能只对 debate 声明。"
+      "next": "",
+      "note": "r122a：meeting_round 回 narrowing type/narrowed/expected（§217.4）"
     },
     {
       "id": "E13",
@@ -1669,7 +1673,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::not awaiting its editor"
       ],
       "ruleText": "把原总问题及所有研究所中有价值的产物系统梳理，合作撰写最终论文。合作写论文（如安排写各自负责内容最后系统地合并），互审，论文是面向读者的，要保证内容系统、正确、完整、严谨清晰。最后讨论、检查无误后定稿。",
-      "next": "r120：单成员论文 review 自审要被具名拒、finalise 不能 unanimous；两成员互审后才许 finalise。"
+      "next": "r123：单成员论文 review 自审（已过，r122b 具名拒）之外，还要读到 finalise 在互审未一致时被具名拒；两成员互审后再 finalise 成功。"
     },
     {
       "id": "F4",
@@ -1736,9 +1740,9 @@
       "id": "G2",
       "rule": "59",
       "text": "所办可设工具并发数量限制防 CPU/OOM",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/mathjobs.js::maxParallel: readMaxParallel"
+        "vibe-math-vmu/kernel/mathtools.js::readMaxParallel"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_set"
@@ -1747,10 +1751,11 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::vmu.math.maxParallel"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::maxParallel:1, enforced:"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::::\"maxParallelSource\":\"setting-live\""
       ],
       "ruleText": "- 支持成员使用一些数学计算工具（如Python等），但支持所办通过参数设置工具的并发数量等限制，避免cpu过载、oom。",
-      "next": "r120：所办把 vmu.math.maxParallel 设 2，下一次读数学面就读到 2，且并发真的允许 2（或说明为何不能）。"
+      "next": "",
+      "note": "r122b：set 之后 status 读到 2 与单一读者 readMaxParallel（§217.4）"
     },
     {
       "id": "G3",
@@ -2025,10 +2030,9 @@
     {
       "id": "E36",
       "ruleText": "辩论类型的会议下，v5r框架默认推荐给院士的流程是：",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::function procedureProgressOf",
-        "vibe-math-vmu/kernel/chat.js::const ROUND_SURFACE_MEANS"
+        "vibe-math-vmu/kernel/meetings.js::function procedureProgressOf"
       ],
       "tool": [
         "vibe_v5_say"
@@ -2037,10 +2041,11 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::单次发言版群聊"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"advancing\":true"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::::None of them is a step index"
       ],
-      "next": "r120：辩论会读回 procedureProgress（skeletonSteps/speeches/motions/present）与 roundSurface:\"chat\" 的区分。",
-      "text": "辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。"
+      "next": "",
+      "text": "辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。",
+      "note": "r122a：status 与 summary 都读回 procedureProgress 的计数与 means（§217.4）"
     }
   ]
 }

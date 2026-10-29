@@ -9448,3 +9448,70 @@ lookup: this answer was read, not refused."`；**其它**失败仍原样给 `bri
 不把 DONE 写成 PENDING 的反向操作（把没有回执的行标 DONE）才是这轮要防的事。
 
 ### §216.5 无实质残余：否（42 行等真机回执）
+
+---
+
+## §217 真机跑 122a / 122b —— 一个默认值也能是假标签
+
+### §217.1 读数
+
+| 轮次 | build | 时长 | 调用 | token | 会话 | RED | jsonl |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 122b（卡片/蓝图/论文/数学） | `56c5e2b1` | 163 s | 24 / 24 | 1,080,374 | 1 | 0 | 1,137,140 B / 2,425 行 |
+| 122a（席位/会议/投票） | `56c5e2b1` | 789 s | 174 / 174 | 5,298,739 | 1 | 0 | 14,119,024 B / 29,055 行 |
+
+两轮围栏读数全 0；clone 均已清。
+
+### §217.2 判决表
+
+| 规则 | 真机读到的 | 判定 |
+| --- | --- | --- |
+| C5 `p` 是概率 | `p:1.5` ⇒ 具名拒「p must be a number in [0,1] …; got 1.5」，**卡未落盘**；`p:0.6` ⇒ 成功并存 `"p":0.6` | ✅ |
+| C8 裸 `p=1` | ⇒ `VMU_PACK_V5R_P1_NEEDS_DEBATE`，hint 列四条合法路 | ✅ |
+| B3 凭据要具名 | 文献引用 `p=1` 写卡成功（`p1Route:"literature"`），`verified_promote{warrant_kind:"lean-conformance"}` 无 warrant ⇒「promote needs the warrant that produced this conclusion」；带引用 promote ⇒ 成功、`warrant:{id:引用,kind:"literature"}` | ✅ |
+| A5 席位口径 | `vibe_v5_hire{slot:"member"}` ⇒ `VMU_NOT_PERMITTED`「vibe_v5_hire seats TEMP seats only; you asked for slot "member"」，hint 指创建面与所办通道 | ✅ |
+| E12 辩论期收窄 | `vibe_v5_meeting_round{phase:"meeting"}` 回 `narrowing:{type:"debate",narrowed:true,…expected:[…]}` | ✅ |
+| E36 流程进度可读 | `status`/`summary` 都带 `procedureProgress:{skeletonSteps:4,skeletonBinding:"recommendation",speeches:0,motions:0,queued:1,present:1,advancing:true,means:"… None of them is a step index"}` | ✅ |
+| G2 并发上限单一读者 | `vibe_v5_set{key:"vmu.math.maxParallel",value:"2"}` 后 `mathtools status` 读到 `"maxParallel":2,"maxParallelSource":"setting-live"` 与 `reader:"readMaxParallel()"` | ✅ |
+| F3 互审 | 作者自审 ⇒「互审必须由另一位成员完成：r-1 不能评审自己写的部分」 | ✅（自审这一半） |
+| B5/B6 蓝图两席/冒名 | r122b 的所没有 chair 席（`academician:false`），adopt 先被席位闸拒 ⇒ codesign 拒与冒名拒都没走到 | ⏳ 未取证 |
+| E6 会议标签 | **opened 但标签是框架填的**：`kind:"sync"` 出现在一份调用者既没给 kind 也没给 title 的回执里 | ❌ F-122a |
+
+### §217.3 F-122a：一个默认值冒充了一个标签
+
+`vibe_v5_meeting` 的 convene 分支把 `kind` 默认成 `'sync'`。这个默认值本身没错（`sync` 是合法 kind，框架总得有一个词称呼这场会），
+但它让内核的 `labelRequired` 轨**在唯一打开它的面上永远不触发**：调用者什么都没写，到达内核的却是一个"有标签"的会议，于是
+「会议要有有意义的标签」这条规则被一个没人写过的词满足了 —— r122a 的 m2 就是这样开成 `"kind":"sync"` 的。
+
+修法不是删默认值（那会让 141 处无标签夹具全部变红，而且规则并没有说"不许有默认标签"），而是**把来源印出来**：
+
+- 回执新增 `kindSource: 'args' | 'default'`；
+- `kindSourceMeans` 在 `default` 时明说「no kind was passed: the framework filed this meeting under its default kind "sync". The label is legal but nobody chose it —— pass kind … or title …」。
+
+判据一句话：**默认值可以是合法的，但它必须说自己是被填上的 —— 一个没人写过的标签，不是标签。**
+
+### §217.4 逐字回执（live 的落点）
+
+```
+vibe_v5_record_proposition {p:1.5} ⇒ {"ok":false,"code":"VMU_INVALID_ARGUMENT","message":"p must be a number in [0,1] (布尔概率估计); got 1.5","hint":"the card was NOT written …"}
+vibe_v5_record_proposition {p:1}   ⇒ {"ok":false,"code":"VMU_PACK_V5R_P1_NEEDS_DEBATE", …}
+vibe_v5_hire {slot:"member"}       ⇒ {"ok":false,"code":"VMU_NOT_PERMITTED","message":"vibe_v5_hire seats TEMP seats only; you asked for slot \"member\"" …}
+vibe_v5_meeting_round {phase:"meeting"} ⇒ "narrowing":{"type":"debate","narrowed":true, …}
+vibe_vmu_mathtools {action:"status"}    ⇒ "concurrency":{"key":"vmu.math.maxParallel","maxParallel":2,"maxParallelSource":"setting-live", …}
+vibe_v5_paper {action:"review",of:"r-1",member:"r-1"} ⇒ {"ok":false,"code":"VMU_INVALID_ARGUMENT","message":"互审必须由另一位成员完成：r-1 不能评审自己写的部分 …"}
+```
+
+### §217.5 测试与门禁
+
+- 新 `tests/vmu-run122-label-provenance.test.mjs` **19/0**（默认标签仍开成 + `kindSource:"default"` + 说明句；给 title 不改变 kind 来源；给 kind ⇒
+  `kindSource:"args"`；未声明的 kind 仍具名拒；内核自身不传 `labelRequired` 时照旧可开 —— 严格只发生在 pack 面）。
+- 相邻：`vmu-meeting-types` 155/0、`vmu-meeting` 50/0、`vmu-wave2-meeting-roster-label-counts` 54/0、`vmu-wave2-meeting-face-narrowing` 35/0、
+  `vmu-v5r-tools` 360/0、`vmu-run102-panel-types` 33/0。
+
+### §217.6 简报自身错三处
+
+1. `vibe_v5_feedback` 的参数是 `op`（add/update/list），不是 `action`；
+2. `blueprint adopt` 需要 chair 席，而 r122b 用 `academician:false` 开的所 —— B5/B6 因此没走到自己的拒绝；
+3. `vibe_v5_meeting` 的 `member` 是必填（"meeting (convening) needs the acting member id"），简报前两次漏传。
+
+### §217.7 无实质残余：否（B5/B6/F4 的拒支与 C10 待下一轮带 chair 席 + 真 Lean 文件复验）
