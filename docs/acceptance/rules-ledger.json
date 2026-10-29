@@ -424,7 +424,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::only 1 or 0 may be promoted"
       ],
       "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。",
-      "next": "r120：promote 一张 p=0 的辩论结论后读 Verification 行，正文必须说「结论为假（p=0）」，不能说「真（p=1）」。"
+      "next": "r122b：把一张 p=0 的卡交给 vibe_v5_verified_promote 会被具名拒（反证不进 verified 轨，进 rejected 轨）；另读回 carrier 对 p=0 行的结论文案是「假 (p=0) — disproved: warrant …」，不是复制的「真 (p=1)」。"
     },
     {
       "id": "B2",
@@ -469,7 +469,7 @@
       ],
       "note": "三种凭据都是辩论产物；规则句的「只有辩论」在本实现里等于「只接受辩论产物」——Lead 裁决：不收紧闸。",
       "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。",
-      "next": "r120：用非辩论凭据（literature / lean-conformance / verified-row 三条路各一次）尝试把命题卡 p 改到 1，必须被具名拒；只留 debate 一条路成功。"
+      "next": "r122b：literature 路带真引用 promote 成功（warrant 是引用）；同一张卡用 warrant_kind:\"lean-conformance\" 而 call 里没有 lean_job 时被具名拒（kind 与证据不符）；此刻唯一能产出 p=1 的路仍要有具名凭据。"
     },
     {
       "id": "B4",
@@ -682,7 +682,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::message 写「命题卡 rec-5 没有「正式证明或证伪已写完」的任何登记"
       ],
       "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。",
-      "next": "r120：以一句自由文本 proposer 召集 debate 要被具名拒；已登记带证明的卡才允许。"
+      "next": "r122a：以一句自由文本作辩论对象召集 debate 会**成功**，回执 subjectGate 带 form:\"statement\"、provenance:\"none\"、proofContentChecked:false，note 明说「本闸判不了」并给两条可被核的路；若换成已登记带证明的卡，则 proofContentChecked:true。（§216.3 的裁决：闸宁可承认判不了，也不删掉一种合法用法。）"
     },
     {
       "id": "C8",
@@ -863,11 +863,11 @@
         "vibe_vmu_turn"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::属于你（<member>）"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::属于你（<member>，未完成 N 条）"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::属于你（r-acad，未完成 0 条）",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::属于你（r-acad）0 条：state 0"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::属于你（r-acad，未完成 0 条）：state 0"
       ],
       "ruleText": "- 各自推进各自的总任务。",
       "next": "r120：两位成员各读状态板，②③ 两行的前缀必须同为「属于你（<id>，…」；所办视图逐字不变。"
@@ -942,7 +942,7 @@
       "status": "PARTIAL",
       "mechanism": [
         "vibe-math-vmu/kernel/turn/index.js::（时间未提供：",
-        "vibe-math-vmu/kernel/turn/index.js::timeWhy = '设置键没有内容时间戳"
+        "vibe-math-vmu/kernel/turn/index.js::TIME_WHY_UNSTATED = '这一行没有内容时间戳"
       ],
       "tool": [
         "vibe_vmu_turn",
@@ -1738,8 +1738,7 @@
       "text": "所办可设工具并发数量限制防 CPU/OOM",
       "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kernel/mathjobs.js::await new Promise",
-        "vibe-math-vmu/kernel/mathjobs.js::maxParallel: Math"
+        "vibe-math-vmu/kernel/mathjobs.js::maxParallel: readMaxParallel"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_set"
@@ -1907,11 +1906,7 @@
       "rule": "32",
       "text": "院士通过命令自组织会议进行中的一切内容、控制、活动（兜底授权，动词不穷举）",
       "mechanism": [
-        "vibe-math-vmu/tools/meeting.js::action === 'extendlimit'",
-        "vibe-math-vmu/tools/meeting.js::SERVICE_CROSSING_ACTIONS",
-        "vibe-math-vmu/packs/v5r/tools.js::scheduleNote",
-        "vibe-math-vmu/packs/v5r/tools.js::THE RECOMMENDED PROCEDURE",
-        "vibe-math-vmu/kernel/meetings.js::procedureRow"
+        "vibe-math-vmu/kernel/meetings.js::function procedureRow"
       ],
       "tool": [
         "vibe_vmu_meeting",
