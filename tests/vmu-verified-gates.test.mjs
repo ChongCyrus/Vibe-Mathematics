@@ -162,7 +162,7 @@ function cardRow(records, { p = 0.5, title = '命题-平方和' } = {}) {
 
   const halfBaked = { card: { id: 'r-abc', p: 0.6, proofRef: 'Members/pi/Propos/r-abc.md', proofState: 'attempt' } }
   refused(debateSubjectGate({ meeting: debate, subject: 'r-abc', evidence: halfBaked }), GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
-    '★ a half-finished proof (proofState=attempt) is NOT a debate subject — the rule says 写完 rather than 半成品', '三种合法形态')
+    '★ a half-finished proof (proofState=attempt) is NOT a debate subject — the rule says 写完 rather than 半成品', '两种合法形态')
   const noRef = { card: { id: 'r-abc', p: 0.6 } }
   refused(debateSubjectGate({ meeting: debate, subject: 'r-abc', evidence: noRef }), GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
     'a card with no proof reference at all is refused by name', 'proofRef=空')

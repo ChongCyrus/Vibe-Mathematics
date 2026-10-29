@@ -25,7 +25,7 @@
 export const MEETING_TYPES = Object.freeze([
   Object.freeze({ id: 'ordinary', label: '正常会议', purpose: '例行同步：本所/小组的进展、分工、阻塞与下一步。', subjectRequired: false }),
   Object.freeze({ id: 'academic', label: '学术交流', purpose: '围绕研究方向互相报告与提问，把要追的线索落到记录上。', subjectRequired: false }),
-  Object.freeze({ id: 'debate', label: '辩论', purpose: '围绕一个命题（命题卡/文件/一句话）辩论，以最终裁决给出布尔概率。', subjectRequired: true }),
+  Object.freeze({ id: 'debate', label: '辩论', purpose: '围绕一个命题（含已写完证明的命题卡 / 文件引用）辩论，以最终裁决给出布尔概率。', subjectRequired: true }),
   Object.freeze({ id: 'closure', label: '结题', purpose: '确认目标是否达成、缺什么，并对"是否达标"表决与归档。', subjectRequired: false }),
   Object.freeze({ id: 'paper', label: '论文交流', purpose: '围绕一篇论文稿的提交、互审、修订与定稿。', subjectRequired: false }),
   Object.freeze({ id: 'planning', label: '未来规划/策划', purpose: '基于现状与约束，给出备选路线与阶段计划。', subjectRequired: false }),
@@ -49,7 +49,7 @@ function step(n, phase, tool, what, tools) {
 export const DEBATE_PROCEDURE = Object.freeze({
   title: '辩论会议 · 推荐流程骨架',
   binding: 'recommendation',
-  subject: '辩论对象：命题卡 id、一个文件引用（如 Members/<成员>/Propos/<id>.md 或 Lean 文件），或一句话命题。lean 已通过但概率仍非 1 的命题，辩论焦点是「代码中的命题与定义是否符合原意」。',
+  subject: '辩论对象：命题卡 id（须含已写完的正式证明/证伪或已通过的 Lean 行）、一个文件引用（如 Members/<成员>/Propos/<id>.md 或 Lean 文件）。一句话命题不是对象。lean 已通过但概率仍非 1 的命题，辩论焦点是「代码中的命题与定义是否符合原意」。',
   steps: Object.freeze([
     step(1, 'independent-estimates', 'vibe_v5_say',
       '各成员各自独立表态：给出该命题当前的布尔概率([0,1])、理由、以及证明/证伪进展。先不互相反驳、不互相引用（「独立」是**尽力而为的约定**，不是内核保证的隔离 —— 见 notes）。',

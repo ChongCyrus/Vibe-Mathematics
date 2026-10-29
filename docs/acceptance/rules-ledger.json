@@ -712,11 +712,12 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::Verified/ 的写入只有 `vibe_v5_verified_promote`"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_PACK_V5R_P1_NEEDS_DEBATE"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::VMU_PACK_V5R_P1_NEEDS_DEBATE",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"written\":true,\"refreshed\":false,\"id\":\"rec-13\""
       ],
       "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。",
       "next": "",
-      "note": "r122b：裸 p=1 被具名拒，hint 列四条合法路（§217.4）"
+      "note": "r122b：裸 p=1 被具名拒，hint 列四条合法路（§217.4）。r137（§232.3）：文献凭据的正路真机成立 —— `vibe_v5_verified_promote{card:\"p-r137-lit\",warrant_kind:\"literature\",literature_ref:…}` 回 `written:true, id:\"rec-13\", p:1, conclusion:true, p1Route:\"literature\"`，随后 `vibe_v5_read_library{track:\"verified\"}` 的 total 含那一行；拒绝路径与放行路径两侧都有回执。"
     },
     {
       "id": "C9",

@@ -665,7 +665,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '**沉默不是同意，也不是反对**——未表态会**阻塞结题**（未表态名单会被列出），绝不会被折算为赞成或反对。',
         '',
         '结束时请用 `vibe_v5_verdict` 给出你的独立复核（一个概率值 + 理由），其中的对象是',
-        '`{{ setting:vmu.turn.verifyTarget }}`；本所的表决走工具调用，不用 JSON 回复块。',
+        '`{{ setting:vmu.turn.verifyTarget }}`；表决票走 `vibe_v5_poll_vote`，本回执的 `verdict` 字段也真的会派发到票箱（`executed` 点名）——两个入口都算票。',
       ].join('\n'),
     },
   },
@@ -800,7 +800,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · 推进一轮：`vibe_v5_meeting_round { meeting, members?, phase? }` 按序各跑一回合（members 缺省＝除主席外全体在册）；`phase` 取值以工具声明为准（辩论轮可直接写 `debate`，回执会说明它按 `verify-debate` 跑），写错具名拒；回执 `ok:false`+`turnFailed:true`＝这轮没发生，别当成功；`close`/`extendlimit` 要带 `actor`（主席本人）；`action:"convene"` 与直接召集等价。',
       ].join('\n'),
       temp: [
-        '【会议类型与预约】六种类型（ordinary/academic/debate/closure/paper/planning），`sync` 是动议 kind；被邀请不等于签到，要自己 `attend` 才计入法定人数；临时工没有表决权。',
+        '【会议类型与预约】六种类型（ordinary/academic/debate/closure/paper/planning），`sync` 是动议 kind；被邀请不等于签到——临时工席位不参会：`attend` 被具名拒（`vmu.meetings.attendDeniedSeats`），无表决权。',
       ].join('\n'),
       researcher: [
         '【会议类型与预约】六种：`ordinary`︱`academic`︱`debate`（须 `subject`）︱`closure`︱`paper`︱`planning`；`sync` 是动议 kind。命令随类型与身份不同（辩论须先 `subject`、结题表决 `vote_solved`、论文交流走 `vibe_v5_paper`；临时工无表决权）。`at` 预约会开始前拒**治理动作**（`attend` 可提前签到、不会提前开会），到点人齐才开；被邀请≠签到。',

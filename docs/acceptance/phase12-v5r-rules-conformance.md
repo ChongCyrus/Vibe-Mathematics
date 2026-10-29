@@ -10538,3 +10538,67 @@ nudge 两个方向读 flag、prioritize 教学与 description 与回执一致）
 
 G7 仍是 PARTIAL：按用户裁定，第二次审计修完后要**再派一次只读审计、零矛盾**才记 DONE。C7 本轮两侧都有逐字证据，
 可以从 PARTIAL 转 DONE。
+
+## §232 G7 第三次独立审计 —— 四条「同一轮提示里两句话互斥」，以及 C8 的正路回执
+
+第三次只读审计（基线 HEAD `b44c146f`，规则原文 63 行 / sha256 前 16 位 `a5d9a6c1ff73ec10`，报告
+`D:/_tmp/g7a3/audit3.md`）结论 **`G7 VERDICT: CONTRADICTIONS(4)`**：四条都与前两次的十条不同源（C3 是 §230 C3
+的**残留面**——提示词层改了，工具描述/席位 bullet/骨架/拒因 hint 四处仍在教合法），另有 7 条 GAP 与 9 条「判为不
+矛盾」的疑点（后者避免下一轮重复劳动）。
+
+### §232.1 四条矛盾与修法
+
+| # | 行 | 两句话 | 站在机制一侧的修法 |
+|---|---|---|---|
+| C1 | L03/L14 | `v5r-blocks-a.js:88-89`/`:100-101` 说临时工「可写自己的成果库」，`v5r-blocks-b.js:880` 说「临时工不写这些库…工具面对 temp 拒」 | 席位 ACL（`seat-faces.js` 的 record_proposition/record_method/subproblem/progress/feedback/lean/paper 对 temp 全 false）是权限的权威 ⇒ 改宪章那两句为「可读、可发言、可认领或被分派任务；但没有表决权，也不写命题/方法/进度库（面拒，产出归指派者）」；被改的**捕获基线**在 `tests/vmu-turn.test.mjs` 的 `DECLARED_DIVERGENCES` 里逐块声明并写理由（该机制本就是 F5 重写用的） |
+| C2 | L62 | `v5r-blocks-b.js:668`「表决走工具调用，不用 JSON 回复块」，而每轮回执目录把 `verdict` 声明为可取票字段（`kernel/turn/index.js:61` `FIELD_OWNERS.verdict → vmu.ballotbox.cast`） | 改成同时点名两个入口：「表决票走 `vibe_v5_poll_vote`，本回执的 `verdict` 字段也真的会派发到票箱（`executed` 点名）——两个入口都算票」 |
+| C3 | L14/L45 | 工具描述 `tools.js:4227`、缺参 hint `:2772`、院士 bullet `seat-faces.js:421`、骨架 `meeting-procedures.js:28/:52`、拒因 hint `verification-gates.js:381` 说「一句话命题合法」；`debateSubjectGate` 具名拒 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`，承诺的 `provenance:"none"` 在 statement 分支**永不可达** | 五个面统一改成「命题卡（须含已写完的证明/Lean 通过）或文件引用；一句话命题**不是**对象（具名拒）」；拒因 hint 从「三种合法形态」改「两种合法形态」 |
+| C4 | L03/L34 | `v5r-blocks-b.js:803` 教临时工「要自己 `attend` 才计入法定人数」，而 `kernel/meetings.js:1385-1393` 对 temp 的 `attend` 直接 `VMU_NOT_PERMITTED`（`vmu.meetings.attendDeniedSeats`） | 改成「临时工席位不参会：`attend` 被具名拒（`vmu.meetings.attendDeniedSeats`），无表决权」 |
+
+### §232.2 新套件与自伤红
+
+- 新 `tests/vmu-g7-concordance.test.mjs` **18/0**：四对矛盾各钉「已解决后的状态」（不出现旧句、出现新句、机制一侧仍真），
+  每条都有非空前置；C3 的「卖合法」判据显式排除「一句话命题**不是**合法对象」这种**否定式**写法（否则修好的文案会被
+  自己的正则判红——本轮实际踩到一次）。
+- 自伤红两条都已修：① `tests/vmu-verified-gates.test.mjs:165` 钉的「三种合法形态」随 C3 改成「两种合法形态」⇒ 102/0；
+  ② 新增套件让派生计数漂移 ⇒ `node scripts/update-doc-counts.mjs --write`（`JOBS 688 / suites 580 / probes 108`）。
+- 成员提示词 20000 字符预算：C1/C2/C4 的改写把 `vmu-turn` T99 推到 20017 ⇒ 逐次缩句回到 **19997**（`vmu-turn` **272/0**）；
+  预算纪律不变：**捕获基线不重写，缺口用补行或声明**。
+
+### §232.3 r137 真机：C8 的正路（这是 C8 live 一直缺的那一半）
+
+r137（build `b44c146f`，clone `slvp137`，port 19737，10 calls）是一次**定向**取证跑：
+
+- C8 ✅ 正路：`vibe_v5_verified_promote {card:"p-r137-lit", warrant_kind:"literature", literature_ref:"Lagrange, 1770 …"}` ⇒
+  `{"ok":true,"warrant":{"id":"Lagrange, 1770, Oeuvres t.3, Theoreme des quatre carres","kind":"literature"},
+  "p1Evidence":"literature-reference","p1Route":"literature","note":"the conclusion entered the verified track",
+  "written":true,"refreshed":false,"id":"rec-13","cardId":"p-r137-lit","p":1,"conclusion":true}`；随后
+  `vibe_v5_read_library {track:"verified", limit:5}` ⇒ `total:2`（`rec-11` 是上一跑的，`rec-13` 是本跑的）。
+  这就是 C8 live 的放行侧：**p=1 的卡真的能被标进 verified 轨，且读面带得回来**。
+- F-136a ✅ 活体：`vibe_v5_record_proposition {… proof_ref:"Members/r-acad/Propos/p-r137-proof.md#证明", proof_state:"complete"}`
+  ⇒ `"proofState":"complete","proofStateEvidence":{"kind":"proof-ref","measured":false,"ref":"Members/…"}` —— 不再是与
+  `complete` 并排的 `null`。
+- F-136b ✅ 活体：`vibe_v5_nudge {to:"r-1", …}` ⇒ `"urgent":false` + `note:"delivered as ORDINARY mail: this deployment
+  does not list nudge among vmu.mailbox.urgentKinds (the row reads urgent:false — urgency is the deployment declaration,
+  not the kind name)"`。
+- F-136c ✅ 活体：`vibe_v5_prioritize {order:[{task_id:"t-4", priority:1}]}` ⇒ `"applied":[{"task_id":"t-4","from":2,
+  "to":1,"revision":2}]`（任务板真改了；`currentPriorities` 里 `current:null` 是**改前**读数的形状，不是没改）。
+- ⚠ 环境项（不是产品缺陷）：同轮 `vibe_vmu_turn {op:"step", member:"r-acad"}` 回 `VMU_TURN_DELIVERY_TIMEOUT`
+  （900000 ms + grace 225000 ms 用尽）——本跑只剩主席一个人，成员回合的一次性投递没有完成；席位的其余动作都在主席
+  自己的会话里完成，故不影响取证。
+
+### §232.4 台账、文档与门禁
+
+- 台账 `docs/acceptance/rules-ledger.json`：C8 的 `live` 增加本节的 `"written":true,"refreshed":false,"id":"rec-13"`
+  （放行侧），`note` 记两侧都有回执 ⇒ `check-rules-coverage --strict-live` 不再报 `LIVE_IS_ONLY_A_REFUSAL`；
+  G7 仍 PARTIAL，`next` 写明「第四次只读审计；零矛盾才 DONE」。
+- `docs/26-turn-orchestration.md` 追加 `## ROUND 136c`（判据：**同一个提示里的两句话必须都能被同一个机制兑现**；捕获基线
+  与机制冲突时，改文案并把分歧登记成声明，而不是让基线豁免一个谎言）。
+- 门禁：`regen-all --write|--check` 17/17、`preflight PASS`、`DOC LINT PASS`、全量 T1 **619/0**（`/d/_tmp/t1-g7-4b/t1.log`，
+  `suites 555 · probes 64`）。
+
+### §232.5 无实质残余：否
+
+剩余 1 行：G7（等第四次审计零矛盾）。7 条 GAP 已在审计报告第四节逐条列出（席位无脚本写面、断点续跑不可寻址、
+辩论裁决不受 m 约束、无并发/隔离、等待超时无自决路径等），它们是「没写到」而非「互相矛盾」，按用户裁定的口径不阻塞
+台账，但要一并交给下一轮判断。

@@ -378,7 +378,7 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
     + '规则：只有含正式证明/证伪（且已写完而非半成品）的卡才能进入辩论；"证明尝试"只是候选，不是辩论对象',
     '先登记证明引用（写卡时传 `payload:{proofRef:"Members/<m>/Propos/<id>.md#正式证明", proofState:"complete"|"draft"}`，'
     + '或工具面的 `proof_ref`/`proof_state`），再跑 Lean 或走辩论；声明与证据齐了才可开辩论。'
-    + '三种合法形态：命题卡 id（声明 + 机器证据）/ 文件引用（存在且非空）/ 一句话命题（本闸判不了证明，放行但记 provenance:none）',
+    + '两种合法形态：命题卡 id（声明 + 机器证据）/ 文件引用（存在且非空）；一句话命题不是对象（本闸与召集面都具名拒）',
     { form: 'card', subject: cls.raw, proofChecked: false, declared: false, declaredState: proofState || null })
 }
 

@@ -659,6 +659,13 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'v5r-charter-org': 'F5: Verified/ 的进门条件从「m 票/布尔一致」改成「正式证明 + 辩论裁决为真」',
     'v5r-charter-truth-note': 'F5: 同上，truth-note 的两个变体都改成指向【五】的定论门槛',
     'v5r-charter-voting': 'F5: 整段「m 票布尔一致」换成求真门槛（`vibe_v5_verdict` 概率 + p=1 的三种定论证据 + 唯一写入者），并把「表决 m」与「定论」明确分开',
+    // ★★ G7 THIRD AUDIT (2026-10-30), C1: the captured charter says a temp 「可写自己的成果库」, while the
+    // SAME member prompt (blocks-b, v5r-turn-tracks) says temp writes none of those libraries and the ACL
+    // denies every write face for slot `temp` (seat-faces temp:false on record_proposition / record_method /
+    // record_subproblem / record_progress / feedback / lean / paper). The capture is a frozen artefact and the
+    // machinery is the authority on PERMISSIONS, so the shipped bullet is rewritten to state what the door does.
+    // Declaring it here (with the reason) is the honest form this mechanism already uses for F5's rewrites.
+    'v5r-charter-roster': 'G7#3 C1: 「临时工…可写自己的成果库」与席位 ACL / blocks-b 相反，改成「不写这些库，产出由指派者归档」',
   })
   const divergedByBlock = Object.create(null)
   // Scope: the CHARTER blocks are checked against the persona the original really hands out. The reply spec is
