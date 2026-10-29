@@ -7,6 +7,7 @@
 //   · `anchor` refuses a delivered/unknown id BY NAME (the body is dropped at ack, so quoting it would
 //     fabricate evidence);
 //   · `plan` wakes urgent mail first within a declared budget, and NAMES the deferred members with a reason.
+import { resolveTurnMember } from '../host-pack-tools.js'
 export function makeMailboxSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
     name: TOOL_NAMES.mailbox,
@@ -34,14 +35,31 @@ export function makeMailboxSpec({ param, refused, TOOL_NAMES, kernel }) {
       budget: param('number', 'plan：本轮最多唤醒几人（默认 vmu.mailbox.wakeBudget）'),
       freshOnly: param('boolean', 'pending：只返回本次提示尚未注入过的条目'),
     },
-    run: async ({ action, from, to, text, kind, replyTo, member, ids, members, budget, freshOnly, id, subject, urgent, read, todo, status } = {}) => {
+    // ★ LIVE RUN 128 (F-128b): `from` was only a label. A member session sent `{from:'office'}` and the receipt
+    // delivered it as office mail (ml-12): the mailbox face checked nothing, while the SAME institution's human face
+    // refused the same member with VMU_HUMAN_INJECT_ROLE — one door policed, the other open. `from` is now checked
+    // against the TURN's caller: a member may post only under its own id; the office (root) may post for anyone.
+    run: async (args = {}, exec = null) => {
+      const { action, from, to, text, kind, replyTo, member, ids, members, budget, freshOnly, id, subject, urgent, read, todo, status } = args
+      const callerOf = () => {
+        // `resolveTurnMember` answers with a ROSTER ID STRING (or null — root/unknown); reading `.id` off it was the
+        // same mistake the docs warn about with ids: a resolver that returns a bare id has no fields.
+        try { const m = resolveTurnMember(kernel, exec); if (!m) return null; return typeof m === 'string' ? m : (m.id ? String(m.id) : null) } catch { return null }
+      }
       const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
       try {
         const mb = kernel.mailbox
         if (!mb) return refused('VMU_ENGINE_UNAVAILABLE', 'the mailbox primitive is not mounted in this kernel',
           'declare vmu.mailbox.* (or config.mailbox) so the face is wired')
         if (action === 'send') {
-          return Object.assign({ ok: true, action }, mb.send(need(from, 'from'),
+          const caller = callerOf()
+          const sender = need(from, 'from')
+          if (caller && String(sender) !== caller) {
+            return refused('VMU_NOT_PERMITTED', 'a member may send only under its OWN name: this turn belongs to "' + caller + '", the mail names "' + String(sender) + '"',
+              'pass from:"' + caller + '" (your own id). The office (root, no member seat) may send as any seat — that is the sanctioned relay; a mail signed by another seat is impersonation, and the human face already refuses the same move (VMU_HUMAN_INJECT_ROLE)',
+              { caller, callerSource: 'turn-context', from: String(sender) })
+          }
+          return Object.assign({ ok: true, action, caller, callerSource: caller ? 'turn-context' : 'none' }, mb.send(String(sender),
             { to: to === undefined ? null : to, text: need(text, 'text'), kind: kind || 'dm', replyTo: replyTo === undefined ? null : replyTo,
               subject: subject === undefined ? null : subject, urgent: urgent === true }))
         }

@@ -9889,3 +9889,50 @@ vibe_vmu_meeting {action:"open", agenda:"门测试：常驻研究员尝试召集
 剩余 23 行 PARTIAL 的证据计划已按三组整理（席位门与代理权 / 写入闸与状态机 / 汇报运输·围栏·教学一致性），
 见 `D:/_tmp/ledger-gap-analysis.md`；其中 A2、E3、E4 本轮已取得逐字回执（§222.3/§222.4），B6 也应随 §220.2 一并转 DONE。
 
+
+## §223 真机跑 128 —— 一动作两扇门：门有，锁只装了一扇（席位门 / 信箱署名 / 状态板 / 审批 id）
+
+### §223.1 读数（build 4bc5db49，clone slvp128，port 19728，简报 task-r128.txt）
+| 项 | 值 |
+|---|---|
+| 驱动 | `DRIVE exit=0` |
+| 时长 / 调用 | 638 s / 18 calls（根会话）+ 委员子会话 49 条回执 |
+| 令牌 | `tokenTotal 3,897,171`（cap 12,000,000） |
+| 会话 | 3（根 + 主席子会话 + r-1 子会话） |
+| 剧本红点 | `SUMMARY: 3 session(s), 0 with RED` |
+| 逐令牌 | 去重后 83 条工具回执（`D:/_tmp/r128/`） |
+
+### §223.2 判决表
+| 判据 | 结果 | 逐字回执（摘） |
+|---|---|---|
+| F-127a 活体：委员在**自己回合**不点名召集 | ✅ | `{"ok":false,"code":"VMU_NOT_PERMITTED","message":"vmu.meetings.conveneRequiresChair=true: convening is an academician (chair seat) action; \"r-1\" is in slot \"member\"","hint":"…the chair gate is declared by the pack and enforced on BOTH doors…"}` |
+| E9 邀请子集收窄 | ✅ | `"roster":["r-1"],"rosterNarrowed":true,"rosterSource":"members"` |
+| G5 审批：席位冒名被拒 | ✅ | `{"ok":false,"code":"VMU_HUMAN_DECIDER_ROLE","message":"…caller \"office\" passed by:\"r-1\" resolves to role \"member\", which is not an approver…"}` |
+| G5 审批：所办自己裁 | ✅ | `{"ok":true,"action":"decide","id":"rq-r128","decision":"allowed","decidedBy":"office"}` |
+| D6 两个读面互指认 | ⏳ | `read_library{member:"r-1"}` ⇒ `count:0`；`panel{action:"get"}` ⇒ `known:false`（两读面都空且互不指路） |
+| R128-a 审批 id 两个名字 | ❌ | `openApproval{requestId:"rq-r128"}` ⇒ `id:"rq-r128"`；随后 `decide{requestId:"rq-r128"}` ⇒ `VMU_INVALID_ARGUMENT "unknown approval: undefined"` |
+| R128-b 成员以所办名义发信 | ❌ | `r-1` 会话 `mailbox{action:"send",from:"office"}` ⇒ `{"ok":true,"ids":["ml-12"]}`（同轮 `human.inject` 对同一调用者回 `VMU_HUMAN_INJECT_ROLE`） |
+| R128-c 成员改他人状态板 | ❌ | `r-1` 会话 `panel{action:"set",member:"r-2",by:"r-1"}` ⇒ `{"ok":true,"changed":["overall"],"mirrored":true}` |
+| R128-d 主席回合不点名召集 | ❌ | 主席子会话 `vibe_v5_meeting{agenda,title,type}` ⇒ `VMU_INVALID_ARGUMENT "meeting (convening) needs the acting member id"`（同一会话的原语面已知其身份） |
+
+### §223.3 四条修法（全部落在「谁能证明自己是谁」这一行上）
+1. **R128-a（同面一个 id 两个名字）** `tools/human.js`：`rid = request_id || requestId`，四个取 id 的动词（decide/approvalState/withdraw/explainVeto）共用；缺 id 时 `idFor(verb)` 抛 `VMU_INVALID_ARGUMENT "the human face cannot name the approval: decide needs the approval id"`，hint 指明 `request_id`（并说明 `requestId` 也被接受，因为 openApproval 用这个名字收）。不再打印 `undefined`——**拒句不得复述它从未收到的词**。
+2. **R128-b（信箱署名）** `tools/mailbox.js#run(args, exec)`：从回合上下文解析调用者（`resolveTurnMember`），`caller && from !== caller` ⇒ `VMU_NOT_PERMITTED`，message 同时点名调用者与署名，hint 指出所办（root）可替任何席位发信这一合法代发路径、并点明 human 面对同一动作已具名拒（`VMU_HUMAN_INJECT_ROLE`）；回执带 `caller`/`callerSource`。
+3. **R128-c（状态板代理写）** `tools/panel.js#run(args, exec)`：`set` 的 `member` 是目标、`by` 是署名；调用者是成员且目标不是自己 ⇒ `VMU_NOT_PERMITTED "a member may write only its OWN panel"`；`by` 与调用者不符 ⇒ 同码拒绝；`by` 缺省填调用者（历史每行有作者）。所办（root，无席位）依旧可替成员代记。
+4. **R128-d（两扇门对同一事实不一致）** `packs/v5r/tools.js`：新增 `callerFromTurn()`，`toolMeeting` 在 `args.member` 缺省时用回合上下文补；显式 `member` 仍优先（所办代传）。
+5. **R128-e（附加，拒句里的人话）** `host-pack-tools.js#outOfFaceRefusal`：席位裁决里的 `face` 是对象，`String(face)` 曾让拒句印出 `[object Object]`——改为从对象里读名字（name/id/face/slot），读不到回落到 `seat`。
+
+### §223.4 新测试
+`tests/vmu-run128-proxy-doors.test.mjs`（5 节 **35 断言**）：主席回合不点名召集成功、委员回合被拒且拒句含成员 id 与他人字样（不含 `[object Object]`）、显式 `member` 仍优先；成员以 `office` 署名被拒（点名双方 + `callerSource`）、本人署名成功、所办 root 发信与 pack 转发路径不变；成员写他人面板被拒且目标面板仍空、本人写成功且历史作者=调用者、冒用 `by` 被拒、所办代记仍可；审批 id 双名皆通、缺 id 具名拒且不含 `undefined`、hint 点名参数。
+（测试坑：`kernel.turn.restoreMemberSessions` 是**替换**语义，一次传两条；`resolveTurnMember` 返回的是**名册 id 字符串**，读 `.id` 会得到 `null`。）
+
+### §223.5 门禁
+`vmu-run128` 35/0、`vmu-run127` 23/0、`vmu-run125` 20/0、`vmu-run51-human-caller` 24/0、`vmu-run45-human-decide-audit` 62/0、`vmu-run31-mailbox` 66/0、`vmu-run46-readface` 18/0、`vmu-meeting` 50/0、`vmu-meeting-types` 155/0、`vmu-meeting-parity` 204/0、`vmu-tools-action-arity` 7/0、`preflight PASS`。
+
+### §223.6 简报的错（成员与产品无关）
+- 让 r-1 用 `vibe_v5_message` 发私信：该工具不在成员席面（设计如此），成员可用的两条发信入口是 `vibe_v5_say{member}` 与 `vibe_vmu_mailbox{from}`——简报应写明可用入口。
+- 让 r-1 用一条 `content` 写四行状态板：真实形状是四个具名键（`progress/obstacles/next/help`），回执已具名列出 `missing`；简报应给键名。
+- `human.decide` 的 id 参数名在 openApproval 与 decide 之间不同（R128-a 已修为两名字皆收）。
+
+### §223.7 无实质残余：否
+D6（两读面互指认）仍未取证；A1/D7（署名与代理权）的**修法**已落地并有单测，但活体回执要到 r129 才能读到修复后的行为——台账不为未观察到的行为记 DONE。

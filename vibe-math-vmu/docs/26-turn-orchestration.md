@@ -2200,3 +2200,15 @@ trace 每条 `"delivered":true,"refused":null`，办公室收件箱里出现 `"f
 **判据**：**披露不能代替执行。** 「门没跑，我告诉你了」在一个默认形态（办公室代所有人操作）下等于「门形同虚设」；
 正确的顺序是先尽一切可能确定调用者，确实无法确定时才披露。单测 `tests/vmu-run127-primitive-caller-context.test.mjs` 23/0。
 
+
+## ROUND 128 —— 一动作两扇门：锁只装了一扇（r128 / build 4bc5db49）
+
+**判据：一个动作有两扇门时，「谁能证明自己是谁」这条规则必须同时装在两扇门上；只有一扇装了锁，另一扇就是标准答案。**
+
+- **F-128b 信箱署名**：`mailbox.send` 的 `from` 只是标签 —— 成员会话发 `from:"office"` 回 `ok:true`（ml-12），而同轮 `human.inject` 对同一调用者回 `VMU_HUMAN_INJECT_ROLE`。修法：`run(args, exec)` 从回合解析调用者，`from !== caller` ⇒ `VMU_NOT_PERMITTED`，所办（root）仍可替任何席位发信（合法代发），回执带 `caller/callerSource`。
+- **F-128c 状态板代理写**：`panel.set` 的 `member` 是目标、`by` 是标签 —— 成员把 `member:"r-2"` 写成 `ok:true, changed:["overall"], mirrored:true`，而 pack 侧的 records 路径早已具名拒。修法：调用者是成员且目标不是自己 ⇒ 拒；`by` 与调用者不符 ⇒ 拒；`by` 缺省填调用者（历史每行都有作者）。判据：**「写谁」与「以谁名义写」是两条规则，都要点名主体**。
+- **F-128d 两扇门对同一事实不一致**：主席**自己的回合**调 pack convene 不带 `member` ⇒ 「needs the acting member id」，而同一会话的原语面刚学会从回合读调用者（F-127a）。修法：pack 的 `toolMeeting` 在缺省时用回合上下文补（显式 `member` 优先，所办代传仍可用）。判据：**同一所里两张脸对「回合知不知道谁在调用」不能有分歧**。
+- **F-128a 同一张脸给一个 id 起两个名字**：`openApproval` 收 `requestId`，decide/state/withdraw 读 `request_id`，两个名字都声明在这张脸上 ⇒ 把 openApproval 回给你的 id 用另一个名字传回去，得到 `VMU_INVALID_ARGUMENT "unknown approval: undefined"`。修法：`rid = request_id || requestId` 四个动词共用；缺 id 时拒句点名参数（`idFor(verb)`），**拒句不得复述它从未收到的词**。
+- **F-128e 拒句里的人话**：席位裁决的 `face` 是对象，`String(face)` 让拒句印出 `[object Object]` —— 成员被拒时读到的那一句正是它的全部情报。修法：从对象里读 name/id/face/slot，读不到回落到 `seat`。
+- 台账纪律（本轮最重要的一条）：D7 原记 DONE（records 路径已挡），但 r128 量到**另一扇门**（原语 panel）仍开着 ⇒ **D7 回降 PARTIAL**，等 r129 的活体回执。一条规则被一扇门满足不等于被满足。
+- 测试坑：`kernel.turn.restoreMemberSessions` 是**替换**语义（一次传两条）；`resolveTurnMember` 返回名册 id **字符串**，读 `.id` 得 `null`。

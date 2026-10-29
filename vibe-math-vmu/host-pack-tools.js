@@ -175,7 +175,16 @@ function outOfFaceRefusal(kernel, member, verdict, declaredNames) {
           : declaredNames.filter((n) => !resolved.deny.includes(n)))
     }
   } catch { visible = [] }
-  const face = str(verdict && verdict.face) || (str(verdict && verdict.slot) ? 'seat:' + str(verdict.slot) : 'seat')
+  // ★ LIVE RUN 128 (F-128e): the seat verdict carries `face` as an OBJECT, and `str()` printed it as
+  // "[object Object]" inside the refusal message — the one sentence a member reads when it is told no. Read a name out
+  // of the object, and fall back to the seat word, never to String(object).
+  const nameOf = (v) => {
+    if (v === null || v === undefined) return ''
+    if (typeof v === 'string') return v
+    if (typeof v === 'object') { for (const k of ['name', 'id', 'face', 'slot']) { if (typeof v[k] === 'string' && v[k] !== '') return v[k] } }
+    return ''
+  }
+  const face = nameOf(verdict && verdict.face) || (nameOf(verdict && verdict.slot) ? 'seat:' + nameOf(verdict.slot) : 'seat')
   return {
     ok: false,
     code: 'VMU_TOOL_NOT_IN_FACE',

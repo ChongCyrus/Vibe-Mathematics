@@ -248,9 +248,21 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
         // ROUND 45: it also resolves `by` — a caller that may decide cannot attribute the decision to an actor that
         // may not, and the refusal still happens before any state changes.
         const gate = gateVerb(action, exec, notEmpty(by))
+        // ★ LIVE RUN 128 (F-128a): `openApproval` takes the id as `requestId`, while decide/state/withdraw/explainVeto
+        // read `request_id`; both are declared on this ONE face, so a caller who just received `{id:"rq-…"}` from
+        // openApproval and passed it back as `requestId` got `VMU_INVALID_ARGUMENT "unknown approval: undefined"` — a
+        // refusal that prints the word it never received. One alias for all the id-taking verbs, and a refusal that
+        // NAMES the parameter instead of echoing undefined.
+        const rid = notEmpty(request_id) || notEmpty(requestId)
+        const idFor = (verb) => {
+          if (rid !== undefined) return rid
+          throw Object.assign(new Error('the human face cannot name the approval: ' + verb + ' needs the approval id'),
+            { code: 'VMU_INVALID_ARGUMENT',
+              hint: 'pass request_id:"<id>" (openApproval returns that id as `id`; requestId is accepted too, because openApproval takes the same id under that name)' })
+        }
         if (action === 'status') return Object.assign({ ok: true, action }, human().status())
         if (action === 'veto') return Object.assign({ ok: true, action }, human().veto({ by: gate ? gate.by : (notEmpty(by) || null), scope: notEmpty(scope) || null, target: notEmpty(target) || null, reason: notEmpty(reason) || null, emergency: emergency === true }))
-        if (action === 'explainVeto') return Object.assign({ ok: true, action }, human().explainDecision({ vetoId: notEmpty(veto_id) || null, requestId: notEmpty(request_id) || null, reason: notEmpty(reason) || null }))
+        if (action === 'explainVeto') return Object.assign({ ok: true, action }, human().explainDecision({ vetoId: notEmpty(veto_id) || null, requestId: rid || null, reason: notEmpty(reason) || null }))
         if (action === 'liftVeto') {
           // ★ ROUND 45 / task-29b — THE LIFT IS ATTRIBUTED TO WHO PERFORMED IT. `liftVeto` names its actor with the
           // SAME `by` argument, but only `vmu.human.vetoLiftRoles` was checked — the caller was never resolved. So a
@@ -287,7 +299,7 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action === 'openApproval') return Object.assign({ ok: true, action }, human().openApproval({ subject: subject === undefined ? null : subject, requestId: notEmpty(requestId) || null }))
         if (action === 'approvalState') {
           const at = Number.isFinite(Number(timeout_ms)) ? Number(timeout_ms) : null
-          const requestId = notEmpty(request_id)
+          const requestId = idFor('approvalState')
           const st = human().approvalState({ requestId, at })
           // ★ ROUND 45 — THE READ-BACK MUST SAY WHO DECIDED, and it is read from the LIVE LEDGER, never echoed from
           // the request arguments (otherwise a caller shapes the audit by choosing `by`). `decidedByMeans` is 'self'
@@ -333,7 +345,7 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action === 'decide') {
           // ROUND 45: the receipt's `by` is the GATE's answer, not the raw argument: omitted ⇒ the caller itself, a
           // seat id ⇒ that seat, a declared role ⇒ that role — and every one of them was just checked as an approver.
-          const r = human().decide({ requestId: notEmpty(request_id), allow: allow === true, reason: notEmpty(reason) || null, by: gate ? gate.by : (notEmpty(by) || null) })
+          const r = human().decide({ requestId: idFor('decide'), allow: allow === true, reason: notEmpty(reason) || null, by: gate ? gate.by : (notEmpty(by) || null) })
           if (gate) rememberMeans(r.id, gate.means)
           return Object.assign({ ok: true, action }, r)
         }
@@ -341,7 +353,7 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
         // other human verb (no direct kernel call needed). Missing reason / second withdrawal surface as named
         // refusals through the outer catch (VMU_INVALID_ARGUMENT / VMU_STATE).
         if (action === 'withdraw') {
-          const r = human().withdrawApproval({ requestId: notEmpty(request_id), by: gate ? gate.by : (notEmpty(by) || null), reason: notEmpty(reason) || null })
+          const r = human().withdrawApproval({ requestId: idFor('withdraw'), by: gate ? gate.by : (notEmpty(by) || null), reason: notEmpty(reason) || null })
           if (gate) rememberMeans(r.id, gate.means)
           return Object.assign({ ok: true, action }, r)
         }

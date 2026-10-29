@@ -211,6 +211,11 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.turn.replyCatalogue', type: 'enum', domain: ['compact', 'full'], def: 'compact', hot: HOT.H2, who: 'office', doc: 'which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full' },
   { key: 'vmu.turn.unknownReplyFieldMode', type: 'enum', domain: ['ignore-named', 'refuse'], def: 'ignore-named', hot: HOT.H1, who: 'office', doc: 'PHASE 7：回执顶层出现未登记字段时怎么办。ignore-named（默认）＝已知字段照常处理、未登记字段不丢弃而是具名报告（reply.ignoredFields＋一条 notice），不再作废整轮；refuse＝保留旧严格语义（VMU_TURN_UNKNOWN_FIELD，整轮拒绝）。' },
   { key: 'vmu.turn.protocolPath', type: 'string', def: 'Shared/Protocol.md', hot: HOT.H2, who: 'office', doc: 'protocol path named by the compact reply catalogue (relative to the session working directory)' },
+  // ★ B4 (2026-10-29): the blueprint's 「按时更新」 window. It used to be a pack CONSTANT (30 days), which made the rule
+  // unobservable in any live run (no run lasts 30 days) and untunable in any real institute (a lab reviewing monthly and a
+  // lab reviewing yearly cannot share one number). The value is deployment policy, so it is declared here; the pack
+  // constant stays as the DEFAULT and every reading says where its number came from (`staleAfterMsSource`).
+  { key: 'vmu.blueprint.staleAfterMs', type: 'number', def: 30 * 24 * 60 * 60 * 1000, hot: HOT.H2, who: 'office', doc: '蓝图「按时更新」窗口（毫秒）：现行版超过这个年龄即逾期（提示，不是拒绝；默认 30 天；最小 0＝任何年龄都算逾期，便于演练）' },
   { key: 'vmu.turn.verifyTarget', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'the object under a truth ballot (verify phase)' },
   { key: 'vmu.turn.verifyKindLabel', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'the kind label shown next to the object under a truth ballot' },
   { key: 'vmu.turn.invitedBy', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'who invited this temp to speak (meeting phase)' },

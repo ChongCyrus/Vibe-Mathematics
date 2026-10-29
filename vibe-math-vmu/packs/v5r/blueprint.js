@@ -100,8 +100,26 @@ export const BLUEPRINT_CODESIGN_SEAT = 'member'
 export const BLUEPRINT_NEEDS_CODESIGN = 'VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN'
 /** The section marker a co-designing member's own contribution is stored under, inside the `## 正文` text. */
 export const BLUEPRINT_CODESIGN_SECTION = '## 共同设计补充｜'
-/** Pack policy: how old an adopted revision may be before the read-out calls it overdue. */
+/** Pack policy: how old an adopted revision may be before the read-out calls it overdue. It is the DEFAULT only — a
+ *  deployment may declare `vmu.blueprint.staleAfterMs` (`settings/schema.js`), and every reading reports which one it used
+ *  (`staleAfterMsSource: 'setting' | 'policy'`). Reason: a window nobody can set is a rule nobody can observe or tune. */
 export const BLUEPRINT_STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000
+/** The DECLARED setting that overrides the window above (`settings/schema.js`; office-owned, hot H2). */
+export const BLUEPRINT_STALE_KEY = 'vmu.blueprint.staleAfterMs'
+/** Resolve ONE window from a caller-supplied candidate: a finite number ≥ 0 wins, anything else falls back to policy. */
+export function staleWindowOf(candidate) {
+  const n = typeof candidate === 'string' && candidate.trim() !== '' ? Number(candidate) : candidate
+  if (Number.isFinite(n) && n >= 0) return { ms: Math.floor(n), source: 'setting' }
+  return { ms: BLUEPRINT_STALE_AFTER_MS, source: 'policy' }
+}
+/** ★ The source travels WITH the number. A resolver that only sees `ms` cannot tell a tuned 30 days from the policy's
+ *  30 days (run: the `state` receipt passed the millis down and the NESTED reading re-derived the source as "setting",
+ *  so one receipt said "policy" and the other said "setting" about the SAME number). A declared source wins. */
+function windowWith(candidate, declaredSource) {
+  const w = staleWindowOf(candidate)
+  const s = txt(declaredSource)
+  return { ms: w.ms, source: s !== '' ? s : w.source }
+}
 /** The body status vocabulary (two stored states; "superseded" is DERIVED from a higher revision, never stored). */
 export const BLUEPRINT_STATUSES = Object.freeze(['draft', 'current'])
 /**
@@ -390,11 +408,12 @@ export function blueprintFreshness(store = {}, options = {}) {
   const src = store && typeof store === 'object' ? store : {}
   const opts = options && typeof options === 'object' ? options : {}
   const now = Number.isFinite(opts.now) ? opts.now : Date.now()
+  const window = windowWith(opts.staleAfterMs, opts.staleAfterMsSource)
   const path = txt(src.path)
   const records = src.records || null
-  if (path === '') return freshnessReading({ path: '', available: false, reason: 'no-path', stamp: now })
+  if (path === '') return freshnessReading({ path: '', available: false, reason: 'no-path', stamp: now, staleAfterMs: window.ms, staleAfterMsSource: window.source })
   if (!records || typeof records.list !== 'function' || typeof records.get !== 'function') {
-    return freshnessReading({ path, available: false, reason: 'no-records-face', stamp: now })
+    return freshnessReading({ path, available: false, reason: 'no-records-face', stamp: now, staleAfterMs: window.ms, staleAfterMsSource: window.source })
   }
   try {
     const { rows } = listBlueprints({ records, path })
@@ -402,7 +421,7 @@ export function blueprintFreshness(store = {}, options = {}) {
     const inForce = currents.length === 0 ? null : currents[currents.length - 1]
     const adoptedAt = inForce === null ? null : msOf(inForce.fields.adoptedAt)
     const ageMs = adoptedAt === null ? null : Math.max(0, now - adoptedAt)
-    const stale = adoptedAt !== null && ageMs > BLUEPRINT_STALE_AFTER_MS
+    const stale = adoptedAt !== null && ageMs > window.ms
     return freshnessReading({
       path,
       available: true,
@@ -410,6 +429,8 @@ export function blueprintFreshness(store = {}, options = {}) {
       adoptedAt,
       ageMs,
       stale,
+      staleAfterMs: window.ms,
+      staleAfterMsSource: window.source,
       stamp: now,
       lastStaleSeenAt: inForce === null ? null : msOf(inForce.fields.lastStaleSeenAt),
     })
@@ -419,6 +440,8 @@ export function blueprintFreshness(store = {}, options = {}) {
       available: false,
       reason: (e && e.code) || 'read-failed',
       stamp: now,
+      staleAfterMs: window.ms,
+      staleAfterMsSource: window.source,
       error: { code: (e && e.code) || null, message: String((e && e.message) || e) },
     })
   }
@@ -433,23 +456,25 @@ function freshnessReading(input = {}) {
   const stale = input.stale === true
   const stamp = Number.isFinite(input.stamp) ? input.stamp : Date.now()
   const lastStaleSeenAt = Number.isFinite(input.lastStaleSeenAt) ? input.lastStaleSeenAt : null
-  const staleAfterMs = BLUEPRINT_STALE_AFTER_MS
-  const days = Math.round(staleAfterMs / 86400000)
+  const window = windowWith(input.staleAfterMs, input.staleAfterMsSource)
+  const staleAfterMs = window.ms
+  const staleAfterMsSource = txt(input.staleAfterMsSource) || window.source
+  const windowLabel = staleAfterMs >= 86400000 ? Math.round(staleAfterMs / 86400000) + ' 天' : staleAfterMs + ' 毫秒'
   const overdueDays = stale && ageMs !== null ? Math.floor(ageMs / 86400000) : 0
   const currentRevision = inForce === null ? 0 : inForce.revision
   const means = available
     ? (inForce === null
       ? '这条路径上还没有生效版本（currentRevision=0）：没有「按时更新」可言——草案不会自己生效，要院士席 adopt 才有现行版；此时 fresh 不代表蓝图存在。'
       : (stale
-        ? '逾期（> ' + days + ' 天）：现行版 r' + currentRevision + ' 已 ' + overdueDays + ' 天没有更新。后果（不是拒绝）：adopt 仍可做；但本次 state 读数的副作用是把 lastStaleSeenAt 写进现行版自己的行（幂等，只写一次），让逾期成为可回查的历史；轮次装配应据此提醒院士复查并 propose 新一版，adopt 后的回执会把这次落成记为 overdueUpdate=true。'
-        : '未逾期：现行版 r' + currentRevision + ' 在 ' + days + ' 天窗口内（ageMs=' + (ageMs === null ? 'null' : ageMs) + '）。本次读数不写 lastStaleSeenAt，也不阻止任何调用。'))
+        ? '逾期（> ' + windowLabel + '）：现行版 r' + currentRevision + ' 已 ' + overdueDays + ' 天没有更新。后果（不是拒绝）：adopt 仍可做；但本次 state 读数的副作用是把 lastStaleSeenAt 写进现行版自己的行（幂等，只写一次），让逾期成为可回查的历史；轮次装配应据此提醒院士复查并 propose 新一版，adopt 后的回执会把这次落成记为 overdueUpdate=true。'
+        : '未逾期：现行版 r' + currentRevision + ' 在 ' + windowLabel + ' 窗口内（ageMs=' + (ageMs === null ? 'null' : ageMs) + '）。本次读数不写 lastStaleSeenAt，也不阻止任何调用。'))
     : (input.reason === 'no-path'
       ? '没有给出蓝图路径（path 为空）：读不到蓝图不是「按时」，而是无从判断——请传 path（本 pack 的 ' + BLUEPRINT_PATH_KEY + '）再判定逾期。'
       : '这个部署没有可读的 records 面：蓝图载体不存在，读不到不是「按时更新」；没有任何可判断的逾期，也没有后果路径。')
   const staleNote = available
     ? (inForce === null
       ? '这条路径上还没有被落成的蓝图：提案不会自己生效（staleness 只在有 current 时有意义）'
-      : (stale ? '已超过 ' + days + ' 天没有更新（提示，不是拒绝）' : null))
+      : (stale ? '已超过 ' + windowLabel + ' 没有更新（提示，不是拒绝）' : null))
     : null
   return {
     ok: true,
@@ -470,6 +495,7 @@ function freshnessReading(input = {}) {
     updatedAt: adoptedAt,
     ageMs,
     staleAfterMs,
+    staleAfterMsSource,
     overdueDays,
     lastStaleSeenAt,
     means,
@@ -492,15 +518,16 @@ function freshnessReading(input = {}) {
  * `records.supersede`d with the stamp added (same id, same revision, version trail kept). Idempotent: one write per
  * adopted revision; a failed write is REPORTED (`persist.error`), never thrown out of a read-out.
  */
-export function blueprintState({ records, path, now = null }) {
+export function blueprintState({ records, path, now = null, staleAfterMs = null, staleAfterMsSource = null }) {
   const { rows, skipped } = listBlueprints({ records, path })
   const track = records
   const stamp = Number.isFinite(now) ? now : Date.now()
+  const window = windowWith(staleAfterMs, staleAfterMsSource)
   const currents = rows.filter((r) => r.status === 'current')
   const inForce = currents.length === 0 ? null : currents[currents.length - 1]
   const adoptedAt = inForce === null ? null : msOf(inForce.fields.adoptedAt)
   const ageMs = adoptedAt === null ? null : Math.max(0, stamp - adoptedAt)
-  const stale = adoptedAt !== null && ageMs > BLUEPRINT_STALE_AFTER_MS
+  const stale = adoptedAt !== null && ageMs > window.ms
   const currentRevision = inForce ? inForce.revision : 0
   const drafts = rows.filter((r) => r.status === 'draft' && r.revision > currentRevision)
   let lastStaleSeenAt = inForce === null ? null : msOf(inForce.fields.lastStaleSeenAt)
@@ -554,6 +581,8 @@ export function blueprintState({ records, path, now = null }) {
     stamp,
     lastStaleSeenAt,
     persist,
+    staleAfterMs: window.ms,
+    staleAfterMsSource: window.source,
   })
   return {
     ok: true,
@@ -577,7 +606,8 @@ export function blueprintState({ records, path, now = null }) {
     updatedAt: adoptedAt,
     ageMs,
     stale,
-    staleAfterMs: BLUEPRINT_STALE_AFTER_MS,
+    staleAfterMs: window.ms,
+    staleAfterMsSource: window.source,
     staleNote: freshness.staleNote,
     lastStaleSeenAt,
     // ★ B4: the SAME shape `blueprintFreshness` returns (plus `persist`, which says whether this read wrote the mark).
@@ -758,7 +788,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
  * The chair-only edit right is UNCHANGED (the rule's 「最终编辑权交给院士」) — co-design is a precondition of the final
  * edit, not a transfer of it.
  */
-export function adoptBlueprint({ records, path, draft, by, at = null, note = '' }) {
+export function adoptBlueprint({ records, path, draft, by, at = null, note = '', staleAfterMs = null, staleAfterMsSource = null }) {
   const track = refuseIfNoRecords(records)
   const wantedPath = txt(path)
   if (wantedPath === '') throw refuse('VMU_INVALID_ARGUMENT', 'adopting a blueprint needs the path', 'pass path:<the blueprint path>')
@@ -794,7 +824,8 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '' 
   const stamp = Number.isFinite(at) ? at : Date.now()
   const previousAdoptedAt = previous === null ? null : msOf(previous.fields.adoptedAt)
   const previousAgeMs = previousAdoptedAt === null ? null : Math.max(0, stamp - previousAdoptedAt)
-  const overdueUpdate = previousAgeMs !== null && previousAgeMs > BLUEPRINT_STALE_AFTER_MS
+  const window = windowWith(staleAfterMs, staleAfterMsSource)
+  const overdueUpdate = previousAgeMs !== null && previousAgeMs > window.ms
   const composed = composeBlueprintBody({
     path: wantedPath,
     status: 'current',
@@ -826,7 +857,7 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '' 
       reason: '蓝图 r' + previous.revision + ' 被 r' + revision + '（' + put.id + '）取代',
     })
   }
-  const after = blueprintState({ records, path: wantedPath, now: stamp })
+  const after = blueprintState({ records, path: wantedPath, now: stamp, staleAfterMs: window.ms, staleAfterMsSource: window.source })
   return {
     ok: true,
     action: 'adopt',
@@ -854,6 +885,7 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '' 
     ...blueprintMeans(),
     stale: after.stale,
     staleAfterMs: after.staleAfterMs,
+    staleAfterMsSource: after.staleAfterMsSource,
     freshness: after.freshness,
     fingerprint: put.fingerprint || null,
     note: previous === null

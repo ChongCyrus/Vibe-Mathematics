@@ -1294,8 +1294,13 @@ objective = stampedTime({ value: shown + more, why: null, source: '任务板（�
           ? '任务板上没有分派给你且未完成的任务'
           : own.join('；')))
       }
-      if (ready.length) bits.push('可开工：' + ready.slice(0, cap).map((r) => idTitle(r) + (r.owner ? '（' + String(r.owner) + '）' : '（未认领）')).join('；'))
-      if (blocked.length) bits.push('被前置卡住：' + blocked.slice(0, cap).map((r) => idTitle(r) + '（等 ' + unmet(r).join('/') + '）').join('；'))
+      // ★★ RUN 125 (D1 follow-up): with a member reading, the institute line now says so (全所可开工：…).
+      // Before this, a member whose only unfinished task was t-1 saw `可开工：t-1「…」；可开工：t-1「…」（r-1）` —
+      // the same task twice under the same lead-in, so the board looked like it had counted it twice. The
+      // distinction the row is making is yours-vs-everyone's, and the line has to SAY which.
+      const allLead = mineRows !== null ? '全所可开工：' : '可开工：'
+      if (ready.length) bits.push(allLead + ready.slice(0, cap).map((r) => idTitle(r) + (r.owner ? '（' + String(r.owner) + '）' : '（未认领）')).join('；'))
+      if (blocked.length) bits.push((mineRows !== null ? '全所被前置卡住：' : '被前置卡住：') + blocked.slice(0, cap).map((r) => idTitle(r) + '（等 ' + unmet(r).join('/') + '）').join('；'))
       const omitted = live.length - ready.slice(0, cap).length - blocked.slice(0, cap).length
       plan = stampedTime({
         value: bits.join('；') + (omitted > 0 ? '；另 ' + String(omitted) + ' 条已省略' : '') + (mineRows !== null ? '｜全所：未完成 ' + String(live.length) + ' 条' : ''),

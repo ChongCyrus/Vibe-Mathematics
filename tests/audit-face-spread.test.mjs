@@ -35,7 +35,7 @@ const BASELINE = new Set([
   'admission.js', 'arbitration.js', 'audit.js', 'auditchain.js', 'bidding.js', 'board.js', 'bridge.js', 'budget.js',
   'capacity.js', 'charter.js', 'citations.js', 'clockguard.js', 'collab.js', 'conference.js', 'control.js', 'custody.js',
   'discipline.js', 'env.js', 'explain.js', 'external.js', 'fairness.js', 'fidelity.js', 'formal.js', 'handover.js', 'idempotency.js', 'ip.js', 'mailbox.js', 'mathadapters.js', 'mathtools.js', 'minutes.js',
-  'notify.js', 'panel.js', 'projmigrate.js', 'publication.js', 'ratelimit.js', 'recruit.js', 'retention.js', 'reviewers.js',
+  'notify.js', 'projmigrate.js', 'publication.js', 'ratelimit.js', 'recruit.js', 'retention.js', 'reviewers.js',
   'task.js', 'topology.js', 'transaction.js',
 ])
 

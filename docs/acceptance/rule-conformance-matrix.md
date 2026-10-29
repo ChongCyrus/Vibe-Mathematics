@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 67 | all four citations resolve |
-| ◐ PARTIAL | 19 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 68 | all four citations resolve |
+| ◐ PARTIAL | 18 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -25,7 +25,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `A1` | 3 | 所办＝主代理：用户的助手、媒介、传信者 | ◐ PARTIAL | 2/2/1/1 | r120：从成员会话调 vibe_v5_message 被席位面具名拒（含 seatFace 字段），再从主席席转发一次并存回执；两次回执都要读回。 |
+| `A1` | 3 | 所办＝主代理：用户的助手、媒介、传信者 | ◐ PARTIAL | 2/2/1/1 | r129：成员会话 mailbox{action:"send",from:"office"} 读回 VMU_NOT_PERMITTED（点名调用者与署名），from=本人成功；办公室 root 代发与 pack 转发路径不变。r128 已量到该门开着（§223.2 R128-b）。 |
 | `A2` | 3 | 有进展时自动唤起所办汇报 | ✅ DONE | 7/1/1/2 | — |
 | `A3` | 3 | 支持用户以自然语言让所办设参数、控制研究所 | ◐ PARTIAL | 2/2/1/1 | r120：先 vibe_v5_set 一个未声明的键（应具名拒），再改一个声明键并读回生效；两次回执都要。 |
 | `A4` | 3 | 院士＝chair 席，统领研究所 | ✅ DONE | 2/1/2/1 | — |
@@ -75,8 +75,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `D3` | 27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ◐ PARTIAL | 2/1/1/1 | r120：邮箱带 urgent 时是否唤醒接收者要与教学一致（当前教学说只有私信+urgent 才推正文）——修好教学或修好投递，再读回一次。 |
 | `D4` | 28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
 | `D5` | 28 | 四字段都含时间等基础信息 | ◐ PARTIAL | 2/2/1/2 | r120：状态板四行在 at 缺省时都要带 timeWhy（不能两行既无时间也无理由）。 |
-| `D6` | 28 | 可查看其他成员当前状态版 | ◐ PARTIAL | 1/1/1/1 | r120：vibe_v5_read_library 读回的状态板与 vibe_vmu_panel 的面板要能互相指认（同一事实两个读面）。 |
-| `D7` | 28 | 可自己修改更新自己的状态版 | ✅ DONE | 2/1/1/2 | — |
+| `D6` | 28 | 可查看其他成员当前状态版 | ◐ PARTIAL | 1/1/1/1 | r129：read_library 与 panel 两个读面在同一成员上互相指认（一个说「去另一个面看」并给可执行调用）。 |
+| `D7` | 28 | 可自己修改更新自己的状态版 | ◐ PARTIAL | 2/1/1/2 | r129：成员会话 panel{action:"set",member:"<他人>"} 读回 VMU_NOT_PERMITTED（拒句点名调用者与目标），本人写成功且 history 作者=调用者；r128 已量到该门开着（§223.2 R128-c），修法已落地待活体。 |
 | `D8` | 28 | 四字段按规则原文实现（字段名与语义） | ✅ DONE | 2/1/1/1 | — |
 
 ## E. 会议
@@ -91,7 +91,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E6` | 32 | 院士设会议标题 | ✅ DONE | 2/1/1/1 | — |
 | `E7` | 32 | 院士设会议类型 | ✅ DONE | 1/1/1/1 | — |
 | `E8` | 32 | 院士设会议议程/事项安排 | ✅ DONE | 1/1/1/1 | — |
-| `E9` | 32 | 院士邀请入会成员 | ◐ PARTIAL | 1/1/1/1 | r120：主席邀请入会的子集（roster 只含 r-1）后读回 roster，证明「邀请入会的成员」真的能收窄名单；今天 convene 把全员塞进 roster。 |
+| `E9` | 32 | 院士邀请入会成员 | ✅ DONE | 1/1/1/1 | — |
 | `E10` | 32 | 院士设会议时长上界 | ✅ DONE | 3/2/1/2 | — |
 | `E11` | 32 | 允许一次性连续召开多个会议 | ✅ DONE | 2/1/1/1 | — |
 | `E12` | 34 | 成员命令随会议类型与身份不同 | ✅ DONE | 1/1/1/1 | — |
@@ -138,7 +138,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `G2` | 59 | 所办可设工具并发数量限制防 CPU/OOM | ✅ DONE | 1/1/1/1 | — |
 | `G3` | 60 | 支持人工干预研究所决策与运行 | ✅ DONE | 2/1/1/1 | — |
 | `G4` | 60 | 支持断点续跑 | ✅ DONE | 1/1/1/1 | — |
-| `G5` | 61 | 特殊权限/请求经所办向用户询问 | ◐ PARTIAL | 2/1/1/1 | r120：office 通过 vibe_vmu_human{action:"openApproval"} 向用户提问，读回 pending 与 decid 后的 decidedBy；席位不得冒名。 |
+| `G5` | 61 | 特殊权限/请求经所办向用户询问 | ✅ DONE | 2/1/1/1 | — |
 | `G6` | 62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ◐ PARTIAL | 3/1/2/2 | r120：围栏 JSON 只派发声明白名单字段（say/progress/record/verdict），越界字段要具名拒；教学与回执一致。 |
 | `G7` | 63 | 提示词与规则完全相符、自洽 | ◐ PARTIAL | 3/1/1/1 | r120：在活教学里植入一句与规则相反的话，parity 门必须红（或如实声明只能查名字/覆盖，矛盾由审计 lane 承担）。 |
 

@@ -8,6 +8,7 @@
 // view audit all live in kernel/panel.js. Note the deliberate name overlap: `status` is BOTH an action
 // (service status) and a panel FIELD — the action decides which one is meant, so `{action:'set', status:'…'}`
 // writes the field while `{action:'status'}` reads the service.
+import { resolveTurnMember } from '../host-pack-tools.js'
 export function makePanelSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
     name: TOOL_NAMES.panel,
@@ -31,7 +32,18 @@ export function makePanelSpec({ param, refused, TOOL_NAMES, kernel }) {
       reason: param('string', 'set：本次写入的理由（入历史）'),
       source: param('string', 'set：来源 self｜negotiated｜academician｜framework', { enum: ['self', 'negotiated', 'academician', 'framework'] }),
     },
-    run: async ({ action, member, by, viewer, ids, overall, subgoal, plan, status, subtasks, reason, source } = {}) => {
+    // ★ LIVE RUN 128 (F-128c): the panel could be written FOR another member by anyone — a member session called
+    // `{action:'set', member:'r-2', by:'r-1'}` and the receipt said ok:true, changed:["overall"]. `member` is the
+    // TARGET and `by` was just a label, so the D7 rule (a member changes its own panel; the office may record for the
+    // institution) lived only in the pack's records path. The caller is now read from the TURN (the second argument
+    // the host hands every handler) and a member may write neither for someone else nor under someone else's name.
+    run: async (args = {}, exec = null) => {
+      const { action, member, by, viewer, ids, overall, subgoal, plan, status, subtasks, reason, source } = args
+      const callerOf = () => {
+        // `resolveTurnMember` answers with a ROSTER ID STRING (or null — root/unknown); reading `.id` off it was the
+        // same mistake the docs warn about with ids: a resolver that returns a bare id has no fields.
+        try { const m = resolveTurnMember(kernel, exec); if (!m) return null; return typeof m === 'string' ? m : (m.id ? String(m.id) : null) } catch { return null }
+      }
       const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
       try {
         const panel = kernel.panel
@@ -46,8 +58,21 @@ export function makePanelSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (subtasks !== undefined) patch.subtasks = subtasks
           if (!Object.keys(patch).length) return refused('VMU_INVALID_ARGUMENT', 'set needs at least one panel field',
             'one of overall/subgoal/plan/status/subtasks')
-          return Object.assign({ ok: true, action }, await panel.set(need(member, 'member'), patch,
-            { by: by === undefined ? null : by, reason: reason || '', source: source || 'self' }))
+          const target = need(member, 'member')
+          const caller = callerOf()
+          if (caller && caller !== String(target)) {
+            return refused('VMU_NOT_PERMITTED', 'a member may write only its OWN panel: the caller of this turn is "' + caller + '", the write names "' + String(target) + '"',
+              'pass member:"' + caller + '" (your own id). The office (root, no member seat) may record a panel for any member; the panel is that member own report, and a write attributed to another seat is exactly the delegation the D7 rule forbids',
+              { caller, callerSource: 'turn-context', target: String(target) })
+          }
+          const byResolved = by === undefined ? (caller || null) : by
+          if (caller && byResolved !== null && String(byResolved) !== caller) {
+            return refused('VMU_NOT_PERMITTED', 'a member may not attribute its panel write to "' + String(byResolved) + '": this turn belongs to "' + caller + '"',
+              'omit by (the kernel records the caller of the turn) or pass by:"' + caller + '"',
+              { caller, callerSource: 'turn-context' })
+          }
+          return Object.assign({ ok: true, action, caller, callerSource: caller ? 'turn-context' : 'none' }, await panel.set(String(target), patch,
+            { by: byResolved, reason: reason || '', source: source || 'self' }))
         }
         if (action === 'get') return Object.assign({ ok: true, action }, panel.get(need(member, 'member')))
         if (action === 'view') return Object.assign({ ok: true, action }, panel.view({ viewer: viewer === undefined ? null : viewer, ids: Array.isArray(ids) ? ids : null }))

@@ -45,7 +45,7 @@ import { leadershipReading, leadershipWarning, LEADER_SLOT } from './leadership.
 // ★ R18-B2: the public blueprint carrier. `vmu.turn.protocolPath` had two prompt interpolations and no writer, so the
 // blueprint was a path with no edit right attached. `./blueprint.js` is the data face (a records track + propose/adopt);
 // this import is its REACHABLE consumer (red line ④).
-import { BLUEPRINT_ADOPT_SLOT, BLUEPRINT_PATH_KEY, BLUEPRINT_TRACK, adoptBlueprint, blueprintState, proposeBlueprint, readBlueprint } from './blueprint.js'
+import { BLUEPRINT_ADOPT_SLOT, BLUEPRINT_PATH_KEY, BLUEPRINT_STALE_KEY, BLUEPRINT_TRACK, adoptBlueprint, blueprintState, proposeBlueprint, readBlueprint, staleWindowOf } from './blueprint.js'
 // ★ A7 (round 31 follow-up): WHO IS CALLING, read from the one non-forgeable source there is. `vibe_v5_fire` has to
 // know whether the caller is a member seat (whose dismissal right is scoped to its own temp worker) or the office /
 // a chair (unscoped), and the ONLY trustworthy answer is the agent→member resolution the seat face gate itself uses:
@@ -2610,7 +2610,13 @@ function meetingTypeCatalog() {
   }
 }
 
-function toolMeeting(args = {}, { kernel } = {}) {
+/** The caller of THIS turn (turn-tool record → learned member session → exact roster id); null for the office. */
+function callerFromTurn(kernel, exec) {
+  // a ROSTER ID STRING (or null) — never an object with `.id`
+  try { const m = resolveTurnMember(kernel, exec); if (!m) return null; return typeof m === 'string' ? m : (m.id ? String(m.id) : null) } catch { return null }
+}
+
+function toolMeeting(args = {}, { kernel, exec } = {}) {
   // ★★ ROUND 47: the rulings READ lives on this face (the pack owns the ruling cards it teaches members to file).
   if (String(args.action) === 'rulings') return toolMeetingRulings(args, { kernel })
   // ★ WAVE 2 (audit E33): `action:"types"` is a READ of that same catalogue — six rows, their declared
@@ -2637,7 +2643,12 @@ function toolMeeting(args = {}, { kernel } = {}) {
   // gate belongs here, where both the caller id and its seat are known. The kernel holds the matching SHAPE gate
   // (`vmu.meetings.conveneRequiresChair`: a convene that installs a chair must name that chair as its actor) — two
   // locks, because a member calling the kernel directly is the other door, and neither lock claims to be the whole door.
-  const member = requireChairSeat(kernel, args.member, 'meeting (convening)').id
+  // ★ LIVE RUN 128 (F-128d): the chair's OWN turn called convene without `member` and got 「meeting (convening) needs
+  // the acting member id」 — while the primitive face had just been taught to read the caller from the turn (F-127a)
+  // and the host hands every handler the same `exec`. Two faces of one institution disagreed about whether the turn
+  // knows who is calling. An explicit `member` still wins (the office relays for a seat); otherwise the turn answers.
+  const memberFromTurn = has(args.member) && str(args.member).trim() !== '' ? null : callerFromTurn(kernel, exec)
+  const member = requireChairSeat(kernel, has(args.member) && str(args.member).trim() !== '' ? args.member : memberFromTurn, 'meeting (convening)').id
   const liveRoster = membersOf(kernel).roster().filter((m) => m.state === 'live').map((m) => m.id)
   // ★ WAVE 2 (audit E9): 「设定了会议参与人员就在范围内」 had no door on this face — the roster was ALWAYS every live
   // member, so a chair narrowing the meeting could not narrow anything. `members` (and its alias `roster`) is now read
@@ -2934,8 +2945,18 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
 // slot may `adopt` (`BLUEPRINT_ADOPT_SLOT` in `./blueprint.js`, compared against the roster row — the kernel never learns
 // the name, same rule as `PAPER_CONSULT_ROLES`). Staleness is a SIGNAL: `state` reports `updatedAt/ageMs/stale`; nothing
 // here refuses because a blueprint is old (a reminder that blocks work is a gate nobody asked for).
+/** ★ B4: the window the blueprint's 「按时更新」 is judged against. It is DECLARED (`vmu.blueprint.staleAfterMs`) instead of
+ *  frozen at 30 days, so a deployment can tune it AND a live run can observe the overdue path at all; the receipt always
+ *  says where the number came from (`staleAfterMsSource`), and an ABSENT setting reports `policy`, not a silent 30 days. */
+function blueprintStaleWindowOf(kernel) {
+  const view = kernel && typeof kernel.settingsView === 'function' ? kernel.settingsView() : null
+  const raw = view && typeof view.get === 'function' ? view.get(BLUEPRINT_STALE_KEY) : (settingsOf(kernel) || {})[BLUEPRINT_STALE_KEY]
+  return staleWindowOf(raw)
+}
+
 function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
   const action = str(args.action || 'state').trim()
+  const staleWindow = blueprintStaleWindowOf(kernel)
   const records = recordsOf(kernel)
   const pathFromArg = has(args.path) ? str(args.path).trim() : ''
   const pathFromSetting = str((settingsOf(kernel) || {})[BLUEPRINT_PATH_KEY] || '').trim()
@@ -2946,9 +2967,9 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
   }
   const pathSource = pathFromArg !== '' ? 'argument' : 'setting:' + BLUEPRINT_PATH_KEY
   if (action === 'state') {
-    const state = blueprintState({ records, path })
+    const state = blueprintState({ records, path, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     return Object.assign({}, state, {
-      tool: 'vibe_v5_blueprint', action, pathSource,
+      tool: 'vibe_v5_blueprint', action, pathSource, staleAfterMsSource: staleWindow.source,
       readSurface: 'vibe_v5_read_library { track: "' + BLUEPRINT_TRACK + '" }',
       note: state.hasCurrent === false
         ? '该路径上还没有生效版本：先 propose（任何成员）再由主席席 adopt。'
@@ -2970,10 +2991,12 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
         'pass text:<完整的一版蓝图> —— 空提案等于悄悄落成"什么都没有"')
     }
     const proposed = proposeBlueprint({ records, path, text, by: String(member.id), note: str(args.note || '') })
-    const state = blueprintState({ records, path })
+    const state = blueprintState({ records, path, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     return Object.assign({}, proposed, {
       tool: 'vibe_v5_blueprint', pathSource, member: String(member.id),
       inForce: state.current,
+      staleAfterMs: state.staleAfterMs,
+      staleAfterMsSource: staleWindow.source,
       draftsWaiting: state.draftsWaiting,
       note: '★ 草案已登记但**没有生效**：只有主席席可以 adopt（机构政策：' + BLUEPRINT_ADOPT_SLOT + ' 席）。',
     })
@@ -2997,9 +3020,9 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
       throw refuse('VMU_INVALID_ARGUMENT', '落成蓝图需要指名哪一份草案（draft）',
         'pass draft:<proposal id>；state 的 drafts[] 列出在等的草案（含 revision 与提案人）')
     }
-    const adopted = adoptBlueprint({ records, path, draft, by: String(member.id), note: str(args.note || '') })
+    const adopted = adoptBlueprint({ records, path, draft, by: String(member.id), note: str(args.note || ''), staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     return Object.assign({}, adopted, {
-      tool: 'vibe_v5_blueprint', pathSource, member: String(member.id),
+      tool: 'vibe_v5_blueprint', pathSource, member: String(member.id), staleAfterMsSource: staleWindow.source,
       readSurface: 'vibe_v5_read_library { track: "' + BLUEPRINT_TRACK + '" }',
     })
   }

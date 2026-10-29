@@ -349,6 +349,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.replyCatalogue` | enum | `compact` | `compact`∣`full` | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/middleware/prompt-switches.js` | which reply catalogue is injected: compact (what the delivered-prompt corpus carries) or full |
 | `vmu.turn.unknownReplyFieldMode` | enum | `ignore-named` | `ignore-named`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `kernel/turn/index.js` | PHASE 7：回执顶层出现未登记字段时怎么办。ignore-named（默认）＝已知字段照常处理、未登记字段不丢弃而是具名报告（reply.ignoredFields＋一条 notice），不再作废整轮；refuse＝保留旧严格语义（VMU_TURN_UNKNOWN_FIELD，整轮拒绝）。 |
 | `vmu.turn.protocolPath` | string | `Shared/Protocol.md` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | protocol path named by the compact reply catalogue (relative to the session working directory) |
+| `vmu.blueprint.staleAfterMs` | number | `2592000000` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | 蓝图「按时更新」窗口（毫秒）：现行版超过这个年龄即逾期（提示，不是拒绝；默认 30 天；最小 0＝任何年龄都算逾期，便于演练） |
 | `vmu.turn.verifyTarget` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | the object under a truth ballot (verify phase) |
 | `vmu.turn.verifyKindLabel` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | the kind label shown next to the object under a truth ballot |
 | `vmu.turn.invitedBy` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | who invited this temp to speak (meeting phase) |
@@ -1561,7 +1562,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1158** 个，前缀家族 **116** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1159** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1577,6 +1578,7 @@ vmu.packs.active: [v5r]
 | `vmu.audit.*` | 17 |
 | `vmu.avail.*` | 3 |
 | `vmu.ballot.*` | 23 |
+| `vmu.blueprint.*` | 1 |
 | `vmu.board.*` | 6 |
 | `vmu.budget.*` | 9 |
 | `vmu.capacity.*` | 12 |
