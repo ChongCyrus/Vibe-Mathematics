@@ -349,6 +349,7 @@ function report(ok, summary) {
   if (summary) {
     console.log('RULE PARITY: live teaching ' + summary.live + ' (exempt ' + summary.exempt + ') · not live ' + summary.excluded + ' · structural rule lines ' + summary.structural + '/' + summary.lineCount + ' · ledger ids ' + summary.ids)
     console.log('  scope: P1-P4 = every rule line claimed, every citation live, no orphan teaching, no orphan pin; P5 = every tool/setting a teaching names exists. Contradiction between two sentences is audited by the closing lanes, not proven here.')
+    console.log('RULE PARITY SCOPE: P1 rule lines claimed · P2 citations live · P3 no orphan teaching · P4 no orphan pin · P5 named tools and settings exist · NOT PROVEN HERE: semantic contradiction between two sentences (audited by the closing lanes; verdicts recorded in phase12 §-sections)')
     for (const e of summary.excludedList) console.log('  not live: ' + PROMPTS_REL + '/' + e.file + ' — ' + e.why)
   }
   for (const n of note) console.log('  note: ' + n)

@@ -10084,3 +10084,75 @@ hint: 1) vibe_v5_lean_run{file,statement} → 2) read lean_job on the receipt un
 ### §225.7 有无实质残余
 
 **否。** A3/C7/E18/E20 转 DONE；B4 与 C6 的 `next` 写明 r131 要量到的逐字回执（`overdueUpdate:true` 与 `lean_job` 正路），F-130a 已修且测试钉住。
+
+## §226 真机跑 131 —— 两扇读面互不指认，蓝图「按时更新」终于能测
+
+### §226.1 读数
+
+`build 6bf4a946`（`fix(vmu): an auto job number is our guess, the shared mirror directory is the fact`）；clone `slvp131`、port 19732；`DRIVE exit=0`、`durationSec 1114`、根会话 `31 calls/31 results`（去重判读 104 条）、`tokenTotal 4,928,919`（cap 12,000,000）、3 会话、`SUMMARY: 3 session(s), 0 with RED`；jsonl `_oneoff/vm-slv/full-1029-165707.jsonl` 11,770,062 B / 17,353 行；机器读数 `NO_FENCE=48 UNKNOWN_FIELD=32 FIELD_NOT_APPLICABLE=48 BAD_JSON=48`；回执转存 `D:/_tmp/r130/tools.json`（139 对）。
+
+### §226.2 判决
+
+| 行 | 规则 | 判决 |
+| --- | --- | --- |
+| B4 | 蓝图总目标/技术路线/规划，按时更新 | ✅ 全证（`overdueUpdate:true` + `previousAgeMs` + `staleAfterMsSource:"setting"`） |
+| C6 | 平时只记证明/证伪尝试，真正会证时才写正式证明字段 | ⏳ 反向拒已证（`proof_state:"complete"` 无证据被具名拒 + 三步 hint），**带 `lean_job` 的通过支未走到** |
+| D1 | 各自推进各自的总任务 | ✅ 成员状态板 ①②③ 先印「属于你（r-1，…）」，再印 `全所可开工：` / `全所：未完成 N 条` |
+| D6 | 可查看其他成员当前状态版 | ❌ 真缺口：两读面互不指认（机制已补，见 §226.5；真机回执留 r132） |
+| E25 | 辩论骨架①各成员同时独立单次表态 | ⏳ 简报错（`round` 不能与 `meeting` 同用），该机制本轮机未行使 |
+
+### §226.3 B4 逐字（两版都过共同设计闸，第二版带逾期事实）
+
+第一次 `vibe_v5_blueprint{action:"adopt",…}` 回：
+
+```
+"adopt":true,"codesign":{"ok":true,"hasChair":true,"hasResident":true,"judged":true},"overdueUpdate":false,"previousAgeMs":null
+```
+
+一回合后第二版 `adopt` 回：
+
+```
+"overdueUpdate":true,"previousAgeMs":215894,"staleAfterMsSource":"setting","superseded":{"id":"rec-14","revision":1,"rev":2}
+```
+
+`state` 读面同一窗口：
+
+```
+"hasCurrent":true,"currentRevision":1,"ageMs":6128,"stale":true,"staleAfterMs":1,"staleAfterMsSource":"setting"
+```
+
+判据：**可调窗口让「按时更新」从常量变成可测规则**——1 ms 窗口下逾期可观测、`previousAgeMs` 给出逾期时长、`staleAfterMsSource` 说明窗口来自设置还是策略。
+
+### §226.4 D1 逐字（成员自己那份先印，全所随后；办公室视图逐字不变）
+
+```
+[规划] 属于你（r-1，未完成 1 条）：可开工：t-2「独立复核：四步归纳证明与命题卡陈述逐条对照（不依赖 t-1 的形式化）」；全所可开工：t-3「数值与边界核验：n=1..30 的奇数和 vs n²，并检查 n=0 空和与量词范围」（r-2）；t-2「独立复核：四步归纳证明与命题卡陈述逐条对照（不依赖 t-1 的形式化）」（r-1）｜全所：未完成 2 条（来源：任务板（未完成 2 条））
+[各任务完成状态] 属于你（r-1，未完成 1 条）：assigned 1｜全所：共 3 条（未结 2）：assigned 2 · done 1
+```
+
+### §226.5 D6 真缺口与修法（两读面互指）
+
+- 量到：`vibe_v5_read_library {member:"r-1", kind:"state"}` 回卡片时 `hint` 为 `null`；同一成员 `vibe_vmu_panel {action:"get", member:"r-1"}` 回四字段，两处都没有指向对方的句子。**两扇门都在，但谁也没告诉读者另一扇在哪**。
+- 修法（机制侧）：
+  - `vibe-math-vmu/kit/handlers.js` 新增 `PANEL_POINTER_MEANS` 与 `panelPointerOf(kernel, wanted)`：读面回执新增 `panelPointer{member,call,known,why,means}` 与 `panelPointerMeans`；`call` 是可直接复制的 `vibe_vmu_panel { action:"get", member:"<id>" }`；`known:false` 明说「本内核没有登记这块面板，不是该成员没有状态」；没点名成员时 `panelPointer:null` 但仍带 means（全所读没有单一 owner）。
+  - `vibe-math-vmu/tools/panel.js` 的 `action:"get"` 回执新增 `libraryPointer{member,call,means}` 与 `libraryPointerMeans`，`call` 是 `vibe_v5_read_library { member:"<id>", kind:"state" }`。
+  - 两个 means 都写明「不是同一份账：面板是内核活视图，state 轨是已落盘的卡行」——**指针不替代任何一面**。
+- 测试：`tests/vmu-run131-cross-face-pointers.test.mjs` **23/0**（互指、可执行调用、known 三态、全所读 `panelPointer:null`）。
+
+### §226.6 E25 的简报错（产品回执是对的）
+
+三次 `vibe_v5_say{meeting:"m1", round:true}` 都被具名拒：
+
+```
+"VMU_INVALID_ARGUMENT","message":"`round` is the GROUP-CHAT single-speech rule: it cannot be combined with `to` … or `meeting` …"
+```
+
+hint 给出两条正路（群聊 `round:"<round>"`；会议发言按会议排序）。**这是教学在纠简报，不是缺陷**。
+
+### §226.7 门禁
+
+`RULES COVERAGE: FAIL (9 problem(s), 1 warning)`（9 = 全部 PARTIAL：C6/D3/D6/E24/E25/F3/G6/G7；B4/D1 已 DONE）；`RULE PARITY: PASS`；`update-doc-counts --write`；`regen-all --write|--check` 17/17；`PREFLIGHT: PASS`；相邻套件 `vmu-run131-cross-face-pointers` 23/0、`vmu-run111-board-own-share` 22/0、`vmu-panel*` 全绿。
+
+### §226.8 无实质残余：否
+
+余下九行都要真机回执；其中 C6/F3 的机制在树里，缺的是「通过支」与「互审不一致被拒 + 一致后成功」两条活体路径。

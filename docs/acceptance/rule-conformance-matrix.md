@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 74 | all four citations resolve |
-| ◐ PARTIAL | 12 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 78 | all four citations resolve |
+| ◐ PARTIAL | 8 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -39,10 +39,10 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `B1` | 7 | Verified 只收 p=1 的命题 | ◐ PARTIAL | 1/1/1/1 | r122b：把一张 p=0 的卡交给 vibe_v5_verified_promote 会被具名拒（反证不进 verified 轨，进 rejected 轨）；另读回 carrier 对 p=0 行的结论文案是「假 (p=0) — disproved: warrant …」，不是复制的「真 (p=1)」。 |
+| `B1` | 7 | Verified 只收 p=1 的命题 | ✅ DONE | 1/1/1/1 | — |
 | `B2` | 7 | 参考文献中的命题也可直接入 Verified | ✅ DONE | 2/2/1/2 | — |
 | `B3` | 7 | 只有辩论能把 p 改为 1 | ✅ DONE | 2/2/1/1 | — |
-| `B4` | 8 | 蓝图：总目标/技术路线/规划，按时更新 | ◐ PARTIAL | 2/1/1/1 | r131：注入 vmu.blueprint.staleAfterMs=1，先两席共同设计并 adopt，改稿后再次 adopt ⇒ overdueUpdate:true + previousAgeMs>0（当前只量到 state.stale:true/staleAfterMsSource:"setting"） |
+| `B4` | 8 | 蓝图：总目标/技术路线/规划，按时更新 | ✅ DONE | 2/1/1/3 | 已由 r131 全证（1ms 窗口 + 两版 adopt ⇒ overdueUpdate:true/previousAgeMs>0/staleAfterMsSource:"setting"）；后续轮次只做回归。 |
 | `B5` | 8 | 蓝图由院士+常驻研究员共同设计 | ✅ DONE | 2/1/1/2 | — |
 | `B6` | 8 | 蓝图最终编辑权在院士 | ✅ DONE | 2/1/1/1 | — |
 
@@ -70,12 +70,12 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
-| `D1` | 26 | 各自推进各自的总任务 | ◐ PARTIAL | 2/1/1/2 | r120：两位成员各读状态板，②③ 两行的前缀必须同为「属于你（<id>，…」；所办视图逐字不变。 |
+| `D1` | 26 | 各自推进各自的总任务 | ✅ DONE | 2/1/1/5 | 已由 r131 取证（r-1 状态板 ①②③ 先印自己那份并标注全所），office 视图逐字不变由 vmu-run111-board-own-share 钉住；后续轮次只做回归。 |
 | `D2` | 27 | 三通道：邮箱/私信/群聊 | ✅ DONE | 2/1/1/2 | — |
 | `D3` | 27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ◐ PARTIAL | 2/1/1/1 | r120：邮箱带 urgent 时是否唤醒接收者要与教学一致（当前教学说只有私信+urgent 才推正文）——修好教学或修好投递，再读回一次。 |
 | `D4` | 28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
-| `D5` | 28 | 四字段都含时间等基础信息 | ◐ PARTIAL | 2/2/1/2 | r120：状态板四行在 at 缺省时都要带 timeWhy（不能两行既无时间也无理由）。 |
-| `D6` | 28 | 可查看其他成员当前状态版 | ◐ PARTIAL | 1/1/1/1 | r129：read_library 与 panel 两个读面在同一成员上互相指认（一个说「去另一个面看」并给可执行调用）。 |
+| `D5` | 28 | 四字段都含时间等基础信息 | ✅ DONE | 2/2/1/1 | — |
+| `D6` | 28 | 可查看其他成员当前状态版 | ◐ PARTIAL | 2/2/1/1 | r132：同一成员上两个读面互指——read_library{member,kind:"state"} 的 panelPointer.call 含 vibe_vmu_panel，panel{action:"get"} 的 libraryPointer.call 含 vibe_v5_read_library（单测 vmu-run131-cross-face-pointers 23/0 已钉机制，仍需真机回执）。 |
 | `D7` | 28 | 可自己修改更新自己的状态版 | ✅ DONE | 2/1/1/1 | — |
 | `D8` | 28 | 四字段按规则原文实现（字段名与语义） | ✅ DONE | 2/1/1/1 | — |
 

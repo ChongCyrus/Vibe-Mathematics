@@ -2231,3 +2231,9 @@ trace 每条 `"delivered":true,"refused":null`，办公室收件箱里出现 `"f
 - **F-130a**：`vibe_v5_lean_run` 的自动作业号由**每内核**内存计数器铸造，而镜像目录是同根多内核共享的事实 ⇒ 第二台内核第一次 Lean 跑就被 `VMU_MATH_JOB_ID_TAKEN` 拒。修法：自动号撞盘 ⇒ 换号（≤5 次）并在回执 `idReMinted` 说明；点名号撞盘仍拒（那是调用方的选择）。
 - 判据：**「号是我铸的」不是「号在共享目录里是我的」**。猜错的号换一个；猜测失败不能报成调用方的错。
 - 台账：A3/C7/E18/E20 转 DONE；B4 的 `overdueUpdate` 与 C6 的 Lean 正路留给 r131。
+
+## ROUND 131
+
+- 判据：**两个读面回答同一个问题时，必须在回执里互相指认**——`panelPointer` / `libraryPointer` 是可复制的调用，不是散文；`known:false` 只能读成「本内核没登记」，不能读成「没有状态」。
+- 判据：**可调窗口把「按时更新」从常量变成规则**（`vmu.blueprint.staleAfterMs`，默认 30 天；回执必带 `staleAfterMsSource`）。
+- 判据：成员自己的份额必须排在所级总量之前（`属于你（<id>，未完成 N 条）` → `全所可开工：` / `全所：未完成 N 条`），办公室视图逐字不变。

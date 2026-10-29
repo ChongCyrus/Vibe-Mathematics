@@ -414,7 +414,7 @@
       "id": "B1",
       "rule": "7",
       "text": "Verified 只收 p=1 的命题",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/verified.js::card.p !== 1 && card.p !== 0"
       ],
@@ -425,10 +425,9 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::Verified"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::only 1 or 0 may be promoted"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::verified_promote{literature_ref}"
       ],
-      "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。",
-      "next": "r122b：把一张 p=0 的卡交给 vibe_v5_verified_promote 会被具名拒（反证不进 verified 轨，进 rejected 轨）；另读回 carrier 对 p=0 行的结论文案是「假 (p=0) — disproved: warrant …」，不是复制的「真 (p=1)」。"
+      "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。"
     },
     {
       "id": "B2",
@@ -479,7 +478,7 @@
       "id": "B4",
       "rule": "8",
       "text": "蓝图：总目标/技术路线/规划，按时更新",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/blueprint.js::function blueprintFreshness",
         "vibe-math-vmu/packs/v5r/blueprint.js::A declared source wins"
@@ -491,10 +490,12 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::按时更新"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"staleAfterMs\":2592000000,\"overdueDays\":0"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"staleAfterMs\":2592000000,\"overdueDays\":0",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"overdueUpdate\":true,\"previousAgeMs\":215894",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::\"staleAfterMs\":1,\"staleAfterMsSource\":\"setting\""
       ],
       "ruleText": "- 实现总目标的完整技术路线设计策划蓝图。按时更新、调整。由院士+常驻研究员共同设计策划、决定如何调整。最终编辑权交给院士。",
-      "next": "r131：注入 vmu.blueprint.staleAfterMs=1，先两席共同设计并 adopt，改稿后再次 adopt ⇒ overdueUpdate:true + previousAgeMs>0（当前只量到 state.stale:true/staleAfterMsSource:\"setting\"）",
+      "next": "已由 r131 全证（1ms 窗口 + 两版 adopt ⇒ overdueUpdate:true/previousAgeMs>0/staleAfterMsSource:\"setting\"）；后续轮次只做回归。",
       "note": "r114 回执逐字：freshness 是读数、不阻止调用，逾期与否都带 means（§210.4）"
     },
     {
@@ -858,7 +859,7 @@
       "id": "D1",
       "rule": "26",
       "text": "各自推进各自的总任务",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/turn/index.js::const mineRows",
         "vibe-math-vmu/kernel/turn/index.js::mineText = "
@@ -871,10 +872,13 @@
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::属于你（r-acad，未完成 0 条）",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::属于你（r-acad，未完成 0 条）：state 0"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::属于你（r-acad，未完成 0 条）：state 0",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::属于你（r-1，未完成 1 条）",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::全所可开工：",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::全所：未完成 2 条"
       ],
       "ruleText": "- 各自推进各自的总任务。",
-      "next": "r120：两位成员各读状态板，②③ 两行的前缀必须同为「属于你（<id>，…」；所办视图逐字不变。"
+      "next": "已由 r131 取证（r-1 状态板 ①②③ 先印自己那份并标注全所），office 视图逐字不变由 vmu-run111-board-own-share 钉住；后续轮次只做回归。"
     },
     {
       "id": "D2",
@@ -944,7 +948,7 @@
       "id": "D5",
       "rule": "28",
       "text": "四字段都含时间等基础信息",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/turn/index.js::（时间未提供：",
         "vibe-math-vmu/kernel/turn/index.js::TIME_WHY_UNSTATED = '这一行没有内容时间戳"
@@ -957,11 +961,9 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::时间未提供：为什么"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::读于 2026-10-28T06:20:12",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::时间未提供：设置键没有内容时间戳"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::timeWhy"
       ],
-      "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。",
-      "next": "r120：状态板四行在 at 缺省时都要带 timeWhy（不能两行既无时间也无理由）。"
+      "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。"
     },
     {
       "id": "D6",
@@ -969,10 +971,12 @@
       "text": "可查看其他成员当前状态版",
       "status": "PARTIAL",
       "mechanism": [
-        "vibe-math-vmu/kit/handlers.js::== wanted"
+        "vibe-math-vmu/kit/handlers.js::const panelPointer = panelPointerOf",
+        "vibe-math-vmu/tools/panel.js::libraryPointerMeans: LIBRARY_POINTER_MEANS"
       ],
       "tool": [
-        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_read_library"
+        "vibe_v5_read_library",
+        "vibe_vmu_panel"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::读别人的板"
@@ -981,7 +985,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::一个成员读另一个成员的状态板这件事，面板读面答得出来"
       ],
       "ruleText": "- 可查看其它成员当前的状态版，可自己修改更新自己的状态版。状态版内容包括：①总任务。②总任务实现流程的规划计划。③规划计划中各任务完成状态情况。④当前正在进行的小任务。以及它们都包含时间等基础信息。",
-      "next": "r129：read_library 与 panel 两个读面在同一成员上互相指认（一个说「去另一个面看」并给可执行调用）。"
+      "next": "r132：同一成员上两个读面互指——read_library{member,kind:\"state\"} 的 panelPointer.call 含 vibe_vmu_panel，panel{action:\"get\"} 的 libraryPointer.call 含 vibe_v5_read_library（单测 vmu-run131-cross-face-pointers 23/0 已钉机制，仍需真机回执）。"
     },
     {
       "id": "D7",

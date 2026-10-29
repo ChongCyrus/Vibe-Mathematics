@@ -658,6 +658,31 @@ async function fileCardsOf(kernel, member, limit) {
  *  declaration the write side validates against, and `track` / `tracks` narrow it explicitly. An undeclared name in
  *  `track` is a NAMED refusal (the declaration is the only vocabulary); a declared track the deployment's records face
  *  refuses is still skipped and reported. */
+
+/** ★★ ROUND 131 / D6: the state PANEL and the state TRACK are two faces of the same question, and neither used to
+ *  name the other. `vibe_v5_read_library {member, kind:"state"}` is the only door the member prompts teach, yet the
+ *  live four-field view lives in `vibe_vmu_panel`; reading one and believing it is the whole answer is how run 131
+ *  ended up with a member's board described as "no hint". The pointer below is a RECEIPT FIELD, not a redirection:
+ *  the read still answers fully, and it also says which other call answers the neighbouring question. */
+const PANEL_POINTER_MEANS = '`panelPointer` 指向同题的另一扇读面：成员状态面板（总目标／子目标／计划／状态／正在执行的子任务）'
+  + '由 `vibe_vmu_panel { action:"get", member:"<id>" }` 读，那条回执里有 `libraryPointer` 指回本面。'
+  + '两个面不是同一份账：面板是内核里的活视图（写入只追加、框架写时间），state 轨是已落盘的卡行 —— 读到一行不代表面板全貌，'
+  + '反之亦然。`known:false` 只说明这块面板在本内核里没有登记，不是「该成员没有状态」。'
+
+function panelPointerOf(kernel, wanted) {
+  if (wanted === null || wanted === undefined || wanted === '') return { pointer: null, means: PANEL_POINTER_MEANS }
+  const call = 'vibe_vmu_panel { action:"get", member:"' + wanted + '" }'
+  let known = false
+  let why = null
+  try {
+    const p = kernel && kernel.panel && typeof kernel.panel.get === 'function' ? kernel.panel.get(wanted) : null
+    known = !!(p && p.known !== false)
+  } catch (e) {
+    why = (e && e.message) || String(e)
+  }
+  return { pointer: { member: wanted, call, known, why, means: PANEL_POINTER_MEANS }, means: PANEL_POINTER_MEANS }
+}
+
 async function toolReadLibrary(args = {}, { kernel } = {}) {
   const records = recordsOf(kernel)
   if (has(args.id)) {
@@ -757,7 +782,15 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
     return out
   })
   const readyOn = cardsOut.filter((c) => c && c.ready === true).map((c) => c.id)
+  // ★★ ROUND 131 / D6: TWO READ FACES ANSWER "what is this member doing right now", and neither named the other.
+  // Run 131 read a member's state track through this tool and got cards with `hint:null`, then read the same member's
+  // panel through `vibe_vmu_panel {action:"get"}` and got the four fields with no sentence pointing back. The rule
+  // 「可查看其他成员当前状态版」 is satisfied by the PANEL (it is the live view); this track holds what was written
+  // there, so the honest thing is to name the other door and the call that opens it — never to imply either face is
+  // the whole answer. Pointer is null when no member was named (a whole-institute read has no single owner to point at).
+  const panelPointer = panelPointerOf(kernel, wanted)
   return { ok: true, tool: 'vibe_v5_read_library', member: wanted, kind: has(args.kind) ? str(args.kind) : null,
+    panelPointer: panelPointer.pointer, panelPointerMeans: panelPointer.means,
     tracks, declaredTracks: declared,
     total: cards.length, returned: returned.length, truncated: cards.length > returned.length,
     hint: cards.length > returned.length ? '只回了 ' + returned.length + '/' + cards.length + ' 张：传 limit 提高上限，或按 kind/member/track 收窄' : null,

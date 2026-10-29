@@ -9,6 +9,13 @@
 // (service status) and a panel FIELD — the action decides which one is meant, so `{action:'set', status:'…'}`
 // writes the field while `{action:'status'}` reads the service.
 import { resolveTurnMember } from '../host-pack-tools.js'
+/** ★★ ROUND 131 / D6: what the neighbouring read face answers, stated once. The panel is the LIVE view a member keeps
+ *  for others; the records `state` track holds what was written into the ledger. Naming the other call is the whole
+ *  point: 「用面板读」and「用记录轨读」are different questions, and the prompts teach only the tool (`read_library`). */
+const LIBRARY_POINTER_MEANS = '`libraryPointer` 指向同题的另一扇读面：`vibe_v5_read_library { member:"<id>", kind:"state" }` '
+  + '读记录轨里已落盘的面板卡行，那条回执里有 `panelPointer` 指回本面。两个面不是同一份账：本面是内核活视图，'
+  + '记录轨是卡；读到一个不等于读到另一个。'
+
 export function makePanelSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
     name: TOOL_NAMES.panel,
@@ -74,7 +81,15 @@ export function makePanelSpec({ param, refused, TOOL_NAMES, kernel }) {
           return Object.assign({ ok: true, action, caller, callerSource: caller ? 'turn-context' : 'none' }, await panel.set(String(target), patch,
             { by: byResolved, reason: reason || '', source: source || 'self' }))
         }
-        if (action === 'get') return Object.assign({ ok: true, action }, panel.get(need(member, 'member')))
+        // ★★ ROUND 131 / D6: this face and `vibe_v5_read_library {kind:"state"}` answer neighbouring questions about
+        // the same member and neither named the other. The pointer travels WITH the receipt (never as a redirect);
+        // the library face carries the mirror field `panelPointer`.
+        if (action === 'get') {
+          const target = need(member, 'member')
+          return Object.assign({ ok: true, action,
+            libraryPointer: { member: target, call: 'vibe_v5_read_library { member:"' + target + '", kind:"state" }', means: LIBRARY_POINTER_MEANS },
+            libraryPointerMeans: LIBRARY_POINTER_MEANS }, panel.get(target))
+        }
         if (action === 'view') return Object.assign({ ok: true, action }, panel.view({ viewer: viewer === undefined ? null : viewer, ids: Array.isArray(ids) ? ids : null }))
         if (action === 'board') return Object.assign({ ok: true, action }, { rows: panel.board() })
         if (action === 'history') return Object.assign({ ok: true, action }, panel.history(need(member, 'member')))
