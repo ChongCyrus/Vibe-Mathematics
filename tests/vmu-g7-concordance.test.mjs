@@ -185,8 +185,12 @@ const GATES = read('vibe-math-vmu/packs/v5r/verification-gates.js')
     'L53a step 3 no longer starts the verdicts with a ballot box', {})
   ok(PROCEDURES.includes('票箱不是裁决通道'),
     'L53b it now says plainly that the ballot box is not the ruling path', {})
-  ok(PROCEDURES.includes('target: "<命题卡 id>"'),
-    'L53c and gives the call the mechanism actually reads (target = the card id)', {})
+  // The sixth audit caught this: `target` is a LIVE BALLOT id, so filing a ruling with target=<card id> dies
+  // with VMU_NO_SUCH_OBJECT. The ruling is filed with meeting + proposition_id, and the text says so.
+  ok(PROCEDURES.includes('proposition_id: "<命题卡 id>"') && !PROCEDURES.includes('target: "<命题卡 id>"'),
+    'L53c the ruling call names the parameters the mechanism reads (meeting + proposition_id, never target=<card>)', {})
+  ok(PROCEDURES.includes('不要传 `target`'),
+    'L53c2 and it tells the reader NOT to send `target` at all', {})
   ok(/rulingSubmissions/.test(TOOLS),
     'L53d the final-verdict face still reads FILED rulings (so the corrected step matches the kernel)', {})
 }

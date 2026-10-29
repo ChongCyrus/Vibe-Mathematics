@@ -10708,3 +10708,63 @@ verified 位、会议动作级权限无单表）——它们是"没写到"，不
 
 G7 仍 **PARTIAL**（按用户裁定：修完再跑一次独立审计、零矛盾才记 DONE）。GAP 9 条维持不变——它们是「没写到」，
 不是「互相矛盾」，不计入结论数字。
+
+## §235 G7 第六次独立审计（2026-10-30）
+
+### §235.1 口径
+
+基线 `HEAD = 1f59f85d`（审计开始时工作树干净），规则真源 63 行、sha256 前 16 `a5d9a6c1ff73ec10`。
+本次审计的特别任务是**复核前五轮 20 条已修结论是否成立**，并专查第五轮四条修法本身能否被执行。
+结论：**`G7 VERDICT: CONTRADICTIONS(2)`**，且两条都是 `1f59f85d` **自己引入的新承诺**（不是旧账）：
+
+| 行 | 矛盾 | 机制事实 | 修法 |
+|---|---|---|---|
+| L14 | `tools.js:4091/:4097`（method / subproblem 卡面）说 `proof_state:"complete"` 用「`proof_ref` … **或** Lean `lean_job`/`lean_conformance`」放行 | 这两张面的 `parameters` 里**没有** `lean_job`/`lean_conformance` ⇒ 派发层（`host-pack-tools.js:294-300`，在 handler 之前）按名拒；`leanEvidenceOf`（`tools.js:1238-1242`）也只读 args ⇒ Lean 那一半不可达 | **补声明**：两张面的 `parameters` 加 `lean_job`/`lean_conformance`（能力向句子补齐，而不是把句子删薄） |
+| L53 | `meeting-procedures.js:61`（辩论文档 step3，随 `open` 回执渲染）教「`target` 填**命题卡 id**」 | `tools.js:4286` 说 `target` 是**活票箱** id；`tools.js:3493-3506` 只在 `target` 缺省时用 `meeting`+`proposition_id` 走 `submitRuling`，否则 `kernel.liveBallot(target)` ⇒ 卡 id 必 `VMU_NO_SUCH_OBJECT`；`tools.js:2403` 的催票邮件也写「不要传 target」 | step3 改成「传 `meeting` + `proposition_id`（**不要传 `target`**：`target` 只认活票箱 id）」；示例调用同改 |
+
+审计同时把六条「GAP」（不计入矛盾数）点出来，其中四条是**可立即核实的假陈述**，一并修掉：
+
+1. `tools.js:1574` 的拒绝句仍写 `without Lean evidence`，而闸已接受 `proof_ref` ⇒ 改为
+   `without evidence: this write carries no \`proof_ref\`, no \`lean_job\` …`；
+2. `tools.js:1528` 的 hint 仍说「辩论需要机器证据（Lean 通过或 verified 行）」，而辩论闸接受
+   `proof_ref` 登记的已完成证明 ⇒ 改为「带已完成 `proof_ref` 登记（内容由辩论者判）或 Lean/verified 证据」；
+3. `blocks-b.js:799` 说 `flow`/`overrideorder`「要求部署声明 `vmu.meetings.orderMode`，v5r 未声明 ⇒ 会被具名拒」——
+   该键在 schema 有 `fifo` 默认、服务面 `flow` 真的可用 ⇒ 改为「只由主席做、必须给 reason；寻址服务会议记录；
+   基线顺序由 `orderMode`（默认 fifo）决定，`overrideorder` 覆盖它并把 order 写进回执」；
+4. `blocks-b.js:817` 说 `secret`/`allow_abstain`「不在单场参数里」——它们在 `poll_open` 的 `parameters` 里
+   （只是没有单场规则、会进 `unapplied`）⇒ 改为「可以传，但内核没有单场规则，回执 `unapplied` 会说明」。
+
+审计另复核干净的：**L07**（文献旁路端到端可达：`verification-gates.js:172-175` + `tools.js:1666-1750`）、
+**L61**（主代理=所办处处一致：`assistant.json:12`「不投票、无座」、`v5r-assistant.js:31`「人类只与所办对话」）、
+L53 的非参数各半（`verdict_ask` 只 chair 可调、`verdict_final` 读成员 filed 裁决、聚合与通知已实现）。
+
+### §235.2 测试与自伤红
+
+* 新 `tests/vmu-run138-read-kinds-hands-code.test.mjs` **19/0**（F-138b/F-138c，见 §235.3）。
+* `tests/vmu-g7-concordance.test.mjs` 44 → **45/0**：L53c 从「target = 命题卡 id」改为
+  「`proposition_id: "<命题卡 id>"` 在、`target: "<命题卡 id>"` 不在」并新增 L53c2「必须写『不要传 `target`』」。
+* `tests/vmu-wave2-card-guards.test.mjs` §2.2 从 `/Lean evidence/` 改为「同时点名 `proof_ref` 与 `lean_job`」⇒ **16/0**。
+
+### §235.3 同轮真机（r138）暴露的两条读面缺陷
+
+* **F-138b**（`kit/handlers.js#toolReadLibrary`）：`kind:"propositions"`（那是**轨道名**，不是卡种类）回
+  `total:0, cards:[], hint:null`，同一张卡用 `id` 能读到 —— 静默空。修法：kind 过滤前收集 `kindsPresent`，
+  返回 `kindGiven/kindMatched/kindsPresent/kindNote`；kind 名在声明轨道里 ⇒ note 说「这是轨道名，用 `track:"X"` 读」，
+  否则说「读过的轨道里没有这个 kind，现存的 kind 是…」，`hint` 在无截断时回落 `kindNote`。
+* **F-138c**（`tools/meeting.js:660`）：服务会议上 `action:"hands"` 回 `VMU_ENGINE_UNAVAILABLE`，而教学
+  （`seat-faces.js:423`、`blocks-b.js:795`）与 docs/03 都承诺 `VMU_REGISTRY_BOUNDARY`。修法：改成该码并带
+  `registry:"service" / askedAction / boundaryOnly:true / actionCrosses:false`；旧钉 `vmu-meeting-invite.test.mjs:242`
+  同步改钉（机制向教学对齐），69/0。
+
+### §235.4 门禁
+
+`vmu-run138` 19/0、`g7-concordance` 45/0、`wave2-card-guards` 16/0、`prompt-type-coverage` 15/0、
+`prompt-clean` 8/0、`vmu-turn` 272/0、`v5r-tools` 360/0、`meeting-types` 155/0、`run135-formal-required` 27/0、
+`c5-c8` 44/0、`debate-subject-proof` 45/0、`verified-gates` 102/0、`run29-verdict-ask` 51/0、`meeting-invite` 69/0；
+全量 T1 **`TOTAL 620 PASS 620 FAIL 0 (suites 556 · probes 64)`**。
+
+### §235.5 残余
+
+G7 仍 **PARTIAL**：按用户裁定，需**再派一次独立审计、零矛盾**才记 DONE（第六次又抓出两条，
+其中一条被第五次修法「浅修」——把不可达的半句留在句子里——正是审计存在的理由）。GAP 里剩下的两条
+（`blocks-b:795` 的 hands 承诺已在工作树修复；`blocks-b:799` 与 `:817` 已修）不再计入。

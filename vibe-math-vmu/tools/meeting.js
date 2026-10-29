@@ -657,8 +657,14 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                 by: by || null, why: reason || '', scope: scope || 'all' }))
             }
             if (svcOf() && serviceHas(pid)) {
-              return refused('VMU_ENGINE_UNAVAILABLE', 'the meeting ' + pid + ' is a SERVICE meeting: its floor is a QUEUE and it has no grant/revoke/clear/list of hands',
-                'on a service meeting a member raises a hand with action=hand { id, member:"<own id>" } (self-queue) and the chair orders speakers with action=invite { id, by:"<chair>", why:"…", members:[…] }; action=hands is the primitive meeting face')
+              // ★ RUN 138 (F-138c): this used to answer VMU_ENGINE_UNAVAILABLE, while the teaching
+              // (seat-faces.js / v5r-blocks-b.js) and docs/03 both promise VMU_REGISTRY_BOUNDARY for exactly this
+              // fact ("a primitive-only verb aimed at a SERVICE meeting"). The receipt a program reads must be the
+              // one the text predicts, including the boundary fields the rest of this face publishes.
+              return Object.assign(refused('VMU_REGISTRY_BOUNDARY',
+                'action "hands" addresses the PRIMITIVE meeting face only and never crosses, while meeting ' + pid + ' is a SERVICE meeting: its floor is a QUEUE with no grant/revoke/clear/list of hands',
+                'on a service meeting a member raises a hand with action=hand { id, member:"<own id>" } (self-queue) and the chair orders speakers with action=invite { id, by:"<chair>", why:"…", members:[…] }; action=hands is the primitive meeting face'),
+              { registry: 'service', askedAction: 'hands', boundaryOnly: true, actionCrosses: false })
             }
             throw noSuchMeeting(pid)
           }

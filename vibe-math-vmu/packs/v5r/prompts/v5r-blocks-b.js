@@ -796,7 +796,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · `open` 回执里的 `procedure`/`procedureNote` 是**建议**（`meeting-procedures.js` 的 `binding:"recommendation"`），不是闸：是否遵循完全由你决定。`ordinary` 类型**故意不给推荐骨架**——这是具名决定：议程与顺序完全由你编排；其余五种的步骤只是**建议**，可跳过、可重排。',
         '  · 议程与标题：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 只读议程条目列表、`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）——这两个动词只认**内核原语会**（`vibe_vmu_meeting { action: "open" }` 开的那种）；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程，服务会 id 上问这两个动词会得到「这张表里没有」的具名拒绝。`title` 是**可选**的独立名称（非字符串会被具名拒）。',
         '  · 召集与关闭：`vibe_v5_meeting` 的**召集只对 chair 席开放**（`vmu.meetings.conveneRequiresChair`）；`vibe_vmu_meeting { action: "close" }` 的**关闭也只有 chair 席能调**（`closeRequiresChair`，默认 true）——其他席位调用会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁来做。',
-        '  · 发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` **按数组顺序批量**入队（邀请不是签到，被邀者仍须自己 `attend` 才计入法定人数；`why` 必填）；`invitedspeak` 让被邀者走服务发言面（被邀者**没签到**时会被具名拒，先 `attend`）；`order` 只读队列。`flow`（open/hands/round_robin/call_on）与 `overrideorder` 要求部署声明 `vmu.meetings.orderMode`，v5r 未声明 ⇒ 调用会被具名拒。',
+        '  · 发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` **按数组顺序批量**入队（邀请不是签到，被邀者仍须自己 `attend` 才计入法定人数；`why` 必填）；`invitedspeak` 让被邀者走服务发言面（被邀者**没签到**时会被具名拒，先 `attend`）；`order` 只读队列。`flow`（open/hands/round_robin/call_on）与 `overrideorder` **只由主席做、必须给 reason**；它们寻址的是**服务会议记录**（`vibe_v5_meeting` 开的 id，不是原语 id）；基线顺序由 `vmu.meetings.orderMode`（默认 `fifo`）决定，`overrideorder` 覆盖它并把结果 order 写进回执。',
         '  · 推进一轮：`vibe_v5_meeting_round { meeting, members?, phase? }` 按序各跑一回合（members 缺省＝除主席外全体在册）；`phase` 取值以工具声明为准（辩论轮可直接写 `debate`，回执会说明它按 `verify-debate` 跑），写错具名拒；回执 `ok:false`+`turnFailed:true`＝这轮没发生，别当成功；`close`/`extendlimit` 要带 `actor`（主席本人）；`action:"convene"` 与直接召集等价。',
       ].join('\n'),
       temp: [
@@ -814,7 +814,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'role',
     texts: {
       academician: [
-        '【投票板（只有你能立）】`vibe_v5_poll_open { question, options: [≥2 个], min_votes?, max?, min?, mode?: "single"|"multi", allow_revote? }`；`min_votes` 是**投票成立**的门槛（缺省取 `vmu.ballot.minVotes`），**不是法定人数 m**；`secret`/`allow_abstain` 属部署层，不在单场参数里（回执 `unapplied` 会说明）。只有 chair/member 席有票权，临时工投票会被具名拒；`vibe_v5_poll_close` 未达 `min_votes` 会被具名拒——那次投票**不成立**。',
+        '【投票板（只有你能立）】`vibe_v5_poll_open { question, options: [≥2 个], min_votes?, max?, min?, mode?: "single"|"multi", allow_revote? }`；`min_votes` 是**投票成立**的门槛（缺省取 `vmu.ballot.minVotes`），**不是法定人数 m**；`secret`/`allow_abstain` 可以传，但内核没有单场规则：它们属部署层策略 ⇒ 回执 `unapplied` 会逐条说明「没有单场规则」，别指望它们改变这场投票的结果口径。只有 chair/member 席有票权，临时工投票会被具名拒；`vibe_v5_poll_close` 未达 `min_votes` 会被具名拒——那次投票**不成立**。',
         '  · **辩论不用投票板**：辩论是各自发言 + `vibe_v5_verdict_final` 裁决，不靠选项投票。',
       ].join('\n'),
       temp: [

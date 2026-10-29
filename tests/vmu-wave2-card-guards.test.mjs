@@ -80,7 +80,8 @@ console.log('\n=== WAVE2 CARD GUARDS (literal p / proof state / lean claim / ado
   const upper = base(await call(b, 'vibe_v5_record_proposition', { id: 'p-up', title: 't', statement: 's', value: 'the claim', motive: 'why it matters', p: 0.4, proof_state: 'COMPLETE' },
     { kernel: k, agent: { id: 'agent-r-1' } }))
   ok(upper.ok === false && upper.code === 'VMU_INVALID_ARGUMENT', '§2.1 proof_state:"COMPLETE" is the SAME state and is refused without Lean evidence', upper.code)
-  ok(/Lean evidence/.test(String(upper.message)), '§2.2 the refusal names the missing half', upper.message)
+  ok(/proof_ref/.test(String(upper.message)) && /lean_job/.test(String(upper.message)),
+    '§2.2 the refusal names BOTH missing halves (the rule admits a finished proof as well as Lean)', upper.message)
   const lower = base(await call(b, 'vibe_v5_record_proposition', { id: 'p-low', title: 't', statement: 's', value: 'the claim', motive: 'why it matters', p: 0.4, proof_state: 'complete' },
     { kernel: k, agent: { id: 'agent-r-1' } }))
   ok(lower.ok === false, '§2.3 the lowercase spelling behaves the same (one meaning, one guard)', lower)

@@ -239,7 +239,10 @@ try {
   // ── ⑦ hands IS REFUSED BY NAME ON A SERVICE MEETING (nothing is faked) ─────────────────────────────────────
   console.log('=== 7. hands(grant/revoke/clear/list) on a service meeting: REFUSED BY NAME, naming the real faces ===')
   const handsSvc = await call(b, 'vibe_vmu_meeting', { action: 'hands', id: mid2, op: 'list' })
-  ok(codeOf(handsSvc.parsed) === 'VMU_ENGINE_UNAVAILABLE',
+  // RUN 138 (F-138c): this used to pin VMU_ENGINE_UNAVAILABLE, while the teaching (seat-faces.js / v5r-blocks-b.js)
+  // and docs/03 promise VMU_REGISTRY_BOUNDARY for a primitive-only verb aimed at the SERVICE registry. The receipt
+  // a program reads must be the one the text predicts, so the mechanism moved to the taught code (not the reverse).
+  ok(codeOf(handsSvc.parsed) === 'VMU_REGISTRY_BOUNDARY',
     '★★ hands(service): 反 — refused by name instead of pretending the primitive queue is a hand-grant ledger', handsSvc.parsed && { code: codeOf(handsSvc.parsed), message: handsSvc.parsed.message })
   ok(handsSvc.parsed && /QUEUE/.test(String(handsSvc.parsed.message)) && /action=hand/.test(String(handsSvc.parsed.hint)) && /action=invite/.test(String(handsSvc.parsed.hint)),
     '★★ and the refusal says WHAT the service face has instead (queue; hand for self, invite for the chair)', handsSvc.parsed && { message: handsSvc.parsed.message, hint: handsSvc.parsed.hint })

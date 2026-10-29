@@ -58,9 +58,9 @@ export const DEBATE_PROCEDURE = Object.freeze({
       '展开辩论：轮流发言 / 举手后发言 / 主席邀请发言。★ 轮数由院士自行决定，框架不设默认轮数、也不在轮数用尽时拒绝任何调用。',
       ['vibe_vmu_meeting { action: "hand" }', 'vibe_vmu_meeting { action: "invite" }', 'vibe_vmu_meeting { action: "speak" }']),
     step(3, 'final-verdicts', 'vibe_v5_verdict',
-      '会议结束前，每位参加辩论的成员用 `vibe_v5_verdict` 交最终裁决：「布尔概率([0,1])，理由」——`target` 填**命题卡 id**、`member` 填自己；主席可以用 `vibe_v5_verdict_ask` 通知还没交的人。'
-      + '★ 别把它和票箱混起来：`vibe_vmu_meeting { action: "ballot" }` 的票箱只对「待核验对象」开放、且只认 1/0（0..1 的概率带不进均值），票箱不是裁决通道；裁决汇总只读成员交上来的裁决（`vibe_v5_verdict_final` 的 `rulingSubmissions`）。',
-      ['vibe_v5_verdict { verdict: <0..1>, target: "<命题卡 id>", member: "<你>" }',
+      '会议结束前，每位参加辩论的成员用 `vibe_v5_verdict` 交最终裁决：「布尔概率([0,1])，理由」——传 `meeting` + `proposition_id`（**不要传 `target`**：`target` 只认活票箱的 id，命题卡 id 会被具名拒）、`member` 填自己；主席可以用 `vibe_v5_verdict_ask` 通知还没交的人。'
+      + '★ 别把它和票箱混起来：`vibe_vmu_meeting { action: "ballot" }` 的票箱只对「待核验对象」开放——它的**决定性**票只认 1/0（(0,1) 的读数必须显式写 `estimate` 类型、且不进裁决均值）；票箱不是裁决通道，裁决汇总只读成员交上来的裁决卡（`vibe_v5_verdict_final` 的 `rulingSubmissions`）。',
+      ['vibe_v5_verdict { meeting: "<本会议>", proposition_id: "<命题卡 id>", verdict: <0..1>, member: "<你>" }',
         'vibe_v5_verdict_ask { meeting: "<本会议>", proposition_id: "<命题卡 id>" }']),
     step(4, 'aggregate-and-notify', 'vibe_v5_verdict_final',
       '框架裁定并通知：若全部一致为 1（或一致为 0）则最终概率取该值，否则取所有裁决的平均值；随后通知该命题卡的持有者把卡片概率改为该值。',

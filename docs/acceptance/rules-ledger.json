@@ -1883,14 +1883,15 @@
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"typeCatalogSource\":\"vmu.meetings.typeCatalog\"",
         "docs/acceptance/phase12-v5r-rules-conformance.md::IS ADMITTED ONLY WITH EVIDENCE",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::票箱不是裁决通道"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::票箱不是裁决通道",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::proposition_id: \"<命题卡 id>\""
       ],
       "tool": [
         "vibe_v5_meeting"
       ],
       "ruleText": "- 确保所有代理接收到的提示词完全与上述规则相符、自洽 。",
-      "next": "规则原文与活教学之间的一致性只能审：已连跑五次独立只读审计（§229 CONTRADICTIONS(5) → §230 CONTRADICTIONS(5) → §232 CONTRADICTIONS(4) → §233 CONTRADICTIONS(2) → §234 CONTRADICTIONS(4)），共 20 条矛盾全部修净并机器化进 tests/vmu-g7-concordance.test.mjs（44 条，含英文断言）与 check-rule-parity 的 P1–P7。G7 记 DONE 的条件（用户裁定）：修完后再派一次独立审计、结论零矛盾。",
-      "note": "§229–§234：审计基线依次 9cbea9cc / 659bf726 / b44c146f / 20ac0786 / fcc33a5f；规则 63 行 sha256 前 16 a5d9a6c1ff73ec10；活教学只认 v5r-blocks-a/b.js、v5r-core.js、seat-faces.js、meeting-procedures.js 与 tools.js 的 description/hint，capture 快照不作依据。§234 的四条是 L07 绝对句吃掉文献旁路、L14 英文 description 只认 Lean、L53 推荐骨架指向票箱而内核读裁决卡、L61 把主代理写成院士席；GAP 9 条（\"没写到\"）不计入矛盾数。"
+      "next": "六轮独立只读审计：§229(5) → §230(5) → §232(4) → §233(2) → §234(4) → §235(2)，共 22 条矛盾全部修净，并机器化进 tests/vmu-g7-concordance.test.mjs（45 条）与 check-rule-parity P1–P7。G7 记 DONE 的条件（用户裁定）：再派一次独立审计、结论零矛盾。",
+      "note": "§229–§235：审计基线依次 9cbea9cc / 659bf726 / b44c146f / 20ac0786 / fcc33a5f / 1f59f85d；规则 63 行 sha256 前 16 a5d9a6c1ff73ec10。§235 的两条是 1f59f85d 自己引入的「半句不可达」：method/subproblem 卡面说可用 Lean 证据却没声明 lean_job/lean_conformance（已补声明）；step3 让 target 填卡 id 而 target 只认活票箱（已改为 meeting+proposition_id）。同轮还修了 4 条 GAP 假陈述（:1574/:1528 的 Lean-only 措辞、blocks-b:799 的 orderMode、:817 的 secret/allow_abstain）。"
     },
     {
       "id": "A8",

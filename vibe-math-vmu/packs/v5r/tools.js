@@ -1525,7 +1525,7 @@ function gatedCardHandler(toolName) {
       const state = has(args.proof_state) ? str(args.proof_state).trim().toLowerCase() : ''
       if (state && state !== 'complete' && state !== 'draft') {
         throw refuse('VMU_INVALID_ARGUMENT', 'proof_state must be "complete" or "draft"; got "' + state + '"',
-          'pass proof_state:"complete" only if the proof/refutation is finished — it is a self-report, and a debate still needs machine evidence (Lean passed or a verified row)')
+          'pass proof_state:"complete" only if the proof/refutation is finished — it is a self-report: a debate accepts the card with a finished `proof_ref` registration (the debaters judge its content) or with Lean/verified evidence')
       }
       const payload = args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload) ? Object.assign({}, args.payload) : {}
       // ★★ G7 AUDIT (F-135a): the write VALIDATED `lean_job` and then dropped it — the later reader (and the
@@ -1571,7 +1571,7 @@ function gatedCardHandler(toolName) {
       }
       if (!leanPassed && conformanceWord === '' && !alreadyVerified && declaredProofRef === '') {
         throw refuse('VMU_INVALID_ARGUMENT',
-          'a card may not declare proof_state "complete" without Lean evidence: this write carries no `lean_job` pointing at a settled, PASSED Lean run and no `lean_conformance` registration'
+          'a card may not declare proof_state "complete" without evidence: this write carries no `proof_ref`, no `lean_job` pointing at a settled, PASSED Lean run, and no `lean_conformance` registration'
           + (cardId === null ? '' : ' (card ' + cardId + ')') + ' — a card may not enter debate on a declared-complete proof with no Lean registration',
           'point the card at the finished proof with `proof_ref` (the rule admits a written proof:「含有正式证明或证伪内容」), or register Lean evidence: `vibe_v5_lean_run { file:"Formal/<name>.lean", statement:"…" }` → `vibe_v5_lean_job { jobId }` until passed:true, then write the card with lean_job:"<jobId>" (or pass lean_conformance:"conform" from a `vibe_v5_fidelity_conclude` ruling)')
       }
@@ -4089,13 +4089,13 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_record_method',
     description: 'Record a theory/method/tool card in your library. REQUIRES content, value, motive and p. ★ p must be in [0,1] (an out-of-range p is refused by name and the card is NOT written). ★ 进度 (PROGRESS) IS A CARD FIELD: an optional `progress` is kept as its own labelled line `- 进度：…` inside the card body and echoed in the receipt with `progressMeans`. ★ `proof_state:"complete"` needs evidence (`proof_ref` on a finished proof, or Lean `lean_job`/`lean_conformance`) and LOCKS the card id afterwards.',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, content: { type: 'string', required: true }, notation: { type: 'string' }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, progress: { type: 'string' }, member: { type: 'string' } },
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, content: { type: 'string', required: true }, notation: { type: 'string' }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, progress: { type: 'string' }, member: { type: 'string' } },
     handler: gatedCardHandler('vibe_v5_record_method'),
   },
   {
     name: 'vibe_v5_record_subproblem',
     description: 'Record a sub-problem card in your library. REQUIRES statement, value, motive and p. ★ p must be in [0,1] (an out-of-range p is refused by name and the card is NOT written). ★ 进度 (PROGRESS) IS A CARD FIELD: an optional `progress` is kept as its own labelled line `- 进度：…` inside the card body and echoed in the receipt with `progressMeans`. ★ `proof_state:"complete"` needs evidence (`proof_ref` on a finished proof, or Lean `lean_job`/`lean_conformance`) and LOCKS the card id afterwards.',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, progress: { type: 'string' }, member: { type: 'string' } },
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, progress: { type: 'string' }, member: { type: 'string' } },
     handler: gatedCardHandler('vibe_v5_record_subproblem'),
   },
   {

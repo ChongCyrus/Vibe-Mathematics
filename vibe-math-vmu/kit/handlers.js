@@ -734,6 +734,11 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
   }
   const cards = []
   const skipped = []
+  // ★ RUN 138 (F-138b): `kind:"propositions"` is a TRACK name, and a `kind` filter compares a row's `kind`, so the
+  // read answered total:0 with hint:null while `read_library { id }` could see the very same card. A zero that
+  // cannot name its own filter is indistinguishable from "this member wrote nothing" — so collect what kinds the
+  // read tracks actually hold and say which filter was applied, or why it matched nothing.
+  const kindsPresent = new Set()
   for (const track of tracks) {
     let listed = null
     try { listed = records.list({ track, limit }) } catch (e) {
@@ -743,6 +748,7 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
     }
     const items = Array.isArray(listed.items) ? listed.items : []
     for (const it of items) {
+      if (it && it.kind !== undefined && it.kind !== null) kindsPresent.add(String(it.kind))
       if (has(args.kind) && String(it.kind) !== str(args.kind)) continue
       if (wanted && String(it.owner || it.by) !== wanted) continue
       cards.push(it)
@@ -789,11 +795,21 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
   // there, so the honest thing is to name the other door and the call that opens it — never to imply either face is
   // the whole answer. Pointer is null when no member was named (a whole-institute read has no single owner to point at).
   const panelPointer = panelPointerOf(kernel, wanted)
-  return { ok: true, tool: 'vibe_v5_read_library', member: wanted, kind: has(args.kind) ? str(args.kind) : null,
+  const kindGiven = has(args.kind) ? str(args.kind) : null
+  const kindMatched = kindGiven === null || kindsPresent.has(kindGiven)
+  const kindNote = kindMatched
+    ? null
+    : (declared.includes(kindGiven)
+      ? '「' + kindGiven + '」is a TRACK name (vmu.records.tracks declares it), not a card KIND: this filter compares a row\'s `kind`, so it matched nothing and the zero below is not evidence that the member wrote nothing. Read that track instead: vibe_v5_read_library { member, track:"' + kindGiven + '" }.'
+      : 'no row among the read tracks carries kind "' + kindGiven + '": the kinds present here are ' + (kindsPresent.size ? Array.from(kindsPresent).join(', ') : '(none)') + '. `kind` filters a row\'s kind, not its track.')
+  return { ok: true, tool: 'vibe_v5_read_library', member: wanted, kind: kindGiven,
+    kindGiven, kindMatched, kindsPresent: Array.from(kindsPresent), kindNote,
     panelPointer: panelPointer.pointer, panelPointerMeans: panelPointer.means,
     tracks, declaredTracks: declared,
     total: cards.length, returned: returned.length, truncated: cards.length > returned.length,
-    hint: cards.length > returned.length ? '只回了 ' + returned.length + '/' + cards.length + ' 张：传 limit 提高上限，或按 kind/member/track 收窄' : null,
+    hint: cards.length > returned.length
+      ? '只回了 ' + returned.length + '/' + cards.length + ' 张：传 limit 提高上限，或按 kind/member/track 收窄'
+      : (kindNote || null),
     count: returned.length, cards: cardsOut, skippedTracks: skipped,
     readyCount: readyOn.length, readyCards: readyOn,
     readyMeans: readyDecorated > 0 ? READY_MEANS : READY_NONE_MEANS,
