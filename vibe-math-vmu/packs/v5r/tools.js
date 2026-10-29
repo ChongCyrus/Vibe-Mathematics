@@ -4130,7 +4130,12 @@ export const V5R_PACK_TOOLS = Object.freeze([
     // ROUND 200: `agenda`/`member` are NOT globally required: the CONVENE path needs them (and refuses by
     // name without them — see validateMeetingArgs), while the READ paths (status/summary/rulings) need only
     // action+id. A schema that marks them required promised a refusal the read path never gives.
-    parameters: { agenda: { type: 'string' }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string' }, at: { type: 'string' }, durationMs: { type: 'integer' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' } },
+    // ★ LIVE RUN 124 (E9): the handler has forwarded an explicit `members` subset to `kernel.meetings.open`
+    // since the wave-2 pass, but the DECLARATION did not list the parameter — so the dispatcher refused the call
+    // by name before a handler ever saw it, and the only way to convene a narrowed meeting was the PRIMITIVE face.
+    // A rule whose only reachable door is the primitive is reachable; a rule whose face refuses the rule's own word
+    // is not. The declaration now names the word the handler already reads.
+    parameters: { agenda: { type: 'string' }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string' }, at: { type: 'string' }, durationMs: { type: 'integer' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, members: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' } },
     handler: toolMeeting,
     // ★ LIVE RUN 29: the funnel refuses undeclared keys generically; this face can say WHY it is the wrong face.
     validate: validateMeetingArgs,

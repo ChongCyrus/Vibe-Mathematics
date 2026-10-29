@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 58 | all four citations resolve |
-| ◐ PARTIAL | 28 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 63 | all four citations resolve |
+| ◐ PARTIAL | 23 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -33,7 +33,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `A6` | 3 | 临时工：可被雇佣、无表决权、默认不参与会议、可解雇 | ✅ DONE | 1/1/1/1 | — |
 | `A7` | 3 | 临时工可被解雇 | ✅ DONE | 4/1/1/3 | — |
 | `A8` | 10 | 院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列 | ✅ DONE | 2/3/1/1 | — |
-| `A9` | 3 | 临时工的用途约束：被院士或常驻研究员雇佣用于特殊任务/临时任务 | ◐ PARTIAL | 1/1/1/1 | r120：office/根会话调 vibe_v5_hire 时回执要说明「没有成员席位、无法记 hiredBy」并给出 hiredBy=null 的理由；成员回合 hire 要读回 hiredBy=<成员>。 |
+| `A9` | 3 | 临时工的用途约束：被院士或常驻研究员雇佣用于特殊任务/临时任务 | ✅ DONE | 1/1/1/2 | — |
 
 ## B. 公共文件
 
@@ -43,7 +43,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `B2` | 7 | 参考文献中的命题也可直接入 Verified | ✅ DONE | 2/2/1/2 | — |
 | `B3` | 7 | 只有辩论能把 p 改为 1 | ✅ DONE | 2/2/1/1 | — |
 | `B4` | 8 | 蓝图：总目标/技术路线/规划，按时更新 | ◐ PARTIAL | 2/1/1/1 | r120：造一份 30 天以上的蓝图草案（把 now 拨快或写一份旧行），读回 freshness.stale=true 且 adopt 给出 overdueUpdate=true。 |
-| `B5` | 8 | 蓝图由院士+常驻研究员共同设计 | ✅ DONE | 2/1/1/3 | — |
+| `B5` | 8 | 蓝图由院士+常驻研究员共同设计 | ✅ DONE | 2/1/1/2 | — |
 | `B6` | 8 | 蓝图最终编辑权在院士 | ◐ PARTIAL | 2/1/1/1 | r120：成员会话调 vibe_v5_blueprint{action:"adopt", member:"<chair id>"}，必须按「谁在调用」拒，不能只看 args.member。 |
 
 ## C. 个人文件
@@ -54,7 +54,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `C2` | 12 | 已尝试路线/方法及其进度 | ✅ DONE | 2/1/1/1 | — |
 | `C3` | 13 | 遇障路线/尝试/方法及障碍与原因归档 | ✅ DONE | 2/1/1/2 | — |
 | `C4` | 13 | 遇到的各种障碍及其原因（归档内容的一部分） | ✅ DONE | 3/1/1/2 | — |
-| `C5` | 14 | 命题库：完整定义、p(0-1)、进度 | ✅ DONE | 2/1/1/2 | — |
+| `C5` | 14 | 命题库：完整定义、p(0-1)、进度 | ✅ DONE | 1/1/1/2 | — |
 | `C6` | 14 | 平时只记证明/证伪尝试，真正会证时才写正式证明字段 | ◐ PARTIAL | 1/1/1/1 | r120：proof_state="complete" 无 Lean 证据要具名拒；有 Lean 通过证据才许 complete；complete 后再写同 id 要具名拒（locked）。 |
 | `C7` | 14 | 只有写完的正式证明才能用于辩论 | ◐ PARTIAL | 2/1/1/1 | r122a：以一句自由文本作辩论对象召集 debate 会**成功**，回执 subjectGate 带 form:"statement"、provenance:"none"、proofContentChecked:false，note 明说「本闸判不了」并给两条可被核的路；若换成已登记带证明的卡，则 proofContentChecked:true。（§216.3 的裁决：闸宁可承认判不了，也不删掉一种合法用法。） |
 | `C8` | 14 | p=1 的命题要标记 verified | ✅ DONE | 1/2/1/1 | — |
@@ -71,7 +71,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `D1` | 26 | 各自推进各自的总任务 | ◐ PARTIAL | 2/1/1/2 | r120：两位成员各读状态板，②③ 两行的前缀必须同为「属于你（<id>，…」；所办视图逐字不变。 |
-| `D2` | 27 | 三通道：邮箱/私信/群聊 | ◐ PARTIAL | 2/1/1/2 | r120：私信回执要能看出走的是哪张面（relayedBy/fromMeans），邮箱与私信的差别只在 urgent；读回两条回执对照。 |
+| `D2` | 27 | 三通道：邮箱/私信/群聊 | ✅ DONE | 2/1/1/2 | — |
 | `D3` | 27 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ◐ PARTIAL | 2/1/1/1 | r120：邮箱带 urgent 时是否唤醒接收者要与教学一致（当前教学说只有私信+urgent 才推正文）——修好教学或修好投递，再读回一次。 |
 | `D4` | 28 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
 | `D5` | 28 | 四字段都含时间等基础信息 | ◐ PARTIAL | 2/2/1/2 | r120：状态板四行在 at 缺省时都要带 timeWhy（不能两行既无时间也无理由）。 |
@@ -88,7 +88,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E3` | 32 | 只能院士召开会议并主持 | ◐ PARTIAL | 2/1/1/1 | r120：非主席成员调用 requireChairSeat 的工具，要被具名拒（不是 task 租约那一种）。 |
 | `E4` | 32 | 只能院士关闭会议 | ◐ PARTIAL | 2/1/1/1 | r120：非主席成员召集会议被具名拒，读回 code/message。 |
 | `E5` | 32 | 院士可延长会议时长上界 | ✅ DONE | 2/1/1/1 | — |
-| `E6` | 32 | 院士设会议标题 | ✅ DONE | 2/1/1/2 | — |
+| `E6` | 32 | 院士设会议标题 | ✅ DONE | 2/1/1/1 | — |
 | `E7` | 32 | 院士设会议类型 | ✅ DONE | 1/1/1/1 | — |
 | `E8` | 32 | 院士设会议议程/事项安排 | ✅ DONE | 1/1/1/1 | — |
 | `E9` | 32 | 院士邀请入会成员 | ◐ PARTIAL | 1/1/1/1 | r120：主席邀请入会的子集（roster 只含 r-1）后读回 roster，证明「邀请入会的成员」真的能收窄名单；今天 convene 把全员塞进 roster。 |
@@ -113,9 +113,9 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E28` | 53 | 辩论骨架④全一致取该值、否则平均，并通知持有者改值 | ✅ DONE | 2/1/1/1 | — |
 | `E29` | 51 | 辩论轮数由院士决定 | ✅ DONE | 2/1/1/1 | — |
 | `E30` | 32 | 院士通过命令自组织会议进行中的一切内容、控制、活动（兜底授权，动词不穷举） | ✅ DONE | 1/2/1/1 | — |
-| `E31` | 32 | 框架推荐的会议流程骨架只是建议：具体实施、决定、是否遵循完全由院士决定 | ◐ PARTIAL | 2/2/1/1 | r120：召集 paper/planning 会读回 procedure.steps 与 procedureBinding:"recommendation"、procedureNote（推荐不是门禁）。 |
+| `E31` | 32 | 框架推荐的会议流程骨架只是建议：具体实施、决定、是否遵循完全由院士决定 | ✅ DONE | 2/2/1/1 | — |
 | `E32` | 53 | 辩论裁定的并发通知：告诉命题卡持有者最终概率并请其改值 | ✅ DONE | 1/1/1/1 | — |
-| `E33` | undefined | 会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。 | ◐ PARTIAL | 1/1/1/2 | r120：types 读面读回六类（每类带 kind 与收窄后工具面），并读回 typeCatalogSource。 |
+| `E33` | undefined | 会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。 | ✅ DONE | 1/1/1/2 | — |
 | `E34` | undefined | 会议进行中的一些特殊活动包括但不限于：投票（院士设置投票板选项与机制）、任务板设置与认领交派、群聊式交流，...。 | ✅ DONE | 2/1/1/2 | — |
 | `E35` | undefined | 关于辩论：院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。 | ✅ DONE | 1/1/1/1 | — |
 | `E36` | undefined | 辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。 | ✅ DONE | 1/1/1/1 | — |
@@ -127,7 +127,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `F1` | 56 | 把原问题与所有有价值产物系统梳理 | ✅ DONE | 1/1/1/2 | — |
 | `F2` | 56 | 合作撰写：分派各自内容并合并 | ✅ DONE | 2/1/1/2 | — |
 | `F3` | 56 | 互审 | ◐ PARTIAL | 1/1/1/1 | r123：单成员论文 review 自审（已过，r122b 具名拒）之外，还要读到 finalise 在互审未一致时被具名拒；两成员互审后再 finalise 成功。 |
-| `F4` | 56 | 面向读者：系统/正确/完整/严谨清晰 | ◐ PARTIAL | 1/1/1/2 | r120：recordFinal 在 evidence 缺失时必须与 render 同等拒绝（同一 code）。 |
+| `F4` | 56 | 面向读者：系统/正确/完整/严谨清晰 | ✅ DONE | 1/1/1/2 | — |
 | `F5` | 56 | 讨论检查无误后定稿 | ✅ DONE | 1/1/1/1 | — |
 
 ## G. 额外要求

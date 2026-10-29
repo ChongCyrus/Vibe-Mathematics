@@ -2131,3 +2131,18 @@ run 115 的读数：成员 r-1 **在自己的回合里** `hire` 了一个临时�
 照这句话重复调用永远不会改变答案。修法不是换一句更好听的解释，而是给每个状态一张可执行的地图：
 `writing ⇒ action:"part"`、`reviewing ⇒ action:"review"（of = 作者，member = 评审者）`、`finalized ⇒ 换 target 或读状态`，
 并在 reviewing 那句里明说「advance() only moves the flow, it does not review for you」。判据：**地图指到死路，等于没有地图。**
+
+## ROUND 124 — 一条规则的门，必须在这一面的词表里
+
+`vibe_v5_meeting` 的 handler 自 wave-2 起就把「院士邀请入会成员」的显式子集转发给 `kernel.meetings.open({ members })`，
+但**参数声明没有列 `members`**：派发层在 handler 之前按名拒了调用（`does not accept parameter(s) "members"`），于是这条规则只剩
+primitive 面一扇门，而教学点名的 SERVICE 面拒了规则自己的词。补一行 `members: { type: 'array' }` 之后，`rosterNarrowed` /
+`rosterSource` / 名单本身在召集回执与 `status` 上都读得到（`tests/vmu-run124-narrow-roster.test.mjs` 14/0）。
+
+同轮还量到两件「读数也是事实」的边界：
+
+- 名单是**受邀者名单**，不是主席名单：主席因召集而 `present`，两者分开读（一条断言把「主席必在 roster」写错过，被真机改回来）。
+- 文件与测试的对应关系要能被机器看见：把 `emptyParts`、`"count":6`、`binding:"recommendation"` 这类逐字回执钉进台账，
+  比在散文里复述一遍更硬；而钉子里的 `[]`、`()`、`+` 会被 checker 当正则编译——能编译但匹配不到的字面量，是最难发现的假绿。
+
+判据：**声明必须列出 handler 已经读的词；一条规则的门，必须在这个面的词表里。**

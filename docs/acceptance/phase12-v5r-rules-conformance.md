@@ -9559,3 +9559,56 @@ build `6b04a8ea`，clone `slvp123`，port 19725。`DRIVE exit=0`、`durationSec 
 - `vibe_v5_blueprint {action:"propose"}` 同样要 `member`（`needs the acting member id`），`action:"read"` 要 `id` 不是 `path`。
 
 ### §218.5 无实质残余：否（E9 收窄支、F4 证据门两处待下一轮）
+
+---
+
+## §219 真机跑 124 —— 一条规则的门，必须在这一面的词表里
+
+### §219.1 读数
+
+| 轮次 | build | 时长 | 调用 | token | 会话 | RED | 判据来源 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 124a | `9249765d` | 435 s | 37 / 37 | 3,178,542 | 2 | 0 | `_oneoff/vm-slv/full-1029-*.jsonl`（81 对回执） |
+| 124b | `9249765d` | 273 s | 30 / 30 | 1,917,846 | 2 | 0 | 同轮（46 对回执） |
+
+### §219.2 判决表
+
+| 规则 | 真机读到的 | 判定 |
+| --- | --- | --- |
+| A9 临时工要有雇佣归属 | 根会话 `hire` ⇒ `"hiredBy":null` + `"hiredByMeans":"the roster row carries no `hiredBy`: this call ran outside a member turn … a later `fire` reports ownership "unrecorded" rather than guessing"`；成员回合 `hire` ⇒ `"hiredBy":"r-1"` + `"from the turn-tool record (not from any argument)"` | ✅ DONE |
+| D2 邮件紧急与否是自成一项 | `vibe_v5_message{to,content,urgent:true}` ⇒ `"urgent":true,"kind":"notice","note":"kind does NOT decide urgency (kind "note" for non-urgent, "notice" only when urgent:true); urgent defaults to FALSE"` | ✅ DONE |
+| E31 程序是推荐不是门禁 | 学术会回执 `"procedure":{"title":"…","binding":"recommendation","steps":[…]}` | ✅ DONE |
+| E33 六种会议类型可读 | `vibe_v5_meeting{action:"types"}` ⇒ `"count":6` + `typeCatalogSource` + 每型 `subjectRequired`/`hasProcedure`/`procedureSteps`/`narrowed` | ✅ DONE |
+| F4 论文定稿要有证据 | `paper{action:"final",decision:"deliverable"}` ⇒ `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING` + `"emptyParts":["r-1","r-2"]` | ✅ DONE |
+| E9 院士邀请入会成员 | **本轮拒**：`vibe_v5_meeting{members:["r-1"]}` ⇒ `does not accept parameter(s) "members"`（见 §219.3） | ❌ 已修 |
+| E18 一票多选的上限 | `rules:{maxChoices:1}` 声明在回执里，但同一成员第二票先被 `VMU_CONFLICT` 拦（`allowRevote:false`）⇒ 未走到 `VMU_BALLOT_CHOICE_COUNT` | ⏳ 未走到 |
+| E20 任务转移 | `task_create` ok；`action:"start"`/`"done"` 被具名拒并列出本内核真实操作（`claim/reassign/assign/transition/complete/reopen/set_dependencies`）；`claim`/`transition{to:"doing"}`/`complete` 均 ok；非法转移 `assigned→done` ⇒ `VMU_STATE` + hint 列 allowed | ⏳ 半 |
+| E24 忠诚性 | `vibe_v5_fidelity_conclude` 的真实参数是 `card/fidelity/lean_job/member/note`；`lean_job` 不存在 ⇒ `VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED`；「卡上 p≠1 时强下结论 ⇒ `FIDELITY_ASK_REQUIRED`」仍未走到 | ⏳ 未走到 |
+| B6 冒名采纳 | 本轮 adopt 由根会话调用（没有成员席位）⇒ 冒名那支没被行使 | ⏳ 未走到 |
+| C10 Lean 编译结果归档 | 本轮没走到（r123 已取证 ✅） | — |
+
+### §219.3 F-124a：规则的词不在这一面的声明里
+
+`vibe_v5_meeting` 的 handler 自 wave-2 起就把显式子集转发给 `kernel.meetings.open({ members })`，**但参数声明没有列 `members`**，
+于是派发层在 handler 之前就按名拒了这次调用。结果是「院士邀请入会成员」这条规则只剩**primitive 面**一扇可开的门，而教学
+里点名的 SERVICE 面反而拒了规则自己的词。
+
+修法：把 `members: { type: 'array' }` 补进 convene 的参数表（handler 早就在读它），并留注释写明「声明必须列出 handler 已读的词」。
+新 `tests/vmu-run124-narrow-roster.test.mjs` **14/0**：①声明里有 `members`；②带 `members` 的召集被接受；③回执 `rosterNarrowed:true`
+且 `roster` 恰是受邀名单；④未被邀请的常驻研究员不在名单上；⑤`status` 读回同一个收窄；⑥不带 `members` 的召集 `rosterNarrowed:false`
+且名单含另一名常驻（这一条是「标志不能恒真」的对照）；⑦主席是 `present`（**名单是受邀者，不是主席名单**——两条事实分开）。
+
+判据：**一条规则的门，必须在这个面的词表里；只活在 handler 里的词，等于没有门。**
+
+### §219.4 门禁
+
+`vmu-run124-narrow-roster` 14/0、`vmu-wave2-meeting-types` 73/0、`vmu-wave2-meeting-roster-label-counts` 54/0、
+`vmu-meeting-types` 155/0、`vmu-v5r-tools` 360/0。
+
+### §219.5 简报自身错四处
+
+`vibe_v5_meeting` 的召集必须带 `member`；`vibe_v5_task_update` 的键是 `task_id` 不是 `id`；`vibe_v5_message` 的正文键是
+`content` 不是 `text`；`vibe_v5_report` 不收参数。另：`vibe_v5_say` 等 pack 面只认 SERVICE 会议，primitive 的
+`vibe_vmu_meeting{action:"open"}` 会议要用 primitive 面读（回执 `registry:"primitive"` + `registryMeans`）。
+
+### §219.6 无实质残余：否（E18/E20/E24/B6 四条待下一轮）
