@@ -55,10 +55,13 @@ console.log('=== 2. ★ A REFUSED ROUND STILL RECORDS THE JUDGEMENT THE MEMBER E
     'the round hands the member prompt back (the caller-played route)', { awaiting: handed.awaiting })
   // ★★ PHASE 12 / run 35 item 2 changed WHICH field carries this refusal, and this line is where the suite had pinned the
   // old carrier: a bare-string `say` no longer reaches the meeting service at all (it is skipped by name, so the turn
-  // survives), so it can no longer produce a refusal. A field that still MUST reach a meeting - `propose_verify`, mapped
-  // to the meetings face's `motion` - keeps producing exactly the refusal this suite is about: the round is refused for a
-  // reason that has nothing to do with the vote, and the vote is recorded anyway.
-  const reply = JSON.stringify({ propose_verify: { kind: 'verify-request', why: '占位命题已解决' }, vote_solved: true })
+  // survives), so it can no longer produce a refusal.
+  // ★★★ AUDIT 14 C-2 (this round) narrowed the carrier once more: a meeting-motion field WITHOUT a meeting reference is
+  // now skipped by name too (`no-meeting-bound`, the line is kept in `notes`, the turn survives) - "propose a meeting" in
+  // a round that is not in a meeting used to refuse the whole turn and lose the receipt. What still MUST reach a meeting
+  // is the same field carrying a meeting reference: it names a meeting that is not open, so it is refused for a reason
+  // that has nothing to do with the vote - and the vote is recorded anyway. That refusal is this suite's subject.
+  const reply = JSON.stringify({ propose_verify: { meeting: 'mt-x', kind: 'verify-request', why: '占位命题已解决' }, vote_solved: true })
   seam.supply(reply)
   const refused = await spec(TOOL_NAMES.turn).run({ op: 'step', phase: 'founding', reply })
   // ★ PHASE 9 / round 7 (INTENTIONAL SEMANTIC CHANGE, not a relaxation): the turn now wraps the meeting error in a code that

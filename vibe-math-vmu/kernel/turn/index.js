@@ -2694,12 +2694,16 @@ export function createTurnOrchestrator({
       // cost them their turn, with nothing saying why. Here the field is SKIPPED BY NAME instead (the reason is a pure
       // function so the promise is assertable without a live host): nothing is pretended to have happened, the turn
       // still completes, and the receipt says which field was dropped and why.
+      // The line is recorded, not thrown away: the prompt allows `say` as the explanation for speech already made through
+      // `vibe_v5_say`, so it is a READING of what the member did, and a reading that vanishes is the defect.
       const skipReason = dispatchSkipReason(d, { boundMeeting })
       if (skipReason !== null) {
         counts.notExecuted += 1
-        // The line is recorded, not thrown away: the prompt allows `say` as the explanation for speech already made
-        // through `vibe_v5_say`, so it is a READING of what the member did, and a reading that vanishes is the defect.
-        const raw = typeof d.payload === 'string' ? d.payload : (d.payload && typeof d.payload.text === 'string' ? d.payload.text : null)
+        const raw = typeof d.payload === 'string'
+          ? d.payload
+          : (d.payload && typeof d.payload.text === 'string'
+            ? d.payload.text
+            : (d.payload && typeof d.payload === 'object' ? JSON.stringify(d.payload) : null))
         const note = { field: d.field, reason: skipReason.reason, text: raw === null ? null : String(raw).slice(0, NOTE_CAP), kept: raw !== null }
         if (raw !== null && String(raw).length > NOTE_CAP) note.truncated = true
         keptNotes.push(note)
@@ -2724,12 +2728,19 @@ export function createTurnOrchestrator({
       const recordLog = (d.face === FIELD_OWNERS.record.face && d.op === FIELD_OWNERS.record.op)
         ? recordLogArgs(d.payload, memberId, declaredTracks)
         : null
-      if (recordLog !== null && recordLog.ok !== true) {
+      // RUN 145 / audit14 C-1: `task_create` teaches {title,description,blocked_by?,write_scopes?} and the core face
+      // reads {title,objective,deps,writeScopes} - the adapter maps them (and REFUSES unknown keys by name) so the
+      // taught keys can no longer be dropped silently.
+      const taskCreate = (d.face === FIELD_OWNERS.task_create.face && d.op === FIELD_OWNERS.task_create.op)
+        ? taskCreateArgs(d.payload)
+        : null
+      const adapted = recordLog !== null ? recordLog : taskCreate
+      if (adapted !== null && adapted.ok !== true) {
         counts.notExecuted += 1
-        skipped.push({ field: d.field, face: d.face, op: d.op, reason: recordLog.reason, code: recordLog.code,
-          missing: recordLog.missing, message: recordLog.message, hint: recordLog.hint,
-          note: 'the field was NOT dispatched: ' + recordLog.message + '; nothing was written and the rest of the turn still applies',
-          means: RECORD_LOG_MEANS })
+        skipped.push({ field: d.field, face: d.face, op: d.op, reason: adapted.reason, code: adapted.code,
+          missing: adapted.missing, message: adapted.message, hint: adapted.hint,
+          note: 'the field was NOT dispatched: ' + adapted.message + '; nothing was written and the rest of the turn still applies',
+          means: adapted === recordLog ? RECORD_LOG_MEANS : undefined })
         continue
       }
       const composed = composedFor(d, d.payload)
@@ -2745,8 +2756,8 @@ export function createTurnOrchestrator({
       const attributed = recordComposed !== null && recordComposed.attributed ? recordComposed.payload : null
       let res
       try {
-        res = recordLog !== null
-          ? await fn(...recordLog.args)
+        res = adapted !== null
+          ? await fn(...adapted.args)
           : await fn(onBehalf ? composed : (recordComposed !== null ? recordComposed.payload : d.payload), { field: d.field, face: d.face, op: d.op, ...(attributed ? { attributedTo: String(memberId) } : {}) })
       } catch (e) {
         if (e && e.code === 'VMU_NO_OPEN_MEETING') {
@@ -4010,9 +4021,20 @@ export const hasMeetingRef = (payload) =>
 
 export const dispatchSkipReason = (d, opts = null) => {
   if (!d || typeof d !== 'object') return null
+  // RUN 145 / audit14 C-2 (+ audit12 G14): A MOTION NEEDS A MEETING, AND IT USED TO DESTROY THE TURN INSTEAD.
+  // `propose_meeting`, `motion`, `proposal` and `propose_verify` all map to `vmu.meetings.motion`, and the catalogue
+  // tells a member they are meeting-round fields - but an ordinary round dispatched them anyway, the meeting face threw
+  // `VMU_NO_OPEN_MEETING`, and `apply()` re-mapped that throw and re-raised it: the reply was lost and receipt=null.
+  // The same object-requirement rule as `say` below applies: no meeting bound => skip BY NAME, keep the line in `notes`.
   // ★ 用户裁决 B 第 2 步：会议**绑定**在时，「这句话没有会议可依附」不再成立 —— KERNEL 会把 meeting/member/text 补齐，
   // 所以这条跳过必须让路；没有绑定才跳过（旧行为一字不改）。
   const bound = opts && opts.boundMeeting !== undefined && opts.boundMeeting !== null && String(opts.boundMeeting).trim() !== ''
+  if (!bound && d.face === 'vmu.meetings' && d.op === 'motion' && !hasMeetingRef(d.payload)) {
+    return {
+      reason: 'no-meeting-bound',
+      note: 'this turn has no meeting, so a motion/proposal has nothing to attach to: the field is skipped by name (nothing was proposed), the turn completes, and the line is KEPT - see `notes` for this round; convene or join a meeting round to move it',
+    }
+  }
   if (!bound && d.face === 'vmu.meetings' && d.op === 'speak' && !hasMeetingRef(d.payload)) {
     return {
       reason: 'no-meeting-bound',
@@ -4086,6 +4108,63 @@ export const recordLogArgs = (payload, memberId = null, declaredTracks = null) =
     }
   }
   return { ok: true, args: [member, payload.track, payload.text], member, track: payload.track }
+}
+
+/**
+ * RUN 145 / audit14 C-1 - THE `task_create` REPLY FIELD MUST DELIVER WHAT ITS LINE TAUGHT.
+ *
+ * MEASURED DEFECT: the live catalogue line said `{title,description,blocked_by?,write_scopes?}` (compact AND full, every
+ * seat, every round), while the dispatch handed the payload object straight to `vmu.tasks.create` - whose real signature
+ * is `create({title,objective,owner,deps,priority,writeScopes})`. The three extra keys were therefore DROPPED SILENTLY: a
+ * real turn created the task with `deps:[]` and `writeScopes:[]`, `ready:true` for a task whose declared prerequisite
+ * existed, and no refusal, no note. The tool route (`kit/extras.js` `toolTaskCreate`) mapped all three correctly, which
+ * is what made this a reply-path-only break.
+ *
+ * The adapter supplies the real names, and - unlike the old dispatch - an UNKNOWN key is not dropped: it is a NAMED
+ * skip (`reason:'task-create-shape'`, `code:'VMU_INVALID_ARGUMENT'`) with the accepted-key list in the hint, so the
+ * turn survives and the sender learns which key the field cannot carry.
+ */
+export const taskCreateArgs = (payload) => {
+  const ACCEPTED = ['title', 'description', 'blocked_by', 'write_scopes']
+  const hint = 'send { task_create: { title: "<what the task is>", description?: "<objective>", blocked_by?: ["<task id>"], write_scopes?: ["<path prefix>"] } } - the core field carries these four keys only (kernel.tasks.create reads title/objective/deps/writeScopes); to pass owner/priority use the tool face vibe_v5_task_create { subject, description?, owner?, blocked_by?, write_scopes?, priority? }'
+  const missing = []
+  const problems = []
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    missing.push('title')
+    problems.push('the field holds ' + describeReplyShape(payload) + ' instead of an object')
+  } else {
+    const unknown = Object.keys(payload).filter((k) => ACCEPTED.indexOf(k) < 0)
+    if (unknown.length) {
+      problems.push('unknown key(s) ' + unknown.join(', ') + ' (accepted: ' + ACCEPTED.join(', ') + ')')
+      for (const k of unknown) missing.push(k)
+    }
+    if (typeof payload.title !== 'string' || payload.title.trim() === '') {
+      missing.push('title')
+      problems.push('title is ' + describeReplyShape(payload.title))
+    }
+    if (payload.description !== undefined && typeof payload.description !== 'string') {
+      missing.push('description')
+      problems.push('description is ' + describeReplyShape(payload.description))
+    }
+    const isStrArray = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string' && x.trim() !== '')
+    if (payload.blocked_by !== undefined && !isStrArray(payload.blocked_by)) {
+      missing.push('blocked_by')
+      problems.push('blocked_by is ' + describeReplyShape(payload.blocked_by) + ' instead of an array of task ids')
+    }
+    if (payload.write_scopes !== undefined && !isStrArray(payload.write_scopes)) {
+      missing.push('write_scopes')
+      problems.push('write_scopes is ' + describeReplyShape(payload.write_scopes) + ' instead of an array of path prefixes')
+    }
+  }
+  if (missing.length) {
+    return { ok: false, reason: 'task-create-shape', code: 'VMU_INVALID_ARGUMENT', missing,
+      message: 'the task_create reply field cannot be dispatched: ' + problems.join('; '), hint }
+  }
+  const created = { title: payload.title }
+  if (payload.description !== undefined) created.objective = payload.description
+  if (payload.blocked_by !== undefined) created.deps = payload.blocked_by
+  if (payload.write_scopes !== undefined) created.writeScopes = payload.write_scopes
+  return { ok: true, args: [created] }
 }
 
 // ★ PHASE 12 / live run 35 item ② (second half): WHAT A THROWING APPLY DOES TO THE HELD TURN. It consumes it and does NOT

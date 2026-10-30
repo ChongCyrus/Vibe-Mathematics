@@ -108,6 +108,10 @@ ok(defs.filter((d) => d.hot === 'H3').length > 0, 'the read-only class is actual
     // service surfaces above: a name in a sentence or a table is not a read. Exempted by exact name so the
     // exemption cannot drift into a blanket hole.
     'vmu.library.record', 'vmu.library.append',
+    // RUN 150 / audit14 C-1+C-2: `vmu.tasks.create` and `vmu.meetings.motion` are FACE.OP dispatch targets named in
+    // prose (the `taskCreateArgs` adapter's comment and the motion skip branch), not settings lookups - the same shape
+    // as the two entries above. They are the two faces whose reply-field payloads this round had to adapt/skip by name.
+    'vmu.tasks.create', 'vmu.meetings.motion',
   ])
   for (const f of files) {
     for (const m of readFileSync(f, 'utf8').matchAll(/['"`](vmu\.[a-zA-Z0-9.]+)['"`]/g)) {

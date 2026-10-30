@@ -269,7 +269,7 @@ export function createTasks({
         priority, state: owner ? 'assigned' : 'open', createdAt: clock(), transitions: [], revision: 1 }
       tasks.set(id, t)
       record('task-created', { id, title: t.title, deps: t.deps.slice(), owner: t.owner, writeScopes: t.writeScopes.slice() })
-      return { ok: true, id, state: t.state, deps: t.deps.slice(), writeScopes: t.writeScopes.slice(), skippedScopes: scopeNorm.skipped }
+      return { ok: true, id, state: t.state, objective: t.objective, deps: t.deps.slice(), writeScopes: t.writeScopes.slice(), skippedScopes: scopeNorm.skipped }
     },
 
     /**
