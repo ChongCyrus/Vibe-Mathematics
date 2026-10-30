@@ -82,8 +82,12 @@ export function leadershipReading({ roster, leaderId, leaderSlot = LEADER_SLOT }
     [LEADERSHIP_STATES.ID_NOT_ON_ROSTER]: 'vmu.turn.leaderId names a member who is not on the roster: the charter must NOT name them (its rule 1), so it stays leaderless',
     [LEADERSHIP_STATES.ID_NOT_CHAIR]: 'vmu.turn.leaderId names a member who is not in the leader slot: the charter must not present a non-leader as the leader',
   }
+  // ★★ RUN 152 (real machine, run 2): this suggestion was `vibe_v5_configure {"member":"<the chair>", "params":{…}}`,
+  // and `vibe_v5_configure` declares project/institute/problem/params — a `member` key is refused by name
+  // (`does not accept parameter(s) "member"`), so the framework's own repair advice was a call that cannot work. The
+  // suggestion is now the declared shape (`vibe_v5_set`, key/value/why), which is also the one corrections.js teaches.
   const next = code === LEADERSHIP_STATES.CHAIR_WITHOUT_ID
-    ? 'vibe_v5_configure {"member":"<the chair>","params":{"vmu.turn.leaderId":"' + seatedChairs[0] + '"}}'
+    ? 'vibe_v5_set {"key":"vmu.turn.leaderId","value":"' + seatedChairs[0] + '","why":"安置院士"}'
     : null
   return {
     code,

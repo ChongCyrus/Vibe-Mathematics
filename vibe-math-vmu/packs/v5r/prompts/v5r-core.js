@@ -584,7 +584,7 @@ export const v5rFixtureTools = Object.freeze({
     // "unknown reply field(s)" ×9 and the whole turn was voided. The allowed top-level fields come from the kernel's own
     // catalogue (`kernel/turn/index.js` FIELDS ∪ RECORDED_FIELDS, 29 names), but for a thin receipt only these four are
     // ever needed.
-    '★★ 回执契约：**顶层只允许这四个字段** —— progress / say / solved / vote_solved（这是本夹具的收敛口径）。★ `note`、`plan` 之类**不在内核字段清单**里，写了会被判 `VMU_TURN_UNKNOWN_FIELD`；`record`/`meeting_hand` 虽在内核清单里，但本夹具要求用工具做、**不要写进回执**。',
+    '★★ 回执契约（本夹具的收敛口径）：这四个字段就够了 —— progress / say / solved / vote_solved；但内核**另接受 29 个已登记字段**（`formal`、`record`、`meeting_hand` 等，完整清单见上面的「回执字段」段）——写了不算错，只是本夹具不要求。★ `note`、`plan` 之类**不在内核字段清单**里，写了会被判 `VMU_TURN_UNKNOWN_FIELD`；`record`/`meeting_hand` 虽在内核清单里，但本夹具要求用工具做、**不要写进回执**。',
     '★★ 已经用工具做完的动作，**不要再写进回执**；回执只放"没有工具对应的纯决定"（例如是否结题）。',
     // ★★★ PHASE 12 / R15 (live run 12, the agent's finding c): THIS LINE USED TO OFFER `{"solved": false}` AS AN
     // EQUIVALENT "minimal receipt" beside `vote_solved`, and the line below paired `{"solved":false}` with
@@ -603,6 +603,15 @@ export const v5rFixtureTools = Object.freeze({
     '   · {"vote_solved":false}（结题表决只走回执；它不是工具）',
     '   · 写卡片请直接用工具（vibe_v5_record_*），**不要**把卡片塞进回执的 record 字段。',
     '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
+    // ★★★ RUN 151 (real machine, run 1 feedback/file evidence): the taught BLUEPRINT shape omitted `member` and the
+    // tool refuses with `blueprint (proposal) needs the acting member id` (4× in one run); `vibe_v5_task_update` with
+    // action "claim" refuses the same way (`claim needs the claiming member`, 2×). Both were taught WITHOUT the field,
+    // so a member that followed the prompt was refused. The opposite error also showed up: members added `member` to
+    // `vibe_v5_set`/`vibe_v5_configure`, which declare other shapes and refuse unknown parameters. Both directions are
+    // one sentence of fact, and this section is the tools-mode variant (the production deployment), not the thin
+    // no-tools receipt used by the budget test.
+    '★ 按席位记账的工具要带 `member: "<你的 id>"`：`vibe_v5_blueprint { action: "propose", path, text, member }`、`vibe_v5_task_update { task_id, expected_revision, action: "claim", member }`、`vibe_v5_say { …, member }` 都容易被漏掉；漏了会被具名拒 `VMU_INVALID_ARGUMENT`（hint 会点名该补什么）。',
+    '★ 但**不是每个工具**都要 member：`vibe_v5_set { key, value, why }`、`vibe_v5_configure { project, institute, problem, params }` 只收它们声明的形参——多写一个未知参数同样会被具名拒（`does not accept parameter(s) …`），照工具表 description 写，不要猜。',
   ].join('\n'),
 })
 

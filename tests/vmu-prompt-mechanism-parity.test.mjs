@@ -60,12 +60,11 @@ const FAMILIES = Object.freeze([
     regex: /本夹具/,
     mechanism: 'fixture-vocabulary',
   }),
-  Object.freeze({
-    id: 'reply-field-catalogue',
-    taught: 'the reply catalogue allows ONLY four top-level fields',
-    regex: /顶层只允许这四个字段/,
-    mechanism: 'field-catalogue',
-  }),
+  // ★ RUN 151: the family `reply-field-catalogue` (regex /顶层只允许这四个字段/) is GONE, together with its ledger
+  // entry, because the sentence it watched was fixed: the fixture-tools section now says the four fields are THIS
+  // FIXTURE's convergence recipe and names the registered fields the kernel also accepts (REPLY_FIELDS=29). The
+  // shrink-only rule (§1) is what forced the ledger entry out; the family goes with it so no family watches a claim
+  // the prompts no longer make.
   Object.freeze({
     id: 'meeting-field-in-reply',
     taught: 'a meeting hand / invitation may be written as a JSON reply field',

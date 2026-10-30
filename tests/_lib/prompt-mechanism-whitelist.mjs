@@ -48,14 +48,6 @@ export const PROMPT_MECHANISM_DIVERGENCES = Object.freeze([
     reviewed: 'R16',
   }),
   Object.freeze({
-    family: 'reply-field-catalogue',
-    contains: '顶层只允许这四个字段',
-    owner: 'vmu-pack · packs/v5r/prompts/v5r-core.js:526',
-    reason: '实测 REPLY_FIELDS=29（FIELD_OWNERS 22 + RECORDED_FIELDS 7，kernel/turn/index.js:50-82/178-181/208）⇒「只允许四个」把 25 个真被接受的名字说成非法；成员按此写回执会误删合法字段。',
-    expiry: '当该句改为「这四个字段是本夹具的收敛口径，内核另接受 N 个已登记字段」并给出可查清单后删除本条',
-    reviewed: 'R16',
-  }),
-  Object.freeze({
     family: 'meeting-field-in-reply',
     contains: '"meeting_hand": true',
     owner: 'vmu-pack · packs/v5r/prompts/v5r-blocks-a.js:585/622/652、v5r-blocks-b.js:699',

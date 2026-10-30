@@ -2545,3 +2545,34 @@ run150 71/0、vmu-turn 272/0、T1 632/632），机制面与历史面零回归，
 - 仍未关闭（记账债务，不阻塞 L63）：台账里那批 OPEN 项——invite 幽灵队列、原语面 fork 前过度拦截、部署档长度无门禁、
   默认 `fixtureMode=no-tools` 与 L62 相抵、席位注只在 full 档交付、适配器余项、`vibe_vmu_meeting.action` 无 enum、
   形状门的盲区——编号与明细见 `docs/acceptance/phase12-v5r-rules-conformance.md` §252.5。
+
+## ROUND 156 —— 首次完整真机模拟（跑 2）的八条反馈与七处机制修法（RUN 152）
+
+第一次真机被 token 上限截断在裁决写回之前；本轮给驱动加续跑参数（`-KeepWorkspace` / `-Workspace`）保留原研究所
+工作区，从 HEAD `8df170d4` 重新打包驱动一次（克隆 `slvp158`、端口 19602、`-MaxTokens 24000000`）：`DRIVE exit=0`、
+695 s、`tokenTotal 9 789 657 / 24 000 000`、`tokenCapHit=false`、`transcriptEvents 536`、根会话 `toolCalls 123`、
+`NO_FENCE=0 · UNKNOWN_FIELD=0 · FIELD_NOT_APPLICABLE=10 · BAD_JSON=0`；`slv-inspect` 唯一 RED 是代理自己编的工具名
+`vibe_v5_vote`。这次真的走到「定稿之前」：裁决汇总 1（unanimous, n=2, floor 3/3）→ `rec-12` p=1 入 Verified
+（`rec-26`）→ 结题表决 3/3 → `m-clo-1` 关闭 → 论文 p3/p4 分派/合并/互审全通；断在定稿（四次
+`paperEditor is "…": this paper is not the academician's to finalise`），代理改用手调 xelatex 又撞
+`! Undefined control sequence`。代理按简报交出 `FEEDBACK.md`（15 922 B）与 `SIM-REPORT.md`（15 154 B）。
+
+八条反馈逐条裁决：**F1** 锁定卡与 L53 写回互相封死（真机制）→ 裁决落值成为锁定卡唯一被许可的编辑（形状被核：
+`value` ∈ {0,1}、`p` 必须等于该值），并让 `verdict_final.correction.call` 可照抄；**F2** 续跑进程读不到上一进程的
+Lean 作业（真机制 + 教学）→ 拒之前先水合持久镜像，refusal 点名两处，`vibe_v5_lean_job` 说明
+「TWO JOB FACES ARE NOT ONE」（Lean `Formal/Jobs` vs 计算 `Math/Jobs`）；**F3** 正文门也拦 revise（真机制）→ 预闸
+只管 `deliverable`，`recordPart` 的 hint 改成可达的 `final{decision:"revise"}`；**F4** 用院士席成员 id 建论文永远
+定不了稿，且拒绝句字面为假（真机制）→ `start` 归一化为 `"academician"`、非院士席 id 具名拒、两种事实两句话；
+**F5** 并行 `part` 静默丢写（真机制）→ 状态行写前比对 `rev`，不等即具名拒；**F6** `quorumMin` 需重启（不是缺陷，
+回执已如实写）；**F7** 三席名册下人数闸按构造满足，回执要自述这一点（真机制：回执诚实性）→ `floor.gate` 增加
+`uncovered`/`vacuous`/`bitesWhen`；**F8** 转义顺序错、且回执把尾部指向空的 `stderrTail`（真机制）→ 先转义再包
+bold，失败尾部在 `stdout` 时放 `stdoutTail` 并记 `tailSource`。教学侧 **P1**：框架自己的修复建议
+`vibe_v5_configure {"member":…}` 是无效调用 → 改成 `vibe_v5_set {key,value,why}`；**P2/P3**（`vibe_v5_set` 带
+`reason`、`vibe_v5_vote`）经全仓核对是代理自身错误，不改代码。
+
+机器化：新 `tests/vmu-run152-real-run-fixes.test.mjs` **33/0**（§0 十八处源码口径含「旧话必须消失」、§1 真调用、
+§2 句子重量）；`vmu-leadership-reading` 42 → **44/0**（旧断言钉的正是那条无效调用）；`audit-service-calls` 抓到
+`kernel.lean` 的服务可用性问题（改成局部绑定后 `findings: none`）；`--only paper` 11/0；预算未变
+（19 995 / 19 998 / 18 243）；六道门禁全绿（coverage 86/86）；全量 T1 **635/635（suites 571 · probes 64）**。
+本轮的修复**尚未在真机上复验**：下一轮（RUN 153）用修好的 tarball 起 run 3，验 F1 的写回被代理原样执行、论文真能
+定稿并编译出 PDF、`.tex` 不再出现 `\\textbf\{…\}`。

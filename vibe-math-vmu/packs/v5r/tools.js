@@ -1364,13 +1364,34 @@ async function toolFidelityConclude(args = {}, { kernel } = {}) {
       'a conformance conclusion needs the PASSING Lean job that settled the formalisation (no job id was given)',
       'pass lean_job:"<job id from vibe_v5_lean_run / vibe_v5_lean_job>" — 没有编译通过的作业，"符合性"无从判定')
   }
-  const lean = leanPassedOf(kernel, jobId)
+  // ★★ RUN 152 (real machine, run 2, agent feedback F2): a Lean job created in an EARLIER kernel process lives only in
+  // the durable mirror (`Formal/Jobs/<id>.json`), and the in-process lookup knows nothing about it until the mirror is
+  // hydrated — so a continuation run got `VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED … not readable on this deployment` for a
+  // job whose pass the mirror holds (the workspace had lean-1..lean-5.json). Hydrate the mirror once and retry before
+  // refusing; if it is still absent, the refusal names BOTH scopes so the reader knows what was searched.
+  let lean = leanPassedOf(kernel, jobId)
+  let mirrorHydrated = null
+  // ★ the face is created only when the Host offers a spawn seam (kernel/index.js: `const lean = spawn ? … : null`), so the
+  // call is made through a local binding: `kernel.lean.<method>(` would read as a call to a service a minimal kernel does
+  // not construct, and audit-service-calls.mjs (rightly) treats that as dangling.
+  const leanFace = kernel && kernel.lean ? kernel.lean : null
+  if (!lean && leanFace && typeof leanFace.listMirrors === 'function') {
+    try {
+      const listed = await leanFace.listMirrors()
+      mirrorHydrated = listed && listed.ok === true ? { dir: listed.dir, count: listed.count } : { error: (listed && listed.code) || 'unreadable' }
+    } catch (e) { mirrorHydrated = { error: String((e && e.message) || e) } }
+    lean = leanPassedOf(kernel, jobId)
+  }
   if (!lean) {
     throw refuse('VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED',
       'Lean job "' + jobId + '" is not readable on this deployment ('
-      + (kernel && kernel.lean ? 'the Lean face knows no such job id' : 'the Host exposes no spawn seam, so this deployment has no Lean face at all')
+      + (kernel && kernel.lean
+        ? 'neither this kernel process nor the durable job mirror knows that id'
+          + (mirrorHydrated && mirrorHydrated.dir !== undefined ? ' — the mirror was re-read: ' + String(mirrorHydrated.dir) + ' holds ' + String(mirrorHydrated.count) + ' job(s)' : '')
+          + (mirrorHydrated && mirrorHydrated.error !== undefined ? ' — the mirror could not be read: ' + String(mirrorHydrated.error) : '')
+        : 'the Host exposes no spawn seam, so this deployment has no Lean face at all')
       + ')',
-      'run the formalisation first（vibe_v5_lean_run）或把真实作业 id 传进来；没有 Lean 面时这条收口无载体，不要假装编过')
+      'run the formalisation first（vibe_v5_lean_run）或把真实作业 id 传进来；跨进程的作业由 `vibe_v5_lean_job { jobId }` 读镜像（Formal/Jobs/<id>.json，不是计算作业的 Math/Jobs），没有 Lean 面时这条收口无载体，不要假装编过')
   }
   if (lean.passed !== true) {
     throw refuse('VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED',
@@ -1502,7 +1523,29 @@ function gatedCardHandler(toolName) {
     // The ONE internal exception is the fidelity conclusion below, which is not an edit of the card's content but the
     // machine taking the card from p<1 to the p=1 its passed Lean run already justifies (it passes `fidelity_conclude`,
     // a key the tool schema does not publish, so no caller can reach it).
-    if (cardId !== null && args.fidelity_conclude !== true) {
+    // ★★ RUN 152 (real machine, run 2, agent feedback F1 — a DEADLOCK the framework itself created):
+    // a card whose proof is registered complete is locked (rule L14). But rule L53 requires the framework to tell the
+    // card's holder「请把相应命题卡的布尔概率改为该概率值」— and `vibe_v5_verdict_final`'s own `correction.call` is exactly
+    // `vibe_v5_record_proposition { id, p, debate_ruling }`. Measured: every such call was refused `VMU_STATE card "rec-12"
+    // is locked`, so the instructed repair was impossible and the proposition could never reach p=1 or the Verified
+    // track. The lock protects the PROOF CONTENT ("登记即定稿" — the written proof is final); the probability is what the
+    // ruling settles, and L53 makes settling it a required act. So a write that carries a `debate_ruling` is admitted as
+    // a SETTLEMENT — and only as one: it must set p to the ruling's own value, and it may not touch the proof fields.
+    // Every other write to a completed card stays refused by name.
+    const rulingSettlement = args.debate_ruling !== undefined && args.debate_ruling !== null ? args.debate_ruling : null
+    if (rulingSettlement !== null) {
+      const settled = typeof rulingSettlement === 'object' && !Array.isArray(rulingSettlement) ? rulingSettlement : null
+      const value = settled && settled.value !== undefined && settled.value !== null ? Number(settled.value) : null
+      if (settled === null || value === null || (value !== 0 && value !== 1)) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'debate_ruling must be an object carrying the ruled value (0 or 1)',
+          'pass debate_ruling:{ value: 1|0, mode, n, decided: true, meeting, by } — the shape `vibe_v5_verdict_final` prints in its `correction.call`')
+      }
+      if (!has(args.p) || Number(args.p) !== value) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'a ruling settlement must set p to the ruled value (' + String(value) + ')',
+          'pass p:' + String(value) + ' together with debate_ruling:{ value: ' + String(value) + ', … } — the settlement is the ruling\'s own number, not a new estimate')
+      }
+    }
+    if (cardId !== null && args.fidelity_conclude !== true && rulingSettlement === null) {
       const lockedRow = rowOrNull(records, cardId)
       if (lockedRow) {
         const lockedParsed = parseCardBody(str(lockedRow.body))
@@ -1511,7 +1554,7 @@ function gatedCardHandler(toolName) {
         if (lockedState.toLowerCase() === PROOF_STATE_COMPLETE) {
           throw refuse('VMU_STATE',
             'card "' + cardId + '" is locked: its proof was registered as complete, so the card is final and no later write may change it',
-            'a completed card is NOT rewritten — write the correction under a NEW card id (a different claim is a different card) and keep the locked card as history; if the card must be promoted into the verified track, use `vibe_v5_verified_promote` (promotion is not a card edit)')
+            'a completed card is NOT rewritten — write the correction under a NEW card id (a different claim is a different card) and keep the locked card as history; if the card must be promoted into the verified track, use `vibe_v5_verified_promote` (promotion is not a card edit); if a debate has SETTLED this card, settle its probability with the ruling (pass p plus debate_ruling:{value, mode, …} — rule L53 makes that edit the framework\'s own instruction, so it is admitted on a locked card) and promote it afterwards')
         }
       }
     }
@@ -1884,8 +1927,19 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
       if (voters && voters.restricted === true && Array.isArray(voters.ids)) unsigned = voters.ids.map(String).filter((v) => !signedSet.has(v))
     } catch (e) { unsigned = null }
     const satisfied = signedBy.length >= required
+    // ★★ RUN 152 (real machine, run 2, agent feedback F7): at a three-seat roster the floor is `min(cap, universe)` = 3
+    // and `signed` is「every debating member + the chair」 = 3, so `VMU_MEETING_QUORUM_LOST` was UNREACHABLE — the agent
+    // spent a whole task trying to trigger it and could not, while the receipt read like a live gate. The gate itself is
+    // right (it CAN refuse when a named member has not filed); what was missing is the receipt saying so. These two
+    // fields answer "did this gate bite, and when could it" instead of leaving a satisfied number looking like a proof
+    // that the gate works.
+    const uncovered = unsigned === null ? null : unsigned.length
+    const vacuous = satisfied === true && (uncovered === null || uncovered === 0)
     return { readable: true, required, satisfied, signed: signedBy.length, signedBy, unsigned,
       chairCounted: true,
+      vacuous,
+      bitesWhen: 'it refuses exactly when some member the meeting names as an eligible voter has NOT filed a ruling (or when the eligible universe exceeds the seats that signed); with every eligible signer present the requirement is met by construction, so this run cannot reach VMU_MEETING_QUORUM_LOST — that is the arithmetic, not a disabled gate',
+      uncovered,
       eligibleUniverse: q && q.capUniverse !== undefined ? q.capUniverse : null,
       formula: q && q.capPolicy ? q.capPolicy : null,
       means: 'signed = the members whose number is in this tally PLUS the chair, who signs; the floor is the one kernel.meetings.quorum() computes for this meeting (the rule 「min(用户设置数, 院士+常驻研究员数)」) — it GATES this ruling: below it the call is refused by name, unless the chair deliberately rules on fewer seats and says why' }
@@ -2037,6 +2091,12 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
           unsigned: voteFloorGate.unsigned,
           chairCounted: voteFloorGate.chairCounted === true,
           satisfied: voteFloorGate.satisfied,
+          // ★★ RUN 152 (F7): a satisfied floor at a full house says nothing about whether the gate works. `vacuous` is
+          // true exactly when nobody is missing (so it could not have refused this run) and `bitesWhen` states the
+          // condition under which it does refuse — the pair keeps "the rule holds" from being read as "the gate bit".
+          vacuous: voteFloorGate.vacuous === true,
+          uncovered: voteFloorGate.uncovered === undefined ? null : voteFloorGate.uncovered,
+          bitesWhen: voteFloorGate.bitesWhen === undefined ? null : voteFloorGate.bitesWhen,
           escapedBy: (partial && voteFloorGate.satisfied === false) ? 'partial' : null,
           means: voteFloorGate.means,
         },
@@ -2069,10 +2129,25 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     path: cardPath.path,
     pathMeans: cardPath.path || cardPath.why,
     call: cardRow
-      ? 'vibe_v5_record_proposition { id: "' + propositionId + '", p: ' + String(ruled.value) + ', debate_ruling: { value: ' + String(ruled.value) + ', mode: "' + String(ruled.mode) + '", n: ' + String(ruled.n) + ', decided: ' + String(ruled.decided === true) + ', at: "<ISO time>", meeting: "' + str(meeting) + '", by: "' + chair + '" } }'
+      ? (() => {
+        // ★★ RUN 152 (real machine, run 2, F1's second half): this `call` used to omit statement/value/motive, but
+        // `vibe_v5_record_proposition` REQUIRES all four declared fields — the printed repair was not copy-pasteable:
+        // the host schema check would refuse it before the lock gate was even reached. The call now carries the card's
+        // OWN fields, read back from the record, and `debate_ruling.subject` names this card so the p=1 gate can match
+        // the evidence to it.
+        let f = null
+        try { const p = parseCardBody(str(cardRow.body)); f = p && p.fields ? p.fields : null } catch { f = null }
+        const quoted = (v) => JSON.stringify(v === undefined || v === null ? '' : String(v))
+        return 'vibe_v5_record_proposition { id: "' + propositionId + '", statement: ' + quoted(f && f.statement)
+          + ', value: ' + (f && f.value !== undefined && f.value !== null ? String(Number(f.value)) : '1') + ', motive: ' + quoted(f && f.motive)
+          + ', p: ' + String(ruled.value) + ', debate_ruling: { subject: "' + propositionId + '", value: ' + String(ruled.value) + ', mode: "' + String(ruled.mode) + '", n: ' + String(ruled.n) + ', decided: ' + String(ruled.decided === true) + ', at: "<ISO time>", meeting: "' + str(meeting) + '", by: "' + chair + '" } }'
+      })()
       : (cardPath.path
         ? 'edit the card FILE at ' + cardPath.path + ' and set its probability to p = ' + String(ruled.value) + ' (this proposition is a library card, not a records row: no records face owns it, so the edit is a file edit by its holder)'
         : 'this ruling has NO card to correct (the object was not on the records track): record the proposition first with vibe_v5_record_proposition { track: "propositions", statement, value, motive, p: ' + String(ruled.value) + ' } and then apply the ruling with the same call + debate_ruling'),
+    // ★★ RUN 152: the settlement is ADMITTED even on a locked card (see the lock gate in gatedCardHandler) — say it here,
+    // because a reader who has already seen「登记即定稿」will otherwise assume the card cannot be touched at all.
+    lockedCardNote: 'a card whose proof is registered complete stays locked for every CONTENT edit; this settlement writes only the probability the ruling produced, which rule L53 requires — the gate admits exactly that shape (p + debate_ruling) and nothing else',
     means: 'the KERNEL notice tells the owner to correct the card; this field names the call that does it and the values this ruling produced, so "who changes the card, with what" is answerable from the receipt instead of inferred. This face does not write the card: the rule makes the notice the FRAMEWORK act and the edit the HOLDER act (and a card write here would be a second writer of the same row)',
   }
   return {
@@ -4189,7 +4264,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
     name: 'vibe_v5_record_proposition',
     description: 'Record a proposition/lemma card in your library. REQUIRES statement, value, motive and p (your probability that it is true); the card is settled when p is 1 or 0. ★ p=1 IS A CONCLUSION, NOT A PREFERENCE: writing 1 is refused BY NAME unless the write carries one of the three conclusions the rule accepts — a promoted verified row on THIS card (the kernel record, not an argument), a unanimous debate ruling (`debate_ruling:{mode:"unanimous", value:1, subject:"<this card id>", ballotId}`), or a passed Lean run PLUS the conformance ruling (`lean_job` + `lean_conformance:"conform"`). Estimating in (0,1) is always allowed. '
       + '★ LITERATURE (B2): a proposition taken from a reference may enter the verified track directly — pass `literature_ref:"<author, source, theorem/page>"` together with `p:1` (the gate accepts this citation as the fourth evidence form), then `vibe_v5_verified_promote{card, warrant_kind:"literature", literature_ref:"<the same citation>"}`; the verified row warrant IS the citation, so "why is this settled" answers with a source instead of "someone decided". An empty citation is not a citation. '
-+ '★ PROOF REGISTRATION (B6): pass `proof_ref` (where the proof/refutation lives, e.g. "Members/<m>/Propos/<pid>.md#正式证明") and `proof_state:"complete"|"draft"` — this is a SELF-REPORT, recorded and traceable, NOT a verification. ★ BUT `proof_state:"complete"` IS ADMITTED ONLY WITH EVIDENCE: the same write must carry either `proof_ref` (pointing at the finished proof/refutation this card declares — the gate records the pointer, and the humans debating the card judge its content) OR Lean evidence (a `lean_job` pointing at a settled PASSED run — `lean_conformance` alone is only a CLAIM and does not satisfy this gate; pass it TOGETHER with that lean_job) — otherwise it is refused by name (VMU_INVALID_ARGUMENT) and nothing is written. (The rule L14 accepts a finished formal proof as the debate prerequisite; it does not require that proof to be Lean.) ★ ONCE A CARD IS COMPLETE IT IS LOCKED: a later write to the SAME card id is refused (VMU_STATE) — correct it under a NEW card id and keep the locked card as history. Neither `proof_ref` nor Lean evidence ⇒ state is recorded as draft. '
++ '★ PROOF REGISTRATION (B6): pass `proof_ref` (where the proof/refutation lives, e.g. "Members/<m>/Propos/<pid>.md#正式证明") and `proof_state:"complete"|"draft"` — this is a SELF-REPORT, recorded and traceable, NOT a verification. ★ BUT `proof_state:"complete"` IS ADMITTED ONLY WITH EVIDENCE: the same write must carry either `proof_ref` (pointing at the finished proof/refutation this card declares — the gate records the pointer, and the humans debating the card judge its content) OR Lean evidence (a `lean_job` pointing at a settled PASSED run — `lean_conformance` alone is only a CLAIM and does not satisfy this gate; pass it TOGETHER with that lean_job) — otherwise it is refused by name (VMU_INVALID_ARGUMENT) and nothing is written. (The rule L14 accepts a finished formal proof as the debate prerequisite; it does not require that proof to be Lean.) ★ ONCE A CARD IS COMPLETE IT IS LOCKED: a later write to the SAME card id is refused (VMU_STATE) — correct it under a NEW card id and keep the locked card as history. ★ THE ONE SANCTIONED EDIT ON A LOCKED CARD IS A RULING SETTLEMENT: a write carrying `debate_ruling:{value:0|1, …}` with `p` set to that same value is admitted, because rule L53 makes「把该命题卡的布尔概率改为该概率值」a required act — the lock protects the PROOF CONTENT, a ruling settles the PROBABILITY (that settlement is exactly what `vibe_v5_verdict_final` prints in its `correction.call`, which now also carries `subject:<card id>` so the p=1 evidence matches this card). Neither `proof_ref` nor Lean evidence ⇒ state is recorded as draft. '
       + '★ 进度 (PROGRESS) IS A CARD FIELD: pass `progress:"<where the work stands>"` (e.g. "证明写到第 3 步，缺引理 L") and it is kept as its own labelled line `- 进度：…` inside the card body — it survives into the durable row and every read face — and the receipt echoes it back with `progressMeans`. The rule L14 names 进度 as one of the card records, so it is not a passing remark. '
       + '★ p must be a NUMBER IN [0,1]: an out-of-range value (e.g. p:1.5) is refused by name and the card is NOT written.'
       + ' ★ 代记（REGISTRAR DUTY）：研究所的正式记录本由**所办**登记。收完一位成员的回执后，用本工具并传 `member:"<该成员id>"` 把该成员声明的卡片登记进去——`member` 就是卡的作者（owner），**必须是该成员而不是你自己**；否则持有者会变成所办，后续通知/认领都会指错人。',
@@ -4478,7 +4553,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_lean_job',
-    description: 'Inspect the Lean job queue: with jobId the job\'s state, otherwise the list. (waitMs is reported as not applied — the queue returns current state.)',
+    description: 'Inspect the Lean job queue: with jobId the job\'s state, otherwise the list. (waitMs is reported as not applied — the queue returns current state.) ★ TWO JOB FACES ARE NOT ONE: this is the LEAN face — its durable mirror is `Formal/Jobs/<jobId>.json` (vmu.math.jobs.dir for the Lean face). `vibe_vmu_mathjobs` is the PYTHON computation face and its mirror is `Math/Jobs/` by default; `vibe_vmu_mathjobs{action:"listMirrors"}` therefore says nothing about Lean jobs. A Lean job created in an earlier process is readable here by id (the mirror is hydrated on demand).',
     parameters: { jobId: { type: 'string' }, waitMs: { type: 'integer' } },
     handler: toolLeanJob,
   },

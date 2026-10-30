@@ -129,6 +129,8 @@ console.log('=== 4. a correction must not look like the divergence it corrects =
 const FAMILY_TRAPS = Object.freeze([
   { id: 'unknown-field-refusal', re: /会被判\s*`VMU_TURN_UNKNOWN_FIELD`/ },
   { id: 'fixture-vocabulary', re: /本夹具/ },
+  // RUN 151: the parity gate no longer watches this family (the sentence it watched was fixed). The trap stays as a
+  // guard against a correction REINTRODUCING the false claim "only these four top-level fields are allowed".
   { id: 'reply-field-catalogue', re: /顶层只允许这四个字段/ },
   { id: 'meeting-field-in-reply', re: /"(?:meeting_hand|meeting_invite)":/ },
 ])

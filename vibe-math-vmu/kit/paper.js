@@ -103,17 +103,55 @@ export function createPaperFlow({
     const full = got && got.record ? got.record : got
     let body = full && full.body
     if (body === undefined && Array.isArray(full && full.blocks)) body = full.blocks.map((b) => (typeof b === 'string' ? b : b && b.text) || '').join('\n')
-    try { return { state: JSON.parse(String(body || '{}')), row: full } } catch { return null }
+    try {
+      const state = JSON.parse(String(body || '{}'))
+      // ★★ RUN 152 (real machine, run 2, agent feedback F5 — SILENT LOST UPDATE): the state row is rewritten IN PLACE,
+      // and two `part` calls that ran CONCURRENTLY both read the same body, both said ok:true, and the second write
+      // dropped the first member's part (measured: rec-29 vanished while its receipt said ok). A read snapshot is now
+      // remembered on the returned object (non-enumerable, so it never enters the durable body) and `writeState` refuses
+      // the write when the row moved in between: a concurrent edit is a NAMED conflict, never a silent merge or a silent
+      // loss.
+      if (full && full.rev !== undefined) {
+        Object.defineProperty(state, '__seen', { value: { rev: full.rev, updatedAt: full.updatedAt === undefined ? null : full.updatedAt }, enumerable: false, writable: true, configurable: true })
+      }
+      return { state, row: full }
+    } catch { return null }
   }
   const writeState = (state) => {
     // ONE state record, updated IN PLACE: `records.put` with the remembered id writes a new revision, so the paper has
     // exactly one live state row (a fresh id per write would leave duplicates whose list order decides the truth).
+    // ★★ RUN 152 (F5): before writing, verify the row has not moved since this state snapshot was read. Two concurrent
+    // `part` calls used to both succeed and the later write silently dropped the earlier one; now the stale writer is
+    // refused BY NAME (the caller retries on the fresh body) and nothing is lost.
+    const seen = state && state.__seen ? state.__seen : null
+    if (state.stateRecordId && seen && seen.rev !== undefined && seen.rev !== null) {
+      let cur = null
+      try {
+        const got = records.get({ id: state.stateRecordId })
+        cur = got && got.record ? got.record : got
+      } catch { cur = null }
+      if (cur && cur.rev !== undefined && cur.rev !== null && String(cur.rev) !== String(seen.rev)) {
+        throw refuse(CODES.STATE,
+          'paper "' + state.target + '" was changed by another writer between this call\'s read and its write (revision ' + String(seen.rev) + ' → ' + String(cur.rev) + '): this write would drop that change, so nothing was written',
+          're-read the paper (vibe_v5_paper { action: "status", target: "…" }) and retry this call on the fresh state — concurrent writes to one paper are not merged silently')
+      }
+    }
     const put = records.put({
       id: state.stateRecordId || null,
       track: TRACK, kind: 'paper-state', title: recordName(state.target, 'state'),
       body: JSON.stringify(state), settled: state.status === 'finalized', by: author,
     })
     if (put && put.id) state.stateRecordId = put.id
+    // the new revision becomes this snapshot's baseline, so a second write from the SAME call chain is not a conflict
+    if (state.stateRecordId) {
+      try {
+        const got = records.get({ id: state.stateRecordId })
+        const full = got && got.record ? got.record : got
+        if (full && full.rev !== undefined) {
+          Object.defineProperty(state, '__seen', { value: { rev: full.rev, updatedAt: full.updatedAt === undefined ? null : full.updatedAt }, enumerable: false, writable: true, configurable: true })
+        }
+      } catch { /* the write itself succeeded; only the baseline refresh is best-effort */ }
+    }
     return put
   }
 
@@ -355,11 +393,29 @@ export function createPaperFlow({
     if (!has(target)) throw refuse('VMU_INVALID_ARGUMENT', 'start needs the paper target', 'pass target:"<the object being written up>"')
     const list = Array.isArray(participants) ? participants.map(String).filter((x) => x !== '') : []
     if (list.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'start needs at least one writing participant', 'pass participants:["r-1", …]')
+    // ★★ RUN 152 (real machine, run 2 of the simulation): `editor` used to be stored VERBATIM, so starting a paper with
+    // `editor:"r-acad"` (the chair-seated member, i.e. the academician) produced a paper whose finalisation was then
+    // refused by `recordFinal`, which only accepts the ROLE word "academician" — the flow let a caller configure a paper
+    // it could never finalise, and only said so at the LAST step (4 attempts, three papers wasted). The role is
+    // resolved HERE, where the answer is still actionable: a member id is accepted exactly when that member sits in the
+    // chair slot, and anything else is refused by name before the paper exists.
+    const editorWord = str(editor) || editorDefault
+    let editorName = editorWord
+    if (editorWord !== editorDefault && editorWord !== 'office') {
+      const seat = (kernel.members ? kernel.members.roster() : []).filter((m) => String(m.id) === editorWord)[0] || null
+      if (seat && String(seat.slot) === finalizerSlot) editorName = editorDefault
+      else {
+        throw refuse('VMU_INVALID_ARGUMENT',
+          'paper editor "' + editorWord + '" is neither the academician role nor a member seated in the chair slot'
+            + (seat ? ' (that member is in slot "' + String(seat.slot) + '")' : ' (no such member on the roster)'),
+          'pass editor:"academician" (the member in the chair seat finalises: this is the default) or editor:"office" (the office finalises after consulting the institute); an id is accepted only for a chair-seated member, which is recorded as "academician"')
+      }
+    }
     if (readState(str(target))) throw refuse(CODES.STATE, 'a paper for "' + str(target) + '" already exists',
       'advance/finalize the existing one, or start a paper for a different target (this face never silently overwrites)')
     const state = {
       id: 'paper-' + str(target), target: str(target), status: 'writing', stage: 'writing', round: 1,
-      participants: list, editor: str(editor) || 'academician', lang: lang === 'en' ? 'en' : 'zh',
+      participants: list, editor: editorName, lang: lang === 'en' ? 'en' : 'zh',
       format: ['both', 'md', 'tex'].includes(format) ? format : 'both',
       parts: {}, reviews: {}, reviewOf: {}, final: null, disagreement: [], warnings: [], forcedAfterCap: false,
       // ★ E4: the ledger starts empty here so "was the office asked?" is answerable for EVERY paper, not only the ones
@@ -378,7 +434,10 @@ export function createPaperFlow({
    *  fingerprint is remembered in the state (that is what rule ① compares against later). */
   function recordPart({ target, member, title = '', solution = '', methods = '', rules = '', limits = '', evidence = [] } = {}) {
     const { state } = requireState(target)
-    if (state.status !== 'writing') throw refuse(CODES.STATE, 'the paper is not in its writing stage (now: ' + state.status + ')', 'advance it back to writing before recording a part')
+    // ★★ RUN 152: the hint used to say "advance it back to writing", which is a call the flow cannot make (advance
+    // only moves writing→reviewing→awaiting-editor and returns moved:false at awaiting-editor). The reachable repair is
+    // the editor sending the paper back with decision:"revise", which is what the hint now names.
+    if (state.status !== 'writing') throw refuse(CODES.STATE, 'the paper is not in its writing stage (now: ' + state.status + ')', 'the reachable repair is the editor sending it back: vibe_v5_paper { action: "final", target: "' + state.target + '", member: "<the member in the chair seat>", decision: "revise", note: "<what to fix>" } turns it back to writing (a request to "advance it back" is not a move this flow can take); after that the part can be recorded again')
     if (!state.participants.includes(str(member))) throw refuse('VMU_NO_SUCH_OBJECT', str(member) + ' is not a writing participant of this paper', 'participants: ' + state.participants.join(', '))
     const part = {
       member: str(member), round: state.round, title: str(title).slice(0, 300),
@@ -533,8 +592,19 @@ export function createPaperFlow({
     // between writing/reviewing — it never reviews a part, so "advance() until the cross-review is unanimous" told the
     // caller (run 123) to repeat a call that cannot help. Each state names its own legal next move.
     if (state.status !== 'awaiting-editor') throw refuse(CODES.STATE, 'the paper is not awaiting its editor (now: ' + state.status + ')', nextMoveFor(state))
+    // ★★ RUN 152: this refusal used to be ONE sentence for two different facts, and it printed
+    // "this paper is not the academician's to finalise" even when the academician WAS the signer (the paper had been
+    // started with a member id as its editor) — a message that is literally false about the state it describes. The
+    // two facts are now separated: an office-edited paper is the named consult gap, and anything else names the role
+    // the flow accepts and how to get one. `start` above normalises a chair-seated member id to "academician", so a
+    // paper created by the current build cannot reach the second branch through that spelling.
+    if (state.editor === 'office') {
+      throw refuse('VMU_NOT_PERMITTED', 'this paper is edited by the office, and the office may finalise only after consulting the institute — that path is a named gap in this build',
+        'start the paper with editor:"academician" so the member in the chair seat finalises it (record the office consult answer with action:"consult" — the gate stays closed until the office answers, and a named gap is not a passing gate)')
+    }
     if (state.editor !== editorDefault) {
-      throw refuse('VMU_NOT_PERMITTED', 'paperEditor is "' + state.editor + '": this paper is not the academician\'s to finalise', 'the original lets the office finalize only after consulting the institute — that path is a named gap here')
+      throw refuse('VMU_NOT_PERMITTED', 'paperEditor is "' + state.editor + '": the flow finalises only an "academician"-edited paper signed by the member in the chair seat',
+        'start the paper with editor:"academician" (default) — a member id is accepted at start only for a chair-seated member and is recorded as "academician"')
     }
     const row = (kernel.members ? kernel.members.roster() : []).filter((m) => m.id === str(member))[0]
     if (!row || String(row.slot) !== finalizerSlot) {
@@ -665,8 +735,15 @@ export function createPaperFlow({
   function PaperTex({ target } = {}) {
     const state = requireState(target).state
     const md = PaperMd({ target })
-    // ★ ** is MARKDOWN bold and it is not a TeX character - it used to travel into the .tex verbatim. Convert it first, then escape.
-    const esc = (s) => String(s).replace(/\*\*([^*]+)\*\*/g, '\\\\textbf{' + '$1' + '}').replace(/([&%$#_{}])/g, '\\$1')
+    // ★ ** is MARKDOWN bold and it is not a TeX character - it used to travel into the .tex verbatim. Convert it first,
+    // then escape.
+    // ★★ RUN 152 (real machine, run 2): the ORDER was backwards — the bold conversion inserted a literal `\\textbf{…}`
+    // and the escaping pass that ran AFTER it escaped the braces it had just produced, so every heading came out as
+    // `\\textbf\{1 · …\}`. Measured: xelatex stopped at "! Undefined control sequence." and the PDF was never produced
+    // (`VMU_PAPER_LATEX_FAILED`), which made the paper stage unfinishable. Escape the TEXT first (so the braces are
+    // escaped as content), then wrap the bold run — the `\textbf{` this pass writes is markup and must stay unescaped.
+    const escText = (s) => String(s).replace(/([&%$#_{}])/g, '\\$1')
+    const esc = (s) => escText(String(s)).replace(/\*\*([^*]+)\*\*/g, (m, inner) => '\\textbf{' + inner + '}')
     const body = md.split('\n').map((line) => {
       if (line.startsWith('### ')) return '\\subsection*{' + esc(line.slice(4)) + '}'
       if (line.startsWith('## ')) return '\\section*{' + esc(line.slice(3)) + '}'
@@ -780,7 +857,7 @@ export function createPaperFlow({
         // below), but the TOOL RECEIPT carries only code/message/hint - the host does not relay custom error fields. So the hint
         // pointed at a name that existed on an object the receipt had already flattened away, which is the "looks correct but is
         // unusable" shape this phase keeps removing. It now says what the receipt DOES carry and what the operator can do with it.
-        '这不是"论文为假"，只是**没编译出来**：回执这次带了一行编译器原话（在 message 的「编译器说：」之后，已压成单行、上限 240 字符）；完整 stderr 尾部在【这条错误的 `stderrTail`】上，宿主回执不转述它 —— 按那句原话修 .tex/换引擎（或把绝对路径写进 `vmu.paper.latexCommand`）后重试，或直接把这条 message 交给人；回执不声称有 pdf')
+        '这不是"论文为假"，只是**没编译出来**：回执这次带了一行编译器原话（在 message 的「编译器说：」之后，已压成单行、上限 240 字符）；完整尾部在【这条错误的 `stderrTail`】上（引擎把话写在 stdout 时，那里放的就是 stdout 的尾部，`tailSource` 说明来源；两者都空时才是真空），宿主回执不转述它 —— 按那句原话修 .tex/换引擎（或把绝对路径写进 `vmu.paper.latexCommand`）后重试，或直接把这条 message 交给人；回执不声称有 pdf')
       // the face's own diagnostics travel ON the error (bounded), so the caller can put them into a receipt
       failure.faceCode = (r && r.code) || null
       failure.tried = (r && Array.isArray(r.tried)) ? r.tried.slice() : []
@@ -803,6 +880,16 @@ export function createPaperFlow({
       })
       failure.stderrTail = tail(r && r.stderr)
       failure.stdoutTail = tail(r && r.stdout)
+      // ★★ RUN 152 (real machine, run 2): `xelatex` writes its diagnostics to STDOUT, not stderr, so the receipt came
+      // back with `stderrTail:""` while the hint promised the compiler's words were there — the agent had to guess that
+      // `stdoutTail` was the field to read. The tail the hint promises is now always non-empty when either stream has
+      // text, and `tailSource` says which stream it came from, so the two statements agree.
+      if (!failure.stderrTail) {
+        failure.stderrTail = failure.stdoutTail
+        failure.tailSource = 'stdout'
+      } else {
+        failure.tailSource = 'stderr'
+      }
       failure.signal = (r && r.signal) || null
       throw failure
     }

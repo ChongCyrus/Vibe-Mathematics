@@ -202,8 +202,16 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
   // nothing at all, and the refusal is the render gate's own code/message/hint (built by `gateError`, not restated).
   const kitFinal = flow.recordFinal
   flow.recordFinal = async (args = {}) => {
-    const verdict = flow.qualityGate(args)
-    if (!verdict.ok) throw gateError(verdict)
+    // ★★ RUN 152 (real machine, run 2): the pre-gate ran for EVERY final, including `decision:"revise"` — i.e. the one
+    // call whose whole purpose is "this is not good enough yet, send it back". Measured: a paper stuck in
+    // awaiting-editor with an uncovered verified conclusion could not be revised (`VMU_PACK_V5R_CORE_PAPER_VERIFIED_MISSING`
+    // from the gate that the revise was trying to fix), so the repair path named by the refusal was itself refused.
+    // The gate judges a DELIVERABLE; a revise writes nothing but "go back to writing" (the kit's own branch, line 589),
+    // so it is passed through un-gated and the flow can actually be repaired.
+    if (String(args.decision || '') === 'deliverable') {
+      const verdict = flow.qualityGate(args)
+      if (!verdict.ok) throw gateError(verdict)
+    }
     gatePassed += 1
     try { return await kitFinal(args) } finally { gatePassed -= 1 }
   }

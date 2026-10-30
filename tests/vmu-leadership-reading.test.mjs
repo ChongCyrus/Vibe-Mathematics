@@ -74,7 +74,13 @@ ok(measured.consistent === false, 'that state is NOT consistent (the live run re
 ok(measured.leaderOnStaff === false, 'the policy may not claim the leader is on staff', measured.leaderOnStaff)
 ok(Array.isArray(measured.seatedChairs) && measured.seatedChairs.length === 1 && measured.seatedChairs[0] === 'member-1', 'the seated chair is NAMED in the reading', measured.seatedChairs)
 ok(typeof measured.note === 'string' && measured.note.length > 40, 'the note explains the disagreement in words', measured.note)
-ok(typeof measured.next === 'string' && measured.next.includes('vibe_v5_configure'), 'the reading names the DECLARED write path rather than writing itself', measured.next)
+ok(typeof measured.next === 'string' && measured.next.includes('vibe_v5_set {"key":"vmu.turn.leaderId"') && measured.next.includes('"value"') && measured.next.includes('"why"'),
+  'the reading names the DECLARED write path (`vibe_v5_set {key,value,why}`) rather than writing itself', measured.next)
+// ★★ RUN 152 (real machine, run 2): the suggestion used to be `vibe_v5_configure {"member":"<the chair>","params":{…}}`.
+// `vibe_v5_configure` declares project/institute/problem/params and refuses a `member` key BY NAME, so the framework's own
+// repair advice was a call that cannot work. The suggestion is now the shape that tool face accepts.
+ok(!measured.next.includes('"member"') && !measured.next.includes('vibe_v5_configure'),
+  'the suggested command does not name a parameter the tool refuses (RUN 152 P1)', measured.next)
 ok(typeof measured.next === 'string' && measured.next.includes('member-1'), 'the suggested command names the actual chair', measured.next)
 const warned = leadershipWarning(measured)
 ok(warned && warned.code === measured.code, 'the warning carries the same code (one reading, one verdict)', warned && warned.code)

@@ -918,7 +918,10 @@ try {
   ok(withStale.cast === true,
     '★★ votes cast in a previous round still count (this is the behaviour the meeting label now declares truthfully instead of hiding behind ‘round’)', { cast: withStale.cast })
   // and the prompt teaches exactly that contract (no drift between the text a member reads and the proof above)
-  const contractText = [...PACK.sections].filter((s) => String(s.text || '').includes('顶层只允许这四个字段'))
+  // REPOINTED (RUN 151): the sentence used to say "顶层只允许这四个字段" — false for 25 registered names (REPLY_FIELDS=29)
+  // and in the same assembly it contradicted the reply-channel row that teaches `formal`. It now says the four are the
+  // FIXTURE's convergence recipe and names the registered fields the kernel also accepts.
+  const contractText = [...PACK.sections].filter((s) => String(s.text || '').includes('回执契约（本夹具的收敛口径）'))
   // REPOINTED after the F5/R15 rewrite: the minimal-receipt line now teaches BOTH values ({vote_solved: true|false})
   // because the closure vote is a boolean; the old needle pinned the one-value form, so the assertion went red when the
   // text got MORE correct. The intent (the section carries a copy-pasteable vote_solved receipt) is unchanged.

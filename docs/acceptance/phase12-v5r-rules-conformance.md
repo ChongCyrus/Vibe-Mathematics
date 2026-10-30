@@ -11542,3 +11542,118 @@ F 文档诚实性（§249 九数、ROUND 152）、G 历史 **51 条 FIXED 48 / F
 G7 记 DONE 不等于项目冻结：台账里的 OPEN 项（G4、G5、G18、G19、G25、G27、G28、G31、G32）仍是**记账债务**，
 不阻塞 L63 的「提示词与规则相符、自洽」判定，但任何一次提示词/机制改动都必须重跑 §252.3 列的维护链。
 收口前的逐句全量重检（linecheck3、ledger-sweep、86 行四证、真机回执抽样）见最终审计与会话收尾记录。
+
+## §253 首次完整真机模拟跑到「定稿之前」：八条代理反馈、七处机制修法与两处教学修法（RUN 152）
+
+### 253.1 这次不是读旧转录，是真机再跑一遍
+
+第一次真机（`slvp157`，`full-1031-014827.jsonl`）在 **token 上限**处被截断（13 132 286 / 13 000 000），停在
+「辩论裁决已汇总、命题卡还没写回」之前。于是给驱动加了续跑参数（`-KeepWorkspace` / `-Workspace`，脚本
+`D:/_tmp/slv-phase5/patch-driver-continuation.py`），**保留原研究所工作区**再驱动一次：
+
+- 克隆 `slvp158`、端口 19602、tarball 从 HEAD `8df170d4` 打、`-MaxTokens 24000000`、`-TimeoutSec 3000`；
+- 简报 `D:/_tmp/slv-phase5/task-sim2.txt`（过 `node scripts/check-task-brief.mjs`，105 工具 / 0 problem）；
+- 转录 `D:/wd/vibemath开发/_oneoff/vm-slv/full-1031-021626.jsonl`；日志 `D:/_tmp/slv-phase5/slv-logs/20261031-022839-*`。
+
+读数：`DRIVE exit=0`、`durationSec 695`、`tokenTotal 9 789 657 / 24 000 000`、`tokenCapHit=false`、
+`transcriptEvents 536`、根会话 `toolCalls 123`、`NO_FENCE=0 · UNKNOWN_FIELD=0 · FIELD_NOT_APPLICABLE=10 · BAD_JSON=0`；
+`slv-inspect --by-session`：`1 session(s), 1 with RED checks`，唯一 RED 是 `tool calls not in wire: vibe_v5_vote`
+（**代理自己编的工具名**，仓库里没有这个工具，见 253.2 的 P3）；`CLOSURE: … cast=true (from 6 turn receipt(s))`；
+收尾 `clone_gone=True port_listening=False C_free_GB=10.18`。
+
+这一次**真的走到了「定稿之前」**：辩论裁决汇总 `value=1（unanimous, n=2, floor 3/3）` → `rec-12` p=1 并入
+Verified（`rec-26`，warrant `lean-6`）→ 结题表决 3/3 → `m-clo-1` 真关闭归档 → 论文 `p3`/`p4` 分派、合并、
+三节互审（unanimous）全部走通。**断在定稿**：四次 `VMU_NOT_PERMITTED paperEditor is "…": this paper is not the
+academician's to finalise`，于是工具面 `compile` 不可达，代理改用宿主 `pwsh` 手调 xelatex，失败于
+`! Undefined control sequence`。
+
+代理按简报交出两份报告（`D:\_tmp\slv-phase5\slvp157-ws\`）：`FEEDBACK.md`（15 922 B，112 行，F1–F8 + 三条提示词
+问题）、`SIM-REPORT.md`（15 154 B，113 行，逐条对规则行号）。
+
+### 253.2 八条反馈的裁决：五条真机制缺陷、两条教学缺陷、两条代理自身错误
+
+| 编号 | 代理报告的现象 | 裁决 | 站点 |
+| --- | --- | --- | --- |
+| F1 | `verdict_final` 回执亲手教「去改 `rec-12` 的概率」，照做却被卡片锁拒；`verified_promote` 又说 p=0.99 未定 | **真机制缺陷**（L14 锁与 L53 写回互相封死） | `packs/v5r/tools.js` 卡片锁、`verdict_final.correction.call` |
+| F2 | `fidelity_conclude{lean_job:"lean-2"}` 在续跑进程里读不到上一进程的作业 | **真机制缺陷**（镜像未水合）+ 教学（两个作业面同名不同目录） | `packs/v5r/tools.js` `toolFidelityConclude` |
+| F3 | 论文「发回修订」被与「可交付」同一道正文门拒；`recordPart` 教的回退路不可达 | **真机制缺陷** | `packs/v5r/paper.js` `flow.recordFinal` 预闸 |
+| F4 | 用院士席成员 id 建论文 ⇒ 永远定不了稿；拒绝句「not the academician's to finalise」在签署人就是院士时为假 | **真机制缺陷**（两件事共用一句话，且 message 字面为假） | `kit/paper.js` `start` / `recordFinal` |
+| F5 | 两条并行 `part` 都回 ok，随后其中一条静默丢失 | **真机制缺陷**（记录层无版本比较） | `kit/paper.js` `writeState` |
+| F6 | `quorumMin` 写入成功但本会话不生效 | **不是缺陷**：回执已写 `requiresRestart:true` / `appliesAt:"next start"`（构造期快照），照实保留 | `kernel/meetings.js` |
+| F7 | 三席名册下 `VMU_MEETING_QUORUM_LOST` 数学上不可达，回执却读起来像「闸已接线」 | **真机制缺陷（回执诚实性）** | `packs/v5r/tools.js` `voteFloorGate` |
+| F8 | PDF 失败回执的 `stderrTail` 为空（真话在 `stdoutTail`）；`.tex` 里出现 `\\textbf\{…\}` | **真机制缺陷**（转义顺序 + 尾部来源） | `kit/paper.js` `esc` / `compilePdf` 失败回执 |
+| P1 | 总览的修复建议 `vibe_v5_configure {"member":…}` 被该工具具名拒 | **真教学缺陷**（框架自己的建议是无效调用） | `packs/v5r/leadership.js` |
+| P2 | `vibe_v5_set` 被当带 `reason` | **代理自身错误**：真声明是 `key/value/why`，活文件里没有 `reason` 写法 | 不改代码 |
+| P3 | 教 `vibe_v5_vote` | **代理自身错误**：全仓 `grep vibe_v5_vote` = 0，真工具是 `vibe_vmu_vote` | 不改代码 |
+
+### 253.3 修法：七处机制 + 两处教学（全部改在真站点，不是改提示词糊过去）
+
+1. **F1 裁决落值是锁定卡的唯一被许可编辑**（`packs/v5r/tools.js`）：在卡片锁判定之前读 `args.debate_ruling`；
+   形状被核——必须是对象且 `value` ∈ {0,1}（否则 `VMU_INVALID_ARGUMENT 'debate_ruling must be an object carrying
+   the ruled value (0 or 1)'`），且 `p` 必须等于该值（否则 `'a ruling settlement must set p to the ruled value (N)'`）；
+   满足时跳过锁。锁的真正对象因此变成「证明内容」而不是「概率」，这正是 L53 让框架下达的那道指令。同时把
+   `verdict_final.correction.call` 改成从卡体生成**可照抄**的调用（补 `statement`/`value`/`motive` 与
+   `debate_ruling.subject`），并在回执里加 `lockedCardNote`：内容不许改、概率可以按裁决落值。
+2. **F2 先水合镜像再拒**（同文件 `toolFidelityConclude`）：`leanPassedOf` 未命中时，若本部署有 Lean 面则
+   `await leanFace.listMirrors()` 后重试；仍无 ⇒ refusal 点名**两个范围**（本进程 / 持久镜像，并报镜像目录与条数或
+   读取错误）。`vibe_v5_lean_job` 的说明加「★ TWO JOB FACES ARE NOT ONE」：Lean 面镜像 `Formal/Jobs/<jobId>.json`，
+   Python 计算面镜像 `Math/Jobs/`。注：`kernel.lean.<method>(` 这种直呼会被 `audit-service-calls.mjs` 判成
+   dangling（最小内核不构造 `lean`），所以经局部绑定 `leanFace` 调用。
+3. **F3 预闸只管可交付**（`packs/v5r/paper.js`）：`const verdict = flow.qualityGate(args)` 只在
+   `String(args.decision || '') === 'deliverable'` 时运行；`revise` 直通到 kit 的 revise 分支（把状态写回 writing）。
+   同时 `kit/paper.js` `recordPart` 的 hint 改成流程真能走的那一步（由编辑者发 `final{decision:"revise"}`）。
+4. **F4 编辑者归一化 + 两句话各说一件事**（`kit/paper.js`）：`start` 收到非 `academician`/`office` 的 editor 时查名册，
+   院士席成员 ⇒ 记为 `"academician"`，其它席位 ⇒ `VMU_INVALID_ARGUMENT` 具名拒（带两条可走的路）；`recordFinal`
+   把「所办代定稿的具名缺口」与「不是院士编辑」拆成两句，并删掉那句在院士签署时字面为假的旧话。
+5. **F5 记录层乐观锁**（`kit/paper.js`）：`readState` 把读到的 `rev` 挂成非枚举 `__seen`；`writeState` 写前
+   `records.get` 比对，不等 ⇒ `VMU_STATE 'paper "X" was changed by another writer between this call's read and its
+   write (revision A → B): this write would drop that change, so nothing was written'`（hint 让调用方重读重试）。
+6. **F7 人数闸自述「能否咬人」**（`packs/v5r/tools.js` `voteFloorGate`）：回执的 `floor.gate` 增加 `uncovered`、
+   `vacuous`、`bitesWhen`：「本名册下所有具名选民都署了 ⇒ 需求按构造满足，这一轮跑不到 `VMU_MEETING_QUORUM_LOST`——
+   这是算术，不是闸没接线」。
+7. **F8 先转义再包 bold，并交代尾部来源**（`kit/paper.js`）：`escText` 只做 TeX 特殊字符转义，`esc` 在其结果上包
+   `\textbf{…}`；`compilePdf` 失败时若 `stderrTail` 为空则放 `stdoutTail` 并记 `tailSource:"stdout"`，hint 指向
+   回执里真正有字的那条尾巴。
+8. **P1 建议改成声明的形状**（`packs/v5r/leadership.js`）：`vibe_v5_set {"key":"vmu.turn.leaderId","value":"<chair>",
+   "why":"安置院士"}`。
+
+### 253.4 机器化：新套件 33 条，两条 T1 回归当场抓住并修好
+
+- 新 `tests/vmu-run152-real-run-fixes.test.mjs` **33/0**：§0 十八处源码口径（F1–F8/P1 每个缺陷都有自己的站点，
+  含「旧话必须消失」的反向断言）、§1 真调用（院士席 id 建论文 ⇒ 记录为 `academician`；非院士席 id 在建卡前被具名拒；
+  已完成卡的普通写入仍 `VMU_STATE … is locked`；`p + debate_ruling` 落值被接受且 `settled:true`；读不到的 Lean 作业
+  点名它查过哪里、hint 指 `Formal/Jobs`）、§2 句子重量。
+- `vmu-leadership-reading.test.mjs` 42 → **44/0**：旧断言要求建议里出现 `vibe_v5_configure`（即那条无效调用），
+  现改成钉「声明的写路径」＝ `vibe_v5_set {key,value,why}`，并新增一条反向断言：建议里不许出现 `"member"` 或
+  `vibe_v5_configure`。
+- `audit-service-calls.mjs` 当场抓到 `kernel.lean` 这条「最小内核不构造的服务」（1 finding），改成局部绑定后
+  **findings: none**（271 files / 90 services / 1162 declared keys）。
+- 定向回归：`vmu-v5r-tools`、`vmu-run141/144/145/146/147/149/150/151/152`、`vmu-turn`(12)、`vmu-g7-concordance`、
+  `vmu-settings`(3)、`vmu-prompt-*`(13)、`--only paper`(11，含 `v4-final-paper.mutants` 全部按预期 RED) 全绿。
+
+### 253.5 读数：预算不动，门禁全绿
+
+- 预算（`/d/_tmp/g7a22/measure-t99.mjs`）：T99 charter 子装配 **19 995 / 19 998 / 18 243**（院士/研究/临时，未变——
+  本轮改的是工具面描述、机制与卡流程，不在这段装配里）。
+- 门禁：`=== vmu regen-all: 17/17 in sync ===`、`PREFLIGHT: PASS`、`DOC LINT: PASS`、
+  `RULE PARITY: PASS (0 problem(s))`、`RULES COVERAGE: PASS (0 problem(s))`（86 条 DONE 86）。
+- 全量 T1：见 253.6。
+
+### 253.6 全量 T1 与提交
+
+- `GATE_SCOPE=vmu node tests/run-tests.mjs`：**TOTAL 634 PASS 634 FAIL 0（suites 570 · probes 64）**
+  （日志 `/d/_tmp/t1-r176.log`；本轮新增 2 个套件：`vmu-run151-fixture-receipt-truth`、`vmu-run152-real-run-fixes`）。
+- 提交：`fix(vmu): the first real simulation's seven mechanism defects are fixed where they live`（见 `git log`）。
+
+### 253.7 还没解决的（真机 run 3 要验的）
+
+F1/F3/F4/F8 的修复必须**在真机上再走一遍**才算数：本轮只证明「同一台机器上 F1 的写回通道在单元层面通了」，
+没有证明「代理按提示词真能把 p=1 写回、把论文定稿并编译出 PDF」。下一轮用修好的 tarball 起 run 3，验证：
+
+1. `verdict_final` 回执里的 `correction.call` 能被代理原样执行（`settled:true`、p=1、进 Verified）；
+2. 论文 `start editor:"<院士>"` → 互审 → `final{decision:"deliverable"}` 真的能定稿；
+3. `compile` 能产出 PDF（或给出非空 `stderrTail`/`tailSource` 失败读数）；
+4. LaTeX 里的中文标题不再出现 `\\textbf\{…\}`。
+
+其余未修的记账项（本轮的 F6 除外）留在 §252.5 的 OPEN 清单里；本轮新增两笔债务：论文定稿的「所办代定稿」仍是具名
+缺口（已在回执里如实写明，未实现），`fidelity_conclude` 在「本部署没有 Lean 面」时仍只能如实拒（没有载体）。
