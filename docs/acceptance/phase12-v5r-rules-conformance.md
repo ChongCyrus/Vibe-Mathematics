@@ -11057,3 +11057,32 @@ excluded 点名理由、真有表决权的成员没交仍被具名拒、`partial
 244.9 GAP 状态（audit16 §3 对账）。C-1／C-2 已修；G22／G23／G24 已修；G17 CLOSED。仍开放（GAP≠矛盾，记债）：G3（`kit/handlers.js:176` 的 invite 幽灵队列）、G4（`attendDeniedSeats` 两读时：`kernel/meetings.js:1385-1392` vs `tools/meeting.js:115-130`）、G5（`tools/meeting.js` 多处 fork 前调 `kernel.liveMeeting`）、G18（部署长度无门禁）、G19（默认 `fixtureMode=no-tools` 与 L62 相抵）；G12 只对 resume 生效（CHANGED）。
 
 244.10 下一步。G7 仍 `PARTIAL`。修净 C-1／C-2 与三条债务后派**第十七次**决定性独立只读审计（基线＝本轮提交），审计须亲手重跑：无主席召集的真回合反例（member／temp 回执字段开会 = 失败）、工具面 `convene` 的成员拒绝、G22 四参形、G24 的 `minutes` 具名拒、预算三口径、L47 票门、机械门禁、linecheck3。零矛盾才把台账 G7 置 DONE，并把 `next` 从「七轮…26 条」改写成实际轮次／条数。
+
+## §245 第十七次审计：我自己上一轮修法造出的假话（2026-10-30）
+
+245.1 判决与基线。第十七次独立只读审计（subagent `e4da459a-207f-4f90-a438-d554ea7854d3`，基线提交 `9dc6c196`，仓库只读、`git status --porcelain` 空）判 `G7 VERDICT: CONTRADICTIONS(1)`：报告 `D:/_tmp/g7a17/audit17.md`（29 358 字节），§1 63 行逐行表、§2 硬矛盾 1 条、§3 GAP G1–G24 对账、§4 旧 **44 条**逐条复检（全 FIXED／FIXED-as-stated，0 REGRESSED）、§5 PASS CONDITION 八项。审计亲手复跑：A 工具面对照、B「会议轮投递」0 命中、G22 四参形、G23 `input` 绑定、G24 `minutes` 具名拒与 summary 无逐字发言、F 预算三口径、L47 `floor.gate` 九字段、机械门禁（`preflight PASS`／`DOC LINT: PASS`／`check-rule-parity PASS(0)`／`regen-all --check` 17/17）、全量 T1 **630/630（suites 566 · probes 64）**、linecheck3 63 行＝18 空行/分隔＋13 小节标签＋32 要求行、锚点 86/86、要求行 32/32。
+
+245.2 C-1（本轮唯一硬矛盾：修法自己写下的新假话）。上一轮（§244）我把 `convene_meeting` 设成 `notApplicable` 后，行注仍写「这个字段不带 actor／chair，内核走的是**无主席召集**……所以常驻研究员／临时工写了**真会开出一个会**」（`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js:94`），`:133` 临时工席位注同义，`:131`／`:132` 继承「落的是内核的无主席召集，那里不判席位政策」，`kernel/turn/index.js` 的 `NO_REPLY_CONVENE_SHAPE.message` 同义。**实测为假**：`kernel/turn/index.js:2695-2699` 对每个 `d.notApplicable` 在派发循环里 `continue`，字段在碰任何面之前就被跳过——`convene_meeting` 到不了那条无主席召集路。真回合读数：member／temp 普通轮 `skip:["convene_meeting:no-supported-shape/VMU_TURN_FIELD_NOT_APPLICABLE"]`、`exec: []`、会议数 **0→0**；会议轮同样跳过、**1→1**。更糟的是渲染器在**同一交付行**追加「★ 这个字段没有可用形状，写了会被具名拒 `VMU_TURN_FIELD_NOT_APPLICABLE`」——同一行同时说「真会开会」与「会被拒」（full 档三席各 1 行：chair 38 535 字 L396、member 29 933 字 L366、temp 26 667 字 L336＋L351）。工具面对照：院士 `convene` ⇒ `{"ok":true,…,"meeting":"m1"}`，member／temp ⇒ `VMU_NOT_PERMITTED`——席位政策确实只在工具面。
+
+245.3 修法（只改句子，机制不动）。①行注改成「这个字段**没有可用形状**——回执不带 actor／chair，内核在**投递前**就把它具名跳过（`VMU_TURN_FIELD_NOT_APPLICABLE`），**会议不会开出来**，轮次照常完成；『只有院士席能召集』这条政策在工具面才判定：召集用 `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`，非院士席在那里会被 `VMU_NOT_PERMITTED` 具名拒」。②三条席位注同步改真话（chair／member／temp 都写明回执字段投递前被具名跳过、会议不会开出来；召集走工具面）。③`NO_REPLY_CONVENE_SHAPE.message` 改成「回执不带 actor／chair，这个字段**没有可用形状**：内核在碰任何面**之前**就具名跳过它，所以不会开会、轮次照常完成（它以前会落到无主席召集那条故意不判席位的路，正因如此现在不再到那条路）；席位政策在工具面，非院士席以 `VMU_NOT_PERMITTED` 具名拒」，注释块写明「RUN 147 前落到 CHAIRLESS 路，RUN 147 起 pack 标 notApplicable、派发循环在碰任何面之前 continue」。
+
+245.4 测试。`tests/vmu-run147-convene-field.test.mjs` 扩到 **83/0**：§0c／§0c2／§0c3 断言行注含「没有可用形状」「投递前」「会议不会开出来」且**不含**「真会开出一个会／真会开会」；§0i／§0i2／§0i3 断言 kernel message 只把 CHAIRLESS 当历史路径（须含 `NO usable shape` 与 `BEFORE any face`、不得含 `really opens a meeting`）；新增 §0k2（全部行注＋席位注整面扫描：`/真会开出一个会|真会开会|really opens a meeting/` 0 命中）、§0k3（提到 `convene_meeting` 的活句子都说明「投递前具名跳过／没有可用形状」，≥2 条）。定向回归全绿：`vmu-run146` 42→1/0（套件级）、`vmu-run144` 1/0、`vmu-run145` 1/0、`vmu-run141` 1/0、`vmu-run142` 1/0、`vmu-run143` 1/0、`vmu-g7` 1/0、`vmu-settings` 3/0、`vmu-prompt-no-holes` 1/0、`vmu-prompt-type-coverage` 1/0、`vmu-turn-contracts` 1/0、`vmu-run35` 4/0、`vmu-run30` 1/0、`audit-verbatim-claims` 1/0、`audit-declaration-criterion` **91/0**、`audit-readme-counts` 2/0。
+
+245.5 G26 结清（口径记账，非矛盾）。审计报「目录字符数不复现文档的 2 023／6 056」，实测是三种构成：
+| 构成 | compact | full |
+| --- | --- | --- |
+| `replyChannelLines()` 单段 | 1 行／287 字 | — |
+| `replyCatalogueLines({mode})`（不带席位注） | 12 行／1 764 字 | 35 行／5 785 字 |
+| `replyCatalogueLines({mode,seat:'member'})`（文档口径，席位注 `member`） | 13 行／**2 009** 字 | 36 行／**6 030** 字 |
+| `replyChannelLines()+catalogue(no seat)`（audit17 口径） | 13 行／2 052 字 | 36 行／6 073 字 |
+另两席：`chair` 13／2 017 与 36／6 038，`temp` 13／2 092 与 36／6 113。审计的 2 040／6 050 是**旧文案**下「前置 1 行 channel 段、不带席位注」的构成；文档此前的 2 023／6 056 是**旧文案**下「带 `member` 席位注」的构成。本轮句子变短，同一口径的新读数是 **2 009／6 030**，§244.6 的 2 023／6 056 由此在本轮被取代（历史读数照原样保留，不追改）。
+
+245.6 预算复测。T99 charter 子装配 compact **19 952**（不变：compact 不渲染该行注）；boot 级部署装配 compact **23 388**（不变）／full **26 443**（上一轮 26 469，−26）；目录本身（`replyCatalogueLines({mode,seat:'member'})`）compact 13 行／**2 009**、full 36 行／**6 030**。full 档不是预算目标，读数照记，免得上限判断被它误导。
+
+245.7 门禁与全量回归。16 个生成器三轮迭代到不动点后 `regen-all --check` **17/17 in sync**；`preflight PASS`；`check-docs DOC LINT: PASS`；`check-rule-parity PASS(0)`；`check-rules-coverage --check` 仍 `FAIL(1)`＝`G7 PARTIAL`（预期：零矛盾审计尚未发生）；`GATE_SCOPE=vmu node tests/run-tests.mjs` 全量 **TOTAL 630 PASS 630 FAIL 0（suites 566 · probes 64）**。
+
+245.8 GAP 状态。audit17 §3 对账：C-1 修净；G22／G23／G24 已修；G17 CLOSED；G26 结清为口径记账。仍开放（GAP≠矛盾）：G3（`kit/handlers.js:176` invite 幽灵队列）、G4（`attendDeniedSeats` 两读时：`kernel/meetings.js:1385-1392` vs `tools/meeting.js:115-130`）、G5（`tools/meeting.js` 多处 fork 前调 `kernel.liveMeeting`）、G18（部署长度无门禁）、G19（默认 `fixtureMode=no-tools` 与 L62 相抵）；G12 只对 resume 生效（CHANGED）。
+
+245.9 下一步。G7 仍 `PARTIAL`。修净 C-1 后派**第十八次**决定性独立只读审计（基线＝本轮提交），审计须亲手重测：`convene_meeting` 回执字段真回合被具名跳过且会议数不变、工具面召集的席位拒绝、行注／席位注／kernel message 三处不再有「真会开会」、G22／G23／G24 回归、预算三口径（19 952／23 388／26 443／2 009／6 030）、L47 `floor.gate`、机械门禁与 linecheck3。零矛盾才把台账 G7 置 DONE，并把 `next` 从「七轮…26 条」改写成实际轮次／条数。
+
+

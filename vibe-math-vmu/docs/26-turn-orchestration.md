@@ -2411,3 +2411,17 @@ Rules that came out of this round:
   对外说话用 `vibe_v5_say`）。
 - **不许教动作表里没有的 action**：`vibe_vmu_meeting` 没有 `minutes`（实测 `unknown action: minutes`），`summary` 也不带
   逐字发言字段；`v5r-blocks-b.js` 的 shared 段与 `packs/v5r/seat-faces.js` 的工具注都改成 `status`／`summary` 两读的真话。
+
+## ROUND 148 (G7 audit 17)
+
+- **审计：** `G7 VERDICT: CONTRADICTIONS(1)`（基线 `9dc6c196`，报告 `D:/_tmp/g7a17/audit17.md`）。唯一硬矛盾是我上一轮修法自己写下的新假话：行注／席位注／kernel message 说
+  `convene_meeting` 会「落到无主席召集、真会开出一个会」，而 `kernel/turn/index.js` 的派发循环对 `notApplicable` 字段在碰任何面之前 `continue` ⇒ 真回合被
+  `no-supported-shape/VMU_TURN_FIELD_NOT_APPLICABLE` 具名跳过、会议数 0→0（会议轮 1→1），同一交付行还追加「会被具名拒」——同一行自相矛盾。
+- **修法（只改句子）：** 行注、三条席位注、`NO_REPLY_CONVENE_SHAPE.message` 全部改成「投递前被具名跳过、会议不会开出来；席位政策在工具面，非院士席
+  `VMU_NOT_PERMITTED`」，kernel 注释写明 CHAIRLESS 路只是历史路径。
+- **口径记账（审计第 17 轮 §3 的新 GAP 项）：** 目录字符数按构成不同：`replyCatalogueLines({mode,seat:'member'})` compact 13 行／2 009 字、full 36 行／6 030 字；
+  不加席位注 12／1 764 与 35／5 785；前置 `replyChannelLines()` 则 13／2 052 与 36／6 073。旧读数 2 023／6 056 是旧文案的同口径值。
+- **预算：** T99 compact **19 952**；部署装配 compact **23 388**／full **26 443**。
+- **测试：** `vmu-run147` **83/0**（新增 §0c/§0k2/§0k3）；其余定向套件全绿；`audit-declaration-criterion` **91/0**。
+- **门禁：** `regen-all --check` 17/17、`preflight PASS`、`DOC LINT: PASS`、`PARITY PASS(0)`、coverage 仅 `G7 PARTIAL`、全量 T1 **630/630**。
+

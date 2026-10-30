@@ -91,7 +91,7 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'propose_meeting', face: 'vmu.meetings', op: 'motion',
     note: '提议开会 {agenda,kind?,target?}：**回执不带会议 id，这条从回执里投不出去**。要真的召集用工具 `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`（那条路才判席位政策：只有院士席能召集）；要在已开的会里提动议用 `vibe_v5_motion { meeting, member, kind, text }`；写在回执里会被具名跳过 no-meeting-bound（原句留在回执 notes，轮次照常完成）' }),
   Object.freeze({ field: 'convene_meeting', face: 'vmu.meetings', op: 'open', notApplicable: true,
-    note: '不要写进回执：这个字段不带 actor/chair，内核 `meetings.open` 走的是**无主席召集**——那条路故意不管席位（它只拒「装主席却不把那位主席写成 actor」），所以常驻研究员／临时工写了真会开出一个会，而『只有院士席能召集』这条政策根本不在那条路上。召集请用工具 `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`，属主面在那里才具名拒非院士席（`VMU_NOT_PERMITTED`）', route: 'vibe_v5_meeting { action: "convene", member: "<你的 id>" }' }),
+    note: '不要写进回执：这个字段**没有可用形状**——回执不带 actor/chair，内核在**投递前**就把它具名跳过（`VMU_TURN_FIELD_NOT_APPLICABLE`），**会议不会开出来**，轮次照常完成。『只有院士席能召集』这条政策在工具面才判定：召集用 `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`，非院士席在那里会被 `VMU_NOT_PERMITTED` 具名拒', route: 'vibe_v5_meeting { action: "convene", member: "<你的 id>" }' }),
   Object.freeze({ field: 'task_claim', face: 'vmu.tasks', op: 'transition', common: true, notApplicable: true,
     note: '不要写进回执：它会被当成 transition 的第一个位置参数。用工具 vibe_v5_task_update { task_id, expected_revision, action: "claim" }（依赖未完成会被具名拒）', route: 'vibe_v5_task_update { …, action: "claim" }' }),
   Object.freeze({ field: 'task_done', face: 'vmu.tasks', op: 'transition', common: true, notApplicable: true,
@@ -128,9 +128,9 @@ export const REPLY_FIELD_NAMES = Object.freeze(REPLY_FIELD_ROWS.map((r) => r.fie
  * refuses, so the sentence stays a statement about the mechanism instead of an invented rule.
  */
 export const REPLY_SEAT_NOTES = Object.freeze({
-  chair: '你是院士席：**召集开会走工具面** `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`（回执里的 `convene_meeting` 不带 actor，落的是内核的无主席召集，那里不判席位政策）；**分派与督办走工具面** `vibe_v5_assign`／`vibe_v5_nudge`（回执里的 `assign`／`nudge` 没有可用形状，写了会被具名拒），分派的是工作、不是结论；`verdict` 与其他人一票等重。',
-  member: '你是常驻研究员：**召集开会走工具面** `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`——回执里的 `convene_meeting` 不带 actor，落的是内核的无主席召集（内核 `conveneRequiresChair` 只拒「装主席却不署名」），那条路不判席位政策；工具面才会具名拒非院士席。分派/督办用工具面 `vibe_v5_assign`／`vibe_v5_nudge`，权限由属主面判——被拒会具名说明，不要反复试。',
-  temp: '你是临时成员：`verdict`／`vote_solved` 填了也不计票（没有表决权）；`assign`／`nudge` 会被属主面具名拒；`propose_verify`／`propose_meeting` 写在回执里会被具名跳过（回执不带会议 id，会议轮也一样）——要提议就在会议里用工具 `vibe_v5_motion { meeting, member, kind, text }`，是否采纳由院士席定；`convene_meeting` 也别写进回执（那条路不判席位，写了真会开会），要开会走工具 `vibe_v5_meeting { action: "convene", member: "<你的 id>" }`。',
+  chair: '你是院士席：**召集开会走工具面** `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`（**回执字段** `convene_meeting` 没有可用形状，投递前就被具名跳过、会议不会开出来）；**分派与督办走工具面** `vibe_v5_assign`／`vibe_v5_nudge`（回执里的 `assign`／`nudge` 没有可用形状，写了会被具名拒），分派的是工作、不是结论；`verdict` 与其他人一票等重。',
+  member: '你是常驻研究员：**召集开会走工具面** `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`（**回执字段** `convene_meeting` 没有可用形状，投递前就被具名跳过、会议不会开出来）；召集是院士席权限，工具面会以 `VMU_NOT_PERMITTED` 具名拒你。分派/督办用工具面 `vibe_v5_assign`／`vibe_v5_nudge`，权限由属主面判——被拒会具名说明，不要反复试。',
+  temp: '你是临时成员：`verdict`／`vote_solved` 填了也不计票（没有表决权）；`assign`／`nudge` 会被属主面具名拒；`propose_verify`／`propose_meeting` 写在回执里会被具名跳过（回执不带会议 id，会议轮也一样）——要提议就在会议里用工具 `vibe_v5_motion { meeting, member, kind, text }`，是否采纳由院士席定；`convene_meeting` 也别写进回执（没有可用形状，投递前就被具名跳过、会议不会开出来），要开会走工具 `vibe_v5_meeting { action: "convene", member: "<你的 id>" }`。',
 })
 
 /** The smallest legal reply: the two fields every seat may always write, and nothing shape-sensitive. */

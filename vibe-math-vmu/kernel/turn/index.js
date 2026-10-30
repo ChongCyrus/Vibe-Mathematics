@@ -73,16 +73,17 @@ const NO_REJECT_ASSIGN_SHAPE = Object.freeze({
   hint: 'file the reason where the ledger keeps it: the tool face vibe_v5_record_progress (track "obstacles", with member) records why the assignment is contested, and raise it in a meeting round through vibe_v5_say — the task is executed regardless, that is the semantics of an objection',
 })
 
-// ★★★ RUN 147 / audit16 C-1 (the convene side door). A reply field carries ONE value and no actor: `convene_meeting`
-// dispatches the meetings face's `open` with no chair and no actor, which is the kernel's CHAIRLESS convene path — and that path
-// deliberately does not police seats ("A CHAIRLESS CONVENE IS NOT THIS RAIL'S BUSINESS", kernel/meetings.js:2793-2803: it
-// only refuses a convene that INSTALLS a chair without naming that chair as its actor). The seat policy (only the chair
-// convenes) lives on the tool face (`vibe_v5_meeting { action: "convene" }`, pack requireChairSeat), so a member or temp
-// writing this field really opened a meeting (`openedBy:null`) while the catalogue claimed it would be refused by name.
-// The field cannot reach the policy-enforcing route, so it is refused BY NAME and the hint names the tool that can.
+// ★★★ RUN 147 / audit16 C-1 + RUN 148 / audit17 C-1 (the convene side door, twice). A reply field carries ONE value and no
+// actor. Before RUN 147 it dispatched `vmu.meetings` `open` with no chair, i.e. the kernel's CHAIRLESS convene path, which
+// deliberately does not police seats ("A CHAIRLESS CONVENE IS NOT THIS RAIL'S BUSINESS", kernel/meetings.js:2793-2803: it only
+// refuses a convene that INSTALLS a chair without naming that chair as its actor) — so writing the field could open a meeting
+// with no policy check at all. Since RUN 147 the pack marks the row `notApplicable` and the dispatch loop CONTINUES PAST it
+// before any face is touched, so the field is skipped BY NAME and no meeting is created; the seat policy (only the chair
+// convenes) lives on the tool face (`vibe_v5_meeting { action: "convene" }`, pack requireChairSeat). The message below says
+// exactly that: the CHAIRLESS path is what the field USED to reach, not what it does now.
 const NO_REPLY_CONVENE_SHAPE = Object.freeze({
   code: 'VMU_TURN_FIELD_NOT_APPLICABLE',
-  message: 'a reply carries no actor and no chair, so this field lands on the kernel\'s CHAIRLESS convene path — the one path that deliberately does not police seats (it only refuses a convene that INSTALLS a chair without naming that chair as its actor); a member or temp writing it really opens a meeting, and the policy this field used to promise is not on that path',
+  message: 'a reply carries no actor and no chair, and this field has NO usable shape: the kernel is asked to skip it by name BEFORE any face is touched, so no meeting is created and the turn completes (the CHAIRLESS convene path it used to reach is the one path that deliberately does not police seats, which is why it is not reached any more); the seat policy lives on the tool face, where a non-chair seat is refused with VMU_NOT_PERMITTED',
   hint: 'convene through the tool face, which is where the seat policy is enforced: vibe_v5_meeting { action: "convene", member: "<your id>", … } (a non-chair seat is refused BY NAME there, VMU_NOT_PERMITTED)',
 })
 
