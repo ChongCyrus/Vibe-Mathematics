@@ -65,8 +65,9 @@ export const REPLY_FIELD_ROWS = Object.freeze([
     note: '研究日志一行：{"track":"progress","text":"…"} 追加到 Members/<你>/Progress/<track>.md（vmu.library.record；track 必须是 vmu.records.tracks 之一）；成果卡请用工具 vibe_v5_record_proposition / _method / _subproblem' }),
   Object.freeze({ field: 'propose_verify', face: 'vmu.meetings', op: 'motion',
     note: '提议验证 {target,kind,reason}：**回执不带会议 id，所以这条从回执里投不出去**（会议轮也一样）——会议轮请用工具 `vibe_v5_motion { meeting, member, kind, text }`（`member` 是行动席位，必填；`v5r-blocks-a.js` 的院士手册也这么教）；若一定要写在回执里，payload 必须自带 `{meeting, member, text}`。否则被具名跳过 no-meeting-bound、原句留在回执 notes、轮次照常完成；是否入队由院士席决定' }),
-  Object.freeze({ field: 'verdict', face: 'vmu.ballotbox', op: 'cast',
-    note: '{target,verdict ∈ [0,1],reason}：只有 1 或 0 算表决，中间值是弃权/存疑；无表决权的席位填了也不计票' }),
+  Object.freeze({ field: 'verdict', face: 'vmu.ballotbox', op: 'cast', notApplicable: true,
+    route: 'vibe_v5_verdict',
+    note: '回执不带票箱 id、也不带你本人是谁：票箱要 `{boxId, by}`，所以这个字段没有可用形状、投递前就被具名跳过（票不进箱）。投票走工具 `vibe_v5_verdict { target, verdict, reason, member }`（活票箱）或 `vibe_v5_poll_vote { boxId, choice, member }`（投票板）；票权按席位判——临时工没有表决权（规则 L3），工具面具名拒 `VMU_NOT_PERMITTED`；1 或 0 算表决，中间值是估计' }),
   Object.freeze({ field: 'task_create', face: 'vmu.tasks', op: 'create', common: true,
     note: '{title,description,blocked_by?,write_scopes?}（内核 create 读 `title`；工具面 vibe_v5_task_create 的形参叫 `subject`，两个名字指同一列）' }),
   Object.freeze({ field: 'task_update', face: 'vmu.tasks', op: 'transition', common: true, notApplicable: true,
@@ -130,7 +131,7 @@ export const REPLY_FIELD_NAMES = Object.freeze(REPLY_FIELD_ROWS.map((r) => r.fie
 export const REPLY_SEAT_NOTES = Object.freeze({
   chair: '你是院士席：**召集开会走工具面** `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`（**回执字段** `convene_meeting` 没有可用形状，投递前就被具名跳过、会议不会开出来）；**分派与督办走工具面** `vibe_v5_assign`／`vibe_v5_nudge`（回执里的 `assign`／`nudge` 没有可用形状，写了会被具名拒），分派的是工作、不是结论；`verdict` 与其他人一票等重。',
   member: '你是常驻研究员：**召集开会走工具面** `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`（**回执字段** `convene_meeting` 没有可用形状，投递前就被具名跳过、会议不会开出来）；召集是院士席权限，工具面会以 `VMU_NOT_PERMITTED` 具名拒你。分派/督办是院士席的动作：`vibe_v5_assign`／`vibe_v5_nudge` 不在常驻研究员的工具面里（席位 ACL 具名拒 `VMU_TOOL_NOT_IN_FACE`）；回执里的 `assign`／`nudge` 没有可用形状，投递前就被具名跳过（`VMU_TURN_FIELD_NOT_APPLICABLE`，院士席也一样）。',
-  temp: '你是临时成员：`verdict`／`vote_solved` 填了也不计票（没有表决权）；回执里的 `assign`／`nudge` 没有可用形状，投递前就被具名跳过（`VMU_TURN_FIELD_NOT_APPLICABLE`，院士席也一样）；工具面 `vibe_v5_assign`／`vibe_v5_nudge` 不在临时工的工具面里（`VMU_TOOL_NOT_IN_FACE`）；`propose_verify`／`propose_meeting` 写在回执里会被具名跳过（回执不带会议 id，会议轮也一样）——要提议就在会议里用工具 `vibe_v5_motion { meeting, member, kind, text }`，是否采纳由院士席定；`convene_meeting` 也别写进回执（没有可用形状，投递前就被具名跳过、会议不会开出来），要开会走工具 `vibe_v5_meeting { action: "convene", member: "<你的 id>" }`。',
+  temp: '你是临时成员：`verdict` 回执里没有可用形状（投递前就被具名跳过），投票工具也会以 `VMU_NOT_PERMITTED` 具名拒你（没有表决权，规则 L3）；`vote_solved` 不计票；回执里的 `assign`／`nudge` 没有可用形状，投递前就被具名跳过（`VMU_TURN_FIELD_NOT_APPLICABLE`，院士席也一样）；工具面 `vibe_v5_assign`／`vibe_v5_nudge` 不在临时工的工具面里（`VMU_TOOL_NOT_IN_FACE`）；`propose_verify`／`propose_meeting` 写在回执里会被具名跳过（回执不带会议 id，会议轮也一样）——要提议就在会议里用工具 `vibe_v5_motion { meeting, member, kind, text }`，是否采纳由院士席定；`convene_meeting` 也别写进回执（没有可用形状，投递前就被具名跳过、会议不会开出来），要开会走工具 `vibe_v5_meeting { action: "convene", member: "<你的 id>" }`。',
 })
 
 /** The smallest legal reply: the two fields every seat may always write, and nothing shape-sensitive. */
@@ -197,7 +198,7 @@ export function replyCatalogueLines({ mode = 'compact', seat = null } = {}) {
       refusedRows.map((r) => '`' + r.field + '`→' + escape(r.route || '用工具面')).join('；') + '。')
   }
   lines.push('· 键只能是上表名字（自造键按 `vmu.turn.unknownReplyFieldMode`：默认忽略，strict 则 `VMU_TURN_UNKNOWN_FIELD`）；被要求的字段以本轮指令为准。')
-  lines.push('· 权限由属主面各自判（不是目录决定）：缺权限会被具名拒（临时工 verdict／vote_solved 不計票）。一次回复至少一个字段。')
+  lines.push('· 拒绝点各不相同：没有可用形状的在投递前被具名跳过，缺权限的在工具面具名拒（临时工无表决权：投票工具拒，vote_solved 不計票）。一次回复至少一个字段。')
   if (seat && REPLY_SEAT_NOTES[seat]) lines.push('· ' + REPLY_SEAT_NOTES[seat])
   // ★ The minimal shape NAMES `solved`, so the same line carries what it means — a catalogue that prints a field
   // without its semantics is what let "solved" be read as the counted closure vote (the closure recipe's whole point).

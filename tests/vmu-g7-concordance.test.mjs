@@ -71,12 +71,19 @@ const GATES = read('vibe-math-vmu/packs/v5r/verification-gates.js')
     'C2 precondition: the verify-core section is present', { chars: BLOCKS_B.length })
   ok(!line.includes('不用 JSON 回复块'),
     'C2a no prompt sentence claims the reply envelope cannot carry a vote', { line: line.slice(0, 120) })
+  // ★ RUN 150 / audit19 C-1 + C-2 SUPERSEDE THE C2 RULING ABOVE. The audit measured that the reply envelope CANNOT
+  // carry a vote (the box needs `boxId` and `by`, the envelope has neither, and a payload that did carry them was
+  // accepted from EVERY seat, temporary workers included, though rule L3 gives them no vote). The field is now
+  // declared `noReplyShape` and the vote entrance the prompt teaches is the tool face. So this pair of pins now holds
+  // the NEW decision: the machinery is still declared (a reader can see what was intended) and it is refused by name.
   const kernelTurn = read('vibe-math-vmu/kernel/turn/index.js')
-  ok(/verdict: Object\.freeze\(\{ face: 'vmu\.ballotbox', op: 'cast' \}\)/.test(kernelTurn),
-    'C2b the machinery it contradicts is still real: `verdict` is a dispatchable reply field', {})
+  ok(/verdict: Object\.freeze\(\{ face: 'vmu\.ballotbox', op: 'cast', noReplyShape: NO_REPLY_VERDICT_SHAPE \}\)/.test(kernelTurn),
+    'C2b the machinery it used to promise is still declared, and it is now refused BY NAME before dispatch (noReplyShape)', {})
   const sent = BLOCKS_B.replace(/\s+/g, '')
-  ok(sent.includes('本回执的`verdict`字段也真的会派发到票箱') || sent.includes('本回执的`verdict`字段也真的会被派发到票箱'),
-    'C2c and the prompt now says so in plain words (both doors are named)', {})
+  ok(sent.includes('回执里的`verdict`没有可用形状') && sent.includes('投票只有一个入口'),
+    'C2c and the prompt says so in plain words: the reply field has no usable shape, the vote entrance is the tool', {})
+  ok(!sent.includes('两个入口都算票') && !sent.includes('本回执的`verdict`字段也真的会派发到票箱'),
+    'C2d the retired promise is not still being taught anywhere in the verify block', {})
 }
 
 // ── C3 ────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -2434,3 +2434,22 @@ the **seat face** (`VMU_TOOL_NOT_IN_FACE`), never by the owner face. Two catalog
 pins the sentences, the gate readings, the real-turn skips (temp and chair) and the per-seat catalogue renders. T99
 stays 19 952; deployment assembly per seat 23 382/23 388/23 524 compact and 26 544/26 550/26 787 full; full suite
 631/0 in 567 suites.
+
+## ROUND 150 — the reply field `verdict` is retired; the vote entrance is the tool face (G7 audit 19)
+
+**Verdict.** `G7 VERDICT: CONTRADICTIONS(2)`: the reply envelope could cast a vote (a temporary worker's, even though
+rule L3 gives temporary workers no vote) and the shape the catalogue taught could never cast (the box reads `boxId`
+and `by`, the envelope has neither).
+
+**Fix (sentences + one declaration, no new adapter).** `FIELD_OWNERS.verdict` now carries `noReplyShape`, so the
+dispatch loop skips the field by name before any face is touched; the catalogue row is `notApplicable` with
+`route: 'vibe_v5_verdict'`; the temporary worker's seat note and the catalogue footer say where the refusal really
+happens; the 求真表决 block says the vote has exactly one entrance: the tool.
+
+**Evidence.** `tests/vmu-run150-verdict-channel.test.mjs` 47/0 (real turns: taught shape and the shape that used to
+cast are both skipped by name and the box stays at 0 votes; tool face: chair opens, member votes, temporary worker
+`VMU_NOT_PERMITTED`). Budget: T99 compact 19 991 (< 20 000); deployment compact 23 427 / full 26 798; catalogue
+compact 13 lines / 2 155 chars, full 36 lines / 6 385 chars. Gates green, full T1 632/632.
+
+**Next.** The twentieth independent read-only audit on the next commit; G7 stays PARTIAL until it reports zero
+contradictions.

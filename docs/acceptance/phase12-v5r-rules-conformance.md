@@ -11103,3 +11103,98 @@ excluded 点名理由、真有表决权的成员没交仍被具名拒、`partial
 
 246.8 下一步。G7 仍 `PARTIAL`。派**第十九次**决定性独立只读审计（基线＝本轮提交），审计须亲手重测：两句席位注新文与「属主面」0 命中、`memberFaceGate` 三席读数、真回合里 temp／chair 回执字段同码跳过、三席目录渲染与部署装配预算（19 952／23 382·23 388·23 524／26 544·26 550·26 787／2 017·2 116·2 217／6 038·6 137·6 238）、L47 `floor.gate`、机械门禁与全量 T1、linecheck3。零矛盾才把台账 G7 置 DONE，并同时把 `next` 从「七轮…26 条」改写成实际轮次／条数（19 轮／46 条）＋维护义务。
 
+
+## §247 第十九次审计：回执这条通道其实能投票，而它教的形状一票也投不进去（2026-10-30）
+
+### 247.1 判决与基线
+
+第十九次决定性独立只读审计（基线 `f15dbc90`，报告 `D:/_tmp/g7a19/audit19.md`，397 行）判决
+`G7 VERDICT: CONTRADICTIONS(2)`：63 行逐行表、86/86 锚点、32/32 被认领、NEITHER 0，§2 A（RUN 149 的两句席位注）、
+B（逐席预算六项）、C（L47 九字段票门与假三席 universe）、D（G22/G23/G24）、E（机械门禁 + 全量 T1 + linecheck3）、
+F（G7 八锚点）**全部亲手复测 PASS**，历史 46 条全 FIXED/FIXED-as-stated、0 REGRESSED；两条新矛盾都在同一个属主面：
+回执字段 `verdict`（`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js` 与 `kernel/turn/index.js` 的 `FIELD_OWNERS`）。
+
+### 247.2 C-1：临时工的票真的进了箱
+
+计数证据：开一个投票板 `bx-1` 后，临时工 `r-t` 在普通轮回执里写 `{"verdict":{"boxId":"bx-1","choice":"for","by":"r-t"}}`，
+回执的 `executedDetail` 里是 `{"ok":true,"kind":"vote"}`，`kernel.ballotbox.status` 读回 `votes:1 / byChoice{for:1} /
+ruleFloor.cast:1 / met:true` —— **这一票计了**。而活提示词（catalogue footer、临时工席位注、`verdict` 行）写着
+「临时工 verdict／vote_solved 不計票」，规则 L3 的原句是「临时工…无表决权」。
+
+根因不是一个错句，而是一条没有任何闸的通道：`kernel/turn/index.js` 的 `FIELD_OWNERS.verdict` 只写了
+`{face:'vmu.ballotbox', op:'cast'}`，派发循环把回执载荷原样交给票箱；票箱自己也不查投票人（`packs/v5r/tools.js`
+的回执里自承「the box itself does not check who `by` is」），席位规则只在**工具面** `requireVoter` 里执行。
+`vote_solved` 那半句是真话（结题清算按 `may(id,'vote')` 过滤），所以一句话里半边真半边假，最难发现。
+
+### 247.3 C-2：它教的形状，一票也投不进去
+
+catalogue 教的是 `{ target, verdict ∈ [0,1], reason }`。实测四种写法全部落空：`{target:"bx-1",verdict:1,reason}`、
+裸 `1`、`{target,verdict}`、`{target,choice,by}` 都得到 `VMU_NOT_FOUND 找不到票箱`；补上 `boxId` 之后得到
+`VMU_CONFLICT cast 需要 by（投票人）`；唯一能投进去的 `{boxId,choice,by}` **没有人教过**。
+成因：`kernel/ballotbox.js` 的 `cast` 读 `args.boxId` 与 `args.by`，而回执字段没有任何适配器
+（全仓只有 `record`、`task_create` 两个字段有适配器）。同一块教学里还有一句「两个入口都算票」，与
+「只有投票通道产生票」自相矛盾。
+
+### 247.4 修法：把回执字段 `verdict` 退休，投票只剩工具这一个入口
+
+不是给回执加适配器。`FIELD_OWNERS.verdict` 指向的是**投票板**的 `cast`（读 `{boxId, choice, by}`），而工具
+`vibe_v5_verdict` 投的是**活票箱**（`kernel.liveBallot(target).cast(member, v)`，带 `requireVoter` 闸），两者不同源；
+给它加 numeric→选项 的适配器，等于把票投到另一个箱子里去。正确的最小修法是把这条通道关掉，让「投票只有一个入口：
+工具」变成真话：
+
+1. `kernel/turn/index.js`：新增 `NO_REPLY_VERDICT_SHAPE`，挂到 `FIELD_OWNERS.verdict.noReplyShape`。message 说明
+   回执既没有票箱 id 也没有投票人、内核在**碰任何面之前**就把它具名跳过（`VMU_TURN_FIELD_NOT_APPLICABLE`）；
+   hint 给出两条真入口 `vibe_v5_verdict { target, verdict, reason, member }` 与
+   `vibe_v5_poll_vote { boxId, choice, member }`，并写明票权由工具面的 `requireVoter` 判。
+2. `packs/v5r/prompts/v5r-reply-channel.js`：`verdict` 行改 `notApplicable: true` + `route: 'vibe_v5_verdict'`，
+   行注说清「没有可用形状、投递前就被具名跳过、票不进箱」并给出两条真入口；临时工席位注重写；catalogue footer
+   改成「拒绝点各不相同：没有可用形状的在投递前被具名跳过，缺权限的在工具面具名拒（临时工无表决权：投票工具拒，
+   vote_solved 不計票）」。
+3. `packs/v5r/prompts/v5r-blocks-b.js` 的求真表决块：「两个入口都算票」整句删除，改成
+   「表决票走 `vibe_v5_poll_vote`（票权按席位判，临时工没有表决权）；回执里的 `verdict` 没有可用形状、投递前就被
+   具名跳过——所以投票只有一个入口：工具」。
+4. `tests/vmu-g7-concordance.test.mjs` 的 C2 段随之改判：C2b 现在钉 `noReplyShape`（机制仍在、但被具名跳过），
+   C2c 钉新句子，C2d 钉「两个入口都算票」「本回执的 verdict 真的会派发」两句已不在活文件里。
+
+工具面与回执通道从此有明确分工：能投的只有工具，票权在工具面判；回执里写 `verdict` 会在投递前被具名跳过、
+原句留在回执 notes、轮次照常完成。
+
+### 247.5 新测试：`tests/vmu-run150-verdict-channel.test.mjs` 47/0
+
+§0 源码口径（`notApplicable`/`noReplyShape`/route/行注/footer/临时工席位注/blocks-b 新句/整面扫描/R35e 双向集合
+与反例自检）；§1 真回合（教过的形状被 `no-supported-shape` + `VMU_TURN_FIELD_NOT_APPLICABLE` 跳过、执行列表为空、
+票箱**0 票不变**；临时工写「票箱+投票人」的真形状也一样具名跳过——通道退休、没有旁路；常驻研究员同样走不到票箱）；
+§2 工具面（院士开板、常驻研究员投票成功、临时工 `VMU_NOT_PERMITTED`、临时工工具面里没有 `vibe_v5_verdict`）；
+§3 渲染（三席 full 目录带修正句、compact 无旧承诺、交付给成员的 compact 边界行把 `verdict` 指到 `vibe_v5_verdict`）。
+定向回归 `vmu-g7-concordance`、`vmu-run147`、`vmu-run146`、`vmu-run145`、`vmu-run144`、`vmu-run149`、
+`vmu-prompt-no-holes`、`vmu-settings`、`vmu-prompt-type-coverage`、`vmu-turn-contracts` 全绿。
+
+### 247.6 预算重测（本轮口径）
+
+`verdict` 行只在 full 档渲染，但它进了 compact 的边界行（`verdict→vibe_v5_verdict`），footer 也变长了，所以预算必须重测：
+
+- T99 口径（charter 子装配，researcher 普通轮）：compact **19 991**（< 20 000，余量 9；学术院士 19 988、临时工 18 243）。
+- 部署装配（boot 级）：compact **23 427** / full **26 798**；目录本身 compact **13 行 / 2 155 字符**、full **36 行 / 6 385 字符**。
+
+### 247.7 门禁与全量 T1
+
+生成器迭代到不动点后 `regen-all --check` **17/17 in sync**；`PREFLIGHT: PASS`；`DOC LINT: PASS`；
+`check-rule-parity PASS(0)`；`check-rules-coverage --check` **FAIL(1) = 仅 G7 PARTIAL**（预期，G7 记 DONE 的条件尚未满足）；
+全量 T1 `GATE_SCOPE=vmu`：**TOTAL 632 PASS 632 FAIL 0**（suites 568 · probes 64，日志 `D:/_tmp/t1-r162.log`）。
+
+### 247.8 GAP 对账
+
+- **G28 CLOSED**：它的根因（回执字段没有适配器、也没有席位闸）随这条通道退休而消失——票结构上进不了箱。
+- **G27 记账**：RUN 149 的两句席位注只在 full 档交付（compact 用 `replyCatalogueLines({mode:'compact'})` 不传 seat）；
+  本轮 footer 的修正句在 compact 档也交付，所以「拒绝点」这一半在默认档是可见的。仍记为文档记账项，不计矛盾。
+- 仍 OPEN：G4（`attendDeniedSeats` 两读时）、G5（原语面 fork 前过度拦截）、G18（部署长度无门禁）、G19（默认
+  `fixtureMode=no-tools` 与 L62 相抵）、G25。
+- 历史累计矛盾 **48 条**（第十九轮前的 46 条 + 本轮 2 条）全部修净、0 REGRESSED。
+
+### 247.9 下一步
+
+按用户裁定，G7 记 DONE 的条件是「再派一次独立审计、结论零矛盾」。本轮修法之后必须再派**第二十次**决定性独立只读审计
+（基线 = 本轮提交），由它亲手复测：①回执 `verdict` 在常驻研究员与临时工、普通轮与会议轮都被具名跳过且票箱 0 票；
+②工具面院士/常驻研究员能投、临时工 `VMU_NOT_PERMITTED`；③三席渲染与装配里没有「两个入口都算票」；
+④预算三口径；⑤L47 票门；⑥机械门禁、全量 T1、linecheck3；⑦G7 八锚点诚实性与 `next` 陈旧问题。
+零矛盾之后才做台账 G7 `PARTIAL`→`DONE`、coverage 86/86、逐句全量重检，然后关掉本会话 goal。

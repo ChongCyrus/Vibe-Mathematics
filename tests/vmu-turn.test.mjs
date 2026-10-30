@@ -196,7 +196,11 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok(sayObjects.executed.length === 1 && meetingCalls.length === 1,
     'T14d. ★★ the SAME field carrying a meeting reference still dispatches — the guard does not disable the real path',
     { executed: sayObjects.executed.length, meetingCalls: meetingCalls.length })
-  const half = await t.apply({ verdict: true })
+  // ★ RUN 150 / G7 audit 19: this probe used `{ verdict: true }` as its unwired-face example. The reply field `verdict`
+  // is now `noReplyShape` (it has no usable shape: a ballot box needs `boxId` and `by`), so it is skipped BEFORE the face
+  // lookup and never reaches the "face-not-wired" branch this pin is about. `formal` is owned by `vmu.formal.check` — a
+  // face this orchestrator does not wire, and a field with no shape gate — so it still exercises the branch honestly.
+  const half = await t.apply({ formal: { target: 'p-x' } })
   ok(half.skipped.length === 1 && half.skipped[0].reason === 'face-not-wired' && t.status().counts.notExecuted === 1,
     'T16. ★★★ a field whose face is NOT wired is reported and COUNTED - a half-installed host is visible, never silent',
     { skipped: half.skipped, counts: t.status().counts })

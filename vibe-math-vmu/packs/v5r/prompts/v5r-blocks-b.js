@@ -674,7 +674,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '**沉默不是同意，也不是反对**——未表态会**阻塞结题**（未表态名单会被列出），绝不会被折算为赞成或反对。',
         '',
         '结束时请用 `vibe_v5_verdict` 给出你的独立复核（一个概率值 + 理由），其中的对象是',
-        '`{{ setting:vmu.turn.verifyTarget }}`；表决票走 `vibe_v5_poll_vote`，本回执的 `verdict` 字段也真的会派发到票箱（`executed` 点名）——两个入口都算票。',
+        '`{{ setting:vmu.turn.verifyTarget }}`；表决票走 `vibe_v5_poll_vote`（票权按席位判，临时工没有表决权）；回执里的 `verdict` 没有可用形状、投递前就被具名跳过——所以投票只有一个入口：工具。',
       ].join('\n'),
     },
   },

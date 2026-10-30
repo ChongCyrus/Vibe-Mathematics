@@ -87,6 +87,22 @@ const NO_REPLY_CONVENE_SHAPE = Object.freeze({
   hint: 'convene through the tool face, which is where the seat policy is enforced: vibe_v5_meeting { action: "convene", member: "<your id>", … } (a non-chair seat is refused BY NAME there, VMU_NOT_PERMITTED)',
 })
 
+// ★★★ RUN 150 / audit19 C-1 + C-2 (the ballot side door). `verdict` was mapped to the ballot box's `cast`, and the
+// catalogue taught `{target, verdict ∈ [0,1], reason}` plus "a temporary worker's verdict is not counted". Both claims
+// were false, and measurably so: `ballotbox.cast` reads `boxId` and `by` (kernel/ballotbox.js:252-259), the reply
+// envelope carries neither and the dispatcher handed the payload over UNCHANGED (the same defect class as `record` and
+// `task_create`, but with no adapter), so the taught shape could never cast (`VMU_NOT_FOUND '找不到票箱 '`); and when a
+// payload DID carry `{boxId, choice, by}` the box accepted it from EVERY seat — it never checks who `by` is — so a
+// temporary worker's vote was counted, though rule L3 says a temporary worker has no vote (临时工…无表决权). The seat
+// ACL lives on the tool faces (`vibe_v5_verdict` / `vibe_v5_poll_vote`, pack `requireVoter` ⇒ `VMU_NOT_PERMITTED`), so
+// this field carries `noReplyShape`: the plan skips it BY NAME before any face is touched, nothing is cast, and the one
+// voting entrance is the tool face — with the seat gate on it.
+const NO_REPLY_VERDICT_SHAPE = Object.freeze({
+  code: 'VMU_TURN_FIELD_NOT_APPLICABLE',
+  message: 'a reply verdict has NO usable shape: a ballot box needs the box id and the name of the voter (ballotbox.cast reads boxId and by), and this field carries neither, so the kernel is asked to skip it by name BEFORE any face is touched — no vote is cast and the turn completes; the seat rule (a temporary worker has no vote, rule L3) lives on the tool face, where a non-voter is refused with VMU_NOT_PERMITTED',
+  hint: 'cast through the tool face, which is where the seat rule is enforced: vibe_v5_verdict { target: "<live ballot id>", verdict: 1|0, reason, member } for a ballot, or vibe_v5_poll_vote { boxId, choice, member } for a poll box (a seat without a vote is refused BY NAME there)',
+})
+
 export const FIELD_OWNERS = Object.freeze({
   say: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
   progress: Object.freeze({ face: 'vmu.records', op: 'put' }),
@@ -98,7 +114,7 @@ export const FIELD_OWNERS = Object.freeze({
   // to promise them while every dispatch died in the shape guard.
   record: Object.freeze({ face: 'vmu.library', op: 'record' }),
   propose_verify: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
-  verdict: Object.freeze({ face: 'vmu.ballotbox', op: 'cast' }),
+  verdict: Object.freeze({ face: 'vmu.ballotbox', op: 'cast', noReplyShape: NO_REPLY_VERDICT_SHAPE }),
   task_create: Object.freeze({ face: 'vmu.tasks', op: 'create' }),
   task_update: Object.freeze({ face: 'vmu.tasks', op: 'transition', noReplyShape: POSITIONAL_REPLY_SHAPE('vmu.tasks.transition(id, to)', 'use the tool face vibe_v5_task_update { task_id, expected_revision, action } — it maps claim/reassign/assign/transition/complete/reopen/set_dependencies onto the real transition and requires the revision token') }),
   proposal: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
