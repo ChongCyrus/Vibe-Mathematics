@@ -1878,11 +1878,13 @@
       "id": "G7",
       "rule": "63",
       "text": "提示词与规则完全相符、自洽",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
         "scripts/check-rule-parity.mjs::function liveTeachingFiles",
         "scripts/check-rule-parity.mjs::VMU_RULE_PARITY_ORPHAN_TEACHING",
-        "vibe-math-vmu/packs/v5r/verification-gates.js::WHERE EACH GATE IS ACTUALLY CALLED"
+        "vibe-math-vmu/packs/v5r/verification-gates.js::WHERE EACH GATE IS ACTUALLY CALLED",
+        "vibe-math-vmu/packs/v5r/tools.js::castArgs.choice = 'abstain'",
+        "vibe-math-vmu/kernel/ballotbox.js::args.abstain === true"
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js::必须有**具名凭据**"
@@ -1891,14 +1893,17 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"typeCatalogSource\":\"vmu.meetings.typeCatalog\"",
         "docs/acceptance/phase12-v5r-rules-conformance.md::IS ADMITTED ONLY WITH EVIDENCE",
         "docs/acceptance/phase12-v5r-rules-conformance.md::票箱不是裁决通道",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::proposition_id: \"<命题卡 id>\""
+        "docs/acceptance/phase12-v5r-rules-conformance.md::proposition_id: \"<命题卡 id>\"",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::## §251",
+        "tests/vmu-run150-verdict-channel.test.mjs::not both",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::## §252"
       ],
       "tool": [
         "vibe_v5_meeting"
       ],
       "ruleText": "- 确保所有代理接收到的提示词完全与上述规则相符、自洽 。",
-      "next": "七轮独立只读审计：§229(5) → §230(5) → §232(4) → §233(2) → §234(4) → §235(2) → §236(4)，共 26 条矛盾全部修净，并机器化进 tests/vmu-g7-concordance.test.mjs（64 条）与 check-rule-parity P1–P7。G7 记 DONE 的条件（用户裁定）：再派一次独立审计、结论零矛盾。",
-      "note": "§229–§235：审计基线依次 9cbea9cc / 659bf726 / b44c146f / 20ac0786 / fcc33a5f / 1f59f85d；规则 63 行 sha256 前 16 a5d9a6c1ff73ec10。§235 的两条是 1f59f85d 自己引入的「半句不可达」：method/subproblem 卡面说可用 Lean 证据却没声明 lean_job/lean_conformance（已补声明）；step3 让 target 填卡 id 而 target 只认活票箱（已改为 meeting+proposition_id）。同轮还修了 4 条 GAP 假陈述（:1574/:1528 的 Lean-only 措辞、blocks-b:799 的 orderMode、:817 的 secret/allow_abstain）。"
+      "next": "用户裁定：G7 记 DONE 的条件是「再派一次独立审计、结论零矛盾」。已完成二十四批独立只读审计：§229(5) → §230(5) → §232(4) → §233(2) → §234(4) → §235(2) → §236(4) → §237(3) → §238(2) → §239(1) → §240(1) → §241(2) → §242(2) → §243(1) → §244(2) → §245(1) → §246(2) → §247(2) → §248(2) → §249(1) → §250(1) → §251(1)，累计 53 条矛盾全部修净，并机器化进 tests/vmu-g7-concordance.test.mjs、tests/vmu-run150-verdict-channel.test.mjs、tests/vmu-run149-seat-note-authority.test.mjs、tests/vmu-run147-convene-field.test.mjs 与 check-rule-parity P1–P7；第二十四次审计基线 0e8961f3 判 CONSISTENT。维护义务：之后任何一次提示词/机制改动都必须重跑 check-rule-parity、check-rules-coverage、linecheck3 与全量 T1，并把新矛盾记进台账，不得让 G7 停留在旧读数上。",
+      "note": "2026-10-30：第二十四次决定性独立只读审计（基线 0e8961f3，报告 D:/_tmp/g7a24/audit24.md）判 G7 VERDICT: CONSISTENT，按用户裁定的 DONE 条件把本项从 PARTIAL 改为 DONE；本轮修法记录见 docs/acceptance/phase12-v5r-rules-conformance.md §251，落账记录见 §252。"
     },
     {
       "id": "A8",

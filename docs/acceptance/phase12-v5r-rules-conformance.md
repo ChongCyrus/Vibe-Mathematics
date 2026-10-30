@@ -11287,7 +11287,7 @@ CLOSED。台账 G7 的 `next` 仍写着「七轮…26 条」，属陈旧记账�
 
 ### 249.1 判决与基线
 
-第二十一次决定性独立只读审计（基线 **8b122d8c**，报告 `D:/_tmp/g7a21/audit21.md`，341 行）判决
+第二十一次决定性独立只读审计（基线 **8b122d8c**，报告 `D:/_tmp/g7a21/audit21.md`，340 行）判决
 `G7 VERDICT: CONTRADICTIONS(1)`：§2 的 A/B/C/D/E/G 全 PASS，历史 50 条（audit1–audit19 的 48 条 +
 audit20 的 C-1/C-2）FIXED 47 / FIXED-as-stated 3 / **REGRESSED 0**（本轮亲测 21 条，其余静态复检并写明方法）；
 唯一矛盾在 **F 文档诚实性**，而且是本轮修法自己算错的一个数：
@@ -11393,7 +11393,8 @@ F 文档诚实性（§249 九数、ROUND 152）、G 历史 **51 条 FIXED 48 / F
    形参必须是该工具**声明过**的、（不含省略号的完整形状）必须**带齐 required**；§2n5 断言扫描非空转（确有带省略号的
    缩写形状被检查过）。这一道门抓的是「**形状/形参**」错误：audit20 C-1 的 `boxId`、audit21 的缺 `member`
    都在它的覆盖面内；audit22 C-1 那种「键已声明、分支却不执行」它抓不住（把同一段 scan 跑在 `95f1c816` 树上
-   照样全绿），那一类由 run150 §2m 系列的执行断言钉住。这个口径差的记账见 §250.6 的 G32。
+   那一支仍 0 offender（同一棵树它只抓到 `vibe_v5_say` 缺 `member` 这一种形状错），那一类由 run150 §2m 系列的
+   执行断言钉住。这个口径差的记账见 §250.6 的 G32。
 
 ### 250.3 新断言
 
@@ -11421,7 +11422,8 @@ F 文档诚实性（§249 九数、ROUND 152）、G 历史 **51 条 FIXED 48 / F
 - 本轮关闭：audit21 §3 的「缺 required 形参的缩写形状」一项（两处形状带 `member`，run150 §2l/§2l2 非空断言）。
 - 本轮新增并修：弃权分支的死形参（run150 §2m4–§2m7 机器化）。
 - 本轮口径修正并记 **G32**（OPEN）：run150 §2n4 只抓「形状/形参」错误，抓不住「键已声明但分支不执行」的一类
-  （audit22 C-1 正是后者；把同一段 scan 跑在 `95f1c816` 树上它照样全绿）。§250.2 第 4 条的旧措辞把它说大了，
+  （audit22 C-1 正是后者；把同一段 scan 跑在 `95f1c816` 树上，那一支 0 offender——同一棵树它只抓到
+  `vibe_v5_say` 缺 `member` 这一类形状错）。§250.2 第 4 条的旧措辞把它说大了，
   已改正；那一类执行保证由 run150 §2m 系列钉住。
 - 仍按 GAP/记账 OPEN：G4（invite 幽灵队列）、G5（原语面 fork 前过度拦截）、G18（部署档长度无门禁）、
   G19（默认 `fixtureMode=no-tools` 与 L62 相抵）、G25、G27（席位注只在 full 档交付）、G28（verdict 适配器之争的余项）、
@@ -11437,7 +11439,7 @@ F 文档诚实性（§249 九数、ROUND 152）、G 历史 **51 条 FIXED 48 / F
 
 ### 251.1 判决与基线
 
-第二十三次决定性独立只读审计（基线 **42b6579f**，报告 `D:/_tmp/g7a23/audit23.md`，462 行）判决
+第二十三次决定性独立只读审计（基线 **42b6579f**，报告 `D:/_tmp/g7a23/audit23.md`，461 行）判决
 `G7 VERDICT: CONTRADICTIONS(1)`。§2 的 A/B/C/D/E/G 全 PASS：
 
 - **A**：audit22 的 C-1 确已关闭。真工具路径下 `abstain: true` ⇒ `ok:true`、`kind:"abstain"`、票箱 `abstain 1`；
@@ -11462,7 +11464,8 @@ F 文档诚实性（§249 九数、ROUND 152）、G 历史 **51 条 FIXED 48 / F
    新增的 `,member` 为 +7，两者相加即 −8。」
 2. §250.2 第 4 条与 `ROUND 153` 的门覆盖面收窄：§2n4 抓的是「**形状/形参**」错误（audit20 C-1 的 `boxId`、
    audit21 的缺 `member` 都在覆盖面内），它抓不住「键已声明、分支却不执行」那一类——把同一段 scan 跑在
-   `95f1c816` 树上照样全绿，而 audit22 C-1 正属后者；那一类的执行保证在 run150 §2m 系列。
+   `95f1c816` 树上那一支仍 0 offender（同一棵树只抓到 `vibe_v5_say` 缺 `member` 那一类形状错），而 audit22 C-1
+   正属后者；那一类的执行保证在 run150 §2m 系列。
 3. §250.6 增记 **G32（OPEN）**：这是本轮审计点名的门盲区（`[…]` 省略号免检、>400 字符的形状正则匹配不到、
    不覆盖「分支不执行」），按 GAP 记账，不计矛盾。
 
@@ -11488,3 +11491,54 @@ F 文档诚实性（§249 九数、ROUND 152）、G 历史 **51 条 FIXED 48 / F
 
 派第二十四次决定性只读审计（基线 = 本轮提交）；判决 `CONSISTENT` 后按用户裁定把台账 G7 记 DONE，
 `check-rules-coverage --check` 应转为 `JUDGED 86 DONE 86`，然后再做逐句全量重检收口。
+
+## §252 第二十四次审计零矛盾：G7 记 DONE，86/86 全绿（RUN 155）
+
+### 252.1 判决与基线
+
+第二十四次决定性独立只读审计（基线 **0e8961f3**，报告 `D:/_tmp/g7a24/audit24.md`，316 行）判决
+**`G7 VERDICT: CONSISTENT`（0 条矛盾）**。§0：HEAD 与工作树干净、规则 63 行 sha256 前 16 位 `a5d9a6c1ff73ec10`、
+台账 86 条 `DONE 85 / PARTIAL 1`；§1：63 行 = 18 + 13 + 32、锚点 86/86、要求行 32/32、NEITHER 0；
+§2 A–G 全 PASS；六道门禁五绿（唯一 FAIL 是 G7 PARTIAL 这条台账状态本身），全量 T1 **632/632（suites 568 · probes 64）**，
+审计域 `161/0`（不带 `GATE_SCOPE`）与 `141/0`（`GATE_SCOPE=vmu`）两种口径都复现；12 个预算数逐字不变
+（T99 19 995 / 19 998 / 18 243；compact 23 428 / 23 434 / 23 563；full 26 848 / 26 854 / 27 141；
+目录 compact 13 行 2 056 / 2 155 / 2 313、full 36 行 6 335 / 6 434 / 6 592）；
+`vmu-run150` 71/0、`vmu-turn` 272/0；机制面 `PROBE C24: ALL CHECKS PASS`（18 项真 `spec.execute` 与真
+`kernel.turn.step`/`supplyMemberReply`）；历史 **53 条 = FIXED 50 · FIXED-as-stated 3（H15、H29、N2）· REGRESSED 0**，
+其中 23 条本轮非静态复核。
+
+### 252.2 审计点名的两条残差与处置（都是表述/口径，不计矛盾，按建议改成真话）
+
+1. **「照样全绿」三处**（§250.2 第 4 条、§250.6 的 G32 条、§251.2 第 2 条）：按整树读为假——`95f1c816` 树实测
+   `offenders=1`（`vibe_v5_say` 缺 `member`，属门**能**抓的形状错）；按 audit22 C-1 那一支读为真（0 offender）。
+   三处都改成「那一支 0 offender（同一棵树它只抓到 `vibe_v5_say` 缺 `member` 这一类形状错）」。
+2. **报告行数口径混用**：`audit23.md` 462 → **461**（awk 口径）、`audit21.md` 341 → **340**；
+   `audit22.md` 的 444 本就是 awk 口径，保持不变。此后本卷一律用 awk 行数。
+
+### 252.3 台账落账：G7 `PARTIAL` → `DONE`（用户裁定的 DONE 条件已满足）
+
+- `status`：`PARTIAL` → **`DONE`**。
+- `live` 4 → **6**：新增 `docs/acceptance/phase12-v5r-rules-conformance.md::## §251` 与
+  `tests/vmu-run150-verdict-channel.test.mjs::not both`（各 1 命中，在「1..3」规则内）。
+- `mechanism` 3 → **5**：新增 `vibe-math-vmu/packs/v5r/tools.js::castArgs.choice = 'abstain'` 与
+  `vibe-math-vmu/kernel/ballotbox.js::args.abstain === true`（各 1 命中）。
+- `next` 改写：二十四批独立只读审计的账簿（§229……§251，累计 **53 条**矛盾全部修净）＋机器化清单
+  （`tests/vmu-g7-concordance.test.mjs`、`tests/vmu-run150-verdict-channel.test.mjs`、
+  `tests/vmu-run149-seat-note-authority.test.mjs`、`tests/vmu-run147-convene-field.test.mjs`、`check-rule-parity` P1–P7）
+  ＋维护义务（此后任何提示词/机制改动都必须重跑 `check-rule-parity`、`check-rules-coverage`、linecheck3 与全量 T1，
+  并把新矛盾记进台账）。
+- `note` 记本轮判决、基线 `0e8961f3` 与 §251。
+
+### 252.4 收口读数
+
+- `RULES COVERAGE: PASS (0 problem(s))`；`RULE LEDGER: 86 atomic requirement(s) · DONE 86 · PARTIAL 0 · MISSING 0 · DECIDED 0`；
+  `anchors: 86/86 rows quote the rule verbatim · fingerprint matches`；
+  **每一条四问都解析成功、没有任何未完成项——这是收口门本身**。
+- 全量 T1 **632/632 PASS，FAIL 0（suites 568 · probes 64）**；
+  `=== vmu regen-all: 17/17 in sync ===`、`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0 problem(s))`。
+
+### 252.5 维护义务与后续
+
+G7 记 DONE 不等于项目冻结：台账里的 OPEN 项（G4、G5、G18、G19、G25、G27、G28、G31、G32）仍是**记账债务**，
+不阻塞 L63 的「提示词与规则相符、自洽」判定，但任何一次提示词/机制改动都必须重跑 §252.3 列的维护链。
+收口前的逐句全量重检（linecheck3、ledger-sweep、86 行四证、真机回执抽样）见最终审计与会话收尾记录。

@@ -2528,3 +2528,20 @@ JS 字符串字面量 196→188、源文件整行 207→199；`+',member'` 为 +
 - 读数：T99 19 995 / 19 998 / 18 243、部署 compact 23 428 / 23 434 / 23 563、full 26 848 / 26 854 / 27 141、
   目录 13/36 行六数、run150 71/0 —— 全部不变；全量 T1 **632/632（suites 568 · probes 64）**。
 - 仍未结束：G7 保持 PARTIAL，等第二十四次审计的零矛盾判决。
+
+## ROUND 155 —— 第二十四次审计零矛盾，G7 记 DONE（86/86）
+
+第二十四次决定性只读审计（基线 `0e8961f3`，报告 `D:/_tmp/g7a24/audit24.md`，316 行）判决
+**`G7 VERDICT: CONSISTENT`（0 条矛盾）**：文档读数与实测逐字相等（16 个预算数、长度四跨度、净 −8、
+run150 71/0、vmu-turn 272/0、T1 632/632），机制面与历史面零回归，历史 53 条 = FIXED 50 · FIXED-as-stated 3 · REGRESSED 0。
+
+- 按用户裁定的 DONE 条件（一次零矛盾的独立审计），台账 G7 `PARTIAL` → **`DONE`**：live 4 → 6（加本卷 `## §251`
+  与 `tests/vmu-run150-verdict-channel.test.mjs::not both`）、mechanism 3 → 5（加包翻译与内核别名的两处锚点）、
+  `next` 改写为二十四批账簿（累计 53 条）＋维护义务。
+- 审计点名的两条表述/口径残差按建议改成真话：「照样全绿」三处改成「那一支 0 offender（同一棵树只抓到
+  `vibe_v5_say` 缺 `member` 这一类形状错）」；报告行数统一 awk 口径（`audit23.md` → 461、`audit21.md` → 340）。
+- 收口读数：`RULES COVERAGE: PASS (0 problem(s))`、`RULE LEDGER: DONE 86 · PARTIAL 0 · MISSING 0`、
+  锚点 86/86、全量 T1 **632/632（suites 568 · probes 64）**、regen 17/17。
+- 仍未关闭（记账债务，不阻塞 L63）：台账里那批 OPEN 项——invite 幽灵队列、原语面 fork 前过度拦截、部署档长度无门禁、
+  默认 `fixtureMode=no-tools` 与 L62 相抵、席位注只在 full 档交付、适配器余项、`vibe_vmu_meeting.action` 无 enum、
+  形状门的盲区——编号与明细见 `docs/acceptance/phase12-v5r-rules-conformance.md` §252.5。

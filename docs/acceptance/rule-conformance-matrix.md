@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 85 | all four citations resolve |
-| ◐ PARTIAL | 1 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 86 | all four citations resolve |
+| ◐ PARTIAL | 0 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -140,7 +140,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `G4` | 60 | 支持断点续跑 | ✅ DONE | 1/1/2/1 | — |
 | `G5` | 61 | 特殊权限/请求经所办向用户询问 | ✅ DONE | 2/1/1/1 | — |
 | `G6` | 62 | 绝大多数功能走工具而非每轮末尾输出 JSON | ✅ DONE | 3/1/2/2 | 已由 r133 全证（成员回合围栏多写未声明字段 ⇒ VMU_TURN_UNKNOWN_FIELD + hint 印全部已知字段）。 |
-| `G7` | 63 | 提示词与规则完全相符、自洽 | ◐ PARTIAL | 3/1/1/4 | 七轮独立只读审计：§229(5) → §230(5) → §232(4) → §233(2) → §234(4) → §235(2) → §236(4)，共 26 条矛盾全部修净，并机器化进 tests/vmu-g7-concordance.test.mjs（64 条）与 check-rule-parity P1–P7。G7 记 DONE 的条件（用户裁定）：再派一次独立审计、结论零矛盾。 |
+| `G7` | 63 | 提示词与规则完全相符、自洽 | ✅ DONE | 5/1/1/7 | 用户裁定：G7 记 DONE 的条件是「再派一次独立审计、结论零矛盾」。已完成二十四批独立只读审计：§229(5) → §230(5) → §232(4) → §233(2) → §234(4) → §235(2) → §236(4) → §237(3) → §238(2) → §239(1) → §240(1) → §241(2) → §242(2) → §243(1) → §244(2) → §245(1) → §246(2) → §247(2) → §248(2) → §249(1) → §250(1) → §251(1)，累计 53 条矛盾全部修净，并机器化进 tests/vmu-g7-concordance.test.mjs、tests/vmu-run150-verdict-channel.test.mjs、tests/vmu-run149-seat-note-authority.test.mjs、tests/vmu-run147-convene-field.test.mjs 与 check-rule-parity P1–P7；第二十四次审计基线 0e8961f3 判 CONSISTENT。维护义务：之后任何一次提示词/机制改动都必须重跑 check-rule-parity、check-rules-coverage、linecheck3 与全量 T1，并把新矛盾记进台账，不得让 G7 停留在旧读数上。 |
 
 ## How to move a row
 
