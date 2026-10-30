@@ -10915,7 +10915,7 @@ excluded 点名理由、真有表决权的成员没交仍被具名拒、`partial
 
 §239.3 修法
 
-1. **C1：统一口径，机制不动。** `v5r-blocks-a.js:89/:101` 名册句改成「没有表决权**，也不写所内的命题/方法/成果库**；没有 `vibe_v5_record_*` 卡片面（具名拒，产出归指派者归档），过程记录写回执的 `progress` 字段」；`:215-217` 库块标题限定「**院士与常驻研究员**的资料库」并加一句**临时工例外**（工具面按席位具名拒、不写所内库、过程记录写回执 `progress` 或自己的工作目录）；`v5r-blocks-b.js:891` 改成「**临时工不进成果库**：命题/方法/子问题/成果卡面对临时工**具名拒**，产出由指派者归档；临时工的过程记录写在回执的 `progress` 字段里」。三处测试 pin 同步（`vmu-g7-concordance` 新增 C1b2/C1c、`vmu-ledger-teaching-pins` L10、`vmu-turn` 的 `DECLARED_DIVERGENCES` 新增 `v5r-charter-libraries`）。
+1. **C1：统一口径，机制不动。** `v5r-blocks-a.js:89/:101` 名册句改成「没有表决权**，也不写所内的命题/方法/成果库**；没有 `vibe_v5_record_*` 卡片面（具名拒，产出归指派者归档），过程记录写回执的 `progress` 字段」；`:215-217` 库块标题限定「**院士与常驻研究员**的资料库」并加一句**临时工例外**（工具面按席位具名拒、不写所内库、过程记录写回执 `progress` 或写到自己的文件面 `Members/<你>/…`）；`v5r-blocks-b.js:891` 改成「**临时工不进成果库**：命题/方法/子问题/成果卡面对临时工**具名拒**，产出由指派者归档；临时工的过程记录写在回执的 `progress` 字段里」。三处测试 pin 同步（`vmu-g7-concordance` 新增 C1b2/C1c、`vmu-ledger-teaching-pins` L10、`vmu-turn` 的 `DECLARED_DIVERGENCES` 新增 `v5r-charter-libraries`）。
 2. **C2：让 `record` 字段真的落盘。** `kernel/turn/index.js` 派发循环加 `recordLogArgs()` 适配器：`{track,text}` → `vmu.library.record(member, track, text)`（落 `Members/<member>/Progress/<track>.md`）；形状不符**不派发、不回滚**，`skipped` 行具名 `reason:'record-shape'`/`code:'VMU_RECORD_SHAPE'` + `missing/hint/means`（`RECORD_LOG_MEANS` 列出 `vmu.records.tracks` 的名字并指明成果卡走 `vibe_v5_record_proposition/_method/_subproblem`）。`v5r-reply-channel.js` 的 `record` 行改成研究日志行真相。
 3. **C3：不改已裁决的 skip，只改承诺。** `no-meeting-bound` 是已收口并钉死的修复（`tests/vmu-run35-findings.test.mjs:13/:37-45`、`tests/vmu-run119-executed-detail.test.mjs:70`、`tests/vmu-turn-reply-tool.test.mjs:85`、`tests/vmu-turn.test.mjs:179/:1579/:1604`；文档 §68/§69/⑳）。`v5r-reply-channel.js:61` 的 `say` 行改成真相：有会议绑定 ⇒ 该场会议楼层发言（要 `present`、不认 `to`）；无绑定 ⇒ 本轮不投递、原句进回执 `notes`；群聊/私信必须用工具 `vibe_v5_say`。
 4. **G2：在裁决这一步装闸（自述 → 闸 + 可审计例外）。** `packs/v5r/tools.js` 在 `partial` 校验之后（`face.rulePropositionProbability` 之前，即副作用之前）加 `voteFloorGate`：读 `kernel.meetings.quorum({meeting})` 的 `required`（不重推公式）；签署人 = `provided ∪ {chair}`（主席是 m 的宇宙内的席位，但按 `VMU_RULING_CHAIR_SIGNS` 不能交裁决，所以必须把「签字的院士」计入，否则结构性永远 false）；`eligibleVoterIds()` 给出 `unsigned`。低于 m 且未声明 `partial:true` ⇒ 具名拒 `VMU_MEETING_QUORUM_LOST`（message 给 N/M、L47 的 m 公式、未签名单；hint 给 `vibe_v5_verdict_ask` 与 `partial:true`+`why` 的例外）。成功回执新增 `floor.gate:{enforced,code,required,signed,signedBy,unsigned,chairCounted,satisfied,escapedBy,means}`；`floor.satisfiedBy` 改读闸；`floor.means` 与 `closureReading` 同步说真话（**关会不读票数**）；`close()` 一行不改（关会给所有会议类型用，L47 只管辩论/结题；且关会无票可读）。
@@ -10936,10 +10936,14 @@ excluded 点名理由、真有表决权的成员没交仍被具名拒、`partial
 - `tests/vmu-run142-reply-fields.test.mjs` **31/0**（走真回合 `step → supplyMemberReply → step`）：§1 `{record:{track:'progress',text}}` 落 `Members/r-1/Progress/progress.md` 且无 `VMU_RECORD_SHAPE`；§2 `{record:'不是对象'}` 回合不崩、`skipped` 具名 `record-shape`/`VMU_RECORD_SHAPE`、同轮 `progress` 仍执行、别处不留痕；§3 无会议绑定的 `say` 仍 `no-meeting-bound` + 原句进 `notes`，note 不再承诺 `{to}` 私信；§4 `record` note 与机制一致（含 `Members/<你>/Progress/`、`track`、`vmu.library.record`、成果卡工具名；不含「成果卡数组」）。
 - 既有套件按新真话更新：`tests/vmu-run30-findings.test.mjs` **31/0**（原断言旧 means 的 `ruling is not a vote`/`satisfiedBy:false` 改为断言 `GATES this ruling`、`signed counts SIGNATURES`、`floor.gate.enforced` 与新读数）。
 
+- ★ 回归教训（全量 T1 抓到）：C1 的 temp 句原写「或自己的工作目录」，让 `v5r-turn-tracks` 块同时命中
+  `vibe_v5_lean_run`+`工作目录`，被 `tests/vmu-run58-lean-face-contract.test.mjs` 判成「lean 教学块没写库根」而红；
+  改写成「或写到自己的文件面 `Members/<你>/…`」后 7/0。⇒ 自由文本改动要跑全量 T1，不能被定向套件全绿骗过。
+
 §239.6 门禁与预算
 
 - 定向：`vmu-turn` **272/0**（T99 绿）、`--only vmu-turn` 12/12、`--only vmu-run35` 4/4、`--only vmu-prompt` 13/13、`--only vmu-g7` 65/0、`vmu-meeting-procedures-catalog` 53/0、`vmu-run141`/`vmu-run142`/`vmu-run30` 全绿。
-- 成员提示词预算（T99，`< 20000`）：C1 改词后 **19933**（余量 67），C1/C2/C3/G2/G9/G10/G12/G13 的加字都在 pack/phase/role 块上，未击穿上限；改 prompts 后已 `regen-all --write` 再 `--check` **17/17**。
+- 成员提示词预算（T99，`< 20000`）：C1 改词后 **19950**（余量 50，reword 见 §239.5 的 run58 教训），C1/C2/C3/G2/G9/G10/G12/G13 的加字都在 pack/phase/role 块上，未击穿上限；改 prompts 后已 `regen-all --write` 再 `--check` **17/17**。
 - `PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS`、`check-rules-coverage --check` = 仅 G7（预期）。
 
 §239.7 无实质残余：否 —— G7 仍 PARTIAL（等第十一次决定性审计取零矛盾）；audit10 记录的 G3/G4/G5 是能力/机制债（invite 幽灵队、`attendDeniedSeats` 两读取时点、primitive 面过度拦截），已在 §239.3.6 与 `schema.js` doc 里如实记录，不计作矛盾。

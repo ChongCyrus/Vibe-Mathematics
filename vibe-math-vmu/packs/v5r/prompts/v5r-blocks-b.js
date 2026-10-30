@@ -892,7 +892,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '· 方法库卡：`vibe_v5_record_method`（content/value/motive/p 必填）。',
         '  · `[状态板]` 四行是**派生读数**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。这不是 state 面板；state 自己写：**成员席位只能改自己的**，**所办/人类代笔**可替人写并回执 `panelOwner` 说明替谁；**不在名册**的 id 具名拒（先 `vibe_v5_hire`）。',
         '  · 读别人的板：`vibe_v5_read_library {member,track}`；进展写 `progress`，走不通的路写 `rejected`（别把证伪当进展）。',
-        '  · **临时工不进成果库**：命题/方法/子问题/成果卡面对临时工**具名拒**，产出由指派者归档；临时工的过程记录写在回执的 `progress` 字段里（或自己的工作目录）。',
+        '  · **临时工不进成果库**：命题/方法/子问题/成果卡面对临时工**具名拒**，产出由指派者归档；临时工的过程记录写在回执的 `progress` 字段里（或写到自己的文件面 `Members/<你>/…`）。',
       ].join('\n'),
     },
   },
