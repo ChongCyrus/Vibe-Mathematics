@@ -723,8 +723,12 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     // them and claims nothing about what is already in the prompt.
     texts: {
       shared: [
+        // RUN 147 / audit16 G24: the sentence used to name `action: "minutes"`, an action this face does NOT have
+        // (measured: unknown action: minutes, VMU_INVALID_ARGUMENT). The reads that exist are `status` (present / spoke /
+        // still being asked) and `summary` (materials, motions, votes, procedure); neither returns verbatim speech, so
+        // the sentence no longer promises verbatim text either.
         '### 其他成员本次会议已发表的意见',
-        '（别人的发言**不在你的提示词里**：它们写在会议纪要与群聊中。可用 `vibe_vmu_meeting { action: "minutes", id: "<会议 id>" }` 读纪要与逐字发言，或用 `action: "status"` 看谁已发言、谁还被问过。请据此补充、附议或反驳。）',
+        '（别人的发言**不在你的提示词里**：原话写在会议纪要与群聊中，本面没有逐字发言的读数。可用 `vibe_vmu_meeting { action: "status", id: "<会议 id>" }` 看谁在场、谁已发言、谁还被问过；共享材料／动议／表决用 `action: "summary"`。请据此补充、附议或反驳。）',
       ].join('\n'),
     },
   },

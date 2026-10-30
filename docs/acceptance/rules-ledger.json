@@ -336,7 +336,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_start"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::你是院士席：`convene_meeting` 可直接召集",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::你是院士席：**召集开会走工具面**",
         "vibe-math-vmu/packs/v5r/prompts/v5r-charter.js::本所的领头人是"
       ],
       "live": [

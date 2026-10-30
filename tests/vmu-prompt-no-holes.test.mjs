@@ -61,7 +61,13 @@ const holesIn = (text) => [...String(text).matchAll(HOLES)].map((m) => m[1])
   const othersText = String((others && others.text) || '')
   ok(!othersText.includes('statusBlock'), 'the meeting-others section no longer asks for the unsupplied statusBlock')
   ok(!/框架已转发/.test(othersText), 'and it no longer CLAIMS the opinions were forwarded', othersText.slice(0, 120))
-  ok(/minutes/.test(othersText) && /action/.test(othersText), 'it points at the read that actually returns the opinions')
+  // RUN 147 / audit16 G24: the section used to point at `action: "minutes"`, an action this face does not have
+  // (measured: unknown action: minutes). The reads that DO exist are `status` and `summary` — and neither returns the
+  // verbatim speech, so the section points at those two, says so, and must not resurrect the dead action.
+  ok(/action/.test(othersText) && /"status"/.test(othersText) && /"summary"/.test(othersText),
+    'it points at the reads that actually exist (status / summary)', othersText.slice(0, 240))
+  ok(!/action\s*[:=]\s*"?minutes/.test(othersText), 'it no longer points at the minutes action the face does not have', othersText.slice(0, 240))
+  ok(/没有逐字发言/.test(othersText), 'it says plainly that there is no verbatim-speech read here', othersText.slice(0, 240))
 }
 
 // ── 2. END TO END FOR EVERY SEAT: a REAL kernel turn hands a seated member a prompt with NO hole and a NAMED seat ──

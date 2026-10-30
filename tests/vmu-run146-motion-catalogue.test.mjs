@@ -11,8 +11,9 @@
  *   never happened; the only working payload (`{meeting,member,text}`) was taught nowhere.
  *
  * THE FIX THIS SUITE PINS (sentences changed, mechanism untouched):
- *   - the four rows now teach the tool `vibe_v5_motion { meeting, kind, text }` and the explicit `{meeting,member,text}`
- *     payload, and say plainly that a reply carries NO meeting id (a meeting round is not enough);
+ *   - the four rows now teach the tool `vibe_v5_motion { meeting, member, kind, text }` (run 147: `member` is REQUIRED
+ *     by the tool, so the row must print it) and the explicit `{meeting,member,text}` payload, and say plainly that a
+ *     reply carries NO meeting id (a meeting round is not enough);
  *   - the skip note now reads "this reply carries no meeting" and names both live routes;
  *   - G17: `v5r-core.js` no longer calls the real field `record` a 「自造字段」.
  *
@@ -92,8 +93,10 @@ try {
       const note = r ? String(r.note) : ''
       ok(!note.includes('会议轮投递为动议'), '§0b ' + field + ' 不再写「会议轮投递为动议」', note.slice(0, 120))
       ok(note.includes('vibe_v5_motion'), '§0c ' + field + ' 点名工具 vibe_v5_motion', note.slice(0, 160))
-      ok(note.includes('meeting, member, text') || note.includes('meeting, kind, text'),
-        '§0d ' + field + ' 点名显式载荷或工具形参', note.slice(0, 160))
+      // RUN 147 / audit16 G22: the tool REFUSES a payload without `member`, so the rows now teach the four-parameter
+      // shape. Accepting only the old three-parameter text here is what let the taught shape drift from the tool.
+      ok(note.includes('meeting, member, kind, text') || note.includes('{meeting, member, text'),
+        '§0d ' + field + ' 点名显式载荷或工具形参（四参形）', note.slice(0, 160))
     }
     ok(fullText.includes('回执不带会议 id'), '§0e full 目录把「回执不带会议 id」写在行里')
     ok(!/会议轮投递为动议/.test(fullText), '§0f full 整目录里旧承诺 0 命中')

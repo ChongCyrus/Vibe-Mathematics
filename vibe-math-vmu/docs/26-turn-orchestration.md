@@ -2393,3 +2393,21 @@ Rules that came out of this round:
   是预算：六个整行把成员提示词推到 21 323，一行边界后 19 894（T99 上限 20 000）。
 - 教训：**「某字段有属主」与「回执能送达它」是两个事实**；测试里拿一个载不动的字段去测派发器（`task_update` 的 stale-revision 反例）
   等于把缺陷写进契约——反例要选真能派发的字段（`task_create`）。
+## ROUND 147 (G7 audit 16)
+
+- **「字段的属主面」不等于「字段能执行政策」**：`convene_meeting` 回执字段派发到 meetings 面的 `open` 调用
+  （`vmu.meetings.open()`），而这条调用不带
+  actor／chair，落的是内核的**无主席召集**路（`kernel/meetings.js:2793-2803` 自述 "A CHAIRLESS CONVENE IS NOT THIS
+  RAIL'S BUSINESS"：它只拒「装主席却不把那位主席写成 actor」）。『只有院士席能召集』这条政策在 **pack 工具面**
+  `vibe_v5_meeting { action: "convene" }`（`requireChairSeat`）。审计实测：常驻研究员与临时工的回执字段**真的开出了会**
+  （`openedBy: null`），而目录行、三条席位注、compact 行三处都说会被具名拒。修法＝给该字段加 `noReplyShape`
+  （kernel `NO_REPLY_CONVENE_SHAPE`）+ 目录 `notApplicable: true` + route，并把四处文案改成「这条字段走的是无主席召集，
+  要按席位政策召集请用工具」。
+- **席位注也是教学面**：`run146` 只 grep 目录行，漏了 `REPLY_SEAT_NOTES` 里同一句旧承诺（temp 注还写着「会议轮投递」）。
+  pin 必须逐席位断言，并对**装配后的提示词**逐席断言，而不是只扫源文件里的行。
+- **教工具要照抄工具形参**：`vibe_v5_motion` 的 `member` 是必填（缺则 `VMU_INVALID_ARGUMENT "motion needs the acting
+  member id"`），四行动议却教三参形。四行改成 `{ meeting, member, kind, text }`。
+- **「会议轮用」不等于「会投递」**：`input` 行必须写明需要**已绑定会议**（否则 `no-meeting-bound` 跳过、原句留 notes；
+  对外说话用 `vibe_v5_say`）。
+- **不许教动作表里没有的 action**：`vibe_vmu_meeting` 没有 `minutes`（实测 `unknown action: minutes`），`summary` 也不带
+  逐字发言字段；`v5r-blocks-b.js` 的 shared 段与 `packs/v5r/seat-faces.js` 的工具注都改成 `status`／`summary` 两读的真话。

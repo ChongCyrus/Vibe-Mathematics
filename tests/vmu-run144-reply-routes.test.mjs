@@ -156,7 +156,10 @@ try {
     const pm = String(row('propose_meeting').note || '')
     // AUDIT15 C-1 (this round): the old promise 「只在会议轮投递」 was FALSE — a meeting round is not enough, because
     // a reply carries no meeting id. The truth is: it cannot be delivered from the reply at all; use the tool.
-    ok(!row('propose_meeting').notApplicable && pm.includes('回执不带会议 id') && pm.includes('vibe_vmu_meeting') && pm.includes('vibe_v5_motion'),
+    // AUDIT16 C-1 (run 147): the CONVENE route it names must be `vibe_v5_meeting` — the pack tool is the face that
+    // enforces "only the chair convenes" (`vibe_vmu_meeting` is the framework face, which does not police seats) — so
+    // the assertion follows the mechanism instead of the old name.
+    ok(!row('propose_meeting').notApplicable && pm.includes('回执不带会议 id') && pm.includes('vibe_v5_meeting') && pm.includes('vibe_v5_motion'),
       '§4d. propose_meeting 保留可用但说清「回执不带会议 id」并给出召集工具与动议工具', pm)
     ok(!pm.includes('只在会议轮投递'),
       '§4e. ★ 旧的「只在会议轮投递」承诺已删（会议轮也不够：回执不带会议 id）', pm)

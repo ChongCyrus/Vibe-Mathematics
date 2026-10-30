@@ -64,7 +64,7 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'record', face: 'vmu.library', op: 'record', common: true,
     note: '研究日志一行：{"track":"progress","text":"…"} 追加到 Members/<你>/Progress/<track>.md（vmu.library.record；track 必须是 vmu.records.tracks 之一）；成果卡请用工具 vibe_v5_record_proposition / _method / _subproblem' }),
   Object.freeze({ field: 'propose_verify', face: 'vmu.meetings', op: 'motion',
-    note: '提议验证 {target,kind,reason}：**回执不带会议 id，所以这条从回执里投不出去**（会议轮也一样）——会议轮请用工具 `vibe_v5_motion { meeting, kind, text }`（`v5r-blocks-a.js` 的院士手册也这么教）；若一定要写在回执里，payload 必须自带 `{meeting, member, text}`。否则被具名跳过 no-meeting-bound、原句留在回执 notes、轮次照常完成；是否入队由院士席决定' }),
+    note: '提议验证 {target,kind,reason}：**回执不带会议 id，所以这条从回执里投不出去**（会议轮也一样）——会议轮请用工具 `vibe_v5_motion { meeting, member, kind, text }`（`member` 是行动席位，必填；`v5r-blocks-a.js` 的院士手册也这么教）；若一定要写在回执里，payload 必须自带 `{meeting, member, text}`。否则被具名跳过 no-meeting-bound、原句留在回执 notes、轮次照常完成；是否入队由院士席决定' }),
   Object.freeze({ field: 'verdict', face: 'vmu.ballotbox', op: 'cast',
     note: '{target,verdict ∈ [0,1],reason}：只有 1 或 0 算表决，中间值是弃权/存疑；无表决权的席位填了也不计票' }),
   Object.freeze({ field: 'task_create', face: 'vmu.tasks', op: 'create', common: true,
@@ -72,9 +72,9 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'task_update', face: 'vmu.tasks', op: 'transition', common: true, notApplicable: true,
     note: '不要写进回执：tasks.transition(id,to) 是位置参数，回执只能带一个值。用工具 vibe_v5_task_update { task_id, expected_revision, action }（action: claim|reassign|assign|transition|complete|reopen|set_dependencies；edit/delete/release 无对应操作，具名拒）', route: 'vibe_v5_task_update { task_id, expected_revision, action }' }),
   Object.freeze({ field: 'proposal', face: 'vmu.meetings', op: 'motion',
-    note: '动议；与 propose_verify 同一个属主面。**回执不带会议 id**：请用工具 `vibe_v5_motion { meeting, kind, text }`，或在 payload 里自带 `{meeting, member, text}`；直接写对象会被具名跳过 no-meeting-bound（原句留 notes）' }),
+    note: '动议；与 propose_verify 同一个属主面。**回执不带会议 id**：请用工具 `vibe_v5_motion { meeting, member, kind, text }`（`member` 必填），或在 payload 里自带 `{meeting, member, text}`；直接写对象会被具名跳过 no-meeting-bound（原句留 notes）' }),
   Object.freeze({ field: 'motion', face: 'vmu.meetings', op: 'motion',
-    note: '动议；与 propose_verify 同一个属主面。**回执不带会议 id**：用工具 `vibe_v5_motion { meeting, kind, text }`，或 payload 自带 `{meeting, member, text}`；否则被具名跳过 no-meeting-bound（原句留 notes）' }),
+    note: '动议；与 propose_verify 同一个属主面。**回执不带会议 id**：用工具 `vibe_v5_motion { meeting, member, kind, text }`（`member` 必填），或 payload 自带 `{meeting, member, text}`；否则被具名跳过 no-meeting-bound（原句留 notes）' }),
   Object.freeze({ field: 'formal', face: 'vmu.formal', op: 'check',
     note: '形式化结论 {decision,file,note}，形状见下面的 formal 段（仅当形式化开启时出现）' }),
   Object.freeze({ field: 'lean_archive', face: 'vmu.mathjobs', op: 'submit',
@@ -87,11 +87,11 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'meeting_invite', face: 'vmu.meetings', op: 'attend', notApplicable: true,
     note: '不要把它写进回执（写成 "meeting_invite": {"member": "t-1", "why": "…"} 会被具名拒：回执不带会议 id；旧映射甚至会把这个字段当成自己签到）；邀请请用工具面 vibe_vmu_meeting { action: "invite", id: "<会议 id>", member: "t-1" }' }),
   Object.freeze({ field: 'input', face: 'vmu.meetings', op: 'speak',
-    note: '会议/辩论的发言正文（会议轮用；也可直接用 say）' }),
+    note: '发言正文（也可直接用 say）：**要本轮已绑定一个会议才会投递**（成员回执通常不绑会议），否则被具名跳过 no-meeting-bound、原句留在回执 notes、轮次照常完成；要对全所说话或私信请用工具 vibe_v5_say' }),
   Object.freeze({ field: 'propose_meeting', face: 'vmu.meetings', op: 'motion',
-    note: '提议开会 {agenda,kind?,target?}：**回执不带会议 id，这条从回执里投不出去**。要真的召集用工具 `vibe_vmu_meeting { action: "open", … }`（只有院士席能召集）；要在已开的会里提动议用 `vibe_v5_motion { meeting, kind, text }`；写在回执里会被具名跳过 no-meeting-bound（原句留在回执 notes，轮次照常完成）' }),
-  Object.freeze({ field: 'convene_meeting', face: 'vmu.meetings', op: 'open',
-    note: '直接召集 {agenda,…}：只有院士席能召集（conveneRequiresChair），别的席位调用会被具名拒' }),
+    note: '提议开会 {agenda,kind?,target?}：**回执不带会议 id，这条从回执里投不出去**。要真的召集用工具 `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`（那条路才判席位政策：只有院士席能召集）；要在已开的会里提动议用 `vibe_v5_motion { meeting, member, kind, text }`；写在回执里会被具名跳过 no-meeting-bound（原句留在回执 notes，轮次照常完成）' }),
+  Object.freeze({ field: 'convene_meeting', face: 'vmu.meetings', op: 'open', notApplicable: true,
+    note: '不要写进回执：这个字段不带 actor/chair，内核 `meetings.open` 走的是**无主席召集**——那条路故意不管席位（它只拒「装主席却不把那位主席写成 actor」），所以常驻研究员／临时工写了真会开出一个会，而『只有院士席能召集』这条政策根本不在那条路上。召集请用工具 `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`，属主面在那里才具名拒非院士席（`VMU_NOT_PERMITTED`）', route: 'vibe_v5_meeting { action: "convene", member: "<你的 id>" }' }),
   Object.freeze({ field: 'task_claim', face: 'vmu.tasks', op: 'transition', common: true, notApplicable: true,
     note: '不要写进回执：它会被当成 transition 的第一个位置参数。用工具 vibe_v5_task_update { task_id, expected_revision, action: "claim" }（依赖未完成会被具名拒）', route: 'vibe_v5_task_update { …, action: "claim" }' }),
   Object.freeze({ field: 'task_done', face: 'vmu.tasks', op: 'transition', common: true, notApplicable: true,
@@ -128,9 +128,9 @@ export const REPLY_FIELD_NAMES = Object.freeze(REPLY_FIELD_ROWS.map((r) => r.fie
  * refuses, so the sentence stays a statement about the mechanism instead of an invented rule.
  */
 export const REPLY_SEAT_NOTES = Object.freeze({
-  chair: '你是院士席：`convene_meeting` 可直接召集；**分派与督办走工具面** `vibe_v5_assign`／`vibe_v5_nudge`（回执里的 `assign`／`nudge` 没有可用形状，写了会被具名拒），分派的是工作、不是结论；`verdict` 与其他人一票等重。',
-  member: '你是常驻研究员：`convene_meeting` 只有院士席能召集（conveneRequiresChair）；分派/督办用工具面 `vibe_v5_assign`／`vibe_v5_nudge`，权限由属主面判——被拒会具名说明，不要反复试。',
-  temp: '你是临时成员：`verdict`／`vote_solved` 填了也不计票（没有表决权）；`convene_meeting`／`assign`／`nudge` 会被属主面具名拒；`propose_verify`／`propose_meeting` 你可以提议（会议轮投递），是否采纳由院士席定。',
+  chair: '你是院士席：**召集开会走工具面** `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`（回执里的 `convene_meeting` 不带 actor，落的是内核的无主席召集，那里不判席位政策）；**分派与督办走工具面** `vibe_v5_assign`／`vibe_v5_nudge`（回执里的 `assign`／`nudge` 没有可用形状，写了会被具名拒），分派的是工作、不是结论；`verdict` 与其他人一票等重。',
+  member: '你是常驻研究员：**召集开会走工具面** `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`——回执里的 `convene_meeting` 不带 actor，落的是内核的无主席召集（内核 `conveneRequiresChair` 只拒「装主席却不署名」），那条路不判席位政策；工具面才会具名拒非院士席。分派/督办用工具面 `vibe_v5_assign`／`vibe_v5_nudge`，权限由属主面判——被拒会具名说明，不要反复试。',
+  temp: '你是临时成员：`verdict`／`vote_solved` 填了也不计票（没有表决权）；`assign`／`nudge` 会被属主面具名拒；`propose_verify`／`propose_meeting` 写在回执里会被具名跳过（回执不带会议 id，会议轮也一样）——要提议就在会议里用工具 `vibe_v5_motion { meeting, member, kind, text }`，是否采纳由院士席定；`convene_meeting` 也别写进回执（那条路不判席位，写了真会开会），要开会走工具 `vibe_v5_meeting { action: "convene", member: "<你的 id>" }`。',
 })
 
 /** The smallest legal reply: the two fields every seat may always write, and nothing shape-sensitive. */
@@ -197,7 +197,7 @@ export function replyCatalogueLines({ mode = 'compact', seat = null } = {}) {
       refusedRows.map((r) => '`' + r.field + '`→' + escape(r.route || '用工具面')).join('；') + '。')
   }
   lines.push('· 键只能是上表名字（自造键按 `vmu.turn.unknownReplyFieldMode`：默认忽略，strict 则 `VMU_TURN_UNKNOWN_FIELD`）；被要求的字段以本轮指令为准。')
-  lines.push('· 权限由属主面各自判（不是目录决定）：缺权限会被具名拒（临时工 verdict／vote_solved 不計票；convene 只有院士席能召集）。一次回复至少一个字段。')
+  lines.push('· 权限由属主面各自判（不是目录决定）：缺权限会被具名拒（临时工 verdict／vote_solved 不計票）。一次回复至少一个字段。')
   if (seat && REPLY_SEAT_NOTES[seat]) lines.push('· ' + REPLY_SEAT_NOTES[seat])
   // ★ The minimal shape NAMES `solved`, so the same line carries what it means — a catalogue that prints a field
   // without its semantics is what let "solved" be read as the counted closure vote (the closure recipe's whole point).

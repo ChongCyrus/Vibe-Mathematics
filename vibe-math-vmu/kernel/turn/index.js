@@ -73,6 +73,19 @@ const NO_REJECT_ASSIGN_SHAPE = Object.freeze({
   hint: 'file the reason where the ledger keeps it: the tool face vibe_v5_record_progress (track "obstacles", with member) records why the assignment is contested, and raise it in a meeting round through vibe_v5_say — the task is executed regardless, that is the semantics of an objection',
 })
 
+// ★★★ RUN 147 / audit16 C-1 (the convene side door). A reply field carries ONE value and no actor: `convene_meeting`
+// dispatches the meetings face's `open` with no chair and no actor, which is the kernel's CHAIRLESS convene path — and that path
+// deliberately does not police seats ("A CHAIRLESS CONVENE IS NOT THIS RAIL'S BUSINESS", kernel/meetings.js:2793-2803: it
+// only refuses a convene that INSTALLS a chair without naming that chair as its actor). The seat policy (only the chair
+// convenes) lives on the tool face (`vibe_v5_meeting { action: "convene" }`, pack requireChairSeat), so a member or temp
+// writing this field really opened a meeting (`openedBy:null`) while the catalogue claimed it would be refused by name.
+// The field cannot reach the policy-enforcing route, so it is refused BY NAME and the hint names the tool that can.
+const NO_REPLY_CONVENE_SHAPE = Object.freeze({
+  code: 'VMU_TURN_FIELD_NOT_APPLICABLE',
+  message: 'a reply carries no actor and no chair, so this field lands on the kernel\'s CHAIRLESS convene path — the one path that deliberately does not police seats (it only refuses a convene that INSTALLS a chair without naming that chair as its actor); a member or temp writing it really opens a meeting, and the policy this field used to promise is not on that path',
+  hint: 'convene through the tool face, which is where the seat policy is enforced: vibe_v5_meeting { action: "convene", member: "<your id>", … } (a non-chair seat is refused BY NAME there, VMU_NOT_PERMITTED)',
+})
+
 export const FIELD_OWNERS = Object.freeze({
   say: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
   progress: Object.freeze({ face: 'vmu.records', op: 'put' }),
@@ -105,7 +118,7 @@ export const FIELD_OWNERS = Object.freeze({
   meeting_invite: Object.freeze({ face: 'vmu.meetings', op: 'attend', noReplyShape: NO_REPLY_MEETING_SHAPE }),
   input: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
   propose_meeting: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
-  convene_meeting: Object.freeze({ face: 'vmu.meetings', op: 'open' }),
+  convene_meeting: Object.freeze({ face: 'vmu.meetings', op: 'open', noReplyShape: NO_REPLY_CONVENE_SHAPE }),
   task_claim: Object.freeze({ face: 'vmu.tasks', op: 'transition', noReplyShape: POSITIONAL_REPLY_SHAPE('vmu.tasks.transition(id, to)', 'use the tool face vibe_v5_task_update { task_id, expected_revision, action: "claim" } — blocked_by dependencies are refused there by name') }),
   task_done: Object.freeze({ face: 'vmu.tasks', op: 'transition', noReplyShape: POSITIONAL_REPLY_SHAPE('vmu.tasks.transition(id, to)', 'use the tool face vibe_v5_task_update { task_id, expected_revision, action: "complete" } — from `assigned` you must go through `doing` first (the legal table is open→assigned|doing, assigned→doing|open, doing→done|assigned)') }),
   assign: Object.freeze({ face: 'vmu.tasks', op: 'assign', noReplyShape: POSITIONAL_REPLY_SHAPE('vmu.tasks.assign(id, who)', 'use the tool face vibe_v5_assign { to, subject|task_id, why, acceptance } — why and acceptance are REQUIRED and are mailed to the assignee') }),
