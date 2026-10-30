@@ -5,7 +5,7 @@
 // NEVER hard-codes “Chinese first”: it tries the order the caller/pack settings declares, and reports exactly which
 // engines it tried. Absent a spawn seam the face is NOT constructed (kernel/index.js), and a direct call refuses by name.
 import { writeFile, readFile, access, mkdir, constants as FS } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
 export const LATEX_CODES = Object.freeze({
   unavailable: 'VMU_EXTERNAL_UNAVAILABLE',
@@ -84,13 +84,27 @@ export function createLatexFace(opts = {}) {
     const file = typeof args.file === 'string' && args.file.trim() !== '' ? args.file : null
     if (!source && !file) throw refuse(LATEX_CODES.badRequest, 'latex.check needs { file } or { source }', 'pass the .tex path or the source text')
     if (source && file) throw refuse(LATEX_CODES.badRequest, 'latex.check takes file OR source, not both', 'choose one carrier')
-    const outDir = typeof args.outDir === 'string' && args.outDir.trim() !== '' ? args.outDir : null
+    let outDir = typeof args.outDir === 'string' && args.outDir.trim() !== '' ? args.outDir : null
     if (!outDir) throw refuse(LATEX_CODES.badRequest, 'latex.check needs { outDir } (the kernel never guesses a path)', 'pass the directory the caller owns')
+    // ★★ RUN 153 (real machine, run 3 / agent report G2 — the LaTeX root cause): the caller's outDir arrived RELATIVE and
+    // was handed to the engine through `join`, so on Windows xelatex received `Paper\paper-p5\paper-p5.tex`. TeX reads a
+    // backslash as the start of a control sequence, so it reported `! Undefined control sequence.` for `<*> Paper\paper`
+    // and produced NO pdf — while the same file compiled to a 3-page PDF the moment the path was written with forward
+    // slashes. One form is agreed on by every shell: an ABSOLUTE path with forward slashes, resolved here, once. The
+    // compile therefore no longer depends on the caller's cwd either (it used to, and the cwd was the relative path).
+    // Only a RELATIVE path is resolved: an absolute path is the caller's own namespace and is left verbatim (a
+    // POSIX-looking absolute path stays byte-identical, which is what the phase-7 contract asserts). A Windows
+    // absolute path is the one exception: a drive-letter path is rewritten with forward slashes, the form xelatex
+    // reads as a path instead of reading `\paper` as a control sequence.
+    if (!isAbsolute(outDir)) outDir = resolve(outDir).replace(/\\/g, '/')
+    else if (/^[A-Za-z]:/.test(outDir)) outDir = outDir.replace(/\\/g, '/')
     const engines = Array.isArray(args.engineOrder) && args.engineOrder.length ? args.engineOrder.map(String) : engineOrder()
     const ms = timeoutMs(args.timeoutMs)
     let texFile = file
     if (source) {
-      texFile = join(outDir, typeof args.sourceName === 'string' && args.sourceName.trim() ? args.sourceName.trim() : 'main.tex')
+      // ★ RUN 153 (G2): `join` re-applies the PLATFORM separator, so a resolved `D:/…/Paper/p5` became `D:\\…\\p5\\p5.tex`
+      // again — the very shape that made TeX read `\paper` as a control sequence. The separator is normalized on the way out.
+      texFile = join(outDir, typeof args.sourceName === 'string' && args.sourceName.trim() ? args.sourceName.trim() : 'main.tex').replace(/\\/g, '/')
       try { await fs.writeText(texFile, source) } catch (e) {
         throw refuse(LATEX_CODES.noOutput, 'the output directory is not writable: ' + String((e && e.message) || e), 'give a writable outDir', { outDir })
       }
@@ -131,7 +145,9 @@ export function createLatexFace(opts = {}) {
         return { ok: false, code: LATEX_CODES.failed, engine, tried, argv, elapsedMs,
           stderr: tail(res.stderr), stdout: tail(res.stdout, 400), message: 'the LaTeX compile exited ' + String(res.exitCode) }
       }
-      const pdfPath = join(outDir, 'main.pdf')
+      // ★ RUN 153 (G2's second half): the PDF is named after the .tex that produced it. `main.tex` was assumed, so a
+      // caller passing `sourceName:"p5.tex"` got "exit 0 but no PDF at …/main.pdf" even on a successful compile.
+      const pdfPath = join(outDir, (basename(texFile).replace(/\.tex$/i, '') || 'main') + '.pdf')
       let exists = false
       try { exists = await fs.exists(pdfPath) } catch { exists = false }
       if (!exists) {

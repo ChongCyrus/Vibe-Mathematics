@@ -322,7 +322,10 @@ export function createPaper({ clock = () => Date.now(), log = () => {}, settings
         : 'cannot finalise ' + p.id + ': the office-consultation wait expired (' + gate.timeoutMs + 'ms) and vmu.paper.officeConsultOnTimeout=' + gate.onTimeout + (gate.heldOnTimeout ? ' ⇒ it stays on hold' : ' ⇒ the request was cleared, ask again'))
     throw refuse('VMU_OFFICE_CONSULT_REQUIRED', msg,
       'consult first: consult({ paperId: "' + p.id + '", kind: "message"|"meeting", by: "<who consulted>", ref: "<pointer>" }) - or make the caller an exempt role in vmu.paper.officeConsultExemptRoles, or switch the gate off with vmu.paper.officeConsult=off',
-      Object.assign({}, detail, { enforced: gate.enforced, trace }))
+      // ★★ RUN 153 (G9): the answer call needs a `target`, and this refusal did not name the paper — the real run's
+      // office answered, hit `action "consult" addresses ONE paper, and no target was given`, and had to retry blind.
+      // The refusal now carries the same key the answer takes (`target`), so the repair is a copy.
+      Object.assign({}, detail, { enforced: gate.enforced, trace, target: p.id, paperId: p.id }))
   }
 
   return {

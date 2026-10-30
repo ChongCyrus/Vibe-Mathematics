@@ -166,7 +166,11 @@ export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } 
     if (target && cardId && target === cardId) return routed('verified-row', { evidenceForm: 'verified-row' })
   }
   if (ev.debate && String(ev.debate.mode) === 'unanimous' && asP(ev.debate.value) === 1) {
-    const target = ev.debate.subject !== undefined ? String(ev.debate.subject) : null
+    // ★ RUN 153 (G1's neighbour): `debateEvidenceOf` reports an ABSENT subject as `null`, and `String(null)` is the
+    // truthy string "null" — so a settlement that named no subject compared "null" against the card id and fell through
+    // to "p=1 needs a verdict source", refusing a ruling that plainly WAS the verdict. Absent means "about this card".
+    const target = ev.debate.subject === undefined || ev.debate.subject === null || String(ev.debate.subject).trim() === ''
+      ? null : String(ev.debate.subject)
     if (!target || !cardId || target === cardId) return routed('debate', { evidenceForm: 'debate-unanimous', ballotId: ev.debate.ballotId || null })
   }
   if (ev.literature && typeof ev.literature.reference === 'string' && ev.literature.reference.trim() !== '') {

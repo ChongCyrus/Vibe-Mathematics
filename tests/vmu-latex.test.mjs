@@ -47,10 +47,14 @@ console.log('=== 2. engine probing: unavailable engines are tried and NAMED, a u
   ok(r.tried.some((t) => t.engine === 'pdflatex' && t.available === false && t.exitCode === 127),
     '★ 反②前置：不可用引擎被列出（phase/exitCode）', r.tried)
   const compile = calls.find((c) => c.args && c.args[0] === '-interaction=nonstopmode')
+  // ★★ RUN 153 (G2): the .tex argument is normalized to FORWARD slashes (on Windows `join` produced `\work\paper\main.tex`
+  // and TeX read `\paper` as a control sequence — the very failure the real run hit). The path is compared with separators
+  // folded, so the assertion pins the CONTRACT (one absolute, forward-slash .tex path) and not the platform's separator.
+  const texArg = (compile && compile.args || []).find((a) => typeof a === 'string' && /\bmain\.tex$/.test(a))
   ok(compile && compile.command === 'xelatex' && compile.args.includes('-halt-on-error') &&
-    compile.args.includes('-output-directory=/work/paper') && compile.args.includes(join('/work/paper', 'main.tex')) &&
+    compile.args.includes('-output-directory=/work/paper') && texArg && texArg.replace(/\\/g, '/') === '/work/paper/main.tex' &&
     compile.cwd === '/work/paper',
-    '★ 真的传了正确 argv：-interaction=nonstopmode / -halt-on-error / -output-directory=<outDir> / tex 文件 / cwd=outDir', compile)
+    '★ 真的传了正确 argv：-interaction=nonstopmode / -halt-on-error / -output-directory=<outDir> / tex 文件 / cwd=outDir（.tex 参数为正斜杠）', compile)
 }
 
 console.log('=== 3. all engines unavailable ⇒ NAMED code + tried list ===')

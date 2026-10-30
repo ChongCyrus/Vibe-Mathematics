@@ -11657,3 +11657,106 @@ F1/F3/F4/F8 的修复必须**在真机上再走一遍**才算数：本轮只证�
 
 其余未修的记账项（本轮的 F6 除外）留在 §252.5 的 OPEN 清单里；本轮新增两笔债务：论文定稿的「所办代定稿」仍是具名
 缺口（已在回执里如实写明，未实现），`fidelity_conclude` 在「本部署没有 Lean 面」时仍只能如实拒（没有载体）。
+
+## §254 第三次真机跑（续跑）把十个「读不懂/答不上」摆上台面：L53 写回毁卡、LaTeX 路径、跨进程作业、汇总 id（RUN 153）
+
+### 254.1 触发与读数
+
+真机 run 3（同一所的第二次续跑；tarball `0d07492f`，即 RUN 152 的修法上机）`DRIVE exit=0`、`durationSec 698`、
+`tokenTotal 9 491 365 / 24 000 000`、`transcriptEvents 472`、根会话 `toolCalls 98`、机器读数
+`NO_FENCE=0 · UNKNOWN_FIELD=0 · FIELD_NOT_APPLICABLE=0 · BAD_JSON=0`、`slv-inspect` **0 RED**；转录
+`full-1031-032027.jsonl`（5 145 868 B / 10 704 行），日志戳 `20261031-033248`，清理 `clone_gone=True`。
+
+上一轮修法被真机证实：论文 `p5` 用 `editor:"academician"` 建、三轮互审、**定稿成功**（`finalized:true`，`round:3`，
+且经 `consult-p5-1` 由所办答复放行）；`final{decision:"revise"}` **真能把论文打回 writing**；`rec-12` 的 p=1 写回成功、
+`rec-26` 进 Verified 轨。代理按简报交出 `SIM-REPORT2.md`（20 015 B / 243 行）与 `FEEDBACK2.md`（26 075 B / 193 行）：
+**十条 G 级问题 + 四条 C 段问答 + 「仍走不通」七项**。
+
+### 254.2 十条反馈逐条判定
+
+- **G1（真机制缺陷，本组最重，并且是我上一轮 F1 修法引入的）** L53 的裁定写回走的是**普通卡片写**——`paper` 侧每次
+  从参数**全量重建 body**——所以「只改 p」实际是「整条替换」：`rec-12` 的 `title` 塌成 `"rec-12"`、`bytes` 799→544、
+  `proofRef`/`proofState`/`leanJob`/`leanConformance` 全丢，`debate_ruling` 也没进正文。更糟的是**锁判据在正文里**
+  （`proofState:complete`），一丢锁就没了 ⇒ 下一次普通写入 `ok:true` 把已完成卡改成 `p:0.5`。真机回执：
+  结算 `{"ok":true,"recordId":"rec-12","settled":true,"p1Evidence":"verified-row",…}`，结算后
+  `{"ok":true,…,"settled":false}`；`grep debate_ruling audit/2026-10-30.jsonl` → No matches。
+- **G2（真机制缺陷）** LaTeX 面把 **Windows 反斜杠相对路径**交给 xelatex（`Paper\paper-p5\paper-p5.tex`）：TeX 把
+  `\paper` 当控制序列 ⇒ `! Undefined control sequence.` + `No pages of output.`。代理用**正斜杠**手调同一份文件
+  ⇒ exit 0、`Output written on paper-p5.pdf (3 pages).`、75 897 B。另叠加两点：面**不在工作区根执行**却传相对路径；
+  `main.pdf` 是硬编码的产物名（`p5.tex` 的产物是 `p5.pdf`，即使成功也会被判 noOutput）。
+- **G3（真机制缺陷）** `vibe_v5_lean_job {jobId:"lean-6"}` ⇒ `VMU_LEAN_NOT_FOUND`，而 `Formal/Jobs/lean-6.json` 完整
+  （`state:"settled"`、`passed:true`、`exitCode:0`）。根因：`status()` 只查本进程表 + 镜像**已水合的**内存表，而镜像是
+  `list()` 才水合；工具说明却自称「上一进程的作业可按 id 读（镜像 hydrate）」。
+- **G4（真机制缺陷，缺一个身份）** `verdict_final` 不铸「本次汇总」的 id，回执只给每张成员裁决卡，于是 promote 只能把
+  **一张成员卡**当 warrant（真机 `warrant:{id:"ruling-m-deb-1-rec-12-r-1-ec5c27eb",kind:"debate-unanimous"}`），
+  两票一致的汇总结论被记成一个人的裁决。
+- **G5（教学/回执缺陷）** verified 覆盖门要求标题**逐字**（去掉 `已验证｜` 前缀后的完整标题），回执却不给可粘贴的行；
+  真机里代理手工剥前缀、剥错一次，多花一整轮 `revise`。
+- **G6（机制缺陷，寻址语法没写出来）** 证据指针只接受 `Members/<成员>/<轨>/<id>.md`，成员写卡上的 `rec-12` 被判
+  `not-a-member-file-pointer`——而附录其实**按 id 索引**。
+- **G7（教学缺陷）** 自动填充的第 1 节把**全所总目标**写成本篇的「研究对象（原问题）」：`n + n = 2n` 的论文引言里出现
+  「确立并证明『前 n 个奇数之和的封闭形式 n²』」。字面真、语义误导。
+- **G8（设计已知、但回执没说）** 计算面 `cli` 引擎按契约把归档脚本**追加**到 argv（`"[command, ...cli.argv, <archived script>]"`），
+  代理用它跑 xelatex ⇒ 两个输入；回执只说 `cliScriptAppended:true`，没有一个字说「这可能是错的形状」。
+- **G9（回执缺陷）** `VMU_OFFICE_CONSULT_REQUIRED` 不带 `target`，答复要先撞一次 `no target was given`。
+- **G10（回执缺陷）** `final` 的 `pdf` 失败块只有 `ok/code/message/faceCode/triedEngines`，编译器的话、`argv`、
+  尾部与来源全缺（单独 `compile` 才有）⇒ 同一件事两个门两个形状。
+
+**C 段四问**：C.1 `editor:"office"` 仍被具名缺口挡住（**未改**，本轮仍在缺口里如实写明）；C.2 裁决均值 0.995 进不了
+Verified（规则使然，本轮只把 wording 记下，不改门）；C.3 并发写被具名拒时需要「读回再重放」的具体调用（`rev` 拒句
+已给 `status` 读回指引，本轮未再加脚本）；C.4 指向 G6/G8/G9（已修）。
+
+### 254.3 修法（每处都在自己的站点，不是换句话）
+
+| 缺陷 | 站点 | 修法 |
+| --- | --- | --- |
+| G1 | `vibe-math-vmu/packs/v5r/tools.js` | 新增 `settleRulingOnCard()`：**只重写 `- p：` 行 + 一行 `- debateRuling：{…}`**，其余行（含 `proofState`）逐字保留；第二次结算**替换**旧裁决行而不是堆两行；`gatedCardHandler` 在结算时先走它，只有「不是结算」才落到 `inner(args, ctx)`。回执 `settlement:{patch:true,wrote:['p','debateRuling'],preserved:'…rule-L14 lock still bites'}`。 |
+| G1′ | 同上（实测补的） | 卡**尚不存在**时不得走补丁路（否则 `VMU_NO_SUCH_OBJECT`）：只有行在那儿才补丁；新建卡先按普通写落 p/settled，再由同一个补丁函数把裁决行叠上去，回执仍是创建回执 + `settlement`。 |
+| G1″ | `packs/v5r/verification-gates.js` | `p1Intent` 的 debate 分支把 `subject` 缺省（`null`）`String()` 成字符串 `"null"`，与卡 id 不等 ⇒ 明确「本卡」的裁决被当成「没有定论来源」拒掉；现在缺省/null/空串一律按「本卡」处理。 |
+| G2 | `vibe-math-vmu/kernel/latex.js` | 相对 `outDir` 解析成**绝对**路径并统一**正斜杠**（严格 Windows 绝对路径同样归一；POSIX 绝对路径逐字不动，phase-7 契约不受影响）；`.tex` 参数在 `join` 之后**再**归一（`join` 会把平台分隔符加回来）；PDF 名字从 `.tex` 的 basename 推（`p5.tex` ⇒ `p5.pdf`）。 |
+| G3 | `vibe-math-vmu/kit/extras.js` | `vibe_v5_lean_job` 读之前先 `await lean.listMirrors()` 水合再读（命中回 `hydrated:true`）；真的没有时**回执**（不是抛异常，F-56p 的上层契约）以 `VMU_LEAN_NOT_FOUND` 具名拒，并给 `searched:{process, mirror:{dir,count}}`。 |
+| G4 | `vibe-math-vmu/packs/v5r/tools.js` | `verdict_final` 铸稳定 tally id（`tally-<meeting>-<proposition>`），回执 `tally:{id,kind,n,value,spread,means}`，并在 `correction` 里给 `warrantFor:{id,kind,n,value,spread,useAs}` 供 `verified_promote` 引用。 |
+| G5 | `vibe-math-vmu/packs/v5r/paper-quality.js` | verified / solved 覆盖门的 `missing[]` 每条带 `requiredLine`（就是正文里该出现的那一行），message 直接贴首条。 |
+| G6 | 同上 | 证据指针接受**裸记录 id**（`rec-12`、`p-3`）：解析到记录即通过，指不到时说的是 `no-such-record` 而不是「不是成员文件指针」；旧的成员文件形**只增不改**。 |
+| G7 | 同上 | 自动填充行改口：「本所本期目标（设置键 `vmu.turn.objective`，是【全所】的目标、不一定是本篇论文的研究对象；本篇的具体问题写在作者自己的 part 正文里）」。 |
+| G8 | `vibe-math-vmu/math-computation.js`（6 份副本同源） | 追加规则**不动**（契约钉在五套测试里）；回执 `cli` 增加 `scriptConflict`：当调用方 argv 已自带非选项输入、而归档脚本仍被追加时，明说「只吃一个输入的工具会把多出来的参数当第二个输入；LaTeX 请走 `vibe_v5_paper { action: "compile" }`」。 |
+| G9 | `vibe-math-vmu/kernel/paper.js` | `VMU_OFFICE_CONSULT_REQUIRED` 的 extra 带 `target` 与 `paperId`（与答复要的键同名，可照抄）。 |
+| G10 | `vibe-math-vmu/kit/paper.js` + `packs/v5r/tools.js` | `final` 的 pdf 失败块与 `action:"compile"` **共用同一结构**：`argv/stderrTail/stdoutTail/tailSource/signal`。 |
+
+### 254.4 机器化：新套件 53 条，三处回归当场抓住并修好
+
+- 新 `tests/vmu-run153-real-run-fixes.test.mjs` **53/0**：§0 源码口径（每个 G 都有自己的站点，含「旧话必须消失」的
+  反向断言）、§1 真调用（锁定卡结算后**标题/`proofState`/`proofRef` 全在**、结算后普通写入仍 `is locked`、第二次结算只
+  留一行 `debateRuling`；LaTeX 面真 argv 是**绝对 + 正斜杠**、PDF 按源名、`.tex` 内容未被改写）、§1½「诞生即带裁决」的
+  卡**先创建再补丁**（不是对不存在的行补丁）、§2 句子重量、§3 第二批（G5/G6/G7/G8/G9：裸 id 通过、指不到时
+  `no-such-record`、成员文件形仍可用、`requiredLine`/归因句/`scriptConflict`/`target` 都在）。
+- 回归抓到的三件事：① `vmu-v5r-tools` 的「带 `debate_ruling` 新建卡」被我的补丁路截住 ⇒ `VMU_NO_SUCH_OBJECT`
+  （见 G1′，先判存在再补丁）；② `vmu-latex` 的 argv 断言用 `join()` 比平台分隔符 ⇒ 改成按契约比（分隔符折叠后等于
+  `/work/paper/main.tex`）；③ 全量 T1 抓到 `vmu-run64-lean-receipt-shape` 的 F-56p：拒绝必须是**回执**——G3 的修法一开始
+  改成了抛异常，现改回 `{ok:false,code,…}` 并补 `searched`（run153 也加了 `§0h2` 反向 pin）。
+- `math-computation.js` 的六份副本（v2/v3/v4/v5/v5r/vmu）与 `tests/fixtures/mc-P1-ready/` 的 vendor 副本必须**字节同源**
+  ⇒ G8 的改法在七处逐字应用，`audit-math-computation-parity` 复跑 7 份同哈希、`--only math-computation` **16/16**。
+
+### 254.5 读数与门禁
+
+- 预算（`/d/_tmp/g7a22/measure-t99.mjs`）：T99 charter 子装配 **19 995 / 19 998 / 18 243**（院士/研究/临时，逐字未变——
+  本轮没有改任何提示词源，改的是工具面、机制与回执）。
+- 门禁：`=== vmu regen-all: 17/17 in sync ===`（三轮迭代到不动点）、`PREFLIGHT: PASS`、`DOC LINT: PASS`、
+  `RULE PARITY: PASS (0 problem(s))`、`RULES COVERAGE: PASS (0 problem(s))`（86 条 DONE 86）。
+- 全量 T1（`GATE_SCOPE=vmu`）：**TOTAL 635 PASS 635 FAIL 0（suites 571 · probes 64）**
+  （日志 `/d/_tmp/t1-r177-run153.log`；套件数 +1 = 本轮新增的 `vmu-run153-real-run-fixes`）。
+- 提交：`fix(vmu): the real run's ruling settlement patched a card instead of rewriting it`（见 `git log`）。
+
+### 254.6 仍未解决（下一轮真机要验的）
+
+1. **G1/G2/G4 的修复尚未上真机**：本轮只证明「单元层面结算不改卡、argv 是绝对正斜杠路径、汇总 id 存在」。下一轮用修好的
+   tarball 起 run 4（`-KeepWorkspace` 续跑同一个所），要看到：结算后 `rec-12` 的 `proofState` 还在且锁仍咬人、论文
+   `compile` 真产出 PDF、promote 引用的 warrant 是 `tally-…` 而不是某张成员卡。
+2. **`editor:"office"` 代定稿仍是具名缺口**（C.1）：回执如实说「office may finalise only after consulting the institute —
+   that path is a named gap in this build」，且该路径下 consult 不触发。这是**未实现的功能**，不是假话；是否补实现需要
+   新一轮决策。
+3. **裁决均值（0.995）进不了 Verified**（C.2）：规则 L53 只说「取平均值」，Verified 轨的门要求 p 恰为 1 或 0。当前行为
+   与规则文本一致（均值不是定论），但工具把均值叫 "a preference" 的措辞仍可能误导——留在 OPEN 清单。
+4. **三席名册下人数闸按构造满足**（F7/G 系列遗留）：回执已自述 `vacuous:true`/`bitesWhen`，但「人数闸真的拒过一次」
+   在 3 席规模**无法**演示；需要更大名册的部署才能给出负向证据。
+5. **真机第二轮反馈提到的「按序写而非并发写」**：`rev` 乐观锁已就绪，但一次真并发仍未在真机上跑过。

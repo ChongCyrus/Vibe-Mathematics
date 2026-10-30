@@ -649,7 +649,15 @@ export function createPaperFlow({
         // Chinese text to answer "which engines were tried, which one failed"). The array is bounded, never full logs.
         pdf = { ok: false, code: (e && e.code) || null, message: String((e && e.message) || e),
           faceCode: (e && e.faceCode) || null,
-          triedEngines: Array.isArray(e && e.triedEngines) ? e.triedEngines.slice(0, 12) : [] }
+          triedEngines: Array.isArray(e && e.triedEngines) ? e.triedEngines.slice(0, 12) : [],
+          // ★★ RUN 153 (real machine, run 3 / agent report G10): `action:"compile"` carried the compiler's words and the
+          // exact argv, while the FINAL receipt for the SAME failure carried neither — so the most important door
+          // (finalisation) was the least informative one. One failure structure, both doors.
+          argv: Array.isArray(e && e.argv) ? e.argv.slice(0, 16) : [],
+          stderrTail: e && e.stderrTail ? String(e.stderrTail).slice(-1500) : '',
+          stdoutTail: e && e.stdoutTail ? String(e.stdoutTail).slice(-1500) : '',
+          tailSource: (e && e.tailSource) || null,
+          signal: (e && e.signal) || null }
       }
       return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: rendered.missing, pdf,
         // ★ E4: the receipt says WHICH way the consult rule was satisfied ("off" / "answered" / "exempt"): a finalisation

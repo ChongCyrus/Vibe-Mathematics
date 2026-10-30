@@ -2576,3 +2576,36 @@ bold，失败尾部在 `stdout` 时放 `stdoutTail` 并记 `tailSource`。教学
 （19 995 / 19 998 / 18 243）；六道门禁全绿（coverage 86/86）；全量 T1 **635/635（suites 571 · probes 64）**。
 本轮的修复**尚未在真机上复验**：下一轮（RUN 153）用修好的 tarball 起 run 3，验 F1 的写回被代理原样执行、论文真能
 定稿并编译出 PDF、`.tex` 不再出现 `\\textbf\{…\}`。
+
+## ROUND 157 —— 第三次真机跑（续跑）的十条反馈：L53 写回把卡改成「只剩五行」、LaTeX 反斜杠路径、跨进程作业读不到（RUN 153）
+
+同一所的第二次续跑（tarball `0d07492f`）机器读数全绿（`NO_FENCE=0 · UNKNOWN_FIELD=0 · FIELD_NOT_APPLICABLE=0 ·
+BAD_JSON=0`，`slv-inspect` 0 RED，`tokenTotal 9.49M/24M`，98 call，698 s），上一轮的修法被证实：论文 `p5` 用
+`editor:"academician"` 建、互审三轮、**定稿成功**（`finalized:true`，经 `consult-p5-1` 放行），`revise` 真能打回
+writing，`rec-12` 的 p=1 写回成功。但代理在 `FEEDBACK2.md` 里交出**十条 G 级问题**，其中三条是「机制真错」：
+
+**G1** L53 的裁定写回走普通卡写，而卡写每次从参数**全量重建 body** ⇒ 「只改 p」= 整条替换：`title` 塌成 id、
+`proofRef`/`proofState`/`leanJob`/`leanConformance` 全丢，`debate_ruling` 没进正文；锁判据就在 `proofState` 里，
+一丢锁下一个普通写入就把**已完成卡**改成 `p:0.5`。修法：结算成为**补丁写**（只改 `- p：` 行 + 一行
+`- debateRuling：{…}`，其余逐字保留，第二次结算替换旧行），且「卡还不存在」时不走补丁（新建卡先落 p、再叠裁决行）。
+顺手补了它的邻居：`p1Intent` 把 `subject:null` `String()` 成 `"null"`，让「本卡」的裁决被判成「没有定论来源」。
+
+**G2** LaTeX 面把 Windows 反斜杠相对路径交给 xelatex（`Paper\paper-p5\paper-p5.tex`），TeX 把 `\paper` 当控制序列 ⇒
+`! Undefined control sequence.`；同一文件用正斜杠手调即出 3 页 PDF。修法：相对 `outDir` 解析成**绝对**路径并统一
+**正斜杠**，`.tex` 参数在 `join()` 之后**再**归一，PDF 名按 `.tex` basename 推（`p5.tex` ⇒ `p5.pdf`）。
+
+**G3** `vibe_v5_lean_job {jobId:"lean-6"}` 回 `VMU_LEAN_NOT_FOUND`，而 `Formal/Jobs/lean-6.json` 完整——镜像是 `list()`
+才水合的。修法：读之前先 `listMirrors()` 水合再读，真没有时以**回执**（不是抛异常，F-56p 的契约）具名拒并给
+`searched:{process, mirror}`。
+
+其余七条：**G4** `verdict_final` 铸 tally id（两票一致的汇总不再被记成一张成员卡）；**G5** verified 覆盖门给
+`requiredLine`（可粘贴的标题行）；**G6** 证据指针接受裸记录 id（附录本来就按 id 索引）；**G7** 自动填充的第 1 节改口
+「本所本期目标，不一定是本篇的研究对象」；**G8** 计算面回执加 `scriptConflict`（追加脚本对「只吃一个输入」的工具是
+错形状，但契约 `[command, ...cli.argv, <archived script>]` 不动）；**G9** consult 回执带 `target`；**G10** `final` 的
+pdf 失败块与 compile 共用同一结构（`argv/stderrTail/stdoutTail/tailSource`）。
+
+机器化：新 `tests/vmu-run153-real-run-fixes.test.mjs` **53/0**（含「先创建再补丁」分支与 §3 第二批 pin）；三处回归当场
+抓住并修好（`vmu-v5r-tools` 的 NO_SUCH_OBJECT、`vmu-latex` 的平台分隔符断言、T1 的 F-56p 回执契约）；
+`math-computation.js` 六份副本与 vendor 逐字同源；预算未变（19 995 / 19 998 / 18 243）；六道门禁全绿（coverage 86/86）；
+全量 T1 **635/635（suites 571 · probes 64）**。修复**尚未上真机**：下一轮（RUN 154）用修好的 tarball
+起 run 4 续跑同一个所，验「结算后卡与锁都在、论文真编译出 PDF、warrant 是 tally id」。

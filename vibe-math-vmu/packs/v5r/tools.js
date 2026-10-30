@@ -1500,6 +1500,58 @@ async function toolFidelityConclude(args = {}, { kernel } = {}) {
  *   · singleWriter — the verified track has exactly ONE writer (`promoteVerified`, reached through
  *                    vibe_v5_verified_promote). A card tool can never become a second door into that track.
  */
+/**
+ * ★★ RUN 153 (real machine, run 3 / agent report G1 — the most serious defect of that run): a ruling settlement reached
+ * the ORDINARY card write, which REBUILDS the whole body from the arguments it was handed. The settlement passes only
+ * `p` + `debate_ruling`, so the rebuild DELETED everything else the card carried: its title fell back to the id, and
+ * `proofRef` / `proofState` / `leanJob` / `leanConformance` vanished — and with `proofState` gone the lock (rule L14,
+ * 「登记即定稿」) no longer bit, so the next ordinary write happily rewrote a completed card. Rule L53 settles the
+ * PROBABILITY, not the card. The settlement is therefore a PATCH: rewrite the `p` line, replace any earlier ruling row
+ * with THIS ruling, and leave every other line — and therefore the lock — exactly as it was.
+ */
+function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallbackTitle }) {
+  const got = records.get({ id })
+  const row = got && got.record ? got.record : got
+  if (!row) return undefined
+  const NL = String.fromCharCode(10)
+  const lines = str(row.body).split(NL)
+  const out = []
+  let wroteP = false
+  let droppedEarlierRuling = false
+  for (const line of lines) {
+    if (/^- *p *[：:]/.test(line)) { out.push('- p：' + String(value)); wroteP = true; continue }
+    // A card carries at most ONE ruling row: a second settlement REPLACES the earlier ruling instead of stacking a
+    // second, contradicting probability history into the body.
+    if (/^- *debateRuling *[：:]/.test(line)) { droppedEarlierRuling = true; continue }
+    out.push(line)
+  }
+  if (!wroteP) out.push('- p：' + String(value))
+  const rulingRow = {}
+  for (const key of ['subject', 'value', 'mode', 'n', 'decided', 'at', 'meeting', 'by', 'ballotId', 'warrant']) {
+    if (ruling && ruling[key] !== undefined && ruling[key] !== null) rulingRow[key] = ruling[key]
+  }
+  if (rulingRow.subject === undefined) rulingRow.subject = id
+  rulingRow.value = value
+  out.push('- debateRuling：' + JSON.stringify(rulingRow))
+  const put = records.put({
+    id, track, kind,
+    title: str(row.title) || fallbackTitle || id,
+    body: out.join(NL),
+    settled: value === 1 || value === 0,
+    by, bySource: 'argument',
+  })
+  return {
+    ok: true, track, kind, recordId: put && put.id, rev: put && put.rev, id,
+    settled: true, p: value, ruling: rulingRow, rulingReplaced: droppedEarlierRuling,
+    settlement: {
+      patch: true,
+      wrote: ['p', 'debateRuling'],
+      preserved: 'every other card field (title, proofRef, proofState, leanJob, leanConformance) was left exactly as it was, so the rule-L14 lock still bites',
+      means: 'a ruling settlement edits the probability rule L53 settles and records the ruling — it is not a card rewrite',
+    },
+  }
+}
+
 function gatedCardHandler(toolName) {
   const inner = kitCardHandler(toolName)
   return function handler(args = {}, ctx = {}) {
@@ -1692,8 +1744,37 @@ function gatedCardHandler(toolName) {
         means: 'the caller pointed the card at a written proof (`proof_ref`); this gate checked only that the reference is non-empty — the content is read by the members in the debate' }
       return null
     })()
-    const res = inner(args, ctx)
+    // ★★ RUN 153 (G1): a settlement on an EXISTING card is a PATCH (see settleRulingOnCard). It never reaches the
+    // ordinary write, which would rebuild the body from a three-field argument set and erase the card's proof fields —
+    // including the `proofState` the lock reads.
+    //
+    // ★★★ RUN 153 — A CARD THAT DOES NOT EXIST YET IS NOT A SETTLEMENT. The first write of a card may legitimately
+    // carry `debate_ruling` (a card born from a debate), and taking the patch path there turned "create this card" into
+    // "patch a card nobody wrote" ⇒ VMU_NO_SUCH_OBJECT on a track that had nothing wrong with it. So the patch path is
+    // taken only when the row is THERE; a create falls through to the ordinary write (which carries p, and therefore
+    // settled) and then gets the same ruling line layered on top by the same patch function — one write, then a patch.
+    const cardKind = KIT_CARD_CONFIG[toolName] ? KIT_CARD_CONFIG[toolName].kind : track
+    const existing = rulingSettlement !== null && cardId !== null ? rowOrNull(records, cardId) : null
+    let res
+    let settlement = null
+    if (existing !== null) {
+      res = settleRulingOnCard({
+        records, id: cardId, value: Number(rulingSettlement.value), ruling: rulingSettlement,
+        track, kind: cardKind, by, fallbackTitle: has(args.title) ? str(args.title) : null,
+      })
+      settlement = res && res.settlement ? res.settlement : null
+    }
+    if (res === undefined) res = inner(args, ctx)
     if (!res || typeof res !== 'object' || Array.isArray(res)) return res
+    if (existing === null && rulingSettlement !== null && cardId !== null && res.ok === true) {
+      // the create succeeded: layer the ruling onto the row it just wrote (the receipt stays the CREATE receipt, and
+      // says the ruling was added as a patch afterwards)
+      const patched = settleRulingOnCard({
+        records, id: cardId, value: Number(rulingSettlement.value), ruling: rulingSettlement,
+        track, kind: cardKind, by, fallbackTitle: has(args.title) ? str(args.title) : null,
+      })
+      settlement = patched && patched.settlement ? patched.settlement : null
+    }
     // ★ C8: a p=1 write with a sanctioned route is only half the rule — the card must END UP marked. The receipt says
     // whether the mark is already on the verified track, and if not, it names the ONE call that puts it there.
     const verifiedMark = p1Form === null ? null : (() => {
@@ -1706,7 +1787,7 @@ function gatedCardHandler(toolName) {
     return Object.assign({}, res, {
       enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE,
       proofState: declaredProofState === '' ? null : declaredProofStateFolded, proofStateEvidence,
-    }, p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, verifiedMark })
+    }, settlement === null ? {} : { settlement }, p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, verifiedMark })
   }
 }
 
@@ -2116,6 +2197,12 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
   // ★ TASK-12: the proposition id IS the card id whether the card lives on the records track (run 30's shape) or in a
   // member's library (a real file). Asking only in the records case made the library branch answer "no proposition id
   // was given" for a card that plainly exists on disk.
+  // ★★ RUN 153 (real machine, run 3 / agent report G4): the ruling produced NO aggregate id. The only ids a caller
+  // could put into `vibe_v5_verified_promote`'s `warrant` were the members' OWN ruling cards — so a 2/2 unanimous ruling
+  // was recorded as if one member's card had produced it (measured: `warrant:"ruling-m-deb-1-rec-12-r-1-…"`). The tally
+  // now has its own name. It is stable per (meeting, proposition) because rule L53 settles a proposition once, so
+  // re-reading the receipt gives the same id instead of minting a second one.
+  const tallyId = 'tally-' + [str(meeting), propositionId].map(rulingSlugOf).join('-')
   const cardPath = await libraryCardPathOf(kernel, propositionId)
   const correction = {
     needed: true,
@@ -2147,6 +2234,15 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
         : 'this ruling has NO card to correct (the object was not on the records track): record the proposition first with vibe_v5_record_proposition { track: "propositions", statement, value, motive, p: ' + String(ruled.value) + ' } and then apply the ruling with the same call + debate_ruling'),
     // ★★ RUN 152: the settlement is ADMITTED even on a locked card (see the lock gate in gatedCardHandler) — say it here,
     // because a reader who has already seen「登记即定稿」will otherwise assume the card cannot be touched at all.
+    // ★ RUN 153 (G4): the ONE id that stands for the whole ruling, ready to be the `warrant` of the promotion.
+    warrantFor: {
+      id: tallyId,
+      kind: 'debate-unanimous',
+      n: ruled.n,
+      value: ruled.value,
+      spread: ruled.spread === undefined ? null : ruled.spread,
+      useAs: 'the `warrant` argument of `vibe_v5_verified_promote` (the aggregate tally of this ruling, not one member\'s card)',
+    },
     lockedCardNote: 'a card whose proof is registered complete stays locked for every CONTENT edit; this settlement writes only the probability the ruling produced, which rule L53 requires — the gate admits exactly that shape (p + debate_ruling) and nothing else',
     means: 'the KERNEL notice tells the owner to correct the card; this field names the call that does it and the values this ruling produced, so "who changes the card, with what" is answerable from the receipt instead of inferred. This face does not write the card: the rule makes the notice the FRAMEWORK act and the edit the HOLDER act (and a card write here would be a second writer of the same row)',
   }
@@ -2158,6 +2254,16 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     floorMeans: floor && floor.means ? floor.means : null,
     // ★ RUN 30 ⑤: WHICH call corrects the card, with which values (see the `correction` block above).
     correction,
+    // ★ RUN 153 (G4): the ruling's aggregate name, so the evidence a promotion cites is the JUDGEMENT (n signatures,
+    // one value) and not whichever member's card happened to be picked.
+    tally: {
+      id: tallyId,
+      kind: 'debate-unanimous',
+      n: ruled.n,
+      value: ruled.value,
+      spread: ruled.spread === undefined ? null : ruled.spread,
+      means: 'one aggregate id for this ruling: name it in `vibe_v5_verified_promote`\'s `warrant`; the per-member rulings stay in `attribution`. It is derived from (meeting, proposition) because L53 settles a proposition once, so the same ruling always has the same name',
+    },
     // ★ LIVE RUN 11 (the institute's own report, item b): this receipt was read as if it carried the CLOSURE vote
     // (`cast`/`votesCast`) and the reading was reported missing. It is not missing - it is another mechanism. The
     // ruling answers 'what is the probability over this proposition', the closure vote answers 'did every member
@@ -4055,6 +4161,14 @@ async function toolPaper(args = {}, { kernel } = {}) {
           note: finalized.consult.note || null } : null,
         pdf: finalized.pdf ? { ok: finalized.pdf.ok === true, code: finalized.pdf.code || null, message: finalized.pdf.message || null,
           faceCode: finalized.pdf.faceCode || null,
+          // ★ RUN 153 (G10): the same failure structure `compile` returns — the compiler's words, which stream carried
+          // them, the exact argv and the signal. A receipt that says "it failed" without one line of the compiler is the
+          // receipt the operator cannot act on.
+          argv: Array.isArray(finalized.pdf.argv) ? finalized.pdf.argv.slice(0, 16) : [],
+          stderrTail: finalized.pdf.stderrTail ? String(finalized.pdf.stderrTail) : '',
+          stdoutTail: finalized.pdf.stdoutTail ? String(finalized.pdf.stdoutTail) : '',
+          tailSource: finalized.pdf.tailSource || null,
+          signal: finalized.pdf.signal || null,
           // ★ THE CAP MUST ANNOUNCE ITSELF. A caller that sees a truncated list with no marker concludes those are
           // all the engines that were tried - the same silent-truncation defect records.list and read_library had.
           // The cap stays (a receipt must stay bounded) but `triedEnginesTotal` and `triedEnginesTruncated` say so.

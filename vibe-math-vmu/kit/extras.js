@@ -228,7 +228,36 @@ async function toolLeanJob(args = {}, { kernel } = {}) {
   const lean = leanFaceOrRefuse(kernel, 'vibe_v5_lean_job')
   // Same rule as lean_run (F-56): spread the face's envelope, never nest it. `job` is therefore the RECORD, and the
   // field-level questions (`hashUnchanged` / `hashUnchangedState` / `hashUnchangedReason`) sit at `receipt.job.*`.
-  if (has(args.jobId)) return { ...lean.status(str(args.jobId)), tool: 'vibe_v5_lean_job' }
+  if (has(args.jobId)) {
+    // ★★ RUN 153 (real machine, run 3 / agent report G3): `status()` looks in THIS process's job table first and then in
+    // the durable mirror's in-memory map — but that map is filled by `list()`, so a job file written by an EARLIER kernel
+    // process (`Formal/Jobs/lean-6.json`, settled/passed/exit 0) was reported as `VMU_LEAN_NOT_FOUND` while its file sat
+    // on disk. The hint already promised "readable by id (mirror hydrate)" — now the read hydrates. And when it really is
+    // nowhere, the refusal says WHICH TWO places were searched instead of implying a single namespace.
+    const jobId = str(args.jobId)
+    let first = null
+    try { first = lean.status(jobId) } catch (e) { first = e }
+    if (first && first.ok === true) return { ...first, tool: 'vibe_v5_lean_job' }
+    let mirrors = null
+    try { mirrors = typeof lean.listMirrors === 'function' ? await lean.listMirrors() : null } catch (e) { mirrors = null }
+    if (mirrors !== null) {
+      let second = null
+      try { second = lean.status(jobId) } catch (e) { second = e }
+      if (second && second.ok === true) return { ...second, tool: 'vibe_v5_lean_job', hydrated: true,
+        means: 'this job was not created by the running kernel process: it was read back from the durable job mirror after hydrating it' }
+      const dir = mirrors && mirrors.dir ? String(mirrors.dir) : 'Formal/Jobs'
+      const count = mirrors && typeof mirrors.count === 'number' ? mirrors.count : null
+      // ★ RUN 153 (F-56p, still in force): a refusal is a RECEIPT at the top level, not a thrown exception — every lean
+      // tool spreads its envelope and this one must not be the exception that makes a caller parse two shapes. The
+      // `searched` block names both places, so "not found" is checkable instead of asserted.
+      return { ok: false, code: 'VMU_LEAN_NOT_FOUND',
+        message: '找不到 Lean 作业 ' + jobId + '：本内核进程没有它，作业镜像 ' + dir + ' 里也没有' + (count === null ? '' : '（镜像现有 ' + String(count) + ' 条）'),
+        hint: '换个 id 前先看点哪里找过：进程内表格（本次内核启动以来跑的作业）与持久镜像 ' + dir + '/<jobId>.json；两者都没有才叫「没有这个作业」',
+        searched: { process: 'this kernel process (jobs created since it started)', mirror: { dir, count } },
+        tool: 'vibe_v5_lean_job' }
+    }
+    return { ...first, tool: 'vibe_v5_lean_job' }
+  }
   return { ...lean.list(), tool: 'vibe_v5_lean_job',
     note: has(args.waitMs) ? 'waitMs is not applied: the job queue returns its current state; observe again after a wake' : undefined }
 }

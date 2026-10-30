@@ -54,6 +54,8 @@ export const RECORD_SECTIONS = Object.freeze([
 /** Member-file → (track, card id): the ONLY citation shapes this gate judges. A prose mention that is not a path is
  *  free text — the gate does not pretend it can verify it (and therefore does not accuse it of fabrication either).
  *  Shape: `Members/<member>/<Category>/<id>.md` (the charter's own file layout, forward or back slashes, optional .md). */
+// ★ RUN 153 (G6): a bare record id ("rec-12", "p-3") is also a legal evidence pointer — see checkEvidencePointers.
+const BARE_CARD_ID = /^([A-Za-z][A-Za-z0-9_-]*-[A-Za-z0-9_-]*\d+)$/
 const MEMBER_FILE = /Members[\/\\][^\/\\\s]*[\/\\](Propos|Methods|Subproblems|Progress)[\/\\]([^\/\\\s]+?)(?:\.md)?(?=$|[\s，。；、）)\]])/
 const TRACK_OF_CATEGORY = Object.freeze({ Propos: 'propositions', Methods: 'methods', Subproblems: 'problems', Progress: 'progress' })
 
@@ -135,7 +137,11 @@ function sectionLines(entry, view) {
   if (entry.source === 'objective') {
     const o = view.objective()
     if (!o.declared) return { mode: 'legal-empty', count: 0, lines: ['（本节本次为空，且这是合法的：' + entry.legalEmpty + '）'] }
-    return { mode: 'filled', count: 1, lines: ['- 研究对象（原问题，来自 `vmu.turn.objective`）：' + o.text] }
+    // ★★★ RUN 153 (G7): this line is the INSTITUTE'S TOTAL OBJECTIVE, auto-filled into a paper's §1. On the real run a
+    // paper about `n + n = 2n` opened with "研究对象（原问题）: 本所本期目标：确立并证明『前 n 个奇数之和的封闭形式 n²』"
+    // — literally true and completely misleading: a reader takes it as the paper's subject. The line now says whose
+    // objective it is and what it is not, so the automatic fill cannot be mistaken for the paper's own problem.
+    return { mode: 'filled', count: 1, lines: ['- 本所本期目标（设置键 `vmu.turn.objective`，是【全所】的目标、不一定是本篇论文的研究对象；本篇的具体问题写在作者自己的 part 正文里）：' + o.text] }
   }
   if (entry.source === 'verified') {
     const v = view.verified()
@@ -242,10 +248,26 @@ export function checkEvidencePointers({ evidence, records, codes = QUALITY_CODES
   const resolved = []
   const unknown = []
   for (const pointer of list) {
+    // ★★★ RUN 153 (G6): the appendix indexes evidence by RECORD ID, so a bare card id ("rec-12") is a legal pointer.
+    // The member-file form was the only accepted shape, and the real run's members wrote the id they were shown on the
+    // card — and were refused with "not-a-member-file-pointer" for citing the thing the institute had just told them.
     const m = pointer.match(MEMBER_FILE)
     if (!m) {
+      const bare = pointer.match(BARE_CARD_ID)
+      if (bare) {
+        let bareRow = null
+        try { bareRow = recordOf(records, bare[1]) } catch { bareRow = null }
+        if (bareRow) {
+          resolved.push({ pointer, cardId: bare[1], track: str(bareRow.track), fingerprint: str(bareRow.fingerprint) || null,
+            means: 'bare record id: resolved against the records face and checked for existence (the gate still matches the citation in the prose by id, so this pointer and the citation must name the same card)' })
+          continue
+        }
+        unknown.push({ pointer, cardId: bare[1], reason: 'no-such-record',
+          expected: 'Members/<member>/(Propos|Methods|Subproblems|Progress)/<id>.md, or a record id written by the records face' })
+        continue
+      }
       unknown.push({ pointer, reason: 'not-a-member-file-pointer',
-        expected: 'Members/<member>/(Propos|Methods|Subproblems|Progress)/<id>.md' })
+        expected: 'Members/<member>/(Propos|Methods|Subproblems|Progress)/<id>.md, or a bare record id such as "rec-12"' })
       continue
     }
     const category = m[1]
@@ -356,13 +378,21 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
   for (const item of verified.items) {
     const named = nameOf(item.title)
     const tokens = named ? [named] : [item.cardId, item.id].filter(has)
-    if (!tokens.some((t) => text.includes(t))) missingEvidence.push({ kind: 'verified', id: item.id, cardId: item.cardId, title: item.title })
+    // ★ RUN 153 (G5): the refusal names the line to paste. The first real run's agent had to strip the "已验证｜" prefix
+    // from the title BY HAND (this gate requires the title verbatim) and got it wrong once — a whole `revise` round lost.
+    if (!tokens.some((t) => text.includes(t))) {
+      missingEvidence.push({ kind: 'verified', id: item.id, cardId: item.cardId, title: item.title,
+        requiredLine: named || String(item.cardId || item.id) })
+    }
   }
   const solved = view.subproblems()
   for (const item of solved.items) {
     const tokens = [item.title, item.statement].filter(has)
     if (tokens.length === 0) tokens.push(item.id)
-    if (!tokens.some((t) => text.includes(t))) missingEvidence.push({ kind: 'subproblem', id: item.id, title: item.title })
+    if (!tokens.some((t) => text.includes(t))) {
+      missingEvidence.push({ kind: 'subproblem', id: item.id, title: item.title,
+        requiredLine: item.title ? nameOf(item.title) : String(item.id) })
+    }
   }
   if (missingEvidence.length > 0) {
     const first = missingEvidence[0]
@@ -371,7 +401,8 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
     const firstLabel = (first.cardId || first.id) + (nameOf(first.title) ? '「' + nameOf(first.title) + '」' : '')
     return {
       ok: false, code: codes.VERIFIED_MISSING,
-      message: '正文漏掉了记录库里已有的结论：' + missingEvidence.length + ' 条（首条 ' + first.kind + ' `' + firstLabel + '`）——已检验通过的命题与已解决的子问题必须出现在正文里',
+      message: '正文漏掉了记录库里已有的结论：' + missingEvidence.length + ' 条（首条 ' + first.kind + ' `' + firstLabel + '`）——已检验通过的命题与已解决的子问题必须出现在正文里'
+        + (first.requiredLine ? '；可直接粘进正文的标题行：`' + first.requiredLine + '`' : ''),
       hint: '这条门判的是**成员写的正文**（渲染时第 3 节由 `verified` 轨自动填充、第 4 节由 `problems` 轨 p=1 自动填充，但自动填充只进渲染出的文件，**不能**代替正文里的结论）：把该结论的标题（去掉「已验证｜」前缀）原样写进某一节的 part 正文，或让作者在下一轮补写，再 render',
       missing: missingEvidence,
     }

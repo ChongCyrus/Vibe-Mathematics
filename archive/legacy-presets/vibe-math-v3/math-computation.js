@@ -781,6 +781,14 @@ function assembleArgv(det, mode, payload) {
     // `python -c 'print(1)'` runs the caller's code, and appending the archived file would silently
     // feed it as `sys.argv[1]` - the caller's argv must win there.
     const runsOwnCode = cliArgv.some((a) => a === '-c' || a === '-m' || a === '-e' || a === '--eval' || a === '--command')
+    // ★★★ RUN 153 (G8): the append rule itself stays EXACTLY as declared ("[command, ...cli.argv, <archived script>]" is
+    // the documented contract, and five suites pin it) — what was missing is that append is sometimes WRONG FOR THE TOOL
+    // and the receipt never said so. On the real run a member drove `xelatex` through this face: argv already named the
+    // .tex, the archived script was appended as a SECOND input, and the receipt said `cliScriptAppended:true` as if that
+    // were ordinary. The face cannot know whether the command takes one input or accepts a script, so it does not
+    // silently change the argv — it SAYS the shape it produced and, when the caller already named an input of its own,
+    // names the conflict: a command that takes exactly one input will read the extra argument as a second one.
+    const namesOwnInput = cliArgv.some((a) => typeof a === 'string' && a !== '' && !a.startsWith('-'))
     const appendScript = !!payload.scriptAbs && (mode === 'code' || mode === 'file') && !runsOwnCode
     if (appendScript) argv.push(payload.scriptAbs)
     return {
@@ -788,6 +796,11 @@ function assembleArgv(det, mode, payload) {
       cli: {
         command: payload.cli.command, argv: cliArgv, scriptAppended: appendScript,
         scriptSkipped: (!!payload.scriptAbs && (mode === 'code' || mode === 'file') && runsOwnCode) ? 'caller argv already provides a program slot (-c/-m/-e/--eval)' : null,
+        // ★ the honest reading of the argv this face produced: append is by design, but it is only right for commands
+        // that take a script and nothing else. A caller who already named an input gets this note instead of silence.
+        scriptConflict: (appendScript && namesOwnInput)
+          ? 'this command already names an input of its own (a non-flag argument in cli.argv), and the archived script was STILL appended after it: a tool that takes exactly one input will read the extra argument as a second one. If that is not what you meant, this face is the wrong door — for LaTeX use vibe_v5_paper { action: "compile" } and for any other one-input tool run it through the host shell (and mark the result not tool-archived)'
+          : null,
       },
     }
   }
@@ -1169,7 +1182,7 @@ async function opRun(H, args, params) {
     warnings: warnings,
     determinism: { inputSha256: input, packagesSorted: true, noWallClockInId: true },
   }
-  if (assembled.cli) receipt.cli = { command: assembled.cli.command, argv: assembled.cli.argv, stdinUsed: false, scriptAppended: !!assembled.cli.scriptAppended, scriptSkipped: assembled.cli.scriptSkipped || null }
+  if (assembled.cli) receipt.cli = { command: assembled.cli.command, argv: assembled.cli.argv, stdinUsed: false, scriptAppended: !!assembled.cli.scriptAppended, scriptSkipped: assembled.cli.scriptSkipped || null, scriptConflict: assembled.cli.scriptConflict || null }
   const receiptJson = JSON.stringify(receipt, null, 2)
   await H.writeText(dir + '/receipt.json', receiptJson)
   await H.writeText(dir + '/receipt.md', renderReceiptMd(receipt, fullOut, fullErr))
