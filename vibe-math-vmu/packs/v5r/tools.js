@@ -4172,7 +4172,7 @@ async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
 export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_record_progress',
-    description: 'Append to YOUR research log. ★ Pass `member:"<your id>"` — without it the author of the row is UNKNOWN (`by:null`, `bySource:"unknown"`) and the status board cannot tell whose log it is. track picks the file: progress (default) / routes / obstacles / rejected / state — use rejected for disproved routes and obstacles for blockers, so negative knowledge is archived in its own track. '
+    description: 'Append to YOUR research log. ★ Pass `member:"<your id>"` — without it the author of the row is UNKNOWN (`by:null`, `bySource:"unknown"`) and the status board cannot tell whose log it is. track picks the TRACK in the LEDGER (vmu.records), NOT a Progress/ file: progress (default) / routes / obstacles / rejected / state; the Files under Members/<you>/Progress/<track>.md are written by the reply `record` field — use rejected for disproved routes and obstacles for blockers, so negative knowledge is archived in its own track. '
       + '★ The STATE panel (track:"state") has FOUR REQUIRED contents — progress (当前进度), obstacles (遇到的障碍), next (下一步计划), help (需要的帮助) — passed flat or nested under `state`; a panel missing one is refused by name with the missing keys in `missing`, and `content` is free text on top, never a substitute.',
     parameters: { content: { type: 'string' }, track: { type: 'string' }, title: { type: 'string' }, member: { type: 'string' },
       progress: { type: 'string' }, obstacles: { type: 'string' }, next: { type: 'string' }, help: { type: 'string' }, state: { type: 'object' } },

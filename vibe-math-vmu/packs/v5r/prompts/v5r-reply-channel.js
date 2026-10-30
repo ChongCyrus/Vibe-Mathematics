@@ -60,7 +60,7 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'say', face: 'vmu.meetings', op: 'speak', common: true,
     note: 'say 在会议轮才是会议楼层发言（有会议绑定才投递，需已到场）；无会议绑定的回合不投递，这句话原样进回执 notes；对全所说话（群聊）或私信 {"to":"r-2","text":"…"} / 只对表决者 {"to":"voters","text":"…"} 必须用工具 vibe_v5_say' }),
   Object.freeze({ field: 'progress', face: 'vmu.records', op: 'put', common: true,
-    note: '本轮进展、阻塞与下一步（追加到 Progress/）；形状由 vmu.records.put 判，写错会整轮写失败并具名说明' }),
+    note: '本轮进展、阻塞与下一步：**账本**行（`vmu.records`，progress 轨；不是 `Progress/` 文件，写文件用 `record` 字段）；形如 {track,title,body}' }),
   Object.freeze({ field: 'record', face: 'vmu.library', op: 'record', common: true,
     note: '研究日志一行：{"track":"progress","text":"…"} 追加到 Members/<你>/Progress/<track>.md（vmu.library.record；track 必须是 vmu.records.tracks 之一）；成果卡请用工具 vibe_v5_record_proposition / _method / _subproblem' }),
   Object.freeze({ field: 'propose_verify', face: 'vmu.meetings', op: 'motion',
@@ -200,7 +200,7 @@ export function replyCatalogueLines({ mode = 'compact', seat = null } = {}) {
     // is unreachable (above), and a nested `report:` key no longer exists because the fenced object IS the report. Naming
     // them is not decoration — members arrive with these two forms memorised from earlier rounds and from the corrections.
     lines.push('· 这一段是**字段目录**：`←` 后是说明，`|`/`或` 是取值提示，因此这一段并非合法对象字面量；**你真正要交回的 `report` 必须严格合法**，最小形态见目录末尾的样例。')
-    lines.push('· **旧写法不要再照抄**：一律「调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」在 activation 投递下不可达；`report: {"say":"…","progress":"…","solved":false,"contextPct":40}` 多套了一层 report 键。最小合法 report 样例（可直接照抄）：`{"say":"…","progress":"…","solved":false,"contextPct":40}`，放在回复末尾的代码围栏里。')
+    lines.push('· **旧写法不要再照抄**：一律「调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」在 activation 投递下不可达；`report: {"say":"…","progress":"…","solved":false,"contextPct":40}` 多套了一层 report 键。最小合法 report 样例（可直接照抄）：`{"say":"…","progress":{"track":"progress","title":"…","body":"…"},"solved":false,"contextPct":40}`，放在回复末尾的代码围栏里。')
   }
   return lines
 }

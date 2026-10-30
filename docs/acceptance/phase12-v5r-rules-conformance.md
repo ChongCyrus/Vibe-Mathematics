@@ -10947,3 +10947,19 @@ excluded 点名理由、真有表决权的成员没交仍被具名拒、`partial
 - `PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS`、`check-rules-coverage --check` = 仅 G7（预期）。
 
 §239.7 无实质残余：否 —— G7 仍 PARTIAL（等第十一次决定性审计取零矛盾）；audit10 记录的 G3/G4/G5 是能力/机制债（invite 幽灵队、`attendDeniedSeats` 两读取时点、primitive 面过度拦截），已在 §239.3.6 与 `schema.js` doc 里如实记录，不计作矛盾。
+
+## §240 第十一次审计：回执目录里的「Progress/ 文件」与不可照抄的「可直接照抄」样例（2032-10-30 → 2026-10-30）
+
+§240.1 判决。第十一次独立只读审计以 `d9b6b376` 出报告（审计收尾时 HEAD 已到 `6b1d2970`，只多一句教学与两行 §239 预算更正文，§2 引文两提交逐字相同；审计在新 HEAD 上重跑 run142/pins/g7 仍全绿）：`G7 VERDICT: CONTRADICTIONS(2)`。第 10 次的 C1/C2/C3 全记 FIXED，其 §4 的 30 条旧结论 31 FIXED、0 回退。两条新矛盾都是**同一轮外的新病灶**，不在回退里。
+
+§240.2 C1 —— 回执字段 `progress` 说「追加到 Progress/」，而它真正落的是账本。`v5r-reply-channel.js` 的 `progress` 行原文「本轮进展、阻塞与下一步（追加到 Progress/）」，可 `FIELD_OWNERS.progress = { face: 'vmu.records', op: 'put' }`，`kernel/records.js` 的 `put()` 是内存账本（随状态写穿到 `vmu/state.json` 的 `records[]`），**从不打开任何文件**；真正的 `Members/<member>/Progress/<track>.md` 由另一个字段 `record` 写（`kernel/library.js:427` + `recordLogArgs`）。同款说法还有两处：`vibe_v5_record_progress` 的 description「track picks the file: …」与 `v5r-blocks-a.js` 的压缩提示句。修法：① `progress` 行改成「**账本**行（`vmu.records`，progress 轨；不是 `Progress/` 文件，写文件用 `record` 字段）；形如 `{track,title,body}`」；② `vibe_v5_record_progress` 的 description 改成「track picks the TRACK in the LEDGER (vmu.records), NOT a Progress/ file」，并点名 `record` 字段才是写那个文件的通道；③ `v5r-blocks-a.js` 的压缩句**保持捕获原文不动**——它说的是文件面，而那个文件真的可由 `record` 字段写出（T71 的源派生逐字校验也要求它是原文），改的是**回执行**把「字段落点」说成文件的错。三条钉子都在 `tests/vmu-run143-progress-truth.test.mjs`（§1/§2/§4/§5）。
+
+§240.3 C2 —— `replyCatalogue=full` 里唯一的「最小合法 report 样例（可直接照抄）」照抄即整轮失败。样例写 `"progress":"…"`（字符串），而 `vmu.records.put` 是对 payload 解构的：字符串解出 `track: undefined` ⇒ `VMU_INVALID_ARGUMENT`，整轮被拒。真形状是对象：`{"track":"progress","title":"…","body":"…"}`（`composeRecordPut` 会从 kind-track 补 `kind`、从本轮成员补 `by`；v5r 的 `vmu.records.requireSettledRecords` 是 false，故不必写 `settled`）。修法：样例改成对象形；钉子 `tests/vmu-run143-progress-truth.test.mjs` §3 会 **把 full 目录里每一个「样例（可直接照抄）」取出来 `JSON.parse`**，并要求 `progress` 是对象、`track`/`body` 是字符串——「可直接照抄」的定义就是能被机制接受，不能被机制接受的样例不是教学而是陷阱。
+- 顺带记下的 GAP：`replyCatalogue=full` 目录本身实测 **20732 字符**，超过宿主成员提示词的 20000 上限；默认 compact 不受影响，但把该设置改成 full 的部署会撞预算。这是**配置-预算**冲突，记 GAP，不记矛盾（没有句子许诺 full 一定可用）。
+
+§240.4 GAP 对账（audit11 §3 的 G1–G16）：G1 已闭合为「已裁定边界」（C14）；G2/G4/G6/G8/G9/G11/G12/G13 已闭合；G3（invite 可把不参会席位排进永不响的队）、G5（hand 席位闸在 `liveMeeting` 分叉之前，原语会议被误拦且拒绝文案不成立）、G7（会议 kind 提示里举 `sync`）、G10（ask 块的选择器形状）仍开放；新增 G14（「研究日志」账本/文件两个真值源缺对照表）、G15（`v5r-tools-*` 的「progress 必须是对象」不在 `CHARTER_SECTIONS` 装配里）、G16。本轮先做**文本-机制对齐**：G14/G15 的病灶（账本 vs 文件、对象形状）已由 §240.2/§240.3 在**活提示词**里说清并由 run143 钉住；G3/G5 是行为闸的次序/语义问题，需要单独一轮改机制并重配测试，不在本轮夹带（§229.3 C3 不动未审机制）。
+- 同轮的低风险去险：`kernel/meetings.js` 的 label 提示把例子 `(e.g. sync, division, verify-request)` 改成 `(e.g. division, verify-request, agenda-sync)`——`sync` 是旧会议类型名，留在 kind 例子里会让读者以为它仍是类型（blocks-b 的教学说它「不是会议类型」）。
+
+§240.5 证据。`tests/vmu-run143-progress-truth.test.mjs` **30/0**；`tests/vmu-turn.test.mjs` **272/0**（T71 源派生逐字校验绿、T99 成员提示词实测 **19990** < 20000，本轮为说真话净增 9 字符后只剩 10 余量）；`vmu-settings` 49/0（回执 note 里出现 `vmu.records.put` 这种 a.b.c 记号会被设置键量具当成「读了未声明的键」，故改成 `vmu.records`）；`--only vmu-prompt` 13/13、`vmu-run142` 31/0、`vmu-run30` 31/0、`vmu-g7` 65/0、`vmu-meeting` 18/18、`vmu-ledger`、`vmu-run141` 全绿。
+
+§240.6 下一步。G7 仍 **PARTIAL**（用户裁定：零矛盾才 DONE）。本轮修完后需再派一次独立只读审计；若为零矛盾，才把 G7 改 DONE、live 追加本条句子、`next` 改写并重跑 `check-rules-coverage`。G3/G5 建议在 G7 收口后单独一轮：G5 把 `nonAttendingSeatGateOf`/primitive 闸挪到 `liveMeeting` 分叉**之后**并让拒绝文案只在它成立时出现；G3 让 `invite` 对「attend 会被拒」的席位具名拒（同一张 `attendDeniedSeats` 表）。
