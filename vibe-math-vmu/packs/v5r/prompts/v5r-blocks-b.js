@@ -837,14 +837,14 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'role',
     texts: {
       academician: [
-        '【投票板（只有你能立）】`vibe_v5_poll_open { question, options: [≥2 个], min_votes?, max?, min?, mode?: "single"|"multi", allow_revote? }`；`min_votes` 是**投票成立**的门槛（缺省取 `vmu.ballot.minVotes`），**不是法定人数 m**；`secret`/`allow_abstain` 可以传，但内核没有单场规则：它们属部署层策略 ⇒ 回执 `unapplied` 会逐条说明「没有单场规则」，别指望它们改变这场投票的结果口径。只有 chair/member 席有票权，临时工投票会被具名拒；`vibe_v5_poll_close` 未达 `min_votes` 会被具名拒——那次投票**不成立**。',
+        '【投票板（只有你能立）】`vibe_v5_poll_open { question, options: [≥2 个], member, min_votes?, max?, min?, mode?: "single"|"multi", allow_revote? }`；`min_votes` 是**投票成立**的门槛（缺省取 `vmu.ballot.minVotes`），**不是法定人数 m**；`secret`/`allow_abstain` 可以传，但内核没有单场规则：它们属部署层策略 ⇒ 回执 `unapplied` 会逐条说明「没有单场规则」，别指望它们改变这场投票的结果口径。只有 chair/member 席有票权，临时工投票会被具名拒；`vibe_v5_poll_close` 未达 `min_votes` 会被具名拒——那次投票**不成立**。',
         '  · **辩论不用投票板**：辩论是各自发言 + `vibe_v5_verdict_final` 裁决，不靠选项投票。',
       ].join('\n'),
       temp: [
         '【投票板】临时工不是表决者，投票会被具名拒；辩论不走投票板——辩论是各自发言 + 最终裁决。',
       ].join('\n'),
       researcher: [
-        '【投票板】`vibe_v5_poll_vote { ballot_id, choices: […] 或 abstain: true }` ；临时工投票会被具名拒。辩论不走投票板——辩论是各自发言 + 最终裁决。',
+        '【投票板】`vibe_v5_poll_vote { ballot_id, choices: […] 或 abstain: true, member }`；临时工投票会被具名拒。辩论不走投票板——辩论是各自发言 + 最终裁决。',
       ].join('\n'),
     },
   },

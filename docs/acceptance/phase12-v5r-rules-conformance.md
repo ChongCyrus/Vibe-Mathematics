@@ -11260,7 +11260,7 @@ FIXED/FIXED-as-stated、**0 REGRESSED**，§5 的 A/B/C/D/E/G 全 PASS；两条�
 - 目录本身：compact **13 行** chair **2 056** / member **2 155** / temp **2 313** 字符；
   full **36 行** chair **6 335** / member **6 434** / temp **6 592** 字符。
 - 旧的 **26 798 / 6 385** 是 RUN 150（行注较短）时的口径，§247.6 与 26-turn 的 `ROUND 150` 保留为
-  历史读数；本轮 full 档因行注加长而 +46（member 6 385 → 6 434）。
+  历史读数；本轮 full 档因行注加长而 **+49**（member 6 385 → 6 434）。
 
 ### 248.5 门禁与回归
 
@@ -11282,3 +11282,70 @@ CLOSED。台账 G7 的 `next` 仍写着「七轮…26 条」，属陈旧记账�
 修法落地后必须再派一次独立只读审计（第二十一次）：基线取本轮提交；复测 C-1 的三处形参、C-2 的 notes
 真值（真回合 `receipt.notes` 必须是 `[]` 且文案不得声称相反）、run150 的 §0n2–§0n6 与 §2g–§2k、
 三席预算六个数、以及六道机械门禁 + linecheck3 + 全量 T1。零矛盾才可把台账 G7 记 DONE。
+
+## §249 第二十一次审计：一个算错的增量，和两个缺 required 形参的缩写形状（RUN 152）
+
+### 249.1 判决与基线
+
+第二十一次决定性独立只读审计（基线 **8b122d8c**，报告 `D:/_tmp/g7a21/audit21.md`，341 行）判决
+`G7 VERDICT: CONTRADICTIONS(1)`：§2 的 A/B/C/D/E/G 全 PASS，历史 50 条（audit1–audit19 的 48 条 +
+audit20 的 C-1/C-2）FIXED 47 / FIXED-as-stated 3 / **REGRESSED 0**（本轮亲测 21 条，其余静态复检并写明方法）；
+唯一矛盾在 **F 文档诚实性**，而且是本轮修法自己算错的一个数：
+
+- **C-1**：§248.4 写「本轮 full 档因行注加长而 **+46**（member 6 385 → 6 434）」，同一句的两个端点差
+  **49**（`6 434 − 6 385 = 49`，`26 847 − 26 798 = 49`），而 `git blame` 显示这两行正是 `8b122d8c` 新增，
+  不属「历史小节旧读数」豁免。审计用 `8b122d8c^` 与 HEAD 两版 `v5r-reply-channel.js` 并置渲染复现：
+  `verdict` 行注 250 → 299（+49）、full 目录三席 6 286 → 6 335 / 6 385 → 6 434 / 6 543 → 6 592（各 +49）、
+  compact 三席 delta = 0。
+- **G30（GAP，不计矛盾）**：`v5r-blocks-b.js` 的两处**缩写形状**都没写工具 required 的 `member`——
+  院士席 `vibe_v5_poll_open { question, options: [≥2 个], … }`（工具 required = `question, options, member`）、
+  研究席 `vibe_v5_poll_vote { ballot_id, choices: […], abstain: true }`（required = `ballot_id, member`）。
+  照写会被具名拒（`poll_open needs the acting member id` / `poll_vote needs the acting member id`）。
+  审计按「缩写形状、早于本轮、schema 公开 required、拒绝自带修法提示」判**不计矛盾**，但这是实打实的
+  「教得出的投不进」，与 audit20 C-1 同一缺陷类，本轮一并修。
+
+### 249.2 修法
+
+1. §248.4 的 **+46 → +49**（只改这一个数，行注本身不动）。
+2. `packs/v5r/prompts/v5r-blocks-b.js:840`：开板形状补 `member`（`{ question, options: [≥2 个], member, … }`）。
+3. 同文件 `:847`：投票形状补 `member`（`{ ballot_id, choices: […], abstain: true, member }`）。
+   两处都**只补形参名**、不追加解释句——T99 的硬线是 `< 20 000`，本轮实测余量只有 2 个字符。
+
+### 249.3 新断言：形状必须带齐 required（`tests/vmu-run150-verdict-channel.test.mjs`，57 → 59/0）
+
+- §2l：把三个活源里所有 `vibe_v5_poll_vote { … }` 形状抓出来，每个都必须带齐工具 `required`（`ballot_id, member`）。
+- §2l2：同法核 `vibe_v5_poll_open { … }` 形状，必须带齐 `question, options, member`。
+  这两条把「形参名对」升级成「required 齐」——G30 这类缩写形状缺 required 的反例以后会被套件直接抓住。
+
+### 249.4 预算复测（补了两个形参名之后）
+
+- T99 charter 子装配 compact **19 995**（学术院士 19 995 / 研究席 **19 998** / 临时工 18 243；`< 20 000` 仍真，
+  研究席余量只剩 **2** 个字符——这是本轮之后任何提示词改动的第一条红线）。
+- 部署装配（boot 级，逐席）：compact chair **23 428** / member **23 434** / temp **23 563**；
+  full chair **26 848** / member **26 854** / temp **27 141**。
+- 目录本身（未变）：compact **13 行** chair **2 056** / member **2 155** / temp **2 313** 字符；
+  full **36 行** chair **6 335** / member **6 434** / temp **6 592** 字符。
+- §248.4 的 **+49** 与本节数字互洽：部署 full member 26 798（RUN 150）→ 26 854 = +56 = 行注 +49 +
+  投票形状 +8（`，member`）− 1（同句一个空格被吃掉）。
+
+### 249.5 门禁与回归
+
+- `regen-all --check` **17/17 in sync**；`PREFLIGHT: PASS`；`DOC LINT: PASS`；
+  `RULE PARITY: PASS (0 problem(s))`；`check-rules-coverage --check` 仍 **FAIL (1) = 仅 G7 PARTIAL**。
+- 全量 T1：**TOTAL 632 PASS 632 FAIL 0（suites 568 · probes 64）**
+  （日志 `D:/_tmp/t1-r164.log`）。
+- `linecheck3.mjs`：63 行 = 18 空行/分隔 + 13 小节标签 + 32 要求行；锚点 86/86；要求行 32/32；NEITHER 0。
+- `vmu-turn.test.mjs` 272/0（T99 及其变体全绿）。
+
+### 249.6 GAP 状态（不计数）
+
+审计第 21 轮 §3 新点名的三项：G30（缩写形状缺 required，**本轮已修**）、G29（三个标签/标题行被台账当锚点）、
+G31（`vibe_vmu_meeting.action` 没有 enum 声明）——后两项是记账/文档观察，不构成活句子承诺。
+G3/G4/G5/G18/G19/G25 仍 OPEN；G12 CHANGED（resume-only）；G27 记账；台账 G7 的 `next` 仍写「七轮…26 条」，
+置 DONE 时必须一并改写。
+
+### 249.7 下一步
+
+再派一次独立只读审计（第二十二次）：基线取本轮提交；复测 §248.4 的 **+49**、两处 poll 形状的 required 齐全、
+run150 的 §2l/§2l2、三席预算六个数（19 995/19 998/18 243；23 428/23 434/23 563；26 848/26 854/27 141；
+2 056/2 155/2 313；6 335/6 434/6 592）、六道机械门禁 + linecheck3 + 全量 T1。零矛盾才可把台账 G7 记 DONE。

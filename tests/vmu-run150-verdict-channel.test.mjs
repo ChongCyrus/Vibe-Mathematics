@@ -204,6 +204,18 @@ try {
     ok(taughtKeys.length > 0 && taughtKeys.every((k) => pollParams.includes(k)),
       '§2i ★★★ 教给席位的每个形参都在工具声明里（教得出、投得进）', { taughtKeys, pollParams })
     ok(!taughtPoll.some((src) => /boxId/.test(src)), '§2j ★★★ 没有一处活句子把投票板形参教成 boxId（audit20 C-1 的反例）', taughtPoll)
+    // RUN 152 / audit21 G30 — an abbreviated shape must still carry the parameters the tool REQUIRES, otherwise the
+    // sentence teaches a call that is refused by name ("poll_vote needs the acting member id"). Same rule for
+    // poll_open, whose required trio is question/options/member.
+    const requiredOf = (spec) => (spec && spec.parameters && Array.isArray(spec.parameters.required) ? spec.parameters.required : [])
+    const pollRequired = requiredOf(voteTool)
+    ok(pollRequired.length > 0 && taughtPoll.length > 0 && taughtPoll.every((src) => pollRequired.every((k) => keysOf(src).includes(k))),
+      '§2l ★★★ 每个教出来的投票板形状都带齐了工具 required 的形参（教得出、投得进）', { pollRequired, taughtPoll })
+    const openRequired = requiredOf(openTool)
+    const taughtOpen = []
+    for (const m of teachingSources.matchAll(/vibe_v5_poll_open\s*\{([^}]*)\}/g)) taughtOpen.push(m[1])
+    ok(taughtOpen.length > 0 && openRequired.length > 0 && taughtOpen.every((src) => openRequired.every((k) => keysOf(src).includes(k))),
+      '§2l2 ★★★ 每个教出来的开板形状也带齐了 required（question/options/member）', { openRequired, taughtOpen })
     const taughtBoard = parse(await openTool.execute({ question: 'run150 §2 taught', options: ['A', 'B'], member: 'r-chair' }, {}))
     const taughtBoardId = taughtBoard && taughtBoard.boxId
     const taughtVote = await refusalOf(() => voteTool.execute({ ballot_id: taughtBoardId, choice: 'A', member: 'r-1' }, {}))

@@ -2473,3 +2473,23 @@ deployment compact 23 421 / 23 427 / 23 563 (chair/member/temp), full 26 841 / 2
 catalogue compact 13 lines / 2 056 / 2 155 / 2 313 chars, full 36 lines / 6 335 / 6 434 / 6 592 chars.
 Gates green (regen 17/17, preflight, doc lint, parity 0, coverage only the G7 PARTIAL), full T1
 632/632.
+
+## ROUND 152 (G7 audit 21)
+
+The twenty-first independent audit (baseline 8b122d8c, `D:/_tmp/g7a21/audit21.md`) returned
+`G7 VERDICT: CONTRADICTIONS(1)`. A/B/C/D/E/G all passed and the historical fifty conditions showed no
+regression; the one contradiction was in this repeat's own bookkeeping: the acceptance section claimed the
+full-mode reply catalogue grew by **46** characters when the two end points it printed differ by **49**
+(the `verdict` row note went 250 -> 299, and the three full-mode seats 6 286/6 385/6 543 ->
+6 335/6 434/6 592, each +49). RUN 152 fixes that number. It also closes the observation the audit recorded
+separately: both abbreviated poll shapes in `v5r-blocks-b.js` omitted `member`, which the tools declare as
+required (`vibe_v5_poll_open`: question, options, member; `vibe_v5_poll_vote`: ballot_id, member), so a seat
+that copied the shape verbatim was refused by name with "needs the acting member id". Both shapes now carry
+`member` — as the bare parameter name, no extra sentence, because T99's headroom is down to two characters.
+`tests/vmu-run150-verdict-channel.test.mjs` grew from 57 to 59 assertions: every taught poll shape must
+carry all of the tool's required parameters (poll_vote: ballot_id+member; poll_open: question+options+member),
+so an abbreviated shape that cannot be executed is now caught by the suite. Budget: T99 compact
+19 995 / 19 998 / 18 243 (< 20 000, researcher margin 2); deployment compact 23 428 / 23 434 / 23 563, full
+26 848 / 26 854 / 27 141; catalogue unchanged at 13 lines / 2 056 / 2 155 / 2 313 chars and 36 lines /
+6 335 / 6 434 / 6 592 chars. Gates green (regen 17/17, preflight, doc lint, parity 0, coverage only the G7
+PARTIAL), full T1 632/632, `vmu-turn` 272/0.
