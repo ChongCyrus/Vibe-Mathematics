@@ -11386,11 +11386,14 @@ F 文档诚实性（§249 九数、ROUND 152）、G 历史 **51 条 FIXED 48 / F
    `vibe_v5_say {round:"<id>",text}` → `vibe_v5_say {round:"<id>",text,member}`。工具的 required 只有 `member`，
    因为 pack 处理器没有 agent→member 映射；缺它会被具名拒
    `this tool needs the speaking member id: a v5r pack handler has no agent→member map, so the sender cannot be guessed`。
-   同句删掉「，换新 round id 再说」保持长度不变。
+   同句还删掉子句「，换新 round id 再说」：按该 JS 字符串字面量整行量，207 → 199（**净 −8**）；
+   括号子句 61 → 46（−15），新增的 `,member` 为 +7，两者相加即 −8。
 4. **新机械门（泛化护栏）**：`tests/vmu-run150-verdict-channel.test.mjs` 新增 §2n4 —— 扫
    `vibe-math-vmu/packs/v5r/prompts/*.js`（排除历史语料 `v5r-prompts.js`）里**每一个** `vibe_x { … }` 形状：
    形参必须是该工具**声明过**的、（不含省略号的完整形状）必须**带齐 required**；§2n5 断言扫描非空转（确有带省略号的
-   缩写形状被检查过）。这一道门一次覆盖 audit20 C-1（`boxId`）、audit21 的缺 `member`、audit22 C-1 三类缺陷。
+   缩写形状被检查过）。这一道门抓的是「**形状/形参**」错误：audit20 C-1 的 `boxId`、audit21 的缺 `member`
+   都在它的覆盖面内；audit22 C-1 那种「键已声明、分支却不执行」它抓不住（把同一段 scan 跑在 `95f1c816` 树上
+   照样全绿），那一类由 run150 §2m 系列的执行断言钉住。这个口径差的记账见 §250.6 的 G32。
 
 ### 250.3 新断言
 
@@ -11417,6 +11420,9 @@ F 文档诚实性（§249 九数、ROUND 152）、G 历史 **51 条 FIXED 48 / F
 
 - 本轮关闭：audit21 §3 的「缺 required 形参的缩写形状」一项（两处形状带 `member`，run150 §2l/§2l2 非空断言）。
 - 本轮新增并修：弃权分支的死形参（run150 §2m4–§2m7 机器化）。
+- 本轮口径修正并记 **G32**（OPEN）：run150 §2n4 只抓「形状/形参」错误，抓不住「键已声明但分支不执行」的一类
+  （audit22 C-1 正是后者；把同一段 scan 跑在 `95f1c816` 树上它照样全绿）。§250.2 第 4 条的旧措辞把它说大了，
+  已改正；那一类执行保证由 run150 §2m 系列钉住。
 - 仍按 GAP/记账 OPEN：G4（invite 幽灵队列）、G5（原语面 fork 前过度拦截）、G18（部署档长度无门禁）、
   G19（默认 `fixtureMode=no-tools` 与 L62 相抵）、G25、G27（席位注只在 full 档交付）、G28（verdict 适配器之争的余项）、
   G31（`vibe_vmu_meeting.action` 无 enum）。
@@ -11426,3 +11432,59 @@ F 文档诚实性（§249 九数、ROUND 152）、G 历史 **51 条 FIXED 48 / F
 
 派第二十三次决定性只读审计（基线 = 本轮提交）；判决 `CONSISTENT` 后按用户裁定把台账 G7 记 DONE，
 `check-rules-coverage --check` 应转为 `JUDGED 86 DONE 86`。
+
+## §251 第二十三次审计：文档读数与实测不符（「长度不变」实为 −8），和一道抓不住「分支不执行」的门（RUN 154）
+
+### 251.1 判决与基线
+
+第二十三次决定性独立只读审计（基线 **42b6579f**，报告 `D:/_tmp/g7a23/audit23.md`，462 行）判决
+`G7 VERDICT: CONTRADICTIONS(1)`。§2 的 A/B/C/D/E/G 全 PASS：
+
+- **A**：audit22 的 C-1 确已关闭。真工具路径下 `abstain: true` ⇒ `ok:true`、`kind:"abstain"`、票箱 `abstain 1`；
+  两支同现 ⇒ `VMU_INVALID_ARGUMENT … not both`；内核直调 `cast({abstain:true})` 与 `choice:'abstain'` 同义；
+  `vibe-math-vmu/packs/v5r/tools.js` 里已无 `castArgs.abstain = true`。
+- **B**：`tests/vmu-run150-verdict-channel.test.mjs` **71 passed, 0 failed**；§2n4 用三个历史缺陷的神态反例验过
+  （`boxId`、缺 `member` 能被抓；`[…]` 省略式被正确跳过），§2n5 保证扫描非空转。
+- **C**：T99 三数、部署装配六数、目录六数逐个与文档相等。
+- **D**：`verdict` 回执跳过、`notes` 不含 verdict、`say` 的 `no-meeting-bound` 仍 `kept:true`、
+  `VMU_MEETING_QUORUM_LOST`、`floor.gate`、`vibe_v5_motion` required、`minutes` 具名拒，全相符。
+- **E**：六道门禁全绿（唯一 FAIL 是 G7 本身）、全量 T1 **632/632（suites 568 · probes 64）**、
+  `--only audit-` 161/0（`GATE_SCOPE=vmu` 时 141，两种口径都复现）。
+- **G**：历史 52 条 = **FIXED 49 · FIXED-as-stated 3（H15、H29、N2）· REGRESSED 0**，亲测 21 条。
+- **F FAIL（唯一矛盾）**：§250.2 第 3 条末句写「同句删掉「，换新 round id 再说」保持长度不变」，
+  实测是 **净 −8**，不是 0。四个跨度同向：子句 166 → 158、整句 194 → 186、JS 字符串字面量 196 → 188、
+  源文件整行 207 → 199；算术 `+',member' = +7`、删去子句 `= −15` ⇒ −8。`git log -S "保持长度不变"` 只命中
+  本轮提交 `42b6579f`，不是历史小节旧读数，故按「文档读数与实测不符」判矛盾（与 §248.4 的 `+46` vs 49 同型）。
+
+### 251.2 修法（只改文档，不动机制、提示词与预算）
+
+1. §250.2 第 3 条末句改成真实读数：「按该 JS 字符串字面量整行量，207 → 199（净 −8）；括号子句 61 → 46（−15），
+   新增的 `,member` 为 +7，两者相加即 −8。」
+2. §250.2 第 4 条与 `ROUND 153` 的门覆盖面收窄：§2n4 抓的是「**形状/形参**」错误（audit20 C-1 的 `boxId`、
+   audit21 的缺 `member` 都在覆盖面内），它抓不住「键已声明、分支却不执行」那一类——把同一段 scan 跑在
+   `95f1c816` 树上照样全绿，而 audit22 C-1 正属后者；那一类的执行保证在 run150 §2m 系列。
+3. §250.6 增记 **G32（OPEN）**：这是本轮审计点名的门盲区（`[…]` 省略号免检、>400 字符的形状正则匹配不到、
+   不覆盖「分支不执行」），按 GAP 记账，不计矛盾。
+
+### 251.3 GAP 状态
+
+- **G32（OPEN）**：§2n4 门的覆盖面与三类盲区如上；执行类保证不靠这道门，靠 §2m 的逐支执行断言。
+- **G3 编号分歧**（本轮审计的静态复核建议 `invite` 经 `svc.queue` 无席位检查）：按台账口径仍记 G3 CLOSED
+  （历史裁决：原语面 invite 无活句承诺），本轮只记观察，不计矛盾。
+- 台账 G7 的 `next` 仍写「七轮…26 条」——陈旧记账，待 G7 转 DONE 时一并改写。
+- 其余 OPEN/CLOSED 与 §250.6 一致（CLOSED：G3/G17/G26/G30；OPEN：G4/G5/G18/G19/G25/G27/G28/G31 + G32）。
+
+### 251.4 读数（文档改动不动代码，全部不变）
+
+- T99 charter 子装配：**19 995 / 19 998 / 18 243**（院士 / 研究席 / 临时工）。
+- 部署装配：compact **23 428 / 23 434 / 23 563**、full **26 848 / 26 854 / 27 141**。
+- 目录：compact **13 行 / 2 056 · 2 155 · 2 313**、full **36 行 / 6 335 · 6 434 · 6 592**。
+- `tests/vmu-run150-verdict-channel.test.mjs` **71/0**、`tests/vmu-turn.test.mjs` 272/0。
+- `=== vmu regen-all: 17/17 in sync ===`、`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0 problem(s))`、
+  `RULES COVERAGE: FAIL (1 problem(s))`（唯一 problem 即 G7 PARTIAL）、`--only audit-` 161/0、
+  **全量 T1 TOTAL 632 PASS 632 FAIL 0（suites 568 · probes 64）**。
+
+### 251.5 下一步
+
+派第二十四次决定性只读审计（基线 = 本轮提交）；判决 `CONSISTENT` 后按用户裁定把台账 G7 记 DONE，
+`check-rules-coverage --check` 应转为 `JUDGED 86 DONE 86`，然后再做逐句全量重检收口。

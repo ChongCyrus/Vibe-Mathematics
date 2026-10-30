@@ -2507,7 +2507,24 @@ PARTIAL), full T1 632/632, `vmu-turn` 272/0.
   内核把 `abstain: true` 收作 `choice: 'abstain'` 的别名（直调内核者不再撞同一句，`abstainAllowed` 门不变）；
   `v5r-blocks-b.js:858` 的 `vibe_v5_say {round,text}` → `{round,text,member}`（required 只有 `member`）。
 - 新机械门：`tests/vmu-run150-verdict-channel.test.mjs` §2n4 扫全部活提示词里的 `vibe_x { … }` 形状，
-  形参必须已声明、（非省略式）必须带齐 required；§2n5 保证扫描非空转。这一道门覆盖最近三轮审计的同三类缺陷。
+  形参必须已声明、（非省略式）必须带齐 required；§2n5 保证扫描非空转。它抓「形状/形参」错误
+  （audit20 C-1 的 `boxId`、audit21 的缺 `member`）；「键声明了但分支不执行」那一类抓不住，靠 §2m 系列的执行断言。
 - 读数：run150 **59 → 71 passed, 0 failed**；T99 19 995 / 19 998 / 18 243（不变）；部署 compact 23 428 / 23 434 / 23 563、
   full 26 848 / 26 854 / 27 141（不变）；目录 13/36 行六数不变；全量 T1 **632/632（suites 568 · probes 64）**。
 - 仍未结束：G7 保持 PARTIAL，等第二十三次审计的零矛盾判决。
+
+## ROUND 154 —— 文档里的读数必须与实测逐字相等（长度「不变」实为 −8）
+
+第二十三次决定性只读审计（基线 `42b6579f`，报告 `D:/_tmp/g7a23/audit23.md`）判决 `CONTRADICTIONS(1)`，
+唯一矛盾在文档诚实性：`docs/acceptance/phase12-v5r-rules-conformance.md` 的 §250.2 第 3 条末句写
+「同句删掉「，换新 round id 再说」保持长度不变」，实测是**净 −8**（子句 166→158、整句 194→186、
+JS 字符串字面量 196→188、源文件整行 207→199；`+',member'` 为 +7、删去子句为 −15）。
+
+- 修法（只改文档）：§250.2 第 3 条写成真实读数（整行 207 → 199、括号子句 61 → 46、`+7`）；
+  第 4 条的覆盖面收窄为「形状/形参」；
+- 同一轮审计点名新机械门的盲区（`[…]` 省略号免检、>400 字符匹配不到、不覆盖「分支不执行」），
+  按 GAP 记账（OPEN，编号与明细见 `docs/acceptance/phase12-v5r-rules-conformance.md` §251.3）：形状类错误由 `tests/vmu-run150-verdict-channel.test.mjs` §2n4 抓，
+  执行类保证由 §2m 的逐支执行断言钉住——两种保证不再混为一谈。
+- 读数：T99 19 995 / 19 998 / 18 243、部署 compact 23 428 / 23 434 / 23 563、full 26 848 / 26 854 / 27 141、
+  目录 13/36 行六数、run150 71/0 —— 全部不变；全量 T1 **632/632（suites 568 · probes 64）**。
+- 仍未结束：G7 保持 PARTIAL，等第二十四次审计的零矛盾判决。
