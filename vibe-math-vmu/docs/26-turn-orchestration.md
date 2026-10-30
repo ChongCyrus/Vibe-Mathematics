@@ -2425,3 +2425,12 @@ Rules that came out of this round:
 - **测试：** `vmu-run147` **83/0**（新增 §0c/§0k2/§0k3）；其余定向套件全绿；`audit-declaration-criterion` **91/0**。
 - **门禁：** `regen-all --check` 17/17、`preflight PASS`、`DOC LINT: PASS`、`PARITY PASS(0)`、coverage 仅 `G7 PARTIAL`、全量 T1 **630/630**。
 
+## ROUND 149 (G7 audit 18) — the seat notes must name the layer that refuses
+
+audit18 measured that the `assign`/`nudge` reply fields are skipped by the kernel's shape gate **before dispatch**
+(`VMU_TURN_FIELD_NOT_APPLICABLE`, chair included) and that the *tools* `vibe_v5_assign`/`vibe_v5_nudge` are refused by
+the **seat face** (`VMU_TOOL_NOT_IN_FACE`), never by the owner face. Two catalogue seat notes said "权限由属主面判" /
+"会被属主面具名拒" and were rewritten to name the seat ACL and the pre-dispatch skip; `tests/vmu-run149-seat-note-authority.test.mjs`
+pins the sentences, the gate readings, the real-turn skips (temp and chair) and the per-seat catalogue renders. T99
+stays 19 952; deployment assembly per seat 23 382/23 388/23 524 compact and 26 544/26 550/26 787 full; full suite
+631/0 in 567 suites.

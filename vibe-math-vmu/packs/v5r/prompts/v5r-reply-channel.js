@@ -129,8 +129,8 @@ export const REPLY_FIELD_NAMES = Object.freeze(REPLY_FIELD_ROWS.map((r) => r.fie
  */
 export const REPLY_SEAT_NOTES = Object.freeze({
   chair: '你是院士席：**召集开会走工具面** `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`（**回执字段** `convene_meeting` 没有可用形状，投递前就被具名跳过、会议不会开出来）；**分派与督办走工具面** `vibe_v5_assign`／`vibe_v5_nudge`（回执里的 `assign`／`nudge` 没有可用形状，写了会被具名拒），分派的是工作、不是结论；`verdict` 与其他人一票等重。',
-  member: '你是常驻研究员：**召集开会走工具面** `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`（**回执字段** `convene_meeting` 没有可用形状，投递前就被具名跳过、会议不会开出来）；召集是院士席权限，工具面会以 `VMU_NOT_PERMITTED` 具名拒你。分派/督办用工具面 `vibe_v5_assign`／`vibe_v5_nudge`，权限由属主面判——被拒会具名说明，不要反复试。',
-  temp: '你是临时成员：`verdict`／`vote_solved` 填了也不计票（没有表决权）；`assign`／`nudge` 会被属主面具名拒；`propose_verify`／`propose_meeting` 写在回执里会被具名跳过（回执不带会议 id，会议轮也一样）——要提议就在会议里用工具 `vibe_v5_motion { meeting, member, kind, text }`，是否采纳由院士席定；`convene_meeting` 也别写进回执（没有可用形状，投递前就被具名跳过、会议不会开出来），要开会走工具 `vibe_v5_meeting { action: "convene", member: "<你的 id>" }`。',
+  member: '你是常驻研究员：**召集开会走工具面** `vibe_v5_meeting { action: "convene", member: "<你的 id>", … }`（**回执字段** `convene_meeting` 没有可用形状，投递前就被具名跳过、会议不会开出来）；召集是院士席权限，工具面会以 `VMU_NOT_PERMITTED` 具名拒你。分派/督办是院士席的动作：`vibe_v5_assign`／`vibe_v5_nudge` 不在常驻研究员的工具面里（席位 ACL 具名拒 `VMU_TOOL_NOT_IN_FACE`）；回执里的 `assign`／`nudge` 没有可用形状，投递前就被具名跳过（`VMU_TURN_FIELD_NOT_APPLICABLE`，院士席也一样）。',
+  temp: '你是临时成员：`verdict`／`vote_solved` 填了也不计票（没有表决权）；回执里的 `assign`／`nudge` 没有可用形状，投递前就被具名跳过（`VMU_TURN_FIELD_NOT_APPLICABLE`，院士席也一样）；工具面 `vibe_v5_assign`／`vibe_v5_nudge` 不在临时工的工具面里（`VMU_TOOL_NOT_IN_FACE`）；`propose_verify`／`propose_meeting` 写在回执里会被具名跳过（回执不带会议 id，会议轮也一样）——要提议就在会议里用工具 `vibe_v5_motion { meeting, member, kind, text }`，是否采纳由院士席定；`convene_meeting` 也别写进回执（没有可用形状，投递前就被具名跳过、会议不会开出来），要开会走工具 `vibe_v5_meeting { action: "convene", member: "<你的 id>" }`。',
 })
 
 /** The smallest legal reply: the two fields every seat may always write, and nothing shape-sensitive. */
