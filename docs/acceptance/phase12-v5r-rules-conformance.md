@@ -11349,3 +11349,80 @@ G3/G4/G5/G18/G19/G25 仍 OPEN；G12 CHANGED（resume-only）；G27 记账；台�
 再派一次独立只读审计（第二十二次）：基线取本轮提交；复测 §248.4 的 **+49**、两处 poll 形状的 required 齐全、
 run150 的 §2l/§2l2、三席预算六个数（19 995/19 998/18 243；23 428/23 434/23 563；26 848/26 854/27 141；
 2 056/2 155/2 313；6 335/6 434/6 592）、六道机械门禁 + linecheck3 + 全量 T1。零矛盾才可把台账 G7 记 DONE。
+
+## §250 第二十二次审计：教出的弃权分支投不进去，和一条没人检查的「形状必带 required」（RUN 153）
+
+### 250.1 判决与基线
+
+第二十二次决定性独立只读审计（基线 **95f1c816**，报告 `D:/_tmp/g7a22/audit22.md`，444 行）判决
+`G7 VERDICT: CONTRADICTIONS(1)`。§2 的 A/C/D/E/F/G 全 PASS：A 目录行注加长的三重互洽（`+49`、`+56 = 49 + (8−1)`）、
+C 六个数与 T99 硬线（19 995 / 19 998 / 18 243，余量 2；`node tests/vmu-turn.test.mjs` 272/0）、
+D 机制回归（L47 九字段、回执字段、G22/G23/G24）、E 六道门禁与全量 T1（632/632，suites 568 · probes 64）、
+F 文档诚实性（§249 九数、ROUND 152）、G 历史 **51 条 FIXED 48 / FIXED-as-stated 3 / REGRESSED 0**（亲测 20 条）。
+唯一矛盾在 **§2 B**，而且它是一条**教出来却投不进去**的分支：
+
+- **C-1**：`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:847`（真机研究席装配里逐字含这句）教两支
+  `vibe_v5_poll_vote { ballot_id, choices: […] 或 abstain: true, member }`。`choices` 一支实测 `ok:true`、
+  `kind:"vote"`、tally 计 1；**`abstain: true` 一支**实测 `VMU_CONFLICT 选项不在票面上：`，票箱 `votes 0 / abstain 0`
+  ——什么也没进箱。同一块板改投 `choice: "abstain"` 则 `kind:"abstain"`、`abstain 1`（能力在，形参没接上）。
+- **链条**：包 `vibe-math-vmu/packs/v5r/tools.js:3344` 写的是 `if (args.abstain === true) castArgs.abstain = true`
+  （`:3335` 还把 `abstain:true` 列为三种合法输入之一），而内核 `vibe-math-vmu/kernel/ballotbox.js:274` 只认
+  `String(args.choice) === 'abstain'`，**全文件从未读 `args.abstain`**（`git log -S "args.abstain" --
+  vibe-math-vmu/kernel/ballotbox.js` 一次都没有）⇒ 空 `choice` 落到选项分支，撞的正是回执里句末带冒号的那句。
+- **为什么过去三轮没抓住**：`tests/vmu-run150-verdict-channel.test.mjs` 的 §2l/§2l2 只校验「教的每个形状都**含**
+  工具 required 的形参」，`abstain` 是**声明了却没人调用**的键 ⇒ 空转通过。没有任何一条断言把「教出的每一支」
+  真的执行一次——这正是审计 §2 B 的判据。
+
+### 250.2 修法（三处机制 + 一道新机械门）
+
+1. **包翻译 flag**：`vibe-math-vmu/packs/v5r/tools.js` 的 `toolPollVote` 不再透传 flag，改为把 `abstain:true`
+   翻成票面**唯一**认的形状 `castArgs.choice = 'abstain'`；并且 `choices`/`choice` 与 `abstain:true` **同现**时
+   具名拒 `VMU_INVALID_ARGUMENT poll_vote takes choices[]/choice OR abstain:true, not both`（教学写的是「或」，
+   优先级不能沉默）。
+2. **内核收 flag 作别名**：`vibe-math-vmu/kernel/ballotbox.js` 的弃权分支改成
+   `if (args.abstain === true || String(args.choice) === 'abstain')`，直调内核的调用方不再撞同一句；
+   `abstainAllowed` 那道门不变（弃权是否成立仍由部署层的弃权策略决定，弃权票也不顶 `min_votes` 的已投数）。
+3. **缩写形状补 required**：`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:858` 的
+   `vibe_v5_say {round:"<id>",text}` → `vibe_v5_say {round:"<id>",text,member}`。工具的 required 只有 `member`，
+   因为 pack 处理器没有 agent→member 映射；缺它会被具名拒
+   `this tool needs the speaking member id: a v5r pack handler has no agent→member map, so the sender cannot be guessed`。
+   同句删掉「，换新 round id 再说」保持长度不变。
+4. **新机械门（泛化护栏）**：`tests/vmu-run150-verdict-channel.test.mjs` 新增 §2n4 —— 扫
+   `vibe-math-vmu/packs/v5r/prompts/*.js`（排除历史语料 `v5r-prompts.js`）里**每一个** `vibe_x { … }` 形状：
+   形参必须是该工具**声明过**的、（不含省略号的完整形状）必须**带齐 required**；§2n5 断言扫描非空转（确有带省略号的
+   缩写形状被检查过）。这一道门一次覆盖 audit20 C-1（`boxId`）、audit21 的缺 `member`、audit22 C-1 三类缺陷。
+
+### 250.3 新断言
+
+`tests/vmu-run150-verdict-channel.test.mjs` **59 → 71 passed, 0 failed**：§2m/§2m2 教的 `abstain: true` 支真投成
+弃权（回执 `kind:"abstain"`）；§2m3 票箱 `abstain 1 / votes 0`；§2m4 只有弃权票时结票被具名拒
+`VMU_BALLOT_MIN_VOTES_NOT_MET`（弃权不顶已投数）；§2m5 源码 pin（包翻译、且不再出现透传 flag）；§2m6 内核
+`cast({abstain:true})` 与 `cast({choice:"abstain"})` 同义；§2m7 两支同现具名拒 `not both`；
+§2n/§2n2/§2n3 `vibe_v5_say` required 含 `member`、缺成员具名拒、带上成员真说；§2n4/§2n5 泛化扫描与其非空转守卫。
+
+### 250.4 预算（改后重测，全部不变）
+
+- T99 charter 子装配：**19 995 / 19 998 / 18 243**（院士 / 研究席 / 临时工，研究席余量 2）——改的句子在院士席语料，
+  不进 T99 的子装配。
+- 部署装配：compact **23 428 / 23 434 / 23 563**，full **26 848 / 26 854 / 27 141**。
+- 回执字段目录：compact **13 行 / 2 056 · 2 155 · 2 313**，full **36 行 / 6 335 · 6 434 · 6 592**。
+
+### 250.5 门禁与全量 T1
+
+`=== vmu regen-all: 17/17 in sync ===`、`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0 problem(s))`、
+`RULES COVERAGE: FAIL (1 problem(s))`（唯一 problem 就是 G7 PARTIAL）、`--only audit-` 161/0；
+**全量 T1 TOTAL 632 PASS 632 FAIL 0（suites 568 · probes 64）**。
+
+### 250.6 GAP 状态
+
+- 本轮关闭：audit21 §3 的「缺 required 形参的缩写形状」一项（两处形状带 `member`，run150 §2l/§2l2 非空断言）。
+- 本轮新增并修：弃权分支的死形参（run150 §2m4–§2m7 机器化）。
+- 仍按 GAP/记账 OPEN：G4（invite 幽灵队列）、G5（原语面 fork 前过度拦截）、G18（部署档长度无门禁）、
+  G19（默认 `fixtureMode=no-tools` 与 L62 相抵）、G25、G27（席位注只在 full 档交付）、G28（verdict 适配器之争的余项）、
+  G31（`vibe_vmu_meeting.action` 无 enum）。
+- 已 CLOSED：G3、G17、G26、G30。
+
+### 250.7 下一步
+
+派第二十三次决定性只读审计（基线 = 本轮提交）；判决 `CONSISTENT` 后按用户裁定把台账 G7 记 DONE，
+`check-rules-coverage --check` 应转为 `JUDGED 86 DONE 86`。

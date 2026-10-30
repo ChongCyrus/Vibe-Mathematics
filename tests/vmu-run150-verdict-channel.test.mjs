@@ -19,7 +19,7 @@
  * Last line: === VMU RUN150 VERDICT CHANNEL: N passed, M failed ===
  */
 import { mkdtemp, rm } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -221,6 +221,76 @@ try {
     const taughtVote = await refusalOf(() => voteTool.execute({ ballot_id: taughtBoardId, choice: 'A', member: 'r-1' }, {}))
     ok(Boolean(taughtVote) && taughtVote.ok === true,
       '§2k ★★★ 照活教学里那个形状真投，成功（教与做一致）', taughtVote && (taughtVote.code || taughtVote.tool))
+    // RUN 153 / audit22 C-1 — the second taught branch (`abstain: true`) must CAST an abstention, not fall through to
+    // "选项不在票面上". The face has exactly one abstention shape (`choice === 'abstain'`), so the pack has to translate;
+    // a taught branch that cannot be executed is the same defect class as a wrong parameter name.
+    const abstainBoard = parse(await openTool.execute({ question: 'run150 §2 abstain', options: ['A', 'B'], min_votes: 1, member: 'r-chair' }, {}))
+    const abstainBoardId = abstainBoard && abstainBoard.boxId
+    const abstainVote = await refusalOf(() => voteTool.execute({ ballot_id: abstainBoardId, abstain: true, member: 'r-1' }, {}))
+    ok(Boolean(abstainVote) && abstainVote.ok === true && abstainVote.member === 'r-1',
+      '§2m ★★★ 教的第二支 `abstain: true` 真的投成弃权（audit22 C-1 的反例）', abstainVote && (abstainVote.code || String(abstainVote.message || '').slice(0, 120)))
+    const abstainReceipt = abstainVote && abstainVote.receipt
+    ok(Boolean(abstainReceipt) && (abstainReceipt.kind === 'abstain' || abstainReceipt.abstain === true),
+      '§2m2 ★★ 回执说明这一票是弃权（kind/abstain 字段）', abstainReceipt && JSON.stringify(abstainReceipt).slice(0, 160))
+    const abstainStatus = b.kernel.ballotbox.status({ boxId: abstainBoardId })
+    const abstainClose = parse(await TOOL_CALL(b.specs, 'vibe_v5_poll_close').execute({ ballot_id: abstainBoardId, member: 'r-chair' }, {}))
+    ok(Boolean(abstainStatus) && Number(abstainStatus.abstain) === 1 && Number(abstainStatus.votes) === 0,
+      '§2m3 ★★★ 票箱记下这一票是弃权（abstain 1 / votes 0）——它被投进去了，只是弃权不顶 cast', abstainStatus && JSON.stringify({ votes: abstainStatus.votes, abstain: abstainStatus.abstain }))
+    ok(Boolean(abstainClose) && abstainClose.code === 'VMU_BALLOT_MIN_VOTES_NOT_MET',
+      '§2m4 ★★ 只有弃权票时结票被具名拒（弃权不是 cast，门槛照旧按 cast 算）', abstainClose && (abstainClose.code || String(abstainClose.message || '').slice(0, 120)))
+    const TOOLS_SRC = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'tools.js'), 'utf8')
+    ok(/if \(args\.abstain === true\) castArgs\.choice = 'abstain'/.test(TOOLS_SRC) && !/castArgs\.abstain = true/.test(TOOLS_SRC),
+      '§2m5 ★★★ 包把 `abstain:true` 翻成票面唯一认的弃权形状（不再把 flag 透传给从不读它的内核）')
+    // §2m6 — the kernel FACE itself now reads the flag as an alias of `choice: 'abstain'` (audit22 asked this be
+    // settled): a direct caller of kernel.ballotbox.cast({abstain:true}) no longer falls through to 选项不在票面上.
+    const kB = b.kernel.ballotbox.open({ question: 'run150 §2m6', options: ['A', 'B'] })
+    const kAbstain = b.kernel.ballotbox.cast({ boxId: kB.boxId, by: 'r-1', abstain: true })
+    ok(Boolean(kAbstain) && kAbstain.ok === true && kAbstain.kind === 'abstain',
+      '§2m6 ★★★ 内核面 `cast({abstain:true})` 与 `cast({choice:"abstain"})` 同义（flag 是别名，不再是死形参）', JSON.stringify(kAbstain).slice(0, 160))
+    // §2m7 — both shapes at once is refused BY NAME (the teaching says OR, so precedence must not be silent).
+    const bothBoard = parse(await openTool.execute({ question: 'run150 §2m7', options: ['A', 'B'], member: 'r-chair' }, {}))
+    const bothErr = await refusalOf(() => voteTool.execute({ ballot_id: bothBoard && bothBoard.boxId, choices: ['A'], abstain: true, member: 'r-1' }, {}))
+    ok(Boolean(bothErr) && bothErr.code === 'VMU_INVALID_ARGUMENT' && /not both/.test(String(bothErr.message || '')),
+      '§2m7 ★★★ `choices` 与 `abstain:true` 同现被具名拒（弃权不静默压过选项）', bothErr && (bothErr.code + ' ' + String(bothErr.message || '').slice(0, 90)))
+    // §2n — audit22 §2 B.2b also showed WHY the dead branch survived three audits: nothing checked that every taught
+    // shape names the parameters its tool actually REQUIRES. `vibe_v5_say { round, text }` is such a shape (its tool
+    // requires `member`, because the pack has no agent→member map). Both halves are pinned here: the sentence carries
+    // the required name, and the real tool refuses the shape that omits it BY NAME instead of guessing the sender.
+    const sayTool = TOOL_CALL(b.specs, 'vibe_v5_say')
+    const sayRequired = (sayTool.parameters && sayTool.parameters.required) || []
+    ok(sayRequired.includes('member'), '§2n ★★ `vibe_v5_say` 的 required 里有 member（没有它就猜不出谁在说）', JSON.stringify(sayRequired))
+    const sayRefused = parse(await sayTool.execute({ round: 'run150-say', text: 'x' }, {}))
+    ok(Boolean(sayRefused) && sayRefused.code === 'VMU_INVALID_ARGUMENT' && /member id/.test(String(sayRefused.message || '')),
+      '§2n2 ★★★ 照缺 member 的缩写真调 ⇒ 被具名拒（不是静默用别人的身份）', sayRefused && (sayRefused.code + ' ' + String(sayRefused.message || '').slice(0, 90)))
+    const sayOk = parse(await sayTool.execute({ round: 'run150-say', text: 'x', member: 'r-1' }, {}))
+    ok(Boolean(sayOk) && sayOk.ok === true, '§2n3 ★★ 带上 member 就真的说了（教与做一致）', sayOk && (sayOk.code || sayOk.id))
+    // §2n4 — the GENERALISED door: every `vibe_x { … }` shape written in the LIVE prompt sources must (a) use only
+    // declared parameter names and (b) unless it is explicitly abbreviated with an ellipsis, carry every required one.
+    // This is the check that would have caught audit20 C-1 (boxId), audit21 G30 (missing member) and audit22 C-1 in one
+    // place, so it is pinned rather than re-derived by hand each round.
+    const promptsDir = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts')
+    const decls = new Map(b.specs.map((s) => [s.name, s]))
+    const offenders = []
+    const abbrevSkips = []
+    for (const f of readdirSync(promptsDir).filter((n) => n.endsWith('.js') && n !== 'v5r-prompts.js')) {
+      const src = readFileSync(join(promptsDir, f), 'utf8')
+      for (const m of src.matchAll(/(vibe_[A-Za-z0-9_]+)\s*\{([^}]{0,400})\}/g)) {
+        const name = m[1]
+        const body = m[2]
+        const spec = decls.get(name)
+        if (!spec) { offenders.push(f + ': no such tool ' + name); continue }
+        const props = Object.keys((spec.parameters && spec.parameters.properties) || {})
+        const req = (spec.parameters && spec.parameters.required) || []
+        const keys = Array.from(new Set(body.split(',').map((p) => p.trim().split(':')[0].trim()).filter((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k))))
+        const extra = keys.filter((k) => !props.includes(k))
+        if (extra.length) offenders.push(f + ': ' + name + ' has undeclared ' + extra.join('/'))
+        if (body.includes('…')) { abbrevSkips.push(f + ':' + name); continue }
+        const missing = req.filter((k) => !keys.includes(k))
+        if (missing.length) offenders.push(f + ': ' + name + ' omits required ' + missing.join('/'))
+      }
+    }
+    ok(offenders.length === 0, '§2n4 ★★★ 活教学里每个工具形状只用已声明形参、且（非省略式）带齐 required（审计三轮的死分支在这里被一次抓住）', offenders.join(' | '))
+    ok(abbrevSkips.length > 0, '§2n5 ★ 扫描非空转：确有带省略号的缩写形状被检查过', String(abbrevSkips.length))
   }
 
   console.log('=== 3. 渲染：三席看到修正后的句子，装配里说「投票只有一个入口」 ===')

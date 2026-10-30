@@ -271,9 +271,12 @@ export function createBallotBox(opts) {
     }
     const c = cfg()
     const enforced = []
-    if (String(args.choice) === 'abstain') {
+    if (args.abstain === true || String(args.choice) === 'abstain') {
       // **只在它真的改变本次结果时入列** ✗✓：`abstainAllowed=false` 且本次是弃权 ⇒ 入列 ✓；
       // `true` 时弃权**照样成功** ⇒ **不入列** ✓（否则就是"读"而非"起作用" ✗）。
+      // ROUND 153 / audit22: the branch used to read ONLY `choice === 'abstain'`; a caller sending the flag form
+      // (`abstain: true`) fell through to "选项不在票面上：" and nothing was recorded. The flag is an alias of the
+      // choice, and the gating below is unchanged (abstainAllowed still decides whether an abstention counts).
       if (!c.abstainAllowed) return deny('VMU_BALLOT_ABSTAIN_NOT_ALLOWED', '该配置不允许弃权（abstainAllowed=false）', '打开它，或给出选项', ['vmu.ballot.abstainAllowed'])
       box.abstain.set(by, clock())
       return { ok: true, boxId: box.id, kind: 'abstain', sealed: box.sealed, enforced, enforcedScope: ENFORCED_SCOPE }

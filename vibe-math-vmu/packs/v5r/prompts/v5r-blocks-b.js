@@ -855,7 +855,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'role',
     texts: {
       academician: [
-        '  · **单次发言版群聊**两法：`speakQuota:1`（每人每窗口一条，超了 `VMU_CHAT_QUOTA_EXCEEDED`）或 `vibe_v5_say {round:"<id>",text}`（同轮第二次 `VMU_CHAT_ALREADY_SPOKE`，换新 round id 再说；不带 text 是读本轮还欠谁）；两者都是**机制**不是口头约定，也都不等于并行隔离。',
+        '  · **单次发言版群聊**两法：`speakQuota:1`（每人每窗口一条，超了 `VMU_CHAT_QUOTA_EXCEEDED`）或 `vibe_v5_say {round:"<id>",text,member}`（同轮第二次 `VMU_CHAT_ALREADY_SPOKE`；不带 text 是读本轮还欠谁）；两者都是**机制**不是口头约定，也都不等于并行隔离。',
         '【群聊管理（你是管理员）】`vibe_vmu_chat`：`mute`（成员 + `by` + 可选 `durationMs`；0 用 `vmu.chat.muteDefaultMs`，仍 0 则**不过期**）、`unmute`、`quota`（`speakQuota`＝每窗口条数，0=不限）、`setpolicy`（admins/speakQuota/speakQuotaWindowMs/muteDefaultMs/freezeExemptAdmins）、`admin`。冻结时群聊随票箱冻结，`freezeExemptAdmins` 决定管理员豁免；撞上具名拒 `VMU_CHAT_NOT_ADMIN`／`VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`。',
       ].join('\n'),
       temp: [

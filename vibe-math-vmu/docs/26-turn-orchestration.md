@@ -2493,3 +2493,21 @@ so an abbreviated shape that cannot be executed is now caught by the suite. Budg
 26 848 / 26 854 / 27 141; catalogue unchanged at 13 lines / 2 056 / 2 155 / 2 313 chars and 36 lines /
 6 335 / 6 434 / 6 592 chars. Gates green (regen 17/17, preflight, doc lint, parity 0, coverage only the G7
 PARTIAL), full T1 632/632, `vmu-turn` 272/0.
+
+## ROUND 153 —— 教出的弃权分支必须真的能投进去（第二十二次审计的唯一矛盾）
+
+第二十二次决定性只读审计（基线 `95f1c816`，报告 `D:/_tmp/g7a22/audit22.md`）判决 `CONTRADICTIONS(1)`，
+唯一矛盾是「教出来却投不进去」的同一缺陷类第三例：投票板的弃权支。
+
+- 病灶：`packs/v5r/prompts/v5r-blocks-b.js:847` 教 `vibe_v5_poll_vote { ballot_id, choices: […] 或 abstain: true, member }`
+  两支；`choices` 支实测计票，`abstain: true` 支实测 `VMU_CONFLICT 选项不在票面上：`、票箱零票。
+  包 `packs/v5r/tools.js:3344` 把 flag 透传成 `castArgs.abstain = true`，内核 `kernel/ballotbox.js:274`
+  只认 `choice === 'abstain'`、从不读 `args.abstain` ⇒ flag 落到选项分支。
+- 修法：包把 flag 翻成票面唯一认的形状（`castArgs.choice = 'abstain'`），两支同现时具名拒 `not both`；
+  内核把 `abstain: true` 收作 `choice: 'abstain'` 的别名（直调内核者不再撞同一句，`abstainAllowed` 门不变）；
+  `v5r-blocks-b.js:858` 的 `vibe_v5_say {round,text}` → `{round,text,member}`（required 只有 `member`）。
+- 新机械门：`tests/vmu-run150-verdict-channel.test.mjs` §2n4 扫全部活提示词里的 `vibe_x { … }` 形状，
+  形参必须已声明、（非省略式）必须带齐 required；§2n5 保证扫描非空转。这一道门覆盖最近三轮审计的同三类缺陷。
+- 读数：run150 **59 → 71 passed, 0 failed**；T99 19 995 / 19 998 / 18 243（不变）；部署 compact 23 428 / 23 434 / 23 563、
+  full 26 848 / 26 854 / 27 141（不变）；目录 13/36 行六数不变；全量 T1 **632/632（suites 568 · probes 64）**。
+- 仍未结束：G7 保持 PARTIAL，等第二十三次审计的零矛盾判决。

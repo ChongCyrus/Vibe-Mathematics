@@ -3326,7 +3326,9 @@ function toolPollOpen(args = {}, { kernel } = {}) {
 }
 
 /** ★ `vibe_v5_poll_vote` — cast an option-type vote. ① lands here (non-voter refused by name). `choices[]` is
- * forwarded as the face's ranked/multi list; `abstain` rides on the face's explicit abstention. */
+ * forwarded as the face's ranked/multi list; `abstain:true` is translated into the face's ONLY abstention shape
+ * (`choice === 'abstain'`, kernel/ballotbox.js:274 — the face never reads an `abstain` flag, so passing the flag
+ * through silently turned a taught abstention into `VMU_CONFLICT 选项不在票面上`; RUN 153). */
 function toolPollVote(args = {}, { kernel } = {}) {
   if (!has(args.ballot_id)) throw refuse('VMU_INVALID_ARGUMENT', 'poll_vote needs ballot_id', 'take it from vibe_v5_poll_open\'s receipt (this face has no "the open board" default)')
   const member = requireVoter(kernel, args.member, 'poll_vote').id
@@ -3334,14 +3336,19 @@ function toolPollVote(args = {}, { kernel } = {}) {
   if (!choices && !has(args.choice) && args.abstain !== true) {
     throw refuse('VMU_INVALID_ARGUMENT', 'poll_vote needs choices[], a choice, or abstain:true', 'the original required one of them')
   }
+  // audit22 C-1 follow-up: the teaching says `choices: […]` OR `abstain: true`, so a payload carrying both is refused
+  // BY NAME instead of silently letting the abstention win and dropping the options.
+  if (args.abstain === true && (choices || has(args.choice))) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'poll_vote takes choices[]/choice OR abstain:true, not both', 'an abstention is not a ballot with options; pick one shape')
+  }
   if (!kernel.ballotbox || typeof kernel.ballotbox.cast !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no ballot box face is published, so a vote cannot be cast', 'assemble a kernel with the ballot box service')
   }
   const castArgs = { boxId: str(args.ballot_id), by: member }
   if (has(args.note)) castArgs.note = str(args.note)
-  if (choices) castArgs.choices = choices
+  if (args.abstain === true) castArgs.choice = 'abstain'
+  else if (choices) castArgs.choices = choices
   else if (has(args.choice)) castArgs.choice = str(args.choice)
-  if (args.abstain === true) castArgs.abstain = true
   const r = kernel.ballotbox.cast(castArgs)
   if (r && r.ok === false) {
     throw refuse(r.code || 'VMU_CONFLICT', (r.message || 'the ballot box refused this vote'), (r.hint || 'see the ballot box refusal'))
