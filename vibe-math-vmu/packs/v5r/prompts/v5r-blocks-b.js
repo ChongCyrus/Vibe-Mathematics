@@ -269,6 +269,10 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // VERBATIM (it is the fidelity baseline) and the truth is stated on its own line, as with run 61 below.
         '（上面这句是捕获原文；字段形状以本段上面由 v5r-reply-channel.js 渲染的清单为准：record 是研究日志**一行** {track,text} → Members/<你>/Progress/<track>.md；成果卡不是回执字段，用 vibe_v5_record_proposition／_method／_subproblem。say 只在有会议绑定的轮次进会议楼层，无绑定的轮次不投递（原句留在回执 notes）——群聊/私信要用工具 vibe_v5_say。）',
         'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
+        // AUDIT12: the captured line above teaches three reply FIELDS whose taught shapes the dispatcher cannot deliver
+        // (a reply field carries one value; these name positional face operations). The capture stays VERBATIM - it is the
+        // fidelity baseline - and the truth is stated on its own line, exactly as run 61 below does for the state table.
+        '（上面这句也是捕获原文；这三件事都**不是回执字段**：完成任务用工具 `vibe_v5_task_update { task_id, expected_revision, action: "complete" }`、改任务同用这个工具（`action` 七选一）、对分派的异议用 `vibe_v5_record_progress`（track "obstacles"）记账并在会议轮用 `vibe_v5_say` 提出。回执里写 `task_done`／`task_update`／`reject_assign` 会被具名拒 `VMU_TURN_FIELD_NOT_APPLICABLE`，理由在 hint 里。）',
         // ★ LIVE RUN 61 (a member lost a round to the line above): the field list reads as "action=complete is the way to
         // finish", but the board's own table is open→assigned→doing→done, so a completion from `assigned` is refused BY
         // NAME (`illegal transition assigned -> done`) and the member has to read the hint and call again with

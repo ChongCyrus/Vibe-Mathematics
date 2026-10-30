@@ -53,6 +53,26 @@ const NO_REPLY_MEETING_SHAPE = Object.freeze({
   hint: 'use the meeting tool face: vibe_vmu_meeting { action: "hand" | "hands" | "invite", id: "<meeting id>", ... } — the actor and the meeting are explicit there, and the chair rail applies to an invitation',
 })
 
+// ★★★ RUN 144 / audit12 (the reply-shape family). The audit drove a real kernel round with the EXACT json the live
+// catalogue taught and the turn DIED, because these fields name face operations that take POSITIONAL arguments
+// (`tasks.transition(id, to)`, `tasks.assign(id, who)`, `meetings.warn(meeting, …)`) while a reply field carries exactly
+// ONE value - the whole payload went into the first slot (`no such meeting: undefined`, `unknown task state:
+// [object Object]`). A reply cannot express them, so they are declared with `noReplyShape`: the plan refuses them BY NAME
+// before any face lookup, the rest of the turn still applies, and the hint names the tool face that DOES work (the tool
+// handlers adapt the reply-shaped object onto the positional operation). Teaching a shape the dispatcher cannot deliver
+// is exactly how the audit's 8 contradictions arose; the fix is to stop teaching it, not to let the senders keep dying.
+const POSITIONAL_REPLY_SHAPE = (opText, route) => Object.freeze({
+  code: 'VMU_TURN_FIELD_NOT_APPLICABLE',
+  message: opText + ' takes POSITIONAL arguments, and a reply field carries ONE value: the dispatch would hand the whole payload to the first positional slot',
+  hint: route,
+})
+
+const NO_REJECT_ASSIGN_SHAPE = Object.freeze({
+  code: 'VMU_TURN_FIELD_NOT_APPLICABLE',
+  message: 'an objection in a reply would be dispatched as MEETING SPEECH (vmu.meetings.speak), and a reply carries no meeting: on an ordinary round it is skipped as no-meeting-bound, so it can never reach the voters it promises to broadcast to',
+  hint: 'file the reason where the ledger keeps it: the tool face vibe_v5_record_progress (track "obstacles", with member) records why the assignment is contested, and raise it in a meeting round through vibe_v5_say — the task is executed regardless, that is the semantics of an objection',
+})
+
 export const FIELD_OWNERS = Object.freeze({
   say: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
   progress: Object.freeze({ face: 'vmu.records', op: 'put' }),
@@ -66,7 +86,7 @@ export const FIELD_OWNERS = Object.freeze({
   propose_verify: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
   verdict: Object.freeze({ face: 'vmu.ballotbox', op: 'cast' }),
   task_create: Object.freeze({ face: 'vmu.tasks', op: 'create' }),
-  task_update: Object.freeze({ face: 'vmu.tasks', op: 'transition' }),
+  task_update: Object.freeze({ face: 'vmu.tasks', op: 'transition', noReplyShape: POSITIONAL_REPLY_SHAPE('vmu.tasks.transition(id, to)', 'use the tool face vibe_v5_task_update { task_id, expected_revision, action } — it maps claim/reassign/assign/transition/complete/reopen/set_dependencies onto the real transition and requires the revision token') }),
   proposal: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
   motion: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
   formal: Object.freeze({ face: 'vmu.formal', op: 'check' }),
@@ -86,11 +106,11 @@ export const FIELD_OWNERS = Object.freeze({
   input: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
   propose_meeting: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
   convene_meeting: Object.freeze({ face: 'vmu.meetings', op: 'open' }),
-  task_claim: Object.freeze({ face: 'vmu.tasks', op: 'transition' }),
-  task_done: Object.freeze({ face: 'vmu.tasks', op: 'transition' }),
-  assign: Object.freeze({ face: 'vmu.tasks', op: 'assign' }),
-  nudge: Object.freeze({ face: 'vmu.meetings', op: 'warn' }),
-  reject_assign: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
+  task_claim: Object.freeze({ face: 'vmu.tasks', op: 'transition', noReplyShape: POSITIONAL_REPLY_SHAPE('vmu.tasks.transition(id, to)', 'use the tool face vibe_v5_task_update { task_id, expected_revision, action: "claim" } — blocked_by dependencies are refused there by name') }),
+  task_done: Object.freeze({ face: 'vmu.tasks', op: 'transition', noReplyShape: POSITIONAL_REPLY_SHAPE('vmu.tasks.transition(id, to)', 'use the tool face vibe_v5_task_update { task_id, expected_revision, action: "complete" } — from `assigned` you must go through `doing` first (the legal table is open→assigned|doing, assigned→doing|open, doing→done|assigned)') }),
+  assign: Object.freeze({ face: 'vmu.tasks', op: 'assign', noReplyShape: POSITIONAL_REPLY_SHAPE('vmu.tasks.assign(id, who)', 'use the tool face vibe_v5_assign { to, subject|task_id, why, acceptance } — why and acceptance are REQUIRED and are mailed to the assignee') }),
+  nudge: Object.freeze({ face: 'vmu.meetings', op: 'warn', noReplyShape: POSITIONAL_REPLY_SHAPE('vmu.meetings.warn(meeting, …)', 'use the tool face vibe_v5_nudge { to, why, next_step } — it wakes one member with a stated reason and a concrete next step') }),
+  reject_assign: Object.freeze({ face: 'vmu.meetings', op: 'speak', noReplyShape: NO_REJECT_ASSIGN_SHAPE }),
 })
 
 /**

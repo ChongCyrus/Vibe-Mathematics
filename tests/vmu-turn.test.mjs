@@ -1256,12 +1256,14 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const refuser = async () => ({ ok: false, code: "V5_TASK_STALE_REVISION", message: "stale revision" })
   const loopN = createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIONS,
     prompt: createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => "2026-01-01T00:00:00.000Z" }),
-    deliver: async () => "```json\n{\"task_update\":{\"task_id\":\"t-1\",\"expected_revision\":99}}\n```",
-    faces: { "vmu.tasks": { transition: refuser } },
+    // AUDIT12: the field used here must be one a reply can ACTUALLY deliver: `task_update` no longer qualifies
+    // (positional `transition(id,to)`), so this uses `task_create`, whose face takes the payload object directly.
+    deliver: async () => "```json\n{\"task_create\":{\"title\":\"t-1\"}}\n```",
+    faces: { "vmu.tasks": { create: refuser } },
   })
   const baseN = { member: "r-1", role: "researcher", roleLabel: '常驻研究员', phase: "normal", statusBlock: "[状态] x" }
   const r1 = await loopN.run({ ...baseN, round: 1 })
-  ok(r1.ok === true && r1.refused.length === 1 && r1.refused[0].field === "task_update" && r1.refused[0].code === "V5_TASK_STALE_REVISION",
+  ok(r1.ok === true && r1.refused.length === 1 && r1.refused[0].field === "task_create" && r1.refused[0].code === "V5_TASK_STALE_REVISION",
     "T142. **** a refused dispatch is REPORTED on the receipt rather than silently counted as executed",
     { refused: r1.refused })
   const queuedN = loopN.takeNotices("r-1")

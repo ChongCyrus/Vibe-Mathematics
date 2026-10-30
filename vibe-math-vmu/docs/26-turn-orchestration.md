@@ -2382,3 +2382,14 @@ Rules that came out of this round:
 - **同意句只承认一半理由 = 拒绝句说谎的另一半**：`excludedMeans` 原来断言「主席主持是唯一排除理由」，而同回执的 `excluded` 还按「席位无裁决面」排除。改法是把两个理由都写出来，并指向行里的 `seat`。
 - **量具会被自己的工作方式骗**：`node tests/run-tests.mjs vmu-turn` 是**全量扫描**（位置参数被忽略），超时被 kill 后留下的「几十条红」全是假红；过滤要写 `--only vmu-turn`。同时 `grep FAIL` 也不能只 tail 尾部——先看 `TOTAL` 行。
 - **20000 字符是「小于」**：19999/19998 绿、20000 红；腾预算优先压本轮新写句子，不要动捕获语料（那是保真基线）。
+
+## ROUND 144b (G7 audit 12)
+
+- **回执字段只带一个值**：`task_update`／`task_claim`／`task_done`／`assign`／`nudge`／`reject_assign` 的属主面收的是**位置参数**
+  （或需要回执里没有的会议对象），回执载不动它们，照教即整轮被拒。内核给这六个字段加 `noReplyShape`，在任何面查找**之前**
+  具名跳过（`VMU_TURN_FIELD_NOT_APPLICABLE` + 工具活路），其余字段照常执行。
+- **`task_create` 的键名差一层**：内核 `tasks.create` 读 `title`，工具 `vibe_v5_task_create` 的形参叫 `subject`；教学必须同时点名两个名字。
+- **紧凑目录里的边界行**：六个没有形状的字段在 compact 目录里合成**一行**（各自→工具），`full` 档仍逐行渲染全注记。原因不是美观，
+  是预算：六个整行把成员提示词推到 21 323，一行边界后 19 894（T99 上限 20 000）。
+- 教训：**「某字段有属主」与「回执能送达它」是两个事实**；测试里拿一个载不动的字段去测派发器（`task_update` 的 stale-revision 反例）
+  等于把缺陷写进契约——反例要选真能派发的字段（`task_create`）。

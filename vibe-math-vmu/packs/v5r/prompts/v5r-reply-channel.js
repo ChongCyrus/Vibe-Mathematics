@@ -68,9 +68,9 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'verdict', face: 'vmu.ballotbox', op: 'cast',
     note: '{target,verdict ∈ [0,1],reason}：只有 1 或 0 算表决，中间值是弃权/存疑；无表决权的席位填了也不计票' }),
   Object.freeze({ field: 'task_create', face: 'vmu.tasks', op: 'create', common: true,
-    note: '{subject,description,blocked_by?,write_scopes?}' }),
-  Object.freeze({ field: 'task_update', face: 'vmu.tasks', op: 'transition', common: true,
-    note: '{task_id,expected_revision,action}；action 只有 claim|reassign|assign|transition|complete|reopen|set_dependencies 七个（edit/delete/release 在这个内核里没有对应操作，会被具名拒）；合法流转只有 open→assigned|doing、assigned→doing|open、doing→done|assigned；修订号过期会被拒' }),
+    note: '{title,description,blocked_by?,write_scopes?}（内核 create 读 `title`；工具面 vibe_v5_task_create 的形参叫 `subject`，两个名字指同一列）' }),
+  Object.freeze({ field: 'task_update', face: 'vmu.tasks', op: 'transition', common: true, notApplicable: true,
+    note: '不要写进回执：tasks.transition(id,to) 是位置参数，回执只能带一个值。用工具 vibe_v5_task_update { task_id, expected_revision, action }（action: claim|reassign|assign|transition|complete|reopen|set_dependencies；edit/delete/release 无对应操作，具名拒）', route: 'vibe_v5_task_update { task_id, expected_revision, action }' }),
   Object.freeze({ field: 'proposal', face: 'vmu.meetings', op: 'motion',
     note: '动议；与 propose_verify 同一个属主面，对象里说明要做什么' }),
   Object.freeze({ field: 'motion', face: 'vmu.meetings', op: 'motion',
@@ -89,19 +89,19 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'input', face: 'vmu.meetings', op: 'speak',
     note: '会议/辩论的发言正文（会议轮用；也可直接用 say）' }),
   Object.freeze({ field: 'propose_meeting', face: 'vmu.meetings', op: 'motion',
-    note: '提议开会 {agenda,kind?,target?}；非院士席只能提议，不能直接召集' }),
+    note: '提议开会 {agenda,kind?,target?}：只在会议轮（有会议绑定）投递为动议；普通轮会被具名跳过 VMU_TURN_FIELD_NOT_APPLICABLE。要真的召集用工具 vibe_vmu_meeting { action: "open", … }（只有院士席能召集）' }),
   Object.freeze({ field: 'convene_meeting', face: 'vmu.meetings', op: 'open',
     note: '直接召集 {agenda,…}：只有院士席能召集（conveneRequiresChair），别的席位调用会被具名拒' }),
-  Object.freeze({ field: 'task_claim', face: 'vmu.tasks', op: 'transition', common: true,
-    note: '要认领的任务 id 字符串（依赖未完成会被拒）' }),
-  Object.freeze({ field: 'task_done', face: 'vmu.tasks', op: 'transition', common: true,
-    note: '要标记完成的任务 id 字符串' }),
-  Object.freeze({ field: 'assign', face: 'vmu.tasks', op: 'assign',
-    note: '{subject,description,to,why,acceptance,priority}：分派是院士席的职责，权限由 vmu.tasks 判' }),
-  Object.freeze({ field: 'nudge', face: 'vmu.meetings', op: 'warn',
-    note: '{to,why,next_step}：督办（权限由属主面判）' }),
-  Object.freeze({ field: 'reject_assign', face: 'vmu.meetings', op: 'speak', common: true,
-    note: '{task_id,why}：对分派的异议理由；任务仍会执行，但理由会被广播给全体表决者' }),
+  Object.freeze({ field: 'task_claim', face: 'vmu.tasks', op: 'transition', common: true, notApplicable: true,
+    note: '不要写进回执：它会被当成 transition 的第一个位置参数。用工具 vibe_v5_task_update { task_id, expected_revision, action: "claim" }（依赖未完成会被具名拒）', route: 'vibe_v5_task_update { …, action: "claim" }' }),
+  Object.freeze({ field: 'task_done', face: 'vmu.tasks', op: 'transition', common: true, notApplicable: true,
+    note: '不要写进回执。用工具 vibe_v5_task_update { task_id, expected_revision, action: "complete" }；从 assigned 要先 transition 到 doing（合法表 open→assigned|doing、assigned→doing|open、doing→done|assigned）', route: 'vibe_v5_task_update { …, action: "complete" }' }),
+  Object.freeze({ field: 'assign', face: 'vmu.tasks', op: 'assign', notApplicable: true,
+    note: '不要写进回执：tasks.assign(id,who) 是位置参数。分派用工具 vibe_v5_assign { to, subject 或 task_id, why, acceptance }（why/acceptance 必填，且会寄给被派者；分派是院士席职责）', route: 'vibe_v5_assign { to, subject|task_id, why, acceptance }' }),
+  Object.freeze({ field: 'nudge', face: 'vmu.meetings', op: 'warn', notApplicable: true,
+    note: '不要写进回执：meetings.warn(meeting,…) 要会议对象，回执不带会议。督办用工具 vibe_v5_nudge { to, why, next_step }（经邮件投递）', route: 'vibe_v5_nudge { to, why, next_step }' }),
+  Object.freeze({ field: 'reject_assign', face: 'vmu.meetings', op: 'speak', common: true, notApplicable: true,
+    note: '不要写进回执：它会被当成会议发言，而回执不带会议——普通轮直接跳过，到不了全体表决者。理由用工具 vibe_v5_record_progress (track "obstacles", 带 member) 记进账本，并在会议轮用 vibe_v5_say 提出；任务仍会执行，这就是异议的语义', route: 'vibe_v5_record_progress（track "obstacles"）+ 会议轮 vibe_v5_say' }),
   // ── bookkeeping fields: recognised, recorded on the turn state, dispatched to NO face ────────────────────────────
   Object.freeze({ field: 'contextPct', face: null, op: null, common: true,
     note: '你当前上下文占用百分比（0-100），有依据时才填' }),
@@ -128,9 +128,9 @@ export const REPLY_FIELD_NAMES = Object.freeze(REPLY_FIELD_ROWS.map((r) => r.fie
  * refuses, so the sentence stays a statement about the mechanism instead of an invented rule.
  */
 export const REPLY_SEAT_NOTES = Object.freeze({
-  chair: '你是院士席：可以 `convene_meeting` 直接召集、`assign`／`prioritize`／`nudge` 分派与督办（分派的是工作，不是结论）；`verdict` 与其他人一票等重。',
-  member: '你是常驻研究员：`convene_meeting` 只有院士席能召集（conveneRequiresChair），`assign`／`prioritize`／`nudge` 的权限由属主面判——被拒会具名说明，不要反复试。',
-  temp: '你是临时成员：`verdict`／`vote_solved` 填了也不计票（没有表决权），`convene_meeting`／`assign`／`prioritize`／`nudge` 会被属主面具名拒；`propose_verify`／`propose_meeting` 你可以提议，是否采纳由院士席定。',
+  chair: '你是院士席：`convene_meeting` 可直接召集；**分派与督办走工具面** `vibe_v5_assign`／`vibe_v5_nudge`（回执里的 `assign`／`nudge` 没有可用形状，写了会被具名拒），分派的是工作、不是结论；`verdict` 与其他人一票等重。',
+  member: '你是常驻研究员：`convene_meeting` 只有院士席能召集（conveneRequiresChair）；分派/督办用工具面 `vibe_v5_assign`／`vibe_v5_nudge`，权限由属主面判——被拒会具名说明，不要反复试。',
+  temp: '你是临时成员：`verdict`／`vote_solved` 填了也不计票（没有表决权）；`convene_meeting`／`assign`／`nudge` 会被属主面具名拒；`propose_verify`／`propose_meeting` 你可以提议（会议轮投递），是否采纳由院士席定。',
 })
 
 /** The smallest legal reply: the two fields every seat may always write, and nothing shape-sensitive. */
@@ -173,12 +173,13 @@ export function replyChannelLines() {
 export function replyCatalogueLines({ mode = 'compact', seat = null } = {}) {
   // THE REFUSED FIELDS ARE ALWAYS RENDERED, in both modes: they are not "usable fields", they are boundaries, and a member
   // that only ever reads the compact catalogue is exactly the member that used to write `"meeting_hand": true`.
-  const usable = mode === 'full' ? REPLY_FIELD_ROWS : REPLY_FIELD_ROWS.filter((r) => r.common || r.notApplicable)
+  const refusedRows = REPLY_FIELD_ROWS.filter((r) => r.notApplicable)
+  const usable = mode === 'full' ? REPLY_FIELD_ROWS : REPLY_FIELD_ROWS.filter((r) => r.common && !r.notApplicable)
   const rows = usable
-  const refused = rows.filter((r) => r.notApplicable).length
+  const refused = refusedRows.length
   const head = mode === 'full'
     ? '【回执字段目录｜全部 ' + String(REPLY_FIELD_NAMES.length) + ' 个顶层字段，由内核字段表派生】字段名、属主与「哪些可用」都来自同一张声明表。'
-    : '【回执字段目录｜常用 ' + String(rows.length - refused) + ' 个，由内核字段表派生】全部 ' + String(REPLY_FIELD_NAMES.length) + ' 个见 `vmu.turn.replyCatalogue=full`；另有 ' + String(refused) + ' 个没有可用形状，一并列出边界。'
+    : '【回执字段目录｜常用 ' + String(rows.length) + ' 个，由内核字段表派生】全部 ' + String(REPLY_FIELD_NAMES.length) + ' 个见 `vmu.turn.replyCatalogue=full`；另有 ' + String(refused) + ' 个没有可用形状，列在表下一行。'
   const lines = [head]
   for (const r of rows) {
     const where = r.face === null
@@ -186,6 +187,14 @@ export function replyCatalogueLines({ mode = 'compact', seat = null } = {}) {
       : r.face + (r.op ? '.' + r.op : '')
     const refused = r.notApplicable ? '　★ 这个字段没有可用形状，写了会被具名拒 `' + REPLY_CHANNEL_FACTS.refusals.fieldNotApplicable + '`。' : ''
     lines.push('· `' + r.field + '` —— ' + where + '：' + escape(r.note) + refused)
+  }
+  // ★ AUDIT12 / T99 BUDGET: the six positional-or-meeting-bound fields are a BOUNDARY, not six usable entries. Rendering
+  // them as six full rows cost ~1 300 chars of a member prompt that has ~95 chars of head room against T99's 20 000 cap.
+  // In the compact catalogue they render as ONE line naming the tool route that actually works; the full catalogue still
+  // renders them row by row with their full note (that mode is a deliberate, uncapped read of the whole table).
+  if (mode !== 'full' && refusedRows.length > 0) {
+    lines.push('· **没有可用形状、不要写进回执**（写了会被具名拒 `' + REPLY_CHANNEL_FACTS.refusals.fieldNotApplicable + '`）：' +
+      refusedRows.map((r) => '`' + r.field + '`→' + escape(r.route || '用工具面')).join('；') + '。')
   }
   lines.push('· 键只能是上表名字（自造键按 `vmu.turn.unknownReplyFieldMode`：默认忽略，strict 则 `VMU_TURN_UNKNOWN_FIELD`）；被要求的字段以本轮指令为准。')
   lines.push('· 权限由属主面各自判（不是目录决定）：缺权限会被具名拒（临时工 verdict／vote_solved 不計票；convene 只有院士席能召集）。一次回复至少一个字段。')
@@ -200,7 +209,7 @@ export function replyCatalogueLines({ mode = 'compact', seat = null } = {}) {
     // is unreachable (above), and a nested `report:` key no longer exists because the fenced object IS the report. Naming
     // them is not decoration — members arrive with these two forms memorised from earlier rounds and from the corrections.
     lines.push('· 这一段是**字段目录**：`←` 后是说明，`|`/`或` 是取值提示，因此这一段并非合法对象字面量；**你真正要交回的 `report` 必须严格合法**，最小形态见目录末尾的样例。')
-    lines.push('· **旧写法不要再照抄**：一律「调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」在 activation 投递下不可达；`report: {"say":"…","progress":"…","solved":false,"contextPct":40}` 多套了一层 report 键。最小合法 report 样例（可直接照抄）：`{"say":"…","progress":{"track":"progress","title":"…","body":"…"},"solved":false,"contextPct":40}`，放在回复末尾的代码围栏里。')
+    lines.push('· **旧写法不要再照抄**：一律「调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」在 activation 投递下不可达；`report: {"say":"…","progress":"…","solved":false,"contextPct":40}` 多套了一层 report 键，且 `progress` 写成字符串（字符串解不出 track，整轮被拒）。最小合法 report 样例（可直接照抄）：`{"say":"…","progress":{"track":"progress","title":"…","body":"…"},"solved":false,"contextPct":40}`，放在回复末尾的代码围栏里。')
   }
   return lines
 }

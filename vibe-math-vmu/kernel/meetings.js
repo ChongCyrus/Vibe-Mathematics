@@ -2980,7 +2980,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     if (labelRequired === true && titleRef === null && kindRef === null) {
       throw deny('VMU_MEETING_LABEL_MISSING',
         'a meeting must carry a meaningful label, and neither `kind` nor `title` was given — no reader could tell what this meeting is or find it in a list',
-        'pass kind:"<what sort of meeting>" (e.g. division, verify-request, agenda-sync) or title:"<one line naming it>"; an unlabelled meeting is only readable to the person who convened it', enforced)
+        'pass kind:"<what sort of meeting>" (e.g. debate, planning — the six ids in meeting-procedures.js) or title:"<one line naming it>"; an unlabelled meeting is only readable to the person who convened it', enforced)
     }
     const m = {
       id: mid, type: String(type), kind: kindRef, chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),

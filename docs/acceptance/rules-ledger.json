@@ -336,7 +336,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_start"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::你是院士席：可以",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::你是院士席：`convene_meeting` 可直接召集",
         "vibe-math-vmu/packs/v5r/prompts/v5r-charter.js::本所的领头人是"
       ],
       "live": [
@@ -1864,7 +1864,7 @@
       ],
       "prompt": [
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::工具做事，回执汇报",
-        "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::action 只有 claim"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js::回执只能带一个值"
       ],
       "live": [
         "docs/acceptance/phase12-v5r-rules-conformance.md::bogusFenceField - refusing rather than guessing what was meant",

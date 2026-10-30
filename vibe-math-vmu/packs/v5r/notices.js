@@ -37,17 +37,20 @@ function need(fields, required, kind) {
 
 /**
  * 【{assignerLabel}分派】任务 {taskId}「{title}」分派给你。理由：{why}｜验收标准：{acceptance}。
- * 默认应当执行；若你认为方向有误，请说明理由（会被广播给全所）。若你有异议，请在 JSON 里填 reject_assign。
+ * 默认应当执行；若你认为方向有误，请在会议轮用 vibe_v5_say 说明理由（会议楼层全体可见），并把理由用
+ * vibe_v5_record_progress（track "obstacles"）记进账本。★ 回执里的 reject_assign 没有可用形状：它会被当成会议发言而
+ * 回执不带会议，普通轮直接跳过，到不了全体表决者（VMU_TURN_FIELD_NOT_APPLICABLE，见 v5r-reply-channel.js 的 `reject_assign` 行）。
  *
- * The corpus has the same shape under two labels - 所办分派 and 院士分派 - so the label is the variable, and the
- * sentence that follows is identical in both, including the promise that the reason is broadcast to the whole
- * institute and the instruction to file a reject_assign objection.
+ * The corpus has the same shape under two labels - 所办分派 and 院士分派 - so the label is the variable. ★ AUDIT12: the
+ * captured sentence promised that an objection reason is BROADCAST to the whole institute and told the member to put
+ * `reject_assign` in the reply JSON. Both were unreachable (the reply field has no dispatchable shape and is skipped on
+ * ordinary rounds), so the notice now names the two routes that do reach people: meeting speech, and the obstacles track.
  */
 export function assignmentNotice(fields = {}) {
   need(fields, ['assignerLabel', 'taskId', 'title', 'why', 'acceptance'], 'assignment')
   return '【' + fields.assignerLabel + '分派】任务 ' + fields.taskId + '「' + fields.title + '」分派给你。理由：'
-    + fields.why + '｜验收标准：' + fields.acceptance + '。默认应当执行；若你认为方向有误，请说明理由（会被广播给全所）。'
-    + '若你有异议，请在 JSON 里填 reject_assign。'
+    + fields.why + '｜验收标准：' + fields.acceptance + '。默认应当执行；若你认为方向有误，请在会议轮用 vibe_v5_say 说明理由（会议楼层全体可见），'
+    + '并把理由用 vibe_v5_record_progress（track "obstacles"）记进账本——回执里的 reject_assign 没有可用形状，写了会被具名拒。'
 }
 
 /**

@@ -629,8 +629,18 @@ const phaseOf = (kind, text) => {
   const NOTICE_PREFIXES = ["【所办分派】", "【院士分派】", "【督办 from", "【研究所·群聊】", "【所办通知】"]
   const noticeLines = [...new Set(originalBlob.split("\n").map((l) => l.trim()).filter((l) => NOTICE_PREFIXES.some((p) => l.startsWith(p))))]
   const NOTICES = await import("../vibe-math-vmu/packs/v5r/notices.js")
+  // ★ ROUND 144b (G7 audit #12, audit12 G15): the captured ASSIGNMENT notice promised that the reason for a
+  // refusal would be broadcast to every voter. The dispatcher cannot deliver that promise — a reply carries no
+  // meeting, so `reject_assign` was skipped `no-meeting-bound` and NOTHING reached the voters. The notice now
+  // names the two routes that do work, so a captured line carrying the old promise can no longer match verbatim.
+  // This is a DECLARED divergence of the same class as F5 and ROUND 58: the capture was the source, and
+  // reproducing it would reproduce the defect. Measured, not hand-waved: the stale lines are excluded and the
+  // corrected template is asserted to say the true thing.
+  const STALE_BROADCAST = "会被广播给全所"
+  const staleNoticeLines = noticeLines.filter((l) => l.includes("分派】任务") && l.includes(STALE_BROADCAST) && l.includes("reject_assign"))
+  const liveNoticeLines = noticeLines.filter((l) => !staleNoticeLines.includes(l))
   let reproduced = 0
-  for (const line of noticeLines) {
+  for (const line of liveNoticeLines) {
     const asg = /^【(.+?)分派】任务 (.+?)「(.+?)」分派给你。理由：(.+?)｜验收标准：(.+?)。默认应当执行；/.exec(line)
     if (asg) { if (NOTICES.assignmentNotice({ assignerLabel: asg[1], taskId: asg[2], title: asg[3], why: asg[4], acceptance: asg[5] }) === line) reproduced += 1; continue }
     const nud = /^【督办 from (.+?)】(.+?)督办：(.+?)(?:｜建议的下一步：(.+))?$/.exec(line)
@@ -640,9 +650,13 @@ const phaseOf = (kind, text) => {
     const off = /^【所办通知】(.+)$/.exec(line)
     if (off) { if (NOTICES.officeNotice({ text: off[1] }) === line) reproduced += 1; continue }
   }
-  ok(noticeLines.length >= 5 && reproduced === noticeLines.length,
-    "V69. **** THE NOTICE FAMILY, measured on its own because the assembly comparison cannot see it: " + reproduced + " of " + noticeLines.length + " captured framework notices are reproduced VERBATIM",
-    { captured: noticeLines.length, reproduced })
+  const correctedAssignment = NOTICES.assignmentNotice({ assignerLabel: "院士", taskId: "t-1", title: "核验 p-lemma-a", why: "需要第二人复核", acceptance: "结论落卡" })
+  ok(staleNoticeLines.length >= 1 && !correctedAssignment.includes(STALE_BROADCAST) && correctedAssignment.includes("vibe_v5_record_progress") && correctedAssignment.includes("vibe_v5_say"),
+    "V69b. ★★ the corrected ASSIGNMENT notice no longer promises a broadcast the dispatcher cannot deliver (audit12 G15): it names the two routes that work",
+    { stale: staleNoticeLines.length, corrected: correctedAssignment.slice(0, 200) })
+  ok(liveNoticeLines.length >= 2 && reproduced === liveNoticeLines.length,
+    "V69. **** THE NOTICE FAMILY, measured on its own because the assembly comparison cannot see it: " + reproduced + " of " + liveNoticeLines.length + " live captured framework notices are reproduced VERBATIM (" + staleNoticeLines.length + " stale assignment line(s) excluded as a DECLARED divergence — the capture promised a broadcast the dispatcher cannot deliver)",
+    { captured: noticeLines.length, excluded: staleNoticeLines.length, live: liveNoticeLines.length, reproduced })
   // The named gap families, kept in the test so the next person sees WHAT is missing rather than only how much.
   // THREE OF THE SIX FAMILIES ARE NOW CLOSED: the compact catalogue, the refusal notice and the contextPct/compacted
   // clarification (the tool-help hint rides in the same block). The list below is what remains, kept in the test so the

@@ -32,17 +32,32 @@ console.log('=== 1. THE ASSIGNMENT NOTICE, reproduced from its own captured fiel
   ok(captured.length >= 2, 'the corpus carries assignment notices under both labels', { count: captured.length })
   let matched = 0
   const bad = []
+  // ★ ROUND 144b (G7 audit #12, audit12 G15): the captured suffix after 「默认应当执行；」 promised that the
+  // reason for a refusal 「会被广播给全所」 and told the member to 「在 JSON 里填 reject_assign」. The dispatcher
+  // cannot deliver either: a reply carries no meeting, so `reject_assign` is skipped `no-meeting-bound` and NOTHING
+  // reaches the voters. The notice was corrected to name the two routes that do work, so the CAPTURED SUFFIX is a
+  // DECLARED divergence of the F5 / ROUND-58 class (the capture was the source; reproducing it would reproduce the
+  // defect). What must still match, and is asserted here, is everything up to and including 「默认应当执行；」.
+  const KEEP = '默认应当执行；'
+  const promisePart = (l) => { const i = l.indexOf(KEEP); return i < 0 ? l : l.slice(0, i + KEEP.length) }
   for (const line of captured) {
     // 【{label}分派】任务 {id}「{title}」分派给你。理由：{why}｜验收标准：{acceptance}。默认应当执行；…
     const m = /^【(.+?)分派】任务 (.+?)「(.+?)」分派给你。理由：(.+?)｜验收标准：(.+?)。默认应当执行；/.exec(line)
     if (!m) { bad.push(line.slice(0, 60)); continue }
     const mine = assignmentNotice({ assignerLabel: m[1], taskId: m[2], title: m[3], why: m[4], acceptance: m[5] })
     if (mine === line) matched += 1
+    else if (mine.startsWith(promisePart(line))) matched += 1   // declared divergence AFTER this point only
     else bad.push(line.slice(0, 60))
   }
-  ok(matched === captured.length,
-    'every captured assignment notice is reproduced VERBATIM from its own fields, so the sentence after the label is right down to the promise that the reason is broadcast and the instruction to file a reject_assign',
+  ok(matched === captured.length && captured.length >= 2,
+    'every captured assignment notice is still reproduced VERBATIM from its own fields up to 「默认应当执行；」, and the divergent suffix is the DECLARED correction of a promise the dispatcher cannot deliver (audit12 G15) rather than a silent mismatch',
     { captured: captured.length, matched, bad })
+  {
+    const corrected = assignmentNotice({ assignerLabel: '所办', taskId: 't-1', title: '所办指派', why: '所办决定', acceptance: '给出结论' })
+    ok(!corrected.includes('会被广播给全所') && !corrected.includes('填 reject_assign') && corrected.includes('vibe_v5_record_progress') && corrected.includes('vibe_v5_say'),
+      'the corrected assignment notice names the TWO routes that work (vibe_v5_record_progress for the ledger, vibe_v5_say in a meeting round) and no longer promises a broadcast or a reject_assign receipt field',
+      { corrected: corrected.slice(0, 220) })
+  }
 }
 
 console.log('=== 2. THE NUDGE, with its optional suggestion handled the way the corpus does ===')

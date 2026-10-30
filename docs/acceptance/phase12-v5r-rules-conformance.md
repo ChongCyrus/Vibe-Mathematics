@@ -10963,3 +10963,40 @@ excluded 点名理由、真有表决权的成员没交仍被具名拒、`partial
 §240.5 证据。`tests/vmu-run143-progress-truth.test.mjs` **30/0**；`tests/vmu-turn.test.mjs` **272/0**（T71 源派生逐字校验绿、T99 成员提示词实测 **19990** < 20000，本轮为说真话净增 9 字符后只剩 10 余量）；`vmu-settings` 49/0（回执 note 里出现 `vmu.records.put` 这种 a.b.c 记号会被设置键量具当成「读了未声明的键」，故改成 `vmu.records`）；`--only vmu-prompt` 13/13、`vmu-run142` 31/0、`vmu-run30` 31/0、`vmu-g7` 65/0、`vmu-meeting` 18/18、`vmu-ledger`、`vmu-run141` 全绿。
 
 §240.6 下一步。G7 仍 **PARTIAL**（用户裁定：零矛盾才 DONE）。本轮修完后需再派一次独立只读审计；若为零矛盾，才把 G7 改 DONE、live 追加本条句子、`next` 改写并重跑 `check-rules-coverage`。G3/G5 建议在 G7 收口后单独一轮：G5 把 `nonAttendingSeatGateOf`/primitive 闸挪到 `liveMeeting` 分叉**之后**并让拒绝文案只在它成立时出现；G3 让 `invite` 对「attend 会被拒」的席位具名拒（同一张 `attendDeniedSeats` 表）。
+
+## §241 第十二次审计：八个「回执字段形状」的活教学（2026-10-30）
+
+§241.1 判决与口径分歧。第十二次独立只读审计（subagent `3e44effe`，基线 `6b1d2970`，收尾时 HEAD 已到 `5979c2d5`；报告 `D:/_tmp/g7a12/audit12.md`）判 **`G7 VERDICT: CONTRADICTIONS(8)`**（在 `6b1d2970` 上为 6 条；`5979c2d5` 修掉了它自己量到的 C1′）。八条是**同一类**：活提示词教了一个派发器产不出的回执字段形状，每一条都由真回合实测、且都会**杀死整轮**（`kernel/turn/index.js:2740-2762` 重抛）。同轮还有一次第十三次审计（subagent `776a18fb`，基线 `5979c2d5`）判 `CONSISTENT`，其 §2 无硬矛盾；但它在同一提交上没有用真回合去测回执字段形状（把候选压成了 GAP），而 audit12 测了——两者分歧点正是**测量方法**。按用户口径（拒绝码≠行为证据、绿套件不证明载荷形状），以更严的 audit12 为准：**G7 不因第十三次的 CONSISTENT 而 DONE**。
+
+§241.2 八条病灶（真回合实测的为什么整轮死）。
+1. `task_create` 教 `{subject,…}`，内核 `vmu.tasks.create` 读 `title` ⇒ `VMU_INVALID_ARGUMENT "a task needs a non-empty title"`。
+2. `task_update` 教 `{task_id,expected_revision,action}`，`tasks.transition(id,to)` 是**位置参数** ⇒ 整个 payload 落到 `id` 槽 ⇒ `no task with id [object Object]`。
+3. `task_claim` 教「任务 id 字符串」⇒ 第二位置参数永远是 dispatch meta ⇒ `unknown task state: [object Object]`。
+4. `task_done` 同上。
+5. `reject_assign` 承诺「理由会被广播给全体表决者」，而属主是 `vmu.meetings.speak`：普通轮 skip `no-meeting-bound`（executed 0、无 objection 行、无邮件），`tasks.objectAssign` 无生产调用者。
+6. `assign`（仅 `replyCatalogue=full`）：`assign(id,who)` 位置参数。
+7. `nudge`（仅 full）：`meetings.warn(meeting,…)` 要会议对象，回执不带会议。
+8. `propose_meeting`（仅 full）：只在已开会议内可用。
+
+§241.3 修法（一个判别式 + 六条声明 + 两处真话）。
+- `kernel/turn/index.js`：新增 `POSITIONAL_REPLY_SHAPE(opText, route)`（message：该动作收位置参数、回执字段只带一个值；hint：可用工具）与 `NO_REJECT_ASSIGN_SHAPE`；给 `task_update`/`task_claim`/`task_done`/`assign`/`nudge`/`reject_assign` 六个 `FIELD_OWNERS` 条目加 `noReplyShape`。`plan()` 在任何面查找**之前**把它们标成 notApplicable，派发循环记 `skipped{reason:'no-supported-shape', code:'VMU_TURN_FIELD_NOT_APPLICABLE', hint}`，**其余字段照常执行**——把「教错形状整轮死」变成「教边界、给活路」。
+- `packs/v5r/prompts/v5r-reply-channel.js`：`task_create` 行改成 `{title,description,blocked_by?,write_scopes?}（内核读 title；工具 vibe_v5_task_create 的形参叫 subject）`；六个字段行标 `notApplicable` 并各带 `route`；`propose_meeting` 保留可用但写明「只在会议轮投递为动议；召集用工具 `vibe_vmu_meeting { action:"open" }`」；三档席位注记改为「分派/督办一律走工具面」。
+- **紧凑目录渲染改一条边界行**：六个没有形状的字段不再各占一行整注记，而是**一行** `没有可用形状、不要写进回执（…`VMU_TURN_FIELD_NOT_APPLICABLE`）：`task_update`→…；…`。理由见 §241.5 的预算：六个全行是 1 300+ 字符，而成员提示词对 T99 的余量只有两位数。`replyCatalogue=full` 仍逐行渲染全注记（该档本身已超 20 000，是配置-预算 GAP，不装作可用）。
+- `packs/v5r/notices.js` 的 `assignmentNotice` 改成真话（异议走 `vibe_v5_record_progress` track `obstacles` 记账 + 会议轮 `vibe_v5_say` 提出；回执里的 `reject_assign` 没有可用形状）→ audit12 **G15** 闭合。
+- `packs/v5r/prompts/v5r-blocks-b.js`：捕获句（`task_done：…；task_update：…；reject_assign：…`）**逐字保留**，紧接一行说明「这三件事都不是回执字段」并点名工具与拒绝码（与 run 61 的做法相同：捕获是保真基线，真话写在它下一行）。
+- `kernel/meetings.js` 的 label hint 例子从 `sync`/`agenda-sync` 改成 `debate, planning`（`agenda-sync` 不是 `MEETING_TYPES` 六型之一，audit13 G21）。
+
+§241.4 测试。
+- 新建 `tests/vmu-run144-reply-routes.test.mjs` **63/0**：§1 六个字段各开**真回合**（`deliverMode:'caller'` + `kernel.turn.step` + `supplyMemberReply`）⇒ `ok:true`、`skipped` 具名行 `reason:'no-supported-shape'`/`code:'VMU_TURN_FIELD_NOT_APPLICABLE'`、hint 点名该字段的 `vibe_v5_*` 活路、`executed` 里没有它；§2 `task_create:{title}` 真执行且 `tasks.list({})`（返回数组）读得到该行；§3 内核 `noReplyShape` 集合与目录 `notApplicable` 集合**逐字相等**；§4 每个被拒字段都有工具路由、`propose_meeting` 保留但写明会议轮限定；§5 捕获句逐字在位 + 下一行更正。
+- `vmu-run35-reply-channel` **31/0**（R35e 双向一致、R35y/R35z 活路）；`vmu-turn` **272/0**——其中 T140 改成「owner 箭头仍在 + 同时声明 reply 载不动」，T142/T143 的「拒绝派发→次轮通知」改用**真能派发**的 `task_create` 作载荷（`task_update` 已按 audit12 变成边界，旧断言等于把缺陷当契约）；T99 绿。`vmu-run142` 31/0、`vmu-run143` 30/0、`vmu-run30` 31/0、`vmu-run141` 31/0、`--only vmu-prompt` 13/13、`vmu-g7` 65/0、`vmu-settings` 49/0、`vmu-meeting-procedures` 53/0。
+
+§241.5 预算（T99 的真实读数）。改动一度把成员提示词推到 **21 323**（超限 1 323），根因是六个边界字段各占一整行注记；改成一行边界后实测 **19 894**（余量 106）。`replyCatalogue=full` 的整目录仍是 **20 732** 字符 > 20 000——这是**配置-预算**冲突（默认 compact 不受影响），记 GAP。
+
+§241.6 真机（r146，`5979c2d5`，2026-10-30 12:58 完成，exit 0）。简报 `D:/_tmp/slv-phase5/task-r146.txt`（含 A/B/C 三段观察要求），产物 `D:/wd/vibemath开发/_oneoff/vm-slv/full-1030-125835.jsonl`（33 380 事件）。被驱动模型自报的原文证据：
+- A（`record` vs `progress` 落点）：同一真回执里 `{"field":"record","face":"vmu.library","op":"record","result":{"ok":true,"file":"…\\Members\\r-1\\Progress\\progress.md","track":"progress","member":"r-1"},"recordLog":{…}}` 与 `{"field":"progress","face":"vmu.records","op":"put","result":{"ok":true,"id":"rec-6","slug":"链路-完成-p-trivial-…"}}`；`executed=2`、`skipped=0`。⇒ 回执字段的落点与 §240/§241 教学一致。
+- B（L47 人数闸）：`floor.gate.signed:2`／`required:2`、`satisfied:true`、`chairCounted:true`、`escapedBy:null`；`floor` 内 `minVotes:2, cap:3, eligibleUniverse:2`，公式与 L47「min(用户设置数, 院士+常驻研究员)」一致。
+- C（平时轮不教会议协议）：以 `vibe_vmu_turn {op:"prompt"}` 取无会议绑定的 normal 轮成员提示词（29 022 字符，只读了前 6 000）⇒ **没有** `input`／`hand`／`meeting id` 教学；`vote_solved` 出现但是**会话级结题票**（`closureVote.window:"session"`、`meetingId:null`），不是会议字段。该报告同时如实标注了它未读完的 23 022 字符与未取得原文的 `phase/quorum/formal` 三段——这些标注按事实保留，不美化。
+
+§241.7 GAP 对账。audit12 §3：**CLOSED** G2/G6/G8/G9/G10/G11/G13；G1 = 已裁定边界（C14）；G12 CHANGED（断点续跑教学只在 resume 相位）；**STILL OPEN** G3、G4、G5；**NEW** G14（motion/proposal/propose_verify 缺「会议轮用」限定——本轮 `propose_meeting` 已补，其余同族待清）、G15（`notices.js` 死路径承诺 reject_assign 广播——本轮闭合）、G16（回执字段测试只测名字——run144 改成真回合载荷）。第十三次审计新增的 G17–G21：G17 `v5r-core.js:526` 把真字段 `record` 称作「自造字段」（fixture 收窄口径，同段其余句子是对的）；G18 T99 只量 charter 子装配（19 990），部署成员提示词实为 23 962（compact/no-tools）–24 861（full），**部署长度没有闸**；G19 默认 `fixtureMode=no-tools` 与 L62 反向（已文档化的 F4/GAP-9）；G20 旧样例只归因多套 `report` 键——本轮补上「`progress` 写成字符串也会整轮被拒」；G21 label hint 例子不是六型之一——本轮改成 `debate, planning`。G3/G5/G16 是**行为闸**（invite 幽灵队、hand 闸在 `liveMeeting` 分叉之前），需要单独一轮改机制并重配测试。
+
+§241.8 无实质残余：否 —— G7 仍 **PARTIAL**。用户裁定的记 DONE 条件是「独立审计、结论零矛盾」，而本轮两次审计在同一提交上给出相反结论，分歧点是**是否用真回合测载荷形状**；因此下一步是：提交本轮改动 → 派**第十四次（决定性）**审计，并把「六个 `noReplyShape` 字段各跑真回合、`task_create` 真执行、紧凑目录一行边界、捕获句+更正句」写成必测项 → 若零矛盾才改 DONE + live + `next`。
