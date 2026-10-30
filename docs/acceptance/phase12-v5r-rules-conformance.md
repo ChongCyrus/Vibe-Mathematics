@@ -11145,7 +11145,7 @@ catalogue 教的是 `{ target, verdict ∈ [0,1], reason }`。实测四种写法
 1. `kernel/turn/index.js`：新增 `NO_REPLY_VERDICT_SHAPE`，挂到 `FIELD_OWNERS.verdict.noReplyShape`。message 说明
    回执既没有票箱 id 也没有投票人、内核在**碰任何面之前**就把它具名跳过（`VMU_TURN_FIELD_NOT_APPLICABLE`）；
    hint 给出两条真入口 `vibe_v5_verdict { target, verdict, reason, member }` 与
-   `vibe_v5_poll_vote { boxId, choice, member }`，并写明票权由工具面的 `requireVoter` 判。
+   `vibe_v5_poll_vote { ballot_id, choice, member }`，并写明票权由工具面的 `requireVoter` 判。
 2. `packs/v5r/prompts/v5r-reply-channel.js`：`verdict` 行改 `notApplicable: true` + `route: 'vibe_v5_verdict'`，
    行注说清「没有可用形状、投递前就被具名跳过、票不进箱」并给出两条真入口；临时工席位注重写；catalogue footer
    改成「拒绝点各不相同：没有可用形状的在投递前被具名跳过，缺权限的在工具面具名拒（临时工无表决权：投票工具拒，
@@ -11157,7 +11157,8 @@ catalogue 教的是 `{ target, verdict ∈ [0,1], reason }`。实测四种写法
    C2c 钉新句子，C2d 钉「两个入口都算票」「本回执的 verdict 真的会派发」两句已不在活文件里。
 
 工具面与回执通道从此有明确分工：能投的只有工具，票权在工具面判；回执里写 `verdict` 会在投递前被具名跳过、
-原句留在回执 notes、轮次照常完成。
+轮次照常完成。这一条**不进** `notes`——`notes` 只收 `no-meeting-bound` 类被跳过的字段（分支不同），
+原文仍在本轮 user 消息里，回执的 `skippedDetail` 只给 code 与 hint。
 
 ### 247.5 新测试：`tests/vmu-run150-verdict-channel.test.mjs` 47/0
 
@@ -11198,3 +11199,86 @@ catalogue 教的是 `{ target, verdict ∈ [0,1], reason }`。实测四种写法
 ②工具面院士/常驻研究员能投、临时工 `VMU_NOT_PERMITTED`；③三席渲染与装配里没有「两个入口都算票」；
 ④预算三口径；⑤L47 票门；⑥机械门禁、全量 T1、linecheck3；⑦G7 八锚点诚实性与 `next` 陈旧问题。
 零矛盾之后才做台账 G7 `PARTIAL`→`DONE`、coverage 86/86、逐句全量重检，然后关掉本会话 goal。
+
+## §248 第二十次审计：修法自身留下的两个可量测反例（RUN 151）
+
+### 248.1 判决与基线
+
+第二十次决定性独立只读审计（基线 **ff560e9c**，报告 `D:/_tmp/g7a20/audit20.md`，484 行）判决
+`G7 VERDICT: CONTRADICTIONS(2)`：历史 48 条（audit19 的 46 条 + audit19 自己的 C-1/C-2）全部
+FIXED/FIXED-as-stated、**0 REGRESSED**，§5 的 A/B/C/D/E/G 全 PASS；两条矛盾都在**本轮修法自己**
+留下的措辞与文档里，并都可用真回合/真工具量测（§2 的 F 项因此记 FAIL）：
+
+- **C-1**：三处活教学把 `vibe_v5_poll_vote` 的形参教成 `boxId`，而工具只声明 `ballot_id`
+  （`packs/v5r/tools.js:4376-4379`）；同一提交里 `v5r-blocks-b.js:847` 却教对了 `ballot_id` ⇒
+  两句活教学互相矛盾。实测 `{boxId: …}` 被宿主派发路径具名拒
+  `VMU_INVALID_ARGUMENT "…does not accept parameter(s) \"boxId\"; it declares: ballot_id, choices, choice,
+  abstain, note, reason, member"`、票箱 0 票；`{ballot_id: …, choices: [...]}` 才计 1 票。
+  站点：`kernel/turn/index.js` 的 `NO_REPLY_VERDICT_SHAPE.hint`（每条真回合的
+  `skippedDetail[0].hint` 就是这句）、`packs/v5r/prompts/v5r-reply-channel.js` 的 `verdict` 行注、
+  以及本文件 §247.4 把同形状记作「两条真入口」之一。
+- **C-2**：§247.4 收尾说「回执里写 `verdict` … 原句留在回执 notes」，实测五个真回合一律
+  `receipt.notes = []`：`kernel/turn/index.js` 的 `notApplicable` 分支
+  （`if (d.notApplicable) { … skipped.push({field, face, op, reason: 'no-supported-shape', code, hint}); continue }`）
+  **从不**写 `keptNotes`，只有 `dispatchSkipReason` 分支（`say` / `no-meeting-bound`）才
+  `keptNotes.push({ …, kept: true })`——文档把另一条分支的能力安到了这一条上。
+
+### 248.2 修法（只改措辞与文档，机制不动）
+
+1. `kernel/turn/index.js`：`NO_REPLY_VERDICT_SHAPE.hint` 的投票板形参改成
+   `vibe_v5_poll_vote { ballot_id, choice, member }`。
+2. `packs/v5r/prompts/v5r-reply-channel.js` 的 `verdict` 行注：同改 `ballot_id`（并注明「形参就叫
+   `ballot_id`」），同时把「这一条不进 notes，原文仍在本轮 user 消息里」写进句子——C-2 是文档/教学
+   层面的断言，不把 `notApplicable` 分支改成写 `keptNotes`（那会改动本轮刚立的「跳过不留痕」语义，
+   并牵动 `tests/vmu-turn-contracts.test.mjs` 对 notes 的形状断言）。
+3. 本文件 §247.4：`boxId` → `ballot_id`；收尾句改成「轮次照常完成。这一条**不进** `notes`——
+   `notes` 只收 `no-meeting-bound` 类被跳过的字段（分支不同），原文仍在本轮 user 消息里，回执的
+   `skippedDetail` 只给 code 与 hint」。
+4. `packs/v5r/prompts/v5r-core.js` 文件头：把 institute-min 那句「its rule names a v5-era tool that no
+   host registers」改成「the institute-min host does not register … the `v5r` pack DOES register it, so the
+   name resolves only where that pack is loaded」——审计 §3 的记账项点名这句注释与实测相反（注释非教学句，
+   不计矛盾，但仍是假话）。
+
+### 248.3 新断言：把「教得出」与「投得进」钉在一起（`tests/vmu-run150-verdict-channel.test.mjs`，57/0）
+
+- §0n2/§0n3：hint 里投票板形参必须是 `ballot_id`，且不得出现 `vibe_v5_poll_vote { boxId`。
+- §0n4/§0n5：行注同样两条（教对了、且旧的错名不再出现）。
+- §0n6：行注不再声称这一条会留在 `notes`（C-2 的措辞回归）。
+- §2g：工具声明里必须有 `ballot_id`、没有 `boxId`。
+- §2h-pre/§2i：把**三个活源**（kernel hint、行注、`v5r-blocks-b.js`）里所有
+  `vibe_v5_poll_vote { … }` 形状抓出来，每个形参都必须是工具声明过的形参（教得出的必然投得进）；
+  `taughtPoll` 为空时该组断言不成立（non-vacuous 守卫）。
+- §2j：没有任何一处活句子把投票板形参教成 `boxId`。
+- §2k：照活教学里那个形状真投一次，必须成功——把「教」与「做」用同一个真工具调用钉起来，这正是
+  audit20 指出的「新测试 §2c 用对了 `ballot_id`，所以套件全绿也抓不到教错」的缺口。
+
+### 248.4 预算复测（改了两句活教学之后）
+
+- T99 charter 子装配 compact **19 991**（学术院士 19 988 / 临时工 18 243；`< 20 000`，余量 9）。
+- 部署装配（boot 级，逐席）：compact chair **23 421** / member **23 427** / temp **23 563**；
+  full chair **26 841** / member **26 847** / temp **27 141**。
+- 目录本身：compact **13 行** chair **2 056** / member **2 155** / temp **2 313** 字符；
+  full **36 行** chair **6 335** / member **6 434** / temp **6 592** 字符。
+- 旧的 **26 798 / 6 385** 是 RUN 150（行注较短）时的口径，§247.6 与 26-turn 的 `ROUND 150` 保留为
+  历史读数；本轮 full 档因行注加长而 +46（member 6 385 → 6 434）。
+
+### 248.5 门禁与回归
+
+- `regen-all --check` **17/17 in sync**（生成器整组迭代到不动点）；`PREFLIGHT: PASS`；
+  `DOC LINT: PASS`；`RULE PARITY: PASS (0 problem(s))`；
+  `check-rules-coverage --check` 仍 **FAIL (1) = 仅 G7 PARTIAL**（预期）。
+- 全量 T1：**TOTAL 632 PASS 632 FAIL 0（suites 568 · probes 64）**
+  （日志 `D:/_tmp/t1-r163.log`）。
+- `linecheck3.mjs`：63 行 = 18 空行/分隔 + 13 小节标签 + 32 要求行；锚点 86/86；要求行 32/32。
+
+### 248.6 GAP 状态（不计数）
+
+审计第 20 轮 §3 的裁决：G3/G4/G5/G18/G19/G25 仍 OPEN（G3 的原语面 invite 幽灵席实测可开、但无活句
+承诺，故不计矛盾）；G12 CHANGED（resume-only）；G27 仍是记账项；G28（本轮两条矛盾的根因）随本轮修法
+CLOSED。台账 G7 的 `next` 仍写着「七轮…26 条」，属陈旧记账项，置 DONE 时一并改写。
+
+### 248.7 下一步
+
+修法落地后必须再派一次独立只读审计（第二十一次）：基线取本轮提交；复测 C-1 的三处形参、C-2 的 notes
+真值（真回合 `receipt.notes` 必须是 `[]` 且文案不得声称相反）、run150 的 §0n2–§0n6 与 §2g–§2k、
+三席预算六个数、以及六道机械门禁 + linecheck3 + 全量 T1。零矛盾才可把台账 G7 记 DONE。

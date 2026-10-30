@@ -2453,3 +2453,23 @@ compact 13 lines / 2 155 chars, full 36 lines / 6 385 chars. Gates green, full T
 
 **Next.** The twentieth independent read-only audit on the next commit; G7 stays PARTIAL until it reports zero
 contradictions.
+
+## ROUND 151 (G7 audit 20)
+
+The twentieth independent audit (baseline ff560e9c, `D:/_tmp/g7a20/audit20.md`) returned
+`G7 VERDICT: CONTRADICTIONS(2)`. Both were created by the previous round's own wording, and both were
+measurable with real turns and real tools: three live sentences taught `vibe_v5_poll_vote { boxId, ... }`
+while the tool declares `ballot_id` (the shipped `v5r-blocks-b.js` already said `ballot_id`, so two live
+sentences contradicted each other), and the acceptance doc claimed a skipped `verdict` line is kept in
+`receipt.notes` while the `notApplicable` branch never writes `keptNotes` (`notes` was `[]` in all five
+real turns). RUN 151 changes the sentences only: the kernel hint and the catalogue row now name
+`ballot_id`, the row note says the line is NOT kept in `notes` (the `no-meeting-bound` branch is the one
+that keeps it), the doc section says the same, and an unrelated file-header claim that "no host registers
+the v5-era poll tool" became the truth (the `v5r` pack registers it; the institute-min host does not).
+`tests/vmu-run150-verdict-channel.test.mjs` grew to 57 assertions: the taught parameter names must all be
+declared by the tool, no live sentence may teach `boxId` for the poll tool, and the taught shape is cast
+for real so that "taught" and "accepted" are pinned together. Budget: T99 compact 19 991 (< 20 000);
+deployment compact 23 421 / 23 427 / 23 563 (chair/member/temp), full 26 841 / 26 847 / 27 141;
+catalogue compact 13 lines / 2 056 / 2 155 / 2 313 chars, full 36 lines / 6 335 / 6 434 / 6 592 chars.
+Gates green (regen 17/17, preflight, doc lint, parity 0, coverage only the G7 PARTIAL), full T1
+632/632.

@@ -100,7 +100,7 @@ const NO_REPLY_CONVENE_SHAPE = Object.freeze({
 const NO_REPLY_VERDICT_SHAPE = Object.freeze({
   code: 'VMU_TURN_FIELD_NOT_APPLICABLE',
   message: 'a reply verdict has NO usable shape: a ballot box needs the box id and the name of the voter (ballotbox.cast reads boxId and by), and this field carries neither, so the kernel is asked to skip it by name BEFORE any face is touched — no vote is cast and the turn completes; the seat rule (a temporary worker has no vote, rule L3) lives on the tool face, where a non-voter is refused with VMU_NOT_PERMITTED',
-  hint: 'cast through the tool face, which is where the seat rule is enforced: vibe_v5_verdict { target: "<live ballot id>", verdict: 1|0, reason, member } for a ballot, or vibe_v5_poll_vote { boxId, choice, member } for a poll box (a seat without a vote is refused BY NAME there)',
+  hint: 'cast through the tool face, which is where the seat rule is enforced: vibe_v5_verdict { target: "<live ballot id>", verdict: 1|0, reason, member } for a ballot, or vibe_v5_poll_vote { ballot_id, choice, member } for a poll box (a seat without a vote is refused BY NAME there)',
 })
 
 export const FIELD_OWNERS = Object.freeze({

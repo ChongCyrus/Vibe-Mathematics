@@ -67,7 +67,7 @@ export const REPLY_FIELD_ROWS = Object.freeze([
     note: '提议验证 {target,kind,reason}：**回执不带会议 id，所以这条从回执里投不出去**（会议轮也一样）——会议轮请用工具 `vibe_v5_motion { meeting, member, kind, text }`（`member` 是行动席位，必填；`v5r-blocks-a.js` 的院士手册也这么教）；若一定要写在回执里，payload 必须自带 `{meeting, member, text}`。否则被具名跳过 no-meeting-bound、原句留在回执 notes、轮次照常完成；是否入队由院士席决定' }),
   Object.freeze({ field: 'verdict', face: 'vmu.ballotbox', op: 'cast', notApplicable: true,
     route: 'vibe_v5_verdict',
-    note: '回执不带票箱 id、也不带你本人是谁：票箱要 `{boxId, by}`，所以这个字段没有可用形状、投递前就被具名跳过（票不进箱）。投票走工具 `vibe_v5_verdict { target, verdict, reason, member }`（活票箱）或 `vibe_v5_poll_vote { boxId, choice, member }`（投票板）；票权按席位判——临时工没有表决权（规则 L3），工具面具名拒 `VMU_NOT_PERMITTED`；1 或 0 算表决，中间值是估计' }),
+    note: '回执不带票箱 id、也不带你本人是谁：票箱要 `{boxId, by}`，所以这个字段没有可用形状、投递前就被具名跳过（票不进箱；这一条不进 notes，原文仍在本轮 user 消息里）。投票走工具 `vibe_v5_verdict { target, verdict, reason, member }`（活票箱）或 `vibe_v5_poll_vote { ballot_id, choice, member }`（投票板，形参就叫 `ballot_id`）；票权按席位判——临时工没有表决权（规则 L3），工具面具名拒 `VMU_NOT_PERMITTED`；1 或 0 算表决，中间值是估计' }),
   Object.freeze({ field: 'task_create', face: 'vmu.tasks', op: 'create', common: true,
     note: '{title,description,blocked_by?,write_scopes?}（内核 create 读 `title`；工具面 vibe_v5_task_create 的形参叫 `subject`，两个名字指同一列）' }),
   Object.freeze({ field: 'task_update', face: 'vmu.tasks', op: 'transition', common: true, notApplicable: true,

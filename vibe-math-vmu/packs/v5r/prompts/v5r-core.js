@@ -1,9 +1,10 @@
 // vmu pack — `v5r-core`: v5r's institution as an INSTITUTIONAL PACK (docs/10 §5, the V5 deliverable).
 //
 // Why a second pack when `institute-min` exists: institute-min proved the SHAPE (slots/tracks/settings/
-// rules/aliases) but its rule names a v5-era tool that no host registers (`vibe_v5_poll_vote`), so it never
-// fires, and its `subject` predicate is CONSTANTLY FALSE on host payloads (docs/11 §8). This pack is built to
-// actually DO something on the surfaces a real session has:
+// rules/aliases) but its rule names a v5-era tool that the institute-min host does not register
+// (`vibe_v5_poll_vote`; the `v5r` pack DOES register it, so the name resolves only where that pack is loaded),
+// so it never fires, and its `subject` predicate is CONSTANTLY FALSE on host payloads (docs/11 §8). This pack is
+// built to actually DO something on the surfaces a real session has:
 //
 //   · an M1 rule that fires on a REAL tool name;
 //   · an M2 CODE MODULE carried inside the manifest (a pack is JS, so it can carry behaviour, not only data);

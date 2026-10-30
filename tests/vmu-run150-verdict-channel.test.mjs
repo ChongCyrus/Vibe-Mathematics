@@ -97,6 +97,13 @@ try {
     ok(/真的|really counts|counts the vote/.test(msg) === false, '§0m message 不再声称回执这一票会被计（audit19 C-1）', msg.slice(0, 120))
     const hint = String(shape.hint || '')
     ok(hint.includes('vibe_v5_verdict') && hint.includes('vibe_v5_poll_vote'), '§0n ★★ hint 同时给出两条真入口', hint.slice(0, 200))
+    // RUN 151 / audit20 C-1: the poll tool's parameter is `ballot_id`; `boxId` is what the BALLOT BOX's cast() reads,
+    // not what vibe_v5_poll_vote declares. Teaching the wrong name is an operational promise that fails by name.
+    ok(/vibe_v5_poll_vote\s*\{\s*ballot_id/.test(hint), '§0n2 ★★★ hint 里投票板的形参写对了（ballot_id）', hint.slice(0, 260))
+    ok(!/vibe_v5_poll_vote\s*\{\s*boxId/.test(hint), '§0n3 ★★★ hint 不再把 ballot_id 教成 boxId（audit20 C-1）', hint.slice(0, 260))
+    ok(/vibe_v5_poll_vote\s*\{\s*ballot_id/.test(note), '§0n4 ★★★ 行注里投票板的形参也写对了（ballot_id）', note.slice(0, 260))
+    ok(!/vibe_v5_poll_vote\s*\{\s*boxId/.test(note), '§0n5 ★★★ 行注不再把 ballot_id 教成 boxId（audit20 C-1）', note.slice(0, 260))
+    ok(!/原句留在回执 notes/.test(note), '§0n6 ★★ 行注不再声称这一条会留在 notes（notApplicable 分支不写 keptNotes，audit20 C-2）', note.slice(0, 200))
     const kernelSet = Object.keys(kernelTurn.FIELD_OWNERS).filter((k) => kernelTurn.FIELD_OWNERS[k] && kernelTurn.FIELD_OWNERS[k].noReplyShape).sort()
     const packSet = decl.REPLY_FIELD_ROWS.filter((r) => r.notApplicable).map((r) => r.field).sort()
     ok(kernelSet.length > 0 && packSet.length > 0, '§0o-pre 两侧集合都非空（R35e 的比较不可能是「两空相等」）', { kernelSet, packSet })
@@ -181,6 +188,27 @@ try {
     ok(Boolean(verdictTool), '§2e 工具面发布了 vibe_v5_verdict（活票箱那条入口）')
     const gateTemp = b.kernel.memberFaceGate({ member: 'r-t', toolName: 'vibe_v5_verdict' })
     ok(Boolean(gateTemp) && gateTemp.ok === false, '§2f ★★ 临时工的工具面里没有 vibe_v5_verdict（席位 ACL 前置拒）', gateTemp && (gateTemp.code + ' slot=' + gateTemp.slot))
+    // RUN 151 / audit20 C-1 — the taught shape must be the ACCEPTED shape. This is the general check: every
+    // `vibe_v5_poll_vote { … }` a seat can read must only name parameters the tool really declares, and it must name
+    // `ballot_id`; the old sentence named `boxId`, which the tool refuses by name (VMU_INVALID_ARGUMENT).
+    const pollParams = Object.keys((voteTool.parameters && voteTool.parameters.properties) || {})
+    ok(pollParams.includes('ballot_id') && !pollParams.includes('boxId'),
+      '§2g ★★★ 投票板工具声明的形参是 ballot_id，没有 boxId', pollParams.join(','))
+    const taughtPoll = []
+    const teachingSources = [String(kernelTurn.FIELD_OWNERS.verdict.noReplyShape.hint || ''), String(row('verdict').note || ''), readFileSync(BLOCKS_B, 'utf8')].join(NL)
+    for (const m of teachingSources.matchAll(/vibe_v5_poll_vote\s*\{([^}]*)\}/g)) taughtPoll.push(m[1])
+    ok(taughtPoll.length > 0, '§2h-pre 活教学里至少有一处教投票板的形状（否则下面的子集检查是空的）', taughtPoll.length)
+    // non-vacuous: taughtPoll is filled by matchAll over a three-source literal, and the guard above refuses an empty list.
+    const keysOf = (src) => src.split(',').map((piece) => piece.trim().split(':')[0].trim()).filter((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k))
+    const taughtKeys = Array.from(new Set(taughtPoll.flatMap(keysOf)))
+    ok(taughtKeys.length > 0 && taughtKeys.every((k) => pollParams.includes(k)),
+      '§2i ★★★ 教给席位的每个形参都在工具声明里（教得出、投得进）', { taughtKeys, pollParams })
+    ok(!taughtPoll.some((src) => /boxId/.test(src)), '§2j ★★★ 没有一处活句子把投票板形参教成 boxId（audit20 C-1 的反例）', taughtPoll)
+    const taughtBoard = parse(await openTool.execute({ question: 'run150 §2 taught', options: ['A', 'B'], member: 'r-chair' }, {}))
+    const taughtBoardId = taughtBoard && taughtBoard.boxId
+    const taughtVote = await refusalOf(() => voteTool.execute({ ballot_id: taughtBoardId, choice: 'A', member: 'r-1' }, {}))
+    ok(Boolean(taughtVote) && taughtVote.ok === true,
+      '§2k ★★★ 照活教学里那个形状真投，成功（教与做一致）', taughtVote && (taughtVote.code || taughtVote.tool))
   }
 
   console.log('=== 3. 渲染：三席看到修正后的句子，装配里说「投票只有一个入口」 ===')
