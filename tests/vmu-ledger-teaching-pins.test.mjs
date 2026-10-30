@@ -110,8 +110,11 @@ ok(!/"(?:meeting_hand|meeting_invite)":\s*(?:true|false|\{)/.test(blocksB), 'G6:
 // ── THE LEDGER-TEACHING ROUND (2026-10-28, second pass): four rule lines that had NO teaching,
 //    plus the five rows whose evidence used to land in a comment or an unrelated paragraph.
 //    Each assert is the sentence the ledger's `prompt` pattern should now point at. ─────────────────
-// L10 (rule: 院士、常驻研究员各自的文件) — the temp boundary is taught where the libraries are taught
-ok(blocksB.includes('临时工不写这些库'), 'L10 pin: the temp worker does not write the member libraries (seat-faces.js denies record_method/record_subproblem for temp)')
+// L10 (rule: 院士、常驻研究员各自的文件) — the temp boundary is taught where the libraries are taught.
+// AUDIT10 C1: the boundary is the CARD face (seat-faces.js denies `vibe_v5_record_*` to temp) plus the reply
+// `progress` field — NOT "a temp writes no progress", which the fs face and the receipt field falsify.
+ok(blocksB.includes('临时工不进成果库') && blocksB.includes('`progress` 字段') && !blocksB.includes('临时工不写这些库'),
+  'L10 pin: the temp boundary is the card face + the receipt `progress` field (not "no progress")')
 ok(blocksB.includes('产出由指派者归档'), 'L10 pin: the assigner archives a temp worker\'s output')
 // L32 (rule: 院士通过命令…决策会议进行中的一切内容、控制、活动) — chair authority is the FALLBACK authority
 ok(blocksB.includes('都由你的命令决定'), 'L32 pin: inside a running meeting, the chair\'s commands decide content/control/activity')

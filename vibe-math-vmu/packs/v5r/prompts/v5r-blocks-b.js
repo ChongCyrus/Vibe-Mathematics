@@ -264,6 +264,10 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // measures reproduction of each prompt TYPE against that source: deleting them turns the compact type's
         // remaining-gap report from "structural, explained by class" into two unexplained lines.
         'progress：数学进展/阻塞及下一步；record：成果卡数组（kind,id,title,statement或content,value,motive,p）；say：必要消息或{to,text}。',
+        // AUDIT10 C2/C3: the captured line above promises a reply-field shape the dispatcher cannot deliver
+        // (record is a progress-log line and say only reaches the floor of a bound meeting). The capture stays
+        // VERBATIM (it is the fidelity baseline) and the truth is stated on its own line, as with run 61 below.
+        '（上面这句是捕获原文；字段形状以本段上面由 v5r-reply-channel.js 渲染的清单为准：record 是研究日志**一行** {track,text} → Members/<你>/Progress/<track>.md；成果卡不是回执字段，用 vibe_v5_record_proposition／_method／_subproblem。say 只在有会议绑定的轮次进会议楼层，无绑定的轮次不投递（原句留在回执 notes）——群聊/私信要用工具 vibe_v5_say。）',
         'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
         // ★ LIVE RUN 61 (a member lost a round to the line above): the field list reads as "action=complete is the way to
         // finish", but the board's own table is open→assigned→doing→done, so a completion from `assigned` is refused BY
@@ -585,6 +589,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '',
         '恢复说明：',
         '  先读取完整研究日志 Members/{{ member }}/Progress/progress.md 与自己的成果卡；不要以恢复导航替代完整证明。',
+        '  **断点续跑**：恢复不是从头再来——本所把名册、任务板、会议、票箱、预算、阶段与在跑作业按 `vmu.resume.projections` 的声明写穿到耐久存储（`vmu.resume.writeThrough`，默认真），重启后由恢复面按这些记录重建；被打断的在跑作业只标 `interrupted`（具名原因），**不会自动算通过**，由你按 Progress/ 判断重试还是作废。暂停/继续是控制面动作（`vibe_v5_pause` / `vibe_v5_resume`），只主席可调用——席位不自行开关本所。',
       ].join('\n'),
     },
   },
@@ -737,9 +742,17 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     derivedFrom: 'corpus',
     order: 773,
     range: 'pack',
-    kind: 'shared',
+    // ★★★ G7 (audit 9, GAP): this block is the MEETING protocol, and it used to be `kind:'shared'` — so every
+    // ORDINARY round was taught to fill "input" / raise a hand / vote_solved for a meeting it was not in (measured
+    // on all four round classes). The selector is the phase binding below: the phase-kind section resolves to
+    // `texts[phase]` on a `meeting` round and to `texts.normal || ''` = '' everywhere else, so an ordinary round
+    // contributes NOTHING from this block. What an ordinary round must still say (the research line) is supplied by
+    // `v5r-turn-ask` (order 691, kind:'phase', texts.normal) at its normal binding — it is the same sentence, not a
+    // second copy. tests/vmu-prompt-type-coverage.test.mjs re-measures that the corpus lines still reach their
+    // buckets after the change, and tests/vmu-turn.test.mjs T99 measures the ordinary-round budget.
+    kind: 'phase',
     texts: {
-      shared: [
+      meeting: [
         '请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的',
         '结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。',
         '',
@@ -747,8 +760,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）',
         '**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为"选择未发言"）——不会因此被追问，也不会阻塞会议。',
         '★ 席位不参会（temp：attend 被拒）时 `input`/`hand` 被拒——走 `vibe_v5_say`。',
-        '**想发言就举手——举手是工具调用，不是回执字段**：`vibe_vmu_meeting { action: "hand", id: "<会议 id>", member: "<你的 id>" }`（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言。回执里写 "meeting_hand"/"meeting_invite" 会被**具名拒**（`VMU_TURN_FIELD_NOT_APPLICABLE`：回执不带会议 id，框架不会替你猜）。院士用 `vibe_vmu_meeting { action: "invite", … }` 请人发言——邀请≠签到，被邀者仍须自己 `attend` 才计法定人数。',
+        '**想发言就举手——举手是工具调用，不是回执字段**：`vibe_vmu_meeting { action: "hand", id: "<会议 id>", member: "<你的 id>" }`（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言。回执里写 "meeting_hand"/"meeting_invite" 会被**具名拒**（`VMU_TURN_FIELD_NOT_APPLICABLE`：回执不带会议 id，框架不会替你猜）。院士用 `vibe_vmu_meeting { action: "invite", id: "<会议 id>", member: "<被邀者 id>", by: "<你的 id>", why: "<为何请他发言>" }` 请人发言（**`by` 必填且必须是主席自己**：服务会议缺 `by` ⇒ `VMU_INVALID_ARGUMENT`、`by` 不是主席 ⇒ `VMU_NOT_PERMITTED`；`why` 必填；批量用 `members: [ … ]` 按给定顺序入队）——邀请≠签到，被邀者仍须自己 `attend` 才计法定人数。',
         '**沉默不等于投票**：`vote_solved` 必须显式给出——认为已解决就填 "vote_solved": true；结题要求**表决人数达到法定人数 m = min(所办设定的上限, 院士+常驻研究员人数)**（以状态块「法定票数」为准）**且无人投反对**；缺 `vote_solved` 会**阻止结题**，未表态名单会被列出。',
+        '**辩论的最终裁决也受同一个 m 约束**：`vibe_v5_verdict_final` 的签署人数＝交来裁决的成员数＋签字的院士；低于 m 会**具名拒** `VMU_MEETING_QUORUM_LOST`（hint 给 `vibe_v5_verdict_ask` 与缺谁）。只有主席**故意**在不足 m 的席位上裁决时才用 `partial: true` + `why`；回执会写 `floor.gate.escapedBy: "partial"` 与 `satisfiedBy: false`，把例外留在记录上。',
         'input：发言；vote_solved：明确的结题判断，沉默不计赞成。',
       ].join('\n'),
     },
@@ -878,7 +892,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '· 方法库卡：`vibe_v5_record_method`（content/value/motive/p 必填）。',
         '  · `[状态板]` 四行是**派生读数**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。这不是 state 面板；state 自己写：**成员席位只能改自己的**，**所办/人类代笔**可替人写并回执 `panelOwner` 说明替谁；**不在名册**的 id 具名拒（先 `vibe_v5_hire`）。',
         '  · 读别人的板：`vibe_v5_read_library {member,track}`；进展写 `progress`，走不通的路写 `rejected`（别把证伪当进展）。',
-        '  · **临时工不写这些库**：命题/方法/子问题/进度/汇报属院士与常驻研究员；临时工做指派任务，产出由指派者归档（工具面对 temp 拒）。',
+        '  · **临时工不进成果库**：命题/方法/子问题/成果卡面对临时工**具名拒**，产出由指派者归档；临时工的过程记录写在回执的 `progress` 字段里（或自己的工作目录）。',
       ].join('\n'),
     },
   },

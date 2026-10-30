@@ -58,11 +58,11 @@ export const REPLY_CHANNEL_FACTS = Object.freeze({
 export const REPLY_FIELD_ROWS = Object.freeze([
   // ── dispatch fields: the kernel sends the payload to ONE face ────────────────────────────────────────────────────
   Object.freeze({ field: 'say', face: 'vmu.meetings', op: 'speak', common: true,
-    note: '对全所说话（群聊）；也可 {"to":"r-2","text":"…"} 私信或 {"to":"voters","text":"…"} 只对表决者' }),
+    note: 'say 在会议轮才是会议楼层发言（有会议绑定才投递，需已到场）；无会议绑定的回合不投递，这句话原样进回执 notes；对全所说话（群聊）或私信 {"to":"r-2","text":"…"} / 只对表决者 {"to":"voters","text":"…"} 必须用工具 vibe_v5_say' }),
   Object.freeze({ field: 'progress', face: 'vmu.records', op: 'put', common: true,
     note: '本轮进展、阻塞与下一步（追加到 Progress/）；形状由 vmu.records.put 判，写错会整轮写失败并具名说明' }),
   Object.freeze({ field: 'record', face: 'vmu.library', op: 'record', common: true,
-    note: '成果卡数组：kind,id,title,statement 或 content,value,motive,p' }),
+    note: '研究日志一行：{"track":"progress","text":"…"} 追加到 Members/<你>/Progress/<track>.md（vmu.library.record；track 必须是 vmu.records.tracks 之一）；成果卡请用工具 vibe_v5_record_proposition / _method / _subproblem' }),
   Object.freeze({ field: 'propose_verify', face: 'vmu.meetings', op: 'motion',
     note: '提议验证 {target,kind,reason}：你可以提议，是否入队由院士席决定' }),
   Object.freeze({ field: 'verdict', face: 'vmu.ballotbox', op: 'cast',

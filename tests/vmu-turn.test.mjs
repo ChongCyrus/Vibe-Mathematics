@@ -661,11 +661,22 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     'v5r-charter-voting': 'F5: 整段「m 票布尔一致」换成求真门槛（`vibe_v5_verdict` 概率 + p=1 的三种定论证据 + 唯一写入者），并把「表决 m」与「定论」明确分开',
     // ★★ G7 THIRD AUDIT (2026-10-30), C1: the captured charter says a temp 「可写自己的成果库」, while the
     // SAME member prompt (blocks-b, v5r-turn-tracks) says temp writes none of those libraries and the ACL
-    // denies every write face for slot `temp` (seat-faces temp:false on record_proposition / record_method /
-    // record_subproblem / record_progress / feedback / lean / paper). The capture is a frozen artefact and the
-    // machinery is the authority on PERMISSIONS, so the shipped bullet is rewritten to state what the door does.
-    // Declaring it here (with the reason) is the honest form this mechanism already uses for F5's rewrites.
-    'v5r-charter-roster': 'G7#3 C1: 「临时工…可写自己的成果库」与席位 ACL / blocks-b 相反，改成「不写这些库，产出由指派者归档」',
+    // denies every `record_*` CARD face for slot `temp` (seat-faces temp:false on record_proposition /
+    // record_method / record_subproblem / record_progress / feedback / lean / paper). The capture is a frozen
+    // artefact and the machinery is the authority on PERMISSIONS, so the shipped bullet is rewritten to state
+    // what the door does. Declaring it here (with the reason) is the honest form this mechanism already uses
+    // for F5's rewrites.
+    // ★ AUDIT10 C1 (2026-10-30, tenth independent audit) — THE G7 FIX WAS WORDED TOO BROADLY. Denied are the
+    // CARD faces, not every write face: the fs face and the reply-field `progress` face succeed for temp
+    // (`kernel/turn/index.js:58` maps `progress` to `vmu.records`, not to a seat-gated tool). The shipped text
+    // therefore names the card face + 「过程记录写回执的 progress 字段」 and never 「不写进度」. Both the roster
+    // block and the libraries block below carry that correction.
+    'v5r-charter-roster': 'G7#3 C1 + AUDIT10 C1: 「临时工…可写自己的成果库」与席位 ACL 相反，改成「不写所内的命题/方法/成果库、没有 `vibe_v5_record_*` 卡片面（具名拒）、产出由指派者归档，过程记录写回执的 `progress` 字段」',
+    // ★ AUDIT10 C1 (same audit): the captured libraries section was written for EVERY seat and teaches
+    // 「三、你的资料库」/「你只写自己的库」/「Members/<你>/Progress/progress.md 是你的研究日志」, which
+    // contradicts the shared tracks section (temp gets no card face) and the slot ACL. The shipped block is
+    // scoped to 院士与常驻研究员 and states the temp exception; the frozen capture necessarily lacks those words.
+    'v5r-charter-libraries': 'AUDIT10 C1: 「三、你的资料库…」原来对所有席位讲自己的库与研究日志，临时工却无 `vibe_v5_record_*` 卡片面；改成本节只讲院士与常驻研究员 + 临时工例外（卡片面具名拒、产出归指派者、过程记录写回执 `progress` 字段）',
   })
   const divergedByBlock = Object.create(null)
   // Scope: the CHARTER blocks are checked against the persona the original really hands out. The reply spec is

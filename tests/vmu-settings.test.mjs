@@ -103,6 +103,11 @@ ok(defs.filter((d) => d.hot === 'H3').length > 0, 'the read-only class is actual
     // beside the fifteen real knobs, and the module says so in words. A name in a table is not a lookup - the
     // same shape as the symbol description above.
     'vmu.ip.hold', 'vmu.ip.ownership', 'vmu.ip.contributors', 'vmu.ip.recordSearch', 'vmu.ip.transfer',
+    // RUN 142 / audit10 C2: `vmu.library.record` and `vmu.library.append` are FACE.OP dispatch targets named in
+    // prose (`FIELD_OWNERS` + the reply-field means), not settings lookups. Same shape as the `vmu.ip.*`
+    // service surfaces above: a name in a sentence or a table is not a read. Exempted by exact name so the
+    // exemption cannot drift into a blanket hole.
+    'vmu.library.record', 'vmu.library.append',
   ])
   for (const f of files) {
     for (const m of readFileSync(f, 'utf8').matchAll(/['"`](vmu\.[a-zA-Z0-9.]+)['"`]/g)) {

@@ -55,7 +55,7 @@ export const DEBATE_PROCEDURE = Object.freeze({
       '各成员各自独立表态：给出该命题当前的布尔概率([0,1])、理由、以及证明/证伪进展。先不互相反驳、不互相引用（「独立」是**尽力而为的约定**，不是内核保证的隔离 —— 见 notes）。',
       ['vibe_vmu_meeting { action: "speak" }', 'vibe_v5_say']),
     step(2, 'debate', 'vibe_vmu_meeting',
-      '展开辩论：轮流发言 / 举手后发言 / 主席邀请发言。★ 轮数由院士自行决定；本部署只给**动议次数**设了上限 `vmu.meetings.verdictMaxRounds`（默认 3，每次辩论一条动议）——到限后新增动议会被具名拒 `VMU_RESOURCE_BUDGET`；额度只由这个设置决定——`extend` 延长的是发言、`extendlimit` 延长的是墙钟，两者都不增加动议额度，关会再开一场是另一场会议（额度从头算）。',
+      '展开辩论：轮流发言 / 举手后发言 / 主席邀请发言。★ 轮数由院士自行决定；本部署只给**动议次数**设了上限 `vmu.meetings.verdictMaxRounds`（默认 3，**任何 kind 的动议都计入**：topic/procedural/resolution 同占额度，程序动议会吃掉一轮辩论）——到限后新增动议会被具名拒 `VMU_RESOURCE_BUDGET`；额度只由这个设置决定——`extend` 延长的是发言、`extendlimit` 延长的是墙钟，两者都不增加动议额度，关会再开一场是另一场会议（额度从头算）。★ `extend`/`silent`/`end`/`hands` 是 primitive 原语，SERVICE 会议上具名拒 `VMU_REGISTRY_BOUNDARY`（primitive 注册表与 SERVICE 会面互不相通），发言界改读 `vibe_v5_say` 回执的 `speechBound`。',
       ['vibe_vmu_meeting { action: "hand" }', 'vibe_vmu_meeting { action: "invite" }', 'vibe_vmu_meeting { action: "speak" }']),
     step(3, 'final-verdicts', 'vibe_v5_verdict',
       '会议结束前，每位参加辩论的成员用 `vibe_v5_verdict` 交最终裁决：「布尔概率([0,1])，理由」——传 `meeting` + `proposition_id`（**不要传 `target`**：`target` 只认活票箱的 id，命题卡 id 会被具名拒）、`member` 填自己；主席可以用 `vibe_v5_verdict_ask` 通知还没交的人。'
@@ -120,7 +120,7 @@ export const CLOSURE_PROCEDURE = Object.freeze({
       '点名缺口：缺什么、为什么缺、补它需要什么。不许用"基本完成"略过。',
       ['vibe_v5_task_create { ... }', 'vibe_v5_record_progress { ... }']),
     step(3, 'take-the-vote', 'vibe_v5_poll_open',
-      '对「是否达标」表决：先开票，再由有资格者各自投，最后取票。人数下限**已实现**：`kernel/meetings.js` 的 `quorumOf` 计算 m = min(所设上限, 在册有表决权人数)，`vibe_v5_verdict_final` 的 floor 与会议关闭栏读同一个函数。',
+      '对「是否达标」表决：先开票，再由有资格者各自投，最后取票。人数下限**已实现**：`kernel/meetings.js` 的 `quorumOf` 计算 m = min(所设上限, 在册有表决权人数)，`vibe_v5_verdict_final` 的 floor 读同一个函数并在裁决这一步执行（不足 m 具名拒 `VMU_MEETING_QUORUM_LOST`，例外须 `partial: true` + `why`）；会议关闭本身不读票数（关会的 rails 只有主席、上次纪要确认与待办清单）。',
       ['vibe_v5_poll_open { ... }', 'vibe_v5_poll_vote { ... }', 'vibe_v5_poll_close { ... }']),
     step(4, 'archive-the-verdict', 'vibe_v5_report',
       '把结题结论归档：结论、依据、遗留项各一段，交给机构记录而不是留在会议记录里。',
@@ -212,7 +212,7 @@ export const MEETING_PROCEDURE_GAPS = Object.freeze([
   Object.freeze({
     id: 'min-voters',
     rule: '辩论、结题表决的人数至少为某一定数量，这个数量取「用户设置的数量」和「院士+常驻研究员 的数量」的最小值。',
-    now: '已实现：m = min(所设上限, 在册有表决权人数) 由 kernel/meetings.js 的 quorumOf 计算（v5r: quorumFloorSource "universe"、quorumCap 3、eligibleSeats [chair, member]），vibe_v5_verdict_final 的 floor 与关闭栏都读它；poll 的门槛由 ballot 原语的 minEligible 执行，poll_open 已透传 min_votes/min。',
+    now: '已实现：m = min(所设上限, 在册有表决权人数) 由 kernel/meetings.js 的 quorumOf 计算（v5r: quorumFloorSource "universe"、quorumCap 3、eligibleSeats [chair, member]）。`vibe_v5_verdict_final` 的 floor 读它**并在裁决这一步执行**：签署人数（交来裁决的成员 + 签字的院士）低于 m ⇒ 具名拒 `VMU_MEETING_QUORUM_LOST`，主席故意的例外须 `partial: true` + `why` 并记在 `floor.gate.escapedBy`。会议关闭（service/primitive 的 close）**不读票数**——它的 rails 只有主席、上次纪要确认与待办清单，所以「关会」不等于「表决达标」（回执的 `closureReading` 与 `closureVoteNote` 把这两件事分开说）。poll 的门槛由 ballot 原语的 minEligible 执行，poll_open 已透传 min_votes/min。',
     owner: 'kernel 透传 minEligible + pack 计算下限',
     status: 'implemented',
   }),

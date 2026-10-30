@@ -172,11 +172,14 @@ for (const id of ['acad-01', 'res-01', 'res-02']) await kernel.members.hire({ id
   }))
   ok(ruled.ok === true && ruled.mode === 'mean' && ruled.decided === false,
     '③ setup: the ruling is a MEAN and `decided:false` (the two verdicts disagree)', { ok: ruled.ok, code: ruled.code, mode: ruled.mode })
-  ok(ruled.ok === true && ruled.floor && ruled.floor.readable === true && typeof ruled.floor.means === 'string' && ruled.floor.means.includes('VOTE floor'),
-    '③ `floor.means` says WHICH floor it is (the one the CLOSING rail enforces) instead of leaving the number unexplained', { means: String((ruled.floor || {}).means || '').slice(0, 200) })
+  ok(ruled.ok === true && ruled.floor && ruled.floor.readable === true && typeof ruled.floor.means === 'string' && ruled.floor.means.includes('GATES this ruling'),
+    '③ `floor.means` says WHICH floor it is AND that it gates this ruling (rule L47), instead of leaving the number unexplained', { means: String((ruled.floor || {}).means || '').slice(0, 200) })
   const floorMeans = String((ruled.floor && ruled.floor.means) || '')
-  ok(floorMeans.includes('ruling is not a vote') && floorMeans.includes('satisfiedBy:false'),
-    '③ ★ the sentence says a ruling is NOT a vote and names `satisfiedBy:false`, so the pair beside `ok:true` cannot read as a skipped gate', { means: floorMeans.slice(0, 240) })
+  ok(floorMeans.includes('signed counts SIGNATURES') && ruled.floor.gate && ruled.floor.gate.enforced === true,
+    '③ ★ the sentence names the SIGNER set (filed members + the signing chair) and the receipt carries the executed gate (`floor.gate`), so `ok:true` can no longer read as a skipped gate', { means: floorMeans.slice(0, 240) })
+  ok(ruled.floor.satisfiedBy === true && ruled.floor.gate.signed === 3 && ruled.floor.gate.required === 3,
+    '③ ★ 三席所里两位成员交裁决 + 主席签字 = 3 = m ⇒ floor 真的满足（不再是结构性 false 的自述读数）',
+    ruled.floor.gate && { signed: ruled.floor.gate.signed, required: ruled.floor.gate.required, satisfiedBy: ruled.floor.satisfiedBy })
   ok(typeof ruled.floorMeans === 'string' && ruled.floor && ruled.floorMeans === ruled.floor.means,
     '③ `floorMeans` is carried at the top level too (the pair `satisfiedBy`/`ok` is what a reader actually misreads)')
   ok(ruled.floor.satisfiedBy === false || ruled.floor.satisfiedBy === true, '③ `satisfiedBy` is a boolean (measured, not asserted)')

@@ -56,6 +56,12 @@ const NO_REPLY_MEETING_SHAPE = Object.freeze({
 export const FIELD_OWNERS = Object.freeze({
   say: Object.freeze({ face: 'vmu.meetings', op: 'speak' }),
   progress: Object.freeze({ face: 'vmu.records', op: 'put' }),
+  // ★★★ RUN 142 / audit10 C2: THE PAYLOAD OF `record` IS A RESEARCH-LOG LINE, NOT A CARD. `vmu.library.record` really is
+  // `record(member, track, text)` (kernel/library.js:427): it appends ONE line to `Members/<member>/Progress/<track>.md`.
+  // The reply field therefore carries `{ track, text }`, and the dispatch loop adapts it into the real call arguments
+  // (`recordLogArgs` below). Record CARDS are a different route - `vmu.library.append` (kernel/library.js:334), written by
+  // the pack tools `vibe_v5_record_proposition` / `_method` / `_subproblem`. They are NOT a reply field, and the field used
+  // to promise them while every dispatch died in the shape guard.
   record: Object.freeze({ face: 'vmu.library', op: 'record' }),
   propose_verify: Object.freeze({ face: 'vmu.meetings', op: 'motion' }),
   verdict: Object.freeze({ face: 'vmu.ballotbox', op: 'cast' }),
@@ -2647,6 +2653,12 @@ export function createTurnOrchestrator({
     // therefore KEPT here, bounded, and travels out on `notes` under its own field name.
     const keptNotes = []
     const NOTE_CAP = 500
+    // ★★★ RUN 142 / audit10 C2: the tracks the library will actually accept, used ONLY to spell the `record` refusal hint
+    // concretely ("one of: …"); absent settings means the kernel's default track list, which the hint names generically.
+    const declaredTracks = (() => {
+      const t = settings && settings['vmu.records.tracks']
+      return Array.isArray(t) ? t : null
+    })()
     for (const d of dispatches) {
       if (d.notApplicable) {
         counts.notExecuted += 1
@@ -2682,6 +2694,24 @@ export function createTurnOrchestrator({
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'face-not-wired' })
         continue
       }
+      // ★★★ RUN 142 / audit10 C2: `record` is ONE RESEARCH-LOG LINE, NOT THE CARD ROUTE. The face's real operation is
+      // `record(member, track, text)` (kernel/library.js:427) while the reply field documents `{track,text}`; dispatching
+      // the payload object as the first argument put the whole payload in the `track` slot, so EVERY record reply died
+      // with VMU_RECORD_SHAPE and the documented field was unreachable. The adapter below supplies the missing member
+      // (the turn already knows whose turn it is) and the real argument order. A payload that does not have that shape is
+      // NOT dispatched: the field is skipped BY NAME, the rest of the turn still applies, and the receipt says which slot
+      // is wrong - a shape error that destroys the turn teaches the sender nothing (the same rule as no-meeting-bound).
+      const recordLog = (d.face === FIELD_OWNERS.record.face && d.op === FIELD_OWNERS.record.op)
+        ? recordLogArgs(d.payload, memberId, declaredTracks)
+        : null
+      if (recordLog !== null && recordLog.ok !== true) {
+        counts.notExecuted += 1
+        skipped.push({ field: d.field, face: d.face, op: d.op, reason: recordLog.reason, code: recordLog.code,
+          missing: recordLog.missing, message: recordLog.message, hint: recordLog.hint,
+          note: 'the field was NOT dispatched: ' + recordLog.message + '; nothing was written and the rest of the turn still applies',
+          means: RECORD_LOG_MEANS })
+        continue
+      }
       const composed = composedFor(d, d.payload)
       const onBehalf = composed !== null
       const recordComposed = onBehalf ? null : composeRecordPut(d, d.payload)
@@ -2695,7 +2725,9 @@ export function createTurnOrchestrator({
       const attributed = recordComposed !== null && recordComposed.attributed ? recordComposed.payload : null
       let res
       try {
-        res = await fn(onBehalf ? composed : (recordComposed !== null ? recordComposed.payload : d.payload), { field: d.field, face: d.face, op: d.op, ...(attributed ? { attributedTo: String(memberId) } : {}) })
+        res = recordLog !== null
+          ? await fn(...recordLog.args)
+          : await fn(onBehalf ? composed : (recordComposed !== null ? recordComposed.payload : d.payload), { field: d.field, face: d.face, op: d.op, ...(attributed ? { attributedTo: String(memberId) } : {}) })
       } catch (e) {
         if (e && e.code === 'VMU_NO_OPEN_MEETING') {
           // ★ PHASE 9 / round 7: the real reason for the measured failure was NOT "meetings is broken": the member
@@ -2712,6 +2744,7 @@ export function createTurnOrchestrator({
       }
       counts.dispatched += 1
       const entry = { field: d.field, face: d.face, op: d.op, result: res }
+      if (recordLog !== null) { entry.recordLog = { member: recordLog.member, track: recordLog.track, means: RECORD_LOG_MEANS } }
       if (onBehalf) { entry.onBehalf = true; entry.onBehalfMeans = ON_BEHALF_MEANS; entry.composed = { meeting: composed.meeting, member: composed.member } }
       if (attributed) { entry.attributedTo = String(memberId); entry.attributionMeans = ATTRIBUTION_MEANS }
       executed.push(entry)
@@ -3967,6 +4000,72 @@ export const dispatchSkipReason = (d, opts = null) => {
     }
   }
   return null
+}
+
+// ★★★ RUN 142 / audit10 C2: WHAT THE `record` REPLY FIELD MEANS, SAID ONCE. `vmu.library.record` is
+// `record(member, track, text)` (kernel/library.js:427) and appends ONE line to `Members/<member>/Progress/<track>.md`.
+// Record CARDS are NOT a reply field: they are `vmu.library.append` (kernel/library.js:334), written through the pack
+// tools `vibe_v5_record_proposition` / `_method` / `_subproblem`. The reply field used to promise the card array while the
+// dispatch loop handed the payload object to `record` as its `track`, so the promise was unreachable.
+export const RECORD_LOG_MEANS = 'the `record` reply field is ONE research-log line: {track,text} is dispatched as vmu.library.record(member, track, text) and appended to Members/<member>/Progress/<track>.md. It is NOT the record-card route - cards are vmu.library.append, written by the tool vibe_v5_record_proposition (or _method / _subproblem)'
+
+const describeReplyShape = (v) => {
+  if (v === undefined) return 'undefined'
+  if (v === null) return 'null'
+  if (Array.isArray(v)) return 'array(' + v.length + ')'
+  if (typeof v === 'string') return 'string(' + v.length + ' chars)'
+  if (typeof v === 'object') {
+    let keys
+    try { keys = Object.keys(v) } catch { keys = [] }
+    return 'object{' + keys.slice(0, 8).join(', ') + (keys.length > 8 ? ', …' : '') + '}'
+  }
+  return typeof v
+}
+
+/**
+ * ★★★ RUN 142 / audit10 C2 - THE ADAPTER THAT MAKES THE DOCUMENTED `record` FIELD REACHABLE.
+ * Input: the reply payload (`{track,text}` per the prompt), the member whose turn it is, and the declared tracks (for the
+ * hint only). Output: either `{ok:true,args:[member,track,text]}` for the dispatch loop, or a named refusal shape
+ * `{ok:false,reason:'record-shape',code:'VMU_RECORD_SHAPE',missing,message,hint}` that the loop records as a SKIPPED row
+ * (`reason:'record-shape'`, `code:'VMU_RECORD_SHAPE'`) instead of throwing the whole turn away. Pure, so the promise is
+ * assertable without a live host - the same discipline as `dispatchSkipReason`, and `apply()` is its only caller.
+ */
+export const recordLogArgs = (payload, memberId = null, declaredTracks = null) => {
+  const member = memberId === null || memberId === undefined || String(memberId).trim() === '' ? null : String(memberId)
+  const trackHint = Array.isArray(declaredTracks) && declaredTracks.length
+    ? 'one of: ' + declaredTracks.join(' | ')
+    : 'a track NAME declared in vmu.records.tracks'
+  const hint = 'send { record: { track: "<' + trackHint + '>", text: "<one line>" } } — the track is the NAME of the list, never the payload object; this appends to Members/<you>/Progress/<track>.md (vmu.library.record). Record CARDS are not a reply field: use the tool vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem (vmu.library.append)'
+  const missing = []
+  const problems = []
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    missing.push('track', 'text')
+    problems.push('the field holds ' + describeReplyShape(payload) + ' instead of an object')
+  } else {
+    if (typeof payload.track !== 'string' || payload.track.trim() === '') {
+      missing.push('track')
+      problems.push('track is ' + (typeof payload.track === 'string' ? 'empty' : describeReplyShape(payload.track)))
+    }
+    if (typeof payload.text !== 'string') {
+      missing.push('text')
+      problems.push('text is ' + describeReplyShape(payload.text))
+    }
+  }
+  if (member === null) {
+    missing.push('member')
+    problems.push('this turn has no member, so the log line would have no owner')
+  }
+  if (missing.length) {
+    return {
+      ok: false,
+      reason: 'record-shape',
+      code: 'VMU_RECORD_SHAPE',
+      missing,
+      message: 'the record reply field needs {track,text}: ' + problems.join('; '),
+      hint,
+    }
+  }
+  return { ok: true, args: [member, payload.track, payload.text], member, track: payload.track }
 }
 
 // ★ PHASE 12 / live run 35 item ② (second half): WHAT A THROWING APPLY DOES TO THE HELD TURN. It consumes it and does NOT

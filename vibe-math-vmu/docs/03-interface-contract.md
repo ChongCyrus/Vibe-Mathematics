@@ -1441,7 +1441,7 @@
 | `VMU_MEETING_LABEL_MISSING` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_LIGHT_NO_TRUTH` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/minutes.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_ORDER_DENIED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
-| `VMU_MEETING_QUORUM_LOST` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
+| `VMU_MEETING_QUORUM_LOST` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_RECESS_LIMIT` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_SPEECH_TIMEBOUND` | **已实现 ✓** | `vibe-math-vmu/kernel/meetinglapse.js`、`vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_TIER_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/kernel/meetings.js` | 代码里有该码字符串 ✓ |
@@ -1547,7 +1547,7 @@
 | `VMU_QUOTA_EXCEEDED` | **已实现 ✓** | `vibe-math-vmu/kernel/capacity.js`、`vibe-math-vmu/kernel/funding.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/records.js`、`vibe-math-vmu/kernel/retention.js` | 代码里有该码字符串 ✓ |
 | `VMU_QUOTA_SOFT_EXCEEDED` | **已实现 ✓** | `vibe-math-vmu/kernel/meetingmarker.js`、`vibe-math-vmu/kernel/retention.js` | 代码里有该码字符串 ✓ |
 | `VMU_RATE_LIMITED` | **已实现 ✓** | `vibe-math-vmu/kernel/ratelimit.js` | 代码里有该码字符串 ✓ |
-| `VMU_RECORD_SHAPE` | **已实现 ✓** | `vibe-math-vmu/kernel/library.js` | 代码里有该码字符串 ✓ |
+| `VMU_RECORD_SHAPE` | **已实现 ✓** | `vibe-math-vmu/kernel/library.js`、`vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_RECOUNT_MISMATCH` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_RECOUNT_SCOPE_DENIED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_RECRUIT_NEEDS_HUMAN` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |

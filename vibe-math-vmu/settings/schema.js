@@ -1124,7 +1124,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.meetings.eligibleSeats', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: '投票席位白名单（席别名；空＝不按席别限制，只要求是本场成员）。一个判据、两个消费者：`kernel/meetings.js` 的 `vote()`（票权闸）与 `eligibleVoterIds()`（供逐对象票箱取 eligible）。默认空＝零策略；v5r 包声明 chair/member。' },
   // ★ A4 「临时工默认不参与会议」: the NON-ATTENDING seats. Empty = no seat rule (zero mechanism). One consumer:
   // `attend()` in kernel/meetings.js. v5r declares `["temp"]` in its pack defaults — the institution vote.
-  { key: 'vmu.meetings.attendDeniedSeats', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: '不参与会议的席位（席别名；空＝不按席别限制）。消费者＝attend() 门：命中即 VMU_NOT_PERMITTED 并点名该键与席位。' },
+  { key: 'vmu.meetings.attendDeniedSeats', type: 'stringList', def: [], hot: HOT.H2, who: 'office', doc: '不参与会议的席位（席别名；空＝不按席别限制）。★ 两个消费者、两种读取时点：①`kernel/meetings.js` 的 `attend()` 读**启动快照**（`:468` 的 `K.attendDeniedSeats`）；②`tools/meeting.js` 的 `nonAttendingSeatGateOf()` 读**实时** `kernel.settingOf()`（举手邀请等席位门）。命中即 VMU_NOT_PERMITTED 并点名该键与席位。热点改这个键后两扇门的生效时点不同，改配置后以回执的 `seatPolicy` 为准（audit10 G4 记录在案）。' },
 
   // ── ROUND 10 / task-74 (A): the eight v5r parameters, each WITH ITS READER (a key without one is an orphan) ──
   // Every default below is v5r's own value with a line reference; nothing is invented, and every key names the

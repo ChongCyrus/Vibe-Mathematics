@@ -3,8 +3,13 @@
 // each one two sentences inside ONE prompt/receipt pair that cannot both be true. This suite pins the
 // RESOLVED state of every pair, and it fails if either side drifts back.
 //
-// C1 (L03/L14)  the charter says a temp 「可写自己的成果库」 while the shared tracks section and the whole
-//               slot ACL deny every write face for slot `temp`.
+// C1 (L03/L14)  the charter said a temp 「可写自己的成果库」 while the shared tracks section and the slot ACL
+//               close every `record_*` CARD face for slot `temp`.
+// C1 (AUDIT10)  …but that G7 fix over-corrected in words: only the CARD faces are closed. `seat-faces.js:100-104`
+//               denies `vibe_v5_record_*` to temp, while the fs face and the reply `progress` field still succeed
+//               for it (`kernel/turn/index.js:58` maps `progress` to `vmu.records`, NOT to a seat-gated tool). The
+//               teaching therefore says "no card face / the assigner archives / the process record goes in the
+//               receipt `progress` field", and never "a temp writes no progress". C1c below pins that sentence.
 // C2 (L62)      the verify-core section promised 「本所的表决走工具调用，不用 JSON 回复块」 while the reply
 //               envelope's `verdict` field is dispatched to `vmu.ballotbox.cast` (kernel/turn FIELD_OWNERS).
 // C3 (L14/L45)  the debate object is a finished-proof card or a file reference; five surfaces still sold a
@@ -45,13 +50,16 @@ const GATES = read('vibe-math-vmu/packs/v5r/verification-gates.js')
   const tempBullet = (BLOCKS_A.match(/\*\*临时工\*\* —— [^\n]*\n[^\n]*/g) || []).join('\n')
   ok(tempBullet.length > 0, 'C1 precondition: the temp bullet exists', { chars: tempBullet.length })
   ok(!tempBullet.includes('可写自己的成果库'),
-    'C1a the charter no longer tells a temp it may write its own results library (the ACL denies every write face)',
+    'C1a the charter no longer tells a temp it may write its own results library (the slot ACL closes the `record_*` card faces)',
     { bullet: tempBullet.slice(0, 120) })
   ok(tempBullet.includes('不写') && /命题|方法|进度/.test(tempBullet),
     'C1b it now names what the temp does NOT write, so the claim is checkable against the slot ACL',
     { bullet: tempBullet.slice(0, 120) })
-  ok(BLOCKS_B.includes('**临时工不写这些库**'),
-    'C1c the shared tracks section still states the same thing — both surfaces agree', {})
+  ok(!tempBullet.includes('进度库'),
+    'C1b2 the debunked wording is gone (audit10 C1: the receipt `progress` field is NOT seat-gated, so "writes no progress" is false)',
+    { bullet: tempBullet.slice(0, 120) })
+  ok(BLOCKS_B.includes('**临时工不进成果库**') && BLOCKS_B.includes('`progress` 字段'),
+    'C1c the shared tracks section states the corrected boundary — the card faces are denied, the receipt `progress` field carries the process record; both surfaces agree', {})
   ok(/allow: Object\.freeze\(\{ chair: true, member: true, temp: false \}\)/.test(SEAT_FACES),
     'C1d the ACL really has write faces closed to `temp` (the sentence above is not aspiration)', {})
 }

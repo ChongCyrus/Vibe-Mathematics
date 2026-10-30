@@ -828,8 +828,9 @@
       "text": "脚本文件等归档，不写 ad-hoc 脚本",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/packs/v5r/tools.js::this deployment declares no scripts track",
-        "vibe-math-vmu/packs/v5r/prompts/v5r-core.js::id: 'v5r-core-no-adhoc-scripts',"
+        "vibe-math-vmu/packs/v5r/tools.js::const SCRIPTS_TRACK = 'scripts'",
+        "vibe-math-vmu/packs/v5r/tools.js::recompute by running the archived text again",
+        "vibe-math-vmu/packs/v5r/seat-faces.js::keep deny — Lead, round 31"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_script"
@@ -841,7 +842,8 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"recordId\":\"rec-18\"",
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"fingerprint\":\"cbd725528ce6f926011c7c2f8f8a3c23fccbad6715f26d8e21afba0c8de80d28\""
       ],
-      "ruleText": "- 一些脚本文件等。"
+      "ruleText": "- 一些脚本文件等。",
+      "note": "L18 的「脚本文件」由两层兑现：①每位院士/常驻研究员有自己的文件面（教学 v5r-blocks-a.js:250「③ 推荐**直接用 fs 写你自己的文件**（路径必须带成员库根：Members/<你>/…）」）；②运行脚本的留档由 vibe_v5_script 的 scripts 轨归档（本部署 vmu.records.tracks 已声明 scripts；记录带 kernel 计算的指纹与 provenance，可「重跑归档文本、比对指纹」复核），该归档面按 round-31 裁决 2 只对 office/控制面开放，三席 ACL 关闭是已裁决的能力边界（seat-faces.js 的 decided 行），教学已于 v5r-blocks-b.js「脚本归档」段如实说明。audit10 G1 把它记为能力缺口（不是未完成、也不是矛盾）。"
     },
     {
       "id": "C15",
@@ -1498,7 +1500,9 @@
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::voteFloor: {",
         "vibe-math-vmu/kernel/meetings.js::辩论/结题表决人数下限",
-        "vibe-math-vmu/kernel/meetings.js::quorumCap, eligible universe"
+        "vibe-math-vmu/kernel/meetings.js::quorumCap, eligible universe",
+        "vibe-math-vmu/packs/v5r/tools.js::voteFloorGate.readable === true && voteFloorGate.satisfied === false",
+        "vibe-math-vmu/packs/v5r/tools.js::floor.gate.escapedBy"
       ],
       "tool": [
         "vibe_v5_verdict_final"
@@ -1507,9 +1511,11 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::表决"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::`voteFloor.effective:3`、`unanimity.met:false`"
+        "docs/acceptance/phase12-v5r-rules-conformance.md::`voteFloor.effective:3`、`unanimity.met:false`",
+        "tests/vmu-run141-quorum-gate.test.mjs::signed by 2 of the 3"
       ],
-      "ruleText": "辩论、结题表决的人数至少为某一定数量，这个数量取用户设置的数量和“院士+常驻研究员”数量的最小值。"
+      "ruleText": "辩论、结题表决的人数至少为某一定数量，这个数量取用户设置的数量和“院士+常驻研究员”数量的最小值。",
+      "note": "L47 的 m 由 kernel.meetings.quorum() 单一来源计算；此前的缺口是它只被「读」不被「执行」：floor.satisfiedBy 结构性恒 false（主席不能交裁决、却被算进分母），回执却写 ok:true。现在 vibe_v5_verdict_final 在裁决这一步执行它：签署人数 = 交来裁决的成员 ∪ 签字的主席，低于 m ⇒ 具名拒 VMU_MEETING_QUORUM_LOST（message 给 N/M、L47 与设置键；hint 给 vibe_v5_verdict_ask 与 partial:true+why）；主席故意的例外必须 partial:true+why，并记在 floor.gate.escapedBy（例外留在记录上，不静默）。会议关闭（close）不读票数——回执 closureReading/closureVoteNote 把「关会」与「表决达标」分开说，tests/vmu-run141 §6 钉住。"
     },
     {
       "id": "E24",
@@ -1811,7 +1817,8 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_resume"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::常驻会话已被重建"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::常驻会话已被重建",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::断点续跑"
       ],
       "mechanism": [
         "vibe-math-vmu/kernel/resume.js::createResume"
@@ -1907,7 +1914,7 @@
         "vibe_v5_paper"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::临时工不写这些库"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::临时工不进成果库"
       ],
       "status": "DONE",
       "ruleText": "### 院士、常驻研究员各自的文件：",

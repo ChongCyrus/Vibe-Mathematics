@@ -266,7 +266,7 @@
 
 **② 证据：**
 - 四步：`packs/v5r/meeting-procedures.js:48-81`；第①步 `:49-55`（`speak`/`vibe_v5_say`，`status:'supported'`）、第②步 `:56-62`（`hand`/`invite`/`speak`）、第③步 `:63-72`（`ballot` + `vibe_v5_verdict`）、第④步 `:73-80`（`status:'pending'`，`tools: []`）。
-- 「轮数由院士定」：骨架文本 `:59` + 框架无默认轮数上限（无计数拒）。
+- 「轮数由院士定」：骨架文本 `:57-59`。**（§239 更正）** 原句的「框架无默认轮数上限（无计数拒）」不成立：框架不设默认轮数，但给**动议次数**设上限 `vmu.meetings.verdictMaxRounds`（默认 3，**任何 kind 的动议都计入**：topic/procedural/resolution 同占额度），到限新增动议具名拒 `VMU_RESOURCE_BUDGET`。
 - 第②步可达性：见 D9 —— `hand`/`invite` 只走原语注册表（`tools/meeting.js:160-163`），pack 建的是服务会议（`packs/v5r/tools.js:545`）⇒ 真机按骨架第②步调用会得到 `VMU_NO_SUCH_OBJECT`。
 - 第④步：`pendingReason` `meeting-procedures.js:79` + 缺口登记 `:95-100`（`verdict-aggregation`）；代码侧确认 `kernel/ballot.js:34-49`（`estimate` 只校验范围）、`:549`（`byKind` 只计数）。
 - 门禁（本轮实跑）：`tests/vmu-meeting-types.test.mjs` 65/0 exit 0（含 `pendingSteps` 上报断言）。

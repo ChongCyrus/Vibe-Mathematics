@@ -1852,6 +1852,50 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'a partial ruling must say why (the missing verdicts are ' + missing.join('、') + ')',
       'pass why:"<why the remaining members have no verdict in this number>" — a partial number without a reason reads like a full one')
   }
+  // ★★★ AUDIT 10 / GAP G2 (rule L47 — 「辩论、结题的表决人数至少要达到 min(用户设置数量, 院士+常驻研究员人数)」).
+  // THE RULING WAS THE ONE LINK IN THE CHAIN WITH NO FLOOR: this receipt READ the floor (`floor.satisfiedBy`) and said
+  // in so many words that it was "NOT a gate on THIS receipt" — a number printed beside `ok:true` that a reader takes
+  // as a check that was skipped (run 30's own report, item ③). The CLOSE rail carries no vote tally either
+  // (kernel/meetings.js close() checks the chair, the minutes and the action items, never the ballot), so the rule's
+  // DEBATE half had no gate anywhere. It has one now, and it counts SIGNATURES: the members whose number is in this
+  // tally PLUS the chair, who signs. Counting the tally alone would make the floor unreachable BY CONSTRUCTION: the
+  // chair cannot file a ruling of its own (`vibe_v5_verdict` refuses `VMU_RULING_CHAIR_SIGNS`) and `vibe_v5_verdict_ask`
+  // does not ask it (excluded: "presides"), so a normal debate of m seats files m-1 numbers and `satisfiedBy` was
+  // false on every well-run meeting.
+  const voteFloorGate = (() => {
+    const faceM = kernel && kernel.meetings
+    if (!faceM || typeof faceM.quorum !== 'function') {
+      return { readable: false, required: null, satisfied: null, signed: null, signedBy: [], unsigned: null,
+        means: 'the kernel publishes no quorum() reading, so no vote floor could be read for this ruling' }
+    }
+    let q = null
+    try { q = faceM.quorum({ meeting }) } catch (e) {
+      return { readable: false, required: null, satisfied: null, signed: null, signedBy: [], unsigned: null,
+        means: 'the quorum() reading failed: ' + ((e && e.message) || String(e)) }
+    }
+    const required = q && q.required !== undefined && q.required !== null ? Number(q.required) : 0
+    // The signer set: every member whose number is in THIS tally (filed or chair-typed) plus the chair, who signs.
+    const signedSet = new Set(provided)
+    signedSet.add(chair)
+    const signedBy = [...signedSet]
+    let unsigned = null
+    try {
+      const voters = typeof faceM.eligibleVoterIds === 'function' ? faceM.eligibleVoterIds({ meeting }) : null
+      if (voters && voters.restricted === true && Array.isArray(voters.ids)) unsigned = voters.ids.map(String).filter((v) => !signedSet.has(v))
+    } catch (e) { unsigned = null }
+    const satisfied = signedBy.length >= required
+    return { readable: true, required, satisfied, signed: signedBy.length, signedBy, unsigned,
+      chairCounted: true,
+      eligibleUniverse: q && q.capUniverse !== undefined ? q.capUniverse : null,
+      formula: q && q.capPolicy ? q.capPolicy : null,
+      means: 'signed = the members whose number is in this tally PLUS the chair, who signs; the floor is the one kernel.meetings.quorum() computes for this meeting (the rule 「min(用户设置数, 院士+常驻研究员数)」) — it GATES this ruling: below it the call is refused by name, unless the chair deliberately rules on fewer seats and says why' }
+  })()
+  if (voteFloorGate.readable === true && voteFloorGate.satisfied === false && !partial) {
+    throw refuse('VMU_MEETING_QUORUM_LOST',
+      'the ruling is signed by ' + String(voteFloorGate.signed) + ' of the ' + String(voteFloorGate.required) + ' seat(s) the vote floor requires (rule L47: 辩论、结题的表决人数至少 min(用户设置数, 院士+常驻研究员人数); the floor is vmu.meetings.quorumMin/quorumRatio capped by vmu.meetings.quorumCap at the eligible voter seats)'
+        + (voteFloorGate.unsigned && voteFloorGate.unsigned.length ? ' — no ruling yet from: ' + voteFloorGate.unsigned.join('、') : ''),
+      'collect their ruling first (vibe_v5_verdict_ask { meeting, proposition_id }) and let them file with vibe_v5_verdict — or, when the chair deliberately rules on fewer seats than the floor, pass partial:true with why:"<理由>": the receipt then records the override in floor.gate.escapedBy')
+  }
   // ★★★ TASK-12 — PER-ROW ATTRIBUTION: for every number in the tally, where it CAME FROM. A filed ruling is the
   // member's own act; a typed row is the chair's transcription. The receipt has to say which is which, because "the
   // chair typed 1 for res-01" and "res-01 filed 1" are different facts that used to look identical on this receipt.
@@ -1959,32 +2003,48 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     inboxCopy: notified.length > 0, means: notificationMeans }
   // ★ LIVE RUN 7 (agent feedback item d): 「表决人数下限 = min(用户设置, 院士+常驻研究员)」 had NO landing point on this
   // receipt — the agent could read `n:2` and `mode` but never the floor the ruling was supposed to satisfy. The kernel
-  // face already computes it (`meetings.quorum()` → the same `quorumOf` the close rail enforces), so it is READ here
+  // face already computes it (`meetings.quorum()` → the same `quorumOf` the vote/close rail reads), so it is READ here
   // rather than re-derived: a second copy of the formula is exactly the kind of second authority this project refuses.
   // ★★ RUN 30 (the institute's own report, item ③): the receipt carried `floor{minVotes:3, satisfiedBy:false}` beside
   // `ok:true` and `n:2`, and the office read the pair as "the framework skipped a check it promised". Nothing was
-  // skipped: `floor` is the VOTE floor the CLOSING rail enforces (the same quorumOf()), and a RULING is not a vote —
-  // this face deliberately does not refuse for an unmet floor (a ruling over a partial set is legal when it says why,
-  // see coverage.partial). The numbers are the kernel's (a second copy of the formula would be a second authority),
-  // and the sentence that says what they MEAN is this face's job.
+  // skipped THEN — the floor was only a reading — but the reading was the whole problem: the rule's debate half had no
+  // gate in the chain (see the gate above). AUDIT 10 / GAP G2 replaced "read it and explain it" with "refuse below it,
+  // and record the declared exception": `floor.gate` is now the enforced reading, and `escapedBy:"partial"` is the only
+  // way past it. The numbers stay the kernel's (a second copy of the formula would be a second authority), and the
+  // sentence that says what they MEAN is this face's job.
   const floor = (() => {
     const faceM = kernel && kernel.meetings
     if (!faceM || typeof faceM.quorum !== 'function') return { readable: false, why: 'the kernel publishes no quorum() reading', means: null }
     try {
       const q = faceM.quorum({ meeting })
       const required = q && q.required !== undefined ? q.required : null
-      const n = ruled && ruled.n !== undefined && ruled.n !== null ? Number(ruled.n) : null
       return { readable: true, minVotes: required,
         min: q && q.min !== undefined ? q.min : null, roster: q && q.roster !== undefined ? q.roster : null,
         eligibleUniverse: q && q.capUniverse !== undefined ? q.capUniverse : null,
         cap: q && q.cap !== undefined ? q.cap : null,
         formula: q && q.capPolicy ? q.capPolicy : null,
-        satisfiedBy: ruled && Array.isArray(ruled.perMember) ? (Number(ruled.n) >= Number(q && q.required)) : null,
+        satisfiedBy: voteFloorGate.readable === true ? voteFloorGate.satisfied : null,
+        // ★ AUDIT 10 / GAP G2: THE ENFORCED READING. `satisfiedBy` alone was the defect (a number beside `ok:true`
+        // that the face itself disclaimed) — `gate` names the code that refuses below the floor and the declared
+        // escape when the chair rules on fewer seats, so "was the floor enforced, and if not, who said so" is
+        // answerable from the receipt instead of inferred.
+        gate: {
+          enforced: voteFloorGate.readable === true,
+          code: 'VMU_MEETING_QUORUM_LOST',
+          required: voteFloorGate.required,
+          signed: voteFloorGate.signed,
+          signedBy: voteFloorGate.signedBy,
+          unsigned: voteFloorGate.unsigned,
+          chairCounted: voteFloorGate.chairCounted === true,
+          satisfied: voteFloorGate.satisfied,
+          escapedBy: (partial && voteFloorGate.satisfied === false) ? 'partial' : null,
+          means: voteFloorGate.means,
+        },
         // ★ the sentence that keeps `satisfiedBy:false` from being read as "a gate was skipped": this is the quorum the
         // CLOSE rail enforces, it counts the CHAIR (the v5r rule is 「表决人数 ≥ min(用户设置数, 院士+常驻研究员数)」, and the
         // chair holds one of those seats), and the ruling face does NOT refuse on it — partial rulings are a declared,
         // receipt-recorded choice, not a silent relaxation.
-        means: 'this is the VOTE floor the CLOSING rail enforces (kernel.meetings.quorum(), read here — not re-derived); it counts the CHAIR because the v5r rule puts 「院士+常驻研究员」 in the denominator and the chair holds one of those seats. It is NOT a gate on THIS receipt: `satisfiedBy:false` means the verdict set is smaller than the close rail would require (' + String(n) + ' of ' + String(required) + '), and a ruling over a partial set is legal exactly when `coverage.partial:true` carries a reason — a ruling is not a vote, and this face refuses by name elsewhere (missing member, duplicate member, p out of range)',
+        means: 'this is the VOTE floor of rule L47, read from kernel.meetings.quorum() (not re-derived); it counts the CHAIR because 「院士+常驻研究员」 is the denominator and the chair holds one of those seats. It GATES this ruling (see floor.gate): below it the call is refused by name with VMU_MEETING_QUORUM_LOST, unless the chair passes partial:true with why — then floor.gate.escapedBy:"partial" records the override instead of hiding it. `satisfiedBy` is signed >= required, where signed counts SIGNATURES (the members whose number is in this tally plus the chair) and NOT attendance: a ruling is not a ballot, and this floor is about who signed the number, not who sat in the room',
         satisfiedMeans: null }
     } catch (e) { return { readable: false, why: (e && e.message) || String(e), means: null } }
   })()
@@ -2033,7 +2093,7 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     // `vibe_vmu_status { detail: "closure" }` (host face: `closureVote` + `counts`), from the closing receipt
     // `vibe_vmu_meeting { action: "close" }`, and from the turn status receipt. Verified against those three faces,
     // not against the doc.
-    closureReading: 'NOT on this receipt: cast/votesCast are the CLOSURE vote and live on `vibe_vmu_status { detail: "closure" }` → closureVote (the closing receipt `vibe_vmu_meeting { action: "close" }` and the turn status receipt also carry it). `vibe_vmu_meeting { action: "status" }` does NOT — it answers the meeting object (state/roster/chair), not the quorum tally. floor.minVotes here is the vote floor that closing meeting also enforces',
+    closureReading: 'NOT on this receipt: cast/votesCast are the CLOSURE vote and live on `vibe_vmu_status { detail: "closure" }` → closureVote (the closing receipt `vibe_vmu_meeting { action: "close" }` and the turn status receipt also carry it). `vibe_vmu_meeting { action: "status" }` does NOT — it answers the meeting object (state/roster/chair), not the quorum tally. floor.minVotes here is the rule-L47 vote floor read from kernel.meetings.quorum(); it gates THIS ruling through floor.gate — the CLOSING rail (kernel/meetings.js close()) checks the chair, the previous minutes and the action items and reads NO vote tally, so closing a meeting says nothing about the floor',
     proposition: ruled.proposition, value: ruled.value, valueSource: ruled.valueSource,
     mode: ruled.mode, exact: ruled.exact, rounded: ruled.rounded, decided: ruled.decided,
     enforceable: ruled.enforceable, estimate: ruled.estimate, n: ruled.n, perMember: ruled.perMember,
@@ -4296,7 +4356,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_motion',
-    description: 'Raise a motion inside an ongoing meeting (kind: topic/procedural/resolution; text required; you must be a voting seat), or WITHDRAW your own with op:"withdraw" + motion_id. A new motion starts proposed and needs a second.',
+    description: 'Raise a motion inside an ongoing meeting (kind: topic/procedural/resolution; text required), or WITHDRAW your own with op:"withdraw" + motion_id. A new motion starts proposed and needs a second. WHO MAY RAISE: a topic or procedural motion may be raised by any VOTING seat; a resolution is a RECORD write that only the chair or the declared secretary may raise (any other seat is refused VMU_NOT_PERMITTED by name).',
     parameters: { op: { type: 'string' }, motion_id: { type: 'string' }, kind: { type: 'string' }, text: { type: 'string' }, reason: { type: 'string' }, meeting: { type: 'string', required: true }, member: { type: 'string', required: true } },
     handler: toolMotion,
   },
@@ -4335,7 +4395,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_verdict_final',
-    description: '★ TALLY THE DEBATE\'S FINAL RULING (the CHAIR signs it): collect the members\' boolean verdicts on ONE proposition, aggregate them (all agree ⇒ that value, otherwise the arithmetic mean) and tell the proposition card\'s owner to correct its probability. meeting + proposition_id REQUIRED. ★ THE MEMBERS\' OWN RULINGS ARE COLLECTED FOR YOU: omit `verdicts` and this face adopts every ruling the debating members filed with vibe_v5_verdict { meeting, proposition_id, verdict, reason } — each row of `attribution` says whose number came from a filed submission (with the card id/path) and whose was TYPED by the chair, and `coverage` separates `debated` / `submitted` / `typed` / `missing` (named). Run 31 measured the defect this replaces: with `verdicts` REQUIRED the chair had to type everyone\'s number, and `coverage.complete:true` counted the roster, not a submission. If you do pass verdicts = [{member,p,reason}] (p∈[0,1]) a typed number that CONTRADICTS that member\'s filed ruling is refused by name, not silently preferred. member is who signs (default: the meeting chair; anyone else is refused by name). owner defaults to the card\'s author and is REQUIRED to be resolvable, because a ruling nobody is told changes nothing. ★ If a Lean run passed and the card\'s p is still not 1, you must ANSWER THE FIDELITY QUESTION first (fidelity:"conform" or "defect", with lean_job naming the run). The kernel face keeps the arithmetic/validation and refuses by name (duplicate member, p out of range, mixed propositions). Delivery is reported honestly: `delivery` + `notified` (which mailboxes hold a copy) + `notification.state` ("delivered" = pushed into a live turn, "queued" = waiting in the inbox and NOT read) — do not read an empty `notified` as a failure nor a queued one as "the owner has seen it".',
+    description: '★ TALLY THE DEBATE\'S FINAL RULING (the CHAIR signs it): collect the members\' boolean verdicts on ONE proposition, aggregate them (all agree ⇒ that value, otherwise the arithmetic mean) and tell the proposition card\'s owner to correct its probability. meeting + proposition_id REQUIRED. ★ THE MEMBERS\' OWN RULINGS ARE COLLECTED FOR YOU: omit `verdicts` and this face adopts every ruling the debating members filed with vibe_v5_verdict { meeting, proposition_id, verdict, reason } — each row of `attribution` says whose number came from a filed submission (with the card id/path) and whose was TYPED by the chair, and `coverage` separates `debated` / `submitted` / `typed` / `missing` (named). Run 31 measured the defect this replaces: with `verdicts` REQUIRED the chair had to type everyone\'s number, and `coverage.complete:true` counted the roster, not a submission. If you do pass verdicts = [{member,p,reason}] (p∈[0,1]) a typed number that CONTRADICTS that member\'s filed ruling is refused by name, not silently preferred. member is who signs (default: the meeting chair; anyone else is refused by name). owner defaults to the card\'s author and is REQUIRED to be resolvable, because a ruling nobody is told changes nothing. ★ If a Lean run passed and the card\'s p is still not 1, you must ANSWER THE FIDELITY QUESTION first (fidelity:"conform" or "defect", with lean_job naming the run). The kernel face keeps the arithmetic/validation and refuses by name (duplicate member, p out of range, mixed propositions). Delivery is reported honestly: `delivery` + `notified` (which mailboxes hold a copy) + `notification.state` ("delivered" = pushed into a live turn, "queued" = waiting in the inbox and NOT read) — do not read an empty `notified` as a failure nor a queued one as "the owner has seen it". ★★ THE VOTE FLOOR GATES THE RULING (rule L47, 「辩论、结题的表决人数至少 min(用户设置数, 院士+常驻研究员)」): signed = the members whose number is in this tally PLUS the chair who signs; when signed is below the floor kernel.meetings.quorum() reads, the call is REFUSED by name (`VMU_MEETING_QUORUM_LOST`, with the setting keys and who is missing) and the hint names `vibe_v5_verdict_ask`. Pass partial:true with why ONLY when the chair deliberately rules on fewer seats than the floor: the receipt then records `floor.gate.escapedBy:"partial"` beside `satisfiedBy:false`, so the exception is on the record.',
     parameters: { meeting: { type: 'string', required: true }, proposition_id: { type: 'string', required: true }, verdicts: { type: 'array' }, member: { type: 'string' }, owner: { type: 'string' }, lean_job: { type: 'string' }, lean_passed: { type: 'boolean' }, fidelity: { type: 'string' }, template: { type: 'string' }, partial: { type: 'boolean' }, why: { type: 'string' } },
     handler: toolVerdictFinal,
   },
