@@ -19,7 +19,11 @@
  *   G10 the FINAL receipt's `pdf` block carried none of the compiler's words while `action:"compile"` did — one failure
  *       structure on both doors now.
  *
- *   §0 the source-level contract
+ *   §0 the source-level contract (SOURCE TEXT, not behaviour — the audit of c5d356b9 pointed out that 16 of these pins
+ *      only prove a string is in a file, and one of them (§0k) papered over a receipt whose `argv` was always `[]`.
+ *      They stay as a fast "the line still exists" net; every VALUE they gesture at is asserted by BEHAVIOUR in
+ *      `tests/vmu-run154-real-run4-fixes.test.mjs` and `tests/vmu-run155-audit-fixes.test.mjs`. A source pin that is not
+ *      backed by one of those two suites is not evidence.)
  *   §1 real behaviour: the settlement patch keeps the card and its lock; the LaTeX face produces an absolute,
  *      forward-slash argv and a pdf named after the source
  *   §2 the sentences that keep the next reader from re-learning the same lesson
@@ -96,8 +100,13 @@ try {
       '§0a ★★★ G1 裁决落值走 `settleRulingOnCard`（补丁写），不再落到重建 body 的普通写')
     ok(/if \(res === undefined\) res = inner\(args, ctx\)/.test(TOOLS_SRC),
       '§0b ★★ G1 只有「不是结算」时才落到 `inner(args, ctx)`')
-    ok(/wrote: \['p', 'debateRuling'\]/.test(TOOLS_SRC) && /left exactly as it was, so the rule-L14 lock still bites/.test(TOOLS_SRC),
-      '§0c ★★★ G1 补丁只改 `p` 与一行 `debateRuling`，其余字段（含锁判据）原样保留')
+    // ★ RUN 155 (audit problem 3): the old sentence here claimed the RECORD was left as it was - records.put
+    // REBUILDS the row (rev/createdAt/slug), so the claim is now split into the two真话 branches it always needed:
+    // supersede (lines byte-identical, record keeps id/slug/createdAt, one version entry) or put-fallback (says so).
+    ok(/wrote: \['p', 'debateRuling'\]/.test(TOOLS_SRC)
+      && /the record keeps its id\/slug\/createdAt while gaining one version entry/.test(TOOLS_SRC)
+      && /no supersede\(\): the row was re-put/.test(TOOLS_SRC),
+      '§0c ★★★ G1 补丁只改 `p` 与一行 `debateRuling`；延续两支真话（supersede / put-fallback）')
     ok(/if \(\/\^- \*debateRuling \*\[：:\]\/\.test\(line\)\) \{ droppedEarlierRuling = true; continue \}/.test(TOOLS_SRC),
       '§0d ★★ G1 第二次结算替换旧裁决行，不在卡体里堆两行互相矛盾的裁决')
     // G2 — absolute, forward-slash path; pdf named after the source. (Pins are substring facts, not regex tours: the
@@ -126,8 +135,10 @@ try {
     // G10 — one pdf-failure structure on both doors.
     ok(/argv: Array\.isArray\(e && e\.argv\) \? e\.argv\.slice\(0, 16\) : \[\]/.test(KIT) && /tailSource: \(e && e\.tailSource\) \|\| null/.test(KIT),
       '§0k ★★ G10 `final` 的 pdf 失败块带上 argv/stderrTail/stdoutTail/tailSource/signal')
-    ok(/tailSource: finalized\.pdf\.tailSource \|\| null/.test(TOOLS_SRC),
-      '§0l ★★ G10 工具回执把同一结构原样投影出去')
+    // ★ RUN 155 (audit problem 2): the receipt no longer copies fields by hand - it projects the ONE shared block,
+    // so success and failure cannot drift apart into two shapes again.
+    ok(/pdf: finalized\.pdf \? projectPdfBlock\(finalized\.pdf, finalized\.target\) : null/.test(TOOLS_SRC),
+      '§0l ★★ G10 工具回执用同一个 projectPdfBlock 投影（成功/失败不可能再分叉）')
     ok(/RUN 153/.test(TOOLS_SRC) && /RUN 153/.test(LATEX_SRC) && /RUN 153/.test(EXTRAS_SRC) && /RUN 153/.test(KIT),
       '§0m 四处改动都带 RUN 153 注记（可追溯）')
   }

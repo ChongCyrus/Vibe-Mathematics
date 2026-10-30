@@ -2609,3 +2609,49 @@ pdf 失败块与 compile 共用同一结构（`argv/stderrTail/stdoutTail/tailSo
 `math-computation.js` 六份副本与 vendor 逐字同源；预算未变（19 995 / 19 998 / 18 243）；六道门禁全绿（coverage 86/86）；
 全量 T1 **635/635（suites 571 · probes 64）**。修复**尚未上真机**：下一轮（RUN 154）用修好的 tarball
 起 run 4 续跑同一个所，验「结算后卡与锁都在、论文真编译出 PDF、warrant 是 tally id」。
+
+## ROUND 158 —— 第四次真机跑（续跑）走到了结题，同时把「互审丢评审」「上限死锁」八件事摆上台面（RUN 154）
+
+同一所的第三次续跑（tarball `c5d356b9`）机器读数全绿（`NO_FENCE=0 · UNKNOWN_FIELD=0 · FIELD_NOT_APPLICABLE=0 ·
+BAD_JSON=0`，`slv-inspect` 0 RED，`tokenTotal 8.54M/24M`，113 call，694 s），并且**第一次真的结题**：结题会 `m9` 3/3
+关闭、论文 `p8` 定稿并**由论文面自己编译出 PDF**（85 839 B；xelatex 日志里的源文件是 `D:/…/paper-p8.tex` 绝对正斜杠）。
+上一轮的三处修法被真机证实：结算回执 `settlement:{patch:true, wrote:["p","debateRuling"], preserved:"…lock still bites"}`
+且读回 `title`/`proofState` 都在、结算后普通写入仍被锁；`tally-m-deb-1-rec-12` 成为 Verified 行的 warrant；
+`missing[].requiredLine` 与裸记录 id 都能直接用。
+
+代理 `FEEDBACK3.md` 却判 `RUN4 VERDICT: FAIL`，八件事里有三件真机制缺陷：**互审丢评审**（两人都交
+`deliverable:true`，`advance` 把一人记成 refuser——因为判定读的是内存缓存 `state.reviews`，评审卡在磁盘上、缓存里没有）；
+**上限死锁**（`final{revise}` 被「已到 3 轮上限」拒，而 `part` 只在 writing 可写 ⇒ 论文既不能定稿也不能修订），
+并且 `vibe_v5_set {key:"vmu.paper.maxRounds"}` 回执说即时生效、机制却按装配期常量拒；**回执 id 不能寻址**
+（`"id":"paper-p5"` 当 target 用会 `no paper "paper-p5" exists`，要 `"p5"`）。其余五件：warrant 用法缺 `alsoRequired`
+且 P1 拒绝语与事实相反、`reason`/`why` 措辞、同值重投说「a DIFFERENT ruling」、状态板缺 `subgoal`/`status`、
+`vibe_v5_meeting` 没有 `open` 动作（代理自身操作问题）。另有环境事实：该轮代理的宿主 `pwsh` 全程不可用
+（`0xC0000142`），取证改走文件工具与 Python 计算面——属宿主侧，不是 vmu 机制。
+
+修法：`vibe-math-vmu/kit/paper.js` 的 `advance` 新增 `readReview()`（缓存没有就读磁盘上本轮的评审行，命中即自愈缓存、
+标 `source:"durable"`，回执带 `reviewsRead`）；到上限后给 `REPAIR_ROUNDS = 2` 个修复轮（`final{revise}` 真能打回 writing），
+用完才拒并点名三条真实出口；`readState` 接受 `paper-<x>`；`consultGate` 三支补 `target/paperId`；`compile` 成功回执补
+`produced/argv/outDir/sourceName` 且 pdf 成功时 `missing` 不再含 `pdf`；`packs/v5r/paper.js` 的 `maxRounds` 改为每次现读
+设置。机器化：新 `tests/vmu-run154-real-run4-fixes.test.mjs` **55/0**。修复**尚未上真机**：下一轮（RUN 155 之后）用修好的
+tarball 起 run 5 续跑同一个所，验「评审不再凭空丢、到上限的论文能修复并定稿」。
+
+
+## ROUND 159 —— 只读审计的五个「收据说机制没做的事」：空 argv、两个门两个形状、结算说「原样」其实重建（RUN 155）
+
+对 `c5d356b9` 的只读审计给 `PROBLEMS(5)`，五条都是**收据/文档说了机制没做的事**：`final` 的 pdf 失败块永远
+`argv: []`（kit 的 failure 对象从不复制面真正 spawn 的 argv，而两个下游投影只认 `e.argv` 并默认 `[]`）；
+`action:"compile"` 失败**直接抛**、与 `final` 的 pdf 块不是同一个形状（文档却写「两处共用同一结构」）；
+`settlement.preserved` 说「其余字段原样」而 `records.put` 重建整条记录（`rev`→1、`createdAt`/`slug` 变、`versions` 清空）；
+run153 的 16 处**源码文本** pin 是自证式、其中一条恰好掩盖了空 argv；`tally-…` 长得像记录 id 却没有任何记录写在它名下。
+小账：裸记录 id 只认数字结尾、`…#证明` 的锚点被当成 id。
+
+修法：`vibe-math-vmu/kit/paper.js` 的失败对象带上真 argv；`packs/v5r/tools.js` 新增**一份** `projectPdfBlock(pdf, target)`
+（成功/失败同 22 键）供 `final` 与 `compile` 共用，compile 失败改为**回执**，`catch` 逐字段显式投影（`Error.message`
+不可枚举，展开 `e` 会丢话）；结算改走 `records.supersede`（保留 id/slug/createdAt，新版本条目），无该能力才回退 `put`
+并在回执里**明说**整条被重建；`warrantFor` 加 `durable`、`tally` 加 `isRecordId:false`——不伪造一条像卡的记录，而是说清
+id 是聚合的名字、durable 证据在哪；`paper-quality.js` 先剥 `#锚`、裸 id 放宽到字母结尾，指不到时报 `no-such-record`。
+台账 F2 的机制锚点同时从 `MAX_ROUNDS = maxRounds` 改成 `ROUNDS_OPTION = maxRounds`（RUN 154 的重读设置），覆盖门回升
+86/86。机器化：新 `tests/vmu-run155-audit-fixes.test.mjs` **63/0**（真 subprocess 服务驱动两个编译门、结算走 supersede
+的 rev/createdAt/slug 证据、tally 是名字、指针小账、G9 工具回执带 target）；测试改为 `chdir` 到自己的临时根，收尾清理，
+不再在仓库根留下 `Paper/`。收口：生成器 17/17、门禁五绿、全量 T1 TOTAL 637 PASS 637 FAIL 0。
+

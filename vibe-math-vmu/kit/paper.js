@@ -71,7 +71,21 @@ export function createPaperFlow({
   if (!Array.isArray(sections) || sections.length === 0) {
     throw refuse('VMU_INVALID_ARGUMENT', 'createPaperFlow needs the section titles', 'pass sections:[…] (the institution paper outline)')
   }
-  const SECTIONS = sections, SECTION_FIELDS = sectionFields, MAX_ROUNDS = maxRounds, ENGINE_ORDER = engineOrder, REPAIR_CORE = repairCore, TRACK = track, CODES = codes
+  const SECTIONS = sections, SECTION_FIELDS = sectionFields, ROUNDS_OPTION = maxRounds, ENGINE_ORDER = engineOrder, REPAIR_CORE = repairCore, TRACK = track, CODES = codes
+  // ★★ RUN 154 (real machine, run 4 / FEEDBACK3 H2b): the cap used to be captured ONCE at assembly, so
+  // `vibe_v5_set { key: "vmu.paper.maxRounds", value: 6 }` answered "applied, no restart needed" and the next `final` was
+  // still refused at 3. The pack now passes a READER (or a number) and this face asks it at every gate, so a receipt that
+  // says the setting applied is true by construction — the same discipline `consultPolicy()` already follows.
+  const roundsCap = () => {
+    let v = null
+    try { v = typeof ROUNDS_OPTION === 'function' ? ROUNDS_OPTION() : ROUNDS_OPTION } catch { v = null }
+    if (v === null || v === undefined || v === '') return 3
+    const n = Number(v)
+    return Number.isFinite(n) ? n : 3
+  }
+  // How many editor-initiated repair rounds are allowed AFTER the cross-review cap: the cap limits the review loop, it
+  // must not turn a paper into an object that can neither be finalised (content gate) nor revised (round cap).
+  const REPAIR_ROUNDS = 2
   const MD_FILL = typeof mdFill === 'function' ? mdFill : null
   if (!kernel || !kernel.records) {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'the paper subsystem needs the records face', 'assemble a kernel with the records service')
@@ -97,7 +111,12 @@ export function createPaperFlow({
   }
   const rowByTitle = (title) => listPaper().filter((r) => String(r.title) === title)[0] || null
   const readState = (target) => {
-    const row = rowByTitle(recordName(target, 'state'))
+    // ★★ RUN 154 (real machine, run 4 / FEEDBACK3 H3): the tool receipt calls the object "paper-p5" while every
+    // action addresses it by "p5", so a caller that copies the id it was just handed was told 'no paper "paper-p5" exists'.
+    // Both spellings name the same paper here; the state keeps ONE name (the target) as the truth.
+    let word = str(target)
+    let row = rowByTitle(recordName(word, 'state'))
+    if (!row && /^paper-/.test(word)) { word = word.replace(/^paper-/, ''); row = rowByTitle(recordName(word, 'state')) }
     if (!row) return null
     const got = records.get({ id: row.id })
     const full = got && got.record ? got.record : got
@@ -297,7 +316,11 @@ export function createPaperFlow({
       const expired = policy.timeoutMs > 0 && Number.isFinite(waited) && waited > policy.timeoutMs
       const base = { enforced: CONSULT_KEYS.slice(), declared: ['required', 'off'], currentValue: String(policy.raw),
         settingValues: policy.values, requestId: awaiting.id || null, requestedAt: awaiting.at === undefined ? null : awaiting.at,
-        waitedMs: Number.isFinite(waited) ? waited : null, timeoutMs: policy.timeoutMs, onTimeout: policy.onTimeout, actedBy: str(member) }
+        waitedMs: Number.isFinite(waited) ? waited : null, timeoutMs: policy.timeoutMs, onTimeout: policy.onTimeout, actedBy: str(member),
+        // ★★ RUN 154 (G9, second site): this is the refusal the real office actually hit — the field the ANSWER call
+        // takes is `target`, and it was only inside the hint's prose, so a caller reading fields had to parse Chinese to
+        // find it. Same key, same value, now a first-class field.
+        target: str(state.target), paperId: str(state.id) }
       if (expired && policy.onTimeout === 'refuse') {
         awaiting.status = 'timed-out'
         ledger.timedOut += 1
@@ -321,7 +344,7 @@ export function createPaperFlow({
         error: refuse(CODES.OFFICE_CONSULT_REQUIRED,
           '定稿前必须问所办（vmu.paper.officeConsult="required"）：这道提问还没有答复（' + (awaiting.id || '?') + '）',
           '由所办调 recordConsult({target, by:"' + (CONSULT_ROLES[0] || 'office') + '"}) 答复后重试；或把 vmu.paper.officeConsult 设成 "off"',
-          { ...base, reason: 'awaiting' }) }
+          { ...base, reason: 'awaiting', target: str(state.target), paperId: str(state.id) }) }
     }
     ledger.opened += 1
     const request = { id: 'consult-' + str(state.target) + '-' + ledger.opened, by: str(member), at: now, note: '', status: 'awaiting', policy: 'required' }
@@ -333,7 +356,10 @@ export function createPaperFlow({
         '定稿前必须问所办（vmu.paper.officeConsult="required"）：已向所办(' + (CONSULT_ROLES.join('|') || '未声明') + ')提出问询 ' + request.id + '，还没有答复',
         '所办调 recordConsult({target:"' + str(state.target) + '", by:"' + (CONSULT_ROLES[0] || 'office') + '"}) 答复后重试；或把 vmu.paper.officeConsult 设成 "off"（取消这道闸）',
         { enforced: CONSULT_KEYS.slice(), declared: ['required', 'off'], currentValue: String(policy.raw), settingValues: policy.values,
-          requestId: request.id, requestedAt: now, actedBy: str(member), answerRoles: CONSULT_ROLES.slice() }) }
+          requestId: request.id, requestedAt: now, actedBy: str(member), answerRoles: CONSULT_ROLES.slice(),
+          // ★★ RUN 154 (G9): the key the fix has to carry is `target` (the answer call's argument), and it is now on the
+          // receipt itself — run 4 measured the office answering, hitting 'no target was given', and retrying blind.
+          target: str(state.target), paperId: str(state.id) }) }
   }
   /** The office's answer. WHO may answer is POLICY (`consultRoles`, from the pack): the kit refuses anyone else with a
    *  NAMED refusal that lists the roles it would have accepted — a gate nobody can satisfy must say so out loud. */
@@ -538,7 +564,32 @@ export function createPaperFlow({
       return { ok: true, moved: true, from: 'writing', to: 'reviewing', round: state.round, reviewOf }
     }
     if (state.status === 'reviewing') {
-      const refusers = state.participants.filter((id) => !(state.reviews[id] && state.reviews[id].deliverable === true))
+      // ★★ RUN 154 (real machine, run 4 / FEEDBACK3 H1 — the worst one): two members filed `deliverable:true`, both
+      // receipts said so, both review ROWS were on disk, and `advance` still reported one of them as a refuser ("未说明")
+      // and sent the paper back to writing — 3 times in a row for the same member. The state's `reviews` map is a CACHE;
+      // the durable `paper-review` row for THIS round is the truth. A member whose row says deliverable is read from the
+      // row (and the cache is re-healed), so a lost snapshot write can no longer invent a disagreement.
+      const readReview = (member) => {
+        const snap = state.reviews[member]
+        if (snap && snap.deliverable === true) return { deliverable: true, comments: str(snap.comments), source: 'state', recordId: snap.recordId || null }
+        const want = recordName(state.target, 'review|' + member)
+        let rows = []
+        try { const got = records.list({ track: TRACK, limit: 2000 }); rows = Array.isArray(got.items) ? got.items : [] } catch { rows = [] }
+        // newest first: the head projection carries `updatedAt` (not `rev`), and a corrected review is re-put
+        const row = rows.filter((r) => String(r.title) === want).sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0] || null
+        if (!row) return { deliverable: false, comments: snap ? str(snap.comments) : '', source: 'none', recordId: null }
+        let body = null
+        try { const g = records.get({ id: row.id }); const full = g && g.record ? g.record : g; body = JSON.parse(String((full && full.body) || '{}')) } catch { body = null }
+        if (!body || String(body.member) !== String(member)) return { deliverable: false, comments: '', source: 'none', recordId: row.id }
+        if (Number(body.round) !== Number(state.round)) {
+          return { deliverable: false, comments: 'a review row exists for round ' + body.round + ', not this round (' + state.round + ')', source: 'durable-other-round', recordId: row.id }
+        }
+        state.reviews[member] = { recordId: row.id, fingerprint: row.fingerprint || null, deliverable: body.deliverable === true, of: body.of, round: body.round, comments: str(body.comments) }
+        return { deliverable: body.deliverable === true, comments: str(body.comments), source: 'durable', recordId: row.id }
+      }
+      const verdicts = state.participants.map((id) => Object.assign({ member: id }, readReview(id)))
+      const reviewsRead = verdicts.map((v) => ({ member: v.member, deliverable: v.deliverable === true, source: v.source, recordId: v.recordId || null }))
+      const refusers = verdicts.filter((v) => v.deliverable !== true).map((v) => v.member)
       if (refusers.length === 0) {
         // ★ F3a: "everyone voted deliverable" is NOT enough when nobody reviewed anybody else's part. With one participant
         // the rotation reviews the participant themself, so the filter above was vacuously unanimous. The gate runs BEFORE
@@ -546,20 +597,27 @@ export function createPaperFlow({
         requireCrossReview(state, 'advance')
         state.status = 'awaiting-editor'; state.stage = 'awaiting-editor'
         writeState(state)
-        return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true }
+        return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true, reviewsRead }
       }
-      const entry = { round: state.round, members: refusers.slice(), detail: refusers.map((id) => id + '：' + String((state.reviews[id] || {}).comments || '未说明')).join('；') }
+      // The detail must state WHAT WAS READ, not a shrug: '未说明' was printed even when the member had filed a review
+      // whose row was on disk (that is exactly how run 4's disagreement looked while the cards said deliverable:true).
+      const entry = { round: state.round, members: refusers.slice(), detail: refusers.map((id) => {
+        const v = verdicts.filter((x) => x.member === id)[0] || { comments: '', source: 'none' }
+        const why = v.comments ? String(v.comments)
+          : (v.source === 'none' ? '没有本轮的评审行（未表态）' : '评审行在记录里、但这一轮不算作可交付')
+        return id + '：' + why
+      }).join('；') }
       state.disagreement = (state.disagreement || []).concat([entry])
-      if (state.round < MAX_ROUNDS) {
+      if (state.round < roundsCap()) {
         state.round += 1; state.status = 'writing'; state.stage = 'writing'; state.reviews = {}
         writeState(state)
-        return { ok: true, moved: true, from: 'reviewing', to: 'writing', round: state.round, refusers }
+        return { ok: true, moved: true, from: 'reviewing', to: 'writing', round: state.round, refusers, reviewsRead }
       }
       state.status = 'awaiting-editor'; state.stage = 'awaiting-editor'
       state.forcedAfterCap = true
-      state.warnings = (state.warnings || []).concat(['互审在 ' + MAX_ROUNDS + ' 轮上限仍未达成全体一致（' + refusers.join('、') + '）；分歧已写入论文附录。'])
+      state.warnings = (state.warnings || []).concat(['互审在 ' + roundsCap() + ' 轮上限仍未达成全体一致（' + refusers.join('、') + '）；分歧已写入论文附录。'])
       writeState(state)
-      return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, refusers, capped: true, warnings: state.warnings }
+      return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, refusers, capped: true, warnings: state.warnings, reviewsRead }
     }
     return { ok: true, moved: false, state: state.status, note: 'the flow is ' + state.status + '; only writing/reviewing advance on their own (finalize it, or start a new paper)' }
   }
@@ -643,7 +701,7 @@ export function createPaperFlow({
       // "finalized" while the fourth artefact is missing is the paper-world version of crying wolf.
       let pdf = null
       try {
-        pdf = { ok: true, ...(await compilePdf({ target })) }
+        pdf = { ok: true, produced: true, ...(await compilePdf({ target })) }
       } catch (e) {
         // ★ G7 ③: keep a MACHINE-READABLE engine list on the failure (the prose message alone forces a caller to parse
         // Chinese text to answer "which engines were tried, which one failed"). The array is bounded, never full logs.
@@ -659,19 +717,38 @@ export function createPaperFlow({
           tailSource: (e && e.tailSource) || null,
           signal: (e && e.signal) || null }
       }
-      return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: rendered.missing, pdf,
+      // ★★ RUN 154 (G10): run 4's final receipt said `"missing":["pdf"]` AND `"pdf":{"ok":true,...}` in the SAME answer —
+      // `missing` was the pre-compile artefact list and the compile had just succeeded. The list is recomputed around the
+      // compile that actually ran, so the two statements can no longer contradict each other.
+      const missingAfter = (Array.isArray(rendered.missing) ? rendered.missing : []).filter((m) => !(pdf && pdf.ok === true && m === 'pdf'))
+      return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: missingAfter, pdf,
         // ★ E4: the receipt says WHICH way the consult rule was satisfied ("off" / "answered" / "exempt"): a finalisation
         // that claims the office was consulted when the gate was simply off is the sort of quiet lie this pack refuses.
         consult: { armed: gate.armed === true, satisfiedBy: gate.reason, answeredBy: gate.answeredBy || null, requestId: gate.requestId || null, note: gate.note || null } }
     }
     state.final = fin
-    if (state.round < MAX_ROUNDS) {
+    const capNow = roundsCap()
+    if (state.round < capNow) {
       state.round += 1; state.status = 'writing'; state.stage = 'writing'
       state.disagreement = (state.disagreement || []).concat([{ round: state.round - 1, members: [fin.by], detail: '定稿代表要求修订：' + (fin.note || '（未说明）') }])
       writeState(state)
       return { ok: true, finalized: false, moved: true, round: state.round, status: state.status }
     }
-    throw refuse(CODES.STATE, '已到 ' + MAX_ROUNDS + ' 轮上限，定稿代表仍要求修订', 'the original would have to force it; this face refuses instead of silently finalizing a revised paper')
+    // ★★ RUN 154 (real machine, run 4 / FEEDBACK3 H2 — DEADLOCK): at the cross-review cap the paper sat in
+    // `awaiting-editor` where `deliverable` was refused by the content gate (a verified title line missing) and `revise`
+    // was refused by the round cap — `part` only writes in `writing`, so NO call could change the body: the paper became
+    // dead data. The cap limits the REVIEW loop; the editor gets a bounded number of REPAIR rounds to fix the body
+    // (each one is recorded as a repair, so it can never be mistaken for a fresh review round).
+    const repairs = Number(state.repairs || 0)
+    if (repairs < REPAIR_ROUNDS) {
+      state.repairs = repairs + 1
+      state.status = 'writing'; state.stage = 'writing'
+      state.disagreement = (state.disagreement || []).concat([{ round: state.round, members: [fin.by], detail: '定稿代表要求修订（轮数上限后的第 ' + state.repairs + ' 次修复轮，不计入互审轮次）：' + (fin.note || '（未说明）') }])
+      writeState(state)
+      return { ok: true, finalized: false, moved: true, round: state.round, status: state.status, repair: true, repairs: state.repairs, repairBudget: REPAIR_ROUNDS, cap: capNow }
+    }
+    throw refuse(CODES.STATE, '已到 ' + capNow + ' 轮上限，且 ' + REPAIR_ROUNDS + ' 次修复轮也用完了，定稿代表仍要求修订',
+      'this face has no force flag: the exits that exist now are (a) record a new part that satisfies the content gate and final it, (b) raise vmu.paper.maxRounds (a positive number is read live on the next call) and revise again, or (c) start a new paper for a new target; silently finalising a revised paper is not one of them')
   }
 
   /** Re-read a part BY ID and compare the fingerprint remembered at write time (rule ①). */
@@ -899,6 +976,11 @@ export function createPaperFlow({
         failure.tailSource = 'stderr'
       }
       failure.signal = (r && r.signal) || null
+      // ★★ RUN 155 (audit of c5d356b9, problem 1 / G10's second half): the FACE carries the exact argv it
+      // spawned (`r.argv` — measured: 5 elements, absolute + forward slashes), but this failure object never copied it
+      // while BOTH projections downstream read `e.argv` and default to [] — so the receipt said `argv: []` at the very
+      // moment a compiler really ran. The argv travels now, and the receipt's own evidence stops lying by omission.
+      failure.argv = Array.isArray(r.argv) ? r.argv.slice(0, 16) : []
       throw failure
     }
     const put = records.put({
@@ -907,6 +989,9 @@ export function createPaperFlow({
       settled: true, by: author,
     })
     return { ok: true, target: state.target, engine: r.engine, pdfPath: r.pdfPath, pdfBytes: r.pdfBytes,
+      // ★★ RUN 154 (G10): run 4 verified the fix from xelatex's own log because the receipt did not carry the argv that
+      // proves "absolute + forward slashes". The successful compile now returns the same argv the failure path always did.
+      argv: Array.isArray(r.argv) ? r.argv.slice(0, 16) : [], outDir: r.outDir || null, sourceName: state.id + '.tex',
       tried: r.tried, elapsedMs: r.elapsedMs, recordId: put && put.id,
       artifacts: PaperArtifacts({ target }), missing: PaperArtifacts({ target }).missing }
   }

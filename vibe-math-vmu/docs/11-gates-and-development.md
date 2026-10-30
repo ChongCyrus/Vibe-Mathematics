@@ -233,7 +233,7 @@
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓；**PHASE 6 起由 `--scope-report` 派生、`update-doc-counts --write` 自动重写** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 385 / suites 323 / probes 62`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
-**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **635 作业**（571 套件 + 64 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **637 作业**（573 套件 + 64 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
 **更新方式（2026-10-14 更正 ✗✓；PHASE 6 再更正 ✓）**：旧文写"`scripts/update-doc-counts.mjs` 只**整行重写 4 处**……**不含** `vibe-math-vmu/docs/**`" —— **该说法已过期** ✗。实读该脚本：它覆盖 **6 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`、**本卷两行**），本卷的 `shipped.*` 行与"vmu 子集"行都按标记**整行重写**（**不要手改** ✓）。★ **PHASE 6 修复的残留缺陷**：此前"vmu 子集"行**永远不会被重写** —— 它想用 `GATE_SCOPE=vmu` 下的 `--counts` 派生，而 `--counts` **按设计**是作用域无关的，脚本只能拒绝并留一行人工数字（**永久说谎** ✗）。现在改为从 `node tests/run-tests.mjs --scope-report` 的 `scopes.vmu` 派生（只派生、不跑作业 ✓），该行**由 `--write` 自动跟随**；`--check` 与 `--write` 的差集即为待同步项 ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓

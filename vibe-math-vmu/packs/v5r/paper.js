@@ -87,7 +87,17 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
     // ★ THE MAPPING IS POLICY (kit/paper.js §PaperMd): one entry per section, '' = that section owns no single part-field.
     // 序号对应 PAPER_SECTIONS：0 标题|1 引言|★2 完整解法|★3 命题|4 子问题|★5 有价值之物|★6 规律|★7 局限|★8 证据
     sectionFields: Object.freeze(['title', '', 'solution', '', '', 'methods', 'rules', 'limits', 'evidence']),
-    maxRounds: PAPER_MAX_ROUNDS,
+    // ★★ RUN 154 (H2b): a READER, not a snapshot. `vibe_v5_set { key: "vmu.paper.maxRounds", value: 6 }` used to be
+    // accepted ("applied, no restart") and then ignored, because this constant was captured when the subsystem was built.
+    // The flow now asks this function at every gate: a positive setting widens the cap immediately; unset/0 keeps the
+    // declared outline cap (PAPER_MAX_ROUNDS) — and the flow's own cap message names that, rather than pretending the
+    // kernel-face meaning of 0 (unlimited) is being honoured here.
+    maxRounds: () => {
+      let raw = null
+      try { raw = (kernel && typeof kernel.settingsSnapshot === 'function' ? kernel.settingsSnapshot() : {})['vmu.paper.maxRounds'] } catch { raw = null }
+      const n = Number(raw)
+      return Number.isFinite(n) && n > 0 ? n : PAPER_MAX_ROUNDS
+    },
     engineOrder: PAPER_ENGINE_ORDER,
     repairCore: PAPER_REPAIR_CORE,
     track: PAPER_TRACK,

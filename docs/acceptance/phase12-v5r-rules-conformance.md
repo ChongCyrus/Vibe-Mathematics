@@ -11760,3 +11760,134 @@ Verified（规则使然，本轮只把 wording 记下，不改门）；C.3 并�
 4. **三席名册下人数闸按构造满足**（F7/G 系列遗留）：回执已自述 `vacuous:true`/`bitesWhen`，但「人数闸真的拒过一次」
    在 3 席规模**无法**演示；需要更大名册的部署才能给出负向证据。
 5. **真机第二轮反馈提到的「按序写而非并发写」**：`rev` 乐观锁已就绪，但一次真并发仍未在真机上跑过。
+
+## §255 第四次真机跑（续跑）走到了结题：八条「回执/状态机」缺陷与 L53 写回的真账（RUN 154）
+
+### 255.1 触发与读数
+
+真机 run 4（同一所的第三次续跑；tarball `c5d356b9`，即 §254 的修法上机）`DRIVE exit=0`、`durationSec 694`、
+`tokenTotal 8 539 535 / 24 000 000`、`transcriptEvents 476`、根会话 `toolCalls 113`、机器读数
+`NO_FENCE=0 · UNKNOWN_FIELD=0 · FIELD_NOT_APPLICABLE=0 · BAD_JSON=0`、`slv-inspect` **0 RED**（唯一 INFO 是「根会话
+没有同源块」的设计事实）、`CLOSURE: … cast=true (from 5 turn receipt(s))`；转录 `full-1031-044258.jsonl`
+（6 347 915 B / 13 628 行），日志戳 `20261031-045518`，清理 `clone_gone=True port_free=True`。
+
+**这一轮真的走到结题**：结题会 `m9` 3/3 一致关闭；论文 `p8` 定稿（`finalized:true`），并且**由论文面自己编译出 PDF**
+（85 839 B，xelatex 日志第 5 行是 `**D:/…/paper-p8.tex`——绝对路径 + 正斜杠）。上一轮的三处修复被真机逐字证实：
+
+- **G1 结算是补丁写**：`{"settled":true,"settlement":{"patch":true,"wrote":["p","debateRuling"],"preserved":"every other card field … left exactly as it was, so the rule-L14 lock still bites"}}`；
+  读回 `title` 逐字未变、`proofState:"complete"` 在、`bytes` 752→906、正文末行是
+  `- debateRuling：{"subject":"rec-12","value":1,"mode":"unanimous","n":2,…}`；随后普通写入仍 `VMU_STATE card "rec-12" is locked`。
+- **G2 论文面能自己编译**：p5 三页 77 252 B、p8 85 839 B；`closes` 不再依赖代理手调 xelatex。
+- **G4 汇总结论有自己的身份**：`tally:{id:"tally-m-deb-1-rec-12",…}`，Verified 行 `rec-26` 记 `warrant：tally-m-deb-1-rec-12`。
+- **G5/G6 按修法可用**：`missing[].requiredLine` 直粘一次过；`evidence:["rec-12"]` 解析成 `resolved:["rec-12"]`。
+
+### 255.2 八条新缺陷（代理 `FEEDBACK3.md` 的 `H1–H8`，`RUN4 VERDICT: FAIL`）
+
+- **H1（真机制缺陷，最重）** 互审两人都交 `deliverable:true`（回执与落盘卡 `rec-87`/`rec-89` 都是 true），`advance` 却把
+  `r-1` 记成 refuser：`{"to":"writing","round":2,"refusers":["r-1"]}`，纸面 `reviews:{}`。4 次里 3 次复现，p7 连续三轮
+  都是同一成员「丢评审」。根因：`advance` 用 `state.reviews[member]` 判断，而 `state.reviews` 只是**缓存**（`recordReview`
+  先写评审卡记录、再写 state；`advance` 回写时清空它）——缓存丢一条就把已交的评审当成拒绝。
+- **H2（真机制缺陷：上限与内容门互锁）** p7 停在 `awaiting-editor`：`final{decision:"revise"}` 被「已到 3 轮上限」拒，
+  而 `part` 只在 writing 可写 ⇒ 既不能定稿也不能修订。**H2b** `vibe_v5_set {key:"vmu.paper.maxRounds",value:6}` 回执说
+  `applied immediate / requiresRestart:false`，机制却仍按装配时捕获的常量拒（静默失效）。
+- **H3（寻址缺陷）** 回执自报 `"id":"paper-p5"` 不能用来寻址（`target:"paper-p5"` ⇒ `no paper "paper-p5" exists`，要 `"p5"`）。
+- **H4（回执缺陷）** `warrantFor.useAs` 只给了 warrant，真调 `verified_promote` 仍要 `debate_ruling`（被拒 `VMU_PACK_V5R_P1_NEEDS_DEBATE`），
+  且拒绝语说「两者都没有」而 rec-26 就在 Verified 轨上（与事实相反）。
+- **H5（教学缺陷）** `vibe_v5_set` 的说明写 `reason`，工具只收 `why`。**H6（措辞缺陷）** 同值重投被拒消息说
+  「a DIFFERENT ruling」（两次都是 1，差别只在理由文字）。**H7（回执缺陷）** `vibe_vmu_panel{action:"board"}` 行缺
+  `subgoal`/`status`（规则 L28 要求状态板含各任务完成状态）。**H8** `vibe_v5_meeting` 无 `open` 动作（代理自身操作问题，
+  建议把「本面只召开」写进说明首行）。
+- 环境事实：这一轮代理的宿主 `pwsh` 全程不可用（`[exit code: 3221225794]` = `0xC0000142`），它改用文件工具与
+  `math_computation{engine:"python"}` 取证——这是宿主侧问题，不属于 vmu 机制。
+
+### 255.3 修法（全部落在站点上）
+
+| 缺陷 | 站点 | 修法 |
+| --- | --- | --- |
+| H1 | `vibe-math-vmu/kit/paper.js` | `advance` 新增 `readReview(member)`：先看缓存，缓存没有就读**磁盘上本轮的评审行**（`paper-review` 记录按 `updatedAt` 取最新），同轮命中即**自愈缓存**并标 `source:"durable"`；不同轮明确标 `durable-other-round` 与「不是本轮」；回执带 `reviewsRead`。评审判定不再依赖易丢的内存缓存。 |
+| H2 | 同上 | 轮数上限之外新增 `REPAIR_ROUNDS = 2` 个**修复轮**：到上限后 `final{decision:"revise"}` 仍能把论文写回 writing（`repair:true, repairs, repairBudget, cap`）；用完才拒，且拒绝语点名三条**真实存在**的出口（补 part 过内容门 / 把 `vmu.paper.maxRounds` 设为正数（下次调用即生效）/ 换新 target 重开）。 |
+| H2b | `vibe-math-vmu/packs/v5r/paper.js` | 装配不再捕获常量：`maxRounds: () => …` 每次读设置（正数生效，其余回退 `PAPER_MAX_ROUNDS`），并注明「0 在 kernel 面=unlimited、本流程仍用 3」的口径差异。 |
+| H3 | `vibe-math-vmu/kit/paper.js` | `readState` 接受 `paper-<x>` 拼写（去掉前缀重查），回执自报的 id 可直接当 target 用。 |
+| G9 | 同上 | 真正被撞的是 kit 的 `consultGate()`（不是 kernel 那条没人装配的面）：`awaiting` / `opened` / `timeout` 三支的 extra 都带 `target` 与 `paperId`。 |
+| G10 | `vibe-math-vmu/kit/paper.js` + `packs/v5r/tools.js` | 成功回执也带 `produced`/`argv`/`outDir`/`sourceName`；`final` 的 `missing` 在 pdf 成功时**不再**把 `pdf` 列进去（改 `missingAfter`）。 |
+
+### 255.4 机器化：新套件 55 条
+
+- 新 `tests/vmu-run154-real-run4-fixes.test.mjs` **55/0**：§0 源码口径、§1 H3、§2 H1（缓存丢条目时 advance 读磁盘评审行、
+  自愈、不同轮不误算）、§3 H2 修复轮（到上限仍能写 part 并最终定稿、用完给真实出口）、§4 H2b（正数设置下一次调用生效、
+  0 回退 3）、§5 G9（三支拒绝都带 target）、§6 G10（compile 回执有 produced/argv、final 的 missingAfter 不再同时含 pdf）。
+
+### 255.5 读数与门禁
+
+- 门禁与预算见 §256.5（RUN 155 的收口一次跑齐）；本轮没有改任何提示词源，T99 仍 19 995 / 19 998 / 18 243。
+
+### 255.6 仍未解决
+
+1. **H1/H2 的修复尚未上真机**：下一轮（真机 run 5）要在同一所上看到「评审不再凭空丢、到上限的论文能修复并定稿」。
+2. **`editor:"office"` 代定稿仍是具名缺口**（§254.6 的 C.1 未变）。
+3. **H4/H5/H6/H7 尚未修**（回执/措辞/面板投影；不在本轮范围内，登记为 OPEN）。
+4. **人数闸在 3 席名册下按构造满足**（回执已自述 `vacuous`/`bitesWhen`），负向证据仍需更大名册。
+
+## §256 只读审计对 §255 修复的五个「收据说了机制没做的事」：argv 是空的、两个门两个形状、结算说「原样」其实是重建（RUN 155）
+
+### 256.1 触发
+
+对提交 `c5d356b9` 跑只读审计（`PROBLEMS(5)`）。五条都不是「功能不好用」，而是**收据/文档说了机制没做的事**——
+
+1. `final` 的 pdf 失败块**永远** `argv: []`：`vibe-math-vmu/kit/paper.js` 的 failure 对象从不复制 `r.argv`，而下游
+   `recordFinal` 的 catch 与 `packs/v5r/tools.js` 的投影都只认 `e.argv` 并默认 `[]`。真机里编译器明明跑了 5 个参数，
+   收据却拿不出路径证据。
+2. `action:"compile"` 与 `final` 的 pdf 块**不是同一个形状**：compile 失败直接**抛**（没有回执），成功只回 6 个键；
+   `final` 则回一个 body ⇒ 文档说「两处共用同一结构」，两头都假。
+3. `settlement.preserved` 说「其余字段原样」，实际走的是 `records.put`——它**重建整条记录**（`rev` 重置为 1、
+   `createdAt` 变、`slug` 重新铸造、`versions`/`tags` 清空），`settlement.rev` 恒 `undefined`。
+4. `tests/vmu-run153-real-run-fixes.test.mjs` 有 16 处对**源码文本**的 pin，其中恰好有一条把第 1 条的真话掩盖过去；
+   源码 pin 看不见收据里的值。
+5. `tally-…` 长得像记录 id，但没有任何记录写在它名下（`vibe_v5_read_library {id:"tally-…"}` ⇒ `NO_SUCH_OBJECT`）。
+
+小账两条：裸记录 id 只认「数字结尾」；`Members/r-1/Propos/x.md#证明` 里的 `#锚` 被当成 id 的一部分。
+
+### 256.2 修法
+
+| 问题 | 站点 | 修法 |
+| --- | --- | --- |
+| 1 | `vibe-math-vmu/kit/paper.js` | 失败对象在抛出前复制面真正 spawn 的 `argv`（`r.argv.slice(0,16)`），带 RUN 155 注记说明「两个投影只认 `e.argv`」。 |
+| 2 | `vibe-math-vmu/packs/v5r/tools.js` | 新增模块级 `projectPdfBlock(pdf, target)`——**一份**22 键投影（成功/失败同键集），`final` 与 `compile` 都走它；compile 失败改为**回执** `{ok:true, compiled:{ok:false,…}}` 而不是抛异常；`catch` 逐字段显式投影（`Error.message` 不可枚举，`...(e||{})` 会把它丢掉）。 |
+| 3 | 同上 | 结算改走 `records.supersede({id, reason, by, body})`（新版本，保留 id/slug/createdAt），回执 `settlement.mode:'supersede'` + `record:{id,rev,mode}`；没有 `supersede()` 的部署才回退 `put`，回执**明说**「这一版还了整条、rev/createdAt/slug 会被重建」。两支的 `preserved` 都是真话。 |
+| 4 | `tests/vmu-run155-audit-fixes.test.mjs` | 行为覆盖取代源码自证：真链路驱动 `final` 与 `compile`，断言**收据里** `argv` 至少 4 项、含 `-output-directory=`、`.tex` 实参是 `^[A-Za-z]:/` 绝对正斜杠、`stderrTail` 有编译器的话且 `tailSource:"stdout"`、`missing` 含 `pdf`、键集与 `projectPdfBlock` 逐字相同。run153 的 §0 也标注为「源码口径，行为见 run154/run155」。 |
+| 5 | `vibe-math-vmu/packs/v5r/tools.js` | `warrantFor` 加 `durable`（id 是聚合的**名字**，durable 证据是 `attribution[].submission` 的成员裁决卡与 promotion 写入 Verified 行的 warrant 行，可用 `vibe_v5_meeting { action: "summary" }` 复现）；`tally` 加 `isRecordId:false` 与 `durableUnder`。没有伪造一条「看起来像卡」的记录。 |
+| 小账 | `vibe-math-vmu/packs/v5r/paper-quality.js` | 证据指针先按 `#` 切出 bare pointer 与 anchor（匹配用 bare pointer、回执保留 anchor）；裸 id 判定放宽为「命中 `BARE_CARD_ID` **或** `/^[A-Za-z][A-Za-z0-9_-]*$/`」，指不到时报 `no-such-record`。 |
+
+一处连带：`docs/acceptance/rules-ledger.json` 的 F2 机制锚点还写着 `MAX_ROUNDS = maxRounds`，而 RUN 154 已把该行改成
+`ROUNDS_OPTION = maxRounds`（修复轮要能重读设置）——覆盖门因此 FAIL(1)，锚点已改为 `ROUNDS_OPTION = maxRounds`。
+
+### 256.3 机器化
+
+- 新 `tests/vmu-run155-audit-fixes.test.mjs` **63/0**：§0 源码口径（含「旧话必须消失」的反向断言）、§1 kit 侧真 argv、
+  §2 两个编译门同形（真 subprocess 服务注入，成功与失败各一次，含 `final.pdf`）、§3 结算走 supersede（rev 增长、
+  createdAt/slug 不变、历史新增版本、锁仍咬人）、§4 tally 是名字不是记录、§5 指针小账（锚点/裸 id/散文仍拒）、
+  §6 G9 的工具回执自带 `target`/`paperId`/`requestId`。
+- 顺带让测试**不再污染仓库**：paper 流程的默认 `outDir` 是相对的（`Paper/<id>`），kernel 按进程 cwd 解析 ⇒ 测试
+  `chdir` 到自己的临时根、收尾 `chdir` 回来并清掉临时目录（RUN 155 期间仓库根一度出现 `Paper/`，已删）。
+
+### 256.4 三个套件的总账
+
+`vmu-run153-real-run-fixes` **53/0**、`vmu-run154-real-run4-fixes` **55/0**、`vmu-run155-audit-fixes` **63/0**；
+定向套件 `--only paper` 9/0、`--only latex` 2/0、`--only paper-quality` 1/0、`--only math-computation` 5/0、
+`--only v5r-tools` 1/0。
+
+### 256.5 读数与门禁
+
+- 预算：T99 charter 子装配 **19 995 / 19 998 / 18 243**（院士/研究/临时；本轮仍未改提示词源）。
+- 生成器：`regen-all --write` 两轮后 `=== vmu regen-all: 17/17 in sync ===`。
+- 门禁：`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0 problem(s))`、`RULES COVERAGE: PASS (0 problem(s))`
+  （86/86 锚点、86 DONE）。
+- 全量 T1（`GATE_SCOPE=vmu`）：TOTAL 637 PASS 637 FAIL 0（日志 `/d/_tmp/t1-r180-run155.log`；套件数 +2 = 本轮新增的
+  `vmu-run154-real-run4-fixes` 与 `vmu-run155-audit-fixes`）。
+
+### 256.6 仍未解决
+
+1. **第五次真机（run 5）尚未跑**：H1/H2/H2b/H3/G9/G10 的修法要上机验证，并且要再收一轮代理反馈。
+2. **H4/H5/H6/H7**（回执缺 `alsoRequired` 且拒绝语与事实相反、`reason`/`why` 措辞、同值重投消息、状态板缺
+   `subgoal`/`status`）本轮未修，登记为 OPEN。
+3. **`editor:"office"` 代定稿**仍是具名缺口；**人数闸负向证据**仍需更大名册。

@@ -251,18 +251,28 @@ export function checkEvidencePointers({ evidence, records, codes = QUALITY_CODES
     // ★★★ RUN 153 (G6): the appendix indexes evidence by RECORD ID, so a bare card id ("rec-12") is a legal pointer.
     // The member-file form was the only accepted shape, and the real run's members wrote the id they were shown on the
     // card — and were refused with "not-a-member-file-pointer" for citing the thing the institute had just told them.
-    const m = pointer.match(MEMBER_FILE)
+    // ★★ RUN 155 (audit of c5d356b9, small account): two REAL shapes were mis-reported.
+    //   · `Members/r-1/Propos/x.md#证明` (a pointer with a section anchor, which is how the cards name their proof) was
+    //     matched as if `x.md#证明` were the record id ⇒ `no-such-record` about a record that exists: the anchor is
+    //     stripped before resolution and kept only for the receipt.
+    //   · a bare id that does not exist (`rec-a153-nosuch`) was answered "not-a-member-file-pointer", which sends the reader
+    //     looking for a path problem when the actual problem is that the record is missing. A bare-looking id that fails to
+    //     resolve is now `no-such-record`.
+    const anchorAt = pointer.indexOf('#')
+    const barePointer = anchorAt < 0 ? pointer : pointer.slice(0, anchorAt)
+    const anchor = anchorAt < 0 ? null : pointer.slice(anchorAt)
+    const m = barePointer.match(MEMBER_FILE)
     if (!m) {
-      const bare = pointer.match(BARE_CARD_ID)
+      const bare = barePointer.match(BARE_CARD_ID) || (/^[A-Za-z][A-Za-z0-9_-]*$/.test(barePointer) ? [barePointer, barePointer] : null)
       if (bare) {
         let bareRow = null
         try { bareRow = recordOf(records, bare[1]) } catch { bareRow = null }
         if (bareRow) {
-          resolved.push({ pointer, cardId: bare[1], track: str(bareRow.track), fingerprint: str(bareRow.fingerprint) || null,
-            means: 'bare record id: resolved against the records face and checked for existence (the gate still matches the citation in the prose by id, so this pointer and the citation must name the same card)' })
+          resolved.push({ pointer, cardId: bare[1], track: str(bareRow.track), fingerprint: str(bareRow.fingerprint) || null, anchor,
+            means: 'bare record id: resolved against the records face and checked for existence (the gate still matches the citation in the prose by id, so this pointer and the citation must name the same card)' + (anchor ? '; the `' + anchor + '` anchor is a section inside that record, not part of its id' : '') })
           continue
         }
-        unknown.push({ pointer, cardId: bare[1], reason: 'no-such-record',
+        unknown.push({ pointer, cardId: bare[1], reason: 'no-such-record', anchor,
           expected: 'Members/<member>/(Propos|Methods|Subproblems|Progress)/<id>.md, or a record id written by the records face' })
         continue
       }
@@ -283,7 +293,10 @@ export function checkEvidencePointers({ evidence, records, codes = QUALITY_CODES
       unknown.push({ pointer, cardId, expectedTrack, actualTrack: actualTrack || null, reason: 'wrong-track' })
       continue
     }
-    resolved.push({ pointer, cardId, track: expectedTrack, fingerprint: str(row.fingerprint) || null })
+    // ★ RUN 155: an anchor (`#证明`) is a SECTION inside the record, not part of its id - resolve on the pointer
+    // WITHOUT it and keep it on the receipt so the citation the member wrote is still recoverable.
+    resolved.push({ pointer, cardId, track: expectedTrack, fingerprint: str(row.fingerprint) || null, anchor,
+      means: 'member-file pointer: resolved against the records face by its id' + (anchor ? '; the `' + anchor + '` anchor is a section inside that record, not part of its id' : '') })
   }
   return { ok: unknown.length === 0, provided: list.length, resolved, unknown,
     means: 'the pointers are resolved against the records face the moment the part is written, so a fabricated or mistracked citation is refused HERE instead of at render; the gate still owns the deliverable (it also requires >=1 evidence entry per part and a fingerprint for every citation)' }

@@ -1319,7 +1319,7 @@ vmu.packs.active: [v5r]
 | `vmu.migration.rollbackPointDensity` | int ≥0 | `1` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.migration.stepBatch` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/migration.js` | 已接线（migration.js 读取）；默认值取自模块源码 |
 | `vmu.notify.crossInstitution` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/notify.js` | 已接线（notify.js 读取）；默认值取自模块源码 |
-| `vmu.paper.maxRounds` | int ≥0 | `0` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
+| `vmu.paper.maxRounds` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kit/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.paper.maxSections` | int ≥0 | `0` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.paper.requireAllSections` | bool | `true` | — | 会话 | H1 | office | ⚠️ 未接线（读取者不可达：该模块装配时不加载） | `kernel/paper.js` | 已接线（paper.js 读取）；默认值取自模块源码 |
 | `vmu.partnership.crossBorderApproverRoles` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/partnership.js` | 已接线（partnership.js 读取）；默认值取自模块源码 |

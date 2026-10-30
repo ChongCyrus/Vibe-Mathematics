@@ -1533,20 +1533,41 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
   if (rulingRow.subject === undefined) rulingRow.subject = id
   rulingRow.value = value
   out.push('- debateRuling：' + JSON.stringify(rulingRow))
-  const put = records.put({
-    id, track, kind,
-    title: str(row.title) || fallbackTitle || id,
-    body: out.join(NL),
-    settled: value === 1 || value === 0,
-    by, bySource: 'argument',
-  })
+  // ★★ RUN 155 (audit of c5d356b9, problem 3): the previous version called `records.put` and then told the receipt that
+  // "every other card field was left exactly as it was". The BODY lines were preserved, but `put` REBUILDS the record
+  // (rev back to 1, a fresh createdAt, the slug re-minted with a numeric suffix, versions/tags/permanent reset) — so the
+  // sentence was false about the row a reader would then inspect, and `settlement.rev` was `undefined` because put does
+  // not return one. The records face HAS the operation for editing a record: `supersede` keeps id/slug/createdAt, bumps
+  // rev and stores the version trail. The settlement uses it, and the receipt reports what actually happened.
+  const nextBody = out.join(NL)
+  const reason = 'rule L53 ruling settlement: p set to ' + String(value)
+    + (droppedEarlierRuling ? '; the earlier debateRuling row was replaced' : '')
+  let wrote = null
+  let mode = 'supersede'
+  if (records && typeof records.supersede === 'function') {
+    wrote = records.supersede({ id, reason, by: has(by) ? str(by) : 'argument', body: nextBody })
+  } else {
+    // A records face without `supersede` still gets the patch, but the receipt then SAYS the row was re-put.
+    mode = 'put-fallback'
+    wrote = records.put({
+      id, track, kind,
+      title: str(row.title) || fallbackTitle || id,
+      body: nextBody,
+      settled: value === 1 || value === 0,
+      by, bySource: 'argument',
+    })
+  }
   return {
-    ok: true, track, kind, recordId: put && put.id, rev: put && put.rev, id,
+    ok: true, track, kind, recordId: (wrote && wrote.id) || id, rev: (wrote && wrote.rev) || null, id,
     settled: true, p: value, ruling: rulingRow, rulingReplaced: droppedEarlierRuling,
     settlement: {
       patch: true,
+      mode,
       wrote: ['p', 'debateRuling'],
-      preserved: 'every other card field (title, proofRef, proofState, leanJob, leanConformance) was left exactly as it was, so the rule-L14 lock still bites',
+      preserved: mode === 'supersede'
+        ? 'the card LINES: only the p row is rewritten and one debateRuling row is replaced; every other line (title, statement/value/motive, proofRef, proofState, leanJob, leanConformance) is byte-identical, and the record keeps its id/slug/createdAt while gaining one version entry — so the rule-L14 lock still bites'
+        : 'the card LINES are preserved (only the p row is rewritten and one debateRuling row added/replaced), but this records face has no supersede(): the row was re-put, so its rev/createdAt/slug are rebuilt by the records face — read the card by id, not by slug or createdAt',
+      record: { id: (wrote && wrote.id) || id, rev: (wrote && wrote.rev) || null, mode },
       means: 'a ruling settlement edits the probability rule L53 settles and records the ruling — it is not a card rewrite',
     },
   }
@@ -2242,6 +2263,11 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
       value: ruled.value,
       spread: ruled.spread === undefined ? null : ruled.spread,
       useAs: 'the `warrant` argument of `vibe_v5_verified_promote` (the aggregate tally of this ruling, not one member\'s card)',
+      // ★★ RUN 155 (audit of c5d356b9, problem 5): a receipt that hands out an id invites the reader to READ it, and
+      // `vibe_v5_read_library { id: "tally-…" }` answered NO_SUCH_OBJECT because nothing is written under that name. The id
+      // is a NAME for the aggregate (stable per meeting+proposition), so the receipt now says exactly that, names where the
+      // durable evidence lives (each member\'s ruling card) and how to reproduce the aggregate from the meeting.
+      durable: 'this id is a NAME for the aggregate, not a records row — nothing is stored under it. The durable evidence is (a) the per-member ruling cards in `attribution[].submission`, readable with vibe_v5_read_library { id }, and (b) the verified row the promotion writes, whose `warrant` line carries this id. Reproduce the aggregate from (meeting, proposition): vibe_v5_meeting { action: "summary" } lists the motions and votes it was summed from.',
     },
     lockedCardNote: 'a card whose proof is registered complete stays locked for every CONTENT edit; this settlement writes only the probability the ruling produced, which rule L53 requires — the gate admits exactly that shape (p + debate_ruling) and nothing else',
     means: 'the KERNEL notice tells the owner to correct the card; this field names the call that does it and the values this ruling produced, so "who changes the card, with what" is answerable from the receipt instead of inferred. This face does not write the card: the rule makes the notice the FRAMEWORK act and the edit the HOLDER act (and a card write here would be a second writer of the same row)',
@@ -2263,6 +2289,9 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
       value: ruled.value,
       spread: ruled.spread === undefined ? null : ruled.spread,
       means: 'one aggregate id for this ruling: name it in `vibe_v5_verified_promote`\'s `warrant`; the per-member rulings stay in `attribution`. It is derived from (meeting, proposition) because L53 settles a proposition once, so the same ruling always has the same name',
+      // ★★ RUN 155 (problem 5, second half): say what the id IS, right next to the id.
+      isRecordId: false,
+      durableUnder: 'nothing — the id names an aggregate; read the per-member rulings (attribution[].submission.id) or the meeting summary',
     },
     // ★ LIVE RUN 11 (the institute's own report, item b): this receipt was read as if it carried the CLOSURE vote
     // (`cast`/`votesCast`) and the reading was reported missing. It is not missing - it is another mechanism. The
@@ -4060,6 +4089,45 @@ function toolSet(args = {}, { kernel } = {}) {
  *   · it adds NO second vocabulary — `decision` is deliberately NOT accepted here: the kit's consult has no decision
  *     enum (`deliverable|revise` belongs to `action:"final"`), so the office answers with `answer`/`note` text.
  */
+/**
+ * ★★ RUN 155 (audit of c5d356b9, problem 2): ONE pdf block, TWO doors. `final` and `compile` describe the
+ * same compile, and they used to describe it in two different shapes: `final` returned a body, `compile` THREW, and the
+ * keys differed even when both answered. The doc claimed they "share one structure", which was false on both halves.
+ * The projection below is the single shape: every key is present on success and on failure (null/[] when it does not
+ * apply), so a caller can diff the two doors field by field, and a reader can ask "did it produce a pdf, and with
+ * which argv" the same way in both places.
+ */
+function projectPdfBlock(pdf, target) {
+  const p = pdf || {}
+  const ok = p.ok === true
+  const enginesRaw = Array.isArray(p.triedEngines) ? p.triedEngines : (Array.isArray(p.tried) ? p.tried : [])
+  const engines = enginesRaw.slice(0, 12)
+  return {
+    ok,
+    kind: ok ? 'compiled' : 'refused',
+    produced: ok && (p.produced === true || Boolean(p.pdfPath)),
+    target: target === undefined || target === null ? (p.target || null) : String(target),
+    code: ok ? null : (p.code || null),
+    message: ok ? null : (p.message || null),
+    hint: ok ? null : (p.hint || null),
+    faceCode: ok ? null : (p.faceCode || null),
+    engine: p.engine || null,
+    pdfPath: p.pdfPath || null,
+    pdfBytes: p.pdfBytes === undefined || p.pdfBytes === null ? null : p.pdfBytes,
+    argv: Array.isArray(p.argv) ? p.argv.slice(0, 16) : [],
+    outDir: p.outDir || null,
+    sourceName: p.sourceName || null,
+    stderrTail: p.stderrTail ? String(p.stderrTail) : '',
+    stdoutTail: p.stdoutTail ? String(p.stdoutTail) : '',
+    tailSource: p.tailSource || null,
+    signal: p.signal || null,
+    triedEngines: engines,
+    triedEnginesTotal: enginesRaw.length,
+    triedEnginesTruncated: enginesRaw.length > engines.length,
+    missing: Array.isArray(p.missing) ? p.missing.slice() : (ok ? [] : ['pdf']),
+  }
+}
+
 async function toolPaper(args = {}, { kernel } = {}) {
   const action = str(args.action || 'status')
   if (!kernel || !kernel.records) {
@@ -4159,24 +4227,8 @@ async function toolPaper(args = {}, { kernel } = {}) {
           armed: finalized.consult.armed === true, satisfiedBy: finalized.consult.satisfiedBy || null,
           answeredBy: finalized.consult.answeredBy || null, requestId: finalized.consult.requestId || null,
           note: finalized.consult.note || null } : null,
-        pdf: finalized.pdf ? { ok: finalized.pdf.ok === true, code: finalized.pdf.code || null, message: finalized.pdf.message || null,
-          faceCode: finalized.pdf.faceCode || null,
-          // ★ RUN 153 (G10): the same failure structure `compile` returns — the compiler's words, which stream carried
-          // them, the exact argv and the signal. A receipt that says "it failed" without one line of the compiler is the
-          // receipt the operator cannot act on.
-          argv: Array.isArray(finalized.pdf.argv) ? finalized.pdf.argv.slice(0, 16) : [],
-          stderrTail: finalized.pdf.stderrTail ? String(finalized.pdf.stderrTail) : '',
-          stdoutTail: finalized.pdf.stdoutTail ? String(finalized.pdf.stdoutTail) : '',
-          tailSource: finalized.pdf.tailSource || null,
-          signal: finalized.pdf.signal || null,
-          // ★ THE CAP MUST ANNOUNCE ITSELF. A caller that sees a truncated list with no marker concludes those are
-          // all the engines that were tried - the same silent-truncation defect records.list and read_library had.
-          // The cap stays (a receipt must stay bounded) but `triedEnginesTotal` and `triedEnginesTruncated` say so.
-          ...(() => {
-            const all = Array.isArray(finalized.pdf.triedEngines) ? finalized.pdf.triedEngines : []
-            const capped = all.slice(0, 12)
-            return { triedEngines: capped, triedEnginesTotal: all.length, triedEnginesTruncated: all.length > capped.length }
-          })() } : null,
+        // ★★ RUN 155 (problem 2): the SAME projection the `compile` door returns (one shape, two doors).
+        pdf: finalized.pdf ? projectPdfBlock(finalized.pdf, finalized.target) : null,
       } }
     }
     case 'render': {
@@ -4198,12 +4250,35 @@ async function toolPaper(args = {}, { kernel } = {}) {
           needsKernel: rendered.pdf.needsKernel || null, message: rendered.pdf.message || null } : null }
     }
     case 'compile': {
-      const compiled = await paper.compilePdf({ target })
-      return { ok: true, tool, action, compiled: {
-        ok: compiled.ok === true, target: compiled.target, engine: compiled.engine || null,
-        pdfPath: compiled.pdfPath || null, pdfBytes: compiled.pdfBytes || null,
-        missing: Array.isArray(compiled.missing) ? compiled.missing.slice() : [],
-      } }
+      // ★★ RUN 155 (audit of c5d356b9, problem 2): this door used to THROW on failure while `final` returned
+      // a body, and the two shapes differed even when both answered - the doc's "they share one structure" was false on
+      // both halves. The door answers with the shared `projectPdfBlock` shape on success AND failure, so a caller diffs
+      // fields instead of catching exceptions, and a failing compile is a receipt the operator can act on.
+      let compiled = null
+      try {
+        compiled = await paper.compilePdf({ target })
+      } catch (e) {
+        // ★ RUN 155: `message` is NON-ENUMERABLE on an Error, so `{ ok: false, ...(e || {}) }` silently dropped it and
+        // the receipt answered with an empty message - the very "a receipt that cannot be acted on" this round removes.
+        // The projection is fed the named fields EXPLICITLY, and it keeps its own `missing: ['pdf']`.
+        return { ok: true, tool, action, target, compiled: projectPdfBlock({
+          ok: false,
+          code: (e && e.code) || null,
+          message: (e && e.message) || null,
+          hint: (e && e.hint) || null,
+          faceCode: (e && e.faceCode) || null,
+          target,
+          argv: e && e.argv,
+          outDir: e && e.outDir,
+          sourceName: e && e.sourceName,
+          stderrTail: e && e.stderrTail,
+          stdoutTail: e && e.stdoutTail,
+          tailSource: e && e.tailSource,
+          signal: e && e.signal,
+          triedEngines: e && e.triedEngines,
+        }, target) }
+      }
+      return { ok: true, tool, action, target, compiled: projectPdfBlock(compiled, target) }
     }
     case 'consult_state':
       // Read side (the same discipline as `order` on the meeting face): the ledger was WRITE-ONLY from the tool face, so
