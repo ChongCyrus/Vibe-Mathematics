@@ -523,7 +523,7 @@ export const v5rFixtureConstraint = Object.freeze({
     // op:'put'}`), so it must be ONE OBJECT of put-args; an array (or a string) arrives with `track: undefined` and the
     // whole turn's writes fail ("unknown record track: undefined" ×19 on the real machine). The kind must also be a
     // DECLARED kind ('progress' is declared; 'note' was NOT).
-    '其它回合 progress 必须是**一个对象**（不是字符串、不是数组），可直接照抄：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"……"}}；顶层不要写 record/artifacts 等自造字段。',
+    '其它回合 progress 必须是**一个对象**（不是字符串、不是数组），可直接照抄：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"……"}}；顶层不要写 artifacts 等自造字段（record 与 progress 都是真字段，按上面的清单写）。',
   ].join('\n'),
 })
 

@@ -4032,13 +4032,13 @@ export const dispatchSkipReason = (d, opts = null) => {
   if (!bound && d.face === 'vmu.meetings' && d.op === 'motion' && !hasMeetingRef(d.payload)) {
     return {
       reason: 'no-meeting-bound',
-      note: 'this turn has no meeting, so a motion/proposal has nothing to attach to: the field is skipped by name (nothing was proposed), the turn completes, and the line is KEPT - see `notes` for this round; convene or join a meeting round to move it',
+      note: 'this reply carries no meeting, so a motion/proposal has nothing to attach to: the field is skipped by name (nothing was proposed), the turn completes, and the line is KEPT - see `notes` for this round. A meeting ROUND is not enough: the reply channel carries no meeting id and a seat cannot bind one from the reply, so move it with the tool `vibe_v5_motion { meeting, kind, text }`, or put `{meeting, member, text}` in the payload',
     }
   }
   if (!bound && d.face === 'vmu.meetings' && d.op === 'speak' && !hasMeetingRef(d.payload)) {
     return {
       reason: 'no-meeting-bound',
-      note: 'this turn has no meeting, so a speech has nothing to attach to (the prompt allows `say` as the explanation for speech already made through vibe_v5_say); the line is KEPT, see `notes`',
+      note: 'this reply carries no meeting, so a speech has nothing to attach to (the prompt allows `say` as the explanation for speech already made through vibe_v5_say); the line is KEPT, see `notes`',
     }
   }
   return null

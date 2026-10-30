@@ -154,8 +154,12 @@ try {
     }
     ok(declared.has('task_create') && !row('task_create').notApplicable, '§4c. task_create 仍是可用行（只有它真的能被回执送达）')
     const pm = String(row('propose_meeting').note || '')
-    ok(!row('propose_meeting').notApplicable && pm.includes('会议轮') && pm.includes('vibe_vmu_meeting'),
-      '§4d. propose_meeting 保留可用但教清楚「只在会议轮投递」并给出召集工具', pm)
+    // AUDIT15 C-1 (this round): the old promise 「只在会议轮投递」 was FALSE — a meeting round is not enough, because
+    // a reply carries no meeting id. The truth is: it cannot be delivered from the reply at all; use the tool.
+    ok(!row('propose_meeting').notApplicable && pm.includes('回执不带会议 id') && pm.includes('vibe_vmu_meeting') && pm.includes('vibe_v5_motion'),
+      '§4d. propose_meeting 保留可用但说清「回执不带会议 id」并给出召集工具与动议工具', pm)
+    ok(!pm.includes('只在会议轮投递'),
+      '§4e. ★ 旧的「只在会议轮投递」承诺已删（会议轮也不够：回执不带会议 id）', pm)
   }
 
   console.log('=== 5. 捕获原文逐字保留，紧跟着一行说清「这三个不是回执字段」 ===')
