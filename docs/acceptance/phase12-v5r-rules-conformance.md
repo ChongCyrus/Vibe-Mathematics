@@ -10851,3 +10851,45 @@ excluded 点名理由、真有表决权的成员没交仍被具名拒、`partial
 
 §237.7 无实质残余：否 —— G7 仍 PARTIAL，第九次决定性审计在本提交之后派出。
 
+## §238 G7 第九次独立审计 — 一条「拒绝句说了它没做的事」，一条「同意句只承认它一半的理由」
+
+§238.1 读数
+- 审计报告 `D:/_tmp/g7a9/audit9.md`（基线 `0c7e7bb4`，只读 lane，口径「只报硬矛盾，没写到记 GAP」）。复核 §229–§237 共 28 条既有结论：**26 条修净**，2 条真矛盾，8 条 GAP（G1/G2/G3/G7/G9/G10/G12/G13，均属「文本没写到」而非「文本说反了」）。
+
+§238.2 判决表
+
+| # | 规则/面 | 结论 | 证据 |
+|---|---|---|---|
+| C1 | 受邀临时工帧（`v5r-blocks-b.js:749`）说 temp 的 `input`/`hand` **都**具名拒 | ❌ 真矛盾（`hand` 成功） | `tools/meeting.js:428` 的 hand 分支只查 id，随后 `kernel/meetings.js:1610` 的 `queue()` 只查 `isMember`；temp 的 deny 表里没有 `vibe_vmu_meeting` ⇒ 举手入队，成为「永远点不到的名字」（`speak()` 要求 `present`，而 `attend` 对 temp 被拒） |
+| C2 | `vibe_v5_verdict_ask` 的 `excludedMeans` 说主席主持是**唯一**排除理由 | ❌ 真矛盾（同回执里还有第二种） | `packs/v5r/tools.js:2538`/`:2169` 的 `excluded` 还按「席位在本面无裁决面」排除（`verdict_final:2067` 上一轮已改对，ask 面漏改） |
+| — | `meeting-procedures.js:58` 的新末句逐动词成立 | ✅ | 唯一缺口：SERVICE 会议里 `extend` 不可达未注明（GAP-9，记债） |
+| — | 失败 `lean_job` 不再能证明卡 complete | ✅ | `tools.js` 的 `VMU_INCOMPLETE_PROOF_EVIDENCE` 分支（§237 G4）|
+| — | `debatedMembersOf`/`coverage` 与席位 ACL 同真 | ✅ | 同一名册 `seat` 既决定「能交裁决」也决定「算选民」|
+
+§238.3 修法（两条都在机制层，不在文案层）
+
+1. **一个设置，两扇门**（C1）。`vibe-math-vmu/tools/meeting.js` 新增模块级 `nonAttendingSeatGateOf({ kernel, caller, callerSource, refused })`：
+   - 读 `kernel.settingOf('vmu.meetings.attendDeniedSeats')`（空集 ⇒ `null`，门不装）；
+   - 用 `kernel.seatOfMember(caller)` 读席位；座位在禁入名单里 ⇒ `VMU_NOT_PERMITTED`，message 点名席位、点名设置键、说明「举手会变成永远点不到的名字」，hint 给真的走得通的路（`vibe_v5_say`）；
+   - 回执附 `seatPolicy:{setting,seats,caller,callerSource,seat,enforced:true}`（可对账，不是一句散文）；
+   - 接线在 `hand` 分支（`pid` 校验之后），调用者顺序 `member`/`by` 实参 → 回合上下文；
+   - 判断与 `attend()` 用的是**同一个**谓词（同一个设置），这就是「一个含义，两扇门」。
+2. **`excludedMeans` 承认两个理由**（C2）。`packs/v5r/tools.js` 的 ask 面改成：每行 `excluded` 的 `why` 说明原因——主席主持（签名问不答）**或**该席位在本面无裁决面（看行里的 `seat`），并注明这是第九次审计量到的第二半。
+
+§238.4 测试（新套件 `tests/vmu-audit9-hand-seat.test.mjs`，16/0）
+- §0 零机制：`vmu.meetings.attendDeniedSeats` 真的含 `temp`（否则测的是空集）、`seatOfMember` 读得到席位；
+- §1 正：temp 举手 ⇒ `VMU_NOT_PERMITTED`，点名席位与设置键 + 指路群聊，`seatPolicy` 四字段齐，且**队列里没有留下幽灵名字**；
+- §2 反：委员与主席举手都成功，`order` 里有委员、主席举手后队列真的变长（不是一律拒）；
+- §3 边界：读不到席位（不点名）时不按席位拒，也不编造 `seatPolicy`。
+- 踩坑：`entry.apply(...)` 的返回值就是 handle（`handle.kernel` 直接取）；SERVICE 会议的 hand 回执是 `{queued, order}` 不是 `{position}`；测试 `rm` 清理会因未清 store 句柄报 EPERM，用 `force`+`maxRetries`。
+
+§238.5 门禁
+- 定向：`--only g7 --only run139 --only run140 --only meeting --only v5r-tools --only verified --only turn --only audit9` ⇒ **56/56 绿**（`/d/_tmp/tgt-a9.log`）；`vmu-turn` 组 12/12（含 T99 预算：见 §238.6）；`regen-all` 17/17；`PREFLIGHT: PASS`；`DOC LINT: PASS`；`RULES COVERAGE: FAIL (1 problem)`（仅 G7，按用户裁定「G7 记 DONE 的条件＝再派审计零矛盾」）；`RULE PARITY: PASS`。
+- 运行器教训：`node tests/run-tests.mjs vmu-turn` **不是过滤**（位置参数被忽略 ⇒ 跑全量扫描，30 分钟级，超时被 kill 后会出现几十条假红）；过滤必须写 `--only vmu-turn`。
+
+§238.6 提示词预算（T99，20000 字符上限）
+- C1 的新句把成员提示词推到 20003/20000；按「腾预算只能压自己新写的句子」的既有纪律，把 invited 帧那句压成
+  `★ 席位不参会（temp：attend 被拒）时 `input`/`hand` 被拒——走 `vibe_v5_say`。`；
+- 实测上限是 **< 20000**（20000 整仍红，19998 绿）；`--only vmu-turn` 组复测 12/12。
+
+§238.7 无实质残余：否 —— G7 仍 PARTIAL；第九次审计的两条矛盾已修并各自有回执断言，下一步是**第十次决定性审计**（基线=本提交）。

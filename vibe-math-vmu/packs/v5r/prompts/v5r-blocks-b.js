@@ -746,7 +746,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '请就议程发表你的意见。分工、优先级、下一步做什么、是否认为原问题已解决，都可以说。',
         '（会议轮请把你的发言填进 JSON 的 "input" 字段，框架据此写会议纪要。）',
         '**要不要发言由你决定**：本轮不填 "input" 即视为放弃本次发言机会（会被具名记为"选择未发言"）——不会因此被追问，也不会阻塞会议。',
-        '★ 席位不参会（临时工 `attend` 被拒）时 `input`/`hand` 都会具名拒——走群聊 `vibe_v5_say`。',
+        '★ 席位不参会（temp：attend 被拒）时 `input`/`hand` 被拒——走 `vibe_v5_say`。',
         '**想发言就举手——举手是工具调用，不是回执字段**：`vibe_vmu_meeting { action: "hand", id: "<会议 id>", member: "<你的 id>" }`（**已发言者也可再次举手**）；给出 "input" 即视为交付本次发言。回执里写 "meeting_hand"/"meeting_invite" 会被**具名拒**（`VMU_TURN_FIELD_NOT_APPLICABLE`：回执不带会议 id，框架不会替你猜）。院士用 `vibe_vmu_meeting { action: "invite", … }` 请人发言——邀请≠签到，被邀者仍须自己 `attend` 才计法定人数。',
         '**沉默不等于投票**：`vote_solved` 必须显式给出——认为已解决就填 "vote_solved": true；结题要求**表决人数达到法定人数 m = min(所办设定的上限, 院士+常驻研究员人数)**（以状态块「法定票数」为准）**且无人投反对**；缺 `vote_solved` 会**阻止结题**，未表态名单会被列出。',
         'input：发言；vote_solved：明确的结题判断，沉默不计赞成。',
@@ -790,7 +790,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'role',
     texts: {
       academician: [
-        '【开会与预约（你的手册）】会议类型六种：`ordinary`（正常/例行同步）｜`academic`（学术交流）｜`debate`（辩论，**必须**给 `subject`）｜`closure`（结题）｜`paper`（论文交流）｜`planning`（未来规划）；`sync` 是**动议 kind**，不是会议类型。可用的命令随类型与身份不同：辩论须先给 `subject`，结题/辩论表决用 `vote_solved`，论文交流走 `vibe_v5_paper`，临时工无表决权。**会议进行中的一切内容、控制、活动都由你的命令决定**——上面这些动词只是常用手段，不是穷举。',
+        '【开会与预约（你的手册）】会议类型六种：`ordinary`（正常/例行同步）｜`academic`（学术交流）｜`debate`（辩论，**必须**给 `subject`）｜`closure`（结题）｜`paper`（论文交流）｜`planning`（未来规划）；`sync` 不是会议类型；动议 kind 为 topic/procedural/resolution。可用的命令随类型与身份不同：辩论须先给 `subject`，结题/辩论表决用 `vote_solved`，论文交流走 `vibe_v5_paper`，临时工无表决权。**会议进行中的一切内容、控制、活动都由你的命令决定**——上面这些动词只是常用手段，不是穷举。',
         '  · 预约：`vibe_v5_meeting { type, agenda, at: <epoch ms / ISO-8601 / 相对偏移如 "+120s"> }`（没有自己的钟，可写相对偏移如 "+120s"，内核换算） → 会议进入 `scheduled`；`status`/`summary`/`meetingView` **立刻可读**，**开始前的治理动作都被具名拒**（`attend` 是座位登记：按设计可以提前签到，但不会让会议提前开始）。到点人数不齐就 `waiting`，**迟到者 `attend` 即开**；框架没有定时器，这些状态由每轮 `beat()` 的 sweep 结算，`proceed` 可提前开始。',
         '  · 一次连排多场：给 `sequence` 数组即可一次召集（逐项校验，每场可给各自的 `at`/`title`/`type`，回执给 `sequence.index/total/next`）；也可以给每场各自的 `at` **逐场召集**。',
         '  · 时长与兜底：`extend` 是**发言延长**（ms，缺省读 `speechExtendMs`，仍 0 则具名拒）；`extendlimit` 是**会议墙钟上界延长**（★ `extend`/`silent`/`end`/`hands` 是 primitive 原语：SERVICE 会议上具名拒 `VMU_REGISTRY_BOUNDARY`，发言界改读 `vibe_v5_say` 回执的 `speechBound`）；墙钟硬界 `vmu.meetings.hardLimitMs`（默认 1800000ms，钳制 300000–7200000，**没有"无界"**）；**你自己就能给这一场定上界**：`vibe_v5_meeting { durationMs: 900000 }`（整数 ms，30 分钟–2 小时），回执读回 `wallLimitMs`/`wallLimitMsSource`（`convene` 表示你定的，`vmu.meetings.hardLimitMs` 表示用的部署默认，R101）。只有超过硬界才能用 `lapse` 具名收束，恢复用 `revokelapse`（必须给理由）。`at` 预约、还没开始的会没有墙钟在走，`extendlimit` 要等会议真正开始后才能用（开始前的**治理动作**都被具名拒；`attend` 是座位登记，可以提前签到、但不会让会议提前开始）。',
@@ -801,10 +801,10 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · 推进一轮：`vibe_v5_meeting_round { meeting, members?, phase? }` 按序各跑一回合（members 缺省＝除主席外全体在册）；`phase` 取值以工具声明为准（辩论轮可直接写 `debate`，回执会说明它按 `verify-debate` 跑），写错具名拒；回执 `ok:false`+`turnFailed:true`＝这轮没发生，别当成功；`close`/`extendlimit` 要带 `actor`（主席本人）；`action:"convene"` 与直接召集等价。',
       ].join('\n'),
       temp: [
-        '【会议类型与预约】六种类型（ordinary/academic/debate/closure/paper/planning），`sync` 是动议 kind；被邀请不等于签到——临时工席位不参会：`attend` 被具名拒（`vmu.meetings.attendDeniedSeats`），无表决权。',
+        '【会议类型与预约】六种类型（ordinary/academic/debate/closure/paper/planning）；动议 kind 为 topic/procedural/resolution；被邀请不等于签到——临时工席位不参会：`attend` 被具名拒（`vmu.meetings.attendDeniedSeats`），无表决权。',
       ].join('\n'),
       researcher: [
-        '【会议类型与预约】六种：`ordinary`︱`academic`︱`debate`（须 `subject`）︱`closure`︱`paper`︱`planning`；`sync` 是动议 kind。命令随类型与身份不同（辩论须先 `subject`、结题表决 `vote_solved`、论文交流走 `vibe_v5_paper`；临时工无表决权）。`at` 预约会开始前拒**治理动作**（`attend` 可提前签到、不会提前开会），到点人齐才开；被邀请≠签到。',
+        '【会议类型与预约】六种：`ordinary`︱`academic`︱`debate`（须 `subject`）︱`closure`︱`paper`︱`planning`；动议 kind 为 topic/procedural/resolution。命令随类型与身份不同（辩论须先 `subject`、结题表决 `vote_solved`、论文交流走 `vibe_v5_paper`；临时工无表决权）。`at` 预约会开始前拒**治理动作**（`attend` 可提前签到、不会提前开会），到点人齐才开；被邀请≠签到。',
       ].join('\n'),
     },
   },

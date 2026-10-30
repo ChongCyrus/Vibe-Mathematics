@@ -2376,3 +2376,9 @@ Rules that came out of this round:
 - 教训：**「延长」是个动词，必须指出它延长什么**；**能力边界要写成条件句**（"若你的席位不参会……"），因为同一段提示词
   会发给不同席位的读者；**声明词不是测量**——框架自己量到"没通过"的作业不能被一个词翻案。
 
+## ROUND 139b (G7 audit 9)
+
+- **`hand` 与 `attend` 用同一个谓词**：`tools/meeting.js#nonAttendingSeatGateOf` 读 `vmu.meetings.attendDeniedSeats` + `seatOfMember`，禁入席位举手 ⇒ `VMU_NOT_PERMITTED`（点名席位/设置/群聊出路 + `seatPolicy`），不再把永远点不到的名字放进队列。教训：一个设置若决定「谁能进门」，那么每条门都必须问它；只在一扇门上装闸，等于给另一扇门写了承诺书。
+- **同意句只承认一半理由 = 拒绝句说谎的另一半**：`excludedMeans` 原来断言「主席主持是唯一排除理由」，而同回执的 `excluded` 还按「席位无裁决面」排除。改法是把两个理由都写出来，并指向行里的 `seat`。
+- **量具会被自己的工作方式骗**：`node tests/run-tests.mjs vmu-turn` 是**全量扫描**（位置参数被忽略），超时被 kill 后留下的「几十条红」全是假红；过滤要写 `--only vmu-turn`。同时 `grep FAIL` 也不能只 tail 尾部——先看 `TOTAL` 行。
+- **20000 字符是「小于」**：19999/19998 绿、20000 红；腾预算优先压本轮新写句子，不要动捕获语料（那是保真基线）。

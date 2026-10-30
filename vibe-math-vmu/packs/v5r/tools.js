@@ -2542,7 +2542,7 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
           : 'the caller replaced the derived population with `members`, so this list is what the DERIVED set would have left out (the chair presides); it does not describe who was skipped in THIS call')
       : (excluded.length === 0
           ? 'nobody the meeting named was left out: every member it named is in `asked`'
-          : 'the chair presides over the meeting, so it SIGNS the ask and does not ANSWER it — that is the only reason a member the meeting named is not in `asked`; nothing else is filtered'),
+          : 'each row of `excluded` names WHY it was left out (`why`): the chair presides over the meeting, so it SIGNS the ask and does not ANSWER it; a seat with no ruling face on this face (see the row\'s `seat`) cannot file a ruling at all — G7 audit 9 (C2) measured this list claiming "the only reason" beside rows excluded for the second one'),
     rosterCountMeans: debated.rosterCountMeans === undefined || debated.rosterCountMeans === null
       ? null : debated.rosterCountMeans,
     accounting,

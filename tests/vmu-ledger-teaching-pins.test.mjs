@@ -15,7 +15,7 @@
  *   E29 verdictMaxRounds 只是上限，界内院士决定          kernel/meetings.js:1249-1256
  *   C12 formalVerify 三档 off|encourage|require         settings/schema.js:250
  *   F1  系统梳理  F2 分派与合并  F3 互审（谁审谁/怎么合并）  F4 四项质量要求
- *   E12 命令随类型与身份不同   E13 六种类型（sync 是动议 kind）
+ *   E12 命令随类型与身份不同   E13 六种类型（动议 kind 是 topic/procedural/resolution，sync 只是会议默认 kind）
  *
  * Run: node tests/vmu-ledger-teaching-pins.test.mjs
  */
@@ -97,7 +97,10 @@ PIN('v5r-blocks-b.js', blocksB, '可用的命令随类型与身份不同', 'E12'
 for (const t of ['ordinary', 'academic', 'debate', 'closure', 'paper', 'planning']) {
   ok(blocksB.includes(t), 'E13 pin: meeting type "' + t + '" is listed')
 }
-ok(blocksB.includes('`sync` 是**动议 kind**'), 'E13 pin: sync is a motion kind, not a meeting type')
+ok(!blocksB.includes('`sync` 是**动议 kind**'),
+  'E13 pin: sync is no longer taught as a motion kind (MOTION_KINDS = topic/procedural/resolution; run 139 measured `kind:"sync"` refused)')
+ok(blocksB.includes('动议 kind 为 topic/procedural/resolution'),
+  'E13 pin: the motion kinds the code accepts are exactly the ones taught')
 ok(blocksB.includes('故意不给推荐骨架'), 'E13 pin: ordinary has no skeleton on purpose')
 
 // ── the envelope division (G6) stays taught ─────────────────────────────────

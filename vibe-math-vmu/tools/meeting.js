@@ -109,6 +109,27 @@ function chairGateOf({ kernel, setting, caller, callerSource = 'argument' }) {
   return { setting, on: true, caller: who, callerSource, seat, enforced: true, refuse: true, why: seat === null ? 'the roster holds no seat row for this id, so it is not the chair' : 'slot "' + seat + '" is not the chair seat' }
 }
 
+// ★★★ LIVE RUN 139 / G7 audit 9 (C1): a seat the deployment forbids from ATTENDING has no floor to be
+// recognized on. The teaching said `hand` is refused for such a seat and the code let it straight into the queue, where
+// it became a ghost every later floor order counted and nobody could call. The predicate is the SAME one `attend()`
+// uses (`vmu.meetings.attendDeniedSeats`): one setting, one meaning, two doors.
+function nonAttendingSeatGateOf({ kernel, caller, callerSource = 'argument', refused }) {
+  let seats = []
+  try {
+    const v = typeof kernel.settingOf === 'function' ? kernel.settingOf('vmu.meetings.attendDeniedSeats') : null
+    seats = Array.isArray(v) ? v.map(String) : []
+  } catch { seats = [] }
+  if (seats.length === 0) return null
+  const who = caller === undefined || caller === null || String(caller) === '' ? null : String(caller)
+  if (!who) return null
+  const seat = (() => { try { return typeof kernel.seatOfMember === 'function' ? kernel.seatOfMember(who) : null } catch { return null } })()
+  if (seat === null || !seats.includes(seat)) return null
+  const out = refused('VMU_NOT_PERMITTED',
+    'seat "' + seat + '" does not attend meetings (the declared non-attending seats are ' + seats.join(', ') + ', at `vmu.meetings.attendDeniedSeats`), so there is no floor for "' + who + '" to be recognized on: a hand raised from this seat would sit in the queue as a name that can never be called',
+    'say it in the chat instead (vibe_v5_say), or let a seated member speak and the chair move a motion')
+  return Object.assign(out, { seatPolicy: { setting: 'vmu.meetings.attendDeniedSeats', seats, caller: who, callerSource, seat, enforced: true } })
+}
+
 export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
   // ★ G7 (real machine): a ballot opened from this face is bound to (service meeting, motion) so that cast votes can
   // be mirrored into the ONE authoritative tally. Keyed by ballot id, per spec instance.
@@ -407,6 +428,11 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'hand') {
             const pid = sid(id)
             if (!pid) return meetingFieldRefusal('hand')
+            // ★ G7 audit 9 (C1): the seat nobody may sit in cannot raise a hand either (see nonAttendingSeatGateOf).
+            const handNamed = namedCaller(member) || namedCaller(by)
+            const handTurn = handNamed ? null : callerFromTurn()
+            const handSeatGate = nonAttendingSeatGateOf({ kernel, caller: handNamed || handTurn, callerSource: handNamed ? 'argument' : handTurn ? 'turn-context' : 'none', refused })
+            if (handSeatGate) return handSeatGate
             const primitive = kernel.liveMeeting(pid)
             if (primitive) return Object.assign({ ok: true, action, id }, primitive.handUp(need(member, 'member')))
             const svc = svcOf()
