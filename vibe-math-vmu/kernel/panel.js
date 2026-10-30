@@ -392,7 +392,13 @@ export function createPanel({
     board() {
       return [...rows.keys()].sort().map((id) => {
         const row = rows.get(id)
-        return { member: id, overall: row.overall || '', plan: clone(row.plan), subtasks: clone(row.subtasks),
+        // ★★ RUN 156 (real machine, run 5 / N3, and run 4's H7 before it): rule L28 asks the panel to carry '③ 各任务完成
+        // 状态情况', and `set` accepts `subgoal`/`status` — but this row dropped both, so a reader of the BOARD could not
+        // answer the completion question without calling `get` once per member. The row now carries the same field set its
+        // `set` half accepts (status is the member's own word for where it stands, subgoal the target it serves).
+        return { member: id, overall: row.overall || '', subgoal: row.subgoal === undefined ? null : (row.subgoal || null),
+          status: row.status === undefined ? null : (row.status || null),
+          plan: clone(row.plan), subtasks: clone(row.subtasks),
           running: row.subtasks.filter((s) => s.state === 'running').length, blocked: row.subtasks.filter((s) => s.state === 'blocked').length,
           updatedAt: Number(row.updatedAt || 0), updatedBy: row.updatedBy || '', deviation: !!row.deviation }
       })

@@ -4111,7 +4111,11 @@ function projectPdfBlock(pdf, target) {
     message: ok ? null : (p.message || null),
     hint: ok ? null : (p.hint || null),
     faceCode: ok ? null : (p.faceCode || null),
-    engine: p.engine || null,
+    // ★★ RUN 156 (real machine, run 5 / N4): on a failure the face leaves `engine` null (nothing produced) while the
+    // SAME receipt's `triedEngines[0].engine` names xelatex - a reader diffing the two fields could not tell whether an engine
+    // ever ran. The field now reports the engine that was attempted, and `engineSource` says which half supplied it.
+    engine: p.engine || (engines[0] && engines[0].engine) || null,
+    engineSource: p.engine ? 'face' : ((engines[0] && engines[0].engine) ? 'triedEngines' : null),
     pdfPath: p.pdfPath || null,
     pdfBytes: p.pdfBytes === undefined || p.pdfBytes === null ? null : p.pdfBytes,
     argv: Array.isArray(p.argv) ? p.argv.slice(0, 16) : [],
@@ -4141,9 +4145,40 @@ async function toolPaper(args = {}, { kernel } = {}) {
   // answered `no paper "" exists`, which reads like a bug in the reader instead of a missing argument — so a
   // missing target is refused BY NAME here, naming the aliases and the read that lists papers.
   const TARGET_ACTIONS = new Set(['status', 'start', 'part', 'review', 'advance', 'final', 'render', 'compile', 'consult', 'consult_state', 'sections_all'])
+  // ★★ RUN 156 (real machine, run 5 / N2): the hint below told a caller that `status` with NO target lists the papers that
+  // exist — and that call was refused by the very sentence that recommended it. A hint is a promise about this build, so
+  // either the listing exists or the sentence goes; the listing exists now (same rows the flow reads, one line each).
+  if (action === 'status' && !target) {
+    const rows = typeof paper.papers === 'function' ? paper.papers() : []
+    const papers = []
+    for (const row of rows) {
+      if (String((row && row.kind) || '') !== 'paper-state') continue
+      let body = row && row.body
+      if (body === undefined && row && row.id) {
+        try {
+          const got = kernel.records.get({ id: row.id })
+          const full = got && got.record ? got.record : got
+          body = full && full.body
+        } catch { body = undefined }
+      }
+      let st = null
+      try { st = JSON.parse(String(body || '{}')) } catch { st = null }
+      if (!st || st.target === undefined || st.target === null) continue
+      papers.push({
+        id: 'paper-' + String(st.target), target: String(st.target),
+        status: st.status === undefined ? null : st.status,
+        stage: st.stage === undefined ? null : st.stage,
+        round: st.round === undefined ? null : st.round,
+        repairs: st.repairs === undefined ? null : st.repairs,
+        stateRecordId: row.id || null,
+      })
+    }
+    return { ok: true, tool, action, listed: true, count: papers.length, papers,
+      note: 'one line per paper (id/target/status/stage/round/repairs); pass target:"<id or target>" for the full state' }
+  }
   if (TARGET_ACTIONS.has(action) && !target) {
     throw refuse('VMU_INVALID_ARGUMENT', 'action "' + action + '" addresses ONE paper, and no target was given',
-      'pass target:"<paper id>" (title/track are aliases of the same value); vibe_v5_paper { action: "status" } with no target lists the papers that exist')
+      'pass target:"<paper id>" (title/track are aliases of the same value); to see which papers exist call vibe_v5_paper { action: "status" } with no target (it lists them)')
   }
   switch (action) {
     case 'sections':
@@ -4156,7 +4191,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
       return { ok: true, tool, action, target, exists: !!(got && got.state),
         paper: got && got.state ? got.state : null,
         missing: artifacts ? artifacts.missing : [], complete: artifacts ? artifacts.complete === true : false,
-        pdf: artifacts ? artifacts.pdf : null }
+        // ★★ RUN 156 (run-5 finding 7): `status.pdf` describes the paper track's ARCHIVE row (written by `render`), not the
+        // file `compile` produced - so a reader who had just seen `compiled.produced:true` read `pdf.produced:false` as "no PDF".
+        // Both readings are now named on the receipt instead of being left to the reader.
+        pdf: artifacts ? artifacts.pdf : null,
+        pdfMeans: 'this `pdf` block describes the ARCHIVE row in the paper track (render writes it); a file produced by compile is reported by `vibe_v5_paper { action: "compile" }` / the `final` receipt as `produced`+`pdfPath`+`pdfBytes` - the two are different questions, and `produced:false` here is not "no pdf was made"' }
     }
     case 'start': {
       const started = paper.start({
@@ -4229,6 +4268,20 @@ async function toolPaper(args = {}, { kernel } = {}) {
           note: finalized.consult.note || null } : null,
         // ★★ RUN 155 (problem 2): the SAME projection the `compile` door returns (one shape, two doors).
         pdf: finalized.pdf ? projectPdfBlock(finalized.pdf, finalized.target) : null,
+        // ★★ RUN 156 (run-5 finding 1): a `revise` past the review cap is admitted as a REPAIR round, and the kit
+        // has always returned `repair`/`repairs`/`repairBudget`/`cap` for it — but this projection dropped all four, so a
+        // caller had to call `status` a second time to learn that the revise it just made was a repair. A receipt that
+        // hides the branch it took is the exact defect this file keeps closing; the keys are projected only when the
+        // branch is a repair, so an ordinary final is unchanged.
+        moved: finalized.moved === true,
+        from: finalized.from || null,
+        to: finalized.to || null,
+        ...(finalized.repair === true ? {
+          repair: true,
+          repairs: Number(finalized.repairs) || 0,
+          repairBudget: Number(finalized.repairBudget) || 0,
+          cap: finalized.cap === undefined || finalized.cap === null ? null : finalized.cap,
+        } : {}),
       } }
     }
     case 'render': {
@@ -4258,6 +4311,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
       try {
         compiled = await paper.compilePdf({ target })
       } catch (e) {
+        // ★★ RUN 157 (audit26 item 8): the catch is scoped to THE COMPILE FAILURE, not to every error this door can
+        // raise. Turning a compile failure into a receipt is right; turning "no such paper" (requireState) and "this
+        // assembly has no LaTeX face" (CODES.EXECUTOR) into `ok:true` is not - those are named refusals the caller must
+        // see, and RUN 155's unconditional catch silently reclassified them as success.
+        if (!e || String(e.code || '') !== 'VMU_PACK_V5R_CORE_PAPER_PDF_FAILED') throw e
         // ★ RUN 155: `message` is NON-ENUMERABLE on an Error, so `{ ok: false, ...(e || {}) }` silently dropped it and
         // the receipt answered with an empty message - the very "a receipt that cannot be acted on" this round removes.
         // The projection is fed the named fields EXPLICITLY, and it keeps its own `missing: ['pdf']`.
@@ -4736,8 +4794,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
     // and the description never mentioned it, while the face refuses a submit without it
     // (`VMU_LEAN_STATEMENT_REQUIRED`). Taught and done now say the same thing. The path rule is stated too, because
     // the teaching text used to promise a short form the face resolves against a different base.
-    description: 'Compile one existing .lean file through the kernel\'s Lean face (the face owns the process, timeout and cancel path). ★ `statement` is REQUIRED: it is the proposition this file is supposed to formalise, and it is what the receipt and the audit are about (a submit without it is refused by name). ★ `file` is resolved against the LIBRARY ROOT (the `VibeMath/` directory), so a short path works only when it lives under that root — anywhere else pass an absolute path, and a file the face cannot read comes back with the absolute path it actually tried. Assembly without a host spawn seam ⇒ NAMED refusal; a per-call timeout_ms is reported as unapplied.',
-    parameters: { file: { type: 'string', required: true }, target: { type: 'string', description: 'legacy alias for statement - a card id is NOT the proposition, so passing only this is refused by name' }, statement: { type: 'string', required: true, description: 'the proposition text this file is supposed to formalise (the audit records this, not an object id)' }, timeout_ms: { type: 'integer' }, member: { type: 'string' } },
+    description: 'Compile one existing .lean file through the kernel\'s Lean face (the face owns the process, timeout and cancel path). ★ `statement` is REQUIRED: it is the proposition this file is supposed to formalise, and it is what the receipt and the audit are about (a submit without it is refused by name). ★ `file` is resolved against the LIBRARY ROOT (the `VibeMath/` directory), so a short path works only when it lives under that root — anywhere else pass an absolute path, and a file the face cannot read comes back with the absolute path it actually tried. Assembly without a host spawn seam ⇒ NAMED refusal; a per-call timeout_ms is reported as unapplied. ★ RUN 156 (real machine, run 5 / N1): the AUTO id collided with the job mirrors an earlier run left in the shared directory, and the refusal told the caller to pass `jobId` - a parameter this face did not declare, so the one exit it named was unreachable; `jobId` is declared now, and an auto id already present in the mirror directory is re-minted (the receipt carries `rederivedId`).',
+    parameters: { file: { type: 'string', required: true }, target: { type: 'string', description: 'legacy alias for statement - a card id is NOT the proposition, so passing only this is refused by name' }, statement: { type: 'string', required: true, description: 'the proposition text this file is supposed to formalise (the audit records this, not an object id)' }, timeout_ms: { type: 'integer' }, member: { type: 'string' }, jobId: { type: 'string', description: 'name this job yourself; the AUTO counter mints lean-<n>, and when the shared mirror directory already holds those numbers the face re-mints the next free id (the receipt reports rederivedId). Pass this to pick a name deliberately - it is the exit the VMU_MATH_JOB_ID_TAKEN refusal names' } },
     handler: toolLeanRun,
   },
   {

@@ -212,7 +212,12 @@ async function toolLeanRun(args = {}, { kernel } = {}) {
     throw refuse('VMU_LEAN_STATEMENT_REQUIRED', 'lean_run got target:"' + targetRaw + '" but no statement',
       'pass statement:"<the proposition text>" — target names an OBJECT (a card id); the receipt and the audit are about the proposition, not about the object it lives on')
   }
-  const submitted = await lean.submit({ statement, file: str(args.file), member: has(args.member) ? str(args.member) : '' })
+  // ★★ RUN 156 (real machine, run 5 / N1): the kernel's submit() has always honoured a caller-chosen `jobId`
+  // (`kernel/lean.js` `const requestedId = String(args.jobId || '').trim()`), but this tool never forwarded it - so the
+  // VMU_MATH_JOB_ID_TAKEN refusal's one documented exit (`pass jobId:"<your id>"`) was unreachable through the face
+  // that printed it. Forward it now; when the caller names no id the face mints one and re-mints on a mirror collision.
+  const submitted = await lean.submit({ statement, file: str(args.file), member: has(args.member) ? str(args.member) : '',
+    jobId: has(args.jobId) ? str(args.jobId) : undefined })
   // ★★ LIVE RUN 64 · F-56 — ONE ENVELOPE, NOT TWO. The face already answers in an envelope (`{ok, id, state}`, and for
   // status `{ok, job}` / for list `{ok, count, jobs}`). Wrapping that envelope AGAIN under a key put the same facts one
   // level deeper and at a DIFFERENT path per tool: `lean_run` answered `job.id` (because the inner object happened to

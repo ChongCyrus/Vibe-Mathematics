@@ -2655,3 +2655,23 @@ id 是聚合的名字、durable 证据在哪；`paper-quality.js` 先剥 `#锚`�
 的 rev/createdAt/slug 证据、tally 是名字、指针小账、G9 工具回执带 target）；测试改为 `chdir` 到自己的临时根，收尾清理，
 不再在仓库根留下 `Paper/`。收口：生成器 17/17、门禁五绿、全量 T1 TOTAL 637 PASS 637 FAIL 0。
 
+## ROUND 160 —— 第五次真机跑：六条修复被确认，七处「回执说的和做的不一样」当场修掉（RUN 156）
+
+第五次真机（tarball `d8e1b71c`，889 s、16.32M token、139 次工具调用、机器读数全 0、0 RED）**又一次走到结题**：结题会后
+论文 `p9` 定稿并自行编译出 PDF 71 788 B，`p7` 用上新加的两轮修复预算后也定稿（68 409 B）。代理在第 4 轮反馈里确认六条
+上轮修法真的生效：互审不再丢评审（`reviewsRead` 逐条自报磁盘来源）、到轮数上限能进修复轮、改 `maxRounds` 本回合即生效、
+`paper-p9` 可直接当 `target`、consult 回执自带 `target`/`paperId`/`requestId`、`final` 与 `compile` 的 pdf 块同形。
+
+同时抓出七处新账，都是**回执或可达性说的和机制做的不一样**：修复轮回执丢了 `repair/repairs/repairBudget/cap`（kit 已 return、
+工具投影没挑）；`vibe_v5_lean_run` 在「自动号撞镜像」时整体锁死，而拒绝语的出口「显式传 `jobId`」在工具声明里不存在；
+`status` 无 `target` 的 hint 指向一次会被自己拒掉的调用；状态板 `board` 行缺 `subgoal`/`status`（规则 L28 要完成状态）；
+失败回执 `engine:null` 却同份回执里 `triedEngines[0].engine='xelatex'`；`start` 不自报 `id` 且省略 `target` 时 `id` 取标题
+⇒ 目录名带空格 ⇒ xelatex `putenv` fatal；`status.pdf.produced` 指归档行而不是编译产物。
+
+修法全在回执与可达性上：`packs/v5r/tools.js` 的 `final` 投影补 `moved/from/to` 与修复轮四读数、`vibe_v5_lean_run` 声明并
+转发 `jobId`、`toolPaper` 支持「无 `target` 的 status 列出所有论文」并给 `pdfMeans`、`projectPdfBlock` 的 `engine` 回退
+`triedEngines` 并加 `engineSource`；`kit/extras.js` 把 `jobId` 转给 `lean.submit`；`kit/paper.js` 新增 `folderOf()` 统一
+`outDir`/`sourceName`/`folder` 并让 `start` 自报 `id`；`kernel/panel.js` 的 `board()` 行回显 `subgoal`/`status`（未设置给 `null`）。
+机器化：新 `tests/vmu-run156-run5-fixes.test.mjs` **42/0**（含「上限 3、round=1<cap 的 revise 不得自称 repair」的独立反向对照、
+`jobId` 在真装配的 JSON-Schema `parameters.properties` 里、`board` 的 `null` 不编造、`engine` 三字段互相印证、slug 四处一致）。
+收口：生成器 17/17、门禁五绿、全量 T1 TOTAL 638 PASS 638 FAIL 0。现场又过了一道只读审计（audit26，基线 `d8e1b71c`）：它把 RUN 155 的 `compile` catch 定位为**过宽**——「论文不存在」与「本装配没有 LaTeX 面」两个具名拒绝被吞成 `ok:true`，现在 catch 只接 `VMU_PACK_V5R_CORE_PAPER_PDF_FAILED`；并指出 §255.4 两句越界（「到上限并最终定稿」、「G9 三支都带 target」）——修法是把机制真的走完：run154 现在把修复轮走到定稿（`produced:true`、`pdfBytes` 对得上）并补了 `awaiting` 一支，套件 55→63/0。

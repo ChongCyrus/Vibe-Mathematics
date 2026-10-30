@@ -61,8 +61,10 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r90-'))
     'a part with no target is refused as VMU_INVALID_ARGUMENT (not "no paper exists")', r.parsed || r)
   ok(r.parsed && /addresses ONE paper/.test(String(r.parsed.message)) && /no target/.test(String(r.parsed.message)),
     'the message says the action addresses ONE paper and that no target was given', r.parsed && r.parsed.message)
-  ok(r.parsed && /title\/track are aliases/.test(String(r.parsed.hint)) && /lists the papers/.test(String(r.parsed.hint)),
-    'the hint names the aliases and the read that lists papers', r.parsed && r.parsed.hint)
+  // RUN 156: the old hint promised "status with no target lists the papers that exist" while that very call was refused;
+  // the listing EXISTS now, so the promise holds - pin both halves in the wording the face uses.
+  ok(r.parsed && /title\/track are aliases/.test(String(r.parsed.hint)) && /status\" \} with no target/.test(String(r.parsed.hint)) && /lists them/.test(String(r.parsed.hint)),
+    'the hint names the aliases and the target-less read that really lists papers', r.parsed && r.parsed.hint)
   const start = await call(b, 'vibe_v5_paper', { action: 'start', participants: ['r-1'] }, ctx)
   ok(start.parsed && start.parsed.ok === false && start.parsed.code === 'VMU_INVALID_ARGUMENT',
     '`start` is covered by the same rail', start.parsed || start)

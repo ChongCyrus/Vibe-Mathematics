@@ -453,7 +453,11 @@ export function createPaperFlow({
     const put = writeState(state)
     // the first write minted the id; fold it in so every later write updates the same record
     writeState(state)
-    return { ok: true, target: state.target, status: state.status, round: state.round, stateRecord: state.stateRecordId || (put && put.id), fingerprint: put && put.fingerprint }
+    // ★★ RUN 156 (run-5 finding 6): the receipt named the target but never the paper ID, so a caller could not address the
+    // paper by the id every later receipt prints; and the folder is announced HERE because a title-derived id used to
+    // reach compile as a directory name with spaces (fatal for xelatex `putenv`).
+    return { ok: true, target: state.target, id: state.id, folder: folderOf(state.id), status: state.status, round: state.round,
+      stateRecord: state.stateRecordId || (put && put.id), fingerprint: put && put.fingerprint }
   }
 
   /** ② a part: written by a PARTICIPANT, in the WRITING stage; it is archived as its own record and its kernel-computed
@@ -745,7 +749,7 @@ export function createPaperFlow({
       state.status = 'writing'; state.stage = 'writing'
       state.disagreement = (state.disagreement || []).concat([{ round: state.round, members: [fin.by], detail: '定稿代表要求修订（轮数上限后的第 ' + state.repairs + ' 次修复轮，不计入互审轮次）：' + (fin.note || '（未说明）') }])
       writeState(state)
-      return { ok: true, finalized: false, moved: true, round: state.round, status: state.status, repair: true, repairs: state.repairs, repairBudget: REPAIR_ROUNDS, cap: capNow }
+      return { ok: true, finalized: false, moved: true, from: 'awaiting-editor', to: 'writing', round: state.round, status: state.status, repair: true, repairs: state.repairs, repairBudget: REPAIR_ROUNDS, cap: capNow }
     }
     throw refuse(CODES.STATE, '已到 ' + capNow + ' 轮上限，且 ' + REPAIR_ROUNDS + ' 次修复轮也用完了，定稿代表仍要求修订',
       'this face has no force flag: the exits that exist now are (a) record a new part that satisfies the content gate and final it, (b) raise vmu.paper.maxRounds (a positive number is read live on the next call) and revise again, or (c) start a new paper for a new target; silently finalising a revised paper is not one of them')
@@ -898,6 +902,16 @@ export function createPaperFlow({
    *     the engines it tried and a bounded stderr/stdout tail;
    *   · success ⇒ a `pdf` record is written, so `PaperArtifacts` really sees four artefacts.
    */
+  // ★★ RUN 156 (real machine, run 5, finding 6): `start` without a target names the paper after its TITLE, and the title
+  // becomes the DIRECTORY name (`Paper/paper-第 4 期…`). xelatex is spawned with `-output-directory=<that dir>`; a path with
+  // spaces makes TeX's `putenv` fatally fail (`xelatex.exe: fatal: putenv(...)`), so a legal paper name could make the
+  // compiler unreachable. The name stays the ADDRESS (ids and fingerprints are untouched); only the FOLDER is slugged, and
+  // the compile receipt reports the folder it really used.
+  const folderOf = (name) => {
+    const raw = String(name === undefined || name === null ? '' : name)
+    const slug = raw.replace(/[\\/:*?"<>|\s]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '')
+    return slug === '' ? 'paper' : slug
+  }
   async function compilePdf({ target, engineOrder = null, timeoutMs = null } = {}) {
     const { state } = requireState(target)
     const tex = PaperTex({ target })
@@ -906,8 +920,9 @@ export function createPaperFlow({
       throw refuse(CODES.EXECUTOR, 'This assembly has no LaTeX face, so a PDF cannot be compiled (host injected no spawn seam)',
         '需要宿主 spawn 接缝：kernel/index.js 只在 spawn/spawnHandle 存在时创建 kernel.latex；本包不自己起子进程')
     }
-    const outDir = state.outDir || (outDirPrefix + state.id)
-    const request = { source: tex, outDir, sourceName: state.id + '.tex' }
+    const folder = folderOf(state.id)
+    const outDir = state.outDir || (outDirPrefix + folder)
+    const request = { source: tex, outDir, sourceName: folder + '.tex' }
     if (Array.isArray(engineOrder) && engineOrder.length > 0) request.engineOrder = engineOrder.slice()
     if (Number.isFinite(timeoutMs) && timeoutMs > 0) request.timeoutMs = Math.floor(timeoutMs)
     const r = await latexFace.check(request)
@@ -1001,7 +1016,11 @@ export function createPaperFlow({
   let api = null
   api = { start, recordPart, recordReview, advance, pass, recordFinal, PaperMd, PaperMdRaw: rawMd, PaperTex, PaperArtifacts, render, compilePdf,
     recordConsult, consultState,
-    sections: () => SECTIONS.slice(), state: (target) => readState(target) }
+    sections: () => SECTIONS.slice(), state: (target) => readState(target),
+    // ★★ RUN 156 (real machine, run 5 / N2): the refusal for a target-less `status` promised `status` with no target
+    // "lists the papers that exist" - and it did not. The flow keeps its ONE list helper private, so the face had no way
+    // to honour the promise; expose it rather than soften the sentence.
+    papers: () => listPaper() }
   return api
 }
 

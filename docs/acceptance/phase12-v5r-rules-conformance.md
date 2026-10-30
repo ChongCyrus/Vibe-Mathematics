@@ -11813,9 +11813,11 @@ Verified（规则使然，本轮只把 wording 记下，不改门）；C.3 并�
 
 ### 255.4 机器化：新套件 55 条
 
-- 新 `tests/vmu-run154-real-run4-fixes.test.mjs` **55/0**：§0 源码口径、§1 H3、§2 H1（缓存丢条目时 advance 读磁盘评审行、
-  自愈、不同轮不误算）、§3 H2 修复轮（到上限仍能写 part 并最终定稿、用完给真实出口）、§4 H2b（正数设置下一次调用生效、
-  0 回退 3）、§5 G9（三支拒绝都带 target）、§6 G10（compile 回执有 produced/argv、final 的 missingAfter 不再同时含 pdf）。
+- 新 `tests/vmu-run154-real-run4-fixes.test.mjs` **63/0**：§0 源码口径、§1 H3、§2 H1（缓存丢条目时 advance 读磁盘评审行、
+  自愈、不同轮不误算）、§3 H2 修复轮（到上限仍能写 part、**补齐正文与互审后真的定稿并做出 PDF**、用完给真实出口）、§4 H2b（正数设置下一次调用生效、
+  0 回退 3）、§5 G9（`opened` 与 `awaiting` 两支的拒绝都带 `target`/`paperId`，且用拒绝里的 `target` 真能答复成功）、§6 G10（compile 回执有 produced/argv、final 的 missingAfter 不再同时含 pdf）。
+  ⚠️ RUN 157 对照 audit26 item 6 补了两组断言（定稿在上限后真的走完、awaiting 一支也带 id），因为原文写的两句当时没有对应断言；
+  `timeout` 一支仍由源码与 kit 探针覆盖，本套件不声称它。
 
 ### 255.5 读数与门禁
 
@@ -11891,3 +11893,102 @@ Verified（规则使然，本轮只把 wording 记下，不改门）；C.3 并�
 2. **H4/H5/H6/H7**（回执缺 `alsoRequired` 且拒绝语与事实相反、`reason`/`why` 措辞、同值重投消息、状态板缺
    `subgoal`/`status`）本轮未修，登记为 OPEN。
 3. **`editor:"office"` 代定稿**仍是具名缺口；**人数闸负向证据**仍需更大名册。
+
+## §257 第五次真机跑：六条修复被代理确认，又抓出七处「回执说的和做的不一样」（RUN 156）
+
+### 257.1 这一轮跑的是什么
+
+- tarball 从提交 `d8e1b71c` 打（`git archive HEAD`），续跑同一所：`-Workspace D:\_tmp\slv-phase5\slvp157-ws -KeepWorkspace`，
+  端口 19605、`-TimeoutSec 3000 -MaxTokens 24000000`。
+- 读数：`DRIVE exit=0`、`durationSec 889`、`tokenTotal 16 324 505 / 24 000 000`（`tokenCapHit:false`）、
+  `transcriptEvents 684`、根会话 `toolCalls 139`、机器读数 `NO_FENCE=0 · UNKNOWN_FIELD=0 ·
+  FIELD_NOT_APPLICABLE=10 · BAD_JSON=0`、`slv-inspect` **0 RED**、`CLOSURE: cast=true (from 7 turn receipt(s))`。
+- 转录：`D:/wd/vibemath开发/_oneoff/vm-slv/full-1031-060959.jsonl`（6 080 518 B / 12 270 行）；代理交付
+  `FEEDBACK4.md`（19 125 B）与 `SIM-REPORT4.md`（32 313 B）。
+- **又一次走到结题**：结题会后论文 `p9` 定稿并编译出 PDF 71 788 B；`p7` 用上新加的两轮修复预算后也定稿、PDF 68 409 B。
+
+### 257.2 代理确认「真修好了」的六条
+
+| 上轮缺陷 | 代理第 4 轮验证 |
+| --- | --- |
+| H1 互审丢了评审 | 两人都 `deliverable:true` 时 `advance` 不再把 `r-1` 记成 refuser，`reviewsRead` 逐条自报来源 |
+| H2 到轮数上限后论文楔死 | 进入修复轮，回执列出三条真实出口，`p7` 正是靠它定稿 |
+| H2b 改 `maxRounds` 无效 | 改设置后**本回合就生效**（不再要重启） |
+| H3 `paper-p9` 不可寻址 | 回执里的 `paper-p9` 可直接当 `target` |
+| G9 consult 回执不带论文 | 回执自带 `target:"p9"`/`paperId:"paper-p9"`/`requestId` |
+| G2/G10 编译回执两副面孔 | `final` 与 `compile` 的 pdf 块同形，`produced`/`argv`/`stderrTail`/`tailSource` 齐备 |
+
+### 257.3 新抓出的七处（全部是「回执/状态说的和机制做的不一样」）
+
+1. **修复轮回执不自报**：`kit/paper.js` 的修复分支已 return `repair/repairs/repairBudget/cap/from/to`，但
+   `packs/v5r/tools.js` 的 `final` 投影只挑了几个键，四个读数全丢 ⇒ 代理必须再查一次 `status` 才知道自己在修复轮。
+2. **N1「自动号撞镜像」把整个 Lean 面锁死**：工作区已有 `lean-1..6` 镜像时，新的 `vibe_v5_lean_run` 每次都
+   `VMU_MATH_JOB_ID_TAKEN`，而拒绝语的出口「显式传 `jobId`」在工具声明里**不存在** ⇒ 面自锁。
+3. **N2 `status` 无 target 的 hint 指向一次会被拒的调用**：hint 说「不带 target 可以列出论文」，实际落进
+   `TARGET_ACTIONS` 拒绝块。
+4. **N3 状态板 `board` 行缺 `subgoal`/`status`**：规则 L28 要「各任务完成状态情况」，而 `board()` 只回
+   `member/round/…`，完成状态只在逐人 `get` 里有。
+5. **N4 失败回执自相否认**：`engine:null` 但同一份回执里 `triedEngines[0].engine='xelatex'`。
+6. **`start` 不自报 `id`**，且省略 `target` 时 `id` 取标题 ⇒ 目录名带空格 ⇒ xelatex `putenv` 直接 fatal。
+7. **`status.pdf.produced` 语意含糊**：它指归档行（`render` 写的那条），不是 `compile` 的产物；刚看过
+   `produced:true` 的人会以为编译成功。
+
+### 257.4 修法（RUN 156，全部落在回执与可达性上，不动规则语义）
+
+- `packs/v5r/tools.js`
+  - `final` 投影补 `moved/from/to`，并在修复轮条件展开 `repair/repairs/repairBudget/cap`。
+  - `vibe_v5_lean_run` 的 `parameters` 追加 `jobId`，描述写明「自动号撞镜像会重铸并回 `rederivedId`」。
+  - `toolPaper`：`status` 且无 `target` ⇒ 逐行读 `paper-state` 回 `{ listed:true, count, papers:[{id,target,status,stage,round,repairs}] }`；
+    其余动作的 hint 改成指向这次**真的**可用的 listing；`status` 回执加 `pdfMeans` 说明归档行与编译产物是两件事。
+  - `projectPdfBlock`：`engine` 回退到 `triedEngines[0].engine`，新增 `engineSource: 'face' | 'triedEngines' | null`。
+- `kit/extras.js`：`toolLeanRun` 把 `args.jobId` 转给 `lean.submit`（内核一直读这个键，面此前吞掉）。
+- `kit/paper.js`：新增 `folderOf()`（空白与 `\/:*?"<>|` 折成 `-`、去首尾与重复连字符），`compilePdf` 的
+  `outDir`/`sourceName` 与 `start` 回执的 `folder` 共用它；`start` 回执自报 `id`/`folder`。
+- `kernel/panel.js`：`board()` 行补 `subgoal`/`status`（未设置为 `null`，不编造值）。
+
+### 257.5 机器化
+
+- 新 `tests/vmu-run156-run5-fixes.test.mjs` **45/0**：§0 八条源码口径；§1 修复轮回执四证 + 独立反向对照
+  （上限 3、`round=1<cap` 的 revise 不得自称 repair）；§2 `jobId` 既转发到 `submit`、又出现在真装配的
+  **JSON-Schema `parameters.properties`** 里（`spec.parameters.jobId` 是错的形状）；§3 无 `target` 的 `status`
+  真列出两篇、行内 `id` 可当 `target`；§4 `board` 行回显 `subgoal`/`status`、未设置为 `null`；§5 失败回执
+  `engine`/`engineSource`/`triedEngines` 三者互相对得上且尾部仍有编译器原话；§6 `start` 回执与 `compile`
+  的 `outDir`/`sourceName` 都不含空格且与 `folder` 一致。
+- `tests/vmu-run90-paper-target-schedule.test.mjs` 的旧 hint pin 改成新句（它钉的是「hint 指向真能用的读法」）。
+
+### 257.6 读数与门禁
+
+- 生成器：`regen-all --write` 两轮后 `=== vmu regen-all: 17/17 in sync ===`。
+- 门禁：`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0 problem(s))`、
+  `RULES COVERAGE: PASS (0 problem(s))`（86/86 锚点、86 DONE）。
+- 全量 T1（`GATE_SCOPE=vmu`）：**TOTAL 638 PASS 638 FAIL 0**（suites 574 · probes 64，日志
+  `/d/_tmp/t1-r184-run157.log`；套件数 +1 = 本轮新增的 `vmu-run156-run5-fixes`，同时 run154 的断言从 55 长到 63）。
+- 开发期间一度两红（都是真红，不是噪声）：`vmu-run155` 的「一个投影 22 键」因 RUN 156 新增 `engineSource`
+  而变成 23 键（该 pin 守的正是「一个投影」，已同步）；`audit-declaration-criterion` 抓到 run156 两处 **空集上的
+  `every()`**（一个是 `(listed.papers || [])` 的接收者不可见、一个是去筛「没有行」的成员得到空集），已加非空守卫并把 `board()`
+  只列真有记录成员这个事实写进分支说明。
+
+### 257.7 只读审计（audit26，基线 `d8e1b71c`）判 `CONTRADICTIONS(2)`，两条当场修掉
+
+审计把五项机制断言逐条复现为真（一个 `projectPdfBlock` 供两门、失败对象带真 argv、结算走 `supersede` 且 L14 锁仍咬人、
+durable 评审读 + 修复轮 + 现读 `maxRounds`、`paper-<x>` 寻址与 consult 的 `target`/`paperId`），也把 §255/§256 的数字
+全部复算一致（T1 637/637、suites 573、probes 64、T99 19 995/19 998/18 243、门禁 86/86、53/55/63、定向 9/2/1/5/1）。
+它抓到的是**两处文档越界**与**一处未捕获的回归**：
+
+1. **回归（item 8）**：RUN 155 把 `compile` 的 `catch` 写成了无条件的——本意是「编译失败也回一份可读回执」，结果把
+   `requireState`（论文不存在）与「本装配没有 LaTeX 面」这两个**具名拒绝**也一并吞成 `ok:true`。修法：`catch` 只接
+   `VMU_PACK_V5R_CORE_PAPER_PDF_FAILED`，其余继续抛；`vmu-run156-run5-fixes.test.mjs` §7 三证（源码守卫在、打错 target
+   是被具名拒的、真编译失败仍是回执）。
+2. **文档越界（item 6）**：§255.4 写「§3 H2 修复轮（到上限仍能写 part **并最终定稿**）」与「§5 G9（**三支**拒绝都带
+   target）」，而当时 run154 的 §3 只走到第三次 revise 被拒、§5 只走了 `opened` 一支。修法不是删句子，而是**把机制真的
+   走完**：run154 的 §3 现在补到「修复轮里补齐正文与互审 → 真的定稿 → `produced:true`、`pdfBytes` 对得上」，
+   §5 补 `awaiting` 一支（等答复时再次定稿仍带 `target`/`paperId`）；`timeout` 一支仍在套件之外，文档已明说这一点。
+   run154 套件因此 **55 → 63/0**，§255.4 的句子同步改写为「补到定稿、`opened` 与 `awaiting` 两支」。
+
+### 257.8 仍未解决
+
+1. **`editor:"office"` 代定稿**仍是具名缺口（本轮未动）。
+2. **人数闸的负向证据**仍需更大名册：`voteFloorGate` 现在会自报 `vacuous`/`uncovered`/`bitesWhen`，
+   但「真的被拒」这条仍缺一次名册 ≥4 的真机回执。
+3. **宿主 `pwsh` 在本轮全程不可用**（`[exit code: 3221225794]` = `0xC0000142`）：代理改用文件工具与
+   `math_computation{engine:"python"}` 取证。这是宿主环境问题，不是框架缺陷，记在此处备查。

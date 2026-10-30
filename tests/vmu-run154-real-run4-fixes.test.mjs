@@ -240,6 +240,35 @@ console.log('§3 H2：到了互审轮数上限，定稿代表仍要求修订 ⇒
     ok(hint.length > 0, 'H2：拒绝带 hint（非空）', hint)
     ok(hint.includes('vmu.paper.maxRounds') && hint.includes('part'), 'H2：拒绝语点名真实出口（提高 maxRounds / 补 part）', hint)
   }
+
+  // ★★ RUN 157 (audit26 item 6): 这一节以前只证到「修复轮被允许」，而 §255.4 写的是「并最终定稿」。
+  // 现在把那一步真的走完：到了上限的论文，在修复轮里补齐正文与互审后，**能真的定稿并做出 PDF**。
+  const { flow: f2, kernel: k2 } = boot({ 'vmu.paper.maxRounds': 1 })
+  const T2 = 'h2-到上限仍能定稿'
+  toReviewing(f2, T2)
+  const r1 = oneRefusingRound(f2, T2)
+  ok(r1 && r1.capped === true, '前提：上限=1，第一轮就封顶', r1 && { capped: r1.capped, round: r1.round })
+  const rr = await refusalOf(async () => f2.recordFinal({ target: T2, member: 'acad', decision: 'revise', note: '先走一个修复轮' }))
+  ok(rr === null, '前提：修复轮被允许（回到 writing）', rr && rr.code)
+  // 证据卡（quality gate 要能解析到的真实卡片）
+  k2.records.put({ id: 'rec-h2ev', track: 'propositions', kind: 'proposition', title: '定稿证据', body: '- statement：x\n- value：0.9' })
+  for (const m of ['r-1', 'r-2']) f2.recordPart({ target: T2, member: m, title: m + ' 修复后', solution: m + ' 补齐后的解法', evidence: ['Members/' + m + '/Propos/rec-h2ev.md'] })
+  f2.advance({ target: T2 })
+  f2.recordReview({ target: T2, member: 'r-1', deliverable: true, comments: '可交付' })
+  f2.recordReview({ target: T2, member: 'r-2', deliverable: true, comments: '可交付' })
+  const adv = f2.advance({ target: T2 })
+  ok(adv && adv.to === 'awaiting-editor', '前提：修复后补齐正文与互审，回到 awaiting-editor', adv && adv.to)
+  const fakeLatex = { check: async () => ({ ok: true, engine: 'xelatex', pdfPath: 'D:/_tmp/p/p.pdf', pdfBytes: 1234,
+    argv: ['-interaction=nonstopmode', '-output-directory=D:/_tmp/p', 'D:/_tmp/p/p.tex'], outDir: 'D:/_tmp/p',
+    tried: [{ engine: 'xelatex', phase: 'compile', exitCode: 0 }], elapsedMs: 1 }) }
+  k2.latex = fakeLatex
+  let fin = null
+  try { fin = await f2.recordFinal({ target: T2, member: 'acad', decision: 'deliverable', conclusion: '到上限后完成' }) } catch (e) { fin = e }
+  ok(fin && fin.ok === true && fin.finalized === true, 'H2：到过上限、走完修复轮的论文真的能定稿（不再是死数据）', fin && { ok: fin.ok, finalized: fin.finalized, code: fin.code, message: fin.message })
+  const st4 = stateOf(f2, T2)
+  ok(st4 && st4.status === 'finalized', 'H2：状态真的到了 finalized', st4 && st4.status)
+  const pdf = fin && fin.pdf ? fin.pdf : null
+  ok(pdf && pdf.ok === true && pdf.produced === true && Number(pdf.pdfBytes) === 1234, 'H2：定稿顺带把 PDF 做出来（produced=true）', pdf && { produced: pdf.produced, bytes: pdf.pdfBytes })
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -285,6 +314,11 @@ console.log('§5 G9：`VMU_OFFICE_CONSULT_REQUIRED` 的回执带 `target`（答�
   ok(!!e && e.code === 'VMU_OFFICE_CONSULT_REQUIRED', '前提：asking 阶段被 OFFICE_CONSULT_REQUIRED 拒', e && e.code)
   ok(!!e && e.target === T, 'G9：拒绝带上 `target`（正是 answer 调用需要的形参）', e && e.target)
   ok(!!e && String(e.paperId || '') === 'paper-' + T, 'G9：拒绝带上 `paperId`', e && e.paperId)
+  // G9 的另一支：尚在等答复时再次定稿，拒绝仍带 target/paperId（不是“没给 target”那条路）
+  const e2 = await refusalOf(async () => flow.recordFinal({ target: T, member: 'acad', decision: 'deliverable' }))
+  ok(!!e2 && e2.code === 'VMU_OFFICE_CONSULT_REQUIRED', '§5 G9：等待中再次定稿仍被同一门拒', e2 && e2.code)
+  ok(!!e2 && e2.target === T && String(e2.paperId || '') === 'paper-' + T,
+    '§5 G9：awaiting 一支的拒绝也带 target/paperId', e2 && { target: e2.target, paperId: e2.paperId })
   const answer = flow.recordConsult({ target: e.target, by: 'office', answer: '可以定稿' })
   ok(!!answer && answer.ok === true, 'G9：用拒绝回执里的 target 答复成功（回执里的键真的可用）', answer && (answer.code || answer.ok))
 }

@@ -259,10 +259,12 @@ console.log('§2 问题 2：`compile` 门与 `final` 的 pdf 块是同一个形�
   ok(!!block && Array.isArray(block.missing) && block.missing.includes('pdf'), '问题 2：失败时说 pdf 缺', block && block.missing)
 
   const keys = Object.keys(block || {}).sort()
-  const expected = ['argv', 'code', 'engine', 'faceCode', 'hint', 'kind', 'message', 'missing', 'ok', 'outDir', 'pdfBytes', 'pdfPath',
+  // ★ RUN 157: `engineSource` 是 RUN 156 加进共享投影的第 23 个键（`'face' | 'triedEngines' | null`）。这个 pin 守的是「一个投影、两个门」，
+  // 共享投影改了字段集它就必须跟着改——否则它守的是一个不再存在的形状。
+  const expected = ['argv', 'code', 'engine', 'engineSource', 'faceCode', 'hint', 'kind', 'message', 'missing', 'ok', 'outDir', 'pdfBytes', 'pdfPath',
     'produced', 'signal', 'sourceName', 'stderrTail', 'stdoutTail', 'tailSource', 'target', 'triedEngines', 'triedEnginesTotal',
     'triedEnginesTruncated'].sort()
-  ok(keys.length > 0 && keys.length === expected.length && JSON.stringify(keys) === JSON.stringify(expected), '问题 2：compiled 块就是共享投影的字段集（22 键）', keys)
+  ok(keys.length > 0 && keys.length === expected.length && JSON.stringify(keys) === JSON.stringify(expected), '问题 2：compiled 块就是共享投影的字段集（23 键）', keys)
 
   // ── the SAME fields must come out of `final`: drive a paper to awaiting-editor, then final it with a failing compile ──
   const fail2 = makeSubprocess(FAILING_COMPILE)
