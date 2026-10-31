@@ -2379,6 +2379,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         for (const row of saved) {
           try {
             if (!row || !row.track || !row.kind) continue
+            // ★★ RUN 166 (FEEDBACK14 F1): a TOMBSTONE is not a record to restore. The fold now carries trashed rows so a
+            // trash made by another kernel is visible here; booting this instance must not turn one back into a live row.
+            if (row.state === 'trashed') continue
             records.put({ id: row.id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, settled: true, by: row.by || 'restore' })
             restored += 1
           } catch (e) { log('vmu records restore: ' + String((e && e.message) || e)) }
@@ -2403,8 +2406,17 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // (`records.js view()`: `owner: rec.by`), so `r.by` here was always undefined and the persisted row carried NO
           // author at all — after a restart the owner degraded to 'restore' and the status board could not match the row
           // to the member who wrote it. Persist the author under the name the view uses.
-          rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, by: r.owner !== undefined && r.owner !== null ? r.owner : r.by })
+          rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, state: r.state, by: r.owner !== undefined && r.owner !== null ? r.owner : r.by })
         }
+      }
+      // ★★ RUN 166 (FEEDBACK14 F1/F3/F4 — THE PRUNE NOBODY ELSE COULD SEE): the snapshot used to be computed from the LIVE
+      // head list alone, so a trashed row simply vanished from the fold and every other kernel kept believing it was live.
+      // Measured on the real machine (run 14): the office pruned the paper track to 20 rows, a member kernel still
+      // answered `200/200` + `VMU_QUOTA_EXCEEDED`, and the pruned names stayed occupied there — a freshly minted
+      // `paper-p1` resolved to an OLD paper and a minted `m33` resolved to an ARCHIVED meeting. The tombstones are
+      // persisted with the live rows, so the trash is a durable fact every instance learns (records.synchronize).
+      if (typeof records.trashRows === 'function') {
+        for (const tomb of records.trashRows({})) rows.push(tomb)
       }
       // ★★★ ROUND 106 / F-106d: this used to be `write('records', rows)` — a WHOLESALE REPLACE computed from THIS
       // instance's live rows. Measured in `tests/vmu-run36-records-shared.test.mjs` (2 of 10 runs under load, then
@@ -2448,6 +2460,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     }
     wrap('put', { snapshot: true })
     wrap('supersede', { snapshot: true })
+    // ★★ RUN 166: a trash/restore/purge/compact MUTATES the fold just as much as a put does — before this, `prune` moved
+    // rows in memory and NOTHING told the durable fold, which is exactly why no other kernel could see the trash.
+    wrap('remove', { snapshot: true })
+    wrap('restore', { snapshot: true })
+    wrap('purge', { snapshot: true })
+    wrap('compact', { snapshot: true })
     wrap('list', { hydrate: true })
     wrap('get', { hydrate: true })
   }
@@ -4152,6 +4170,16 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         // The scope is a field now, so the two sentences cannot be read as one promise.
         scope: 'this-kernel',
         scopeMeans: 'the write takes effect in THIS running kernel (no restart needed to use it) and is dropped when the process ends — it is not a configuration change',
+        // ★★ RUN 166 (real machine, run 14 / FEEDBACK14 F2 — THE SETTING THAT HELPED ONLY THE KERNEL THAT WROTE IT): every
+        // member turn runs its OWN kernel instance over the same workspace, so a runtime write is not shared with them.
+        // Raised `vmu.records.head.maxItems` in the office looked applied (`applied:"immediate"`) while the member's kernel
+        // kept its own cap and kept refusing with `VMU_QUOTA_EXCEEDED`. The scope is a FIELD now, and for a capacity key
+        // the receipt names the repair that ALL instances see (a prune, or a declared default).
+        crossKernelScope: 'this-process',
+        crossKernelMeans: 'other kernel instances over the same workspace (each member turn gets its own) do NOT see this write: it is not shared state, and a restart re-reads the declaration',
+        capacityScopeMeans: /^vmu\.records\.(head\.maxItems|retention\.maxBytes)$/.test(String(key))
+          ? 'this is a CAPACITY key: raising it here repairs THIS kernel only. A `VMU_QUOTA_EXCEEDED` produced by another kernel is repaired by pruning (vibe_vmu_records {action:"prune"}) — a durable trash every instance sees — or by changing the declared default'
+          : null,
       }
       // ROUND 7 / task-57: the caller's `reason` is part of the record (the ledger answers "why", not only "who").
       runtimeWrites.push({ key, hot, by, reason: reason === null || reason === undefined ? null : String(reason), ownerCheck: g.ownerCheck, requiresRestart, liveApplied: liveApplied.slice(), pendingConsumers: pendingConsumers.slice(), at: receipt.at, action: 'set' })

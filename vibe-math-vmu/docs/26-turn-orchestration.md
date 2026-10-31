@@ -2839,3 +2839,25 @@ PARITY/RULES COVERAGE all PASS (86/86), full T1 644/644 (suites 580 · probes 64
 - **机器化**：`tests/vmu-run165-quota-reachable.test.mjs`（**36/0**）—— 源码口径（两条真路、旧假承诺消失、prune 形参与实现路径、`isUpdate`/`billedBytes`）；run 13 现场重建（满轨被拒且 hint 给两条路、`dryRun` 不动数据、真 prune 2→1 行、`restore` 复原、**prune 后同一会话 `paper start` 成功**）；边界（缺 `track` 具名拒、permanent 进 `pinned`、行数 ≤ keep 时 no-op、未知轨不静默成功）；更新口径（满轨新增仍拒、**更新同一行成功**、仍是一行、正文是新版本、slug 不漂移）。
 - **读数**：`regen-all --check` 17/17、五门禁全 PASS（coverage 86/86）、全量 T1 **646 PASS / 0 FAIL（suites 582 · probes 64）**（日志 `t1-r212-run165.log`）；`--only records` 5/0、`paper` 11/0、`run16` 7/0、`run15` 10/0、`vmu-host` 4/0、`declaration` 5/0。
 - **下一轮**：run 14 的任务书重写 —— 让四个成员（`r-acad`/`r-1`/`r-2`/`r-temp`）**真的被宿主 activation 派发**（检查转录出现 `kind:"member"` 与会话目录），允许 office 抬配额，禁止 `ask_user_question` 等待，并要求把「记录面 prune / 两种拼写 / `part` 整节替换 / `VERIFIED_MISSING` 可达修法」四条一路做到结题。
+
+## ROUND 169 — 删除的结果必须被分享：墓碑进 fold、`restore` 重建索引、设置回执自报作用域
+
+- **这一轮修的是「谁做的删除，别人看不见」**：run 14 是第一次真的把四个成员当独立会话跑起来（根会 `vibe_vmu_turn` 回执 `turns:7, woken:{r-1:4,r-2:2,r-acad:1}`），于是同一份持久账被多个内核实例同时读。成员侧 `prune` 回执自己写着 `scope:"this-kernel-instance"`，而它的论文轨仍 200/200 —— 根因不在 `prune`，而在 `synchronize()` **把 fold 里的行一律当 LIVE 采纳**：`remove/purge/compact` 的结果从来进不了共享层，墓碑在读者的世界里不存在 ⇒ 配额永远满、论文名永远被占（同一轮里 F3/F4 的同名撞车正是踩在这个坑上）。
+- **修法**：`synchronize()` 双向采纳/复原墓碑（`trashAdopted`/`trashRestored`/`tombstonesSeen`/`staleTombstones` 四组计数，`rowContentStamp` 纳入 `state/trashedAt/purgeAt`）；`snapshotRecords()` 每行带 `state` 并追加 `records.trashRows({})`；`remove/restore/purge/compact` 四个包装 `snapshot:true`；`hydrateRecords()` 跳过 trashed（回收站的行不是活行）；`trashRows({track})` 成为公开面（带 `purgeAt`/`restoreId`，**不带 body** —— 回收站不是第二个内容库）。
+- **修的过程中自己撞出两条同族缺陷**：① `restore()` 只翻状态、**不重建索引**（`remove` 会从 `bySlug`/`byFingerprint` 删掉该行）⇒ 回执说 live、`list` 看不到它；现在重建 `order`/`trackList`/`bySlug`/`byFingerprint` 并把 `restoredAt` 写进回执。② **陈旧墓碑会把刚做完的复原撤掉**（fold 异步写，复原后立刻读仍是旧 trash 行）⇒ `trashedAt <= restoredAt` 即跳过。
+- **第二条是「我的设置作用到哪」**：`vibe_v5_set` 只回 `persistsAcrossRestart:false`，而抬 `vmu.records.head.maxItems` 是轨满的合法修法 ⇒ 一个成员抬了上限，别人仍按旧值被拒。现在回执明写 `crossKernelScope:"this-process"` + `crossKernelMeans` + `capacityScopeMeans`（容量键点名「跨实例的修法是 `prune`」），`v5r` 的 `applyDeclaredSetting` 原样透传，不吞。
+- **机器化**：`tests/vmu-run166-shared-trash.test.mjs`（**34/0**）—— 源码口径；run 14 现场重建（A prune 2→1、B 看见 1 且在 `trashRows` 里、B 之后照常 `put`）；复原双向（A restore 后 A/B 都回 2、B 的回收站空）；满轨跨实例（hint 点 prune、prune 后 B 的 `paper start` 成功）；RUN 165 边界在跨内核场景重跑；墓碑不带内容。
+- **读数**：`regen-all --check` 17/17、五门禁全 PASS（coverage 86/86）；`--only records` 5/0、`paper` 11/0、`run164` 1/0、`run165` 1/0、`run166` 1/0、`vmu-host` 4/0、`prompt-` 24/0；全量 T1 与 §267 合并收口。
+- **未闭合**：`prune` 还没被代理在真机上用过（run 14 的代理选了抬配额）；跨进程仍无共享层（`this-process` 是诚实不是完成）；`r-temp` 依然零回合。
+
+## ROUND 170 — 一个名字一个对象、一个读数一个窗口、一个回执一个事实（run 14 的 F3/F4/F6/F9/F5）
+
+- **F3 会议 id 撞归档**：mint 只查活会，`m33` 被重新发出而旧 `m33` 仍在归档 ⇒ 读数面拿回上一轮纪要。修法：mint 循环先建 `archivedIds`、`takenAny` 同时查活会与归档（显式 id 的 `archivedTwin` 拒绝不变）。
+- **F4 论文 id 撞 trash**：prune 之后 `mintPaperId` 从 1 重新数，`paper-p1` 与回收站里的旧篇同名。修法：`trashedNamesake()` 先查回收站，撞名具名拒（`VMU_PACK_V5R_CORE_PAPER_STATE`，hint 说 restore/purge），不静默换号、不覆盖。
+- **F6 互审被派给没写 part 的人**：`advance` 按参与者列表轮转分配，没 part 的人收到「你该审别人」并被记成 refuser ⇒ 论文被打回 writing、轮次 +1、**已交的评审被 round 失效**，三轮都在烧一个与数学无关的原因；`reviewRowOf` 还被定义了两份。修法：`reviewRowOf` 合并成一份；`reviewTargetFor` 只指向**写过 part 的别人**；`required` 只含被指派者、其他人进 `notRequired`（回执说明「不是 refuser」）；`requireCrossReview` 从「≥2 个 crosser」改成「每个被指派者都交了本轮 deliverable 评审」＋保留「参与者 < 2 具名拒」的地板（单参与者是形状问题，不是计数问题）。
+- **F9 `closureVote` 的窗口**：成员侧 1/3、所办侧 3/3，两个诚实的读数互不相容，因为 `missing` 被读成「没投票」。修法：不新增字段（该面有 <1500 字符 pin，也有「被移出的键必须原文可读」的 pin），把句子压进既有 `windowMeans` —— `` `missing` means "not seen in THIS session", NOT "did not vote" ``（实测 1411 字符）。
+- **F5 收窄的三分事实**：`meeting_round` 以前对「没声明」与「声明了装不上」都打印 `narrowed:false`。现在 `narrowingInEffect` + `narrowInEffectMeans` 三分支（没声明 / 声明但 empty-intersect / 真装上），失败步与成功步共用同一字段。
+- **修 F6 时撞出的第五条**：评审行 body 不含「评的是哪篇论文」，而默认指纹是 `content-only`（标题按设计不参与）⇒ 同一轮同一成员同样评语的两篇论文产生相同 body，第二篇的评审被**去重进第一篇的行**（`deduplicated:true` 是文档化语义）、它的互审闸计 0 人。修法：评审行与 part 行的 body 都带 `target`（不改指纹策略）；同时把 `reviewRowOf` 的选行口径改成 `updatedAt` 降序、平局按 **id 数字降序**（固定 clock 下平局曾退化成数组顺序＝最旧那一轮，论文站在第 3 轮却读到第 1 轮的评审）。
+- **机器化**：`tests/vmu-run167-feedback14-identity.test.mjs`（**53/0**）六节：源码口径、F3 归档重建、F4 trash 重建、F6 一轮到 awaiting-editor、F9 窗口、F5 四种回执、跨论文评审两行且各自 gate 通过。
+- **读数**：`regen-all --check` 17/17、五门禁全 PASS（coverage 86/86）；`--only paper` 11/0、`records` 5/0、`run166` 1/0、`run167` 1/0、`vmu-host` 4/0、`f3-f4` 2/0、`meeting` 32/0、`verdict` 5/0、`prompt-` 24/0、`run36` 4/0、`run16` 9/0、`run164` 1/0、`run165` 1/0；全量 T1 见 §267.5。
+- **未闭合**：`reviewRowOf` 的「同标题多行」还没在真机满额论文轨上压过；`persistsAcrossRestart` 仍 false（跨进程是已知边界）；F8（`render` 不拦、`final` 才拦）与 F10（`meeting_round` 一次只推一位）本轮没修，继续挂在 FEEDBACK14 未闭合清单上。

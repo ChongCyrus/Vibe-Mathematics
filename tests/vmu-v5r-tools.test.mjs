@@ -540,6 +540,14 @@ try {
   try { paper.recordPart({ target: TARGET, member: 'r-9', title: 'x' }) } catch (e) { noPart = e }
   ok(noPart && noPart.code === 'VMU_NO_SUCH_OBJECT', 'recordPart: 反 — a non-participant is refused by name', noPart && noPart.code)
 
+  // ★★ RUN 167 (FEEDBACK14 F6): the cross-review ROTATION was replaced by an ASSIGNMENT that only points at members
+  // who WROTE a part — a member with no part cannot be somebody's review target, and a member with nothing to review
+  // is no longer counted as a refuser. So the fixture now has BOTH participants writing a part: that is what makes the
+  // two reviews below mutual (`reviewOf` is r-1↔r-2 again, but for the honest reason).
+  const partR2 = paper.recordPart({ target: TARGET, member: 'r-2', title: '引理 A 的第二种证法', solution: '用归纳法', evidence: ['r-2 的命题卡'] })
+  ok(partR2 && partR2.ok === true && !!partR2.recordId,
+    'recordPart: 正 — the second participant records a part (F6: only members who WROTE a part are review targets)', partR2 && { id: partR2.recordId })
+
   const adv1 = paper.advance({ target: TARGET })
   ok(adv1 && adv1.moved === true && adv1.to === 'reviewing' && adv1.reviewOf && adv1.reviewOf['r-1'] === 'r-2',
     '★ advance: 正 — writing → reviewing with the rotation (r-1 reviews r-2, the original\'s reviewOf)', adv1 && adv1.reviewOf)
@@ -1597,7 +1605,21 @@ try {
     // cross-review evidence is written with it: two distinct members, each reviewing the OTHER's part. Without it the
     // editor gate must refuse, and a synthetic state that skips 互审 would be asserting a finalisation nobody earned.
     const stateRow = [...rows.values()].find((r) => String(r.title || '').endsWith('|state'))
-    if (stateRow) { const st = JSON.parse(stateRow.body); st.status = 'awaiting-editor'; st.stage = 'awaiting-editor'; st.reviewOf = { 'r-1': 'r-2', 'r-2': 'r-1' }; st.reviews = { 'r-1': { of: 'r-2', deliverable: true, round: 1 }, 'r-2': { of: 'r-1', deliverable: true, round: 1 } }; stateRow.body = JSON.stringify(st) }
+    if (stateRow) {
+      const st = JSON.parse(stateRow.body)
+      st.status = 'awaiting-editor'; st.stage = 'awaiting-editor'; st.reviewOf = { 'r-1': 'r-2', 'r-2': 'r-1' }
+      st.reviews = { 'r-1': { of: 'r-2', deliverable: true, round: 1 }, 'r-2': { of: 'r-1', deliverable: true, round: 1 } }
+      stateRow.body = JSON.stringify(st)
+      // ★★ RUN 167: the cross-review gate reads the DURABLE review rows, not only this state cache (a cache that says
+      // "reviewed" while no row exists is exactly the class of lie the gate is for). The two rows below are what the
+      // hand-walked state claims, written as records so the fixture asserts a finalisation that was really earned.
+      const putReview = (member, of) => {
+        const id = 'row-' + (++seq)
+        rows.set(id, { id, title: 'paper|g7-paper|review|' + member, track: 'paper', body: JSON.stringify({ target: 'g7-paper', member, of, round: 1, deliverable: true, comments: 'written for this fixture so the gate has a real row to read' }) })
+      }
+      putReview('r-1', 'r-2')
+      putReview('r-2', 'r-1')
+    }
     const finalized = await flow.recordFinal({ target: 'g7-paper', member: 'acad', decision: 'deliverable' })
     ok(finalized && finalized.pdf && finalized.pdf.ok === false && Array.isArray(finalized.pdf.triedEngines) &&
       finalized.pdf.triedEngines.some((x) => x.engine === 'xelatex') && finalized.pdf.triedEngines.some((x) => x.engine === 'latexmk') &&

@@ -3017,6 +3017,13 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     // that happen to pick the same name are the defect this guard exists for. The flag is the bridge saying so out loud.
     const foreign = adoptForeign ? [] : otherRegistryIds()
     const taken = (x) => live.has(x) || foreign.includes(x)
+    // ★★ RUN 167 (real machine, run 14 / FEEDBACK14 F3): A MINTED ID MUST NOT TAKE A NAME THE ARCHIVE HOLDS. Measured:
+    // `m33` was minted while the ARCHIVE still held the closed `m33`, so `{ id:"m33" }` on the read faces answered with
+    // the previous run's closure minutes while the live meeting of that name was `state:"open"` — ONE NAME, TWO OBJECTS,
+    // and no receipt said which answered. The explicit-id path already refuses an archived name by name (below); the
+    // MINT path stepped only past live meetings and the other registry, so it walked straight into the archive.
+    const archivedIds = new Set(archive.map((x) => String(x.id)))
+    const takenAny = (x) => taken(x) || archivedIds.has(String(x))
     if (wanted !== null && taken(wanted)) {
       throw deny('VMU_CONFLICT', 'a live meeting already uses id ' + String(wanted),
         // ★ LIVE RUN 31: the DECISIVE sentence comes first and the full id list last. Measured in the institute's
@@ -3043,7 +3050,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // a MINTED id must not collide with the other registry either: advance the counter rather than hand back a name
       // that already denotes a meeting elsewhere (silently reusing it would be the same defect with a luckier order).
       let guard = 0
-      while (taken(mid) && guard < 10000) { counters.opened += 1; mid = 'm' + (counters.opened + 1); guard += 1 }
+      while (takenAny(mid) && guard < 10000) { counters.opened += 1; mid = 'm' + (counters.opened + 1); guard += 1 }
     }
     if (live.has(mid)) throw deny('VMU_CONFLICT', 'a live meeting already uses id ' + String(mid), 'open: ' + [...live.keys()].sort().join(', '), enforced)
     // ★★ ROUND 101 (rule L32 / ledger E10): 「院士可以设置…会议时长上界」。The bound used to be ONLY the

@@ -12654,3 +12654,86 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 2. **成员激活缺口**：run 2–13 的根会话 `vibe_vmu_turn` 调用 **0 次**（只有 run 1 真的把三个成员作为独立子代理会话跑起来 ⇒ `kind:"member"` 三份会话 19 690 / 26 960 / 4 240 行）。成员回合本该由宿主 activation 派发（`vibe-math-vmu/kernel/turn/index.js` 的 `deliverTurn`/`step`，`deliverMode:'subagents'`），但我的任务书一直写成「所办的工具面核对清单」⇒ 后续轮次的「代理反馈」有相当一部分是**单一代理自问自答**。run 14 的任务书必须写成「让四个成员各自干活」并检查转录里有 member 会话。
 3. **「轨满」这条路径本身在真实研究里会自然发生**（保留工作区连跑十三轮后 paper 轨确实 200/200）⇒ 它现在有两条真路了，但这说明**配额设计需要一轮专门压测**（不是本轮能收的账）。
 4. 旧反馈卡（run 11 的 rec-298，写于修复之前）会误导后来的代理 —— 反馈卡是历史记录，不该被当成当前事实；这一点要在任务书里直说。
+
+## §266 第十四次真机（run 14）：第一次真的跑起四个成员会话，于是「墓碑只活在写它的那个内核里」暴露了
+
+### 266.1 run 14 的读数（基线提交 `d18cde47`，驱动 `slv-p13-oc.ps1` / opencode-go / deepseek-v4.1-flash）
+- `DRIVE exit=0`，`durationSec 2335`，`tokenTotal 24 084 859 / 24 000 000`（**打满 token 预算**，不是超时），转录 `_oneoff/vm-slv/full-1031-183531.jsonl` 61 MB，**4 个会话**（1 根 + 3 成员），`slv-inspect --by-session` **0 RED**。
+- **本轮第一次真的把成员当独立会话跑起来**：根会 `vibe_vmu_turn` 回执 `{"ok":true,"turns":7,"woken":{"r-1":4,"r-2":2,"r-acad":1},"deliverMode":"subagents"}`，成员会话各自有事件流。这是 run 2–13 一直缺的那一环（那十二轮的「反馈」其实是所办拿 member id 自问自答）。
+- 主线完整走到结题：偶数求和卡 `rec-316` → 辩论 → `verdict_final` 一致 → `verified_promote` → `paper-p1` → 3 轮评审 → `finalized` → PDF **111 445 B** → `closureVote votesCast:3 / confirmed:true` → 归档。`r-temp` 零回合（任务书没给它派活，是我的账）。
+- **FEEDBACK14 十一条**里，本轮要收的是前两条：F1「`prune` 只在我这一侧生效」、F2「`vibe_v5_set` 说我这条设置不跨重启」——两条都指向同一件事：**一个内核实例做的删/改，另一个实例看不见**。
+
+### 266.2 两条真缺陷（一条比反馈说的更深）
+1. **F1 `prune` 的作用域是「这个内核实例」**：成员会话里 `vibe_vmu_records {action:"prune"}` 回执自己就写了 `"scope":"this-kernel-instance"`，而成员侧的论文轨仍是 200/200。反馈说得对，但根因不在 `prune`：`vibe-math-vmu/kernel/records.js` 的 `synchronize()` 把 fold 里的每一行都当 **LIVE** 采纳，**从不处理「别的内核把这一行移进 TRASH」**；`vibe-math-vmu/kernel/index.js` 的 `snapshotRecords()` 又只从 live 行算 `rows`，于是 `remove/purge/compact` 的结果根本进不了 fold。**墓碑（tombstone）从来不存在于共享层**：写它的内核知道，读者不知道 ⇒ 配额永远满、论文名永远被占（这正是同一轮里 F3/F4 的同名撞车的燃料）。
+2. **F2 `vibe_v5_set` 的作用域也是「这个内核」**：回执 `persistsAcrossRestart:false`、`scope:"this-kernel"`，而抬 `vmu.records.head.maxItems` 正是「轨满」的合法修法之一 ⇒ 一个成员抬了配额，自己下一次 `put` 生效，别的成员仍按旧值被拒，而回执没有任何一句说明这件事的边界。
+3. **修 F1 时又冒出两个同族缺陷**（探针 `D:/_tmp/probe-166i.mjs` 复现）：
+   - `restore({id})` 只把 `rec.state` 改回 `live`，**不重建索引**（`remove` 只翻状态，而 `synchronize` 采纳外来 trash 时会从 `bySlug`/`byFingerprint` 里删掉这一行）⇒ 回执说 live，`list` 却看不到它：一个名字，两个读数。
+   - **陈旧墓碑会把刚做完的修复原样撤掉**：fold 是异步写的，`restore` 之后立刻读仍能看到旧的 trash 行，`synchronize` 于是把本地行重新置为 trashed ⇒ 复原成功与否取决于谁先读。
+
+### 266.3 修法（墓碑随 fold 走，作用域写在回执里）
+- **`synchronize()` 采纳双向墓碑**（`vibe-math-vmu/kernel/records.js`）：fold 行是 trashed 而本地不是 ⇒ 采纳 trash（`trashAdopted += 1`）；本地是 trashed 而 fold 行是 live ⇒ 同步复原（`trashRestored += 1`）；两边都 trashed ⇒ `tombstonesSeen += 1`；本地已有比墓碑**更新**的 `restoredAt` ⇒ 跳过并计 `staleTombstones`（`trashedAt <= restoredAt` 即陈旧）。`rowContentStamp` 纳入 `state`/`trashedAt`/`purgeAt`，让「只改状态」的写也能触发同步。
+- **墓碑进共享层**（`vibe-math-vmu/kernel/index.js`）：`snapshotRecords()` 的每行带 `state`，并追加 `records.trashRows({})` 的结果；`wrap('remove'/'restore'/'purge'/'compact', { snapshot: true })` 四个面都会把墓碑推给 fold；`hydrateRecords()` 跳过 `state === 'trashed'` 的行（否则回收站的行会被当成活行装回内存）。
+- **`trashRows({ track })` 成为公开面**（`vibe-math-vmu/kernel/records.js`）：可按轨列出回收站，响应里带 `trashedAt`/`purgeAt`/`restoreId`，让「被谁移走、还能不能救」在成员侧也是可读的。
+- **`restore()` 重建索引**：恢复时把 id 重新压回 `order` 与该轨的 `trackList`，并重建 `bySlug`/`byFingerprint` 的 per-track map（缺失则新建），回执加 `restoredAt`；`remove()` 把 `restoredAt` 清空。
+- **作用域写进回执**：`setSettingsValue` 的返回加 `crossKernelScope:"this-process"` + `crossKernelMeans`（说清「本进程的所有内核实例立刻看到；另一个进程要等它下一次读」）＋ `capacityScopeMeans`（容量键点名「跨实例的修法是 `prune`，不是抬上限」）；`vibe-math-vmu/packs/v5r/tools.js` 的 `applyDeclaredSetting` 原样透传这两个字段与 `persistsAcrossRestart`，不吞。
+- **一个反面对照也记下来**：本轮**没有**给 `prune` 加「广播到 fold」以外的新工具面 —— 墓碑进 fold 之后，别的内核在下一次 `synchronize` 自然会看到回收站，`prune` 自己不需要变。修的是「删除的结果不被分享」，不是「删除的动作不够多」。
+
+### 266.4 机器化
+`tests/vmu-run166-shared-trash.test.mjs`（**34 passed / 0 failed**，两个内核实例、同一个 root、同一个 clock）五节：
+- §0 源码口径：`synchronize` 有四组计数、`rowContentStamp` 含 `state/trashedAt/purgeAt`、`snapshotRecords` 带 `state` 且追加墓碑、四个面 `snapshot:true`、`hydrateRecords` 跳过 trashed、`setSettingsValue` 两个新字段。
+- §1 **run 14 现场重建（A prune、B 看见）**：A `prune` 2→1 后 B 的同一轨也是 1 行、`trashAdopted >= 1`、被移走的行在 B 的 `trashRows({})` 里且带 `purgeAt`；B 之后照常 `put` 成功（名额真的释放了）。
+- §2 **复原是双向的**：A `restore` 之后 A 与 B **都**回到 2 行，`B.kernel.records.trashRows({}).length === 0`（陈旧墓碑没有把它再推回 trash）。
+- §3 **满轨 + 跨实例**：B 在 A prune 之后仍被 `VMU_QUOTA_EXCEEDED` 拒时，hint 必须点 `prune`（而不是只说抬上限）；prune 之后 B 的 `paper start` 成功。
+- §4 = RUN 165 的边界（permanent 进 `pinned`、未知轨不静默、`dryRun` 不动数据）在本轮跨内核场景下重跑一遍，防「修好一处、破另一处」。
+- §5 **墓碑不带内容**：`trashRows` 的行只有 `id/track/title/trashedAt/purgeAt`，没有 `body`（回收站不是第二个内容库）。
+
+### 266.5 读数与门禁
+- `regen-all --write` 到不动点、`--check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0)`、`RULES COVERAGE: PASS (0)`（86/86）。
+- 定向回归：`--only records` 5/0、`paper` 11/0、`run164` 1/0、`run165` 1/0、`run166` 1/0、`vmu-host` 4/0、`prompt-` 24/0。
+- 全量 T1：见 §267.5（两轮合并一次收口）。
+
+### 266.6 未闭合账
+1. **`prune` 仍没被代理在真机上用过**：run 14 的代理用的是「抬配额」（F2 说的那条）而不是 prune ⇒ 第十五次真机必须让它真跑一次 `prune`，并贴回执的 `liveBefore`/`prunedCount`/`restoreMeans`。
+2. **跨进程**（不是跨内核实例）仍然没有共享层：`crossKernelScope:"this-process"` 是诚实，不是完成；`vmu.records.*` 的容量键在多进程下的真修法要么是把状态放回 fold（本轮已做），要么是明说「单写者」，这条留给后续轮次。
+3. **`r-temp` 依然零回合**：任务书要显式给它派活（临时席位也有脚本面与只读面），第十五次真机必须见到 `r-temp` 的成员会话。
+
+## §267 同一天的第二轮（RUN 167）：一个名字一个对象、一个读数一个窗口、一个回执一个事实
+
+### 267.1 本轮的四条缺陷都来自 run 14 的反馈（F3/F4/F6/F9），外加修 F6 时自己撞出来的一条
+- **F3 会议 id 撞归档旧会**：`mint` 会议 id 时只查「活着的会议」，`m33` 被重新发出去，而 `m33` 仍躺在归档里 ⇒ 读数面拿回上一轮的结题纪要，回执里没有任何一句说明「这个 `m33` 是哪一个」。
+- **F4 论文 id 撞 trash 里的旧篇**：所办把论文轨 prune 之后，`mintPaperId` 从 1 重新数，`paper-p1` 与回收站里的旧 `paper-p1` 同名 ⇒ 所办打印的 id 在成员世界里指向另一篇（可复原的）论文。
+- **F6 互审被分配给了没有 part 的人**：`advance` 用「参与者列表轮转」分配评审对象，一个有 part 的成员被指派给另一个也写了 part 的人，而**没写 part 的人**收到了「你该审别人」的指派并因此被算成 **refuser** ⇒ 论文被打回 writing、轮次 +1、**已经交了的评审被 round 失效**，三轮全烧在一个与数学无关的原因上；`reviewRowOf` 甚至被定义了**两份**（两份逻辑漂移的风险已经存在）。
+- **F9 `closureVote` 的读数只覆盖「这个会话的窗口」**：成员侧读到 `votesCast:1, missing:["r-1","r-2"]`，所办侧读到 `votesCast:3, missing:[]`，**对同一批票两个诚实的读数互不相容**，因为 `missing` 被读成「这些人没投票」。
+- **F5 收窄只报「没装上」，不区分「没声明」与「声明了但装不上」**：`meeting_round` 在两种完全不同的情况下都打印 `narrowed:false`。
+
+### 267.2 修法
+- **F3 会议 mint 查归档**（`vibe-math-vmu/kernel/meetings.js`）：`openSeq` 的 mint 循环先建 `archivedIds = new Set(archive.map((x) => String(x.id)))`，`takenAny` 同时查活会与归档（显式 id 路径原有的 `archivedTwin` 拒绝保持不变）；回执的 `takenAny` 让调用者看见「这个名字为什么被跳过」。
+- **F4 论文名先查回收站**（`vibe-math-vmu/kit/paper.js`）：新增 `trashedNamesake()`（读 `records.trashRows({ track: TRACK })`），`start` 与 `mintPaperId` 在落名之前先查；撞上回收站里的同名篇就具名拒 `VMU_PACK_V5R_CORE_PAPER_STATE`（「该名字在 TRASH 里仍被 … 持有，先 restore 或 purge 它」），而不是静默换号或覆盖。
+- **F6 只向「有别的 part 可审的人」收 verdict**（`vibe-math-vmu/kit/paper.js`）：`reviewRowOf` 合并成**一份**；新增 `reviewTargetFor(state, member)`，只把评审对象指向**写过 part 的别人**；`advance` 的 `required` 只含被指派了「别人 part」的人，没 part 的人进 `notRequired` 并在回执里说明「他们不是 refuser」；同时放宽 `requireCrossReview`：不再要求「≥2 个 crosser」，改成「每个被指派者都交了本轮 deliverable 评审」（两成员、只有一人写 part 的论文以前永远凑不齐两人）＋保留「参与者 < 2 就具名拒」的地板（单参与者靠形状拦住，不靠计数）。
+- **F9 把 `missing` 的解释折进 `window`**（`vibe-math-vmu/kernel/turn/index.js` 的 `closureVoteOf`）：`window:'session'` 保持不变，但 `windowMeans` 里直接写出这句 —— `` `missing` means "not seen in THIS session", NOT "did not vote": votes cast in another session are invisible here ``。**没有新增字段**：这个面有一条 <1500 字符的尺寸 pin（`vmu-host.test.mjs`），塞四个新字段会撑破，而删字段又违反「被移出的键必须原文可读」的另一条 pin ⇒ 唯一的合规修法是**压字**（实测 `closureVoteView()` 1411 字符）。
+- **F5 一个字段三种事实**（`vibe-math-vmu/packs/v5r/tools.js`）：`narrowingInEffect = face.narrowed === true && notNarrowed.length === 0`；`narrowInEffectMeans(face, notNarrowed, inEffect)` 三分支——① 类型**声明了** allow list 但身份面一条都没给出 ⇒ 「DECLARES an allow list … identity face showed 0 of the 20 allowed names (empty-intersect)」；② 类型**根本没声明**收窄 ⇒ 「type declares NO narrowing」（先 `filter(reason !== 'type-declares-no-narrowing')`，免得把「没声明」说成「装不上」）；③ 真装上了 ⇒ 「in effect」。失败步（`turnFailed:true`）与成功步共用同一个字段（一个回执形状对两扇门）。
+
+### 267.3 修 F6 时自己撞出来的第五个缺陷（本轮最隐蔽的一条）
+- **两篇论文的评审行会被指纹去重成一行**。默认 `fingerprintPolicy` 是 `content-only`（**kind+body+tags，标题按设计不参与**），而评审行的 body 当时只含 `member/of/round/deliverable/comments`、**不含它评的是哪篇论文** ⇒ 同一轮、同一成员、同样评语的两篇论文产生**字节相同**的 body，第二次 `put` 返回第一篇的行（`deduplicated:true`，这是文档化的语义，不是 bug）⇒ 第二篇论文的评审**根本没落库**，它自己的互审闸读到 0 人、`advance` 拒掉一篇其实已被评审的论文。
+- 修法不是改指纹策略（`tests/vmu-records.test.mjs` 明确钉着「content-only 下同 body 不同标题照样去重」），而是**让记录的内容真的不同**：评审行与 part 行的 body 都加上 `target`（「这一行属于哪篇论文」本来就是它的身份）。
+- 同时修掉 `reviewRowOf` 的**选行口径**：每一轮写的行标题**相同**（`target + 'review|<member>'`），旧代码按 `updatedAt` 降序取第一条；固定 clock（测试夹具）或一个快轮次会把多行压在同一毫秒，平局退化成**数组顺序**（= 最旧的那一轮）⇒ 论文站在第 3 轮却读到第 1 轮的评审，crosser 计 0。改为 `updatedAt` 降序、平局按 **id 数字降序**（id 严格递增，大者更晚）。`reviewRowOf` 与 `advance` 里同一口径的另一处都改了。
+
+### 267.4 机器化
+`tests/vmu-run167-feedback14-identity.test.mjs`（**53 passed / 0 failed**）六节：
+- §0 源码口径（六条 pin）：归档查重、trash 查重、`reviewRowOf` 只声明一次、`reviewTargetFor`、`missing` 的句子、`narrowInEffectMeans` 的三分支与 `narrowingInEffect` 定义；本轮追加一条「评审行/part 行的 body 里带 `target`」。
+- §1 **F3 现场重建**：把 `m30` 归档后再开会，新会 id **跳过** `m30`（不撞归档）。
+- §2 **F4 现场重建**：prune 论文轨后再 `paper start`，同名篇在 trash 里 ⇒ 具名拒、`hint` 说 restore/purge，而不是换号。
+- §3 **F6 现场重建**：三人论文、只有 `r-1` 写了 part ⇒ `advance` 的 `reviewOf` 只指向 `r-1`（作者拿到 `undefined`）、作者进 `notRequired` 且回执解释 EXEMPT；两位非作者各自 `review {of:'r-1'}` 之后**第一轮**就到 awaiting-editor（不再烧轮次）。
+- §4 **F9**：`window==='session'`、`windowMeans` 含 `SESSION` 与 `not seen in THIS session`、本会话投票后 `votesCast===1` 且 `r-1` 离开 `missing`。
+- §5 **F5**：真 handler 打印的四种回执——没声明（`type declares NO narrowing`）、声明了但 empty-intersect（`DECLARES an allow list` + `identity face showed 0 of the 20 allowed names`）、真装上（`in effect`）、失败步（同一字段）。
+- §6 **跨论文评审行**：两篇论文、同一评审人、同样评语、同一轮 ⇒ **两行**、每行的 body 各自 `target` 为 `q7`/`q8`、两篇各自的 `advance` 都到 awaiting-editor（修前第二篇会被拒）。
+
+### 267.5 读数与门禁
+- `regen-all --write` 到不动点、`--check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0)`、`RULES COVERAGE: PASS (0)`（86/86）。
+- 定向回归（两轮合并后）：`--only paper` 11/0、`records` 5/0（`vmu-records.test.mjs` 271/0）、`run166` 1/0、`run167` 1/0、`vmu-host` 4/0、`f3-f4` 2/0、`meeting` 32/0、`verdict` 5/0、`prompt-` 24/0、`run36` 4/0、`run16` 9/0、`run164` 1/0、`run165` 1/0。
+- 全量 T1：`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **648 PASS / 0 FAIL（suites 584 · probes 64）**（日志 `/d/_tmp/t1-r217-run167b.log`）。
+
+### 267.6 未闭合账
+1. **`reviewRowOf` 的「同一标题多行」在真机上还没被压过**：本轮是固定 clock 的确定性复现；真机上一轮多行同毫秒的概率低，但一旦发生就是「读到旧轮」 —— 下一次真机要求在论文轨接近满额时也跑一遍互审。
+2. **`persistsAcrossRestart` 仍是 `false`**：§266 只做到「跨内核实例诚实」，跨进程仍不保证；这是已知边界，不是本轮偷偷关掉的账。
+3. **`meeting_round` 一次只推进一位（F10）、`render` 不拦 `final`（F8）**：两条本轮**没有修**（不在这一轮的括号里），继续挂在 FEEDBACK14 的未闭合清单上。

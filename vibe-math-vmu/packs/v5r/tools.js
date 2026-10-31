@@ -3316,6 +3316,23 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
 // "in progress" so every later round was refused. A caller-played turn hid this (the seam hands the prompt back anyway);
 // a real subagent turn made it a HANG. The handler is async and the step is awaited; the narrowing is still cleared in
 // the `finally`, which now runs after the step has actually settled.
+/** One sentence for the two different ways a round can run UNNARROWED (declared-none vs declared-but-not-installed).
+ *  ★★ RUN 167 (real machine, run 14 / FEEDBACK14 F5): the first version of this helper read EVERY row whose
+ *  `narrowing.applied` was false as "declared but invisible" — but a type that declares NO narrowing also reports
+ *  `applied:false` (reason `type-declares-no-narrowing`, see meeting-tool-face.js), so the sentence would have been false
+ *  for exactly the types it was supposed to contrast. The rows are classified by their own `reason`, which is the fact.
+ */
+function narrowInEffectMeans(face, notNarrowed, inEffect) {
+  if (face && face.narrowed === true && inEffect !== false) return 'this round ran with the meeting-type face in effect (the allow list below was installed for the round and cleared after it)'
+  const rows = (Array.isArray(notNarrowed) ? notNarrowed : []).filter((r) => r && r.narrowing && r.narrowing.reason !== 'type-declares-no-narrowing')
+  if (rows.length > 0) {
+    const why = rows[0].narrowing.reason || 'unknown'
+    const visible = rows[0].narrowing.identityFaceVisible
+    const expected = rows[0].narrowing.expectedAllowed
+    return 'this round ran UNNARROWED although the meeting type DECLARES an allow list: it could not be installed (' + why + '; the identity face showed ' + String(visible) + ' of the ' + String(expected) + ' allowed name(s)), so every member row reports narrowing.applied:false — a disclosed no-op, not a silent one'
+  }
+  return 'this round ran UNNARROWED because this meeting type declares NO narrowing (its allow list is empty by declaration, not by failure)'
+}
 async function toolMeetingRound(args = {}, { kernel } = {}) {
   const meeting = str(args.meeting || args.id || '')
   if (meeting === '') throw refuse('VMU_INVALID_ARGUMENT', 'meeting_round needs the meeting id', 'pass meeting:"<id>" — the id vibe_v5_meeting returned when the meeting was opened')
@@ -3340,6 +3357,11 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
   const face = meetingTypeFace(type)
   const applied = applyMeetingTypeFace({ kernel, type, members: ids, refuse })
   const notNarrowed = (applied.rows || []).filter((r) => r && r.narrowing && r.narrowing.applied === false)
+  // ★★ RUN 167 (F5): DECLARING a face is not INSTALLING it. The first version reported `narrowingInEffect: face.narrowed === true`,
+  // which is "this meeting type declares an allow list" — true even when every member row said `applied:false` and the round ran
+  // with its full identity face. The field now reports the EFFECT (declared AND installed), and the sentence below says which of
+  // the two ways it was not installed.
+  const narrowingInEffect = face.narrowed === true && notNarrowed.length === 0
   // ★ RUN 132 (F-132a): the verb that OPENS a debate round could not name its own meeting type — `phase:"debate"` was
   // refused by the enum ("it accepts o…"), so the chair had to guess `verify-debate`. The turn engine's vocabulary is
   // its own (verify-debate is the debate round there); the alias is accepted HERE and DISCLOSED in the receipt, because
@@ -3374,6 +3396,8 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
       code: step.code || 'VMU_STATE', message: step.message || 'the member turn failed',
       hint: step.hint || null, turnFailed: true, turn: step,
       narrowed: face.narrowed === true,
+      narrowingInEffect,
+      narrowingInEffectMeans: narrowInEffectMeans(face, notNarrowed, narrowingInEffect),
       narrowing: { type, narrowed: face.narrowed === true, reason: face.reason, expected: face.allow, members: applied.rows },
       members: ids,
       note: 'the meeting-type face was applied and CLEARED (it lives for one round only), but the member turn itself failed: read `turn.error`/`code` before retrying',
@@ -3381,7 +3405,15 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
   }
   return {
     ok: true, tool: 'vibe_v5_meeting_round', meeting, type, chair, phase: phaseUsed, phaseAliased,
-    narrowed: face.narrowed === true, narrowing: { type, narrowed: face.narrowed === true, reason: face.reason, expected: face.allow, members: applied.rows },
+    narrowed: face.narrowed === true,
+    // ★★ RUN 167 (real machine, run 14 / FEEDBACK14 F5): the deployment had no identity-visible tool face, so EVERY row's
+    // `narrowing.applied` was false and the round ran with the FULL tool list — a fact buried one level down while the
+    // top level said `narrowed:false` (which reads as "this meeting type declares no narrowing", a different statement).
+    // The top level now states the EFFECT, with the reason, so nobody has to parse `narrowing.members[]` to learn that
+    // the round was not narrowed.
+    narrowingInEffect,
+    narrowingInEffectMeans: narrowInEffectMeans(face, notNarrowed, narrowingInEffect),
+    narrowing: { type, narrowed: face.narrowed === true, reason: face.reason, expected: face.allow, members: applied.rows },
     members: ids, turn: step,
     note: narrowNoteOf(face, notNarrowed),
   }
@@ -4084,6 +4116,13 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
     // face carries its answer instead of letting the caller infer it from `source:"runtime"`.
     persistsAcrossRestart: receipt && receipt.persistsAcrossRestart === false ? false : null,
     persistsAcrossRestartMeans: receipt && typeof receipt.persistsAcrossRestartMeans === 'string' ? receipt.persistsAcrossRestartMeans : null,
+    // ★★ RUN 166 (real machine, run 14 / FEEDBACK14 F2): each member turn runs its OWN kernel instance over the same
+    // workspace, so a runtime write is not shared with them. Raised in the office, `vmu.records.head.maxItems` looked
+    // applied (`applied:"immediate"`) while a member kernel kept its own cap and kept refusing `VMU_QUOTA_EXCEEDED`. These
+    // two fields carry the kernel's own scope answer, and for a CAPACITY key they name the repair every instance sees.
+    crossKernelScope: receipt && typeof receipt.crossKernelScope === 'string' ? receipt.crossKernelScope : null,
+    crossKernelMeans: receipt && typeof receipt.crossKernelMeans === 'string' ? receipt.crossKernelMeans : null,
+    capacityScopeMeans: receipt && typeof receipt.capacityScopeMeans === 'string' ? receipt.capacityScopeMeans : null,
     receipt }
 }
 

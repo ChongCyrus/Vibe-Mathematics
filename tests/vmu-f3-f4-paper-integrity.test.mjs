@@ -86,11 +86,12 @@ console.log('§1 单人论文：不能自审，也不能以"全体一致"定稿 
   flow.recordPart({ target: T, member: 'r-1', title: '唯一的部分', solution: '解法正文', evidence: ['r-1 的证据'] })
 
   const adv1 = flow.advance({ target: T })
-  ok(adv1.to === 'reviewing' && adv1.reviewOf['r-1'] === 'r-1',
-    '前提（缺陷的入口）：单人论文的 reviewOf 指回作者本人 —— 这正是自审的来源', adv1 && adv1.reviewOf)
+  ok(adv1.to === 'reviewing' && Object.keys(adv1.reviewOf || {}).length === 0 && (adv1.notRequired || []).includes('r-1'),
+    '★ F6：单人论文不再被派一个「自己审自己」的对象 —— 没有别的作者可指派，作者被记为 exempt（这是缺陷入口被关掉，而不是绕过闸）',
+    adv1 && { reviewOf: adv1.reviewOf, notRequired: adv1.notRequired })
 
   let selfReview = null
-  try { flow.recordReview({ target: T, member: 'r-1', deliverable: true }) } catch (e) { selfReview = e }
+  try { flow.recordReview({ target: T, member: 'r-1', of: 'r-1', deliverable: true }) } catch (e) { selfReview = e }
   ok(selfReview && selfReview.code === 'VMU_INVALID_ARGUMENT',
     '★ F3a 正：自审被具名拒（VMU_INVALID_ARGUMENT —— 没有更贴切的内核码，也不新造码）', selfReview && selfReview.code)
   ok(selfReview && /a paper part cannot be reviewed by its author/.test(String(selfReview.message)) && /不能评审自己写的部分/.test(String(selfReview.message)),
@@ -99,35 +100,35 @@ console.log('§1 单人论文：不能自审，也不能以"全体一致"定稿 
     '★ hint 给出确切的修复：让另一位参与者评审 / start 时至少要两位参与者', selfReview && selfReview.hint)
   ok(rowsOfKind(rows, 'paper-review').length === 0, '★ 自审被拒发生在写入之前：没有任何 review 记录（拒不是"记下再抱怨"）')
 
-  const walked = flow.pass({ target: T, maxSteps: 8 })
-  const stateNow = flow.state(T).state
-  ok(walked.moved === true && stateNow.status === 'awaiting-editor' && stateNow.forcedAfterCap === true,
-    '★ 它走到 awaiting-editor 的路是"轮次上限强制"（forcedAfterCap），不是全体一致', { status: stateNow.status, forcedAfterCap: stateNow.forcedAfterCap })
-  const reviewsNow = stateNow.reviews && typeof stateNow.reviews === 'object' ? Object.keys(stateNow.reviews) : []
-  ok(reviewsNow.length === 0, '★ 到这一步仍然没有任何互审记录（互审从未发生，不是"发生了一次自审"）', reviewsNow)
+  // ★★ RUN 167 (FEEDBACK14 F6): 这一轮把「单人论文靠轮次上限走到 awaiting-editor、再在 final 被拒」这条旧路关掉了 ——
+  // 它不是一条「可接受的路」，而是一条「先放过去再在门口拒」的债权。advance 现在就在互审闸上具名拒，状态留在 reviewing。
+  let crossErr = null
+  try { flow.advance({ target: T }) } catch (e) { crossErr = e }
+  ok(crossErr && crossErr.code === 'VMU_INVALID_ARGUMENT',
+    '★★ F3a 正（互审闸）：单人论文在 advance 上就被具名拒（不再靠轮次上限放行）', crossErr && crossErr.code)
+  ok(crossErr && /一位参与者的论文无法通过互审/.test(String(crossErr.message)) && /a paper with one participant cannot pass 互审/.test(String(crossErr.message)),
+    '★★ 拒的名字就是缺失的那一半："一位参与者的论文无法通过互审"（中英各一）', crossErr && crossErr.message)
+  ok(crossErr && Array.isArray(crossErr.crossReviewers) && crossErr.crossReviewers.length === 0 && crossErr.required === 2,
+    '★ 拒回执带机器可读事实：crossReviewers=[]，required=2', crossErr && { crossReviewers: crossErr.crossReviewers, required: crossErr.required })
+  ok(crossErr && /participants 至少两位/.test(String(crossErr.hint)), '★ hint 给出确切的修复：start 的 participants 至少两位', crossErr && crossErr.hint)
 
   const stateRow = [...rows.values()].find((r) => r && r.kind === 'paper-state')
   ok(!!stateRow, '前提：状态记录在册（下面比较"拒前/拒后"的正文）')
   const bodyBefore = stateRow && stateRow.body
-
-  let finalErr = null
-  try { await flow.recordFinal({ target: T, member: 'acad', decision: 'deliverable' }) } catch (e) { finalErr = e }
-  ok(finalErr && finalErr.code === 'VMU_INVALID_ARGUMENT',
-    '★★ F3a 正（定稿）：单人论文在 final 被具名拒，不是静默 unanimous', finalErr && finalErr.code)
-  ok(finalErr && /一位参与者的论文无法通过互审/.test(String(finalErr.message)) && /a paper with one participant cannot pass 互审/.test(String(finalErr.message)),
-    '★★ 拒的名字就是缺失的那一半："一位参与者的论文无法通过互审"（中英各一）', finalErr && finalErr.message)
-  ok(finalErr && Array.isArray(finalErr.crossReviewers) && finalErr.crossReviewers.length === 0 && finalErr.required === 2,
-    '★ 拒回执带机器可读事实：crossReviewers=[]，required=2', finalErr && { crossReviewers: finalErr.crossReviewers, required: finalErr.required })
-  ok(finalErr && /participants 至少两位/.test(String(finalErr.hint)), '★ hint 给出确切的修复：start 的 participants 至少两位', finalErr && finalErr.hint)
-
-  const after = flow.state(T).state
-  ok(after.status === 'awaiting-editor' && (after.final === null || after.final === undefined),
-    '★★ "什么都没写"：拒后状态仍是 awaiting-editor，没有被标成 finalized', { status: after.status, final: after.final })
+  const stateNow = flow.state(T).state
+  ok(stateNow.status === 'reviewing' && !stateNow.forcedAfterCap,
+    '★★ 拒后状态仍是 reviewing、没有 forcedAfterCap（被放行到編集环节这件事不再发生）', { status: stateNow.status, forcedAfterCap: stateNow.forcedAfterCap })
   ok(stateRow && stateRow.body === bodyBefore, '★★ 拒发生在任何写入之前：状态记录正文逐字未变')
   ok(rowsOfKind(rows, 'paper-md').length === 0 && rowsOfKind(rows, 'paper-tex').length === 0,
     '★ 没有写出任何 md/tex 产物（拒就是拒，不是"先写再拒"）')
-}
 
+  let finalErr = null
+  try { await flow.recordFinal({ target: T, member: 'acad', decision: 'deliverable' }) } catch (e) { finalErr = e }
+  ok(finalErr && /^VMU_/.test(String(finalErr.code)),
+    '★★ F3a 正（定稿）：单人论文也绝不可能以"全体一致"定稿（定稿面在状态闸上具名拒，不会静默 unanimous）', finalErr && { code: finalErr.code, message: String(finalErr.message).slice(0, 120) })
+  ok(rowsOfKind(rows, 'paper-md').length === 0 && rowsOfKind(rows, 'paper-tex').length === 0,
+    '★★ 定稿被拒后仍然没有任何产物（拒就是拒）')
+}
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 console.log('§2 双人论文：交叉互审被接受、自审被拒、定稿成功（成功路径不许被修坏）')
 {

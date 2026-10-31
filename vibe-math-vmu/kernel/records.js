@@ -265,6 +265,15 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     // ★ ROUND 68 (F-61): how many rows this instance adopted from the durable fold WITHOUT the row saying who wrote it.
     // The count exists so "owner is null" can be distinguished from "this instance never adopted the row at all".
     adoptedNoAuthor: 0,
+    // ★★ RUN 166 (real machine, run 14 / FEEDBACK14 F1+F3+F4 — THE PRUNE ONLY ONE KERNEL COULD SEE): the fold used to
+    // carry LIVE rows only, because the snapshot was computed from `list()` (state === 'live'). A prune therefore moved
+    // rows to the trash in ONE instance and left every other instance convinced they were still live: the office saw
+    // paper 20/200 while a member session saw 200/200 and got `VMU_QUOTA_EXCEEDED`, and — worse — the pruned names stayed
+    // occupied in the member's world, so a freshly minted `paper-p1` collided with a paper the office had just trashed
+    // (F4) and a minted `m33` resolved to an archived meeting (F3). The fold now carries the row's STATE: a tombstone is
+    // a row with `state:'trashed'` + `trashedAt`/`purgeAt`, so a trash made anywhere is learned everywhere on the next
+    // read. These counters keep the adoption visible instead of silent.
+    trashAdopted: 0, trashRestored: 0, tombstonesSeen: 0, staleTombstones: 0,
     lastWhy: null, lastDetail: null, lastPullAt: null, lastSyncAt: null,
   }
 
@@ -690,6 +699,29 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       return { ok: true, items, heads: items.map((x) => x.id), count: items.length, available: live.length, dropped, truncated: dropped > 0, suppressed: false, fields: chosen, sort: headSort, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'the head list is the default information channel (docs/07 §4.4); truncation is COUNTED, never silent' }
     },
 
+    /**
+     * ★★ RUN 166 (FEEDBACK14 F1/F3/F4): THE TRASH AS ROWS THE FOLD CAN CARRY. A trash used to live only in the instance
+     * that performed it (`records.list` returns live rows, so the durable snapshot never mentioned the trashed ones). One
+     * `state.json` is mounted by SEVERAL kernels (docs/02), so that made the trash instance-local: the office pruned the
+     * paper track to 20 and a member kernel still answered `200/200` with `VMU_QUOTA_EXCEEDED`, and the names of the rows
+     * the office had just trashed stayed occupied in the member's world (a minted `paper-p1` landed on an old paper, a
+     * minted `m33` resolved to an archived meeting). These rows travel with the snapshot: `state:'trashed'` plus
+     * `trashedAt`/`purgeAt`, so every kernel learns the same trash on its next read. They are NOT live records: a reader
+     * that wants count/佔用 asks `list()`/`status()`, and an adopter never turns a tombstone into a live row.
+     */
+    trashRows({ track = null } = {}) {
+      synchronize('trash-rows')
+      const out = []
+      for (const id of [...new Set(order)]) {
+        const rec = records.get(id)
+        if (!rec || rec.state !== 'trashed') continue
+        if (track !== null && rec.track !== track) continue
+        out.push({ id: rec.id, track: rec.track, kind: rec.kind, title: rec.title, body: rec.body, tags: rec.tags.slice(),
+          by: rec.by, state: 'trashed', trashedAt: rec.trashedAt, purgeAt: rec.purgeAt })
+      }
+      return out
+    },
+
     /** Supersede (a new revision). A reason is mandatory; the versioning knobs shape what is stored. */
     supersede({ id, reason = null, by = null, title = null, body = null, tags = null } = {}) {
       synchronize('supersede')   // ★ ROUND 36: same reason as put — this one is snapshotted too, so its view must be the root's
@@ -750,6 +782,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       rec.state = 'trashed'
       rec.trashedAt = now()
       rec.purgeAt = rec.trashedAt + trashRetainDays * DAY_MS
+      rec.restoredAt = null
       counters.trashed += 1
       record_({ type: 'records/trashed', id: rec.id, purgeAt: rec.purgeAt, why: reason, by })
       fire('records/trashed', { id: rec.id, purgeAt: rec.purgeAt })
@@ -793,9 +826,24 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       rec.state = 'live'
       rec.trashedAt = null
       rec.purgeAt = null
+      rec.restoredAt = now()
+      // ★★ RUN 166: A RESTORE HAS TO REJOIN THE INDEXES IT LEFT. `remove` only flips the state, but ADOPTING a trash from
+      // the durable fold deletes the `bySlug`/`byFingerprint` entries, and a listing walks `order`/`trackList`. Before
+      // this, a restored row was live in the map and absent from every listing: `restore` returned
+      // `{ok:true, state:'live'}` while `list` still counted one row — a receipt that described an object no reader could
+      // reach. Idempotent by construction (`includes`/`Map.set`), so a double restore is harmless.
+      if (!order.includes(rec.id)) order.push(rec.id)
+      const trackArr = trackList(rec.track)
+      if (!trackArr.includes(rec.id)) trackArr.push(rec.id)
+      let slugIdx = bySlug.get(rec.track)
+      if (!slugIdx) { slugIdx = new Map(); bySlug.set(rec.track, slugIdx) }
+      if (rec.slug) slugIdx.set(rec.slug, rec.id)
+      let fpIdx = byFingerprint.get(rec.track)
+      if (!fpIdx) { fpIdx = new Map(); byFingerprint.set(rec.track, fpIdx) }
+      if (rec.fingerprint) fpIdx.set(rec.fingerprint, rec.id)
       counters.restored += 1
-      record_({ type: 'records/restored', id: rec.id, by })
-      return { ok: true, id: rec.id, state: 'live', enforced: [], enforcedScope: ENFORCED_SCOPE, fired: [] }
+      record_({ type: 'records/restored', id: rec.id, by, restoredAt: rec.restoredAt })
+      return { ok: true, id: rec.id, state: 'live', restoredAt: rec.restoredAt, enforced: [], enforcedScope: ENFORCED_SCOPE, fired: [] }
     },
 
     /**
@@ -1004,6 +1052,47 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       if (!id || !row.track || !row.kind) continue         // a malformed row is skipped, never invented into a record
       const held = records.get(id)
       if (held) {
+        // ★★ RUN 166 (FEEDBACK14 F1/F3/F4): A TRASH MADE ELSEWHERE IS A CHANGE THIS INSTANCE MUST LEARN. The fold is the
+        // only meeting point of several kernels, so a tombstone in it is the ONE durable statement that a row stopped
+        // being live. Before this, the local copy stayed 'live' forever: the member kernel kept counting 200/200 paper
+        // rows after the office had pruned to 20, and the name of a trashed row stayed taken in that instance — which is
+        // how a freshly minted `paper-p1` landed on an old paper and a minted `m33` resolved to an archived meeting.
+        const rowTrashed = row.state === 'trashed'
+        const heldTrashed = held.state === 'trashed'
+        if (rowTrashed && !heldTrashed) {
+          // ★★ RUN 166: A STALE TOMBSTONE MUST NOT UNDO A REPAIR. The fold is written asynchronously, so a read that
+          // happens right after `restore` can still see the trash note the prune wrote. Adopting it re-trashed the row
+          // the caller had just restored and the receipt had just called live — the repair silently reversed itself.
+          // The local `restoredAt` is the newer statement, so a tombstone older than it is skipped and COUNTED.
+          const restoredAt = Number(held.restoredAt || 0)
+          const trashedAt = Number(row.trashedAt || 0)
+          if (restoredAt > 0 && trashedAt > 0 && trashedAt <= restoredAt) {
+            shared.staleTombstones += 1
+            continue
+          }
+          const fpIdx = byFingerprint.get(held.track)
+          if (fpIdx && held.fingerprint) fpIdx.delete(held.fingerprint)
+          const slugIdx = bySlug.get(held.track)
+          if (slugIdx && held.slug) slugIdx.delete(held.slug)
+          held.state = 'trashed'
+          held.trashedAt = Number.isFinite(Number(row.trashedAt)) ? Number(row.trashedAt) : now()
+          held.purgeAt = Number.isFinite(Number(row.purgeAt)) ? Number(row.purgeAt) : null
+          held.by = row.by !== undefined && row.by !== null ? String(row.by) : held.by
+          shared.trashAdopted += 1
+          continue
+        }
+        if (!rowTrashed && heldTrashed) {
+          // a RESTORE elsewhere is the reverse statement: the fold says the row is live again, so this copy rejoins.
+          held.state = 'live'
+          held.trashedAt = null
+          held.purgeAt = null
+          const fpIdx = byFingerprint.get(held.track)
+          if (fpIdx && held.fingerprint) fpIdx.set(held.fingerprint, held.id)
+          const slugIdx = bySlug.get(held.track)
+          if (slugIdx && held.slug) slugIdx.set(held.slug, held.id)
+          shared.trashRestored += 1
+          continue
+        }
         // ★ LIVE RUN 129 (F-129a): A BODY REWRITE IS A CHANGE. The signature used to be the SET of row ids, so a row
         // another kernel REWROTE (supersede keeps the id) never reached this loop: the office's adopt read the draft as
         // it stood when this instance first saw it, so the co-design author the member kernel had just added was absent
@@ -1031,6 +1120,13 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           refreshed += 1
         }
         continue                                            // ★ never DELETE what this instance knows; a newer body is adopted above
+      }
+      if (row.state === 'trashed') {
+        // ★★ RUN 166: a TOMBSTONE is not a record to adopt — it says a row this instance does not hold is (still) not
+        // live. Adopting it as a live row would be the very resurrection the tombstone exists to prevent; adopting it as
+        // a local trash row would invent an object this instance never had. It is COUNTED and skipped.
+        shared.tombstonesSeen += 1
+        continue
       }
       try {
         // ★ ROUND 68 (F-61): AN UNKNOWN AUTHOR IS NOT A NAME. This used to fall back to the literal `'restore'`, so an
@@ -1064,7 +1160,10 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   /** What a stored row SAYS (a supersede keeps id AND rev: only the content tells a rewrite from the row it replaced). */
   function rowContentStamp(row) {
     const parts = [row && row.track, row && row.kind, row && row.title, row && row.body, row && row.by,
-      Array.isArray(row && row.tags) ? (row.tags.join('')) : (row && row.tags)]
+      Array.isArray(row && row.tags) ? (row.tags.join('')) : (row && row.tags),
+      // ★★ RUN 166: the row's STATE travels in the fold, so it is part of what "the stored row says". Without it a row
+      // trashed by another kernel looked unchanged (same title/body/by) and the adoption loop above could never fire.
+      row && row.state, row && row.trashedAt, row && row.purgeAt]
     return parts.map((v) => (v === undefined || v === null ? '' : String(v))).join('')
   }
 
@@ -1084,6 +1183,14 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       scopeMeans: 'these counters belong to THIS kernel: they count the folds THIS process has performed. Another kernel over the same store folds its own copy, so two kernels may legitimately report different `pulls`/`adoptedWithoutAuthor` for the same durable ledger — the shared fact is the store key, not this number',
       adoptedWithoutAuthor: shared.adoptedNoAuthor,
       adoptedWithoutAuthorMeans: 'rows adopted from the durable fold whose row did not name its writer: their `owner` reads null because the ROW did not say, not because nobody wrote it. This counter is the difference between that reading and no adoption at all',
+      trashAdopted: shared.trashAdopted,
+      trashAdoptedMeans: 'rows THIS instance was holding live that another kernel moved to the TRASH: the tombstone travelled in the fold and this copy stopped counting them as live (pruning in one member turn frees the slot in every other turn)',
+      trashRestored: shared.trashRestored,
+      trashRestoredMeans: 'rows THIS instance was holding trashed that another kernel RESTORED: the fold said live again and this copy rejoined',
+      tombstonesSeen: shared.tombstonesSeen,
+      tombstonesSeenMeans: 'tombstones for ids this instance never held: counted so a reader can tell "nothing was pruned" from "nothing I know about was pruned"',
+      staleTombstones: shared.staleTombstones,
+      staleTombstonesMeans: 'tombstones OLDER than this instance own restore of the same row: skipped, because undoing a repair the caller just made is not learning, it is losing the repair',
       lastWhy: shared.lastWhy, lastDetail: shared.lastDetail, lastPullAt: shared.lastPullAt, lastSyncAt: shared.lastSyncAt,
     }
   }

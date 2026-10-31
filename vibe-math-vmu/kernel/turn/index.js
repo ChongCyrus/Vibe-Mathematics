@@ -219,7 +219,13 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     // and NO face ever did. A promise with no caller is the same class of lie as a mechanism with no consumer, so the
     // text now states the limit plainly and says what would change it (a turn bound to a meeting).
     windowMeans: meetingId === null
-      ? 'the votes map lives for as long as this orchestrator does, so the closure reading spans the SESSION: it is not per-round and it cannot name a meeting. No current face binds a turn to a meeting, so window:"meeting" is not reachable from the tool surface yet; a reading computed for a named meeting is labelled as such when that binding exists'
+      // ★★ RUN 167 (run 14 / FEEDBACK14 F9): `missing` WAS READ AS "these members did not vote". Each member turn runs in its
+      // OWN session with its own orchestrator, so a member saw `votesCast:1, missing:["r-1","r-2"]` while the office, which
+      // drove all three votes in one session, saw `votesCast:3, missing:[]` — two honest, incompatible readings, and the
+      // field NAME invited the wrong conclusion. The vote map is not shared state; it belongs to the session, and the
+      // sentence now says so in the SAME field that explains the window (one reading, one explanation — this face has a
+      // size pin, docs/17).
+      ? 'the votes map lives as long as this orchestrator, so this reading spans the SESSION (not per-round, cannot name a meeting). `missing` means "not seen in THIS session", NOT "did not vote": votes cast in another session are invisible here'
       : 'this reading was computed for the named meeting',
     cast,
     // ★ LIVE RUN 7 (agent feedback item j): `cast` READS like "the votes were cast", but this predicate is "closure was
@@ -239,6 +245,13 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     for: forIt,
     against,
     missing,
+    // ★★ RUN 167 (real machine, run 14 / FEEDBACK14 F9): `missing` IS THIS ORCHESTRATOR'S BLIND SPOT, NOT A RECORD THAT
+    // THE MEMBER DID NOT VOTE. Measured: each member turn runs in its OWN session with its own orchestrator, so a member
+    // reading the closure view saw `votesCast:1` and `missing:["r-1","r-2"]` while the office — which drove all three
+    // votes through one session — saw `votesCast:3, missing:[]`. Both readings were honest and incompatible, and the field
+    // NAME invited the wrong conclusion ("they have not voted"). The vote map is not shared state, so the reading now says
+    // what it can see, and a separate field says whether the institute-wide count is known here (it is not).
+    scope: meetingId === null ? 'this-session' : 'meeting:' + String(meetingId),
     eligible: enfranchised,
     permission,
     reason: cast

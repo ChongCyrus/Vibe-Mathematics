@@ -84,22 +84,27 @@ console.log('§1 F3 — self-review is refused BY NAME (the author is not a seco
 }
 
 // ── §2 F3 — a one-participant paper cannot be finalised as "cross-reviewed" ───────────────────────────────────────
-console.log('§2 F3 — a single participant reaches the editor through the round cap, and finalise still refuses')
+console.log('§2 F3 — a single participant is refused at the cross-review gate, before any editor round')
 {
   const T = 'single-member'
   await paper.start({ target: T, participants: ['r-1'] })
   await paper.recordPart({ target: T, member: 'r-1', title: '唯一的正文', solution: '一个人写的。', evidence: ['r-1 的命题卡'] })
-  const st = await toAwaitingEditor(T)
-  ok(st.status === 'awaiting-editor', 'the flow really reaches awaiting-editor (the cap route, not a skipped stage)', st.status)
-  ok(st.forcedAfterCap === true, 'the receipt marks the forced path (capped:true is not hidden)', st.forcedAfterCap)
+  await paper.advance({ target: T })
+  // ★★ RUN 167 (FEEDBACK14 F6): 旧写法是「靠轮次上限走到 awaiting-editor，再在 final 拒」。那不是一条合法的路：
+  // 它把「没有人互审」变成「编辑器环节的债权」。现在推进到互审闸就具名拒，状态留在 reviewing。
+  const finGate = await thrown(() => paper.advance({ target: T }))
+  ok(finGate.code === 'VMU_INVALID_ARGUMENT', 'the cross-review gate refuses with VMU_INVALID_ARGUMENT', finGate)
+  ok(/一位参与者的论文无法通过互审/.test(finGate.message) && /自审/.test(finGate.message),
+    'the message names the one-participant self-review hole', finGate.message)
+  ok(finGate.error && finGate.error.required === 2, 'the refusal carries required:2 (how many distinct reviewers are required)',
+    finGate.error && finGate.error.required)
+  ok(finGate.error && Array.isArray(finGate.error.participants) && finGate.error.participants.length === 1,
+    'the refusal carries the participant list it judged', finGate.error && finGate.error.participants)
+  const st = paper.state(T).state
+  ok(st.status === 'reviewing' && st.forcedAfterCap !== true,
+    'the paper is still in reviewing and was NOT force-moved to the editor (no cap route)', { status: st.status, forcedAfterCap: st.forcedAfterCap })
   const fin = await thrown(() => paper.recordFinal({ target: T, member: 'r-chair', decision: 'deliverable', note: '定稿' }))
-  ok(fin.code === 'VMU_INVALID_ARGUMENT', 'finalise is refused with VMU_INVALID_ARGUMENT', fin)
-  ok(/一位参与者的论文无法通过互审/.test(fin.message) && /自审/.test(fin.message),
-    'the message names the one-participant self-review hole', fin.message)
-  ok(fin.error && fin.error.required === 2, 'the refusal carries required:2 (how many distinct reviewers are required)',
-    fin.error && fin.error.required)
-  ok(fin.error && Array.isArray(fin.error.participants) && fin.error.participants.length === 1,
-    'the refusal carries the participant list it judged', fin.error && fin.error.participants)
+  ok(/^VMU_/.test(String(fin.code)), 'finalise is still refused while the paper never passed 互审', fin.code)
 }
 
 // ── §3 F3 — one recorded reviewer is not two: finalise says how many it needs ─────────────────────────────────────
@@ -112,8 +117,8 @@ console.log('§3 F3 — a paper with only ONE distinct cross-reviewer is refused
   await paper.advance({ target: T })
   await paper.recordReview({ target: T, member: 'r-1', of: 'r-2', deliverable: true })
   await paper.recordReview({ target: T, member: 'r-2', of: 'r-1', deliverable: false, comments: '还缺一步' })
-  // Walk to the cap; in the LAST reviewing round only r-1 files a deliverable review, so exactly ONE distinct
-  // cross-reviewer is on record when the editor is asked to finalise.
+  // 轮次上限是合法的收尾路（规则 53：轮数由院士定，写死上限会死循环）；它到 awaiting-editor 时 refusers 是记着的，
+  // 而 final 仍然要过互审闸 —— 这里测的是后者：一个 cross reviewer 不是两个。
   const st = await toAwaitingEditor(T, {
     onReviewing: async (inner) => {
       if (inner.round === 3) await paper.recordReview({ target: T, member: 'r-1', of: 'r-2', deliverable: true })

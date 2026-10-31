@@ -140,15 +140,44 @@ export function createPaperFlow({
   // the very same body compiled fine under an ASCII name — so a legal Chinese title could make the compiler unreachable.
   // The TITLE is still the title (rows are titled by it and every action still addresses the paper by it); the durable
   // ID and the folder are now ASCII: a portable target keeps `paper-<target>`, anything else is minted `paper-pN`.
+  // ★★ RUN 167 (real machine, run 14 / FEEDBACK14 F4): A TRASHED PAPER STILL HOLDS ITS NAME. Measured: the office pruned
+  // the paper track (RUN 165's repair) and then started `target:"p1"`, which mints the id `paper-p1`; the OLD `paper-p1`
+  // was in the TRASH — restorable until its purgeAt — and the member kernel that still held it answered `paper-p1` with
+  // the OLD paper while the office's receipt printed the new one. ONE NAME, TWO OBJECTS. A name in the trash is RESERVED,
+  // not free: minting steps past it and an explicit portable target whose id is held refuses BY NAME.
+  const trashedPaperRows = () => {
+    let rows = []
+    try { rows = typeof records.trashRows === 'function' ? records.trashRows({ track: TRACK }) : [] } catch { rows = [] }
+    return Array.isArray(rows) ? rows : []
+  }
+  const trashedStateRows = () => trashedPaperRows().filter((r) => /\|state$/.test(String((r && r.title) || '')))
+  const bodyOfTrashRow = (row) => {
+    if (!row) return null
+    if (row.body !== undefined) { try { return JSON.parse(String(row.body)) } catch { return null } }
+    return null
+  }
+  /** The trashed paper (state row body) that already denotes this id or this target, or null. */
+  const trashedNamesake = (id, target) => {
+    for (const row of trashedStateRows()) {
+      const b = bodyOfTrashRow(row)
+      if (b && (String(b.id) === String(id) || String(b.target) === String(target))) return { id: String(b.id), target: String(b.target), recordId: row.id, purgeAt: row.purgeAt === undefined ? null : row.purgeAt }
+    }
+    return null
+  }
   const mintPaperId = () => {
     const used = new Set()
     for (const row of stateRows()) {
       const st = stateOfRow(row)
       if (st && st.id) used.add(String(st.id))
     }
+    // the trash is part of the name space: a restorable row's id is not available to a new paper
+    for (const row of trashedStateRows()) {
+      const st = bodyOfTrashRow(row)
+      if (st && st.id) used.add(String(st.id))
+    }
     for (let n = 1; n <= 999; n += 1) {
       const cand = 'paper-p' + String(n)
-      if (!used.has(cand) && !rowByTitle(recordName('p' + String(n), 'state'))) return cand
+      if (!used.has(cand) && !rowByTitle(recordName('p' + String(n), 'state')) && !trashedNamesake(cand, 'p' + String(n))) return cand
     }
     throw refuse(CODES.STATE, 'could not mint an unused paper id',
       'start the paper with an explicit target (target:"p12") so its id is portable by construction')
@@ -512,6 +541,16 @@ export function createPaperFlow({
     const targetWord = str(target)
     const asciiSafe = PORTABLE_TARGET.test(targetWord)
     const plateId = asciiSafe ? 'paper-' + targetWord : mintPaperId()
+    // ★★ RUN 167 (FEEDBACK14 F4): the portable-target id is not mints-only — it is DERIVED, so it can collide with a paper
+    // the trash still holds. Naming the collision is the repair: a target that means two papers is the defect, not a
+    // refusal to fix.
+    const held = trashedNamesake(plateId, targetWord)
+    if (held) {
+      throw refuse(CODES.STATE,
+        'the durable ledger still holds ' + held.id + ' in the TRASH (target "' + held.target + '", restorable until ' + String(held.purgeAt) + '), so a new paper cannot take that name',
+        'start the paper under a different target, or purge the trash first (vibe_vmu_records { action: "prune" } frees slots, but a trashed paper is restorable until purgeAt — until then its NAME is reserved)',
+        { requestedId: plateId, requestedTarget: targetWord, trash: held })
+    }
     const state = {
       id: plateId, target: targetWord, title: str(title) || targetWord, status: 'writing', stage: 'writing', round: 1,
       participants: list, editor: editorName, lang: lang === 'en' ? 'en' : 'zh',
@@ -554,7 +593,7 @@ export function createPaperFlow({
     if (state.status !== 'writing') throw refuse(CODES.STATE, 'the paper is not in its writing stage (now: ' + state.status + ')', 'the reachable repair is the editor sending it back: vibe_v5_paper { action: "final", target: "' + state.target + '", member: "<the member in the chair seat>", decision: "revise", note: "<what to fix>" } turns it back to writing (a request to "advance it back" is not a move this flow can take); after that the part can be recorded again')
     if (!state.participants.includes(str(member))) throw refuse('VMU_NO_SUCH_OBJECT', str(member) + ' is not a writing participant of this paper', 'participants: ' + state.participants.join(', '))
     const part = {
-      member: str(member), round: state.round, title: str(title).slice(0, 300),
+      target: str(state.target), member: str(member), round: state.round, title: str(title).slice(0, 300),
       solution: str(solution).slice(0, 20000), methods: str(methods).slice(0, 20000),
       rules: str(rules).slice(0, 12000), limits: str(limits).slice(0, 12000),
       evidence: Array.isArray(evidence) ? evidence.map(String).slice(0, 50) : [],
@@ -596,26 +635,35 @@ export function createPaperFlow({
     const want = recordName(state.target, 'review|' + member)
     let rows = []
     try { const got = records.list({ track: TRACK, limit: 2000 }); rows = Array.isArray(got.items) ? got.items : [] } catch { return null }
-    const row = rows.filter((r) => String(r.title) === want).sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0] || null
+    // ★★ RUN 167: every round writes a row with the SAME title (target + 'review|<member>'), so "newest" cannot be
+    // decided by updatedAt alone — a fixed clock (test fixtures) or a fast turn stamps several rows with one millisecond,
+    // the tie fell to ARRAY ORDER (oldest round first) and the cross-review gate read round 1's verdict while the paper
+    // stood in round 3, counting zero crossers. Tie-break on the id number: ids are minted strictly increasing.
+    const idNum = (v) => Number((String(v || '').match(/(\d+)$/) || [])[1] || 0)
+    const row = rows.filter((r) => String(r.title) === want)
+      .sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) || (idNum(b.id) - idNum(a.id)))[0] || null
     if (!row) return null
     let body = null
     try { const g = records.get({ id: row.id }); const full = g && g.record ? g.record : g; body = JSON.parse(String((full && full.body) || '{}')) } catch { return null }
     if (!body || String(body.member) !== String(member)) return null
     return { recordId: row.id, body }
   }
-  /** The durable review row for one member in THIS round, or null (the same row `advance` reads: `paper-review`
-   *  titled `v5r-paper|<target>|review|<member>`, newest first). Used when the state's `reviews` CACHE is missing
-   *  what the record already holds — two faces must not disagree about whether a review happened. */
-  function reviewRowOf(state, member) {
-    const want = recordName(state.target, 'review|' + member)
-    let rows = []
-    try { const got = records.list({ track: TRACK, limit: 2000 }); rows = Array.isArray(got.items) ? got.items : [] } catch { return null }
-    const row = rows.filter((r) => String(r.title) === want).sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0] || null
-    if (!row) return null
-    let body = null
-    try { const g = records.get({ id: row.id }); const full = g && g.record ? g.record : g; body = JSON.parse(String((full && full.body) || '{}')) } catch { return null }
-    if (!body || String(body.member) !== String(member)) return null
-    return { recordId: row.id, body }
+  /** ★★ RUN 167 (real machine, run 14 / FEEDBACK14 F6): WHO a member may review is a FACT about the parts, not a
+   *  rotation over the participant list. Measured: `advance` assigned `reviewOf` by rotating the PARTICIPANT list, so a
+   *  member who had written no part was named as somebody's review target (the reviewer had nothing to read), and a
+   *  member whose target had no part was counted as a REFUSER — which sent the paper back to writing, bumped the round
+   *  and invalidated the review that HAD been filed. The paper needed three rounds to reach awaiting-editor for a reason
+   *  that was never about the mathematics. The assignment below only names a member who actually authored a part this
+   *  round, and a member with no such author to review is EXEMPT (reported, never silently counted as a refusal). */
+  function reviewTargetFor(state, member) {
+    const me = str(member)
+    const participants = Array.isArray(state && state.participants) ? state.participants.map(String) : []
+    const parts = (state && state.parts) || {}
+    const authors = participants.filter((id) => !!parts[id])
+    const others = authors.filter((id) => id !== me)
+    if (others.length === 0) return null
+    const idx = Math.max(0, participants.indexOf(me))
+    return others[idx % others.length]
   }
   function crossReviewers(state, { deliverableOnly = false } = {}) {
     const out = []
@@ -657,9 +705,30 @@ export function createPaperFlow({
    * unanimous — that is the defect this refuses. The refusal names the missing half and the exact repair.
    */
   function requireCrossReview(state, where) {
-    const crossers = crossReviewers(state, { deliverableOnly: true })
-    if (crossers.length >= 2) return crossers
     const participants = state.participants.slice()
+    // ★★ RUN 167 (FEEDBACK14 F6): THE COUNT WAS THE WRONG QUESTION. This gate used to require TWO cross reviewers; with
+    // F6's assignment only the members who were given ANOTHER member's part owe a verdict, so a two-member paper in which
+    // ONE member wrote the only part can never produce two crossers: its one required reviewer files a deliverable
+    // review, the author is exempt, and `advance` still refused — the paper then burned rounds on a check it could not
+    // satisfy. The question is not "how many crossers" but "did everyone who was asked to review do it", plus the F3a
+    // floor (a paper nobody cross-reviewed never advances — one participant stays impossible by construction).
+    const assignedOther = (id) => { const a = state.reviewOf ? state.reviewOf[String(id)] : null; return !!a && str(a) !== str(id) }
+    const assigned = participants.filter((id) => assignedOther(id))
+    // ★★ RUN 167 F6 follow-up: a caller that scripts its reviews by hand (many of the older suites do) never goes through
+    // the writing→reviewing assignment, so `reviewOf` is empty and "required" would be empty too — that would let ANY
+    // scripted paper through. When there is no assignment on the record, the owed set is the participants who actually
+    // WROTE a part (their sections are what the cross review is for); with no parts at all the old floor stands.
+    const authored = participants.filter((id) => !!(state.parts && state.parts[String(id)]))
+    // Tier 3: a paper that carries no parts at all (the older suites drive `recordReview` straight after `start`) keeps
+    // the pre-F6 reading — every participant owes a cross review — because there is nothing to assign and no section to
+    // point `of` at. The single-participant floor is untouched: one participant can never produce a cross review.
+    const required = assigned.length > 0 ? assigned : (authored.length > 0 ? authored : participants)
+    const crossers = required.filter((id) => {
+      const found = reviewRowOf(state, id)
+      const b = (found && found.body) || null
+      return !!(b && Number(b.round) === Number(state.round) && b.deliverable === true && String(b.of || '') !== String(id))
+    })
+    if (required.length > 0 && crossers.length === required.length) return crossers
     // ★★ RUN 162: state BOTH readings, so a mismatch between the cache and the record is visible in the refusal
     // instead of presenting itself as "the members never reviewed" (run 10 lost an hour to exactly that).
     const onDisk = participants.filter((id) => {
@@ -667,6 +736,15 @@ export function createPaperFlow({
       const b = (found && found.body) || null
       return !!(b && Number(b.round) === Number(state.round) && b.deliverable === true && String(b.of || '') !== String(id))
     })
+    // ★★ RUN 167 F6: ONE participant is not a count problem, it is a shape problem — no assignment, and an `of`-less
+    // review cannot turn a paper reviewed by its only author into a cross-reviewed one. Refuse by name (with the facts a
+    // caller can act on) instead of letting it reach the editor through the round cap.
+    if (participants.length < 2) {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        '一位参与者的论文无法通过互审：只有 ' + participants.length + ' 位参与者（' + (participants.join('、') || '无') + '），他只能审自己的部分，互审因此是自审（a paper with one participant cannot pass 互审）',
+        '再邀请一位成员参与（start 的 participants 至少两位），并让另一位成员评审这个部分（review 的 of 指向别人的 part）；自审不算互审',
+        { where, participants, crossReviewers: crossers, reviewsOnDisk: onDisk, required: 2 })
+    }
     const message = participants.length < 2
       ? '一位参与者的论文无法通过互审：只有 ' + participants.length + ' 位参与者（' + (participants.join('、') || '无') + '），他只能审自己的部分，互审因此是自审（a paper with one participant cannot pass 互审）'
       : '互审必须由两位不同的、非该作者的成员完成：' + participants.length + ' 位参与者里只有 ' + crossers.length + ' 位审了别人的部分（' + (crossers.join('、') || '无') + '），其余选票没有评审对象，不能算全体一致'
@@ -693,7 +771,12 @@ export function createPaperFlow({
         '让另一位参与者评审这一部分（review 的 of 指向别人的 part）；要过互审，start 时至少要两位参与者',
         { member: str(member), of: ofId, participants: state.participants.slice() })
     }
-    const review = { member: str(member), of: ofId, round: state.round, deliverable: deliverable === true, comments: str(comments).slice(0, 8000) }
+    // ★★ RUN 167: the review row's body must NAME ITS PAPER. The default fingerprint policy is `content-only`
+    // (kind+body+tags, title excluded BY DESIGN), so two papers whose reviewers filed the same verdict on the same round
+    // produced byte-identical bodies: the second paper's review was deduplicated into the first paper's row and its own
+    // cross-review gate counted zero reviewers. The row's identity is the paper it reviews, so the paper id is part of
+    // the content.
+    const review = { target: str(state.target), member: str(member), of: ofId, round: state.round, deliverable: deliverable === true, comments: str(comments).slice(0, 8000) }
     const put = records.put({ track: TRACK, kind: 'paper-review', title: recordName(state.target, 'review|' + review.member), body: JSON.stringify(review), by: author })
     state.reviews[review.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, deliverable: review.deliverable, of: review.of, round: state.round }
     state.updatedAt = 1
@@ -707,10 +790,18 @@ export function createPaperFlow({
     if (state.status === 'writing') {
       if (state.participants.length === 0) throw refuse(CODES.STATE, 'no participants: nothing can be cross-reviewed', 'record at least one part and have a second participant')
       const reviewOf = {}
-      for (let i = 0; i < state.participants.length; i += 1) reviewOf[state.participants[i]] = state.participants[(i + 1) % state.participants.length]
+      const notRequired = []
+      for (const id of state.participants) {
+        const t = reviewTargetFor(state, id)
+        if (t === null) { notRequired.push(String(id)); continue }
+        reviewOf[String(id)] = t
+      }
       state.status = 'reviewing'; state.stage = 'reviewing'; state.reviewOf = reviewOf; state.reviews = {}
       writeState(state)
-      return { ok: true, moved: true, from: 'writing', to: 'reviewing', round: state.round, reviewOf }
+      return { ok: true, moved: true, from: 'writing', to: 'reviewing', round: state.round, reviewOf, notRequired,
+        notRequiredMeans: notRequired.length === 0
+          ? 'every participant has a part by another member to review'
+          : 'these participants have NO other member\'s part to review this round (' + notRequired.join(', ') + '): they are EXEMPT from the unanimity check (a member cannot review a section nobody wrote) — the paper does not need their verdict to advance' }
     }
     if (state.status === 'reviewing') {
       // ★★ RUN 154 (real machine, run 4 / FEEDBACK3 H1 — the worst one): two members filed `deliverable:true`, both
@@ -725,7 +816,13 @@ export function createPaperFlow({
         let rows = []
         try { const got = records.list({ track: TRACK, limit: 2000 }); rows = Array.isArray(got.items) ? got.items : [] } catch { rows = [] }
         // newest first: the head projection carries `updatedAt` (not `rev`), and a corrected review is re-put
-        const row = rows.filter((r) => String(r.title) === want).sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0] || null
+        // ★★ RUN 167: every round writes a row with the SAME title (target + 'review|<member>'), so "newest" cannot be
+    // decided by updatedAt alone — a fixed clock (test fixtures) or a fast turn stamps several rows with one millisecond,
+    // the tie fell to ARRAY ORDER (oldest round first) and the cross-review gate read round 1's verdict while the paper
+    // stood in round 3, counting zero crossers. Tie-break on the id number: ids are minted strictly increasing.
+    const idNum = (v) => Number((String(v || '').match(/(\d+)$/) || [])[1] || 0)
+    const row = rows.filter((r) => String(r.title) === want)
+      .sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) || (idNum(b.id) - idNum(a.id)))[0] || null
         if (!row) return { deliverable: false, comments: snap ? str(snap.comments) : '', source: 'none', recordId: null }
         let body = null
         try { const g = records.get({ id: row.id }); const full = g && g.record ? g.record : g; body = JSON.parse(String((full && full.body) || '{}')) } catch { body = null }
@@ -736,7 +833,11 @@ export function createPaperFlow({
         state.reviews[member] = { recordId: row.id, fingerprint: row.fingerprint || null, deliverable: body.deliverable === true, of: body.of, round: body.round, comments: str(body.comments) }
         return { deliverable: body.deliverable === true, comments: str(body.comments), source: 'durable', recordId: row.id }
       }
-      const verdicts = state.participants.map((id) => Object.assign({ member: id }, readReview(id)))
+      // ★★ RUN 167 (FEEDBACK14 F6): only a member whose reviewOf names ANOTHER participant's part owes a verdict.
+      const assignedOther = (id) => { const a = state.reviewOf ? state.reviewOf[String(id)] : null; return !!a && str(a) !== str(id) }
+      const required = state.participants.filter((id) => assignedOther(id))
+      const notRequired = state.participants.filter((id) => !assignedOther(id)).map(String)
+      const verdicts = required.map((id) => Object.assign({ member: id }, readReview(id)))
       const reviewsRead = verdicts.map((v) => ({ member: v.member, deliverable: v.deliverable === true, source: v.source, recordId: v.recordId || null }))
       const refusers = verdicts.filter((v) => v.deliverable !== true).map((v) => v.member)
       if (refusers.length === 0) {
@@ -746,7 +847,7 @@ export function createPaperFlow({
         requireCrossReview(state, 'advance')
         state.status = 'awaiting-editor'; state.stage = 'awaiting-editor'
         writeState(state)
-        return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true, reviewsRead }
+        return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true, reviewsRead, notRequired }
       }
       // The detail must state WHAT WAS READ, not a shrug: '未说明' was printed even when the member had filed a review
       // whose row was on disk (that is exactly how run 4's disagreement looked while the cards said deliverable:true).
@@ -760,7 +861,8 @@ export function createPaperFlow({
       if (state.round < roundsCap()) {
         state.round += 1; state.status = 'writing'; state.stage = 'writing'; state.reviews = {}
         writeState(state)
-        return { ok: true, moved: true, from: 'reviewing', to: 'writing', round: state.round, refusers, reviewsRead }
+        return { ok: true, moved: true, from: 'reviewing', to: 'writing', round: state.round, refusers, reviewsRead, notRequired,
+          notRequiredMeans: notRequired.length === 0 ? null : 'these participants were NOT counted as refusers: they have no other member\'s part to review (' + notRequired.join(', ') + ')' }
       }
       state.status = 'awaiting-editor'; state.stage = 'awaiting-editor'
       state.forcedAfterCap = true
