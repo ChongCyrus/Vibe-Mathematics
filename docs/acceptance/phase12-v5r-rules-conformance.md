@@ -12613,3 +12613,44 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 - `editor:"office"` 的定稿路仍是具名缺口（本 build 里 paper 面只认 `academician` 编辑的论文 + 主席席签署）。
 - 宿主 `pwsh` 在这一轮的环境里不可用（`0xC0000142`），代理只能用 python 面做旁证 —— 这是运行环境问题，不是 vmu 的机制问题，但它限制了「用 shell 手动复核」这条通道。
 - 人数闸的负向证据现在**在真机上可达**（264.1），但那是「表决闸」；「出勤闸」按名册计数，仍是两席会两席够的旧语义 —— 两者分开报是 RUN 163 定下的事实，不是欠账。
+
+## §265 第十三次真机（run 13）：配额拒绝语许诺了两个不存在的动作，而它推荐的「腾空间」修法自己踩到幽灵行
+
+### 265.1 run 13 的读数（基线提交 `f90d8cce`，驱动 `slv-p13-oc.ps1` / opencode-go / deepseek-v4.1-flash）
+- `DRIVE exit=0`，`durationSec 3003`（**打满 `-TimeoutSec 3000`**），`tokenTotal 327 034 / 24 000 000`，`transcriptEvents 63`，根会话 `toolCalls 13`；机器读数 `NO_FENCE=0 · UNKNOWN_FIELD=0 · FIELD_NOT_APPLICABLE=0 · BAD_JSON=0`；`slv-inspect --by-session` 只有一条 RED（`calls (13) vs results (12) COUNT MISMATCH`，末条调用没有回执＝截断）；`CLOSURE … no closureVote on any tool result` ⇒ **本轮没走到结题**。tarball 来自 `f90d8cce`（6.7 MB），`INSTALLED version=2.8.5`、v5r `pack .js files=29`、两处 PACK config、`READBACK packs=True`、`token=True`。
+- 代理把任务书第 1、2 项做完了，并**在真机上证明了 RUN 164 的四条修法成立**（回执原文）：
+  - `vibe_vmu_records {action:"list",track:"paper",limit:5}` ⇒ `{"ok":true,"total":200,"returned":5,"truncated":true,"rowsFrom":{"records":7,"library":0},"libraryHeads":7,"trackFilter":"paper",…}`；
+  - 不带 `track` ⇒ `{"ok":true,"total":309,"returned":5,"rowsFrom":{"records":7,"library":7}}`；
+  - `{action:"expand",id:"rec-28"}` ⇒ `ok:true`、`expanded:false`、`mode:"inline"`（**没有 `expandedFrom`** —— 该字段只在回落库里时才出现；任务书要求它在普通命中时也出现，是**任务书的措辞问题**，不是缺陷）；
+  - `{action:"status"}` ⇒ `caps:{"headMaxItems":200,"headMaxItemsAtStart":200,"headMaxItemsMeans":"read at WRITE time…"}`、`foldedYet:true`、`byTrack.paper:200`、`shared.lastWhy:"VMU_QUOTA_EXCEEDED"`。
+- 第 3 项 `vibe_v5_paper {action:"start",target:"p13-addressable",title:"第十三次续跑：标题可寻址与整节替换的机构化核对",member:"r-acad",participants:["r-1"],lang:"zh"}` 被 `VMU_QUOTA_EXCEEDED`（`track "paper" is full: 200/200 live records`）挡住；此后代理 `grep head.maxItems`（在 `VibeMath/vmu/state.json` 里翻到**上一轮 rec-298 的旧反馈卡**，那张卡写于修好之前、说「照做了仍 200/200」）、`list track:"verified"`、`pwsh`（`0xC0000142` 环境）、`glob`，最后**用 `ask_user_question` 请示「要不要抬配额」并停在那里等回答**，把 3000 秒耗尽 ⇒ 第 3–6 项全空白。
+- **我自己的账也要记上**：本轮任务书写了「不要改现有设置」，而当时**唯一被许诺的出路就是改设置**（抬 `vmu.records.head.maxItems`）—— 任务书自相矛盾，代理卡在这里不算它的错。
+
+### 265.2 三条真缺陷（两条机制 + 一条我造的流程缺陷）
+1. **拒绝语许诺了两个不存在的动作**：`VMU_QUOTA_EXCEEDED` 的 hint 说「or compact/remove records」，但 `vibe_vmu_records` 的 action 枚举只有 `list|expand|append|status`，全仓唯一调用 `records.remove(` 的地方是 `packs/v3/middleware/methods.js:544`（方法失效清理，**agent 不可达**）。内核明明有 `remove`/`purge`/`compact`/`restore`/`supersede`（回收站、审计、`purgeAt`、permanent 保护），却没有任何工具面能调到 ⇒ 一句「有救」的假话。
+2. **配额闸不认「更新同一行」，且拒绝时已经留下幽灵行**：`vibe_v5_paper` 的 `start` 先 mint 一行 state 再更新同一行；当该轨只剩 1 个名额时，第二次 `put`（其实是更新）被 `headMaxItems` 拒，**而行已经在被拒之前写下去了** ⇒ 刚腾出的名额又被自己占掉，「prune 到 1 行就能继续」这条修法下一次就不可用。实测（cap 2）：prune 到 1 行后 `paper start` 仍报 `2/2`，还多出 `rec-3`（`title: "v5r-paper|x|state"`）。同一处还带着 **slug 漂移**：每次重写同一个 state 行，`slug` 从 `q165-x` 变成 `q165-x-2`、`-3`…（索引里旧 slug 没释放），而 slug 是调用者会读的字段。
+3. **流程缺陷（我的）**：任务书自相矛盾（见 265.1 末条）＋「不要用 `ask_user_question` 等回答」没有写进任务书 ⇒ 代理合理地选择了等待。
+
+### 265.3 修法
+- **把假承诺变成真能力：`vibe_vmu_records { action:"prune" }`**（`vibe-math-vmu/host.js`）。语义：**按 track**、**最旧优先**、把超出 `keep` 的行 `records.remove` 进 **TRASH**（`purgeAt = trashedAt + vmu.records.trash.retainDays`，可 `kernel.records.restore` 复原），**从不静默驱逐**；`dryRun:true` 只预告（`liveAfter = liveBefore`、`prunedCount = 0`、`wouldPruneCount = 要动的行数`）；`VMU_RETENTION_CONFLICT`（permanent 行）收进 `pinned` 不中断其余行；`by` 缺省＝本轮派发成员，否则 `office`；缺 `track` 具名拒并解释「按轨删、从不整库」。回执带 `means`/`pinnedMeans`/`restoreMeans`/`hint`。
+- **两处 hint 改成两条真路**（`vibe-math-vmu/kernel/records.js`）：`head.maxItems` 满 ⇒「TWO reachable repairs: (1) `action:"prune"` …（进 TRASH，可 restore）; (2) 抬 `vmu.records.head.maxItems`（**写时热读**，下一次 put 生效）」；`retention.maxBytes` 满 ⇒ 同构（prune / 抬 `vmu.records.retention.maxBytes`）＋保留 `vmu.records.trash.countInQuota` 附注。旧串 `NO tool face exposes remove/compact` 已彻底消失。
+- **配额闸认得更新**（`vibe-math-vmu/kernel/records.js` 的 `put`）：`existingRow`/`isUpdate`（同 id、live、同 track）⇒ 新增名额检查只在 `!isUpdate` 时做；体积预算改用 `billedBytes = trackBytes - existingRow.bytes + bytes`；更新时先释放本条记录自己占的 slug 再定 slug ⇒ **slug 不再漂移**。
+- **文档同步**：`vibe-math-vmu/docs/18-command-and-protocol-reference.md` 的 §2.4（参数/返回/错误码/幂等/反模式，含「旧版本这里曾许诺 compact/remove —— 没有任何工具面能调到」）与概览行；`vibe-math-vmu/docs/03-interface-contract.md` 的记录面行；生成段（action 枚举 `5 组／18 项`）由 `regen-all --write` 自动更新。
+
+### 265.4 机器化
+`tests/vmu-run165-quota-reachable.test.mjs`（**36 passed / 0 failed**）三节：
+- §0 源码口径：两处 hint 是「TWO reachable repairs」；`prune` 的确切形参；旧假承诺字符串消失；抬设置那条仍在；enum 有 `prune` 且分支真在；走 `rc.list({track,limit:0})` + `rc.remove`；permanent 进 `pinned`；`isUpdate`/`billedBytes` 口径。
+- §1 **run 13 现场重建**：cap 2 写满 ⇒ `paper start` 被 `VMU_QUOTA_EXCEEDED` 拒且 hint 同时点 prune 与抬上限（并说 restorable / never evicts silently）；`dryRun` 不动数据、之后仍被拒；真 prune 2→1 行、逐行 `state:"trashed"` + `purgeAt`、`means` 说 TRASH；`status` 仍可用；**prune 后同一会话 `paper start` 成功**；被移走的行 `restore` 回 live。
+- §2 边界：缺 `track` 具名拒＋「per track」解释；permanent 被 `pinned` 跳过而普通行照移；行数 ≤ keep 时 no-op ＋「nothing to do」；未知轨不静默成功。
+- §3 更新口径：满轨新增仍被拒；**更新同一行成功**；更新后仍是一行且正文是新版本；**slug 不漂移**。
+
+### 265.5 读数与门禁
+- `regen-all --write` 到不动点、`--check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`（仅 D11/D16 提示）、`RULE PARITY: PASS (0)`、`RULES COVERAGE: PASS (0)`（86/86）。
+- 定向回归：`--only records` 5/0、`paper` 11/0、`run16` 7/0（含 run165 自身）、`run15` 10/0、`vmu-host` 4/0、`declaration` 5/0。
+- 全量 T1：`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **646 PASS / 0 FAIL（suites 582 · probes 64）**（日志 `/d/_tmp/t1-r212-run165.log`）。
+
+### 265.6 未闭合账
+1. **`prune` 还没在真机上被代理用过** —— 本轮是用探针与套件证明的；run 14 必须让它真触发一次（并要求贴回执里的 `liveBefore`/`prunedCount`/`restoreMeans`）。
+2. **成员激活缺口**：run 2–13 的根会话 `vibe_vmu_turn` 调用 **0 次**（只有 run 1 真的把三个成员作为独立子代理会话跑起来 ⇒ `kind:"member"` 三份会话 19 690 / 26 960 / 4 240 行）。成员回合本该由宿主 activation 派发（`vibe-math-vmu/kernel/turn/index.js` 的 `deliverTurn`/`step`，`deliverMode:'subagents'`），但我的任务书一直写成「所办的工具面核对清单」⇒ 后续轮次的「代理反馈」有相当一部分是**单一代理自问自答**。run 14 的任务书必须写成「让四个成员各自干活」并检查转录里有 member 会话。
+3. **「轨满」这条路径本身在真实研究里会自然发生**（保留工作区连跑十三轮后 paper 轨确实 200/200）⇒ 它现在有两条真路了，但这说明**配额设计需要一轮专门压测**（不是本轮能收的账）。
+4. 旧反馈卡（run 11 的 rec-298，写于修复之前）会误导后来的代理 —— 反馈卡是历史记录，不该被当成当前事实；这一点要在任务书里直说。

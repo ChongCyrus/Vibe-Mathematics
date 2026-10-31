@@ -2830,3 +2830,12 @@ PARITY/RULES COVERAGE all PASS (86/86), full T1 644/644 (suites 580 · probes 64
 - **顺手把两句「读者会误读」的句子写成真话**：`part` 的替换回执补 `oldBytes`/`newBytes`（一个成员只有一个 part 槽位，第二次是整节替换，不是追加）；`VERIFIED_MISSING` 的 hint 补上「awaiting-editor 时先 `final{decision:"revise"}` 退回 writing」这条**可达**修法（从前它只说「去改正文」，而那个阶段正文根本写不进去）。
 - **机器化**：`tests/vmu-run164-records-two-stores.test.mjs`（28/0）—— 两个库都非空时 `track` 只回本轨、列表印出的 id 全部能被 expand 读回、两个库都不认识的 id 仍具名拒、`caps`/`foldedYet` 可读、`part` 替换的两个尺寸、三种拼写同解；`--only vmu-host`/`records`/`paper`/`declaration` 全绿。
 - **读数**：`regen-all --check` 17/17、五门禁全 PASS（coverage 86/86）、全量 T1 **645 PASS / 0 FAIL**（suites 581 · probes 64，日志 `t1-r210-run164.log`）。
+
+## ROUND 168 — 轨满时的两条真路：`prune`（可 restore）与抬设置（写时热读）；「更新同一行」不再算新增名额
+
+- **这一轮修的是「拒绝语许诺了不存在的能力」**：`VMU_QUOTA_EXCEEDED` 的 hint 一直说「or compact/remove records」，而记录面的 action 枚举只有 `list|expand|append|status` —— 内核有回收站、审计、`purgeAt`、permanent 保护，`records.remove` 却没有任何工具面能调到。于是代理在真机上被轨满挡住时，读到的是一条做不到的出路。现在记录面新增 **`action:"prune"`**：按 track、最旧优先、把超出 `keep` 的行移进 **TRASH**（`restore` 可复原到 `purgeAt`，从不静默驱逐），`dryRun:true` 只预告，permanent 行进 `pinned` 不中断其余行；两处 hint 同时点出**两条真路**（prune / 抬 `vmu.records.head.maxItems` 或 `retention.maxBytes`，都是写时热读、下一次 put 生效）。
+- **第二条是「更新被当成新增」的记账口径**：`vibe_v5_paper` 的 `start` 先 mint 一行 state 再更新同一行；该轨只剩 1 个名额时，更新被 `headMaxItems` 拒 —— **而行已写在拒绝之前**，刚腾出的名额被自己占掉（cap 2 下 prune 到 1 行后 `paper start` 仍报 `2/2`，还多出幽灵行 `rec-3`）。现在 `put` 认得 `isUpdate`（同 id、live、同 track）：新增名额只对真新增计；体积预算用「去掉旧行再加新行」的 `billedBytes`；同时释放本行旧 slug ⇒ **slug 不再每写一次漂移一个 `-2`/`-3` 后缀**。
+- **第三条是我自己的流程缺陷**：run 13 的任务书写了「不要改现有设置」，而当时唯一被许诺的出路就是改设置 —— 任务书自相矛盾，代理只好 `ask_user_question` 等回答，把 3000 秒耗尽。任务书要把「允许的修法」写成**规则允许的真话**，并禁止用提问等待来代替自己按规则决定。
+- **机器化**：`tests/vmu-run165-quota-reachable.test.mjs`（**36/0**）—— 源码口径（两条真路、旧假承诺消失、prune 形参与实现路径、`isUpdate`/`billedBytes`）；run 13 现场重建（满轨被拒且 hint 给两条路、`dryRun` 不动数据、真 prune 2→1 行、`restore` 复原、**prune 后同一会话 `paper start` 成功**）；边界（缺 `track` 具名拒、permanent 进 `pinned`、行数 ≤ keep 时 no-op、未知轨不静默成功）；更新口径（满轨新增仍拒、**更新同一行成功**、仍是一行、正文是新版本、slug 不漂移）。
+- **读数**：`regen-all --check` 17/17、五门禁全 PASS（coverage 86/86）、全量 T1 **646 PASS / 0 FAIL（suites 582 · probes 64）**（日志 `t1-r212-run165.log`）；`--only records` 5/0、`paper` 11/0、`run16` 7/0、`run15` 10/0、`vmu-host` 4/0、`declaration` 5/0。
+- **下一轮**：run 14 的任务书重写 —— 让四个成员（`r-acad`/`r-1`/`r-2`/`r-temp`）**真的被宿主 activation 派发**（检查转录出现 `kind:"member"` 与会话目录），允许 office 抬配额，禁止 `ask_user_question` 等待，并要求把「记录面 prune / 两种拼写 / `part` 整节替换 / `VERIFIED_MISSING` 可达修法」四条一路做到结题。

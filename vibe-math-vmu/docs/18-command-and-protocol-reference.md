@@ -33,7 +33,7 @@
 | `vibe_vmu_status`（`status`） | **内核启用即恒有** | 只读 | ✓ | （无 action；纯读） |
 | `vibe_vmu_set`（`set`） | 提供 `assertDeclared`（键登记表）时 | 设置写；**H3 键具名拒** | ✗（写；重复同值＝无害但非幂等语义） | （无 action；`key`/`value`） |
 | `vibe_vmu_middleware`（`middleware`） | **有已声明条目 或 总线已有条目** | 机制管理 | `list/validate/dryRun` ✓ 只读；`disable/enable` ✗ | `list`(默认)`/disable/enable/validate/dryRun` |
-| `vibe_vmu_records`（`records`） | `kernel.library` 存在（有 `root`） | 记录读写 | `list/expand` ✓；`append` ✗（内容指纹去重） | `list`(默认)`/expand/append`；`list` 回 `total/returned/truncated`（`limit:0` 全量） |
+| `vibe_vmu_records`（`records`） | `kernel.library` 存在（有 `root`） | 记录读写 | `list/expand` ✓；`append` ✗（内容指纹去重）；`prune` ✗（移入 TRASH，可 restore） | `list`(默认)`/expand/append/status/prune`；`list` 回 `total/returned/truncated`（`limit:0` 全量）与 `rowsFrom`（两个库各给几行） |
 | `vibe_vmu_script`（`script`） | 本次运行**声明了脚本** | 执行 M3 脚本 | `list` ✓；`run` ✗ | `list`(默认)`/run` |
 | `vibe_vmu_pack`（`pack`） | 传入 `packLoader` | 包装载 | `list/plan` ✓；`apply/unload` ✗ | `list`(默认)`/plan/apply/unload` |
 | `vibe_vmu_control`（`control`） | `controlTool` 为真 | 控制面 | `status` ✓；`pause/resume/stop/beat` ✗ | `status`(默认)`/pause/resume/stop/beat/roster/hire/fire` |
@@ -125,12 +125,12 @@
 - **反模式**：✗ 把 `rule` 传成对象（必须 JSON **字符串**）｜✗ 用 `dryRun` 期望"真的跑一次"（它**只报告**）｜✗ 用 `disable` 当作卸载（总线上有 `remove` 才算卸载；`disable` 只是停用）。
 
 ### 2.4 `vibe_vmu_records` ✓
-- **参数**：`action`（enum：`list`(默认)`|expand|append`）｜`id`（expand 必填）｜`limit`（list 最大条数；`0` = 全部；省略用 `vmu.records.headListAt`）｜`kind`（append：`proposition|method|subproblem`）｜`statement`（append）｜`proof`（append：证明/方法正文）。
-- **返回**：`list` ⇒ `{records:[…], total, returned, truncated, hint}`（**不含正文**；G7 真机修复：截断必须可见，`truncated:true` 时 hint 说 `limit:0`/`track`/`expand` 怎么取全）｜`expand` ⇒ 记录正文（**超限计数**：截断数字可见）｜`append` ⇒ `{ok,id,fingerprint,deduplicated,...}`（**按内容指纹去重**）。
-- **错误码**：`VMU_INVALID_ARGUMENT`（action 非法/缺参）｜`VMU_NO_SUCH_OBJECT`（expand 悬空 id）｜`VMU_WRITE_FAILED`（落盘失败）｜`VMU_BODY_TRUNCATED`（正文被计数式截断返回）。
-- **幂等**：`list/expand` ✓；`append` **内容幂等**（同内容 ⇒ `deduplicated:true`）。
+- **参数**：`action`（enum：`list`(默认)`|expand|append|status|prune`）｜`id`（expand 必填）｜`limit`（list 最大条数；`0` = 全部；省略用 `vmu.records.headListAt`）｜`kind`（append：`proposition|method|subproblem`）｜`statement`（append）｜`proof`（append：证明/方法正文）｜`track`（list：按轨过滤；**prune 必填**）｜`keep`（prune：保留**最新**多少行，缺省 `0`）｜`why`（prune：写进审计的删除理由）｜`by`（prune：删除者；缺省＝本轮派发成员，否则 `office`）｜`dryRun`（prune：**只预告**，不动数据）。
+- **返回**：`list` ⇒ `{records:[…], total, returned, truncated, rowsFrom:{records,library}, trackFilter, libraryHeads, hint}`（**不含正文**；G7 真机修复：截断必须可见，`truncated:true` 时 hint 说 `limit:0`/`track`/`expand` 怎么取全；★ RUN 164：本面读**两个库** —— `records` 轨投影 ＋ `library` 库头，`rowsFrom` 报各自给了几行，`track` 过滤时**库头按名排除**〔库头不带 track〕，`libraryHeads` 说明库头被 `vmu.records.headListAt` 截断而不是目录总数）｜`expand` ⇒ 记录正文（**超限计数**：截断数字可见；★ 先在 `records` 里查，未命中回落 `library` 并报 `expandedFrom:"library"`，两库都不认识才具名拒）｜`append` ⇒ `{ok,id,fingerprint,deduplicated,...}`（**按内容指纹去重**）｜`status` ⇒ 有界的共享折入/计数器视图（★ 含 `caps:{headMaxItems,headMaxItemsAtStart,headMaxItemsMeans}` 与 `foldedYet`〔`shared.pulls > 0`；`false` 表示**还没 fold**，此刻计数可能是 0 而库里其实有行〕）｜`prune` ⇒ `{ok,action,track,keep,dryRun,liveBefore,liveAfter,wouldPruneCount,prunedCount,pruned:[{id,title,state,purgeAt}],pinned,by,why,pinnedMeans,means,restoreMeans,hint}`（★ **最旧的行移入 TRASH**，可 `kernel.records.restore` 复原到 `purgeAt`；`dryRun:true` 时 `liveAfter = liveBefore`、`prunedCount = 0`、`wouldPruneCount` 是要动的行数 —— **预演不谎报腾出名额**）。
+- **错误码**：`VMU_INVALID_ARGUMENT`（action 非法/缺参；`prune` 缺 `track` 时具名拒并解释**按轨删、从不整库**）｜`VMU_NO_SUCH_OBJECT`（expand 悬空 id；或该内核没有可 prune 的记录面）｜`VMU_WRITE_FAILED`（落盘失败）｜`VMU_BODY_TRUNCATED`（正文被计数式截断返回）｜`VMU_QUOTA_EXCEEDED`（**写入时**该轨触顶：hint 给**两条可达修法** —— `action:prune` 把最旧行移进 TRASH，或 `vibe_v5_set` 抬 `vmu.records.head.maxItems`〔写时热读，**下一次 put** 就生效〕）｜`VMU_RETENTION_CONFLICT`（`prune` 遇到 permanent 行：**不中断**，该行进 `pinned`）。
+- **幂等**：`list/expand/status` ✓；`append` **内容幂等**（同内容 ⇒ `deduplicated:true`）；`prune` **不幂等**（第二次调用看到的是已经少了的轨）但**可撤销**（TRASH ＋ `restore`）；`dryRun:true` ✓（无副作用）。
 - **可照抄**：`{"action":"append","kind":"proposition","statement":"设 n>2…","proof":"最小反例归约…"}`
-- **反模式**：✗ 用 `list` 期待正文（正文只在 `expand`）｜✗ 靠"再 append 一次"更新记录（应用新指纹/新 id，历史不覆盖）。
+- **反模式**：✗ 用 `list` 期待正文（正文只在 `expand`）｜✗ 靠"再 append 一次"更新记录（应用新指纹/新 id，历史不覆盖）｜✗ 以为轨满就没救（两条可达修法：`prune` 或抬 `vmu.records.head.maxItems`；旧版本这里曾许诺 `compact/remove` —— **没有任何工具面能调到**，RUN 165 已改成真能力）｜✗ 用 `prune` 一次清整库（它**按轨**、**最旧优先**、落 TRASH 可 restore）。
 
 ### 2.5 `vibe_vmu_script` ✓
 - **参数**：`action`（`list`(默认)`|run`）｜`id`（run 必填）｜`args`（**JSON 字符串数组**，附加参数）。
@@ -531,6 +531,6 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | 56 | `mathadapters` | `vibe_vmu_mathadapters` |
 | 57 | `mathjobs` | `vibe_vmu_mathjobs` |
 
-> ★★ 合计 **57** 个工具 ✓；★ **action 枚举 **5** 组／**17** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append/status` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
+> ★★ 合计 **57** 个工具 ✓；★ **action 枚举 **5** 组／**18** 项** ✓：★ `list/disable/enable/validate` ｜ `list/expand/append/status/prune` ｜ `proposition/method/subproblem` ｜ `list/run` ｜ `list/plan/apply/unload`。
 
 <!-- END GENERATED: tool-index -->

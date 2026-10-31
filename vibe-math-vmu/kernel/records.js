@@ -524,23 +524,32 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         throw deny('VMU_INVALID_ARGUMENT', 'kind "' + String(kind) + '" is not allowed (vmu.records.allowedKinds)',
           'allowed kinds: ' + allowedKinds.join(', ') + ' (vmu.records.allowedKinds)', [K.tracks, K.requireSettled, K.allowedKinds], 'put')
       }
+      // ★ RUN 165 (measured): a put that UPDATEs an existing row of the same track does not add a row, so the head cap
+      // does not apply to it. Before this, `paper start` (one state row, written twice: mint, then fold the id in) was
+      // refused on its SECOND write whenever the track was exactly one below its cap — and the refusal left the minted
+      // state row behind as a ghost that then held the free slot: the very repair (prune) the refusal recommends became
+      // unactionable on the next call. An update is now recognised by id+track+live and exempted from the ADD caps.
+      const existingRow = (requestedId === null || requestedId === undefined) ? null : (records.get(String(requestedId)) || null)
+      const isUpdate = !!(existingRow && existingRow.state === 'live' && existingRow.track === track)
       mark(enforced, K.headMaxItems)
       const headMaxItems = headMaxItemsNow()
-      if (headMaxItems > 0 && liveIds(track).length >= headMaxItems) {
+      if (!isUpdate && headMaxItems > 0 && liveIds(track).length >= headMaxItems) {
         mark(fired, K.headMaxItems)
         throw deny('VMU_QUOTA_EXCEEDED', 'track "' + track + '" is full: ' + liveIds(track).length + '/' + headMaxItems + ' live records (vmu.records.head.maxItems)',
-          'this limit is read at WRITE time, so raising it with vibe_v5_set {key:"vmu.records.head.maxItems", value:<bigger>} takes effect on the NEXT put (no restart); or compact/remove records — the ledger never evicts silently (vmu.records.head.maxItems)', [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems], 'put')
+          'this track is full. TWO reachable repairs: (1) call vibe_vmu_records {action:"prune", track:"<this track>", keep:<how many newest rows to keep>, why:"why these rows may go"} — the OLDEST rows move to the TRASH (restorable until purgeAt, vmu.records.trash.retainDays), and the ledger never evicts silently; (2) this limit is read at WRITE time, so raising it with vibe_v5_set {key:"vmu.records.head.maxItems", value:<bigger>, why:"why this track needs room"} takes effect on the NEXT put (no restart; the office is the writer of every vmu.records setting)', [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems], 'put')
       }
       const bodyText = String(body === undefined || body === null ? '' : body)
       const bytes = bytesOf(bodyText)
       mark(enforced, K.bodyCapBytes)
       if (bytes > bodyCapBytes) { mark(fired, K.bodyCapBytes); counters.bodyTruncated += 1; fire('records/body-truncated', { at: now(), bytes, cap: bodyCapBytes, mode: truncateMode }) }
       mark(enforced, K.retentionMaxBytes)
-      if (retentionMaxBytes > 0 && trackBytes(track) + bytes > retentionMaxBytes) {
+      // an update REPLACES the bytes of the row it rewrites, so the budget is billed on the delta, not on the sum
+      const billedBytes = isUpdate ? (trackBytes(track) - existingRow.bytes + bytes) : (trackBytes(track) + bytes)
+      if (retentionMaxBytes > 0 && billedBytes > retentionMaxBytes) {
         mark(fired, K.retentionMaxBytes)
         if (trashCountInQuota) mark(enforced, K.trashCountInQuota)
-        throw deny('VMU_QUOTA_EXCEEDED', 'track "' + track + '" would exceed its size budget: ' + (trackBytes(track) + bytes) + '/' + retentionMaxBytes + ' bytes (vmu.records.retention.maxBytes)',
-          'compact/remove records, or raise vmu.records.retention.maxBytes — nothing is dropped silently' + (trashCountInQuota ? ' (trashed records count: vmu.records.trash.countInQuota=true)' : ' (trashed records do not count: vmu.records.trash.countInQuota=false)'), [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems, K.bodyCapBytes, K.retentionMaxBytes], 'put')
+        throw deny('VMU_QUOTA_EXCEEDED', 'track "' + track + '" would exceed its size budget: ' + billedBytes + '/' + retentionMaxBytes + ' bytes (vmu.records.retention.maxBytes)',
+          'TWO reachable repairs: (1) call vibe_vmu_records {action:"prune", track:"<this track>", keep:<how many newest rows to keep>, why:"why these rows may go"} — the OLDEST rows move to the TRASH (restorable until purgeAt); (2) raise vmu.records.retention.maxBytes with vibe_v5_set {key:"vmu.records.retention.maxBytes", value:<bigger>, why:"why this track needs room"} — the ledger never drops a row silently' + (trashCountInQuota ? ' (trashed records count: vmu.records.trash.countInQuota=true)' : ' (trashed records do not count: vmu.records.trash.countInQuota=false)'), [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems, K.bodyCapBytes, K.retentionMaxBytes], 'put')
       }
       // **去重**（同一键不得出现两次 ✗✓）：`slugMaxLength` 已在上一行整体 push ⇒ 截断时只标 `fired`（不重复进 enforced ✓）
       markAll(enforced, [K.slugPolicy, K.slugMaxLength, K.conflictSuffix])
@@ -549,6 +558,10 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       if (slugged.truncated && enforced.indexOf(K.slugMaxLength) === -1) mark(enforced, K.slugMaxLength)
       const slugIndex = bySlug.get(track) || new Map()
       bySlug.set(track, slugIndex)
+      // ★ RUN 165: an UPDATE keeps its own slug free — otherwise re-putting the SAME row bumped the conflict suffix
+      // (`q165-x` → `q165-x-2` → `q165-x-3` …) on every write, because the index still held the row's previous slug.
+      // A paper state row is rewritten on every action, so this was unbounded churn in a field callers read.
+      if (isUpdate && existingRow.slug && slugIndex.get(existingRow.slug) === existingRow.id) slugIndex.delete(existingRow.slug)
       let slug = slugged.slug
       if (slugIndex.has(slug)) {
         counters.slugConflicts += 1

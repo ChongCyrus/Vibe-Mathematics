@@ -938,17 +938,21 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('records') && kernel.library) {
     specs.push({
       name: TOOL_NAMES.records,
-      description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹；这是 pack 里 `vibe_v5_record_<kind>` 的同一个动作，所以按那张席位面判权：席位被关的那些库，这里也写不进去）｜status（共享折入与计数器的有界视图：谁折入过、多少行没有登记作者、本实例计数）。',
+      description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹；这是 pack 里 `vibe_v5_record_<kind>` 的同一个动作，所以按那张席位面判权：席位被关的那些库，这里也写不进去）｜status（共享折入与计数器的有界视图：谁折入过、多少行没有登记作者、本实例计数）｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）',
       parameters: {
-        action: param('string', 'list（默认）｜expand｜append｜status', { required: true, enum: ['list', 'expand', 'append', 'status'] }),
+        action: param('string', 'list（默认）｜expand｜append｜status｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）', { required: true, enum: ['list', 'expand', 'append', 'status', 'prune'] }),
         id: param('string', '记录 id（expand 必填）'),
         limit: param('integer', 'list 的最大条数（0 = 全部；省略用内核 vmu.records.headListAt）'),
         track: param('string', 'list：只列某一轨（省略＝全部；合法值见 vmu.records.tracks，内核会具名拒未知轨）'),
         kind: param('string', 'append 的 kind（proposition｜method｜subproblem）；list 时同一个词就是过滤条件（不传 = 不过滤）', { enum: ['proposition', 'method', 'subproblem'] }),
         statement: param('string', 'append：陈述'),
         proof: param('string', 'append：证明/方法正文'),
+        keep: param('integer', 'prune：保留该轨最新的多少行（其余移入回收站；缺省 0 = 清空该轨的活行）'),
+        why: param('string', 'prune：为什么这些行可以走（写进回收站审计）'),
+        by: param('string', 'prune：谁做的（缺省取当前席位，无席位时 office）'),
+        dryRun: param('boolean', 'prune：true = 只预告会移哪些行，不动数据'),
       },
-      run: async ({ action = 'list', id, limit, track, kind, statement, proof } = {}, exec = null) => {
+      run: async ({ action = 'list', id, limit, track, kind, statement, proof, keep, why, by, dryRun } = {}, exec = null) => {
         try {
           // ★ SLV (measured): this face read `kernel.library` while the v3 data plane writes `kernel.records` - two
           // different stores, so every card was invisible here (`records: []` beside a non-zero journal). The RECORDS
@@ -1008,6 +1012,65 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                 : 'only rows whose own `kind` equals ' + JSON.stringify(kindArg) + ' are here',
               hint: truncated ? '回了 ' + returnedRows.length + '/' + total + ' 条（cap 或轨/类型过滤）：传 limit:0 取全部，或先按 track 收窄，再用 action:expand + id 取正文' : null,
             }, { records: returnedRows })
+          }
+          if (action === 'prune') {
+            // ★ RUN 165 (measured, run 13): a full track's refusal said "or compact/remove records" while NO tool face
+            // exposed either one — the agent grepped, guessed, then asked the human, and 3000 s of run were gone. The
+            // kernel ALREADY owns an audited, restorable trash (`records.remove`); what was missing is a way to reach it
+            // from a tool face. So this action moves the OLDEST live rows of ONE track to the trash and reports how many
+            // slots that frees. Nothing is purged here: expiry stays a kernel act and it is counted, never silent.
+            if (!rc || typeof rc.list !== 'function' || typeof rc.remove !== 'function') {
+              return refused('VMU_NO_SUCH_OBJECT', 'this kernel has no prunable records face',
+                'the records projection is not attached in this deployment, so there is nothing to prune')
+            }
+            const pruneTrack = typeof track === 'string' && track.trim() !== '' ? track.trim() : ''
+            if (pruneTrack === '') {
+              return refused('VMU_INVALID_ARGUMENT', 'action prune needs the `track` to prune',
+                'pruning is per track, never across the whole ledger: name one value of vmu.records.tracks')
+            }
+            const wantKeep = Number.isInteger(keep) && keep >= 0 ? keep : 0
+            const preview = dryRun === true
+            let callerBy = 'office'
+            try { const m = resolveTurnMember(kernel, exec); if (m) callerBy = String(m) } catch { callerBy = 'office' }
+            if (typeof by === 'string' && by.trim() !== '') callerBy = by.trim()
+            const pruneWhy = typeof why === 'string' && why.trim() !== ''
+              ? why.trim()
+              : 'the track reached its record limit: the oldest rows were moved to the trash to free slots (restorable, counted)'
+            const listedAll = rc.list({ track: pruneTrack, limit: 0 }) || {}
+            const allRows = Array.isArray(listedAll.items) ? listedAll.items : []
+            const liveBefore = Number.isInteger(listedAll.available) ? listedAll.available : allRows.length
+            const doomed = allRows.slice(0, Math.max(0, liveBefore - wantKeep))
+            const moved = []
+            const pinned = []
+            for (const row of doomed) {
+              if (!row || typeof row.id !== 'string') continue
+              if (preview) {
+                moved.push({ id: row.id, title: row.title === undefined ? null : row.title, state: 'would-be-trashed', purgeAt: null })
+                continue
+              }
+              try {
+                const rcpt = rc.remove({ id: row.id, reason: pruneWhy, by: callerBy }) || {}
+                moved.push({ id: row.id, title: row.title === undefined ? null : row.title, state: rcpt.state || 'trashed', purgeAt: rcpt.purgeAt === undefined ? null : rcpt.purgeAt })
+              } catch (e) {
+                if (e && String(e.code || '') === 'VMU_RETENTION_CONFLICT') { pinned.push(row.id); continue }
+                throw e
+              }
+            }
+            const liveAfter = preview ? liveBefore : Math.max(0, liveBefore - moved.length)
+            return {
+              ok: true, action, track: pruneTrack, keep: wantKeep, dryRun: preview,
+              liveBefore, liveAfter, wouldPruneCount: doomed.length, prunedCount: preview ? 0 : moved.length, pruned: moved, pinned,
+              by: callerBy, why: pruneWhy,
+              pinnedMeans: pinned.length === 0 ? null
+                : 'permanent records are protected and were skipped — clear the marker deliberately if they must go',
+              means: preview
+                ? 'DRY RUN: nothing was moved; the ids above are what a real prune would trash (drop dryRun to act)'
+                : 'the rows above are in the TRASH, not deleted: action "status" counts them under records.trashed and they stay restorable until purgeAt (vmu.records.trash.retainDays); expiry is counted, never silent',
+              restoreMeans: 'the kernel restores a trashed row before its purgeAt; a permanent row never enters the trash',
+              hint: liveBefore <= wantKeep
+                ? 'nothing to do: track has ' + liveBefore + ' live row(s) and keep is ' + wantKeep
+                : (preview ? 're-call with dryRun:false (or omit it) to move these rows to the trash' : null),
+            }
           }
           if (action === 'expand') {
             // ★ RUN 164: `list` prints ids from BOTH stores, so `expand` must read both: the records projection first, and
