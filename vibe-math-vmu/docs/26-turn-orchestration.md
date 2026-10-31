@@ -2893,3 +2893,15 @@ PARITY/RULES COVERAGE all PASS (86/86), full T1 644/644 (suites 580 · probes 64
 3. **回执要能指向自己写下的事实**：撞名 `start` 带 `stateRecordId`+`status`；`status exists:false` 带 hint（含 `byId/byTarget/byNormalized` 三种命中与"别用同名再 start"）；`review` 回执带 `recordId`/`fingerprint`；`records status` 的 `shared` 补齐 `staleLiveRows/tombstonesAdopted/…`，`records` 补 `trashed`/`trashedByTrack`；闭合票行同时记 `session`（写者）与 `voterSession`（投票者）。
 
 **教训**：持久面的事实属于账本，不属于实例；"本实例没见过所以不存在"在跨内核装配里是造重复对象的炸弹（旧的 run166 §5 正是在钉这条错误契约，本轮按新契约**反向改写**）。以及：**以渲染为目的的阶段必须能渲染**——转义集漏了 `^`/`~`，xelatex 就用 `! Missing $ inserted` 让唯一能产出 PDF 的阶段失败。
+
+## ROUND 174 — 一条读数必须能说出自己是哪个时刻的账
+
+**真机（run 16）读到的事实**：`prune` 在研究所里生效之后，另一个内核大约 20 秒后仍读到 `paper:193`，稍后的回合才读到 `151`；两份回执都写着"当前"，没有一个字说明读者读得早。这不是两个库不一致，是**时间**：`store.patch` 是异步写（temp file + rename），`snapshotRecords()` 的 promise 是 fire-and-forget，而 `records.status()` 根本不折入面——于是"这个内核还没折"和"确实没有变化"在回执里长成了同一个 0。
+
+**这一轮改的三件事**：
+
+1. **读之前先折**（`records.js#status` 调 `synchronize('status')`）：折入是廉价的（一次已打开的折入面读，无变化时零 `put`），所以每次自报都基于当前折入面。
+2. **把时间写进回执**：`asOf: { viewAt, foldPullAt, foldSyncAt, foldStamp }` + `asOfMeans`（两个内核数字不同时先比 `foldPullAt`——更旧的拉取是更旧的说法，不是互相矛盾；无 store 时明说"计数只描述本进程"）。
+3. **给得起 join point 就别给 sleep**：`foldWrites { pending, ackedAt, failed }` 与 `flushRecordsFold()`；需要两内核一致的调用方 await 一次，而不是撞 20 秒的运气。工具面 `vibe_vmu_records {action:"status"}` 打印 `asOf` 与 `foldWrites`。
+
+**教训**：最终一致本身可以是正确的设计，但**没有名字的滞后等于说谎**——两条都诚实的读数会互相指认对方错了。把「什么时候看的」做成回执的一部分，比把异步改成同步便宜得多。旧 pin（"新内核第一次 status 的 `foldedYet` 是 false"）钉的正是这个缺口本身，本轮按新契约改写而不是删掉。

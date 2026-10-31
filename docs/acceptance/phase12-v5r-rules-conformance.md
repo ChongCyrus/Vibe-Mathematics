@@ -12881,6 +12881,32 @@ FEEDBACK16 **F16-9**：`vibe_v5_paper {action:"final"}` 被 `VMU_NO_SUCH_OBJECT 
 
 ### 270.6 未闭合账（下一轮要么修、要么在简报里写清楚）
 
-1. **F16-4**：prune 之后另一个内核 ~20 秒后仍读到 `paper:193`，稍后才变 151 —— **最终一致但没有名字**。下一轮：`status` 带 `foldAsOf`/`viewAsOf`（这个读数是折入面哪个时刻的），或把读取路径做成"先 pull 再读"。
+1. **F16-4**（**已在 RUN 171 修掉，见 §271**）：prune 之后另一个内核 ~20 秒后仍读到 `paper:193`，稍后才变 151 —— 最终一致但没有名字。修法：`records.status()` 先折再数、回执带 `asOf`（viewAt/foldPullAt/foldSyncAt/foldStamp）与 `foldWrites`（pending/ackedAt/failed），并给 `flushRecordsFold()` 这个 join point；工具面同步打印。
 2. **F16-9 的写侧**：`part` 的 evidence 写入闸仍走 `checkEvidencePointers`，它对 `file.md#anchor` 的态度（`not-a-member-file-pointer`）与定稿门的归一化口径要**显式一致**（现在两条腿各自正确，但一句话的说明还没写进提示词）。
 3. **P-1..P-4**（简报编写教训）：票值必须由成员自判（简报不能替成员表态）；`available` 不是 `list` 的字段名（`total/returned/truncated` + 行 `status`）；`reviewOf` 的判据是"⊆ 能审别人 part 的人"，不是点名；并发压测要写成"一次写面 + 一次读面"，不能写死"写 part"。
+
+## §271 第十七轮真机前的第十九个机制缺口：滞后没有名字，就等于说谎（RUN 171）
+
+### 271.1 现场（run 16 / FEEDBACK16 F16-4）
+
+run 16 里 prune 之后，另一个内核大约 20 秒后仍读到 `paper:193 / total:322 / live:322`，稍后的 continuation 回合才读到 `paper:151`；两份读数都自报"当前"，回执里没有一个字说明「你读得早」。这不是两库不一致，而是**时间**——读数取的是本实例上次折入时的账本状态，而账本的写入是异步的（store 的 `patch` 走 temp file + rename），`snapshotRecords()` 又是 fire-and-forget 的 promise。
+
+### 271.2 机制真相（三条）
+
+1. **写比变更晚宣布**：内核 `prune` 改完内存就返回回执，耐久折入面的快照由 `recordsStore.patch('records', …)` 异步落盘；写没落完时另一内核读到的仍是旧账。
+2. **读没有先折**：`records.status()` 原本不调用 `synchronize()`，所以它打印的计数可能是本实例上一次任何读的残留，而读者无法区分「刚刚折过、确实如此」与「从没折过」。
+3. **滞后没有名字**：receipt 只有数字，没有「什么时候看的」；两个内核各报各的数，谁也不知道谁更旧。
+
+### 271.3 修法（把时间做成回执的一部分，而不是把异步改成同步）
+
+- `vibe-math-vmu/kernel/records.js`：`status()` 先 `synchronize('status')`（折入是廉价的：一次已打开的折入面读、无变化时零 `put`），再计数；回执新增 `asOf: { viewAt, foldPullAt, foldSyncAt, foldStamp }` 与 `asOfMeans`（写明"status 先折再数""两个内核数字不同时先比 `foldPullAt`：更旧的拉取是更旧的说法，不是互相矛盾"；无 store 时明说"没有折入面，计数只描述本进程"）。
+- `vibe-math-vmu/kernel/index.js`：新增 `foldWrites = { inflight, ackedAt, failed }`、`recordsFoldStatus()`（`pending`/`ackedAt`/`failed` + `means`）与 **`flushRecordsFold()`** 接缝（await 所有在途快照写后返回 `pending:0` 的状态）——需要"两边必须一致"的调用方有了明确的 join point，而不是靠 sleep 撞运气。
+- `vibe-math-vmu/host.js`：`vibe_vmu_records {action:"status"}` 打印 `asOf`（viewAt/foldPullAt/foldSyncAt）与 `foldWrites`（pending/ackedAt/failed）+ 两条 means。
+- 测试：`tests/vmu-run170-truthful-trash.test.mjs` 新增 **§7（10 条）**——第二个内核第一次 status 已折入；回执带 `foldPullAt`/`viewAt` 与"先折再数"的说明；prune 之后 `recordsFoldStatus().pending` 与 means 把滞后命名；`await flushRecordsFold()` 后**另一个内核的下一读就是剪后的数**（`byTrack.paper === 1`、`trashed === 3`、`trashAdopted >= 3`）。套件 **49/0**。
+- `tests/vmu-run164-records-two-stores.test.mjs` §2d/§2e 按新契约改写：旧 pin「新内核第一次 status 的 `foldedYet` 是 false」正是这次被删掉的缺口；现在断言"第一次 status 已经折过、且带 `asOf.foldPullAt`"，并断言后续读让 `shared.pulls` 增长。套件仍 5/0。
+
+### 271.4 教训
+
+- **滞后不是缺陷，"没有名字的滞后"才是**：异步写与最终一致本身可以是正确的设计，但一条读数必须能说出自己是哪个时刻的账；否则两个都诚实的读数会互相指认对方说谎。
+- **给得起 join point 就别给 sleep**：`flushRecordsFold()` 是 20 行代码换来的确定性。
+- 旧 pin 被新契约推翻时要按"新机制"改写并写明理由，不是删断言——`run164` §2d 的旧断言就是「缺口本身」。

@@ -142,13 +142,19 @@ try {
       typeof first.parsed.caps.headMaxItemsMeans === 'string' && /WRITE time/.test(first.parsed.caps.headMaxItemsMeans),
       '§2c caps carries BOTH the write-time value and the startup snapshot, with a means line',
       first.parsed && first.parsed.caps)
-    ok(first.parsed && first.parsed.foldedYet === false && typeof first.parsed.foldedYetMeans === 'string' && /NOT folded/.test(first.parsed.foldedYetMeans),
-      '§2d a fresh kernel reports foldedYet:false (a 0 that means "not folded yet" is not printed as a 0 that means "empty")',
-      first.parsed && { foldedYet: first.parsed.foldedYet })
+    // ★ RUN 171 (FEEDBACK16 F16-4): `status` now pulls the fold BEFORE it counts, so a fresh kernel's first status is
+    // already a folded view — and the receipt stamps WHEN it looked. The old pin ("foldedYet:false on the first status")
+    // described the very gap that let run 16 read a pre-prune count twice with nothing saying why.
+    ok(first.parsed && first.parsed.foldedYet === true &&
+      first.parsed.asOf && typeof first.parsed.asOf.foldPullAt === 'number' && typeof first.parsed.asOf.viewAt === 'number',
+      '§2d a fresh kernel status FOLDS before it counts and stamps when (RUN 171: no unlabelled "0")',
+      first.parsed && { foldedYet: first.parsed.foldedYet, asOf: first.parsed.asOf })
+    const pullsFirst = first.parsed && first.parsed.shared ? first.parsed.shared.pulls : null
     await call(b, 'vibe_vmu_records', { action: 'list', limit: 0 })
     const after = await call(b, 'vibe_vmu_records', { action: 'status' })
-    ok(after.parsed && after.parsed.foldedYet === true,
-      '§2e after one read the same field turns true (the flag tracks the fold, it is not decoration)',
+    ok(after.parsed && after.parsed.foldedYet === true &&
+      typeof pullsFirst === 'number' && after.parsed.shared && after.parsed.shared.pulls > pullsFirst,
+      '§2e the same field tracks the fold (the pull count moves), it is not decoration',
       after.parsed && { foldedYet: after.parsed.foldedYet, pulls: after.parsed.shared && after.parsed.shared.pulls })
   }
 

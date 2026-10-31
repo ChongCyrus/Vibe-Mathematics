@@ -2393,6 +2393,25 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       log('vmu records hydrate (will retry): ' + String((e && e.message) || e))
     } finally { hydratingRecords = false }
   }
+  // ★★ RUN 171 (FEEDBACK16 F16-4): A FOLD WRITE IS ACKNOWLEDGED LATER THAN THE MUTATION. The store's `patch` is
+  // asynchronous (temp file + rename), so the kernel that prunes returns its receipt BEFORE the durable fold carries the
+  // tombstone; a second kernel reading in that window sees the pre-prune counts and had no way to know it looked too
+  // early. These counters name the gap, and `flushRecordsFold()` is the join point for a caller that needs agreement.
+  const foldWrites = { inflight: new Set(), ackedAt: null, failed: 0 }
+  const recordsFoldStatus = () => ({
+    pending: foldWrites.inflight.size,
+    ackedAt: foldWrites.ackedAt,
+    failed: foldWrites.failed,
+    means: 'fold writes this instance has started but not yet had acknowledged by the durable store: a read taken while `pending > 0` is an OLDER statement than the mutation that caused it (the join point is flushRecordsFold())',
+  })
+  const flushRecordsFold = async () => {
+    while (foldWrites.inflight.size > 0) {
+      const batch = [...foldWrites.inflight]
+      await Promise.all(batch.map((p) => (p && typeof p.then === 'function' ? p.catch(() => {}) : p)))
+    }
+    return recordsFoldStatus()
+  }
+
   const snapshotRecords = () => {
     if (!recordsStore || hydratingRecords) return
     try {
@@ -2447,7 +2466,16 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           return out
         })
         : recordsStore.write('records', rows)
-      if (wrote && typeof wrote.catch === 'function') wrote.catch((e) => log('vmu records persist: ' + String((e && e.message) || e)))
+      if (wrote && typeof wrote.then === 'function') {
+        const pending = Promise.resolve(wrote)
+        foldWrites.inflight.add(pending)
+        pending.then(
+          () => { foldWrites.inflight.delete(pending); foldWrites.ackedAt = clock() },
+          (e) => { foldWrites.inflight.delete(pending); foldWrites.failed += 1; log('vmu records persist: ' + String((e && e.message) || e)) },
+        )
+      } else if (wrote !== undefined) {
+        foldWrites.ackedAt = clock()
+      }
     } catch (e) { log('vmu records persistence: ' + String((e && e.message) || e)) }
   }
   if (recordsStore) {
@@ -3272,6 +3300,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get meetings() { return meetings },
     get ballotbox() { return ballotbox },
     get records() { return records },
+    // ★★ RUN 171 (FEEDBACK16 F16-4): the join point and the lag counter for the durable records fold (see foldWrites).
+    recordsFoldStatus,
+    flushRecordsFold,
     get teaching() { return teaching },
   /** Deprecated alias: the family is vmu.teaching now. */
   get course() { return teaching },

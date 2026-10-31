@@ -232,6 +232,43 @@ const hire = async (k) => { for (const [id, slot] of SEATS) await k.members.hire
     '§6 …so no bare `^` survives into the body line', bodyLine.slice(0, 120))
 }
 
+// ── §7 a count is as old as the last fold (RUN 171, FEEDBACK16 F16-4) ───────────────────────────────────────────────
+{
+  const root = await newRoot('fresh')
+  const A = await boot(root)
+  await hire(A.kernel)
+  for (let i = 0; i < 4; i += 1) {
+    await A.kernel.records.put({ track: 'paper', kind: 'paper-part', title: 'row ' + i, body: 'body ' + i, settled: true, by: 'r-acad' })
+  }
+  const B = await boot(root)
+  await hire(B.kernel)
+  const seen = await B.call('vibe_vmu_records', { action: 'status' })
+  ok(seen.ok === true, '§7 a second kernel can read records status', seen.code)
+  ok(seen.records && seen.records.byTrack && seen.records.byTrack.paper === 4,
+    '§7 …and its own read already folded the four rows in (status pulls first)', seen.records && seen.records.byTrack)
+  ok(seen.asOf && typeof seen.asOf.foldPullAt === 'number' && typeof seen.asOf.viewAt === 'number',
+    '§7 ★ the receipt stamps WHEN it looked (foldPullAt) and WHEN it counted (viewAt)', seen.asOf)
+  ok(/pulls the durable fold before counting/.test(String(seen.asOfMeans || '')),
+    '§7 …and says out loud that the read pulls first', String(seen.asOfMeans || '').slice(0, 120))
+
+  const pruned = await A.call('vibe_vmu_records', { action: 'prune', track: 'paper', keep: 1 })
+  ok(pruned.ok === true && pruned.prunedCount === 3, '§7 the office prunes three rows', pruned)
+  const foldSt = typeof A.kernel.recordsFoldStatus === 'function' ? A.kernel.recordsFoldStatus() : null
+  ok(foldSt && /fold writes this instance has started but not yet had acknowledged/.test(String(foldSt.means || '')),
+    '§7 ★ the prune names the fold-write lag it opens (F16-4: the lag existed but had no name)', foldSt)
+  const flushed = typeof A.kernel.flushRecordsFold === 'function' ? await A.kernel.flushRecordsFold() : null
+  ok(flushed && flushed.pending === 0, '§7 ★★ the join point settles (flushRecordsFold) before the other kernel reads', flushed)
+  // NO sleep, NO unrelated read: the very next status on the OTHER kernel must see the prune (run 16: it printed 193
+  // twenty seconds after the prune, then 151 later, with nothing naming the lag).
+  const after = await B.call('vibe_vmu_records', { action: 'status' })
+  ok(after.records && after.records.byTrack && after.records.byTrack.paper === 1,
+    '§7 ★★ the OTHER kernel status is current on the VERY NEXT read (F16-4: no silent lag)', after.records && after.records.byTrack)
+  const trashed = after.records ? after.records.trashed : null
+  ok(trashed === 3, '§7 …and counts the three pruned rows under records.trashed', trashed)
+  const adopted = after.shared ? after.shared.trashAdopted : null
+  ok(adopted >= 3, '§7 …having adopted them as trash it never pruned', adopted)
+}
+
 for (const r of roots) await rm(r, { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
 console.log('\nTOTAL ' + passed + ' passed / ' + failed + ' failed')
 if (failed > 0) { console.error('FAILURES: ' + failures.join(' | ')); process.exit(1) }

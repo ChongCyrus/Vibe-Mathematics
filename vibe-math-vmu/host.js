@@ -1140,6 +1140,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             const st = rc.status() || {}
             const shared = st.shared && typeof st.shared === 'object' ? st.shared : {}
             const recs = st.records && typeof st.records === 'object' ? st.records : {}
+            const foldSt = typeof kernel.recordsFoldStatus === 'function' ? kernel.recordsFoldStatus() : null
             return {
               ok: true, action,
               shared: {
@@ -1167,6 +1168,16 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                 byTrack: recs.byTrack, trashedByTrack: recs.trashedByTrack,
               },
               recordsMeans: 'the row counts are what THIS kernel sees after its own folds; a second kernel over the same store reports its own view, so compare row ids (or the store file) when two kernels must agree',
+              // ★★ RUN 171 (run 16 / FEEDBACK16 F16-4): `status` pulls the fold before counting, and this stamp says
+              // when. A count that trails another kernel's prune is then a named older statement instead of a silence.
+              asOf: st.asOf && typeof st.asOf === 'object'
+                ? { viewAt: st.asOf.viewAt, foldPullAt: st.asOf.foldPullAt, foldSyncAt: st.asOf.foldSyncAt }
+                : null,
+              asOfMeans: st.asOfMeans,
+              // ★★ RUN 171 (F16-4): writes THIS instance has started but not had acknowledged. A reader comparing two
+              // kernels can now tell "the other side has not written yet" from "the other side disagrees".
+              foldWrites: foldSt ? { pending: foldSt.pending, ackedAt: foldSt.ackedAt, failed: foldSt.failed } : null,
+              foldWritesMeans: foldSt ? foldSt.means : null,
               // ★ RUN 164 (FEEDBACK12 item 1): the per-track cap was real but this receipt never printed it, so a caller
               // could not tell "written at startup" from "read at write time" without tripping the refusal. Print it.
               caps: st.caps && typeof st.caps === 'object'

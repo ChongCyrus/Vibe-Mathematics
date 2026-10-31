@@ -955,6 +955,12 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
 
     /** READ-ONLY self-report: the 24-key partition, the extra wired keys, caps, counters and hot spots. */
     status() {
+      // ★★ RUN 171 (FEEDBACK16 F16-4): A COUNT IS AS OLD AS THE LAST FOLD. `prune` in one kernel used to be invisible to
+      // another kernel's `status` until some unrelated read happened to pull: run 16 had a member turn read `paper:193`
+      // twenty seconds after the office pruned to 151, then 151 later, with nothing in the receipt naming the lag. The
+      // read now pulls first (cheap: one already-open fold read, zero writes when nothing changed) and says WHEN it
+      // looked, so "this kernel has not folded yet" can never be mistaken for "nothing changed".
+      synchronize('status')
       const universe = declaredUniverse()
       const wired = WIRED_KEYS.slice()
       const unwiredKeysList = DECLARED_KEYS.filter((k) => !wired.includes(k))
@@ -997,6 +1003,13 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         // ★ ROUND 36: the seam is part of the self-report, so "why did this instance see nothing?" is answerable from
         // status() alone (attached / pulls / pulled / refused + lastWhy), instead of only from a live failure.
         shared: sharedView(),
+        // ★★ RUN 171 (FEEDBACK16 F16-4): the moment of the statement. `foldPullAt` is when THIS instance last read the
+        // durable fold (null = no store attached, so the counts are only this process's); `viewAt` is when the numbers
+        // were computed. Two kernels that disagree should compare these two stamps before suspecting each other.
+        asOf: { viewAt: now(), foldPullAt: shared.lastPullAt, foldSyncAt: shared.lastSyncAt, foldStamp: shared.stamp },
+        asOfMeans: shared.store
+          ? 'status() pulls the durable fold before counting, so a prune or restore another kernel finished is reflected here on the next read; foldPullAt is that read, viewAt is the count. If two kernels report different numbers, compare foldPullAt: an older pull is an older statement, not a contradiction'
+          : 'this assembly has no durable store: there is no fold to pull, so foldPullAt is null and the counts describe this process alone',
         at: now(),
         note: 'every key in `wired` changes an observable result (asserted by tests/vmu-records.test.mjs); `enforced[]` on a receipt lists the keys whose rule was EVALUATED for that call and `fired[]` the ones that changed its outcome — reading a key without changing behaviour would be a lie, so all 24 are wired here',
       }
