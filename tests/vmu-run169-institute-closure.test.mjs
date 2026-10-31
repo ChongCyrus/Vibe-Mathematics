@@ -75,7 +75,9 @@ const SEATS = [['r-acad', 'chair'], ['r-1', 'member'], ['r-2', 'member'], ['r-te
   const vote = readFileSync(join(REPO, 'vibe-math-vmu', 'tools', 'vote.js'), 'utf8')
   ok(/  'closure_votes',\n\]\)/.test(store),
     '§0 the durable folder DECLARES `closure_votes` (an undeclared key would be refused by name, i.e. the whole fix a no-op)')
-  ok(/const persistClosureVote = \(\{ member, solved \}\) => \{/.test(index) && /recordsStore\.patch\(CLOSURE_VOTES_FOLD/.test(index),
+  // RUN 170 (FEEDBACK16 F16-2) widened the seam's argument with `voterSession` (where the VOTER ran, not where the row
+  // was written), so the pin names the writer's body rather than a frozen parameter list.
+  ok(new RegExp('const persistClosureVote = \\(\\{ member, solved').test(index) && /recordsStore\.patch\(CLOSURE_VOTES_FOLD/.test(index),
     '§0 the kernel owns ONE writer for that key, patched by member (last-wins, bounded)')
   ok(/persistClosureVote: \(recordsStore && typeof recordsStore\.patch === 'function'\) \? persistClosureVote : null,/.test(index),
     '§0 the seam is handed to the loop ONLY when it can persist (capability is decided once at assembly, not re-discovered per vote)')

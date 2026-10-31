@@ -2881,3 +2881,15 @@ PARITY/RULES COVERAGE all PASS (86/86), full T1 644/644 (suites 580 · probes 64
 - **修法（F15-6）**：`host.js` 的 `memberWireRefusal` 对「子会话已结束、Agent 不 LIVE」原报 `VMU_NO_SUCH_OBJECT`，而 message 同时点名了那个 child session ⇒ 与事实矛盾。新增 **`VMU_MEMBER_SESSION_NOT_LIVE`**（对象在、只是不 LIVE），`kernel/index.js` 的 `toolsView` 降级闸**同时接受両码**（否则新码变成抛错死路），`vibe_v5_tool_help` 逐字转发 `refusal.code`。
 - **尺寸钉**：`detail:"closure"` < 1500 字符、真装配 summary < 8000 字节、被移出的键在 closure 面上仍是 >90 字符原文长句。新句子一度把三个数推到 1588/1842/8027 ⇒ 三轮**只压字不删字段**回到 **1499 / 7987**。
 - **机器化**：`tests/vmu-run169-institute-closure.test.mjs`（**28/0**，§1 两内核同 root：工具票与 reply 票都跨内核可见、一票反对 `cast:false`、凑齐 `votesCast:3`；§2 `r-temp` 票记录但不计；§3 无 store 具名拒；§4 两码分流）；`tests/vmu-run167-feedback14-identity.test.mjs` 按新机制同步（**53/0**）。
+
+## ROUND 173 — 名字的占用是账本的事实，不是实例的记忆
+
+**真机（run 16）读到的事实**：同一个研究所里，`prune` 之后**只有剪过枝的那个内核**知道那批行进了垃圾桶。于是 `start` 在"没剪过枝的内核"眼里看到一个"从未被用过"的名字，替它铸了第二个 `paper-p1`；旧篇在自己的标题下 `exists:false`，在自己的研究所里不可达。同一轮里，`final` 的引文闸把 `Members/r-1/Propos/run16-odd-cubes.md#四步归纳` 的 `.md#锚点` 尾巴当成了记录 id，records 面对未知 id 抛出的异常**直接顶掉了定稿门**——调用者读到的不是"引文不合格"，而是"记录库不认识这个 id"。
+
+**这一轮改的三件事**：
+
+1. **墓碑跟着折入面走，进记录面但不进 live 集**（`records.js#adoptTombstoneRow`）：不认识的墓碑不再只被计数，而是被装成 `state:'trashed'` 的行（不进 track list、不占配额）。名字的占用因此是**账本事实**，不是某个实例的记忆。
+2. **缺席是判定，不是异常**（`paper-quality.js#normalizeCitedId` + `checkQuality` ① 的 try/catch）：`.md/.tex/.lean` 后缀与 `#锚点` 是寻址；未知 id 进 `missing` 并返回 `CITATION_UNKNOWN`，消息同时给**原始路径**与**归一化后的 id**。
+3. **回执要能指向自己写下的事实**：撞名 `start` 带 `stateRecordId`+`status`；`status exists:false` 带 hint（含 `byId/byTarget/byNormalized` 三种命中与"别用同名再 start"）；`review` 回执带 `recordId`/`fingerprint`；`records status` 的 `shared` 补齐 `staleLiveRows/tombstonesAdopted/…`，`records` 补 `trashed`/`trashedByTrack`；闭合票行同时记 `session`（写者）与 `voterSession`（投票者）。
+
+**教训**：持久面的事实属于账本，不属于实例；"本实例没见过所以不存在"在跨内核装配里是造重复对象的炸弹（旧的 run166 §5 正是在钉这条错误契约，本轮按新契约**反向改写**）。以及：**以渲染为目的的阶段必须能渲染**——转义集漏了 `^`/`~`，xelatex 就用 `! Missing $ inserted` 让唯一能产出 PDF 的阶段失败。

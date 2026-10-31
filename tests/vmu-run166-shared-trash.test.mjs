@@ -206,7 +206,11 @@ const putPaper = (k, title, body = 'body of ' + title) => k.records.put({ track:
   ok(pr.ok === true && pr.liveAfter === 1, '§5 fixture: one live row left', { liveAfter: pr.liveAfter })
   const C = await boot(root)                        // a kernel that never saw the pre-trash world
   ok(avail(C.kernel) === 1, '★★ §5 a FRESH kernel reads one live row (the tombstone did not become a record at boot)', { c: avail(C.kernel) })
-  ok(C.kernel.records.trashRows({}).length === 0, '§5 and carries no local trash it never performed (0 tombstones locally)', C.kernel.records.trashRows({}).length)
+  // ★★ RUN 170 (FEEDBACK16 F16-5) REVERSED THIS EXPECTATION, deliberately: a kernel that never pruned used to carry
+  // ZERO trash — and that ignorance is exactly what let it mint a SECOND paper under a name the ledger still held. The
+  // fold now hands it the tombstone as a trashed row (`adoptTombstoneRow`), so "no local trash" would be the bug.
+  const adopted = await until(() => { const n = C.kernel.records.trashRows({}).length; return n >= 1 ? n : null })
+  ok(adopted >= 1, '★★ §5 a fresh kernel ADOPTS the tombstone it never performed (RUN 170: ignorance reused a trashed name)', adopted)
   const row = C.kernel.records.list({ track: 'paper', limit: 0 }).items.filter((r) => r.title === 'newest row')[0]
   ok(row && row.title === 'newest row', '§5 and the surviving row is the newest one (keep:1 keeps the tail)', row && row.title)
   await rm(root, { recursive: true, force: true, maxRetries: 3 }).catch(() => {})

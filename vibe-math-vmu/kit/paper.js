@@ -547,8 +547,11 @@ export function createPaperFlow({
           'pass editor:"academician" (the member in the chair seat finalises: this is the default) or editor:"office" (the office finalises after consulting the institute); an id is accepted only for a chair-seated member, which is recorded as "academician"')
       }
     }
-    if (readState(str(target))) throw refuse(CODES.STATE, 'a paper for "' + str(target) + '" already exists',
-      'advance/finalize the existing one, or start a paper for a different target (this face never silently overwrites)')
+    const existing = readState(str(target))
+    if (existing) throw refuse(CODES.STATE, 'a paper for "' + str(target) + '" already exists',
+      'advance/finalize the existing one, or start a paper for a different target (this face never silently overwrites)',
+      // ★★ RUN 170 (run 16 / FEEDBACK16 F16-6): the refusal named the target and withheld the one id a caller can act on.
+      { requestedTarget: str(target), existingTarget: String(existing.state.target), stateRecordId: existing.state.stateRecordId || null, status: existing.state.status || null })
     // ★★ RUN 158 (N2): see mintPaperId above — the id/folder must be ASCII even when the title is not.
     const targetWord = str(target)
     const asciiSafe = PORTABLE_TARGET.test(targetWord)
@@ -804,7 +807,10 @@ export function createPaperFlow({
     state.reviews[review.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, deliverable: review.deliverable, of: review.of, round: state.round }
     state.updatedAt = 1
     writeState(state)
-    return { ok: true, recorded: review.member, of: review.of, deliverable: review.deliverable, round: state.round }
+    return { ok: true, recorded: review.member, of: review.of, deliverable: review.deliverable, round: state.round,
+      // ★★ RUN 170 (run 16 / FEEDBACK16 F16-8): `part` answered with the row it wrote and `review` did not, so the one
+      // receipt that files the gate's evidence was the only one a caller could not point at afterwards.
+      recordId: put && put.id ? put.id : null, fingerprint: put && put.fingerprint ? put.fingerprint : null }
   }
 
   /** ④ advance: the state machine. Returns what happened, or `moved:false` with the reason (never a silent no-op). */
@@ -1114,7 +1120,13 @@ export function createPaperFlow({
     // `\\textbf\{1 · …\}`. Measured: xelatex stopped at "! Undefined control sequence." and the PDF was never produced
     // (`VMU_PAPER_LATEX_FAILED`), which made the paper stage unfinishable. Escape the TEXT first (so the braces are
     // escaped as content), then wrap the bold run — the `\textbf{` this pass writes is markup and must stay unescaped.
-    const escText = (s) => String(s).replace(/([&%$#_{}])/g, '\\$1')
+    // ★★ RUN 170 (real machine, run 16 / FEEDBACK16 F16-10 — THE ESCAPER ATE THE FORMULA): the escape set was
+    // `[&%$#_{}]`, so a run of `Σ\_\{k=1\}^\{n\}` kept its `^` in TEXT mode. xelatex then stopped at
+    // `! Missing $ inserted` (l.29) and the paper never got a PDF (`VMU_PACK_V5R_CORE_PAPER_PDF_FAILED`) — the one stage
+    // whose purpose is rendering was the stage that could not render a formula. `^` and `~` are TeX ACTIVE characters; the
+    // textcomp-free spellings below are legal in plain text mode and do not need a math shift.
+    const TEX_TEXT = { '&': '\\&', '%': '\\%', '$': '\\$', '#': '\\#', '_': '\\_', '{': '\\{', '}': '\\}', '^': '\\textasciicircum{}', '~': '\\textasciitilde{}', '\\': '\\textbackslash{}', '<': '\\textless{}', '>': '\\textgreater{}', '|': '\\textbar{}' }
+    const escText = (s) => String(s).replace(/[&%$#_{}^~\\<>|]/g, (ch) => TEX_TEXT[ch] || ch)
     const esc = (s) => escText(String(s)).replace(/\*\*([^*]+)\*\*/g, (m, inner) => '\\textbf{' + inner + '}')
     const body = md.split('\n').map((line) => {
       if (line.startsWith('### ')) return '\\subsection*{' + esc(line.slice(4)) + '}'

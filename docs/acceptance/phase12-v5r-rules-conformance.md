@@ -12819,3 +12819,68 @@ run 15 里 `r-acad` 用工具投了结题票，成员侧 `votesCast:1`；几乎�
 
 - `regen-all --write` 到不动点 ⇒ `--check` **17/17**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULES COVERAGE: PASS (0)`、`RULE PARITY: PASS (0)`。
 - 全量 T1：**650 PASS / 0 FAIL（suites 586 · probes 64）**（日志 `D:/_tmp/t1-r222-run169b.log`）。首跑 r221 是 **649/1**，唯一红在 `vmu-live-run-r9-r12` 的「effects 就是这次投票的机制后果」——因为无 store 的装配给每张 reply 票多留了一条 `closure-vote-persist-refused`；按 269.2 末条的「能力在装配时定」改法后转绿。
+
+## §270 第十六次真机（run 16）：垃圾桶只对"剪过枝的那个内核"可见——于是同一个名字能用两次，而"没这个对象"是一次记录库异常逃出了引文闸（RUN 170 / FEEDBACK16 F16-1·3·4·5·6·7·8·9·10、F16-2）
+
+### 270.1 现场：run 16 的真读数
+
+- **驾驶报告**：`DRIVE exit=0`、`durationSec 1931`、`tokenTotal 24 592 079 / 30 000 000`（`tokenCapHit:false`，cacheRead 15 630 208、output 73 662）、`transcriptEvents 562`、`toolCalls 109`；`slv-inspect` **5 sessions / 0 RED**；清理 `clone_gone=True C_free_GB=9.98`。
+- **成员回合**：`woken r-1:4, r-2:4, r-temp:2, r-acad:2 = 12 turns`（`vibe_vmu_turn{op:"status"}` 读数）——RUN 169 的续跑式成员回合（`delivery.path:"continuation"`）已成常态。
+- **流程**：主线走到 `final`，第一次**真的**被 prune 之后的资源状态咬住；`prune{dryRun:true}` `liveBefore:193 / wouldPruneCount:43` → 真删 `liveAfter:150 / prunedCount:43`。
+- 产出：`SIM-REPORT16.md`（31 990 B）、`FEEDBACK16.md`（14 137 B）：**10 条机制缺陷 + 4 条提示词问题**。
+
+### 270.2 核心：一个内核"不知道"的垃圾桶，会替它把名字再发一次
+
+FEEDBACK16 **F16-5**（最严重）：`start target:"<中文标题>"` 铸出 `paper-p1`，而 `paper-p1` 已经有一篇 `awaiting-editor`、一篇 `finalized`；按 id/新标题只到新篇，按旧标题 `exists:false` —— **旧篇在自己的研究所里不可达**。
+
+根因不是 `mintPaperId` 写错了，而是**知识不对称**：
+
+- `vibe-math-vmu/kernel/index.js` 的 `hydrateRecords()` 里 `if (row.state === 'trashed') continue`（RUN 166 为防"墓碑复活成活行"而加）⇒ 新内核启动时**完全不认识 trash**；
+- `vibe-math-vmu/kernel/records.js` 的 `synchronize()` 遇到不认识的墓碑只**数**不**装**（`tombstonesSeen += 1; continue`）⇒ 折入面送来的墓碑被丢弃；
+- 于是 `mintPaperId()`/`trashedNamesake()`/`readState()` 在"没剪过枝的内核"眼里，那些名字**从未存在过**。
+
+修法（`records.js` 新增 `adoptTombstoneRow(id, row)`）：折入面带回来的、本地没有的墓碑，**装成一行 `state:'trashed'` 的记录**（`slug:String(id)`、`fingerprint:'tombstone:'+id`、`rev:0`、`versions:[]`），只进记录面、**不进 live track list**（故 `list()`/`liveIds()`/配额不受影响），并 `fire('records/tombstone-adopted', …)` + `shared.tombstonesAdopted` 计数。`synchronize()` 的墓碑分支改成"数完就装"。
+
+同一根因还解释了两条读数缺陷：
+
+- **F16-1**：`vibe_vmu_records {action:"status"}` 的 `shared` 投影手工挑键，把 `staleLiveRows`（RUN 168 刚做的那个计数）漏掉了 ⇒ 两个内核读到的 shared 只有 11 个键。修法：`host.js` 的投影补齐 `trashAdopted/trashRestored/tombstonesSeen/tombstonesAdopted/staleLiveRows/staleTombstones` 与各自 `*Means`。
+- **F16-3**：prune 回执承诺"action status counts them under `records.trashed`"，而 `records` 块只有 `{total,live,byTrack}`。修法：`records.js` 的 `status().records` 增 `trashed`/`trashedByTrack`，`host.js` 透传。
+
+**教训（RUN 170 的第一条）**：持久面的事实**属于账本，不属于实例**；任何"本实例没见过所以不存在"的判据，在跨内核装配里都是会造出重复对象的炸弹。"忽略不认识的墓碑"当时是为了防复活，代价是重名——修法不是二选一，而是**把墓碑装进记录面但不装进 live 集**。
+
+### 270.3 一个引用被当成了记录 id，整次定稿死在一句 records 异常上
+
+FEEDBACK16 **F16-9**：`vibe_v5_paper {action:"final"}` 被 `VMU_NO_SUCH_OBJECT "unknown record: run16-odd-cubes.md#四步归纳"` 拦住。真相比"引文写错"严重：
+
+- `paper-quality.js` 的 `MEMBER_FILE` 正则 `([^\/\\s]+?)(?:\.md)?(?=$|[\s，。；、）)\]])` 在 `…/run16-odd-cubes.md#四步归纳` 上会**回退**把 `#四步归纳` 吃进捕获组（`.md` 后面不是空白 ⇒ 可选 `.md` 不匹配、`$` 在串尾成立）；
+- `checkQuality` ① 里 `recordOf(records, c.cardId)` **没有 try/catch**，而 records 面对未知 id 是**抛错**的 ⇒ 记录库异常直接顶掉了定稿门，调用者读到的不是"引文不合格"，而是"记录库不认识这个 id"。
+
+修法两条腿：
+
+1. **一个归一化器**（`normalizeCitedId`）：`.md/.tex/.lean` 后缀与 `#锚点` 都是**寻址**、不是 id 的一部分；`citationsOf` 的两条来源（prose 与 evidence）都过它。
+2. **缺席是判定，不是异常**：`checkQuality` ① 里 `try { row = recordOf(...) } catch { row = null }`，未知 id 进 `missing` 并返回 `CITATION_UNKNOWN`，消息里带**原始路径（含锚点）**与**归一化后的 id**。
+
+证据（`tests/vmu-run170-truthful-trash.test.mjs` §5）：`checkQuality` 现在**返回** `{ok:false, code:CITATION_UNKNOWN, missing:[{id:'run16-odd-cubes', path:'Members/r-1/Propos/run16-odd-cubes.md#四步归纳'}]}`，一个字节都不抛。
+
+### 270.4 其余四条：回执要能指向自己写下的事实
+
+- **F16-6** 撞名 `start` 的拒文没有 `stateRecordId`（作者只能猜）⇒ 现在带 `{requestedTarget, existingTarget, stateRecordId, status}`。
+- **F16-7** `status exists:false` **没有 hint**（457 字节原样沉默，代理于是再建一篇）⇒ 现在给 `seen[{id,target,status}]`、三种命中（`byId`/`byTarget`/`byNormalized`）与前 8 篇候选，末句固定"**Do NOT start a second paper under that name**：耐久账本为一个名字保留一生，包括它躺在 TRASH 里的时候"。
+- **F16-8** 论文 `review` 回执太薄（133 字节，没有 `recordId`）⇒ 现在带 `recordId`/`fingerprint`，与 `part` 回执同形。
+- **F16-10** 转义集只有 `[&%$#_{}]`：`Σ\_\{k=1\}^\{n\}` 的 `^` 留在文本模式，xelatex `! Missing $ inserted`（l.29）⇒ `VMU_PACK_V5R_CORE_PAPER_PDF_FAILED`——**唯一以渲染为目的的阶段渲染不了公式**。修法：`TEX_TEXT` 表补 `^`→`\textasciicircum{}`、`~`→`\textasciitilde{}`、`\`→`\textbackslash{}`、`<`/`>`/`|` 同理，并在测试里从 paper 轨读出 `.tex` 断言"正文行里没有裸 `^`"。
+- **F16-2**（`closure_votes` 行的 `session` 记的是**写入者**内核会话，三票全是所办）：`turn` 的 `recordClosureVote` 现在把 `memberSessions.get(id)` 作为 **`voterSession`** 传给接缝，行里同时有 `session`（写者）与 `voterSession`（投票者所在子会话）——一个字段说不清两件事，就得有两个字段。
+
+### 270.5 机器化与读数
+
+- `tests/vmu-run170-truthful-trash.test.mjs`（**39/0**）：§0 八条源码口径；§1 两内核同 root 的墓碑采纳（第二个、第三个内核都看得到 3 条 trash，且不算 live；`status.records.trashed/trashedByTrack`、`shared.tombstonesAdopted` 在**工具面**上）；§2 躺在 trash 里的名字**不能**再 `start`（且不铸新篇）；§3 `exists:false` 必须带 hint；§4 review 回执带 `recordId`/`fingerprint`；§5 引文闸返回判定而不是异常（含归一化 id 与原始路径）；§6 渲染出的 `.tex` 里 `^`/`~` 已转义。
+- `tests/vmu-run166-shared-trash.test.mjs` §5 **按新契约反向改写**：旧的"新内核没有本地 trash（0 条墓碑）"正是 F16-5 的成因，现在断言"新内核**采纳**它没剪过的墓碑（≥1 条），且不算 live 行"，套件仍 **34/0**。
+- `tests/vmu-run169-institute-closure.test.mjs` 的 §0 pin 随接缝签名放宽为"写者函数体 + 该键的 patch"，仍 **29/0**。
+- 定向回归 `--only` 0 红：paper 11/0、records 5/0、run166 34/0、run167 53/0、run168 38/0、run169 29/0、vmu-host 211/0、meeting 32/0、verdict 5/0、prompt- 24/0、v5r-tools 361/0、run36 4/0、run16 11/0。
+- 门禁：`regen-all --write` 到不动点 ⇒ `--check` **17/17**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULES COVERAGE: PASS (0)`、`RULE PARITY: PASS (0)`。
+- 全量 T1：**651 PASS / 0 FAIL（suites 587 · probes 64）**（`D:/_tmp/t1-r224-run170b.log`；首跑 r223 = 650/1，唯一红是 `tests/vmu-run152-real-run-fixes.test.mjs` §0f 钉着旧的转义集，已按新契约改写为钉 `TEX_TEXT`/`textasciicircum`）。
+
+### 270.6 未闭合账（下一轮要么修、要么在简报里写清楚）
+
+1. **F16-4**：prune 之后另一个内核 ~20 秒后仍读到 `paper:193`，稍后才变 151 —— **最终一致但没有名字**。下一轮：`status` 带 `foldAsOf`/`viewAsOf`（这个读数是折入面哪个时刻的），或把读取路径做成"先 pull 再读"。
+2. **F16-9 的写侧**：`part` 的 evidence 写入闸仍走 `checkEvidencePointers`，它对 `file.md#anchor` 的态度（`not-a-member-file-pointer`）与定稿门的归一化口径要**显式一致**（现在两条腿各自正确，但一句话的说明还没写进提示词）。
+3. **P-1..P-4**（简报编写教训）：票值必须由成员自判（简报不能替成员表态）；`available` 不是 `list` 的字段名（`total/returned/truncated` + 行 `status`）；`reviewOf` 的判据是"⊆ 能审别人 part 的人"，不是点名；并发压测要写成"一次写面 + 一次读面"，不能写死"写 part"。

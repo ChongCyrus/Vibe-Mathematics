@@ -2562,7 +2562,14 @@ export function createTurnOrchestrator({
     // RUN 169: the durable copy, so the office kernel and this member's own kernel count the SAME votes. A seam that
     // throws is reported as a receipt row rather than swallowed - a persisted-ledger failure must be visible to the caller.
     if (typeof persistClosureVote === 'function') {
-      try { persistClosureVote({ member: id, solved: value, source }) } catch (e) {
+      // ★★ RUN 170 (real machine, run 16 / FEEDBACK16 F16-2 — A PROVENANCE FIELD THAT NAMED THE WRITER): the durable row
+      // carried `session` = the kernel that folded it (in run 16 that was the OFFICE kernel for all three votes), so
+      // `crossKernelScope:"shared-fold"` promised institute-wide provenance and delivered "where it was written down".
+      // The member's own child session IS known here (`memberSessions`, learned from every settled delivery), so the seam
+      // gets it: `voterSession` names where the voter ran, `session` stays the writer.
+      let voterSession = null
+      try { voterSession = memberSessions.get(id) || null } catch { voterSession = null }
+      try { persistClosureVote({ member: id, solved: value, source, voterSession }) } catch (e) {
         turnEffects.push({ kind: 'closure-vote-persist-refused', member: id, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) })
       }
     }

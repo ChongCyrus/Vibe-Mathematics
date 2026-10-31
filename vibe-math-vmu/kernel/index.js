@@ -2539,16 +2539,19 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // Declared before the loop because the loop calls it: the loop owns WHEN a judgement happened, this kernel owns WHERE it
   // is written, and the fold is the only thing two kernels can both read.
   const CLOSURE_VOTES_FOLD = 'closure_votes'
-  const persistClosureVote = ({ member, solved }) => {
+  const persistClosureVote = ({ member, solved, voterSession = null }) => {
     if (!recordsStore || typeof recordsStore.patch !== 'function') {
       throw refuse('VMU_STORE_FAILED', 'this assembly has no durable store, so a closure vote cannot leave this process',
         'mount the kernel over a root (createStore) to make the closure tally institute-wide; without it the reading covers this session only')
     }
     const at = (() => { try { return clock() } catch { return null } })()
     const session = (() => { try { return kernelSessionValue(kernelSession) || null } catch { return null } })()
+    // ★★ RUN 170 (FEEDBACK16 F16-2): TWO SESSIONS, NAMED. `session` is where the row was WRITTEN (the kernel that folded
+    // it — in run 16 the office kernel, for all three votes); `voterSession` is where the VOTER actually ran (learned by
+    // the loop from the member's settled deliveries). One field could not say both, and it said the less useful one.
     const pending = recordsStore.patch(CLOSURE_VOTES_FOLD, (prev) => {
       const rows = (Array.isArray(prev) ? prev : []).filter((r) => r && String(r.member) !== String(member))
-      rows.push({ member: String(member), solved: solved === true, at, session })
+      rows.push({ member: String(member), solved: solved === true, at, session, voterSession: voterSession ? String(voterSession) : null })
       return rows
     })
     if (pending && typeof pending.catch === 'function') pending.catch((e) => log('vmu closure_votes write: ' + String((e && e.message) || e)))

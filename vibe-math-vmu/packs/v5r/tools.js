@@ -4312,7 +4312,39 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // ★ G7 finding: status exposed the flow state only, while render exposed missing/complete/pdf. Same source,
       // same fields: a status reader must not have to render (which WRITES artefacts) just to learn what is missing.
       const artifacts = got && got.state && typeof paper.PaperArtifacts === 'function' ? paper.PaperArtifacts({ target }) : null
-      return { ok: true, tool, action, target, exists: !!(got && got.state),
+      const exists = !!(got && got.state)
+      // ★★ RUN 170 (run 16 / FEEDBACK16 F16-7): `exists:false` was 457 bytes of silence — no hint, no candidates, no
+      // statement that starting a second paper under a name the ledger may still hold is the wrong move. A missing paper
+      // is a QUESTION ("did you mean the id, the target, or a spelling this reader normalises?"), so answer it.
+      let hint = null
+      if (!exists) {
+        const known = typeof paper.papers === 'function'
+          ? paper.papers().filter((r) => String((r && r.kind) || '') === 'paper-state')
+          : []
+        const seen = []
+        for (const row of known) {
+          let st = null
+          try {
+            const got2 = row && row.id ? kernel.records.get({ id: row.id }) : null
+            const full = got2 && got2.record ? got2.record : got2
+            st = JSON.parse(String((full && full.body) || '{}'))
+          } catch { st = null }
+          if (!st || st.target === undefined || st.target === null) continue
+          seen.push({ id: st.id === undefined || st.id === null || st.id === '' ? 'paper-' + String(st.target) : String(st.id), target: String(st.target), status: st.status === undefined ? null : st.status })
+        }
+        const byId = seen.filter((p) => p.id === str(target))[0] || null
+        const byTarget = seen.filter((p) => p.target === str(target))[0] || null
+        const normalized = String(str(target)).replace(/^paper-/, '')
+        const byNormalized = seen.filter((p) => p.target === normalized || p.id === normalized || p.id === 'paper-' + normalized)[0] || null
+        hint = 'no paper answers to "' + str(target) + '" in this instance: '
+          + (byId ? 'that IS the id of "' + byId.target + '" (state ' + byId.status + ') — address it by that target' :
+            byTarget ? 'that is the target; address it by its id "' + byTarget.id + '"' :
+            byNormalized ? 'a paper on this track answers to a spelling of it: "' + byNormalized.target + '" (id ' + byNormalized.id + ')' :
+            'known papers: ' + (seen.map((p) => p.id + ' (' + p.target + ')').slice(0, 8).join(', ') || '(none)') + '. ')
+          + ' Do NOT start a second paper under that name: the durable ledger reserves a name for its whole life, including while a row sits in the TRASH'
+      }
+      return { ok: true, tool, action, target, exists,
+        ...(exists ? {} : { hint }),
         paper: got && got.state ? got.state : null,
         missing: artifacts ? artifacts.missing : [], complete: artifacts ? artifacts.complete === true : false,
         // ★★ RUN 156 (run-5 finding 7): `status.pdf` describes the paper track's ARCHIVE row (written by `render`), not the

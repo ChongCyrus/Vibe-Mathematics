@@ -62,6 +62,21 @@ const TRACK_OF_CATEGORY = Object.freeze({ Propos: 'propositions', Methods: 'meth
 const str = (v) => (v === undefined || v === null ? '' : String(v))
 const has = (v) => str(v).trim() !== ''
 
+/**
+ * ★★ RUN 170 (real machine, run 16 / FEEDBACK16 F16-9 — A FILE NAME READ AS A RECORD ID): the gate took the tail of a
+ * prose citation as a record id, so `Members/r-1/Propos/run16-odd-cubes.md#四步归纳` became the id
+ * `run16-odd-cubes.md#四步归纳` and `records.get` THREW `VMU_NO_SUCH_OBJECT` out of the gate (the whole `final` call died
+ * with a records error instead of a citation verdict). A citation is a record id with an optional `.md` suffix and an
+ * optional `#anchor` — both are ADDRESSING, never part of the id. One normalizer for BOTH gates, so they cannot disagree
+ * about what "the id" is.
+ */
+const normalizeCitedId = (raw) => {
+  const s = str(raw)
+  const at = s.indexOf('#')
+  const head = at < 0 ? s : s.slice(0, at)
+  return head.replace(/\.(md|tex|lean)$/i, '').trim()
+}
+
 /** The records face's full row (same shape rule the kit uses: `get` may hand back `{record}` or the record itself). */
 function recordOf(records, id) {
   const got = records.get({ id })
@@ -229,7 +244,12 @@ function citationsOf(state, records) {
   }
   for (const c of found) {
     const m = c.text.match(MEMBER_FILE)
-    if (m) { c.category = m[1]; c.cardId = m[2]; c.expectedTrack = TRACK_OF_CATEGORY[m[1]] }
+    if (m) { c.category = m[1]; c.cardId = normalizeCitedId(m[2]); c.expectedTrack = TRACK_OF_CATEGORY[m[1]] }
+    else if (c.origin === 'evidence') {
+      // an evidence entry in the BARE form (`rec-12`, or `rec-12.md#证明`) is a citation too: normalize it the same way
+      const bare = normalizeCitedId(c.text)
+      if (bare && (BARE_CARD_ID.test(bare) || /^[A-Za-z][A-Za-z0-9_-]*$/.test(bare))) { c.cardId = bare; c.expectedTrack = null; c.bare = true }
+    }
   }
   return found
 }
@@ -326,9 +346,13 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
   const known = []
   for (const c of cites) {
     if (!c.cardId) continue
-    const row = recordOf(records, c.cardId)
+    // ★★ RUN 170 (F16-9): the records face THROWS for an unknown id, and this loop let that throw escape as
+    // `VMU_NO_SUCH_OBJECT unknown record: …` — a whole `final` call died with a records error instead of the citation
+    // verdict that names the offending line. Absence is a VERDICT here, never an exception.
+    let row = null
+    try { row = recordOf(records, c.cardId) } catch { row = null }
     if (!row) { unknown.push({ id: c.cardId, path: c.text, member: c.member, origin: c.origin, expectedTrack: c.expectedTrack, reason: 'no record with this id' }); continue }
-    if (row.track !== c.expectedTrack) {
+    if (c.expectedTrack && row.track !== c.expectedTrack) {
       unknown.push({ id: c.cardId, path: c.text, member: c.member, origin: c.origin, expectedTrack: c.expectedTrack, actualTrack: str(row.track), reason: 'the id exists but on another track' })
       continue
     }

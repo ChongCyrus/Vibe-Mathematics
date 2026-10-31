@@ -1149,9 +1149,23 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                 pulls: shared.pulls, pulled: shared.pulled, refused: shared.refused, skipped: shared.skipped,
                 adoptedWithoutAuthor: shared.adoptedWithoutAuthor,
                 adoptedWithoutAuthorMeans: shared.adoptedWithoutAuthorMeans,
+                // ★★ RUN 170 (run 16 / FEEDBACK16 F16-1): the trash counters the kernel kept were NOT on this face, so the
+                // one read that answers "did another kernel's prune reach me?" could not answer it. A stale-live or
+                // stale-tombstone skip is exactly the case where two kernels disagree, so both are printed now.
+                trashAdopted: shared.trashAdopted, trashAdoptedMeans: shared.trashAdoptedMeans,
+                trashRestored: shared.trashRestored, trashRestoredMeans: shared.trashRestoredMeans,
+                tombstonesSeen: shared.tombstonesSeen, tombstonesSeenMeans: shared.tombstonesSeenMeans,
+                tombstonesAdopted: shared.tombstonesAdopted, tombstonesAdoptedMeans: shared.tombstonesAdoptedMeans,
+                staleLiveRows: shared.staleLiveRows, staleLiveRowsMeans: shared.staleLiveRowsMeans,
+                staleTombstones: shared.staleTombstones, staleTombstonesMeans: shared.staleTombstonesMeans,
                 lastWhy: shared.lastWhy === undefined ? null : shared.lastWhy,
               },
-              records: { total: recs.total, live: recs.live, byTrack: recs.byTrack },
+              // ★★ RUN 170 (run 16 / FEEDBACK16 F16-3): `prune` promised "action status counts them under
+              // records.trashed" and this receipt printed only total/live/byTrack — a promise with no field behind it.
+              records: {
+                total: recs.total, live: recs.live, trashed: recs.trashed,
+                byTrack: recs.byTrack, trashedByTrack: recs.trashedByTrack,
+              },
               recordsMeans: 'the row counts are what THIS kernel sees after its own folds; a second kernel over the same store reports its own view, so compare row ids (or the store file) when two kernels must agree',
               // ★ RUN 164 (FEEDBACK12 item 1): the per-track cap was real but this receipt never printed it, so a caller
               // could not tell "written at startup" from "read at write time" without tripping the refusal. Print it.

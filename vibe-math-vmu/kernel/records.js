@@ -273,7 +273,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     // (F4) and a minted `m33` resolved to an archived meeting (F3). The fold now carries the row's STATE: a tombstone is
     // a row with `state:'trashed'` + `trashedAt`/`purgeAt`, so a trash made anywhere is learned everywhere on the next
     // read. These counters keep the adoption visible instead of silent.
-    trashAdopted: 0, trashRestored: 0, tombstonesSeen: 0, staleTombstones: 0, staleLiveRows: 0,
+    trashAdopted: 0, trashRestored: 0, tombstonesSeen: 0, tombstonesAdopted: 0, staleTombstones: 0, staleLiveRows: 0,
     lastWhy: null, lastDetail: null, lastPullAt: null, lastSyncAt: null,
   }
 
@@ -986,6 +986,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           permanent: order.map((id) => records.get(id)).filter((r) => r && isPermanent(r)).length,
           cold: order.map((id) => records.get(id)).filter((r) => r && tierOf(r) === 'cold').length,
           byTrack: Object.fromEntries(tracks.map((t) => [t, liveIds(t).length])),
+          // ★★ RUN 170 (FEEDBACK16 F16-3): `prune`'s receipt said "action status counts them under records.trashed"; the
+          // per-track trash count had to exist for that sentence to have a referent.
+          trashedByTrack: Object.fromEntries(tracks.map((t) => [t, order.map((id) => records.get(id)).filter((r) => r && r.state === 'trashed' && r.track === t).length])),
           bytesByTrack: Object.fromEntries(tracks.map((t) => [t, trackBytes(t)])),
         },
         refusals: objOf(refusals), refusalsTotal: sumOf(refusals),
@@ -1006,6 +1009,37 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   // again; a restore must call the INNER put, or every restored row would trigger a full `store.write('records', …)`.
   // A read that rewrites the file is a second writer, and N restored rows would mean N writes on the first read.
   const putInternal = api.put
+
+  /**
+   * ★★ RUN 170 (real machine, run 16 / FEEDBACK16 F16-1+F16-4+F16-5): ADOPT A TOMBSTONE THE INSTANCE NEVER HELD.
+   * A row trashed by another kernel travels in the fold as `{state:'trashed', trashedAt, purgeAt, …}`. This instance
+   * never had it live, so there is nothing to "stop counting" — but the row still OCCUPIES ITS NAMES until purgeAt, and
+   * a mint that cannot see it reuses an id that a restorable record still answers to. Measured in run 16: a freshly
+   * booted office kernel minted `paper-p1` on top of an existing `paper-p1` (one name, two papers) and the trash was
+   * invisible to `trashRows()` in every instance that had not performed the prune.
+   * The row is installed as a TRASH row only: it is not in the live track list (a reader asking for papers does not get
+   * it), it counts under `records.trashed`, `restore` can bring it back (restore rebuilds every index), and `remove` on
+   * it answers `already:'trashed'`. It is a tombstone, never a resurrection.
+   */
+  function adoptTombstoneRow(id, row) {
+    if (records.has(id)) return false
+    const at = Number(row.trashedAt) || now()
+    const body = row.body === undefined || row.body === null ? '' : String(row.body)
+    const rec = {
+      id, track: String(row.track), kind: String(row.kind), title: row.title === undefined || row.title === null ? '' : String(row.title),
+      slug: String(id), body, tags: Array.isArray(row.tags) ? listOf(row.tags, []) : [], bytes: bytesOf(body),
+      fingerprint: 'tombstone:' + id, permanent: false, state: 'trashed', rev: 0, createdAt: at, updatedAt: at,
+      by: row.by === undefined || row.by === null ? null : String(row.by), versions: [], trashedAt: at,
+      purgeAt: Number(row.purgeAt) || (at + trashRetainDays * DAY_MS), restoredAt: null,
+    }
+    records.set(id, rec)
+    // the id joins `order` (the durable row order every reader walks) but NOT the live track list: a trashed row is not
+    // a live record, and `list()`/`liveIds()` must keep answering with live rows only.
+    if (!order.includes(id)) order.push(id)
+    record_({ type: 'records/tombstone-adopted', id, track: rec.track, kind: rec.kind, purgeAt: rec.purgeAt })
+    fire('records/tombstone-adopted', { id, track: rec.track, purgeAt: rec.purgeAt })
+    return true
+  }
   /**
    * Fold the durable fold into this instance, INCREMENTALLY, before a read answers. Three rules make it safe to call
    * on every read:
@@ -1146,10 +1180,18 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         continue                                            // ★ never DELETE what this instance knows; a newer body is adopted above
       }
       if (row.state === 'trashed') {
-        // ★★ RUN 166: a TOMBSTONE is not a record to adopt — it says a row this instance does not hold is (still) not
-        // live. Adopting it as a live row would be the very resurrection the tombstone exists to prevent; adopting it as
-        // a local trash row would invent an object this instance never had. It is COUNTED and skipped.
+        // ★★ RUN 166: a TOMBSTONE is not a record to adopt as LIVE — adopting it as a live row would be the very
+        // resurrection the tombstone exists to prevent.
+        // ★★ RUN 170 (real machine, run 16 / FEEDBACK16 F16-1+F16-4+F16-5 — THE TRASH NOBODY WAS EVER TOLD ABOUT): it is
+        // also not nothing. This branch used to COUNT the tombstone and DROP it, so an instance that never held the row
+        // learned only "a row I did not know about is not live": the names in the trash stayed free in its world (a
+        // freshly booted office minted `paper-p1` on top of `paper-p1`, F16-5) and its own prune bookkeeping could not
+        // name what had gone. A tombstone IS the object (id/track/kind/title/body/trashedAt/purgeAt travel in the fold),
+        // so it is adopted AS A TRASH ROW: reserved, counted under `records.trashed`, restorable, and never listed as
+        // live. `tombstonesSeen` still counts every tombstone the fold carried; `tombstonesAdopted` counts the ones this
+        // instance did not already know.
         shared.tombstonesSeen += 1
+        if (adoptTombstoneRow(id, row)) shared.tombstonesAdopted += 1
         continue
       }
       try {
@@ -1212,7 +1254,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       trashRestored: shared.trashRestored,
       trashRestoredMeans: 'rows THIS instance was holding trashed that another kernel RESTORED: the fold said live again and this copy rejoined',
       tombstonesSeen: shared.tombstonesSeen,
-      tombstonesSeenMeans: 'tombstones for ids this instance never held: counted so a reader can tell "nothing was pruned" from "nothing I know about was pruned"',
+      tombstonesSeenMeans: 'tombstones the fold carried: counted so a reader can tell "nothing was pruned" from "nothing I know about was pruned"',
+      tombstonesAdopted: shared.tombstonesAdopted,
+      tombstonesAdoptedMeans: 'tombstones for ids this instance NEVER held, now installed as TRASH rows: the id/title are reserved until purgeAt (a mint steps past them) and the row counts under records.trashed, but it is never listed as live and never resurrects on its own',
       staleLiveRows: shared.staleLiveRows,
       staleLiveRowsMeans: 'LIVE rows in the fold OLDER than this instance own trash of the same row: skipped, because the snapshot was written before the prune and adopting it would undo the prune (the receipt that said liveAfter:170 would stop being true one read later)',
       staleTombstones: shared.staleTombstones,
