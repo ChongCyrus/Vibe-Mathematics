@@ -2735,3 +2735,25 @@ id 是聚合的名字、durable 证据在哪；`paper-quality.js` 先剥 `#锚`�
 
 机器化：`tests/vmu-run160-run7-fixes.test.mjs` 30/0；T1 TOTAL 641  PASS 641  FAIL 0  (suites 577 · probes 64)；
 门禁五绿（coverage 86/86）。文档：`docs/acceptance/phase12-v5r-rules-conformance.md` §260。
+
+## ROUND 164 — RUN 161: one fact must not have two faces saying different things
+
+第九次真机跑（tarball `1ce2d35a`，0 RED / `CLOSURE cast=true` / 主线三件又跑通：`rec-253`→`rec-254` Verified、
+`paper-p13` 定稿并编译出 97 422 B PDF、`m22` 结题归档，代理判 `RUN7 VERDICT: PASS`）之后，`FEEDBACK8` 的十二条里
+六条是同一个病：**同一个事实在两个面上说法不同，或一个固定串先替事实下了结论**。
+
+1. **`ok` 说的是「这一步跑过」**（`kernel/resume.js`）：`recoverPlan()` 的 watchdogs 步 `ok:true, available:!!watchdogs`
+   （「没接线」是配置出来的缺席，不是失败）；`wd.means`/`wd.wired`/`wd.ok` 在挂到 durable `state.watchdogs` 之前
+   算好 ⇒ `status().watchdogs` 与 report 步读同一句话（此前散文只在 report 一侧）。
+2. **声明 ≠ 计数**（`kernel/meetings.js`）：`nonAttendingSeats` 只列本名册**实际被移除**的席位，声明另立
+   `deniedSeatsDeclared` + `deniedSeatsDeclaredMeans`；名册里没有该席位的人时两个 `nonAttending*` 都为空。
+3. **关过的会议不是不存在的会议**（`tools/meeting.js`）：`noSuchMeeting` 用公开面
+   `svc.meetingView({ meeting, allowArchived:true })` 问归档，并把「它关过、记录在归档里」写进 `message` 本体
+   （闭包里的 `requireMeeting` 不在公开 API 上，第一版探针静默答 null —— 探针必须打公开面）。
+4. **note 从读到的字段拼**（`packs/v5r/verification-gates.js`）：`debateSubjectGate` 允许分支按
+   `proofState === PROOF_STATE_COMPLETE` 拆两支；`fidelityAsked` 的拒绝语点名形参 `fidelity`。
+5. **工物行按 state 的规范 target 拼**（`kit/paper.js` + `packs/v5r/tools.js`）：`PaperArtifacts` 的 `canon` 取
+   `found.state.target`，回执加 `requestedTarget`/`missingMeans`（缺的是 ARCHIVE ROW，不是造不出来）。
+
+机器化：`tests/vmu-run161-audit8-fixes.test.mjs` 35/0；T1 TOTAL 642  PASS 642  FAIL 0  (suites 578 · probes 64)；
+门禁五绿（coverage 86/86）。文档：`docs/acceptance/phase12-v5r-rules-conformance.md` §261。

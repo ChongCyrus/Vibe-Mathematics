@@ -969,7 +969,16 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         unanswered: unanswered.slice().sort(),
         electorate: m.roster.length - nonAttendingAll.length,
         nonAttending: nonAttendingAll.slice().sort(),
-        nonAttendingSeats: deniedSeats.slice(),
+        // ★★ RUN 161 (FEEDBACK8 item 2.4-2): `nonAttending` (people on THIS roster) and the DECLARATION (seats the
+        // deployment forbids) used to be printed as one pair called `nonAttending*`, so a roster without a temp member
+        // read `nonAttending:[]` beside `nonAttendingSeats:["temp"]` and looked self-contradictory. Each field now says
+        // which of the two it is: these seats belong to members this reading actually removed.
+        nonAttendingSeats: nonAttendingAll
+          .map((r) => rosterSeatOf.get(String(r)) || null)
+          .filter((s, i, a) => s !== null && s !== '' && a.indexOf(s) === i)
+          .sort(),
+        deniedSeatsDeclared: deniedSeats.slice(),
+        deniedSeatsDeclaredMeans: 'the seats the deployment DECLARED as non-attending (vmu.meetings.attendDeniedSeats): a declaration, not a count — `nonAttending`/`nonAttendingSeats` name the members of THIS roster that the declaration actually removes',
         nonAttendingMeans: nonAttendingAll.length
           ? 'these members are named on the roster but a declaration (vmu.meetings.attendDeniedSeats) forbids their seat to attend or vote, so the unanimity reading does not wait for them — they are NAMED here instead of being silently subtracted'
           : 'no member of this roster sits in a seat that the attendance declarations forbid',

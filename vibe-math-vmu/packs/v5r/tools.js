@@ -4324,6 +4324,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
         ok: finalized.ok === true, finalized: finalized.finalized === true, target: finalized.target,
         final: finalized.final || null,
         missing: Array.isArray(finalized.missing) ? finalized.missing.slice() : [],
+        // ★★ RUN 161 (FEEDBACK8 item 5.2): the "which archive rows are absent, and what that means" sentence travels with
+        // the list it explains, and `requestedTarget` records the spelling the caller used (the rows are titled by the
+        // paper's own target — run 9 read four present rows as missing because the projection spoke for the argument).
+        missingMeans: finalized.missingMeans || null,
+        requestedTarget: finalized.requestedTarget || null,
         // ★ E4: the kit returns WHICH way the consult rule was satisfied ("off" / "answered" / "exempt") precisely so a
         // finalisation cannot quietly claim "the office checked it" when the gate was simply off. The projection used to
         // drop that field — i.e. the tool face hid the one piece of evidence that makes the gate's claim auditable.

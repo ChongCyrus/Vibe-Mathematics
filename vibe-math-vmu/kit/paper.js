@@ -926,10 +926,17 @@ export function createPaperFlow({
   /** ⑨ the four artefacts. Missing is NAMED; the PDF is the one this kernel cannot make (no LaTeX executor). */
   function PaperArtifacts({ target } = {}) {
     const found = readState(target)
+    // ★★ RUN 161 (FEEDBACK8 item 5.2): the four artefact rows are titled `v5r-paper|<the paper's OWN target>|md` …, and
+    // this view built those titles from the CALLER's spelling. Measured on run 9: `final` was called with the paper's id
+    // while the state's target is the title, so all four rows looked missing in the same receipt that carried a produced
+    // 97 KB PDF. The canonical target comes from the state row, never from the argument.
+    const canon = found && found.state && found.state.target !== undefined && found.state.target !== null && str(found.state.target) !== ''
+      ? str(found.state.target)
+      : str(target)
     const present = {}
     for (const name of PAPER_ARTIFACTS) {
       // EVERY artefact — including `meta` — is its own record: the state row is the flow, not the fourth artefact.
-      present[name] = !!found && !!rowByTitle(recordName(str(target), name))
+      present[name] = !!found && !!rowByTitle(recordName(canon, name))
     }
     const missing = PAPER_ARTIFACTS.filter((n) => present[n] !== true)
     // ★★★ AN ARTEFACT INVENTORY IS NOT AN ERROR REPORT. This branch used to carry `code: PDF_NEEDS_KERNEL` and a `why` that
@@ -944,7 +951,13 @@ export function createPaperFlow({
       ? { missing: 'pdf', produced: false,
         why: 'the pdf artefact is not in the archive yet. Whether a LaTeX executor EXISTS is decided by render(): it names PDF_NEEDS_KERNEL when it finds no engine and PDF_FAILED when an engine runs and fails. `env probe` reports what the host has; this view reports what the archive holds, and it carries no error code because a missing artefact is not an error.' }
       : null
-    return { ok: missing.length === 0, target: str(target), present, missing, complete: missing.length === 0, pdf,
+    return { ok: missing.length === 0, target: canon, requestedTarget: str(target), present, missing, complete: missing.length === 0, pdf,
+      // ★★ RUN 161 (FEEDBACK8 item 5.2): say what a "missing" name MEANS. These are ARCHIVE ROWS (each artefact is its own
+      // record), not capabilities: an absent row says the writing activity has not run, not that the text or PDF cannot be
+      // made (a produced PDF in the same receipt is the proof it was).
+      missingMeans: missing.length === 0
+        ? 'all four ARCHIVE rows are present: each artefact is its own record (v5r-paper|<target>|md|tex|meta|pdf), not a file in the flow state'
+        : 'these are the ARCHIVE ROWS that are absent (' + missing.join(', ') + '): each artefact is written by render()/compile(), so an absent row means that write has not run yet — it is NOT a statement about whether the text/PDF can be produced',
       note: missing.length === 0 ? 'all four artefacts are present' : 'INCOMPLETE: ' + missing.join(', ') + ' — this receipt does NOT claim completion' }
   }
 

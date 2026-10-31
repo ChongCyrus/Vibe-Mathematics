@@ -344,9 +344,15 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
       proofVia: verifiedHit ? 'verified-row' : 'lean-passed',
       evidence: { lean: leanHit, verified: verifiedHit },
       declared, declaredState: proofState || null,
+      // ★★ RUN 161 (FEEDBACK8 item 5.1): this note ASSERTED "这张卡还没登记 proofRef/proofState=\"complete\"" about cards
+      // whose declared state WAS "complete" — the gate never looked past its own two inputs but the sentence spoke for
+      // both. Say which half is absent, built from the fields this call actually read.
       note: declared ? null
-        : '放行依据是机器证据（' + (verifiedHit ? 'verified 轨的定论行' : '已通过的 Lean 作业') + '），不是卡上的自报：'
-          + '这张卡还没登记 proofRef/proofState="complete"，接线层应把证明引用补上，让"谁写的、写在哪"可追溯' })
+        : (proofState === PROOF_STATE_COMPLETE
+          ? '放行依据是机器证据（' + (verifiedHit ? 'verified 轨的定论行' : '已通过的 Lean 作业') + '），不是卡上的自报：'
+            + '这张卡登记了 proofState="complete"，但 proofRef 是空的 —— "写完了"有登记、"写在哪"没有，接线层应把证明引用补上，让来源可追溯'
+          : '放行依据是机器证据（' + (verifiedHit ? 'verified 轨的定论行' : '已通过的 Lean 作业') + '），不是卡上的自报：'
+            + '这张卡既没登记 proofRef（' + (proofRef || '空') + '）也没有 proofState="complete"（' + (proofState || '空') + '），接线层应把证明引用补上，让"谁写的、写在哪"可追溯') })
   }
   // ★ PHASE 12 / live run 8 finding A — THIS BRANCH USED TO REFUSE, AND THAT WAS A DEADLOCK.
   // The rule's condition for a debate subject is 「含正式证明且已写完」, and the DECLARATION (proofRef + proofState
@@ -471,6 +477,10 @@ export function fidelityAsked({ cardId = null, leanPassed = false, p = null, wit
     reason: 'Lean 已通过但概率仍非 1（p=' + String(pn === null ? '未知' : pn) + '）：必须先在辩论中裁定「Lean 代码里的命题与定义是否与所需一致」',
     question: 'Lean 代码中的命题、各种定义是否描述符合所需？符合 ⇒ 布尔概率直接赋值为 1；不符合 ⇒ 记 formal:{decision:"defect"}，框架撤回该证明的"已通过"',
     options: ['conform', 'defect'],
+    // ★★ RUN 161 (FEEDBACK8 item 4.4-1): the refusal listed the two ANSWERS but not the FIELD they go in, so a caller had
+    // to guess the parameter name (`fidelity`) before it could retry. A refusal owes the caller the exact next call.
+    hint: '再调一次本工具并带上 `fidelity` 形参：fidelity:"conform"（Lean 命题与所需一致 ⇒ 概率可直接写成 1）或 fidelity:"defect"（不一致 ⇒ 记 formal:{decision:"defect"}，该证明的"已通过"被撤回）；'
+      + '`fidelity` 是形参名，`conform`/`defect` 是它的两个取值',
     consumer: 'kernel/fidelity.js 的 passedWithdrawnFor（撤回标记）＋ 辩论裁决的 formal 字段',
   })
 }

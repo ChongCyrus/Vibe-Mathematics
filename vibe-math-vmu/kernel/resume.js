@@ -895,7 +895,12 @@ export function createResume({ store = null, work = null, control = null, identi
       note: planMailbox.attached
         ? ('unacknowledged mail is counted from ' + planMailbox.source + ' — the recovery counts it the same way, so the plan and the act agree')
         : 'no mailbox port AND no durable mailbox key: unacknowledged mail cannot be counted (reported, never faked)' })
-    plan.steps.push({ step: 'watchdogs', ok: !!watchdogs, attached: !!watchdogs, targets: null,
+    // ★★ RUN 161 (FEEDBACK8 item 1.4-2): `ok` says THE STEP RAN, not "the port exists". The plan and the act used to say
+    // `ok:false` and `ok:true` about the SAME absent port, so a reader could not tell a failure from a conclusion.
+    plan.steps.push({ step: 'watchdogs', ok: true, available: !!watchdogs, attached: !!watchdogs, targets: null,
+      availableMeans: !!watchdogs
+        ? 'the port IS wired: the refresh below will report a MEASURED count'
+        : 'the port is NOT wired: the act cannot measure targets at all (targets:null, never a manufactured 0) — that is a CONFIGURED absence, not a failed step (ok:true means this step was planned and ran)',
       means: !!watchdogs ? 'a watchdog port is injected, so the refresh will report a MEASURED count' : 'no watchdog port is injected: the plan can say it will not be refreshed, and cannot say "0 targets" (nothing measured a zero)' })
     plan.steps.push({ step: 'readback', ok: true, declared: cfg().readBack })
     plan.willWrite = true
@@ -1182,7 +1187,6 @@ export function createResume({ store = null, work = null, control = null, identi
         wd = { attached: true, targets: targets.length, refreshed: targets.slice(0, listCap) }
       } catch (e) { wd = { attached: false, targets: null, refreshed: [], error: String((e && e.message) || e) } }
     }
-    state.watchdogs = wd
     // ★★ RUN 158 (N6): "no port" and "the port is wired and there is nothing to refresh" are different facts; they used
     // to look identical in the receipt (`attached:false, targets:0` vs `attached:true, targets:0`, both bare).
     wd.code = wd.attached === true ? (wd.targets === 0 ? CODE.watchdogsNone : null) : (wd.error ? CODE.watchdogsFailed : CODE.watchdogsUnavailable)
@@ -1195,7 +1199,14 @@ export function createResume({ store = null, work = null, control = null, identi
       : (wd.error
         ? 'the watchdog port IS wired but refreshing threw: ' + String(wd.error) + ' — this is a FAILED query, not a zero (targets:null because nothing could be counted)'
         : 'no watchdog port was injected: the count of stale meet/verify clocks cannot be taken at all (targets:null, never 0 — a zero nobody measured is manufactured), so a stale clock would go unrefreshed here')
-    report.steps.push({ step: 'watchdogs', ok: wd.error ? false : true, attached: wd.attached, wired: !!(watchdogs && typeof watchdogs.targets === 'function' && typeof watchdogs.touch === 'function'), targets: wd.targets, refreshed: wd.refreshed.length, code: wd.code,
+    // ★★ RUN 161 (FEEDBACK8 item 1.4-1): the ACT and the STATUS are two readings of ONE fact, so the sentence and the
+    // `wired`/`ok` reading travel into the durable status block too — that block used to be the same numbers with the
+    // prose dropped, and a task book asking "does the unwired reading carry a `means`?" was answered `false` on that face.
+    wd.means = wdMeans
+    wd.wired = !!(watchdogs && typeof watchdogs.targets === 'function' && typeof watchdogs.touch === 'function')
+    wd.ok = !wd.error
+    state.watchdogs = wd
+    report.steps.push({ step: 'watchdogs', ok: wd.error ? false : true, attached: wd.attached, wired: wd.wired, targets: wd.targets, refreshed: wd.refreshed.length, code: wd.code,
       means: wdMeans,
       note: wdMeans })
 

@@ -252,8 +252,24 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (!svc || typeof svc.meetingView !== 'function' || idv === undefined || idv === null || String(idv) === '') return false
           try { svc.meetingView({ meeting: String(idv) }); return true } catch (e) { return false }
         }
+        // ★★ RUN 161 (FEEDBACK8 item 3.4-1): the MESSAGE said "no meeting with id …" for a meeting that had just CLOSED,
+        // and most callers print only that line — so a finished meeting read as one that never existed. The archive is a
+        // readable third place, and the meetings face exposes it through `meetingView({ meeting, allowArchived })` (the
+        // closure-local `requireMeeting` is NOT on the public face — measured: `kernel.meetings.requireMeeting is not a
+        // function`, so an archive probe written against it silently answered null), so ASK the public reader and put
+        // the fact in the message.
+        const archivedRowOf = (idv) => {
+          const svc = svcOf()
+          if (!svc || typeof svc.meetingView !== 'function') return null
+          if (idv === undefined || idv === null || String(idv) === '') return null
+          try {
+            const view = svc.meetingView({ meeting: String(idv), allowArchived: true })
+            return view && view.archived === true ? view : null
+          } catch (e) { return null }
+        }
         const noSuchMeeting = (idv) => Object.assign(
-          new Error('no meeting with id ' + String(idv) + ' in either meeting registry (primitive or service)'), {
+          new Error('no meeting with id ' + String(idv) + ' in either meeting registry (primitive or service)'
+            + (archivedRowOf(idv) ? ' — ★ but it WAS here: this meeting is CLOSED and its record now lives in the archive (closing removes it from both live tables), so it is not "unknown"' : '')), {
             code: 'VMU_NO_SUCH_OBJECT',
             hint: 'primitive registry: ' + ((kernel.liveList().meetings || []).join(', ') || '(none)')
               + ' ; service registry: ' + (serviceIds().join(', ') || '(none)')

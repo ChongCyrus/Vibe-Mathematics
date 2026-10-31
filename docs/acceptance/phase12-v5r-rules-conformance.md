@@ -12264,3 +12264,94 @@ FIELD_NOT_APPLICABLE=0 · BAD_JSON=0` / `slv-inspect` **0 RED** / `CLOSURE cast=
 2. `editor:"office"` 代定稿仍是具名缺口；人数闸仍缺一次名册 ≥4 的负向真机证据。
 3. 提示词面：`vibe_v5_paper { action:"consult" }` 的 `target` 必填没写进教学；`part` 按成员替换未提前说明。
 4. 宿主 `pwsh` 在第六、七、八轮都不可用（`0xC0000142`），代理只能改走文件工具与 `math_computation{engine:"python"}`。
+
+## §261 — RUN 161：第九次真机跑（run 9）四条核验通过，又抓出六处「同一个事实两个面说法不同」（RUN 161）
+
+第九次真机跑（续跑，tarball `1ce2d35a`，`D:/wd/vibemath开发/_oneoff/vm-slv/full-1031-105821.jsonl`，
+`slv-inspect` **0 RED**、`CLOSURE cast=true (7 receipts)`、`AUTO CHECKS: OK prompt/wire names consistent; all calls
+visible; counts match`）主线三件又一次全部跑通：`rec-253`（三个连续自然数之和 = 3n+3，Lean `lean-run8-consec`
+settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 1 → `verdict_final` 写回 p=1 ⇒ **Verified `rec-254`**；
+论文 `paper-p13` 走完「分派 → 互审两人 `deliverable:true`（unanimous）→ 所办问询 `cleared:true` → 定稿
+`finalized:true` → xelatex 编译出 **97 422 字节** PDF」（独立 `math_computation{python}` 旁证 `%PDF-1.7` 与 sha256）；
+结题会 `m22` 按 `floor:3 / cast:3` 通过并归档，`t-4` 完成。代理报告：`FEEDBACK8.md`（17 109 B）/
+`SIM-REPORT8.md`（34 699 B）。
+
+### 261.1 四条核验（按第九轮简报 2–5）
+
+- **watchdogs 硬缺陷未复现**：`targets:0` 与「没接线」同现的现象已消失（RUN 160 的 `targets:null` 修法生效）。
+- **含 temp 席的名册上一致性可达**：`unanimity.met:true`、`nonAttending:["r-temp"]`、`electorate:2`（核验会用
+  `m21`，随后归档）。
+- **归档会议的读法**：对已归档会议 `attend` 的拒绝 hint 与 `verdict_ask` 的 `meetingArchived:true` /
+  `meetingState:"closed"` 都按 RUN 160 的形状返回。
+- **卡就是 Lean 证据**：`verdict_final` 不传 Lean 证据时 `fidelity` 从卡取（`leanSource:"card"`、
+  `lean:"lean_job:lean-run8-consec"`、`cardJob` 点名）。
+
+### 261.2 代理这份报告里的十二条（真缺陷 / 环境限制 / 提示词问题分开记）
+
+真缺陷六条（本轮的修法对象）：
+
+1. `recover` 的 watchdogs 步把散文写进 report，**durable 的 `status().watchdogs` 是同一组数字但没有散文**；而且
+   `recoverPlan()` 对「没有端口」说 `ok:false`、`recover()` 对同一件事说 `ok:true` —— 同一件事两个结论。
+2. `nonAttending:[]` 与 `nonAttendingSeats:["temp"]` 同现（这份名册里根本没有 temp 成员），读起来像自相矛盾：
+   一个是**本名册的人**，一个是**部署的声明**，却共用一个 `nonAttending*` 前缀。
+3. `attend` 对已归档会议报 `VMU_NO_SUCH_OBJECT`，`message` 仍说「两份注册表里都没有」——**大多数调用者只读
+   message**，于是「刚关过的会议」读成「从未存在」。
+4. `subjectGate.note` 是固定串，断言「这张卡还没登记 `proofRef`/`proofState="complete"`」，而 `rec-253` 写进卡时
+   就是 `proofState:"complete"` + `proofStateEvidence.kind:"lean-job"`（召集与关会两次都是这句假话）。
+5. 保真拒绝语只给两个**取值** `[conform | defect]`，不说**形参名** `fidelity` ⇒ 调用者得先猜参数名才能重试。
+6. 工物四行的标题是 `v5r-paper|<state.target>|md|tex|meta|pdf`，而 `PaperArtifacts` 用**调用方拼写**去查 ⇒ run 9
+   的同一次 `final` 既报 `produced:true / pdfBytes:97422`，又报 `missing:["md","tex","meta"]` 与
+   `artifacts.missing:["md","tex","pdf","meta"]`。
+
+环境限制 / 无害三条：`ports.watchdogs:false` 使「接线但真的 0 个目标」这一支在本会话不可达（未伪造）；`lean_archive`
+的 `from`/`file` 同名不同义是**好严格性**；`task_update` 的 `assigned→done` 非法但 hint 可照做。
+
+提示词问题三条：`vibe_v5_paper { action:"consult" }` 必须带 `target` 未写进教学；「定稿前正文须含全部 Verified
+结论的 `requiredLine`」只能撞门学；`part` 按成员**替换**（回执 `replaced:{recordId:…}`）写前没提示。
+
+### 261.3 六处修法（同一个事实，两个面必须同一句话）
+
+1. **`ok` 回答的是「这一步跑过」，不是「端口存在」**（`vibe-math-vmu/kernel/resume.js`）：`recoverPlan()` 的
+   watchdogs 步改为 `ok:true, available:!!watchdogs` + `availableMeans`（「没接线」是**配置出来的缺席**，不是失败）；
+   `recover()` 把 `wd.means` / `wd.wired` / `wd.ok` 写进 durable 的 `state.watchdogs` 后才挂到 status 上 ⇒
+   `status().watchdogs` 与 report 步读同一句话（此前散文只在 report 一侧）。
+2. **声明 ≠ 计数**（`vibe-math-vmu/kernel/meetings.js`）：`nonAttendingSeats` 只列**本名册实际被移除的席位**
+   （按 `rosterSeatOf` 从 `nonAttendingAll` 映射、去重排序），声明本身另立 `deniedSeatsDeclared` +
+   `deniedSeatsDeclaredMeans`；名册里没有 temp 成员时两个 `nonAttending*` 都是空，声明仍在各自的字段里。
+3. **关过的会议不是不存在的会议**（`vibe-math-vmu/tools/meeting.js`）：`noSuchMeeting` 新增 `archivedRowOf()`，用**公开面**
+   `svc.meetingView({ meeting, allowArchived:true })` 问归档（闭包内的 `requireMeeting` 不在公开 API 上 —— 实测
+   `kernel.meetings.requireMeeting is not a function`，第一版探针因此静默答 null），命中就把
+   「it WAS here: this meeting is CLOSED and its record now lives in the archive」写进 **`message`** 本体。
+4. **note 从本调用真正读到的字段拼**（`vibe-math-vmu/packs/v5r/verification-gates.js`）：`debateSubjectGate` 的允许分支
+   按 `proofState === PROOF_STATE_COMPLETE` 拆两支 —— 「登记了 `complete`，但 `proofRef` 是空的」/「既没登记 proofRef
+   （值）也没有 proofState（值）」；`fidelityAsked` 的拒绝附带 `hint`，点名形参 `fidelity` 并给出两种取值的写法。
+5. **工物行按 state 的规范 target 拼**（`vibe-math-vmu/kit/paper.js` + `vibe-math-vmu/packs/v5r/tools.js`）：
+   `PaperArtifacts` 的 `canon` 取自 `found.state.target`（`present[name]` 用它拼标题），回执加
+   `requestedTarget`/`missingMeans`（「缺的是 ARCHIVE ROW = 那次写没跑，不等于造不出」），`final` 投影把它俩一起传。
+6. 无第 6 项独立修法（第 6 条即第 5 条的站点）。
+
+### 261.4 机器化
+
+- 新 `tests/vmu-run161-audit8-fixes.test.mjs` **35/0**：§0 源码口径（六处各在自己的所有者上）；§1 真 `createResume`
+  （status 面带 `means`/`wired`/`ok`，未接线 `targets:null`+`ok:true`+`available:false`；接线 0 目标 `targets:0` 且
+  means 含 MEASURED）；§2 真 `createMeetings`（有名册 temp 席 ⇒ 席位与成员都具名；无名册 temp 席 ⇒ 两个
+  `nonAttending*` 都空而 `deniedSeatsDeclared:["temp"]`）；§3 真工具（开→关→`attend`，`message` 本体含 CLOSED+archive）；
+  §4 真 gate 函数（`proofState:"complete"` 时 note 说「proofRef 是空的」、两者都空时说两个取值都空；`fidelity` 拒绝语
+  点名形参）；§5 真论文面（用 id 与用标题两种拼写的 `present` 四个键完全一致、只有 pdf 缺）。
+- 定向回归：`--only resume` 6/0、meetings 2/0、meeting 32/0、paper 9/0、run141/146/147/149/150/151/152/154/155/156/
+  158/159/160/161 各 1/0、`v5r-tools` 1/0、`g7-concordance` 1/0、`audit-vmu-docs` 1/0、`audit-declaration-criterion` 1/0。
+
+### 261.5 读数与门禁
+
+- `node scripts/regen-all.mjs` 两轮 → `--check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、
+  `RULE PARITY: PASS (0 problem(s))`、`RULES COVERAGE: PASS (0 problem(s))`（86/86 锚点、86 条 DONE）。
+- 全量 T1 `GATE_SCOPE=vmu` ⇒ **TOTAL 642  PASS 642  FAIL 0  (suites 578 · probes 64)**，日志
+  `/d/_tmp/t1-r200-run161.log`（首跑 `/d/_tmp/t1-r199-run161.log` 641/640 红一条：新用例里
+  `JSON.stringify(p1) === JSON.stringify(p2)` 是「两边都可能为空」的比较，被 RULE E 抓住，已补非空守卫）。
+
+### 261.6 仍未解决
+
+1. `ports.watchdogs:false` 部署下「接线但真的 0 个目标」这一支仍只能靠单测覆盖（真机不可达，第九轮已如实记录）。
+2. `editor:"office"` 代定稿仍是具名缺口；人数闸仍缺一次名册 ≥4 的负向真机证据。
+3. 提示词面三条（`consult` 的 `target` 必填、定稿前的 `requiredLine` 前置说明、`part` 按成员替换）尚未改教学句。
+4. 宿主 `pwsh` 在第六至第九轮都不可用（`0xC0000142`），代理只能改走文件工具与 `math_computation{engine:"python"}`。
