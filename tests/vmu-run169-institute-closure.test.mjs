@@ -73,7 +73,8 @@ const SEATS = [['r-acad', 'chair'], ['r-1', 'member'], ['r-2', 'member'], ['r-te
   const index = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
   const turn = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js'), 'utf8')
   const vote = readFileSync(join(REPO, 'vibe-math-vmu', 'tools', 'vote.js'), 'utf8')
-  ok(/  'closure_votes',\n\]\)/.test(store),
+  // RUN 172 adds `closure_window` right after it (the closure tally's window number), so allow it before the bracket.
+  ok(/  'closure_votes',\n/.test(store),
     '§0 the durable folder DECLARES `closure_votes` (an undeclared key would be refused by name, i.e. the whole fix a no-op)')
   // RUN 170 (FEEDBACK16 F16-2) widened the seam's argument with `voterSession` (where the VOTER ran, not where the row
   // was written), so the pin names the writer's body rather than a frozen parameter list.

@@ -2398,6 +2398,23 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // tombstone; a second kernel reading in that window sees the pre-prune counts and had no way to know it looked too
   // early. These counters name the gap, and `flushRecordsFold()` is the join point for a caller that needs agreement.
   const foldWrites = { inflight: new Set(), ackedAt: null, failed: 0 }
+  // ★★ RUN 172 (run 17 / FEEDBACK17 P2-6): ONE ACCOUNTING FOR EVERY FOLD WRITE THE LOOP MAKES. The records snapshot
+  // registered its writes here (RUN 171) so a reader could flush before counting; the closure-vote and closure-window
+  // writes did not, so `flushRecordsFold()` said `pending:0` while a vote was still in flight and the reopen receipt
+  // counted `archivedVotes:0` for two real votes (measured on the probe for this very round). A join point that only
+  // covers some of the writes is worse than none: it reports "settled" for exactly the writes it never watched.
+  const trackFoldWrite = (pending, label) => {
+    if (!pending || typeof pending.then !== 'function') {
+      try { foldWrites.ackedAt = clock() } catch { /* clock may be absent */ }
+      return pending
+    }
+    foldWrites.inflight.add(pending)
+    pending.then(
+      () => { foldWrites.inflight.delete(pending); try { foldWrites.ackedAt = clock() } catch { /* no clock */ } },
+      (e) => { foldWrites.inflight.delete(pending); foldWrites.failed += 1; log(label + ': ' + String((e && e.message) || e)) },
+    )
+    return pending
+  }
   const recordsFoldStatus = () => ({
     pending: foldWrites.inflight.size,
     ackedAt: foldWrites.ackedAt,
@@ -2567,6 +2584,20 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // Declared before the loop because the loop calls it: the loop owns WHEN a judgement happened, this kernel owns WHERE it
   // is written, and the fold is the only thing two kernels can both read.
   const CLOSURE_VOTES_FOLD = 'closure_votes'
+  // ★★ RUN 172 (run 17 / FEEDBACK17 P2-6): THE WINDOW. A judgement answers a question asked in a window; when the institute
+  // starts asking a different question, the old judgements must stay on file but stop counting (they are an archive, not a
+  // current tally). Before this, the durable fold merged every vote ever cast, so a fresh run inherited `votesCast:3` from
+  // the previous session, and no receipt could start a new window. `closure_window` is a durable counter: the reading counts
+  // only rows stamped with the CURRENT window, and `reopenClosureVote` is the named entry that advances it.
+  const CLOSURE_WINDOW_FOLD = 'closure_window'
+  const closureWindowValue = () => {
+    try {
+      if (!recordsStore || typeof recordsStore.read !== 'function') return 1
+      const got = recordsStore.read(CLOSURE_WINDOW_FOLD)
+      const n = got && typeof got === 'object' && !Array.isArray(got) ? Number(got.window) : NaN
+      return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1
+    } catch (e) { log('vmu closure_window read: ' + String((e && e.message) || e)); return 1 }
+  }
   const persistClosureVote = ({ member, solved, voterSession = null }) => {
     if (!recordsStore || typeof recordsStore.patch !== 'function') {
       throw refuse('VMU_STORE_FAILED', 'this assembly has no durable store, so a closure vote cannot leave this process',
@@ -2579,10 +2610,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // the loop from the member's settled deliveries). One field could not say both, and it said the less useful one.
     const pending = recordsStore.patch(CLOSURE_VOTES_FOLD, (prev) => {
       const rows = (Array.isArray(prev) ? prev : []).filter((r) => r && String(r.member) !== String(member))
-      rows.push({ member: String(member), solved: solved === true, at, session, voterSession: voterSession ? String(voterSession) : null })
+      rows.push({ member: String(member), solved: solved === true, at, session, voterSession: voterSession ? String(voterSession) : null, window: closureWindowValue() })
       return rows
     })
-    if (pending && typeof pending.catch === 'function') pending.catch((e) => log('vmu closure_votes write: ' + String((e && e.message) || e)))
+    trackFoldWrite(pending, 'vmu closure_votes write')
     return true
   }
   const turn = createTurnOrchestrator({
@@ -2716,7 +2747,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     try {
       if (!recordsStore || typeof recordsStore.read !== 'function') return []
       const rows = recordsStore.read(CLOSURE_VOTES_FOLD)
-      return Array.isArray(rows) ? rows.filter((r) => r && typeof r.member === 'string' && typeof r.solved === 'boolean') : []
+      if (!Array.isArray(rows)) return []
+      const win = closureWindowValue()
+      // ★★ RUN 172: only the CURRENT window counts. Rows without a `window` field predate the window (written by a code
+      // version that had none) and are treated as the FIRST window, which is what they were.
+      return rows.filter((r) => r && typeof r.member === 'string' && typeof r.solved === 'boolean'
+        && (r.window === undefined || r.window === null ? 1 : Number(r.window)) === win)
     } catch (e) { log('vmu closure_votes read: ' + String((e && e.message) || e)); return [] }
   }
   // The fold rows are the durable truth; this session's map is the FRESHER copy of the same fact (a write lands in memory
@@ -2731,6 +2767,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   }
   const closureVoteInput = () => ({
     votes: closureVotesMerged(),
+    // ★★ RUN 172 (FEEDBACK17 P2-5): the raw durable rows travel too, so the reading can say WHERE each judgement came from
+    // (`session` = the kernel that wrote it, `voterSession` = where the voter ran) instead of leaving a reader to compare
+    // two row shapes and guess which name answers which question.
+    rows: closureVoteFoldRows(),
     // ★★★ LIVE RUN 26 defect 3 (the institute's own report, and the worst of the three): A DEPARTED MEMBER STAYED IN THE
     // ELECTORATE. The roster was passed WHOLE, so a fired member counted as enfranchised: closure could be BLOCKED by its
     // silence (`missing:["<id>"]`, `cast:false`) and then "unblocked" by voting on its behalf — the run's `cast:true` was
@@ -3904,6 +3944,49 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           ? 'the vote is written to the durable fold key "closure_votes" as well as this session, so the office kernel and every other instance read the SAME tally on their next closure reading (before RUN 169 they read different ones)'
           : 'this assembly has no durable store, so the vote lives only in this process: another kernel will NOT see it',
         closureVote: closureVoteView() }
+    },
+    /**
+     * REVIEW RUN 172 (run 17 / FEEDBACK17 P2-6): OPEN A NEW WINDOW, BY NAME.
+     * A tally that can only grow is not a reading of this question, it is a ceiling on every future one. The durable
+     * `closure_votes` key is shared by every kernel, which is what made the vote institute-wide (RUN 169); it is also
+     * what made a FRESH RUN inherit `votesCast:3` from the previous session's question, with no receipt able to start
+     * over. `closure_window` is the durable counter that closes that gap: reading counts only rows stamped with the
+     * current window, and this is the single named entry that advances it. The old rows are NOT deleted - they stay on
+     * file as an archive under the old window number, and this receipt says how many were left behind.
+     */
+    async reopenClosureVote({ why = null, by = null } = {}) {
+      if (!recordsStore || typeof recordsStore.patch !== 'function') {
+        throw refuse('VMU_STORE_FAILED', 'this assembly has no durable store, so it has no window to advance',
+          'mount the kernel over a root (createStore) to keep the closure tally institute-wide; without it the reading covers this session only and a new process is already a new window')
+      }
+      // Drain what is still in flight: a vote cast a moment ago is exactly the kind of row this receipt must count as
+      // archived. Reading before the fold write lands made the first receipt say `archivedVotes:0` for two real votes.
+      try { if (typeof flushRecordsFold === 'function') await flushRecordsFold() } catch (e) { log('vmu reopen flush: ' + String((e && e.message) || e)) }
+      const before = closureWindowValue()
+      const archivedVotes = (() => {
+        try {
+          const rows = recordsStore.read(CLOSURE_VOTES_FOLD)
+          return Array.isArray(rows) ? rows.filter((r) => r && typeof r.member === 'string').length : 0
+        } catch (e) { log('vmu reopen read: ' + String((e && e.message) || e)); return 0 }
+      })()
+      const at = (() => { try { return clock() } catch { return null } })()
+      const pending = recordsStore.patch(CLOSURE_WINDOW_FOLD, () => ({
+        window: before + 1,
+        openedAt: at,
+        why: why === null || why === undefined ? null : String(why),
+        by: by === null || by === undefined ? null : String(by),
+      }))
+      trackFoldWrite(pending, 'vmu closure_window write')
+      const sessionVotesCleared = turn && typeof turn.resetClosureVotes === 'function' ? turn.resetClosureVotes() : null
+      return {
+        ok: true, tool: 'vibe_vmu_turn', op: 'reopen-closure',
+        window: before + 1, previousWindow: before,
+        archivedVotes, sessionVotesCleared,
+        foldKey: CLOSURE_WINDOW_FOLD,
+        means: 'the closure tally now counts only votes cast in window ' + (before + 1) + '; the ' + archivedVotes
+          + ' vote(s) of window ' + before + ' stay on file as an archive and are NOT counted (before RUN 172 every vote ever cast counted, so a fresh question inherited the old ones)',
+        windowMeans: 'a window is opened explicitly through this op because only the office knows that the institute is asking a NEW question; the reading itself never guesses that a window ended',
+      }
     },
     /**
      * ★ PHASE 8 / B-1: THE MEMBER'S REAL TOOL TABLE, in the kernel. Names come ONLY from the live visible-tools provider

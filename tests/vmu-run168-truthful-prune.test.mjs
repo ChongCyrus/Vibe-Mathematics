@@ -151,20 +151,38 @@ const readFold = async (path) => JSON.parse(String(await readFile(path, 'utf8'))
     return rows.filter((r) => r && r.state === 'trashed').length === 3 ? rows : null
   })
   ok(Array.isArray(wrote) && wrote.length > 0, '§1 fixture: the fold carries the three tombstones (the trash is durable)', Array.isArray(wrote) ? wrote.length : null)
-  const stale = await readFold(fold)
-  stale.keys.records = stale.keys.records.map((r) => {
-    if (!r || r.state !== 'trashed') return r
-    const copy = Object.assign({}, r)
-    copy.state = 'live'
-    delete copy.trashedAt
-    delete copy.purgeAt
-    return copy
-  })
-  await writeFile(fold, JSON.stringify(stale), 'utf8')
-  const bAfter = B.kernel.records.list({ track: 'paper', limit: 0 }).available
+  // RUN 172: a kernel can still have an IN-FLIGHT snapshot write when this file is edited by hand, and a late write
+  // would overwrite the stale copy with a correct one — the test then reads "nothing to skip" and blames the guard.
+  // So: flush both kernels, write the stale copy, then poll (up to 2 s) until the skip is counted. Being deterministic
+  // about write order is the fixture's job; the assertion is still "the skip is counted, and the rows are not revived".
+  const staleFoldCopy = async () => {
+    const cur = await readFold(fold)
+    const rows = (cur.keys && Array.isArray(cur.keys.records)) ? cur.keys.records : []
+    if (rows.filter((r) => r && r.state === 'trashed').length !== 3) return null
+    cur.keys.records = rows.map((r) => {
+      if (!r || r.state !== 'trashed') return r
+      const copy = Object.assign({}, r)
+      copy.state = 'live'
+      delete copy.trashedAt
+      delete copy.purgeAt
+      return copy
+    })
+    return cur
+  }
+  let staleLive = -1
+  let bAfter = 0
+  for (let attempt = 0; attempt < 40 && staleLive < 3; attempt += 1) {
+    if (typeof A.kernel.flushRecordsFold === 'function') await A.kernel.flushRecordsFold()
+    if (typeof B.kernel.flushRecordsFold === 'function') await B.kernel.flushRecordsFold()
+    const stale = await staleFoldCopy()
+    if (!stale) { await new Promise((r) => setTimeout(r, 25)); continue }
+    await writeFile(fold, JSON.stringify(stale), 'utf8')
+    bAfter = B.kernel.records.list({ track: 'paper', limit: 0 }).available
+    const shared = B.kernel.records.status().shared
+    staleLive = shared ? Number(shared.staleLiveRows || 0) : -1
+    if (staleLive < 3) await new Promise((r) => setTimeout(r, 25))
+  }
   ok(bAfter === 2, '★★ §1 F15-1 FIXED: the stale live copy does NOT revive the pruned rows (B still counts 2)', { b: bAfter })
-  const shared = B.kernel.records.status().shared
-  const staleLive = shared ? Number(shared.staleLiveRows || 0) : -1
   ok(staleLive >= 3, '§1 and the skip is COUNTED, so a reader can tell "nothing was pruned" from "something refused to stay pruned"', { staleLiveRows: staleLive })
   const aAfter = A.kernel.records.list({ track: 'paper', limit: 0 }).available
   ok(aAfter === 2, '§1 A is not revived either — the receipt\'s liveAfter:2 still holds one read later', { a: aAfter })

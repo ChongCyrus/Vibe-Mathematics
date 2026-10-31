@@ -4317,6 +4317,9 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // statement that starting a second paper under a name the ledger may still hold is the wrong move. A missing paper
       // is a QUESTION ("did you mean the id, the target, or a spelling this reader normalises?"), so answer it.
       let hint = null
+      // ★★ RUN 172 (FEEDBACK17 P3-16): a TRASHED name answered `exists:false` — the same receipt a name that never existed
+      // gets. The trash holds restorable rows and the ledger reserves their names, so "not live" must not read as "free".
+      const inTrash = !exists && typeof paper.trashLookup === 'function' ? paper.trashLookup(str(target)) : null
       if (!exists) {
         const known = typeof paper.papers === 'function'
           ? paper.papers().filter((r) => String((r && r.kind) || '') === 'paper-state')
@@ -4341,10 +4344,15 @@ async function toolPaper(args = {}, { kernel } = {}) {
             byTarget ? 'that is the target; address it by its id "' + byTarget.id + '"' :
             byNormalized ? 'a paper on this track answers to a spelling of it: "' + byNormalized.target + '" (id ' + byNormalized.id + ')' :
             'known papers: ' + (seen.map((p) => p.id + ' (' + p.target + ')').slice(0, 8).join(', ') || '(none)') + '. ')
+          // ★★ RUN 172 (FEEDBACK17 P3-11): the candidate list was hard-truncated at 8 with no count of the rest — a reader
+          // with 20 folders saw 8 and concluded those were all. A truncated list that does not say it truncated is a wrong
+          // count wearing a list's clothes.
+          + (seen.length > 8 ? '(另有 ' + String(seen.length - 8) + ' 篇未列出：共 ' + String(seen.length) + ' 篇；pass a fuller id/target to address one) ' : '')
+          + (inTrash ? 'TRASH: the ledger still holds ' + inTrash.id + ' (target "' + inTrash.target + '", record ' + inTrash.recordId + ') as a RESTORABLE row until purgeAt ' + String(inTrash.purgeAt) + ' — the name is reserved, not free. ' : '')
           + ' Do NOT start a second paper under that name: the durable ledger reserves a name for its whole life, including while a row sits in the TRASH'
       }
       return { ok: true, tool, action, target, exists,
-        ...(exists ? {} : { hint }),
+        ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: got && got.state ? got.state : null,
         missing: artifacts ? artifacts.missing : [], complete: artifacts ? artifacts.complete === true : false,
         // ★★ RUN 156 (run-5 finding 7): `status.pdf` describes the paper track's ARCHIVE row (written by `render`), not the

@@ -221,6 +221,22 @@ export function fillRecordSections({ md, sections, view, codes = QUALITY_CODES }
   return { ok: problems.length === 0, md: text, sections: report, problems }
 }
 
+/**
+ * ★★ RUN 172 — EVERY POINTER ON A LINE, NOT JUST THE FIRST. The scan used `line.match(MEMBER_FILE)`, which returns one
+ * match, so a member who wrote two member-file pointers on one line had only the first one judged: run 17 wrote
+ * `…可寻址的一处：Members/r-1/Propos/rec-316.md#命题陈述 … 不可寻址的一处：Members/r-1/Propos/run17-not-a-record.md#§3`
+ * in ONE paragraph and the gate saw only `rec-316` — the fabricated pointer passed `render`, `final` and the PDF compile
+ * (measured, run 17). A gate must see every pointer the reader can see.
+ */
+function eachMemberFile(line, push) {
+  const re = new RegExp(MEMBER_FILE.source, 'g')
+  let m = null
+  while ((m = re.exec(line)) !== null) {
+    push(m[0])
+    if (m[0].length === 0) re.lastIndex += 1
+  }
+}
+
 /** Every citation this gate judges: the parts' `evidence` entries plus member-file paths quoted in the prose. */
 function citationsOf(state, records) {
   const found = []
@@ -230,15 +246,24 @@ function citationsOf(state, records) {
     if (!row) continue
     let part = null
     try { part = JSON.parse(bodyOf(row)) } catch { part = null }
-    if (!part) continue
+    // ★ RUN 172 — A PART THAT IS NOT JSON IS STILL TEXT SOMEBODY WROTE. `recordPart` accepts a bare body (a member who
+    // writes the section as prose, not as a JSON envelope — run 17 did exactly that), and the old `if (!part) continue`
+    // made every citation in such a part invisible: the gate judged nothing, said nothing, and the deliverable was
+    // produced carrying a pointer to a record that does not exist. A gate that cannot see the text cannot guard it, so
+    // the raw body is scanned the same way the JSON fields are (`origin:'prose-raw'` names where the text came from).
+    if (part === null || typeof part !== 'object') {
+      for (const line of bodyOf(row).split('\n')) {
+        eachMemberFile(line, (text) => found.push({ member, origin: 'prose-raw', text }))
+      }
+      continue
+    }
     const evidence = Array.isArray(part.evidence) ? part.evidence.map(str) : []
     for (const entry of evidence) found.push({ member, origin: 'evidence', text: entry })
     for (const field of ['title', 'solution', 'methods', 'rules', 'limits']) {
       const prose = str(part[field])
       if (!prose) continue
       for (const line of prose.split('\n')) {
-        const m = line.match(MEMBER_FILE)
-        if (m) found.push({ member, origin: 'prose', text: m[0] })
+        eachMemberFile(line, (text) => found.push({ member, origin: 'prose', text }))
       }
     }
   }

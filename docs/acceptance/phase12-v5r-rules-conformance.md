@@ -12910,3 +12910,48 @@ run 16 里 prune 之后，另一个内核大约 20 秒后仍读到 `paper:193 / 
 - **滞后不是缺陷，"没有名字的滞后"才是**：异步写与最终一致本身可以是正确的设计，但一条读数必须能说出自己是哪个时刻的账；否则两个都诚实的读数会互相指认对方说谎。
 - **给得起 join point 就别给 sleep**：`flushRecordsFold()` 是 20 行代码换来的确定性。
 - 旧 pin 被新契约推翻时要按"新机制"改写并写明理由，不是删断言——`run164` §2d 的旧断言就是「缺口本身」。
+
+## §272 第十八轮真机前的第二十个机制缺口：一个门只看见每行的第一个引文，一笔账没有窗口（RUN 172）
+
+### 272.1 现场（run 17 / FEEDBACK17）
+
+run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-inspect` 0 RED，产出 `SIM-REPORT17.md` 30 858 B 与 `FEEDBACK17.md` 17 049 B）第一次把**上一轮修法的边界**逼出来了：垃圾桶跨实例、同名重开被拒、`evidence` 侧的 `.md#锚点` 归一化都成立，但同一件事在**正文侧**没有成立——
+
+- 成员 `r-1` 在论文正文里同时写了好引用与坏引用：`…可寻址的一处：Members/r-1/Propos/rec-316.md#命题陈述 … 不可寻址的一处：Members/r-1/Propos/run17-not-a-record.md#§3 …`，它们**在同一行**。`render` 放过、`final` 放过、PDF 编出来 67 404 B，回执里没有一个字提到那条不存在的记录。
+- 互审：`rec-392` 的 body 里写着 `"deliverable":true`，而 `advance` 报 `{"member":"r-2","deliverable":false,"recordId":"rec-392","source":"durable-other-round"}` —— 一个诚实的读数和一张写着相反事实的行，长得一模一样。
+- `restore` 之后两个内核的指纹相反：成员侧读 `fingerprint:"tombstone:rec-104"`，所办侧读 `fingerprintOk:true` 且 `fingerprintRecomputed:"a77f7c0c…"`。
+- 结题票：一开工就是 `votesCast:3`（上一会话折入），两人再投也改变不了；没有"开新窗口"的入口。
+- 垃圾里的名字：`paper status` 只回 `exists:false`，不告诉读者这个字面量**就在垃圾桶里**；`start` 的两种拒文也不带顶层 `stateRecordId`/`status`。
+
+### 272.2 五条机制真相（都在真数据上复现过）
+
+1. **一个门只看见每行的第一个引文**：`paper-quality.js#citationsOf` 用 `line.match(MEMBER_FILE)`——`match` 无 `g` 标志，**每行只取第一个命中**。核验时被指向的"坏引用"与"好引用"在同一段文字里，于是坏的整条不可见。`MEMBER_FILE` 本身对 `.md#§3` 是能匹配的（捕获组是 `run17-not-a-record.md#§3`），所以问题不在正则，在**扫描方式**。
+2. **裸文本 part 被静默跳过**：`citationsOf` 对每个 part `try { JSON.parse(bodyOf(row)) } catch { part = null }`，随后 `if (!part) continue`——成员用纯文本写的 part（run 17 的 `{"action":"part","body":"…"}` 里 `body` 就是一段话，不是 JSON）整篇不参与引文判定。写作面允许的输入，判定面不认识，于是"闸没响"被读成"闸不存在"。
+3. **round 错配被压成"投反对"**：`readReview` 在 `body.round !== state.round` 时返回 `deliverable:false`，与"这份评审说不能交付"同形异义；同时 `reviewsRead` 丢掉了行内事实（`rowDeliverable`），读者只能看到结论、看不到结论是从哪来的。
+4. **restore 留着墓碑的指纹**：`adoptTombstoneRow` 把外来墓碑装成 `fingerprint:'tombstone:'+id` 的行（正确的**未知**表示），但 `restore` 只把状态改回 live、没有按内容重算指纹 ⇒ 恢复后的行在一个内核里 fingerprintOk、在另一个里不 ok，两边都"诚实"。
+5. **一笔账没有窗口**：`closure_votes` 是全所耐久键（RUN 169 有意为之），于是"上一个问题"的票会继承给"这一个问题"；缺一个"从此重新计票、旧票留档"的入口，也缺一个"这一笔账是关于哪个问题的"的字段。
+
+### 272.3 修法（四个面，都是"让扫描/读数与事实同形"）
+
+- **一个门必须扫完每一行的每一个指针**（`packs/v5r/paper-quality.js`）：新增 `eachMemberFile(line, push)`（`new RegExp(MEMBER_FILE.source, 'g')` 循环、零长防御），JSON 字段与裸文本两条路径都改用它；JSON 解析失败时**不跳过**，把原始 body 当 prose 扫（`origin:'prose-raw'`）。复测（同一份 run 17 真数据）：`CITATION_UNKNOWN`，`missing[0].path` 保留 `…run17-not-a-record.md#§3`，`missing[0].id` 是归一化后的 `run17-not-a-record`。
+- **一笔评审要说清自己是哪一轮、哪一边的读数**（`kit/paper.js` 的 `readReview`/`reviewsRead`）：round 错配返回 `{deliverable:false, source:'durable-other-round', rowDeliverable, rowRound, rowOf, means:'…ROUND MISMATCH, not a member refusing'}`；`reviewsRead` 的每一项都带 `rowDeliverable/rowRound/rowOf/means`。
+- **恢复要按内容重算出身份**（`kernel/records.js#restore`）：`fingerprint.startsWith('tombstone:')` 时 `rec.fingerprint = fingerprintOf(rec)`。
+- **一笔账要有窗口，并且窗口号要耐久**（`kernel/index.js` + `kernel/store.js` + `tools/turn.js`）：新耐久键 **`closure_window`**（`PUBLIC_KEYS` 第 21 个）；`persistClosureVote` 的每一行带 `window`；`closureVoteFoldRows()` 只合并当前窗口（无 `window` 的旧行视为窗口 1）；`reopenClosureVote({why, by})` 把窗口 +1、回执 `{window, previousWindow, archivedVotes, sessionVotesCleared, means, windowMeans}`；入口是 `vibe_vmu_turn {op:"reopen-closure"}`（只有所办可达——成员回合只许 `status`/`reply`）。`flushRecordsFold()` 必须**同时**覆盖 `closure_votes`/`closure_window` 的写入（否则 reopen 回执会自报 `archivedVotes:0`，因为票还在途：`trackFoldWrite()` 把这三类 patch 都登记进 `foldWrites.inflight`）。
+- **垃圾里的名字要能被点名**（`kit/paper.js#trashLookup` + `packs/v5r/tools.js`）：`start` 撞 trash 的拒文补齐顶层 `{stateRecordId, status:'trashed', inTrash:true, trash}`；`paper status` 的 `exists:false` 回执补 `inTrash`/`trash{recordId,purgeAt}` 与"另有 N 篇未列出"；`createdAt/updatedAt` 这类**轮次**不再伪装成时间戳（改 `createdRound/updatedRound`，part 的 `at` 记轮次）。
+- **提示词与设置对齐**（`packs/v5r/prompts/v5r-reply-channel.js`）：run 17 里成员在围栏 JSON 里多带一个 `recordsStatus` 助手键，整轮被 `VMU_TURN_UNKNOWN_FIELD` 拒（`replyLength:3553`），而它引用的正是提示词里那句"自造键默认忽略"。现在提示词明写「本所 `vmu.turn.unknownReplyFieldMode` 声明为 `refuse`：多一个未登记的键整轮被具名拒；要放宽只能由所办改设置」——`packs/v5r/settings/defaults.json:10` 声明的就是 `refuse`。
+
+### 272.4 机器化与读数
+
+- `tests/vmu-run172-feedback17-truth.test.mjs`（**47/0**）：§0 十一条源码口径（`eachMemberFile`/`prose-raw`/`rowDeliverable`/restore 重算/`reopenClosureVote`/`'closure_window',`/`resetClosureVotes`/`reopen-closure` op/trash 拒文形状/`trashLookup`+`inTrash`/提示词声明 `refuse`）；§1 同段落两个指针都在判定里、`missing` 恰好一条且是**第二个**；§2 裸文本 part ⇒ 判定 + `origin:'prose-raw'` + id 归一化；§3 两参与者互审（`reviewsRead` 的 `source:'durable-other-round'`、`rowDeliverable:true`、`means` 含 `ROUND MISMATCH`）；§4 remove→restore 后指纹不带 `tombstone:`；§5 trash 名拒文顶层三字段 + `status` 的 `inTrash/trash`；§6 两票 → `reopen-closure` → `votesCast:0` → 再投 `votesCast:1`，工具面 `detail:'closure'` 也读 1。
+- `tests/vmu-run169-institute-closure.test.mjs` 的 `PUBLIC_KEYS` pin 随新键放宽（`closure_votes` 之后多了 `closure_window`），仍 **29/0**。
+- 定向回归 `--only` 0 红：paper 11/0、records 5/0、run166/167/168/170/172 各 1/0、vmu-host 4/0、meeting 32/0、verdict 5/0、prompt- 24/0、v5r-tools 1/0、tools-action-arity 1/0、vmu-store 5/0。
+- 台账 F2 的 `mechanism` 证据随代码改名（`round: part.round, at: state.round, title: part.title`），`RULES COVERAGE: PASS (0)`。
+- 门禁：`regen-all --write` 到不动点（`packs/v5r/prompts/v5r-reply-channel.js` 是生成器来源）⇒ `--check` **17/17**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULES COVERAGE: PASS (0)`、`RULE PARITY: PASS (0)`。
+- 全量 T1：**652 PASS / 0 FAIL（suites 588 · probes 64）**（`D:/_tmp/t1-r232-run172b.log`）。
+
+### 272.5 未闭合账（下一轮要么修、要么在简报里写清楚）
+
+1. **成员内核第一口 status 全 0**（`foldedYet:false` 是诚实的，但提示词没教"先 list 再 status"）：下一轮简报前置"先 `records status` 看 `foldedYet`，再决定是否相信计数"。
+2. **`prune` 逐行写盘**（12 行 ≈ 14.4 秒）：功能正确但慢；若要批量化，需要一个新的写面（一次 patch 多行），本轮不动。
+3. **互审 ping-pong 到 3 轮上限**：`capped:true` + 警告已经点名；"允许同轮重录修复"是产品决策，留给规则层。
+4. **`evidence` 写入闸与定稿门的两句口径说明**：两侧现在都正确（都是归一化 + 判定），但提示词里还没有一句话把"两边同一个口径"写出来。

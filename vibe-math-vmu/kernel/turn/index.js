@@ -162,7 +162,7 @@ export const FIELD_OWNERS = Object.freeze({
  * @param permission the permission that grants a closure vote. Defaults to the framework's own README word only as
  *                   a last resort; a deployment should set `vmu.turn.closureVotePermission`.
  */
-export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote', meetingId = null } = {}) {
+export function closureVoteOf({ votes = new Map(), roster = [], may = null, permission = 'vote', meetingId = null, rows = [] } = {}) {
   const enfranchised = roster
     .map((m) => String(m && m.id !== undefined ? m.id : m))
     .filter((id) => {
@@ -240,8 +240,8 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     // DIFFERENT mechanism: this block is the CLOSURE vote (was the question judged solved?), while the ruling is
     // a probability over one proposition. Two receipts that never name each other is the same misleading-shape
     // family as a mechanism with no consumer, so each now says where the other lives.
-    rulingReading: 'NOT here: cast/votesCast are the CLOSURE vote (solved, unanimous). The DEBATE ruling over a proposition is another mechanism: `vibe_v5_verdict_final` (value / perMember / floor.minVotes)',
-    castMeaning: 'cast === confirmed: every enfranchised member judged it solved; NOT "votes were cast" — see votesCast for how many arrived',
+    rulingReading: 'NOT here: cast/votesCast are the CLOSURE vote (solved, unanimous); the DEBATE ruling is `vibe_v5_verdict_final` (value/perMember/floor.minVotes)',
+    castMeaning: 'cast === confirmed: every enfranchised member judged it solved; NOT "votes were cast" — see votesCast for arrivals',
     for: forIt,
     against,
     missing,
@@ -253,7 +253,25 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       if (votes && typeof votes.keys === 'function') for (const id of votes.keys()) if (!enfranchised.includes(String(id))) ids.push(String(id))
       return ids
     })(),
-    notEligibleMeans: 'members who emitted a judgement but hold no closure-vote permission: recorded, but neither counted nor listed as missing (a temp seat appears here)',
+    notEligibleMeans: 'members who judged but hold no closure-vote permission: recorded, neither counted nor listed as missing (a temp seat appears here)',
+    // ★★ RUN 172 (run 17 / FEEDBACK17 P2-5): THE DURABLE ROWS HAD TWO NAMES FOR THE SAME QUESTION. Every judgement is written
+    // to the fold key `closure_votes` as `{member, solved, at, session, voterSession}` — `session` is the kernel that WROTE the
+    // row, `voterSession` is where the voter RAN (unknown in a kernel that did not see the delivery). Rows written before
+    // run 17 carry only `session`, so a reader comparing rows saw "two field names" and could not tell which one answered
+    // "who voted, and where". The reading now names the pair once: `voters` lists `<member>@<session the judgement came from>`
+    // (`?` = the row does not say), so one fact has one spelling on the face a reader actually sees.
+    voters: (() => {
+      const from = new Map()
+      for (const row of Array.isArray(rows) ? rows : []) {
+        if (!row || typeof row.member !== 'string') continue
+        const where = row.voterSession !== undefined && row.voterSession !== null && String(row.voterSession) !== ''
+          ? String(row.voterSession)
+          : (row.session === undefined || row.session === null || String(row.session) === '' ? '?' : String(row.session))
+        from.set(String(row.member), where)
+      }
+      return forIt.concat(against).map((id) => String(id) + '@' + String(from.get(String(id)) || '?')).sort()
+    })(),
+    votersMeans: 'who voted and from where (`member@session`; `?` = row silent)',
     // ★★ RUN 167 (real machine, run 14 / FEEDBACK14 F9): `missing` IS THIS ORCHESTRATOR'S BLIND SPOT, NOT A RECORD THAT
     // THE MEMBER DID NOT VOTE. Measured: each member turn runs in its OWN session with its own orchestrator, so a member
     // reading the closure view saw `votesCast:1` and `missing:["r-1","r-2"]` while the office — which drove all three
@@ -268,7 +286,7 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       : (enfranchised.length === 0
         ? 'no member holds the closure-vote permission, so unanimity is unreachable - seat members with vibe_vmu_control { action: "hire", member_id, slot, institution } on a slot whose permissions include this one (phase 12: `chair` and `member` hold it, `temp` does not), then drive a turn; a deployment may rename it with vmu.turn.closureVotePermission'
         : (missing.length
-          ? 'silence blocks the CLOSURE VOTE (unanimity on「每个有投票权的成员都判定该问题已解决」) — it does NOT block closing the meeting: the close rails are the meeting policies (vmu.meetings.*) and this reading never decides whether a close was legal. Waiting: ' + missing.join(', ')
+          ? 'silence blocks the CLOSURE VOTE (unanimity on「每个有投票权的成员都判定该问题已解决」) — it does NOT block closing the meeting (the close rails are vmu.meetings.*; this reading never decides close legality). Waiting: ' + missing.join(', ')
           : 'a member judged the question NOT solved: ' + against.join(', '))),
   }
 }
@@ -2526,6 +2544,15 @@ export function createTurnOrchestrator({
   // while closure is a per-round judgement"). Keyed by member, the window becomes well defined.
   const closureVotes = new Map()   // ★ `vote_solved` per member: the CLOSURE vote (unanimity required)
   let closureVoteWrites = 0        // ★ one counter, incremented ONLY inside recordClosureVote (both input channels)
+  // ★★ RUN 172 (run 17 / FEEDBACK17 P2-6): the session half of the closing tally must be able to start over when the
+  // office opens a new window. Without this the durable half could be re-scoped and the in-memory half still answered
+  // `votesCast:2` from votes cast under the old question. It returns how many in-memory votes it dropped, so a receipt
+  // can say `sessionVotesCleared:2` instead of `null` and a reader can tell "nothing was clearable" from "not clearable".
+  const resetClosureVotes = () => {
+    const cleared = closureVotes.size
+    closureVotes.clear()
+    return cleared
+  }
   // ★★★ R11 OF THE PHASE-12 LIVE RUN: `executed` counts FIELD_OWNERS actions only, so a turn whose ONLY effect was the
   // closure vote came back as `executed:0 + closureVote.cast:true` — a receipt that reads like "nothing happened" beside
   // a window that says the institute just closed. The two statements were both true about DIFFERENT things, and nothing
@@ -4062,6 +4089,7 @@ export function createTurnOrchestrator({
     takeNotices: (memberId) => drainNotices(memberId),
     /** ★ PHASE 8: record a closure vote through the SAME writer the reply path uses. */
     recordClosureVote: (memberId, solved, source = 'reply') => recordClosureVote(memberId, solved, source),
+    resetClosureVotes,
     status: ({ roster = [], may = null, permission = 'vote' } = {}) => ({ apiVersion, dispatch: dispatchStatus(), turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal },
       // ★★ ROUND 57 (F-41b): THE TURN ENGINE KEEPS ONE ATTRIBUTION SLOT, AND NO READER COULD SEE EVEN THAT ONE. The
       // orchestrator has always computed `lastAttribution` (who the most recent delivery went to, why it was delivered
@@ -4078,6 +4106,11 @@ export function createTurnOrchestrator({
       // ★ the raw per-member judgements, so a caller that owns the roster (the kernel) can run the predicate itself
       closureVoteVotes: closureVotes,
       closureVoteWrites,
+      // ★★ RUN 172 (run 17 / FEEDBACK17 P2-6): A TALLY WITH NO WAY BACK TO ZERO IS A CEILING, NOT A READING. The durable fold
+      // merges every judgement the institute ever made, so a fresh run started with `votesCast:3` inherited from the previous
+      // one and no receipt could open a new window: two members voting again changed nothing. The kernel owns the window (it
+      // owns the durable key), this seam only clears THIS session's copy so the reopened window is not shadowed by it.
+      resetClosureVotes,
       solvedThisRound: Object.fromEntries(solvedThisRound),
       // ★ RUN 169 (F15-3): this map is the RAW per-member `solved` readings of the last apply, including members who hold no
       // closure-vote permission (run 15 read `"r-temp": false` and could not tell whether that seat's judgement counted).

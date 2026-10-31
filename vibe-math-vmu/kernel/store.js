@@ -127,6 +127,16 @@ export const PUBLIC_KEYS = Object.freeze([
   // module's `closureVoteInput` (merged UNDER this session's fresher map), so every kernel computes the closure reading from
   // one durable electorate. Seeded `[]` like the other row arrays. The whitelist and docs/03 §6 move together.
   'closure_votes',
+  // ★★ RUN 172 (run 17 / FEEDBACK17 P2-6): `closure_window` - WHICH QUESTION THE CLOSURE TALLY IS ABOUT. `closure_votes`
+  // is institute-wide on purpose (RUN 169), and that is exactly why a fresh question inherited the old votes: run 17 opened
+  // with `votesCast:3` carried over from the previous session and no receipt could start over. This key is a durable
+  // counter (`{window, openedAt, why, by}`) written ONLY by `kernel/index.js` `reopenClosureVote` (the named entry, reached
+  // as `vibe_vmu_turn {op:"reopen-closure"}`); readers stamp new rows with it (`persistClosureVote`) and filter the reading
+  // by it (`closureVoteFoldRows`), so old votes stay on file as an archive under the old number and stop counting. Seeded
+  // `[]` like the other keys (a non-object reads as window 1, the honest "nothing opened yet"). The whitelist and docs/03 §6
+  // move together - and this one is DECLARED here because an undeclared key is refused by name, which would have made the
+  // whole window a no-op (Round 1's lesson, and the reason RUN 169 pinned `closure_votes` right here).
+  'closure_window',
 ])
 
 /** Named refusal (codes are registered in docs/03 §8). */

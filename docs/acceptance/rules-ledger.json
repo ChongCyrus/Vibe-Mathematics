@@ -1667,7 +1667,7 @@
       "text": "合作撰写：分派各自内容并合并",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kit/paper.js::round, at: 1, title: part",
+        "vibe-math-vmu/kit/paper.js::round: part.round, at: state.round, title: part.title",
         "vibe-math-vmu/kit/paper.js::const SECTIONS = sections, SECTION_FIELDS = sectionFields, ROUNDS_OPTION = maxRounds, ENGINE_ORDER = engineOrder, REPAIR_CORE = repairCore, TRACK = track, CODES = codes"
       ],
       "tool": [

@@ -2905,3 +2905,22 @@ PARITY/RULES COVERAGE all PASS (86/86), full T1 644/644 (suites 580 · probes 64
 3. **给得起 join point 就别给 sleep**：`foldWrites { pending, ackedAt, failed }` 与 `flushRecordsFold()`；需要两内核一致的调用方 await 一次，而不是撞 20 秒的运气。工具面 `vibe_vmu_records {action:"status"}` 打印 `asOf` 与 `foldWrites`。
 
 **教训**：最终一致本身可以是正确的设计，但**没有名字的滞后等于说谎**——两条都诚实的读数会互相指认对方错了。把「什么时候看的」做成回执的一部分，比把异步改成同步便宜得多。旧 pin（"新内核第一次 status 的 `foldedYet` 是 false"）钉的正是这个缺口本身，本轮按新契约改写而不是删掉。
+
+## ROUND 175 — 一个门必须扫完每一行，一笔账必须知道自己关于哪个问题（run 17 的 FEEDBACK17）
+
+**真机（run 17）读到的事实**：成员 `r-1` 在论文正文的**同一行**里写了一个好引用与一个坏引用，`render` 放过、`final` 放过、PDF 编出来 67 404 B —— 回执里没有一个字提到那条不存在的记录。同一个门在 `evidence` 侧却拦得住（写 part 时就拒）。两个缺口都不是"闸没挂"，是"闸只看见了它看得见的那一条"：
+
+- `paper-quality.js#citationsOf` 用 `line.match(MEMBER_FILE)`，`match` 无 `g` 标志 ⇒ **每行只取第一个指针**；
+- 同一函数对每个 part `JSON.parse` 失败就 `if (!part) continue` ⇒ 成员用**纯文本**写的 part 整篇不参与判定（写作面允许的输入，判定面不认识）。
+
+**这一轮改的五件事**：
+
+1. **扫完每一行的每一个指针**（`eachMemberFile`：`new RegExp(MEMBER_FILE.source, 'g')` 循环 + 零长防御）。同一份 run 17 真数据当场从"闸不响"变成 `CITATION_UNKNOWN`，`missing[0].path` 保留 `…run17-not-a-record.md#§3`、`missing[0].id` 是归一化的 `run17-not-a-record`。
+2. **裸文本 part 也进判定**（`origin:'prose-raw'`）：判定面认识写作面允许的每一种输入，否则"闸没响"永远会被读成"闸不存在"。
+3. **一个读数要说清自己是从哪来的**（`readReview`）：round 错配不再返回一个与"投反对"同形的 `deliverable:false`，而是 `{source:'durable-other-round', rowDeliverable, rowRound, rowOf, means:'…ROUND MISMATCH, not a member refusing'}`；`reviewsRead` 每一项都带行内事实。
+4. **恢复要按内容重算出身份**：`restore` 发现 `fingerprint` 还是 `tombstone:<id>` 就 `fingerprintOf(rec)` 重算——"未知"是墓碑的表示，不是恢复后记录的指纹。
+5. **一笔账要有窗口**（`closure_window` 耐久键 + `vibe_vmu_turn {op:"reopen-closure"}`）：票行带 `window`，折入只合并当前窗口（旧行视为窗口 1），reopen 把窗口 +1、回执 `{window, previousWindow, archivedVotes, sessionVotesCleared}`，旧票留档不抹账。`flushRecordsFold()` 必须覆盖 `closure_votes`/`closure_window` 的写入（`trackFoldWrite()`），否则 reopen 会自报 `archivedVotes:0`——票还在途。
+
+**顺带的诚实化**：`start` 撞 trash 的拒文补齐顶层 `stateRecordId`/`status`/`inTrash`+`trash`；`paper status` 能说"这个名字在 TRASH 里"（`trashLookup`）与"另有 N 篇未列出"；`createdAt/updatedAt` 这种假时间戳改名 `createdRound/updatedRound`（它们本来就是轮次）；提示词与设置对齐——本所 `vmu.turn.unknownReplyFieldMode` 声明为 `refuse`，而提示词原先引用的是框架默认值"忽略"，成员照着写就被整轮拒（run 17 的 `replyLength:3553`）。
+
+**教训**：**扫描方式与判定口径，与规则本身一样是机制的一部分**。一行里"只取第一个"会让第二个指针在法律上不存在；`JSON.parse` 失败就 `continue` 会让一种合法输入在法律上不存在。以及：**读数必须能说出自己的来源与轮次**——"round 不符"与"投反对"看起来一样的时候，读者只能猜，而猜错的那一方会觉得机制在说谎。

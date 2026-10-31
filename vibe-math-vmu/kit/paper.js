@@ -169,6 +169,24 @@ export function createPaperFlow({
     }
     return null
   }
+  /**
+   * ★★ RUN 172 (run 17 / FEEDBACK17 P3-16): a name the TRASH still holds was reported as `exists:false` — the same answer a
+   * name that never existed gets. A reader then started a second paper (or concluded the ledger had forgotten it) while a
+   * restorable row was holding the name. This lookup answers the question `status` could not: does the trash hold a row that
+   * answers to this word (its id, its target, or its title)? A public face, because the refusal and the status receipt must
+   * agree about the same fact.
+   */
+  const trashLookup = (word) => {
+    const w = str(word)
+    for (const row of trashedStateRows()) {
+      const b = bodyOfTrashRow(row)
+      if (!b) continue
+      const hits = [b.id, b.target, b.title].filter((v) => v !== undefined && v !== null && String(v) !== '')
+      if (!hits.some((v) => String(v) === w) && !(String(b.id || '') === w.replace(/^paper-/, ''))) continue
+      return { id: String(b.id || ''), target: String(b.target || ''), title: b.title === undefined ? null : String(b.title), recordId: row.id, purgeAt: row.purgeAt === undefined ? null : row.purgeAt }
+    }
+    return null
+  }
   const mintPaperId = () => {
     const used = new Set()
     for (const row of stateRows()) {
@@ -575,7 +593,11 @@ export function createPaperFlow({
       throw refuse(CODES.STATE,
         'the durable ledger still holds ' + held.id + ' in the TRASH (target "' + held.target + '", restorable until ' + String(held.purgeAt) + '), so a new paper cannot take that name',
         'start the paper under a different target, or purge the trash first (vibe_vmu_records { action: "prune" } frees slots, but a trashed paper is restorable until purgeAt — until then its NAME is reserved)',
-        { requestedId: plateId, requestedTarget: targetWord, trash: held })
+        // ★★ RUN 172 (run 17 / FEEDBACK17 P3): this refusal carried the trash facts one level down (`trash:{}`) while the
+        // sibling "already exists" refusal carries `stateRecordId`/`status` AT THE TOP. Two shapes for one class of refusal
+        // makes a caller branch on which one it got. The trash branch now answers the same question the same way, and says
+        // `inTrash:true` so "name is free" and "name is held by a restorable row" are never read as the same fact.
+        { requestedId: plateId, requestedTarget: targetWord, stateRecordId: held.recordId, status: 'trashed', inTrash: true, trash: held })
     }
     const state = {
       id: plateId, target: targetWord, title: str(title) || targetWord, status: 'writing', stage: 'writing', round: 1,
@@ -585,7 +607,11 @@ export function createPaperFlow({
       // ★ E4: the ledger starts empty here so "was the office asked?" is answerable for EVERY paper, not only the ones
       // that reached the gate (an absent field would make the reader ask a second question: does null mean no or unknown?).
       consult: { requests: [], opened: 0, answered: 0, exempted: 0, timedOut: 0 },
-      createdAt: 1, updatedAt: 1,
+      // ★★ RUN 172 (run 17 / FEEDBACK17 P3): the state used to carry `createdAt: 1, updatedAt: 1` and NOTHING ever advanced
+      // them — a reader that saw `createdAt:1` reasonably read epoch-milliseconds and concluded the paper was created in
+      // 1970. They were never timestamps; they were the ROUND the paper was started and last changed in. The names now say
+      // so (`createdRound`/`updatedRound`), so no reader has to guess a unit the value never had.
+      createdRound: 1, updatedRound: 1,
     }
     ensureTrack()
     const put = writeState(state)
@@ -629,8 +655,8 @@ export function createPaperFlow({
     }
     const put = records.put({ track: TRACK, kind: 'paper-part', title: recordName(state.target, 'part|' + part.member), body: JSON.stringify(part), by: author })
     const previous = state.parts[part.member] || null
-    state.parts[part.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, round: part.round, at: 1, title: part.title }
-    state.updatedAt = 1
+    state.parts[part.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, round: part.round, at: state.round, title: part.title }
+    state.updatedRound = state.round
     writeState(state)
     return { ok: true, recorded: part.member, round: state.round, recordId: put && put.id, fingerprint: put && put.fingerprint,
       // ★ G7 finding: the old state kept ONE part per member, so a second `part` silently replaced the first. This
@@ -805,7 +831,7 @@ export function createPaperFlow({
     const review = { target: str(state.target), member: str(member), of: ofId, round: state.round, deliverable: deliverable === true, comments: str(comments).slice(0, 8000) }
     const put = records.put({ track: TRACK, kind: 'paper-review', title: recordName(state.target, 'review|' + review.member), body: JSON.stringify(review), by: author })
     state.reviews[review.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, deliverable: review.deliverable, of: review.of, round: state.round }
-    state.updatedAt = 1
+    state.updatedRound = state.round
     writeState(state)
     return { ok: true, recorded: review.member, of: review.of, deliverable: review.deliverable, round: state.round,
       // ★★ RUN 170 (run 16 / FEEDBACK16 F16-8): `part` answered with the row it wrote and `review` did not, so the one
@@ -857,7 +883,13 @@ export function createPaperFlow({
         try { const g = records.get({ id: row.id }); const full = g && g.record ? g.record : g; body = JSON.parse(String((full && full.body) || '{}')) } catch { body = null }
         if (!body || String(body.member) !== String(member)) return { deliverable: false, comments: '', source: 'none', recordId: row.id }
         if (Number(body.round) !== Number(state.round)) {
-          return { deliverable: false, comments: 'a review row exists for round ' + body.round + ', not this round (' + state.round + ')', source: 'durable-other-round', recordId: row.id }
+          // ★★ RUN 172 (FEEDBACK17 P1-C): the receipt said `deliverable:false` about a row whose own body says `true`,
+          // and a reader could only conclude the member voted "not deliverable" — the vote that was actually cast
+          // belonged to ANOTHER round. That is a ROUND MISMATCH, not a refusal, and the receipt now says so instead of
+          // flattening it into a vote nobody cast (the row's own reading travels with the verdict).
+          return { deliverable: false, comments: 'a review row exists for round ' + body.round + ', not this round (' + state.round + ')', source: 'durable-other-round', recordId: row.id,
+            rowDeliverable: body.deliverable === true, rowRound: body.round, rowOf: body.of === undefined ? null : str(body.of),
+            means: 'the newest review row for this member belongs to round ' + body.round + ' (rowDeliverable:' + (body.deliverable === true) + '); it is STALE for round ' + state.round + ' and is not counted — that is a ROUND MISMATCH, not a member refusing' }
         }
         state.reviews[member] = { recordId: row.id, fingerprint: row.fingerprint || null, deliverable: body.deliverable === true, of: body.of, round: body.round, comments: str(body.comments) }
         return { deliverable: body.deliverable === true, comments: str(body.comments), source: 'durable', recordId: row.id }
@@ -867,7 +899,13 @@ export function createPaperFlow({
       const required = state.participants.filter((id) => assignedOther(id))
       const notRequired = state.participants.filter((id) => !assignedOther(id)).map(String)
       const verdicts = required.map((id) => Object.assign({ member: id }, readReview(id)))
-      const reviewsRead = verdicts.map((v) => ({ member: v.member, deliverable: v.deliverable === true, source: v.source, recordId: v.recordId || null }))
+      const reviewsRead = verdicts.map((v) => {
+        const row = { member: v.member, deliverable: v.deliverable === true, source: v.source, recordId: v.recordId || null }
+        // ★ RUN 172: a stale row's own reading travels with the verdict, so `deliverable:false` cannot be misread as a
+        // vote the member never cast (FEEDBACK17 P1-C).
+        if (v.rowDeliverable !== undefined) { row.rowDeliverable = v.rowDeliverable; row.rowRound = v.rowRound; row.rowOf = v.rowOf; row.means = v.means }
+        return row
+      })
       const refusers = verdicts.filter((v) => v.deliverable !== true).map((v) => v.member)
       if (refusers.length === 0) {
         // ★ F3a: "everyone voted deliverable" is NOT enough when nobody reviewed anybody else's part. With one participant
@@ -1342,7 +1380,10 @@ export function createPaperFlow({
     // ★★ RUN 156 (real machine, run 5 / N2): the refusal for a target-less `status` promised `status` with no target
     // "lists the papers that exist" - and it did not. The flow keeps its ONE list helper private, so the face had no way
     // to honour the promise; expose it rather than soften the sentence.
-    papers: () => listPaper() }
+    papers: () => listPaper(),
+    // ★★ RUN 172 (FEEDBACK17 P3-16): the status face must be able to say "this name is not gone, it is in the TRASH" — the
+    // same lookup `start` uses to refuse a reused name, so the two doors cannot disagree about one fact.
+    trashLookup }
   return api
 }
 

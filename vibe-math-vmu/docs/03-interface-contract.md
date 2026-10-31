@@ -304,7 +304,7 @@
 ```
 ### 6.1 公开键（**逐键**：写者 → 读者；`kernel/store.js` 的 `PUBLIC_KEYS` 是**唯一白名单** ✓）
 
-> **口径**：本节**只列公开面**（有读者、语义稳定、pack/preset 可依赖）。白名单里**没有写者的键单列**并标 **未定/保留**——不让部署依赖一个没人写的名字。任何 `patch/read` 都要过白名单（`kernel/store.js:119` 的 `assertKey`；越界 ⇒ 具名拒 `VMU_INVALID_ARGUMENT`，K2 的教训）。**完整键（1228）见 `docs/04`**；这里是**耐久键**（`PUBLIC_KEYS` 20 个，逐一有出处）。
+> **口径**：本节**只列公开面**（有读者、语义稳定、pack/preset 可依赖）。白名单里**没有写者的键单列**并标 **未定/保留**——不让部署依赖一个没人写的名字。任何 `patch/read` 都要过白名单（`kernel/store.js:119` 的 `assertKey`；越界 ⇒ 具名拒 `VMU_INVALID_ARGUMENT`，K2 的教训）。**完整键（1228）见 `docs/04`**；这里是**耐久键**（`PUBLIC_KEYS` 21 个，逐一有出处）。
 >
 > ★ **两张表互补，别只信一张**：**本表**保证"**每个键都有写者→读者**"（文档侧真相源）；**`scripts/audit-projection-census.mjs`**（常驻门禁，读**真装配**）保证"**每条声明真的生效、或具名地不生效**"（`declared` → `attached`／`viaAlias`／`notAttached` 逐条具名，例如面为 null 时的 `VMU_RESUME_NO_TARGET`）。文档说"谁写谁读"，门禁说"这条声明今天到底挂上没有"——两者都要看。
 
@@ -333,6 +333,7 @@
 | `idempotency` | `kernel/idempotency.js:323`（`patch(LEDGER_KEY,…)`） | 同面（去重台账） | 只在本进程去重 |
 | `work` | `kernel/work.js:64`（`patch(WORK_KEY,…)`） | 同面 ＋ 恢复的 `work` 接缝（`interrupted` 具名） | 无在途台账 |
 | `turns`（R35） | `kernel/index.js:1829` 的 `turnLedger.record()`（`store.patch('turns', …)`：**一席位一行、按 member 原位 upsert**）← `kernel/turn/index.js` 的 `open()` 经 `noteSharedTurn()` 发布，`deliverTurn` 在投递**前** `await` 落盘 | `kernel/index.js` 的 `chairActed()`（`vmu.meetings.chairActRequiresTurn` 闸门：先本实例 `memberTurnCount`、再共享键） | 读失败抛 `VMU_STORE_FAILED`（`chairActed` 记 `vmu chair-act ledger unreadable` 后退回内存）；store 从未 open ⇒ `status().turn.counts.ledgerSkipped`（没有耐久层可写，不是缺陷） |
+| `closure_window`（R172） | `kernel/index.js` 的 `reopenClosureVote`（`vibe_vmu_turn {op:"reopen-closure"}` 的唯一写者；`recordsStore.patch('closure_window', …)` 写 `{window, openedAt, why, by}`） | `closureWindowValue()` → `persistClosureVote` 给新票盖窗口号；`closureVoteFoldRows()` 只数当前窗口的行（旧票留档，不再计数） | 无 store ⇒ `reopenClosureVote` 具名拒 `VMU_STORE_FAILED`；回执 `archivedVotes`（留在旧窗口的票数）与 `sessionVotesCleared`（本进程内存票数）分开报 |
 | `closure_votes`（R172） | `kernel/index.js` 的 `persistClosureVote`（`recordsStore.patch('closure_votes', 按 member 原位 upsert)`；工具与 turn 回执两条投票通道都经它） | `closureVoteInput` → `closureVotesMerged()`（**先读 fold，再用本进程内存覆盖**，内存更新鲜） | 无 store 时 `vibe_vmu_vote` **具名拒** `VMU_STORE_FAILED`（「cannot leave this process」），回执 `crossKernelScope:'shared-fold'` \| `'this-process'` 自报作用域 |
 | `leanlibrary`（R60） | `kernel/lean.js` 的 `archive()`（`attachStore` 后 `store.write('leanlibrary', 合并行)`：按 name 合并在读到的当前值上，**不覆盖别的内核刚加的名字**） | 同面在 `lib()`/`read()`/`archive()` 之前 `readSharedRows()` 折入；装配处 `kernel/index.js` 在 `records.attachStore` 旁 `lean.attachStore(store)` | 没有接缝时 `persistence().shared === false` 且 `means` 明说「只在本进程内」；写失败计数在 `persistence().refused`，**不假装耐久** |
 

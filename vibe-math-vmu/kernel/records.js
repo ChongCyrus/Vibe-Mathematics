@@ -831,6 +831,12 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       rec.trashedAt = null
       rec.purgeAt = null
       rec.restoredAt = now()
+      // ★★ RUN 172 (FEEDBACK17 P2): a row ADOPTED from another kernel's trash carried the synthetic fingerprint
+      // `tombstone:<id>` (that is how the adoption knew it held no content). Restoring it left the marker in place, so
+      // two kernels disagreed about the same record: the one that owned the content reported the recomputed hash and
+      // `fingerprintOk:true`, the one that adopted-and-restored reported `fingerprintOk:false` — and both were reading
+      // the same row. A restored row has content again, so its fingerprint must be the content's again.
+      if (String(rec.fingerprint || '').startsWith('tombstone:')) rec.fingerprint = fingerprintOf(rec)
       // ★★ RUN 166: A RESTORE HAS TO REJOIN THE INDEXES IT LEFT. `remove` only flips the state, but ADOPTING a trash from
       // the durable fold deletes the `bySlug`/`byFingerprint` entries, and a listing walks `order`/`trackList`. Before
       // this, a restored row was live in the map and absent from every listing: `restore` returned
