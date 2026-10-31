@@ -273,7 +273,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     // (F4) and a minted `m33` resolved to an archived meeting (F3). The fold now carries the row's STATE: a tombstone is
     // a row with `state:'trashed'` + `trashedAt`/`purgeAt`, so a trash made anywhere is learned everywhere on the next
     // read. These counters keep the adoption visible instead of silent.
-    trashAdopted: 0, trashRestored: 0, tombstonesSeen: 0, staleTombstones: 0,
+    trashAdopted: 0, trashRestored: 0, tombstonesSeen: 0, staleTombstones: 0, staleLiveRows: 0,
     lastWhy: null, lastDetail: null, lastPullAt: null, lastSyncAt: null,
   }
 
@@ -368,6 +368,10 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       id: rec.id, track: rec.track, kind: rec.kind, title: rec.title, slug: rec.slug, status: rec.state,
       owner: rec.by, updatedAt: rec.updatedAt, createdAt: rec.createdAt, rev: rec.rev, fingerprint: rec.fingerprint,
       bytes: rec.bytes, tags: rec.tags.slice(), tier: tierOf(rec, at), permanent: isPermanent(rec),
+      // ★★ RUN 168 (FEEDBACK15 F15-1): `restoredAt` is the durable proof that a live row got here by RESTORE. Without it
+      // the snapshot could not tell a genuine restore from the stale live copy the fold still carries right after a prune
+      // (both are `status:'live'`), so the prune was undone one read later and the receipt's liveAfter was never true.
+      restoredAt: rec.restoredAt === undefined ? null : rec.restoredAt,
     }
     if (!withBody) return base
     const cap = truncateTo(rec.body, { count })
@@ -1082,8 +1086,28 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           continue
         }
         if (!rowTrashed && heldTrashed) {
+          // ★★ RUN 168 (FEEDBACK15 F15-1 — THE PRUNE THAT UNDID ITSELF): the stale-tombstone guard above only protected the
+          // trash-vs-trash direction. The fold is written asynchronously, so a read that happens right after `prune` still
+          // carries the LIVE copy the snapshot captured BEFORE the prune, and this branch adopted it as a restore: the
+          // office pruned to 170, the next `status` said 200/200 again and the receipt's `liveAfter:170` was never true.
+          // Measured on the real machine (run 15): prune{keep:170} answered liveBefore 200 / liveAfter 170, the very next
+          // status/fold answered paper:200, and a second prune{keep:190} reported liveBefore 203 — the agent read that as a
+          // cross-kernel tombstone bug and re-diagnosed twice. A REAL restore is a local act, and the snapshotted live row
+          // carries its `restoredAt`; a live row with NO restore stamp, or one stamped BEFORE this instance's own trash,
+          // is the OLD copy and must not revive anything. A stamp EQUAL to the trash is NOT old: a restore in the same
+          // clock tick is still a legitimate later statement (the run-166 fixture restores on a fixed clock, and a stale
+          // snapshot never carries a restore stamp at all — the pre-fix rows had no such key). Skipped and COUNTED, so
+          // the reader can tell "nothing was pruned" from "something refused to stay pruned".
+          const restoredAtFold = Number(row.restoredAt || 0)
+          const trashedHere = Number(held.trashedAt || 0)
+          const staleLive = restoredAtFold <= 0 || (trashedHere > 0 && restoredAtFold < trashedHere)
+          if (staleLive) {
+            shared.staleLiveRows += 1
+            continue
+          }
           // a RESTORE elsewhere is the reverse statement: the fold says the row is live again, so this copy rejoins.
           held.state = 'live'
+          held.restoredAt = restoredAtFold
           held.trashedAt = null
           held.purgeAt = null
           const fpIdx = byFingerprint.get(held.track)
@@ -1189,6 +1213,8 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       trashRestoredMeans: 'rows THIS instance was holding trashed that another kernel RESTORED: the fold said live again and this copy rejoined',
       tombstonesSeen: shared.tombstonesSeen,
       tombstonesSeenMeans: 'tombstones for ids this instance never held: counted so a reader can tell "nothing was pruned" from "nothing I know about was pruned"',
+      staleLiveRows: shared.staleLiveRows,
+      staleLiveRowsMeans: 'LIVE rows in the fold OLDER than this instance own trash of the same row: skipped, because the snapshot was written before the prune and adopting it would undo the prune (the receipt that said liveAfter:170 would stop being true one read later)',
       staleTombstones: shared.staleTombstones,
       staleTombstonesMeans: 'tombstones OLDER than this instance own restore of the same row: skipped, because undoing a repair the caller just made is not learning, it is losing the repair',
       lastWhy: shared.lastWhy, lastDetail: shared.lastDetail, lastPullAt: shared.lastPullAt, lastSyncAt: shared.lastSyncAt,

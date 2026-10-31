@@ -2861,3 +2861,14 @@ PARITY/RULES COVERAGE all PASS (86/86), full T1 644/644 (suites 580 · probes 64
 - **机器化**：`tests/vmu-run167-feedback14-identity.test.mjs`（**53/0**）六节：源码口径、F3 归档重建、F4 trash 重建、F6 一轮到 awaiting-editor、F9 窗口、F5 四种回执、跨论文评审两行且各自 gate 通过。
 - **读数**：`regen-all --check` 17/17、五门禁全 PASS（coverage 86/86）；`--only paper` 11/0、`records` 5/0、`run166` 1/0、`run167` 1/0、`vmu-host` 4/0、`f3-f4` 2/0、`meeting` 32/0、`verdict` 5/0、`prompt-` 24/0、`run36` 4/0、`run16` 9/0、`run164` 1/0、`run165` 1/0；全量 T1 见 §267.5。
 - **未闭合**：`reviewRowOf` 的「同标题多行」还没在真机满额论文轨上压过；`persistsAcrossRestart` 仍 false（跨进程是已知边界）；F8（`render` 不拦、`final` 才拦）与 F10（`meeting_round` 一次只推一位）本轮没修，继续挂在 FEEDBACK14 未闭合清单上。
+
+## ROUND 171 — 一个回执不能在下一个读里就成假话（run 15 的 F15-1/F15-2/F15-4/F15-7）
+
+- **这一轮从一句自我证伪开始**：run 15 里 `prune` 回执说 `liveBefore:200 → liveAfter:170`，下一个 `status` 又说 200，成员侧也 200；代理把它读成「跨内核墓碑 bug」，两次误诊。根因不在 `prune`，而在 **fold 从来就没写过 live 行的 `state`**：快照取的是 `r.state`，而投影的 view 把状态叫 `status` ⇒ `undefined` 不进 JSON，只有墓碑带 `state`。再加 `synchronize()` 的 `!rowTrashed && heldTrashed` 分支把「剪之前的 LIVE 副本」当成别处的 restore 无条件采纳 —— 回执从写下那刻起就是假的。
+- **修法**：快照改 `state: r.status` 并带上 `restoredAt`；`view()` 外露 `restoredAt`；`synchronize()` 的 live-vs-trash 方向加同族守卫「带 restore 戳的 live 行才算别处的 restore」，跳过的**计数**（`staleLiveRows`）并写 `staleLiveRowsMeans`。**同一个 tick 的 restore 不算旧**（run 166 的固定 clock 复原夹具立刻证明了 `<=` 太严：合法跨内核复原被一起挡了）。
+- **`restore` 从「回执里许诺的动词」变成真的 action**（F15-4）：`list|expand|append|status|prune|restore`，按 id 逐个回执，混合成功/失败逐条具名，purged 的 id 说明「没了」，无 id 具名拒。
+- **一个 id 一篇论文**（F15-2）：`start` 先用持久账本 `readState(plateId)` 查孪生 id，撞上就具名拒（带 `requestedId/existingTarget/existingStateRecord`）；缺纸的拒绝语改成**投影作用域**并明确「看不见 ≠ 不存在：重读、拿 `stateRecordId`，不要同名再 start」；`listPaper()` 改读全轨（`limit: 0`，内核契约的「全部」），并顺手把六个手写 double 的 `list` 契约改忠实（0 是全部，不是零行）。
+- **同族的词**（F15-7）：`vibe_v5_set`/`vibe_v5_task_update` 接受 `reason` 作为 `why` 的别名（`why` 优先），键校验一条不松。
+- **机器化**：`tests/vmu-run168-truthful-prune.test.mjs`（**38/0**）—— 源码口径、F15-1 现场重建（陈旧 live 快照写回后 B 仍 2 且 `staleLiveRows>=3`、A 也仍 2）、真 restore 跨内核仍通、restore 面逐 id、一个 id 一篇论文、`reason` 别名。
+- **读数**：`regen-all --check` 17/17、五门禁全 PASS（coverage 86/86）；`--only paper` 11/0、`records` 5/0、`run166` 1/0（34/0）、`run167` 1/0、`vmu-host` 4/0、`run164` 1/0、`run165` 1/0、`run162` 1/0、`run163` 1/0、`vmu-v5r-tools` 1/0、`meeting` 32/0、`verdict` 5/0、`prompt-` 24/0；全量 T1 见 §268.5。
+- **未闭合**：F15-3（结题票工具面无跨内核、非表决席被写成 `solvedThisRound:false`）、F15-5（我的简报点名了不存在的工具 —— 简报缺陷）、F15-6（`VMU_NO_SUCH_OBJECT` 对已结束成员会话的码名与事实不符）、`prune` 仍未被代理在真机上用过。

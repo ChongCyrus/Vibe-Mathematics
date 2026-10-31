@@ -106,7 +106,12 @@ export function createPaperFlow({
     }
   }
   const listPaper = () => {
-    const rows = records.list({ track: TRACK, limit: 500 })
+    // ★★ RUN 168 (FEEDBACK15 F2): this read used `limit: 500` while the paper track's own cap is a SETTING
+    // (`vmu.records.head.maxItems`, measured 200 in run 15, raised to 300 mid-run). A cap that grows past the read
+    // limit silently hides the newest papers: the member kernel asked for `paper-p16` three ways and was told the paper
+    // does not exist — and the refusal hint said "start one first", which minted a SECOND row with the same id.
+    // The reader that resolves addresses must see every live row of the track, so it asks for all of them (limit 0).
+    const rows = records.list({ track: TRACK, limit: 0 })
     return Array.isArray(rows.items) ? rows.items : []
   }
   const rowByTitle = (title) => listPaper().filter((r) => String(r.title) === title)[0] || null
@@ -275,8 +280,15 @@ export function createPaperFlow({
   const requireState = (target) => {
     const found = readState(target)
     if (!found) {
-      throw refuse(CODES.STATE, 'no paper "' + str(target) + '" exists in the records face',
-        'start one first (paper.start({target, participants}))')
+      // ★★ RUN 168 (FEEDBACK15 F2 — THE HINT THAT MANUFACTURED A DUPLICATE): this refused by name and then told the caller
+      // to start a paper, so a member whose kernel had not folded a paper the OFFICE had just created obeyed and minted
+      // a SECOND row under the same id (measured in run 15: `paper-p16` was rec-354 for the office and rec-355 for the
+      // member, and afterwards `paper-p16`/`p16` resolved one paper while its Chinese title resolved the other).
+      // "I cannot see it" is not "it does not exist": the exit names the cross-kernel case and the address that survives it.
+      throw refuse(CODES.STATE, 'no paper "' + str(target) + '" exists in THIS instance records projection',
+        'check the spelling first (target, `paper-pN`, or the paper title all address one paper); if another kernel or seat '
+          + 'just started it, this instance may not have folded that row yet — re-read and retry, and take the stateRecordId '
+          + 'from its receipt instead of starting a second paper under the same name')
     }
     return found
   }
@@ -544,6 +556,17 @@ export function createPaperFlow({
     // ★★ RUN 167 (FEEDBACK14 F4): the portable-target id is not mints-only — it is DERIVED, so it can collide with a paper
     // the trash still holds. Naming the collision is the repair: a target that means two papers is the defect, not a
     // refusal to fix.
+    // ★★ RUN 168 (FEEDBACK15 F2 — ONE ID, TWO PAPERS): the id is the paper's NAME. A caller whose target differs but whose
+    // derived id collides (`target:"p16"` derives `paper-p16`, which an earlier mint for a Chinese title already holds)
+    // used to get a fresh state row: two papers, one id, and then address resolution picked whichever row it matched
+    // first. The durable ledger is asked BEFORE the row is written, so the collision is named instead of duplicated.
+    const idTwin = readState(plateId)
+    if (idTwin) {
+      throw refuse(CODES.STATE,
+        'the paper id ' + plateId + ' already denotes an existing paper (target "' + String(idTwin.state.target) + '", state record ' + String(idTwin.state.stateRecordId || '?') + '), so a second paper cannot take that name',
+        'address the existing paper by that id or by its target (the two are one paper); start THIS paper under a different target, or reuse the existing one',
+        { requestedId: plateId, requestedTarget: targetWord, existingTarget: String(idTwin.state.target), existingStateRecord: idTwin.state.stateRecordId || null })
+    }
     const held = trashedNamesake(plateId, targetWord)
     if (held) {
       throw refuse(CODES.STATE,

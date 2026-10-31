@@ -12737,3 +12737,51 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 1. **`reviewRowOf` 的「同一标题多行」在真机上还没被压过**：本轮是固定 clock 的确定性复现；真机上一轮多行同毫秒的概率低，但一旦发生就是「读到旧轮」 —— 下一次真机要求在论文轨接近满额时也跑一遍互审。
 2. **`persistsAcrossRestart` 仍是 `false`**：§266 只做到「跨内核实例诚实」，跨进程仍不保证；这是已知边界，不是本轮偷偷关掉的账。
 3. **`meeting_round` 一次只推进一位（F10）、`render` 不拦 `final`（F8）**：两条本轮**没有修**（不在这一轮的括号里），继续挂在 FEEDBACK14 的未闭合清单上。
+
+## §268 第十五次真机（run 15）的自我证伪：`prune` 的回执在下一个读里就成假话——因为快照从来没写过 `state`
+
+- **run 15 是新基线 `248ffb59` 上的第一次真机**，也是第一次**四个成员全部被激活**（`vibe_vmu_turn {op:"status"}` ⇒ `turns:8`、`counts {opened:8, delivered:8, parsed:8, dispatched:3}`、`woken {r-1:2, r-2:3, r-temp:1, r-acad:2}`、四个 `memberSessions`；`r-temp` 首次有回合）。读数：`DRIVE exit=0`、`durationSec 1790`、`tokenTotal 15 770 772 / 30 000 000`、`toolCalls 63`、`transcriptEvents 308`、`slv-inspect` **5 sessions / 0 RED**。
+- 代理交回了 `SIM-REPORT15.md`（26 294 B）与 `FEEDBACK15.md`（12 837 B / 7 条）。本轮修其中四条，每条都是**回执或提示词说了做不到的事**：
+
+### 268.1 F15-1「prune 回执照说的 liveAfter，下一个读就推翻」——三个缺陷叠在一起
+- 现场：`vibe_vmu_records {action:"prune", track:"paper", keep:170}` 回 `liveBefore:200, prunedCount:30, liveAfter:170`；紧接着 `status` 又是 `paper:200`，成员侧也 `200`；第二次 `prune{keep:190}` 报 `liveBefore:203`。代理据此判成「跨内核墓碑 bug」，两次误诊。
+- **根因一：快照写的是 `r.state`，而投影的 view 把状态叫 `status`**（`vibe-math-vmu/kernel/index.js` 的 `snapshotRecords()`）。于是 **fold 里所有 live 行的 `state` 键被 JSON 直接丢掉**（`undefined` 不入 JSON），只有墓碑带 `state:'trashed'` ⇒ 读者读到一行「没有 state 的行」只能当 live，`restore()` 写的 `restoredAt` 也同样永远出不了 fold。修法：快照改 `state: r.status`，并带上 `restoredAt`；`view()` 基座把 `restoredAt` 外露（它原来只活在内存行上）。
+- **根因二：`synchronize()` 只防了 trash-vs-trash，没防 live-vs-trash**（`vibe-math-vmu/kernel/records.js`）。fold 是异步写的，`prune` 之后落地的第一份快照里仍是**剪之前的 LIVE 副本**，`!rowTrashed && heldTrashed` 分支把它当成「别处做了 restore」无条件采纳 ⇒ 刚剪掉的 30 行原样复活，回执里的 `liveAfter` 从写下那刻起就是假的。修法：给这个方向加同族守卫——**带 restore 戳的 live 行才是「别处的 restore」**：
+
+```js
+const restoredAtFold = Number(row.restoredAt || 0)
+const trashedHere = Number(held.trashedAt || 0)
+const staleLive = restoredAtFold <= 0 || (trashedHere > 0 && restoredAtFold < trashedHere)
+if (staleLive) { shared.staleLiveRows += 1; continue }
+```
+
+  **等于不复原戳不算旧**：同一 tick 的 restore 依然是合法陈述（`tests/vmu-run166-shared-trash.test.mjs` 用固定 clock 做复原，第一版用 `<=` 把合法跨内核复原也一起挡了、该套件 §2 立刻判红）；而「陈旧 live 副本」根本没有 `restoredAt` 这个键，所以 `<= 0` 就够判。跳过必须**计数**（`staleLiveRows` + `staleLiveRowsMeans`），否则读的人分不清「没剪过」和「剪了但拒绝留在剪掉的状态」。
+- **根因三（由修法暴露）：`restore` 在工具面上不存在**。`prune` 的回执写着 `restoreMeans:"the kernel restores a trashed row before its purgeAt"`，而 `vibe_vmu_records` 的 action 全集是 `list|expand|append|status|prune` —— F15-4 的同一件事。修法：enum 加 `restore`，按 id（可逗号分隔）逐个复原，回执 `restored/restoredCount/failed/failedCount/means/hint`，无 `id` 具名拒，purged 的 id 进 `failed` 并说明「purged 就是没了」。
+
+### 268.2 F15-2「同一个 `paper-p16` 被两个内核各建一份」——id 就是名字
+- 现场：所办 `start` 得到 `id:"paper-p16"`（state 记录 `rec-354`）；成员内核三种拼写 `status` 全 `exists:false`、`part` 被 `VMU_PACK_V5R_CORE_PAPER_STATE` 拒、hint 让它「先 start 一篇」，于是它建了第二份 `paper-p16`（`rec-355`，participants 只有 `["r-1"]`）。此后中文标题解析到一篇、`paper-p16` 解析到另一篇。
+- 修法三条：① `start` 在落名之前用**持久账本**判唯一 —— `const idTwin = readState(plateId)`，撞上就具名拒 `VMU_PACK_V5R_CORE_PAPER_STATE`「the paper id … already denotes an existing paper」，回执带 `requestedId/requestedTarget/existingTarget/existingStateRecord`；② `requireState` 的拒绝语改成**投影作用域**（`no paper "…" exists in THIS instance records projection`），hint 明说「看不见 ≠ 不存在：别的内核刚建的话重读重试，拿它回执里的 `stateRecordId`，不要同名再 start」；③ `listPaper()` 从 `limit: 500` 改成 `limit: 0`（内核契约里 0 表示全部）——「上限涨到 500 以上后读者反而看不见最新的行」是同族缺陷。
+- 顺手把六个手写的 records double 的 `list` 契约改忠实：`limit === 0` 是**全部**，不是「零行」（这一条正是本轮的回归：`limit: 0` 让三个老套件的 fake kernel 一行都读不到）。
+
+### 268.3 F15-7「同一族的词，一个收一个不收」
+- `vibe_v5_set`/`vibe_v5_task_update` 只收 `why`，代理写 `reason` 被 `does not accept parameter(s) "reason"` 拒。修法：两处 parameters 各加 `reason`（`alias for why`），handler 里 `why` 优先、`reason` 落到 `why`；不因此放过任何键校验。
+
+### 268.4 机器化
+`tests/vmu-run168-truthful-prune.test.mjs`（**38 passed / 0 failed**）五节：
+- §0 源码口径（9 条 pin）：`staleLiveRows` 计数与守卫、快照带 `restoredAt`、enum 声明 `restore`、restore 按 id 实现、prune 的 hint 指向存在的 action、论文寻址读全轨、`start` 查账本孪生 id、缺纸拒绝语的投影作用域与「别再 start 一篇」、`reason` 别名。
+- §1 **F15-1 现场重建**：两内核共 root，A 写 5、B 学到 5；A `prune{keep:2}` ⇒ 回执 5→2；B 先学到 trash（2 live，夹具，不然后面的陈旧快照会是 B 第一次见到剪枝、成了「新行」而不是「与本地冲突的旧副本」）；然后把 fold 的三条墓碑改回 live 写回 ⇒ **B 仍 2、`staleLiveRows >= 3`、A 也仍 2**（回执的 `liveAfter:2` 过一个读还成立）。
+- §2 **真 restore 跨内核**（增量时钟）：A 复原 ⇒ B 从 1 回到 2 —— 守卫没有把合法方向一起关掉。
+- §3 **restore 面逐 id**：混合 id 回执一成一败、失败带 id 与 code、hint 说 purged 不可回、status 计数回来、无 `id` 具名拒。
+- §4 **一个 id 一篇论文**：非 portable 标题铸出 `paper-p1`，再 `start target:"p1"` 被具名拒且**没写第二行**（`|state` 行恰 1 条），缺纸时的拒绝语是投影作用域。
+- §5 **`reason` 别名**：单用 `reason` 成功、`why` 与 `reason` 同用时 `why` 胜、未声明的键照样被拒（别名不是后门）。
+
+### 268.5 读数与门禁
+- `regen-all --write` 到不动点、`--check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0)`、`RULES COVERAGE: PASS (0)`（86/86）。
+- 定向回归：`--only paper` **11/0**、`records` 5/0、`run166` 1/0（`vmu-run166-shared-trash` 34/0）、`run167` 1/0、`vmu-host` 4/0、`run164` 1/0、`run165` 1/0、`run162` 1/0、`run163` 1/0、`vmu-v5r-tools` 1/0、`meeting` 32/0、`verdict` 5/0、`prompt-` 24/0。
+- 全量 T1：`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **649 PASS / 0 FAIL（suites 585 · probes 64）**（日志 `/d/_tmp/t1-r219-run168b.log`；首跑 `/d/_tmp/t1-r218-run168.log` 是 647/2，两条红都是本轮的**真连带**：`audit-doc-actions` 要求新 action 入文档、`vmu-pack-tool-args` §4 钉着旧契约「声明里没有 reason」——两条都按新事实改写，不是放松断言）。
+
+### 268.6 未闭合账
+1. **F15-3 结题票的两条通道**（`vibe_vmu_vote` 只在本内核计票；`solvedThisRound` 把非表决席写成 `false`）：本轮**没有修**，是下一轮的括号。
+2. **F15-5 任务书点名了不存在的工具**（`vibe_v5_statusboard`/`vibe_v5_selfreport`/`vibe_v5_voteboard`）：真身是 `vibe_vmu_panel`/`vibe_v5_feedback`/`vibe_v5_poll_*` + `vibe_vmu_meeting`；这是**简报**缺陷（真机简报由我写），下一轮简报按真名写，并把「工具别名表」写进简报。
+3. **F15-6 `VMU_NO_SUCH_OBJECT` 对已结束的成员会话**：码名与事实不符（会话存在但 Agent 不 LIVE），留待下一轮改码。
+4. **`prune` 现在还没被代理在真机上用过**：run 15 的代理仍然选了抬配额；下一轮简报要求「先 prune 再考虑抬上限」，并复查 `staleLiveRows` 是否在真机上非零。

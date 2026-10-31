@@ -4158,7 +4158,11 @@ function toolConfigure(args = {}, { kernel } = {}) {
 function toolSet(args = {}, { kernel } = {}) {
   if (!has(args.key)) throw refuse('VMU_INVALID_ARGUMENT', 'set needs a key', 'pass key:"vmu.…" (a DECLARED settings key)')
   if (args.value === undefined) throw refuse('VMU_INVALID_ARGUMENT', 'set needs a value', 'pass value:… explicitly')
-  const applied = applyDeclaredSetting(kernel, str(args.key), args.value, { reason: has(args.why) ? str(args.why) : 'vibe_v5_set' })
+  // ★★ RUN 168 (FEEDBACK15 F15-7): the v5r teaching says 「写清楚为什么」 and a caller naturally passes `reason`, but this
+  // face declared only `why` and refused the call outright (`does not accept parameter(s) "reason"`) — a same-family word
+  // mismatch costing a whole tool call. `reason` is an accepted alias; `why` wins when both are given.
+  const whyGiven = has(args.why) ? str(args.why) : (has(args.reason) ? str(args.reason) : '')
+  const applied = applyDeclaredSetting(kernel, str(args.key), args.value, { reason: whyGiven === '' ? 'vibe_v5_set' : whyGiven })
   return { ok: true, tool: 'vibe_v5_set', applied, effective: applied.effective }
 }
 
@@ -4714,8 +4718,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_task_update',
     description: 'Compare-and-set a task action: claim | reassign | assign | transition | complete | reopen | set_dependencies. Requires task_id, expected_revision and action; a stale revision is refused. edit/delete/release have NO task-face operation in this kernel and are refused by name.',
-    parameters: { task_id: { type: 'string', required: true }, expected_revision: { type: 'integer', required: true }, action: { type: 'string', required: true }, member: { type: 'string' }, owner: { type: 'string' }, blocked_by: { type: 'array' }, to: { type: 'string' }, why: { type: 'string' }, by: { type: 'string', description: 'WHO acted (the chair assigning on someone\'s behalf). The face already reads it (kit/extras.js task_update assign/claim) — without a declaration a caller could not attribute an assignment through the taught tool.' },},
-    handler: toolTaskUpdate,
+    parameters: { task_id: { type: 'string', required: true }, expected_revision: { type: 'integer', required: true }, action: { type: 'string', required: true }, member: { type: 'string' }, owner: { type: 'string' }, blocked_by: { type: 'array' }, to: { type: 'string' }, why: { type: 'string' }, reason: { type: 'string', description: 'alias for why — either word is accepted; why wins when both are passed' }, by: { type: 'string', description: 'WHO acted (the chair assigning on someone\'s behalf). The face already reads it (kit/extras.js task_update assign/claim) — without a declaration a caller could not attribute an assignment through the taught tool.' },},
+    handler: (args, ctx) => toolTaskUpdate(has(args.reason) && !has(args.why) ? Object.assign({}, args, { why: args.reason }) : args, ctx),
   },
   {
     name: 'vibe_v5_hire',
@@ -4919,7 +4923,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_set',
     description: 'Set ONE declared setting key. The receipt carries the declared hot level and whether it is live now or on restart; an undeclared key or an H3 (read-only) key is refused by name. `value` is parsed against the key\'s DECLARED type: a numeric string ("8000") becomes the number 8000, "true"/"false" become booleans, and a JSON string becomes the structure — text keys keep their text. A value the declared type cannot accept is refused by name, never coerced silently.',
-    parameters: { key: { type: 'string', required: true }, value: {}, why: { type: 'string' } },
+    parameters: { key: { type: 'string', required: true }, value: {}, why: { type: 'string' }, reason: { type: 'string', description: 'alias for why — either word is accepted (v5r teaching uses both); why wins when both are passed' } },
     handler: toolSet,
   },
   {

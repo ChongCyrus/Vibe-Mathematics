@@ -2406,7 +2406,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // (`records.js view()`: `owner: rec.by`), so `r.by` here was always undefined and the persisted row carried NO
           // author at all — after a restart the owner degraded to 'restore' and the status board could not match the row
           // to the member who wrote it. Persist the author under the name the view uses.
-          rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, state: r.state, by: r.owner !== undefined && r.owner !== null ? r.owner : r.by })
+          // ★★ RUN 168: the view calls the state `status` (records.js view(): `status: rec.state`), so `r.state` was
+          // undefined here and JSON dropped the key — every LIVE row in the fold carried no state at all (only the
+          // tombstones appended below did). Read the name the view actually uses, and carry the restore stamp.
+          rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, state: r.status, restoredAt: r.restoredAt === undefined || r.restoredAt === null ? null : Number(r.restoredAt), by: r.owner !== undefined && r.owner !== null ? r.owner : r.by })
         }
       }
       // ★★ RUN 166 (FEEDBACK14 F1/F3/F4 — THE PRUNE NOBODY ELSE COULD SEE): the snapshot used to be computed from the LIVE

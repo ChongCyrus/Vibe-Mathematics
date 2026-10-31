@@ -938,10 +938,10 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('records') && kernel.library) {
     specs.push({
       name: TOOL_NAMES.records,
-      description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹；这是 pack 里 `vibe_v5_record_<kind>` 的同一个动作，所以按那张席位面判权：席位被关的那些库，这里也写不进去）｜status（共享折入与计数器的有界视图：谁折入过、多少行没有登记作者、本实例计数）｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）',
+      description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹；这是 pack 里 `vibe_v5_record_<kind>` 的同一个动作，所以按那张席位面判权：席位被关的那些库，这里也写不进去）｜status（共享折入与计数器的有界视图：谁折入过、多少行没有登记作者、本实例计数）｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）｜restore（把回收站里的行按 id 恢复为活行：先 prune/status 看 id，再在 vmu.records.trash.retainDays 内 restore）',
       parameters: {
-        action: param('string', 'list（默认）｜expand｜append｜status｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）', { required: true, enum: ['list', 'expand', 'append', 'status', 'prune'] }),
-        id: param('string', '记录 id（expand 必填）'),
+        action: param('string', 'list（默认）｜expand｜append｜status｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）｜restore（把回收站里的行按 id 恢复为活行：先 prune/status 看 id，再在 vmu.records.trash.retainDays 内 restore）', { required: true, enum: ['list', 'expand', 'append', 'status', 'prune', 'restore'] }),
+        id: param('string', '记录 id（expand 必填；restore 必填，可传多个用逗号分隔）'),
         limit: param('integer', 'list 的最大条数（0 = 全部；省略用内核 vmu.records.headListAt）'),
         track: param('string', 'list：只列某一轨（省略＝全部；合法值见 vmu.records.tracks，内核会具名拒未知轨）'),
         kind: param('string', 'append 的 kind（proposition｜method｜subproblem）；list 时同一个词就是过滤条件（不传 = 不过滤）', { enum: ['proposition', 'method', 'subproblem'] }),
@@ -1066,10 +1066,46 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               means: preview
                 ? 'DRY RUN: nothing was moved; the ids above are what a real prune would trash (drop dryRun to act)'
                 : 'the rows above are in the TRASH, not deleted: action "status" counts them under records.trashed and they stay restorable until purgeAt (vmu.records.trash.retainDays); expiry is counted, never silent',
-              restoreMeans: 'the kernel restores a trashed row before its purgeAt; a permanent row never enters the trash',
+              restoreMeans: 'restore is reachable from this same face: call it with action:"restore" and the id(s) above before purgeAt (a purged row is refused by name); a permanent row never enters the trash',
               hint: liveBefore <= wantKeep
                 ? 'nothing to do: track has ' + liveBefore + ' live row(s) and keep is ' + wantKeep
                 : (preview ? 're-call with dryRun:false (or omit it) to move these rows to the trash' : null),
+            }
+          }
+          if (action === 'restore') {
+            // ★★ RUN 168 (FEEDBACK15 F15-4 — A HINT THAT NAMED A VERB NO FACE HAD): `prune` answered
+            // `restoreMeans: 'the kernel restores a trashed row before its purgeAt'` while this face action enum was
+            // list|expand|append|status|prune, so `{ action: "restore" }` was refused `unknown action: restore` and the
+            // trashed data stayed reachable only from code. Measured on the real machine (run 15): the agent read
+            // `expand rec-27`, saw `state:"trashed"` + the full body, and could not bring the row back.
+            if (!rc || typeof rc.restore !== 'function') {
+              return refused('VMU_NO_SUCH_OBJECT', 'this kernel has no restorable records face',
+                'the records projection is not attached in this deployment, so there is nothing to restore')
+            }
+            const wanted = typeof id === 'string' ? id.split(',').map((x) => x.trim()).filter((x) => x !== '') : []
+            if (wanted.length === 0) {
+              return refused('VMU_INVALID_ARGUMENT', 'action restore needs `id` (one record id, or several separated by commas)',
+                'the ids a prune printed are the ids to pass here; action:"status" reports how many rows are in the trash')
+            }
+            let callerBy = 'office'
+            try { const m = resolveTurnMember(kernel, exec); if (m) callerBy = String(m) } catch { callerBy = 'office' }
+            if (typeof by === 'string' && by.trim() !== '') callerBy = by.trim()
+            const restored = []
+            const failed = []
+            for (const one of wanted) {
+              try {
+                const rcpt = rc.restore({ id: one, by: callerBy }) || {}
+                restored.push({ id: one, state: rcpt.state || 'live', restoredAt: rcpt.restoredAt === undefined ? null : rcpt.restoredAt })
+              } catch (e) {
+                failed.push({ id: one, code: e && e.code ? String(e.code) : 'VMU_INVALID_ARGUMENT', message: e && e.message ? String(e.message) : String(e) })
+              }
+            }
+            return {
+              ok: failed.length === 0, action, by: callerBy,
+              restored, restoredCount: restored.length, failed, failedCount: failed.length,
+              means: 'the rows above are LIVE again: the slot is released and every kernel learns the restore on its next fold read (the snapshot row carries `restoredAt`, which is what tells a later reader this was a restore rather than a stale live copy)',
+              hint: failed.length === 0 ? null
+                : 'the failed ids did not move: a purged row is gone for good, and a row this instance never held cannot be restored from here — read it first with action:"expand" + id',
             }
           }
           if (action === 'expand') {

@@ -98,7 +98,7 @@ function makeKernel(settings) {
       },
       list({ track, limit } = {}) {
         const items = [...rows.values()].filter((r) => !track || r.track === track)
-        return { items: typeof limit === 'number' ? items.slice(0, limit) : items }
+        return { items: typeof limit === 'number' && limit > 0 ? items.slice(0, limit) : items }   // limit 0 means ALL (kernel contract), never zero rows
       },
       supersede({ id, reason, by, body }) {
         const prev = rows.get(id)

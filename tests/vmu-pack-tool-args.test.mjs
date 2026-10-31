@@ -19,8 +19,10 @@
 //   ③ the mirror defect this gate found: the three card tools CONSUME `track` / `payload` / `proof_ref` /
 //      `proof_state` (gatedCardHandler + the kit card writer), so those keys must be DECLARED — otherwise the
 //      published face is narrower than the consumer and a caller following it cannot use the feature at all;
-//   ④ the run-18 call shape (`reason` on `vibe_v5_set`) is refused through the real declaration, with no kernel
-//      at all — i.e. the refusal happens BEFORE any state exists.
+//   ④ ★ RUN 168 (FEEDBACK15 F15-7): the run-18 call shape (`reason` on `vibe_v5_set`) is now ACCEPTED — the same
+//      family of tools takes `reason` as an alias for `why` because that is the word the caller used twice in two
+//      runs. The funnel rule this suite exists for is unchanged: an key the declaration does NOT carry (`motivo`)
+//      is still refused by name, before any state exists, and the refusal lists the accepted vocabulary.
 //
 // WHAT IT DOES NOT PROVE (named): it does not tell whether a model reads a refusal and corrects itself; that is
 // a real-machine question. It also does not check every pack tool's consumer statically — ③ is the specific
@@ -109,26 +111,26 @@ const tools = Array.isArray(PACK && PACK.tools) ? PACK.tools : []
   }
 }
 
-// ── ④ the exact run-18 shape is refused through the REAL declaration, with no kernel ────────────
+// ── ④ the run-18 shape is now the ACCEPTED spelling (F15-7), and a key nobody declares is still refused ─────────
 {
   ok(tools.length > 30, '④ 前置：工具表非空')
   const setTool = tools.find((t) => t.name === 'vibe_v5_set')
   ok(!!setTool, '④ vibe_v5_set 在 pack 工具表里（R26 报的就是它）')
-  ok(setTool && setTool.parameters && setTool.parameters.why && !setTool.parameters.reason,
-    '④ 声明里是 why，没有 reason —— 这正是那次调用被静默吞掉的原因', setTool && Object.keys(setTool.parameters || {}))
+  ok(setTool && setTool.parameters && setTool.parameters.why && setTool.parameters.reason,
+    '④ ★ RUN 168：声明里 why 与 reason 都在 —— 第 18 跑那次调用的拼写现在是被接受的词（不再是「静默吞掉」）',
+    setTool && Object.keys(setTool.parameters || {}))
+  ok(setTool && setTool.parameters.reason && /alias for why/.test(String(setTool.parameters.reason.description || '')),
+    '④ reason 的说明明写它是 why 的别名（不是一个含义不明的同义词）', setTool && setTool.parameters.reason)
   const spec = hpt.makePackToolSpec({ entry: setTool, kernel: null, packId: 'v5r' })
   let caught = null
   try { await spec.run({ key: 'vmu.meetings.waitOnDueMs', value: '8000', reason: '第 18 跑就这么写的' }, {}) } catch (e) { caught = e }
-  ok(caught && caught.code === 'VMU_INVALID_ARGUMENT', '④ 第 18 跑那次调用现在被具名拒', caught && caught.code)
-  ok(caught && /"reason"/.test(String(caught.message)) && /declares: key, value, why/.test(String(caught.message)),
-    '④ 拒文点名 reason 并给出正确写法 why', caught && caught.message)
-  // ★ TEETH: the same call WITHOUT the stray key must still reach the handler (a gate that refuses everything
-  // proves nothing). With no kernel the handler refuses for its own reason, so "reached" == the kernel refusal,
-  // not the parameter refusal.
-  let reached = null
-  try { await spec.run({ key: 'vmu.meetings.waitOnDueMs', value: '8000', why: 'probe' }, {}) } catch (e) { reached = e }
-  ok(reached !== null && !/does not accept parameter/.test(String(reached.message)),
-    '④ ★ 对照：去掉那个多余的键之后，参数闸不再插手（处理器自己的拒不算参数错）', reached && reached.message)
+  ok(caught === null || !/does not accept parameter/.test(String(caught.message)),
+    '④ 第 18 跑那次调用现在过得了参数闸（处理器自己的拒不算参数错）', caught && caught.message)
+  let refused = null
+  try { await spec.run({ key: 'vmu.meetings.waitOnDueMs', value: '8000', motivo: '一个没人声明的键' }, {}) } catch (e) { refused = e }
+  ok(refused && refused.code === 'VMU_INVALID_ARGUMENT', '④ 一个没人声明的键仍被具名拒（别名不是参数闸的开口）', refused && refused.code)
+  ok(refused && /"motivo"/.test(String(refused.message)) && /declares:/.test(String(refused.message)),
+    '④ 拒文点名冒犯的键并列出声明集合', refused && refused.message)
 }
 
 // ── ⑤ no pack tool declares a key it can never receive (the other direction, cheaply) ───────────
