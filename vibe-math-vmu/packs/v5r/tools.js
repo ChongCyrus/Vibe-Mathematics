@@ -4279,8 +4279,12 @@ async function toolPaper(args = {}, { kernel } = {}) {
         pdfMeans: 'this `pdf` block describes the ARCHIVE row in the paper track (render writes it); a file produced by compile is reported by `vibe_v5_paper { action: "compile" }` / the `final` receipt as `produced`+`pdfPath`+`pdfBytes` - the two are different questions, and `produced:false` here is not "no pdf was made"' }
     }
     case 'start': {
+      // ★★ RUN 164 (FEEDBACK12 item 7): `title` was accepted by the schema and SILENTLY DROPPED here, so the human name a
+      // caller gave the paper never reached the state — and later addressing attempts by that name were refused as
+      // "no such paper". The title is now persisted and addressable (the state keeps the target as its one TRUE name).
       const started = paper.start({
         target,
+        ...(has(args.title) ? { title: str(args.title) } : {}),
         participants: Array.isArray(args.participants) ? args.participants : undefined,
         ...(has(args.editor) ? { editor: str(args.editor) } : {}),
         ...(has(args.lang) ? { lang: str(args.lang) } : {}),

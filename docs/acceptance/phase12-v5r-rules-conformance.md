@@ -12572,3 +12572,44 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
   验证「抬上限后 paper 流程能继续把这篇推到定稿」。
 - `editor:"office"` 的定稿通道仍是**具名缺口**（回执自己说 that path is a named gap in this build），
   规则 56 的「所办可以定稿」在真机上只有 `academician` 一条路。
+
+## §264 第十二次真机（run 12b）：记录面读两个库却按一个库回答、论文标题被静默丢弃 → 两个库都读、标题落库并可寻址
+
+### 264.1 run 12b 的读数（基线提交 `b0eb74f6`，provider 已从 commandcode 切到 opencode-go）
+- run 12 用 commandcode 起的第一次，根会话第一个 step 就 `PROVIDER_HTTP_ERROR`（HTTP 400 / BAD_REQUEST，「请检查模型、套餐和请求设置」）⇒ 判定**额度用尽**（用户事先提示过额度极少），不是 vmu 缺陷；同一个提交立刻用 opencode-go 的 `deepseek-v4.1-flash` 重跑（驱动 `slv-p13-oc.ps1`），这才是 264 这一轮说的「第十二次」。
+- run 12b：`DRIVE exit=0`，`durationSec 471`，`tokenTotal 3 911 837 / 24 000 000`，根会话 `toolCalls 68`，`transcriptEvents 282`；机器读数 `NO_FENCE=0 · UNKNOWN_FIELD=0 · FIELD_NOT_APPLICABLE=0 · BAD_JSON=0`；`slv-inspect --by-session` **0 RED**；`CLOSURE cast=false (from 3 turn receipt(s))`（这一轮不是结题轮，是接着上一轮把论文推完）。
+- 代理把**上一轮卡在 reviewing 的 `paper-p15` 推到定稿并编译出 PDF**：`Paper/paper-p15/paper-p15.pdf` 100 401 B，文件头 `%PDF-1.7`，`sha256_16 3fe0d717731d2daa`，旁证用 `math_computation` 的 python 引擎复算 exit 0。
+- 上一轮（RUN 163）三项修法在真机上被证实：`order` 带 `members` ⇒ 具名拒 `VMU_INVALID_ARGUMENT` 且 hint 指 `invite { members }`；只邀 1 人的辩论会签 2 席 ⇒ `VMU_MEETING_QUORUM_LOST`（同时 `quorum.required:1` 是出勤闸、`voteFloor.effective:3` 是表决闸）；`records.status` 的 `caps` 可读。
+- 代理交 `SIM-REPORT12.md`（348 行）与 `FEEDBACK12.md`（189 行）。
+
+### 264.2 FEEDBACK12 的九条（代理原文归纳）
+1. `vibe_vmu_records { action:"status" }` 缺 `caps` 三字段 ⇒ 任务书里「贴 headMaxItems」的判据无法逐字满足（**机制缺陷·轻**）。
+2. `vibe_vmu_records { action:"list" }` 的 `track` 过滤不生效：`track:"paper"`、`track:"obstacles"`、不传 track 三种都回同一批 7 张 `status:"ruling"` 的卡，而 `status.byTrack` 说 paper 212 / obstacles 1；这 7 个 id 交给 `expand` 又全部 `VMU_NO_SUCH_OBJECT`（**机制缺陷·硬**）。
+3. `order` 带 `members` 被具名拒，是正例。
+4. 人数闸（表决面）带 `required`/`voteFloor`，是正例。
+5. `part` 同一成员再写一次是**整节替换**，回执只有「替换了哪条」，没有字数/字节差（**提示词问题**）。
+6. `render` 的 `VERIFIED_MISSING` 没教「论文已在 awaiting-editor 时先用 `final{decision:"revise"}` 退回 writing」（**提示词问题**）。
+7. `consult`/`consult_state` 只认论文标题拼写（本轮未复现、也未证已修好，**机制缺陷·轻**）。
+8. 宿主 `pwsh` 全程不可用（`exit code 3221225794` = `0xC0000142`）⇒ 环境限制，代理改用 `math_computation` 的 python 旁证。
+9. 新进程第一次 `status` 报 `total:0`/`pulls:0`（记录还没 fold），而 `recordsMeans` 没说「0 可能是还没 fold」（**机制缺陷·轻**）。
+
+### 264.3 修法（全部是句子/回执/一条寻址规则的修正，没有放宽任何门）
+- **item 2 的根因**：`vibe-math-vmu/host.js` 的 `vibe_vmu_records` 在 `list` 分支里**先读 pack 库**，非空就原样返回 —— `track`/`kind`/`limit` 全被忽略，而库头行本来就不带 track；`expand` 又只问 records 投影，于是同一个面印出来的 id 它自己读不回来。现在：`list` **读两个库**（records 投影 + pack 库头），按 id 去重合并，`track` 过滤时**库头按名排除**（它没有 track 可匹配，不能装成匹配），`kind`/`limit` 照做；回执新增 `rowsFrom:{records,library}`、`trackFilter`/`trackFilterMeans`、`libraryHeads`/`libraryHeadsMeans`。`expand` 先问 records 投影，`VMU_NO_SUCH_OBJECT` 时回落到 pack 库并回 `expandedFrom:"library"`，两个库都不认识才具名拒（hint 明说「本面读两个库」）。
+- **`total` 的会计口径**（这一版第一稿踩到、由 `vmu-host.test.mjs` 抓住）：第一稿把 `limit` 传进库读，`total` 变成页大小，「21 里给 5」退化成「5 里给 5」；现在库里**不封顶地读**（`limit:0` 是调用者的取全部通道），`total` 取库自己的 `available`（封顶前的集合大小），`count` 是页大小，两者分开报；提示句里的「或先按 track 收窄」保留（`tests/vmu-doc-claims-vs-code.test.mjs` 的 `records-face-track-hint` 钉的就是这句 —— 句子为真，面也真的照做了）。
+- **item 1/9**：`status` 透传 `caps:{headMaxItems, headMaxItemsAtStart, headMaxItemsMeans}` 与 `capsMeans`，并新增 `foldedYet: shared.pulls > 0` + `foldedYetMeans`（没 fold 过就说「上面每个计数都可能是 0，而库里其实有行 —— 先 `action:list` 或 `expand` 一次」）。
+- **item 5**：`vibe-math-vmu/kit/paper.js` 的 `recordPart` 在替换时给出 `replaced.oldBytes`/`newBytes` 与一句 `means`：「一个成员只有一个 part 槽位，这一调用替换了先前录的那一节（oldBytes → newBytes），不是新增第二节」。
+- **item 6**：`vibe-math-vmu/packs/v5r/paper-quality.js` 的 `VERIFIED_MISSING` hint 补上可达修法：论文已在 awaiting-editor（只有 writing 阶段能写 part）时，先让主编 `vibe_v5_paper { action:"final", …, decision:"revise", note:"…" }` 把它退回 writing，再录 part。
+- **item 7 的真根因（比反馈说的更硬）**：`start` 的 `title` 参数**被 schema 接受、被面静默丢弃**，论文的显示名从未落库；同时 `start` 回执里的 `title` 其实是 `target`。现在 `title` 落进 state 并在回执里以 `paperTitle` 报出（另给 `titleMeans` 说明「`title` 是论文的地址、`paperTitle` 是人类名字」），`readState` 在 target / `paper-<x>` id 之外也接受**标题**寻址 —— 三种拼写指向同一篇论文，回执照旧只答地址。
+
+### 264.4 机器化
+- 新增 `tests/vmu-run164-records-two-stores.test.mjs`（**28 passed / 0 failed**）：§0 源码口径（`rowsFrom`、`trackFilterMeans` 里「库头不带 track」、`expandedFrom`、`caps`+`foldedYet`）；§1 真装配下两个库都非空：`track` 分别只回本轨、库头被排除、**列表印出的每一个 id 都能被 expand 读回**、库卡经回落读到、两个库都不认识的 id 仍具名拒；§2 `caps` 三字段与 `foldedYet` 由 false 变 true；§3 只有 records 的部署不回归（kind 仍过滤、封顶仍报 truncated）；§4 `part` 替换的两个尺寸与那句话、`start` 落标题；§5 标题 / target / `paper-<id>` 三拼写同解。
+- 回归里被 `vmu-host.test.mjs` 抓住的那条会计规则已按 264.3 修好，`--only vmu-host` 4/4；`--only records` 5/5、`--only paper` 11/11、`--only declaration` 5/5。
+
+### 264.5 读数与门禁
+- `regen-all --check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0 problem(s))`、`RULES COVERAGE: PASS (0 problem(s))`（86/86 行逐字锚点）。
+- 全量 T1：**645 PASS / 0 FAIL**（suites 581 · probes 64），日志 `t1-r210-run164.log`。
+
+### 264.6 仍未闭合的账（不是本轮引入）
+- `editor:"office"` 的定稿路仍是具名缺口（本 build 里 paper 面只认 `academician` 编辑的论文 + 主席席签署）。
+- 宿主 `pwsh` 在这一轮的环境里不可用（`0xC0000142`），代理只能用 python 面做旁证 —— 这是运行环境问题，不是 vmu 的机制问题，但它限制了「用 shell 手动复核」这条通道。
+- 人数闸的负向证据现在**在真机上可达**（264.1），但那是「表决闸」；「出勤闸」按名册计数，仍是两席会两席够的旧语义 —— 两者分开报是 RUN 163 定下的事实，不是欠账。

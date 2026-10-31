@@ -2822,3 +2822,11 @@ Machinised in `tests/vmu-run163-run11-fixes.test.mjs` (34/0), with the older pin
 (run162 §5, verdict-ask §5, run160 §4, run17 R23). Gates: `regen-all --check` 17/17, PREFLIGHT/DOC LINT/RULE
 PARITY/RULES COVERAGE all PASS (86/86), full T1 644/644 (suites 580 · probes 64), log
 `/d/_tmp/t1-r207-run163.log`.
+
+## ROUND 167 — 记录面读两个库、标题落库可寻址（第十二次真机 run 12b 的两条硬账）
+
+- **这一轮修的是「同一个面印出来的东西它自己读不回来」**：`vibe_vmu_records` 的 `list` 先读 pack 库、非空即返回，于是 `track` 被静默忽略、库头行被当成匹配行、印出来的 id 只有 `expand` 的 records 分支知道；而 `expand` 恰好只问 records。现在 `list` 读两个库并**说清每一行来自哪**，`track` 过滤时库头按名排除，`expand` 回落读到库并报 `expandedFrom`。会计口径同时校正：`total` 是**封顶前**的集合大小（库的 `available`），页大小是 `returned`，两者不再合成一个数（第一稿就是合成一个数，被 `vmu-host.test.mjs` 当场抓住）。
+- **第二条是「参数被接受、被丢弃、不留痕迹」**：`vibe_v5_paper { action:"start", title:"…" }` 的 `title` 从前既没落库也没报错，而回执里的 `title` 其实是地址；于是「按标题寻址」在真机上必然失败，反馈把它记成「只认标题拼写」，真相反过来。现在标题进 state、回执以 `paperTitle` 报出，`readState` 接受 target / `paper-<id>` / 标题三种拼写，回执照旧答地址。
+- **顺手把两句「读者会误读」的句子写成真话**：`part` 的替换回执补 `oldBytes`/`newBytes`（一个成员只有一个 part 槽位，第二次是整节替换，不是追加）；`VERIFIED_MISSING` 的 hint 补上「awaiting-editor 时先 `final{decision:"revise"}` 退回 writing」这条**可达**修法（从前它只说「去改正文」，而那个阶段正文根本写不进去）。
+- **机器化**：`tests/vmu-run164-records-two-stores.test.mjs`（28/0）—— 两个库都非空时 `track` 只回本轨、列表印出的 id 全部能被 expand 读回、两个库都不认识的 id 仍具名拒、`caps`/`foldedYet` 可读、`part` 替换的两个尺寸、三种拼写同解；`--only vmu-host`/`records`/`paper`/`declaration` 全绿。
+- **读数**：`regen-all --check` 17/17、五门禁全 PASS（coverage 86/86）、全量 T1 **645 PASS / 0 FAIL**（suites 581 · probes 64，日志 `t1-r210-run164.log`）。

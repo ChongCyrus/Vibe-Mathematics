@@ -956,41 +956,77 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
           // has its own kind model). Read records first, library only as the zero-mechanism fallback.
           const rc = kernel && kernel.records ? kernel.records : null
           if (action === 'list') {
-            // ★ The library service is AWAITED first: an async-rejecting service must surface as a FAILURE (that is the
-            // service-rejection contract). Only when it answers EMPTY do we fall back to the records projection that the
-            // v3 data plane writes (a real deployment can have a non-empty records store beside an empty library).
+            // ★ RUN 164 (measured, FEEDBACK12 item 2): this branch AWAITED `kernel.library.list()` FIRST and, whenever it
+            // answered non-empty, returned those rows and NOTHING ELSE — so `track:"paper"`, `track:"obstacles"` and no
+            // track at all answered the SAME 7 ruling heads (`total` 7) while `status.byTrack` said paper 212 / obstacles 1,
+            // and the ids it printed were refused by `expand` (they live in the pack library, not in the records projection).
+            // A filter the caller passed must be APPLIED, and an id this face printed must be READABLE by this face.
+            // So: read BOTH stores, say where each row came from, apply track/kind/limit, and report caps honestly.
             const libItems = await kernel.library.list()
-            if (Array.isArray(libItems) && libItems.length > 0) {
-              return Object.assign({ ok: true, action, total: libItems.length, returned: libItems.length, truncated: false, hint: null }, { records: libItems })
-            }
-            if (rc && typeof rc.list === 'function') {
-              // ★ G7 finding: `rc.list({})` applies headListAt and the old face returned `.items` only, so a capped
-              // list looked like the whole catalog (r-20 was expandable but absent). NEVER hide the cap: report total,
-              // returned, truncated and how to ask for more.
-              const listed = rc.list({ track: (typeof track === 'string' && track.trim() !== '') ? track.trim() : null, limit: Number.isInteger(limit) ? limit : null })
-              const all = Array.isArray(listed.items) ? listed.items : []
-              // ★★ RUN 117 (F-117a): `kind` was declared for `append` and this branch ignored it IN SILENCE — the run's
-              // own words: "the `kind` filter was apparently IGNORED", nine rows of five different kinds came back. A
-              // parameter the caller passed and the face never used is the silent-drop class (run 106/113 family):
-              // either honour it or refuse it by name. It is cheap to honour, so a list filters by the SAME word append
-              // takes, and says so.
-              const kindArg = (typeof kind === 'string' && kind.trim() !== '') ? kind.trim() : null
-              const items = kindArg === null ? all : all.filter((r) => r && typeof r.kind === 'string' && r.kind === kindArg)
-              const total = Number.isInteger(listed.available) ? listed.available : all.length
-              const truncated = listed.truncated === true || total > all.length
-              return Object.assign({
-                ok: true, action, total, returned: items.length, truncated,
-                kindFilter: kindArg,
-                kindFilterMeans: kindArg === null
-                  ? 'no kind filter was given, so every row the head list returned is here regardless of its kind'
-                  : 'only rows whose own `kind` equals ' + JSON.stringify(kindArg) + ' are here; `total` still counts the whole head list, so returned < total can mean the filter or the cap — read `truncated` for the cap',
-                hint: truncated ? '只回了 ' + items.length + '/' + total + ' 条：传 limit:0 取全部，或先按 track 收窄（本面已支持 track 参数），再用 action:expand + id 取正文' : null,
-              }, { records: items })
-            }
-            return Object.assign({ ok: true, action, total: libItems.length, returned: libItems.length, truncated: false, hint: null }, { records: libItems })
+            const libRows = Array.isArray(libItems) ? libItems : []
+            const trackArg = (typeof track === 'string' && track.trim() !== '') ? track.trim() : null
+            const kindArg = (typeof kind === 'string' && kind.trim() !== '') ? kind.trim() : null
+            // ★ RUN 164b: the FIRST cut passed `limit` into the store read, so `total` became the page size and the
+            // receipt could no longer say "5 of 21" (a one-line regression of the G7 accounting rule). Read the store
+            // UNCAPPED and cap only the answer, so `total` is the size of the set the filters cover.
+            // `limit:0` is the caller's escape hatch: it must fetch the WHOLE set from the store (the head list caps at
+            // headListAt otherwise), while the default read stays capped and still reports the real `total`.
+            const wantAll = Number.isInteger(limit) && limit === 0
+            const query = trackArg === null ? {} : { track: trackArg }
+            const listed = rc && typeof rc.list === 'function'
+              ? rc.list(wantAll ? Object.assign({}, query, { limit: 0 }) : query)
+              : null
+            const recRows = listed && Array.isArray(listed.items) ? listed.items : []
+            // the store's own accounting: `available` is the size of the set BEFORE the head cap (count = page size).
+            const recTotal = listed && Number.isInteger(listed.available) ? listed.available
+              : (listed && Number.isInteger(listed.count) ? listed.count : recRows.length)
+            const seen = new Set(recRows.map((r) => r && r.id))
+            // A library head carries no `track` field (its tracks live in the store path), so when the caller asked for a
+            // track the library cannot answer it — it is EXCLUDED BY NAME rather than returned as if it matched.
+            const libKept = trackArg === null ? libRows.filter((r) => !seen.has(r && r.id)) : []
+            let rows = recRows.concat(libKept)
+            if (kindArg !== null) rows = rows.filter((r) => r && typeof r.kind === 'string' && r.kind === kindArg)
+            const cap = Number.isInteger(limit) && limit > 0 ? limit : null
+            const returnedRows = wantAll || cap === null ? rows : rows.slice(0, cap)
+            // `total` is the size of the set the filters COVER, not the size of the page: the store reports its own
+            // count (which is uncapped) and the library contributes its heads.
+            const total = Math.max(kindArg === null ? recTotal + libKept.length : 0, rows.length)
+            const truncated = returnedRows.length < total || (listed && listed.truncated === true)
+            return Object.assign({
+              ok: true, action, total, returned: returnedRows.length, truncated,
+              rowsFrom: { records: recRows.length, library: libKept.length },
+              rowsFromMeans: 'this face reads TWO stores: the records projection (rows addressed by track) and the pack library head list (cards addressed by kind, carrying no track) — each row is counted where it was found and ids are de-duplicated',
+              trackFilter: trackArg,
+              trackFilterMeans: trackArg === null
+                ? 'no track filter was given'
+                : 'only rows of the RECORDS projection whose own `track` is ' + JSON.stringify(trackArg) + ' are here; library head rows carry no track, so they are excluded by name instead of returned as if they matched',
+              libraryHeads: libRows.length,
+              libraryHeadsMeans: 'how many rows the pack library head list answered — it is capped by vmu.records.headListAt, so this is NOT a catalog total',
+              kindFilter: kindArg,
+              kindFilterMeans: kindArg === null
+                ? 'no kind filter was given'
+                : 'only rows whose own `kind` equals ' + JSON.stringify(kindArg) + ' are here',
+              hint: truncated ? '回了 ' + returnedRows.length + '/' + total + ' 条（cap 或轨/类型过滤）：传 limit:0 取全部，或先按 track 收窄，再用 action:expand + id 取正文' : null,
+            }, { records: returnedRows })
           }
           if (action === 'expand') {
-            if (rc && typeof rc.get === 'function') return Object.assign({ ok: true, action }, rc.get({ id }))
+            // ★ RUN 164: `list` prints ids from BOTH stores, so `expand` must read both: the records projection first, and
+            // the pack library when that projection has never heard of the id (the ruling heads it prints ARE library
+            // records). Before this, an id the same face had just printed answered `VMU_NO_SUCH_OBJECT`.
+            if (rc && typeof rc.get === 'function') {
+              try {
+                return Object.assign({ ok: true, action }, rc.get({ id }))
+              } catch (e) {
+                if (!e || String(e.code || '') !== 'VMU_NO_SUCH_OBJECT') throw e
+                try {
+                  const viaLibrary = await kernel.library.expand(id)
+                  return Object.assign({ ok: true, action, expandedFrom: 'library' }, viaLibrary)
+                } catch (e2) {
+                  return refused((e2 && e2.code) || 'VMU_NO_SUCH_OBJECT', String((e2 && e2.message) || e2),
+                    'this face reads TWO stores — the records projection and the pack library head list — and neither knows that id; `action:list` prints the ids that exist here')
+                }
+              }
+            }
             return Object.assign({ ok: true, action }, await kernel.library.expand(id))
           }
           // ★ ROUND 69 / F-64: `status` is the SAME read the kernel already answers (`records.status().shared`), reachable
@@ -1018,6 +1054,23 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               },
               records: { total: recs.total, live: recs.live, byTrack: recs.byTrack },
               recordsMeans: 'the row counts are what THIS kernel sees after its own folds; a second kernel over the same store reports its own view, so compare row ids (or the store file) when two kernels must agree',
+              // ★ RUN 164 (FEEDBACK12 item 1): the per-track cap was real but this receipt never printed it, so a caller
+              // could not tell "written at startup" from "read at write time" without tripping the refusal. Print it.
+              caps: st.caps && typeof st.caps === 'object'
+                ? {
+                    headMaxItems: st.caps.headMaxItems,
+                    headMaxItemsAtStart: st.caps.headMaxItemsAtStart,
+                    headMaxItemsMeans: st.caps.headMaxItemsMeans,
+                  }
+                : null,
+              capsMeans: 'headMaxItems is read at WRITE time (raising vmu.records.head.maxItems takes effect on the next put, no restart), headMaxItemsAtStart is the value this kernel started with — they differ only after a live change',
+              // ★ RUN 164 (FEEDBACK12 item 9): a fresh kernel folds the shared store lazily, so its FIRST status can print
+              // total 0 over a store that holds hundreds of rows. A 0 that means "not folded yet" and a 0 that means
+              // "empty" must not look the same.
+              foldedYet: shared.pulls > 0,
+              foldedYetMeans: shared.pulls > 0
+                ? 'this kernel has folded the shared store at least once, so the counts above are its current view'
+                : 'this kernel has NOT folded the shared store yet: every count above can still be 0 even when the store holds rows — call action:list or action:expand once, then read status again',
               refusalsTotal: st.refusalsTotal, unwiredTotal: st.unwiredTotal, at: st.at,
               note: 'bounded status view: the shared seam, the adoption counters and the per-track row counts. The bytes maps, refusal histograms and wiring ledger stay on the kernel — this receipt is a status, not a dump.',
             }

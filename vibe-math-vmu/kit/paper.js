@@ -172,6 +172,19 @@ export function createPaperFlow({
         if (st && String(st.id) === str(target)) { row = cand; break }
       }
     }
+    // ★★ RUN 164 (FEEDBACK12 item 7): a caller that copies the paper's TITLE (what `start`/`status` print as the human
+    // name, e.g. a Chinese heading) used to be told the paper does not exist, even though the title is exactly what the
+    // receipts show. The title now resolves too — the state keeps ONE name (the target) as the truth, so every receipt
+    // still answers with the target; this only widens what may be passed IN.
+    let matchedBy = word === str(target) ? 'target' : 'paper-id'
+    if (!row) {
+      for (const cand of stateRows()) {
+        const st = stateOfRow(cand)
+        if (!st) continue
+        const names = [st.title, st.target].filter((x) => x !== undefined && x !== null).map(String)
+        if (names.includes(str(target))) { row = cand; matchedBy = 'title'; break }
+      }
+    }
     if (!row) return null
     const got = records.get({ id: row.id })
     const full = got && got.record ? got.record : got
@@ -188,6 +201,7 @@ export function createPaperFlow({
       if (full && full.rev !== undefined) {
         Object.defineProperty(state, '__seen', { value: { rev: full.rev, updatedAt: full.updatedAt === undefined ? null : full.updatedAt }, enumerable: false, writable: true, configurable: true })
       }
+      if (matchedBy === 'title') Object.defineProperty(state, '__matchedBy', { value: 'title', enumerable: false, writable: true, configurable: true })
       return { state, row: full }
     } catch { return null }
   }
@@ -469,7 +483,7 @@ export function createPaperFlow({
       counters: { opened: ledger.opened, answered: ledger.answered, exempted: ledger.exempted, timedOut: ledger.timedOut } }
   }
 
-  function start({ target, participants = [], editor = editorDefault, lang = 'zh', format = 'both' } = {}) {
+  function start({ target, title = '', participants = [], editor = editorDefault, lang = 'zh', format = 'both' } = {}) {
     ensureTrack()
     if (!has(target)) throw refuse('VMU_INVALID_ARGUMENT', 'start needs the paper target', 'pass target:"<the object being written up>"')
     const list = Array.isArray(participants) ? participants.map(String).filter((x) => x !== '') : []
@@ -499,7 +513,7 @@ export function createPaperFlow({
     const asciiSafe = PORTABLE_TARGET.test(targetWord)
     const plateId = asciiSafe ? 'paper-' + targetWord : mintPaperId()
     const state = {
-      id: plateId, target: targetWord, status: 'writing', stage: 'writing', round: 1,
+      id: plateId, target: targetWord, title: str(title) || targetWord, status: 'writing', stage: 'writing', round: 1,
       participants: list, editor: editorName, lang: lang === 'en' ? 'en' : 'zh',
       format: ['both', 'md', 'tex'].includes(format) ? format : 'both',
       parts: {}, reviews: {}, reviewOf: {}, final: null, disagreement: [], warnings: [], forcedAfterCap: false,
@@ -515,7 +529,8 @@ export function createPaperFlow({
     // ★★ RUN 156 (run-5 finding 6): the receipt named the target but never the paper ID, so a caller could not address the
     // paper by the id every later receipt prints; and the folder is announced HERE because a title-derived id used to
     // reach compile as a directory name with spaces (fatal for xelatex `putenv`).
-    return { ok: true, target: state.target, title: state.target, id: state.id, folder: folderOf(state.id),
+    return { ok: true, target: state.target, title: state.target, paperTitle: state.title || state.target, id: state.id, folder: folderOf(state.id),
+      titleMeans: "`title` on this receipt is the paper address (what every action takes as `target`) — the human name given at start is `paperTitle` (either spelling addresses the paper, and receipts answer with the address)",
       asciiSafe, idMinted: asciiSafe === false,
       idMeans: asciiSafe
         ? 'the id is paper-<target> and the folder is its slug (both portable)'
@@ -555,8 +570,17 @@ export function createPaperFlow({
     return { ok: true, recorded: part.member, round: state.round, recordId: put && put.id, fingerprint: put && put.fingerprint,
       // ★ G7 finding: the old state kept ONE part per member, so a second `part` silently replaced the first. This
       // minimal fix does not claim a multi-slot model; it NAMES what was replaced so the caller can re-record it.
+      // ★★ RUN 164 (FEEDBACK12 item 5): "replaced" named WHICH record went away but not how much text it carried, so a
+      // second `part` from the same member read like an append to anyone who did not compare titles. The receipt now
+      // carries both sizes and the fact that this is a WHOLE-SECTION REPLACEMENT, not an addition.
       replaced: previous && previous.recordId !== (put && put.id)
-        ? { recordId: previous.recordId, round: previous.round, title: previous.title || null }
+        ? (function () {
+          let oldBytes = null
+          try { const prevRow = records.get({ id: previous.recordId }); oldBytes = prevRow && prevRow.body !== undefined ? String(prevRow.body).length : null } catch { oldBytes = null }
+          return { recordId: previous.recordId, round: previous.round, title: previous.title || null,
+            oldBytes, newBytes: String(JSON.stringify(part)).length,
+            means: 'a member holds ONE part slot: this call replaced the section recorded earlier (oldBytes → newBytes), it did not add a second section — read action:"status" to confirm what the body now holds' }
+        })()
         : null }
   }
 

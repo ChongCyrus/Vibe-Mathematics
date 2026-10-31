@@ -416,7 +416,7 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
       ok: false, code: codes.VERIFIED_MISSING,
       message: '正文漏掉了记录库里已有的结论：' + missingEvidence.length + ' 条（首条 ' + first.kind + ' `' + firstLabel + '`）——已检验通过的命题与已解决的子问题必须出现在正文里'
         + (first.requiredLine ? '；可直接粘进正文的标题行：`' + first.requiredLine + '`' : ''),
-      hint: '这条门判的是**成员写的正文**（渲染时第 3 节由 `verified` 轨自动填充、第 4 节由 `problems` 轨 p=1 自动填充，但自动填充只进渲染出的文件，**不能**代替正文里的结论）：把该结论的标题（去掉「已验证｜」前缀）原样写进某一节的 part 正文，或让作者在下一轮补写，再 render',
+      hint: '这条门判的是**成员写的正文**（渲染时第 3 节由 `verified` 轨自动填充、第 4 节由 `problems` 轨 p=1 自动填充，但自动填充只进渲染出的文件，**不能**代替正文里的结论）：把该结论的标题（去掉「已验证｜」前缀）原样写进某一节的 part 正文，或让作者在下一轮补写，再 render。★ 如果论文已经走到 awaiting-editor（只有 writing 阶段能写 part），先让主编把它退回去：vibe_v5_paper { action: "final", target: "<本论文>", member: "<主席席成员>", decision: "revise", note: "<补哪些结论>" } 回到 writing 后再录 part',
       missing: missingEvidence,
     }
   }
