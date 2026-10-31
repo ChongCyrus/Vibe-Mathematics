@@ -2438,6 +2438,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       for (const track of tracks) {
         for (const head of records.list({ track, limit: 0 }).items) {
           const r = records.get({ id: head.id })
+          // ★★ RUN 174 (run 19 F10): a row whose own `track` is not the track we are walking came from a stale index row
+          // (one id in two track lists). Writing it here under THIS track's name is how one contaminated instance turned
+          // into two identical live rows in the durable fold. The index row is the liar, not the record: skip and let the
+          // read face heal it (`records.list` drops a stale index row and counts `indexHealed`).
+          if (!r || (r.track !== undefined && r.track !== null && String(r.track) !== track)) continue
           // ★★ ROUND 36 (task-26's adjacent finding, measured on the durable fold): the VIEW calls the author `owner`
           // (`records.js view()`: `owner: rec.by`), so `r.by` here was always undefined and the persisted row carried NO
           // author at all — after a restart the owner degraded to 'restore' and the status board could not match the row
@@ -3963,12 +3968,30 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // archived. Reading before the fold write lands made the first receipt say `archivedVotes:0` for two real votes.
       try { if (typeof flushRecordsFold === 'function') await flushRecordsFold() } catch (e) { log('vmu reopen flush: ' + String((e && e.message) || e)) }
       const before = closureWindowValue()
-      const archivedVotes = (() => {
+      // ★★ RUN 174 (run 19 FEEDBACK19 F7): `archivedVotes` was ONE number for rows that do not mean the same thing. Run 19
+      // measured `archivedVotes:4` against `votesCast:3` before the reopen, and the missing vote was a row written by a run
+      // that predates windows: `{member:"r-temp", solved:true, at:1793464773262}` with no `window` field. That row is archive
+      // in the sense of "not counted in this window", but it is not a vote of the window being closed — so the receipt now
+      // splits the count: `byWindow` (how many rows each window archived), `unwindowed` (rows written before windows
+      // existed — counted here once, never in a window) and `archivedVotes` (their sum, kept for callers that only want it).
+      const archivedBreakdown = (() => {
+        const byWindow = {}
+        let unwindowed = 0
+        let total = 0
         try {
           const rows = recordsStore.read(CLOSURE_VOTES_FOLD)
-          return Array.isArray(rows) ? rows.filter((r) => r && typeof r.member === 'string').length : 0
-        } catch (e) { log('vmu reopen read: ' + String((e && e.message) || e)); return 0 }
+          for (const r of (Array.isArray(rows) ? rows : [])) {
+            if (!r || typeof r.member !== 'string') continue
+            total += 1
+            if (r.window === undefined || r.window === null) { unwindowed += 1; continue }
+            const w = Number(r.window)
+            const key = Number.isFinite(w) ? String(Math.floor(w)) : 'not-a-number'
+            byWindow[key] = (byWindow[key] || 0) + 1
+          }
+        } catch (e) { log('vmu reopen read: ' + String((e && e.message) || e)) }
+        return { byWindow, unwindowed, total }
       })()
+      const archivedVotes = archivedBreakdown.total
       const at = (() => { try { return clock() } catch { return null } })()
       const pending = recordsStore.patch(CLOSURE_WINDOW_FOLD, () => ({
         window: before + 1,
@@ -3981,10 +4004,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       return {
         ok: true, tool: 'vibe_vmu_turn', op: 'reopen-closure',
         window: before + 1, previousWindow: before,
-        archivedVotes, sessionVotesCleared,
+        archivedVotes, archivedByWindow: archivedBreakdown.byWindow, unwindowedVotes: archivedBreakdown.unwindowed,
+        sessionVotesCleared,
         foldKey: CLOSURE_WINDOW_FOLD,
         means: 'the closure tally now counts only votes cast in window ' + (before + 1) + '; the ' + archivedVotes
           + ' vote(s) of window ' + before + ' stay on file as an archive and are NOT counted (before RUN 172 every vote ever cast counted, so a fresh question inherited the old ones)',
+        archivedMeans: 'archivedByWindow counts the rows each window leaves behind, keyed by the window they were cast in; unwindowedVotes counts rows written before windows existed (they belong to no window and are never counted again); archivedVotes is their sum',
         windowMeans: 'a window is opened explicitly through this op because only the office knows that the institute is asking a NEW question; the reading itself never guesses that a window ended',
       }
     },

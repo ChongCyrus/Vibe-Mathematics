@@ -2947,3 +2947,21 @@ missing[0] = { id: "rec-316.md（RUN14", path: "Members/r-1/Propos/rec-316.md（
 **两个 RED 的机制含义**：根会话 90 calls / 89 results、`r-1` 会话 42 unique calls / 82 results——两处唯一的缺件都是 `vibe_v5_paper {action:"render"}` 的 result，且都发生在 token cap（30M 打满）切断的瞬间；`r-1` 的每条事件在 JSONL 里出现两次（子会话流 + 父侧重放），所以"计数不齐"里一半是转录重复。RED 说的是"这次运行被预算切断，有一条调用没等到回答"，不是某个工具在撒谎。
 
 **教训**：判定面的正则终止集合也是机制的一部分——"指针到哪里结束"决定了"哪条引用存在"。修一个门时要把门的**全部输入形状**一起想清楚：路径可以跟在句子里，裸 id 不可以。
+
+## ROUND 177 — 沉默的检查会被读成"已经查过"，所以判定必须出现在回执上（run 19）
+
+**真机（run 19）读到的事实**：主线第一次完整走完（命题卡 → 辩论 → 裁决 → Verified → 论文两份 part → 互审 → `final` PDF 115 827 B → 结题会 `close` 归档），上一轮七条修法全部成立。但三件事在同一次运行里暴露了"框架以为自己在保护、其实没有说话"：
+
+1. `render` 三次都没判正文引文（回执只有 `{renderOk:false, wrote:[…], missing:[…]}`，**没有 `code`**），成员把它读成"查过了、没问题"；只有 `final` 才拒。安静通过 = 隐含批准。
+2. 公式被安全转义成**字面文本**写进 PDF：`Σ\_\{k=1\}	extasciicircum{}\{n\}` 出现在本应是数学的地方。转义表在"正文里有一个脱字符"时是对的，在"作者写了一条公式"时是错的。
+3. `prune{track:"paper"}` 的清单里带出了 `track:"propositions"` 的 `rec-495`，而账本里同一行有两条相同的 live 行：`records.put` 换轨重写同一 id 时只把 id 推进新轨、**从不从旧轨移除**，于是索引同时把一行算在两条轨上，读面与折入面都跟着撒谎。
+
+**这一轮改的三件事（都是"让话说出来"）**：
+
+- **判定随回执走**：新增 `flow.qualityReport`（始终判），`render` 用它——草稿的失败是**上报**（`qualityGate:{checked:false, ok:false, advisory:true, skipped:'draft:<status>', code, citations}`），`awaiting-editor`/`finalized` 的失败才是**拒绝**。同一个裁决，两种用途。
+- **公式是政策，不是猜测**：`PaperTex` 的转义改成数学感知（成对 `$…$` 原样保留），回执写 `mathTypeset:{enabled:true, syntax:'paired $…$ spans'}`——作者从此知道自己的 `$…$` 会被排版、裸 `^` 会被转义。
+- **索引是缓存**：`put` 换轨时迁移（`retracked`/`retrackedFrom`）、`list({track})` 读到错轨索引就自愈（`indexHealed`）、`snapshotRecords()` 拒写错轨行。缓存与记录冲突时以记录为准，并把缓存修好。
+
+**同轮一并修的读面**：`status.parts[*].at` 是轮号不是时间（run 19 读成 1，现只给 `round`）；单人论文在 `start` 就被告知 `crossReviewPossible:false`；`editor` 拒文直接点名"省略即默认主席、要写 id 就写 <chair>"；`reopen-closure` 的 `archivedVotes` 拆成 `archivedByWindow` + `unwindowedVotes`（一条没有 `window` 字段的旧票正是差 1 的来源）。
+
+**教训**：一个检查的**沉默**与它的**通过**在回执上长得一模一样，而读者只会读回执。所以"查了、通过"与"没查"必须在回执里是两种形状；"我替你决定了怎么排版"也必须写出来，否则作者以为框架在排版、框架以为作者写的是文本。

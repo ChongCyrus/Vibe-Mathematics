@@ -4351,9 +4351,25 @@ async function toolPaper(args = {}, { kernel } = {}) {
           + (inTrash ? 'TRASH: the ledger still holds ' + inTrash.id + ' (target "' + inTrash.target + '", record ' + inTrash.recordId + ') as a RESTORABLE row until purgeAt ' + String(inTrash.purgeAt) + ' — the name is reserved, not free. ' : '')
           + ' Do NOT start a second paper under that name: the durable ledger reserves a name for its whole life, including while a row sits in the TRASH'
       }
+      // ★★ RUN 174 (run 19 FEEDBACK19 F4): every part slot carried `at: <round>` next to `round: <round>` — a field named
+      // like a timestamp holding the round, so a reviewer counted "at 1" as an epoch. This subsystem keeps ROUNDS, not wall
+      // time: the receipt now names the round once (`round`) and says so, and the review rows carry the round they judge.
+      const paperView = (() => {
+        const st = got && got.state ? got.state : null
+        if (!st) return null
+        const parts = {}
+        for (const [who, slot] of Object.entries(st.parts || {})) {
+          if (!slot || typeof slot !== 'object') { parts[who] = slot; continue }
+          const round = slot.round !== undefined && slot.round !== null ? slot.round : (slot.at === undefined ? null : slot.at)
+          parts[who] = { recordId: slot.recordId === undefined ? null : slot.recordId, fingerprint: slot.fingerprint === undefined ? null : slot.fingerprint, round, title: slot.title === undefined ? null : slot.title }
+        }
+        return Object.assign({}, st, { parts })
+      })()
       return { ok: true, tool, action, target, exists,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
-        paper: got && got.state ? got.state : null,
+        paper: paperView,
+        partsMeans: 'each part slot says which ROUND it was written in (`round`); this subsystem counts rounds, it does not stamp wall-clock time on a part',
+        reviewsMeans: 'each review row says which ROUND of the cross-review it belongs to (`round`); a row of another round is durable history, not a vote on this round',
         missing: artifacts ? artifacts.missing : [], complete: artifacts ? artifacts.complete === true : false,
         // ★★ RUN 156 (run-5 finding 7): `status.pdf` describes the paper track's ARCHIVE row (written by `render`), not the
         // file `compile` produced - so a reader who had just seen `compiled.produced:true` read `pdf.produced:false` as "no PDF".
@@ -4472,6 +4488,13 @@ async function toolPaper(args = {}, { kernel } = {}) {
           means: '`wrote` lists the RECORD kinds written into the paper track (md/tex/meta). render() writes NO file: a .tex/.pdf reaches Paper/<id>/ only when compile runs, which is when the disk list would carry it',
         },
         missing: Array.isArray(rendered.missing) ? rendered.missing.slice() : [],
+        // ★★ RUN 174 (run 19 FEEDBACK19 F2): say what the .tex pass does with formulas, so no reader has to infer it from a
+        // PDF that typeset `Σ_{k=1}^{n}` as literal text. Paired `$…$` is inline math (kept verbatim); everything else is
+        // text-escaped, which is why a bare `^` in prose reaches the page as `\textasciicircum{}` on purpose.
+        mathTypeset: { enabled: true, syntax: 'paired $…$ spans', means: 'a span between two `$` is kept VERBATIM as inline math (so `$x^2$` reaches the page as a superscript); text outside such a pair is escaped (`^` becomes \\textasciicircum{}, `_` becomes \\_) — write a formula between `$` and it will be typeset, write it bare and it will be text on purpose' },
+        // ★★ RUN 174 (run 19 FEEDBACK19 F1): the renderer's own verdict rides on the receipt. A draft render does not
+        // refuse (a paper being written must stay renderable) — it SAYS it did not judge, and names what `final` would.
+        qualityGate: rendered.qualityGate || null,
         complete: arts ? arts.complete === true : false,
         present: arts && arts.present ? Object.assign({}, arts.present) : null,
         pdf: rendered.pdf ? { ok: rendered.pdf.ok === true, code: rendered.pdf.code || null,

@@ -559,10 +559,18 @@ export function createPaperFlow({
       const seat = (kernel.members ? kernel.members.roster() : []).filter((m) => String(m.id) === editorWord)[0] || null
       if (seat && String(seat.slot) === finalizerSlot) editorName = editorDefault
       else {
+        // ★★ RUN 174 (run 19 FEEDBACK19 F6): the refusal named the rule but not the ANSWER — a member handed their own id
+        // ("editor: r-2") had to read the hint again to learn the word is a ROLE. Name the chair-seated member and the whole
+        // roster (id@slot) in the refusal, so "who do I pass" is answered where it is asked.
+        const roster = (kernel.members ? kernel.members.roster() : []) || []
+        const chair = roster.filter((m) => String(m.slot) === finalizerSlot).map((m) => String(m.id))[0] || null
         throw refuse('VMU_INVALID_ARGUMENT',
           'paper editor "' + editorWord + '" is neither the academician role nor a member seated in the chair slot'
             + (seat ? ' (that member is in slot "' + String(seat.slot) + '")' : ' (no such member on the roster)'),
-          'pass editor:"academician" (the member in the chair seat finalises: this is the default) or editor:"office" (the office finalises after consulting the institute); an id is accepted only for a chair-seated member, which is recorded as "academician"')
+          'pass editor:"academician" (this is the DEFAULT — omit `editor` entirely) or editor:"office" (the office finalises after consulting the institute). '
+            + (chair ? 'The chair seat is held by ' + chair + ', so THAT id is the one accepted: editor:"' + chair + '". ' : 'No member is seated in the chair slot, so only editor:"office" is finalisable. ')
+            + 'roster: ' + (roster.map((m) => String(m.id) + '@' + String(m.slot)).join(', ') || '(empty)')
+            + ' — a member id is accepted only when that member sits in the chair slot and is recorded as "academician"')
       }
     }
     const existing = readState(str(target))
@@ -632,6 +640,14 @@ export function createPaperFlow({
         ? 'the target itself is a portable ASCII name, so the plate id is derived from it and the directory is that name'
         : 'THE TITLE is not a portable ASCII file name (that is what this flag reports). The DIRECTORY and the plate id are ASCII anyway (see `id`/`folder`): the flag is not a warning that the compile path is unsafe',
       status: state.status, round: state.round,
+      // ★★ RUN 174 (run 19 FEEDBACK19 F5): a ONE-participant paper could be started and written, and only `advance`
+      // refused it ("一位参与者的论文无法通过互审") — after the work. The impossibility is knowable at `start`, so the
+      // start receipt says it now: a paper needs two writing participants because cross-review needs a member who is not
+      // the author. Not a refusal here (a paper can be started before the second member is named), but never a surprise later.
+      crossReviewPossible: participants.length >= 2,
+      crossReviewMeans: participants.length >= 2
+        ? 'cross-review is possible: ' + participants.join(', ') + ' can review each other\'s parts'
+        : 'NO member can cross-review this paper: it has ONE writing participant (' + participants.join(', ') + '), and a review must name a member who is not the author. Add a second writing participant (`participants:["' + participants.join('","') + '","<another member>"]`) before `advance`, or `advance` will refuse with this same reason',
       stateRecord: state.stateRecordId || (put && put.id), fingerprint: put && put.fingerprint }
   }
 
@@ -655,6 +671,10 @@ export function createPaperFlow({
     }
     const put = records.put({ track: TRACK, kind: 'paper-part', title: recordName(state.target, 'part|' + part.member), body: JSON.stringify(part), by: author })
     const previous = state.parts[part.member] || null
+    // ★★ RUN 174 (run 19 FEEDBACK19 F4): the slot said `at: <round number>` — a field named like a timestamp carrying a
+    // round. Run 19 read `{"round":1,"at":1}` and a reviewer counted "at 1" as an epoch. The round IS the time this
+    // subsystem keeps; name it once. `at` stays for old readers but is now the same number, and every NEW row carries
+    // `round` (the slot already had it — this literal existed only to be misread).
     state.parts[part.member] = { recordId: put && put.id, fingerprint: put && put.fingerprint, round: part.round, at: state.round, title: part.title }
     state.updatedRound = state.round
     writeState(state)
@@ -1164,7 +1184,27 @@ export function createPaperFlow({
     // whose purpose is rendering was the stage that could not render a formula. `^` and `~` are TeX ACTIVE characters; the
     // textcomp-free spellings below are legal in plain text mode and do not need a math shift.
     const TEX_TEXT = { '&': '\\&', '%': '\\%', '$': '\\$', '#': '\\#', '_': '\\_', '{': '\\{', '}': '\\}', '^': '\\textasciicircum{}', '~': '\\textasciitilde{}', '\\': '\\textbackslash{}', '<': '\\textless{}', '>': '\\textgreater{}', '|': '\\textbar{}' }
-    const escText = (s) => String(s).replace(/[&%$#_{}^~\\<>|]/g, (ch) => TEX_TEXT[ch] || ch)
+    const escPlain = (s) => String(s).replace(/[&%$#_{}^~\\<>|]/g, (ch) => TEX_TEXT[ch] || ch)
+    // ★★ RUN 174 (run 19 FEEDBACK19 F2 — THE FORMULA CAME OUT AS TEXT): RUN 170 stopped xelatex from dying on `^`, but it did
+    // so by turning EVERY formula into literal text: run 19's PDF carried `Σ\_\{k=1\}\textasciicircum{}\{n\} k³ = (n(n+1)/2)²`
+    // in the prose, i.e. the paper rendered its mathematics as its own escaping. The institute writes inline math the way
+    // markdown does — between paired `$` — so a paired span is now passed through VERBATIM (that is what makes `^` a
+    // superscript instead of a caret), and everything outside a pair is escaped exactly as before (so a bare `^` in prose
+    // still cannot kill the compiler). Unpaired `$` stays escaped: a lone dollar is text, not the start of a formula.
+    const escText = (s) => {
+      const raw = String(s)
+      let out = ''
+      let i = 0
+      while (i < raw.length) {
+        const open = raw.indexOf('$', i)
+        if (open < 0) { out += escPlain(raw.slice(i)); break }
+        const close = raw.indexOf('$', open + 1)
+        if (close < 0 || close === open + 1) { out += escPlain(raw.slice(i, open + 1)); i = open + 1; continue }
+        out += escPlain(raw.slice(i, open)) + '$' + raw.slice(open + 1, close) + '$'
+        i = close + 1
+      }
+      return out
+    }
     const esc = (s) => escText(String(s)).replace(/\*\*([^*]+)\*\*/g, (m, inner) => '\\textbf{' + inner + '}')
     const body = md.split('\n').map((line) => {
       if (line.startsWith('### ')) return '\\subsection*{' + esc(line.slice(4)) + '}'

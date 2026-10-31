@@ -249,6 +249,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     put: 0, deduplicated: 0, slugConflicts: 0, slugTruncated: 0, bodyTruncated: 0, bodyDroppedBytes: 0,
     versions: 0, versionsPruned: 0, compacted: 0, trashed: 0, purged: 0, restored: 0, tieredCold: 0,
     chunked: 0, lazyExpanded: 0, lists: 0, listTruncated: 0, listSuppressed: 0, headFieldTrimmed: 0, externalAttached: 0, externalVerified: 0,
+    // ★★ RUN 174 (run 19 F3/F10): an id that moved to another track but kept its OLD index row, so one id answered two
+    // `list({track})` calls and the durable snapshot wrote it twice. Counted so "the index is clean" is a reading, not a hope.
+    retracked: 0, indexHealed: 0,
   }
 
   // ── ROUND 36 (task-26): the SHARED seam's state ───────────────────────────────────────────────────
@@ -622,6 +625,26 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         fingerprint: fp, permanent: permanent === true, state: 'live', rev: 1, createdAt: at, updatedAt: at,
         by: by === null || by === undefined ? null : String(by), versions: [], trashedAt: null, purgeAt: null,
       }
+      // ★★ RUN 174 (run 19 F3/F10 — AN ID LIVES IN EXACTLY ONE TRACK): a put that names an EXISTING id while naming a
+      // DIFFERENT track used to push the new index row and leave the old one behind. One id then answered TWO
+      // `list({track})` calls — `list({track:"paper"})` returned a row whose own `track` still said "propositions" — and
+      // because the durable snapshot walks the track lists (kernel/index.js snapshotRecords), the SAME row was written to
+      // the fold twice. Measured in run 19: `prune {track:"paper", keep:0, dryRun:true}` listed rec-495 (a propositions
+      // card) among the paper rows, and the ledger carried two identical live rows for it while a fresh kernel folded the
+      // duplicates away (so the durable file looked clean afterwards and the leak hid). Moving the index is a mutation like
+      // any other: it is COUNTED and REPORTED (`retrackedFrom`), never silent.
+      let retrackedFrom = null
+      if (existingRow && existingRow.track !== track) {
+        retrackedFrom = String(existingRow.track)
+        const oldArr = trackList(retrackedFrom)
+        const oldIdx = oldArr.indexOf(id)
+        if (oldIdx >= 0) oldArr.splice(oldIdx, 1)
+        const oldSlug = bySlug.get(retrackedFrom)
+        if (oldSlug && oldSlug.get(existingRow.slug) === id) oldSlug.delete(existingRow.slug)
+        const oldFp = byFingerprint.get(retrackedFrom)
+        if (oldFp && oldFp.get(existingRow.fingerprint) === id) oldFp.delete(existingRow.fingerprint)
+        counters.retracked += 1
+      }
       records.set(id, rec)
       // ★ Defense in depth: an explicit re-put under the SAME id is LEGITIMATE (the paper tamper test relies on it), so the map is
       // overwritten on purpose - but the INDEX arrays must never gain a second row for one id, because a duplicate there carries no
@@ -639,7 +662,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       if (typeof onProgress === 'function' && track === 'progress') {
         try { onProgress({ id, track, kind, at, by: by === undefined ? null : by }) } catch { /* reported, never fatal */ }
       }
-      return { ok: true, deduplicated: false, id, slug, fingerprint: fp, bytes, tier: tierOf(rec, at), enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at }
+      return { ok: true, deduplicated: false, id, slug, fingerprint: fp, bytes, tier: tierOf(rec, at), retrackedFrom,
+        retrackedFromMeans: retrackedFrom === null ? 'this row did not change track' : 'this id was on the "' + retrackedFrom + '" track and MOVED here: the old index row was removed, so one id answers exactly one `list({track})`',
+        enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at }
     },
 
     /** READ a record (head + shaped body). The fingerprint is RECOMPUTED and compared (07 §4.2 spirit). */
@@ -688,6 +713,24 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       if (trimmed.length) mark(fired, K.headFields)
       // ★ Deduped on read too, so an index written by the OLD code (which could hold a duplicate per collision) heals.
       const ids = [...new Set(track === null ? order.slice() : trackList(track).slice())]
+      // ★★ RUN 174 (run 19 F3): the READ repairs the index it found broken. An id sitting in a track list while its own
+      // record says another track is not a row of this track — including it inflated `available`, made `prune` (which walks
+      // `list({track})`) move a row of a DIFFERENT track, and made the durable snapshot write the row twice. Skip it, drop
+      // the stale index row, and count the repair (`indexHealed`), so a contaminated fold heals on first read instead of
+      // being copied forward.
+      if (track !== null) {
+        const before = ids.length
+        const arr = trackList(track)
+        for (let i = ids.length - 1; i >= 0; i -= 1) {
+          const rec = records.get(ids[i])
+          if (rec && rec.track !== track) {
+            ids.splice(i, 1)
+            const at2 = arr.indexOf(rec.id); if (at2 >= 0) arr.splice(at2, 1)
+            counters.indexHealed += 1
+          }
+        }
+        void before
+      }
       let live = ids.map((i) => records.get(i)).filter((r) => r && r.state === 'live')
       live.sort((a, b) => headSort === 'title' ? String(a.title || '').localeCompare(String(b.title || '')) : (headSort === 'createdAt' ? a.createdAt - b.createdAt : a.updatedAt - b.updatedAt) || (a.id < b.id ? -1 : 1))
       const capWanted = Number.isInteger(limit) && limit >= 0 ? limit : headListAt

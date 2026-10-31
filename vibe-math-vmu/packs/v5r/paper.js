@@ -161,6 +161,31 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
     return checkQuality({ md: flow.PaperMdRaw({ target }), state, view: recordsView(), codes: QUALITY_CODES })
   }
 
+  /** ★★ RUN 174 (run 19 FEEDBACK19 F1 — SILENCE IS NOT A VERDICT): the SAME three rules, judged ALWAYS — including on a
+   *  draft, which `qualityGate` deliberately does not refuse. This is the READ-ONLY report a render receipt carries: what
+   *  the delivery gate would answer if the paper were being handed in right now. `skipped` says the verdict is advisory
+   *  (the paper is a draft), never that nothing was looked at. */
+  flow.qualityReport = (args = {}) => {
+    const target = args && args.target !== undefined ? args.target : args
+    const read = flow.state(target)
+    const state = read && read.state ? read.state : read
+    if (!state || !state.parts || Object.keys(state.parts).length === 0) {
+      return { ok: true, skipped: 'no-parts', counts: { citations: 0, evidence: 0, resolved: 0, verified: 0, subproblems: 0 }, citations: [], missing: [], code: null }
+    }
+    const status = String(state.status === undefined || state.status === null ? '' : state.status)
+    const draft = status !== 'awaiting-editor' && status !== 'finalized'
+    const verdict = checkQuality({ md: flow.PaperMdRaw({ target }), state, view: recordsView(), codes: QUALITY_CODES })
+    if (!draft) return verdict
+    // A DRAFT'S FAILURE IS ADVISORY, NOT A REFUSAL: keep the verdict (code + missing) and mark it skipped, so the receipt
+    // warns the writer about exactly what `final` will refuse — the run-19 failure was not that the gate was wrong but that
+    // three renders said NOTHING and read as "checked, fine".
+    return Object.assign({}, verdict, {
+      skipped: 'draft:' + status,
+      advisory: true,
+      means: 'this verdict is ADVISORY (the paper is ' + status + '): render does not refuse a draft, and `final` will refuse on the same code',
+    })
+  }
+
   // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
   // ★ E3 — THE GATE. It hangs on `render`, the moment the institute PRODUCES the paper's artefacts (md/tex/meta written
   // into the archive): a quality claim that cannot stop the deliverable from being produced is a comment, not a gate. The
@@ -198,11 +223,39 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
   let gatePassed = 0
   const kitRender = flow.render
   flow.render = (args = {}) => {
+    let verdict = null
     if (gatePassed === 0) {
-      const verdict = flow.qualityGate(args)
-      if (!verdict.ok) throw gateError(verdict)
+      // ★★ RUN 174: the REPORT judges always; the REFUSAL still only applies to a paper being handed in (`advisory` marks
+      // the draft verdict). One judgement, two uses — an advisory failure rides the receipt instead of stopping the render.
+      verdict = typeof flow.qualityReport === 'function' ? flow.qualityReport(args) : flow.qualityGate(args)
+      if (verdict.advisory !== true && !verdict.ok) throw gateError(verdict)
     }
-    return kitRender(args)
+    const rendered = kitRender(args)
+    // ★★ RUN 174 (run 19 FEEDBACK19 F1 — SILENCE IS NOT A VERDICT): for a DRAFT the gate above deliberately does not judge
+    // (a paper being written or cross-reviewed must stay renderable), and the receipt then said nothing at all about the
+    // citations — so three renders of a paper whose prose cited a record that does not exist read as "rendered: checked and
+    // fine", and only `final` refused. Measured in run 19: `render {format:"md"}` answered
+    // `{renderOk:false, wrote:[...], missing:[...]}` with no `code`, and the member concluded the gate had passed.
+    // The judgement now rides ON THE RECEIPT for every render: `checked:false` names the draft status it skipped on,
+    // `ok:false` + `code` + the first few `missing` entries say what `final` would refuse — reported, never refused here.
+    if (rendered && typeof rendered === 'object' && !Array.isArray(rendered)) {
+      const skipped = verdict && verdict.skipped ? String(verdict.skipped) : null
+      const missing = verdict && Array.isArray(verdict.missing) ? verdict.missing.slice(0, 5) : []
+      rendered.qualityGate = {
+        checked: skipped === null,
+        ok: verdict ? verdict.ok === true : true,
+        advisory: verdict ? verdict.advisory === true : false,
+        skipped,
+        code: verdict && verdict.code ? verdict.code : null,
+        citations: missing,
+        means: skipped === null
+          ? 'the delivery gate judged the written text while rendering; a refusal would have stopped this render'
+          : 'this render was NOT refused (' + skipped + ') but it WAS judged: `ok`/`code` below are what the delivery gate '
+            + 'would answer if the paper were handed in now. '
+            + (missing.length ? 'The ids below are what that gate refuses on — they will not block render.' : 'The written text currently cites only resolvable ids.'),
+      }
+    }
+    return rendered
   }
   // ★ F4 (the second half): hanging the gate on `render` alone still lets the FINALISING path mutate the paper before a
   // refusal - the state is written `finalized`, then the delegate's render refuses, and whether the caller ever sees the

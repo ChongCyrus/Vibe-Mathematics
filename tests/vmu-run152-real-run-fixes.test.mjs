@@ -108,7 +108,7 @@ try {
     // ★ RUN 170 (FEEDBACK16 F16-10) widened the escape SET (`^`/`~`/`\`/`<`/`>`/`|` are TeX-active too, and a formula
     // containing `^` used to stop xelatex with `! Missing $ inserted`), so the pin names the helper and its table rather
     // than the exact bracket list of the first spelling.
-    ok(KIT.includes('const escText = (s) => String(s).replace(') && KIT.includes('TEX_TEXT') && KIT.includes('textasciicircum'),
+    ok(KIT.includes('const escPlain = (s) => String(s).replace(') && KIT.includes('const escText = (s) => {') && KIT.includes('TEX_TEXT') && KIT.includes('textasciicircum'),
       '§0f ★★ F8 先把 TeX 特殊字符整体转义（`escText`），bold 只在转义之后包一层')
     ok(/escText\(String\(s\)\)\.replace\(\/\\\*\\\*/.test(KIT) && !/'\\\\\\\\textbf\{' \+ '\$1'/.test(KIT),
       '§0g ★★★ F8 顺序反了就会写出 `\\\\textbf\\{…\\}`（xelatex 的 Undefined control sequence 根因）—— 旧顺序已删')

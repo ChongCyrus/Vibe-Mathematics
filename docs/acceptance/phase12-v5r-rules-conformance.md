@@ -13005,3 +13005,56 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 3. **`prune` 逐行写盘**（12 行 ≈ 14.4 秒，run 17 观察）仍未批量化。
 4. **互审 3 轮上限**仍是产品决策（`capped:true` + 警告已具名）。
 5. **代理会去读实现源码**（run 18 里根会话读 `D:\_tmp\slv-phase5\pkg-ffab44d1\vibe-math-vmu\…` 自证），不算缺陷但要在报告里记为"代理行为观察"。
+
+---
+
+## §274 第十九次真机（run 19）：沉默的渲染、被写进页面的转义、以及一个住在两条轨上的 id
+
+### 274.1 这一轮的现场
+
+- 基线 tarball `a87d6c7f`（RUN 173），驱动 `slv-p13-oc.ps1`（opencode-go / `deepseek-v4.1-flash`），`-MaxTokens 40000000`、`-TimeoutSec 5400`、`-KeepWorkspace`。
+- 读数：`DRIVER_EXIT 0`、`durationSec 1726`、`tokenTotal 19 123 251 / 40 000 000`（**capHit false**，第一次没打满预算）、`transcriptEvents 540`、根会话 `toolCalls 115`、`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`。
+- 四位成员**都产生了回合**（`r-1`/`r-2`/`r-temp`/`r-acad`），`r-temp` 这次被点名排除在投票之外（`voteFloor.nonAttendingSeats:["temp"]`）而不是被忽略。
+- 产出 `SIM-REPORT19.md`（26 530 B）与 `FEEDBACK19.md`（9 222 B）；transcript `_oneoff/vm-slv/full-1101-060748.jsonl`（37 MB）。
+- **主线完整走完**：命题卡 `rec-472`（平方和）→ 辩论会 `m47` → 裁决 `verdict_final value:1`、`floor.gate{required:3,signed:3,satisfied:true,vacuous:false}` → `verified_promote` → 论文 `run19-mainline` 两份 part + 互审（含一次真实的 round 错配退回）→ `final` **PDF 115 827 B** → 结题会 `m48` `close` 归档；另一篇 `run19-sum-cubes` 也出了 PDF（86 741 B）。
+
+### 274.2 上一轮（RUN 172）的修法在现场被证实
+
+1. **正文引文闸两个方向都成立**：真实指针 + 中文标点通过；编造指针被 `render` 与 `final` 分别具名拒（`VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN`，`missing[].id` 干净、`#anchor` 只在 `path` 里）。
+2. **`reopen-closure` 真的开窗**：`{window:4, previousWindow:3, archivedVotes:4, sessionVotesCleared:0, foldKey:"closure_window"}`，窗口内新票当场上加。
+3. **`voters` 说出"谁、从哪投的"**：`r-1@?` → `r-1@<session>`。
+4. **trash 名拒文带顶层字段**（`stateRecordId`/`status`/`inTrash`/`trash`）。
+5. **满轨拒绝语给了两条可达修法**（`prune` / 抬上限），不再是"compact or remove"。
+6. **`reviewsRead` 出现 `source:"durable-other-round"`**（20 次）。
+7. **提示词与本所声明对齐**：本轮 `"code":"VMU_TURN_UNKNOWN_FIELD"` 计数为 **0**（之前成员照着旧句子写多余键）。
+
+### 274.3 这一轮抓到的真缺陷（与修法）
+
+1. **F1 沉默的渲染**：`render` 三次都没判正文引文（回执只有 `{renderOk:false, wrote:[…], missing:[…]}`，**没有 `code`**），只有 `final` 判——于是"没说话"被读成"查过了，没问题"。修法：新增 `flow.qualityReport`（**始终**判，草稿时把裁决原样返回并标 `skipped:'draft:<status>'`、`advisory:true`），`flow.render` 用它：草稿的失败**只上报不拒绝**，`awaiting-editor`/`finalized` 的失败照旧拒；回执带 `qualityGate:{checked, ok, advisory, skipped, code, citations, means}`。
+2. **F2 公式被当成文字写进页面**：`Paper/paper-run19-sum-cubes/…tex` 第 33 行是 `本节的 x	extasciicircum{}2 表示平方、Σ\_\{k=1\}	extasciicircum{}\{n\} 表示前 n 项求和`——安全转义把公式变成了字面文本。修法：`PaperTex` 的转义改成**数学感知**（成对 `$…$` 原样保留，浪出成对范围的 `$` 当文本；`^`/`_` 等仍在文本模式里转义），回执显式声明 `mathTypeset:{enabled:true, syntax:'paired $…$ spans', means:…}`——"公式是数据还是排版"从此是一条写在回执里的**政策**，不是读者猜的。
+3. **F3+F10 一个 id 住在两条轨上**：`prune{track:"paper"}` 的清单里出现 `track:"propositions"` 的 `rec-495`，而账本里同一行有**两条相同的 live 行**。根因：`records.put` 换轨重写同一 id 时只把 id 推进新轨的索引，**从不从旧轨移除**；`list({track})` 与 `snapshotRecords()` 都按索引行走 ⇒ 读面把同一行当两边的行、折入面把它写两遍。修法三处：`put` 换轨时迁移索引（`retracked`/`retrackedFrom`）、`list({track})` 读到错轨索引行就**自愈**（`indexHealed`）、`snapshotRecords()` 拒写 `rec.track !== track` 的行（索引在撒谎，记录没有）。
+4. **F4 `status.parts[*].at` 是轮号不是时间**：`{"r-1":{round:1, at:1}}`——`at` 被读成 epoch 毫秒。修法：`paper status` 的 `paperView` 每个 part 槽只给 `{recordId, fingerprint, round, title}`（**删掉 `at`**）并给 `partsMeans/reviewsMeans` 说单位是轮次。
+5. **F5 单人论文到 `advance` 才被告知不能互审**：修法：`start` 回执就给 `crossReviewPossible: participants.length >= 2` 与 `crossReviewMeans`（1 人时明说"要加第二个写作参与者，否则 `advance` 过不去"）。
+6. **F6 `editor:"r-2"` 被拒但拒文没点名**：修法：拒文直接写「pass editor:"academician"（**DEFAULT——完全省略 `editor`**）…主席席由 <chair> 持有，所以被接受的是 editor:"<chair>"。roster: r-acad@chair, r-1@member, …」。
+7. **F7 `archivedVotes` 与开窗前 `votesCast` 差 1**：耐久 `closure_votes` 里有一条旧票 `{"member":"r-temp","solved":true,"at":1793464773262}`**没有 `window` 字段**——它不进新窗口、也不进 `notEligible`，却算进 `archivedVotes`。修法：`reopen-closure` 回执改给 `archivedByWindow`（每窗计数）+ `unwindowedVotes`（没有 `window` 的旧行）+ `archivedMeans`，`archivedVotes` 仍是总和（既有调用方读的名字不改）。
+
+### 274.4 机器化
+
+- 新套件 `tests/vmu-run174-index-and-receipts.test.mjs`：**43 PASS / 0 FAIL**。§0 九条源码口径；§1 换轨后旧轨不再列出、新轨恰好一次、`counters.retracked:1`、回执 `retrackedFrom`；§2 二次 boot 的同 root 内核只看到一行；§3 草稿 `render` 的回执带 `qualityGate`（`ok:false` + `CITATION_UNKNOWN` + 那个 id）；§4 `$…$` 原样进 tex、裸 `^` 仍转义；§5 手工写入一条无 `window` 的旧票 → `reopen` ⇒ `unwindowedVotes:1`、`archivedByWindow['1']:1`、`archivedVotes:2`（种子写入带 40×25 ms 校验，防住"内核在途折入写覆盖种子"的 flake）；§6 单人论文 `crossReviewPossible:false`、part 槽无 `at`、`editor` 拒文点名主席与 roster。
+- 定向回归（`--only`，本机）：paper 11/0、evidence 1/0、citation 3/0、records 5/0、run166–run174 各 1/0、`vmu-host` 4/0、meeting 32/0、verdict 5/0、prompt- 24/0、v5r-tools 1/0、vmu-turn 12/0、tools-action-arity 1/0、vmu-store 5/0。
+- 收口链：`regen-all --write` 到不动点 → `--check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULES COVERAGE: PASS (0)`（锚点 86/86）、`RULE PARITY: PASS (0)`。
+- 全量 T1：**654 PASS / 0 FAIL（suites 590 · probes 64）**（`/d/_tmp/t1-r237-run174b.log`）。
+
+### 274.5 未闭合账（下一轮）
+
+1. **F8（提示词）**：结题会 `close` 的回执带机构级 `closureVote{votesCast:3}`，但会议面 `present` 只有主席、`motions/votes` 为 0（成员走 `vibe_vmu_vote`）——两个面都是真的，读者会以为有人在替别人投票。下一轮要让会议面提示词明说"署名走机构级结题票，纪要里不会有 vote 事件"。
+2. **F9（读数）**：`status.pdf` 描述的是归档行（`{missing:"pdf", produced:false}`），建议顶层加 `pdfCompiled:{produced,pdfPath,pdfBytes}` 读编译台账。
+3. `prune` 逐行写盘（run 17 观察 12 行 ≈ 14.4 s）仍未批量化。
+4. 互审 3 轮上限仍是产品决策（`capped:true` + 警告已具名）。
+
+### 274.6 教训
+
+- **沉默不是判定**：一个不说话的检查会被读成"已经查过、没问题"。判定了就必须在回执里说判定了；不判定就必须说"我没判"。RUN 174 的 `qualityGate.advisory` 就是这句话的机器形式。
+- **索引是缓存，不是事实**：`records` 的 track 数组是"这个 id 在哪条轨"的缓存；缓存与记录冲突时，读者要用记录、写者要把缓存修好——一个只 guard 新轨、从不清理旧轨的写者，会同时骗过读面和折入面。
+- **转义是政策**：把 `^` 转成 `	extasciicircum{}` 在"正文里写了一个脱字符"时是对的，在"成员写了一条公式"时是错的。既然框架无法代替作者决定，就把决定写进回执（`mathTypeset`），让作者知道自己在写什么。
+
