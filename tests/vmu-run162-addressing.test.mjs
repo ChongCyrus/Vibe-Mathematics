@@ -213,6 +213,32 @@ console.log('§4 lean_archive 的词表：一次说清 theorem 怎么归档')
     { kindRequested: good.kindRequested, kind: good.kind, mappedKind: good.mappedKind })
 }
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+console.log('§5 人数闸（规则 47）的负向：先被完整性闸拦住，签名数恒 ≥ 门槛 —— 这件事在回执里说清，不靠读者推')
+{
+  const { specs } = await boot({})
+  const conv = await call(specs, 'vibe_v5_meeting', { action: 'convene', member: 'r-chair', agenda: 'quorum negative', members: ['r-1', 'r-2'] })
+  const meetId = String(conv.meeting || '')
+  ok(conv.ok === true && meetId !== '', '(5) 辩论会真的开出来了', conv.ok === false ? conv : undefined)
+  const st = await call(specs, 'vibe_vmu_meeting', { action: 'status', id: meetId })
+  ok(st.ok === true && st.quorum && typeof st.quorum === 'object', '(5) status 报 quorum 段', st.ok === false ? st : undefined)
+  await call(specs, 'vibe_v5_record_proposition', { id: 'rec-q-162', statement: 'quorum probe', value: 'claim', member: 'r-1', motive: 'negative quorum evidence', p: 0.6 })
+  // ONE of the two debaters signs: the completeness gate speaks first — that is the ordering this receipt must show.
+  const one = await call(specs, 'vibe_v5_verdict_final', { meeting: meetId, proposition_id: 'rec-q-162', owner: 'r-1', verdicts: [{ member: 'r-1', p: 1, reason: 'only one voice' }] })
+  ok(one.ok === false && String(one.code) === 'VMU_STATE' && /missing 1 of the 2 member\(s\) who debated/.test(String(one.message || '')),
+    '(5) 只一位成员署名 ⇒ 完整性闸先报「缺哪位辩论成员」（不是人数闸）', { code: one.code, message: one.message })
+  // both debaters sign: the floor is met, and the receipt says WHY the refusal branch is arithmetically unreachable
+  const both = await call(specs, 'vibe_v5_verdict_final', { meeting: meetId, proposition_id: 'rec-q-162', owner: 'r-1', verdicts: [{ member: 'r-1', p: 1, reason: 'a' }, { member: 'r-2', p: 1, reason: 'b' }] })
+  ok(both.ok === true, '(5) 两位都署名 ⇒ 裁决成立（人数闸不会拦）', both.ok === false ? both : undefined)
+  const gate = (both.floor || {}).gate || {}
+  ok(Number(gate.required) > 0 && Number(gate.signed) >= Number(gate.required),
+    '(5) 回执的 floor.gate 给出 required/signed（签名数 ≥ 门槛）', gate)
+  ok(gate.vacuous === true && typeof gate.bitesWhen === 'string' && gate.bitesWhen.length > 0,
+    '(5) 回执自己说这一次的门槛是 vacuous，并写明它在什么条件下才咬人', gate)
+  ok(/cannot reach VMU_MEETING_QUORUM_LOST|arithmetic, not a disabled gate/.test(String(gate.bitesWhen || '')),
+    '(5) bitesWhen 明说这条闸在「全员署名的名册上」按算术不会被触发（规则 47 的负向不可观测，是机制性质）', gate.bitesWhen)
+}
+
 console.log('')
 console.log('=== RUN 162 ADDRESSING: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) { for (const f of failures) console.log('FAILED :: ' + f); process.exit(1) }

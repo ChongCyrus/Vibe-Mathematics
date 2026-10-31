@@ -12425,7 +12425,7 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 
 ### 262.5 机器化
 
-- 新 `tests/vmu-run162-addressing.test.mjs` **33/0**：§0 九条源码口径（身份只看 STATE 行、`reviewRowOf` 与
+- 新 `tests/vmu-run162-addressing.test.mjs` **40/0**：§0 九条源码口径（身份只看 STATE 行、`reviewRowOf` 与
   `reviewsOnDisk`、`part`/`review`/`render`/`lean_archive` 的词表）；§1 真回合（`render` 写出 meta 行之后，
   用铸造 id 读到的仍是论文自己的 STATE：`paper.id` 一致、`reviews` 2 条、两种拼写同一阶段，`final` 用 id 成功且
   `pdf.produced:true`）；§2 真回合（默认 `officeConsult` 下定稿被 `VMU_OFFICE_CONSULT_REQUIRED` 拒并给
@@ -12433,6 +12433,10 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
   `member:"office"` 答复后 id 拼写定稿成功）；§3 真回合（把 STATE 行的 `reviews` 缓存清空重 put，模拟 run 10 的
   丢写 ⇒ 定稿仍成立，走 durable 行）；§4 `lean_archive` 的 `kind:"theorem"` 具名拒（词表在拒绝语里）+ `kind:"proof"`
   真归档成功（`kindRequested:"proof"`、`kind:"theorem"`）。
+  另 §5 把规则 47 的负向一次说清：只让一位辩论成员署名时，先被**完整性闸**拦住（`VMU_STATE … missing 1 of
+  the 2 member(s) who debated`），两位都署名时 `floor.gate` 的 `required`/`signed` 成立且 `vacuous:true`，
+  `bitesWhen` 自己写明「全员署名的名册上按算术不会触发 `VMU_MEETING_QUORUM_LOST`」——负向不可观测是机制性质，
+  不是没写测试。
 - 定向回归：`--only paper` 11/0、`--only run16` 4/0（run160/161/162）、`--only v5r-tools` 1/0、
   `--only consult` 4/0。
 - **`--only audit-` 162/0**（suites 80 · probes 82）：新测试文件改变了作业数，必须先把 16 个生成器跑到不动点，
@@ -12446,8 +12450,10 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 
 ### 262.7 仍未解决
 
-1. 规则 47 的人数闸仍是**形式满足**（`signed ≥ required` 且 `vacuous:true`），名册 ≥4 的负向 `VMU_MEETING_QUORUM_LOST`
-   真机证据还没打出来；下一轮简报要专门压这一条。
+1. 规则 47 的人数闸仍是**形式满足**（`signed ≥ required` 且 `vacuous:true`）：本轮的探针与 §5 用例把原因钉死——
+   完整性闸（缺哪位辩论成员）在前，而全员署名后 `signed` 恒 ≥ 门槛，所以 `VMU_MEETING_QUORUM_LOST` 在
+   「全员署名的名册」上**按算术不可观测**；能观测的是完整性闸的具名拒。负向证据已从「打不出来」变成
+   「为什么打不出来，写在回执里」。
 2. 规则 50–51 第 2 步（`hand` / `invite` / `order` / `refuse`）自第八轮起没再被真机走过；下一轮要专门走一遍。
 3. `ports.watchdogs:false` 部署下「接线但真的 0 个目标」仍只能靠单测覆盖。
 4. `editor:"office"` 代定稿仍是具名缺口。
