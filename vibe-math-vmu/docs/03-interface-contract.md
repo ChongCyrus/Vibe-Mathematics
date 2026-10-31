@@ -419,6 +419,10 @@
 | **R2 · `VMU_RESUME_WRITE_BEFORE_READ`** | **写前必读**闸：未先读回就写 | 恢复面 `read/write/patch` | ✅（须给**先读哪个键**） |
 | **R2 · `VMU_RESUME_BAD_STEP`** | 恢复步骤不合法（未知步骤/顺序错） | 恢复面 | ✅（须点名**步骤**） |
 | **R2 · `VMU_RESUME_INTERRUPTED_NOT_PASSED`** | 在途项未结算就被当作已完成传递 | 恢复面 | ✅（须点名**未结算项**） |
+| **R2 · `VMU_RESUME_CHILDREN_NO_PARENT`** | children 读回时这个会话没有父会话（不是「没有子会话」——两件事分开报） | 恢复面的 `children` 步（RUN 158） | ✅（须说清「这个会话没有父会话」而不是「0 个子会话」） |
+| **R2 · `VMU_RESUME_CHILDREN_NONE_YET`** | 父会话存在、但目前确实**还没有**子会话 | 同上（RUN 158） | ✅（须区别于「没有父会话」） |
+| **R2 · `VMU_RESUME_WATCHDOGS_UNAVAILABLE`** | `watchdogs` 面**未接线**（接口缺失）——不能写成「0 个目标」 | `readBack()` 的 `watchdogs` 步（RUN 158） | ✅（须点名缺的接口） |
+| **R2 · `VMU_RESUME_WATCHDOGS_NONE`** | `watchdogs` 面已接线、但**当前确实 0 个**目标 | 同上（RUN 158） | ✅（与「未接线」分开） |
 | **R2 · `VMU_RESUME_MAILBOX_UNAVAILABLE`** | 需要未 ack 私信面但 `mailbox` 缝缺失 | 恢复面 | ✅（须给**注入方式**） |
 | **R2 · `VMU_RESUME_CLOCK_UNAVAILABLE`** | 缺注入时钟（恢复判定需要时刻） | 恢复面 | ✅（须给**时钟口径**） |
 | **R2 · `VMU_RESUME_READBACK_DRIFT`** | 写后回读与写入不一致（`vmu.resume.readBack`） | 恢复面 | ✅（须给**两份值**） |
@@ -1189,7 +1193,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **477** 个码，**逐行**给出状态 ✓：其中 **438** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **481** 个码，**逐行**给出状态 ✓：其中 **442** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1583,6 +1587,8 @@
 | `VMU_RESUME_ADAPTER_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_BAD_STEP` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_BUSY` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
+| `VMU_RESUME_CHILDREN_NONE_YET` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
+| `VMU_RESUME_CHILDREN_NO_PARENT` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_CHILDREN_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/host-children.js`、`vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_CLOCK_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/kernel/resumeflush.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_HOSTCONTRACT` | **已实现 ✓** | `vibe-math-vmu/host-deliver.js` | 代码里有该码字符串 ✓ |
@@ -1598,6 +1604,8 @@
 | `VMU_RESUME_SNAPSHOT_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_SNAPSHOT_VERSION` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/kernel/resumeflush.js`、`vibe-math-vmu/vibe-math-vmu.js` | 代码里有该码字符串 ✓ |
+| `VMU_RESUME_WATCHDOGS_NONE` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
+| `VMU_RESUME_WATCHDOGS_UNAVAILABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_WRITE_BEFORE_READ` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/kernel/resumeflush.js` | 代码里有该码字符串 ✓ |
 | `VMU_RETENTION_TRUNCATED` | **已实现 ✓** | `vibe-math-vmu/kernel/retention.js` | 代码里有该码字符串 ✓ |
 | `VMU_ROLE_EVIDENCE_REQUIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |

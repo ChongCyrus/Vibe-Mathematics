@@ -110,6 +110,42 @@ export function createPaperFlow({
     return Array.isArray(rows.items) ? rows.items : []
   }
   const rowByTitle = (title) => listPaper().filter((r) => String(r.title) === title)[0] || null
+  const PORTABLE_TARGET = /^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/
+  const stateOfRow = (row) => {
+    let body = row && row.body
+    if (body === undefined && row && Array.isArray(row.blocks)) body = row.blocks.map((b) => (typeof b === 'string' ? b : b && b.text) || '').join('')
+    // ★★ RUN 158: `records.list` rows carry METADATA ONLY (id/track/kind/title/status/fingerprint) - no body, no blocks.
+    // Reading the minted id off a listed row therefore silently answered `{}` and the id the receipt printed stayed
+    // unreachable; the body has to be fetched per row (one small read per paper, only on this fallback path).
+    if (body === undefined && row && row.id) {
+      try {
+        const got = records.get({ id: row.id })
+        const full = got && got.record ? got.record : got
+        body = full && full.body
+        if (body === undefined && full && Array.isArray(full.blocks)) body = full.blocks.map((b) => (typeof b === 'string' ? b : b && b.text) || '').join('')
+      } catch { body = undefined }
+    }
+    try { return JSON.parse(String(body || '{}')) } catch { return null }
+  }
+  // ★★ RUN 158 (real machine, run 6 / feedback N2 — THE PAPER THAT COULD NOT BE COMPILED): `start` without a target
+  // names the paper after its TITLE, and that title became BOTH the plate id (`paper-第五次续跑 之 结题 现场 验证 稿`)
+  // and the directory name. xelatex refused the directory (`xelatex.exe: fatal: putenv(TEXMF_OUTPUT_DIRECTORY=…)`) while
+  // the very same body compiled fine under an ASCII name — so a legal Chinese title could make the compiler unreachable.
+  // The TITLE is still the title (rows are titled by it and every action still addresses the paper by it); the durable
+  // ID and the folder are now ASCII: a portable target keeps `paper-<target>`, anything else is minted `paper-pN`.
+  const mintPaperId = () => {
+    const used = new Set()
+    for (const row of listPaper()) {
+      const st = stateOfRow(row)
+      if (st && st.id) used.add(String(st.id))
+    }
+    for (let n = 1; n <= 999; n += 1) {
+      const cand = 'paper-p' + String(n)
+      if (!used.has(cand) && !rowByTitle(recordName('p' + String(n), 'state'))) return cand
+    }
+    throw refuse(CODES.STATE, 'could not mint an unused paper id',
+      'start the paper with an explicit target (target:"p12") so its id is portable by construction')
+  }
   const readState = (target) => {
     // ★★ RUN 154 (real machine, run 4 / FEEDBACK3 H3): the tool receipt calls the object "paper-p5" while every
     // action addresses it by "p5", so a caller that copies the id it was just handed was told 'no paper "paper-p5" exists'.
@@ -117,6 +153,16 @@ export function createPaperFlow({
     let word = str(target)
     let row = rowByTitle(recordName(word, 'state'))
     if (!row && /^paper-/.test(word)) { word = word.replace(/^paper-/, ''); row = rowByTitle(recordName(word, 'state')) }
+    // ★★ RUN 158 (N2): a paper that got a MINTED id (`paper-p3`) is not titled by that id, so the id the receipt prints
+    // must still address it — otherwise the advertised repair ("address the paper by its id") names an unreachable object.
+    // ★ NOTE the ORIGINAL spelling is tested here: the strip above turned `paper-p3` into `p3`, which is exactly the
+    // form that is NOT a paper-p id, so testing `word` would make the advertised id unreachable again.
+    if (!row && /^paper-p[0-9]+$/.test(str(target))) {
+      for (const cand of listPaper()) {
+        const st = stateOfRow(cand)
+        if (st && String(st.id) === str(target)) { row = cand; break }
+      }
+    }
     if (!row) return null
     const got = records.get({ id: row.id })
     const full = got && got.record ? got.record : got
@@ -439,8 +485,12 @@ export function createPaperFlow({
     }
     if (readState(str(target))) throw refuse(CODES.STATE, 'a paper for "' + str(target) + '" already exists',
       'advance/finalize the existing one, or start a paper for a different target (this face never silently overwrites)')
+    // ★★ RUN 158 (N2): see mintPaperId above — the id/folder must be ASCII even when the title is not.
+    const targetWord = str(target)
+    const asciiSafe = PORTABLE_TARGET.test(targetWord)
+    const plateId = asciiSafe ? 'paper-' + targetWord : mintPaperId()
     const state = {
-      id: 'paper-' + str(target), target: str(target), status: 'writing', stage: 'writing', round: 1,
+      id: plateId, target: targetWord, status: 'writing', stage: 'writing', round: 1,
       participants: list, editor: editorName, lang: lang === 'en' ? 'en' : 'zh',
       format: ['both', 'md', 'tex'].includes(format) ? format : 'both',
       parts: {}, reviews: {}, reviewOf: {}, final: null, disagreement: [], warnings: [], forcedAfterCap: false,
@@ -456,7 +506,12 @@ export function createPaperFlow({
     // ★★ RUN 156 (run-5 finding 6): the receipt named the target but never the paper ID, so a caller could not address the
     // paper by the id every later receipt prints; and the folder is announced HERE because a title-derived id used to
     // reach compile as a directory name with spaces (fatal for xelatex `putenv`).
-    return { ok: true, target: state.target, id: state.id, folder: folderOf(state.id), status: state.status, round: state.round,
+    return { ok: true, target: state.target, title: state.target, id: state.id, folder: folderOf(state.id),
+      asciiSafe, idMinted: asciiSafe === false,
+      idMeans: asciiSafe
+        ? 'the id is paper-<target> and the folder is its slug (both portable)'
+        : 'the title is not a portable file name, so the plate id and the folder were minted in ASCII (paper-pN): address the paper by this id OR by its title — both resolve — and the compiler never sees the Chinese title as a directory',
+      status: state.status, round: state.round,
       stateRecord: state.stateRecordId || (put && put.id), fingerprint: put && put.fingerprint }
   }
 
@@ -719,6 +774,10 @@ export function createPaperFlow({
           stderrTail: e && e.stderrTail ? String(e.stderrTail).slice(-1500) : '',
           stdoutTail: e && e.stdoutTail ? String(e.stdoutTail).slice(-1500) : '',
           tailSource: (e && e.tailSource) || null,
+          // ★★ RUN 158 (run 6 / item 6): same fields as `action:"compile"` — one failure structure, both doors.
+          outDir: (e && e.outDir) || null,
+          sourceName: (e && e.sourceName) || null,
+          tailsIdentical: e && e.tailsIdentical === true,
           signal: (e && e.signal) || null }
       }
       // ★★ RUN 154 (G10): run 4's final receipt said `"missing":["pdf"]` AND `"pdf":{"ok":true,...}` in the SAME answer —
@@ -736,7 +795,10 @@ export function createPaperFlow({
       state.round += 1; state.status = 'writing'; state.stage = 'writing'
       state.disagreement = (state.disagreement || []).concat([{ round: state.round - 1, members: [fin.by], detail: '定稿代表要求修订：' + (fin.note || '（未说明）') }])
       writeState(state)
-      return { ok: true, finalized: false, moved: true, round: state.round, status: state.status }
+      // ★★ RUN 158 (run 6 / N5): this branch moved the paper awaiting-editor → writing but reported `from:null,to:null`
+      // (only the REPAIR branch named the move), so a reader could not tell a revision from a repair round.
+      return { ok: true, finalized: false, moved: true, from: 'awaiting-editor', to: 'writing', round: state.round, status: state.status,
+        repair: false, repairs: Number(state.repairs || 0), repairBudget: REPAIR_ROUNDS, cap: capNow }
     }
     // ★★ RUN 154 (real machine, run 4 / FEEDBACK3 H2 — DEADLOCK): at the cross-review cap the paper sat in
     // `awaiting-editor` where `deliverable` was refused by the content gate (a verified title line missing) and `revise`
@@ -751,8 +813,14 @@ export function createPaperFlow({
       writeState(state)
       return { ok: true, finalized: false, moved: true, from: 'awaiting-editor', to: 'writing', round: state.round, status: state.status, repair: true, repairs: state.repairs, repairBudget: REPAIR_ROUNDS, cap: capNow }
     }
-    throw refuse(CODES.STATE, '已到 ' + capNow + ' 轮上限，且 ' + REPAIR_ROUNDS + ' 次修复轮也用完了，定稿代表仍要求修订',
-      'this face has no force flag: the exits that exist now are (a) record a new part that satisfies the content gate and final it, (b) raise vmu.paper.maxRounds (a positive number is read live on the next call) and revise again, or (c) start a new paper for a new target; silently finalising a revised paper is not one of them')
+    // ★★ RUN 158 (real machine, run 6 / feedback N1 — A HINT THAT NAMED AN UNREACHABLE EXIT): the old text offered
+    // (a) "record a new part", which the flow refuses in awaiting-editor (parts write in `writing` only), so the advice
+    // closed a circle; and (b) said raising `vmu.paper.maxRounds` lets the paper "revise again", which is only true when
+    // the new cap is STRICTLY ABOVE the current round (otherwise the next revise is another repair round, of which there
+    // are none left). Both are now stated with the numbers that decide them.
+    throw refuse(CODES.STATE,
+      '已到 ' + capNow + ' 轮上限，且 ' + REPAIR_ROUNDS + ' 次修复轮也用完了（round=' + state.round + '，repairsUsed=' + repairs + '/' + REPAIR_ROUNDS + '），定稿代表仍要求修订',
+      'this face has no force flag. The exits that really exist: (1) raise vmu.paper.maxRounds to a number STRICTLY GREATER than the current round (' + state.round + ') with vibe_v5_set {key:"vmu.paper.maxRounds",value:' + (state.round + 1) + ',why:"…"} — the next revise is then an ordinary revision that reopens writing; raising it to ' + state.round + ' or below does NOT help, because the next revise would be another repair round and the repair budget is spent; (2) start a new paper for a new target with a body that satisfies the content gate. Recording a new part is NOT an exit here: parts can only be written while the paper is in writing')
   }
 
   /** Re-read a part BY ID and compare the fingerprint remembered at write time (rule ①). */
@@ -991,6 +1059,13 @@ export function createPaperFlow({
         failure.tailSource = 'stderr'
       }
       failure.signal = (r && r.signal) || null
+      // ★★ RUN 158 (run 6 / item 6 + N5): the failure object never carried the directory/source name it TRIED, and the
+      // measured refusal was a fatal `putenv` on a non-ASCII directory while the receipt said `outDir:null` — the reader
+      // could not see the cause. Both fields travel now. And when the engine writes everything to ONE stream, both tails
+      // hold the same text: that is disclosed instead of presenting one diagnosis twice as two.
+      failure.tailsIdentical = failure.stderrTail !== '' && failure.stderrTail === failure.stdoutTail
+      failure.outDir = outDir
+      failure.sourceName = request.sourceName
       // ★★ RUN 155 (audit of c5d356b9, problem 1 / G10's second half): the FACE carries the exact argv it
       // spawned (`r.argv` — measured: 5 elements, absolute + forward slashes), but this failure object never copied it
       // while BOTH projections downstream read `e.argv` and default to [] — so the receipt said `argv: []` at the very
@@ -1006,7 +1081,9 @@ export function createPaperFlow({
     return { ok: true, target: state.target, engine: r.engine, pdfPath: r.pdfPath, pdfBytes: r.pdfBytes,
       // ★★ RUN 154 (G10): run 4 verified the fix from xelatex's own log because the receipt did not carry the argv that
       // proves "absolute + forward slashes". The successful compile now returns the same argv the failure path always did.
-      argv: Array.isArray(r.argv) ? r.argv.slice(0, 16) : [], outDir: r.outDir || null, sourceName: state.id + '.tex',
+      // ★★ RUN 158: the source name reported on success MUST be the one the request carried (folder + '.tex'); the
+      // old line printed `state.id + '.tex'`, so a minted id and the folder disagreed in the same receipt.
+      argv: Array.isArray(r.argv) ? r.argv.slice(0, 16) : [], outDir: r.outDir || null, sourceName: folder + '.tex',
       tried: r.tried, elapsedMs: r.elapsedMs, recordId: put && put.id,
       artifacts: PaperArtifacts({ target }), missing: PaperArtifacts({ target }).missing }
   }

@@ -230,12 +230,24 @@ ok(Array.isArray(overrideRec.excluded) && overrideRec.excluded.length === 0 && t
   && overrideRec.excludedMeans.includes('says nothing about who was skipped'),
   '② with an EMPTY `excluded` the means sentence says it says nothing about THIS call (no invented chair row)', { means: overrideRec.excludedMeans })
 
-console.log('=== 2c. THE REAL KERNEL CANNOT PUBLISH A CLOSED VIEW — AND THE ASK DOES NOT INVENT ONE ===')
+console.log('=== 2c. THE REAL KERNEL READS THE ARCHIVED CLOSURE — AND THE ASK REPORTS THE RECORD, NOT AN INVENTION ===')
 const closedResult = await call(b, 'vibe_vmu_meeting', { action: 'close', id: mid, member: 'acad-01' })
 ok(R(closedResult).ok === true, '2c. the debate meeting really closes (setup for the next assertion)', { code: R(closedResult).code })
 const afterClose = R(await call(b, 'vibe_v5_verdict_ask', { meeting: mid, proposition_id: 'p-unknown' }))
-ok(afterClose.ok === false && typeof afterClose.code === 'string' && /^[A-Z][A-Z0-9_]+$/.test(afterClose.code),
-  '2c. asking about a CLOSED meeting is REFUSED BY NAME by the kernel (no view ⇒ no state ⇒ no closure to assert), never answered with a made-up closure', { code: afterClose.code, message: String(afterClose.message || '').slice(0, 160) })
+// ★★ RUN 158 (real machine, run 6 / feedback N3): the CLOSED view used to be unreadable, so this suite pinned the
+// refusal — but rule L53 takes the final ruling AFTER the debate ends, and the members' answers are collected right
+// then. The kernel now reads the archived record and says so; what must still never happen is a closure the record
+// does not carry. So the pin flips to: an answer, flagged as an ARCHIVE read, whose state/phase come from that record.
+ok(afterClose.ok === true && afterClose.meetingArchived === true,
+  '2c. asking about a CLOSED meeting is ANSWERED from the archived record (the ask is the step between "the debate ended" and the answers), and the receipt flags that read',
+  { ok: afterClose.ok, meetingArchived: afterClose.meetingArchived, code: afterClose.code })
+ok(afterClose.meetingArchived === true && typeof afterClose.meetingArchivedMeans === 'string'
+  && /CLOSED and its record now lives in the archive/.test(afterClose.meetingArchivedMeans),
+  '2c. the receipt says in words what "archived" means (no reader has to infer it from a boolean)', { means: String(afterClose.meetingArchivedMeans || '').slice(0, 90) })
+ok(afterClose.meetingState === 'closed' && afterClose.closurePhase === 'ended',
+  '2c. the closure it reports is the RECORDED one: state closed ⇒ phase ended (the archive read does not invent a state)', { state: afterClose.meetingState, phase: afterClose.closurePhase })
+ok(Array.isArray(afterClose.asked) && afterClose.asked.length > 0,
+  '2c. the archived ask still names the members it asked', { asked: afterClose.asked })
 
 // ── ③ THE PROPOSITION IS CHECKED ───────────────────────────────────────────────────────────────────────────────────
 console.log('=== 3. A PROPOSITION THAT NAMES NOTHING IS REFUSED BY NAME, BEFORE THE MAILBOX ===')

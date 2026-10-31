@@ -750,6 +750,17 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   }
   const requireMeeting = (id, opts = {}) => {
     const m = meetingOf(id)
+    if (!m && opts.includeArchived === true) {
+      // ★★★ RUN 158 (real machine, run 6 / agent feedback N3 — rule L53 「待辩论会议结束，v5r框架请刚刚各个辩论的各个成员
+      // 给出最终裁决」): `close()` does `live.delete(id)` + `archive.push(m)`, so every READ that resolved an id through
+      // this helper answered `VMU_NO_SUCH_OBJECT "no such meeting: m11"` for a debate that had just CLOSED — although the
+      // rule asks for the final ruling exactly THEN. The archive is readable history (`summary()` already reads it), so a
+      // reader that says it wants it gets it: a closed record is FROZEN, so no acting rail (lapse/schedule/lapsed) may
+      // run on it and it is returned as-is. Acting callers never pass this flag, so nothing that mutates gains a path
+      // into a closed meeting.
+      const archivedHit = archive.filter((x) => String(x.id) === String(id))[0] || null
+      if (archivedHit !== null) return archivedHit
+    }
     if (!m) {
       // ★★★ LIVE RUN 45 (the institute's own report): THE REFUSAL SAID "NO MEETING IS OPEN" ABOUT A MEETING THAT WAS
       // OPEN — in the OTHER table. The run opened `m-r45` through `vibe_vmu_meeting {action:"open"}` (PRIMITIVE
@@ -768,7 +779,15 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
             + (live.size ? ' — service ids in use: ' + [...live.keys()].sort().join(', ') : ' — no service meeting is open'),
           [])
       }
-      if (live.size === 0) throw deny('VMU_NO_OPEN_MEETING', 'no meeting is open (id: ' + String(id) + ')', 'open() a meeting first — this layer refuses rather than inventing one (this is the PRIMITIVE registry: list it with vibe_vmu_meeting {action:"list"} and read one with vibe_vmu_meeting {action:"status", id:"<id>"}; a SERVICE meeting opened with vibe_v5_meeting is not speech-addressable — read it with vibe_v5_meeting {action:"status", id:"<id>"})', [])
+      // ★★★ RUN 158 (run 6 / N3): this sentence used to call ITSELF the PRIMITIVE registry — it is the MEETINGS SERVICE,
+      // and the other table is the primitive one. Run 6 read the two faces' refusals side by side, saw each name the
+      // OTHER table as "the table this face addresses", with the same ids listed in both, and could not tell which call
+      // would ever succeed. The wording now names the table this refusal comes FROM, the other table, and where an
+      // ARCHIVED (closed) id is readable.
+      if (live.size === 0) throw deny('VMU_NO_OPEN_MEETING', 'no meeting is open (id: ' + String(id) + ')',
+        'open() a meeting first — this refusal comes from the MEETINGS SERVICE registry (vibe_v5_meeting), and no SERVICE meeting is open at all. '
+        + 'A PRIMITIVE meeting is a different table this face does not address — read it with vibe_vmu_meeting {action:"status", id:"<id>"} (or {action:"list"}). '
+        + 'A CLOSED service meeting is not "open" but it IS readable: vibe_v5_meeting {action:"status", id:"<id>"} / {action:"summary"} / ' + 'vibe_v5_verdict_final read the archive by id', [])
       // ★★ LIVE RUN 48 (F-22): this refusal is what a MEMBER's own face reaches (`vibe_v5_say` on an id it mistyped).
       // The old hint was one line of ids ("open: m1"), which neither said WHICH table the ids live in nor gave a call
       // the reader could copy — the same defect run 47 fixed on the pack face (two registries named, copyable calls
@@ -2008,8 +2027,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     },
 
     /** Minutes (READ-ONLY): shaped by `minutesDetail`, `minutesIncludeRefused`, pruned by `minutesRetentionMs`. */
-    minutes({ meeting, by = null, at = null } = {}) {
-      const m = requireMeeting(meeting, { readOnly: true })
+    minutes({ meeting, by = null, at = null, allowArchived = false } = {}) {
+      const m = requireMeeting(meeting, { readOnly: true, includeArchived: allowArchived === true })
       assertCanReadRecord(m, 'minutes', by)
       const now = at === null ? clock() : atMs(at)
       const refused = m.minutes.refused.filter(() => K.minutesIncludeRefused)
@@ -2029,16 +2048,18 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     /** WHO SPOKE — the FACT, un-pruned. `minutes()` is a PRESENTATION (it drops nothing that matters now, but it caps at
      * 20 entries and is shaped by vmu.meetings.minutesDetail); a gate that must know who debated cannot read a
      * presentation. This returns the members with at least one `kind:"speech"` entry, straight from the store. */
-    spokeBy({ meeting } = {}) {
-      const m = requireMeeting(meeting, { readOnly: true })
+    spokeBy({ meeting, allowArchived = false } = {}) {
+      // ★ RUN 158 (N3): who debated a CLOSED debate is read from the archived minutes — a ruling taken after close must
+      // still know the electorate.
+      const m = requireMeeting(meeting, { readOnly: true, includeArchived: allowArchived === true })
       const spokeBy = [...new Set(m.minutes.entries.filter((e) => e.kind === 'speech').map((e) => String(e.member)))]
       return { ok: true, meeting: m.id, spokeBy, spokeByCount: spokeBy.length, source: 'minutes-entries',
         sourceMeans: 'read from the meeting\'s own recorded speech entries, NOT from the shaped minutes() view' }
     },
 
     /** Verbatim transcript (READ-ONLY; pruned by `verbatimRetentionMs`, drops counted). */
-    verbatim({ meeting, by = null, at = null } = {}) {
-      const m = requireMeeting(meeting, { readOnly: true })
+    verbatim({ meeting, by = null, at = null, allowArchived = false } = {}) {
+      const m = requireMeeting(meeting, { readOnly: true, includeArchived: allowArchived === true })
       assertCanReadRecord(m, 'verbatim', by)
       if (!K.verbatimEnabled) return { ok: true, enabled: false, lines: [], dropped: counters.prunedVerbatim, note: 'vmu.meetings.verbatimEnabled=false: nothing is captured' }
       const now = at === null ? clock() : atMs(at)
@@ -2262,8 +2283,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     },
 
     /** READ-ONLY quorum view (never mutates). */
-    quorum({ meeting, at = null } = {}) {
-      const m = requireMeeting(meeting, { readOnly: true })
+    quorum({ meeting, at = null, allowArchived = false } = {}) {
+      // ★ RUN 158 (N3): a CLOSED debate still has a vote floor — L53 asks for the final ruling after the meeting ends, so
+      // the floor has to be readable from the archived record too (readers pass allowArchived:true).
+      const m = requireMeeting(meeting, { readOnly: true, includeArchived: allowArchived === true })
       const enforced = ['vmu.meetings.attendanceMode']
       if (K.unansweredInDenominator) mark(enforced, 'vmu.meetings.unansweredInDenominator')
       if (K.quorumMin > 0) mark(enforced, 'vmu.meetings.quorumMin')
@@ -2398,8 +2421,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       }
     },
 
-    meetingView({ meeting = null } = {}) {
-      const m = requireMeeting(meeting, { readOnly: true })
+    meetingView({ meeting = null, allowArchived = false } = {}) {
+      const m = requireMeeting(meeting, { readOnly: true, includeArchived: allowArchived === true })
       // ★ ROUND 19: the same twin disclosure as `summary()` — this is the face `vibe_vmu_meeting { action:"status" }`
       // actually returns, so a closure that a live twin outranks must be named HERE or the live run keeps reading it.
       const viewTwin = archive.filter((x) => String(x.id) === String(m.id) && live.get(String(m.id)) === m)[0] || null
@@ -2408,7 +2431,13 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // primitive.status() for the PRIMITIVE registry (line 174) but THIS view for the SERVICE registry (line 182), and
       // vibe_v5_meeting creates service meetings. So the wording has to exist on both read faces or it is a mechanism
       // with no consumer for the only path that mattered.
+      // ★★★ RUN 158 (N3): allowArchived reads resolve CLOSED records now, and a reader must be able to tell "this debate
+      // is still running" from "this debate is over; you are reading its record". The fact is disclosed here rather than
+      // left to be inferred from `state`, because state alone reads the same on a live twin and on the archive.
+      const archivedRead = !live.has(String(m.id)) && String(m.state) === 'closed'
       return { ok: true, meeting: m.id, type: m.type, state: m.state,
+        archived: archivedRead,
+        archivedMeans: archivedRead === false ? null : 'this meeting was CLOSED and its record now lives in the archive; this view is a READ of the recorded closure (nothing here may be acted on — the meeting is over). Rule L53 takes the final ruling after the debate ends, which is why this read exists',
         // ★★★ RUN 45: this view is what `vibe_vmu_meeting {action:"status"}` returns for a SERVICE id, and until now it
         // did not say WHICH registry answered — so the same tool could report a primitive object (`kind/general`, no
         // `subject`) and a service object with identical-looking shape, and a reader could not tell why the pack face

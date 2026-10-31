@@ -730,8 +730,13 @@ try {
   const compiled = await paperWithLatex.compilePdf({ target: T3 })
   ok(compiled.ok === true && compiled.engine === 'xelatex' && compiled.artifacts.complete === true && compiled.artifacts.missing.length === 0,
     '★★ 正: a working (faked) kernel latex face makes the PDF the FOURTH artefact — md/tex/meta/pdf all present, complete:true', compiled.artifacts && compiled.artifacts.present)
-  ok(sawRequest && typeof sawRequest.source === 'string' && /\\documentclass/.test(sawRequest.source) && sawRequest.outDir === 'Paper/paper-' + T3,
-    '★ the pack hands the kernel the rendered TEX source and an out dir — the kernel owns engine probing/timeout/kill', sawRequest && { outDir: sawRequest.outDir, len: String(sawRequest.source || '').length })
+  // ★ RUN 158: `论文-编译` 不是可移植文件名，plate id（以及目录）现在是造币的 `paper-pN`，标题仍是标题。
+  // 这条守的是「the pack hands the kernel the rendered TEX source plus an out dir」，所以目录从回执读回，而不是用标题重构。
+  const plate = String((compiled && compiled.sourceName) || '').replace(/\.tex$/, '')
+  ok(sawRequest && typeof sawRequest.source === 'string' && /\\documentclass/.test(sawRequest.source)
+    && /^paper-p[0-9]+$/.test(plate) && sawRequest.outDir === 'Paper/' + plate,
+    '★ the pack hands the kernel the rendered TEX source and an ASCII out dir — the kernel owns engine probing/timeout/kill',
+    sawRequest && { outDir: sawRequest.outDir, plate, len: String(sawRequest.source || '').length })
   const failKernel = {
     records: kernel.records, members: kernel.members, settingsSnapshot: () => kernel.settingsSnapshot(),
     latex: { check: async () => ({ ok: false, code: 'LATEX_COMPILE_FAILED', engine: 'xelatex', tried: ['xelatex'], stderr: '! Undefined control sequence.', elapsedMs: 9 }) },

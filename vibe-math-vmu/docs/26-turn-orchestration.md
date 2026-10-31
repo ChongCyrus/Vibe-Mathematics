@@ -2675,3 +2675,22 @@ id 是聚合的名字、durable 证据在哪；`paper-quality.js` 先剥 `#锚`�
 机器化：新 `tests/vmu-run156-run5-fixes.test.mjs` **42/0**（含「上限 3、round=1<cap 的 revise 不得自称 repair」的独立反向对照、
 `jobId` 在真装配的 JSON-Schema `parameters.properties` 里、`board` 的 `null` 不编造、`engine` 三字段互相印证、slug 四处一致）。
 收口：生成器 17/17、门禁五绿、全量 T1 TOTAL 638 PASS 638 FAIL 0。现场又过了一道只读审计（audit26，基线 `d8e1b71c`）：它把 RUN 155 的 `compile` catch 定位为**过宽**——「论文不存在」与「本装配没有 LaTeX 面」两个具名拒绝被吞成 `ok:true`，现在 catch 只接 `VMU_PACK_V5R_CORE_PAPER_PDF_FAILED`；并指出 §255.4 两句越界（「到上限并最终定稿」、「G9 三支都带 target」）——修法是把机制真的走完：run154 现在把修复轮走到定稿（`produced:true`、`pdfBytes` 对得上）并补了 `awaiting` 一支，套件 55→63/0。
+
+## ROUND 161 — RUN 158: a legal Chinese title made the compiler unreachable, and three "exits" were closed doors
+
+第六次真机跑（tarball `4b791a48`，1013 s / 22.84 M token / 180 call / `slv-inspect` 0 RED / 又一次结题）之后修的六条：
+
+1. **论文 plate 与目录**：`start` 省略 `target` 时 `id` 曾取标题，中文标题成了 `-output-directory=` 的值 ⇒ xelatex
+   `putenv` 直接 fatal。现在可移植 `target` 得 `paper-<target>`，其余**铸** `paper-pN`（标题仍是标题，按标题与按 id
+   都能寻址）；`compile` 失败回执补 `outDir`/`sourceName`/`tailsIdentical`。
+2. **修复轮预算用尽后的出口**：拒绝语带 `round=`/`repairsUsed=N/2`，并写明唯一真条件——把 `vmu.paper.maxRounds`
+   抬到**严格大于**当前 round 才走普通修订；「record a new part」被明确否认（`part` 只在 `writing` 可写）。
+3. **关会后的裁决与询问**：`requireMeeting` 支持 `includeArchived`，`verdict_final`/`verdict_ask` 读归档并按规则
+   L53 从**记录过的**闭会态裁决（回执带 `meetingArchived` + `meetingArchivedMeans`），两条拒绝语不再互指另一张表。
+4. **运行时设置的边界**：`setSettingsValue` 回执带 `persistsAcrossRestart:false` 与说明（只在 RUNNING kernel 里生效）。
+5. **两个小谎**：编译失败的两条尾部逐字相同时如实标 `tailsIdentical`；普通修订回执自报 `from/to/repair:false`。
+6. **「没有」的四种写法**：`resume` 的 `children`/`watchdogs` 分成「没有父会话」「还没有子会话」「未接线」「0 个目标」
+   四个具名码，`readBack()` 带 `sampledAt`/`writesBetween`/`driftMeans`。
+
+机器化：`tests/vmu-run158-run6-fixes.test.mjs` 49/0；T1 639/639；门禁五绿（coverage 86/86）。
+文档：`docs/acceptance/phase12-v5r-rules-conformance.md` §258。

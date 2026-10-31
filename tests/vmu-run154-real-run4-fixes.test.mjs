@@ -313,11 +313,13 @@ console.log('§5 G9：`VMU_OFFICE_CONSULT_REQUIRED` 的回执带 `target`（答�
   const e = await refusalOf(async () => flow.recordFinal({ target: T, member: 'acad', decision: 'deliverable' }))
   ok(!!e && e.code === 'VMU_OFFICE_CONSULT_REQUIRED', '前提：asking 阶段被 OFFICE_CONSULT_REQUIRED 拒', e && e.code)
   ok(!!e && e.target === T, 'G9：拒绝带上 `target`（正是 answer 调用需要的形参）', e && e.target)
-  ok(!!e && String(e.paperId || '') === 'paper-' + T, 'G9：拒绝带上 `paperId`', e && e.paperId)
+  // ★ RUN 158: `g9-问询` 不是可移植文件名，paper 的 durable id 现在是铸造的 `paper-pN`（title 仍是标题），
+  // 所以拒绝回执带的是那个真 id，而不是 `paper-<中文标题>`。
+  ok(!!e && /^paper-p[0-9]+$/.test(String(e.paperId || '')), 'G9：拒绝带上 `paperId`（铸造的 durable id）', e && e.paperId)
   // G9 的另一支：尚在等答复时再次定稿，拒绝仍带 target/paperId（不是“没给 target”那条路）
   const e2 = await refusalOf(async () => flow.recordFinal({ target: T, member: 'acad', decision: 'deliverable' }))
   ok(!!e2 && e2.code === 'VMU_OFFICE_CONSULT_REQUIRED', '§5 G9：等待中再次定稿仍被同一门拒', e2 && e2.code)
-  ok(!!e2 && e2.target === T && String(e2.paperId || '') === 'paper-' + T,
+  ok(!!e2 && e2.target === T && String(e2.paperId || '') === String(e.paperId || ''),
     '§5 G9：awaiting 一支的拒绝也带 target/paperId', e2 && { target: e2.target, paperId: e2.paperId })
   const answer = flow.recordConsult({ target: e.target, by: 'office', answer: '可以定稿' })
   ok(!!answer && answer.ok === true, 'G9：用拒绝回执里的 target 答复成功（回执里的键真的可用）', answer && (answer.code || answer.ok))

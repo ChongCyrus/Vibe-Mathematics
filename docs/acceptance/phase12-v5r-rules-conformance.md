@@ -11992,3 +11992,97 @@ durable 评审读 + 修复轮 + 现读 `maxRounds`、`paper-<x>` 寻址与 consu
    但「真的被拒」这条仍缺一次名册 ≥4 的真机回执。
 3. **宿主 `pwsh` 在本轮全程不可用**（`[exit code: 3221225794]` = `0xC0000142`）：代理改用文件工具与
    `math_computation{engine:"python"}` 取证。这是宿主环境问题，不是框架缺陷，记在此处备查。
+
+## §258 第六次真机跑：七件事六条半答上，又抓出六条「机制自己堵住自己」（RUN 158）
+
+### 258.1 这一轮跑的是什么
+
+- tarball 从提交 `4b791a48` 打（`git archive HEAD`），续跑同一所：`-Workspace D:\_tmp\slv-phase5\slvp157-ws -KeepWorkspace`，
+  端口 19606、`-TimeoutSec 3000 -MaxTokens 24000000`。
+- 读数：`DRIVE exit=0`、`durationSec 1013`、`tokenTotal 22 844 557 / 24 000 000`（`tokenCapHit:false`）、
+  `transcriptEvents 800`、根会话 `toolCalls 180`、机器读数 `NO_FENCE=0 · UNKNOWN_FIELD=0 ·
+  FIELD_NOT_APPLICABLE=0 · BAD_JSON=0`、`slv-inspect` **0 RED**、`CLOSURE: cast=true (from 8 turn receipt(s))`。
+- 转录：`D:/wd/vibemath开发/_oneoff/vm-slv/full-1031-072522.jsonl`（6 620 164 B / 12 379 行）；代理交付
+  `FEEDBACK5.md`（32 112 B）与 `SIM-REPORT5.md`（52 176 B）。
+- **又一次走到结题**：结题表决 3/3、`m14` 已归档、`m15` 规划会由 sequence 自动连开、论文 `p10` 定稿（round 5、
+  两次修复轮、`produced:true`）。
+
+### 258.2 代理确认「真的修好了」的六条半
+
+| 上轮缺陷 | 代理第 5 轮验证 |
+| --- | --- |
+| ① repair 回执缺四字段 | `repair/repairs/repairBudget/cap` 与 `from/to/moved` 全在，`p10` 靠它走完两次修复轮 |
+| ② Lean 作业跨进程不可引用 | 按 id 读镜像、按 id 提交都通（`jobId` 出现在工具声明里） |
+| ③ 无 target 的 `status` 不列论文 | 真列出 13 篇，行内 id 可直接当 `target` |
+| ④ `board` 缺 `subgoal`/`status` | 行内两栏都在（未设置为 `null`） |
+| ⑤ 失败回执 `engine:null` | `engine`/`engineSource`/`triedEngines` 三者互相对得上（两样本） |
+| ⑦ `status.pdf` 语意含糊 | `pdfMeans` 说清归档行与编译产物是两件事 |
+| ⑥ `start` 的 id/folder | **半通**：`folder` 已是纯 ASCII，**`id` 仍是标题全文**（见 258.3-1） |
+
+### 258.3 新抓出的六条（机制/回执自己堵住自己）
+
+1. **非 ASCII 标题让编译器完全不可达**：`start` 省略 `target` 时 `id` 取标题 ⇒ `paper-第六次续跑 之 结题 现场 验证 稿`
+   成了目录名 ⇒ xelatex `fatal: putenv(TEXMF_OUTPUT_DIRECTORY=…)`，而同一份正文用 `paper-run5-latex-fail` 就能编译
+   （`produced:true`、54 165 B）。**触发点是非 ASCII，不是空格**（更正上一轮诊断）。
+2. **N1 修复轮用尽后三个出口有两个是假的**：`repairBudget` 硬编码 2、没有声明键；(a)「record a new part」
+   不可达（`part` 只在 `writing` 写，而此刻论文在 `awaiting-editor`）；(b)「raise maxRounds」只在**抬到严格大于
+   round** 时才走普通修订（3→4 仍拒，3→6 才通）。
+3. **N3 关会后的裁决/询问一律 `VMU_NO_SUCH_OBJECT`**：`close()` 把会议移出 live，而 `verdict_final`/`verdict_ask`
+   只读 live；两条拒绝语的 hint 还**互指另一张表**（「no such meeting」说去查 primitive、「not open」说去查 service）。
+   规则 L53 恰恰要求在**辩论结束后**裁决，服务会议的 `m13` 不关会直接汇总反而能成。
+4. **N4 运行时设置不跨进程**：上一轮 `set` 回执 `applied:"immediate"`/`requiresRestart:false`，新进程读到的是
+   `pack:v5r` 的默认值；回执没有「是否跨进程持久」这一栏，`resolved` 行也没标「运行时覆盖」。
+5. **N5 两个小谎**：编译失败回执 `stderrTail` 与 `stdoutTail` **逐字相同**却只标 `tailSource:"stdout"`；普通修订
+   返回 `{"moved":true,"from":null,"to":null}`（真值是 `awaiting-editor → writing`）。
+6. **回执「没有」与「没接线」分不清**：`resume` 的 `children`/`watchdogs` 在「没有父会话」「0 个子会话」「接口缺失」
+   三种情况下给出同一种空值；`recover` 的 drift 条目缺采样时刻与写入计数。
+
+### 258.4 修法（RUN 158，全部落在可达性与回执真话上，不动规则语义）
+
+- `kit/paper.js`
+  - 新增 `PORTABLE_TARGET = /^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/` 与 `mintPaperId()`：可移植 `target` 仍得
+    `paper-<target>`；不可移植标题**铸** `paper-pN`（扫已用 id，撞号跳过），**标题仍是标题**。`start` 回执自报
+    `id`/`folder`/`asciiSafe`/`idMinted`/`idMeans`，`readState` 同时认标题与铸造 id。
+  - `compilePdf` 失败对象补 `outDir`/`sourceName`/`tailsIdentical`；成功回执 `sourceName` 与请求口径统一。
+  - 普通修订分支回执补 `from:'awaiting-editor', to:'writing', repair:false, repairs, repairBudget, cap`；
+    修复轮预算耗尽的拒绝语带 `round=`/`repairsUsed=N/2`，并写明「(1) 把上限抬到**严格大于**当前 round 才走普通修订、
+    (2) 另起一篇；record a new part 不是出口」。
+  - `stateOfRow` 现在会按需读回 body（`records.list` 只回元数据）——上一版按 id 寻址失效的根因就在这里。
+- `kernel/meetings.js`：`requireMeeting` 支持 `includeArchived`，`quorum`/`minutes`/`spokeBy`/`verbatim`/`meetingView`
+  透传 `allowArchived`；`meetingView` 回 `archived`/`archivedMeans`；`live.size===0` 的拒绝语改为真话（点名这是
+  MEETINGS SERVICE 表、并给出已关会议的读法）。
+- `packs/v5r/tools.js`：`debatedMembersOf`/`verdict_final`/`verdict_ask` 用 `allowArchived:true`，回执带
+  `meetingArchived` + `meetingArchivedMeans`；`projectPdfBlock` 增 `tailsIdentical`/`outDir`/`sourceName`；
+  `final` 投影恒带 `repair/repairs/repairBudget/cap`（用 `repair` 布尔区分分支）；`status` 的 listing 打印论文
+  **durable id**（此前合成 `paper-<标题>`，与真正可寻址的 id 不一致）。
+- `kernel/index.js`：`setSettingsValue`/`unsetSettingsValue` 回执带 `persistsAcrossRestart:false` 与说明。
+- `kernel/resume.js`：`children`/`watchdogs` 四种「没有」各自具名（`VMU_RESUME_CHILDREN_NO_PARENT`、
+  `..._NONE_YET`、`..._WATCHDOGS_UNAVAILABLE`、`..._NONE`），`readBack()` 带 `sampledAt`/`writesBetween`/`driftMeans`。
+
+### 258.5 机器化
+
+- 新 `tests/vmu-run158-run6-fixes.test.mjs` **49/0**：§0 源码口径；§1 非可移植标题得 `paper-pN`、标题仍可寻址、铸造 id
+  也可寻址、第二篇不撞号、可移植 target 不改名、编译失败回执带 `outDir`/`sourceName`/`tailsIdentical`；§2 预算
+  两次修复轮后第三次被拒、拒绝语带 `repairsUsed=2/2` 与 `round=1`、hint 写明「严格大于当前 round」、抬上限后走普通
+  修订（正反两向）；§3 普通修订自报 `from`/`to`/`repair:false`/`cap`；§4 三处 `persistsAcrossRestart:false`；
+  §5 四种「没有」各具名、`readBack()` 的采样时刻/写入数/漂移语义。
+- 同步更新的既有 pin：`vmu-run29` 的 2c 从「关会必被拒」翻成「关会从归档回答并自报 `meetingArchived`」；
+  `vmu-run47` 的 hint 仍须给出**可执行**的 primitive 读法；`vmu-run154` 的 G9 `paperId` 改为铸造 id；
+  `vmu-run155` 的共享投影 23→**24 键**（`tailsIdentical`）；`vmu-run156` 的正常修订改钉 `repair:false`；
+  `vmu-v5r-tools` 的 out dir 改为「与回执 `sourceName` 同一个 ASCII plate」。
+
+### 258.6 读数与门禁
+
+- 生成器：`regen-all --write` 两轮后 `17/17 in sync`。
+- 门禁：`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0 problem(s))`、
+  `RULES COVERAGE: PASS (0 problem(s))`（86/86 锚点、86 DONE）。
+- 全量 T1（`GATE_SCOPE=vmu`）：**TOTAL 639 PASS 639 FAIL 0**（日志 `/d/_tmp/t1-r193-run158.log`）。
+- 开发期真红四类，全部是「上一轮修法把话说大了」：`audit-vmu-docs` 要求新增的四个 resume 码登记进 03-§8；
+  `vmu-run47` 的 hint 因改写丢掉可执行的 primitive 调用；`vmu-run29` 的 2c 钉的是**旧**机制事实；`vmu-run155`
+  的 23 键在加 `tailsIdentical` 后过期。
+
+### 258.7 仍未解决
+
+1. `editor:"office"` 代定稿仍是具名缺口。
+2. 人数闸的负向证据仍缺一次名册 ≥4 的真机回执（`voteFloorGate` 已自报 `vacuous`/`uncovered`/`bitesWhen`）。
+3. 宿主 `pwsh` 在本轮同样不可用（`0xC0000142`），代理改用文件工具与 `math_computation{engine:"python"}` 取证。

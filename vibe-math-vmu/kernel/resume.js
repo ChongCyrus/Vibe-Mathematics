@@ -100,6 +100,13 @@ export const CODE = Object.freeze({
   // F51 (Round 4): the live-child reconciliation needs the host to say which continuable children still exist.
   // With no such port the recovery still runs and REPORTS that it could not check (never guesses).
   childrenUnavailable: 'VMU_RESUME_CHILDREN_UNAVAILABLE',
+  // ★★ RUN 158 (real machine, run 6 / N6): "the port is missing", "the port answered but this kernel HAS no parent
+  // session" and "the port answered, a parent exists, and no member holds a child yet" are three different facts and
+  // used to be one silent `code:null`. Each gets its own name.
+  childrenNoParent: 'VMU_RESUME_CHILDREN_NO_PARENT',
+  childrenNoneYet: 'VMU_RESUME_CHILDREN_NONE_YET',
+  watchdogsUnavailable: 'VMU_RESUME_WATCHDOGS_UNAVAILABLE',
+  watchdogsNone: 'VMU_RESUME_WATCHDOGS_NONE',
 })
 
 /**
@@ -384,6 +391,10 @@ export function createResume({ store = null, work = null, control = null, identi
   // a mechanism instead of a promise). The mapping lives in the `resume` key.
   const reassignAttempts = new Map()
   const expectations = new Map()   // key -> digest of what we last wrote (read-back compares against it)
+  // ★★ RUN 158 (N6): the read-back answer say WHEN it sampled and HOW MANY durable writes happened since the read
+  // snapshot — a bare digest mismatch leaves the reader unable to tell a real divergence from a writer that ran in
+  // between (the measured drift was exactly that: another writer moved the key while this process held its own digest).
+  let writesSinceRead = 0
 
   const stamp = () => {
     const ms = toMs(clock())
@@ -491,6 +502,7 @@ export function createResume({ store = null, work = null, control = null, identi
       await store.patch(String(key), () => payload)
     }
     writes += 1
+    writesSinceRead += 1
     expectations.set(String(key), contentDigest(payload))
     return { ok: true, key: String(key), at, digest: contentDigest(payload) }
   }
@@ -776,6 +788,8 @@ export function createResume({ store = null, work = null, control = null, identi
   /** Re-read the fold and compare it against what this process last wrote. Drift is named, never smoothed over. */
   function readBack() {
     readBacks += 1
+    const sampledAt = stamp()
+    const writesBetween = writesSinceRead
     if (!store || typeof store.read !== 'function') return { ok: false, code: CODE.unavailable, consistent: false, note: 'no durable store to read back' }
     const drift = []
     for (const [key, expected] of expectations) {
@@ -786,7 +800,14 @@ export function createResume({ store = null, work = null, control = null, identi
     }
     const consistent = drift.length === 0
     if (!consistent) { readBackFailures += 1; lastDrift = drift }
-    return { ok: consistent, consistent, checked: expectations.size, drift, code: consistent ? null : CODE.readbackDrift }
+    return { ok: consistent, consistent, checked: expectations.size, drift, code: consistent ? null : CODE.readbackDrift,
+      // ★★ RUN 158 (N6): the sample's own time and the number of durable writes this process performed since it started
+      // tracking — both facts a reader needs before calling a digest mismatch "data loss".
+      sampledAt,
+      writesBetween,
+      driftMeans: consistent
+        ? 'every key this process wrote still hashes to what it wrote'
+        : 'the stored value of the named key(s) no longer hashes to what THIS process wrote — a concurrent writer or a restore moved it; `writesBetween` says how many durable writes this process performed while it held those expectations, so a mismatch after zero writes means somebody else wrote' }
   }
 
   // ── the recovery itself ────────────────────────────────────────────────────────────────────────────────────
@@ -972,7 +993,10 @@ export function createResume({ store = null, work = null, control = null, identi
         const live = listOf(await childrenList(parentId))
         const held = heldRows.filter((m) => m && m.childId)
         const missing = held.filter((m) => live.indexOf(String(m.childId)) === -1).map((m) => ({ member: String(m.id), childId: String(m.childId) }))
-        childReport = { attached: true, code: null, parentId: parentId === undefined ? null : parentId, live: live.length, checked: held.length, missing, rosterSource: source,
+        // ★★ RUN 158 (N6): name the two "nothing to reconcile" shapes instead of reporting code:null twice.
+        const noParent = parentId === undefined || parentId === null || String(parentId) === ''
+        const emptyCode = noParent ? CODE.childrenNoParent : (held.length === 0 ? CODE.childrenNoneYet : null)
+        childReport = { attached: true, code: emptyCode, parentId: parentId === undefined ? null : parentId, live: live.length, checked: held.length, missing, rosterSource: source,
           note: missing.length ? 'these members hold a childId the host no longer lists: the assembly must re-provision them (the engine does NOT spawn)' : (held.length ? 'every roster child is still live' : (source === 'identity-seam' ? 'the identity seam carries no childId: wire the roster port (members.roster()) to reconcile children' : 'no roster member holds a childId yet')) }
       } catch (e) {
         childReport = { attached: false, code: (e && e.code) || CODE.childrenUnavailable, parentId: null, live: 0, checked: 0, missing: [], rosterSource: null, note: 'the children port failed: ' + String((e && e.message) || e) }
@@ -1097,8 +1121,13 @@ export function createResume({ store = null, work = null, control = null, identi
       } catch (e) { wd = { attached: false, targets: 0, refreshed: [], error: String((e && e.message) || e) } }
     }
     state.watchdogs = wd
-    report.steps.push({ step: 'watchdogs', ok: true, attached: wd.attached, refreshed: wd.refreshed.length,
-      note: wd.attached ? null : 'no watchdog port: a stale meet/verify clock cannot be refreshed (reported, never guessed)' })
+    // ★★ RUN 158 (N6): "no port" and "the port is wired and there is nothing to refresh" are different facts; they used
+    // to look identical in the receipt (`attached:false, targets:0` vs `attached:true, targets:0`, both bare).
+    wd.code = wd.attached === true ? (wd.targets === 0 ? CODE.watchdogsNone : null) : (wd.error ? CODE.childrenUnavailable : CODE.watchdogsUnavailable)
+    report.steps.push({ step: 'watchdogs', ok: true, attached: wd.attached, targets: wd.targets, refreshed: wd.refreshed.length, code: wd.code,
+      note: wd.attached === true
+        ? (wd.targets === 0 ? 'the watchdog port is wired and reports no targets: there is nothing to refresh (this is a measured zero, not a missing seam)' : null)
+        : (wd.error ? 'the watchdog port failed: ' + String(wd.error) : 'no watchdog port: a stale meet/verify clock cannot be refreshed (reported, never guessed)') })
 
     // ⑦ flags (the operational facts a resumed session must know)
     let flags = null

@@ -149,8 +149,8 @@ const call = async (specs, name, args) => {
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 console.log('§0 源码口径：六处修法各在所有者上（行为由 §1–§6 钉住）')
 {
-  ok(TOOLS_SRC.includes("...(finalized.repair === true ? {") && TOOLS_SRC.includes('repairBudget: Number(finalized.repairBudget) || 0'),
-    '① final 投影不再吞掉 repair/repairs/repairBudget/cap')
+  ok(TOOLS_SRC.includes('repair: finalized.repair === true') && TOOLS_SRC.includes('repairBudget: Number(finalized.repairBudget) || 0'),
+    '① final 投影不再吞掉 repair/repairs/repairBudget/cap（RUN 158 起四个键恒在，用 repair 布尔区分分支）')
   ok(KIT_SRC.includes("from: 'awaiting-editor', to: 'writing', round: state.round, status: state.status, repair: true"),
     '① kit 的修复分支自报 from/to（回执能说清这次 revise 从哪到哪）')
   ok(TOOLS_SRC.includes("jobId: { type: 'string', description: 'name this job yourself;"),
@@ -211,8 +211,8 @@ console.log('§1 ① repair 回执：过轮数上限后的 revise 说清自己�
   ok(adv.advance && adv.advance.to === 'awaiting-editor' && before.paper.round === 1,
     '前提：论文在 awaiting-editor 且 round=1 < cap=3', { advance: adv && adv.advance, round: before.paper && before.paper.round })
   const normal = await call(s3, 'vibe_v5_paper', { action: 'final', target: Q, member: 'r-chair', decision: 'revise', note: '正常修订' })
-  ok(normal.ok === true && normal.final && normal.final.repair === undefined && normal.final.repairs === undefined,
-    '① 正常修订轮不自称 repair（四个字段只出现在修复分支）', normal && (normal.final || { code: normal.code, message: normal.message }))
+  ok(normal.ok === true && normal.final && normal.final.repair === false && normal.final.repairs === 0 && normal.final.cap === 3,
+    '① 正常修订轮自报 repair:false（RUN 158 起四个键恒在，repair 布尔区分修复轮与普通修订）', normal && (normal.final || { code: normal.code, message: normal.message }))
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════

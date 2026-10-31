@@ -1921,7 +1921,11 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no meeting face: the ruling cannot be tied to a chair',
       'assemble a full kernel (vibe-math-vmu.js publishes vmu.meetings)')
   }
-  const view = kernel.meetings.meetingView({ meeting })
+  // ★★★ RUN 158 (run 6 / N3 — rule L53): the rule takes the final ruling AFTER the debate meeting ends, but `close()`
+  // archives the meeting, so this read used to answer `VMU_NO_SUCH_OBJECT` for exactly the meeting the rule names. The
+  // archive is readable; the chair is still the chair, and the receipt says which of the two the ruling was taken in.
+  const view = kernel.meetings.meetingView({ meeting, allowArchived: true })
+  const meetingArchived = view && view.archived === true
   const chair = view && view.chair ? str(view.chair) : ''
   if (!chair) {
     throw refuse('VMU_STATE', 'meeting ' + meeting + ' declares no chair, so nobody can sign its final ruling',
@@ -2014,7 +2018,7 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
         means: 'the kernel publishes no quorum() reading, so no vote floor could be read for this ruling' }
     }
     let q = null
-    try { q = faceM.quorum({ meeting }) } catch (e) {
+    try { q = faceM.quorum({ meeting, allowArchived: true }) } catch (e) {
       return { readable: false, required: null, satisfied: null, signed: null, signedBy: [], unsigned: null,
         means: 'the quorum() reading failed: ' + ((e && e.message) || String(e)) }
     }
@@ -2025,7 +2029,8 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     const signedBy = [...signedSet]
     let unsigned = null
     try {
-      const voters = typeof faceM.eligibleVoterIds === 'function' ? faceM.eligibleVoterIds({ meeting }) : null
+      // allowArchived: a closed debate's electorate is read from the archived record (rule L53 rules after the end).
+      const voters = typeof faceM.eligibleVoterIds === 'function' ? faceM.eligibleVoterIds({ meeting, allowArchived: true }) : null
       if (voters && voters.restricted === true && Array.isArray(voters.ids)) unsigned = voters.ids.map(String).filter((v) => !signedSet.has(v))
     } catch (e) { unsigned = null }
     const satisfied = signedBy.length >= required
@@ -2172,7 +2177,7 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     const faceM = kernel && kernel.meetings
     if (!faceM || typeof faceM.quorum !== 'function') return { readable: false, why: 'the kernel publishes no quorum() reading', means: null }
     try {
-      const q = faceM.quorum({ meeting })
+      const q = faceM.quorum({ meeting, allowArchived: true })
       const required = q && q.required !== undefined ? q.required : null
       return { readable: true, minVotes: required,
         min: q && q.min !== undefined ? q.min : null, roster: q && q.roster !== undefined ? q.roster : null,
@@ -2274,6 +2279,12 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
   }
   return {
     ok: true, tool: 'vibe_v5_verdict_final', meeting, chair, from: chair,
+    // ★ RUN 158 (N3): rule L53 takes the ruling AFTER the debate ends, and a closed meeting lives in the archive. The
+    // receipt names that state so a reader can tell a ruling taken mid-debate from the rule's own order of events.
+    meetingArchived,
+    meetingArchivedMeans: meetingArchived === false
+      ? 'the ruling was taken while the meeting was still open (its record is live)'
+      : 'the ruling was taken over the CLOSED (archived) record: the debate had ended, which is the order rule L53 describes — 「待辩论会议结束，v5r框架请…给出最终裁决」. Nothing was reopened: this face only reads the archive.',
     floor,
     // ★ RUN 30 ③: the sentence travels beside the numbers on purpose — `satisfiedBy:false` next to `ok:true` is exactly
     // the pair a reader misreads, so the receipt carries its own explanation instead of leaving it to the doc.
@@ -2407,7 +2418,9 @@ function debatedMembersOf(kernel, meeting) {
   let speakSet = { readable: false, members: [], why: 'no spokeBy()' }
   if (typeof face.spokeBy === 'function') {
     try {
-      const out = face.spokeBy({ meeting })
+      // ★ RUN 158 (N3): a debate that has CLOSED still names its electorate — read the archived minutes/spokeBy rather
+    // than answering "nothing readable" for the very case rule L53 asks about.
+    const out = face.spokeBy({ meeting, allowArchived: true })
       speakSet = { readable: true, members: (out && Array.isArray(out.spokeBy)) ? out.spokeBy.map(String) : [], why: null }
     } catch (e) {
       speakSet = { readable: false, members: [], why: (e && e.message) || String(e) }
@@ -2416,7 +2429,7 @@ function debatedMembersOf(kernel, meeting) {
   let roster = null
   let chair = null
   try {
-    const v = (typeof face.meetingView === 'function') ? face.meetingView({ meeting }) : null
+    const v = (typeof face.meetingView === 'function') ? face.meetingView({ meeting, allowArchived: true }) : null
     if (v && Array.isArray(v.roster)) roster = v.roster.map(String).filter(Boolean)
     if (v && v.chair) chair = String(v.chair)
   } catch { roster = null }
@@ -2650,7 +2663,10 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no meeting face: the ask cannot be tied to a chair',
       'assemble a full kernel (vibe-math-vmu.js publishes vmu.meetings)')
   }
-  const view = kernel.meetings.meetingView({ meeting })
+  // ★ RUN 158 (N3): the ask is the rule's own step between "the debate ended" and "the members answer" — so it reads a
+  // CLOSED debate too (allowArchived), and the receipt says which state it read.
+  const view = kernel.meetings.meetingView({ meeting, allowArchived: true })
+  const askMeetingArchived = view && view.archived === true
   const chair = view && view.chair ? str(view.chair) : ''
   if (!chair) {
     throw refuse('VMU_STATE', 'meeting ' + meeting + ' declares no chair, so nobody can sign the ask',
@@ -2769,6 +2785,12 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
   }
   return {
     ok: true, tool: 'vibe_v5_verdict_ask', meeting, chair, from: chair,
+    meetingArchived: askMeetingArchived,
+    // ★★ RUN 158 (N3): a boolean is a reading, not a sentence — the same receipt says WHAT the archived read means, so a
+    // caller never has to infer from `ok:true` whether the debate it is asking about is still open.
+    meetingArchivedMeans: askMeetingArchived
+      ? 'this meeting was CLOSED and its record now lives in the archive: the ask reads the recorded closure (rule L53 takes the final ruling after the debate ends), so `meetingState`/`closurePhase` below are a READ of that record, not a fresh poll'
+      : 'this meeting is still open in the meetings service registry: the ask reads the live view',
     proposition: propositionId,
     // ★ RUN 29 ③: "the field is present" is not "the field was consumed". These three say WHAT the id was understood
     // to be, and `propositionVerified:false` marks a file reference (shape accepted, contents not read) or an unverified
@@ -4017,6 +4039,10 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
     appliesAt: receipt && receipt.appliesAt !== undefined ? receipt.appliesAt : null,
     liveReadBy: receipt && Array.isArray(receipt.liveReadBy) ? receipt.liveReadBy : [],
     effective: String(def.hot) + (kRestart ? '（需重启的读取者，见 appliesAt）' : '（本会话内即可读到，见 appliesAt）'),
+    // ★★ RUN 158 (run 6 / N4): a runtime write does not become durable configuration; the kernel says so, and the tool
+    // face carries its answer instead of letting the caller infer it from `source:"runtime"`.
+    persistsAcrossRestart: receipt && receipt.persistsAcrossRestart === false ? false : null,
+    persistsAcrossRestartMeans: receipt && typeof receipt.persistsAcrossRestartMeans === 'string' ? receipt.persistsAcrossRestartMeans : null,
     receipt }
 }
 
@@ -4098,6 +4124,8 @@ function toolSet(args = {}, { kernel } = {}) {
  * which argv" the same way in both places.
  */
 function projectPdfBlock(pdf, target) {
+  // ★★ RUN 158 (run 6 / item 6 + N5): the projection carries the outDir/sourceName that were TRIED and discloses when
+  // the two tails are the same text — one failure structure for `final` and `compile`, see kit/paper.js compilePdf.
   const p = pdf || {}
   const ok = p.ok === true
   const enginesRaw = Array.isArray(p.triedEngines) ? p.triedEngines : (Array.isArray(p.tried) ? p.tried : [])
@@ -4124,6 +4152,9 @@ function projectPdfBlock(pdf, target) {
     stderrTail: p.stderrTail ? String(p.stderrTail) : '',
     stdoutTail: p.stdoutTail ? String(p.stdoutTail) : '',
     tailSource: p.tailSource || null,
+    tailsIdentical: p.tailsIdentical === true,
+    outDir: p.outDir === undefined ? null : p.outDir,
+    sourceName: p.sourceName === undefined ? null : p.sourceName,
     signal: p.signal || null,
     triedEngines: engines,
     triedEnginesTotal: enginesRaw.length,
@@ -4164,8 +4195,12 @@ async function toolPaper(args = {}, { kernel } = {}) {
       let st = null
       try { st = JSON.parse(String(body || '{}')) } catch { st = null }
       if (!st || st.target === undefined || st.target === null) continue
+      // ★★ RUN 158 (N2 follow-on): this listing is what a caller copies an id FROM, so it must print the durable id the
+      // paper actually carries (`paper-pN` for a minted plate) - synthesising `paper-<title>` printed an id that the
+      // status/compile doors had no row for.
       papers.push({
-        id: 'paper-' + String(st.target), target: String(st.target),
+        id: st.id === undefined || st.id === null || st.id === '' ? 'paper-' + String(st.target) : String(st.id),
+        target: String(st.target),
         status: st.status === undefined ? null : st.status,
         stage: st.stage === undefined ? null : st.stage,
         round: st.round === undefined ? null : st.round,
@@ -4276,12 +4311,14 @@ async function toolPaper(args = {}, { kernel } = {}) {
         moved: finalized.moved === true,
         from: finalized.from || null,
         to: finalized.to || null,
-        ...(finalized.repair === true ? {
-          repair: true,
-          repairs: Number(finalized.repairs) || 0,
-          repairBudget: Number(finalized.repairBudget) || 0,
-          cap: finalized.cap === undefined || finalized.cap === null ? null : finalized.cap,
-        } : {}),
+        // ★★ RUN 158 (E): the four keys are now ALWAYS present, not only on a repair round. A revise that took the
+        // ORDINARY branch answers repair:false with repairs/repairBudget/cap, so a caller can tell "rewrite, budget
+        // untouched" from "repair, budget spent" without a second status read — the old shape simply omitted them and
+        // left the ordinary branch indistinguishable from a receipt that forgot to say.
+        repair: finalized.repair === true,
+        repairs: Number(finalized.repairs) || 0,
+        repairBudget: Number(finalized.repairBudget) || 0,
+        cap: finalized.cap === undefined || finalized.cap === null ? null : finalized.cap,
       } }
     }
     case 'render': {
@@ -4332,6 +4369,9 @@ async function toolPaper(args = {}, { kernel } = {}) {
           stderrTail: e && e.stderrTail,
           stdoutTail: e && e.stdoutTail,
           tailSource: e && e.tailSource,
+          // ★★ RUN 158 (N5): the explicit projection must forward the two new facts that live on the thrown error,
+          // otherwise the blanket "one structure, both doors" claim is again false for exactly the fields just added.
+          tailsIdentical: e && e.tailsIdentical === true,
           signal: e && e.signal,
           triedEngines: e && e.triedEngines,
         }, target) }

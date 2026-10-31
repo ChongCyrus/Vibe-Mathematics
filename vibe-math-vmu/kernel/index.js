@@ -4142,6 +4142,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           : (pendingConsumers.length
             ? 'applied live to ' + (liveApplied.join(', ') || '(the settings object only)') + '; NOT yet visible to ' + pendingConsumers.join(', ') + ' (they captured the option at construction — disclosed, not claimed)'
             : 'applied immediately (hot class ' + String(hot) + '): every consumer reads this key live')),
+        // ★★ RUN 158 (real machine, run 6 / feedback N4 — THE SETTING THAT DID NOT SURVIVE A RESTART): this write mutates
+        // THIS kernel's in-memory settings and records who/when/previous, but nothing said the value is not durable — the
+        // next process read the declaration's default again (measured: maxRounds raised at runtime, a fresh process
+        // reported the declared 3). The fact is a FIELD now, not an inference from the word "runtime".
+        persistsAcrossRestart: false,
+        persistsAcrossRestartMeans: 'this write lives in the RUNNING kernel only: the durable configuration is the declaration (settings/schema.js + the face defaults), so a restart re-reads the declared/default value — if the intent must survive a restart, change the declaration or the charter, not just this receipt',
       }
       // ROUND 7 / task-57: the caller's `reason` is part of the record (the ledger answers "why", not only "who").
       runtimeWrites.push({ key, hot, by, reason: reason === null || reason === undefined ? null : String(reason), ownerCheck: g.ownerCheck, requiresRestart, liveApplied: liveApplied.slice(), pendingConsumers: pendingConsumers.slice(), at: receipt.at, action: 'set' })
@@ -4168,6 +4174,9 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         ok: true, key, source: 'runtime', action: 'unset', hot: g.hot, who: g.who, ownerCheck: g.ownerCheck,
         hadValue: had, previous: row.previous, appliesAt: row.appliesAt, requiresRestart: row.requiresRestart,
         applied: row.requiresRestart ? 'next-session' : 'immediate', at: row.at,
+        // ★★ RUN 158 (N4): the same fact on the removal path — a runtime unset is not durable, the declaration returns.
+        persistsAcrossRestart: false,
+        persistsAcrossRestartMeans: 'this removal lives in the RUNNING kernel only: the durable configuration is the declaration, so a restart re-reads the declared/default value',
         note: 'the key was removed at runtime and the REMOVAL IS RECORDED (who/when/previous value); the declared default applies again on the next start',
       }
     },
