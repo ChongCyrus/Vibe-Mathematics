@@ -110,6 +110,13 @@ export function createPaperFlow({
     return Array.isArray(rows.items) ? rows.items : []
   }
   const rowByTitle = (title) => listPaper().filter((r) => String(r.title) === title)[0] || null
+  // ★★ RUN 162 (real machine, run 10 / FEEDBACK9 item 8 — TWO SPELLINGS, TWO OPPOSITE CONCLUSIONS): the paper track
+  // carries one STATE row and four ARTEFACT rows per paper, and the artefact rows' bodies carry `id`/`target`/`status`
+  // too (the meta row literally copies them). Reading `st.id` off ANY paper row therefore let an artefact row answer
+  // for its paper: `target:"paper-p14"` resolved the META row (reviews {}, no consult ledger), so `final` refused
+  // with "0 位互审" and `consult_state` reported "no requests" while the title spelling saw both. A paper is its
+  // STATE row — the artefact rows are its outputs, never its identity.
+  const stateRows = () => listPaper().filter((r) => /\|state$/.test(String(r.title || '')) || String(r.kind || '') === 'paper-state')
   const PORTABLE_TARGET = /^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/
   const stateOfRow = (row) => {
     let body = row && row.body
@@ -135,7 +142,7 @@ export function createPaperFlow({
   // ID and the folder are now ASCII: a portable target keeps `paper-<target>`, anything else is minted `paper-pN`.
   const mintPaperId = () => {
     const used = new Set()
-    for (const row of listPaper()) {
+    for (const row of stateRows()) {
       const st = stateOfRow(row)
       if (st && st.id) used.add(String(st.id))
     }
@@ -158,7 +165,9 @@ export function createPaperFlow({
     // ★ NOTE the ORIGINAL spelling is tested here: the strip above turned `paper-p3` into `p3`, which is exactly the
     // form that is NOT a paper-p id, so testing `word` would make the advertised id unreachable again.
     if (!row && /^paper-p[0-9]+$/.test(str(target))) {
-      for (const cand of listPaper()) {
+      // ★★ RUN 162: STATE rows only (see `stateRows`) — an artefact row's body also carries `id`, and matching it made
+      // `final`/`consult` disagree with `status`/`render` about the same paper.
+      for (const cand of stateRows()) {
         const st = stateOfRow(cand)
         if (st && String(st.id) === str(target)) { row = cand; break }
       }
@@ -556,9 +565,54 @@ export function createPaperFlow({
    * subject at all) is not a cross-review, no matter which way it votes: the point of 互审 is a second pair of eyes.
    * Distinct reviewers, in the order the reviews were recorded.
    */
+  /** The durable review row for one member in THIS round, or null (the same row `advance` reads: `paper-review`
+   *  titled `v5r-paper|<target>|review|<member>`, newest first). Used when the state's `reviews` CACHE is missing
+   *  what the record already holds — the two faces must not disagree about whether a review happened. */
+  function reviewRowOf(state, member) {
+    const want = recordName(state.target, 'review|' + member)
+    let rows = []
+    try { const got = records.list({ track: TRACK, limit: 2000 }); rows = Array.isArray(got.items) ? got.items : [] } catch { return null }
+    const row = rows.filter((r) => String(r.title) === want).sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0] || null
+    if (!row) return null
+    let body = null
+    try { const g = records.get({ id: row.id }); const full = g && g.record ? g.record : g; body = JSON.parse(String((full && full.body) || '{}')) } catch { return null }
+    if (!body || String(body.member) !== String(member)) return null
+    return { recordId: row.id, body }
+  }
+  /** The durable review row for one member in THIS round, or null (the same row `advance` reads: `paper-review`
+   *  titled `v5r-paper|<target>|review|<member>`, newest first). Used when the state's `reviews` CACHE is missing
+   *  what the record already holds — two faces must not disagree about whether a review happened. */
+  function reviewRowOf(state, member) {
+    const want = recordName(state.target, 'review|' + member)
+    let rows = []
+    try { const got = records.list({ track: TRACK, limit: 2000 }); rows = Array.isArray(got.items) ? got.items : [] } catch { return null }
+    const row = rows.filter((r) => String(r.title) === want).sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0] || null
+    if (!row) return null
+    let body = null
+    try { const g = records.get({ id: row.id }); const full = g && g.record ? g.record : g; body = JSON.parse(String((full && full.body) || '{}')) } catch { return null }
+    if (!body || String(body.member) !== String(member)) return null
+    return { recordId: row.id, body }
+  }
   function crossReviewers(state, { deliverableOnly = false } = {}) {
     const out = []
     const reviews = (state && state.reviews) || {}
+    // ★★ RUN 162 (real machine, run 10 / FEEDBACK9 item 8): the cache is a CACHE. In the SAME round where `advance`
+    // returned `unanimous:true` + two `reviewsRead`, `final` refused with `crossReviewers: []` because only the cache
+    // was read. The durable `paper-review` row for THIS round is the truth, so it is consulted here and the cache is
+    // healed — the discipline `advance` already follows, applied to the second door that makes the same claim.
+    if (deliverableOnly) {
+      const participants = Array.isArray(state && state.participants) ? state.participants : []
+      for (const id of participants) {
+        const snap = reviews[id]
+        if (snap && snap.deliverable === true && str(snap.of) && str(snap.of) !== str(id)) continue
+        const found = reviewRowOf(state, id)
+        if (!found) continue
+        const b = found.body || {}
+        if (Number(b.round) !== Number(state.round)) continue
+        if (b.deliverable !== true || String(b.of || '') === String(id)) continue
+        reviews[id] = { recordId: found.recordId, fingerprint: null, deliverable: true, of: b.of, round: b.round, comments: str(b.comments) }
+      }
+    }
     const ids = Object.keys(reviews)
     for (let i = 0; i < ids.length; i += 1) {
       const id = ids[i]
@@ -582,12 +636,19 @@ export function createPaperFlow({
     const crossers = crossReviewers(state, { deliverableOnly: true })
     if (crossers.length >= 2) return crossers
     const participants = state.participants.slice()
+    // ★★ RUN 162: state BOTH readings, so a mismatch between the cache and the record is visible in the refusal
+    // instead of presenting itself as "the members never reviewed" (run 10 lost an hour to exactly that).
+    const onDisk = participants.filter((id) => {
+      const found = reviewRowOf(state, id)
+      const b = (found && found.body) || null
+      return !!(b && Number(b.round) === Number(state.round) && b.deliverable === true && String(b.of || '') !== String(id))
+    })
     const message = participants.length < 2
       ? '一位参与者的论文无法通过互审：只有 ' + participants.length + ' 位参与者（' + (participants.join('、') || '无') + '），他只能审自己的部分，互审因此是自审（a paper with one participant cannot pass 互审）'
       : '互审必须由两位不同的、非该作者的成员完成：' + participants.length + ' 位参与者里只有 ' + crossers.length + ' 位审了别人的部分（' + (crossers.join('、') || '无') + '），其余选票没有评审对象，不能算全体一致'
     throw refuse('VMU_INVALID_ARGUMENT', message,
       '再邀请一位成员参与（start 的 participants 至少两位），并让另一位成员评审这个部分（review 的 of 指向别人的 part）；自审不算互审',
-      { where, participants, crossReviewers: crossers, required: 2 })
+      { where, participants, crossReviewers: crossers, reviewsOnDisk: onDisk, required: 2 })
   }
 
   /** ③ a review: deliverable must be a real boolean ("未表态不算可交付", the original's wording). */

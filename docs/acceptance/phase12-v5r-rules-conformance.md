@@ -12355,3 +12355,100 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 2. `editor:"office"` 代定稿仍是具名缺口；人数闸仍缺一次名册 ≥4 的负向真机证据。
 3. 提示词面三条（`consult` 的 `target` 必填、定稿前的 `requiredLine` 前置说明、`part` 按成员替换）尚未改教学句。
 4. 宿主 `pwsh` 在第六至第九轮都不可用（`0xC0000142`），代理只能改走文件工具与 `math_computation{engine:"python"}`。
+
+## §262 — RUN 162：第十次真机跑（run 10）六条核验全 PASS，另抓出一处「同一篇论文，两种拼写给出相反结论」（RUN 162）
+
+第十次真机跑用 `61cde009` 的 tarball 在同一个工作区上续跑（`-KeepWorkspace`，`D:\_tmp\slv-phase5\slvp157-ws`），
+目标是核验 RUN 161 的六处修法并再走一遍完整结题。**六条核验全 PASS**，主线又一次走到结题；代理另交来
+`FEEDBACK9.md` / `SIM-REPORT9.md`，其中抓到一处本轮唯一的新硬缺陷：**同一篇论文的两种寻址拼写（铸造 id
+`paper-p14` 与它的标题）在 `final` / `consult` / `consult_state` 上给出相反的结论**。
+
+### 262.1 run 10 的读数
+
+- tarball `build=61cde009 6.68 MB`；转录 `D:/wd/vibemath开发/_oneoff/vm-slv/full-1031-115225.jsonl`
+  （4 796 753 B / 9 130 行）；`DRIVE exit=0`、`durationSec 1052`、`tokenTotal 12 427 433 / 24 000 000`
+  （`tokenCapHit:false`）、根会话 `toolCalls 114`、`transcriptEvents 552`；机器读数
+  `NO_FENCE=0 · UNKNOWN_FIELD=0 · FIELD_NOT_APPLICABLE=0 · BAD_JSON=0`；`slv-inspect` ⇒
+  **`SUMMARY: 1 session(s), 0 with RED checks`**、`CLOSURE cast=true (from 8 turn receipt(s))`、
+  `AUTO CHECKS: OK prompt/wire names consistent; all calls visible; counts match`；日志戳 `20261031-121046`。
+- 主线（又一次完整结题）：`rec-265`（四个连续自然数之和 `n+(n+1)+(n+2)+(n+3)=4n+6`，Lean `lean-run9-four`
+  passed）→ 辩论会 `m23` 归档 → 两位成员各裁 1 → `verdict_final`（`meetingArchived:true`）写回 p=1 →
+  Verified `rec-266`（warrant `tally-m23-rec-265`）；论文 `paper-p14` 两节 + 两轮互审 + 所办问询 `cleared`
+  → 定稿 + xelatex **PDF 89 092 字节**（独立 `math_computation{python}` 旁证 `%PDF-1.7`）；结题会 `m27`
+  （`floor:3 / cast:3`，票板 `bx-9`）归档；`t-1` 由临时工席完成（9 个 `Formal/*.lean` 相对路径 + `expr` 验算）。
+
+### 262.2 六条核验（按第九轮简报 2–7）：六条全 PASS
+
+1. **watchdogs 三面同话**：`plan` 的 `ok:true, available:false` 与 `recover`/`status` 的 `means`/`wired`/`ok`
+   说同一件事；`targets:null`（没测量）与 `targets:0`（测量到零）不再混用。
+2. **声明 ≠ 计数**：`nonAttending:[]` 与 `deniedSeatsDeclared:["temp"]` 同时出现时，后者用自己的说明
+   （「这是**声明**的禁用席位，不是本名册被移除的人数」）说清，读起来不再矛盾。
+3. **归档会议自己说清**：对已关闭会议 `attend` 的 `message` 本体就说「it WAS here: CLOSED and its record
+   now lives in the archive」，不再只在 `hint` 里补。
+4. **`subjectGate.note` 与卡事实一致**：卡有 `proofState:"complete"` 时 note 说「有 complete 但 proofRef 空」，
+   不再断言「这张卡还没登记 complete」。
+5. **保真拒绝语点名形参**：拒绝带 `hint`「`fidelity` 是形参名，`conform`/`defect` 是它的两个取值」。
+6. **论文工物不再自相打脸**：`final` 的 `pdf.produced:true` 与 `missing:[]`/`missingMeans:null` 同时成立，
+   `render` 报 `present` 四行齐全。
+
+### 262.3 新缺陷：同一篇论文，两种拼写给出相反结论（机制缺陷，硬）
+
+- `final { target: "paper-p14" }` ⇒ 被拒「2 位参与者里只有 0 位审了别人的部分（无）」，hint 还说「再邀请一位
+  成员」——而同一次运行的 `advance` 回执是 `unanimous:true` + 两条 `reviewsRead`。
+- `consult_state { target: "paper-p14" }` ⇒ `requests:[]`、`counters.opened:0`；用标题拼写 ⇒ 读到 1 条 answered。
+- `consult { target: "paper-p14", … }` ⇒ `VMU_NO_SUCH_OBJECT no waiting consult request "consult-<标题>-1"`。
+- **根因**（工作区 `VibeMath/vmu/state.json` 实证）：paper 轨里一篇论文是 **1 行 STATE + 4 行 ARTEFACT**，而
+  `render` 写的 **meta 行 body 也复制了 `id`/`target`/`status`**（`vibe-math-vmu/kit/paper.js` 的
+  `const meta = { id: state.id, target: state.target, status: state.status, round, editor, … }`）。
+  `readState` / `mintPaperId` 的「按铸造 id 找」回落分支遍历**整条轨**，于是 id 拼写解析到 **meta 行**
+  （`reviews:{}`、没有 consult 台账）；标题拼写走 `rowByTitle(recordName(word,'state'))`，读到真 STATE 行。
+  两个门说两种话，不是两个 bug，是**一个身份在一张轨上有五行**。
+
+### 262.4 三层修法（身份 / 同一份真相 / 词表）
+
+1. **论文的身份只有 STATE 行**（`vibe-math-vmu/kit/paper.js`）：新增
+   `const stateRows = () => listPaper().filter((r) => /\\|state$/.test(String(r.title || '')) || String(r.kind || '') === 'paper-state')`；
+   `mintPaperId()` 与 `readState`/`mintPaperId` 的铸造 id 回落都只遍历 `stateRows()` —— 产物行再也顶替不了论文。
+2. **互审闸与 `advance` 读同一份真相**（`vibe-math-vmu/kit/paper.js`）：新增 `reviewRowOf(state, member)`
+   （按 `recordName(state.target,'review|'+member)` 找 durable `paper-review` 行，`updatedAt` 最新优先，读 body
+   并校验 `body.member`）；`crossReviewers(state,{deliverableOnly})` 在缓存不足时按 participants 逐人自愈缓存
+   （`round` 必须等于本轮、`deliverable===true`、`of` 不是自己）；`requireCrossReview` 的拒绝语同时报
+   `crossReviewers`（缓存读数）与 `reviewsOnDisk`（记录读数）。
+3. **词表补上代理撞出来的四件事**（`vibe-math-vmu/packs/v5r/tools.js` + `vibe-math-vmu/kit/extras.js`）：
+   - `part` 是「每参与者一节」，同成员第二次 part **替换**上一节（回执 `replaced` 写明 recordId），要保留就合并后整节重写；
+   - `review` 的 `part` 是 `of` 的别名（章节名不绑定章节）；
+   - `render` 把 md/tex/meta 写进 record track，磁盘上的 `.tex/.pdf` 由 `compile` 产生；
+   - `consult`/`consult_state` 一次只对一篇论文说话，**必须带 `target`**；
+   - 定稿正文门要求正文含**每张 Verified 结论的 `requiredLine`**（逐字），被拦时 `missing[]` 给出该行；
+   - `lean_archive` 的 `kind` 词表：定理以 `kind:"proof"` 归档（回执随后报 `kind`/`mappedKind "theorem"`），
+     成功回执加 `kindRequested`；`from`/`file` 两个形参都写明**是同一个参数**、`from` 不是作者。
+
+### 262.5 机器化
+
+- 新 `tests/vmu-run162-addressing.test.mjs` **33/0**：§0 九条源码口径（身份只看 STATE 行、`reviewRowOf` 与
+  `reviewsOnDisk`、`part`/`review`/`render`/`lean_archive` 的词表）；§1 真回合（`render` 写出 meta 行之后，
+  用铸造 id 读到的仍是论文自己的 STATE：`paper.id` 一致、`reviews` 2 条、两种拼写同一阶段，`final` 用 id 成功且
+  `pdf.produced:true`）；§2 真回合（默认 `officeConsult` 下定稿被 `VMU_OFFICE_CONSULT_REQUIRED` 拒并给
+  requestId，id 拼写的 `consult_state` 读到 `counters.opened:1` 与那条 request、两种拼写计数一致，所办用
+  `member:"office"` 答复后 id 拼写定稿成功）；§3 真回合（把 STATE 行的 `reviews` 缓存清空重 put，模拟 run 10 的
+  丢写 ⇒ 定稿仍成立，走 durable 行）；§4 `lean_archive` 的 `kind:"theorem"` 具名拒（词表在拒绝语里）+ `kind:"proof"`
+  真归档成功（`kindRequested:"proof"`、`kind:"theorem"`）。
+- 定向回归：`--only paper` 11/0、`--only run16` 4/0（run160/161/162）、`--only v5r-tools` 1/0、
+  `--only consult` 4/0。
+- **`--only audit-` 162/0**（suites 80 · probes 82）：新测试文件改变了作业数，必须先把 16 个生成器跑到不动点，
+  否则 `audit-readme-counts` / `audit-conformance-totals` / criterion 的 `regen-all --check` 一起红。
+
+### 262.6 读数与门禁
+
+- `node scripts/regen-all.mjs` 两轮 → `--check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、
+  `RULE PARITY: PASS (0 problem(s))`、`RULES COVERAGE: PASS (0 problem(s))`（86/86 锚点、86 条 DONE）。
+- 全量 T1 `GATE_SCOPE=vmu` ⇒ ****TOTAL 643  PASS 643  FAIL 0  (suites 579 · probes 64)****，日志 `/d/_tmp/t1-r204-run162-final.log`（文档改动前的 `/d/_tmp/t1-r203-run162.log` 同样 643/643）。
+
+### 262.7 仍未解决
+
+1. 规则 47 的人数闸仍是**形式满足**（`signed ≥ required` 且 `vacuous:true`），名册 ≥4 的负向 `VMU_MEETING_QUORUM_LOST`
+   真机证据还没打出来；下一轮简报要专门压这一条。
+2. 规则 50–51 第 2 步（`hand` / `invite` / `order` / `refuse`）自第八轮起没再被真机走过；下一轮要专门走一遍。
+3. `ports.watchdogs:false` 部署下「接线但真的 0 个目标」仍只能靠单测覆盖。
+4. `editor:"office"` 代定稿仍是具名缺口。
+5. 宿主 `pwsh` 在第六至第十轮都不可用（`0xC0000142`），代理只能改走文件工具与 `math_computation{engine:"python"}`。

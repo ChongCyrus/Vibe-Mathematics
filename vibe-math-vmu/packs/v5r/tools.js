@@ -4894,7 +4894,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_lean_archive',
     description: 'Archive an existing .lean file: kind def/lemma/proof/blocked maps to the face\'s def/lemma/theorem/assumption; the face registers existing files by hash (inline content is not stored). ★ pass `statement` (the proposition this file formalises) so the library can answer what the file proves - live run 59 archived a lemma and the entry came back with an empty statement because the argument did not exist. ★ The entry ALSO records the COMPILE RESULT of that file: it is read from a Lean job this kernel already ran on the same file (nothing is re-run) and comes back as `outcome`/`exitCode`/`diagnosticsTail`/`jobId`/`compileAt`/`outcomeMeans`; with no such job the entry says `outcome:"not-measured"` instead of pretending the proof compiled.',
-    parameters: { kind: { type: 'string', required: true, enum: ['def', 'lemma', 'proof', 'blocked'], description: 'the kind of thing the file holds; the library maps these onto its own face kinds (proof -> theorem) and has no fifth word' }, name: { type: 'string', required: true }, statement: { type: 'string', description: 'the proposition text this file formalises (recorded in the library entry)' }, target: { type: 'string', description: 'legacy alias for statement' }, content: { type: 'string' }, from: { type: 'string' }, file: { type: 'string' }, note: { type: 'string' }, run: { type: 'boolean' } },
+    parameters: { kind: { type: 'string', required: true, enum: ['def', 'lemma', 'proof', 'blocked'], description: 'the kind of thing the file holds; the library maps these onto its own face kinds (proof -> theorem) and has no fifth word — a THEOREM goes in as kind:"proof" (the receipt then reports kind/mappedKind "theorem")' }, name: { type: 'string', required: true }, statement: { type: 'string', description: 'the proposition text this file formalises (recorded in the library entry)' }, target: { type: 'string', description: 'legacy alias for statement' }, content: { type: 'string' }, from: { type: 'string', description: 'the existing .lean file — the SAME parameter as `file` (it is not the author; pass one of the two, never two that disagree)' }, file: { type: 'string', description: 'the existing .lean file — the SAME parameter as `from` (the alias exists for older briefs; pass one of the two)' }, note: { type: 'string' }, run: { type: 'boolean' } },
     handler: toolLeanArchive,
   },
   {
@@ -4903,7 +4903,21 @@ export const V5R_PACK_TOOLS = Object.freeze([
       + '「只有 chair 席能定稿」都由内核的 paper flow 判并具名拒；本面不自己判政策、不造阶段、不编结论。render 如实报 wrote/missing/complete；compile 无 LaTeX 面即具名拒。'
       + '★ 所办问询（vmu.paper.officeConsult="required"）：定稿被拦时会给出 requestId，由所办用 action:"consult" 答复（member=答复人所办，answer/note 写核对结论），'
       + '答完重试 action:"final" 才放行；谁能答复由本 pack 的 PAPER_CONSULT_ROLES 声明（不是内核猜的），普通成员答会被具名拒（VMU_NOT_PERMITTED）。'
-      + 'action:"consult_state" 只读：看谁在等、哪条 requestId 还开着。',
+      + 'action:"consult_state" 只读：看谁在等、哪条 requestId 还开着。'
+      // ★★ RUN 162 (real machine, run 10 / FEEDBACK9 item 10): the agents learned by being refused that consult
+      // and consult_state address ONE paper and therefore need `target`; the vocabulary never said so.
+      + ' ★ 寻址：有两个 action 是**一次只对一篇论文**说话——`consult` 与 `consult_state` 都必须带 `target`（论文 id 或标题，两种拼写指向同一篇）；'
+      + '省了 `target` 会被具名拒（"addresses ONE paper, and no target was given"）。'
+      // ★★ RUN 162 (real machine, run 10 / FEEDBACK9 item 9): a member asked to ADD a summary section rewrote its
+      // own section twice and lost the two earlier ones, because `part` is ONE SECTION PER MEMBER (the second call
+      // REPLACES the first and the receipt says so under `replaced`). The vocabulary also had to say that `review`'s
+      // `part` is the same field as `of` (a section title there is accepted but binds nothing).
+      + ' ★ 每一份的粒度：`part` 是「每参与者一节」——同一成员第二次 part 会**替换**他自己上一节（回执 `replaced` 写明被替换的 recordId）；要保留上一节就把内容合并后整节重写。'
+      + ' `review` 的 `part` 是 `of` 的别名（被审成员的 id），把章节名传进去不报错也不绑定章节。'
+      // ★★ RUN 162 (FEEDBACK7 item 10, still open after run 10): the only way agents learned that final'
+      // body gate wants every Verified conclusion's requiredLine was by being refused. Say it in the vocabulary.
+      + ' ★ 定稿的正文门：正文里必须出现**每一张 Verified 结论的 `requiredLine`**（逐字）；被拦时回执的 `missing[]` 给出每条的 `requiredLine`，照抄进正文再定稿即可。'
+      + ' render 把 md/tex/meta 写进记录区（record track），磁盘上的 .tex/.pdf 由 compile 产生：阅读回执时两者不是同一件事。',
     parameters: {
       action: { type: 'string', required: true, description: 'start｜part｜review｜advance｜final｜render｜status｜compile｜sections｜consult｜consult_state' },
       target: { type: 'string', description: '论文对象（对象名；start 时可用 title/track 别名）' },

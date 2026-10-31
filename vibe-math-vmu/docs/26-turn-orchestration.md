@@ -2757,3 +2757,26 @@ id 是聚合的名字、durable 证据在哪；`paper-quality.js` 先剥 `#锚`�
 
 机器化：`tests/vmu-run161-audit8-fixes.test.mjs` 35/0；T1 TOTAL 642  PASS 642  FAIL 0  (suites 578 · probes 64)；
 门禁五绿（coverage 86/86）。文档：`docs/acceptance/phase12-v5r-rules-conformance.md` §261。
+
+## ROUND 165 — RUN 162: one paper had five rows on one track, so two spellings of one name meant two different papers
+
+第十次真机跑（tarball `61cde009`，0 RED / `CLOSURE cast=true (from 8 turn receipt(s))` / 六条核验全 PASS /
+主线又一次结题：`rec-265`→`rec-266` Verified、`paper-p14` 定稿并编译出 89 092 B PDF、`m27` 结题归档）之后，
+`FEEDBACK9` 抓到唯一一处新硬缺陷：**同一篇论文的两种寻址拼写（铸造 id `paper-p14` 与它的标题）在
+`final` / `consult` / `consult_state` 上给出相反的结论** —— id 拼写说「0 位互审」「没有任何问询」，标题拼写
+立刻定稿成功、问询就在台账里。根因不是两个 bug，是**一个身份在一张轨上有五行**：一篇论文是 1 行 STATE + 4 行
+ARTEFACT，而 `render` 写的 meta 行 body 也复制了 `id`/`target`/`status`；「按铸造 id 找」的回落分支遍历整条轨，
+于是解析到产物行（`reviews:{}`、没有 consult 台账）。
+
+1. **身份只认 STATE 行**（`kit/paper.js`）：`stateRows()` 按标题 `|state` 结尾 / `kind === 'paper-state'` 过滤；
+   发号与铸造 id 回落都只看它 —— 产物行再也顶替不了论文。
+2. **互审闸与 `advance` 读同一份真相**（`kit/paper.js`）：`reviewRowOf()` 按
+   `recordName(state.target,'review|'+member)` 找 durable `paper-review` 行（`updatedAt` 最新、校验 `body.member`）；
+   缓存不足时按 participants 逐人自愈；拒绝语同时报 `crossReviewers` 与 `reviewsOnDisk`。
+3. **词表补上代理撞出来的五件事**（`packs/v5r/tools.js` + `kit/extras.js`）：`part` 是每参与者一节、第二次**替换**；
+   `review` 的 `part` 是 `of` 的别名；`render` 的 md/tex/meta 进 record track 而 `.tex/.pdf` 由 `compile` 落在磁盘；
+   `consult`/`consult_state` 必须带 `target`；正文门要每张 Verified 结论的 `requiredLine`；`lean_archive` 的
+   定理以 `kind:"proof"` 归档（回执报 `theorem`，并加 `kindRequested`），`from`/`file` 是同一个参数。
+
+机器化：`tests/vmu-run162-addressing.test.mjs` 33/0；T1 TOTAL 643  PASS 643  FAIL 0  (suites 579 · probes 64)；
+门禁五绿（coverage 86/86）。文档：`docs/acceptance/phase12-v5r-rules-conformance.md` §262。

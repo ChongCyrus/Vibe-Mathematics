@@ -20,6 +20,7 @@
 // Run: node tests/vmu-run161-audit8-fixes.test.mjs
 // Last line: === RUN 161 AUDIT8 FIXES: N passed, M failed ===
 import { readFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -295,6 +296,80 @@ console.log('§5 (5) 论文工物：行标题按 state 的规范 target 查，�
     '(5b) 用 id 与用标题两种拼写的 present 完全一致', { byId: p1, byTitle: p2 })
   ok(Array.isArray(byTitle.missing) && byTitle.missing.length === 1 && byTitle.missing[0] === 'pdf',
     '(5b) 用标题拼写时也只有 pdf 缺', byTitle.missing)
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+console.log('§6 (6) 真定稿的同一份回执：`pdf.produced` 与 `missing` 不许互相打脸（真工具调用 + 假 LaTeX 面跑完整流程）')
+{
+  // The fake LaTeX face is the seam runs 155/156/158 use: it answers `--version` and writes the .pdf the argv names,
+  // so `final` really compiles and the receipt is the one an institute would read.
+  const root = await mkdtemp(join(tmpdir(), 'vmu-run161-final-'))
+  roots.push(root)
+  process.chdir(root)
+  const spawn = (spec = {}) => {
+    const argv = Array.isArray(spec.argv) ? spec.argv.map(String) : []
+    const res = { exitCode: 0, stdout: '', stderr: '' }
+    if (argv.includes('--version')) res.stdout = 'xelatex 1.0'
+    else {
+      const tex = String(argv.filter((a) => a.endsWith('.tex'))[0] || '')
+      if (tex) writeFileSync(tex.slice(0, -4) + '.pdf', 'PDF-FAKE-RUN161')
+    }
+    return {
+      done: Promise.resolve({ exitCode: res.exitCode, signal: null }),
+      collected: { stdout: { readFrom: () => ({ text: res.stdout }) }, stderr: { readFrom: () => ({ text: res.stderr }) } },
+    }
+  }
+  const state = { specs: [] }
+  const ctx = {
+    effect(fn) { return fn() },
+    on() { return () => {} },
+    tools: { register: async (spec) => { state.specs.push(spec); return () => {} } },
+    get(name) {
+      if (name === 'subprocess') return { spawn }
+      return undefined
+    },
+  }
+  const handle = entry.apply(ctx, Object.assign({ root, packs: ['v5r'], clock: () => 1000, deliverMode: 'caller' }, { 'vmu.paper.officeConsult': 'off' }))
+  await handle.ready()
+  const kernel = handle.kernel
+  await kernel.members.hire({ id: 'r-chair', slot: 'chair' })
+  await kernel.members.hire({ id: 'r-1', slot: 'member' })
+  await kernel.members.hire({ id: 'r-2', slot: 'member' })
+  const specs = state.specs
+  const started = await call(specs, 'vibe_v5_paper', { action: 'start', target: 'run161 final plate', editor: 'academician', participants: ['r-1', 'r-2'] })
+  const id = String((started.started && started.started.id) || (started.paper && started.paper.id) || started.id || '')
+  ok(started.ok === true && id !== '', '(6) 论文开起来并拿到 id', { id, ok: started.ok })
+  // each part needs an evidence pointer that resolves against the records face — write the card first, then point at it
+  for (const m of ['r-1', 'r-2']) {
+    const card = await call(specs, 'vibe_v5_record_proposition', { id: 'rec-161c-' + m, statement: 's[' + m + ']: 1+1=2', value: 'claim', member: m, motive: 'evidence for the probe', p: 0.6 })
+    ok(card.ok === true, '(6) ' + m + ' 的证据卡写成了', card.ok === false ? card : undefined)
+    const part = await call(specs, 'vibe_v5_paper', { action: 'part', target: id, member: m, part: 'sec-' + m, body: 'section by ' + m, evidence: ['Members/' + m + '/Propos/rec-161c-' + m + '.md'] })
+    ok(part.ok === true, '(6) ' + m + ' 的段落写成了', part.ok === false ? part : undefined)
+  }
+  const adv1 = await call(specs, 'vibe_v5_paper', { action: 'advance', target: id, member: 'r-chair' })
+  ok(String((adv1.advance || {}).to || '') === 'reviewing', '(6) writing → reviewing', adv1.advance)
+  for (const m of ['r-1', 'r-2']) {
+    const rev = await call(specs, 'vibe_v5_paper', { action: 'review', target: id, member: m, of: m === 'r-1' ? 'r-2' : 'r-1', deliverable: true, notes: 'ok' })
+    ok(rev.ok === true, '(6) ' + m + ' 的互审是 deliverable', rev.ok === false ? rev : undefined)
+  }
+  const adv2 = await call(specs, 'vibe_v5_paper', { action: 'advance', target: id, member: 'r-chair' })
+  ok(String((adv2.advance || {}).to || '') === 'awaiting-editor', '(6) reviewing → awaiting-editor（两人都交付）', adv2.advance)
+  const fin = await call(specs, 'vibe_v5_paper', { action: 'final', target: id, member: 'r-chair', decision: 'deliverable' })
+  ok(fin.ok === true, '(6) 定稿成功（含编译）', fin.ok === false ? fin : undefined)
+  const inner = fin.final || {}
+  ok(inner.finalized === true, '(6) 回执说 finalized:true', inner.finalized)
+  const pdf = inner.pdf || {}
+  ok(pdf.produced === true && Number(pdf.pdfBytes) > 0, '(6) 编译真的产出了 PDF', { produced: pdf.produced, pdfBytes: pdf.pdfBytes })
+  const missing = Array.isArray(inner.missing) ? inner.missing : null
+  ok(missing !== null && missing.length === 0, '(6) 同一份回执里 `missing` 是空的（不是四行全缺）', missing)
+  ok(missing !== null && !missing.includes('pdf'), '(6) `missing` 里没有 `pdf`（与 produced:true 不再矛盾）', missing)
+  ok(inner.missingMeans === null || inner.missingMeans === undefined, '(6) 没有缺行就不编「缺的是归档行」的散文', inner.missingMeans)
+  const rend = await call(specs, 'vibe_v5_paper', { action: 'render', target: id })
+  const present = rend.present || {}
+  ok(present.md === true && present.tex === true && present.meta === true && present.pdf === true,
+    '(6) 定稿之后四个工物行都在（render 与 final 读数一致）', present)
+  ok(Array.isArray(rend.missing) && rend.missing.length === 0, '(6) render 的 missing 也是空的', rend.missing)
 }
 
 console.log('')

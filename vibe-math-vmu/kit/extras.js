@@ -280,7 +280,11 @@ async function toolLeanRead(args = {}, { kernel } = {}) {
 async function toolLeanArchive(args = {}, { kernel } = {}) {
   if (!has(args.kind)) throw refuse('VMU_INVALID_ARGUMENT', 'lean_archive needs kind', 'the original offered def/lemma/proof/blocked')
   const mapped = LEAN_ARCHIVE_KIND_MAP[str(args.kind)]
-  if (!mapped) throw refuse('VMU_INVALID_ARGUMENT', 'unknown archive kind: ' + str(args.kind), 'the original offered: ' + Object.keys(LEAN_ARCHIVE_KIND_MAP).join(', '))
+  // ★★ RUN 162 (FEEDBACK9 item 10): the refusal listed the four legal words but did not say that a THEOREM is archived
+  // as `proof` — the face then reports `kind:"theorem"`, so a caller that learned the vocabulary from the receipt
+  // retried with `theorem` and was refused again. The mapping is now in the refusal itself.
+  if (!mapped) throw refuse('VMU_INVALID_ARGUMENT', 'unknown archive kind: ' + str(args.kind),
+    'the original offered: ' + Object.keys(LEAN_ARCHIVE_KIND_MAP).join(', ') + ' — a THEOREM goes in as kind:"proof" (the receipt then reports kind/mappedKind "theorem")')
   if (!has(args.name)) throw refuse('VMU_INVALID_ARGUMENT', 'lean_archive needs name', 'give a stable name: read() and lib() use it')
   // ★★ TWO NAMES FOR ONE THING MUST NOT SILENTLY DISAGREE. `from` used to take priority over `file`: a caller that passed BOTH
   // got `from` and never learned that `file` was ignored. Measured on a full live run - the agent supplied both and could not
@@ -308,7 +312,7 @@ async function toolLeanArchive(args = {}, { kernel } = {}) {
   }
   const archived = await lean.archive({ name: str(args.name), kind: mapped, file, statement: archStatementRaw || archTargetRaw })
   // ★ F-56: spread the face's answer (it already carries ok/name/kind/file/statement/hash/persisted/persistence).
-  return { ...archived, tool: 'vibe_v5_lean_archive', mappedKind: mapped,
+  return { ...archived, tool: 'vibe_v5_lean_archive', mappedKind: mapped, kindRequested: str(args.kind),
     note: has(args.content) ? 'content is NOT stored: the archive registers existing files by hash (write the file first)' : undefined }
 }
 
