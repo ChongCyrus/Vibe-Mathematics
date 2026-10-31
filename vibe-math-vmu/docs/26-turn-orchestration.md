@@ -2924,3 +2924,26 @@ PARITY/RULES COVERAGE all PASS (86/86), full T1 644/644 (suites 580 · probes 64
 **顺带的诚实化**：`start` 撞 trash 的拒文补齐顶层 `stateRecordId`/`status`/`inTrash`+`trash`；`paper status` 能说"这个名字在 TRASH 里"（`trashLookup`）与"另有 N 篇未列出"；`createdAt/updatedAt` 这种假时间戳改名 `createdRound/updatedRound`（它们本来就是轮次）；提示词与设置对齐——本所 `vmu.turn.unknownReplyFieldMode` 声明为 `refuse`，而提示词原先引用的是框架默认值"忽略"，成员照着写就被整轮拒（run 17 的 `replyLength:3553`）。
 
 **教训**：**扫描方式与判定口径，与规则本身一样是机制的一部分**。一行里"只取第一个"会让第二个指针在法律上不存在；`JSON.parse` 失败就 `continue` 会让一种合法输入在法律上不存在。以及：**读数必须能说出自己的来源与轮次**——"round 不符"与"投反对"看起来一样的时候，读者只能猜，而猜错的那一方会觉得机制在说谎。
+
+## ROUND 176 — 一条**真实**的引用被叫成编造，比漏掉一条编造更坏（run 18 的真机回执）
+
+**真机（run 18）读到的事实**：RUN 172 把引文闸修成"扫完每一行"，第一次新跑就抓出了它的反面。成员在正文里写 `…见 Members/r-1/Propos/rec-316.md（RUN14 复核过的偶数和卡）…`，`render` 回：
+
+```
+VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN
+missing[0] = { id: "rec-316.md（RUN14", path: "Members/r-1/Propos/rec-316.md（RUN14", origin: "prose", reason: "no record with this id" }
+```
+
+`rec-316` 是**存在**的卡。捕获组 `[^\/\\s]+?` 只在空白或右括号处停，成员自己的**全角左括号**不在终止集合里，于是 `（RUN14` 被吃进 id。漏判让编造引用混进 PDF；误判让研究院被告知自己正确的引用是编造的——后者会让人去改一条本来正确的句子。
+
+**这一轮改的一口径三处**（同一个"id 是什么"的定义，两个门共用）：
+
+1. `MEMBER_FILE` 的捕获是 **id 字母表** `[A-Za-z0-9_.-]`，结尾 lookahead 是"任何非 id 字符"；紧跟的 `#anchor` 只留在**回执文本**里，绝不进 id。
+2. `normalizeCitedId`（正文里的指针）在第一处非 id 字符处**截断**：路径后面的标点是文章，不是寻址。
+3. `normalizeBareId`（`evidence` 条目、无路径的裸 id）**不截断**：没有路径告诉我们 id 在哪结束，所以整串必须是 id，否则就是自由文本（`r-1 的命题卡` 不是记录 `r-1`）。质量闸的证据分支与写入闸 `checkEvidencePointers` 都用它——两个门再也不会对"id 是什么"各说一套。
+
+**同轮真机确认成立的七件事**（RUN 172 的修法）：`render` 的 `CITATION_UNKNOWN` 真的拦、锚点留在 `path` 而不在 `id`；`reopen-closure` 回 `{window:2, previousWindow:1, archivedVotes:4, sessionVotesCleared:0}` 且窗口内新票当场上加；`voters` 给出 `r-1@?` → `r-1@<session>` 的"谁、从哪投的"；trash 名拒文带顶层 `stateRecordId/status/inTrash`；满轨拒绝语给两条可达修法；`reviewsRead` 出现 `source:"durable-other-round"`；`"code":"VMU_TURN_UNKNOWN_FIELD"` 计数为 **0**（提示词与本所 `refuse` 声明对齐后，成员不再照着旧句子写多余键）。
+
+**两个 RED 的机制含义**：根会话 90 calls / 89 results、`r-1` 会话 42 unique calls / 82 results——两处唯一的缺件都是 `vibe_v5_paper {action:"render"}` 的 result，且都发生在 token cap（30M 打满）切断的瞬间；`r-1` 的每条事件在 JSONL 里出现两次（子会话流 + 父侧重放），所以"计数不齐"里一半是转录重复。RED 说的是"这次运行被预算切断，有一条调用没等到回答"，不是某个工具在撒谎。
+
+**教训**：判定面的正则终止集合也是机制的一部分——"指针到哪里结束"决定了"哪条引用存在"。修一个门时要把门的**全部输入形状**一起想清楚：路径可以跟在句子里，裸 id 不可以。

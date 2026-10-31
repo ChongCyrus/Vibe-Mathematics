@@ -213,8 +213,9 @@ console.log('§0 源码口径：五处修法都在所有者上（行为由 §1�
     '问题 5：tally 回执说明 id 是名字、durable 证据在哪里')
   ok(QUALITY_SRC.includes('const barePointer = anchorAt < 0 ? pointer : pointer.slice(0, anchorAt)'),
     '小账：证据指针先剥掉 `#锚点` 再解析')
-  ok(QUALITY_SRC.includes("/^[A-Za-z][A-Za-z0-9_-]*$/.test(barePointer)"),
-    '小账：字母结尾的裸记录 id 也去解析（查不到报 no-such-record）')
+  ok(QUALITY_SRC.includes('const normalizeBareId = ') && QUALITY_SRC.includes('const isBareCitation = ')
+    && QUALITY_SRC.includes('isBareCitation(bare)'),
+    '小账：字母结尾的裸记录 id 也去解析（查不到报 no-such-record）——RUN 173 起裸 id 由 `normalizeBareId`+`isBareCitation` 统一判定，两个门共用同一个"id 是什么"')
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════

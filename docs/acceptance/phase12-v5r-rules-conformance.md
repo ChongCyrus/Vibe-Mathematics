@@ -12955,3 +12955,53 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 2. **`prune` 逐行写盘**（12 行 ≈ 14.4 秒）：功能正确但慢；若要批量化，需要一个新的写面（一次 patch 多行），本轮不动。
 3. **互审 ping-pong 到 3 轮上限**：`capped:true` + 警告已经点名；"允许同轮重录修复"是产品决策，留给规则层。
 4. **`evidence` 写入闸与定稿门的两句口径说明**：两侧现在都正确（都是归一化 + 判定），但提示词里还没有一句话把"两边同一个口径"写出来。
+
+## §273 第十八次真机（run 18）与 RUN 173：一条真实引用被判成编造（`rec-316.md（RUN14`）
+
+### 273.1 现场
+
+- 基线 `ffab44d1`（RUN 172），驱动 `slv-p13-oc.ps1`，简报 `D:/_tmp/slv-phase5/task-sim18.txt`（10 节，过 `check-task-brief.mjs`：105 工具 / 0 problem）。
+- 读数：`DRIVE_EXIT=0`、`durationSec 2588`、`tokenTotal 30 145 776 / 30 000 000`（**capHit true**）、`transcriptEvents 472`、根会话 `toolCalls 90`、4 个会话、`slv-inspect --by-session` = **2 会话 RED**、`clone_gone=True C_free_GB=9.95`。
+- **本轮没有写出 `SIM-REPORT18.md`/`FEEDBACK18.md`**：token cap 先到，报告没写。所以本节的证据全部来自 JSONL（`D:/wd/vibemath开发/_oneoff/vm-slv/full-1101-040101.jsonl`，43 MB / 82 297 行）里的**真实回执**，不是代理的转述。
+
+### 273.2 RUN 172 的七条修法在真机上成立
+
+1. **正文引文闸真的拦住了编造引用**：`render` 回 `VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN`，`missing` 有两条（r-1 的 prose 指针 + r-2 的 `.md#§4` 锚点指针），锚点指针的 `path` 含 `#§4` 而 `id` 归一化后不含 `#`（§272.2 P1-A 的真机成立，且 `advance → render` 就拦，不必等到 `final`）。
+2. **结题票窗口**：`vibe_vmu_turn {op:"reopen-closure"}` 回执 `{"window":2,"previousWindow":1,"archivedVotes":4,"sessionVotesCleared":0,"foldKey":"closure_window","means":"…counts only votes cast in window 2; the 4 vote(s) of window 1 stay on file as an archive and are NOT counted…"}`；窗口内两人投票后 `votesCast` 当场上加（2 → `for:["r-1","r-2"]`）。
+3. **`voters` 读数**：`r-1@?` → `r-1@e7806226-…`（先无会话可指、学到后指名），`r-2@c00b71da-…`（P2-5 的"谁、从哪投的"真机可见）。
+4. **trash 里的名字**：`VMU_PACK_V5R_CORE_PAPER_STATE` 现在带顶层 `stateRecordId:"rec-194"`、`status:"trashed"`、`inTrash:true`、`trash{id,target,recordId,purgeAt}`，与"已存在"分支同形（P3-9）。
+5. **满轨两条可达修法**：`VMU_QUOTA_EXCEEDED` 的 hint 是「TWO reachable repairs：(1) `vibe_vmu_records {action:"prune", …}` …(2) this limit is read at WRITE time, so raising it wi…」，不再是许诺一个不存在的面（RUN 165/F15-1 口径保持）。
+6. **互审轮次读数**：`advance` 的 `reviewsRead` 出现 `source:"durable-other-round"` 与 `rowDeliverable`（20 次真实出现），不再把上一轮的评审压成"这一轮投了反对"。
+7. **`unknownReplyFieldMode:"refuse"` 的提示词口径**：本轮 JSONL 里 `"code":"VMU_TURN_UNKNOWN_FIELD"` 计数 **0**（run 17 有 1 次整轮被拒）——提示词改成"本所该键＝refuse"后，成员不再照着旧句子写多余的键。
+
+### 273.3 新缺陷（本轮修掉）：一条**真实**的引用被判成编造
+
+- 回执原文：`{"ok":false,"code":"VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN","message":"论文引用了一个记录库里不存在的 id：rec-316.md（RUN14（Members/r-1/Propos/rec-316.md（RUN14，…）","missing":[{"id":"rec-316.md（RUN14","path":"Members/r-1/Propos/rec-316.md（RUN14","member":"r-1","origin":"prose","reason":"no record with this id"}, …]}`。
+- 机制根因：`MEMBER_FILE` 的捕获组是 `[^\/\\s]+?`，只在空白或右括号处停 —— 成员在自己的句子里写 `…rec-316.md（RUN14 复核过的偶数和卡）…`，**全角左括号**不在终止集合里，于是 `（RUN14` 被吃进 id；`normalizeCitedId` 只去 `.md`/`#锚点`，不认全角标点 ⇒ `rec-316`（**存在**的卡）被判成 `no record with this id`。
+- 危害高于漏判：漏判让编造引用通过；**误判**让研究院被告知自己正确的引用是编造的，成员会去"修正"一条本来正确的句子。
+- 修法（`vibe-math-vmu/packs/v5r/paper-quality.js`，一个口径三处落实）：
+  1. `MEMBER_FILE` 的捕获组改成 id 字母表 `[A-Za-z0-9_.-]+?`，结尾 lookahead 改成「任何非 id 字符」`(?=$|[^A-Za-z0-9_.-])`，并允许紧跟的 `#anchor` 留在**匹配文本**里（回执要带锚点），但绝不进 id；
+  2. `normalizeCitedId`（正文里引用的指针）在第一处非 id 字符处**截断**——路径后面的标点是文章，不是寻址；
+  3. 新增 `normalizeBareId` + `isBareCitation`（`evidence` 条目、无路径的裸 id）：**不截断**，整串必须是 id，否则就是自由文本（`r-1 的命题卡` 不是记录 `r-1`）。两个裸面（质量闸的证据分支、写入闸 `checkEvidencePointers`）都改用它，两个门因此不会再对"id 是什么"各说一套。
+
+### 273.4 机器化
+
+- 新建 `tests/vmu-run173-citation-id.test.mjs` **18/0**：§0 四条源码口径（捕获组／截断／裸 id 归一大器／两个裸面都用它）；§1 **真实指针 + 全角括号 ⇒ 通过**（run 18 的误判反向钉住），且 `missing` 里没有任何 id/path 带 `（`；§2 **编造指针 + 全角括号 ⇒ 仍拒**，`id` 干净（`run18-not-a-record`）、`path` 保留 `#§3`、不含 `（`；§3 自由文本证据（`r-1 的命题卡`）不被指控；§4 `id.md#anchor` 仍可解、不存在的裸 id 仍报 `no-such-record`。
+- 定向回归 `--only` 0 红：paper 11/0（含 `vmu-paper-quality` 57/0、`vmu-f3-f4-paper-integrity` 50/0、`vmu-wave2-f3-f4-paper-gates` 38/0、`v4-final-paper.mutants` 全变体红）、evidence 1/0（`vmu-run95-part-evidence` 22/0）、citation 3/0（含本轮新套件）、run172 1/0（47/0）。
+- `tests/vmu-run155-audit-fixes.test.mjs` §0 的裸 id pin 随新归一器改写（原钉 `/^[A-Za-z][A-Za-z0-9_-]*$/.test(barePointer)`，现钉 `normalizeBareId`+`isBareCitation` 存在且被调用）⇒ 该套件 **63/0**；行为本身仍由 run173 §4 与 run155 的 `#锚点` 用例守住。
+- 收口：`regen-all --write/--check` 17/17、`update-doc-counts --write`（`JOBS total=722 suites=614 probes=108 | shipped tests/*.mjs=393`）、`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULES COVERAGE: PASS (0)`（锚点 86/86）、`RULE PARITY: PASS (0)`。
+- 全量 T1：**653 PASS / 0 FAIL（suites 589 · probes 64）**（`D:/_tmp/t1-r234-run173b.log`；首跑 `t1-r233` 的唯一红就是上面那条 run155 pin）。
+
+### 273.5 两个 RED 的如实说明（不是 vmu 机制错误）
+
+- 根会话 `90 calls / 89 results`：最后一条 `vibe_v5_paper {action:"render" …}`（`chatcmpl-tool-90ee7080ff9e5c96`）只有 `tool/call`、**没有任何 result**——token cap 在调用执行中切断。
+- `r-1` 会话 `84 events / 42 unique calls / 82 results`：其中 `call_f31e6fa47a2b4fdbbdb63c37`（`vibe_v5_paper {action:"render", target:"run18-mainline"}`）同样只有 `tool/call` 无 result；该会话的每条事件在 JSONL 里出现两次（子会话流与父侧重放各一份），所以"计数不齐"里一半是**转录重复**、一半是**cap 切断**。
+- 结论：RED 的机制含义是"这次运行被预算切断，有一条调用没等到回答"，**不是**某个工具撒谎或内核状态错。要消掉它只能提高预算或让简报更短——记入 273.6。
+
+### 273.6 未闭合账（下一轮简报要写清楚）
+
+1. **主线没结题**：本轮把预算花在探针论文与复验上，`run18-mainline` 停在 `writing`（第 2 轮），没有 `close`、没有 PDF。下一轮简报必须**先主线后探针**，并把 token cap 抬到 40M。
+2. **成员以为"写 part 时就该拒坏引用"**：r-2 自测后报告"五种写法全 `ok:true`、`origin=prose-raw` 未出现"——那是**误读**：正文引文闸只在 `render`/`final` 判（写入闸只查 `evidence`）。简报要加一句"引文闸在定稿/渲染阶段才判"，否则代理会把"没拦"当成缺陷。
+3. **`prune` 逐行写盘**（12 行 ≈ 14.4 秒，run 17 观察）仍未批量化。
+4. **互审 3 轮上限**仍是产品决策（`capped:true` + 警告已具名）。
+5. **代理会去读实现源码**（run 18 里根会话读 `D:\_tmp\slv-phase5\pkg-ffab44d1\vibe-math-vmu\…` 自证），不算缺陷但要在报告里记为"代理行为观察"。

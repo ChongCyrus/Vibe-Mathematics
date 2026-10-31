@@ -56,7 +56,26 @@ export const RECORD_SECTIONS = Object.freeze([
  *  Shape: `Members/<member>/<Category>/<id>.md` (the charter's own file layout, forward or back slashes, optional .md). */
 // ★ RUN 153 (G6): a bare record id ("rec-12", "p-3") is also a legal evidence pointer — see checkEvidencePointers.
 const BARE_CARD_ID = /^([A-Za-z][A-Za-z0-9_-]*-[A-Za-z0-9_-]*\d+)$/
-const MEMBER_FILE = /Members[\/\\][^\/\\\s]*[\/\\](Propos|Methods|Subproblems|Progress)[\/\\]([^\/\\\s]+?)(?:\.md)?(?=$|[\s，。；、）)\]])/
+/**
+ * ★★ RUN 173 — A BARE CITATION IS THE WHOLE STRING, never a prefix of prose. `r-1 的命题卡` (free text, a real fixture
+ * in tests/vmu-paper-quality.test.mjs) is NOT the record id `r-1`: the pointer normalizer above cuts at the first
+ * non-id character because prose punctuation follows a POINTER, but a bare entry has no path around it to tell us where
+ * the id stops — so the whole trimmed string must be an id, or the entry is free text and the gate must not accuse it.
+ */
+const normalizeBareId = (raw) => {
+  const s = str(raw).trim()
+  const at = s.indexOf('#')
+  const head = at < 0 ? s : s.slice(0, at)
+  return head.replace(/\.(md|tex|lean)$/i, '').trim()
+}
+const isBareCitation = (id) => BARE_CARD_ID.test(id) || /^[A-Za-z][A-Za-z0-9_-]*$/.test(id)
+// ★★ RUN 173 (real machine, run 18 — A LEGITIMATE POINTER READ AS A FABRICATED ONE): the capture group was
+// `[^\/\\\s]+?`, which stops only at whitespace or a closing bracket, so the member's own prose punctuation was read as
+// part of the id: `Members/r-1/Propos/rec-316.md（RUN14…` yielded the id `rec-316.md（RUN14` — the gate then reported a
+// record that DOES exist as "no record with this id" (measured, run 18). A record id is ASCII by construction, so the
+// capture is now exactly the id alphabet and the lookahead is "anything that is not an id character": the pointer ends
+// where the member's prose resumes, whatever punctuation that is.
+const MEMBER_FILE = /Members[\/\\][^\/\\\s]*[\/\\](Propos|Methods|Subproblems|Progress)[\/\\]([A-Za-z0-9_.-]+?)(?:\.md)?(?:#[^\s，。；、）)\]（]*)?(?=$|[^A-Za-z0-9_.-])/
 const TRACK_OF_CATEGORY = Object.freeze({ Propos: 'propositions', Methods: 'methods', Subproblems: 'problems', Progress: 'progress' })
 
 const str = (v) => (v === undefined || v === null ? '' : String(v))
@@ -74,7 +93,11 @@ const normalizeCitedId = (raw) => {
   const s = str(raw)
   const at = s.indexOf('#')
   const head = at < 0 ? s : s.slice(0, at)
-  return head.replace(/\.(md|tex|lean)$/i, '').trim()
+  // ★★ RUN 173: a pointer quoted inside prose is followed by the member's own punctuation (`（…`, `，…`, `。`). Those
+  // characters are prose, not addressing — cutting at the first non-id character keeps `rec-316.md（RUN14` an id
+  // (`rec-316`) instead of accusing a record that exists. Trailing dots go for the same reason.
+  const cut = head.replace(/[^A-Za-z0-9_.-].*$/, '')
+  return cut.replace(/\.(md|tex|lean)$/i, '').replace(/\.+$/, '').trim()
 }
 
 /** The records face's full row (same shape rule the kit uses: `get` may hand back `{record}` or the record itself). */
@@ -272,8 +295,8 @@ function citationsOf(state, records) {
     if (m) { c.category = m[1]; c.cardId = normalizeCitedId(m[2]); c.expectedTrack = TRACK_OF_CATEGORY[m[1]] }
     else if (c.origin === 'evidence') {
       // an evidence entry in the BARE form (`rec-12`, or `rec-12.md#证明`) is a citation too: normalize it the same way
-      const bare = normalizeCitedId(c.text)
-      if (bare && (BARE_CARD_ID.test(bare) || /^[A-Za-z][A-Za-z0-9_-]*$/.test(bare))) { c.cardId = bare; c.expectedTrack = null; c.bare = true }
+      const bare = normalizeBareId(c.text)
+      if (bare && isBareCitation(bare)) { c.cardId = bare; c.expectedTrack = null; c.bare = true }
     }
   }
   return found
@@ -308,16 +331,16 @@ export function checkEvidencePointers({ evidence, records, codes = QUALITY_CODES
     const anchor = anchorAt < 0 ? null : pointer.slice(anchorAt)
     const m = barePointer.match(MEMBER_FILE)
     if (!m) {
-      const bare = barePointer.match(BARE_CARD_ID) || (/^[A-Za-z][A-Za-z0-9_-]*$/.test(barePointer) ? [barePointer, barePointer] : null)
-      if (bare) {
+      const bare = normalizeBareId(barePointer)
+      if (bare && isBareCitation(bare)) {
         let bareRow = null
-        try { bareRow = recordOf(records, bare[1]) } catch { bareRow = null }
+        try { bareRow = recordOf(records, bare) } catch { bareRow = null }
         if (bareRow) {
-          resolved.push({ pointer, cardId: bare[1], track: str(bareRow.track), fingerprint: str(bareRow.fingerprint) || null, anchor,
+          resolved.push({ pointer, cardId: bare, track: str(bareRow.track), fingerprint: str(bareRow.fingerprint) || null, anchor,
             means: 'bare record id: resolved against the records face and checked for existence (the gate still matches the citation in the prose by id, so this pointer and the citation must name the same card)' + (anchor ? '; the `' + anchor + '` anchor is a section inside that record, not part of its id' : '') })
           continue
         }
-        unknown.push({ pointer, cardId: bare[1], reason: 'no-such-record', anchor,
+        unknown.push({ pointer, cardId: bare, reason: 'no-such-record', anchor,
           expected: 'Members/<member>/(Propos|Methods|Subproblems|Progress)/<id>.md, or a record id written by the records face' })
         continue
       }
