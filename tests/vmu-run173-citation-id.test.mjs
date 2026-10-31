@@ -169,5 +169,32 @@ const missingOf = (v) => (v && Array.isArray(v.missing) ? v.missing : [])
   ok(!!view, '§4 the records view composes with the same kernel')
 }
 
+// ── §5 the OTHER gate reads the same rule: the write gate on `evidence` accepts a true pointer followed by prose ─────
+// A reader who fixes only the prose scanner leaves the two gates describing ids differently again; RUN 173 changed one
+// definition and used it in both places, so the same sentence must be accepted by the evidence gate too.
+{
+  const root = await newRoot('evidence-paren')
+  const A = await boot(root)
+  await hire(A.kernel)
+  tick += 10
+  const card = A.kernel.records.put({ track: 'propositions', kind: 'proposition', title: 'evidence paren', body: '命题：3+3=6' })
+  const codes = qualityMod.QUALITY_CODES
+  const good = qualityMod.checkEvidencePointers({
+    evidence: ['Members/r-1/Propos/' + card.id + '.md（RUN14 复核过的卡，结尾是中文标点）'],
+    records: A.kernel.records, codes,
+  })
+  ok(good && good.ok === true && good.resolved.length === 1 && good.resolved[0].cardId === card.id,
+    '§5 ★★ the evidence write-gate accepts a TRUE pointer followed by the member\'s Chinese punctuation',
+    { ok: good && good.ok, resolved: good && good.resolved, unknown: good && good.unknown })
+  const bad = qualityMod.checkEvidencePointers({
+    evidence: ['Members/r-1/Propos/run19-not-a-record.md（这是编的）'],
+    records: A.kernel.records, codes,
+  })
+  ok(bad && bad.ok === false && bad.unknown.length === 1 && bad.unknown[0].cardId === 'run19-not-a-record'
+     && !String(bad.unknown[0].cardId).includes('（'),
+    '§5 …and still names a FABRICATED pointer, with the id free of the member\'s punctuation',
+    { ok: bad && bad.ok, unknown: bad && bad.unknown })
+}
+
 console.log('\n=== VMU RUN 173 CITATION ID: ' + passed + ' passed, ' + failed + ' failed ===')
 if (failed > 0) { for (const f of failures) console.error('FAIL ' + f); process.exit(1) }

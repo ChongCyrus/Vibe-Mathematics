@@ -12986,7 +12986,7 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 
 ### 273.4 机器化
 
-- 新建 `tests/vmu-run173-citation-id.test.mjs` **18/0**：§0 四条源码口径（捕获组／截断／裸 id 归一大器／两个裸面都用它）；§1 **真实指针 + 全角括号 ⇒ 通过**（run 18 的误判反向钉住），且 `missing` 里没有任何 id/path 带 `（`；§2 **编造指针 + 全角括号 ⇒ 仍拒**，`id` 干净（`run18-not-a-record`）、`path` 保留 `#§3`、不含 `（`；§3 自由文本证据（`r-1 的命题卡`）不被指控；§4 `id.md#anchor` 仍可解、不存在的裸 id 仍报 `no-such-record`。
+- 新建 `tests/vmu-run173-citation-id.test.mjs` **20/0**：§0 四条源码口径（捕获组／截断／裸 id 归一大器／两个裸面都用它）；§1 **真实指针 + 全角括号 ⇒ 通过**（run 18 的误判反向钉住），且 `missing` 里没有任何 id/path 带 `（`；§2 **编造指针 + 全角括号 ⇒ 仍拒**，`id` 干净（`run18-not-a-record`）、`path` 保留 `#§3`、不含 `（`；§3 自由文本证据（`r-1 的命题卡`）不被指控；§4 `id.md#anchor` 仍可解、不存在的裸 id 仍报 `no-such-record`；§5 **另一个门（`evidence` 的写入闸）读同一条规则**：真实指针 + 中文标点 ⇒ `resolved` 命中该卡，编造指针 ⇒ `unknown` 且 `cardId` 不含 `（`——修一个门时两个门必须一起说同一种"id 是什么"。
 - 定向回归 `--only` 0 红：paper 11/0（含 `vmu-paper-quality` 57/0、`vmu-f3-f4-paper-integrity` 50/0、`vmu-wave2-f3-f4-paper-gates` 38/0、`v4-final-paper.mutants` 全变体红）、evidence 1/0（`vmu-run95-part-evidence` 22/0）、citation 3/0（含本轮新套件）、run172 1/0（47/0）。
 - `tests/vmu-run155-audit-fixes.test.mjs` §0 的裸 id pin 随新归一器改写（原钉 `/^[A-Za-z][A-Za-z0-9_-]*$/.test(barePointer)`，现钉 `normalizeBareId`+`isBareCitation` 存在且被调用）⇒ 该套件 **63/0**；行为本身仍由 run173 §4 与 run155 的 `#锚点` 用例守住。
 - 收口：`regen-all --write/--check` 17/17、`update-doc-counts --write`（`JOBS total=722 suites=614 probes=108 | shipped tests/*.mjs=393`）、`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULES COVERAGE: PASS (0)`（锚点 86/86）、`RULE PARITY: PASS (0)`。
