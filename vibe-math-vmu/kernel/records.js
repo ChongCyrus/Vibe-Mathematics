@@ -195,7 +195,13 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   const headFields = listOf(sget(K.headFields), DEFAULTS[K.headFields])
   const bodyCapBytes = nat(sget(K.bodyCapBytes), DEFAULTS[K.bodyCapBytes])
   const expandThreshold = nat(sget(K.expandThreshold), DEFAULTS[K.expandThreshold])
-  const headMaxItems = nat(sget(K.headMaxItems), DEFAULTS[K.headMaxItems])
+  // ★★ RUN 163 / live-run-11 card rec-298: `headMaxItems` was read ONCE at construction, so `vibe_v5_set
+  // {key:"vmu.records.head.maxItems"}` answered `applied:"immediate"` and the next `put` still refused with
+  // 200/200 — the paper subsystem stayed dead for the rest of the run. The value is a WRITE-TIME policy (it decides
+  // whether the next put is admitted), not an identity of this face, so it is read at the moment it is enforced.
+  // `headMaxItemsAtStart` keeps the snapshot visible for readers who need to know what this kernel started with.
+  const headMaxItemsNow = () => nat(sget(K.headMaxItems), DEFAULTS[K.headMaxItems])
+  const headMaxItemsAtStart = headMaxItemsNow()
   const headSortRaw = sget(K.headSort)
   const headSort = HEAD_SORTS.includes(headSortRaw) ? headSortRaw : DEFAULTS[K.headSort]
   const noticeStyle = NOTICE_STYLES.includes(sget(K.noticeStyle)) ? sget(K.noticeStyle) : DEFAULTS[K.noticeStyle]
@@ -519,10 +525,11 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           'allowed kinds: ' + allowedKinds.join(', ') + ' (vmu.records.allowedKinds)', [K.tracks, K.requireSettled, K.allowedKinds], 'put')
       }
       mark(enforced, K.headMaxItems)
+      const headMaxItems = headMaxItemsNow()
       if (headMaxItems > 0 && liveIds(track).length >= headMaxItems) {
         mark(fired, K.headMaxItems)
         throw deny('VMU_QUOTA_EXCEEDED', 'track "' + track + '" is full: ' + liveIds(track).length + '/' + headMaxItems + ' live records (vmu.records.head.maxItems)',
-          'compact or remove records, or raise vmu.records.head.maxItems — the ledger never evicts silently (vmu.records.head.maxItems)', [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems], 'put')
+          'this limit is read at WRITE time, so raising it with vibe_v5_set {key:"vmu.records.head.maxItems", value:<bigger>} takes effect on the NEXT put (no restart); or compact/remove records — the ledger never evicts silently (vmu.records.head.maxItems)', [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems], 'put')
       }
       const bodyText = String(body === undefined || body === null ? '' : body)
       const bytes = bytesOf(bodyText)
@@ -899,7 +906,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         registry: universe,
         caps: {
           tracks: tracks.slice(), allowedKinds: allowedKinds.slice(), headFields: headFields.slice(), bodyCapBytes, expandThreshold,
-          headMaxItems, headListAt, headSort, noticeStyle, chunkedReturn, slugPolicy, slugMaxLength, conflictSuffix,
+          headMaxItems: headMaxItemsNow(), headMaxItemsAtStart,
+          headMaxItemsMeans: 'headMaxItems is read at WRITE time (raise it with vibe_v5_set and the NEXT put sees the new number); headMaxItemsAtStart is what this kernel was constructed with, for comparison',
+          headListAt, headSort, noticeStyle, chunkedReturn, slugPolicy, slugMaxLength, conflictSuffix,
           keepEvery, meetingKeepEvery, permanentMarker, retentionMaxBytes, tierThreshold, trashRetainDays, trashAutoPurge,
           trashCountInQuota, historyDepth, historyStoreMode, chunkThreshold, chunkBytes, allowedSchemes, verifyExists,
           fingerprintPolicy, requireSettledRecords: requireSettled, pointerPropagation, truncateMode,

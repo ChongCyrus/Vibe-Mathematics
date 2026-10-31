@@ -2780,3 +2780,45 @@ ARTEFACT，而 `render` 写的 meta 行 body 也复制了 `id`/`target`/`status`
 
 机器化：`tests/vmu-run162-addressing.test.mjs` 33/0；T1 TOTAL 643  PASS 643  FAIL 0  (suites 579 · probes 64)；
 门禁五绿（coverage 86/86）。文档：`docs/acceptance/phase12-v5r-rules-conformance.md` §262。
+
+## ROUND 166 — RUN 163: the rule's vote floor counts the institute's seats, and the attendance floor keeps counting the room
+
+Live run 11 (tarball `6461fb16`, a `-KeepWorkspace` continuation of the preserved SLV workspace, 仓库外/实测) pressed
+rules 50–51 and the
+quorum floor's NEGATIVE branch. The floor did not exist: `rec-297` measured `m30` (two invitees) at
+`required:2` and `m32` (one invitee) at `required:1` — inviting fewer people LOWERED the threshold, so
+`VMU_MEETING_QUORUM_LOST` was arithmetically unreachable, and the chair could carry a ruling alone.
+
+The fix is NOT one number. `required`/`met` answer "may this house transact at all" and gate `vote()`/`close()`,
+so they must stay bounded by the meeting's own roster — the first cut used the institute number there and the
+kernel's own `vmu-motion-box` suite died with `quorum is not met: 2/3` (a two-seat meeting inside a three-seat
+institute can never fill up). So the reading now carries TWO named floors:
+
+- `required` + `met` + `capUniverse` + `universeSource:"roster"` = the ATTENDANCE floor;
+- `voteFloor.effective` (denominator `voteFloor.eligibleUniverse` = the institute's voter seats,
+  alongside `voteFloor.invitedEligible` = this meeting's eligible invitees) = the rule's 表决 floor (L47),
+  and that is the number `vibe_v5_verdict_final` gates on (`voteFloorGate` reads it, and reports the
+  attendance floor separately as `attendanceFloor`, which never gates a ruling).
+
+Measured after the change: a debate that invited one member still requires `voteFloor.effective:3`, and a
+ruling signed by two seats is refused with `VMU_MEETING_QUORUM_LOST` — "signed by 2 of the 3 seat(s) the vote
+floor requires (rule L47 …)".
+
+The other three cards from the same run, each a face that admitted a limit and then behaved as before:
+
+- `rec-298`: `vmu.records.head.maxItems` was read once at construction, so `vibe_v5_set` reported
+  `applied:"immediate"` and nothing changed — the paper track stayed at 200/200 and the whole paper subsystem
+  was unusable for the rest of the run. The limit is now read at WRITE time (`headMaxItemsNow()`), the start-up
+  snapshot is a separate reading (`headMaxItemsAtStart`), and the refusal says the raise takes effect on the
+  NEXT put.
+- `rec-299`: `order` silently dropped `members`, while `VMU_FLOOR_OUT_OF_ORDER`'s hint pointed at `order` as
+  the way to reorder. `order` now refuses `member`/`members` BY NAME (it has no write path) and the hint names
+  the path that does write the queue (`action=invite { …, members:[…] }`).
+- `rec-300`: `status.procedureProgress.queued` read as "people still waiting" while it is the raw length of the
+  floor queue. It now reports `waitingNow` / `queuedAbsent` / `queuedAbsentList` beside it, and `means` says
+  which is which.
+
+Machinised in `tests/vmu-run163-run11-fixes.test.mjs` (34/0), with the older pins翻新 where the truth changed
+(run162 §5, verdict-ask §5, run160 §4, run17 R23). Gates: `regen-all --check` 17/17, PREFLIGHT/DOC LINT/RULE
+PARITY/RULES COVERAGE all PASS (86/86), full T1 644/644 (suites 580 · probes 64), log
+`/d/_tmp/t1-r207-run163.log`.

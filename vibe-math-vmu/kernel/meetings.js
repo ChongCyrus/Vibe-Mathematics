@@ -657,6 +657,15 @@ function procedureProgressOf(m) {
   const speeches = entries.filter((e) => e && e.kind === 'speech').length
   const motions = m && Array.isArray(m.motions) ? m.motions.length : 0
   const queued = m && Array.isArray(m.queue) ? m.queue.length : 0
+  // ★★ RUN 163 / live-run-11 card rec-300: `queued` was read as "people waiting to speak" and compared against
+  // `floor.waiting:0` / `queueRead.presentWaiters:1` from the speech receipt, so the same meeting looked like it had
+  // two different queues. `queued` is the RAW length of the floor queue (it counts members who are not present, and it
+  // can hold entries that never take a turn); `waitingNow` counts the queue entries that are PRESENT (the ones who can
+  // actually take a turn now) and `queuedAbsent` names the difference. Three counts, each with one meaning.
+  const queueIds = m && Array.isArray(m.queue) ? m.queue.map((x) => String(x)) : []
+  const presentSet = m && m.present && typeof m.present.has === 'function' ? m.present : null
+  const waitingNow = presentSet ? queueIds.filter((x) => presentSet.has(x)).length : null
+  const queuedAbsent = presentSet ? queueIds.filter((x) => !presentSet.has(x)) : null
   // ★ LIVE RUN 118 (F-118a): presence is a SET (`m.present.size`) — the quorum reader knows that, this one asked
   // `Array.isArray(...)` and therefore reported 0 right after a successful `attend` that the same kernel answered as
   // present:1. Two readers of one fact must read it the same way, or one of them is quietly wrong.
@@ -667,15 +676,20 @@ function procedureProgressOf(m) {
     skeletonSteps: steps.length,
     skeletonBinding: (skeleton && typeof skeleton.binding === 'string') ? skeleton.binding
       : ((skeleton && skeleton.procedure && typeof skeleton.procedure === 'object' && typeof skeleton.procedure.binding === 'string') ? skeleton.procedure.binding : null),
-    speeches, motions, queued, present,
+    speeches, motions, queued, waitingNow,
+    queuedAbsent: queuedAbsent === null ? null : queuedAbsent.length,
+    queuedAbsentList: queuedAbsent === null ? null : queuedAbsent.slice().sort(),
+    present,
     advancing: speeches + motions + queued > 0,
     // ★★ ROUND 120 (E36): every field here is a COUNT, and the sentence must say so field by field — a reader who
     // mistook `skeletonSteps` for "the step we are on" would read a recommendation as a progress bar.
     means: 'the procedure is a RECOMMENDATION, not a gate: every field here is a COUNT of what is on record — ' +
       'skeletonSteps counts the steps the recommended skeleton LISTS (a property of the recommendation, not progress ' +
-      'through it), speeches counts speech entries in the minutes, motions counts motions raised, queued counts ' +
-      'members waiting on the floor queue, present counts seated members, and advancing is true when any of those ' +
-      'counts is above zero. None of them is a step index: the framework never holds a meeting to a step and would ' +
+      'through it), speeches counts speech entries in the minutes, motions counts motions raised, queued counts the ' +
+      'RAW length of the floor queue (entries, not people: it includes members who are not present and entries that ' +
+      'never take a turn — read waitingNow for the queue entries who ARE present and can take a turn now, and ' +
+      'queuedAbsentList for the names held in the queue without attendance), present counts seated members, and ' +
+      'advancing is true when any of those counts is above zero. None of them is a step index: the framework never holds a meeting to a step and would ' +
       'have to invent one to report it',
   }
 }
@@ -910,15 +924,40 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     // bound that shrinks to whoever showed up is not a lower bound. At `quorumCap: 0` nothing is capped.
     const needFromSetting = Math.max(needMin, needRatio)
     const capUniverse = (() => {
-      if (!m.roster.length) return { n: 0, source: 'empty-roster' }
-      if (!K.eligibleSeats.length) return { n: m.roster.length, source: 'roster (no voter seats declared)' }
       const list = (members && typeof members.roster === 'function') ? (members.roster() || []) : []
       const seatOf = new Map(list.filter(Boolean).map((x) => [String(x.id), String(x.slot)]))
-      const eligible = m.roster.filter((r) => K.eligibleSeats.includes(seatOf.get(String(r))))
+      const invited = m.roster.filter((r) => K.eligibleSeats.includes(seatOf.get(String(r))))
       // A roster id the members service cannot resolve is COUNTED AS ELIGIBLE: shrinking the denominator on a lookup
       // miss would quietly make the meeting easier to close, which is the failure direction that matters.
       const unresolved = m.roster.filter((r) => !seatOf.has(String(r))).length
-      return { n: eligible.length + unresolved, source: unresolved ? 'seats + unresolved roster ids' : 'seats' }
+      const invitedEligible = invited.length + unresolved
+      if (!m.roster.length) return { n: 0, source: 'empty-roster', invitedEligible: 0, universeSource: 'empty-roster', instituteSeats: null }
+      if (!K.eligibleSeats.length) {
+        return { n: m.roster.length, source: 'roster (no voter seats declared)', invitedEligible, universeSource: 'roster', instituteSeats: null }
+      }
+      // ★★ RUN 163 / live-run-11 card rec-297 (rule L47): the floor is a property of the INSTITUTE, not of the
+      // invitation list. Until this change the universe was `m.roster ∩ eligibleSeats`, so the chair could LOWER the
+      // threshold by inviting fewer members (measured: required 2 → 1 when only one member was invited) and
+      // `VMU_MEETING_QUORUM_LOST` became arithmetically unreachable. 「院士+常驻研究员数」 counts the members the
+      // institute HAS, not the members this one meeting happened to invite, so a smaller invitation list must never
+      // shrink the denominator.
+      //
+      // ★ BUT THE TWO QUESTIONS ARE NOT THE SAME ONE, and RUN 163's first cut conflated them again from the other
+      // side: `met` (present >= required) gates `vote()` and `close()`, i.e. it asks "may this house transact at all",
+      // and THAT number must stay bounded by the meeting's own roster — otherwise a two-seat meeting in a three-seat
+      // institute could never vote, because attendance can never exceed the people who were invited (measured: the
+      // kernel's own `vmu-motion-box` suite died with `quorum is not met: 2/3` the moment the institute number was
+      // used for `met`). The rule's floor is about 表决人数 — how many SEATS signed a ruling — so it is reported
+      // separately as `voteFloor.effective`, and that is the number `vibe_v5_verdict_final` gates on.
+      const institute = list.filter(Boolean).filter((x) => K.eligibleSeats.includes(String(x.slot))).length
+      return {
+        n: invitedEligible,
+        source: unresolved ? 'seats + unresolved roster ids' : 'seats',
+        invitedEligible,
+        universeSource: 'roster',
+        // null ⇒ no institute reading was taken (vmu.meetings.quorumFloorSource is not "universe")
+        instituteSeats: (K.quorumFloorSource === 'universe' && institute > 0) ? institute : null,
+      }
     })()
     // ★ `universe` source: no declared number ⇒ the floor is the eligible universe; a declared number NARROWS it (min).
     // At `setting` the old formula is untouched, so every existing deployment (and every existing assertion) stands.
@@ -928,6 +967,16 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       ? (needFromSetting > 0 ? Math.min(needFromSetting, capUniverse.n) : capUniverse.n)
       : needFromSetting
     const need = K.quorumCap > 0 ? Math.min(needUncapped, K.quorumCap, capUniverse.n) : needUncapped
+    // ★★ THE RULE'S OWN FLOOR (「表决人数」), kept separate from `need`/`met` above: its denominator is the institute
+    // when `vmu.meetings.quorumFloorSource = "universe"`, so a narrow invitation list cannot lower how many SEATS a
+    // ruling needs. `vibe_v5_verdict_final` reads `voteFloor.effective`; `met` never does.
+    const voteUniverse = capUniverse.instituteSeats == null
+      ? capUniverse.n
+      : Math.max(capUniverse.instituteSeats, capUniverse.invitedEligible)
+    const voteUncapped = K.quorumFloorSource === 'universe'
+      ? (needFromSetting > 0 ? Math.min(needFromSetting, voteUniverse) : voteUniverse)
+      : needFromSetting
+    const voteNeed = K.quorumCap > 0 ? Math.min(voteUncapped, K.quorumCap, voteUniverse) : voteUncapped
     // ★ PHASE 12 / LIVE RUN 7 (agent feedback item f): `met` was `present.size >= need`, so with the floor at 0 it was
     // ALWAYS true — "未到齐" (present 1 of roster 2) and "法定人数" were decoupled readings of one meeting, and the
     // accepted rule 「未到齐则法定人数不成立」 had no landing point. ★ FIRST ATTEMPT (kept as a recorded lesson): folding
@@ -940,7 +989,15 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     const met = m.present.size >= need
     return {
       cap: K.quorumCap, capUniverse: capUniverse.n, capUniverseSource: capUniverse.source,
-      capPolicy: K.quorumCap > 0 ? 'min(quorumMin/quorumRatio need, vmu.meetings.quorumCap, eligible members in the roster)' : 'uncapped (vmu.meetings.quorumCap = 0)',
+      // ★★ RUN 163 / rec-297: `required`/`met` answer the ATTENDANCE question (may this house transact at all) and stay
+      // bounded by this meeting's roster; the rule's 表决 floor is reported in `voteFloor` with the INSTITUTE as its
+      // denominator. Both readings are named so a reader never has to guess which number a receipt means.
+      universeSource: capUniverse.universeSource === undefined ? null : capUniverse.universeSource,
+      invitedEligible: capUniverse.invitedEligible === undefined ? null : capUniverse.invitedEligible,
+      capUniverseMeans: capUniverse.universeSource === 'institute'
+        ? 'the denominator is the INSTITUTE (every member seated in a voter seat = ' + String(capUniverse.n) + '), so inviting fewer people cannot lower the floor (this meeting invited ' + String(capUniverse.invitedEligible) + ' eligible member(s))'
+        : 'the denominator is this meeting\'s eligible members (' + String(capUniverse.n) + '), because the ATTENDANCE floor can never exceed who was invited — the rule\'s vote floor is reported separately in voteFloor',
+      capPolicy: K.quorumCap > 0 ? 'min(quorumMin/quorumRatio need, vmu.meetings.quorumCap, eligible members of this roster) — the ATTENDANCE floor; the rule\'s 表决 floor is voteFloor.effective' : 'uncapped (vmu.meetings.quorumCap = 0)',
       meeting: m.id, mode: K.attendanceMode, present: m.present.size, roster: m.roster.length,
       // ★★ PHASE 12 / R22 (the institute's own run-17 report, item 3): `present:1` at open() while nobody had
       // attended — because open() seats the chair in the present set. The number is right about "may this house
@@ -999,26 +1056,32 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // formula is 「min(用户设置数, 院士+常驻研究员数)」, and every input is already in scope here, so the derivation is
       // reported instead of left for a reader to infer: a 0 now says WHICH input was 0.
       voteFloor: {
-        setting: needMin, ratioNeed: needRatio, eligibleUniverse: capUniverse.n, cap: K.quorumCap,
+        setting: needMin, ratioNeed: needRatio, eligibleUniverse: voteUniverse, cap: K.quorumCap,
         source: K.quorumFloorSource,
+        // ★ rec-297: the rule's 表决 floor counts the institute's voter seats, not this meeting's invitation list.
+        universeSource: capUniverse.instituteSeats == null ? capUniverse.universeSource : 'institute',
+        invitedEligible: capUniverse.invitedEligible === undefined ? null : capUniverse.invitedEligible,
+        universeMeans: capUniverse.instituteSeats == null
+          ? 'the vote floor\'s denominator is this meeting\'s eligible members (' + String(voteUniverse) + '): vmu.meetings.quorumFloorSource is not "universe"'
+          : 'the vote floor\'s denominator is the INSTITUTE\'s voter seats (' + String(voteUniverse) + '), so inviting fewer people cannot lower the floor (this meeting invited ' + String(capUniverse.invitedEligible) + ' eligible member(s))',
         sourceMeans: K.quorumFloorSource === 'universe'
           ? 'the floor is the eligible universe (chair + residents, vmu.meetings.eligibleSeats); a positive quorumMin/quorumRatio only NARROWS it (min) — this is the rule min(用户设置数, 院士+常驻研究员数)'
           : 'the floor exists only when quorumMin/quorumRatio declare a number; 0/0 means the deployment declared no floor',
-        effective: need,
+        effective: voteNeed,
         formula: K.quorumCap > 0
           ? 'min(max(quorumMin, ceil(quorumRatio*roster)), quorumCap, eligible universe)'
           : 'max(quorumMin, ceil(quorumRatio*roster)) [uncapped: quorumCap = 0]',
-        zeroBecause: need === 0
+        zeroBecause: voteNeed === 0
           ? (K.quorumFloorSource === 'universe'
-            ? (capUniverse.n === 0 ? 'the eligible universe is empty (no chair and no resident seat on the roster), so the floor is 0 by arithmetic, not by policy' : null)
+            ? (voteUniverse === 0 ? 'the eligible universe is empty (no chair and no resident seat in the institute), so the floor is 0 by arithmetic, not by policy' : null)
             : (needMin === 0 && needRatio === 0 ? 'vmu.meetings.quorumMin and quorumRatio are both 0: the deployment declared no floor' : null))
           : null,
         // ★★ PHASE 12 / R23 (the institute's own run-17 report, item 7): `effective:0` reads as "the bar is very
         // low" when it means "this deployment set no bar at all". The cause is named so a reader does not have to
         // infer it from `zeroBecause` existing or not.
-        effectiveNote: need === 0
+        effectiveNote: voteNeed === 0
           ? 'NO lower bound is in force (effective 0 means the bar is ABSENT, not cheap): read zeroBecause for which input was 0'
-          : 'the lower bound for a ruling is min(max(quorumMin, ceil(quorumRatio*roster)), quorumCap, eligible universe) — see formula',
+          : 'the lower bound for a ruling is min(max(quorumMin, ceil(quorumRatio*roster)), quorumCap, eligible universe) — see formula; this is 表决人数 (rule L47), and it is NOT the attendance floor (`required`)',
       },
       emergencyRatio: K.emergencyQuorumRatio,
       // ★ G7 (real machine): "unanswered" used to mean "not in the PRESENT set", so after two votes it still listed a
@@ -1536,7 +1599,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           'the floor queue is not at your turn: ' + String(member) + ' is #' + (queuedMe + 1) + ' of ' + waiters.length + ' present waiter(s)',
           'the effective order among PRESENT members is [' + waiters.join(', ') + '] (mode ' + String(orderEff.mode) + ', from ' + String(orderEff.source) + ')'
           + (skippedAbsent.length ? '; ahead of you and NOT present (so not holding a turn): [' + skippedAbsent.join(', ') + ']' : '')
-          + '; the chair may reorder with vibe_v5_meeting { action: "order", meeting: "' + String(m.id) + '", ... }, otherwise wait until it is your turn',
+          + '; the queue is WRITTEN by invitations — the chair puts members on it in a given order with vibe_vmu_meeting { action: "invite", id: "' + String(m.id) + '", by:"<chair>", why:"…", members:["r-1","r-2"] } (action "order" only READS it back), and the order MODE is the chair\'s via flow/overrideorder when the deployment declares vmu.meetings.orderMode — otherwise wait until it is your turn',
           enforced)
       }
       // speech time

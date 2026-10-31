@@ -267,9 +267,13 @@ console.log('§4 (4) verdict_final 读卡自己的 Lean 作业：fidelity.lean �
       action: 'convene', member: 'r-chair', agenda: ['run160 lean-evidence'], members: ['r-chair', 'r-1'],
     })
     const meetingId = String((opened.meeting && (opened.meeting.id || opened.meeting)) || opened.id || '')
+    // RUN 163 made the floor bite by arithmetic: the denominator is the INSTITUTE's voter seats (chair + 2 members
+    // = 3), so a ruling signed by r-1 alone is 2 of 3. Declaring it partial is the sanctioned shape for that
+    // (and it is what a reduced roster must do) — the lean-evidence path under test is unchanged.
     const finals = await call(specs, 'vibe_v5_verdict_final', {
       meeting: meetingId, proposition_id: 'rec-160', owner: 'r-1',
       verdicts: [{ member: 'r-1', p: 1, reason: 'run160 lean evidence pin' }],
+      partial: true, why: 'run 160 pins the card-read Lean evidence on a two-seat probe meeting',
     })
     const fidelity = finals.fidelity || {}
     ok(finals.ok !== undefined, '(4) verdict_final 有回执', finals.ok === false ? finals.message : undefined)

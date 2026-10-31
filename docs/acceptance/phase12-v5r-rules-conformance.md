@@ -12458,3 +12458,117 @@ settled/exit 0/passed）→ 辩论会 `m20` 归档 → 两位成员一致裁定 
 3. `ports.watchdogs:false` 部署下「接线但真的 0 个目标」仍只能靠单测覆盖。
 4. `editor:"office"` 代定稿仍是具名缺口。
 5. 宿主 `pwsh` 在第六至第十轮都不可用（`0xC0000142`），代理只能改走文件工具与 `math_computation{engine:"python"}`。
+
+## §263 — RUN 163：第十一次真机跑（run 11）压规则 50–51 与人数闸负向，抓出四条「一面承认、一面照旧」（RUN 163）
+
+第十一次真机跑用 `6461fb16` 的 tarball 在同一个工作区上续跑（`-KeepWorkspace`，`D:\_tmp\slv-phase5\slvp157-ws`），
+目标是把规则 50–51 的五步流程与「人数闸负向」压一遍。这一轮**没有拿到报告文件**（代理把时间用在了主线与反馈上，
+`FEEDBACK10.md`/`SIM-REPORT10.md` 都没写），反馈以 `kind:'feedback'` 卡的形式落在记录库里 —— 这是本轮唯一的流程
+缺口，也是四条硬缺陷的来源：`rec-297`（人数闸的分母是本场邀请列表）、`rec-298`（`vmu.records.head.maxItems`
+写了不生效 ⇒ 论文子系统整轮不可用）、`rec-299`（`order` 静默丢弃 `members`，而失败提示又指向它）、
+`rec-300`（`queued` 被读成「还在等的人数」）。
+
+### 263.1 run 11 的读数
+
+- tarball `build=6461fb16 6.69 MB`；转录 `D:/wd/vibemath开发/_oneoff/vm-slv/full-1031-125611.jsonl`
+  （5 884 837 B / 13 016 行）；`DRIVE exit=0`、`durationSec 888`、`tokenTotal 9 779 768 / 24 000 000`
+  （`tokenCapHit:false`）、根会话 `toolCalls 104`、`transcriptEvents 450`；机器读数
+  `NO_FENCE=0 · UNKNOWN_FIELD=0 · FIELD_NOT_APPLICABLE=0 · BAD_JSON=0`；`slv-inspect` ⇒
+  **`SUMMARY: 1 session(s), 0 with RED checks`**、`CLOSURE cast=true (from 8 turn receipt(s))`；日志戳 `20261031-131144`。
+- 主线：`rec-288`（三个连续奇数之和 = `6n+9`，Lean `run10_three_odd_sum` passed）→ 辩论会 `m30`/`m31`/`m32`
+  → 裁定 1 → Verified `rec-290`；规则 50–51 的五步（`hand` → `order` 读队 → `invite` → `invitedspeak`/`speak`
+  → 发言入 minutes）全部走通；结题会 `m33`（票板 `bx-10`，`vibe_vmu_vote` 三人）⇒
+  `close` 回执 `closureVote {cast:true, confirmed:true, votesCast:3}` 并归档。
+- **本轮唯一主线失败**：论文 `paper-p15` 停在 `reviewing`（互审 1/2）—— 第二次 `review` 被
+  `VMU_QUOTA_EXCEEDED track "paper" is full: 200/200 live records` 拒，而抬上限的 `vibe_v5_set` 回执说
+  `applied:"immediate"` 却什么都没变（`rec-298`）。这是「设置回执自述即时生效、机制却只在构造期读一次」的
+  典型假话，且它的后果是**整个论文子系统不可用**，不只是丢一条记录。
+
+### 263.2 四条反馈卡（`kind:'feedback'`，rec-297 … rec-300）
+
+1. **rec-297（机制，规则 47 真失效）**：`m30`（邀 r-1、r-2）`floor.gate {required:2, signed:3}`；`m32`（只邀 r-1）
+   `floor {minVotes:1, eligibleUniverse:1, roster:1}`、`gate {required:1, signed:2}` ⇒ **主席少邀人就把门槛从 2
+   降到 1**，`VMU_MEETING_QUORUM_LOST` 在 3 席所里按算术恒不可达。代理的判词是「这条闸是装饰性的」。
+2. **rec-298（机制）**：见 263.1 的主线失败；`status.paper:200` 与 `caps` 读数在抬上限前后一模一样。
+3. **rec-299（提示词/工具面）**：`order { members:["r-1","r-2"] }` 回 `ok:true` 且只报当前顺序（真实序
+   `["r-2","r-1"]`），`members` 被**静默丢弃**、无 `unapplied`；而 `VMU_FLOOR_OUT_OF_ORDER` 的 hint 又写
+   「the chair may reorder with vibe_v5_meeting { action: "order", ... }」—— 提示词指向一个做不到的动作。
+4. **rec-300（同一事实两个面）**：`status.procedureProgress {speeches:5, queued:2}` 与 `speak` 的
+   `floor.waiting:0`、`queueRead.presentWaiters:1` 并现：`queued` 被读成「还在等的人数」。
+
+### 263.3 修法（四条，全部改机制或改真话，不放宽门）
+
+- **rec-297（两处，缺一不可）**：
+  - `vibe-math-vmu/kernel/meetings.js` 的 `quorumOf` 在 `vmu.meetings.quorumFloorSource = "universe"`
+    时把**规则 L47 的表决闸**分母改成**在册可投票席位**（`members.roster() ∩ vmu.meetings.eligibleSeats`），
+    回执 `voteFloor.universeSource:"institute"`；旧口径（本场名册 ∩ 可投票席位）改名
+    `voteFloor.invitedEligible` 仍可读，并加 `voteFloor.universeMeans`：「the vote floor's denominator is the
+    INSTITUTE's voter seats (N), so inviting fewer people cannot lower the floor (this meeting invited M
+    eligible member(s))」。
+  - **★ 但「出勤闸」与「表决闸」不是同一个数**，第一版把两者合成一个数，立刻被内核自己的套件打回来：
+    `required`/`met` 管的是「这间会能不能开始做事」，它门住 `vote()` 与 `close()`，**必须**受本场名册约束；
+    否则「两席的会」在「三席的院」里永远凑不齐 present（实测 `vmu-motion-box.test.mjs` 当场
+    `quorum is not met: 2/3`）。所以现在两个数分开报：
+    - `required`/`met`/`capUniverse`/`universeSource`（`'roster'`）= **出勤闸**，语义回到 RUN 163 之前；
+    - `voteFloor.effective` = **规则 L47 的表决闸**，`voteFloor.eligibleUniverse` 是院席位，
+      `voteFloor.invitedEligible` 是本场受邀的可投票人数；
+    - `vibe-math-vmu/packs/v5r/tools.js` 的 `voteFloorGate` 读 `quorum().voteFloor.effective`（新增
+      `voteFloorOf(x)`），回执另报 `attendanceFloor`（= `q.required`）并明说它**不门住裁决**；`means` 改写
+      「the floor is kernel.meetings.quorum().voteFloor.effective … its denominator is the INSTITUTE's voter seats
+      … the separate attendance floor is reported as attendanceFloor and never gates a ruling」。
+  - **负向因此可达**（实测）：只邀 1 人的辩论会，`voteFloor.effective` 仍是 3、签 2 席即
+    `VMU_MEETING_QUORUM_LOST`（message 自报「signed by 2 of the 3 seat(s) the vote floor requires」）。
+  - 同步改写：`vibe-math-vmu/settings/schema.js` 的 `vmu.meetings.quorumCap` 文档（「可投票成员数＝**在册**可投票
+    席位〔RUN 163 起；不是本场邀请列表〕」）、`capPolicy`、`voteFloorGate.bitesWhen`。
+- **rec-298**：`vibe-math-vmu/kernel/records.js` 把 `headMaxItems` 从「构造期常量」改成**写时热读**
+  （`headMaxItemsNow()`），构造期快照单列 `headMaxItemsAtStart`；拒绝语 hint 明说「this limit is read at WRITE
+  time, so raising it with vibe_v5_set {key:"vmu.records.head.maxItems", …} takes effect on the NEXT put (no
+  restart)」；`records.status().caps` 同时报两个数与 `headMaxItemsMeans`。
+- **rec-299**：`vibe-math-vmu/tools/meeting.js` 的 `order` 见 `member`/`members` **具名拒**
+  `VMU_INVALID_ARGUMENT`（「action order only READS the floor queue … this action has no write path」），hint 给
+  可达路径（`action=invite { id, by:"<chair>", why:"…", members:[…] }` 按给定顺序写队列；要改发言模式用
+  `flow`/`overrideorder`，需部署声明 `vmu.meetings.orderMode`）；kernel 的 `VMU_FLOOR_OUT_OF_ORDER` hint 改成
+  「the queue is WRITTEN by invitations … (action "order" only READS it back)」。
+- **rec-300**：`procedureProgress` 增 `waitingNow`（在场且能轮到的人数）、`queuedAbsent`/`queuedAbsentList`，
+  `means` 明说 `queued` 是队列**原始长度**（不是人数）—— 同一事实不再两个面说两种话。
+
+### 263.4 机器化
+
+- 新增 `tests/vmu-run163-run11-fixes.test.mjs` **34/0**：§0 十条源码口径；§1 上限热读（上限 2 ⇒ 第三条被
+  `VMU_QUOTA_EXCEEDED` 拒且 hint 说写时读；`vibe_v5_set` 抬到 4 后**同一次会话**里下一条写成功；`caps` 两数分得清）；
+  §2 `order` 见 `members`/`member` 具名拒 + hint 含 `action=invite` + 只读仍可用；§3 `queued:2`/`waitingNow:1`/
+  `queuedAbsentList:["r-1"]`；§4 **两道闸分开**：`q.voteFloor.universeSource==='institute'` /
+  `q.voteFloor.eligibleUniverse===3` / `q.voteFloor.effective===3` 与 `q.required===q.roster`（出勤闸跟名册），
+  并实测签 2 席需 3 席 ⇒ `VMU_MEETING_QUORUM_LOST`。
+- **旧 pin 按新真话翻新（不是放宽）**：
+  - `tests/vmu-run162-addressing.test.mjs` §5 从「负向按算术不可观测」改写为「分母是院席位、负向可达」，
+    加「只邀 1 人开得起来」「收窄后 `voteFloor.effective` 仍 3」「`partial:true` 逃逸仍留
+    `satisfiedBy:false`/`escapedBy`」，45/0。
+  - `tests/vmu-verdict-ask.test.mjs` §5 原断言「无辩论的会不阻断普通裁决」，RUN 163 后**必须分清两道闸**：
+    coverage 闸（谁辩论了：空集 ⇒ 没有缺失）与 L47 人数闸（几个席位签了）。现在钉的是「人数闸先按名具名拒、
+    拒绝语的算术可读（signed N of M）、`partial:true + why` 是合法形状且 `coverage.complete` 仍为 true、
+    `escapedBy:"partial"` 写进回执」，45/0。
+  - `tests/vmu-run160-run7-fixes.test.mjs` §4 的两席探针会判（两席所 3 个投票席位下只签 1 人）在旧真话下
+    被人数闸拒，改为 `partial:true, why`（这是「本会不足法定人数」的 sanctioned 形状），30/0。
+  - `tests/vmu-run17-findings.test.mjs` 的 R23 读数在「两个数分开」之后仍须成立：`effective:0` 是
+    「没有下限」（`zeroBecause` 指名是哪个输入为 0），非零时给公式句 —— 13/0。
+- 定向回归：`--only quorum` 2/0、`--only meeting` 32/0、`--only records` 4/0、`--only paper` 11/0、
+  `--only verdict` 5/0、`--only run141/152/160/161/162/163` 各 1/0（其中 run160 30/0、run162 45/0、run163 34/0）、
+  `--only v5r-tools` 1/0、`--only settings` 8/0、`--only prompt-` 24/0、`--only run8` 7/0、`--only run9` 13/0、
+  `--only run17` 13/0、`--only run36` 4/0、`--only motion-box` 1/0、`--only run30` 1/0、`--only run47` 3/0、
+  `--only run31` 7/0、`--only falsify` 13/0、`--only audit-` 162/0、`--only final-paper` 2/0。
+
+### 263.5 读数与门禁
+
+- `regen-all --write` 到不动点 → `--check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、
+  `RULE PARITY: PASS (0 problem(s))`、`RULES COVERAGE: PASS (0 problem(s))`（86/86 锚点、86 DONE）。
+- 全量 T1：**TOTAL 644 PASS 644 FAIL 0（suites 580 · probes 64）**，文档改完后复跑同数字，日志 `/d/_tmp/t1-r208-run163-final.log`；`audit-declaration-criterion` 91/0。
+
+### 263.6 本轮仍未闭合的账
+
+- 代理没交第十一轮的 `SIM-REPORT10.md` / `FEEDBACK10.md`：反馈只能从记录库读，下一次简报要**把交报告写成
+  硬步骤**（收尾前先写文件再停），并加一条「收到任务先回一句话再动手」（`rec-301`）。
+- 论文轨 200 条的上限本身是部署设计（`vmu.records.head.maxItems`），本轮修的是「改了不生效」；真机下一次要
+  验证「抬上限后 paper 流程能继续把这篇推到定稿」。
+- `editor:"office"` 的定稿通道仍是**具名缺口**（回执自己说 that path is a named gap in this build），
+  规则 56 的「所办可以定稿」在真机上只有 `academician` 一条路。

@@ -143,7 +143,7 @@ const CORE_DEFS = Object.freeze([
 
   // ---- meetings (rules and mechanism only; "when to meet" and "what counts as stalled" are middleware)
   { key: 'vmu.meetings.quorumRule', type: 'enum', domain: ['m-unanimous', 'all-unanimous'], def: 'm-unanimous', hot: HOT.H2, who: 'role:chair', doc: '法定数规则（仅规则，不含"何时开会"）' },
-  { key: 'vmu.meetings.quorumCap', type: 'natural', def: 3, hot: HOT.H2, who: 'role:chair', doc: 'P3：法定数上限 m = min(用户设置数, 可投票成员数＝名册∩vmu.meetings.eligibleSeats)；参会人数不参与该式；0＝不设上限' },
+  { key: 'vmu.meetings.quorumCap', type: 'natural', def: 3, hot: HOT.H2, who: 'role:chair', doc: 'P3：法定数上限 m = min(用户设置数, 可投票成员数＝**在册**可投票席位〔全员名册∩vmu.meetings.eligibleSeats，RUN 163 起；不是本场邀请列表〕)；参会人数与邀请人数都不参与该式；0＝不设上限' },
   // ROUND 6 / target-4 verdict: `vmu.meetings.reconsiderFloor` was a CONFIRMED ORPHAN (zero readers) and has been
   // DELETED here (Round 6 close). The knob that actually works is `vmu.ballot.reopenFloor`; a second name with a
   // different semantic made a deployment believe there were two knobs when only one is wired. Removal order was

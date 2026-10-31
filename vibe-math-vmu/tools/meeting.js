@@ -722,6 +722,16 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'order') {
             const pid = sid(id)
             if (!pid) return meetingFieldRefusal('order')
+            // ★★ RUN 163 / live-run-11 card rec-299: `order` is a READ of the floor queue, and it used to SILENTLY IGNORE
+            // `member`/`members` — an agent passed members:["r-1","r-2"] expecting a reorder, got the unchanged queue
+            // back with ok:true, and reported the API as broken. A parameter that is declared for a neighbouring action
+            // and discarded here is exactly the "two readings of one call" this repository keeps removing.
+            const orderWantsMember = member !== undefined && member !== null && String(member) !== ''
+            if (orderWantsMember || Array.isArray(members)) {
+              return refused('VMU_INVALID_ARGUMENT',
+                'action order only READS the floor queue: `member`/`members` do not reorder anything here (this action has no write path)',
+                'to put members on the floor in a given order the CHAIR uses action=invite { id, by:"<chair>", why:"…", members:["r-1","r-2"] } — that writes the queue in EXACTLY the given order; to change the order MODE the chair uses action=flow … / action=overrideorder …, which need `vmu.meetings.orderMode` declared (a v5r deployment does not declare it, so they are refused by name)')
+            }
             const svc = svcOf()
             if (svc && typeof svc.orderView === 'function' && serviceHas(pid)) {
               return Object.assign({ ok: true, action, id: pid, registry: 'service' }, svc.orderView({ meeting: pid }))

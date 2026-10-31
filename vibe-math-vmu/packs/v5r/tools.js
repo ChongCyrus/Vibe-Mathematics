@@ -2022,7 +2022,14 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
       return { readable: false, required: null, satisfied: null, signed: null, signedBy: [], unsigned: null,
         means: 'the quorum() reading failed: ' + ((e && e.message) || String(e)) }
     }
-    const required = q && q.required !== undefined && q.required !== null ? Number(q.required) : 0
+    // ★★ RUN 163 (second cut): the rule's 表决 floor is the kernel's `voteFloor.effective` — its denominator is the
+    // INSTITUTE's voter seats, so a narrow invitation list cannot lower it. `required` (attendance, bounded by the
+    // meeting's roster) is deliberately NOT used here: it answers a different question and is reported beside this one
+    // so the two numbers can never be confused again.
+    const voteFloorOf = (x) => (x && x.voteFloor && x.voteFloor.effective !== undefined && x.voteFloor.effective !== null)
+      ? Number(x.voteFloor.effective)
+      : (x && x.required !== undefined && x.required !== null ? Number(x.required) : 0)
+    const required = voteFloorOf(q)
     // The signer set: every member whose number is in THIS tally (filed or chair-typed) plus the chair, who signs.
     const signedSet = new Set(provided)
     signedSet.add(chair)
@@ -2045,11 +2052,18 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     return { readable: true, required, satisfied, signed: signedBy.length, signedBy, unsigned,
       chairCounted: true,
       vacuous,
-      bitesWhen: 'it refuses exactly when some member the meeting names as an eligible voter has NOT filed a ruling (or when the eligible universe exceeds the seats that signed); with every eligible signer present the requirement is met by construction, so this run cannot reach VMU_MEETING_QUORUM_LOST — that is the arithmetic, not a disabled gate',
+      // ★★ RUN 163 / live-run-11 card rec-297: the denominator is now the INSTITUTE's eligible seats, so the sentence
+      // that used to say "this run cannot reach VMU_MEETING_QUORUM_LOST" is no longer true — a narrow invitation list
+      // no longer lowers the floor, and a debate whose electorate is narrower than the institute WILL lose it.
+      bitesWhen: 'it refuses exactly when the signers (the members whose number is in this tally plus the chair) are fewer than the floor kernel.meetings.quorum() reports — and because vmu.meetings.quorumFloorSource is "universe", that floor counts the INSTITUTE\'s voter seats, not this meeting\'s invitation list: convening a debate with fewer invitees does NOT lower it, so a narrower meeting reaches VMU_MEETING_QUORUM_LOST (measured: required 2 with 1 signature, and required 3 with 2 signatures)',
       uncovered,
-      eligibleUniverse: q && q.capUniverse !== undefined ? q.capUniverse : null,
-      formula: q && q.capPolicy ? q.capPolicy : null,
-      means: 'signed = the members whose number is in this tally PLUS the chair, who signs; the floor is the one kernel.meetings.quorum() computes for this meeting (the rule 「min(用户设置数, 院士+常驻研究员数)」) — it GATES this ruling: below it the call is refused by name, unless the chair deliberately rules on fewer seats and says why' }
+      eligibleUniverse: q && q.voteFloor && q.voteFloor.eligibleUniverse !== undefined ? q.voteFloor.eligibleUniverse : null,
+      universeSource: q && q.voteFloor && q.voteFloor.universeSource !== undefined ? q.voteFloor.universeSource : null,
+      invitedEligible: q && q.voteFloor && q.voteFloor.invitedEligible !== undefined ? q.voteFloor.invitedEligible : null,
+      // the attendance reading is printed too, NAMED, so `required` (the vote floor) can never be read as "who must show up"
+      attendanceFloor: q && q.required !== undefined ? q.required : null,
+      formula: q && q.voteFloor && q.voteFloor.formula ? q.voteFloor.formula : (q && q.capPolicy ? q.capPolicy : null),
+      means: 'signed = the members whose number is in this tally PLUS the chair, who signs; the floor is kernel.meetings.quorum().voteFloor.effective (the rule 「min(用户设置数, 院士+常驻研究员数)」, whose denominator is the INSTITUTE\'s voter seats, not this meeting\'s invitation list) — it GATES this ruling: below it the call is refused by name, unless the chair deliberately rules on fewer seats and says why; the separate attendance floor (who must show up) is reported as attendanceFloor and never gates a ruling' }
   })()
   if (voteFloorGate.readable === true && voteFloorGate.satisfied === false && !partial) {
     throw refuse('VMU_MEETING_QUORUM_LOST',
@@ -2205,6 +2219,8 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
         // answerable from the receipt instead of inferred.
         gate: {
           enforced: voteFloorGate.readable === true,
+          universeSource: voteFloorGate.readable === true ? (voteFloorGate.universeSource === undefined ? null : voteFloorGate.universeSource) : null,
+          invitedEligible: voteFloorGate.readable === true ? (voteFloorGate.invitedEligible === undefined ? null : voteFloorGate.invitedEligible) : null,
           code: 'VMU_MEETING_QUORUM_LOST',
           required: voteFloorGate.required,
           signed: voteFloorGate.signed,

@@ -15,8 +15,10 @@
 //   ④ an explicit `members:[…]` widens the ask and the receipt says which source was used (`askedSource`);
 //   ⑤ `vibe_v5_verdict_final` now REFUSES a partial ruling by name (listing who is missing), requires `why` when the
 //      chair deliberately rules on a partial set, and carries `coverage` so a reader can see who was asked/answered;
-//   ⑥ a meeting with no speeches does NOT block a plain proposition ruling (an empty debated set means nothing to
-//      enforce) — the anti-overfitting direction of ②;
+//   ⑥ a meeting with no speeches does NOT block a plain proposition ruling on COVERAGE grounds (an empty debated set
+//      means nobody is missing) — the anti-overfitting direction of ②; since RUN 163 the separate rule-L47 FLOOR gate
+//      still applies (its denominator is the institute's voter seats), so such a ruling must declare `partial` and the
+//      receipt shows `escapedBy:"partial"` while `coverage.complete` stays true;
 //   ⑦ the ask does NOT aggregate, does NOT touch the card, and does NOT hook meetings.close.
 //
 // RULE E: every collection assertion states its non-emptiness (or exact shape) in the same expression.
@@ -216,11 +218,35 @@ try {
     '★★ the aggregation is the rule\'s: different verdicts ⇒ the arithmetic mean (0.7 and 0.5 ⇒ 0.6)', fullSet.parsed && { mode: fullSet.parsed.mode, value: fullSet.parsed.value, n: fullSet.parsed.n })
 
   // ── ⑤ THE ANTI-OVERFITTING DIRECTION ──────────────────────────────────────────────────────────────────────
-  console.log('=== 5. A MEETING WITH NO DEBATE MUST NOT BLOCK A PLAIN RULING ===')
+  // RUN 163 moved the L47 floor's denominator to the INSTITUTE's voter seats: this meeting was convened while only
+  // the chair was seated, but the institute now has three voter seats, so a chair-only signature is 1 of 3. Two
+  // DIFFERENT gates must stay visibly distinct here — the COVERAGE gate (who debated: an empty set means nothing is
+  // missing) and the FLOOR gate (rule L47: how many seats signed). The floor refuses first, by name and with its
+  // arithmetic, and `partial:true, why` is the sanctioned shape for a ruling below the floor.
+  console.log('=== 5. A MEETING WITH NO DEBATE: the coverage gate has nothing to enforce, the L47 floor still does ===')
   const plain = await call(b, 'vibe_v5_verdict_final', { meeting: qid, proposition_id: cardId, verdicts: [{ member: 'chair-1', p: 0.9, reason: '主席一人裁定' }] })
-  ok(plain.parsed && plain.parsed.ok === true && plain.parsed.coverage && plain.parsed.coverage.complete === true,
-    '★★ an empty debated set does NOT refuse the ruling (nothing to enforce) — the check is about a REAL debate, not about every ruling',
-    plain.parsed && { code: codeOf(plain.parsed), coverage: plain.parsed && plain.parsed.coverage })
+  ok(codeOf(plain.parsed) === 'VMU_MEETING_QUORUM_LOST' && /seat\(s\) the vote floor requires/.test(String(plain.parsed && plain.parsed.message)),
+    '★★ the L47 floor refuses a chair-only ruling BY NAME (coverage is about debaters, the floor about seats)',
+    plain.parsed && { code: codeOf(plain.parsed), message: plain.parsed && plain.parsed.message })
+  ok(plain.parsed && (() => {
+    // the refusal is a named error (code+message+hint), so the arithmetic has to be READ OFF the message — that is
+    // what a caller sees: "signed by N of the M seat(s) the vote floor requires".
+    const m = /signed by (\d+) of the (\d+) seat\(s\)/.exec(String(plain.parsed && plain.parsed.message))
+    return !!m && Number(m[1]) < Number(m[2]) && Number(m[2]) === 3
+  })(),
+    '★★ and the refusal carries the arithmetic that produced it (signed < required, required = the institute\'s 3 seats)',
+    plain.parsed && plain.parsed.message)
+  const plainPartial = await call(b, 'vibe_v5_verdict_final', { meeting: qid, proposition_id: cardId,
+    partial: true, why: '本会只有主席一人在册', verdicts: [{ member: 'chair-1', p: 0.9, reason: '主席一人裁定' }] })
+  ok(plainPartial.parsed && plainPartial.parsed.ok === true
+    && plainPartial.parsed.coverage && plainPartial.parsed.coverage.complete === true
+    && Array.isArray(plainPartial.parsed.coverage.missing) && plainPartial.parsed.coverage.missing.length === 0,
+    '★★★ an empty debated set still enforces NOTHING on coverage: declared partial (floor), coverage.complete true, missing []',
+    plainPartial.parsed && { code: codeOf(plainPartial.parsed), coverage: plainPartial.parsed && plainPartial.parsed.coverage })
+  ok(plainPartial.parsed && plainPartial.parsed.floor && plainPartial.parsed.floor.gate
+    && plainPartial.parsed.floor.gate.escapedBy === 'partial',
+    '★ the receipt says WHICH way the floor was passed (escapedBy "partial", not a silent bypass)',
+    plainPartial.parsed && plainPartial.parsed.floor && plainPartial.parsed.floor.gate)
 
   // ── ⑥ NO AUTO-HOOK ────────────────────────────────────────────────────────────────────────────────────────
 // ── THE RULE'S LAST CLAUSE: 「并通知卡片持有者」 ─────────────────────────────────────────────────────────

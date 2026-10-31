@@ -321,7 +321,7 @@ vmu.packs.active: [v5r]
 | `vmu.prompts.whoMayOverride` | string[] | `[office]` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 允许覆盖提示词者 |
 | `vmu.prompts.resourceSection` | bool | `false` | — | 会话 | H0 | office | ✅ 已接线 | `vibe-math-vmu.js` | P3/S25-A：默认 false＝提示词一字不改；true 才注入【资源】段 |
 | `vmu.meetings.quorumRule` | enum | `m-unanimous` | `m-unanimous`∣`all-unanimous` | 会话 | H2 | role:chair | ✅ 已接线 | `kernel/index.js` | 法定数规则（仅规则，不含"何时开会"） |
-| `vmu.meetings.quorumCap` | int ≥0 | `3` | — | 会话 | H2 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：法定数上限 m = min(用户设置数, 可投票成员数＝名册∩vmu.meetings.eligibleSeats)；参会人数不参与该式；0＝不设上限 |
+| `vmu.meetings.quorumCap` | int ≥0 | `3` | — | 会话 | H2 | role:chair | ✅ 已接线 | `kernel/index.js` | P3：法定数上限 m = min(用户设置数, 可投票成员数＝**在册**可投票席位〔全员名册∩vmu.meetings.eligibleSeats，RUN 163 起；不是本场邀请列表〕)；参会人数与邀请人数都不参与该式；0＝不设上限 |
 | `vmu.meetings.verdictMaxRounds` | int ≥1 | `3` | — | 会话 | H1 | role:chair | ✅ 已接线 | `kernel/meetings.js` | P3：同一对象的复算轮次上限（不得无限复算）；院士可在会话中改，内核每次动议重读 |
 | `vmu.meetings.hardLimitMs` | int ≥0 | `1800000` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetinglapse.js` | P3：会议墙钟硬界（唯一兜底）＝1800000；钳制 [300000, 7200000]；**不存在"无界"** |
 | `vmu.meetings.wakeRetries` | int ≥0 | `5` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/meetings.js` | P3：同一成员同阶段的唤醒重试上限（钳制 [0,10]）；耗尽记 unreached 并视为"已获机会" |

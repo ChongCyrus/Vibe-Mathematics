@@ -214,7 +214,11 @@ console.log('§4 lean_archive 的词表：一次说清 theorem 怎么归档')
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-console.log('§5 人数闸（规则 47）的负向：先被完整性闸拦住，签名数恒 ≥ 门槛 —— 这件事在回执里说清，不靠读者推')
+// ★★ RUN 163（live run 11, rec-297）改写了这一节的前提：人数闸的分母不再是「本场名册 ∩ 可投票席位」，而是
+// **在册可投票席位**（`quorumFloorSource:"universe"` 时 `universeSource:"institute"`）。于是「主席少邀几个人就把门槛
+// 降下来」不再成立，`VMU_MEETING_QUORUM_LOST` 也从「按算术不可观测」变成**真的能打出来**——这一节因此同时钉两件事：
+// (a) 完整的名册 + 全员署名时门槛成立且回执自己说清分母是全院；(b) 把名册收窄到 1 位成员时，人数闸具名拒 = 负向可观测。
+console.log('§5 人数闸（规则 47）：分母是在册可投票席位（少邀人不能降门槛），负向 VMU_MEETING_QUORUM_LOST 真的可达')
 {
   const { specs } = await boot({})
   const conv = await call(specs, 'vibe_v5_meeting', { action: 'convene', member: 'r-chair', agenda: 'quorum negative', members: ['r-1', 'r-2'] })
@@ -235,8 +239,35 @@ console.log('§5 人数闸（规则 47）的负向：先被完整性闸拦住，
     '(5) 回执的 floor.gate 给出 required/signed（签名数 ≥ 门槛）', gate)
   ok(gate.vacuous === true && typeof gate.bitesWhen === 'string' && gate.bitesWhen.length > 0,
     '(5) 回执自己说这一次的门槛是 vacuous，并写明它在什么条件下才咬人', gate)
-  ok(/cannot reach VMU_MEETING_QUORUM_LOST|arithmetic, not a disabled gate/.test(String(gate.bitesWhen || '')),
-    '(5) bitesWhen 明说这条闸在「全员署名的名册上」按算术不会被触发（规则 47 的负向不可观测，是机制性质）', gate.bitesWhen)
+  ok(/INSTITUTE's voter seats/.test(String(gate.bitesWhen || '')) && /does NOT lower it/.test(String(gate.bitesWhen || '')),
+    '(5) bitesWhen 说清分母是「全院的在册可投票席位」，并明说少邀人不会把门槛降下来（规则 47 的分母口径）', gate.bitesWhen)
+  ok(String(st.quorum.voteFloor.universeSource) === 'institute' && Number(st.quorum.voteFloor.eligibleUniverse) === 3
+    && Number(st.quorum.voteFloor.effective) === 3,
+    '(5) status.quorum.voteFloor 报表决闸 universeSource:"institute" / eligibleUniverse:3（院士 + 两位常驻）/ effective:3',
+    st.quorum && st.quorum.voteFloor)
+  // ★ 负向现在真的可达：同一所里再开一场只邀 1 位成员的辩论，门槛仍是全院的 3，而签署最多 2（1 位成员 + 主席）。
+  const convNarrow = await call(specs, 'vibe_v5_meeting', { action: 'convene', member: 'r-chair', agenda: 'narrow quorum', members: ['r-1'] })
+  const narrowId = String(convNarrow.meeting || '')
+  ok(convNarrow.ok === true && narrowId !== '', '(5) 只邀一位成员的辩论会开得起来（收窄是允许的，门槛不跟着降）', convNarrow.ok === false ? convNarrow : undefined)
+  const stNarrow = await call(specs, 'vibe_vmu_meeting', { action: 'status', id: narrowId })
+  ok(stNarrow.ok === true
+    && Number(stNarrow.quorum.voteFloor.effective) === 3
+    && String(stNarrow.quorum.voteFloor.universeSource) === 'institute'
+    && Number(stNarrow.quorum.voteFloor.invitedEligible) === 1
+    && Number(stNarrow.quorum.roster) === 1,
+    '(5) 收窄名册后**表决闸** voteFloor.effective 仍是 3（roster 1 / invitedEligible 1）—— 门槛是院的属性，不是邀请列表的属性',
+    stNarrow.quorum && stNarrow.quorum.voteFloor)
+  await call(specs, 'vibe_v5_record_proposition', { id: 'rec-q-162b', statement: 'narrow quorum probe', value: 'claim', member: 'r-1', motive: 'negative quorum evidence', p: 0.6 })
+  const lost = await call(specs, 'vibe_v5_verdict_final', { meeting: narrowId, proposition_id: 'rec-q-162b', owner: 'r-1', verdicts: [{ member: 'r-1', p: 1, reason: 'only voice in a narrow meeting' }] })
+  ok(lost.ok === false && String(lost.code) === 'VMU_MEETING_QUORUM_LOST' && /signed by 2 of the 3 seat/.test(String(lost.message || '')),
+    '(5) ★★ 负向可达：只邀 1 人时裁决被 VMU_MEETING_QUORUM_LOST 具名拒（签 2 / 需 3），规则 47 的下限真的是一条下限', { code: lost.code, message: String(lost.message || '').slice(0, 200) })
+  const escapedNarrow = await call(specs, 'vibe_v5_verdict_final', {
+    meeting: narrowId, proposition_id: 'rec-q-162b', owner: 'r-1', partial: true, why: '第三席今日外出，主席决定先出数并留档',
+    verdicts: [{ member: 'r-1', p: 1, reason: 'only voice in a narrow meeting' }],
+  })
+  ok(escapedNarrow.ok === true && Number((escapedNarrow.floor || {}).satisfiedBy === true) === 0 && String(((escapedNarrow.floor || {}).gate || {}).escapedBy) === 'partial',
+    '(5) 例外仍是例外：partial:true + why 时裁定成功、回执写 satisfiedBy:false 与 escapedBy:"partial"（不静默）',
+    { satisfiedBy: (escapedNarrow.floor || {}).satisfiedBy, escapedBy: ((escapedNarrow.floor || {}).gate || {}).escapedBy })
 }
 
 console.log('')
