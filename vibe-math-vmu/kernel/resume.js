@@ -107,6 +107,8 @@ export const CODE = Object.freeze({
   childrenNoneYet: 'VMU_RESUME_CHILDREN_NONE_YET',
   watchdogsUnavailable: 'VMU_RESUME_WATCHDOGS_UNAVAILABLE',
   watchdogsNone: 'VMU_RESUME_WATCHDOGS_NONE',
+  childrenFailed: 'VMU_RESUME_CHILDREN_PORT_FAILED',
+  watchdogsFailed: 'VMU_RESUME_WATCHDOGS_PORT_FAILED',
 })
 
 /**
@@ -796,7 +798,15 @@ export function createResume({ store = null, work = null, control = null, identi
       let actual
       try { actual = store.read(key) } catch (e) { drift.push({ key, reason: 'unreadable: ' + String((e && e.message) || e) }); continue }
       const d = contentDigest(actual)
-      if (d !== expected) drift.push({ key, expected, actual: d })
+      if (d !== expected) {
+        // ROUND 159: the digest is `hash:length`; a different hash at the SAME length means the content moved, not
+        // the size. Two bare strings (`c289f5a5:967` vs `0e68d3ed:967`) made that unreadable.
+        const parts = (v) => { const t = String(v).split(':'); return { hash: t[0], length: Number(t[1]) } }
+        const e = parts(expected), a = parts(d)
+        drift.push({ key, expected, actual: d, expectedHash: e.hash, expectedLength: e.length, actualHash: a.hash, actualLength: a.length,
+          sameLength: e.length === a.length,
+          means: e.length === a.length ? 'same length, different hash: the CONTENT of this key changed under this process' : 'different length and hash: the value was rewritten with a different size' })
+      }
     }
     const consistent = drift.length === 0
     if (!consistent) { readBackFailures += 1; lastDrift = drift }
@@ -827,6 +837,33 @@ export function createResume({ store = null, work = null, control = null, identi
     readBack: null,
   }
 
+  /**
+   * ROUND 159: ONE mailbox reading shared by the plan and the recovery. The port wins when it is there; otherwise the
+   * face's own durable `mailbox` key answers (the mailbox face self-persists, so the count is a fact).
+   */
+  function mailboxProbe() {
+    let raw = null
+    try { raw = store && typeof store.read === 'function' ? store.read('mailbox') : null } catch (e) { raw = null }
+    const face = raw && raw.mode === 'state' && raw.value ? raw.value : raw
+    const fromKey = () => {
+      if (face && face.face === 'mailbox' && face.data && face.data.boxes && typeof face.data.boxes === 'object') {
+        let count = 0
+        for (const rows of Object.values(face.data.boxes)) count += Array.isArray(rows) ? rows.length : 0
+        return { attached: true, source: 'durable-mailbox-key', pending: count }
+      }
+      return null
+    }
+    const portPending = typeof mailbox === 'function' ? mailbox : (mailbox && typeof mailbox.pending === 'function' ? () => mailbox.pending() : null)
+    if (portPending) {
+      try {
+        const out = portPending()
+        if (out && typeof out.then === 'function') return { attached: true, source: 'port', pending: null, async: true }
+        return { attached: true, source: 'port', pending: Array.isArray(out) ? out.length : null }
+      } catch (e) { return { attached: false, source: 'port', pending: null, error: String((e && e.message) || e) } }
+    }
+    return fromKey() || { attached: false, source: null, pending: null }
+  }
+
   /** Read-only: what WOULD happen. No writes, no side effects (safe to call from an operator surface). */
   function recoverPlan({ reason = 'host-ended' } = {}) {
     const plan = { ok: true, reason: String(reason), steps: [], storeAttached: !!store, willWrite: false,
@@ -850,7 +887,14 @@ export function createResume({ store = null, work = null, control = null, identi
       projected.push({ key, present: env !== undefined && env !== null, mode: holder.projection.mode, entries: env && Array.isArray(env.entries) ? env.entries.length : 0, incomplete: !!(env && env.incomplete) })
     }
     plan.steps.push({ step: 'ledgers', ok: true, projections: projected })
-    plan.steps.push({ step: 'mailbox', ok: !!mailbox, attached: !!mailbox, note: mailbox ? null : 'no mailbox port: unacknowledged mail cannot be counted (reported, never faked)' })
+    // ★★ RUN 159 (FEEDBACK6 item 8): the plan used to report `attached:false` (it only knew about the PORT) while
+    // the recovery — which also accepts the face's own durable key — said `attached:true, pending:118`. One question,
+    // one answer: both now read the same two sources, in the same order.
+    const planMailbox = mailboxProbe()
+    plan.steps.push({ step: 'mailbox', ok: planMailbox.attached, attached: planMailbox.attached, source: planMailbox.source, pending: planMailbox.pending,
+      note: planMailbox.attached
+        ? ('unacknowledged mail is counted from ' + planMailbox.source + ' — the recovery counts it the same way, so the plan and the act agree')
+        : 'no mailbox port AND no durable mailbox key: unacknowledged mail cannot be counted (reported, never faked)' })
     plan.steps.push({ step: 'watchdogs', ok: !!watchdogs, attached: !!watchdogs })
     plan.steps.push({ step: 'readback', ok: true, declared: cfg().readBack })
     plan.willWrite = true
@@ -974,7 +1018,12 @@ export function createResume({ store = null, work = null, control = null, identi
     // ROSTER SOURCE, in order: the explicit `roster` port (rows carry `childId`; `members.roster()` is the natural
     // one) → the attached members projection's list() → the identity seam (which has ids but NO childId, so it can
     // only answer "no member holds a child" — reported as `rosterSource` so the difference is visible).
-    let childReport = { attached: false, code: CODE.childrenUnavailable, parentId: null, live: 0, checked: 0, missing: [], rosterSource: null, note: 'no children port: which member children survived a restart cannot be checked (reported, never guessed)' }
+    // ★★ RUN 159 (FEEDBACK6 item 6): FOUR different "nothing" shapes get four names, and this step never asks the
+    // host a question it cannot answer: with no parent session the children LIST is not called at all (RUN 7's
+    // receipt said `ok:true` while its own note said the port had failed, and `ports.children:true` denied both).
+    const childrenWired = !!(typeof children === 'function' || (children && typeof children.list === 'function'))
+    let childReport = { ok: true, wired: false, attached: false, queried: false, code: CODE.childrenUnavailable, parentId: null, live: null, checked: 0, missing: [], rosterSource: null,
+      means: 'no children port was wired into this assembly: which member children survived a restart cannot be checked (reported, never guessed)' }
     const childrenList = typeof children === 'function' ? children : (children && typeof children.list === 'function' ? (p) => children.list(p) : null)
     if (childrenList) {
       try {
@@ -990,20 +1039,29 @@ export function createResume({ store = null, work = null, control = null, identi
           } catch (e) { /* keep the previous source */ }
         }
         const parentId = typeof (children && children.parentId) === 'function' ? children.parentId() : null
-        const live = listOf(await childrenList(parentId))
-        const held = heldRows.filter((m) => m && m.childId)
-        const missing = held.filter((m) => live.indexOf(String(m.childId)) === -1).map((m) => ({ member: String(m.id), childId: String(m.childId) }))
-        // ★★ RUN 158 (N6): name the two "nothing to reconcile" shapes instead of reporting code:null twice.
         const noParent = parentId === undefined || parentId === null || String(parentId) === ''
-        const emptyCode = noParent ? CODE.childrenNoParent : (held.length === 0 ? CODE.childrenNoneYet : null)
-        childReport = { attached: true, code: emptyCode, parentId: parentId === undefined ? null : parentId, live: live.length, checked: held.length, missing, rosterSource: source,
-          note: missing.length ? 'these members hold a childId the host no longer lists: the assembly must re-provision them (the engine does NOT spawn)' : (held.length ? 'every roster child is still live' : (source === 'identity-seam' ? 'the identity seam carries no childId: wire the roster port (members.roster()) to reconcile children' : 'no roster member holds a childId yet')) }
+        const held = heldRows.filter((m) => m && m.childId)
+        if (noParent) {
+          // NOT ASKED: `live:null` is "no question was put to the host", never "the host says zero".
+          childReport = { ok: true, wired: true, attached: true, queried: false, code: CODE.childrenNoParent, parentId: null, live: null, checked: held.length, missing: [], rosterSource: source,
+            means: 'the children port exposes no parent session, so there is nothing to reconcile: this kernel has no parent (the host was never asked — `live:null` means NOT ASKED, which is a different fact from an empty list)' }
+        } else {
+          const live = listOf(await childrenList(parentId))
+          const missing = held.filter((m) => live.indexOf(String(m.childId)) === -1).map((m) => ({ member: String(m.id), childId: String(m.childId) }))
+          const emptyCode = held.length === 0 ? CODE.childrenNoneYet : null
+          childReport = { ok: true, wired: true, attached: true, queried: true, code: emptyCode, parentId, live: live.length, checked: held.length, missing, rosterSource: source,
+            means: missing.length ? 'these members hold a childId the host no longer lists: the assembly must re-provision them (the engine does NOT spawn)' : (held.length ? 'every roster child is still live' : (source === 'identity-seam' ? 'the parent session exists but the identity seam carries no childId: wire the roster port (members.roster()) to reconcile children' : 'the parent session exists and the host answered: no roster member holds a childId yet')) }
+        }
       } catch (e) {
-        childReport = { attached: false, code: (e && e.code) || CODE.childrenUnavailable, parentId: null, live: 0, checked: 0, missing: [], rosterSource: null, note: 'the children port failed: ' + String((e && e.message) || e) }
+        childReport = { ok: false, wired: true, attached: false, queried: true, portFailed: true, code: (e && e.code) || CODE.childrenFailed, parentId: null, live: null, checked: 0, missing: [], rosterSource: null,
+          means: 'the children port IS wired but the query threw, so nothing is claimed about the children: ' + String((e && e.message) || e) }
       }
     }
     state.children = childReport
-    report.steps.push({ step: 'children', ok: true, ...childReport })
+    // ROUND 159: `note` is kept as an alias of `means` — the older pin (`does NOT spawn`) and the operator surface both
+    // read it, and one fact should not have two names in one receipt.
+    childReport.note = childReport.means
+    report.steps.push({ step: 'children', ...childReport })
 
     // ②c RE-DISPATCH (task-52 B): the engine NEVER spawns. What it can do is OFFER the missing members to a
     // policy the ASSEMBLY declared, count the attempts DURABLY (so a crash loop cannot re-dispatch forever), and
@@ -1123,8 +1181,8 @@ export function createResume({ store = null, work = null, control = null, identi
     state.watchdogs = wd
     // ★★ RUN 158 (N6): "no port" and "the port is wired and there is nothing to refresh" are different facts; they used
     // to look identical in the receipt (`attached:false, targets:0` vs `attached:true, targets:0`, both bare).
-    wd.code = wd.attached === true ? (wd.targets === 0 ? CODE.watchdogsNone : null) : (wd.error ? CODE.childrenUnavailable : CODE.watchdogsUnavailable)
-    report.steps.push({ step: 'watchdogs', ok: true, attached: wd.attached, targets: wd.targets, refreshed: wd.refreshed.length, code: wd.code,
+    wd.code = wd.attached === true ? (wd.targets === 0 ? CODE.watchdogsNone : null) : (wd.error ? CODE.watchdogsFailed : CODE.watchdogsUnavailable)
+    report.steps.push({ step: 'watchdogs', ok: wd.error ? false : true, attached: wd.attached, targets: wd.targets, refreshed: wd.refreshed.length, code: wd.code,
       note: wd.attached === true
         ? (wd.targets === 0 ? 'the watchdog port is wired and reports no targets: there is nothing to refresh (this is a measured zero, not a missing seam)' : null)
         : (wd.error ? 'the watchdog port failed: ' + String(wd.error) : 'no watchdog port: a stale meet/verify clock cannot be refreshed (reported, never guessed)') })
@@ -1224,6 +1282,9 @@ export function createResume({ store = null, work = null, control = null, identi
       // task-52 B: what the declared re-dispatch policy did (or that none was declared), plus the durable counters.
       reassign: state.reassign,
       reassignAttempts: Object.fromEntries([...reassignAttempts.entries()].sort().slice(0, listCap)),
+      portsMeans: 'these are the SEAMS this assembly injected. A false here does not mean the fact is unavailable: ' +
+        'the mailbox, for example, is self-persisting, so its count can come from its own durable key with no port at ' +
+        'all (see `mailbox.source`). The `children`/`watchdogs` steps report `wired`/`attached`/`code` for their own reading.',
       ports: {
         store: !!store, work: !!work, control: !!control, identity: !!identity, lock: !!lock,
         mailbox: !!(typeof mailbox === 'function' || (mailbox && typeof mailbox.pending === 'function')),

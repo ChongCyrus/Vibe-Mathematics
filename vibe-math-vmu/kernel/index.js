@@ -4148,6 +4148,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         // reported the declared 3). The fact is a FIELD now, not an inference from the word "runtime".
         persistsAcrossRestart: false,
         persistsAcrossRestartMeans: 'this write lives in the RUNNING kernel only: the durable configuration is the declaration (settings/schema.js + the face defaults), so a restart re-reads the declared/default value — if the intent must survive a restart, change the declaration or the charter, not just this receipt',
+        // ★★ ROUND 159 (FEEDBACK6 item 4): "applied:immediate" + "requiresRestart:false" together read like "permanent".
+        // The scope is a field now, so the two sentences cannot be read as one promise.
+        scope: 'this-kernel',
+        scopeMeans: 'the write takes effect in THIS running kernel (no restart needed to use it) and is dropped when the process ends — it is not a configuration change',
       }
       // ROUND 7 / task-57: the caller's `reason` is part of the record (the ledger answers "why", not only "who").
       runtimeWrites.push({ key, hot, by, reason: reason === null || reason === undefined ? null : String(reason), ownerCheck: g.ownerCheck, requiresRestart, liveApplied: liveApplied.slice(), pendingConsumers: pendingConsumers.slice(), at: receipt.at, action: 'set' })

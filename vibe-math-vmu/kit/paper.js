@@ -511,6 +511,11 @@ export function createPaperFlow({
       idMeans: asciiSafe
         ? 'the id is paper-<target> and the folder is its slug (both portable)'
         : 'the title is not a portable file name, so the plate id and the folder were minted in ASCII (paper-pN): address the paper by this id OR by its title — both resolve — and the compiler never sees the Chinese title as a directory',
+      // ★★ ROUND 159 (FEEDBACK6 item 1): `asciiSafe:false` used to be readable two ways ("the title is not ASCII"
+      // vs "the directory is unsafe"). It says the first thing, and the second fact is its own sentence.
+      asciiSafeMeans: asciiSafe
+        ? 'the target itself is a portable ASCII name, so the plate id is derived from it and the directory is that name'
+        : 'THE TITLE is not a portable ASCII file name (that is what this flag reports). The DIRECTORY and the plate id are ASCII anyway (see `id`/`folder`): the flag is not a warning that the compile path is unsafe',
       status: state.status, round: state.round,
       stateRecord: state.stateRecordId || (put && put.id), fingerprint: put && put.fingerprint }
   }
@@ -1064,7 +1069,12 @@ export function createPaperFlow({
       // could not see the cause. Both fields travel now. And when the engine writes everything to ONE stream, both tails
       // hold the same text: that is disclosed instead of presenting one diagnosis twice as two.
       failure.tailsIdentical = failure.stderrTail !== '' && failure.stderrTail === failure.stdoutTail
-      failure.outDir = outDir
+      // ROUND 159 (FEEDBACK6 items 5/7): a reader must not have to know what `tailSource` implies. And the directory is
+      // the RESOLVED one the engine was told to write into (`r.outDir`), so it has the same shape as `argv`.
+      failure.tailsIdenticalMeans = failure.tailsIdentical
+        ? 'the two tails below are the SAME text: the engine wrote everything to one stream, and `tailSource` says which one that was'
+        : 'the two tails are different streams: `tailSource` says which one the promised diagnosis came from'
+      failure.outDir = (r && r.outDir) || outDir
       failure.sourceName = request.sourceName
       // ★★ RUN 155 (audit of c5d356b9, problem 1 / G10's second half): the FACE carries the exact argv it
       // spawned (`r.argv` — measured: 5 elements, absolute + forward slashes), but this failure object never copied it

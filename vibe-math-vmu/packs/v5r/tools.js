@@ -2282,6 +2282,10 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     // ★ RUN 158 (N3): rule L53 takes the ruling AFTER the debate ends, and a closed meeting lives in the archive. The
     // receipt names that state so a reader can tell a ruling taken mid-debate from the rule's own order of events.
     meetingArchived,
+    // ★★ ROUND 159 (FEEDBACK6 item 3): the meeting's own state is a reading, not an inference from `meetingArchived`.
+    meetingState: view && view.state !== undefined ? view.state : null,
+    // ★★ ROUND 159 (FEEDBACK6 item 4): "awaiting" has to say WHAT is awaited and that it is the person the rule names.
+    meetingStateMeans: view && view.state !== undefined ? ('the meeting record says state "' + String(view.state) + '"' + (meetingArchived ? ' and it is held by the archive' : ' and it is still live')) : null,
     meetingArchivedMeans: meetingArchived === false
       ? 'the ruling was taken while the meeting was still open (its record is live)'
       : 'the ruling was taken over the CLOSED (archived) record: the debate had ended, which is the order rule L53 describes — 「待辩论会议结束，v5r框架请…给出最终裁决」. Nothing was reopened: this face only reads the archive.',
@@ -4153,6 +4157,11 @@ function projectPdfBlock(pdf, target) {
     stdoutTail: p.stdoutTail ? String(p.stdoutTail) : '',
     tailSource: p.tailSource || null,
     tailsIdentical: p.tailsIdentical === true,
+    // ★★ ROUND 159 (FEEDBACK6 item 7): a boolean is not an explanation — the same two tails are one diagnosis, and the
+    // receiver says which stream carried it.
+    tailsIdenticalMeans: p.tailsIdenticalMeans || (p.tailsIdentical === true
+      ? 'the two tails are the SAME text: one stream carried the whole diagnosis, and `tailSource` names it'
+      : null),
     outDir: p.outDir === undefined ? null : p.outDir,
     sourceName: p.sourceName === undefined ? null : p.sourceName,
     signal: p.signal || null,

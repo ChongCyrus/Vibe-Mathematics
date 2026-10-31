@@ -131,11 +131,15 @@ export function createLatexFace(opts = {}) {
       if (res.timedOut === true) {
         stats.timeouts += 1
         return { ok: false, code: LATEX_CODES.timeout, engine, tried, argv, elapsedMs, timeoutMs: ms,
+          // ROUND 159 (FEEDBACK6 item 5): the resolved directory travels on FAILURE too — the caller's relative
+          // "Paper/x" and this absolute path used to disagree inside one receipt.
+          outDir,
           stderr: tail(res.stderr), message: 'the LaTeX compile exceeded ' + ms + 'ms' }
       }
       if (res.interrupted === true || res.signal) {
         stats.interrupted += 1
         return { ok: false, code: LATEX_CODES.interrupted, engine, tried, argv, elapsedMs, signal: res.signal || null,
+          outDir,
           stderr: tail(res.stderr), message: 'the LaTeX compile was interrupted' }
       }
       if (Number(res.exitCode) !== 0) {
@@ -143,6 +147,7 @@ export function createLatexFace(opts = {}) {
         // A NON-ZERO EXIT IS A COMPILE FAILURE, NOT “no engine”: carry stderr and the exact argv.
         stats.failed += 1
         return { ok: false, code: LATEX_CODES.failed, engine, tried, argv, elapsedMs,
+          outDir,
           stderr: tail(res.stderr), stdout: tail(res.stdout, 400), message: 'the LaTeX compile exited ' + String(res.exitCode) }
       }
       // ★ RUN 153 (G2's second half): the PDF is named after the .tex that produced it. `main.tex` was assumed, so a
@@ -153,6 +158,7 @@ export function createLatexFace(opts = {}) {
       if (!exists) {
         stats.failed += 1
         return { ok: false, code: LATEX_CODES.noOutput, engine, tried, argv, elapsedMs,
+          outDir,
           message: 'exit 0 but no PDF at ' + pdfPath, hint: 'write \\\\documentclass with a PDF-producing engine, and put the output in outDir' }
       }
       let bytes = null

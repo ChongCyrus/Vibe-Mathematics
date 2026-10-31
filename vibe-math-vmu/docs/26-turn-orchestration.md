@@ -2694,3 +2694,24 @@ id 是聚合的名字、durable 证据在哪；`paper-quality.js` 先剥 `#锚`�
 
 机器化：`tests/vmu-run158-run6-fixes.test.mjs` 49/0；T1 639/639；门禁五绿（coverage 86/86）。
 文档：`docs/acceptance/phase12-v5r-rules-conformance.md` §258。
+
+
+## ROUND 162 — RUN 159: a receipt says WHICH “nothing” it means, and drift prints both hashes
+
+第七次真机跑（tarball `c11f83e8`，847 s / 10.08 M token / 118 call / `slv-inspect` 0 RED / 结题并出 68 085 B PDF，
+代理判 `RUN7 VERDICT: PASS`）后，`FEEDBACK6` 只剩一件真欠账 —— 「四种没有」只修了一半：
+
+1. **父会话是 `null` 时不该去问宿主**：`children` 段新增 `wired`/`attached`/`queried`/`live`/`means`，无父会话 ⇒
+   `queried:false`、`live:null`（means 写明「NOT ASKED」）、`VMU_RESUME_CHILDREN_NO_PARENT`。
+2. **端口抛错不能冒充「0 个子会话」**：`VMU_RESUME_CHILDREN_PORT_FAILED`，并保留端口自己的码。
+3. **watchdogs 三态**：未接线 `..._UNAVAILABLE`、已接线但 0 个目标 `..._NONE`、已接线但刷新失败 `..._WATCHDOGS_PORT_FAILED`。
+4. **plan 与 recovery 同源**：新 `mailboxProbe()`（端口 → durable `mailbox` 键 → 未接线），不再一个说
+   `attached:false`、另一个说 `attached:true, source:"durable-mailbox-key", pending:118`。
+5. **漂移要能读**：`drift` 拆成 `expectedHash`/`expectedLength`/`actualHash`/`actualLength`/`sameLength`/`means`（不再只给
+   `c289f5a5:967` vs `0e68d3ed:967` 两个串）。
+6. **三本账一致**：`recoverStatus.portsMeans` 点名 `ports` 只答「端口是否接线」；`tailsIdenticalMeans`、
+   `asciiSafeMeans`、`meetingState`/`meetingStateMeans`、`failure.outDir` 与 `argv` 同为绝对路径、
+   `setSettingsValue` 的 `scope:'this-kernel'`。
+
+机器化：`tests/vmu-run159-receipt-truth.test.mjs` 33/0；T1 TOTAL 640  PASS 640  FAIL 0  (suites 576 · probes 64)；门禁五绿（coverage 86/86）。
+文档：`docs/acceptance/phase12-v5r-rules-conformance.md` §259。

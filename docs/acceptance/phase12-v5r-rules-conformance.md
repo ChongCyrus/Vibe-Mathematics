@@ -12086,3 +12086,93 @@ durable 评审读 + 修复轮 + 现读 `maxRounds`、`paper-<x>` 寻址与 consu
 1. `editor:"office"` 代定稿仍是具名缺口。
 2. 人数闸的负向证据仍缺一次名册 ≥4 的真机回执（`voteFloorGate` 已自报 `vacuous`/`uncovered`/`bitesWhen`）。
 3. 宿主 `pwsh` 在本轮同样不可用（`0xC0000142`），代理改用文件工具与 `math_computation{engine:"python"}` 取证。
+
+
+## §259 — RUN 159：回执要说清它说的是哪一种「没有」，而漂移要把两个哈希都印出来
+
+### 259.1 第七次真机跑的读数（run 7）
+
+- 驱动：`-CloneName 'slvp163' -Port 19607 -TaskFile task-sim7.txt -Workspace D:\_tmp\slv-phase5\slvp157-ws -KeepWorkspace`，
+  tarball 从提交 `c11f83e8` 打（6.68 MB），日志 `/d/wd/vibemath开发/_oneoff/vm-slv/full-1031-084639.jsonl`。
+- `DRIVE exit=0`；`durationSec 847`；tokenTotal **10 084 118 / 24 000 000**（`tokenCapHit:false`）；
+  根会话 118 次工具调用；`transcriptEvents 565`。
+- 机器读数：`NO_FENCE=0 · UNKNOWN_FIELD=0 · FIELD_NOT_APPLICABLE=0 · BAD_JSON=0`；
+  `slv-inspect`：`SUMMARY: 1 session(s), 0 with RED checks`；`CLOSURE: cast=true (from 6 turn receipts)`。
+- 结题：`rec-218` 经 `m16` 辩论一致裁定为 1 → `rec-219` 入 Verified（warrant `tally-m16-rec-218`）；
+  论文 `paper-p11` 定稿并编译出 **68 085 B** 的 PDF（`sha256_16 3a5292220707733e`）；结题票板 `bx-6` 3 票达标、
+  结题表 3/3 通过、`m17` 归档；`lean-12` 通过（`dedupedOf:"lean-11"）；脚本 `round6-receipt-checklist`
+  归档与读回双向走通；状态板 `plan`/`subgoal`/`status` 都填；`vibe_vmu_human {action:"inject"}` 转达成功。
+- 代理判词：**`RUN7 VERDICT: PASS`**（`SIM-REPORT6.md` 38 923 B、`FEEDBACK6.md` 20 272 B）。
+
+### 259.2 代理的六件事判定：五件真修好、一件只修了一半
+
+1. 中文标题的 start/final/status 全通（`id:"paper-p11"`、`asciiSafe:false`、`idMinted:true`、
+   `produced:true`、`pdfBytes:68085`）✅
+2. 预算耗尽的拒绝语可执行（`repairsUsed=2/2`、`round=3`、「STRICTLY GREATER than the current round (3)」、
+   「Recording a new part is NOT an exit here」；抬到 4 后走普通修订、`cap:4`）✅
+3. 关会后的裁决（`meetingArchived:true`、`meetingArchivedMeans`、`attribution[].source:"submission"`）✅
+4. 运行时设置不跨进程（`persistsAcrossRestart:false` 与说明；同进程 `cap:3→4` 生效）✅
+5. 尾部与普通修订三字段（`tailsIdentical:true`、`outDir`、`sourceName`）✅，但 `outDir` 当时仍是**相对**
+   路径而 `argv` 是绝对路径，`tailsIdentical` 只有一个布尔值没有散文。
+6. `resume` 四种「没有」——**只修了一半**⚠️：`children` 段报
+   `{"ok":true,"attached":false,"code":"SESSION_QUERY_PERSISTENCE_FAILED","parentId":null,"live":0,"checked":0,
+   "note":"the children port failed: failed to observe session \"null\": Cannot read properties of null (reading 'length')"}`，
+   即内核对 `null` 父会话**真去问了宿主**；`watchdogs` 用 `code + targets:0` 同时表达「未接线」与「0 个目标」；
+   `recoverStatus.ports.children:true` 与 `children.attached:false` 互否认；`readBack.drift` 的
+   `c289f5a5:967` vs `0e68d3ed:967` 看不出是「内容变了」还是「尺寸变了」。
+7. 同一次续跑三种结论：`recover` 的 `plan` 说 `attached:false`（只认端口）、`recovery` 说
+   `attached:true, pending:118, source:"durable-mailbox-key"`、`recoverStatus.ports.mailbox:false`。
+
+### 259.3 修法（RUN 159：只改回执与可读性，不动任何规则语义）
+
+- `kernel/resume.js`
+  - `CODE` 新增 `childrenFailed: 'VMU_RESUME_CHILDREN_PORT_FAILED'`、`watchdogsFailed: 'VMU_RESUME_WATCHDOGS_PORT_FAILED'`
+    ——「已接线但查询抛错」不再被吞成「0 个子会话」。
+  - 新增 `mailboxProbe()`：先读端口（函数或 `.pending()`），再读 durable `mailbox` 键（`face.data.boxes` 逐行计数），
+    都没有才是「未接线」；`recoverPlan` 与 `recover` 的 `recovery` 段同源。
+  - `children` 段重写：`wired`/`attached`/`queried`/`parentId`/`live`/`checked`/`missing`/`rosterSource`/`means` 也全；
+    **无父会话时不调端口**，回 `queried:false`、`live:null`、`VMU_RESUME_CHILDREN_NO_PARENT`，
+    并写明「`live:null` means NOT ASKED」；有父会话才真查，0 存活且曾持有才是
+    `..._NONE_YET`；端口抛错保留端口自己的码（如 `SESSION_QUERY_PERSISTENCE_FAILED`）+`portFailed:true`。
+  - `watchdogs`：未接线、接线但 0 个目标、接线但刷新失败三态各自具名（后者用 `..._WATCHDOGS_PORT_FAILED`）。
+  - `readBack()` 的 `drift` 条目拆成 `expectedHash`/`expectedLength`/`actualHash`/`actualLength`/`sameLength`/`means`；
+    `staticMeans` 与动态两支各自写清楚（同长不同哈希、长度也变了两种真话）。
+  - `recoverStatus.portsMeans`：点名 `recoverStatus.ports` 只答「端口是否接线」，不答「本次跑它没有有效面」。
+- `kernel/latex.js`：timeout/interrupted/failed/noOutput 四个失败回执都带**绝对** `outDir`（与 `argv` 同形）。
+- `kit/paper.js`：失败对象带 `tailsIdenticalMeans`（两支真话）与 `failure.outDir = (r && r.outDir) || outDir`；
+  `start` 回执带 `asciiSafeMeans`（「THE TITLE 不是可移植 ASCII 名」≠「目录不安全」）。
+- `packs/v5r/tools.js`：`projectPdfBlock` 带 `tailsIdenticalMeans`；`verdict_final` 回执带 `meetingState`/`meetingStateMeans`（归档读与 live 读不同句）。
+- `kernel/index.js`：`setSettingsValue` 回执带 `scope:'this-kernel'` 与 `scopeMeans`。
+- `vibe-math-vmu/docs/03-interface-contract.md`：R2 表登记两个新码（同时进「已实现」表），`audit-vmu-docs` 要求硬匹配。
+
+### 259.4 机器化
+
+- 新 `tests/vmu-run159-receipt-truth.test.mjs` **33/0**：
+  - §0 源码口径（六处修法各自的所有者）；
+  - §1 真 `createResume`：无父会话时端口调用 **0 次**、`queried:false`、`live:null`；有父会话且 0 存活 ⇒
+    `..._NONE_YET` 且 `askedWith` 就是那个父会话；端口抛错 ⇒ `..._PORT_FAILED` 且保留端口自己的码；
+    watchdogs 三态各具名；durable `mailbox` 键 ⇒ plan 与 recovery 同为 `source:'durable-mailbox-key', pending:3`；
+    一致态 `sampledAt`/`writesBetween`；漂移态（同长改字）两个哈希 + `sameLength:true`。
+  - §2 真回执：编译失败块的散文与**绝对** `outDir`、`createLatexFace({spawn})` 失败回执的绝对 `outDir`、
+    `start` 的 `asciiSafeMeans`、`setSettingsValue` 的 `scope:'this-kernel'`、关会后 `verdict_final` 的
+    `meetingArchived:true` + `meetingState:'closed'` + 说明。
+- 同步翻新的既有 pin（都是「上一轮真话」过期）：`vmu-run158` 的 kit pin 改钉
+  `failure.outDir = (r && r.outDir) || outDir`；`vmu-run155` 共享投影 24→**25 键**（`tailsIdenticalMeans`）。
+
+### 259.5 读数与门禁
+
+- 生成器：`regen-all --write` 三轮后 `17/17 in sync`。
+- 门禁：`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0 problem(s))`、
+  `RULES COVERAGE: PASS (0 problem(s))`（86/86 锚点、86 DONE）。
+- 定向：`tests/vmu-resume-falsify.test.mjs` **16/0**、`--only resume` 6/0、`audit-declaration-criterion` **91/0**、`audit-vmu-docs` 2/0。
+- 全量 T1（`GATE_SCOPE=vmu`）：**TOTAL 640  PASS 640  FAIL 0  (suites 576 · probes 64)**（日志 `/d/_tmp/t1-r196-run159.log`）。
+- 开发期真红两类，都是本轮自己造的：新码没登记进 `03-interface-contract.md`（`audit-vmu-docs`）；
+  python 补丁用文本模式写盘把整文件变成 **CRLF**，导致 mutant 锚点 `MUTATION-NOT-APPLIED`（`vmu-resume-falsify`）——
+  后者已在新名令里固定：**修补脚本律 `newline=''` 或二进制读写**。
+
+### 259.6 仍未解决
+
+1. `editor:"office"` 代定稿仍是具名缺口（回执已自报「APIs named gap」）。
+2. 人数闸的负向证据仍缺一次名册 ≥4 的真机回执（`voteFloorGate` 已自报 `vacuous`/`uncovered`/`bitesWhen`）。
+3. 宿主 `pwsh` 在第六、第七轮都不可用（`0xC0000142`），代理只能改走文件工具与 `math_computation{engine:"python"}`。
+4. `lean_archive` 同时给 `from`/`file` 仍是具名拒（代理自身操作问题，非机制缺陷）。

@@ -122,7 +122,7 @@ console.log('§0 源码口径：六处修法各在自己的所有者上（行为
     '(C) verdict_final/ask 读归档并自报 meetingArchived')
   ok(KERNEL_SRC.includes('persistsAcrossRestart: false') && KERNEL_SRC.includes('persistsAcrossRestartMeans'),
     '(D) 内核 settings 回执给出持久性事实')
-  ok(KIT_SRC.includes('failure.tailsIdentical') && KIT_SRC.includes('failure.outDir = outDir') && KIT_SRC.includes('failure.sourceName = request.sourceName'),
+  ok(KIT_SRC.includes('failure.tailsIdentical') && KIT_SRC.includes('failure.outDir = (r && r.outDir) || outDir') && KIT_SRC.includes('failure.sourceName = request.sourceName'),
     '(E) 失败对象带 tailsIdentical/outDir/sourceName')
   ok(KIT_SRC.includes("repair: false, repairs: Number(state.repairs || 0), repairBudget: REPAIR_ROUNDS, cap: capNow"),
     '(E) 普通修订回执也自报 from/to/repair:false/repairs')
