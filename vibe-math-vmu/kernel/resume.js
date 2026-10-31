@@ -895,7 +895,8 @@ export function createResume({ store = null, work = null, control = null, identi
       note: planMailbox.attached
         ? ('unacknowledged mail is counted from ' + planMailbox.source + ' — the recovery counts it the same way, so the plan and the act agree')
         : 'no mailbox port AND no durable mailbox key: unacknowledged mail cannot be counted (reported, never faked)' })
-    plan.steps.push({ step: 'watchdogs', ok: !!watchdogs, attached: !!watchdogs })
+    plan.steps.push({ step: 'watchdogs', ok: !!watchdogs, attached: !!watchdogs, targets: null,
+      means: !!watchdogs ? 'a watchdog port is injected, so the refresh will report a MEASURED count' : 'no watchdog port is injected: the plan can say it will not be refreshed, and cannot say "0 targets" (nothing measured a zero)' })
     plan.steps.push({ step: 'readback', ok: true, declared: cfg().readBack })
     plan.willWrite = true
     return plan
@@ -1170,22 +1171,33 @@ export function createResume({ store = null, work = null, control = null, identi
       note: mb.attached ? ('unacknowledged mail is counted from ' + mb.source + ' (it stays durably queued; an ack happens only after a successful delivery)') : 'unacknowledged mail cannot be counted (no port, no durable key)' })
 
     // ⑥ watchdogs
-    let wd = { attached: false, targets: 0, refreshed: [] }
+    // ★★ RUN 160 (FEEDBACK7 item 2): an UNWIRED port cannot measure targets, so `targets` is `null` there — a 0
+    // would be the manufactured product of never having looked, and the reader cannot tell it from a measured
+    // zero. Only a wired port reports a NUMBER (0 means "wired, and nothing to refresh").
+    let wd = { attached: false, targets: null, refreshed: [] }
     if (watchdogs && typeof watchdogs.targets === 'function' && typeof watchdogs.touch === 'function') {
       try {
         const targets = listOf(await watchdogs.targets())
         for (const t of targets) await watchdogs.touch(t)
         wd = { attached: true, targets: targets.length, refreshed: targets.slice(0, listCap) }
-      } catch (e) { wd = { attached: false, targets: 0, refreshed: [], error: String((e && e.message) || e) } }
+      } catch (e) { wd = { attached: false, targets: null, refreshed: [], error: String((e && e.message) || e) } }
     }
     state.watchdogs = wd
     // ★★ RUN 158 (N6): "no port" and "the port is wired and there is nothing to refresh" are different facts; they used
     // to look identical in the receipt (`attached:false, targets:0` vs `attached:true, targets:0`, both bare).
     wd.code = wd.attached === true ? (wd.targets === 0 ? CODE.watchdogsNone : null) : (wd.error ? CODE.watchdogsFailed : CODE.watchdogsUnavailable)
-    report.steps.push({ step: 'watchdogs', ok: wd.error ? false : true, attached: wd.attached, targets: wd.targets, refreshed: wd.refreshed.length, code: wd.code,
-      note: wd.attached === true
-        ? (wd.targets === 0 ? 'the watchdog port is wired and reports no targets: there is nothing to refresh (this is a measured zero, not a missing seam)' : null)
-        : (wd.error ? 'the watchdog port failed: ' + String(wd.error) : 'no watchdog port: a stale meet/verify clock cannot be refreshed (reported, never guessed)') })
+    // ★★ RUN 160: the three states get the same shape the `children` step already had — a NAMED code, a `targets`
+    // that is null when nobody could look, and one prose sentence saying which of the three this is.
+    const wdMeans = wd.attached === true
+      ? (wd.targets === 0
+        ? 'the watchdog port is wired and reports no targets: there is nothing to refresh — this zero was MEASURED (a wired port answered); it is a different fact from "no port at all" (that one reports targets:null and VMU_RESUME_WATCHDOGS_UNAVAILABLE)'
+        : 'the watchdog port is wired and refreshed ' + wd.refreshed.length + ' target(s)')
+      : (wd.error
+        ? 'the watchdog port IS wired but refreshing threw: ' + String(wd.error) + ' — this is a FAILED query, not a zero (targets:null because nothing could be counted)'
+        : 'no watchdog port was injected: the count of stale meet/verify clocks cannot be taken at all (targets:null, never 0 — a zero nobody measured is manufactured), so a stale clock would go unrefreshed here')
+    report.steps.push({ step: 'watchdogs', ok: wd.error ? false : true, attached: wd.attached, wired: !!(watchdogs && typeof watchdogs.targets === 'function' && typeof watchdogs.touch === 'function'), targets: wd.targets, refreshed: wd.refreshed.length, code: wd.code,
+      means: wdMeans,
+      note: wdMeans })
 
     // ⑦ flags (the operational facts a resumed session must know)
     let flags = null

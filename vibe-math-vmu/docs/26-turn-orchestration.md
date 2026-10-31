@@ -2715,3 +2715,23 @@ id 是聚合的名字、durable 证据在哪；`paper-quality.js` 先剥 `#锚`�
 
 机器化：`tests/vmu-run159-receipt-truth.test.mjs` 33/0；T1 TOTAL 640  PASS 640  FAIL 0  (suites 576 · probes 64)；门禁五绿（coverage 86/86）。
 文档：`docs/acceptance/phase12-v5r-rules-conformance.md` §259。
+
+---
+
+## ROUND 163 — RUN 160: a zero nobody measured is manufactured, and the card is the Lean evidence
+
+第八次真机跑（tarball `8c6f8c4f`，1070 s / 13.13 M token / 118 call / 0 RED / 又结题并出 74 090 B PDF，代理判
+`RUN7 VERDICT: PASS`）后，`FEEDBACK7` 的七件事只剩「四种没有」半件未清，而它带出两条真缺陷：
+
+1. **watchdogs 的三种「没有」不能同形**：未接线、端口抛错两支的 `targets` 改为 `null`（没测量过的零是制造的），
+   只有「接线且真的 0 个目标」才是数字 `0`；三态各一句 `means`，与 `children` 步同形。
+2. **一致性规则与出席声明不能再互相堵死**：`vmu.meetings.attendDeniedSeats` 禁止 `temp` 席到会，而一致性等它 ⇒
+   选择体 = 名册 − 被禁到会的席位，被排除者具名在 `nonAttending`/`nonAttendingSeats`（绝不静默减掉）；
+   `vmu.meetings.quorumRule:"m-unanimous"` 因此在含 temp 席的名册上**第一次可达 true**。
+3. **归档会议不是「不存在的会议」**：`attend` 的 `VMU_NO_SUCH_OBJECT` hint 说明「关会从两张活表消失」并指向
+   `vibe_v5_verdict_ask` / `vibe_v5_verdict_final`（回执会写 `meetingArchived:true`）。
+4. **卡就是 Lean 证据**：`verdict_final` 在调用者没传 `lean_job`/`lean_passed` 时读这张卡自己的 `leanJob`，
+   `fidelity.lean` 不再恒 `"none"`，并给出 `leanSource`/`leanSourceMeans`/`cardJob`。
+
+机器化：`tests/vmu-run160-run7-fixes.test.mjs` 30/0；T1 TOTAL 641  PASS 641  FAIL 0  (suites 577 · probes 64)；
+门禁五绿（coverage 86/86）。文档：`docs/acceptance/phase12-v5r-rules-conformance.md` §260。

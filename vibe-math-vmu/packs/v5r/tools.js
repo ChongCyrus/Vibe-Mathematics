@@ -2095,9 +2095,23 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
   }
   // ④ BEFORE a number is announced: if Lean passed and p is still not 1, the fidelity question must be ANSWERED —
   // either the caller answers it here (fidelity:"conform"|"defect") or the gate refuses with the question and options.
-  const leanEvidence = has(args.lean_job) ? leanPassedOf(kernel, args.lean_job)
+  // ★★ RUN 160 (FEEDBACK7 item 9): `fidelity.lean` was `"none"` even on a card whose body records `leanJob` and
+  // whose proofState is complete — the card itself was the evidence and nobody read it. The card's own Lean job is
+  // now consulted when the caller passes neither `lean_job` nor `lean_passed`; `source` says which of the three it
+  // came from, so a reader never has to guess why the fidelity gate did or did not apply.
+  const cardLeanJob = (() => {
+    if (!cardRow || !has(cardRow.body)) return null
+    try {
+      const parsed = parseCardBody(str(cardRow.body))
+      const fields = (parsed && parsed.fields) || {}
+      const job = fields.leanJob === undefined ? (fields.leanjob === undefined ? null : fields.leanjob) : fields.leanJob
+      return has(job) ? str(job) : null
+    } catch (e) { return null }
+  })()
+  const leanEvidence = has(args.lean_job) ? Object.assign({}, leanPassedOf(kernel, args.lean_job), { source: 'argument' })
     : (args.lean_passed === true || args.lean_passed === false
-      ? { jobId: null, passed: args.lean_passed === true, state: null, file: null } : null)
+      ? { jobId: null, passed: args.lean_passed === true, state: null, file: null, source: 'argument' }
+      : (cardLeanJob ? Object.assign({}, leanPassedOf(kernel, cardLeanJob), { source: 'card', cardJob: cardLeanJob }) : null))
   const answered = has(args.fidelity) ? { decision: str(args.fidelity) } : null
   const pGate = fidelityAsked({ cardId: propositionId,
     leanPassed: !!(leanEvidence && leanEvidence.passed === true),
@@ -2367,7 +2381,14 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     notice: ruled.notice && ruled.notice.text ? ruled.notice.text : null,
     fidelity: { consulted: pGate.applicable === true, resolved: pGate.resolved === true,
       required: pGate.required === true, answered: !!answered,
-      lean: leanEvidence ? (leanEvidence.jobId ? 'lean_job:' + leanEvidence.jobId : 'caller') : 'none' },
+      lean: leanEvidence ? (leanEvidence.jobId ? 'lean_job:' + leanEvidence.jobId : (leanEvidence.cardJob ? 'lean_job:' + leanEvidence.cardJob : 'caller')) : 'none',
+      leanSource: leanEvidence ? (leanEvidence.source || 'argument') : 'none',
+      leanSourceMeans: leanEvidence
+        ? (leanEvidence.source === 'card'
+          ? 'read from THIS card\'s own body (leanJob), because the caller passed neither lean_job nor lean_passed — the card IS the evidence'
+          : 'passed by the caller in this call (lean_job / lean_passed)')
+        : 'no Lean run is on this card and none was passed, so the fidelity question cannot apply',
+      cardJob: leanEvidence && leanEvidence.cardJob ? leanEvidence.cardJob : null },
     enforced: enforcedOf([pGate]), enforcedScope: ENFORCED_SCOPE,
     // if this is ever true, the kernel attempted a self-addressed send: the receipt says so rather than smoothing it over
     deliveryContradiction,

@@ -12176,3 +12176,91 @@ durable 评审读 + 修复轮 + 现读 `maxRounds`、`paper-<x>` 寻址与 consu
 2. 人数闸的负向证据仍缺一次名册 ≥4 的真机回执（`voteFloorGate` 已自报 `vacuous`/`uncovered`/`bitesWhen`）。
 3. 宿主 `pwsh` 在第六、第七轮都不可用（`0xC0000142`），代理只能改走文件工具与 `math_computation{engine:"python"}`。
 4. `lean_archive` 同时给 `from`/`file` 仍是具名拒（代理自身操作问题，非机制缺陷）。
+
+## §260 — RUN 160：第八次真机跑，第七次审计的「六件半」补齐，又抓出两条「声明与声明互相堵住」（RUN 160）
+
+第八次真机跑（续跑，tarball `8c6f8c4f`，`D:/wd/vibemath开发/_oneoff/vm-slv/full-1031-094327.jsonl`，
+1070 s / 13 125 710 token（cap 24 M，未打满）/ 根会话 118 call / `NO_FENCE=0 · UNKNOWN_FIELD=0 ·
+FIELD_NOT_APPLICABLE=0 · BAD_JSON=0` / `slv-inspect` **0 RED** / `CLOSURE cast=true (5 receipts)`）又一次走到结题：
+`rec-244`（Lean `lean-run7-pow2` passed → 辩论会 `m18` → 两人一致裁定 1）⇒ `rec-245` Verified
+（warrant `tally-m18-rec-244`）；论文 `paper-p12` 定稿并**由论文面自己**编译出 74 090 B PDF
+（独立 `math_computation{python}` 旁证 `sha256_16 73f0764c81b8ef56`、`%PDF-1.7`）；结题会 `m19` + 票板 `bx-7`
+（`cast:3 floor:3`）+ `closureVote.cast:true` 归档。代理报告：`FEEDBACK7.md`（31 906 B）/ `SIM-REPORT7.md`
+（54 596 B），本轮判 **`RUN7 VERDICT: PASS`**。
+
+### 260.1 七件事的判定（真机回执）
+
+- 第 1 件（非 ASCII 标题 / 铸造 id / 预算耗尽拒绝语 / 关会后裁决 / `set` 作用域 / 普通修订三字段 / resume 四种「没有」）：
+  前六条全按 RUN 158/159 的形状返回，且都带散文。
+- 第 2 件（四种「没有」）**只做到一半**：`children` 的四支齐了（`VMU_RESUME_CHILDREN_NO_PARENT` +
+  `queried:false` + `live:null` + `means` 写明「`live:null` means NOT ASKED」），第六轮那个 `live:0` 硬缺陷没再复现，
+  `plan.mailbox` 与 `recovery.mailbox` 逐字一致（`attached:true, pending:133, source:"durable-mailbox-key"`）；
+  **但 `watchdogs` 仍把「未接线」与「0 个目标」折叠成同一个 `targets: 0`**（`attached:false, targets:0,
+  code:"VMU_RESUME_WATCHDOGS_UNAVAILABLE"`），且只有 `note` 没有 `means` 散文。
+- 第 3 件（漂移）：`expectedHash/expectedLength/actualHash/actualLength/sameLength/means` 全在、外层有
+  `driftMeans`/`sampledAt`/`writesBetween:378`；**但**「同长度改动」这条在本部署物理不可达 —— 所有写面都是追加
+  （`write()` 会同时刷新 `expectations`，只有 `patch()` 写的键才可能漂移，而 `meetings` 每次增长 144 字节）。
+- 第 4 件（编译失败回执）：绝对 `outDir`、`sourceName`、`tailsIdentical:true` 与散文齐；另发现「编译未定稿论文」
+  **不会失败**（`ok:true, produced:true, pdfBytes:49227`）—— 代理原先的失败样例本身是错的。
+- 第 5 件（`asciiSafe`）：`asciiSafe:false` + `asciiSafeMeans`（说明是**标题**不是目录），ASCII 对照组三字段都翻。
+- 第 6 件（归档会议裁决）：`meetingArchived:true` + `meetingArchivedMeans` + `meetingState:"closed"` +
+  `meetingStateMeans` + `closurePhase:"ended"`；**新账**：`attend` 对已归档 `m19` 报 `VMU_NO_SUCH_OBJECT`，hint 只列
+  「哪几个活 id 存在」，不提归档可由裁决面读。
+- 第 7 件（设置作用域）：`persistsAcrossRestart:false` + `scope:"this-kernel"`，两层回执各一次。
+- 第 8 件【机制缺陷】`m-unanimous` 在含 temp 席的名册上**结构性不可达**。
+- 第 9 件【机制缺陷】`verdict_final` 的 `fidelity.lean` 恒 `"none"`，而同卡 `proofStateEvidence.jobId` 有作业。
+- 第 10 件【提示词问题】`vibe_v5_paper { action:"consult" }` 必须带 `target` 而提示词没写；定稿前「正文须含全部
+  Verified 结论的 `requiredLine`」只能撞门学；`part` 按成员**替换**（回执 `replaced:{recordId:…}`）写前没提示。
+
+### 260.2 两条「声明与声明互相堵住」
+
+- **一致性与出席声明互斥**：`vmu.meetings.attendDeniedSeats` 声明「`temp` 席不参会」（`attend()` 具名拒），
+  而一致性规则要求名册上**每一个人**都到会或投票 ⇒ 名册里只要有 temp 席，`unanimity.met` 永远为 false
+  （真机回执 `unanswered:["r-temp"]`、`because:"the floor is met, but not everyone has attended or voted yet: r-temp"`），
+  主席只能手工收窄名册（而那又改变了「谁被召集」）。**修法**：一致性的**选择体** = 名册 − 被声明禁止到会的席位，
+  被排除的成员在 `nonAttending` / `nonAttendingSeats` / `nonAttendingMeans` 里**具名**，绝不静默减掉。
+- **卡的 Lean 证据没人读**：`verdict_final` 只在调用者传 `lean_job` / `lean_passed` 时才看 Lean，卡自己 body 里的
+  `leanJob` 与 `proofState:complete` 一律不看 ⇒ `fidelity.lean:"none"`。**修法**：调用者都没传时读**这张卡自己的**
+  `leanJob`，`leanSource:'argument'|'card'` + `leanSourceMeans` 说明来源，`cardJob` 点名作业 id。
+
+### 260.3 另外两处（第 2、6 件判「半」）
+
+- `kernel/resume.js` 的 watchdogs：未接线与端口抛错两支的 `targets` 改为 **`null`**（「没人看过就报 0，是把没测量过的零
+  制造出来」），只有接线且真的 0 个目标才是数字 `0`（`..._NONE`）；三态各一句 `means`，与 `children` 步同形；
+  `plan.steps` 的 watchdogs 步也自报 `targets:null` + 说明。
+- `tools/meeting.js` 的 `noSuchMeeting` hint：追加「★ a CLOSED meeting is in NEITHER live table (closing archives it)…
+  read it with `vibe_v5_verdict_ask` or `vibe_v5_verdict_final` — those still read the archive and their receipt says
+  `meetingArchived:true`」。
+
+### 260.4 机器化
+
+- 新 `tests/vmu-run160-run7-fixes.test.mjs` **30/0**：
+  - §0 源码口径（四处修法各自的所有者）；
+  - §1 真 `createResume`：未接线 ⇒ `targets:null` + `..._UNAVAILABLE` + means 含「never 0 / manufactured」且 `note===means`；
+    接线且 0 目标 ⇒ `targets:0` + `..._NONE` + means 含「MEASURED」；端口抛错 ⇒ `ok:false` + `targets:null` + `..._PORT_FAILED`；
+  - §2 真 meetings 面：声明 `attendDeniedSeats:['temp']` 时 `unanimity.met:true`、`nonAttending:['r-temp']`、
+    `nonAttendingSeats:['temp']`、`unanswered:[]`、`electorate:2`，而 policy 仍点名「EVERY roster member」；
+    反向（无声明）仍等 `r-temp`；真缺席者（`r-1`）即使有声明也照样挡路；
+  - §3 真工具：`attend` 归档会议 ⇒ `VMU_NO_SUCH_OBJECT` + hint 含「NEITHER live table」与两个裁决面；
+  - §4 真工具：卡上有 `leanJob`/`proofState:complete`、调用者不传 Lean ⇒ `fidelity.lean:"lean_job:lean-run160"`、
+    `leanSource:"card"`、`cardJob:"lean-run160"`、`leanSourceMeans` 含「leanJob」。
+- 同步翻新：`tests/vmu-meetings.test.mjs` 的两条 pin 要求 policy 仍写「EVERY roster member」（本轮改文案时先破后修）。
+
+### 260.5 读数与门禁
+
+- 生成器：`regen-all --write` 三轮后 `17/17 in sync`。
+- 门禁：`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULE PARITY: PASS (0 problem(s))`、
+  `RULES COVERAGE: PASS (0 problem(s))`（86/86 锚点、86 DONE）。
+- 定向：`--only resume` 6/0、`--only meetings` 2/0、`--only meeting` 32/0、`--only paper` 11/0、`--only latex` 2/0、
+  `--only v5r-tools` 1/0、run141/146/147/149/150/151/152/154/155/156/158/159/160 各 1/0、`--only prompt-` 24/0、
+  `--only turn` 15/0、`--only audit-` 162/0、`audit-declaration-criterion` 91/0。
+- 全量 T1（`GATE_SCOPE=vmu`）：**TOTAL 641  PASS 641  FAIL 0  (suites 577 · probes 64)**（日志
+  `/d/_tmp/t1-r197-run160.log`）。
+
+### 260.6 仍未解决
+
+1. 「同长度漂移」这一支在真部署里物理不可达（所有写面都追加、`write()` 会刷新 expectations）⇒ 只能靠单测注入 store
+   （`tests/vmu-run159-receipt-truth.test.mjs` §1 已注入，`tests/vmu-run160-run7-fixes.test.mjs` 未重复）。
+2. `editor:"office"` 代定稿仍是具名缺口；人数闸仍缺一次名册 ≥4 的负向真机证据。
+3. 提示词面：`vibe_v5_paper { action:"consult" }` 的 `target` 必填没写进教学；`part` 按成员替换未提前说明。
+4. 宿主 `pwsh` 在第六、七、八轮都不可用（`0xC0000142`），代理只能改走文件工具与 `math_computation{engine:"python"}`。

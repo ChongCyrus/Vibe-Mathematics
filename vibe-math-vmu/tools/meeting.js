@@ -257,7 +257,14 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             code: 'VMU_NO_SUCH_OBJECT',
             hint: 'primitive registry: ' + ((kernel.liveList().meetings || []).join(', ') || '(none)')
               + ' ; service registry: ' + (serviceIds().join(', ') || '(none)')
-              + ' ; action=list reports both (id and meeting are aliases of the same field)',
+              + ' ; action=list reports both (id and meeting are aliases of the same field)'
+              // ★★ RUN 160 (FEEDBACK7 item 6): a CLOSED meeting is absent from BOTH live tables, and this hint
+              // used to answer only "which live ids exist" — a reader asking about a meeting that just finished
+              // concluded it never existed. The archive is a third place these actions do not look, and the
+              // ruling faces DO read it; that is a fact about the faces, so it belongs in the refusal.
+              + ' ; ★ a CLOSED meeting is in NEITHER live table (closing archives it): this action only addresses live' 
+              + ' meetings, so if the id is one that just finished, read it with vibe_v5_verdict_ask or'
+              + ' vibe_v5_verdict_final — those still read the archive and their receipt says meetingArchived:true',
           })
         const sid = (idv) => String(idv === undefined || idv === null ? '' : idv)
         // ★ G7: "错传只报 id undefined" — the refusal must say WHICH field the action reads. Both names are accepted.

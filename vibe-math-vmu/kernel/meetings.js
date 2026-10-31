@@ -877,7 +877,22 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
 
   /** The quorum computation (READ-ONLY): `attendanceMode` + `unansweredInDenominator` change the numbers. */
   const quorumOf = (m) => {
-    const unanswered = m.roster.filter((r) => !m.present.has(r))
+    // ★★ RUN 160 (FEEDBACK7 item 8): TWO DECLARATIONS CONTRADICTED EACH OTHER. `vmu.meetings.attendDeniedSeats`
+    // says a temp seat does not attend (attend() refuses it by name), while the unanimity rule required EVERY
+    // roster member to have attended or voted — so on a roster holding a temp seat `unanimity.met` was false BY
+    // CONSTRUCTION and the chair had to narrow the roster by hand (which itself changes who was convened).
+    // The electorate of the unanimity reading is therefore the roster MINUS the seats a declaration forbids to
+    // attend; those members are named in `nonAttending`, never quietly dropped.
+    const rosterSeatOf = (() => {
+      const list = (members && typeof members.roster === 'function') ? (members.roster() || []) : []
+      return new Map(list.filter(Boolean).map((x) => [String(x.id), String(x.slot)]))
+    })()
+    const deniedSeats = Array.isArray(K.attendDeniedSeats) ? K.attendDeniedSeats.map(String) : []
+    const nonAttendingAll = deniedSeats.length
+      ? m.roster.filter((r) => deniedSeats.includes(rosterSeatOf.get(String(r))))
+      : []
+    const unansweredAll = m.roster.filter((r) => !m.present.has(r))
+    const unanswered = unansweredAll.filter((r) => !nonAttendingAll.includes(r))
     const effective = K.unansweredInDenominator ? m.roster.length : m.present.size
     const needMin = K.quorumMin
     const needRatio = Math.ceil(K.quorumRatio * m.roster.length)
@@ -952,9 +967,18 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         rule: K.quorumRule, ruleIsUnanimity: unanimityRule,
         met: unanimityRule ? (met && allIn) : met,
         unanswered: unanswered.slice().sort(),
+        electorate: m.roster.length - nonAttendingAll.length,
+        nonAttending: nonAttendingAll.slice().sort(),
+        nonAttendingSeats: deniedSeats.slice(),
+        nonAttendingMeans: nonAttendingAll.length
+          ? 'these members are named on the roster but a declaration (vmu.meetings.attendDeniedSeats) forbids their seat to attend or vote, so the unanimity reading does not wait for them — they are NAMED here instead of being silently subtracted'
+          : 'no member of this roster sits in a seat that the attendance declarations forbid',
         policy: unanimityRule
           ? 'the institution\'s rule is unanimity: the quorum counts as established only when EVERY roster member has '
-            + 'attended or voted AND the floor is met (「未到齐则法定人数不成立」)'
+            + 'attended or voted AND the floor is met (「未到齐则法定人数不成立」); the electorate is the roster minus the seats '
+            + 'that vmu.meetings.attendDeniedSeats forbids to attend: such a seat cannot be barred from the meeting and waited '
+            + 'for at the same time, so the ELECTORATE of that "every" excludes it — those members are NAMED in `nonAttending`, '
+            + 'never silently dropped'
           : 'the institution\'s rule (' + String(K.quorumRule) + ') is not unanimity: only the floor applies',
         because: unanimityRule
           ? (met && allIn ? 'every roster member attended or voted and the floor is met'
