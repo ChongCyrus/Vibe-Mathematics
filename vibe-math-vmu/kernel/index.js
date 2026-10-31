@@ -2533,6 +2533,27 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // ROUND 4: named, not inferred - the same lesson as `turnDeliverSeam` above.
   const sendMessageSeam = typeof sendMessage === 'function' ? sendMessage : null
   const interruptSeam = typeof interrupt === 'function' ? interrupt : null
+  // ★★★ RUN 169: THE ONE DURABLE CLOSURE LEDGER. Measured (run 15 / FEEDBACK15 F15-3): `r-acad`'s vote, cast through
+  // `vibe_vmu_vote` inside its own child session, read `votesCast:1` there and `votesCast:2, missing:["r-acad"]` in the
+  // office kernel - one institute, two incompatible tallies, because `turn.status().closureVoteVotes` is one session's Map.
+  // Declared before the loop because the loop calls it: the loop owns WHEN a judgement happened, this kernel owns WHERE it
+  // is written, and the fold is the only thing two kernels can both read.
+  const CLOSURE_VOTES_FOLD = 'closure_votes'
+  const persistClosureVote = ({ member, solved }) => {
+    if (!recordsStore || typeof recordsStore.patch !== 'function') {
+      throw refuse('VMU_STORE_FAILED', 'this assembly has no durable store, so a closure vote cannot leave this process',
+        'mount the kernel over a root (createStore) to make the closure tally institute-wide; without it the reading covers this session only')
+    }
+    const at = (() => { try { return clock() } catch { return null } })()
+    const session = (() => { try { return kernelSessionValue(kernelSession) || null } catch { return null } })()
+    const pending = recordsStore.patch(CLOSURE_VOTES_FOLD, (prev) => {
+      const rows = (Array.isArray(prev) ? prev : []).filter((r) => r && String(r.member) !== String(member))
+      rows.push({ member: String(member), solved: solved === true, at, session })
+      return rows
+    })
+    if (pending && typeof pending.catch === 'function') pending.catch((e) => log('vmu closure_votes write: ' + String((e && e.message) || e)))
+    return true
+  }
   const turn = createTurnOrchestrator({
     sectionPolicy: sectionPolicy || null,
     noticeBlock: noticeBlock || null,
@@ -2542,6 +2563,13 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // known later (host service mounts / first tool call carries the Agent) starts naming itself instead of staying
     // anonymous forever. `statusBoardReadings` still receives a plain string, resolved at that render.
     kernelSession: () => kernelSessionValue(kernelSession),
+    // ★ RUN 169 / T1 r221: THE HOOK IS HANDED OVER ONLY WHEN IT CAN ACTUALLY PERSIST. The first cut always passed it and
+    // let it throw `VMU_STORE_FAILED` on a storeless assembly, which made every reply vote leave TWO effects (the vote and
+    // the refusal) - and the refusal was not a property of THAT vote, it was a property of the ASSEMBLY, known before the
+    // vote was ever cast. A missing capability is not a failure event: the loop now carries `durable:false` on the vote
+    // effect itself (`durableMeans` says where the vote does count), and `vibe_vmu_vote` still refuses by name on the tool
+    // path, where the caller asked for a durable ledger. Capability is decided once, here, not re-discovered per vote.
+    persistClosureVote: (recordsStore && typeof recordsStore.patch === 'function') ? persistClosureVote : null,
     // ★★★★★★★ PHASE 6 / K10 WIRING: THE LOOP'S BUS WAS NEVER HANDED OVER, SO `turn/reply-parsed` COULD NOT FIRE.
     // `kernel/turn/index.js:1009` emits that hook (the ONLY producer in the tree) inside `if (bus && ...)`, and the
     // orchestrator defaults `bus = null` - measured: a real kernel ran two turns and the hook's hit counter stayed 0,
@@ -2646,8 +2674,32 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   })
   // ★ PHASE 7 / round 17: THE ONE CLOSURE-VOTE CALCULATION. The turn face and kernel.status() call THIS function with the
   // SAME inputs, so "two places compute the same reading" cannot drift into eligible:[] again.
+  // ★★★ RUN 169 (real machine, run 15 / FEEDBACK15 F15-3): THE CLOSURE VOTE WAS SESSION STATE, AND AN INSTITUTE
+  // IS NOT A SESSION. Measured: `r-acad` voted through `vibe_vmu_vote` INSIDE ITS OWN child session and its receipt read
+  // `votesCast:1`; at the same moment the office kernel read `votesCast:2, missing:["r-acad"]`. Same institute, two honest,
+  // incompatible tallies - and the member HAD voted. Each member turn runs in its own kernel whose orchestrator owns an
+  // in-memory `votes` Map, so a judgement made in one session could never reach another, and the office's `missing` named a
+  // member who had already answered. The map stays per-session (that IS its honest scope), but every vote now ALSO lands in
+  // the durable fold under its own key, and every closure reading merges the fold in: one institute, one tally.
+  const closureVoteFoldRows = () => {
+    try {
+      if (!recordsStore || typeof recordsStore.read !== 'function') return []
+      const rows = recordsStore.read(CLOSURE_VOTES_FOLD)
+      return Array.isArray(rows) ? rows.filter((r) => r && typeof r.member === 'string' && typeof r.solved === 'boolean') : []
+    } catch (e) { log('vmu closure_votes read: ' + String((e && e.message) || e)); return [] }
+  }
+  // The fold rows are the durable truth; this session's map is the FRESHER copy of the same fact (a write lands in memory
+  // first and the fold patch is async), so memory wins for a member present in both - the same last-wins rule the writer
+  // documents for a repeated vote.
+  const closureVotesMerged = () => {
+    const out = new Map()
+    for (const row of closureVoteFoldRows()) out.set(String(row.member), row.solved === true)
+    const live = turn && typeof turn.status === 'function' ? turn.status().closureVoteVotes : null
+    if (live && typeof live.forEach === 'function') live.forEach((v, k) => out.set(String(k), v === true))
+    return out
+  }
   const closureVoteInput = () => ({
-    votes: turn && typeof turn.status === 'function' ? turn.status().closureVoteVotes : new Map(),
+    votes: closureVotesMerged(),
     // ★★★ LIVE RUN 26 defect 3 (the institute's own report, and the worst of the three): A DEPARTED MEMBER STAYED IN THE
     // ELECTORATE. The roster was passed WHOLE, so a fired member counted as enfranchised: closure could be BLOCKED by its
     // silence (`missing:["<id>"]`, `cast:false`) and then "unblocked" by voting on its behalf — the run's `cast:true` was
@@ -3808,7 +3860,16 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       if (!turn || typeof turn.recordClosureVote !== 'function') throw refuse('VMU_ENGINE_UNAVAILABLE', 'this kernel has no closure-vote writer', 'assemble the turn loop')
       const out = turn.recordClosureVote(id, solved, 'tool')
       const writes = (() => { try { return turn.status().closureVoteWrites } catch { return null } })()
-      return { ok: true, tool: 'vibe_vmu_vote', member: id, solved: out.solved, why: why === null ? null : String(why), writes, closureVote: closureVoteView() }
+      // ★ RUN 169: the loop already wrote the durable row through `persistClosureVote` (the SAME seam the reply channel uses,
+      // so the two channels cannot diverge). This receipt says whether that was even possible in this assembly.
+      const persistedToFold = !!(recordsStore && typeof recordsStore.patch === 'function')
+      return { ok: true, tool: 'vibe_vmu_vote', member: id, solved: out.solved, why: why === null ? null : String(why), writes,
+        persistedToFold, foldKey: persistedToFold ? CLOSURE_VOTES_FOLD : null,
+        crossKernelScope: persistedToFold ? 'shared-fold' : 'this-process',
+        crossKernelMeans: persistedToFold
+          ? 'the vote is written to the durable fold key "closure_votes" as well as this session, so the office kernel and every other instance read the SAME tally on their next closure reading (before RUN 169 they read different ones)'
+          : 'this assembly has no durable store, so the vote lives only in this process: another kernel will NOT see it',
+        closureVote: closureVoteView() }
     },
     /**
      * ★ PHASE 8 / B-1: THE MEMBER'S REAL TOOL TABLE, in the kernel. Names come ONLY from the live visible-tools provider
@@ -3860,7 +3921,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // is a wiring defect and must stay loud: two different causes behind one quiet answer is worse than no answer
           // (that is the same distinction the `typeof turn.visibleToolsOf !== 'function'` line above already draws).
           const cause = (e && e.code) || ''
-          if (cause !== 'VMU_NO_SUCH_OBJECT') throw e
+          // ★ RUN 169 (F15-6): the provider now says WHICH fact it is. A finished child session is
+          // `VMU_MEMBER_SESSION_NOT_LIVE` (the seat exists, its Agent is not live); a member that never ran keeps
+          // `VMU_NO_SUCH_OBJECT`. BOTH are the "cannot read the wire, answer with the refusal as a FIELD" case — the
+          // old single-code gate would have turned the honest code into a thrown dead end.
+          if (cause !== 'VMU_NO_SUCH_OBJECT' && cause !== 'VMU_MEMBER_SESSION_NOT_LIVE') throw e
           let recorded = null
           try { recorded = typeof this.memberToolOverride === 'function' ? this.memberToolOverride(member) : null } catch { recorded = null }
           // ★★★ LIVE RUN 15: the note below used to state ONE cause for every failure ("caller delivery plays the member

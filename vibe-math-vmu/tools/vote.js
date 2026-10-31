@@ -14,7 +14,7 @@ export function makeVoteSpec({ param, refused, TOOL_NAMES, kernel }) {
   })
   return {
     name: TOOL_NAMES.vote,
-    description: '投出结题表决的一票（写入与回执 vote_solved 相同的投票记录器）。只有持 closure-vote 权限的在册成员可以投；无权限/未落座 ⇒ 具名拒。',
+    description: '投出结题表决的一票（写入与回执 vote_solved 相同的投票记录器；RUN 169 起这一票同时写进耐久折入的 "closure_votes" 键，所以所办内核与其它实例读到的是同一份计票）。只有持 closure-vote 权限的在册成员可以投；无权限/未落座 ⇒ 具名拒。',
     parameters: VOTE_PARAMETERS,
     run: async (args = {}) => {
       if (!kernel || typeof kernel.recordClosureVote !== 'function') {

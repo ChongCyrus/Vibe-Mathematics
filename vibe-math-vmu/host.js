@@ -755,7 +755,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             }
             if (omitted.length > 0) {
               kept.proseOmitted = omitted
-              kept.proseWhere = 'detail:"closure" carries these readings verbatim (they are long because they explain a name that is easy to misread)'
+              kept.proseWhere = 'see detail:"closure"'
             }
             out.closureVote = kept
           }
@@ -1913,8 +1913,13 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     if (r.agent) return null
     const learned = typeof r.knownSession === 'string' && r.knownSession !== '' ? r.knownSession : null
     const cause = learned ? 'child-session-not-live' : 'no-child-session-yet'
+    // ★ RUN 169 (run 15 / F15-6): ONE FACE SAID "NO SUCH OBJECT" ABOUT AN OBJECT IT HAD JUST NAMED. The message said
+    // "has a learned child session (child-x) but no LIVE Agent", so the session existed; `VMU_NO_SUCH_OBJECT` therefore
+    // contradicted the sentence beside it and a member reading the code concluded the object was gone. Two causes now
+    // carry two codes: a finished child is `VMU_MEMBER_SESSION_NOT_LIVE` (the seat exists, its Agent is not live), and
+    // a member that never ran keeps `VMU_NO_SUCH_OBJECT` (nothing was learned to look at).
     return {
-      code: 'VMU_NO_SUCH_OBJECT',
+      code: cause === 'child-session-not-live' ? 'VMU_MEMBER_SESSION_NOT_LIVE' : 'VMU_NO_SUCH_OBJECT',
       member: String(member),
       cause,
       // ★ RUN 15 ⑦h keeps this assertion alive: the id the kernel learned must TRAVEL on the refusal (a reader

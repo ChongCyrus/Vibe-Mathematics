@@ -333,6 +333,7 @@
 | `idempotency` | `kernel/idempotency.js:323`（`patch(LEDGER_KEY,…)`） | 同面（去重台账） | 只在本进程去重 |
 | `work` | `kernel/work.js:64`（`patch(WORK_KEY,…)`） | 同面 ＋ 恢复的 `work` 接缝（`interrupted` 具名） | 无在途台账 |
 | `turns`（R35） | `kernel/index.js:1829` 的 `turnLedger.record()`（`store.patch('turns', …)`：**一席位一行、按 member 原位 upsert**）← `kernel/turn/index.js` 的 `open()` 经 `noteSharedTurn()` 发布，`deliverTurn` 在投递**前** `await` 落盘 | `kernel/index.js` 的 `chairActed()`（`vmu.meetings.chairActRequiresTurn` 闸门：先本实例 `memberTurnCount`、再共享键） | 读失败抛 `VMU_STORE_FAILED`（`chairActed` 记 `vmu chair-act ledger unreadable` 后退回内存）；store 从未 open ⇒ `status().turn.counts.ledgerSkipped`（没有耐久层可写，不是缺陷） |
+| `closure_votes`（R172） | `kernel/index.js` 的 `persistClosureVote`（`recordsStore.patch('closure_votes', 按 member 原位 upsert)`；工具与 turn 回执两条投票通道都经它） | `closureVoteInput` → `closureVotesMerged()`（**先读 fold，再用本进程内存覆盖**，内存更新鲜） | 无 store 时 `vibe_vmu_vote` **具名拒** `VMU_STORE_FAILED`（「cannot leave this process」），回执 `crossKernelScope:'shared-fold'` \| `'this-process'` 自报作用域 |
 | `leanlibrary`（R60） | `kernel/lean.js` 的 `archive()`（`attachStore` 后 `store.write('leanlibrary', 合并行)`：按 name 合并在读到的当前值上，**不覆盖别的内核刚加的名字**） | 同面在 `lib()`/`read()`/`archive()` 之前 `readSharedRows()` 折入；装配处 `kernel/index.js` 在 `records.attachStore` 旁 `lean.attachStore(store)` | 没有接缝时 `persistence().shared === false` 且 `means` 明说「只在本进程内」；写失败计数在 `persistence().refused`，**不假装耐久** |
 
 **族 ③ · 白名单内但【未落盘】：只在 `status()` 视图里（**不要依赖文件**）**
@@ -513,6 +514,7 @@
 | `VMU_NOT_MEMBER` | 调用者不是可识别成员/角色 | 需要身份的操作 | ✅ |
 | `VMU_NOT_PERMITTED` | 权限不足（含中间件拦截） | 写/管操作 | ✅（须说明**谁能做**） |
 | `VMU_NO_SUCH_OBJECT` | 对象不存在（悬空 id） | 读/引用 | ✅（须给**下一步**） |
+| `VMU_MEMBER_SESSION_NOT_LIVE` | **对象在、只是不 LIVE**（成员的子会话已结束、没有活着的 Agent）——与 `VMU_NO_SUCH_OBJECT` 分开，正因为「一个面刚刚点名了那个 child session，却说它不存在」是自相矛盾的码（RUN 169 / run 15 F15-6；`host.js` 的 `memberWireRefusal`、`kernel/index.js` 的 `toolsView` 降级闸同时接受両码，`vibe_v5_tool_help` 逐字转发） | 成员工具面/子会话 | ✅（须给 **childId** 与下一步） |
 | `VMU_STATE` | 状态不允许该操作 | 阶段/流程约束 | ✅ |
 | `VMU_RESOURCE_BUDGET` | 触达预算/上限（机器强制） | 工具调用/新建成员/内存 | ✅（须给**当前值与上限**） |
 | `VMU_PACK_CONFLICT` / `VMU_PACK_MISSING` | 整合包冲突/缺失 | 装载 | ✅ |
@@ -1195,7 +1197,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **483** 个码，**逐行**给出状态 ✓：其中 **444** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **484** 个码，**逐行**给出状态 ✓：其中 **445** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1454,6 +1456,7 @@
 | `VMU_MEETING_TOO_SMALL` | **已实现 ✓** | `vibe-math-vmu/kernel/meeting.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_UNANSWERED_POLICY` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MEMBER_LIMIT` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
+| `VMU_MEMBER_SESSION_NOT_LIVE` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEMORY_NOT_AUTHORITY` | **已实现 ✓** | `vibe-math-vmu/kernel/memory.js` | 代码里有该码字符串 ✓ |
 | `VMU_META_VALIDATION_FAILED` | **已实现 ✓** | `vibe-math-vmu/extensions/domain-compliance/index.js`、`vibe-math-vmu/kernel/course.js`、`vibe-math-vmu/kernel/funding.js`、`vibe-math-vmu/kernel/ip.js`、`vibe-math-vmu/kernel/lifecycle.js`、`vibe-math-vmu/kernel/resource.js`、`vibe-math-vmu/kernel/stateversion.js`、`vibe-math-vmu/kernel/storepolicy.js` | 代码里有该码字符串 ✓ |
 | `VMU_METRICS_TRIGGER_FORBIDDEN` | **已实现 ✓** | `vibe-math-vmu/kernel/metrics.js` | 代码里有该码字符串 ✓ |

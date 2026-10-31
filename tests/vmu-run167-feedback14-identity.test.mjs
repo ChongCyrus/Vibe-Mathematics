@@ -71,8 +71,11 @@ const newRoot = async (tag) => { const r = await mkdtemp(join(BASE, tag + '-'));
   ok(paper.split('function reviewRowOf(state, member) {').length - 1 === 1, '§0 F6: reviewRowOf is declared ONCE (it was two copies)')
   ok(/function reviewTargetFor\(state, member\)/.test(paper) && /const required = state\.participants\.filter\(\(id\) => assignedOther\(id\)\)/.test(paper),
     '§0 F6: the assignment names an AUTHOR, and only members with a cross target owe a verdict')
-  ok(/`missing` means "not seen in THIS session", NOT "did not vote"/.test(turn),
-    '§0 F9: the closure reading names its blind spot inside the field that explains the window (the small face has a size pin)')
+  // RUN 169 changed the MECHANISM this sentence describes (votes are now also written to the durable fold key
+  // `closure_votes`, so a vote made in another session IS visible), and the pin follows the mechanism, not the old wording.
+  ok(/but every vote is also written to the durable fold key "closure_votes"/.test(turn) &&
+    /`missing` means "no recorded judgement"/.test(turn),
+    '§0 F9: the closure reading still explains `missing` inside the window field, and now names the shared fold that makes it institute-wide (the small face has a size pin)')
   ok(/const review = \{ target: str\(state\.target\), member:/.test(paper) && /const part = \{\s*\n\s*target: str\(state\.target\)/.test(paper),
     '§0 F6 follow-up: a paper row NAMES its paper (content-only fingerprints exclude the title, so the paper id must be in the body)')
   ok(/function narrowInEffectMeans\(face, notNarrowed, inEffect\)/.test(tools) && /narrowing\.reason !== 'type-declares-no-narrowing'/.test(tools) && /const narrowingInEffect = face\.narrowed === true && notNarrowed\.length === 0/.test(tools),
@@ -179,12 +182,15 @@ const newRoot = async (tag) => { const r = await mkdtemp(join(BASE, tag + '-'));
   const before = A.kernel.closureVoteView()
   ok(Array.isArray(before.missing) && before.missing.length > 0,
     '§4 fixture: nobody has voted in this session, so the blind spot is non-empty', before.missing)
-  ok(before.window === 'session' && /SESSION/.test(before.windowMeans),
-    '★★ §4 F9 FIXED: the reading names the window it really has (this session, not "the institute")', { window: before.window })
-  ok(/`missing` means "not seen in THIS session", NOT "did not vote"/.test(before.windowMeans),
-    '§4 and the field that explains the window also explains `missing` — the sentence that was being misread', before.windowMeans)
-  ok(/votes cast in another session are invisible here/.test(before.windowMeans),
-    '§4 and says the institute-wide count is NOT known here', before.windowMeans)
+  // ★ RUN 169 (run 15 / F15-3) made the COUNT institute-wide (the durable fold key `closure_votes`), while the votes MAP
+  // stays this orchestrator's. So the reading keeps naming its own window AND says which part is shared: `window` is still
+  // 'session', and the sentence now names the fold instead of claiming other sessions are invisible.
+  ok(before.window === 'session' && /INSTITUTE/.test(before.windowMeans),
+    '★★ §4 F9 FIXED: the reading names the window it really has (this session) AND that its TALLY spans the institute', { window: before.window, means: before.windowMeans })
+  ok(/`missing` means "no recorded judgement"/.test(before.windowMeans),
+    '§4 and the field that explains the window also explains what `missing` means now — a reading, not a vote count', before.windowMeans)
+  ok(/a member who voted in ANOTHER session IS visible here through that fold/.test(before.windowMeans),
+    '§4 and it no longer claims other sessions are invisible (RUN 169: they are visible through the shared fold)', before.windowMeans)
   await A.call('vibe_vmu_vote', { member: 'r-1', solved: true, why: 'run 167 §4' })
   const after = A.kernel.closureVoteView()
   ok(after.votesCast === 1 && !after.missing.includes('r-1'),

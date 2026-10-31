@@ -120,6 +120,13 @@ export const PUBLIC_KEYS = Object.freeze([
   // cannot clobber each other's names). Readers: the same face before `lib()`/`read()`. Rows are `[]`-seeded like the other
   // row-array keys. The whitelist and docs/03 §6 move together.
   'leanlibrary',
+  // ★ RUN 169 (run 15 / FEEDBACK15 F15-3): `closure_votes` - the INSTITUTE-WIDE closure tally. Each member turn runs in
+  // its own kernel, so `turn.status().closureVoteVotes` is one session's Map: `r-acad` voting inside its child session read
+  // `votesCast:1` while the office kernel read `votesCast:2, missing:["r-acad"]` - same institute, two incompatible tallies.
+  // Writer: `kernel/index.js` `recordClosureVote` (through this store's `patch`, upserted by member). Readers: the same
+  // module's `closureVoteInput` (merged UNDER this session's fresher map), so every kernel computes the closure reading from
+  // one durable electorate. Seeded `[]` like the other row arrays. The whitelist and docs/03 §6 move together.
+  'closure_votes',
 ])
 
 /** Named refusal (codes are registered in docs/03 §8). */

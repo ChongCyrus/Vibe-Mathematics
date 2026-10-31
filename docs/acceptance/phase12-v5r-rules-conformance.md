@@ -12785,3 +12785,37 @@ if (staleLive) { shared.staleLiveRows += 1; continue }
 2. **F15-5 任务书点名了不存在的工具**（`vibe_v5_statusboard`/`vibe_v5_selfreport`/`vibe_v5_voteboard`）：真身是 `vibe_vmu_panel`/`vibe_v5_feedback`/`vibe_v5_poll_*` + `vibe_vmu_meeting`；这是**简报**缺陷（真机简报由我写），下一轮简报按真名写，并把「工具别名表」写进简报。
 3. **F15-6 `VMU_NO_SUCH_OBJECT` 对已结束的成员会话**：码名与事实不符（会话存在但 Agent 不 LIVE），留待下一轮改码。
 4. **`prune` 现在还没被代理在真机上用过**：run 15 的代理仍然选了抬配额；下一轮简报要求「先 prune 再考虑抬上限」，并复查 `staleLiveRows` 是否在真机上非零。
+
+## §269 一个研究所一份计票：结题票进耐久折入面，且"没有这个对象"不能用来描述一个刚刚被点了名的对象（RUN 169 / run 15 的 F15-3、F15-6）
+
+### 269.1 现场：同一次投票，两个内核读出两个数
+
+run 15 里 `r-acad` 用工具投了结题票，成员侧 `votesCast:1`；几乎同时所办读 `vibe_vmu_status detail:"closure"` 得到 `votesCast:2, missing:["r-acad"]` —— **同一次投票在两个人眼里存在/不存在**。同轮另一处：`vibe_v5_tool_help{member:"r-1"}` 报 `VMU_NO_SUCH_OBJECT`，而同一条 message 写着「has a learned child session (child-7x) but no LIVE Agent」—— **一个面刚刚点名了那个对象，却说它不存在**。
+
+### 269.2 F15-3 的机制真相与修法
+
+- 真相：票只存在 `kernel/turn/index.js` 的 `closureVotes` Map（进程内），`recordClosureVote` 是唯一写者，reply 的 `vote_solved` 与工具 `vibe_vmu_vote` 两个通道都写它；**跨内核没有任何共享面**。
+- 修法：新增耐久折入键 **`closure_votes`**（`kernel/store.js` 的 `PUBLIC_KEYS` 白名单内，写者 `kernel/index.js` 的 `persistClosureVote`、读者 `closureVoteInput`），每次记票 `recordsStore.patch(CLOSURE_VOTES_FOLD, 按 member 原位 upsert)`；读数 `closureVotesMerged()` 先读 fold 再用**内存**覆盖（内存更新鲜）。
+- 回执自报作用域：`vibe_vmu_vote` 回执带 `persistedToFold` / `foldKey:"closure_votes"` / `crossKernelScope`（有 store ⇒ `shared-fold`，无 ⇒ `this-process`）/ `crossKernelMeans`；无 store 时工具路径**具名拒** `VMU_STORE_FAILED`（不假装耐久）。
+- **能力在装配时定，不在投票时发现**（T1 r221 抓到的一条真连带）：第一版把接缝无条件交给循环、由它在无 store 时抛 `VMU_STORE_FAILED`，于是每一张 reply 票都留下**两条 effect**（票 + 拒），而「这台装配没有 store」是**投票之前就成立的装配事实**，不是这一票的失败事件 ⇒ 改成**有 store 才传接缝**，循环在票自己的 effect 上写 `durable:false` ＋ `durableMeans`（"counts in this kernel only"）。卖点一致：回执仍然不假装耐久，但不再把「装配能力」伪装成「这次操作的失败」。
+- 无票权席不再谎称"没投"：`closureVoteOf` 增 `notEligible` ＋ `notEligibleMeans`（"recorded, but neither counted nor listed as missing"），`turn.status()` 的 `solvedThisRound` 增 `solvedThisRoundMeans`（明说它含无票权席、且计数看 `closureVote`）。
+- `windowMeans` 随之改写（不是删字段）：**"`missing` means \"no recorded judgement\"：a member who voted in ANOTHER session IS visible here through that fold"**——旧句"other sessions are invisible"已被机制推翻，按新事实**反向改写**。
+
+### 269.3 F15-6：码与事实必须同源
+
+`vibe-math-vmu/host.js` 的 `memberWireRefusal(member)` 对 `cause === 'child-session-not-live'`（子会话已结束、Agent 不 LIVE）也返回 `VMU_NO_SUCH_OBJECT`。修法：三元 **`VMU_MEMBER_SESSION_NOT_LIVE`**（对象在、只是不 LIVE）vs `VMU_NO_SUCH_OBJECT`（真的从没跑过）；`kernel/index.js` 的 `toolsView` 降级闸**同时接受両码**（否则新码变成抛错死路），把拒因当字段回，`refusal.code` 逐字转发到 `vibe_v5_tool_help`。
+
+### 269.4 两条可读性钉被长句撑破（只压字，不删字段）
+
+`tests/vmu-host.test.mjs` 钉着：`detail:"closure"` **< 1500 字符**、真装配 summary **< 8000 字节**、且被 summary 移出的每个键在 closure 面上仍是 **> 90 字符的原文长句**。RUN 169 的新句子把这几个数推到 1588/1842/8027 ⇒ 用三轮压字回到 **1499 / 7987**（`reason` 尾句、`rulingReading`、`castMeaning`、`notEligibleMeans`、`proseWhere`），**字段一个没删**。教训：小面是"不许改坏"的契约，压字时要先从 `probe-closure-test1.mjs`/`probe-closure-size2.mjs` 读出每个字段的实际长度再动。
+
+### 269.5 机器化与读数
+
+- `tests/vmu-run169-institute-closure.test.mjs`（**28/0**）：§0 源码口径（白名单/patch/合并器/两个新说明/新码）；§1 两内核同 root——工具票跨内核可见、reply 票跨内核可见、一票反对时 `cast:false`、凑齐 `votesCast:3/missing:[]/confirmed:true`、closure 面 <1500；§2 `r-temp` 工具票被 `VMU_NOT_PERMITTED` 拒、reply 票进 `notEligible` 且不计票；§3 无 store 路径具名拒 ＋ `closure-vote-persist-refused` 行；§4 F15-6 两码分流且 `vibe_v5_tool_help` 逐字转发。
+- `tests/vmu-run167-feedback14-identity.test.mjs` 同步到新机制（**53/0**），旧断言按事实**反向改写**而不是删除。
+- 读数：定向回归 `--only` 全 0 红（paper 11/0、records 5/0、vote 2/0、meeting 32/0、verdict 5/0、prompt- 24/0、v5r-tools 1/0、run15 10/0、run16 11/0、run17 1/0、run30 1/0、run31 7/0、vmu-host 4/0）；全量 T1 见 §269.6。
+
+### 269.6 读数门禁（本轮）
+
+- `regen-all --write` 到不动点 ⇒ `--check` **17/17**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULES COVERAGE: PASS (0)`、`RULE PARITY: PASS (0)`。
+- 全量 T1：**650 PASS / 0 FAIL（suites 586 · probes 64）**（日志 `D:/_tmp/t1-r222-run169b.log`）。首跑 r221 是 **649/1**，唯一红在 `vmu-live-run-r9-r12` 的「effects 就是这次投票的机制后果」——因为无 store 的装配给每张 reply 票多留了一条 `closure-vote-persist-refused`；按 269.2 末条的「能力在装配时定」改法后转绿。
