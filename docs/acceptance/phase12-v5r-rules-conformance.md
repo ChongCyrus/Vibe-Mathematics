@@ -13382,3 +13382,43 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 - **窗口必须在票被盖之前落定**：`patch` 是一句「我要写」，不是「已经写好」；任何拿它当同步事实的后续判断都必须先 await。
 - **记录身份是内容，不是插入序**：一张论文的状态行有两条时，读者不能拿「第一条」当真相 —— 要拿「最前」的那条，并且写入方不许把过时快照写成新行。
 - **回执会自相矛盾**：`truncated:true` 配 `rowsOmitted:0`、`votesCast:3` 配刚开的窗口 —— 同一张回执里的两句话必须能同时为真。
+
+## §282 RUN 182（第二十八次真机 = run 27 / FEEDBACK27：回执回答了比被问的更窄的问题）
+
+### 282.1 现场（基线 `0cac5567`，第二十七次真机）
+
+- 驱动 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'D:\_tmp\slv-phase5\slv-p13-oc.ps1' -CloneName slvp181 -Port 19646 -TaskFile 'D:\_tmp\slv-phase5	ask-sim27.txt' -Workspace 'D:\_tmp\slv-phase5\slvp157-ws' -KeepWorkspace -TimeoutSec 5400 -MaxTokens 40000000`：`DRIVE exit=0`、`durationSec 5005`、`tokenTotal 15 914 483 / 40 000 000`（capHit false）、`transcriptEvents 385`、根会话 `toolCalls 72`、`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`、`NO_FENCE=96`、`cleanup clone_gone=True port_listening=False C_free_GB=9.78`；转录 `D:/wd/vibemath开发/_oneoff/vm-slv/full-1101-184448.jsonl`（48 221 436 B / 99 962 行）；报告 `SIM-REPORT27.md` 18 541 B + `FEEDBACK27.md` 13 635 B。
+- **上轮三复验全部成立**：A `reopen-closure` 后**立刻**投票 `votesCast:1`，旧窗口三票归档（`archivedByWindow:{"6":3}` + `unwindowedVotes:1`）；B 第二轮 part/review 后 `status.round:2`、`parts.r-1.recordId` 指向第二轮行、`advance.from:"reviewing"`；C `limit:2` ⇒ `total:32 / returned:2 / truncated:true / rowsOmitted:30`，`prune dryRun` 有数字 `pinnedCount:0`。
+- 主线走完：`paper` 出 PDF **79 247 B**；结题会 `m-close27` 三票 3/3；辩论会 `m-run27` 因 A 检验重开窗口后只剩 2/3（两笔账并存、各自如实）；四成员各 2 回合（turns 8）。
+
+### 282.2 七条缺陷与修法
+
+- **F27-1（最重）chair 的 `vote_solved` 被静默丢弃**：`t-4`/`t-7` 回执把 `vote_solved` 列进 `fields`，却 `executed:0`、`effects:[]`、`votesCast` 始终 2、`missing:["r-acad"]`，无任何拒绝码；成员回合同字段却能落票。原因：投票工具当轮可见时，回复字段按设计不执行——但回执没说它被丢了。现在每份 `step`/`drive` 回执带 `fieldsIgnored:[{field, reason}]` + `fieldsIgnoredMeans`，只列**真的没被保留**的簿记字段（`vote_solved` 的例子写明「用 `vibe_vmu_vote` 那张脸」）。
+- **F27-2 正文没被读**：`evidence:["rec-99999"]` 被拒，正文里写同一个假 id 却 `ok:true`。现在 `checkProsePointers` 除成员文件指针外还扫裸 `rec-N`，不存在的 id 在**写下的那一刻**就被 `VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN` 拒。
+- **F27-3 拒绝语没有邻居**：`EVIDENCE_MISSING` 只教做法。现在按数字距离给最近的三条 id（`closest[]` + `closestMeans`），`tools.js` 的 hint 追加「相近的: …」。
+- **F27-4 `n` 数的是签名不是票**：`verdict_final` 报 `n:2` 而盘上只有一张裁决卡（另一张是主席代填）。现在回执带 `sources:{n, submitted, typed}` + `sourcesMeans`。
+- **F27-5 把人推进墙里的 hint**：临时席位 `speak` 被拒时 hint 说「先 `attend()`」，而 `attend` 恰好拒该席位。现在按 `attendDeniedSeats` 判 `deniedSeat`，改口「该席声明不参会：可达通道是聊天面 `vibe_v5_say`，且那条消息不进会议记录」。
+- **F27-8 预算墙指向一扇没有把手的门**：服务注册表的会议 `lapse()` 被 `VMU_REGISTRY_BOUNDARY` 拒、真可达是 `close()`。现在按 `serviceMeeting` 分支给 hint。
+- **F27-10 状态机只在说“不”时才教**：`paper status` 新增 `reachableMoves:{status, moves, means}`（writing→`part/advance/final{revise}`；reviewing→`review/advance/final{revise}`；awaiting-editor→`final{deliverable}/final{revise}/consult`；finalized→`compile/status`）。
+  - 措辞踩了一次既有 pin：初版 `means` 里写了「\"advance it back to writing\" is not a move」，而 `tests/vmu-run152-real-run-fixes.test.mjs §2c` 正钉住 tool 源码里**不许**出现这句（旧缺陷就是这个说法），T1 因此 1 红；改成「there is no move that sends a paper BACKWARD to writing except `final{decision:\"revise\"}`」后两套件同时绿。教训：**新措辞也是被 pin 的仓库文本**，写之前先问「这句话是不是某条旧断言的主角」。
+
+### 282.3 机器化
+
+- `tests/vmu-run182-feedback27.test.mjs`（**20/0**，4 节）：§0 七条源码 pin；§1 F27-1 运行期双向（投票工具可见 ⇒ `bookkeeping` 记 `kept:false` 且 `reason` 点名 `vibe_vmu_vote`、`effects:[]`、`votesCast:0`；不可见 ⇒ 真落 `closure-vote` 且无 dropped 记录）；§2 F27-2 正文假 `rec-99999` 被 `CITATION_UNKNOWN` 拒并回显该 id、换真 id 接受；§3 F27-10 草稿的 `reachableMoves` 含 `part{member,body}`、不含 `review`，且 `means` 非空。
+- 定向回归全绿：paper 11/0、quality 1/0、meeting 32/0、turn 15/0、verdict 5/0、vmu-host 4/0、run172–run182 各 1/0（run176 2/0）、evidence 1/0、citation 3/0、tools-action 1/0、arity 13/0、v5r-tools 1/0、records 5/0。
+- 收口链：`update-doc-counts --write`（`JOBS total=732 suites=624 probes=108`）→ `regen-all --write` 17/17 → `--check` 17/17 in sync → `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 两条提示）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)` → 全量 T1。
+
+**T1：** `/d/_tmp/t1-r291-run182b.log` = **TOTAL 663 PASS 663 FAIL 0**（suites 599 · probes 64）
+
+### 282.4 未闭合账
+
+- **F27-6** `leadership.consistent:false`（`leaderId` 空、靠唯一 chair 回退）在开工读数里仍像故障，虽然 notes 已解释；是否让它显式读作 `leaderIdSource:"seat"` 的常态，留待下一轮。
+- **F27-7** `closureVote` 有一次 fold-pull 滞后（两次回执读数差一拍）：本轮没有新增机制，属 fold 必然的最终一致窗口。
+- **F27-9** 质量闸要求正文逐字含**全部**既有 Verified 结论，对单一命题论文过重（15 条含半句标题）；本轮只补了 `requiredLineFull`，没有改「全部」这条语义。
+- **F25-6** `VMU_TURN_DELIVERY_TIMEOUT` 的会话名册对不上、**F25-7** office promote 无作者、**F25-8** `final` 的 `body` 不进闸、**F24-5** 引用闸先于阶段门：仍在账上。
+
+### 282.5 三条教训
+
+- **回执必须回答它自己列出的字段**：把 `vote_solved` 列进 `fields` 却 `executed:0`，读者只能猜「是没执行还是没记下」——丢与不丢都要说出来。
+- **正文也是引文**：读者拿正文当账本，正文里的 id 与 `evidence` 里的 id 必须过同一道闸。
+- **提示不许把人推进墙里**：hint 是程序生成的下一步指令，必须与被指的那个工具的实际准入条件同源（temp 席位、服务会议都曾在这里说谎）。

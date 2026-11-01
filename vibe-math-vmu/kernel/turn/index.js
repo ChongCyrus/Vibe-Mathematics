@@ -2601,6 +2601,14 @@ export function createTurnOrchestrator({
   // actions the turn dispatched — the same defect family as run 37's count-only `skipped`. One receipt path already carried
   // `executedDetail`; the two main paths did not. A count tells you that something happened, never what.
   const EXECUTED_MEANS = 'the actions this turn actually dispatched, one row per field: field, face, op and what the face answered. Bounded to 5 rows; `executed` is the COUNT and this list is the detail. An empty list means nothing was dispatched - it does not mean the list was dropped'
+  // ★★ RUN 182 (run 27 / FEEDBACK27 F27-1, MEASURED): the chair replied `vote_solved:true`; the receipt listed the field under
+  //   `fields`, reported `executed:0, effects:[]`, and named NO reason anywhere — so "my vote was dropped" and "my vote took a
+  //   documented other path" read identically. The parser already knows (bookkeeping keeps {field, kept:false, reason}); it was
+  //   simply never copied onto the receipt. A field that reached the parser and was NOT recorded is a fact about the turn.
+  const fieldsIgnoredOf = (r) => (Array.isArray(r && r.bookkeeping)
+    ? r.bookkeeping.filter((b) => b && b.kept === false).map((b) => ({ field: String(b.field), reason: b.reason === undefined ? null : String(b.reason) }))
+    : [])
+  const FIELDS_IGNORED_MEANS = 'these fields arrived in the reply and were NOT recorded: `reason` says why (the closure vote is the usual case — in a turn where `vibe_vmu_vote` is visible the judgement is recorded through the TOOL, not through the reply field, so the vote is not lost, it is somewhere else). `fields` is what the reply carried; this list is what did not survive it'
   const visibleToolsByMember = new Map() // ★ last assembled visible set per member (this turn)
   const toolVotedThisTurn = new Set()    // ★ members who already voted THROUGH THE TOOL this turn
   const solvedThisRound = new Map() // ★ `solved` per member: the per-round convergence reading, NOT closure
@@ -3525,7 +3533,7 @@ export function createTurnOrchestrator({
           meetingMeans: (done.meeting === undefined || done.meeting === null)
             ? 'the completed report was not bound to a meeting'
             : 'the completed report was bound to the named meeting; its say became that member\'s speech (see executed[].onBehalf)',
-          fields: done.fields, executed: (done.executed || []).length, executedDetail: (done.executed || []).slice(0, 5), executedDetailTruncated: (done.executed || []).length > 5, executedMeans: EXECUTED_MEANS, skipped: (done.skipped || []).length, effects: (done.effects || []).slice(), coercions: (done.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
+          fields: done.fields, fieldsIgnored: fieldsIgnoredOf(done), ...(fieldsIgnoredOf(done).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}), executed: (done.executed || []).length, executedDetail: (done.executed || []).slice(0, 5), executedDetailTruncated: (done.executed || []).length > 5, executedMeans: EXECUTED_MEANS, skipped: (done.skipped || []).length, effects: (done.effects || []).slice(), coercions: (done.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
           turn: done.turn ? done.turn.id : null, source: 'tool' }
       } catch (e) {
         const code = (e && e.code) || null
@@ -3546,7 +3554,7 @@ export function createTurnOrchestrator({
         const r = await run({ ...spec, round: i })
         // ★ ROUND 73: a caller-played turn ENDS the batch - the prompt goes back and the round resumes on the next call.
         if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member }
-        receipts.push({ round: i, member: spec.member, fields: r.fields, executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, turn: r.turn.id, source: r.source || null,
+        receipts.push({ round: i, member: spec.member, fields: r.fields, fieldsIgnored: fieldsIgnoredOf(r), ...(fieldsIgnoredOf(r).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}), executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, turn: r.turn.id, source: r.source || null,
           // ★ PHASE 12 / run 37: the same detail the step receipt now carries - a batch receipt is read by the same person.
           skippedDetail: r.skipped.slice(0, 5), skippedDetailTruncated: r.skipped.length > 5,
           notes: (r.notes || []).slice(0, 5), notesMean: r.notesMean || null })
@@ -3748,7 +3756,7 @@ export function createTurnOrchestrator({
           meetingMeans: (r.meeting === undefined || r.meeting === null)
             ? 'the completed report was NOT bound to a meeting, so a bare say was kept (see receipt.notes), never dispatched'
             : 'the completed report was bound to the named meeting: the member\'s bare say was recorded as THAT MEMBER\'S speech (see receipt.executed[].onBehalf)',
-          receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, meeting: r.meeting === undefined ? null : r.meeting, fields: r.fields,
+          receipt: { round: r.turn && r.turn.round !== undefined ? r.turn.round : null, member: r.member, meeting: r.meeting === undefined ? null : r.meeting, fields: r.fields, fieldsIgnored: fieldsIgnoredOf(r), ...(fieldsIgnoredOf(r).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}),
             executed: (r.executed || []).length, executedDetail: (r.executed || []).slice(0, 5), skipped: (r.skipped || []).length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, instructionDelivered: false,
             skippedDetail: (r.skipped || []).slice(0, 5),
             skippedDetailTruncated: (r.skipped || []).length > 5,
@@ -3989,7 +3997,7 @@ export function createTurnOrchestrator({
           : (deliveredThrough === 'caller'
               ? 'the CALLING session played this member turn in this kernel (deliverByReturning), so the reply came back on the next call'
               : 'a SEPARATE kernel instance ran this member turn (path "' + String(deliveredThrough) + '"); its call list is not visible here'),
-        receipt: { round: r.turn.round, member: spec.member, fields: r.fields, executed: r.executed.length,
+        receipt: { round: r.turn.round, member: spec.member, fields: r.fields, fieldsIgnored: fieldsIgnoredOf(r), ...(fieldsIgnoredOf(r).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}), executed: r.executed.length,
         executedDetail: r.executed.slice(0, 5),
         executedDetailTruncated: r.executed.length > 5,
         executedMeans: EXECUTED_MEANS,

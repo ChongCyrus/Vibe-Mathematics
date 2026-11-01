@@ -2365,6 +2365,11 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     // ★ TASK-12: WHERE EACH NUMBER CAME FROM — one row per member in the tally (submission vs chair-typed), so "who
     // filed it" is answerable per member instead of being inferred from `coverage.complete`.
     attribution,
+    // ★★ RUN 182 (run 27 / FEEDBACK27 F27-4, MEASURED): `n:2` was read by the chair as "two ruling cards on disk" while the
+    //   disk held ONE card and the other number was typed by the chair itself. `attribution` knew the difference; the bare
+    //   `n` did not. The aggregate carries the split beside the count, so "n signers" and "n cards" cannot be confused.
+    sources: { n: ruled.n, submitted: attribution.filter((a) => a.source === 'submission').length, typed: attribution.filter((a) => a.source === 'chair-typed').length },
+    sourcesMeans: '`n` counts the SIGNERS of this ruling, not the cards on disk: submitted = members who filed a ruling card themselves, typed = numbers the chair entered because no card was filed. Read `n` next to this split — a reader who quotes `n` as a card count is quoting the wrong number',
     attributionMeans: 'one row per number in the tally: source:"submission" means that member filed it itself (the row names the card and its path); source:"chair-typed" means the chair wrote it because no card was filed; `coverage.missing` names the members who debated and appear in NEITHER',
     // ★ TASK-12: the filing ledger this ruling was collected from — readable or not, and why.
     submissions: { readable: filed.readable === true, why: filed.readable === true ? null : filed.why,
@@ -4373,6 +4378,18 @@ async function toolPaper(args = {}, { kernel } = {}) {
       return { ok: true, tool, action, target, exists,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: paperView,
+        // ★★ RUN 182 (run 27 / FEEDBACK27 F27-10, MEASURED): `final{decision:"revise"}` is the ONLY way back to writing, and
+        //   it was documented only in the refusal a caller gets AFTER trying the wrong move. A state machine that can say what
+        //   it accepts should say it on the read face, not only when it says no.
+        reachableMoves: (() => {
+          if (!paperView) return null
+          const status = String(paperView.status === undefined || paperView.status === null ? '' : paperView.status)
+          const moves = status === 'writing' ? ['part{member,body}', 'advance', 'final{decision:"revise"}']
+            : status === 'reviewing' ? ['review{decision}', 'advance', 'final{decision:"revise"}']
+              : status === 'awaiting-editor' ? ['final{decision:"deliverable"}', 'final{decision:"revise"}', 'consult']
+                : status === 'finalized' ? ['compile', 'status'] : []
+          return { status, moves, means: 'the moves THIS state accepts next, read from the state machine: a draft takes part/advance, awaiting-editor takes final (deliverable or revise) — there is no move that sends a paper BACKWARD to writing except `final{decision:"revise"}`, which is the only door and is listed wherever the state accepts it' }
+        })(),
         // ★★ RUN 178 (run 23 / FEEDBACK23 F6): the state's `editor` is a ROLE word, and `status` printed it bare next to
         // parts/reviews that carry real ids. The receipt now says which of the two you are reading, where the word came
         // from (persisted at `start` since RUN 178), and which seat actually signs.
@@ -4466,7 +4483,10 @@ async function toolPaper(args = {}, { kernel } = {}) {
       if (pointers && pointers.ok !== true) {
         throw refuse('VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING',
           'these evidence pointers do not resolve against the records face: ' + pointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? ', expected track ' + u.expectedTrack : '') + ')').join('; '),
-          'write the record first (vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem), then re-write this part with the pointer it produced; a pointer is Members/<member>/(Propos|Methods|Subproblems|Progress)/<record id>.md')
+          'write the record first (vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem), then re-write this part with the pointer it produced; a pointer is Members/<member>/(Propos|Methods|Subproblems|Progress)/<record id>.md'
+            + (pointers.unknown.some((u) => Array.isArray(u.closest) && u.closest.length)
+              ? ' — 相近的: ' + pointers.unknown.filter((u) => Array.isArray(u.closest) && u.closest.length).map((u) => u.cardId + ' ⇒ ' + u.closest.map((c) => c.id).join('/')).join('；')
+              : ''))
       }
       // ★★ RUN 177 (run 22, FEEDBACK22 D3): the BODY is judged at the same moment as the evidence list. A member wrote
       // `Members/r-1/Propos/run22-cubes.md#二` in prose while the record's id was rec-6xx; `recordPart` accepted it and

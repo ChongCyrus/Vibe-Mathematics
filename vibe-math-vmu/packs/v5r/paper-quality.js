@@ -326,9 +326,20 @@ export function checkProsePointers({ text, records, codes = QUALITY_CODES } = {}
   if (!records) throw Object.assign(new Error('checkProsePointers needs the records-backed view'), { code: 'VMU_INVALID_ARGUMENT' })
   const pointers = []
   for (const line of str(text).split(String.fromCharCode(10))) eachMemberFile(line, (pointer) => pointers.push(pointer))
+  // ★★ RUN 182 (run 27 / FEEDBACK27 F27-2, MEASURED): the scan above resolves member-file POINTERS and nothing else, so a paper
+  //   could carry `rec-99999` — an id the institute never recorded — in its prose and be accepted, while the same id in
+  //   `evidence[]` was refused. The prose is what a reader checks against the ledger, so a BARE record id in it is a citation
+  //   too: it is resolved here, and an id that names no record is refused where it is typed.
+  const bareSeen = new Set()
+  for (const m of str(text).matchAll(/\brec-[0-9]+\b/g)) {
+    const id = m[0]
+    if (bareSeen.has(id)) continue
+    bareSeen.add(id)
+    pointers.push(id)
+  }
   if (pointers.length === 0) {
     return { ok: true, provided: 0, resolved: [], unknown: [],
-      means: 'the prose carries no Members/<member>/(Propos|Methods|Subproblems|Progress)/<id>.md pointer, so there is nothing to resolve here (the quality gate still judges the deliverable)' }
+      means: 'the prose carries no Members/<member>/(Propos|Methods|Subproblems|Progress)/<id>.md pointer and no bare record id, so there is nothing to resolve here (the quality gate still judges the deliverable)' }
   }
   const res = checkEvidencePointers({ evidence: pointers, records, codes })
   return { ok: res.ok, provided: res.provided, resolved: res.resolved, unknown: res.unknown,
@@ -373,7 +384,23 @@ export function checkEvidencePointers({ evidence, records, codes = QUALITY_CODES
             means: 'bare record id: resolved against the records face and checked for existence (the gate still matches the citation in the prose by id, so this pointer and the citation must name the same card)' + (anchor ? '; the `' + anchor + '` anchor is a section inside that record, not part of its id' : '') })
           continue
         }
-        unknown.push({ pointer, cardId: bare, reason: 'no-such-record', anchor,
+        // ★★ RUN 182 (run 27 / FEEDBACK27 F27-3): the refusal named the id and gave the caller nothing to pick from — the
+        //   member-file branch had learned to suggest neighbours, this one had not. Ids here are `rec-<n>`, so the nearest
+        //   numbers ARE the nearest rows: up to three are offered, ordered by the distance of their number.
+        let closest = []
+        try {
+          const listed = records.list({ limit: 0 })
+          const rows = Array.isArray(listed) ? listed : (listed && Array.isArray(listed.items) ? listed.items : [])
+          const want = Number(String(bare).replace(/[^0-9]/g, ''))
+          closest = rows
+            .map((r) => ({ id: String(r && r.id ? r.id : ''), title: String(r && r.title ? r.title : '') }))
+            .filter((r) => r.id !== '' && /^rec-[0-9]+$/.test(r.id) && Number.isFinite(want))
+            .map((r) => ({ id: r.id, title: r.title, distance: Math.abs(Number(r.id.replace(/[^0-9]/g, '')) - want) }))
+            .sort((a, b) => a.distance - b.distance)
+            .slice(0, 3)
+        } catch { closest = [] }
+        unknown.push({ pointer, cardId: bare, reason: 'no-such-record', anchor, closest,
+          closestMeans: closest.length === 0 ? 'no recorded id is numerically near this one' : 'recorded ids whose number is nearest this one — a mistyped digit usually lands on one of these',
           expected: 'Members/<member>/(Propos|Methods|Subproblems|Progress)/<id>.md, or a record id written by the records face' })
         continue
       }

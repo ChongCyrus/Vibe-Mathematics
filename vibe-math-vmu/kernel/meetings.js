@@ -1569,7 +1569,22 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       const m = requireMeeting(meeting)
       const enforced = []
       const now = at === null ? clock() : atMs(at)
-      if (!m.present.has(String(member))) throw deny('VMU_NOT_MEMBER', 'speaker is not present: ' + String(member), 'attend() first', [])
+      if (!m.present.has(String(member))) {
+        // ★★ RUN 182 (run 27 / FEEDBACK27 F27-5, MEASURED): the hint said "attend() first" to a TEMP seat, while `attend`
+        //   refuses exactly that seat (vmu.meetings.attendDeniedSeats) — a hint that walks the caller into the wall behind it.
+        //   When the seat is declared non-attending, the reachable channel is the chat face, and the hint must say what the chat
+        //   face does NOT get: the minutes.
+        let deniedSeat = false
+        try {
+          const row = K.roster().filter((x) => String(x.id) === String(member))[0] || null
+          deniedSeat = row !== null && Array.isArray(K.attendDeniedSeats) && K.attendDeniedSeats.includes(String(row.slot))
+        } catch { deniedSeat = false }
+        throw deny('VMU_NOT_MEMBER', 'speaker is not present: ' + String(member),
+          deniedSeat
+            ? 'this seat is declared NON-ATTENDING (vmu.meetings.attendDeniedSeats), so attend() cannot let it in and speak() cannot carry its words: the reachable channel is the CHAT face — vibe_v5_say without a meeting — and that message does NOT enter the minutes'
+            : 'attend() first',
+          [])
+      }
       const mute = m.mutes.get(String(member))
       if (mute && now < mute.until) {
         mark(enforced, 'vmu.meetings.disciplineMuteMs')
@@ -1648,8 +1663,18 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         mark(enforced, 'vmu.meetings.hardLimitMs')
         // F28: past the declared bound this is no longer only a refusal — the meeting can be SETTLED BY NAME
         // (`lapse()`), which produces `{name, why, at, revocable}` and can be revoked with a reason.
+        // ★★ RUN 182 (run 27 / FEEDBACK27 F27-8, MEASURED): the hint offered `lapse()` first for EVERY meeting, but `lapse`
+        //   only addresses the PRIMITIVE registry — on a SERVICE-archived meeting it is refused (VMU_REGISTRY_BOUNDARY) and the
+        //   member had to discover `close` by failing. The hint now branches on the registry the meeting actually lives in.
+        let serviceMeeting = false
+        try {
+          serviceMeeting = String(m.registry || '') === 'service'
+            || (typeof K.registryOf === 'function' && String(K.registryOf(m.id) || '') === 'service')
+        } catch { serviceMeeting = String(m.registry || '') === 'service' }
         throw deny('VMU_RESOURCE_BUDGET', 'the meeting wall-clock HARD limit is exceeded: ' + (now - m.wallStartMs) + ' / ' + wallLimitOf(m) + (wallLimitOf(m) !== K.hardLimitMs ? ' (extended from ' + K.hardLimitMs + ')' : ''),
-          'settle it by name with lapse() (bounded fallback, revocable), or close() it explicitly; the hard limit has no off switch (vmu.meetings.hardLimitMs, clamped [300000, 7200000]) and extension is capped by vmu.meetings.extendCeilingMs', enforced)
+          serviceMeeting
+            ? 'this meeting lives in the SERVICE registry, where lapse() does not reach (VMU_REGISTRY_BOUNDARY): settle it with close() (reason required); the hard limit has no off switch (vmu.meetings.hardLimitMs, clamped [300000, 7200000]) and extension is capped by vmu.meetings.extendCeilingMs'
+            : 'settle it by name with lapse() (bounded fallback, revocable), or close() it explicitly; the hard limit has no off switch (vmu.meetings.hardLimitMs, clamped [300000, 7200000]) and extension is capped by vmu.meetings.extendCeilingMs', enforced)
       }
       if (K.budgetWallMs > 0 && now - m.wallStartMs > K.budgetWallMs) {
         mark(enforced, 'vmu.meetings.budgetWallMs')
