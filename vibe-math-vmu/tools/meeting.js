@@ -651,7 +651,21 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                   },
                   closureTallyMeans: 'the closure tally is the INSTITUTE-LEVEL unanimity reading (`vibe_vmu_vote`, read back at `vibe_vmu_status { detail: "closure" }`), and it is a DIFFERENT record from this meeting board: the votes are cast as institute votes, so `present`/`motions`/`votes` above record NO vote events for them. votesCast here next to an empty motion list is two records, not two truths',
                 }
-              return Object.assign({ ok: true, action }, summaryOut, closurePointer)
+              // ★★ RUN 189 (run 33 / FEEDBACK33 1.6, MEASURED): run 33's office read this board, saw an EMPTY
+              // `motions`/`votes` list beside `votesCast:3`, and had to be told in prose that the two are different
+              // records. The close ALREADY wrote the as-of-close account as a real row (`closure-freeze|…`), so the
+              // board can simply POINT at it instead of arguing about it.
+              const accountPointer = (() => {
+                try {
+                  if (typeof kernel.closureFreezeView !== 'function') return { closureAccount: null, closureAccountMeans: 'this kernel exposes no as-of-close account face, so this board can only name the live institute reading (closureTally)' }
+                  const v = kernel.closureFreezeView({ meeting: pid })
+                  if (!v || v.latest === null) return { closureAccount: null, closureAccountMeans: 'no as-of-close account was ever frozen for this meeting: the closure reading is only the LIVE one (closureTally), and a later vote changes it' }
+                  return { closureAccount: v.latest, closureAccountMeans: 'the DURABLE as-of-close closure account written by `close` (rec-N on the `state` track): its numbers are frozen, so they are what the institute decided AT CLOSE even if later votes moved the live reading' }
+                } catch (e) {
+                  return { closureAccount: null, closureAccountMeans: 'reading the frozen account threw: ' + String((e && e.message) || e) }
+                }
+              })()
+              return Object.assign({ ok: true, action }, summaryOut, closurePointer, accountPointer)
             }
             throw noSuchMeeting(pid)
           }

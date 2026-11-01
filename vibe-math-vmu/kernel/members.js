@@ -229,6 +229,27 @@ export function createMembers({
       return { ok: true, envelope, delivered: result === undefined ? true : result }
     },
 
+    /**
+     * ★★ RUN 189 (run 33 / FEEDBACK33 1.1, MEASURED): `wakes` is the roster's own counter of "how often was this seat
+     * woken", and a real run showed 11 turns across four seats while EVERY roster row still read `wakes: 0`. The cause
+     * is not a lost increment: `wake()` is the ENVELOPE path (`kernel/members.js` delivers an ask), and the turn loop
+     * delivers through its own seam (`deliverTurn`), so it never called this. A counter that only one of two delivery
+     * paths increments is a silent zero — the worst kind, because it looks like a measurement.
+     *
+     * `noteWake` is the bookkeeping half without a delivery: the loop calls it where it opens a turn, so the roster
+     * and `vibe_vmu_turn { op: "status" }`'s `woken` map agree by construction. It never throws (the seat is looked up
+     * defensively): a counters write must not be able to break a turn.
+     */
+    noteWake(id) {
+      try {
+        const m = member(String(id))
+        m.wakes += 1
+        return { ok: true, id: String(id), wakes: m.wakes }
+      } catch (e) {
+        return { ok: false, id: String(id), reason: (e && e.message) || String(e) }
+      }
+    },
+
     /** Permission check over the slot's OPAQUE permission strings. The kernel never interprets them. */
     may(id, permission) {
       const m = member(id)

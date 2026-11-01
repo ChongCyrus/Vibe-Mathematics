@@ -17,7 +17,7 @@ import { createPaperFlow } from '../../kit/paper.js'
 // ★ E1＋E3 (phase 12): the record-backed sections and the quality gate live in their own module because the export
 // surface below is PINNED (`tests/vmu-v5r-tools.test.mjs` ⑦h) — new machinery may never widen it. This file imports and
 // wires; `paper-quality.js` owns the reads, the fills and the four refusal codes.
-import { QUALITY_CODES, createRecordsView, fillRecordSections, checkQuality, checkEvidencePointers, checkProsePointers } from './paper-quality.js'
+import { QUALITY_CODES, createRecordsView, fillRecordSections, checkQuality, checkEvidencePointers, checkProsePointers, verifiedRequirements } from './paper-quality.js'
 
 export const PAPER_MAX_ROUNDS = 3
 /** The original's nine sections, in order (verbatim from `vibe-math-v5r.js:238-248`). */
@@ -168,6 +168,11 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
     // and only their prose can answer it. (This is exactly why the seam is `mdFill` and NOT a mutation of `PaperMd`.)
     return checkQuality({ md: flow.PaperMdRaw({ target }), state, view: recordsView(), codes: QUALITY_CODES })
   }
+
+  /** ★★ RUN 189 (run 33 / FEEDBACK33 1.3): what the content gate will look for in the prose, answered BEFORE anything is
+   *  written. Run 33's office learned the required line only by failing `final`, and the repair bumped the paper's round
+   *  and invalidated both cross-reviews — the requirement is a property of the ledger, so it has a read face. */
+  flow.requiredLines = () => verifiedRequirements({ view: recordsView(), codes: QUALITY_CODES })
 
   /** ★★ RUN 174 (run 19 FEEDBACK19 F1 — SILENCE IS NOT A VERDICT): the SAME three rules, judged ALWAYS — including on a
    *  draft, which `qualityGate` deliberately does not refuse. This is the READ-ONLY report a render receipt carries: what

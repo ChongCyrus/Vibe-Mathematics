@@ -3284,6 +3284,11 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     // ★ LIVE RUN 122 (E6): WHERE the label came from. `kind` defaults to 'sync' so every meeting always has a word for
     // what it is — and that default is exactly why a reader must be able to tell a chosen label from a filled-in one.
     kindSource: kindGiven ? 'args' : 'default',
+    // ★★ RUN 189 (run 33 / FEEDBACK33 1.7, MEASURED): run 33 convened `type:"debate"` and `type:"closure"` meetings and
+    // read `kind:"sync"` on both, concluding the label was wrong. It was not wrong — it was DEFAULTED — but two words
+    // ("type", "kind") sitting side by side with different jobs needs a sentence, not a deduction.
+    typeMeans: '`type` decides the PROCEDURE (which skeleton this meeting follows) and is the word the institute uses; `kind` is the meeting BOARD label (sync/division/verify-request/solve-vote) and is what an archive files the row under. When no kind was passed the label falls back to "sync" — `kindSource:"default"` says nobody chose it, and that is a filled-in value, not a reading of what the meeting was',
+    kindIsLabelOnly: true,
     kindSourceMeans: kindGiven
       ? 'the caller named this meeting’s kind'
       : 'no kind was passed: the framework filed this meeting under its default kind \"sync\". The label is legal but nobody chose it — pass kind (sync/division/verify-request/solve-vote) or title to name the meeting yourself',
@@ -4410,6 +4415,18 @@ async function toolPaper(args = {}, { kernel } = {}) {
         // ★★ RUN 182 (run 27 / FEEDBACK27 F27-10, MEASURED): `final{decision:"revise"}` is the ONLY way back to writing, and
         //   it was documented only in the refusal a caller gets AFTER trying the wrong move. A state machine that can say what
         //   it accepts should say it on the read face, not only when it says no.
+        // ★★ RUN 189 (run 33 / FEEDBACK33 1.3, MEASURED): the content gate requires the paper's prose to carry every
+        //   verified conclusion VERBATIM, and the ONLY way to learn which line that is used to be failing `final` and
+        //   reading `missing[]`. Run 33's office did exactly that, then repaired the prose — which bumped the paper's
+        //   round and invalidated both cross-reviews. The requirement is a property of the ledger, so it is readable
+        //   before anything is written: `requiredLines` answers "what will the gate look for" on the status face.
+        requiredLines: (() => {
+          try {
+            if (typeof paper.requiredLines !== 'function') return null
+            const r = paper.requiredLines()
+            return r && typeof r === 'object' ? r : null
+          } catch (e) { return { ok: false, count: 0, items: [], message: 'reading the verified requirements threw: ' + String((e && e.message) || e) } }
+        })(),
         reachableMoves: (() => {
           if (!paperView) return null
           const status = String(paperView.status === undefined || paperView.status === null ? '' : paperView.status)
@@ -4455,6 +4472,10 @@ async function toolPaper(args = {}, { kernel } = {}) {
         // `consult.requests[].at` — two measured in ROUNDS and one in wall-clock milliseconds, and nothing said which was
         // which. One sentence now states the convention for the whole view (the old `at` on a part slot was already
         // removed in RUN 174; this names what remains).
+        // ★★ RUN 189 (run 33 / FEEDBACK33 1.4): `warnings` was a GROWING list read as if it described NOW. Run 33's
+        // status printed the 3-round-cap disagreement next to two `deliverable:true` reviews of the SAME round. Each entry
+        // now carries the round it belongs to; this sentence is the reading rule.
+        warningsMeans: '`warnings` is HISTORY, not a verdict about the current state: each entry is tagged with the round it was written in (`（第 N 轮）`), and `forcedAfterCapRound` names the round whose cross-review hit the cap — a later round can agree and this list does not shrink (it is the record), so compare `forcedAfterCapRound` with the current `round` before reading it as now',
         roundMeans: 'every `round` in this view (parts, reviews) is the paper ROUND the row was written in — an ordinal, not an instant; `consult.requests[].at` is wall-clock milliseconds (the only true time in the view), and the paper itself carries `createdRound`/`updatedRound`',
         partsMeans: 'each part slot says which ROUND it was written in (`round`); this subsystem counts rounds, it does not stamp wall-clock time on a part',
         reviewsMeans: 'each review row says which ROUND of the cross-review it belongs to (`round`); a row of another round is durable history, not a vote on this round',

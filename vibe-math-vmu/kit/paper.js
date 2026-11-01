@@ -1059,7 +1059,12 @@ export function createPaperFlow({
       }
       state.status = 'awaiting-editor'; state.stage = 'awaiting-editor'
       state.forcedAfterCap = true
-      state.warnings = (state.warnings || []).concat(['互审在 ' + roundsCap() + ' 轮上限仍未达成全体一致（' + refusers.join('、') + '）；分歧已写入论文附录。'])
+      // ★★ RUN 189 (run 33 / FEEDBACK33 1.4, MEASURED): this warning was written once and then read forever. Run 33
+      // advanced to round 3 with BOTH members `deliverable:true` (its own receipt said `unanimous:true`) and `status`
+      // still printed "互审在 3 轮上限仍未达成全体一致" beside those two true reviews — a historical fact presented as the
+      // current verdict. The warning now carries the round it belongs to, so a reader can tell history from now.
+      state.forcedAfterCapRound = state.round
+      state.warnings = (state.warnings || []).concat(['（第 ' + state.round + ' 轮）互审在 ' + roundsCap() + ' 轮上限仍未达成全体一致（' + refusers.join('、') + '）；分歧已写入论文附录（这是 HISTORY：之后各轮的评审可以再次达成一致）'])
       writeState(state)
       return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, refusers, capped: true, warnings: state.warnings, reviewsRead }
     }
@@ -1424,7 +1429,7 @@ export function createPaperFlow({
     const { state } = requireState(target)
     const md = PaperMd({ target })
     const tex = PaperTex({ target })
-    const meta = { id: state.id, target: state.target, status: state.status, round: state.round, editor: state.editor, lang: state.lang, format: state.format, participants: state.participants, warnings: state.warnings, forcedAfterCap: state.forcedAfterCap }
+    const meta = { id: state.id, target: state.target, status: state.status, round: state.round, editor: state.editor, lang: state.lang, format: state.format, participants: state.participants, warnings: state.warnings, forcedAfterCap: state.forcedAfterCap, forcedAfterCapRound: state.forcedAfterCapRound === undefined ? null : state.forcedAfterCapRound }
     const wrote = {}
     const wantsMd = state.format === 'both' || state.format === 'md'
     const wantsTex = state.format === 'both' || state.format === 'tex'

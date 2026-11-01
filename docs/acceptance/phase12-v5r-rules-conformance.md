@@ -13647,3 +13647,67 @@ RUN 185（`b81204d4`）把每次关会的票板读成**一行耐久账**（`clos
 - **读面列出的动作必须是写面接受的**：`reachableMoves` 的本意是让失败前就知道路，列错比不列更贵——它把一份能读的拒绝变成了「机制坏了」。
 - **同一 id 的两种缺席不是一种事实**：「不存在」与「已关闭」共用一个码，等于让读者自己猜；一个 `archivedRowOf` 就能分开。
 - **「文件存在」不等于「记录存在」**：制度让成员把推理落到文件，附录却按记录索引；拒绝必须说出这两层，否则成员只会反复重写同一张卡。
+
+## 289. RUN 189 — 六处「研究所知道、但没有面说出来」的事实（第三十四次真机 FEEDBACK33）
+
+### 289.1 账从哪来
+
+第三十四次真机（run 34，基线 `bf3f23df`，工作区 `D:\_tmp\slv-phase5\slvp160-ws`）：`DRIVE_EXIT=0`、`durationSec 1495`、`tokenTotal 15 425 081/40M`、`transcriptEvents 352`、`toolCalls 59`、`SUMMARY: 5 session(s), 0 with RED checks`；主线**完全结题**（PDF `Paper/paper-p1/paper-p1.pdf` **161 017 B**，`pdfCompiled.pdfBytes` 与磁盘一致，`close` 成功、`closureVote` 三票）。RUN 184/185/186/187/188 的机器化在真机上都成立（A 关会冻结、B close 回执时刻、C `warrant_kind:"debate"` 别名、D 一句话命题 hint）。
+
+但代理交回 13 条新账。**本轮只修「事实已经在库里、只是没有面读出来」的那六条**（都属于「读者必须先失败一次才知道规则」这一类）：
+
+| 编号 | 代理看到的事实 | 机制上的真相 |
+| --- | --- | --- |
+| 1.1 | 11 个回合、四席都醒过，`vibe_vmu_control{action:"roster"}` 四次都是 `wakes:0`，而 `turn status` 的 `woken` 是 `{r-acad:3,r-1:4,r-2:3,r-temp:1}` | `members.js` 里 `wakes` **只有读者没有写者**（`wake()` 自增的是另一条路径） |
+| 1.3 | `requiredLine` 只能靠 `final` 失败后读 `missing[]` 才知道 | 内容闸的要求是**记录面的性质**，但只在拒绝里发布 |
+| 1.4 | round 3 两人 `deliverable:true`、`advance` 回 `unanimous:true`，`status.warnings` 仍写「3 轮上限未达成一致」+`forcedAfterCap:true` | `warnings` 是**只追加的历史**，没有轮号也没有读法 |
+| 1.6 | `close` 已经写出了冻结账 `rec-32`，`summary` 却不指它 | `summary` 只有 `closureTally`（活读数），指针只存在于 `close` 回执里 |
+| 1.7 | `type:"debate"`/`type:"closure"` 的会议都读到 `kind:"sync"` | `kind` 缺省值被当成「这场会议是什么」的读数 |
+| 2.5 | 结题骨架第 3 步教 `vibe_v5_poll_open` | 结题票走 `vibe_vmu_vote`（机构级 `closure_votes`），poll 是另一套票板，**不计入** `closureVote` |
+
+### 289.2 六处修法
+
+1. **`wakes` 有写者了**：`kernel/members.js` 新增 `noteWake(id)`（自增并回 `{ok,id,wakes}`，永不抛）；`kernel/turn/index.js` 的选项加 `onTurnOpen`，在 `open()` 里登记 `woken`/`counts.opened` 之后回调；`kernel/index.js` 的 `createTurnOrchestrator({...})` 把它接到 `members.noteWake`。**接缝选在 turn 打开处**，因为那正是「这个席位被叫醒」的唯一时刻——不是 `wake()`，那是消息投递。
+2. **`requiredLines` 成为读面**：`packs/v5r/paper-quality.js` 导出 `verifiedRequirements({ view, codes })`，逐条给出 `requiredLine`/`requiredLineTruncated`/`requiredLineFull`/`requiredLineMath`/`requiredLineIdentifier` 与**三分支 `writeAs`**（标识符纯文本、配对 `$…$`、原样）；`packs/v5r/paper.js` 的 `flow.requiredLines` 与 `packs/v5r/tools.js` 的 `paper status` 都打印它。
+3. **`warnings` 带轮号**：`kit/paper.js` 的 cap 分支写入 `state.forcedAfterCapRound = state.round` 并把每条 warning 前缀成 `（第 N 轮）…（这是 HISTORY…）`；meta 带 `forcedAfterCapRound`；`paper status` 加 `warningsMeans`（「compare `forcedAfterCapRound` with the current `round`」）。
+4. **`summary` 指向冻结账**：`tools/meeting.js` 的 `summary` 分支加 `accountPointer`（`kernel.closureFreezeView({ meeting })` ⇒ `closureAccount` 为 `latest` 或 `null` + `closureAccountMeans` 两句），返回 `Object.assign({ok,action}, summaryOut, closurePointer, accountPointer)`。**没有**动 `detail:"closure"`（那个面有 `< 1500` 字符 pin）。
+5. **`type` 与 `kind` 被解释**：convene 回执加 `typeMeans`（type 决定 procedure、kind 是 board label、缺省 `sync` 是**填进去的值**）与 `kindIsLabelOnly: true`。
+6. **结题骨架投真票板**：`packs/v5r/meeting-procedures.js` 的 `CLOSURE_PROCEDURE` 第 3 步改成 `step(3,'take-the-vote','vibe_vmu_vote', …)`，描述与工具列表都写明「`vibe_v5_poll_*` 不计入 `closureVote`」。
+
+同时修掉一处**自造的语法错**：写第 2 项时 `paper-quality.js` 的 `const hasMath` 一度成了 `new RegExp(...bs...)`（python heredoc 把 `\b` 变成退格字节），改为 `/_^{}$/.test(name) || name.indexOf(String.fromCharCode(92)) >= 0`。教训：**用脚本改含正则的文件，写完必须 `node --check` 并回读该行**。
+
+配套改了一处**测试的合法清单**：`tests/vmu-meeting-types.test.mjs` 的「骨架点名的工具必须真实存在」清单是「pack 清单 + 内核面白名单」，第 3 步改成 `vibe_vmu_vote` 后该名不在白名单里——补上 `vibe_vmu_vote`（它是真实发布的宿主面，与 `vibe_vmu_status` 同级），而不是把骨架改回错的工具名。
+
+### 289.3 机器化
+
+新增 `tests/vmu-run189-feedback33.test.mjs` **3 passed / 0 failed**：
+
+- §0 十五条源码 pin（`noteWake` 的写者、`onTurnOpen` 接缝、`verifiedRequirements`/`flow.requiredLines`/`paper status.requiredLines` 三段、`forcedAfterCapRound` 与 `warningsMeans`、`summary.closureAccount` 与 `closureFreezeView`、`typeMeans`/`kindIsLabelOnly`、结题骨架第 3 步与「不计入」）；
+- §1 真装配：roster 两次读（`wakes:0` → `noteWake` 两次 → `wakes:2`）＋ 结题会先 `summary` 见 `closureAccount:null`（并说明为何是 null）→ 三票 `close` ⇒ `closureVoteFrozen.recordId` 与 `summary.closureAccount.recordId` **同一个 id**、`votesCast`/`cast` 一致、means 含 `DURABLE`；
+- §2 真装配：`paper status` 带 `requiredLines{ok,count,items,means}`（空库时 means 说「不需要逐字引用」）、`warningsMeans` 含 `HISTORY` 与 `forcedAfterCapRound`；convene 回执 `kindSource:"default"`、`kindIsLabelOnly:true`、`typeMeans` 含 `PROCEDURE`/`BOARD label`。
+
+测试期事实（省下一轮）：`summary` 在 **`vibe_vmu_meeting`** 上（`vibe_v5_meeting` 只负责开会，任何 action 都会回 `VMU_INVALID_ARGUMENT`）；`type:"debate"` 开会需要已核过的 `subject`（否则 `VMU_PACK_V5R_DEBATE_SUBJECT_UNPROVEN`），测 `typeMeans` 用 `type:"ordinary"` 即可。
+
+### 289.4 定向回归与收口
+
+`--only` 全 0 红：`run189 3/0`、`meeting-types 1/0`、`audit-vmu-docs 1/0`、`run181/182/184/185/186/187/188` 各 1/0、`meeting 32/0`、`paper 11/0`、`turn 15/0`、`vmu-host 4/0`、`prompt- 24/0`、`v5r-tools 1/0`、`records` 全绿（合批 **71 passed / 0 failed**）。
+
+收口链：`update-doc-counts --write` ⇒ `regen-all --write` **17/17** ⇒ `--check` **17/17 in sync** ⇒ `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 三条既有提示）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+
+**全量 T1**：`node tests/run-tests.mjs --all` ⇒ **TOTAL 739 PASS 739 FAIL 0（suites 631 · probes 108）**（`/d/_tmp/t1-r362-run189.log`）。
+
+> 中途一次假红：首跑 `/d/_tmp/t1-r361-run189.log` 报 `audit-vmu-docs.test.mjs` 的「接口契约漏了 `noteWake`」——**是真的红**，不是环境问题：新增内核方法必须同时进 `vibe-math-vmu/docs/03-interface-contract.md` 的方法行。补完两行（`:47` 简表与 `:83` 详表）后该套件 103 passed / 0 failed。
+
+### 289.5 未闭合
+
+- FEEDBACK33 1.2（补一行正文必须 `part` 重交 ⇒ `round+1` ⇒ 上一轮互审全部 stale）**未动**：这是 round 的语义问题（文本级更正 vs 内容变更），要单独一轮定。
+- FEEDBACK33 1.5（回合外 `tool_help`/`tools` 回 `VMU_MEMBER_SESSION_NOT_LIVE` + `tools:null`）**未动**：要留「上一回合快照」，涉及成员会话的生命周期，不能顺手改。
+- FEEDBACK33 2.2/2.3/2.4（提示词三句：`evidence` 只收 `rec-N`、命题卡 id 与文件名对应、定稿前两道门预告）**未动**：提示词有 20000 字上限（实测 19976），加句要同步 regen 与 prompt pin，下一轮一起做。
+- FEEDBACK32 ⑤（结题票不绑定会议）与 ①（`drive` 只数回复字段派发）、⑥（`votesTotal`）仍未动，理由同 §288.4。
+- 本轮六处**尚未真机复验**（run 35 已按此写简报）。
+
+### 289.6 三条教训
+
+- **只有读者没有写者的数字，比没有这个数字更坏**：`wakes:0` 看起来像「这些席位从没被叫醒」，而真相是没人维护它。字段要么有写者，要么不该出现在读面上。
+- **历史必须自带日期**：`warnings` 不是错的，错的是它不带轮号地出现在「现在」旁边。一条只追加的清单，每一条都要能说清它属于哪一轮。
+- **两套票板并存时，骨架必须指对那一套**：`poll` 与 `vibe_vmu_vote` 都真实存在、都能投票，但只有后者进 `closureVote`。骨架是「推荐」不是门禁——正因如此，它更不该教错门。

@@ -1678,6 +1678,11 @@ export function createTurnOrchestrator({
   // `{ record(fact), count(memberId) }` over the shared durable fold (`kernel/index.js` owns both halves; `count` is
   // what `chairActed` calls). Absent ⇒ this loop behaves EXACTLY as before (memory only, byte for byte).
   turnLedger = null,
+  // ★★ RUN 189 (run 33 / FEEDBACK33 1.1): called with the member id where a turn is OPENED, so the roster's `wakes`
+  // counter (the institute's own reading of "how often was this seat woken") moves with this loop's `woken` map. The
+  // loop does not reach into the roster itself: a counters write is the kernel's business, and it must never break a
+  // turn (see the call site). Absent ⇒ memory only, exactly as before.
+  onTurnOpen = null,
   // ★★ ROUND 52: WHICH KERNEL THIS IS. Settings resolve per kernel, so a board line that quotes a settings value must
   // be able to say which kernel's resolution it shows (run 52: the delivering kernel had the run objective, the member's
   // own kernel the pack default, and the unqualified label read as a lie). Absent ⇒ the scope sentence still says
@@ -1909,6 +1914,13 @@ export function createTurnOrchestrator({
     turns.set(turn.id, turn)
     woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1
+    // ★★ RUN 189 (run 33 / FEEDBACK33 1.1, MEASURED): the roster's `wakes` counter and THIS loop's `woken` map were two
+    // answers to one question, and only the local one moved — a real run opened 11 turns across four seats while every
+    // roster row still read `wakes: 0`. The seam is a callback (the loop never reaches into the roster itself); it is
+    // called where the turn is OPENED, which is exactly what `woken` counts, so the two cannot drift.
+    if (typeof onTurnOpen === 'function') {
+      try { onTurnOpen(member) } catch (e) { /* a counters write must never break a turn */ }
+    }
     // ★★★★★★★ ROUND 35 / task-24: announce the turn to the SHARED ledger (see `noteSharedTurn` above). It happens at
     // OPEN, not at delivery, deliberately: `memberTurnCount` - the in-memory reader the gate used before this round -
     // counts OPENED turns, so the durable reader and the memory reader must agree by construction. Otherwise the same

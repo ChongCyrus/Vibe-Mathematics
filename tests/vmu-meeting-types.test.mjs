@@ -110,7 +110,10 @@ try {
   // a hand-typed allowlist silently rots when a tool is renamed, and then this assertion stops meaning anything)
   const { V5R_PACK_TOOLS } = await import('../vibe-math-vmu/packs/v5r/tools.js')
   const published = new Set(V5R_PACK_TOOLS.map((t) => t && t.name).filter(Boolean)
-    .concat(['vibe_vmu_meeting', 'vibe_vmu_turn', 'vibe_vmu_records', 'vibe_vmu_mailbox', 'vibe_vmu_status', 'vibe_vmu_tools']))
+    // ★ RUN 189 (run 34 / FEEDBACK33 2.5): the closure skeleton's vote step now names `vibe_vmu_vote` — the board the
+    // close receipt and `vibe_vmu_status { detail: "closure" }` actually read — so the kernel-face list must contain it.
+    // (It named only `vibe_v5_poll_*` before, and run 34's office opened a poll that the closure tally never saw.)
+    .concat(['vibe_vmu_meeting', 'vibe_vmu_turn', 'vibe_vmu_records', 'vibe_vmu_mailbox', 'vibe_vmu_status', 'vibe_vmu_tools', 'vibe_vmu_vote']))
   ok(published.size >= 45, 'the derived tool vocabulary is the full published surface (RULE E: a non-empty set)', published.size)
   ok(toolNames.length > 0 && toolNames.every((t) => published.has(t)), 'every tool a step names is a real published tool', toolNames)
   // ★ 用户裁定（2026-10-24）推翻了这条 D5 判据：规则原文是「特殊类型会议下框架初始给院士**推荐流程**」，

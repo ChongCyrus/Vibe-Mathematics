@@ -2682,6 +2682,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     bus,
     // ★ LIVE RUN 115 (F-115a): a member turn runs in its OWN kernel, so "which member is this child session?" has
     // to travel through durable state — the child cannot ask the parent. Written here, read by `memberBySession`.
+    // ★★ RUN 189 (run 33 / FEEDBACK33 1.1): the roster's `wakes` counter is read by `vibe_vmu_control {action:"roster"}`
+    // and by every `status` board, and a real run showed 11 turns while all four rows read `wakes: 0` — the envelope
+    // path (`members.wake`) incremented it, the turn path never did. This seam makes the two one fact.
+    onTurnOpen: (member) => {
+      try { if (member && typeof members.noteWake === 'function') members.noteWake(String(member)) } catch { /* a counter must not break a turn */ }
+    },
     onMemberSession: (member, session) => {
       try {
         if (!recordsStore || typeof recordsStore.patch !== 'function') return

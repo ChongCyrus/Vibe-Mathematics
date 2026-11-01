@@ -119,9 +119,12 @@ export const CLOSURE_PROCEDURE = Object.freeze({
     step(2, 'name-the-gaps', 'vibe_v5_task_create',
       '点名缺口：缺什么、为什么缺、补它需要什么。不许用"基本完成"略过。',
       ['vibe_v5_task_create { ... }', 'vibe_v5_record_progress { ... }']),
-    step(3, 'take-the-vote', 'vibe_v5_poll_open',
-      '对「是否达标」表决：先开票，再由有资格者各自投，最后取票。人数下限**已实现**：`kernel/meetings.js` 的 `quorumOf` 计算 m = min(所设上限, 在册有表决权人数)，`vibe_v5_verdict_final` 的 floor 读同一个函数并在裁决这一步执行（不足 m 具名拒 `VMU_MEETING_QUORUM_LOST`，例外须 `partial: true` + `why`）；会议关闭本身不读票数（关会的 rails 只有主席、上次纪要确认与待办清单）。',
-      ['vibe_v5_poll_open { ... }', 'vibe_v5_poll_vote { ... }', 'vibe_v5_poll_close { ... }']),
+    // ★★ RUN 189 (run 33 / FEEDBACK33 2.5, MEASURED): this step named only `vibe_v5_poll_*`, while the reading that
+    // `close` reports and `vibe_vmu_status { detail: "closure" }` publishes is written by `vibe_vmu_vote` — a DIFFERENT
+    // board. Run 33's office opened a poll, then had to learn from a refusal that the closure tally was untouched.
+    step(3, 'take-the-vote', 'vibe_vmu_vote',
+      '对「是否达标」表决。★ 结题票走 `vibe_vmu_vote { member, solved }`（机构级、写进 `closure_votes`，`close` 回执与 `vibe_vmu_status { detail: "closure" }` 读的就是它）；`vibe_v5_poll_*` 是另一套票板，**不计入** `closureVote`。人数下限**已实现**：`kernel/meetings.js` 的 `quorumOf` 计算 m = min(所设上限, 在册有表决权人数)，`vibe_v5_verdict_final` 的 floor 读同一个函数并在裁决这一步执行（不足 m 具名拒 `VMU_MEETING_QUORUM_LOST`，例外须 `partial: true` + `why`）；会议关闭本身不读票数（关会的 rails 只有主席、上次纪要确认与待办清单）。',
+      ['vibe_vmu_vote { member: "<席>", solved: true }', 'vibe_v5_poll_open { ... }（另一套票板，不计 closureVote）', 'vibe_v5_meeting { action: "close", id: "<会 id>", actor: "<主席席>" }']),
     step(4, 'archive-the-verdict', 'vibe_v5_report',
       '把结题结论归档：结论、依据、遗留项各一段，交给机构记录而不是留在会议记录里。',
       ['vibe_v5_report { ... }']),

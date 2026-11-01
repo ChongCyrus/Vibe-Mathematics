@@ -602,7 +602,7 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
   const identifierLike = (s) => /[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*/.test(String(s))
   const safeForm = (s) => {
     const name = claimPrefix(s)
-    const hasMath = /[_^{}$\\]/.test(name)
+    const hasMath = /[_^{}$]/.test(name) || name.indexOf(String.fromCharCode(92)) >= 0
     const hasIdentifier = identifierLike(name)
     return {
       line: name,
@@ -676,5 +676,48 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
     ok: true,
     counts: { citations: cites.length, evidence: evidenceEntries.length, resolved: known.length, verified: verified.items.length, subproblems: solved.items.length },
     citations: known,
+  }
+}
+
+/**
+ * ★★ RUN 189 (run 33 / FEEDBACK33 1.3, MEASURED): the gate demands that a paper's prose carry every verified conclusion
+ * VERBATIM, and the only way to learn WHICH line was to fail `final` once and read `missing[]`. Run 33's office lost a
+ * whole review round that way. The requirement is a property of the LEDGER, not of the failure: this function answers it
+ * before anything is written.
+ *
+ * Returns `{ ok, count, items, means }`. Each item names the row, the line the gate will look for, whether that line is
+ * a truncated ceiling (`…`) with the full sentence alongside, and the algebra-safe form when the line carries math.
+ * A ledger with no verified conclusion is `{ ok: true, count: 0 }` — "nothing required" is a reading, not a failure.
+ */
+export function verifiedRequirements({ view, codes = QUALITY_CODES } = {}) {
+  if (!view || typeof view.verified !== 'function') {
+    return { ok: false, code: codes.VERIFIED_MISSING, count: 0, items: [], message: 'no verified reading is wired, so the required lines cannot be computed here', means: 'the paper quality face reads the verified track through `view.verified()`' }
+  }
+  const nameOf = (t) => String(t === undefined || t === null ? '' : t).replace(/^已验证｜/, '').trim()
+  const claimPrefix = (s) => (String(s).endsWith('…') ? String(s).slice(0, -1).trim() : String(s))
+  const identifierLike = (s) => /[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*/.test(String(s))
+  const verified = view.verified()
+  const items = (verified.items || []).map((item) => {
+    const name = claimPrefix(nameOf(item.title))
+    const truncated = String(nameOf(item.title)).endsWith('…')
+    const hasMath = /[_^{}$]/.test(name) || name.indexOf(String.fromCharCode(92)) >= 0
+    const hasIdentifier = identifierLike(name)
+    return {
+      id: item.id, cardId: item.cardId === undefined ? null : item.cardId,
+      requiredLine: name || String(item.cardId || item.id),
+      requiredLineTruncated: truncated,
+      requiredLineFull: truncated && item.statement ? String(item.statement) : null,
+      requiredLineMath: hasMath && !hasIdentifier ? '$' + name + '$' : null,
+      requiredLineIdentifier: hasIdentifier,
+      writeAs: hasIdentifier ? 'plain text: do NOT wrap an identifier in $…$ (inside math mode every _ is a subscript and xelatex reports "!" Double subscript")'
+        : hasMath ? 'paired $…$ around the line (the renderer keeps paired math verbatim) or the raw line — both pass'
+          : 'the raw line, verbatim',
+    }
+  })
+  return {
+    ok: true, count: items.length, items,
+    means: items.length === 0
+      ? 'the verified track is empty, so this paper is required to quote no conclusion verbatim — the requirement grows as conclusions are promoted, so read this again before the final render'
+      : 'each item is a line the content gate will look for VERBATIM (normalised for math mode) in the paper prose before `final`/`render`; `requiredLineFull` is the sentence to paste when the row name stops at `…`, and `writeAs` says how to write a line that carries math or an identifier',
   }
 }
