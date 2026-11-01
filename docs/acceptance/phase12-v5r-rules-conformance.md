@@ -13344,3 +13344,41 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 - **一次修理工不该是 N 次快照**：持久化单位是「一个可观察的变化」，不是「一次 API 调用」；批量动作必须有一个一次落盘的形状。
 - **批量要逐行报错，不要整批抛出**：189 行里有 1 行被钉住时，读者需要知道「哪一行没走、其余都走了」，而不是一个 500。
 - **回执的形状是给读者看的**：`pruned[]` 每行点自己的 `track` 不是审美问题 —— 一个不知道自己在哪条轨上的行，读者没法核对它是不是该走的那一行。
+
+## §281 RUN 181（第二十七次真机 = run 26 / FEEDBACK25：窗口还在途、论文回到过去）
+
+### 281.1 现场（基线 `c024be06`，第二十六次真机）
+
+- 驱动 `D:/_tmp/slv-phase5/slv-p13-oc.ps1 -CloneName slvp180 -Port 19642 -MaxTokens 40000000 -TimeoutSec 5400`（opencode-go / deepseek-v4.1-flash，简报 `task-sim25.txt`）。
+- `EXIT=0`、`SUMMARY: 6 session(s) in 1 file(s), 0 with RED checks`、`OK: prompt/wire names consistent; all calls visible; counts match`；转录 `_oneoff/vm-slv/full-1101-170323.jsonl`；报告 `SIM-REPORT25.md` 32 814 B、`FEEDBACK25.md` 19 084 B。
+- 成立：F24-1（投票回执与 `status` 同一 `votersAsOf`、本票在内）、F24-2（`total` 是命中数）、F24-3（`leaderAssumed`）、F24-7（`countOnly` 不再说 `truncated`）；**prune 批量真成立**（189 行 dryRun/真跑候选一致，`state`/`purgeAt` 如实改变，驱动不再读超时）。
+
+### 281.2 六条修法
+
+- **F25-1（重）窗口在途**：`reopen-closure` 先 `recordsStore.patch(closure_window, …)` 再立刻回执，而 patch 只在途；紧随的投票读到旧窗口（默认 1）盖章并计入旧票。现在回执前 `await pending`（失败则具名拒，窗口不开、票不盖章），跨内核探针 `probe-f251e.mjs` 复现并验证（去掉 100 ms 等待后 B 立即读到 `window:2`）。
+- **F25-2**：`rowsOmitted` 原来只在 `limit:0` 时算，paged 读出现 `truncated:true` 配 `rowsOmitted:0`。现在 `rowsOmitted = max(0, matched − returned)`，`limit:0` 时仍等于 matched。
+- **F25-3**：`requiredLineFull` 恒 null。原因是 Verified 行没有 `§陈述` 段、而卡上的 `statement` 才是那句话：闸现在回读卡（`statementOfCard`），把全文给出来。
+- **F25-4**：`wrong-track` 只说两条轨、不给下一步。现在带 `existsAt{id,track}`、`nearby[]`（同轨相近 id）与 `trackMeans`（目录词决定轨）。
+- **F25-5（最重）一篇论文两个状态行**：`part`/`review` 的第二轮全部 `ok:true`，但最新状态行却是 round-1 快照（`parts` 指向第一轮，`advance` 随后报 `from:"writing", round:1, reviewOf:{}`）。两条改法：① `stateRowOfTitle()` —— 同标题多行时按「最高 round → 最新 revision」取，而不是列表插入序；② `writeState()` —— 快照丢了 `stateRecordId` 时**采纳既有状态行**（绝不新开第二行），并在盘上 round 高于本快照时**具名拒写**（`CODES.STATE`，不回拨）。
+- **F25-10**：`prune` 回执加 `pinnedCount`，`pinnedMeans` 说清「被钉住的是永久行，其余照常移动」。
+
+### 281.3 机器化
+
+- `tests/vmu-run181-feedback25.test.mjs`（**23/0**）7 节：§0 源码 pin（7 条）；§1 同标题两行状态行时 `status` 读「更前」的那行；§2 paged 读 `total/returned/truncated/rowsOmitted` 自洽、`limit:0` 仍算 rest；§3 永久行被 prune 钉住并给 `pinnedCount`/`pinnedMeans`。
+- 定向回归全绿：paper 9/0、records 5/0、run164/166/167/168/169/170/172/173/174/175/177/178/179/180/181 各 1/0、run176 2/0、vmu-host 4/0、quota 1/0、trash 2/0、library 4/0、v5r-tools 1/0、evidence 1/0、citation 3/0、turn 15/0、tools-action 1/0、arity 12/0、vote 2/0、closure 4/0。
+- 收口链：`update-doc-counts --write`（`JOBS total=731 suites=623 probes=108`）→ `regen-all --write` 17/17 → `--check` 17/17 in sync → `PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)` → 全量 T1。
+
+**T1：** `/d/_tmp/t1-r283-run181.log` = **TOTAL 662 PASS 662 FAIL 0**（suites 598 · probes 64）
+
+### 281.4 未闭合账
+
+- **F25-6** `vibe_vmu_turn {op:"step"}` 的 `VMU_TURN_DELIVERY_TIMEOUT` 里 `closureVote.voters` 的会话与 `turn status.memberSessions` 不是同一套 id：超时回执没有可对的会话名册。
+- **F25-7** office（无 exec）promote 仍 `owner:null`：「发起席自动署名」只对能带 exec 的席位成立，这是设计边界，但回执没把「为什么没有作者」说出来。
+- **F25-8/F25-9**：`final` 的 `body` 形参不进质量闸；质量闸要求正文含**全部** Verified 结论（把引证变成背书）。
+- **F24-5** 引用闸先于阶段门（语义顺序，未改）；互审 3 轮上限仍在账上。
+
+### 281.5 三条教训
+
+- **窗口必须在票被盖之前落定**：`patch` 是一句「我要写」，不是「已经写好」；任何拿它当同步事实的后续判断都必须先 await。
+- **记录身份是内容，不是插入序**：一张论文的状态行有两条时，读者不能拿「第一条」当真相 —— 要拿「最前」的那条，并且写入方不许把过时快照写成新行。
+- **回执会自相矛盾**：`truncated:true` 配 `rowsOmitted:0`、`votesCast:3` 配刚开的窗口 —— 同一张回执里的两句话必须能同时为真。

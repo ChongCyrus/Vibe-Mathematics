@@ -165,6 +165,34 @@ export function createPaperFlow({
     }
     try { return JSON.parse(String(body || '{}')) } catch { return null }
   }
+
+  // ★★ RUN 181 (run 26 / FEEDBACK25 F25-5 — THE PAPER THAT WENT BACK IN TIME): one paper had TWO live state
+  // rows under one title. Every round-2 `part`/`review` call was acknowledged, yet the newest state row carried a
+  // round-1 body (`parts` named the round-1 rows, and `advance` then answered `from:"writing", round:1, reviewOf:{}`),
+  // while `status` alternated between "writing, no parts" and "awaiting-editor at round 1". One row IS the paper (see
+  // `stateRows`), so a title with several rows is a LOST UPDATE and not a second paper: the reader takes the row that
+  // is FURTHEST ALONG (highest round, then newest revision), and the writer never mints a second one (see `writeState`).
+  const stateRowOfTitle = (title) => {
+    const rows = stateRows().filter((r) => String(r.title) === String(title))
+    if (rows.length <= 1) return rows[0] || null
+    let best = null
+    let bestKey = null
+    for (const row of rows) {
+      const body = stateOfRow(row)
+      const round = body && body.round !== undefined && body.round !== null ? Number(body.round) : null
+      const key = [
+        round !== null && Number.isFinite(round) ? round : -1,
+        Number.isFinite(Number(row.updatedAt)) ? Number(row.updatedAt) : 0,
+        Number.isFinite(Number(row.rev)) ? Number(row.rev) : 0,
+      ]
+      const better = !bestKey
+        || key[0] > bestKey[0]
+        || (key[0] === bestKey[0] && key[1] > bestKey[1])
+        || (key[0] === bestKey[0] && key[1] === bestKey[1] && key[2] > bestKey[2])
+      if (better) { best = row; bestKey = key }
+    }
+    return best
+  }
   // ★★ RUN 158 (real machine, run 6 / feedback N2 — THE PAPER THAT COULD NOT BE COMPILED): `start` without a target
   // names the paper after its TITLE, and that title became BOTH the plate id (`paper-第五次续跑 之 结题 现场 验证 稿`)
   // and the directory name. xelatex refused the directory (`xelatex.exe: fatal: putenv(TEXMF_OUTPUT_DIRECTORY=…)`) while
@@ -236,8 +264,8 @@ export function createPaperFlow({
     // action addresses it by "p5", so a caller that copies the id it was just handed was told 'no paper "paper-p5" exists'.
     // Both spellings name the same paper here; the state keeps ONE name (the target) as the truth.
     let word = str(target)
-    let row = rowByTitle(recordName(word, 'state'))
-    if (!row && /^paper-/.test(word)) { word = word.replace(/^paper-/, ''); row = rowByTitle(recordName(word, 'state')) }
+    let row = stateRowOfTitle(recordName(word, 'state'))
+    if (!row && /^paper-/.test(word)) { word = word.replace(/^paper-/, ''); row = stateRowOfTitle(recordName(word, 'state')) }
     // ★★ RUN 158 (N2): a paper that got a MINTED id (`paper-p3`) is not titled by that id, so the id the receipt prints
     // must still address it — otherwise the advertised repair ("address the paper by its id") names an unreachable object.
     // ★ NOTE the ORIGINAL spelling is tested here: the strip above turned `paper-p3` into `p3`, which is exactly the
@@ -283,6 +311,17 @@ export function createPaperFlow({
       return { state, row: full }
     } catch { return null }
   }
+  // ★★ RUN 181 (F25-5): a snapshot whose `stateRecordId` was lost used to be written as a SECOND state row, and
+  // because the body it carried was older than the paper the round-2 parts/reviews stayed live but were no longer named
+  // by any state row. Two guards replace that silent reset: adopt the row that already exists for this title, and refuse
+  // the write BY NAME when the paper on disk is already further along than the snapshot.
+  const refuseStaleRound = (target, mine, theirs) => {
+    throw refuse(CODES.STATE,
+      'paper "' + str(target) + '" is at round ' + String(theirs) + ' on disk but this write carries a round-' + String(mine)
+        + ' snapshot: writing it would move the paper backwards, so nothing was written',
+      're-read the paper (vibe_v5_paper { action: "status", target: "…" }) and repeat the action on the fresh state — an older snapshot is refused by name, the paper keeps its later round')
+  }
+  const stateRoundOf = (body) => (body && body.round !== undefined && body.round !== null && Number.isFinite(Number(body.round)) ? Number(body.round) : null)
   const writeState = (state) => {
     // ONE state record, updated IN PLACE: `records.put` with the remembered id writes a new revision, so the paper has
     // exactly one live state row (a fresh id per write would leave duplicates whose list order decides the truth).
@@ -290,6 +329,28 @@ export function createPaperFlow({
     // `part` calls used to both succeed and the later write silently dropped the earlier one; now the stale writer is
     // refused BY NAME (the caller retries on the fresh body) and nothing is lost.
     const seen = state && state.__seen ? state.__seen : null
+    if (!state.stateRecordId) {
+      const existing = stateRowOfTitle(recordName(state.target, 'state'))
+      if (existing) {
+        const theirs = stateRoundOf(stateOfRow(existing))
+        const mine = stateRoundOf(state)
+        if (theirs !== null && mine !== null && theirs > mine) refuseStaleRound(state.target, mine, theirs)
+        // adopt it: the paper keeps ONE state row for its whole life
+        state.stateRecordId = existing.id
+      }
+    }
+    if (state.stateRecordId) {
+      // ★ the revision check below catches a CONCURRENT write; it cannot catch a snapshot taken in a kernel that never
+      // folded the later revision (that kernel's own `cur.rev` is the old one, so the revs agree). The round on disk is
+      // the fact that says which snapshot is older, and a paper never moves backwards.
+      let onDisk = null
+      try {
+        const got = records.get({ id: state.stateRecordId })
+        onDisk = stateRoundOf(stateOfRow(got && got.record ? got.record : got))
+      } catch { onDisk = null }
+      const mine = stateRoundOf(state)
+      if (onDisk !== null && mine !== null && onDisk > mine) refuseStaleRound(state.target, mine, onDisk)
+    }
     if (state.stateRecordId && seen && seen.rev !== undefined && seen.rev !== null) {
       let cur = null
       try {

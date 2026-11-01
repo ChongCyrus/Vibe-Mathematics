@@ -848,7 +848,10 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
     // ★ RUN 179 (F24-7): a COUNT-ONLY read has nothing to truncate — `countOnly:true` beside `truncated:true` reads as
     // "rows were cut" when no rows were asked for. The rows it did not return are NAMED instead (`rowsOmitted`).
     truncated: countOnly ? false : cards.length > returned.length,
-    rowsOmitted: countOnly ? cards.length : 0,
+    // ★★ RUN 181 (run 26 / FEEDBACK25 F25-2): a paged read said `truncated:true` and `rowsOmitted:0` in the same
+    // receipt (30 rows matched, 2 returned). The count of what the page left behind is a fact about EVERY read, not only
+    // about the limit:0 one — a receipt must not contradict itself two lines apart.
+    rowsOmitted: countOnly ? cards.length : Math.max(0, cards.length - returned.length),
     totalMeans: 'total is the number of rows this read MATCHED (track/kind/member filters applied), whether or not they fit in the page; returned is the page, rowsOmitted the countable rest',
     countOnly,
     countOnlyMeans: 'limit:0 只读计数：total 是本轨命中数，returned 恒为 0。要取行就给一个正数 limit。',

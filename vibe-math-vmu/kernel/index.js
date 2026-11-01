@@ -4059,6 +4059,19 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         why: why === null || why === undefined ? null : String(why),
         by: by === null || by === undefined ? null : String(by),
       }))
+      // ★★★ RUN 181 (run 26 / FEEDBACK25 F25-1): THE RECEIPT SAID `window: 6` AND THE FOLD STILL SAID 5. `patch` is
+      // asynchronous: this receipt was returned while the new window was still in flight, so a vote cast right after it
+      // read the OLD window (default 1 for a fold that has no key yet), stamped its row with the OLD window, and the
+      // reading counted the votes this reopen was supposed to archive — measured across TWO kernels in one workspace:
+      // office opened window 2, the member's vote (same tick) still counted the two window-1 votes. Awaiting the write
+      // here is the whole fix: when this receipt names window N, N is durable and every other kernel reads it.
+      try {
+        await pending
+      } catch (e) {
+        throw refuse((e && e.code) || 'VMU_STORE_FAILED',
+          'the new closure window could not be written, so it was NOT opened: ' + String((e && e.message) || e),
+          'no vote was re-stamped and the previous window still counts; retry reopen-closure once the durable file is writable')
+      }
       trackFoldWrite(pending, 'vmu closure_window write')
       const sessionVotesCleared = turn && typeof turn.resetClosureVotes === 'function' ? turn.resetClosureVotes() : null
       return {

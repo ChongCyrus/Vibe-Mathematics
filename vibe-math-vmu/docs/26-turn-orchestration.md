@@ -3044,3 +3044,11 @@ run 24 的主线很干净：论文出 PDF、结题三票、四成员全有回合
 现在：`records.removeMany(list)` 用 `snapshotSuppressed` 把快照压到批次结束后**只写一次**，逐条 `remove` 且**逐条 try/catch**（失败行报 `{id, ok:false, code, message, hint}` 而不是整批 500），返回 `{ok, count, failedCount, rows, failed}`；`host.js` 的 `prune` 在非 dryRun 且内核提供该面时走批量，`VMU_RETENTION_CONFLICT` 仍进 `pinned`、其余错误带 `code`/`hint` 抛出，逐行 `rc.remove` 保留为回退（老内核行为不变）。回执形状不变：`pruned[]` 每行仍带 `track`、`state:"trashed"`、数字 `purgeAt`。
 
 `tests/vmu-run180-batched-prune.test.mjs`（20/0）钉住：60 行 `keep:5` 只写一次且 < 20 s、55 行各自点名、批量 trash 仍可 restore；20 行含永久行时被钉的那行进 `pinned` 而不阻断其余 16 行；删掉 `removeMany` 后逐行回退仍能修剪且行形状相同。教训：**持久化的单位是一个可观察的变化，不是一次 API 调用**；批量动作必须有一个一次落盘的形状，且必须逐行报告结论。
+
+### ROUND 184 — 一次投票的窗口必须在票被盖之前落定，一篇论文的状态行不许有两行
+
+run 26 把两张回执并排放在一起：`reopen-closure` 说窗口已经是 6，下一票却按旧窗口（1）盖章；`part`/`review` 说第二轮都记下了，状态行里却只有第一轮。两张都是**同一时刻的两个读数**。
+
+修法不是「多写一个字段」，而是把「谁先落盘」写进机制：窗口在回执出现之前 `await` 落盘（失败则窗口不开、票不盖章）；状态行有两条时按 round/rev 取最前的一条，且写入方在快照过时时**拒绝回拨**（具名 `CODES.STATE`）。`tests/vmu-run181-feedback25.test.mjs` 23/0 钉住这两条；`--only` 回归 24 个套件全绿。
+
+教训：**回执是一种承诺**。读者拿它当事实，一切「先答后写」「按插入序读」「静默回退」都会在真机上变成两张互相矛盾的纸。

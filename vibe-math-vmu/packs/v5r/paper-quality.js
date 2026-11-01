@@ -411,7 +411,23 @@ export function checkEvidencePointers({ evidence, records, codes = QUALITY_CODES
     }
     const actualTrack = str(row.track)
     if (actualTrack !== expectedTrack) {
-      unknown.push({ pointer, cardId, expectedTrack, actualTrack: actualTrack || null, reason: 'wrong-track' })
+      // ★★ RUN 181 (run 26 / FEEDBACK25 F25-4): `wrong-track` listed the two tracks and NOTHING the caller could do —
+      // the `no-such-record` branch had learned to suggest, this one had not, even though it knows the row exists and where.
+      let elsewhere = []
+      try {
+        const listed = records.list({ track: expectedTrack, limit: 0 })
+        const rows = Array.isArray(listed) ? listed : (listed && Array.isArray(listed.items) ? listed.items : [])
+        const stem = String(cardId).replace(/[^A-Za-z0-9_一-鿿]/g, '').slice(0, 3).toLowerCase()
+        elsewhere = rows
+          .map((r) => String(r && r.id ? r.id : ''))
+          .filter((id) => id !== '' && stem !== '' && id.toLowerCase().includes(stem))
+          .slice(0, 3)
+      } catch { elsewhere = [] }
+      unknown.push({ pointer, cardId, expectedTrack, actualTrack: actualTrack || null, reason: 'wrong-track',
+        existsAt: { id: cardId, track: actualTrack || null },
+        nearby: elsewhere,
+        nearbyMeans: 'the id exists, but on ANOTHER track: cite a row that lives on the claimed track, or write the pointer under the directory for the track the row really is on (the category word decides the track)',
+        trackMeans: 'the directory word (Propos/Methods/Subproblems/Progress) declares which track the row must be on; this pointer and this row disagree about that' })
       continue
     }
     // ★ RUN 155: an anchor (`#证明`) is a SECTION inside the record, not part of its id - resolve on the pointer
@@ -510,6 +526,17 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
   // ③ verified / solved content must appear. The token is the CONCLUSION'S OWN NAME (the verified row's title without the
   // track's `已验证｜` prefix), NOT a bare id: an id also appears inside a citation path, so matching it would let a paper
   // "pass" while never stating the result. A row with no title falls back to its card id.
+  // ★ RUN 181 (F25-3): the claim a truncated verified name stops in the middle of lives on the CARD (its `statement`
+  // field), so the gate reads it back rather than telling the author to paste a ceiling.
+  const statementOfCard = (recordsFace, cardId) => {
+    if (!has(cardId)) return null
+    try {
+      const row = recordOf(recordsFace, String(cardId))
+      const body = row && row.body ? String(row.body) : ''
+      const m = body.match(/^[-*]?\s*statement\s*[：:]\s*(.+)$/m)
+      return m && m[1] ? m[1].trim() : null
+    } catch { return null }
+  }
   const missingEvidence = []
   const nameOf = (t) => str(t).replace(/^已验证｜/, '').trim()
   // ★★ RUN 175 (run 20 FEEDBACK20 ②): a verified conclusion whose title carries math (`Σ_{k=1}^{n} k³ = (n(n+1)/2)²`)
@@ -561,7 +588,13 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
         // ★★ RUN 179 (F24-4): when the NAME stops at `…`, the claim does not. The row's own `陈述` is the sentence to
         // write; naming only the truncated title made the gate impossible to satisfy honestly (the author had to paste a
         // ceiling). `requiredLineFull` is that sentence, and `requiredLineTruncated` says the name is not the claim.
-        requiredLineFull: named.truncated && has(item.statement) ? claimPrefix(item.statement) : null,
+        // ★★ RUN 181 (run 26 / FEEDBACK25 F25-3): `requiredLineFull` was null for every row in the run — the gate asked
+        // for a sentence that stopped mid-formula and could not say what the sentence was. The verified row carries its own
+        // `陈述` section, but a row promoted before that section existed has only the card: the card's `statement` field is
+        // the same claim, so the gate reads it from there instead of shrugging at a truncated name.
+        requiredLineFull: named.truncated
+          ? (has(item.statement) ? claimPrefix(item.statement) : (statementOfCard(records, item.cardId) || null))
+          : null,
         requiredLineMath: named.math,
         requiredLineIdentifier: named.hasIdentifier })
     }

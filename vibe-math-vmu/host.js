@@ -1110,10 +1110,15 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             return {
               ok: true, action, track: pruneTrack, keep: wantKeep, dryRun: preview,
               liveBefore, liveAfter, wouldPruneCount: doomed.length, prunedCount: preview ? 0 : moved.length, pruned: moved, pinned,
+              // ★★ RUN 181 (run 26 / FEEDBACK25 F25-10): `pinned` was a list with no count, and `pinnedMeans:null` on an
+              // empty one — a reader had to count rows to learn whether the prune was complete. The count is stated, and the
+              // means explains that a pinned row is a permanent row the prune is not allowed to move.
+              pinnedCount: pinned.length,
               by: callerBy, why: pruneWhy,
               prunedRowsMeans: 'every line of `pruned` and `pinned` names its own `track` — the list is where a reader checks WHICH rows are leaving, so the row must say where it lived rather than leaving that to the `track` argument above',
-              pinnedMeans: pinned.length === 0 ? null
-                : 'permanent records are protected and were skipped — clear the marker deliberately if they must go',
+              pinnedMeans: pinned.length === 0
+                ? null
+                : 'rows this prune could NOT move: a permanent row (`permanent:true` or tags:["permanent"]) is not prunable, and the prune leaves it live while it moves everything else (permanent records are protected and were skipped — clear the marker deliberately if they must go)',
               means: preview
                 ? 'DRY RUN: nothing was moved; the ids above are what a real prune would trash (drop dryRun to act)'
                 : 'the rows above are in the TRASH, not deleted: action "status" counts them under records.trashed and they stay restorable until purgeAt (vmu.records.trash.retainDays); expiry is counted, never silent',
