@@ -4140,6 +4140,53 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         gatingMeans: 'freezing is bookkeeping: it does not decide the close and the close does not decide the vote',
       }
     },
+    // ★★ RUN 187 (the account RUN 185 opened had no door): the close receipt names the frozen row, but a reader who
+    // arrives LATER — another member, another kernel, the next session — had no way to ask "where is the as-of-close
+    // account?". The row exists, is durable and is titled for a human; this reads it back. It answers with the LATEST
+    // freeze (optionally for one meeting), and it says plainly that an absent row means "this ledger never froze
+    // anything" rather than "the vote was fine": an empty answer is information, not a pass.
+    closureFreezeView({ meeting = null, track = 'state' } = {}) {
+      let listed = null
+      try { listed = records.list({ track, limit: 0 }) } catch (e) { listed = null }
+      const rows = !listed ? [] : (Array.isArray(listed) ? listed : (Array.isArray(listed.items) ? listed.items : []))
+      const want = meeting === null || meeting === undefined ? null : String(meeting)
+      const freezes = []
+      for (const raw of rows) {
+        if (!raw) continue
+        // The head list projects a FIXED field set and `tags` may not be in it, so a row that came through the list is
+        // re-read in full before its tag decides anything: the pointer must never disappear because of a projection.
+        let row = raw
+        if (!Array.isArray(row.tags)) {
+          try { row = records.get({ id: raw.id }) || raw } catch (e) { row = raw }
+        }
+        const tags = Array.isArray(row.tags) ? row.tags : []
+        if (!tags.includes('closure-freeze')) continue
+        const title = String(row.title || '')
+        const parts = title.split('|')
+        if (parts.length < 4) continue
+        const where = parts[1]
+        const at = Number(parts[2])
+        if (want !== null && where !== want) continue
+        let body = null
+        try { body = JSON.parse(String(row.body || 'null')) } catch (e) { body = null }
+        freezes.push({
+          recordId: row.id === undefined ? null : String(row.id),
+          where, at: Number.isFinite(at) ? at : null,
+          window: parts[3] === undefined ? null : parts[3],
+          votesCast: body && body.votesCast !== undefined ? body.votesCast : null,
+          cast: !!(body && body.cast === true),
+        })
+      }
+      freezes.sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0))
+      const latest = freezes.length > 0 ? freezes[0] : null
+      return {
+        ok: true, meeting: want, count: freezes.length, latest,
+        rows: freezes.slice(0, 8),
+        means: latest === null
+          ? 'this ledger holds NO as-of-close account: either no meeting was ever closed here, or this kernel is looking at a different ledger than the one that closed it'
+          : 'the LATEST as-of-close account on this ledger; it does not move when votes are cast later (that is what RUN 185 wrote it for)',
+      }
+    },
 
     /**
      * ★ PHASE 8 / B-1: THE MEMBER'S REAL TOOL TABLE, in the kernel. Names come ONLY from the live visible-tools provider

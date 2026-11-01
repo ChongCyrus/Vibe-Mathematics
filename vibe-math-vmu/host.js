@@ -484,14 +484,14 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         // `full` / `settings` were always the real vocabulary. The pack-contributed per-segment view is a FUTURE
         // feature (the kernel doc-comment already describes it as pack-contributed); until it exists, asking for it is
         // an error with the legal list, not a 154 KB surprise.
-        const DETAILS = ['summary', 'full', 'settings', 'closure', 'provenance']
+        const DETAILS = ['summary', 'full', 'settings', 'closure', 'closure-account', 'provenance']
         if (DETAILS.indexOf(detail) === -1) {
           // ★ A REFUSAL RECEIPT, not a throw: the face-level wrapper around `run` turns a thrown error into
           // VMU_MIDDLEWARE_FAILED and drops its code/hint (measured), which would have re-created the very defect this
           // branch removes - a caller unable to tell a spelling mistake from a broken face.
           return { ok: false, code: 'VMU_INVALID_ARGUMENT',
             message: 'detail:' + JSON.stringify(detail) + ' is not a detail this face provides',
-            hint: 'legal: ' + DETAILS.join(' | ') + '. The per-segment view (phase/quorum/formal/paper) is not implemented; detail:"closure" returns the closing reading, detail:"summary" the compact view.' }
+            hint: 'legal: ' + DETAILS.join(' | ') + '. The per-segment view (phase/quorum/formal/paper) is not implemented; detail:"closure" returns the closing reading, detail:"closure-account" the latest as-of-close account, detail:"summary" the compact view.' }
           throw err
         }
         // ★ PHASE 7 / round 17: a diagnostic face the model cannot READ is a mechanism nobody can use. These two compact
@@ -499,6 +499,19 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         if (detail === 'closure') {
           const cv = typeof kernel.closureVoteView === 'function' ? kernel.closureVoteView() : (kernel.status().closureVote || null)
           return { ok: true, instance, closureVote: cv, counts: { tools: 1 }, note: "detail:'closure' returns only the closing reading; detail:'full' for everything" }
+        }
+        // ★★ RUN 187 (rule L53's account needed a door): RUN 185 writes ONE durable row per close, and the close receipt
+        // names it — but a reader who arrives LATER (another member, another kernel, the next session) had only the
+        // receipt, which is gone. This face is deliberately SEPARATE from detail:"closure": that face has a size contract
+        // (the harness reads it in one line), while "which account did we freeze, and what does it say" is a different
+        // question with a different answer shape. An empty ledger is answered with `latest: null` and a sentence, never
+        // with a pass.
+        if (detail === 'closure-account') {
+          const asOfClose = typeof kernel.closureFreezeView === 'function'
+            ? kernel.closureFreezeView({})
+            : { ok: false, count: 0, latest: null, means: 'this kernel exposes no closure-freeze seam' }
+          return { ok: true, instance, asOfClose, counts: { tools: 1 },
+            note: "detail:'closure-account' returns the LATEST as-of-close account (and up to 8 recent ones) written by closing a meeting; the live reading is detail:'closure'" }
         }
         // ★ ROUND 55 (F-44): THE PROVENANCE FACE. The `detail:"settings"` receipt is ONE JSON line of ~7 kB, and the
         // harness's own `grep`/`read` truncate a line at 2,000 chars — so a nested field (`settings.resolvedIn`) was

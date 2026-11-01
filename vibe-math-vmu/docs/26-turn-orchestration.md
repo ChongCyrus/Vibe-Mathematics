@@ -3084,3 +3084,9 @@ run 32 把同一张结题票板摆给了两个读者：office 关会时读到 `c
 **A hint that quotes the truncated form of a string is a hint that cannot be followed.** RUN 186 makes the prose gate quote the string it actually accepts: when the settled conclusion's title was shortened with `…`, the refusal now prints the FULL statement (and says the line name is only a prefix), so "paste this" is true for the first time. The same round turns the three warrant forms into a contract with addresses: `debate`/`ballot`/`lean`/`literature_reference` resolve to `debate-unanimous`/`lean-conformance`/`literature`, and the receipt reports `warrantKindGiven` and `warrantKindAliased` so the caller can see whether the word they typed is the word that was recorded.
 
 Lesson: **display values are not contracts** — a truncated name shown to a reader is a rendering decision, and an instruction that reuses it as a paste-able answer hands the reader a bug to solve. And a vocabulary that accepts a word everywhere except at the one gate that matters is a trap: accept it as an address and record the resolution.
+
+## ROUND 190
+
+**An account nobody can read is half an account.** RUN 185 froze the as-of-close tally into one durable row per close; RUN 187 gives that row a door: `vibe_vmu_status { detail: "closure-account" }` returns the latest frozen account (`recordId`, meeting, `votesCast`, `cast`) and up to eight recent ones, scoped by meeting when asked. It is a SEPARATE detail value on purpose — `detail:"closure"` has a measured size contract (the harness reads it in one line) and must not grow. An empty ledger is answered with `latest: null` plus the sentence that says what that means: no account exists, which is not the same as "the vote was fine".
+
+Lesson: **a frozen record is only as useful as the question it can answer later**. Write the row, name it in the receipt — and then make the pointer itself a face, because the next reader was not there.

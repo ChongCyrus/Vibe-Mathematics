@@ -13581,3 +13581,36 @@ run 32 在同一工作区里量到两句话：office 内核关会时读 `closure
 
 - **回执里的「可直接粘」必须是闸真正接受的那个字符串**：截断是显示策略，不是契约；把显示值当契约交给读者，等于让每个作者都要自己 debug 一次闸。
 - **词汇表要么完整要么拒绝**：一个词如果属于体系（同一机构在别处这么叫），就该被接受并记录地址；如果它不属于，拒绝语必须说清它为什么不属于。半个词汇表只制造时间成本。
+
+## §287（RUN 187）冻结的账需要一个门
+
+### 287.1 账从哪来
+
+RUN 185（`b81204d4`）把每次关会的票板读成**一行耐久账**（`closure-freeze|<meeting|institute>|<at>|w<window>`，`state` 轨），关会回执也点名了这一行的 `recordId`。但回执是**一次性的**：另一个成员、另一个内核、下一个会话想读「我们关会时冻结的那份账」，手上没有任何入口——那行只有靠标题约定才找得到。§285.5 记的就是这条未闭合账，本轮把它接上。
+
+### 287.2 修法
+
+- `vibe-math-vmu/kernel/index.js` 新增 `closureFreezeView({ meeting = null, track = 'state' } = {})`：按 `tags` 里的 `closure-freeze` 读回账行（`list` 的投影可能不带 `tags`，所以未带 tag 的行**再 `records.get` 全文确认**——指针不能因一次投影而消失），按标题里的时刻倒序，返回 `{ok, meeting, count, latest:{recordId, where, at, window, votesCast, cast}, rows(≤8), means}`；`latest === null` 时的 means 明说「这本账没有任何 as-of-close 账：要么此内核看的是另一本账，要么从来没在这里关过会」——**空答案是信息，不是通过**。
+- `vibe-math-vmu/host.js`：新增 detail 值 **`closure-account`**（`DETAILS` 加一员），回执 `{ok, instance, asOfClose, counts, note}`。**没有**往 `detail:"closure"` 上加字段：那个面有实测的尺寸契约（`vmu-host.test.mjs` 的 `< 1500` 字符 pin，本轮实测 1411），把指针塞进去会悄悄破掉可读性保证；两个问题（「现在是多少」与「关会时冻结了什么」）本来就应该有两个答案面。
+
+### 287.3 机器化
+
+- `tests/vmu-run187-closure-account.test.mjs` **2 PASS / 0 FAIL**：§0 六条源码 pin（`closureFreezeView` 签名、按 tag 读、空账句子、"closure-account"、`asOfClose`、且断言 **live 面没有被加字段**）；§1 真装配三席：空账时 `count:0/latest:null` 且 means 含 `NO as-of-close account` → 开会三票全 true → `close` 得 `closureVoteFrozen.recordId` → `vibe_vmu_status {detail:"closure-account"}` 读到 `count:1`、`latest.recordId === frozen.recordId`、`votesCast:3`、`cast:true`、`where === meeting` → 关会后投 `solved:false`：账仍 `votesCast:3,cast:true`（活读数 `cast:false`）→ 只开不关的另一场会 `closureFreezeView({meeting: mid2}).count === 0`。
+- 途中修的第二个小缺陷（自己踩到）：`records.list` 的 head 投影不含 `tags`，于是第一版 `closureFreezeView` 恒 `count:0`——这正是「读面投影」与「判定依据」分开的经典坑；修法是判定前重新全文读。
+
+### 287.4 收口链
+
+`update-doc-counts --write` → `regen-all --write` 17/17 → `--check` 17/17 in sync → `PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`；`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **TOTAL 668 PASS 668 FAIL 0（suites 604 · probes 64）**（`/d/_tmp/t1-r341-run187b.log`；首跑 `/d/_tmp/t1-r340-run187.log` 有 1 条假红，原因是 T1 进行中我改了 docs，`audit-declaration-criterion` 在测试内 spawn 的 `regen-all --check` 看到了脏树——**门禁期间不要改工作树**，这条也记进 §287.6）。
+
+### 287.5 未闭合
+
+- **D7（run 29）未动**：正文闸要求论文正文逐字覆盖全库已验证结论。规则 L59 说论文要「把原总问题及所有有价值的产物系统梳理」，所以「不覆盖」该被说；但「逐字抄进正文」不是系统梳理的唯一形式（可引用、可综述）。下一轮改成「论文涉及范围内必须覆盖，其余以 advisory 列出」。
+- **D6（run 29）未动**：`floor` 回执里 `minVotes`/`gate.required`/`invitedEligible` 三个「门槛数」并存，语义未在回执里区分。
+- **D13（run 29）未动**：框架生成的会议行被 `EVIDENCE_MISSING` 报成 `no-such-record`，候选给了不相干的行。
+- 冻结行的**增长策略**（一行一会）与 `prune` 的交互仍未定：`state` 轨可被 prune 清理，但清理后 `closure-account` 只会少一行「最近账」，历史仍在提交记录里；下一轮决定是否给 `closure-freeze` 行 pin 语义（`permanent` tag）。
+- 第三十三次真机（基线 `a79252f8`）在写本节时仍在跑（02:00 起，转录 `full-1102-015537.jsonl` 已 74 MB）；RUN 185 的冻结、RUN 186 的两处措辞仍待真机复验。
+
+### 287.6 一条教训
+
+- **写下来的账不等于读得到的账**：RUN 185 的冻结行是「账本可信」的一半，另一半是「谁都能问」。把指针留给一次性回执，等于让每个后来者重演一次考古。
+- **门禁运行时不要动工作树**：`audit-declaration-criterion` 会在测试里 spawn `regen-all --check`，这正是「聚合链有执行点」的设计；但它也意味着一次并行的 docs 编辑会变成一条假红。跑全量 T1 前先把生成物与文档写完。
