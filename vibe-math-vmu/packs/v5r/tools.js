@@ -4413,11 +4413,22 @@ async function toolPaper(args = {}, { kernel } = {}) {
         reachableMoves: (() => {
           if (!paperView) return null
           const status = String(paperView.status === undefined || paperView.status === null ? '' : paperView.status)
-          const moves = status === 'writing' ? ['part{member,body}', 'advance', 'final{decision:"revise"}']
-            : status === 'reviewing' ? ['review{decision}', 'advance', 'final{decision:"revise"}']
+          // ★★ RUN 188 (run 33 / FEEDBACK32 ②, MEASURED): this list used to show `final{decision:"revise"}` in `writing`
+          //   and `reviewing` as well, and both were REFUSED (`VMU_PACK_V5R_CORE_PAPER_STATE`) — the one door back to
+          //   writing is `final{decision:"revise"}`, and its gate is `state.status === 'awaiting-editor'` (or the
+          //   pdf-less-final repair). A list of "reachable" moves that the state refuses is worse than no list.
+          const pdfLess = (() => {
+            if (status !== 'finalized' || !got || !got.state) return false
+            try { return typeof paper.compiledPdfRow === 'function' ? paper.compiledPdfRow(got.state) === null : false } catch (e) { return false }
+          })()
+          const moves = status === 'writing' ? ['part{member,body}', 'advance']
+            : status === 'reviewing' ? ['review{decision}', 'advance']
               : status === 'awaiting-editor' ? ['final{decision:"deliverable"}', 'final{decision:"revise"}', 'consult']
-                : status === 'finalized' ? ['compile', 'status'] : []
-          return { status, moves, means: 'the moves THIS state accepts next, read from the state machine: a draft takes part/advance, awaiting-editor takes final (deliverable or revise) — there is no move that sends a paper BACKWARD to writing except `final{decision:"revise"}`, which is the only door and is listed wherever the state accepts it' }
+                : status === 'finalized' ? (pdfLess ? ['compile', 'final{decision:"revise"}', 'status'] : ['compile', 'status'])
+                  : []
+          return { status, moves, pdfLessFinalRepair: pdfLess, means: status === 'writing' || status === 'reviewing'
+            ? 'the moves THIS state accepts next, read from the state machine: a draft takes part/advance and a reviewing paper takes review/advance. `final{decision:"revise"}` is the only door back to writing and it is NOT accepted here — it is accepted at awaiting-editor (and as the repair of a finalised paper that has no compiled PDF), so reaching it from ' + status + ' means advancing first'
+            : 'the moves THIS state accepts next, read from the state machine: awaiting-editor takes final (deliverable or revise) and consult; a finalised paper takes compile/status, plus `final{decision:"revise"}` only as the repair of a paper whose compile never produced a PDF (`pdfLessFinalRepair`)' }
         })(),
         // ★★ RUN 178 (run 23 / FEEDBACK23 F6): the state's `editor` is a ROLE word, and `status` printed it bare next to
         // parts/reviews that carry real ids. The receipt now says which of the two you are reading, where the word came
@@ -4518,6 +4529,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
         throw refuse('VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING',
           'these evidence pointers do not resolve against the records face: ' + pointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? ', expected track ' + u.expectedTrack : '') + ')').join('; '),
           'write the record first (vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem), then re-write this part with the pointer it produced; a pointer is Members/<member>/(Propos|Methods|Subproblems|Progress)/<record id>.md'
+            // ★★ RUN 188 (run 33 / FEEDBACK32 ③): when the pointer IS the file card the member wrote to disk, say so —
+            //   "do not resolve" and "this is a different face" are different sentences, and only the second one tells
+            //   the member what to do next.
+            + (pointers.unknown.some((u) => /(^|[\/])Members[\/]/.test(String(u.pointer || '')))
+              ? ' —— 你写的是磁盘上的「文件卡」（Members/<成员>/Propos/<名>.md）：文件存在不等于记录库里有一行（附录按【记录】索引）；把这张卡写成记录行拿到 rec-<n>，再用那个 id' : '')
             + (pointers.unknown.some((u) => Array.isArray(u.closest) && u.closest.length)
               ? ' — 相近的: ' + pointers.unknown.filter((u) => Array.isArray(u.closest) && u.closest.length).map((u) => u.cardId + ' ⇒ ' + u.closest.map((c) => c.id).join('/')).join('；')
               : ''))
@@ -4535,8 +4551,14 @@ async function toolPaper(args = {}, { kernel } = {}) {
         .map((k) => (args[k] === undefined || args[k] === null ? '' : String(args[k]))).filter((s) => s !== '').join(String.fromCharCode(10))
       const prosePointers = proseText !== '' && typeof paper.prosePointers === 'function' ? paper.prosePointers(proseText) : null
       if (prosePointers && prosePointers.ok !== true) {
+        // ★★ RUN 188 (run 33 / FEEDBACK32 ③, MEASURED): run 33's member DID what the institute asked — it wrote its
+        //   reasoning to `VibeMath/Members/r-1/Propos/<name>.md` — and cited that file. The refusal said the id is
+        //   unknown, which is true, and never said the pointer is a FILE CARD rather than a records row: two different
+        //   things, one of which does not exist on the cited track by design.
+        const fileCards = prosePointers.unknown.filter((u) => /(^|[\/])Members[\/]/.test(String(u.pointer || '')))
         throw refuse('VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN',
-          '这部分的正文引用了记录库里不存在的 id：' + prosePointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? '，应为 ' + u.expectedTrack + ' 轨' : '') + (Array.isArray(u.nearby) && u.nearby.length ? '；相近的 ' + u.nearby.join('/') : '') + ')').join('；'),
+          '这部分的正文引用了记录库里不存在的 id：' + prosePointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? '，应为 ' + u.expectedTrack + ' 轨' : '') + (Array.isArray(u.nearby) && u.nearby.length ? '；相近的 ' + u.nearby.join('/') : '') + ')').join('；')
+            + (fileCards.length > 0 ? '——其中 ' + fileCards.length + ' 条是磁盘上的「文件卡」（Members/<成员>/Propos/<名>.md），不是记录库里的行：文件存在不等于有这一行' : ''),
           '正文里的 Members/<member>/(Propos|Methods|Subproblems|Progress)/<记录 id>.md 指针按【记录 id】解析，不按文件名解析：先用记录面写出那条卡（vibe_v5_record_proposition 等）并拿到它返回的 id，再把路径写成 …/<那个 id>.md；或在 evidence 里直接写记录 id')
       }
       const part = paper.recordPart({

@@ -504,10 +504,20 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
   }
   if (unknown.length > 0) {
     const first = unknown[0]
+    // ★★ RUN 188 (run 33 / FEEDBACK32 ③, MEASURED): a member wrote its own reasoning to
+    //   `VibeMath/Members/<m>/Propos/<name>.md` (exactly what the institute told it to do), cited that path in
+    //   `part.evidence`, and got "no record with this id" with no sentence saying WHY a path that plainly exists is not
+    //   an id. The appendix indexes RECORDS; a file card on disk is a different thing. When the pointer is shaped like a
+    //   file card the refusal says so and names the conversion (write the card into the records face, cite the rec id).
+    const looksFileCard = /(^|[\/])Members[\/]/.test(String(first.path || '')) || /\.md$|\.md[^A-Za-z0-9_]/i.test(String(first.id || ''))
     return {
       ok: false, code: codes.CITATION_UNKNOWN,
-      message: '论文引用了一个记录库里不存在的 id：' + first.id + '（' + first.path + '，成员 ' + first.member + '，应为 ' + first.expectedTrack + ' 轨；' + first.reason + '）',
-      hint: '在记录面写入该卡时显式给它这个 id（vibe_v5_record_proposition 的 id 参数），或把 evidence 改成记录面返回的 id——附录按【记录】索引，不按文件名索引',
+      message: '论文引用了一个记录库里不存在的 id：' + first.id + '（' + first.path + '，成员 ' + first.member + '，应为 ' + first.expectedTrack + ' 轨；' + first.reason + '）'
+        + (looksFileCard ? '——这条指针是磁盘上的「文件卡」（Members/<成员>/Propos/<名>.md），不是记录库里的行：附录按【记录】索引，文件存在不等于有这一行' : ''),
+      hint: looksFileCard
+        ? '把这张卡写成记录行（例如用 vibe_v5_record_proposition 记一条，或让记录面返回它的 rec-<n>），再把 evidence 换成那个记录 id——文件卡与记录行是两个面，附录只认后者'
+        : '在记录面写入该卡时显式给它这个 id（vibe_v5_record_proposition 的 id 参数），或把 evidence 改成记录面返回的 id——附录按【记录】索引，不按文件名索引',
+      fileCardHint: looksFileCard || undefined,
       missing: unknown,
     }
   }

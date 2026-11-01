@@ -13614,3 +13614,36 @@ RUN 185（`b81204d4`）把每次关会的票板读成**一行耐久账**（`clos
 
 - **写下来的账不等于读得到的账**：RUN 185 的冻结行是「账本可信」的一半，另一半是「谁都能问」。把指针留给一次性回执，等于让每个后来者重演一次考古。
 - **门禁运行时不要动工作树**：`audit-declaration-criterion` 会在测试里 spawn `regen-all --check`，这正是「聚合链有执行点」的设计；但它也意味着一次并行的 docs 编辑会变成一条假红。跑全量 T1 前先把生成物与文档写完。
+
+## §288 RUN 188（第三十四次真机在跑期间修 FEEDBACK32 的三条「读面许诺超过写面」）
+
+### 288.1 本轮修的三条，都是 run 33 的 office 亲手撞上的
+
+1. **`reachableMoves` 列了本状态会拒的动作**：`writing`/`reviewing` 的列表里都有 `final{decision:"revise"}`，而 `recordFinal` 的闸是 `state.status === 'awaiting-editor'`（外加「已定稿但编译从未成功」的修复路）。run 33 照列表试 `revise` 得到 `VMU_PACK_V5R_CORE_PAPER_STATE`，读成「机制坏了」。修法：列表按状态机器重写（`writing` ⇒ `part`/`advance`；`reviewing` ⇒ `review`/`advance`；`awaiting-editor` ⇒ `final{deliverable}`/`final{revise}`/`consult`；`finalized` ⇒ `compile`/`status`，仅当 `pdfLessFinalRepair` 才多列 `final{revise}`），并在 `means` 里写明「这道门在 awaiting-editor，从这里去那里要先 advance」。
+2. **关闭一场已关闭的会议回 `VMU_NO_SUCH_OBJECT`**：同一个 id 上一调用还能 `status`/`summary` 读到。两件不同事实（「从没有过」/「已关闭」）共用一个答案。修法：`close` 在抛 `noSuchMeeting` 之前先查 `archivedRowOf(pid)`，命中则 `VMU_STATE`「already CLOSED and archived」，hint 指向 `action:"summary"` 与 `vibe_vmu_status { detail:"closure-account" }`，并（若账本有）点名该会的冻结行 `recordId`/`votesCast`/`cast`。**「从没有过」仍是 `VMU_NO_SUCH_OBJECT`**——两个事实保持可区分。
+3. **成员把自己写下的文件卡当证据**：run 33 的 r-acad 按要求把推理写到 `VibeMath/Members/r-acad/Propos/rec-1.md`，正文里引用这个路径，得到「记录库里不存在的 id」。文件确实存在，缺的是记录行——两件事被说成一件。修法：`evidence` 侧（`paper-quality.js` 的 `CITATION_UNKNOWN` 与 `tools.js` 的 `EVIDENCE_MISSING`）与正文侧（`prosePointers` 拒绝）在指针形如 `Members/…` 时都加一句「这是磁盘上的『文件卡』，不是记录库里的行：文件存在不等于有这一行」，并把转换动作写清楚（写成记录行拿到 `rec-<n>` 再引用）。
+
+### 288.2 机器化
+
+`tests/vmu-run188-read-face-truth.test.mjs`（**4 节 · 4 passed / 0 failed**）：
+
+- §0 源码 pin（四处措辞 + 「文件卡」在中文面出现）；§1 真装配：`start` ⇒ `status.reachableMoves.status === 'writing'`、`moves` 含 `part`/`advance`、**不含 `revise`**，且 `final{decision:"revise"}` 当场被拒（列表与拒绝同源）、`means` 含 `NOT accepted here`/`advancing first`、`pdfLessFinalRepair === false`；§2 真装配：首关成功 ⇒ 再关 `VMU_STATE` + message 含 `already CLOSED and archived` + hint 含 `action: "summary"` 与 `closure-account`，而未存在过的 id 仍是 `VMU_NO_SUCH_OBJECT`；§3 真装配：`part` 的正文与 `evidence` 同时写 `VibeMath/Members/r-1/Propos/run33-lemma.md` ⇒ 拒绝（`EVIDENCE_MISSING` 或 `CITATION_UNKNOWN`）、message/hint 含 `文件卡`、hint 含 `rec-` 与 `<record id>`。
+- 测试期踩到的事实（记下来省下一轮）：`vibe_v5_paper { action:"start" }` 需要 `participants: [...]`（否则 `VMU_INVALID_ARGUMENT start needs at least one writing participant`）；`part` 的 `body` 一旦含文件卡指针，**证据列表先于正文**被判（`EVIDENCE_MISSING` 在前）。
+
+### 288.3 定向回归与收口
+
+`--only` 全 0 红：`run188 1/0`、`paper 11/0`、`meeting 32/0`、`evidence 1/0`、`v5r-tools 1/0`、`run181/182/184/185/186/187` 各 1/0、`vmu-host 4/0`、`prompt- 24/0`。
+
+**全量 T1**：`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **TOTAL 669 PASS 669 FAIL 0（suites 605 · probes 64）**（`/d/_tmp/t1-r350-run188.log`）。
+
+### 288.4 未闭合
+
+- FEEDBACK32 ①（`drive` 回执 `executed:0` 只数回复字段派发、不数成员自己会话里的工具调用）与 ⑥（`votesCast` 是到达人数，建议另给 `votesTotal`）**未动**：前者要给成员会话加计数通道，后者要动 `closureVoteView` 的 1500 字符 pin，都要单独一轮。
+- ⑤（结题票不绑定会议）与 RUN 185 的冻结是同一个问题的两半：冻结行给了「as-of-close 的账」，但 `vibe_vmu_vote` 仍可无会议地改活读数。是否在归档后具名拒、以及改判史怎么留，下一轮定。
+- 第四位成员的回合（`r-temp`）在 run 32 里仍未触发，简报已写「四席各至少一次」，看 run 34 的表现。
+
+### 288.5 三条教训
+
+- **读面列出的动作必须是写面接受的**：`reachableMoves` 的本意是让失败前就知道路，列错比不列更贵——它把一份能读的拒绝变成了「机制坏了」。
+- **同一 id 的两种缺席不是一种事实**：「不存在」与「已关闭」共用一个码，等于让读者自己猜；一个 `archivedRowOf` 就能分开。
+- **「文件存在」不等于「记录存在」**：制度让成员把推理落到文件，附录却按记录索引；拒绝必须说出这两层，否则成员只会反复重写同一张卡。

@@ -3090,3 +3090,9 @@ Lesson: **display values are not contracts** — a truncated name shown to a rea
 **An account nobody can read is half an account.** RUN 185 froze the as-of-close tally into one durable row per close; RUN 187 gives that row a door: `vibe_vmu_status { detail: "closure-account" }` returns the latest frozen account (`recordId`, meeting, `votesCast`, `cast`) and up to eight recent ones, scoped by meeting when asked. It is a SEPARATE detail value on purpose — `detail:"closure"` has a measured size contract (the harness reads it in one line) and must not grow. An empty ledger is answered with `latest: null` plus the sentence that says what that means: no account exists, which is not the same as "the vote was fine".
 
 Lesson: **a frozen record is only as useful as the question it can answer later**. Write the row, name it in the receipt — and then make the pointer itself a face, because the next reader was not there.
+
+## ROUND 191
+
+**A read face that lists a move its own write face refuses is worse than no list.** Run 33's office asked `vibe_v5_paper { action: "status" }` what it could do next, read `final{decision:"revise"}` among the answers, tried it, and got `VMU_PACK_V5R_CORE_PAPER_STATE` — the one door back to writing is only accepted at `awaiting-editor` (plus the repair of a finalised paper whose compile never produced a PDF). `reachableMoves` is now derived from the same state machine that gates `recordFinal`, names the `pdfLessFinalRepair` exception as a flag, and says in words that reaching the door from `writing` means advancing first. Two smaller receipts got the same treatment: closing a closed meeting answers `VMU_STATE` (with the frozen account it wrote) instead of `VMU_NO_SUCH_OBJECT`, and a member that cites the file card it was told to write is told that a file existing is not a record existing.
+
+Lesson: **a read face is a promise about the write face**. If it cannot keep the promise, it must say what it does accept.

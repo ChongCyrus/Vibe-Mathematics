@@ -747,6 +747,21 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                   : 'closureVote (cast/confirmed/votesCast/missing) is the SEPARATE unanimity reading over the same INSTANCE, not a requirement of this close and not changed by it: this close passed the rails named in `enforced` (' + (closeEnforced.length ? closeEnforced.join(', ') : 'none listed') + ') while the closure vote reads cast=' + String(closeClosureVote.cast === true) + ', confirmed=' + String(closeClosureVote.confirmed === true) + ', missing=' + JSON.stringify(closeClosureVote.missing || []) + ' — so "closed" does not mean "unanimously judged solved", and a member named in `missing` is who to ask before claiming closure. THE VOTES ARE CAST THROUGH `vibe_vmu_vote` AT THE INSTITUTE LEVEL, so the meeting board (`present`, `motions`, `votes`) records NO vote events for them: a chair who sees votesCast=' + String(closeClosureVote.votesCast === undefined || closeClosureVote.votesCast === null ? '?' : closeClosureVote.votesCast) + ' next to an empty motions list is reading two different records, not two different truths. ★ Closing does NOT freeze this reading: it is the durable, latest-wins record (closureVoteAsOf names the instant it was read), so a vote cast after this close changes what a later reader sees while the numbers in THIS receipt stay the as-of-close account',
               })
             }
+            // ★★ RUN 188 (run 33 / FEEDBACK32 ④, MEASURED): closing an ALREADY-CLOSED meeting answered
+            //   `VMU_NO_SUCH_OBJECT` — "no meeting with that id" about a meeting `status`/`summary` read fine one call
+            //   earlier. Closing is not idempotent in this build, but the refusal has to say WHICH fact is true: the
+            //   meeting exists, it is closed, and the move is not re-runnable.
+            const archivedClose = archivedRowOf(pid)
+            if (archivedClose) {
+              const frozen = (() => {
+                try { return typeof kernel.closureFreezeView === 'function' ? kernel.closureFreezeView({ meeting: pid }) : null } catch (e) { return null }
+              })()
+              return refused('VMU_STATE',
+                'meeting ' + pid + ' is already CLOSED and archived — closing it again is not a move this face accepts',
+                'read it back instead: vibe_v5_meeting { action: "summary", id: "' + pid + '" } returns the closed record, and vibe_vmu_status { detail: "closure-account" } names the as-of-close closure account'
+                  + (frozen && frozen.latest ? ' (the frozen row for this meeting is ' + String(frozen.latest.recordId) + ', votesCast=' + String(frozen.latest.votesCast) + ', cast=' + String(frozen.latest.cast === true) + ')' : ' (this ledger holds no frozen account for it)')
+                  + '; if you meant a NEW question, convene a new meeting')
+            }
             throw noSuchMeeting(pid)
           }
           // F28: the bounded fallback (named + revocable) and the declared extension step (GAP-MTG-05).
