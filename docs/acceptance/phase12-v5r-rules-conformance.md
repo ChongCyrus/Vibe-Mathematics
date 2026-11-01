@@ -13197,3 +13197,47 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 - **结构性字段的形状是契约**：`String(对象)` 得到一个恒定的字符串，于是"有没有跑过引擎"这种事实被一个类型误用悄悄改写成"没有引擎"。凡是要判断"某件事是否发生过"，都要读那个**声明了相位**的字段。
 - **一个判决有两个读者时，两个读者必须都拿到它**：kit 答对了，投影把它扔掉，等于没改。修完 `kit` 还要问一句"回执里能看见吗"。
 - **规则的时刻也是规则**：D3 的规则一直对，只是来得太晚——最贵的时刻不是判错，而是判晚了。
+
+## §278 第二十四轮（RUN 178）：`body` 里的正文没人查，一张票被读成两个人
+
+### 278.1 这一轮的真机现场
+
+- 基线：`5452aefe`（RUN 177 全部修法已推送）。驱动：`D:/_tmp/slv-phase5/slv-p13-oc.ps1`（`-CloneName slvp177 -Port 19630 -TaskFile D:\_tmp\slv-phase5\task-sim23.txt -MaxTokens 40000000 -TimeoutSec 5400`），简报 `task-sim23.txt` 经 `check-task-brief` 校验（105 工具）。
+- 结果：`DRIVE_EXIT=0`、`durationSec 1812`、`tokenTotal 15 881 359 / 40 000 000`（capHit false）、`transcriptEvents 518`、根会话 `toolCalls 109`、`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`；转录 `D:/wd/vibemath开发/_oneoff/vm-slv/full-1101-140306.jsonl`。产出 `SIM-REPORT23.md`（17 108 B）与 `FEEDBACK23.md`（5 796 B）。
+- 主线完整（换到组合恒等式）：`rec-671`（`Σ_{k=1}^{n} k·C(n,k) = n·2^{n−1}` 的双计数证明，作者 r-1）+ `rec-672`（r-2 的 `k·C(n,k) = n·C(n−1,k−1)`，第一次写 `p:1` 被 `VMU_PACK_V5R_P1_NEEDS_DEBATE` 具名拒，改 0.95 后通过）→ 辩论会 `m56`（`present:3`、`voteFloor{eligibleUniverse:3, cap:3, source:"universe", universeSource:"institute", invitedEligible:3, effective:3}`、两成员各交自己的裁决卡）→ `verdict_final`（`value:1, mode:"unanimous", n:2`、`floor.gate{required:3, signed:3, signedBy:[r-1,r-2,r-acad]}`、`coverage.complete:true`）→ `p1Evidence:"debate-unanimous"` → `verified_promote` 得 `rec-673` → 论文 `paper-p23`（`start` 省略 editor、两 part、互审、所办问询答复后 `final`）⇒ `finalized:true`、`pdf:{produced:true, engine:"xelatex", pdfBytes:90265}`，盘上同值；`status.pdfCompiled{produced:true, matchedBy:"target", recordId:"rec-682", pdfBytes:90265}` → 结题会 `m57` 三票 `votesCast:3`、`summary.closureTally{readable:true, votesCast:3}`。
+- 四成员全激活：`turn {op:"step"}` 起 r-acad，`turn {op:"drive", rounds:3}` 依次跑 r-2 / r-temp / r-1；r-temp 完成观察任务 `t-24`（`state:"done"`、`revision:3`），并在 `m56` attend 被 `VMU_NOT_PERMITTED … slot "temp"`、`verdict` 被 `VMU_RULING_NOT_DEBATER` 拒（两条都是规则预期的负向样本）。
+
+### 278.2 上一轮（RUN 176/177）修法的机器确认
+
+- **编译失败不再定稿**（这一轮最关键的一条）✅：`paper-p24` 正文含 `$\zzznotacommand{1}$`，`final {decision:"deliverable"}` 回执 `ok:true, finalized:false, missing:["pdf"]`、`pdf{ok:false, code:"VMU_PACK_V5R_CORE_PAPER_PDF_FAILED", engine:"xelatex"}`、**`rolledBack{from:"finalized", to:"awaiting-editor", keptEarlierFinal:true}`**、`reviseAvailable:true`；随后 `status` 与回执逐字段一致（`status:"awaiting-editor"`、`final:null`、`pdfCompiled.produced:false`）；`final {decision:"revise"}` ⇒ `moved:true, to:"writing", repairBudget:2, cap:3`；改纯文本后第三次 `final` ⇒ `finalized:true`、PDF **77 758 B**（盘上同值）。三层修法（kit 判相位 / 投影带字段 / `put` 不按旧指纹 dedupe）在真机上同时成立。
+- `review` 参数名混淆 ✅：`review {decision:"deliverable"}` 回 `VMU_INVALID_ARGUMENT`「review takes `deliverable: true|false`, not `decision:"deliverable"` — `decision` belongs to `final`」，改 `deliverable:true` 后 `review.recordId:"rec-703"`。
+- 并发自读 ✅：同刻 `foldWrites:{pending:1}` 与计数已含刚写行并存，`foldWritesMeans` 明说「**本实例**已算上，另一个实例才在拉折入之前读到旧状态，join point 是 `flushRecordsFold()`」。
+
+### 278.3 这一轮抓到的缺陷（与修法）
+
+1. **`body` 里的正文没人查**（F1/D3，本轮最重）。`vibe_v5_paper {action:"part", body:"…见 Members/r-1/Propos/run23-not-a-record.md#二…"}` 回 `ok:true`、`part.recordId:"rec-700"`——编造的指针被**静默接受**；同一段文字放进 `solution` 才回 `VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN`。根因：RUN 177 加的写入点扫描是 `const proseText = ['part', 'solution', 'methods', 'rules', 'limits']`，而 `recordPart` 取的正文是 `str(args.body || args.solution || '')`——**`body` 排在第一位，却没在扫描列表里**。一个形参名漏掉，等于给规则开了一道静默的后门。修法：扫描列表加 `'body'`（并排在 `solution` 之前，因为它是被优先消费的那个），注释点名「列表必须与 `recordPart` 实际消费的形参同集合」。
+2. **一张票被读成两个人**（F2，中）。同一个读数里，`voters` 的会话后缀在两次投票之间换了拼写：r-acad 投票时是 `r-1@<子会话>` / `r-2@<子会话>`，r-2 投票后另两条变成 `r-1@<根会话>`，`close` 后全部变成 `member@<根会话>`；而 `votesCast:3` 从第一票起就是对的。根因：耐久 fold 累积**每一位成员的每一次判定**（早先会话 + 现在），旧的循环取「fold 返回的最后一行」，于是同一个人按行的顺序变成两个 voter。修法：一个成员只留**最新**一行（按 `at` 取最大，`if (prev && atOf(prev) > atOf(row)) continue`），并让读数自报时间（新增 `votersAsOf` = 用到的最新行时刻），`votersMeans` 改成一句话说清「一人一行，最新判定胜出」。
+3. **同一件事的第二个读者在说反话**（F5，中）。`vibe_v5_overview` 报 `leadership{code:"chair-seated-but-leaderId-empty", consistent:false, leaderId:"", seatedChairs:["r-acad"]}`，同时提示词策略**回退到就座主席**——于是「本所当前没有在册院士」这句话只出现在读数里，不出现在行为里。修法：`leadership.js` 的读数新增 `effectiveLeaderId`（声明的设置 → 就座主席 → 无）与 `leaderIdSource`（`'setting'|'seat'|'none'`）与 `charterNamesLeader`（章程是否已经点名某席）；`consistent` 语义**不动**（它说的是「声明的设置对不对」，不是「本所有没有首领」），warning 保留（设置确实还空着）但 note 不再声称本所无首领。
+4. **`editor` 只留了角色词，来源没落盘**（F6，轻）。`paper status` 印 `editor:"academician"`，与 `start` 回执的 `editor:{value, source}` 无法对读——一个默认值和一个被人点名的值在 `status` 上长得一样。修法：`kit/paper.js` 的 `start` 把 `editorSource`（`'default'|'argument'|'argument-normalised'`）写进 state；`paper status` 新增 `editorReading{value, source, isRoleWord, seat, means}`，`isRoleWord` 说明 `academician`/`office` 是角色词、`seat` 给出这一稿实际由谁签。
+5. **`limit:0` 的提示在教一个已经做过的人再试一次**（minor 2，轻）。`vibe_v5_read_library {track:"verified", limit:0}` 回 `total:12, returned:0, truncated:true`（这是**只读计数**的形状），而 hint 说「传 limit 提高上限」——调用方刚传的就是文档写的最小值，这句提示解释不了自己。修法：读面新增 `countOnly` 与 `countOnlyMeans`（「limit:0 只读计数：total 是本轨命中数，returned 恒为 0，要取行就给正数 limit」），hint 在 `limit:0` 时换成这句话。**注意**：`vibe_vmu_records {action:"list", limit:0}` 是**另一个**语义（取全量），本轮一度把两个面当成一个面改了，回滚后两个面各自说自己的话。
+
+### 278.4 机器化
+
+- 新套件 `tests/vmu-run178-feedback23-truth.test.mjs`：**34 PASS / 0 FAIL**（8 节）。§0 六条源码口径（`proseText` 含 `body` 且扫描在 `solution: str(args.body…)` **之前**、`leaderIdSource`/`charterNamesLeader`、`votersAsOf` + 最新行胜出的那一行、`editorSource: editorGiven ?` + `editorReading: (() => {`、读面的 `countOnly` 形状）；§1 F1（真装配：`body` 里的编造指针被写入点具名拒、`solution` 同文同拒、改成真记录 id 后被接受——`#锚点` 保留在 path 里、按 id 解析）；§2 F2（同一成员两行判定 ⇒ `voters` 只留最新那一行、`votersAsOf` 等于最新 `at`、另一成员的行原样保留）；§3 F5 七条（状态名仍在、`effectiveLeaderId` 与 `leaderIdSource` 成对、声明时为 `'setting'`、无主席时 `'none'`、warning 保留但不再说本所无首领、`next` 仍给写设置的路）；§4 F6 五条（`start` 与 `status` 的来源对得上、`isRoleWord` + `seat`、hint 说明角色词与席位的关系、`editor:"r-acad"` 被记为 `argument-normalised`）；§5 `limit:0` 四条（`countOnly:true` + `returned:0` + `total` 正确、hint 说「只读计数」并给出正数示例、`countOnlyMeans` 在旁边解释、正数 `limit` 仍回行且 `countOnly:false`）。
+- 一处既有 pin 因这层新事实改写：`vmu-host.test.mjs` 的「`detail:"closure"` 小读数面 < 1500 字符」——`voters` 改成一人一行并加 `votersAsOf` 后小面涨到 1626，超出上限。**修法不是放宽阈值**，而是把 `votersMeans` 压回一句话（长句在 `detail:"closure"` 上仍然逐字可读），实测回到上限内。
+- 定向回归（`--only`）：paper 11/0、records 5/0、leadership-reading 1/0、v5r-tools 1/0、meeting 32/0、verdict 5/0、prompt- 24/0、vmu-host 4/0、turn 15/0、run164 1/0、run166 1/0、run167 1/0、run168 1/0、run169 1/0、run170 1/0、run172 1/0、run173 1/0、run174 1/0、run175 1/0、run176 2/0、run177 1/0、run178 1/0。
+- 收口链：`update-doc-counts --write`（`JOBS total=728 suites=620 probes=108`）→ `regen-all --write` 到不动点 → `regen-all --check` 17/17 → `PREFLIGHT` / `DOC LINT` / `RULES COVERAGE`(0) / `RULE PARITY`(0) 四门禁 → 全量 T1。
+- 全量 T1：`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **TOTAL 659 PASS 659 FAIL 0（suites 595 · probes 64，wall 448.3s）**（`/d/_tmp/t1-r263-run178.log`）。
+
+### 278.5 未闭合账（下一轮）
+
+1. **`prune` 批量写盘**（12 行 ≈ 14.4 s）仍未做：真机上 paper 轨 179/200，还差一次就会撞上。
+2. **`requiredLineFull`** 仍未给：读者要知道完整陈述只能 `expand` 那条记录。
+3. **互审 3 轮上限**仍是产品决策（`capped:true` + 具名警告），本轮未被触发。
+4. **F3/F4 的教学句**（「`verdict_ask` 发得早于收口时应先 `close`」「临时工席只能从本席可见面观察」）只记在反馈里，尚未写进提示词。
+
+### 278.6 教训
+
+- **一份列表必须与它声称覆盖的那份集合同源**：`proseText` 漏一个 `body`，不是"少查一个字段"，而是"规则对一个文档化的调用形状完全失效"。
+- **一行一行地累积是账本的长处，也是读数的短处**：耐久账要保留每一次判定（审计要的），读面必须做归并（读者要的）——把归并交给"最后一行恰好是我想要的那行"就是随机。
+- **同一个事实的两个读者必须给同一句话**：`consistent:false` 与"回退到就座主席"并存时，读数的句子必须是行为的那句话。

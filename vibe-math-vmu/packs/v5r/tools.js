@@ -4368,6 +4368,27 @@ async function toolPaper(args = {}, { kernel } = {}) {
       return { ok: true, tool, action, target, exists,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: paperView,
+        // ★★ RUN 178 (run 23 / FEEDBACK23 F6): the state's `editor` is a ROLE word, and `status` printed it bare next to
+        // parts/reviews that carry real ids. The receipt now says which of the two you are reading, where the word came
+        // from (persisted at `start` since RUN 178), and which seat actually signs.
+        editorReading: (() => {
+          const st = got && got.state ? got.state : null
+          if (!st) return null
+          const word = st.editor === undefined || st.editor === null ? null : String(st.editor)
+          const source = st.editorSource === undefined || st.editorSource === null ? null : String(st.editorSource)
+          const chair = (typeof kernel.members === 'object' && kernel.members && typeof kernel.members.roster === 'function'
+            ? kernel.members.roster().filter((m) => m && String(m.slot) === 'chair' && String(m.state) !== 'ended')[0]
+            : null) || null
+          return {
+            value: word,
+            source,
+            isRoleWord: word === 'academician' || word === 'office',
+            seat: chair ? String(chair.id) : null,
+            means: source === null
+              ? 'this paper was started before the source was recorded (RUN 178): treat `paper.editor` below as a ROLE word, not a seat id'
+              : '`value` is a ROLE word (not a seat id): "academician" means the seat in the chair slot signs, "office" means the office does; `source` says whether it was passed, normalised from a chair-seated member id, or defaulted, and `seat` names who held the chair when this reading was made',
+          }
+        })(),
         // ★★ RUN 175 (run 20 FEEDBACK20 ⑤): this view carries three clocks — `parts[].round`, `reviews[].round` and
         // `consult.requests[].at` — two measured in ROUNDS and one in wall-clock milliseconds, and nothing said which was
         // which. One sentence now states the convention for the whole view (the old `at` on a part slot was already
@@ -4446,7 +4467,12 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // `Members/r-1/Propos/run22-cubes.md#二` in prose while the record's id was rec-6xx; `recordPart` accepted it and
       // the citation rule fired at render/final — after the paper had been written and cross-reviewed. The rule was
       // right, the moment was not: a pointer that names no record is refused where it is typed.
-      const proseText = ['part', 'solution', 'methods', 'rules', 'limits']
+      // ★★ RUN 178 (run 23 / FEEDBACK23 F1+D3, MEASURED): this list scanned `part`/`solution`/`methods`/`rules`/
+      // `limits` and NOT `body` — while `recordPart` below reads `args.body || args.solution`, i.e. `body` is the
+      // FIRST prose parameter of a part. A caller who passed its prose as `body` (the documented shape) had every
+      // fabricated pointer accepted and only found out at `render`, the most expensive moment. The list is now the
+      // SAME set `recordPart` consumes, so a field that reaches the page cannot skip the check.
+      const proseText = ['part', 'body', 'solution', 'methods', 'rules', 'limits']
         .map((k) => (args[k] === undefined || args[k] === null ? '' : String(args[k]))).filter((s) => s !== '').join(String.fromCharCode(10))
       const prosePointers = proseText !== '' && typeof paper.prosePointers === 'function' ? paper.prosePointers(proseText) : null
       if (prosePointers && prosePointers.ok !== true) {

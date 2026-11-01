@@ -640,6 +640,11 @@ export function createPaperFlow({
     const state = {
       id: plateId, target: targetWord, title: str(title) || targetWord, status: 'writing', stage: 'writing', round: 1,
       participants: list, editor: editorName, lang: lang === 'en' ? 'en' : 'zh',
+      // ★★ RUN 178 (run 23 / FEEDBACK23 F6, MEASURED): `status` printed `editor:"academician"` — a ROLE word that is
+      // neither a seat id nor the `start` receipt's `editor:{value,source}` — so a reader could not tell a defaulted
+      // finaliser from an asked-for one, and could not compare the two receipts at all. The source is now part of the
+      // durable state, so every later reading answers the same question the `start` receipt answered.
+      editorSource: editorGiven ? (String(editor).trim() === editorName ? 'argument' : 'argument-normalised') : 'default',
       format: ['both', 'md', 'tex'].includes(format) ? format : 'both',
       parts: {}, reviews: {}, reviewOf: {}, final: null, disagreement: [], warnings: [], forcedAfterCap: false,
       // ★ E4: the ledger starts empty here so "was the office asked?" is answerable for EVERY paper, not only the ones

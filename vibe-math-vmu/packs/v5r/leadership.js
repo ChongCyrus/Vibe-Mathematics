@@ -66,6 +66,16 @@ export function leadershipReading({ roster, leaderId, leaderSlot = LEADER_SLOT }
   const live = rows.filter((m) => m && String(m.state) !== 'ended')
   const seatedChairs = live.filter((m) => slotOf(m) === String(leaderSlot)).map(idOf)
   const idRow = id === '' ? null : live.filter((m) => idOf(m) === id)[0] || null
+  // ★★ RUN 178 (run 23 / FEEDBACK23 F5, MEASURED): THE CHARTER AND THIS READING READ ONE FACT DIFFERENTLY.
+  // The prompt policy (`middleware/prompt-switches.js` §4, R13) already names the seated chair when `vmu.turn.leaderId`
+  // is empty, so the institute's own prompts say who leads — while this reading still reported a leaderless charter and
+  // told the office to write a setting it could only write from ONE session. Two readers of one fact, one of them false.
+  // The reading now answers the way the policy does and NAMES the source: 'setting' (declared), 'seat' (the one seated
+  // chair — the policy's documented fallback) or 'none'. `consistent` keeps its old meaning ("the DECLARED setting
+  // names a seated leader"); `charterNamesLeader` is the question the warning is actually about.
+  const seatFallback = id === '' && seatedChairs.length > 0 ? String(seatedChairs[0]) : ''
+  const effectiveLeaderId = id !== '' ? id : seatFallback
+  const leaderIdSource = id !== '' ? 'setting' : (seatFallback !== '' ? 'seat' : 'none')
 
   let code
   if (id !== '' && idRow === null) code = LEADERSHIP_STATES.ID_NOT_ON_ROSTER
@@ -78,7 +88,7 @@ export function leadershipReading({ roster, leaderId, leaderSlot = LEADER_SLOT }
   const notes = {
     [LEADERSHIP_STATES.OK]: 'the named leader is seated in the leader slot, so the charter names them',
     [LEADERSHIP_STATES.NO_CHAIR]: 'no member is seated in the leader slot and no leader is named: the charter is leaderless, which is TRUE here',
-    [LEADERSHIP_STATES.CHAIR_WITHOUT_ID]: 'a member is seated in the leader slot but vmu.turn.leaderId is empty, so the charter is leaderless and therefore says the institute has no seated academician — FALSE while the chair is seated',
+    [LEADERSHIP_STATES.CHAIR_WITHOUT_ID]: 'a member is seated in the leader slot but vmu.turn.leaderId is empty: the charter still names that seat (the prompt policy falls back to the seated chair, so no prompt prints 「本所当前没有在册院士」), and only a face that reads the SETTING alone would call the institute leaderless — `next` records the id so every face agrees by declaration rather than by fallback',
     [LEADERSHIP_STATES.ID_NOT_ON_ROSTER]: 'vmu.turn.leaderId names a member who is not on the roster: the charter must NOT name them (its rule 1), so it stays leaderless',
     [LEADERSHIP_STATES.ID_NOT_CHAIR]: 'vmu.turn.leaderId names a member who is not in the leader slot: the charter must not present a non-leader as the leader',
   }
@@ -93,6 +103,12 @@ export function leadershipReading({ roster, leaderId, leaderSlot = LEADER_SLOT }
     code,
     consistent: leaderOnStaff,
     leaderId: id,
+    // ★★ RUN 178: the same two facts the prompt policy acts on, so a reader of this face and a reader of the
+    // charter cannot disagree about who leads. `leaderIdSource` says WHERE the name came from; `charterNamesLeader`
+    // is the falsifiable claim ("this institute's prompts name a leader") that the warning below is about.
+    effectiveLeaderId,
+    leaderIdSource,
+    charterNamesLeader: code === LEADERSHIP_STATES.OK || code === LEADERSHIP_STATES.CHAIR_WITHOUT_ID,
     leaderSlot: String(leaderSlot),
     seatedChairs,
     leaderOnStaff,
@@ -109,6 +125,9 @@ export function leadershipReading({ roster, leaderId, leaderSlot = LEADER_SLOT }
  */
 export function leadershipWarning(reading) {
   if (!reading || reading.consistent) return null
+  // ★★ RUN 178: a reading whose charter DOES name a seated leader is not a leaderless-charter defect. It is still
+  // worth telling the office (the setting is empty and `next` fixes it for real), so the warning survives — but its
+  // message is the reading's note, which now says exactly that instead of claiming the institute has no academician.
   if (reading.code === LEADERSHIP_STATES.NO_CHAIR) return null // true, but not a problem to report
   return { code: reading.code, message: reading.note, next: reading.next }
 }

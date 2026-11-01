@@ -3014,3 +3014,12 @@ run 22 让 paper-p21 的正文带一个假命令 `$\zzznotacommand{1}$`，然后
 - **判决必须到得了读者手里**：kit 答对了，`final` 的投影把 `rolledBack`/`reviseAvailable`/`pdfEnvironmentMissing` 吞了，agent 只能看见 `finalized:true`。投影补齐三字段，且 `rolledBack` 在没有回滚时是显式 `null`（值≠缺席）。
 - **规则的时刻也是规则**：正文指针 `Members/r-1/Propos/run22-cubes.md#二` 指不到记录（记录 id 是 `rec-6xx`），规则一直都对，但它等到 `render` 才说话——那时论文已写完、已互审。`part` 现在就在写入点解析正文字段并具名拒。
 - **一个能被自己推翻的句子不该留在回执里**：并发写时 `foldWrites.pending:1` 旁边计数已含那一行，旧 `means` 说"读到的是更旧的陈述"；同一实例读到的是当前值，旧的是**别的**实例。
+
+## ROUND 181 — 一份列表必须与它声称覆盖的那份集合同源（run 23）
+
+run 23 的成员把论文正文写进了 `body`（文档化的形状：`recordPart` 读的就是 `str(args.body || args.solution || '')`），正文里有一句 `Members/r-1/Propos/run23-not-a-record.md#二` 指不到任何记录。`part` 回 `ok:true`——**编造的引用被静默接受**，同一段文字换成 `solution` 就会被拒。原因不是规则错了，而是上一轮加扫描时写下的那一行：`['part', 'solution', 'methods', 'rules', 'limits']` 漏了排在最前面的 `body`。
+
+- **一份列表必须与它声称覆盖的那份集合同源**：扫描列表要照着"调用真正读取的形参"写，而不是照着"上一版代码里出现过的形参"写。漏一个形参不是少查一个字段，是让规则对一个文档化的调用形状完全失效。
+- **账本要保留每一次判定，读面必须归并**：同一成员在早先会话与现在各投过一次票，耐久 fold 有两行，旧读数取"最后一行"⇒ 一个人的票显示成两个 voter（`votesCast` 一直是对的）。读数改成一人一行、最新判定胜出，并自报 `votersAsOf`——一个读不清自己读的是哪个时刻的读数，会被人当成"现在"。
+- **同一事实的两个读者必须给同一句话**：`leadership{consistent:false}` 与"提示词回退到就座主席"并存时，读数新增 `effectiveLeaderId`/`leaderIdSource`，让"谁在领导"和"设置里写了谁"分开回答。
+- **`limit:0` 只读计数**：读面新增 `countOnly`/`countOnlyMeans`，hint 不再对一个刚传过文档最小值的人说"把 limit 调大"。同时记住：`vibe_vmu_records {action:"list", limit:0}` 是取全量——两个面各说各的话。

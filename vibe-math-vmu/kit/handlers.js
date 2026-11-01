@@ -742,6 +742,10 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
     }
   }
   const limit = has(args.limit) ? Number(args.limit) : 20
+  // ★★ RUN 178 (run 23, FEEDBACK23 minor 2): `limit:0` is a COUNT-ONLY read — the kernel's list answers the whole set
+  // and the page below slices it to zero, so `total` is right while `returned` is 0. The old hint then said "传 limit
+  // 提高上限" to a caller that had just passed the documented minimum, i.e. it explained nothing. Name the shape.
+  const countOnly = Number.isInteger(limit) && limit === 0
   const wanted = has(args.member) ? str(args.member) : null
   const declared = declaredTracks(kernel)
   let tracks = declared.slice()
@@ -836,9 +840,13 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
     panelPointer: panelPointer.pointer, panelPointerMeans: panelPointer.means,
     tracks, declaredTracks: declared,
     total: cards.length, returned: returned.length, truncated: cards.length > returned.length,
-    hint: cards.length > returned.length
-      ? '只回了 ' + returned.length + '/' + cards.length + ' 张：传 limit 提高上限，或按 kind/member/track 收窄'
-      : (kindNote || null),
+    countOnly,
+    countOnlyMeans: 'limit:0 只读计数：total 是本轨命中数，returned 恒为 0。要取行就给一个正数 limit。',
+    hint: countOnly
+      ? '这次只读了计数（limit:0）：total=' + cards.length + '，不返回行（returned=0）。要取行就给正数 limit（如 limit:' + String(Math.min(Math.max(cards.length, 1), 200)) + '），或按 kind/member/track 收窄'
+      : (cards.length > returned.length
+        ? '只回了 ' + returned.length + '/' + cards.length + ' 张：传 limit 提高上限，或按 kind/member/track 收窄'
+        : (kindNote || null)),
     count: returned.length, cards: cardsOut, skippedTracks: skipped,
     readyCount: readyOn.length, readyCards: readyOn,
     readyMeans: readyDecorated > 0 ? READY_MEANS : READY_NONE_MEANS,

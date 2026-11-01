@@ -260,18 +260,41 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     // run 17 carry only `session`, so a reader comparing rows saw "two field names" and could not tell which one answered
     // "who voted, and where". The reading now names the pair once: `voters` lists `<member>@<session the judgement came from>`
     // (`?` = the row does not say), so one fact has one spelling on the face a reader actually sees.
+    // ★★ RUN 178 (run 23 / FEEDBACK23 F2, MEASURED): `voters` FLIPPED BETWEEN TWO SPELLINGS FOR ONE VOTE. The durable
+    // fold accumulates rows: a member who judged the same question in an EARLIER session, and again now, has two rows, and
+    // the old loop took whichever the fold happened to return LAST — so the same tally read `r-2@<child session>` before a
+    // later vote and `r-2@<root session>` after it. One member, one row now: the row with the greatest `at` wins (a
+    // judgement is followed by its restatement, never by a stale copy), and the reading dates itself with `votersAsOf`.
     voters: (() => {
       const from = new Map()
+      const atOf = (row) => {
+        const n = Number(row && row.at)
+        return Number.isFinite(n) ? n : -1
+      }
       for (const row of Array.isArray(rows) ? rows : []) {
         if (!row || typeof row.member !== 'string') continue
+        const id = String(row.member)
+        const prev = from.get(id)
+        if (prev && atOf(prev) > atOf(row)) continue
         const where = row.voterSession !== undefined && row.voterSession !== null && String(row.voterSession) !== ''
           ? String(row.voterSession)
           : (row.session === undefined || row.session === null || String(row.session) === '' ? '?' : String(row.session))
-        from.set(String(row.member), where)
+        from.set(id, { where, at: atOf(row) })
       }
-      return forIt.concat(against).map((id) => String(id) + '@' + String(from.get(String(id)) || '?')).sort()
+      return forIt.concat(against).map((id) => String(id) + '@' + String((from.get(String(id)) || {}).where || '?')).sort()
     })(),
-    votersMeans: 'who voted and from where (`member@session`; `?` = row silent)',
+    votersMeans: 'who voted, one row per member, the LATEST judgement wins',
+    // ★★ RUN 178: the instant the above reading is a reading OF (the newest durable row it used). A tally that cannot
+    // date itself invites the reader to treat a fold walk as "now".
+    votersAsOf: (() => {
+      let newest = null
+      for (const row of Array.isArray(rows) ? rows : []) {
+        if (!row || typeof row.member !== 'string') continue
+        const n = Number(row.at)
+        if (Number.isFinite(n) && (newest === null || n > newest)) newest = n
+      }
+      return newest
+    })(),
     // ★★ RUN 167 (real machine, run 14 / FEEDBACK14 F9): `missing` IS THIS ORCHESTRATOR'S BLIND SPOT, NOT A RECORD THAT
     // THE MEMBER DID NOT VOTE. Measured: each member turn runs in its OWN session with its own orchestrator, so a member
     // reading the closure view saw `votesCast:1` and `missing:["r-1","r-2"]` while the office — which drove all three
