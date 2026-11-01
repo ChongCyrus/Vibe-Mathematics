@@ -2293,7 +2293,7 @@ export function createTurnOrchestrator({
       // of them makes it PERMANENT.
       const onCallerPath = (() => { try { const p = deliver && typeof deliver.pending === 'function' ? deliver.pending() : null; return p === null || typeof p !== 'object' ? null : (typeof p.deliveryPath === 'string' ? p.deliveryPath : null) } catch { return null } })()
       fail('VMU_TURN_NO_PENDING_MEMBER', 'no member turn is open, so there is nothing for this report to answer',
-        'CHANNEL: `op:"reply"` answers an AWAITING prompt, and an awaiting prompt only exists on the CALLER delivery path (a step hands the prompt back with awaiting:true, and the reply answers it before the next step). Under `activation` or `one-shot` delivery the member\'s turn SETTLES INSIDE the step — nothing is ever left pending, so this channel is permanently unreachable and retrying it cannot work. REACHABLE INSTEAD: let the member vote inside its OWN turn (`op:"step"` whose next_step asks for the closure vote), which is what the receipts show as `effects:[{kind:"closure-vote"}]`; the fenced-json compatibility path is op:"step" with reply:"<one fenced json object>". Delivery path on this kernel right now: ' + (onCallerPath === null ? 'not reported (no pending state)' : '"' + onCallerPath + '"'))
+        'CHANNEL: `op:"reply"` answers an AWAITING prompt, and an awaiting prompt only exists on the CALLER delivery path (a step hands the prompt back with awaiting:true, and the reply answers it before the next step). Under `activation` or `one-shot` delivery the member\'s turn SETTLES INSIDE the step — nothing is ever left pending, so this channel is permanently unreachable and retrying it cannot work. REACHABLE INSTEAD: let the member vote inside its OWN turn (`op:"step"` whose next_step asks for the closure vote), which is what the receipts show as `effects:[{kind:"closure-vote"}]`. The fenced-json compatibility path is NOT reachable on this seam either (it needs deliverByReturning, and passing `reply` to `op:"step"` is refused by name there) — put the ask in `next_step` and read the answer from the member\'s turn. Delivery path on this kernel right now: ' + (onCallerPath === null ? 'not reported (no pending state)' : '"' + onCallerPath + '"'))
     }
     const wanted = forMember === null || forMember === undefined ? null : String(forMember)
     if (wanted !== null && wanted !== open.member) {
@@ -3521,6 +3521,20 @@ export function createTurnOrchestrator({
     const receipts = []
     const failures = []
     const consecutive = new Map()
+    // ★★★ RUN 183 (run 29 / FEEDBACK29 D2, MEASURED): `drive {members:["r-1","r-2"], rounds:1}` returned ONE receipt and
+    //   said nothing about r-2 — the reader had to infer "one round = one member" from the policy, and the machine's
+    //   office read `rounds:1` as "each member once", so two members were requested and only one was ever woken (that
+    //   meeting then closed with `turns:0`). A batch must state its own coverage: what was requested, what advanced, and
+    //   why each requested member was not woken.
+    const driveScope = (rs) => {
+      const requested = selection.map((m) => String(m.id))
+      const advanced = rs.map((r) => String(r.member))
+      const notAdvanced = requested.filter((m) => !advanced.includes(m)).map((m) => ({ member: m,
+        reason: 'one ROUND advances ONE member (the section policy picks); rounds:' + String(n) + ' therefore woke ' + String(advanced.length) + ' of ' + String(requested.length) + ' requested — pass rounds:' + String(requested.length) + ' to give each one its own turn' }))
+      return { requested, advanced, notAdvanced, roundsRequested: n,
+        means: 'requested/advanced are member ids in the order this call asked and advanced; notAdvanced names each requested member that was NOT woken by THIS call and why — a batch is not one turn per member unless rounds >= members.length' }
+    }
+    const withScope = (r) => Object.assign({}, r, { scope: driveScope(r.receipts || []) })
     // ★★ LANE turn-reply: A PENDING TOOL REPORT IS ALREADY ONE COMPLETED ROUND. Complete it BEFORE the loop, so a caller
     // that drives in a loop does not keep asking for prompts it has already answered (the report would otherwise never be
     // dispatched). It is reported separately as `completed` and does NOT count as a round: no member was woken for it.
@@ -3538,8 +3552,8 @@ export function createTurnOrchestrator({
       } catch (e) {
         const code = (e && e.code) || null
         const message = String((e && e.message) || e)
-        return { ok: false, code, message, completed: null, receipts, failures: [{ round: 0, member: null, code, message: message.slice(0, 300) }],
-          roundsRun: 0, roundsAttempted: 0, hint: (e && e.hint) || null }
+        return withScope({ ok: false, code, message, completed: null, receipts, failures: [{ round: 0, member: null, code, message: message.slice(0, 300) }],
+          roundsRun: 0, roundsAttempted: 0, hint: (e && e.hint) || null })
       }
     }
     for (let i = 1; i <= n; i += 1) {
@@ -3548,12 +3562,12 @@ export function createTurnOrchestrator({
       // reader unable to act - the real machine called this face sixty-one times and learned nothing from it. The
       // hint names the two things that actually help: read the roster, and pass it (the tool face now infers it from
       // the roster too, so omitting it works; this hint is for the case where the roster itself is empty).
-      if (!spec) return { ok: true, receipts, failures, completed, stopped: 'no-members', roundsRun: receipts.filter((r) => !r.failed).length, roundsAttempted: receipts.length,
-        next: { kind: 'roster', tool: 'vibe_vmu_control', hint: 'no member was passed AND the kernel roster holds no live member: read it with vibe_vmu_control { action: "roster" }, seat one with { action: "hire", member_id, slot } (the pack declares the slots), then retry. Passing an explicit `members` array also works.' } }
+      if (!spec) return withScope({ ok: true, receipts, failures, completed, stopped: 'no-members', roundsRun: receipts.filter((r) => !r.failed).length, roundsAttempted: receipts.length,
+        next: { kind: 'roster', tool: 'vibe_vmu_control', hint: 'no member was passed AND the kernel roster holds no live member: read it with vibe_vmu_control { action: "roster" }, seat one with { action: "hire", member_id, slot } (the pack declares the slots), then retry. Passing an explicit `members` array also works.' } })
       try {
         const r = await run({ ...spec, round: i })
         // ★ ROUND 73: a caller-played turn ENDS the batch - the prompt goes back and the round resumes on the next call.
-        if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member }
+        if (r && r.awaiting) return withScope({ ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member })
         receipts.push({ round: i, member: spec.member, fields: r.fields, fieldsIgnored: fieldsIgnoredOf(r), ...(fieldsIgnoredOf(r).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}), executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, turn: r.turn.id, source: r.source || null,
           // ★ PHASE 12 / run 37: the same detail the step receipt now carries - a batch receipt is read by the same person.
           skippedDetail: r.skipped.slice(0, 5), skippedDetailTruncated: r.skipped.length > 5,
@@ -3570,13 +3584,13 @@ export function createTurnOrchestrator({
         const streak = (consecutive.get(spec.member) || 0) + 1
         consecutive.set(spec.member, streak)
         if (streak >= MEMBER_FAILURE_LIMIT) {
-          return { ok: false, stopped: 'member-failures', member: spec.member, round: i, code, message: message.slice(0, 300),
+          return withScope({ ok: false, stopped: 'member-failures', member: spec.member, round: i, code, message: message.slice(0, 300),
             receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length,
-            hint: 'the SAME member failed ' + streak + ' rounds in a row; a batch is not stopped by one bad reply, but a member that cannot answer three times in a row is reported (docs/26 section 3.2)' }
+            hint: 'the SAME member failed ' + streak + ' rounds in a row; a batch is not stopped by one bad reply, but a member that cannot answer three times in a row is reported (docs/26 section 3.2)' })
         }
       }
     }
-    return { ok: true, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length }
+    return withScope({ ok: true, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length })
   }
 
   /**
@@ -4075,7 +4089,13 @@ export function createTurnOrchestrator({
       supplyMemberReply: (reply, forMember = null) => {
       if (!deliver || typeof deliver.supply !== 'function') {
         fail('VMU_ENGINE_UNAVAILABLE', 'this delivery seam does not accept a caller-supplied reply',
-          'supplyMemberReply applies only to the deliverByReturning seam; a real delivery seam answers with the reply itself')
+          // ★★★ RUN 183 (run 29 / FEEDBACK29 D3, MEASURED): the `reply` channel's own hint told the caller to move to
+          //   `op:"step"` + `reply`, and this refusal answers exactly that with "a real delivery seam answers with the
+          //   reply itself" — pointing at the deliverByReturning seam this deployment does not run. Two hints, one
+          //   closed loop. Say the true thing: on THIS seam the instruction goes in `next_step`, not in `reply`.
+          'REACHABLE INSTEAD: put the ask in `next_step` (a string) and let the member answer from its OWN turn — '
+          + 'the reply you get back is that turn\'s answer, so there is nothing to supply here. Do NOT retry this with '
+          + '`reply` on `op:"step"`: the deliverByReturning seam that accepts a caller reply is not the seam this run uses')
       }
       deliver.supply(reply)
       return { ok: true, supplied: true }

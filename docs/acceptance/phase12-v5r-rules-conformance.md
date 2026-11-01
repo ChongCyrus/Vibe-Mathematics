@@ -13422,3 +13422,52 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 - **回执必须回答它自己列出的字段**：把 `vote_solved` 列进 `fields` 却 `executed:0`，读者只能猜「是没执行还是没记下」——丢与不丢都要说出来。
 - **正文也是引文**：读者拿正文当账本，正文里的 id 与 `evidence` 里的 id 必须过同一道闸。
 - **提示不许把人推进墙里**：hint 是程序生成的下一步指令，必须与被指的那个工具的实际准入条件同源（temp 席位、服务会议都曾在这里说谎）。
+
+## §283 RUN 183（第三十次真机 = run 29 / FEEDBACK29：拒绝之后要有一条能走的路）
+
+### 283.1 现场（基线 `2a05c515`，第二十九/三十次真机）
+
+三轮读数（同一基线，简报不同）：
+
+| 轮 | 配置 | 结果 |
+| --- | --- | --- |
+| 第二十九次（run 28） | `-CloneName slvp182 -Port 19650 -TimeoutSec 5400` | `DRIVE exit=0`，但 `durationSec 5403` 打满墙钟；`tokenTotal 18 516 374/40M`；4 会话 0 RED；**工作区无报告**；主线未走完 |
+| 第三十次尝试（run 29 首跑） | `-CloneName slvp183 -Port 19654 -TimeoutSec 7200` | **驱动崩溃**：服务端 `FATAL ERROR: CALL_AND_RETRY_LAST Allocation failed - JavaScript heap out of memory`（872 s，堆 2054.9 MB 打满），随后 `ECONNRESET`；`slv-inspect` 1 条 RED（14 calls vs 13 results） |
+| 第三十次（run 30） | `-CloneName slvp184 -Port 19658 -TimeoutSec 7200` + `NODE_OPTIONS=--max-old-space-size=6144` | `DRIVE exit=0`、`durationSec 2582`、`tokenTotal 6 176 300/40M`、`transcriptEvents 296`、`toolCalls 53`、5 会话 0 RED；**主线走完**（`rec-835` → 辩论会 `m67` → `tally-m67-rec-835` → Verified `rec-838` → 论文 `paper-run29-paper` → PDF **98 876 B** xelatex → 结题会 `m68` 关闭、票 **3/3**）；四席各至少一回合（r-temp 落 `rec-853`）；报告 `SIM-REPORT29.md` / `FEEDBACK29.md` 已落盘 |
+
+run 28 的复验结论（从转录逐字读，无新缺陷）：正文假 `rec-99999` 被 `VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN` 拒并原样回显；`evidence` 假 `rec-88888` 的 hint 给出「相近的: rec-88888 ⇒ rec-804/rec-803/rec-802」；`verdict_final` 带 `sources:{n:2,submitted:2,typed:0}`；`paper status` 的 `reachableMoves` 在 writing 阶段给 `part{member,body}/advance/final{revise}`。A（`fieldsIgnored`）只走到对照分支（该席看不到 `vibe_vmu_vote` ⇒ 回复里的 `vote_solved` 被正常执行为 `effects:[{kind:"closure-vote",source:"reply"}]`），E（temp 席位 hint）在 run 28 **未触发**。
+
+run 29 首跑的服务端 OOM 不是 vmu 记录的账：本地探针 `D:/_tmp/probe-mem.mjs`（700 行账 + 40 个成员回合 + 20 轮全量 `vibe_vmu_records list/status`）测得内核侧堆 90 MB（种子后）→ 62 MB（稳定），全量读后 62.4 MB；`snapshotRecords()` 的 `foldWrites.inflight` 在 settle 后即删。2 GB 是服务端/会话侧的墙，处理办法是把服务端堆抬到 6 GB 后重跑（即 run 30）。
+
+### 283.2 六条缺陷与修法（RUN 183 / FEEDBACK29）
+
+1. **D10 `speak` 的 hint 是死代码**（`vibe-math-vmu/kernel/meetings.js`）。RUN 182 给非参会席位加了「可达通道是聊天面」的 hint，但它用 `K.roster()` 找席位，而 meetings 内核**没有** `roster` 成员（本文件其它十处都问 `members.roster()`）；`try/catch` 把 `TypeError` 吞成 `deniedSeat:false`，于是旧 hint「attend() first」照旧发出——run 29 里机器照做，被 `attend` 以「该席位不参会」拒。修法：改问 `members.roster()`（保留 `try/catch` 与 `attendDeniedSeats` 判断）。探针实测 hint 现为「…the reachable channel is the CHAT face — vibe_v5_say without a meeting — and that message does NOT enter the minutes」。
+2. **D2 批量不陈述自己的覆盖**（`vibe-math-vmu/kernel/turn/index.js` 的 `drive`）。`drive { members:["r-1","r-2"], rounds:1 }` 只回一条 receipt，`r-2` 既无 receipt 也无 `failures`（「一轮只推一个成员」只在策略里）。修法：每次返回都带 `scope: { requested, advanced, notAdvanced:[{member, reason}], roundsRequested, means }`，并在 reason 里说「传 rounds:<成员数> 才能每人一轮」。
+3. **D1 证明闸只点了字段、没点行为人**（`vibe-math-vmu/packs/v5r/verification-gates.js`）。辩论对象无「已写完的证明」时，拒绝语只说「先登记 proofRef」，而此刻没有任何成员被唤醒——于是 office 自己去写了成员证明文件并挂在该成员名下（越界：一人既是作者又是裁判）。修法：拒绝语加 `REACHABLE INSTEAD (the actor matters)`——唤醒作者（`vibe_vmu_turn { op:"drive", members:["<author>"], rounds:1 }` + 要求其写 `Members/<author>/Propos/<card>.md#正式证明` 并登记 `proof_ref`/`proof_state`），并明说「office 代写不是对证明的测量」；details 里加 `reachable:{op, tool, member, why}`。
+4. **D3 两条 hint 互相指对方**（`kernel/turn/index.js` 的 `op:"reply"` 拒绝与 `supplyMemberReply` 拒绝）。前者让人走 `op:"step"` + `reply`，后者答「本 seam 不收 caller 给的 reply」并指向本部署没有的 `deliverByReturning`——闭环。修法：两处都改成「把要求写进 `next_step`，成员在自己的回合里回答」；`reply` 拒绝里删掉「fenced-json 兼容路径是 step+reply」这句，改成「该路径在本 seam 也不可达」。
+5. **D9 `complete:true` 与 `pdf:null` 并排**（`packs/v5r/tools.js` 的 `paper status`）。读者把 `complete` 读成「有 PDF 的完整论文」。修法：加 `completeMeans`——`complete` 只说定稿四项（md/tex/pdf/meta）在 archive 行上**有名字**，PDF 文件看 `pdfCompiled.produced`/`pdfPath`。
+6. **D12「DIFFERENT ruling」说的其实是理由不同**（`packs/v5r/tools.js` 的 `vibe_v5_verdict`）。同一数字、不同 reason 被拒时写「you already filed a DIFFERENT ruling (verdict 1) … this one (1)」，读者读成「成员改了结论」。修法：抽出 `alreadyFiledMeans(sameVerdict, …)` 两个分支（同数：理由不同；不同数：结论不同），回执 details 带 `existing:{verdict,at,path}`、`incoming:{verdict}`、`sameVerdict`。
+
+### 283.3 机器化
+
+- 新套件 `tests/vmu-run183-refusal-reachability.test.mjs`：**23 passed / 0 failed**（§0 八条源码 pin；§1 真装配三席 + 开会 ⇒ temp 席位 `speak` 的 hint 含 `CHAT face`、含「does NOT enter the minutes」、**不含** `attend() first`；§2 `drive {members:[r-1,r-2], rounds:1}` ⇒ `scope.requested` 两条、`scope.notAdvanced` 长度 = 2−advanced、每条带 reason、`means` 含 `rounds >= members.length`；§3 `paper start` 后 `status` 的 `completeMeans` 含「does NOT mean a PDF file was compiled」且 `missing` 仍含 `pdf`；§4 源码 pin `alreadyFiledMeans` 两分支）。
+- 定向回归全绿：`meeting 32/0`、`turn 15/0`、`vmu-host 4/0`、`verdict 5/0`、`prompt- 24/0`、`paper 11/0`、`run180/run181/run182` 各 1/0。
+- 生成物：`update-doc-counts --write` → `regen-all --write` 17/17 → `--check 17/17 in sync`；四门禁 `PREFLIGHT PASS` / `DOC LINT PASS` / `RULES COVERAGE PASS (0)` / `RULE PARITY PASS (0)`；全量 T1 见 283.4。
+
+### 283.4 真 T1
+
+`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **TOTAL 664 PASS 664 FAIL 0（suites 600 · probes 64，concurrency 2，wall 387.5s）**（`/d/_tmp/t1-r301-run183b.log`；首跑 `/d/_tmp/t1-r300-run183.log` 是 663/1，唯一红是 `tests/vmu-run31-ruling-channel.test.mjs` 的 A16 钉住了 D12 修法之前的旧句子——按新机制把 A16 改成本轮的新形态：点名「是 verdict 不同」且两个数都在；改后该套件 92/0）。
+
+### 283.5 未闭合账
+
+- **服务端堆**：run 29 首跑在 872 s 打满 2 GB，抬起服务端堆后 run 30 才走完；这是**基础设施预算**（不是 vmu 的账），但简报必须把它当预算看——墙钟与堆都是预算，简报让人先做负向探针就是用预算换噪音（run 28 打满 5403 s 未写报告）。
+- **D7/F27-9 质量闸要求正文含全部 Verified 结论**：run 29 的论文被迫把 18 条（含 `proposition 0.6`、`…（待裁定）`）逐字抄进正文；规则 55–56 支持「要引证」，但「与本篇无关」的过滤仍缺——设计与规则口径待定，记录在案。
+- **D8 截断标题**：`requiredLineTruncated`/`requiredLineFull` 都在，但拒绝 message 里「可直接粘」给的仍是截断行；run 29 靠改用 `requiredLineFull` 才过。message 应改指 `requiredLineFull`。
+- **D5 主席不交裁决卡**、**D6 同一回执三个「门槛」数**、**D13 框架生成的名字（`m67`/`tally-…`）不是记录 id**、**D14 `tools:null` 与「看不到投票工具」并读**、**D4 `warrant_kind:"debate"` 与 `debate-unanimous` 口径不一**：均在 FEEDBACK29 原文，未被本轮修法覆盖。
+- **run 29 的行为越界**：office 写了成员证明正文并代记为 `member:"r-acad"` 的登记——由 D1 的闸门顺序逼出，修法只把出口指出来，闸本身是否该允许「无证明开辩论」仍未定。
+
+### 283.6 三条教训
+
+- **hint 是程序，不是文案**：它调用的访存路径必须与被指工具同源；`K.roster()` 这种不存在的成员名会被 `try/catch` 静默变成「没这条规则」——**try/catch 会吞掉机制自己在撒谎**。
+- **批量的回执必须回答覆盖**：「我请求了两个人、只叫醒了一个」是回执该说的事实，不能让读者从策略里推断。
+- **拒绝之后要有路**：拒绝语若只点名「字段不对」，读者会自己发明行为（office 代写成员证明）；拒绝必须点名**谁**能做、**从哪**做。

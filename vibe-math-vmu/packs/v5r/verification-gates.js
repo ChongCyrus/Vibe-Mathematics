@@ -392,8 +392,17 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
     + '规则：只有含正式证明/证伪（且已写完而非半成品）的卡才能进入辩论；"证明尝试"只是候选，不是辩论对象',
     '先登记证明引用（写卡时传 `payload:{proofRef:"Members/<m>/Propos/<id>.md#正式证明", proofState:"complete"|"draft"}`，'
     + '或工具面的 `proof_ref`/`proof_state`），再跑 Lean 或走辩论；声明与证据齐了才可开辩论。'
-    + '两种合法形态：命题卡 id（声明 + 机器证据）/ 文件引用（存在且非空）；一句话命题不是对象（本闸与召集面都具名拒）',
-    { form: 'card', subject: cls.raw, proofChecked: false, declared: false, declaredState: proofState || null })
+    + '两种合法形态：命题卡 id（声明 + 机器证据）/ 文件引用（存在且非空）；一句话命题不是对象（本闸与召集面都具名拒）。'
+    // ★★★ RUN 183 (run 29 / FEEDBACK29 D1, MEASURED): the refusal named the FIELD but not the ACTOR. With no member awake
+    //   yet, the only way to get a proof written is to wake its author — and the machine's office, reading this hint as
+    //   "register the proof", wrote the member's file ITSELF and then logged it under that member's name. The gate must
+    //   say who can truthfully supply the proof, and that the office is not that actor.
+    + ' REACHABLE INSTEAD (the actor matters): wake the AUTHOR and let them write it — `vibe_vmu_turn { op: "drive", '
+    + 'members: ["<author seat>"], rounds: 1 }` with a next_step asking for `Members/<author>/Propos/<card>.md#正式证明` '
+    + 'and the `proof_ref`/`proof_state` registration. The office writing a member\'s proof file and logging it under that '
+    + 'member is NOT a measurement of the proof: it makes one seat the author and the judge of the same claim.',
+    { form: 'card', subject: cls.raw, proofChecked: false, declared: false, declaredState: proofState || null,
+      reachable: { op: 'drive', tool: 'vibe_vmu_turn', member: 'the card author', why: 'writing the proof is the author\'s act, and only a member turn can carry it' } })
 }
 
 /**

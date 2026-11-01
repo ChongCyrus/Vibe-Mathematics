@@ -3720,6 +3720,11 @@ function toolPollClose(args = {}, { kernel } = {}) {
 const RULING_STATUS = 'ruling'
 const RULING_MARK = 'VMU-RULING '
 const RULING_CHANNEL = 'ruling'
+// ★★★ RUN 183 (run 29 / FEEDBACK29 D12): "DIFFERENT ruling" described a different REASON. The refusal says which part of
+// the filed ruling this one disagrees with, so a member never reads "you changed your conclusion" out of a re-worded one.
+const alreadyFiledMeans = (sameVerdict, proposition, filed, incoming) => (sameVerdict
+  ? 'you already filed a ruling on ' + proposition + ' with the SAME verdict (' + String(filed.verdict) + ', filed ' + String(filed.at || 'at an unrecorded time') + ') and a DIFFERENT reason: this one (' + String(incoming) + ') was NOT filed and the chair will not see it'
+  : 'you already filed a ruling on ' + proposition + ' with a DIFFERENT verdict (' + String(filed.verdict) + ', filed ' + String(filed.at || 'at an unrecorded time') + '): this one (' + String(incoming) + ') was NOT filed and the chair will not see it')
 const rulingSlugOf = (s) => String(s === undefined || s === null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item'
 const rulingIdOf = (a) => 'ruling-' + [a.meeting, a.proposition, a.member].map(rulingSlugOf).join('-')
 const rulingTitleOf = (a) => 'RULING ' + [a.meeting, a.proposition, a.member].map((x) => String(x)).join(' | ')
@@ -3864,8 +3869,14 @@ async function submitRuling({ kernel, member, meeting, proposition, verdict, rea
         readBack: rulingReadBackOf(member, proposition),
         next: 'the chair collects it with vibe_v5_verdict_final { meeting: "' + meeting + '", proposition_id: "' + proposition + '" }' }
     }
-    throw refuse('VMU_RULING_ALREADY_FILED', 'you already filed a DIFFERENT ruling on ' + proposition + ' (verdict ' + String(mine[0].verdict) + ', filed ' + String(mine[0].at || 'at an unrecorded time') + '): this one (' + String(verdict) + ') was NOT filed and the chair will not see it',
-      'your filed ruling is the one that counts — it is ' + (mine[0].path ? 'the card ' + mine[0].path : 'card id ' + mine[0].id) + '. This face has no path that rewrites a filed ruling: if the number was wrong, say so to the chair, who rules on the set the receipts show (a chair does not rewrite a member\'s ruling either)')
+    // ★★★ RUN 183 (run 29 / FEEDBACK29 D12, MEASURED): two rulings with the SAME number but different reasons were
+    // reported as "you already filed a DIFFERENT ruling … this one (1)" beside "verdict 1" — the word DIFFERENT was about
+    // the reason, while the reader reads it as "the member changed its conclusion". Name which part differs.
+    const sameVerdict = Number(mine[0].verdict) === Number(verdict)
+    throw refuse('VMU_RULING_ALREADY_FILED',
+      alreadyFiledMeans(sameVerdict, proposition, mine[0], verdict),
+      'your filed ruling is the one that counts — it is ' + (mine[0].path ? 'the card ' + mine[0].path : 'card id ' + mine[0].id) + '. This face has no path that rewrites a filed ruling: if the ' + (sameVerdict ? 'reason was incomplete, that is a note to the chair, not a second card' : 'number was wrong, say so to the chair, who rules on the set the receipts show (a chair does not rewrite a member\'s ruling either)'),
+      { existing: { verdict: mine[0].verdict === undefined ? null : mine[0].verdict, at: mine[0].at === undefined ? null : mine[0].at, path: mine[0].path || null }, incoming: { verdict }, sameVerdict })
   }
   const id = rulingIdOf({ meeting, proposition, member })
   const title = rulingTitleOf({ meeting, proposition, member })
@@ -4419,6 +4430,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
         partsMeans: 'each part slot says which ROUND it was written in (`round`); this subsystem counts rounds, it does not stamp wall-clock time on a part',
         reviewsMeans: 'each review row says which ROUND of the cross-review it belongs to (`round`); a row of another round is durable history, not a vote on this round',
         missing: artifacts ? artifacts.missing : [], complete: artifacts ? artifacts.complete === true : false,
+        // ★★ RUN 183 (run 29 / FEEDBACK29 D9, MEASURED): a finalized paper read `complete:true` beside `pdf:null` and
+        //   a reader took it as "no PDF but the paper is complete". `complete` speaks only about the ARCHIVE artifacts
+        //   row (md/tex/pdf/meta as NAMED rows); the file a compile produced is `pdfCompiled` below, and the two are
+        //   different questions.
+        completeMeans: 'complete means the four artifacts (md, tex, pdf, meta) are NAMED on the paper track\'s archive row — it does NOT mean a PDF file was compiled: that is `pdfCompiled.produced`/`pdfPath`. `missing` names the artifact rows that are absent (a write-stage paper reports md, tex, pdf, meta as missing until `render` writes them)',
         // ★★ RUN 156 (run-5 finding 7): `status.pdf` describes the paper track's ARCHIVE row (written by `render`), not the
         // file `compile` produced - so a reader who had just seen `compiled.produced:true` read `pdf.produced:false` as "no PDF".
         // Both readings are now named on the receipt instead of being left to the reader.

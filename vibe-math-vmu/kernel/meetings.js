@@ -1576,7 +1576,13 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         //   face does NOT get: the minutes.
         let deniedSeat = false
         try {
-          const row = K.roster().filter((x) => String(x.id) === String(member))[0] || null
+          // ★★★ RUN 183 (run 29 / FEEDBACK29 D10, MEASURED): this line read `K.roster()`, and the meetings kernel has no
+          //   `roster` member — every other site asks the MEMBERS service (`members.roster()`). The try/catch turned the
+          //   TypeError into `deniedSeat:false`, so the hint added in RUN 182 was DEAD CODE: the real machine still got
+          //   "attend() first" for the temp seat, followed it, and was refused by `attend`. Ask the same face the rest of
+          //   this file asks.
+          const rosterRows = (members && typeof members.roster === 'function') ? (members.roster() || []) : []
+          const row = rosterRows.filter((x) => x && String(x.id) === String(member))[0] || null
           deniedSeat = row !== null && Array.isArray(K.attendDeniedSeats) && K.attendDeniedSeats.includes(String(row.slot))
         } catch { deniedSeat = false }
         throw deny('VMU_NOT_MEMBER', 'speaker is not present: ' + String(member),

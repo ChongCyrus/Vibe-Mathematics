@@ -170,8 +170,13 @@ try {
     { meeting: MEET, proposition_id: 'p-r31', verdict: 0, reason: '改主意了', member: M1 })
   ok(flip && flip.ok === false && codeOf(flip) === 'VMU_RULING_ALREADY_FILED',
     '★★★ A15 已提交后又提交**不同的**数值 ⇒ 具名拒 VMU_RULING_ALREADY_FILED', flip && { code: codeOf(flip) })
-  ok(flip && typeof flip.message === 'string' && flip.message.includes(M1) === false && flip.message.includes('already filed a DIFFERENT ruling'),
-    '★ A16 拒绝消息说清「你已经提交过不同的裁决」并带上先前的值', flip && String(flip.message).slice(0, 220))
+  // RUN 183 (D12) rewrote the wording: it now names WHICH part differs (the verdict) and carries both numbers, so the
+  // pin follows the new shape instead of the old sentence — same claim, stated by the newer mechanism.
+  const flipMsg = flip && typeof flip.message === 'string' ? flip.message : ''
+  ok(flipMsg.includes(M1) === false
+    && /already filed a ruling on p-r31 with a DIFFERENT verdict \(1, filed \d+\): this one \(0\) was NOT filed/.test(flipMsg),
+    '★ A16 拒绝消息说清「你已经提交过不同的裁决」并带上先前的值（RUN 183 的新形态：点名是 verdict 不同、两个数都在）',
+    flipMsg.slice(0, 220))
   ok(flip && typeof flip.hint === 'string' && flip.hint.includes(filingPath(filed)),
     '★ A17 hint 指名那张已提交的卡（在哪、叫什么），而不是只说 forbidden', flip && String(flip.hint).slice(0, 260))
 
