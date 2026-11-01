@@ -88,7 +88,7 @@ export function leadershipReading({ roster, leaderId, leaderSlot = LEADER_SLOT }
   const notes = {
     [LEADERSHIP_STATES.OK]: 'the named leader is seated in the leader slot, so the charter names them',
     [LEADERSHIP_STATES.NO_CHAIR]: 'no member is seated in the leader slot and no leader is named: the charter is leaderless, which is TRUE here',
-    [LEADERSHIP_STATES.CHAIR_WITHOUT_ID]: 'a member is seated in the leader slot but vmu.turn.leaderId is empty: the charter still names that seat (the prompt policy falls back to the seated chair, so no prompt prints 「本所当前没有在册院士」), and only a face that reads the SETTING alone would call the institute leaderless — `next` records the id so every face agrees by declaration rather than by fallback',
+    [LEADERSHIP_STATES.CHAIR_WITHOUT_ID]: 'a member is seated in the leader slot but vmu.turn.leaderId (the DECLARED setting) is empty: the leader is that seat by fallback (the prompt policy uses it, so no prompt prints 「本所当前没有在册院士」), so the institute is not leaderless — and the setting is not durable by design (vibe_v5_set answers persistsAcrossRestart:false), which makes writing it a per-process annotation rather than a repair. `next` records the id so every reader that insists on the DECLARATION can agree',
     [LEADERSHIP_STATES.ID_NOT_ON_ROSTER]: 'vmu.turn.leaderId names a member who is not on the roster: the charter must NOT name them (its rule 1), so it stays leaderless',
     [LEADERSHIP_STATES.ID_NOT_CHAIR]: 'vmu.turn.leaderId names a member who is not in the leader slot: the charter must not present a non-leader as the leader',
   }
@@ -109,6 +109,14 @@ export function leadershipReading({ roster, leaderId, leaderSlot = LEADER_SLOT }
     effectiveLeaderId,
     leaderIdSource,
     charterNamesLeader: code === LEADERSHIP_STATES.OK || code === LEADERSHIP_STATES.CHAIR_WITHOUT_ID,
+    // ★★ RUN 179 (run 24 / FEEDBACK24 F24-3): WHEN THE FALLBACK ALREADY DECIDES, THE INSTITUTE IS NOT LEADERLESS.
+    // The setting is NOT durable by design (`vibe_v5_set` answers `persistsAcrossRestart:false`: the durable config is
+    // the declaration), so a warning that says「章程将无首领」every time a new process starts is a warning about a
+    // sentence nobody reads that way — every prompt and every face that needs a leader uses the seated chair. The
+    // reading now carries the assumption as a fact (`leaderAssumed`), and the warning is kept ONLY where the fallback
+    // cannot decide: no chair seated (a real absence) or MORE than one seated chair (a real ambiguity).
+    leaderAssumed: leaderIdSource === 'seat' ? { effectiveLeaderId: String(seatFallback), source: 'seat',
+      means: 'vmu.turn.leaderId (the DECLARED setting) is empty and exactly one chair is seated, so the leader is that seat by fallback. This is not a leaderless charter: writing the setting would only put the same name into a value that lasts for the running kernel (persistsAcrossRestart:false). The durable fix, if one is wanted, is the declaration/charter.' } : null,
     leaderSlot: String(leaderSlot),
     seatedChairs,
     leaderOnStaff,
@@ -129,5 +137,13 @@ export function leadershipWarning(reading) {
   // worth telling the office (the setting is empty and `next` fixes it for real), so the warning survives — but its
   // message is the reading's note, which now says exactly that instead of claiming the institute has no academician.
   if (reading.code === LEADERSHIP_STATES.NO_CHAIR) return null // true, but not a problem to report
+  // ★★★ RUN 179 (F24-3, MEASURED ACROSS TWO RUNS): a seated single chair with an empty DECLARED setting is not a
+  // defect — the fallback decides, and the setting cannot persist anyway. Warning about it every boot trained the
+  // office to ignore the line, and made each new process look like a fresh break. Only ambiguity and real absence warn.
+  if (reading.code === LEADERSHIP_STATES.CHAIR_WITHOUT_ID) {
+    const chairs = Array.isArray(reading.seatedChairs) ? reading.seatedChairs : []
+    if (chairs.length === 1 && reading.leaderIdSource === 'seat') return null
+    return { code: reading.code, message: 'more than one chair is seated (' + chairs.join('/') + ') and vmu.turn.leaderId is empty, so "who leads" is decided by roster order, not by declaration: name the leader', next: reading.next }
+  }
   return { code: reading.code, message: reading.note, next: reading.next }
 }

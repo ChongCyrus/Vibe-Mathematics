@@ -171,11 +171,16 @@ try {
     const empty = leadershipReading({ roster: [{ id: 'r-1', slot: 'member', state: 'active' }], leaderId: '' })
     ok(empty.leaderIdSource === 'none' && empty.charterNamesLeader === false && empty.effectiveLeaderId === '',
       '§3e with no chair and no setting there is NO leader, and the reading says so', { source: empty.leaderIdSource, effective: empty.effectiveLeaderId })
-    const warn = leadershipWarning(fallback)
-    ok(warn !== null && typeof warn.message === 'string' && warn.message.includes('falls back'),
-      '§3f the warning survives (the setting is still empty) but no longer claims the institute has no academician',
-      warn && warn.message)
-    ok(warn && warn.next && warn.next.includes('vmu.turn.leaderId'), '§3g and still names the declared write path', warn && warn.next)
+    // ★★ RUN 179 (run 24 / FEEDBACK24 F24-3) superseded this pair: a single seated chair with an empty DECLARED setting
+    // is NOT warned about — the setting is not durable by design (`persistsAcrossRestart:false`), so that warning fired on
+    // every boot for a fact the fallback already decides. The reading states the assumption instead, and the warning
+    // survives only where the fallback cannot decide (two chairs: an ambiguity that needs a name — pinned in run 179 §5d).
+    ok(fallback.leaderAssumed && fallback.leaderAssumed.source === 'seat' && leadershipWarning(fallback) === null,
+      '§3f RUN 179: one seated chair + an empty setting is STATED as an assumption, not warned about on every boot',
+      { assumed: fallback.leaderAssumed, warn: leadershipWarning(fallback) })
+    ok(fallback.leaderAssumed && fallback.leaderAssumed.effectiveLeaderId === 'r-acad' && fallback.next.includes('vmu.turn.leaderId'),
+      '§3g and the reading still names the declared write path (a caller who insists on the DECLARATION can act)',
+      { assumed: fallback.leaderAssumed, next: fallback.next })
   }
 
   // ── §4 F6: `status` says which editor you are reading, and where the word came from ──
@@ -211,7 +216,8 @@ try {
     await b.K.records.put({ track: 'propositions', kind: 'proposition', title: 'a', body: 'b' })
     await b.K.records.put({ track: 'propositions', kind: 'proposition', title: 'c', body: 'd' })
     const zero = await call(b, 'vibe_v5_read_library', { track: 'propositions', limit: 0 })
-    ok(zero.parsed && zero.parsed.countOnly === true && zero.parsed.returned === 0 && zero.parsed.truncated === true && zero.parsed.total === 2,
+    // ★★ RUN 179 (F24-7): a count-only read cuts NOTHING — `truncated` is false and `rowsOmitted` names the countable rest.
+    ok(zero.parsed && zero.parsed.countOnly === true && zero.parsed.returned === 0 && zero.parsed.truncated === false && zero.parsed.total === 2,
       '§5a limit:0 answers the count with zero rows, and flags itself as count-only', zero.parsed && { countOnly: zero.parsed.countOnly, total: zero.parsed.total, returned: zero.parsed.returned })
     ok(zero.parsed && typeof zero.parsed.hint === 'string' && zero.parsed.hint.includes('limit:0') && zero.parsed.hint.includes('total=') && zero.parsed.hint.includes('正数 limit'),
       '§5b and its hint says "counts only" and names what to pass for rows', zero.parsed && zero.parsed.hint)

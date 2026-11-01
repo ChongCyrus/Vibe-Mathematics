@@ -2382,7 +2382,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
             // ★★ RUN 166 (FEEDBACK14 F1): a TOMBSTONE is not a record to restore. The fold now carries trashed rows so a
             // trash made by another kernel is visible here; booting this instance must not turn one back into a live row.
             if (row.state === 'trashed') continue
-            records.put({ id: row.id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, settled: true, by: row.by || 'restore' })
+            // ★★ RUN 179 (run 24 / FEEDBACK24 F24-4): A BOOT IS NOT AN AUTHOR. This used to write `by: row.by || 'restore'`,
+            // so a row whose fold copy carried no author (a promote made without `member`, an adopted head) came back
+            // from a restart with the literal verb `restore` as its AUTHOR — one row read `owner:"restore"` while another
+            // read `owner:null` for the same fact, and `verified` rows promoted later in the run inherited the verb.
+            // ROUND 68 settled this for adoption (an unknown author is not a name); a hydration is the same sentence.
+            records.put({ id: row.id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, settled: true, by: row.by === undefined || row.by === null || row.by === '' ? null : String(row.by) })
             restored += 1
           } catch (e) { log('vmu records restore: ' + String((e && e.message) || e)) }
         }
@@ -2775,7 +2780,33 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // ★★ RUN 172 (FEEDBACK17 P2-5): the raw durable rows travel too, so the reading can say WHERE each judgement came from
     // (`session` = the kernel that wrote it, `voterSession` = where the voter ran) instead of leaving a reader to compare
     // two row shapes and guess which name answers which question.
-    rows: closureVoteFoldRows(),
+    // ★★★ RUN 179 (run 24 / FEEDBACK24 F24-1): THE VOTE RECEIPT WAS ONE WRITE BEHIND ITS OWN WRITE. `voters` and
+    // `votersAsOf` are built from the durable rows, and the durable patch is asynchronous, so `vibe_vmu_vote` returned
+    // `writes:1` next to a voter row still naming the PREVIOUS session (measured twice, once per voting member). The
+    // loop keeps the row it just wrote (`closureVoteLocalRows`); merging it over the fold row for the same member makes
+    // the receipt and `status` read the same instant, without a second ledger and without waiting on the store.
+    rows: (() => {
+      const fold = closureVoteFoldRows()
+      let local = []
+      try { local = turn && typeof turn.status === 'function' ? (turn.status().closureVoteLocalRows || []) : [] } catch { local = [] }
+      if (!Array.isArray(local) || local.length === 0) return fold
+      const byMember = new Map()
+      for (const row of Array.isArray(fold) ? fold : []) if (row && typeof row.member === 'string') byMember.set(row.member, row)
+      for (const row of local) {
+        if (!row || typeof row.member !== 'string') continue
+        const prev = byMember.get(row.member)
+        const atNew = Number(row.at)
+        const atOld = prev === undefined ? NaN : Number(prev.at)
+        const newer = prev === undefined || !Number.isFinite(atOld) || (Number.isFinite(atNew) && atNew >= atOld)
+        if (!newer) continue
+        byMember.set(row.member, { member: row.member, solved: row.solved === true,
+          at: Number.isFinite(atNew) ? atNew : (prev && Number.isFinite(atOld) ? atOld : null),
+          session: row.session === undefined || row.session === null ? null : String(row.session),
+          voterSession: row.voterSession === undefined || row.voterSession === null ? null : String(row.voterSession),
+          window: prev && prev.window !== undefined ? prev.window : undefined })
+      }
+      return Array.from(byMember.values())
+    })(),
     // ★★★ LIVE RUN 26 defect 3 (the institute's own report, and the worst of the three): A DEPARTED MEMBER STAYED IN THE
     // ELECTORATE. The roster was passed WHOLE, so a fired member counted as enfranchised: closure could be BLOCKED by its
     // silence (`missing:["<id>"]`, `cast:false`) and then "unblocked" by voting on its behalf — the run's `cast:true` was

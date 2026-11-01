@@ -774,7 +774,12 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
   const kindsPresent = new Set()
   for (const track of tracks) {
     let listed = null
-    try { listed = records.list({ track, limit }) } catch (e) {
+    // ★★ RUN 179 (run 24 / FEEDBACK24 F24-2, MEASURED): `total` was `cards.length` where `cards` only ever held the
+    // rows the PAGE asked for, so `{track:"verified", limit:3}` answered `total:3` for a track holding 14 — and the
+    // doc sentence beside it says `total` is the track's hit count. The read now WALKS the whole track (list with
+    // limit 0 is the kernel's whole-set read) and slices the page afterwards: `total` is the truth, `returned` is the
+    // page, `truncated` says which one you got. Measured in the same run: paper `limit:4` answered 4 for 195 rows.
+    try { listed = records.list({ track, limit: 0 }) } catch (e) {
       if (!e || e.code !== 'VMU_INVALID_ARGUMENT') throw e
       skipped.push(track)
       continue
@@ -839,7 +844,12 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
     kindGiven, kindMatched, kindsPresent: Array.from(kindsPresent), kindNote,
     panelPointer: panelPointer.pointer, panelPointerMeans: panelPointer.means,
     tracks, declaredTracks: declared,
-    total: cards.length, returned: returned.length, truncated: cards.length > returned.length,
+    total: cards.length, returned: returned.length,
+    // ★ RUN 179 (F24-7): a COUNT-ONLY read has nothing to truncate — `countOnly:true` beside `truncated:true` reads as
+    // "rows were cut" when no rows were asked for. The rows it did not return are NAMED instead (`rowsOmitted`).
+    truncated: countOnly ? false : cards.length > returned.length,
+    rowsOmitted: countOnly ? cards.length : 0,
+    totalMeans: 'total is the number of rows this read MATCHED (track/kind/member filters applied), whether or not they fit in the page; returned is the page, rowsOmitted the countable rest',
     countOnly,
     countOnlyMeans: 'limit:0 只读计数：total 是本轨命中数，returned 恒为 0。要取行就给一个正数 limit。',
     hint: countOnly

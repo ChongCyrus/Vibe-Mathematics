@@ -388,7 +388,27 @@ export function checkEvidencePointers({ evidence, records, codes = QUALITY_CODES
     // that into a per-pointer reason, not let one bad pointer abort the whole list.
     let row = null
     try { row = recordOf(records, cardId) } catch { row = null }
-    if (!row) { unknown.push({ pointer, cardId, expectedTrack, reason: 'no-such-record' }); continue }
+    if (!row) {
+      // ★★ RUN 179 (run 24 / FEEDBACK24 F24-6): THE REFUSAL SHOWED A TRUNCATED POINTER AND NOTHING TO PICK FROM. The
+      // pointer is matched up to the first punctuation mark, so a citation ending `#三、证明（L2）` came back as `#三` —
+      // and with a second anchor starting the same way the author had to GUESS which sentence to paste. The refusal now
+      // carries the ids on the claimed track that resemble the stem it read, so the correction is a choice, not a guess.
+      let nearby = []
+      try {
+        const listed = records.list({ track: expectedTrack, limit: 0 })
+        const rows = Array.isArray(listed) ? listed : (listed && Array.isArray(listed.items) ? listed.items : [])
+        // the FIRST THREE letters/digits of the name the pointer read: ids in this institute are `rec-<n>`-shaped, so a
+        // mistyped number still lands beside its own family instead of beside nothing at all.
+        const stem = String(cardId).replace(/[^A-Za-z0-9_一-鿿]/g, '').slice(0, 3).toLowerCase()
+        nearby = rows
+          .map((r) => ({ id: String(r && r.id ? r.id : ''), title: String(r && r.title ? r.title : '') }))
+          .filter((r) => r.id !== '' && stem !== '' && (r.id.toLowerCase().includes(stem) || r.title.toLowerCase().includes(stem)))
+          .slice(0, 3)
+      } catch { nearby = [] }
+      unknown.push({ pointer, cardId, expectedTrack, reason: 'no-such-record', nearby: nearby.map((r) => r.id),
+        nearbyMeans: nearby.length === 0 ? 'no row on that track resembles the name this pointer read' : 'rows on the claimed track whose id or title resembles the name this pointer read — the pointer is matched up to the first punctuation mark, so check whether you pasted a prefix' })
+      continue
+    }
     const actualTrack = str(row.track)
     if (actualTrack !== expectedTrack) {
       unknown.push({ pointer, cardId, expectedTrack, actualTrack: actualTrack || null, reason: 'wrong-track' })
@@ -538,6 +558,10 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
       missingEvidence.push({ kind: 'verified', id: item.id, cardId: item.cardId, title: item.title,
         requiredLine: named.line || String(item.cardId || item.id),
         requiredLineTruncated: named.truncated,
+        // ★★ RUN 179 (F24-4): when the NAME stops at `…`, the claim does not. The row's own `陈述` is the sentence to
+        // write; naming only the truncated title made the gate impossible to satisfy honestly (the author had to paste a
+        // ceiling). `requiredLineFull` is that sentence, and `requiredLineTruncated` says the name is not the claim.
+        requiredLineFull: named.truncated && has(item.statement) ? claimPrefix(item.statement) : null,
         requiredLineMath: named.math,
         requiredLineIdentifier: named.hasIdentifier })
     }

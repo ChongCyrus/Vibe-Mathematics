@@ -3023,3 +3023,14 @@ run 23 的成员把论文正文写进了 `body`（文档化的形状：`recordPa
 - **账本要保留每一次判定，读面必须归并**：同一成员在早先会话与现在各投过一次票，耐久 fold 有两行，旧读数取"最后一行"⇒ 一个人的票显示成两个 voter（`votesCast` 一直是对的）。读数改成一人一行、最新判定胜出，并自报 `votersAsOf`——一个读不清自己读的是哪个时刻的读数，会被人当成"现在"。
 - **同一事实的两个读者必须给同一句话**：`leadership{consistent:false}` 与"提示词回退到就座主席"并存时，读数新增 `effectiveLeaderId`/`leaderIdSource`，让"谁在领导"和"设置里写了谁"分开回答。
 - **`limit:0` 只读计数**：读面新增 `countOnly`/`countOnlyMeans`，hint 不再对一个刚传过文档最小值的人说"把 limit 调大"。同时记住：`vibe_vmu_records {action:"list", limit:0}` 是取全量——两个面各说各的话。
+
+## ROUND 182 — 回执要回答自己的写，`total` 是命中数不是页大小（run 24）
+
+run 24 的主线很干净：论文出 PDF、结题三票、四成员全有回合。值钱的是它顺手量出来的六件事——它们都不是"功能坏了"，而是**读数与它声称的含义对不上**。
+
+- **回执必须回答自己的写**：`vibe_vmu_vote` 回 `writes:1`，它自带的 `closureVote.voters` 却还是上一刻的列表（`votersAsOf` 也停在上一刻），而紧接着的 `status` 是新值。根因不是缓存而是口径：读面只读耐久 fold，而 fold 是异步写的。现在本进程刚写的票记在 `closureVoteLocal` 里，`status()` 交出 `closureVoteLocalRows`，`closureVoteInput()` 用它按成员覆盖 fold 行（新 `at` 胜）——**投票回执与下一次 `status` 是同一时刻的同一个投影**。读者从"我的票算没算"里解放出来。
+- **`total` 是命中数，页大小是 `returned`**：`read_library {limit:3}` 回 `total:3`（实际 14 条），而 `countOnlyMeans` 说 `total` 是命中数——同一份回执自相矛盾。现在先整轨取数再切页：`total` 报命中数、`rowsOmitted` 报没给的行、`truncated` 报"还有没给的"。**只读计数时 `truncated` 为 `false`**（`countOnly` 不切任何东西）。
+- **boot 不是作者**：`hydrateRecords` 曾用 `by: row.by || 'restore'` 把"没有作者"写成动词 `restore`，于是一条新 promote 出来的 Verified 行自称由 `restore` 写的。现在空就写 `null`；`verified_promote` 补 `callerFromTurn(kernel, exec)`——**由发起 promote 的席位署名**。
+- **截断的标题要留全文可抄**：卡名 48 字截断后随 Verified 行继承，而定稿门要求正文逐字出现它。`listVerified` 现在带完整 `statement`，`missingEvidence` 每条给 `requiredLineFull`——闸要人抄一句话，就得把整句话放在回执里。
+- **引用拒绝要给选择**：「不存在」是判决，「相近的有 `rec-7` / `rec-9`」才是出路。`no-such-record` 现在带 `nearby`（按 id/标题近似取前 3）。
+- **提示不能每启动一次就喊一次狼来了**：`vmu.turn.leaderId` 按设计不可持久，于是「单把椅子 + 空设置」每个新进程都重现同一条警告，教会读者忽略它。现在 `leadershipReading` 用 `leaderAssumed` **陈述**「回退到就座主席、来源是席位」，单椅子不再警告；只有**多于一把椅子**（回退决定不了，是真歧义）才警告并点名歧义。`consistent` 语义不变：它回答的始终是"声明的设置是否指向在册主席"。

@@ -13241,3 +13241,55 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 - **一份列表必须与它声称覆盖的那份集合同源**：`proseText` 漏一个 `body`，不是"少查一个字段"，而是"规则对一个文档化的调用形状完全失效"。
 - **一行一行地累积是账本的长处，也是读数的短处**：耐久账要保留每一次判定（审计要的），读面必须做归并（读者要的）——把归并交给"最后一行恰好是我想要的那行"就是随机。
 - **同一个事实的两个读者必须给同一句话**：`consistent:false` 与"回退到就座主席"并存时，读数的句子必须是行为的那句话。
+
+## §279 第二十五轮（RUN 179）：投票回执比它自己的写慢一拍，`total` 是页大小不是命中数
+
+### 279.1 这一轮的真机现场
+
+第二十四次真机（基线 `f334c52d`，第二十三轮修法全在）：
+
+| 项 | 读数 |
+| --- | --- |
+| 驱动 | `slv-p13-oc.ps1 -CloneName slvp178 -Port 19634 -MaxTokens 40000000 -TimeoutSec 5400` |
+| 结果 | `durationSec 1358`、`tokenTotal 12 716 908 / 40 000 000`（`capHit:false`）、`transcriptEvents 447`、根会话 `toolCalls 95` |
+| 会话 | `SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks` |
+| 转录 | `_oneoff/vm-slv/full-1101-151513.jsonl` |
+| 报告 | `SIM-REPORT24.md` 30 742 B、`FEEDBACK24.md` 10 114 B |
+| 主线 | `paper-p26` 定稿 PDF **122 176 B**（`rec-723.pdfBytes` 与磁盘同值）；`paper-p27` 停在 `awaiting-editor`；`paper-p28` 停在 `writing`；结题会 `m59` 三票、`votersAsOf:1793518048541` |
+| 成员 | 四成员全激活（r-temp 完成任务 `t-26`，观察行 `rec-735`） |
+| 账本 | `total 734 / live 410 / trashed 324`；分轨 `paper 195 · progress 91 · feedback 58 · propositions 28 · verified 14 · state 7 · scripts 6 · blueprint 4 · methods 4 · obstacles 3` |
+
+上一轮（RUN 178）五条修法的机器确认：**F1 成立**（`body` 里写 `Members/…/not-a-record.md#二` 被 `VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN` 具名拒；改真 id 后同一 `body` 被接受，`replaced` 点名上一版 `rec-725`）。**F2 成立**（`voters` 每成员一条 `member@session`；`votersAsOf` 随最新票 `…029645 → …038284 → …048541` 推进，且重复读不推进它）。**F5 成立**（`effectiveLeaderId:"r-acad"`、`leaderIdSource:"seat"`、`charterNamesLeader:true`；`vibe_v5_set` 之后 `leaderIdSource:"setting"`、`consistent:true`——但仅本会话）。**F6 成立**（`start` 与 `status` 两处 `editorReading.source` 一致、`isRoleWord:true`、`seat:"r-acad"`）。**minor 成立**（`countOnly:true` + hint 点名「只读了计数」+ 正数 `limit` 示例）。
+
+### 279.2 这一轮抓到的缺陷（与修法）
+
+1. **投票回执是写入前的快照**（F24-1，中）。`vibe_vmu_vote {member:"r-1", solved:true}` 的回执里 `writes:1`，但它自带的 `closureVote.voters` 仍是**上一刻**的列表、`votersAsOf` 是上一刻；紧接着 `status{detail:"closure"}` 报的是新值。根因不是缓存而是**口径**：`closureVoteInput()` 只读耐久 fold 行（fold 是异步写的），投票那一刻 fold 还没有这一票。修法：`kernel/turn/index.js` 增 `closureVoteLocal`（本进程刚写的票，带 `at`/`session`/`voterSession`），`status()` 交出 `closureVoteLocalRows`；`kernel/index.js` 的 `closureVoteInput()` 用本地行按 `member` 覆盖 fold 行（`atNew >= atOld` 才覆盖）。**回执里的 `closureVote` 与下一次 `status` 从此是同一时刻的同一个投影。**
+2. **`total` 是页大小不是命中数**（F24-2，中）。`vibe_v5_read_library {track:"verified", limit:3}` 回 `total:3`，实际 14 条；`propositions limit:6` 回 6，实际 28；`paper limit:4` 回 4，实际 195。而 `countOnlyMeans` 明说「`total` 是本轨命中数」——同一份回执自相矛盾。修法：`kit/handlers.js` 的 `toolReadLibrary` 先用 `records.list({ track, limit: 0 })` 整轨取数，`total` 报真实命中数、`rowsOmitted` 报未返回的行数、`truncated` 报「还有行没给」。
+3. **`hydrateRecords` 把「没有作者」写成动词**（F24-4，中）。新 promote 的 verified 行 `by:"restore"`/`owner:"restore"`，同一行更早一次读是 `owner:null`——因为 `records.put({ …, by: row.by || 'restore' })`。修法：`by` 空就写 `null`（不写动词）；`toolVerifiedPromote` 补 `callerFromTurn(kernel, exec)` 兜底，让**发起 promote 的席位**成为作者。
+4. **截断标题没有全文可抄**（F24-4 后半，中）。标题 48 字截断成 `…Σ_{k=1}^{n} k² = n(n+1)(2n…`，而定稿门要求正文逐字出现这句。修法：`listVerified` 的 item 带完整 `statement`，`missingEvidence` 每条带 `requiredLineFull`（截断时给出可抄的完整陈述）。
+5. **引用拒绝不说「你要的是哪一条」**（F24-6，中低）。正文写 `Members/r-2/Propos/run24-lemma.md#三、证明（L2）` 被拒，message 只回显到 `#三`，相近锚点并存时作者只能猜。修法：`checkEvidencePointers` 的 `no-such-record` 分支带 `nearby`（按 id/标题前 3 字符相似取前 3 条），拒绝语追加 `；相近的 rec-…/rec-…`。
+6. **每次启动都喊一次「狼来了」**（F24-3，设计层）。`vmu.turn.leaderId` 按设计不可持久（`vibe_v5_set` 自报 `persistsAcrossRestart:false`），于是「单把椅子 + 空设置」每个新进程都重现 `chair-seated-but-leaderId-empty` 警告，教人忽略该行。修法：`leadershipReading` 增 `leaderAssumed`（说明回退到就座主席、来源是席位），**单椅子时 `leadershipWarning` 返回 `null`**；只有**多于一把椅子**（回退无法决定，是真歧义）才警告，且 message 点名「多于一把椅子」。`consistent` 语义不变（仍是「声明的设置是否指向在册主席」）。
+7. **`countOnly` 与 `truncated` 并现**（F24-7，低）。修法：只读计数时 `truncated:false`、`rowsOmitted` 给出未返回行数。
+
+### 279.3 机器化
+
+- 新增 `tests/vmu-run179-feedback24.test.mjs`（6 节 **41 passed / 0 failed**）：§0 八条源码 pin；§1 投票回执与 `status` 同一 `votersAsOf`；§2 `total` 是命中数 + `countOnly` 不切页；§3 promote 的作者（office 无 exec ⇒ `null`，chair 带 exec ⇒ 该席）+ `requiredLineFull`；§4 相近 id 建议；§5 `leaderAssumed` 与歧义警告。
+- 既有 pin 按新机制反向改写：`tests/vmu-leadership-reading.test.mjs` **48/0**（单椅子不警告 + 两把椅子警告且点名歧义）；`tests/vmu-run178-feedback23-truth.test.mjs` **34/0**（§3f/§3g 改指 `leaderAssumed`，§5a 的 `truncated` 改成 `false`）。
+- 定向回归：`paper 11/0`、`turn 15/0`、`vmu-host 4/0`、`records 5/0`、`verified 5/0`、`library 4/0`、`vote 2/0`、`meeting 32/0`、`tools-action-arity 1/0`、`prompt- 24/0`、`run164/166/167/168/169/170/172/173/174/175/177` 各 1/0、`run176 2/0`、`run178 34/0`、`leadership 48/0`。
+- 生成物：`update-doc-counts --write` ⇒ `JOBS total=729 suites=621 probes=108`；`regen-all --write` 17/17 → `--check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULES COVERAGE: PASS (0)`、`RULE PARITY: PASS (0)`。
+- 全量 T1：`TOTAL 660  PASS 660  FAIL 0  (suites 596 · probes 64)`（`/d/_tmp/t1-r270-run179.log`，`concurrency 2`、`wall 414.9s`；`audit-tool-exec.mjs` 因需要 CLI 参数被 SKIP，属既有设计）。
+
+### 279.4 未闭合账（下一轮）
+
+1. **`prune` 批量写盘**（12 行 ≈ 14.4 s）仍未做：run 24 结束时 paper 轨已 195/200。
+2. **F24-5**（引用闸先于阶段门）只记录语义顺序，尚未在拒绝里带上阶段。
+3. **互审 3 轮上限**仍是产品决策（`capped:true` + 具名警告），本轮未被触发。
+4. **F3/F4 的教学句**（「`verdict_ask` 发得早于收口时应先 `close`」「临时工席只能从本席可见面观察」）仍未写进提示词。
+
+### 279.5 教训
+
+- **回执必须回答自己的写**：一个「写成功」的回执如果带的是写入前的读数，读者学到的就是「我的票没算」——这不是缓存问题，是**读面口径**问题。
+- **`total` 是命中数，页大小是 `returned`**：两个概念共用一个词时，读者只能靠猜，而猜错的那一方会以为库是空的。
+- **boot 不是作者**：把「不知道作者」写成 `restore` 是把缺失当事实；账本里的动词必须是人做过的事。
+- **引用拒绝要给选择**：「不存在」是判决，「相近的有 rec-7 / rec-9」才是出路。
+- **提示不能每启动一次就喊一次狼来了**：不可持久的设置 + 每次启动都重复的警告 = 训练读者忽略那一行；能在回退里决定的事实就陈述，只在回退决定不了时警告。

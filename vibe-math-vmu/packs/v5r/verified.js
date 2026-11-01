@@ -314,7 +314,11 @@ export function listVerified(records) {
   for (const head of heads_) {
     const row = records.get({ id: head.id })
     const parsed = parseVerified(row)
-    if (parsed.ok) items.push({ id: row.id, cardId: parsed.verified.cardId, p: parsed.verified.p, conclusion: parsed.verified.conclusion, warrant: parsed.verified.warrant, source: parsed.verified.source, by: parsed.verified.by, at: parsed.verified.at, title: row.title })
+    // ★★ RUN 179 (run 24 / FEEDBACK24 F24-4 second half): the row's `陈述` section travels with the head. The TITLE of a
+    // row whose name was derived from its claim is truncated at 48 chars, and the paper gate demands the line it names —
+    // so the author had to paste a sentence that stops mid-formula. With the full statement on the item, the gate can
+    // offer it as `requiredLineFull` and the receipt stops asking for a ceiling.
+    if (parsed.ok) items.push({ id: row.id, cardId: parsed.verified.cardId, p: parsed.verified.p, conclusion: parsed.verified.conclusion, warrant: parsed.verified.warrant, source: parsed.verified.source, by: parsed.verified.by, at: parsed.verified.at, title: row.title, statement: parsed.verified.statement })
     else bad.push({ id: head.id, reason: parsed.reason || parsed.problems.join('; ') })
   }
   return { ok: true, track: VERIFIED_TRACK, count: items.length, items, bad, badCount: bad.length, truncated: heads && heads.truncated === true }

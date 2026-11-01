@@ -82,9 +82,27 @@ ok(typeof measured.next === 'string' && measured.next.includes('vibe_v5_set {"ke
 ok(!measured.next.includes('"member"') && !measured.next.includes('vibe_v5_configure'),
   'the suggested command does not name a parameter the tool refuses (RUN 152 P1)', measured.next)
 ok(typeof measured.next === 'string' && measured.next.includes('member-1'), 'the suggested command names the actual chair', measured.next)
-const warned = leadershipWarning(measured)
-ok(warned && warned.code === measured.code, 'the warning carries the same code (one reading, one verdict)', warned && warned.code)
-ok(warned && warned.next === measured.next, 'the warning forwards the actionable command untouched', warned && warned.next)
+// ★★★ RUN 179 (run 24 / FEEDBACK24 F24-3): THE WARNING WAS NOISE. `vmu.turn.leaderId` is not durable by design
+// (`vibe_v5_set` answers `persistsAcrossRestart:false`), so ONE seated chair + an empty DECLARED setting reproduces on
+// every new process — and a warning that says the charter is leaderless every boot teaches the office to ignore the
+// line. The fallback already decides; the reading states that as a fact (`leaderAssumed`) and the warning is kept only
+// where the fallback CANNOT decide: no chair (a real absence, still silent because it is true) or MORE than one chair
+// (a real ambiguity, which needs a name).
+ok(measured.leaderAssumed && measured.leaderAssumed.effectiveLeaderId === 'member-1' && measured.leaderAssumed.source === 'seat',
+  'RUN 179: one seated chair + an empty DECLARED setting is stated as an ASSUMPTION (who leads, and where the name came from)',
+  measured.leaderAssumed)
+ok(typeof measured.leaderAssumed.means === 'string' && measured.leaderAssumed.means.includes('not'),
+  'RUN 179: and the sentence says the institute is not leaderless', measured.leaderAssumed && measured.leaderAssumed.means)
+ok(leadershipWarning(measured) === null,
+  'RUN 179: so that shape raises NO warning (it would fire on every boot for a fact the fallback settles)',
+  leadershipWarning(measured))
+// the ambiguity case: two seated chairs with an empty setting — "who leads" is roster order, and that IS a defect
+const twoChairs = leadershipReading({ roster: [...ROSTER_CHAIR, { id: 'member-3', slot: 'chair', state: 'live' }], leaderId: '' })
+const ambiguous = leadershipWarning(twoChairs)
+ok(ambiguous && ambiguous.code === twoChairs.code, 'RUN 179: but two seated chairs DO warn (one code, one verdict)', ambiguous && ambiguous.code)
+ok(ambiguous && typeof ambiguous.message === 'string' && ambiguous.message.includes('more than one chair'),
+  'RUN 179: and the warning names the ambiguity rather than the fallback', ambiguous && ambiguous.message)
+ok(ambiguous && ambiguous.next === twoChairs.next, 'RUN 179: the warning still forwards the actionable command untouched', ambiguous && ambiguous.next)
 
 console.log('=== 3. THE FOUR OTHER STATES, EACH PINNED IN BOTH DIRECTIONS ===')
 const okCase = leadershipReading({ roster: ROSTER_CHAIR, leaderId: 'member-1' })

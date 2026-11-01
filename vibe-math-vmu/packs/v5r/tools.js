@@ -1818,14 +1818,19 @@ function gatedCardHandler(toolName) {
  * truncated card, and a proof the fidelity registry withdrew. This face mints nothing: it forwards the warrant the
  * caller names, so "which debate decided this" stays answerable from the record.
  */
-function toolVerifiedPromote(args = {}, { kernel } = {}) {
+function toolVerifiedPromote(args = {}, { kernel, exec } = {}) {
   const records = recordsOf(kernel)
   const sourceId = has(args.card) ? str(args.card) : (has(args.id) ? str(args.id) : '')
   if (!sourceId) {
     throw refuse('VMU_INVALID_ARGUMENT', 'promote needs the proposition card it promotes',
       'pass card:"<records id of a propositions/proposition card whose p is exactly 1 or 0>"')
   }
-  const member = has(args.member) ? requireSeat(kernel, args.member, 'verified promote').id : null
+  // ★★ RUN 179 (run 24 / FEEDBACK24 F24-4): A PROMOTION MADE WITHOUT `member` HAD NO AUTHOR. The verified row went to
+  // the records face with `by: null`, the fold wrote it that way, and the next boot's hydration turned the missing
+  // author into the literal verb `restore` (fixed in the kernel as well) — so the row read `owner:"restore"` once and
+  // `owner:null` another time for the SAME fact. The face now records who actually called it (the seat whose turn/exec
+  // made the call!), and leaves it null only when the caller is the office, which is a real absence of a seat.
+  const member = has(args.member) ? requireSeat(kernel, args.member, 'verified promote').id : callerFromTurn(kernel, exec)
   const stored = cardProjectionOf(records, sourceId)
   const writerGate = singleWriter({ records, cardId: sourceId, by: member, writer: 'promoteVerified', track: VERIFIED_TRACK })
   const writerRefusal = gateRefuse(writerGate)
@@ -4477,7 +4482,7 @@ async function toolPaper(args = {}, { kernel } = {}) {
       const prosePointers = proseText !== '' && typeof paper.prosePointers === 'function' ? paper.prosePointers(proseText) : null
       if (prosePointers && prosePointers.ok !== true) {
         throw refuse('VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN',
-          '这部分的正文引用了记录库里不存在的 id：' + prosePointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? '，应为 ' + u.expectedTrack + ' 轨' : '') + ')').join('；'),
+          '这部分的正文引用了记录库里不存在的 id：' + prosePointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? '，应为 ' + u.expectedTrack + ' 轨' : '') + (Array.isArray(u.nearby) && u.nearby.length ? '；相近的 ' + u.nearby.join('/') : '') + ')').join('；'),
           '正文里的 Members/<member>/(Propos|Methods|Subproblems|Progress)/<记录 id>.md 指针按【记录 id】解析，不按文件名解析：先用记录面写出那条卡（vibe_v5_record_proposition 等）并拿到它返回的 id，再把路径写成 …/<那个 id>.md；或在 evidence 里直接写记录 id')
       }
       const part = paper.recordPart({

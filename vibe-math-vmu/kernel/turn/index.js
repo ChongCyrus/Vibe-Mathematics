@@ -2566,6 +2566,13 @@ export function createTurnOrchestrator({
   // context slot, so a unanimous judgement could never be observed - which is trap 3 ("solved is per-turn state
   // while closure is a per-round judgement"). Keyed by member, the window becomes well defined.
   const closureVotes = new Map()   // ★ `vote_solved` per member: the CLOSURE vote (unanimity required)
+  // ★ RUN 179 (run 24 / FEEDBACK24 F24-1, MEASURED): the vote RECEIPT carried a closureVote reading that was one
+  // WRITE BEHIND — `writes:1` beside a `voters` row still naming the previous session and a `votersAsOf` still at
+  // the PREVIOUS vote's instant. The tally was right (`votesCast` moves) but `voters`/`votersAsOf` come from the
+  // DURABLE rows, and the fold patch is asynchronous, so a receipt read straight after the write saw the fold as it
+  // was. The loop now keeps what it just wrote — member, solved, at, session, voterSession — and the kernel's
+  // reading merges it over the fold rows; one write, two readers, the same instant.
+  const closureVoteLocal = new Map() // ★ this session's own rows, so a receipt is not one write behind its own write
   let closureVoteWrites = 0        // ★ one counter, incremented ONLY inside recordClosureVote (both input channels)
   // ★★ RUN 172 (run 17 / FEEDBACK17 P2-6): the session half of the closing tally must be able to start over when the
   // office opens a new window. Without this the durable half could be re-scoped and the in-memory half still answered
@@ -2574,6 +2581,7 @@ export function createTurnOrchestrator({
   const resetClosureVotes = () => {
     const cleared = closureVotes.size
     closureVotes.clear()
+    closureVoteLocal.clear()
     return cleared
   }
   // ★★★ R11 OF THE PHASE-12 LIVE RUN: `executed` counts FIELD_OWNERS actions only, so a turn whose ONLY effect was the
@@ -2609,6 +2617,20 @@ export function createTurnOrchestrator({
     if (source === 'tool') toolVotedThisTurn.add(id)
     closureVotes.set(id, value)
     closureVoteWrites += 1
+    // ★★ RUN 179 (F24-1): the row THIS write just made, stamped with the loop's own clock and this kernel's session,
+    // so `voters`/`votersAsOf` can answer for it before the durable fold has been acknowledged.
+    // the loop's clock may answer an epoch NUMBER or an ISO string (the orchestrator default is `new Date().toISOString()`),
+    // so the stamp reads both — a vote receipt that cannot date itself is the same defect one layer down.
+    const voteAt = (() => {
+      try {
+        const c = typeof clock === 'function' ? clock() : null
+        const n = Number(c)
+        if (Number.isFinite(n)) return n
+        const t = Date.parse(String(c))
+        return Number.isFinite(t) ? t : null
+      } catch { return null }
+    })()
+    const voteSession = (() => { try { const v = typeof kernelSession === 'function' ? kernelSession() : kernelSession; return typeof v === 'string' && v !== '' ? v : null } catch { return null } })()
     // RUN 169: the durable copy, so the office kernel and this member's own kernel count the SAME votes. A seam that
     // throws is reported as a receipt row rather than swallowed - a persisted-ledger failure must be visible to the caller.
     if (typeof persistClosureVote === 'function') {
@@ -2619,6 +2641,8 @@ export function createTurnOrchestrator({
       // gets it: `voterSession` names where the voter ran, `session` stays the writer.
       let voterSession = null
       try { voterSession = memberSessions.get(id) || null } catch { voterSession = null }
+      closureVoteLocal.set(id, { member: id, solved: value, at: voteAt, session: voteSession,
+        voterSession: voterSession === null || voterSession === undefined ? null : String(voterSession), source })
       try { persistClosureVote({ member: id, solved: value, source, voterSession }) } catch (e) {
         turnEffects.push({ kind: 'closure-vote-persist-refused', member: id, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) })
       }
@@ -4129,6 +4153,11 @@ export function createTurnOrchestrator({
       // ★ the raw per-member judgements, so a caller that owns the roster (the kernel) can run the predicate itself
       closureVoteVotes: closureVotes,
       closureVoteWrites,
+      // ★★ RUN 179 (F24-1): the judgements THIS session wrote, with the instant and session each one carries, so a
+      // reading can date itself even while the durable fold is still in flight. The kernel merges these over the fold
+      // rows; nothing is dropped and no second ledger is created (the rows are the same facts, from the same writer).
+      closureVoteLocalRows: Array.from(closureVoteLocal.values()),
+      closureVoteLocalMeans: 'the closure votes written by THIS orchestrator, one row per member, each carrying the instant it was written and the session it came from. The kernel merges these over the durable fold rows so a receipt read straight after a vote is not one write behind itself; the durable rows remain the institute-wide truth and are the only ones another kernel reads',
       // ★★ RUN 172 (run 17 / FEEDBACK17 P2-6): A TALLY WITH NO WAY BACK TO ZERO IS A CEILING, NOT A READING. The durable fold
       // merges every judgement the institute ever made, so a fresh run started with `votesCast:3` inherited from the previous
       // one and no receipt could open a new window: two members voting again changed nothing. The kernel owns the window (it
