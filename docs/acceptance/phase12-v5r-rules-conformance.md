@@ -13151,3 +13151,49 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 - **一个"诚实的失败"如果不可复原，等于把失败制度化了**：G10 当年选择"编译失败也定稿，但如实写 `pdf.ok:false`"是对的（不谎报），但它把状态推到了一个回不来的点上；真机用一整篇论文的代价证明了：**诚实必须与可复原同时成立**。
 - **闸给的建议必须可执行**：推荐的形式若编不过，它就在制造它自己拒绝的东西——F2 的 `$…$` 建议直接生产了 F1 的残件，两条缺陷是一个因果链，不是两件事。
 - **元数据行不是记录**：`records.list` 只给元数据；任何"读到元数据行就想替读者回答内容问题"的实现都会**静默答错**（`pdfCompiled` 在真机上连续答了 8 次"没有"，而每一个"没有"都是它自己去打开行就能避免的）。
+
+## §277 第二十二次真机（run 22）与 RUN 177：编译真的跑过、真的失败了，回执却说"这篇论文没有 LaTeX 面"
+
+### 277.1 现场
+
+- 基线 `71541820`（RUN 176 已提交），驱动 `D:/_tmp/slv-phase5/slv-p13-oc.ps1`，`-CloneName slvp176 -Port 19626 -MaxTokens 40000000 -TimeoutSec 5400`，工作区 `D:\_tmp\slv-phase5\slvp157-ws`（`-KeepWorkspace`）。
+- 结果：`DRIVE_EXIT=0`、`durationSec 1668`、`tokenTotal 12 740 505 / 40 000 000`（capHit false）、`transcriptEvents 527`、根会话 `toolCalls 114`、`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`、`OK: prompt/wire names consistent; all calls visible; counts match`；转录 `D:/wd/vibemath开发/_oneoff/vm-slv/full-1101-114935.jsonl`（33 MB / 22 386 行）。产出 `SIM-REPORT22.md`（19 362 B）与 `FEEDBACK22.md`（7 623 B）。
+- 主线完整：`rec-611`（`Σ_{k=1}^{n} (k³−k) = 3·C(n+1,3)·2`，作者 r-1）+ `rec-612`（r-2 的引理）→ 辩论会 `m54` → 两成员裁决 → `verdict_final`（2 签 `unanimous`）→ `verified_promote` 得 `rec-613` → 论文 `paper-p20` 出 **81 013 B** PDF、`paper-p21`（F1 的试验件）、`paper-p22`（F5 的取样件，停在 awaiting-editor）→ 结题会 `m55` 三人 `solved` 后 `close`。
+
+### 277.2 上一轮（RUN 176）修法的机器确认
+
+- F2 标识符 ✅（正文先按纯文本写 `n_plus_n_eq_two_n` 后 `produced:true, pdfBytes:81013`；删掉该句后 `requiredLineIdentifier:true`、`requiredLineMath:null`，hint 明说"不要包进 `$…$`"）。
+- F3 编译台账 ✅（`pdfCompiled{produced:true, matchedBy:"target", recordId:"rec-644", pdfBytes:81013}`，与盘上文件逐字节一致）。
+- F4 可追溯 ✅（`refusalsTotal` 与 `lastRefusal{code,op,message}` 逐字对得上）。
+- F5 截断名 ✅（只写去省略号前缀即过闸；缺席条目 `requiredLineTruncated:true`、hint 说"前缀"）。
+- 裁定面 ✅（`verdict_ask.accounting` 闭合、`closureSentence` 在位、`attribution[].source:"submission"`）。
+
+### 277.3 这一轮抓到的真缺陷（与修法）
+
+1. **"引擎跑过并失败"被当成"这台机器没有 LaTeX 面"**（D1，高；这是 RUN 176 的修法在真机上失效）。`paper-p21` 的正文含 `$\zzznotacommand{1}$`，`final {decision:"deliverable"}` 回执 `ok:true` + **`finalized:true`**，同一份回执的 `pdf` 段是 `{ok:false, code:"VMU_PACK_V5R_CORE_PAPER_PDF_FAILED", faceCode:"VMU_PAPER_LATEX_FAILED", engine:"xelatex", message:"…! Undefined control sequence."}`，**没有 `rolledBack`、没有 `reviseAvailable`**；随后 `status.paper.stage:"finalized"`，而 `final {decision:"revise"}` 回执 `from:"awaiting-editor"`（两个面互相矛盾）。根因：RUN 176 的判定写的是 `String(t).includes(':compile')`，而 LaTeX 面回的是**结构化** `tried` 条目（`{engine, phase, available, exitCode, stderr}`），`String(对象)` 恒为 `"[object Object]"` ⇒ 相位判定恒 false ⇒ 每次真失败都落进"环境缺口"分支（那支**允许**定稿）。真机 stderr 证明引擎真跑过：`! Undefined control sequence.` / `l.42` / `Output written on …paper-p21.pdf (1 page)`。修法：`kit/paper.js` 新增 `phaseOf(t)`（对象读 `t.phase`，字符串仍按旧的 `engine:phase[:code]` 读），`reachedCompile = triedList.some((t) => phaseOf(t) === 'compile')`；环境缺口（EXECUTOR_MISSING / NO_ENGINE / 只有 probe）仍定稿，但只在**没有一次 compile 相位**时才成立。
+2. **修法答对了，回执却把它扔掉**（D1 后半，同一处）：`packs/v5r/tools.js` 的 `final` 投影只转 `ok/finalized/target/final/missing/…/pdf`，把 `rolledBack`/`reviseAvailable`/`pdfEnvironmentMissing` 三个字段吞掉了 ⇒ agent 看到 `finalized:true`，只能得出"旧 bug 回来了"。修法：投影补齐这四个字段（`rolledBack` 为显式 `null`，不是缺键——"值"和"缺席"是两句不同的话）。
+3. **引用闸把"文件名"当记录 id，而且只在最后一步才炸**（D3，中低）：正文写 `Members/r-1/Propos/run22-cubes.md#二`（真实记录 id 是 `rec-6xx`），`part` 接受、互审通过，到 `render` 才回 `VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN`（`missing[].id:"run22-cubes"`）。规则本身没错（该指针确实指不到记录），错的是**时刻**。修法：`paper-quality.js` 新增 `checkProsePointers({text, records})`（复用 `checkEvidencePointers` 的解析与 `MEMBER_FILE` 扫描，纯函数），pack 暴露 `flow.prosePointers(text)`，`packs/v5r/tools.js` 的 `part` 在 `recordPart` 之前扫描 `part/solution/methods/rules/limits` 五个正文字段并具名拒（`VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN`，hint 写"正文指针按【记录 id】解析，不按文件名解析；先拿 id 再拼路径"）。
+4. **参数名混淆的拒文在说一个没人传的参数**（D4，低）：`review` 的形参是 `deliverable: true|false`（`final` 才是 `decision:"deliverable"|"revise"`），第一次诚实的 `review {decision:"deliverable"}` 被回 `deliverable must be true or false`。修法：`review` 开头识别"`decision` 在位、`deliverable` 缺位"并具名拒：`review takes \`deliverable: true|false\`, not \`decision:"<x>"\` — \`decision\` belongs to \`final\``，hint 给出 `deliverable:true` 的完整调用。
+5. **同一实例的自读被说成"更旧"**（D5，低）：并发写同刻，`records.status` 的 `foldWrites.pending:1` 旁边计数已经包含那一行，`foldWritesMeans` 却写"`pending > 0` 时读到的是更旧的陈述"。修法：`kernel/index.js` 的 `recordsFoldStatus().means` 改成"**本实例**已经算上（内存先落地），另一个实例才在拉折入之前读到旧状态；两边的 join point 都是 `flushRecordsFold()`"——一个能被自己推翻的句子不该留在回执里。
+6. **回滚写不进去：一次 UPDATE 被它自己的旧指纹去重掉了**（D1 的第三层，本轮收口时才发现——写测试才暴露）。`kit/paper.js` 的 D1 修法是"编译失败就把状态写回 awaiting-editor"，可这条回写本身在真实内核上**静默失效**：`kernel/records.js#put` 从不刷新 `byFingerprint` 索引，所以状态行从 awaiting-editor 写成 finalized 之后，索引里**旧 body 的指纹仍指向同一个 id**；回滚把旧 body 写回时算出的指纹正好命中它，`put` 走进 dedupe 分支回 `{deduplicated:true}` 并直接 return——**一行都没写**，盘上仍是 `finalized`。于是回执说"没有定稿"、`status` 说"已定稿"，同一份记录两个真相。修法两层：① `put` 里 UPDATE 不再参与 dedupe（`!isUpdate && fpIndex.has(fp)`）并删掉被改写行自己的陈旧指纹（dedupe 是"新增内容"的策略，不是"替换内容"的），② `kit/paper.js` 的回滚在 `before.hadFinal` 为假或值为 `undefined` 时**删掉** `final` 键（`state.final = undefined` 序列化时消失，写回的 body 与定稿前逐字节相同，正是撞上陈旧指纹的原因）。
+### 277.4 机器化
+
+- 新套件 `tests/vmu-run177-final-rollback.test.mjs`：**47 PASS / 0 FAIL**（6 节）。§0 四条源码口径（`phaseOf` + `phaseOf(t) === 'compile'`、`final` 投影四字段、`review takes \`deliverable: true|false\``、pack 走 `checkProsePointers`）；§1 编译**真跑且失败**⇒ `ok:true` / `finalized:false` / `pdf.code:VMU_PACK_V5R_CORE_PAPER_PDF_FAILED` / `rolledBack{finalized→awaiting-editor}` / `reviseAvailable:true` / 状态回 awaiting-editor / 无 `final` 戳 / 之后 `revise` 真能退回 writing；§2 修好正文后同一篇**真定稿**（fail → revise → 修 → PDF）；§3 无 LaTeX 面仍定稿且自报 `pdfEnvironmentMissing`（环境缺口 ≠ 正文坏了）；§4 工具面：投影带 `pdfEnvironmentMissing` + 显式 `rolledBack:null` + `reviseAvailable:false`，`review {decision}` 被具名拒且 hint 可执行，改正后被接受；§5 正文指针在 `part` 这一步就被解析（编造的 `run177-not-a-record.md#二` 具名拒、消息点名 `no-such-record`、hint 说按记录 id 解析；改成真 id 后同一段正文被接受）。§6 **一次 UPDATE 必须真的写**（真内核装配）：先写 v1、再更新到 v2（`deduplicated:false` 且盘上是 v2）、再把 v1 写回去（`deduplicated:false` 且盘上真的回到 v1——这就是回滚走的那一次写），而同一内容作为**新行**添加时 dedupe 仍然生效（`deduplicated:true`）。
+- 三处既有 pin 按新机制**反向改写**（不是放松）：`tests/vmu-run170-truthful-trash.test.mjs` §5、`tests/vmu-run172-feedback17-truth.test.mjs` §1、`tests/vmu-run173-citation-id.test.mjs` §2——它们原先钉的是"写入闸只看 `evidence`，正文引用留到 `render` 才判"，现在前置到写入点：断言改成"写入点具名拒 + 纯函数 `checkProsePointers` 给出同一个判定（id 归一化、`#anchor` 保留在 path 里）"，质量闸对已存在行（直接写盘绕开写入闸）的判定仍逐条保留。
+- 两处既有 pin 因这层新事实改写：`tests/vmu-run155-audit-fixes.test.mjs` 的「定稿发生（编译失败不阻止定稿）」反向改成新机制（真 compile 失败 ⇒ `finalized:false` + `rolledBack` + `reviseAvailable` + `status.stage === 'awaiting-editor'`，66/0），`tests/vmu-run174-index-and-receipts.test.mjs` §3 改为直接写 part 行绕开写入闸、再由 `render` 给草稿建议（44/0）。
+- 定向回归（`--only`）：paper 11/0、run177 1/0、run176 2/0、run175 1/0、run174 1/0、run173 1/0、run172 1/0、run170 1/0、run169 1/0、run167 1/0、run165 1/0、run164 1/0、run166 1/0、run155 1/0、citation 3/0、records 5/0、fold 2/0、trash 2/0、quota 2/0、host 6/0、vmu-host 4/0、turn 15/0、v5r-tools 1/0、tools-action-arity 1/0。
+- 收口链：`update-doc-counts --write` → `regen-all --write` 到不动点 → `--check` 17/17 → `PREFLIGHT` / `DOC LINT` / `RULES COVERAGE` / `RULE PARITY` 四门禁 → 全量 T1（见 §277.4 末）。
+- 全量 T1：`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **TOTAL 658 PASS 658 FAIL 0（suites 594 · probes 64）**（`/d/_tmp/t1-r259-run177c.log`）。
+
+### 277.5 未闭合账（下一轮）
+
+1. **`paper-p21` 那篇坏论文留在工作区**（`finalized:false` 之后没有 `revise`）：这是真机行为样本，不是缺陷；下一轮简报让代理演示"修好后继续"。
+2. **`requiredLineFull`**（F5 的另一半）仍未给：读者想知道完整陈述要 `expand` 那条记录。
+3. **`prune` 批量写盘**（12 行 ≈ 14.4 s）仍未做。
+4. **互审 3 轮上限**仍是产品决策（`capped:true` + 警告已具名），本轮未被触发。
+
+### 277.6 教训
+
+- **结构性字段的形状是契约**：`String(对象)` 得到一个恒定的字符串，于是"有没有跑过引擎"这种事实被一个类型误用悄悄改写成"没有引擎"。凡是要判断"某件事是否发生过"，都要读那个**声明了相位**的字段。
+- **一个判决有两个读者时，两个读者必须都拿到它**：kit 答对了，投影把它扔掉，等于没改。修完 `kit` 还要问一句"回执里能看见吗"。
+- **规则的时刻也是规则**：D3 的规则一直对，只是来得太晚——最贵的时刻不是判错，而是判晚了。

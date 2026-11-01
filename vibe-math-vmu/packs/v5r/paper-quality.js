@@ -311,6 +311,31 @@ function citationsOf(state, records) {
 }
 
 /**
+ * ★★ RUN 177 (run 22, FEEDBACK22 D3) — THE PROSE IS JUDGED THE SAME WAY THE EVIDENCE IS, AT THE SAME MOMENT.
+ *
+ * Measured on the real machine: a member wrote `Members/r-1/Propos/run22-cubes.md#二` in a part's prose while the
+ * record's own id was `rec-6xx`. `recordPart` accepted it (only the `evidence` array was resolved), the paper was
+ * cross-reviewed, and the citation rule fired at `render`/`final` — the most expensive moment, after the deliverable had
+ * been written. The rule itself was right (the pointer names no record); the MOMENT was wrong. This resolves every
+ * member-file pointer a part's prose carries against the same records face, at the writing step, so a fabricated or
+ * mistyped citation is refused where it was typed.
+ *
+ * Pure: (text, records view) in, verdict out — shared by the tool face (which refuses) and any reader (which may ask).
+ */
+export function checkProsePointers({ text, records, codes = QUALITY_CODES } = {}) {
+  if (!records) throw Object.assign(new Error('checkProsePointers needs the records-backed view'), { code: 'VMU_INVALID_ARGUMENT' })
+  const pointers = []
+  for (const line of str(text).split(String.fromCharCode(10))) eachMemberFile(line, (pointer) => pointers.push(pointer))
+  if (pointers.length === 0) {
+    return { ok: true, provided: 0, resolved: [], unknown: [],
+      means: 'the prose carries no Members/<member>/(Propos|Methods|Subproblems|Progress)/<id>.md pointer, so there is nothing to resolve here (the quality gate still judges the deliverable)' }
+  }
+  const res = checkEvidencePointers({ evidence: pointers, records, codes })
+  return { ok: res.ok, provided: res.provided, resolved: res.resolved, unknown: res.unknown,
+    means: 'every member-file pointer written in the prose is resolved against the records face at the moment the part is written: a citation that names no record is refused HERE (RUN 177 D3), not at render after the paper is written and cross-reviewed' }
+}
+
+/**
  * ★ ROUND 95 — FAIL FAST AT `part`, NOT AT `render`. `recordPart` accepted any `evidence` array, and the FIRST time a
  * pointer was resolved was the quality gate on `render` — i.e. after the paper had been written, cross-reviewed,
  * consulted and finalised. A fabricated pointer therefore cost the whole chain (measured on a live run: the member

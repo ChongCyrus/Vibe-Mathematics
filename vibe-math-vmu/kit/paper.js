@@ -1120,12 +1120,28 @@ export function createPaperFlow({
       // `engine:phase[:code]` strings, so a run that reached the COMPILE phase is exactly the case RUN 176 rolls back; a face
       // that only ever got as far as PROBE (or none at all) is the environment gap the old behaviour is honest about.
       const triedList = Array.isArray(pdf && pdf.triedEngines) ? pdf.triedEngines : []
-      const reachedCompile = triedList.some((t) => String(t).includes(':compile'))
+      // ★★★ RUN 177 (run 22, FEEDBACK22 D1 — the fix from RUN 176 never fired on the real machine): the projection
+      // carries STRUCTURED entries ({engine, phase, code}), so `String(t).includes(':compile')` was `'[object Object]'`
+      // and `reachedCompile` was ALWAYS false — i.e. every real compile failure was classified as an env gap and the
+      // paper finalised anyway. Measured on run 22: xelatex really ran, really exited 1 (! Undefined control sequence),
+      // and `final` answered finalized:true with no `rolledBack`. The phase is now read the way the face writes it:
+      // an OBJECT contributes `phase`, a bare string keeps the old `engine:phase` reading for older callers.
+      const phaseOf = (t) => {
+        if (t === undefined || t === null) return ''
+        if (typeof t === 'object') return String(t.phase === undefined || t.phase === null ? '' : t.phase)
+        const str = String(t)
+        const at = str.indexOf(':')
+        return at < 0 ? '' : str.slice(at + 1).split(':')[0]
+      }
+      const reachedCompile = triedList.some((t) => phaseOf(t) === 'compile')
       const faceNoEngine = String((pdf && pdf.faceCode) || '') === 'VMU_PAPER_LATEX_NO_ENGINE'
       const engineAbsent = String((pdf && pdf.code) || '') === 'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING'
         || (String((pdf && pdf.code) || '') !== '' && (faceNoEngine || (triedList.length > 0 && !reachedCompile)))
       if (!(pdf && pdf.ok === true) && !engineAbsent) {
-        if (before.hadFinal) state.final = before.final
+        // ★★ RUN 178: restoring `state.final = undefined` leaves the KEY present with an undefined value, which serialises
+        // away — the restored body then equals the pre-final body byte for byte (and collided with the stale fingerprint
+        // above). The pre-final body simply had no `final` key, so the rollback deletes it.
+        if (before.hadFinal && before.final !== undefined) state.final = before.final
         else delete state.final
         state.status = before.status
         state.stage = before.stage

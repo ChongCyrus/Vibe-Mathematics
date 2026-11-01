@@ -159,7 +159,23 @@ const idsOf = (list) => (Array.isArray(list && list.items) ? list.items : []).ma
   await hire(A.kernel)
   tick += 10
   await A.call('vibe_v5_paper', { action: 'start', target: 'q1', participants: ['r-acad', 'r-1'] })
-  await A.call('vibe_v5_paper', { action: 'part', target: 'q1', member: 'r-acad', part: 'draft part', solution: '正文 引用 Members/r-1/Propos/run19-not-a-record.md#§3 这条不存在。', evidence: [] })
+  // ★ RUN 177 (run 22, FEEDBACK22 D3): the WRITE gate now resolves prose pointers, so this body is refused at `part`
+  // (`VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN`). What this section pins is the DRAFT RENDER's advisory verdict, so the
+  // row is written directly the way `recordPart` shapes it — bypassing the write gate on purpose, exactly as run 172 §1
+  // and run 173 §3 do. The write-gate refusal itself is pinned in run 177's own suite.
+  const draftBody = '正文 引用 Members/r-1/Propos/run19-not-a-record.md#§3 这条不存在。'
+  const stq = await A.call('vibe_v5_paper', { action: 'status', target: 'q1' })
+  const qStateId = stq && stq.paper && stq.paper.stateRecordId ? stq.paper.stateRecordId : null
+  const partRow = A.kernel.records.put({ track: 'paper', kind: 'paper-part', title: 'v5r-paper|q1|part|r-acad', by: 'r-acad',
+    body: JSON.stringify({ title: 'draft part', solution: draftBody, evidence: [] }) })
+  ok(!!partRow && !!partRow.id, '§3 the draft part row is on disk (this section pins the RENDER, not the write gate)', partRow && partRow.id)
+  if (qStateId) {
+    const gotQ = A.kernel.records.get({ id: qStateId })
+    const fullQ = gotQ && gotQ.record ? gotQ.record : gotQ
+    const qState = JSON.parse(String(fullQ.body))
+    qState.parts = { 'r-acad': { recordId: partRow.id, fingerprint: partRow.fingerprint, round: qState.round || 1, title: 'draft part' } }
+    A.kernel.records.put({ id: qStateId, track: 'paper', kind: 'paper-state', title: String(fullQ.title), body: JSON.stringify(qState), by: 'office' })
+  }
   const rendered = await A.call('vibe_v5_paper', { action: 'render', target: 'q1' })
   ok(rendered.ok === true, '§3 the draft renders (a paper being written must stay renderable)', rendered.code)
   const gate = rendered.qualityGate || null

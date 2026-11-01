@@ -3005,3 +3005,12 @@ missing[0] = { id: "rec-316.md（RUN14", path: "Members/r-1/Propos/rec-316.md（
 - **被拒的哪一次能查到**：`records status` 的投影补回内核早就有的 `lastRefusal{code, at, op, message}`。
 
 **教训**：**诚实的失败必须可复原**——"如实地报 `pdf.ok:false` 却把状态推到回不来的点"是上一轮之前的设计，真机证明它等于把一次笔误变成一篇论文的葬礼。**闸的建议是可执行承诺**——不能执行的形式写进回执，就是在制造它自己要拒绝的东西。**元数据不是内容**——读面替读者回答内容问题时，必须自己去打开那一行。
+
+## ROUND 180 — "引擎跑过并失败"和"这台机器没有引擎"是两件事，回执必须分开说（run 22）
+
+run 22 让 paper-p21 的正文带一个假命令 `$\zzznotacommand{1}$`，然后请编辑定稿。回执说 `ok:true`、`finalized:true`，同一份回执的 `pdf` 段却说 `VMU_PAPER_LATEX_FAILED`、`! Undefined control sequence.`——两种说法并存，而**没有** `rolledBack`。RUN 176 刚刚教过 `recordFinal`：编译真跑过并失败时不许定稿。它为什么不生效？因为判据是 `String(t).includes(':compile')`，而 LaTeX 面回的是结构化条目 `{engine, phase: 'compile', …}`，`String({...})` 恒为 `"[object Object]"`。于是"引擎跑过"这个事实被一个类型误用写成了"这台机器没有 LaTeX 面"，而后者**允许**定稿（那是环境缺口，不是正文坏了）。
+
+- **判据读相位，不读字符串**：`phaseOf(t)` 取对象上的 `t.phase`，字符串才按旧的 `engine:phase[:code]` 读；`reachedCompile` 只问"有没有一次 compile 相位"。
+- **判决必须到得了读者手里**：kit 答对了，`final` 的投影把 `rolledBack`/`reviseAvailable`/`pdfEnvironmentMissing` 吞了，agent 只能看见 `finalized:true`。投影补齐三字段，且 `rolledBack` 在没有回滚时是显式 `null`（值≠缺席）。
+- **规则的时刻也是规则**：正文指针 `Members/r-1/Propos/run22-cubes.md#二` 指不到记录（记录 id 是 `rec-6xx`），规则一直都对，但它等到 `render` 才说话——那时论文已写完、已互审。`part` 现在就在写入点解析正文字段并具名拒。
+- **一个能被自己推翻的句子不该留在回执里**：并发写时 `foldWrites.pending:1` 旁边计数已含那一行，旧 `means` 说"读到的是更旧的陈述"；同一实例读到的是当前值，旧的是**别的**实例。

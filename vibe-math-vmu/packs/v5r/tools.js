@@ -4442,6 +4442,18 @@ async function toolPaper(args = {}, { kernel } = {}) {
           'these evidence pointers do not resolve against the records face: ' + pointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? ', expected track ' + u.expectedTrack : '') + ')').join('; '),
           'write the record first (vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem), then re-write this part with the pointer it produced; a pointer is Members/<member>/(Propos|Methods|Subproblems|Progress)/<record id>.md')
       }
+      // ★★ RUN 177 (run 22, FEEDBACK22 D3): the BODY is judged at the same moment as the evidence list. A member wrote
+      // `Members/r-1/Propos/run22-cubes.md#二` in prose while the record's id was rec-6xx; `recordPart` accepted it and
+      // the citation rule fired at render/final — after the paper had been written and cross-reviewed. The rule was
+      // right, the moment was not: a pointer that names no record is refused where it is typed.
+      const proseText = ['part', 'solution', 'methods', 'rules', 'limits']
+        .map((k) => (args[k] === undefined || args[k] === null ? '' : String(args[k]))).filter((s) => s !== '').join(String.fromCharCode(10))
+      const prosePointers = proseText !== '' && typeof paper.prosePointers === 'function' ? paper.prosePointers(proseText) : null
+      if (prosePointers && prosePointers.ok !== true) {
+        throw refuse('VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN',
+          '这部分的正文引用了记录库里不存在的 id：' + prosePointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? '，应为 ' + u.expectedTrack + ' 轨' : '') + ')').join('；'),
+          '正文里的 Members/<member>/(Propos|Methods|Subproblems|Progress)/<记录 id>.md 指针按【记录 id】解析，不按文件名解析：先用记录面写出那条卡（vibe_v5_record_proposition 等）并拿到它返回的 id，再把路径写成 …/<那个 id>.md；或在 evidence 里直接写记录 id')
+      }
       const part = paper.recordPart({
         target,
         member: str(args.member),
@@ -4457,6 +4469,15 @@ async function toolPaper(args = {}, { kernel } = {}) {
           resolved: pointers.resolved.map((r) => r.cardId), means: pointers.means } }
     }
     case 'review': {
+      // ★★ RUN 177 (run 22, FEEDBACK22 D4): `final` takes `decision:"deliverable"|"revise"`, `review` takes
+      // `deliverable:true|false` — and the schema documents both on one face, so the first honest attempt
+      // (`review {decision:"deliverable"}`) came back "deliverable must be true or false", a sentence about a
+      // parameter the caller never passed. The face now names the confusion and the fix, before the kernel sees it.
+      if ((args.deliverable === undefined || args.deliverable === null) && typeof args.decision === 'string' && args.decision !== '') {
+        throw refuse('VMU_INVALID_ARGUMENT',
+          'review takes `deliverable: true|false`, not `decision:"' + String(args.decision) + '"` — `decision` belongs to `final`',
+          'call review again with deliverable:true (this part is deliverable) or deliverable:false (send it back), keeping `of` naming the part you reviewed')
+      }
       const review = paper.recordReview({
         target,
         member: str(args.member),
@@ -4497,6 +4518,19 @@ async function toolPaper(args = {}, { kernel } = {}) {
           note: finalized.consult.note || null } : null,
         // ★★ RUN 155 (problem 2): the SAME projection the `compile` door returns (one shape, two doors).
         pdf: finalized.pdf ? projectPdfBlock(finalized.pdf, finalized.target) : null,
+        // ★★★ RUN 177 (run 22, FEEDBACK22 D1): RUN 176 taught the KIT to answer `finalized:false` plus the two fields
+        // that make the answer actionable — and this projection dropped BOTH, so the real-machine receipt said "not
+        // finalized" with nothing naming why or what to call next (and the agent read the missing keys as the old bug).
+        // A receipt that hides the branch it took is the defect this file keeps closing: the keys travel now, and
+        // `pdfEnvironmentMissing` (the one branch that DOES finalise without a PDF) travels with its own explanation.
+        rolledBack: finalized.rolledBack ? {
+          from: finalized.rolledBack.from || null,
+          to: finalized.rolledBack.to || null,
+          keptEarlierFinal: finalized.rolledBack.keptEarlierFinal === true,
+        } : null,
+        reviseAvailable: finalized.reviseAvailable === true,
+        pdfEnvironmentMissing: finalized.pdfEnvironmentMissing === true,
+        pdfEnvironmentMeans: finalized.pdfEnvironmentMeans || null,
         // ★★ RUN 156 (run-5 finding 1): a `revise` past the review cap is admitted as a REPAIR round, and the kit
         // has always returned `repair`/`repairs`/`repairBudget`/`cap` for it — but this projection dropped all four, so a
         // caller had to call `status` a second time to learn that the revise it just made was a repair. A receipt that

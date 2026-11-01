@@ -241,6 +241,7 @@ console.log('§2 问题 2：`compile` 门与 `final` 的 pdf 块是同一个形�
   const fail = makeSubprocess(FAILING_COMPILE)
   const { specs } = await bootTools({ 'vmu.paper.officeConsult': 'off' }, fail)
   const started = await call(specs, 'vibe_v5_paper', { action: 'start', target: 'p5', participants: ['r-1', 'r-2'] })
+  if (!(started && started.ok === true)) console.log('DEBUG_START', JSON.stringify(started))
   ok(started && started.ok === true, '前提：论文 p5 建好', started && (started.code || started.ok))
   const compiled = await call(specs, 'vibe_v5_paper', { action: 'compile', target: 'p5' })
   ok(compiled && compiled.ok === true, '问题 2：编译失败也返回回执（不再只抛异常）', compiled && (compiled.code || compiled.ok))
@@ -282,7 +283,20 @@ console.log('§2 问题 2：`compile` 门与 `final` 的 pdf 块是同一个形�
   for (const m of ['r-1', 'r-2']) await call(s2.specs, 'vibe_v5_paper', { action: 'review', target: 'p6', member: m, deliverable: true, comments: '可交付' })
   await call(s2.specs, 'vibe_v5_paper', { action: 'advance', target: 'p6' })
   const final = await call(s2.specs, 'vibe_v5_paper', { action: 'final', target: 'p6', member: 'r-chair', decision: 'deliverable' })
-  ok(final && final.ok === true && final.final && final.final.finalized === true, '前提：定稿发生（编译失败不阻止定稿）', final && (final.code || (final.final && final.final.finalized)))
+  // ★ RUN 177 反向改写：本 pin 原本钉的是 RUN 176 的一个 bug——RN 176 判定"引擎真跑过"用的是
+  // `String(t).includes(':compile')`，而 `tried` 是结构化条目，`String({})` 恒为 "[object Object]"，
+  // 于是每一次真失败都被当成"这台机器没有 LaTeX 面"而照旧定稿。RUN 177 把相位读对之后，
+  // 真跑过并失败的编译不再定稿。这条 pin 现在守的是新事实：失败是可复原的，不是一份既成事实。
+  ok(final && final.ok === true && final.final && final.final.finalized === false,
+    '★★ RUN 177：真跑过并失败的编译不再定稿（finalized:false）', final && (final.code || (final.final && final.final.finalized)))
+  ok(!!(final && final.final && final.final.rolledBack && final.final.rolledBack.from === 'finalized' && final.final.rolledBack.to === 'awaiting-editor'),
+    '★★ RUN 177：回执点名它回滚了什么（rolledBack finalized→awaiting-editor）', final && final.final && final.final.rolledBack)
+  ok(!!(final && final.final && final.final.reviseAvailable === true),
+    '★★ RUN 177：回执说 revise 这条修法仍然开着（一个可修的笔误不该逼着重开一篇）', final && final.final && final.final.reviseAvailable)
+  const afterFail = await call(s2.specs, 'vibe_v5_paper', { action: 'status', target: 'p6' })
+  console.log('DEBUG_P6_STATUS', JSON.stringify(afterFail && afterFail.paper))
+  ok(!!(afterFail && afterFail.paper && afterFail.paper.stage === 'awaiting-editor'),
+    '★★ RUN 177：状态真的停在 awaiting-editor（不是只写在回执里）', afterFail && afterFail.paper && afterFail.paper.stage)
   const finPdf = final && final.final && final.final.pdf
   ok(!!finPdf && finPdf.ok === false && finPdf.kind === 'refused', '问题 2：final 的 pdf 块同样是 refused 形状', finPdf && { ok: finPdf.ok, kind: finPdf.kind })
   ok(!!finPdf && JSON.stringify(Object.keys(finPdf).sort()) === JSON.stringify(expected),

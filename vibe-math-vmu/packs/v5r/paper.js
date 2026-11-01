@@ -17,7 +17,7 @@ import { createPaperFlow } from '../../kit/paper.js'
 // ★ E1＋E3 (phase 12): the record-backed sections and the quality gate live in their own module because the export
 // surface below is PINNED (`tests/vmu-v5r-tools.test.mjs` ⑦h) — new machinery may never widen it. This file imports and
 // wires; `paper-quality.js` owns the reads, the fills and the four refusal codes.
-import { QUALITY_CODES, createRecordsView, fillRecordSections, checkQuality, checkEvidencePointers } from './paper-quality.js'
+import { QUALITY_CODES, createRecordsView, fillRecordSections, checkQuality, checkEvidencePointers, checkProsePointers } from './paper-quality.js'
 
 export const PAPER_MAX_ROUNDS = 3
 /** The original's nine sections, in order (verbatim from `vibe-math-v5r.js:238-248`). */
@@ -133,6 +133,14 @@ export function createPaperSubsystem({ kernel, clock = null } = {}) {
   flow.evidencePointers = (evidence) => {
     const view = recordsView()
     return checkEvidencePointers({ evidence, records: view && view.records, codes: QUALITY_CODES })
+  }
+
+  /** ★★ RUN 177 (run 22, FEEDBACK22 D3) — resolve the member-file pointers a part's PROSE carries, at the moment it is
+   *  written, with the same records face the deliverable gate uses (see `paper-quality.js#checkProsePointers`). Without
+   *  this the citation rule fired only at `render`, after the whole paper had been written and cross-reviewed. */
+  flow.prosePointers = (text) => {
+    const view = recordsView()
+    return checkProsePointers({ text, records: view && view.records, codes: QUALITY_CODES })
   }
 
   /** ★ E3 — the quality verdict WITHOUT refusing (the reviewer/the editor may ask before committing). */

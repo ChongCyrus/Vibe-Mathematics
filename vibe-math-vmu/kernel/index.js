@@ -2419,7 +2419,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     pending: foldWrites.inflight.size,
     ackedAt: foldWrites.ackedAt,
     failed: foldWrites.failed,
-    means: 'fold writes this instance has started but not yet had acknowledged by the durable store: a read taken while `pending > 0` is an OLDER statement than the mutation that caused it (the join point is flushRecordsFold())',
+    means: 'fold writes this instance has started but not yet had acknowledged by the durable store. THIS instance already counts them (the mutation landed in memory before the fold), so with `pending > 0` your own read is CURRENT and every OTHER instance is still reading the older state until it pulls the fold; flushRecordsFold() is the join point for both — RUN 177 (run 22 F5) said this out loud because the old sentence read as "your read is stale", which the same instance can disprove',
   })
   const flushRecordsFold = async () => {
     while (foldWrites.inflight.size > 0) {

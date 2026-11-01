@@ -112,8 +112,25 @@ const qualityOf = async (A, target) => {
   ok(!!good && !!good.id, '§1 the cited card is on the propositions track', good && good.id)
   await A.call('vibe_v5_paper', { action: 'start', target: 'p1', participants: ['r-acad', 'r-1'] })
   const solution = '可寻址的一处：Members/r-1/Propos/' + good.id + '.md#命题陈述 是对的；不可寻址的一处：Members/r-1/Propos/run17-not-a-record.md#§3 是编的。'
-  const part = await A.call('vibe_v5_paper', { action: 'part', target: 'p1', member: 'r-acad', part: 'two pointers in one paragraph', solution, evidence: [String(good.id)] })
-  ok(part.ok === true, '§1 the part is accepted (the write gate checks `evidence`, not the prose)', part.code)
+  // ★★ RUN 177 (run 22, FEEDBACK22 D3): the WRITE gate now resolves prose pointers too, so this body is refused at
+  // `part`. What this section pins is the GATE's reading of such a body (both pointers on one line, not just the first),
+  // so the row is written directly the way `recordPart` shapes it — bypassing the write gate on purpose, exactly as §2
+  // and run 173 §3 do.
+  const refusedAtWrite = await A.call('vibe_v5_paper', { action: 'part', target: 'p1', member: 'r-acad', part: 'two pointers in one paragraph', solution, evidence: [String(good.id)] })
+  ok(refusedAtWrite.ok === false && refusedAtWrite.code === 'VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN',
+    '§1 ★★ the fabricated pointer is refused where it is typed (RUN 177 D3)', refusedAtWrite && refusedAtWrite.code)
+  const partRow = A.kernel.records.put({ track: 'paper', kind: 'paper-part', title: 'v5r-paper|p1|part|r-acad', by: 'r-acad',
+    body: JSON.stringify({ title: 'two pointers in one paragraph', solution, evidence: [String(good.id)] }) })
+  ok(!!partRow && !!partRow.id, '§1 the part row is on disk (this section pins the GATE, not the write gate)', partRow && partRow.id)
+  const stateOfP1 = A.kernel.records.list({ track: 'paper', limit: 2000 }).items.filter((r) => r.kind === 'paper-state')[0]
+  if (stateOfP1) {
+    const fullState = A.kernel.records.get({ id: stateOfP1.id })
+    const stateBody = fullState && fullState.record ? fullState.record.body : (fullState ? fullState.body : null)
+    const body = JSON.parse(String(stateBody))
+    body.parts = { 'r-acad': { recordId: partRow.id, round: 1 } }
+    body.status = 'awaiting-editor'
+    A.kernel.records.put({ track: 'paper', kind: 'paper-state', title: stateOfP1.title, body: JSON.stringify(body), id: stateOfP1.id })
+  }
   const verdict = await qualityOf(A, 'p1')
   ok(verdict && verdict.ok === false, '§1 ★★ the gate REFUSES the paper (run 17: the second pointer was never judged)', verdict && verdict.ok)
   ok(verdict && verdict.code === qualityMod.QUALITY_CODES.CITATION_UNKNOWN,

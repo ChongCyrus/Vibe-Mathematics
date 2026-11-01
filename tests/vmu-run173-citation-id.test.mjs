@@ -118,15 +118,19 @@ const missingOf = (v) => (v && Array.isArray(v.missing) ? v.missing : [])
   await A.call('vibe_v5_paper', { action: 'start', target: 'p2', participants: ['r-acad', 'r-1'] })
   const solution = '可寻址的一处：Members/r-1/Propos/' + card.id + '.md#命题陈述；不可寻址的一处：Members/r-1/Propos/run18-not-a-record.md#§3（这是编的）。'
   const part = await A.call('vibe_v5_paper', { action: 'part', target: 'p2', member: 'r-acad', part: 'false pointer then punctuation', solution, evidence: [String(card.id)] })
-  ok(part.ok === true, '§2 the part is accepted (the write gate checks `evidence`, not the prose)', part.code)
-  const verdict = await qualityOf(A, 'p2')
-  const missing = missingOf(verdict)
-  ok(verdict && verdict.ok === false && verdict.code === qualityMod.QUALITY_CODES.CITATION_UNKNOWN,
-    '§2 ★★ the fabricated pointer is still refused', { ok: verdict && verdict.ok, code: verdict && verdict.code })
-  ok(missing.length === 1 && missing[0].id === 'run18-not-a-record',
-    '§2 …the reported id is the RECORD ID, not the id plus the member\'s punctuation', missing.map((m) => m.id))
-  ok(missing.length === 1 && String(missing[0].path).includes('#§3') && !String(missing[0].path).includes('（'),
-    '§2 …the path keeps the `#anchor` and stops at the prose', missing.map((m) => m.path))
+  // ★★ RUN 177 (run 22, FEEDBACK22 D3): this section used to pin that the prose is NOT judged at `part` — the gate only
+  // looked at `evidence`, so a fabricated pointer was refused at `render`, after the paper had been written and
+  // cross-reviewed. The rule was right and the MOMENT was wrong, so the prose is now resolved where it is typed. The
+  // judgement itself did not change: the id reported is the RECORD id (not the id plus prose punctuation) and the path
+  // still stops at the prose — both are now read off the write-step refusal and off the pure prose check.
+  ok(part.ok === false && part.code === 'VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN',
+    '§2 ★★ a fabricated prose pointer is refused AT THE WRITING STEP (RUN 177 D3)', { ok: part.ok, code: part.code })
+  const prose = qualityMod.checkProsePointers({ text: solution, records: A.kernel.records, codes: qualityMod.QUALITY_CODES })
+  const proseUnknown = (prose && prose.unknown) || []
+  ok(prose && prose.ok === false && proseUnknown.length === 1 && proseUnknown[0].cardId === 'run18-not-a-record',
+    '§2 ★★ the pure prose check names exactly the fabricated id (the real one is not accused)', { ok: prose && prose.ok, ids: proseUnknown.map((u) => u.cardId) })
+  ok(proseUnknown.length === 1 && String(proseUnknown[0].pointer).includes('#§3') && !String(proseUnknown[0].pointer).includes('（'),
+    '§2 …the path keeps the `#anchor` and stops at the prose', proseUnknown.map((u) => u.pointer))
 }
 
 // ── §3 free text is free text: the gate refuses lies, not sentences ─────────────────────────────────────────────────

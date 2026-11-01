@@ -596,7 +596,16 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const fp = fingerprintOf(candidate)
       const fpIndex = byFingerprint.get(track) || new Map()
       byFingerprint.set(track, fpIndex)
-      if (fpIndex.has(fp)) {
+      // ★★★ RUN 178 (run 22, FEEDBACK22 D1 follow-on — MEASURED): an UPDATE that restores an EARLIER body was silently
+      // deduplicated against its OWN STALE fingerprint and the write vanished. `put` never refreshed `byFingerprint` when
+      // it rewrote a row, so after the state row went awaiting-editor → finalized, the index still mapped the OLD body's
+      // fingerprint to that same id; the rollback (which writes the old body back, since a restored-but-undefined `final`
+      // serialises away) then hit `fpIndex.has(fp)`, got `{deduplicated:true}`, RETURNED the existing row — and the row on
+      // disk stayed `finalized`. The receipt said "not finalised", `status` said "finalized": two truths, one record.
+      // An update names the row it rewrites, so it must be WRITTEN: dedupe is about ADDING content, never about replacing
+      // it. The stale self-fingerprint is dropped here so the index answers the body that is actually on disk.
+      if (isUpdate && existingRow && existingRow.fingerprint && fpIndex.get(existingRow.fingerprint) === existingRow.id) fpIndex.delete(existingRow.fingerprint)
+      if (!isUpdate && fpIndex.has(fp)) {
         counters.deduplicated += 1
         mark(fired, K.fingerprintPolicy)
         const existing = records.get(fpIndex.get(fp))

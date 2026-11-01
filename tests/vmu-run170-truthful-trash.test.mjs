@@ -189,9 +189,25 @@ const hire = async (k) => { for (const [id, slot] of SEATS) await k.members.hire
   await hire(A.kernel)
   const card = A.kernel.records.put({ track: 'propositions', kind: 'proposition', title: 'odd-cubes card', body: '二值：1' })
   await A.call('vibe_v5_paper', { action: 'start', target: 'p9', participants: ['r-acad', 'r-1'] })
-  const part = await A.call('vibe_v5_paper', { action: 'part', target: 'p9', member: 'r-acad', part: 'odd cubes',
-    solution: '见 Members/r-1/Propos/run16-odd-cubes.md#四步归纳 的四步归纳。', evidence: [String(card.id)] })
-  ok(part.ok === true, '§5 the part is accepted (a prose citation may point at a member file)', part.code)
+  // ★★ RUN 177 (run 22, FEEDBACK22 D3): the WRITE gate now resolves prose pointers at `part`, so this body is refused
+  // there. This section pins the QUALITY gate's behaviour on a row that already exists (run 16's exact call), so the row
+  // is written directly the way `recordPart` shapes it — bypassing the write gate on purpose.
+  const solution = '见 Members/r-1/Propos/run16-odd-cubes.md#四步归纳 的四步归纳。'
+  const refusedAtWrite = await A.call('vibe_v5_paper', { action: 'part', target: 'p9', member: 'r-acad', part: 'odd cubes',
+    solution, evidence: [String(card.id)] })
+  ok(refusedAtWrite.ok === false && refusedAtWrite.code === 'VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN',
+    '§5 ★★ the fabricated prose pointer is refused where it is typed (RUN 177 D3)', refusedAtWrite && refusedAtWrite.code)
+  const partRow = A.kernel.records.put({ track: 'paper', kind: 'paper-part', title: 'v5r-paper|p9|part|r-acad', by: 'r-acad',
+    body: JSON.stringify({ title: 'odd cubes', solution, evidence: [String(card.id)] }) })
+  ok(!!partRow && !!partRow.id, '§5 the part row is on disk (this section pins the GATE, not the write gate)', partRow && partRow.id)
+  const stateHead = A.kernel.records.list({ track: 'paper', limit: 2000 }).items.filter((r) => r.kind === 'paper-state')[0]
+  if (stateHead) {
+    const full = A.kernel.records.get({ id: stateHead.id })
+    const body = JSON.parse(String(full && full.record ? full.record.body : full.body))
+    body.parts = { 'r-acad': { recordId: partRow.id, round: 1 } }
+    body.status = 'awaiting-editor'
+    A.kernel.records.put({ track: 'paper', kind: 'paper-state', title: stateHead.title, body: JSON.stringify(body), id: stateHead.id })
+  }
   const st = await A.call('vibe_v5_paper', { action: 'status', target: 'p9' })
   const state = Object.assign({}, st.paper, { status: 'awaiting-editor' })
   const view = quality.createRecordsView({ kernel: A.kernel, codes: quality.QUALITY_CODES })
