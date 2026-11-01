@@ -2434,8 +2434,14 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     return recordsFoldStatus()
   }
 
+  // ★★★ RUN 180 (run 25, measured): a prune of a FULL track is ONE operation, not N. Every `remove` ran this whole
+  // snapshot (walk every track, rebuild ~700 rows, patch a multi-MB state file). Run 25 asked for `prune keep:6` on a
+  // 195-row paper track: 189 rows × ~1.2 s ≈ minutes, long enough that the driver's HTTP read of the tool result timed
+  // out and the run died with `UND_ERR_HEADERS_TIMEOUT` before the tool ever answered. `removeMany` flips every row with
+  // the per-row snapshot suppressed and writes the durable fold ONCE at the end.
+  let snapshotSuppressed = 0
   const snapshotRecords = () => {
-    if (!recordsStore || hydratingRecords) return
+    if (!recordsStore || hydratingRecords || snapshotSuppressed > 0) return
     try {
       const tracks = recordTracks || (settings && settings['vmu.records.tracks'])
       if (!Array.isArray(tracks)) return
@@ -2526,6 +2532,29 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     wrap('compact', { snapshot: true })
     wrap('list', { hydrate: true })
     wrap('get', { hydrate: true })
+    // ★★ RUN 180: the batched form of `remove` — one snapshot for the whole batch (see the note above `snapshotRecords`).
+    // Errors are reported PER ROW (a permanent record must not abort the 188 rows behind it).
+    if (typeof records.remove === 'function') {
+      records.removeMany = function removeMany(list = []) {
+        const items = Array.isArray(list) ? list : []
+        const rows = []
+        snapshotSuppressed += 1
+        try {
+          for (const item of items) {
+            const arg = typeof item === 'string' ? { id: item } : (item || {})
+            try {
+              const out = records.remove(arg) || {}
+              rows.push({ id: String(arg.id), ok: true, state: out.state === undefined ? 'trashed' : out.state, purgeAt: out.purgeAt === undefined ? null : out.purgeAt })
+            } catch (e) {
+              rows.push({ id: String(arg.id), ok: false, code: String((e && e.code) || 'VMU_MIDDLEWARE_FAILED'), message: String((e && e.message) || e), hint: (e && e.hint) || null })
+            }
+          }
+        } finally { snapshotSuppressed -= 1 }
+        try { snapshotRecords() } catch { /* persistence must not break the mutation */ }
+        const failed = rows.filter((r) => r.ok !== true)
+        return { ok: failed.length === 0, count: rows.length - failed.length, failedCount: failed.length, rows, failed }
+      }
+    }
   }
   // ── ROUND 2 (task-14): THE APPROVAL GATE, ATTACHED TO THE REAL FACES ──────────────────────────────────
   // Lead's requirement: an undeclared action runs; a GATED action may only QUEUE until a human decides (a real gate,

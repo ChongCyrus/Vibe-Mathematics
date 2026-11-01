@@ -3034,3 +3034,13 @@ run 24 的主线很干净：论文出 PDF、结题三票、四成员全有回合
 - **截断的标题要留全文可抄**：卡名 48 字截断后随 Verified 行继承，而定稿门要求正文逐字出现它。`listVerified` 现在带完整 `statement`，`missingEvidence` 每条给 `requiredLineFull`——闸要人抄一句话，就得把整句话放在回执里。
 - **引用拒绝要给选择**：「不存在」是判决，「相近的有 `rec-7` / `rec-9`」才是出路。`no-such-record` 现在带 `nearby`（按 id/标题近似取前 3）。
 - **提示不能每启动一次就喊一次狼来了**：`vmu.turn.leaderId` 按设计不可持久，于是「单把椅子 + 空设置」每个新进程都重现同一条警告，教会读者忽略它。现在 `leadershipReading` 用 `leaderAssumed` **陈述**「回退到就座主席、来源是席位」，单椅子不再警告；只有**多于一把椅子**（回退决定不了，是真歧义）才警告并点名歧义。`consistent` 语义不变：它回答的始终是"声明的设置是否指向在册主席"。
+
+## ROUND 183 — 一次批量修剪必须一次落盘，否则修复本身先超时（run 25）
+
+第二十五次真机没有报告：brief 让所办用 `prune` 把 paper 轨从 195 条收回 6 条，189 条要进垃圾桶；office 发出了这条调用，转录里 `tool/call seq 36` 之后再无 result，驱动 stderr 收尾于 `HeadersTimeoutError`（`UND_ERR_HEADERS_TIMEOUT`）。账本一行未动 —— 不是 prune 写错了，而是它**根本没能在读超时之前答完**。
+
+根因在持久化的单位上：`kernel/index.js` 里每个 `records.remove` 都触发一次全量 `snapshotRecords()`（遍历所有轨、重建约 700 行、patch 数 MB 的 state 文件），实测约 1.2 s/行，189 行就是分钟级。**一次修理工被要求把整本账重抄 N 遍。**
+
+现在：`records.removeMany(list)` 用 `snapshotSuppressed` 把快照压到批次结束后**只写一次**，逐条 `remove` 且**逐条 try/catch**（失败行报 `{id, ok:false, code, message, hint}` 而不是整批 500），返回 `{ok, count, failedCount, rows, failed}`；`host.js` 的 `prune` 在非 dryRun 且内核提供该面时走批量，`VMU_RETENTION_CONFLICT` 仍进 `pinned`、其余错误带 `code`/`hint` 抛出，逐行 `rc.remove` 保留为回退（老内核行为不变）。回执形状不变：`pruned[]` 每行仍带 `track`、`state:"trashed"`、数字 `purgeAt`。
+
+`tests/vmu-run180-batched-prune.test.mjs`（20/0）钉住：60 行 `keep:5` 只写一次且 < 20 s、55 行各自点名、批量 trash 仍可 restore；20 行含永久行时被钉的那行进 `pinned` 而不阻断其余 16 行；删掉 `removeMany` 后逐行回退仍能修剪且行形状相同。教训：**持久化的单位是一个可观察的变化，不是一次 API 调用**；批量动作必须有一个一次落盘的形状，且必须逐行报告结论。

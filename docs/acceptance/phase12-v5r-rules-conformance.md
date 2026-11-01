@@ -13293,3 +13293,54 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 - **boot 不是作者**：把「不知道作者」写成 `restore` 是把缺失当事实；账本里的动词必须是人做过的事。
 - **引用拒绝要给选择**：「不存在」是判决，「相近的有 rec-7 / rec-9」才是出路。
 - **提示不能每启动一次就喊一次狼来了**：不可持久的设置 + 每次启动都重复的警告 = 训练读者忽略那一行；能在回退里决定的事实就陈述，只在回退决定不了时警告。
+
+## §280 第二十六轮（RUN 180）：一次批量修剪写了 N 次整本账，于是修复本身先超时了
+
+### 280.1 现场：run 25 没有报告，因为驱动读不到回执
+
+第二十五次真机（基线 `f0b0ae26`）的简报第一条就让所办把 paper 轨收回限制内（`vibe_vmu_records {action:"prune", track:"paper", keep:6}`）。轨上有 195 条活行，所以 189 条要进垃圾桶。转录停在 `tool/call seq 36`：office 发出了这条 `prune`，**没有 result**。驱动 stderr 的尾巴是
+
+```
+[TypeError: fetch failed] { [cause]: HeadersTimeoutError: Headers Timeout Error at FastTimer.onParserTimeout }
+```
+
+即 `UND_ERR_HEADERS_TIMEOUT`：不是 vmu 报错，是**请求在超时之前没能把回执吐出来**。`slv-inspect` 因此报 RED（`tool/call count != tool/result count`），`CLOSURE` 说这一轮没拿到 turn receipt。清理正常（`clone_gone=True`、`port_listening=False`、`C_free_GB=9.8`）。
+
+核账：工作区 `VibeMath/vmu/state.json`（3 071 202 B）里 `records` 736 行、paper 轨 519 行（trashed 324 ⇒ live 195），**一条都没动**；同一轮早些时候的 dryRun 回执是诚实的（`liveBefore 195 / wouldPruneCount 189 / prunedCount 0 / pinned []`，前两行 `state:"would-be-trashed"`、`purgeAt:null`）。
+
+### 280.2 根因：`snapshotRecords()` 是「每行一次」的
+
+`vibe-math-vmu/kernel/index.js` 里每个 `records.remove` 都会触发一次**全量持久化快照**：遍历所有轨、重建约 700 行、patch 一个数 MB 的 state 文件。实测每行约 1.2 s，189 行就是几分钟 —— 远超过驱动的读超时。这不是「prune 慢」，是**一次修理工被要求把整本账重新抄 N 遍**。
+
+### 280.3 修法：批量路径 + 逐行结论 + 一次落盘
+
+- `kernel/index.js`：`snapshotRecords` 加 `snapshotSuppressed` 守卫；新增 `records.removeMany(list)` —— 逐条 `remove`、**逐条 try/catch**（失败行报 `{id, ok:false, code, message, hint}`，不中断后面的行），`finally` 里只调一次 `snapshotRecords()`，返回 `{ok, count, failedCount, rows, failed}`。
+- `host.js` 的 `prune`：非 dryRun 且内核提供 `removeMany` 时走批量（`batchRemove`），循环只收集 `batchRows`、循环后一次调用；`VMU_RETENTION_CONFLICT` 仍进 `pinned`，其余错误带 `code`/`hint` 抛出；逐行 `rc.remove` 保留为回退路径（老内核/缺面时行为不变）。
+- 回执形状不变：`pruned[]` 每行仍带 `track`/`state:'trashed'`/数字 `purgeAt`。
+
+### 280.4 机器化
+
+`tests/vmu-run180-batched-prune.test.mjs`（**20 PASS / 0 FAIL**，3 节 + §0 五条源码 pin）：
+
+- §0：快照可被抑制；内核暴露 `removeMany`；抑制包住整批且末尾只写一次；`prune` 优先用批量；逐行失败**上报**而不是抛出。
+- §1（60 行、`keep:5`）：`prunedCount:55`、`liveBefore:60`、`liveAfter:5`；55 行都带自己的 `track`、`state:"trashed"`、数字 `purgeAt`；`pinned` 空；**耗时 < 20 s**；读面 5 live / 55 trashed；批量 trash 仍可 `restore`。
+- §2（20 行含 1 行永久、`keep:3`）：`ok:true`、`pinned` 点名那一行、其余 16 行照常移动、被钉的行 `expand` 仍 `live`、`status.records.trashed` 与回执一致。
+- §3：删掉 `removeMany` 后逐行回退仍 `prunedCount:6`，行形状相同（回退不是死代码）。
+
+定向回归：records 5/0、run165 1/0、run170 1/0、run176 2/0、quota 2/0、trash 2/0、fold 2/0、vmu-host 4/0、run179 1/0、host 6/0。
+
+收口链：`update-doc-counts --write`（`JOBS total=730 suites=622 probes=108`）→ `regen-all --write` 17/17 → `--check` 17/17 in sync → `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 两条提示）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)` → 全量 T1。
+
+**T1：** `/d/_tmp/t1-r281-run180b.log` = **TOTAL 661 PASS 661 FAIL 0**（suites 597 · probes 64）；首跑 `/d/_tmp/t1-r280-run180.log` 曾 1 红（`audit-declaration-criterion` 把 §3 的 `.every()` 判成可能空集空洞通过）⇒ 补一条 `p.pruned.length === 6` 前置守卫后全绿（该套件 91 passed / 0 failed）。
+
+### 280.5 未闭合账
+
+- run 25 本身没有拿到报告：**prune 的真机验证要在第二十六次真机重做**（简报把 `keep` 放大到 120，只移动约 75 行，避免再次把驱动读超时当验证）。
+- 互审 3 轮上限、F24-5（引用闸先于阶段门）仍在账上。
+- `snapshotRecords` 的单行路径仍是「一次一行一次快照」：单条 `remove/restore/purge` 的调用者不受影响（一次就是一次），但**任何未来的批量面都必须走 `removeMany` 这类形状**。
+
+### 280.6 三条教训
+
+- **一次修理工不该是 N 次快照**：持久化单位是「一个可观察的变化」，不是「一次 API 调用」；批量动作必须有一个一次落盘的形状。
+- **批量要逐行报错，不要整批抛出**：189 行里有 1 行被钉住时，读者需要知道「哪一行没走、其余都走了」，而不是一个 500。
+- **回执的形状是给读者看的**：`pruned[]` 每行点自己的 `track` 不是审美问题 —— 一个不知道自己在哪条轨上的行，读者没法核对它是不是该走的那一行。

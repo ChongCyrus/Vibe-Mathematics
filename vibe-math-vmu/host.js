@@ -1069,6 +1069,10 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             const doomed = allRows.slice(0, Math.max(0, liveBefore - wantKeep))
             const moved = []
             const pinned = []
+            // ★★ RUN 180 (run 25): when the kernel offers the batched form, use it — one durable write for the whole prune.
+            // Measured: 189 per-row snapshots took minutes and the caller's read timed out before the receipt came back.
+            const batchRemove = !preview && typeof rc.removeMany === 'function'
+            const batchRows = []
             for (const row of doomed) {
               if (!row || typeof row.id !== 'string') continue
               // ★★ RUN 176 (run 20 FEEDBACK item ③): each line of the prune list gave `id` and `title` but NOT the track,
@@ -1080,12 +1084,26 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                 moved.push({ id: row.id, track: rowTrack, title: row.title === undefined ? null : row.title, state: 'would-be-trashed', purgeAt: null })
                 continue
               }
+              if (batchRemove) { batchRows.push({ id: row.id, track: rowTrack, title: row.title === undefined ? null : row.title, reason: pruneWhy, by: callerBy }); continue }
               try {
                 const rcpt = rc.remove({ id: row.id, reason: pruneWhy, by: callerBy }) || {}
                 moved.push({ id: row.id, track: rowTrack, title: row.title === undefined ? null : row.title, state: rcpt.state || 'trashed', purgeAt: rcpt.purgeAt === undefined ? null : rcpt.purgeAt })
               } catch (e) {
                 if (e && String(e.code || '') === 'VMU_RETENTION_CONFLICT') { pinned.push(row.id); continue }
                 throw e
+              }
+            }
+            if (batchRemove && batchRows.length > 0) {
+              const batch = rc.removeMany(batchRows.map((r) => ({ id: r.id, reason: r.reason, by: r.by }))) || {}
+              const byId = new Map(batchRows.map((r) => [r.id, r]))
+              for (const got of Array.isArray(batch.rows) ? batch.rows : []) {
+                const src = byId.get(got.id) || {}
+                if (got.ok === true) {
+                  moved.push({ id: got.id, track: src.track === undefined ? pruneTrack : src.track, title: src.title === undefined ? null : src.title, state: got.state || 'trashed', purgeAt: got.purgeAt === undefined ? null : got.purgeAt })
+                  continue
+                }
+                if (String(got.code || '') === 'VMU_RETENTION_CONFLICT') { pinned.push(got.id); continue }
+                throw Object.assign(new Error(String(got.message || 'prune failed')), { code: got.code, hint: got.hint })
               }
             }
             const liveAfter = preview ? liveBefore : Math.max(0, liveBefore - moved.length)
