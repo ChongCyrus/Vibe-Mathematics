@@ -3104,3 +3104,11 @@ Lesson: **a read face is a promise about the write face**. If it cannot keep the
 Each is now a face: `members.noteWake` wired through `turn.open`'s `onTurnOpen` seam (the moment a seat is woken — not `wake()`, which is message delivery); `verifiedRequirements` on `paper status`, with a three-branch `writeAs` that says whether to wrap the line in `$…$`; warnings prefixed with their round plus `forcedAfterCapRound` and a `warningsMeans` telling the reader to compare the two; `summary.closureAccount` pointing at the frozen row RUN 185 writes; `typeMeans`/`kindIsLabelOnly`; and step 3 voting where the tally is written.
 
 Lesson: **a counter with no writer is worse than no counter, because it reads like a fact**. And a recommendation is not excused from being correct — it is the door most readers walk through.
+
+## ROUND 193
+
+**"What can I call" answered with a session fact.** Run 34 ran fine — proof filed, Lean job passed, three votes, PDF 161 017 B — and its members still had to guess tool names between turns: `vibe_v5_tool_help({member})` returned `tools: null` with `no child session has been learned for member "r-1" yet`. Both true. The seat's VISIBLE set does need a live Agent, one child per activation. But the DECLARATION is static, and the question was "what names exist".
+
+The forwarder now merges a `catalog` of the pack's published names (48, sorted) plus `catalogMeans`, which says three things at once: this is the pack's DECLARED surface; it is NOT your seat's visible set (that one narrows by role and by meeting type, and needs a live Agent); for the authoritative reading, ask `vibe_vmu_tools` inside a turn. Nothing about the live reading is overwritten — `tools` stays `null`, `count` stays `null`, `source` stays `no-live-agent`, and the refusal keeps its field. The fallback fires ONLY when the live table is absent.
+
+Lesson: **"cannot be read now" and "does not exist" are different facts, and one field cannot say both.** Give the reader what is static, name what is missing, and never let the supplement turn a refusal into a success — the next live run would then "verify" a visible set that was never read.

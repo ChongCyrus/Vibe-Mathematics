@@ -13711,3 +13711,45 @@ RUN 185（`b81204d4`）把每次关会的票板读成**一行耐久账**（`clos
 - **只有读者没有写者的数字，比没有这个数字更坏**：`wakes:0` 看起来像「这些席位从没被叫醒」，而真相是没人维护它。字段要么有写者，要么不该出现在读面上。
 - **历史必须自带日期**：`warnings` 不是错的，错的是它不带轮号地出现在「现在」旁边。一条只追加的清单，每一条都要能说清它属于哪一轮。
 - **两套票板并存时，骨架必须指对那一套**：`poll` 与 `vibe_vmu_vote` 都真实存在、都能投票，但只有后者进 `closureVote`。骨架是「推荐」不是门禁——正因如此，它更不该教错门。
+
+## §290 RUN 190（第三十五次真机在跑期间修 FEEDBACK33 1.5：回合外「我能调什么」只剩一句拒绝）
+
+### 290.1 账从哪来
+
+run 34（基线 `bf3f23df`）的成员在**回合之间**问 `vibe_v5_tool_help({ member })`——他们要在下一回合开始前先规划下一步，所以先查自己有什么工具。得到的是 `tools: null` 加一条 `VMU_MEMBER_SESSION_NOT_LIVE`/`no child session has been learned for member "r-1" yet`。
+
+两句话都是真的：**席位可见集**确实需要活的 Agent（每次激活才起一个子会话），回合外没有。但**声明是静态的**——pack 发布的那张工具表，跟会话状态无关，谁都读得到。读者问的是「有哪些名字」，回答的却是一个会话事实；于是他只能靠猜名字、猜参数，猜错一次学一次。
+
+### 290.2 修法（一处：`vibe-math-vmu/packs/v5r/tools.js` 的 `toolHelp`）
+
+`return Object.assign({}, view, forwarded, …)` 之前加 `catalogFallback`：
+
+- 只在 `!view || Array.isArray(view.tools) === false` 时产出，即**活读数缺席**才补；活表在就一个字段都不动（`catalogFallback || {}` 合并，不覆盖）。
+- `catalog` = `V5R_PACK_TOOLS.map(t => t.name).sort()`（48 个名字），`catalogMeans` 明说三件事：这是 pack 的 **DECLARED** 面；**不是你的席位可见集**（席位可见集随角色、随会议类型收窄而变，那个读数需要活 Agent）；想知道权威可见集就在回合内读 `vibe_vmu_tools`。
+- 拒绝面一个字段没变：`tools` 仍是 `null`、`count` 仍是 `null`、`source` 仍是 `no-live-agent`、`refusal` 仍在。**补的是声明，不是把拒绝说成成功。**
+
+坑：python heredoc 里写 `\'` 会让单引号字符串在 `pack's` 处断裂（`SyntaxError: Unexpected identifier 's'`），改用双引号字符串才过 `node --check`。
+
+### 290.3 机器化
+
+`tests/vmu-run190-tool-catalog.test.mjs`（**2/0**）：
+
+- §0 五条源码 pin：`catalogFallback` 存在；只在该条件成立时产出（活表永不被替换）；带 `catalogMeans`；其中含 `not your seat`；合并用的是 `catalogFallback || {}`。
+- §1 真装配（`entry.apply` + `packs:['v5r']` + hire 两席）：`ok:true` 不是抛错；`tools === null`；`refusal.code` 仍在；`catalog.length >= 40` 且含 `vibe_v5_tool_help`/`vibe_v5_meeting`；`catalogMeans` 含 `DECLARED`/`not your seat`/`live Agent`；`count/liveAgent/source` 三个活读数字段值未被改动。
+
+### 290.4 定向回归与收口
+
+`v5r-tools 1/0`、`tools-action-arity 1/0`、`run189 1/0`、`run188 1/0`、`run187 1/0`、`prompt- 24/0`、`vmu-tools 3/0`、`vmu-host 4/0`、`tools 10/0`。
+
+收口链：`update-doc-counts --write`（`JOBS total=740 suites=632 probes=108`）→ `regen-all --write` 17/17 → `--check 17/17 in sync` → `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 两条既有提示）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`；全量 T1 `/d/_tmp/t1-r370-run190.log` = **TOTAL 740 PASS 740 FAIL 0（suites 632 · probes 108）**。
+
+### 290.5 未闭合
+
+- **内核面 `vibe_vmu_tools` 仍是纯拒绝**：内核不知道 pack 的名字表（第一原则：内核不认识机构），所以 `catalog` 只能由 pack 面补。要覆盖内核面，得让内核读「任一 pack 声明的工具名」，那是新的耦合，单独一轮定。
+- FEEDBACK33 1.2（round 语义）、2.2/2.3/2.4（提示词三句，20000 字上限已用 19976）、FEEDBACK32 ①⑤⑥ 仍未动。
+- 本轮一处**尚未真机复验**（run 35 的简报写的是 RUN 189 六条 + RUN 188 三条，不含本条）。
+
+### 290.6 两条教训
+
+- **「读不到」与「不存在」是两件事，回执必须分开说**：`tools: null` 表示「活读数此刻拿不到」，不表示「没有工具」。只给前者，读者会以为自己是瞎的。
+- **补声明不能顺手把拒绝改成成功**：`catalog` 是另开的字段，`tools` 依旧是 `null`。否则下一轮的真机就会「验证通过」一个根本没生效的可见集。

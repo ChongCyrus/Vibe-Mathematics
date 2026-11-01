@@ -566,7 +566,21 @@ function toolHelp(args = {}, exec = {}) {
     forwarded[field] = present ? view[field] : null
     if (!present) absentFields.push(field)
   }
-  return Object.assign({}, view, forwarded, { tool: 'vibe_v5_tool_help',
+  // ★★ RUN 190 (run 34 / FEEDBACK33 1.5, MEASURED): OUTSIDE A TURN THE ANSWER WAS ONLY A REFUSAL. Run 34's members asked
+  // "what can I call" between turns (to plan the next step) and got `tools:null` + `VMU_MEMBER_SESSION_NOT_LIVE` — true,
+  // but the DECLARATION is static: the pack's published tools are the same list whatever session state is. The seat-scoped
+  // VISIBLE set genuinely needs a live Agent, so it stays `null`; what is added is the catalog, clearly marked as the
+  // declaration and NOT as "what you can call right now" (narrowing by seat/meeting type is exactly why they differ).
+  const catalogFallback = (() => {
+    if (!view || Array.isArray(view.tools)) return null
+    const names = V5R_PACK_TOOLS.map((t) => (t && t.name) || null).filter((n) => typeof n === 'string').sort()
+    if (names.length === 0) return null
+    return {
+      catalog: names,
+      catalogMeans: "this is the pack's DECLARED tool surface (every name the v5r pack publishes), not your seat's live visible set: the per-seat set depends on your role and on any meeting-type narrowing, and that reading needs a live Agent. Use this list to look a name up; use `vibe_vmu_tools` inside a turn for the authoritative visible set",
+    }
+  })()
+  return Object.assign({}, view, forwarded, catalogFallback || {}, { tool: 'vibe_v5_tool_help',
     note: 'thin forwarder: the kernel\'s toolsView reading (the member\'s VISIBLE set from the live provider), not the pack declaration; purpose:null means the host registered no description for that name'
       + (absentFields.length === 0 ? ''
         : '；' + absentFields.join('/') + ' 在本侧读数为 null：该读数在这一侧不存在（toolsView 没有带它），本面不自行推算——要读声音/视角就读 vibe_vmu_tools 的同名字段') })
