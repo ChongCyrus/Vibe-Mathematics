@@ -13546,3 +13546,38 @@ run 32 在同一工作区里量到两句话：office 内核关会时读 `closure
 
 - **「说出时刻」与「冻结时刻」是两件事**：前者是回执的诚实，后者是账本的可信。只做前者，后来的读者仍然要猜。
 - **簿记失败不许回滚学术动作**：关会成功而冻结失败时，正确的回执是「关会成立 + 冻结失败 + 现在该引用什么」，不是把两者绑成一个事务。
+
+## §286（RUN 186）夹断的名字与半个词汇表
+
+### 286.1 账从哪来（run 29 的 FEEDBACK29）
+
+两句话，都是「回执把读者推进墙里」的同一类：
+
+- **D8**：正文闸拒绝定稿时，message 说「这条结论的标题行可以直接粘进正文」，而它给的正是被 `…` 截断的那一行（`rec-714` 的 `…Σ_{k=1}^{n} k² = n(n+1)(2n`）。照抄必失败；读者唯一的出路是自己想到「这行是截断的」，回记录库找全文。
+- **D4**：成员把 `warrant_kind` 写成 `"debate"`，被拒的 hint 列了三种合法形态（`debate-unanimous`/`lean-conformance`/`literature`），却没有说 `debate` 是其中第一个的短名——而机构自己的 `verdict_final` 回执里，同一个东西就叫 `kind:"debate-unanimous"`、`mode:"unanimous"`。半个词汇表比没有词汇表更费时间。
+
+### 286.2 修法
+
+- `vibe-math-vmu/packs/v5r/paper-quality.js`（`VERIFIED_MISSING`）：当 `requiredLineTruncated && requiredLineFull` 时，message 改口为「这条结论的完整陈述（粘进正文的是它，不是行名）：`<requiredLineFull>`（行名 `<requiredLine>` 只是前缀，以 `…` 收尾）」；没有全文时保留原句。结构化字段 `requiredLine`/`requiredLineFull`/`requiredLineTruncated` 不变（只改措辞，不改判据）。
+- `vibe-math-vmu/packs/v5r/tools.js`（`toolVerifiedPromote`）：`warrant_kind` 先经 `KIND_ALIAS` 解析——`debate`/`ballot`/`debate-unanimity` → `debate-unanimous`；`lean` → `lean-conformance`；`literature_reference` → `literature`——**三种契约形态不变**，短名只是它们的地址；回执新增 `warrantKindGiven`/`warrantKindAliased`/`warrantKindMeans`，把「你写的词」「落账的形态」「为什么可以不同」一次说清。既非契约也非地址的词仍然具名拒。
+
+### 286.3 机器化
+
+- `tests/vmu-run186-truncated-hint.test.mjs` **3 PASS / 0 FAIL**：§0 九条源码 pin（message 分支键、完整陈述句、前缀说明、`KIND_ALIAS`、`warrantKindGiven`/`Aliased`/契约-地址说明）；§1 用最小 records 面直接调 `checkQuality`，断言 `VMU_PACK_V5R_CORE_PAPER_VERIFIED_MISSING` 且 message 含「完整陈述」+ 全文 + 「以 `…` 收尾」、**不含**旧的「可直接粘进正文的标题行」、`missing[0].requiredLineTruncated === true` 且 `requiredLineFull` 为全文；§2 真装配三席：带 `debate_ruling` 的 p=1 卡 → `vibe_v5_verified_promote { warrant_kind: "debate" }` 成功、`warrant.kind === "debate-unanimous"`、`warrantKindGiven === "debate"`、`warrantKindAliased === true`、means 含契约形态；用契约词再走一次 ⇒ `Aliased === false`；`warrant_kind:"guesswork"` 仍拒且 hint 列三种契约形态。
+- 定向回归：`--only run186` 1/0、`paper` 11/0、`verified` 5/0、`v5r-tools` 1/0、`run31` 7/0、`run185` 1/0、`run97` 2/0、`vmu-host` 4/0。
+
+### 286.4 收口链
+
+`update-doc-counts --write`（`JOBS total=736 suites=628 probes=108`）→ `regen-all --write` 17/17 → `--check` 17/17 in sync → `PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`；`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **TOTAL 667 PASS 667 FAIL 0（suites 603 · probes 64）**（`/d/_tmp/t1-r330-run186.log`）。
+
+### 286.5 未闭合
+
+- **D7（run 29）未动**：正文闸要求论文正文逐字覆盖**全库**已验证结论（run 29 是 18 条），对单一命题论文过重。规则 L59 要求论文「把原总问题及所有有价值的产物系统梳理」，所以「不覆盖」确实该被说；但「逐字抄进正文」不是唯一的系统梳理形式（可以引用、可以综述）。下一轮把它改成「本研究所在论文涉及范围内必须覆盖，其余以 advisory 列出」，并同步机器化。
+- **D6（run 29）未动**：会议 `floor` 回执里 `minVotes`/`gate.required`/`invitedEligible` 三个「门槛」并存，语义未在回执里区分。
+- **D13（run 29）未动**：框架生成的会议行被 `EVIDENCE_MISSING` 报成 `no-such-record` 且「相近的」给了不相干候选；`lastRefusal` 记成 `VMU_NO_SUCH_OBJECT`。
+- run 33（基线 `a79252f8`）在写本节时仍在跑；RUN 185 的关会冻结与 RUN 186 的两处措辞复验留给第三十四次真机。
+
+### 286.6 两条教训
+
+- **回执里的「可直接粘」必须是闸真正接受的那个字符串**：截断是显示策略，不是契约；把显示值当契约交给读者，等于让每个作者都要自己 debug 一次闸。
+- **词汇表要么完整要么拒绝**：一个词如果属于体系（同一机构在别处这么叫），就该被接受并记录地址；如果它不属于，拒绝语必须说清它为什么不属于。半个词汇表只制造时间成本。

@@ -1835,7 +1835,17 @@ function toolVerifiedPromote(args = {}, { kernel, exec } = {}) {
   const writerGate = singleWriter({ records, cardId: sourceId, by: member, writer: 'promoteVerified', track: VERIFIED_TRACK })
   const writerRefusal = gateRefuse(writerGate)
   if (writerRefusal) return writerRefusal
-  const warrantKind = has(args.warrant_kind) ? str(args.warrant_kind).trim() : ''
+  const warrantKindGiven = has(args.warrant_kind) ? str(args.warrant_kind).trim() : ''
+  // ★★ RUN 186 (run 29 / FEEDBACK29 D4): a member passed warrant_kind:"debate" — the institution's own ruling receipt
+  // calls the form `debate-unanimous`, and the refusal listed the three legal forms while silently dropping the short
+  // word the caller had just read elsewhere. A vocabulary that half-accepts a word is a trap: either refuse the concept
+  // or accept the address. The three forms stay the CONTRACT; their short names are ADDRESSES for it, and the receipt
+  // records which one was read (`warrantKindGiven` + `warrantKindMeans`) so nothing is rewritten behind the caller.
+  const KIND_ALIAS = {
+    debate: 'debate-unanimous', ballot: 'debate-unanimous', 'debate-unanimity': 'debate-unanimous',
+    lean: 'lean-conformance', literature_reference: 'literature',
+  }
+  const warrantKind = KIND_ALIAS[warrantKindGiven] || warrantKindGiven
   // ★ B2: a literature promotion names its SOURCE as the warrant. The caller still passes warrant_kind:"literature"
   //   and `literature_ref`; the row's warrant id becomes the citation, so "why settled" = "it is theorem X of Y".
   let warrantId = has(args.warrant) ? str(args.warrant).trim() : ''
@@ -1899,6 +1909,14 @@ function toolVerifiedPromote(args = {}, { kernel, exec } = {}) {
     by: member, fidelity: kernel && kernel.fidelity ? kernel.fidelity : null })
   return Object.assign({ ok: true, tool: 'vibe_v5_verified_promote', card: sourceId,
     warrant: { id: warrantId, kind: warrantKind },
+    // ★★ RUN 186 (D4): the receipt answers the question the caller actually asked — "did the word I typed count, and
+    // does the row say the same thing?" A short address that is silently rewritten is indistinguishable from a typo
+    // that happened to work, so the given word and the canonical form are both named.
+    warrantKindGiven,
+    warrantKindAliased: warrantKindGiven !== warrantKind,
+    warrantKindMeans: warrantKindGiven === warrantKind
+      ? 'the form you passed is the contract word, and the row records it unchanged'
+      : 'you passed the short address "' + warrantKindGiven + '"; the CONTRACT form is "' + warrantKind + '" and the row records that. The three contract forms are debate-unanimous, lean-conformance and literature — the short words debate/ballot/lean/literature_reference are only ways to say them',
     p1Evidence: pGate === null ? 'debate-unanimous (p=0 disproof)' : pGate.evidenceForm,
     // ★ B3：p=0 的否证也由辩论裁决产生，所以它同样有一条路名，并说清它与 p=1 的三条路的关系。
     p1Route: pGate === null ? 'debate' : (pGate.p1Route === undefined ? null : pGate.p1Route),

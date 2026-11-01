@@ -647,7 +647,12 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
     return {
       ok: false, code: codes.VERIFIED_MISSING,
       message: '正文漏掉了记录库里已有的结论：' + missingEvidence.length + ' 条（首条 ' + first.kind + ' `' + firstLabel + '`）——已检验通过的命题与已解决的子问题必须出现在正文里'
-        + (first.requiredLine ? '；可直接粘进正文的标题行：`' + first.requiredLine + '`' : ''),
+        // ★★ RUN 186 (run 29 / FEEDBACK29 D8): the message used to offer the TRUNCATED name as "paste this verbatim",
+        // so an author who pasted exactly what the gate printed still failed (the row name stops at `…` on a long
+        // formula). When the name is a ceiling, quote the full sentence instead and say which one is which.
+        + (first.requiredLineTruncated && first.requiredLineFull
+          ? '；这条结论的完整陈述（粘进正文的是它，不是行名）：`' + first.requiredLineFull + '`（行名 `' + first.requiredLine + '` 只是前缀，以 `…` 收尾）'
+          : (first.requiredLine ? '；可直接粘进正文的标题行：`' + first.requiredLine + '`' : '')),
       hint: (first.requiredLineIdentifier
         ? '这条结论的行名里有**标识符**（例如 `n_plus_n_eq_two_n`）：把它按**纯文本原样**写进正文，**不要**包进 `$…$`——数学模式里每个 `_` 都是下标，包裹后 xelatex 会报 `! Double subscript.`（run 21 实测：闸自己给过「包进 `$…$`」的建议，照做反而编不过；已改为不再对标识符推荐数学形式）。'
         : (first.requiredLineMath ? '这条结论的标题带数学记号：把它写成配对 `$…$` 的数学形式（例如 `' + first.requiredLineMath + '`）最省事——渲染器会原样保留配对 `$…$` 里的内容当数学，而裸写标题会被转义成满页反斜杠；两种写法都能过这道闸。' : ''))

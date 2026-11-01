@@ -3078,3 +3078,9 @@ run 32 把同一张结题票板摆给了两个读者：office 关会时读到 `c
 ## ROUND 188
 
 **A close names an instant; the account keeps moving unless something is written.** RUN 185 (`freezeClosureVote`) writes ONE durable row per close — `closure-freeze|<meeting|institute>|<at>|w<window>` on the `state` track — holding `{votesCast, cast, confirmed, missing, eligible, voters}` as of that instant. The live reading (`vibe_vmu_status { detail: "closure" }`) keeps answering "now"; the row answers "at close"; a later vote edits neither the row nor its revision. The close receipt carries `closureVoteFrozen` (with `recordId`), and a failed freeze is reported next to a close that still succeeded: bookkeeping never rolls back an academic act. Written from run 32's two readers, one tally.
+
+## ROUND 189
+
+**A hint that quotes the truncated form of a string is a hint that cannot be followed.** RUN 186 makes the prose gate quote the string it actually accepts: when the settled conclusion's title was shortened with `…`, the refusal now prints the FULL statement (and says the line name is only a prefix), so "paste this" is true for the first time. The same round turns the three warrant forms into a contract with addresses: `debate`/`ballot`/`lean`/`literature_reference` resolve to `debate-unanimous`/`lean-conformance`/`literature`, and the receipt reports `warrantKindGiven` and `warrantKindAliased` so the caller can see whether the word they typed is the word that was recorded.
+
+Lesson: **display values are not contracts** — a truncated name shown to a reader is a rendering decision, and an instruction that reuses it as a paste-able answer hands the reader a bug to solve. And a vocabulary that accepts a word everywhere except at the one gate that matters is a trap: accept it as an address and record the resolution.
