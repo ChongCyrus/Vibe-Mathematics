@@ -3074,3 +3074,7 @@ run 32 把同一张结题票板摆给了两个读者：office 关会时读到 `c
 同一轮还修了一次「拒绝没有行为人」：一句话命题被辩论闸拒时，旧措辞只说要正式证明，于是 run 29 的所办自己去写了成员的证明并挂在该成员名下——一个人既是作者又是裁判。现在这句话命题的拒绝语与卡片形态共用同一段 `REACHABLE INSTEAD`：点名唤醒作者、点名 `drive`、并明说 office 代写不是对证明的测量。
 
 教训：**回执不写时刻，迟早会被读成永久**；而**干净的工作区是复验的一部分**——续跑旧目录会让模型同时看到 `Members/` 与 `VibeMath/Members/` 两套库根，它问的那句 "there are two library roots?" 不是模型疯，是输入脏。
+
+## ROUND 188
+
+**A close names an instant; the account keeps moving unless something is written.** RUN 185 (`freezeClosureVote`) writes ONE durable row per close — `closure-freeze|<meeting|institute>|<at>|w<window>` on the `state` track — holding `{votesCast, cast, confirmed, missing, eligible, voters}` as of that instant. The live reading (`vibe_vmu_status { detail: "closure" }`) keeps answering "now"; the row answers "at close"; a later vote edits neither the row nor its revision. The close receipt carries `closureVoteFrozen` (with `recordId`), and a failed freeze is reported next to a close that still succeeded: bookkeeping never rolls back an academic act. Written from run 32's two readers, one tally.

@@ -656,6 +656,25 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             throw noSuchMeeting(pid)
           }
           if (action === 'snapshot') return Object.assign({ ok: true, action }, live().snapshot())
+          // ★ RUN 185: ONE frozen row per close, best effort — a freeze that fails must not undo a close that
+          // succeeded, so the receipt carries the failure instead of throwing.
+          const freezeReading = (meetingId, frozenBy, frozenWhy) => {
+            try {
+              if (!kernel || typeof kernel.freezeClosureVote !== 'function') {
+                return { closureVoteFrozen: null, closureVoteFrozenMeans: 'this kernel exposes no freeze seam, so the as-of-close reading was NOT written as a row: quote closureVote + closureVoteAsOf instead' }
+              }
+              const got = kernel.freezeClosureVote({ meeting: meetingId, by: frozenBy === null || frozenBy === undefined ? null : String(frozenBy), why: frozenWhy === null || frozenWhy === undefined ? null : String(frozenWhy) })
+              return {
+                closureVoteFrozen: got,
+                closureVoteFrozenMeans: 'the as-of-close closure reading is now a durable record (' + String(got && got.recordId) + ') on the `state` track; later votes change the live reading and never this row',
+              }
+            } catch (e) {
+              return {
+                closureVoteFrozen: { ok: false, code: (e && e.code) || 'VMU_ENGINE_UNAVAILABLE', message: String((e && e.message) || e) },
+                closureVoteFrozenMeans: 'the close itself succeeded; freezing the as-of-close reading FAILED (see closureVoteFrozen), so quote closureVote + closureVoteAsOf from this receipt instead',
+              }
+            }
+          }
           if (action === 'close') {
             const pid = sid(id)
             if (!pid) return meetingFieldRefusal('close')
@@ -670,7 +689,10 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                   'let the chair close it (pass actor:"<chair id>"), or finish the primitive meeting through the service face; the office (root) may close without a member seat')
               }
               const out = await primitive.close(reason || 'closed', { force: force === true, by: actor !== undefined && actor !== null && String(actor) !== '' ? String(actor) : (by !== undefined && by !== null && String(by) !== '' ? String(by) : null) })
-              return Object.assign({ ok: true, action, id }, out, closeGate ? { chairGate: closeGate } : {})
+              // ★ RUN 185 (run 32): the close NAMED an instant and the account kept moving. Freeze the reading as a
+              // durable row so the as-of-close account survives the next vote (see freezeClosureVote in kernel/index.js).
+              const primitiveFreeze = freezeReading(pid, actor !== undefined && actor !== null && String(actor) !== '' ? String(actor) : (by || member || null), reason)
+              return Object.assign({ ok: true, action, id }, out, closeGate ? { chairGate: closeGate } : {}, primitiveFreeze)
             }
             // A2: closing a SERVICE meeting uses the service's own close (its rails apply). The two close semantics
             // DIFFER and the receipt says so: the service moves the meeting to its ARCHIVE (it leaves the service
@@ -719,6 +741,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                 // the moment its numbers belong to, and says in words that closing does not freeze it.
                 closureVoteAsOf: closeClosureVote && closeClosureVote.votersAsOf !== undefined ? closeClosureVote.votersAsOf : null,
                 closureVoteAsOfMeans: 'the instant the closureVote numbers above were computed; this close does NOT freeze the reading — a vote cast after it changes the same durable record, so quote closureVote + closureVoteAsOf together as the as-of-close account',
+                ...freezeReading(pid, actor !== undefined && actor !== null && String(actor) !== '' ? String(actor) : (by || member || null), reason),
                 closureVoteNote: closeClosureVote === null || closeClosureVote === undefined
                   ? 'this kernel publishes no closure-vote reading, so this receipt cannot say whether every enfranchised member judged the question solved — the close below is a fact, the closure vote is UNREAD here'
                   : 'closureVote (cast/confirmed/votesCast/missing) is the SEPARATE unanimity reading over the same INSTANCE, not a requirement of this close and not changed by it: this close passed the rails named in `enforced` (' + (closeEnforced.length ? closeEnforced.join(', ') : 'none listed') + ') while the closure vote reads cast=' + String(closeClosureVote.cast === true) + ', confirmed=' + String(closeClosureVote.confirmed === true) + ', missing=' + JSON.stringify(closeClosureVote.missing || []) + ' — so "closed" does not mean "unanimously judged solved", and a member named in `missing` is who to ask before claiming closure. THE VOTES ARE CAST THROUGH `vibe_vmu_vote` AT THE INSTITUTE LEVEL, so the meeting board (`present`, `motions`, `votes`) records NO vote events for them: a chair who sees votesCast=' + String(closeClosureVote.votesCast === undefined || closeClosureVote.votesCast === null ? '?' : closeClosureVote.votesCast) + ' next to an empty motions list is reading two different records, not two different truths. ★ Closing does NOT freeze this reading: it is the durable, latest-wins record (closureVoteAsOf names the instant it was read), so a vote cast after this close changes what a later reader sees while the numbers in THIS receipt stay the as-of-close account',

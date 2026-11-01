@@ -13510,3 +13510,39 @@ r-2 的子会话在关会之后声称自己投的是 `solved=false`，并读到 
 - **回执必须回答「何时」**：一个读数不写时刻，另一个读者就会把它当成永久事实（r-2 的 `against` 与 office 的 `cast` 都是真的，差别只在读的时刻）。
 - **预算有两种**：墙钟与堆。run 28 打满墙钟未写报告，run 29/31 在 712–872 s 打满堆——简报把「先做负向探针」写在主线前面，等于用预算换噪音。
 - **工作区也是被测输入**：续跑旧目录会让模型看到两套库根；干净的输入才叫真机复验，否则验的是上一轮的残留。
+
+## §285 RUN 185（第二十八轮）：命名一个时刻不等于冻结一个时刻
+
+### 285.1 账从哪来
+
+run 32 在同一工作区里量到两句话：office 内核关会时读 `closureVote{cast:true, confirmed:true, votesCast:3}`，而 r-2 的子会话（自己的回合、自己的内核）回报它投的是 `solved:false`，读到 `for=[r-acad, r-2]、against=[r-1]、cast:false`。两句都真——`closure_votes` 是耐久 LATEST-WINS 键，关会只是「读了一次」，之后任何一票都会改写同一个记录。RUN 184 教回执**说出读的时刻**（`closureVoteAsOf`）。但说出时刻不是冻结：审计者问「m2 结题时研究所判了什么」，答案仍然取决于后来谁又投了一票。
+
+### 285.2 修法：关会时写一行 as-of 账，且只写不改
+
+- `vibe-math-vmu/kernel/index.js` 新增 `freezeClosureVote({ meeting, by, why })`：读一次 `closureVoteView()`，把 `{meeting, frozenAt, window, votesCast, cast, confirmed, missing, eligible, voters}` 序列化成**耐久记录行**（`track:'state'`、`kind:'state'`、标题 `closure-freeze|<meeting|institute>|<at>|w<window>`、`tags:['closure-freeze']`），返回 `{ok, recordId, frozenAt, window, votesCast, cast, confirmed, missing, means, readingMeans, gatingMeans}`。它**不改**活读数、**不门**关会；活读数由 `vibe_vmu_status { detail: "closure" }` 回答，as-of 账由这一行回答——两个问题、两个答案、都诚实。
+- `vibe-math-vmu/tools/meeting.js` 的 close 走**同一个 helper** `freezeReading(meetingId, by, why)`（两条关会路径：primitive 与 service），回执带 `closureVoteFrozen` + `closureVoteFrozenMeans`。冻结失败**不撤销**已经成功的关会：helper 捕获异常，把 `{ok:false, code, message}` 放进回执，并说明「关会成功、冻结失败，请引用本条回执的 `closureVote` + `closureVoteAsOf`」。理由：结题是学术动作，记账是簿记动作，簿记失败不该把学术动作回滚。
+- 一处实现坑照实记：第一次把方法插进 public object 的同时又加了同名 shorthand `freezeClosureVote,` ⇒ `ReferenceError: freezeClosureVote is not defined`（对象方法定义与外部变量同名）；删 shorthand 后正常——**方法定义本身就暴露了名字**。
+
+### 285.3 机器化：一条账要能被「后来的一票」证明不会动
+
+- 新套件 `tests/vmu-run185-closure-freeze.test.mjs`：**3 passed / 0 failed**。
+  - §0 七条源码 pin：kernel 有 `freezeClosureVote({ meeting = null, by = null, why = null } = {})`、写的是 `track: 'state'` 的行、标题前缀 `closure-freeze|`、means 明说「later votes change the live view and never this row」；meeting 侧有**唯一** helper `freezeReading`、回执字段 `closureVoteFrozenMeans`、service 路径 `...freezeReading(pid,`、primitive 路径 `primitiveFreeze`。
+  - §1 运行期：三席开会 → 三票全 `solved:true`（`cast:true`）→ `close` ⇒ `closureVoteFrozen{ok:true, recordId, votesCast:3, cast:true, missing:[]}`；`records.get(recordId)` 的 body 解析后 `votesCast:3 / meeting:m1 / voters.length:3`；随后 r-2 改投 `solved:false` ⇒ 活读数 `cast:false`、**同一行仍是 `votesCast:3, cast:true` 且 `rev` 不变**（§1m/§1n：后来的一票改不了历史）。
+  - §2 运行期：一票没有的会照样关得掉，冻结照样写行（`votesCast:0, cast:false, missing` 逐名列人）——**空的读数是读数，不是未知**。
+- 定向回归：`meeting 32/0`、`vmu-host 4/0`、`turn 15/0`、`verdict 5/0`、`paper 11/0`、`v5r-tools 1/0`、`run178/run181/run183/run184` 各 1/0。
+- 生成物与门禁：`update-doc-counts --write`（`JOBS total=735 suites=627 probes=108`）→ `regen-all --write` 17/17 → `--check 17/17 in sync` → `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 两条既有提示）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+
+### 285.4 真 T1
+
+`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **TOTAL 666 PASS 666 FAIL 0（suites 602 · probes 64）**（`/d/_tmp/t1-r320-run185.log`）。
+
+### 285.5 未闭合
+
+- 冻结行会随关会次数增长（一行一会）。它落在 `state` 轨，可被 `prune` 清理；尚无「保留最近 N 份 as-of 账」的专门策略，先记为账。
+- `vibe_vmu_status { detail: "closure" }` 还没有指向最近一份冻结行的指针（`closureVoteFrozen` 只在关会回执里）；下一轮若真机有人问「这份 as-of 账在哪」，就把它接上。
+- 本轮的冻结**尚未真机复验**：基线 `a79252f8` 的 run 33 跑的是 RUN 184 的措辞修法；冻结要等下一次真机（见 §286）。
+
+### 285.6 两条教训
+
+- **「说出时刻」与「冻结时刻」是两件事**：前者是回执的诚实，后者是账本的可信。只做前者，后来的读者仍然要猜。
+- **簿记失败不许回滚学术动作**：关会成功而冻结失败时，正确的回执是「关会成立 + 冻结失败 + 现在该引用什么」，不是把两者绑成一个事务。

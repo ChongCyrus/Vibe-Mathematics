@@ -4087,6 +4087,61 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       }
     },
     /**
+     * ★★ RUN 185 (run 32 / run 33, the institute's own evidence): a close NAMED an instant and the account kept
+     * moving. Run 32 measured it twice, in one workspace: the office kernel read
+     * `closureVote{cast:true, votesCast:3}` right after `m2` closed, while member r-2 (its own turn, its own kernel)
+     * reported it had voted `solved:false` and read `{for:[r-acad, r-2], against:[r-1], cast:false}`. Both readings
+     * were TRUE — `closure_votes` is a durable LATEST-WINS key shared by every kernel, so a vote cast after the close
+     * rewrites the same record. The close receipt now says when it read the tally (RUN 184), but saying it is not
+     * freezing it: an auditor asking "what did the institute decide on m2" still has to guess which later votes came
+     * after the question was settled. This writes ONE durable row — a snapshot of the reading as of this instant —
+     * so the as-of-close account exists as a fact on the records track instead of only inside a receipt that scrolls
+     * away. It does NOT change the live reading, does not gate the close, and a later vote does not edit the row.
+     */
+    freezeClosureVote({ meeting = null, by = null, why = null } = {}) {
+      const view = closureVoteView()
+      if (!view || view.readable === false) {
+        throw refuse('VMU_ENGINE_UNAVAILABLE',
+          'the closure vote cannot be read on this kernel, so there is nothing to freeze: ' + String((view && (view.why || view.reason)) || 'no reading'),
+          'this is a wiring problem (no closure-vote seam), not a vote problem; the close itself does not depend on this freeze')
+      }
+      const at = (() => { try { return clock() } catch (e) { return null } })()
+      const windowNow = (() => { try { return closureWindowValue() } catch (e) { return null } })()
+      const snapshot = {
+        meeting: meeting === null || meeting === undefined ? null : String(meeting),
+        frozenAt: at,
+        window: windowNow,
+        votesCast: view.votesCast === undefined ? null : view.votesCast,
+        cast: view.cast === true,
+        confirmed: view.confirmed === true,
+        missing: Array.isArray(view.missing) ? view.missing.slice() : [],
+        eligible: Array.isArray(view.eligible) ? view.eligible.slice() : [],
+        voters: Array.isArray(view.voters) ? view.voters.slice() : [],
+      }
+      const where = snapshot.meeting === null ? 'institute' : snapshot.meeting
+      const title = 'closure-freeze|' + where + '|' + String(at) + '|w' + String(windowNow)
+      const out = records.put({
+        track: 'state',
+        kind: 'state',
+        title,
+        body: JSON.stringify(snapshot),
+        by: by === null || by === undefined ? null : String(by),
+        tags: ['closure-freeze'],
+      })
+      return {
+        ok: true, recordId: out && out.id ? out.id : null, already: out && out.already === true,
+        frozenAt: at, window: windowNow, meeting: snapshot.meeting,
+        votesCast: snapshot.votesCast, cast: snapshot.cast, confirmed: snapshot.confirmed,
+        missing: snapshot.missing,
+        means: 'this row is the as-of-close closure reading: ' + String(snapshot.votesCast) + ' vote(s) cast, cast='
+          + String(snapshot.cast) + ', confirmed=' + String(snapshot.confirmed) + ', missing=' + JSON.stringify(snapshot.missing)
+          + '. It is a RECORD, not a live view: later votes change `vibe_vmu_status { detail: "closure" }` and never this row, so quote it when the question is "what did the institute decide at close"',
+        readingMeans: 'a later reader can compare: `vibe_vmu_status { detail: "closure" }` = the current latest-wins reading; this row = the reading at the instant of the close. Two different questions, two different answers, both honest',
+        gatingMeans: 'freezing is bookkeeping: it does not decide the close and the close does not decide the vote',
+      }
+    },
+
+    /**
      * ★ PHASE 8 / B-1: THE MEMBER'S REAL TOOL TABLE, in the kernel. Names come ONLY from the live visible-tools provider
      * (turn.visibleToolsOf), never from a pack declaration; purposes come from the host's published descriptions.
      * No live Agent ⇒ the provider's NAMED refusal is propagated - never an empty list pretending success.
