@@ -13100,10 +13100,54 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 1. **prune 的清单**（③）：`prune` 回执逐行给 `id/title` 却不给 `track`，读者无法确认删的是哪条轨上的行。下一轮补 `track` 并考虑批量写盘（run 17 观察 12 行 ≈ 14.4 s）。
 2. **`refusalsTotal` 只留最后一次**（⑬ 的完整版需要环形缓冲或按 code 的计数），当前是"能查最近一次"，不是"能查全部"。
 3. **互审 3 轮上限**仍是产品决策（`capped:true` + 警告已具名）。
-4. **`queued` 语义**（FEEDBACK20 未列，来自 run 11 的 rec-300）：`procedureProgress.queued` 是累计入队数，需加 `waitingNow` 或改名。
+4. **`queued` 语义**（来自 run 11 的 rec-300）已在 RUN 163 修掉：`procedureProgress` 现在同时给 `waitingNow`（队列里**在场**、能立刻发言的人数）与 `queuedAbsent`（在队列里但不在场的人），`queued` 保留为队列原始长度——三个数各有一个意思，回执的 `procedureProgressMeans` 写清了。本轮复核确认它在代码里，不是欠账。
 
 ### 275.6 教训
 
 - **名字是帐的一部分**：任何"从内容派生出来的名字"都必须从**不随时间变的东西**里派生。`proposition 0.6` 之所以是缺陷，不是因为它丑，是因为规则 L53 的裁定会改 0.6——名字随之变成假话，而假话会被下游当成事实（Verified 行标题、论文必写行）。
 - **两个真实的读数看起来像矛盾时，缺的是"我在哪本账上"这句话**：会议板的 0 票与机构面的 3 票都真，读者需要的是指针（`closureTally.face`），不是调和（把两个数改成一样才是撒谎）。
 - **回执的单位与出处要写在回执里**：`editor.source`、`roundMeans`、`truncatedBy`、`requiredLineMath` 是同一件事的四个面——"这个值是谁定的、是什么单位、被谁截断、要怎么写才被接受"。框架每省掉一句，读者就要多猜一次，而猜错会被记成框架的错。
+
+## §276 第二十一次真机（run 21）与 RUN 176：一个可修的笔误逼死了整篇论文，闸递过来的写法自己编不过
+
+### 276.1 现场
+
+- 基线 `2c8ffef5`（RUN 175 已提交），驱动 `D:/_tmp/slv-phase5/slv-p13-oc.ps1`，`-CloneName slvp175 -Port 19622 -MaxTokens 40000000 -TimeoutSec 5400`，工作区 `D:\_tmp\slv-phase5\slvp157-ws`（`-KeepWorkspace`）。
+- 结果：`EXIT=0`、`durationSec 1836`、`tokenTotal 18 079 545 / 40 000 000`（capHit false）、`transcriptEvents 505`、根会话 `toolCalls 108`、`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`、`OK: prompt/wire names consistent; all calls visible; counts match`；转录 `D:/wd/vibemath开发/_oneoff/vm-slv/full-1101-083756.jsonl`。产出 `SIM-REPORT21.md`（28 264 B）与 `FEEDBACK21.md`（6 440 B）。
+- 主线完整：新命题 `rec-577`（`Σ_{k=1}^{n} k(k+1) = n(n+1)(n+2)/3`，作者 r-1，本轮首次出现"乘积型通项 + 整除性收口"）与引理卡 `rec-578`（`3 ∣ n(n+1)(n+2)`，r-2）→ 辩论会 `m52`（`present:3`、`voteFloor.effective:3`，`r-temp` 尝试到场被 `VMU_NOT_PERMITTED … slot "temp"` 具名拒，并被列进 QUORUM 的 `nonAttending`）→ 两位成员各交自己的裁决 → `verdict_final value:1, mode:"unanimous", floor.gate{required:3, signed:3, signedBy:[r-1,r-2,r-acad]}` → `verified_promote` 得 `rec-579` → 论文 `paper-p19`（`start` 省略 `editor`，回执 `editor:{value:"academician", source:"default"}`；两 part、互审、`advance`×2、`final` 出 **112 268 B** PDF）→ 结题会 `m53` 由 `close` 归档（机构面 `closureVote votesCast:3`）。
+- 四位成员**都有真回合**（`vibe_vmu_turn {op:"step"}`）；`r-temp` 的回合 `t-20` 正是去亲手验证"temp 不能投票、不能参会"，并按简报要求把具名拒绝的原文抄回报告。
+
+### 276.2 上一轮（RUN 175）修法的机器确认
+
+- ② 卡名＝主张：落盘行名是主张截 48 字，`titleMeans` 写「CLAIM」；③ 会议摘要的 `closureTally` 把"会议面 0 票 / 机构面 3 票"讲成两本账；④ `truncatedBy:["limit (this call asked for 3)","vmu.records.headListAt …"]`；⑤ `roundMeans`；⑦ `editor.source` 的 `default` 与 `argument-normalised` 两支都出现过；⑧ `archivedByWindow` 账平。
+- **未触发也是读数**：`prune`（开工 paper 轨 74/200，不需要删）、`VMU_TURN_UNKNOWN_FIELD`、人数闸的失败分支，都写进了报告 ⑭ 的「未触发清单」。
+
+### 276.3 这一轮抓到的真缺陷（与修法）
+
+1. **定稿在编译之前就发生了**（F1，严重）：`paper-p17` 的 `final` 回 `finalized:true`，同一份回执的 `pdf` 段却是 `produced:false` + `VMU_PAPER_LATEX_FAILED`（`! Double subscript.`）。之后 `revise` 被拒「not awaiting its editor (now: finalized)」、`compile` 只重排同一份坏 `.tex`、`part` 只在 writing 可写 ⇒ **一个可修的笔误要求另起一篇论文**。修法：`kit/paper.js#recordFinal` 在编译之后才落 `final`——引擎**真的跑到 compile 并失败**时回滚（`{ok:true, finalized:false, rolledBack:{from:'finalized', to:'awaiting-editor'}, reviseAvailable:true}`，状态与 `final` 字段一起退回）；**没有 LaTeX 面**（`VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`）是环境缺口，仍按旧行为定稿并加 `pdfEnvironmentMissing:true`；历史残件（已 `finalized` 但没有 `paper-pdf` 行）可以用 `final {decision:"revise"}` 救回（`pdfLessFinal`）。
+2. **闸递过来的写法自己编不过**（F2，严重）：`requiredLineMath` 把整句包进 `$…$`，句中有标识符 `n_plus_n_eq_two_n`——数学模式里每个 `_` 都是下标，xelatex 回 `! Double subscript.`。照闸的建议做 → 编译失败 → 撞上 F1 的死锁。修法：`paper-quality.js` 新增 `safeForm()`：**行内出现标识符时不再给 `$…$` 形式**（`requiredLineMath:null`、`requiredLineIdentifier:true`），hint 明说"按纯文本原样写，不要包进 `$…$`"。
+3. **编译台账说了 8 次"没有"**（F3，中）：`paper-p19` 的 PDF 就在盘上（112 268 B），`paper status.pdfCompiled` 一直 `produced:false`。根因有两层：先前的查找拿**寻址用的 id** 去比行标题中段（`paper-pdf` 行名叫 `v5r-paper|<TARGET>|pdf`，TARGET 是 `start` 时的**人类标题**），改成两种拼写都匹配之后仍然 false——因为 `paper.papers()` 的行**只有元数据、没有 body**，解析 `row.body` 永远得到空。修法：`kit/paper.js` 把 `compiledPdfRow(state)`（逐行打开读 body）导出到 flow API，`packs/v5r/tools.js` 的 `pdfCompiled` 改问这**一个**读者，并用 `matchedBy:'target'|'id'` 说明命中哪种拼写。
+4. **数得清被拒几次，说不出被拒了哪次**（F4，中）：`records status` 的 `refusalsTotal` 从 0→1→2，回执里没有 `lastRefusal`——内核从 RUN 175 起就有这个字段，是 `host.js` 的手写投影把它吞掉了。修法：投影补 `lastRefusal` 与 `lastRefusalMeans`（"更早的只计数"）。
+5. **闸要求正文抄一句被截断的话**（F5，轻）：行名 48 字 + `…` 被 Verified 行继承，`requiredLine` 于是要求逐字出现 `…Σ_{k=1}^{n} k(k+1) = n(n…`。修法：`claimPrefix()` 去掉末尾省略号，截断名按**前缀**匹配；`missingEvidence` 每条带 `requiredLineTruncated`，hint 说"只要求前缀，不必抄省略号"。
+6. **所内流程项**（本所可自改，写进下一轮简报）：F6 全所索引类小节应作为**所级附录**登记，不挤进某个成员的 part 槽；F7 子会话读面固定"先窄读再 `expand` 单条"，`limit:0` 只用于计数校验；F8 裁定写回卡片时同一回合就把成员文件里的状态行改掉。
+
+### 276.4 机器化
+
+- 新套件 `tests/vmu-run176-run21-truth.test.mjs`：**51 PASS / 0 FAIL**。§0 七条源码口径（双拼写匹配、`compiledPdfRow` 导出、`lastRefusal`、`identifierLike`、`claimPrefix`、`pdfLessFinal`、`engineAbsent`/`rolledBack`/`pdfEnvironmentMissing`）；§1 编译台账（按 id 寻址命中按 TARGET 命名的行、按 target 寻址命中按 id 命名的行、从未编译时说清自己找的是什么）；§2 `lastRefusal` 可追溯到具体一次拒绝（`refusalsTotal 0→1` + `code`/`op` 对得上）；§3 标识符行的缺席条目 `requiredLineIdentifier:true` 且 `requiredLineMath:null`、hint 教纯文本、纯文本形式满足闸；§4 截断名（前缀即可、抄全名也可、缺席条目 `requiredLineTruncated:true`、hint 说"只要前缀"）；§5 用 kit 直接驱动：无 LaTeX 面的装配仍定稿并自报 `pdfEnvironmentMissing`，而"已定稿但没有 `paper-pdf` 行"的残件能被 `revise` 救回 writing。
+- 一处既有 pin 按新机制**反向改写**：`tests/vmu-run154-real-run4-fixes.test.mjs` §6 的 G10 后半段（原"编译失败仍定稿但 `pdf.ok:false`"）改成"编译失败 ⇒ `finalized:false` + `rolledBack{finalized→awaiting-editor}` + `reviseAvailable:true` + 状态真的停在 awaiting-editor + 之后 `revise` 真能退回 writing" ⇒ 该套件 **66/0**。
+- 定向回归（`--only`）：paper 11/0、run175 1/0、run176 2/0、run174 1/0、run173 1/0、run172 1/0、run170 1/0、run154 1/0、run133 1/0、run156 1/0、run152 1/0、v5r-tools 1/0、records 5/0、host 6/0、vmu-host 4/0、tools-action-arity 1/0、run166–run169 各 1/0。
+- 收口链：`update-doc-counts --write`（`JOBS total=726 suites=618 probes=108`）→ `regen-all --write` 到不动点 → `--check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULES COVERAGE: PASS (0)`、`RULE PARITY: PASS (0)`。
+- 全量 T1：`726 PASS / 0 FAIL（suites 618 · probes 108）`（`/d/_tmp/t1-r253-run176c.log`；前两次分别因未注册错误码与 planned-code 登记表过期各红 3 与 1 条，修好后第三次全绿）。
+
+### 276.5 未闭合账（下一轮）
+
+1. **`requiredLineFull`**（F5 建议里的一半）：本轮给了"前缀即可"，没有同时给完整陈述行；读者想知道整句得自己去 `expand` 那条记录。
+2. **`prune` 批量写盘**（run 17 观察 12 行 ≈ 14.4 s）仍未做。
+3. **F6/F7/F8 是所内流程项**，属简报与成员习惯，不属机制；下一轮简报要写死。
+4. **互审 3 轮上限**仍是产品决策（`capped:true` + 警告已具名），本轮未被触发。
+
+### 276.6 教训
+
+- **一个"诚实的失败"如果不可复原，等于把失败制度化了**：G10 当年选择"编译失败也定稿，但如实写 `pdf.ok:false`"是对的（不谎报），但它把状态推到了一个回不来的点上；真机用一整篇论文的代价证明了：**诚实必须与可复原同时成立**。
+- **闸给的建议必须可执行**：推荐的形式若编不过，它就在制造它自己拒绝的东西——F2 的 `$…$` 建议直接生产了 F1 的残件，两条缺陷是一个因果链，不是两件事。
+- **元数据行不是记录**：`records.list` 只给元数据；任何"读到元数据行就想替读者回答内容问题"的实现都会**静默答错**（`pdfCompiled` 在真机上连续答了 8 次"没有"，而每一个"没有"都是它自己去打开行就能避免的）。

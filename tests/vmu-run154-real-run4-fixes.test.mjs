@@ -365,8 +365,19 @@ console.log('§6 G10：编译成功的回执带 argv/produced，final 的 missin
   fb.recordReview({ target: TB, member: 'r-2', deliverable: true, comments: '可交付' })
   fb.advance({ target: TB })
   const finB = await fb.recordFinal({ target: TB, member: 'acad', decision: 'deliverable' })
-  ok(finB && finB.finalized === true && finB.pdf && finB.pdf.ok === false, 'G10：编译失败仍定稿但 pdf.ok:false（不谎报）', finB && finB.pdf && { ok: finB.pdf.ok, code: finB.pdf.faceCode })
+  // ★★ RUN 176 (run 21 A1) REVERSES this half of G10 on purpose: G10's "finalise anyway" was honest about the artefact but
+  // shipped a DEAD END — the paper was `finalized` before the compile ran, so after a failure `revise` refused ("not
+  // awaiting its editor"), `compile` re-typeset the same broken source and `part` only writes while writing. Run 21 lost a
+  // whole paper to one fixable typo (`paper-p17`). A compile failure now rolls the finalisation back instead.
+  ok(finB && finB.finalized === false && finB.pdf && finB.pdf.ok === false, '★★ RUN 176：编译失败 ⇒ 不定稿（finalized:false）但 pdf.ok:false 且带编译器的话（不谎报，也不再是死路）', finB && finB.pdf && { ok: finB.pdf.ok, finalized: finB.finalized, code: finB.pdf.faceCode })
+  ok(finB && finB.rolledBack && finB.rolledBack.from === 'finalized' && finB.rolledBack.to === 'awaiting-editor' && finB.reviseAvailable === true,
+    '★★ RUN 176：回执点名回退（finalized→awaiting-editor）且 revise 仍然可达', finB && ({ rolledBack: finB.rolledBack, revise: finB.reviseAvailable }))
   ok(finB && Array.isArray(finB.missing) && finB.missing.includes('pdf'), 'G10：编译失败时 missing 仍然点名 pdf', finB && finB.missing)
+  const stB = fb.state(TB)
+  ok(stB && stB.state && stB.state.status === 'awaiting-editor', '★★ RUN 176：状态真的停在 awaiting-editor（不是只在回执里说）', stB && stB.state && stB.state.status)
+  const reviseB = await fb.recordFinal({ target: TB, member: 'acad', decision: 'revise', note: '把 $…$ 里的标识符改成纯文本' })
+  ok(reviseB && reviseB.ok === true && reviseB.finalized === false && reviseB.moved === true && reviseB.to === 'writing',
+    '★★★ RUN 176：定稿失败之后 revise 真的能退回 writing（run 21 的 paper-p17 在这里只能另起一篇）', reviseB && { ok: reviseB.ok, finalized: reviseB.finalized, moved: reviseB.moved, to: reviseB.to, code: reviseB.code })
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════

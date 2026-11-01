@@ -1071,13 +1071,18 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             const pinned = []
             for (const row of doomed) {
               if (!row || typeof row.id !== 'string') continue
+              // ★★ RUN 176 (run 20 FEEDBACK item ③): each line of the prune list gave `id` and `title` but NOT the track,
+              // and this list is exactly where a reader checks "am I deleting the right rows?" — measured on run 20, right
+              // after RUN 174 fixed one id living in two tracks (F3/F10). The track is the one fact a caller must not have
+              // to infer from the argument they already passed: every line carries it, and the means says it is per-row.
+              const rowTrack = row.track === undefined || row.track === null ? pruneTrack : String(row.track)
               if (preview) {
-                moved.push({ id: row.id, title: row.title === undefined ? null : row.title, state: 'would-be-trashed', purgeAt: null })
+                moved.push({ id: row.id, track: rowTrack, title: row.title === undefined ? null : row.title, state: 'would-be-trashed', purgeAt: null })
                 continue
               }
               try {
                 const rcpt = rc.remove({ id: row.id, reason: pruneWhy, by: callerBy }) || {}
-                moved.push({ id: row.id, title: row.title === undefined ? null : row.title, state: rcpt.state || 'trashed', purgeAt: rcpt.purgeAt === undefined ? null : rcpt.purgeAt })
+                moved.push({ id: row.id, track: rowTrack, title: row.title === undefined ? null : row.title, state: rcpt.state || 'trashed', purgeAt: rcpt.purgeAt === undefined ? null : rcpt.purgeAt })
               } catch (e) {
                 if (e && String(e.code || '') === 'VMU_RETENTION_CONFLICT') { pinned.push(row.id); continue }
                 throw e
@@ -1088,6 +1093,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               ok: true, action, track: pruneTrack, keep: wantKeep, dryRun: preview,
               liveBefore, liveAfter, wouldPruneCount: doomed.length, prunedCount: preview ? 0 : moved.length, pruned: moved, pinned,
               by: callerBy, why: pruneWhy,
+              prunedRowsMeans: 'every line of `pruned` and `pinned` names its own `track` — the list is where a reader checks WHICH rows are leaving, so the row must say where it lived rather than leaving that to the `track` argument above',
               pinnedMeans: pinned.length === 0 ? null
                 : 'permanent records are protected and were skipped — clear the marker deliberately if they must go',
               means: preview
@@ -1223,6 +1229,12 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                 ? 'this kernel has folded the shared store at least once, so the counts above are its current view'
                 : 'this kernel has NOT folded the shared store yet: every count above can still be 0 even when the store holds rows — call action:list or action:expand once, then read status again',
               refusalsTotal: st.refusalsTotal, unwiredTotal: st.unwiredTotal, at: st.at,
+              // ★★ RUN 176 (run 21 A3): the kernel published `lastRefusal` since RUN 175 and THIS projection silently
+              // dropped it, so the count moved 0→1→2 while the receipt kept no name — a reader could not answer "what
+              // was refused?" without having watched the call. The newest refusal travels with its count now, and the
+              // means says the histogram above stays counts-only.
+              lastRefusal: st.lastRefusal === undefined ? null : st.lastRefusal,
+              lastRefusalMeans: st.lastRefusalMeans === undefined ? null : st.lastRefusalMeans,
               note: 'bounded status view: the shared seam, the adoption counters and the per-track row counts. The bytes maps, refusal histograms and wiring ledger stay on the kernel — this receipt is a status, not a dump.',
             }
           }

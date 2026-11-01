@@ -481,16 +481,40 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
     .replace(/\\([&%$#_{}])/g, '$1')
     .replace(/[\\$]/g, '').replace(/[{}\\s]/g, '')
   const textKey = mathKey(text)
+  // ★★ RUN 176 (run 21 A4 / FEEDBACK21 F5): the NAME of a card whose title was derived from its claim is truncated at 48
+  // chars and ends with `…`. That ellipsis is where the NAME stops, not part of the claim — demanding it verbatim made the
+  // author paste a sentence that stops mid-formula (`…Σ_{k=1}^{n} k(k+1) = n(n…`). The gate now matches the claim PREFIX
+  // the name really holds; the full statement is the row's `陈述` section, and the receipt says so.
+  const claimPrefix = (s) => (String(s).endsWith('…') ? String(s).slice(0, -1).trim() : String(s))
+  // ★★ RUN 176 (run 21 A1): `$…$` was offered for ANY name containing `_ ^ { } $ \`. A name that carries an IDENTIFIER
+  // (`n_plus_n_eq_two_n`) is the one case where that advice is actively wrong: inside math mode every `_` is a subscript,
+  // so the pasted form the gate itself recommended was rejected by xelatex (`! Double subscript.`) — and a finalised paper
+  // could not be revised. The receipt now names the algebra-safe form AND refuses to recommend math for an identifier.
+  const identifierLike = (s) => /[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*/.test(String(s))
+  const safeForm = (s) => {
+    const name = claimPrefix(s)
+    const hasMath = /[_^{}$\\]/.test(name)
+    const hasIdentifier = identifierLike(name)
+    return {
+      line: name,
+      truncated: String(s).endsWith('…'),
+      hasMath,
+      hasIdentifier,
+      math: hasMath && !hasIdentifier ? '$' + name + '$' : null,
+    }
+  }
   const verified = view.verified()
   for (const item of verified.items) {
-    const named = nameOf(item.title)
-    const tokens = named ? [named] : [item.cardId, item.id].filter(has)
+    const named = safeForm(nameOf(item.title))
+    const tokens = named.line ? [named.line] : [item.cardId, item.id].filter(has)
     // ★ RUN 153 (G5): the refusal names the line to paste. The first real run's agent had to strip the "已验证｜" prefix
     // from the title BY HAND (this gate requires the title verbatim) and got it wrong once — a whole `revise` round lost.
     if (!tokens.some((t) => text.includes(t) || (mathKey(t) !== '' && textKey.includes(mathKey(t))))) {
       missingEvidence.push({ kind: 'verified', id: item.id, cardId: item.cardId, title: item.title,
-        requiredLine: named || String(item.cardId || item.id),
-        requiredLineMath: /[_^{}$\\]/.test(named) ? '$' + named + '$' : null })
+        requiredLine: named.line || String(item.cardId || item.id),
+        requiredLineTruncated: named.truncated,
+        requiredLineMath: named.math,
+        requiredLineIdentifier: named.hasIdentifier })
     }
   }
   const solved = view.subproblems()
@@ -498,9 +522,12 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
     const tokens = [item.title, item.statement].filter(has)
     if (tokens.length === 0) tokens.push(item.id)
     if (!tokens.some((t) => text.includes(t) || (mathKey(t) !== '' && textKey.includes(mathKey(t))))) {
+      const sub = item.title ? safeForm(nameOf(item.title)) : null
       missingEvidence.push({ kind: 'subproblem', id: item.id, title: item.title,
-        requiredLine: item.title ? nameOf(item.title) : String(item.id),
-        requiredLineMath: item.title && /[_^{}$\\]/.test(nameOf(item.title)) ? '$' + nameOf(item.title) + '$' : null })
+        requiredLine: sub && sub.line ? sub.line : String(item.id),
+        requiredLineTruncated: sub ? sub.truncated : false,
+        requiredLineMath: sub ? sub.math : null,
+        requiredLineIdentifier: sub ? sub.hasIdentifier : false })
     }
   }
   if (missingEvidence.length > 0) {
@@ -512,7 +539,10 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
       ok: false, code: codes.VERIFIED_MISSING,
       message: '正文漏掉了记录库里已有的结论：' + missingEvidence.length + ' 条（首条 ' + first.kind + ' `' + firstLabel + '`）——已检验通过的命题与已解决的子问题必须出现在正文里'
         + (first.requiredLine ? '；可直接粘进正文的标题行：`' + first.requiredLine + '`' : ''),
-      hint: (first.requiredLineMath ? '这条结论的标题带数学记号：把它写成配对 `$…$` 的数学形式（例如 `' + first.requiredLineMath + '`）最省事——渲染器会原样保留配对 `$…$` 里的内容当数学，而裸写标题会被转义成满页反斜杠；两种写法都能过这道闸。' : '')
+      hint: (first.requiredLineIdentifier
+        ? '这条结论的行名里有**标识符**（例如 `n_plus_n_eq_two_n`）：把它按**纯文本原样**写进正文，**不要**包进 `$…$`——数学模式里每个 `_` 都是下标，包裹后 xelatex 会报 `! Double subscript.`（run 21 实测：闸自己给过「包进 `$…$`」的建议，照做反而编不过；已改为不再对标识符推荐数学形式）。'
+        : (first.requiredLineMath ? '这条结论的标题带数学记号：把它写成配对 `$…$` 的数学形式（例如 `' + first.requiredLineMath + '`）最省事——渲染器会原样保留配对 `$…$` 里的内容当数学，而裸写标题会被转义成满页反斜杠；两种写法都能过这道闸。' : ''))
+        + (first.requiredLineTruncated ? '★ 这条行名是被截断的主张（以 `…` 收尾）：闸只要求上面这段前缀出现，不必抄那个省略号；完整陈述见该记录的「陈述」一节。' : '')
         + '这条门判的是**成员写的正文**（渲染时第 3 节由 `verified` 轨自动填充、第 4 节由 `problems` 轨 p=1 自动填充，但自动填充只进渲染出的文件，**不能**代替正文里的结论）：把该结论的标题（去掉「已验证｜」前缀）原样写进某一节的 part 正文，或让作者在下一轮补写，再 render。★ 如果论文已经走到 awaiting-editor（只有 writing 阶段能写 part），先让主编把它退回去：vibe_v5_paper { action: "final", target: "<本论文>", member: "<主席席成员>", decision: "revise", note: "<补哪些结论>" } 回到 writing 后再录 part',
       missing: missingEvidence,
     }

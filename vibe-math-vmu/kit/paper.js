@@ -122,6 +122,32 @@ export function createPaperFlow({
   // with "0 位互审" and `consult_state` reported "no requests" while the title spelling saw both. A paper is its
   // STATE row — the artefact rows are its outputs, never its identity.
   const stateRows = () => listPaper().filter((r) => /\|state$/.test(String(r.title || '')) || String(r.kind || '') === 'paper-state')
+  // ★★ RUN 176 (run 21 A1 / FEEDBACK21 F1): "was this paper ever really compiled?" is a question about the COMPILE LEDGER
+  // (`paper-pdf` rows whose body names a pdfPath), not about the state label. RUN 154's G10 shipped the opposite answer —
+  // a paper could be set `finalized` with `pdf.ok:false` — and run 21 measured the cost: `paper-p17` could never be revised
+  // (it was no longer awaiting its editor), `compile` re-typeset the same broken .tex, and fixing ONE typo required a
+  // whole new paper. The listing is metadata-only, so each candidate row is opened to read the body it was compiled with.
+  const compiledPdfRow = (state) => {
+    if (!state) return null
+    const want = [String(state.target === undefined || state.target === null ? '' : state.target), String(state.id === undefined || state.id === null ? '' : state.id)].filter((w) => w !== '')
+    const cand = listPaper().filter((r) => String(r.kind || '') === 'paper-pdf' && want.some((w) => String(r.title || '').endsWith('|' + w + '|pdf')))
+    for (const row of cand) {
+      try {
+        const got = records.get({ id: row.id })
+        const full = got && got.record ? got.record : got
+        const body = JSON.parse(String((full && full.body) || ''))
+        if (body && body.pdfPath) {
+          // ★★ RUN 176 (run 21 A2): the ledger read answers "is there a PDF?" and, when there is, the bytes/engine the
+          // compile recorded — the same facts the receipt needs, so the face does not re-open the row and get it wrong.
+          return { id: row.id, title: row.title, pdfPath: body.pdfPath,
+            pdfBytes: body.pdfBytes === undefined ? null : body.pdfBytes,
+            engine: body.engine === undefined ? null : body.engine,
+            tried: Array.isArray(body.tried) ? body.tried : [] }
+        }
+      } catch (e) { /* a row this instance cannot read is not evidence of a pdf; keep looking */ }
+    }
+    return null
+  }
   const PORTABLE_TARGET = /^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/
   const stateOfRow = (row) => {
     let body = row && row.body
@@ -1001,7 +1027,12 @@ export function createPaperFlow({
     // ★ F-123a: the hint has to name the action that can actually change the answer. `advance()` only moves the flow
     // between writing/reviewing — it never reviews a part, so "advance() until the cross-review is unanimous" told the
     // caller (run 123) to repeat a call that cannot help. Each state names its own legal next move.
-    if (state.status !== 'awaiting-editor') throw refuse(CODES.STATE, 'the paper is not awaiting its editor (now: ' + state.status + ')', nextMoveFor(state))
+    // ★★ RUN 176 (run 21 A1): a paper finalised by a build whose compile had FAILED is a dead end under the old rule —
+    // `revise` was refused with "not awaiting its editor (now: finalized)", `compile` re-typesets the same broken source,
+    // and `part` only writes while writing. When the compile ledger holds NO successful PDF for this paper, `revise` is the
+    // repair path and is allowed (the move is recorded as a repair, not as a claim that the paper was never finalised).
+    const pdfLessFinal = state.status === 'finalized' && decision === 'revise' && compiledPdfRow(state) === null
+    if (state.status !== 'awaiting-editor' && !pdfLessFinal) throw refuse(CODES.STATE, 'the paper is not awaiting its editor (now: ' + state.status + ')', nextMoveFor(state))
     // ★★ RUN 152: this refusal used to be ONE sentence for two different facts, and it printed
     // "this paper is not the academician's to finalise" even when the academician WAS the signer (the paper had been
     // started with a member id as its editor) — a message that is literally false about the state it describes. The
@@ -1077,7 +1108,38 @@ export function createPaperFlow({
       // `missing` was the pre-compile artefact list and the compile had just succeeded. The list is recomputed around the
       // compile that actually ran, so the two statements can no longer contradict each other.
       const missingAfter = (Array.isArray(rendered.missing) ? rendered.missing : []).filter((m) => !(pdf && pdf.ok === true && m === 'pdf'))
+      // ★★ RUN 176 (run 21 A1 / FEEDBACK21 F1): the compile is PART of the finalisation gate. RUN 154's G10 decision
+      // ("finalise anyway, report pdf.ok:false") was honest about the artefact and deadlocked the paper — status became
+      // `finalized` BEFORE the compile ran, so a failure left nothing that could be revised. A failed compile now rolls the
+      // finalisation back to awaiting-editor (the same rollback the render gate already does) and the receipt says so.
+      // ★★ RUN 176 refinement (measured by the suites): "no PDF" has TWO causes and only ONE of them is a text defect.
+      // EXECUTOR_MISSING means THIS assembly has no LaTeX face at all — an environment gap, not a bug in the prose — and
+      // the paper still finalises (the old behaviour is honest there: the receipt names the missing seam). A compile that
+      // really RAN and failed is the dead end run 21 measured, and that one rolls back.
+      // "no engine ever ran" is not the same fact as "an engine ran and refused". The projection carries `triedEngines` as
+      // `engine:phase[:code]` strings, so a run that reached the COMPILE phase is exactly the case RUN 176 rolls back; a face
+      // that only ever got as far as PROBE (or none at all) is the environment gap the old behaviour is honest about.
+      const triedList = Array.isArray(pdf && pdf.triedEngines) ? pdf.triedEngines : []
+      const reachedCompile = triedList.some((t) => String(t).includes(':compile'))
+      const faceNoEngine = String((pdf && pdf.faceCode) || '') === 'VMU_PAPER_LATEX_NO_ENGINE'
+      const engineAbsent = String((pdf && pdf.code) || '') === 'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING'
+        || (String((pdf && pdf.code) || '') !== '' && (faceNoEngine || (triedList.length > 0 && !reachedCompile)))
+      if (!(pdf && pdf.ok === true) && !engineAbsent) {
+        if (before.hadFinal) state.final = before.final
+        else delete state.final
+        state.status = before.status
+        state.stage = before.stage
+        writeState(state)
+        return {
+          ok: true, finalized: false, target: state.target, final: fin,
+          artifacts: rendered.artifacts, missing: missingAfter.length > 0 ? missingAfter : ['pdf'], pdf,
+          rolledBack: { from: 'finalized', to: state.status, keptEarlierFinal: before.hadFinal === true },
+          reviseAvailable: true,
+          means: 'the paper was NOT finalised: the PDF artefact never existed, so the state went back to awaiting-editor alongside the `pdf` block that says why — a finalisation whose fourth artefact is missing is the dead end RUN 154 shipped and run 21 measured. `final {decision:"revise"}` still reopens writing (fix the body, finalise again); `compile` only re-typesets an already-finalized paper, so it is not a repair.',
+        }
+      }
       return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: missingAfter, pdf,
+        ...(engineAbsent ? { pdfEnvironmentMissing: true, pdfEnvironmentMeans: 'this assembly has no LaTeX face (`VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`): the paper is finalised and the PDF artefact stays named in `missing` — an environment gap, not a body that failed to compile. A compile that really ran and failed does NOT finalise (RUN 176).' } : {}),
         // ★ E4: the receipt says WHICH way the consult rule was satisfied ("off" / "answered" / "exempt"): a finalisation
         // that claims the office was consulted when the gate was simply off is the sort of quiet lie this pack refuses.
         consult: { armed: gate.armed === true, satisfiedBy: gate.reason, answeredBy: gate.answeredBy || null, requestId: gate.requestId || null, note: gate.note || null } }
@@ -1086,7 +1148,7 @@ export function createPaperFlow({
     const capNow = roundsCap()
     if (state.round < capNow) {
       state.round += 1; state.status = 'writing'; state.stage = 'writing'
-      state.disagreement = (state.disagreement || []).concat([{ round: state.round - 1, members: [fin.by], detail: '定稿代表要求修订：' + (fin.note || '（未说明）') }])
+      state.disagreement = (state.disagreement || []).concat([{ round: state.round - 1, members: [fin.by], detail: (pdfLessFinal ? '定稿未产出 PDF 的修复轮（RUN 176：编译失败不再定稿，历史残件由这里救回）：' : '定稿代表要求修订：') + (fin.note || '（未说明）') }])
       writeState(state)
       // ★★ RUN 158 (run 6 / N5): this branch moved the paper awaiting-editor → writing but reported `from:null,to:null`
       // (only the REPAIR branch named the move), so a reader could not tell a revision from a repair round.
@@ -1435,6 +1497,10 @@ export function createPaperFlow({
     // "lists the papers that exist" - and it did not. The flow keeps its ONE list helper private, so the face had no way
     // to honour the promise; expose it rather than soften the sentence.
     papers: () => listPaper(),
+    // ★★ RUN 176 (run 21 A2): `records.list` rows carry METADATA ONLY, so a face that parsed `row.body` to answer "was
+    // this paper compiled?" always answered no. The ledger read opens each candidate row, and it is exported here so the
+    // tool face can ask this ONE reader instead of repeating an answer that has already been wrong once.
+    compiledPdfRow: (state) => compiledPdfRow(state),
     // ★★ RUN 172 (FEEDBACK17 P3-16): the status face must be able to say "this name is not gone, it is in the TRASH" — the
     // same lookup `start` uses to refuse a reused name, so the two doors cannot disagree about one fact.
     trashLookup }

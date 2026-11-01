@@ -4386,23 +4386,34 @@ async function toolPaper(args = {}, { kernel } = {}) {
         // to make another call and know that. So the status now reads the compiled ledger itself and answers that question
         // by name: `pdfCompiled` is the LAST compile this paper produced, or `produced:false` when it never compiled.
         ...(() => {
-          let rows = []
-          try { rows = typeof paper.papers === 'function' ? (paper.papers() || []) : [] } catch (e) { rows = [] }
-          const mine = rows.filter((r) => r && String(r.kind || '') === 'paper-pdf' && String(r.title || '').endsWith('|' + str(target) + '|pdf'))
-          if (mine.length === 0) {
-            return { pdfCompiled: { produced: false, recordId: null, pdfPath: null, pdfBytes: null, engine: null, means: 'no compile is on file for this paper (the paper track holds no `paper-pdf` row for it); `final` compiles, `compile` re-typesets an already-finalized paper' } }
+          const stateTarget = got && got.state && got.state.target !== undefined && got.state.target !== null ? String(got.state.target) : str(target)
+          const stateId = got && got.state && got.state.id !== undefined && got.state.id !== null ? String(got.state.id) : str(target)
+          const matchTitle = (t) => {
+            const title = String(t || '')
+            if (!title.endsWith('|pdf')) return null
+            if (stateTarget !== '' && title.endsWith('|' + stateTarget + '|pdf')) return 'target'
+            if (stateId !== '' && title.endsWith('|' + stateId + '|pdf')) return 'id'
+            return null
           }
-          const last = mine.slice().sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) || (String(b.id || '').localeCompare(String(a.id || ''), 'en', { numeric: true })))[0]
-          let body = null
-          try { body = JSON.parse(String(last.body || '')) } catch (e) { body = null }
+          // ★★ RUN 176 (run 21 A2, MEASURED): RUN 175's ledger read parsed `row.body` off `paper.papers()`, whose rows
+          // carry METADATA ONLY (the kit says so at its own `listPaper`), so `produced` was false for every paper that had
+          // really compiled — `rec-601/605` existed and the disk held 112 268 bytes. The ledger read now asks the kit's
+          // `compiledPdfRow`, which OPENS each candidate row, so the error cannot be repeated one call deeper.
+          let ledger = null
+          try { ledger = got && got.state && typeof paper.compiledPdfRow === 'function' ? paper.compiledPdfRow(got.state) : null } catch (e) { ledger = null }
+          if (!ledger) {
+            return { pdfCompiled: { produced: false, matchedBy: null, target: stateTarget, recordId: null, pdfPath: null, pdfBytes: null, engine: null, means: 'no compile is on file for this paper (the `paper` track holds no `paper-pdf` row named after this paper id or target); `final` compiles, `compile` re-typesets an already-finalized paper — and a paper whose `final` reported a PDF but whose ledger row is missing is a named gap, not an empty one' } }
+          }
           return { pdfCompiled: {
-            produced: Boolean(body && body.pdfPath),
-            recordId: last.id === undefined ? null : last.id,
-            pdfPath: body && body.pdfPath ? body.pdfPath : null,
-            pdfBytes: body && body.pdfBytes !== undefined ? body.pdfBytes : null,
-            engine: body && body.engine ? body.engine : null,
-            tried: body && Array.isArray(body.tried) ? body.tried : [],
-            means: 'the LAST `paper-pdf` row this paper produced (the compile ledger), so "is there a PDF file?" is answered here instead of by a second call; the `pdf` block above is the ARCHIVE row render wrote, a different record',
+            produced: true,
+            matchedBy: matchTitle(ledger.title),
+            target: stateTarget,
+            recordId: ledger.id === undefined ? null : ledger.id,
+            pdfPath: ledger.pdfPath === undefined ? null : ledger.pdfPath,
+            pdfBytes: ledger.pdfBytes === undefined ? null : ledger.pdfBytes,
+            engine: ledger.engine === undefined ? null : ledger.engine,
+            tried: Array.isArray(ledger.tried) ? ledger.tried : [],
+            means: 'the LAST `paper-pdf` row this paper produced (the compile ledger), read by OPENING the row — so "is there a PDF file?" is answered here instead of by a second call; the `pdf` block above is the ARCHIVE row render wrote, a different record',
           } }
         })() }
     }

@@ -1522,7 +1522,7 @@
 | `VMU_PACK_V3_TOOL_UNRESOLVED` | **已实现 ✓** | `vibe-math-vmu/packs/v3/index.js`、`vibe-math-vmu/packs/v3/middleware/toolfilter.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_NOT_SETTLED` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
-| `VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/paper.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING` | **已实现 ✓** | `vibe-math-vmu/kit/paper.js`、`vibe-math-vmu/packs/v5r/paper.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/paper.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_PAPER_PDF_FAILED` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/paper.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-core.js`、`vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/paper.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
@@ -1543,7 +1543,7 @@
 | `VMU_PANEL_UNKNOWN_FIELD` | **已实现 ✓** | `vibe-math-vmu/kernel/panel.js` | 代码里有该码字符串 ✓ |
 | `VMU_PAPER_LATEX_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/latex.js` | 代码里有该码字符串 ✓ |
 | `VMU_PAPER_LATEX_INTERRUPTED` | **已实现 ✓** | `vibe-math-vmu/kernel/latex.js` | 代码里有该码字符串 ✓ |
-| `VMU_PAPER_LATEX_NO_ENGINE` | **已实现 ✓** | `vibe-math-vmu/kernel/latex.js` | 代码里有该码字符串 ✓ |
+| `VMU_PAPER_LATEX_NO_ENGINE` | **已实现 ✓** | `vibe-math-vmu/kernel/latex.js`、`vibe-math-vmu/kit/paper.js` | 代码里有该码字符串 ✓ |
 | `VMU_PAPER_LATEX_NO_OUTPUT` | **已实现 ✓** | `vibe-math-vmu/kernel/latex.js` | 代码里有该码字符串 ✓ |
 | `VMU_PAPER_LATEX_TIMEOUT` | **已实现 ✓** | `vibe-math-vmu/kernel/latex.js` | 代码里有该码字符串 ✓ |
 | `VMU_PAPER_ROUNDS_EXCEEDED` | **已实现 ✓** | `vibe-math-vmu/kernel/paper.js` | 代码里有该码字符串 ✓ |

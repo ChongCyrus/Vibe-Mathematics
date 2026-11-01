@@ -2985,3 +2985,23 @@ missing[0] = { id: "rec-316.md（RUN14", path: "Members/r-1/Propos/rec-316.md（
 - **数学标题两条路都通**：质量闸两侧 `mathKey` 归一化（`$…$` 也算命中），缺席时给 `requiredLineMath` 可直接粘的写法。
 
 **教训**：**名字是帐的一部分**——任何从内容派生的名字都必须从不随时间变的字段派生，否则机制（裁定改 p）会让名字变成假话，而假话会被下游当成事实。**两个真实的读数看起来像矛盾时，缺的是"我在哪本账上"这句话**：把两个数改成一样才是撒谎，给指针才是答案。**回执的单位和出处要写在回执里**：`editor.source`、`roundMeans`、`truncatedBy`、`requiredLineMath` 是同一件事的四个面，框架每省一句，读者就多猜一次。
+
+## ROUND 179 — 一个可修的笔误不该烧掉整篇论文：定稿要在编译之后，闸的建议要编得过（run 21）
+
+**真机（run 21）读到的事实**：`EXIT=0`、1836 s、18 079 545 / 40M token（没打满）、505 事件、根 108 calls、5 会话 0 RED。主线完整（`rec-577` → `m52` 辩论 → `verdict_final` 一致 → `rec-579` → `paper-p19` 112 268 B PDF → `m53` 结题），四位成员都有真回合。上一轮八条修法全部成立。
+
+这一轮的缺陷是一条**因果链**，不是两件事：
+
+1. **定稿在编译之前就发生了**：`paper-p17` 的 `final` 回 `finalized:true`，同一份回执的 `pdf` 段却是 `produced:false` + `! Double subscript.`。状态到了回不来的点：`revise` 被"not awaiting its editor"拒、`compile` 重排同一份坏源、`part` 只在 writing 可写 ⇒ 一个笔误要求另起一篇论文（本轮因此多花一半论文步骤）。
+2. **闸递过来的写法自己编不过**：质量闸的 `requiredLineMath` 把整句（含标识符 `n_plus_n_eq_two_n`）包进 `$…$`；数学模式里每个 `_` 都是下标。**照闸的建议做，就生产了第 1 条里的残件。**
+
+**这一轮改的**：
+
+- **先编译，再定稿**：`recordFinal` 在 PDF 段之后才落 `final`。引擎真跑到 compile 并失败 ⇒ 回滚（`finalized:false`、`rolledBack{finalized→awaiting-editor}`、`reviseAvailable:true`）；**没有 LaTeX 面**是环境缺口 ⇒ 仍定稿并自报 `pdfEnvironmentMissing:true`；历史残件（已定稿但无 `paper-pdf` 行）可以用 `final {decision:"revise"}` 救回。
+- **标识符不放进数学模式**：`safeForm()` 在行内出现标识符时不给 `$…$` 形式（`requiredLineMath:null`、`requiredLineIdentifier:true`），hint 明说"按纯文本原样写"。
+- **闸只提醒，不替你下注**：闸是**内容检查**，不是语法检查——`$n_plus_n_eq_two_n$` 仍然算"这句话出现了"，但闸不再把它**递**给你。建议与判定分开，是本轮最重要的一条边界。
+- **元数据行不是记录**：`pdfCompiled` 连答 8 次"没有 PDF"，因为它解析的是 `records.list` 的元数据行（没有 body）。现在改问 kit 的 `compiledPdfRow`（逐行打开），并报 `matchedBy:'target'|'id'`——同一个事实只留**一个读者**。
+- **截断的名字只要求前缀**：`claimPrefix()` 去掉末尾 `…`，缺席条目带 `requiredLineTruncated`，hint 说"不必抄省略号"。
+- **被拒的哪一次能查到**：`records status` 的投影补回内核早就有的 `lastRefusal{code, at, op, message}`。
+
+**教训**：**诚实的失败必须可复原**——"如实地报 `pdf.ok:false` 却把状态推到回不来的点"是上一轮之前的设计，真机证明它等于把一次笔误变成一篇论文的葬礼。**闸的建议是可执行承诺**——不能执行的形式写进回执，就是在制造它自己要拒绝的东西。**元数据不是内容**——读面替读者回答内容问题时，必须自己去打开那一行。
