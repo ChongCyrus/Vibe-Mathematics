@@ -74,7 +74,11 @@ const missingOf = (v) => (v && Array.isArray(v.missing) ? v.missing : [])
 // ── §0 the source says what this pins ───────────────────────────────────────────────────────────────────────────────
 {
   const quality = readFileSync(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js'), 'utf8')
-  ok(quality.includes('([A-Za-z0-9_.-]+?)(?:\\.md)?') && quality.includes('(?=$|[^A-Za-z0-9_.-])') && quality.includes('(?:#[^\\s，。；、）)\\]（]*)'),
+  // ★ RUN 175 widened the anchor exclusion set (a pointer quoted inside markdown inline code ends at the tick, so the
+  // tick must not be swallowed into the anchor — see FEEDBACK20 item ①). The rule this line pins is unchanged: the id
+  // is the ID ALPHABET and the match ends at the first non-id character. What the anchor stops at is the wider set.
+  ok(quality.includes('([A-Za-z0-9_.-]+?)(?:\\.md)?') && quality.includes('(?=$|[^A-Za-z0-9_.-])')
+    && quality.includes("（`'\"「」『』【】]*)?"),
     '§0 the pointer capture is the ID ALPHABET and the match ends at the first non-id character (run 18 read `rec-316.md（RUN14` as an id)')
   ok(quality.includes("head.replace(/[^A-Za-z0-9_.-].*$/, '')"),
     "§0 a pointer quoted in prose cuts at the member's own punctuation before the id is resolved")

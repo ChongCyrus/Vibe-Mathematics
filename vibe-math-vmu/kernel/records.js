@@ -243,6 +243,10 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   const historyRows = []
   const historyDropped = { n: 0 }
   const refusals = new Map()
+  // ★★ RUN 175 (run 20 FEEDBACK20 ⑬): `refusalsTotal` counted refusals but could not say WHICH one — a reader holding
+  // `refusalsTotal:1` had no way to learn what had been refused, when, or by which operation. The last one is now kept
+  // (code + instant + op + a bounded message) and named on the status view; the COUNT stays the aggregate.
+  let lastRefusal = null
   const unwired = new Map()
   const declaredTopics = new Set()
   const counters = {
@@ -329,6 +333,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   const deny = (code, message, hint, enforced = [], op = null) => {
     const list = uniq(Array.isArray(enforced) ? enforced : [])
     const full = op && OP_WOULD[op] ? uniq(OP_WOULD[op].slice()) : list.slice()
+    lastRefusal = { code: String(code), at: now(), op: op === null || op === undefined ? null : String(op), message: String(message).slice(0, 200) }
     bump(refusals, code, 1)
     say({ type: 'records/refused', at: now(), code, message, enforced: list, enforcedScope: ENFORCED_SCOPE, op })
     const e = refuse(code, message, hint)
@@ -1047,6 +1052,12 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           bytesByTrack: Object.fromEntries(tracks.map((t) => [t, trackBytes(t)])),
         },
         refusals: objOf(refusals), refusalsTotal: sumOf(refusals),
+        // ★★ RUN 175 (run 20 FEEDBACK20 ⑬): see `lastRefusal` above — the most recent refusal BY NAME, so the count can
+        // be traced to one act instead of being a number with no referent.
+        lastRefusal,
+        lastRefusalMeans: lastRefusal === null
+          ? 'this instance has refused nothing yet (the refusal counters are empty, so there is no last refusal to name)'
+          : 'the MOST RECENT refusal this instance raised: `code` is the named refusal, `at` its instant, `op` the operation that refused (null = an operation the face did not name) and `message` its first 200 characters. Earlier refusals are only counted (see `refusals`), not listed',
         unwired: objOf(unwired), unwiredTotal: sumOf(unwired),
         historyRows: historyRows.length, historyRingDropped: historyDropped.n,
         // ★ ROUND 36: the seam is part of the self-report, so "why did this instance see nothing?" is answerable from

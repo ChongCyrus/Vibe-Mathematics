@@ -330,6 +330,23 @@ function toolRecordProgress(args = {}, { kernel, agent, callerMember } = {}) {
  * `value` / `motive` / `p` are carried into the body verbatim — they are v5r's card keys, and the framework does
  * not interpret them (the records face stores a body; the card schema belongs to the institution).
  */
+/** The row title a card write carries (RUN 175 / run 20 FEEDBACK20 ⑨).
+ *  An explicit `title` wins, then the explicit `id`, then the CLAIM itself (statement/content) truncated. The old
+ *  fallback was `<kind> <p>` — the card's own PROBABILITY in its name — which is wrong twice: a ruling settles the
+ *  probability (p -> 1) while the name keeps saying the old number, and the name then travels into the Verified row
+ *  (「已验证｜proposition 0.6」) and from there into a paper through the requiredLine gate. A probability is not an
+ *  identity, so it is never used as one. */
+function titleOfCard(args = {}, kindWord = 'card') {
+  const explicit = str(args.title).trim()
+  if (explicit) return explicit
+  const byId = str(args.id).trim()
+  if (byId) return byId
+  const rawClaim = args.statement !== undefined && args.statement !== null ? args.statement : args.content
+  const claim = str(rawClaim).replace(/\s+/g, ' ').trim()
+  if (claim) return claim.length > 48 ? claim.slice(0, 48) + '…' : claim
+  return String(kindWord)
+}
+
 function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extra, title }) {
   return function handler(args = {}, { kernel } = {}) {
     const records = recordsOf(kernel)
@@ -370,11 +387,12 @@ function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extr
     // (1 or 0). The pack declares `requireSettledRecords:true`, so an undecided card is refused BY NAME downstream —
     // the refusal comes from the institution's declared stance, and this handler must not pretend otherwise.
     const isSettled = Number(args.p) === 1 || Number(args.p) === 0
+    const rowTitle = titleOfCard(args, title)
     const written = records.put({
       id: has(args.id) ? str(args.id) : null,
       track,
       kind,
-      title: str(args.title) || str(args.id) || (title + ' ' + str(args.p)),
+      title: rowTitle,
       body,
       settled: isSettled,
       // ★ same rule as record_progress: a tool name is not an author
@@ -386,6 +404,17 @@ function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extr
       recordId: written.id, rev: written.rev, settled: isSettled,
       // ★ AUDIT C5b: the receipt says whether a progress figure came in and WHERE it was kept — a card's 进度 is now a
       // card field, not a passing remark. Same shape as `vibe_v5_record_progress`'s own echo.
+      // ★★ RUN 175 (run 20 FEEDBACK20 ⑨): the receipt names the title the row was written under, and says
+      // where it came from — a caller who passed no title used to be able to learn the name only by reading
+      // the row back, and the name it found was the card's probability.
+      title: rowTitle,
+      titleMeans: str(args.title).trim()
+        ? 'the title you passed is the row name'
+        : (str(args.id).trim()
+          ? 'no `title` was passed, so the row name is the id you passed'
+          : (str(args.statement !== undefined && args.statement !== null ? args.statement : args.content).trim()
+            ? 'no `title`/`id` was passed, so the row name is the CLAIM itself (statement/content, truncated at 48 chars) — never the probability `p`, because a ruling settles p while the name has to keep meaning the same thing'
+            : 'no `title`/`id`/claim was passed, so the row name is just the kind word')) ,
       progress: progressArg,
       progressMeans: progressArg === null
         ? 'no `progress` figure was passed with this call, so the card body holds only the card fields (this is said here, not left to be inferred from a missing field)'

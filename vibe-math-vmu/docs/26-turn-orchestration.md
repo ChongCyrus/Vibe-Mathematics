@@ -2965,3 +2965,23 @@ missing[0] = { id: "rec-316.md（RUN14", path: "Members/r-1/Propos/rec-316.md（
 **同轮一并修的读面**：`status.parts[*].at` 是轮号不是时间（run 19 读成 1，现只给 `round`）；单人论文在 `start` 就被告知 `crossReviewPossible:false`；`editor` 拒文直接点名"省略即默认主席、要写 id 就写 <chair>"；`reopen-closure` 的 `archivedVotes` 拆成 `archivedByWindow` + `unwindowedVotes`（一条没有 `window` 字段的旧票正是差 1 的来源）。
 
 **教训**：一个检查的**沉默**与它的**通过**在回执上长得一模一样，而读者只会读回执。所以"查了、通过"与"没查"必须在回执里是两种形状；"我替你决定了怎么排版"也必须写出来，否则作者以为框架在排版、框架以为作者写的是文本。
+
+## ROUND 178 — 名字不能从会变的东西里长出来，票要指出自己在哪本账上（run 20）
+
+**真机（run 20）读到的事实**：`EXIT=0`、1454 s、18 325 168 / 40M token（**没打满**）、502 事件、根 102 calls、5 会话 0 RED——第一次"整轮都跑完还没花光预算"。主线完整（命题 `rec-531` → `m50` 辩论 → `verdict_final` 一致 → 论文出 PDF → `m51` 结题），上一轮七条修法全部成立。这一轮暴露的两条硬缺陷都不是"算错了"，而是"说错了"：
+
+1. **一个名字用概率来起**：卡不传 `title` 时，名字退化成 `proposition 0.6`。规则 L53 的裁定**改 p**，于是这个名字从落盘那一刻起就开始撒谎，还会跟着 Verified 行与论文必写行进到下游。
+2. **票读不到它该在哪本账上**：会议板说 0 票、机构面说 3 票。两个都是真的——结题票走 `vibe_vmu_vote`，会议板不记 vote 事件；但回执没说这句话，读者只能认定其中一个在撒谎。
+
+**这一轮改的（都是"把出处写进回执"）**：
+
+- **名字从主张里长**：`titleOfCard` 的取值顺序是 `title` → `id` → **主张**（截 48 字）→ 类型词，`p` 永不出现在名字里；回执带 `titleMeans`。
+- **票带指针**：会议摘要给 `closureTally{face:'vibe_vmu_status', detail:'closure', …}` 与一句话说明"这是另一本账"；`close` 的 `closureVoteNote` 同口径。
+- **截断点名凶手**：`records list` 的 `truncatedBy[]` 分辨 `limit` 与 `vmu.records.headListAt`，并教 `limit:0` 取全量。
+- **默认值自曝**：`start` 回执给 `editor{value, source:'default'|'argument'|'argument-normalised', means}`。
+- **单位随数走**：`roundMeans` 说清 `round` 是序号、`at` 是墙钟。
+- **最近一次拒绝可追**：`lastRefusal{code, at, op, message}` + 一句话说"更早的只计数"。
+- **指针剥壳**：行内代码里的指针在回执里不带刻度；锚点排除集扩到引号与书名号。
+- **数学标题两条路都通**：质量闸两侧 `mathKey` 归一化（`$…$` 也算命中），缺席时给 `requiredLineMath` 可直接粘的写法。
+
+**教训**：**名字是帐的一部分**——任何从内容派生的名字都必须从不随时间变的字段派生，否则机制（裁定改 p）会让名字变成假话，而假话会被下游当成事实。**两个真实的读数看起来像矛盾时，缺的是"我在哪本账上"这句话**：把两个数改成一样才是撒谎，给指针才是答案。**回执的单位和出处要写在回执里**：`editor.source`、`roundMeans`、`truncatedBy`、`requiredLineMath` 是同一件事的四个面，框架每省一句，读者就多猜一次。

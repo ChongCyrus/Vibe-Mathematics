@@ -996,6 +996,29 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             // count (which is uncapped) and the library contributes its heads.
             const total = Math.max(kindArg === null ? recTotal + libKept.length : 0, rows.length)
             const truncated = returnedRows.length < total || (listed && listed.truncated === true)
+            // ★★ RUN 175 (run 20 FEEDBACK20 ④): `truncated:true` used to come with a hint that named two possible
+            // cause families ("cap 或轨/类型过滤"), so a reader holding `total:66, returned:7` could not act: was the
+            // page cut by THEIR `limit`, by `vmu.records.headListAt`, or by the store's own head cap? The receipt now
+            // names the ceiling that actually bit, with the numbers it used.
+            const headListAt = (() => {
+              try {
+                const s = kernel && kernel.settings
+                if (s && typeof s.get === 'function') {
+                  const v = s.get('vmu.records.headListAt')
+                  if (typeof v === 'number' && Number.isFinite(v)) return v
+                  const n = Number(v)
+                  if (Number.isFinite(n) && n > 0) return n
+                }
+              } catch (e) { return null }
+              return null
+            })()
+            const truncatedBy = []
+            if (truncated) {
+              if (cap !== null && rows.length > returnedRows.length) truncatedBy.push('limit (this call asked for ' + String(cap) + ')')
+              if (listed && listed.truncated === true) truncatedBy.push('vmu.records.headListAt (the records head list was itself capped at ' + String(headListAt === null ? 'its declared cap' : headListAt) + ')')
+              if (libRows.length > 0 && libKept.length === 0 && trackArg !== null) truncatedBy.push('track filter (library heads carry no track, so they are excluded by name)')
+              if (kindArg !== null) truncatedBy.push('kind filter (only rows whose own `kind` is ' + JSON.stringify(kindArg) + ' are counted)')
+            }
             return Object.assign({
               ok: true, action, total, returned: returnedRows.length, truncated,
               rowsFrom: { records: recRows.length, library: libKept.length },
@@ -1010,7 +1033,11 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               kindFilterMeans: kindArg === null
                 ? 'no kind filter was given'
                 : 'only rows whose own `kind` equals ' + JSON.stringify(kindArg) + ' are here',
-              hint: truncated ? '回了 ' + returnedRows.length + '/' + total + ' 条（cap 或轨/类型过滤）：传 limit:0 取全部，或先按 track 收窄，再用 action:expand + id 取正文' : null,
+              truncatedBy,
+              truncatedByMeans: truncated
+                ? 'the ceilings that actually cut this page (' + (truncatedBy.length ? truncatedBy.join('; ') : 'none identified — total came from a filter set larger than the page') + '); pass limit:0 to fetch the whole filtered set, or narrow by track/kind and read bodies with action:expand + id'
+                : 'nothing was cut: this page holds the whole set the filters cover',
+              hint: truncated ? '回了 ' + returnedRows.length + '/' + total + ' 条（' + (truncatedBy.length ? truncatedBy.join('; ') : 'cap 或轨/类型过滤') + '）：传 limit:0 取全部，或先按 track 收窄，再用 action:expand + id 取正文' : null,
             }, { records: returnedRows })
           }
           if (action === 'prune') {

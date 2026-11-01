@@ -75,7 +75,7 @@ const isBareCitation = (id) => BARE_CARD_ID.test(id) || /^[A-Za-z][A-Za-z0-9_-]*
 // record that DOES exist as "no record with this id" (measured, run 18). A record id is ASCII by construction, so the
 // capture is now exactly the id alphabet and the lookahead is "anything that is not an id character": the pointer ends
 // where the member's prose resumes, whatever punctuation that is.
-const MEMBER_FILE = /Members[\/\\][^\/\\\s]*[\/\\](Propos|Methods|Subproblems|Progress)[\/\\]([A-Za-z0-9_.-]+?)(?:\.md)?(?:#[^\s，。；、）)\]（]*)?(?=$|[^A-Za-z0-9_.-])/
+const MEMBER_FILE = /Members[\/\\][^\/\\\s]*[\/\\](Propos|Methods|Subproblems|Progress)[\/\\]([A-Za-z0-9_.-]+?)(?:\.md)?(?:#[^\s，。；、）)\]（`'"「」『』【】]*)?(?=$|[^A-Za-z0-9_.-])/
 const TRACK_OF_CATEGORY = Object.freeze({ Propos: 'propositions', Methods: 'methods', Subproblems: 'problems', Progress: 'progress' })
 
 const str = (v) => (v === undefined || v === null ? '' : String(v))
@@ -255,9 +255,17 @@ function eachMemberFile(line, push) {
   const re = new RegExp(MEMBER_FILE.source, 'g')
   let m = null
   while ((m = re.exec(line)) !== null) {
-    push(m[0])
+    push(pointerText(m[0]))
     if (m[0].length === 0) re.lastIndex += 1
   }
+}
+
+/** ★★ RUN 175 (run 20 FEEDBACK20 ①): a pointer written inside markdown inline code was reported with the closing tick
+ *  attached (`Members/r-1/Propos/rec-316.md#§3`` ` ``), because the anchor class excluded whitespace and CJK punctuation
+ *  but not the tick. The tick is PROSE, not addressing — the id was already right, the path printed to the caller was not.
+ *  Receipts now carry the pointer without its markdown wrapper, so a reader can paste it. */
+function pointerText(raw) {
+  return str(raw).replace(/^[`'"「『【]+/, '').replace(/[`'"」』】]+$/, '').trim()
 }
 
 /** Every citation this gate judges: the parts' `evidence` entries plus member-file paths quoted in the prose. */
@@ -459,24 +467,40 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
   // "pass" while never stating the result. A row with no title falls back to its card id.
   const missingEvidence = []
   const nameOf = (t) => str(t).replace(/^已验证｜/, '').trim()
+  // ★★ RUN 175 (run 20 FEEDBACK20 ②): a verified conclusion whose title carries math (`Σ_{k=1}^{n} k³ = (n(n+1)/2)²`)
+  // forced the author to paste that raw title into the prose, and the renderer — which escapes prose but keeps paired
+  // `$…$` as math — turned it into a backslash soup on the page (`Σ\_\{k=1\}\textasciicircum{}\{n\}`). Two things were
+  // wrong: the gate demanded the ESCAPED form (so the author could not use the math form the renderer respects), and the
+  // hint did not say a paired `$…$` is accepted. The comparison now normalizes BOTH sides (drop `$`, the escaping of
+  // `_ ^ { } $ & % #`, and whitespace), so writing the conclusion as math (`$Σ_{k=1}^{n} k³ = (n(n+1)/2)²$`) satisfies the
+  // gate AND renders as math; the raw form still matches too, so nothing that passed before fails now.
+  const mathKey = (s) => str(s)
+    .replace(/\\textasciicircum\{\}/g, '^').replace(/\\textasciitilde\{\}/g, '~')
+    .replace(/\\textbackslash\{\}/g, '\\').replace(/\\textless\{\}/g, '<')
+    .replace(/\\textgreater\{\}/g, '>').replace(/\\textbar\{\}/g, '|')
+    .replace(/\\([&%$#_{}])/g, '$1')
+    .replace(/[\\$]/g, '').replace(/[{}\\s]/g, '')
+  const textKey = mathKey(text)
   const verified = view.verified()
   for (const item of verified.items) {
     const named = nameOf(item.title)
     const tokens = named ? [named] : [item.cardId, item.id].filter(has)
     // ★ RUN 153 (G5): the refusal names the line to paste. The first real run's agent had to strip the "已验证｜" prefix
     // from the title BY HAND (this gate requires the title verbatim) and got it wrong once — a whole `revise` round lost.
-    if (!tokens.some((t) => text.includes(t))) {
+    if (!tokens.some((t) => text.includes(t) || (mathKey(t) !== '' && textKey.includes(mathKey(t))))) {
       missingEvidence.push({ kind: 'verified', id: item.id, cardId: item.cardId, title: item.title,
-        requiredLine: named || String(item.cardId || item.id) })
+        requiredLine: named || String(item.cardId || item.id),
+        requiredLineMath: /[_^{}$\\]/.test(named) ? '$' + named + '$' : null })
     }
   }
   const solved = view.subproblems()
   for (const item of solved.items) {
     const tokens = [item.title, item.statement].filter(has)
     if (tokens.length === 0) tokens.push(item.id)
-    if (!tokens.some((t) => text.includes(t))) {
+    if (!tokens.some((t) => text.includes(t) || (mathKey(t) !== '' && textKey.includes(mathKey(t))))) {
       missingEvidence.push({ kind: 'subproblem', id: item.id, title: item.title,
-        requiredLine: item.title ? nameOf(item.title) : String(item.id) })
+        requiredLine: item.title ? nameOf(item.title) : String(item.id),
+        requiredLineMath: item.title && /[_^{}$\\]/.test(nameOf(item.title)) ? '$' + nameOf(item.title) + '$' : null })
     }
   }
   if (missingEvidence.length > 0) {
@@ -488,7 +512,8 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
       ok: false, code: codes.VERIFIED_MISSING,
       message: '正文漏掉了记录库里已有的结论：' + missingEvidence.length + ' 条（首条 ' + first.kind + ' `' + firstLabel + '`）——已检验通过的命题与已解决的子问题必须出现在正文里'
         + (first.requiredLine ? '；可直接粘进正文的标题行：`' + first.requiredLine + '`' : ''),
-      hint: '这条门判的是**成员写的正文**（渲染时第 3 节由 `verified` 轨自动填充、第 4 节由 `problems` 轨 p=1 自动填充，但自动填充只进渲染出的文件，**不能**代替正文里的结论）：把该结论的标题（去掉「已验证｜」前缀）原样写进某一节的 part 正文，或让作者在下一轮补写，再 render。★ 如果论文已经走到 awaiting-editor（只有 writing 阶段能写 part），先让主编把它退回去：vibe_v5_paper { action: "final", target: "<本论文>", member: "<主席席成员>", decision: "revise", note: "<补哪些结论>" } 回到 writing 后再录 part',
+      hint: (first.requiredLineMath ? '这条结论的标题带数学记号：把它写成配对 `$…$` 的数学形式（例如 `' + first.requiredLineMath + '`）最省事——渲染器会原样保留配对 `$…$` 里的内容当数学，而裸写标题会被转义成满页反斜杠；两种写法都能过这道闸。' : '')
+        + '这条门判的是**成员写的正文**（渲染时第 3 节由 `verified` 轨自动填充、第 4 节由 `problems` 轨 p=1 自动填充，但自动填充只进渲染出的文件，**不能**代替正文里的结论）：把该结论的标题（去掉「已验证｜」前缀）原样写进某一节的 part 正文，或让作者在下一轮补写，再 render。★ 如果论文已经走到 awaiting-editor（只有 writing 阶段能写 part），先让主编把它退回去：vibe_v5_paper { action: "final", target: "<本论文>", member: "<主席席成员>", decision: "revise", note: "<补哪些结论>" } 回到 writing 后再录 part',
       missing: missingEvidence,
     }
   }

@@ -624,7 +624,34 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (primitive) return Object.assign({ ok: true, action, registry: 'primitive' }, primitive.summary())
             const svc = kernel && kernel.meetings ? kernel.meetings : null
             if (svc && typeof svc.summary === 'function') {
-              return Object.assign({ ok: true, action }, svc.summary({ meeting: pid }))
+              const summaryOut = svc.summary({ meeting: pid })
+              // ★★ RUN 175 (run 20 FEEDBACK20 ⑩): the closure votes are cast through `vibe_vmu_vote` at the INSTITUTE
+              // level, so this board has no vote event for them. Measured on run 20: `summary` answered
+              // `votes:0, votesSource:"none-recorded-on-this-face"` while `vibe_vmu_status{detail:"closure"}` read 3 —
+              // two truthful readings of two different records that looked like a contradiction. The absent half is
+              // now NAMED here, with the face that carries it, instead of being left for the reader to disbelieve.
+              const summaryClosure = (() => {
+                try {
+                  if (typeof kernel.closureVoteView === 'function') return kernel.closureVoteView()
+                  const st = typeof kernel.status === 'function' ? kernel.status() : null
+                  return st && st.closureVote ? st.closureVote : null
+                } catch (e) { return { readable: false, why: (e && e.message) || String(e) } }
+              })()
+              const closurePointer = summaryClosure === null || summaryClosure === undefined
+                ? { closureTally: null, closureTallyMeans: 'this kernel publishes no institute-level closure reading, so this board cannot say whether every enfranchised member judged the question solved (that is UNREAD here, not zero)' }
+                : {
+                  closureTally: {
+                    face: 'vibe_vmu_status',
+                    detail: 'closure',
+                    readable: summaryClosure.readable !== false,
+                    votesCast: summaryClosure.votesCast === undefined ? null : summaryClosure.votesCast,
+                    cast: summaryClosure.cast === true,
+                    confirmed: summaryClosure.confirmed === true,
+                    missing: Array.isArray(summaryClosure.missing) ? summaryClosure.missing : [],
+                  },
+                  closureTallyMeans: 'the closure tally is the INSTITUTE-LEVEL unanimity reading (`vibe_vmu_vote`, read back at `vibe_vmu_status { detail: "closure" }`), and it is a DIFFERENT record from this meeting board: the votes are cast as institute votes, so `present`/`motions`/`votes` above record NO vote events for them. votesCast here next to an empty motion list is two records, not two truths',
+                }
+              return Object.assign({ ok: true, action }, summaryOut, closurePointer)
             }
             throw noSuchMeeting(pid)
           }
@@ -688,7 +715,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                 closureVote: closeClosureVote,
                 closureVoteNote: closeClosureVote === null || closeClosureVote === undefined
                   ? 'this kernel publishes no closure-vote reading, so this receipt cannot say whether every enfranchised member judged the question solved — the close below is a fact, the closure vote is UNREAD here'
-                  : 'closureVote (cast/confirmed/votesCast/missing) is the SEPARATE unanimity reading over the same INSTANCE, not a requirement of this close and not changed by it: this close passed the rails named in `enforced` (' + (closeEnforced.length ? closeEnforced.join(', ') : 'none listed') + ') while the closure vote reads cast=' + String(closeClosureVote.cast === true) + ', confirmed=' + String(closeClosureVote.confirmed === true) + ', missing=' + JSON.stringify(closeClosureVote.missing || []) + ' — so "closed" does not mean "unanimously judged solved", and a member named in `missing` is who to ask before claiming closure',
+                  : 'closureVote (cast/confirmed/votesCast/missing) is the SEPARATE unanimity reading over the same INSTANCE, not a requirement of this close and not changed by it: this close passed the rails named in `enforced` (' + (closeEnforced.length ? closeEnforced.join(', ') : 'none listed') + ') while the closure vote reads cast=' + String(closeClosureVote.cast === true) + ', confirmed=' + String(closeClosureVote.confirmed === true) + ', missing=' + JSON.stringify(closeClosureVote.missing || []) + ' — so "closed" does not mean "unanimously judged solved", and a member named in `missing` is who to ask before claiming closure. THE VOTES ARE CAST THROUGH `vibe_vmu_vote` AT THE INSTITUTE LEVEL, so the meeting board (`present`, `motions`, `votes`) records NO vote events for them: a chair who sees votesCast=' + String(closeClosureVote.votesCast === undefined || closeClosureVote.votesCast === null ? '?' : closeClosureVote.votesCast) + ' next to an empty motions list is reading two different records, not two different truths',
               })
             }
             throw noSuchMeeting(pid)

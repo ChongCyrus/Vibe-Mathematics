@@ -542,7 +542,7 @@ export function createPaperFlow({
       counters: { opened: ledger.opened, answered: ledger.answered, exempted: ledger.exempted, timedOut: ledger.timedOut } }
   }
 
-  function start({ target, title = '', participants = [], editor = editorDefault, lang = 'zh', format = 'both' } = {}) {
+  function start({ target, title = '', participants = [], editor, lang = 'zh', format = 'both' } = {}) {
     ensureTrack()
     if (!has(target)) throw refuse('VMU_INVALID_ARGUMENT', 'start needs the paper target', 'pass target:"<the object being written up>"')
     const list = Array.isArray(participants) ? participants.map(String).filter((x) => x !== '') : []
@@ -553,7 +553,11 @@ export function createPaperFlow({
     // it could never finalise, and only said so at the LAST step (4 attempts, three papers wasted). The role is
     // resolved HERE, where the answer is still actionable: a member id is accepted exactly when that member sits in the
     // chair slot, and anything else is refused by name before the paper exists.
-    const editorWord = str(editor) || editorDefault
+    // ★★ RUN 175 (run 20 FEEDBACK20 ⑦): `editor` has a DEFAULT, so a caller who omitted it could not tell from the
+    // receipt which finaliser the paper got — the value was only visible later, on `status`. The start receipt now
+    // names the word AND where it came from (`default` vs the caller's argument vs a seat id normalized to the role).
+    const editorGiven = editor !== undefined && editor !== null && String(editor).trim() !== ''
+    const editorWord = editorGiven ? String(editor).trim() : editorDefault
     let editorName = editorWord
     if (editorWord !== editorDefault && editorWord !== 'office') {
       const seat = (kernel.members ? kernel.members.roster() : []).filter((m) => String(m.id) === editorWord)[0] || null
@@ -644,6 +648,16 @@ export function createPaperFlow({
       // refused it ("一位参与者的论文无法通过互审") — after the work. The impossibility is knowable at `start`, so the
       // start receipt says it now: a paper needs two writing participants because cross-review needs a member who is not
       // the author. Not a refusal here (a paper can be started before the second member is named), but never a surprise later.
+      // ★★ RUN 175 (run 20 FEEDBACK20 ⑦): which finaliser this paper got, and why — never left to a later `status`.
+      editor: {
+        value: state.editor,
+        source: editorGiven ? (String(editor).trim() === state.editor ? 'argument' : 'argument-normalised') : 'default',
+        means: editorGiven
+          ? (String(editor).trim() === state.editor
+            ? 'the paper finalises through the word you passed'
+            : 'the word you passed names a member seated in the chair slot, so it was normalized to the academician ROLE (the same finaliser, addressed the way this flow addresses it)')
+          : 'no `editor` was passed, so the paper finalises through the declared default (' + String(editorDefault) + '); pass editor:"office" to have the office finalise instead',
+      },
       crossReviewPossible: participants.length >= 2,
       crossReviewMeans: participants.length >= 2
         ? 'cross-review is possible: ' + participants.join(', ') + ' can review each other\'s parts'

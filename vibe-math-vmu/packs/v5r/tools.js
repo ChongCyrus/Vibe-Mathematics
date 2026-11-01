@@ -4368,6 +4368,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
       return { ok: true, tool, action, target, exists,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: paperView,
+        // ★★ RUN 175 (run 20 FEEDBACK20 ⑤): this view carries three clocks — `parts[].round`, `reviews[].round` and
+        // `consult.requests[].at` — two measured in ROUNDS and one in wall-clock milliseconds, and nothing said which was
+        // which. One sentence now states the convention for the whole view (the old `at` on a part slot was already
+        // removed in RUN 174; this names what remains).
+        roundMeans: 'every `round` in this view (parts, reviews) is the paper ROUND the row was written in — an ordinal, not an instant; `consult.requests[].at` is wall-clock milliseconds (the only true time in the view), and the paper itself carries `createdRound`/`updatedRound`',
         partsMeans: 'each part slot says which ROUND it was written in (`round`); this subsystem counts rounds, it does not stamp wall-clock time on a part',
         reviewsMeans: 'each review row says which ROUND of the cross-review it belongs to (`round`); a row of another round is durable history, not a vote on this round',
         missing: artifacts ? artifacts.missing : [], complete: artifacts ? artifacts.complete === true : false,
@@ -4375,7 +4380,31 @@ async function toolPaper(args = {}, { kernel } = {}) {
         // file `compile` produced - so a reader who had just seen `compiled.produced:true` read `pdf.produced:false` as "no PDF".
         // Both readings are now named on the receipt instead of being left to the reader.
         pdf: artifacts ? artifacts.pdf : null,
-        pdfMeans: 'this `pdf` block describes the ARCHIVE row in the paper track (render writes it); a file produced by compile is reported by `vibe_v5_paper { action: "compile" }` / the `final` receipt as `produced`+`pdfPath`+`pdfBytes` - the two are different questions, and `produced:false` here is not "no pdf was made"' }
+        pdfMeans: 'this `pdf` block describes the ARCHIVE row in the paper track (render writes it); a file produced by compile is reported by `vibe_v5_paper { action: "compile" }` / the `final` receipt as `produced`+`pdfPath`+`pdfBytes` - the two are different questions, and `produced:false` here is not "no pdf was made"',
+        // ★★ RUN 175 (run 19 FEEDBACK19 F9): the ARCHIVE row above says `produced:false` even right after a successful
+        // `final`, because the compiled file is a SEPARATE row (`kind:"paper-pdf"`). A reader asking "is there a PDF?" had
+        // to make another call and know that. So the status now reads the compiled ledger itself and answers that question
+        // by name: `pdfCompiled` is the LAST compile this paper produced, or `produced:false` when it never compiled.
+        ...(() => {
+          let rows = []
+          try { rows = typeof paper.papers === 'function' ? (paper.papers() || []) : [] } catch (e) { rows = [] }
+          const mine = rows.filter((r) => r && String(r.kind || '') === 'paper-pdf' && String(r.title || '').endsWith('|' + str(target) + '|pdf'))
+          if (mine.length === 0) {
+            return { pdfCompiled: { produced: false, recordId: null, pdfPath: null, pdfBytes: null, engine: null, means: 'no compile is on file for this paper (the paper track holds no `paper-pdf` row for it); `final` compiles, `compile` re-typesets an already-finalized paper' } }
+          }
+          const last = mine.slice().sort((a, b) => (Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) || (String(b.id || '').localeCompare(String(a.id || ''), 'en', { numeric: true })))[0]
+          let body = null
+          try { body = JSON.parse(String(last.body || '')) } catch (e) { body = null }
+          return { pdfCompiled: {
+            produced: Boolean(body && body.pdfPath),
+            recordId: last.id === undefined ? null : last.id,
+            pdfPath: body && body.pdfPath ? body.pdfPath : null,
+            pdfBytes: body && body.pdfBytes !== undefined ? body.pdfBytes : null,
+            engine: body && body.engine ? body.engine : null,
+            tried: body && Array.isArray(body.tried) ? body.tried : [],
+            means: 'the LAST `paper-pdf` row this paper produced (the compile ledger), so "is there a PDF file?" is answered here instead of by a second call; the `pdf` block above is the ARCHIVE row render wrote, a different record',
+          } }
+        })() }
     }
     case 'start': {
       // ★★ RUN 164 (FEEDBACK12 item 7): `title` was accepted by the schema and SILENTLY DROPPED here, so the human name a

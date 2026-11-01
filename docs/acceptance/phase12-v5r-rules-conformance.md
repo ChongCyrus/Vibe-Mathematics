@@ -13058,3 +13058,52 @@ run 17（baseline `eb53b2b3`，4 个会话、18 回合、`DRIVE_EXIT=0`、`slv-i
 - **索引是缓存，不是事实**：`records` 的 track 数组是"这个 id 在哪条轨"的缓存；缓存与记录冲突时，读者要用记录、写者要把缓存修好——一个只 guard 新轨、从不清理旧轨的写者，会同时骗过读面和折入面。
 - **转义是政策**：把 `^` 转成 `	extasciicircum{}` 在"正文里写了一个脱字符"时是对的，在"成员写了一条公式"时是错的。既然框架无法代替作者决定，就把决定写进回执（`mathTypeset`），让作者知道自己在写什么。
 
+
+## §275 第二十次真机（run 20）与 RUN 175：名字不能用概率起，票要指出自己在哪本账上
+
+### 275.1 现场
+
+- 基线 `d9b83349`（RUN 174 已提交），驱动 `D:/_tmp/slv-phase5/slv-p13-oc.ps1`，`-CloneName slvp174 -Port 19618 -MaxTokens 40000000 -TimeoutSec 5400`，工作区 `D:\_tmp\slv-phase5\slvp157-ws`（`-KeepWorkspace`）。
+- 结果：`EXIT=0`、`durationSec 1454`、`tokenTotal 18 325 168 / 40 000 000`（**capHit false**）、`transcriptEvents 502`、根会话 `toolCalls 102`、`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`、`OK: prompt/wire names consistent; all calls visible; counts match`；转录 `D:/wd/vibemath开发/_oneoff/vm-slv/full-1101-072817.jsonl`。
+- 产出：`SIM-REPORT20.md`（29 981 B）+ `FEEDBACK20.md`（13 569 B）。
+- 主线完整走完：新命题 `rec-531`（`Σ_{k=1}^{n} (2k-1)² = n(4n²-1)/3`）→ 辩论会 `m50`（`subjectGate{allowed:true, proofBasis:"declaration-only", proofChecked:false}`，`r-temp` 以 `attendDeniedSeats:["temp"]` 排除在外）→ 两位成员的裁决 `0.97` / `0.98` → `verdict_final value:1, mode:"unanimous", n:2` → 论文 `run20-odd-squares` 编译出 PDF → 结题会 `m51` 的 `close` 归档。
+
+### 275.2 上一轮（RUN 174）修法的真机确认
+
+- 引文闸两方向成立：`citations[0].path` 不再把标点吃进 id（残留只是 markdown 行内反引号被收尾进 `path`，见 FEEDBACK20 ①）。
+- `paper status` 的 `parts[*]` 已经没有 `at`（残留是 `round`/`at` 两种单位没有一句话说明，见 ⑤）。
+- 单人论文的 `crossReviewPossible`、`editor` 拒文的点名、`reopen-closure` 的 `archivedByWindow`+`unwindowedVotes` 都对账（`archivedVotes:4 = {"4":3} + 1`）。
+- `render` 的 `qualityGate` 两个方向都在：草稿（`advisory:true`）、`awaiting-editor`（拒）。本轮主线没触发引文门的失败分支——**未触发也是读数**，写在 ⑭ 的"未触发清单"里。
+
+### 275.3 这一轮抓到的真缺陷（与修法）
+
+1. **一个名字用概率来起**（⑨）：`vibe_v5_record_proposition` 不传 `title` 时，卡名退化成 `proposition <p>`——真机上是 `proposition 0.6`。这个名字会跟着 `verified_promote` 变成 `已验证｜proposition 0.6`，再被质量闸的 `requiredLine` 逼进论文正文。规则 L53 的裁定**会改 p**，于是名字从写下那一刻就开始撒谎。修法：`kit/handlers.js` 新增 `titleOfCard(args, kindWord)`——`title` → `id` → **主张本身**（`statement`/`content` 折空白取前 48 字符加 `…`）→ 类型词，**永不使用 `p`**；回执给出 `title` 与 `titleMeans`（说明这个名字来自哪一支）。
+2. **票读不到它该在哪本账上**（⑩）：会议面 `vibe_v5_meeting {action:"summary"}` 回 `votes:0, votesSource:"none-recorded-on-this-face"`，而 `vibe_vmu_status {detail:"closure"}` 读得到 3 票。两个面都真——机构级结题票走 `vibe_vmu_vote`，会议板不记 vote 事件。修法：摘要回执带 `closureTally{face:'vibe_vmu_status', detail:'closure', readable, votesCast, cast, confirmed, missing}` 与 `closureTallyMeans`（"这是另一本账，不是另一个真相"）；F8 同源，`close` 的 `closureVoteNote` 也补了同一句话。
+3. **被截断的页不知道自己被谁截断**（④）：`records {action:"list"}` 回 `truncated:true` + `total:66, returned:7`，hint 只列了两种可能家族。修法：回执加 `truncatedBy[]`（`limit (this call asked for N)` / `vmu.records.headListAt (capped at N)` / track 过滤 / kind 过滤）与 `truncatedByMeans`（说清 `limit:0` 才是取全量）。
+4. **起点不报终点**（⑦）：`start` 省略 `editor` 时默认落在 `academician`，但回执不说；读者要到 `status` 才知道。修法：`kit/paper.js#start` 回执带 `editor:{value, source:'default'|'argument'|'argument-normalised', means}`。
+5. **数字的单位靠猜**（⑤）：`parts[].round` 是轮号、`consult.requests[].at` 是 epoch 毫秒，视图不解释。修法：`paper status` 带 `roundMeans`（"`round` 是轮次序号，`at` 是唯一的墙钟时间"）。
+6. **被拒过几次可以数，被拒了哪次不可查**（⑬）：`refusalsTotal:1` 没有对象。修法：`kernel/records.js` 记 `lastRefusal{code, at, op, message}`，`status()` 回执上带它和 `lastRefusalMeans`（"更早的只计数，不保留"）。
+7. **指针带着 markdown 的壳**（①）：正文里写 `` `Members/r-1/Propos/rec-1.md#§3` ``，回执的 `missing[].path` 把收尾的刻度也带上。修法：`paper-quality.js` 新增 `pointerText()` 剥掉行内代码/引号的壳，锚点排除集扩到引号与书名号。
+8. **带数学的标题把转义残形逼进正文**（②）：`requiredLine` 要求正文逐字出现 Verified 标题，而标题自带 `^_{}` ⇒ 作者被迫写 `Σ\_\{k=1\}\textasciicircum{}\{n\}`。修法：两侧都做 `mathKey` 归一化（`$…$` 形态也算命中），`missingEvidence` 每条附 `requiredLineMath`（可直接粘的 `$…$` 行），hint 明说"配对 `$…$` 一定被接受"。
+9. **F9 的读法**（`status.pdf` 说归档行、不说编译台账）：`paper status` 新增 `pdfCompiled{produced, recordId, pdfPath, pdfBytes, engine, tried, means}`，读 `paper-pdf` 行按 `updatedAt` 取最新。
+
+### 275.4 机器化
+
+- 新套件 `tests/vmu-run175-feedback20.test.mjs`：**46 PASS / 0 FAIL**。§0 八条源码口径；§1 卡名＝主张（且 durable 行同名、显式 `title` 仍胜出）；§2 Verified 标题的**原文**与 **`$…$` 数学形式**都能满足质量闸，缺席时 `requiredLineMath` 与 hint 就位；§3 `start` 的 `editor.source`（默认 / 规范化）——注意回执是**嵌套**的 `{ok, tool, action, started:{…}}`；§4 会议摘要有 `closureTally` 指针（读 `vibe_vmu_meeting`，`vibe_v5_meeting` 只负责召开）；§5 `truncatedBy` 点名 `limit` 与 `limit:0` 的取全法；§6 `lastRefusal` 可追溯到具体一次拒绝；§7 行内代码里的指针回执不带刻度、id 干净；§8 `pdfCompiled` + `roundMeans`。
+- 定向回归（`--only`）：paper 11/0、records 5/0、meeting 32/0、verdict 5/0、prompt- 24/0、v5r-tools 1/0、tools-action-arity 1/0、run166–run174 各 1/0、run152 1/0、run36 4/0、run16 11/0、evidence 1/0、citation 3/0、turn 15/0、host 6/0、run15 10/0、run17 6/0、run164/165 各 1/0、settings 8/8。
+- 一处既有 pin 按新机制改写：`tests/vmu-run173-citation-id.test.mjs` §0 钉的锚点排除集，因为本轮把排除集扩到 `'` `"` 「」『』【】（`pointerText` 剥壳的同一件事）。规则本身（id 是 ID 字母表、匹配止于第一个非 id 字符）一个字没改。
+- 收口链：`update-doc-counts --write`（`JOBS total=724 suites=616 probes=108`）→ `generate-vmu-settings-table --write`（1273 键）→ `regen-all --write` 到不动点 → `--check` **17/17 in sync**；`PREFLIGHT: PASS`、`DOC LINT: PASS`、`RULES COVERAGE: PASS (0)`、`RULE PARITY: PASS (0)`。
+- 全量 T1：**655 PASS / 0 FAIL（suites 591 · probes 64）**（`/d/_tmp/t1-r244-run175.log`）。
+
+### 275.5 未闭合账（下一轮）
+
+1. **prune 的清单**（③）：`prune` 回执逐行给 `id/title` 却不给 `track`，读者无法确认删的是哪条轨上的行。下一轮补 `track` 并考虑批量写盘（run 17 观察 12 行 ≈ 14.4 s）。
+2. **`refusalsTotal` 只留最后一次**（⑬ 的完整版需要环形缓冲或按 code 的计数），当前是"能查最近一次"，不是"能查全部"。
+3. **互审 3 轮上限**仍是产品决策（`capped:true` + 警告已具名）。
+4. **`queued` 语义**（FEEDBACK20 未列，来自 run 11 的 rec-300）：`procedureProgress.queued` 是累计入队数，需加 `waitingNow` 或改名。
+
+### 275.6 教训
+
+- **名字是帐的一部分**：任何"从内容派生出来的名字"都必须从**不随时间变的东西**里派生。`proposition 0.6` 之所以是缺陷，不是因为它丑，是因为规则 L53 的裁定会改 0.6——名字随之变成假话，而假话会被下游当成事实（Verified 行标题、论文必写行）。
+- **两个真实的读数看起来像矛盾时，缺的是"我在哪本账上"这句话**：会议板的 0 票与机构面的 3 票都真，读者需要的是指针（`closureTally.face`），不是调和（把两个数改成一样才是撒谎）。
+- **回执的单位与出处要写在回执里**：`editor.source`、`roundMeans`、`truncatedBy`、`requiredLineMath` 是同一件事的四个面——"这个值是谁定的、是什么单位、被谁截断、要怎么写才被接受"。框架每省掉一句，读者就要多猜一次，而猜错会被记成框架的错。
