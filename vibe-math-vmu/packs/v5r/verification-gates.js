@@ -266,7 +266,14 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
       + '一句话没有可寻址的载体，既登记不了证明，也没法被人核',
       '两条合法路：①先写成命题卡 `vibe_v5_record_proposition { id, title, statement, value, motive, p, proof_ref:"Members/<m>/Propos/<id>.md#正式证明", proof_state:"complete" }`，'
       + '再以卡 id 召集辩论；②把证明写成文件，以**文件引用**（路径或 .md/.lean/.txt/.tex/.json 名）作对象。'
-      + '本闸对卡核"有没有登记证明"、对文件核"可读且非空"，内容是否写完由辩论中的人核',
+      + '本闸对卡核"有没有登记证明"、对文件核"可读且非空"，内容是否写完由辩论中的人核。'
+      + ' REACHABLE INSTEAD (the actor matters): this is an ADDRESS problem, not a proof problem — the sentence has no place to'
+      + ' keep its proof, so the reachable repair is to give it one (register it as a card whose proof_ref/proof_state are set,'
+      + ' or write the proof to a file and pass the file reference). No member turn can do that FOR you and the office must not'
+      + " type a member's proof: if the sentence came from a member, wake that author (vibe_vmu_turn { op: \"drive\"," 
+      + ' members: ["<author seat>"], rounds: 1 } with a next_step asking for the card and its proof_ref) — the rejected'
+      + ' call here cannot be repaired by retrying it',
+
       { form: 'statement', subject: cls.raw, proofChecked: false, proofContentChecked: false,
         provenance: 'none', looksLikeIdentifier: /^[A-Za-z][A-Za-z0-9_-]*$/.test(cls.raw) })
   }

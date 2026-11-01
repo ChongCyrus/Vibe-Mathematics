@@ -13471,3 +13471,42 @@ run 29 首跑的服务端 OOM 不是 vmu 记录的账：本地探针 `D:/_tmp/pr
 - **hint 是程序，不是文案**：它调用的访存路径必须与被指工具同源；`K.roster()` 这种不存在的成员名会被 `try/catch` 静默变成「没这条规则」——**try/catch 会吞掉机制自己在撒谎**。
 - **批量的回执必须回答覆盖**：「我请求了两个人、只叫醒了一个」是回执该说的事实，不能让读者从策略里推断。
 - **拒绝之后要有路**：拒绝语若只点名「字段不对」，读者会自己发明行为（office 代写成员证明）；拒绝必须点名**谁**能做、**从哪**做。
+
+## §284 第三十二次真机：一次结题票板，两个读者，两种真话
+
+### 284.1 run 31：墙钟没打满，堆先打满
+
+- run 31（基线 `272e2804`，`slvp185`，沿用 `slvp157-ws`）：`DRIVE exit=1`，只跑到主线第 3 步。驱动日志尾部是服务端的 `Mark-Compact (reduce) 1637.4 (1770.4) -> 1637.3 (1687.9) MB … last resort` 与 `FATAL ERROR: CALL_AND_RETRY_LAST Allocation failed - JavaScript heap out of memory`（712 s），随后驱动收到 `ECONNRESET`；`slv-inspect` 报根会话 `calls (5) vs results (4)` 一条 RED。
+- 同一轮暴露**两个库根**：会话工作目录 `slvp157-ws` 根下有旧跑留下的 `Members/`，而 pack 的 `root` 是 `slvp157-ws/VibeMath`；模型在 `Members/r-acad/Propos/rec-835.md` 与 `VibeMath/Members/r-acad/Propos/rec-853.md` 之间来回，日志里它自己问 "there are two library roots?"。这不是代码缺陷，是**工作区污染**：续跑同一个目录会把旧跑的目录结构当成事实。
+- 唯一读到的机制证据：根会话开辩论时被 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF` 拒，转录里模型复述了 RUN 183 写进 hint 的 `REACHABLE INSTEAD … wake the AUTHOR` 段落——D1 的措辞确实到了真机（但后面的步骤没跑到，A/B/D/E/F 复验全部未执行）。
+
+### 284.2 修的是驱动，不是被测物
+
+- 堆上限失效的根因：bash 导出的 `NODE_OPTIONS`（实测 `heap_size_limit 6336 MB`）**没有传到**驱动起的服务端——`slv-p13-oc.ps1` 用 `Start-Process` 起 `dsh-current.mjs`，而该脚本只把 `env: process.env` 转发给 Electron-as-Node，父 shell 的执行环境变量在 PowerShell 里并不自动继承给子进程。修法：在第 4 步内部显式 `$env:NODE_OPTIONS = '--max-old-space-size=8192'` 并 `Write-Host` 回显（run 32 日志首行即 `NODE_OPTIONS=--max-old-space-size=8192`，可核）。
+- 工作区污染用**全新目录**解决：`rm -rf slvp158-ws` 后不带 `-KeepWorkspace` 起跑，库根只有一个。
+
+### 284.3 run 32：主线走完并结题
+
+- run 32（基线 `272e2804`，`slvp186`，全新 `slvp158-ws`）：`DRIVE exit=0`、`durationSec 2861`、`tokenTotal 28 089 197 / 40 000 000`（capHit false）、`transcriptEvents 343`、`toolCalls 58`、`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`、`cleanup: clone_gone=True port_listening=False C_free_GB=9.77`。
+- 主线：`rec-1` 命题 → 作者 r-acad 在自己的回合里写 `VibeMath/Members/r-acad/Propos/p32-1.md#正式证明` 并登记（office 代记被 `VMU_STATE` 拒——D1 的修法在真机上立住了）→ 辩论 `m1` 两席裁决卡 → `verdict_final value:1 mode:unanimous n:2` + `sources:{n:2,submitted:2,typed:0}`、floor `minVotes=3/signed=3` → p 0.6→1 → Verified `rec-10` → 论文 `paper-run32-paper` 两轮（首轮被 `VMU_PACK_V5R_CORE_PAPER_VERIFIED_MISSING` 退回写作，二轮过）→ **PDF 151 658 B**（xelatex 一次成功，`triedEnginesTotal=0`）→ 结题会 `m2` 三人 `solved=true`、`close` 归档 `closureVote:{cast:true,confirmed:true,votesCast:3}`。
+- 六条复验：A ✅（temp 席位 `speak` 的 `VMU_NOT_MEMBER` hint 含 `CHAT face` 与 `does NOT enter the minutes`、不含 `attend() first`）；B ✅（`drive` 回执 `scope.requested/advanced/notAdvanced(+reason)/roundsRequested/means`）；C **一半**（一句话命题形态的拒文给了两条合法路但没有 `REACHABLE INSTEAD` 段；卡形态 `rec-42` 形态有完整段）；D ✅（`VMU_ENGINE_UNAVAILABLE` 的 hint 直接说写 `next_step`、并明说别再用 `reply` 重试）；E ✅（`completeMeans` 明说 `does NOT mean a PDF file was compiled`，`pdfCompiled:{produced:true,pdfBytes:151658}`）；F ✅（`VMU_RULING_ALREADY_FILED` 的 message 写 `SAME verdict (1, filed …) and a DIFFERENT reason: this one (1) was NOT filed`）。
+
+### 284.4 新账：结题票板不冻结
+
+r-2 的子会话在关会之后声称自己投的是 `solved=false`，并读到 `for=[r-acad,r-2]、against=[r-1]、cast=false`；而关会回执与 office 内核现读都是 `cast:true / votesCast:3`。两边的数都来自耐久键，分歧来自**读的时刻**：`vibe_vmu_vote` 写的是 latest-wins 的键，关会只是「读了一次」而没有「冻结一次」。修法（本轮）：service `close` 的回执在 `closureVote` 旁边给出 `closureVoteAsOf`（这次读数被计算的那一瞬）与 `closureVoteAsOfMeans`，并在 `closureVoteNote` 末尾追加一句 `★ Closing does NOT freeze this reading: …`——**回执必须回答它自己的读数是哪个时刻的**。真正的「冻结」留作下一轮（关会时写一份 as-of 票板行）。
+
+### 284.5 机器化
+
+- 新套件 `tests/vmu-run184-asof-receipts.test.mjs`：**3 passed / 0 failed**（§0 六条源码 pin；§1 直接 import `verification-gates.js` 调 `debateSubjectGate`，断言一句话命题的 hint 含 `REACHABLE INSTEAD` / `ADDRESS problem` / `wake that author` / `vibe_vmu_turn { op: "drive"`，而卡形态仍指向 `records.get`；§2 真装配开会（会议 id 在回执的 `meeting` 字段里，是字符串）后 `close`，断言 `closureVoteAsOf` 键存在、`closureVoteAsOfMeans` 说 `does NOT freeze the reading`、`closureVoteNote` 原文带 `Closing does NOT freeze this reading`）。
+- 定向回归全绿：`meeting 32/0`、`v5r-tools 1/0`、`paper 11/0`、`run31 7/0`、`run183 1/0`、`run152 1/0`、`vmu-host 4/0`、`verdict 5/0`、`turn 15/0`。
+- 生成物：`update-doc-counts --write`（`JOBS total=734 suites=626 probes=108`）→ `regen-all --write` 17/17 → `--check 17/17 in sync`。
+
+### 284.6 真 T1
+
+`GATE_SCOPE=vmu node tests/run-tests.mjs` ⇒ **TOTAL 665 PASS 665 FAIL 0（suites 601 · probes 64，concurrency 2）**（`/d/_tmp/t1-r310-run184.log`）。
+
+### 284.7 三条教训
+
+- **回执必须回答「何时」**：一个读数不写时刻，另一个读者就会把它当成永久事实（r-2 的 `against` 与 office 的 `cast` 都是真的，差别只在读的时刻）。
+- **预算有两种**：墙钟与堆。run 28 打满墙钟未写报告，run 29/31 在 712–872 s 打满堆——简报把「先做负向探针」写在主线前面，等于用预算换噪音。
+- **工作区也是被测输入**：续跑旧目录会让模型看到两套库根；干净的输入才叫真机复验，否则验的是上一轮的残留。
