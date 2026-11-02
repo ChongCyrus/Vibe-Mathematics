@@ -56,7 +56,7 @@ import { BLUEPRINT_ADOPT_SLOT, BLUEPRINT_PATH_KEY, BLUEPRINT_STALE_KEY, BLUEPRIN
 import { resolveTurnMember } from '../../host-pack-tools.js'
 // ★ PHASE 8 / B-2 step 2: the kit owns the implementations; v5r keeps only INSTITUTION vocabulary (names, descriptions,
 // parameters) and its policy. The 8 generic helpers come from the kit so the tree has exactly ONE copy.
-const { str, has, refuse, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker } = KIT_HELPERS
+const { str, has, refuse, refusalReceipt, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker } = KIT_HELPERS
 // ★ RUN 85 / E17 (规则 L36「单次发言版群聊：每人各说一次、不打断」): THE ONE-SPEECH-PER-MEMBER ROUND.
 // The kit's `say` records a speech per call and knows nothing about rounds. The round rule is therefore a PACK
 // convention carried by KERNEL bookkeeping: `round` names a page of the chat ledger, the kernel records who spoke on
@@ -4592,6 +4592,46 @@ async function toolPaper(args = {}, { kernel } = {}) {
               : 'this row IS the compile the paper was finalised with (no later compile is on the ledger), so pdfBytes and the file on disk describe the same moment',
             means: 'the NEWEST `paper-pdf` row this paper produced (the compile ledger), read by OPENING the row — so "is there a PDF file, and which compile made it?" is answered here instead of by a second call; the `pdf` block above is the ARCHIVE row render wrote, a different record',
           } }
+        })(),
+        // ★★ RUN 196 (run 37 / FEEDBACK36 2.6, MEASURED): TWO TREES, AND NO RECEIPT SAID WHICH ONE HOLDS THE PAPER.
+        // Run 37's `read_library` answered `libraryRoot: <ws>/VibeMath` while the finalised PDF sat at `<ws>/Paper/
+        // paper-p1/paper-p1.pdf` — both true, because paper artifacts are written under the deployment's ARTIFACT root
+        // (`outDirPrefix`, 'Paper/<folder>') and the institute LIBRARY is a different tree. A reader holding two
+        // absolute paths and no sentence connecting them has to guess whether the paper was filed in the library.
+        // The status receipt now carries both roots and says what each is FOR, so the answer is a reading, not an
+        // inference. `artifactRoot` is derived from the compiled file's own path when a compile exists; before the
+        // first compile it is null WITH a reason, rather than a path nobody measured.
+        roots: (() => {
+          const libRoot = (() => {
+            try {
+              const lib = kernel && kernel.library
+              return lib && typeof lib.root === 'string' && lib.root !== '' ? lib.root : null
+            } catch (e) { return null }
+          })()
+          let artifactRoot = null
+          try {
+            const led = kernel && got && got.state && typeof paper.compiledPdfRow === 'function' ? paper.compiledPdfRow(got.state) : null
+            const p = led && typeof led.pdfPath === 'string' ? led.pdfPath : ''
+            if (p !== '') artifactRoot = p.replace(/[\\/][^\\/]+$/, '')
+          } catch (e) { artifactRoot = null }
+          return {
+            libraryRoot: libRoot,
+            artifactRoot,
+            artifactPrefix: 'Paper/<paper-folder>/',
+            means: 'TWO DIFFERENT TREES, both real: the institute LIBRARY (`libraryRoot`) holds member file cards and the '
+              + 'records-backed library surface, while PAPER ARTIFACTS (md/tex/pdf/meta) are written under the deployment\'s '
+              + 'artifact prefix `' + 'Paper/<paper-folder>/' + '` — a sibling of the library root when the kernel root is the '
+              + 'workspace, NOT a directory inside it. `artifactRoot` is the ABSOLUTE directory of the newest compiled file '
+              + 'when a compile exists (null with `artifactRootWhy` before the first compile: nothing has been measured yet, '
+              + 'which is not the same as "no such tree"). A PDF therefore NEVER shows up under `libraryRoot` — look for it at '
+              + '`pdfCompiled.pdfPath` (absolute) first',
+            artifactRootWhy: artifactRoot === null
+              ? 'no compile is on file for this paper, so no absolute artifact directory has been measured — `status` can name the prefix, not a path'
+              : null,
+            libraryRootMeans: libRoot === null
+              ? 'this kernel was assembled without a durable library root, so there is no library tree to compare the artifact root against'
+              : 'the ABSOLUTE directory the library surface scans for member file cards (the same value `vibe_v5_read_library` prints as `libraryRoot`)',
+          }
         })() }
     }
     case 'start': {
@@ -4623,7 +4663,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
         const fileCardClause = fileCardPointers.length
           ? ' —— 其中 ' + fileCardPointers.map((u) => '"' + u.pointer + '"').join('、') + ' 是磁盘上的「文件卡」（Members/<成员>/Propos/<名>.md）而不是记录行：文件存在不等于记录库里有一行（附录按【记录】索引）'
           : ''
-        throw refuse('VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING',
+        // ★★ RUN 197 (run 38 / FEEDBACK37 1.5, MEASURED): this refusal carried code+message+hint only, while the SAME gate at
+        // render carried `gate`/`nextGate`/`missing`/`missingMeans` — run 38's member parsed prose to learn which check had
+        // fired. Returned as DATA, not thrown: the host rebuilds a thrown error as {ok:false, code, message, hint} and drops
+        // every other key, so a thrown `gate` would be thrown away.
+        return refusalReceipt('VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING',
           'these evidence pointers do not resolve against the records face: ' + pointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? ', expected track ' + u.expectedTrack : '') + ')').join('; ') + fileCardClause,
           'write the record first (vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem), then re-write this part with the pointer it produced; a pointer is Members/<member>/(Propos|Methods|Subproblems|Progress)/<record id>.md'
             // ★★ RUN 188 (run 33 / FEEDBACK32 ③): when the pointer IS the file card the member wrote to disk, say so —
@@ -4634,7 +4678,14 @@ async function toolPaper(args = {}, { kernel } = {}) {
               ? ' —— 把这张卡写成记录行拿到 rec-<n>，再用那个 id（文件卡本身不能当证据指针）' : '')
             + (pointers.unknown.some((u) => Array.isArray(u.closest) && u.closest.length)
               ? ' — 相近的: ' + pointers.unknown.filter((u) => Array.isArray(u.closest) && u.closest.length).map((u) => u.cardId + ' ⇒ ' + u.closest.map((c) => c.id).join('/')).join('；')
-              : ''))
+              : ''),
+          {
+            gate: 'evidence',
+            nextGate: 'required-line',
+            missing: pointers.unknown.map((u) => String(u.pointer)),
+            provided: pointers.provided,
+            missingMeans: 'every id here is an EVIDENCE pointer the records face could not resolve — this gate answered "do these pointers resolve?" (`missing` names them); the next check in the delivery contract is the required-line gate at render',
+          })
       }
       // ★★ RUN 177 (run 22, FEEDBACK22 D3): the BODY is judged at the same moment as the evidence list. A member wrote
       // `Members/r-1/Propos/run22-cubes.md#二` in prose while the record's id was rec-6xx; `recordPart` accepted it and
@@ -4654,10 +4705,18 @@ async function toolPaper(args = {}, { kernel } = {}) {
         //   unknown, which is true, and never said the pointer is a FILE CARD rather than a records row: two different
         //   things, one of which does not exist on the cited track by design.
         const fileCards = prosePointers.unknown.filter((u) => /(^|[\/])Members[\/]/.test(String(u.pointer || '')))
-        throw refuse('VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN',
+        // ★★ RUN 197 (same repair as the evidence refusal above): the citation refusal is a DIFFERENT gate answering a
+        // DIFFERENT question, and now says which instead of leaving the caller to guess from prose.
+        return refusalReceipt('VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN',
           '这部分的正文引用了记录库里不存在的 id：' + prosePointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? '，应为 ' + u.expectedTrack + ' 轨' : '') + (Array.isArray(u.nearby) && u.nearby.length ? '；相近的 ' + u.nearby.join('/') : '') + ')').join('；')
             + (fileCards.length > 0 ? '——其中 ' + fileCards.length + ' 条是磁盘上的「文件卡」（Members/<成员>/Propos/<名>.md），不是记录库里的行：文件存在不等于有这一行' : ''),
-          '正文里的 Members/<member>/(Propos|Methods|Subproblems|Progress)/<记录 id>.md 指针按【记录 id】解析，不按文件名解析：先用记录面写出那条卡（vibe_v5_record_proposition 等）并拿到它返回的 id，再把路径写成 …/<那个 id>.md；或在 evidence 里直接写记录 id')
+          '正文里的 Members/<member>/(Propos|Methods|Subproblems|Progress)/<记录 id>.md 指针按【记录 id】解析，不按文件名解析：先用记录面写出那条卡（vibe_v5_record_proposition 等）并拿到它返回的 id，再把路径写成 …/<那个 id>.md；或在 evidence 里直接写记录 id',
+          {
+            gate: 'citation',
+            nextGate: 'evidence',
+            missing: prosePointers.unknown.map((u) => String(u.pointer)),
+            missingMeans: 'every pointer here is a PROSE citation that resolved to no record — this gate answered "does the record exist?" (`missing` names the paths); the next check is the evidence gate (>=1 entry per part)',
+          })
       }
       const part = paper.recordPart({
         target,
@@ -4669,9 +4728,20 @@ async function toolPaper(args = {}, { kernel } = {}) {
         limits: str(args.limits || ''),
         evidence,
       })
+      // ★★ RUN 197 (run 38 / FEEDBACK37 1.4, MEASURED): this face ACCEPTS an empty `evidence` list (the requirement is the
+      // DELIVERY gate's) and nothing said so — the member read its own empty list as "checked and fine". The receipt states
+      // which face requires what, where the writer can still act on it.
       return { ok: true, tool, action, part,
         evidence: pointers === null ? null : { provided: pointers.provided, checked: true,
-          resolved: pointers.resolved.map((r) => r.cardId), means: pointers.means } }
+          resolved: pointers.resolved.map((r) => r.cardId), means: pointers.means },
+        evidenceGate: {
+          gate: 'evidence',
+          requiredAt: 'render/final',
+          satisfiedNow: pointers !== null && pointers.provided > 0,
+          means: pointers !== null && pointers.provided > 0
+            ? 'this part filed ' + pointers.provided + ' evidence pointer(s) and every one resolved; the delivery gate asks the same question per part and will find this part covered'
+            : 'this face REQUIRES nothing: a part with no `evidence` is accepted HERE, and the DELIVERY gate (gate "evidence", one entry per part) refuses the paper at render/final until every part filed at least one — write `evidence: ["rec-<n>"]` before then',
+        } }
     }
     case 'review': {
       // ★★ RUN 177 (run 22, FEEDBACK22 D4): `final` takes `decision:"deliverable"|"revise"`, `review` takes

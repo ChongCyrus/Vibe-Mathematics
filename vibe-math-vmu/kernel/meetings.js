@@ -1697,7 +1697,27 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       if (verbatim) for (const line of String(text).split('\n')) m.transcript.push({ at: now, member: String(member), text: line })
       m.queue = m.queue.filter((x) => x !== String(member))
       counters.speeches += 1
-      const entry = { at: now, kind: 'speech', member: String(member), ms: wanted, tokens: n(tokens), verbatim: !!verbatim }
+      // ★★ RUN 197 (run 38 / FEEDBACK37 1.1, MEASURED): minutes() answered `entries:[{kind:"speech",member,ms,verbatim}]` with
+      // NO text, while the receipt printed beside it said "this is the RECORD BODY (what was said, voted and refused)". A body
+      // that cannot answer "what was said" contradicted its own description. The words are recorded ON the entry now, bounded
+      // by `vmu.minutes.verbatimCapBytes` (the declared cap the transcript zone already reads) and cut on a CHARACTER boundary;
+      // the truncation is COUNTED instead of silent.
+      const saidText = String(text === null || text === undefined ? '' : text)
+      const speechCap = n(sget('vmu.minutes.verbatimCapBytes')) > 0 ? n(sget('vmu.minutes.verbatimCapBytes')) : 32768
+      const byteLen = (s) => (typeof Buffer === 'function' ? Buffer.byteLength(s, 'utf8') : s.length)
+      const saidBytes = byteLen(saidText)
+      let said = saidText
+      if (saidBytes > speechCap) {
+        let lo = 0
+        let hi = saidText.length
+        while (lo < hi) {
+          const mid = Math.ceil((lo + hi) / 2)
+          if (byteLen(saidText.slice(0, mid)) <= speechCap) lo = mid; else hi = mid - 1
+        }
+        said = saidText.slice(0, lo)
+      }
+      const entry = { at: now, kind: 'speech', member: String(member), ms: wanted, tokens: n(tokens), verbatim: !!verbatim,
+        text: said, textBytes: byteLen(said), textCapBytes: speechCap, textDroppedBytes: saidBytes - byteLen(said) }
       m.minutes.entries.push(entry)
       // B④: `floor` DISCLOSES the floor in force — the `open` floor has NO queue, so nobody can be "not their turn".
       const floor = orderControls.floorOf(m)
@@ -2163,11 +2183,21 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // speech from the default view. A speech recorded with no bound is still a speech.
       const keepsSpeech = (e) => e.kind !== 'speech' || e.ms > 0 || K.speechDefaultMs === 0
       const entries = K.minutesDetail === 'full' ? m.minutes.entries.slice() : m.minutes.entries.filter(keepsSpeech).slice(0, 20)
+      // ★★ RUN 197 (run 38 / FEEDBACK37 1.7, MEASURED): an ARCHIVED meeting still answered `archivable:false`, and run 38
+      // read that beside `archived:true` and asked which one was true. Both were: `archivable` answers "is it OLD ENOUGH to be
+      // a candidate for archiving", which means nothing once the record IS archived. The candidate flag is not printed beside
+      // the fact any more.
+      const isArchived = m.state === 'closed' || (m.closedAt !== undefined && m.closedAt !== null)
       return {
         ok: true, meeting: m.id, detail: K.minutesDetail, includeRefused: K.minutesIncludeRefused,
         entries, actions: m.minutes.actions.slice(), refused,
         confirmedPrevious: m.previousConfirmed, dissent: m.dissent.slice(),
-        retentionMs: K.minutesRetentionMs, archivable: K.minutesRetentionMs > 0 && now - m.openedAt > K.minutesRetentionMs,
+        retentionMs: K.minutesRetentionMs,
+        archived: isArchived,
+        ...(isArchived
+          ? { archivedMeans: 'this meeting is ARCHIVED (closed): its minutes are FROZEN history, and the candidate flag `archivable` is deliberately NOT printed here — a "candidate for archiving" means nothing about a record that is already archived' }
+          : { archivable: K.minutesRetentionMs > 0 && now - m.openedAt > K.minutesRetentionMs,
+              archivableMeans: 'this meeting is LIVE: `archivable` says only whether it is OLD ENOUGH to be a candidate for archiving (vmu.meetings.minutesRetentionMs) — it is not a statement about the meeting\'s state' }),
         note: 'minutes are OWNED by 08/07 — this view only shapes and prunes them (a pruned entry is counted)',
       }
     },
@@ -2197,7 +2227,13 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         if (dropped > 0) { counters.prunedVerbatim += dropped; say({ type: 'meetings/verbatim-pruned', at: now, dropped }) }
         lines = kept
       }
-      return { ok: true, enabled: true, lines, count: lines.length, retentionMs: K.verbatimRetentionMs, dropped: counters.prunedVerbatim }
+      // ★★ RUN 197 (run 38 / FEEDBACK37 2.2, MEASURED): with capture ENABLED the receipt carried no `note`, so `count:0` read
+      // as "capture is broken". Enabled + zero is a FACT about this meeting (nothing was spoken with { verbatim: true }), and
+      // the words that WERE said live on the minutes entries now — say both, always.
+      return { ok: true, enabled: true, lines, count: lines.length, retentionMs: K.verbatimRetentionMs, dropped: counters.prunedVerbatim,
+        note: lines.length === 0
+          ? 'capture is ENABLED (vmu.meetings.verbatimEnabled) but this meeting recorded NO verbatim line: the transcript only receives what is spoken with { verbatim: true }. The words that WERE said are on `minutes` entries (`text`), which this setting does not govern'
+          : 'capture is ENABLED; `lines` is what was spoken with { verbatim: true }, pruned by vmu.meetings.verbatimRetentionMs (dropped lines are counted). The same words are on `minutes` entries (`text`)' }
     },
 
     /** Wake a member through the injected seam; `wakeFailurePolicy` decides what a failure means. */

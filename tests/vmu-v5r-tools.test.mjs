@@ -1510,8 +1510,10 @@ try {
     '★★ the pack IMPORTS the kit (handlers + the card factory) — "deleted" cannot quietly mean "forgot to import"', null)
   const kitModW = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kit', 'handlers.js')).href)
   const helperNames = Object.keys(kitModW.KIT_HELPERS || {})
-  ok(helperNames.length === 8 && helperNames.filter((n) => typeof kitModW.KIT_HELPERS[n] === 'function').length === 8,
-    '★★ the kit exports all 8 helpers it now owns (one copy in the tree, imported by the pack)', helperNames)
+  // ★ RUN 197: the ninth helper is `refusalReceipt` — a face that must carry STRUCTURE (`gate`/`nextGate`/`missing`)
+  // cannot throw, because the host rebuilds a thrown error as {code, message, hint} and drops every other key.
+  ok(helperNames.length === 9 && helperNames.filter((n) => typeof kitModW.KIT_HELPERS[n] === 'function').length === 9,
+    '★★ the kit exports all 9 helpers it now owns (one copy in the tree, imported by the pack)', helperNames)
   const kitToolsModW = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'kit', 'tools.js')).href)
   // B-2 moved 4 tools, B-3 moved the task board (4) + the Lean five (5) ⇒ 13 kit entries, five disableKey families.
   const kitNamed = kitToolsModW.KIT_TOOLS.map((t) => t.name)

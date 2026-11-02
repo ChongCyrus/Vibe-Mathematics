@@ -13925,7 +13925,7 @@ run 36 的临时工席（r-temp）被拒进入辩论会（`attendDeniedSeats`，
 
 1. `vibe-math-vmu/tools/meeting.js`：action 枚举新增 **`minutes`** 与 **`verbatim`**，并列进参数说明；实现为一个分支，**两个登记册都路由**：
    - 原语会议：具名拒 `VMU_INVALID_ARGUMENT`（message 说清「你问的是 SERVICE 的记录正文，而 id 是 PRIMITIVE 会议」），hint 指向它唯一的那份记录 `action: "summary"`（rounds/ask/answered/silent/refused/关闭原因都在里面），并带 `registry: 'primitive'`。
-   - SERVICE 会议：`svc[action]({ meeting, by, allowArchived: true })` —— **`allowArchived: true` 是关会后仍可读的关键**（run 36 的 m1 早就 close 了）；回执加 `registry:'service'` 与 `recordMeans`（`minutes` 是「说了/投了/拒了什么」的记录正文，不是 board；`verbatim` 是被自己的声明设置剪枝的逐字稿，剪掉的条数会被计数）。
+   - SERVICE 会议：按名解析 `svc` 的 `minutes` / `verbatim` 方法并传 `{ meeting, by, allowArchived: true }` —— **`allowArchived: true` 是关会后仍可读的关键**（run 36 的 m1 早就 close 了）；回执加 `registry:'service'` 与 `recordMeans`（`minutes` 是「说了/投了/拒了什么」的记录正文，不是 board；`verbatim` 是被自己的声明设置剪枝的逐字稿，剪掉的条数会被计数）。
    - 服务没有该方法时：`VMU_ENGINE_UNAVAILABLE` 具名说明，而不是「会议不存在」。
 2. `vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_start` 回执新增 **`memberScopeNoteMeans`**：那段话是「写给**成员**读的」（就是成员提示词承载的段落），**不是**对所办自身的描述 —— 播种研究所的所办仍然在自己的线束里保有机构级读数。`memberScopeNote` 原文一字未改（它是成员读的东西）。
 
@@ -14036,7 +14036,8 @@ run 37（`slvp163-ws`，`durationSec 1306`、`tokenTotal 13 650 147/40M`、`tren
 改动引出的契约面）：
 
 1. `tests/audit-doc-index.test.mjs`：`dead:["docs/acceptance/phase12-v5r-rules-conformance.md -> …]`。根因在 §294.4
-   早先写的那句：`svc[action](…)` 放进反引号里，`stripCode` 去掉反引号后留下 `[action](…)`，被当成 markdown 链接
+   早先写的那句把「`svc` 后接方括号里的 `action`、再接参数括号」这种调用形状放进反引号里，`stripCode` 去掉反引号后
+   方括号与参数括号贴在一起，被当成 markdown 链接
    ⇒ 文档索引判它指向一个不存在的文件。**这条红是 RUN 194 的文档追加引入的，当时没有重跑全量** ⇒ 改写成「`svc`
    后面跟方括号里的 `action`、再接参数括号的那种调用形状」，不再出现链接语法。
 2. `tests/vmu-run183-refusal-reachability.test.mjs` §0c：pin 把 `withScope` 的字面量整个钉死。**字面量不是契约，
@@ -14081,3 +14082,167 @@ setup 失败的形式说出来，而不是伪装成机制缺陷。修后**连跑
   校验」永远有窗口 —— 任何在途写都会整批覆盖播种行。测试里要喂历史数据，就用 `store.patch`（独占段 reload→merge→
   persist），并保留一次回读断言把「种子没落盘」说成 setup 失败。同一条道理对运维也成立：手改 `state.json` 是会被
   活着的内核覆盖的。
+
+## RUN 196 · run 37 的三句「读数在别处」
+
+### 296.1 账从哪里来
+
+run 37（`SIM-REPORT36.md` / `FEEDBACK36.md`）里三条，全部是真机现场：
+
+| # | 现场 | 缺陷形状 |
+| --- | --- | --- |
+| 1.2 | 所办读 `m1` 得 `present:1`、`transcript:[]`、`unanimity.met:false`；同批主席的 `vibe_v5_verdict_final` 却答 `sources.submitted:2` | 两个账户（**席位**与**卡片**）都是真的，板上没有一句话说明这件事，读者只能当成矛盾 |
+| 2.6 | `read_library` 答 `libraryRoot: <ws>/VibeMath`，而定稿 PDF 在 `<ws>/Paper/paper-p1/paper-p1.pdf` | 两棵目录树都是真的；没有任何回执把「论文产物树」和「研究所库树」分开命名 |
+| 1.3 遗留 | 成员在 activation 交付下调用 `vibe_v5_turn { op:"reply" }`，hint 只教「prompt 打开时用 op:reply 再调 step」 | 那句话在 **caller** 路径上为真、在 **delegated** 路径上不可能执行，读者照着做只会撞墙 |
+
+### 296.2 三处修法
+
+1. **会议板自述它数的是什么**（`vibe-math-vmu/tools/meeting.js`）：模块级常量 `RULING_BOARD_POINTER`
+   （`rulingsNotOnThisBoard` + `rulingsReadFrom: { face: 'vibe_v5_verdict_final', fields: ['coverage','sources','attribution'] }`），
+   由 `status`（`}, view, RULING_BOARD_POINTER)`）与 `summary`（`accountPointer, RULING_BOARD_POINTER)`）两处读数一起携带。
+   句子说明：板子记 **ATTENDANCE**（`present`，同时是法定人数的分母）与 **SPEECH**（`transcript`），**不记 RULINGS**；裁决是
+   成员自己落的**卡片**（`vibe_v5_verdict`），由主席用 `vibe_v5_verdict_final` 汇总 ⇒ 成员可以不到会而交卡、也可以到会而不
+   交卡，所以「present:1 + 空 transcript」与「两票裁决已交」是**两条记录（席位与卡片）**，不是两个真相，且任何一个都不能由
+   另一个算出来。
+2. **论文 status 分开命名两棵树**（`vibe-math-vmu/packs/v5r/tools.js` 的 `paper status`）：新增 `roots` 块 —— `libraryRoot`
+   （库面扫的绝对目录，与 `vibe_v5_read_library.libraryRoot` 同一个值）、`artifactRoot`（**有编译时**才是绝对目录：由最新
+   `paper-pdf` 行的 `pdfPath` 取 dirname；**没有编译时为 `null` 并附 `artifactRootWhy`**，因为「还没测过」不等于「没有这棵树」）、
+   `artifactPrefix: 'Paper/<paper-folder>/'`、`means`（点名 ARTIFACT root 是库根的**兄弟**、PDF 永远不会出现在 `libraryRoot` 下、
+   先看 `pdfCompiled.pdfPath`）与 `libraryRootMeans`。
+3. **报告拒绝句同时说两条路径**（`vibe-math-vmu/kernel/turn/index.js` 的 `completeStructuredReport` 的
+   `VMU_TURN_NO_PENDING_MEMBER`）：先 `CALLER PATH`（`step` 交回 `awaiting:true` 的 prompt，`op:"reply"` 回答，下一次 `step`
+   先完成它），再 `DELEGATED PATH`（回合在 step 内结算，**永远没有** awaiting prompt ⇒ 这条拒绝是**预期**，不是要重试的错误；
+   成员把 report 作为**自己会话的最终文本**交回，父会话记成那一轮的答复），末尾打印本内核此刻的 `deliveryPath`（读不到时写
+   「not reported (no pending state)」）。
+
+### 296.3 机器化
+
+`tests/vmu-run196-feedback36.test.mjs`（**4/0**）：§0 十二条源码 pin（含 `RULING_BOARD_POINTER` 在两处 return 上、`artifactPrefix`、
+`TWO DIFFERENT TREES`、`artifactRootWhy`、`DELEGATED PATH`、`FINAL TEXT of its own session`）；§1 真装配开会后 `status` 与
+`summary` 都带那句（且 `rulingsReadFrom.fields` 是数组）；§2 真 paper `start` + `status` 的 `roots`（`artifactPrefix` 相等、
+`means` 含 `TWO DIFFERENT TREES`、`libraryRoot` 是字段而非散文、未编译时 `artifactRoot === null` 且 `artifactRootWhy` 含
+`no compile is on file`）；§3 直接调 `kernel.turn.completeStructuredReply()` ⇒ `VMU_TURN_NO_PENDING_MEMBER` 且 hint 含
+`CALLER PATH`/`DELEGATED PATH`/`FINAL TEXT`。
+
+### 296.4 定向回归与收口
+
+定向回归 **74 passed / 0 failed**（71 suites · 3 probes：meeting / vmu-host / paper / tools / turn / v5r-tools /
+audit-face-actions / audit-doc-actions / audit-vmu-docs 全族），再跑 run 家族 **14 passed / 0 failed**
+（run147/167/169/174/183/188/189/190/191/192/193/194/195/196）。`update-doc-counts --write` → `regen-all --write` 17/17 →
+`--check` → 四门禁 PASS。
+**全量 T1 的诚实记录**：这次的首个全量（RUN 196 树）在 `tests/audit-doc-index.test.mjs` 上**真红**（§294.4 / §295.4b 正文里
+「方括号 + 参数括号」紧贴，`stripCode` 去反引号后当成 markdown 链接），当时已 `kill` 掉不完整的运行；修好句子后与 RUN 197
+合并做**一次**全量 T1，结果记在 297.4 —— 即 RUN 196 的提交对应的最终树经过了那次全量，中间那次不计。
+
+### 296.5 未闭合
+
+- **1.5 Lean 作业表 per-process** 与 **1.2 的账户统一**（同一处读数同时给到会与裁断）仍是机制题：本轮给的是**指针**，不是把
+  两个账户合成一个面。
+- **论文产物树是否应该搬进库树**（`Paper/` vs `VibeMath/`）：本轮只让回执说清楚，未改写入路径 —— 搬动会改动既有档案位置，
+  需要一次单独的决策。
+- 本轮修复**尚未真机复验**（run 39 简报复验这三条）。
+
+### 296.6 两条教训
+
+- **「读数在别处」必须在读的那一面说**：把指针放在文档里等于没放。读者手里只有一句回执，所以那句回执必须自己带上「我这里数
+  的是什么、那个数在哪张脸上」。本轮三处修法都只是**加一句自述 + 一个字段名**，机制一行未改。
+- **拒绝句要覆盖所有调用者所在的路径**：同一句拒绝在 caller 路径上是命令、在 delegated 路径上是错误。写拒绝句时先列「谁会在
+  什么路径上读到它」，再写「该做什么」——否则正确的话会把一半读者引到墙上。
+
+## §297 RUN 197 —— 记录正文说不出「说了什么」，以及四张回执各自说的是别的时刻
+
+来源：第三十八次真机（run 38，基线 `4a6c09b8`，工作区 `slvp166-ws`）的 `FEEDBACK37.md` 七条 + 附「真正没做到」两条。
+这一轮的主题不是「缺字段」，而是**同一句话在两处互相拆台**：
+记录面自称是「说了/投了/拒了什么」的正文，而它的发言条目里**没有一句原话**；
+`archivable` 与 `archived` 并排出现，一个是「够不够格进档案」，一个是「已经在档案里」；
+`evidence.means` 说「本门禁还要求每部分至少一条证据」，而它所在的那一面**一条都不要**。
+
+### 297.1 账（run 38 实测，逐条）
+
+| # | 现场 | 类型 |
+| --- | --- | --- |
+| 1.1 | `minutes` 的 `entries` 只有 `{at,kind:"speech",member,ms,tokens,verbatim:false}`，**没有 `text`** | 记录正文缺它存在的理由 |
+| 1.2 | 原语会议上的 `minutes` 回 `VMU_INVALID_ARGUMENT`（参数错），而调用本身完全正确 | 边界被报成笔误 |
+| 1.3 | `advance` 的两个**分歧**分支只给 `refusers:["r-1"]`，没有 `unanimous`/`refusersMeans`，而一致分支的自述说「分歧分支带同名同义的字段」 | 自述与实现相反 |
+| 1.4 | `part` 接受空 `evidence`，而 `evidence.means` 说本门禁「还要求每部分至少一条」 | 自述与实现相反 |
+| 1.5 | `part` 的四种拒绝只有 code+message+hint；同一门禁在 render 处却有 `gate`/`nextGate`/`missing`/`missingMeans` | 同一门禁两套回执 |
+| 1.6 | 已定稿论文上写 `part`：`message` 说「now: finalized」，`hint` 却教「the paper is in REVIEW … advance」（而 finalized 上 `advance` 只回 `moved:false`） | 建议了一个不可达动作 |
+| 1.7 | 关会后的 `minutes` 同时回 `archivable:false` 与 `archived:true` | 两个真相并排 |
+| 2.2 | `verbatim` 在 `enabled:true`、`count:0` 时**没有 `note`**，读起来像「捕获坏了」 | 零值缺自述 |
+
+### 297.2 九处修法
+
+1. **发言正文进记录本体**（`vibe-math-vmu/kernel/meetings.js` 的 `speak()`）：`text` 一直拿在手里，只在
+   `verbatim:true` 时被推进**另一份记录**（transcript），随后被丢弃。条目现在带
+   `text`（原话）、`textBytes`、`textCapBytes`、`textDroppedBytes`（**截断被计数**），上限复用**已声明**的
+   `vmu.minutes.verbatimCapBytes`（默认 32768 B），并且按**字符**边界切（按字节硬切会把一个码点劈成替换字符）。
+2. **归档与「够不够格归档」分开**（同文件 `minutes()`）：`archived: isArchived` 恒在；`archivable` **只在活着时**出现并配
+   `archivableMeans`；已归档时给 `archivedMeans`（「记录是冻结的历史，候选位标志对已归档记录没有意义」）。两者不再并排。
+3. **逐字稿永远有 `note`**（同文件 `verbatim()`）：`enabled:true` 且 `count:0` 时说明「捕获是开着的，只是这场会没人用
+   `{verbatim:true}` 发言，而说过的话现在在 `minutes` 条目的 `text` 里」；有条目时说明它按 `verbatimRetentionMs` 剪枝且被剪条数
+   有计数。
+4. **边界不是笔误**（`vibe-math-vmu/tools/meeting.js`）：原语会议上的 `minutes`/`verbatim` 改判 `VMU_REGISTRY_BOUNDARY`
+   （同一文件 `:49` 起对别的动词早已如此），message/hint 一字未改。
+5. **`advance` 分歧分支补齐同形字段**（`vibe-math-vmu/kit/paper.js`）：回 writing 与 capped 两个分支都加
+   `unanimous:false` + `refusersMeans`（「NOT empty: …」并说下一步：回 writing / 交编辑并留痕），与一致分支的
+   `refusers:[]` + `refusersMeans` 同构。
+6. **定稿论文不再被劝 `advance`**（同文件 `recordPart` 的阶段拒绝）：三元里补 `finalized` 分支 —— 「已定稿：任何新部分都写不进去，
+   `advance` 在它上面只回 `moved:false`；要改就开新论文，已定稿记录一字不动」。
+7. **门禁话术统一**（`vibe-math-vmu/packs/v5r/paper-quality.js`）：`checkEvidencePointers.means` 改成「这一面**只要**解析它拿到
+   的东西、**一条都不要求**，空 `evidence` 在本面通过，要求它的是**交付门禁**（`gate: "evidence"`，每部分 ≥1）在 render/final」
+   —— 两个面两个问题，不再借用别人的要求；`checkQuality` 的**引用**裁决补 `gate:'citation'` / `nextGate:'evidence'` /
+   `missingMeans`（证据门早已有 `gate:'evidence'` / `nextGate:'required-line'`）。
+8. **`part` 的拒绝以 DATA 返回**（`vibe-math-vmu/packs/v5r/tools.js`）：证据与引用两处从 `throw refuse(...)` 改为
+   `return refusalReceipt(code, message, hint, { gate, nextGate, missing, missingMeans })`。**为什么必须是返回**：宿主把
+   *抛出*的错误重建成 `{ok:false, code, message, hint}`，其余键**全部丢弃** —— 抛出的 `gate` 到不了读者手里
+   （`vibe-math-vmu/kit/handlers.js` 的注释也这样写）。为此 `refusalReceipt` 从 `KIT_HELPERS` 导出（第 9 个 helper）。
+9. **成功回执说清「谁在哪一步要什么」**（同文件 `part` 成功分支）：新增 `evidenceGate: { gate:'evidence', requiredAt:'render/final',
+   satisfiedNow, means }` —— 本部分已交证据且全部解析时说明「交付门禁问同一个问题，会认定你已覆盖」，未交时明说
+   「本面一条都不要求，但交付门禁会在 render/final 逐部分拒绝，现在就把 `evidence: ["rec-<n>"]` 写上」。
+
+### 297.3 机器化
+
+`tests/vmu-run197-feedback37.test.mjs`（**5/0**，一处失败后自修）：§0 二十二条源码 pin（`text: said, textBytes: byteLen(said)`、
+`textDroppedBytes`、`archived: isArchived`、`archivedMeans`、`capture is ENABLED (vmu.meetings.verbatimEnabled) but this meeting
+recorded NO verbatim line`、`refused('VMU_REGISTRY_BOUNDARY'`、两条 `refusersMeans: 'NOT empty:`、`unanimous: false, refusers`
+恰好两次、`the paper is FINALIZED: no part can be written into it any more`、`requires NOTHING`、`gate: 'citation'`、
+`nextGate: 'evidence'`、`refusalReceipt('VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING'`、`refusalReceipt('VMU_PACK_V5R_CORE_PAPER_CITATION_UNKNOWN'`、
+`evidenceGate: {`、`refuse, refusalReceipt, settingsOf`）；§1 真装配：发言原话**逐字**回到 `entries[].text`、`textDroppedBytes === 0`、
+活会 `archived:false` + `archivableMeans`、`verbatim.note` 非空；§2 关会后 `archived:true`、**`'archivable' in after === false`**
+（正是 run 38 读到的并排）、原话跨过关会仍在；§3 原语 `minutes` 的 `code === 'VMU_REGISTRY_BOUNDARY'`；§4 `part` 用不存在指针
+⇒ `ok:false` + `gate:'evidence'` + `nextGate:'required-line'` + `missing:['Members/r-1/Propos/p-run197-nosuch.md']` +
+`missingMeans` 含 `EVIDENCE pointer`；真记录 `p-run197` 用文件卡路径引用 ⇒ `ok:true` + `evidenceGate.requiredAt === 'render/final'` +
+`satisfiedNow === true`。
+自修一处：pin 写成了 `'reads the MEETINGS SERVICE record body; '`（多带一个前引号）⇒ 改成不带引号的短语；另
+`tests/vmu-v5r-tools.test.mjs` 的 helper 计数 8 ⇒ 9（新增 `refusalReceipt`，并写明理由）。
+
+### 297.4 定向回归、生成物与全量 T1
+
+- 定向回归（meeting / vmu-host / paper / tools / turn / v5r-tools / run194–197 / audit-face-actions / audit-vmu-docs）：
+  **77 条、首跑 74/3**，三条都真红并已修：① `tests/audit-doc-index.test.mjs` —— §294.4 与 295.4b 的正文里「
+  方括号 + 参数括号」紧贴被判成 markdown 链接（`stripCode` 去反引号后留下 `[action](…)`），改写成不带链接语法的说法；
+  ② `audit-vmu-docs` 报 settings 表 STALE —— 新增的 `sget('vmu.minutes.verbatimCapBytes')` 让该键的读者格变了
+  ⇒ `node scripts/generate-vmu-settings-table.mjs --write`（`vibe-math-vmu/docs/04-settings.md`）；③ `vmu-v5r-tools` 的 helper
+  计数（见 297.3）。修后同批 **7/0**。
+- 生成物：`update-doc-counts --write` → `regen-all --write` 17/17 → `--check 17/17 in sync`。
+- 四门禁：`PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+- 全量 T1：`T1 数字待回填`（日志 `/d/_tmp/t1-r432-run197.log`）。
+
+### 297.5 未闭合（下一轮输入）
+
+- **2.3 `convene` 缺 agenda 的拒绝太短**、**2.4 `debate_ruling` 的形状不一致（`ballotId` vs `meeting`）**、**2.5 提示词教「三次
+  `part`」而实现是「一人一槽位」**、**2.6 temp 席没有 Lean 面却被派形式化复核**：都没动。
+- **3.x 是 agent 侧的操作缺陷**（先解锁后测拒绝态、直接读 `state.json`、让 office 代写证据、受控实验顺序反了）：机构的中心化机制
+  不该掩盖「成员自己没按提示词做」，下一轮简报要把这几条写成**可判定的动作序列**。
+- `Members/r-acad/Propos/p-evenprod.md` 文件卡仍写着 `p=0.99`（run 38 的证据），那是 **agent 的产物**，不是机制缺陷：下一轮要在
+  现场看它是否被 `verdict_final` 的改动追平。
+- 本轮修复**尚未真机复验**（run 39 简报复验 1.1/1.2/1.3/1.5/1.6/1.7 与 2.2）。
+
+### 297.6 三条教训
+
+- **记录面必须能回答它自己声称回答的问题**：「这是记录正文（说了/投了/拒了什么）」配一个没有原话的条目标题，是一句谎。
+  写任何 `*Means` 之前先问：**这一面的字段里，那个东西在不在？**
+- **同一门禁在两处出现，就必须是同一套字段**：`gate`/`nextGate`/`missing` 在 render 有、在 `part` 没有，读者只能解析散文；
+  而**抛错的拒绝带不了结构** —— 要结构就**返回**（宿主只保留抛错的前四个键），这是框架层面的约束，不是风格问题。
+- **「要求」和「检查」不是一回事**：`part` 只解析、不要求；交付门禁才要求。把别人的要求写进自己的 `means`，下一轮就会有人
+  拿着一份「通过了的空证据部分」去 render 撞墙 —— 且他会在错误的时刻发现。

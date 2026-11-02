@@ -789,6 +789,11 @@ export function createPaperFlow({
       // only). Two receipts contradicting each other sent that run through the refused call first. The hint is now the move
       // that state accepts: `advance` closes the round, and a reviewer who did not say deliverable sends the paper back to
       // writing (the run measured exactly that: advance ⇒ from:"reviewing" to:"writing", refusers:["r-1"]).
+      : state.status === 'finalized'
+      // ★★ RUN 197 (run 38 / FEEDBACK37 1.6, MEASURED): a FINALIZED paper answered "the paper is in REVIEW … advance",
+      // and advance on a finalized paper only returns moved:false — advice with no reachable move. Nothing writes a new part
+      // into a delivered paper; say that, and name the only doors.
+        ? 'the paper is FINALIZED: no part can be written into it any more — this is the delivered version and `advance` only answers moved:false on it. If this work must change, start a NEW paper with vibe_v5_paper { action: "start", target: "<new name>", participants: [...] }; the finalized record stays exactly as it is'
       : 'the paper is in REVIEW: the move this state accepts is vibe_v5_paper { action: "advance", target: "' + state.target + '" } — it closes the round, and a reviewer who did NOT answer deliverable sends the paper back to writing; only at awaiting-editor is the editor door (final { decision: "revise" }) accepted')
     if (!state.participants.includes(str(member))) throw refuse('VMU_NO_SUCH_OBJECT', str(member) + ' is not a writing participant of this paper', 'participants: ' + state.participants.join(', '))
     const part = {
@@ -1084,7 +1089,12 @@ export function createPaperFlow({
       if (state.round < roundsCap()) {
         state.round += 1; state.status = 'writing'; state.stage = 'writing'; state.reviews = {}
         writeState(state)
-        return { ok: true, moved: true, from: 'reviewing', to: 'writing', round: state.round, refusers, reviewsRead, notRequired,
+        // ★★ RUN 197 (run 38 / FEEDBACK37 1.3, MEASURED): the UNANIMOUS branch stated `refusers: []` with a note claiming the
+        // disagreement branches "carry the same field with names in it" — and neither did. Run 38's editor read
+        // `refusers:["r-1"]` with no sentence saying what the list means or what happens next.
+        return { ok: true, moved: true, from: 'reviewing', to: 'writing', round: state.round, unanimous: false, refusers,
+          refusersMeans: 'NOT empty: these participants answered something other than deliverable on another member\'s part (' + refusers.join(', ') + '), so this round did NOT reach unanimity and the paper goes back to writing',
+          reviewsRead, notRequired,
           notRequiredMeans: notRequired.length === 0 ? null : 'these participants were NOT counted as refusers: they have no other member\'s part to review (' + notRequired.join(', ') + ')' }
       }
       state.status = 'awaiting-editor'; state.stage = 'awaiting-editor'
@@ -1096,7 +1106,10 @@ export function createPaperFlow({
       state.forcedAfterCapRound = state.round
       state.warnings = (state.warnings || []).concat(['（第 ' + state.round + ' 轮）互审在 ' + roundsCap() + ' 轮上限仍未达成全体一致（' + refusers.join('、') + '）；分歧已写入论文附录（这是 HISTORY：之后各轮的评审可以再次达成一致）'])
       writeState(state)
-      return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, refusers, capped: true, warnings: state.warnings, reviewsRead }
+      // ★★ RUN 197 (same defect as the branch above): the CAPPED disagreement branch printed `refusers` and no meaning either.
+      return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: false, refusers,
+        refusersMeans: 'NOT empty: the reviews did not reach deliverable for every participant within ' + roundsCap() + ' round(s), so the editor is handed the paper WITH this disagreement on the record (a later round can still agree)',
+        capped: true, warnings: state.warnings, reviewsRead }
     }
     return { ok: true, moved: false, state: state.status, note: 'the flow is ' + state.status + '; only writing/reviewing advance on their own (finalize it, or start a new paper)' }
   }

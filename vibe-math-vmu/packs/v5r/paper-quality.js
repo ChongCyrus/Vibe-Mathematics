@@ -463,7 +463,7 @@ export function checkEvidencePointers({ evidence, records, codes = QUALITY_CODES
       means: 'member-file pointer: resolved against the records face by its id' + (anchor ? '; the `' + anchor + '` anchor is a section inside that record, not part of its id' : '') })
   }
   return { ok: unknown.length === 0, provided: list.length, resolved, unknown,
-    means: 'the pointers are resolved against the records face the moment the part is written, so a fabricated or mistracked citation is refused HERE instead of at render; the gate still owns the deliverable (it also requires >=1 evidence entry per part and a fingerprint for every citation)' }
+    means: 'the pointers are resolved against the records face the moment the part is written, so a fabricated or mistracked citation is refused HERE instead of at render; this face resolves what it is GIVEN and requires NOTHING — an empty `evidence` list passes here, and the DELIVERY gate (gate "evidence", >=1 entry per part) is what refuses it later at render/final. Two faces, two questions: "do these pointers resolve?" (here) and "did every part file evidence?" (the gate)' }
 }
 
 /**
@@ -518,7 +518,12 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
         ? '把这张卡写成记录行（例如用 vibe_v5_record_proposition 记一条，或让记录面返回它的 rec-<n>），再把 evidence 换成那个记录 id——文件卡与记录行是两个面，附录只认后者'
         : '在记录面写入该卡时显式给它这个 id（vibe_v5_record_proposition 的 id 参数），或把 evidence 改成记录面返回的 id——附录按【记录】索引，不按文件名索引',
       fileCardHint: looksFileCard || undefined,
+      // ★★ RUN 197 (run 38 / FEEDBACK37 1.5, MEASURED): the EVIDENCE refusal named its gate; this one did not, so a reader
+      // could not tell the two checks apart by field. Same vocabulary in both places.
+      gate: 'citation',
+      nextGate: 'evidence',
       missing: unknown,
+      missingMeans: 'every entry here is a CITED id that failed to resolve: this gate answered the CITATION question ("does the record exist, on the track the path claims?"), not the EVIDENCE question ("did every part file evidence?")',
     }
   }
 

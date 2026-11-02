@@ -3315,8 +3315,24 @@ export function createTurnOrchestrator({
     const turnId = pending && pending.turnId ? pending.turnId : null
     const report = takeStructuredReport(member, turnId)
     if (!report) {
+      // ★★ RUN 196 (run 37 / FEEDBACK36 left-over, MEASURED against run 36): this refusal used to say only "report
+      // with op:\"reply\" while the prompt is open, then call step" — an instruction that is TRUE on the CALLER path and
+      // IMPOSSIBLE on the delegated one. Under `activation`/`one-shot` delivery a member turn settles inside the step,
+      // so a member session that reads this has no prompt to answer and no `step` to call: it is a child session with
+      // its own kernel. Run 36's member read exactly this sentence and went looking for a turn to answer. The refusal
+      // now names BOTH situations, so the sentence cannot be followed off a cliff.
+      const pendingState = (() => {
+        try { return deliver && typeof deliver.pending === 'function' ? deliver.pending() : null } catch (e) { return null }
+      })()
+      const deliveryPath = pendingState && typeof pendingState.deliveryPath === 'string' ? pendingState.deliveryPath : null
       fail('VMU_TURN_NO_PENDING_MEMBER', 'no structured report is waiting for an open member turn',
-        'report with vibe_vmu_turn { op:"reply", report:{…} } while the prompt is open, then call step; a pending report is completed BEFORE the next member is woken')
+        'CALLER PATH (the only one where this channel works): a `step` hands the member prompt back with `awaiting:true`, '
+        + 'you answer it with vibe_vmu_turn { op:"reply", report:{…} }, and the NEXT step completes that report before it '
+        + 'wakes anyone. DELEGATED PATH (`activation`/`one-shot`): the member turn SETTLES inside the step, so there is '
+        + 'never an awaiting prompt to answer and this refusal is expected, not a mistake to retry — the member hands its '
+        + 'report back as the FINAL TEXT of its own session (a JSON object or a ```json fence), and the parent records it '
+        + 'as that turn\'s reply. Delivery path on this kernel right now: '
+        + (deliveryPath === null ? 'not reported (no pending state)' : '"' + deliveryPath + '"'))
     }
     const turn = (turnId && turns.get(turnId)) || { id: turnId, member, round: null }
     // the prompt is ANSWERED: consume it before dispatch, so a dispatch failure cannot resurrect a question the member

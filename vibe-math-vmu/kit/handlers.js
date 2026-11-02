@@ -895,7 +895,9 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
 
 /** The generic helpers the moved handlers use. Exported so a pack can import ONE implementation instead of keeping
  *  a second copy (the bodies above are the verbatim extraction; this block only names them). */
-export const KIT_HELPERS = Object.freeze({ str, has, refuse, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker })
+// ★ RUN 197: `refusalReceipt` is exported because a face that must carry STRUCTURE (`gate`/`nextGate`/`missing`)
+// cannot throw — the host rebuilds a thrown error as {ok:false, code, message, hint} and drops every other key.
+export const KIT_HELPERS = Object.freeze({ str, has, refuse, refusalReceipt, settingsOf, declaredTracks, recordsOf, membersOf, requireSpeaker })
 
 export const KIT_READ_LIBRARY = toolReadLibrary
 export const KIT_RECORD_PROGRESS = toolRecordProgress

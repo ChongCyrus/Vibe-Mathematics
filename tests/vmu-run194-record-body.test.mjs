@@ -99,7 +99,7 @@ test('RUN 194 §1 — a PRIMITIVE meeting is told which face holds its record, i
     ok(opened.ok !== false, '§2a a primitive meeting opens on this face', opened)
     const got = await call('vibe_vmu_meeting', { action: 'minutes', id: 'prim-1' })
     ok(got.ok === false, '§2b ★ minutes on a primitive meeting is a NAMED refusal, not a silent empty list', got)
-    ok(got.code === 'VMU_INVALID_ARGUMENT', '§2c naming the call, not the id', got.code)
+    ok(got.code === 'VMU_REGISTRY_BOUNDARY', '§2c ★ a REGISTRY BOUNDARY (RUN 197: the call was well formed — the two registries are the boundary, which is not an argument error)', got.code)
     has(got.message, 'PRIMITIVE meeting', '§2d the message says which table it is')
     has(got.hint, 'action: "summary"', '§2e ★ and points at the read face that DOES hold its record')
     ok(got.registry === 'primitive', '§2f with the registry disclosed', got.registry)

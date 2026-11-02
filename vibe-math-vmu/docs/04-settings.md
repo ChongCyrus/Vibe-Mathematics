@@ -426,7 +426,7 @@ vmu.packs.active: [v5r]
 | `vmu.minutes.actionsOwnerRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/minutes.js` | 行动项必须有负责人 |
 | `vmu.minutes.dueRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/minutes.js` | 行动项必须有期限 |
 | `vmu.minutes.dissentRetentionMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/minutes.js` | 异议保留期（0＝永久） |
-| `vmu.minutes.verbatimCapBytes` | int ≥1 | `32768` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/minutes.js` | 逐字稿上限（触界报丢弃字节数，永不静默） |
+| `vmu.minutes.verbatimCapBytes` | int ≥1 | `32768` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/meetings.js` | 逐字稿上限（触界报丢弃字节数，永不静默） |
 | `vmu.budget.fairnessPolicy` | enum | `equal` | `equal`∣`priority`∣`reserve` | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 配额公平策略（实现仅接 reserve 切片；equal/priority 的排序算法未实现 ✗） |
 | `vmu.budget.reserveRatio` | ratio | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 预留比例（0..1 分数；0＝不预留） |
 | `vmu.budget.warnAtRatio` | ratio | `0.8` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/budget.js` | 告警阈值（0..1 分数；越阈只警告不拒） |

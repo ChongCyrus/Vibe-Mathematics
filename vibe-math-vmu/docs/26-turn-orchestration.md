@@ -3223,3 +3223,71 @@ behind a live kernel's back, and the store persists the WHOLE fold from memory, 
 seed after the last re-read (20 standalone runs: 18 green / 2 red). The seed now goes through `store.patch` — the same
 exclusive section every writer uses — with one read-back assertion so a seed that did not land fails NAMED at setup
 instead of impersonating a mechanism defect. 30/30 after the fix; full T1 `745/745`.
+
+## ROUND 199
+
+**RUN 196 — three readings whose subject was somewhere else.** Run 37 (FEEDBACK36) measured all three on a paper that
+reached a real PDF and a meeting that really closed.
+
+1. **The meeting board counts SEATS, not RULINGS.** Run 37 read `m1` as `present:1 / transcript:[] / unanimity.met:false`
+   and, in the same batch, the chair's `vibe_v5_verdict_final` answered `sources.submitted:2`. Both are true: `present`
+   is the quorum denominator and `transcript` is speech, while a ruling is a CARD filed by `vibe_v5_verdict` and
+   aggregated by `vibe_v5_verdict_final`. A member can file a ruling without taking a seat and take a seat without filing
+   one, so neither number can be computed from the other. `status` and `summary` now carry `rulingsNotOnThisBoard` +
+   `rulingsReadFrom` (`RULING_BOARD_POINTER`), so the board says what it counts and names the face that carries the rest.
+2. **The paper's two trees are now named on the paper's own receipt.** `read_library` answered
+   `libraryRoot: <ws>/VibeMath` while the finalised PDF sat at `<ws>/Paper/paper-p1/paper-p1.pdf`. `paper status` now
+   carries `roots`: `libraryRoot` (the same absolute value the library face prints), `artifactRoot` (the ABSOLUTE
+   directory of the newest compiled file — `null` with `artifactRootWhy` before the first compile, because "not measured
+   yet" is not "no such tree"), `artifactPrefix: 'Paper/<paper-folder>/'`, and a `means` that says the artifact root is a
+   SIBLING of the library root, that a PDF never appears under `libraryRoot`, and that `pdfCompiled.pdfPath` is the
+   absolute address to read first.
+3. **One refusal, two delivery paths.** `completeStructuredReport`'s `VMU_TURN_NO_PENDING_MEMBER` used to say only
+   「answer the awaiting prompt with the reply op, then call step」 — true on the CALLER path, impossible on the
+   DELEGATED one (the turn settles inside the step, so no awaiting prompt ever exists and the child has no `step` to
+   call). Run 36's member read that sentence and went looking for a turn to answer. The hint now names BOTH paths, says
+   the delegated-path refusal is EXPECTED rather than a bug to retry, names the channel that works there (the member's
+   own FINAL TEXT, recorded as that turn's reply), and prints this kernel's current `deliveryPath`.
+
+Mechanised in `tests/vmu-run196-feedback36.test.mjs` (4/0): source pins for all three, a真 meeting that reads the pointer
+off BOTH faces, a真 paper whose `roots` block is inspected before any compile (so the null-with-reason branch is the one
+measured), and the refusal raised by calling `kernel.turn.completeStructuredReply()` with nothing waiting.
+
+## ROUND 200
+
+RUN 197 (run 38 / `FEEDBACK37`). Seven readings whose SUBJECT was somewhere else, plus one record that could not carry the
+thing it exists for.
+
+1. **The record body could not say what was said.** `minutes()` printed "this is the RECORD BODY (what was said, voted and
+   refused)" over entries shaped `{at, kind:"speech", member, ms, tokens, verbatim}` — no `text`. `speak()` had the words in
+   hand and dropped them unless `verbatim:true` routed them to the OTHER record (the transcript). The words are now ON the
+   entry (`text`), bounded by the DECLARED `vmu.minutes.verbatimCapBytes`, cut on a character boundary, and the truncation is
+   counted (`textDroppedBytes`) instead of silent.
+2. **`archivable` was printed beside `archived`.** The first answers "old enough to be a candidate for archiving", the second
+   "already in the archive" — run 38 read them side by side and asked which was true. An archived meeting now answers
+   `archived:true` + `archivedMeans` and does NOT print the candidate flag; a live one prints `archivable` + its meaning.
+3. **The transcript with capture ENABLED carried no note.** `enabled:true, count:0` read as "capture is broken". Both branches
+   now carry `note`: zero lines says nobody spoke with `{verbatim:true}` (and that the words are on the minutes entries); nonzero
+   says what pruned it and that dropped lines are counted.
+4. **A registry boundary was reported as an argument error.** `minutes`/`verbatim` on a PRIMITIVE meeting answered
+   `VMU_INVALID_ARGUMENT` about a well-formed call; the boundary is between registries, which is exactly what
+   `VMU_REGISTRY_BOUNDARY` is for (the same face already used it for the other verbs).
+5. **`advance`'s disagreement branches were anonymous.** The unanimous branch stated `refusers: []` and claimed the
+   disagreement branches carried the same field "with names in it" — neither did. Both now carry `unanimous:false` +
+   `refusersMeans` (what the list means, and what happens next).
+6. **A finalized paper was told to `advance`.** `recordPart` on a FINALIZED paper answered "the paper is in REVIEW … advance",
+   and `advance` on a finalized paper only returns `moved:false`. The hint now says the paper is delivered, that nothing writes
+   into it, and that the door is a NEW paper.
+7. **Two faces, two questions, one borrowed requirement.** `checkEvidencePointers.means` claimed the gate "also requires >=1
+   evidence entry per part" — that requirement belongs to the DELIVERY gate. `part` requires nothing; it resolves what it is
+   given. The sentence now says so, and the SUCCESS receipt carries `evidenceGate: {gate, requiredAt:'render/final',
+   satisfiedNow, means}` so the deferral is visible where the writer can still act.
+8. **The `part` refusals could not carry structure — because they THREW.** The host rebuilds a thrown error as
+   `{ok:false, code, message, hint}` and drops every other key, so `gate`/`nextGate`/`missing` (which the same gate carries at
+   render) could not be attached. Both refusals now RETURN `refusalReceipt(…)` with those fields; `refusalReceipt` is the ninth
+   exported `KIT_HELPERS` entry.
+
+Mechanised in `tests/vmu-run197-feedback37.test.mjs` (5/0): source pins for all nine, a real meeting whose speech text comes
+back VERBATIM and whose closed minutes carry `archived` without the candidate flag, a primitive meeting refused by
+`VMU_REGISTRY_BOUNDARY`, and a real `part` refused by the evidence gate with `gate`/`nextGate`/`missing`/`missingMeans` as DATA —
+then accepted with `evidenceGate.requiredAt === 'render/final'`.

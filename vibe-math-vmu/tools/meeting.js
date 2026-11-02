@@ -61,6 +61,24 @@ export function primitiveMissError({ id, inService, action, crossing = SERVICE_C
   })
 }
 
+// ★★ RUN 196 (run 37 / FEEDBACK36 1.2, MEASURED): THE BOARD COUNTS SEATS, NOT RULINGS. Run 37's office read `m1`
+// as `present: 1, transcript: [], unanimity.met: false` and, in the same batch, the chair's `vibe_v5_verdict_final`
+// answered `coverage.debatedSource: "roster+speech"` with `sources.submitted: 2`. Both were true: this board records
+// ATTENDANCE (`present`, the quorum denominator) and SPEECH (`transcript`), while a member's verdict is a CARD it files
+// on disk (`vibe_v5_verdict`) that the chair aggregates (`vibe_v5_verdict_final`). A member can file a ruling without
+// taking a seat and a member can take a seat without filing anything, so neither number can be read off the other —
+// and the reader had no sentence saying so on the board itself. The pointer travels on every board read (`status` and
+// `summary`), because both are read by the chair at the moment it decides whether the house has spoken.
+const RULING_BOARD_POINTER = Object.freeze({
+  rulingsNotOnThisBoard: 'this board records ATTENDANCE (`present`, which is also the quorum denominator) and SPEECH '
+    + '(`transcript`), and it does NOT record RULINGS: a member files its verdict as a CARD (`vibe_v5_verdict`), and the '
+    + 'chair aggregates those cards with `vibe_v5_verdict_final`, whose receipt answers `coverage`, `sources{ n, submitted, '
+    + 'typed }` and `attribution`. A member can file a ruling without taking a seat, and can take a seat without filing '
+    + 'anything — so "present:1 with an empty transcript" beside "two rulings submitted" is two records (a seat and a '
+    + 'card), not two truths, and neither can be computed from the other',
+  rulingsReadFrom: { face: 'vibe_v5_verdict_final', fields: ['coverage', 'sources', 'attribution'] },
+})
+
 // ★ ROUND 96 (real machine): the boundary refusal carried `boundaryOnly`/`askedAction`/`registry`/`actionCrosses`
 // on the ERROR object, but the receipt was rebuilt from code/message/hint alone — so docs/03 promised fields a
 // program never received, and the message named the verb "this action" because `live()` was called without one.
@@ -589,7 +607,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
               // instead of an article of faith. `ran:false` means no pass has happened in this process yet.
               let sweep = null
               if (typeof svc.status === 'function') { try { sweep = svc.status().sweep || null } catch (e) { sweep = null } }
-              return Object.assign({ ok: true, action, registry: 'service', quorum, sweep }, view)
+              return Object.assign({ ok: true, action, registry: 'service', quorum, sweep }, view, RULING_BOARD_POINTER)
           }
           // ★★ ROUND 37 (live run 37): a CLOSED meeting is not a MISSING one. `close` archives the service record, so
           // `meetingView` stops answering and this branch used to say `VMU_NO_SUCH_OBJECT` — while `summary` and the
@@ -665,7 +683,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                   return { closureAccount: null, closureAccountMeans: 'reading the frozen account threw: ' + String((e && e.message) || e) }
                 }
               })()
-              return Object.assign({ ok: true, action }, summaryOut, closurePointer, accountPointer)
+              return Object.assign({ ok: true, action }, summaryOut, closurePointer, accountPointer, RULING_BOARD_POINTER)
             }
             throw noSuchMeeting(pid)
           }
@@ -685,7 +703,11 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (primitive) {
               // the primitive meeting keeps ONE record and it is already readable as `action=summary`; saying so is
               // better than minting a second name for the same store.
-              return Object.assign(refused('VMU_INVALID_ARGUMENT',
+              // ★★ RUN 197 (run 38 / FEEDBACK37 1.2, MEASURED): this was `VMU_INVALID_ARGUMENT` — an ARGUMENT error — while
+              // the call was perfectly well formed: the boundary is between two REGISTRIES, which is what
+              // VMU_REGISTRY_BOUNDARY exists for (the same file uses it for the other verbs). A caller that keys on the code
+              // read "I typed something wrong" about a request that cannot ever succeed on this face.
+              return Object.assign(refused('VMU_REGISTRY_BOUNDARY',
                 'action "' + action + '" reads the MEETINGS SERVICE record body; ' + pid + ' is a PRIMITIVE meeting (kernel/meeting.js), whose one record is its own structured summary',
                 'read it with { action: "summary", id: "' + pid + '" } — rounds, ask/answered/silent/refused and the closing reason are all there; the service minutes/transcript belong to meetings opened through vibe_v5_meeting { action: "open" }'),
               { registry: 'primitive', askedAction: action })
