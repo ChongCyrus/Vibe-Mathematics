@@ -1100,13 +1100,18 @@ export function createPaperFlow({
         return id + '：' + (v.source === 'durable-other-round' ? '最近一条评审行属于别的轮次（ROUND MISMATCH，不计为拒收）' : '还没有本轮的评审行（未表态，不计为拒收）')
       })).join('；') }
       state.disagreement = (state.disagreement || []).concat([entry])
+      // ★★ RUN 201 (run 40 / FEEDBACK39 1.3): the receipt said "goes back to writing" and did not say the ROUND moved,
+      // so the editor read a round-3 paper as a retry of round 2. The two numbers are read BEFORE the increment.
+      const roundFrom = state.round
       if (state.round < roundsCap()) {
         state.round += 1; state.status = 'writing'; state.stage = 'writing'; state.reviews = {}
         writeState(state)
         // ★★ RUN 197 (run 38 / FEEDBACK37 1.3, MEASURED): the UNANIMOUS branch stated `refusers: []` with a note claiming the
         // disagreement branches "carry the same field with names in it" — and neither did. Run 38's editor read
         // `refusers:["r-1"]` with no sentence saying what the list means or what happens next.
-        return { ok: true, moved: true, from: 'reviewing', to: 'writing', round: state.round, unanimous: false, refusers, stale, notYetReviewed,
+        return { ok: true, moved: true, from: 'reviewing', to: 'writing', round: state.round, roundFrom, roundTo: state.round,
+          roundMeans: 'the round ADVANCED (' + String(roundFrom) + ' → ' + String(state.round) + ') and the paper went back to writing: this is not a retry of round ' + String(roundFrom) + ', it is the next round with the disagreement recorded',
+          unanimous: false, refusers, stale, notYetReviewed,
           refusersMeans: refusers.length === 0
             ? 'empty ON PURPOSE: nobody refused — the round is held open because reviewer(s) ' + (pendingNames.join(', ')) + ' have no counted verdict for this round (see stale and notYetReviewed), so the paper goes back to writing instead of being called unanimous'
             : 'NOT empty: these participants answered something other than deliverable on another member\'s part (' + refusers.join(', ') + '), so this round did NOT reach unanimity and the paper goes back to writing',
@@ -1210,7 +1215,20 @@ export function createPaperFlow({
       // ★ E4: 定稿前必须问所办. The gate runs BEFORE any mutation, so a refusal leaves the paper exactly where it was
       // (except the durable request it just opened — the question has to survive a crash, that is the point of asking).
       const gate = consultGate({ state, member: fin.by })
-      if (!gate.allowed) throw gate.error
+      if (!gate.allowed) {
+        // ★★ RUN 201 (run 40 / FEEDBACK39 1.5): the refusal receipt said WHAT blocked the finalisation and nothing about
+        // the finalisation itself, so a reader comparing the two attempts saw "no final block" versus "a final block" and
+        // could not tell a refused final from a missing one. The refusal now carries the final it refused, with the ONE
+        // field that matters: it is not finalized, and here is the question that must be answered first.
+        gate.error.final = {
+          ok: false, finalized: false, blockedBy: 'office-consult',
+          by: fin.by, decision: fin.decision,
+          consult: { requestId: gate.error.requestId === undefined ? null : gate.error.requestId,
+            definition: gate.error.requestId === undefined || gate.error.requestId === null ? null : String(gate.reason || '') },
+          means: 'the final was REFUSED before anything was written: this paper is NOT finalized, and the question in `consult.requestId` must be answered (recordConsult) before the same call can succeed — a refused final leaves the paper exactly where it was',
+        }
+        throw gate.error
+      }
       const before = { hadFinal: Object.prototype.hasOwnProperty.call(state, 'final'), final: state.final, status: state.status, stage: state.stage }
       state.final = fin; state.status = 'finalized'; state.stage = 'finalized'
       writeState(state)

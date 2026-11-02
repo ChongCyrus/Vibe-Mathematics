@@ -37,6 +37,17 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+// ★★ RUN 201 (run 40 / FEEDBACK39 1.1): a ruling NAME is now RESOLVED against the institute's own records — run 40 wrote
+// p=1 while naming a ballot that held ZERO votes, so `debate_ruling` has to prove "a decision people made", not "a
+// string that looks like an id". A made-up id is refused by name, so these fixtures seed a REAL box with a REAL vote.
+function seedVotingBallot(kernel, tag) {
+  const box = kernel.ballotbox.open({ question: tag + ' 是否成立', options: ['1', '0'], rules: { minVotes: 0 } })
+  const id = String(box.boxId === undefined ? box.id : box.boxId)
+  kernel.ballotbox.cast({ boxId: id, by: 'r-1', choice: '1' })
+  return id
+}
+
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href
@@ -159,7 +170,7 @@ try {
       '§1b 结算前：卡体带 `proofState`，标题是 caller 给的那个', JSON.stringify({ titleBefore, hasProofState: bodyBefore.includes('proofState') }))
     const settled = await call(b.specs, 'vibe_v5_record_proposition', {
       id: 'rec-153-g1', statement: 'run153 §1 命题：n+n=2n', value: 1, motive: '算术恒等', p: 1,
-      debate_ruling: { subject: 'rec-153-g1', value: 1, mode: 'unanimous', n: 2, decided: true, meeting: 'm-deb-1', by: 'r-chair' }, member: 'r-1',
+      debate_ruling: { subject: 'rec-153-g1', value: 1, mode: 'unanimous', n: 2, decided: true, ballotId: seedVotingBallot(b.kernel, 'm-deb-1'), by: 'r-chair' }, member: 'r-1',
     })
     ok(settled.ok === true && settled.settled === true && settled.p === 1,
       '§1c ★★★ G1 裁决落值在锁定卡上成功（L53 要求的写改能执行）', show(settled))
@@ -181,7 +192,7 @@ try {
     // G1 (second settlement replaces the first ruling row instead of stacking two)
     const settledAgain = await call(b.specs, 'vibe_v5_record_proposition', {
       id: 'rec-153-g1', statement: 'run153 §1 命题：n+n=2n', value: 1, motive: '算术恒等', p: 0,
-      debate_ruling: { subject: 'rec-153-g1', value: 0, mode: 'unanimous', n: 2, decided: true, meeting: 'm-deb-2', by: 'r-chair' }, member: 'r-1',
+      debate_ruling: { subject: 'rec-153-g1', value: 0, mode: 'unanimous', n: 2, decided: true, ballotId: seedVotingBallot(b.kernel, 'm-deb-2'), by: 'r-chair' }, member: 'r-1',
     })
     const bodyFinal = (() => { try { const r = b.kernel.records.get({ id: 'rec-153-g1' }); return String((r && (r.record ? r.record.body : r.body)) || '') } catch { return '' } })()
     ok(settledAgain.ok === true && (bodyFinal.match(/debateRuling/g) || []).length === 1,
@@ -223,9 +234,10 @@ try {
     // patch a row nobody had written ⇒ VMU_NO_SUCH_OBJECT. The create falls through to the ordinary write (which carries
     // p, hence settled), and the SAME patch function then layers the ruling line on the row it just wrote.
     const b2 = await boot()
+    const mdeb3 = seedVotingBallot(b2.kernel, 'm-deb-3')
     const created = await call(b2.specs, 'vibe_v5_record_proposition', {
       id: 'rec-153-born', title: 'born 卡', statement: '诞生即带裁决', value: 3, motive: 'run153', p: 1,
-      debate_ruling: { subject: 'rec-153-born', value: 1, mode: 'unanimous', n: 2, decided: true, meeting: 'm-deb-3', by: 'r-chair' },
+      debate_ruling: { subject: 'rec-153-born', value: 1, mode: 'unanimous', n: 2, decided: true, ballotId: mdeb3, by: 'r-chair' },
       member: 'r-1',
     })
     ok(created && created.ok === true && created.track === 'propositions', '§1r ★★ 带裁决的新卡被【创建】成功（不是 NO_SUCH_OBJECT）', show(created))
@@ -234,7 +246,7 @@ try {
       '§1r3 回执自述：裁决是在创建之后【补丁】上去的', JSON.stringify(created && created.settlement))
     const row = (() => { try { return b2.kernel.records.get({ id: 'rec-153-born' }) } catch { return null } })()
     const body = String((row && (row.record ? row.record.body : row.body)) || '')
-    ok(/debateRuling *[：:]/.test(body) && body.includes('m-deb-3'),
+    ok(/debateRuling *[：:]/.test(body) && body.includes(mdeb3),
       '§1r4 新卡卡体里真有裁决行（含会议 id）', body.split('\n').filter((l) => /debateRuling/.test(l)).join(' | '))
     const pLine = (body.match(/^- p *[：:].*$/m) || [''])[0]
     ok(pLine.trim() === '- p：1', '§1r5 卡体的 p 就是裁决值（没有第二条 p 行）', pLine)

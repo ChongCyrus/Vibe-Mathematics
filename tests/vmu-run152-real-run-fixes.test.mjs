@@ -34,6 +34,18 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+// ★★ RUN 201 (run 40 / FEEDBACK39 1.1): a ruling NAME is now RESOLVED against the institute's own records — run 40 wrote
+// p=1 while naming a ballot that held ZERO votes, so `debate_ruling` has to prove "a decision people made", not "a
+// string that looks like an id". A made-up id is refused by name (`VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED`), so these
+// fixtures seed a REAL box with a REAL vote instead of inventing an id.
+function seedVotingBallot(kernel, tag) {
+  const box = kernel.ballotbox.open({ question: tag + ' 是否成立', options: ['1', '0'], rules: { minVotes: 0 } })
+  const id = String(box.boxId === undefined ? box.id : box.boxId)
+  kernel.ballotbox.cast({ boxId: id, by: 'r-1', choice: '1' })
+  return id
+}
+
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = pathToFileURL(join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')).href
@@ -168,7 +180,7 @@ try {
       '§1f ★★ 锁定卡上的普通写入仍被具名拒（L14 没有被放松）', show(plain))
     const settled = await call(b.specs, 'vibe_v5_record_proposition', {
       id: cardId, statement: 'run152 §1 命题：n+n=2n', value: 1, motive: '算术恒等', p: 1,
-      debate_ruling: { subject: cardId, value: 1, mode: 'unanimous', n: 2, decided: true, meeting: 'm-deb', by: 'r-chair' }, member: 'r-1',
+      debate_ruling: { subject: cardId, value: 1, mode: 'unanimous', n: 2, decided: true, ballotId: seedVotingBallot(b.kernel, 'm-deb'), by: 'r-chair' }, member: 'r-1',
     })
     ok(settled.ok === true && settled.settled === true, '§1g ★★★ F1 裁决落值在锁定卡上被接受（L53 要求的写改真能执行）', show(settled))
     const afterSettle = await call(b.specs, 'vibe_v5_paper', { action: 'status', target: 'p-run152-a' })

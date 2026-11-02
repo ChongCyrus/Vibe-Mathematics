@@ -14437,3 +14437,87 @@ recorded NO verbatim line`、`refused('VMU_REGISTRY_BOUNDARY'`、两条 `refuser
   两样东西。把解析器放进宿主层的库模块、并在两处回执里各说一句，比在提示词里加一句「记得写对」有用。
 - **语义写在拒绝理由里等于没写**：`rounds` 的正确含义只在失败路径的 `notAdvanced` 里出现过一次，于是调用者只有在
   用错之后才第一次读到它。正确位置是描述与参数说明——**调用之前就该看见**。
+
+## §301 RUN 201 —— 说得出名字不等于有裁决、回合前进要说回合数、被拦的定稿也要有账（run 40 / `FEEDBACK39` 五条）
+
+### 301.1 现场读数（run 40，`D:/_tmp/slv-phase5/slvp168-ws/FEEDBACK39.md`，PDF 147 632 B）
+
+- **1.1** 一张从未进过辩论的卡 `p-n12-tight` 写 `p=1`、`debate_ruling.ballotId = "bx-1"`，而那是一个**零票开着**的票箱：写入成功，
+  回执 `p1Evidence: "debate-unanimous"`、`p1RulingRef: "bx-1"`。名字被打印了，票数从来没被读。
+- **1.3** `advance` 在「本轮没人交评审」时把 round 2 推成 3 并把论文打回 writing，回执只说 `goes back to writing`，
+  没有一处说「回合数已经加一」——调用者按 round 2 重试会读到另一个回合。
+- **1.5** 被 `VMU_OFFICE_CONSULT_REQUIRED` 拦下的那次 `final` 回执**没有 `final` 块**（只有 ok/code/message/hint/enforced/settingValues/requestId），
+  而答复后重试那次有完整 `final` 块：同一个动作，被拦与成功两种结局的账长得不一样。
+- **1.2** `vibe_v5_record_proposition` 的描述把 `p=1` 的 Lean 路径说成「直接传 `lean_job` + `lean_conformance`」，
+  实测被拒，真路是先 `vibe_v5_fidelity_conclude`。
+
+### 301.2 五处修法
+
+1. **裁决名字要落到实体**（`packs/v5r/tools.js`）：新增 `rulingNameResolution(kernel, debate)`，按名字去读——
+   `ballotId` 走 `kernel.ballotbox.status({ boxId })`（`votes/abstain/byChoice/state`），`meeting` 走
+   `kernel.meetings.summary({ meeting })`（`motions/motionsSeconded/votes/settled`）。写 `p=1` 之前先解析：
+   解析不到 ⇒ `VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED`；解析到但 `voted !== true` ⇒ `VMU_PACK_V5R_CORE_P1_RULING_UNVOTED`
+   （两条 hint 分别指向真票箱与 `vibe_v5_fidelity_conclude`）；解析成功则把读数挂进 `evidence.debate.ruling`，
+   经 `verification-gates.js` 的 `routed('debate', …)` 原样进回执 `p1RulingReading`。
+2. **回合前进要说回合数**（`kit/paper.js` 打回 writing 的分支）：`const roundFrom = state.round` 取在自增之前，
+   回执带 `roundFrom`/`roundTo`/`roundMeans`（`the round ADVANCED (2 → 3) … not a retry of round 2`）。
+3. **被闸拦下的定稿也要有账**（`kit/paper.js` 的 consult 闸）：`gate.error.final = { ok:false, finalized:false,
+   blockedBy:'office-consult', by, decision, consult:{ requestId, definition }, means }` 后才 `throw`——
+   宿主的 `refusalFacts` 会把错误自有的可 JSON 化字段搬进回执，所以不需要改宿主。
+4. **首写为什么是 rev 2**（`packs/v5r/tools.js` 的 `settleRulingOnCard`/创建路径）：`settlement.revMeans` 说明 rev 是记录版本号、
+   不是本次写次数；创建路径再补 `createdByThisCall: true`、`writesInThisCall: 2`、`writesInThisCallMeans`
+   （这次调用写了两次：建卡 + 裁决补丁）。
+5. **描述改成实测路径**（`p=1` 的 Lean 分支）：点名「内核必须读到该作业 passed:true，否则具名拒；本机构可行路径是 `vibe_v5_fidelity_conclude`」。
+
+### 301.3 机器化 `tests/vmu-run201-feedback39.test.mjs`（4/0）
+
+§0 源码 pin；§1 四条拒绝与一条通过（无人持有的 ballot ⇒ UNRESOLVED；零票票箱 ⇒ UNVOTED；真票箱 ⇒ 通过且 `p1RulingReading.votes > 0`；
+未投票的会议 ⇒ UNVOTED 且 message 打印 `0 vote(s) recorded`）；§2 `settlement` 双写三条；§3 `roundFrom/roundTo` 与
+被闸拦下的 `final` 块（`finalized === false`、`blockedBy === 'office-consult'`、`consult.requestId` 非空、means 含 `NOT finalized`）。
+
+**两条装载事实（写测试必须先知道）**：
+
+- **pack 的拒绝是「回答」不是「抛出」**：kit 把 handler 的 throw 转成回执 ⇒ 断言读返回值 `{ ok:false, code, message, hint }`；
+  用 `try/catch` 读到的是 `null`，无法区分「通过」与「被拒」。
+- `kernel.ballotbox.cast({ boxId, by, choice })` 的投票人字段是 **`by`**，不是 `member`；`vibe_v5_paper` 的动作回执嵌一层
+  （`advance`/`review`/`final` 各自是键）。
+
+### 301.4 回归与门禁
+
+定向回归 19 组（library / v5r-tools / turn / meeting / paper / run28 / run154 / run181 / run196–201 / audit-vmu-docs /
+audit-face-actions / audit-tool-required-flags / audit-fs-purpose）全绿；计数与生成物、四门禁、全量 T1 见 §301.4b。
+
+### 301.4c 六套旧夹具按新合同更新（它们本来就在守着那个洞）
+
+第一次干净全量 T1 抓到 **6 套红**，全部是同一件事：这些夹具用**编出来的** `ballotId` / `meeting` 去走 p=1 的辩论路线（`ballot-tools-1`、`ballot-42`、`m-deb-1`、`ballot-r186` …）。RUN 201 之前它们能过，是因为闸只核形状；现在闸去**读那个名字**，读不到就具名拒。判断：**不是新闸太严，是这些夹具一直在守着一个洞**（run 40 正是从这个洞把 p=1 写在一张从未辩论过的卡上）。
+
+修法不放松闸，而是给夹具**真实体**：每套文件顶部加一个 `seedVotingBallot(kernel, tag)` —— `kernel.ballotbox.open({ rules: { minVotes: 0 } })` 开一个真票箱、`cast({ by: 'r-1', choice: '1' })` 投一张真票，返回真实 box id；把编造的 id 全部换成它，涉及 id 的断言改成对变量断言（`warrant.id === ballot42`、`body.includes(mdeb3)`）。
+
+- `tests/vmu-v5r-verdict-final.test.mjs`（64/0）、`tests/vmu-run152-real-run-fixes.test.mjs`（33/0）、`tests/vmu-run153-real-run-fixes.test.mjs`（53/0）、`tests/vmu-b3-c8-c10.test.mjs`（44/0）、`tests/vmu-run117-list-kind-and-progress.test.mjs`（26/0）、`tests/vmu-run186-truncated-hint.test.mjs`（3/0）。
+- 装载事实补一条：开会路线要过 quorum，而 **quorum 是出勤不是票数** —— 三席 `attend` 之后才投得动票（不 `attend` 时 `vote` 报 `quorum is not met: 1/3`）；`motion()` 的返回值里 `motion` **就是 motion id 字符串**，不是对象。
+
+### 301.4b 收口链
+
+`update-doc-counts --write`（`JOBS total=751 suites=643 probes=108`）→ `regen-all --write` 17/17 → `--check` 17/17 in sync →
+`PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+
+全量 T1 两次：`D:/_tmp/t1-r461-run201.log` = `TOTAL 751 PASS 745 FAIL 6 (suites 643 · probes 108)`（六套旧夹具仍握着
+「编造裁决名」那个洞，见 §301.4c），按 §301.4c 给夹具真实体后重跑 `D:/_tmp/t1-r462-run201b.log` = **`TOTAL 751 PASS 751 FAIL 0`**
+（suites 643 · probes 108，`EXIT=0`）。
+
+### 301.5 未闭合
+
+- `rulingNameResolution` 只回答「有票 / 没票」，**不回答「这些票投的是不是这张卡」**（选项与卡的对应关系还没被读）。
+- `FEEDBACK39` 1.4（`assigneeCapability` 说 temp 席不能写 `record_progress`，而 turn 通道确实给它写了 `progress`）两面口径未统一。
+- 2.1（`vibe_vmu_turn` 的 `reply` 字符串永远属于文本通道）、2.2（`requiredLineTruncated` 的阈值没写）、
+  2.5（`applied:"immediate"` 对 `vmu.turn.leaderId` 只对本进程成立 ⇒ 该给 `partial`）都还没做。
+- 本轮修复**尚未真机复验**（run 41 简报 `D:/_tmp/slv-phase5/task-sim41.txt` 复验 §300 两条 + §301 五条）。
+
+### 301.6 三条教训
+
+- **名字不是实体**：`ballotId: "bx-1"` 在回执里是一条字符串，在机构里是「有没有这个盒子、里面有没有票」。回执打印名字
+  而从不解析，等于把「我指了某个东西」当成「那个东西成立」。
+- **同一个动作的两种结局不该长两样**：被闸拦下的 `final` 与成功的 `final` 只差一个 `final` 块，读的人就得写两条分支。
+  账应该在闸前面就成形，闸只负责在上面写「谁拦的」。
+- **把「我写了两次」写出来，比让读者从 rev=2 猜要好**：`rev` 是记录的版本号，不是调用次数；两个数字同形不同义时，
+  必须有一个字段专门说清。

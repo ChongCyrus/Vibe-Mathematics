@@ -23,6 +23,18 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 
 import { p1Intent, P1_ROUTES, P1_ROUTE_MEANS } from '../vibe-math-vmu/packs/v5r/verification-gates.js'
 
+// ★★ RUN 201 (run 40 / FEEDBACK39 1.1): a ruling NAME is now RESOLVED against the institute's own records — run 40 wrote
+// p=1 while naming a ballot that held ZERO votes, so `debate_ruling` has to prove "a decision people made", not "a
+// string that looks like an id". A made-up id is refused by name (`VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED`), so these
+// fixtures seed a REAL box with a REAL vote instead of inventing an id.
+function seedVotingBallot(kernel, tag) {
+  const box = kernel.ballotbox.open({ question: tag + ' 是否成立', options: ['1', '0'], rules: { minVotes: 0 } })
+  const id = String(box.boxId === undefined ? box.id : box.boxId)
+  kernel.ballotbox.cast({ boxId: id, by: 'r-1', choice: '1' })
+  return id
+}
+
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -120,7 +132,7 @@ try {
   // 内容不同，否则它不是"另一张没 promote 过的卡"，而就是同一张。
   const debateCard = await call(b, 'vibe_v5_record_proposition', {
     statement: STMT, value: VALUE, motive: MOTIVE + '（辩论路径：全体一致 1）', p: 1, member: 'r-1',
-    debate_ruling: { mode: 'unanimous', value: 1, ballotId: 'ballot-b3' } })
+    debate_ruling: { mode: 'unanimous', value: 1, ballotId: seedVotingBallot(b.kernel, 'ballot-b3') } })
   const debateRoute = routeOf(debateCard)
   ok(debateRoute.ok && debateRoute.route === 'debate' && typeof debateRoute.means === 'string' && debateRoute.means.trim() !== '',
     '② 辩论路径：p1Route="debate"，means 非空', debateRoute)
@@ -162,7 +174,7 @@ try {
   console.log('\n=== 2. B3：归不到路（多数决、或 lore/conformance 缺失）⇒ 具名拒，不静默接受 ===')
   const majority = await call(b, 'vibe_v5_record_proposition', {
     statement: STMT, value: VALUE, motive: MOTIVE, p: 1, member: 'r-1',
-    debate_ruling: { mode: 'majority', value: 1, ballotId: 'ballot-majority' } })
+    debate_ruling: { mode: 'majority', value: 1, ballotId: seedVotingBallot(b.kernel, 'ballot-majority') } })
   ok(refusedWith(majority, 'VMU_PACK_V5R_P1_NEEDS_DEBATE'),
     '① 多数决不是"全体一致"，被 VMU_PACK_V5R_P1_NEEDS_DEBATE 具名拒', majority && (majority.code || majority.ok))
   ok(typeof majority.hint === 'string' && majority.hint.includes('辩论') && majority.hint.includes('参考文献') && majority.hint.includes('Lean'),

@@ -10,6 +10,18 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+// ★★ RUN 201 (run 40 / FEEDBACK39 1.1): a ruling NAME is now RESOLVED against the institute's own records — run 40 wrote
+// p=1 while naming a ballot that held ZERO votes, so `debate_ruling` has to prove "a decision people made", not "a
+// string that looks like an id". A made-up id is refused by name (`VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED`), so these
+// fixtures seed a REAL box with a REAL vote instead of inventing an id.
+function seedVotingBallot(kernel, tag) {
+  const box = kernel.ballotbox.open({ question: tag + ' 是否成立', options: ['1', '0'], rules: { minVotes: 0 } })
+  const id = String(box.boxId === undefined ? box.id : box.boxId)
+  kernel.ballotbox.cast({ boxId: id, by: 'r-1', choice: '1' })
+  return id
+}
+
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -139,7 +151,7 @@ try {
     await b.K.members.hire({ id: 'r-1', slot: 'member' })
     const refused = await call(b, 'vibe_v5_record_proposition', {
       statement: 'n+n=2n', value: '1', motive: '多数决', p: 1, member: 'r-1',
-      debate_ruling: { mode: 'majority', value: 1, ballotId: 'b1' } })
+      debate_ruling: { mode: 'majority', value: 1, ballotId: seedVotingBallot(b.K, 'b1') } })
     const r = refused.parsed || refused
     ok(r && r.ok === false && r.code === 'VMU_PACK_V5R_P1_NEEDS_DEBATE',
       '① the majority-vote p=1 write is still refused by name', r && r.code)

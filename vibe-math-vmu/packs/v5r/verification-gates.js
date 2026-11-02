@@ -178,7 +178,11 @@ export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } 
       // the one name for that answer, and it is a MEETING when the caller named a meeting (the run-38 shape).
       rulingRef: ev.debate.rulingRef || null, rulingRefMeans: ev.debate.rulingRefMeans || null,
       n: ev.debate.n === undefined || ev.debate.n === null ? null : ev.debate.n,
-      decided: ev.debate.decided === undefined || ev.debate.decided === null ? null : ev.debate.decided })
+      decided: ev.debate.decided === undefined || ev.debate.decided === null ? null : ev.debate.decided,
+      // ★★ RUN 201 (run 40 / FEEDBACK39 1.1): "this ruling decided the card" used to be printed beside a name nobody
+      // had read. The reading the write path performed travels with the answer, so the receipt can say WHAT was read
+      // (state, votes, motions) and not only which string was passed.
+      ruling: ev.debate.ruling === undefined ? null : ev.debate.ruling })
   }
   if (ev.literature && typeof ev.literature.reference === 'string' && ev.literature.reference.trim() !== '') {
     const target = ev.literature.subject === undefined || ev.literature.subject === null ? null : String(ev.literature.subject)

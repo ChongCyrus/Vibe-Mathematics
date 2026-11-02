@@ -16,6 +16,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+// ★★ RUN 201 (run 40 / FEEDBACK39 1.1): a ruling NAME is now RESOLVED against the institute's own records — run 40 wrote
+// p=1 while naming a ballot that held ZERO votes, so `debate_ruling` has to prove "a decision people made", not "a
+// string that looks like an id". A made-up id is refused by name (`VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED`), so these
+// fixtures seed a REAL box with a REAL vote instead of inventing an id.
+function seedVotingBallot(kernel, tag) {
+  const box = kernel.ballotbox.open({ question: tag + ' 是否成立', options: ['1', '0'], rules: { minVotes: 0 } })
+  const id = String(box.boxId === undefined ? box.id : box.boxId)
+  kernel.ballotbox.cast({ boxId: id, by: 'r-1', choice: '1' })
+  return id
+}
+
+
 const ROOT = fileURLToPath(new URL('../', import.meta.url))
 const ENTRY = join(ROOT, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const QUALITY = join(ROOT, 'vibe-math-vmu', 'packs', 'v5r', 'paper-quality.js')
@@ -120,15 +132,16 @@ test('RUN 186 §2 — a short warrant word is an address, and the receipt says i
       try { await b.K.members.hire(h) } catch (e) { ok(false, 'hire ' + h.id, String(e && e.message)) }
     }
 
+    const ballot186 = seedVotingBallot(b.K, 'ballot-r186')
     const card = await b.call('vibe_v5_record_proposition', {
       statement: '任意奇数的平方都是 8 的倍数加 1', value: 1, motive: 'RUN 186 别名',
-      p: 1, member: 'r-1', debate_ruling: { mode: 'unanimous', value: 1, ballotId: 'ballot-r186' },
+      p: 1, member: 'r-1', debate_ruling: { mode: 'unanimous', value: 1, ballotId: ballot186 },
     })
     ok(card && card.ok !== false && typeof card.recordId === 'string', '§2a a settled card exists', card)
 
     const promoted = await b.call('vibe_v5_verified_promote', {
-      card: card.recordId, member: 'r-1', warrant: 'ballot-r186', warrant_kind: 'debate',
-      debate_ruling: { mode: 'unanimous', value: 1, ballotId: 'ballot-r186' },
+      card: card.recordId, member: 'r-1', warrant: ballot186, warrant_kind: 'debate',
+      debate_ruling: { mode: 'unanimous', value: 1, ballotId: ballot186 },
     })
     ok(promoted && promoted.ok === true, '§2b the short word "debate" promotes (it is an address, not a typo)', promoted)
     ok(promoted.warrant && promoted.warrant.kind === 'debate-unanimous',
@@ -138,16 +151,16 @@ test('RUN 186 §2 — a short warrant word is an address, and the receipt says i
     has(promoted.warrantKindMeans, 'debate-unanimous', '§2f the receipt names the canonical form it was resolved to')
 
     const canonical = await b.call('vibe_v5_verified_promote', {
-      card: card.recordId, member: 'r-1', warrant: 'ballot-r186', warrant_kind: 'debate-unanimous',
-      debate_ruling: { mode: 'unanimous', value: 1, ballotId: 'ballot-r186' },
+      card: card.recordId, member: 'r-1', warrant: ballot186, warrant_kind: 'debate-unanimous',
+      debate_ruling: { mode: 'unanimous', value: 1, ballotId: ballot186 },
     })
     ok(canonical && canonical.ok === true, '§2g the contract word still works', canonical && canonical.code)
     ok(canonical.warrantKindAliased === false, '§2h and is not reported as an alias', canonical.warrantKindAliased)
     ok(canonical.warrantKindGiven === 'debate-unanimous', '§2i given == canonical, unchanged', canonical.warrantKindGiven)
 
     const wrong = await b.call('vibe_v5_verified_promote', {
-      card: card.recordId, member: 'r-1', warrant: 'ballot-r186', warrant_kind: 'guesswork',
-      debate_ruling: { mode: 'unanimous', value: 1, ballotId: 'ballot-r186' },
+      card: card.recordId, member: 'r-1', warrant: ballot186, warrant_kind: 'guesswork',
+      debate_ruling: { mode: 'unanimous', value: 1, ballotId: ballot186 },
     })
     ok(wrong && wrong.ok === false && wrong.code === 'VMU_INVALID_ARGUMENT',
       '§2j a word that is neither contract nor address is still refused', wrong && wrong.code)

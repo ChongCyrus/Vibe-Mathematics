@@ -132,6 +132,13 @@ try {
   const after = countOf(kernel, 'progress')
   ok(after === before + 1, 'the progress track grew by exactly one', { before, after })
 
+  // ★★ RUN 201 (run 40 / FEEDBACK39 1.1): a ruling NAME is now resolved against the institute's own records. This
+  // suite used to pass a made-up `ballotId` on the theory that the gate only proves "no evidence ⇒ refuse"; the gate
+  // also proves "the evidence NAMED exists and holds votes" — run 40 wrote p=1 on a `ballotId` that named a box with
+  // ZERO votes. So the box is real here, with a real vote on it.
+  const toolsBox = kernel.ballotbox.open({ question: '引理 A 是否成立', options: ['1', '0'], rules: { minVotes: 0 } })
+  const toolsBoxId = toolsBox.boxId || toolsBox.id
+  kernel.ballotbox.cast({ boxId: toolsBoxId, by: 'r-1', choice: '1' })
   const propBefore = countOf(kernel, 'propositions')
   // ★ PHASE 12 / D13: 「只有辩论能把命题卡的 p 改成 1」 is now a GATE (packs/v5r/verification-gates.js `p1Intent`), so a
   // p=1 write must carry the conclusion that produced it. Here that conclusion is a unanimous debate ruling on this very
@@ -140,7 +147,7 @@ try {
   // row is the second legal source.
   const prop = await receipt(v5rBoot, 'vibe_v5_record_proposition',
     { id: 'p-tools-1', title: '引理 A', statement: 'A 成立', value: 3, motive: '主证明的一步', p: 1,
-      debate_ruling: { mode: 'unanimous', value: 1, subject: 'p-tools-1', ballotId: 'ballot-tools-1' } })
+      debate_ruling: { mode: 'unanimous', value: 1, subject: 'p-tools-1', ballotId: String(toolsBoxId) } })
   ok(prop.parsed && prop.parsed.ok === true && prop.parsed.track === 'propositions', 'record_proposition writes onto the propositions track', prop.parsed)
   ok(prop.parsed && prop.parsed.settled === true, 'p=1 settles the card (the original card key is carried, not interpreted)', prop.parsed && prop.parsed.settled)
   ok(countOf(kernel, 'propositions') === propBefore + 1, 'the propositions track grew by exactly one', propBefore)

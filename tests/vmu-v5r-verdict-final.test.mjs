@@ -26,6 +26,18 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+// ★★ RUN 201 (run 40 / FEEDBACK39 1.1): a ruling NAME is now RESOLVED against the institute's own records — run 40 wrote
+// p=1 while naming a ballot that held ZERO votes, so `debate_ruling` has to prove "a decision people made", not "a
+// string that looks like an id". A made-up id is refused by name (`VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED`), so these
+// fixtures seed a REAL box with a REAL vote instead of inventing an id.
+function seedVotingBallot(kernel, tag) {
+  const box = kernel.ballotbox.open({ question: tag + ' 是否成立', options: ['1', '0'], rules: { minVotes: 0 } })
+  const id = String(box.boxId === undefined ? box.id : box.boxId)
+  kernel.ballotbox.cast({ boxId: id, by: 'r-1', choice: '1' })
+  return id
+}
+
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
@@ -117,13 +129,13 @@ try {
     '★ 拒绝自带"三种合法来源"的说明（不只是一句 forbidden）', noEv.parsed && (noEv.parsed.hint || '').slice(0, 60))
   ok(rowOf('c-noev') === null, '★ 反：被拒的写入没有落库（没有留下半张卡）', rowOf('c-noev'))
 
-  const withDebate = await card('c-debate', 1, { debate_ruling: { mode: 'unanimous', value: 1, subject: 'c-debate', ballotId: 'b-c-debate' } })
+  const withDebate = await card('c-debate', 1, { debate_ruling: { mode: 'unanimous', value: 1, subject: 'c-debate', ballotId: seedVotingBallot(v5rBoot.handle.kernel, 'c-debate') } })
   ok(withDebate.parsed && withDebate.parsed.ok === true && withDebate.parsed.settled === true,
     '★★★ 正：带「全体一致为 1 的辩论裁决」⇒ p=1 被收下且卡已定稿', withDebate.parsed && withDebate.parsed.settled)
   const cDebateRow = rowOf('c-debate')
   ok(cDebateRow && cardPOf('c-debate') === 1, '★ 正：读回卡上真是 p=1（不是只信回执）', cDebateRow && cardPOf('c-debate'))
 
-  const splitDebate = await card('c-split', 1, { debate_ruling: { mode: 'mean', value: 1, subject: 'c-split', ballotId: 'b-split' } })
+  const splitDebate = await card('c-split', 1, { debate_ruling: { mode: 'mean', value: 1, subject: 'c-split', ballotId: seedVotingBallot(v5rBoot.handle.kernel, 'c-split') } })
   ok(splitDebate.parsed && splitDebate.parsed.ok === false && codeOf(splitDebate.parsed) === 'VMU_PACK_V5R_P1_NEEDS_DEBATE',
     '★★ 反：非全体一致（mode=mean）的裁决不能把 p 设成 1（规则要的是"全部一致为 1"）', splitDebate.parsed && codeOf(splitDebate.parsed))
   ok(splitDebate.parsed && typeof splitDebate.parsed.message === 'string' && /全体一致|unanimous/.test(splitDebate.parsed.message),
@@ -162,10 +174,11 @@ try {
   const settledCard = await card('c-false', 0, { statement: '被证伪的命题' })
   ok(settledCard.parsed && settledCard.parsed.ok === true && settledCard.parsed.settled === true,
     '前置：p=0 的卡已定稿（另一个合法的定稿值）', settledCard.parsed && settledCard.parsed.settled)
-  const promoted = await receipt(v5rBoot, 'vibe_v5_verified_promote', { card: 'c-false', warrant: 'ballot-42', warrant_kind: 'debate-unanimous', member: M1,
-    debate_ruling: { mode: 'unanimous', value: 0, ballotId: 'ballot-42', subject: 'c-false' } })
+  const ballot42 = seedVotingBallot(v5rBoot.handle.kernel, 'c-false')
+  const promoted = await receipt(v5rBoot, 'vibe_v5_verified_promote', { card: 'c-false', warrant: ballot42, warrant_kind: 'debate-unanimous', member: M1,
+    debate_ruling: { mode: 'unanimous', value: 0, ballotId: ballot42, subject: 'c-false' } })
   ok(promoted.parsed && promoted.parsed.ok === true, '★★★ 正：带法官的 promote 成功', promoted.parsed && (promoted.parsed.code || 'ok'))
-  ok(promoted.parsed && promoted.parsed.warrant && promoted.parsed.warrant.id === 'ballot-42',
+  ok(promoted.parsed && promoted.parsed.warrant && promoted.parsed.warrant.id === ballot42,
     '★ 正：回执写明法官（warrant.id），"为什么它算定论"可从记录回答', promoted.parsed && promoted.parsed.warrant)
   const rowsAfter = verifiedRows()
   eq(rowsAfter.length, 1, '★★ 正：读回 verified 轨上真有一行（不是只信回执）')
@@ -174,10 +187,11 @@ try {
 
   // ── 3. ① THE VERIFIED ROW AS EVIDENCE (read from records, not claimed) ─────────────────────────────────────
   console.log('=== 3. ① 定论行是可读的证据：已 promote 的卡再写 p=1 ⇒ 不再需要自报辩论 ===')
-  const promotedTrue = await card('c-true', 1, { debate_ruling: { mode: 'unanimous', value: 1, subject: 'c-true', ballotId: 'b-c-true' } })
+  const promotedTrue = await card('c-true', 1, { debate_ruling: { mode: 'unanimous', value: 1, subject: 'c-true', ballotId: seedVotingBallot(v5rBoot.handle.kernel, 'c-true') } })
   ok(promotedTrue.parsed && promotedTrue.parsed.ok === true, '前置：先用辩论裁决把 c-true 写成 p=1', promotedTrue.parsed && codeOf(promotedTrue.parsed))
-  const promoteTrue = await receipt(v5rBoot, 'vibe_v5_verified_promote', { card: 'c-true', warrant: 'ballot-7', warrant_kind: 'debate-unanimous', member: M1,
-    debate_ruling: { mode: 'unanimous', value: 1, subject: 'c-true', ballotId: 'ballot-7' } })
+  const ballot7 = seedVotingBallot(v5rBoot.handle.kernel, 'c-true-promote')
+  const promoteTrue = await receipt(v5rBoot, 'vibe_v5_verified_promote', { card: 'c-true', warrant: ballot7, warrant_kind: 'debate-unanimous', member: M1,
+    debate_ruling: { mode: 'unanimous', value: 1, subject: 'c-true', ballotId: ballot7 } })
   ok(promoteTrue.parsed && promoteTrue.parsed.ok === true, '前置：把 c-true promote 到定论轨', promoteTrue.parsed && codeOf(promoteTrue.parsed))
   const rewrite = await card('c-true', 1, { statement: 'c-true 的陈述（修订）' })
   ok(rewrite.parsed && rewrite.parsed.ok === true,

@@ -3362,3 +3362,17 @@ RUN 200（run 39 / `FEEDBACK38` 的 1.1 与 2.5）——「指针从来没有被
 
 机器化 `tests/vmu-run200-pointer-resolution.test.mjs`（5/0）：五档直连 + 两张卡一件坏一件好（都照样开会）+ 坏指针
 `proofPointer.exists === false` + 参数说明与 description 两处都说了轮次。定向回归 59/0，`audit-vmu-docs` 103/0。
+
+## ROUND 205
+
+RUN 201（`FEEDBACK39` 五条）。一条 `p=1` 卡上写着 `ballotId: "bx-1"`，而那个票箱是**零票开着**的——回执打印了名字，
+从来没读票。修法是在写卡路径上先解析名字：`ballotId` 读 `ballotbox.status`、`meeting` 读 `meetings.summary`，
+解析不到 ⇒ `P1_RULING_UNRESOLVED`，解析到但没有票 ⇒ `P1_RULING_UNVOTED`，两者的 hint 分别指向真票箱与
+`vibe_v5_fidelity_conclude`；读数经门禁原样进回执 `p1RulingReading`。第二处：`advance` 把论文打回 writing 时
+回合已经加一，回执现在带 `roundFrom`/`roundTo`（`the round ADVANCED (2 → 3) … not a retry of round 2`）。
+第三处：被 office-consult 闸拦下的 `final` 现在也带 `final` 块（`finalized:false`、`blockedBy:'office-consult'`、
+`consult.requestId`）——闸前成账，闸只写「谁拦的」。第四处：首写的卡上 `rev: 2` 有了说明（`revMeans`、`createdByThisCall`、
+`writesInThisCall: 2`）。第五处：`p=1` 的 Lean 分支描述改成实测路径。
+
+机器化 `tests/vmu-run201-feedback39.test.mjs`（4/0）。两条装载事实：**pack 的拒绝是回答不是抛出**（断言读返回值，
+try/catch 只会读到 null）；`ballotbox.cast` 的投票人字段是 `by`。定向回归 19 组全绿。

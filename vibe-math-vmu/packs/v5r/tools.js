@@ -1309,6 +1309,64 @@ function debateEvidenceOf(args = {}) {
     at: word(raw.at), by: word(raw.by), warrant: word(raw.warrant),
     subject: word(raw.subject) }
 }
+/**
+ * ★★ RUN 201 (run 40 / FEEDBACK39 1.1, MEASURED): the ruling a p=1 write may claim was checked for SHAPE only — mode
+ * unanimous, value 1, subject matches the card — so run 40 wrote p=1 onto a card that had never been debated and named
+ * a ballot that EXISTED and held ZERO votes. Every word of the write receipt was true and nothing had decided anything.
+ * The institution owns a ballot face and a meetings face; "the name resolves to something people voted in" is a fact
+ * only it can answer, so this face asks it and refuses by name when the answer is no.
+ *
+ * THREE ANSWERS, never two: a name can be UNKNOWN (no such box/meeting), UNVOTED (it exists and nobody voted), or READ
+ * (here is what it holds). The middle one is the run-40 shape and it is not an error state: it is a real entity that has
+ * decided nothing yet.
+ */
+function rulingNameResolution(kernel, debate) {
+  const ref = debate && debate.rulingRef !== undefined && debate.rulingRef !== null ? str(debate.rulingRef) : ''
+  if (!ref) return null
+  const ballotId = debate.ballotId !== undefined && debate.ballotId !== null ? str(debate.ballotId) : null
+  if (ballotId !== null) {
+    const face = kernel && kernel.ballotbox
+    if (!face || typeof face.status !== 'function') {
+      return { ok: false, kind: 'ballot', ref, reason: 'unreadable',
+        means: 'this kernel exposes no ballot face, so the named ballot id cannot be resolved here; a ruling on a name nobody can check is an assertion' }
+    }
+    let read = null
+    try { read = face.status({ boxId: ballotId }) } catch { read = null }
+    if (!read || read.ok !== true) {
+      return { ok: false, kind: 'ballot', ref, reason: 'unknown',
+        means: 'no ballot with id ' + ballotId + ' exists on this kernel, so the ruling names a decision that cannot be read anywhere' }
+    }
+    const votes = Number(read.votes) || 0
+    const abstain = Number(read.abstain) || 0
+    const state = read.state === undefined ? null : String(read.state)
+    return { ok: true, kind: 'ballot', ref, exists: true, state, votes, abstain,
+      byChoice: read.byChoice && typeof read.byChoice === 'object' ? read.byChoice : {},
+      settled: state === 'closed',
+      voted: votes + abstain > 0,
+      means: 'the ballot ' + ballotId + ' was READ on this kernel: state ' + String(state) + ', '
+        + String(votes) + ' vote(s), ' + String(abstain) + ' abstention(s) — that is what the ruling name points at' }
+  }
+  const face = kernel && kernel.meetings
+  if (!face || typeof face.summary !== 'function') {
+    return { ok: false, kind: 'meeting', ref, reason: 'unreadable',
+      means: 'this kernel exposes no meetings face, so the named meeting cannot be resolved here' }
+  }
+  let read = null
+  try { read = face.summary({ meeting: ref }) } catch { read = null }
+  if (!read || read.ok !== true) {
+    return { ok: false, kind: 'meeting', ref, reason: 'unknown',
+      means: 'no meeting with id ' + ref + ' exists on this kernel, so the ruling names a decision that cannot be read anywhere' }
+  }
+  const motions = Array.isArray(read.motions) ? read.motions : []
+  const counted = motions.reduce((n, mo) => n + (mo && Array.isArray(mo.votes) ? mo.votes.length : 0), 0)
+  const decidedMotions = motions.filter((mo) => mo && (mo.status === 'seconded' || mo.status === 'carried'))
+  return { ok: true, kind: 'meeting', ref, exists: true, state: read.state === undefined ? null : String(read.state),
+    motions: motions.length, motionsSeconded: decidedMotions.length, votes: counted,
+    settled: read.state === 'closed', voted: counted > 0,
+    means: 'the meeting ' + ref + ' was READ on this kernel: state ' + String(read.state) + ', '
+      + String(motions.length) + ' motion(s) (' + String(decidedMotions.length) + ' seconded), '
+      + String(counted) + ' vote(s) recorded — that is what the ruling name points at' }
+}
 /** The Lean CONCLUSION for one job id, or null. `passed` is a conclusion on the kernel's lean face, never a state.
  *  ★ B8 修的两个真缺陷：① 这个面挂的方法叫 `status(id)`（导出表见 `vibe-math-vmu/kernel/lean.js:977`），
  *  早先按 `job(id)` 探测 ⇒ 真机上永远探不到 ⇒ "Lean 证据"这条分支静默不存在；② 面本身在宿主没有 spawn 缝时
@@ -1618,6 +1676,10 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
         ? 'the card LINES: only the p row is rewritten and one debateRuling row is replaced; every other line (title, statement/value/motive, proofRef, proofState, leanJob, leanConformance) is byte-identical, and the record keeps its id/slug/createdAt while gaining one version entry — so the rule-L14 lock still bites'
         : 'the card LINES are preserved (only the p row is rewritten and one debateRuling row added/replaced), but this records face has no supersede(): the row was re-put, so its rev/createdAt/slug are rebuilt by the records face — read the card by id, not by slug or createdAt',
       record: { id: (wrote && wrote.id) || id, rev: (wrote && wrote.rev) || null, mode },
+      // ★★ RUN 201 (run 40 / FEEDBACK39 2.4): a FIRST write of a card read settlement.record:{rev:2, mode:"supersede"} and
+      // looked like an overwrite of something that was never there. rev is the record version counter; the count of writes
+      // this CALL made is a separate fact and is printed as such.
+      revMeans: 'rev is the RECORD version counter, not a count of the writes in this call: a card that already existed and is settled here reads rev 2 because the settlement is the second write of that same record',
       means: 'a ruling settlement edits the probability rule L53 settles and records the ruling — it is not a card rewrite',
     },
   }
@@ -1779,6 +1841,7 @@ function gatedCardHandler(toolName) {
     // route word leaves the reader unable to open what decided the card. Forwarded, not re-derived.
     let p1Ruling = null
     let p1RulingMeans = null
+    let p1RulingReading = null
     if (toolName === 'vibe_v5_record_proposition' || track === 'propositions') {
       // ★ AUDIT C8 (rule L14: 「那些布尔概率为1的命题卡需标记为已verified」 — the read face's `verifiedRef` was
       // decoration and NOTHING held a writer to it): p=1 could be written into the propositions track without any
@@ -1794,6 +1857,29 @@ function gatedCardHandler(toolName) {
       // is the one being written (p1Intent:95 prefers card.p, so handing it the stored row would judge yesterday's value).
       const stored = cardProjectionOf(records, cardId)
       const card = cardId === null ? null : { id: cardId, bodyTruncated: !!(stored && stored.bodyTruncated) }
+      // ★★ RUN 201 (run 40 / FEEDBACK39 1.1): resolve the ruling NAME against the institution before the shape gate
+      // speaks. A p=1 write that names a ballot nobody voted in is not a badly-typed ruling, it is a card that claims a
+      // decision the institution never took — so it is refused here, by name, with the reading in hand.
+      if (evidence.debate !== null && evidence.debate !== undefined) {
+        const resolution = rulingNameResolution(kernel, evidence.debate)
+        if (resolution !== null) {
+          if (resolution.ok !== true) {
+            throw refuse('VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED',
+              'p=1 was refused because the ruling it names cannot be resolved: ' + resolution.means,
+              resolution.reason === 'unknown'
+                ? 'pass a name this kernel can read: debate_ruling:{mode:"unanimous", value:1, meeting:"<a meeting id from vibe_v5_meeting>", …} or ballotId:"<a box id from vibe_v5_poll_open>"; or drop the ruling and use the route that actually settles a card — vibe_v5_fidelity_conclude (the chair conformance ruling writes p=1 itself)'
+                : 'the ruling must name something THIS kernel holds: read the ballot with vibe_v5_poll_result or the meeting with vibe_v5_meeting {action:"summary"} and pass that id')
+          }
+          if (resolution.voted !== true) {
+            throw refuse('VMU_PACK_V5R_CORE_P1_RULING_UNVOTED',
+              'p=1 was refused because the ruling it names holds NO votes: ' + resolution.means,
+              'a ruling is a decision people made — ' + (resolution.kind === 'ballot'
+                ? 'cast votes into that box and close it (vibe_v5_poll_vote then close), then write the card'
+                : 'second and vote the motion in that meeting, then write the card') + '; or settle the card through vibe_v5_fidelity_conclude, whose conformance ruling carries its own evidence')
+          }
+          evidence.debate.ruling = resolution
+        }
+      }
       const pGate = p1Intent({ tool: toolName, args, card, evidence })
       const pRefusal = gateRefuse(pGate)
       if (pRefusal) return pRefusal
@@ -1804,6 +1890,7 @@ function gatedCardHandler(toolName) {
       p1RouteMeans = pGate.p1RouteMeans === undefined ? null : pGate.p1RouteMeans
       p1Ruling = pGate.rulingRef === undefined ? null : pGate.rulingRef
       p1RulingMeans = pGate.rulingRefMeans === undefined ? null : pGate.rulingRefMeans
+      p1RulingReading = pGate.ruling === undefined ? null : pGate.ruling
     }
     // ★ WAVE 2 (audit C6a): WHICH half admitted a "complete" proof_state — a measured Lean run, the caller's
     // conformance word (a claim), or an existing verified row. Evidence of different weight must not print as one word.
@@ -1870,6 +1957,13 @@ function gatedCardHandler(toolName) {
         track, kind: cardKind, by, fallbackTitle: has(args.title) ? str(args.title) : null,
       })
       settlement = patched && patched.settlement ? patched.settlement : null
+      if (settlement !== null) {
+        settlement = Object.assign({}, settlement, {
+          createdByThisCall: true,
+          writesInThisCall: 2,
+          writesInThisCallMeans: 'TWO writes happened in this call: the card was CREATED (that is why rev starts at 1) and the ruling was then laid on the same row as a patch, which is what makes rev 2 — read writesInThisCall, not rev, to know how many times this call touched the record',
+        })
+      }
     }
     // ★ C8: a p=1 write with a sanctioned route is only half the rule — the card must END UP marked. The receipt says
     // whether the mark is already on the verified track, and if not, it names the ONE call that puts it there.
@@ -1884,7 +1978,7 @@ function gatedCardHandler(toolName) {
       enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE,
       proofState: declaredProofState === '' ? null : declaredProofStateFolded, proofStateEvidence,
     }, settlement === null ? {} : { settlement },
-    p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, p1RulingRef: p1Ruling, p1RulingMeans, verifiedMark })
+    p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, p1RulingRef: p1Ruling, p1RulingMeans, p1RulingReading, verifiedMark })
   }
 }
 
@@ -5161,7 +5255,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_record_proposition',
-    description: 'Record a proposition/lemma card in your library. REQUIRES statement, value, motive and p (your probability that it is true); the card is settled when p is 1 or 0. ★ p=1 IS A CONCLUSION, NOT A PREFERENCE: writing 1 is refused BY NAME unless the write carries one of the three conclusions the rule accepts — a promoted verified row on THIS card (the kernel record, not an argument), a unanimous debate ruling (`debate_ruling:{mode:"unanimous", value:1, subject:"<this card id>", ballotId}`), or a passed Lean run PLUS the conformance ruling (`lean_job` + `lean_conformance:"conform"`). Estimating in (0,1) is always allowed. '
+    description: 'Record a proposition/lemma card in your library. REQUIRES statement, value, motive and p (your probability that it is true); the card is settled when p is 1 or 0. ★ p=1 IS A CONCLUSION, NOT A PREFERENCE: writing 1 is refused BY NAME unless the write carries one of the three conclusions the rule accepts — a promoted verified row on THIS card (the kernel record, not an argument), a unanimous debate ruling (`debate_ruling:{mode:"unanimous", value:1, subject:"<this card id>", ballotId}`), or a passed Lean run PLUS the conformance ruling (`lean_job` + `lean_conformance:"conform"`). ★ WHAT THAT THIRD ROUTE ACTUALLY REQUIRES (run 40, MEASURED): the kernel must be able to read that Lean job as PASSED — if it cannot, the write is refused by name even though you passed both fields. In this institute the working path is the CONFORMANCE ruling: the chair calls `vibe_v5_fidelity_conclude { card, fidelity:"conform", lean_job, member } `, which writes p=1 through this same gate with the job as its evidence AND promotes the verified row itself — do that instead of writing p=1 by hand. Estimating in (0,1) is always allowed. '
       + '★ LITERATURE (B2): a proposition taken from a reference may enter the verified track directly — pass `literature_ref:"<author, source, theorem/page>"` together with `p:1` (the gate accepts this citation as the fourth evidence form), then `vibe_v5_verified_promote{card, warrant_kind:"literature", literature_ref:"<the same citation>"}`; the verified row warrant IS the citation, so "why is this settled" answers with a source instead of "someone decided". An empty citation is not a citation. '
 + '★ PROOF REGISTRATION (B6): pass `proof_ref` (where the proof/refutation lives, e.g. "Members/<m>/Propos/<pid>.md#正式证明") and `proof_state:"complete"|"draft"` — this is a SELF-REPORT, recorded and traceable, NOT a verification. ★ BUT `proof_state:"complete"` IS ADMITTED ONLY WITH EVIDENCE: the same write must carry either `proof_ref` (pointing at the finished proof/refutation this card declares — the gate records the pointer, and the humans debating the card judge its content) OR Lean evidence (a `lean_job` pointing at a settled PASSED run — `lean_conformance` alone is only a CLAIM and does not satisfy this gate; pass it TOGETHER with that lean_job) — otherwise it is refused by name (VMU_INVALID_ARGUMENT) and nothing is written. (The rule L14 accepts a finished formal proof as the debate prerequisite; it does not require that proof to be Lean.) ★ ONCE A CARD IS COMPLETE IT IS LOCKED: a later write to the SAME card id is refused (VMU_STATE) — correct it under a NEW card id and keep the locked card as history. ★ THE ONE SANCTIONED EDIT ON A LOCKED CARD IS A RULING SETTLEMENT: a write carrying `debate_ruling:{value:0|1, …}` with `p` set to that same value is admitted, because rule L53 makes「把该命题卡的布尔概率改为该概率值」a required act — the lock protects the PROOF CONTENT, a ruling settles the PROBABILITY (that settlement is exactly what `vibe_v5_verdict_final` prints in its `correction.call`, which now also carries `subject:<card id>` so the p=1 evidence matches this card). Neither `proof_ref` nor Lean evidence ⇒ state is recorded as draft. '
       + '★ 进度 (PROGRESS) IS A CARD FIELD: pass `progress:"<where the work stands>"` (e.g. "证明写到第 3 步，缺引理 L") and it is kept as its own labelled line `- 进度：…` inside the card body — it survives into the durable row and every read face — and the receipt echoes it back with `progressMeans`. The rule L14 names 进度 as one of the card records, so it is not a passing remark. '

@@ -74,8 +74,23 @@ test('RUN 198 §0 — every repair is on the source it belongs to (source pins)'
 test('RUN 198 §1 — a ruling that names its MEETING admits the card and the receipt says so', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'vmu-run198-'))
   try {
-    const { call } = await assemble(dir)
+    const { call, handle } = await assemble(dir)
     await call('vibe_v5_start', { researcherCount: 2 })
+    // ★★ RUN 201: the ruling NAME is resolved against the institute's records, so both routes need a real entity that
+    // really holds votes. The meeting route: convene, move, second, vote (one vote is enough — "voted", not "tallied").
+    const convened = await call('vibe_v5_meeting', { member: 'r-acad', agenda: '裁决 a+b=b+a', title: 'run198 辩论' })
+    ok(convened.ok === true, '§1z premise: the debate meeting exists', convened)
+    const meetingId = String(convened.meeting)
+    // quorum is attendance, not votes: the three seats take their seats first, or every vote is refused 1/3.
+    for (const who of ['r-acad', 'r-1', 'r-2']) handle.kernel.meetings.attend({ meeting: meetingId, member: who })
+    const moved = handle.kernel.meetings.motion({ meeting: meetingId, member: 'r-acad', text: 'a+b=b+a 成立，交由一致表决' })
+    ok(moved && moved.ok === true, '§1z2 premise: a motion is on the floor', moved)
+    const motionId = String(moved.motion) // ★ `motion()` answers with the motion ID itself (`{ok, motion:'mo1'}`)
+    handle.kernel.meetings.second({ meeting: meetingId, motion: motionId, member: 'r-1' })
+    // ★ the vote rail enforces quorum (1/3 was refused): all three seats vote, which is also the shape the route reads.
+    for (const who of ['r-acad', 'r-1', 'r-2']) {
+      handle.kernel.meetings.vote({ meeting: meetingId, motion: motionId, member: who, value: 1 })
+    }
     // a card that still needs a conclusion (p=0.99 with a finished proof, so p=1 can then be settled by a ruling)
     const card = await call('vibe_v5_record_proposition', {
       statement: 'run198 §1 命题：a+b=b+a', value: 1, motive: '交换律', p: 0.99,
@@ -86,11 +101,11 @@ test('RUN 198 §1 — a ruling that names its MEETING admits the card and the re
     // ★ the run-38 shape: the ruling names a MEETING, no ballot id anywhere
     const settled = await call('vibe_v5_record_proposition', {
       id: cardId, statement: 'run198 §1 命题：a+b=b+a', value: 1, motive: '交换律', p: 1, member: 'r-1',
-      debate_ruling: { subject: cardId, value: 1, mode: 'unanimous', n: 3, decided: true, meeting: 'm-deb-198', by: 'r-acad' },
+      debate_ruling: { subject: cardId, value: 1, mode: 'unanimous', n: 3, decided: true, meeting: meetingId, by: 'r-acad' },
     })
     ok(settled.ok === true, '§1b a meeting-ruled p=1 write is admitted (the route is the same "debate")', settled)
     ok(settled.p1Route === 'debate', '§1c the route is named', settled)
-    ok(settled.p1RulingRef === 'm-deb-198',
+    ok(settled.p1RulingRef === meetingId,
       '§1d ★★ the receipt names WHAT decided this card — the meeting, because that is the name the ruling carried', settled)
     ok(typeof settled.p1RulingMeans === 'string' && settled.p1RulingMeans.length > 20,
       '§1e and says what that reference is', settled)
@@ -99,11 +114,14 @@ test('RUN 198 §1 — a ruling that names its MEETING admits the card and the re
       statement: 'run198 §1 命题二：a*1=a', value: 1, motive: '单位元', p: 0.99,
       proof_ref: 'Members/r-1/Propos/run198b.md#证明', proof_state: 'complete', member: 'r-1',
     })
+    const ballot = handle.kernel.ballotbox.open({ question: 'a*1=a 是否成立', options: ['1', '0'], rules: { minVotes: 0 } })
+    const ballotId = String(ballot.boxId || ballot.id)
+    handle.kernel.ballotbox.cast({ boxId: ballotId, by: 'r-1', choice: '1' })
     const settled2 = await call('vibe_v5_record_proposition', {
       id: card2.recordId, statement: 'run198 §1 命题二：a*1=a', value: 1, motive: '单位元', p: 1, member: 'r-1',
-      debate_ruling: { subject: card2.recordId, value: 1, mode: 'unanimous', ballotId: 'ballot-198' },
+      debate_ruling: { subject: card2.recordId, value: 1, mode: 'unanimous', ballotId },
     })
-    ok(settled2.ok === true && settled2.p1RulingRef === 'ballot-198',
+    ok(settled2.ok === true && settled2.p1RulingRef === ballotId,
       '§1f a ballot-ruled write reads back the ballot id — one shape, whichever name was used', settled2)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
