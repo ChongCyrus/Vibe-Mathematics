@@ -1062,8 +1062,17 @@ export function createPaperFlow({
         if (v.rowDeliverable !== undefined) { row.rowDeliverable = v.rowDeliverable; row.rowRound = v.rowRound; row.rowOf = v.rowOf; row.means = v.means }
         return row
       })
-      const refusers = verdicts.filter((v) => v.deliverable !== true).map((v) => v.member)
-      if (refusers.length === 0) {
+      // ★★ RUN 199 (run 39 / FEEDBACK38 1.3, MEASURED): THIS LIST CONFLATED TWO FACTS. Run 39 read
+      // refusers:["r-acad","r-2"] with refusersMeans saying those members "answered something other than
+      // deliverable", while the SAME receipt's reviewsRead said their rows were STALE ("a ROUND MISMATCH, not a member
+      // refusing") and their last counted answer was deliverable:true. A member who has not been asked yet, or whose only
+      // row belongs to another round, has NOT refused — the gate must wait for them, not treat them as dissent. The three
+      // facts now travel under three names, and unanimity requires all three to be empty.
+      const refusers = verdicts.filter((v) => v.deliverable !== true && v.source !== 'none' && v.source !== 'durable-other-round').map((v) => v.member)
+      const stale = verdicts.filter((v) => v.source === 'durable-other-round').map((v) => v.member)
+      const notYetReviewed = verdicts.filter((v) => v.source === 'none').map((v) => v.member)
+      const pendingNames = stale.concat(notYetReviewed)
+      if (refusers.length === 0 && pendingNames.length === 0) {
         // ★ F3a: "everyone voted deliverable" is NOT enough when nobody reviewed anybody else's part. With one participant
         // the rotation reviews the participant themself, so the filter above was vacuously unanimous. The gate runs BEFORE
         // any mutation, so a refusal leaves the paper exactly where it was (still reviewing, nothing written).
@@ -1075,16 +1084,21 @@ export function createPaperFlow({
         // it (its own report asked "is refusers missing here, or is it empty?"). An empty list is a FACT here — every
         // required reviewer answered deliverable — so it is stated instead of omitted, with the sentence that says which.
         return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true, reviewsRead, notRequired,
-          refusers: [], refusersMeans: 'empty ON PURPOSE: every participant who owes a verdict on another member\'s part answered deliverable, so no one refused — the field is present so "nobody objected" is a value, not an absent one (the disagreement branches carry the same field with names in it)' }
+          refusers: [], stale: [], notYetReviewed: [],
+          refusersMeans: 'empty ON PURPOSE: every participant who owes a verdict on another member\'s part answered deliverable on THIS round, so no one refused — the field is present so "nobody objected" is a value, not an absent one (the disagreement branches carry the same field with names in it)',
+          pendingMeans: 'empty ON PURPOSE: every required reviewer has a counted verdict for this round, so no one is waiting to be asked — stale (rows from another round) and notYetReviewed (no row yet) are separate fields for exactly this reason' }
       }
       // The detail must state WHAT WAS READ, not a shrug: '未说明' was printed even when the member had filed a review
       // whose row was on disk (that is exactly how run 4's disagreement looked while the cards said deliverable:true).
-      const entry = { round: state.round, members: refusers.slice(), detail: refusers.map((id) => {
+      const entry = { round: state.round, members: refusers.slice(), pending: pendingNames.slice(), detail: refusers.map((id) => {
         const v = verdicts.filter((x) => x.member === id)[0] || { comments: '', source: 'none' }
         const why = v.comments ? String(v.comments)
-          : (v.source === 'none' ? '没有本轮的评审行（未表态）' : '评审行在记录里、但这一轮不算作可交付')
+          : (v.source === 'none' ? '没有本轮的评审行（未表态，不计为拒收）' : '评审行在记录里、但这一轮不算作可交付')
         return id + '：' + why
-      }).join('；') }
+      }).concat(pendingNames.map((id) => {
+        const v = verdicts.filter((x) => x.member === id)[0] || {}
+        return id + '：' + (v.source === 'durable-other-round' ? '最近一条评审行属于别的轮次（ROUND MISMATCH，不计为拒收）' : '还没有本轮的评审行（未表态，不计为拒收）')
+      })).join('；') }
       state.disagreement = (state.disagreement || []).concat([entry])
       if (state.round < roundsCap()) {
         state.round += 1; state.status = 'writing'; state.stage = 'writing'; state.reviews = {}
@@ -1092,8 +1106,14 @@ export function createPaperFlow({
         // ★★ RUN 197 (run 38 / FEEDBACK37 1.3, MEASURED): the UNANIMOUS branch stated `refusers: []` with a note claiming the
         // disagreement branches "carry the same field with names in it" — and neither did. Run 38's editor read
         // `refusers:["r-1"]` with no sentence saying what the list means or what happens next.
-        return { ok: true, moved: true, from: 'reviewing', to: 'writing', round: state.round, unanimous: false, refusers,
-          refusersMeans: 'NOT empty: these participants answered something other than deliverable on another member\'s part (' + refusers.join(', ') + '), so this round did NOT reach unanimity and the paper goes back to writing',
+        return { ok: true, moved: true, from: 'reviewing', to: 'writing', round: state.round, unanimous: false, refusers, stale, notYetReviewed,
+          refusersMeans: refusers.length === 0
+            ? 'empty ON PURPOSE: nobody refused — the round is held open because reviewer(s) ' + (pendingNames.join(', ')) + ' have no counted verdict for this round (see stale and notYetReviewed), so the paper goes back to writing instead of being called unanimous'
+            : 'NOT empty: these participants answered something other than deliverable on another member\'s part (' + refusers.join(', ') + '), so this round did NOT reach unanimity and the paper goes back to writing',
+          staleMeans: stale.length === 0 ? 'empty ON PURPOSE: no required reviewer holds a row from another round'
+            : 'NOT empty: these members have a review row that belongs to ANOTHER round (' + stale.join(', ') + ') — that is a ROUND MISMATCH, not a refusal: their old verdict is not counted and they can review this round',
+          notYetReviewedMeans: notYetReviewed.length === 0 ? 'empty ON PURPOSE: every required reviewer has a row for this round'
+            : 'NOT empty: these members have filed no review row at all yet (' + notYetReviewed.join(', ') + ') — they have not refused anything, they have not been answered yet',
           reviewsRead, notRequired,
           notRequiredMeans: notRequired.length === 0 ? null : 'these participants were NOT counted as refusers: they have no other member\'s part to review (' + notRequired.join(', ') + ')' }
       }
@@ -1104,12 +1124,12 @@ export function createPaperFlow({
       // still printed "互审在 3 轮上限仍未达成全体一致" beside those two true reviews — a historical fact presented as the
       // current verdict. The warning now carries the round it belongs to, so a reader can tell history from now.
       state.forcedAfterCapRound = state.round
-      state.warnings = (state.warnings || []).concat(['（第 ' + state.round + ' 轮）互审在 ' + roundsCap() + ' 轮上限仍未达成全体一致（' + refusers.join('、') + '）；分歧已写入论文附录（这是 HISTORY：之后各轮的评审可以再次达成一致）'])
+      state.warnings = (state.warnings || []).concat(['（第 ' + state.round + ' 轮）互审在 ' + roundsCap() + ' 轮上限仍未达成全体一致（' + refusers.concat(pendingNames).join('、') + '；其中真拒收 ' + refusers.length + ' 位、未表态 ' + pendingNames.length + ' 位）；分歧已写入论文附录（这是 HISTORY：之后各轮的评审可以再次达成一致）'])
       writeState(state)
       // ★★ RUN 197 (same defect as the branch above): the CAPPED disagreement branch printed `refusers` and no meaning either.
       return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: false, refusers,
-        refusersMeans: 'NOT empty: the reviews did not reach deliverable for every participant within ' + roundsCap() + ' round(s), so the editor is handed the paper WITH this disagreement on the record (a later round can still agree)',
-        capped: true, warnings: state.warnings, reviewsRead }
+        refusersMeans: 'NOT empty: the reviews did not reach deliverable for every participant within ' + roundsCap() + ' round(s), so the editor is handed the paper WITH this disagreement on the record (a later round can still agree); refusers holds the votes that said no, stale/notYetReviewed hold the members who were never counted',
+        stale, notYetReviewed, capped: true, warnings: state.warnings, reviewsRead }
     }
     return { ok: true, moved: false, state: state.status, note: 'the flow is ' + state.status + '; only writing/reviewing advance on their own (finalize it, or start a new paper)' }
   }
@@ -1167,7 +1187,21 @@ export function createPaperFlow({
         'seat an academician in the chair slot, or configure editor:"office" with its consult gap reported (named gap)')
     }
     if (decision !== 'deliverable' && decision !== 'revise') throw refuse('VMU_INVALID_ARGUMENT', 'decision must be deliverable|revise', 'the original accepts exactly these two')
-    const fin = { by: str(member), decision, note: str(note).slice(0, 4000), conclusion: str(conclusion).slice(0, 20000) }
+    // ★★ RUN 199 (run 39 / FEEDBACK38 1.4, MEASURED): run 39 finalised with conclusion:"" and the receipt printed an
+    // empty conclusion beside a note that said what the paper stands on — the tool schema lists conclusion as "final：
+    // 结论" and body as its alias, so a caller could reasonably read "the conclusion was recorded" while the field was
+    // empty. A deliverable decision now RECORDS THE NOTE AS THE CONCLUSION when no conclusion was passed, and the receipt
+    // says where it came from — two different things are no longer one missing field.
+    const noteText = str(note).slice(0, 4000)
+    const conclusionGiven = str(conclusion).trim() !== ''
+    const conclusionText = conclusionGiven ? str(conclusion).slice(0, 20000) : (decision === 'deliverable' ? noteText : '')
+    const fin = { by: str(member), decision, note: noteText, conclusion: conclusionText,
+      conclusionSource: conclusionGiven ? 'conclusion' : (conclusionText !== '' ? 'note' : 'none'),
+      conclusionMeans: conclusionGiven
+        ? 'the conclusion was passed as conclusion and is recorded verbatim'
+        : (conclusionText !== ''
+          ? 'no conclusion was passed, so the note is recorded as the conclusion too (conclusionSource:"note") — note and conclusion are not synonyms: note is the editor short remark, conclusion is what the paper stands on'
+          : 'neither a conclusion nor a note was passed: the paper is finalised with no stated conclusion (a reading, not a hidden default)') }
     if (decision === 'deliverable') {
       // ★ F3a: a finalisation must rest on two DISTINCT cross-reviews by non-authors. `advance` already refuses to go
       // unanimous on a self-review, but the round-cap path can still reach awaiting-editor (a lone participant forced

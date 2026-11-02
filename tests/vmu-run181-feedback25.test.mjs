@@ -87,7 +87,9 @@ try {
       '§0d the countable rest is stated for a paged read too, not only for limit:0')
     ok(hostSource.includes('pinnedCount: pinned.length'),
       '§0e a prune says how many rows it could not move')
-    ok(qualitySource.includes('const statementOfCard = (recordsFace, cardId) =>') &&
+    // ★ RUN 199 renamed the shared reader and gave it to the READ face too: `statementOfCardOf` is module-level (the
+    // delivery gate AND `verifiedRequirements` call it), which is what stopped `requiredLineFull` from being null.
+    ok(qualitySource.includes('function statementOfCardOf(recordsFace, cardId)') &&
       qualitySource.includes('statementOfCard(records, item.cardId)'),
       '§0f the full claim is read back from the CARD when the verified row carries no 陈述 section')
     ok(qualitySource.includes('reason: \'wrong-track\',') && qualitySource.includes('existsAt: { id: cardId, track: actualTrack || null }'),

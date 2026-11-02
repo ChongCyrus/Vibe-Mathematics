@@ -116,6 +116,21 @@ function rowsOf(records, track, limit) {
   const items = Array.isArray(out && out.items) ? out.items : []
   return { items, truncated: !!(out && out.truncated === true), cap: limit }
 }
+/** ★★ RUN 199 (run 39 / FEEDBACK38 1.2, MEASURED): ONE reader for the sentence a truncated verified name stops in the
+ *  middle of. Run 39 read `requiredLines` and got requiredLineTruncated:true beside requiredLineFull:null while the
+ *  same receipt's own means promised requiredLineFull was "the sentence to paste when the row name stops at …".
+ *  The two faces computed it differently: the DELIVERY gate (`checkQuality`) fell back to the card's statement line,
+ *  the READ face (`verifiedRequirements`) read item.statement — a field `view.verified()` never returns — so the read
+ *  answer was null BY CONSTRUCTION, not because the sentence was missing. Both now call this one function. */
+function statementOfCardOf(recordsFace, cardId) {
+  if (!recordsFace || cardId === undefined || cardId === null || str(cardId).trim() === '') return null
+  try {
+    const row = recordOf(recordsFace, String(cardId))
+    const body = bodyOf(row)
+    const m = body.match(/^[-*]?\s*statement\s*[：:]\s*(.+)$/m)
+    return m && m[1] ? m[1].trim() : null
+  } catch (e) { return null }
+}
 
 /**
  * The READ VIEW of the three sources. Every count it reports is measured (never assumed), every unreadable row is
@@ -580,15 +595,8 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
   // "pass" while never stating the result. A row with no title falls back to its card id.
   // ★ RUN 181 (F25-3): the claim a truncated verified name stops in the middle of lives on the CARD (its `statement`
   // field), so the gate reads it back rather than telling the author to paste a ceiling.
-  const statementOfCard = (recordsFace, cardId) => {
-    if (!has(cardId)) return null
-    try {
-      const row = recordOf(recordsFace, String(cardId))
-      const body = row && row.body ? String(row.body) : ''
-      const m = body.match(/^[-*]?\s*statement\s*[：:]\s*(.+)$/m)
-      return m && m[1] ? m[1].trim() : null
-    } catch { return null }
-  }
+  // ★★ RUN 199: the ONE reader (module level, shared with the read face) — see statementOfCardOf.
+  const statementOfCard = statementOfCardOf
   const missingEvidence = []
   const nameOf = (t) => str(t).replace(/^已验证｜/, '').trim()
   // ★★ RUN 175 (run 20 FEEDBACK20 ②): a verified conclusion whose title carries math (`Σ_{k=1}^{n} k³ = (n(n+1)/2)²`)
@@ -712,6 +720,9 @@ export function verifiedRequirements({ view, codes = QUALITY_CODES } = {}) {
   const claimPrefix = (s) => (String(s).endsWith('…') ? String(s).slice(0, -1).trim() : String(s))
   const identifierLike = (s) => /[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*/.test(String(s))
   const verified = view.verified()
+  // ★★ RUN 199: the verified rows carry {id, cardId, p, title, warrant, source} — NO statement, so a fallback that
+  // asked item.statement could only ever answer null. Read the CARD through the same records face the gate uses.
+  const recordsFace = view && view.records ? view.records : null
   const items = (verified.items || []).map((item) => {
     const name = claimPrefix(nameOf(item.title))
     const truncated = String(nameOf(item.title)).endsWith('…')
@@ -721,7 +732,12 @@ export function verifiedRequirements({ view, codes = QUALITY_CODES } = {}) {
       id: item.id, cardId: item.cardId === undefined ? null : item.cardId,
       requiredLine: name || String(item.cardId || item.id),
       requiredLineTruncated: truncated,
-      requiredLineFull: truncated && item.statement ? String(item.statement) : null,
+      requiredLineFull: truncated ? (item.statement ? String(item.statement) : statementOfCardOf(recordsFace, item.cardId)) : null,
+      requiredLineFullWhy: !truncated ? null
+        : (item.statement ? null
+          : (statementOfCardOf(recordsFace, item.cardId) === null
+            ? 'the verified row name stops at … and its card carries no readable statement line, so no full sentence exists to paste — read the card itself (records get) before writing the prose'
+            : 'the name stops at …; the full sentence is the CARD statement line, read back here because the row itself was capped')),
       requiredLineMath: hasMath && !hasIdentifier ? '$' + name + '$' : null,
       requiredLineIdentifier: hasIdentifier,
       writeAs: hasIdentifier ? 'plain text: do NOT wrap an identifier in $…$ (inside math mode every _ is a subscript and xelatex reports "!" Double subscript")'

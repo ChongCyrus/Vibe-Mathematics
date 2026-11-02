@@ -3291,3 +3291,55 @@ Mechanised in `tests/vmu-run197-feedback37.test.mjs` (5/0): source pins for all 
 back VERBATIM and whose closed minutes carry `archived` without the candidate flag, a primitive meeting refused by
 `VMU_REGISTRY_BOUNDARY`, and a real `part` refused by the evidence gate with `gate`/`nextGate`/`missing`/`missingMeans` as DATA —
 then accepted with `evidenceGate.requiredAt === 'render/final'`.
+
+## ROUND 201
+
+RUN 198 (run 38 / `FEEDBACK37` leftovers). Four receipts that did not say who decided something, what a field would become,
+or whether the assignee could reach the work.
+
+1. **One ruling answered under two names.** `debateEvidenceOf` read only `ballotId` while the framework's own printed
+   `correction.call` told holders to pass `meeting` — run 38 passed BOTH to get through, and the write receipt then said
+   `p1Route:"debate"` with no way to name the ruling. Both names are now part of the declared shape and are normalized once
+   into `rulingRef` (with `rulingRefMeans` telling apart "both given", "ballot only", "meeting only"); the fields the card
+   body already keeps (`n`/`decided`/`at`/`by`/`warrant`) travel with the evidence instead of being dropped.
+2. **The gate echoes the reference it admitted on.** `routed('debate', …)` now carries `meeting`/`rulingRef`/`rulingRefMeans`/
+   `n`/`decided`, and `vibe_v5_record_proposition` forwards `p1RulingRef`/`p1RulingMeans` — "which ruling decided this card"
+   is answerable from the receipt that wrote it.
+3. **The printed call is legal as printed.** `correction.call` now carries `ballotId` beside the `meeting` it already printed,
+   plus `shapeMeans` saying the two keys are one reading and the call above can be copied verbatim.
+4. **Whitespace is not an agenda.** `convene` separated the two cases by PRESENCE (`args.agenda !== undefined`), not by
+   `has()` — because `has()` already trims, so the first version of this repair made the empty case unreachable and reported
+   every blank agenda as "none was passed". The refusal now names which case it is, what the agenda becomes once stored (the
+   meeting's `materials`, read back by `status`/`summary`/the board), and sends a reader who meant to READ to
+   `vibe_vmu_meeting {action:"status"|"summary"}`.
+5. **A member holds ONE part slot.** The live paper prompt said "write your part" and never that a second `part` from the
+   same member REPLACES the first, so "three rounds" read like "three parts". The prompt now says the slot is one, names the
+   `replaced` receipt (oldBytes→newBytes, explicitly "did not add a second section"), and says the later rounds are polish on
+   that same part.
+6. **The assignment receipt states what the seat can reach.** `vibe_v5_assign` now returns `assigneeSeat` and
+   `assigneeCapability{seat, noLeanFace, noResearchLibrary, means}`. A temp seat is NOT refused (this face cannot read intent
+   out of prose) — the fact and the reachable fix ("assign it to a member (r-1/r-2) or the chair") are printed on the
+   assignment itself, where the chair can still change its mind.
+
+Mechanised in `tests/vmu-run198-feedback37b.test.mjs` (4/0): source pins, a real card settled by a MEETING-named ruling and a
+second by a BALLOT-named one (both read back through `p1RulingRef`), a whitespace agenda refused and a real one admitted, and
+an assignment to `r-temp` that says `noLeanFace:true` beside one to `r-1` that says `false`.
+
+One red that did NOT reproduce: the full sweep's `vmu-run155-audit-fixes` §2 (`final`'s pdf block) failed once under the
+sweep, then passed alone 3/3, inside the 79-suite targeted regression, and 10/10 with a 614 s mutants neighbour loading the
+box. It is recorded as an unreproduced load-sensitive red, not as fixed.
+
+## ROUND 202
+
+RUN 199（run 39 / `FEEDBACK38`）——「回执许诺了另一面从未填的字段」。八条：
+
+1. **`requiredLineFull` 不再按构造为 `null`**：`statementOfCard` 从 `checkQuality` 的局部函数提成模块级 `statementOfCardOf(recordsFace, cardId)`，读面 `verifiedRequirements` 先取 `view.records` 再回退到卡；仍为 null 时带 `requiredLineFullWhy`（三读：未截断 / 有整句 / 卡上无 statement 行）。
+2. **`advance` 把三种「没交 deliverable」分开**：`refusers` 只放真拒收；`stale`（行属于另一轮，ROUND MISMATCH）与 `notYetReviewed`（一行都没有）各自成列并各带一句 means；一致分支的条件改成三者皆空。非一致分支的动作是**把论文打回 writing**，所以名字错了代价不是难看，是论文真的被退。
+3. **`final.conclusion` 不再被空串占位**：`deliverable` 且未传 `conclusion` 而 `note` 非空 ⇒ 取 `note`，并回 `conclusionSource`（`'conclusion'|'note'|'none'`）与 `conclusionMeans`（note 是短笺、conclusion 是定稿结论）。
+4. **第二处 `VMU_TURN_NO_PENDING_MEMBER` 也标出两条投递路径**（`kernel/turn/index.js` 的 awaiting-prompt 那条）：`CALLER PATH` 与 `DELEGATED PATH`，并说清 delegated 是**预期**拒绝、报告以成员会话的 FINAL TEXT 交回。
+5. **`op:"reply"` 自我说明是报告通道**（`tools/turn.js`）：`reply` 字符串属于另一个通道，一个回合不能用两个通道回答；hint 给两种正确形状。
+6. **会议拒绝句按类型给最小可用调用**（`packs/v5r/tools.js`）：`MINIMAL CALL for this type` 三支 —— closure「只要 agenda」、ordinary 同形、debate 指向 `subject`。
+7. **`proof_ref` 回执说明指针相对库根、且 `complete` 会被锁死**（`pointerNote` / `lockNote`）：先确认 `<libraryRoot>/<pointer>` 存在再锁。
+8. **`vibe_v5_meeting.agenda` 的声明缺口留成一行债**：一面临两门（convene 要 agenda、status/summary/rulings 只要 action+id），不能全局 required；`scripts/audit-tool-required-flags.mjs` 的第 5 条豁免把这个形状写出来，而不是把它扫绿。
+
+机器化 `tests/vmu-run199-feedback38.test.mjs`（6/0）。两条装载事实：`vibe_v5_paper` 的动作块套在 `{ ok, tool, action, <动作名>: <块> }` 里（读浅一层就「字段消失」）；第二轮只能由 `final{revise}` 打开，`advance` 永不回到 writing。

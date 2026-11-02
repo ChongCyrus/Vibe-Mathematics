@@ -240,8 +240,8 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         // calls (the kernel merges them and stamps source:'tool+text') - see the 08号决策 note in kernel/turn/index.js.
         if (typeof args.reply === 'string' && args.reply.trim() !== '') {
           return refused('VMU_INVALID_ARGUMENT',
-            'this call carries BOTH a tool report and a text reply: one turn must not be answered through two channels in one call',
-            'send the report alone with op:"reply", report:{...} — or send the text alone with op:"step", reply:"…"; the two channels merge only when they arrive on different calls (source:"tool+text")')
+            'op:"reply" is the TOOL-REPORT channel, and this call ALSO carries a text reply (the reply string): one turn must not be answered through two channels in one call — the string here is the OTHER channel\'s payload, not a report field',
+            'send the report alone: op:"reply", report:{…} (no reply string). Send text alone: op:"step", reply:"…" — that is the text channel. The two merge only when they arrive on different calls (source:"tool+text")')
         }
         const rawReport = args.report === undefined || args.report === null ? null : args.report
         // The schema declares `report` as an object; a model can still hand it over JSON-encoded, and that ONE alternate

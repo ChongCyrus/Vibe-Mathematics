@@ -619,7 +619,23 @@ async function toolAssign(args = {}, { kernel } = {}) {
     notice = kernel.mailbox.send('office', { to, kind: 'assign',
       text: '【分派】' + str(args.subject || args.task_id) + '\n理由：' + str(args.why) + '\n验收：' + str(args.acceptance) })
   }
+  // ★★ RUN 198 (run 38 FEEDBACK37 2.6): the chair assigned a FORMAL-VERIFICATION task to a temp worker, and the receipt
+  // said nothing about the fact that the temp seat has no Lean face at all (seat-faces A8: the five `lean_*` tools, the
+  // research-library writes and `paper` are `temp: false`). The worker could only report "I cannot run Lean" — after the
+  // assignment had already been made. This face cannot read intent out of prose, so it does not refuse: it STATES the
+  // seat and what that seat cannot reach, so "assign it to a member instead" is answerable at the moment of assigning.
+  const seatRow = roster.filter((m) => String(m.id) === to)[0] || null
+  const seat = seatRow ? String(seatRow.slot) : ''
+  const assigneeCapability = seat === 'temp'
+    ? { seat, noLeanFace: true, noResearchLibrary: true,
+        means: 'the TEMP seat has no Lean face and writes no research library (seat-faces A8: the five vibe_v5_lean_* tools, record_proposition / record_method / record_subproblem / record_progress and paper are all temp:false). A temp worker does the assigned temporary task and reports through task_update / read_library. If this assignment needs FORMAL VERIFICATION or a library write, assign it to a member (r-1/r-2) or the chair instead — the work is reachable there, not here.' }
+    : (seat === '' 
+      ? { seat: null, noLeanFace: null, noResearchLibrary: null,
+          means: 'this assignee is not on the roster this face can read, so nothing is claimed about its faces' }
+      : { seat, noLeanFace: false, noResearchLibrary: false,
+          means: 'this seat holds the Lean face, the research-library writes and `paper` (seat-faces); nothing in a normal assignment is out of its reach' })
   return { ok: true, tool: 'vibe_v5_assign', to, taskId, created: created || null, notice,
+    assigneeSeat: seat === '' ? null : seat, assigneeCapability,
     note: 'priority/due_in/origin of the original have no column here; the why/acceptance travel to the assignee as mail (named, not dropped)' }
 }
 
@@ -1269,9 +1285,29 @@ function literatureEvidenceOf(args = {}) {
 function debateEvidenceOf(args = {}) {
   const raw = args.debate_ruling
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-  return { mode: raw.mode === undefined ? null : str(raw.mode), value: raw.value === undefined ? null : raw.value,
-    ballotId: raw.ballotId === undefined ? null : str(raw.ballotId),
-    subject: raw.subject === undefined ? null : str(raw.subject) }
+  const word = (v) => (v === undefined || v === null || String(v).trim() === '' ? null : str(v))
+  // ★★ RUN 198 (run 38 FEEDBACK37 2.4): one ruling, two names. The gate read ONLY `ballotId` while the framework's own
+  // `correction.call` told the holder to pass `meeting` — so a ruling that named its meeting reached the gate, was
+  // admitted, and the receipt could not name what decided the card (the run-38 reader passed BOTH keys to get through).
+  // Both names are now part of the declared shape, they are normalized ONCE into `rulingRef`, and the fields the card
+  // body already keeps (`n`/`decided`/`at`/`by`/`warrant`) travel with the evidence instead of being dropped here and
+  // re-appearing in a different shape on the body row.
+  const ballotId = word(raw.ballotId)
+  const meeting = word(raw.meeting)
+  const rulingRef = ballotId || meeting || null
+  return { mode: word(raw.mode), value: raw.value === undefined || raw.value === null ? null : raw.value,
+    ballotId, meeting, rulingRef,
+    rulingRefMeans: rulingRef === null
+      ? 'this ruling named NEITHER a ballot nor a meeting, so nothing outside itself says what decided it — the gate still admits it (a caller-supplied ruling is the contract), but a reader cannot follow it anywhere'
+      : (ballotId !== null && meeting !== null
+        ? 'the ruling names both a ballot id and a meeting; they are ONE reference read two ways (`rulingRef` = the ballot id), not two decisions'
+        : (ballotId !== null
+          ? 'the ruling names a ballot id (`rulingRef`); no meeting was named'
+          : 'the ruling names a MEETING (`rulingRef`); a meeting-ruled card and a ballot-ruled card take the same route "debate"')),
+    n: raw.n === undefined || raw.n === null ? null : raw.n,
+    decided: raw.decided === true ? true : (raw.decided === false ? false : null),
+    at: word(raw.at), by: word(raw.by), warrant: word(raw.warrant),
+    subject: word(raw.subject) }
 }
 /** The Lean CONCLUSION for one job id, or null. `passed` is a conclusion on the kernel's lean face, never a state.
  *  ★ B8 修的两个真缺陷：① 这个面挂的方法叫 `status(id)`（导出表见 `vibe-math-vmu/kernel/lean.js:977`），
@@ -1739,6 +1775,10 @@ function gatedCardHandler(toolName) {
     let p1Form = null
     let p1Route = null
     let p1RouteMeans = null
+    // ★★ RUN 198: the gate already computes WHICH ruling admitted the write (`rulingRef`); a receipt that keeps only the
+    // route word leaves the reader unable to open what decided the card. Forwarded, not re-derived.
+    let p1Ruling = null
+    let p1RulingMeans = null
     if (toolName === 'vibe_v5_record_proposition' || track === 'propositions') {
       // ★ AUDIT C8 (rule L14: 「那些布尔概率为1的命题卡需标记为已verified」 — the read face's `verifiedRef` was
       // decoration and NOTHING held a writer to it): p=1 could be written into the propositions track without any
@@ -1762,6 +1802,8 @@ function gatedCardHandler(toolName) {
       // ★ B3：回执必须说清本行 p=1 的凭据是**哪一条路**（辩论 / 参考文献 / Lean conform / 已有 verified 行）。
       p1Route = pGate.p1Route === undefined ? null : pGate.p1Route
       p1RouteMeans = pGate.p1RouteMeans === undefined ? null : pGate.p1RouteMeans
+      p1Ruling = pGate.rulingRef === undefined ? null : pGate.rulingRef
+      p1RulingMeans = pGate.rulingRefMeans === undefined ? null : pGate.rulingRefMeans
     }
     // ★ WAVE 2 (audit C6a): WHICH half admitted a "complete" proof_state — a measured Lean run, the caller's
     // conformance word (a claim), or an existing verified row. Evidence of different weight must not print as one word.
@@ -1776,7 +1818,13 @@ function gatedCardHandler(toolName) {
       // "a claim without its warrant" shape the ledger keeps catching. Shape-checked, not content-checked: say which.
       const refHere = has(args.proof_ref) ? str(args.proof_ref).trim() : ''
       if (refHere !== '') return { kind: 'proof-ref', measured: false, ref: refHere,
-        means: 'the caller pointed the card at a written proof (`proof_ref`); this gate checked only that the reference is non-empty — the content is read by the members in the debate' }
+        means: 'the caller pointed the card at a written proof (`proof_ref`); this gate checked only that the reference is non-empty — the content is read by the members in the debate',
+        // ★★ RUN 199 (run 39 / FEEDBACK38 1.1, MEASURED): run 39 pointed a card at Members/r-acad/Propos/p-1.md#… while
+        // writing that file into the WORKSPACE root instead of the LIBRARY root, and the receipt said nothing — then the
+        // card locked (rule L14) and the pointer could no longer be corrected. Two facts now travel with the receipt: the
+        // pointer is resolved against the LIBRARY root (not the session cwd), and a complete card is LOCKED.
+        pointerNote: 'the pointer is a POINTER, not a resolution: this write does NOT read it. It is relative to the LIBRARY root (the libraryRoot that vibe_v5_read_library prints), NOT to your session working directory — a file you wrote at the workspace root is not there, and read_library would answer libraryCardCount:0 for it',
+        lockNote: 'a card whose proof_state is complete is LOCKED (rule L14: later writes to the same card id are refused), so the pointer cannot be corrected afterwards — check that <libraryRoot>/<pointer-without-anchor> exists BEFORE judging the card, and copy the file into the library tree first if it does not' }
       return null
     })()
     // ★★ RUN 153 (G1): a settlement on an EXISTING card is a PATCH (see settleRulingOnCard). It never reaches the
@@ -1822,7 +1870,8 @@ function gatedCardHandler(toolName) {
     return Object.assign({}, res, {
       enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE,
       proofState: declaredProofState === '' ? null : declaredProofStateFolded, proofStateEvidence,
-    }, settlement === null ? {} : { settlement }, p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, verifiedMark })
+    }, settlement === null ? {} : { settlement },
+    p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, p1RulingRef: p1Ruling, p1RulingMeans, verifiedMark })
   }
 }
 
@@ -2320,13 +2369,18 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
         const quoted = (v) => JSON.stringify(v === undefined || v === null ? '' : String(v))
         return 'vibe_v5_record_proposition { id: "' + propositionId + '", statement: ' + quoted(f && f.statement)
           + ', value: ' + (f && f.value !== undefined && f.value !== null ? String(Number(f.value)) : '1') + ', motive: ' + quoted(f && f.motive)
-          + ', p: ' + String(ruled.value) + ', debate_ruling: { subject: "' + propositionId + '", value: ' + String(ruled.value) + ', mode: "' + String(ruled.mode) + '", n: ' + String(ruled.n) + ', decided: ' + String(ruled.decided === true) + ', at: "<ISO time>", meeting: "' + str(meeting) + '", by: "' + chair + '" } }'
+          + ', p: ' + String(ruled.value) + ', debate_ruling: { subject: "' + propositionId + '", value: ' + String(ruled.value) + ', mode: "' + String(ruled.mode) + '", n: ' + String(ruled.n) + ', decided: ' + String(ruled.decided === true) + ', at: "<ISO time>", ballotId: "' + tallyId + '", meeting: "' + str(meeting) + '", by: "' + chair + '" } }'
       })()
       : (cardPath.path
         ? 'edit the card FILE at ' + cardPath.path + ' and set its probability to p = ' + String(ruled.value) + ' (this proposition is a library card, not a records row: no records face owns it, so the edit is a file edit by its holder)'
         : 'this ruling has NO card to correct (the object was not on the records track): record the proposition first with vibe_v5_record_proposition { track: "propositions", statement, value, motive, p: ' + String(ruled.value) + ' } and then apply the ruling with the same call + debate_ruling'),
     // ★★ RUN 152: the settlement is ADMITTED even on a locked card (see the lock gate in gatedCardHandler) — say it here,
     // because a reader who has already seen「登记即定稿」will otherwise assume the card cannot be touched at all.
+    // ★★ RUN 198 (run 38 FEEDBACK37 2.4): the printed shape above carries BOTH names on purpose — `ballotId` (the
+    // aggregate tally id, which is what the p=1 gate reads as `rulingRef`) and `meeting` (the room it was decided in).
+    // The reader of run 38 had to guess that passing only `meeting` left the gate's reference empty; the shape itself is
+    // now the answer, and this sentence says the two names are one reading.
+    shapeMeans: 'one ruling carries ONE reference; this framework accepts it under two names — `ballotId` (a ballot/tally id) and `meeting` (the convened meeting), and the write receipt reads back whichever was given as `p1RulingRef`. The call above is accepted AS PRINTED: both keys are present, and they name the same decision.',
     // ★ RUN 153 (G4): the ONE id that stands for the whole ruling, ready to be the `warrant` of the promotion.
     warrantFor: {
       id: tallyId,
@@ -3123,7 +3177,23 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     // TypeError — declaring alignment and then crashing on it is the same defect in a new costume.
     if (refusal) throw refuse(refusal.code, refusal.message, refusal.hint)
   }
-  if (!has(args.agenda)) throw refuse('VMU_INVALID_ARGUMENT', 'meeting needs an agenda', 'pass agenda:"what this meeting is for"')
+  // ★★ RUN 198 (run 38 FEEDBACK37 2.3): the old refusal was one line and only covered the ABSENT case — an agenda of
+  // spaces convened a room nobody could state the purpose of, and a reader who mistook this face for the read face was
+  // told to pass a field they never meant to supply. The refusal now says WHICH case it is, what the agenda IS once
+  // stored (the meeting's `materials`, what status/summary/the board read back) and where the reader who meant to READ
+  // actually belongs.
+  // ★ RUN 198 correction: `has()` ALREADY trims (`kit/handlers.js:12`), so `!has(agenda)` is true for a blank agenda
+  // too — branching the two cases on `has()` made the empty case unreachable and reported every blank agenda as
+  // "none was passed". Presence is what tells them apart.
+  const agendaGiven = args.agenda !== undefined && args.agenda !== null
+  if (!has(args.agenda)) {
+    throw refuse('VMU_INVALID_ARGUMENT',
+      'meeting needs an agenda — ' + (agendaGiven
+        ? 'the one you passed is EMPTY after trimming (whitespace is not a purpose)'
+        : 'none was passed')
+        + '. The agenda is not a label: it is stored as the meeting\'s `materials` and it is what `status`/`summary`/the board read back, so a meeting without one is a room nobody can say the purpose of',
+      'pass agenda:"what this meeting is for" — for example agenda:"decide whether p-evenprod settles at 1 (debate)", agenda:"close the run and file the account", agenda:"plan the next two steps". `title` is a SEPARATE optional name. If you meant to READ a meeting, that is vibe_vmu_meeting { action: "status" | "summary", id } — this face only convenes.')
+  }
   // ★ PHASE 12 — before this line, `requireSeat` let ANY member convene and 「会议只能由院士召开」 was only a sentence in
   // a prompt. The slot is the pack's own declared vocabulary (the kernel never learns what "academician" means), so the
   // gate belongs here, where both the caller id and its seat are known. The kernel holds the matching SHAPE gate
@@ -3192,7 +3262,11 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
       // ★ LIVE RUN 31: the institute quoted this refusal back and flagged the grammar. It is a message, not a
       // rule: the article is derived from the type it names (an ordinary / a debate).
       (type === 'ordinary' ? 'an ordinary' : 'a ' + type) + ' meeting takes no object: subject/target only mean something for a type that debates one',
-      'drop subject/target (this meeting is about its agenda) — or convene with type:"debate"; ★ note that `target` on this face is an ALIAS of `subject`, while on vibe_vmu_meeting `target` is a VOTE\'s object')
+      'MINIMAL CALL for this type: { type:"' + type + '", agenda:"what this meeting decides", title:"<short label>" } — '
+        + (type === 'closure'
+          ? 'a CLOSURE meeting takes an AGENDA and nothing else (no subject: it closes the institute, it does not debate an object). '
+          : 'an ordinary meeting takes an AGENDA and nothing else; ')
+        + 'to debate an OBJECT convene with type:"debate" and subject:"<card id or file reference>". ★ `target` on THIS face is an ALIAS of `subject`; on vibe_vmu_meeting `target` is a VOTE\'s object')
   }
   if (typeInfo.subjectRequired && (subject === null || String(subject).trim() === '')) {
     throw refuse('VMU_INVALID_ARGUMENT', 'a ' + type + ' meeting needs a subject: the object of the debate',

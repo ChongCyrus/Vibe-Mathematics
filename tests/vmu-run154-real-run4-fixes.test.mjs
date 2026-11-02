@@ -195,8 +195,12 @@ console.log('§2 H1：缓存丢了评审条目，磁盘上的评审行仍然作�
   f2.recordReview({ target: T2, member: 'r-2', deliverable: true, comments: '第二轮可交付' })
   dropReviewsCache(rows2, T2)
   const moved2 = f2.advance({ target: T2 })
-  ok(moved2 && Array.isArray(moved2.refusers) && moved2.refusers.length === 1 && moved2.refusers[0] === 'r-1',
-    'H1：只有本轮的评审行作数——上一轮 r-1 的行不能让他在第二轮算已交', moved2 && moved2.refusers)
+  // ★ RUN 199 改口径：上一轮的行不是「拒收」，是「这一轮没有作出表态」。同一个事实以前被塞进 refusers，
+  // 与同回执 reviewsRead[].means 说的「ROUND MISMATCH, not a member refusing」互相打脸。现在它有自己的列。
+  ok(moved2 && Array.isArray(moved2.refusers) && moved2.refusers.length === 0,
+    'H1：上一轮的评审行不算拒收——refusers 里不该出现 r-1', moved2 && moved2.refusers)
+  ok(moved2 && Array.isArray(moved2.stale) && moved2.stale.length === 1 && moved2.stale[0] === 'r-1',
+    'H1：只有本轮的评审行作数——r-1 的行属于上一轮，因此列在 stale 里（ROUND MISMATCH，不是拒收）', moved2 && moved2.stale)
   const st = stateOf(f2, T2)
   const why = String((((st || {}).disagreement || [])[((st || {}).disagreement || []).length - 1] || {}).detail || '')
   ok(why.length > 0, 'H1：分歧行带 detail', why)

@@ -66,8 +66,12 @@ test('RUN 197 §0 — every repair is on the source it belongs to (source pins)'
   has(MEETING_TOOL, 'refused(\'VMU_REGISTRY_BOUNDARY\',', '§0h ★ a registry boundary is named as one')
   has(MEETING_TOOL, 'reads the MEETINGS SERVICE record body; ', '§0i and answers the same request as before')
   // 1.3 both disagreement branches
-  has(PAPER, "refusersMeans: 'NOT empty: these participants answered something other than deliverable",
-    '§0j ★ the writing branch says what a non-empty refusers list means')
+  // ★ RUN 199 rewrote this sentence (the list now names ONLY real refusals, with stale/notYetReviewed beside it), so this
+  // pin follows the sentence that carries the claim — the claim is "a non-empty refusers list says what it means".
+  has(PAPER, "refusersMeans: refusers.length === 0",
+    '§0j ★ the writing branch picks its sentence by what the list actually holds (RUN 199 split the three facts)')
+  has(PAPER, "so this round did NOT reach unanimity and the paper goes back to writing",
+    '§0j2 ★ and the non-empty refusers sentence says what a dissent does to the paper')
   has(PAPER, "refusersMeans: 'NOT empty: the reviews did not reach deliverable",
     '§0k ★ the capped branch says it too (same field, same shape)')
   ok((PAPER.split('unanimous: false, refusers').length - 1) === 2, '§0l both disagreement branches state unanimous:false', PAPER.split('unanimous: false, refusers').length - 1)

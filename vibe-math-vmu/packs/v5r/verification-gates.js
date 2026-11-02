@@ -171,7 +171,14 @@ export function p1Intent({ tool = null, args = {}, card = null, evidence = {} } 
     // to "p=1 needs a verdict source", refusing a ruling that plainly WAS the verdict. Absent means "about this card".
     const target = ev.debate.subject === undefined || ev.debate.subject === null || String(ev.debate.subject).trim() === ''
       ? null : String(ev.debate.subject)
-    if (!target || !cardId || target === cardId) return routed('debate', { evidenceForm: 'debate-unanimous', ballotId: ev.debate.ballotId || null })
+    if (!target || !cardId || target === cardId) return routed('debate', { evidenceForm: 'debate-unanimous',
+      ballotId: ev.debate.ballotId || null, meeting: ev.debate.meeting || null,
+      // ★★ RUN 198 (run 38 FEEDBACK37 2.4): the gate used to keep `ballotId` in its answer while the card receipt forwarded
+      // only `evidenceForm`, so "which ruling decided this card" was unanswerable from the write receipt. `rulingRef` is
+      // the one name for that answer, and it is a MEETING when the caller named a meeting (the run-38 shape).
+      rulingRef: ev.debate.rulingRef || null, rulingRefMeans: ev.debate.rulingRefMeans || null,
+      n: ev.debate.n === undefined || ev.debate.n === null ? null : ev.debate.n,
+      decided: ev.debate.decided === undefined || ev.debate.decided === null ? null : ev.debate.decided })
   }
   if (ev.literature && typeof ev.literature.reference === 'string' && ev.literature.reference.trim() !== '') {
     const target = ev.literature.subject === undefined || ev.literature.subject === null ? null : String(ev.literature.subject)
