@@ -14645,3 +14645,30 @@ hint 给出路）、全一致的票箱放行；§2 真会议（3:0 全 FOR 在�
 - **数字相等不等于没前进**：凡是「某个计数没变」的回执，都必须同时说明**变了的是什么**，否则读者会把「读数」当成「没发生」。
 - **同一句话不能覆盖两种原因**：`exists:false` 既可能是「路径不在库里」也可能是「文件还没写」，两种原因的修复动作完全不同，回执必须分开说。
 - **拒绝里要写退路**：`poll_open` 被辩论会挡住的现场，用户不知道「关会就等于结束辩论」，于是去改设置；把退路写进 hint 比写进文档便宜得多。
+
+### §305 一个数被接收了不等于被数了，一个名字被打印了不等于能被粘回去
+
+305.1 **账从哪来。** 第 42 次真机跑完（主线结题 `Paper/paper-p1/paper-p1.pdf` 84 541 B，`DRIVE exit=0`，`SUMMARY: 5 session(s) … 0 with RED checks`）。`FEEDBACK41` 记了十条，其中六条是「回执把两件不同的事说成了一个」或「回执打印了它自己也不认识的名字」，本轮清这六条；`1.3`（读现行版会改它的指纹）、`1.5`（`vibe_vmu_turn` 回执不带成员正文）与蓝图节点结构留到下面几轮。
+
+305.2 **六处修法（都在真机现场量过）。**
+- **投票是否被计数**（`vibe-math-vmu/tools/meeting.js`）：`serviceVote` 早就把 `ok:false / code:"VMU_MEETING_QUORUM_LOST"` 放在回执里，而顶层照样只说 `ok:true`、`accepted:true`，`tally.for` 还照涨——「票被收下」与「票被数了」在同一个回执里是两个事实。顶层新增 `counted` 与 `countedMeans`：`counted` 为假时句子直接说「这票进了票箱但没进计数，原因是会议未到齐」。
+- **p=1 的先读地板再怪选民**（`packs/v5r/tools.js` 的 `rulingNameResolution` 与 UNVOTED 抛出点）：会议裁决路线新增 `voteFloor`，从 `meetings.quorum({ meeting, allowArchived: true })` 读 `present`/`required`/`met`；不满足时拒绝的 hint 第一句就是「the meeting it names is not legally seated yet (present 1 of required 3) … call vibe_v5_meeting {action:"attend"}」，并且 UNVOTED 的措辞从「holds NO votes」收窄成「holds NO **counted** votes」——两种事实分开说。
+- **结构型议程具名拒**（`packs/v5r/tools.js` 的会议分支）：原来只挡空串，`agenda: {…}` 被 `String()` 成 `"[object Object]"` 存进会议并被当成目的。现在在任何写入之前校验：字符串照用、数组只取**非空字符串**并以 `"; "` 拼接、其余类型具名拒 `VMU_INVALID_ARGUMENT`，message 直说「it would be stored as "[object Object]", which is a JavaScript type name, not a purpose」，hint 给出两种合法形状。存储与回执两处都改用校验后的 `agendaText`。
+- **tally id 是名字，不是票箱**（`packs/v5r/tools.js` 的 `debateEvidenceOf` / `rulingNameResolution`）：`vibe_v5_verdict_final` 打印的 `correction.call` 带 `ballotId:"tally-<meeting>-<card>"`，而 tally 是从 (会议, 命题) 派生的名字、**不存任何行**，旧代码把它当票箱去查 ⇒ 必定 UNRESOLVED。新增 `tallyId` 键；`/^tally-/` 的 id 不再查票箱，而是按 (meeting, subject) **重新派生**并核对，缺 `meeting` 与派生不一致各自具名拒（`reason:"no-meeting"` / `"mismatch"`，message 说明它是名字、怎么重算），命中后交给会议分支。
+- **截断读数的适用范围**（`packs/v5r/paper-quality.js` 两侧）：`requiredLineTruncated:false` 与 73 字标题并列，读起来像「没测量」。新增 `requiredLineCapApplies` 与 `requiredLineCapAppliesWhy`：48 字上限**只对从 claim 派生的名字**生效，显式 `title` 不截断；负例那句话明说「NO: the cap applies ONLY to a name DERIVED from the claim … 这里的 false 是『没东西被截』，不是『没测量』」。
+- **枚举拒绝印出合法值**（`vibe-math-vmu/settings/schema.js`）：`vmu.paper.officeConsult` 的域只有 `off | required`，而拒绝只说「declared as enum」。enum 且 `domain` 非空时 hint 改为「declared as enum — the LEGAL VALUES are: off | required（越界的值具名拒，绝不夹到默认值）」。
+- **判据里的原话进提示词**（`packs/v5r/prompts/v5r-blocks-b.js` 的 `v5r-turn-mainline` 三席）：验收判据引用「每回合三问」，而三席文本只有语义、没有这四个字。三席都嵌入 `**每回合三问**`，并把「推进哪个节点 / 节点信息更新了没有 / 以前是否处理过类似问题」写成同一句。
+
+305.3 **机器化。** 新增 `tests/vmu-run204-feedback41.test.mjs`（**5 passed / 0 failed**）：§0 十一条源码 pin（含三席 `**每回合三问**` 恰好三个）；§1 真 `vibe_v5_set` 把 `vmu.paper.officeConsult` 设成 `sometimes` ⇒ 拒绝的 hint 印出 `off` 与 `required`；§2 真召集：`agenda:{…}` 具名拒且 message 说清它会变成什么、`agenda:["议题一","议题二"]` 被接收并拼成文本（携带 `proof_ref`/`proof_state` 才过辩论对象闸）；§3 两个读者（`verifiedRequirements` 与 `checkQuality`）都带 `requiredLineCapApplies`，派生名给 `true`/显式标题给 `false` 且各带自己的句子；§4 只给 `ballotId:"tally-m9-…"` 不给会议 ⇒ 具名拒且拒绝文中把它当 tally 说。
+收口链：`update-doc-counts --write` ⇒ `JOBS total=755 suites=647 probes=108`；`regen-all --write` 17/17 → `--check` 17/17 in sync；`PREFLIGHT` / `DOC LINT` / `RULES COVERAGE (93 anchors)` / `RULE PARITY` 全 PASS。干净全量 T1 `/d/_tmp/t1-r481-run204.log` = `TOTAL 755 PASS 754 FAIL 1`，唯一红是 `tests/vmu-run198-feedback37b.test.mjs` §0c —— 它钉住 RUN 198 时的 `const rulingRef = ballotId || meeting || null` 字面量，而本轮把 `tallyId` 加进了这条归一化（第三个名字）。**这是 pin 该跟着契约走，不是回归**：改成新字面量并加一句「句子是契约、元数是实现」后单跑 4/0；修后本轮最终干净全量 T1 见 §306.3b。
+
+305.4 **一次自查推翻（全量 T1 抓到，改回并按新读数重钉）。** RUN 203 的 `2.3` 我写成了「单人论文在 `advance` 之前就拒」，T1 里三套老套件同时红：`vmu-f3-f4-paper-integrity`、`vmu-wave2-f3-f4-paper-gates` 与 `vmu-paper` 钉的 F6 设计是**移动发生、作者被记为 exempt（`notRequired`）、自审在 `review` 时拒、互审闸在之后具名拒**。my 早拒让这条已有的合法路不可达，属于我用一个更响的拒绝掩盖了一条已经设计好的读数。改法：移动保留，回执新增 `crossReviewPossible` 与 `crossReviewMeans`，后者明说「只有一个参与者时作者被 exempt、没有别人能审、论文会在互审闸被具名拒」——**披露而不是闸**。同时发现 `recordReview` 里「`of` 与分配不符」的检查排在「自审」之前，把一次自审说成了「审了别人分配的题」，两套老套件读的正是自审那句 ⇒ 顺序改成自审优先。`tests/vmu-run203-feedback40.test.mjs` 的 §0j/§3 与 `tests/vmu-run201-feedback39.test.mjs` 的 §1d（`holds NO votes` → `holds NO counted votes`）随契约同步更新。
+
+305.5 **装载事实（写测试必用）。** `vibe_v5_meeting { type:"debate" }` 的命题卡必须先登记证明（`proof_ref` + `proof_state:"complete"`），否则 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF` 先拒，议程校验根本轮不到；`vibe_v5_set` 的拒绝把 hint 放在顶层（`bad.hint`），`message` 只有一句结论；`verifiedRequirements({ view })` 的 `view.verified()` 返回的 `items[]` 里 `title` 以 `…` 结尾即被视为「派生名被截断」，否则视为显式标题——测试用它构造正负两例，不需要真卡片。
+
+305.6 **未闭合。** `FEEDBACK41` 的 `1.3`（读蓝图现行版会把 `lastStaleSeenAt` 写回行内、改掉指纹）、`1.5`（`vibe_vmu_turn` 回执不带成员正文，只有 `executed`/`fields`）仍是未闭合账：前者要改存储形态并同步两套 b4 pin，后者要有界摘要，两条都留待下一轮；本轮修复尚未真机复验。
+
+305.7 **三条教训。**
+- **「接收」与「计数」必须各有一个字段**：同一个回执里 `accepted:true` 与 `ok:false` 并列时，读的人一定按前者下结论；两件事各有名字，别指望读者读完嵌套块。
+- **框架自己打印的名字必须能被自己粘回去**：`correction.call` 是给调用方照抄的，抄回来必然被拒的名字不是提示，是陷阱；凡是打印 id 的地方都要问一句「这个 id 落到哪个面能解析」。
+- **更响的拒绝不等于更对的拒绝**：早拒看着更安全，但它会盖掉一条别人已经设计好、还被三套测试钉住的路；发现冲突时先读那套测试想保住什么。

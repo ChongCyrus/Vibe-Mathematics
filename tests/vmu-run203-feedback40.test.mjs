@@ -69,8 +69,11 @@ test('RUN 203 §0 — every repair is on the source it belongs to (source pins)'
   has(PAPER_KIT, 'crossReview: coverage,', '§0g ★ and carries it on the unanimous receipt')
   has(PAPER_KIT, 'crossReview: crossReviewCoverage(state),', '§0h and on the capped one')
   has(PAPER_KIT, 'a review of a part that was not assigned is not a review of the rotation this paper assigned', '§0i ★★ `of` must match the assignment')
-  has(PAPER_KIT, 'if (state.participants.length < 2) {', '§0j ★★ a one-participant paper is refused BEFORE it moves')
-  has(PAPER_KIT, 'crossReviewPossible: false', '§0k and the refusal carries the fact that named the impossibility')
+  // ★★ RUN 204 (FULL T1): §0j used to pin a REFUSAL before the move. That refusal contradicted the F6 design three
+  // older suites pin, so the pin moved to the DISCLOSURE the move now carries (the impossibility is named, the move is
+  // not blocked) — the sentence, not the shape of the block, is the contract.
+  has(PAPER_KIT, 'const crossReviewPossible = state.participants.length >= 2', '§0j ★★ the impossibility is computed before the move and stated on it')
+  has(PAPER_KIT, 'refused BY NAME at the cross-review gate', '§0k and the move receipt names where the refusal will come from')
   has(PACK, 'it did NOT resolve because NO FILE EXISTS at that path yet', '§0l ★★ `exists:false` splits by reason (missing)')
   has(PACK, 'it did NOT resolve because the pointer is an ABSOLUTE path', '§0m (absolute)')
   has(PACK, 'CLOSING THE MEETING ENDS THE DEBATE', '§0n ★ the ballot refusal names the way out')
@@ -136,7 +139,7 @@ test('RUN 203 §2 — a review of a part the rotation did not assign is refused 
   ok(Object.keys(rows).length === 0, '§2f ★ nothing was written: the reviews map is still empty', rows)
 })
 
-test('RUN 203 §3 — a paper that cannot be cross-reviewed is refused where the impossibility is known', async () => {
+test('RUN 203 §3 — a paper that cannot be cross-reviewed says so ON THE MOVE (and is still refused at the gate)', async () => {
   const dir = tmp()
   const { call } = await assemble(dir)
   const target = 'run203-solo'
@@ -144,14 +147,21 @@ test('RUN 203 §3 — a paper that cannot be cross-reviewed is refused where the
   ok(started.ok === true, 'premise: a one-participant paper can be started', started)
   const rec = await card(call, 'solo')
   await call('vibe_v5_paper', { action: 'part', target, part: 'p1', body: '唯一的一节', evidence: [rec], member: 'r-1' })
-  const refused = blockOf(await call('vibe_v5_paper', { action: 'advance', target }), 'advance')
-  ok(refused.ok !== true, '§3a ★★ the advance is refused', refused)
-  ok(String(refused.code || '') === 'VMU_PACK_V5R_CORE_PAPER_STATE', '§3b ★★ by name (paper STATE), before any move', refused)
-  ok(refused.crossReviewPossible === false, '§3c ★ the refusal carries the fact that made it impossible', refused)
-  has(refused.message, 'fewer than two', '§3d ★ and says why in words')
+  // ★★ RUN 204 (FULL T1): the first version of this case pinned a REFUSAL at advance. Three older suites pin the F6
+  // design instead — the move happens, the author is exempt, the self-review is refused, and the cross-review gate is
+  // what refuses by name later — so the assertion is the DISCLOSURE the move carries: it moves AND says 互审 is
+  // impossible with one participant.
+  const moved = blockOf(await call('vibe_v5_paper', { action: 'advance', target }), 'advance')
+  ok(moved.ok === true && moved.to === 'reviewing', '§3a ★ the move happens (the F6 exemption path)', moved)
+  ok(moved.crossReviewPossible === false, '§3b ★★ the receipt carries the fact that made 互审 impossible', moved)
+  has(moved.crossReviewMeans, 'no OTHER member exists', '§3c ★★ and says why in words, on the move itself')
+  has(moved.crossReviewMeans, 'refused BY NAME at the cross-review gate', '§3d ★ and names where the refusal will come from')
+  const gated = blockOf(await call('vibe_v5_paper', { action: 'advance', target }), 'advance')
+  ok(gated.ok !== true, '§3e ★★ the next advance is refused at the cross-review gate', gated)
+  has(gated.message, '一位参与者的论文无法通过互审', '§3f ★ by name (one participant cannot pass 互审)')
   const status = blockOf(await call('vibe_v5_paper', { action: 'status', target }), 'status')
   const st = status.paper || status.state || status
-  ok(st.status === 'writing', '§3e ★★ the paper did NOT move: it is still in "writing"', st.status)
+  ok(st.status === 'reviewing' && st.forcedAfterCap !== true, '§3g ★ it stays in reviewing (no cap route to the editor)', st.status)
 })
 
 test('RUN 203 §4 — the pointer means splits by REASON (missing is not outside-the-library)', async () => {

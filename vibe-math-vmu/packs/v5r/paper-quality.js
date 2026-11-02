@@ -654,6 +654,15 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
         requiredLineTruncatedMeans: named.truncated
           ? 'the CARD TITLE was derived from the claim and capped at 48 characters with a trailing …; the row name is a NAME, not the claim — `requiredLineFull` is the sentence and that is what belongs in the prose'
           : null,
+        // ★★★ RUN 204 (FEEDBACK41 1.6): the four fields above reported "no truncation" for a 73-character row name and said
+        // nothing about WHY — because the 48-character cap applies ONLY when the name was DERIVED from the claim. run 42
+        // read `requiredLineTruncated:false` beside a 73-character title and concluded the reading had not happened. The
+        // reading did happen; the QUESTION it answers was narrower than the reader thought. So the applicability itself is
+        // now a field, and the negative case carries the sentence that says there is nothing to look for.
+        requiredLineCapApplies: named.truncated === true,
+        requiredLineCapAppliesWhy: named.truncated === true
+          ? 'YES: the 48-character cap applied, because this row name was DERIVED from the claim (and `requiredLineFull` is the sentence behind the name)'
+          : 'NO: the cap applies ONLY to a name DERIVED from the claim. This row carries an EXPLICIT title, so the whole title is the required line — `requiredLineTruncated:false` here means "nothing was capped", not "nothing was measured"',
         // ★★ RUN 179 (F24-4): when the NAME stops at `…`, the claim does not. The row's own `陈述` is the sentence to
         // write; naming only the truncated title made the gate impossible to satisfy honestly (the author had to paste a
         // ceiling). `requiredLineFull` is that sentence, and `requiredLineTruncated` says the name is not the claim.
@@ -746,6 +755,10 @@ export function verifiedRequirements({ view, codes = QUALITY_CODES } = {}) {
       requiredLineTruncatedMeans: truncated
         ? 'the title was derived from the claim and capped at 48 characters with a trailing …; requiredLineFull is the sentence to paste, the name is only a prefix of it'
         : null,
+      requiredLineCapApplies: truncated === true,
+      requiredLineCapAppliesWhy: truncated === true
+        ? 'YES: the 48-character cap applied, because this row name was DERIVED from the claim'
+        : 'NO: the cap applies ONLY to a name DERIVED from the claim; this row carries an EXPLICIT title, so the whole title is the required line and there is nothing capped to look for',
       requiredLineFull: truncated ? (item.statement ? String(item.statement) : statementOfCardOf(recordsFace, item.cardId)) : null,
       requiredLineFullWhy: !truncated ? null
         : (item.statement ? null

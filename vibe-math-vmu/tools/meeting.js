@@ -1049,7 +1049,21 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                 catch (e) { serviceVote = { ok: false, code: (e && e.code) || 'VMU_STATE', message: String((e && e.message) || e), hint: (e && e.hint) || null } }
               }
             }
-            return Object.assign({ ok: true, action, ballotId }, cast, ref ? { serviceVote } : {})
+            // ★★★ RUN 204 (FEEDBACK41 1.1): the vote is in the BOX, but whether the MEETING counted it is a separate
+            // question this receipt never answered at the top level. run 42 cast three votes whose service half said
+            // "quorum is not met: 1/3" while ok:true stood and serviceVote.tally.for grew to 3 — the tally counted people
+            // who had not attended. `counted` answers THAT question and says which record is authoritative when the two
+            // halves disagree: the box records what was SAID, the meeting records what DECIDED.
+            const counted = !ref ? true : (serviceVote !== null && serviceVote.ok === true)
+            const countedMeans = !ref
+              ? 'the ballot box accepted the vote, and this ballot is bound to no meeting, so no second authority had to accept it'
+              : (counted
+                ? 'BOTH authorities accepted it: the box recorded the vote and the meeting tallied it'
+                : 'TWO AUTHORITIES, ONE ANSWER: the BOX recorded the vote (the box tally grows) but the MEETING did NOT count it — '
+                  + String((serviceVote && serviceVote.message) || 'the meeting refused the vote')
+                  + '. The box is a record of what was said; the meeting is the record of what DECIDED. Attend until the floor is met '
+                  + '(vibe_v5_meeting {action:"attend"}) and vote again, or stop citing this meeting as a decision')
+            return Object.assign({ ok: true, action, ballotId }, cast, ref ? { serviceVote, counted, countedMeans } : { counted, countedMeans })
           }
           if (action === 'tally') return Object.assign({ ok: true, action, ballotId }, await liveBallot().close('tally'))
           if (action === 'reopen') {

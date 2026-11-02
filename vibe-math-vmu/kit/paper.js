@@ -994,19 +994,22 @@ export function createPaperFlow({
     // the rotation had NOT assigned to it — run 41's three reviews covered one section twice and left another unread, and
     // the gate read three deliverable verdicts as unanimity. The assignment is the paper's own `reviewOf`; a review that
     // names a different author is refused by name (nothing is written), with both names on the receipt.
-    if (assigned && ofId && String(ofId) !== String(assigned)) {
-      throw refuse('VMU_INVALID_ARGUMENT',
-        'this review names ' + ofId + ' as the author of the part it read, but the cross-review assignment for ' + str(member) + ' is ' + assigned + ' — a review of a part that was not assigned is not a review of the rotation this paper assigned',
-        'pass of:"' + String(assigned) + '" (that is what this round assigned to ' + str(member) + '); the assignment is printed by the advance() that opened this round as reviewOf',
-        { member: str(member), of: ofId, assigned: String(assigned), reviewOf: state.reviewOf })
-    }
     // ★ F3a: 互审 is by SOMEBODY ELSE. Refuse a review of one's own part BY NAME rather than filing it as a review —
     // with one participant the rotation had made `reviewOf[member] === member`, so this is the self-review defect.
+    // ★★ RUN 204 (FULL T1): this check comes FIRST. When a member names its OWN part while the rotation assigned
+    // somebody else's, the defect is still self-review, and the two pinned suites read that refusal by name — the
+    // assignment mismatch is the WRONGER name for that call, so it is stated only after the self-review gate.
     if (ofId && ofId === str(member)) {
       throw refuse('VMU_INVALID_ARGUMENT',
         '互审必须由另一位成员完成：' + str(member) + ' 不能评审自己写的部分——作者就是评审人，题目、证据与推导都由同一个人看过，互审没有发生（a paper part cannot be reviewed by its author）',
         '让另一位参与者评审这一部分（review 的 of 指向别人的 part）；要过互审，start 时至少要两位参与者',
         { member: str(member), of: ofId, participants: state.participants.slice() })
+    }
+    if (assigned && ofId && String(ofId) !== String(assigned)) {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'this review names ' + ofId + ' as the author of the part it read, but the cross-review assignment for ' + str(member) + ' is ' + assigned + ' — a review of a part that was not assigned is not a review of the rotation this paper assigned',
+        'pass of:"' + String(assigned) + '" (that is what this round assigned to ' + str(member) + '); the assignment is printed by the advance() that opened this round as reviewOf',
+        { member: str(member), of: ofId, assigned: String(assigned), reviewOf: state.reviewOf })
     }
     // ★★ RUN 167: the review row's body must NAME ITS PAPER. The default fingerprint policy is `content-only`
     // (kind+body+tags, title excluded BY DESIGN), so two papers whose reviewers filed the same verdict on the same round
@@ -1056,17 +1059,22 @@ export function createPaperFlow({
       // and only the NEXT advance refused, so the paper sat in a stage it could never leave and the receipt that moved it
       // said nothing. The impossibility is known BEFORE the mutation: if no participant has another member's part to
       // review, the move is refused by name and the paper stays in "writing" (nothing is written by this call).
-      if (state.participants.length < 2) {
-        throw refuse(CODES.STATE,
-          'nothing moved: this paper has ' + String(state.participants.length) + ' participant(s), and with fewer than two there is no other member who could review a part — moving it to reviewing would lock it in a stage it can never leave (互审 with one participant is 自审)',
-          'start the paper with at least two participants (vibe_v5_paper { action: "start", participants: [...] }), have one member write a part and another member record a `part` — then advance(); the paper is still in "writing" and this call wrote nothing',
-          { participants: state.participants.slice(), crossReviewPossible: false })
-      }
+      // ★★ RUN 204 (FULL T1, self-correction of RUN 203 2.3): the refusal above was WRONG and the whole-suite run
+      // proved it — three suites pin the F6 design: a one-participant paper MOVES to reviewing with the author exempt
+      // (`notRequired`), the self-review is refused when it is attempted, and the paper is refused BY NAME at the
+      // cross-review gate. Refusing to move made that documented path unreachable, so the move stays and the receipt
+      // now states the impossibility up front instead of the caller discovering it after the move. The dead end is
+      // named here — this is disclosure, not a gate.
+      const crossReviewPossible = state.participants.length >= 2
       const roundFromWriting = Number(state.round)
       state.status = 'reviewing'; state.stage = 'reviewing'; state.reviewOf = reviewOf; state.reviews = {}
       writeState(state)
       return { ok: true, moved: true, from: 'writing', to: 'reviewing', round: state.round, reviewOf, notRequired,
         ...roundReading(roundFromWriting, 'writing', 'reviewing'),
+        crossReviewPossible,
+        crossReviewMeans: crossReviewPossible
+          ? 'at least two participants, so a part written by one member can be reviewed by another — 互审 is possible'
+          : 'ONLY ' + String(state.participants.length) + ' participant(s): the author is EXEMPT here (notRequired), no OTHER member exists to review the part, and the paper will be refused BY NAME at the cross-review gate — the stage moved, the thing 互审 needs does not exist. Start the paper with at least two participants (vibe_v5_paper { action: "start", participants: [...] }). This is stated now so the move is not misread as progress',
         notRequiredMeans: notRequired.length === 0
           ? 'every participant has a part by another member to review'
           : 'these participants have NO other member\'s part to review this round (' + notRequired.join(', ') + '): they are EXEMPT from the unanimity check (a member cannot review a section nobody wrote) — the paper does not need their verdict to advance' }

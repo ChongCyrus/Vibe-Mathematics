@@ -1294,9 +1294,14 @@ function debateEvidenceOf(args = {}) {
   // re-appearing in a different shape on the body row.
   const ballotId = word(raw.ballotId)
   const meeting = word(raw.meeting)
-  const rulingRef = ballotId || meeting || null
+  // ★★★ RUN 204 (FEEDBACK41 1.4): THE FRAMEWORK'S OWN PRINTED REPAIR COULD NOT BE PASTED BACK. `vibe_v5_verdict_final`
+  // hands out `debate_ruling: { …, ballotId: "tally-<meeting>-<card>", meeting: "…" }`, and the p=1 gate sent that tally
+  // id to the BALLOT branch, where no box by that name exists ⇒ UNRESOLVED. A tally id is a NAME for an aggregate
+  // (reproducible from meeting + proposition), declared here as its own key so the routed reading can re-derive it.
+  const tallyId = word(raw.tallyId)
+  const rulingRef = ballotId || meeting || tallyId || null
   return { mode: word(raw.mode), value: raw.value === undefined || raw.value === null ? null : raw.value,
-    ballotId, meeting, rulingRef,
+    ballotId, meeting, tallyId, rulingRef,
     rulingRefMeans: rulingRef === null
       ? 'this ruling named NEITHER a ballot nor a meeting, so nothing outside itself says what decided it — the gate still admits it (a caller-supplied ruling is the contract), but a reader cannot follow it anywhere'
       : (ballotId !== null && meeting !== null
@@ -1321,10 +1326,31 @@ function debateEvidenceOf(args = {}) {
  * decided nothing yet.
  */
 function rulingNameResolution(kernel, debate) {
-  const ref = debate && debate.rulingRef !== undefined && debate.rulingRef !== null ? str(debate.rulingRef) : ''
+  let ref = debate && debate.rulingRef !== undefined && debate.rulingRef !== null ? str(debate.rulingRef) : ''
   if (!ref) return null
   const ballotId = debate.ballotId !== undefined && debate.ballotId !== null ? str(debate.ballotId) : null
-  if (ballotId !== null) {
+  // ★★★ RUN 204 (FEEDBACK41 1.4): a TALLY id is not a ballot-box id. `vibe_v5_verdict_final` prints
+  // `ballotId: "tally-<meeting>-<card>"` next to `meeting`, and this face looked that name up on the BOX face, where it
+  // cannot exist ⇒ UNRESOLVED on a ruling the framework itself had just produced. A tally id is a NAME derived from
+  // (meeting, proposition) and stored nowhere, so it is checked by RE-DERIVING it — and the meeting it names is then read
+  // like any meeting ruling. A tally id without its meeting cannot be re-derived, and that is refused by name.
+  if (ballotId !== null && /^tally-/.test(ballotId)) {
+    const meetingId = debate.meeting !== undefined && debate.meeting !== null ? str(debate.meeting).trim() : ''
+    const subject = debate.subject !== undefined && debate.subject !== null ? str(debate.subject).trim() : ''
+    if (!meetingId) {
+      return { ok: false, kind: 'tally', ref, reason: 'no-meeting',
+        means: 'the ruling names the aggregate tally id ' + ballotId + ', which is a NAME derived from (meeting, proposition) and stored nowhere — '
+          + 'pass the `meeting` it was decided in as well (the verdict_final receipt prints both), so the name can be re-derived; never treat a tally id as a ballot box id' }
+    }
+    const expected = subject ? 'tally-' + [meetingId, subject].map(rulingSlugOf).join('-') : null
+    if (expected !== null && expected !== ballotId) {
+      return { ok: false, kind: 'tally', ref, reason: 'mismatch',
+        means: 'the ruling names tally id ' + ballotId + ', but that name does not re-derive from the meeting ' + meetingId
+          + ' + this card ' + subject + ' (it would be ' + expected + ') — one of the two names refers to a different decision' }
+    }
+    ref = meetingId
+  }
+  if (ballotId !== null && !/^tally-/.test(ballotId)) {
     const face = kernel && kernel.ballotbox
     if (!face || typeof face.status !== 'function') {
       return { ok: false, kind: 'ballot', ref, reason: 'unreadable',
@@ -1391,7 +1417,18 @@ function rulingNameResolution(kernel, debate) {
     return Number(t.for) > 0 && Number(t.against) === 0 && Number(t.abstain) === 0
   })
   const unanimousCarried = carried.filter((mo) => unanimousTallies.indexOf(mo) !== -1)
-  return { ok: true, kind: 'meeting', ref, exists: true, state: read.state === undefined ? null : String(read.state),
+  // ★★★ RUN 204 (FEEDBACK41 1.1): a tally is not the only reading a ruling needs — a meeting can hold votes its own
+  // floor refused to COUNT (run 42: three cast, present 1 of 3, tally 0). The floor reading rides ON the resolution so
+  // the UNVOTED refusal can say WHICH fact is missing instead of reporting "0 votes" for both cases.
+  const quorum = (() => {
+    if (typeof face.quorum !== 'function') return null
+    try {
+      const q = face.quorum({ meeting: ref, allowArchived: true })
+      if (!q || q.ok !== true) return null
+      return { present: Number(q.present) || 0, required: Number(q.required) || 0, met: q.met === true }
+    } catch { return null }
+  })()
+  return { ok: true, kind: 'meeting', ref, exists: true, quorum, state: read.state === undefined ? null : String(read.state),
     motions: motions.length, motionsSeconded: decidedMotions.length, motionsCarried: carried.length, votes: counted,
     unanimous: unanimousTallies.length > 0,
     unanimousCarried: unanimousCarried.length > 0,
@@ -1907,9 +1944,18 @@ function gatedCardHandler(toolName) {
                 : 'the ruling must name something THIS kernel holds: read the ballot with vibe_v5_poll_result or the meeting with vibe_v5_meeting {action:"summary"} and pass that id')
           }
           if (resolution.voted !== true) {
+            // ★★★ RUN 204 (FEEDBACK41 1.1, second half): "no votes" and "votes nobody counted" are DIFFERENT facts. run 42's
+            // card cited a meeting where three seats had voted, but the house stood at present 1/3, so the meeting tallied
+            // nothing — the refusal said "0 vote(s) recorded" and the caller spent three calls finding `attend`. When the
+            // resolution carries a floor reading that is NOT met, the hint names the floor BEFORE it names the vote route.
+            const floorShort = resolution.quorum && resolution.quorum.met === false
+              ? 'the meeting it names is not legally seated yet (present ' + String(resolution.quorum.present)
+                + ' of required ' + String(resolution.quorum.required) + '), so votes cast into it were RECEIVED but NOT COUNTED — '
+                + 'call vibe_v5_meeting {action:"attend"} for the missing seats first, then vote; '
+              : ''
             throw refuse('VMU_PACK_V5R_CORE_P1_RULING_UNVOTED',
-              'p=1 was refused because the ruling it names holds NO votes: ' + resolution.means,
-              'a ruling is a decision people made — ' + (resolution.kind === 'ballot'
+              'p=1 was refused because the ruling it names holds NO counted votes: ' + resolution.means,
+              floorShort + 'a ruling is a decision people made — ' + (resolution.kind === 'ballot'
                 ? 'cast votes into that box and close it (vibe_v5_poll_vote then close), then write the card'
                 : 'second and vote the motion in that meeting, then write the card') + '; or settle the card through vibe_v5_fidelity_conclude, whose conformance ruling carries its own evidence')
           }
@@ -3338,6 +3384,27 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   // too — branching the two cases on `has()` made the empty case unreachable and reported every blank agenda as
   // "none was passed". Presence is what tells them apart.
   const agendaGiven = args.agenda !== undefined && args.agenda !== null
+  // ★★★ RUN 204 (FEEDBACK41 1.2): a STRUCTURE is not an agenda. This face stored `str(args.agenda)`, so an object became
+  // the minutes line "[object Object]" — a meeting whose stated purpose is a JavaScript type name — and a bare array was
+  // silently joined with commas. The stored agenda is ONE LINE OF TEXT, and the face now says so instead of stringifying.
+  let agendaText = ''
+  if (agendaGiven && typeof args.agenda !== 'string') {
+    if (!Array.isArray(args.agenda)) {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'meeting needs an agenda as TEXT, and you passed a ' + (typeof args.agenda) + ' — it would be stored as "'
+          + String(args.agenda) + '", which is a JavaScript type name, not a purpose',
+        'pass agenda:"what this meeting is for" (one line of text). An ARRAY is accepted only as a list of NON-EMPTY strings, joined with "; ". `title` is a SEPARATE optional name.')
+    }
+    const kept = args.agenda.filter((x) => typeof x === 'string' && x.trim() !== '')
+    if (kept.length === 0) {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'meeting needs an agenda as TEXT, and the array you passed holds no non-empty string (' + String(args.agenda.length) + ' item(s))',
+        'pass agenda:"what this meeting is for", or an array holding at least one non-empty string.')
+    }
+    agendaText = kept.map((x) => x.trim()).join('; ')
+  } else {
+    agendaText = str(args.agenda)
+  }
   if (!has(args.agenda)) {
     throw refuse('VMU_INVALID_ARGUMENT',
       'meeting needs an agenda — ' + (agendaGiven
@@ -3529,7 +3596,7 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     // ★ WAVE 2 (audit E6): 「会议要有有意义的标签」 is enforced on the face the rule talks about. The kernel rail is
     // opt-in (`labelRequired`) so direct service callers and the ~70 unlabelled fixtures keep working; a PACK face that
     // is the rule's own tool passes true and gets the named refusal when neither `kind` nor `title` was given.
-    labelRequired: true, kind, materials: str(args.agenda), secretary, wallLimitMs: durationMs,
+    labelRequired: true, kind, materials: agendaText, secretary, wallLimitMs: durationMs,
     subject: subject === null || subject === undefined ? null : subject, at, title, sequence,
     subjectGate: subjectGate ? { allowed: true, applicable: subjectGate.applicable === true, form: subjectGate.form || null,
       proofVia: subjectGate.proofVia || null, provenance: subjectGate.provenance || null, proofBasis: subjectGate.proofBasis || null,
@@ -3555,7 +3622,7 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     type, subject: opened && opened.subject !== undefined ? opened.subject : null,
     title: opened && opened.title !== undefined ? opened.title : title,
     procedure: proc.procedure, procedureBinding: proc.binding, procedureNote: proc.note, pendingSteps: proc.pendingSteps,
-    kind, agenda: str(args.agenda), formalAgenda: args.formal_agenda === true, secretary,
+    kind, agenda: agendaText, formalAgenda: args.formal_agenda === true, secretary,
     // ★ LIVE RUN 122 (E6): WHERE the label came from. `kind` defaults to 'sync' so every meeting always has a word for
     // what it is — and that default is exactly why a reader must be able to tell a chosen label from a filled-in one.
     kindSource: kindGiven ? 'args' : (KIND_BY_TYPE[type] ? 'derived-from-type' : 'default'),

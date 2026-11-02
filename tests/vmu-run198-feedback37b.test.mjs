@@ -47,7 +47,9 @@ test('RUN 198 §0 — every repair is on the source it belongs to (source pins)'
   // 2.4 one ruling, two names, ONE normalized reference
   has(PACK, 'const ballotId = word(raw.ballotId)', '§0a the ballot name is part of the declared shape')
   has(PACK, 'const meeting = word(raw.meeting)', '§0b ★ and so is the meeting name (the one `correction.call` prints)')
-  has(PACK, 'const rulingRef = ballotId || meeting || null', '§0c ★ the two names are normalized ONCE into one reference')
+  // ★ RUN 205: the reference now normalises THREE names into one (RUN 204 added `tallyId`, the name `verdict_final`
+  // prints) — the sentence, not the arity, is the contract.
+  has(PACK, 'const rulingRef = ballotId || meeting || tallyId || null', '§0c ★ the names are normalized ONCE into one reference')
   has(PACK, 'rulingRefMeans:', '§0d and the reference says which name it came from')
   has(GATES, 'rulingRef: ev.debate.rulingRef || null', '§0e the gate echoes the reference it admitted on')
   has(PACK, 'p1RulingRef: p1Ruling', '§0f ★ the card write receipt reads that reference back')

@@ -3405,3 +3405,11 @@ RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一
 - **为什么 `roundReading` 按 stage 而不是回合号选句子**：第一版按 `roundTo === 1` 说「opened the first cycle」，把「reviewing → awaiting-editor 收掉第一轮」也说成开轮；数字相等不等于含义相同，句子必须跟着 stage。
 - **机器化**：`tests/vmu-run203-feedback40.test.mjs` 5/0（两次移动的回合读数、`crossReview` 覆盖、`of` 错配具名拒且不写盘、单人提前拒且 status 未变、指针 means 分因）；`tests/vmu-run200-pointer-resolution.test.mjs` §0i 因召集分支改成「先解析一次再入回执」而拆成两条 pin。
 - **未闭合**：FEEDBACK40 的 1.1（会议裁决写不回 p=1 卡）、2.2（同源 `shapeMeans`）、1.6（论文 state 行被覆写）与真机复验。
+
+## ROUND 209（★ 接收 ≠ 计数；打印的名字要能粘回去）
+
+- **账从哪来**：第 42 次真机（`FEEDBACK41`，`Paper/paper-p1` 84 541 B）。六条缺陷都是「回执说的是另一件事」：票被收下≠被数了、`agenda` 被 `String()` 成 `"[object Object]"`、`verdict_final` 打印的 tally id 落到票箱面必查不到、截断读数的 `false` 被读成「没测量」、enum 拒绝不说合法值、判据里的「每回合三问」四个字在提示词里不存在。
+- **修法**：`tools/meeting.js` 顶层 `counted`/`countedMeans`；`packs/v5r/tools.js` 的 `voteFloor`（先读地板再怪选民）、`agendaText` 校验（字符串/非空字符串数组/其余具名拒）、`tallyId` 与 `/^tally-/` 的重派生分支；`packs/v5r/paper-quality.js` 两侧 `requiredLineCapApplies`/`Why`；`settings/schema.js` 的 enum hint 印合法值；`prompts/v5r-blocks-b.js` 三席嵌入 `**每回合三问**`。
+- **一次自查推翻**：RUN 203 的「单人论文提前拒」破坏了 F6 已经设计好的路（移动发生、作者 exempt、自审在 review 拒、互审闸在之后拒）；全量 T1 让三套老套件同时红，改回成 `crossReviewPossible`/`crossReviewMeans` 的**披露**，并把 `recordReview` 的自审检查提到 `of` 不符之前。
+- **机器化**：`tests/vmu-run204-feedback41.test.mjs` 5/0（§0 pin、§1 真 `vibe_v5_set` 印合法值、§2 真召集的结构议程、§3 两个截断读者、§4 孤儿 tally id）。
+- **未闭合**：`FEEDBACK41 1.3`（读现行版写回 `lastStaleSeenAt` 改指纹）、`1.5`（turn 回执无成员正文）；本轮未真机复验。

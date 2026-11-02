@@ -1712,7 +1712,12 @@ export function validateValue(key, value) {
     const textType = d.type === 'string' || d.type === 'stringList' || d.type === 'enum'
     const hint = numericLooking && !textType
       ? 'declared as ' + d.type + ' — a QUOTED number is a text value, not a number: pass 8000, not "8000"'
-      : 'declared as ' + d.type
+      // ★★★ RUN 204 (FEEDBACK41 2.2): "declared as enum" names the rule and withholds the ANSWER. run 42 was told its
+      // value was outside a domain whose members it then had to discover from the docs. A refusal that knows the legal
+      // values prints them.
+      : (d.type === 'enum' && Array.isArray(d.domain) && d.domain.length
+        ? 'declared as enum — the LEGAL VALUES are: ' + d.domain.join(' | ') + ' (a value outside them is refused by name, never clamped to the default)'
+        : 'declared as ' + d.type)
     throw refuse('VMU_INVALID_ARGUMENT', d.key + ': ' + why, hint)
   }
   return value

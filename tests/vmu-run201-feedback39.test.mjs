@@ -104,7 +104,9 @@ test('RUN 201 §1 — a ruling must name a decision that exists AND that somebod
     }))
     ok(unvoted.ok === false && unvoted.code === 'VMU_PACK_V5R_CORE_P1_RULING_UNVOTED',
       '§1c ★★ p=1 was refused because that ballot has no votes (run 40 wrote it through)', unvoted)
-    ok(/holds NO votes/.test(String(unvoted.message)), '§1d the message says which reading refused it', unvoted.message)
+    // ★★ RUN 204: the sentence narrowed from "holds NO votes" to "holds NO COUNTED votes" — a vote can be received
+    // and not counted (quorum), and that is a different fact from "nobody voted". The pin follows the narrower claim.
+    ok(/holds NO counted votes/.test(String(unvoted.message)), '§1d the message says which reading refused it', unvoted.message)
     ok(/cast votes into that box/.test(String(unvoted.hint)), '§1e and the hint names the reachable way to make it real', unvoted.hint)
 
     // (c) a CLOSED ballot that people voted in ⇒ admitted, and the receipt carries the reading
