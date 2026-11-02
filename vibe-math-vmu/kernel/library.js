@@ -14,7 +14,12 @@
 // never disagree (the v5r PR#16 lesson).
 
 import { mkdir, readdir, readFile, writeFile, stat, rename, unlink } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
+// ★ RUN 200: the pointer resolver is SYNCHRONOUS on purpose. Its callers include a receipt writer and the convene path,
+// and a resolver that had to be awaited would either spread `async` through a pure predicate or be quietly skipped.
+// fs-purpose: guard — RUN 200's pointer resolver stat/lstats a caller-named pointer to DECIDE whether it stays inside the
+// library root and names a real file. It decides and never writes, and it reads no content: that is the `guard` half.
+import { statSync } from 'node:fs'
+import { join, dirname, isAbsolute } from 'node:path'
 import { createHash } from 'node:crypto'
 import { guardWrite } from './guard.js'
 import { createLibraryPolicy } from './library-policy.js'   // ROUND 235: the extracted policy checkers
@@ -320,6 +325,64 @@ export function createLibrary({
 
   return {
     get root() { return root },
+
+    /**
+     * ★★ RUN 200 (run 39 / FEEDBACK38 1.1, MEASURED): resolve a POINTER the way a card's `proofRef` is written.
+     *
+     * Run 39 pointed a proposition at `Members/r-acad/Propos/p-1.md#证明（已写完）` while writing that file into the
+     * SESSION WORKING DIRECTORY instead of the library root; every receipt said the pointer was fine, the card locked
+     * (rule L14), and `read_library` then answered `libraryCardCount:0` for a file the author could see in its own
+     * `ls`. The missing capability was here: the kernel owns the library root and the filesystem, so it is the only
+     * layer that can answer "does this pointer name a file INSIDE the library".
+     *
+     * Shape: `{ ok, pointer, relativePath, absolutePath, anchor, exists, isFile, bytes, insideLibrary, reason, means }`.
+     * `ok` means "the pointer is nameable and the library answered", NOT "the file exists" — the two are separate
+     * facts and a caller that conflates them will report a missing proof as a wrong path (or the reverse).
+     * Never throws: an empty pointer, an absolute path, an escape through `..` and a missing file are all answers.
+     */
+    resolvePointer(pointer) {
+      // ★ NOTE ON THE LITERAL BACKSLASHES: this file is edited through several layers of quoting, and a single slipped
+      // escape produced an unparseable module twice. The separator is therefore read from its code point, and path
+      // classification is delegated to node:path (which already knows drive letters, UNC names and both separators).
+      const SEP = String.fromCharCode(92)
+      const norm = (v) => String(v).split(SEP).join('/')
+      const raw = pointer === undefined || pointer === null ? '' : String(pointer).trim()
+      if (raw === '') {
+        return { ok: false, pointer: '', relativePath: null, absolutePath: null, anchor: null, exists: false, isFile: false,
+          bytes: null, insideLibrary: false, reason: 'empty',
+          means: 'no pointer was given, so there is nothing to resolve: an empty reference is not a file at the library root' }
+      }
+      const hashAt = raw.indexOf('#')
+      const pathPart = hashAt === -1 ? raw : raw.slice(0, hashAt)
+      const anchor = hashAt === -1 ? null : raw.slice(hashAt + 1)
+      const relativePath = norm(pathPart).split('/').filter((seg) => seg !== '' && seg !== '.').join('/')
+      const refused = (reason, means) => ({ ok: false, pointer: raw, relativePath: relativePath || null, absolutePath: null,
+        anchor, exists: false, isFile: false, bytes: null, insideLibrary: false, reason, means })
+      if (isAbsolute(pathPart) || isAbsolute(norm(pathPart))) {
+        return refused('absolute', 'this is an ABSOLUTE path: a card pointer is RELATIVE to the LIBRARY root (' + root + '), so an absolute path names a filesystem outside this library and cannot be resolved here')
+      }
+      if (relativePath === '' || relativePath.split('/').some((seg) => seg === '..')) {
+        return refused('escapes', 'this pointer climbs out of the library root: it is a RELATIVE path under ' + root + ', so .. segments cannot be resolved')
+      }
+      const absolutePath = join(root, relativePath)
+      const normalisedRoot = norm(root).replace(/\/+$/, '')
+      const insideLibrary = norm(absolutePath).startsWith(normalisedRoot + '/')
+      if (!insideLibrary) {
+        return refused('escapes', 'this pointer resolves outside the library root ' + root + ' even after normalisation')
+      }
+      let st = null
+      try { st = statSync(absolutePath) } catch { st = null }
+      if (st === null) {
+        return { ok: true, pointer: raw, relativePath, absolutePath, anchor, exists: false, isFile: false, bytes: null,
+          insideLibrary: true, reason: 'missing',
+          means: 'the pointer is well formed and INSIDE the library root, but no file exists at ' + absolutePath + ' — write the proof there (a file in the session working directory is not in the library), or point the card at a record id instead' }
+      }
+      return { ok: true, pointer: raw, relativePath, absolutePath, anchor, exists: true, isFile: st.isFile(),
+        bytes: st.isFile() ? st.size : null, insideLibrary: true, reason: st.isFile() ? 'file' : 'not-a-file',
+        means: st.isFile()
+          ? 'the pointer names a real file inside the library root (' + relativePath + ', ' + st.size + ' bytes)' + (anchor ? '; the #' + anchor + ' part is an ANCHOR inside that file and is not resolved here' : '')
+          : 'the pointer names something that exists but is not a regular file (' + relativePath + ')' }
+    },
 
     fingerprint,
     registerVocabulary,

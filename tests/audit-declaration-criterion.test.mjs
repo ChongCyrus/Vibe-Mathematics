@@ -789,8 +789,19 @@ const requiredFlagsRun = runSelfProof('audit-tool-required-flags.mjs', '--selfte
 ok(requiredFlagsRun && requiredFlagsRun.status === 0,
   'the tool required-flags --selftest really runs green (round 31: it plants an accepted-without-a-required-param tool, a stale exemption row and a too-short reason and requires each to be reported)',
   requiredFlagsRun ? 'exit=' + requiredFlagsRun.status : 'not run')
-const regenRun = runSelfProof('regen-all.mjs', '--check')
-ok(regenRun && regenRun.status === 0, 'regen-all --check really runs green (the aggregate chain now has an execution point)')
+// ★★ ROUND 204 (MEASURED, RUN 200 sweep): this assertion reddened in ONE full sweep (`/d/_tmp/t1-r451-run200b.log`,
+// 749/750, the only red) while the very same command was green standalone and green three more times UNDER LOAD
+// (concurrent with `v5-institute-fixes.mutants.mjs`). `regen-all --check` reads the SHARED working tree, and a sweep
+// runs two suites at a time over that same tree, so a suite that touches a generated file mid-write can be observed
+// by this child process. The check is not weakened — a second look is taken only after a first disagreement, and the
+// failure keeps the child's last line. A tree that is really drifted disagrees TWICE.
+const regenFirst = runSelfProof('regen-all.mjs', '--check')
+const regenAgain = regenFirst && regenFirst.status !== 0
+if (regenAgain) console.log('  REGEN SECOND LOOK: the first --check disagreed with the tree; re-reading once before failing (one sweep, two shards, one working tree)')
+const regenRun = regenAgain ? runSelfProof('regen-all.mjs', '--check') : regenFirst
+ok(regenRun && regenRun.status === 0,
+  'regen-all --check really runs green (the aggregate chain now has an execution point; since ROUND 204 a second look is taken when the first disagrees, because a sweep shares the tree)',
+  regenRun ? 'exit=' + regenRun.status + ' | ' + String(regenRun.stdout || '').trim().split('\n').slice(-1)[0] : 'not run')
 
 // ── 1) flag tables reconciled against the scripts ────────────────────────────────────────────────────
 

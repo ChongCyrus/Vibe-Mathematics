@@ -1817,7 +1817,20 @@ function gatedCardHandler(toolName) {
       // does, this field used to stay null — the receipt then said "complete" with no evidence at all, which is the
       // "a claim without its warrant" shape the ledger keeps catching. Shape-checked, not content-checked: say which.
       const refHere = has(args.proof_ref) ? str(args.proof_ref).trim() : ''
+      // ★★ RUN 200 (run 39 / FEEDBACK38 1.1): the message told the author to check the pointer itself. The kernel owns
+      // the library root and the filesystem, so the receipt can answer instead of instructing: `pointerCheck` carries
+      // the resolution this same call performed (absolute / escapes / missing / file), and `pointerCheck.ok` means
+      // "the library answered", NOT "the file exists" — the two facts are separate and both are printed.
+      const pointerCheck = (refHere !== '' && kernel && kernel.library && typeof kernel.library.resolvePointer === 'function')
+        ? kernel.library.resolvePointer(refHere)
+        : null
       if (refHere !== '') return { kind: 'proof-ref', measured: false, ref: refHere,
+        pointerCheck,
+        pointerCheckMeans: pointerCheck === null
+          ? 'this kernel exposes no library pointer resolver, so the receipt can only hand the pointer back'
+          : (pointerCheck.exists === true
+            ? 'resolved: the pointer names a real file INSIDE the library root (' + String(pointerCheck.relativePath) + ')'
+            : 'NOT resolved: ' + String(pointerCheck.reason || 'unknown') + ' — ' + String(pointerCheck.means || '').split(' — ')[0]),
         means: 'the caller pointed the card at a written proof (`proof_ref`); this gate checked only that the reference is non-empty — the content is read by the members in the debate',
         // ★★ RUN 199 (run 39 / FEEDBACK38 1.1, MEASURED): run 39 pointed a card at Members/r-acad/Propos/p-1.md#… while
         // writing that file into the WORKSPACE root instead of the LIBRARY root, and the receipt said nothing — then the
@@ -3291,6 +3304,15 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     } })
     const subjectRefusal = gateRefuse(subjectGate)
     if (subjectRefusal) return subjectRefusal
+    // ★★ RUN 200: a declared proof pointer that names nothing is not a refusal this gate can make (the rule admits a
+    // DECLARATION), but a receipt that stays silent about it is how run 39 locked a card onto a file that lived in the
+    // wrong tree. The gate predicate stays pure; the resolution is attached beside it, by name and with its reason.
+    if (subjectGate && subjectGate.declaredProofRef && kernel && kernel.library && typeof kernel.library.resolvePointer === 'function') {
+      subjectGate = Object.assign({}, subjectGate, {
+        proofPointer: kernel.library.resolvePointer(subjectGate.declaredProofRef),
+        proofPointerMeans: 'the debate gate admitted this card on a DECLARATION; this line is the LIBRARY answer about WHERE the declared pointer points — proofPointer.exists:false means the card is pointed at a file that is not inside the library root',
+      })
+    }
   }
   // ★ PHASE 7 round 23: the kernel's `meetings.open` accepts a SECRETARY (a recorder). The pack passes it through and
   // validates that the named id is on the roster — the RECORD right is a role the meeting declares, never a silent name.
@@ -3359,7 +3381,10 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
       proofVia: subjectGate.proofVia || null, provenance: subjectGate.provenance || null, proofBasis: subjectGate.proofBasis || null,
       // ★ 闸判过的形态与它「没核过什么」一起发布：只给 proofChecked 的话，`proofContentChecked:false` 这条披露就消失在回执里。
       proofChecked: subjectGate.proofChecked === true, proofContentChecked: subjectGate.proofContentChecked === true,
-      looksLikeIdentifier: subjectGate.looksLikeIdentifier === true, note: subjectGate.note || null } : null,
+      looksLikeIdentifier: subjectGate.looksLikeIdentifier === true, note: subjectGate.note || null,
+      // ★ RUN 200: the library answer about WHERE the declared pointer points travels with the admission, because run 39
+      // read the silence as "the pointer was checked". The gate itself stays a pure predicate over its own inputs.
+      proofPointer: subjectGate.proofPointer || null, proofPointerMeans: subjectGate.proofPointerMeans || null } : null,
     procedure: procedureFor(type) })
   // ★ 可读回的事实：预约不是"一个被收下的参数"，而是会议对象的状态。`state`/`scheduledFor` 由内核回执给出，
   // 这一面只转述；`scheduleNote` 只在真的进入 scheduled 时出现（不要给立即召开的会议编一句预约说明）。
@@ -3422,7 +3447,10 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
       proofBasis: subjectGate.proofBasis || null,
       // ★ 闸判过的形态与它「没核过什么」一起发布：只给 proofChecked 的话，`proofContentChecked:false` 这条披露就消失在回执里。
       proofChecked: subjectGate.proofChecked === true, proofContentChecked: subjectGate.proofContentChecked === true,
-      looksLikeIdentifier: subjectGate.looksLikeIdentifier === true, note: subjectGate.note || null } : null,
+      looksLikeIdentifier: subjectGate.looksLikeIdentifier === true, note: subjectGate.note || null,
+      // ★ RUN 200: the library answer about WHERE the declared pointer points travels with the admission, because run 39
+      // read the silence as "the pointer was checked". The gate itself stays a pure predicate over its own inputs.
+      proofPointer: subjectGate.proofPointer || null, proofPointerMeans: subjectGate.proofPointerMeans || null } : null,
     enforced: enforcedOf([subjectGate]), enforcedScope: ENFORCED_SCOPE,
     note: 'the original could also PROPOSE a meeting from a non-chair seat and let the chair convene it; this face has no propose path (named gap: procedure/propose). ★★ THIS FACE ONLY CONVENES: for status/summary/snapshot/close/extend/extendlimit/proceed/lapse/ballot/speak/hand/hands/order/invite/invitedspeak/attend/flow/overrideorder use vibe_vmu_meeting { action, id } - the kernel face, which reaches the same meeting object. Measured on a full live run: an agent tried summary/close HERE, got nothing, and reported it as a missing capability; the capability existed one face over and nothing said so. ★ D9 邀请面 (this round): hand/invite/invitedspeak/order/attend now really reach a SERVICE meeting through that face — hand = a member queues itself, invite = the CHAIR puts one member or an ordered list (members:[…]) on the floor queue, order = reads the real queue back, invitedspeak = the invited voice speaks in the minutes, attend = marks a member present (an invitation NEVER marks anybody present: attendance is its own act and only it counts for the quorum). silent/end/hands stay primitive-only and the kernel face refuses them on a service meeting BY NAME. ★ A floor-order override (flow/overrideorder) still needs vmu.meetings.orderMode declared by the deployment; v5r does not declare it, so on a real run it is refused by name rather than silently ignored. ★ The recommended procedure is a RECOMMENDATION: skipping it, reordering it, or ignoring it entirely is allowed and unchecked.' }
 }

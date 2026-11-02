@@ -453,7 +453,9 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         'prompt is assembled by the pipeline), drive runs a bounded number, status reports what the loop has done, ' +
         'reply records the member\'s structured report for the open turn (the primary reporting channel - the fenced ' +
         'json object in reply stays supported as the compatibility path). ' +
-        'A round with no members is a legal no-op; a failed round is returned with its code rather than thrown.',
+        'A round with no members is a legal no-op; a failed round is returned with its code rather than thrown. ' +
+        'ONE round advances ONE member (drive{rounds:N} moves at most N members, it is not a lap over the roster), and ' +
+        'the receipt says in notAdvanced why it stopped.',
       // ★ PHASE 7 / round 20: this block used to be a FULL JSON SCHEMA passed where the host expects a PARAM MAP.
       // toHostParameters() then wrapped it once more, so the PUBLISHED schema had properties named type/properties/required
       // and a real "properties" object - the model (correctly) put its arguments INSIDE that object, so top-level keys like
@@ -469,7 +471,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         // — a SINGLE-member shorthand. The face refused it as an unknown parameter, so the caller's intent was lost and the roster
         // default woke everyone. The shortcut is declared here and forwarded to the kernel, which owns the one mapping.
         member: param('string', '★ 单成员简写（等价于 members:[{id}]）；与 members 同传时 members 优先。chair 栏杆的 hint 用的就是它'),
-        rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）'),
+        rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）。★ 一轮只推 ONE 个成员：drive{rounds:N} 最多推动 N 个成员，不是「N 个成员各跑一轮」——推不动时回执 notAdvanced 说明为什么停下'),
         phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
         why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
         reply_for: param('string', '★ 这个回复属于哪个成员（它的提示词是上一次 step 交回的那个）；不传 = 沿用旧行为'),

@@ -3343,3 +3343,22 @@ RUN 199（run 39 / `FEEDBACK38`）——「回执许诺了另一面从未填的�
 8. **`vibe_v5_meeting.agenda` 的声明缺口留成一行债**：一面临两门（convene 要 agenda、status/summary/rulings 只要 action+id），不能全局 required；`scripts/audit-tool-required-flags.mjs` 的第 5 条豁免把这个形状写出来，而不是把它扫绿。
 
 机器化 `tests/vmu-run199-feedback38.test.mjs`（6/0）。两条装载事实：`vibe_v5_paper` 的动作块套在 `{ ok, tool, action, <动作名>: <块> }` 里（读浅一层就「字段消失」）；第二轮只能由 `final{revise}` 打开，`advance` 永不回到 writing。
+
+## ROUND 203
+
+RUN 200（run 39 / `FEEDBACK38` 的 1.1 与 2.5）——「指针从来没有被读过，而一轮不是一圈」。两条：
+
+1. **`kernel/library.js` 新增 `resolvePointer(pointer)`**（同步，注释写明理由：召集路径是纯谓词）：回答
+   `exists / isFile / bytes / insideLibrary / reason`，`reason` 具名 `empty | absolute | escapes | missing | file`（另 `not-a-file`）；
+   **`ok` 是「库回答了」，`exists` 才是「文件在不在」**。`#anchor` 单独回填、不参与路径；分隔符用
+   `String.fromCharCode(92)`、绝对路径用 `node:path.isAbsolute`，代码里不写量字反斜杠。
+2. **两处回执各说一句、并把键透传进两处投影**：写卡回执的 `proofStateEvidence` 加 `pointerCheck` / `pointerCheckMeans`；
+   召集回执加 `proofPointer` / `proofPointerMeans`（`the debate gate admitted this card on a DECLARATION; this line is the
+   LIBRARY answer about WHERE …`）。辩论闸本身**没有**变成门：`declaration-only` 仍然放行。
+3. **轮次语义上提到调用前**：`tools/turn.js` 的 description 与 `rounds` 参数说明都写明「ONE round advances ONE member
+   (drive{rounds:N} moves at most N members, it is not a lap over the roster)」。`drive` 的行为一个字没改——错的是
+   这句话只在 `notAdvanced` 里出现过。
+4. **契约同步**：`docs/03-interface-contract.md` 的 `vmu.library` 两行各加 `resolvePointer`（同步方法与五档具名）。
+
+机器化 `tests/vmu-run200-pointer-resolution.test.mjs`（5/0）：五档直连 + 两张卡一件坏一件好（都照样开会）+ 坏指针
+`proofPointer.exists === false` + 参数说明与 description 两处都说了轮次。定向回归 59/0，`audit-vmu-docs` 103/0。

@@ -14362,3 +14362,78 @@ recorded NO verbatim line`、`refused('VMU_REGISTRY_BOUNDARY'`、两条 `refuser
 - **同一件事有两个消费者时，「各自算出答案」就是两个答案**：`requiredLineFull` 的 null 不是忘了填，是**两个函数各算一次**，而其中一个手里没有原料。修法不是补一次赋值，是**让两个消费者调同一个读者**。
 - **`null`/空数组要说清它自己是「没有」还是「不知道」**：`conclusion: ""` 与 `refusers: []` 都是「有值但看不出意思」。改成「字段 + 出处（`conclusionSource`）」与「三列分开列（refusers/stale/notYetReviewed）」之后，同一个 `[]` 第一次有了确定含义。
 - **拒绝句的受众是「下一步要动的人」**：run 39 漏 agenda 不是它笨，是拒绝句只说了「不许传 subject」，没有说「这一类型**要** agenda」。最小可用调用式比形容词有用。
+
+## §300 RUN 200 —— 指针从来没有被读过，而一轮不是一圈（run 39 / FEEDBACK38 未闭合 1.1 与 2.5）
+
+### 300.1 账从哪来：run 39 的两处现场读数
+
+`FEEDBACK38` 1.1：r-acad 把证明卡写成 `proof_ref:"Members/r-acad/Propos/p-1.md#证明（已写完）"`、`proof_state:"complete"`，
+而这行相对的是**会话工作目录**，不是库根 `VibeMath/`。写卡回执、辩论对象闸、`vibe_v5_read_library` 三处都没有一句话
+说「这个指针指向的文件不在库根下」：闸只回 `proofBasis:"declaration-only", proofChecked:false` 就放行，卡被 L14 锁死
+（`proof_state:"complete"` 之后指针不能再改），随后 `read_library` 回 `libraryCardCount:0`。`FEEDBACK38` 2.5：`drive`
+的 `rounds` 是「一轮只推一个成员」，而这句话只出现在 `notAdvanced` 的拒绝理由里，工具描述与参数说明都没有。
+
+### 300.2 修法（两处，都在宿主层）
+
+- **`vibe-math-vmu/kernel/library.js` 新增 `resolvePointer(pointer)`**：返回
+  `{ ok, pointer, relativePath, absolutePath, anchor, exists, isFile, bytes, insideLibrary, reason, means }`，
+  `reason` 具名五档 `empty | absolute | escapes | missing | file`（另有 `not-a-file`）；`#anchor` 单独回填、不参与路径解析。
+  **`ok` 只表示「库回答了这个问题」，`exists` 才是「文件在不在」**——两件事分开说，是这一条修法的核心：
+  run 39 的失败不是「文件不在」，而是「没人问过」。
+  方法刻意是**同步**的（注释写明理由）：调用方包含辩论对象闸这条纯谓词路径，变 `async` 要么扩散到所有调用者，
+  要么会被某个调用点悄悄跳过。
+  路径处理里**一个量字反斜杠都不写**：分隔符用 `const SEP = String.fromCharCode(92)`，绝对路径判定用
+  `node:path` 的 `isAbsolute`（这是本轮踩过两次反斜杠被吞之后的选择）。
+- **两处回执接线**：① 写卡回执的 `proofStateEvidence` 的 proof-ref 分支加 `pointerCheck`（解析结果）与
+  `pointerCheckMeans`（`resolved: the pointer names a real file INSIDE the library root (…)` /
+  `NOT resolved: missing — …`）；② 召集回执在 `subjectGate` 放行之后 `Object.assign` 上 `proofPointer` +
+  `proofPointerMeans`（`the debate gate admitted this card on a DECLARATION; this line is the LIBRARY answer about WHERE …`），
+  并把这两个键**透传进两处 `subjectGate` 投影**——只改一处的后果是字段在另一条回执路径上「消失」，这是本仓库
+  反复踩到的形状（RUN 197 的 `part` 拒绝字段同型）。
+- **2.5 轮次语义上提到调用者看得见的地方**：`vibe-math-vmu/tools/turn.js` 的 description 追加
+  `ONE round advances ONE member (drive{rounds:N} moves at most N members, it is not a lap over the roster), and the receipt says in notAdvanced why it stopped.`；
+  `rounds` 参数说明加「★ 一轮只推 ONE 个成员 … 不是「N 个成员各跑一轮」」。
+  **不**改 `drive` 的行为：`rounds:N` 一直就是「最多推 N 个成员」，错的是没有人把这句话写在该写的地方。
+- **契约同步**：`vibe-math-vmu/docs/03-interface-contract.md` 的 `vmu.library` 两行各加 `resolvePointer`
+  （模块行标「RUN 200 新增」与「同步方法，因为召集路径是纯谓词」；签名行写五档具名与「`exists` 与 `ok` 分开说」）。
+
+### 300.3 机器化
+
+`tests/vmu-run200-pointer-resolution.test.mjs`（5/0）：
+
+- §0 十三条源码 pin（`resolvePointer`、五档字面量、`String.fromCharCode(92)`、`pointerCheck`、`pointerCheckMeans`、
+  `proofPointerMeans`、两处投影、`isAbsolute`、轮次两句）。
+- §1 直连 `createLibrary({ root: dir })` 验五档：空指针 / 绝对路径 / 逃出库根（`..`）/ 文件不存在 / 文件存在，
+  加 `#anchor` 单独回填、目录回 `not-a-file`。
+- §2 真装配写两张卡：好指针 `exists:true`、坏指针 `exists:false && reason:'missing'`，且 `pointerCheckMeans`
+  以 `NOT resolved: missing` 开头。
+- §3 真召集两场辩论：**两张卡都照样开会**（`subjectGate.proofBasis` 仍是 `declaration-only`，闸没变成门），
+  坏指针那张的 `proofPointer.exists === false`。这里刻意保留「自述即放行」的学术口径，只补上「库回答了什么」。
+- §4 `spec.parameters.properties.rounds.description` 与工具 description 两处都说了「一轮一个成员」。
+
+### 300.4 回归、生成物与门禁
+
+- 定向回归 `--only library --only v5r-tools --only turn --only meeting --only run199 --only run191 --only run193 --only run155 --only audit-vmu-docs --only audit-face-actions --only audit-tool-required-flags`
+  ⇒ **59 PASS / 0 FAIL（suites 57 · probes 2）**；`tests/audit-vmu-docs.test.mjs` 单跑 **103/0**（settings 表 1273 keys）。
+- 全量 T1：`/d/_tmp/t1-r451-run200b.log` = **`TOTAL 750 PASS 749 FAIL 1`（suites 642 · probes 108）`EXIT=1`**，
+  唯一的红是 `tests/audit-declaration-criterion.test.mjs` 里那条 `regen-all --check really runs green`——
+  同一命令单跑 **91/0**，且在 `tests/v5-institute-fixes.mutants.mjs` 压着连跑 **3 次 3 绿**。它读的是**共享工作树**，
+  而一次 sweep 有两条 shard 同时在动这棵树，于是「别人写到一半」被这个子进程看见。
+  修法不是放宽判据：**第一次不一致时再读一次**（`REGEN SECOND LOOK`），把子进程最后一行写进断言细节；
+  真漂移会**两次都不一致**。这条 SWEEP-ONLY 红与 §299.4 的 `vmu-run155` 属同一族（同一个 sweep、同一种共享树争用），
+  两处都按「如实记、不宣布已修」的口径留在文档里。
+
+### 300.5 未闭合
+
+- `proof_state:"complete"` 仍由作者声明即放行；本轮**只**让机构能回答「指针指向的文件在不在库根下」，
+  没有把 `declaration-only` 变成一道门（学术口径要单独讨论）。
+- 写卡时**不拒**坏指针，只在回执里说；「锁死之后不能改指针」仍然只能靠作者读 `lockNote`。
+- `#anchor` 只回填、不校验锚点是否真的在那份文件里（需要读文件内容，尚未做）。
+- 本轮修复尚未真机复验（第 41 次真机 `task-sim41.txt` 复验两条）。
+
+### 300.6 两条教训
+
+- **「没被问过」与「答案是否」是两件事**：run 39 的指针错误不是校验失败，而是全机构没有任何一层拥有「库根 + 文件系统」
+  两样东西。把解析器放进宿主层的库模块、并在两处回执里各说一句，比在提示词里加一句「记得写对」有用。
+- **语义写在拒绝理由里等于没写**：`rounds` 的正确含义只在失败路径的 `notAdvanced` 里出现过一次，于是调用者只有在
+  用错之后才第一次读到它。正确位置是描述与参数说明——**调用之前就该看见**。
