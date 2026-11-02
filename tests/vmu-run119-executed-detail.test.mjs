@@ -61,8 +61,12 @@ try {
     'and what that face answered (the receipt can be audited without the log)', row && row.result && { ok: row.result.ok, id: row.result.id })
   ok(typeof r.executedMeans === 'string' && /COUNT/.test(r.executedMeans) && /detail/.test(r.executedMeans),
     '★ executedMeans says which slot is the count and which is the detail', r.executedMeans)
-  ok(/empty list means nothing was dispatched/i.test(String(r.executedMeans)),
-    'and that an empty list means "nothing dispatched", never "the list was dropped"', r.executedMeans)
+  // ★★ RUN 192 (run 32 / FEEDBACK32 ①): the sentence used to say an empty list means "nothing was dispatched", and a
+  // reader in that run took it for "the member did nothing" on a turn whose member had written a proof and run a Lean job in
+  // its OWN session. The count is now named for what it counts (REPLY FIELDS), and the sentence says what it does not see.
+  ok(/empty list means no reply field dispatched/i.test(String(r.executedMeans)) &&
+    /does NOT mean the member did nothing/i.test(String(r.executedMeans)),
+    'and that an empty list means "no reply field dispatched", never "the list was dropped" and never "the member did nothing"', r.executedMeans)
 
   console.log('§2 the reading-only line is NOT counted as dispatched work')
   ok(r.skipped === 1 && Array.isArray(r.skippedDetail) && r.skippedDetail.length === 1,

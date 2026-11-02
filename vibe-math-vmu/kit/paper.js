@@ -764,7 +764,16 @@ export function createPaperFlow({
     // ★★ RUN 152: the hint used to say "advance it back to writing", which is a call the flow cannot make (advance
     // only moves writing→reviewing→awaiting-editor and returns moved:false at awaiting-editor). The reachable repair is
     // the editor sending the paper back with decision:"revise", which is what the hint now names.
-    if (state.status !== 'writing') throw refuse(CODES.STATE, 'the paper is not in its writing stage (now: ' + state.status + ')', 'the reachable repair is the editor sending it back: vibe_v5_paper { action: "final", target: "' + state.target + '", member: "<the member in the chair seat>", decision: "revise", note: "<what to fix>" } turns it back to writing (a request to "advance it back" is not a move this flow can take); after that the part can be recorded again')
+    if (state.status !== 'writing') throw refuse(CODES.STATE, 'the paper is not in its writing stage (now: ' + state.status + ')', state.status === 'awaiting-editor'
+      // At awaiting-editor the editor really can send it back with final{revise}; at REVIEWING that same call is refused by
+      // this flow, and the door back to writing is `advance` (a reviewer who said not-deliverable sends it back).
+      ? 'the reachable repair is the editor sending it back: vibe_v5_paper { action: "final", target: "' + state.target + '", member: "<the member in the chair seat>", decision: "revise", note: "<what to fix>" } turns it back to writing; after that the part can be recorded again'
+      // ★★ RUN 193 (run 36 / FEEDBACK35 1.1, MEASURED): this hint told the caller to use final{revise} while the paper sat
+      // in `reviewing`, where the SAME flow refuses it — and the status face said so (`reachableMoves` listed review/advance
+      // only). Two receipts contradicting each other sent that run through the refused call first. The hint is now the move
+      // that state accepts: `advance` closes the round, and a reviewer who did not say deliverable sends the paper back to
+      // writing (the run measured exactly that: advance ⇒ from:"reviewing" to:"writing", refusers:["r-1"]).
+      : 'the paper is in REVIEW: the move this state accepts is vibe_v5_paper { action: "advance", target: "' + state.target + '" } — it closes the round, and a reviewer who did NOT answer deliverable sends the paper back to writing; only at awaiting-editor is the editor door (final { decision: "revise" }) accepted')
     if (!state.participants.includes(str(member))) throw refuse('VMU_NO_SUCH_OBJECT', str(member) + ' is not a writing participant of this paper', 'participants: ' + state.participants.join(', '))
     const part = {
       target: str(state.target), member: str(member), round: state.round, title: str(title).slice(0, 300),

@@ -120,7 +120,7 @@ export const v5rPaperFinalSection = Object.freeze({
     '                    decision: "deliverable", note: "定稿说明（含对最后分歧的处理）", conclusion: "论文结论的正式陈述" }',
     '· ★ 它**是**一个工具：早先靠回执字段 `paper_final` 提交的做法已经取消，回执里写那个字段会被判 `VMU_TURN_UNKNOWN_FIELD`。',
     '· ★ **定稿主体只有主席席（即院士）**；所办只做归档与流程（留痕、索引、对外转达），**不代签**——所办调 `final` 会被具名拒（E4 的所办前置在本实现里未接线）。',
-    '· ★ 产物四件：md / tex / pdf / meta。渲染会写出 md、tex、meta；**pdf 需要内核的 LaTeX 编译执行器**，本内核尚无此能力（会具名说明），所以定稿回执不会声称四件齐全。中文论文的引擎顺序是 ' + PAPER_ENGINE_ORDER.zh.join(' → ') + '。',
+    '· ★ 产物四件：md / tex / pdf / meta。渲染会写出 md、tex、meta；**pdf 由内核的 LaTeX 编译执行器产出**（引擎顺序 ' + PAPER_ENGINE_ORDER.zh.join(' → ') + '）。执行器是否可用要看部署：可用时定稿回执写 `pdf.produced:true` 与 `pdfBytes`（并给出 `engine`）；不可用时回执**具名说明为什么没产出**，不会假装四件齐全。**以回执为准，不要预先假定不可用**。',
   ].join('\n'),
 })
 

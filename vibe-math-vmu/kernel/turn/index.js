@@ -225,7 +225,7 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       // written to the durable fold key `closure_votes` and every reading merges it, so `missing` is no longer "this
       // session has not seen you": it is "no recorded judgement anywhere this reading can see". One reading, one
       // explanation - this face has a size pin (docs/17), so the sentence stays inside it.
-      ? 'the map is this orchestrator\'s, but every vote is also written to the durable fold key "closure_votes", so it spans the INSTITUTE. `missing` means "no recorded judgement": a member who voted in ANOTHER session IS visible here through that fold'
+      ? 'the map is this orchestrator\'s, but every vote is also written to the durable fold key "closure_votes", so it spans the INSTITUTE. `missing` means "no recorded judgement" this reading can see; a member who voted in ANOTHER session IS visible here through that fold'
       : 'this reading was computed for the named meeting',
     cast,
     // ★ LIVE RUN 7 (agent feedback item j): `cast` READS like "the votes were cast", but this predicate is "closure was
@@ -235,12 +235,25 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
     // name that says what it means, and `votesCast` counts the judgements that actually arrived.
     confirmed: cast,
     votesCast: forIt.length + against.length,
+    // ★★ RUN 192 (run 32 / FEEDBACK32 ⑥, MEASURED): `votesCast` READS like "how many votes said yes went in",
+    // and that office compared it to the closure tally's 3 while `against:[r-1]` sat beside it, so the 3 had no meaning it
+    // could read. It counts ARRIVALS (for and against alike). The split and the size of the electorate are now separate
+    // fields, so "3 arrived, 2 for / 1 against, of 3 eligible" is readable without prose.
+    votesFor: forIt.length,
+    votesAgainst: against.length,
+    votesTotal: enfranchised.length,
+    // ★★ RUN 192 (run 32 / FEEDBACK32 ⑥, MEASURED): `votesCast` READS like "how many votes said yes went in", and run
+    // 32's office compared it to the closureTally's 3 and to `against:[r-1]` and could not tell what the 3 counted. It
+    // counts ARRIVALS: every enfranchised member whose judgement this reading can see, for and against alike. The split
+    // and the size of the electorate are now separate fields, so "3 arrived, 2 for / 1 against, of 3 eligible" is
+    // readable without prose.
+
     // ★ LIVE RUN 11 (the institute's own report, item b): the office tried to read `cast`/`votesCast` off the
     // RULING receipt (`vibe_v5_verdict_final`) and reported the reading 'missing'. It is not missing - it is a
     // DIFFERENT mechanism: this block is the CLOSURE vote (was the question judged solved?), while the ruling is
     // a probability over one proposition. Two receipts that never name each other is the same misleading-shape
     // family as a mechanism with no consumer, so each now says where the other lives.
-    rulingReading: 'NOT here: cast/votesCast are the CLOSURE vote (solved, unanimous); the DEBATE ruling is `vibe_v5_verdict_final` (value/perMember/floor.minVotes)',
+    rulingReading: 'NOT here: cast/votesCast are the CLOSURE vote; the DEBATE ruling is `vibe_v5_verdict_final`',
     castMeaning: 'cast === confirmed: every enfranchised member judged it solved; NOT "votes were cast" — see votesCast for arrivals',
     for: forIt,
     against,
@@ -253,7 +266,7 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       if (votes && typeof votes.keys === 'function') for (const id of votes.keys()) if (!enfranchised.includes(String(id))) ids.push(String(id))
       return ids
     })(),
-    notEligibleMeans: 'members who judged but hold no closure-vote permission: recorded, neither counted nor listed as missing (a temp seat appears here)',
+    notEligibleMeans: 'members who judged but hold no closure-vote permission: recorded, neither counted nor listed as missing',
     // ★★ RUN 172 (run 17 / FEEDBACK17 P2-5): THE DURABLE ROWS HAD TWO NAMES FOR THE SAME QUESTION. Every judgement is written
     // to the fold key `closure_votes` as `{member, solved, at, session, voterSession}` — `session` is the kernel that WROTE the
     // row, `voterSession` is where the voter RAN (unknown in a kernel that did not see the delivery). Rows written before
@@ -309,7 +322,7 @@ export function closureVoteOf({ votes = new Map(), roster = [], may = null, perm
       : (enfranchised.length === 0
         ? 'no member holds the closure-vote permission, so unanimity is unreachable - seat members with vibe_vmu_control { action: "hire", member_id, slot, institution } on a slot whose permissions include this one (phase 12: `chair` and `member` hold it, `temp` does not), then drive a turn; a deployment may rename it with vmu.turn.closureVotePermission'
         : (missing.length
-          ? 'silence blocks the CLOSURE VOTE (unanimity on「每个有投票权的成员都判定该问题已解决」) — it does NOT block closing the meeting (the close rails are vmu.meetings.*; this reading never decides close legality). Waiting: ' + missing.join(', ')
+          ? 'silence blocks the CLOSURE VOTE (unanimity on「每个有投票权的成员都判定该问题已解决」) — it does NOT block closing the meeting (close rails: vmu.meetings.*; never decides close legality). Waiting: ' + missing.join(', ')
           : 'a member judged the question NOT solved: ' + against.join(', '))),
   }
 }
@@ -2612,7 +2625,7 @@ export function createTurnOrchestrator({
   // ★ ROUND 119 (live run 119 / F-119b): `executed` was a COUNT on the main step receipt, so a caller could not read WHICH
   // actions the turn dispatched — the same defect family as run 37's count-only `skipped`. One receipt path already carried
   // `executedDetail`; the two main paths did not. A count tells you that something happened, never what.
-  const EXECUTED_MEANS = 'the actions this turn actually dispatched, one row per field: field, face, op and what the face answered. Bounded to 5 rows; `executed` is the COUNT and this list is the detail. An empty list means nothing was dispatched - it does not mean the list was dropped'
+  const EXECUTED_MEANS = 'the REPLY FIELDS this turn dispatched, one row per field: field, face, op and what the face answered. Bounded to 5 rows; `executed` is the COUNT and this list is the detail. An empty list means no reply field dispatched - it does not mean the list was dropped, and it does NOT mean the member did nothing: a member works in its OWN session, and the tools it calls there (writing a proof, submitting a Lean job, filing a record) are not reply fields, so they do not appear here. This receipt counts the dispatch of this turn, not the output of the member'
   // ★★ RUN 182 (run 27 / FEEDBACK27 F27-1, MEASURED): the chair replied `vote_solved:true`; the receipt listed the field under
   //   `fields`, reported `executed:0, effects:[]`, and named NO reason anywhere — so "my vote was dropped" and "my vote took a
   //   documented other path" read identically. The parser already knows (bookkeeping keeps {field, kept:false, reason}); it was

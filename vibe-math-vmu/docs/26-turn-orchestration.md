@@ -3126,3 +3126,36 @@ The last one is a teaching bug with teeth: the reply channel taught `formal` as 
 Lesson: **a fact that is measured and not said is a defect, not a nuance** — and the cheapest place to lose one is the literal that assembles the receipt. Test the delivery side, not the producer.
 
 Lesson: **when the teaching and the face disagree, fix both.** Changing only the prompt leaves old transcripts and scripts writing the old shape; changing only the face leaves readers being taught the wrong one.
+
+## ROUND 195 — the receipts counted the right things under the wrong names
+
+`votesCast` was never wrong; it counts ARRIVED judgements (for and against), not votes FOR. It read as "3 votes for" because the word said so and the `against:[r-1]` beside it made the contradiction look like a bug in the tally. The reading now carries `votesFor`, `votesAgainst` and `votesTotal` next to it, so "3 arrived, 2 for / 1 against, of 3 eligible" needs no prose.
+
+`executed:0, effects:[]` was never wrong either; it counts the REPLY FIELDS a turn dispatched. A member who wrote a proof and submitted a Lean job in its OWN session did all of that outside the reply channel, and the receipt read as "nothing happened". `executedMeans` now says which count it is and lists the kinds of work it does not see.
+
+Lesson: **a number that is accurate about the wrong thing is still a lie a reader acts on.** The fix is to name the count beside the count, not to rename the field (which would break every receipt and gate that reads it).
+
+Lesson: **a small face is a budget.** `detail:"closure"` sits at 1499 of its documented 1500 characters; three new numeric fields meant trimming prose elsewhere, and the trimming must not touch a sentence another test pins (`durable fold key`). Measure before adding, and measure on HEAD before calling a red one of yours.
+
+## ROUND 196
+
+**RUN 193 — three sentences about the mechanism that were not the mechanism.** The 36th live run closed a paper end to
+end (107427-byte PDF, byte-identical on disk) and measured all eight checks, then handed back three defects that are all
+*prose*: a hint that named the one door the current state refuses, a gate that checked machine evidence and then left
+the field that reports its basis as `null`, and a prompt that told the reader LaTeX was unavailable while the same
+deployment was compiling with `xelatex`.
+
+1. `kit/paper.js:767` — the `part` refusal now branches on the stage. `awaiting-editor` keeps
+   `final{decision:"revise"}`; `reviewing` says the accepted move is `vibe_v5_paper { action:"advance" }`, that advance
+   collects the round, and that a reviewer who did not answer `deliverable` is what sends the paper back to writing.
+   The editor door opens only at `awaiting-editor`.
+2. `packs/v5r/verification-gates.js` — the `evidenced` pass branch now states `proofBasis`
+   (`'verified-row'` or `'lean-passed'`), and the `declared` branch fills `note` with what was actually compared, plus
+   the sentence that "consistent with the machine evidence" is not "the proof content was checked here".
+3. `packs/v5r/prompts/v5r-paper-prompts.js:123` — capability claims are conditional: the PDF comes from the kernel's
+   LaTeX executor (engine order), a success writes `pdf.produced:true` and `pdfBytes`, a failure says by name why not,
+   and the receipt decides — do not assume it is unavailable.
+
+Mechanised in `tests/vmu-run193-feedback35.test.mjs` (3/0). Full T1 `743 PASS / 0 FAIL (suites 635)`. Not closed: a
+read face for SERVICE meeting records (1.4), a cross-kernel ledger for Lean jobs (1.5), one vocabulary for paper
+pointers (2.3), and a per-seat `memberScopeNote` (2.5).

@@ -13812,3 +13812,99 @@ run 35（基线 `01fa7271`）是第三十五次真机：主线**完全结题**�
 
 - **回执的字段名单是接口**：`fileCardsOf` 修好了、字面量没带上，等于没修。新增字段必须同时改「产出」与「送达」两处，并且测试要打在**送达**侧。
 - **教法与面相悖时，两边都要改**：只改提示词，旧脚本/旧会话语料仍会照旧形状写；只改面，读者仍然被教错。`formal` 这次是**提示词 + 具名跳过适配器**一起改，才让「写错形状」从「整轮报废」降级为「一条具名跳过」。
+
+## §292 RUN 192（run 32 的 ⑥①：两个回执数的是别的东西，而不是它们字面上说的那个）
+
+RUN 192 只修两处，都是「回执的措辞比机制诚实」这一类，来自第三十二次真机（run 32）的 FEEDBACK32 ⑥ 与 ①。
+
+### 292.1 账：`votesCast` 被读成「赞成票数」，`executed` 被读成「这一回合干了什么」
+
+| 现场 | 观察者的读法 | 机制的实际语义 |
+| --- | --- | --- |
+| run 32 结题会 | `closureVote.votesCast:3` 与 `against:["r-1"]` 并排，office 报「3 票赞成」 | `votesCast` 是**到达**的判定数（赞成 + 反对），不是赞成票数 |
+| run 32 / run 27 的 `drive` 回执 | `executed:0, effects:[]` ⇒ 读成「成员什么都没干」 | `executed` 只数**回复字段**派发；成员在自己会话里写的证明、交的 Lean 作业、落的记录都不是回复字段 |
+
+两条都不是「数错了」，而是**数对了别的东西，却把名字留给了让读者误解的那个**。
+
+### 292.2 修法
+
+1. `vibe-math-vmu/kernel/turn/index.js` 的 `closureVoteOf`（`vibe-math-vmu/kernel/turn/index.js:237` 起）在 `votesCast` 之后新增三个计数字段：
+   - `votesFor: forIt.length`（赞成数）
+   - `votesAgainst: against.length`（反对数）
+   - `votesTotal: enfranchised.length`（有投票权的人数 = 选民规模）
+   于是「3 到达、2 赞成 / 1 反对、共 3 名选民」这一句可以从三个数字直读，不再需要散文解释。
+2. 同文件 `EXECUTED_MEANS`（`vibe-math-vmu/kernel/turn/index.js:2623` 附近）改成明说**它数的是什么、不数的是什么**：`REPLY FIELDS this turn dispatched … an empty list means no reply field dispatched - it does not mean the list was dropped, and it does NOT mean the member did nothing: a member works in its OWN session, and the tools it calls there (writing a proof, submitting a Lean job, filing a record) are not reply fields, so they do not appear here.`
+3. 为了给新字段腾出 `detail:"closure"` 面 < 1500 字符的尺寸契约（`tests/vmu-host.test.mjs:490`、`tests/vmu-run169-institute-closure.test.mjs:136`），把同一读数里**重复表述**的几处散文收短（`windowMeans` 的「durable」保留 —— `tests/vmu-run167-feedback14-identity.test.mjs:76` 钉着它；`rulingReading`、`reason`、`notEligibleMeans` 各自删掉一到两个可省从句）。读数实测：加字段前 **1499**，加字段并收短后 **1487**。
+
+### 292.3 机器化
+
+`tests/vmu-run192-vote-counts.test.mjs` **3 passed / 0 failed**：
+
+- §0 源码 pin：三个计数字段的构造式、`RUN 192` 标记、`EXECUTED_MEANS` 里「REPLY FIELDS」「not the output of the member」两句。
+- §1 `closureVoteOf` 纯函数：2/1 分裂 ⇒ `votesCast:2 / votesFor:1 / votesAgainst:1 / votesTotal:3` 且 `missing:["r-3"]`、`confirmed:false`；三票全真 ⇒ `3/3/0/3`、`confirmed:true`；temp 判定仍 `notEligible` 且不计入（RUN 169 的规则不变）。
+- §2 空票板 ⇒ `votesCast:0 / votesTotal:1`，且 `EXECUTED_MEANS` 不再出现「空列表 = 什么都没做」的旧读法。
+
+### 292.4 定向回归与收口
+
+`run192 3/0`、`run191 6/0`、`run190 2/0`、`run189 3/0`、`run181 23/0`、`run167 53/0`、`turn 15 jobs（272 内部断言）`、`vmu-host 4/0`、`closure-electorate`、`run178/179` 全绿。
+
+一条**已知、非本轮引入的红**：单独用 `node --test tests/vmu-host.test.mjs` 跑该 legacy 文件时，`真装配（v5r pack）下 status 默认 summary < 8000 字节` 报 `bytes=8079`；**HEAD 上同一命令报 8034 也同样红**（该文件在 gate 里由 `tests/run-tests.mjs` 注入 pack 装配，`--only vmu-host` 为 4/4 绿）。本轮的三字段让这个 standalone 数字多了 45 字节，但**这条断言在 standalone 下本就红**，不是回归；官方 gate 的红线以 `run-tests.mjs` 为准。
+
+收口链：`update-doc-counts --write` → `regen-all --write` 17/17 → `--check 17/17 in sync` → `PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`；全量 T1 见 292.5。
+
+### 292.5 全量 T1
+
+首跑 `/d/_tmp/t1-r390-run192.log` = `TOTAL 742 PASS 741 FAIL 1`：唯一红是 `tests/vmu-run119-executed-detail.test.mjs`，它钉的正是本轮**改掉的那句旧措辞**（`empty list means "nothing dispatched"`）。旧句子与本轮要修的病是同一个病 —— 把「这一回合没有派发回复字段」读成「成员什么都没干」 —— 所以 pin 跟着机制改：现在要求 `empty list means no reply field dispatched` **且** `does NOT mean the member did nothing`（负向断言，防止句子又缩回旧读法）。改完该套件 `2/0`，与 RUN 193 的改动一起复跑全量：`/d/_tmp/t1-r400-run193.log` = **TOTAL 743 PASS 743 FAIL 0（suites 635 · probes 108）**。
+
+教训（第三次同族）：**改一句被 pin 住的措辞，等于改一条契约**。跑全量之前先 `grep` 这句话在 tests 里的引用，比事后修 pin 便宜。
+
+### 292.6 两条教训
+
+- **「数对了别的东西」是一种假话**：`votesCast` 的值本身从来没算错，错的是名字让读者以为它在数票。新增计数比改名字便宜（改名会破所有读它的回执与闸），但**字数不是零成本** —— 小读数面有硬尺寸契约，加字段必须先量再腾地方，而且腾地方不能踩到别人钉住的句子（`durable fold key` 就是一条）。
+- **standalone 与 gate 的装配差异必须写进账**：同一个 legacy 套件、同一条断言，在两种跑法下可以一红一绿；把它当成本轮回归去「修」，会去改一条本来就没有问题的尺寸契约。判红之前先在 HEAD 上跑同一条命令。
+
+## §293 RUN 193（第三十六次真机 run 36 的 1.1/1.2/1.6：三句「关于机制的话」不是机制）
+
+run 36（基线 `805c18fe`）**8/8 复验实测到**、主线结题出 PDF（107 427 B，与磁盘一致），同时留下三条判据明确的缺陷。RUN 193 只修这三条 —— 都是「句子说错了机制」，不是机制本身坏。
+
+### 293.1 账
+
+| 现场 | 说过的话 | 机制实际 |
+| --- | --- | --- |
+| 论文处于 `reviewing` 时调 `part` | `kit/paper.js` 的 hint 教「由定稿代表用 `final{decision:"revise"}` 退回写作」 | 该状态**拒**这条调用；同一篇的 `status.reachableMoves` 只列 `review`/`advance`，真正的回头路是 `advance`（有审稿人没答 deliverable 就回 writing，实测回执 `from:"reviewing" to:"writing"`、`refusers:["r-1"]`） |
+| 召集辩论时交了 `lean_job` | `subjectGate.proofBasis` 为 `null`、`note` 为 `null` | 闸**确实核了**（`proofVia:"lean-passed"`、`proofChecked:true`），但唯一该说出「依据是什么」的字段在最该说话的那一次退化成空值 |
+| 论文定稿提示词 | 「**pdf 需要内核的 LaTeX 编译执行器**，本内核尚无此能力」 | 同一部署 `xelatex` 可用：`pdf.produced:true`、`pdfBytes:107427`、磁盘同字节 |
+
+### 293.2 修法
+
+1. `vibe-math-vmu/kit/paper.js:767` 的 `part` 状态拒绝改成**按状态分叉**的 hint：`awaiting-editor` 时才教 `final{decision:"revise"}`；其余（`reviewing`）明说「这个状态接受的移动是 `vibe_v5_paper { action:"advance" }` —— 它收这一轮，若有审稿人没答 deliverable 就把论文送回 writing；editor 的门只在 awaiting-editor 开」。RUN 193 的注释写明了案由与实测回执字段。
+2. `vibe-math-vmu/packs/v5r/verification-gates.js` 的 `evidenced` 放行分支补 `proofBasis: verifiedHit ? 'verified-row' : 'lean-passed'`，并把 `declared` 情形的 `note` 从 `null` 改成「说清依据与一致点」的句子（同时点明 `proofContentChecked` 不在此列，避免把「一致」读成「核了内容」）。声明层分支（`declaration-only`）一字未动。
+3. `vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js:123` 的产物段改成**条件式能力陈述**：pdf 由内核的 LaTeX 编译执行器产出（引擎顺序）；可用时回执写 `pdf.produced:true` 与 `pdfBytes`（并给 `engine`），不可用时**具名说明为什么没产出**；末句「**以回执为准，不要预先假定不可用**」。
+
+### 293.3 机器化
+
+`tests/vmu-run193-feedback35.test.mjs` **3 passed / 0 failed**：
+
+- §0 九条源码 pin（含负向：提示词里不再出现「本内核尚无此能力」）。
+- §1 渲染后的定稿提示词：提到 `pdfBytes`、引擎名（xelatex/pdflatex/lualatex）之一、且不含「尚无」。
+- §2 两条 hint 分支都在：`awaiting-editor` 支保留 `final{decision:"revise"}`，`reviewing` 支点名 `action:"advance"`。
+
+### 293.4 定向回归与收口
+
+`run193 3/0`、`run192 3/0`、`run191 6/0`、`run119 2/0`（pin 已按 292.5 更新）、`paper 11/0`、`verified/debate-subject/run48/run49/run50` 合批 22/0、`meeting 32/0`、`vmu-host 4/0`。
+
+收口链：`update-doc-counts --write`（`JOBS total=743 suites=635 probes=108`）→ `regen-all --write` 17/17 → `--check 17/17 in sync` → `PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`；全量 T1 `/d/_tmp/t1-r400-run193.log` = **TOTAL 743 PASS 743 FAIL 0（suites 635 · probes 108）**。
+
+### 293.5 未闭合（run 36 的其余反馈，按判据排序）
+
+- **1.4 临时工席进不了会议、会议记录没有读面**：`attendDeniedSeats` 是有意设计（temp 无票），但「会议记录正文没有任何工具读面」是真缺口——`vibe_vmu_meeting { action:"snapshot" }` 对 SERVICE 会议具名拒（`VMU_REGISTRY_BOUNDARY`）。需要一条面向 service 会议的记录读面。
+- **1.5 Lean 作业表是 per-process**：office 内核里 `passed:true`，成员内核归档同一文件却 `not-measured`，库里并存两条（`rec-1-oddSum` / `-compiled`）。要修需要把作业结果落共享账（不是改名能解决）。
+- **2.3 论文「指针」三种口径**（`evidence` 只认记录 id、正文引用只认记录 id、但 `Formal/…lean` 写在正文里不被拒）：同一份文档里「什么能写、什么不能写」没有一处说清。
+- **2.5 `vibe_v5_start` 的 `memberScopeNote` 会被主席读成对自己也成立**（`skipped[].why:"seat-authority"` 只在结构里）。
+- **1.3 `op:"reply"` 通道在 activation 交付下永久不可达**：回执自己承认这是设计（回合在 step 内结算），但它是回复字段的**唯一工具入口**；若要让所办能给回合塞回复字段，需要一条新 seam —— 属于设计题，不是措辞。
+- 本轮**尚未真机复验**（run 37 的简报覆盖 1.1/1.2/1.6 + run 36 的 8/8 回归面）。
+
+### 293.6 两条教训
+
+- **「按状态分叉的提示」是提示词的基本卫生**：同一句「怎么退回去」在 `reviewing` 与 `awaiting-editor` 下是两个答案，写死其中一个必然有一半时间是假路标。
+- **能力断言必须带条件**：「本内核尚无 X」这种把**当前部署**说成**机制上限**的句子，一旦部署变化就会主动劝退使用者。正确的说法永远是「能不能用看回执」，并点名证明它的字段。

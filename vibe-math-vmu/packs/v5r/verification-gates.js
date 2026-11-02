@@ -349,12 +349,18 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
   if (evidenced) {
     return allow({ form: 'card', subject: cls.raw, proofChecked: true,
       proofVia: verifiedHit ? 'verified-row' : 'lean-passed',
+      // ★★ RUN 193 (run 36 / FEEDBACK35 1.2, MEASURED): when the caller DID hand machine evidence to the gate, this branch
+      // left `proofBasis` absent — the one call where the field had something true to say serialised it as null, and the
+      // reader had to reverse-engineer "the basis is a passed Lean job" out of `proofVia`. The basis is now stated, and the
+      // note (null in the declared case, because the declaration and the machine agreed) says what was checked.
+      proofBasis: verifiedHit ? 'verified-row' : 'lean-passed',
       evidence: { lean: leanHit, verified: verifiedHit },
       declared, declaredState: proofState || null,
       // ★★ RUN 161 (FEEDBACK8 item 5.1): this note ASSERTED "这张卡还没登记 proofRef/proofState=\"complete\"" about cards
       // whose declared state WAS "complete" — the gate never looked past its own two inputs but the sentence spoke for
       // both. Say which half is absent, built from the fields this call actually read.
-      note: declared ? null
+      note: declared
+        ? '放行依据是机器证据（' + (verifiedHit ? 'verified 轨的定论行' : '已通过的 Lean 作业 lean-' + String(ev.lean.jobId || '?').replace(/^lean-/, '')) + '）：proofBasis:"' + (verifiedHit ? 'verified-row' : 'lean-passed') + '"，proofChecked:true；卡上的自报（proofRef=' + proofRef + '、proofState="complete"）与机器证据一致，所以这里不需要解释差异 —— 但"一致"不等于"本闸核了证明内容"（proofContentChecked 不在此列）'
         : (proofState === PROOF_STATE_COMPLETE
           ? '放行依据是机器证据（' + (verifiedHit ? 'verified 轨的定论行' : '已通过的 Lean 作业') + '），不是卡上的自报：'
             + '这张卡登记了 proofState="complete"，但 proofRef 是空的 —— "写完了"有登记、"写在哪"没有，接线层应把证明引用补上，让来源可追溯'
