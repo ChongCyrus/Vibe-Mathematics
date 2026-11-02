@@ -3398,3 +3398,10 @@ RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一
 - **为什么排在 blueprint 之前**：先读「主线是什么、这一回合要回答哪三问」，再读「蓝图工具怎么用」——顺序就是教学顺序，769/829/830 的相邻关系是有意的。
 - **机器化**：`tests/vmu-turn-mainline.test.mjs`（三席 × 三个相位的装配断言 + 台账七条逐字核对 + 预算）；`tests/vmu-turn.test.mjs` 的 T99 同步抬到 30000。
 - **未闭合**：九字段没有统一节点表；真机「看见之后按主线做事」待观察。
+## ROUND 208（★ 移动要说「回合有没有动」，收轮要说「谁读了谁的」）
+
+- **账从哪来**：第 41 次真机 `FEEDBACK40` 八条读数缺陷。判据是同一句：「回执里已经有一个数/一条路，但没说它属于哪一刻、哪一种原因」。
+- **八处修法**：`kit/paper.js` 的 `advance` 三支移动分支共用 `roundReading(...)`（stage 动了、round 没动要明说）；收轮带 `crossReview.parts/uncovered/uncoveredMeans`，`recordReview` 核 `of === reviewOf[member]`；单人论文在写入前拒（`crossReviewPossible:false`）；召集的 `proofPointerMeans` 按 `missing|absolute|escapes|empty` 分句；`poll_open` 拒绝补「关会即结束辩论」；定稿被拦的 hint 改指 `vibe_v5_paper { action: "consult" }`；证据教学并列两种合法拼法；promote 的 lean-conformance 路线补 `warrant` 必填。
+- **为什么 `roundReading` 按 stage 而不是回合号选句子**：第一版按 `roundTo === 1` 说「opened the first cycle」，把「reviewing → awaiting-editor 收掉第一轮」也说成开轮；数字相等不等于含义相同，句子必须跟着 stage。
+- **机器化**：`tests/vmu-run203-feedback40.test.mjs` 5/0（两次移动的回合读数、`crossReview` 覆盖、`of` 错配具名拒且不写盘、单人提前拒且 status 未变、指针 means 分因）；`tests/vmu-run200-pointer-resolution.test.mjs` §0i 因召集分支改成「先解析一次再入回执」而拆成两条 pin。
+- **未闭合**：FEEDBACK40 的 1.1（会议裁决写不回 p=1 卡）、2.2（同源 `shapeMeans`）、1.6（论文 state 行被覆写）与真机复验。

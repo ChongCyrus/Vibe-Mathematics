@@ -2074,7 +2074,7 @@ function toolVerifiedPromote(args = {}, { kernel, exec } = {}) {
   }
   if (!warrantId || !warrantKind) {
     throw refuse('VMU_INVALID_ARGUMENT', 'promote needs the warrant that produced this conclusion — the judge, not a preference',
-      'pass warrant:"<debate/ballot ruling id>" warrant_kind:"debate-unanimous" (or "lean-conformance" once that ruling exists)')
+      'pass warrant:"<debate/ballot ruling id>" with warrant_kind:"debate-unanimous" — on the lean-conformance route (lean_job + lean_conformance:"conform") the warrant is STILL required: it is the conformance ruling id that turned the passed job into a conclusion')
   }
   // ★ ROUND 97 (B1, independent audit): A CALLER-SUPPLIED WARRANT USED TO MINT A VERIFIED ROW WITHOUT THE GATE.
   // `promoteVerified` is a second write path into the same track as a p=1 card write, and it only checked the SHAPE of
@@ -3447,9 +3447,24 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     // DECLARATION), but a receipt that stays silent about it is how run 39 locked a card onto a file that lived in the
     // wrong tree. The gate predicate stays pure; the resolution is attached beside it, by name and with its reason.
     if (subjectGate && subjectGate.declaredProofRef && kernel && kernel.library && typeof kernel.library.resolvePointer === 'function') {
+      // ★★ RUN 203 (run 41 / FEEDBACK40 1.4, MEASURED): the means said `exists:false` means "not inside the library root",
+      // while run 41's own pointer was INSIDE the root and merely missing — the receipt contradicted itself in two fields
+      // a reader is meant to act on. One sentence per reason: "missing" and "outside the library" are different repairs.
+      const pointer = kernel.library.resolvePointer(subjectGate.declaredProofRef)
+      const pointerWhy = pointer.exists === true
+        ? 'it RESOLVED: the pointer names a real file inside the library root (' + String(pointer.relativePath) + ')'
+        : pointer.reason === 'missing'
+          ? 'it did NOT resolve because NO FILE EXISTS at that path yet (reason "missing", `insideLibrary:true`) — the pointer is well formed and inside the library root; a file written in the SESSION WORKING DIRECTORY is not there'
+          : pointer.reason === 'absolute'
+            ? 'it did NOT resolve because the pointer is an ABSOLUTE path (reason "absolute") — a card pointer must be RELATIVE to the library root'
+            : pointer.reason === 'escapes'
+              ? 'it did NOT resolve because the pointer climbs OUT of the library root (reason "escapes", e.g. a .. segment)'
+              : pointer.reason === 'empty'
+                ? 'it did NOT resolve because no pointer was given at all (reason "empty")'
+                : 'it did NOT resolve (reason "' + String(pointer.reason) + '") — see `proofPointer.means` for the library own sentence'
       subjectGate = Object.assign({}, subjectGate, {
-        proofPointer: kernel.library.resolvePointer(subjectGate.declaredProofRef),
-        proofPointerMeans: 'the debate gate admitted this card on a DECLARATION; this line is the LIBRARY answer about WHERE the declared pointer points — proofPointer.exists:false means the card is pointed at a file that is not inside the library root',
+        proofPointer: pointer,
+        proofPointerMeans: 'the debate gate admitted this card on a DECLARATION; this line is the LIBRARY answer about WHERE the declared pointer points. ' + pointerWhy,
       })
     }
   }
@@ -3905,7 +3920,7 @@ function toolPollOpen(args = {}, { kernel } = {}) {
   if (debateOpen) {
     throw refuse('VMU_NOT_PERMITTED',
       'the ballot board is not used while a debate is open: meeting "' + debateOpen + '" is a debate, and a debate settles with verdicts (vibe_v5_verdict / vibe_v5_verdict_ask), not with a poll',
-      'settle it with vibe_v5_verdict { meeting: "' + debateOpen + '", proposition_id: "…", verdict: <0..1>, reason: "…" }, or close the debate first (chair: vibe_vmu_meeting { action: "close", id: "' + debateOpen + '" })')
+      'settle it with vibe_v5_verdict { meeting: "' + debateOpen + '", proposition_id: "…", verdict: <0..1>, reason: "…" }, or close the debate first — chair: vibe_vmu_meeting { action: "close", id: "' + debateOpen + '" }: CLOSING THE MEETING ENDS THE DEBATE (a debate is open exactly while its meeting is), and once it is closed the ballot board is free again')
   }
   if (!kernel.ballotbox || typeof kernel.ballotbox.open !== 'function') {
     throw refuse('VMU_ENGINE_UNAVAILABLE', 'no ballot box face is published, so a poll cannot be opened', 'assemble a kernel with the ballot box service')
@@ -5536,7 +5551,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_verified_promote',
-    description: '★ PROMOTE A PROPOSITION CARD TO THE VERIFIED TRACK — the ONLY writer of that track, and the place where a settled p is carried together with its JUDGE. card REQUIRED (a propositions/proposition card whose p is exactly 1 — this track carries what is PROVEN TRUE; a p=0 refutation is refused by name and belongs to the rejected track); warrant_kind REQUIRED, and it must be the kind the EVIDENCE actually shows: "debate-unanimous" + `debate_ruling:{mode:"unanimous",value:1,subject:<card id>}` (+ `warrant:"<ruling id>"`), "lean-conformance" + `lean_job` + `lean_conformance:"conform"` (BOTH required together: the job must report passed:true AND the conformance word must be "conform"), or "literature" + `literature_ref:"<author, source, theorem/page>"` (the citation then becomes the row\'s warrant id). Passing a warrant with NO evidence is refused by name by the SAME p=1 gate a card write uses (`VMU_PACK_V5R_P1_NEEDS_DEBATE`), and a kind that disagrees with the evidence is refused by name too. Other refusals: a card that is not a proposition card, a truncated card, a p in (0,1) ("a preference is not a conclusion"), a withdrawn proof. The card keeps its own p; the verified row records the warrant, so "why is this settled" is answerable instead of asserted.',
+    description: '★ PROMOTE A PROPOSITION CARD TO THE VERIFIED TRACK — the ONLY writer of that track, and the place where a settled p is carried together with its JUDGE. card REQUIRED (a propositions/proposition card whose p is exactly 1 — this track carries what is PROVEN TRUE; a p=0 refutation is refused by name and belongs to the rejected track); warrant_kind REQUIRED, and it must be the kind the EVIDENCE actually shows: "debate-unanimous" + `debate_ruling:{mode:"unanimous",value:1,subject:<card id>}` (+ `warrant:"<ruling id>"`), "lean-conformance" + `lean_job` + `lean_conformance:"conform"` (BOTH required together: the job must report passed:true AND the conformance word must be "conform"), or "literature" + `literature_ref:"<author, source, theorem/page>"` (the citation then becomes the row\'s warrant id). Passing a warrant with NO evidence is refused by name by the SAME p=1 gate a card write uses (`VMU_PACK_V5R_P1_NEEDS_DEBATE`), and a kind that disagrees with the evidence is refused by name too. ★ ON THE lean-conformance ROUTE `warrant` IS REQUIRED TOO (run 41, MEASURED): `lean_job` + `lean_conformance:"conform"` name the measurement, and `warrant` names the JUDGE that turned it into a conclusion — omitting it is refused with "promote needs the warrant that produced this conclusion"; pass the conformance ruling id as `warrant`. Other refusals: a card that is not a proposition card, a truncated card, a p in (0,1) ("a preference is not a conclusion"), a withdrawn proof. The card keeps its own p; the verified row records the warrant, so "why is this settled" is answerable instead of asserted.',
     parameters: { card: { type: 'string', required: true }, warrant: { type: 'string' }, warrant_kind: { type: 'string', required: true }, literature_ref: { type: 'string' }, debate_ruling: { type: 'object' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, member: { type: 'string' } },
     handler: toolVerifiedPromote,
   },

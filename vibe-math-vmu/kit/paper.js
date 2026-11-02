@@ -559,7 +559,7 @@ export function createPaperFlow({
         return { allowed: false, policy, ledger, reason: 'timeout-refused', requestCleared: true,
           error: refuse(CODES.OFFICE_CONSULT_TIMEOUT,
             '定稿被拦住：所办 ' + policy.timeoutMs + 'ms 内没有答复（vmu.paper.officeConsultOnTimeout="refuse"）',
-            '重新调 recordConsult 再问一次（这条提问已作废）；或改成 "hold"（继续等、仍不放行）；或把 vmu.paper.officeConsult 设成 "off"',
+            '重新问一次（这条提问已作废）：所办调 vibe_v5_paper { action: "consult", target: "…", member: "<所办 id>", answer: "…" }（kit 层即 recordConsult）；或改成 "hold"（继续等、仍不放行）；或把 vmu.paper.officeConsult 设成 "off"',
             { ...base, treatedAs: 'refused', requestCleared: true }) }
       }
       if (expired) {
@@ -574,7 +574,7 @@ export function createPaperFlow({
       return { allowed: false, policy, ledger, reason: 'awaiting', requestCleared: false,
         error: refuse(CODES.OFFICE_CONSULT_REQUIRED,
           '定稿前必须问所办（vmu.paper.officeConsult="required"）：这道提问还没有答复（' + (awaiting.id || '?') + '）',
-          '由所办调 recordConsult({target, by:"' + (CONSULT_ROLES[0] || 'office') + '"}) 答复后重试；或把 vmu.paper.officeConsult 设成 "off"',
+          '由所办答复后重试：vibe_v5_paper { action: "consult", target: "' + str(state.target) + '", member: "' + (CONSULT_ROLES[0] || 'office') + '", answer: "…" }（kit 层即 recordConsult）；或把 vmu.paper.officeConsult 设成 "off"',
           { ...base, reason: 'awaiting', target: str(state.target), paperId: str(state.id) }) }
     }
     ledger.opened += 1
@@ -585,7 +585,7 @@ export function createPaperFlow({
     return { allowed: false, policy, ledger, reason: 'opened', requestId: request.id, requestCleared: false,
       error: refuse(CODES.OFFICE_CONSULT_REQUIRED,
         '定稿前必须问所办（vmu.paper.officeConsult="required"）：已向所办(' + (CONSULT_ROLES.join('|') || '未声明') + ')提出问询 ' + request.id + '，还没有答复',
-        '所办调 recordConsult({target:"' + str(state.target) + '", by:"' + (CONSULT_ROLES[0] || 'office') + '"}) 答复后重试；或把 vmu.paper.officeConsult 设成 "off"（取消这道闸）',
+        '所办答复后重试：vibe_v5_paper { action: "consult", target: "' + str(state.target) + '", member: "' + (CONSULT_ROLES[0] || 'office') + '", answer: "…" }（kit 层即 recordConsult）；或把 vmu.paper.officeConsult 设成 "off"（取消这道闸）',
         { enforced: CONSULT_KEYS.slice(), declared: ['required', 'off'], currentValue: String(policy.raw), settingValues: policy.values,
           requestId: request.id, requestedAt: now, actedBy: str(member), answerRoles: CONSULT_ROLES.slice(),
           // ★★ RUN 154 (G9): the key the fix has to carry is `target` (the answer call's argument), and it is now on the
@@ -912,6 +912,25 @@ export function createPaperFlow({
    * With a single participant the rotation points at the participant themself, so the old check was vacuously
    * unanimous — that is the defect this refuses. The refusal names the missing half and the exact repair.
    */
+  /** ★★ RUN 203 (run 41 / FEEDBACK40 1.5, MEASURED): run 41 assigned the rotation {r-acad:r-1, r-1:r-2, r-2:r-acad}, the
+   *  members reviewed OTHER parts than the ones they were assigned (r-1 → of r-acad, r-2 → of r-1, r-acad → of r-1), one
+   *  section was never read by anyone, another was read twice, and the paper still advanced as `unanimous` and produced a
+   *  PDF. The assignment is the paper's own rotation, so the receipt of a closed round now carries the COVERAGE — which
+   *  author's part each reviewer read, and which parts nobody read — instead of a single boolean a reader cannot audit. */
+  function crossReviewCoverage(state) {
+    const participants = state.participants.slice().map(String)
+    const reviewOf = state.reviewOf || {}
+    const parts = participants.map((author) => {
+      const reviewer = participants.filter((id) => String(reviewOf[String(id)] === undefined ? '' : reviewOf[String(id)]) === author && id !== author)[0] || null
+      return { author, reviewer, wrotePart: !!(state.parts && state.parts[author]) }
+    })
+    const uncovered = parts.filter((p) => p.wrotePart && p.reviewer === null).map((p) => p.author)
+    return { parts, uncovered,
+      uncoveredMeans: uncovered.length === 0
+        ? 'empty ON PURPOSE: every part on this paper is assigned to a reviewer who is NOT its author, so no section is unread'
+        : 'NOT empty: these authors wrote a part that NO assigned reviewer will read this round (' + uncovered.join(', ') + ') — their section was not cross-read, and no verdict about it was owed' }
+  }
+
   function requireCrossReview(state, where) {
     const participants = state.participants.slice()
     // ★★ RUN 167 (FEEDBACK14 F6): THE COUNT WAS THE WRONG QUESTION. This gate used to require TWO cross reviewers; with
@@ -971,6 +990,16 @@ export function createPaperFlow({
     }
     const assigned = state.reviewOf[String(member)] || null
     const ofId = str(of || assigned || '')
+    // ★★ RUN 203 (run 41 / FEEDBACK40 1.5, MEASURED): `of` was accepted whatever it named, so a member could review a part
+    // the rotation had NOT assigned to it — run 41's three reviews covered one section twice and left another unread, and
+    // the gate read three deliverable verdicts as unanimity. The assignment is the paper's own `reviewOf`; a review that
+    // names a different author is refused by name (nothing is written), with both names on the receipt.
+    if (assigned && ofId && String(ofId) !== String(assigned)) {
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'this review names ' + ofId + ' as the author of the part it read, but the cross-review assignment for ' + str(member) + ' is ' + assigned + ' — a review of a part that was not assigned is not a review of the rotation this paper assigned',
+        'pass of:"' + String(assigned) + '" (that is what this round assigned to ' + str(member) + '); the assignment is printed by the advance() that opened this round as reviewOf',
+        { member: str(member), of: ofId, assigned: String(assigned), reviewOf: state.reviewOf })
+    }
     // ★ F3a: 互审 is by SOMEBODY ELSE. Refuse a review of one's own part BY NAME rather than filing it as a review —
     // with one participant the rotation had made `reviewOf[member] === member`, so this is the self-review defect.
     if (ofId && ofId === str(member)) {
@@ -998,6 +1027,22 @@ export function createPaperFlow({
   /** ④ advance: the state machine. Returns what happened, or `moved:false` with the reason (never a silent no-op). */
   function advance({ target } = {}) {
     const { state } = requireState(target)
+    // ★★ RUN 203 (run 41 / FEEDBACK40 1.2, MEASURED): only the disagreement branch said WHICH round moved (roundFrom /
+    // roundTo / roundMeans) and the other three moving branches said nothing, so run 41's editor read a paper that had
+    // just left reviewing for the editor as a round that was "still round 1" with no way to tell whether the round had
+    // moved or the field had been forgotten. Every moving branch now answers both facts: the STAGE moved, and the ROUND
+    // did or did not — a call that leaves the round where it was says so in words, because silence is what got misread.
+    const roundReading = (roundFrom, fromStage, toStage) => {
+      const roundTo = Number(state.round)
+      if (roundTo !== Number(roundFrom)) {
+        return { roundFrom: Number(roundFrom), roundTo, roundMoved: true,
+          roundMeans: 'the round ADVANCED (' + String(roundFrom) + ' → ' + String(roundTo) + ') and the paper moved ' + fromStage + ' → ' + toStage + ': this is not a retry of round ' + String(roundFrom) + ', it is the next round' }
+      }
+      return { roundFrom: Number(roundFrom), roundTo, roundMoved: false,
+        roundMeans: 'the ROUND did not move (still ' + String(roundTo) + ') while the paper moved ' + fromStage + ' → ' + toStage
+          + ': a round is ONE cycle of parts + reviews, and this call ' + (fromStage === 'writing' ? 'opened the first cycle' : 'closed a cycle without opening another')
+          + ' — "the round did not move" is a READING stated on purpose, not a missing field (the stage moved, the round did not)' }
+    }
     if (state.status === 'writing') {
       if (state.participants.length === 0) throw refuse(CODES.STATE, 'no participants: nothing can be cross-reviewed', 'record at least one part and have a second participant')
       const reviewOf = {}
@@ -1007,9 +1052,21 @@ export function createPaperFlow({
         if (t === null) { notRequired.push(String(id)); continue }
         reviewOf[String(id)] = t
       }
+      // ★★ RUN 203 (run 41 / FEEDBACK40 2.3, MEASURED): with ONE participant the paper was still moved writing → reviewing
+      // and only the NEXT advance refused, so the paper sat in a stage it could never leave and the receipt that moved it
+      // said nothing. The impossibility is known BEFORE the mutation: if no participant has another member's part to
+      // review, the move is refused by name and the paper stays in "writing" (nothing is written by this call).
+      if (state.participants.length < 2) {
+        throw refuse(CODES.STATE,
+          'nothing moved: this paper has ' + String(state.participants.length) + ' participant(s), and with fewer than two there is no other member who could review a part — moving it to reviewing would lock it in a stage it can never leave (互审 with one participant is 自审)',
+          'start the paper with at least two participants (vibe_v5_paper { action: "start", participants: [...] }), have one member write a part and another member record a `part` — then advance(); the paper is still in "writing" and this call wrote nothing',
+          { participants: state.participants.slice(), crossReviewPossible: false })
+      }
+      const roundFromWriting = Number(state.round)
       state.status = 'reviewing'; state.stage = 'reviewing'; state.reviewOf = reviewOf; state.reviews = {}
       writeState(state)
       return { ok: true, moved: true, from: 'writing', to: 'reviewing', round: state.round, reviewOf, notRequired,
+        ...roundReading(roundFromWriting, 'writing', 'reviewing'),
         notRequiredMeans: notRequired.length === 0
           ? 'every participant has a part by another member to review'
           : 'these participants have NO other member\'s part to review this round (' + notRequired.join(', ') + '): they are EXEMPT from the unanimity check (a member cannot review a section nobody wrote) — the paper does not need their verdict to advance' }
@@ -1077,6 +1134,8 @@ export function createPaperFlow({
         // the rotation reviews the participant themself, so the filter above was vacuously unanimous. The gate runs BEFORE
         // any mutation, so a refusal leaves the paper exactly where it was (still reviewing, nothing written).
         requireCrossReview(state, 'advance')
+        const roundFromUnanimous = Number(state.round)
+        const coverage = crossReviewCoverage(state)
         state.status = 'awaiting-editor'; state.stage = 'awaiting-editor'
         writeState(state)
         // ★★ RUN 195 (run 37 / FEEDBACK36 2.2, MEASURED): the two DISAGREEMENT branches carry `refusers` and the
@@ -1084,6 +1143,8 @@ export function createPaperFlow({
         // it (its own report asked "is refusers missing here, or is it empty?"). An empty list is a FACT here — every
         // required reviewer answered deliverable — so it is stated instead of omitted, with the sentence that says which.
         return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true, reviewsRead, notRequired,
+          ...roundReading(roundFromUnanimous, 'reviewing', 'awaiting-editor'),
+          crossReview: coverage,
           refusers: [], stale: [], notYetReviewed: [],
           refusersMeans: 'empty ON PURPOSE: every participant who owes a verdict on another member\'s part answered deliverable on THIS round, so no one refused — the field is present so "nobody objected" is a value, not an absent one (the disagreement branches carry the same field with names in it)',
           pendingMeans: 'empty ON PURPOSE: every required reviewer has a counted verdict for this round, so no one is waiting to be asked — stale (rows from another round) and notYetReviewed (no row yet) are separate fields for exactly this reason' }
@@ -1122,6 +1183,7 @@ export function createPaperFlow({
           reviewsRead, notRequired,
           notRequiredMeans: notRequired.length === 0 ? null : 'these participants were NOT counted as refusers: they have no other member\'s part to review (' + notRequired.join(', ') + ')' }
       }
+      const roundFromCapped = Number(state.round)
       state.status = 'awaiting-editor'; state.stage = 'awaiting-editor'
       state.forcedAfterCap = true
       // ★★ RUN 189 (run 33 / FEEDBACK33 1.4, MEASURED): this warning was written once and then read forever. Run 33
@@ -1133,6 +1195,8 @@ export function createPaperFlow({
       writeState(state)
       // ★★ RUN 197 (same defect as the branch above): the CAPPED disagreement branch printed `refusers` and no meaning either.
       return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: false, refusers,
+        ...roundReading(roundFromCapped, 'reviewing', 'awaiting-editor'),
+        crossReview: crossReviewCoverage(state),
         refusersMeans: 'NOT empty: the reviews did not reach deliverable for every participant within ' + roundsCap() + ' round(s), so the editor is handed the paper WITH this disagreement on the record (a later round can still agree); refusers holds the votes that said no, stale/notYetReviewed hold the members who were never counted',
         stale, notYetReviewed, capped: true, warnings: state.warnings, reviewsRead }
     }
@@ -1225,7 +1289,7 @@ export function createPaperFlow({
           by: fin.by, decision: fin.decision,
           consult: { requestId: gate.error.requestId === undefined ? null : gate.error.requestId,
             definition: gate.error.requestId === undefined || gate.error.requestId === null ? null : String(gate.reason || '') },
-          means: 'the final was REFUSED before anything was written: this paper is NOT finalized, and the question in `consult.requestId` must be answered (recordConsult) before the same call can succeed — a refused final leaves the paper exactly where it was',
+          means: 'the final was REFUSED before anything was written: this paper is NOT finalized, and the question in `consult.requestId` must be answered before the same call can succeed — answer it with vibe_v5_paper { action: "consult", target, member, answer } (the kit method is recordConsult); a refused final leaves the paper exactly where it was',
         }
         throw gate.error
       }

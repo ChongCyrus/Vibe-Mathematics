@@ -14619,3 +14619,29 @@ hint 给出路）、全一致的票箱放行；§2 真会议（3:0 全 FOR 在�
 303.3b **收口链与全量 T1。** `update-doc-counts --write` ⇒ `JOBS total=753 suites=645 probes=108`；`regen-all --write` 17/17、`--check` 17/17 in sync；`PREFLIGHT`/`DOC LINT`/`RULES COVERAGE`（93 items · DONE 93）/`RULE PARITY` 四门禁 PASS。干净全量 T1（`node tests/run-tests.mjs`，`/d/_tmp/t1-r470-mainline.log`）= **`TOTAL 753 PASS 753 FAIL 0（suites 645 · probes 108）`**（wall 2 226.5 s，concurrency 2，x1.92）。★ 「干净」指这一跑期间工作树没有第二个进程在改源码——上一轮的 752/752 是在 RUN 202 改动已落盘、主线改动未开始时取的，本轮加上新节与新套件后重取。
 
 303.4 **未闭合。** 主线节目前只有「被看见」的证据；「看见之后真的按它做」要靠真机轮次观察（下一轮真机加入复验项：第一回合是否先查蓝图与归档）。九字段的「记录在哪里」仍是散落的（蓝图行、进度行、记录行），没有一张统一的节点表——这一条要等真机反馈再决定是否值得做成机器面。
+### §304 一轮一次的读数：该说话的地方沉默，该分因的地方只说一种原因
+
+304.1 **账从哪来。** 第 41 次真机跑完（主线结题 `Paper/paper-p1/paper-p1.pdf` 177 327 B，`DRIVE exit=0`，5 个会话 0 个红检）。它的 `FEEDBACK40` 记了十条读数缺陷，其中八条是「回执里已经有一个数/一条路，但没有说清它属于哪一刻、哪一种原因」，这一轮清这八条；`1.1`（会议裁决写不回卡片）、`2.2`（同源矛盾）与 `1.6`（论文 state 行被覆写）留到下一轮。
+
+304.2 **八处修法（都在真机现场量过）。**
+- **`advance` 的回合读数**（`kit/paper.js`）：原来只有「不一致被打回」那一支带 `roundFrom`/`roundTo`/`roundMeans`，另外三支移动时一个字都不说，于是「刚离开 reviewing 进 awaiting-editor」的论文读起来像「还在第 1 轮、什么都没动」。新增一个 `roundReading(roundFrom, fromStage, toStage)`，三支移动分支（`writing→reviewing`、`reviewing→awaiting-editor` 的一致支与顶格支）都摊进去；句子明说「the ROUND did not move (still N) while the paper moved A → B」，并解释**stage 动了、round 没动**是读数而不是缺字段。
+- **互审覆盖**（同文件）：收轮时新增 `crossReview` 块，由 `crossReviewCoverage(state)` 算出 `parts[{author, reviewer, wrotePart}]`、`uncovered`、`uncoveredMeans`（空列表也带一句「empty ON PURPOSE」）。同时 `recordReview` 开始核 `of` 是否等于该论文分配的 `reviewOf[member]`，不等就具名拒 `VMU_INVALID_ARGUMENT`，message 同时点名「你写了谁」与「该写谁」，hint 直接给出该发的那个参数。
+- **单人论文提前拒**（同文件）：`participants.length < 2` 时不再先搬 `writing→reviewing` 再在下一轮拒，而是在**任何写入之前**拒 `VMU_PACK_V5R_CORE_PAPER_STATE`，带上 `crossReviewPossible:false` 和「互审 with one participant 是自审」。
+- **`proofPointerMeans` 分因**（`packs/v5r/tools.js` 的召集分支）：`exists:false` 原来只有一句「不在 library root 里」，而现场那次指针明明 `insideLibrary:true`、只是文件还没写。改成按 `resolvePointer` 的 `reason` 分成四句（`missing` / `absolute` / `escapes` / `empty`），`missing` 那句明确说「well formed、在 root 内、只是那个路径还没有文件」。
+- **票板与辩论**：`poll_open` 的拒绝 hint 补一句「CLOSING THE MEETING ENDS THE DEBATE」，把退路写在拒绝里。
+- **定稿被拦的 hint 指真面**（`kit/paper.js` 四处）：原来写 kit 方法 `recordConsult(...)`，调用方根本够不着；改成 `vibe_v5_paper { action: "consult", target, member, answer }`，并保留 `recordConsult` 字样（kit 层就是这个函数），免得旧 pin 断。
+- **证据的两种合法拼法**（`prompts/v5r-paper-prompts.js`）：教学里只写了 `rec-<n>`，第二种（名字就是记录 id 的文件卡 `Members/<成员>/(Propos|Methods|Subproblems|Progress)/<记录 id>.md`）从没写，两种成员都靠猜；现在两条并列写死，并把「文件卡不是证据」收窄成「自己起的名字不算」。
+- **promote 的 warrant**：`vibe_v5_verified_promote` 的 description 补「ON THE lean-conformance ROUTE `warrant` IS REQUIRED TOO」，缺 warrant 的拒绝 hint 也补同义句。
+
+304.3 **机器化。** 新增 `tests/vmu-run203-feedback40.test.mjs`（**5 passed / 0 failed**）：§0 十七条源码 pin；§1 两位参与者真实写作 → `advance` → 按收到的 `reviewOf` 逐个交 `review` → 再 `advance`，钉住两次移动的 `roundFrom`/`roundTo`/`roundMoved`/`roundMeans` 与 `crossReview.parts`/`uncovered`/`uncoveredMeans`；§2 三位参与者下把 `of` 写成没分配的那个人 ⇒ 具名拒、reviews 仍空；§3 单人论文 ⇒ 拒且 `status` 仍是 `writing`；§4 debate 召集的 `subjectGate.proofPointer` 与 `proofPointerMeans` 按 `missing` 成句且不再自相矛盾。定向回归 12 组全绿（`vmu-paper` 5/0、`vmu-meeting` 18/0、`vmu-turn` 13/0、`vmu-run195/196/200/201/202/203` 各 1/0、`vmu-v5r-tools`、`vmu-verdict`）。
+
+304.4 **一次自查推翻（落盘后立刻实测）。** `roundReading` 第一版按**回合号**选句子（`roundTo === 1` 就说「opened the first cycle」），于是「reviewing → awaiting-editor 收掉第一轮」也被说成「开了第一轮」——数字相等不等于含义相同。改成按 **stage** 选句子（从 `writing` 出去的才叫开第一轮），并把这条写进 §1j 的 pin 说明里。
+
+304.5 **装载事实（写测试必用）。** `vibe_v5_paper { action: "status" }` 的论文实体在回执的 `paper` 键下（不是 `state`）；会议召集要求该成员**真的在 roster 里**（`handle.kernel.members.hire({ id, slot, institution })`，否则 `VMU_NO_SUCH_OBJECT`），且只有 `type: "debate"` 才带 `subjectGate`（`ordinary` 会拒「takes no object」），`subjectGate` 在回执顶层；`kit/paper.js` 的 `reviewTargetFor` 是「按参与顺序取下一个写过 part 的人」，所以测试应当读回执的 `reviewOf` 而不是自己算。
+
+304.6 **未闭合。** `FEEDBACK40` 的 `1.1`（辩论裁决定下来的数字写不进 p=1 卡）、`2.2`（`verdict_final` 的 `correction.shapeMeans` 与 1.1 同源）与 `1.6`（论文 state 行被覆写、写作阶段快照不可复核）仍未做；本轮修复**尚未真机复验**。
+
+304.7 **三条教训。**
+- **数字相等不等于没前进**：凡是「某个计数没变」的回执，都必须同时说明**变了的是什么**，否则读者会把「读数」当成「没发生」。
+- **同一句话不能覆盖两种原因**：`exists:false` 既可能是「路径不在库里」也可能是「文件还没写」，两种原因的修复动作完全不同，回执必须分开说。
+- **拒绝里要写退路**：`poll_open` 被辩论会挡住的现场，用户不知道「关会就等于结束辩论」，于是去改设置；把退路写进 hint 比写进文档便宜得多。
