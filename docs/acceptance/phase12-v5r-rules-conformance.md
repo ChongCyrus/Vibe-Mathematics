@@ -14521,3 +14521,85 @@ audit-face-actions / audit-tool-required-flags / audit-fs-purpose）全绿；计
   账应该在闸前面就成形，闸只负责在上面写「谁拦的」。
 - **把「我写了两次」写出来，比让读者从 rev=2 猜要好**：`rev` 是记录的版本号，不是调用次数；两个数字同形不同义时，
   必须有一个字段专门说清。
+
+## §302 RUN 202 —— 「一致」成了没人核的主张、截断说了事实没说原因、「立即生效」没说是对谁（run 40 / `FEEDBACK39` 剩余四条）
+
+### 302.1 账从哪来
+
+run 40 的 office 做了三件看上去都对、实际都被同一类漏洞放行的事：
+
+- 把一场 **1:1 分裂**的投票说成「裁决集合全体一致」，写在一张 `p=1` 卡上。RUN 201 的闸只回答「这个名字有没有票」，
+  **没回答「这些票彼此一致吗」** —— 于是「有票」被当成了「一致」。
+- 定稿时读到 `requiredLineTruncated: true`，不知道这条结论的行名为什么是断的，只能猜「命题太长」，于是既没抄
+  `requiredLineFull`、也没改写法，白丢一轮。
+- 写设置时回执第一句 `applied: "immediate"`，三个字段之后才出现 `crossKernelScope: "this-process"`；office 按第一句
+  理解成「成员也看到了」，成员子内核读到的其实是声明默认值。
+- temp 席的能力说明写「不能写进展行」，而真机里 turn 的回复通道**确实**替 temp 席写了一行 —— 两条都对，但读者会
+  判定其中一条在骗人。
+
+### 302.2 六处修法
+
+1. **票的分裂要被读出来**（`vibe-math-vmu/packs/v5r/tools.js` 的 `rulingNameResolution` ballot 分支）：按票箱
+   `status` 的 `byChoice` 算 `choices`（不同选项数）、`unanimous`（有票且只有一个选项）、`decisive`、`choiceNames`；
+   `voted` 从「有票或弃权」改成 **`votes > 0`**（只有弃权不是决定）；means 分三态（一致 / 分裂 / 无票）。`settled`
+   仍只披露（关闭的票箱照样能被引用，票是票，状态是状态）。
+2. **会的「一致」要看票，不要看主席有没有点结**（同函数 meeting 分支）：`unanimousTallies = motions.filter(tally 有票
+   且 against 为 0 且 abstain 为 0)`，**不论 status**；`unanimousCarried` 保留为更窄的披露；回执加
+   `unanimousCarried`、`motionsCarried`，means 写成「N 个动议的票面全 FOR（没有反对票、没有弃权），其中 M 个已 carried」。
+   ★ 这一条是自查推翻后的版本，见 302.4。
+3. **声称一致而账不一致 ⇒ 具名拒**（写卡路径排在 UNVOTED 之后）：`mode === 'unanimous'` 而 `unanimous !== true` ⇒
+   `VMU_PACK_V5R_CORE_P1_RULING_NOT_UNANIMOUS`，message 说「claimed UNANIMOUS while the named decision is not」，并带上
+   实际读数（分裂时说 `the votes are SPLIT across choices …`），hint 同时给三条出路：读回执 `vibe_v5_poll_result` /
+   会议的 `action: "summary"`、把还开着的投票关掉、或改走 `vibe_v5_fidelity_conclude`。
+4. **截断三字段**（`vibe-math-vmu/packs/v5r/paper-quality.js`，作者侧 `requiredLines` 与读面 `verifiedRequirements`
+   各一份）：`requiredLineTruncatedBy: 'card-title-cap'`、`requiredLineTruncatedAt: 48`、`requiredLineTruncatedMeans`
+   （「行名是从主张派生的**卡标题**，48 字截断加省略号；要粘的句子是 `requiredLineFull`，行名只是它的前缀」）。
+5. **「立即生效」说清对谁**（`tools.js` settings 回执）：`partial`、`partialFor`（只有本进程为回合派生的成员内核没有）、
+   `partialMeans`（「上面的 applied: immediate **只在本进程成立**：成员每回合自起内核，读到的还是旧值；要让成员看到，
+   必须落到共享状态 —— 耐久设置写入或折叠账」）。
+6. **temp 席两扇门**（`toolAssign` 的 `assigneeCapability.means`）：点名「turn 的回复通道是**另一扇门**：它仍能为
+   temp 席写一行进展，由回合署名」，并给出「两扇门不同，不是自相矛盾」。
+
+### 302.3 机器化与装载事实
+
+`tests/vmu-run202-feedback39b.test.mjs` **6 passed / 0 failed**：§0 十六条源码 pin；§1 真票箱（分裂 1:1 被具名拒、
+hint 给出路）、全一致的票箱放行；§2 真会议（3:0 全 FOR 在主席点结**之前**也放行、2:1 具名拒）；§3 截断三字段两个
+读面（含 `requiredLineFull` 的非空守卫）；§4 设置回执（`partial`/`partialFor`/`partialMeans`）；§5 temp 席两扇门。
+
+收口链与全量 T1：`update-doc-counts --write`（`JOBS total=752 suites=644 probes=108`）→ `regen-all --write` **17/17** →
+`--check` **17/17 in sync** → `PREFLIGHT` / `DOC LINT` / `RULES COVERAGE` / `RULE PARITY` 四门禁 PASS；干净全量 T1
+`D:/_tmp/t1-r463-run202.log` = **`TOTAL 752 PASS 752 FAIL 0`（suites 644 · probes 108）**。
+
+三条装载事实（写这类断言必用）：
+
+- 设置块在 **`receipt.applied`** 里（`{ok, tool, applied:{…}, effective, receiptMeta}`），外层没有 `applied: "immediate"`。
+- `meetings.vote` 的 value 约定是 **0 = 反对，任何非 0 值 = 赞成**（一面一个约定），所以「分裂票」是 `[1, 1, 0]`；
+  写成 `-1` 会被当赞成，测试就会以为闸没拦。
+- 会议路线的读数在 **`p1RulingReading.means`**（「…N motion(s) with a tally that is ALL FOR…」），`p1RulingMeans`
+  只说「这个裁决名指的是会议」；`debate_ruling.mode` 只有 `unanimous` 可用，写 `majority` 会被
+  `VMU_PACK_V5R_P1_NEEDS_DEBATE` 拒（规则只认可「裁决集合全体一致为 1」）。
+
+### 302.4 一次自查推翻：判「一致」不能判程序状态
+
+第一版把 meeting 分支的一致性判成「有 **carried** 的动议并且票面全 FOR」。定向回归立刻变红：
+`tests/vmu-run198-feedback37b.test.mjs` §1 的会议是 3:0 全票、动议已 seconded、**主席还没点结**，被判 not unanimous ——
+可那场会确实一致通过了。错的地方不是夹具，是把「程序走到哪」当成了「票说了什么」。
+改成只看票面（`for > 0 && against === 0 && abstain === 0`）后，carried 只作为更窄的披露字段保留。
+教训与 §301 的「名字不是实体」是一对：**状态不是证据**——「还没点结」是流程位置，「全体一致」是票面形状。
+
+### 302.5 未闭合
+
+- 票箱的 `byChoice` 只给「选哪个选项」，不回答**选项与这张卡、这个 value 的对应关系**（1:1 分裂里两边可能都同意
+  「1 是对的」而只是选错项）⇒ 更高一层的一致性还没被读。
+- `FEEDBACK40` 的 1.1（会议裁决写不回卡片）、1.2（advance 的回合字段只在一支路上有）、1.3（开着的辩论会挡投票板）、
+  1.4（`proofPointerMeans` 对 `missing` 与 `outside-library` 说同一句话）、1.5（互审 `of` 不按 `reviewOf` 校验）、
+  1.6（论文 state 行被覆写）、2.1/2.3/2.4/2.5 全部未做 —— 这一轮只清了 FEEDBACK39 的尾巴。
+- 本轮修复**尚未真机复验**。
+
+### 302.6 三条教训
+
+- **「一致」是票据的形状，不是流程的进度**：任何把 `status`/`carried` 当作一致性证据的实现，都会在「已投票但未点结」
+  这个完全正常的时刻说谎。
+- **截断要说两件事：事实与原因**：只说 `truncated: true` 等于让读者自己去翻源码找 48 这个数，而他要的是「粘哪一句」。
+- **「立即」是一个相对词**：凡是写 `applied`/`immediate`/`live` 的回执，都必须同时写清 scope —— 谁立刻、谁不立刻、
+  不立刻的那个怎么才能看到。

@@ -645,6 +645,15 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
       missingEvidence.push({ kind: 'verified', id: item.id, cardId: item.cardId, title: item.title,
         requiredLine: named.line || String(item.cardId || item.id),
         requiredLineTruncated: named.truncated,
+        // ★★ RUN 202 (run 40 / FEEDBACK39 2.2): `requiredLineTruncated:true` named a fact without naming its CAUSE — a reader
+        // could not tell "the claim is long" from "the NAME was capped when the card title was derived". The cap is 48 chars
+        // (kit/handlers.js derives a title from the claim: longer than 48 ⇒ cut at 48 and append `…`), and that number is the
+        // thing an author needs to decide whether to quote the name or the sentence.
+        requiredLineTruncatedBy: named.truncated ? 'card-title-cap' : null,
+        requiredLineTruncatedAt: named.truncated ? 48 : null,
+        requiredLineTruncatedMeans: named.truncated
+          ? 'the CARD TITLE was derived from the claim and capped at 48 characters with a trailing …; the row name is a NAME, not the claim — `requiredLineFull` is the sentence and that is what belongs in the prose'
+          : null,
         // ★★ RUN 179 (F24-4): when the NAME stops at `…`, the claim does not. The row's own `陈述` is the sentence to
         // write; naming only the truncated title made the gate impossible to satisfy honestly (the author had to paste a
         // ceiling). `requiredLineFull` is that sentence, and `requiredLineTruncated` says the name is not the claim.
@@ -732,6 +741,11 @@ export function verifiedRequirements({ view, codes = QUALITY_CODES } = {}) {
       id: item.id, cardId: item.cardId === undefined ? null : item.cardId,
       requiredLine: name || String(item.cardId || item.id),
       requiredLineTruncated: truncated,
+      requiredLineTruncatedBy: truncated ? 'card-title-cap' : null,
+      requiredLineTruncatedAt: truncated ? 48 : null,
+      requiredLineTruncatedMeans: truncated
+        ? 'the title was derived from the claim and capped at 48 characters with a trailing …; requiredLineFull is the sentence to paste, the name is only a prefix of it'
+        : null,
       requiredLineFull: truncated ? (item.statement ? String(item.statement) : statementOfCardOf(recordsFace, item.cardId)) : null,
       requiredLineFullWhy: !truncated ? null
         : (item.statement ? null

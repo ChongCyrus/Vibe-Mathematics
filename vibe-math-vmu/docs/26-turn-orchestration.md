@@ -3376,3 +3376,17 @@ RUN 201（`FEEDBACK39` 五条）。一条 `p=1` 卡上写着 `ballotId: "bx-1"`�
 
 机器化 `tests/vmu-run201-feedback39.test.mjs`（4/0）。两条装载事实：**pack 的拒绝是回答不是抛出**（断言读返回值，
 try/catch 只会读到 null）；`ballotbox.cast` 的投票人字段是 `by`。定向回归 19 组全绿。
+
+## ROUND 206
+
+RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一轮学会了「读那个名字」，这一轮学会**读票的形状**：
+按票箱 `byChoice` 算 `choices`，1:1 分裂被具名 `P1_RULING_NOT_UNANIMOUS` 拒，hint 同时给三条出路（读回执、关投票、
+改走 `fidelity_conclude`）；会议的「一致」只看票面（全 FOR、无反对、无弃权），**不看主席有没有点结** —— 第一版判
+`carried` 立刻冤枉了 run198 的 3:0 会议，自查后改回票面判据，`carried` 降级为披露字段。第二处：`requiredLineTruncated`
+现在带 `requiredLineTruncatedBy`（`card-title-cap`）、`requiredLineTruncatedAt`（48）与一句原因，作者侧与读面各一份。
+第三处：设置回执把「立即生效」说成「**只在本进程**立即生效」（`partial`/`partialFor`/`partialMeans`）。第四处：temp 席
+的能力说明点名「turn 的回复通道是另一扇门」，两扇门不是矛盾。
+
+机器化 `tests/vmu-run202-feedback39b.test.mjs`（6/0）。三条装载事实：设置块在 `receipt.applied` 里；`meetings.vote`
+的 value 是「0 = 反对、非 0 = 赞成」，分裂票写作 `[1, 1, 0]`；会议读文在 `p1RulingReading.means`，而 `mode` 只有
+`unanimous` 一种。定向回归 25 组全绿。

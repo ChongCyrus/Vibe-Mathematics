@@ -628,7 +628,7 @@ async function toolAssign(args = {}, { kernel } = {}) {
   const seat = seatRow ? String(seatRow.slot) : ''
   const assigneeCapability = seat === 'temp'
     ? { seat, noLeanFace: true, noResearchLibrary: true,
-        means: 'the TEMP seat has no Lean face and writes no research library (seat-faces A8: the five vibe_v5_lean_* tools, record_proposition / record_method / record_subproblem / record_progress and paper are all temp:false). A temp worker does the assigned temporary task and reports through task_update / read_library. If this assignment needs FORMAL VERIFICATION or a library write, assign it to a member (r-1/r-2) or the chair instead — the work is reachable there, not here.' }
+        means: 'the TEMP seat has no Lean face and no research-library FACE (seat-faces A8: the five vibe_v5_lean_* tools, record_proposition / record_method / record_subproblem / record_progress and paper are all temp:false). A temp worker does the assigned temporary task and reports through task_update / read_library. ★ RUN 202 (run 40 / FEEDBACK39 1.4): this line used to read as "a temp seat can never leave a progress row", and a live run showed the opposite — the TURN reply envelope wrote one for a temp member, attributed by the turn itself. Both are true because they are DIFFERENT DOORS: the research-library face is closed to temp, while the reply envelope is the turn\'s own channel and writes through it (the row is attributed by the turn, not by a library face). What a temp seat cannot do is open the library face; what it can always do is answer its turn. If this assignment needs FORMAL VERIFICATION or a library-face write, assign it to a member (r-1/r-2) or the chair instead — that work is reachable there, not here.' }
     : (seat === '' 
       ? { seat: null, noLeanFace: null, noResearchLibrary: null,
           means: 'this assignee is not on the roster this face can read, so nothing is claimed about its faces' }
@@ -1339,12 +1339,26 @@ function rulingNameResolution(kernel, debate) {
     const votes = Number(read.votes) || 0
     const abstain = Number(read.abstain) || 0
     const state = read.state === undefined ? null : String(read.state)
-    return { ok: true, kind: 'ballot', ref, exists: true, state, votes, abstain,
-      byChoice: read.byChoice && typeof read.byChoice === 'object' ? read.byChoice : {},
+    const byChoice = read.byChoice && typeof read.byChoice === 'object' ? read.byChoice : {}
+    // ★★★ RUN 202 (run 40 / FEEDBACK39 1.1, MEASURED): RUN 201 taught this face to check that the named box HAS votes.
+    // run 40's hole was empty; the NEXT hole is one step in: a box can hold votes that agree on NOTHING. "unanimous" is a
+    // claim about a tally, so the reading has to include the tally — how many distinct choices were cast, which one led,
+    // and whether the box was ever CLOSED (a poll in progress is not a decision).
+    const choices = Object.keys(byChoice).filter((k) => Number(byChoice[k]) > 0)
+    const unanimous = votes > 0 && choices.length === 1
+    return { ok: true, kind: 'ballot', ref, exists: true, state, votes, abstain, byChoice,
+      choices: choices.length,
+      choiceNames: choices.slice(0, 8),
+      unanimous,
+      decisive: unanimous ? choices[0] : null,
       settled: state === 'closed',
-      voted: votes + abstain > 0,
+      voted: votes > 0,
       means: 'the ballot ' + ballotId + ' was READ on this kernel: state ' + String(state) + ', '
-        + String(votes) + ' vote(s), ' + String(abstain) + ' abstention(s) — that is what the ruling name points at' }
+        + String(votes) + ' vote(s) for ' + String(choices.length) + ' distinct choice(s) '
+        + (choices.length === 0 ? '' : '(' + choices.slice(0, 8).join('、') + ') ')
+        + ', ' + String(abstain) + ' abstention(s)'
+        + (unanimous ? ' — every vote went to ONE choice, so "unanimous" is what the tally says' : (votes > 0 ? ' — the votes are SPLIT across choices, so "unanimous" is NOT what the tally says' : ' — no vote was cast for any choice, so there is no tally here'))
+        + '; a box that is not closed is a poll in progress, not a decision (see `settled`)' }
   }
   const face = kernel && kernel.meetings
   if (!face || typeof face.summary !== 'function') {
@@ -1360,12 +1374,34 @@ function rulingNameResolution(kernel, debate) {
   const motions = Array.isArray(read.motions) ? read.motions : []
   const counted = motions.reduce((n, mo) => n + (mo && Array.isArray(mo.votes) ? mo.votes.length : 0), 0)
   const decidedMotions = motions.filter((mo) => mo && (mo.status === 'seconded' || mo.status === 'carried'))
+  // ★★★ RUN 202: same question as the ballot branch — "did this meeting DECIDE anything, and was the decision unanimous?"
+  // A meeting whose motions were seconded but never voted is a debate; a motion that carried 2:1 is a decision that was
+  // NOT unanimous. Both used to look identical here (a count of votes), so p=1 could cite either one as "unanimous".
+  const carried = motions.filter((mo) => mo && mo.status === 'carried')
+  // ★★★ RUN 202, SECOND CORRECTION (measured by `tests/vmu-run198-feedback37b.test.mjs` §1): WHAT "UNANIMOUS" QUANTIFIES.
+  // The first version of this repair asked only about motions already CARRIED, so a meeting whose motion was seconded and
+  // voted 3:0 — every seat for it, the chair not yet having closed the round — read as "not unanimous", and a card quoting
+  // that meeting was refused. The gate was talking about PROCEDURE while the ruling talks about VOTES. A tally is evidence
+  // whether or not the chair has rung the bell: `unanimousTallies` counts motions whose recorded votes are all FOR (no
+  // against vote, no abstention), and `unanimousCarried` stays the NARROWER disclosure ("carried without a single against
+  // vote") so a receipt still distinguishes "the votes agree" from "the round was closed".
+  const unanimousTallies = motions.filter((mo) => {
+    const t = mo && mo.tally ? mo.tally : null
+    if (!t) return false
+    return Number(t.for) > 0 && Number(t.against) === 0 && Number(t.abstain) === 0
+  })
+  const unanimousCarried = carried.filter((mo) => unanimousTallies.indexOf(mo) !== -1)
   return { ok: true, kind: 'meeting', ref, exists: true, state: read.state === undefined ? null : String(read.state),
-    motions: motions.length, motionsSeconded: decidedMotions.length, votes: counted,
+    motions: motions.length, motionsSeconded: decidedMotions.length, motionsCarried: carried.length, votes: counted,
+    unanimous: unanimousTallies.length > 0,
+    unanimousCarried: unanimousCarried.length > 0,
     settled: read.state === 'closed', voted: counted > 0,
     means: 'the meeting ' + ref + ' was READ on this kernel: state ' + String(read.state) + ', '
-      + String(motions.length) + ' motion(s) (' + String(decidedMotions.length) + ' seconded), '
-      + String(counted) + ' vote(s) recorded — that is what the ruling name points at' }
+      + String(motions.length) + ' motion(s) (' + String(decidedMotions.length) + ' seconded, '
+      + String(carried.length) + ' carried), ' + String(counted) + ' vote(s) recorded; '
+      + String(unanimousTallies.length) + ' motion(s) with a tally that is ALL FOR (no against vote, no abstention) '
+      + 'and ' + String(unanimousCarried.length) + ' of those already carried — '
+      + 'that is what the ruling name points at' }
 }
 /** The Lean CONCLUSION for one job id, or null. `passed` is a conclusion on the kernel's lean face, never a state.
  *  ★ B8 修的两个真缺陷：① 这个面挂的方法叫 `status(id)`（导出表见 `vibe-math-vmu/kernel/lean.js:977`），
@@ -1876,6 +1912,15 @@ function gatedCardHandler(toolName) {
               'a ruling is a decision people made — ' + (resolution.kind === 'ballot'
                 ? 'cast votes into that box and close it (vibe_v5_poll_vote then close), then write the card'
                 : 'second and vote the motion in that meeting, then write the card') + '; or settle the card through vibe_v5_fidelity_conclude, whose conformance ruling carries its own evidence')
+          }
+          // ★★★ RUN 202: "unanimous" is a claim about a TALLY. If the named decision was split, the name resolves and the
+          // ruling is still false — the institute must say that instead of writing the claim (run 40's p=1 landed on a card
+          // nobody had ever debated; a 2:1 box would have been the same lie with more effort).
+          const mode = str(evidence.debate.mode || '')
+          if (mode === 'unanimous' && resolution.unanimous !== true) {
+            throw refuse('VMU_PACK_V5R_CORE_P1_RULING_NOT_UNANIMOUS',
+              'p=1 was refused because the ruling claims UNANIMOUS while the named decision is not: ' + resolution.means,
+              'a unanimous ruling needs a tally where every vote went to one choice — read it back first (vibe_v5_poll_result for a box, vibe_v5_meeting {action:"summary"} for a meeting), close the vote if it is still open, or settle the card through vibe_v5_fidelity_conclude, whose conformance ruling carries its own evidence')
           }
           evidence.debate.ruling = resolution
         }
@@ -4404,6 +4449,15 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
     // statements were true and the one a reader skims first was the misleading one. These two fields say the second fact
     // in the same breath, by name, for the keys where it matters most.
     visibleToMemberKernels: receipt && receipt.crossKernelScope === 'this-process' ? false : null,
+    // ★★★ RUN 202 (run 40 / FEEDBACK39 2.5, MEASURED): the kernel says `applied:"immediate"` and, three fields later,
+    // `crossKernelScope:"this-process"`. Both true, and the word a reader skims first ("immediate") is the misleading one:
+    // it reads as "the institute has it", while a member turn boots its OWN kernel and reads the old value. The honest
+    // spelling is `partial` with the scope named, so nobody has to notice the second field to learn the first fact.
+    partial: receipt && receipt.crossKernelScope === 'this-process' ? true : null,
+    partialFor: receipt && receipt.crossKernelScope === 'this-process' ? 'the member kernels spawned for turns (this process only)' : null,
+    partialMeans: receipt && receipt.crossKernelScope === 'this-process'
+      ? 'applied:"immediate" above is TRUE FOR THIS PROCESS ONLY: the write is live here, and every member turn boots its own kernel over the same workspace and keeps reading the old value. If a member must see it, the value has to reach shared state — a durable setting write or the record fold — not a runtime write on this face'
+      : null,
     memberKernelMeans: (() => {
       if (!receipt || receipt.crossKernelScope !== 'this-process') return null
       const base = 'each member turn runs its OWN kernel instance over the same workspace, and this write lives only in '
