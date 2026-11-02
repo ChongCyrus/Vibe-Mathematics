@@ -77,7 +77,12 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'motion', face: 'vmu.meetings', op: 'motion',
     note: '动议；与 propose_verify 同一个属主面。**回执不带会议 id**：用工具 `vibe_v5_motion { meeting, member, kind, text }`（`member` 必填），或 payload 自带 `{meeting, member, text}`；否则被具名跳过 no-meeting-bound（原句留 notes）' }),
   Object.freeze({ field: 'formal', face: 'vmu.formal', op: 'check',
-    note: '形式化结论 {decision,file,note}，形状见下面的 formal 段（仅当形式化开启时出现）' }),
+    // ★★★ RUN 191 (run 35 / FEEDBACK34 2.6, MEASURED): this line taught `{decision,file,note}` while the face it
+    // dispatches to is the formal-check service (`{statement,proof}`) — the chair wrote it as taught and got
+    // `VMU_MATH_INVALID_INPUT: check 需要 statement 与 proof`. The taught shape must be the shape the face reads.
+    note: '形式化检查 {statement, proof}：`statement` 是命题原文、`proof` 是 Lean 证明脚本正文（可选 `allowSorry`）。'
+      + '派发到形式化检查面（formal check），它只读这两个键；`{decision,file,note}` 是**形式化卡**的形状，不是证明脚本，写进来会被具名跳过'
+      + '（`VMU_MATH_INVALID_INPUT`，`missing` 列出缺的键），本轮其余字段照常生效' }),
   Object.freeze({ field: 'lean_archive', face: 'vmu.mathjobs', op: 'submit',
     note: '把一段 Lean 代码归档为证据（提交给 vmu.mathjobs）' }),
   Object.freeze({ field: 'lean_run', face: 'vmu.mathjobs', op: 'submit',

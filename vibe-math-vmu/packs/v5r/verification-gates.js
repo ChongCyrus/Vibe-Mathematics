@@ -391,7 +391,12 @@ export function debateSubjectGate({ meeting = null, subject = null, evidence = {
       note: '辩论对象的证明目前只有**作者自述**（proofRef=' + proofRef + '、proofState="complete"）。本闸只核了卡上的这两个字段：'
         + '这次调用没有把 Lean 作业或 `verified` 轨的证据交给闸（ev.lean / ev.verified 未提供），所以 proofChecked:false、'
         + 'proofBasis:"declaration-only" —— 「没核」不等于「没通过」。规则要的是"已登记为写完"，故放行；'
-        + '自述不等于已证，而这场辩论正是把它送进证据层的正当路径，进 `verified` 轨仍要过 p1Intent 与单写者两道闸' })
+        + '自述不等于已证，而这场辩论正是把它送进证据层的正当路径，进 `verified` 轨仍要过 p1Intent 与单写者两道闸'
+        // ★★ RUN 191 (run 35 / FEEDBACK34 2.4, MEASURED): the reader of this note asked the obvious next question — "then
+        // how DO I get it checked?" — and the note did not say, so the only route was to read the source. The answer is one
+        // argument on the convene call, so it is named here.
+        + '；★ 要让本闸真核一次，召集时把机器证据交进来：`vibe_v5_meeting { action:"convene", type:"debate", subject:"' + cls.raw + '", lean_job:"lean-<n>" }`（或交 verified 轨的行 id）'
+        + ' —— 那时 proofBasis 不再是 "declaration-only"，回执会把查到的东西写出来' })
   }
   return refuseGate(GATE_CODES.DEBATE_SUBJECT_NO_PROOF,
     '命题卡 ' + cls.raw + ' 没有「正式证明或证伪**已写完**」的任何登记：proofRef=' + (proofRef || '空')

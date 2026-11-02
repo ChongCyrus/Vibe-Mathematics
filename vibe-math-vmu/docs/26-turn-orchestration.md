@@ -3112,3 +3112,17 @@ Lesson: **a counter with no writer is worse than no counter, because it reads li
 The forwarder now merges a `catalog` of the pack's published names (48, sorted) plus `catalogMeans`, which says three things at once: this is the pack's DECLARED surface; it is NOT your seat's visible set (that one narrows by role and by meeting type, and needs a live Agent); for the authoritative reading, ask `vibe_vmu_tools` inside a turn. Nothing about the live reading is overwritten — `tools` stays `null`, `count` stays `null`, `source` stays `no-live-agent`, and the refusal keeps its field. The fallback fires ONLY when the live table is absent.
 
 Lesson: **"cannot be read now" and "does not exist" are different facts, and one field cannot say both.** Give the reader what is static, name what is missing, and never let the supplement turn a refusal into a success — the next live run would then "verify" a visible set that was never read.
+
+## ROUND 194
+
+**The receipt was built field by field, and two of the built fields were dropped.** Run 35 closed cleanly — paper finalised, PDF 135 270 B on disk, three closure votes, `close` freezing `rec-40` — and came back with three real defects, three unclear prompts, all of one species: the mechanism held the fact, the receipt did not say it.
+
+The sharpest one is the one this round's own first attempt re-committed: `fileCardsOf` computed `libraryRoot` (the ABSOLUTE directory the read scans) and the receipt at the call site was an object literal that named every other field by hand — so the two new fields never left the function. The card a member wrote to the path its prompt taught stayed invisible, the answer stayed `libraryCards: []`, and the receipt still could not say where it looked. A field list is a promise; adding a producer is not enough.
+
+The other five are the same shape one step out. `vibe_vmu_status` accepted `detail:"closure-account"` and never declared it. `vmu.turn.leaderId` wrote into this process's kernel while `vibe_v5_start` reported `applied: "immediate"`, so a member's own kernel read an empty leader and its self-check said `chair-seated-but-leaderId-empty` — true, and now said in the receipt (`visibleToMemberKernels: false`, with that self-check named). The file-card diagnosis lived only in `hint`, so a reader who stopped at `message` learned the wrong cause. `type:"debate"` filed itself as `kind:"sync"`, contradicting the `typeMeans` sentence shipped one round earlier; the label is now derived from the type. And `subjectGate` said "declaration-only is not a pass" without ever saying how to make the gate actually check — it now names the `lean_job` argument that feeds it.
+
+The last one is a teaching bug with teeth: the reply channel taught `formal` as `{decision, file, note}` (a card) while the face reads `{statement, proof}` (a script). A chair that followed the teaching was refused `VMU_MATH_INVALID_INPUT` — and the throw took the whole turn with it. Both sides changed: the prompt now teaches the shape the face reads, and `formalCheckArgs` turns a wrong shape into a NAMED SKIP of one field instead of the end of the round.
+
+Lesson: **a fact that is measured and not said is a defect, not a nuance** — and the cheapest place to lose one is the literal that assembles the receipt. Test the delivery side, not the producer.
+
+Lesson: **when the teaching and the face disagree, fix both.** Changing only the prompt leaves old transcripts and scripts writing the old shape; changing only the face leaves readers being taught the wrong one.

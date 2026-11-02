@@ -3158,7 +3158,15 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   // (`kindSource`), so 「'sync' 这条标签是谁写的」 can be read off the receipt instead of guessed. A caller that passes
   // no label at all therefore gets: a legal kind, and an explicit "default, not chosen".
   const kindGiven = has(args.kind) && String(args.kind).trim() !== ''
-  const kind = kindGiven ? str(args.kind) : 'sync'
+  // ★★ RUN 191 (run 35 / FEEDBACK34 2.3, MEASURED): A DEBATE USED TO BE FILED AS `sync`. Run 35 convened
+  // `type:"debate"` and `type:"closure"` meetings, read `kind:"sync", kindSource:"default"` on BOTH, and — correctly —
+  // called that a contradiction with the `typeMeans` sentence added in RUN 189 (which says type decides the procedure and
+  // kind is the archive label). A filled-in default that CONTRADICTS the known type is not neutral: an archive reader sees
+  // a "sync meeting" that was in fact a debate. When no kind is passed the label is now DERIVED from the type where the
+  // type names one, and the receipt says the derivation happened (`kindSource:"derived-from-type"`) instead of pretending
+  // a caller chose it. `sync` remains the fallback for a type with no natural label.
+  const KIND_BY_TYPE = { debate: 'verify-request', closure: 'solve-vote', division: 'division' }
+  const kind = kindGiven ? str(args.kind) : (KIND_BY_TYPE[type] || 'sync')
   const KNOWN = ['sync', 'division', 'verify-request', 'solve-vote']
   if (!KNOWN.includes(kind)) {
     throw refuse('VMU_INVALID_ARGUMENT', 'unknown meeting kind: ' + kind, 'the original offered: ' + KNOWN.join(', '))
@@ -3297,15 +3305,18 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     kind, agenda: str(args.agenda), formalAgenda: args.formal_agenda === true, secretary,
     // ★ LIVE RUN 122 (E6): WHERE the label came from. `kind` defaults to 'sync' so every meeting always has a word for
     // what it is — and that default is exactly why a reader must be able to tell a chosen label from a filled-in one.
-    kindSource: kindGiven ? 'args' : 'default',
-    // ★★ RUN 189 (run 33 / FEEDBACK33 1.7, MEASURED): run 33 convened `type:"debate"` and `type:"closure"` meetings and
-    // read `kind:"sync"` on both, concluding the label was wrong. It was not wrong — it was DEFAULTED — but two words
-    // ("type", "kind") sitting side by side with different jobs needs a sentence, not a deduction.
-    typeMeans: '`type` decides the PROCEDURE (which skeleton this meeting follows) and is the word the institute uses; `kind` is the meeting BOARD label (sync/division/verify-request/solve-vote) and is what an archive files the row under. When no kind was passed the label falls back to "sync" — `kindSource:"default"` says nobody chose it, and that is a filled-in value, not a reading of what the meeting was',
+    kindSource: kindGiven ? 'args' : (KIND_BY_TYPE[type] ? 'derived-from-type' : 'default'),
+    // ★★ RUN 189 (run 33 / FEEDBACK33 1.7) TAUGHT the difference; ★★ RUN 191 (run 35 / FEEDBACK34 2.3, MEASURED)
+    // repaired it: run 35 convened `type:"debate"` and `type:"closure"`, read `kind:"sync"` on BOTH, and correctly called
+    // that a contradiction with the sentence below. A default that CONTRADICTS the known type is not neutral. The label is
+    // now DERIVED from the type where the type names one; the sentence says so instead of implying a caller chose it.
+    typeMeans: '`type` decides the PROCEDURE (which skeleton this meeting follows) and is the word the institute uses; `kind` is the meeting BOARD label (sync/division/verify-request/solve-vote) and is what an archive files the row under. When no kind was passed the label is DERIVED from the type where the type names one (debate→verify-request, closure→solve-vote, division→division) and `kindSource:"derived-from-type"` says nobody chose it; a type with no natural label falls back to "sync" with `kindSource:"default"`. Either way it is a filled-in label, not a reading of what the meeting was',
     kindIsLabelOnly: true,
     kindSourceMeans: kindGiven
       ? 'the caller named this meeting’s kind'
-      : 'no kind was passed: the framework filed this meeting under its default kind \"sync\". The label is legal but nobody chose it — pass kind (sync/division/verify-request/solve-vote) or title to name the meeting yourself',
+      : (KIND_BY_TYPE[type]
+        ? 'no kind was passed, so the framework DERIVED ' + JSON.stringify(kind) + ' from type ' + JSON.stringify(type) + ' — the label an archive reader would expect. No caller chose it: pass kind explicitly to override'
+        : 'no kind was passed: the framework filed this meeting under its default kind "sync". The label is legal but nobody chose it — pass kind (sync/division/verify-request/solve-vote) or title to name the meeting yourself'),
     // ★ WAVE 2 (E9/E6): the roster a narrowed meeting was convened with must be READABLE, not just accepted.
     roster: opened && Array.isArray(opened.roster) ? opened.roster : null,
     rosterNarrowed: opened && opened.rosterNarrowed === true,
@@ -4180,6 +4191,24 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
     // two fields carry the kernel's own scope answer, and for a CAPACITY key they name the repair every instance sees.
     crossKernelScope: receipt && typeof receipt.crossKernelScope === 'string' ? receipt.crossKernelScope : null,
     crossKernelMeans: receipt && typeof receipt.crossKernelMeans === 'string' ? receipt.crossKernelMeans : null,
+    // ★★ RUN 191 (run 35 / FEEDBACK34 1.2, MEASURED): `applied:"immediate"` WAS READ AS "THE MEMBERS SEE IT". Run 35's
+    // office ran `vibe_v5_start {researcherCount:2}`; the receipt said `applied:"immediate"`, `requiresRestart:false`, and
+    // — three fields later — `crossKernelScope:"this-process"`. The members then reported `leaderId empty`, because each
+    // member turn runs its OWN kernel over the same workspace and the leader declaration was never shared state. Both
+    // statements were true and the one a reader skims first was the misleading one. These two fields say the second fact
+    // in the same breath, by name, for the keys where it matters most.
+    visibleToMemberKernels: receipt && receipt.crossKernelScope === 'this-process' ? false : null,
+    memberKernelMeans: (() => {
+      if (!receipt || receipt.crossKernelScope !== 'this-process') return null
+      const base = 'each member turn runs its OWN kernel instance over the same workspace, and this write lives only in '
+        + 'THIS process: the members do NOT read it, so a member reporting the old value is not a bug — it is this scope'
+      if (key === 'vmu.turn.leaderId') {
+        return base + '。★ 具体到本键：`vmu.turn.leaderId` 写在这里，成员子内核读到的仍是声明默认值（空），于是领导力自检会报 '
+          + '`chair-seated-but-leaderId-empty` 并按席位回退 —— 想让成员也读到领头人，需要把该值落到共享状态（持久化设置/折叠账），'
+          + '本面没有这条写入路径'
+      }
+      return base
+    })(),
     capacityScopeMeans: receipt && typeof receipt.capacityScopeMeans === 'string' ? receipt.capacityScopeMeans : null,
     receipt }
 }
@@ -4561,14 +4590,23 @@ async function toolPaper(args = {}, { kernel } = {}) {
       const evidence = Array.isArray(args.evidence) ? args.evidence : []
       const pointers = typeof paper.evidencePointers === 'function' ? paper.evidencePointers(evidence) : null
       if (pointers && pointers.ok !== true) {
+        // ★★ RUN 191 (run 35 / FEEDBACK34 2.1, MEASURED): THE DIAGNOSIS WAS ONLY IN `hint`. Run 35 read this refusal's
+        // `message` alone ("these evidence pointers do not resolve against the records face … no-such-record"), concluded
+        // the pointer was a typo, and only found "that is a FILE CARD, not a record" one field later. A reader that stops
+        // at the first sentence must not be told the wrong cause: the file-card fact belongs in the message.
+        const fileCardPointers = pointers.unknown.filter((u) => /(^|[\/])Members[\/]/.test(String(u.pointer || '')) || /\.md$/.test(String(u.pointer || '')))
+        const fileCardClause = fileCardPointers.length
+          ? ' —— 其中 ' + fileCardPointers.map((u) => '"' + u.pointer + '"').join('、') + ' 是磁盘上的「文件卡」（Members/<成员>/Propos/<名>.md）而不是记录行：文件存在不等于记录库里有一行（附录按【记录】索引）'
+          : ''
         throw refuse('VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING',
-          'these evidence pointers do not resolve against the records face: ' + pointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? ', expected track ' + u.expectedTrack : '') + ')').join('; '),
+          'these evidence pointers do not resolve against the records face: ' + pointers.unknown.map((u) => '"' + u.pointer + '" (' + u.reason + (u.expectedTrack ? ', expected track ' + u.expectedTrack : '') + ')').join('; ') + fileCardClause,
           'write the record first (vibe_v5_record_proposition / vibe_v5_record_method / vibe_v5_record_subproblem), then re-write this part with the pointer it produced; a pointer is Members/<member>/(Propos|Methods|Subproblems|Progress)/<record id>.md'
             // ★★ RUN 188 (run 33 / FEEDBACK32 ③): when the pointer IS the file card the member wrote to disk, say so —
             //   "do not resolve" and "this is a different face" are different sentences, and only the second one tells
-            //   the member what to do next.
-            + (pointers.unknown.some((u) => /(^|[\/])Members[\/]/.test(String(u.pointer || '')))
-              ? ' —— 你写的是磁盘上的「文件卡」（Members/<成员>/Propos/<名>.md）：文件存在不等于记录库里有一行（附录按【记录】索引）；把这张卡写成记录行拿到 rec-<n>，再用那个 id' : '')
+            //   the member what to do next. ★ RUN 191 moved the same fact INTO the message (see above) so it is not
+            //   lost to a reader who stops at the first field.
+            + (fileCardPointers.length
+              ? ' —— 把这张卡写成记录行拿到 rec-<n>，再用那个 id（文件卡本身不能当证据指针）' : '')
             + (pointers.unknown.some((u) => Array.isArray(u.closest) && u.closest.length)
               ? ' — 相近的: ' + pointers.unknown.filter((u) => Array.isArray(u.closest) && u.closest.length).map((u) => u.cardId + ' ⇒ ' + u.closest.map((c) => c.id).join('/')).join('；')
               : ''))

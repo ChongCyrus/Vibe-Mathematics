@@ -2908,7 +2908,13 @@ export function createTurnOrchestrator({
       const taskCreate = (d.face === FIELD_OWNERS.task_create.face && d.op === FIELD_OWNERS.task_create.op)
         ? taskCreateArgs(d.payload)
         : null
-      const adapted = recordLog !== null ? recordLog : taskCreate
+      // ★★★ RUN 191 (run 35 / FEEDBACK34 2.6): `formal` was the last reply field whose wrong shape KILLED the turn — the
+      // face threw VMU_MATH_INVALID_INPUT and the throw travelled out of `apply()`. It gets the same adapter treatment as
+      // `record`/`task_create`: a named skip with the accepted keys, and the turn survives to be answered again.
+      const formalCheck = (d.face === FIELD_OWNERS.formal.face && d.op === FIELD_OWNERS.formal.op)
+        ? formalCheckArgs(d.payload)
+        : null
+      const adapted = recordLog !== null ? recordLog : (taskCreate !== null ? taskCreate : formalCheck)
       if (adapted !== null && adapted.ok !== true) {
         counts.notExecuted += 1
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: adapted.reason, code: adapted.code,
@@ -4374,6 +4380,53 @@ export const taskCreateArgs = (payload) => {
   if (payload.blocked_by !== undefined) created.deps = payload.blocked_by
   if (payload.write_scopes !== undefined) created.writeScopes = payload.write_scopes
   return { ok: true, args: [created] }
+}
+
+/**
+ * ★★★ RUN 191 (run 35 / FEEDBACK34 2.6, MEASURED) — THE `formal` REPLY FIELD WAS TAUGHT A SHAPE NO FACE ACCEPTS.
+ *
+ * The catalogue line for this field said `{decision,file,note}` (the pack's reply-channel prompt file), while the face
+ * it dispatches to is the formal-check service (`{statement, proof, allowSorry?}`, kernel/formal.js:111). Run 35's chair wrote the
+ * field as taught, the face answered `VMU_MATH_INVALID_INPUT: check 需要 statement 与 proof`, and the dispatch path THREW —
+ * so one wrong reply shape destroyed the whole turn instead of being skipped by name. Two repairs, and both are needed:
+ * the taught line now names the real shape, and this adapter turns a wrong shape into a NAMED skip
+ * (`reason:'formal-shape'`) with the accepted keys in the hint — the same discipline as `record` and `task_create`.
+ *
+ * Pure, so the promise is assertable without a live host. `{decision,file,note}` is a CARD, not a proof script: it is
+ * refused with that sentence rather than dispatched into a compile that cannot run.
+ */
+export const formalCheckArgs = (payload) => {
+  const hint = 'send { formal: { statement: "<命题原文>", proof: "<Lean 证明脚本正文>" } } — the field dispatches to the formal-check service, whose real arguments are statement and proof (allowSorry optional); {decision,file,note} is a CARD, not a proof script, and this field cannot carry it'
+  const missing = []
+  const problems = []
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    missing.push('statement', 'proof')
+    problems.push('the field holds ' + describeReplyShape(payload) + ' instead of an object')
+  } else {
+    if (typeof payload.statement !== 'string' || payload.statement.trim() === '') {
+      missing.push('statement')
+      problems.push('statement is ' + describeReplyShape(payload.statement))
+    }
+    if (typeof payload.proof !== 'string' || payload.proof.trim() === '') {
+      missing.push('proof')
+      problems.push('proof is ' + describeReplyShape(payload.proof))
+    }
+    const extra = Object.keys(payload).filter((k) => ['statement', 'proof', 'allowSorry'].indexOf(k) < 0)
+    if (extra.length) {
+      // A card written as the field's taught shape is the measured case: name it instead of listing keys as "unknown".
+      const cardish = extra.some((k) => ['decision', 'file', 'note'].indexOf(k) >= 0)
+      problems.push(cardish
+        ? 'it also carries ' + extra.join(', ') + ' — that is the shape of a formalisation CARD ({decision,file,note}), and a card is not a proof script: the face reads statement and proof'
+        : 'unknown key(s) ' + extra.join(', ') + ' (accepted: statement, proof, allowSorry)')
+    }
+  }
+  if (missing.length) {
+    return { ok: false, reason: 'formal-shape', code: 'VMU_MATH_INVALID_INPUT', missing,
+      message: 'the formal reply field cannot be dispatched: ' + problems.join('; '), hint }
+  }
+  const args = { statement: payload.statement, proof: payload.proof }
+  if (payload.allowSorry !== undefined) args.allowSorry = payload.allowSorry
+  return { ok: true, args: [args] }
 }
 
 // ★ PHASE 12 / live run 35 item ② (second half): WHAT A THROWING APPLY DOES TO THE HELD TURN. It consumes it and does NOT

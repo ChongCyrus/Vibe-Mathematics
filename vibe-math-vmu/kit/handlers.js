@@ -629,20 +629,38 @@ const FILE_CARD_MEANS = '`libraryCards` 是**文件卡**（<root>/Members/<membe
 /** The member's library cards, as a SEPARATE readout. Never folded into `count`/`cards`: those stay records rows.
  *  `path` comes from `expand` so a card the member filed has a real, openable address (run 45's receipt had one; the
  *  read side must be able to say the same thing). A card whose body cannot be expanded still counts — the head list
- *  already proves it exists, and `path:null` says only that its address could not be read this time. */
+ *  already proves it exists, and `path:null` says only that its address could not be read this time.
+ *
+ *  ★★ RUN 191 (run 35 / FEEDBACK34 1.1, MEASURED): TWO ROOTS, AND THIS FACE NEVER SAID WHICH ONE IT SCANS. Run 35's
+ *  member wrote a file card to `Members/r-1/Propos/p-cc-r1-1.md` (the path its prompt taught), the file existed on disk,
+ *  and `vibe_v5_read_library { member: "r-1" }` answered `libraryCards: []` with no error at all — because this face scans
+ *  `<root>/Members/…`, where `<root>` is the workspace root the kernel was assembled on. The card was real; the receipt
+ *  never said where it looked, so "I filed nothing" and "I filed somewhere else" read identically. The receipt now carries
+ *  `libraryRoot` (the ABSOLUTE directory this call scans) and `libraryRootMeans`, so a member comparing its own write path
+ *  with this answer sees the disagreement instead of concluding it wrote nothing. */
 async function fileCardsOf(kernel, member, limit) {
   const cap = Number.isFinite(limit) && limit > 0 ? limit : 20
   const base = { libraryCardsMeans: FILE_CARD_MEANS }
+  const rootOf = (lib) => (lib && typeof lib.root === 'string' && lib.root ? lib.root : null)
+  const rootMeans = (root, memberId) => (root
+    ? 'this call scanned the ABSOLUTE directory ' + root + '/Members/' + String(memberId || '<member>') + '/{Propos,Methods,Subproblems}/ — '
+      + 'a file card written anywhere else (for instance to `Members/' + String(memberId || '<member>') + '/Propos/…` relative to your session cwd) is NOT here, '
+      + 'so an empty list is not proof you filed nothing: compare your write path with this root before concluding that'
+    : 'this deployment exposed no library root, so the directory this call would scan cannot be named')
   if (!member) {
-    return Object.assign({}, base, { libraryCards: null, libraryCardCount: null, libraryCardsTruncated: false, libraryReadable: false,
+    return Object.assign({}, base, { libraryCards: null, libraryCardCount: null, libraryCardsTruncated: false, libraryReadable: false, libraryRoot: null,
+      libraryRootMeans: 'no member id was given, so no per-member directory was scanned — there is no root to name for this answer',
       libraryWhy: '没有给 member：文件卡按成员目录存放、不属于任何 track，所以不猜——传 member:"<id>" 才会附带该成员的文件卡' })
   }
   const lib = libraryFaceOf(kernel)
   if (!lib) {
-    return Object.assign({}, base, { libraryCards: null, libraryCardCount: null, libraryCardsTruncated: false, libraryReadable: false,
+    return Object.assign({}, base, { libraryCards: null, libraryCardCount: null, libraryCardsTruncated: false, libraryReadable: false, libraryRoot: null,
+      libraryRootMeans: rootMeans(null, member),
       libraryWhy: '这个 kernel 没有 library face（装配时没有持久 root），所以 <root>/Members/' + member + '/ 下的文件卡这一次**读不到**：'
         + '`count:0`/`cards:[]` 只说明 records 账本里没有行，**不能**说明该成员没有提交过裁决卡' })
   }
+  base.libraryRoot = rootOf(lib)
+  base.libraryRootMeans = rootMeans(base.libraryRoot, member)
   let heads = []
   try { heads = await lib.list({ member }) } catch (e) {
     return Object.assign({}, base, { libraryCards: null, libraryCardCount: null, libraryCardsTruncated: false, libraryReadable: false,
@@ -866,7 +884,11 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
     verifiedReadable: verified.readable, verifiedClaimsSeen: verified.claims.length, verifiedWhy: verified.why,
     libraryReadable: fileCards.libraryReadable, libraryCards: fileCards.libraryCards,
     libraryCardCount: fileCards.libraryCardCount, libraryCardsTruncated: fileCards.libraryCardsTruncated,
-    libraryWhy: fileCards.libraryWhy, libraryCardsMeans: fileCards.libraryCardsMeans }
+    libraryWhy: fileCards.libraryWhy, libraryCardsMeans: fileCards.libraryCardsMeans,
+    // ★★ RUN 191: the two fields the receipt was built without. `fileCardsOf` computed them and this object literal —
+    // which names each field by hand — dropped them on the floor, which is exactly the defect it repairs: a fact measured
+    // and then not said. A field list is a promise; adding one to the producer is not enough.
+    libraryRoot: fileCards.libraryRoot, libraryRootMeans: fileCards.libraryRootMeans }
 }
 
 

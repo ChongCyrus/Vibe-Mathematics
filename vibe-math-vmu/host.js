@@ -469,7 +469,13 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
       // ★★ ROUND 34 (measured): the resolved settings map made this receipt larger than the host's limit on a real
       // machine, so the host truncated it and the sections a reader most needed were the ones cut. The default is a
       // bounded summary; the complete map is one word away. Nothing is lost - only requested.
-      detail: param('string', 'summary（默认，紧凑可读，<4000 字符）｜provenance（只回"这张表是谁的"：设置归属与两套接缝）｜full／settings（完整逐键表）｜closure（只回结题读数）'),
+      // ★★ RUN 191 (run 35 / FEEDBACK34 1.3, MEASURED): THE DECLARATION WAS BEHIND THE IMPLEMENTATION. Run 35's office
+      // called detail:"closure-account" (the face RUN 187 built), got the correct as-of-close account back — and then
+      // noticed the parameter string never listed that value. A caller reading the declaration would conclude the face
+      // has no such detail and go hunting in the source. The value is now declared, and the difference from `closure`
+      // (live reading vs the account frozen at the close) is said in the same breath.
+      detail: param('string', 'summary（默认，紧凑可读，<4000 字符）｜provenance（只回"这张表是谁的"：设置归属与两套接缝）｜full／settings（完整逐键表）'
+        + '｜closure（只回"当前"结题读数，关会后改投会改它）｜closure-account（只回关会那一刻冻结的账：latest{recordId,where,at,votesCast,cast} 与最近若干行；关会后改投不改它）'),
     },
     run: async (req = {}) => {
       try {

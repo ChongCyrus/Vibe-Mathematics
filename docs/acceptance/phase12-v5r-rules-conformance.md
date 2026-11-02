@@ -13753,3 +13753,62 @@ run 34（基线 `bf3f23df`）的成员在**回合之间**问 `vibe_v5_tool_help(
 
 - **「读不到」与「不存在」是两件事，回执必须分开说**：`tools: null` 表示「活读数此刻拿不到」，不表示「没有工具」。只给前者，读者会以为自己是瞎的。
 - **补声明不能顺手把拒绝改成成功**：`catalog` 是另开的字段，`tools` 依旧是 `null`。否则下一轮的真机就会「验证通过」一个根本没生效的可见集。
+
+## §291 RUN 191（第三十六轮：run 35 的三条真缺陷 + 三条提示不清，全部是「面已经知道、回执没说」）
+
+run 35（基线 `01fa7271`）是第三十五次真机：主线**完全结题**（论文 PDF 135 270 B 落盘、结题会 `m2` 三票、`close` 回执 `closureVoteFrozen{recordId:"rec-40", votesCast:3, cast:true}`、关会后改投只动活读数不动冻结账；`closure-account.count:2` 因为第 7 回合 r-acad 另外收束了 `m1`）。九条复验 **8 条完全实测、1 条半到**。FEEDBACK34 报的三条真缺陷与三条提示不清，逐条都是同一个物种：**机制里已经有这个事实，读面没有说**。
+
+### 291.1 六条账与修法
+
+| # | 真机事实（run 35） | 修法 |
+| --- | --- | --- |
+| 1.3 | `vibe_vmu_status` **接受** `detail:"closure-account"`（RUN 187 建的面，`asOfClose` 正确返回），但参数的声明里没有这个值 | `vibe-math-vmu/host.js` 的 `detail` 参数串补上 `closure-account`，并在同一句里说清它与 `closure` 的区别（后者是「当前」读数、关会后改投会改它） |
+| 1.1 | 成员按提示词把文件卡写到 `Members/r-1/Propos/p-cc-r1-1.md`（磁盘上真有），`vibe_v5_read_library` 回 `libraryCards:[]`，**回执从不说是哪个根** | `vibe-math-vmu/kit/handlers.js` 的 `fileCardsOf` 产出 `libraryRoot`（**绝对**路径）与 `libraryRootMeans`（含 `NOT here`、`not proof you filed nothing`）；**并且**在回执的字段字面量里补上这两个字段（原来的字面量逐字段点名，把产出的字段丢掉了） |
+| 1.2 | `vmu.turn.leaderId` 只写本进程内核（`crossKernelScope:"this-process"`），`vibe_v5_start` 却报 `applied:"immediate"`；成员子内核读到空 leaderId，自检报 `chair-seated-but-leaderId-empty` | `vibe-math-vmu/packs/v5r/tools.js` 的运行时写入回执补 `visibleToMemberKernels:false` 与 `memberKernelMeans`（每个成员回合跑自己的内核实例；并**点名**那条自检会怎么报） |
+| 2.1 | 文件卡诊断只在 `hint`，`message` 只写 `no-such-record`，读者停在第一个字段就得到错误原因 | `vibe-math-vmu/packs/v5r/tools.js` 的 `EVIDENCE_MISSING` 证据侧：`message` 追加「文件卡」句（`fileCardClause`） |
+| 2.3 | `type:"debate"`/`"closure"` 的会读到 `kind:"sync", kindSource:"default"`，与 RUN 189 自己写的 `typeMeans` 自相矛盾 | `tools.js` 的 convene：无 `kind` 时按 `type` **派生**（`debate→verify-request`、`closure→solve-vote`、`division→division`），`kindSource:"derived-from-type"`，`kindSourceMeans`/`typeMeans` 同步改口 |
+| 2.4 | `subjectGate` 的 `declaration-only` note 说「没核 ≠ 没通过」，却不说**怎样才能真核** | `vibe-math-vmu/packs/v5r/verification-gates.js`：note 末尾点名 `vibe_v5_meeting { action:"convene", type:"debate", subject:"rec-N", lean_job:"lean-<n>" }`（`lean_job` 确实进闸：`leanPassedOf(kernel, args.lean_job)`） |
+| 2.6 | 回复字段 `formal` 教 `{decision,file,note}`，面读 `{statement, proof}`；chair 照教写，被 `VMU_MATH_INVALID_INPUT` 拒，**并且整轮被这一条抛错毁掉** | 两处：① `packs/v5r/prompts/v5r-reply-channel.js` 的 `formal` 行改成 `{statement, proof}` 并说清「卡不是证明脚本」；② `kernel/turn/index.js` 新增 `formalCheckArgs` 适配器，形状不对就 **具名跳过**（`reason:'formal-shape'`、`code:'VMU_MATH_INVALID_INPUT'`、`missing` 列键），本轮其余字段照常生效 |
+
+2.2（part/review 不记 attribution）、2.5（`summary` 里 `votes:0` 与 `closureTally.votesCast:3` 并排）本轮**未动**，记在 291.5。
+
+### 291.2 两个「产出了却没送达」的坑（值得单列）
+
+- **字段字面量是承诺，产出不是**：`fileCardsOf` 明明算了 `libraryRoot`，而调用处用一个逐字段点名的对象字面量拼回执，两个字段被静默丢掉。测试 §2b 因此先失败——**如果只写实现不写这条断言，这个修复会以「已修」的样子进仓库**。
+- **纯适配器先失败一次也是收获**：`formalCheckArgs` 首版把 `{decision,file,note}` 当「未知键」列出，读者仍看不出这是「卡 ≠ 证明脚本」；改成具名句子后 §1e 才通过。
+- **两条既有门禁把「注释和提示词」也算进契约**（全量 T1 首跑抓到，`/d/_tmp/t1-r380-run191.log` = `TOTAL 741 PASS 739 FAIL 2`）：
+  - `tests/vmu-charter-contracts.test.mjs` 断言**内核源码一个 `v5r-` 字样都不许有**（「表是 pack 的、机制是框架的」），而我在 `kernel/turn/index.js` 的注释里写了 `packs/v5r/prompts/v5r-reply-channel.js` ⇒ 注释改成「the pack's reply-channel prompt file」、把服务名写成「formal-check service」。
+  - `tests/vmu-settings.test.mjs` 把**提示词正文里形如 `vmu.<a>.<b>` 的字样**当成「运行时读的设置键」，而我在 `packs/v5r/prompts/v5r-reply-channel.js` 写了 `vmu.formal.check` ⇒ 改成「形式化检查面（formal check）」。
+  - 教训：**在框架文件里提 pack 的具体路径、在提示词里写点号全名，都会被门禁当契约读**。修完两条后 `CHARTER CONTRACTS: 22/0`、`VMU SETTINGS: 49/0`。
+
+### 291.3 机器化
+
+`tests/vmu-run191-feedback34.test.mjs`（**6/0**）：
+
+- §0 十五条源码 pin（含 `formal` 旧教法**必须消失**的负向断言）。
+- §1 `formalCheckArgs` 纯函数：真形状放行（`args[0].statement/proof`）、卡形状拒（`code`、`message` 含 `formalisation CARD`、`missing` 两键、`reason:'formal-shape'`）。
+- §1 `read_library`：`libraryRoot` 是非空**绝对**路径且在 kernel root 之下；`libraryRootMeans` 含 `ABSOLUTE`/`NOT here`/`not proof you filed nothing`。
+- §1 `vibe_v5_start`：`applied[]` 里 `vmu.turn.leaderId` 有 `crossKernelScope:"this-process"`、`visibleToMemberKernels:false`、`memberKernelMeans` 含 `OWN kernel instance` 与那条自检名。
+- §1 convene：`ordinary` 的 `kindSource` 是 `default`/`derived-from-type`；文件承载的 `debate` ⇒ `kind:"verify-request"`、`kindSource:"derived-from-type"`、`kindSourceMeans` 含 `DERIVED`、`typeMeans` 含 `debate→verify-request`。
+- §1 `part` 传文件卡 ⇒ `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING`，且 **`message`** 含「文件卡」「不是记录行」，`hint` 仍给 `rec-` 路线。
+
+### 291.4 定向回归与收口
+
+`run190 2/0`、`run189 3/0`、`run188 4/0`、`run187 2/0`、`run186 3/0`、`run185 3/0`、`run184 3/0`、`meeting 32/0`、`turn 23/0（272 内部断言）`、`paper/v5r-tools/records/members` 全绿；`vmu-host` 经 `tests/run-tests.mjs --only vmu-host` 为 **4 jobs / 211 内部断言 / 0 红**（单独用 `node --test` 跑该 legacy 文件会报一条 8034 字节，那是 standalone 与 gate 装配差异，HEAD 上同样如此，**不是本轮回归**）。
+
+收口链：`update-doc-counts --write`（`JOBS total=741 suites=633 probes=108`）→ `regen-all --write` 17/17（pack prompts 67 段 79 138 字 sha `d889776b36ff`）→ `--check 17/17 in sync` → `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 三条既有提示，含 `vmu.members.noteWake` 未列契约）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+
+全量 T1：首跑 `/d/_tmp/t1-r380-run191.log` = `TOTAL 741 PASS 739 FAIL 2`（两条见 291.2 的「门禁把注释与提示词当契约」；修完单跑 `CHARTER CONTRACTS: 22/0`、`VMU SETTINGS: 49/0`，并重跑 `update-doc-counts`/`regen-all --check`/四门禁全 PASS）⇒ 复跑 `/d/_tmp/t1-r381-run191b.log` = **TOTAL 741 PASS 741 FAIL 0（suites 633 · probes 108）**。
+
+### 291.5 未闭合
+
+- **2.2**：`part`/`review` 不校验调用者是否本人、也不记 `attribution`。run 35 的所办**代成员**写了 part/review（报告 3.1 自述），框架没有标记。要修需要先把「调用者身份」在 pack 面表达出来（席位面有 `member`，但谁是**调用方**不在回执里）。
+- **2.5**：`summary` 的 `present/votes`（出席与票板）与 `closureTally.votesCast`（结题到达人数）并排且不加区分句。
+- **FEEDBACK33 1.2**（补一行正文要 `part` 重交 ⇒ round+1 ⇒ 上一轮互审全 stale）仍未动：那是流程语义，需要单独设计「文本级更正」。
+- **FEEDBACK32 ①⑤⑥** 仍未动。
+- 本轮**尚未真机复验**（run 36 的简报将覆盖这六条 + RUN 190 的 catalog）。
+
+### 291.6 两条教训
+
+- **回执的字段名单是接口**：`fileCardsOf` 修好了、字面量没带上，等于没修。新增字段必须同时改「产出」与「送达」两处，并且测试要打在**送达**侧。
+- **教法与面相悖时，两边都要改**：只改提示词，旧脚本/旧会话语料仍会照旧形状写；只改面，读者仍然被教错。`formal` 这次是**提示词 + 具名跳过适配器**一起改，才让「写错形状」从「整轮报废」降级为「一条具名跳过」。
