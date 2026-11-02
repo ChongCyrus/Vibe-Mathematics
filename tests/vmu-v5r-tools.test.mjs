@@ -1592,7 +1592,7 @@ try {
       stderr: 'xelatex: not found',
     }
     const flow = createPaperFlow({
-      kernel: { records: recordsStub, settingsSnapshot: () => ({ 'vmu.records.tracks': ['paper'] }), members: { roster: () => [{ id: 'acad', slot: 'chair' }] }, latex: { check: async () => failure } },
+      kernel: { records: recordsStub, settingsSnapshot: () => ({ 'vmu.records.tracks': ['paper'] }), members: { roster: () => [{ id: 'acad', slot: 'chair' }, { id: 'r-1', slot: 'member' }, { id: 'r-2', slot: 'member' }] }, latex: { check: async () => failure } },
       codes: PAPER_CODES, sections: ['题与摘要'], maxRounds: 3, track: 'paper', engineOrder: PAPER_ENGINE_ORDER,
     })
     flow.start({ target: 'g7-paper', participants: ['r-1', 'r-2'] })

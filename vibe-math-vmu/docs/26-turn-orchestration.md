@@ -3413,3 +3413,11 @@ RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一
 - **一次自查推翻**：RUN 203 的「单人论文提前拒」破坏了 F6 已经设计好的路（移动发生、作者 exempt、自审在 review 拒、互审闸在之后拒）；全量 T1 让三套老套件同时红，改回成 `crossReviewPossible`/`crossReviewMeans` 的**披露**，并把 `recordReview` 的自审检查提到 `of` 不符之前。
 - **机器化**：`tests/vmu-run204-feedback41.test.mjs` 5/0（§0 pin、§1 真 `vibe_v5_set` 印合法值、§2 真召集的结构议程、§3 两个截断读者、§4 孤儿 tally id）。
 - **未闭合**：`FEEDBACK41 1.3`（读现行版写回 `lastStaleSeenAt` 改指纹）、`1.5`（turn 回执无成员正文）；本轮未真机复验。
+
+## ROUND 210（RUN 205：名字要在名册上，关门要说锁谁，座位与节点要如实）
+
+- **账从哪来**：第 43 次真机（`FEEDBACK42`，`Paper/paper-sumsq-paper-43` 118 841 B）。七条都是「回执对谁和哪一个不作声」：`paper start` 收了名册外的参与者、`advance` 关门不点谁的门、蓝图作者座席恒 `null`、`blueprint state` 被读成有节点数、`final.pdf` 不给 `recordId`、`moved` 与 `roundMoved` 并排解释埋长句、`sections` 与 `parts` 同名不同物。
+- **修法**：`kit/paper.js` 的 `start()` 名册具名拒（`VMU_NO_SUCH_OBJECT`，空名册仍豁免）；`advance()` writing 分支算 `unwrittenParts` 并给 `partsLockedAfterMove`/`Means`（点名 + 修复路径 + 弹回抬轮次的代价，**披露而非闸**）；六处 `moved:` 并列 `stageMoved`；`packs/v5r/tools.js` 的 `projectPdfBlock` 补 `recordId`/`recordIdMeans`、`case 'sections'` 补 `sectionsMeans`（OUTLINE ≠ `status.parts`）、`propose` 用 `seatOfMemberId` 写真实座席、`state` 补 `nodes: null` + `nodesMeans`。
+- **两处 pin 传染**：假名册的 G7 ⑤ 夹具（`members.roster: () => [{id:'acad'}]`）点名 `r-1`/`r-2` ⇒ 补 stub 名册；`vmu-run155` 的 25 键投影 pin ⇒ 27 键。**夹具的名册是前提，字段集 pin 必须跟着投影走。**
+- **机器化**：`tests/vmu-run205-feedback42.test.mjs` 5/0（§0 pin、§1 名册拒与成功、§2 锁门披露与 `review(false)` 回写、§3 OUTLINE 说明、§4 座席与 `nodes:null`）。
+- **未闭合**：`FEEDBACK42 1.1` 跨内核设置两读、`1.7` 围栏失败与已落盘动作分开报；本轮未真机复验。

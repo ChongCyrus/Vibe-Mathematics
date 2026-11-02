@@ -650,6 +650,23 @@ export function createPaperFlow({
     if (!has(target)) throw refuse('VMU_INVALID_ARGUMENT', 'start needs the paper target', 'pass target:"<the object being written up>"')
     const list = Array.isArray(participants) ? participants.map(String).filter((x) => x !== '') : []
     if (list.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'start needs at least one writing participant', 'pass participants:["r-1", …]')
+    // ★★ RUN 205 (run 43 / FEEDBACK42 1.3, MEASURED): `participants:["r-1","r-2","r-3"]` was ACCEPTED and the paper then carried
+    // a section authored by a member who is not on the roster (run 43's rec-69). A participant list is a claim about who
+    // writes, so it is checked against the roster HERE — where a wrong name is still cheap to fix. An EMPTY roster is not
+    // an error (scripted fixtures build papers before hiring); it just has nothing to check against.
+    const startRoster = rosterOf()
+    if (startRoster.length > 0) {
+      const known = new Set(startRoster.map((m) => String(m.id)))
+      const unknown = list.filter((id) => !known.has(String(id)))
+      if (unknown.length > 0) {
+        throw refuse('VMU_NO_SUCH_OBJECT',
+          'start names writing participants that are NOT on the roster: ' + unknown.join(', ')
+            + ' — the paper would carry parts authored by members nobody can address, and no other member could review them',
+          'name participants from the roster: ' + startRoster.map((m) => String(m.id) + '@' + String(m.slot)).join(', ')
+            + '; to add a new member hire it first (vmu.members.hire / the hire face of this deployment), then start the paper',
+          { participants: list.slice(), unknown, roster: startRoster.map((m) => String(m.id)) })
+      }
+    }
     // ★★ RUN 152 (real machine, run 2 of the simulation): `editor` used to be stored VERBATIM, so starting a paper with
     // `editor:"r-acad"` (the chair-seated member, i.e. the academician) produced a paper whose finalisation was then
     // refused by `recordFinal`, which only accepts the ROLE word "academician" — the flow let a caller configure a paper
@@ -1066,12 +1083,24 @@ export function createPaperFlow({
       // now states the impossibility up front instead of the caller discovering it after the move. The dead end is
       // named here — this is disclosure, not a gate.
       const crossReviewPossible = state.participants.length >= 2
+      // ★★ RUN 205 (run 43 / FEEDBACK42 1.4, MEASURED): advancing to `reviewing` silently closed the writing door, so a
+      // participant who had not written yet hit `VMU_PACK_V5R_CORE_PAPER_STATE` on the next `part` and had to file
+      // review(false)+advance to reopen it (round 1 → 3). The lock-out is readable BEFORE the mutation, so the receipt
+      // that causes it says who it locks out and which repair exists.
+      const unwrittenParts = state.participants.map(String).filter((id) => !(state.parts && state.parts[String(id)]))
+      const partsLockedAfterMoveMeans = unwrittenParts.length === 0
+        ? 'every participant has already written a part: this move locks nobody out of writing'
+        : 'these participants have NOT written a part yet (' + unwrittenParts.join(', ') + '): after this move the paper is in '
+          + 'reviewing and `part` is refused by name (VMU_PACK_V5R_CORE_PAPER_STATE) — to let them write, a member files '
+          + 'review({ decision: false }) and `advance` reopens writing, which RAISES the round counter (one round per bounce)'
       const roundFromWriting = Number(state.round)
       state.status = 'reviewing'; state.stage = 'reviewing'; state.reviewOf = reviewOf; state.reviews = {}
       writeState(state)
-      return { ok: true, moved: true, from: 'writing', to: 'reviewing', round: state.round, reviewOf, notRequired,
+      return { ok: true, moved: true, stageMoved: true, from: 'writing', to: 'reviewing', round: state.round, reviewOf, notRequired,
         ...roundReading(roundFromWriting, 'writing', 'reviewing'),
         crossReviewPossible,
+        partsLockedAfterMove: unwrittenParts,
+        partsLockedAfterMoveMeans,
         crossReviewMeans: crossReviewPossible
           ? 'at least two participants, so a part written by one member can be reviewed by another — 互审 is possible'
           : 'ONLY ' + String(state.participants.length) + ' participant(s): the author is EXEMPT here (notRequired), no OTHER member exists to review the part, and the paper will be refused BY NAME at the cross-review gate — the stage moved, the thing 互审 needs does not exist. Start the paper with at least two participants (vibe_v5_paper { action: "start", participants: [...] }). This is stated now so the move is not misread as progress',
@@ -1150,7 +1179,7 @@ export function createPaperFlow({
         // UNANIMOUS one did not, so run 37's reader saw `advance` answers sometimes with the field and sometimes without
         // it (its own report asked "is refusers missing here, or is it empty?"). An empty list is a FACT here — every
         // required reviewer answered deliverable — so it is stated instead of omitted, with the sentence that says which.
-        return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true, reviewsRead, notRequired,
+        return { ok: true, moved: true, stageMoved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true, reviewsRead, notRequired,
           ...roundReading(roundFromUnanimous, 'reviewing', 'awaiting-editor'),
           crossReview: coverage,
           refusers: [], stale: [], notYetReviewed: [],
@@ -1178,7 +1207,7 @@ export function createPaperFlow({
         // ★★ RUN 197 (run 38 / FEEDBACK37 1.3, MEASURED): the UNANIMOUS branch stated `refusers: []` with a note claiming the
         // disagreement branches "carry the same field with names in it" — and neither did. Run 38's editor read
         // `refusers:["r-1"]` with no sentence saying what the list means or what happens next.
-        return { ok: true, moved: true, from: 'reviewing', to: 'writing', round: state.round, roundFrom, roundTo: state.round,
+        return { ok: true, moved: true, stageMoved: true, from: 'reviewing', to: 'writing', round: state.round, roundFrom, roundTo: state.round,
           roundMeans: 'the round ADVANCED (' + String(roundFrom) + ' → ' + String(state.round) + ') and the paper went back to writing: this is not a retry of round ' + String(roundFrom) + ', it is the next round with the disagreement recorded',
           unanimous: false, refusers, stale, notYetReviewed,
           refusersMeans: refusers.length === 0
@@ -1202,13 +1231,14 @@ export function createPaperFlow({
       state.warnings = (state.warnings || []).concat(['（第 ' + state.round + ' 轮）互审在 ' + roundsCap() + ' 轮上限仍未达成全体一致（' + refusers.concat(pendingNames).join('、') + '；其中真拒收 ' + refusers.length + ' 位、未表态 ' + pendingNames.length + ' 位）；分歧已写入论文附录（这是 HISTORY：之后各轮的评审可以再次达成一致）'])
       writeState(state)
       // ★★ RUN 197 (same defect as the branch above): the CAPPED disagreement branch printed `refusers` and no meaning either.
-      return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: false, refusers,
+      return { ok: true, moved: true, stageMoved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: false, refusers,
         ...roundReading(roundFromCapped, 'reviewing', 'awaiting-editor'),
         crossReview: crossReviewCoverage(state),
         refusersMeans: 'NOT empty: the reviews did not reach deliverable for every participant within ' + roundsCap() + ' round(s), so the editor is handed the paper WITH this disagreement on the record (a later round can still agree); refusers holds the votes that said no, stale/notYetReviewed hold the members who were never counted',
         stale, notYetReviewed, capped: true, warnings: state.warnings, reviewsRead }
     }
-    return { ok: true, moved: false, state: state.status, note: 'the flow is ' + state.status + '; only writing/reviewing advance on their own (finalize it, or start a new paper)' }
+    return { ok: true, moved: false, stageMoved: false, state: state.status, note: 'the flow is ' + state.status + '; only writing/reviewing advance on their own (finalize it, or start a new paper)',
+      stageMovedMeans: 'moved/stageMoved answer ONE question, the STAGE: false means the paper did not change stage at all. A move that changes the stage but not the round carries stageMoved:true with roundMoved:false' }
   }
 
   /** ⑤ the driver: advance until nothing moves (the original's paperPass, bounded so it cannot loop forever). */
@@ -1417,7 +1447,7 @@ export function createPaperFlow({
       // ★★ RUN 158 (run 6 / N5): this branch moved the paper awaiting-editor → writing but reported `from:null,to:null`
       // (only the REPAIR branch named the move), so a reader could not tell a revision from a repair round.
       return { ok: true, finalized: false, moved: true, from: 'awaiting-editor', to: 'writing', round: state.round, status: state.status,
-        repair: false, repairs: Number(state.repairs || 0), repairBudget: REPAIR_ROUNDS, cap: capNow }
+        stageMoved: true, repair: false, repairs: Number(state.repairs || 0), repairBudget: REPAIR_ROUNDS, cap: capNow }
     }
     // ★★ RUN 154 (real machine, run 4 / FEEDBACK3 H2 — DEADLOCK): at the cross-review cap the paper sat in
     // `awaiting-editor` where `deliverable` was refused by the content gate (a verified title line missing) and `revise`
@@ -1430,7 +1460,7 @@ export function createPaperFlow({
       state.status = 'writing'; state.stage = 'writing'
       state.disagreement = (state.disagreement || []).concat([{ round: state.round, members: [fin.by], detail: '定稿代表要求修订（轮数上限后的第 ' + state.repairs + ' 次修复轮，不计入互审轮次）：' + (fin.note || '（未说明）') }])
       writeState(state)
-      return { ok: true, finalized: false, moved: true, from: 'awaiting-editor', to: 'writing', round: state.round, status: state.status, repair: true, repairs: state.repairs, repairBudget: REPAIR_ROUNDS, cap: capNow }
+      return { ok: true, finalized: false, moved: true, stageMoved: true, from: 'awaiting-editor', to: 'writing', round: state.round, status: state.status, repair: true, repairs: state.repairs, repairBudget: REPAIR_ROUNDS, cap: capNow }
     }
     // ★★ RUN 158 (real machine, run 6 / feedback N1 — A HINT THAT NAMED AN UNREACHABLE EXIT): the old text offered
     // (a) "record a new part", which the flow refuses in awaiting-editor (parts write in `writing` only), so the advice

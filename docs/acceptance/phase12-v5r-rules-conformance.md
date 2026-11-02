@@ -14672,3 +14672,30 @@ hint 给出路）、全一致的票箱放行；§2 真会议（3:0 全 FOR 在�
 - **「接收」与「计数」必须各有一个字段**：同一个回执里 `accepted:true` 与 `ok:false` 并列时，读的人一定按前者下结论；两件事各有名字，别指望读者读完嵌套块。
 - **框架自己打印的名字必须能被自己粘回去**：`correction.call` 是给调用方照抄的，抄回来必然被拒的名字不是提示，是陷阱；凡是打印 id 的地方都要问一句「这个 id 落到哪个面能解析」。
 - **更响的拒绝不等于更对的拒绝**：早拒看着更安全，但它会盖掉一条别人已经设计好、还被三套测试钉住的路；发现冲突时先读那套测试想保住什么。
+
+## §306 RUN 205（run 43 / FEEDBACK42：名册、锁门、座位、节点、id）
+
+306.1 **账从哪来。** 第 43 次真机（`FEEDBACK42`，主线结题 `Paper/paper-sumsq-paper-43` 118 841 B）。七条读数缺陷的共同形状是**回执对「谁」和「哪一个」不作声**：`paper start` 收了三个名册里不存在的参与者、`advance` 关掉写作门却不说关了谁的门、蓝图作者座席恒 `null`、蓝图 `state` 被读成有节点计数、`final` 的 `pdf` 块不给 `recordId`、`moved:true` 与 `roundMoved:false` 并列时解释埋在长句里、`sections` 与 `parts` 同名不同物。
+
+306.2 **八处修法。**
+- **1.3 名册核**：`vibe-math-vmu/kit/paper.js` 的 `start()` 在空名册豁免之后引入 `const startRoster = rosterOf()`，把不在册的 id 收成 `unknown` 并具名拒——`VMU_NO_SUCH_OBJECT`、message 列出 `unknown`、hint 列出「名册 id@slot」并说「要加人先 hire」。**这是闸不是披露**：一张由无法寻址的成员署名的论文，事后没人能审、也没人能追问。
+- **1.4 锁门先说**：`advance()` 的 writing 分支在任何写状态之前算 `unwrittenParts`（还没写过 `part` 的参与者）与 `partsLockedAfterMoveMeans`（空 ⇒ 「这一刀不锁任何人」；非空 ⇒ 点名 + 明说「`part` 会按名被拒（`VMU_PACK_V5R_CORE_PAPER_STATE`），修复方式是某成员提 `review({ decision:false })` 再 `advance`，而每次弹回**抬高轮次**」），回执带 `partsLockedAfterMove` 与两条 means。披露而不是闸：论文本来就该能关门，但关门这一刀要说出它锁谁。
+- **2.5 `stageMoved`**：`paper.js` 六处 `moved:` 回执并列 `stageMoved`（真移动 `true`、`moved:false` 处 `false` 并带 `stageMovedMeans`），让「阶段有没有动」不必从 `roundMeans` 的长句中挖。
+- **2.4 `recordId`**：`packs/v5r/tools.js` 的 `projectPdfBlock` 补 `recordId` 与 `recordIdMeans`（同一个投影同时供 `final` 与 `compile` 用），并说明 `status.pdfCompiled.finalPdfRecordId` 才是指定稿那一行——两个 id 才能比较。
+- **2.3 `sectionsMeans`**：`case 'sections'` 明确「这是骨架（OUTLINE），已写章节看 `status.parts`」。
+- **1.5 座席**：`propose` 分支用 `seatOfMemberId(kernel, member.id)` 解析 `chair|member` 并传 `seat` 给 `proposeBlueprint`，蓝图 `authors[]` 不再恒 `null`。
+- **1.6 节点**：`state` 回执补 `nodes: null` 与 `nodesMeans`（「蓝图是散文，内核只索引 revision 与 draft，不索引节点：`节点 3` 这类标签属于作者，读数不存在」）——披露一个不存在的读数，比让每个成员自己编编号更诚实。
+- **2.2/1.2 未做**：`verdict_final` 的 `correction.call` 照抄路由（本轮已在 RUN 204 用 tally 重派生修过一半，需真机复验）；分内核设置两读（`1.1`）需要共享状态或具名拒，留待 RUN 206。
+
+306.3 **机器化。** `tests/vmu-run205-feedback42.test.mjs` **5 passed / 0 failed**：§0 十条源码 pin；§1 真 hire 三席后 `start` 带 `r-3` ⇒ `VMU_NO_SUCH_OBJECT` 且 `unknown===['r-3']`、hint 列名册、换两席成功；§2 两席论文只有 r-1 落笔 ⇒ `advance` 后 `stageMoved===true`、`partsLockedAfterMove===['r-2']`、means 含修复路径；r-2 提 `review({decision:false})` 后 `advance` 回 writing 且 `stageMoved===true`；§3 `sectionsMeans` 同时说 OUTLINE 与 `status.parts`；§4 蓝图 `authors[0].seat==='chair'`、`state.nodes===null` 且 means 含 PROSE。
+
+306.3b **收口链与全量 T1。** `JOBS total=756 suites=648 probes=108`；`regen-all --write` 17/17 → `--check` 17/17 in sync；四门禁 PASS（`PREFLIGHT` / `DOC LINT` / `RULES COVERAGE (93 anchors)` / `RULE PARITY`）；干净全量 T1 `/d/_tmp/t1-r482-run205.log` = **`TOTAL 756 PASS 756 FAIL 0`（suites 648 · probes 108）**。
+
+306.4 **一次 pin 传染的教训（两处）。** ① `tests/vmu-v5r-tools.test.mjs` 的 G7 ⑤ 用**假 kernel**（`members.roster: () => [{ id:'acad', slot:'chair' }]`）却在 `start` 时点名 `r-1`、`r-2`——名册核一落地这套就红。修法不是放松闸，而是把 stub 名册补成三席（`acad` + `r-1` + `r-2`），因为**夹具的名册就是夹具的前提**。② `tests/vmu-run155-audit-fixes.test.mjs` 用 25 键逐字钉住 `pdf` 投影的字段集；RUN 205 加 `recordId`/`recordIdMeans` 后它红——这类「字段集 pin」守的是「一个投影、两个门」，所以它必须跟着投影走：改成 27 键并把新键写进注释里（键集 pin 的价值在于**每次变更都必须被看见**，不是禁止变更）。
+
+306.5 **未闭合。** `FEEDBACK42` 的 `1.1`（同键跨内核两读：所办 `vibe_v5_set` 只改本进程）、`1.2` 的照抄路由需真机复验、`1.7`（围栏 JSON 失败与已落盘动作分开报）、`1.6` 的结构化节点表（本轮选择披露而非实现）；本轮修复尚未真机复验。
+
+306.6 **三条教训。**
+- **夹具的名册就是夹具的前提**：一个用假名册的套件点名了名册外的成员，它守的从来不是「谁都能当参与者」，而是「没人检查过名册」。
+- **披露一个不存在的读数，好过让每个读者自己编**：`nodes: null` 加一句解释，比留白让 `节点 3` 各自发明要好；空白会被读成「可以随便填」。
+- **每一条「计数」都要能被粘回去**：打印 `recordId`、tally 名、座席值的地方，都要问一句「读者拿它去调哪个面」；答不上来就说明这个字段只是装饰。

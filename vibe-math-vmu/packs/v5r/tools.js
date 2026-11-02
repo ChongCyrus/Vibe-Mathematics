@@ -3836,6 +3836,11 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     return Object.assign({}, state, {
       tool: 'vibe_v5_blueprint', action, pathSource, staleAfterMsSource: staleWindow.source,
       readSurface: 'vibe_v5_read_library { track: "' + BLUEPRINT_TRACK + '" }',
+      // ★★ RUN 205 (run 43 / FEEDBACK42 1.6, MEASURED): a task brief asked for `nodes`/`count` and this reading has neither —
+      // the blueprint is PROSE. Node ids ("节点 3") are the authors' own labels inside the text, not a structure the kernel
+      // indexes, so there is no count to print; saying that is the honest answer, and the text is one call away.
+      nodes: null,
+      nodesMeans: 'the blueprint is PROSE: the kernel indexes revisions and drafts, NOT nodes — labels like "节点 3" live in the text and belong to its authors, so no structural count exists to read. Read the text with readSurface and quote the labels it actually uses',
       note: state.hasCurrent === false
         ? '该路径上还没有生效版本：先 propose（任何成员）再由主席席 adopt。'
         : (state.stale === true
@@ -3855,7 +3860,13 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
       throw refuse('VMU_INVALID_ARGUMENT', '蓝图提案需要正文 text',
         'pass text:<完整的一版蓝图> —— 空提案等于悄悄落成"什么都没有"')
     }
-    const proposed = proposeBlueprint({ records, path, text, by: String(member.id), note: str(args.note || '') })
+    // ★★ RUN 205 (run 43 / FEEDBACK42 1.5, MEASURED): every `authors[].seat` was null because this face forwarded only the
+    // member id while `codesignMeans` claims adopt needs a chair author AND a member author — the check read a field nobody
+    // wrote. The roster knows the slot, so the seat is resolved HERE and recorded (an unseated/temp slot stays null, which
+    // is a fact, not a missing write).
+    const authorSeatRow = seatOfMemberId(kernel, member.id)
+    const authorSeat = ('chair' === String(authorSeatRow.seat) || 'member' === String(authorSeatRow.seat)) ? String(authorSeatRow.seat) : ''
+    const proposed = proposeBlueprint({ records, path, text, by: String(member.id), seat: authorSeat, note: str(args.note || '') })
     const state = blueprintState({ records, path, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     return Object.assign({}, proposed, {
       tool: 'vibe_v5_blueprint', pathSource, member: String(member.id),
@@ -4659,6 +4670,11 @@ function projectPdfBlock(pdf, target) {
     engineSource: p.engine ? 'face' : ((engines[0] && engines[0].engine) ? 'triedEngines' : null),
     pdfPath: p.pdfPath || null,
     pdfBytes: p.pdfBytes === undefined || p.pdfBytes === null ? null : p.pdfBytes,
+    // ★★ RUN 205 (run 43 / FEEDBACK42 2.4, MEASURED): the final receipt's `pdf` block printed produced/engine/pdfBytes/pdfPath and
+    // DROPPED `recordId`, which the compiler had already returned — the very row a caller was told to quote was readable only
+    // from `status.pdfCompiled`. One compile, one id, both doors.
+    recordId: p.recordId === undefined || p.recordId === null ? null : String(p.recordId),
+    recordIdMeans: 'the `paper-pdf` row this compile wrote (a row id in the paper track). `final` and `compile` print the SAME id for the same compile; `status.pdfCompiled.finalPdfRecordId` says which row the FINALISATION used, so the two can be compared',
     argv: Array.isArray(p.argv) ? p.argv.slice(0, 16) : [],
     outDir: p.outDir || null,
     sourceName: p.sourceName || null,
@@ -4735,7 +4751,10 @@ async function toolPaper(args = {}, { kernel } = {}) {
   }
   switch (action) {
     case 'sections':
-      return { ok: true, tool, action, sections: paper.sections() }
+      // ★★ RUN 205 (run 43 / FEEDBACK42 2.3, MEASURED): `sections` answers with the paper's OUTLINE (the nine headers it will be
+      // written into) and `status.parts` answers with the parts ALREADY WRITTEN. Same word, two questions — said here.
+      return { ok: true, tool, action, sections: paper.sections(),
+        sectionsMeans: 'these are the paper\'s OUTLINE sections (the headers the text is written into), not the parts already written: a reader asking "what has been written" wants `status.parts` (and `requiredLines.items[]` for the required-line view)' }
     case 'status': {
       const got = paper.state(target)
       // ★ G7 finding: status exposed the flow state only, while render exposed missing/complete/pdf. Same source,
