@@ -147,8 +147,8 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         '其中 **boxreopen 需理由**且受 `vmu.ballot.reopenFloor` 约束（门槛只升不降）；若构造时声明了 `openMaxMs`，则 **boxlapse/boxrevokelapse** 对它提供同一套有界兜底。' +
         '**发言序/地面（B③/B④，Round 14）**：`flow` 设**四种地面模式**（open 无队列｜hands 按举手序｜round_robin 按已发言次数｜call_on 主席指定），`overrideorder` **覆盖发言序**（fifo｜round-robin｜chair｜random，random 为**确定性**洗牌：种子与结果 order 都写进回执）。**两者都只由主席做、都必须给 reason**，且**未声明 `vmu.meetings.orderMode` 的部署一律具名拒**（默认不可覆盖）。★ 这两个 action 寻址的是 **`vmu.meetings` 服务记录**（`kernel/meetings.js`），**不是**上面 `open` 造的逐对象会议 id —— 未知 id 由服务**具名拒**（hint 列出在活记录）。',
       parameters: {
-        action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜order｜refuse｜invite｜invitedspeak｜attend｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜close｜extend｜extendlimit｜proceed｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
-          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order', 'refuse', 'invite', 'invitedspeak', 'attend', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit', 'proceed', 'types'] }),
+        action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜order｜refuse｜invite｜invitedspeak｜attend｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜minutes｜verbatim｜close｜extend｜extendlimit｜proceed｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
+          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order', 'refuse', 'invite', 'invitedspeak', 'attend', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'minutes', 'verbatim', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit', 'proceed', 'types'] }),
         id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定）'),
         meeting: param('string', '会议 id 的【别名】：与 id 同义（两者都接受；同时给且不一致 ⇒ 具名拒）。ballot 用它把票绑定到服务会议，见 summary/close 与 ballot 的读数'),
         ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
@@ -670,6 +670,62 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             throw noSuchMeeting(pid)
           }
           if (action === 'snapshot') return Object.assign({ ok: true, action }, live().snapshot())
+          // ★★ RUN 194 (run 36 / FEEDBACK35 1.4, MEASURED): the RECORD BODY of a meeting had no tool read face. `summary`
+          // carries the BOARD (present / motions / votes), `status` carries the state machine, and `snapshot` is the
+          // PRIMITIVE durable serialisation — for a service meeting it is refused by name (VMU_REGISTRY_BOUNDARY). So
+          // what was actually SAID (the minutes entries: speeches, vote events, refusals, dissent) could be written and
+          // never read back through any tool: the service has had `minutes()` / `verbatim()` all along, and nothing
+          // routed to them. Two read faces, because the two records answer different questions — `minutes` is the
+          // structured record, `verbatim` the transcript, and each is silenced by its own declared setting.
+          if (action === 'minutes' || action === 'verbatim') {
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal(action)
+            const reader = namedCaller(by) || namedCaller(member) || namedCaller(actor)
+            const primitive = kernel.liveMeeting(pid)
+            if (primitive) {
+              // the primitive meeting keeps ONE record and it is already readable as `action=summary`; saying so is
+              // better than minting a second name for the same store.
+              return Object.assign(refused('VMU_INVALID_ARGUMENT',
+                'action "' + action + '" reads the MEETINGS SERVICE record body; ' + pid + ' is a PRIMITIVE meeting (kernel/meeting.js), whose one record is its own structured summary',
+                'read it with { action: "summary", id: "' + pid + '" } — rounds, ask/answered/silent/refused and the closing reason are all there; the service minutes/transcript belong to meetings opened through vibe_v5_meeting { action: "open" }'),
+              { registry: 'primitive', askedAction: action })
+            }
+            const svc = kernel && kernel.meetings ? kernel.meetings : null
+            // ★★ RUN 194 (second pass, after the FULL T1 sweep): the first version dispatched through a GENERIC
+            // subscript (bracket by the action name). `tests/audit-face-actions.mjs` classifies a face by that SHAPE and
+            // this face is EXPLICIT-BRANCH everywhere else — flipping it to generic made the audit compare EVERY offered
+            // action (30 of them, camelCase service methods lower-cased in the enum: `agendaclose`, `boxopen`, …) against
+            // "methods of a mentioned service", which no lower-cased name can match. The gate was right and the dispatch
+            // was wrong: the action is resolved BY NAME, one method per name, so the face stays explicit. NOTE: the gate
+            // reads the SOURCE, comments included, so this comment must not spell the generic shape either.
+            const svcMethod = action === 'minutes'
+              ? (svc && typeof svc.minutes === 'function' ? svc.minutes : null)
+              : (svc && typeof svc.verbatim === 'function' ? svc.verbatim : null)
+            if (svcMethod) {
+              let out
+              try {
+                out = svcMethod.call(svc, { meeting: pid, by: reader, allowArchived: true })
+              } catch (e) {
+                // a REAL refusal (confidentiality, unknown id) must not be swallowed: rethrow with the action named.
+                throw e
+              }
+              if (out && out.ok === false) return out
+              return Object.assign({
+                ok: true, action, id: pid, registry: 'service',
+                recordMeans: action === 'minutes'
+                  ? 'this is the RECORD BODY (what was said, voted and refused), not the board: `summary` is the agenda/motions view and `status` the state machine. Archived meetings stay readable here (a closed meeting keeps its minutes)'
+                  : 'this is the VERBATIM transcript, which is pruned by its own declared setting (dropped lines are counted); `minutes` is the structured record and does not depend on it',
+              }, out)
+            }
+            if (svc) {
+              // the service DOES hold archived records but publishes no such method: name it instead of "no such meeting".
+              return Object.assign(refused('VMU_ENGINE_UNAVAILABLE',
+                'this meetings service publishes no ' + action + '() face, so the record body cannot be read on this kernel',
+                'read { action: "summary" } for the board instead; the record body needs a service that exposes ' + action + '()'),
+              { registry: 'service', askedAction: action })
+            }
+            throw noSuchMeeting(pid)
+          }
           // ★ RUN 185: ONE frozen row per close, best effort — a freeze that fails must not undo a close that
           // succeeded, so the receipt carries the failure instead of throwing.
           const freezeReading = (meetingId, frozenBy, frozenWhy) => {

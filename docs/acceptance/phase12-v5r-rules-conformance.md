@@ -13908,3 +13908,58 @@ run 36（基线 `805c18fe`）**8/8 复验实测到**、主线结题出 PDF（107
 
 - **「按状态分叉的提示」是提示词的基本卫生**：同一句「怎么退回去」在 `reviewing` 与 `awaiting-editor` 下是两个答案，写死其中一个必然有一半时间是假路标。
 - **能力断言必须带条件**：「本内核尚无 X」这种把**当前部署**说成**机制上限**的句子，一旦部署变化就会主动劝退使用者。正确的说法永远是「能不能用看回执」，并点名证明它的字段。
+
+## §294 RUN 194（第三十六次真机 run 36 的 1.4/2.5：可写不可读的记录、说错对象的说明）
+
+run 36 的临时工席（r-temp）被拒进入辩论会（`attendDeniedSeats`，这是**设计**：temp 无表决权），它想「那至少让我读会议记录」，于是调了 `vibe_v5_meeting { action: "snapshot", id: "m1" }` —— 得到 `VMU_REGISTRY_BOUNDARY`。查下去发现这不是一个快照参数的缺口，而是**会议记录正文在整个工具面上没有任何读面**。
+
+### 294.1 账
+
+| 现场 | 说过/发生了的话 | 机制实际 |
+| --- | --- | --- |
+| temp 席读会议记录 | `snapshot` 对 SERVICE 会议具名拒（`VMU_REGISTRY_BOUNDARY`） | `snapshot` 是**原语会议的耐久序列化**（live/archive/receipts），本来就不是「会议记录正文」；而 SERVICE 侧一直有 `minutes()` / `verbatim()` / `spokeBy()`，**没有任何工具路由到它们** |
+| 全体成员 | `summary`（board：present/motions/votes）、`status`（状态机）都可读 | 谁**说了什么**、哪些发言/票事件/被拒发言/异议被记录，无处可读 ⇒ 会议「有记录、无读面」 |
+| 所办调 `vibe_v5_start` | 回执里 `memberScopeNote` 写着「机构级读数…不在你的线束里：它们属于推动者的内核」 | 这句话是**成员提示词**里那一段（写给人看的是成员），所办读自己的回执时会以为自己也没有这些工具 —— 而它恰恰是拥有它们的那个内核 |
+
+### 294.2 修法
+
+1. `vibe-math-vmu/tools/meeting.js`：action 枚举新增 **`minutes`** 与 **`verbatim`**，并列进参数说明；实现为一个分支，**两个登记册都路由**：
+   - 原语会议：具名拒 `VMU_INVALID_ARGUMENT`（message 说清「你问的是 SERVICE 的记录正文，而 id 是 PRIMITIVE 会议」），hint 指向它唯一的那份记录 `action: "summary"`（rounds/ask/answered/silent/refused/关闭原因都在里面），并带 `registry: 'primitive'`。
+   - SERVICE 会议：`svc[action]({ meeting, by, allowArchived: true })` —— **`allowArchived: true` 是关会后仍可读的关键**（run 36 的 m1 早就 close 了）；回执加 `registry:'service'` 与 `recordMeans`（`minutes` 是「说了/投了/拒了什么」的记录正文，不是 board；`verbatim` 是被自己的声明设置剪枝的逐字稿，剪掉的条数会被计数）。
+   - 服务没有该方法时：`VMU_ENGINE_UNAVAILABLE` 具名说明，而不是「会议不存在」。
+2. `vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_start` 回执新增 **`memberScopeNoteMeans`**：那段话是「写给**成员**读的」（就是成员提示词承载的段落），**不是**对所办自身的描述 —— 播种研究所的所办仍然在自己的线束里保有机构级读数。`memberScopeNote` 原文一字未改（它是成员读的东西）。
+
+### 294.3 机器化
+
+`tests/vmu-run194-record-body.test.mjs` **4 passed / 0 failed**：
+
+- §0 十一条源码 pin（action 枚举含两项、分支唯一、`allowArchived: true`、两份正文被区分、`memberScopeNoteMeans` 两句）。
+- §1 真装配：开会 → `attend r-1` → `vibe_v5_say` 发言 → `vibe_vmu_meeting { action:"minutes" }` ⇒ `ok`、`entries` 里有一条 `kind:"speech", member:"r-1"`、`registry:"service"`、`recordMeans` 含 `RECORD BODY`；同场 `verbatim` 面也答（`enabled:false` 时 note 点名 `verbatimEnabled`，不是给一个空列表）；**关会后再读** ⇒ 仍 `ok`、发言仍在。
+- §1 原语会议：`vibe_vmu_meeting { action:"open", id:"prim-1", roster:[…] }` 后 `minutes` ⇒ `VMU_INVALID_ARGUMENT`、message 含 `PRIMITIVE meeting`、hint 含 `action: "summary"`、`registry:"primitive"`。
+- §1 `vibe_v5_start`：`memberScopeNoteMeans` 含 `written for a MEMBER` 与 `NOT a statement about the caller`；原文 `memberScopeNote` 仍含「不在你的线束里」。
+
+### 294.4 定向回归与收口
+
+`run194 4/0`、`meeting 32/0`、`run188/run189/run191` 各 1/0、`vmu-host 4/0`、`v5r-tools 1/0`、`prompt- 24/0`、`audit-vmu-docs 103/0`、`audit-receipt-fields` PASS；`update-doc-counts --write`（`JOBS total=744 suites=636 probes=108`）→ `regen-all --write` 17/17 → `--check` → 四门禁。
+
+**全量 T1 首跑 `744 PASS / 741 FAIL 3`（全部是真红，且都是「新增动作」的连带面，不是缺陷回归）**——三条与两条教训：
+
+1. `tests/audit-doc-actions.test.mjs`：`vibe_vmu_meeting: every live action is documented — minutes|verbatim`。**新动作进了 enum 就必须进 `docs/03-interface-contract.md` 的 action 行**（`snapshot` 之后插入 `minutes\|verbatim`，并在 `★ R102 · types` 之前补一段 RUN 194 说明）。
+2. `tests/audit-face-actions.mjs`：30 findings（`OFFERED-NOT-IMPLEMENTED meeting 'invitedspeak'|'agendaclose'|…`）。根因是我把新分支写成了**泛型下标派发**（`svc[action](…)`）：该 audit 用 `/[A-Za-z_$][\w$]*\[action\]/` 判「泛型面」，而这个面其余全是显式分支；一翻成泛型，48 个 enum 值（camelCase 服务方法的小写形）就全被拿去比对方法名，必然全不匹配。修法＝按名解析一个方法（`svcMethod`，两个方法各一条三元），调用用 `svcMethod.call(svc, …)`。**第二层坑**：audit 读源码**含注释**，我第一版注释里写了那个形状字样仍然触雷。
+3. `tests/vmu-run147-convene-field.test.mjs` §6a：钉的是「`action:"minutes"` 被 `unknown action` 拒」这条**当时为真**的事实。§6a 改为断言「不再是 unknown action」（动作已解析），§6a2 新增「原语会议的 id 被具名拒时 hint 指向 `action="summary"`」。
+
+**两条教训**：① 给一个面新增 action 要同步**三处**——工具 enum、接口契约的 action 行、以及钉旧行为的 pin（`run147` 这种「钉一条不存在的动作」的测试会随功能上线变成假红）；② 门禁若读源码全文，**注释也算源码**：描述「不要写成泛型派发」的注释本身会让门禁判定为泛型派发。
+
+复跑全量 T1（`/d/_tmp/t1-r411-run194b.log`）= **TOTAL 744 PASS 744 FAIL 0（suites 636 · probes 108）**。
+
+### 294.5 未闭合
+
+- **1.5 Lean 作业表 per-process**：office 的 `passed:true` 与成员内核的 `not-measured` 并存，库里两条记录。要修需把作业结果落**共享账**（跨内核），不是措辞问题。
+- **2.3 论文「指针」三种口径**：`evidence` 只认记录 id、正文引用只认记录 id、但 `Formal/…lean` 写在正文里不被拒 —— 同一份文档里缺一处总说明。
+- **1.3 `op:"reply"` 通道在 activation 交付下不可达**：回执自认是设计（回合在 step 内结算），但它是回复字段的唯一工具入口，需要新 seam，属设计题。
+- 本轮**尚未真机复验**（run 37 的简报已覆盖 RUN 193 三条 + RUN 192 两条，`minutes` 面留给 run 38）。
+
+### 294.6 两条教训
+
+- **「能写不能读」是最贵的缺口**：写侧有五个面在写 minutes（speak/say/vote/refuse/attend），读侧一个都没有，于是一个真实席位只能靠 `snapshot`（另一个对象的序列化面）去猜，然后被判「登记册边界」。**记录面与写入面必须同时交付**。
+- **一句写给某人看的话，回执里要说明它写给谁**：成员提示词里的边界段落被所办当成对自己的描述，属于「同一句文本两个读者」。不改原文，补一句 `…Means` 指明读者，是这类歧义最便宜的修法。

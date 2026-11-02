@@ -3159,3 +3159,24 @@ deployment was compiling with `xelatex`.
 Mechanised in `tests/vmu-run193-feedback35.test.mjs` (3/0). Full T1 `743 PASS / 0 FAIL (suites 635)`. Not closed: a
 read face for SERVICE meeting records (1.4), a cross-kernel ledger for Lean jobs (1.5), one vocabulary for paper
 pointers (2.3), and a per-seat `memberScopeNote` (2.5).
+
+## ROUND 197
+
+**RUN 194 — a record five faces write and no face reads.** Run 36's temp seat was refused entry to a debate (by design)
+and then tried to read what had been said: `snapshot` answered `VMU_REGISTRY_BOUNDARY`, because `snapshot` is the
+PRIMITIVE durable serialisation, not a meeting record. The service has had `minutes()` / `verbatim()` all along and no
+tool routed to them — so speeches, vote events, refused speeches and dissent were recorded by five write faces and
+readable by nobody.
+
+1. `tools/meeting.js` gains `action: "minutes"` and `action: "verbatim"`, routed across BOTH registries. A SERVICE
+   meeting is read through `svc.minutes({ meeting, by, allowArchived: true })` — `allowArchived` is what keeps a closed
+   meeting readable — and the receipt carries `registry:'service'` plus `recordMeans` saying this is the record body and
+   not the board (`summary`) or the state machine (`status`). A PRIMITIVE meeting is refused BY NAME with the hint that
+   its one record is `action: "summary"`. A service without the method answers `VMU_ENGINE_UNAVAILABLE`, never "no such
+   meeting".
+2. `vibe_v5_start` gains `memberScopeNoteMeans`: `memberScopeNote` is the paragraph a MEMBER prompt carries, addressed to
+   the member — NOT a description of the office that seeds the institute, whose harness keeps the institution-level
+   readings. The note itself is unchanged.
+
+Mechanised in `tests/vmu-run194-record-body.test.mjs` (4/0), including a read AFTER close. Still open: the per-process
+Lean job table (1.5), one vocabulary for paper pointers (2.3), and the unreachable `op:"reply"` seam (1.3).

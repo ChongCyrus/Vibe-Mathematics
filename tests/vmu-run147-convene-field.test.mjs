@@ -21,8 +21,14 @@
  *        `member` (`VMU_INVALID_ARGUMENT "motion needs the acting member id"`).
  *   G23  the `input` row said 「会议轮用」 without saying that the round must have a BOUND meeting (a meeting-phase turn
  *        with no bound meeting skips it as no-meeting-bound).
- *   G24  `v5r-blocks-b.js` taught `vibe_vmu_meeting { action: "minutes" }` — an action this face does not have
- *        (measured: `unknown action: minutes`, VMU_INVALID_ARGUMENT), and `seat-faces.js` repeated 「minutes 读逐字发言」.
+ *   G24  `v5r-blocks-b.js` taught `vibe_vmu_meeting { action: "minutes" }` — an action this face did not have AT THE
+ *        TIME (measured: `unknown action: minutes`, VMU_INVALID_ARGUMENT), and `seat-faces.js` repeated 「minutes 读逐字发言」.
+ *        ★★ RUN 194 CHANGED THE FIRST HALF OF THIS: run 36 measured that the record body had NO read face at all, and
+ *        `action: "minutes"` / `action: "verbatim"` are now real actions on this face (documented in the tool's enum and in
+ *        `docs/03-interface-contract.md`). What survives from G24 is the SECOND half — the teaching rows must not promise a
+ *        read path the seat cannot walk — and §6 now pins the new truth instead of the old refusal: the action RESOLVES
+ *        (service meeting ⇒ the record body; PRIMITIVE meeting ⇒ refused BY NAME with the `summary` pointer), and
+ *        "unknown action: minutes" must never appear again.
  *
  * THE FIX THIS SUITE PINS: `convene_meeting` carries `noReplyShape` in the kernel (FIELD_OWNERS) and `notApplicable`
  * in the pack catalogue, its row names the tool route that DOES enforce the seat policy, all three seat notes and the
@@ -233,7 +239,7 @@ try {
     ok(Boolean(skipped) && skipped.reason === 'no-meeting-bound', '§5e ★★ 无会议绑定的 input 被具名跳过 no-meeting-bound', skipped)
   }
 
-  console.log('=== 6. G24：minutes 不是这个面的 action；活教学里 0 命中 ===')
+  console.log('=== 6. G24：minutes 启用后仍不得教不存在的路；活教学里 0 命中 ===')
   {
     const b = await boot()
     await b.kernel.members.hire({ id: 'r-chair', slot: 'chair' })
@@ -247,8 +253,14 @@ try {
     } catch (e) {
       minutesRes = { ok: false, code: e && e.code, message: e && e.message }
     }
-    ok(Boolean(minutesRes) && minutesRes.ok === false && minutesRes.code === 'VMU_INVALID_ARGUMENT' && /unknown action: minutes/.test(String(minutesRes.message)),
-      '§6a ★★★ action "minutes" 被具名拒（unknown action），旧教学教的是一条不存在的动作', minutesRes && (minutesRes.code + ' ' + String(minutesRes.message).slice(0, 100)))
+    // ★★ RUN 194: the action EXISTS now. What must never come back is "unknown action: minutes" — either the record body
+    // is read (service meeting) or the face refuses BY NAME and points at the record that does exist (`summary`).
+    const minutesText = String((minutesRes && minutesRes.message) || '')
+    ok(Boolean(minutesRes) && !/unknown action/.test(minutesText),
+      '§6a ★★★ action "minutes" 已是真动作：要么读到记录正文，要么被具名拒并指向 summary；绝不能再出现 unknown action',
+      minutesRes && (String(minutesRes.code || 'ok') + ' ' + minutesText.slice(0, 120)))
+    ok(Boolean(minutesRes) && (minutesRes.ok === true || /summary/.test(minutesText)),
+      '§6a2 ★ 原语会议的 id 被具名拒时，hint 指向它唯一的那份记录 action="summary"', minutesRes && (minutesRes.code + ' ' + String(minutesRes.hint || '').slice(0, 100)))
     const statusRes = await meetTool.execute({ action: 'status', id: mid }, {})
     const statusParsed = typeof statusRes === 'string' ? JSON.parse(statusRes) : statusRes
     ok(Boolean(statusParsed) && statusParsed.ok !== false, '§6b status 是真的读法（会况）', statusParsed && (statusParsed.code || Object.keys(statusParsed).length))

@@ -4062,7 +4062,12 @@ async function toolStart(args = {}, { kernel } = {}) {
   // ★ The seats seeded here are the ones a run will actually drive, so the scope is applied AT SEATING TIME rather
   // than left to whichever later call happens to remember. `memberScope` carries the seam's answer by name.
   const memberScope = applyMemberScope({ kernel, members: hired })
-  return { ok: true, tool: 'vibe_v5_start', hired, started, applied, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE,
+  // ★★ RUN 194 (run 36 / FEEDBACK35 2.5, MEASURED): `memberScopeNote` is the sentence a MEMBER prompt carries. Read
+  // from the office's side of this receipt it reads as if it also governed the caller — a chair who had just hired
+  // members asked whether "these readings are not in my harness either", which they are. The note is unchanged (it is
+  // what the member reads); this field says WHO it addresses and what it therefore does NOT say about the caller.
+  const memberScopeNoteMeans = 'that sentence is written for a MEMBER (it is the paragraph a member prompt carries): it says which faces the hired seat cannot reach. It is NOT a statement about the caller of vibe_v5_start — the office that seeds the institute keeps the institution-level readings (report / overview / start-stop / settings / final ruling / verified promotion) in its own harness'
+  return { ok: true, tool: 'vibe_v5_start', hired, started, applied, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE, memberScopeNoteMeans,
     note: 'seedDirections are roster data here (the charter reads a member\'s direction), so they are not stored by this tool — reported, not silently dropped' }
 }
 
