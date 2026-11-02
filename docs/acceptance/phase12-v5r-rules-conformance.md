@@ -13945,7 +13945,7 @@ run 36 的临时工席（r-temp）被拒进入辩论会（`attendDeniedSeats`，
 **全量 T1 首跑 `744 PASS / 741 FAIL 3`（全部是真红，且都是「新增动作」的连带面，不是缺陷回归）**——三条与两条教训：
 
 1. `tests/audit-doc-actions.test.mjs`：`vibe_vmu_meeting: every live action is documented — minutes|verbatim`。**新动作进了 enum 就必须进 `docs/03-interface-contract.md` 的 action 行**（`snapshot` 之后插入 `minutes\|verbatim`，并在 `★ R102 · types` 之前补一段 RUN 194 说明）。
-2. `tests/audit-face-actions.mjs`：30 findings（`OFFERED-NOT-IMPLEMENTED meeting 'invitedspeak'|'agendaclose'|…`）。根因是我把新分支写成了**泛型下标派发**（`svc[action](…)`）：该 audit 用 `/[A-Za-z_$][\w$]*\[action\]/` 判「泛型面」，而这个面其余全是显式分支；一翻成泛型，48 个 enum 值（camelCase 服务方法的小写形）就全被拿去比对方法名，必然全不匹配。修法＝按名解析一个方法（`svcMethod`，两个方法各一条三元），调用用 `svcMethod.call(svc, …)`。**第二层坑**：audit 读源码**含注释**，我第一版注释里写了那个形状字样仍然触雷。
+2. `tests/audit-face-actions.mjs`：30 findings（`OFFERED-NOT-IMPLEMENTED meeting 'invitedspeak'|'agendaclose'|…`）。根因是我把新分支写成了**泛型下标派发**（`svc` 后面跟方括号里的 `action`、再接参数括号的那种调用形状）：该 audit 用 `/[A-Za-z_$][\w$]*\[action\]/` 判「泛型面」，而这个面其余全是显式分支；一翻成泛型，48 个 enum 值（camelCase 服务方法的小写形）就全被拿去比对方法名，必然全不匹配。修法＝按名解析一个方法（`svcMethod`，两个方法各一条三元），调用用 `svcMethod.call(svc, …)`。**第二层坑**：audit 读源码**含注释**，我第一版注释里写了那个形状字样仍然触雷。
 3. `tests/vmu-run147-convene-field.test.mjs` §6a：钉的是「`action:"minutes"` 被 `unknown action` 拒」这条**当时为真**的事实。§6a 改为断言「不再是 unknown action」（动作已解析），§6a2 新增「原语会议的 id 被具名拒时 hint 指向 `action="summary"`」。
 
 **两条教训**：① 给一个面新增 action 要同步**三处**——工具 enum、接口契约的 action 行、以及钉旧行为的 pin（`run147` 这种「钉一条不存在的动作」的测试会随功能上线变成假红）；② 门禁若读源码全文，**注释也算源码**：描述「不要写成泛型派发」的注释本身会让门禁判定为泛型派发。
@@ -13963,3 +13963,121 @@ run 36 的临时工席（r-temp）被拒进入辩论会（`attendDeniedSeats`，
 
 - **「能写不能读」是最贵的缺口**：写侧有五个面在写 minutes（speak/say/vote/refuse/attend），读侧一个都没有，于是一个真实席位只能靠 `snapshot`（另一个对象的序列化面）去猜，然后被判「登记册边界」。**记录面与写入面必须同时交付**。
 - **一句写给某人看的话，回执里要说明它写给谁**：成员提示词里的边界段落被所办当成对自己的描述，属于「同一句文本两个读者」。不改原文，补一句 `…Means` 指明读者，是这类歧义最便宜的修法。
+
+## §295 RUN 195 —— 五个数字各自属于另一个时刻、另一个人、另一个问题（run 37 / FEEDBACK36）
+
+### 295.1 账从哪里来
+
+run 37（`slvp163-ws`，`durationSec 1306`、`tokenTotal 13 650 147/40M`、`trend 5 session(s) 0 RED`）主线**完整结题**：
+命题 → 证明文件 → Lean 通过 → 辩论会（`verify-request`）→ 两票 unanimity → Verified → 论文两轮互审 → 定稿 →
+`VMU_OFFICE_CONSULT_REQUIRED` → 所办 consult 后出 PDF → 结题会三票 → `close`。`SIM-REPORT36.md` 22 427 B、
+`FEEDBACK36.md` 9 628 B。五条缺陷都不是假想，是那份报告里逐个数字带出来的：
+
+| # | 现场 | 一句话 |
+| --- | --- | --- |
+| 1.1 | `final` 91 156 B，磁盘 91 198 B，`status.pdfCompiled.pdfBytes`=91 156 | 账本读的是**最旧**那次编译 |
+| 1.3 | `close` 回执的 `closureVote.meetingId` 恒 `null`，与 `archived:true` 并排 | 全所一张票板，回执没说 |
+| 2.1 | `drive` 回执 `executed: 0`，同批成员在自己会话里写了证明 | `step` 有 `executedMeans`，`drive` 没有 |
+| 2.2 | `advance` 一致分支没有 `refusers` 字段 | 「没人反对」被读成「不知道」 |
+| 2.3 | 证据门 `missing: []` 与 `emptyParts: [...]` 并排 | 两个问题共用一个「没有」 |
+
+### 295.2 五处修法（+2 处提示词）
+
+1. **`kit/paper.js` 的 `compiledPdfRow` 取最新行**：原来是 `for (const row of cand) … return`，取列表**第一行**；
+   `compile` 每次写**新行**（同标题新 id），所以定稿后再编译永远读旧账。改为遍历全部候选、按
+   `[Number(row.updatedAt) Number(row.rev)]` 取最大；**平手取列表里更靠后的那一行**（列表从旧到新）。
+2. **定稿记下自己那次编译**：`recordFinal` 成功分支写 `state.finalPdfRecordId` / `state.finalPdfBytes`
+   （`pdf.ok === true` 时再 `writeState` 一次）。
+3. **`status.pdfCompiled` 说清两件事**：新增 `finalPdfRecordId`、`finalPdfBytes`、`compiledAfterFinal` 与
+   `compiledAfterFinalMeans`（两条分支：这就是定稿那次 / 之后又被重编译，并把**两个字节数**一起打印）；`means`
+   改成「the NEWEST `paper-pdf` row」。
+4. **`tools/meeting.js` 的 `close` 回执**：`readForMeeting: pid` + `readForMeetingMeans`（票板是**全所**一张、按
+   latest-wins 写、本身没有会议 id；这个字段说的是「这次 close 是为哪场会读取的」）。`closureVote.meetingId` 保持
+   `null`——它是**设计**，不是缺陷。
+5. **`kernel/turn/index.js` 的 `withScope`**：`Object.assign({}, r, { executedMeans: EXECUTED_MEANS, scope: … })`，
+   一次挂上，`drive` 的**所有**返回路径都带「executed 数的是回复字段，空列表不等于成员没干活」。
+6. **`kit/paper.js` 的 `advance` 一致分支**：`refusers: []` + `refusersMeans`。
+7. **`packs/v5r/paper-quality.js` 的两处 `EVIDENCE_MISSING`**：`gate: 'evidence'`、`nextGate: 'required-line'`、
+   `missingMeans`（说清 `missing` 是「没解析成功的记录 id」列表，`emptyParts` 是「根本没交证据的部分」列表），并把
+   hint 里的例子从文件卡改成 `rec-<n>`。
+8. **`packs/v5r/tools.js` 的 `vibe_v5_start`**：`chairTurnNote`（`vmu.meetings.chairActRequiresTurn` 与
+   `VMU_CHAIR_ACT_NOT_DELEGATED` 的机制、以及唯一补救：先让主席走自己的回合）。
+9. **`packs/v5r/prompts/v5r-paper-prompts.js`**：`part` 的示例从磁盘路径（`Members/<id>/Propos/p-x.md`，文件卡）改成
+   记录 id（`rec-<n>`），并新增一条「★ 文件卡不是证据」；另加一条「★ PDF 的数字以回执为准」（定稿回执的 `pdf`
+   块是那一次；之后有人 `compile` 就以 `status.pdfCompiled` 为准，看 `compiledAfterFinal`）。
+
+### 295.3 机器化
+
+`tests/vmu-run195-feedback36.test.mjs` **3/0**：
+
+- §0 二十条源码 pin（含负向：提示词里的 `part` 示例不再教磁盘路径而当证据）。
+- §1 **真账本**：开论文 → 用 `records.put` 落两行 `paper-pdf`（91 156 / 91 198）→ `paper.compiledPdfRow(state)`
+  必须答 **91 198**（旧实现答 91 156）。
+- §2 **真回执**：`vibe_v5_start` 的 `chairTurnNote` 点名 `VMU_CHAIR_ACT_NOT_DELEGATED` 与 `vibe_vmu_turn`；开会→
+  `close` 的 `readForMeeting === mid`、`readForMeetingMeans` 含 `INSTITUTE-WIDE`、`closureVote.meetingId` 仍
+  `null`；`checkQuality` 在「有 part 无证据」时给 `gate:'evidence'`、`missing: []`、`missingMeans` 含
+  `empty ON PURPOSE`。
+
+踩到的两个真事实：① `paper.state(target)` 返回 `{state, row}`（不是 state 本身），第一版把 `state.target` 读成
+`undefined` 导致 `want` 为空、账本恒 `null`；② 内核 clock 在测试装配里固定，两行 `updatedAt` 相同 ⇒ 平手规则必须
+是「取列表更靠后者」，否则新代码在真实等时情况下仍会回旧行。
+
+### 295.4 定向回归与收口
+
+定向回归 **105 passed / 0 failed（97 suites · 8 probes）**：`paper`、`tools`、`turn`、`meeting`、`vmu-host`、
+`prompt-`、`v5r-tools`、`run167/169/119/147/188/189/190/191/192/193/194`；`update-doc-counts --write`
+（`JOBS total=745 suites=637 probes=108`）→ `regen-all --write` 17/17 → `--check 17/17 in sync` →
+`PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 两条既有提示：`vmu.members`、`vmu.store` 的方法未列契约）/
+`RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+
+### 295.4b 全量 T1：三次红、三条真修法、一条预存在的 flake
+
+首跑 `/d/_tmp/t1-r420-run195.log` = **TOTAL 745 PASS 742 FAIL 3**，三条都是真红（不是噪声，都是本轮或 RUN 194 的
+改动引出的契约面）：
+
+1. `tests/audit-doc-index.test.mjs`：`dead:["docs/acceptance/phase12-v5r-rules-conformance.md -> …]`。根因在 §294.4
+   早先写的那句：`svc[action](…)` 放进反引号里，`stripCode` 去掉反引号后留下 `[action](…)`，被当成 markdown 链接
+   ⇒ 文档索引判它指向一个不存在的文件。**这条红是 RUN 194 的文档追加引入的，当时没有重跑全量** ⇒ 改写成「`svc`
+   后面跟方括号里的 `action`、再接参数括号的那种调用形状」，不再出现链接语法。
+2. `tests/vmu-run183-refusal-reachability.test.mjs` §0c：pin 把 `withScope` 的字面量整个钉死。**字面量不是契约，
+   句子才是** ⇒ pin 改成含 `executedMeans: EXECUTED_MEANS` 的新形状，断言文案写明「RUN 195: and what `executed`
+   counts — the sentence, not the literal, is the contract」。
+3. `tests/vmu-run87-round-cap-consult.test.mjs`：pin 钉着 `evidence: ["Members/`（提示词教文件卡的老口径）⇒ 改成
+   `evidence: ["rec-` 并新增 `文件卡不是证据` 的断言。
+
+修后三套单跑 `TOTAL 3 PASS 3`，门禁全 PASS。
+
+**第二次**全量 `/d/_tmp/t1-r421-run195b.log` = **TOTAL 745 PASS 744 FAIL 1**，红的是
+`tests/vmu-run174-index-and-receipts.test.mjs` §5（`archivedVotes`/`archivedByWindow`/`unwindowedVotes` 全是 0/{}）。
+单跑绿，**连跑 20 次 18 绿 / 2 红** ⇒ 真 flake（预存在，本轮只是撞上）。根因在测试自己：§5 在 A 内核仍活着时
+**直接改写 `vmu/state.json`** 播种两行 `closure_votes`，外面套了 40 次 × 25 ms 的「写后回读」循环；但 A 的 store
+是**整文件持久化内存里的 fold**，任何一个在途写（records flush、id 预留）都能在最后一次回读之后落地，把播种行整批
+覆盖掉 —— 循环关不上这个窗口，断言随即变空。
+
+修法：**播种要走写者自己的 mutex**。改成
+`await A.kernel.store.patch('closure_votes', () => [ … ])` + `patch('closure_window', () => ({ window: 1 }))`
+（`vibe-math-vmu/kernel/store.js:524` 的 `patch` 在独占段里 reload→merge→persist，A 之后无论写什么都会带上这两行），
+并保留一次**播种后回读**断言（`§5 setup: … a seed that did not land must fail here, named`），让「种子没落盘」以
+setup 失败的形式说出来，而不是伪装成机制缺陷。修后**连跑 30 次 30/30 全绿**。
+
+**第三次**全量 `/d/_tmp/t1-r422-run195c.log` = **TOTAL 745 PASS 745 FAIL 0（suites 637 · probes 108）**。
+
+### 295.5 未闭合
+
+- **1.5 Lean 作业表 per-process**（office `passed:true` 与成员内核 `not-measured` 并存）：要修得把作业结果落**共享
+  账**，是机制题不是措辞题。
+- **1.2 会议「到会」与「交裁决卡」两套账**（`present=1` 而同批 `verdict_final` 说两席已交）：两套记录都在，缺的
+  是一处**同时**读它们的面。
+- **2.6 论文产物落工作区根 `Paper/` 而库根是 `VibeMath/`**：路径口径需要一次统一。
+- 本轮修复**尚未真机复验**（run 38 的简报覆盖 RUN 194 `minutes`/`verbatim` + 本轮五项）。
+
+### 295.6 三条教训
+
+- **同一个词可以指两个时刻**：`pdfBytes` 同时被当成「定稿那次」与「最新那次」用，于是两个都真、读者全错。修法不是
+  改措辞，而是**把两个时刻分成两个字段**，并让回执同时打印两个数。
+- **`null` 只有配上设计说明才是信息**：`closureVote.meetingId: null` 与 `archived: true` 并排时，读者只能猜它是
+  「不属于这场会」还是「没记」。全所一张票板是**设计**，那么就在回执里说明它是设计，并给出这次读数的所属会议。
+- **播种耐久状态必须走写者自己的 mutex**：store 持久化的是**内存里的整个 fold**，所以「绕开 store 直接改文件再回读
+  校验」永远有窗口 —— 任何在途写都会整批覆盖播种行。测试里要喂历史数据，就用 `store.patch`（独占段 reload→merge→
+  persist），并保留一次回读断言把「种子没落盘」说成 setup 失败。同一条道理对运维也成立：手改 `state.json` 是会被
+  活着的内核覆盖的。

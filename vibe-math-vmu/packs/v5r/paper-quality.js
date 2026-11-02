@@ -534,7 +534,14 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
       ok: false, code: codes.EVIDENCE_MISSING,
       message: '论文有 ' + emptyParts.length + ' 个部分没有任何证据条目：' + emptyParts.join('、')
         + '（另有 ' + withEvidence + ' 个部分有证据，但不能替它们作证——附录按【每个部分】索引证据，规则要求"证据/引用/不得编造"）',
-      hint: '让 ' + emptyParts.join('、') + ' 各自在 recordPart 的 evidence 里写明引用的证据路径（Members/<member>/Propos/p-x.md 这种形状会被逐条核实）；一个部分有证据不算另一个部分有证据',
+      hint: '让 ' + emptyParts.join('、') + ' 各自在 recordPart 的 evidence 里写明引用的记录 id（rec-<n>；磁盘上的文件卡 Members/<member>/Propos/p-x.md 不是记录行，会被具名拒）；一个部分有证据不算另一个部分有证据',
+      // ★★ RUN 195 (run 37 / FEEDBACK36 2.3, MEASURED): this refusal answered `missing: []` next to `emptyParts: [...]`,
+      // and run 37's editor read the empty `missing` as "nothing is missing, so why was I refused?". Two lists, two
+      // meanings: `missing` is the list of RECORD IDS that did not resolve, `emptyParts` is the list of parts that filed
+      // NO evidence at all. Neither field says which GATE ran, so `gate`/`nextGate` name the check and the one after it.
+      gate: 'evidence',
+      nextGate: 'required-line',
+      missingMeans: 'empty ON PURPOSE: no record id failed to resolve — this refusal is about parts that filed no evidence at all (`emptyParts`), not about unknown ids (`missing`); the two lists are different questions and this gate answered the first',
       missing: [], members: partMembers, emptyParts,
     }
   }
@@ -545,6 +552,9 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
       ok: false, code: codes.EVIDENCE_MISSING,
       message: '论文没有任何部分：0 位成员写了 part，附录因此没有任何可索引的证据（论文至少要有一段由参与者写的正文）',
       hint: '先让参与者 recordPart 写各自的正文与 evidence；没有正文的"论文"没有可定稿的内容',
+      gate: 'evidence',
+      nextGate: 'required-line',
+      missingMeans: 'empty ON PURPOSE: there is no part at all, so no record id could fail to resolve — the refusal is that the paper has no body (`members`/`emptyParts` are empty too)',
       missing: [], members: [], emptyParts: [],
     }
   }

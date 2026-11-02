@@ -131,6 +131,14 @@ export function createPaperFlow({
     if (!state) return null
     const want = [String(state.target === undefined || state.target === null ? '' : state.target), String(state.id === undefined || state.id === null ? '' : state.id)].filter((w) => w !== '')
     const cand = listPaper().filter((r) => String(r.kind || '') === 'paper-pdf' && want.some((w) => String(r.title || '').endsWith('|' + w + '|pdf')))
+    // ★★ RUN 195 (run 37 / FEEDBACK36 1.1, MEASURED): THE LEDGER READ ANSWERED WITH THE OLDEST COMPILE. `compile` writes a
+    // NEW `paper-pdf` row each time (same title, a new id), so a paper that was re-typeset AFTER its `final` had two rows —
+    // and this loop returned the FIRST readable one, i.e. the compile that ran at finalisation. Run 37 measured the paper:
+    // `final` produced 91 156 bytes, a member's own kernel later recompiled the same source to 91 198 bytes on disk, and
+    // `status.pdfCompiled.pdfBytes` still said 91 156 (rec-19) while the file on disk was 91 198. The row answers "is there
+    // a PDF, and which compile is it" — so it must be the NEWEST compile, and the caller is told the row it read.
+    let best = null
+    let bestKey = null
     for (const row of cand) {
       try {
         const got = records.get({ id: row.id })
@@ -139,14 +147,22 @@ export function createPaperFlow({
         if (body && body.pdfPath) {
           // ★★ RUN 176 (run 21 A2): the ledger read answers "is there a PDF?" and, when there is, the bytes/engine the
           // compile recorded — the same facts the receipt needs, so the face does not re-open the row and get it wrong.
-          return { id: row.id, title: row.title, pdfPath: body.pdfPath,
+          const entry = { id: row.id, title: row.title, pdfPath: body.pdfPath,
             pdfBytes: body.pdfBytes === undefined ? null : body.pdfBytes,
             engine: body.engine === undefined ? null : body.engine,
             tried: Array.isArray(body.tried) ? body.tried : [] }
+          const key = [
+            Number.isFinite(Number(row.updatedAt)) ? Number(row.updatedAt) : 0,
+            Number.isFinite(Number(row.rev)) ? Number(row.rev) : 0,
+          ]
+          // ★★ RUN 195: ties go to the LATER row in the listing (the ledger lists oldest-first), so two compiles that
+          // carry the same timestamp still resolve to the one that ran last instead of to whichever the walk met first.
+          const better = bestKey === null || key[0] > bestKey[0] || (key[0] === bestKey[0] && key[1] >= bestKey[1])
+          if (better) { best = entry; bestKey = key }
         }
       } catch (e) { /* a row this instance cannot read is not evidence of a pdf; keep looking */ }
     }
-    return null
+    return best
   }
   const PORTABLE_TARGET = /^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/
   const stateOfRow = (row) => {
@@ -1049,7 +1065,12 @@ export function createPaperFlow({
         requireCrossReview(state, 'advance')
         state.status = 'awaiting-editor'; state.stage = 'awaiting-editor'
         writeState(state)
-        return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true, reviewsRead, notRequired }
+        // ★★ RUN 195 (run 37 / FEEDBACK36 2.2, MEASURED): the two DISAGREEMENT branches carry `refusers` and the
+        // UNANIMOUS one did not, so run 37's reader saw `advance` answers sometimes with the field and sometimes without
+        // it (its own report asked "is refusers missing here, or is it empty?"). An empty list is a FACT here — every
+        // required reviewer answered deliverable — so it is stated instead of omitted, with the sentence that says which.
+        return { ok: true, moved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true, reviewsRead, notRequired,
+          refusers: [], refusersMeans: 'empty ON PURPOSE: every participant who owes a verdict on another member\'s part answered deliverable, so no one refused — the field is present so "nobody objected" is a value, not an absent one (the disagreement branches carry the same field with names in it)' }
       }
       // The detail must state WHAT WAS READ, not a shrug: '未说明' was printed even when the member had filed a review
       // whose row was on disk (that is exactly how run 4's disagreement looked while the cards said deliverable:true).
@@ -1233,6 +1254,16 @@ export function createPaperFlow({
           reviseAvailable: true,
           means: 'the paper was NOT finalised: the PDF artefact never existed, so the state went back to awaiting-editor alongside the `pdf` block that says why — a finalisation whose fourth artefact is missing is the dead end RUN 154 shipped and run 21 measured. `final {decision:"revise"}` still reopens writing (fix the body, finalise again); `compile` only re-typesets an already-finalized paper, so it is not a repair.',
         }
+      }
+      // ★★ RUN 195 (run 37 / FEEDBACK36 1.1): the finalisation's OWN compile row is recorded on the state, so a later
+      // reader can tell "the file on disk is the one this paper was finalised with" from "it was re-typeset afterwards".
+      // `compile` is allowed on a finalised paper (it is how a broken build is repaired), and run 37 measured the result:
+      // the ledger said 91 156 bytes while the file had been rewritten to 91 198 by a member's own recompile. The ledger
+      // read now returns the NEWEST compile row (compiledPdfRow) and this field says which row the finalisation used.
+      if (pdf && pdf.ok === true) {
+        state.finalPdfRecordId = pdf.recordId === undefined || pdf.recordId === null ? null : String(pdf.recordId)
+        state.finalPdfBytes = pdf.pdfBytes === undefined || pdf.pdfBytes === null ? null : Number(pdf.pdfBytes)
+        writeState(state)
       }
       return { ok: true, finalized: true, target: state.target, final: fin, artifacts: rendered.artifacts, missing: missingAfter, pdf,
         ...(engineAbsent ? { pdfEnvironmentMissing: true, pdfEnvironmentMeans: 'this assembly has no LaTeX face (`VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`): the paper is finalised and the PDF artefact stays named in `missing` — an environment gap, not a body that failed to compile. A compile that really ran and failed does NOT finalise (RUN 176).' } : {}),

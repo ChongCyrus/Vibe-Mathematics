@@ -3180,3 +3180,46 @@ readable by nobody.
 
 Mechanised in `tests/vmu-run194-record-body.test.mjs` (4/0), including a read AFTER close. Still open: the per-process
 Lean job table (1.5), one vocabulary for paper pointers (2.3), and the unreachable `op:"reply"` seam (1.3).
+
+## ROUND 198
+
+**RUN 195 — five numbers that were true of a different moment, party or question.** Run 37 (FEEDBACK36) measured all
+five on a paper that reached a real PDF, so none of them is hypothetical.
+
+1. **The compile ledger answered with the OLDEST compile.** `compile` writes a NEW `paper-pdf` row each time (same
+   title, new id) and `compiledPdfRow` returned the FIRST readable one — i.e. the compile that ran at finalisation. Run
+   37: `final` produced 91 156 bytes, a member's own kernel recompiled the same source to 91 198 bytes ON DISK, and
+   `status.pdfCompiled.pdfBytes` still said 91 156 while the file was 91 198. The read now walks every candidate and
+   keeps the newest by `(updatedAt, rev)` — ties resolved to the LATER row in the listing, because the listing is
+   oldest-first. The finalisation ALSO records `state.finalPdfRecordId` / `state.finalPdfBytes`, and `status` answers
+   `finalPdfRecordId`, `finalPdfBytes`, `compiledAfterFinal` + a `…Means` that prints BOTH byte counts. Two true numbers
+   about two moments are now two fields, not one merged one.
+2. **A close printed an institute-wide tally as if it belonged to the meeting.** `closureVote.meetingId` is null BY
+   DESIGN (one durable key, latest-wins, no meeting field) — nothing said so. The receipt now carries `readForMeeting`
+   + `readForMeetingMeans`: the tally has no meeting of its own; this names the meeting whose CLOSE the reading was taken
+   for.
+3. **`drive` did not say what `executed` counts** (`step` did): `withScope` attaches `executedMeans` once, so every
+   return path of the batch receipt carries the sentence that says it counts REPLY FIELDS and that an empty list does
+   not mean the members did nothing.
+4. **`advance` omitted `refusers` on the unanimous branch** which the disagreement branches carry: the unanimous receipt
+   now answers `refusers: []` plus `refusersMeans` — "nobody objected" is a VALUE here, not an absent one.
+5. **The evidence gate refused with `missing: []` beside `emptyParts: [...]`**, so an editor who asked "what is missing?"
+   read an empty list as "nothing, so why was I refused?". The two refusals now carry `gate: 'evidence'`,
+   `nextGate: 'required-line'` and a `missingMeans` that says which question this refusal answered.
+
+Two prompt-side repairs ride along (2.4/2.7): the `part` example no longer teaches `evidence: ["Members/<id>/Propos/
+p-x.md"]` (a FILE CARD, refused by name at `part`) — it teaches `rec-<n>`, with a line saying a file card is not
+evidence; and the writing prompt says which PDF reading is authoritative once a paper has been recompiled (`final`'s
+`pdf` block is that one compile; after a later `compile`, `status.pdfCompiled` is the reading, and
+`compiledAfterFinal` says whether they are the same).
+
+Mechanised in `tests/vmu-run195-feedback36.test.mjs` (3/0): source pins for all seven, a真 ledger test that puts two
+`paper-pdf` rows and asserts the NEWEST is answered, and a真 receipt test for the chair-turn note / `readForMeeting` /
+the labelled evidence gate.
+
+A full-T1 rerun turned up three pins that had drifted (a doc-index link, two literal pins) and one PRE-EXISTING flake in
+`tests/vmu-run174-index-and-receipts.test.mjs` §5: it seeded two `closure_votes` rows by writing `vmu/state.json`
+behind a live kernel's back, and the store persists the WHOLE fold from memory, so any in-flight write could wipe the
+seed after the last re-read (20 standalone runs: 18 green / 2 red). The seed now goes through `store.patch` — the same
+exclusive section every writer uses — with one read-back assertion so a seed that did not land fails NAMED at setup
+instead of impersonating a mechanism defect. 30/30 after the fix; full T1 `745/745`.

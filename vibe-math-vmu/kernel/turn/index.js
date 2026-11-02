@@ -3565,7 +3565,11 @@ export function createTurnOrchestrator({
       return { requested, advanced, notAdvanced, roundsRequested: n,
         means: 'requested/advanced are member ids in the order this call asked and advanced; notAdvanced names each requested member that was NOT woken by THIS call and why — a batch is not one turn per member unless rounds >= members.length' }
     }
-    const withScope = (r) => Object.assign({}, r, { scope: driveScope(r.receipts || []) })
+    // ★★ RUN 195 (run 37 / FEEDBACK36 2.1, MEASURED): `step` carried `executedMeans` and `drive` did not, so the batch
+    // receipt showed `executed: 0` with no sentence saying what it counts. Run 37's office read that as "the members did
+    // nothing" while the same turns had written proofs and Lean jobs in their own sessions. The batch receipt is read by
+    // the same person as the single one, so it states the same fact — attached HERE, once, so every return path has it.
+    const withScope = (r) => Object.assign({}, r, { executedMeans: EXECUTED_MEANS, scope: driveScope(r.receipts || []) })
     // ★★ LANE turn-reply: A PENDING TOOL REPORT IS ALREADY ONE COMPLETED ROUND. Complete it BEFORE the loop, so a caller
     // that drives in a loop does not keep asking for prompts it has already answered (the report would otherwise never be
     // dispatched). It is reported separately as `completed` and does NOT count as a round: no member was woken for it.

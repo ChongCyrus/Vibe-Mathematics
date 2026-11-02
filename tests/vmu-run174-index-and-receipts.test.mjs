@@ -223,28 +223,29 @@ const idsOf = (list) => (Array.isArray(list && list.items) ? list.items : []).ma
   await hire(A.kernel)
   tick += 10
   // A vote from before windows existed (run 19 measured exactly this row: `{member:"r-temp", solved:true, at:…}` with no
-  // `window` field). It is written into the DURABLE file between boots, the way an older build left it there — then a
-  // fresh kernel reads it, which is the situation the receipt has to describe honestly.
+  // `window` field). Between boots the fold is seeded the way an older build left such a row there — then a fresh kernel
+  // reads it, which is the situation the receipt has to describe honestly.
+  //
+  // ★ RUN 195 (found by a full-T1 rerun; 2 flakes in 20 standalone runs of this suite): the seed used to be written
+  // STRAIGHT INTO `vmu/state.json` while kernel A was still alive, with a re-verify loop around it. The loop could not
+  // close the hole: A persists the WHOLE fold from memory, so a write A still had in flight (a records flush, an id
+  // reservation) landed AFTER the last verification and rewrote the file without the seeded rows — the assertion then
+  // failed for a reason that does not exist in the mechanism. A test that seeds a durable row must go through the same
+  // mutex as every other writer: `store.patch` reloads, merges and persists inside the exclusive section, so a later
+  // write by A cannot drop the row (A's in-memory fold already carries it, and A persists that fold).
   await A.kernel.flushRecordsFold()
-  const { readFile, writeFile } = await import('node:fs/promises')
-  const statePath = join(root, 'vmu', 'state.json')
-  const stateDisk = JSON.parse(String(await readFile(statePath, 'utf8')))
-  stateDisk.keys = stateDisk.keys || {}
-  stateDisk.keys.closure_votes = [
+  await A.kernel.store.patch('closure_votes', () => [
     { member: 'r-temp', solved: true, at: 1793464773262 },
     { member: 'r-1', solved: true, at: 1793464773263, window: 1, session: 's1', voterSession: 'v1' },
-  ]
-  stateDisk.keys.closure_window = { window: 1 }
-  // ★ A leftover fold write from A can land AFTER this seed (the store's rename is asynchronous), which would erase the
-  // pre-window row and make the assertion vacuous — so the seed is verified, not assumed: re-write until the file on disk
-  // carries both rows (RUN 174: the first version of this test passed alone and failed under the full runner for that reason).
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    await writeFile(statePath, JSON.stringify(stateDisk, null, 2), 'utf8')
-    const back = JSON.parse(String(await readFile(statePath, 'utf8')))
-    const rows = back && back.keys && Array.isArray(back.keys.closure_votes) ? back.keys.closure_votes : []
-    if (rows.length === 2 && rows.some((r) => r && r.window === undefined)) break
-    await new Promise((resolve) => setTimeout(resolve, 25))
-  }
+  ])
+  await A.kernel.store.patch('closure_window', () => ({ window: 1 }))
+  // …and the seed is READ BACK from disk before the second boot, so a seed that did not land fails HERE, named, instead
+  // of impersonating a mechanism defect in the assertions below.
+  const { readFile } = await import('node:fs/promises')
+  const seeded = JSON.parse(String(await readFile(join(root, 'vmu', 'state.json'), 'utf8')))
+  const seededRows = seeded && seeded.keys && Array.isArray(seeded.keys.closure_votes) ? seeded.keys.closure_votes : []
+  ok(seededRows.length === 2 && seededRows.some((r) => r && r.window === undefined),
+    '§5 setup: the durable fold carries the pre-window row before the second boot (a seed that did not land must fail here, named)', seededRows)
   const B = await boot(root)
   const reopened = await B.kernel.reopenClosureVote({ why: 'new question', by: 'r-acad' })
   ok(reopened && reopened.ok === true && reopened.window === 2,

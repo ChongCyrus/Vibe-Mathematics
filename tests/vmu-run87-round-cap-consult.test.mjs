@@ -137,7 +137,11 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r87-'))
   console.log('§4 teaching: evidence is part of a part, and the office answers by declared role')
   const { v5rPaperWriteSection } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-paper-prompts.js')).href)
   const text = v5rPaperWriteSection.text
-  ok(text.includes('evidence: ["Members/'), 'the `part` example carries an evidence list', text.includes('evidence:'))
+  // ★★ RUN 195 (run 37 / FEEDBACK36 2.4): the example used to teach a FILE CARD path, which the `part` gate refuses by
+  // name. The pin now protects the lesson that replaced it: record ids in the evidence list, plus the sentence saying a
+  // file card is not evidence.
+  ok(text.includes('evidence: ["rec-'), 'the `part` example carries an evidence list of record ids', text.slice(text.indexOf('evidence:')))
+  ok(text.includes('文件卡不是证据'), 'the text says a file card is not evidence')
   ok(text.includes('VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING'), 'the text names the refusal a missing evidence list causes')
   ok(text.includes('declared-role'), 'the text states how the office answers (declared-role), not as a seat')
   const { CHARTER_BLOCKS_B } = await import(pathToFileURL(join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-blocks-b.js')).href)

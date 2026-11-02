@@ -805,6 +805,12 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                   : 'the debate-subject verdict stored with the meeting when it was CONVENED — the close receipt repeats it so a closer does not have to make a second call; reading cannot change it',
                 // the CLOSURE VOTE is a different mechanism from the close, and this receipt is where a reader meets both
                 closureVote: closeClosureVote,
+                // ★★ RUN 195 (run 37 / FEEDBACK36 1.3, MEASURED): `closureVote.meetingId` is `null` by DESIGN (the tally is
+                // institute-wide, one durable key, no meeting field) — but the close receipt printed it next to `archived`
+                // with nothing saying so, and run 37's office asked twice whether the tally belonged to the meeting it had
+                // just closed. The reading is not the meeting's; it is taken FOR this close. Say which, on the receipt.
+                readForMeeting: pid,
+                readForMeetingMeans: '`closureVote.meetingId` is null BY DESIGN: the tally is INSTITUTE-WIDE (one durable key, latest-wins), not a per-meeting ballot, so it carries no meeting id of its own. readForMeeting names the meeting whose CLOSE this reading was taken for — the same tally is read at every close of the institute',
                 // ★★ RUN 184 (run 32, the institute's own reading): the receipt showed `closureVote` next to `archived:true`
                 // and a reader could take those numbers as FROZEN by the close. They are not: `vibe_vmu_vote` writes the
                 // durable key latest-wins, so a vote cast AFTER this close changes the same reading. The receipt now names

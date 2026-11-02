@@ -4067,7 +4067,12 @@ async function toolStart(args = {}, { kernel } = {}) {
   // members asked whether "these readings are not in my harness either", which they are. The note is unchanged (it is
   // what the member reads); this field says WHO it addresses and what it therefore does NOT say about the caller.
   const memberScopeNoteMeans = 'that sentence is written for a MEMBER (it is the paragraph a member prompt carries): it says which faces the hired seat cannot reach. It is NOT a statement about the caller of vibe_v5_start — the office that seeds the institute keeps the institution-level readings (report / overview / start-stop / settings / final ruling / verified promotion) in its own harness'
-  return { ok: true, tool: 'vibe_v5_start', hired, started, applied, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE, memberScopeNoteMeans,
+  // ★★ RUN 195 (run 37 / FEEDBACK36 2.5, MEASURED): run 37's office convened its first meeting right after `start` and was
+  // refused with VMU_CHAIR_ACT_NOT_DELEGATED (`vmu.meetings.chairActRequiresTurn`). The RULE is right (a chair acts in its
+  // own turn, not through the office's handle) but nothing on the seeding receipt said a chair needs a turn first, so the
+  // first act of every fresh institute failed once. The gate and its one remedy are named at the moment the seats are made.
+  const chairTurnNote = 'the chair cannot ACT through the office: `vmu.meetings.chairActRequiresTurn` is on, so convening / attending / closing on behalf of a chair is refused with VMU_CHAIR_ACT_NOT_DELEGATED until that chair has walked a turn of its own (`vibe_vmu_turn { op: "drive", member: "<主席席>" }`, or a round the host opens). Give the chair its first turn BEFORE asking it for a meeting act — the refusal is a delegation rail, not a missing permission'
+  return { ok: true, tool: 'vibe_v5_start', hired, started, applied, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE, memberScopeNoteMeans, chairTurnNote,
     note: 'seedDirections are roster data here (the charter reads a member\'s direction), so they are not stored by this tool — reported, not silently dropped' }
 }
 
@@ -4561,6 +4566,15 @@ async function toolPaper(args = {}, { kernel } = {}) {
           if (!ledger) {
             return { pdfCompiled: { produced: false, matchedBy: null, target: stateTarget, recordId: null, pdfPath: null, pdfBytes: null, engine: null, means: 'no compile is on file for this paper (the `paper` track holds no `paper-pdf` row named after this paper id or target); `final` compiles, `compile` re-typesets an already-finalized paper — and a paper whose `final` reported a PDF but whose ledger row is missing is a named gap, not an empty one' } }
           }
+          const stateBody = got && got.state ? got.state : null
+          const finalPdfRecordId = stateBody && stateBody.finalPdfRecordId !== undefined ? stateBody.finalPdfRecordId : null
+          const finalPdfBytes = stateBody && stateBody.finalPdfBytes !== undefined ? stateBody.finalPdfBytes : null
+          // ★★ RUN 195 (run 37 / FEEDBACK36 1.1, MEASURED): after the finalisation a member's own kernel recompiled the
+          // paper (91 156 → 91 198 bytes on disk) while this block still reported the finalisation's compile. Two facts
+          // were being merged into one number. `pdfCompiled` is the NEWEST compile row (the file's current provenance) and
+          // `compiledAfterFinal` says whether that row is a DIFFERENT compile than the one the paper was finalised with.
+          const recompiled = finalPdfRecordId !== null && ledger && ledger.id !== undefined && ledger.id !== null
+            && String(ledger.id) !== String(finalPdfRecordId)
           return { pdfCompiled: {
             produced: true,
             matchedBy: matchTitle(ledger.title),
@@ -4570,7 +4584,13 @@ async function toolPaper(args = {}, { kernel } = {}) {
             pdfBytes: ledger.pdfBytes === undefined ? null : ledger.pdfBytes,
             engine: ledger.engine === undefined ? null : ledger.engine,
             tried: Array.isArray(ledger.tried) ? ledger.tried : [],
-            means: 'the LAST `paper-pdf` row this paper produced (the compile ledger), read by OPENING the row — so "is there a PDF file?" is answered here instead of by a second call; the `pdf` block above is the ARCHIVE row render wrote, a different record',
+            finalPdfRecordId,
+            finalPdfBytes,
+            compiledAfterFinal: recompiled,
+            compiledAfterFinalMeans: recompiled
+              ? 'this row is NOT the compile the paper was finalised with: the paper was finalised by ' + String(finalPdfRecordId) + ' (' + String(finalPdfBytes) + ' bytes) and the file has since been re-typeset by ' + String(ledger.id) + ' (' + String(ledger.pdfBytes) + ' bytes) — `compile` is allowed on a finalised paper, so BOTH numbers are true of different moments: the finalisation is the old one, the file on disk is this one'
+              : 'this row IS the compile the paper was finalised with (no later compile is on the ledger), so pdfBytes and the file on disk describe the same moment',
+            means: 'the NEWEST `paper-pdf` row this paper produced (the compile ledger), read by OPENING the row — so "is there a PDF file, and which compile made it?" is answered here instead of by a second call; the `pdf` block above is the ARCHIVE row render wrote, a different record',
           } }
         })() }
     }
