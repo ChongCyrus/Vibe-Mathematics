@@ -781,8 +781,40 @@ export const CHARTER_BLOCKS_B = Object.freeze([
   // reader can check it: `packs/v5r/tools.js` (tool faces), `packs/v5r/blueprint.js` (30-day stale constant, chair
   // adopt slot), `kernel/meetings.js` (quorumOf / hardLimitMs / lapse), `packs/v5r/meeting-procedures.js` (six types,
   // ORDINARY_NO_SKELETON_REASON), `kernel/records.js` (the five default tracks), `kernel/chat.js` (six wired keys).
-  // Chair-only material is `kind: 'role'` + `academician`, so the member prompt does not pay for it (T99 cap 20000).
+  // Chair-only material is `kind: 'role'` + `academician`, so the member prompt does not pay for it (T99 cap 30000).
   // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  // THE MAINLINE (user decision this round): the five phases of the institute are not the point — the POINT is the
+  // blueprint of the original problem: planning, refining, adjusting, building it out coarse-to-fine, and driving it
+  // to completion. This block is `kind: 'role'` and lives in the always-on list, so every seat reads it EVERY round
+  // (that is what makes "do not forget the mainline" a mechanism rather than a wish). Kept short on purpose: it is a
+  // reminder, not a manual — the manual is `vibe-math-vmu/docs/16-research-lifecycle.md` section 10.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+  {
+    name: 'v5r-turn-mainline',
+    order: 829,
+    range: 'pack',
+    kind: 'role',
+    texts: {
+      academician: [
+        '【核心推进方向（主线）】',
+        '  · 一条主线＝**原问题的实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现**；它不是零散任务的清单，每一步都要能说清它在蓝图上推进了什么。',
+        '  · 每回合先回答三件事：①这一回合推进或扩张蓝图的哪个节点？②该节点的信息更新了没有（当下评价 / 初始计划与启发 / 相关计划 / 可行性及原因 / 价值性及原因 / 已得结论与经验反馈 / 障碍与原因、方案、实施效果 / 过去经验）？③**以前是否处理过类似问题**——先查蓝图与归档，能迁移复用就复用，别重复探索、别重复踩坑。',
+        '  · 持续积累与主线推进、改进、调整相关的认知与有价值反馈；据实践反馈调整、细化蓝图并更新节点信息；吸取经验持续改进，把有价值的经验方法与障碍解决经验一般化、迁移到新问题。',
+        '  · 蓝图更新的入口是 `vibe_v5_blueprint`（propose/adopt/state），见紧接着的【蓝图】一节。',
+      ].join('\n'),
+      researcher: [
+        '【核心推进方向（主线）】',
+        '  · 主线＝**原问题实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现**；你这一回合要能说清推进了蓝图上的哪个节点。',
+        '  · 动手前先查：这个节点现在什么评价、可行性/价值性及原因、障碍与已有方案；**以前是否处理过类似问题**——有就先复用或迁移，别重复探索。',
+        '  · 把结论、命题、经验反馈与障碍解决经验写进节点信息（蓝图/归档），让下一个人不必重走。入口 `vibe_v5_blueprint { action: "state" | "propose" }`。',
+      ].join('\n'),
+      temp: [
+        '【核心推进方向（主线）】',
+        '  · 主线＝**原问题实现蓝图的策划、细化、调整、由粗到细的构建与扩张、及推进与实现**。临时任务也要说明它指向蓝图的哪个节点；先查旧经验，能复用就复用。',
+      ].join('\n'),
+    },
+  },
   {
     name: 'v5r-turn-blueprint',
     order: 830,

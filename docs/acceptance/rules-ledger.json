@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "source": {
     "file": "D:/wd/vibemath开发/宏观层面v5r运行规则.md",
-    "revision": "a5d9a6c1ff73ec109464d3ab29d07a402588c0e2b373d25016aac768b9998e59",
-    "lineCount": 63,
+    "revision": "27c5cd1c25d917261bec617d71f2d018362309f14bcea36e9ef6e09b385e46e2",
+    "lineCount": 74,
     "note": "每一条规则句（L1–L63）要么被至少一行台账逐字认领，要么带理由声明为结构行；行覆盖由 check-rules-coverage 强制（VMU_RULES_LINE_UNCLAIMED），不再只检查“行有证据”。2026-10-28 审计后：86 行台账，7 行 PARTIAL（D5/D7/E10/E33/E34/E35/E36），此前“82/82 全绿”是假绿。",
     "structuralLines": [
       {
@@ -27,39 +27,39 @@
         "why": "blank line"
       },
       {
-        "line": "L23",
+        "line": "L34",
         "why": "section heading: 流程（包括但不限于）"
       },
       {
-        "line": "L24",
+        "line": "L35",
         "why": "blank line"
       },
       {
-        "line": "L25",
+        "line": "L36",
         "why": "subsection heading: 平时研究推进阶段"
       },
       {
-        "line": "L29",
+        "line": "L40",
         "why": "horizontal rule (---) separating sections"
       },
       {
-        "line": "L30",
+        "line": "L41",
         "why": "blank line"
       },
       {
-        "line": "L31",
+        "line": "L42",
         "why": "subsection heading: 会议阶段"
       },
       {
-        "line": "L46",
-        "why": "blank line"
-      },
-      {
-        "line": "L54",
-        "why": "blank line"
-      },
-      {
         "line": "L57",
+        "why": "blank line"
+      },
+      {
+        "line": "L65",
+        "why": "blank line"
+      },
+      {
+        "line": "L68",
         "why": "blank line"
       },
       {
@@ -75,16 +75,24 @@
         "why": "水平分隔线（不是要求）"
       },
       {
-        "line": "L44",
+        "line": "L55",
         "why": "「关于辩论：」节标题（内容在 L45–L53）"
       },
       {
-        "line": "L55",
+        "line": "L66",
         "why": "「论文阶段」节标题（内容在 L56）"
       },
       {
-        "line": "L58",
+        "line": "L69",
         "why": "「额外的要求」节标题（内容在 L59–L63）"
+      },
+      {
+        "line": "L23",
+        "why": "horizontal rule (---) before the mainline section"
+      },
+      {
+        "line": "L24",
+        "why": "section heading: 核心推进方向（主线）"
       }
     ],
     "parityExempt": [
@@ -97,7 +105,7 @@
         "why": "corrections module: every section restates a SUPERSEDED wording together with its replacement (order 890-894); the replacement is what the rule rows assert, so citing the retired half would claim a rule with the sentence it retires. BACKLOG: pin each correction to the rule row it amends."
       }
     ],
-    "fingerprint": "9e79d8a4037ae2b3f8a2e443b29583dd792ba247ffd4e8206753b972d11365d8"
+    "fingerprint": "7bc3ac33b7897c1bcc4c359b51eebb378017ab5d00c364fab3873bf136874209"
   },
   "ruleLines": {
     "L1-L2": [
@@ -866,7 +874,7 @@
     },
     {
       "id": "D1",
-      "rule": "26",
+      "rule": "37",
       "text": "各自推进各自的总任务",
       "status": "DONE",
       "mechanism": [
@@ -891,7 +899,7 @@
     },
     {
       "id": "D2",
-      "rule": "27",
+      "rule": "38",
       "text": "三通道：邮箱/私信/群聊",
       "status": "DONE",
       "mechanism": [
@@ -914,7 +922,7 @@
     },
     {
       "id": "D3",
-      "rule": "27",
+      "rule": "38",
       "text": "三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急",
       "status": "DONE",
       "mechanism": [
@@ -937,7 +945,7 @@
     },
     {
       "id": "D4",
-      "rule": "28",
+      "rule": "39",
       "text": "状态版四字段：总任务/规划/任务完成状态/当前小任务",
       "status": "DONE",
       "mechanism": [
@@ -957,7 +965,7 @@
     },
     {
       "id": "D5",
-      "rule": "28",
+      "rule": "39",
       "text": "四字段都含时间等基础信息",
       "status": "DONE",
       "mechanism": [
@@ -978,7 +986,7 @@
     },
     {
       "id": "D6",
-      "rule": "28",
+      "rule": "39",
       "text": "可查看其他成员当前状态版",
       "status": "DONE",
       "mechanism": [
@@ -1002,7 +1010,7 @@
     },
     {
       "id": "D7",
-      "rule": "28",
+      "rule": "39",
       "text": "可自己修改更新自己的状态版",
       "status": "DONE",
       "mechanism": [
@@ -1023,7 +1031,7 @@
     },
     {
       "id": "D8",
-      "rule": "28",
+      "rule": "39",
       "text": "四字段按规则原文实现（字段名与语义）",
       "status": "DONE",
       "mechanism": [
@@ -1043,7 +1051,7 @@
     },
     {
       "id": "E1",
-      "rule": "32",
+      "rule": "43",
       "text": "只能院士预约会议（可设预约时间）",
       "status": "DONE",
       "mechanism": [
@@ -1063,7 +1071,7 @@
     },
     {
       "id": "E2",
-      "rule": "32",
+      "rule": "43",
       "text": "到点人未到齐进入等待阶段；超时由院士决定",
       "status": "DONE",
       "mechanism": [
@@ -1084,7 +1092,7 @@
     },
     {
       "id": "E3",
-      "rule": "32",
+      "rule": "43",
       "text": "只能院士召开会议并主持",
       "status": "DONE",
       "mechanism": [
@@ -1106,7 +1114,7 @@
     },
     {
       "id": "E4",
-      "rule": "32",
+      "rule": "43",
       "text": "只能院士关闭会议",
       "status": "DONE",
       "mechanism": [
@@ -1128,7 +1136,7 @@
     },
     {
       "id": "E5",
-      "rule": "32",
+      "rule": "43",
       "text": "院士可延长会议时长上界",
       "status": "DONE",
       "mechanism": [
@@ -1148,7 +1156,7 @@
     },
     {
       "id": "E6",
-      "rule": "32",
+      "rule": "43",
       "text": "院士设会议标题",
       "status": "DONE",
       "mechanism": [
@@ -1170,7 +1178,7 @@
     },
     {
       "id": "E7",
-      "rule": "32",
+      "rule": "43",
       "text": "院士设会议类型",
       "status": "DONE",
       "mechanism": [
@@ -1189,7 +1197,7 @@
     },
     {
       "id": "E8",
-      "rule": "32",
+      "rule": "43",
       "text": "院士设会议议程/事项安排",
       "status": "DONE",
       "mechanism": [
@@ -1208,7 +1216,7 @@
     },
     {
       "id": "E9",
-      "rule": "32",
+      "rule": "43",
       "text": "院士邀请入会成员",
       "status": "DONE",
       "mechanism": [
@@ -1228,7 +1236,7 @@
     },
     {
       "id": "E10",
-      "rule": "32",
+      "rule": "43",
       "text": "院士设会议时长上界",
       "status": "DONE",
       "mechanism": [
@@ -1252,7 +1260,7 @@
     },
     {
       "id": "E11",
-      "rule": "32",
+      "rule": "43",
       "text": "允许一次性连续召开多个会议",
       "status": "DONE",
       "mechanism": [
@@ -1272,7 +1280,7 @@
     },
     {
       "id": "E12",
-      "rule": "34",
+      "rule": "45",
       "text": "成员命令随会议类型与身份不同",
       "status": "DONE",
       "mechanism": [
@@ -1293,7 +1301,7 @@
     },
     {
       "id": "E13",
-      "rule": "37",
+      "rule": "48",
       "text": "会议类型：正常/学术交流/辩论/结题/论文交流/未来规划",
       "status": "DONE",
       "mechanism": [
@@ -1313,7 +1321,7 @@
     },
     {
       "id": "E14",
-      "rule": "39",
+      "rule": "50",
       "text": "常见命令：举手",
       "status": "DONE",
       "mechanism": [
@@ -1333,7 +1341,7 @@
     },
     {
       "id": "E15",
-      "rule": "39",
+      "rule": "50",
       "text": "常见命令：邀请发言",
       "status": "DONE",
       "tool": [
@@ -1353,7 +1361,7 @@
     },
     {
       "id": "E16",
-      "rule": "39",
+      "rule": "50",
       "text": "常见命令：批量指定成员按顺序发言",
       "status": "DONE",
       "mechanism": [
@@ -1376,7 +1384,7 @@
     },
     {
       "id": "E17",
-      "rule": "39",
+      "rule": "50",
       "text": "常见命令：单次发言版群聊（每人各说一次、不打断）",
       "status": "DONE",
       "mechanism": [
@@ -1396,7 +1404,7 @@
     },
     {
       "id": "E18",
-      "rule": "42",
+      "rule": "53",
       "text": "投票板：院士设选项与机制（最少/最多选几项）",
       "status": "DONE",
       "mechanism": [
@@ -1416,7 +1424,7 @@
     },
     {
       "id": "E19",
-      "rule": "42",
+      "rule": "53",
       "text": "投票板不用于辩论",
       "status": "DONE",
       "prompt": [
@@ -1435,7 +1443,7 @@
     },
     {
       "id": "E20",
-      "rule": "42",
+      "rule": "53",
       "text": "任务板：设置与认领交派",
       "status": "DONE",
       "mechanism": [
@@ -1455,7 +1463,7 @@
     },
     {
       "id": "E21",
-      "rule": "42",
+      "rule": "53",
       "text": "群聊式交流：院士为群管理员，设每人权限/发言次数/禁言",
       "status": "DONE",
       "mechanism": [
@@ -1475,7 +1483,7 @@
     },
     {
       "id": "E22",
-      "rule": "45",
+      "rule": "56",
       "text": "辩论额外字段：对象或文件引用",
       "status": "DONE",
       "tool": [
@@ -1494,7 +1502,7 @@
     },
     {
       "id": "E23",
-      "rule": "47",
+      "rule": "58",
       "text": "辩论/结题表决人数＝min(用户设置, 院士+常驻)",
       "status": "DONE",
       "mechanism": [
@@ -1519,7 +1527,7 @@
     },
     {
       "id": "E24",
-      "rule": "49",
+      "rule": "60",
       "text": "lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意",
       "status": "DONE",
       "tool": [
@@ -1541,7 +1549,7 @@
     },
     {
       "id": "E25",
-      "rule": "51",
+      "rule": "62",
       "text": "辩论骨架①各成员同时独立单次表态",
       "status": "DONE",
       "mechanism": [
@@ -1563,7 +1571,7 @@
     },
     {
       "id": "E26",
-      "rule": "51",
+      "rule": "62",
       "text": "辩论骨架②轮流/举手/邀请展开",
       "status": "DONE",
       "mechanism": [
@@ -1582,7 +1590,7 @@
     },
     {
       "id": "E27",
-      "rule": "53",
+      "rule": "64",
       "text": "辩论骨架③结束前各成员最终裁决",
       "status": "DONE",
       "tool": [
@@ -1602,7 +1610,7 @@
     },
     {
       "id": "E28",
-      "rule": "53",
+      "rule": "64",
       "text": "辩论骨架④全一致取该值、否则平均，并通知持有者改值",
       "status": "DONE",
       "tool": [
@@ -1622,7 +1630,7 @@
     },
     {
       "id": "E29",
-      "rule": "51",
+      "rule": "62",
       "text": "辩论轮数由院士决定",
       "status": "DONE",
       "tool": [
@@ -1643,7 +1651,7 @@
     },
     {
       "id": "F1",
-      "rule": "56",
+      "rule": "67",
       "text": "把原问题与所有有价值产物系统梳理",
       "status": "DONE",
       "mechanism": [
@@ -1663,7 +1671,7 @@
     },
     {
       "id": "F2",
-      "rule": "56",
+      "rule": "67",
       "text": "合作撰写：分派各自内容并合并",
       "status": "DONE",
       "mechanism": [
@@ -1684,7 +1692,7 @@
     },
     {
       "id": "F3",
-      "rule": "56",
+      "rule": "67",
       "text": "互审",
       "status": "DONE",
       "mechanism": [
@@ -1707,7 +1715,7 @@
     },
     {
       "id": "F4",
-      "rule": "56",
+      "rule": "67",
       "text": "面向读者：系统/正确/完整/严谨清晰",
       "status": "DONE",
       "prompt": [
@@ -1729,7 +1737,7 @@
     },
     {
       "id": "F5",
-      "rule": "56",
+      "rule": "67",
       "text": "讨论检查无误后定稿",
       "status": "DONE",
       "mechanism": [
@@ -1748,7 +1756,7 @@
     },
     {
       "id": "G1",
-      "rule": "59",
+      "rule": "70",
       "text": "支持成员使用 Python 等数学计算工具",
       "status": "DONE",
       "prompt": [
@@ -1769,7 +1777,7 @@
     },
     {
       "id": "G2",
-      "rule": "59",
+      "rule": "70",
       "text": "所办可设工具并发数量限制防 CPU/OOM",
       "status": "DONE",
       "mechanism": [
@@ -1790,7 +1798,7 @@
     },
     {
       "id": "G3",
-      "rule": "60",
+      "rule": "71",
       "text": "支持人工干预研究所决策与运行",
       "status": "DONE",
       "mechanism": [
@@ -1810,7 +1818,7 @@
     },
     {
       "id": "G4",
-      "rule": "60",
+      "rule": "71",
       "text": "支持断点续跑",
       "status": "DONE",
       "tool": [
@@ -1830,7 +1838,7 @@
     },
     {
       "id": "G5",
-      "rule": "61",
+      "rule": "72",
       "text": "特殊权限/请求经所办向用户询问",
       "status": "DONE",
       "mechanism": [
@@ -1851,7 +1859,7 @@
     },
     {
       "id": "G6",
-      "rule": "62",
+      "rule": "73",
       "text": "绝大多数功能走工具而非每轮末尾输出 JSON",
       "status": "DONE",
       "mechanism": [
@@ -1876,7 +1884,7 @@
     },
     {
       "id": "G7",
-      "rule": "63",
+      "rule": "74",
       "text": "提示词与规则完全相符、自洽",
       "status": "DONE",
       "mechanism": [
@@ -1952,7 +1960,7 @@
     },
     {
       "id": "E30",
-      "rule": "32",
+      "rule": "43",
       "text": "院士通过命令自组织会议进行中的一切内容、控制、活动（兜底授权，动词不穷举）",
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::function procedureRow"
@@ -1972,7 +1980,7 @@
     },
     {
       "id": "E31",
-      "rule": "32",
+      "rule": "43",
       "text": "框架推荐的会议流程骨架只是建议：具体实施、决定、是否遵循完全由院士决定",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/meeting-procedures.js::binding: procedure",
@@ -1995,7 +2003,7 @@
     },
     {
       "id": "E32",
-      "rule": "53",
+      "rule": "64",
       "text": "辩论裁定的并发通知：告诉命题卡持有者最终概率并请其改值",
       "mechanism": [
         "vibe-math-vmu/packs/v5r/tools.js::onRecord: cardRow !== null,"
@@ -2032,7 +2040,7 @@
       "text": "会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。",
       "next": "",
       "note": "r124a：types 读面读回六型 + 目录来源",
-      "rule": "36"
+      "rule": "47"
     },
     {
       "id": "E34",
@@ -2054,7 +2062,7 @@
       ],
       "next": "",
       "text": "会议进行中的一些特殊活动包括但不限于：投票（院士设置投票板选项与机制）、任务板设置与认领交派、群聊式交流，...。",
-      "rule": "41"
+      "rule": "52"
     },
     {
       "id": "E35",
@@ -2074,7 +2082,7 @@
       ],
       "next": "",
       "text": "关于辩论：院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。",
-      "rule": "45"
+      "rule": "56"
     },
     {
       "id": "E36",
@@ -2095,7 +2103,154 @@
       "next": "",
       "text": "辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。",
       "note": "r122a：status 与 summary 都读回 procedureProgress 的计数与 means（§217.4）",
-      "rule": "50"
+      "rule": "61"
+    },
+    {
+      "id": "G8",
+      "rule": "L25",
+      "ruleText": "研究所的一切工作都服务于同一条主线：**原问题的实现蓝图的策划、细化、调整，由粗到细的构建与扩张，及其推进与实现。**",
+      "status": "DONE",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::原问题的实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::v5r-turn-mainline"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::mainline-G8-definition"
+      ],
+      "next": "",
+      "text": "the mainline is stated as the blueprint of the original problem, coarse to fine",
+      "note": "the lead sentence every seat reads: the point of the institute is the blueprint, not the phase list"
+    },
+    {
+      "id": "G9",
+      "rule": "L27",
+      "ruleText": "- 不断积累与主线推进、改进、调整相关的认知与有价值反馈。",
+      "status": "DONE",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::持续积累与主线推进、改进、调整相关的认知与有价值反馈"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::v5r-turn-mainline"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::mainline-G9-cognition"
+      ],
+      "next": "",
+      "text": "cognition and feedback that move the mainline are accumulated",
+      "note": "said to the chair every round, and the nodes it names are durable rows"
+    },
+    {
+      "id": "G10",
+      "rule": "L28",
+      "ruleText": "- 不断积累并更新各方向、各路线、各节点的信息。每条方向/路线/节点至少记录这些字段：当下评价；初始计划、源于什么启发、初始相关目标；相关计划；当下可行性评估及原因；当下价值性评估及原因；已发现的相关结论、命题、认知、经验反馈、发现；遇到的障碍及原因；障碍的解决方案；该方案的实施情况与效果或经验；过去的经验经历。",
+      "status": "DONE",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::当下评价 / 初始计划与启发 / 相关计划"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::v5r-turn-mainline"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::mainline-G10-node-fields"
+      ],
+      "next": "",
+      "text": "each direction/route/node records its nine fields",
+      "note": "the field list a seat is told to update, not a schema it can skip"
+    },
+    {
+      "id": "G11",
+      "rule": "L29",
+      "ruleText": "- 据实践反馈不断调整、细化蓝图，并更新上述对象的信息。",
+      "status": "DONE",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::据实践反馈调整、细化蓝图并更新节点信息"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::v5r-turn-mainline"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::mainline-G11-refine"
+      ],
+      "next": "",
+      "text": "the blueprint is refined and its objects updated from practice",
+      "note": "the revise loop: practice feeds the blueprint, adopted through vibe_v5_blueprint"
+    },
+    {
+      "id": "G12",
+      "rule": "L30",
+      "ruleText": "- 吸取经验，持续改进、优化。",
+      "status": "DONE",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::吸取经验持续改进"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::v5r-turn-mainline"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::mainline-G12-improve"
+      ],
+      "next": "",
+      "text": "experience keeps improving and optimising the way of working",
+      "note": "improvement is a duty in the prompt, and the rounds themselves are its evidence"
+    },
+    {
+      "id": "G13",
+      "rule": "L31",
+      "ruleText": "- 有价值的经验方法、障碍解决经验，要尝试复用、一般化、迁移。",
+      "status": "DONE",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::一般化、迁移到新问题"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::v5r-turn-mainline"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::mainline-G13-transfer"
+      ],
+      "next": "",
+      "text": "valuable methods and obstacle solutions are reused, generalised, transferred",
+      "note": "reuse over re-exploration: the sentence that turns a past fix into a transferable method"
+    },
+    {
+      "id": "G14",
+      "rule": "L32",
+      "ruleText": "- 遇到问题时先查是否处理过类似问题：能迁移复用的就复用，避免踩坑、避免重复探索、减少不可行的尝试。",
+      "status": "DONE",
+      "mechanism": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::先查蓝图与归档"
+      ],
+      "tool": [
+        "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_blueprint"
+      ],
+      "prompt": [
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::v5r-turn-mainline"
+      ],
+      "live": [
+        "docs/acceptance/phase12-v5r-rules-conformance.md::mainline-G14-similar-first"
+      ],
+      "next": "",
+      "text": "a problem is checked against similar past problems before work starts",
+      "note": "the first-thing-to-do instruction: look for the same problem before spending a round on it"
     }
   ]
 }

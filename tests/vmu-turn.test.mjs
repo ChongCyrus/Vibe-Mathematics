@@ -950,8 +950,8 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   ok((asmR.text.match(/【回执字段目录/g) || []).length === 2 && asmLen.text.length < asmR.text.length,
     'T98b. ★★ the RAW pipeline carries both catalogues and is therefore not a member prompt: the switch is what makes one of them reach the member',
     { rawCatalogues: (asmR.text.match(/【回执字段目录/g) || []).length, rawChars: asmR.text.length, switchedChars: asmLen.text.length })
-  ok(asmLen.text.length < 20000 && asmQ.text.includes('m=2') && (asmQ.text.match(/m\s*=\s*2/g) || []).length === 1,
-    'T99. **** with a SINGLE quorum value rather than the three the append produced: the charter defers the number to the status block instead of freezing its own copy, so exactly one `m=2` reaches the prompt',
+  ok(asmLen.text.length < 30000 && asmQ.text.includes('m=2') && (asmQ.text.match(/m\s*=\s*2/g) || []).length === 1,
+    'T99. **** with a SINGLE quorum value rather than the three the append produced: the charter defers the number to the status block instead of freezing its own copy, so exactly one `m=2` reaches the prompt. ★ THE CAP IS 30000 SINCE THE MAINLINE BLOCK (user decision): the reminder that the point of the institute is the blueprint had to be in every seat prompt, and a cap that cannot hold it would make that a lie by budget',
     { chars: asmLen.text.length, occurrences: (asmQ.text.match(/m\s*=\s*2/g) || []).length })
   // ★★ T99b: THE STATE BLOCK ARRIVES ONCE IN EVERY MEETING STATE. Measured defect: `v5r-meeting-others` places the
   // status block itself, but the always-on `v5r-brief-status` did not stand down there, so that one assembly carried
