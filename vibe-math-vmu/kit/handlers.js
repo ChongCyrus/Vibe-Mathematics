@@ -370,7 +370,7 @@ function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extr
       if (!Number.isFinite(pNum) || pNum < 0 || pNum > 1) {
         throw refuse('VMU_INVALID_ARGUMENT',
           'p must be a number in [0,1] (布尔概率估计); got ' + JSON.stringify(args.p),
-          'the card was NOT written — pass p between 0 and 1 (e.g. p:0.6); p=1 additionally needs the verified mark, see `vibe_v5_verified_promote`')
+          'REACHABLE INSTEAD: the card was NOT written — pass p between 0 and 1 (e.g. p:0.6). p=1 is a DIFFERENT act: it needs evidence (a debated ruling, a Lean conformance run or a citation) and the verified mark, so use `vibe_v5_verified_promote` (warrant_kind required) or settle the card with `vibe_v5_fidelity_conclude` — re-sending p:1 will refuse the same way')
       }
     }
     // ★ AUDIT C5b (rule L14: 「进度」 is one of the card's records): a proposition card had NO progress field at all.

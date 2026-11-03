@@ -311,6 +311,15 @@ async function toolHire(args = {}, { kernel, exec = null } = {}) {
       ? 'the roster row carries no `hiredBy`: this call ran outside a member turn (a root/office call has no member seat), so no attribution could be recorded — a later `fire` reports ownership "unrecorded" rather than guessing'
       : 'who hired this seat, recorded on the roster row at hire time from the turn-tool record (not from any argument)',
     task: taskWithRegistry, memberScope,
+    // ★★ RUN 206 (run 44 / FEEDBACK43 1.9, MEASURED): the CONTROL face requires `institution` when it FOUNDS an
+    // institute, so a caller who read that face sent it here too and this face refused the parameter — two hire verbs
+    // with two vocabularies. `institution` is now ACCEPTED and DISCLOSED as not used: a temp hire joins the institute
+    // that already exists, and refusing a field the other face requires sends the caller to fix the wrong call.
+    institution: has(args.institution) ? str(args.institution) : null,
+    institutionIgnored: has(args.institution),
+    institutionMeans: has(args.institution)
+      ? 'this face hires INTO the institute that already exists, so `institution` was accepted and NOT used: founding an institute is the control face (it is the call that requires institution)'
+      : null,
     note: 'direction/term are onboarding prose in the original and roster data here, so they are not stored by this tool' }
 }
 
@@ -1325,7 +1334,12 @@ function debateEvidenceOf(args = {}) {
  * (here is what it holds). The middle one is the run-40 shape and it is not an error state: it is a real entity that has
  * decided nothing yet.
  */
-function rulingNameResolution(kernel, debate) {
+async function rulingNameResolution(kernel, debate, context = {}) {
+  // ★★★ RUN 206 (run 44 / FEEDBACK43 1.5, MEASURED): the reader is ASYNC now — a debate can settle with TYPED
+  // RULING CARDS filed on disk, and reading those goes through the library. The caller awaits; a rule that can be
+  // decided two ways and is only read one way is a rule the loop cannot close.
+  const ctxCardId = context && context.cardId !== undefined && context.cardId !== null && String(context.cardId).trim() !== ''
+    ? String(context.cardId).trim() : null
   let ref = debate && debate.rulingRef !== undefined && debate.rulingRef !== null ? str(debate.rulingRef) : ''
   if (!ref) return null
   const ballotId = debate.ballotId !== undefined && debate.ballotId !== null ? str(debate.ballotId) : null
@@ -1399,6 +1413,31 @@ function rulingNameResolution(kernel, debate) {
   }
   const motions = Array.isArray(read.motions) ? read.motions : []
   const counted = motions.reduce((n, mo) => n + (mo && Array.isArray(mo.votes) ? mo.votes.length : 0), 0)
+  // ★★★ RUN 206 (run 44 / FEEDBACK43 1.5, MEASURED): A DEBATE'S DECISION CAN BE TYPED, NOT MOVED. run 44 had a
+  // debate meeting (m5) whose seats filed their typed rulings with `vibe_v5_verdict`, and `verdict_final` printed the
+  // aggregate name `tally-m5-rec-41` right beside `meeting:"m5"`. This branch counted MOTIONS only, so the loop's OWN
+  // receipt named a decision that this gate then read as "0 votes recorded" — p=1 could not be written at all and the
+  // only way out was a different tool (`fidelity_conclude`). The two readings are complementary: the motions tally is
+  // read FIRST (it is the procedural record), and when it holds no vote the FILED RULING CARDS for this meeting and
+  // proposition are read as the substance. `sources` says which reading answered, so a receipt never hides it.
+  let rulingCards = null
+  if (counted === 0 && typeof rulingSubmissionsOf === 'function') {
+    const probables = []
+    if (ctxCardId !== null) probables.push(ctxCardId)
+    const debateSubject = debate.subject === undefined || debate.subject === null ? '' : String(debate.subject).trim()
+    if (debateSubject !== '' && probables.indexOf(debateSubject) === -1) probables.push(debateSubject)
+    for (const proposition of probables) {
+      let filed = null
+      try { filed = await rulingSubmissionsOf(kernel, { meeting: ref, proposition }) } catch (e) { filed = null }
+      const rows = filed && Array.isArray(filed.rows) ? filed.rows : []
+      if (rows.length > 0) {
+        rulingCards = { proposition, count: rows.length, rows,
+          unanimous: rows.every((r) => Number(r.verdict) === 1),
+          duplicates: Array.isArray(filed.duplicates) ? filed.duplicates : [] }
+        break
+      }
+    }
+  }
   const decidedMotions = motions.filter((mo) => mo && (mo.status === 'seconded' || mo.status === 'carried'))
   // ★★★ RUN 202: same question as the ballot branch — "did this meeting DECIDE anything, and was the decision unanimous?"
   // A meeting whose motions were seconded but never voted is a debate; a motion that carried 2:1 is a decision that was
@@ -1428,17 +1467,28 @@ function rulingNameResolution(kernel, debate) {
       return { present: Number(q.present) || 0, required: Number(q.required) || 0, met: q.met === true }
     } catch { return null }
   })()
+  // ★★ RUN 206: the two readings are reported side by side. `sources` is the ANSWER to "which record was counted",
+  // and a typed ruling is not a motion — nobody seconded it, so `motions`/`motionsCarried` stay procedural counts.
+  const cardVotes = rulingCards === null ? 0 : rulingCards.count
+  const cardUnanimous = rulingCards !== null && rulingCards.unanimous === true
   return { ok: true, kind: 'meeting', ref, exists: true, quorum, state: read.state === undefined ? null : String(read.state),
-    motions: motions.length, motionsSeconded: decidedMotions.length, motionsCarried: carried.length, votes: counted,
-    unanimous: unanimousTallies.length > 0,
-    unanimousCarried: unanimousCarried.length > 0,
-    settled: read.state === 'closed', voted: counted > 0,
+    motions: motions.length, motionsSeconded: decidedMotions.length, motionsCarried: carried.length, votes: counted + cardVotes,
+    motionsVotes: counted, rulingVotes: cardVotes,
+    sources: rulingCards === null ? { motions: counted, typedRulings: 0 } : { motions: counted, typedRulings: cardVotes, proposition: rulingCards.proposition },
+    typedRulings: rulingCards === null ? null : { proposition: rulingCards.proposition, count: rulingCards.count, duplicates: rulingCards.duplicates },
+    unanimous: unanimousTallies.length > 0 || cardUnanimous,
+    unanimousCarried: unanimousCarried.length > 0 || cardUnanimous,
+    settled: read.state === 'closed', voted: counted > 0 || cardVotes > 0,
     means: 'the meeting ' + ref + ' was READ on this kernel: state ' + String(read.state) + ', '
       + String(motions.length) + ' motion(s) (' + String(decidedMotions.length) + ' seconded, '
       + String(carried.length) + ' carried), ' + String(counted) + ' vote(s) recorded; '
       + String(unanimousTallies.length) + ' motion(s) with a tally that is ALL FOR (no against vote, no abstention) '
-      + 'and ' + String(unanimousCarried.length) + ' of those already carried — '
-      + 'that is what the ruling name points at' }
+      + 'and ' + String(unanimousCarried.length) + ' of those already carried'
+      + (rulingCards === null
+        ? ''
+        : '; it ALSO holds ' + String(rulingCards.count) + ' TYPED RULING CARD(S) filed for proposition '
+          + rulingCards.proposition + ' (' + (cardUnanimous ? 'all of them for it' : 'they are SPLIT') + ')')
+      + ' — that is what the ruling name points at' }
 }
 /** The Lean CONCLUSION for one job id, or null. `passed` is a conclusion on the kernel's lean face, never a state.
  *  ★ B8 修的两个真缺陷：① 这个面挂的方法叫 `status(id)`（导出表见 `vibe-math-vmu/kernel/lean.js:977`），
@@ -1760,7 +1810,10 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
 
 function gatedCardHandler(toolName) {
   const inner = kitCardHandler(toolName)
-  return function handler(args = {}, ctx = {}) {
+  // ★★ RUN 206: ASYNC because the p=1 gate now READS the filed ruling cards (a debate can settle with typed rulings and
+  // not only with motions). Every caller of a pack handler already awaits (`host-pack-tools.js:314`), so this is the same
+  // entry point with one more await inside — no caller changes.
+  return async function handler(args = {}, ctx = {}) {
     const kernel = ctx && ctx.kernel
     const records = recordsOf(kernel)
     const track = has(args.track) ? str(args.track) : cardTrackOf(toolName)
@@ -1934,14 +1987,14 @@ function gatedCardHandler(toolName) {
       // speaks. A p=1 write that names a ballot nobody voted in is not a badly-typed ruling, it is a card that claims a
       // decision the institution never took — so it is refused here, by name, with the reading in hand.
       if (evidence.debate !== null && evidence.debate !== undefined) {
-        const resolution = rulingNameResolution(kernel, evidence.debate)
+        const resolution = await rulingNameResolution(kernel, evidence.debate, { cardId })
         if (resolution !== null) {
           if (resolution.ok !== true) {
             throw refuse('VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED',
               'p=1 was refused because the ruling it names cannot be resolved: ' + resolution.means,
               resolution.reason === 'unknown'
                 ? 'pass a name this kernel can read: debate_ruling:{mode:"unanimous", value:1, meeting:"<a meeting id from vibe_v5_meeting>", …} or ballotId:"<a box id from vibe_v5_poll_open>"; or drop the ruling and use the route that actually settles a card — vibe_v5_fidelity_conclude (the chair conformance ruling writes p=1 itself)'
-                : 'the ruling must name something THIS kernel holds: read the ballot with vibe_v5_poll_result or the meeting with vibe_v5_meeting {action:"summary"} and pass that id')
+                : 'the ruling must name something THIS kernel holds: read the meeting with vibe_v5_meeting {action:"summary"}, or close the poll box first (vibe_v5_poll_close returns its tally) — this pack publishes NO separate poll-result tool — and pass that id')
           }
           if (resolution.voted !== true) {
             // ★★★ RUN 204 (FEEDBACK41 1.1, second half): "no votes" and "votes nobody counted" are DIFFERENT facts. run 42's
@@ -1957,7 +2010,7 @@ function gatedCardHandler(toolName) {
               'p=1 was refused because the ruling it names holds NO counted votes: ' + resolution.means,
               floorShort + 'a ruling is a decision people made — ' + (resolution.kind === 'ballot'
                 ? 'cast votes into that box and close it (vibe_v5_poll_vote then close), then write the card'
-                : 'second and vote the motion in that meeting, then write the card') + '; or settle the card through vibe_v5_fidelity_conclude, whose conformance ruling carries its own evidence')
+                : 'second and vote the motion in that meeting, OR — when the debate settled with TYPED RULINGS instead of motions — have each member file vibe_v5_verdict { meeting, proposition_id, verdict, reason } for this card\'s proposition and name that same (meeting, proposition) here; the filed cards are then read as the decision') + '; or settle the card through vibe_v5_fidelity_conclude, whose conformance ruling carries its own evidence')
           }
           // ★★★ RUN 202: "unanimous" is a claim about a TALLY. If the named decision was split, the name resolves and the
           // ruling is still false — the institute must say that instead of writing the claim (run 40's p=1 landed on a card
@@ -1966,7 +2019,7 @@ function gatedCardHandler(toolName) {
           if (mode === 'unanimous' && resolution.unanimous !== true) {
             throw refuse('VMU_PACK_V5R_CORE_P1_RULING_NOT_UNANIMOUS',
               'p=1 was refused because the ruling claims UNANIMOUS while the named decision is not: ' + resolution.means,
-              'a unanimous ruling needs a tally where every vote went to one choice — read it back first (vibe_v5_poll_result for a box, vibe_v5_meeting {action:"summary"} for a meeting), close the vote if it is still open, or settle the card through vibe_v5_fidelity_conclude, whose conformance ruling carries its own evidence')
+              'a unanimous ruling needs a tally where every vote went to one choice — read a meeting back with vibe_v5_meeting {action:"summary"} (a poll box is tallied by closing it: vibe_v5_poll_close), close the vote if it is still open, or settle the card through vibe_v5_fidelity_conclude, whose conformance ruling carries its own evidence')
           }
           evidence.debate.ruling = resolution
         }
@@ -2259,6 +2312,15 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
   // `verdicts` stays available (a member with no card, a number the chair must record) — but an explicit empty array
   // is still refused, because "I passed none" and "I passed an empty set" are different mistakes.
   const filed = await rulingSubmissionsOf(kernel, { meeting, proposition: propositionId })
+  // ★★★ RUN 206 (run 44 / FEEDBACK43 1.4, MEASURED): an OBJECT of verdicts (`{"r-acad":1,"r-1":1,"r-2":1}`) was
+  // silently read as "no verdicts passed", so three filed numbers came back as `VMU_RULING_NO_SUBMISSIONS`. A shape the
+  // face does not read is now refused BY NAME with the shape it does read — the difference between a caller fixing their
+  // call and a caller re-reading the same three cards forever.
+  if (args.verdicts !== undefined && args.verdicts !== null && !Array.isArray(args.verdicts)) {
+    throw refuse('VMU_INVALID_ARGUMENT',
+      'verdicts must be an ARRAY of {member, p, reason} rows; you passed ' + (typeof args.verdicts === 'object' ? 'an OBJECT' : ('a ' + typeof args.verdicts)),
+      'pass verdicts:[{ member:"r-1", p:1, reason:"…" }, …] — or omit verdicts entirely and let this face adopt the ruling cards the members filed with vibe_v5_verdict { meeting, proposition_id, verdict, reason }; an object is NOT read as a tally')
+  }
   const typed = Array.isArray(args.verdicts) ? args.verdicts : null
   if (typed && typed.length === 0) {
     throw refuse('VMU_INVALID_ARGUMENT', 'the final ruling needs the members\' verdicts — an empty set has no value',
@@ -3404,6 +3466,21 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     agendaText = kept.map((x) => x.trim()).join('; ')
   } else {
     agendaText = str(args.agenda)
+    // ★★★ RUN 206 (run 44 / FEEDBACK43 1.3, MEASURED): the schema says `agenda` is a STRING, so a caller who wanted to
+    // pass a structure sent its JSON TEXT — `agenda:"{\"议题\": \"偶数\"}"` was accepted verbatim and stored as the
+    // meeting's purpose, so the minutes recited a brace-and-quote blob nobody can read as a reason. A serialized JSON
+    // OBJECT/ARRAY is refused by name here; a JSON STRING/NUMBER is left alone (it can be a real title).
+    const trimmed = agendaText.trim()
+    if ((trimmed.charAt(0) === '{' && trimmed.charAt(trimmed.length - 1) === '}')
+      || (trimmed.charAt(0) === '[' && trimmed.charAt(trimmed.length - 1) === ']')) {
+      let parsedBlob = null
+      try { parsedBlob = JSON.parse(trimmed) } catch (e) { parsedBlob = null }
+      if (parsedBlob !== null && typeof parsedBlob === 'object') {
+        throw refuse('VMU_INVALID_ARGUMENT',
+          'meeting needs an agenda as a PURPOSE, and you passed its JSON TEXT (' + trimmed.slice(0, 80) + '…) — storing that would make the minutes recite a blob instead of a reason',
+          'pass agenda as one sentence of text (e.g. agenda:"判断偶数之和是否仍为偶数"), and put structured detail in `subject`/`title`; a serialized object or array is not a purpose')
+      }
+    }
   }
   if (!has(args.agenda)) {
     throw refuse('VMU_INVALID_ARGUMENT',
@@ -4022,6 +4099,26 @@ function toolPollOpen(args = {}, { kernel } = {}) {
       : (hasRules ? 'every asked rule was translated into the kernel per-box rules object' : 'no per-poll rules were asked for; the box uses the deployment\'s declared ballot policy') }
 }
 
+/** ★★★ RUN 206 (run 44 / FEEDBACK43 1.2, MEASURED): TWO FACES, TWO BOX REGISTRIES. The primitive ballot box and the
+ *  meetings service each hold their own boxes: run 44 took a meeting ballot id (`b-3-mvzt20vz`, opened by
+ *  `vibe_vmu_meeting {action:"ballot"}`) to `vibe_v5_poll_vote` and got 「找不到票箱」 with the hint 「先 open() 取 id」 —
+ *  advice that cannot work, because the box exists and belongs to the OTHER face. This helper recognises a meeting box
+ *  so the refusal can name the call that actually votes it.
+ */
+function meetingBallotOf(kernel, id) {
+  try {
+    const live = typeof kernel.liveList === 'function' ? kernel.liveList() : null
+    // ★★ RUN 206 (MEASURED twice): `liveList().ballots` is a list of box IDS and a live box carries no `meeting` field
+    // (its binding lives in the primitive meeting service, which the pack cannot read). What the pack CAN say is true and
+    // useful: this id is a LIVE ballot of the KERNEL — it is voted by the meeting face, not by the poll face, and the
+    // poll face holds no box under it. Naming that is the whole point; guessing a meeting id would be a second lie.
+    const ids = live && Array.isArray(live.ballots) ? live.ballots.map(String) : []
+    if (ids.indexOf(String(id)) === -1) return null
+    const box = typeof kernel.liveBallot === 'function' ? kernel.liveBallot(id) : null
+    const targetOf = box && box.target !== undefined && box.target !== null ? String(box.target) : null
+    return { id: String(id), meeting: null, target: targetOf }
+  } catch (e) { return null }
+}
 /** ★ `vibe_v5_poll_vote` — cast an option-type vote. ① lands here (non-voter refused by name). `choices[]` is
  * forwarded as the face's ranked/multi list; `abstain:true` is translated into the face's ONLY abstention shape
  * (`choice === 'abstain'`, kernel/ballotbox.js:274 — the face never reads an `abstain` flag, so passing the flag
@@ -4046,9 +4143,23 @@ function toolPollVote(args = {}, { kernel } = {}) {
   if (args.abstain === true) castArgs.choice = 'abstain'
   else if (choices) castArgs.choices = choices
   else if (has(args.choice)) castArgs.choice = str(args.choice)
-  const r = kernel.ballotbox.cast(castArgs)
-  if (r && r.ok === false) {
-    throw refuse(r.code || 'VMU_CONFLICT', (r.message || 'the ballot box refused this vote'), (r.hint || 'see the ballot box refusal'))
+  // ★★ RUN 206: the box THROWS for an unknown id (`VMU_NOT_FOUND` 「找不到票箱」) — a return-value check alone missed it,
+  // so the cross-face sentence never printed on the real path. Catch the throw and treat it like the refusal it is.
+  let r = null
+  let thrown = null
+  try { r = kernel.ballotbox.cast(castArgs) } catch (e) { thrown = e }
+  if (thrown !== null || (r && r.ok === false)) {
+    const failCode = thrown !== null ? (thrown && thrown.code) || 'VMU_CONFLICT' : (r.code || 'VMU_CONFLICT')
+    const failMessage = thrown !== null ? String((thrown && thrown.message) || 'the ballot box refused this vote') : (r.message || 'the ballot box refused this vote')
+    const failHint = thrown !== null ? (thrown && thrown.hint) : r.hint
+    const elsewhere = meetingBallotOf(kernel, str(args.ballot_id))
+    const crossFace = elsewhere === null ? null
+      : 'this box id belongs to a MEETING ballot (opened by vibe_vmu_meeting { action:"ballot" }'
+        + (elsewhere.meeting === null ? '' : ' on meeting ' + elsewhere.meeting)
+        + '), which the poll face does not serve: vote it with vibe_vmu_meeting { action:"vote", ballotId:"' + elsewhere.id + '", member:"' + member + '", value: 1 | 0 }'
+        + (elsewhere.target === null ? '' : ' (it votes the motion ' + elsewhere.target + ')')
+        + '. The two faces hold SEPARATE box registries; this id is not missing, it is elsewhere'
+    throw refuse(failCode, failMessage, crossFace || (failHint || 'see the ballot box refusal'))
   }
   return { ok: true, tool: 'vibe_v5_poll_vote', ballotId: str(args.ballot_id), member, receipt: r,
     note: 'the vote right is the PACK\'s: only the permanent seats (chair/member) may vote here — the box itself does not check who `by` is' }
@@ -4078,7 +4189,10 @@ function toolPollClose(args = {}, { kernel } = {}) {
     if (code === 'VMU_BALLOT_MIN_VOTES_NOT_MET') {
       throw refuse(code, '本次投票【不成立】：已投数未达到门槛 min_votes（它不是法定人数 m）: ' + String(r.message || ''), 'gather more votes, or restate the deployment threshold')
     }
-    throw refuse(code, r.message || 'the ballot box refused this close', r.hint || 'see the ballot box refusal')
+    const elsewhereClose = meetingBallotOf(kernel, str(args.ballot_id))
+    throw refuse(code, r.message || 'the ballot box refused this close',
+      elsewhereClose === null ? (r.hint || 'see the ballot box refusal')
+        : 'this box belongs to a MEETING ballot (vibe_vmu_meeting { action:"ballot" }) and the poll face does not hold it: tally it with vibe_vmu_meeting { action:"tally", ballotId:"' + elsewhereClose.id + '" } — two faces, two registries, and this id is on the other one')
   }
   return { ok: true, tool: 'vibe_v5_poll_close', ballotId: str(args.ballot_id), result: r && (r.outcome !== undefined ? r.outcome : r.result), tally: r && r.tally, receipt: r }
 }
@@ -5487,7 +5601,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_hire',
     description: 'Hire one temp worker into the temp seat and open their initial task. Requires purpose, initial_task and to (the new member id — this pack never invents an id). The SLOT is explicit (default "temp"); any other slot is refused by name and points at the founding face.'
-    , parameters: { purpose: { type: 'string', required: true }, initial_task: { type: 'string', required: true }, to: { type: 'string', required: true }, slot: { type: 'string' }, direction: { type: 'string' }, term: { type: 'string' } },
+    , parameters: { purpose: { type: 'string', required: true }, initial_task: { type: 'string', required: true }, to: { type: 'string', required: true }, slot: { type: 'string' }, direction: { type: 'string' }, term: { type: 'string' }, institution: { type: 'string' } },
     handler: toolHire,
   },
   {

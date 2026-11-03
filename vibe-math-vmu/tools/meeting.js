@@ -1001,6 +1001,30 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             // into the ONE authoritative tally below.
             const motionTarget = need(target, 'target')
             const meetingForBallot = sid(id) && !kernel.liveMeeting(sid(id)) ? sid(id) : null
+            // ★★★ RUN 206 (run 44 / FEEDBACK43 1.1, MEASURED): this face accepted ANY string as the target of a
+            // meeting-bound ballot. run 44 passed a proposition CARD id (`rec-41`), got `mergedInto:{meeting:"m5",
+            // motion:"rec-41"}` and then watched every vote fail with `no such motion: rec-41` and `motions: none` —
+            // `counted:false` forever, with the ballot id looking healthy. A meeting-bound ballot votes a MOTION, so the
+            // target is now checked against that meeting before the box opens, and the refusal names BOTH fixes.
+            if (meetingForBallot) {
+              const svcCheck = svcOf()
+              let motionIds = null
+              if (svcCheck && typeof svcCheck.summary === 'function') {
+                try {
+                  const readBack = svcCheck.summary({ meeting: meetingForBallot })
+                  if (readBack && readBack.ok === true && Array.isArray(readBack.motions)) {
+                    motionIds = readBack.motions.map((mo) => String((mo && mo.id) || '')).filter((x) => x !== '')
+                  }
+                } catch (e) { motionIds = null }
+              }
+              if (motionIds !== null && motionIds.indexOf(String(motionTarget)) === -1) {
+                return refused('VMU_NO_SUCH_OBJECT',
+                  'meeting ' + meetingForBallot + ' has no motion ' + String(motionTarget) + ', so a ballot bound to it could never be counted',
+                  'a meeting-bound ballot votes a MOTION: raise one first with vibe_v5_motion { meeting: "' + meetingForBallot + '", kind, text, member }, second it with vibe_v5_second, then pass its id as target. '
+                    + 'motions in that meeting: ' + (motionIds.length === 0 ? 'none' : motionIds.join(', '))
+                    + '. If the decision is a TYPED RULING instead (vibe_v5_verdict), it is not a ballot at all — file the rulings and let the chair sign with vibe_v5_verdict_final')
+              }
+            }
             const ballot = kernel.ballot(Object.assign({ id: bid, target: String(motionTarget) },
               rule && rule.restricted === true ? { eligible: rule.ids } : {}))
             const opened = await ballot.open()
@@ -1058,7 +1082,15 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             const countedMeans = !ref
               ? 'the ballot box accepted the vote, and this ballot is bound to no meeting, so no second authority had to accept it'
               : (counted
-                ? 'BOTH authorities accepted it: the box recorded the vote and the meeting tallied it'
+                // ★★★ RUN 206 (run 44 / FEEDBACK43 1.8, MEASURED): the meeting half can ACCEPT the vote while the BOX
+                // half REFUSED it — run 44 got `counted:true` next to `receipt.ballot.mirrored:false, reason:"refused",
+                // code:"VMU_CONFLICT"`, so a receipt that said BOTH authorities accepted it was flatly false. The two
+                // sentences are now chosen by the box-side reading; when it is unreadable the sentence says so.
+                ? ((serviceVote && serviceVote.receipt && serviceVote.receipt.ballot && serviceVote.receipt.ballot.mirrored === false)
+                  ? 'THE MEETING accepted it; the BOX did NOT mirror it (' + String((serviceVote.receipt.ballot.code || 'refused')) + ': '
+                    + String((serviceVote.receipt.ballot.reason || 'refused')) + ') — the meeting\'s tally is the decision here, and the box copy is missing, '
+                    + 'so do not read this vote back off the box'
+                  : 'BOTH authorities accepted it: the box recorded the vote and the meeting tallied it')
                 : 'TWO AUTHORITIES, ONE ANSWER: the BOX recorded the vote (the box tally grows) but the MEETING did NOT count it — '
                   + String((serviceVote && serviceVote.message) || 'the meeting refused the vote')
                   + '. The box is a record of what was said; the meeting is the record of what DECIDED. Attend until the floor is met '

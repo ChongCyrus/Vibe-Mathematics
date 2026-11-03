@@ -60,8 +60,19 @@ test('the mainline reaches every seat, every round', async () => {
     has(block, "kind: 'role'", '§0b kind role — a role section, not a phase-scoped one: it cannot be absent from any seat prompt')
     const seats = ['academician', 'researcher', 'temp'].filter((s) => block.includes(s + ': ['))
     ok(seats.length === 3, '§0c all THREE seats have their own text', { seats })
-    ok((block.match(/核心推进方向（主线）/g) || []).length === 3, '§0d the marker is in each seat text exactly once')
-    has(block, 'vibe_v5_blueprint', '§0e the reminder names the face that updates a blueprint — a duty with no tool is a slogan')
+    // ★ RUN 206 (FEEDBACK43 1.7): one SHARED core, three seat duties — a per-seat rewrite is what made three seats quote
+    // three different paragraphs back. The marker now appears ONCE (in the core) and all three seats reference it.
+    // The CORE is declared ABOVE the blocks array, so the marker is counted over the whole file and the references are
+    // counted inside the block slice: one body, three seats.
+    ok((BLOCKS.match(/核心推进方向（主线）/g) || []).length === 1,
+      '§0d the shared core body carries the marker exactly once (the seats append only their own duty)',
+      { markers: (BLOCKS.match(/核心推进方向（主线）/g) || []).length })
+    ok((block.match(/MAINLINE_CORE/g) || []).length === 3,
+      '§0d-2 all THREE seats render that one core (a seat that stops using it would drift silently)',
+      { refs: (block.match(/MAINLINE_CORE/g) || []).length })
+    has(BLOCKS, 'mainline-v2', '§0d-3 the core carries a VERSION, so a paraphrase can be detected instead of argued')
+    has(BLOCKS.slice(BLOCKS.indexOf('const MAINLINE_SEAT'), BLOCKS.indexOf('export const CHARTER_BLOCKS_B')), 'vibe_v5_blueprint',
+      '§0e the seat DUTY names the face that updates a blueprint — a duty with no tool is a slogan')
     has(BLOCKS, 'T99 cap 30000', '§0f the file comment states the cap this round raised (20000 → 30000)')
     has(TURN_TEST, 'asmLen.text.length < 30000', '§0g the budget gate itself was raised, not just the comment')
   }

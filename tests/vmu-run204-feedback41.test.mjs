@@ -59,9 +59,14 @@ test('RUN 204 §0 — every repair is on the source it belongs to (source pins)'
   has(QUAL, 'NO: the cap applies ONLY to a name DERIVED from the claim',
     '§0i ★ and the negative case says there is nothing to look for')
   has(SCHEMA, 'the LEGAL VALUES are', '§0j ★★ an enum refusal prints the legal values')
-  ok((BLOCKS.match(/\*\*每回合三问\*\*/g) || []).length === 3,
-    '§0k ★★ all three seats carry the acceptance criterion\'s own phrase (每回合三问)',
+  // ★ RUN 206: the phrase now lives ONCE in the shared core body that all three seats render (FEEDBACK43 1.7), so the
+  // criterion is met by one sentence every seat reads plus three references to it — not by three transcriptions.
+  ok((BLOCKS.match(/\*\*每回合三问\*\*/g) || []).length === 1,
+    '§0k ★★ the acceptance criterion\'s own phrase (每回合三问) is in the shared core, so every seat reads the same words',
     (BLOCKS.match(/\*\*每回合三问\*\*/g) || []).length)
+  ok((BLOCKS.match(/MAINLINE_CORE/g) || []).length === 4,
+    '§0k-2 one declaration + THREE seat texts render that core (FEEDBACK43 1.7: one body, three duties)',
+    (BLOCKS.match(/MAINLINE_CORE/g) || []).length)
 })
 
 test('RUN 204 §1 — an enum refusal prints the values it will accept', async () => {

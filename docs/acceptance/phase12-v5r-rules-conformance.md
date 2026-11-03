@@ -14699,3 +14699,70 @@ hint 给出路）、全一致的票箱放行；§2 真会议（3:0 全 FOR 在�
 - **夹具的名册就是夹具的前提**：一个用假名册的套件点名了名册外的成员，它守的从来不是「谁都能当参与者」，而是「没人检查过名册」。
 - **披露一个不存在的读数，好过让每个读者自己编**：`nodes: null` 加一句解释，比留白让 `节点 3` 各自发明要好；空白会被读成「可以随便填」。
 - **每一条「计数」都要能被粘回去**：打印 `recordId`、tally 名、座席值的地方，都要问一句「读者拿它去调哪个面」；答不上来就说明这个字段只是装饰。
+
+## §307 RUN 206（第四十四次真机 run 44 的 FEEDBACK43：九个读数说错了原因，或者什么都没说）
+
+run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但 `FEEDBACK43` 给的九条里有五条是**同一句话的两个读者**：会议面与票箱面各自持一套登记册、辩论的「票」与动议的「票」是两种东西、主线节三席三套正文。这一轮不是加新能力，而是让**拒绝说出它真正拒绝的是什么**。
+
+### 307.1 账
+
+| 现场 | 发生过的话 | 机制实际 |
+| --- | --- | --- |
+| 1.1 | `vibe_vmu_meeting {action:"ballot", meeting:"m5", target:"rec-41"}` 被接受（`mergedInto:{meeting:"m5", motion:"rec-41"}`） | 会议票箱只认 **motion id**；把卡片 id 当动议绑上去，票永远 `no such motion: rec-41` ⇒ `counted:false` 到底 |
+| 1.2 | `vibe_v5_poll_vote {ballot_id:"b-3-mvzt20vz"}` ⇒ 「找不到票箱」+「先 open() 取 id」 | 盒子存在，属于**会议面**；poll 面有自己的登记册，`open()` 也造不出这个 id —— 建议不可执行 |
+| 1.3 | `agenda` 传 `JSON.stringify({...})` 被原样存下、`ok:true` | 工具 schema 是字符串，序列化对象被当议程；RUN 204 拒了对象/数组，没拒「对象的 JSON 文本」 |
+| 1.4 | `verdicts:{"r-acad":1,…}` ⇒ `VMU_RULING_NO_SUBMISSIONS`「no verdicts were passed」 | 形状错误被读成**空结果**：读者会以为自己没交票，而不是拼错了 |
+| 1.5 | `verdict_final` 打印的 `tally-m5-rec-41` 照抄回写 ⇒ `P1_RULING_UNVOTED` | p=1 闸只读 **motions/votes**；辩论真正落地的是成员 **typed ruling 卡**（`attribution[].submission`）⇒ 一条被正式签署的决定进不了卡 |
+| 1.6 | `p:2` 的拒文只有范围 | 缺 `REACHABLE INSTEAD`（既有规则：说清是**谁**该动手） |
+| 1.7 | 三席抄回的正文各不相同 | `v5r-turn-mainline` 给了三份独立正文，逐字比对不可能 |
+| 1.8 | `counted:true` 且 `countedMeans` 说 BOTH authorities | 同一张回执里 `serviceVote.receipt.ballot.mirrored:false` —— 两句话互相否认 |
+| 1.9 | `vibe_v5_hire {institution:"…"}` 被拒 | control 面 hire **必填** `institution`；两面对同一个动作拼写不同 |
+
+### 307.2 修法
+
+- **1.1 票箱只绑真动议**：`tools/meeting.js` 的 `action==='ballot'` 在会议存在时先读 `summary().motions`，`target` 不在其中 ⇒ `VMU_NO_SUCH_OBJECT`「meeting mN has no motion X, so a ballot bound to it could never be counted」，hint 点 `vibe_v5_motion { meeting, kind, text, member }` + `vibe_v5_second`（旧文案指的 `vibe_v5_meeting { action:"motion" }` **不存在**，一并改掉）。
+- **1.2 跨面指路**：`packs/v5r/tools.js` 新增 `meetingBallotOf(kernel, id)`——注意 `liveList().ballots` 是**盒子 id 列表**，且 live 盒子上没有 `meeting` 字段（绑定在会议服务的私有表里），所以只声明能证明的事：这个 id 是**内核的活票箱**、poll 面不持有它；拒绝文改写为「这是 MEETING ballot，用 `vibe_vmu_meeting { action:"vote", ballotId, member, value }` 投；两个面各持一套登记册，这个 id 不是不存在，是在别处」。同时把 `ballotbox.cast` 的**抛出**也纳入判定（它 throw `VMU_NOT_FOUND`，只判返回值永远进不到这段）。
+- **1.3 JSON 文本议程**：`agendaText` 校验前先识别「像序列化对象/数组的字符串」（`/^\s*[\[{]/` 且能 `JSON.parse`）⇒ 具名拒 `VMU_INVALID_ARGUMENT`「you passed its JSON TEXT … storing that would make the minutes recite a blob instead of a reason」，hint 说明结构化细节应放 `subject`/`title`。
+- **1.4 `verdicts` 形状**：非数组 ⇒ `VMU_INVALID_ARGUMENT`「verdicts must be an ARRAY of {member, p, reason} rows; you passed an OBJECT」，hint 印形状并补「an object is NOT read as a tally」。
+- **1.5 p=1 闸读 typed ruling 卡**：`rulingNameResolution(kernel, debate, context)` 改 **async**（读卡要走 library），会议分支在 motion/vote 之外读 `rulingSubmissionsOf` 的同命题卡：`sources = { motions, typedRulings, proposition }`，`typedRulings = { proposition, count, duplicates }`，`unanimous` 由「动议全票 **或** 卡全 1」决定，`means` 明说「it ALSO holds N TYPED RULING CARD(S) filed for proposition X — that is what the ruling name points at」；tally 名（`/^tally-/`）仍按 (meeting, subject) 重派生再交给会议分支。调用点 `gatedCardHandler` 因此变 `async`（宿主对 pack handler 本来全部 `await`，无调用方改动）。
+- **1.6** `kit/handlers.js` 的 p 范围拒文补 `REACHABLE INSTEAD` 段（谁该动手、动哪个面）。
+- **1.7 主线一份正文**：`v5r-blocks-b.js` 顶层声明 `MAINLINE_CORE`（含版本 `mainline-v2`）+ `MAINLINE_SEAT`，三席 `texts` 变成 `[MAINLINE_CORE, MAINLINE_SEAT.<seat>].join('
+')` —— 抄回时核心逐字一致，各席只多一句「你的担子」。
+- **1.8 `countedMeans` 按事实分支**：`counted:true` 时读 `serviceVote.receipt.ballot.mirrored`：`true` ⇒ 「两个权威都收了」；`false/null` ⇒ 「盒子收了，会议**没有**把它记进计票（`mirrored:false`），所以这张票在会议侧不算数」，把 `mirrorRefusal` 一并印出。
+- **1.9 hire 拼写**：`vibe_v5_hire` 接受 `institution` 并在回执写 `institution` + `institutionIgnored:true` + `institutionMeans`（「本面把临时席位雇进**已经存在**的研究所，所以 `institution` 收下但不用——建所是 control 面，那里才要求它」）。
+
+### 307.3 机器化
+
+`tests/vmu-run206-feedback43.test.mjs` **1 passed / 0 failed**（一个 test 六节，全部在真装配上跑）：
+
+- §0 十五条源码 pin（typed rulings、跨面指路两句、`ARRAY of {member, p, reason}`、`JSON TEXT`、`institutionIgnored`、`REACHABLE INSTEAD`、`vibe_v5_motion { meeting:`、`vibe_v5_second`、`mirrored`、`MAINLINE_CORE`/`MAINLINE_SEAT`/`mainline-v2`）。
+- §1 真辩论：卡带 `proof_ref`+`proof_state:"complete"` 才能当辩论对象；**主席不能代填成员裁决**（`VMU_RULING_CHAIR_SIGNS`）；两席各交 typed ruling ⇒ `verdict_final` 打印 `tally-m1-rec-1` 且 `correction.call` 引它；**照抄回写 p=1 成功**，`p1RulingReading.sources.typedRulings===2`、`typedRulings.count===2`、means 含 `TYPED RULING CARD`。
+- §2/§3 真会议：非动议名绑票箱 ⇒ 具名拒且 hint 指 `vibe_v5_motion`/`vibe_v5_second`、且**不再**出现 `action: "motion"`；motion→second→ballot 正常；该盒 id 送 poll 面 ⇒ `VMU_NOT_FOUND` 但 hint 说 `MEETING ballot` / `vibe_vmu_meeting { action:"vote"` / `SEPARATE box registries`。
+- §4 JSON 文本议程具名拒（message 含 `JSON TEXT`）、对象仍拒、字符串列表仍收且存成文本。
+- §5 对象形 `verdicts` 具名拒（`ARRAY of {member, p, reason}` + `an object is NOT read as a tally`）。
+- §6 `vibe_v5_hire` 收 `institution` 并披露 `institutionIgnored:true`。
+
+### 307.4 两次自查推翻与三条装载事实
+
+- 自查一：`meetingBallotOf` 第一版按 `liveList().ballots` 的**元素**.id 匹配 ⇒ 永远 `null`（那是 id 列表）。第二版改读 `liveBallot(id)` 后发现盒子上**没有** `meeting` 字段（绑定在会议服务的私有表）⇒ 只声明可证的（「这个 id 是内核活票箱、poll 面不持有」），不猜会议 id。
+- 自查二：`ballotbox.cast` 对未知 id 是**抛出**不是返回 `{ok:false}` ⇒ 跨面提示在真路径上从不执行；修法是把 throw 与返回值一并判定。
+- 装载事实：① 辩论会对象必须先有 `proof_ref`+`proof_state:"complete"`（否则 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`）；② 工作流是 `vibe_v5_verdict`（成员）+ `vibe_v5_verdict_final`（主席签署），主席**不能**自填；③ `gatedCardHandler` 变 async 后，两处既有 pin（`vmu-run201` 的签名与调用点）必须随之更新——**改签名＝改契约，pin 要跟着句子走**。
+
+### 307.5 收口链与全量 T1
+
+`node scripts/update-doc-counts.mjs --write` ⇒ `JOBS total=757 suites=649 probes=108`（`tests/*.mjs` 393 个 = 288 suites + 105 probes/scripts）；`node scripts/regen-all.mjs --write` **17/17 written** → `--check` **17/17 in sync**；四门禁 PASS：`PREFLIGHT: PASS` / `DOC LINT: PASS`（D6/D11/D16 若干既有提示，无新增）/ `RULES COVERAGE: PASS (0 problem(s))`（93/93 行逐字命中，指纹 `27c5cd1c25d9`）/ `RULE PARITY: PASS (0 problem(s))`。
+
+干净全量 T1 `/d/_tmp/t1-r490-run206.log` = **`TOTAL 757 PASS 757 FAIL 0`（suites 649 · probes 108）**；mutants 分片全 `ALL MUTANTS RED AS REQUIRED`（`v5-institute-fixes` 523.7s/549.2s 两片、`v2-fix-probes` 429.8s、`v3-fix-probes` 242.6s、`v4-final-paper` 93.2s），`e2e-v4-fixes` 142 passed / 0 failed（上一轮那两条并发红本轮未复现），`audit-math-computation-sensitivity` 22 probes detected。
+
+### 307.6 未闭合
+
+- `FEEDBACK42 1.1`（同一设置键在成员内核与所办内核读出两个值）仍未解：需要跨内核共享状态或具名拒，属设计题。
+- `FEEDBACK42 1.7`（围栏 JSON 笔误 ⇒ 整轮 failed 但动作已落盘）仍未把「已落盘动作」与「围栏解析失败」分开报。
+- `FEEDBACK43 1.8` 的镜像拒文只在 `counted:true` 分支；**真机尚未复验**本轮九条（run 45 简报待写）。
+
+### 307.7 三条教训
+
+- **「不存在」与「在别处」是两种拒绝**：同一个 id 在两个登记册里，一句「先 open() 取 id」把读者送去做一件做不到的事；说清「它在另一个面」才是拒绝的完整形状。
+- **形状错误不能返回成空结果**：`verdicts` 传对象被读成「没交票」，读者会去补票而不是改形状——**拼写错误的回执必须长得像拼写错误**。
+- **一场辩论可以有两种票面，闸就得读两种**：只读 motions 的闸会把已经签署的 typed ruling 判成「没有决定」；这不是闸太严，而是**它读的世界比事件发生的世界小**。
+

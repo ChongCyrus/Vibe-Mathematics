@@ -3421,3 +3421,13 @@ RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一
 - **两处 pin 传染**：假名册的 G7 ⑤ 夹具（`members.roster: () => [{id:'acad'}]`）点名 `r-1`/`r-2` ⇒ 补 stub 名册；`vmu-run155` 的 25 键投影 pin ⇒ 27 键。**夹具的名册是前提，字段集 pin 必须跟着投影走。**
 - **机器化**：`tests/vmu-run205-feedback42.test.mjs` 5/0（§0 pin、§1 名册拒与成功、§2 锁门披露与 `review(false)` 回写、§3 OUTLINE 说明、§4 座席与 `nodes:null`）。
 - **未闭合**：`FEEDBACK42 1.1` 跨内核设置两读、`1.7` 围栏失败与已落盘动作分开报；本轮未真机复验。
+
+## ROUND 211（★ 一个名字属于另一个面，一场辩论有两种票面，三个席位只该有一份正文）
+
+- **账从哪来**：第 44 次真机（`FEEDBACK43`，`Paper/paper-paper-oddsum-44` 118 729 B）。九条里五条是「同一句话的两个读者」：会议面与票箱面各持一套登记册、辩论的票（typed ruling 卡）与动议的票是两种、主线节三席三套正文。
+- **修法**：`tools/meeting.js` 的会议票箱 `target` 必须是**真 motion**（否则一个永远数不到的盒子会被接受）；`packs/v5r/tools.js` 新增 `meetingBallotOf` 做**跨面指路**（「这个 id 不是不存在，是在别处」），并把 `ballotbox.cast` 的抛出也算进判定；`agenda` 识别「序列化 JSON 文本」并具名拒；`verdicts` 非数组具名拒（形状错误不许回声成空结果）；`rulingNameResolution` 改 async，会议分支在 motions/votes 之外读**同命题的 typed ruling 卡**（p=1 闸读的世界要等于事件发生的世界）；p 范围拒文补 `REACHABLE INSTEAD`；`countedMeans` 按 `receipt.ballot.mirrored` 分支；`vibe_v5_hire` 收下 `institution` 并披露「建所是 control 面」。
+- **主线一份正文**：`v5r-blocks-b.js` 顶层 `MAINLINE_CORE`（`mainline-v2`）+ `MAINLINE_SEAT`，三席 `texts` = 同一段核心 + 各自一句「你的担子」——抄回时可逐字比对，席位差异只有一句。
+- **机器化**：`tests/vmu-run206-feedback43.test.mjs` 1/0（六节：typed ruling 照抄写回 p=1、会议票箱非动议拒、跨面指路三句、JSON 文本议程、`verdicts` 形状、hire 收 `institution`）。
+- **签名改动的连带**：`gatedCardHandler` 变 `async` ⇒ 两处既有 pin（`vmu-run201` 的签名与调用点）随之更新；**改签名就是改契约，pin 要跟着句子走**。
+- **未闭合**：跨内核设置两读（`FEEDBACK42 1.1`）、围栏 JSON 失败与已落盘动作分开报（`1.7`）；本轮九条尚未真机复验。
+

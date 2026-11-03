@@ -9,6 +9,23 @@
 import { LATEX_ENGINE_NOTE } from './v5r-blocks-a.js'
 import { replyCatalogueLines, replyChannelLines } from './v5r-reply-channel.js'
 
+// ★★★ RUN 206 (run 44 / FEEDBACK43 1.7, MEASURED): the mainline block used to give the three seats THREE bodies, so a
+// member asked to quote the mainline back produced a different paragraph per seat and nobody could compare them. The
+// core text is now declared ONCE here and every seat appends only its own duty ('your share'), with a version marker
+// so a paraphrase can be detected instead of argued about.
+const MAINLINE_VERSION = 'mainline-v2'
+const MAINLINE_CORE = [
+  '【核心推进方向（主线）】',
+  '  · 版本：' + MAINLINE_VERSION + '（三席共用同一段正文，各席只追加自己的担子——抄回时应逐字一致）',
+  '  · 一条主线＝**原问题的实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现**；它不是零散任务的清单，每一步都要能说清它在蓝图上推进了什么。',
+  '  · **每回合三问**（每回合先回答三件事）：①这一回合推进或扩张蓝图的哪个节点？②该节点的信息更新了没有（当下评价 / 初始计划与启发 / 相关计划 / 可行性及原因 / 价值性及原因 / 已得结论与经验反馈 / 障碍与原因、方案、实施效果 / 过去经验）？③**以前是否处理过类似问题**——先查蓝图与归档，能迁移复用就复用，别重复探索、别重复踩坑。',
+  '  · 持续积累与主线推进、改进、调整相关的认知与有价值反馈；据实践反馈调整、细化蓝图并更新节点信息；吸取经验持续改进，把有价值的经验方法与障碍解决经验一般化、迁移到新问题。',
+].join('\n')
+const MAINLINE_SEAT = {
+  academician: '  · 你的担子：把主线写成蓝图（`vibe_v5_blueprint` propose/adopt/state），每次推进后更新节点信息，评审下属每一步都先问这三问；蓝图见紧接着的【蓝图】一节。',
+  researcher: '  · 你的担子：这一回合要能说清推进了蓝图上的哪个节点，并把结论、命题、经验反馈与障碍解决经验写进节点信息，让下一个人不必重走。',
+  temp: '  · 你的担子：临时任务也要说明它指向蓝图的哪个节点，先查旧经验，能复用就复用。',
+}
 export const CHARTER_BLOCKS_B = Object.freeze([
   {
     name: 'v5r-turn-acad-leads',
@@ -796,23 +813,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     range: 'pack',
     kind: 'role',
     texts: {
-      academician: [
-        '【核心推进方向（主线）】',
-        '  · 一条主线＝**原问题的实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现**；它不是零散任务的清单，每一步都要能说清它在蓝图上推进了什么。',
-        '  · **每回合三问**（每回合先回答三件事）：①这一回合推进或扩张蓝图的哪个节点？②该节点的信息更新了没有（当下评价 / 初始计划与启发 / 相关计划 / 可行性及原因 / 价值性及原因 / 已得结论与经验反馈 / 障碍与原因、方案、实施效果 / 过去经验）？③**以前是否处理过类似问题**——先查蓝图与归档，能迁移复用就复用，别重复探索、别重复踩坑。',
-        '  · 持续积累与主线推进、改进、调整相关的认知与有价值反馈；据实践反馈调整、细化蓝图并更新节点信息；吸取经验持续改进，把有价值的经验方法与障碍解决经验一般化、迁移到新问题。',
-        '  · 蓝图更新的入口是 `vibe_v5_blueprint`（propose/adopt/state），见紧接着的【蓝图】一节。',
-      ].join('\n'),
-      researcher: [
-        '【核心推进方向（主线）】',
-        '  · 主线＝**原问题实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现**；你这一回合要能说清推进了蓝图上的哪个节点。',
-        '  · **每回合三问**：推进的是蓝图哪个节点 / 该节点的信息更新了没有 / 以前是否处理过类似问题；动手前先查这个节点现在的评价、可行性/价值性及原因、障碍与已有方案——有就先复用或迁移，别重复探索。',
-        '  · 把结论、命题、经验反馈与障碍解决经验写进节点信息（蓝图/归档），让下一个人不必重走。入口 `vibe_v5_blueprint { action: "state" | "propose" }`。',
-      ].join('\n'),
-      temp: [
-        '【核心推进方向（主线）】',
-        '  · 主线＝**原问题实现蓝图的策划、细化、调整、由粗到细的构建与扩张、及推进与实现**。**每回合三问**：推进哪个节点 / 节点信息更新了没有 / 以前是否处理过类似问题；临时任务也要说明它指向蓝图的哪个节点，先查旧经验，能复用就复用。',
-      ].join('\n'),
+      academician: [MAINLINE_CORE, MAINLINE_SEAT.academician].join('\n'),
+      researcher: [MAINLINE_CORE, MAINLINE_SEAT.researcher].join('\n'),
+      temp: [MAINLINE_CORE, MAINLINE_SEAT.temp].join('\n'),
     },
   },
   {

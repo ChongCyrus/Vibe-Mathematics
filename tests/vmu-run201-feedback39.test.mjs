@@ -62,8 +62,8 @@ async function settledBallot(kernel, votes, close = true) {
 }
 
 test('RUN 201 §0 — every repair is on the source it belongs to (source pins)', () => {
-  has(PACK, 'function rulingNameResolution(kernel, debate)', '§0a ★ the ruling NAME is resolved against the institution')
-  has(PACK, 'const resolution = rulingNameResolution(kernel, evidence.debate)', '§0b and the write path asks before the shape gate')
+  has(PACK, 'async function rulingNameResolution(kernel, debate, context = {})', '§0a ★ the ruling NAME is resolved against the institution (ASYNC since RUN 206: a debate can settle with typed ruling cards)')
+  has(PACK, 'const resolution = await rulingNameResolution(kernel, evidence.debate, { cardId })', '§0b and the write path asks before the shape gate')
   has(PACK, 'VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED', '§0c ★ a name nobody holds is refused by name')
   has(PACK, 'VMU_PACK_V5R_CORE_P1_RULING_UNVOTED', '§0d ★★ and so is a name that holds no votes (the run-40 shape)')
   has(GATES, 'ruling: ev.debate.ruling === undefined ? null : ev.debate.ruling', '§0e the gate hands the READING back')
