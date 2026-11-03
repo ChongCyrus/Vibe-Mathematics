@@ -843,6 +843,10 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                 // but nothing that answered "was any vote COUNTED at the moment of this close" — run 45 read `votesCast:2` next
                 // to `confirmed:false` and could not tell "two votes and one seat short" from "two votes nobody counted".
                 counted: closeClosureVote === null || closeClosureVote === undefined ? false : Number(closeClosureVote.votesCast) > 0,
+                // ★ RUN 211 (run 48 / FEEDBACK47 2.4, MEASURED): on a CLOSE receipt the bare name `counted` reads like a
+                // pass condition ("was the close counted?"), and run 48's report wondered whether the close had failed.
+                // The same fact under a name that says what it is about, plus the sentence, so the field can be read alone.
+                closureVoteHadVotes: closeClosureVote === null || closeClosureVote === undefined ? false : Number(closeClosureVote.votesCast) > 0,
                 countedMeans: closeClosureVote === null || closeClosureVote === undefined
                   ? 'this kernel publishes no closure reading, so whether any "solved" vote was counted cannot be answered here'
                   : 'counted answers ONE question: did the CLOSURE reading hold any vote at the instant of this close. It is NOT a condition of the close (the close passed the rails in `enforced`): counted=false means nobody had voted on "is this solved" yet, so quote closureVote.missing for who to ask — a close is not a unanimous judgement',

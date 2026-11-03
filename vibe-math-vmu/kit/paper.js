@@ -487,6 +487,27 @@ export function createPaperFlow({
   }
   const consultAnswered = (ledger) => ledger.requests.filter((r) => r && r.status === 'answered').slice(-1)[0] || null
   const consultAwaiting = (ledger) => ledger.requests.filter((r) => r && r.status === 'awaiting').slice(-1)[0] || null
+  /**
+   * ★★★ RUN 211 (run 48 / FEEDBACK47 2.5, MEASURED): the office-consult gate fires at `final`, which is the LAST step of
+   * the main line — run 48's agent discovered it only there ("I thought finalization was one call away"). The fact is
+   * knowable at the moment the paper becomes ready to finalise, so `advance` says it THEN, in its own fields, and names
+   * the exact consult call. It is a PREDICTION: it reads the same policy and ledger `final` will read, and never blocks.
+   */
+  function consultPrediction(state) {
+    const policy = consultPolicy()
+    if (policy.status !== 'required') {
+      return { officeConsultPending: false,
+        officeConsultMeans: 'vmu.paper.officeConsult is "' + String(policy.raw) + '": finalization will NOT wait for an office answer' }
+    }
+    const ledger = consultOf(state)
+    const answered = consultAnswered(ledger)
+    if (answered) {
+      return { officeConsultPending: false, officeConsultAnsweredBy: answered.answeredBy || null, officeConsultRequestId: answered.id || null,
+        officeConsultMeans: 'an office answer is already on this paper (request ' + String(answered.id || '?') + ', answered by ' + String(answered.answeredBy || '?') + '), so finalization will pass this gate' }
+    }
+    return { officeConsultPending: true, officeConsultRequestedAt: null,
+      officeConsultMeans: 'vmu.paper.officeConsult="required" and this paper has NO answered consult yet: `final` WILL open a consult question and refuse until the office answers. Answer it with vibe_v5_paper { action:"consult", target:"' + String(state.target) + '", member:"<office id>", answer:"…" } — do NOT flip the setting to unblock it' }
+  }
   const rosterOf = () => {
     try { return Array.isArray(kernel.members && kernel.members.roster()) ? kernel.members.roster() : [] } catch { return [] }
   }
@@ -1097,6 +1118,7 @@ export function createPaperFlow({
       state.status = 'reviewing'; state.stage = 'reviewing'; state.reviewOf = reviewOf; state.reviews = {}
       writeState(state)
       return { ok: true, moved: true, stageMoved: true, from: 'writing', to: 'reviewing', round: state.round, reviewOf, notRequired,
+        ...consultPrediction(state),
         ...roundReading(roundFromWriting, 'writing', 'reviewing'),
         crossReviewPossible,
         partsLockedAfterMove: unwrittenParts,
@@ -1180,6 +1202,7 @@ export function createPaperFlow({
         // it (its own report asked "is refusers missing here, or is it empty?"). An empty list is a FACT here — every
         // required reviewer answered deliverable — so it is stated instead of omitted, with the sentence that says which.
         return { ok: true, moved: true, stageMoved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: true, reviewsRead, notRequired,
+          ...consultPrediction(state),
           ...roundReading(roundFromUnanimous, 'reviewing', 'awaiting-editor'),
           crossReview: coverage,
           refusers: [], stale: [], notYetReviewed: [],
@@ -1232,6 +1255,7 @@ export function createPaperFlow({
       writeState(state)
       // ★★ RUN 197 (same defect as the branch above): the CAPPED disagreement branch printed `refusers` and no meaning either.
       return { ok: true, moved: true, stageMoved: true, from: 'reviewing', to: 'awaiting-editor', round: state.round, unanimous: false, refusers,
+        ...consultPrediction(state),
         ...roundReading(roundFromCapped, 'reviewing', 'awaiting-editor'),
         crossReview: crossReviewCoverage(state),
         refusersMeans: 'NOT empty: the reviews did not reach deliverable for every participant within ' + roundsCap() + ' round(s), so the editor is handed the paper WITH this disagreement on the record (a later round can still agree); refusers holds the votes that said no, stale/notYetReviewed hold the members who were never counted',

@@ -15012,3 +15012,75 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 - 生成物：`JOBS total=761 suites=653 probes=108`，随包 `tests/*.mjs` 393；`regen-all` **17/17 in sync**。
 - 四门禁：`PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
 - 干净全量 T1：**`TOTAL 761 PASS 761 FAIL 0 (suites 653 · probes 108)`**（`/d/_tmp/t1-r700-run210.log`）。
+
+### §312 RUN 211 — 一个名字说反了事实，两个相同的估计值被写成分歧（第 48 次真机 run 48 / `FEEDBACK47`）
+
+#### 312.1 现场
+
+第 48 次真机（`run 48`，基线 `26f3129e`，工作区 `D:/_tmp/slv-phase5/slvp177-ws`）走完了主线并产出结题 PDF：`Paper/paper-paper-oddsum-48/paper-paper-oddsum-48.pdf` = **58 202 B**，`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`，`DRIVE exit=0`，`cleanup: clone_gone=True port_listening=False C_free_GB=8.61`。报告：`SIM-REPORT47.md` 28 063 B、`FEEDBACK47.md` 12 208 B、`PROGRESS-RUN47.md` 3 421 B。
+
+`FEEDBACK47` 的五条不是「功能没触发」，而是**读数说错了它自己的事实**：
+
+1. **1.1 `sources.typedRulings` 名不副实**：这个数数的是成员自己交的**耐久裁决卡**（tally 记成 `submitted`），主席代填那次显示 `0`。而 `p1CannotBackMeans` 让读者「先读 `p1RulingReading`」——两句并读，得出的结论与事实相反。
+2. **1.2 两个 0.6 被写成分歧**：`rec-26` 两名成员都估 `0.6`，回执照旧模板说「最终裁决**未全部一致**（依次为 r-1=0.6、r-2=0.6）…**没有任何成员主张这个数值**」。两句同时为假：数值相同、两人都主张 0.6。真事实只是「0.6 不是布尔概率 0/1，所以没有裁定」。
+3. **1.3 同一种 `agenda` 一场接受一场拒**：`m1` 传数组 + `formal_agenda:true` 被拼成 `a; b; c`；`m2` 传同样的数组（没有该旗标）被拒成「你传了 JSON TEXT」——因为工具 schema 把 `agenda` 声明为字符串，数组到达这个面时已经是它的 JSON 文本。**形状是否合法取决于一个无关的布尔旗标**。
+4. **1.4 `ok:true` 与 `exists:false` 并排**：`pointerCheck.ok` 从第一天起回答的就是「形状合法且在库根内」（文件不存在也为真），但读者把它读成「已解析」，与同一份回执里 `pointerCheckMeans` 的「NOT resolved」互相矛盾。
+5. **1.5 动议 id 只在会内唯一**：`m1` 与 `m2` 的第一条动议都叫 `mo1`，`ballot { target: "mo1" }` 不带会 id 就有歧义。
+
+另有四条「提醒来得太晚」：`value` 是文本字段（`cardFields.value` 回读是字符串 `"20"`）；论文 `body` 的引用闸**出现即命**（删掉才行，换写法并加括注仍被拒）；`institution` 在这个面**永远不写**（首次 hire 也一样）；`officeConsult` 的门在 `final` 才落，主线没有预告。以及 `counted:false` 被读成「关会失败」。
+
+#### 312.2 修法（10 处）
+
+| # | 位置 | 修法 |
+| --- | --- | --- |
+| 1.1 | `vibe-math-vmu/packs/v5r/tools.js` `rulingNameResolution` | `sources` 增加 `submittedRulings`（诚实名，保留 `typedRulings` 旧别名）；新增 `sourcesMeans`（说明 submittedRulings = 成员交的耐久裁决卡 = tally 的 `submitted`；主席代填看 tally 的 `sources.typed`/`attribution[].source`）与 `typedRulingsMeans` |
+| 1.2 | `vibe-math-vmu/kernel/meetingverdict.js` `aggregateVerdicts` / `rulePropositionProbability` | 新增 `agreed`（所有 p 相同）与 `anyAsserted`（真有成员给出这个值）；`note` 分三支（decided / agreed-but-not-boolean / disagree）；`caveat` 分两支（一致 ⇒ 「数值没有分歧，缺的是 0/1」；分歧 ⇒ 原句 + 由 `anyAsserted` 决定「其中一位确实给了」/「没有任何成员主张」）；`DEFAULT_RULING_TEMPLATE.mean` 改写为「…依次为 {list}（没有一致为 0 或 1），依规则取平均值…」 |
+| 1.3 | 同 `packs/v5r/tools.js` 会议 `agenda` | `parsedBlob` 是 **JSON 数组**时按非空字符串逐条 `; ` 拼接（与数组分支同一语义）；数组里没有非空字符串则具名拒；**JSON 对象**仍拒，并在 hint 写明「序列化数组会被读成议程行」 |
+| 1.4 | `vibe-math-vmu/kernel/library.js` + 卡回执 | 原 `resolvePointer` 改名 `_resolvePointerShape(pointer)`，新 `resolvePointer(pointer)` 包一层加 `wellFormed`/`resolved`/`fieldMeans`；卡回执的 `proofStateEvidence` 增加 `pointerCheckWellFormed`/`pointerCheckResolved`/`pointerCheckFieldsMeans` |
+| 1.5 | 同 `packs/v5r/tools.js` `vibe_v5_motion` | 回执加 `motionQualified: '<meeting>/<motion>'` 与 `motionIdMeans`（id 只在会内唯一） |
+| 2.1 | 三处 `value` 形参声明 | `description` 写明「以卡体 TEXT 行存取、回读是字符串、打印层裸数字只是打印差异、不是 `p`」 |
+| 2.2 | `vibe_v5_paper` 的 `body` 说明 | 追加「这道闸是**出现即命**：正文任何位置（含括注、注释、解释性的一句话）出现该形状路径都会被解析；要把文件卡路径从正文里**删掉**，不是换成记录 id 后再提一次」 |
+| 2.3 | `vibe_v5_hire` 的 tool description | 前移「`institution` **NEVER written on this face** — the FIRST hire also answers `institutionIgnored:true`」 |
+| 2.4 | `vibe-math-vmu/tools/meeting.js` 关会回执 | 增加 `closureVoteHadVotes`（与 `counted` 同值）：一个读起来像「有没有票」的名字，而不是一个读起来像「关会成没成」的名字 |
+| 2.5 | `vibe-math-vmu/kit/paper.js` 新增 `consultPrediction(state)` | policy 非 required ⇒ `officeConsultPending:false` + 「finalization will NOT wait」；已答复 ⇒ false + `officeConsultAnsweredBy`/`officeConsultRequestId`；否则 true + means 点名 `vibe_v5_paper { action:"consult", target:"…", member:"<office id>", answer:"…" }` 并明说「不要为此翻设置」。展开进 `writing→reviewing` 与 `reviewing→awaiting-editor` 两处 advance 回执 |
+
+#### 312.3 机器化
+
+新增 `tests/vmu-run211-feedback47.test.mjs`（9 节，**1 套件绿**）：
+- §0 源码 pin（`submittedRulings`/`sourcesMeans`/`typedRulingsMeans`/`const agreed = …`/`anyAsserted: asserted`/`the numbers agree`/`数值没有分歧`/`依次为 {list}（没有一致为 0 或 1）`/`keptBlob`/`a serialized ARRAY of strings IS read as a list of lines`/`_resolvePointerShape`/`fieldMeans`/`pointerCheckWellFormed`/`pointerCheckResolved`/`motionQualified`/`closureVoteHadVotes`/`value is stored as the card body`/`出现即命`/`NEVER written on this face`/`officeConsultPending`/`finalization will NOT wait`）。
+- §1 真装配：两席都 0.6 ⇒ `agreed:true`、`anyAsserted:true`、`decided:false`、`note` 含 `the numbers agree`，`rulePropositionProbability` 的 `notice.text` 含「数值没有分歧」「不是布尔概率 0/1」且**不含**「未全部一致」；0.2/0.8 ⇒ `agreed:false`、`anyAsserted:false`、文本含「没有任何成员主张这个数值」且不含「数值没有分歧」。
+- §2 `resolvePointer('Members/r-1/Propos/nope.md')` ⇒ `ok:true`、`wellFormed:true`、`resolved:false`、`exists:false`；真写一个文件后 ⇒ 两者都 true。
+- §3 `agenda: JSON.stringify(['确认命题','分配辩论'])` ⇒ `ok:true` 且 `agenda` 为 `确认命题; 分配辩论`；`JSON.stringify({a:1})` ⇒ 具名拒且 hint 教合法形状。
+- §4 悬空 `proof_ref` 卡 ⇒ `proofStateEvidence.pointerCheckWellFormed:true`、`pointerCheckResolved:false`。
+- §5 把 `vmu.paper.officeConsult` 设成 `required` 后 `advance` ⇒ `officeConsultPending:true`、means 含 `WILL open a consult question`、`action:"consult"`、`do NOT flip the setting`。
+- §6 动议回执 ⇒ `motionQualified === meeting + '/' + motion`，means 含 `unique INSIDE its meeting`。
+- §7 空票关会 ⇒ `closureVoteHadVotes:false` 且 `counted === closureVoteHadVotes`。
+
+#### 312.4 装载事实（写测试前必须知道）
+
+- `vibe_v5_set` 的参数是 `{ key, value, why }`（不是「键名当参数名」）：写成 `{ 'vmu.paper.officeConsult': 'required' }` 会被 `VMU_INVALID_ARGUMENT` 拒，并列出它声明的 `key/value/why/reason`。
+- `vibe_v5_motion` 必填 `kind`（`topic|procedural|resolution`）+ `text`；缺 `kind` 的拒绝是 `VMU_INVALID_ARGUMENT`「motion needs a kind」。
+- 卡回执的新指针字段在 **`proofStateEvidence`** 里（`pointerCheck`、`pointerCheckWellFormed`、`pointerCheckResolved`），不在顶层。
+- `vibe_v5_meeting` 回执的会议 id 在 `meeting` 字段；关会走 `vibe_vmu_meeting { action:"close", id, actor }`。
+
+#### 312.5 未闭合
+
+- 1.1 的**根**仍在：主席代填的票仍然落不成 p=1 闸能读到的账（RUN 210 只做到了「回执预告会被拒」）——这是 run 46 起就一直挂着的唯一走不通支路。
+- 2.5 的 `vibe_v5_verdict` 仍同时有 `target` 与 `proposition_id` 两个名字。
+- RUN 211 的十条修法尚未真机复验（第 49 次真机待跑）。
+
+#### 312.6 教训
+
+1. **一个数字的名字，读者会当成它的事实**：`typedRulings` 数的是别人交的卡，`counted:false` 读起来像「失败」，`ok:true` 读起来像「成功解析」。改名比加注便宜，也更容易被读到。
+2. **两句相反的话可以同时出自一个模板**：「未全部一致」与「没有任何成员主张」在 0.6/0.6 时同时为假——模板必须先算清事实（`agreed`/`anyAsserted`），再挑句子。
+3. **同一种形状的判断不该藏在无关的旗标后面**：`agenda` 传数组是否合法取决于有没有 `formal_agenda`。形状语义应当只看形状本身。
+
+#### 312.7 收口链与全量 T1
+
+- 定向回归：`vmu-` 全族 **546 passed / 3 failed**，三点全在 `tests/vmu-run206-feedback43.test.mjs` §4c——它 pin 的是 RUN 206 那句 hint 的后半句（「a serialized object or array is not a purpose」），而 RUN 211 已经把数组那半句**故意**改了（数组现在被读成议程行）。判定：这是契约变更，pin 随契约更新，改成 pin 对象那半句 + 注释说明数组那半句为何变了。修后 `vmu-run206` 1/0。
+- 生成物：`JOBS total=762 suites=654 probes=108`（新增一套件）；`regen-all` 17/17 in sync。
+- 四门禁：`PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+- **第一次全量 T1 在 404/762 行判红**：`tests/audit-vmu-docs.test.mjs` 报 `FAIL vmu.library: the module does not expose methods the contract omits [_resolvePointerShape]`，`audit-vmu-docs.mutants.mjs` 随之 `the unmutated copy is GREEN` 也红。根因是本节 312.2 的修法 1.4 把形状解析器加成了 `library` 服务对象上的 `_resolvePointerShape` 键——而 `publicKeys()` 读的是**源码里最大的那个对象字面量**，于是私有助手读起来就是「一个没有文档的公开方法」。D16 提示（`vmu.store`）此前只是「提示」，这条在 `resolvePointer` 的契约行上则是**断言**；不是提示误报，是修法越界。修法：把这个键从对象字面量里拿掉，
+  改写成模块内的 `function resolvePointerShape(pointer)`（放在 `return {` 之前），`resolvePointer` 变成薄包装（`const out = resolvePointerShape(pointer)`）；`tests/vmu-run211-feedback47.test.mjs` §0k 的 pin 从方法形态改成「私有实现在 + 公开方法是薄包装」两条。修后 `audit-vmu-docs` 103/0，`regen-all` 回到 17/17 in sync。
+- **干净全量 T1（第二次，`/d/_tmp/t1-r820-run211c.log`）**：`TOTAL 762  PASS 762  FAIL 0  (suites 654 · probes 108)`。
+- 教训补充（并入 312.6 的同类）：**「契约审计读的是源码形状，不是你的意图」**——在服务对象上加一个 `_` 前缀的助手，在任何读者眼里都是公开方法；私有代码要放到对象字面量之外。更一般地：凡是「审计脚本按文本形状判断」的地方，修法的作用域必须同时满足「行为对」与「形状对」，否则红灯出现在最不相干的套件里（这次是文档审计，而不是 RUN 211 的任何行为断言）。

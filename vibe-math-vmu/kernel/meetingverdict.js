@@ -192,6 +192,13 @@ export function aggregateVerdicts({ verdicts, propositionId = null, at = null } 
   const rounded = roundTo(exact, VERDICT_PRECISION)
   const value = mode === 'unanimous' ? exact : rounded
   const decided = mode === 'unanimous'
+  // ★★★ RUN 211 (run 48 / FEEDBACK47 1.2, MEASURED): two members both said 0.6 and the notice read "the final rulings
+  // were NOT all unanimous (r-1=0.6, r-2=0.6) … no member asserted the proposition at that probability". Both sentences
+  // were false in the same breath: the numbers AGREED, and both members did assert 0.6. What is true is narrower — 0.6
+  // is not a boolean probability 0/1, so it cannot settle the card (`decided:false`), and the value written is the mean of
+  // an agreeing set. `agreed` and `asserted` are the two facts the sentences need.
+  const agreed = ps.length > 0 && ps.every((p) => p === ps[0])
+  const asserted = ps.some((p) => roundTo(p, VERDICT_PRECISION) === value)
   return {
     ok: true,
     mode,
@@ -204,6 +211,8 @@ export function aggregateVerdicts({ verdicts, propositionId = null, at = null } 
     precision: VERDICT_PRECISION,
     valueSource: value === exact ? 'exact' : 'rounded',
     decided,
+    agreed,
+    anyAsserted: asserted,
     enforceable: decided,
     estimate: !decided,
     n: rows.length,
@@ -213,9 +222,11 @@ export function aggregateVerdicts({ verdicts, propositionId = null, at = null } 
     keys: [],
     note: decided
       ? 'every member gave the same ' + String(value) + ', so the ruling IS that value (unanimous; ' + rows.length + ' member(s))'
-      : 'the members did not agree (' + ps.map(String).join(', ') + '), so the ruling is the ARITHMETIC MEAN ' + String(value) +
-        (value === exact ? '' : ' (exact ' + String(exact) + ', written to ' + VERDICT_PRECISION + ' places)') +
-        ' — an ESTIMATE, not a decision: no member asserted the proposition at that probability',
+      : (agreed
+        ? 'every member gave the SAME value ' + String(value) + ' — the numbers agree, but ' + String(value) + ' is not a boolean probability 0/1, so this is an ESTIMATE (decided:false), not a decision: settle the card by having the members agree on 0 or 1'
+        : 'the members did not agree (' + ps.map(String).join(', ') + '), so the ruling is the ARITHMETIC MEAN ' + String(value) +
+          (value === exact ? '' : ' (exact ' + String(exact) + ', written to ' + VERDICT_PRECISION + ' places)') +
+          ' — an ESTIMATE, not a decision: ' + (asserted ? 'one member did name that value, but no single boolean probability was decided' : 'no member asserted the proposition at that probability')),
   }
 }
 
@@ -230,7 +241,10 @@ export function aggregateVerdicts({ verdicts, propositionId = null, at = null } 
  */
 export const DEFAULT_RULING_TEMPLATE = {
   unanimous: '由于参与辩论的 {n} 名成员给出的最终裁决全部一致（布尔概率 {value}），命题 {proposition} 的最终布尔概率裁定为 {value}，故请把相应命题卡的布尔概率改为 {value}。',
-  mean: '由于参与辩论的 {n} 名成员给出的最终裁决未全部一致（依次为 {list}），依规则取平均值后命题 {proposition} 的最终布尔概率裁定为 {value}，故请把相应命题卡的布尔概率改为 {value}。{caveat}',
+  // ★ RUN 211 (run 48 / FEEDBACK47 1.2): the default sentence said the rulings were NOT all unanimous even when the
+  // members gave the SAME estimate (both 0.6) — an agreeing set described as a disagreement. It now states the two facts
+  // it can actually see (the value each member gave, and that no boolean 0/1 was agreed) and leaves the caveat to say more.
+  mean: '由于参与辩论的 {n} 名成员给出的最终裁决依次为 {list}（没有一致为 0 或 1），依规则取平均值后命题 {proposition} 的最终布尔概率裁定为 {value}，故请把相应命题卡的布尔概率改为 {value}。{caveat}',
 }
 
 /** The facts a template may name, and — for a caller — the full list rather than a guess. */
@@ -286,8 +300,12 @@ export function rulePropositionProbability({ verdicts, propositionId, owner, fro
     list: agg.perMember.map((r) => r.member + '=' + String(r.p)).join('、'),
     reasons: agg.perMember.map((r) => r.member + ': ' + r.reason).join('；'),
     // R8: empty when the ruling IS the decision; otherwise it says in words what `decided:false` says in JSON.
+    // ★ RUN 211: the old sentence claimed BOTH "the judgements were different" and "nobody asserted this value", so an
+    // agreeing set of estimates (both 0.6) was described as a disagreement nobody held. Two facts, two sentences.
     caveat: agg.decided ? ''
-      : '★ 注意：这不是全体一致的裁定，而是由各自不同的判断取出的均值（decided:false／estimate:true）——没有任何成员主张这个数值。改卡前请让成员对同一个布尔概率达成一致。',
+      : (agg.agreed
+        ? '★ 注意：' + String(agg.n) + ' 名成员给出的估计值完全相同（均为 ' + String(agg.value) + '），但 ' + String(agg.value) + ' 不是布尔概率 0/1，所以这不进「一致裁定」（decided:false／estimate:true）——数值没有分歧，缺的是 0 或 1 这个取值；改卡前请让成员对 0 或 1 达成一致。'
+        : '★ 注意：这不是全体一致的裁定，而是由各自不同的判断取出的均值（decided:false／estimate:true）' + (agg.anyAsserted ? '——其中一位成员确实给了这个数值。' : '——没有任何成员主张这个数值。') + '改判前请让成员对同一个布尔概率达成一致。'),
   }
   const chosen = template === null || template === undefined ? DEFAULT_RULING_TEMPLATE[agg.mode] : template
   if (typeof chosen !== 'string' || chosen.trim() === '') {

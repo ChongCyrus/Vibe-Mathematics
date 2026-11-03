@@ -3465,3 +3465,17 @@ RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一
 - **其它三条**：`correction.ballotIdMeans` 说清那个槽是 `tally-…` 聚合名、不是会议票箱 id；`proof_state:"complete"` 但指针解析不到 ⇒ 声明照记、**延迟 L14 锁**（`proofLockDeferred`），让悬空指针仍可修（第一版改成 draft，打红 8 套——它同时改了辩论闸判据）；`status.reachableMoves` 的 `review{decision}` 改成 `review{deliverable}`。
 - **提示面**：主线节「三席逐字一致」→「在册各席逐字一致（按 chair/member/temp 三类）」（RUN 209 写的「按席不同」被读成人人不同）；hire 的 `institution` 改成「NEVER written on this face」；`part` 正文指针规则进 `vibe_v5_paper` description；`final` 的咨询 hint 删掉「或把 officeConsult 设成 off」这条反向出路。
 - **机器化**：`tests/vmu-run210-feedback46.test.mjs` 1/0（五节真装配）；`vmu-run152`/`vmu-run153` 的锁断言补上「先把证明文件放进库根」；`vmu-run208` 的 institution pin 随之更新。
+
+## ROUND 216（RUN 211：一个名字说反了事实，两个相同的估计值被写成分歧）
+
+第 48 次真机（`run 48`，基线 `26f3129e`）走完主线并结题（`paper-paper-oddsum-48.pdf` 58 202 B）。`FEEDBACK47` 抓的五条都是**读数错**，不是功能没触发：
+
+1. `p1RulingReading.sources.typedRulings` 数的是成员交的**耐久裁决卡**（tally 的 `submitted`），不是主席代填的数字——与 `p1CannotBackMeans` 并读会得出相反结论。现在 `submittedRulings` 是诚实名、`typedRulings` 是旧别名，并各带一句 `sourcesMeans`/`typedRulingsMeans`。
+2. 两席都估 0.6，回执却写「未全部一致…没有任何成员主张这个数值」——两句同假。`aggregateVerdicts` 现在先算 `agreed`/`anyAsserted`，`note` 三支、`caveat` 两支，模板改成「依次为 {list}（没有一致为 0 或 1）」。
+3. 同一 `agenda` 数组因 `formal_agenda` 旗标在下一场被拒：JSON 数组现在按议程行读（`a; b`），只有序列化**对象**才算 blob。
+4. `pointerCheck.ok:true` 与 `exists:false` 并排被读成「已解析」：库面新增 `wellFormed`/`resolved` 两个名字，卡回执两个都印。
+5. 动议 id 只在会内唯一（`mo1` 出现过两次）：回执印 `motionQualified: '<meeting>/<motion>'`。
+
+另前移四条「早该说」：`value` 是文本字段；论文 `body` 的引用闸**出现即命**（要删不要换）；`institution` 在这个面**永不写**（首次 hire 也一样）；`officeConsult` 的门在 `final` 才落——`advance` 现在预测它（`officeConsultPending` + 点名 `consult` 调用 + 劝「不要翻设置」）。`counted:false` 也补了同值的自解释别名 `closureVoteHadVotes`。
+
+机器化：`tests/vmu-run211-feedback47.test.mjs` 9 节，`vmu-` 全族回归 546/3（三点全在 `vmu-run206` 的旧 hint pin 上，属契约变更）修后全绿。教训：**一个数字的名字会被当成它的事实**；**相反的两句可以同时出自一个模板**；**形状判断不该藏在无关旗标后面**。

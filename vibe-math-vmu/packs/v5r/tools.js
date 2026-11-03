@@ -1487,8 +1487,18 @@ async function rulingNameResolution(kernel, debate, context = {}) {
   return { ok: true, kind: 'meeting', ref, exists: true, quorum, state: read.state === undefined ? null : String(read.state),
     motions: motions.length, motionsSeconded: decidedMotions.length, motionsCarried: carried.length, votes: counted + cardVotes,
     motionsVotes: counted, rulingVotes: cardVotes,
-    sources: rulingCards === null ? { motions: counted, typedRulings: 0 } : { motions: counted, typedRulings: cardVotes, proposition: rulingCards.proposition },
+    sources: rulingCards === null
+      ? { motions: counted, submittedRulings: 0, typedRulings: 0 }
+      : { motions: counted, submittedRulings: cardVotes, typedRulings: cardVotes, proposition: rulingCards.proposition },
+    // ★★★ RUN 211 (run 48 / FEEDBACK47 1.1, MEASURED): `sources.typedRulings` counted the DURABLE ruling CARDS the
+    // members filed — the same rows the tally calls `submitted` — while a chair-typed tally printed 0 there. Read beside
+    // `p1CannotBackMeans` ("read p1RulingReading first") the name said the OPPOSITE of the fact: m1 (two members filed)
+    // looked chair-typed and m2 (chair typed both) looked like nobody had ruled. The count is right; only its NAME was
+    // wrong. `submittedRulings` is the honest name, `typedRulings` stays as the old alias for readers that pinned it, and
+    // `sourcesMeans` says which is which instead of leaving the reader to guess.
+    sourcesMeans: 'sources.submittedRulings counts the DURABLE ruling cards the members filed with vibe_v5_verdict — the same rows the tally reports as `submitted`. sources.typedRulings is the OLD NAME for that same count (kept so older readers keep working) and it does NOT count numbers the chair typed: for those read the tally\'s own `sources.typed` / `attribution[].source`. sources.motions counts procedure votes (motions/seconded/voted), which is a different record.',
     typedRulings: rulingCards === null ? null : { proposition: rulingCards.proposition, count: rulingCards.count, duplicates: rulingCards.duplicates },
+    typedRulingsMeans: 'these are the durable ruling CARDS read for this (meeting, proposition) — what the tally calls `submitted`. An empty/null value here does NOT mean nobody ruled: a chair-typed tally has no cards at all, and the tally receipt already says so in `attribution`',
     unanimous: unanimousTallies.length > 0 || cardUnanimous,
     unanimousCarried: unanimousCarried.length > 0 || cardUnanimous,
     settled: read.state === 'closed', voted: counted > 0 || cardVotes > 0,
@@ -2099,6 +2109,13 @@ function gatedCardHandler(toolName) {
         : null
       if (refHere !== '') return { kind: 'proof-ref', measured: false, ref: refHere,
         pointerCheck,
+        // ★★★ RUN 211 (run 48 / FEEDBACK47 1.4, MEASURED): the receipt printed `pointerCheck.ok:true` beside
+        // `exists:false, reason:"missing"` and the reader took the first field as "resolved". `ok` answers the SHAPE
+        // question (well formed + inside the library) and always did; the two facts are now printed under their own
+        // names so nobody has to know that.
+        pointerCheckWellFormed: pointerCheck === null ? null : pointerCheck.wellFormed === true,
+        pointerCheckResolved: pointerCheck === null ? null : pointerCheck.resolved === true,
+        pointerCheckFieldsMeans: 'pointerCheck.ok / pointerCheckWellFormed answer "is this pointer WELL FORMED and inside the library root" (true even when the file is missing); pointerCheck.resolved / pointerCheck.exists answer "does the named file exist and is it a regular file". Both are printed because they are different questions',
         pointerCheckMeans: pointerCheck === null
           ? 'this kernel exposes no library pointer resolver, so the receipt can only hand the pointer back'
           : (pointerCheck.exists === true
@@ -2783,7 +2800,7 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     p1CannotBackMeans: p1CannotBack === null
       ? null
       : 'copying `correction.call` back WILL BE REFUSED as ' + p1CannotBack.code + ': this tally is not a counted decision on ' + String(meeting) + ' (typedRulings ' + String(p1CannotBack.typed) + ', member-submitted ' + String(p1CannotBack.submitted) + ') — the fix is not to retry the write: have each debater file their OWN ruling card (`vibe_v5_verdict { meeting, proposition_id, verdict, reason }` per member) and take the ruling again, or settle the motion by seconding and voting it in the meeting',
-    p1RulingReadingMeans: 'this is the SAME reading the p=1 write will take when you copy `correction.call` back (its debate_ruling names this meeting): sources.motions + sources.typedRulings say what the gate will count, voted says whether it will find a counted decision, and means names it in words. It PREDICTS a read, it does not decide the card — so "my p=1 write will be refused for having no counted votes" is answerable here instead of by trying and being refused',
+    p1RulingReadingMeans: 'this is the SAME reading the p=1 write will take when you copy `correction.call` back (its debate_ruling names this meeting): sources.motions + sources.submittedRulings (the durable ruling cards; `typedRulings` is the old name for the same count) say what the gate will count, voted says whether it will find a counted decision, and means names it in words. It PREDICTS a read, it does not decide the card — so "my p=1 write will be refused for having no counted votes" is answerable here instead of by trying and being refused',
     // ★ RUN 158 (N3): rule L53 takes the ruling AFTER the debate ends, and a closed meeting lives in the archive. The
     // receipt names that state so a reader can tell a ruling taken mid-debate from the rule's own order of events.
     meetingArchived,
@@ -3600,9 +3617,25 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
       let parsedBlob = null
       try { parsedBlob = JSON.parse(trimmed) } catch (e) { parsedBlob = null }
       if (parsedBlob !== null && typeof parsedBlob === 'object') {
-        throw refuse('VMU_INVALID_ARGUMENT',
-          'meeting needs an agenda as a PURPOSE, and you passed its JSON TEXT (' + trimmed.slice(0, 80) + '…) — storing that would make the minutes recite a blob instead of a reason',
-          'pass agenda as one sentence of text (e.g. agenda:"判断偶数之和是否仍为偶数"), and put structured detail in `subject`/`title`; a serialized object or array is not a purpose')
+        // ★★★ RUN 211 (run 48 / FEEDBACK47 1.3, MEASURED): the same ARRAY agenda was accepted in one meeting (because
+        // `formal_agenda:true` routed it through the array branch) and refused in the next, because the tool schema
+        // declares `agenda` as a STRING and the caller's array reached this face as its JSON TEXT. Whether an agenda
+        // shape is legal depended on an UNRELATED boolean flag. A serialized JSON ARRAY of non-empty strings is now read
+        // as a list of agenda lines (same join as the array branch) — the shape means the same thing whichever door the
+        // argument came through. A serialized OBJECT is still refused: it is a blob, not a purpose.
+        if (Array.isArray(parsedBlob)) {
+          const keptBlob = parsedBlob.filter((x) => typeof x === 'string' && x.trim() !== '')
+          if (keptBlob.length === 0) {
+            throw refuse('VMU_INVALID_ARGUMENT',
+              'meeting needs an agenda as TEXT, and the JSON array you passed holds no non-empty string (' + String(parsedBlob.length) + ' item(s))',
+              'pass agenda:"what this meeting is for", or a JSON array / array holding at least one non-empty string — every item must be TEXT (a nested object is not an agenda line)')
+          }
+          agendaText = keptBlob.map((x) => x.trim()).join('; ')
+        } else {
+          throw refuse('VMU_INVALID_ARGUMENT',
+            'meeting needs an agenda as a PURPOSE, and you passed its JSON TEXT (' + trimmed.slice(0, 80) + '…) — storing that would make the minutes recite a blob instead of a reason',
+            'pass agenda as one sentence of text (e.g. agenda:"判断偶数之和是否仍为偶数"), and put structured detail in `subject`/`title`; a serialized object is not a purpose (a serialized ARRAY of strings IS read as a list of lines)')
+        }
       }
     }
   }
@@ -4134,6 +4167,11 @@ function toolMotion(args = {}, { kernel } = {}) {
     ? kernel.meetings.meetingView({ meeting: str(args.meeting) }) : null
   const row = view && Array.isArray(view.motions) ? view.motions.filter((x) => String(x.id) === String(motionId))[0] : null
   return { ok: true, tool: 'vibe_v5_motion', meeting: str(args.meeting), motion: motionId, kind: str(args.kind), text: str(args.text),
+    // ★★★ RUN 211 (run 48 / FEEDBACK47 1.5, MEASURED): motion ids are minted per MEETING (`mo1` in m1 and `mo1` in m2),
+    // so a bare `mo1` in a log names two rows. The id itself is the kernel's and is not rewritten here; the qualified
+    // spelling travels beside it, and the sentence says which one is unique.
+    motionQualified: str(args.meeting) + '/' + String(motionId),
+    motionIdMeans: 'the motion id is unique INSIDE its meeting only — the same string is minted again in another meeting, so carry `meeting` with it (motionQualified prints the pair)',
     status: (made && made.status) || (row && row.status) || null,
     note: 'a new motion starts `proposed` and needs a SECOND (vibe_v5_second) before it can be voted — the kernel models that window' }
 }
@@ -5705,19 +5743,19 @@ export const V5R_PACK_TOOLS = Object.freeze([
       + '★ 进度 (PROGRESS) IS A CARD FIELD: pass `progress:"<where the work stands>"` (e.g. "证明写到第 3 步，缺引理 L") and it is kept as its own labelled line `- 进度：…` inside the card body — it survives into the durable row and every read face — and the receipt echoes it back with `progressMeans`. The rule L14 names 进度 as one of the card records, so it is not a passing remark. '
       + '★ p must be a NUMBER IN [0,1]: an out-of-range value (e.g. p:1.5) is refused by name and the card is NOT written.'
       + ' ★ 代记（REGISTRAR DUTY）：研究所的正式记录本由**所办**登记。收完一位成员的回执后，用本工具并传 `member:"<该成员id>"` 把该成员声明的卡片登记进去——`member` 就是卡的作者（owner），**必须是该成员而不是你自己**；否则持有者会变成所办，后续通知/认领都会指错人。',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, literature_ref: { type: 'string' }, progress: { type: 'string' }, track: { type: 'string' }, payload: { type: 'object' }, debate_ruling: { type: 'object' }, member: { type: 'string' } },
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true, description: 'value is stored as the card body\'s TEXT line (`- value：…`) — a number you pass is written as its decimal text and read back as a STRING (`cardFields.value`); it is NOT a numeric field and it is NOT the probability (that is `p`). The ruling receipt prints a fully numeric value as a bare number and a non-numeric one as a quoted JSON string, which is a PRINTING difference, not a storage one' }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, literature_ref: { type: 'string' }, progress: { type: 'string' }, track: { type: 'string' }, payload: { type: 'object' }, debate_ruling: { type: 'object' }, member: { type: 'string' } },
     handler: gatedCardHandler('vibe_v5_record_proposition'),
   },
   {
     name: 'vibe_v5_record_method',
     description: 'Record a theory/method/tool card in your library. REQUIRES content, value, motive and p. ★ p must be in [0,1] (an out-of-range p is refused by name and the card is NOT written). ★ 进度 (PROGRESS) IS A CARD FIELD: an optional `progress` is kept as its own labelled line `- 进度：…` inside the card body and echoed in the receipt with `progressMeans`. ★ `proof_state:"complete"` needs evidence (`proof_ref` on a finished proof, or a `lean_job` of a settled PASSED run; `lean_conformance` alone is a claim, not evidence) and LOCKS the card id afterwards.',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, content: { type: 'string', required: true }, notation: { type: 'string' }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, progress: { type: 'string' }, member: { type: 'string' } },
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, content: { type: 'string', required: true }, notation: { type: 'string' }, value: { type: 'number', required: true, description: 'value is stored as the card body\'s TEXT line (`- value：…`) — a number you pass is written as its decimal text and read back as a STRING (`cardFields.value`); it is NOT a numeric field and it is NOT the probability (that is `p`). The ruling receipt prints a fully numeric value as a bare number and a non-numeric one as a quoted JSON string, which is a PRINTING difference, not a storage one' }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, progress: { type: 'string' }, member: { type: 'string' } },
     handler: gatedCardHandler('vibe_v5_record_method'),
   },
   {
     name: 'vibe_v5_record_subproblem',
     description: 'Record a sub-problem card in your library. REQUIRES statement, value, motive and p. ★ p must be in [0,1] (an out-of-range p is refused by name and the card is NOT written). ★ 进度 (PROGRESS) IS A CARD FIELD: an optional `progress` is kept as its own labelled line `- 进度：…` inside the card body and echoed in the receipt with `progressMeans`. ★ `proof_state:"complete"` needs evidence (`proof_ref` on a finished proof, or a `lean_job` of a settled PASSED run; `lean_conformance` alone is a claim, not evidence) and LOCKS the card id afterwards.',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, progress: { type: 'string' }, member: { type: 'string' } },
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true, description: 'value is stored as the card body\'s TEXT line (`- value：…`) — a number you pass is written as its decimal text and read back as a STRING (`cardFields.value`); it is NOT a numeric field and it is NOT the probability (that is `p`). The ruling receipt prints a fully numeric value as a bare number and a non-numeric one as a quoted JSON string, which is a PRINTING difference, not a storage one' }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, track: { type: 'string' }, payload: { type: 'object' }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, progress: { type: 'string' }, member: { type: 'string' } },
     handler: gatedCardHandler('vibe_v5_record_subproblem'),
   },
   {
@@ -5775,7 +5813,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_hire',
-    description: 'Hire one temp worker into the temp seat and open their initial task. Requires purpose, initial_task and to (the new member id — this pack never invents an id). The SLOT is explicit (default "temp"); any other slot is refused by name and points at the founding face.'
+    description: 'Hire one temp worker into the temp seat and open their initial task. Requires purpose, initial_task and to (the new member id — this pack never invents an id). The SLOT is explicit (default "temp"); any other slot is refused by name and points at the founding face. ★ `institution` is NEVER written on this face — the FIRST hire also answers institutionIgnored:true, because a hire goes INTO the institute that already exists; founding one is the control face, and that is the only call that reads `institution`. A second hire of an occupied seat is refused by name, not silently re-slotted (RUN 211 / FEEDBACK47 2.3).'
     , parameters: { purpose: { type: 'string', required: true }, initial_task: { type: 'string', required: true }, to: { type: 'string', required: true }, slot: { type: 'string' }, direction: { type: 'string' }, term: { type: 'string' }, institution: { type: 'string' } },
     handler: toolHire,
   },
@@ -6044,7 +6082,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
       member: { type: 'string', description: 'part/review/final：动作发起者的名册 id（由内核校验其参与资格/席位）；consult：答复人（所办，必须匹配 pack 声明的答复角色）' },
       by: { type: 'string', description: 'consult：member 的别名（谁在答复）' },
       part: { type: 'string', description: 'part：你这一份的标题；review：被审对象（of 的别名）' },
-      body: { type: 'string', description: 'part：正文；final：结论别名。★ 正文里的 `Members/<成员>/<kind>/<x>.md` 指针按【记录 id】解析（不是文件名）：引用文件卡请写记录 id，或把它放进 evidence；与 `proof_ref` 的区别是——`proof_ref` 指「证明正文在哪」，可以指文件；正文里的指针必须是记录库里真有的那一行（RUN 209 / FEEDBACK45 2.3）' },
+      body: { type: 'string', description: 'part：正文；final：结论别名。★ 正文里的 `Members/<成员>/<kind>/<x>.md` 指针按【记录 id】解析（不是文件名）：引用文件卡请写记录 id，或把它放进 evidence；与 `proof_ref` 的区别是——`proof_ref` 指「证明正文在哪」，可以指文件；正文里的指针必须是记录库里真有的那一行（RUN 209 / FEEDBACK45 2.3）。★★ RUN 211（run 48 / FEEDBACK47 2.2 实测）：这道闸是「出现即命」——**正文任何位置**（含括注、注释、解释性的一句话）出现该形状的路径都会被解析并在解析不到时被拒，所以要把文件卡路径从正文里**删掉**，不是换成记录 id 后在括号里再提一次' },
       solution: { type: 'string' }, methods: { type: 'string' }, rules: { type: 'string' }, limits: { type: 'string' },
       evidence: { type: 'array', description: 'part：证据指针列表' },
       deliverable: { type: 'boolean', description: 'review：true/false（未表态不交付）' },

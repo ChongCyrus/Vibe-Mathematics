@@ -323,24 +323,9 @@ export function createLibrary({
     return out
   }
 
-  return {
-    get root() { return root },
-
-    /**
-     * ★★ RUN 200 (run 39 / FEEDBACK38 1.1, MEASURED): resolve a POINTER the way a card's `proofRef` is written.
-     *
-     * Run 39 pointed a proposition at `Members/r-acad/Propos/p-1.md#证明（已写完）` while writing that file into the
-     * SESSION WORKING DIRECTORY instead of the library root; every receipt said the pointer was fine, the card locked
-     * (rule L14), and `read_library` then answered `libraryCardCount:0` for a file the author could see in its own
-     * `ls`. The missing capability was here: the kernel owns the library root and the filesystem, so it is the only
-     * layer that can answer "does this pointer name a file INSIDE the library".
-     *
-     * Shape: `{ ok, pointer, relativePath, absolutePath, anchor, exists, isFile, bytes, insideLibrary, reason, means }`.
-     * `ok` means "the pointer is nameable and the library answered", NOT "the file exists" — the two are separate
-     * facts and a caller that conflates them will report a missing proof as a wrong path (or the reverse).
-     * Never throws: an empty pointer, an absolute path, an escape through `..` and a missing file are all answers.
-     */
-    resolvePointer(pointer) {
+  // ★ RUN 211: the shape question lives in a file-local function, not on the exposed object — the docs audit reads
+  // this file's biggest object block as the module's public surface, and a private helper must not look public.
+  function resolvePointerShape(pointer) {
       // ★ NOTE ON THE LITERAL BACKSLASHES: this file is edited through several layers of quoting, and a single slipped
       // escape produced an unparseable module twice. The separator is therefore read from its code point, and path
       // classification is delegated to node:path (which already knows drive letters, UNC names and both separators).
@@ -382,6 +367,35 @@ export function createLibrary({
         means: st.isFile()
           ? 'the pointer names a real file inside the library root (' + relativePath + ', ' + st.size + ' bytes)' + (anchor ? '; the #' + anchor + ' part is an ANCHOR inside that file and is not resolved here' : '')
           : 'the pointer names something that exists but is not a regular file (' + relativePath + ')' }
+    
+  }
+
+  return {
+    get root() { return root },
+
+    /**
+     * ★★ RUN 200 (run 39 / FEEDBACK38 1.1, MEASURED): resolve a POINTER the way a card's `proofRef` is written.
+     *
+     * Run 39 pointed a proposition at `Members/r-acad/Propos/p-1.md#证明（已写完）` while writing that file into the
+     * SESSION WORKING DIRECTORY instead of the library root; every receipt said the pointer was fine, the card locked
+     * (rule L14), and `read_library` then answered `libraryCardCount:0` for a file the author could see in its own
+     * `ls`. The missing capability was here: the kernel owns the library root and the filesystem, so it is the only
+     * layer that can answer "does this pointer name a file INSIDE the library".
+     *
+     * Shape: `{ ok, pointer, relativePath, absolutePath, anchor, exists, isFile, bytes, insideLibrary, reason, means }`.
+     * `ok` means "the pointer is nameable and the library answered", NOT "the file exists" — the two are separate
+     * facts and a caller that conflates them will report a missing proof as a wrong path (or the reverse).
+     * Never throws: an empty pointer, an absolute path, an escape through `..` and a missing file are all answers.
+     */
+    // ★★★ RUN 211 (run 48 / FEEDBACK47 1.4, MEASURED): callers read `ok:true` as "resolved" while `exists:false` sat
+    // beside it. `ok` has always meant "well formed and inside the library" — the shape question — so the two facts now
+    // have their own names and the shape question is also spelled `wellFormed`. Nothing about resolution changed.
+    resolvePointer(pointer) {
+      const out = resolvePointerShape(pointer)
+      const wellFormed = out && out.ok === true
+      const resolved = !!out && out.exists === true && out.isFile === true
+      return Object.assign({}, out, { wellFormed, resolved,
+        fieldMeans: 'wellFormed/ok answer "is the pointer legal and inside the library root" (true for a missing file); resolved/exists answer "the named file really exists and is a regular file". They are different questions and both are printed' })
     },
 
     fingerprint,

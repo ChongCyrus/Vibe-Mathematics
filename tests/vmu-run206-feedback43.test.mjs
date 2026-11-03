@@ -141,7 +141,9 @@ test('RUN 206 — nine readings that named the wrong reason, or named nothing', 
     const blob = await call('vibe_v5_meeting', { agenda: JSON.stringify({ 议题: '偶数' }), member: 'r-acad' })
     ok(blob.ok === false && blob.code === 'VMU_INVALID_ARGUMENT', '§4a ★★ a JSON blob as an agenda is REFUSED (it used to be stored and reported ok)', blob)
     has(String(blob.message), 'JSON TEXT', '§4b the refusal names what arrived')
-    has(String(blob.hint), 'a serialized object or array is not a purpose', '§4c and says what an agenda is')
+    // RUN 211 changed the SECOND half of this sentence on purpose: an array of strings is now read as agenda LINES
+    // (the door no longer decides the shape). The object half — "a blob is not a purpose" — is unchanged.
+    has(String(blob.hint), 'a serialized object is not a purpose', '§4c and says what an agenda is')
     const obj = await call('vibe_v5_meeting', { agenda: { 议题: '偶数' }, member: 'r-acad' })
     ok(obj.ok === false, '§4d an OBJECT agenda is still refused (RUN 204 behaviour kept)', obj)
     const list = await call('vibe_v5_meeting', { agenda: ['议题一', '议题二'], member: 'r-acad' })
