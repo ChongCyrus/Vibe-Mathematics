@@ -269,7 +269,7 @@ async function toolHire(args = {}, { kernel, exec = null } = {}) {
     if (existing) {
       throw refuse('VMU_INVALID_ARGUMENT',
         'hire mints a NEW temp member; "' + str(args.to) + '" is already on the roster in slot "' + str(existing.slot) + '"',
-        'pass to:"<a new member id>" — moving an existing member between seats is a different act: vibe_vmu_control { action: "hire", member_id, slot } (this face refuses instead of silently re-seating). `institution` is read ONLY on the FIRST hire of a seat (this face answers institutionIgnored:true: it hires INTO the institute that already exists — founding one is the control face), so a second hire cannot change it either')
+        'pass to:"<a new member id>" — moving an existing member between seats is a different act: vibe_vmu_control { action: "hire", member_id, slot } (this face refuses instead of silently re-seating). `institution` is NEVER written on this face — the FIRST hire answers institutionIgnored:true as well (it hires INTO the institute that already exists; founding one is the control face, and that is the only call that reads `institution`), so a second hire cannot change it either')
     }
   }
   // ★ LIVE RUN 7 (agent feedback item e): the rule wants the SLOT stated explicitly (「显式给 slot…」), and this face used to
@@ -1875,7 +1875,11 @@ function gatedCardHandler(toolName) {
         const lockedParsed = parseCardBody(str(lockedRow.body))
         const lockedState = lockedParsed && lockedParsed.fields && lockedParsed.fields.proofState !== undefined
           ? str(lockedParsed.fields.proofState).trim() : ''
-        if (lockedState.toLowerCase() === PROOF_STATE_COMPLETE) {
+        // ★ RUN 210: a card registered complete with a pointer that does NOT resolve carries `proofLockDeferred` — the lock
+        // is what would make the bad pointer permanent, so it is deferred until the pointer really lands.
+        const lockDeferred = lockedParsed && lockedParsed.fields && lockedParsed.fields.proofLockDeferred !== undefined
+          ? str(lockedParsed.fields.proofLockDeferred).trim() : ''
+        if (lockedState.toLowerCase() === PROOF_STATE_COMPLETE && lockDeferred === '') {
           throw refuse('VMU_STATE',
             'card "' + cardId + '" is locked: its proof was registered as complete, so the card is final and no later write may change it',
             'a completed card is NOT rewritten — write the correction under a NEW card id (a different claim is a different card) and keep the locked card as history; if the card must be promoted into the verified track, use `vibe_v5_verified_promote` (promotion is not a card edit); if a debate has SETTLED this card, settle its probability with the ruling (pass p plus debate_ruling:{value, mode, …} — rule L53 makes that edit the framework\'s own instruction, so it is admitted on a locked card) and promote it afterwards')
@@ -1886,6 +1890,8 @@ function gatedCardHandler(toolName) {
     // 它不构成证明 —— 证据层在 `verification-gates.js` 的 `debateSubjectGate`（Lean 通过 或 verified 定论行）。
     // 两个别名收在这里，调用方不必知道 kit 的 payload 机制；只给 proofRef 不给状态 ⇒ 一律记 'draft'
     // （"只写了个引用"不能被读成"已经写完"）。
+    // ★★★ RUN 210 (run 47 / FEEDBACK46 1.3, MEASURED): what this write had to DOWNGRADE, if anything.
+    let proofStateDowngraded = null
     if (has(args.proof_ref) || has(args.proof_state)) {
       // ★ WAVE 2 (audit C6a): the value is CASE-FOLDED to the two words the face publishes — "COMPLETE" was rejected
       // by the old string comparison while "complete" was accepted, so the same state read as an unknown word.
@@ -1903,6 +1909,27 @@ function gatedCardHandler(toolName) {
       if (has(args.proof_ref)) payload.proofRef = str(args.proof_ref)
       if (state) payload.proofState = state
       else if (has(args.proof_ref) && !has(payload.proofState)) payload.proofState = 'draft'
+      args = Object.assign({}, args, { payload })
+      // ★★★ RUN 210 (run 47 / FEEDBACK46 1.3, MEASURED): run 47 registered a card with proof_state:"complete" whose
+      // `proof_ref` pointed at a file that DID NOT exist yet. The receipt said so (pointerCheck.exists:false) — and then
+      // the card LOCKED (rule L14), so the pointer could never be corrected: "I am finished" became "I am final, and
+      // wrong". A complete self-report whose OWN pointer does not resolve is recorded as DRAFT instead: the card stays
+      // writable, the author can fix the pointer, and the receipt names the downgrade instead of burying it in a note.
+      // ★ RUN 210 (narrowed by the RUN 210 regressions): the DECLARATION stays exactly as the author wrote it — turning
+      // "complete" into "draft" here would ALSO change what the debate gate sees (it admits a card whose author declared a
+      // finished proof, shape-checked), and that is not this fix's business. What must not happen is the LOCK: a complete
+      // card is locked by L14, and locking it on a pointer that resolves to NOTHING makes the pointer uncorrectable.
+      // So the write records `proofLockDeferred` (the reason) and the lock check below skips a card that carries it.
+      if (payload.proofState === PROOF_STATE_COMPLETE && payload.proofRef !== undefined && kernel && kernel.library && typeof kernel.library.resolvePointer === 'function') {
+        const pwResolution = kernel.library.resolvePointer(str(payload.proofRef))
+        if (pwResolution && pwResolution.ok === true && pwResolution.exists !== true) {
+          proofStateDowngraded = {
+            kind: 'lock-deferred', reason: String(pwResolution.reason || 'missing'),
+            pointer: String(pwResolution.relativePath === undefined ? str(payload.proofRef) : pwResolution.relativePath),
+          }
+          payload.proofLockDeferred = 'pointer:' + String(pwResolution.reason || 'missing')
+        }
+      }
       args = Object.assign({}, args, { payload })
     }
     // ★ AUDIT C6a (rule L14: 「只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容……只有命题卡中含有
@@ -2135,7 +2162,11 @@ function gatedCardHandler(toolName) {
     })()
     return Object.assign({}, res, {
       enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE,
-      proofState: declaredProofState === '' ? null : declaredProofStateFolded, proofStateEvidence,
+      proofState: declaredProofState === '' ? null : declaredProofStateFolded,
+      proofLockDeferred: proofStateDowngraded === null ? false : true,
+      proofLockDeferredReason: proofStateDowngraded === null ? null : proofStateDowngraded.reason,
+      proofLockDeferredMeans: proofStateDowngraded === null ? null : "rule L14 locks a card whose proof is registered complete — but this card’s OWN `proof_ref` does not resolve inside the library (" + proofStateDowngraded.reason + "), and locking it would make that pointer uncorrectable. The declaration is recorded AS WRITTEN and the LOCK IS DEFERRED: write the file (or point at a record id) and re-register, or correct the pointer freely — the card stays writable until a pointer that really resolves is registered",
+      proofStateEvidence,
     }, settlement === null ? {} : { settlement },
     p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, p1RulingRef: p1Ruling, p1RulingMeans, p1RulingReading, verifiedMark })
   }
@@ -2688,6 +2719,11 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     // aggregate tally id, which is what the p=1 gate reads as `rulingRef`) and `meeting` (the room it was decided in).
     // The reader of run 38 had to guess that passing only `meeting` left the gate's reference empty; the shape itself is
     // now the answer, and this sentence says the two names are one reading.
+    // ★★★ RUN 210 (run 47 / FEEDBACK46 1.2, MEASURED): the call above carries `ballotId` — and that slot holds the
+    // RULING AGGREGATE NAME (`tally-…`), NOT a meeting ballot box id. Run 47 put the meeting face's own `ballotId`
+    // (`b-…`) there and was refused ("it is a MEETING ballot … name the MEETING"). `meeting` is also in the call, which
+    // is the field that resolves; this sentence exists so the two same-named things are not confused again.
+    ballotIdMeans: 'the `ballotId` above is the RULING AGGREGATE NAME (`tally-<meeting>-<card>`), never a ballot BOX id: a meeting box id (`b-…` from the meeting face) is refused in that slot by name — name the MEETING instead, which this same call also carries',
     shapeMeans: 'one ruling carries ONE reference; this framework accepts it under two names — `ballotId` (a ballot/tally id) and `meeting` (the convened meeting), and the write receipt reads back whichever was given as `p1RulingRef`. The call above is accepted AS PRINTED: both keys are present, and they name the same decision.',
     // ★★★ RUN 209 (run 46 / FEEDBACK45 1.1): the sentence that makes `call` auditable instead of trusted. Run 46 copied
     // a call whose `value` was `NaN` and its own `shapeMeans` still said "accepted AS PRINTED".
@@ -2722,9 +2758,31 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
       return { ok: false, reason: 'unreadable', means: 'the p=1 gate would read this meeting through the same function, and that read failed HERE: ' + String((e && e.message) || e) }
     }
   })()
+  // ★★★ RUN 210 (run 47 / FEEDBACK46 1.1, MEASURED): a chair could TYPE every member's verdict in one call, receive a
+  // tally, and then be refused at p=1 (VMU_PACK_V5R_CORE_P1_RULING_UNVOTED) because a chair-typed tally is not a
+  // COUNTED decision on the meeting — the reading below already knew (`voted:false`) but did not say what it means for
+  // the copy-back call. This field says it in the receipt that hands out the call.
+  const p1CannotBack = (() => {
+    if (p1RulingReading === null || p1RulingReading === undefined || p1RulingReading.ok === false) return null
+    if (p1RulingReading.voted === true) return null
+    // WHO typed the numbers matters here: `attribution` (built above) says which rows came from a member's own card and
+    // which the chair transcribed. A tally whose numbers are ALL chair-typed is exactly the run-47 shape, and its repair
+    // is different from "nobody has decided anything yet".
+    const rows = Array.isArray(attribution) ? attribution : []
+    const typed = rows.filter((a) => a && a.source === 'chair-typed').length
+    const submitted = rows.filter((a) => a && a.source === 'submission').length
+    return {
+      code: 'VMU_PACK_V5R_CORE_P1_RULING_UNVOTED', typed, submitted,
+      why: typed > 0 && submitted === 0 ? 'chair-typed-only' : (typed > 0 ? 'partly-chair-typed' : 'no-counted-decision'),
+    }
+  })()
   return {
     ok: true, tool: 'vibe_v5_verdict_final', meeting, chair, from: chair,
     p1RulingReading,
+    p1CannotBack,
+    p1CannotBackMeans: p1CannotBack === null
+      ? null
+      : 'copying `correction.call` back WILL BE REFUSED as ' + p1CannotBack.code + ': this tally is not a counted decision on ' + String(meeting) + ' (typedRulings ' + String(p1CannotBack.typed) + ', member-submitted ' + String(p1CannotBack.submitted) + ') — the fix is not to retry the write: have each debater file their OWN ruling card (`vibe_v5_verdict { meeting, proposition_id, verdict, reason }` per member) and take the ruling again, or settle the motion by seconding and voting it in the meeting',
     p1RulingReadingMeans: 'this is the SAME reading the p=1 write will take when you copy `correction.call` back (its debate_ruling names this meeting): sources.motions + sources.typedRulings say what the gate will count, voted says whether it will find a counted decision, and means names it in words. It PREDICTS a read, it does not decide the card — so "my p=1 write will be refused for having no counted votes" is answerable here instead of by trying and being refused',
     // ★ RUN 158 (N3): rule L53 takes the ruling AFTER the debate ends, and a closed meeting lives in the archive. The
     // receipt names that state so a reader can tell a ruling taken mid-debate from the rule's own order of events.
@@ -5055,7 +5113,7 @@ async function toolPaper(args = {}, { kernel } = {}) {
             try { return typeof paper.compiledPdfRow === 'function' ? paper.compiledPdfRow(got.state) === null : false } catch (e) { return false }
           })()
           const moves = status === 'writing' ? ['part{member,body}', 'advance']
-            : status === 'reviewing' ? ['review{decision}', 'advance']
+            : status === 'reviewing' ? ['review{deliverable}', 'advance']
               : status === 'awaiting-editor' ? ['final{decision:"deliverable"}', 'final{decision:"revise"}', 'consult']
                 : status === 'finalized' ? (pdfLess ? ['compile', 'final{decision:"revise"}', 'status'] : ['compile', 'status'])
                   : []
@@ -5960,6 +6018,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
       + '「只有 chair 席能定稿」都由内核的 paper flow 判并具名拒；本面不自己判政策、不造阶段、不编结论。render 如实报 wrote/missing/complete；compile 无 LaTeX 面即具名拒。'
       + '★ 所办问询（vmu.paper.officeConsult="required"）：定稿被拦时会给出 requestId，由所办用 action:"consult" 答复（member=答复人所办，answer/note 写核对结论），'
       + '答完重试 action:"final" 才放行；谁能答复由本 pack 的 PAPER_CONSULT_ROLES 声明（不是内核猜的），普通成员答会被具名拒（VMU_NOT_PERMITTED）。'
+      + '★ action:"part" 的正文里，`Members/<成员>/<kind>/<x>.md` 指针按【记录 id】解析（不是文件名）——要引用文件卡就写记录 id，或把它放进 evidence（RUN 209 / FEEDBACK45 2.3）。'
       + 'action:"consult_state" 只读：看谁在等、哪条 requestId 还开着。'
       // ★★ RUN 162 (real machine, run 10 / FEEDBACK9 item 10): the agents learned by being refused that consult
       // and consult_state address ONE paper and therefore need `target`; the vocabulary never said so.

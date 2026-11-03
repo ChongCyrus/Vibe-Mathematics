@@ -20,7 +20,7 @@ const MAINLINE_CORE = [
   // block also appends a PER-SEAT duty line and a per-seat 【蓝图】 paragraph — so a member quoting the block back verbatim
   // could not match the next seat's text, and run 46 reported the promise as false. The promise now names exactly what is
   // shared (this 主线段) and what is not (the dot line that follows, and the 蓝图 section below).
-  '  · 版本：' + MAINLINE_VERSION + '（**共享正文**＝本段这 4 条：三席逐字一致，抄回比对以它们为准；紧接着的「· 你的担子」一行**按席不同**，其后的【蓝图】一节**按席位能力不同**——这两处不属于共享正文，不算不一致）',
+  '  · 版本：' + MAINLINE_VERSION + '（**共享正文**＝本段这 4 条：**在册各席逐字一致**（按席位类型看：chair / member / temp 三类同文，抄回比对以它们为准）；紧接着的「· 你的担子」一行**按席不同**，其后的【蓝图】一节**按席位能力不同**——这两处不属于共享正文，不算不一致）',
   '  · 一条主线＝**原问题的实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现**；它不是零散任务的清单，每一步都要能说清它在蓝图上推进了什么。',
   '  · **每回合三问**（每回合先回答三件事）：①这一回合推进或扩张蓝图的哪个节点？②该节点的信息更新了没有（当下评价 / 初始计划与启发 / 相关计划 / 可行性及原因 / 价值性及原因 / 已得结论与经验反馈 / 障碍与原因、方案、实施效果 / 过去经验）？③**以前是否处理过类似问题**——先查蓝图与归档，能迁移复用就复用，别重复探索、别重复踩坑。',
   '  · 持续积累与主线推进、改进、调整相关的认知与有价值反馈；据实践反馈调整、细化蓝图并更新节点信息；吸取经验持续改进，把有价值的经验方法与障碍解决经验一般化、迁移到新问题。',

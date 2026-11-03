@@ -14956,3 +14956,59 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 - **修法要覆盖真机的形状，不是覆盖报错的形状**：RUN 208 的 guard 修了类型、留了前置条件，而真机正好两个键一起传 ⇒ 同一个词被丢两次。**改一处判据时，先把它对每一种输入组合都列一遍**。
 - **「打印出来让你抄」的文本是契约**：`correction.call` 里的 `value` 从 `Number()` 过一遍就成了 `NaN`，而它旁边还写着「照抄即可」。**凡是要被抄回去的字符串，必须能原样解析回同一个值**。
 - **同一个词在两个脸上意思不同时，两边都得说**：`already` 是内核的词、`decision` 属于 `final`、`review` 只读 `deliverable`——这些边界如果不写在回执里，模型只能靠猜，而猜错不会报错。
+
+### §311 RUN 210 — 回执递出的那条调用，要不要先说自己会不会被拒
+
+#### 311.1 账从哪来：第 47 次真机
+
+| 项 | 值 |
+| --- | --- |
+| 基线 | `2622c660` |
+| 工作区 / 克隆 / 端口 | `D:/_tmp/slv-phase5/slvp176-ws` / `slvp209` / 19730 |
+| 主线结题 PDF | `Paper/paper-paper-oddsum-47/paper-paper-oddsum-47.pdf` = **69 364 B** |
+| 驱动结果 | `DRIVE exit=0`；`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks` |
+| 清理 | `cleanup: clone_gone=True port_listening=False C_free_GB=8.62` |
+| 代理报告 | `SIM-REPORT46.md` 27 047 B、`FEEDBACK46.md` 15 119 B |
+
+主线（立所→蓝图→立卡→辩论→裁决→p=1→论文→PDF）全走通，**唯一走不通的支路是「主席代填裁决 → 写回 p=1」**（代理 3.3 自述是它选的捷径）。
+
+#### 311.2 四处修法
+
+| # | 缺陷 | 修法 |
+| --- | --- | --- |
+| 1.1 | `verdict_final` 收下主席**代填**的 `verdicts` 并给出 tally，而把它的 `correction.call` 抄回去必被 `UNVOTED` 拒——回执的 `p1RulingReading.voted:false` 已知道，却没说这对「递出的那条调用」意味着什么 | 回执新增 `p1CannotBack`（`{code, typed, submitted, why}`，`why` 分 `chair-typed-only`/`partly-chair-typed`/`no-counted-decision`）与 `p1CannotBackMeans`（「抄回去 WILL BE REFUSED…**别重试写卡**，让每位辩手自己交 `vibe_v5_verdict`」） |
+| 1.2 | `correction.call` 里的 `ballotId` 装的是**裁决聚合名**（`tally-…`），而会议面的 `ballotId`（`b-…`）是票箱——同名不同物 | `correction` 块新增 `ballotIdMeans`：那个槽是 `tally-<meeting>-<card>` 聚合名，会议票箱 id 会被具名拒，`meeting` 才是解析位 |
+| 1.3 | `proof_state:"complete"` + 指向**不存在文件**的 `proof_ref` 照样落卡，且被 L14 **锁死** ⇒ 悬空指针永久不可修 | 声明**照原样记录**（辩论闸看到的仍是作者的声明），但当指针解析不到时记 `proofLockDeferred`（卡体带 `proofLockDeferred: pointer:missing`）并**推迟 L14 锁**；回执带 `proofLockDeferred/Reason/Means`。**不改成 draft**：那会连带改变辩论闸的判据（第一版就是这样把 8 套测试打红的） |
+| 1.4 | 论文 `status.reachableMoves` 在 reviewing 阶段教 `review{decision}`，而同状态的 `review` 面明确拒 `decision` | 改成 `review{deliverable}` |
+
+另有两处提示面（2.1、2.4）：主线节「三席逐字一致」改为「**在册各席逐字一致**（按席位类型 chair / member / temp 三类同文）」；二次 `hire` 的 hint 由「`institution` is read ONLY on the FIRST hire」改为「**NEVER written on this face**（首次也答 `institutionIgnored:true`）」；`vibe_v5_paper` 的 description 补一句 `part` 正文指针按记录 id 解析；`final` 的咨询 hint 删掉「或把 `officeConsult` 设成 off」这条与设置面口径相反的出路。
+
+#### 311.3 机器化
+
+`tests/vmu-run210-feedback46.test.mjs` **1 passed / 0 failed**（五节）：§0 十一条 pin；§1 悬空指针落卡 ⇒ `proofState:'complete'`（声明不变）、`proofLockDeferred:true`、`reason:'missing'`，且**第二次写同一张卡被允许**（这正是 L14 锁原本要挡的那件事）；§2 主席代填 ⇒ `p1CannotBack.code` 具名 + `why:'chair-typed-only'` + means 含 `WILL BE REFUSED` 与 `file their OWN ruling card`，`correction.ballotIdMeans` 含聚合名与「never a ballot BOX id」；§3 诚实路径（两辩手各交裁决卡、主席收集）⇒ `voted:true` 且 `p1CannotBack === null`；§4 `status.reachableMoves` 含 `review{deliverable}`、不含 `review{decision}`。
+
+#### 311.4 三条装载事实
+
+- **主席不能给自己投裁决**：`vibe_v5_verdict` 对主席席报 `VMU_RULING_CHAIR_SIGNS`（「the chair signs the tally instead of filing a member ruling」）——「chair-typed」指的是主席**替别人**填数，不是主席自己那一票。
+- `attribution[].source` 是 `'submission' | 'chair-typed'`，`sources.{n,submitted,typed}` 是它的计数投影 ⇒ 「谁填的」与「几个人签名」是两个数，不能互替。
+- `proofState` 在卡体里是**声明**，辩论闸（`debateSubjectGate`）按声明放行（`proofBasis:"declaration-only"`, `proofChecked:false`）；L14 的锁是**另一件事**。把两者混成一个字段会同时改坏两边（本节第一版实测打红 8 套）。
+
+#### 311.5 未闭合
+
+- 1.1 的**根**还在：主席代填仍产出一份「签了名却写不回 p=1」的裁决。本轮只让回执**提前说清**；要不要让 typed 票落成可被 p=1 闸读到的账，是下一步的设计选择（真机 3.3 也把它列为「捷径」而非缺陷）。
+- 2.5 `vibe_v5_verdict` 的 `target` 形参仍与 `proposition_id` 并存（提示词里有说明，接口形状仍易混）。
+- 本节修法尚未经真机复验（第 48 次真机待跑）。
+
+#### 311.6 三条教训
+
+- **递出调用的回执必须顺带说「它会不会被拒」**：`voted:false` 只是一个读数，读者看不出「所以写不进去」。**预测要落到被判的那个动作上**，否则等于没说。
+- **同名不同物要各给一句**：`ballotId` 在会议面是票箱、在裁决面是聚合名；两处都合法，读者只能靠猜。**同一个词指两个对象时，两边都要写明自己指哪一个**。
+- **修法的最小作用域要用回归量出来**：第一版把 `complete` 降成 `draft`，一次跑红 8 套——因为它同时改了辩论闸的判据。**先问「这条判据还被谁读」，再决定改哪一层**。
+
+#### 311.7 收口链与全量 T1
+
+- 定向回归 **74 passed / 0 failed**（含 `vmu-paper`/`vmu-meeting`/`vmu-run152`/`vmu-run153`/`vmu-run200`–`vmu-run210`/`vmu-turn`/`vmu-turn-mainline`/`vmu-b3-c8-c10` 等）。
+- `audit-` 全族：先因新套件把作业数推到 761 而红，`update-doc-counts --write` 后 **162 passed / 0 failed**（80 套件 + 82 探针）。
+- 生成物：`JOBS total=761 suites=653 probes=108`，随包 `tests/*.mjs` 393；`regen-all` **17/17 in sync**。
+- 四门禁：`PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+- 干净全量 T1：**`TOTAL 761 PASS 761 FAIL 0 (suites 653 · probes 108)`**（`/d/_tmp/t1-r700-run210.log`）。

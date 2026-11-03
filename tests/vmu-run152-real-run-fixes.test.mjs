@@ -29,7 +29,7 @@
  * Last line: === VMU RUN152 REAL-RUN FIXES: N passed, M failed ===
  */
 import { mkdtemp } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'  // fs-purpose: guard — this suite must place the proof file the card points at
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -166,6 +166,10 @@ try {
     const badEditor = await call(b.specs, 'vibe_v5_paper', { action: 'start', target: 'p-run152-b', participants: ['r-1'], editor: 'r-1' })
     ok(badEditor.ok === false && badEditor.code === 'VMU_INVALID_ARGUMENT' && /neither the academician role nor a member seated in the chair slot/.test(String(badEditor.message || '')),
       '§1d ★★ F4 非院士席成员 id 在 start 就被具名拒（而不是等到定稿那一步）', show(badEditor))
+    // ★ RUN 210: a card may only be LOCKED (rule L14) when its proof pointer really resolves — a dangling pointer now
+    // defers the lock (so the pointer stays correctable). This suite is about the lock biting, so put the file there.
+    mkdirSync(join(b.kernel.library.root, 'Members', 'r-1', 'Propos'), { recursive: true })
+    writeFileSync(join(b.kernel.library.root, 'Members', 'r-1', 'Propos', 'run152.md'), '# 正式证明\n\nn+n=2n。\n', 'utf8')
     // F1: write a card with a finished proof (locked), then settle its probability by ruling — allowed — and prove that a
     // plain write on the same card is still refused.
     const card = await call(b.specs, 'vibe_v5_record_proposition', {

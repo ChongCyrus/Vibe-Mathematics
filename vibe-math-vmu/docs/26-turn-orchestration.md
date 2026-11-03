@@ -3457,3 +3457,11 @@ RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一
 - **其它五条**：`correction.call` 用 `Number()` 渲染文本 value ⇒ `value: NaN`（改成 `valueLiteral`：数字原样、文本加引号）并附 `callMeans`；`verdicts` 的「以成员 id 为键的对象」被误诊为缺人（改成行形状闸，点名 `verdicts[0]` 与 `OBJECT KEYED BY MEMBER ID`）；`vibe_v5_start` 的 `started.already` 是内核词（加 `startedMeans`/`hiredNow`/`rosterBefore`）；主线节「逐字一致」的范围写清（共享正文 4 条 vs 按席不同两处）；`part` 的 `body` description 提前说清「正文里的 `Members/…md` 按记录 id 解析」。
 - **机器化**：`tests/vmu-run209-feedback45.test.mjs` 1/0（六节真装配）；`audit-` 全量复跑 162/162（作业数 759→760 由生成器统一）。
 - **装载事实**：会议 id 在 `vibe_v5_meeting` 回执的 `meeting` 字段；裁决前必须 `attend`（quorum 是出勤）；命题卡必须有 owner，否则裁决没有收件人。
+
+## ROUND 215（RUN 210：递出去的那条调用，回执要先说它会不会被拒）
+
+- **账从哪来**：第 47 次真机 `FEEDBACK46.md`（15 119 B），基线 `2622c660`，主线仍结题（69 364 B PDF）。
+- **最贵的一条（1.1）**：主席代填 `verdicts` 拿到 tally，把回执里的 `correction.call` 抄回去却被 `UNVOTED` 拒。回执的 `p1RulingReading.voted:false` 早就知道，但没说「所以这条调用会被拒」。修法：`p1CannotBack`（code/typed/submitted/why）+ `p1CannotBackMeans`（明确「别重试写卡，让辩手自己交裁决卡」）。
+- **其它三条**：`correction.ballotIdMeans` 说清那个槽是 `tally-…` 聚合名、不是会议票箱 id；`proof_state:"complete"` 但指针解析不到 ⇒ 声明照记、**延迟 L14 锁**（`proofLockDeferred`），让悬空指针仍可修（第一版改成 draft，打红 8 套——它同时改了辩论闸判据）；`status.reachableMoves` 的 `review{decision}` 改成 `review{deliverable}`。
+- **提示面**：主线节「三席逐字一致」→「在册各席逐字一致（按 chair/member/temp 三类）」（RUN 209 写的「按席不同」被读成人人不同）；hire 的 `institution` 改成「NEVER written on this face」；`part` 正文指针规则进 `vibe_v5_paper` description；`final` 的咨询 hint 删掉「或把 officeConsult 设成 off」这条反向出路。
+- **机器化**：`tests/vmu-run210-feedback46.test.mjs` 1/0（五节真装配）；`vmu-run152`/`vmu-run153` 的锁断言补上「先把证明文件放进库根」；`vmu-run208` 的 institution pin 随之更新。

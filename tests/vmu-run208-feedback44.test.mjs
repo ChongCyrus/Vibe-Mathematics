@@ -55,7 +55,7 @@ test('RUN 208 — a word the caller gave must be refused or used, never dropped'
     has(PACK, "STAGE moved to finalized", '§0f …and says in words which stage it moved to (1.5)')
     has(PACK, 'is a MEETING ballot', '§0g ★★ a meeting box id is named as the OTHER face\'s box, not "no such ballot" (1.3)')
     has(PACK, 'const p1RulingReading = await (async () => {', '§0h ★★ `verdict_final` carries the reading the p=1 write will take (1.2)')
-    has(PACK, '`institution` is read ONLY on the FIRST hire', '§0i ★ a second hire says where `institution` is read (1.6)')
+    has(PACK, '`institution` is NEVER written on this face', '§0i ★★ a second hire says `institution` is never written here (1.6; RUN 210 corrected the wording)')
     has(MEETING, 'counted answers ONE question', '§0j ★★ `close` answers "was any vote counted" (1.4)')
     has(PAPER, 'review({ deliverable: false })', '§0k ★ the locked-parts repair path names a call that actually works (2.5)')
   }

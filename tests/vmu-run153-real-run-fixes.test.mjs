@@ -32,7 +32,7 @@
  * Last line: === VMU RUN153 REAL-RUN FIXES: N passed, M failed ===
  */
 import { mkdtemp } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'  // fs-purpose: guard — this suite must place the proof file the card points at
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -157,6 +157,9 @@ try {
   console.log('=== 1. 真调用：结算不毁卡、锁还在、argv 绝对且正斜杠 ===')
   {
     const b = await boot()
+    // ★ RUN 210: the L14 lock only bites when the proof pointer resolves (a dangling pointer defers it), so place it.
+    mkdirSync(join(b.kernel.library.root, 'Members', 'r-1', 'Propos'), { recursive: true })
+    writeFileSync(join(b.kernel.library.root, 'Members', 'r-1', 'Propos', 'run153.md'), '# 正式证明\n\nn+n=2n。\n', 'utf8')
     // G1 — a completed card is locked; settling its probability must keep EVERYTHING else.
     const card = await call(b.specs, 'vibe_v5_record_proposition', {
       id: 'rec-153-g1', statement: 'run153 §1 命题：n+n=2n', value: 1, motive: '算术恒等', p: 0.99,

@@ -574,7 +574,7 @@ export function createPaperFlow({
       return { allowed: false, policy, ledger, reason: 'awaiting', requestCleared: false,
         error: refuse(CODES.OFFICE_CONSULT_REQUIRED,
           '定稿前必须问所办（vmu.paper.officeConsult="required"）：这道提问还没有答复（' + (awaiting.id || '?') + '）',
-          '由所办答复后重试：vibe_v5_paper { action: "consult", target: "' + str(state.target) + '", member: "' + (CONSULT_ROLES[0] || 'office') + '", answer: "…" }（kit 层即 recordConsult）；或把 vmu.paper.officeConsult 设成 "off"',
+          '由所办答复后重试：vibe_v5_paper { action: "consult", target: "' + str(state.target) + '", member: "' + (CONSULT_ROLES[0] || 'office') + '", answer: "…" }（kit 层即 recordConsult）；**不要**用「把 vmu.paper.officeConsult 设成 "off"」绕过它：那是部署方的闸门配置（设置面会明确劝阻），待答的咨询要有人答',
           { ...base, reason: 'awaiting', target: str(state.target), paperId: str(state.id) }) }
     }
     ledger.opened += 1
@@ -585,7 +585,7 @@ export function createPaperFlow({
     return { allowed: false, policy, ledger, reason: 'opened', requestId: request.id, requestCleared: false,
       error: refuse(CODES.OFFICE_CONSULT_REQUIRED,
         '定稿前必须问所办（vmu.paper.officeConsult="required"）：已向所办(' + (CONSULT_ROLES.join('|') || '未声明') + ')提出问询 ' + request.id + '，还没有答复',
-        '所办答复后重试：vibe_v5_paper { action: "consult", target: "' + str(state.target) + '", member: "' + (CONSULT_ROLES[0] || 'office') + '", answer: "…" }（kit 层即 recordConsult）；或把 vmu.paper.officeConsult 设成 "off"（取消这道闸）',
+        '所办答复后重试：vibe_v5_paper { action: "consult", target: "' + str(state.target) + '", member: "' + (CONSULT_ROLES[0] || 'office') + '", answer: "…" }（kit 层即 recordConsult）；**不要**用「把 vmu.paper.officeConsult 设成 "off"」绕过它——那是部署方的闸门配置（设置面会明确劝阻），不是 agent 的通行路径，而这条咨询是等一个真人回答',
         { enforced: CONSULT_KEYS.slice(), declared: ['required', 'off'], currentValue: String(policy.raw), settingValues: policy.values,
           requestId: request.id, requestedAt: now, actedBy: str(member), answerRoles: CONSULT_ROLES.slice(),
           // ★★ RUN 154 (G9): the key the fix has to carry is `target` (the answer call's argument), and it is now on the
