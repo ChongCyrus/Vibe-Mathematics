@@ -796,6 +796,25 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     : (target === null
       ? 'the text you passed began with ' + String(headingDropped) + ' `## 共同设计补充｜…` heading line(s) and they were DROPPED: this is the FIRST proposal of this revision, so there is no per-member section yet and the base text is stored as you wrote it minus those heading lines — no heading was written in its place. A section heading is only written when a section is ADDED to an existing draft (continue that draft)'
       : 'the text you passed began with ' + String(headingDropped) + ' `## 共同设计补充｜…` heading line(s); THIS TOOL writes that heading itself for a section ADDED to an existing draft, so your copy was dropped instead of being stored twice (the rest of your text is unchanged)')
+  // ★★★ RUN 218 (run 54 / FEEDBACK53 1.2 + 2.3, MEASURED): the office filed a DIAGNOSTIC propose (never adopted,
+  // "just to test the face") and it silently joined the draft two members were writing: the receipt answered id/revision
+  // and nothing said the row is INSTITUTE-WIDE. `authors` had three rows, but a reader has to know to count them. There is
+  // no private draft in this institution: the row is in the shared records track, every member kernel over this workspace
+  // reads it, and it stays until the draft is adopted (or pruned). The receipt now says so, and names what this call joined
+  // (or that it started the row), so "file it and throw it away" is refused by the facts BEFORE it becomes someone's base.
+  const draftSharingOf = (joinedId, authorList) => ({
+    scope: 'institute-wide',
+    revision,
+    appendedTo: joinedId,
+    authors: authorList.map((a) => txt(a.member)),
+    means: 'a draft is NOT private: this revision lives in the shared records track and every member kernel over this '
+      + 'workspace reads the SAME row' + (joinedId === null
+        ? ' — this call STARTED it, so the next author writes on top of your text'
+        : ' (' + String(joinedId) + '), so a proposal filed to test the face is visible to every member and becomes part '
+          + 'of the text they continue')
+      + '. Nothing is discarded automatically: if the text was diagnostic, say so in `note` and prune the draft '
+      + '(vibe_vmu_records { action: "prune", track: "blueprint" }), otherwise it is the base the next author writes on',
+  })
   if (target === null) {
     const authors = [entry]
     const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, text: bodyNext })
@@ -820,6 +839,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       continued: false,
       continuedBase,
       authors,
+      draftSharing: draftSharingOf(null, authors),
       codesign: blueprintCodesignStatus(authors, ''),
       fingerprint: put.fingerprint || null,
       deduplicated: put.deduplicated === true,
@@ -887,6 +907,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     continuedBase,
     author,
     authors,
+    draftSharing: draftSharingOf(String(target.id), authors),
     codesign: blueprintCodesignStatus(authors, ''),
     fingerprint: (wrote && wrote.fingerprint) || null,
     deduplicated: false,

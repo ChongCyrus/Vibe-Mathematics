@@ -4916,8 +4916,14 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
   const kRestart = !!(receipt && receipt.requiresRestart === true)
   // ★ RUN 207: one predicate, so `partial`, `reachableInstead` and every derived sentence below cannot disagree.
   const processOnly = !!(receipt && receipt.crossKernelScope === 'this-process')
+  // ★★★ RUN 218 (run 54 / FEEDBACK53 1.5, MEASURED): the receipt printed `applied:"immediate"` FIRST and
+  // `partial:true` three fields later. Both were true, and the word a reader skims is the misleading one (run 40 taught the
+  // same lesson for `vibe_v5_set`; this is the `vibe_v5_start` / `vibe_v5_configure` path, which kept the bare word). The
+  // scope now rides IN the value a reader quotes, so "immediate" cannot be repeated without its qualifier.
+  const appliedValue = (processOnly && kApplied === 'immediate') ? 'immediate (THIS PROCESS ONLY)' : kApplied
   return { key, value: coerced, hot: def.hot, who: def.who || null, appliedBy: actor,
-    applied: kApplied,
+    applied: appliedValue,
+    appliedScope: processOnly ? 'this-process-only' : (kApplied === null ? null : 'this-process'),
     requiresRestart: kRestart,
     appliesAt: receipt && receipt.appliesAt !== undefined ? receipt.appliesAt : null,
     liveReadBy: receipt && Array.isArray(receipt.liveReadBy) ? receipt.liveReadBy : [],
@@ -6101,7 +6107,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_blueprint',
-    description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision (path + text REQUIRED; a draft is never in force); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one (draft REQUIRED; any other seat is refused by name); "read" returns one revision by id. ★ COMMON DESIGN (共同设计): if your text carries a `## 共同设计补充｜<your id>` heading it MUST be the FIRST line — only a heading on the very first line is recognised and dropped, one placed anywhere else is stored verbatim inside the body. Do NOT paste the draft you are continuing back into your text: a leading copy of the existing draft is stripped (the receipt reports it in bodyPrefixDropped). Every change is one record row (who proposed, who adopted, when, fingerprint), so "who changed the blueprint" is answerable instead of remembered. The rows are also readable through vibe_v5_read_library { track: "blueprint" }.',
+    description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision (path + text REQUIRED; a draft is never in force); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one (draft REQUIRED; any other seat is refused by name); "read" returns one revision by id. ★ COMMON DESIGN (共同设计): if your text carries a `## 共同设计补充｜<your id>` heading it MUST be the FIRST line — only a heading on the very first line is recognised and dropped, one placed anywhere else is stored verbatim inside the body. Do NOT paste the draft you are continuing back into your text: a leading copy of the draft THIS CALL CONTINUES is stripped (the receipt reports it in bodyPrefixDropped, and `continuedBase.actual` names the row your text was joined to - null when the call started a new draft because the previous one was already adopted, and then nothing was compared). A draft is NOT private: every propose writes into the SAME shared revision row, so a proposal filed to test the face is visible to every member and becomes the base the next author continues (see draftSharing). Every change is one record row (who proposed, who adopted, when, fingerprint), so "who changed the blueprint" is answerable instead of remembered. The rows are also readable through vibe_v5_read_library { track: "blueprint" }.',
     parameters: { action: { type: 'string' }, path: { type: 'string' }, member: { type: 'string' }, text: { type: 'string' }, draft: { type: 'string' }, id: { type: 'string' }, note: { type: 'string' } },
     handler: toolBlueprint,
   },

@@ -3563,3 +3563,13 @@ run 54（`task-sim54.txt`、`slvp183-ws`、1803 s、PDF 73 532 B）量到三笔�
 定向回归 70/0；`update-doc-counts --write` ⇒ 768/660/108；`regen-all` 17/17 in sync；四门禁 PASS。
 
 教训：产出类回执必须带一个回答「内容按规矩排出来了吗」的读数，且与产出**同一次遍历**产生；一个 0 必须有主语；`ok:true` 回答「面接受了调用」，不能回答「世界因此变了」——生效类事实要独立字段并明写该读哪个字段。
+
+## ROUND 223 —— RUN 218：共享的草案不是你的草稿纸
+
+run 54 的所办按任务书发了一次「不采纳、只试试面」的诊断 propose，回执答 `id/revision/author`，而它已经并进两名成员正在写的那份草案；`authors` 三行是回执里唯一的线索。同一轮里 `applied:"immediate"` 与 `partial:true` 并列，读者引用了前者。成员提示词的记录本契约（"你的记录本是草稿、私有的"）在蓝图面不成立，没人说这是例外。
+
+四处修法：`blueprint.js` 的 `draftSharing{scope:"institute-wide", revision, appendedTo, authors, means}`（两条返回都有，`appendedTo:null` = 这次起了这一行）；`vibe_v5_blueprint` 描述定义「THIS CALL CONTINUES」并指向 `continuedBase.actual`；`applyDeclaredSetting` 的 applied 值改成 `immediate (THIS PROCESS ONLY)` + `appliedScope` 字段；`v5r-core.js` 的记录本契约补一行蓝图例外。
+
+`tests/vmu-run218-feedback53b.test.mjs` = 26/0；定向回归 69/0。
+
+教训：能被引用的那个词必须自己说清范围；共享轨上的写入必须有一句话说明「别人也读得到、也会接着写」；契约的例外要写在契约旁边。

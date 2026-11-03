@@ -15444,3 +15444,34 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 1. **「文件在」是「产出」的答案，不是「内容对不对」的答案**：凡回执声称「排版成功」，就必须有一个字段回答「内容是否按规定方式排出来」，并且这个读数要与产出**同一次遍历**产生——分成两趟就会互相矛盾（`math` 与 `.tex` 同源，是这一轮的设计约束）。
 2. **一个 0 必须有主语**：`bodyPrefixDropped:0` 在「这次没续写」与「你漏贴了开头」两种情形下都是 0，回执必须说出这 0 是在谁身上数的。
 3. **`ok:true` 回答「面接受了这次调用」，不能回答「世界因此变了」**：锁、冻结、采纳这类「生效」类事实，需要一个独立字段（`proofGate.locked`）并显式告诉读者该读哪个字段。
+
+### §319 RUN 218 —— 共享的东西被当成私有的，第一个词说错了地方
+
+319.1 run 54（`task-sim54.txt`、`slvp183-ws`）的三笔账：
+
+1. **诊断性 propose 不是私有的。** 所办按任务书发了一次「不采纳、只试试这个面」的提案（`member:"r-temp"`），回执是 `id:"rec-22"`、`revision:3`、`continued:true`、`author:"r-temp"`——它安静地追加进了两名成员正在写的那份 r3 草案。回执里没有任何字段说「这份草案是全所共享的」；只有把 `authors` 三行数出来才看得出。后果可复现：下一次 `read` 的正文末段就是那段诊断文字，还带着诊断里那行 `## 共同设计补充｜r-1`（回执自己说 `stored verbatim`）。
+2. **「existing draft」没有主语。** `vibe_v5_blueprint` 的描述说「不要把你在续写的那份草案贴回来：开头那份 existing draft 的副本会被剥掉」。它没说 existing draft = **本次调用续写的那一行**（`continuedBase.actual`），也没说当上一份草案已被 adopt 时这个调用是**起新的一版**、什么都不比较。run 54 正好踩在这个空档上，把 `bodyPrefixDropped:0` 读成「你没贴回来」。
+3. **`applied:"immediate"` 带着 `partial:true` 出现在同一张回执里。** `vibe_v5_start` 的 applied 块先把 `applied:"immediate"` 摆在最前，三个字段之后才是 `partial:true` / `visibleToMemberKernels:false` / `partialMeans`。两块都真，而读者会先引用那个裸露的 "immediate"，得出一条与后三个字段相反的结论。（run 40 已经为 `vibe_v5_set` 修过同一课；这条路径没跟上。）
+
+另外一条是提示面：成员提示词的「记录本契约」写着「你自己的记录本是**草稿**——在真子代理模式下它是你私有的内核实例」，没有说蓝图/协议草案是**唯一的例外**（它写进全所共享的同一份草案，别的成员的子内核读得到）。两句话摆在一起，会让人把结论外推错——run 54 的所办正是这么外推的。
+
+319.2 修法（四处 + 一条教学）：
+
+1. `vibe-math-vmu/packs/v5r/blueprint.js` 新增 `draftSharingOf(joinedId, authorList)`，两条返回都带 `draftSharing{scope:"institute-wide", revision, appendedTo, authors, means}`：`appendedTo:null` 说这次**起**了这一行，非 null 说它**并入**了哪一行；`means` 明写「草案不是私有的：它活在共享记录轨里，同一工作区上每个成员内核读的都是同一行」，并给出唯一的丢弃路线（`note` 说明 + `vibe_vmu_records { action:"prune", track:"blueprint" }`）。
+2. `vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_blueprint` 描述改成「the draft THIS CALL CONTINUES」，并指向 `continuedBase.actual`（`null` = 起新的一版、什么都没比较），再补一句 `A draft is NOT private`。
+3. `vibe-math-vmu/packs/v5r/tools.js` 的 `applyDeclaredSetting`：`processOnly && applied === "immediate"` 时，值改成 `immediate (THIS PROCESS ONLY)`，并新增字段 `appliedScope: "this-process-only"`。**读者会引用的那个词自己带着限定**，不需要先读到第三个字段才更正。
+4. `vibe-math-vmu/packs/v5r/prompts/v5r-core.js` 的记录本契约后面补一行：蓝图/协议草案是唯一例外，写的是全所共享的同一份草案，别的成员内核读得到，下一次有人续写就在你的文字上写；「只是提一版试试、不提就没了」在蓝图这一面不成立。
+
+319.3 机器化：`tests/vmu-run218-feedback53b.test.mjs` = **26 passed / 0 failed**。§0 十二条源码 pin；§1 真装配两次 propose（第一次 `appendedTo:null`、`authors:["r-1"]`、means 含 `STARTED it`；第二次同名 id、`appendedTo === 第一行 id`、`authors` 含两名成员、means 含 `SAME row` 与 `prune`）；§2 `vibe_v5_start` 回执的 applied 块里 `leaderId` 一项：`partial:true` + `appliedScope:"this-process-only"` + `applied === "immediate (THIS PROCESS ONLY)"` + `reachableInstead` 用 `NO face can make another kernel read this value` 说清「没有成员可达路线」而不是编一个调用。
+
+319.4b 干净树全量 T1：`node tests/run-tests.mjs`（未设 `GATE_INCREMENTAL`，全量扫）⇒ **`TOTAL 769 PASS 769 FAIL 0 (suites 661 · probes 108)`**（日志 `/d/_tmp/t1-r1320-run218.log`；headstart `v5-institute-fixes.mutants.mjs` 584.4 s 后释放，全长约 35 min）。收口链：`update-doc-counts --write` ⇒ `JOBS total=769 suites=661 probes=108`（files changed=5）→ `regen-all --write` 17/17 → `--check` 17/17 in sync → `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 `vmu.store` 既有提示）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+
+319.4 定向回归：`node tests/run-tests.mjs --only vmu-run218-feedback53b --only vmu-run217-feedback53 --only blueprint --only vmu-blueprint --only vmu-meeting --only vmu-v5r-tools --only vmu-turn --only prompt- --only vmu-prompt --only vmu-run202 --only vmu-run205 --only audit-vmu-docs --only audit-face-actions --only audit-tool-required-flags --only audit-doc-index` = **`TOTAL 69 PASS 69 FAIL 0 (suites 60 · probes 9)`**。
+
+319.5 未闭合：① 聚合名 `tally-<meeting>-<card>` 仍长得像可解引用 id（FEEDBACK53 2.2：回执已写 `isRecordId:false`、`durable:"nothing"`，但名字本身仍误导，改名会牵动四处派生与若干 pin）；② `sources.typed > 0` 场次仍未在真机上取到（两轮都是成员自交卡）；③ 成员报（未核）`vibe_v5_meeting` convene 回执的 `enforced:[]` 与 `status` 面的 `enforced:["vmu.meetings.attendanceMode"]` 不一致；④ 本轮四条修法都**未真机复验**（第 55 次真机跑的是 RUN 217 的基线 `fdf53f12`）。
+
+319.6 教训：
+
+1. **「私有」是机制属性，不是语气属性。** 一张回执说「草案已登记」时，读者默认它是「我的一份稿」；只要它落在共享轨里，就必须有一句话说清「别人也读得到、也会接着写」，否则下一步的「只是试试」就是假的。
+2. **一个布尔/一个词放在最前，就等于替读者做了判断。** `applied:"immediate"` 与 `partial:true` 并列时，能被引用的只有前者；把限定塞进被引用的那个值里，比在后面补三个说明字段更有效。
+3. **契约的例外必须写在契约旁边。** 成员提示词说「你的记录本是草稿（私有）」，这句在蓝图这一面不成立；不把例外写在同一条旁边，成员会把整类「我写的别人看不到」外推到所有面。
