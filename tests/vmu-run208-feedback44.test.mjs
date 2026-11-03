@@ -185,7 +185,7 @@ test('RUN 208 — a word the caller gave must be refused or used, never dropped'
     ok(fin.ok === true, '§6 premise: the chair signs the tally', fin)
     const reading = fin.p1RulingReading || {}
     ok(reading.ok === true, '§6a ★★★ the final receipt carries the reading the p=1 write will make', reading)
-    ok(reading.sources && reading.sources.typedRulings === 2, '§6b ★★★ …and that reading counted the TYPED RULINGS (2)', reading.sources)
+    ok(reading.sources && reading.sources.submittedRulings === 2, '§6b ★★★ …and that reading counted the SUBMITTED RULING CARDS (2)', reading.sources)
     ok(reading.voted === true, '§6c …so "will my write be refused for having no counted votes" is answerable BEFORE the write', reading)
     has(String(fin.p1RulingReadingMeans), 'PREDICT', '§6d …and the receipt says a prediction is what this is')
   }

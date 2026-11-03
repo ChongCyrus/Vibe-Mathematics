@@ -60,7 +60,10 @@ test('RUN 211 §0 — the repairs live on the source they belong to (pins)', () 
   // 1.1 — the count is named after what it counts
   has(PACK, 'submittedRulings', '§0a ★★★ the reading counts submitted ruling CARDS by an honest name')
   has(PACK, 'sourcesMeans:', '§0b ★★ and says which count is which')
-  has(PACK, 'typedRulingsMeans:', '§0c ★ the old alias is explained, not silently kept')
+  // ★ RUN 214 DELETED the alias this pin named: `typedRulings` held the SUBMITTED count beside a `typed` number that meant
+  // chair-typed, and run 51 read it backwards. The descriptor is now `rulingCards`, and the receipt also says the old key is gone.
+  has(PACK, 'rulingCardsMeans:', '§0c ★ the card count is explained under its honest name')
+  has(PACK, 'typedRulingsDeprecated:', '§0c2 ★★ and the deleted key is announced instead of silently vanishing')
   // 1.2 — two facts, two sentences
   has(VERDICT, 'const agreed = ps.length > 0 && ps.every((p) => p === ps[0])', '§0d ★★★ an agreeing set is a fact of its own')
   has(VERDICT, 'anyAsserted: asserted', '§0e ★ and "did anyone name that value" is a different fact')

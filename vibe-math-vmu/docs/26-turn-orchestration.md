@@ -3505,3 +3505,15 @@ RUN 213（第 50 次真机 run 50 / FEEDBACK49）处理的是「算出来的事�
 - `correction.call` 印 `at: "<ISO time>"` 却要求逐字抄 ⇒ `at` 改成真实 ISO 时间，`callMeans` 说它可省。
 
 机器化：`tests/vmu-run213-feedback49.test.mjs` 4 节全绿；`vmu-run183` §0c 的整行 pin 改成按名钉三项；`--only vmu-` 548/547/1（唯一红即该 pin）→ 修后全绿，`--only prompt-` 24/0。教训：**计数只活在散文里等于没有这个计数**；**丢弃必须被报告**；**上限要说成上限**。
+
+## ROUND 219 —— RUN 214（第 51 次真机 run 51 / FEEDBACK50）
+
+- `headingDroppedMeans` 原先两支都说「本工具会写那个标题」，但**首次 propose** 写的是 base（没有 per-member 小节），标题被删且没有替代写入：run 51 回读首提者正文里标题 0 次，而回执声称 1。现在按 `target === null` 分两支，首提支明说 `this is the FIRST proposal of this revision … no heading was written in its place`，续写支才说 `THIS TOOL writes that heading itself for a section ADDED to an existing draft`。
+- `p1RulingReading.sources` 曾同时给 `submittedRulings` 与别名 `typedRulings`（同一个 submitted 数），而同一回执的 `tally.sources.typed` 是 0 ⇒ 别名把读者引向反面。RUN 214 删掉别名，顶层描述符 `typedRulings` 改名 `rulingCards`，并加 `typedRulingsDeprecated` 明说旧键已删、改读哪个。
+- `vibe_vmu_chat` 的 `unknown action` 拒绝不列声明动作（run 51 调 `{action:"read"}` 被指去翻文档）⇒ 现在逐条列出 `send, list, policy, …, supplementof` 并注明「读消息是 `list` 不是 `read`」。
+- `MEMBER_ACTS_MEANS` 曾说 `vibe_vmu_meeting{status}` 读「meetings and votes」，而 `closureReading` 明说 status 不携带 quorum tally ⇒ 改成「只读会议对象，票数读裁决回执的 `tally`/`closureReading`」，并把 chat 读动作名写进同一句。
+- 驱动里的 `blueprint: { staleAfterMs: 1 }` 是演练值，让「该更新」恒真 ⇒ 两个驱动脚本改成 30 天（`2592000000`）。
+- `proofLockDeferredMeans` 的「re-register」在记录面每次写都铸新行的前提下，必须说清「是另立一张卡，不是改这一行的指针」。
+- 召集回执新增 `nonAttending`/`nonAttendingMeans`（读 `vmu.meetings.attendDeniedSeats`）：谁在名册上但不能入席，在**做决定的那一行**就说，而不是等 `attend` 被拒。
+
+机器化：`tests/vmu-run214-feedback50.test.mjs` 7 节全绿；同步更新四条既有 pin 到新契约（`vmu-run206` §1i/§1j、`vmu-run208` §6b、`vmu-run211` §0c、`vmu-run213` §2c/§2g）；`--only vmu-run20` 10/0、`vmu-run21` 5/0、`vmu-run213` 1/0、`vmu-chat` 3/0、`vmu-meeting` 18/0、`vmu-blueprint` 1/0、`vmu-run183` 1/0。教训：**有两支场景的说明，两支都要各自可核验**；**别名把读者引向反面**；**提醒要写在做决定的那一行**。

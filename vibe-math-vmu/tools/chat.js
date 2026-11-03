@@ -109,7 +109,13 @@ export function makeChatSpec({ param, refused, TOOL_NAMES, kernel }) {
           return Object.assign({ ok: true, action }, chat.setPolicy(patch,
             { by: need(by, 'by'), reason: reason || '', source: 'member' }))
         }
-        return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
+        // ★★★ RUN 214 (run 51 / FEEDBACK50 1.3, MEASURED): the run called `{ action: "read" }` and got
+        // 「unknown action: read」 plus a hint telling it to go read docs/18 — while the PAPER face, on the same
+        // deployment, lists every declared parameter in its refusal. Two faces, two standards, and this one made the
+        // caller leave the receipt to find the word it wanted. The declared words are now printed here.
+        return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action)
+          + ' — this face declares: send, list, policy, setpolicy, mute, unmute, quota, admin, status, supplement, supplements, supplementof (reading messages is `list`, not `read`)',
+          'pass one of the actions printed above; this face refuses by name rather than guessing a default')
       } catch (e) {
         // D3: a refusal keeps its evaluated scope across the face boundary too — dropping `enforced[]` here is
         // exactly what made the kernel's refusals look like "read nothing" to the consistency audit.

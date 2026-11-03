@@ -120,7 +120,11 @@ test('RUN 213 §2 — a repeated co-design heading is dropped, and the receipt s
     })
     ok(prop.ok === true, '§2a premise: the draft is written', prop)
     ok(prop.headingDropped === 1, '§2b ★★★ the repeated heading is counted, not silently stored', prop.headingDropped)
-    has(prop.headingDroppedMeans, 'THIS TOOL writes that heading itself', '§2c ★★ and the receipt says who owns the heading')
+    // ★ RUN 214 (run 51 / FEEDBACK50 1.1, MEASURED): this sentence used to promise "THIS TOOL writes that heading itself" for a
+    // FIRST proposal too — where the heading is dropped and nothing is written in its place (run 51 read back 0 headings while the
+    // receipt claimed one). The first-proposal branch now says what happened; the continuation branch keeps the ownership sentence.
+    has(prop.headingDroppedMeans, 'FIRST proposal', '§2c ★★★ a first proposal is told the heading was dropped, not replaced')
+    has(prop.headingDroppedMeans, 'no heading was written in its place', '§2c2 ★★ and says so without hedging')
     const readBack = await call('vibe_v5_blueprint', { action: 'read', id: String(prop.id) })
     const baseText = String((readBack && readBack.text) || '')
     ok(baseText.split('## 共同设计补充｜').length - 1 === 0,
@@ -133,6 +137,7 @@ test('RUN 213 §2 — a repeated co-design heading is dropped, and the receipt s
     })
     ok(second.ok === true, '§2f premise: the second author continues the draft', second)
     ok(second.headingDropped === 1, '§2g ★★ the co-designer\'s repeated heading is counted', second.headingDropped)
+    has(second.headingDroppedMeans, 'ADDED to an existing draft', '§2g2 ★★★ a CONTINUATION is told the tool does write that heading (the branch that is true)')
     const after = await call('vibe_v5_blueprint', { action: 'read', id: String(prop.id) })
     const body = String((after && after.text) || '')
     ok(body.split('## 共同设计补充｜r-2').length - 1 === 1,

@@ -102,8 +102,11 @@ test('RUN 206 — nine readings that named the wrong reason, or named nothing', 
     ok(replay.ok === true, '§1g ★★★ the p=1 write that cites the debate\'s OWN tally is ACCEPTED (run 44 was refused with UNVOTED)', replay)
     const reading = replay.p1RulingReading || {}
     ok(reading.ok === true, '§1h the receipt hands back the reading it decided on', reading)
-    ok(reading.sources && reading.sources.typedRulings === 2, '§1i ★★★ and that reading counted the TYPED RULINGS (2), not motions (0)', reading.sources)
-    ok(reading.typedRulings && reading.typedRulings.count === 2, '§1j the count is stated separately, so "no motions" and "no decision" stop looking alike', reading.typedRulings)
+    // ★ RUN 214: the reading used to expose this count twice — as `sources.submittedRulings` and as a `sources.typedRulings`
+    // alias that sat beside a `typed` number meaning the OPPOSITE (chair-typed). Run 51's agent read the alias backwards, so
+    // the contract is now one honest name in `sources` plus a `rulingCards` descriptor. The FACT the suite pins is unchanged.
+    ok(reading.sources && reading.sources.submittedRulings === 2, '§1i ★★★ and that reading counted the SUBMITTED RULING CARDS (2), not motions (0)', reading.sources)
+    ok(reading.rulingCards && reading.rulingCards.count === 2, '§1j the count is stated separately, so "no motions" and "no decision" stop looking alike', reading.rulingCards)
     has(String(reading.means), 'TYPED RULING CARD', '§1k the means names what it read — a debate can settle two ways now')
   }
 

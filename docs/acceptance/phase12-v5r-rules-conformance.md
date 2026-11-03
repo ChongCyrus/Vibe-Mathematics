@@ -15212,3 +15212,74 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 3. 根因：本轮新写的 `MEMBER_ACTS_MEANS` 点了 `vibe_vmu_lean { action: "status" }`，这个面**不存在**（真实面是 `vibe_v5_lean_job { jobId?, waitMs? }`，没有 `action`；同族还有 `vibe_v5_lean_run`/`vibe_v5_lean_lib`/`vibe_v5_lean_read`/`vibe_v5_lean_archive`）。三处同步改成 `vibe_v5_lean_job`（`vibe-math-vmu/kernel/turn/index.js` 的 `MEMBER_ACTS_MEANS`、`vibe-math-vmu/docs/26-turn-orchestration.md` 的 ROUND 218 行、本文档 314.3 表格的 1.3 行）；改后三套单跑 `103 passed / 0 failed`、`91 passed / 0 failed`、`15 passed / 0 failed`。
 4. 干净全量 T1 复跑 `/d/_tmp/t1-r1010-run213b.log` = **`TOTAL 764 PASS 764 FAIL 0 (suites 656 · probes 108)`**（`wall 2317.7s`、`sum of suite times 4454.8s`、`speed-up x1.92`；headstart 为 `v5-institute-fixes.mutants.mjs` 三片各 ~527–564 s）。
 5. 教训：**散文里点名的工具也是契约**——一个只在提示语里出现的面名不会被编译器检查，但会被「文档里提到的工具必须存在」这条审计当场抓住；写提示语时选面名要先 grep 一次工具声明。
+
+### §315 RUN 214 —— 一句真话只说对了其中一支，一个别名把读者引向反面（第 51 次真机 run 51 / FEEDBACK50）
+
+315.1 现场（第 51 次真机，基线 `5f2a4064`）
+
+| 项 | 读数 |
+| --- | --- |
+| 工作区 | `D:/_tmp/slv-phase5/slvp180-ws`（先 `rm -rf`，`-CloneName slvp213 -Port 19738`） |
+| 驱动 | `D:/_tmp/slv-phase5/start-run51.ps1` → `slv-p13-oc.ps1`（`NODE_OPTIONS=--max-old-space-size=8192`） |
+| 退出 | `DRIVE exit=0`，`durationSec:1153`，`toolCalls:55`，`tokenTotal:9 365 069`（cap 40M，未触顶），`transcriptEvents:304` |
+| 线束自检 | `SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks` |
+| 主线 | 立所 → 蓝图 → 立卡 → 辩论会 `m1` → 两席裁决卡 → 主席 `verdict_final` → 写回 p=1 → `verified_promote` → 论文两节 → 互审 → 定稿 |
+| PDF | `Paper/paper-paper-even-51/paper-paper-even-51.pdf` = **53 467 B**（`pdfCompiled.finalPdfRecordId:"rec-21"`，`finalPdfBytes:53467`，`compiledAfterFinal:false`，与磁盘一致） |
+| 清理 | `clone_gone=True port_listening=False C_free_GB=8.56` |
+| 报告 | `SIM-REPORT50.md` 15 890 B、`FEEDBACK50.md` 11 310 B、`PROGRESS-RUN50.md` 3 486 B |
+
+315.2 五条读数缺陷 + 四条「提醒太晚」
+
+1. `headingDroppedMeans` 在**首次 propose** 时说假话：两次 propose 都回「THIS TOOL writes that heading itself」，而回读首提者那份草案正文里标题出现 **0 次**。首提者写的是 base（没有 per-member 小节），标题被删且没有替代写入；只有「续写同一草案」时工具才真写该标题。任务书 2.3 的验收口径「每人标题出现一次」于是对首提者变成 0，而回执声称 1。
+2. `p1RulingReading.sources` 同时带 `submittedRulings:2` 与别名 `typedRulings:2`，而同一回执的 `tally.sources.typed` 是 0 ⇒ 名为 typed 的键装着 submitted 的数，读者第一眼读成「两条代填」；run 51 的智能体正是这样读的。
+3. `vibe_vmu_chat` 的 `unknown action` 拒绝不列它声明的动作（只说「unknown action: read」并把人指去翻文档），而同一部署的论文面拒绝会逐条列出声明参数。
+4. `memberActsMeans` 说 `vibe_vmu_meeting { action:"status" }` 读「meetings and votes」，而 `verdict_final.closureReading` 明说 status 不携带 quorum tally；且 chat 的读动作是 `list` 不是 `read`。
+5. 蓝图 `staleAfterMs:1`（来源是驱动里的演练值）让「该更新」在采纳后**下一毫秒**就成立——恒真的信号没有分辨力。
+6. 提醒太晚之一：`proofLockDeferred` 的修复路径写「re-register」，但记录面每次写都铸新行，读者容易理解成「同一张卡可以改指针」。
+7. 提醒太晚之二：召集回执的 `roster` 里坐着 temp 席位却不说它不参会，要等某个成员 `attend` 被 `VMU_NOT_PERMITTED` 拒才知道。
+8. 提醒太晚之三/之四：会议 id 是跨内核共用计数器（只召集一次却是 `m2`）、任务书 2.3 的验收口径与 1.1 的事实冲突。
+
+315.3 八处修法
+
+| # | 位置 | 修法 |
+| --- | --- | --- |
+| 1.1 | `vibe-math-vmu/packs/v5r/blueprint.js` | `headingDroppedMeans` 按 `target === null`（首提）／续写分两支：首提说「这是本修订的第一次提议，还没有 per-member 小节，标题被删且没有替代写入」；续写说「本工具为**加进已有草案的**小节写该标题」 |
+| 1.2 | `vibe-math-vmu/packs/v5r/tools.js` `rulingNameResolution` | `sources` 删掉 `typedRulings` 别名（只留 `motions`/`submittedRulings`，有卡时加 `proposition`）；顶层描述符 `typedRulings` → `rulingCards`（+`rulingCardsMeans`）；新增 `typedRulingsDeprecated` 明说旧键已删、改读哪个 |
+| 1.2b | 同上 `p1RulingReadingMeans` | 「`typedRulings` 是旧名」改成「成员交的耐久裁决卡——主席代填的数字不在其中」 |
+| 1.3 | `vibe-math-vmu/tools/chat.js` | `unknown action` 拒绝列出全部声明动作（`send, list, policy, setpolicy, mute, unmute, quota, admin, status, supplement, supplements, supplementof`）并注明「读消息是 `list` 不是 `read`」 |
+| 1.4 | `vibe-math-vmu/kernel/turn/index.js` `MEMBER_ACTS_MEANS` | `vibe_vmu_meeting{status}` 改成「只读会议**对象**（state/roster/chair），**不**回答票数；票数读裁决回执的 `tally`/`closureReading`」，chat 一处注明读动作是 `list` |
+| 1.5 | `D:/_tmp/slv-phase5/slv-p13-oc.ps1`、`slv-p13-cc.ps1` | `blueprint: { staleAfterMs: 1 }` → `2592000000`（30 天）；演练值让「该更新」恒真、在真机里等于没测 |
+| 2.1 | `tools.js` `proofLockDeferredMeans` | 改成「REGISTER THE CARD AGAIN——记录面每次写都铸新行，所以 re-register 是另立一张卡，绝不是改这一行的指针」 |
+| 2.2 | `tools.js` 召集回执 | 新增 `deniedSeatList` / `rosterRows` / `nonAttending` / `nonAttendingMeans`（读 `vmu.meetings.attendDeniedSeats`），在 roster 旁就把「谁在名册上但不能入席」点名 |
+
+315.4 机器化（`tests/vmu-run214-feedback50.test.mjs`，7 节）
+
+1. §0 十五条源码 pin：首提/续写两支措辞、`rulingCards`／`rulingCardsMeans`／`typedRulingsDeprecated`、别名已删的**负向** pin（`!TOOLS.includes('typedRulings: cardVotes')`）、chat 拒绝列动作与 `reading messages is \`list\`, not \`read\``、`does NOT answer the vote tally`、`REGISTER THE CARD AGAIN`／`mints a NEW row per write`、`nonAttending, nonAttendingMeans,`／`forbids their seat to attend or vote`。
+2. §1 真装配两分支：首提 ⇒ `headingDropped:1` + means 含 `FIRST proposal`／`no heading was written in its place`，且回读正文标题 0 次；续写 ⇒ means 含 `ADDED to an existing draft` 且不含 `FIRST proposal`。
+3. §2 真装配裁决流：两席各交裁决卡 → 主席 `verdict_final` ⇒ `p1RulingReading.sources.submittedRulings === 2`、`sources.typedRulings === undefined`、`rulingCards.count === 2`、`typedRulingsDeprecated` 含 `REMOVED in RUN 214`；同回执顶层 `sources.typed === 0`／`sources.submitted === 2`。
+4. §3 `vibe_vmu_chat { action:"read" }` ⇒ `VMU_INVALID_ARGUMENT` + message 含 `this face declares:` 与 `reading messages is \`list\`, not \`read\``；随后 `{ action:"list" }` 真的成功（拒绝不是死路）。
+5. §4 先 hire temp 再召集 ⇒ `nonAttending` 含 `r-temp`、means 含 `attendDeniedSeats`／`refused BY NAME`，且该席位 `attend` 真被拒（声明确实被执行，句子不是装饰）。
+6. §5 悬空指针卡 ⇒ `proofLockDeferred:true` + means 含 `REGISTER THE CARD AGAIN`／`NEW row per write`／`never editing this row`。
+7. §6 `kernel.turn.drive` 批次回执的 `memberActsMeans` 含 `does NOT answer the vote tally`／`the READ action is \`list\`, not \`read\``／`tally`。
+
+三条装载事实：`vibe_v5_hire` 的必填是 `purpose`／`initial_task`／`to`（`slot` 默认 temp）；`vibe_v5_verdict_final` 回执的 chair-typed 计数在**顶层** `sources.{n,submitted,typed}`（`tally.sources` 不存在）；`vibe_v5_meeting` 的召集回执里会议 id 在 `meeting` 字段。
+
+315.5 未闭合
+
+1. `chair-typed 裁决写回 p=1` 的根仍未修（RUN 208 只是让回执预告「会被拒」）：真正要修的是「主席代填的裁决应当落成 p=1 闸能读到的一种账」，这需要动裁决-票-卡三者的关系，留作单独的 RUN。
+2. `vibe_v5_verdict` 仍同时接受 `target` 与 `proposition_id` 两个名字（FEEDBACK46 2.5），未收敛。
+3. `started.already:true` 的字面误导未改（RUN 213 加了 `startedMeans` 解释，键名本身仍反直觉）。
+4. 主线节在各席提示词里的位置随席位漂移（chair ~30k、r-1 ~22.5k），未做固定位置。
+5. 本轮修法**尚未经真机复验**（第 52 次真机待跑）。
+
+315.6 三教训
+
+1. **一句真话只说对了其中一支，比假话更难发现**：`headingDroppedMeans` 的续写分支是真的，首提分支是假的，于是「读起来成立的句子」把首提者的 0 个标题盖过去了——凡是有两支场景的说明，两支都要各有一句可核验的事实。
+2. **别名不是兼容，是把读者引向反面**：`typedRulings` 装着 submitted 的数，恰好放在 `typed` 旁边；凡是「旧名 + 新名同义不同数字」的键，删掉比留着便宜。
+3. **提醒写在对的地方**：座位声明、修复路径、读动作名，都该出现在**做决定的那一行回执**上，而不是等拒绝发生后再解释——run 51 的四条「提醒太晚」全部是这一类。
+
+315.7 收口链与全量 T1
+
+1. 收口链：`update-doc-counts --write` ⇒ `JOBS total=765 suites=657 probes=108`（随包 `tests/*.mjs` 393 = 288 suites + 105 probes/scripts）；`regen-all --write` 17/17，`--check` 17/17 in sync；四门禁 `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 提示 `vmu.members`/`vmu.store` 方法未列契约，既有）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+2. 定向回归：`--only vmu-run20` 10/10、`--only vmu-run21` 5/5、`--only vmu-run213` 1/1、`--only vmu-chat` 3/3、`--only vmu-meeting` 18/18、`--only vmu-blueprint` 1/1、`--only vmu-run183` 1/1，全绿。
+3. 全量 T1：`/d/_tmp/t1-r1100-run214.log` = `TOTAL 765  PASS 765  FAIL 0  (suites 657 · probes 108)`（headstart `v5-institute-fixes.mutants.mjs` 550.7s 后释放，三片并行；无红即无返工）。

@@ -1487,18 +1487,23 @@ async function rulingNameResolution(kernel, debate, context = {}) {
   return { ok: true, kind: 'meeting', ref, exists: true, quorum, state: read.state === undefined ? null : String(read.state),
     motions: motions.length, motionsSeconded: decidedMotions.length, motionsCarried: carried.length, votes: counted + cardVotes,
     motionsVotes: counted, rulingVotes: cardVotes,
+    // ★★★ RUN 214 (run 51 / FEEDBACK50 1.2, MEASURED): the same receipt printed `tally.sources.typed:0` beside
+    // `sources.typedRulings:2`. `typedRulings` held the SUBMITTED count, so a reader looking at a key named "typed"
+    // read the opposite of the fact — the run's own agent did exactly that. The alias is GONE from `sources`: the
+    // submitted count travels as `submittedRulings`, and chair-typed numbers are only ever read off the tally.
     sources: rulingCards === null
-      ? { motions: counted, submittedRulings: 0, typedRulings: 0 }
-      : { motions: counted, submittedRulings: cardVotes, typedRulings: cardVotes, proposition: rulingCards.proposition },
+      ? { motions: counted, submittedRulings: 0 }
+      : { motions: counted, submittedRulings: cardVotes, proposition: rulingCards.proposition },
     // ★★★ RUN 211 (run 48 / FEEDBACK47 1.1, MEASURED): `sources.typedRulings` counted the DURABLE ruling CARDS the
     // members filed — the same rows the tally calls `submitted` — while a chair-typed tally printed 0 there. Read beside
     // `p1CannotBackMeans` ("read p1RulingReading first") the name said the OPPOSITE of the fact: m1 (two members filed)
     // looked chair-typed and m2 (chair typed both) looked like nobody had ruled. The count is right; only its NAME was
-    // wrong. `submittedRulings` is the honest name, `typedRulings` stays as the old alias for readers that pinned it, and
-    // `sourcesMeans` says which is which instead of leaving the reader to guess.
-    sourcesMeans: 'sources.submittedRulings counts the DURABLE ruling cards the members filed with vibe_v5_verdict — the same rows the tally reports as `submitted`. sources.typedRulings is the OLD NAME for that same count (kept so older readers keep working) and it does NOT count numbers the chair typed: for those read the tally\'s own `sources.typed` / `attribution[].source`. sources.motions counts procedure votes (motions/seconded/voted), which is a different record.',
-    typedRulings: rulingCards === null ? null : { proposition: rulingCards.proposition, count: rulingCards.count, duplicates: rulingCards.duplicates },
-    typedRulingsMeans: 'these are the durable ruling CARDS read for this (meeting, proposition) — what the tally calls `submitted`. An empty/null value here does NOT mean nobody ruled: a chair-typed tally has no cards at all, and the tally receipt already says so in `attribution`',
+    // wrong. `submittedRulings` is the honest name, and RUN 214 DELETED the old alias (run 51 printed it beside a `typed`
+    // number that meant the opposite); `sourcesMeans` says which is which instead of leaving the reader to guess.
+    sourcesMeans: 'sources.submittedRulings counts the DURABLE ruling cards the members filed with vibe_v5_verdict — the same rows the tally reports as `submitted`. There is NO key here named after chair-typed numbers: a number the chair typed is not a card, so it is only ever read off the tally (`sources.typed` / `attribution[].source`). sources.motions counts procedure votes (motions/seconded/voted), which is a different record.',
+    rulingCards: rulingCards === null ? null : { proposition: rulingCards.proposition, count: rulingCards.count, duplicates: rulingCards.duplicates },
+    rulingCardsMeans: 'these are the durable ruling CARDS read for this (meeting, proposition) — what the tally calls `submitted`. An empty/null value here does NOT mean nobody ruled: a chair-typed tally has no cards at all, and the tally receipt already says so in `attribution`',
+    typedRulingsDeprecated: 'the old key name `typedRulings` was REMOVED in RUN 214 (it held the submitted count, not the chair-typed one, and sat beside a `typed` number that meant the opposite); read `rulingCards` and `sources.submittedRulings`',
     unanimous: unanimousTallies.length > 0 || cardUnanimous,
     unanimousCarried: unanimousCarried.length > 0 || cardUnanimous,
     settled: read.state === 'closed', voted: counted > 0 || cardVotes > 0,
@@ -2188,7 +2193,7 @@ function gatedCardHandler(toolName) {
       proofState: declaredProofState === '' ? null : declaredProofStateFolded,
       proofLockDeferred: proofStateDowngraded === null ? false : true,
       proofLockDeferredReason: proofStateDowngraded === null ? null : proofStateDowngraded.reason,
-      proofLockDeferredMeans: proofStateDowngraded === null ? null : "rule L14 locks a card whose proof is registered complete — but this card’s OWN `proof_ref` does not resolve inside the library (" + proofStateDowngraded.reason + "), and locking it would make that pointer uncorrectable. The declaration is recorded AS WRITTEN and the LOCK IS DEFERRED: write the file (or point at a record id) and re-register, or correct the pointer freely — the card stays writable until a pointer that really resolves is registered",
+      proofLockDeferredMeans: proofStateDowngraded === null ? null : "rule L14 locks a card whose proof is registered complete — but this card’s OWN `proof_ref` does not resolve inside the library (" + proofStateDowngraded.reason + "), and locking it would make that pointer uncorrectable. The declaration is recorded AS WRITTEN and the LOCK IS DEFERRED: write the file (or point at a record id) and REGISTER THE CARD AGAIN — the records face mints a NEW row per write, so \"re-register\" means filing a new card, never editing this row's pointer — or correct the pointer in a fresh write before filing: this card stays writable until a pointer that really resolves lands",
       proofStateEvidence,
     }, settlement === null ? {} : { settlement },
     p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, p1RulingRef: p1Ruling, p1RulingMeans, p1RulingReading, verifiedMark })
@@ -2814,7 +2819,7 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     p1CannotBackMeans: p1CannotBack === null
       ? null
       : 'copying `correction.call` back WILL BE REFUSED as ' + p1CannotBack.code + ': this tally is not a counted decision on ' + String(meeting) + ' (typedRulings ' + String(p1CannotBack.typed) + ', member-submitted ' + String(p1CannotBack.submitted) + ') — the fix is not to retry the write: have each debater file their OWN ruling card (`vibe_v5_verdict { meeting, proposition_id, verdict, reason }` per member) and take the ruling again, or settle the motion by seconding and voting it in the meeting',
-    p1RulingReadingMeans: 'this is the SAME reading the p=1 write will take when you copy `correction.call` back (its debate_ruling names this meeting): sources.motions + sources.submittedRulings (the durable ruling cards; `typedRulings` is the old name for the same count) say what the gate will count, voted says whether it will find a counted decision, and means names it in words. It PREDICTS a read, it does not decide the card — so "my p=1 write will be refused for having no counted votes" is answerable here instead of by trying and being refused',
+    p1RulingReadingMeans: 'this is the SAME reading the p=1 write will take when you copy `correction.call` back (its debate_ruling names this meeting): sources.motions + sources.submittedRulings (the durable ruling cards the members filed — a chair-typed number is NOT one of them) say what the gate will count, voted says whether it will find a counted decision, and means names it in words. It PREDICTS a read, it does not decide the card — so "my p=1 write will be refused for having no counted votes" is answerable here instead of by trying and being refused',
     // ★ RUN 158 (N3): rule L53 takes the ruling AFTER the debate ends, and a closed meeting lives in the archive. The
     // receipt names that state so a reader can tell a ruling taken mid-debate from the rule's own order of events.
     meetingArchived,
@@ -3892,11 +3897,29 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   // `binding:'recommendation'` so no reader can mistake it for a gate; a type with no skeleton reports null and WHY
   // (nothing is invented). Steps the framework has NOT implemented are reported in `pendingSteps` rather than omitted.
   const proc = procedureFor(type)
+  // ★★★ RUN 214 (run 51 / FEEDBACK50 2.2, MEASURED): the seats a deployment declares non-attending
+  // (`vmu.meetings.attendDeniedSeats`) were only named AFTER a member had already tried to attend and been refused
+  // (`VMU_NOT_PERMITTED`, on the attend receipt of a DIFFERENT member). The roster on the convene receipt looked like
+  // "everyone here may sit", so the run seated a temp member and learned the rule from the error. The declaration is
+  // now printed beside the roster, where the decision is made.
+  const deniedSeatList = (() => {
+    const raw = (settingsOf(kernel) || {})['vmu.meetings.attendDeniedSeats']
+    return Array.isArray(raw) ? raw.map(String) : []
+  })()
+  const rosterRows = membersOf(kernel).roster()
+  const nonAttending = deniedSeatList.length === 0
+    ? []
+    : rosterRows.filter((m) => deniedSeatList.includes(String(m.slot))).map((m) => String(m.id))
+  const nonAttendingMeans = deniedSeatList.length === 0
+    ? 'this deployment declares no non-attending seats (vmu.meetings.attendDeniedSeats is empty), so every member on this roster may attend'
+    : 'these members are ON the roster but a deployment declaration (vmu.meetings.attendDeniedSeats: '
+      + deniedSeatList.join(', ') + ') forbids their seat to attend or vote: an attempt to attend is refused BY NAME, and the unanimity reading does not wait for them'
   return { ok: true, tool: 'vibe_v5_meeting', meeting: opened && opened.meeting ? opened.meeting : opened,
     type, subject: opened && opened.subject !== undefined ? opened.subject : null,
     title: opened && opened.title !== undefined ? opened.title : title,
     procedure: proc.procedure, procedureBinding: proc.binding, procedureNote: proc.note, pendingSteps: proc.pendingSteps,
     kind, agenda: agendaText, formalAgenda: args.formal_agenda === true, secretary,
+    nonAttending, nonAttendingMeans,
     // ★ LIVE RUN 122 (E6): WHERE the label came from. `kind` defaults to 'sync' so every meeting always has a word for
     // what it is — and that default is exactly why a reader must be able to tell a chosen label from a filled-in one.
     kindSource: kindGiven ? 'args' : (KIND_BY_TYPE[type] ? 'derived-from-type' : 'default'),

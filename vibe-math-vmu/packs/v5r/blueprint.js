@@ -725,9 +725,16 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   const cleanedBody = stripRepeatedCodesignHeading(body)
   const headingDropped = cleanedBody.dropped
   const cleanBody = cleanedBody.text
+  // ★★★ RUN 214 (run 51 / FEEDBACK50 1.1, MEASURED): the sentence used to say "THIS TOOL writes that heading itself" in BOTH
+  // branches. That is true only when a section is ADDED to an existing draft (the composer writes `## 共同设计补充｜<member>`).
+  // A FIRST proposal has no per-member section at all: its heading was dropped and nothing was written in its place, so the
+  // acceptance reading "every member's heading appears once" came out as 0 for the first proposer while the receipt
+  // claimed the tool had supplied one. The drop is now described against what actually happened to THIS call.
   const headingDroppedMeans = headingDropped === 0
-    ? 'the text you passed carried no `## 共同设计补充｜…` heading, so nothing had to be dropped: this tool writes that heading itself'
-    : 'the text you passed began with ' + String(headingDropped) + ' `## 共同设计补充｜…` heading line(s); THIS TOOL writes that heading itself, so the repeated one(s) were dropped instead of being stored twice (the rest of your text is unchanged)'
+    ? 'the text you passed carried no `## 共同设计补充｜…` heading, so nothing had to be dropped'
+    : (target === null
+      ? 'the text you passed began with ' + String(headingDropped) + ' `## 共同设计补充｜…` heading line(s) and they were DROPPED: this is the FIRST proposal of this revision, so there is no per-member section yet and the base text is stored as you wrote it minus those heading lines — no heading was written in its place. A section heading is only written when a section is ADDED to an existing draft (continue that draft)'
+      : 'the text you passed began with ' + String(headingDropped) + ' `## 共同设计补充｜…` heading line(s); THIS TOOL writes that heading itself for a section ADDED to an existing draft, so your copy was dropped instead of being stored twice (the rest of your text is unchanged)')
   if (target === null) {
     const authors = [entry]
     const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, text: cleanBody })
