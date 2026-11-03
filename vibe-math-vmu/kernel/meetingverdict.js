@@ -240,11 +240,11 @@ export function aggregateVerdicts({ verdicts, propositionId = null, at = null } 
  * why the value is what it is, what the value is, whose card it is, and what to do with it.
  */
 export const DEFAULT_RULING_TEMPLATE = {
-  unanimous: '由于参与辩论的 {n} 名成员给出的最终裁决全部一致（布尔概率 {value}），命题 {proposition} 的最终布尔概率裁定为 {value}，故请把相应命题卡的布尔概率改为 {value}。',
+  unanimous: '由于 {n} 名成员给出的最终裁决全部一致（布尔概率 {value}），命题 {proposition} 的最终布尔概率裁定为 {value}，故请把相应命题卡的布尔概率改为 {value}。',
   // ★ RUN 211 (run 48 / FEEDBACK47 1.2): the default sentence said the rulings were NOT all unanimous even when the
   // members gave the SAME estimate (both 0.6) — an agreeing set described as a disagreement. It now states the two facts
   // it can actually see (the value each member gave, and that no boolean 0/1 was agreed) and leaves the caveat to say more.
-  mean: '由于参与辩论的 {n} 名成员给出的最终裁决依次为 {list}（没有一致为 0 或 1），依规则取平均值后命题 {proposition} 的最终布尔概率裁定为 {value}，故请把相应命题卡的布尔概率改为 {value}。{caveat}',
+  mean: '由于 {n} 名成员给出的最终裁决依次为 {list}（没有一致为 0 或 1），依规则取平均值后命题 {proposition} 的最终布尔概率裁定为 {value}，故请把相应命题卡的布尔概率改为 {value}。{caveat}',
 }
 
 /** The facts a template may name, and — for a caller — the full list rather than a guess. */
@@ -268,7 +268,7 @@ const fill = (template, fields) => String(template).replace(/\{(\w+)\}/g, (whole
  * names the face to hand it to. A caller that wants delivery binds the assembly's `send` port (the module's
  * `createMeetingVerdict({ send })`), which is the existing mailbox/message face — not a second channel.
  */
-export function rulePropositionProbability({ verdicts, propositionId, owner, from = null, at = null, template = null } = {}) {
+export function rulePropositionProbability({ verdicts, propositionId, owner, from = null, at = null, template = null, provenance = null } = {}) {
   const id = typeof propositionId === 'string' ? propositionId.trim() : ''
   if (!id) {
     throw refuse('VMU_INVALID_ARGUMENT', 'rulePropositionProbability needs { propositionId } (a non-empty string), got ' + shown(propositionId),
@@ -328,7 +328,14 @@ export function rulePropositionProbability({ verdicts, propositionId, owner, fro
     estimate: agg.estimate,
     n: agg.n,
     perMember: agg.perMember,
-    text: fill(chosen, fields),
+    // ★★★ RUN 212 (run 49 / FEEDBACK48 2.2, MEASURED): the sentence said "参与辩论的 N 名成员给出的最终裁决" even when
+    // the CHAIR had typed the numbers and no debate happened. The template no longer claims a debate, and a caller that
+    // KNOWS the provenance (the pack reading filed cards vs chair-typed rows) passes it here so the notice itself says
+    // which numbers the members actually filed — a notice is read by the card holder, who never sees the JSON.
+    provenance: provenance === null || provenance === undefined ? null : { submitted: Number(provenance.submitted) || 0, typed: Number(provenance.typed) || 0 },
+    text: fill(chosen, fields) + (provenance !== null && provenance !== undefined && (Number(provenance.typed) || 0) > 0
+      ? '★ 说明：上述 ' + String(agg.n) + ' 条裁决中有 ' + String(Number(provenance.typed) || 0) + ' 条是主席代为记录的（这些成员没有亲自提交裁决卡），不是辩论记录。'
+      : ''),
   })
   return Object.assign({}, agg, {
     ok: true,

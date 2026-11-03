@@ -3479,3 +3479,16 @@ RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一
 另前移四条「早该说」：`value` 是文本字段；论文 `body` 的引用闸**出现即命**（要删不要换）；`institution` 在这个面**永不写**（首次 hire 也一样）；`officeConsult` 的门在 `final` 才落——`advance` 现在预测它（`officeConsultPending` + 点名 `consult` 调用 + 劝「不要翻设置」）。`counted:false` 也补了同值的自解释别名 `closureVoteHadVotes`。
 
 机器化：`tests/vmu-run211-feedback47.test.mjs` 9 节，`vmu-` 全族回归 546/3（三点全在 `vmu-run206` 的旧 hint pin 上，属契约变更）修后全绿。教训：**一个数字的名字会被当成它的事实**；**相反的两句可以同时出自一个模板**；**形状判断不该藏在无关旗标后面**。
+
+## ROUND 217
+
+RUN 212（第 49 次真机 run 49 / FEEDBACK48）把「同一事实在不同层、不同面有不同名字」这一类缺陷又收了一轮：
+
+- `verdict_final` 的 `tally` 是白名单，内核早就给出的 `agreed`/`anyAsserted`/`note` 被挡在字段层之外 ⇒ 三个字段现在都进 `tally` 与顶层，并配 `agreeMeans`（「agreed 与 anyAsserted 是两个不同的问题」）。
+- 卡回执的 `lockNote` 与 `proofLockDeferred` 互相矛盾 ⇒ `lockNote` 按「指针是否真的解析」分支：推迟时明说 NOT locked / DEFERRED / 指针可自由修正。
+- `officeConsultPending` 三面三名（`advance` / `final` / `consult_state`）⇒ `advance` 的 `moved:false` 分支也印它，`final` 的 kit 返回与 pack 投影都印别名 + means（投影层原本把别名丢了）。
+- hire 的 `institution` 说明写反（`institutionIgnored: has(args.institution)`，不传是 false）⇒ 描述与二次 hint 都改成「这个面永不写 `institution`」。
+- 裁决通知模板「参与辩论的 N 名成员」在主席代填时是假话 ⇒ 去掉该措辞，`rulePropositionProbability` 接 `provenance`，`typed>0` 时正文追加「其中 K 条由主席代为记录，不是辩论记录」。
+- `vibe_v5_paper` 描述明说 `advance` 不接受 `to`。
+
+机器化：`tests/vmu-run212-feedback48.test.mjs` 5 节 1/0；定向回归 19 套全绿（其中 `vmu-run208` §5c 的旧 hint pin 随契约更新）。教训：**事实在下一层就看不见**（加字段要问它经过几层投影）；**两句相反的话可以同出一个回执**；**别把「我说了什么」当成「它是什么」**。

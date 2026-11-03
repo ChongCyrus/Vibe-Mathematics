@@ -161,7 +161,10 @@ test('RUN 208 — a word the caller gave must be refused or used, never dropped'
     const again = await call('vibe_v5_hire', { to: 'r-t208', purpose: '临时任务', initial_task: '量一下', institution: 'sim-other' })
     ok(again.ok === false && again.code === 'VMU_INVALID_ARGUMENT', '§5a a second hire of the same seat is refused', again)
     has(String(again.hint), 'institution', '§5b ★★ …and the refusal says when `institution` is read')
-    has(String(again.hint), 'FIRST hire', '§5c …namely on the first one')
+    // RUN 212 (run 49 / FEEDBACK48 2.1) measured this hint and found it said the opposite of the field: `institution` is
+    // never WRITTEN by hire, and only the FOUNDING face reads it. The pin follows the contract, not the old spelling.
+    has(String(again.hint), 'NEVER written on this face', '§5c ★★★ …and says `institution` is never written by this face')
+    has(String(again.hint), 'institutionIgnored:false, not true', '§5c2 ★★ …with the honest default: nothing sent means nothing ignored')
   }
 
   // ── §6 `verdict_final` hands back the reading the p=1 write will take (1.2) ───────────────────────────────

@@ -1262,6 +1262,11 @@ export function createPaperFlow({
         stale, notYetReviewed, capped: true, warnings: state.warnings, reviewsRead }
     }
     return { ok: true, moved: false, stageMoved: false, state: state.status, note: 'the flow is ' + state.status + '; only writing/reviewing advance on their own (finalize it, or start a new paper)',
+      // ★★★ RUN 212 (run 49 / FEEDBACK48 1.3, MEASURED): the consult prediction was printed only by advances that MOVED,
+      // so a paper sitting in awaiting-editor could not be asked "will finalization wait for an office answer?" — the one
+      // place the question matters. The prediction describes the SETTING and the paper, not the move, so it travels here
+      // too (a reader who only reads moving receipts would otherwise have to start a second paper to see it).
+      ...consultPrediction(state),
       stageMovedMeans: 'moved/stageMoved answer ONE question, the STAGE: false means the paper did not change stage at all. A move that changes the stage but not the round carries stageMoved:true with roundMoved:false' }
   }
 
@@ -1460,7 +1465,13 @@ export function createPaperFlow({
         ...(engineAbsent ? { pdfEnvironmentMissing: true, pdfEnvironmentMeans: 'this assembly has no LaTeX face (`VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING`): the paper is finalised and the PDF artefact stays named in `missing` — an environment gap, not a body that failed to compile. A compile that really ran and failed does NOT finalise (RUN 176).' } : {}),
         // ★ E4: the receipt says WHICH way the consult rule was satisfied ("off" / "answered" / "exempt"): a finalisation
         // that claims the office was consulted when the gate was simply off is the sort of quiet lie this pack refuses.
-        consult: { armed: gate.armed === true, satisfiedBy: gate.reason, answeredBy: gate.answeredBy || null, requestId: gate.requestId || null, note: gate.note || null } }
+        consult: { armed: gate.armed === true, satisfiedBy: gate.reason, answeredBy: gate.answeredBy || null, requestId: gate.requestId || null, note: gate.note || null },
+        // ★★★ RUN 212 (run 49 / FEEDBACK48 1.3/2.4, MEASURED): the same fact had three names across three faces
+        // (`advance` → officeConsultPending, `final` → consult.armed/satisfiedBy, `consult_state` → armed/policy). A reader
+        // that learned the advance name could not find it here. `officeConsultPending` is false BY CONSTRUCTION once the
+        // paper is finalised (the gate has been passed), and the alias is printed so one name works on all three faces.
+        officeConsultPending: false,
+        officeConsultPendingMeans: 'false here BY CONSTRUCTION: finalization already happened, so nothing is pending. The authoritative reading of the setting is `consult.armed`/`satisfiedBy` on this receipt (armed:false means the gate was not in force), and `vibe_v5_paper { action: "consult_state" }` prints the same fact as `armed`/`policy` with the request list' }
     }
     state.final = fin
     const capNow = roundsCap()

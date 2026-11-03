@@ -15084,3 +15084,58 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
   改写成模块内的 `function resolvePointerShape(pointer)`（放在 `return {` 之前），`resolvePointer` 变成薄包装（`const out = resolvePointerShape(pointer)`）；`tests/vmu-run211-feedback47.test.mjs` §0k 的 pin 从方法形态改成「私有实现在 + 公开方法是薄包装」两条。修后 `audit-vmu-docs` 103/0，`regen-all` 回到 17/17 in sync。
 - **干净全量 T1（第二次，`/d/_tmp/t1-r820-run211c.log`）**：`TOTAL 762  PASS 762  FAIL 0  (suites 654 · probes 108)`。
 - 教训补充（并入 312.6 的同类）：**「契约审计读的是源码形状，不是你的意图」**——在服务对象上加一个 `_` 前缀的助手，在任何读者眼里都是公开方法；私有代码要放到对象字面量之外。更一般地：凡是「审计脚本按文本形状判断」的地方，修法的作用域必须同时满足「行为对」与「形状对」，否则红灯出现在最不相干的套件里（这次是文档审计，而不是 RUN 211 的任何行为断言）。
+
+### §313 RUN 212 —— 事实在下一层就看不见，两句话互相矛盾（第 49 次真机 run 49 / FEEDBACK48）
+
+313.1 现场（基线 `effa58be`、工作区 `D:/_tmp/slv-phase5/slvp178-ws`、`DRIVE exit=0`、`durationSec:1128`、`toolCalls:98`、`tokenTotal:16837703`、`transcriptEvents:523`）
+
+| 读数 | 值 |
+| --- | --- |
+| 主线结题 PDF | `Paper/paper-paper-oddsum-49/paper-paper-oddsum-49.pdf` = **62 270 B** |
+| 结题回执 | `final.finalized:true`、`stageMoved:true`、`pdf.recordId:"rec-20"`、`status.pdfCompiled` 同字节、`compiledAfterFinal:false` |
+| 裁决 | `tally.id:"tally-m1-rec-3"`、`decided:true`、`sources:{n:2,submitted:2,typed:0}`；写回 `p:1`（`settled:true`、`p1Route:"debate"`） |
+| 会话 | `SUMMARY: 5 session(s) in 1 file(s), 1 with RED checks` |
+| 清理 | `clone_gone=True port_listening=False C_free_GB=8.57` |
+| 报告 | `SIM-REPORT48.md` 28 100 B、`FEEDBACK48.md` 12 503 B（133 行）、`PROGRESS-RUN48.md` 4 704 B |
+
+唯一的 RED 是成员 r-1 调 `vibe_v5_meeting`（召集面不在成员 wire 里，返回 `Error: unknown tool`）——宿主过滤器按设计拒绝，不是产品缺陷。
+
+313.2 FEEDBACK48 的四条机制缺陷
+
+1. **1.1 `verdict_final` 的 `agreed`/`anyAsserted`/`note` 读不到**：内核 `aggregateVerdicts` 早就返回这三个字段（`meetingverdict.js:214-229`），但工具面的 `tally` 是白名单，事实只活在 `notice` 的自然语言里。真机两席都给 0.6 时，字段层抄不到 `agreed:true`。
+2. **1.2 锁门说明与推迟事实互相矛盾**：同一张卡的回执一边说 `proofLockDeferred:true`「correct the pointer freely」，一边 `lockNote` 说「the pointer cannot be corrected afterwards」。实测再写同一张卡是成功的 ⇒ 推迟是对的，说明是错的。
+3. **1.3 / 2.4 `officeConsultPending` 三面三名**：`advance` 用 `officeConsultPending`，`final` 用 `consult.armed`，`consult_state` 用 `armed`/`policy`；且 `advance` 只在「stage 真移动」时带这个名字，`moved:false` 那次不带。
+4. **2.1 hire 的 `institution` 说明写反了**：描述与二次 hire 的 hint 都说「首次 hire 也答 `institutionIgnored:true`」，而源码是 `institutionIgnored: has(args.institution)` ⇒ 不传时是 `false`。另有 2.2「参与辩论的 N 名成员」在主席代填时并无辩论、2.3 材料里 `advance(to:…)` 面不接受 `to`。
+
+313.3 修法（7 处）
+
+| # | 面 | 修法 |
+| --- | --- | --- |
+| 1.1 | `packs/v5r/tools.js` `verdict_final` | `tally` 加 `agreed`/`anyAsserted`/`note`，顶层同三字段 + `agreeMeans`（「two DIFFERENT questions: did they agree, and did anyone assert this number」） |
+| 1.2 | `packs/v5r/tools.js` 卡回执 | `lockNote` 按 `pointerCheck.resolved !== true` 分支：推迟时印「this card is NOT locked … the rule-L14 lock is DEFERRED … correct the pointer freely」，解析成功时才印 LOCKED |
+| 1.3a | `kit/paper.js` `advance` | `moved:false` 分支也展开 `consultPrediction(state)` |
+| 1.3b | `kit/paper.js` `recordFinal` 成功返回 | 加 `officeConsultPending:false` + `officeConsultPendingMeans`（BY CONSTRUCTION） |
+| 1.3c | `packs/v5r/tools.js` `final` 投影 | 投影层原本把这别名丢了（kit 有、面没有）⇒ 投影同样印 `officeConsultPending` + means |
+| 2.1 | `packs/v5r/tools.js` hire | 描述与二次 hint 改成「`institution` 在这个面**永不写**；传了才 `institutionIgnored:true`，不传是 `false`」 |
+| 2.2 | `kernel/meetingverdict.js` | 模板去掉「参与辩论的」；`rulePropositionProbability({ provenance })` 加 `notice.provenance`，`typed>0` 时在正文追加「上述 N 条裁决中有 K 条是主席代为记录的，不是辩论记录」 |
+| 2.3 | `packs/v5r/tools.js` `vibe_v5_paper` 描述 | 明说 `advance` 不接受 `to`，目标阶段由状态与评审结果决定 |
+
+313.4 机器化与装载事实
+
+`tests/vmu-run212-feedback48.test.mjs`（5 节，1/0 绿）：
+
+- §0 二十条源码 pin；§1 纯内核 `provenance` 两支；§2 真装配两席 0.6 ⇒ `tally.agreed:true`/`anyAsserted:true`/`note` 含 `the numbers agree`/`decided:false`；§3 悬空指针卡 ⇒ 顶层 `proofLockDeferred:true` 且 `proofStateEvidence.lockNote` 含「NOT locked」「DEFERRED」，补文件后转 LOCKED；§4 论文流 `advance(moved:false)` 与 `final` 都印 `officeConsultPending:false`；§5 hire 两态（不传 ⇒ `institutionIgnored:false`，传 ⇒ `true`）。
+- 装载事实（写错就红）：① `proofLockDeferred*` 在**卡回执顶层**，`lockNote` 在 `proofStateEvidence` 里——两个位置；② `vibe_v5_paper.final` 的论文部分 `part` **必须带 `evidence:[<记录 id>]`**，否则 `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING`（`emptyParts` 列出谁没证据）；③ 工具面 `final` 是**投影**而不是 kit 返回对象的透传，kit 新加的字段不自动出现。
+- 另修 `tests/vmu-run208-feedback44.test.mjs` §5c：它 pin 的旧 hint「FIRST hire」被 2.1 换掉，改成 pin 契约（`NEVER written on this face` + `institutionIgnored:false, not true`）。
+
+313.5 未闭合
+
+- 「主席代填的裁决写不回 p=1」（FEEDBACK46 1.1 的根）仍未修，只是回执会说「会被拒」；RUN 213 要处理。
+- `vibe_v5_verdict` 的 `target` 与 `proposition_id` 双名（FEEDBACK46 2.5）未动。
+- 本轮修法尚未真机复验（第 50 次真机在提交后进行）。
+
+313.6 三教训
+
+1. **事实在下一层就看不见**：内核算对了、kit 带出来了，工具面一投影就没了。凡是「加了一个字段」的修法，必须问「这个字段要经过几层」，并把 pin 钉在**读者拿到的那一层**。
+2. **两句话可以互相矛盾，而两句都出自同一个回执**：锁门说明与推迟标志、`advance` 与 `final` 对同一设置的命名——矛盾不是靠读一句能发现的，要靠「把两个面放在一起读」。
+3. **别把「我说了什么」当成「它是什么」**：hire 的 `institutionIgnored` 语义写错，因为它描述的是作者以为的行为；修法应当从 `has(args.institution)` 这样的表达式出发写说明。

@@ -269,7 +269,7 @@ async function toolHire(args = {}, { kernel, exec = null } = {}) {
     if (existing) {
       throw refuse('VMU_INVALID_ARGUMENT',
         'hire mints a NEW temp member; "' + str(args.to) + '" is already on the roster in slot "' + str(existing.slot) + '"',
-        'pass to:"<a new member id>" — moving an existing member between seats is a different act: vibe_vmu_control { action: "hire", member_id, slot } (this face refuses instead of silently re-seating). `institution` is NEVER written on this face — the FIRST hire answers institutionIgnored:true as well (it hires INTO the institute that already exists; founding one is the control face, and that is the only call that reads `institution`), so a second hire cannot change it either')
+        'pass to:"<a new member id>" — moving an existing member between seats is a different act: vibe_vmu_control { action: "hire", member_id, slot } (this face refuses instead of silently re-seating). `institution` is NEVER written on this face — it is accepted only to be IGNORED (a hire joins the institute that already exists; founding one is the control face, the only call that reads `institution`), so a second hire cannot change it either; a caller that sends no `institution` gets institutionIgnored:false, not true')
     }
   }
   // ★ LIVE RUN 7 (agent feedback item e): the rule wants the SLOT stated explicitly (「显式给 slot…」), and this face used to
@@ -2127,7 +2127,13 @@ function gatedCardHandler(toolName) {
         // card locked (rule L14) and the pointer could no longer be corrected. Two facts now travel with the receipt: the
         // pointer is resolved against the LIBRARY root (not the session cwd), and a complete card is LOCKED.
         pointerNote: 'the pointer is a POINTER, not a resolution: this write does NOT read it. It is relative to the LIBRARY root (the libraryRoot that vibe_v5_read_library prints), NOT to your session working directory — a file you wrote at the workspace root is not there, and read_library would answer libraryCardCount:0 for it',
-        lockNote: 'a card whose proof_state is complete is LOCKED (rule L14: later writes to the same card id are refused), so the pointer cannot be corrected afterwards — check that <libraryRoot>/<pointer-without-anchor> exists BEFORE judging the card, and copy the file into the library tree first if it does not' }
+        // ★★★ RUN 212 (run 49 / FEEDBACK48 1.2, MEASURED): this sentence was printed even when the LOCK WAS DEFERRED, so
+        // one receipt said both "the lock is deferred, correct the pointer freely" and "the pointer can never be
+        // corrected". Both sentences were generated from the same write; only one of them was true. The note now follows
+        // the same fact the lock itself follows — does this card's OWN pointer resolve?
+        lockNote: pointerCheck !== null && pointerCheck.resolved !== true
+          ? 'this card is NOT locked: its `proof_state` says complete, but its OWN `proof_ref` does not resolve inside the library (reason: ' + String(pointerCheck.reason || 'unknown') + '), so the rule-L14 lock is DEFERRED — write the file into the library (or point at a record id) and re-register, or correct the pointer freely; the card stays writable until a pointer that really resolves is registered'
+          : 'a card whose proof_state is complete is LOCKED (rule L14: later writes to the same card id are refused), so the pointer cannot be corrected afterwards — check that <libraryRoot>/<pointer-without-anchor> exists BEFORE judging the card, and copy the file into the library tree first if it does not' }
       return null
     })()
     // ★★ RUN 153 (G1): a settlement on an EXISTING card is a PATCH (see settleRulingOnCard). It never reaches the
@@ -2572,7 +2578,15 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
   }
   // The kernel validates every row (duplicate member, out-of-range p, mixed propositions…) and refuses BY NAME; those
   // refusals travel up unchanged — this face never rewrites a kernel refusal into a success.
-  const ruled = face.rulePropositionProbability({ verdicts, propositionId, owner, from: chair, at: null,
+  // ★★★ RUN 212 (run 49 / FEEDBACK48 2.2, MEASURED): the notice sentence claimed "参与辩论的 N 名成员给出的最终裁决" while
+  // `attribution` on the same receipt said every row was `chair-typed` — the two halves of one ruling disagreed about
+  // whether a debate had happened. `attribution` is already computed above, so the provenance goes INTO the notice: the
+  // holder reads the sentence, not the JSON.
+  const provenance = {
+    submitted: attribution.filter((a) => a && a.source === 'submission').length,
+    typed: attribution.filter((a) => a && a.source === 'chair-typed').length,
+  }
+  const ruled = face.rulePropositionProbability({ verdicts, propositionId, owner, from: chair, at: null, provenance,
     template: has(args.template) ? str(args.template) : null })
   const delivery = (ruled && ruled.delivery) || { attempted: false, ok: false }
   // ★ LIVE RUN 9, finding B: when the card's OWNER is the chair who signs, the ruling could not be delivered at all —
@@ -2829,6 +2843,13 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
       // ★★ RUN 155 (problem 5, second half): say what the id IS, right next to the id.
       isRecordId: false,
       durableUnder: 'nothing — the id names an aggregate; read the per-member rulings (attribution[].submission.id) or the meeting summary',
+      // ★★★ RUN 212 (run 49 / FEEDBACK48 1.1, MEASURED): the kernel has computed `agreed` and `anyAsserted` since RUN 211,
+      // and said which of the two cases this ruling is in (`note`), but this object is a WHITELIST — so the facts existed
+      // and were dropped one layer above them. Two members who both estimated 0.6 were readable only as prose ("numbers
+      // agree, but 0.6 is not 0/1"); a field-checking reader could not tell that apart from a real disagreement.
+      agreed: ruled.agreed === true,
+      anyAsserted: ruled.anyAsserted === true,
+      note: ruled.note === undefined || ruled.note === null ? null : str(ruled.note),
     },
     // ★ LIVE RUN 11 (the institute's own report, item b): this receipt was read as if it carried the CLOSURE vote
     // (`cast`/`votesCast`) and the reading was reported missing. It is not missing - it is another mechanism. The
@@ -2845,6 +2866,12 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     mode: ruled.mode, exact: ruled.exact, rounded: ruled.rounded, decided: ruled.decided,
     enforceable: ruled.enforceable, estimate: ruled.estimate, n: ruled.n, perMember: ruled.perMember,
     spread: ruled.spread, owner, notified, delivery,
+    // ★★★ RUN 212 (run 49 / FEEDBACK48 1.1, MEASURED): the same two facts at the TOP level, because a reader scanning this
+    // receipt for "did they agree" should not have to know that the aggregate lives under `tally`.
+    agreed: ruled.agreed === true,
+    anyAsserted: ruled.anyAsserted === true,
+    note: ruled.note === undefined || ruled.note === null ? null : str(ruled.note),
+    agreeMeans: 'agreed: every member gave the SAME number (so any gap is 0 or 1, not the estimate); anyAsserted: at least one member actually named the value this ruling used. Both are false only when the members really differed — that is the case where the mean is a compromise',
     // ★ TASK-12 / F4: the state of the notice (see the block above). `notified` stays the list of mailboxes that hold a
     // copy; `notification.state` says whether that copy was pushed into a turn or is only waiting, so the pair cannot
     // be read as "the owner has seen it".
@@ -5453,6 +5480,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
         // paper's own target — run 9 read four present rows as missing because the projection spoke for the argument).
         missingMeans: finalized.missingMeans || null,
         requestedTarget: finalized.requestedTarget || null,
+        // ★★★ RUN 212 (run 49 / FEEDBACK48 1.3/2.4, MEASURED): the advance receipt named this fact `officeConsultPending`
+        // while this projection answered only with `consult.armed` — one fact, two names, on the door that runs LAST. The
+        // projection is where the field was lost (the kit already prints it), so the alias is carried here as well.
+        officeConsultPending: false,
+        officeConsultPendingMeans: 'false here BY CONSTRUCTION: finalisation already happened, so nothing is pending. `consult.armed`/`satisfiedBy` on this receipt is the authoritative reading of the setting, and `vibe_v5_paper { action: "consult_state" }` prints the same fact as `armed`/`policy`. The projection used to drop the alias, so the one name a reader learned from `advance` was missing on the door that finalises (RUN 212 / FEEDBACK48 1.3).',
         // ★ E4: the kit returns WHICH way the consult rule was satisfied ("off" / "answered" / "exempt") precisely so a
         // finalisation cannot quietly claim "the office checked it" when the gate was simply off. The projection used to
         // drop that field — i.e. the tool face hid the one piece of evidence that makes the gate's claim auditable.
@@ -5813,7 +5845,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_hire',
-    description: 'Hire one temp worker into the temp seat and open their initial task. Requires purpose, initial_task and to (the new member id — this pack never invents an id). The SLOT is explicit (default "temp"); any other slot is refused by name and points at the founding face. ★ `institution` is NEVER written on this face — the FIRST hire also answers institutionIgnored:true, because a hire goes INTO the institute that already exists; founding one is the control face, and that is the only call that reads `institution`. A second hire of an occupied seat is refused by name, not silently re-slotted (RUN 211 / FEEDBACK47 2.3).'
+    description: 'Hire one temp worker into the temp seat and open their initial task. Requires purpose, initial_task and to (the new member id — this pack never invents an id). The SLOT is explicit (default "temp"); any other slot is refused by name and points at the founding face. ★ `institution` is NEVER written on this face: a hire goes INTO the institute that already exists, and founding one is the control face — the only call that reads `institution`. If the caller SENDS `institution` here it is accepted and ignored, and the receipt answers `institutionIgnored:true` with `institutionMeans`; a caller that sends nothing gets `institutionIgnored:false` and `institution:null` (nothing was ignored because nothing was sent). A second hire of an occupied seat is refused by name, not silently re-slotted (RUN 211 / FEEDBACK47 2.3, corrected in RUN 212 / FEEDBACK48 2.1).'
     , parameters: { purpose: { type: 'string', required: true }, initial_task: { type: 'string', required: true }, to: { type: 'string', required: true }, slot: { type: 'string' }, direction: { type: 'string' }, term: { type: 'string' }, institution: { type: 'string' } },
     handler: toolHire,
   },
@@ -6071,7 +6103,11 @@ export const V5R_PACK_TOOLS = Object.freeze([
       // ★★ RUN 162 (FEEDBACK7 item 10, still open after run 10): the only way agents learned that final'
       // body gate wants every Verified conclusion's requiredLine was by being refused. Say it in the vocabulary.
       + ' ★ 定稿的正文门：正文里必须出现**每一张 Verified 结论的 `requiredLine`**（逐字）；被拦时回执的 `missing[]` 给出每条的 `requiredLine`，照抄进正文再定稿即可。'
-      + ' render 把 md/tex/meta 写进记录区（record track），磁盘上的 .tex/.pdf 由 compile 产生：阅读回执时两者不是同一件事。',
+      + ' render 把 md/tex/meta 写进记录区（record track），磁盘上的 .tex/.pdf 由 compile 产生：阅读回执时两者不是同一件事。'
+      // ★★★ RUN 212 (run 49 / FEEDBACK48 2.3, MEASURED): the run-49 material told the office to call `advance` with
+      // `to:"writing"`; the face does not declare `to` and refused the call. The receipt was right, the vocabulary was
+      // silent — so it says here what the stage machine decides by itself.
+      + ' ★ `advance` 不接受 `to`：目标阶段由当前状态和评审结果决定（writing→reviewing、reviewing→awaiting-editor 或回 writing），回执的 `from`/`to`/`stageMoved` 就是答案；传了未声明的 `to` 会被具名拒（RUN 212 / FEEDBACK48 2.3）。',
     parameters: {
       action: { type: 'string', required: true, description: 'start｜part｜review｜advance｜final｜render｜status｜compile｜sections｜consult｜consult_state' },
       target: { type: 'string', description: '论文对象（对象名；start 时可用 title/track 别名）' },
