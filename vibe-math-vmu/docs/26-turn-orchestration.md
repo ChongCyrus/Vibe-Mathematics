@@ -3492,3 +3492,16 @@ RUN 212（第 49 次真机 run 49 / FEEDBACK48）把「同一事实在不同层�
 - `vibe_v5_paper` 描述明说 `advance` 不接受 `to`。
 
 机器化：`tests/vmu-run212-feedback48.test.mjs` 5 节 1/0；定向回归 19 套全绿（其中 `vmu-run208` §5c 的旧 hint pin 随契约更新）。教训：**事实在下一层就看不见**（加字段要问它经过几层投影）；**两句相反的话可以同出一个回执**；**别把「我说了什么」当成「它是什么」**。
+
+## ROUND 218
+
+RUN 213（第 50 次真机 run 50 / FEEDBACK49）处理的是「算出来的事实被压成一句散文」这一类缺陷：
+
+- `verdict_final` 的 `notice` 是一个字符串，内核算出的 `notice.provenance{submitted,typed}` 被压掉了 ⇒ 回执现在印 `noticeProvenance` 与 `noticeProvenanceMeans`（计数，不是散文）。
+- 同一个回执里两个 `note`（顶层是投递说明、`tally.note` 是裁决说明）⇒ 加 `noteMeans` 明说这是两个问题。
+- 回合回执的 `executed:0` 只说「没有回执字段被派发」，不说成员的真话在哪 ⇒ `MEMBER_ACTS_MEANS` 常量点名 `vibe_vmu_chat` / `vibe_vmu_meeting{status}` / `vibe_v5_read_library` / `vibe_v5_lean_job`，`deliverTurn` 与 `drive` 批次回执都带它。
+- 蓝图续写把工具自加的 `## 共同设计补充｜<member>` 与成员正文里的同名标题一起存 ⇒ `stripRepeatedCodesignHeading` 去重，回执用 `headingDropped`/`headingDroppedMeans` 报告丢弃（丢弃必须被报告）。
+- `start` 的 `leaderId` 是 **PER-KERNEL** 设置（成员内核读不到、回退 chair SEAT）⇒ 加 `leaderIdMeans` 把「这是上限」说出来。
+- `correction.call` 印 `at: "<ISO time>"` 却要求逐字抄 ⇒ `at` 改成真实 ISO 时间，`callMeans` 说它可省。
+
+机器化：`tests/vmu-run213-feedback49.test.mjs` 4 节全绿；`vmu-run183` §0c 的整行 pin 改成按名钉三项；`--only vmu-` 548/547/1（唯一红即该 pin）→ 修后全绿，`--only prompt-` 24/0。教训：**计数只活在散文里等于没有这个计数**；**丢弃必须被报告**；**上限要说成上限**。

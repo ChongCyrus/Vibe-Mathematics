@@ -2739,7 +2739,7 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
         }
         return 'vibe_v5_record_proposition { id: "' + propositionId + '", statement: ' + quoted(f && f.statement)
           + ', value: ' + valueLiteral(f && f.value) + ', motive: ' + quoted(f && f.motive)
-          + ', p: ' + String(ruled.value) + ', debate_ruling: { subject: "' + propositionId + '", value: ' + String(ruled.value) + ', mode: "' + String(ruled.mode) + '", n: ' + String(ruled.n) + ', decided: ' + String(ruled.decided === true) + ', at: "<ISO time>", ballotId: "' + tallyId + '", meeting: "' + str(meeting) + '", by: "' + chair + '" } }'
+          + ', p: ' + String(ruled.value) + ', debate_ruling: { subject: "' + propositionId + '", value: ' + String(ruled.value) + ', mode: "' + String(ruled.mode) + '", n: ' + String(ruled.n) + ', decided: ' + String(ruled.decided === true) + ', at: "' + new Date().toISOString() + '", ballotId: "' + tallyId + '", meeting: "' + str(meeting) + '", by: "' + chair + '" } }'
       })()
       : (cardPath.path
         ? 'edit the card FILE at ' + cardPath.path + ' and set its probability to p = ' + String(ruled.value) + ' (this proposition is a library card, not a records row: no records face owns it, so the edit is a file edit by its holder)'
@@ -2758,7 +2758,7 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     shapeMeans: 'one ruling carries ONE reference; this framework accepts it under two names — `ballotId` (a ballot/tally id) and `meeting` (the convened meeting), and the write receipt reads back whichever was given as `p1RulingRef`. The call above is accepted AS PRINTED: both keys are present, and they name the same decision.',
     // ★★★ RUN 209 (run 46 / FEEDBACK45 1.1): the sentence that makes `call` auditable instead of trusted. Run 46 copied
     // a call whose `value` was `NaN` and its own `shapeMeans` still said "accepted AS PRINTED".
-    callMeans: 'every field in `call` is carried from the CARD, not re-derived: a numeric value prints as a number, a text value prints as a quoted JSON string (so it parses back to the same text), and a field the card does not hold is left at the documented default. If your card\'s `value` is prose, the printed call keeps that prose — it never becomes NaN and it never silently becomes 1',
+    callMeans: 'every field in `call` is carried from the CARD, not re-derived: a numeric value prints as a number, a text value prints as a quoted JSON string (so it parses back to the same text), and a field the card does not hold is left at the documented default. If your card\'s `value` is prose, the printed call keeps that prose — it never becomes NaN and it never silently becomes 1. `at` is THIS receipt\'s own timestamp (the moment the ruling was read) and is optional: omit it and the write uses the current time — the call stays valid as printed, and the string is a real ISO time, not a placeholder',
     // ★ RUN 153 (G4): the ONE id that stands for the whole ruling, ready to be the `warrant` of the promotion.
     warrantFor: {
       id: tallyId,
@@ -2919,6 +2919,19 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
         ? 'a copy of the notice is IN the card owner\'s mailbox — but "in the mailbox" is not "read": ' + notificationMeans
         : 'NO mailbox copy was written: delivery reported ok=' + String(delivery.ok) + ' — the number is on the record and the receipt says so, but the owner was not told (see delivery.code); ' + notificationMeans),
     notice: ruled.notice && ruled.notice.text ? ruled.notice.text : null,
+    // ★★★ RUN 213 (run 50 / FEEDBACK49 1.1, MEASURED): the kernel already computes WHO TYPED the verdicts and hands
+    // it to this face as an object (`ruled.notice.provenance`), but the receipt reduced the notice to its text — so the
+    // one machine-readable fact about chair-typed verdicts was one layer down again, and run 50 could only re-count it
+    // from `attribution`. The counts are now printed by name, beside the sentence that says the same thing.
+    noticeProvenance: ruled.notice && ruled.notice.provenance
+      ? { submitted: Number(ruled.notice.provenance.submitted) || 0, typed: Number(ruled.notice.provenance.typed) || 0 }
+      : null,
+    noticeProvenanceMeans: 'counts, not prose: `submitted` = rulings the members filed THEMSELVES, `typed` = rulings the chair typed on their behalf. `attribution[].source` says which member is which, and the tally\'s `sources` carries the same pair under the names `submitted`/`typed`; the notice TEXT states it in a sentence and adds the ★ line when typed>0',
+    // ★★★ RUN 213 (run 50 / FEEDBACK49 1.2, MEASURED): this receipt carries TWO different things called `note` — the
+    // top-level `note` explains DELIVERY (was a mailbox copy made? has the owner read it?), while the verdict\'s own
+    // explanation lives in `tally.note` ("every member gave the SAME value …"). Run 50 started quoting the delivery
+    // note as if it were the verdict\'s note. Each field now says which question it answers.
+    noteMeans: 'this top-level `note` is the DELIVERY note: it answers "was the owner told, and how". It is NOT the verdict\'s explanation — that one is `tally.note` (for example whether the members\' numbers agreed). Same word, two questions',
     fidelity: { consulted: pGate.applicable === true, resolved: pGate.resolved === true,
       required: pGate.required === true, answered: !!answered,
       lean: leanEvidence ? (leanEvidence.jobId ? 'lean_job:' + leanEvidence.jobId : (leanEvidence.cardJob ? 'lean_job:' + leanEvidence.cardJob : 'caller')) : 'none',
@@ -4719,7 +4732,12 @@ async function toolStart(args = {}, { kernel } = {}) {
   // its middleware start (`kernel.start()` answers `already:true` when that start ran earlier in THIS process), and the
   // seeding receipt never said so. The two facts are now named separately: what the KERNEL said, and what THIS CALL hired.
   const startedMeans = '`started` is the KERNEL\'s own answer about its middleware start: `already:true` means `kernel.start()` had ALREADY RUN IN THIS PROCESS (it registers the declared middleware and nothing else) — it is NOT a statement that the institute existed before. What THIS call seeded is `hiredNow` (the seats it created just now) and `rosterBefore` (who was on the roster when it began); an empty `rosterBefore` with `already:true` is a normal first founding in a process whose kernel was already started'
-  return { ok: true, tool: 'vibe_v5_start', hired, hiredNow: hired.slice(), rosterBefore: rosterBefore.map((r) => r.id), started, startedMeans, applied, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE, memberScopeNoteMeans, chairTurnNote,
+  // ★★★ RUN 213 (run 50 / FEEDBACK49 1.5, MEASURED): `start` seats the chair and records `vmu.turn.leaderId`, but a
+  // MEMBER's kernel is a separate process: it does not inherit this setting, so a member reads leaderId as empty and
+  // leadership falls back to the chair SEAT. That is disclosed (`applied[].partial`/`visibleToMemberKernels`) but was
+  // never stated as a ceiling, so run 50's chair reported `leaderId empty` as a defect. The ceiling is named here.
+  const leaderIdMeans = '`applied` records the settings THIS call changed on ITS OWN kernel. `vmu.turn.leaderId` is one of them, and it is a PER-KERNEL setting: a member works in a different kernel/process, which does not inherit it, so a member\'s prompt can read leaderId as empty and fall back to the chair SEAT (the charter\'s leadership section names the chair) — that fallback is by design, not a broken setting. No face can push a setting into another kernel; `vibe_v5_configure` changes it for THIS process only, and its receipt says the same' 
+  return { ok: true, tool: 'vibe_v5_start', hired, hiredNow: hired.slice(), rosterBefore: rosterBefore.map((r) => r.id), started, startedMeans, applied, leaderIdMeans, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE, memberScopeNoteMeans, chairTurnNote,
     note: 'seedDirections are roster data here (the charter reads a member\'s direction), so they are not stored by this tool — reported, not silently dropped' }
 }
 

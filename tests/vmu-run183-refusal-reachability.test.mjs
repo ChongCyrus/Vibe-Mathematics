@@ -82,7 +82,10 @@ try {
       '§0a the non-attending-seat hint asks the MEMBERS service for the roster (K.roster() does not exist)')
     ok(meetingsSource.includes('the reachable channel is the CHAT face') && meetingsSource.includes('does NOT enter the minutes'),
       '§0b a non-attending seat is told the channel that exists and what it does not get')
-    ok(turnSource.includes('const driveScope = (rs) => {') && turnSource.includes('const withScope = (r) => Object.assign({}, r, { executedMeans: EXECUTED_MEANS, scope: driveScope(r.receipts || []) })'),
+    // RUN 213: the batch also carries WHERE a member's work is readable, so the pin checks the three readings
+    // (executedMeans / memberActsMeans / scope) by name instead of one exact line — the sentence is the contract.
+    ok(turnSource.includes('const driveScope = (rs) => {') && turnSource.includes('executedMeans: EXECUTED_MEANS') &&
+      turnSource.includes('memberActsMeans: MEMBER_ACTS_MEANS') && turnSource.includes('scope: driveScope(r.receipts || []) }'),
       '§0c a batch states its own coverage (RUN 195: AND what `executed` counts — the sentence, not the literal, is the contract)')
     ok(turnSource.includes('notAdvanced names each requested member that was NOT woken by THIS call'),
       '§0d the coverage says why a requested member was not woken')

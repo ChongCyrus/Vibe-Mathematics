@@ -15139,3 +15139,76 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 1. **事实在下一层就看不见**：内核算对了、kit 带出来了，工具面一投影就没了。凡是「加了一个字段」的修法，必须问「这个字段要经过几层」，并把 pin 钉在**读者拿到的那一层**。
 2. **两句话可以互相矛盾，而两句都出自同一个回执**：锁门说明与推迟标志、`advance` 与 `final` 对同一设置的命名——矛盾不是靠读一句能发现的，要靠「把两个面放在一起读」。
 3. **别把「我说了什么」当成「它是什么」**：hire 的 `institutionIgnored` 语义写错，因为它描述的是作者以为的行为；修法应当从 `has(args.institution)` 这样的表达式出发写说明。
+
+313.7 全量 T1（两轮）
+
+- 第一轮 `/d/_tmp/t1-r900-run212.log`（`c9bc6056` 树）：`TOTAL 763 PASS 762 FAIL 1`。唯一红 `tests/vmu-run199-feedback38.test.mjs` §6d——它 pin 住「悬空 `proof_ref` 的卡 ⇒ `lockNote` 含 LOCKED / cannot be corrected」，而 1.2 已把该分支改成「NOT locked / DEFERRED / correct the pointer freely」。**行为改对了，pin 钉的是旧行为。**
+- 修法：§6d 改成钉推迟分支 + 新增 §6e 负向（不含 `cannot be corrected afterwards`），提交 `0244333a`。
+- 第二轮 `/d/_tmp/t1-r910-run212b.log`（`c9bc6056` + pin 修）：`TOTAL 763 PASS 763 FAIL 0 (suites 655 · probes 108)`。
+- 教训：**pin 的应当是契约**。当修法只改了一条句子的分支，钉住整句的测试会把正确答案判成红的，而红灯出现在最不相干的套件里。
+
+### §314 RUN 213 —— 一个计数只活在散文里，一个标题被写了两遍（第 50 次真机 run 50 / FEEDBACK49）
+
+314.1 现场（第 50 次真机）
+
+| 项 | 读数 |
+| --- | --- |
+| 基线 / 工作区 | `c9bc6056` / `D:/_tmp/slv-phase5/slvp179-ws`（简报 `task-sim50.txt`） |
+| 驱动 | `DRIVE exit=0`、`durationSec:1249`、`toolCalls:75`、`tokenTotal:15 960 222`、`transcriptEvents:409` |
+| 主线 | 立所 → 蓝图两次 propose → 卡 → 四席回合 → 辩论会 m1 → 两席裁决 → 主席 `verdict_final` → p=1 → `verified_promote` → 论文两节 → 互审 → 定稿 |
+| 结题 PDF | `Paper/paper-paper-even-50/paper-paper-even-50.pdf` = **64 702 B**；`pdfCompiled.finalPdfRecordId:"rec-22"`、`finalPdfBytes:64702`、`compiledAfterFinal:false`，磁盘校验一致 |
+| 会话 | `SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks` |
+| 清理 | `clone_gone=True port_listening=False C_free_GB=8.57` |
+| 报告 | `SIM-REPORT49.md`、`FEEDBACK49.md` 9 387 B、`PROGRESS-RUN49.md` 2 983 B |
+
+314.2 FEEDBACK49 的五条读数缺陷与四条提示面
+
+1. **1.1 `notice` 只有一个字符串**：内核已把「谁投的、谁代填的」算成 `notice.provenance`，工具面却把 notice 压成 text ⇒ 真机只能从 `attribution[].source` 重数。
+2. **1.2 同一个回执里两个 `note`**：顶层 `note` 说投递（`a message may not be addressed to its own sender`），裁决说明在 `tally.note`（`every member gave the SAME value 0.6 — the numbers agree`）。同名不同问题。
+3. **1.3 回合回执看不见成员当回合做了什么**：`executed:0` 只数回执字段派发；成员在自己会话里开的会、跑的 Lean、交的卡、发的群聊都不出现——回执诚实写了「counts the dispatch」，但没说去哪儿读，真机一度把成员的真话当成臆造。
+4. **1.4 蓝图续写标题写两遍**：工具自加 `## 共同设计补充｜<member>`，成员 text 里又写一遍，正文出现两次且回执无提示。
+5. **1.5 领头人设置对成员不可达**：`start` 把 `vmu.turn.leaderId` 记成 `applied:"immediate"`，同回执又写 `partial:true`/`visibleToMemberKernels:false`；成员读到空、回退 chair 席位。范围披露了，但没把「这是上限」说出来。
+6. 提示面：`correction.call` 印 `at: "<ISO time>"` 却要求逐字抄；`started.already` 字面误导；`typedRulings` 与 `typed` 同数不同名；主线节在各席提示词里的偏移不同（chair ~30k、r-1 ~22.5k）。
+
+314.3 修法（7 处）
+
+| # | 面 | 修法 |
+| --- | --- | --- |
+| 1.1 | `packs/v5r/tools.js` `verdict_final` | 回执加 `noticeProvenance{submitted,typed}` + `noticeProvenanceMeans`（计数，不是散文） |
+| 1.2 | 同回执 | 加 `noteMeans`：顶层 `note` 是 DELIVERY note，裁决说明在 `tally.note`——同一个词两个问题 |
+| 1.4 | `packs/v5r/blueprint.js` | 新增 `stripRepeatedCodesignHeading(text)`；`composeBlueprintText` 与 propose 两条路径都用它；回执加 `headingDropped` + `headingDroppedMeans`（丢弃要报告，不能静默） |
+| 1.3 | `kernel/turn/index.js` | 新增 `MEMBER_ACTS_MEANS` 常量（点名 `vibe_vmu_chat`/`vibe_vmu_meeting{status}`/`vibe_v5_read_library`/`vibe_v5_lean_job`，并明说 `executed:0` 不等于「什么都没做」），`deliverTurn` 与 `drive` 批次回执都带 `memberActsMeans` |
+| 1.5 | `packs/v5r/tools.js` `start` | 加 `leaderIdMeans`：`vmu.turn.leaderId` 是 **PER-KERNEL** 设置，成员进程不继承，回退 chair SEAT 是设计；没有面能把设置推进别的内核 |
+| 2.2 | `packs/v5r/tools.js` `correction.call` | `at` 改成 `new Date().toISOString()` 的真实时间（不再是占位符），`callMeans` 明说 `at` 是本回执的时刻且可省 |
+| 回归 | `tests/vmu-run183-refusal-reachability.test.mjs` §0c | pin 从「整行字面」改成按名钉 `executedMeans`/`memberActsMeans`/`scope` 三项（RUN 213 改了这一行） |
+
+314.4 机器化与装载事实
+
+`tests/vmu-run213-feedback49.test.mjs`（4 节，全绿）：
+
+- §0 十四条源码 pin（含负向：被打印的调用里不再有 `at: "<ISO time>"`）。
+- §1 真装配：卡（带 `proof_ref`/`proof_state`）→ 辩论会 → 三席 attend → 主席代填两席 0.6 ⇒ `noticeProvenance{submitted:0,typed:2}`、`notice` 含「主席代为记录」、`noteMeans` 含 `DELIVERY note` 与 `tally.note`、`tally.agreed:true`、`correction.call` 的 `at` 是真 ISO 时间且 `callMeans` 说可省。
+- §2 蓝图：首位 proposer 写的是**正文 base**（所以它带进来的标题被丢弃、正文里一个标题也没有）；再加一位**共同设计者**且其 text 又写一遍标题 ⇒ `headingDropped:1`，读回正文里该标题**只出现一次**。
+- §3 `kernel.turn.drive` 的批次回执带 `memberActsMeans`（含 `executed:0`、`vibe_vmu_chat`、`vibe_v5_read_library`）。
+- 装载事实（写错就红）：① 要开辩论会，卡必须已登记 `proof_ref` + `proof_state`（否则 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`，「一句话命题不是对象」）；② 首位 proposer 的 text 进的是 `## 正文`，不生成 `## 共同设计补充` 段；③ `memberActsMeans` 在 **drive 批次回执**上，每轮 `receipts[]` 仍是它自己的形状。
+
+314.5 未闭合
+
+- 「主席代填的裁决写不回 p=1」（FEEDBACK46 1.1 的根）仍在：RUN 210/212 只让回执说「会被拒」，没让这条路走得通。
+- `vibe_v5_verdict` 的 `target` 与 `proposition_id` 双名未动。
+- `started.already` 的字面、`typedRulings` 旧名、主线节在提示词里的偏移——三条提示面未处理。
+- 本轮修法尚未真机复验（第 51 次真机在提交后进行）。
+
+314.6 三教训
+
+1. **计数只活在散文里，等于没有这个计数**：`notice.provenance` 被算出来又被压成一句话，读者只能自己重数——凡是「内核知道、回执只说」，都要把数印出来。
+2. **丢弃必须被报告**：去重拿掉了成员写的一段标题，如果不写 `headingDropped`，读者会以为工具没动过他的文字。
+3. **上限要说成上限**：`leaderId` 在成员内核读不到不是缺陷，是范围；范围写在 `visibleToMemberKernels:false` 里没人读到，就必须写一句「这是上限、回退是有意的」。
+
+314.7 收口链与全量 T1
+
+1. 收口链：`update-doc-counts --write` ⇒ `JOBS total=764 suites=656 probes=108`（随包 `tests/*.mjs` 393 = 288 suites + 105 probes/scripts）；`regen-all --write` 17/17，`--check` 17/17 in sync；四门禁 `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 提示 `vmu.store`/`vmu.members` 方法未列契约，既有）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+2. 全量 T1 首跑 `/d/_tmp/t1-r1000-run213.log` 在 202/764 处**判红三套**（同一根因）：`tests/audit-declaration-criterion.test.mjs`（90 passed / 1 failed）、`tests/audit-vmu-docs.test.mjs`、`tests/audit-vmu-docs.mutants.mjs`（`the unmutated copy is GREEN` 连带红）。报错原文：`FAIL every documented tool the host does NOT register is marked as unimplemented on the line that names it [vibe_vmu_lean (26-turn-orchestration:3502)]` 与 `FAIL RULE D (every documented vibe_vmu_* tool is implemented or explicitly marked 规划/未实现) ⇒ 26-turn-orchestration.md:3502 documents "vibe_vmu_lean" which is NOT in host.js TOOL_NAMES and carries no 规划/未实现 marker`。
+3. 根因：本轮新写的 `MEMBER_ACTS_MEANS` 点了 `vibe_vmu_lean { action: "status" }`，这个面**不存在**（真实面是 `vibe_v5_lean_job { jobId?, waitMs? }`，没有 `action`；同族还有 `vibe_v5_lean_run`/`vibe_v5_lean_lib`/`vibe_v5_lean_read`/`vibe_v5_lean_archive`）。三处同步改成 `vibe_v5_lean_job`（`vibe-math-vmu/kernel/turn/index.js` 的 `MEMBER_ACTS_MEANS`、`vibe-math-vmu/docs/26-turn-orchestration.md` 的 ROUND 218 行、本文档 314.3 表格的 1.3 行）；改后三套单跑 `103 passed / 0 failed`、`91 passed / 0 failed`、`15 passed / 0 failed`。
+4. 干净全量 T1 复跑 `/d/_tmp/t1-r1010-run213b.log` = **`TOTAL 764 PASS 764 FAIL 0 (suites 656 · probes 108)`**（`wall 2317.7s`、`sum of suite times 4454.8s`、`speed-up x1.92`；headstart 为 `v5-institute-fixes.mutants.mjs` 三片各 ~527–564 s）。
+5. 教训：**散文里点名的工具也是契约**——一个只在提示语里出现的面名不会被编译器检查，但会被「文档里提到的工具必须存在」这条审计当场抓住；写提示语时选面名要先 grep 一次工具声明。

@@ -2630,6 +2630,10 @@ export function createTurnOrchestrator({
   //   `fields`, reported `executed:0, effects:[]`, and named NO reason anywhere — so "my vote was dropped" and "my vote took a
   //   documented other path" read identically. The parser already knows (bookkeeping keeps {field, kept:false, reason}); it was
   //   simply never copied onto the receipt. A field that reached the parser and was NOT recorded is a fact about the turn.
+  // ★★★ RUN 213 (run 50 / FEEDBACK49 1.3, MEASURED): run 50 read `executed:0` as "this member did nothing" and only
+  // later found the meeting, the Lean jobs and the ruling cards in the shared records. `EXECUTED_MEANS` says what the
+  // count is, but nothing said WHERE the work is readable — so the same paragraph is carried by every receipt shape.
+  const MEMBER_ACTS_MEANS = 'this receipt counts what the turn DISPATCHED (reply fields), not what the member did: a member works in its OWN session, so a proof it wrote, a meeting it convened, a Lean job it started, a record it filed or a chat line it sent does NOT appear here. Read those from the shared records instead — `vibe_vmu_chat` for what it said, `vibe_vmu_meeting { action: "status" }` for the meetings and votes, `vibe_v5_read_library { id }` for the cards it filed, `vibe_v5_lean_job` for the jobs it ran (a jobId, or none for the list). `executed:0` therefore means "no reply field was dispatched", never "the member did nothing"'
   const fieldsIgnoredOf = (r) => (Array.isArray(r && r.bookkeeping)
     ? r.bookkeeping.filter((b) => b && b.kept === false).map((b) => ({ field: String(b.field), reason: b.reason === undefined ? null : String(b.reason) }))
     : [])
@@ -2983,7 +2987,11 @@ export function createTurnOrchestrator({
         ? 'no meeting was bound to this turn, so a reply field that needs { meeting, member, text } cannot be dispatched (a bare sentence is kept in notes, never silently dropped)'
         : 'this turn was bound to the named meeting, so a member\'s bare sentence was recorded as THAT MEMBER\'S speech and the receipt carries onBehalf for it', effects: turnEffects.slice(), coercions: turnCoercions.slice(), coercionsMeans: COERCIONS_MEANS,
       notes: keptNotes,
-      notesMean: 'lines that were NOT dispatched but ARE kept: a reading of what the member said, bounded to ' + NOTE_CAP + ' chars each - an empty list means no such line existed, never that a line was dropped silently' }
+      notesMean: 'lines that were NOT dispatched but ARE kept: a reading of what the member said, bounded to ' + NOTE_CAP + ' chars each - an empty list means no such line existed, never that a line was dropped silently',
+      // ★★★ RUN 213 (run 50 / FEEDBACK49 1.3, MEASURED): run 50 read `executed:0` as "this member did nothing" and only
+      // later found the meeting, the Lean jobs and the ruling cards in the shared records. The receipt counts DISPATCH,
+      // not the member's work (it says so in `executedMeans`), but it never said WHERE that work is readable.
+      memberActsMeans: MEMBER_ACTS_MEANS }
   }
 
   /**
@@ -3610,7 +3618,7 @@ export function createTurnOrchestrator({
     // receipt showed `executed: 0` with no sentence saying what it counts. Run 37's office read that as "the members did
     // nothing" while the same turns had written proofs and Lean jobs in their own sessions. The batch receipt is read by
     // the same person as the single one, so it states the same fact — attached HERE, once, so every return path has it.
-    const withScope = (r) => Object.assign({}, r, { executedMeans: EXECUTED_MEANS, scope: driveScope(r.receipts || []) })
+    const withScope = (r) => Object.assign({}, r, { executedMeans: EXECUTED_MEANS, memberActsMeans: MEMBER_ACTS_MEANS, scope: driveScope(r.receipts || []) })
     // ★★ LANE turn-reply: A PENDING TOOL REPORT IS ALREADY ONE COMPLETED ROUND. Complete it BEFORE the loop, so a caller
     // that drives in a loop does not keep asking for prompts it has already answered (the report would otherwise never be
     // dispatched). It is reported separately as `completed` and does NOT count as a round: no member was woken for it.

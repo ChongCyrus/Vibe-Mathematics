@@ -202,13 +202,30 @@ export function blueprintCodesignSections(text) {
   return { base: txt(base.join('\n')), sections: sections.map((s) => ({ member: s.member, text: txt(s.lines.join('\n')) })) }
 }
 
+/**
+ * ★★★ RUN 213 (run 50 / FEEDBACK49 1.4, MEASURED): the TOOL owns the `## 共同设计补充｜<member>` heading, but a member's
+ * text often repeats it (run 50 wrote it into `text` as well), so the draft body carried the same heading twice and the
+ * receipt said nothing. A leading duplicate is dropped here and the count is reported by the caller.
+ */
+export function stripRepeatedCodesignHeading(text) {
+  const lines = txt(text).split('\n')
+  let dropped = 0
+  while (lines.length > 0 && lines[0].trim() === '') lines.shift()
+  while (lines.length > 0 && lines[0].trim().startsWith(BLUEPRINT_CODESIGN_SECTION)) {
+    lines.shift(); dropped += 1
+    while (lines.length > 0 && lines[0].trim() === '') lines.shift()
+  }
+  return { text: txt(lines.join('\n')), dropped }
+}
+
 /** Compose the `## 正文` text: the first proposer's base, then one attributed section per co-designer (order kept). */
 export function composeBlueprintText(base, sections) {
   let out = txt(base)
   for (const section of Array.isArray(sections) ? sections : []) {
     const member = txt(section && section.member)
     if (member === '') continue
-    out += (out === '' ? '' : '\n\n') + BLUEPRINT_CODESIGN_SECTION + member + '\n' + txt(section && section.text)
+    // the heading is written HERE, so a repeated one in the section text is dropped (RUN 213 / FEEDBACK49 1.4)
+    out += (out === '' ? '' : '\n\n') + BLUEPRINT_CODESIGN_SECTION + member + '\n' + stripRepeatedCodesignHeading(txt(section && section.text)).text
   }
   return out
 }
@@ -703,9 +720,17 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     target = open.length === 0 ? null : open[open.length - 1]
   }
   const entry = { seat: seatGiven === '' ? null : seatGiven, member: author, at: timeText(stamp) }
+  // ★★★ RUN 213 (run 50 / FEEDBACK49 1.4): strip a heading the caller repeated, and SAY that it happened — a silent
+  // drop would be the same class of defect as the duplicate itself.
+  const cleanedBody = stripRepeatedCodesignHeading(body)
+  const headingDropped = cleanedBody.dropped
+  const cleanBody = cleanedBody.text
+  const headingDroppedMeans = headingDropped === 0
+    ? 'the text you passed carried no `## 共同设计补充｜…` heading, so nothing had to be dropped: this tool writes that heading itself'
+    : 'the text you passed began with ' + String(headingDropped) + ' `## 共同设计补充｜…` heading line(s); THIS TOOL writes that heading itself, so the repeated one(s) were dropped instead of being stored twice (the rest of your text is unchanged)'
   if (target === null) {
     const authors = [entry]
-    const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, text: body })
+    const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, text: cleanBody })
     const put = track.put({
       track: BLUEPRINT_TRACK,
       kind: BLUEPRINT_KIND,
@@ -729,6 +754,8 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       codesign: blueprintCodesignStatus(authors, ''),
       fingerprint: put.fingerprint || null,
       deduplicated: put.deduplicated === true,
+      headingDropped,
+      headingDroppedMeans,
       note: '草案不会生效：要有主席席落成（adopt）才是 current。共同设计：让院士与本所至少一名常驻研究员各自 propose 一次（同一路径下会续写这同一份草案），adopt 前两方都必须有 authors 留痕。',
     }
   }
@@ -746,10 +773,10 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   let textNext = ''
   if (txt(target.fields.proposedBy) === author) {
     // The first proposer edits the `## 正文` base; the other designers' sections are preserved as they wrote them.
-    textNext = composeBlueprintText(body, split.sections)
+    textNext = composeBlueprintText(cleanBody, split.sections)
   } else {
     const sections = split.sections.filter((s) => txt(s.member) !== author)
-    sections.push({ member: author, text: body })
+    sections.push({ member: author, text: cleanBody })
     textNext = composeBlueprintText(split.base, sections)
   }
   const composed = composeBlueprintBody({
@@ -785,6 +812,8 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     codesign: blueprintCodesignStatus(authors, ''),
     fingerprint: (wrote && wrote.fingerprint) || null,
     deduplicated: false,
+    headingDropped,
+    headingDroppedMeans,
     note: '★ 续写的是同一份草案（id/r 不变）：' + author + ' 的 section 已写进 `## 共同设计补充｜' + author + '`；正文里其他设计者的文字没有被改写。adopt 前 authors 必须同时有院士席与常驻研究员席。',
   }
 }
