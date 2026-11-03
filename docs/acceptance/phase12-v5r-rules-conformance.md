@@ -15283,3 +15283,59 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 1. 收口链：`update-doc-counts --write` ⇒ `JOBS total=765 suites=657 probes=108`（随包 `tests/*.mjs` 393 = 288 suites + 105 probes/scripts）；`regen-all --write` 17/17，`--check` 17/17 in sync；四门禁 `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 提示 `vmu.members`/`vmu.store` 方法未列契约，既有）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
 2. 定向回归：`--only vmu-run20` 10/10、`--only vmu-run21` 5/5、`--only vmu-run213` 1/1、`--only vmu-chat` 3/3、`--only vmu-meeting` 18/18、`--only vmu-blueprint` 1/1、`--only vmu-run183` 1/1，全绿。
 3. 全量 T1：`/d/_tmp/t1-r1100-run214.log` = `TOTAL 765  PASS 765  FAIL 0  (suites 657 · probes 108)`（headstart `v5-institute-fixes.mutants.mjs` 550.7s 后释放，三片并行；无红即无返工）。
+
+## §316 RUN 215（run 52 / FEEDBACK51）：一句关于规则的句子被写成了关于文本的句子、被粘回去的草案、数错对象的卡片数
+
+### 316.1 现场
+
+| 项 | 值 |
+| --- | --- |
+| 基线 | `968a9d5b`（RUN 214 已推送） |
+| 驱动 | `D:/_tmp/slv-phase5/slv-p13-oc.ps1` · opencode-go/deepseek-v4.1-flash |
+| 工作区 | `D:/_tmp/slv-phase5/slvp181-ws`（`-CloneName slvp214 -Port 19740 -TaskFile task-sim52.txt`，全新） |
+| 结果 | `DRIVE exit=0` · `SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks` |
+| 主线结题 | `Paper/paper-paper-oddsum-52/paper-paper-oddsum-52.pdf` **54 445 B**（`pdf.ok:true`、`engine:"xelatex"`、`status.pdfCompiled.compiledAfterFinal:false`） |
+| 报告 | `SIM-REPORT51.md` 21 342 B · `FEEDBACK51.md` 11 894 B · `PROGRESS-RUN51.md` |
+| 清理 | `clone_gone=True port_listening=False C_free_GB=8.55` |
+
+### 316.2 五处机制缺陷
+
+1. **`headingDropped:0` 的分支把规则说成了文本事实**（1.1a）：run 52 把 `## 共同设计补充｜r-acad` 写在正文第三行，回执说「the text you passed carried no … heading」——文本确实带了标题，只是不在首行；`stripRepeatedCodesignHeading` 只读首行。同一件事两句话，一句真一句假。
+2. **续写把整篇草案粘回去**（1.1b，内容级）：r-1 的 section 文本以它刚读到的草案开头，于是草案里 base 出现两遍，回执只有 `headingDropped:0`；这份文档会被 adopt 成现行版。
+3. **`count:0` 与 `cards:2` 同在一张回执里**（1.2）：`cards` 数的是全库 ruling-status 卡（所有会议、所有命题），`count`/`rows` 才按 (meeting, proposition) 过滤。
+4. **主席重复 attend 是静默空操作**（1.3）：`ok:true` 而 `presentBreakdown.attended` 不动，没有一句说明。
+5. **聊天面没有转达字段**（2.3）：所办以 `by:"<成员>"` 代成员发言，回执 `from:"<成员>"` 与成员亲口说无法区分。
+
+### 316.3 六处修法（全部落盘）
+
+| 面 | 修法 |
+| --- | --- |
+| `vibe-math-vmu/packs/v5r/blueprint.js` | 新导出 `stripLeadingDuplicateDraft(text, existing)`：文本以现行草案（或其次 `## 正文` base）开头时剥掉该前缀并报告字符数。`propose` 的 `headingDroppedMeans` 的 `dropped:0` 分支改两支（「带了 N 个标题但不在首行 ⇒ 原样存进正文」/「完全没带」）；两条回执新增 `bodyPrefixDropped`/`bodyPrefixDroppedMeans`（「the first N character(s) … were the DRAFT you were continuing, pasted back in」）。 |
+| `vibe-math-vmu/packs/v5r/tools.js` | `rulingSubmissionsOf` 新增 `matched` 计数：`cards` 只数本 (meeting, proposition) 的卡，全库扫描另起 `cardsScanned`，并附 `cardsMeans`（「cards:0 beside cardsScanned:2 is not a contradiction」）；`submissions` 块与 `action:"rulings"` 回执同步。`case 'part'` 新增 `requiredLines`（调 `paper.requiredLines()`，含 `count`/`items`/`means`「looks for VERBATIM in the rendered text」）。blueprint 面 description 补「★ COMMON DESIGN … it MUST be the FIRST line … bodyPrefixDropped」。 |
+| `vibe-math-vmu/kernel/meetings.js` | `attend` 的 receipt 与 return 都带 `alreadyPresent` + `alreadyPresentMeans`（主席支点「CHAIR … open() seats the chair」、普通支「ALREADY present … changed no count」）。 |
+| `vibe-math-vmu/tools/chat.js` | `send` 回执加 `voiceMeans`：「`from` is the VOICE … this face has NO relay field … use `vibe_v5_message` … `relayedBy`」。 |
+
+### 316.4 机器化
+
+`tests/vmu-run215-feedback51.test.mjs` 六节全绿：§0 九条源码 pin（含负向：旧的「carried no heading, so nothing had to be dropped」必须不再存在）；§1 标题在第三行 ⇒ `headingDropped:0` 且 means 含 `NOT as the first line`/`stored verbatim`；§2 续写粘回整篇草案 ⇒ `bodyPrefixDropped > 0`、means 含 `pasted back in`，**读回来的正文里 base 只出现一次**；§3 `cards:1`/`cardsScanned>=1` 与无匹配场 `cards:0` + `cardsScanned>=1`，means 明说「not a contradiction」；§4 主席二次 attend ⇒ `alreadyPresent:true` 且 means 含 `CHAIR`，普通成员二次 attend ⇒ means 含 `ALREADY present`；§5 `part` 回执带 `requiredLines{count,items,means}`；§6 chat `send` 回执 `voiceMeans` 含 `NO relay field`/`relayedBy`，`from` 仍是 `r-1`（披露不改数据）。
+
+三条装载事实（写这套测试时踩到）：① `kernel.records.get` 收**对象** `{ id, includeBody }` 不是裸 id（裸传得到 `unknown record: undefined`）；② `proposeBlueprint` 返回的 `id` 是记录 id，但草案**正文**要读 `readBlueprint({records,id}).text`（记录的 `body` 是把 `## 正文` 与表头一起编好的整篇，成员 read 到的也是 `text`，所以「粘回草案」的判定对象是 `text`）；③ 蓝图续写的 `draft` 参数是草案记录 id。
+
+### 316.5 未闭合
+
+- `vibe_v5_lean_job` / `vibe_v5_lean_lib` 的命名与读数互斥（FEEDBACK51 1.4）：只靠 `jobScopeMeans` 解释，工具名没带住差别——改名属破坏性，留待决定。
+- `memberActsMeans` 与裁决回执 `readBack` 对「读卡」的两种说法（2.4）：都真，口径不一，未统一。
+- chat 面仍**没有**转达字段（只披露 + 指路），「所办替成员转达」在聊天面依然不可表达。
+- 主线节的席位漂移、`started.already`、`vibe_v5_verdict` 双名、chair-typed 写回 p=1 的根，仍未解。
+
+### 316.6 三教训
+
+1. **说明的分支要说「这件事对什么成立」**：`headingDropped:0` 那句对规则真、对文本假——凡是两支场景的说明，都要写清主语是「这次输入」还是「工具规则」。
+2. **重复不是格式问题，是内容问题**：粘贴回来的草案会被 adopt 成现行版，所以要在写入时剥掉并计数，而不是只加一句提醒。
+3. **同名的数字要在同一张回执里分工**：`cards` 与 `count` 曾各自数不同的集合；把「本命题的卡」与「全库的卡」分成两个名字，比加一句解释便宜。
+
+### 316.7 收口链与全量 T1
+
+1. 定向回归：`node tests/run-tests.mjs --only vmu-run215 --only vmu-run214 --only vmu-run213 --only vmu-b4-b5-blueprint --only vmu-blueprint --only vmu-paper --only vmu-meeting --only vmu-chat --only vmu-v5r-tools --only vmu-turn` = `TOTAL 45 PASS 45 FAIL 0（suites 44 · probes 1）`。
+2. 收口链：`update-doc-counts --write` ⇒ `JOBS total=766 suites=658 probes=108`；`regen-all --write` 17/17，`--check` 17/17 in sync；四门禁 `PREFLIGHT`/`DOC LINT`/`RULES COVERAGE`/`RULE PARITY` 全 PASS。
+3. 全量 T1：`/d/_tmp/t1-r1200-run215.log` = `TOTAL 766  PASS 766  FAIL 0  (suites 658 · probes 108)`（headstart 隔离 `v5-institute-fixes.mutants.mjs` 524.7 s 后释放）。四条新 pin 与 §316.3 的六处修法在同一棵树上跑完，无红。

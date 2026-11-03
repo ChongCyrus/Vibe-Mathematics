@@ -218,6 +218,25 @@ export function stripRepeatedCodesignHeading(text) {
   return { text: txt(lines.join('\n')), dropped }
 }
 
+/**
+ * ★★★ RUN 215 (run 52 / FEEDBACK51 1.1b, MEASURED): a co-designer continued the draft by pasting the WHOLE document it
+ * had just read — base text included — as its own section, so the draft ended up holding the base twice and the receipt
+ * said only `headingDropped:0`. The duplicate is content, not formatting: it gets adopted as the current revision and
+ * every later reader sees the same paragraph twice. When the incoming text STARTS WITH the draft that already exists
+ * (or with its base), that prefix is the copy; it is stripped here and the receipt says how much was removed.
+ */
+export function stripLeadingDuplicateDraft(text, existing) {
+  const body = txt(text)
+  const known = txt(existing).trim()
+  if (known === '') return { text: body, droppedChars: 0, matched: null }
+  const lead = body.replace(/^[ \t\n\r]+/, '')
+  if (lead.startsWith(known)) {
+    const rest = lead.slice(known.length).replace(/^[ \t\n\r]+/, '')
+    if (rest !== '') return { text: rest, droppedChars: body.length - rest.length, matched: 'draft' }
+  }
+  return { text: body, droppedChars: 0, matched: null }
+}
+
 /** Compose the `## 正文` text: the first proposer's base, then one attributed section per co-designer (order kept). */
 export function composeBlueprintText(base, sections) {
   let out = txt(base)
@@ -725,19 +744,41 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   const cleanedBody = stripRepeatedCodesignHeading(body)
   const headingDropped = cleanedBody.dropped
   const cleanBody = cleanedBody.text
+  // ★★★ RUN 215 (run 52 / FEEDBACK51 1.1a, MEASURED): the `dropped:0` branch said "the text you passed carried no
+  // `## 共同设计补充｜…` heading" while the caller's text DID carry one — just not on the first line, which is the only
+  // line this stripper reads. A sentence about the rule was written as a sentence about the text. The branch now says
+  // which of the two happened, and names the first-line rule the caller has to know before writing.
+  const headingLinesInInput = txt(body).split('\n').filter((l) => l.trim().startsWith(BLUEPRINT_CODESIGN_SECTION)).length
+  // ★★★ RUN 215 (run 52 / FEEDBACK51 1.1b, MEASURED): a continuation that pastes the draft it just read carries the whole
+  // base again; that copy is stripped (see stripLeadingDuplicateDraft) and the receipt says how much went.
+  // A continuation can paste the composed draft (what `read` returns) or just its `## 正文` base — both are copies of text
+  // the reader already holds, so both are stripped; the base is tried second only when the whole draft did not match.
+  const dup = (() => {
+    if (target === null) return { text: cleanBody, droppedChars: 0, matched: null }
+    const whole = stripLeadingDuplicateDraft(cleanBody, target.text)
+    if (whole.matched !== null) return whole
+    return stripLeadingDuplicateDraft(cleanBody, blueprintCodesignSections(target.text).base)
+  })()
+  const bodyNext = dup.text
+  const bodyPrefixDropped = dup.droppedChars
+  const bodyPrefixDroppedMeans = dup.matched === null
+    ? 'your text did not begin with the draft it continued, so nothing was removed from it'
+    : 'the first ' + String(dup.droppedChars) + ' character(s) of your text were the DRAFT you were continuing, pasted back in: that copy was removed, so this revision holds it once. Only the text after it was stored as your section'
   // ★★★ RUN 214 (run 51 / FEEDBACK50 1.1, MEASURED): the sentence used to say "THIS TOOL writes that heading itself" in BOTH
   // branches. That is true only when a section is ADDED to an existing draft (the composer writes `## 共同设计补充｜<member>`).
   // A FIRST proposal has no per-member section at all: its heading was dropped and nothing was written in its place, so the
   // acceptance reading "every member's heading appears once" came out as 0 for the first proposer while the receipt
   // claimed the tool had supplied one. The drop is now described against what actually happened to THIS call.
   const headingDroppedMeans = headingDropped === 0
-    ? 'the text you passed carried no `## 共同设计补充｜…` heading, so nothing had to be dropped'
+    ? (headingLinesInInput > 0
+      ? 'the text you passed carries ' + String(headingLinesInInput) + ' `## 共同设计补充｜…` heading line(s) but NOT as the first line: only a heading on the very FIRST line is recognised and dropped, so your heading line was stored verbatim inside the text (it will be read as part of the body, not as a section header)'
+      : 'the text you passed carries no `## 共同设计补充｜…` heading line at all, so nothing had to be dropped')
     : (target === null
       ? 'the text you passed began with ' + String(headingDropped) + ' `## 共同设计补充｜…` heading line(s) and they were DROPPED: this is the FIRST proposal of this revision, so there is no per-member section yet and the base text is stored as you wrote it minus those heading lines — no heading was written in its place. A section heading is only written when a section is ADDED to an existing draft (continue that draft)'
       : 'the text you passed began with ' + String(headingDropped) + ' `## 共同设计补充｜…` heading line(s); THIS TOOL writes that heading itself for a section ADDED to an existing draft, so your copy was dropped instead of being stored twice (the rest of your text is unchanged)')
   if (target === null) {
     const authors = [entry]
-    const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, text: cleanBody })
+    const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, text: bodyNext })
     const put = track.put({
       track: BLUEPRINT_TRACK,
       kind: BLUEPRINT_KIND,
@@ -763,6 +804,8 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       deduplicated: put.deduplicated === true,
       headingDropped,
       headingDroppedMeans,
+      bodyPrefixDropped,
+      bodyPrefixDroppedMeans,
       note: '草案不会生效：要有主席席落成（adopt）才是 current。共同设计：让院士与本所至少一名常驻研究员各自 propose 一次（同一路径下会续写这同一份草案），adopt 前两方都必须有 authors 留痕。',
     }
   }
@@ -780,10 +823,10 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   let textNext = ''
   if (txt(target.fields.proposedBy) === author) {
     // The first proposer edits the `## 正文` base; the other designers' sections are preserved as they wrote them.
-    textNext = composeBlueprintText(cleanBody, split.sections)
+    textNext = composeBlueprintText(bodyNext, split.sections)
   } else {
     const sections = split.sections.filter((s) => txt(s.member) !== author)
-    sections.push({ member: author, text: cleanBody })
+    sections.push({ member: author, text: bodyNext })
     textNext = composeBlueprintText(split.base, sections)
   }
   const composed = composeBlueprintBody({
@@ -821,6 +864,8 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     deduplicated: false,
     headingDropped,
     headingDroppedMeans,
+    bodyPrefixDropped,
+    bodyPrefixDroppedMeans,
     note: '★ 续写的是同一份草案（id/r 不变）：' + author + ' 的 section 已写进 `## 共同设计补充｜' + author + '`；正文里其他设计者的文字没有被改写。adopt 前 authors 必须同时有院士席与常驻研究员席。',
   }
 }

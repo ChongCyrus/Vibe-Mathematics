@@ -3517,3 +3517,16 @@ RUN 213（第 50 次真机 run 50 / FEEDBACK49）处理的是「算出来的事�
 - 召集回执新增 `nonAttending`/`nonAttendingMeans`（读 `vmu.meetings.attendDeniedSeats`）：谁在名册上但不能入席，在**做决定的那一行**就说，而不是等 `attend` 被拒。
 
 机器化：`tests/vmu-run214-feedback50.test.mjs` 7 节全绿；同步更新四条既有 pin 到新契约（`vmu-run206` §1i/§1j、`vmu-run208` §6b、`vmu-run211` §0c、`vmu-run213` §2c/§2g）；`--only vmu-run20` 10/0、`vmu-run21` 5/0、`vmu-run213` 1/0、`vmu-chat` 3/0、`vmu-meeting` 18/0、`vmu-blueprint` 1/0、`vmu-run183` 1/0。教训：**有两支场景的说明，两支都要各自可核验**；**别名把读者引向反面**；**提醒要写在做决定的那一行**。
+
+## ROUND 220
+
+**RUN 215（run 52 / FEEDBACK51）——一句关于规则的句子、被粘回草案、数错对象的卡片数。**
+
+1. **`headingDropped:0` 的措辞分两支**：run 52 把 `## 共同设计补充｜r-acad` 写在正文第三行，回执答「the text you passed carried no … heading」。文本确实带了该标题，只是不在首行（`stripRepeatedCodesignHeading` 只读首行）。现在：带了但不在首行 ⇒ 「carries N heading line(s) but NOT as the first line … stored verbatim inside the text」；确实没带 ⇒ 「carries no heading line at all」。同时把「标题必须首行」写进 blueprint 面的 description，让规则在**写之前**可见。
+2. **续写粘回整篇草案 ⇒ 剥掉并计数**：新增 `stripLeadingDuplicateDraft(text, existing)`，propose 在续写分支先试整篇草案 `text`、再试其 `## 正文` base；命中就剥掉前缀，回执给 `bodyPrefixDropped`（字符数）与 `bodyPrefixDroppedMeans`（「the first N character(s) … were the DRAFT you were continuing, pasted back in」）。这是内容级修复：重复段落会被 adopt 成现行版。
+3. **`count:0` 与 `cards:2` 不再互相矛盾**：`rulingSubmissionsOf` 的 `cards` 改为**本 (meeting, proposition) 的卡数**，全库扫描另起名 `cardsScanned`，并附 `cardsMeans` 明说「cards:0 beside cardsScanned:2 is not a contradiction」；`submissions` 块与 `action:"rulings"` 回执同步。
+4. **主席二次 attend 具名空操作**：`attend` 的 receipt 与 return 都带 `alreadyPresent` + `alreadyPresentMeans`（主席支点「open() seats the chair」，普通支「ALREADY present … changed no count」）。
+5. **`part` 回执带交付线清单**：`paper.requiredLines()` 的 `{count, items, means}` 现在随 part 回执一起返回，成员在还能改正文时就知道交付门要逐字找哪句，而不是等 `final` 被拒。
+6. **聊天面说清「没有转达字段」**：`vibe_vmu_chat.send` 回执加 `voiceMeans`——「`from` is the VOICE，this face has NO relay field；替成员转达请用 `vibe_v5_message`（`from` + `relayedBy`）」。
+
+机器化 `tests/vmu-run215-feedback51.test.mjs` 六节；三条装载事实：`kernel.records.get` 收对象 `{id}`、草案正文读 `readBlueprint(...).text`（成员 read 到的也是它）、`draft` 参数是草案记录 id。定向回归 `TOTAL 45 PASS 45 FAIL 0`。

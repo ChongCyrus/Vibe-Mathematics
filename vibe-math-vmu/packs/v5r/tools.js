@@ -2892,10 +2892,10 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     attributionMeans: 'one row per number in the tally: source:"submission" means that member filed it itself (the row names the card and its path); source:"chair-typed" means the chair wrote it because no card was filed; `coverage.missing` names the members who debated and appear in NEITHER',
     // ★ TASK-12: the filing ledger this ruling was collected from — readable or not, and why.
     submissions: { readable: filed.readable === true, why: filed.readable === true ? null : filed.why,
-      count: filed.rows.length, cards: filed.cards, duplicates: filed.duplicates,
+      count: filed.rows.length, cards: filed.cards, cardsScanned: filed.cardsScanned, duplicates: filed.duplicates,
       rows: filed.rows.map((r) => ({ member: r.member, verdict: r.verdict, reason: r.reason, at: r.at, id: r.id, path: r.path, counted: provided.includes(r.member) })),
       means: filed.readable === true
-        ? 'the rulings were read back from the library on disk (each member files its own card with vibe_v5_verdict { meeting, proposition_id, verdict, reason }); counted:true marks the ones this tally actually used'
+        ? 'the rulings were read back from the library on disk (each member files its own card with vibe_v5_verdict { meeting, proposition_id, verdict, reason }); counted:true marks the ones this tally actually used. `count` is how many members filed for THIS debate, `cards` how many matching cards were found, and `cardsScanned` how many ruling-status cards the library holds in total: 0 / 0 / 2 means the library has ruling cards but none about this meeting+proposition'
         : 'the filing ledger could not be read here, so NOTHING was collected from it: ' + String(filed.why) },
     coverage: { debated: debated.members, debatedSource: debated.source, provided,
       submitted: filed.rows.map((r) => r.member),
@@ -3510,10 +3510,11 @@ async function toolMeetingRulings(args = {}, { kernel } = {}) {
     ok: true, tool: 'vibe_v5_meeting', action: 'rulings', meeting, proposition,
     readable: filed.readable === true, why: filed.readable === true ? null : filed.why,
     cards: Number.isFinite(filed.cards) ? filed.cards : 0,
+    cardsScanned: Number.isFinite(filed.cardsScanned) ? filed.cardsScanned : 0,
     count: Array.isArray(filed.rows) ? filed.rows.length : 0,
     rows: Array.isArray(filed.rows) ? filed.rows : [],
     duplicates: Array.isArray(filed.duplicates) ? filed.duplicates : [],
-    means: 'these are the ruling CARDS filed for this (meeting, proposition) by the members themselves (vibe_v5_verdict { meeting, proposition_id, verdict, reason, member }): `rows` is the latest filing per member, `cards` counts every scanned proposition card and `duplicates` reports a member who filed two different values (the latest is the one the tally uses). Reading does NOT tally and does NOT decide — the chair still signs with vibe_v5_verdict_final. `readable:false` means no filing could be read (see `why`), which is NOT the same as "nobody filed"',
+    means: 'these are the ruling CARDS filed for this (meeting, proposition) by the members themselves (vibe_v5_verdict { meeting, proposition_id, verdict, reason, member }): `rows` is the latest filing per member, `cards` counts the cards filed for THIS (meeting, proposition), `cardsScanned` counts every ruling-status card the library holds (so `cards:0` beside `cardsScanned:2` is not a contradiction — it means the cards on disk are about other debates), and `duplicates` reports a member who filed two different values (the latest is the one the tally uses). Reading does NOT tally and does NOT decide — the chair still signs with vibe_v5_verdict_final. `readable:false` means no filing could be read (see `why`), which is NOT the same as "nobody filed"',
   }
 }
 
@@ -4490,14 +4491,15 @@ function rulingPayloadOf(body) {
 async function rulingSubmissionsOf(kernel, { meeting, proposition }) {
   const library = rulingLibraryOf(kernel)
   if (!library) {
-    return { readable: false, why: 'this kernel has no library face (it was assembled without a durable root), so no filed ruling can be read back', rows: [], cards: 0, duplicates: [] }
+    return { readable: false, why: 'this kernel has no library face (it was assembled without a durable root), so no filed ruling can be read back', rows: [], cards: 0, cardsScanned: 0, duplicates: [] }
   }
   let heads = []
   try { heads = await library.list({ kind: 'proposition' }) } catch (e) {
-    return { readable: false, why: 'the library head list could not be read: ' + String((e && e.message) || e), rows: [], cards: 0, duplicates: [] }
+    return { readable: false, why: 'the library head list could not be read: ' + String((e && e.message) || e), rows: [], cards: 0, cardsScanned: 0, duplicates: [] }
   }
   const cards = (Array.isArray(heads) ? heads : []).filter((h) => h && String(h.status || '') === RULING_STATUS)
   const rows = []
+  let matched = 0
   for (const h of cards) {
     let body = null
     let path = null
@@ -4505,6 +4507,7 @@ async function rulingSubmissionsOf(kernel, { meeting, proposition }) {
     const payload = rulingPayloadOf(body)
     if (!payload) continue
     if (String(payload.meeting || '') !== String(meeting) || String(payload.proposition || '') !== String(proposition)) continue
+    matched += 1
     const member = payload.member ? String(payload.member) : (h.owner ? String(h.owner) : '')
     const verdict = Number(payload.verdict)
     if (!member || !Number.isFinite(verdict)) continue
@@ -4524,7 +4527,13 @@ async function rulingSubmissionsOf(kernel, { meeting, proposition }) {
     }
     effective.set(r.member, r)
   }
-  return { readable: true, why: null, rows: [...effective.values()], cards: cards.length, duplicates }
+  // ★★★ RUN 215 (run 52 / FEEDBACK51 1.2, MEASURED): `cards` used to be EVERY ruling-status card in the library — all
+  // meetings, all propositions — while `rows` was filtered to this (meeting, proposition). A chair-typed sitting therefore
+  // read `count:0, cards:2` in one receipt and a reader could not tell which number answered "did the members file for
+  // THIS debate". `cards` now counts the cards that actually match this pair; the library-wide scan is reported beside it
+  // under its own name, so the two facts stay separable.
+  return { readable: true, why: null, rows: [...effective.values()], cards: matched, cardsScanned: cards.length, duplicates,
+    cardsMeans: '`cards` counts the ruling cards filed for THIS (meeting, proposition) and `cardsScanned` counts every ruling-status proposition card the library holds; a `cards:0` with `cardsScanned:2` means two ruling cards exist but neither is about this debate' }
 }
 /** WHERE the card that has to be corrected LIVES. A records row has no file; a library card has one, and naming it is
  *  the difference between "go fix it" and "fix it here". Never invents a path. */
@@ -5458,7 +5467,22 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // ★★ RUN 197 (run 38 / FEEDBACK37 1.4, MEASURED): this face ACCEPTS an empty `evidence` list (the requirement is the
       // DELIVERY gate's) and nothing said so — the member read its own empty list as "checked and fine". The receipt states
       // which face requires what, where the writer can still act on it.
+      // ★★★ RUN 215 (run 52 / FEEDBACK51 2.2, MEASURED): the delivery gate checks REQUIRED LINES verbatim, and that list
+      // lived only on `status` — so the first time a writer heard about it was `final` refusing the paper, after every part
+      // had been written and cross-reviewed. The part receipt now carries the list, i.e. the writer learns the target while
+      // it can still write the sentence.
+      const requiredLineLookahead = (() => {
+        try {
+          if (typeof paper.requiredLines !== 'function') return null
+          const r = paper.requiredLines()
+          if (!r || typeof r !== 'object') return null
+          return { count: Number(r.count) || (Array.isArray(r.items) ? r.items.length : 0), items: Array.isArray(r.items) ? r.items : [] }
+        } catch (e) { return null }
+      })()
       return { ok: true, tool, action, part,
+        requiredLines: requiredLineLookahead === null ? null : Object.assign({}, requiredLineLookahead, {
+          means: 'these are the lines the DELIVERY gate looks for VERBATIM in the rendered text (read them from `status.requiredLines` at any time): write each one exactly as printed inside some part, otherwise `final` refuses the paper after every part has been written',
+        }),
         evidence: pointers === null ? null : { provided: pointers.provided, checked: true,
           resolved: pointers.resolved.map((r) => r.cardId), means: pointers.means },
         evidenceGate: {
@@ -6049,7 +6073,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_blueprint',
-    description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision (path + text REQUIRED; a draft is never in force); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one (draft REQUIRED; any other seat is refused by name); "read" returns one revision by id. Every change is one record row (who proposed, who adopted, when, fingerprint), so "who changed the blueprint" is answerable instead of remembered. The rows are also readable through vibe_v5_read_library { track: "blueprint" }.',
+    description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision (path + text REQUIRED; a draft is never in force); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one (draft REQUIRED; any other seat is refused by name); "read" returns one revision by id. ★ COMMON DESIGN (共同设计): if your text carries a `## 共同设计补充｜<your id>` heading it MUST be the FIRST line — only a heading on the very first line is recognised and dropped, one placed anywhere else is stored verbatim inside the body. Do NOT paste the draft you are continuing back into your text: a leading copy of the existing draft is stripped (the receipt reports it in bodyPrefixDropped). Every change is one record row (who proposed, who adopted, when, fingerprint), so "who changed the blueprint" is answerable instead of remembered. The rows are also readable through vibe_v5_read_library { track: "blueprint" }.',
     parameters: { action: { type: 'string' }, path: { type: 'string' }, member: { type: 'string' }, text: { type: 'string' }, draft: { type: 'string' }, id: { type: 'string' }, note: { type: 'string' } },
     handler: toolBlueprint,
   },

@@ -61,8 +61,15 @@ export function makeChatSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (!chat) return refused('VMU_ENGINE_UNAVAILABLE', 'the chat primitive is not mounted in this kernel',
           'declare vmu.chat.* (or config.chat) so the face is wired')
         if (action === 'send') {
-          return Object.assign({ ok: true, action }, chat.send(need(by, 'by'), need(text, 'text'),
-            { replyTo: replyTo === undefined ? null : replyTo, quotes: Array.isArray(quotes) ? quotes : [], kind: kind || 'chat' }))
+          // ★★★ RUN 215 (run 52 / FEEDBACK51 2.3, MEASURED): the office carried a member's sentence into the group chat by
+          // typing `by: "<member>"`, so the receipt said `from: "<member>"` and could not be told apart from the member
+          // speaking. This face records ONE voice and has no relay field — by design, chat is where members talk. The
+          // receipt now says so and points at the face that DOES name a relay.
+          const sent = chat.send(need(by, 'by'), need(text, 'text'),
+            { replyTo: replyTo === undefined ? null : replyTo, quotes: Array.isArray(quotes) ? quotes : [], kind: kind || 'chat' })
+          return Object.assign({ ok: true, action }, sent, {
+            voiceMeans: '`from` is the VOICE of this message: this face records who spoke and has NO relay field, so a sentence the office types under a member id is indistinguishable from that member saying it (that is why the office should not do it). To carry the words of a member through the office, use `vibe_v5_message`, whose receipt separates `from` (the voice) from `relayedBy` (who carried it)',
+          })
         }
         if (action === 'list') {
           return Object.assign({ ok: true, action }, chat.list({ limit: limit === undefined ? 50 : limit,

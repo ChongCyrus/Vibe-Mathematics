@@ -1514,6 +1514,11 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         mark(enforced, 'vmu.meetings.lateAfterMs')
         late = true
       }
+      // ★★★ RUN 215 (run 52 / FEEDBACK51 1.3, MEASURED): the chair attends a second time and gets `ok:true` while
+      // `presentBreakdown.attended` does not move — true, but unexplained: a reader checking only `attended` concluded the
+      // seat had not signed in. The receipt now says the call was a no-op and why (the chair is seated by open()).
+      const wasPresent = m.present.has(String(member))
+      const wasChair = m.chair !== null && m.chair !== undefined && String(m.chair) === String(member)
       m.roster = m.roster.includes(member) ? m.roster : m.roster.concat([member])
       m.present.add(member)
       // ★ SETTLE THE SCHEDULE ON THIS TOUCH. "The last person arrived ⇒ the meeting starts" is exactly what 等待 is
@@ -1522,10 +1527,15 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // and the receipt repeats it, so "this attendance is what opened the meeting" is not silent.
       const settled = (m.state === 'scheduled' || m.state === 'waiting') ? syncMeeting(m, ms) : null
       const q = quorumOf(m)
-      const receipt = { at: ms, action: 'attend', meeting: m.id, member, late, quorum: q, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE }
+      const alreadyPresentMeans = wasPresent
+        ? (wasChair
+          ? 'this member is the CHAIR and open() seats the chair, so it was present before any attend call: this call changed no count (presentBreakdown.attended counts only the members who actually arrived), and attending again is allowed as a no-op'
+          : 'this member was ALREADY present when the call arrived: this call changed no count — present, quorum and unanswered are exactly as they were, and attending twice is allowed as a no-op')
+        : 'this call is what put the member in the present set'
+      const receipt = { at: ms, action: 'attend', meeting: m.id, member, late, alreadyPresent: wasPresent, alreadyPresentMeans, quorum: q, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       say({ type: 'meetings/attended', at: ms, meeting: m.id, member, late, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, late, quorum: q, state: m.state, settled, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, late, alreadyPresent: wasPresent, alreadyPresentMeans, quorum: q, state: m.state, settled, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Leave. `leaveEarlyPolicy` (allow/note/deny) and `quorumLossPolicy` decide the consequence. */
