@@ -257,7 +257,14 @@ test('RUN 199 §5+§6 — the reply channel names itself, and a proof_ref write 
     ok(!!ev && ev.kind === 'proof-ref', '§6b the receipt reports the evidence kind it admitted', ev)
     ok(/NOT to your session working directory/.test(String(ev.pointerNote || '')),
       '§6c ★★ the pointer is named as relative to the LIBRARY root, not the working directory', ev && ev.pointerNote)
-    ok(/LOCKED/.test(String(ev.lockNote || '')) && /cannot be corrected afterwards/.test(String(ev.lockNote || '')),
-      '§6d ★★ and the receipt says the card is locked, so the pointer cannot be fixed later', ev && ev.lockNote)
+    // ★★★ RUN 212 (run 49 / FEEDBACK48 1.2) measured this sentence against the behaviour: the pointer this test names does
+    // NOT exist (a fresh library root), and in that case the rule-L14 lock is DEFERRED — the card stays writable, so
+    // "the pointer cannot be corrected afterwards" was false. The note now follows the fact: deferred here, LOCKED once a
+    // pointer that really resolves has been registered.
+    ok(/NOT locked/.test(String(ev.lockNote || '')) && /DEFERRED/.test(String(ev.lockNote || ''))
+      && /correct the pointer freely/.test(String(ev.lockNote || '')),
+      '§6d ★★★ a DANGLING pointer defers the lock, and the note says the pointer can still be corrected', ev && ev.lockNote)
+    ok(!/cannot be corrected afterwards/.test(String(ev.lockNote || '')),
+      '§6e ★★ the contradictory sentence is gone (it was printed while the card was still writable)', ev && ev.lockNote)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
