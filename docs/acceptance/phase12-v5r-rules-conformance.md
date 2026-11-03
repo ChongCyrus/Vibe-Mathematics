@@ -15339,3 +15339,50 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 1. 定向回归：`node tests/run-tests.mjs --only vmu-run215 --only vmu-run214 --only vmu-run213 --only vmu-b4-b5-blueprint --only vmu-blueprint --only vmu-paper --only vmu-meeting --only vmu-chat --only vmu-v5r-tools --only vmu-turn` = `TOTAL 45 PASS 45 FAIL 0（suites 44 · probes 1）`。
 2. 收口链：`update-doc-counts --write` ⇒ `JOBS total=766 suites=658 probes=108`；`regen-all --write` 17/17，`--check` 17/17 in sync；四门禁 `PREFLIGHT`/`DOC LINT`/`RULES COVERAGE`/`RULE PARITY` 全 PASS。
 3. 全量 T1：`/d/_tmp/t1-r1200-run215.log` = `TOTAL 766  PASS 766  FAIL 0  (suites 658 · probes 108)`（headstart 隔离 `v5-institute-fixes.mutants.mjs` 524.7 s 后释放）。四条新 pin 与 §316.3 的六处修法在同一棵树上跑完，无红。
+## 317. RUN 216 —— 一句「只保留一次」在磁盘上留下零次（第 53 次真机，FEEDBACK52）
+
+### 317.1 现场
+
+第 53 次真机（`D:/_tmp/slv-phase5/task-sim53.txt`，`-CloneName slvp215 -Port 19742 -Workspace D:\_tmp\slv-phase5\slvp182-ws`，基线提交 `5bee438c`）`DRIVE exit=0`、`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`，主线结题 PDF `Paper/paper-paper-oddsum-53/paper-paper-oddsum-53.pdf` **64 212 B**（`pdfBytes:64212`、`finalPdfBytes:64212`），`C_free_GB=8.53`；报告 `SIM-REPORT52.md` 20 290 B、`FEEDBACK52.md` 11 791 B。RUN 215 的六条修法里五条被逐条确认为真生效（2.1 标题非首行、2.3 `cards`/`cardsScanned`、2.4 二次入席、2.5 `part.requiredLines`、2.6 转达面），一条**坏在第二半**。
+
+### 317.2 三处账（全部 MEASURED）
+
+1. **①「只保留一次」实际保留了零次**（`vibe-math-vmu/packs/v5r/blueprint.js`）：RUN 215 让 `propose` 剥掉「续写时粘回来的草案副本」，回执写 `bodyPrefixDroppedMeans` =「that copy was removed, so this revision holds it once」。但**首位提案人**自己粘回整篇时，剥完剩下的只有追加段，而写入分支用 `composeBlueprintText(bodyNext, split.sections)` 把 base **整个换成了追加段** ⇒ 草案正文消失。run 53 在 rec-22/rec-23 两次复现：`bodyPrefixDropped:52`/`82`，而 base 第一段出现 **0 次**，`read` 与 `vibe_v5_read_library {id}` 的 body 都只剩追加段。
+2. **② 成员自己交的卡被叫作 TYPED**（`vibe-math-vmu/packs/v5r/tools.js` 的会议裁决读面 `means`）：同一回执里 `sources {n:2, submitted:2, typed:0}`，而 `p1RulingReading.means` 说「it ALSO holds 2 TYPED RULING CARD(S) filed for proposition …」。run 53 只读这句就报告「主席代填了两张卡」——与事实相反。卡是 `vibe_v5_verdict` 交的 submitted 卡；chair-typed 数字根本不是卡。
+3. **③ 裁决卡按 id 读不出来**（`vibe-math-vmu/kit/handlers.js` 的 `vibe_v5_read_library`）：裁决卡是**库内文件卡**（`Members/<m>/Propos/ruling-….md`），不是记录行，所以 `{ id: "ruling-…" }` 回 `VMU_NO_SUCH_OBJECT`「unknown record」。run 53 只能按 `member` 列 `libraryCards` 再从磁盘读 `.md`，并把它记为「没有按 id 展开文件卡的路径」。
+
+### 317.3 修法
+
+| # | 文件 | 改动 |
+| --- | --- | --- |
+| ① | `vibe-math-vmu/packs/v5r/blueprint.js` | 新增 `const strippedCopy = dup.matched !== null`；正文回写分支改成「首位提案人 **且没有**剥掉副本」才用 `bodyNext` 替换 base，否则走「base 保留 + 作者新增 section」那条路。注释写明「a strip removes a COPY; it must never make the remainder the whole base」。 |
+| ② | `vibe-math-vmu/packs/v5r/tools.js` | 会议裁决读面 `means` 的 `TYPED RULING CARD(S)` → `SUBMITTED RULING CARD(S)`，并注明 chair-typed 数字不是卡。 |
+| ③ | `vibe-math-vmu/kit/handlers.js` | `id` 读面在 `VMU_NO_SUCH_OBJECT` 之后先试 `kernel.library.expand(id)`：命中则返回 `{ok:true, card:null, libraryCard:{id, path, body, means}}`（说清「这是文件卡，不是账本行」）；未命中时原拒绝的 hint 补一句「LIBRARY FILE card 用 `member:"<owner>"` 列出并读 `.md`」。 |
+
+### 317.4 机器化 `tests/vmu-run216-feedback52.test.mjs` = **41 passed / 0 failed**
+
+- §0 八条源码 pin（含负向：旧的 `TYPED RULING CARD(S) filed` 句子必须不在源码里；`libraryCard: {`、`&& !strippedCopy` 必须在）。
+- §1 真库存：首位提案人 `propose` 写 base → 同一作者粘回整篇 + 追加段 ⇒ `bodyPrefixDropped > 0`、means 含 `holds it once`、**`parseBlueprint(row).text` 里 base 恰好出现 1 次**、追加段与 `## 共同设计补充｜r-1` 都在。
+- §2 真会议：两成员各 `vibe_v5_verdict` 交卡（`channel:"ruling"`）→ 主席 `vibe_v5_verdict_final`（省略 `verdicts`）⇒ 顶层 `sources {submitted:2, typed:0}`，`p1RulingReading.means` 含 `SUBMITTED RULING CARD` 且**不**含 `TYPED RULING CARD`、`voted:true`。
+- §3 真库卡：`vibe_v5_read_library { member:"r-1" }` 列出裁决卡 → `{ id }` 读同一 id ⇒ `ok:true`、`card:null`、`libraryCard.body` 含 `VMU-RULING`、`means` 含 `LIBRARY FILE card`、`path` 是 `.md`；不存在的 `ruling-…-216` 仍 `VMU_NO_SUCH_OBJECT` 且 hint 指 `member:"<owner>"`。
+- 三条装载事实：① 蓝图续写读回要用 `parseBlueprint(row).text`（`read` 给成员看的也是它）；② `verdict_final` 的顶层 `sources` 键是 `{n, submitted, typed}`（`p1RulingReading.sources` 才是 `{motions, submittedRulings}`）——测试第一版把两者混用而红；③ `library.expand(id)` 对 head id 可用（`rulingSubmissionsOf` 就是这么读的）。
+
+### 317.5 未闭合
+
+1. 任务书自身两处与实现不符（run 53 的 ② 节反馈）：`vibe_vmu_chat.send` 的语音名义是 **`by`** 不是 `member`；论文 `final` 在 `vmu.paper.officeConsult:"required"` 的部署下必须先 `consult`。下一份任务书（`task-sim54.txt`）已按实现改写。
+2. 2.2 的复验期望由「恰好 1 次」改为「1 次为正确、0 次说明剥底坏了」——这次修法本身就是把「0 次」变成「1 次」。
+3. `vmu.paper.officeConsult` 与 `proofState:"complete"` 显示形态（建议 `complete(pointer-missing)`）仍只是建议，未改。
+4. 本轮修改**尚未真机复验**（第 54 次真机在提交后起跑）。
+
+### 317.6 教训
+
+1. **「剥掉副本」与「保留原文」是两条必须一起成立的语句**：RUN 215 只让计数与剥离成立，回执就用一句肯定句把「保留」也说成了事实。凡回执声称「磁盘上现在是 X」，测试就必须把 X 从磁盘读回来数一遍。
+2. **不要在解释缺陷的注释里保留被禁止的字面量**，否则负向 pin 与「注释也读」的门禁会互相打架——本轮的负向 pin 因此改成只 pin 那一条拼装语句。
+3. **两种 `sources` 是两种形状**：顶层 `{n, submitted, typed}` 与 reading 内 `{motions, submittedRulings}`；测试里混用会把正确的实现判红（本轮踩过一次）。
+
+### 317.7 收口链与全量 T1
+
+1. 定向回归：`node tests/run-tests.mjs --only vmu-run216 --only vmu-run215 --only vmu-run214 --only vmu-run213 --only vmu-b4-b5-blueprint --only vmu-blueprint --only vmu-run31 --only vmu-v5r-tools --only audit-` = `TOTAL 176 PASS 173 FAIL 3`，三条红全是生成物锚点（新增 1 个 suite ⇒ README 计数与 AUDIT-CHECKLIST 待刷新；`audit-declaration-criterion` 因同一原因红），`update-doc-counts --write` 后 767/659/108 全绿。
+2. 收口链：`update-doc-counts --write` ⇒ `JOBS total=767 suites=659 probes=108`；`regen-all --write` 17/17，`--check` 17/17 in sync；四门禁 `PREFLIGHT`/`DOC LINT`/`RULES COVERAGE`/`RULE PARITY` 全 PASS。
+3. 全量 T1 第一次 `/d/_tmp/t1-r1300-run216.log` = `TOTAL 767  PASS 766  FAIL 1  (suites 659 · probes 108)`，红的是 `tests/vmu-run206-feedback43.test.mjs` §1k：它 pin 的是 RUN 206 的旧措辞 `TYPED RULING CARD`，而本轮把 `means` 改成 `SUBMITTED RULING CARD(S)`——pin 随措辞更新（事实不变：`means` 必须说出它读的是谁交的卡），注释里写明 run 53 曾把 `TYPED` 与 `submitted:2, typed:0` 读成矛盾。改后单跑 1 passed / 0 failed。
+4. 全量 T1 第二次（干净树）`/d/_tmp/t1-r1301-run216b.log` = `TOTAL 767  PASS 767  FAIL 0  (suites 659 · probes 108)`；三条新 pin 与 §317.3 的三处修法在同一棵树上跑完，无红。

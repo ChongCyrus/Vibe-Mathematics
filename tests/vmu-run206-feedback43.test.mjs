@@ -107,7 +107,9 @@ test('RUN 206 — nine readings that named the wrong reason, or named nothing', 
     // the contract is now one honest name in `sources` plus a `rulingCards` descriptor. The FACT the suite pins is unchanged.
     ok(reading.sources && reading.sources.submittedRulings === 2, '§1i ★★★ and that reading counted the SUBMITTED RULING CARDS (2), not motions (0)', reading.sources)
     ok(reading.rulingCards && reading.rulingCards.count === 2, '§1j the count is stated separately, so "no motions" and "no decision" stop looking alike', reading.rulingCards)
-    has(String(reading.means), 'TYPED RULING CARD', '§1k the means names what it read — a debate can settle two ways now')
+    // ★ RUN 216: the wording said TYPED while `sources` reported `submitted:2, typed:0` in the same receipt (run 53 read the
+    // two as a contradiction). The fact pinned is unchanged: the means names the cards it actually read.
+    has(String(reading.means), 'SUBMITTED RULING CARD', '§1k the means names what it read — a debate can settle two ways now')
   }
 
   // ── §2 a meeting-bound ballot votes a MOTION (1.1) ────────────────────────────────────────────────────────

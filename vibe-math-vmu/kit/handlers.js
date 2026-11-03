@@ -743,6 +743,28 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
       //    mints `r-<n>` from the same counter family the records minted records from). A refusal is addressed to
       //    whoever must fix the call, so it names their next move: `member:"r-1"` reads THAT member's library.
       if (!e || e.code !== 'VMU_NO_SUCH_OBJECT') throw e
+      // ★★★ RUN 216 (run 53 / FEEDBACK52 1.3, MEASURED): a ruling card is a LIBRARY FILE card — its id (`ruling-…`) is a
+      // name on disk, never a records row — so `{id}` answered "unknown record" and the run concluded a filed ruling could
+      // not be read by id at all (it listed it under `member` and read the .md by hand). A question this face can answer
+      // must not be answered with "wrong noun": when a library card carries this id, its body is returned.
+      let fileCard = null
+      if (kernel && kernel.library && typeof kernel.library.expand === 'function') {
+        try {
+          const ex = await kernel.library.expand(id)
+          if (ex && ex.body !== undefined && ex.body !== null) fileCard = ex
+        } catch { fileCard = null }
+      }
+      if (fileCard !== null) {
+        return {
+          ok: true, tool: 'vibe_v5_read_library', card: null,
+          libraryCard: {
+            id,
+            path: fileCard.path === undefined || fileCard.path === null ? null : String(fileCard.path),
+            body: fileCard.body,
+            means: 'this id names a LIBRARY FILE card (a .md written under the library root), not a records row: `card` is null because no ledger row carries this id, and `body` below is the file exactly as written. `cardFields`/`verifiedRef` do not apply to a file card',
+          },
+        }
+      }
       let roster = []
       try { roster = kernel && kernel.members && typeof kernel.members.roster === 'function' ? kernel.members.roster() : [] } catch { roster = [] }
       const asMember = (Array.isArray(roster) ? roster : []).find((r) => r && String(r.id) === id) || null
@@ -754,6 +776,7 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
           + 'To read THEIR library pass member:"' + id + '" (optionally with kind / track / tracks); to read a record pass its own id '
           + '(records are minted as "rec-<n>"). ' + base
         : 'no record has the id "' + id + '": records are minted as "rec-<n>" and people are "r-<n>", so check which one you meant. '
+          + 'A LIBRARY FILE card (a ruling card is one) is not a records row either: `{ member: "<owner>" }` lists those cards with their `.md` path. '
           + base
       if (e.detail !== undefined) err.detail = e.detail
       throw err

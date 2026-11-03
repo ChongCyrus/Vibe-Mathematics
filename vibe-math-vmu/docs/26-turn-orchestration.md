@@ -3530,3 +3530,14 @@ RUN 213（第 50 次真机 run 50 / FEEDBACK49）处理的是「算出来的事�
 6. **聊天面说清「没有转达字段」**：`vibe_vmu_chat.send` 回执加 `voiceMeans`——「`from` is the VOICE，this face has NO relay field；替成员转达请用 `vibe_v5_message`（`from` + `relayedBy`）」。
 
 机器化 `tests/vmu-run215-feedback51.test.mjs` 六节；三条装载事实：`kernel.records.get` 收对象 `{id}`、草案正文读 `readBlueprint(...).text`（成员 read 到的也是它）、`draft` 参数是草案记录 id。定向回归 `TOTAL 45 PASS 45 FAIL 0`。
+## ROUND 221 —— RUN 216：一句「只保留一次」在磁盘上留下零次
+
+第 53 次真机（`task-sim53.txt`，基线 `5bee438c`）跑到结题（PDF 64 212 B），确认 RUN 215 的六条修法里五条真生效，并在一条上抓到「第二半坏了」。
+
+1. **①粘回副本时 base 被整个替换**（`packs/v5r/blueprint.js`）：RUN 215 的剥离只改了「计数 + 删除副本」，而**首位提案人**自己粘回整篇时，剩下的追加段被当作新 base 写回，草案正文消失；回执仍说 `holds it once`。修法：`const strippedCopy = dup.matched !== null`，只有「没有剥掉任何东西」才允许用 `bodyNext` 替换 base，否则一律「base 保留 + 作者新增 section」。
+2. **②成员交的卡被叫作 TYPED**（`packs/v5r/tools.js`）：会议裁决读面 `means` 里的 `TYPED RULING CARD(S)` 改成 `SUBMITTED RULING CARD(S)`——`sources` 里 `submitted:2, typed:0` 摆在同一回执里，run 53 只读那句就报「主席代填两张」。
+3. **③裁决卡按 id 读不出来**（`kit/handlers.js`）：`vibe_v5_read_library { id }` 先试 `kernel.library.expand(id)`，命中返回 `{ok:true, card:null, libraryCard:{id, path, body, means}}`；未命中时拒绝的 hint 补「文件卡用 `member:"<owner>"` 列出并读 `.md`」。
+
+机器化 `tests/vmu-run216-feedback52.test.mjs` = 41/0（**真库存 + 真会议 + 真库卡**：base 恰好 1 次、`submitted:2/typed:0` 与 `SUBMITTED RULING CARD` 同现、`VMU-RULING` 正文可读）。三条装载事实：`parseBlueprint(row).text` 是成员 read 到的正文；顶层 `sources` 是 `{n,submitted,typed}`，`p1RulingReading.sources` 才是 `{motions,submittedRulings}`；`library.expand(head.id)` 可用。
+
+教训：**「剥掉副本」与「保留原文」必须两句一起成立**，回执一旦声称磁盘上的状态，测试就要从磁盘数一遍；解释缺陷的注释不要保留被负向 pin 的字面量。

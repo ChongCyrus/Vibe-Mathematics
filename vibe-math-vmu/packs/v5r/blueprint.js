@@ -821,7 +821,13 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   }
   const split = blueprintCodesignSections(target.text)
   let textNext = ''
-  if (txt(target.fields.proposedBy) === author) {
+  // ★★★ RUN 216 (run 53 / FEEDBACK52 1.1b, MEASURED): when the FIRST proposer pasted the whole draft back in, the strip
+  // above left only the text they appended — and this branch then REPLACED the base with it, so the draft's own body
+  // disappeared while `bodyPrefixDroppedMeans` said "this revision holds it once". A strip removes a COPY; it must never
+  // make the remainder the whole base. Whenever something was stripped, the remainder is an ADDITION: the base stays,
+  // and the author gets a section on top of it, exactly like any other designer.
+  const strippedCopy = dup.matched !== null
+  if (txt(target.fields.proposedBy) === author && !strippedCopy) {
     // The first proposer edits the `## 正文` base; the other designers' sections are preserved as they wrote them.
     textNext = composeBlueprintText(bodyNext, split.sections)
   } else {

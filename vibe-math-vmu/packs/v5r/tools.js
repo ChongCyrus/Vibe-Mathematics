@@ -1514,7 +1514,11 @@ async function rulingNameResolution(kernel, debate, context = {}) {
       + 'and ' + String(unanimousCarried.length) + ' of those already carried'
       + (rulingCards === null
         ? ''
-        : '; it ALSO holds ' + String(rulingCards.count) + ' TYPED RULING CARD(S) filed for proposition '
+        // ★★★ RUN 216 (run 53 / FEEDBACK52 1.2, MEASURED): this sentence said "TYPED RULING CARD(S)" about the DURABLE
+        // cards the members filed with vibe_v5_verdict, in the same receipt that printed `sources.typed:0`. Run 53 read the
+        // sentence alone and reported "the chair typed two cards" — the opposite of the fact. The cards here are
+        // SUBMITTED (that is what `sources.submittedRulings` counts); chair-typed numbers are not cards at all.
+        : '; it ALSO holds ' + String(rulingCards.count) + ' SUBMITTED RULING CARD(S) filed for proposition '
           + rulingCards.proposition + ' (' + (cardUnanimous ? 'all of them for it' : 'they are SPLIT') + ')')
       + ' — that is what the ruling name points at' }
 }
