@@ -3449,3 +3449,11 @@ RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一
 - **机器化**：`tests/vmu-run208-feedback44.test.mjs` 1/0（七节真装配）；两条既有 pin 同步（run202 的 `partialFor` 契约 pin、run205 的修复路径 pin）。
 - **装载事实**：`vibe_v5_paper.final` 默认被所办问询闸拦（只有显式 `vmu.paper.officeConsult="off"` 才放行）⇒ 测试里要先关闸才走得到定稿分支。
 - **未闭合**：两处「名字属于另一个面」的 code 仍未统一（`VMU_NO_SUCH_OBJECT` vs `VMU_NOT_FOUND`）；`p1RulingReading` 尚未覆盖 `record_proposition {p:1}` 的成功回执；九处修法待第 46 次真机复验。
+
+## ROUND 214（RUN 209：修法漏掉了真机那一种形状）
+
+- **账从哪来**：第 46 次真机 `FEEDBACK45.md`（163 行），基线 `15c801eb`，主线仍结题（57 380 B PDF）。
+- **最贵的一条（1.3）**：RUN 208 把 `review` 的 `decision` 判据从「只判 string」改对了，却留着 `deliverable` 缺席这个前置条件——真机两个键一起传，整块跳过，`decision:false` 又被静默丢掉。修法：去掉前置条件，`decision` 在场就以任何类型具名拒。
+- **其它五条**：`correction.call` 用 `Number()` 渲染文本 value ⇒ `value: NaN`（改成 `valueLiteral`：数字原样、文本加引号）并附 `callMeans`；`verdicts` 的「以成员 id 为键的对象」被误诊为缺人（改成行形状闸，点名 `verdicts[0]` 与 `OBJECT KEYED BY MEMBER ID`）；`vibe_v5_start` 的 `started.already` 是内核词（加 `startedMeans`/`hiredNow`/`rosterBefore`）；主线节「逐字一致」的范围写清（共享正文 4 条 vs 按席不同两处）；`part` 的 `body` description 提前说清「正文里的 `Members/…md` 按记录 id 解析」。
+- **机器化**：`tests/vmu-run209-feedback45.test.mjs` 1/0（六节真装配）；`audit-` 全量复跑 162/162（作业数 759→760 由生成器统一）。
+- **装载事实**：会议 id 在 `vibe_v5_meeting` 回执的 `meeting` 字段；裁决前必须 `attend`（quorum 是出勤）；命题卡必须有 owner，否则裁决没有收件人。

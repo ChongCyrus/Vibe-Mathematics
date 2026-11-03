@@ -14900,3 +14900,59 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 - **静默丢弃比拒绝更贵**：`decision:false` 被丢掉时回执是 `ok:true`，调用方按自己的理解继续走，直到 `advance` 把「退回来」读成「一致通过」。**没被读的参数必须拒，拒不了就得在回执里说它没被读**。
 - **答错问题的字段比缺失字段更误导**：`moved:false` 在成功定稿上不假，但它答的是「advance 动没动」；缺的是「阶段动没动」。新增读数时先问一句：**这个词回答的是谁的问题**。
 - **修复路径本身要被跑过一次**：指路文案里写 `review({ decision: false })`，而 `review` 拒 `decision`——真机上代理照着做一次就卡住。**回执里给出的每条调用，至少要有一条测试真的去调它**。
+
+### §310 RUN 209 — 真机传的正是修法没覆盖的那一种形状
+
+#### 310.1 账从哪来：第 46 次真机
+
+| 项 | 值 |
+| --- | --- |
+| 基线 | `15c801eb` |
+| 工作区 / 克隆 / 端口 | `D:/_tmp/slv-phase5/slvp175-ws` / `slvp206` / 19728 |
+| 主线结题 PDF | `Paper/paper-paper-oddsum-46/paper-paper-oddsum-46.pdf` = **57 380 B** |
+| 驱动结果 | `DRIVE exit=0`；`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks` |
+| 清理 | `cleanup: clone_gone=True port_listening=False C_free_GB=8.63` |
+| 代理报告 | `SIM-REPORT45.md`、`FEEDBACK45.md`（11 927 B / 163 行）、`PROGRESS-RUN46.md` |
+
+主线照常走到定稿并编译出 PDF，同时记下六条缺陷——其中三条是**上一轮刚修过、但只修了真机不会传的那种形状**。
+
+#### 310.2 六处修法
+
+| # | 缺陷 | 修法 |
+| --- | --- | --- |
+| 1.3 | `review { deliverable:true, decision:false }` 仍 `ok:true`，`decision` 再次消失 | `packs/v5r/tools.js` 的 `case 'review'` guard 去掉「`deliverable` 缺席」这个**前置条件**：`if (args.decision !== undefined && args.decision !== null)`。RUN 208 修的是 `typeof === 'string'`，前置条件把**两个键一起传**（真机正是这样）的情况整块跳过 |
+| 1.1 | `verdict_final.correction.call` 打印 `value: NaN` | 抽 `const valueLiteral = (v) => {…}`：有限数字原样、数字串原样、其余 `quoted(v)`；不再 `String(Number(f.value))`。并给 `correction` 加 `callMeans`（「每个字段都从 CARD 搬来」） |
+| 1.2 | `verdicts:[{"r-acad":1}]` 被读成「缺人」 | 在 `verdicts` 形状闸加 `ROW_KEYS` 与逐行校验，任一元素不是对象或缺 `member` ⇒ `VMU_INVALID_ARGUMENT`，message 点名 `verdicts[0]` 并直白说 `an OBJECT KEYED BY MEMBER ID is not a row` |
+| 2.2 | `started.already:true` 与空名册打架 | 回执加 `startedMeans`（`already` 是**内核中间件 start** 的话，明确否认「所此前已存在」的读法）、`hiredNow`、`rosterBefore` |
+| 2.1 | 主线节自称「三席共用同一段正文…逐字一致」，实际每席末行不同 | 改成「**共享正文**＝本段这 4 条：三席逐字一致；「· 你的担子」一行**按席不同**，【蓝图】一节**按席位能力不同**——这两处不属于共享正文」 |
+| 2.3 | `part` 正文里写文件卡路径被当记录 id 解析 | `vibe_v5_paper` 的 `body` 参数 description 写明：正文里 `Members/<成员>/<kind>/<x>.md` 按**记录 id** 解析，引用文件卡请写记录 id 或放进 evidence，并说清与 `proof_ref` 的区别 |
+
+#### 310.3 机器化
+
+`tests/vmu-run209-feedback45.test.mjs` **1 passed / 0 failed**（六节）：§0 十四条 pin（含 `if (args.decision !== undefined && args.decision !== null) {`、`const valueLiteral = (v) => {`、`return quoted(v)`、`const ROW_KEYS = [...]`、`an OBJECT KEYED BY MEMBER ID is not a row`、`hiredNow: hired.slice(), rosterBefore: rosterBefore.map((r) => r.id)`、`started, startedMeans, applied`、`**共享正文**＝本段这 4 条`、`**按席位能力不同**`；负向断言 `? String(Number(f.value))` 已消失）；§1 真机形状 `deliverable:true + decision:false` 必拒且 `deliverable:false` 的 advance 回 `writing`；§2 键形状行必拒且不再说「缺人」；§3 文本 value 卡的 `correction.call` 不含 NaN、含 `value: "对 n≥1 成立"`，数字 value 卡仍 `value: 3`；§4 `hiredNow`/`rosterBefore`/`startedMeans`；§5 三席去掉末行后**逐字相同**。
+
+#### 310.4 三条装载事实（写测试时踩到的）
+
+- `vibe_v5_meeting { member:'r-acad', agenda, title }` 的会议 id 在 `meeting` 字段（`"m1"`）；投票/裁决前必须 `vibe_vmu_meeting { action:'attend', id, member }`（quorum 是**出勤**）。
+- 命题卡必须带 `member`（owner），否则 `verdict_final` 报 `nobody can be told: proposition "rec-N" is owned by nobody`——这条不是缺陷，是「裁决必须有收件人」。
+- `correction.call` 是**一段可抄回的调用文本**（不是对象），断言要按文本读；`shapeMeans`/`callMeans` 是它的说明书。
+
+#### 310.5 未闭合
+
+- 报告里的 2.4 是**任务书笔误**（`vibe_v5_meeting { action:"close" }` 实际在 `vibe_vmu_meeting`），改的是简报不是代码——下一次真机的任务书要改。
+- 3.2 `agenda` 传数组被内核按 `"; "` 拼接、3.3「先写文件后确认库根」仍只有提示词层面的引导，没有硬闸。
+- 本节修法尚未经真机复验（第 47 次真机待跑）。
+
+#### 310.7 收口链与全量 T1
+
+- 定向回归：`vmu-paper`/`vmu-meeting`/`vmu-v5r-tools`/`vmu-run19`/`vmu-run201`–`vmu-run209`/`vmu-turn-mainline`/`vmu-v5r-verdict-final`/`vmu-b4-b5-blueprint`/`audit-doc-index` = **47 passed / 0 failed**。
+- `audit-` 全族：先因新套件把作业数推到 760 而红（`ANCHOR MISS: TOTAL 760`），跑 `update-doc-counts --write` 后 **162 passed / 0 failed**（80 套件 + 82 探针）。
+- 生成物：`JOBS total=760 suites=652 probes=108`，随包 `tests/*.mjs` 393（288 套件 + 105 探针/脚本）；`regen-all` **17/17 in sync**。
+- 四门禁：`PREFLIGHT: PASS`（D16 一条 `vmu.store` 既有提示）/ `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+- 干净全量 T1（`/d/_tmp/t1-r600-run209.log`）：**`TOTAL 760 PASS 760 FAIL 0 (suites 652 · probes 108)`**，零修改树。
+
+#### 310.6 三条教训
+
+- **修法要覆盖真机的形状，不是覆盖报错的形状**：RUN 208 的 guard 修了类型、留了前置条件，而真机正好两个键一起传 ⇒ 同一个词被丢两次。**改一处判据时，先把它对每一种输入组合都列一遍**。
+- **「打印出来让你抄」的文本是契约**：`correction.call` 里的 `value` 从 `Number()` 过一遍就成了 `NaN`，而它旁边还写着「照抄即可」。**凡是要被抄回去的字符串，必须能原样解析回同一个值**。
+- **同一个词在两个脸上意思不同时，两边都得说**：`already` 是内核的词、`decision` 属于 `final`、`review` 只读 `deliverable`——这些边界如果不写在回执里，模型只能靠猜，而猜错不会报错。

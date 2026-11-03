@@ -2342,6 +2342,24 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
       'pass verdicts:[{ member:"r-1", p:1, reason:"…" }, …] — or omit verdicts entirely and let this face adopt the ruling cards the members filed with vibe_v5_verdict { meeting, proposition_id, verdict, reason }; an object is NOT read as a tally')
   }
   const typed = Array.isArray(args.verdicts) ? args.verdicts : null
+  // ★★★ RUN 209 (run 46 / FEEDBACK45 1.2, MEASURED): run 46 passed `verdicts:[{"r-acad":1}]` — an ARRAY of one object
+  // KEYED BY MEMBER ID. Each row had no `member`, so it was filtered out as "no member named" and the caller was told
+  // "the ruling is missing 2 of the 2 member(s) who debated: r-1、r-2" — a sentence about missing PEOPLE when the truth was
+  // a missing SHAPE. The row gate runs before the member arithmetic: who a row speaks for is a shape question.
+  if (typed && typed.length > 0) {
+    const ROW_KEYS = ['member', 'p', 'verdict', 'reason', 'why', 'note']
+    const badIndex = typed.findIndex((row) => row === null || typeof row !== 'object' || Array.isArray(row) || !has(row.member))
+    if (badIndex !== -1) {
+      const row = typed[badIndex]
+      const keys = (row && typeof row === 'object' && !Array.isArray(row)) ? Object.keys(row) : []
+      const keyedByMember = keys.length > 0 && keys.every((k) => !ROW_KEYS.includes(k))
+      throw refuse('VMU_INVALID_ARGUMENT',
+        'verdicts[' + String(badIndex) + '] is not a {member, p, reason} row, so WHO it speaks for cannot be read: you passed '
+          + (Array.isArray(row) ? 'an ARRAY' : (row === null ? 'null' : (typeof row === 'object' ? 'an OBJECT with keys [' + keys.join(', ') + ']' : 'a ' + typeof row)))
+          + (keyedByMember ? ' — an OBJECT KEYED BY MEMBER ID is not a row: this face reads ONE ROW PER MEMBER, with `member` as a field' : ''),
+        'pass verdicts:[{ member:"r-1", p:1, reason:"…" }, { member:"r-2", p:1, reason:"…" }] — one object per member, `member` as a FIELD. An object keyed by member id ({"r-1":1}) is a different shape and is not read as a tally')
+    }
+  }
   if (typed && typed.length === 0) {
     throw refuse('VMU_INVALID_ARGUMENT', 'the final ruling needs the members\' verdicts — an empty set has no value',
       'omit verdicts to adopt every ruling the members filed with vibe_v5_verdict { meeting, proposition_id, verdict, reason, member }, or pass verdicts:[{member,p,reason}] explicitly')
@@ -2647,8 +2665,18 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
         let f = null
         try { const p = parseCardBody(str(cardRow.body)); f = p && p.fields ? p.fields : null } catch { f = null }
         const quoted = (v) => JSON.stringify(v === undefined || v === null ? '' : String(v))
+        // ★★★ RUN 209 (run 46 / FEEDBACK45 1.1, MEASURED): run 46's card held `value: "对 n≥1 成立"` (TEXT), and this
+        // printed `value: NaN` because the renderer was `String(Number(f.value))` — the ONE call the receipt tells the
+        // holder to copy back. A number is printed as a number; anything else is printed as a JSON string, so the text
+        // parses back to the same text instead of to NaN. `correction.callMeans` says this out loud.
+        const valueLiteral = (v) => {
+          if (v === undefined || v === null) return '1'
+          if (typeof v === 'number' && Number.isFinite(v)) return String(v)
+          if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) && String(Number(v)) === v.trim()) return v.trim()
+          return quoted(v)
+        }
         return 'vibe_v5_record_proposition { id: "' + propositionId + '", statement: ' + quoted(f && f.statement)
-          + ', value: ' + (f && f.value !== undefined && f.value !== null ? String(Number(f.value)) : '1') + ', motive: ' + quoted(f && f.motive)
+          + ', value: ' + valueLiteral(f && f.value) + ', motive: ' + quoted(f && f.motive)
           + ', p: ' + String(ruled.value) + ', debate_ruling: { subject: "' + propositionId + '", value: ' + String(ruled.value) + ', mode: "' + String(ruled.mode) + '", n: ' + String(ruled.n) + ', decided: ' + String(ruled.decided === true) + ', at: "<ISO time>", ballotId: "' + tallyId + '", meeting: "' + str(meeting) + '", by: "' + chair + '" } }'
       })()
       : (cardPath.path
@@ -2661,6 +2689,9 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     // The reader of run 38 had to guess that passing only `meeting` left the gate's reference empty; the shape itself is
     // now the answer, and this sentence says the two names are one reading.
     shapeMeans: 'one ruling carries ONE reference; this framework accepts it under two names — `ballotId` (a ballot/tally id) and `meeting` (the convened meeting), and the write receipt reads back whichever was given as `p1RulingRef`. The call above is accepted AS PRINTED: both keys are present, and they name the same decision.',
+    // ★★★ RUN 209 (run 46 / FEEDBACK45 1.1): the sentence that makes `call` auditable instead of trusted. Run 46 copied
+    // a call whose `value` was `NaN` and its own `shapeMeans` still said "accepted AS PRINTED".
+    callMeans: 'every field in `call` is carried from the CARD, not re-derived: a numeric value prints as a number, a text value prints as a quoted JSON string (so it parses back to the same text), and a field the card does not hold is left at the documented default. If your card\'s `value` is prose, the printed call keeps that prose — it never becomes NaN and it never silently becomes 1',
     // ★ RUN 153 (G4): the ONE id that stands for the whole ruling, ready to be the `warrant` of the promotion.
     warrantFor: {
       id: tallyId,
@@ -4521,6 +4552,10 @@ function leaderIdNow(kernel) {
 }
 
 async function toolStart(args = {}, { kernel } = {}) {
+  // RUN 209 (FEEDBACK45 2.2): who was on the roster BEFORE this call — the fact that lets a reader tell "founded now" from
+  // "already founded", which `started.already` (about the KERNEL's middleware start) cannot answer.
+  let rosterBefore = []
+  try { rosterBefore = (typeof membersOf(kernel).roster === 'function' ? membersOf(kernel).roster() : []) || [] } catch (e) { rosterBefore = [] }
   const n = Number.isInteger(args.researcherCount) ? args.researcherCount : 3
   if (n < 0 || n > 50) throw refuse('VMU_INVALID_ARGUMENT', 'researcherCount must be between 0 and 50', 'the original seeded a small permanent staff')
   const hired = []
@@ -4555,7 +4590,13 @@ async function toolStart(args = {}, { kernel } = {}) {
   // own turn, not through the office's handle) but nothing on the seeding receipt said a chair needs a turn first, so the
   // first act of every fresh institute failed once. The gate and its one remedy are named at the moment the seats are made.
   const chairTurnNote = 'the chair cannot ACT through the office: `vmu.meetings.chairActRequiresTurn` is on, so convening / attending / closing on behalf of a chair is refused with VMU_CHAIR_ACT_NOT_DELEGATED until that chair has walked a turn of its own (`vibe_vmu_turn { op: "drive", member: "<主席席>" }`, or a round the host opens). Give the chair its first turn BEFORE asking it for a meeting act — the refusal is a delegation rail, not a missing permission'
-  return { ok: true, tool: 'vibe_v5_start', hired, started, applied, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE, memberScopeNoteMeans, chairTurnNote,
+  // ★★★ RUN 209 (run 46 / FEEDBACK45 2.2, MEASURED): run 46 founded the institute, got
+  // `started:{ok:true,already:true,registered:[]}` beside `hired:["r-acad","r-1","r-2"]`, and reported the two fields as
+  // fighting: on an EMPTY roster, "already" read as "the institute already existed". It is the KERNEL's own word about
+  // its middleware start (`kernel.start()` answers `already:true` when that start ran earlier in THIS process), and the
+  // seeding receipt never said so. The two facts are now named separately: what the KERNEL said, and what THIS CALL hired.
+  const startedMeans = '`started` is the KERNEL\'s own answer about its middleware start: `already:true` means `kernel.start()` had ALREADY RUN IN THIS PROCESS (it registers the declared middleware and nothing else) — it is NOT a statement that the institute existed before. What THIS call seeded is `hiredNow` (the seats it created just now) and `rosterBefore` (who was on the roster when it began); an empty `rosterBefore` with `already:true` is a normal first founding in a process whose kernel was already started'
+  return { ok: true, tool: 'vibe_v5_start', hired, hiredNow: hired.slice(), rosterBefore: rosterBefore.map((r) => r.id), started, startedMeans, applied, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE, memberScopeNoteMeans, chairTurnNote,
     note: 'seedDirections are roster data here (the charter reads a member\'s direction), so they are not stored by this tool — reported, not silently dropped' }
 }
 
@@ -5275,7 +5316,12 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // key was dropped by the reader — the review came back ok:true and the NEXT advance read the paper as unanimous,
       // so "send this part back" was accepted and then ignored. A parameter this face does not read must be refused at
       // ANY type: the silent drop is the defect, not the spelling.
-      if ((args.deliverable === undefined || args.deliverable === null) && args.decision !== undefined && args.decision !== null) {
+      // ★★★ RUN 209 (run 46 / FEEDBACK45 1.3, MEASURED): RUN 208's guard was written as "refuse `decision` when
+      // `deliverable` is absent" — and run 46 passed BOTH (`deliverable:true, decision:false`), so the guard never ran and
+      // the boolean was dropped exactly as before: `ok:true`, next `advance` read the paper as unanimous. The precondition
+      // was the bug. This face NEVER reads `decision`, so its presence is refused at any combination, and the refusal says
+      // which of the two values the caller gave is the one that counts.
+      if (args.decision !== undefined && args.decision !== null) {
         throw refuse('VMU_INVALID_ARGUMENT',
           'review takes `deliverable: true|false`, not `decision:' + (typeof args.decision === 'string' ? '"' + String(args.decision) + '"' : ('(' + typeof args.decision + ') ' + JSON.stringify(args.decision))) + '` — `decision` belongs to `final`, and this face does NOT read it: a review that says "decision" was silently counted as deliverable:true before RUN 208',
           'call review again with deliverable:true (this part is deliverable) or deliverable:false (send it back), keeping `of` naming the part you reviewed')
@@ -5939,7 +5985,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
       member: { type: 'string', description: 'part/review/final：动作发起者的名册 id（由内核校验其参与资格/席位）；consult：答复人（所办，必须匹配 pack 声明的答复角色）' },
       by: { type: 'string', description: 'consult：member 的别名（谁在答复）' },
       part: { type: 'string', description: 'part：你这一份的标题；review：被审对象（of 的别名）' },
-      body: { type: 'string', description: 'part：正文；final：结论别名' },
+      body: { type: 'string', description: 'part：正文；final：结论别名。★ 正文里的 `Members/<成员>/<kind>/<x>.md` 指针按【记录 id】解析（不是文件名）：引用文件卡请写记录 id，或把它放进 evidence；与 `proof_ref` 的区别是——`proof_ref` 指「证明正文在哪」，可以指文件；正文里的指针必须是记录库里真有的那一行（RUN 209 / FEEDBACK45 2.3）' },
       solution: { type: 'string' }, methods: { type: 'string' }, rules: { type: 'string' }, limits: { type: 'string' },
       evidence: { type: 'array', description: 'part：证据指针列表' },
       deliverable: { type: 'boolean', description: 'review：true/false（未表态不交付）' },
