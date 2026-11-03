@@ -68,7 +68,11 @@ test('RUN 202 §0 — every repair is on the source it belongs to (source pins)'
   has(QUALITY, "requiredLineTruncatedBy: truncated ? 'card-title-cap' : null", '§0j ★ the READ face carries the same three fields')
   has(QUALITY, 'requiredLineTruncatedAt: truncated ? 48 : null', '§0k (read face: the cap)')
   has(QUALITY, 'the title was derived from the claim and capped at 48 characters', '§0l (read face: the cause)')
-  has(PACK, "partialFor: receipt && receipt.crossKernelScope === 'this-process'", '§0m ★★ the settings receipt says "for whom"')
+  // RUN 207: the two readings (`partial` and `partialFor`) now come from ONE predicate `processOnly`, so the
+  // sentence and the value cannot disagree. The contract is still "the receipt says for whom it is immediate".
+  has(PACK, "partialFor: processOnly", '§0m ★★ the settings receipt says "for whom"')
+  has(PACK, "const processOnly = !!(receipt && receipt.crossKernelScope === 'this-process')",
+    '§0m2 ★★ …and both readings come from the one `this-process` predicate')
   has(PACK, 'TRUE FOR THIS PROCESS ONLY', '§0n ★ in those words, next to the word that misled')
   has(PACK, 'TURN reply envelope wrote one for a temp member', '§0o ★★ the temp note names the second door')
   has(PACK, 'DIFFERENT DOORS', '§0p ★ and says the two doors are different, not contradictory')

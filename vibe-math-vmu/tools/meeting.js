@@ -839,6 +839,13 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                 // the moment its numbers belong to, and says in words that closing does not freeze it.
                 closureVoteAsOf: closeClosureVote && closeClosureVote.votersAsOf !== undefined ? closeClosureVote.votersAsOf : null,
                 closureVoteAsOfMeans: 'the instant the closureVote numbers above were computed; this close does NOT freeze the reading — a vote cast after it changes the same durable record, so quote closureVote + closureVoteAsOf together as the as-of-close account',
+                // ★★★ RUN 208 (run 45 / FEEDBACK44 1.4, MEASURED): the receipt carried closureVote{cast,confirmed,votesCast,missing}
+                // but nothing that answered "was any vote COUNTED at the moment of this close" — run 45 read `votesCast:2` next
+                // to `confirmed:false` and could not tell "two votes and one seat short" from "two votes nobody counted".
+                counted: closeClosureVote === null || closeClosureVote === undefined ? false : Number(closeClosureVote.votesCast) > 0,
+                countedMeans: closeClosureVote === null || closeClosureVote === undefined
+                  ? 'this kernel publishes no closure reading, so whether any "solved" vote was counted cannot be answered here'
+                  : 'counted answers ONE question: did the CLOSURE reading hold any vote at the instant of this close. It is NOT a condition of the close (the close passed the rails in `enforced`): counted=false means nobody had voted on "is this solved" yet, so quote closureVote.missing for who to ask — a close is not a unanimous judgement',
                 ...freezeReading(pid, actor !== undefined && actor !== null && String(actor) !== '' ? String(actor) : (by || member || null), reason),
                 closureVoteNote: closeClosureVote === null || closeClosureVote === undefined
                   ? 'this kernel publishes no closure-vote reading, so this receipt cannot say whether every enfranchised member judged the question solved — the close below is a fact, the closure vote is UNREAD here'

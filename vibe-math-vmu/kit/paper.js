@@ -1092,7 +1092,7 @@ export function createPaperFlow({
         ? 'every participant has already written a part: this move locks nobody out of writing'
         : 'these participants have NOT written a part yet (' + unwrittenParts.join(', ') + '): after this move the paper is in '
           + 'reviewing and `part` is refused by name (VMU_PACK_V5R_CORE_PAPER_STATE) — to let them write, a member files '
-          + 'review({ decision: false }) and `advance` reopens writing, which RAISES the round counter (one round per bounce)'
+          + 'review({ deliverable: false }) and `advance` reopens writing, which RAISES the round counter (one round per bounce)'
       const roundFromWriting = Number(state.round)
       state.status = 'reviewing'; state.stage = 'reviewing'; state.reviewOf = reviewOf; state.reviews = {}
       writeState(state)

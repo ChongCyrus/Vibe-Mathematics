@@ -14766,3 +14766,137 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 - **形状错误不能返回成空结果**：`verdicts` 传对象被读成「没交票」，读者会去补票而不是改形状——**拼写错误的回执必须长得像拼写错误**。
 - **一场辩论可以有两种票面，闸就得读两种**：只读 motions 的闸会把已经签署的 typed ruling 判成「没有决定」；这不是闸太严，而是**它读的世界比事件发生的世界小**。
 
+---
+
+## §308 RUN 207 —— 一个成员读不到的设置，与一轮失败的回合
+
+### 308.1 账从哪来（第 45 次真机，基线 `0525345f`）
+
+| 项 | 值 |
+| --- | --- |
+| 驱动 | `D:/_tmp/slv-phase5/slv-p13-oc.ps1`（opencode-go / deepseek-v4.1-flash，后台 job `bash-9fe88b583efe4f36`） |
+| 工作区 | `D:/_tmp/slv-phase5/slvp174-ws`（库根 `VibeMath/`） |
+| 主线结题 | `Paper/paper-paper-oddsum-45/paper-paper-oddsum-45.pdf` = **48 353 B** |
+| 报告 | `SIM-REPORT44.md` 20 787 B / `FEEDBACK44.md` 8 043 B（93 行）/ `PROGRESS-RUN45.md` |
+| 收尾行 | `SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`、`cleanup: clone_gone=True port_listening=False C_free_GB=8.54` |
+
+本轮修的是 **FEEDBACK42 的两条未闭合项**（`307.6` 里明写的账）：1.1 同一设置键在成员内核与所办内核读出两个值；1.7 围栏 JSON 笔误 ⇒ 整轮 `failed` 但动作已落盘。
+
+### 308.2 两处修法
+
+1. **§ 一个成员读不到的设置不是办公室能用的设置**（`vibe-math-vmu/packs/v5r/tools.js`）
+   - 新增 `const MEMBER_FACING_SETTING_ROUTES = { … }`（放在 `function applyDeclaredSetting` 之前）：`vmu.paper.officeConsult` 及四个同族键指向**耐久咨询行**（`vibe_v5_paper { action:"consult", target, member, request_id, answer }`，闸读的是 `p.consult.entries.length`，每个内核都读）；`vmu.turn.objective` 指向 `vibe_v5_blueprint` 与 `vibe_v5_record_proposition`；`'*'` 明确写「NO face can make another kernel read this value … 若成员必须遵守，规则得读耐久状态」。
+   - 新增 `const processOnly = !!(receipt && receipt.crossKernelScope === 'this-process')`，`partial`/`partialFor`/`partialMeans`/`visibleToMemberKernels`/`memberKernelMeans` 全部改用它（一个谓词，四句派生文案不可能互相矛盾），并新增 `reachableInstead` / `reachableInsteadMeans`。
+   - 判据：回执不只说「只在本进程生效」，还**点名那条能到达成员的路**；没有这样的路时，说出「没有」。
+
+2. **§ 失败的一轮不等于空的一轮**（`vibe-math-vmu/kernel/turn/index.js`）
+   - 新增 `const failureFacts = (e) => {…}`（放在 `const MEMBER_FAILURE_LIMIT = 3` 之前），带出 `sideEffectsUnverified`/`sideEffectsMeans`、`replyLength`/`replyExcerpt`/`replyTruncated`/`replyLimitChars`/`replyExcerptMeans`、`delivery`。
+   - 批次回执的 `receipts.push` 与 `failures.push` 都 spread `...failureFacts(e)`；`stepFailure` 末尾补 `delivery`；解析失败与 `dispatchReply` 失败两处 catch 各挂 `e.delivery = deliveryFromAttribution()`。
+   - 判据：`roundsRun: 0` 旁边必须同时有「这个成员在这一轮写了什么（有界摘录）」与「他在自己会话里做过的事这里看不到」两句；否则读者会把子会话的劳动当成没发生。
+
+### 308.3 机器化
+
+`tests/vmu-run207-feedback42b.test.mjs` = **3 passed / 0 failed**（一个 test 三节）：
+
+- §0 十三条源码 pin：`const MEMBER_FACING_SETTING_ROUTES`、`'vmu.paper.officeConsult': `、`action:"consult", target:"<paper>"`、`'vmu.turn.objective': `、`NO face can make another kernel read this value`、`const processOnly = !!(receipt && receipt.crossKernelScope`、`reachableInstead: processOnly`、`'*': '`、`const failureFacts = (e) =>`、`out.sideEffectsUnverified = true`、`out.replyExcerpt = e.replyText.slice(0, REFUSAL_REPLY_EXCERPT_MAX)`、`...failureFacts(e) })`、`e.delivery = deliveryFromAttribution()`。
+- §1 真装配（`entry.apply` + `v5r` pack）：`vibe_v5_set { key:"vmu.paper.officeConsult", value:"off" }` ⇒ `applied.partial === true`、`applied.reachableInstead` 含 `consult` 与 `vibe_v5_paper`、`reachableInsteadMeans` 含 `durable`；`vmu.turn.objective` ⇒ 指 `blueprint`；`vmu.turn.instituteName`（不在表内）⇒ 命中 `'*'` 的「NO face can make another kernel read this value」。
+- §2 真内核：`createKernel({ settings:{}, root, host:{ deliverTurn: async () => 'this reply has no fence at all' } })` + `turn.drive({ members:['r-1'], rounds:1 })` ⇒ `roundsRun 0` / `roundsAttempted 1` / `receipts[0].failed === true` / `code === 'VMU_TURN_NO_FENCE'` / `sideEffectsUnverified === true` / `sideEffectsMeans` 含 `REPLY SHAPE` / `replyExcerpt` 逐字等于原文 / `replyLength 30` / `replyTruncated false` / `replyLimitChars 500` / `failures[0]` 同事实。
+
+定向回归全绿：`vmu-run207 1/0`、`vmu-turn 13/0`、`vmu-v5r-tools 1/0`、`vmu-turn-mainline 1/0`、`vmu-run204/205/206` 各 1/0、`vmu-v5r-verdict-final 1/0`、`vmu-b4-b5-blueprint 1/0`、`vmu-meeting 18/0`、`vmu-paper 5/0`、`vmu-run19 11/0`、`vmu-prompt 13/0`、`prompt- 24/0`、`audit- 全绿`（新套件使 `README` 的作业计数从 757 变 758，先跑 `update-doc-counts --write` 才过 `audit-` 里的计数锚点）。
+
+### 308.4 三条装载事实
+
+1. `vibe_v5_set` 的回执是 `{ ok, tool, applied:{ … }, effective }`：**`partial` / `reachableInstead` 在 `applied` 里**，不在顶层。本轮测试第一版读顶层而红——「回执的哪一层」也是契约的一部分。
+2. 设置写是 `this-process` 的：每个成员回合 boot 自己的内核、读**声明默认值**；`vibe-math-vmu/kernel/index.js` 里唯一带 `shared-fold` 的写者是 `recordClosureVote`，所以「要成员看见的事实」只能落在 fold 行或记录行上。
+3. 批次失败形状：`{ok:true, roundsRun, roundsAttempted, receipts:[…], failures:[…]}`；`drive` 不因单轮失败而整体失败，因此**读的人必须看 `receipts[].failed`**，只看 `ok`/`roundsRun` 会把失败读成「无事发生」。
+
+### 308.5 未闭合
+
+- `FEEDBACK44` 六条缺陷与五条提示未做（`review` 的 `decision` 被静默忽略、`verdict_final` 无 `p1RulingReading`、会议票箱 id 不能进裁决、`close` 无 `counted`、`final` 的 `moved:false` 无 `stageMoved`、`hire` 顺序冲突等），留待 RUN 208。
+- `vmu.turn.objective` 的双读本轮只做到「指路」，没有真正共享状态。
+- 本轮两处修法**尚未真机复验**（run 46 简报待写）。
+
+### 308.6 三条教训
+
+- **只说「在哪里生效」不说「怎么才生效」**：`partial: true` 把读者留在原地，重复同一次写；拒绝/部分生效的回执必须带一条**可达路径**，没有就明说没有。
+- **批次层要把诊断事实抬上来**：`roundsRun: 0` 与「这个成员什么都没做」不是同一件事；一行失败的形状必须同时携带「他写了什么」与「你看不到什么」。
+- **回执的层级也是契约**：字段放在 `applied` 还是顶层，写测试的人和真机上的代理都会踩；新增字段时选层理由要写进注释。
+
+
+### 308.7 收口链与全量 T1
+
+- 生成物：`update-doc-counts --write` ⇒ `JOBS total=758 suites=650 probes=108`；`regen-all --write` 17/17；`--check` 17/17 in sync；`PREFLIGHT` / `DOC LINT` / `RULES COVERAGE` / `RULE PARITY` 全 PASS（93 anchors）。
+- 干净全量 T1 第一跑（`/d/_tmp/t1-r500-run207.log`）：`TOTAL 758 PASS 757 FAIL 1 (suites 650 · probes 108)`。
+- 唯一的红是 `tests/vmu-run202-feedback39b.test.mjs` §0m：它 pin 住 RUN 202 引入的
+  `partialFor: receipt && receipt.crossKernelScope === 'this-process'`，而本轮把两个读数改成**同一个谓词**
+  `partialFor: processOnly`（`const processOnly = !!(receipt && receipt.crossKernelScope === 'this-process')`）。
+  不是行为变化，是**pin 钉住了实现而不是契约**——契约是「回执说得出这个立即生效是给谁的」，谓词怎么拼不是契约。
+- 修法：pin 改成 `partialFor: processOnly`，并加一条 pin 钉住那个谓词本身（`const processOnly = !!(receipt && receipt.crossKernelScope === 'this-process')`），
+  另加注释说明 RUN 207 为什么合并两个读数（「一句话和它旁边的值不可能互相矛盾」）。单跑 1/0。
+- 教训（写进 308.6 同类）：**pin 的应当是契约，不是拼法**；把实现细节钉住，会让「用更好的写法实现同一契约」变成红灯。
+
+## §309 RUN 208 —— 一句话被静默丢掉，另一句话答错了问题（第 45 次真机 FEEDBACK44）
+
+### 309.1 账从哪来
+
+第 45 次真机（基线 `0525345f`，工作区 `D:/_tmp/slv-phase5/slvp174-ws`，主线结题 `paper-paper-oddsum-45.pdf` = 48 353 B）的 `FEEDBACK44.md`（8 043 B / 93 行）。九条缺陷都可以归成一句：**调用方给的那个词，要么被用上，要么被指名拒掉，不能既不说被丢也不说没用**。
+
+| 现场 | 调用方给了什么 | 回执说了什么 |
+| --- | --- | --- |
+| 1.1 | `review { deliverable:true, decision:false }` | 只记 `deliverable:true`，`decision` 消失；下一次 `advance` 读出 `unanimous:true` |
+| 1.2 | `verdict_final`（主席签票） | 只有 `sources/attribution/coverage`，没有「这张 p=1 卡将读到什么」 |
+| 1.3 | `debate_ruling.ballotId`（**会议**票箱 id） | `P1_RULING_UNRESOLVED`「no ballot with id … exists」，hint 只说去 poll 面取 id |
+| 1.4 | `close` | `closureVote`/`closureVoteFrozen` 都有，没有「这一刻到底有没有票被计入」 |
+| 1.5 | `final` 成功 | `moved:false`、`from:null`、`to:null`，没有「阶段动没动」 |
+| 1.6 | 第二次 `vibe_v5_hire` 带 `institution` | 只拒「已在名册」，不说 `institution` 什么时候才被读 |
+| 2.1 | `verdicts` 传对象（schema 串化成文本） | message 说「you passed a string」 |
+
+### 309.2 九处修法
+
+1. **`review` 不读 `decision`，就说出这句话**（`vibe-math-vmu/packs/v5r/tools.js`）：guard 从 `typeof args.decision === 'string'` 改成**任何非空类型**都拒，message 明说 this face does NOT read it，并点名 `decision` belongs to `final`。
+2. **串化的对象要按对象说**：`verdicts` 若是 `/^[[{]/` 开头的字符串，message 说「a STRING that reads as a SERIALIZED OBJECT/ARRAY」，并解释「the tool schema turns an object into text, and an object is NOT read as a tally」。
+3. **`close` 回答「有没有票被计入」**（`vibe-math-vmu/tools/meeting.js`）：新增 `counted = Number(closeClosureVote.votesCast) > 0` 与 `countedMeans`（counted answers ONE question: did the CLOSURE reading hold any vote at the instant of this close）。
+4. **`final` 回答「阶段动没动」**：新增 `stageMoved = finalized.moved === true || finalized.finalized === true` 与三支 `stageMovedMeans`（成功 ⇒ 「the STAGE moved to finalized (awaiting-editor → finalized)；`moved` 答的是更窄的问题」）。
+5. **修复路径必须是能用的调用**（`vibe-math-vmu/kit/paper.js`）：`partsLockedAfterMoveMeans` 里指路的 `review({ decision: false })` 改成 `review({ deliverable: false })`——这正是 1.1 那个洞。
+6. **第二次 hire 说清 `institution` 的读法**：refuse 的 hint 追加「`institution` is read ONLY on the FIRST hire of a seat」。
+7. **会议票箱被引到裁决时，指名它属于哪个面**：`rulingNameResolution` 的 unknown 分支用 `kernel.liveList().ballots` 判 `meetingBallot`，`means` 分两支（「is NOT a poll box this gate can look up — it is a MEETING ballot … name the MEETING … never the box id」）。
+8. **`P1_RULING_UNRESOLVED` 的 hint 按 `meetingBallot` 指路**：`meeting:"<meeting id>"`。
+9. **`verdict_final` 交出「这张卡将读到什么」**：return 前算 `p1RulingReading = await rulingNameResolution(…)`（try/catch 兜 `ok:false`），并带 `p1RulingReadingMeans`（a PREDICT of a read, it does not decide the card）。
+
+### 309.3 机器化
+
+`tests/vmu-run208-feedback44.test.mjs` = **1 passed / 0 failed**（一个 test 七节）：
+
+- §0 十一条源码 pin；§1 论文流：`review {decision:false}` 必须 `VMU_INVALID_ARGUMENT` 且 message 含 `this face does NOT read it` / `` `decision` belongs to `final` ``，改 `deliverable:false` 后 `advance` 回 `writing` 且 `refusers` 含 `r-2`；
+- §2 串化 `verdicts` 拒且 message 含 `SERIALIZED` 与 `an object is NOT read as a tally`；
+- §3 会议票箱进裁决 ⇒ `VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED`，hint 含 `MEETING ballot` 与 `meeting:"<meeting id>"`；
+- §4 `final` 的 `stageMoved` 是布尔，且 `=== (moved===true || finalized===true)`，`stageMovedMeans` 用 `/stage/i` 命中并点名 `finalized`；
+- §5 二次 hire ⇒ `VMU_INVALID_ARGUMENT`，hint 含 `institution` 与 `FIRST hire`；
+- §6 `verdict_final` 的 `p1RulingReading.ok === true`、`sources.typedRulings === 2`、`voted === true`、means 含 `PREDICT`。
+
+装载事实（写测试必用）：① `vibe_v5_paper` 的 `final` 默认被**所办问询闸**拦（`kernel/paper.js:139` 只有显式 `"off"` 才算关），测试里要 `vibe_v5_set { key:"vmu.paper.officeConsult", value:"off" }` 才走到定稿分支；② `review` 的 `decision` 拒绝发生在论文流最前面，所以 §1 必须先 `start`+`part`+`advance` 才是在测那个 guard。
+
+定向回归全绿：`vmu-paper 5/0`、`vmu-meeting 18/0`、`vmu-v5r-tools 1/0`、`vmu-run19 11/0`、`vmu-run201 1/0`、`vmu-run202 1/0`、`vmu-run203 1/0`、`vmu-run204 1/0`、`vmu-run205 1/0`、`vmu-run206 1/0`、`vmu-run207 1/0`、`vmu-run208 1/0`、`vmu-verdict 1/0`、`vmu-b4-b5-blueprint 1/0`。
+
+同步更新的两条既有 pin：`tests/vmu-run202-feedback39b.test.mjs` §0m（`partialFor: processOnly` + 谓词 pin，见 §308.7）、`tests/vmu-run205-feedback42.test.mjs` §2e（修复路径从 `decision:false` 改成 `deliverable:false`——即修法 5 的另一半）。
+
+
+### 309.3b 收口链与全量 T1
+
+- 生成物：`update-doc-counts --write` ⇒ `JOBS total=759 suites=651 probes=108`（新增 `tests/vmu-run208-feedback44.test.mjs`）；`regen-all --write` 17/17；`--check` 17/17 in sync；`PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 三条既有提示）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`（93 anchors）。
+- 干净全量 T1（`/d/_tmp/t1-r520-run207208.log`）：`TOTAL 759 PASS 758 FAIL 1 (suites 651 · probes 108)`。
+- 唯一的红是 `tests/audit-member-scope.test.mjs` 第 171 行：`/async function toolHire[\s\S]{0,4200}applyMemberScope\(/` ——修法 6 给 hire 的拒绝 hint 加了一句「`institution` 只在首次 hire 被读」，把 `toolHire` 到 `applyMemberScope(` 的距离从 3 9xx 推到 **4 295** 字符，越过这条 **4200 的结构预算**。
+- 判定：这不是行为缺陷，是**审计的结构窗口被一句话撑破**。窗口是「结构预算」，不是契约；正确修法是让窗口跟着函数一起长，而不是把一句人话剪短去迁就测试。改成 `{0,6000}` 并写明理由（`RUN 208 ... the window is a structural budget, not a contract`）。修后 `audit-member-scope` **55 passed / 0 failed**。
+- 教训：**结构预算型的断言要有余量**——它测的是「这两件事在同一个函数里」，不是「这个函数不超过 N 字节」；N 一旦卡在边界上，下一个无关的措辞改动就会点红一盏与本意无关的灯。
+
+### 309.4 未闭合
+
+- `FEEDBACK44` 的五条提示（2.1 的第二种 code 用 `VMU_NO_SUCH_OBJECT` vs `VMU_NOT_FOUND` 不一致、2.4 `proofBasis:"declaration-only"` 易被误读、3.x 自省条目）本轮只做了具名拒与文案，**没有统一两处「名字属于另一个面」的 code**。
+- `p1RulingReading` 只覆盖 `verdict_final`，`vibe_v5_record_proposition {p:1}` 的成功回执仍不回报它读到什么。
+- 本轮九处修法**尚未真机复验**（run 46 简报待写，见下）。
+
+### 309.5 三条教训
+
+- **静默丢弃比拒绝更贵**：`decision:false` 被丢掉时回执是 `ok:true`，调用方按自己的理解继续走，直到 `advance` 把「退回来」读成「一致通过」。**没被读的参数必须拒，拒不了就得在回执里说它没被读**。
+- **答错问题的字段比缺失字段更误导**：`moved:false` 在成功定稿上不假，但它答的是「advance 动没动」；缺的是「阶段动没动」。新增读数时先问一句：**这个词回答的是谁的问题**。
+- **修复路径本身要被跑过一次**：指路文案里写 `review({ decision: false })`，而 `review` 拒 `decision`——真机上代理照着做一次就卡住。**回执里给出的每条调用，至少要有一条测试真的去调它**。

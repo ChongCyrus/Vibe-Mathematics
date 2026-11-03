@@ -168,7 +168,11 @@ ok(/async function toolStart[\s\S]{0,2000}applyMemberScope\(/.test(toolsSrc), 'v
 // RUN 92: the hire face now refuses an id already on the roster BEFORE seating anyone (F-92b), so the
 // structural window has to reach past that guard. The assertion is unchanged: the face that seats a member
 // also applies the scope to it.
-ok(/async function toolHire[\s\S]{0,4200}applyMemberScope\(/.test(toolsSrc), 'vibe_v5_hire applies the scope to the new seat')
+// RUN 208 (run 45 / FEEDBACK44 1.6): the guard's hint grew a sentence about `institution` being read only on the
+// first hire, which pushed the seating call past the old 4200-character window — the window is a structural budget,
+// not a contract, so it widens with the function instead of the sentence being cut to fit a test. The check that
+// matters is still "the face that seats a member is the face that applies the scope".
+ok(/async function toolHire[\s\S]{0,6000}applyMemberScope\(/.test(toolsSrc), 'vibe_v5_hire applies the scope to the new seat')
 ok(toolsSrc.includes('memberScope'), 'both receipts carry the scope receipt (narrowing is provable from outside)')
 
 // ── ⑥ 生产者侧的第二条证据：这个包从不生产 `allow:` overrides（纯静态，不启内核、不写盘）────────────────

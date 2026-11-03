@@ -105,7 +105,9 @@ test('RUN 205 §2 — the move that closes writing says who it locks out, and ev
       && String(moved.partsLockedAfterMove[0]) === 'r-2',
       '§2c ★★ the receipt names the participant this move locks out of writing', moved.partsLockedAfterMove)
     has(moved.partsLockedAfterMoveMeans, 'NOT written a part yet', '§2d ★ in words')
-    has(moved.partsLockedAfterMoveMeans, 'review({ decision: false })', '§2e ★ and names the repair that reopens writing')
+    // RUN 208 (run 45 / FEEDBACK44 2.5): the receipt used to name `review({ decision: false })` — a call `review`
+    // REFUSES — so the repair it named was a dead end. The repair must be a call that works: `deliverable:false`.
+    has(moved.partsLockedAfterMoveMeans, 'review({ deliverable: false })', '§2e ★ and names the repair that reopens writing')
     const reviewOf = moved.reviewOf || {}
     const back = blockOf(await call('vibe_v5_paper', {
       action: 'review', target, member: 'r-2', of: reviewOf['r-2'], deliverable: false, comments: '第二节还没写',

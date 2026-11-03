@@ -3278,6 +3278,7 @@ export function createTurnOrchestrator({
             sideEffectsUnverified: true,
             means: 'the member ANSWERED (this text is what it wrote) and the reply could not be parsed into the declared shape, so the REPLY was not applied. This is NOT a silent member and NOT a delivery failure — and it is NOT a claim that nothing happened: a tool the child session ran is not visible from this kernel (read the record tracks to settle it)' }
         } catch { /* diagnostics must not replace the refusal */ }
+        try { if (e && typeof e === 'object') e.delivery = deliveryFromAttribution() } catch { /* the failure itself must not be masked by its own diagnostics */ }
         throw e
       }
       // ★★★★★★★ ROUND 39 (live run 39 / F-11) — THE SIDE-EFFECT DISCLOSURE BELONGED TO EVERY APPLY-REFUSAL, NOT TO ONE CODE.
@@ -3294,6 +3295,7 @@ export function createTurnOrchestrator({
           e.sideEffectsUnverified = true
           e.sideEffectsMeans = 'this refusal is about APPLYING the reply object, not about whether the member worked: the fields that could not be applied were not applied, but a member turn played by an independent child session MAY have run tools this kernel cannot see from the parent side — read the record tracks (vibe_v5_read_library / vibe_v5_inbox) before treating this as "nothing happened"'
         }
+        try { if (e && typeof e === 'object' && !e.delivery) e.delivery = deliveryFromAttribution() } catch { /* same rule: diagnostics never replace the refusal */ }
         throw e
       }
       return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
@@ -3555,6 +3557,29 @@ export function createTurnOrchestrator({
    * only when one member fails `MEMBER_FAILURE_LIMIT` rounds in a row, which is the signal that the member (not the
    * batch) is broken. The final receipt distinguishes `roundsRun` (successful) from `roundsAttempted`.
    */
+  // ★ RUN 207 (run 42 / FEEDBACK42 1.7, MEASURED): A FAILED ROUND IS NOT AN EMPTY ROUND, AND A BATCH MUST SAY SO.
+  // The batch path pushed `{ failed: true, code, message }` and nothing else, so a reply whose fence did not parse read
+  // as "the member did nothing" - while that member's own child session had already run tools against the shared
+  // library (the fence carries the REPLY, not the work). Every fact needed to say this existed one layer down
+  // (`attachReplyDiagnostics` sets `sideEffectsUnverified` + the reply excerpt; `deliveryFromAttribution` knows which
+  // child played the turn). They are lifted here so the STEP receipt and the BATCH receipt carry the same account.
+  const failureFacts = (e) => {
+    if (!e || typeof e !== 'object') return {}
+    const out = {}
+    if (e.sideEffectsUnverified === true) {
+      out.sideEffectsUnverified = true
+      out.sideEffectsMeans = typeof e.sideEffectsMeans === 'string' ? e.sideEffectsMeans : null
+    }
+    if (typeof e.replyText === 'string') {
+      out.replyLength = Number.isInteger(e.replyLength) ? e.replyLength : e.replyText.length
+      out.replyExcerpt = e.replyText.slice(0, REFUSAL_REPLY_EXCERPT_MAX)
+      out.replyTruncated = e.replyText.length > REFUSAL_REPLY_EXCERPT_MAX
+      out.replyLimitChars = REFUSAL_REPLY_EXCERPT_MAX
+      out.replyExcerptMeans = 'the reply as the member wrote it, CUT at replyLimitChars when replyTruncated is true. This round FAILED at the REPLY ENVELOPE, so what the member actually wrote is the first thing to read - and the excerpt is NOT the whole story of what happened: tools that member ran in its own child session are durable already'
+    }
+    if (e.delivery && typeof e.delivery === 'object') out.delivery = e.delivery
+    return out
+  }
   const MEMBER_FAILURE_LIMIT = 3
   const drive = async ({ members = [], rounds = 1, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
     // (g): the batch route owns the same shape rule as step(), so a batch also accepts plain id strings and refuses an
@@ -3630,8 +3655,8 @@ export function createTurnOrchestrator({
         const message = String((e && e.message) || e)
         // ★ THE FAILED ROUND IS NOT A SUCCESS: no `fields`/`executed`/`turn`, and `failed:true` so a reader can tell it
         // apart from a round that ran. The excerpt is bounded (a receipt is not a log file).
-        receipts.push({ round: i, member: spec.member, failed: true, code, message: message.slice(0, 300) })
-        failures.push({ round: i, member: spec.member, code, message: message.slice(0, 300) })
+        receipts.push({ round: i, member: spec.member, failed: true, code, message: message.slice(0, 300), ...failureFacts(e) })
+        failures.push({ round: i, member: spec.member, code, message: message.slice(0, 300), ...failureFacts(e) })
         const streak = (consecutive.get(spec.member) || 0) + 1
         consecutive.set(spec.member, streak)
         if (streak >= MEMBER_FAILURE_LIMIT) {
@@ -3686,7 +3711,8 @@ export function createTurnOrchestrator({
       // ★★★ ROUND 38: the refusal object carries the side-effect disclosure (see attachReplyDiagnostics); it must also
       // reach the FAILURE RECEIPT, because that is the object an operator actually reads. A disclosure that stops one
       // layer down is the same defect family as run 23's hint and run 29's child id.
-      ...(e && e.sideEffectsUnverified === true ? { sideEffectsUnverified: true, sideEffectsMeans: typeof e.sideEffectsMeans === 'string' ? e.sideEffectsMeans : null } : {}) }
+      ...(e && e.sideEffectsUnverified === true ? { sideEffectsUnverified: true, sideEffectsMeans: typeof e.sideEffectsMeans === 'string' ? e.sideEffectsMeans : null } : {}),
+      ...(e && typeof e === 'object' && e.delivery && typeof e.delivery === 'object' ? { delivery: e.delivery } : {}) }
   }
 
   /**

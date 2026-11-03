@@ -3431,3 +3431,21 @@ RUN 202（`FEEDBACK39` 剩余四条 + 一条自查推翻）。`p=1` 的闸上一
 - **签名改动的连带**：`gatedCardHandler` 变 `async` ⇒ 两处既有 pin（`vmu-run201` 的签名与调用点）随之更新；**改签名就是改契约，pin 要跟着句子走**。
 - **未闭合**：跨内核设置两读（`FEEDBACK42 1.1`）、围栏 JSON 失败与已落盘动作分开报（`1.7`）；本轮九条尚未真机复验。
 
+## ROUND 212（RUN 207：成员读不到的设置，与一轮不等于空的失败）
+
+- **账从哪来**：第 45 次真机（`FEEDBACK44` 的邻居——本轮修的是 `FEEDBACK42` 的两条未闭合账，工作区 `slvp174-ws`，主线 PDF 48 353 B）。两条都是「回执说的范围不对」：所办的 `vibe_v5_set` 回执说 `partial: true` 却不说怎么才生效；批次回执说 `roundsRun: 0` 却不说这一轮里成员写了什么。
+- **修法一（设置的可达路径）**：`packs/v5r/tools.js` 新增 `MEMBER_FACING_SETTING_ROUTES`——`vmu.paper.officeConsult` 一族指向**耐久咨询行**（`vibe_v5_paper { action:"consult" }`，闸读 `p.consult.entries.length`），`vmu.turn.objective` 指向蓝图/命题卡，`'*'` 明说「没有任何面能让另一个内核读到这个值」；`processOnly` 一个谓词派生 `partial`/`partialFor`/`partialMeans`/`visibleToMemberKernels`/`reachableInstead`/`reachableInsteadMeans`，四句文案不可能互相矛盾。
+- **修法二（失败的形状）**：`kernel/turn/index.js` 新增 `failureFacts(e)`，把 `sideEffectsUnverified`/`sideEffectsMeans`、`replyLength`/`replyExcerpt`/`replyTruncated`/`replyLimitChars`/`replyExcerptMeans`、`delivery` 抬进批次 `receipts[]` 与 `failures[]`；`stepFailure` 与两处 catch 挂上 `delivery`。
+- **装载事实**：`vibe_v5_set` 的 `partial`/`reachableInstead` 在 `applied` 里（不在顶层）；每个成员回合 boot 自己的内核、读声明默认值，唯一 `shared-fold` 写者是 `recordClosureVote`；`drive` 不因单轮失败而整体失败，读的人必须看 `receipts[].failed`。
+- **机器化**：`tests/vmu-run207-feedback42b.test.mjs` 3/0（§0 十三条 pin、§1 真装配的三种键、§2 真内核的失败批次）。
+- **未闭合**：`FEEDBACK44` 六条缺陷（`review` 的 `decision` 被静默忽略、`verdict_final` 无 `p1RulingReading`、会议票箱 id 进裁决、`close` 无 `counted`、`final` 的 `moved:false`、`hire` 顺序）留待 RUN 208；本轮两处修法尚未真机复验。
+
+
+## ROUND 213（RUN 208：一句话被静默丢掉，另一句话答错了问题）
+
+- **账从哪来**：第 45 次真机 `FEEDBACK44.md`（93 行）。九条缺陷同一个形状：调用方给的词，要么被用上，要么被指名拒掉。
+- **最贵的一条（1.1）**：`review { decision:false }` 被 guard 的类型判断漏过（只判 `string`），回执 `ok:true`，`decision` 消失；下一次 `advance` 读出 `unanimous:true` ⇒「退回来」变成「一致通过」。修法：`review` 对**任何类型**的 `decision` 具名拒，并说清它属于 `final`。
+- **其它八条**：串化 `verdicts` 按 SERIALIZED 说；`close` 加 `counted/countedMeans`；`final` 加 `stageMoved/stageMovedMeans`（成功定稿时 `moved:false` 答的是另一个问题）；`partsLockedAfterMoveMeans` 的修复路径改成真能用的 `review({ deliverable:false })`；二次 hire 说清 `institution` 只在首次读；会议票箱进裁决时指名它属于会议面并给出 `meeting:"<id>"` 的形状；`verdict_final` 交出 `p1RulingReading`（预测读，不定卡）。
+- **机器化**：`tests/vmu-run208-feedback44.test.mjs` 1/0（七节真装配）；两条既有 pin 同步（run202 的 `partialFor` 契约 pin、run205 的修复路径 pin）。
+- **装载事实**：`vibe_v5_paper.final` 默认被所办问询闸拦（只有显式 `vmu.paper.officeConsult="off"` 才放行）⇒ 测试里要先关闸才走得到定稿分支。
+- **未闭合**：两处「名字属于另一个面」的 code 仍未统一（`VMU_NO_SUCH_OBJECT` vs `VMU_NOT_FOUND`）；`p1RulingReading` 尚未覆盖 `record_proposition {p:1}` 的成功回执；九处修法待第 46 次真机复验。

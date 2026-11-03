@@ -269,7 +269,7 @@ async function toolHire(args = {}, { kernel, exec = null } = {}) {
     if (existing) {
       throw refuse('VMU_INVALID_ARGUMENT',
         'hire mints a NEW temp member; "' + str(args.to) + '" is already on the roster in slot "' + str(existing.slot) + '"',
-        'pass to:"<a new member id>" — moving an existing member between seats is a different act: vibe_vmu_control { action: "hire", member_id, slot } (this face refuses instead of silently re-seating)')
+        'pass to:"<a new member id>" — moving an existing member between seats is a different act: vibe_vmu_control { action: "hire", member_id, slot } (this face refuses instead of silently re-seating). `institution` is read ONLY on the FIRST hire of a seat (this face answers institutionIgnored:true: it hires INTO the institute that already exists — founding one is the control face), so a second hire cannot change it either')
     }
   }
   // ★ LIVE RUN 7 (agent feedback item e): the rule wants the SLOT stated explicitly (「显式给 slot…」), and this face used to
@@ -1373,8 +1373,21 @@ async function rulingNameResolution(kernel, debate, context = {}) {
     let read = null
     try { read = face.status({ boxId: ballotId }) } catch { read = null }
     if (!read || read.ok !== true) {
-      return { ok: false, kind: 'ballot', ref, reason: 'unknown',
-        means: 'no ballot with id ' + ballotId + ' exists on this kernel, so the ruling names a decision that cannot be read anywhere' }
+      // ★★★ RUN 208 (run 45 / FEEDBACK44 1.3, MEASURED): a DEBATE's ballot box id (`b-1-…`, the one `vibe_vmu_meeting
+      // { action:"ballot" }` returns) was cited as `debate_ruling.ballotId`; the box face answered "no ballot with that id
+      // exists", which is FALSE — the box exists, on the MEETING face, and its votes live in the meeting tally. Two faces,
+      // two registries: say which one holds the id, and name the shape that reads it.
+      const meetingBallot = (() => {
+        try {
+          const list = kernel && typeof kernel.liveList === 'function' ? kernel.liveList() : null
+          const ids = list && Array.isArray(list.ballots) ? list.ballots.map(String) : []
+          return ids.includes(String(ballotId))
+        } catch (e) { return false }
+      })()
+      return { ok: false, kind: 'ballot', ref, reason: 'unknown', meetingBallot,
+        means: meetingBallot
+          ? 'the id ' + ballotId + ' is NOT a poll box this gate can look up — it is a MEETING ballot (the box a debate opens on the meeting face), and its votes are tallied into that meeting: name the MEETING in the ruling (`meeting:"<meeting id>"`), never the box id'
+          : 'no ballot with id ' + ballotId + ' exists on this kernel, so the ruling names a decision that cannot be read anywhere' }
     }
     const votes = Number(read.votes) || 0
     const abstain = Number(read.abstain) || 0
@@ -1993,7 +2006,9 @@ function gatedCardHandler(toolName) {
             throw refuse('VMU_PACK_V5R_CORE_P1_RULING_UNRESOLVED',
               'p=1 was refused because the ruling it names cannot be resolved: ' + resolution.means,
               resolution.reason === 'unknown'
-                ? 'pass a name this kernel can read: debate_ruling:{mode:"unanimous", value:1, meeting:"<a meeting id from vibe_v5_meeting>", …} or ballotId:"<a box id from vibe_v5_poll_open>"; or drop the ruling and use the route that actually settles a card — vibe_v5_fidelity_conclude (the chair conformance ruling writes p=1 itself)'
+                ? (resolution.meetingBallot === true
+                  ? 'the id you gave is a MEETING ballot (returned by vibe_vmu_meeting { action:"ballot" }): this gate reads that decision through the MEETING, so cite `meeting:"<meeting id>"` instead of `ballotId` — the box id cannot be looked up here (two faces, two registries), and the meeting tally is where its votes were counted. Or drop the ruling and use vibe_v5_fidelity_conclude, whose conformance ruling writes p=1 itself'
+                  : 'pass a name this kernel can read: debate_ruling:{mode:"unanimous", value:1, meeting:"<a meeting id from vibe_v5_meeting>", …} or ballotId:"<a box id from vibe_v5_poll_open>"; or drop the ruling and use the route that actually settles a card — vibe_v5_fidelity_conclude (the chair conformance ruling writes p=1 itself)')
                 : 'the ruling must name something THIS kernel holds: read the meeting with vibe_v5_meeting {action:"summary"}, or close the poll box first (vibe_v5_poll_close returns its tally) — this pack publishes NO separate poll-result tool — and pass that id')
           }
           if (resolution.voted !== true) {
@@ -2318,7 +2333,12 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
   // call and a caller re-reading the same three cards forever.
   if (args.verdicts !== undefined && args.verdicts !== null && !Array.isArray(args.verdicts)) {
     throw refuse('VMU_INVALID_ARGUMENT',
-      'verdicts must be an ARRAY of {member, p, reason} rows; you passed ' + (typeof args.verdicts === 'object' ? 'an OBJECT' : ('a ' + typeof args.verdicts)),
+      'verdicts must be an ARRAY of {member, p, reason} rows; you passed ' + (typeof args.verdicts === 'object'
+        ? 'an OBJECT'
+        : (typeof args.verdicts === 'string' && /^[[{]/.test(String(args.verdicts).trim())
+          ? 'a STRING that reads as a SERIALIZED ' + (String(args.verdicts).trim().charAt(0) === '[' ? 'ARRAY' : 'OBJECT')
+            + ' (' + (String(args.verdicts).trim().length > 60 ? String(args.verdicts).trim().slice(0, 60) + '…' : String(args.verdicts).trim()) + ') — the tool schema turns an object into text, and an object is NOT read as a tally'
+          : ('a ' + typeof args.verdicts))),
       'pass verdicts:[{ member:"r-1", p:1, reason:"…" }, …] — or omit verdicts entirely and let this face adopt the ruling cards the members filed with vibe_v5_verdict { meeting, proposition_id, verdict, reason }; an object is NOT read as a tally')
   }
   const typed = Array.isArray(args.verdicts) ? args.verdicts : null
@@ -2658,8 +2678,23 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     lockedCardNote: 'a card whose proof is registered complete stays locked for every CONTENT edit; this settlement writes only the probability the ruling produced, which rule L53 requires — the gate admits exactly that shape (p + debate_ruling) and nothing else',
     means: 'the KERNEL notice tells the owner to correct the card; this field names the call that does it and the values this ruling produced, so "who changes the card, with what" is answerable from the receipt instead of inferred. This face does not write the card: the rule makes the notice the FRAMEWORK act and the edit the HOLDER act (and a card write here would be a second writer of the same row)',
   }
+  // ★★★ RUN 208 (run 45 / FEEDBACK44 1.2, MEASURED): this receipt printed `correction.call` (a p=1 write with
+  // debate_ruling naming this meeting) but NOT the reading that write will make, so a chair could only learn "the gate
+  // will say it counted no votes" by copying the call back and being refused. The reading is the same function the gate
+  // uses, taken here over the SAME (meeting, proposition): a prediction of a READ, never a decision this ruling makes.
+  const p1RulingReading = await (async () => {
+    try {
+      if (kernel === null || kernel === undefined) return null
+      const reading = await rulingNameResolution(kernel, { rulingRef: meeting, meeting, subject: propositionId, ballotId: null, tallyId: null }, { cardId: propositionId })
+      return reading === null || reading === undefined ? null : reading
+    } catch (e) {
+      return { ok: false, reason: 'unreadable', means: 'the p=1 gate would read this meeting through the same function, and that read failed HERE: ' + String((e && e.message) || e) }
+    }
+  })()
   return {
     ok: true, tool: 'vibe_v5_verdict_final', meeting, chair, from: chair,
+    p1RulingReading,
+    p1RulingReadingMeans: 'this is the SAME reading the p=1 write will take when you copy `correction.call` back (its debate_ruling names this meeting): sources.motions + sources.typedRulings say what the gate will count, voted says whether it will find a counted decision, and means names it in words. It PREDICTS a read, it does not decide the card — so "my p=1 write will be refused for having no counted votes" is answerable here instead of by trying and being refused',
     // ★ RUN 158 (N3): rule L53 takes the ruling AFTER the debate ends, and a closed meeting lives in the archive. The
     // receipt names that state so a reader can tell a ruling taken mid-debate from the rule's own order of events.
     meetingArchived,
@@ -4604,6 +4639,21 @@ function coerceDeclaredValue(def, value) {
   }
 }
 
+// ★ RUN 207 (run 42 / FEEDBACK42 1.1, MEASURED): "ACCEPTED HERE" IS NOT "IN FORCE THERE", AND FOR SOME KEYS THERE IS
+// NO WRITE THAT WOULD MAKE IT SO. Run 42's office set `vmu.paper.officeConsult: "off"` and read `applied: "immediate"`
+// + `partial: true`; the chair's `final` was still refused by `VMU_OFFICE_CONSULT_REQUIRED` in a member kernel that
+// boots its OWN kernel over the same workspace and reads the declared default. The receipt said the scope was partial
+// but named no DURABLE route - so the next agent repeats the same write and hits the same wall. Each entry below is the
+// route that actually reaches the members (a durable record they read), or a named statement that no such route exists.
+const MEMBER_FACING_SETTING_ROUTES = {
+  'vmu.paper.officeConsult': 'DO NOT FLIP THIS SETTING TO UNBLOCK A MEMBER. Answer the pending consult instead: `vibe_v5_paper { action:"consult", target:"<paper>", member:"<office id>", request_id:"<the id the gate named>", answer:"…" }` writes a durable consult row, the paper ledger is shared by every kernel, and that row is what the gate tests (`p.consult.entries.length`). The setting above lives in THIS process only, so it cannot reach the finaliser.',
+  'vmu.paper.officeConsultOn': 'same route as `vmu.paper.officeConsult`: the consult row is the durable fact; this switch only exists in the kernel that reads it.',
+  'vmu.paper.officeConsultTimeoutMs': 'same route as `vmu.paper.officeConsult`: answering the consult ends the wait for every kernel; the timeout only lives in this one.',
+  'vmu.paper.officeConsultOnTimeout': 'same route as `vmu.paper.officeConsult`: answering the consult makes the timeout irrelevant.',
+  'vmu.paper.officeConsultExemptRoles': 'same route as `vmu.paper.officeConsult`. An exempt role is decided by the kernel that finalises, which is not this one: if the office must finalise without asking, the consult row has to exist first.',
+  'vmu.turn.objective': 'a member kernel reads the DECLARED default of this key, so write the objective where the members read it: `vibe_v5_blueprint { action:"propose"|"revise" }` and the proposition card (`vibe_v5_record_proposition`) are durable records every kernel reads. Rewriting this setting cannot reach a member turn.',
+  '*': 'NO face can make another kernel read this value: each member turn boots its own kernel over the same workspace and reads the declared default. If a member must obey the rule, the rule has to read durable state (a fold row / a record) - a runtime write here is local to this process by construction.'
+}
 function applyDeclaredSetting(kernel, key, value, opts = {}) {
   const def = typeof kernel.settingDef === 'function' ? kernel.settingDef(key) : null
   if (!def) {
@@ -4633,6 +4683,8 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
   // CARRIES the kernel's answer instead of computing a second, contradictory one.
   const kApplied = receipt && receipt.applied !== undefined ? receipt.applied : null
   const kRestart = !!(receipt && receipt.requiresRestart === true)
+  // ★ RUN 207: one predicate, so `partial`, `reachableInstead` and every derived sentence below cannot disagree.
+  const processOnly = !!(receipt && receipt.crossKernelScope === 'this-process')
   return { key, value: coerced, hot: def.hot, who: def.who || null, appliedBy: actor,
     applied: kApplied,
     requiresRestart: kRestart,
@@ -4660,13 +4712,18 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
     // `crossKernelScope:"this-process"`. Both true, and the word a reader skims first ("immediate") is the misleading one:
     // it reads as "the institute has it", while a member turn boots its OWN kernel and reads the old value. The honest
     // spelling is `partial` with the scope named, so nobody has to notice the second field to learn the first fact.
-    partial: receipt && receipt.crossKernelScope === 'this-process' ? true : null,
-    partialFor: receipt && receipt.crossKernelScope === 'this-process' ? 'the member kernels spawned for turns (this process only)' : null,
-    partialMeans: receipt && receipt.crossKernelScope === 'this-process'
+    partial: processOnly ? true : null,
+    partialFor: processOnly ? 'the member kernels spawned for turns (this process only)' : null,
+    // ★ RUN 207: the durable route that DOES reach the members, per key - or the named statement that none exists.
+    reachableInstead: processOnly ? (MEMBER_FACING_SETTING_ROUTES[key] || MEMBER_FACING_SETTING_ROUTES['*']) : null,
+    reachableInsteadMeans: processOnly
+      ? 'this write is live in THIS process only, so the reachable route is the one named in reachableInstead (a durable record the member kernels already read); repeating the write cannot reach them'
+      : null,
+    partialMeans: processOnly
       ? 'applied:"immediate" above is TRUE FOR THIS PROCESS ONLY: the write is live here, and every member turn boots its own kernel over the same workspace and keeps reading the old value. If a member must see it, the value has to reach shared state — a durable setting write or the record fold — not a runtime write on this face'
       : null,
     memberKernelMeans: (() => {
-      if (!receipt || receipt.crossKernelScope !== 'this-process') return null
+      if (!processOnly) return null
       const base = 'each member turn runs its OWN kernel instance over the same workspace, and this write lives only in '
         + 'THIS process: the members do NOT read it, so a member reporting the old value is not a bug — it is this scope'
       if (key === 'vmu.turn.leaderId') {
@@ -5213,9 +5270,14 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // `deliverable:true|false` — and the schema documents both on one face, so the first honest attempt
       // (`review {decision:"deliverable"}`) came back "deliverable must be true or false", a sentence about a
       // parameter the caller never passed. The face now names the confusion and the fix, before the kernel sees it.
-      if ((args.deliverable === undefined || args.deliverable === null) && typeof args.decision === 'string' && args.decision !== '') {
+      // ★★★ RUN 208 (run 45 / FEEDBACK44 1.1, MEASURED): the guard below only named the confusion when `decision` was a
+      // STRING. run 45 passed `decision:false` (a boolean, i.e. the shape of `final`), the guard stayed silent, and the
+      // key was dropped by the reader — the review came back ok:true and the NEXT advance read the paper as unanimous,
+      // so "send this part back" was accepted and then ignored. A parameter this face does not read must be refused at
+      // ANY type: the silent drop is the defect, not the spelling.
+      if ((args.deliverable === undefined || args.deliverable === null) && args.decision !== undefined && args.decision !== null) {
         throw refuse('VMU_INVALID_ARGUMENT',
-          'review takes `deliverable: true|false`, not `decision:"' + String(args.decision) + '"` — `decision` belongs to `final`',
+          'review takes `deliverable: true|false`, not `decision:' + (typeof args.decision === 'string' ? '"' + String(args.decision) + '"' : ('(' + typeof args.decision + ') ' + JSON.stringify(args.decision))) + '` — `decision` belongs to `final`, and this face does NOT read it: a review that says "decision" was silently counted as deliverable:true before RUN 208',
           'call review again with deliverable:true (this part is deliverable) or deliverable:false (send it back), keeping `of` naming the part you reviewed')
       }
       const review = paper.recordReview({
@@ -5277,6 +5339,15 @@ async function toolPaper(args = {}, { kernel } = {}) {
         // hides the branch it took is the exact defect this file keeps closing; the keys are projected only when the
         // branch is a repair, so an ordinary final is unchanged.
         moved: finalized.moved === true,
+        // ★★★ RUN 208 (run 45 / FEEDBACK44 1.5, MEASURED): a SUCCESSFUL final answered moved:false with from/to null — true in
+        // the narrow sense that `advance` did not move anything (this call is not an advance), and useless to a reader who
+        // asked "did the stage change". stageMoved names the STAGE: a finalisation takes awaiting-editor to finalized.
+        stageMoved: finalized.moved === true || finalized.finalized === true,
+        stageMovedMeans: finalized.finalized === true
+          ? 'the STAGE moved to finalized (awaiting-editor → finalized); `moved` answers the narrower question "did an ADVANCE move anything", which is false for this call by definition'
+          : (finalized.moved === true
+            ? 'the stage moved (see from/to): `final {decision:"revise"}` took the paper back to writing'
+            : 'no stage moved: the finalisation was refused or rolled back (see rolledBack/reviseAvailable and the `pdf` block)'),
         from: finalized.from || null,
         to: finalized.to || null,
         // ★★ RUN 158 (E): the four keys are now ALWAYS present, not only on a repair round. A revise that took the
