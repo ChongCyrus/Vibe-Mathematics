@@ -3541,3 +3541,25 @@ RUN 213（第 50 次真机 run 50 / FEEDBACK49）处理的是「算出来的事�
 机器化 `tests/vmu-run216-feedback52.test.mjs` = 41/0（**真库存 + 真会议 + 真库卡**：base 恰好 1 次、`submitted:2/typed:0` 与 `SUBMITTED RULING CARD` 同现、`VMU-RULING` 正文可读）。三条装载事实：`parseBlueprint(row).text` 是成员 read 到的正文；顶层 `sources` 是 `{n,submitted,typed}`，`p1RulingReading.sources` 才是 `{motions,submittedRulings}`；`library.expand(head.id)` 可用。
 
 教训：**「剥掉副本」与「保留原文」必须两句一起成立**，回执一旦声称磁盘上的状态，测试就要从磁盘数一遍；解释缺陷的注释不要保留被负向 pin 的字面量。
+
+## ROUND 222 —— RUN 217：文件在，不等于公式排出来了
+
+run 54（`task-sim54.txt`、`slvp183-ws`、1803 s、PDF 73 532 B）量到三笔账，都是「回执为真、回答的却是另一个问题」：
+
+1. **`pdf.produced:true` 只回答「文件在」**。成员的 `Σ_{i=1}^{n}` 与 `x^2` 写成纯文本 ⇒ `.tex` 里 `textasciicircum`×8；`≥`×4 与 `∎`×1 原样交给 xelatex ⇒ `Missing character: There is no ≥ (U+2265) in font [lmroman10-regular]` ×4、`∎ (U+220E)` ×1，PDF 文本层是 U+FFFF。而回执没有任何字段说「公式读起来是公式」；**成对 `$` 的惯例从未在任何提示词里教过**。
+2. **`bodyPrefixDropped:0` 没有主语**。它出现在「上一份草案已被采纳、这次起 revision 2 新草案（`target === null`）」的调用上，means 却说「你没有把续写的那份开头的草案贴回来」——run 54 的成员据此怀疑剥底坏了。
+3. **`ok:true` 被读成「锁生效了」**。首次写卡 `proof_state:"complete"` + 指针不解析 ⇒ `ok:true`、`proofState:"complete"`、`proofLockDeferred:true` 三真并列，没有字段回答「这张卡锁住了吗」。
+
+修法（四处 + 一条教学）：
+
+1. `vibe-math-vmu/kit/paper.js`：`TEX_MATH_GLYPH`（`≥`→`\\geq`、`∎`→`\\blacksquare` 等 13 个）+ `texMath` 计数，`repairInMath` 与 `repairInText` 分域处理（成对 `$` 之间只换符号、不转义 `^`/`_`；之外照旧转义但先换符号），`proseCarets`/`proseUnderscores`/`inlineMathSpans`/`glyphsRepaired` 进 `math`；`PaperTexBody({target}) → {tex, math}` 与 `PaperTex` 同源，`render` 与 `compilePdf` 回执都带 `math`，`means` 在有转义时明说 `READS AS TEXT in the PDF instead of as mathematics`。
+2. `vibe-math-vmu/packs/v5r/tools.js`：`case 'render'` 与 `case 'compile'` 的**投影**都转发 `math`（kit 的新字段不会自动出现在工具面回执里）。
+3. `vibe-math-vmu/packs/v5r/blueprint.js`：`bodyPrefixDroppedMeans` 加 `target === null` 支（「this call STARTED revision N … nothing was compared」）+ `continuedBase{requested, actual, continued, revision, why, means}`。
+4. `vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_record_proposition`：`proofGate{locked, why, nextMove, means}`（未锁时 `nextMove` 指 `REGISTER A NEW CARD`，`means` 明写 `read proofGate.locked, not `ok``）。
+5. `vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js`：教学行「行内数学要用成对的 `$` 包起来」，并说明 `math` 块的读数含义。
+
+`tests/vmu-run217-feedback53.test.mjs` = 40/0（源码 pin 14 条；真装配把 `.tex` 从账本读回来断言 `$\\geq$`、`$\\blacksquare$`、原样公式与 `\\textasciicircum{}`；两份 blueprint；两张 proposition 卡）。装载事实：`vibe_v5_paper {action:"start"}` 的 target 在 `started` 键下；`records.list({track})` 返回对象取 `.items`；render/compile 是投影。
+
+定向回归 70/0；`update-doc-counts --write` ⇒ 768/660/108；`regen-all` 17/17 in sync；四门禁 PASS。
+
+教训：产出类回执必须带一个回答「内容按规矩排出来了吗」的读数，且与产出**同一次遍历**产生；一个 0 必须有主语；`ok:true` 回答「面接受了调用」，不能回答「世界因此变了」——生效类事实要独立字段并明写该读哪个字段。

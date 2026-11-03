@@ -265,11 +265,13 @@ console.log('§2 问题 2：`compile` 门与 `final` 的 pdf 块是同一个形�
   // ★ RUN 159 加 `tailsIdenticalMeans`（第 25 键：布尔之外还要说清哪一支为真）。
   // ★ RUN 205 加 `recordId`/`recordIdMeans`（第 26/27 键：编译写下的那一行与「final 与 compile 打同一个 id」的说明）。
   // 这个 pin 守的是「一个投影、两个门」，共享投影改了字段集它就必须跟着改——否则它守的是一个不再存在的形状。
-  const expected = ['argv', 'code', 'engine', 'engineSource', 'faceCode', 'hint', 'kind', 'message', 'missing', 'ok', 'outDir', 'pdfBytes', 'pdfPath',
+  // RUN 217 added `math` to the SHARED projection itself, so both branches keep it and this pin keeps its point:
+  // the list is one field set, and success/failure are compared against the SAME list further down.
+  const expected = ['argv', 'code', 'engine', 'engineSource', 'faceCode', 'hint', 'kind', 'math', 'message', 'missing', 'ok', 'outDir', 'pdfBytes', 'pdfPath',
     'produced', 'recordId', 'recordIdMeans', 'signal', 'sourceName', 'stderrTail', 'stdoutTail', 'tailSource', 'tailsIdentical', 'tailsIdenticalMeans', 'target',
     'triedEngines', 'triedEnginesTotal',
     'triedEnginesTruncated'].sort()
-  ok(keys.length > 0 && keys.length === expected.length && JSON.stringify(keys) === JSON.stringify(expected), '问题 2：compiled 块就是共享投影的字段集（27 键）', keys)
+  ok(keys.length > 0 && keys.length === expected.length && JSON.stringify(keys) === JSON.stringify(expected), '问题 2：compiled 块就是共享投影的字段集（28 键）', keys)
 
   // ── the SAME fields must come out of `final`: drive a paper to awaiting-editor, then final it with a failing compile ──
   const fail2 = makeSubprocess(FAILING_COMPILE)

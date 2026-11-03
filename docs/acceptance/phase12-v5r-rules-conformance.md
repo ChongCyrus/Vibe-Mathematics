@@ -15386,3 +15386,61 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 2. 收口链：`update-doc-counts --write` ⇒ `JOBS total=767 suites=659 probes=108`；`regen-all --write` 17/17，`--check` 17/17 in sync；四门禁 `PREFLIGHT`/`DOC LINT`/`RULES COVERAGE`/`RULE PARITY` 全 PASS。
 3. 全量 T1 第一次 `/d/_tmp/t1-r1300-run216.log` = `TOTAL 767  PASS 766  FAIL 1  (suites 659 · probes 108)`，红的是 `tests/vmu-run206-feedback43.test.mjs` §1k：它 pin 的是 RUN 206 的旧措辞 `TYPED RULING CARD`，而本轮把 `means` 改成 `SUBMITTED RULING CARD(S)`——pin 随措辞更新（事实不变：`means` 必须说出它读的是谁交的卡），注释里写明 run 53 曾把 `TYPED` 与 `submitted:2, typed:0` 读成矛盾。改后单跑 1 passed / 0 failed。
 4. 全量 T1 第二次（干净树）`/d/_tmp/t1-r1301-run216b.log` = `TOTAL 767  PASS 767  FAIL 0  (suites 659 · probes 108)`；三条新 pin 与 §317.3 的三处修法在同一棵树上跑完，无红。
+
+
+## §318 RUN 217 收口——「文件在」不等于「公式排出来了」（第 54 次真机 run 54 / FEEDBACK53）
+
+### 318.1 现场（run 54，基线 `bdd2697c`）
+
+第 54 次真机（`-CloneName slvp216 -Port 19744`、`task-sim54.txt`、工作区 `slvp183-ws`）在 1803 s 内跑完：`DRIVE exit=0`、`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`、`cleanup: clone_gone=True port_listening=False C_free_GB=8.51`；主线结题 `Paper/paper-paper-oddsum-54/paper-paper-oddsum-54.pdf` **73 532 B**，`toolCalls:73`、`transcriptEvents:399`、`tokenTotal 17 045 532`。报告 `SIM-REPORT53.md` 23 646 B、`FEEDBACK53.md` 14 534 B。
+
+复验生效（正面读数）：按 id 读库内裁决卡成功（`libraryCard.body` 含 `VMU-RULING`，RUN 216 的 `VMU_NO_SUCH_OBJECT` 已消失）；`vibe_v5_verdict_final` 顶层 `sources{n:2, submitted:2, typed:0}` 且 `p1RulingReading.means` 含 `SUBMITTED RULING CARD(S)`（RUN 216 的措辞修正在真机里被读到）；`blueprint` 续写的 `bodyPrefixDropped:603` 且基文在草案里**恰好 1 次**（RUN 215/216 的剥离修法正确）；`headingDroppedMeans` 两支、`alreadyPresent` 两支、`part.requiredLines` 前瞻、`vibe_v5_message` 转达面、`unanimity.nonAttending:["r-temp"]`、`VMU_OFFICE_CONSULT_REQUIRED` 带 `requestId` 且 `finalized:false` 均按新口径出现。
+
+### 318.2 三笔账（都是「回执为真、回答的却是另一个问题」）
+
+1. **公式没排出来，回执只说「文件在」**。成员把 `Σ_{i=1}^{n}` 与 `x^2` 直接写成纯文本：`.tex` 里因此出现 `textasciicircum`×8；同时 `≥`×4 与 `∎`×1 被原样交给 xelatex，日志 `Missing character: There is no ≥ (U+2265) in font [lmroman10-regular]` ×4 与 `∎ (U+220E)` ×1，PDF 文本层该字符为 U+FFFF。而 `vibe_v5_paper { action:"render" }` 的 `renderOk:true`/`pdf.produced:true` 只承诺「文件产出了」，没有一个字段说「公式读起来是公式」。**成对 `$` 的惯例从未在任何提示词里教过**（RUN 174 只在回执的 `mathTypeset` 里描述过，成员读不到）。
+2. **`bodyPrefixDropped:0` 说的是「这次没有续写任何草案」，但 means 说「你没有把续写的那份开头的草案贴回来」**。run 54 的成员据此怀疑剥离坏了——而它其实是「上一份草案已被采纳、这次起了 revision 2 的新草案，`target === null`」，本来就没有可比较的对象。
+3. **`ok:true` 被读成「锁生效了」**。首次写卡时声明 `proof_state:"complete"` 且 `proof_ref` 不解析，回执同时给 `ok:true`、`proofState:"complete"`、`proofLockDeferred:true`；三个字段都为真，但没有任何字段回答「这张卡现在锁住了吗」。
+
+### 318.3 四处修法
+
+1. `vibe-math-vmu/kit/paper.js`：新增 `TEX_MATH_GLYPH`（`≥`→`\geq`、`≤`→`\leq`、`∎`→`\blacksquare` 等 13 个 unicode 数学符号）与 `texMath` 计数器；LaTeX 化分两个域——成对 `$` 之间走 `repairInMath`（只换符号，不转义 `^`/`_`），`$` 之外走 `repairInText`（换符号后仍按原规则转义），`textasciicircum` 的计数（`proseCarets`/`proseUnderscores`）与成对 `$` 的计数（`inlineMathSpans`）分别进 `math`。`PaperTex` 拆成 `PaperTexBody({target}) → {tex, math}` 与 `PaperTex = PaperTexBody(...).tex`，**同一次遍历**既写 `.tex` 又产生读数，两者不可能互相矛盾。`render()` 与 `compilePdf()` 的成功回执都带 `math`，其 `means` 对「有转义」与「无转义」两支分别说：有转义时明说 `READS AS TEXT in the PDF instead of as mathematics`。
+2. `vibe-math-vmu/packs/v5r/tools.js`：`case 'render'` 的投影与 `case 'compile'` 的 `projectPdfBlock` 都转发 `math`（kit 的新字段不会自动出现在工具面回执里——RUN 212 的教训在这里第二次生效）。
+3. `vibe-math-vmu/packs/v5r/blueprint.js`：`bodyPrefixDroppedMeans` 加 `target === null` 支（「this call STARTED revision N … nothing was compared」）；新增 `continuedBase{requested, actual, continued, revision, why, means}` 进两条写入回执，`means` 明写「`continued:false` is a FACT about this call, not a failure」。
+4. `vibe-math-vmu/packs/v5r/tools.js` 的 `vibe_v5_record_proposition`：新增 `proofGate{locked, why, nextMove, means}`——锁上时 `locked:true`；未锁时 `locked:false` 且 `why` 点名不解析的指针、`nextMove` 说唯一可达的动作（`REGISTER A NEW CARD`，记录面每次写都铸新行，旧行不能改指针）、`means` 明写 `read proofGate.locked, not `ok``；不声明 `proof_state` 的卡 `proofGate:null`。
+5. `vibe-math-vmu/packs/v5r/prompts/v5r-paper-prompts.js`：新增教学行「**行内数学要用成对的 `$` 包起来**」，给出 `$\sum_{i=1}^{n}(2i-1)=n^2$` 的例子，并说明 `$` 之外 `^`/`_` 会被转义成字面文本、`math` 块的 `proseCarets`/`proseUnderscores` 就是这件事的计数、unicode 数学符号会被自动换成 LaTeX 命令（`math.glyphsRepaired`）。
+
+### 318.4 机器化与三条装载事实
+
+`tests/vmu-run217-feedback53.test.mjs` = **40 passed / 0 failed**：§0 十四条源码 pin（`TEX_MATH_GLYPH`、`PaperTexBody`、「READS AS TEXT」、「needed repair before LaTeX」、提示词教学、`continuedBase`、「nothing was compared」、`proofGate`/`read proofGate.locked`/`REGISTER A NEW CARD`）；§1 真装配（`vibe_v5_start` → `vibe_v5_paper {action:"start"}` → `part` 写含 `≥`/`∎`/`$…$`/裸 `x^2` 的一段 → `render`）：`math.glyphsRepaired === 2`、`inlineMathSpans === 1`、`proseCarets === 1`，并**从账本把 `.tex` 读回来**断言其中有 `$\geq$`、`$\blacksquare$`、`$\sum_{i=1}^{n}(2i-1)=n^2$` 与 `\textasciicircum{}`；§2 两份 blueprint（`continued:false` + `continuedBase.actual === null` + 「nothing was compared」；续写 `actual === requested`）；§3 两张 proposition 卡（声明 complete 但指针不解析 ⇒ `proofGate.locked === false` + `nextMove` 含 `REGISTER A NEW CARD`；无 `proof_state` ⇒ `proofGate === null`）。
+
+三条装载事实：① `vibe_v5_paper { action:"start" }` 回执的动作块在 **`started`** 键下（`paperStart.started.target`），不是顶层；② `kernel.records.list({track})` 返回**对象**（`{items, heads, count, available, …}`），不是数组，取行要 `.items`；③ `render`/`compile` 的工具面字段是 `vibe-math-vmu/packs/v5r/tools.js` 里的**投影**，`case 'render'` 在 `:5619`、`case 'compile'` 在 `:5644`（kit 新增字段必须在两处显式转发）。
+
+### 318.5 定向回归与收口链
+
+定向回归：`node tests/run-tests.mjs --only vmu-paper --only vmu-run174 --only vmu-run188 --only vmu-run189 --only vmu-run194 --only vmu-run195 --only vmu-run196 --only vmu-run217 --only vmu-blueprint --only vmu-meeting --only vmu-turn --only vmu-v5r-tools --only vmu-prompt --only prompt-` = **`TOTAL 70 PASS 70 FAIL 0 (suites 63 · probes 7)`**。
+
+收口链：`update-doc-counts --write` ⇒ **`JOBS total=768 suites=660 probes=108`**（files changed=5）；`regen-all --write` 17/17，`--check` 17/17 in sync；四门禁 `PREFLIGHT: PASS` / `DOC LINT: PASS`（D6/D11/D16 既有提示）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+
+全量 T1：第一次 `/d/_tmp/t1-r1310-run217.log` = `TOTAL 768 PASS 766 FAIL 2 (suites 660 · probes 108)`，两条红都不是新功能坏了，而是「共享投影的键集必须两边相同」这条既有契约被 `math` 打破：
+
+1. `tests/vmu-run154-real-run4-fixes.test.mjs` §G10 钉住 `compile` 成功分支走**同一个** `projectPdfBlock`；
+2. `tests/vmu-run155-audit-fixes.test.mjs` §2 钉住成功与失败**键集完全相同**（27 键）。
+
+我最初把 `math` 用 `Object.assign` 挂在成功分支外面——这正是那条契约禁止的第二形状。修法不是放宽 pin，而是把测量搬进**唯一的投影**：`projectPdfBlock` 末尾新增 `math: p.math && typeof p.math === 'object' ? p.math : null`，成功分支回到 `compiled: projectPdfBlock(compiled, target)`，失败分支因此也带 `math: null`（失败没有 `.tex`，没有可数的东西）；`run155` 的 `expected` 列表加 `math`（27→28 键），**它比对的仍是「成功与失败同一张列表」**。修后四套相关套件 `TOTAL 9 PASS 9 FAIL 0`，第二次干净树全量 T1 `/d/_tmp/t1-r1311-run217b.log` = **`TOTAL 768 PASS 768 FAIL 0 (suites 660 · probes 108)`**。
+
+教训第四次落地：**加字段时要问「这个字段属于哪个形状」**——属于一场编译的事实就该进那场编译的共享投影，而不是挂在某条分支的外面；pin 钉住「两边同形」时，正确的动作是让新字段也两边都在。
+
+### 318.6 未闭合
+
+1. `vibe_v5_blueprint` 的描述仍未界定「existing draft」是**本次续写的那一份**（run 54 的两名成员据此各写各的、同一草案被追加两次，RUN 216 只保证了不重复追加 base）。
+2. 聚合名 `tally-m1-rec-4` 仍无说明指出它不是可解引用的 id（描述层建议，未改）。
+3. 成员提示词里「成员自己的记录本是草稿」仍可能被外推到 blueprint（实测 blueprint 的草案是**共享**一行的），未在提示词里写清。
+4. `vibe_v5_start` 的 `applied:"immediate"` 与 `partial:true` 并列仍可能被读成矛盾（建议 `partialFor` 点名受影响键），未改。
+5. 本轮修法未真机复验（第 55 次真机在提交后起跑）。
+
+### 318.7 教训
+
+1. **「文件在」是「产出」的答案，不是「内容对不对」的答案**：凡回执声称「排版成功」，就必须有一个字段回答「内容是否按规定方式排出来」，并且这个读数要与产出**同一次遍历**产生——分成两趟就会互相矛盾（`math` 与 `.tex` 同源，是这一轮的设计约束）。
+2. **一个 0 必须有主语**：`bodyPrefixDropped:0` 在「这次没续写」与「你漏贴了开头」两种情形下都是 0，回执必须说出这 0 是在谁身上数的。
+3. **`ok:true` 回答「面接受了这次调用」，不能回答「世界因此变了」**：锁、冻结、采纳这类「生效」类事实，需要一个独立字段（`proofGate.locked`）并显式告诉读者该读哪个字段。

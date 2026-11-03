@@ -2198,6 +2198,19 @@ function gatedCardHandler(toolName) {
       proofLockDeferred: proofStateDowngraded === null ? false : true,
       proofLockDeferredReason: proofStateDowngraded === null ? null : proofStateDowngraded.reason,
       proofLockDeferredMeans: proofStateDowngraded === null ? null : "rule L14 locks a card whose proof is registered complete — but this card’s OWN `proof_ref` does not resolve inside the library (" + proofStateDowngraded.reason + "), and locking it would make that pointer uncorrectable. The declaration is recorded AS WRITTEN and the LOCK IS DEFERRED: write the file (or point at a record id) and REGISTER THE CARD AGAIN — the records face mints a NEW row per write, so \"re-register\" means filing a new card, never editing this row's pointer — or correct the pointer in a fresh write before filing: this card stays writable until a pointer that really resolves lands",
+      // ★★★ RUN 217 (run 54 / FEEDBACK53 ①-3, MEASURED): a first write of a card declared `proof_state:"complete"` with a
+      // pointer that does not resolve came back `ok:true` + `proofState:"complete"` + `proofLockDeferred:true`. Every field was
+      // true, and the receipt still read like "rule L14's lock is on". `ok` answers "was the card filed"; nothing answered
+      // "is it locked". This block answers exactly that, in one value, and names the one move that can lock it.
+      proofGate: proofStateDowngraded === null
+        ? (declaredProofState === ''
+          ? null
+          : { locked: true, why: 'the declared proof is registered complete and its own `proof_ref` resolves inside the library', nextMove: null,
+              means: 'locked:true means the LOCK is on this row; a later write cannot re-point it - file a new card to change the proof' })
+        : { locked: false,
+            why: 'the card is filed AS DECLARED, but its own `proof_ref` does not resolve inside the library (' + String(proofStateDowngraded.reason) + '): rule L14 will not lock a pointer that could never be corrected',
+            nextMove: 'write the file into the library (or point at a record id) and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
+            means: 'read proofGate.locked, not `ok`, to answer "is this card locked": `ok:true` only says the card was filed' },
       proofStateEvidence,
     }, settlement === null ? {} : { settlement },
     p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, p1RulingRef: p1Ruling, p1RulingMeans, p1RulingReading, verifiedMark })
@@ -5083,6 +5096,11 @@ function projectPdfBlock(pdf, target) {
     triedEnginesTotal: enginesRaw.length,
     triedEnginesTruncated: enginesRaw.length > engines.length,
     missing: Array.isArray(p.missing) ? p.missing.slice() : (ok ? [] : ['pdf']),
+    // ★★ RUN 217 (run 54 / FEEDBACK53 1.4): `produced:true` answers "is there a file", NOT "were the formulas
+    // typeset". The kit measures that in the SAME pass that builds the .tex (inline-math spans, prose carets and
+    // underscores, glyphs it had to repair) - and a door that does not project the measurement hides it. One block,
+    // both doors, `null` when the kit did not measure (a failure produced no .tex, so nothing was typeset).
+    math: p.math && typeof p.math === 'object' ? p.math : null,
   }
 }
 
@@ -5616,6 +5634,10 @@ async function toolPaper(args = {}, { kernel } = {}) {
           means: '`wrote` lists the RECORD kinds written into the paper track (md/tex/meta). render() writes NO file: a .tex/.pdf reaches Paper/<id>/ only when compile runs, which is when the disk list would carry it',
         },
         missing: Array.isArray(rendered.missing) ? rendered.missing.slice() : [],
+        // RUN 217 (run 54 / FEEDBACK53 1-4, MEASURED): renderOk said the .tex was built, and the PDF printed `n  1` where
+        // the paper wrote `n >= 1` because the font has no such glyph and the receipt never mentioned it. The counts come
+        // from the SAME pass that wrote the .tex (PaperTexBody), so they cannot disagree with it.
+        math: rendered.math || null,
         // ★★ RUN 174 (run 19 FEEDBACK19 F2): say what the .tex pass does with formulas, so no reader has to infer it from a
         // PDF that typeset `Σ_{k=1}^{n}` as literal text. Paired `$…$` is inline math (kept verbatim); everything else is
         // text-escaped, which is why a bare `^` in prose reaches the page as `\textasciicircum{}` on purpose.
@@ -5665,6 +5687,8 @@ async function toolPaper(args = {}, { kernel } = {}) {
           triedEngines: e && e.triedEngines,
         }, target) }
       }
+      // RUN 217: the repair counts reach this door through the ONE projection above (they ride on `compiled.math`),
+      // so `compile` and `final` keep the same key set on success and on failure.
       return { ok: true, tool, action, target, compiled: projectPdfBlock(compiled, target) }
     }
     case 'consult_state':

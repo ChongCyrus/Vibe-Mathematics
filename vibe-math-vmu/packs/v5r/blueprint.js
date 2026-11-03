@@ -761,9 +761,29 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   })()
   const bodyNext = dup.text
   const bodyPrefixDropped = dup.droppedChars
-  const bodyPrefixDroppedMeans = dup.matched === null
+  // ★★★ RUN 217 (run 54 / FEEDBACK53 ①-1, MEASURED): this sentence said "the draft it continued" even when the call
+  // continued NOTHING - the path had no open draft (the previous one was adopted), so a new revision was started and
+  // `continued:false`. The caller read `bodyPrefixDropped:0` as "you did not paste it back" and concluded the strip was
+  // broken. A sentence about a different call is the defect class this phase keeps removing: the branch now says which
+  // row the text was actually joined to (or that none was), and `continuedBase` names the request beside the outcome.
+  const bodyPrefixDroppedMeans = target === null
+    ? 'this call STARTED revision ' + String(revision) + ' (continued:false): no earlier draft was joined to your text, so there was no draft body in front of it to strip - bodyPrefixDropped is 0 because nothing was compared, not because pasted text survived'
+    : (dup.matched === null
     ? 'your text did not begin with the draft it continued, so nothing was removed from it'
-    : 'the first ' + String(dup.droppedChars) + ' character(s) of your text were the DRAFT you were continuing, pasted back in: that copy was removed, so this revision holds it once. Only the text after it was stored as your section'
+    : 'the first ' + String(dup.droppedChars) + ' character(s) of your text were the DRAFT you were continuing, pasted back in: that copy was removed, so this revision holds it once. Only the text after it was stored as your section')
+  // ★★★ RUN 217: WHICH ROW did this text join? `continued:false` was already in the receipt, but nothing said WHICH draft
+  // was (not) continued, so a caller that had just read rec-1 could not see that rec-1 was history and this call started rN.
+  const continuedBase = target === null
+    ? { requested: explicit === '' ? null : explicit, actual: null, continued: false, revision,
+        why: explicit === ''
+          ? 'this call named no draft and this path had no OPEN draft, so it started a new one (r' + String(revision) + ')'
+          : 'the named draft could not be continued, so this call started a new draft (r' + String(revision) + ')',
+        means: 'continued:false is a FACT about this call, not a failure - and `bodyPrefixDropped:0` follows from it: with no row joined there is nothing to compare your text against. Read `actual` to know which row (none) holds this revision' }
+    : { requested: explicit === '' ? null : explicit, actual: target.id, continued: true, revision: target.revision,
+        why: explicit === ''
+          ? 'this call named no draft: it continued the OPEN draft of this path'
+          : 'this call continued the draft it named',
+        means: 'the row your text was joined to is `' + String(target.id) + '` (r' + String(target.revision) + '): read THAT row to know what the revision now holds' }
   // ★★★ RUN 214 (run 51 / FEEDBACK50 1.1, MEASURED): the sentence used to say "THIS TOOL writes that heading itself" in BOTH
   // branches. That is true only when a section is ADDED to an existing draft (the composer writes `## 共同设计补充｜<member>`).
   // A FIRST proposal has no per-member section at all: its heading was dropped and nothing was written in its place, so the
@@ -798,6 +818,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       proposedBy: author,
       proposedAt: stamp,
       continued: false,
+      continuedBase,
       authors,
       codesign: blueprintCodesignStatus(authors, ''),
       fingerprint: put.fingerprint || null,
@@ -863,6 +884,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     proposedAt: msOf(target.fields.proposedAt),
     updatedAt: stamp,
     continued: true,
+    continuedBase,
     author,
     authors,
     codesign: blueprintCodesignStatus(authors, ''),
