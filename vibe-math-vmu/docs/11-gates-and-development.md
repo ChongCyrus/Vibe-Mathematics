@@ -328,16 +328,16 @@ node scripts/release-check.mjs             # 发布前清单
 
 ### 7.1b 归档预设（legacy）**不再进默认门禁**（Round 230 的用户决定）
 
-**决定本身**：五个历史预设（v2／v3／v4／v5／归档 v5r）**只归档、不再维护**；维护面是 **`vibe-math-vmu` ＋ 它的 v5r pack**。因此**只跑归档预设行为的套件**（`tests/legacy-suites.txt`，**54 个**，含它们的 shard／self-probe 变体）**不进默认全量**。
+**决定本身**：五个历史预设（v2／v3／v4／v5／归档 v5r）**只归档、不再维护**；维护面是 **`vibe-math-vmu` ＋ 它的 v5r pack**。因此**只跑归档预设行为的套件**（**54 个**，含它们的 shard／self-probe 变体）**不进默认全量**。★ **Round 232 起它们住在 `tests/legacy/`：目录即清单**（原先是一份 `tests/legacy-suites.txt`，已删）。
 
 **为什么不是"删掉"**：删掉会让覆盖永久消失且无从复核；而"运行时按内容猜哪些是 legacy"不可审阅。所以落成三件事 ✓：
-1. **一份提交进仓的清单** `tests/legacy-suites.txt`（排序、可 diff）；
-2. **runner 的一个开关**：默认跳过并在**每次** header 里写明 `legacy=archived N behaviour suite(s) NOT run …`；`GATE_LEGACY=1` 把它们**原样**跑回来（quick 子集的钉住数因此有**两档**：默认 **24**、`GATE_LEGACY=1` **38**）；
-3. **一个双向守卫** `tests/audit-legacy-scope.test.mjs`：清单里每个文件必须存在、必须真能到达归档、**且不得提到 `vibe-math-vmu`**（维护面永不被这条规则波及）；跳过数必须**恰好**等于两档 `--counts` 之差；vmu 命名作业在两档下**逐个相同**。
+1. **一个提交进仓的目录** `tests/legacy/`（Round 232 从清单文件迁来，**目录即清单**：一个套件是 legacy 当且仅当它住在那里，所以"根目录 = 维护面"按构造成立；跑 `git mv` 后 54 个文件的相对路径同步上移一级）；
+2. **runner 的一个开关**：默认跳过并在**每次** header 里写明 `legacy=archived N behaviour suite(s) NOT run …`（并指向 `tests/legacy/`）；`GATE_LEGACY=1` 把它们**原样**跑回来（作业文件名带 `legacy/` 前缀，而超时表／时长权重／变异族目标全部按**文件名**查，见 `baseOf()`；quick 子集的钉住数因此有**两档**：默认 **24**、`GATE_LEGACY=1` **38**）；
+3. **一个双向守卫** `tests/audit-legacy-scope.test.mjs`：目录里每个文件必须存在、必须真能到达归档、**且不得提到 `vibe-math-vmu`**（维护面永不被这条规则波及）、**且不得同时留一份在 `tests/` 根**（否则"目录即清单"会退化成两处真相）；跳过数必须**恰好**等于两档 `--counts` 之差；vmu 命名作业在两档下**逐个相同**。
 
 **边界（重要，防止扩权解释）**：会被清扫的只有**"启动某个归档预设并驱动它"的行为套件**。**共享层门禁照旧全跑** —— 路径纪律、文档 linter、产物文档、包成员、installer、注册表、声明判定、规范可追溯性等，它们**读**归档只作为数据，守的是**活下来的代码**。`tests/audit-legacy-scope.test.mjs` 的最后一节把这条边界也钉住了（清单里出现共享层审计即红）。
 
-**为什么值得**：默认全量从 **788 → 731** 作业，而**最重的三项全在 legacy 里**（`v5-institute-fixes.mutants.mjs` 三个 600 s shard、`v2-fix-probes.mutants.mjs` 460 s、`formal-verify-v4.mutants.mjs` 132 s 等，合计 ≈970 s 只是一次冷全量的可测部分）；临时目录根（**仓库外**）里约 1900 个 `*v4*` 临时根也由这些套件产生，默认不再跑即不再产生。
+**为什么值得**：默认全量从 **788 → 731** 作业（实测冷全量 **731 作业 / wall 545.8 s**，对比归档套件还在时的 788 作业 1878 s 冷跑），而**最重的三项全在 legacy 里**（`v5-institute-fixes.mutants.mjs` 三个 600 s shard、`v2-fix-probes.mutants.mjs` 460 s、`formal-verify-v4.mutants.mjs` 132 s 等，合计 ≈970 s 只是一次冷全量的可测部分）；临时目录根（**仓库外**）里约 1900 个 `*v4*` 临时根也由这些套件产生，默认不再跑即不再产生。
 
 ---
 

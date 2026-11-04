@@ -287,7 +287,7 @@ const TIMEOUT_OVERRIDES = {
  *  caller never has to configure anything for a green sweep — and a family can still be caught hanging. */
 function jobLimit(job) {
   if (job.timeoutMs) return job.timeoutMs
-  if (TIMEOUT_OVERRIDES[job.file]) return TIMEOUT_OVERRIDES[job.file]
+  if (TIMEOUT_OVERRIDES[baseOf(job.file)]) return TIMEOUT_OVERRIDES[baseOf(job.file)]
   if (isFamilyJob(job.file)) return FAMILY_TIMEOUT_MS
   return SUITE_TIMEOUT_MS
 }
@@ -319,7 +319,7 @@ const DURATION_WEIGHTS = {
   'v2-fix-probes.test.mjs': 40.3,
 }
 const DEFAULT_WEIGHT = 2
-const weightOf = (j) => DURATION_WEIGHTS[j.file] || DEFAULT_WEIGHT
+const weightOf = (j) => DURATION_WEIGHTS[baseOf(j.file)] || DEFAULT_WEIGHT
 /** Deterministic LPT: measured duration DESC, then label ASC. No randomness, ever. */
 function lptOrder(list) {
   return list.slice().sort((a, b) => (weightOf(b) - weightOf(a)) || (label(a) < label(b) ? -1 : 1))
@@ -337,11 +337,11 @@ const QUICK_ONLY = ['v5', 'audit-participant-set-parity', 'audit-math-computatio
   'audit-preset-rows', 'audit-status-report-fields', 'audit-artifact-docs', 'audit-enum-branches',
   'audit-doc-planned-claims', 'audit-cross-volume-refs', 'audit-docs-entry-template']
 const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
-// S24: PR #14 brought `tests/v5-meeting-attribution.test.mjs` into the curated quick subset (a new
+// S24: PR #14 brought `tests/legacy/v5-meeting-attribution.test.mjs` into the curated quick subset (a new
 // suite is on purpose — it is the regression test for the reply-attribution fix), so 23 -> 24.
 // S29: PR #18 (applied as its own two commits) brought two more v5 suites into the curated subset —
-// `tests/accept-ab-v5-minimal.test.mjs` (the acceptance harness for the ask-retry cap and unowned-task
-// dispatch) and `tests/v5-tool-help.test.mjs` (the tool-help surface) — so 24 -> 26. Both are new
+// `tests/legacy/accept-ab-v5-minimal.test.mjs` (the acceptance harness for the ask-retry cap and unowned-task
+// dispatch) and `tests/legacy/v5-tool-help.test.mjs` (the tool-help surface) — so 24 -> 26. Both are new
 // regression tests, which is the same "on purpose" case as S24, not a drifted filter.
 // S30 (round 137): `tests/vmu-ab-v5r.test.mjs` - the v5r/vmu A/B verdict table - contains `v5r`, so the
 // curated `v5` prefix picks it up too, and it belongs there: it is fast and it is the file an edit to either
@@ -361,8 +361,9 @@ const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // 38 -> 24, deliberately (round 230): the ARCHIVED PRESETS left the sweep, so the fourteen curated `v5`-and-friends
 // entries that only exercised an archived preset went with them (`v5-meeting-attribution`, `v5-tool-help`,
 // `math-computation-shared`, `audit-status-report-fields`, `audit-v5-*`, …). The maintained surface is vmu + its v5r
-// pack; the archived presets are covered on demand by `GATE_LEGACY=1`. Verified: every removed entry is in
-// `tests/legacy-suites.txt` and no vmu-named job was dropped (`tests/audit-legacy-scope.test.mjs`).
+// pack; the archived presets are covered on demand by `GATE_LEGACY=1`. Verified: every removed entry now lives in
+// `tests/legacy/` (the directory is the list, round 232) and no vmu-named job was dropped
+// (`tests/audit-legacy-scope.test.mjs`).
 const QUICK_EXPECTED_JOBS = 24
 // The same subset when `GATE_LEGACY=1` brings the archived behaviour suites back (38 = before round 230).
 const QUICK_EXPECTED_JOBS_LEGACY = 38
@@ -426,7 +427,7 @@ function vmuExcludeRule(file) {
 /** Apply a scope's curated filter. `full` is the identity (byte-for-byte the old behaviour). */
 function applyScope(list, scope) {
   if (scope !== 'quick' && scope !== 'vmu') return list
-  if (scope === 'vmu') return list.filter((j) => !vmuExcludeRule(j.file))
+  if (scope === 'vmu') return list.filter((j) => !vmuExcludeRule(baseOf(j.file)))
   const only = QUICK_ONLY
   const filtered = list.filter((j) => only.some((x) => label(j).includes(x)))
   return scope === 'quick'
@@ -599,7 +600,7 @@ function planIncremental(list) {
   for (const j of list) {
     if (!j.file.endsWith('.mutants.mjs')) continue
     if (!familySkippable(j.file)) { ranBecause.push(j.file); continue }
-    if (FAMILY_TARGETS[j.file].some((t) => isChanged(changed, t))) continue
+    if (FAMILY_TARGETS[baseOf(j.file)].some((t) => isChanged(changed, t))) continue
     skipped.push(j.file)
   }
   return { enabled: true, reason: '', baseline, changed, skipped, ranBecause }
@@ -685,7 +686,7 @@ function mutantPlanKey(parts) {
  */
 function mutantCachePlan(job) {
   if (job.eval || !familySkippable(job.file)) return null
-  const resolved = FAMILY_TARGETS[job.file].slice().sort().map(resolveTargetFile)
+  const resolved = FAMILY_TARGETS[baseOf(job.file)].slice().sort().map(resolveTargetFile)
   if (resolved.some((r) => r === null)) return null
   const harnessRel = 'tests/' + job.file
   const harness = fingerprintOf({ rel: harnessRel, kind: 'root', abs: join(REPO, harnessRel) })
@@ -1069,30 +1070,42 @@ let present = []
 let presentSet = new Set()
 let DEV_CHECKOUT = false
 function label(j) { return j.file + (j.args.length ? ' ' + j.args.join(' ') : '') }
+/**
+ * The FILE NAME of a job, without its directory. Every table in this runner (timeouts, duration weights, hang
+ * probes, mutant-family targets, the scope rules) is keyed by a suite's own name, so a job that lives in a
+ * subdirectory - `tests/legacy/` since round 232 - must look itself up by name, not by path. Without this the
+ * archived suites would silently fall back to the default timeout and would never share a family with a root
+ * job that names the same file.
+ */
+function baseOf(file) { return file.includes('/') ? file.slice(file.lastIndexOf('/') + 1) : file }
 // ── LEGACY PRESETS ARE ARCHIVED (decision of the user, round 230: "we only maintain vmu and the v5r pack") ──
 // The five historical presets live under `archive/legacy-presets/` and are no longer maintained: no feature
 // work, no re-verification. Their BEHAVIOUR suites (the ones that boot an archived preset and drive it, plus
 // their mutant families) are therefore NOT part of the default sweep. They are not deleted, and they are not
-// silently dropped either: the list is a committed file that `tests/audit-legacy-scope.test.mjs` checks in
+// silently dropped either: the DIRECTORY (`tests/legacy/`, round 232) is the list, and `tests/audit-legacy-scope.test.mjs` checks it
 // both directions, the runner prints how many it skipped and how to run them, and `GATE_LEGACY=1` runs them
 // exactly as before. Repo-wide audits that merely READ the archive (path discipline, doc gates, declaration
 // criteria, registration parity) stay IN the sweep: they guard the shared layer, not the archived presets.
-const LEGACY_LIST_FILE = join(HERE, 'legacy-suites.txt')
+const LEGACY_DIR = join(HERE, 'legacy')
 const LEGACY_ALLOW = String(process.env.GATE_LEGACY || '') === '1'
 let legacySet = null
 let legacySkipped = 0
-/** The committed legacy classification, read ONCE. A missing file is a NAMED red, never an empty set. */
+/**
+ * The archived behaviour suites, read ONCE from `tests/legacy/`. The DIRECTORY IS THE LIST: a suite is archived
+ * iff it lives there, so a new archived suite cannot be added without also moving it (and a file that stays at
+ * the root is, by construction, part of the maintained surface). A missing or empty directory is a NAMED red,
+ * never an empty set - an empty set would silently restore the old full sweep.
+ */
 function legacySuites() {
   if (legacySet !== null) return legacySet
-  let raw = ''
-  try { raw = readFileSync(LEGACY_LIST_FILE, 'utf8') } catch (e) {
-    console.error('FAIL - * legacy scope: cannot read ' + LEGACY_LIST_FILE + ' (' + e.message + ')')
+  let names = []
+  try { names = readdirSync(LEGACY_DIR).filter((f) => f.endsWith('.mjs')).sort() } catch (e) {
+    console.error('FAIL - * legacy scope: cannot list ' + LEGACY_DIR + ' (' + e.message + ')')
     process.exit(2)
   }
-  // NEWLINE via fromCharCode: a literal escape here was rewritten by the patch layer twice and broke the file once.
-  legacySet = new Set(raw.split(String.fromCharCode(10)).map((l) => l.trim()).filter((l) => l && !l.startsWith('#')))
+  legacySet = new Set(names)
   if (!legacySet.size) {
-    console.error('FAIL - * legacy scope: ' + LEGACY_LIST_FILE + ' is empty - an empty list would silently restore the old sweep')
+    console.error('FAIL - * legacy scope: ' + LEGACY_DIR + ' holds no suites - an empty directory would silently restore the old full sweep')
     process.exit(2)
   }
   return legacySet
@@ -1118,11 +1131,20 @@ function deriveJobs() {
   legacySkipped = 0
   for (const file of present) {
     if (file === SELF || NEEDS_ARGS[file] || replacedBare.has(file)) continue
-    if (!LEGACY_ALLOW && legacy.has(file)) { legacySkipped++; continue }
     jobs.push({ file, args: [], expectExit: 0, kind: file.endsWith('.test.mjs') ? 'suite' : 'probe' })
   }
+  // THE ARCHIVED SUITES COME FROM THE DIRECTORY (round 232): `tests/legacy/` is the list, so they are appended
+  // with a path (`legacy/<name>`) rather than removed from a flat sweep. Skipped by default; `GATE_LEGACY=1` runs
+  // them exactly as they ran from the root before the move (same name, same args, same timeouts - see baseOf).
+  for (const name of legacy) {
+    if (name === SELF || NEEDS_ARGS[name] || replacedBare.has(name)) continue
+    if (!LEGACY_ALLOW) { legacySkipped++; continue }
+    jobs.push({ file: 'legacy/' + name, args: [], expectExit: 0, kind: name.endsWith('.test.mjs') ? 'suite' : 'probe' })
+  }
   for (const v of VARIANTS) {
-    if (!presentSet.has(v.file)) {
+    // A VARIANT may name a root script or an archived one; the latter now lives under `legacy/`.
+    const vFile = presentSet.has(v.file) ? v.file : (legacy.has(v.file) ? 'legacy/' + v.file : null)
+    if (vFile === null) {
       if (DEV_CHECKOUT) { console.error('a VARIANTS entry names a missing script: ' + v.file); process.exit(2) }
       continue
     }
@@ -1133,7 +1155,7 @@ function deriveJobs() {
     // A VARIANT is an EXTRA instrumented run of the SAME script (argument variants), never an additional
     // suite: the counting unit for `suites` is "the suites proper", one per script. Classifying by file name
     // here would inflate `suites` whenever a suite gains a `--self-probe` job (R18: it did, 44 -> 45).
-    jobs.push({ file: v.file, args: v.args || [], expectExit: v.expectExit || 0, kind: 'probe' })
+    jobs.push({ file: vFile, args: v.args || [], expectExit: v.expectExit || 0, kind: 'probe' })
   }
   return jobs.sort((a, b) => (label(a) < label(b) ? -1 : 1))
 }
@@ -1163,8 +1185,8 @@ if (!suites.length) {
 // that did nothing, and `scope=quick jobs=177` read as a scoped run.)
 if (legacySkipped > 0) {
   console.error('run-tests: legacy=archived ' + legacySkipped + ' behaviour suite(s) NOT run (the five historical presets are '
-    + 'archived; the maintained surface is vibe-math-vmu + its v5r pack). Full list: tests/legacy-suites.txt. '
-    + 'Run them with GATE_LEGACY=1.')
+    + 'archived; the maintained surface is vibe-math-vmu + its v5r pack). They live in tests/legacy/ (the '
+    + 'directory IS the list). Run them with GATE_LEGACY=1.')
 }
 console.error('run-tests: scope=' + GATE_SCOPE + '  jobs=' + suites.length + '  concurrency=' + concurrency)
 console.error('run-tests: requested-scope=' + GATE_SCOPE + '  effective-scope=' + SCOPE + '  final-jobs=' + suites.length
@@ -1257,14 +1279,19 @@ if (has('scope-report')) {
     // excluded it. The collision victim is a `vmu*` suite and the mutant families are `audit-vmu-*`, so the
     // question "which vmu jobs does the vmu scope drop, and why" needs BOTH shapes.
     vmuClassification: vmuJobs.map((j) => {
-      const r = vmuExcludeRule(j.file)
-      return { file: j.file, inVmuScope: !r, excludedBy: r ? r.value : null, excludedWhy: r ? r.why : null }
-    }).sort((a, b) => (a.file < b.file ? -1 : 1)),
+      // ★ Round 232: the scope rules are matched against the suite's NAME (`baseOf`), because the archived
+      // presets' jobs now carry a `legacy/` prefix. `file` keeps the path so a reader can still find the file;
+      // `name` is what the rules actually saw, and it is what the classification ties must be read against.
+      const r = vmuExcludeRule(baseOf(j.file))
+      return { file: j.file, name: baseOf(j.file), inVmuScope: !r, excludedBy: r ? r.value : null, excludedWhy: r ? r.why : null }
+    }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.file < b.file ? -1 : 1)),
     // The collision detector's raw material: what the OLD unanchored `.includes()` semantics would have
     // dropped vs what the ANCHORED rules drop. The two must differ by exactly `collisionAllowList` below
     // (empty when the rules are collision-free); a NEW collision shows up here by name.
-    legacySubstringDrops: jobs.filter((j) => VMU_EXCLUDE.some((r) => j.file.includes(r.value))).map((j) => j.file).sort(),
-    anchoredDrops: jobs.filter((j) => vmuExcludeRule(j.file)).map((j) => j.file).sort(),
+    // Both lists are NAMES (not paths): the question is "would this suite's name have been dropped", and after
+    // round 232 a path prefix (`legacy/`) must not be able to make a substring rule look like an anchor rule.
+    legacySubstringDrops: jobs.filter((j) => VMU_EXCLUDE.some((r) => baseOf(j.file).includes(r.value))).map((j) => baseOf(j.file)).sort(),
+    anchoredDrops: jobs.filter((j) => vmuExcludeRule(baseOf(j.file))).map((j) => baseOf(j.file)).sort(),
   }, null, 2))
   process.exit(0)
 }

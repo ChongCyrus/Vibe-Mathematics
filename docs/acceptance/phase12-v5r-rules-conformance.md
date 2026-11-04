@@ -16181,3 +16181,116 @@ service 会议的 `extend`（`kernel/meetings.js:1388`）**全仓无调用者**�
 1. **「不在维护」不等于「不受保护」**：归档套件退出默认，但守活代码的共享层门禁必须留在默认里——两者名字都不带 `vmu`，靠命名分不出来，只能逐条问「它红了会不会指向活代码」。
 2. **过滤要覆盖变体循环**：只过滤主循环，最重的那三个 shard 会以「变体」身份悄悄留下来。
 3. **降级读取不许静默**：清单读不到就是 `exit 2`；`existsSync ? read : ''` 这种写法会被仓库自己的 no-silent-reads 门禁抓住。
+
+## §331（第 83 轮）：归档套件搬进 `tests/legacy/` —— 目录成为唯一清单
+
+### 331.1 这一轮的账从哪来
+
+第 82 轮把五个归档预设（v2/v3/v4/v5 与归档的 v5r）的 54 个**行为套件**从默认门禁里摘掉了，但文件仍留在
+`tests/` 根，靠一份提交进仓的清单 `tests/legacy-suites.txt` 说明「它们在归档」。这留下了两个事实源：文件系统说
+「还在维护」，清单说「归档了」。两者都可能漂移——一次 `git mv` 就能让清单静默作废，而守卫只能问「清单与磁盘
+是否一致」（这个问题之所以存在，只是因为有两个答案）。
+
+用户 m29437/m29468 的判断是「现在只维护 vmu 与 v5r pack，legacy 完全不会再维护」；m29643 问是否该把非
+vmu/v5r 的门禁与测试都移进 legacy 文件夹；m29744 同意按建议执行。我的建议分三桶，写入 §329.7 与本轮文档：
+
+1. 归档预设的**行为套件**（54 个）搬进 `tests/legacy/` —— 目录即清单；
+2. **共享层门禁绝不搬**（`audit-path-discipline`、`check-docs`、`audit-artifact-docs`、`audit-registration`、
+   `audit-spec-traceability`、`accept-c-orphan`、installer/包成员/文档计数/prompt budget/temp hygiene/runner 自测、
+   `audit-declaration-criterion`、`audit-math-computation-parity`）——它们**读**归档只是当数据，守的是活代码；
+3. `tests/_lib/*` 等 helper 留原地（它们被活套件共用）。
+
+### 331.2 迁移本身（纯机械，无一处断言改动）
+
+- 54 个文件 `git mv tests/<f> tests/legacy/<f>`，相对路径随之上移一级：`./_lib/` → `../_lib/`；
+  `join(HERE, '..')`（`HERE` 原来是 `tests/`）→ `join(HERE, '..', '..')`（现在 `HERE` 是 `tests/legacy/`）。
+  统计：53 个文件 import `_lib/`、25 个用 `join(HERE,'..')` 推仓库根、36 个用 `import.meta.url` 取 `HERE`。
+- `tests/run-tests.mjs` 改成**扫描目录**：`legacySuites()` 读 `tests/legacy/`（目录缺失或为空 ⇒ 具名 `exit 2`，
+  不再静默降级），归档作业以 `legacy/` 前缀**追加**进作业表；`GATE_LEGACY` 两档（默认跳过 58 个作业 =
+  54 套件 + 4 个变体作业）。
+- 新增 `tests/run-tests.mjs` 的 `baseOf(file)`：所有**按套件名**查的表（超时覆盖、时长权重、变异族目标、scope
+  规则）都改成查 `baseOf()`，于是归档作业搬进子目录后仍然带着自己的超时与变异族。
+- `tests/audit-legacy-scope.test.mjs` 重写为「目录即清单」：目录缺失具名失败、清单里每个文件都在盘上、
+  **且没有任何归档套件同时留在 `tests/` 根**（两份就是两个事实源）。
+- 删掉 `tests/legacy-suites.txt`（目录取代它）。
+
+### 331.3 一处必须同改的「按名匹配」
+
+scope 规则是**按套件名**匹配的（`vmuExcludeRule`），迁移后作业名带上 `legacy/` 前缀，于是 `--scope-report` 的
+三份分类表出现了口径分裂：`applyScope` 用 `baseOf` 匹配，报告却仍用全路径匹配。表现为
+`tests/audit-scope-classification.test.mjs` 三条红：
+
+- `full - vmu === anchoredDrops.length` 失败（`{full:789, vmu:720, anchoredDrops:44}`）；
+- `anchoredDrops.includes('prompt-v5-integrity.test.mjs')` 失败（现在是 `legacy/prompt-v5-integrity.test.mjs`）；
+- `liveCollisions` 从 1 条涨到 26 条（全部 `legacy/*`：子串规则命中路径前缀造成的假碰撞）。
+
+修法不是放宽断言，是**让报告与规则同口径**：`vmuClassification` 增加 `name: baseOf(j.file)` 并用它匹配，
+`legacySubstringDrops` / `anchoredDrops` 都按名字（不是路径）计算。修后该审计 **38/0**，
+`liveCollisions` 回到唯一那条已修复的 `vmu-prompt-v5r-bridge.test.mjs`。
+
+### 331.4 另外三处被迁移「带出来」的登记漂移
+
+文件搬家后，三份**按路径登记**的清单必须同步，否则门禁红（而且红得对——登记表说某文件在，它不在）：
+
+- `package.json#files`：36 条 `tests/<f>` 路径改成 `tests/legacy/<f>`（`audit-package-membership` 的
+  「每条都必须在盘上」）；
+- `docs/AUDIT-CHECKLIST.md`：47 处 `tests/<f>` 引用改成 `tests/legacy/<f>`（同一门禁的「守卫索引引用必须进包」）；
+- `tests/audit-math-computation-parity.mjs`：`package.json ships the shared contract suite` 期望
+  `tests/legacy/math-computation-shared.test.mjs`。
+
+### 331.5 机器化与验收
+
+- `tests/audit-legacy-scope.test.mjs` **26/0**（目录即清单、清单内每个文件在盘、无「根与 legacy 各一份」、
+  runner 不再引用 `legacy-suites.txt`、两档计数差 = 归档集合、vmu 命名作业两档逐个相同、六个共享层门禁不在
+  归档里、`--self-test` 三种伪造源分别具名红/绿）；
+- `tests/audit-scope-classification.test.mjs` **38/0**、`tests/audit-scanner-selfproof.test.mjs` **4/0**、
+  `tests/audit-package-membership.mjs` **29/0** 与其 mutants **2/0**、`tests/audit-math-computation-parity.mjs`
+  **137/0**；
+- 两档计数：默认 `{total:731, suites:651, probes:80, legacySkipped:58}`；`GATE_LEGACY=1`
+  `{total:789, suites:681, probes:108, legacySkipped:0}`；
+- `update-doc-counts --write` 不变（731/651/80），`regen-all` 17/17 in sync，`preflight` PASS，
+  `check-docs` PASS，`check-rules-coverage` PASS(0)，`check-rule-parity` PASS(0)。
+
+### 331.6 搬家没有改变任何套件的结论，但暴露了「怎么调用」与「两处真红」
+
+搬家是**换位置**，不是换行为。验收标准因此写成「同一批套件在新位置得出与旧位置相同的结论」，而不是「全绿就算过」。
+
+- **四个套件在单跑时红，在门禁里绿**（`v3-fix-probes.test.mjs` 5 条、`v4-final-paper.test.mjs` 3 条、
+  `selfdrive-v5.mjs` 2 条、`v2-fix-probes.mutants.mjs` 11 个变异族里 10 个未红）。根因不在代码也不在夹具：
+  本机装了 TeX Live，归档 v4/v5 的夹具用绝对路径探测引擎、只伪造了 `spawn`，所以「未检测到 LaTeX」那一类断言
+  单跑立不住。而仓库**早就有**对应机制——`archive/legacy-presets/vibe-math-v2/vibe-math-v2.js` 读
+  `V2_TEX_ROOTS_SANDBOX` 把已知安装重定位进沙箱，`tests/run-tests.mjs` 为 V2–V5 四个变量统一注入一个空临时
+  目录。所以在门禁等价环境（导出那四个变量）下这 4 个套件全绿，单跑不带变量才红。结论：这是**调用方式**，
+  不是已知缺陷；`tests/legacy/README.md` 因此写的是「单跑请先导出这四个变量（附命令）」，而不是「这些红属于夹具、
+  故意不做」。
+- **两个原本被判「只在并行时红」的套件，各有各的真原因，且都不是环境**：
+  1. `audit-v5-lean-abstention.mutants.mjs` 依赖 `tests/audit-prompt-invariants.mjs` 里的四条
+     `suite: 'tests/formal-verify-v{2,3,4,5}.test.mjs'`。那四条没随迁，而该审计的 `if (!check(suite !== null, …)) continue`
+     使 I8 永远评不到，于是这个变异族的 `expectInvariant: 'I8'` 永远无法满足——把四条改成 `tests/legacy/…` 后，
+     该套件单跑 `ALL MUTANTS RED AS REQUIRED`（`audit-prompt-invariants.mjs` 同时 211/0）。
+  2. `v2-list-agents-and-next-step.mutants.mjs` 的 `runSuite()` 用 `join(HERE, file)` 定位基座，而它变异的基座
+     `audit-persona-surface.test.mjs` 不在归档集合里、仍留在 `tests/` 根：按存在性解析（`existsSync` 决定
+     `overSuite`），**只改路径解析、不改断言**。
+- 六条**默认门禁**红在迁移后立刻出现，全部是「按路径登记」的清单没跟上：`audit-doc-index`（`README.md` 两条死链）、
+  `audit-market-metadata`（同一对死链 + 是否随包发布）、`audit-no-silent-reads`（25 条 `tests/<suite>:<probe>` 键）、
+  `audit-prompt-invariants`（上面那四条）、`audit-math-computation-sensitivity`（`SUITE` 仍指 `tests/` 根，
+  22 个探针全判 `expectedLabelFound=false`）、`accept-c-orphan`（`_probe.mjs` 的注释所指文件已搬）。
+  逐条改到新路径后单跑全绿，并且**没有放宽任何断言**：红得对——登记表说文件在，它不在。
+
+处置：把这套「搬完要跟着搬的三类登记」（`package.json#files`、守卫索引/README 链接、测试里按路径拼的 `SUITE`）
+写进 README 与 §331.5，而不是加一份「已知红」名单。任何 NEW 红都必须按名报出来，不许加进名单。
+
+### 331.7 三条教训
+
+1. **清单会漂移，目录不会。** 只要「这份文件是不是归档」有两个答案，守卫就只能证明两个答案一致，证明不了事实。
+2. **搬文件搬的是按名查找，不是身份。** 超时、时长权重、变异族目标、scope 规则都按名查表，所以整轮迁移只需要
+   一个 `baseOf()`，而不是把每张表复制一份。
+3. **登记表是路径的镜子。** 文件一动，`package.json#files`、守卫索引、parity 的「是否ship」三处一起红——这正是
+   「一处事实一处登记」的代价，也是它的价值：红告诉你哪里还有第二个说法。
+
+### 331.8 实测（收口链）
+
+- 默认门禁：`TOTAL 731 PASS 731 FAIL 0 (suites 651 · probes 80)`（迁移后重跑，见 PROGRESS 第八十三轮）。
+- `GATE_LEGACY=1`：789 作业，54 个归档套件在门禁等价环境下按名通过；`v5-institute-fixes.mutants.mjs` 单项
+  1745 s（168/168 families、107/107 positives），是这一档的主要墙钟成本。
+- 结论：搬迁只是换了位置；门禁的覆盖面没变（默认 731、含归档 789），而默认档里不再有「读归档」的作业。

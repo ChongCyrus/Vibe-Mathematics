@@ -8,7 +8,9 @@
 // Dropping coverage is exactly the kind of change this repository refuses to leave implicit — a curated filter
 // that silently drops work is the failure this codebase keeps finding elsewhere (a check that exists, passes
 // when run by hand, and is never executed by the thing that is supposed to run it). So the classification is:
-//   · a COMMITTED FILE (`tests/legacy-suites.txt`), not a runtime guess — reviewable, diffable, and stable;
+//   · a COMMITTED DIRECTORY (`tests/legacy/`), not a runtime guess — reviewable, diffable, and stable, and the
+//     directory IS the list (round 232 moved the 54 suites there, so a suite's home and its classification are
+//     the same fact and cannot drift apart);
 //   · applied by the runner with `GATE_LEGACY=1` as the way back, and SAID OUT LOUD in every header;
 //   · asserted here in BOTH directions: every listed file exists and really is an archived-preset behaviour
 //     suite (it must reach the archive and must NOT touch `vibe-math-vmu`), and no vmu-Named job is dropped.
@@ -20,10 +22,9 @@
 //
 // Run: node tests/audit-legacy-scope.test.mjs
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { requireFile } from './_lib/require-file.mjs'
 
 /**
  * THE PREDICATE of section 1, extracted so that it can be PROVEN able to fire. A gate whose "0 findings" cannot be
@@ -43,7 +44,7 @@ const classifySource = (f, src, listed) => {
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const RUNNER = join(HERE, 'run-tests.mjs')
-const LIST = join(HERE, 'legacy-suites.txt')
+const LEGACY_DIR = join(HERE, 'legacy')
 
 let passed = 0
 let failed = 0
@@ -94,19 +95,21 @@ if (process.argv.includes('--self-test')) {
   process.exit(good === forged.length ? 0 : 1)
 }
 
-console.log('=== 0. THE CLASSIFICATION IS A COMMITTED, CHECKED LIST ===')
-const listPresent = existsSync(LIST)
-ok(listPresent, 'tests/legacy-suites.txt is committed (a runtime heuristic would be unreviewable)')
-// A missing list is a LOUD failure, not "no suites are legacy": the runner already refuses to start on it
-// (named exit 2). Reading it through requireFile keeps this suite from degrading to an empty classification.
-const raw = listPresent ? requireFile(LIST, 'the committed legacy-suite classification list') : ''
-const entries = raw.split(String.fromCharCode(10)).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
-ok(entries.length >= 40, 'the list names the archived behaviour suites (got ' + entries.length + ')')
-ok(entries.length === new Set(entries).size, 'no duplicate entries')
-ok(entries.join(String.fromCharCode(10)) === entries.slice().sort().join(String.fromCharCode(10)),
-  'the list is sorted (a stable file keeps diffs readable)')
-const missing = entries.filter((f) => !existsSync(join(HERE, f)))
-ok(missing.length === 0, 'every listed suite still exists on disk', missing.join(', '))
+console.log('=== 0. THE CLASSIFICATION IS A COMMITTED DIRECTORY ===')
+// A missing or empty directory is a LOUD failure, not "no suites are legacy": the runner already refuses to
+// start on it (named exit 2). The try/catch here keeps this suite from degrading to an empty classification.
+let entries = []
+let listError = ''
+try { entries = readdirSync(LEGACY_DIR).filter((f) => f.endsWith('.mjs')).sort() } catch (e) { listError = e.message }
+ok(listError === '', 'tests/legacy/ is a committed directory (a runtime heuristic would be unreviewable)', listError)
+ok(entries.length >= 40, 'the directory holds the archived behaviour suites (got ' + entries.length + ')')
+const missing = entries.filter((f) => !existsSync(join(LEGACY_DIR, f)))
+ok(missing.length === 0, 'every archived suite really lives in tests/legacy/', missing.join(', '))
+// THE POINT OF THE MOVE: no archive suite is also left behind at the root, so "root = maintained surface"
+// holds by construction instead of by a list that could disagree with the filesystem.
+const alsoAtRoot = entries.filter((f) => existsSync(join(HERE, f)))
+ok(alsoAtRoot.length === 0, 'no archived suite is ALSO left at tests/ root (the directory is the single source)',
+  alsoAtRoot.join(', '))
 ok(!entries.includes('run-tests.mjs'), 'the runner itself is never classified as a suite')
 
 // ── 1. every entry really IS an archived-preset behaviour suite (not a shared-layer gate) ─────────
@@ -115,8 +118,8 @@ console.log('=== 1. EACH ENTRY REACHES THE ARCHIVE AND NOT THE MAINTAINED SURFAC
 const touchesVmu = []
 const noArchive = []
 for (const f of entries) {
-  if (!existsSync(join(HERE, f))) continue
-  const verdict = classifySource(f, readFileSync(join(HERE, f), 'utf8'), entries)
+  if (!existsSync(join(LEGACY_DIR, f))) continue
+  const verdict = classifySource(f, readFileSync(join(LEGACY_DIR, f), 'utf8'), entries)
   if (verdict.touchesVmu) touchesVmu.push(f)
   if (!verdict.reachesArchive) noArchive.push(f)
 }
@@ -128,7 +131,9 @@ console.log('')
 console.log('=== 2. THE RUNNER APPLIES THE SWITCH AND PRINTS IT ===')
 const srcRunner = readFileSync(RUNNER, 'utf8')
 ok(/GATE_LEGACY/.test(srcRunner), 'the runner reads GATE_LEGACY')
-ok(/legacy-suites\.txt/.test(srcRunner), 'the runner reads tests/legacy-suites.txt (one list, not a second copy)')
+ok(/LEGACY_DIR/.test(srcRunner) && /readdirSync\(LEGACY_DIR\)/.test(srcRunner),
+  'the runner lists tests/legacy/ itself (the directory is the single source, not a second copy of a list)')
+ok(!/legacy-suites\.txt/.test(srcRunner), 'the retired tests/legacy-suites.txt list is no longer read by the runner')
 const off = counts({ GATE_LEGACY: '0' })
 const on = counts({ GATE_LEGACY: '1' })
 ok(!!off.json && !!on.json, 'both modes print parseable --counts JSON')

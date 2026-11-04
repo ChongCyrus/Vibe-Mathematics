@@ -4007,3 +4007,38 @@ sweep's own new duration is still unmeasured and is recorded as an open item rat
    about that coverage into a vacuous pass, unless the assertion is run in the mode where the target exists.
 2. **An expectation is a function of the mode, not a constant of the repository.** The moment a second mode exists, every
    pinned count must be split by mode — otherwise the next red tells you that a constant is wrong, not that the code is.
+
+
+## ROUND 234 - the archive's suites move into `tests/legacy/` (the directory becomes the list)
+
+Round 233 stopped RUNNING the archived behaviour suites but kept them at the root, classified by a committed list
+(`tests/legacy-suites.txt`). That left two sources of truth - the filesystem said "maintained", the list said
+"archived" - and the guard had to check a file that a `git mv` could silently invalidate. Round 234 removes the list:
+the five archived presets' 54 behaviour suites (and their mutant families) now live in `tests/legacy/`, so a suite's
+HOME and its classification are the same fact.
+
+### What changed
+
+- `tests/legacy/*.mjs` - 54 files moved with `git mv`; their relative paths moved one level up (`./_lib/` →
+  `../_lib/`, `join(HERE, '..')` → `join(HERE, '..', '..')` for the repo root). No assertion was touched.
+- `tests/run-tests.mjs` - `legacySuites()` now lists `tests/legacy/` (missing or empty directory ⇒ named `exit 2`), and
+  archived jobs are APPENDED with a `legacy/` prefix instead of being removed from a flat sweep. Every table that is
+  keyed by a suite's own name (timeouts, duration weights, mutant-family targets, the scope rules) now looks itself up
+  through `baseOf()`, so an archived job keeps its timeout and its family after the move. A `VARIANTS` entry that names
+  an archived file resolves to `legacy/<name>`.
+- `tests/audit-legacy-scope.test.mjs` - rewritten: the directory is the asserted list, plus a new invariant that no
+  archived suite is ALSO left at `tests/` root (a file in both places would quietly restore two sources of truth).
+- `tests/legacy-suites.txt` - deleted (the directory replaced it).
+
+### Measured
+
+`GATE_LEGACY=0` ⇒ 731 jobs (unchanged), `GATE_LEGACY=1` ⇒ 789 jobs; the difference is exactly the archived set
+(54 suites plus 4 variant jobs: the three `v5-institute-fixes` shards and one self-probe). The quick subset stays pinned
+at 24 / 38, and the vmu-named jobs are identical in both modes (720 → 705).
+
+### Two lessons
+
+1. **A list can drift from the thing it lists; a directory cannot.** While both existed, the guard's job was "does the
+   list agree with the filesystem?" - a question that only exists because there were two answers.
+2. **Moving a file moves its name-based lookups, not its identity.** Timeouts and mutant families are keyed by name, so
+   the move needed one function (`baseOf`) rather than a second copy of every table.

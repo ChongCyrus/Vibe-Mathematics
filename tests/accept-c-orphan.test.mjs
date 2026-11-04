@@ -53,7 +53,7 @@ const sleep = async (ms) => {
   await new Promise(resolve => setTimeout(resolve, virtualTime === null ? ms : 0))
 }
 
-// round-7/9 isolation copied from tests/e2e-v5-round2.test.mjs: a real engine probe would be
+// round-7/9 isolation copied from tests/legacy/e2e-v5-round2.test.mjs: a real engine probe would be
 // recorded as a compiler call. Pin every discovery root at an empty dir BEFORE importing.
 const EMPTY_ENGINE_ROOT = mkdtempSync(join(tmpdir(), 'vibe-acc-c-nodsh-'))
 process.env.DSH_HOME = EMPTY_ENGINE_ROOT
@@ -63,7 +63,7 @@ process.env.LOCALAPPDATA = EMPTY_ENGINE_ROOT
 process.env.V5_TEX_ROOTS_SANDBOX = EMPTY_ENGINE_ROOT
 
 // ============================================================
-// host factory — copied from tests/e2e-v5-round2.test.mjs (makeHost, lines 60-294) and extended
+// host factory — copied from tests/legacy/e2e-v5-round2.test.mjs (makeHost, lines 60-294) and extended
 // with a MANUAL TIMER mode (`manualTimers`) so the scheduler's cadence is released by the test
 // instead of by the wall clock. Every other shape (childOf/labelOf/fireEnd/kindOf/drain/
 // peekWakeOf/peekWakeWhere/settleSpawns) is the same code.

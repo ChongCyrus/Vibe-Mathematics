@@ -57,7 +57,7 @@ const HARD = [
 ]
 // A root-relative URL is a violation ONLY in a file that does not import the seam: a seam-aware loader
 // helper is allowed to take `'../vibe-math-v4/vibe-math-v4.js'` as an ARGUMENT and re-root it itself
-// (`tests/verify-fixes.test.mjs` `load()` does exactly that, through `legacyFile()`).
+// (`tests/legacy/verify-fixes.test.mjs` `load()` does exactly that, through `legacyFile()`).
 const REL_URL = new RegExp(`['"\`]\\.\\.\\/${LEGACY}\\/`)
 const SEAM_IMPORT = /from\s+['"][^'"]*_lib\/legacy-presets\.mjs['"]/
 

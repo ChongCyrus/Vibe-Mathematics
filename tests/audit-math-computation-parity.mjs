@@ -230,7 +230,8 @@ for (const p of PRESETS) {
   }
   ok(files.indexOf('docs/math-computation.md') !== -1, 'package.json files[] ships docs/math-computation.md')
   ok(files.indexOf('tests/audit-math-computation-parity.mjs') !== -1 && files.indexOf('tests/audit-math-computation-contract.mjs') !== -1, 'package.json ships the cross-preset guards')
-  ok(files.indexOf('tests/math-computation-shared.test.mjs') !== -1, 'package.json ships the shared contract suite')
+  // Round 232: the shared-contract suite moved with the other archived-preset behaviour suites.
+  ok(files.indexOf('tests/legacy/math-computation-shared.test.mjs') !== -1, 'package.json ships the shared contract suite')
 }
 
 // ---- 4. the freeze matches tool-schema.json ----
@@ -556,7 +557,7 @@ for (const p of PRESETS) {
   ok(v2doc.indexOf('verifyTasksView') !== -1, 'the v2 design doc states the single-source status/report helper')
 }
 
-// S4/S5 (install-failure discrimination) is asserted in tests/math-computation-shared.test.mjs §33, NOT
+// S4/S5 (install-failure discrimination) is asserted in tests/legacy/math-computation-shared.test.mjs §33, NOT
 // here: parity reads the shipped copy unconditionally, so a mutant cannot reach what it reads (the
 // assertion would exist but could never redden). What parity keeps is the canonical<->copy byte identity,
 // which makes a canonical-only change impossible to ship unnoticed - a stronger defence than a text grep.

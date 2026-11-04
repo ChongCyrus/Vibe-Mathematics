@@ -2,7 +2,7 @@
 import { legacyFile } from './_lib/legacy-presets.mjs'
 // ============================================================================
 // audit-prompt-duplication.mjs — shipped invariant for v2/v3/v4 (v5 has its own,
-// tests/audit-v5-prompt-duplication.mjs): every preset's injected toolkit prompt
+// tests/legacy/audit-v5-prompt-duplication.mjs): every preset's injected toolkit prompt
 // text exists TWICE in its `agent.cordis.yml` (two agent-instructions entries:
 // office + members). In these three presets the SECOND entry continues with more
 // YAML after the shared toolkit text, so the invariant is stated as:

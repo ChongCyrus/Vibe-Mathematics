@@ -459,10 +459,10 @@ function schemaKeysFor(full, at) {
 }
 
 const PRESETS = [
-  { tag: 'v2', js: 'vibe-math-v2/vibe-math-v2.js', suite: 'tests/formal-verify-v2.test.mjs', corpus: 'prompt-corpus-v2/formal-verify-v2.md', valueField: 'Result', prefix: 'vibe_math_', setTool: 'vibe_math_set_params' },
-  { tag: 'v3', js: 'vibe-math-v3/vibe-math-v3.js', suite: 'tests/formal-verify-v3.test.mjs', corpus: 'prompt-corpus-v3/formal-verify-v3.md', valueField: 'Result', prefix: 'vibe_math_', setTool: 'vibe_math_set_params' },
-  { tag: 'v4', js: 'vibe-math-v4/vibe-math-v4.js', suite: 'tests/formal-verify-v4.test.mjs', corpus: 'prompt-corpus-v4/formal-verify-v4.md', valueField: 'verdict', prefix: 'vibe_v4_', setTool: 'vibe_v4_set' },
-  { tag: 'v5', js: 'vibe-math-v5/vibe-math-v5.js', suite: 'tests/formal-verify-v5.test.mjs', corpus: 'prompt-corpus-v5/prompt-corpus-v5.md', valueField: 'verdict', prefix: 'vibe_v5_', setTool: 'vibe_v5_set' },
+  { tag: 'v2', js: 'vibe-math-v2/vibe-math-v2.js', suite: 'tests/legacy/formal-verify-v2.test.mjs', corpus: 'prompt-corpus-v2/formal-verify-v2.md', valueField: 'Result', prefix: 'vibe_math_', setTool: 'vibe_math_set_params' },
+  { tag: 'v3', js: 'vibe-math-v3/vibe-math-v3.js', suite: 'tests/legacy/formal-verify-v3.test.mjs', corpus: 'prompt-corpus-v3/formal-verify-v3.md', valueField: 'Result', prefix: 'vibe_math_', setTool: 'vibe_math_set_params' },
+  { tag: 'v4', js: 'vibe-math-v4/vibe-math-v4.js', suite: 'tests/legacy/formal-verify-v4.test.mjs', corpus: 'prompt-corpus-v4/formal-verify-v4.md', valueField: 'verdict', prefix: 'vibe_v4_', setTool: 'vibe_v4_set' },
+  { tag: 'v5', js: 'vibe-math-v5/vibe-math-v5.js', suite: 'tests/legacy/formal-verify-v5.test.mjs', corpus: 'prompt-corpus-v5/prompt-corpus-v5.md', valueField: 'verdict', prefix: 'vibe_v5_', setTool: 'vibe_v5_set' },
 ]
 const LEAN_PARAMS = ['formalVerify', 'leanCommand', 'leanArgs', 'leanTimeoutMs']
 

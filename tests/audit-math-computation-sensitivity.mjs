@@ -7,7 +7,7 @@ import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // suite that merely crashes does not count as evidence).
 //
 // Mechanism: copy the canonical module pair into a temp dir, apply ONE textual mutation, then run
-// `tests/math-computation-shared.test.mjs` with MATH_COMPUTATION_MODULE pointed at the mutated copy.
+// `tests/legacy/math-computation-shared.test.mjs` with MATH_COMPUTATION_MODULE pointed at the mutated copy.
 // The shipped copies are never touched.
 //
 // Usage: node tests/audit-math-computation-sensitivity.mjs
@@ -22,7 +22,8 @@ import { fileURLToPath } from 'node:url'
 const HERE = fileURLToPath(new URL('./', import.meta.url))
 const REPO = resolve(HERE, '..')
 const SRC = legacyDir('vibe-math-v2')
-const SUITE = join(HERE, 'math-computation-shared.test.mjs')
+// Round 232: the shared-contract suite lives with the other archived-preset suites.
+const SUITE = join(HERE, 'legacy', 'math-computation-shared.test.mjs')
 
 const PROBES = [
   {
