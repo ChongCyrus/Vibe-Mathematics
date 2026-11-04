@@ -966,12 +966,13 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         kind: param('string', 'append 的 kind（proposition｜method｜subproblem）；list 时同一个词就是过滤条件（不传 = 不过滤）', { enum: ['proposition', 'method', 'subproblem'] }),
         statement: param('string', 'append：陈述'),
         proof: param('string', 'append：证明/方法正文'),
-        keep: param('integer', 'prune：保留该轨最新的多少行（其余移入回收站；缺省 0 = 清空该轨的活行）'),
+        keep: param('integer', 'prune：保留该轨最新的多少行（其余移入回收站；缺省 0 = 清空该轨的活行）；要精确按 id 清就用 ids 而不是 keep'),
+        ids: param('string', 'prune：按 id 只清指定行（逗号分隔；与 keep 二选一——keep 是「留最新的 N 行」，ids 是「只清这几行」，两者不是同一个问题）'),
         why: param('string', 'prune：为什么这些行可以走（写进回收站审计）'),
         by: param('string', 'prune：谁做的（缺省取当前席位，无席位时 office）'),
         dryRun: param('boolean', 'prune：true = 只预告会移哪些行，不动数据'),
       },
-      run: async ({ action = 'list', id, limit, track, kind, statement, proof, keep, why, by, dryRun } = {}, exec = null) => {
+      run: async ({ action = 'list', id, ids, limit, track, kind, statement, proof, keep, why, by, dryRun } = {}, exec = null) => {
         try {
           // ★ SLV (measured): this face read `kernel.library` while the v3 data plane writes `kernel.records` - two
           // different stores, so every card was invisible here (`records: []` beside a non-zero journal). The RECORDS
@@ -1075,6 +1076,12 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                 'pruning is per track, never across the whole ledger: name one value of vmu.records.tracks')
             }
             const wantKeep = Number.isInteger(keep) && keep >= 0 ? keep : 0
+            // ★★★ RUN 219 (run 55 / FEEDBACK54 1.4, MEASURED): this action could only prune by POSITION (`keep:N`), so
+            // "remove the ONE diagnostic draft I filed" had no safe expression — a task brief told the office `keep:1`,
+            // which would have moved the CURRENT revision to the trash (the dry run printed it). A row can be named here
+            // now, and the receipt states which question was answered (`selection`), because `keep` and `ids` differ.
+            const idsArg = typeof ids === 'string' ? ids.split(',').map((s) => s.trim()).filter((s) => s !== '') : (Array.isArray(ids) ? ids.map((s) => String(s).trim()).filter((s) => s !== '') : [])
+            const byIds = idsArg.length > 0
             const preview = dryRun === true
             let callerBy = 'office'
             try { const m = resolveTurnMember(kernel, exec); if (m) callerBy = String(m) } catch { callerBy = 'office' }
@@ -1085,7 +1092,14 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             const listedAll = rc.list({ track: pruneTrack, limit: 0 }) || {}
             const allRows = Array.isArray(listedAll.items) ? listedAll.items : []
             const liveBefore = Number.isInteger(listedAll.available) ? listedAll.available : allRows.length
-            const doomed = allRows.slice(0, Math.max(0, liveBefore - wantKeep))
+            const doomed = byIds
+              ? allRows.filter((r) => r && idsArg.includes(String(r.id)))
+              : allRows.slice(0, Math.max(0, liveBefore - wantKeep))
+            const idsNotFound = byIds ? idsArg.filter((w) => !doomed.some((r) => String(r.id) === w)) : []
+            if (byIds && doomed.length === 0) {
+              return refused('VMU_NO_SUCH_OBJECT', 'none of the ids named (' + idsArg.join(', ') + ') is a LIVE row of track "' + pruneTrack + '": nothing was moved',
+                'take the ids from action:"list" (or from the receipt that created the row) and pass those; a row already in the trash is brought back with action:"restore", not pruned again')
+            }
             const moved = []
             const pinned = []
             // ★★ RUN 180 (run 25): when the kernel offers the batched form, use it — one durable write for the whole prune.
@@ -1127,7 +1141,8 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             }
             const liveAfter = preview ? liveBefore : Math.max(0, liveBefore - moved.length)
             return {
-              ok: true, action, track: pruneTrack, keep: wantKeep, dryRun: preview,
+              ok: true, action, track: pruneTrack, keep: byIds ? null : wantKeep, selection: byIds ? 'ids' : 'keep',
+              idsRequested: byIds ? idsArg : [], idsNotFound, dryRun: preview,
               liveBefore, liveAfter, wouldPruneCount: doomed.length, prunedCount: preview ? 0 : moved.length, pruned: moved, pinned,
               // ★★ RUN 181 (run 26 / FEEDBACK25 F25-10): `pinned` was a list with no count, and `pinnedMeans:null` on an
               // empty one — a reader had to count rows to learn whether the prune was complete. The count is stated, and the
@@ -1141,8 +1156,14 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               means: preview
                 ? 'DRY RUN: nothing was moved; the ids above are what a real prune would trash (drop dryRun to act)'
                 : 'the rows above are in the TRASH, not deleted: action "status" counts them under records.trashed and they stay restorable until purgeAt (vmu.records.trash.retainDays); expiry is counted, never silent',
+              selectionMeans: byIds
+                ? 'this prune moved EXACTLY the ids named (`ids`), whatever their age; `keep` answered a different question (how many newest rows to leave) and is null here on purpose'
+                : 'this prune moved rows by POSITION: `keep` says how many newest rows stay live. To move ONE row, pass its id through `ids` instead — the two selections are not interchangeable',
+              idsNotFoundMeans: idsNotFound.length === 0
+                ? null
+                : 'these ids were NOT moved because they are not live rows of this track (they may be trashed already, or live in another track): ' + idsNotFound.join(', '),
               restoreMeans: 'restore is reachable from this same face: call it with action:"restore" and the id(s) above before purgeAt (a purged row is refused by name); a permanent row never enters the trash',
-              hint: liveBefore <= wantKeep
+              hint: (byIds ? false : liveBefore <= wantKeep)
                 ? 'nothing to do: track has ' + liveBefore + ' live row(s) and keep is ' + wantKeep
                 : (preview ? 're-call with dryRun:false (or omit it) to move these rows to the trash' : null),
             }

@@ -1317,6 +1317,15 @@ export function createPaperFlow({
       throw refuse('VMU_NOT_PERMITTED', 'paperEditor is "' + state.editor + '": the flow finalises only an "academician"-edited paper signed by the member in the chair seat',
         'start the paper with editor:"academician" (default) — a member id is accepted at start only for a chair-seated member and is recorded as "academician"')
     }
+    // ★★★ RUN 219 (run 55 / FEEDBACK54 1.2, MEASURED): a `final` with no `member` printed "the academician (chair seat)
+    // must finalise this paper; \"\" is not on the roster" while `status.editorReading` showed the chair SEATED. The empty
+    // string was the ABSENCE OF A SIGNER, not a roster lookup result, and the hint offered two repairs (seat an academician
+    // / edit by the office) for a problem that was neither. The two facts are separated: an unsigned call is told to sign.
+    if (str(member).trim() === '') {
+      const chairRow = (kernel.members ? kernel.members.roster() : []).filter((m) => String(m.slot) === finalizerSlot)[0] || null
+      throw refuse('VMU_NOT_PERMITTED', 'final needs a SIGNER: this face does not infer the caller, so `member` must name the member in the chair seat' + (chairRow ? ' ("' + String(chairRow.id) + '" holds it)' : ' (read it from the paper status `editorReading.seat`)'),
+        'pass member:\"<the id in the chair slot>\" on this same call — an empty member is a MISSING SIGNATURE, not a roster miss; when that seat is empty, start the paper with editor:\"office\" and record the office consult answer (named gap)')
+    }
     const row = (kernel.members ? kernel.members.roster() : []).filter((m) => m.id === str(member))[0]
     if (!row || String(row.slot) !== finalizerSlot) {
       throw refuse('VMU_NOT_PERMITTED', 'the academician (chair seat) must finalise this paper; "' + str(member) + '" is ' + (row ? 'in slot "' + String(row.slot) + '"' : 'not on the roster'),

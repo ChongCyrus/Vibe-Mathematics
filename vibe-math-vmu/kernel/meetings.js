@@ -3026,7 +3026,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         mark(enforced, 'vmu.meetings.chairActRequiresTurn')
         throw deny('VMU_CHAIR_ACT_NOT_DELEGATED',
           'vmu.meetings.chairActRequiresTurn=true: the chair ' + seat + ' has no recorded turn in this kernel, so its seat cannot convene yet',
-          'give the chair its own turn first (vibe_vmu_turn { op:"step", member:"' + seat + '" } - the chair then acts, or reports through the office), and only then convene (vmu.meetings.chairActRequiresTurn)', enforced)
+          'give the chair its own turn first (vibe_vmu_turn { op:\"step\", member:\"' + seat + '\" }) and then convene (vmu.meetings.chairActRequiresTurn). ★ That single turn is NOT a small unlock: a chair that runs its round may open the meeting, file the card, run the formal job and write p=1 in the SAME turn (measured, run 55), so read its reply and RECOMPUTE the chain afterwards instead of replaying it from the office', enforced)
       }
       mark(enforced, 'vmu.meetings.chairActRequiresTurn')
     }

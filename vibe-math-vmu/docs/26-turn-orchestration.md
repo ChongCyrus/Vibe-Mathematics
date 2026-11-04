@@ -3564,6 +3564,48 @@ run 54（`task-sim54.txt`、`slvp183-ws`、1803 s、PDF 73 532 B）量到三笔�
 
 教训：产出类回执必须带一个回答「内容按规矩排出来了吗」的读数，且与产出**同一次遍历**产生；一个 0 必须有主语；`ok:true` 回答「面接受了调用」，不能回答「世界因此变了」——生效类事实要独立字段并明写该读哪个字段。
 
+## ROUND 224 (RUN 219) — a field that is printed must be readable back
+
+run 55 (the 55th rehearsal, baseline `fdf53f12`, closing PDF 77 561 B) confirmed all five RUN 217 repairs on real
+hardware and then measured five receipts that answered a different question than the one asked:
+
+1. `.blueprint { action:"propose", draft:"rec-37" }` came back with `continuedBase.requested:null` plus
+   `why:"this call named no draft"` — the face published `draft` and never forwarded it.
+2. `.paper { action:"final" }` without `member` said `"" is not on the roster` while `status.editorReading` showed the
+   chair SEATED: the empty string was a MISSING SIGNATURE, not a roster lookup, and the hint offered repairs for
+   neither problem.
+3. `.status.requiredLines` said both `writeAs` forms "pass" (read as equivalent), and `requiredLineMath` wrapped a whole
+   Chinese sentence in one `$…$` pair — passing the content gate is not being typeset.
+4. `.records prune` could only select by POSITION (`keep:N`), so "remove the one row I just filed" had no safe
+   expression; the brief's `keep:1` would have moved the CURRENT revision.
+5. the chair-turn hint said "the chair then acts" without saying that one chair turn can open the meeting, file the
+   card, run the formal job and write p=1 in the SAME round (measured: it did).
+
+Repairs (commit after §320):
+
+- `packs/v5r/tools.js`: the blueprint propose branch reads `namedDraft = str(args.draft || '').trim()` and forwards it as
+  `draft: namedDraft`; the description says what `draft` means (which OPEN draft to continue).
+- `kit/paper.js`: `final` decides the unsigned case BEFORE the roster lookup
+  (`if (str(member).trim() === '')` ⇒ `final needs a SIGNER`, hint: `an empty member is a MISSING SIGNATURE, not a
+  roster miss`).
+- `packs/v5r/paper-quality.js`: `writeAs` separates the two facts ("BOTH forms pass the content gate, but only a span
+  between two `$…$` is typeset"); new 一个「汉字/全角区段」正则常量 + `mathWrapped(line)` wraps only math runs; hint says
+  "过闸不等于排得出来".
+- `host.js`: `vibe_vmu_records { action:"prune" }` accepts `ids` and reports `selection` (`ids`/`keep`),
+  `keep: byIds ? null : wantKeep`, `idsRequested`/`idsNotFound`; a call whose ids match nothing is refused by name
+  (`none of the ids named`).
+- `kernel/meetings.js`: the chair hint says "That single turn is NOT a small unlock" and asks the office to
+  RECOMPUTE the chain afterwards instead of replaying it.
+
+Machine-checked: `tests/vmu-run219-feedback54.test.mjs` (54/0) — source pins, a named-draft continuation vs a no-draft
+continuation of the OPEN draft, an unsigned `final` after the paper reaches awaiting-editor (parts must carry
+`evidence:[rec-…]` or the evidence gate answers first), the math-example shape, and by-id prune leaving the other row
+live.
+
+Lessons: a published field is a promise to the caller (print it, or the receipt contradicts the request); an empty
+string is not "not on the roster" (branch on the REASON, not on the shape of the lookup); gate-passing and being-typeset
+are two gates (two true facts with different conclusions must be two sentences).
+
 ## ROUND 223 —— RUN 218：共享的草案不是你的草稿纸
 
 run 54 的所办按任务书发了一次「不采纳、只试试面」的诊断 propose，回执答 `id/revision/author`，而它已经并进两名成员正在写的那份草案；`authors` 三行是回执里唯一的线索。同一轮里 `applied:"immediate"` 与 `partial:true` 并列，读者引用了前者。成员提示词的记录本契约（"你的记录本是草稿、私有的"）在蓝图面不成立，没人说这是例外。

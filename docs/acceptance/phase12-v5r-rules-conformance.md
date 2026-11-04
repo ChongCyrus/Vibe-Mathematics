@@ -14604,7 +14604,7 @@ hint 给出路）、全一致的票箱放行；§2 真会议（3:0 全 FOR 在�
 - **「立即」是一个相对词**：凡是写 `applied`/`immediate`/`live` 的回执，都必须同时写清 scope —— 谁立刻、谁不立刻、
   不立刻的那个怎么才能看到。
 
-### §303 主线：一条「不会被忘记」的方向，写成了每回合都渲染的提示词
+## §303 主线：一条「不会被忘记」的方向，写成了每回合都渲染的提示词
 
 303.1 **账从哪来。** 用户这一轮（m21103）要求把 v5r 的核心推进方向（主线）写进架构主线、并「确保不会被忘记」；m21130 裁决了三点：规则文档新增独立一节、放在「## 流程（包括但不限于）：」之前；提示词上限 20000 → 30000；若「每回合都能看到」成立就按推荐的四处落地。原文的核心目的是**原问题的实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现**，并要求持续积累与主线推进/改进/调整相关的认知与有价值反馈、按九个字段积累更新各方向/路线/节点信息、据实践反馈调整细化蓝图、持续改进、复用一般化迁移经验、遇问题先查是否处理过类似问题。
 
@@ -14619,7 +14619,7 @@ hint 给出路）、全一致的票箱放行；§2 真会议（3:0 全 FOR 在�
 303.3b **收口链与全量 T1。** `update-doc-counts --write` ⇒ `JOBS total=753 suites=645 probes=108`；`regen-all --write` 17/17、`--check` 17/17 in sync；`PREFLIGHT`/`DOC LINT`/`RULES COVERAGE`（93 items · DONE 93）/`RULE PARITY` 四门禁 PASS。干净全量 T1（`node tests/run-tests.mjs`，`/d/_tmp/t1-r470-mainline.log`）= **`TOTAL 753 PASS 753 FAIL 0（suites 645 · probes 108）`**（wall 2 226.5 s，concurrency 2，x1.92）。★ 「干净」指这一跑期间工作树没有第二个进程在改源码——上一轮的 752/752 是在 RUN 202 改动已落盘、主线改动未开始时取的，本轮加上新节与新套件后重取。
 
 303.4 **未闭合。** 主线节目前只有「被看见」的证据；「看见之后真的按它做」要靠真机轮次观察（下一轮真机加入复验项：第一回合是否先查蓝图与归档）。九字段的「记录在哪里」仍是散落的（蓝图行、进度行、记录行），没有一张统一的节点表——这一条要等真机反馈再决定是否值得做成机器面。
-### §304 一轮一次的读数：该说话的地方沉默，该分因的地方只说一种原因
+## §304 一轮一次的读数：该说话的地方沉默，该分因的地方只说一种原因
 
 304.1 **账从哪来。** 第 41 次真机跑完（主线结题 `Paper/paper-p1/paper-p1.pdf` 177 327 B，`DRIVE exit=0`，5 个会话 0 个红检）。它的 `FEEDBACK40` 记了十条读数缺陷，其中八条是「回执里已经有一个数/一条路，但没有说清它属于哪一刻、哪一种原因」，这一轮清这八条；`1.1`（会议裁决写不回卡片）、`2.2`（同源矛盾）与 `1.6`（论文 state 行被覆写）留到下一轮。
 
@@ -14646,7 +14646,7 @@ hint 给出路）、全一致的票箱放行；§2 真会议（3:0 全 FOR 在�
 - **同一句话不能覆盖两种原因**：`exists:false` 既可能是「路径不在库里」也可能是「文件还没写」，两种原因的修复动作完全不同，回执必须分开说。
 - **拒绝里要写退路**：`poll_open` 被辩论会挡住的现场，用户不知道「关会就等于结束辩论」，于是去改设置；把退路写进 hint 比写进文档便宜得多。
 
-### §305 一个数被接收了不等于被数了，一个名字被打印了不等于能被粘回去
+## §305 一个数被接收了不等于被数了，一个名字被打印了不等于能被粘回去
 
 305.1 **账从哪来。** 第 42 次真机跑完（主线结题 `Paper/paper-p1/paper-p1.pdf` 84 541 B，`DRIVE exit=0`，`SUMMARY: 5 session(s) … 0 with RED checks`）。`FEEDBACK41` 记了十条，其中六条是「回执把两件不同的事说成了一个」或「回执打印了它自己也不认识的名字」，本轮清这六条；`1.3`（读现行版会改它的指纹）、`1.5`（`vibe_vmu_turn` 回执不带成员正文）与蓝图节点结构留到下面几轮。
 
@@ -14901,7 +14901,7 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 - **答错问题的字段比缺失字段更误导**：`moved:false` 在成功定稿上不假，但它答的是「advance 动没动」；缺的是「阶段动没动」。新增读数时先问一句：**这个词回答的是谁的问题**。
 - **修复路径本身要被跑过一次**：指路文案里写 `review({ decision: false })`，而 `review` 拒 `decision`——真机上代理照着做一次就卡住。**回执里给出的每条调用，至少要有一条测试真的去调它**。
 
-### §310 RUN 209 — 真机传的正是修法没覆盖的那一种形状
+## §310 RUN 209 — 真机传的正是修法没覆盖的那一种形状
 
 #### 310.1 账从哪来：第 46 次真机
 
@@ -14957,7 +14957,7 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 - **「打印出来让你抄」的文本是契约**：`correction.call` 里的 `value` 从 `Number()` 过一遍就成了 `NaN`，而它旁边还写着「照抄即可」。**凡是要被抄回去的字符串，必须能原样解析回同一个值**。
 - **同一个词在两个脸上意思不同时，两边都得说**：`already` 是内核的词、`decision` 属于 `final`、`review` 只读 `deliverable`——这些边界如果不写在回执里，模型只能靠猜，而猜错不会报错。
 
-### §311 RUN 210 — 回执递出的那条调用，要不要先说自己会不会被拒
+## §311 RUN 210 — 回执递出的那条调用，要不要先说自己会不会被拒
 
 #### 311.1 账从哪来：第 47 次真机
 
@@ -15013,7 +15013,7 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 - 四门禁：`PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
 - 干净全量 T1：**`TOTAL 761 PASS 761 FAIL 0 (suites 653 · probes 108)`**（`/d/_tmp/t1-r700-run210.log`）。
 
-### §312 RUN 211 — 一个名字说反了事实，两个相同的估计值被写成分歧（第 48 次真机 run 48 / `FEEDBACK47`）
+## §312 RUN 211 — 一个名字说反了事实，两个相同的估计值被写成分歧（第 48 次真机 run 48 / `FEEDBACK47`）
 
 #### 312.1 现场
 
@@ -15085,7 +15085,7 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 - **干净全量 T1（第二次，`/d/_tmp/t1-r820-run211c.log`）**：`TOTAL 762  PASS 762  FAIL 0  (suites 654 · probes 108)`。
 - 教训补充（并入 312.6 的同类）：**「契约审计读的是源码形状，不是你的意图」**——在服务对象上加一个 `_` 前缀的助手，在任何读者眼里都是公开方法；私有代码要放到对象字面量之外。更一般地：凡是「审计脚本按文本形状判断」的地方，修法的作用域必须同时满足「行为对」与「形状对」，否则红灯出现在最不相干的套件里（这次是文档审计，而不是 RUN 211 的任何行为断言）。
 
-### §313 RUN 212 —— 事实在下一层就看不见，两句话互相矛盾（第 49 次真机 run 49 / FEEDBACK48）
+## §313 RUN 212 —— 事实在下一层就看不见，两句话互相矛盾（第 49 次真机 run 49 / FEEDBACK48）
 
 313.1 现场（基线 `effa58be`、工作区 `D:/_tmp/slv-phase5/slvp178-ws`、`DRIVE exit=0`、`durationSec:1128`、`toolCalls:98`、`tokenTotal:16837703`、`transcriptEvents:523`）
 
@@ -15147,7 +15147,7 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 - 第二轮 `/d/_tmp/t1-r910-run212b.log`（`c9bc6056` + pin 修）：`TOTAL 763 PASS 763 FAIL 0 (suites 655 · probes 108)`。
 - 教训：**pin 的应当是契约**。当修法只改了一条句子的分支，钉住整句的测试会把正确答案判成红的，而红灯出现在最不相干的套件里。
 
-### §314 RUN 213 —— 一个计数只活在散文里，一个标题被写了两遍（第 50 次真机 run 50 / FEEDBACK49）
+## §314 RUN 213 —— 一个计数只活在散文里，一个标题被写了两遍（第 50 次真机 run 50 / FEEDBACK49）
 
 314.1 现场（第 50 次真机）
 
@@ -15213,7 +15213,7 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 4. 干净全量 T1 复跑 `/d/_tmp/t1-r1010-run213b.log` = **`TOTAL 764 PASS 764 FAIL 0 (suites 656 · probes 108)`**（`wall 2317.7s`、`sum of suite times 4454.8s`、`speed-up x1.92`；headstart 为 `v5-institute-fixes.mutants.mjs` 三片各 ~527–564 s）。
 5. 教训：**散文里点名的工具也是契约**——一个只在提示语里出现的面名不会被编译器检查，但会被「文档里提到的工具必须存在」这条审计当场抓住；写提示语时选面名要先 grep 一次工具声明。
 
-### §315 RUN 214 —— 一句真话只说对了其中一支，一个别名把读者引向反面（第 51 次真机 run 51 / FEEDBACK50）
+## §315 RUN 214 —— 一句真话只说对了其中一支，一个别名把读者引向反面（第 51 次真机 run 51 / FEEDBACK50）
 
 315.1 现场（第 51 次真机，基线 `5f2a4064`）
 
@@ -15388,6 +15388,33 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 4. 全量 T1 第二次（干净树）`/d/_tmp/t1-r1301-run216b.log` = `TOTAL 767  PASS 767  FAIL 0  (suites 659 · probes 108)`；三条新 pin 与 §317.3 的三处修法在同一棵树上跑完，无红。
 
 
+## §317 RUN 216 —— 剥掉的是一份副本，不是原文（run 53 / FEEDBACK52）
+
+**317.1 现场账**
+
+run 53（基线 `5bee438c`，结题 PDF 64 212 B）复验 RUN 215 的四条修法，量到两件事：
+
+1. RUN 215 引入的「重复复制块剥离」在只有**一个**提案人时把整篇 base 当成"重复的副本"丢掉：续写回执说 `headingDropped:1` 且文本被剥，成员读到的是一个几乎空的草案——回执为真，论文却被删空。
+2. 裁决 means 里仍写着 `TYPED RULING CARD(S)`，而 RUN 214 已把该数据源改名为 `submittedRulings`/`rulingCards`（读者会去找一个不存在的字段）。
+3. 另外，按 id 读裁决卡的路径只有 `records get`，`vibe_v5_read_library { id }` 对同一张卡返回"路径不存在"——同一个 id 在两个面上是两种身份。
+
+**317.2 三处修法**
+
+1. `vibe-math-vmu/packs/v5r/blueprint.js`：新增 `const strippedCopy = dup.matched !== null`，只有"首位提案人且确实剥掉了副本"时才用 `composeBlueprintText(bodyNext, split.sections)`，否则保留 base 并**追加** section；注释写明「A strip removes a COPY; it must never make the remainder the whole base」。
+2. `vibe-math-vmu/packs/v5r/tools.js`：裁决 means 的 `TYPED RULING CARD(S)` → `SUBMITTED RULING CARD(S)`（与 RUN 214 的字段改名同源）。
+3. `vibe-math-vmu/kit/handlers.js`：`toolReadLibrary` 的 `id` 分支先试 `kernel.library.expand(id)`，命中即返回 `libraryCard{id, path, body, means}`——按 id 读卡与按路径读卡在同一个面上都成立。
+
+**317.3 机器化与收口**
+
+- `tests/vmu-run216-feedback52.test.mjs` 与既有 pin 更新（`tests/vmu-run206-feedback43.test.mjs` §1k 的 `TYPED RULING CARD` → `SUBMITTED RULING CARD`，这是全量 T1 首轮唯一的红，属"改被 pin 住的措辞即改契约"）。
+- 两次全量 T1：`/d/_tmp/t1-r1300-run216.log` = `TOTAL 767 PASS 766 FAIL 1`（上一条 pin），修后 `/d/_tmp/t1-r1301-run216b.log` = **`TOTAL 767 PASS 767 FAIL 0`**。
+- 提交 `bdd2697c`；第 54 次真机（`start-run54.ps1`，`slvp183-ws`/`slvp216`/Port 19744）起跑并量到 FEEDBACK53，驱动 RUN 217。
+
+**317.4 教训**
+
+1. **剥离的判据是"这是一份副本"，不是"这段文本出现过"**：只有确认了副本关系才允许删，否则保留原文并追加。
+2. **改名要一次改干净**：字段改名后 means 里的旧名字会把读者引向不存在的键。
+
 ## §318 RUN 217 收口——「文件在」不等于「公式排出来了」（第 54 次真机 run 54 / FEEDBACK53）
 
 ### 318.1 现场（run 54，基线 `bdd2697c`）
@@ -15445,7 +15472,7 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 2. **一个 0 必须有主语**：`bodyPrefixDropped:0` 在「这次没续写」与「你漏贴了开头」两种情形下都是 0，回执必须说出这 0 是在谁身上数的。
 3. **`ok:true` 回答「面接受了这次调用」，不能回答「世界因此变了」**：锁、冻结、采纳这类「生效」类事实，需要一个独立字段（`proofGate.locked`）并显式告诉读者该读哪个字段。
 
-### §319 RUN 218 —— 共享的东西被当成私有的，第一个词说错了地方
+## §319 RUN 218 —— 共享的东西被当成私有的，第一个词说错了地方
 
 319.1 run 54（`task-sim54.txt`、`slvp183-ws`）的三笔账：
 
@@ -15475,3 +15502,48 @@ run 44 主线照样结题（`Paper/paper-paper-oddsum-44` **118 729 B**），但
 1. **「私有」是机制属性，不是语气属性。** 一张回执说「草案已登记」时，读者默认它是「我的一份稿」；只要它落在共享轨里，就必须有一句话说清「别人也读得到、也会接着写」，否则下一步的「只是试试」就是假的。
 2. **一个布尔/一个词放在最前，就等于替读者做了判断。** `applied:"immediate"` 与 `partial:true` 并列时，能被引用的只有前者；把限定塞进被引用的那个值里，比在后面补三个说明字段更有效。
 3. **契约的例外必须写在契约旁边。** 成员提示词说「你的记录本是草稿（私有）」，这句在蓝图这一面不成立；不把例外写在同一条旁边，成员会把整类「我写的别人看不到」外推到所有面。
+
+## §320 RUN 219 — 回执回答的不是被问的问题（run 55 / FEEDBACK54）
+
+**320.1 现场账（第五十五次真机，基线 `fdf53f12`，结题 PDF 77 561 B，`DRIVE exit=0`）**
+
+run 55 把 RUN 217 的五条修法全部真触发，同时量到五处「回执说的不是被问的那件事」：
+
+1. `vibe_v5_blueprint { action:"propose", draft:"rec-37" }` 回执 `continuedBase.requested:null` + `why:"this call named no draft"`——面公布了 `draft`，却从不把它转进 `continuedBase`；描述里 `draft` 只写在 adopt 上。
+2. `vibe_v5_paper { action:"final" }` 不传 `member` ⇒ `VMU_NOT_PERMITTED`，消息是 `the academician (chair seat) must finalise this paper; "" is not on the roster`，而同一份 status 的 `editorReading` 显示主席在座：空串是**缺签名**，不是名册查询结果，hint 给的两条修法（塞一个院士 / 改成 office 编辑）都不是这个问题的修法。
+3. `status.requiredLines` 的 `writeAs` 说两种写法 "both pass"（被读成等价），`requiredLineMath` 示范却把整句中文包进一对 `$…$`；实测裸写 `Σ_{i=1}^{n}` 会被转义成 `	extasciicircum{}`，即"过闸"与"排得出来"是两件事。
+4. `records prune` 只有 `keep:N`（按位置选），所以"删掉我刚写的那一行诊断记录"没有安全说法；任务书建议的 `keep:1` 会把**现行版 `rec-19`** 一起移走（dryRun 回执已列出 4 个 id）。
+5. `vibe_v5_meeting` convene 的 chair 闸 hint 只说 "the chair then acts"，没说主席**一个回合就能把整条主线做完**（实测：自开 m1、立卡 rec-5、跑 Lean、`verdict_final`、写回 p=1、开 m3 同一回合）。
+
+**320.2 五处修法**
+
+1. `vibe-math-vmu/packs/v5r/tools.js`：蓝图 propose 分支读 `const namedDraft = str(args.draft || '').trim()` 并把它作为 `draft: namedDraft` 转进去；描述补一句说明：`draft` 是可选的、指的是要续写的那份**开放**草案。
+2. `vibe-math-vmu/kit/paper.js`：`final` 在 roster 查询**之前**先判空签名 —— `if (str(member).trim() === '')` ⇒ `final needs a SIGNER: this face does not infer the caller, so member must name the member in the chair seat ("<chair id>" holds it)`，hint 明说 `an empty member is a MISSING SIGNATURE, not a roster miss`，并给出唯一修法（同一调用里传 `member`）。
+3. `vibe-math-vmu/packs/v5r/paper-quality.js`：`writeAs` 改成 `pair $…$ around the MATH parts and leave the words outside as prose: BOTH forms pass the content gate, but only a span between two $…$ is typeset as mathematics — a raw ^ or _ outside math mode is escaped and READS AS TEXT in the PDF, so passing the gate is not the same as being typeset`；新增 一个「汉字/全角区段」正则常量 + `function mathWrapped(line)`（只把公式段包成 `$…$`，中文留在外面），`requiredLineMath` 改用它；hint 补「只把公式部分写成配对 `$…$`，过闸不等于排得出来」。
+4. `vibe-math-vmu/host.js`：`vibe_vmu_records prune` 新增 `ids`（按 id 只清指定行）+ `selection: byIds ? 'ids' : 'keep'`、`keep: byIds ? null : wantKeep`、`idsRequested`/`idsNotFound`/`selectionMeans`/`idsNotFoundMeans`；一个 id 都不匹配时具名拒 `none of the ids named`，hint 只在按位置时提示 `keep`。
+5. `vibe-math-vmu/kernel/meetings.js`：chair 闸 hint 改成「★ That single turn is NOT a small unlock」并列出该回合能做完的整条链 + 「RECOMPUTE the chain afterwards」。
+
+**320.3 机器化（`tests/vmu-run219-feedback54.test.mjs` = 54 passed / 0 failed）**
+
+- §0 源码 pin 十五条：命名草案的读取与转发、propose 描述、`final needs a SIGNER`、`MISSING SIGNATURE, not a roster miss`、空签名分支**早于** roster 查询（用 `if (str(member).trim() === '') {` 与 `m.id === str(member)` 的下标比较，而不是比较散文——首版拿 `must finalise this paper;` 的**首次**出现做比较，被 run 55 注释里的同一句话判红）、`writeAs`、`function mathWrapped(`、`mathWrapped(name)`、`过闸不等于排得出来`、`ids: param(...)`、`selection: byIds`、`none of the ids named`、chair hint 两句。
+- §1 真装配：`vibe_v5_start` → `r-1` 起草案（`rec-1`）→ `r-2` 带 `draft:"rec-1"` 续写 ⇒ `continuedBase{requested:"rec-1", actual:"rec-1", continued:true}` 且 `why` 含 `continued the draft it named`；`r-2` **不带** `draft` 再续写开放草案 ⇒ `requested:null` 但 `actual:"rec-1"`、`continued:true`（字段各说各的真话）。
+- §2 真装配：论文 `start` → 两席各写一 `part`（**必须带 `evidence:[rec-…]`**，否则先被证据门拒 `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING`——首版没带证据就被这道门挡住，看到的是证据门而不是签名分支）→ `advance` → 两席 `review{deliverable:true}` → `advance` 到 awaiting-editor → 空 `member` 的 `final` ⇒ `VMU_NOT_PERMITTED` + 消息含 `final needs a SIGNER` 且**不含** `is not on the roster`。
+- §3 假 view：`quality.verifiedRequirements({ view })` 给一行带 `≥` 与 `Σ_{i=1}^{n}(2i-1)` 的已验证标题 ⇒ `requiredLineMath` 不以 `$对` 开头、含 `$n ≥ 1$` 与 `$Σ_{i=1}^{n}(2i-1)$`。
+- §4 真账本：`kernel.records.put` 两行同轨 → `prune{ids:idA, dryRun:true}` ⇒ `selection:"ids"`、`keep:null`、`wouldPruneCount:1`、`pruned[0].id === idA`；真 prune 后 `list` 里 `idB` 仍活、`idA` 不在；`prune{keep:0}` ⇒ `selection:"keep"`；`prune{ids:'rec-does-not-exist'}` ⇒ `VMU_NO_SUCH_OBJECT` + `none of the ids named`。
+
+**320.4 定向回归与收口链**
+
+- 定向回归 `TOTAL 12 PASS 12 FAIL 0`（含 `vmu-run219-feedback54` 1/0、`vmu-run218-feedback53b` 1/0、`vmu-run217-feedback53` 1/0、`vmu-run154`/`vmu-run155`/`vmu-b3-c8-c10`/`vmu-run152`/`vmu-run153`/`vmu-run117`、`audit-vmu-docs` + mutants 15/0）。
+- `update-doc-counts --write` ⇒ `JOBS total=770 suites=662 probes=108`（files changed=5）→ `regen-all --write` 17/17 → `--check` 17/17 in sync → `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 `vmu.members`/`vmu.store` 两条既有提示）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+
+**320.5 未闭合**
+
+1. 五处修法尚未真机复验（第 56 次真机覆盖 RUN 218，RUN 219 要等下一轮简报）。
+2. FEEDBACK54 1.5 的两条提示面（成员二手读数 `proofGate.locked:false` 与主席自述"已锁"相反）尚未定位；turn 回执 `memberToolCalls:null` 已确认为设计（`executedDetailTruncated`/`toolCallsScope` 说边界）。
+3. `records prune` 的 `ids` 目前按 `track` 内查——跨轨 id 会报 `none of the ids named`，与"行在别轨"这个事实之间还差一句提示。
+
+**320.6 教训**
+
+1. **一个字段印出来，就得能被读回来**：面把 `draft` 写进 schema 却从不转发，回执于是说了一句与请求相反的话；字段的存在本身就是对调用者的承诺。
+2. **空串不是"查无此人"**：`""` 在名册查询里落在"没找到"，但它真实含义是"没签名"；工程上要按**原因**分支，而不是按查询结果的形状分支。
+3. **守门与产出是两道闸**：`writeAs` 说"两种写法都过闸"为真，读者却把它读成"两种写法都排得出来"；凡两个事实同时为真而结论不同，就必须分两句写。

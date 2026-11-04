@@ -706,7 +706,7 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
           : (first.requiredLine ? '；可直接粘进正文的标题行：`' + first.requiredLine + '`' : '')),
       hint: (first.requiredLineIdentifier
         ? '这条结论的行名里有**标识符**（例如 `n_plus_n_eq_two_n`）：把它按**纯文本原样**写进正文，**不要**包进 `$…$`——数学模式里每个 `_` 都是下标，包裹后 xelatex 会报 `! Double subscript.`（run 21 实测：闸自己给过「包进 `$…$`」的建议，照做反而编不过；已改为不再对标识符推荐数学形式）。'
-        : (first.requiredLineMath ? '这条结论的标题带数学记号：把它写成配对 `$…$` 的数学形式（例如 `' + first.requiredLineMath + '`）最省事——渲染器会原样保留配对 `$…$` 里的内容当数学，而裸写标题会被转义成满页反斜杠；两种写法都能过这道闸。' : ''))
+        : (first.requiredLineMath ? '这条结论的标题带数学记号：只把**公式部分**写成配对 `$…$`（例如 `' + first.requiredLineMath + '`），中文照常留在 `$` 外面——渲染器只把配对 `$…$` 之间的内容原样当数学排，裸写的 `^`/`_` 会被转义成字面文本；两种写法都能过这道闸，但**过闸不等于排得出来**。' : ''))
         + (first.requiredLineTruncated ? '★ 这条行名是被截断的主张（以 `…` 收尾）：闸只要求上面这段前缀出现，不必抄那个省略号；完整陈述见该记录的「陈述」一节。' : '')
         + '这条门判的是**成员写的正文**（渲染时第 3 节由 `verified` 轨自动填充、第 4 节由 `problems` 轨 p=1 自动填充，但自动填充只进渲染出的文件，**不能**代替正文里的结论）：把该结论的标题（去掉「已验证｜」前缀）原样写进某一节的 part 正文，或让作者在下一轮补写，再 render。★ 如果论文已经走到 awaiting-editor（只有 writing 阶段能写 part），先让主编把它退回去：vibe_v5_paper { action: "final", target: "<本论文>", member: "<主席席成员>", decision: "revise", note: "<补哪些结论>" } 回到 writing 后再录 part',
       missing: missingEvidence,
@@ -730,6 +730,30 @@ export function checkQuality({ md, state, view, codes = QUALITY_CODES } = {}) {
  * a truncated ceiling (`…`) with the full sentence alongside, and the algebra-safe form when the line carries math.
  * A ledger with no verified conclusion is `{ ok: true, count: 0 }` — "nothing required" is a reading, not a failure.
  */
+// ★★★ RUN 219 (run 55 / FEEDBACK54 2.2, MEASURED): the example used to wrap the WHOLE line — the Chinese sentence
+// included — in one pair of `$`, which contradicts the convention the same receipt states ("a span between two $ is kept
+// VERBATIM as inline math"). A caller following that example would typeset prose as mathematics. Only the math-bearing
+// runs are wrapped now; the words outside them stay outside.
+const MATH_PROSE_CHAR = /[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/
+function mathWrapped(line) {
+  const src = String(line)
+  let out = ''
+  let i = 0
+  while (i < src.length) {
+    if (MATH_PROSE_CHAR.test(src[i])) { out += src[i]; i += 1; continue }
+    let j = i
+    while (j < src.length && !MATH_PROSE_CHAR.test(src[j])) j += 1
+    const run = src.slice(i, j)
+    if (run.trim() === '') { out += run; i = j; continue }
+    const lead = (run.match(/^\s*/) || [''])[0]
+    const tail = (run.match(/\s*$/) || [''])[0]
+    const core = run.slice(lead.length, run.length - tail.length)
+    out += lead + '$' + core + '$' + tail
+    i = j
+  }
+  return out
+}
+
 export function verifiedRequirements({ view, codes = QUALITY_CODES } = {}) {
   if (!view || typeof view.verified !== 'function') {
     return { ok: false, code: codes.VERIFIED_MISSING, count: 0, items: [], message: 'no verified reading is wired, so the required lines cannot be computed here', means: 'the paper quality face reads the verified track through `view.verified()`' }
@@ -765,10 +789,10 @@ export function verifiedRequirements({ view, codes = QUALITY_CODES } = {}) {
           : (statementOfCardOf(recordsFace, item.cardId) === null
             ? 'the verified row name stops at … and its card carries no readable statement line, so no full sentence exists to paste — read the card itself (records get) before writing the prose'
             : 'the name stops at …; the full sentence is the CARD statement line, read back here because the row itself was capped')),
-      requiredLineMath: hasMath && !hasIdentifier ? '$' + name + '$' : null,
+      requiredLineMath: hasMath && !hasIdentifier ? mathWrapped(name) : null,
       requiredLineIdentifier: hasIdentifier,
       writeAs: hasIdentifier ? 'plain text: do NOT wrap an identifier in $…$ (inside math mode every _ is a subscript and xelatex reports "!" Double subscript")'
-        : hasMath ? 'paired $…$ around the line (the renderer keeps paired math verbatim) or the raw line — both pass'
+        : hasMath ? 'pair $…$ around the MATH parts and leave the words outside as prose: BOTH forms pass the content gate, but only a span between two $…$ is typeset as mathematics — a raw ^ or _ outside math mode is escaped and READS AS TEXT in the PDF, so passing the gate is not the same as being typeset'
           : 'the raw line, verbatim',
     }
   })
