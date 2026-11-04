@@ -241,7 +241,19 @@ export function applyMemberScope({ kernel, members } = {}) {
       }
     }
   }
-  const seatDenyCount = seatDenyNames('member', declared).length
+  // ★★★ RUN 221 (run 57 / FEEDBACK56 1.2, MEASURED): ONE RECEIPT, TWO NUMBERS FOR ONE SEAT. `applied[]` carried the
+  // SEAT's own deny count (the temp seat: 40 of 48) while the top-level `denyCount` was computed for the MEMBER seat
+  // (21) and `means` spoke about "the member seat" only — so a hire of `r-temp` printed 40 in one row and 21 in the
+  // sentence beside it, and a reader could quote either as "the deny list". Both numbers are true of DIFFERENT seats;
+  // the shape now says which seat each number belongs to, and `means` names every governed seat.
+  const denyCountBySeat = {}
+  for (const slot of SEAT_GOVERNED_SLOTS) {
+    const n = seatDenyNames(slot, declared).length
+    denyCountBySeat[slot] = { deny: n, allow: declared.length - n, declared: declared.length }
+  }
+  const seatDenyCount = denyCountBySeat.member ? denyCountBySeat.member.deny : 0
+  const seatSentence = SEAT_GOVERNED_SLOTS.map((slot) => 'the ' + slot + ' seat loses ' + denyCountBySeat[slot].deny
+    + ' of ' + declared.length + ' pack tools (keeps ' + denyCountBySeat[slot].allow + ')').join('; ')
   return {
     ok: true,
     seam: hasSeam ? 'kernel.setMemberToolOverride' : 'absent',
@@ -256,14 +268,17 @@ export function applyMemberScope({ kernel, members } = {}) {
     declaredCount: declared.length,
     denyCount: seatDenyCount,
     allowCount: declared.length - seatDenyCount,
+    denyCountIs: 'the MEMBER seat\'s deny count (21 of 48 today) — it is ONE seat\'s number and NOT the count for every row in `applied`: a temp seat has its own, larger deny list. Read `applied[].denyCount` for the seat that was actually narrowed, or `denyCountBySeat` for all governed seats at once',
+    denyCountMeans: 'top-level denyCount/allowCount describe the member seat only; each `applied[]` row carries ITS seat\'s own denyCount, and the two are different numbers on purpose (a temp seat loses more faces than a member) — `denyCountBySeat` lists both',
+    denyCountBySeat,
     memberLineCount: MEMBER_SAFE_TOOLS.length,
     officeOnlyCount: OFFICE_ONLY_TOOLS.length,
     governedSlots: SEAT_GOVERNED_SLOTS.slice(),
     derivedFrom: 'vibe-math-vmu/packs/v5r/seat-faces.js#seatDenyNames',
     means: hasSeam
-      ? 'governed seats (' + SEAT_GOVERNED_SLOTS.join(', ') + ') got a DENY list derived from seat-faces.js: the member seat loses '
-        + seatDenyCount + ' of ' + declared.length + ' pack tools (keeps ' + (declared.length - seatDenyCount)
-        + '); the chair seat is NOT overridden, so its ' + (declared.length - seatDenyNames('chair', declared).length)
+      ? 'governed seats (' + SEAT_GOVERNED_SLOTS.join(', ') + ') got a DENY list derived from seat-faces.js: '
+        + seatSentence
+        + '; the chair seat is NOT overridden, so its ' + (declared.length - seatDenyNames('chair', declared).length)
         + ' declared faces stay callable. ' + applied.length + ' applied, ' + skipped.length + ' skipped, ' + refused.length + ' refused'
       : 'no seam on this kernel: the scope was NOT applied, and `applied` is empty — the caller should treat the member wire as unscoped',
   }

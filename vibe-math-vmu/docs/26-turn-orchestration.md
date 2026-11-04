@@ -3629,3 +3629,30 @@ RUN 220（run 56 / FEEDBACK55）：五处「回执为真、读者读错」，逐
 提示面（2.1，最硬）：成员提示词曾断言「真子代理模式下记录本是私有的，研究所读不到」；run 56 用 `vibe_v5_read_library{id:"rec-21"}` 读到成员 `r-1` 的卡（同一个 `state.json`）。契约改成按 `libraryRoot` 分支，并删掉那句假机制。
 
 `tests/vmu-run220-feedback55.test.mjs` = 61 passed / 0 failed；`tests/vmu-run218-feedback53b.test.mjs` 的 `appliedScope` pin 从字面量改为分支形状（RUN 220 让这个词跟着路线走，字面量已不是契约）。
+
+## ROUND 226 (RUN 221) — a receipt may be true and still answer the wrong question
+
+- run 57 (FEEDBACK56) measured five receipts of that shape, each one printing a fact about a DIFFERENT subject than
+  the reader's question:
+  1. **a settlement answered about the request, not the row.** A p-write on an existing card is a PATCH
+     (`settleRulingOnCard` → `records.supersede`); the receipt built its proof fields from the incoming arguments, so a
+     locked card read `proofState:null` / `proofLockDeferred:false` / `proofGate:null` while the same receipt promised
+     every other line was byte-identical. The settlement path now READS THE CARD BACK (`settlementReadback`) and says so
+     (`proofStateFrom`), and `proofStateEvidence` is `null ON PURPOSE` with a sentence saying why.
+  2. **one deny count, two seats.** `applied[].denyCount` was the SEAT's count (temp: 40 of 48) while the top-level
+     `denyCount` was the MEMBER seat's (21) and `means` spoke about "the member seat". Both were true of different seats.
+     The receipt now carries `denyCountBySeat` + `denyCountIs` + `denyCountMeans`, and `means` counts per seat.
+  3. **an unreadable count printed as zero.** Under activation delivery the member runs in its own kernel, so
+     `toolCalls:[]` / `toolCallsTotal:0` was a false claim beside `memberToolCalls:null`. The parent-kernel branch now
+     returns a DIFFERENT shape: `toolCalls:null` + `toolCallsThisKernel` / `toolCallsThisKernelTotal` +
+     `toolCallsThisKernelMeans` ("0 here means the PARENT made no calls in this step, never that the member did nothing"),
+     and every branch carries `countsAbout`.
+  4. **"wrote" named two destinations.** `render` printed `wrote:["md","tex","meta"]` next to
+     `wroteWhere:{records:[…], disk:[]}`. The ledger write is now `wroteToLedger`, the disk write is `diskFiles` (empty
+     here on purpose), and `wrote` survives as a labelled alias (`wroteDeprecated`).
+  5. **`already` on a first start.** `vibe_v5_start` projected `started.already:true` for a brand-new institute (the true
+     fact was "the middleware was already registered"). `started` now carries `middlewareAlreadyRegistered` + `registered`
+     + a sentence saying what it does NOT mean, and the kernel's own word moved to `startedRaw`.
+- Machine-checked by `tests/vmu-run221-feedback56.test.mjs` (60/0). Three fixture facts learned the hard way: a card's new
+  id is `recordId` while a settlement is selected by `args.id`; hire's seat readings live under `memberScope`; and the
+  tool-call reading is on the SETTLED `step.receipt`, not on `drive`'s batch shape.

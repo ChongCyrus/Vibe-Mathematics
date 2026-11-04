@@ -15601,3 +15601,53 @@ run 56（基线 `ac147a9d`，第 56 次真机，`slvp185-ws`，PDF **62 704 B**�
 1. **一个词不能同时说「没有任何路」和「有另一条路」**：同 `appliedScope` 同值，读者只能靠别处字段猜；范围词必须跟着「有没有具名路线」分叉。
 2. **建议的补救必须活在同一个窗口里**：说「prune 掉它」之前要问「此刻它还 prunable 吗」。
 3. **提示词里写的机制要能被现场实测**：run 56 用一次 `read_library` 就推翻了 26k 字符里的一句断言——凡教「另一个内核读不到」这类跨界事实，必须给出可核的回执字段（`libraryRoot`），否则就是不可证伪的教条。
+
+## §322 RUN 221 — 回执回答的是旁的问题（run 57 / FEEDBACK56）
+
+**322.1 现场（run 57，基线 `ef846de0`，`slvp186-ws`，`task-sim57.txt`）**
+
+- `DRIVE exit=0`、`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`、`cleanup: clone_gone=True port_listening=False C_free_GB=8.49`；结题 PDF `Paper/paper-paper-oddsum-57/paper-paper-oddsum-57.pdf` **67 157 B**。
+- 报告：`SIM-REPORT56.md` 20 465 B、`FEEDBACK56.md` 14 230 B、`PROGRESS-RUN56.md` 3 824 B。
+- FEEDBACK56 记了五笔「回执为真，但回答的不是读者的问题」：
+  1. `vibe_v5_record_proposition` 的 p 写回（结算路径）回执给出 `proofState:null` / `proofLockDeferred:false` / `proofGate:null`，而同一份回执的 `settlement.preserved` 说除 `p` 与裁决行外每行 byte-identical ⇒ 一张被锁的卡看起来像「丢了 proof 状态」。
+  2. `vibe_v5_hire` 同一份回执里 `applied:[{slot:"temp", denyCount:40}]` 与顶层 `denyCount:21` 并排，`means` 又说「the member seat」：同一席两个数，两处不可能同时是「那张拒绝列表」。
+  3. `vibe_vmu_turn step`：`toolCalls:[]`/`toolCallsTotal:0`（本内核）与 `memberToolCalls:null`（不可读）并排 ⇒ 机器摘到 0，而诚实答案是「不知道」。
+  4. `vibe_v5_paper render`：`wrote:["md","tex","meta"]` 与 `wroteWhere:{records:[…], disk:[]}` 并排 ⇒ 一个词同时指账本写与磁盘写。
+  5. `vibe_v5_start` 在全新目录首次立所也回 `started.already:true` ⇒ 键名与事实反义（`startedMeans` 已补救，键名仍是陷阱）。
+
+**322.2 五处修法**
+
+1. **结算路径回读**（`vibe-math-vmu/packs/v5r/tools.js`）：新增 `settlementReadback`——结算之后按 id 把存下来的行读回来，`proofState`/`proofLockDeferred`/`proofLockDeferredReason`/`proofGate` 都用回读值（`proofStateFrom` 明写「READ BACK from the stored row after the settlement patch」），`proofStateEvidence` 在结算路径为 `null` 并带 `proofStateEvidenceMeans`（`null ON PURPOSE: a settlement verifies nothing …`）。
+2. **拒绝计数按席**（`vibe-math-vmu/packs/v5r/member-scope.js`）：新增 `denyCountBySeat`（每个受管席 `{deny, allow, declared}`）、`denyCountIs`（顶层数字属于 MEMBER 席，且「NOT the count for every row in `applied`」）、`denyCountMeans`；`means` 改为逐席一句话。
+3. **工具调用读数分开**（`vibe-math-vmu/kernel/turn/index.js`）：`toolCallsScopeOf` 三支都带 `countsAbout`；`parent-kernel` 分支给出**另一种形状**——`toolCalls:null`/`toolCallsTotal:null`+`toolCallsThisKernel`/`toolCallsThisKernelTotal`+`toolCallsThisKernelMeans`（「0 here means the PARENT made no calls in this step, never that the member did nothing」）。
+4. **写入目标分开**（render 投影）：`wroteToLedger` 为主键、`diskFiles: []` 为磁盘写（本面不写盘）、`wrote` 保留为旧别名并附 `wroteDeprecated`。
+5. **立所回执改名**（`vibe_v5_start`）：`started` 改为投影块（`middlewareAlreadyRegistered` + `registered` + 说明「NOT a statement that the institute existed before」），内核原话留在 `startedRaw`。
+
+**322.3 机器化**
+
+- `tests/vmu-run221-feedback56.test.mjs` = **60 passed / 0 failed**：§0 十三条源码 pin；§1 真装配结算回读（造 `proof_state:"complete"` + 不解析 `proof_ref` 的卡 → `p:0` 结算 ⇒ `proofState==='complete'`、`proofLockDeferred===true`、`proofGate.locked===false`、`proofStateFrom` 含 `READ BACK`、账本行仍带该声明）；§2 `vibe_v5_hire` 的 `memberScope.denyCountBySeat.temp.deny` 与 `applied[].denyCount` 同值、顶层属于 member 席；§3 `kernel.turn.step` 的 settled 回执（`delivery.path==='activation'`）⇒ `receipt.toolCalls===null`、`toolCallsThisKernelTotal===0`、`countsAbout==='this-kernel-not-the-member'`；§4 render 的 `wroteToLedger`/`diskFiles`/`wroteDeprecated`；§5 `started.middlewareAlreadyRegistered` 且无 `already`、`startedRaw.already===true`。
+- 回执装载事实（本轮踩到三条）：① `vibe_v5_record_proposition` 新行 id 在 **`recordId`**（不是 `id`），而结算由 **`args.id`** 选择——传错键会把结算静默降级成第二次 create；② hire 的席位读数在 **`memberScope`** 里，不在顶层；③ 工具调用读数挂在 **`step.receipt`** 上（`drive` 的批次形状完全没有这个读数）。
+- `tests/vmu-run209-feedback45.test.mjs` §4c 与 `tests/vmu-run217-feedback53.test.mjs` 的 `proofGate` pin 已同步（前者改断言 `started.started.middlewareAlreadyRegistered`，后者改为「分支形状」pin）。
+
+**322.4 定向回归与收口链**
+
+- 定向回归（`vmu-run221-feedback56`…`audit-vmu-docs` 共 16 组）= **TOTAL 50 PASS 50 FAIL 0（49 suites · 1 probe）**。
+- `update-doc-counts --write` ⇒ **`JOBS total=772 suites=664 probes=108`**（files changed=5）；`regen-all --write` 17/17 → `--check` 17/17 in sync；`PREFLIGHT: PASS` / `DOC LINT: PASS`（D11/D16 既有提示）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+- 全量 T1：见 322.4b。
+
+**322.4b 全量 T1**
+
+- 干净树全量 T1（`/d/_tmp/t1-r1350-run221.log`）= **`TOTAL 772 PASS 772 FAIL 0（suites 664 · probes 108）`**，headstart 为 `v5-institute-fixes.mutants.mjs`（`ALL MUTANTS RED AS REQUIRED`，532.9 s）。
+- 本轮只新增一个作业（`tests/vmu-run221-feedback56.test.mjs`），作业/套件计数 771→772、663→664，与 `update-doc-counts --write` 的派生一致。
+
+**322.5 未闭合**
+
+1. 五处修法尚未真机复验（第 58 次真机才覆盖）。
+2. `denyCountBySeat` 的数字来自 `seat-faces.js` 的派生表，席位数变化时它自动跟随；但 `denyCountIs` 里的「21 of 48 today」是写死的示例数——表变了这句会旧（提示性文字，不参与判据）。
+3. `toolCallsThisKernel` 在 parent-kernel 形状里仍是本内核的真实数字；它回答「所办自己做了什么」，不回答成员的调用量——后者只能读子会话日志，回执只能指路。
+
+**322.6 三教训**
+
+1. **写路径的回执要读回它写的东西**：结算改的是同一行，回执却按「这次调用写了什么」作答，于是「没写 proof 字段」被读成「proof 字段没了」。凡「编辑既有行」的面，回执必须回读。
+2. **一个数字必须带主语**：`denyCount` 不带席名，读者就把它当「那张拒绝列表」；`toolCalls:0` 不带范围，读者就把它当「成员没干活」。
+3. **零与未知是不同的值**：不可读的时候要交 `null` + 另一个字段承载能读到的部分，而不是交 `0` 再在散文里补救。

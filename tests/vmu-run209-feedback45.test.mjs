@@ -189,7 +189,14 @@ test('RUN 209 §4 — "already" is the kernel\'s word, and what this call seeded
     ok(started.ok === true, 'premise: founded', started)
     ok(Array.isArray(started.hiredNow) && started.hiredNow.length === 3, '§4a ★ hiredNow names the seats THIS call made', started.hiredNow)
     ok(Array.isArray(started.rosterBefore) && started.rosterBefore.length === 0, '§4b ★★ rosterBefore is EMPTY — the institute really was fresh', started.rosterBefore)
-    ok(started.started && started.started.already === true, '§4c premise: the kernel did answer already:true', started.started)
+    // ★ RUN 221 (run 57 / FEEDBACK56 1.5): the kernel's word is now PROJECTED under a name that carries its subject —
+    // `already` on a first founding read as "the institute already existed", which this same receipt denied elsewhere.
+    ok(started.started && started.started.middlewareAlreadyRegistered === true,
+      '§4c premise: the kernel did answer that its middleware start had run (the projection names the subject)', started.started)
+    ok(started.startedRaw && started.startedRaw.already === true,
+      "§4c-2 the kernel's OWN answer still travels, under a key that says it is raw", started.startedRaw)
+    ok(!('already' in started.started),
+      '§4c-3 the projected block does NOT expose the bare word a reader mis-took for "the institute already existed"', started.started)
     has(started.startedMeans, 'KERNEL', '§4d ★★★ the receipt says whose word `already` is')
     has(started.startedMeans, 'NOT a statement that the institute existed before', '§4e ★★ …and explicitly denies the reading run 46 reported')
   } finally { /* hygiene */ }

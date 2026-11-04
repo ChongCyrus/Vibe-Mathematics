@@ -90,8 +90,10 @@ ok(SRC_BLUEPRINT.includes('this call STARTED revision'),
 ok(!SRC_BLUEPRINT.includes("const bodyPrefixDroppedMeans = dup.matched === null\n    ? 'your text did not begin with the draft it continued"),
   '★ ② the old unconditional sentence is gone (a comment may still quote it)', SRC_BLUEPRINT.includes("const bodyPrefixDroppedMeans = dup.matched === null\n    ? 'your text did not begin"))
 
-ok(SRC_TOOLS.includes('proofGate: proofStateDowngraded === null'),
-  '★ ③ the card write answers "is it LOCKED", not only "was it filed"', SRC_TOOLS.includes('proofGate: proofStateDowngraded === null'))
+// ★ RUN 221 (run 57 / FEEDBACK56 1.1): the block is now COMPUTED (a settlement reads the card back), so the pin asks
+// that the receipt still answers "is it locked" and that the settlement path labels its read-back — not for one literal.
+ok(SRC_TOOLS.includes('proofGate: proofGateOut') && SRC_TOOLS.includes('const proofGateOut = settlementReadback !== null'),
+  '★ ③ the card write answers "is it LOCKED", not only "was it filed"', SRC_TOOLS.includes('proofGate: proofGateOut'))
 ok(SRC_TOOLS.includes('read proofGate.locked, not `ok`'),
   '★ ③ and it says which field answers that question', SRC_TOOLS.includes('read proofGate.locked'))
 ok(SRC_TOOLS.includes('REGISTER A NEW CARD'),

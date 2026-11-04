@@ -963,7 +963,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         id: param('string', '记录 id（expand 必填；restore 必填，可传多个用逗号分隔）'),
         limit: param('integer', 'list 的最大条数（0 = 全部；省略用内核 vmu.records.headListAt）'),
         track: param('string', 'list：只列某一轨（省略＝全部；合法值见 vmu.records.tracks，内核会具名拒未知轨）'),
-        kind: param('string', 'append 的 kind（proposition｜method｜subproblem）；list 时同一个词就是过滤条件（不传 = 不过滤）', { enum: ['proposition', 'method', 'subproblem'] }),
+        kind: param('string', 'append 的 kind（单数：proposition｜method｜subproblem）；list 时同一个词就是过滤条件（不传 = 不过滤）。★ kind 是单数、track 是复数：同一族记录在 `track` 上写作 propositions/methods/problems，两个词不能互换（传 track:"proposition" 会被具名拒 unknown record track）', { enum: ['proposition', 'method', 'subproblem'] }),
         statement: param('string', 'append：陈述'),
         proof: param('string', 'append：证明/方法正文'),
         keep: param('integer', 'prune：保留该轨最新的多少行（其余移入回收站；缺省 0 = 清空该轨的活行）；要精确按 id 清就用 ids 而不是 keep'),

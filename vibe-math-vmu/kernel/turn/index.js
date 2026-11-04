@@ -3946,7 +3946,19 @@ export function createTurnOrchestrator({
       // `continuable` all start a child session (the receipt names it in delivery.childId). Listing two of the three by
       // hand would have re-introduced exactly the defect this comment exists to prevent — a reading correct in the mode
       // it was measured in and silently wrong in the neighbouring one.
-      const { scope: toolCallsScope, note: toolCallsNote } = toolCallsScopeOf(deliveredThrough)
+      const { scope: toolCallsScope, note: toolCallsNote, countsAbout } = toolCallsScopeOf(deliveredThrough)
+      // ★★★ RUN 221 (run 57 / FEEDBACK56 1.3, MEASURED): THE NUMBER AND THE NULL SIDE BY SIDE. The receipt carried
+      // `toolCalls: []`, `toolCallsTotal: 0` (this kernel's own) beside `memberToolCalls: null` (not readable) — the
+      // disclosure in `toolCallsNote` was excellent and the SHAPE still lied, because a machine quoting
+      // `toolCallsTotal` gets 0 and never reads a note. When the member ran in another kernel the member-facing count
+      // keys are null ON PURPOSE, and this kernel's own count travels under names that say whose it is.
+      const toolCallsReading = toolCallsScope === 'parent-kernel'
+        ? { toolCalls: null, toolCallsTotal: null, toolCallsTruncated: false,
+            toolCallsThisKernel: tcs.list, toolCallsThisKernelTotal: tcs.total,
+            toolCallsThisKernelMeans: 'THE MEMBER\'S CALL LIST IS NOT IN THIS RECEIPT: `toolCalls`/`toolCallsTotal` are null ON PURPOSE (a separate kernel instance ran the member), and these two fields carry THIS kernel\'s own count — 0 here means the PARENT made no calls in this step, never that the member did nothing',
+            toolCallsScope, toolCallsNote, toolCallsCountsAbout: countsAbout }
+        : { toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,
+            toolCallsScope, toolCallsNote, toolCallsCountsAbout: countsAbout }
       // ★ LIVE RUN 16 (§107, ⑦): computed ONCE and spread on BOTH levels — the settled return puts the office-facing
       // fields inside `receipt`, while the awaiting return puts them at the top; the office was reading one level, the
       // institute's report the other, and until now NEITHER level named the member's own calls at all.
@@ -4082,8 +4094,7 @@ export function createTurnOrchestrator({
       })()
       if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
-        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,
-        toolCallsScope, toolCallsNote, ...memberCallsReading,
+        ...toolCallsReading, ...memberCallsReading,
         membersFrom: membersFromReading, delegation: r.delivery || null,
         ...selectionReadings }
       return { ok: true, ...memberCallsReading,
@@ -4141,8 +4152,7 @@ export function createTurnOrchestrator({
         replyLimitChars: Number.isFinite(Number(r.replyLimitChars)) ? Number(r.replyLimitChars) : null,
         replyExcerptMeans: typeof r.replyExcerptMeans === 'string' ? r.replyExcerptMeans : null,
         instructionDelivered: r.instructionDelivered === true, turn: r.turn.id,
-        toolCalls: tcs.list, toolCallsTotal: tcs.total, toolCallsTruncated: tcs.truncated,
-        toolCallsScope, toolCallsNote,
+        ...toolCallsReading,
         ...memberCallsReading,
         // ★★ LIVE RUN 46 (the institute's own report, item ㉟.2/㉟.4): `membersFrom` and the delegation block were
         // built one layer down and only ever placed on the AWAITING envelope - but `deliverMode:'subagents'` settles
@@ -4528,13 +4538,14 @@ export const lostTurnState = (turn) => {
 export const toolCallsScopeOf = (deliveryPath) => {
   const path = typeof deliveryPath === 'string' && deliveryPath !== '' ? deliveryPath : null
   if (path === null) {
-    return { scope: 'member-kernel', note: 'deliveryPath is absent on this receipt, so the count cannot be attributed to a kernel; treat it as "this kernel saw N calls" rather than as the member\'s own total' }
+    return { scope: 'member-kernel', countsAbout: 'this-kernel-unattributed',
+      note: 'deliveryPath is absent on this receipt, so the count cannot be attributed to a kernel; treat it as "this kernel saw N calls" rather than as the member\'s own total' }
   }
   if (path === 'caller') {
-    return { scope: 'member-kernel', note: null }
+    return { scope: 'member-kernel', countsAbout: 'the-member', note: null }
   }
   return {
-    scope: 'parent-kernel',
+    scope: 'parent-kernel', countsAbout: 'this-kernel-not-the-member',
     note: 'THESE COUNTS ARE THIS KERNEL\'S OWN AND ARE NOT EVIDENCE ABOUT THE MEMBER\'S WORK: delivery.path="' + path + '" ran the member in a separate kernel instance (delivery.childId), so calls it made there are invisible here. Read the child session log for its call list; an empty list here does not mean the member did nothing',
   }
 }

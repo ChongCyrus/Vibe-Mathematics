@@ -2192,17 +2192,50 @@ function gatedCardHandler(toolName) {
         : { required: true, present: false, call: 'vibe_v5_verified_promote',
             means: 'p=1 的卡必须带 verified 标记：现在还没有定论行，调用 `vibe_v5_verified_promote {card:"<id>", warrant_kind:"…", …}` 写下它；没有这一行的 p=1 卡在 Verified 轨上不可见' }
     })()
-    return Object.assign({}, res, {
-      enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE,
-      proofState: declaredProofState === '' ? null : declaredProofStateFolded,
-      proofLockDeferred: proofStateDowngraded === null ? false : true,
-      proofLockDeferredReason: proofStateDowngraded === null ? null : proofStateDowngraded.reason,
-      proofLockDeferredMeans: proofStateDowngraded === null ? null : "rule L14 locks a card whose proof is registered complete — but this card’s OWN `proof_ref` does not resolve inside the library (" + proofStateDowngraded.reason + "), and locking it would make that pointer uncorrectable. The declaration is recorded AS WRITTEN and the LOCK IS DEFERRED: write the file (or point at a record id) and REGISTER THE CARD AGAIN — the records face mints a NEW row per write, so \"re-register\" means filing a new card, never editing this row's pointer — or correct the pointer in a fresh write before filing: this card stays writable until a pointer that really resolves lands",
-      // ★★★ RUN 217 (run 54 / FEEDBACK53 ①-3, MEASURED): a first write of a card declared `proof_state:"complete"` with a
-      // pointer that does not resolve came back `ok:true` + `proofState:"complete"` + `proofLockDeferred:true`. Every field was
-      // true, and the receipt still read like "rule L14's lock is on". `ok` answers "was the card filed"; nothing answered
-      // "is it locked". This block answers exactly that, in one value, and names the one move that can lock it.
-      proofGate: proofStateDowngraded === null
+    // ★★★ RUN 221 (run 57 / FEEDBACK56 1.1, MEASURED): A SETTLEMENT IS A PATCH, SO THE PROOF FIELDS TRAVEL BY READ-BACK.
+    // run 57 settled `rec-3` (p=1) and the receipt printed `proofState:null`, `proofLockDeferred:false`,
+    // `proofGate:null`, `proofStateEvidence:null` — while the SAME receipt's `settlement.preserved` said every line except
+    // `p` and the ruling row was "byte-identical". Both statements were about the same card and only one of them was
+    // read by the reader: the literal nulls were read as "this card has no proof state any more". A settlement call
+    // declares no proof state (it may not touch the proof fields at all), so stamping null is the PATCH talking, not the
+    // card. The card is read back after the write and the values are labelled as read back.
+    const settlementReadback = (existing !== null && settlement !== null && cardId !== null) ? (() => {
+      const row = rowOrNull(records, cardId)
+      if (!row) return null
+      const parsed = parseCardBody(str(row.body))
+      const fields = parsed && parsed.fields ? parsed.fields : {}
+      const state = fields.proofState !== undefined ? str(fields.proofState).trim().toLowerCase() : ''
+      const deferredWord = fields.proofLockDeferred !== undefined ? str(fields.proofLockDeferred).trim() : ''
+      return {
+        proofState: state === '' ? null : state,
+        proofLockDeferred: deferredWord !== '',
+        proofLockDeferredReason: deferredWord === '' ? null : deferredWord,
+        rev: row.rev === undefined || row.rev === null ? null : row.rev,
+      }
+    })() : null
+    const proofStateOut = settlementReadback !== null ? settlementReadback.proofState
+      : (declaredProofState === '' ? null : declaredProofStateFolded)
+    const proofDeferredOut = settlementReadback !== null ? settlementReadback.proofLockDeferred
+      : (proofStateDowngraded === null ? false : true)
+    const proofDeferredReasonOut = settlementReadback !== null ? settlementReadback.proofLockDeferredReason
+      : (proofStateDowngraded === null ? null : proofStateDowngraded.reason)
+    const proofDeferredMeansOut = proofStateDowngraded === null
+      ? (settlementReadback !== null && settlementReadback.proofLockDeferred === true
+        ? 'READ BACK from the stored row: it carries a deferred lock (' + String(settlementReadback.proofLockDeferredReason || 'reason unreadable')
+          + '), which this settlement did not write and may not change — a settlement rewrites only the `p` line and the ruling row'
+        : null)
+      : "rule L14 locks a card whose proof is registered complete — but this card’s OWN `proof_ref` does not resolve inside the library (" + proofStateDowngraded.reason + "), and locking it would make that pointer uncorrectable. The declaration is recorded AS WRITTEN and the LOCK IS DEFERRED: write the file (or point at a record id) and REGISTER THE CARD AGAIN — the records face mints a NEW row per write, so \"re-register\" means filing a new card, never editing this row's pointer — or correct the pointer in a fresh write before filing: this card stays writable until a pointer that really resolves lands"
+    const proofGateOut = settlementReadback !== null
+      ? (settlementReadback.proofState === null
+        ? null
+        : (settlementReadback.proofLockDeferred === true
+          ? { locked: false,
+              why: 'READ BACK from the stored row: it is declared complete but its lock is DEFERRED (' + String(settlementReadback.proofLockDeferredReason || 'reason unreadable') + '); this settlement changed neither',
+              nextMove: 'the card is still writable: write the file the pointer names and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
+              means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK, this call is a settlement' }
+          : { locked: true, why: 'READ BACK from the stored row: declared complete and the lock is on; this settlement changed only `p` and the ruling row',
+              nextMove: null, means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK, this call is a settlement' }))
+      : (proofStateDowngraded === null
         ? (declaredProofState === ''
           ? null
           : { locked: true, why: 'the declared proof is registered complete and its own `proof_ref` resolves inside the library', nextMove: null,
@@ -2210,8 +2243,22 @@ function gatedCardHandler(toolName) {
         : { locked: false,
             why: 'the card is filed AS DECLARED, but its own `proof_ref` does not resolve inside the library (' + String(proofStateDowngraded.reason) + '): rule L14 will not lock a pointer that could never be corrected',
             nextMove: 'write the file into the library (or point at a record id) and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
-            means: 'read proofGate.locked, not `ok`, to answer "is this card locked": `ok:true` only says the card was filed' },
-      proofStateEvidence,
+            means: 'read proofGate.locked, not `ok`, to answer "is this card locked": `ok:true` only says the card was filed' })
+    return Object.assign({}, res, {
+      enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE,
+      proofStateFrom: settlementReadback === null ? 'declared by this call' : 'READ BACK from the stored row after the settlement patch: this call is a settlement and may not write the proof fields, so `proofState`/`proofGate` describe the CARD, not this call',
+      proofState: proofStateOut,
+      proofLockDeferred: proofDeferredOut,
+      proofLockDeferredReason: proofDeferredReasonOut,
+      proofLockDeferredMeans: proofDeferredMeansOut,
+      // ★★★ RUN 217 (run 54 / FEEDBACK53 ①-3, MEASURED): a first write of a card declared `proof_state:"complete"` with a
+      // pointer that does not resolve came back `ok:true` + `proofState:"complete"` + `proofLockDeferred:true`. Every field was
+      // true, and the receipt still read like "rule L14's lock is on". `ok` answers "was the card filed"; nothing answered
+      // "is it locked". This block answers exactly that, in one value, and names the one move that can lock it.
+      proofGate: proofGateOut,
+      proofStateEvidence: settlementReadback === null ? proofStateEvidence : null,
+      proofStateEvidenceMeans: settlementReadback === null ? undefined
+        : 'null ON PURPOSE: a settlement verifies nothing, so there is no evidence block for THIS call to report - the card\'s own proof lines are unchanged (see settlement.preserved) and were read back into proofState/proofGate',
     }, settlement === null ? {} : { settlement },
     p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, p1RulingRef: p1Ruling, p1RulingMeans, p1RulingReading, verifiedMark })
   }
@@ -4791,7 +4838,18 @@ async function toolStart(args = {}, { kernel } = {}) {
   // leadership falls back to the chair SEAT. That is disclosed (`applied[].partial`/`visibleToMemberKernels`) but was
   // never stated as a ceiling, so run 50's chair reported `leaderId empty` as a defect. The ceiling is named here.
   const leaderIdMeans = '`applied` records the settings THIS call changed on ITS OWN kernel. `vmu.turn.leaderId` is one of them, and it is a PER-KERNEL setting: a member works in a different kernel/process, which does not inherit it, so a member\'s prompt can read leaderId as empty and fall back to the chair SEAT (the charter\'s leadership section names the chair) — that fallback is by design, not a broken setting. No face can push a setting into another kernel; `vibe_v5_configure` changes it for THIS process only, and its receipt says the same' 
-  return { ok: true, tool: 'vibe_v5_start', hired, hiredNow: hired.slice(), rosterBefore: rosterBefore.map((r) => r.id), started, startedMeans, applied, leaderIdMeans, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE, memberScopeNoteMeans, chairTurnNote,
+  // ★★★ RUN 221 (run 57 / FEEDBACK56 1.5, MEASURED): `started.already:true` ON A FIRST FOUNDING. The word is the
+  // KERNEL's ("this process already ran kernel.start()"), and on the very call that creates an empty institute it reads
+  // as "the institute already existed". The receipt now projects the kernel's answer under a name that carries its
+  // subject, keeps the kernel's raw object under `startedRaw`, and says so once.
+  const startedProjected = {
+    ok: started && started.ok === true,
+    middlewareAlreadyRegistered: started && started.already === true,
+    registered: started && Array.isArray(started.registered) ? started.registered.slice() : [],
+    means: '`middlewareAlreadyRegistered` is the KERNEL\'s word about ITS OWN start in THIS process (it registers the declared middleware and does nothing else) — it is NOT a statement that the institute existed before this call; read `hiredNow` and `rosterBefore` for that',
+  }
+  return { ok: true, tool: 'vibe_v5_start', hired, hiredNow: hired.slice(), rosterBefore: rosterBefore.map((r) => r.id),
+    started: startedProjected, startedRaw: started, startedMeans, applied, leaderIdMeans, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE, memberScopeNoteMeans, chairTurnNote,
     note: 'seedDirections are roster data here (the charter reads a member\'s direction), so they are not stored by this tool — reported, not silently dropped' }
 }
 
@@ -5644,7 +5702,13 @@ async function toolPaper(args = {}, { kernel } = {}) {
       const rendered = paper.render({ target })
       const arts = rendered.artifacts || null
       return { ok: true, tool, action, target, renderOk: rendered.ok === true,
+        // ★★★ RUN 221 (run 57 / FEEDBACK56 1.4, MEASURED): `wrote: ["md","tex","meta"]` beside `wroteWhere.disk: []`
+        // reads as "wrote and did not write". The list is RECORD KINDS; the primary key now says so, the filesystem
+        // answer is its own field, and `wrote` survives as a deprecated alias that names itself as one.
+        wroteToLedger: Array.isArray(rendered.wrote) ? rendered.wrote.slice() : [],
+        diskFiles: [],
         wrote: Array.isArray(rendered.wrote) ? rendered.wrote.slice() : [],
+        wroteDeprecated: '`wrote` is the OLD name for `wroteToLedger`: both list RECORD KINDS written into the paper track (md/tex/meta), NOT files. Read wroteToLedger and diskFiles — a .tex/.pdf appears on disk only when compile runs',
         // ★ ROUND 95: `wrote` lists RECORD kinds written into the paper track; render() writes no file, so a reader
         // who looks at `Paper/<id>/` and finds only a .tex (written by compile) used to conclude the receipt lied.
         wroteWhere: {
