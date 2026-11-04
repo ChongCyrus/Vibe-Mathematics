@@ -4829,7 +4829,10 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       // from "elided for size", which is the distinction this phase keeps insisting on.
       const headline = (v) => (v === null || v === undefined
         ? { present: false, note: 'absent by construction; ask detail:"full" for the section that says why' }
-        : { present: true, fields: typeof v === 'object' ? Object.keys(v).length : 0, note: 'headline only; ask detail:"full" for the whole section' })
+        // ★ RUN 226: the same 62-char note was repeated on all seven headlined sections (~430 B of the 8 000 B
+        // readability bound, spent saying the same thing seven times). The pointer is stated ONCE below
+        // (`diagnosticsBounded`) and each section keeps only the four words that are its own.
+        : { present: true, fields: typeof v === 'object' ? Object.keys(v).length : 0, note: 'detail:"full" only' })
       const view = {
         enabled: true,
         active: started,
@@ -5044,7 +5047,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
         for (const k of ['registry', 'guards', 'seams', 'reporting', 'approvalGate', 'projections', 'activity']) {
           view[k] = headline(view[k])
         }
-        view.diagnosticsBounded = 'summary headlined the seven diagnostic sections (registry / guards / seams / reporting / approvalGate / projections / activity); each is returned in full for detail:"full", and nothing else in this receipt is trimmed'
+        view.diagnosticsBounded = 'headlined (present+field count only): registry / guards / seams / reporting / approvalGate / projections / activity — detail:"full" returns each whole; nothing else here is trimmed'
       }
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING, AND THE REASON THIS PHASE TOOK SO LONG TO CLOSE. Sixty-one
       // meetings ran with no way to see that the single field which closes the institute had never been emitted. The

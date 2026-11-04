@@ -15832,3 +15832,170 @@ TOTAL 775  PASS 775  FAIL 0  (suites 667 · probes 108)
 1. **「声明」与「事实」可以同时为真，但读者要的是事实。** 行头写 `status: current` 是写下那一刻的声明，`revision` 才是此刻在册的依据；把前者报成后者，回执就成了历史学家而不是会计。RUN 222 的修法是「不再假装能算」，RUN 224 的修法是「其实能算，用行里已有的数」——第 3 条修法（去查派生所需的字段到底在不在）永远先于「声明无法计算」。
 2. **一句否认会把它的下一句变成假话。** `sourcesMeans` 前半句说「没有那个键」，后半句指 `sources.typed`——两个句子各自都真，连起来是错的。结论式措辞（「没有 X」）在同一个回执里必须与任何指向 X 的路由共存。
 3. **缺省值不是用户的选择。** `adopt` 把 `path` 的缺省值当成用户指定路径，于是拒绝了一个信息完备的请求。凡是「A 缺省 + B 已足够确定 A」的形状，应该在 B 上做派生，而不是在 A 上报错。
+
+---
+
+## §326 — 先补功能，再让审计量出真账（RUN 225 A/B/C）
+
+**326.1 这一轮的账从哪来**
+
+用户在前一轮明确改了顺序：第 60 次真机暂缓，先实现「蓝图 md 化 + 记录面重索引」「会议迟到入席 + 会内等待」「所办只编排、席位自己干活」这三块功能，**再去**建保真模拟器与多向审计（m27555 / m27562）。所以这一轮不是「又一笔真机反馈」，而是把此前只在口头/文档里存在的三件事做成机制。三块并行分派：蓝图 md（task-1）、会议生命周期（task-2）、提示词（task-3），`packs/v5r/tools.js` 这一处共享面的接线由 Lead 统一做，避免两个写者撞同一文件。
+
+**326.2 A — 蓝图有了一份可以被编辑的唯一真相**
+
+此前命题卡、方法库是「md 文件 + `state.json` 索引」，蓝图只在 records 轨里以行为唯一载体：成员能用工具改，但**人**没法用编辑器改。现在 `kernel/records.js` 新增一套 md 层：`mdWrite`（同目录临时文件 + rename，回执里 `atomic:'temp+rename'`）、`mdRead`、`mdDigest`、`mdParse`/`mdCompose`，以及 `mdReindex`——它把「文件是真相、行是索引」这件事落到对账上：文件指纹与行里的 `mdFingerprint` 相同就 `unchanged`；不同则按 md 自己的 `status`+`revision` 选行，选法写在 `changed[].rowChoice` 里而不是藏着；索引行若已被 trash，重建走 `restore` 而不是在墓碑上再写一行。
+
+蓝图的三个写点（起新草案、续写草案、采纳）都改成「先原子写 md 拿到 sha256 → 把指纹写进行 → 再 put/supersede」，读面（`state` 与 `read`）转发 `md`/`mdFingerprint`/`indexFingerprint`/`mdChangedSinceIndex`/`mdMissing`/`mdMeans`。md 的形状是给人看的：一级标题带路径与 revision，然后是一列 `- key：value`，最后 `## 正文`；md **不写自己的指纹**（自指会让文件一写就变旧）。`vibe_vmu_records { action:"reindex" }` 是这套东西的入口，署名顺序是显式 `by` > 当前回合成员 > `office`。
+
+**326.3 B — 迟到的席现在有门，也有钥匙**
+
+`kernel/meetings.js` 新增 `lateAdmission`（`open` | `chair` | `refuse`，默认 `open`，非法值具名拒并列出合法值）；迟到的人不再只是被记一笔 `late:true`，而是按政策分派：`open` 直接入席、`refuse` 具名拒（`VMU_LATE_ADMISSION_REFUSED`）、`chair` 进门口队列等主席。主席的钥匙是新动作 `admit`（服务面 `admit`，原语面具名拒并指路）：它出队、写名册与出席、在纪要里留 `late-admitted`。迟到的**主席**由开会动作本身入席，不进门口队列——否则一场会会等着一个已经在门里的人来开门。
+
+同一块还补了「会内等待」的读数：会议视图带 `waitStates[]`（`spoke` / `present` / `awaiting` / `absent`，并说这个人 `owes` 什么）与 `waitRecommended`/`waitRecommendedWhy`（三条理由）。这不是自动等待——成员不是常驻进程，谁也替不了谁——而是把「该不该等、等谁」变成可读事实。
+
+**326.4 C — 所办只编排，席位自己干活（并且这件事现在会被写进回执）**
+
+提示词侧（4 个文件，+58/−34）：所办的身份段重写成「编排者与对外接口」，删除「替成员思考」的措辞，新增**不代席行动**（写卡/发言/投票/签到/写论文/下结论必须由该席自己在其回合做完；不能拿 `member` 参数记到别人名下），并给出三个编排面（推进成员回合、推进会议回合、写报告）；新增每回合共同段 `v5r-seat-act-boundary`（三席×七 phase 各一次）；会议段的院士部分按**事件时机**重排（议程 → 召集即发耐久邀请邮件 → 预约/会前/签到/等待/推进 → 发言序 → 时长与兜底 → 推进成员回合 → 连排），并把本轮新落地的 `lateAdmission`/`admit`/`lateAfterMs` 写进去。
+
+机制侧补了这件事的**见证**：所有 pack 工具都从 `host-pack-tools.js` 的唯一派发点走，那里现在先解析「谁在行动」，当 `args.member` 是名册上真实存在的席时，回执会带 `memberActed`（调用者就是该席 ⇒ true）、`actedForMember`、`callerMember` 与 `memberActedMeans`。代写那支的措辞是直白的：记录确实写在了那个席名下，但那个席并未在自己的回合里行动，而「替一个席编排」与「代替它行动」不是同一件事。
+
+**326.5 审计脚本的第一笔账：门禁一直在量错的席位**
+
+新脚本 `scripts/audit-prompt-budget.mjs` 量四件事：每个席位每回合装配出的字符数、完全重复行占比、散文里参数名的密度、以及「散文提到但没有任何声明面提供的工具名」。它第一次跑就报出 7 条**假问题**（把宿主工具全判成不可调用）——原因是宿主的 `TOOL_NAMES` 以短名作键、`vibe_*` 全名作值，脚本读的是键。修掉之后又暴露出第二条校准错：脚本按 `academician`/`researcher` 量，而内核真正传给装配器的是**名册槽位**（`chair`/`member`/`temp`，`kernel/turn/index.js:3555` 的 `chosenRole`）。按真实槽位重新测：
+
+| 席位 | normal | meeting | checkpoint | 上限 |
+| --- | --- | --- | --- | --- |
+| chair（院士） | 32 057 | 32 058 | 32 061 | 30 000 |
+| member（常驻研究员） | 27 973 | 27 974 | 27 977 | 30 000 |
+| temp（临时工） | 26 507 | 26 508 | 26 511 | 30 000 |
+
+也就是说：**规则 T99 的 30 000 上限，在真实装配里已经被院士席破了约 2.06 K**，而 `tests/vmu-turn.test.mjs` 里的预算断言用的是 `role:'researcher'`（27 973，正好通过）——门禁一直在量一个真实回合里不会出现的角色。这是这一轮审计最有价值的产出：不是「字数有点多」，而是清单量错了对象。本轮**不**顺手改它（结构瘦身要动被 pin 住的段落，属单独一轮），把账记在这里与脚本里，作为下一轮的第一笔。
+
+同一脚本还报了一条日常账：48 个 pack 工具的描述合计 37 990 字符、均值 791（预算 700）。另有一条提醒线当场被证明设得不对：先设的 26 000 ratchet 让 member(27 973) 与 temp(26 507) 每次都红，而它们本来就在上限之内——提醒线必须活在实测值之上，否则它只会训练读者忽略报告；改成 28 500 之后，报告里只剩两条真账（chair 超上限、工具描述均值超预算）。
+
+**326.6 收口**
+
+- 定向回归：63 套全绿（含新 `vmu-run225-*` 三套 141+134+24、`vmu-meeting` 50、`vmu-meetings` 214、`vmu-turn` 272、`vmu-v5r-tools` 361、`vmu-b4-b5-blueprint` 69、`audit-vmu-docs` 103、`audit-enforced-consistency` 344）。唯一红是 `tests/vmu-meeting-invite.test.mjs` 里一条把动作 enum 的后缀写死的断言（`'invitedspeak','attend','end'`），被新动作 `admit` 插在中间打断——按原意改成 `'invitedspeak','attend','admit','end'`，69/0。
+- 契约与码表：`docs/03-interface-contract.md` 登记 `VMU_LATE_ADMISSION_REFUSED`、`VMU_MD_READ_FAILED`、`VMU_MD_WRITE_FAILED`，并把 `VMU_UNKNOWN` 明确为「只在诊断字段当兜底标签，从不用作抛出码」。
+- 生成物：`update-doc-counts --write`、`regen-all --write` 17/17 与 `--check` 全同步，四门禁 PASS。
+
+**326.7 未闭合**
+
+1. **院士席提示词超上限 2.06 K**（326.5），需要结构化瘦身：候选是「工具清单把 schema 又说一遍」「回执压缩段与逐 phase 段重复」「normal 也装配了 phase 专用块」。
+2. **门禁量错的角色**要一起改：`tests/vmu-turn.test.mjs` 的预算断言应量最坏槽位（chair）而不是 `researcher`。
+3. **`mdReindex` 只覆盖蓝图**：命题卡/方法库早就是 md + 索引，但还没有统一的对账入口；跨轨合一对账留待下一轮。
+4. **服务级会议状态没带等待读数**：等待块只进了单会视图（`summary`/`meetingView`），`status` 的全所视图还没接。
+5. **`lateAfterMs` 默认 0**：生产配置下没人会迟到，三政策默认不会被走到，需要部署时显式声明。
+6. **审计脚本尚未进门禁**：`--check` 现在会红（它量出了真问题），等 1、2 两条修完再挂进四门禁。
+7. **尚未真机复验**：三块功能都只有机器化证据，第 60 次真机要等审计清零之后。
+
+**326.8 三教训**
+
+1. **审计脚本的第一版一定会量错东西，而量错的方式恰好是最危险的那种。** 它把宿主工具判成不可调用（读错了字典的哪一半），又把 32 057 字的院士提示词量成 24 507（读错了角色的名字）。两个错都朝「看起来没问题」的方向，所以第一版审计报告必须**手工复核一条**再相信其余的。
+2. **一个「提醒线」的取值不能是凭空的。** 26 000 的 ratchet 一次就跑出两条问题，说明它不是在防增长，而是在记录作者当时的心情；提醒线应当从当前实测值往上留余量，否则它只是一条恒红的装饰。
+3. **给机制补上「见证」，比拼措辞更能改行为。** 「不要代替成员行动」这句话在提示词里写了很久，真正的转折是回执开始带 `memberActed`：从这一刻起，代写不再是一个可以含糊的措辞问题，而是一个会被读到的字段。
+
+## §327 — 一把量错对象的尺，和同一句话说七遍（RUN 226）
+
+RUN 225 收尾时留下的审计台账只有三行，但其中两行是「工具的问题」而不是「对象的问题」：预算门禁量的是宪章的**来源角色**
+（`researcher`），真机传下去的是**名册槽位**（`chair`）；工具描述均值取的是 48 条里的平均数，而宿主每次发送的是**全部**。
+这一轮的目标不是再修几个字，而是先把尺校准，再让校准后的尺自己指出该改哪里。
+
+**327.1 校准这件事本身就有两笔账**
+
+1. **量法补全**：真机装配除了 `turn.role`，还传 `bindings: PACK.bindings`（生产入口 `vibe-math-vmu/vibe-math-vmu.js:658`、
+   `:1159-1164`）与 `settings`（`kernel/turn/index.js:2001-2013`）；不传 bindings 时 chair 的 role 段整段不渲染，提示词
+   **假短 4 620 字**。夹具模式也要写死 `v5r.fixtureMode:'tools'`（部署如此），否则再短约 2.2 K。修正后同口径真值：
+   chair `38 478 / 41 060 / 39 736 / 38 625`（normal / verify / meeting / checkpoint），member 最坏 32 360，temp 最坏 29 001。
+2. **判定改成最坏相位**：门禁不再只看 `normal`，四个相位都量，取最大值判定；`tests/vmu-turn.test.mjs` 的 T99 断言此前用
+   `role:'researcher'`（量到 27 973 就通过），正是这条让 38 K 的院士提示词长期无人发现——**检查的东西和跑的东西不是同一个对象**。
+
+**327.2 三块瘦身（`+309/−342`，8 文件，未改任何 pin 的语义）**
+
+1. **相位门控**（`packs/v5r/middleware/prompt-switches.js`）：新增 `PHASE_ONLY_SECTIONS`，`formal-plan` / `formal-review` /
+   `formal-blocked` 只在 `verify|verify-debate` 渲染，新拆出的会中手册 `v5r-turn-meeting-chamber` 只在 `meeting` 渲染；并且
+   `decideSections` 改成**双向**（`enabled: phases.includes(phase)`）——只 push `false` 会跨回合泄漏：loop 复用 section 对象，
+   一旦在 founding 被关掉，到 verify 仍是关的，verify 装配只剩 20 221 字。这是 `vmu-prompt-type-coverage` 的结构断言逮到的真缺陷。
+2. **拆段与压缩**（`v5r-blocks-b.js` / `v5r-core.js` / `v5r-assistant.js`）：会议调度段 831 字保留 ①②③⑦，新段 841 装 ④发言序
+   ⑤时长 ⑥推进回合；`v5r-fixture-tools` 2 749→约 2 200；三席 prose 重写（`★` 级小标题保留）；`report-duty`、`board`、
+   `tracks`、`polls`、`chat-admin`、`libraries`、`voting`、`reply-compact` 逐段语义合并。
+3. **席位教学单点**（`packs/v5r/seat-faces.js`）：`SEAT_TEACHING` chair **6 040→4 112**、member 2 304→1 911、temp 774→626，
+   工具名、一句用途与 run33 全部 pin 短语逐条保留；40 条 bullet 仍由 `seatBulletLines()` 渲染，与 `toolFaces` 同源。
+
+修后同口径：chair `31 306 / 34 938 / 33 814 / 31 453`、member 最坏 29 088、temp 最坏 26 361；no-tools 模式各再低约 2 K。
+
+**327.3 工具描述瘦身（`packs/v5r/tools.js` 11 条 description）**
+
+只动最长的 11 条：`record_proposition` 3 799→2 434、`meeting` 3 694→2 274、`verdict_ask` 2 842→1 863、`verdict_final`
+2 382→1 849、`meeting_round` 1 945→1 501、`say` 1 838→1 377、`blueprint` 1 777→1 522、`verified_promote` 1 604→1 425、
+`paper` 1 316→1 037、`verdict` 1 167→998、`lean_run` 1 036→782。合计 37 990→**31 652**、均值 791→**659**、最大 3 799→2 434。
+删的是参数规则复述、回执字段枚举、`state.json`/内核函数名一类实现细节与跨描述重复的 caveat；留的是一句话用途、决定
+「是否该调用」的前置条件、以及所有被测试 pin 住的句子。**零测试文件被改**——如果有 pin 逼着改，那就说明删错了东西。
+
+**327.4 `status` 默认 summary 8 079 B 超可读上界**
+
+根因不是某块新内容，而是**同一句 62 字 note 在七个诊断段各印一遍**（≈430 B）再加一句 220 B 的 `diagnosticsBounded`。修法：
+每段只留 `note: 'detail:"full" only'`，指针在 `diagnosticsBounded` 里说**一次**并列出七个段名；语义不变（每段仍是
+`present` + `fields` 计数，`detail:"full"` 仍返回整段）。`tests/vmu-host.test.mjs` 由 212/1 到 **213/0**。
+
+**327.5 回归中被迫恢复的四处（pin 不是敌人，是记忆）**
+
+瘦身撞上 7 条 pin，全部按「恢复被测原文」处理而不是改断言（只授权改了一行 `vmu-assistant-assembly`）：
+`vmu-run89-scheduled-at` §4 恢复「你没有自己的钟，偏移由内核换算」；`vmu-run93b-math-vocabulary` §7 恢复两句服务会议读议程的原文；
+`vmu-turn` T82 恢复 `OOM 会丢掉全部未落盘工作`、T136 让新拆出的 `v5r-turn-meeting-chamber` 也带三席文本（`kind:'role'` 的块
+必须三席齐备，否则 `CHARTER_SECTIONS` 的基线兜底重新变成活代码）；`vmu-v5r-tools` 恢复三席的信箱四句话与「框架不会替你安装，
+也不会静默假装成功」；`vmu-run136` 恢复「带 priority 的条目真改任务板的优先级（回执给 from→to 与 applied）」；
+`check-rules-coverage` 恢复被压掉的 7 条主线／所办台账逐字证据。**因 pin 拒绝的裁剪已写进报告**（A4 corrections 相位门控、
+`v5r-formal-work` 保持 shared、lean 语料原句），下一轮不要再试。
+
+**327.6 机器化与收口**
+
+- 新审计入口：`node scripts/audit-prompt-budget.mjs`（`--check` 进四门禁的补充检查）输出三席 × 四相位实测、
+  完全重复行占比、散文参数密度、不可调用工具名，以及工具描述合计／均值／最大；判定：member/temp 任何相位 > 30 000 记 problem，
+  chair > 36 000 记 problem，30–36 K 记 WARNING `SEAT_PROMPT_OVER_T99`。
+- 台账 `docs/acceptance/prompt-budget-findings.md` 重写：F1 FIXED-as-debt（chair 33 583，压到 30 000 需 seat-faces 由工具声明
+  单源生成，属下一轮结构改动）、F2 FIXED（量槽位 + 补 bindings/settings）、F3 FIXED（659）、F4 FIXED（summary 去重），
+  并新增第四条假问题「真机装配其实少了两个参数」——这是本台账最大的假数。
+- 定向回归 39 套全绿（含 `vmu-turn` 272/0、`vmu-v5r-tools` 361/0、`prompt-v5-integrity` 574/0、`vmu-run31-seat-faces` 86/0、
+  `audit-vmu-docs` 103/0、`audit-declaration-criterion` 91/0、`audit-doc-actions` 61/0、`audit-enforced-consistency` 344/0）。
+
+**327.6b 第二次全量 T1 又逮到五处（同一类病：瘦身压掉了被 pin 的语义）**
+
+全量 T1 `TOTAL 778 PASS 773 FAIL 5`，五条红全部是「散文被压短，句子里的事实消失了」，而不是「断言过时」：
+
+| 套件 | 少了什么 | 修法 |
+|---|---|---|
+| `vmu-prompt-closure-channel` | `v5r-fixture-tools` 的回执样例把 `{"solved":false}` 与 `{"vote_solved":false}` 塞进**同一个子句**，而该子句恰好讲结题表决 ⇒ RULE C 判「给裸 solved 与结题并列」 | 拆成两句：结题表决只讲 `vote_solved`，个人本轮判断另起一句讲 `solved`（不计票） |
+| `vmu-run102-panel-types` | `成员席位只能改自己的` 被压缩成 `成员只能改自己的` | 恢复「席位」二字（说的是**席位**，不是人） |
+| `vmu-run150-verdict-channel` §2n4 | 新写的会议回合教学用 `vibe_v5_meeting { action:"attend", meeting, member }`，而该面声明的是 `id` | 改成 `{ action:"attend", id, member }` |
+| `vmu-run58-lean-face-contract` | 只剩一个「工具 + 工作目录」的 Lean 教学块（要求 ≥2），瘦身时把 `v5r-formal-plan` 的工作目录行删了 | 把带**库根**规则的那两行放回 `v5r-formal-plan`（短路径必须按库根解析，否则具名拒 `VMU_LEAN_FILE_UNREADABLE`） |
+| `audit-doc-line-refs` | `v5r-blocks-a.js` 从 732 行缩到 618 行，`vibe-math-vmu/docs/audit/source-prompt-coverage.md` 与 `docs/acceptance/phase3-parity-monolith-collab.md` 里的 7 处行号全部 out-of-range；且「字段目录」三个站点已搬到 `v5r-reply-channel.js:187/188/223` | 按新行号逐处 re-anchor（`{{ roleLabel }}` 标题 578–581、会议块 581、数组形会议块 573–585），并把行数声明改成 618 / 998 / 173 |
+
+修完单跑：`vmu-prompt-closure-channel` 24/0、`vmu-run102-panel-types` 33/0、`vmu-run150-verdict-channel` 71/0、
+`vmu-run58-lean-face-contract` 7/0、`audit-doc-line-refs` 9/0（resolved 4481 / historical-excused 152）；提示词上限
+`chair verify 33 845`（较 33 583 增 262 字，仍低于 36 000 硬上限，警告保留）。
+
+**教训（第 4 条）**：**压缩散文不是删字数，是删「句子之间的区别」。** 这一轮五条红全都可以用一句话概括——被删掉的
+不是废话，而是「这个字段说的是谁」「这个参数叫什么」「第二个教学块在哪里」。它们都不长，但每一个都承载着一次历史
+事故的记忆。
+
+**327.6c 收口证据（第三次冷全量）**
+
+修完 §327.6b 的五处后，干净树冷全量 `/d/_tmp/t1-r1510-run226b.log`：**`TOTAL 778 PASS 778 FAIL 0`（suites 670 · probes 108）**——
+这是 RUN 225 + RUN 226 两轮合并的发布级证据。四门禁（`PREFLIGHT` / `DOC LINT` / `RULES COVERAGE` / `RULE PARITY`）全 PASS，
+`regen-all --check` 17/17 in sync，`audit-prompt-budget` = chair verify 33 845（1 warning，硬上限 36 000）。
+
+**327.7 未闭合**
+
+1. chair 33 583 仍高于 T99 的 30 000 ⇒ 记债；下一步是 `seat-faces.js` 的 40 条 bullet（4 112）由工具声明单源生成摘要，
+   以及 `reply-compact`（约 3 300）改由回执 schema 渲染，预计再省 3–4 K。
+2. `v5r-corrections` 的 655 字仍每回合常驻（`vmu-prompt-corrections` §5 的 pin 否掉了相位门控）。
+3. 提示词瘦身只改了文字，**没有改「席位自己干活」的机制面**——`vibe_vmu_turn { op:"drive" }` 是否真被所办调用，仍要靠真机验。
+4. 第 60 次真机仍未跑（用户指示：先把功能与脚本补齐、审计清零，再跑真机）。
+
+**327.8 三教训**
+
+1. **量错对象的尺比没有尺更糟。** 首版审计把宿主工具判成不可调用、把 32 K 的提示词量成 24.5 K——两个错都朝「看起来没问题」
+   的方向，所以它差点成了「我们已经达标」的证明。校准之后第一件事不是庆祝数字变小，而是**去核一条同类项**。
+2. **重复散文按次数付费。** 可读上界是总量约束：同一句 62 字的话印七遍就是 430 字节。先找「同一句话说几遍」，再找「哪句最长」。
+3. **pin 失败先问「它记得什么」。** 这一轮 7 条红全是「原文被压掉」，不是「断言过时」；把原文原样放回去，比改断言便宜，也更诚实。

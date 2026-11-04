@@ -282,8 +282,8 @@ try {
     '★★ and it names the actions that do NOT cross, instead of implying "everything works through the other face"', null)
   const toolSrc = await readFile(join(REPO, 'vibe-math-vmu', 'tools', 'meeting.js'), 'utf8')
   ok(/enum: \['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order'/.test(toolSrc) &&
-    /'invitedspeak', 'attend', 'end'/.test(toolSrc),
-    '★ the declared action enum carries the two actions that were MISSING routes (order, attend)', null)
+    /'invitedspeak', 'attend', 'admit', 'end'/.test(toolSrc),
+    '★ the declared action enum carries the two actions that were MISSING routes (order, attend) plus RUN 225-B admit', null)
 
   // ── ⑩ SCHEDULING (「院士可以预约会议的召开时间」): the pack face can now really schedule, and the state is read back ─────
   console.log('=== 10. 预约: `vibe_v5_meeting { at }` schedules; the state is READ BACK, not assumed ===')

@@ -555,66 +555,24 @@ export const v5rFixtureTools = Object.freeze({
   // forbidden). The v5r words academician/researcher therefore NEVER match; the slots are the real vocabulary.
   scope: Object.freeze({ role: Object.freeze(['chair', 'member', 'temp']) }),
   text: [
-    '【SLV 夹具约束｜本轮调用工具】',
-    '本轮**可以且应该**调用你自己的工具：边做边记录，不要把动作攒到回合末尾。',
-    '',
-    '★ 记录本契约（机制边界，不是建议）：**先确认你的记录本落在哪个库根，再谈它是不是“私有草稿”**——不要假定它是私有的。看你手里的记录回执：若 `libraryRoot`（或记录行回执里的根路径）与所办读到的是同一个根，那么“我在库里写了卡”就**等于**“研究所登记了这张卡”，因为成员回合的内核就跑在同一个工作区根上（第 56 次真机实测：所办直接按 id 读到了成员 r-1 写的卡，owner 也是 r-1）。只有在你的记录回执显示**另一个**根时，那些记录才是本地草稿。',
-    '所以：要把某个结论正式立项，最稳的做法仍是把卡片素材写进你的**回执**（回执字段），由**所办**核对后记进研究所记录本——两种情况都要以回执里的 `libraryRoot` / `recordId` 为证：不要凭“我写过了”就当成已登记，也不要凭“大概是私有的”就当成没登记。',
-    '★ 有一个例外，读完再用这句话：**蓝图/协议（blueprint）草案不是私有的**——你 propose 的那一段写进的是全所共享的同一份草案，'
-      + '别的成员的子内核也读得到它，下一次有人续写就在你的文字上写。所以“只是提一版试试、不提就没了”在蓝图这一面不成立：'
-      + '不想要的话：**采纳之前**可以让所办按 id 把整份草案 prune 掉；**采纳之后**它已经是现行协议的一部分，prune 只能整行移走（会把现行版一起移走），没有“只删掉一段文字”的路——所以诊断性文字请写进 `note`，不要把共享草案当草稿纸。',
-    '本提示词的「本角色可用的工具｜<你的角色>」段按你的席位列出该角色的工具与一句用途 —— 它是**角色职责清单**，',
-    '不承诺「本回合已挂载」。本回合真正挂载了哪些，以宿主装配时给出的「本轮你实际能调用的工具」段为准（该段由宿主写入）；',
-    '若提示词里没有那一段，说明本轮提示词不是宿主装配的，工具面就是你所在角色的默认面。不确定时可调用',
-    '调用工具后结果立即可见；**回执可以很薄**——动作已经由工具完成了，回执只需说明"这一轮做了什么、下一步是什么"，不要为了凑长篇而重复工具已经记录的内容。',
-    // ★ PHASE 12 (F5) taught a TOOL ARGUMENT (`vibe_vmu_turn {op:"reply", report:{…}}`) after an end-of-turn JSON TEXT
-    // was retired. ★ ROUND 35 (real machine, run 35, BAD_JSON=14): that argument is itself unreachable here — a member
-    // turn is dispatched by the host (activation delivery), so no prompt is ever awaiting and the kernel refuses with
-    // VMU_TURN_NO_PENDING_MEMBER; the members answered in prose because the prompt had forbidden the fence, which is the
-    // channel the parser has always accepted. The fence is now the taught channel, and `op:"reply"` is named + refused.
-    '回执**就是你本次回复的正文**：在正文末尾用一段代码围栏（三个反引号开头，标记写 json 或省略）包一个 JSON 对象（形状样例见下面几行）。'
-      + '★ 本会话里**不要**调用 `vibe_vmu_turn { op: "reply", report: { … } }`：成员回合由宿主派发（activation 投递），没有「待回的回合」，调用只会得到具名拒 `VMU_TURN_NO_PENDING_MEMBER`；'
-      + '既没有围栏也没有对象 ⇒ `VMU_TURN_NO_FENCE`，围栏里的 JSON 不合法 ⇒ `VMU_TURN_BAD_JSON`。',
-    // ★ G7 (real machine): members quoted tool receipts containing `{}` in their reply prose, the first brace opened
-    // the reply object and the whole turn was rejected as VMU_TURN_BAD_JSON. This is a prompt obligation, not a parser bug.
-    '回执正文里【不要】粘贴 JSON 对象或工具回执原文；需要引用时用一句话概括（正文里的大括号会被当成回执边界）。',
-    // ★ PHASE 7 round 15 (real-machine defect): this used to say "把 code 与 hint 写进回执的 note" — but `note` is NOT
-    // a top-level field the kernel accepts (`FIELDS` ∪ `RECORDED_FIELDS`), so that advice itself produced
-    // VMU_TURN_UNKNOWN_FIELD. The refusal text has to go somewhere that IS accepted.
-    '若某个工具被具名拒绝：把它的 code 与 hint 写进 **progress 的 body 里**（或下一次工具调用的参数里），**不要**新增 `note` 之类的顶层字段。',
-    // ★ PHASE 7 round 15: THE RECEIPT CONTRACT. The real machine's members finished their tool work and then wrote a
-    // RICH receipt (`note` + `solved` + `vote_solved` + `meeting_hand` + `record` + a string `progress`) ⇒
-    // "unknown reply field(s)" ×9 and the whole turn was voided. The allowed top-level fields come from the kernel's own
-    // catalogue (`kernel/turn/index.js` FIELDS ∪ RECORDED_FIELDS, 29 names), but for a thin receipt only these four are
-    // ever needed.
-    '★★ 回执契约（本夹具的收敛口径）：这四个字段就够了 —— progress / say / solved / vote_solved；但内核**另接受 29 个已登记字段**（`formal`、`record`、`meeting_hand` 等，完整清单见上面的「回执字段」段）——写了不算错，只是本夹具不要求。★ `note`、`plan` 之类**不在内核字段清单**里，写了会被判 `VMU_TURN_UNKNOWN_FIELD`；`record`/`meeting_hand` 虽在内核清单里，但本夹具要求用工具做、**不要写进回执**。',
-    '★★ 已经用工具做完的动作，**不要再写进回执**；回执只放"没有工具对应的纯决定"（例如是否结题）。',
-    // ★★★ PHASE 12 / R15 (live run 12, the agent's finding c): THIS LINE USED TO OFFER `{"solved": false}` AS AN
-    // EQUIVALENT "minimal receipt" beside `vote_solved`, and the line below paired `{"solved":false}` with
-    // 「结题表决只走回执」. The kernel is explicit about the split (`kernel/turn/index.js` `RECORDED_FIELDS` loop:
-    // `vote_solved` is the CLOSURE vote, `solved` is only the per-round judgement and is never counted), so a member
-    // that copied the `solved` sample VOTED NOTHING while the receipt said `accepted:true` - the institute could not
-    // close. A prompt may not teach a field that does not vote as if it voted.
-    '★★ 最小合法回执（可直接照抄）：**结题表决用 `{"vote_solved": true|false}`（只有它计结题票）**；个人本轮判断用 `{"solved": false}`（**不计票**）；要写进展就 `{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"…"}}`，**不要**把 progress 写成字符串。',
-    // ★ PHASE 7 round 14: COPY-PASTE samples, taken from the kernel's real shapes (records.put args / the declared
-    // kinds). The real machine proved why this is needed: a member guessed `"progress": "长叙述"` and every write of the
-    // turn failed with "unknown record track: undefined".
-    '★★ 一次工具调用只做一件事；不要把多个动作攒进一个字段。',
-    '★★ 回执的形状样例（可直接照抄；progress 必须是**一个对象**，不是字符串/数组）：',
-    '   · {"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"这一轮做了什么与下一步"}}',
-    '   · {"say":"已经在群里说过的一句话"}（已经用 vibe_v5_say 说过时，回执里可只留一句说明）',
-    '   · {"vote_solved":false}（结题表决只走回执；它不是工具）',
-    '   · 写卡片请直接用工具（vibe_v5_record_*），**不要**把卡片塞进回执的 record 字段。',
-    '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
-    // ★★★ RUN 151 (real machine, run 1 feedback/file evidence): the taught BLUEPRINT shape omitted `member` and the
-    // tool refuses with `blueprint (proposal) needs the acting member id` (4× in one run); `vibe_v5_task_update` with
-    // action "claim" refuses the same way (`claim needs the claiming member`, 2×). Both were taught WITHOUT the field,
-    // so a member that followed the prompt was refused. The opposite error also showed up: members added `member` to
-    // `vibe_v5_set`/`vibe_v5_configure`, which declare other shapes and refuse unknown parameters. Both directions are
-    // one sentence of fact, and this section is the tools-mode variant (the production deployment), not the thin
-    // no-tools receipt used by the budget test.
-    '★ 按席位记账的工具要带 `member: "<你的 id>"`：`vibe_v5_blueprint { action: "propose", path, text, member }`、`vibe_v5_task_update { task_id, expected_revision, action: "claim", member }`、`vibe_v5_say { …, member }` 都容易被漏掉；漏了会被具名拒 `VMU_INVALID_ARGUMENT`（hint 会点名该补什么）。',
-    '★ 但**不是每个工具**都要 member：`vibe_v5_set { key, value, why }`、`vibe_v5_configure { project, institute, problem, params }` 只收它们声明的形参——多写一个未知参数同样会被具名拒（`does not accept parameter(s) …`），照工具表 description 写，不要猜。',
+    "【SLV 夹具约束｜本轮调用工具】",
+    "本轮**可以且应该**调用你自己的工具：边做边记，不要把动作攒到回合末尾。",
+    "",
+    "★ 记录本契约（机制边界，不是建议）：**先确认你的记录本落在哪个库根，再谈它是不是「私有草稿」**——看手里的记录回执里的 `libraryRoot`（或根路径）：与所办读到的是同一个根，那么「我在库里写了卡」就等于「研究所登记了这张卡」（成员回合的内核跑在同一工作区根上）；只有回执显示**另一个**根时才是本地草稿。要把结论正式立项，最稳仍是把卡片素材写进**回执**，由**所办**核对后记进研究所记录本——两种情况都以回执的 `libraryRoot` / `recordId` 为证，不要凭「我写过了」或「大概是私有的」下判断。",
+    "★ 例外：**蓝图/协议（blueprint）草案不是私有的**——propose 的段落写进全所共享的同一份草案，别人续写就在你的文字上写。不想要：**采纳之前**可让所办按 id 把整份草案 prune 掉；**采纳之后**它已是现行协议，prune 只能整行移走，所以诊断文字写进 `note`，别把共享草案当草稿纸。",
+    "本提示词的「本角色可用的工具」段是**角色职责清单**，不承诺「本回合已挂载」；本回合真正挂载了哪些，以宿主装配的「本轮你实际能调用的工具」段为准。",
+    "调用工具后结果立即可见；**回执可以很薄**——动作已由工具完成，回执只说这轮做了什么、下一步是什么。",
+    "★ 回执**就是你本次回复的正文**：在末尾用一段代码围栏（三个反引号开头，标记写 json 或省略）包一个 JSON 对象。★ **不要**调用 `vibe_vmu_turn { op: \"reply\", report: { … } }`：成员回合由宿主派发，没有待回的回合，调用只会得到 `VMU_TURN_NO_PENDING_MEMBER`；既没有围栏也没有对象 ⇒ `VMU_TURN_NO_FENCE`，围栏里的 JSON 不合法 ⇒ `VMU_TURN_BAD_JSON`。",
+    "★ 回执正文里【不要】粘贴 JSON 对象或工具回执原文；需要引用时用一句话概括（大括号会被当成回执边界）。",
+    "★ 若某个工具被具名拒绝：把它的 code 与 hint 写进 **progress 的 body 里**（或下一次工具调用的参数里），**不要**新增 `note` 之类的顶层字段。",
+    "★★ 回执契约（本夹具的收敛口径）：这四个字段就够了——progress / say / solved / vote_solved；但内核**另接受 29 个已登记字段**（`formal`、`record`、`meeting_hand` 等，完整清单见上面的「回执字段」段），写了不算错、只是本夹具不要求。★ `note`、`plan` 之类**不在内核字段清单**里，写了会被判 `VMU_TURN_UNKNOWN_FIELD`；`record`/`meeting_hand` 虽在内核清单里，但本夹具要求用工具做、不要写进回执。",
+    "★★ 已经用工具做完的动作不要再写进回执；回执只放没有工具对应的纯决定（例如是否结题）。",
+    "★★ 最小合法回执：**结题表决用 `{\"vote_solved\": true|false}`（只有它计结题票）**；个人本轮判断用 `{\"solved\": false}`（**不计票**）；要写进展就 `{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"…\"}}`，**不要**把 progress 写成字符串。",
+    "★★ 一次工具调用只做一件事；回执形状样例：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"…\"}}、{\"say\":\"已经说过的一句话\"}。结题表决用 {\"vote_solved\":false}（只走回执，它不是工具）；个人的本轮判断用 {\"solved\":false}（不计票）。",
+    "★★ 写卡片请直接用工具（`vibe_v5_record_*`），**不要**把卡片塞进回执的 record 字段。",
+    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
+    "★ 按席位记账的工具要带 `member: \"<你的 id>\"`：`vibe_v5_blueprint { action: \"propose\", path, text, member }`、`vibe_v5_task_update { task_id, expected_revision, action: \"claim\", member }`、`vibe_v5_say { …, member }`，漏了会被具名拒 `VMU_INVALID_ARGUMENT`（hint 会点名该补什么）。",
+    "★ 但**不是每个工具**都要 member：`vibe_v5_set { key, value, why }`、`vibe_v5_configure` 只收声明的形参，多写未知参数同样会被具名拒，照工具 description 写。",
   ].join('\n'),
 })
 
@@ -653,19 +611,19 @@ export const v5rFixtureTools = Object.freeze({
  * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
  */
 const V5R_PROSE_CHAIR = Object.freeze([
-    '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"},"solved":false}；★ progress 必须是**一个对象**（不是字符串/数组），kind 只能是已声明的（如 progress）。',
-    '★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可能多次（互审全票通过后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳过阶段。',
-    '★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。',
-    '★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。',
-    '★★【紧急】只表示：发送方希望你【及时 / 在线】回复。它【不代表】内容更重要、【也不代表】你必须立刻中断手上的推导。除这种情况外，一律走非紧急留言（默认），这样才不会因为频繁高强度交互而偏离原任务、拖慢进度。',
-    '★ 你若需要等别人回你，用 vibe_v5_wait（等到就返回）；不要用反复轮询。',
-    '★ 动手前先探环境：要跑 python／Lean／LaTeX 之前，先用 vibe_vmu_env {action:\'probe\', need:\'…\'} 探一次；探通了再跑。',
-    '★★ 探不通不要硬试：探测失败是【正常结果】（ok:false），不要换着花样反复重试，更不要自己改系统或安装任何东西 —— 框架不会替你安装，也不会静默假装成功。',
-    '★★ 探不通就上报：用 vibe_vmu_env {action:\'report\', need:\'…\', why:\'为什么这轮需要它\'} 记一条 environment-missing 的 finding ⇒ 主代理会读到它。',
-    '★★★ 主代理（所办，不是院士席）职责：读到 environment-missing 的 finding 时，向用户报告缺什么、给出 installCommand（可先用 vibe_vmu_env {action:\'probe\', need:\'…\'} 回执里的 installCommand），并请求授权（引导用户自己装，或经用户明确授权后再部署）。',
-    '★★★★ 未获授权前不要尝试安装、不要改用户的系统 —— 这条优先于"把任务做完"。',
-    '★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位。。\n    若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准；没有该约束时，上表就是你现在真的能调用的工具。',
-    '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
+    "★★ 回执样例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；★ progress 必须是**一个对象**（不是字符串/数组），kind 只能是已声明的（如 progress）。",
+    "★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可多次（互审全票后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳阶段。",
+    "★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。",
+    "★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。",
+    "★★【紧急】只表示：发送方希望你【及时 / 在线】回复。它【不代表】内容更重要、【也不代表】你必须立刻中断手上的推导。除这种情况外，一律走非紧急留言（默认），这样才不会因为频繁高强度交互而偏离原任务、拖慢进度。",
+    "★ 要等别人回你就用 vibe_v5_wait（等到就返回），不要反复轮询。",
+    "★ 动手前先探环境：跑 python／Lean／LaTeX 前先 vibe_vmu_env {action:'probe', need:'…'}，探通了再跑。",
+    "★★ 探不通不要硬试：探测失败是【正常结果】（ok:false），不要换花样反复重试，也不要改系统或装任何东西——框架不会替你安装，也不会静默假装成功。",
+    "★★ 探不通就上报：vibe_vmu_env {action:'report', need:'…', why:'为什么这轮需要它'} 记一条 environment-missing 的 finding ⇒ 主代理会读到。",
+    "★★★ 主代理（所办，不是院士席）职责：读到 environment-missing 的 finding 时，向用户报告缺什么、给出 installCommand（可取自 probe 回执），并请求授权（引导用户自己装，或经用户明确授权后再部署）。",
+    "★★★★ 未获授权前不要尝试安装、不要改用户的系统——这条优先于「把任务做完」。",
+    "★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位。若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。",
+    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
 ])
 
 export const v5rToolSectionAcademician = Object.freeze({
@@ -693,20 +651,20 @@ export const v5rToolSectionAcademician = Object.freeze({
  * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
  */
 const V5R_PROSE_MEMBER = Object.freeze([
-    '转达所办口吻的消息不是你的职责（那是院士的）；所内全局视图也不是（仅院士）。',
-    '★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可能多次（互审全票通过后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳过阶段。',
-    '★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。',
-    '★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。',
-    '★★【紧急】只表示：发送方希望你【及时 / 在线】回复。它【不代表】内容更重要、【也不代表】你必须立刻中断手上的推导。除这种情况外，一律走非紧急留言（默认），这样才不会因为频繁高强度交互而偏离原任务、拖慢进度。',
-    '★ 你若需要等别人回你，用 vibe_v5_wait（等到就返回）；不要用反复轮询。',
-    '★ 动手前先探环境：要跑 python／Lean／LaTeX 之前，先用 vibe_vmu_env {action:\'probe\', need:\'…\'} 探一次；探通了再跑。',
-    '★★ 探不通不要硬试：探测失败是【正常结果】（ok:false），不要换着花样反复重试，更不要自己改系统或安装任何东西 —— 框架不会替你安装，也不会静默假装成功。',
-    '★★ 探不通就上报：用 vibe_vmu_env {action:\'report\', need:\'…\', why:\'为什么这轮需要它\'} 记一条 environment-missing 的 finding ⇒ 主代理会读到它，并由主代理向用户请求授权。',
-    '★ 未获授权前不要尝试安装、不要改用户的系统：等主代理告诉你用户已授权再动。',
-    '★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位，调用只会被具名拒。',
-    '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"},"solved":false}；★ progress 必须是**一个对象**（不是字符串/数组）。',
-    '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
-    '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
+    "转达所办口吻的消息不是你的职责（那是院士的）；所内全局视图也不是（仅院士）。",
+    "★ 论文流程：start → part → advance → review → render；advance 可多次（互审全票后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳阶段。",
+    "★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。",
+    "★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。",
+    "★★【紧急】只表示：发送方希望你【及时 / 在线】回复。它【不代表】内容更重要、【也不代表】你必须立刻中断手上的推导。除这种情况外，一律走非紧急留言（默认）。",
+    "★ 要等别人回你就用 vibe_v5_wait，不要反复轮询。",
+    "★ 动手前先探环境：跑 python／Lean／LaTeX 前先 vibe_vmu_env {action:'probe', need:'…'}，探通了再跑。",
+    "★★ 探不通不要硬试：探测失败是【正常结果】（ok:false），不要反复重试，更不要改系统或装任何东西——框架不会替你安装，也不会静默假装成功。",
+    "★★ 探不通就上报：vibe_vmu_env {action:'report', need:'…', why:'…'} 记一条 environment-missing 的 finding，主代理会读到并请示用户授权。",
+    "★ 未获授权前不要尝试安装、不要改用户的系统：等主代理告诉你用户已授权。",
+    "★ 清单之外的工具不要尝试调用：没列出的名字属于别的席位，调用只会被具名拒。",
+    "★★ 回执样例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；★ progress 必须是**一个对象**（不是字符串/数组）。",
+    "若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。",
+    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
 ])
 
 export const v5rToolSectionResearcher = Object.freeze({
@@ -734,20 +692,21 @@ export const v5rToolSectionResearcher = Object.freeze({
  * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
  */
 const V5R_PROSE_TEMP = Object.freeze([
-    '招人、汇报与全局视图不是临时席位的职责（那是院士与常驻研究员的工具）。',
-    '★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可能多次（互审全票通过后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳过阶段。',
-    '★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。',
-    '★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。',
-    '★★【紧急】只表示：发送方希望你【及时 / 在线】回复。它【不代表】内容更重要、【也不代表】你必须立刻中断手上的推导。除这种情况外，一律走非紧急留言（默认），这样才不会因为频繁高强度交互而偏离原任务、拖慢进度。',
-    '★ 你若需要等别人回你，用 vibe_v5_wait（等到就返回）；不要用反复轮询。',
-    '★ 动手前先探环境：若你的工作要用到外部环境（python／Lean／LaTeX），先用 vibe_vmu_env {action:\'probe\', need:\'…\'} 探一次；探通了再跑。',
-    '★★ 探不通不要硬试：探测失败是【正常结果】（ok:false），不要换着花样反复重试，更不要自己改系统或安装任何东西 —— 框架不会替你安装，也不会静默假装成功。',
-    '★★ 探不通就上报：用 vibe_vmu_env {action:\'report\', need:\'…\', why:\'为什么这轮需要它\'} 记一条 environment-missing 的 finding ⇒ 主代理会读到它，并由主代理向用户请求授权。',
-    '★ 未获授权前不要尝试安装、不要改用户的系统：等主代理告诉你用户已授权再动。',
-    '★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位，调用只会被具名拒。',
-    '★★ 回执样例（可直接照抄）：{"progress":{"track":"progress","kind":"progress","title":"本轮进展","body":"做了什么与下一步"}}；★ progress 必须是**一个对象**（不是字符串/数组）。',
-    '若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。',
-    '★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。',
+    "招人、汇报与全局视图不是临时席位的职责（那是院士与常驻研究员的工具）。",
+    "★ 论文流程：start→part→advance→review→render；advance 可多次（互审全票后才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳阶段。",
+    "★ 你的结果落在分给你的那张任务与回执上，不另立研究卡。",
+    "★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。",
+    "★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。",
+    "★★【紧急】只表示：发送方希望你【及时 / 在线】回复。它【不代表】内容更重要、【也不代表】你必须立刻中断推导；除这种情况外一律走非紧急留言（默认）。",
+    "★ 要等别人回你就用 vibe_v5_wait，不要反复轮询。",
+    "★ 动手前先探环境：跑 python／Lean／LaTeX 前先 vibe_vmu_env {action:'probe', need:'…'}，探通了再跑。",
+    "★★ 探不通不要硬试：探测失败是【正常结果】（ok:false），不要反复重试，更不要改系统或装任何东西——框架不会替你安装，也不会静默假装成功。",
+    "★★ 探不通就上报：用 vibe_vmu_env {action:'report', need:'…', why:'为什么这轮需要它'} 记一条 environment-missing 的 finding ⇒ 主代理会读到它，并由主代理向用户请求授权。",
+    "★ 未获授权前不要尝试安装、不要改用户的系统：等主代理告诉你用户已授权再动。",
+    "★ 清单之外的工具不要尝试调用：没列出的名字属于别的席位，调用只会被具名拒。",
+    "★★ 回执样例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；★ progress 必须是**一个对象**（不是字符串/数组）。",
+    "若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。",
+    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
 ])
 
 export const v5rToolSectionTemp = Object.freeze({

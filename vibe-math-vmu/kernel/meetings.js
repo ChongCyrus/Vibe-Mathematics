@@ -443,6 +443,94 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     }
   }
 
+  // ★★★ RUN 225-B — LATE ADMISSION IS A POLICY OF THE MEETING, NOT A SILENT YES. Before this round a late arrival
+  // (`vmu.meetings.lateAfterMs`) was FLAGGED (`late:true`) and then seated anyway, so a house rule that says
+  // 「迟到者需经主席批准」 had no expression at all: the flag was write-only. Three modes, declared per meeting at open():
+  //   · open   — a late arrival is seated, with `late:true` on the receipt (the old behaviour, still the default);
+  //   · chair  — a late arrival is NOT seated: it is held at the door (`pendingLate` on the meeting, `pendingLate:true`
+  //              on the attend receipt) until the CHAIR admits it with `admit()`;
+  //   · refuse — a late arrival is refused by name (`VMU_LATE_ADMISSION_REFUSED`), with the two repairs in the hint.
+  // The vocabulary is closed and an unknown word is refused BY NAME with the legal list printed, because falling back
+  // to the default silently is how a house rule disappears.
+  const LATE_ADMISSION_MODES = ['open', 'chair', 'refuse']
+  const LATE_ADMISSION_MEANS = 'lateAdmission is THIS meeting policy for a late arrival (a late arrival is decided by ' +
+    'vmu.meetings.lateAfterMs against openedAt): "open" seats a late member and records late:true; "chair" holds the ' +
+    'member at the door (pendingLate) until the chair calls admit(); "refuse" refuses the late arrival by name and ' +
+    'names the two repairs (the chair admits, or the member joins the next meeting).'
+  const lateAdmissionOf = (m) => {
+    const v = (m && typeof m.lateAdmission === 'string') ? m.lateAdmission : 'open'
+    return LATE_ADMISSION_MODES.includes(v) ? v : 'open'
+  }
+  const pendingLateOf = (m) => (m && Array.isArray(m.pendingLate)) ? m.pendingLate : []
+  const pendingLateMembers = (m) => pendingLateOf(m).map((r) => String(r && typeof r === 'object' ? r.member : r)).filter((s) => s !== '')
+  // ★★★ RUN 225-B — 会内等待：the READ fact that a person is waiting, and WHY. There is no resident process here: a
+  // member is a TURN THAT ENDS and hands control back, so waiting can only be a row on a read face — never a blocking
+  // loop. `waitStates` is one row per person this meeting concerns (roster + present + held-at-the-door);
+  // `waitRecommended` says whether the chair SHOULD drive a turn now (someone at the door / a floor request queued /
+  // the house has arrived but the chair has not opened the floor).
+  const WAIT_STATES_MEANS = 'waitStates is derived from THIS meeting own facts — its roster, its present set, its recorded ' +
+    'speeches (minutes entries of kind "speech"), its late-admission queue and its proposed/seconded motions — never from ' +
+    'wall-clock guessing. waitState: "spoke" = present and at least one speech recorded; "present" = seated but not yet ' +
+    'spoken; "awaiting" = NOT seated, held at the door by lateAdmission:"chair" (the chair can admit it); "absent" = on the ' +
+    'roster and not present. `owes` is true when the member is seated and a proposed/seconded motion has no vote from them ' +
+    '(`owesWhat` names the motion ids). ★ WHAT WAITING IS NOT: members are NOT resident processes and this framework keeps ' +
+    'NO timer for them — a member waiting means "the next turn belongs to somebody else", and after its turn the agent ' +
+    'HANDS BACK to the chair. waitRecommended is advice about whether to drive a turn now, not a promise that anything ' +
+    'will happen on its own.'
+  const waitBlockOf = (m) => {
+    const roster = Array.isArray(m && m.roster) ? m.roster.map(String) : []
+    const present = (m && m.present && typeof m.present.size === 'number') ? [...m.present].map(String) : []
+    const presentSet = new Set(present)
+    const entries = (m && m.minutes && Array.isArray(m.minutes.entries)) ? m.minutes.entries : []
+    const spoke = new Set(entries.filter((e) => e && e.kind === 'speech').map((e) => String(e.member)))
+    const pendingLate = pendingLateMembers(m)
+    const pendingSet = new Set(pendingLate)
+    const motions = Array.isArray(m && m.motions) ? m.motions : []
+    const openMotions = motions.filter((mo) => mo && (mo.status === 'proposed' || mo.status === 'seconded'))
+    const people = []
+    for (const id of roster.concat(present)) if (!people.includes(id)) people.push(id)
+    for (const id of pendingLate) if (!people.includes(id)) people.push(id)
+    const waitStates = people.map((member) => {
+      const seated = presentSet.has(member)
+      const spokeIt = spoke.has(member)
+      const atDoor = !seated && pendingSet.has(member)
+      const waitState = atDoor ? 'awaiting' : seated ? (spokeIt ? 'spoke' : 'present') : 'absent'
+      const owed = seated
+        ? openMotions.filter((mo) => !(mo.votes && typeof mo.votes.has === 'function' && mo.votes.has(member))).map((mo) => String(mo.id))
+        : []
+      const means = atDoor
+        ? 'held at the door by lateAdmission:"chair": this member is NOT seated and its next action is the CHAIR calling admit({ meeting: "' + String(m && m.id) + '", member: "' + member + '", actor: "<chair id>" }) — not another attend()'
+        : waitState === 'spoke'
+          ? 'seated and has spoken at least once (the speech row is in minutes)'
+          : waitState === 'present'
+            ? 'seated but has not spoken yet: it is waiting for the chair to open the floor or to be asked'
+            : 'on the roster and NOT present: it may join with attend() (subject to lateAdmission if it is late)'
+      return { member, waitState, present: seated, spoke: spokeIt, pendingLate: atDoor, owes: owed.length > 0, owesWhat: owed.length > 0 ? owed.join(', ') : null, means }
+    })
+    const queueLen = (m && Array.isArray(m.queue)) ? m.queue.length : 0
+    const state = m && m.state
+    const waitingOnChair = present.length > 0 && spoke.size === 0 && state !== 'closed'
+    const waitRecommended = pendingLate.length > 0 || queueLen > 0 || waitingOnChair
+    const waitRecommendedWhy = pendingLate.length > 0
+      ? pendingLate.length + ' member(s) are held at the door by lateAdmission:"chair" (' + pendingLate.join(', ') + '): the chair should decide with admit(), not ask them to attend again'
+      : queueLen > 0
+        ? queueLen + ' member(s) asked for the floor (queue length ' + queueLen + '): the chair should give the word now'
+        : waitingOnChair
+          ? 'the house has arrived (' + present.length + ' present) and NO speech is recorded yet: the chair has not opened the floor — this is the moment to drive the first turn, and no member should be waiting on another member'
+          : present.length === 0
+            ? 'nobody has attended yet: nothing is waiting on the chair (an empty house is not a blocked meeting)'
+            : 'no member is waiting right now: ' + spoke.size + ' member(s) have already spoken and no floor request is queued'
+    return {
+      waitStates, waitStatesMeans: WAIT_STATES_MEANS, waitRecommended, waitRecommendedWhy,
+      lateAdmission: lateAdmissionOf(m), lateAdmissionMeans: LATE_ADMISSION_MEANS,
+      pendingLate: pendingLateOf(m).map((r) => (r && typeof r === 'object'
+        ? { member: String(r.member), at: r.at === undefined ? null : r.at, late: r.late === true, askedBy: r.askedBy === undefined ? null : r.askedBy, decidedAt: r.decidedAt === undefined ? null : r.decidedAt, decidedBy: r.decidedBy === undefined ? null : r.decidedBy }
+        : { member: String(r), at: null, late: true, askedBy: null, decidedAt: null, decidedBy: null })),
+      pendingLateMembers: pendingLate.slice(), pendingLateCount: pendingLate.length,
+      lateAdmissions: (Array.isArray(m && m.lateAdmissions) ? m.lateAdmissions : []).map((r) => Object.assign({}, r)),
+    }
+  }
+
   // ROUND 31 (task-149 C③): the ELEVEN strict `vmu.meetings.*` domains live in
   // `kernel/meetingdomain.js` (read side REFUSES BY NAME instead of clamping); `D.values` supplies the keys
   // whose whole entry moved out below (tier/attendanceMode/quorumLossPolicy/minutesDetail/appealScope/
@@ -1514,6 +1602,32 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         mark(enforced, 'vmu.meetings.lateAfterMs')
         late = true
       }
+      // ★★★ RUN 225-B: the flag is no longer write-only — the meeting policy decides what a late arrival MEANS.
+      // A member already in the present set is a NO-OP, never a door case: the chair is seated by open(), so the chair
+      // arriving late must not be filed as waiting for its own approval.
+      const latePolicy = lateAdmissionOf(m)
+      if (late && !m.present.has(String(member))) {
+        if (latePolicy === 'refuse') {
+          throw deny('VMU_LATE_ADMISSION_REFUSED',
+            'late arrival refused by this meeting policy: "' + String(member) + '" is ' + (ms - m.openedAt) + 'ms past openedAt and lateAdmission is "refuse" (vmu.meetings.lateAfterMs=' + K.lateAfterMs + ')',
+            'TWO REPAIRS, and neither is a retry of attend(): (a) the CHAIR may admit the member with admit({ meeting: "' + m.id + '", member: "' + String(member) + '", actor: "<chair id>" }) — that is a chair decision recorded as admittedBy/admittedAt; (b) the member joins the NEXT meeting. Retrying attend() under "refuse" will refuse again.', enforced)
+        }
+        if (latePolicy === 'chair') {
+          const already = pendingLateMembers(m).includes(String(member))
+          if (!already) {
+            m.pendingLate = pendingLateOf(m).concat([{ member: String(member), at: ms, late: true, askedBy: String(member), decidedAt: null, decidedBy: null }])
+          }
+          const q0 = quorumOf(m)
+          const held = pendingLateMembers(m)
+          const receipt = { at: ms, action: 'attend', meeting: m.id, member, late: true, lateAdmission: 'chair', pendingLate: true, alreadyPending: already, pendingLateMembers: held, pendingLateCount: held.length, quorum: q0, state: m.state, settled: null, enforced, enforcedScope: ENFORCED_SCOPE }
+          pushReceipt(receipt)
+          say({ type: 'meetings/latePending', at: ms, meeting: m.id, member, state: m.state, enforced, enforcedScope: ENFORCED_SCOPE })
+          return { ok: true, late: true, lateAdmission: 'chair', pendingLate: true, alreadyPending: already,
+            pendingLateMembers: held, pendingLateCount: held.length,
+            alreadyPresent: false, alreadyPresentMeans: 'this member is NOT seated: lateAdmission is "chair", so the arrival waits at the door until the chair calls admit()',
+            quorum: q0, state: m.state, settled: null, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+        }
+      }
       // ★★★ RUN 215 (run 52 / FEEDBACK51 1.3, MEASURED): the chair attends a second time and gets `ok:true` while
       // `presentBreakdown.attended` does not move — true, but unexplained: a reader checking only `attended` concluded the
       // seat had not signed in. The receipt now says the call was a no-op and why (the chair is seated by open()).
@@ -1532,10 +1646,77 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           ? 'this member is the CHAIR and open() seats the chair, so it was present before any attend call: this call changed no count (presentBreakdown.attended counts only the members who actually arrived), and attending again is allowed as a no-op'
           : 'this member was ALREADY present when the call arrived: this call changed no count — present, quorum and unanswered are exactly as they were, and attending twice is allowed as a no-op')
         : 'this call is what put the member in the present set'
-      const receipt = { at: ms, action: 'attend', meeting: m.id, member, late, alreadyPresent: wasPresent, alreadyPresentMeans, quorum: q, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE }
+      const receipt = { at: ms, action: 'attend', meeting: m.id, member, late, lateAdmission: latePolicy, pendingLate: false,
+        alreadyPresent: wasPresent, alreadyPresentMeans, quorum: q, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
-      say({ type: 'meetings/attended', at: ms, meeting: m.id, member, late, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, late, alreadyPresent: wasPresent, alreadyPresentMeans, quorum: q, state: m.state, settled, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      say({ type: 'meetings/attended', at: ms, meeting: m.id, member, late, lateAdmission: latePolicy, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, late, lateAdmission: latePolicy, pendingLate: false, alreadyPresent: wasPresent, alreadyPresentMeans,
+        quorum: q, state: m.state, settled, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+    },
+
+    /** ★★★ RUN 225-B — the CHAIR decision that seats a member held at the door by `lateAdmission:"chair"` (and the
+     *  override a "refuse" house rule names: a refused late arrival can still be admitted by the chair, as a RECORDED
+     *  chair act — never as a silent retry of attend()). LANE: authority is the meeting own chair, by name. The kernel
+     *  never invents an authority: a chairless meeting has nobody who can admit. */
+    admit({ meeting, member, actor = null, by = null, why = null, at = null } = {}) {
+      // Same exemption as attend(): admitting is how a waiting meeting gains a member, so it must work while scheduled.
+      const m = requireMeeting(meeting, { allowPending: true })
+      const enforced = []
+      if (typeof member !== 'string' || !member) throw deny('VMU_INVALID_ARGUMENT', 'admit needs a member id', 'e.g. { action: "admit", id: "m1", member: "r-1", actor: "<chair id>" }', [])
+      if (!isMember(member)) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + member, 'the roster seam rejected it', [])
+      const ms = at === null ? clock() : atMs(at)
+      if (m.state === 'recess') throw deny('VMU_STATE', 'the meeting is in recess: ' + m.id, 'resume() first (vmu.meetings.recessMaxMs / recessResumeRequiresMotion)', [])
+      // WHO MAY ADMIT: the declared chair, by name — the same actor discipline as proceed() and extendlimit().
+      const seat = (m.chair === null || m.chair === undefined) ? null : String(m.chair)
+      const who = (actor === null || actor === undefined)
+        ? ((by === null || by === undefined) ? null : String(by))
+        : String(actor)
+      if (seat === null) {
+        throw deny('VMU_ENGINE_UNAVAILABLE', 'this meeting declares no chair, so no one may admit a late member: ' + m.id,
+          'convene with { chair: "<member id>" } — the kernel never invents an authority', enforced)
+      }
+      if (who === null) {
+        throw deny('VMU_NOT_PERMITTED', 'admit needs the chair to name itself; the chair of ' + m.id + ' is ' + seat,
+          'pass { actor: "' + seat + '" } — ' + ACTOR_ALIASES, enforced)
+      }
+      if (who !== seat) {
+        throw deny('VMU_NOT_PERMITTED', 'only the meeting chair may admit a late member: actor ' + who + ' != chair ' + seat,
+          'the chair of ' + m.id + ' is ' + seat + '; a non-chair cannot open this door', enforced)
+      }
+      // THE MEMBER MUST ACTUALLY BE WAITING. Admitting somebody who is already seated (or who never asked to join)
+      // would be a silent no-op that reads like a decision, so both cases are refused BY NAME with the real reason.
+      const rows = pendingLateOf(m)
+      const row = rows.filter((r) => String(r && typeof r === 'object' ? r.member : r) === String(member))[0] || null
+      if (m.present.has(String(member))) {
+        throw deny('VMU_STATE', 'not waiting for admission: "' + String(member) + '" is ALREADY present in ' + m.id,
+          'admit() only seats a member held at the door by lateAdmission:"chair"; present is [' + [...m.present].map(String).sort().join(', ') + '] — nothing to admit', enforced)
+      }
+      if (row === null) {
+        throw deny('VMU_STATE', 'not waiting for admission: "' + String(member) + '" has no pendingLate row on ' + m.id,
+          'pendingLate is [' + pendingLateMembers(m).join(', ') + ']; a member who never asked to join should attend() first — that is the call that puts it at the door under lateAdmission:"chair"', enforced)
+      }
+      // THE SEATING IS THE SAME WRITE attend() PERFORMS, kept in one place: the roster gains the member (invitation +
+      // who joined) and the present set gains it. The door row is removed and the decision recorded as a fact.
+      m.pendingLate = rows.filter((r) => String(r && typeof r === 'object' ? r.member : r) !== String(member))
+      m.roster = m.roster.includes(member) ? m.roster : m.roster.concat([member])
+      m.present.add(String(member))
+      const admittedAt = ms
+      const askedAt = (row && typeof row === 'object' && Number.isFinite(Number(row.at))) ? Number(row.at) : null
+      const whyText = (why === null || why === undefined) ? null : String(why)
+      m.lateAdmissions = (Array.isArray(m.lateAdmissions) ? m.lateAdmissions : []).concat([{ member: String(member), at: admittedAt, by: who, askedAt, why: whyText }])
+      m.minutes.entries.push({ at: admittedAt, kind: 'late-admitted', member: String(member), by: who })
+      const settled = (m.state === 'scheduled' || m.state === 'waiting') ? syncMeeting(m, ms) : null
+      const q = quorumOf(m)
+      const remaining = pendingLateMembers(m)
+      const receipt = { at: admittedAt, action: 'admit', meeting: m.id, member: String(member), admitted: true, admittedBy: who,
+        admittedAt, late: true, lateAdmission: lateAdmissionOf(m), why: whyText, pendingLate: remaining,
+        pendingLateCount: remaining.length, quorum: q, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE }
+      pushReceipt(receipt)
+      say({ type: 'meetings/lateAdmitted', at: admittedAt, meeting: m.id, member: String(member), by: who, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, meeting: m.id, member: String(member), admitted: true, admittedBy: who, admittedAt, late: true,
+        lateAdmission: lateAdmissionOf(m), why: whyText, pendingLate: remaining, pendingLateCount: remaining.length,
+        pendingLateMeans: 'pendingLate lists the members still held at the door — this member is no longer one of them',
+        quorum: q, state: m.state, settled, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Leave. `leaveEarlyPolicy` (allow/note/deny) and `quorumLossPolicy` decide the consequence. */
@@ -2550,6 +2731,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         // same fact — the summary could name a meeting but not who was invited to it, and `title` alone cannot say
         // whether the list was narrowed. One shared block, one wording (see `rosterBlockOf`).
         ...rosterBlockOf(m),
+        // ★★★ RUN 225-B — 会内等待 + 迟到入席，on BOTH read faces a member/chair actually reads (`summary` and the view
+        // `vibe_vmu_meeting {action:"status"}` returns). One block, one wording (see waitBlockOf).
+        ...waitBlockOf(m),
         materials: m.materials === undefined ? null : m.materials,
         subject: m.subject === undefined ? null : m.subject,
         // ★★ ROUND 49 / F-25: the gate that ADMITTED this debate is part of the decision record, so it is readable
@@ -2677,6 +2861,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         // read from the same fact. `rosterNarrowed`/`rosterMeans` say whether convene honoured an explicit subset, so
         // "everyone was invited" and "two were" stop looking identical in the face a member actually reads.
         ...rosterBlockOf(m),
+        // ★★★ RUN 225-B — 会内等待 + 迟到入席，on BOTH read faces a member/chair actually reads (`summary` and the view
+        // `vibe_vmu_meeting {action:"status"}` returns). One block, one wording (see waitBlockOf).
+        ...waitBlockOf(m),
         stateMeans: MEETING_STATE_MEANING[m.state] || null,
         loop: 'meeting-ask-answer',
         note: '★ motions/votes/state here describe the MEETING’s own ask()+answer()+motion cycle. A member answering a vibe_vmu_turn prompt is a DIFFERENT loop: read vibe_vmu_turn’s receipts (awaiting/memberPrompt/deliveryPath) for that one. hasDeliverSeam on the primitive face refers to open({deliver}), not to the turn loop’s deliveryPath.', reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,
@@ -2964,7 +3151,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       subjectGate = null,
     // ★ the recommended procedure the convenor was shown, for the same reason: it is not a gate, but it IS part of
     // what the convention promised at the moment it was made, and a read face should be able to say what that was.
-      procedure = null, wallLimitMs = null } = {}) {
+      procedure = null, lateAdmission = 'open', wallLimitMs = null } = {}) {
 
     const enforced = []
     const ms = at === null ? clock() : atMs(at)
@@ -3191,9 +3378,22 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         'a meeting must carry a meaningful label, and neither `kind` nor `title` was given — no reader could tell what this meeting is or find it in a list',
         'pass kind:"<what sort of meeting>" (e.g. debate, planning — the six ids in meeting-procedures.js) or title:"<one line naming it>"; an unlabelled meeting is only readable to the person who convened it', enforced)
     }
+    // ★★★ RUN 225-B — the late-admission policy is a CLOSED vocabulary carried ON THE MEETING ROW. An unknown word is
+    // refused BY NAME (and the legal list printed): silently falling back to the default is how a house rule the
+    // caller asked for disappears without a trace.
+    const lateAdmissionRef = (lateAdmission === null || lateAdmission === undefined) ? 'open' : String(lateAdmission)
+    if (!LATE_ADMISSION_MODES.includes(lateAdmissionRef)) {
+      throw deny('VMU_INVALID_ARGUMENT',
+        'unknown lateAdmission: ' + JSON.stringify(lateAdmission) + ' (typeof ' + typeof lateAdmission + ')',
+        'the legal values are ' + LATE_ADMISSION_MODES.join(' | ') + ' — "open" seats a late member, "chair" holds it at the door until the chair admits it with admit(), "refuse" refuses it by name; e.g. { lateAdmission: "chair" }', enforced)
+    }
     const m = {
       id: mid, type: String(type), kind: kindRef, chair: chair === null ? null : String(chair), secretary: secretary === null ? null : String(secretary),
       roster: rosterList, present: new Set(chair === null ? [] : [String(chair)]),
+      // ★★ RUN 225-B: the late-admission policy is a carried fact of THIS meeting (see LATE_ADMISSION_MEANS), the door
+      // list starts empty (members are only ever held there by attend() under "chair"), and every admission decision is
+      // recorded in `lateAdmissions` (who, when, why) so a later reader can tell a chair decision from a silent entrance.
+      lateAdmission: lateAdmissionRef, pendingLate: [], lateAdmissions: [],
       // ★★ ROUND 120 (E9): WHO was invited, whether that list is narrower than the bench, and which input named it.
       rosterNarrowed, rosterSource, rosterBench: bench.length,
       openedAt: ms, state: scheduledFor === null ? 'open' : 'scheduled', turns: 0, tokens: 0, wallStartMs: ms,
@@ -3235,15 +3435,15 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     live.set(mid, m)
     markState(m, m.state)
     counters.opened += 1
-    const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, convenedBy: m.convenedBy, state: m.state, scheduledFor: m.scheduledFor, confidentiality: m.confidentiality, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, sequence: { index: 0, total: 1 + seqEntries.length }, enforced, enforcedScope: ENFORCED_SCOPE }
+    const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, convenedBy: m.convenedBy, state: m.state, scheduledFor: m.scheduledFor, confidentiality: m.confidentiality, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, lateAdmission: m.lateAdmission, lateAdmissionMeans: LATE_ADMISSION_MEANS, pendingLate: [], pendingLateCount: 0, sequence: { index: 0, total: 1 + seqEntries.length }, enforced, enforcedScope: ENFORCED_SCOPE }
     pushReceipt(receipt)
-    say({ type: m.state === 'scheduled' ? 'meetings/scheduled' : 'meetings/opened', at: ms, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, scheduledFor: m.scheduledFor, rosterNarrowed: m.rosterNarrowed === true, enforced, enforcedScope: ENFORCED_SCOPE })
+    say({ type: m.state === 'scheduled' ? 'meetings/scheduled' : 'meetings/opened', at: ms, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, scheduledFor: m.scheduledFor, rosterNarrowed: m.rosterNarrowed === true, lateAdmission: m.lateAdmission, enforced, enforcedScope: ENFORCED_SCOPE })
     // ★ type/subject are ALSO at the top level, not only inside `receipt`: a caller that asked for them should not
     // have to know the receipt envelope's shape to read back what it just set (the same reason `attend` returns `late`).
     // ★★ ROUND 120 (E6/E9): `kind` and the roster's provenance are echoed next to `title`, because a caller that asked
     // for them should not have to know the receipt envelope's shape to read back what it just set (the same reason
     // `attend` returns `late`). `rosterMeans` says what the list IS, in the one wording all three faces share.
-    return { ok: true, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, wallLimitMs: m.wallLimitMs, wallLimitMsSource: m.wallLimitMsSource, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+    return { ok: true, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, wallLimitMs: m.wallLimitMs, wallLimitMsSource: m.wallLimitMsSource, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, lateAdmission: m.lateAdmission, lateAdmissionMeans: LATE_ADMISSION_MEANS, pendingLate: [], pendingLateCount: 0, sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     
   }
 

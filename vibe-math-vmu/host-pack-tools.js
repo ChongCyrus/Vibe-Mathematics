@@ -311,13 +311,38 @@ export function makePackToolSpec({ entry, kernel = null, packId = null } = {}) {
       // the caller was read as the office, and run 102's member wrote ANOTHER member's state panel while the receipt
       // said "written through the office/human path". The member is resolved here with the SAME criterion the seat-face
       // gate above uses, so what the caller MAY write and what the caller CAN see cannot disagree.
+      const callerMemberNow = resolveTurnMember(kernel, exec)
       const out = await handler(args && typeof args === 'object' ? args : {},
-        { kernel, agent: (exec && exec.agent) || null, callerMember: resolveTurnMember(kernel, exec), exec: exec || null, packId: id })
+        { kernel, agent: (exec && exec.agent) || null, callerMember: callerMemberNow, exec: exec || null, packId: id })
       // THE CONTRACT: a handler returns an OBJECT (or returns nothing). A non-object is wrapped
       // rather than passed through, because a bare string would be JSON-encoded a SECOND time by
       // the one serializer downstream (`boundedToolResult` stringifies a string as a JSON string).
       if (out === undefined) return { ok: true, tool: name }
       if (out === null || typeof out !== 'object' || Array.isArray(out)) return { ok: true, tool: name, value: out }
+      // ★★★ RUN 225-C: WHO ACTED? A pack tool can be called by the office (a root session, not a seat) while NAMING a
+      // member (`member:"r-1"`), and until now nothing in the receipt said which of the two happened: a reader could not
+      // tell "r-1 did this in its own turn" from "the office did this in r-1's name". The prompts describe that
+      // difference and no receipt recorded it. The answer is computed from the CALL (who is running) and the QUESTION
+      // (which seat the args name) — never from what the tool intended — and it is stated only for a seat that exists.
+      const namedMember = args && typeof args === 'object' && typeof args.member === 'string' ? args.member.trim() : ''
+      if (namedMember !== '' && out.memberActed === undefined) {
+        let onRoster = false
+        try {
+          const roster = kernel && kernel.members && typeof kernel.members.roster === 'function' ? kernel.members.roster() : []
+          onRoster = (Array.isArray(roster) ? roster : []).some((r) => r && r.id === namedMember)
+        } catch { onRoster = false }
+        if (onRoster) {
+          const actedBySeat = callerMemberNow !== null && callerMemberNow === namedMember
+          return Object.assign({}, out, {
+            memberActed: actedBySeat,
+            actedForMember: namedMember,
+            callerMember: callerMemberNow === null ? null : callerMemberNow,
+            memberActedMeans: actedBySeat
+              ? 'member "' + namedMember + '" is the CALLER of this call, so the seat acted in its own turn: what this receipt records is that seat\'s own act'
+              : 'this call ran from ' + (callerMemberNow === null ? 'the OFFICE (a root session, which is not a seat)' : 'member "' + callerMemberNow + '"') + ' and named member "' + namedMember + '": the record was written IN THAT SEAT\'S NAME, but the seat did not act in its own turn. `memberActed:false` states that difference — orchestrating on a seat\'s behalf is not the same act as carrying it out, and a reader who needs the seat\'s own judgement should ask for it in a turn of that seat',
+          })
+        }
+      }
       return out
     },
   }

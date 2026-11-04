@@ -19,8 +19,10 @@
 // file text). `WIRED_KEYS` = the 24 documented keys; `EXTRA_WIRED_KEYS` = the registered core keys this module
 // also honours (reported separately so the "24 = wired + unwired" partition stays exact).
 import { createHash } from 'node:crypto'
-import { readFileSync, existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+// fs-purpose: audit — this module is the md INDEX face (RUN 225-A): it reads the md files that carry the truth and
+// writes the atomic replacement when a caller asks it to. Recorded in tests/audit-fs-purpose.test.mjs.
+import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, renameSync, unlinkSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mint } from './ids.js'   // ROUND 2 (task-14): ids never restart from 0 (kernel/ids.js)
 
@@ -166,6 +168,129 @@ export function chunkBody(body, chunkBytes) {
   const chunks = []
   for (let i = 0; i < text.length; i += size) chunks.push({ index: chunks.length, bytes: Math.min(size, text.length - i), text: text.slice(i, i + size) })
   return chunks.length ? chunks : [{ index: 0, bytes: 0, text: '' }]
+}
+
+// ── THE MD FACE (RUN 225-A): the md file is the truth, the record row is an INDEX of it ───────────────────
+// THE PROBLEM THIS SOLVES: a blueprint / protocol lives in a record row (a JSON string in `<root>/vmu/state.json`),
+// so the document a human opens on disk and the document the tools answer from were two different things — editing
+// the md changed nothing, and a row could claim a revision no file ever carried. THE RULE NOW: every revision is
+// written to its md ATOMICALLY (temp file + rename), the row stores the md sha256 (`mdFingerprint`), and the read
+// faces compare the two so "the file was edited outside the tools" is a disclosed fact, not a silent lie.
+// THREE OPERATIONS, no more: compose/parse the md shape (pure), write a md atomically, and RECONCILE the index
+// against the disk (`mdReindex`). Reconciliation only moves FORWARD: it adds a row, appends a version, or names a
+// missing file — it never deletes a history row (a reindex that erased history would be a second truth).
+export const MD_FORMAT = 'vmu-md/1'
+export const MD_MARKER_KEY = 'vmuMd'
+export const MD_TEXT_SECTION = '正文'
+export const MD_SEP = '：'
+export const MD_REBUILT_KEY = 'mdFingerprint'
+const MD_MAX_DEPTH = 8
+
+/** md text of any value (never the string "undefined"). */
+function mdStr(v) { return v === undefined || v === null ? '' : String(v) }
+
+/** The sha256 a row stores for the md it was indexed from. Content bytes only: the file prints no fingerprint of itself (no self-reference). */
+export function mdFingerprintOf(content) {
+  return 'sha256:' + createHash('sha256').update(mdStr(content), 'utf8').digest('hex')
+}
+
+/**
+ * Compose the md text of one document. The SHAPE is deliberate: a human title first, then the SAME `- key：value`
+ * lines the record body carries (so an index row and its md can be compared field by field), then the verbatim
+ * section. `fields` is the caller's own header (blueprint: path/status/revision/authors/...); the reserved keys
+ * (`vmuMd`, track, kind, title) are written once, by this function, and skipped if the caller passes them.
+ */
+export function mdComposeText({ title = '', track = null, kind = null, fields = null, text = '' } = {}) {
+  const lines = []
+  const t = mdStr(title).trim()
+  if (t !== '') lines.push('# ' + t)
+  lines.push('- ' + MD_MARKER_KEY + MD_SEP + MD_FORMAT)
+  if (mdStr(track) !== '') lines.push('- track' + MD_SEP + mdStr(track))
+  if (mdStr(kind) !== '') lines.push('- kind' + MD_SEP + mdStr(kind))
+  if (t !== '') lines.push('- title' + MD_SEP + t)
+  const src = fields && typeof fields === 'object' ? fields : {}
+  for (const key of Object.keys(src)) {
+    if (key === MD_MARKER_KEY || key === 'track' || key === 'kind' || key === 'title') continue
+    const value = src[key]
+    if (value === undefined || value === null || mdStr(value) === '') continue
+    lines.push('- ' + key + MD_SEP + mdStr(value))
+  }
+  lines.push('## ' + MD_TEXT_SECTION)
+  const body = mdStr(text)
+  if (body !== '') lines.push(body)
+  return lines.join('\n')
+}
+
+/**
+ * Parse a md file into `{ok, format, title, track, kind, fields, fieldOrder, text, why, problems}`.
+ * A file WITHOUT the `vmuMd` marker is `ok:false` with a reason — it is never mistaken for a blueprint, and the
+ * caller keeps the file (reindex reports it as skipped rather than overwriting somebody's notes).
+ */
+export function mdParseText(content) {
+  const lines = mdStr(content).split(/\r?\n/)
+  const fields = {}
+  const fieldOrder = []
+  const problems = []
+  let title = ''
+  let textLines = null
+  for (const line of lines) {
+    if (textLines !== null) { textLines.push(line); continue }
+    if (line.trim() === '## ' + MD_TEXT_SECTION) { textLines = []; continue }
+    const heading = /^#{1,6}\s+(.*)$/.exec(line)
+    if (heading) { if (title === '' && /^#\s+/.test(line)) title = heading[1].trim(); continue }
+    const m = /^-\s*([^：:]+?)\s*[：:]\s*(.*)$/.exec(line)
+    if (m) {
+      const key = m[1].trim()
+      if (!Object.prototype.hasOwnProperty.call(fields, key)) { fields[key] = m[2].trim(); fieldOrder.push(key) }
+      continue
+    }
+    if (line.trim() !== '') problems.push('unrecognised line before the text section: ' + line.slice(0, 80))
+  }
+  const doc = { ok: false, format: null, title, track: null, kind: null, fields, fieldOrder, text: '', why: null, problems }
+  const parsedTitle = mdStr(fields.title) !== '' ? fields.title : title
+  doc.title = parsedTitle
+  doc.format = mdStr(fields[MD_MARKER_KEY]) !== '' ? fields[MD_MARKER_KEY] : null
+  doc.track = mdStr(fields.track) !== '' ? fields.track : null
+  doc.kind = mdStr(fields.kind) !== '' ? fields.kind : null
+  if (textLines === null) { doc.why = 'no "## ' + MD_TEXT_SECTION + '" section marker'; return doc }
+  doc.text = textLines.join('\n').replace(/[ \t\r\n]+$/, '')
+  if (doc.format !== MD_FORMAT) {
+    doc.why = 'not a vmu md (' + MD_MARKER_KEY + ' must be ' + MD_FORMAT + ', saw ' + String(doc.format === null ? '(none)' : doc.format) + ')'
+    return doc
+  }
+  doc.ok = true
+  return doc
+}
+
+/** The value of a `- key：value` header line inside a RECORD body (null when the key is absent). */
+export function mdFieldOf(body, key) {
+  const wanted = mdStr(key).trim()
+  if (wanted === '') return null
+  const lines = mdStr(body).split(/\r?\n/)
+  for (const line of lines) {
+    const m = /^-\s*([^：:]+?)\s*[：:]\s*(.*)$/.exec(line)
+    if (m && m[1].trim() === wanted) return m[2].trim()
+  }
+  return null
+}
+
+/**
+ * Rebuild a RECORD body from a md, so the reconstructed row is byte-identical to the row the writer produced:
+ * the md header fields in their md order (minus the reserved keys), then the `mdFingerprint` of the md, then the
+ * verbatim text section. `mdReindex` adopts/changes rows with exactly this function — one shape, two callers.
+ */
+export function mdRowBodyOf(doc, fingerprint) {
+  const lines = []
+  for (const key of (doc && doc.fieldOrder) || []) {
+    if (key === MD_MARKER_KEY || key === 'track' || key === 'kind' || key === 'title' || key === MD_REBUILT_KEY) continue
+    const value = doc.fields[key]
+    if (value === undefined || value === null || mdStr(value) === '') continue
+    lines.push('- ' + key + MD_SEP + value)
+  }
+  lines.push('- ' + MD_REBUILT_KEY + MD_SEP + mdStr(fingerprint))
+  lines.push('## ' + MD_TEXT_SECTION)
+  if (doc && mdStr(doc.text) !== '') lines.push(doc.text)
+  return lines.join('\n')
 }
 
 /**
@@ -1081,6 +1206,332 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           : 'this assembly has no durable store: there is no fold to pull, so foldPullAt is null and the counts describe this process alone',
         at: now(),
         note: 'every key in `wired` changes an observable result (asserted by tests/vmu-records.test.mjs); `enforced[]` on a receipt lists the keys whose rule was EVALUATED for that call and `fired[]` the ones that changed its outcome — reading a key without changing behaviour would be a lie, so all 24 are wired here',
+      }
+    },
+
+    // ── THE MD FACE (RUN 225-A) — the md is the truth, rows are its index ────────────────────────────────
+    /**
+     * The workspace root, derived from the durable port's OWN file (`<root>/vmu/state.json` → `<root>`), or null when
+     * this instance is not attached to a store. The root is never guessed: an unattached face answers
+     * `available:false` instead of writing to a path nobody can name.
+     */
+    workspaceRoot() {
+      const st = shared.store
+      if (!st || typeof st.stats !== 'function') return null
+      let file = null
+      try { const s = st.stats(); file = s && typeof s.file === 'string' ? s.file : null } catch (e) { return null }
+      if (file === null || file === '') return null
+      return dirname(dirname(file))
+    },
+
+    /** Where plain document paths land: `<root>/VibeMath` (the Lean session root), unless the root IS that folder. */
+    mdRoot() {
+      const root = api.workspaceRoot()
+      if (root === null) return null
+      return basename(root) === 'VibeMath' ? root : join(root, 'VibeMath')
+    },
+
+    /**
+     * The path a document path lands on. Accepts an absolute path verbatim, a path already rooted at `VibeMath/`, and
+     * a plain `Shared/Protocol.md` (which lands under `<root>/VibeMath/`). Returns null when the root cannot be named.
+     */
+    mdPathOf(relPath) {
+      const rel = mdStr(relPath).trim()
+      if (rel === '') return null
+      if (isAbsolute(rel)) return rel
+      const root = api.workspaceRoot()
+      if (root === null) return null
+      let clean = rel.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+      if (basename(root) === 'VibeMath') {
+        if (clean === 'VibeMath') return root
+        if (clean.startsWith('VibeMath/')) clean = clean.slice('VibeMath/'.length)
+        return join(root, clean)
+      }
+      if (clean === 'VibeMath' || clean.startsWith('VibeMath/')) return join(root, clean)
+      return join(root, 'VibeMath', clean)
+    },
+
+    /** The display path of an absolute md path: relative to `<root>/VibeMath`, forward slashes (stable across OSes). */
+    mdRelOf(absPath) {
+      const abs = mdStr(absPath).trim()
+      if (abs === '') return ''
+      const root = api.mdRoot()
+      if (root === null) return abs.replace(/\\/g, '/')
+      try { return relative(root, abs).replace(/\\/g, '/') } catch (e) { return abs.replace(/\\/g, '/') }
+    },
+
+    /** Compose the md text (pure delegation: one shape for the writer and the index rebuild). */
+    mdCompose({ title = '', track = null, kind = null, fields = null, text = '' } = {}) {
+      const content = mdComposeText({ title, track, kind, fields, text })
+      return { ok: true, enforced: [], content, fingerprint: mdFingerprintOf(content), bytes: Buffer.byteLength(content, 'utf8'), format: MD_FORMAT }
+    },
+
+    /** Parse md text (pure delegation). */
+    mdParse(content) { return mdParseText(content) },
+
+    /** Read the md at a document path. `exists:false` is a FACT, not an error. */
+    mdRead({ path = null } = {}) {
+      const wanted = mdStr(path).trim()
+      const absPath = api.mdPathOf(wanted)
+      const unavailable = () => ({ ok: true, enforced: [], available: false, exists: false, path: wanted, absPath: null, fingerprint: null, doc: null, means: 'this records instance is not attached to a durable store, so it cannot name the workspace root and will not guess where a document lives' })
+      if (absPath === null) return unavailable()
+      if (!existsSync(absPath)) return { ok: true, enforced: [], available: true, exists: false, path: api.mdRelOf(absPath), absPath, fingerprint: null, doc: null, means: 'no md at this path yet: a revision has not been written to disk (or the file was removed) — the index is the only holder until reindex reports it' }
+      let content = ''
+      try { content = readFileSync(absPath, 'utf8') } catch (e) {
+        return { ok: false, enforced: [], available: true, exists: true, path: api.mdRelOf(absPath), absPath, fingerprint: null, doc: null, error: { code: (e && e.code) || 'VMU_MD_READ_FAILED', message: String((e && e.message) || e) }, means: 'the md exists but could not be read: this read makes NO claim about its content' }
+      }
+      const doc = mdParseText(content)
+      return { ok: true, enforced: [], available: true, exists: true, path: api.mdRelOf(absPath), absPath, fingerprint: mdFingerprintOf(content), doc, means: 'the file on disk as bytes; `doc` is its parsed shape (a file without the ' + MD_MARKER_KEY + ' marker is disclosed, never taken for a blueprint)' }
+    },
+
+    /**
+     * ★ THE COMPARISON THE READ FACES NEED: the md fingerprint on disk vs the one the index row stored. Three
+     * outcomes, each named: the file is missing, the file was changed since the index (`mdChangedSinceIndex:true` —
+     * the repair is `reindex`, not a silent re-read), or they agree. It never writes.
+     */
+    mdDigest({ path = null, indexFingerprint = null } = {}) {
+      const read = api.mdRead({ path })
+      const idx = indexFingerprint === undefined || indexFingerprint === null || mdStr(indexFingerprint) === '' ? null : String(indexFingerprint)
+      const mdFp = read.fingerprint === undefined ? null : read.fingerprint
+      const doc = read.doc || null
+      const changed = read.available === true && read.exists === true && mdFp !== null && mdFp !== idx
+      return {
+        ok: read.ok !== false, available: read.available === true, exists: read.exists === true,
+        path: read.path, absPath: read.absPath === undefined ? null : read.absPath,
+        mdFingerprint: mdFp, indexFingerprint: idx, mdChangedSinceIndex: changed,
+        mdRevision: doc && doc.fields && doc.fields.revision !== undefined ? doc.fields.revision : null,
+        mdStatus: doc && doc.fields && doc.fields.status !== undefined ? doc.fields.status : null,
+        means: read.available !== true
+          ? read.means
+          : (read.exists !== true
+            ? 'the index has a row for this path but the md is NOT on disk: the file is the truth and it is missing, so this comparison makes no claim about a body'
+            : (changed
+              ? 'the md was changed outside the tools (its sha256 is not the one the index row recorded): the repair is vibe_vmu_records { action:"reindex" } — the row does not get a new body from this read'
+              : 'the md and the index agree (same sha256): the index row and the file describe the same revision')),
+      }
+    },
+
+    /**
+     * Write one md ATOMICALLY: the full text goes to a temp file in the SAME directory, then `rename` replaces the
+     * target — a reader never sees half a document, and a failed write leaves the old file intact. The receipt carries
+     * the sha256 of what was written, which the caller stores in its row so a later edit is detectable.
+     */
+    mdWrite({ path = null, title = '', track = null, kind = null, fields = null, text = '' } = {}) {
+      const wanted = mdStr(path).trim()
+      const absPath = api.mdPathOf(wanted)
+      if (absPath === null) {
+        return { ok: true, enforced: [], available: false, written: false, path: wanted, absPath: null, fingerprint: null, bytes: 0, atomic: null, means: 'this records instance is not attached to a durable store: it will not guess where a document lives, so nothing was written and no row should claim a md' }
+      }
+      const content = mdComposeText({ title, track, kind, fields, text })
+      const fingerprint = mdFingerprintOf(content)
+      const replaced = existsSync(absPath)
+      const tmp = absPath + '.tmp-' + String(process.pid) + '-' + String(Date.now()) + '-' + Math.random().toString(16).slice(2, 10)
+      try {
+        mkdirSync(dirname(absPath), { recursive: true })
+        writeFileSync(tmp, content, 'utf8')
+        renameSync(tmp, absPath)
+      } catch (e) {
+        try { if (existsSync(tmp)) unlinkSync(tmp) } catch (e2) { /* a temp file must not outlive a failed write */ }
+        return {
+          ok: false, enforced: [], available: true, written: false, path: api.mdRelOf(absPath), absPath, fingerprint: null, bytes: 0, atomic: 'temp+rename',
+          error: { code: (e && e.code) || 'VMU_MD_WRITE_FAILED', message: String((e && e.message) || e) },
+          means: 'the md write FAILED, so the caller must not write an index row claiming this revision: a row that names a file nobody wrote is the exact lie this face exists to prevent',
+        }
+      }
+      return {
+        ok: true, enforced: [], available: true, written: true, path: api.mdRelOf(absPath), absPath, fingerprint,
+        bytes: Buffer.byteLength(content, 'utf8'), atomic: 'temp+rename', replaced,
+        means: 'the FULL revision body is on disk in its own md (temp file + rename, so no reader saw a partial file); the row stores this sha256, so an external edit is detectable',
+      }
+    },
+
+    /**
+     * ★★ RUN 225-A: RECONCILE THE INDEX AGAINST THE DISK. The md is the truth; this operation makes the rows admit
+     * what the files say. Four findings, each named and each repaired FORWARD-ONLY:
+     *   · `untracked` — a md no row covers (reported; adopted when not dryRun, i.e. a row is built from the md)
+     *   · `changed`   — a row whose stored sha256 differs from the file (the row gets the file body as a new VERSION;
+     *                   the old body stays in `history`, and no row is deleted)
+     *   · `missing`   — a row whose md is gone (named with its ids; the row is NOT deleted: absence is a fact)
+     *   · `unchanged` — fingerprints agree (nothing written)
+     * `dryRun:true` reports everything and writes nothing.
+     */
+    mdReindex({ dryRun = false, by = 'reindex', track: onlyTrack = null } = {}) {
+      synchronize('md-reindex')
+      const caller = mdStr(by).trim() === '' ? 'reindex' : mdStr(by).trim()
+      const dry = dryRun === true
+      const filter = onlyTrack === undefined || onlyTrack === null || mdStr(onlyTrack).trim() === '' ? null : mdStr(onlyTrack).trim()
+      const root = api.mdRoot()
+      const means = {
+        scanned: 'md 文件数：在 <root>/VibeMath 下递归扫描（跳过隐藏目录、node_modules 与 vmu 状态目录），只认带 ' + MD_MARKER_KEY + ' 标记的 md',
+        adopted: '磁盘上有这一版、索引里没有活行：按 md 重建了一行索引（md 是唯一真相）；dryRun 时只报告不写',
+        changed: '索引行记的 ' + MD_REBUILT_KEY + ' 与磁盘 md 的 sha256 不同（md 被外部改过）：把该行换成 md 的正文快照，旧正文进该行版本历史，不删任何历史行',
+        missing: '索引里有行、磁盘上没有对应的 md：具名报告；不删行（文件缺失是事实，不是拿索引冒充正文的理由）',
+        untracked: '磁盘上有 md、索引里还没有对应活行（dryRun 时就是「不写的话会保持 untracked」的那些）',
+        unchanged: 'md 指纹与索引行一致：没有写任何东西',
+        skipped: '读不动、不是 vmu md、或 track 未声明：计数并具名，绝不静默丢',
+      }
+      if (root === null) {
+        return {
+          ok: true, action: 'reindex', available: false, dryRun: dry, root: null,
+          scanned: 0, paths: [], adopted: [], changed: [], missing: [], untracked: [], unchanged: 0, skipped: [],
+          counts: { scanned: 0, unchanged: 0, adopted: 0, changed: 0, missing: 0, untracked: 0, skipped: 0 },
+          means: Object.assign({ root: 'this instance is not attached to a durable store, so there is no workspace to scan and nothing was written' }, means),
+          historyKept: true, at: now(),
+        }
+      }
+      const files = []
+      const walk = (dir, depth) => {
+        if (depth > MD_MAX_DEPTH) return
+        let entries = []
+        try { entries = readdirSync(dir, { withFileTypes: true }) } catch (e) { return }
+        for (const entry of entries) {
+          const full = join(dir, entry.name)
+          if (entry.isDirectory()) {
+            if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'vmu') continue
+            walk(full, depth + 1)
+          } else if (entry.isFile() && /\.md$/i.test(entry.name)) files.push(full)
+        }
+      }
+      walk(root, 0)
+
+      const seenPaths = []
+      const skipped = []
+      const mdByKey = new Map()
+      for (const file of files) {
+        const rel = api.mdRelOf(file)
+        let content = ''
+        try { content = readFileSync(file, 'utf8') } catch (e) { skipped.push({ path: rel, why: 'unreadable: ' + String((e && e.code) || (e && e.message) || e) }); continue }
+        const doc = mdParseText(content)
+        if (doc.ok !== true) { skipped.push({ path: rel, why: doc.why || 'not a vmu md' }); continue }
+        if (filter !== null && doc.track !== filter) continue
+        const declared = mdStr(doc.fields && doc.fields.path).trim()
+        seenPaths.push(rel)
+        mdByKey.set(declared === '' ? rel : declared, { rel, doc, fingerprint: mdFingerprintOf(content) })
+      }
+
+      // the index: every live row of every declared track, grouped track → path → rows
+      const trackIds = filter !== null ? (tracks.includes(filter) ? [filter] : []) : tracks.slice()
+      const indexByTrack = new Map()
+      for (const trackName of trackIds) {
+        const byPath = new Map()
+        indexByTrack.set(trackName, byPath)
+        for (const id of liveIds(trackName)) {
+          const rec = records.get(id)
+          if (!rec) continue
+          const bodyPath = mdFieldOf(rec.body, 'path')
+          if (bodyPath === null || bodyPath === '') continue
+          const row = {
+            id: rec.id, title: rec.title, track: rec.track,
+            revision: Number(mdFieldOf(rec.body, 'revision')),
+            status: mdFieldOf(rec.body, 'status'),
+            mdFingerprint: mdFieldOf(rec.body, MD_REBUILT_KEY),
+            updatedAt: Number(rec.updatedAt) || 0,
+          }
+          const list = byPath.get(bodyPath) || []
+          list.push(row)
+          byPath.set(bodyPath, list)
+        }
+      }
+
+      const adopted = []
+      const changed = []
+      const untracked = []
+      const unchangedList = []
+      for (const [key, entry] of mdByKey) {
+        const doc = entry.doc
+        const fp = entry.fingerprint
+        const byPath = indexByTrack.get(doc.track)
+        const rows = byPath ? (byPath.get(key) || []) : []
+        if (rows.length === 0) {
+          const item = { path: key, rel: entry.rel, revision: doc.fields.revision, status: doc.fields.status, mdFingerprint: fp }
+          if (doc.track === null || doc.track === '') {
+            untracked.push(Object.assign({}, item, { why: 'the md declares no track, so no index row could own it' }))
+            continue
+          }
+          if (!tracks.includes(doc.track)) {
+            skipped.push({ path: key, why: 'track "' + doc.track + '" is not declared by vmu.records.tracks, so no row can be adopted from this md' })
+            continue
+          }
+          untracked.push(item)
+          if (dry) continue
+          try {
+            const wrote = api.put({
+              track: doc.track, kind: doc.kind || doc.track, title: mdStr(doc.title) === '' ? key : doc.title,
+              body: mdRowBodyOf(doc, fp), settled: doc.fields.status === 'current', by: caller,
+            })
+            let wroteId = wrote.id
+            // ★★ RUN 225-A (MEASURED): after the index rows are WIPED (trashed), the md still describes the same bytes as
+            // the tombstone, so `put` deduplicates against the tombstone and adds NOTHING — reindex then reported an
+            // adoption whose id no `list` could reach (a receipt describing an object no reader can see). The tombstone
+            // must be RESTORED instead (its versions survive, which is what "md is the truth, history is kept" means).
+            if (wrote && wrote.deduplicated === true && wroteId) {
+              const dup = records.get(wroteId)
+              if (dup && dup.state !== 'live') {
+                const back = api.restore({ id: wroteId, by: caller })
+                if (back && back.ok) wroteId = back.id
+              }
+            }
+            adopted.push(Object.assign({}, item, { id: wroteId, means: 'index 里本来没有这一版的活行：按 md 重建了一行（md 是唯一真相）' }))
+          } catch (e) {
+            skipped.push({ path: key, why: 'adopt refused: ' + String((e && e.code) || 'VMU_UNKNOWN') + ' ' + String((e && e.message) || e) })
+          }
+          continue
+        }
+        byPath.delete(key)
+        // ★★ RUN 225-A (MEASURED on the first live reindex): a path can hold TWO live rows of the SAME revision — the
+        // draft that proposed it and the current row that adopted it — and they carry different fingerprints. Comparing
+        // only against `updatedAt` picked the DRAFT (the tie broke by array order), so reindex rewrote the draft row and
+        // the row actually in force stayed disagreeing with the file. Three rules, in order: (1) if ANY row already
+        // carries the file fingerprint, nothing is written; (2) among the rest, the row that matches the md's own
+        // `status` + `revision` is the row this document is about (a current md edits the current row); (3) only then
+        // fall back to newest revision, newest write.
+        const docRevision = Number.isFinite(Number(doc.fields.revision)) ? Number(doc.fields.revision) : null
+        const docStatus = mdStr(doc.fields.status)
+        const matchedRows = rows.filter((r) => r.mdFingerprint !== null && r.mdFingerprint === fp)
+        if (matchedRows.length > 0) {
+          unchangedList.push({ path: key, id: matchedRows[0].id, mdFingerprint: fp })
+          continue
+        }
+        const sameRevision = docRevision === null ? [] : rows.filter((r) => r.revision === docRevision)
+        const sameStatus = sameRevision.filter((r) => docStatus === '' || mdStr(r.status) === docStatus)
+        const pool = sameStatus.length > 0 ? sameStatus : (sameRevision.length > 0 ? sameRevision : rows)
+        const latest = pool.slice().sort((a, b) => (b.revision - a.revision) || (b.updatedAt - a.updatedAt))[0]
+        const rowChoice = sameStatus.length > 0 ? 'status+revision' : (sameRevision.length > 0 ? 'revision' : 'newest')
+        const item = {
+          path: key, rel: entry.rel, id: latest.id, rowChoice,
+          revisionMd: doc.fields.revision, revisionIndex: Number.isFinite(latest.revision) ? latest.revision : null,
+          mdFingerprint: fp, indexFingerprint: latest.mdFingerprint,
+        }
+        if (dry) { changed.push(item); continue }
+        try {
+          api.supersede({
+            id: latest.id, title: mdStr(doc.title) === '' ? latest.title : doc.title, body: mdRowBodyOf(doc, fp), by: caller,
+            reason: 'md 被外部改过：reindex 用磁盘上的正文重写这一行（旧正文留在该行版本历史里，旧行不删）',
+          })
+          changed.push(Object.assign({}, item, { means: '索引行换成 md 的快照：新正文是这一行的最新版本，旧正文仍在 history 里，历史行一条没少' }))
+        } catch (e) {
+          skipped.push({ path: key, why: 'reindex supersede refused: ' + String((e && e.code) || 'VMU_UNKNOWN') + ' ' + String((e && e.message) || e) })
+        }
+      }
+
+      const missing = []
+      for (const [trackName, byPath] of indexByTrack) {
+        for (const [pathKey, rows] of byPath) {
+          missing.push({
+            track: trackName, path: pathKey, ids: rows.map((r) => r.id), revisions: rows.map((r) => r.revision),
+            means: '索引里有行、磁盘上没有这个 md：具名报告，不删行、不静默丢历史（md 是唯一真相，文件缺失是事实）',
+          })
+        }
+      }
+
+      const counts = { scanned: seenPaths.length, unchanged: unchangedList.length, adopted: adopted.length, changed: changed.length, missing: missing.length, untracked: untracked.length, skipped: skipped.length }
+      return {
+        ok: true, action: 'reindex', available: true, dryRun: dry, root, rootMeans: 'the scanned document root (<root>/VibeMath): the index rows are compared against the md files under it',
+        scanned: counts.scanned, paths: seenPaths,
+        adopted, changed, missing, untracked, unchanged: counts.unchanged, skipped, counts, means,
+        historyKept: true,
+        historyMeans: 'reindex 只前进：匹配的行追加一个版本、没有行的新增、缺文件只报告；它不 trash、不 purge、不删除任何一行，所以历史不会被一次 reindex 抹掉',
+        at: now(), by: caller,
       }
     },
   }

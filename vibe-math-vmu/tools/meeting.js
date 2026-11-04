@@ -27,7 +27,7 @@ import { resolveTurnMember } from '../host-pack-tools.js'
  * kept at module scope because the refusal has to say it out loud, and a test has to be able to read it without
  * assembling a kernel.
  */
-export const SERVICE_CROSSING_ACTIONS = Object.freeze(['speak', 'hand', 'hands', 'invite', 'invitedspeak', 'order', 'attend', 'status', 'summary', 'close', 'extendlimit', 'proceed', 'second', 'withdraw', 'flow', 'overrideorder'])
+export const SERVICE_CROSSING_ACTIONS = Object.freeze(['speak', 'hand', 'hands', 'invite', 'invitedspeak', 'order', 'attend', 'admit', 'status', 'summary', 'close', 'extendlimit', 'proceed', 'second', 'withdraw', 'flow', 'overrideorder'])
 
 /**
  * ★ RUN 84: a primitive action asked for a meeting that lives in the SERVICE registry used to read
@@ -154,10 +154,15 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
   const ballotRefs = new Map()
   return {
       name: TOOL_NAMES.meeting,
-      description: 'vmu 会议/表决面：action=list|types|open|speak|silent|hand|refuse|invite|invitedspeak|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|revokelapse|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen|boxlapse|boxrevokelapse|flow|overrideorder。' +
+      description: 'vmu 会议/表决面：action=list|types|open|speak|silent|hand|refuse|invite|invitedspeak|attend|admit|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|revokelapse|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen|boxlapse|boxrevokelapse|flow|overrideorder。' +
         '会议与表决是**逐对象原语**（内核给工厂、pack 给政策）；本工具只用**内核已登记的实例 id** 寻址（未知 id 具名拒）。' +
         '★ **A2（轮 1）：一个会议对象，两个面都能寻址。** `list` 返回两套注册表：`meetings`（原语）、`serviceMeetings`（`vmu.meetings` 服务，即 `vibe_v5_meeting` 建的那些）、`unionMeetings`（并集）；`status`/`speak`/`close` **先找原语、找不到再找服务**（服务侧的 `status` 带 `registry:"service"` 与动议视图，`speak` 走服务的发言面，`close` 走服务的收束并**进归档**，回执带 `registry` 与 `closeSemantics`）。两处都没有 ⇒ 具名 `VMU_NO_SUCH_OBJECT`，hint **逐条列出两个 id 空间**。' +
         '★ **D9（轮 12）：邀请/举手/发言序在 SERVICE 会议上真的可达。** `hand`（成员**自荐**入发言队列）、`invite`（**只有主席**：`member` 单个或 `members` 数组**按给定顺序批量**入队，回执 `order` 读回真实队列）、`invitedspeak`（走服务的发言面，回执带 `wasQueued` 说明他是否真在队列里）、`order`（**只读**发言序 `{mode,source,order,queueOpen}`）、`attend`（**发言的前提**：服务的 `speak` 要求在场，而 `open` 只让主席在席）。这五个 action **先找原语、找不到再找服务**，服务侧回执带 `registry:"service"`；**邀请≠签到**（邀请不改 quorum，被邀者须自己 `attend` 后才 `speak`）。`hands` 的**队列管理**（grant/revoke/clear）在服务面上**不存在**，因此**具名拒**并说明缺哪块，绝不假装成功。' +
+        // ★★★ RUN 225-B: `admit` — the CHAIR-ONLY door for 迟到入席. The policy is declared per meeting at convene
+        // (`lateAdmission: "open"|"chair"|"refuse"`); under "chair" a late `attend` does NOT seat the member, it holds it
+        // in the meeting own `pendingLate` list, and only the chair may call this action. The receipt names who admitted
+        // and when, and returns the REMAINING door list, so 「谁被放进来了、谁还在门外」 is readable from the same call.
+        '★ **RUN 225-B：迟到入席（`admit`）。** 会议在召开时声明 `lateAdmission`（缺省 `open`）：`open`＝迟到者照常入席并记 `late:true`；`chair`＝迟到者**不**入席，`attend` 回执给 `pendingLate:true` 并把它记进该会 `pendingLate`，等**主席**用 `admit` 放行（回执 `admitted/admittedBy/admittedAt` + 剩余 `pendingLate`）；`refuse`＝迟到者被 `VMU_LATE_ADMISSION_REFUSED` 具名拒，hint 给两条补救（主席 `admit`，或参加下一场）。`admit` **只允许该会主席**（`actor` 必须等于 `chair`；无主席的会议无人可放行），非待批成员（例如本来就在席）**具名拒**并说明原因。`status`/`summary` 的 `waitStates[]`/`waitRecommended`/`pendingLate` 是同一事实的只读面：**成员不是常驻进程**，回合结束后交回主席，等待只是可观察的行，不是阻塞循环。' +
         '要点：**被拒输入不推进轮次**（refuse）；**受邀发言只记、不计票、不阻塞收束**（invite/invitedspeak）；' +
         '**聚合必须先显式结束辩论**（end ⇒ aggregation.allowed=true，R10-2a）；**表决期冻结**由逐场票箱原语承载（freeze/unfreeze）。' +
         '**F28 有界兜底**：超过声明的墙钟上限（`vmu.meetings.hardLimitMs`）后可用 **lapse** 具名收束（回执带 `{name,why,at,revocable}`），**未到上限会具名拒**，收束后可用 **revokelapse（必须给理由）**恢复；`extend` 是**声明步长**的延长命令（读 `speechExtendMs/Max`）。' +
@@ -165,12 +170,12 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         '其中 **boxreopen 需理由**且受 `vmu.ballot.reopenFloor` 约束（门槛只升不降）；若构造时声明了 `openMaxMs`，则 **boxlapse/boxrevokelapse** 对它提供同一套有界兜底。' +
         '**发言序/地面（B③/B④，Round 14）**：`flow` 设**四种地面模式**（open 无队列｜hands 按举手序｜round_robin 按已发言次数｜call_on 主席指定），`overrideorder` **覆盖发言序**（fifo｜round-robin｜chair｜random，random 为**确定性**洗牌：种子与结果 order 都写进回执）。**两者都只由主席做、都必须给 reason**，且**未声明 `vmu.meetings.orderMode` 的部署一律具名拒**（默认不可覆盖）。★ 这两个 action 寻址的是 **`vmu.meetings` 服务记录**（`kernel/meetings.js`），**不是**上面 `open` 造的逐对象会议 id —— 未知 id 由服务**具名拒**（hint 列出在活记录）。',
       parameters: {
-        action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜order｜refuse｜invite｜invitedspeak｜attend｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜minutes｜verbatim｜close｜extend｜extendlimit｜proceed｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
-          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order', 'refuse', 'invite', 'invitedspeak', 'attend', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'minutes', 'verbatim', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit', 'proceed', 'types'] }),
+        action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜order｜refuse｜invite｜invitedspeak｜attend｜admit｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜minutes｜verbatim｜close｜extend｜extendlimit｜proceed｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
+          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order', 'refuse', 'invite', 'invitedspeak', 'attend', 'admit', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'minutes', 'verbatim', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit', 'proceed', 'types'] }),
         id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定）'),
         meeting: param('string', '会议 id 的【别名】：与 id 同义（两者都接受；同时给且不一致 ⇒ 具名拒）。ballot 用它把票绑定到服务会议，见 summary/close 与 ballot 的读数'),
         ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
-        member: param('string', '成员 id（speak/silent/hand/refuse/attend/invitedspeak/extend/vote/boxcast 必填；invite 用它邀一个人——批量用 members）'),
+        member: param('string', '成员 id（speak/silent/hand/refuse/attend/admit/invitedspeak/extend/vote/boxcast 必填；invite 用它邀一个人——批量用 members）'),
         members: param('array', 'invite 的**批量形**：按数组顺序把一串成员放进发言队列（「批量指定成员按一定顺序发言」）。与 member 互斥（同时给 ⇒ 具名拒）；顺序就是队列顺序，回执 order 读回真实队列'),
         text: param('string', '发言内容（speak/refuse/invitedspeak 必填）'),
         reason: param('string', 'silent/close/reopen/refuse/end/freeze/unfreeze/boxreopen/**revokelapse/boxrevokelapse** 的原因（end 与两个撤销必填：无理由的结束/撤销正是这条规则要防的静默动作）'),
@@ -196,7 +201,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         scope: param('string', 'hands clear/revoke 的作用域（all｜round）', { enum: ['all', 'round'] }),
         why: param('string', 'invite 的理由（必填：邀请必须可审计，v5r meeting_invite 的口径）；flow/overrideorder 也读 reason 作理由（必填）'),
         by: param('string', 'invite/invitedspeak/end 的执行人（审计事实）；**服务会议的 invite 必填且必须等于该会议的主席**（权限只在看得见席位的那一层执行）；flow/overrideorder 必填且必须是该会议的主席'),
-        actor: param('string', '谁在动作（审计事实）：true 的政策下 close/extendlimit 必须给，且必须等于该会议的主席（vmu.meetings.closeRequiresChair/extendRequiresChair）；省略时 close 退回到 by，再退回到 member（同一个人的三种写法，不是猜测）'),
+        actor: param('string', '谁在动作（审计事实）：true 的政策下 close/extendlimit/admit 必须给，且必须等于该会议的主席（vmu.meetings.closeRequiresChair/extendRequiresChair；admit 无条件只认主席）；省略时 close 退回到 by，再退回到 member（同一个人的三种写法，不是猜测）'),
         // ★ 会议级延长（规则「院士可延长会议时长上界」）。★ 与 `extend` 区分：`extend` 是【发言】延长，
         // 读 speechExtendMs/Max；`extendlimit` 是【会议墙钟上界】延长，读 extendCeilingMs。两个上界两个面。
         mode: param('string', 'flow/overrideorder 的模式（flow：open｜hands｜round_robin｜call_on；overrideorder：fifo｜round-robin｜chair｜random）', { enum: ['open', 'hands', 'round_robin', 'call_on', 'fifo', 'round-robin', 'chair', 'random'] }),
@@ -942,6 +947,27 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
             }
             throw noSuchMeeting(pid)
           }
+          // ★★★ RUN 225-B: `admit` — the CHAIR-ONLY door for a member held by `lateAdmission:"chair"`. Same shape as
+          // `attend` (service meeting required, primitive ids refused by name), but the previous act it UNDOES is a
+          // pending row, and the authority is the chair: `actor` (or `by`) must be the seat, so the kernel can refuse a
+          // non-chair by name instead of seating somebody on their own word.
+          if (action === 'admit') {
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal('admit')
+            const svc = svcOf()
+            if (svc && typeof svc.admit === 'function' && serviceHas(pid)) {
+              return Object.assign({ ok: true, action, id: pid, registry: 'service' },
+                svc.admit({ meeting: pid, member: need(member, 'member'),
+                  actor: actor === undefined || actor === null ? (by === undefined || by === null ? null : by) : actor,
+                  why: reason === undefined || reason === null ? null : reason }))
+            }
+            if (kernel.liveMeeting(pid)) {
+              return refused('VMU_INVALID_ARGUMENT', 'admit seats a member held at the door of a service meeting; ' + pid + ' is a primitive meeting',
+                'a primitive meeting has no roster/present/pendingLate — it tracks the round ask list instead, readable with action=status')
+            }
+            throw noSuchMeeting(pid)
+          }
+
           // B② (Round 10): leave requests — asking and deciding are separate acts (the approver is DECLARED).
           if (action === 'leaverequest') {
             return Object.assign({ ok: true, action, id }, live().requestLeave({ meeting: need(id, 'id'), member: need(member, 'member'), why: need(reason, 'reason') }))

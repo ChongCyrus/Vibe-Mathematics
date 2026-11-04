@@ -957,20 +957,20 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('records') && kernel.library) {
     specs.push({
       name: TOOL_NAMES.records,
-      description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹；这是 pack 里 `vibe_v5_record_<kind>` 的同一个动作，所以按那张席位面判权：席位被关的那些库，这里也写不进去）｜status（共享折入与计数器的有界视图：谁折入过、多少行没有登记作者、本实例计数）｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）｜restore（把回收站里的行按 id 恢复为活行：先 prune/status 看 id，再在 vmu.records.trash.retainDays 内 restore）',
+      description: 'vmu 记录面：list（头部列表，不含正文；可按 track 收窄）｜expand（按 id 取正文，超限计数）｜append（写入并回指纹；这是 pack 里 `vibe_v5_record_<kind>` 的同一个动作，所以按那张席位面判权：席位被关的那些库，这里也写不进去）｜status（共享折入与计数器的有界视图：谁折入过、多少行没有登记作者、本实例计数）｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）｜restore（把回收站里的行按 id 恢复为活行：先 prune/status 看 id，再在 vmu.records.trash.retainDays 内 restore）｜reindex（★ md 是正文真相、行是索引：扫描库根下的 md，把「磁盘被外部改过」「md 有而索引没有」「索引有而 md 不在」逐项对账——改过的认成新索引行（旧行与旧正文留在历史里，不删），没有的补行，缺的文件具名报告；只加不改，dryRun:true 只预告）',
       parameters: {
-        action: param('string', 'list（默认）｜expand｜append｜status｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）｜restore（把回收站里的行按 id 恢复为活行：先 prune/status 看 id，再在 vmu.records.trash.retainDays 内 restore）', { required: true, enum: ['list', 'expand', 'append', 'status', 'prune', 'restore'] }),
+        action: param('string', 'list（默认）｜expand｜append｜status｜prune（把某轨最旧的若干行移入回收站，腾出 vmu.records.head.maxItems 的名额；行不删除，vmu.records.trash.retainDays 天内可恢复）｜restore（把回收站里的行按 id 恢复为活行：先 prune/status 看 id，再在 vmu.records.trash.retainDays 内 restore）｜reindex（扫描库根下的 md 并让索引承认磁盘：md 被外部改过→换新索引行且旧行与旧正文留在历史里；md 有而索引无→补行；索引有而 md 不在→具名报告，不删行）', { required: true, enum: ['list', 'expand', 'append', 'status', 'prune', 'restore'].concat(['reindex']) }),
         id: param('string', '记录 id（expand 必填；restore 必填，可传多个用逗号分隔）'),
         limit: param('integer', 'list 的最大条数（0 = 全部；省略用内核 vmu.records.headListAt）'),
-        track: param('string', 'list：只列某一轨（省略＝全部；合法值见 vmu.records.tracks，内核会具名拒未知轨）'),
+        track: param('string', 'list：只列某一轨（省略＝全部；合法值见 vmu.records.tracks，内核会具名拒未知轨）；reindex：只对账这一轨的 md（省略＝全部声明轨）'),
         kind: param('string', 'append 的 kind（单数：proposition｜method｜subproblem）；list 时同一个词就是过滤条件（不传 = 不过滤）。★ kind 是单数、track 是复数：同一族记录在 `track` 上写作 propositions/methods/problems，两个词不能互换（传 track:"proposition" 会被具名拒 unknown record track）', { enum: ['proposition', 'method', 'subproblem'] }),
         statement: param('string', 'append：陈述'),
         proof: param('string', 'append：证明/方法正文'),
         keep: param('integer', 'prune：保留该轨最新的多少行（其余移入回收站；缺省 0 = 清空该轨的活行）；要精确按 id 清就用 ids 而不是 keep'),
         ids: param('string', 'prune：按 id 只清指定行（逗号分隔；与 keep 二选一——keep 是「留最新的 N 行」，ids 是「只清这几行」，两者不是同一个问题）'),
         why: param('string', 'prune：为什么这些行可以走（写进回收站审计）'),
-        by: param('string', 'prune：谁做的（缺省取当前席位，无席位时 office）'),
-        dryRun: param('boolean', 'prune：true = 只预告会移哪些行，不动数据'),
+        by: param('string', 'prune/reindex：谁做的（缺省取当前席位，无席位时 office）'),
+        dryRun: param('boolean', 'prune：true = 只预告会移哪些行，不动数据；reindex：true = 只对账并列出会补/会换哪些索引行，不写任何行'),
       },
       run: async ({ action = 'list', id, ids, limit, track, kind, statement, proof, keep, why, by, dryRun } = {}, exec = null) => {
         try {
@@ -1418,6 +1418,24 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               appended.seatFaceMeans = 'a member write through this face is allowed only when the pack tool that owns the same library would be allowed to that seat'
             }
             return appended
+          }
+          if (action === 'reindex') {
+            // ★★ RUN 225-A: the md files are the TRUTH and the record rows are their INDEX. A human (or a script) edits
+            // an md between turns: this action is the only way the index admits it — it never silently rewrites history
+            // (a changed md mints a NEW row and keeps the old row + its versions), never deletes a row whose md is gone
+            // (it is reported as `missing`), and adopts an md the index has never seen (`untracked` -> `adopted`).
+            if (!rc || typeof rc.mdReindex !== 'function') {
+              return refused('VMU_NO_SUCH_OBJECT', 'this kernel has no md index face',
+                'the records projection is not attached in this deployment, so there is no index to reindex')
+            }
+            let callerBy = 'office'
+            try { const m = resolveTurnMember(kernel, exec); if (m) callerBy = String(m) } catch { callerBy = 'office' }
+            if (typeof by === 'string' && by.trim() !== '') callerBy = by.trim()
+            return rc.mdReindex({
+              dryRun: dryRun === true,
+              by: callerBy,
+              track: typeof track === 'string' && track.trim() !== '' ? track.trim() : null,
+            })
           }
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {

@@ -26,16 +26,41 @@ export const V5R_ASSISTANT_TURN_SECTION = Object.freeze({
   // declared vars are the ones the turn loop really supplies.
   vars: Object.freeze(['setting:', 'phase', 'roleLabel']),
   text: [
-    '【汇报纪律：本所「{{ setting:vmu.turn.instituteName }}」】',
-    '· **主动汇报是成员义务**：把你这一轮的进展、发现与卡点写进自己的 Progress/，并把关键结论在群聊里说出来——所办与领头人靠这些信息对外汇报与统筹。',
-    '· **对外汇报的出口是所办**：人类只与所办对话；你要对外说什么，先说给所内（群聊／Progress/），由所办原样转达。不要把没经所内确认的东西直接说成结论。',
-    '· **参数配置入口属于所办**：`vibe_vmu_report` 的参数面只改 `vmu.report.params` 声明的域，且只有 `vmu.report.whoMayChange` 声明的人能改；成员可以**查看**汇报声明与留痕（action=status/declarations/trace），但改不动它们。',
-    '· **特权经请示，不自己放行**：不在你工具清单里的事、需要人类批准的闸门动作（扩编、删档、跨库改动、对外承诺）都不要自己想办法绕过去。人工在环面 `vibe_vmu_human` 可查是否在等批（`action:"approvalState"`／`"queue"`，带 requestId）；若所办声明了闸门（`vmu.human.gatedActions`），被闸动作在获批前**不执行**（具名 `VMU_HUMAN_APPROVAL_PENDING`），超时默认 hold、不放行。把事由写进群聊与 Progress/，由所办向用户请示。',
-    '· **「有进展就唤起所办」不会自己发生**：自动汇报是被声明的，不是默认的——只有谁（通常是所办）在 `vmu.report.reports` 里声明一条报告，才会有自动汇报——`vmu.report.enabled` 默认 false、`vmu.report.reports` 默认空，所以默认**什么都不报**；触发只能是 `event`／`period`／`threshold` 三种（`kernel/report.js` 的 `TRIGGER_KINDS`），报告只提示、不做决定（回执 `drives:false`）。「有进展就唤起所办」靠的是你把进展写进 Progress/ 与群聊，让所办读得到。',
-    '· **改参数、控研究所是所办的事**：用户用自然语言让所办改设置时，入口是 `vibe_v5_set`（一次一个**已声明**的键，按声明类型解析；未声明或只读的键会被具名拒）与 `vibe_vmu_report` 的参数面；成员不代改，也不要自己找旁路。',
-    '· **汇报不等于结论**：一份汇报——无论自动触发还是手动发出——都不改变任何对象的真值；任何对象要进 Verified/ 仍须满足既定票数规则。',
+        "【汇报纪律：本所「{{ setting:vmu.turn.instituteName }}」】",
+        "· **主动汇报是成员义务**：进展、发现与卡点写进自己的 Progress/，关键结论在群聊里说出来——所办与领头人靠这些统筹与对外——**自动汇报是被声明的**（`vmu.report.enabled` 与触发条件写在部署配置里，不靠自觉）。",
+        "· **对外出口只有所办**：人类只与所办对话；要对外说什么先说给所内，由所办原样转达。",
+        "· **参数面属于所办**：`vibe_vmu_report` 只改 `vmu.report.params` 声明的域，且只有 `vmu.report.whoMayChange` 声明的人能改；成员可查看（action=status/declarations/trace），改不动。",
+        "· **特权经请示（由所办向用户请示）**：扩编、删档、跨库改动、对外承诺等闸门不要绕过；`vibe_vmu_human` 查是否在等批（`approvalState`／`queue`），`vmu.human.gatedActions` 声明的动作获批前**不执行**（`VMU_HUMAN_APPROVAL_PENDING`，超时 hold）。",
+        "· **「有进展就唤起所办」不会自己发生**：`vmu.report.enabled` 默认 false、`vmu.report.reports` 默认空；触发只有 `event`／`period`／`threshold`，报告只提示不做决定（`drives:false`）。",
+        "· **改参数是所办的事**：入口是 `vibe_v5_set`（一次一个**已声明**的键）与 `vibe_vmu_report` 的参数面——**改参数、控研究所是所办的事**，不是席位的事。",
+        "· **汇报不等于结论**：汇报不改变任何对象的真值；进 Verified/ 仍须满足既定票数规则。",
+  ].join('\n'),
+})
+
+/**
+ * ROUND 225 — THE SEAT SIDE OF THE SAME LINE (the office side lives in `./assistant.json`).
+ *
+ * MEASURED PAIN: the office read its prompt and then DID the members' work — writing cards, speaking, voting and even
+ * writing papers under `member:"<seat>"` — while the seats themselves were never given a round. The office side of the
+ * fix is a rewrite of `v5r-assistant-identity` (it is the ORCHESTRATOR: start / hire / convene-arrange / drive rounds /
+ * aggregate / outward, and it must never act under a seat's name). This section is the other half, told to the SEAT:
+ * the academic act belongs to the seat and must be finished in the seat's own round, because the office does not do it.
+ *
+ * WHY A SECTION AND NOT MORE PROSE IN THE CHARTER: it must appear in EVERY member round (founding / normal / verify /
+ * meeting / paper / resume) and it must be one text, not three role variants that can drift. `shared` does that.
+ */
+export const V5R_SEAT_ACT_BOUNDARY_SECTION = Object.freeze({
+  name: 'v5r-seat-act-boundary',
+  order: 609,
+  range: 'pack',
+  source: 'v5r-assistant:authored',
+  vars: Object.freeze(['roleLabel', 'phase']),
+  text: [
+    '【动作边界：你的动作由你本回合做完】',
+    '· 你是**执行者**：写卡、发言、投票、签到、写论文、下结论只能由**你自己在本回合**做完，别请所办代办，也别把「已交给所办」当完成（所办只做编排，不代做学术动作）。',
+    '· 动作记在别人名下按事实报告；没做完写进 progress。',
   ].join('\n'),
 })
 
 /** The sections this module contributes to the pack manifest (the per-round / turn channel). */
-export const V5R_ASSISTANT_TURN_SECTIONS = Object.freeze([V5R_ASSISTANT_TURN_SECTION])
+export const V5R_ASSISTANT_TURN_SECTIONS = Object.freeze([V5R_ASSISTANT_TURN_SECTION, V5R_SEAT_ACT_BOUNDARY_SECTION])

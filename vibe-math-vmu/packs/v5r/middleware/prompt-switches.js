@@ -92,11 +92,32 @@ export const ROLE_CLAIMING_SECTIONS = Object.freeze([
   ['v5r-turn-acad-leads', 'chair'],
 ])
 
+/**
+ * ★★★ RUN 226 / A2+A3 — SECTIONS THAT ARE ACTIONABLE ONLY IN SOME PHASES.
+ *
+ * A turn prompt is assembled for ONE phase. Two families of text here were `kind: 'shared'`, so they rode in every
+ * round: (a) the Lean formalisation plan / fidelity review / blocked record — actionable only when the round IS a
+ * verification round; (b) the on-floor meeting manual (speaking order, extension and wall clock, advancing member
+ * rounds) — actionable only once a meeting is open. Paying for them on an ordinary research round is what pushed the
+ * chair prompt over the T99 budget (the gate measured the wrong slot for a year; see docs/acceptance/prompt-budget-findings.md).
+ *
+ * Semantics: the section is ENABLED when `turn.phase` is one of the listed phases, DISABLED (zero injection, per the
+ * OFF-means-zero-injection discipline) otherwise. An UNKNOWN phase disables them: a phase that cannot be named cannot
+ * be the one that makes these actionable, and charging every other phase for them is the defect being fixed.
+ */
+export const PHASE_ONLY_SECTIONS = Object.freeze([
+  ['v5r-formal-plan', ['verify', 'verify-debate']],
+  ['v5r-formal-review', ['verify', 'verify-debate']],
+  ['v5r-formal-blocked', ['verify', 'verify-debate']],
+  ['v5r-turn-meeting-chamber', ['meeting']],
+])
+
 export const V5R_PROMPT_SWITCH_STATES = Object.freeze({
   offSwitches: OFF_SWITCHES,
   hostOnly: HOST_ONLY_SECTIONS,
   roleOnly: ROLE_ONLY_SECTIONS,
   roleClaiming: ROLE_CLAIMING_SECTIONS,
+  phaseOnly: PHASE_ONLY_SECTIONS,
   catalogues: CATALOGUES,
   meetingStates: MEETING_STATES,
   formalStatuses: FORMAL_STATUSES,
@@ -240,6 +261,16 @@ export function decideSections({ settings = {}, turn = {} } = {}) {
   //   「作为院士…统筹全所」 may only reach a seat that IS the chair; for every other seat (and for an unknown role) it is
   //   switched off. Nothing is pushed for the chair, so the section it describes stays on.
   for (const [name, only] of ROLE_CLAIMING_SECTIONS) if (role !== only) decisions.push({ name, enabled: false })
+
+  // (7) ★ PHASE-ONLY SECTIONS (see PHASE_ONLY_SECTIONS): a section that is only actionable in some phases is switched
+  //   off everywhere else. The decision is pushed in BOTH directions, because a pipeline reused across turns keeps the
+  //   last enabled flag: pushing only `false` would leave the section off in the very phase that asked for it (measured:
+  //   assembling founding..heartbeat..verify on one loop lost the verify-only sections). An explicit `true` in the
+  //   listed phase makes the decision idempotent per assemble.
+  const phase = turn && typeof turn.phase === 'string' ? turn.phase : ''
+  for (const [name, phases] of PHASE_ONLY_SECTIONS) {
+    decisions.push({ name, enabled: phases.includes(phase) })
+  }
 
   return { decisions, errors }
 }

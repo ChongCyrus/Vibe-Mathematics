@@ -93,8 +93,10 @@ stage('2. THE HOST HALF IS VARIABLE-FREE (the host path renders none) AND THE TU
 stage('3. THE MANIFEST REALLY CARRIES THE PER-ROUND HALF (PACK.sections, the thing the loader applies)')
 ok(Array.isArray(PACK.sections) && PACK.sections.some((s) => s.name === turnSec.name),
   'PACK.sections contains the reporting duty, so applying the pack registers it (not merely importing it)', PACK.sections.map((s) => s.name).filter((n) => String(n).includes('report')))
-ok(V5R_ASSISTANT_TURN_SECTIONS.length === 1 && V5R_ASSISTANT_TURN_SECTIONS[0] === turnSec,
-  'and the module exports exactly the sections the manifest is handed (no hidden second list)')
+ok(V5R_ASSISTANT_TURN_SECTIONS.length === 2 && V5R_ASSISTANT_TURN_SECTIONS[0] === turnSec &&
+  V5R_ASSISTANT_TURN_SECTIONS.every((s) => PACK.sections.some((p) => p.name === s.name)),
+  'and the module exports exactly the sections the manifest is handed (no hidden second list)',
+  V5R_ASSISTANT_TURN_SECTIONS.map((s) => s.name))
 
 stage('4. THE PER-ROUND HALF REALLY REACHES AN ASSEMBLED PROMPT (direct pipeline, all three roles)')
 {

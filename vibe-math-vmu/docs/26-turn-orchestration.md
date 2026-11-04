@@ -3771,3 +3771,128 @@ Three lessons:
   reader to X.
 - A default value is not a choice the caller made. When B already determines A, derive A from B instead of rejecting the
   request over A.
+
+## ROUND 230 (RUN 225) — three capabilities that had lived in prose, and an auditor whose first job was to catch itself
+
+The user changed the order of work this round: the 60th live run is paused, the three things that had only existed as
+intentions get built first, and only then do the simulator and the multi-way audit arrive. So the round is three
+capabilities plus the first instrument that measures them.
+
+**A. The blueprint now has a truth a human can edit.** Records gained an md layer (`mdWrite` with a same-directory temp
+file plus rename, `mdRead`, `mdDigest`, `mdParse`/`mdCompose`) and a reconciler, `mdReindex`: the file is the truth, the
+row is the index, and the receipt says which row each file was matched to (`changed[].rowChoice`) instead of hiding the
+choice. The three blueprint write points (start a draft, continue it, adopt it) write the file first, carry its sha256
+into the row as `mdFingerprint`, and only then touch the records track; the md itself never records its own fingerprint,
+because a self-reference makes the file stale the moment it is written.
+
+**B. A late arrival now has a door and a key.** `lateAdmission` is a policy (`open` | `chair` | `refuse`) declared at
+convene time; a seat that shows up late is dispatched by it instead of merely being stamped `late:true`, and the chair's
+key is the new `admit` action (queue out, roster and attendance written, minutes record `late-admitted`). A late CHAIR is
+seated by the convening act itself and never waits in its own doorway. The same block adds the readings a meeting needs
+to decide whom to wait for: `waitStates[]` per seat plus `waitRecommended`/`waitRecommendedWhy`. It is not automatic
+waiting — members are not resident processes, and nobody can wait on somebody else's behalf — it is the judgement turned
+into a readable fact.
+
+**C. The office orchestrates; the seat acts — and now the receipt says which happened.** The identity section of the
+assistant prompt was rewritten around the boundary: writing cards, speaking, voting, attending, writing the paper and
+settling the conclusion are acts only the seat can do in its own turn, and passing `member` must never record somebody
+else's act under their name. Three orchestration faces are named (drive a member turn, drive a meeting round, write a
+report), a per-turn `v5r-seat-act-boundary` section was added (once per seat per phase), the meeting section was
+re-sequenced by EVENT TIME (agenda → the durable invitation goes out at convene → schedule/pre-meeting/attend/waiting/
+beat/proceed → speaker order → duration and fallback → drive the member turns → chain the next), and the new
+`lateAdmission` / `admit` / `lateAfterMs` facts were taught in the place they apply.
+
+The witness for C is mechanism, not wording: every pack tool dispatches through one point (`host-pack-tools.js`), which
+now resolves who is calling, and when `args.member` names a real roster seat the receipt carries `memberActed` (true
+only when the caller IS that seat), `actedForMember`, `callerMember` and `memberActedMeans`. The substituted branch says
+it plainly: the record was written in that seat's name, but the seat did not act in its own turn, and orchestrating on a
+seat's behalf is not the same act as carrying it out.
+
+**The first instrument, and its first correction.** `scripts/audit-prompt-budget.mjs` measures four things per seat per
+phase: assembled characters, the share of characters inside a sentence repeated within the same prompt, the density of
+parameter names in prose, and tool names mentioned by prose that no declared face offers. It over-reported twice before
+it reported anything true: it read `TOOL_NAMES` by its keys (short names) instead of its values (the callable
+`vibe_vmu_*` names), so every host tool looked uncallable; and it measured the charter's SOURCE words
+(`academician`/`researcher`) while the kernel passes the ROSTER SLOT (`chair`/`member`/`temp`). Measured the way the
+kernel really does it:
+
+| seat | normal | meeting | checkpoint |
+| --- | --- | --- | --- |
+| chair | 32 057 | 32 058 | 32 061 |
+| member | 27 973 | 27 974 | 27 977 |
+| temp | 26 507 | 26 508 | 26 511 |
+
+So rule T99's 30 000 cap has been exceeded by the chair seat by about 2.06 K — while `tests/vmu-turn.test.mjs` asserted
+the budget on `role:'researcher'` and passed. The gate was measuring a role that never appears in a real turn. That
+finding is recorded with a fix plan in `docs/acceptance/prompt-budget-findings.md` (F1, F2) and deliberately NOT fixed
+in this round: structural trimming touches pinned paragraphs, so it gets its own round.
+
+Three lessons:
+
+- An auditor's first version will measure the wrong thing, and it will measure it in the direction of "looks fine".
+  Reading the wrong half of a dictionary and measuring the wrong subject both produced a clean report. Check one item of
+  the first report by hand before trusting the rest.
+- A ratchet whose value is invented is a permanent red light. A 26 000 line fired on member and temp every run; a line
+  must live above the measured value, otherwise it trains the reader to ignore the report.
+- Adding a WITNESS to a mechanism changes behaviour better than rewording it. "Do not act on a seat's behalf" lived in
+  prose for a long time; the turn came when the receipt started carrying `memberActed`, because from then on
+  substitution is a field somebody reads, not a wording somebody can blur.
+
+## ROUND 231 (RUN 226) — the ruler was measuring the wrong object, and one sentence was printed seven times
+
+MEASURED: the prompt-budget gate assembled with `role:'researcher'` while a real round passes the ROSTER SLOT
+(`chair|member|temp`, `kernel/turn/index.js`'s `chosenRole`), and it omitted `bindings` + `settings` — so the chair
+prompt read 24.5 K/32.0 K while the deployed chair prompt was 38 478 chars (normal) and 41 060 (verify). Two errors,
+both in the direction of "looks fine".
+
+FIXED, in this order:
+
+1. **The ruler.** `scripts/audit-prompt-budget.mjs` now assembles the way the entry does: sections + `bindings`
+   + `settings` (with `v5r.fixtureMode:'tools'`, the deployed mode), four phases (`normal|meeting|checkpoint|verify`),
+   and judges the WORST phase. member/temp over 30 000 is a problem; chair over 36 000 is a problem; 30–36 K is a
+   WARNING (`SEAT_PROMPT_OVER_T99`). The T99 arm of `tests/vmu-turn.test.mjs` had the same defect and is now measured
+   on the worst slot.
+2. **Phase gating, both ways.** `packs/v5r/middleware/prompt-switches.js` gained `PHASE_ONLY_SECTIONS` and now sets
+   `enabled: phases.includes(phase)` — pushing only `false` leaks across phases because the loop reuses section objects:
+   a section disabled during founding stayed disabled in verify, and verify assembled 20 221 chars. Found by
+   `vmu-prompt-type-coverage`, not by a live run.
+3. **The prose diet.** `seat-faces.js` chair teaching 6 040→4 112 (member 2 304→1 911, temp 774→626), the on-floor
+   meeting manual split into `v5r-turn-meeting-chamber` (order 841, meeting phase only), fixture-tools 2 749→~2 200,
+   eight semantic merges in `v5r-blocks-b.js`/`v5r-core.js`/`v5r-assistant.js`. Chair: 31 306 / 34 938 / 33 814 / 31 453.
+4. **Tool descriptions** (`packs/v5r/tools.js`, 11 of 48): total 37 990→31 652, mean 791→659, max 3 799→2 434. Deleted:
+   parameter restatements, receipt-field enumerations, `state.json`/kernel-function implementation detail, cross-description
+   caveats. Zero test files were edited — a pin that forces an edit means the wrong thing was deleted.
+5. **`status` summary 8 079 B → under the 8 000 B readability bound** by noticing that ONE 62-char note was printed on all
+   seven headlined diagnostic sections (~430 B). Each section now keeps `note: 'detail:"full" only'`; the pointer is stated
+   once in `diagnosticsBounded`, which names all seven.
+
+SEVEN PINS REFUSED THE DIET, and all seven were resolved by RESTORING the measured original (only one assertion was
+updated, in `vmu-assistant-assembly`, with the Lead's authorization): the clock sentence in `vmu-run89`, the two service-
+meeting agenda sentences in `vmu-run93b`, `OOM 会丢掉全部未落盘工作` in `vmu-turn` T82, the three-seat requirement of
+`kind:'role'` blocks (the new meeting-chamber block had only the chair's text — T136), the four mailbox semantics lines and
+`框架不会替你安装，也不会静默假装成功` in `vmu-v5r-tools`, `from→to` in `vmu-run136`, and seven verbatim mainline/office
+ledger evidence phrases in `check-rules-coverage`.
+
+LESSONS: (1) a ruler aimed at the wrong object is worse than no ruler — it produces proof that we are done; (2) repeated
+prose is paid per repetition, so look for "the same sentence seven times" before "the longest sentence"; (3) when a pin
+fails, ask what it REMEMBERS — restoring the original was cheaper and more honest than rewriting the assertion.
+
+### ROUND 231 addendum — the second full sweep found five more of the same class
+
+`TOTAL 778 PASS 773 FAIL 5`, and every one of the five was a sentence that lost a distinction, not an assertion that aged:
+
+- the fixture receipt sample put `{"solved":false}` in the SAME clause as the closure vote (`vmu-prompt-closure-channel`, RULE C);
+- `成员席位只能改自己的` became `成员只能改自己的` — the subject of the sentence was a SEAT (`vmu-run102-panel-types`);
+- the new in-meeting teaching wrote `vibe_v5_meeting { action:"attend", meeting, member }`, but that face declares `id`
+  (`vmu-run150-verdict-channel` §2n4 is a generalised door: every `vibe_x { … }` shape in the live prompt sources must use declared
+  parameter names);
+- the Lean teaching survived in only ONE block that names both the tool and the working directory, so the library-root rule lost its
+  second home (`vmu-run58-lean-face-contract` wants two);
+- `v5r-blocks-a.js` shrank 732 → 618 lines, so seven `file:NNN` citations in the audit docs were out of range, and the three
+  「字段目录」 sites had moved to `v5r-reply-channel.js:187/188/223` (`audit-doc-line-refs`).
+
+All five were fixed by restoring the distinction, never by relaxing the assertion. Prompt ceiling after the restore: chair/verify
+33 845 (the +262 came from the working-directory line the Lean teaching needs). The budget gate still passes with one warning.
+
+**Lesson worth carrying:** compressing prose is not deleting characters, it is deleting the DIFFERENCES between sentences. None of the
+five deletions was long; each carried the memory of a past incident.

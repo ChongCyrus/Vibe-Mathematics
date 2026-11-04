@@ -10,11 +10,20 @@
  * WHAT THIS FILE IS (and is not). It is the DATA FACE of the blueprint: a `records` track whose rows are revisions, the
  * two verbs that move a revision (`proposeBlueprint` = any member drafts, `adoptBlueprint` = the chair adopts), and a
  * read-out (`blueprintState` / `blueprintFreshness`) that answers "which revision is in force, when was it adopted, is it
- * overdue". It is NOT a filesystem writer (vmu has no fs write face at all — see `verified.js:25-34` for the same
- * reasoning), NOT a second authority over "who may adopt" (the caller passes the roster row; the pack declares the slot
- * in `BLUEPRINT_ADOPT_SLOT`, exactly like `PAPER_CONSULT_ROLES`), and NOT prompt text (that is
+ * overdue". It is NOT a second authority over "who may adopt" (the caller passes the roster row; the pack declares the
+ * slot in `BLUEPRINT_ADOPT_SLOT`, exactly like `PAPER_CONSULT_ROLES`), and NOT prompt text (that is
  * `prompts/v5r-corrections.js`, and only after the machine can do what it says — the repo's carrier → gate → prompt
  * order).
+ *
+ * ★★ RUN 225-A: THE MD FILE IS THE TRUTH; THE ROW IS ITS INDEX. Until this revision the blueprint existed ONLY as a row
+ *   body inside `<root>/vmu/state.json`, so the document a human opens on disk and the document the tools answer from were
+ *   two different things: `vmu.turn.protocolPath` named a file nobody wrote, and a row could claim a revision no file
+ *   carried. Now every propose / continue / adopt writes the FULL revision body to that path as its own md — atomically
+ *   (temp file + rename, so nobody reads half a document) — and the row stores the md sha256 in its `mdFingerprint`
+ *   header. The read faces compare the two and DISCLOSE a disagreement (`mdChangedSinceIndex: true` + both fingerprints +
+ *   the means pointing at `vibe_vmu_records { action: "reindex" }`), instead of answering from the index as if the file
+ *   agreed. The writer lives in `kernel/records.js` (the md face: compose/parse/atomic-write/reindex — one file shape for
+ *   every row that carries a document); this module only decides WHAT one blueprint revision says.
  *
  * ★ THE TRACK MUST BE DECLARED AT ASSEMBLY TIME. `vmu.records.tracks` is SNAPSHOTTED when the kernel is constructed
  *   (`kernel/records.js:189-221`), so `blueprint` is declared in `packs/v5r/settings/defaults.json` next to `verified`
@@ -127,7 +136,14 @@ export const BLUEPRINT_STATUSES = Object.freeze(['draft', 'current'])
  * `lastStaleSeenAt` were APPENDED by the B4/B5 mechanisms: old fields keep their name and position, so every row written
  * before this revision still parses, and a new row is a superset of the old shape.
  */
-export const BLUEPRINT_FIELDS = Object.freeze(['path', 'status', 'revision', 'proposedBy', 'proposedAt', 'adoptedBy', 'adoptedAt', 'proposalId', 'note', 'authors', 'lastStaleSeenAt'])
+export const BLUEPRINT_FIELDS = Object.freeze(['path', 'status', 'revision', 'proposedBy', 'proposedAt', 'adoptedBy', 'adoptedAt', 'proposalId', 'note', 'authors', 'lastStaleSeenAt', 'mdFingerprint'])
+/** ★ RUN 225-A: the header field that holds the sha256 of the md this row was indexed from (last position: a row written
+ *  before the md face has no such field and still parses — the superset rule this file already follows for authors). */
+export const BLUEPRINT_MD_KEY = 'mdFingerprint'
+/** ★ RUN 225-A: the md format NAME this pack reports in its md receipts (the file marker itself is the records face's
+ *  `vmuMd：vmu-md/1`: one document shape, every row that carries a document). */
+export const BLUEPRINT_MD_FORMAT = 'vmu-blueprint-md/1'
+
 /** The section that holds the blueprint text itself. ONE such marker per row; it is a START marker, not a boundary. */
 export const BLUEPRINT_TEXT_SECTION = '正文'
 /** The seats the ledger rule names. Kept as DATA so the refusal and the receipt quote the same two names. */
@@ -322,6 +338,134 @@ export function composeBlueprintBody(row = {}) {
   const body = txt(row.text)
   if (body !== '') lines.push(body)
   return lines.join('\n')
+}
+
+/**
+ * ★★ RUN 225-A: the MD HEADER of one revision — the SAME fields the row header prints, rendered as text, so the md on
+ * disk and the index row can be compared field by field. It deliberately carries NO fingerprint of itself (a file that
+ * prints its own sha256 can never verify: changing the line changes the hash). The records face adds the marker and the
+ * title; this function only decides what a blueprint revision says.
+ */
+export function blueprintMdHeaderOf({
+  path = '', status = '', revision = null, proposedBy = '', proposedAt = null,
+  adoptedBy = '', adoptedAt = null, proposalId = '', note = '', authors = null,
+} = {}) {
+  const fields = {}
+  const put = (key, value) => { const s = txt(value); if (s !== '') fields[key] = s }
+  put('path', path)
+  put('status', status)
+  put('revision', revision === null || revision === undefined ? '' : String(revision))
+  put('proposedBy', proposedBy)
+  put('proposedAt', timeText(proposedAt))
+  put('adoptedBy', adoptedBy)
+  put('adoptedAt', timeText(adoptedAt))
+  put('proposalId', proposalId)
+  put('note', note)
+  put('authors', typeof authors === 'string' ? txt(authors) : serializeAuthors(authors))
+  return fields
+}
+
+/**
+ * ★★ RUN 225-A: write ONE revision to its md (atomically, through the records face) and return the receipt the blueprint
+ * receipts carry. A records face built by hand in a unit test has no md writer: that is a NAMED `available: false` with
+ * the reason, never a silent "the file is fine" — the row is then the only holder, and the receipt says so.
+ */
+export function writeBlueprintMd({ records, path, title = '', status = '', revision = null, fields = null, text = '' } = {}) {
+  const wanted = txt(path)
+  const unavailable = (means) => ({
+    ok: true, available: false, written: false, path: wanted, absPath: null, fingerprint: null,
+    bytes: 0, format: BLUEPRINT_MD_FORMAT, atomic: null, means,
+  })
+  if (!records || typeof records.mdWrite !== 'function') {
+    return unavailable('this records face carries no md writer (a hand-built test double), so this revision lives ONLY in the records track: the md 是磁盘上的正文真相，而这个部署没有文件面')
+  }
+  let out = null
+  try {
+    out = records.mdWrite({ path: wanted, title, track: BLUEPRINT_TRACK, kind: BLUEPRINT_KIND, fields: fields === null ? {} : fields, text })
+  } catch (e) {
+    return Object.assign(unavailable('the md write threw, so no md was written: ' + String((e && e.message) || e)),
+      { error: { code: (e && e.code) || null, message: String((e && e.message) || e) } })
+  }
+  if (!out || out.available !== true) {
+    return Object.assign(unavailable((out && out.means) || 'this deployment does not know its workspace root, so no md was written and no row should claim one'), out || {})
+  }
+  return {
+    ok: out.ok !== false, available: true, written: out.written === true,
+    path: out.path === undefined ? wanted : out.path,
+    absPath: out.absPath === undefined ? null : out.absPath,
+    fingerprint: out.fingerprint === undefined ? null : out.fingerprint,
+    bytes: out.bytes === undefined ? 0 : out.bytes,
+    format: BLUEPRINT_MD_FORMAT,
+    atomic: out.atomic === undefined ? null : out.atomic,
+    replaced: out.replaced === true,
+    means: 'md 已原子替换（同目录临时文件 + rename）：磁盘上是这一版的完整正文；行里存它的 sha256，所以「md 被外部改过」是可发现的事实（read 会披露 mdChangedSinceIndex，reindex 才认账），不是沉默',
+  }
+}
+
+/**
+ * ★★ RUN 225-A: the index-versus-disk comparison a READ prints. `mdChangedSinceIndex` is TRUE only when both fingerprints
+ * are known and differ: a md that is missing, or a face with no md reader at all, is disclosed as such — "cannot compare"
+ * must never be printed as "agrees". The repair is always the same and the means says it: `vibe_vmu_records { action:
+ * "reindex" }` makes the index admit the file.
+ */
+export function blueprintMdReading({ records, path, row = null } = {}) {
+  const wanted = txt(path)
+  const indexFingerprint = row === null || row === undefined ? null : (txt(row.fields && row.fields[BLUEPRINT_MD_KEY]) || null)
+  const indexRevision = row === null || row === undefined || !Number.isInteger(row.revision) ? null : row.revision
+  const unavailable = (means) => ({
+    ok: true, available: false, path: wanted, absPath: null, exists: null, mdMissing: null,
+    mdFingerprint: null, indexFingerprint, indexRevision, mdRevision: null, mdStatus: null,
+    mdChangedSinceIndex: false, mdAheadOfIndex: false, mdBehindIndex: false, means,
+  })
+  if (!records || typeof records.mdDigest !== 'function') {
+    return unavailable('this records face carries no md reader (a hand-built test double), so there is no file to compare the index against — the row is the only side of the comparison, and that is not the same as agreement')
+  }
+  let digest = null
+  try { digest = records.mdDigest({ path: wanted, indexFingerprint }) } catch (e) {
+    return unavailable('the md comparison threw, so this read makes no claim either: ' + String((e && e.message) || e))
+  }
+  if (!digest || digest.available !== true) {
+    return unavailable((digest && digest.means) || 'this deployment does not know its workspace root, so the index cannot be compared against a file')
+  }
+  const mdRevision = digest.mdRevision === undefined ? null : digest.mdRevision
+  const mdStatus = digest.mdStatus === undefined ? null : digest.mdStatus
+  const mdFingerprint = digest.mdFingerprint === undefined ? null : digest.mdFingerprint
+  const exists = digest.exists === true
+  const changed = digest.mdChangedSinceIndex === true
+  const mdRev = mdRevision === null || mdRevision === undefined || mdRevision === '' ? null : Number(mdRevision)
+  const indexRev = indexRevision === null ? null : Number(indexRevision)
+  const ahead = changed && mdRev !== null && indexRev !== null && Number.isFinite(mdRev) && Number.isFinite(indexRev) && mdRev > indexRev
+  const behind = changed && mdRev !== null && indexRev !== null && Number.isFinite(mdRev) && Number.isFinite(indexRev) && mdRev < indexRev
+  // Same revision, different status: the md tracks the path, so a draft row legitimately stops agreeing with it once the
+  // draft is adopted (status in the file became current). Naming that keeps it from being read as an external edit.
+  const statusMoved = changed && !ahead && !behind && row !== null && mdStatus !== null && txt(row.status) !== txt(mdStatus)
+  return {
+    ok: true, available: true, path: wanted, absPath: digest.absPath === undefined ? null : digest.absPath, exists,
+    mdMissing: exists === false,
+    mdFingerprint, indexFingerprint, indexRevision, mdRevision, mdStatus,
+    mdChangedSinceIndex: changed,
+    mdAheadOfIndex: ahead,
+    mdBehindIndex: behind,
+    mdStatusMoved: statusMoved,
+    means: !exists
+      ? '索引里有这一版的行，但 md 文件不在磁盘上：读面不静默回退（不拿索引冒充文件），reindex 会把它计入 missing 并具名报告'
+      : (!changed
+        ? 'md 与索引一致（同一 sha256）：这里的内容就是磁盘上的正文'
+        : (ahead
+          ? 'md 比这一行新（md 记 r' + String(mdRevision) + '，这一行是 r' + String(indexRevision) + '）：这条路径已经推进到更新的版本。要读现行版用 state；要让索引追上 md（含历史行只增不改）走 vibe_vmu_records { action: "reindex" }'
+          : (behind
+            ? 'md 比这一行旧（md 记 r' + String(mdRevision) + '，这一行是 r' + String(indexRevision) + '）：这一行不是这条路径上最新的版本，md 跟的是最新的那一版'
+            : (statusMoved
+              ? '同一 revision，但 md 的 status 与这一行不同（md 记 ' + txt(mdStatus) + '，这一行是 ' + txt(row.status) + '）：文件跟的是这条路径的现行状态，草案落成后它的草案行不再与文件逐字节相同；正文一致（正文在 adopt 时逐字搬运）'
+              : 'md 已被外部改过（磁盘 md 的 sha256 与索引行记的 mdFingerprint 不同）：这里给的是 INDEX 里的正文，不是磁盘正文。先 vibe_vmu_records { action: "reindex" } 让索引换成 md 的快照，再读')))),
+  }
+}
+
+/** The row that represents the newest revision on a path: the in-force row when there is one, else the newest draft. */
+export function newestBlueprintRow(rows, inForce = null) {
+  if (inForce !== null && inForce !== undefined) return inForce
+  if (!Array.isArray(rows) || rows.length === 0) return null
+  return rows.slice().sort((a, b) => (b.revision - a.revision) || ((Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0)))[0]
 }
 
 /**
@@ -594,6 +738,9 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
         note: txt(inForce.fields.note),
         authors: inForce.authors,
         lastStaleSeenAt: stamp,
+        // ★ RUN 225-A: the overdue mark rewrites the row body, so the md stamp must travel with it or the write would
+        // erase the one thing that lets a later reader compare the row against the file.
+        mdFingerprint: txt(inForce.fields[BLUEPRINT_MD_KEY]),
         text: inForce.text,
       })
       try {
@@ -629,11 +776,20 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
     staleAfterMs: window.ms,
     staleAfterMsSource: window.source,
   })
+  const md = blueprintMdReading({ records, path: txt(path), row: newestBlueprintRow(rows, inForce) })
   return {
     ok: true,
     path: txt(path),
     track: BLUEPRINT_TRACK,
     kind: BLUEPRINT_KIND,
+    // ★★ RUN 225-A: the index says what it was built from; the file says what the document is NOW. Both are printed,
+    // and a disagreement is DISCLOSED here (mdChangedSinceIndex) with the repair named — never resolved silently.
+    md,
+    mdChangedSinceIndex: md.mdChangedSinceIndex,
+    mdMissing: md.mdMissing,
+    mdFingerprint: md.mdFingerprint,
+    indexFingerprint: md.indexFingerprint,
+    mdMeans: md.means,
     hasCurrent: inForce !== null,
     current: inForce === null ? null : {
       id: inForce.id,
@@ -678,7 +834,20 @@ export function readBlueprint({ records, id }) {
   if (wanted === '') throw refuse('VMU_INVALID_ARGUMENT', 'a blueprint read needs the record id', 'pass id:<the row id returned by state/draft>')
   const got = track.get({ id: wanted })
   const parsed = parseBlueprint(got)
-  return Object.assign({ ok: parsed.ok, row: got, problems: parsed.problems }, parsed)
+  // ★★ RUN 225-A: reading ONE revision is the act most likely to be answered from a stale index (a human edited the md
+  // and asked "what does r3 say now?"). The receipt carries the file comparison, so the body above is never mistaken for
+  // the file when the two disagree. The comparison takes the PARSED row (its blueprint header), not the records shell:
+  // the shell's `status` is the records lifecycle (live/trashed) and its `revision` is the row version, and reading those
+  // as the blueprint's status/revision made every read claim a status change.
+  const md = blueprintMdReading({
+    records, path: txt(parsed.fields.path),
+    row: { id: parsed.id, revision: parsed.revision, status: parsed.status, fields: parsed.fields, updatedAt: got.updatedAt },
+  })
+  return Object.assign({
+    ok: parsed.ok, row: got, problems: parsed.problems,
+    md, mdChangedSinceIndex: md.mdChangedSinceIndex, mdMissing: md.mdMissing, mdFingerprint: md.mdFingerprint,
+    indexFingerprint: md.indexFingerprint, mdMeans: md.means,
+  }, parsed)
 }
 
 /**
@@ -828,7 +997,18 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   })
   if (target === null) {
     const authors = [entry]
-    const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, text: bodyNext })
+    // ★★ RUN 225-A: THE FILE FIRST, THEN THE ROW. The md is the truth, so the revision goes to disk (atomically) and the
+    // row stores the sha256 of what was written. If the md cannot be written (no workspace root / write failure) the row
+    // carries NO fingerprint and the receipt says `md.available: false` with the reason — a row never claims a file it
+    // did not write.
+    const mdFields = blueprintMdHeaderOf({
+      path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors,
+    })
+    const md = writeBlueprintMd({
+      records, path: wantedPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + revision + '｜草案',
+      status: 'draft', revision, fields: mdFields, text: bodyNext,
+    })
+    const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, mdFingerprint: md.fingerprint || '', text: bodyNext })
     const put = track.put({
       track: BLUEPRINT_TRACK,
       kind: BLUEPRINT_KIND,
@@ -852,6 +1032,10 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       authors,
       draftSharing: draftSharingOf(null, authors, false),
       codesign: blueprintCodesignStatus(authors, ''),
+      // ★ RUN 225-A: the document on disk, and the sha256 the row now indexes it by.
+      md,
+      mdFingerprint: md.fingerprint,
+      mdChangedSinceIndex: false,
       fingerprint: put.fingerprint || null,
       deduplicated: put.deduplicated === true,
       headingDropped,
@@ -887,6 +1071,17 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     sections.push({ member: author, text: bodyNext })
     textNext = composeBlueprintText(split.base, sections)
   }
+  // ★★ RUN 225-A: a continuation changes the DRAFT document, so the same file is rewritten before the row is touched —
+  // the disk always holds the newest text of this revision, and the row indexes that exact byte sequence.
+  const mdFields = blueprintMdHeaderOf({
+    path: wantedPath, status: 'draft', revision: target.revision,
+    proposedBy: txt(target.fields.proposedBy), proposedAt: msOf(target.fields.proposedAt),
+    note: txt(note) || txt(target.fields.note), authors,
+  })
+  const md = writeBlueprintMd({
+    records, path: wantedPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + target.revision + '｜草案',
+    status: 'draft', revision: target.revision, fields: mdFields, text: textNext,
+  })
   const composed = composeBlueprintBody({
     path: wantedPath,
     status: 'draft',
@@ -895,6 +1090,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     proposedAt: msOf(target.fields.proposedAt),
     note: txt(note) || txt(target.fields.note),
     authors,
+    mdFingerprint: md.fingerprint || '',
     text: textNext,
   })
   const wrote = track.supersede({
@@ -920,6 +1116,10 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     authors,
     draftSharing: draftSharingOf(String(target.id), authors, true),
     codesign: blueprintCodesignStatus(authors, ''),
+    // ★ RUN 225-A: the rewritten draft document, and the sha256 the same row now carries.
+    md,
+    mdFingerprint: md.fingerprint,
+    mdChangedSinceIndex: false,
     fingerprint: (wrote && wrote.fingerprint) || null,
     deduplicated: false,
     headingDropped,
@@ -995,6 +1195,17 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
   const previousAgeMs = previousAdoptedAt === null ? null : Math.max(0, stamp - previousAdoptedAt)
   const window = windowWith(staleAfterMs, staleAfterMsSource)
   const overdueUpdate = previousAgeMs !== null && previousAgeMs > window.ms
+  // ★★ RUN 225-A: adoption changes the STATUS and the signature, never the document — so the file is rewritten with the
+  // SAME `## 正文` (target.text verbatim) and the new header, and only then does the index row record its sha256.
+  const mdFields = blueprintMdHeaderOf({
+    path: wantedPath, status: 'current', revision,
+    proposedBy: target.fields.proposedBy, proposedAt: target.fields.proposedAt,
+    adoptedBy: adopter, adoptedAt: stamp, proposalId: target.id, note, authors: target.authors,
+  })
+  const md = writeBlueprintMd({
+    records, path: wantedPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + revision + '｜生效',
+    status: 'current', revision, fields: mdFields, text: target.text,
+  })
   const composed = composeBlueprintBody({
     path: wantedPath,
     status: 'current',
@@ -1007,6 +1218,7 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     note,
     // B5: the co-design record travels WITH the adopted row (who designed this version is a fact of the version).
     authors: target.authors,
+    mdFingerprint: md.fingerprint || '',
     // The ADOPTED row carries the draft's TEXT verbatim: adoption changes the status/signature, never the document.
     text: target.text,
   })
@@ -1060,6 +1272,12 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     staleAfterMs: after.staleAfterMs,
     staleAfterMsSource: after.staleAfterMsSource,
     freshness: after.freshness,
+    // ★ RUN 225-A: the CURRENT document on disk equals the index by construction here (the file was written first and the
+    // row indexes that byte sequence) — the receipt shows the comparison rather than asking the reader to trust it.
+    md: after.md,
+    mdWrite: md,
+    mdFingerprint: md.fingerprint,
+    mdChangedSinceIndex: after.mdChangedSinceIndex,
     fingerprint: put.fingerprint || null,
     note: previous === null
       ? '这是该路径上的第一个生效版本'
