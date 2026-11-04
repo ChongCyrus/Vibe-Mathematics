@@ -16294,3 +16294,55 @@ scope 规则是**按套件名**匹配的（`vmuExcludeRule`），迁移后作业
 - `GATE_LEGACY=1`：789 作业，54 个归档套件在门禁等价环境下按名通过；`v5-institute-fixes.mutants.mjs` 单项
   1745 s（168/168 families、107/107 positives），是这一档的主要墙钟成本。
 - 结论：搬迁只是换了位置；门禁的覆盖面没变（默认 731、含归档 789），而默认档里不再有「读归档」的作业。
+
+## §332（第 84 轮）：席位提示词里三句真话变假话，两件真功能没人教
+
+### 332.1 这一轮的账从哪来
+
+RUN 229/230 把三件事做进了机制：`order` 带 `members` 是**重排**、`extend` **跨注册表**到服务会议、
+成员回复可由 drive 绑定会议（`VMU_TURN_REPLY_CONFLICT` 拦错会）。但席位提示词没跟着改，于是**同一个仓库里，
+机制与教学互相矛盾**：主席被告知「`order` 只读队列」「`extend`/`silent`/`end`/`hands` 在 SERVICE 会议具名拒
+`VMU_REGISTRY_BOUNDARY`」，成员被告知「`extend` 是原语动作，服务会议上具名拒」——按教学做会得到与代码相反的
+预期。同时两件真功能**一次也没被教过**：蓝图正文的唯一真相是一份 md（`Shared/Protocol.md`，`prune` 不删 md、
+`reindex` 按 md 重建索引），以及成员侧的迟到入席（`lateAdmission: open|chair|refuse` 与 `pendingLate`）。
+
+### 332.2 三处陈旧句：替换，不是追加
+
+- `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js`（chair 会中手册 ④）：`order` 只读队列 →
+  「不带 `members` 时只读队列；带 `members` 是**重排**（必须给 `by`=你自己，非本会出席者具名拒）」。
+- 同文件（chair ⑤）：`extend`/`silent`/`end`/`hands` 一并说成 primitive 原语 → `extend` 现在跨注册表
+  （服务会议走服务面、回执 `registry:"service"` 且给 `speechUsed`/`speechExtendMs`），`silent`/`end`/`hands`
+  仍是原语；同文件（researcher 会中）：`extend` 变成「主席的动作，你自报身份会被拒」，`silent`/`end` 仍具名拒。
+- `vibe-math-vmu/packs/v5r/seat-faces.js`（`vibe_vmu_meeting` 的一句用途）：同上口径，一句话说完
+  「extend 走服务面 / silent·end·hands 仍具名拒」。
+- `vibe-math-vmu/kernel/turn/index.js:33` 的注释：原写「成员回复 `{field: payload}`，不带会议引用」——
+  仍成立，但**默认**之外还有 drive 绑定与错会具名拒两条新事实，注释一并写清（注释不是契约，写错也是一个假话源）。
+- 顺带把 chair ⑥ 补一句「回执 `roundMeeting` 说明这轮绑定了哪场会」（E12 原来只教了 `meeting_round`，没教怎么读绑定）。
+
+### 332.3 两处缺失教学：只加在它们真正生效的位置
+
+- **蓝图 md 是唯一真相**（三席各一句，`v5r-turn-blueprint`）：`Shared/Protocol.md` + 回执 `md.path`/`md.absPath`；
+  propose/adopt 先写 md 再登记索引；`vibe_vmu_records { action:"reindex" }` 按 md 的 status/revision 重建索引
+  （`dryRun:true` 只看不写）；`prune` **只动索引、不删 md**。
+- **成员侧迟到入席**（`v5r-turn-meeting-schedule` 的 researcher 段，只在该相位出现）：`open` 直接入座（`late:true`）、
+  `chair` 停在门口（`pendingLate:true`，等主席 `admit`）、`refuse` 具名拒。temp 席不参会（`attendDeniedSeats`），
+  所以不教。
+
+### 332.4 机器化与预算实测
+
+- 定向回归 **65 passed / 0 failed**（`vmu-prompt*`、`prompt-*`、`vmu-meeting*`、`vmu-turn*`、`vmu-run223/225/230`、
+  `audit-prompt-*`、`vmu-v5r-tools`、`vmu-blueprint`、`vmu-records`、`audit-tool-*`）；
+  `audit-prompt-invariants.mjs` **211/0**、其 `--self-probe` **26/26 as required**（新句没有引入未登记工具名）。
+- `scripts/audit-prompt-budget.mjs --check`：**PASS（1 warning `SEAT_PROMPT_OVER_T99`）**；
+  chair **verify 35 679**（硬上限 36 000，余 321）、member verify **29 698**（上限 30 000）、temp verify 26 832；
+  工具描述仍是 48 条 / 31 652 字符 / 均值 659 / 最大 2 434。
+- 结论：这轮的净增文本全部落在有预算余量的相位里；加字之前先删旧句，所以 chair 只涨了 210 字符。
+
+### 332.5 三条教训
+
+1. **机制改了、教学不改，提示词就变成假话**——而且假话会被别的门禁 pin 住（三处旧句都有人引用的历史），
+   所以「改机制」与「改教学」是同一件事的两半，不是两步。
+2. **预算下做加法：先删再写。** 本轮净增 210 字符（chair verify），因为三处陈述是替换而不是追加；
+   真正的加法（md 教学、迟到入席）只加在各自生效的相位/席位。
+3. **注释也是假话源。** `kernel/turn/index.js:33` 那句「不带会议引用」在机制变化后仍然正确但**不完整**，
+   而它正是下一个读代码的人做判断的依据——注释里的默认值要与契约一起更新。

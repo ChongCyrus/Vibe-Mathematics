@@ -30,8 +30,10 @@ export const apiVersion = 1
 /**
  * THE ONE REASON A REPLY FIELD IS NOT-APPLICABLE BY CONSTRUCTION (see `meeting_hand` / `meeting_invite` below).
  *
- * A member reply is `{ field: payload }` and carries NO meeting reference. Two of the reply fields can only be
- * carried out against a named meeting, so dispatching them means passing `undefined` as the meeting id: measured on a
+ * A member reply is `{ field: payload }` and carries no meeting reference BY DEFAULT. A caller that drives a turn with
+ * `meeting` binds it (the parked prompt and the receipt both say which), and a reply that names a DIFFERENT meeting is
+ * refused as `VMU_TURN_REPLY_CONFLICT` instead of being dispatched against the wrong room. Without that binding the two
+ * meeting-only reply fields have no id at all: measured on a
  * real machine, the meeting service refuses with `VMU_NO_SUCH_OBJECT "no such meeting: undefined"` — a refusal that
  * names the wrong problem, because the id was never in the reply to begin with. `meeting_invite` was worse than that:
  * it was mapped to `attend`, so a member that "invited" someone ATTENDED ITSELF.

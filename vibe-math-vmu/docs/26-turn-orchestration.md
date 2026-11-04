@@ -4042,3 +4042,27 @@ at 24 / 38, and the vmu-named jobs are identical in both modes (720 → 705).
    list agree with the filesystem?" - a question that only exists because there were two answers.
 2. **Moving a file moves its name-based lookups, not its identity.** Timeouts and mutant families are keyed by name, so
    the move needed one function (`baseOf`) rather than a second copy of every table.
+
+## ROUND 235 - the seat prompts kept saying three things the kernel no longer did
+
+What changed: three stale claims were REPLACED (not appended) and two real features got their first sentence.
+
+- `v5r-blocks-b.js` chair ④: `order` 「only reads the queue」 -> not passing `members` reads, passing `members`
+  REORDERS (needs `by`, non-attendees refused by name). chair ⑤: `extend` moved to the SERVICE face
+  (`registry:"service"`, `speechUsed`/`speechExtendMs`), `silent`/`end`/`hands` are still primitive-only; chair ⑥
+  now says what `roundMeeting` means. researcher 会中: `extend` is the chair's act (self-report refused).
+- `seat-faces.js`: the one-line purpose of `vibe_vmu_meeting` says the same thing in one sentence.
+- `kernel/turn/index.js:33`: the comment said a member reply 「carries NO meeting reference」 — still true by
+  default, but a drive-bound meeting and a wrong-meeting refusal are the two facts a reader needs; both are named now.
+- First teaching for features nobody taught: the blueprint's body lives in ONE md file (`Shared/Protocol.md`,
+  receipt `md.path`/`md.absPath`; `prune` never deletes it; `reindex` rebuilds the index from it), and the member-side
+  late admission (`lateAdmission: open|chair|refuse`, `pendingLate`, chair `admit`).
+
+Measured: chair verify 35 679 / 36 000 (net +210 chars because every claim was a replacement), member 29 698 / 30 000,
+temp 26 832; tool descriptions unchanged (48 / 31 652 / mean 659 / max 2 434). `audit-prompt-budget --check` PASS
+(1 warning); `audit-prompt-invariants` 211/0 and its self-probe 26/26; targeted regression 65/0.
+
+Two lessons: **a mechanism change and its teaching are two halves of one change**, not two steps — otherwise the
+prompt is the only place where the old behaviour still exists, and it reads as authoritative. And **under a budget,
+addition starts with deletion**: three claims rewritten in place cost 210 chars, while the two genuinely new facts
+went into the phases/seats where they are actionable.
