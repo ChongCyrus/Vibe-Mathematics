@@ -110,8 +110,8 @@ has(SRC_HOST, "bodyText.indexOf('- status：current') >= 0",
   '★ ④ …and reads the row header, because the list projection calls a CURRENT row `live` like its drafts')
 has(SRC_HOST, 'doomedDeclaredCurrentCount: declaredCurrent.length',
   '★ ④ the DECLARED count is on the receipt')
-has(SRC_HOST, 'doomedInForceCount: null',
-  '★ ④ ★★ and the IN-FORCE count is null with a reachable path, because this face does not own that ruler (RUN 222, FEEDBACK57 A)')
+has(SRC_HOST, 'doomedInForceIds: inForceIds.length === 0',
+  '★ ④ ★★ and the IN-FORCE rows are DERIVED from the headers (RUN 224; RUN 222 left them null)')
 has(SRC_HOST, 'counted from the NEWEST row backwards',
   '★ ④ the by-position means states which direction `keep` counts')
 
@@ -190,12 +190,12 @@ console.log('\n=== 3. a positional prune warns before it trashes the CURRENT row
     '§3g ★ …and says so in words, not only in a number', { means: dry.doomedDeclaredCurrentMeans })
   has(String(dry.doomedDeclaredCurrentMeans), 'status: current',
     '§3h the warning names the line it actually read (the row header), not a verdict about what is in force', { means: dry.doomedDeclaredCurrentMeans })
-  has(String(dry.doomedDeclaredCurrentMeans), 'HISTORY',
-    '§3h-2 ★★★ RUN 222 (FEEDBACK57 A): the sentence says that header line is HISTORY — run 58 measured it naming a SUPERSEDED revision as CURRENT', { means: dry.doomedDeclaredCurrentMeans })
-  ok(dry.doomedInForceCount === null,
-    '§3h-3 ★★ the in-force count is null (not 0) because only the owning face computes it', dry.doomedInForceCount)
-  has(String(dry.doomedInForceMeans), 'null, not 0',
-    '§3h-4 …and the means says so and points at the face that can answer', { means: dry.doomedInForceMeans })
+  has(String(dry.doomedDeclaredCurrentMeans), 'WHEN IT WAS WRITTEN',
+    '§3h-2 ★★★ RUN 222/224: the sentence says that header line was true WHEN WRITTEN and points at the derivation', { means: dry.doomedDeclaredCurrentMeans })
+  ok(Number.isInteger(dry.doomedInForceCount),
+    '§3h-3 ★★ the in-force count is COMPUTED from the row headers (RUN 224)', dry.doomedInForceCount)
+  has(String(dry.doomedInForceMeans), 'highest `revision`',
+    '§3h-4 …and the means states the ruler it used', { means: dry.doomedInForceMeans })
   has(String(dry.selectionMeans), 'counted from the NEWEST row backwards',
     '§3i the by-position means states the direction, so `keep` cannot be read as "keep the current one"', { means: dry.selectionMeans })
 

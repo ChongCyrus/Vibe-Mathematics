@@ -3692,3 +3692,82 @@ and measured four readings that answered about the wrong window, the wrong owner
   counts, `toolCalls: null` + `countsAbout`, two distinct scope words, `wroteToLedger` / `diskFiles` / `wroteDeprecated`,
   a reachable channel in `VMU_RULING_ALREADY_FILED`, `final needs a SIGNER`, and `compiledAfterFinal` naming both the
   finalising and the re-typesetting compile.
+
+## ROUND 228 (RUN 223) — a roster is a list, an invitation is an act
+
+Run 58 was complete and quiet; this round came from the user's fourteenth-round review, not from a live-run defect. The
+question was whether a convening tells the members it names. It did not: `vibe_v5_meeting` computed a roster and printed
+it, and nothing happened to any member — no mail, no wake, and no field saying so.
+
+The two halves already existed inside the kernel and were simply never joined: `kernel/mailbox.js` `sendBody` is durable
+delivery (`{ ok, ids, to, queued }`, one `ml-<n>` row per recipient) and `kernel/meetings.js` exposes a `wake({ member })`
+seam with `vmu.meetings.wakeFailurePolicy` / `wakeRetries` semantics behind it. `assign`/`nudge` were already mailing
+through `kernel.mailbox.send('office', …)`.
+
+What changed (`vibe-math-vmu/packs/v5r/tools.js`, convene path):
+
+1. **The convene receipt now carries `invitation`**: `{ attempted, kind, delivered[{member, mailId}], woken, unreachable
+   [{member, code, why}], means }`. Invitees are derived from the roster it just opened (the same source as
+   `nonAttending`), never from a second roster.
+2. **One durable mail per non-chair member**, `kind: 'meeting-invitation'`, subject naming the meeting, body naming the
+   meeting id and the order of business ("read status/summary first, then attend"). The mail row id is read from
+   `sent.ids[0]` — the first version guessed `sent.id` / `sent.mailId` / `sent.ticket`, none of which exist, so every
+   entry carried `mailId: ""` and an empty string reads as "this row has no name".
+3. **The wake rail is best effort**: `woken` lists only members this deployment could actually wake, an absent wake seam
+   yields an empty list, and `means` says that empty is a deployment fact rather than silence. A failed mail names the
+   member in `unreachable` and does not fail the convene — the same principle as RUN 185's closure freeze: a bookkeeping
+   failure must never roll back an academic act. The repair sentence is `vibe_v5_message` or another wake attempt, "never
+   a second convene".
+
+Machine-checked by `tests/vmu-run223-feedback58.test.mjs` (29/0): seven source pins, two real invitations readable from
+each member's inbox (exactly one, subject naming the invitation, body naming the meeting), and a no-wake-seam kernel
+where `woken` is an empty list and the durable half still went out.
+
+Still open, and said so in §324.5: late admission approval (the kernel only records `late: true`), in-meeting waiting
+(members are not resident processes), and whether a meeting that opens later should send a second invitation.
+
+Two lessons worth keeping:
+
+- "I listed the roster" and "I told the members" are different acts, and a receipt must let a reader tell them apart.
+- Durable is not prompt. `delivered` and `woken` answer different questions and must never be collapsed into one field.
+
+## ROUND 229 (RUN 224) — a declaration that coincides with a fact is still not the fact
+
+Feedback from run 59 (`slvp188-ws`, base `19bd015b`, PDF 60 558 B) found five receipts that were true and still answered
+the wrong question. Four were fixed by DERIVING the answer from data already in the rows; one by naming a lock that was
+already known but never printed.
+
+1. **The prune receipt can now say which revision is in force.** `vibe-math-vmu/host.js` reads each row's own header
+   (`- status: current`, `- revision: N`) through `headerFactsOf(row)`, and derives `inForceIds` as the
+   declared-`current` row of that track carrying the **highest `revision`**. The receipt carries `inForceIds`,
+   `doomedInForceIds` and a numeric `doomedInForceCount`; on a track with no revision ruler the derivation returns `[]`
+   and `inForceUnavailableWhy` says which of the two reasons applies. `doomedDeclaredCurrentMeans` now says the header
+   line was true **when it was written** and points at the derivation, instead of telling the reader not to infer what
+   the rows already answer. (RUN 222 had left this `null` on purpose; the field needed to compute it was in the file all
+   along.)
+2. **`blueprint adopt` reads the path off the draft it adopts.** `vibe-math-vmu/packs/v5r/blueprint.js` fills a missing
+   `path` from the drafted row (`pathFrom: 'draft'`) and only refuses when neither the draft nor the argument names one.
+   The face passes the argument the caller actually gave, so `pathFrom` never claims "argument" for a path nobody typed.
+3. **Display math is recognised.** `vibe-math-vmu/kit/paper.js` turns `$$…$$` into `\[ … \]` and counts
+   `math.displayMathSpans`; an unpaired `$$` is counted in `unpairedDisplayMarkers` and named in `displayMathMeans` rather
+   than silently escaped into text glyphs.
+4. **A p=1 write-back names the card's own gate.** The receipt now carries `p1ProofGate`, `p1ProofUnresolved` and
+   `p1ProofMeans`, so "the members agreed and the record was patched" cannot be read as "a proof file was found, read or
+   verified".
+5. **`sourcesMeans` stopped denying its own next sentence.** Chair-typed numbers are described as what they are — counts in
+   `sources.typed`, attributed to the chair in `attribution[].source` — instead of "there is NO key here named after
+   chair-typed numbers" followed by instructions to read exactly that key.
+
+Machine-checked by `tests/vmu-run224-feedback58.test.mjs` (45/0) plus updated pins in `tests/vmu-run222-feedback57.test.mjs`
+(52/0) and `tests/vmu-run220-feedback55.test.mjs` (65/0). Fixture facts worth keeping: `vibe_v5_paper`'s part action is
+addressed with the parameter `part` (not `name`), and a `node --test` suite prints its counts as `ℹ pass` / `ℹ fail` while
+the run2xx family prints `TOTAL n PASS n FAIL n`.
+
+Three lessons:
+
+- A declaration and a fact can both be true; the receipt must answer with the fact. "Cannot be computed on this face" is a
+  claim about the face, so check whether the rows already carry the number before writing it.
+- One denial clause can make its own next sentence false. A receipt that says "there is no key X" must not then route the
+  reader to X.
+- A default value is not a choice the caller made. When B already determines A, derive A from B instead of rejecting the
+  request over A.

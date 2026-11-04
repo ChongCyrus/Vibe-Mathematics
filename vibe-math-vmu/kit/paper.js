@@ -1606,7 +1606,7 @@ export function createPaperFlow({
     // count travels in the receipt so a caller can tell "nothing was repaired" from "five glyphs were".
     const TEX_MATH_GLYPH = { '≥': '\\geq', '≤': '\\leq', '≠': '\\neq', '≈': '\\approx', '∎': '\\blacksquare', '∞': '\\infty', '∈': '\\in', '⊆': '\\subseteq', '⇒': '\\Rightarrow', '→': '\\rightarrow', '±': '\\pm', '×': '\\times', '·': '\\cdot', '÷': '\\div' }
     const MATH_GLYPH_RE = /[≥≤≠≈∎∞∈⊆⇒→±×·÷]/g
-    const texMath = { glyphsRepaired: 0, proseCarets: 0, proseUnderscores: 0, inlineMathSpans: 0 }
+    const texMath = { glyphsRepaired: 0, proseCarets: 0, proseUnderscores: 0, inlineMathSpans: 0, displayMathSpans: 0, unpairedDisplayMarkers: 0 }
     const repairInMath = (s) => String(s).replace(MATH_GLYPH_RE, (ch) => { texMath.glyphsRepaired += 1; return TEX_MATH_GLYPH[ch] })
     const repairInText = (s) => String(s).replace(MATH_GLYPH_RE, (ch) => { texMath.glyphsRepaired += 1; return '$' + TEX_MATH_GLYPH[ch] + '$' })
     const escPlain = (s) => String(s).replace(/[&%$#_{}^~\\<>|]/g, (ch) => TEX_TEXT[ch] || ch)
@@ -1616,11 +1616,26 @@ export function createPaperFlow({
     // markdown does — between paired `$` — so a paired span is now passed through VERBATIM (that is what makes `^` a
     // superscript instead of a caret), and everything outside a pair is escaped exactly as before (so a bare `^` in prose
     // still cannot kill the compiler). Unpaired `$` stays escaped: a lone dollar is text, not the start of a formula.
+    // ★★★ RUN 224 (run 59 / FEEDBACK58 1.3, MEASURED): a display formula `$$S_{k+1}=...$$` came out of the .tex as
+    // `\$$S_{k+1}=...$\$` — the first `$` closed against the second, so a `$$` pair was escaped as two literal dollars and
+    // the formula printed as TEXT while every count in `math` stayed at zero (the reader was told "nothing needed repair").
+    // `$$ ... $$` is now READ as display math and emitted inside `\[ ... \]`; a `$$` with no closing pair is text and is
+    // COUNTED, so the receipt can no longer say "no repair" about a formula that did not typeset.
     const escText = (s) => {
       const raw = String(s)
       let out = ''
       let i = 0
       while (i < raw.length) {
+        if (raw.startsWith('$$', i)) {
+          const closeD = raw.indexOf('$$', i + 2)
+          if (closeD >= 0 && closeD > i + 2) {
+            texMath.displayMathSpans += 1
+            out += '\\[' + repairInMath(raw.slice(i + 2, closeD)) + '\\]'
+            i = closeD + 2
+            continue
+          }
+          texMath.unpairedDisplayMarkers += 1
+        }
         const open = raw.indexOf('$', i)
         const countOutside = (chunk) => {
           texMath.proseCarets += (String(chunk).match(/\^/g) || []).length
@@ -1661,7 +1676,16 @@ export function createPaperFlow({
       proseCarets: texMath.proseCarets,
       proseUnderscores: texMath.proseUnderscores,
       inlineMathSpans: texMath.inlineMathSpans,
-      means: (texMath.glyphsRepaired === 0 && escapedFormulaChars === 0)
+      // ★★★ RUN 224 (FEEDBACK58 1.3): a `$$ ... $$` pair is DISPLAY math and is emitted inside `\[ ... \]`; a `$$` with no
+      // closing pair is text and is counted, because the old code escaped it and said nothing.
+      displayMathSpans: texMath.displayMathSpans,
+      unpairedDisplayMarkers: texMath.unpairedDisplayMarkers,
+      displayMathMeans: texMath.displayMathSpans === 0
+        ? (texMath.unpairedDisplayMarkers === 0
+          ? 'no `$$ ... $$` span appears in this paper: every formula here is inline (`$ ... $`), so nothing was emitted as a display block'
+          : 'this paper has ' + String(texMath.unpairedDisplayMarkers) + ' `$$` marker(s) with NO closing pair: they are TEXT in the PDF, not formulas - display math needs BOTH pairs, e.g. `$$ ... $$`')
+        : String(texMath.displayMathSpans) + ' formula(s) were emitted as DISPLAY math inside `\[ ... \]` (they printed on their own line, not inside a sentence)',
+      means: (texMath.glyphsRepaired === 0 && escapedFormulaChars === 0 && texMath.unpairedDisplayMarkers === 0)
         ? 'every formula glyph in this paper is inside a paired `$ … $` span or plain text the font has: no unicode math glyph needed re-spelling and no caret/underscore was escaped into literal text'
         : 'this paper needed repair before LaTeX could print it: ' + String(texMath.glyphsRepaired) + ' unicode math glyph(s) were re-spelled as LaTeX math commands (without this, xelatex logs "Missing character" and the PDF silently drops them - run 54 lost 4×≥ and 1×∎ that way), and ' + String(escapedFormulaChars) + ' caret/underscore character(s) OUTSIDE a paired `$ … $` span were escaped into LITERAL TEXT - any formula written that way READS AS TEXT in the PDF instead of as mathematics. Write inline math between paired dollar signs, e.g. `Σ_{i=1}^{n}` becomes a real sum only inside such a span',
     }

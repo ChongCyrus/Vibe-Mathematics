@@ -15709,3 +15709,126 @@ TOTAL 773  PASS 773  FAIL 0  (suites 665 · probes 108)
 1. **声明不是事实**：行头 `status: current` 记的是「写它时它是现行版」，把它当今天的判据就会像 run 58 那样点名一个早已被取代的 revision。凡「从行内声明推导现状」的读数，要么去问拥有那把尺子的面，要么把不确定交成 `null`。
 2. **一个词只能描述它所在的那个窗口**：把采纳前/后两段规则并排写成一句静态文案，读者必然按错的那一段行动；回执要说出「这次调用处在哪个窗口」，把另一窗口降级为「以后会怎样」的提醒。
 3. **改名要减名**：上一轮为了方便读，把 `already` 换成 `middlewareAlreadyRegistered`，却让同一事实两个键名并排出现，结果真机把形状差异本身报成缺陷。改名的正确做法是**一个名字 + 一句给它主语的话**，不是并排两个名字。
+
+## §324 — 名单不是动作：召集一场会，被列出的成员从未被告知（RUN 223）
+
+**324.1 这一轮的账从哪来**
+
+用户在第 14 轮复盘中直接问「预约会议 / 邀请通知成员 / 迟到审批」三条是否实现。逐条核对源码后，回答是：预约会议有、邀请通知没有、迟到审批没有。其中「邀请通知」不是缺一个参数，而是**召集动作只算了一份名单**：`vibe_v5_meeting` 的召集回执给出 `roster` / `rosterNarrowed` / `nonAttending` / `nonAttendingMeans`，却没有一件事**发生**在成员身上——没有邮件、没有唤醒、没有回执字段说明「你没告诉任何人」。
+
+内核里两半其实都在，只是没人把它们接起来：
+
+- `vibe-math-vmu/kernel/mailbox.js:700` 的 `sendBody` 是耐久投递（`{ ok, ids, to, queued }`，每收件人一个 `ml-<n>` 行）；
+- `vibe-math-vmu/kernel/meetings.js:2250` 有 `wake({ member })` seam，且 `vmu.meetings.wakeFailurePolicy` / `wakeRetries` 已有完整语义；
+- 既有面里 `assign`/`nudge` 早就在用 `kernel.mailbox.send('office', …)`（`vibe-math-vmu/packs/v5r/tools.js:627` / `:812`）。
+
+所以缺的不是能力，是**一个把「我列了你」变成「我告诉你了」的动作**，以及一句说明这次投递究竟是什么（耐久邮件 ≠ 实时唤醒）。
+
+**324.2 修法：召集成功后逐个邀请，并把「通知不到」说成形状而不是沉默**
+
+`vibe-math-vmu/packs/v5r/tools.js` 的召集路径新增 `invitation` 回执块（计算在 `const state = opened && opened.state !== undefined ? …` 之前）：
+
+- 邀请对象 = `opened.roster` 里除主席外的每个成员（与 `nonAttending` 同一来源，不另立名册）；
+- 每人一封 `kind:'meeting-invitation'` 的耐久邮件，标题带会议标题或议程摘要，正文点名会议 id 与「先读 status/summary 再 attend」；
+- **邮件 id 取 `sent.ids[0]`**——`mailbox.send` 的答案是 `{ ok, ids: [...], to, queued }`，第一版读 `sent.id`/`sent.mailId`/`sent.ticket`（三个都不存在）于是每条回执都写 `mailId:""`，而空串会被读成「这一行没有名字」。测试 §1j 正是钉住这条；
+- 随后**尽力**调用 `kernel.meetings.wake({ member })`：成功才进 `woken`，失败静默（邮件是耐久的那一半）；没有 wake seam 时 `woken` 为空列表，由 `means` 说明这是**部署事实**而不是沉默；
+- 发不出去的邮件进 `unreachable[{member, code, why}]`；无邮箱服务时全员 `code:'VMU_ENGINE_UNAVAILABLE'`；roster 没有别人时 `attempted: []` 并说明「没有人可邀请」。
+
+`invitation.means` 逐条写明：这是 DURABLE MAIL（kind 名 + 下个回合或 `vibe_v5_inbox` 可读）、`woken` 只列这次真能唤醒的人、`unreachable` 是邮件没发出去、**召集本身仍然成功**、补救是 `vibe_v5_message` 或再 wake「never a second convene」，以及「a delivery failure must never roll back an academic act」——与 RUN 185 的结题票冻结同一条原则：簿记失败不回滚学术动作。
+
+**324.3 机器化**
+
+`tests/vmu-run223-feedback58.test.mjs`（**29 passed / 0 failed**）：
+
+- §0 七条源码 pin：邀请从 `opened.roster` 派生、kind 只写一次、`invitation` 进回执、means 里「not a live wake」「never a second convene」「must never roll back」、`unreachable` 能点名。
+- §1（ordinary 会议；`type:'debate'` 会先撞 `VMU_INVALID_ARGUMENT a debate meeting needs a subject`）两个非主席成员各得一封：`delivered.length===2`、`unreachable` 空、`mailId` 非空且等于邮箱里的行 id、`vibe_v5_inbox` 里每人恰好一条 `meeting-invitation`、标题含「会议邀请」、正文含会议 id。
+- §2 不注入 wake seam 时：`woken` 是列表且为空、means 含 wake seam / deployment 的说明、耐久那一半照样发出。
+
+**324.4 定向回归与收口链**
+
+`node tests/run-tests.mjs --only vmu-run223-feedback58 --only vmu-meeting --only vmu-v5r-tools --only vmu-run222-feedback57 --only vmu-run221-feedback56 --only vmu-run220-feedback55 --only vmu-run219-feedback54 --only audit-vmu-docs --only audit-face-actions --only audit-tool-required-flags` ⇒ `TOTAL 28 PASS 28 FAIL 0 (suites 26 · probes 2)`；`update-doc-counts --write` ⇒ `JOBS total=774 suites=666 probes=108`；`regen-all` 17/17 in sync；`PREFLIGHT` / `DOC LINT` / `RULES COVERAGE` / `RULE PARITY` 全 PASS。
+
+**324.4b 全量 T1**
+
+本轮第一次全量 T1 与 RUN 224 的编辑重叠了：T1 于 12:42 起动，13:0x 在树里改了 `vibe-math-vmu/host.js`（RUN 224 的 A 项）。混合树的结论不可信，进程已 kill，那次运行记账为作废。RUN 223 与 RUN 224 合并后的干净全量 T1 记在 §325.4b。
+
+**324.5 未闭合**
+
+1. **迟到入席审批还没有**：`vibe-math-vmu/kernel/meetings.js:1512-1515` 只把 `late:true` 记下（`lateAfterMs` 决定标记），不拦不审批。用户问的这一条仍是否答案。拟按「每会参数 `lateAdmission: open|chair|refuse` + 新动作 `admit`（主席批准）+ `status.pendingLate`」实现，会改 `openSeq` 契约与接口文档，单独一轮。
+2. **会内等待（成员在会里等别人）仍没有**：成员不是常驻进程，只在被指派的回合里跑，跑完交回；「挂起—唤醒」需要事件驱动的回合，属调度层，不是会议面能补的。
+3. **邀请只覆盖召集路径**：预约会议到点转 open、或等待阶段凑齐法定人数转 open 时，没有新的邀请（那些成员本就在原 roster 里，且已经收到过第一封）。是否要在「会议真正开始」时再发一封，待评估——多一封邮件的代价很小，但「每次状态变化都发信」会把邮箱变成噪声。
+4. **`woken` 的真实性依赖部署**：真机跑（子代理回合）里是否注入了 wake seam、唤醒后成员是否真的开始回合，本轮没有验证，留给下一轮真机。
+
+**324.6 三教训**
+
+1. **「我列了名单」和「我通知了人」是两个动作，回执要能区分。** 召集回执过去只证明前者；把 `roster` 读成「大家已经知道」是名单最容易造成的错觉。
+2. **耐久 ≠ 及时。** 邮件发出去不等于成员现在就知道：`woken` 与 `delivered` 必须分开说，且空 `woken` 要说清是「部署没有唤醒通道」而不是「大家都没收到」。
+3. **读别人的回执前先读它的返回语句。** `mailbox.send` 返回 `ids`，我按 `id`/`ticket` 猜了三层 fallback，结果每条 `mailId` 都是空串——空串不是「没有名字」，是「我读错了键」。
+
+## §325 — 声明与事实重合时，回执不该把事实说成历史（RUN 224 / FEEDBACK58）
+
+**325.1 这一轮的账从哪来**
+
+第 59 次真机（run 59，基线 `19bd015b`，工作区 `slvp188-ws`，PDF 60 558 B，`DRIVE exit=0`，0 RED）交回 FEEDBACK58，五笔账都指向同一类错误：**回执说了一句真话，但这句话不是读者要问的那个问题的答案**。
+
+1. **prune 把「现行版」说成历史**：`vibe_vmu_records { action:"prune", track:"blueprint", keep:1 }` 的 `doomedDeclaredCurrentMeans` 写着「do NOT read these ids as the rows in force」，而它列出的 rec-3 **正是** `vibe_v5_blueprint { action:"state" }` 回的 `current.id`。run 58 的旧账里也有同样形状（rec-2 rev1 被报成 CURRENT，真正在册的是 rec-8 rev2）。原因：位置式 prune 只看行头 `- status：current`，而行头是**写入那一刻**的声明；同一轨道的行头里还写着 `- revision：N`，那个数字才是「谁在册」的依据，而回执完全没用它。
+2. **adopt 只给草案时被拒，而提示词教的就是只给草案**：`vibe_v5_blueprint { action:"adopt", draft:"rec-1" }` 回 `draft rec-1 is about path "BLUEPRINT.md", not "Shared/Protocol.md"`——面把 `path` 的缺省值当成了用户的选择。草案自己就确定路径，这个信息被丢掉了。
+3. **`$$…$$` 显示公式被转义成文本符号**：论文正文里写 `$$…$$`，`.tex` 第 30 行变成 `\$$…$\$`，`math` 四个计数一个都没动——渲染器只认识成对单 `$`，遇到双 `$` 时既不认也不说。
+4. **p=1 写回不点名卡自己的证据门**：辩论对象闸已经回 `proofBasis:"declaration-only"`，指针不解析照样能写 p=1，而写回回执只讲票，不讲「这张卡自己的 proof_ref 仍不解析」。
+5. **`sourcesMeans` 自相矛盾**：先说「这里没有以主席代填命名的键」，下一句又说「从 `sources.typed` 读」——前半句在否认后半句指的路。
+
+**325.2 修法：五处，都是「把派生做出来，或者把不知道说出来」**
+
+A. `vibe-math-vmu/host.js` 的 prune：新增 `headerFactsOf(row)`（读行头 `- status：current` / `- status: current` 与 `- revision：N`），把「声明 current 的 doomed 行」改成用它判；再新增 `inForceIds`——**同轨道所有声明 current 的行里 `revision` 最大的那一行**（缺 revision 或有多行声明却版本不齐时给 `inForceUnavailableWhy`，不猜）。回执因此有 `inForceIds`、`doomedInForceIds`、`doomedInForceCount`（不再是 `null`），`doomedInForceMeans` 写明用的是「declared-current row with the highest `revision`」这把尺子，`doomedDeclaredCurrentMeans` 改成「That line was true WHEN IT WAS WRITTEN」并指向 `inForceIds`，同时保留「A positional prune counts from the NEWEST row backwards, so `keep` can move the row a track is actually using.」
+
+B. `vibe-math-vmu/packs/v5r/blueprint.js` 的 `adoptBlueprint`：`wantedPath` 改成可赋值，缺 path 时从被采纳的草案行读 `fields.path`（`pathFrom:'draft'`），两者都没有才具名拒（`adopting a blueprint needs the draft it adopts (or, failing that, the path)`）。`vibe-math-vmu/packs/v5r/tools.js` 的 `toolBlueprint` 同步放宽前置校验，并把 `pathSource` 加一支 `'draft'`；注意传给 kit 的是**用户真的传了的那个形参**（`pathFromArg`），否则 `pathFrom` 会对一条没人传的路径说「argument」。
+
+C. `vibe-math-vmu/kit/paper.js` 的 `escText`：认 `$$…$$` 为显示公式，输出 `\[ … \]`，计数进 `math.displayMathSpans`；落单的 `$$` 计 `unpairedDisplayMarkers` 并在 `displayMathMeans` 里点名（不再静默转义）；「无需修复」的判定加 `unpairedDisplayMarkers === 0`。
+
+D. `vibe-math-vmu/packs/v5r/tools.js` 的 p=1 写回：并列打印这张卡自己的 `proofGate`，并给 `p1ProofUnresolved`（`proofGate.locked !== true` 即 true）与 `p1ProofMeans`（明说「p=1 在这里只代表成员同意且记录已打补丁，不代表找到、读过或验证过证明文件」）。
+
+E. `vibe-math-vmu/packs/v5r/tools.js` 的 `sourcesMeans`：把否认句改成陈述句——主席代填的数字不是卡，它们计在 `sources.typed`，并在 `attribution[].source` 里归属到主席。
+
+**325.3 机器化**
+
+`tests/vmu-run224-feedback58.test.mjs`（**45 passed / 0 failed**）：
+
+- §0 十一条源码 pin，含两条负向（`hasNot` 旧的否认句、`hasNot` 旧的「HISTORY」措辞）；
+- §1 prune 真装配：propose → 主席 co-design → adopt → 再 propose 一份新草案 → `prune { track:'blueprint', keep:1, dryRun:true }`，断言 `doomedDeclaredCurrentIds` 含 `state.current.id`、`inForceIds` 与之相同、`doomedInForceCount === 1`、means 含 `highest revision`；
+- §2 `adopt` 只给草案即成功（`path === 'Shared/Protocol.md'`、`pathFrom === 'draft'`），同时**仍然**拒绝与草案冲突的显式 path；
+- §3 `part` 用形参 `part`（不是 `name`）写含 `$$…$$` 的正文 ⇒ `render` 的 `math.displayMathSpans === 1`、`.tex` 里有 `\[`/`\]` 且没有 `\$$`；
+- §4 p=1 结算时 `proof_ref` 指向不存在的文件 ⇒ `p1ProofUnresolved === true`、`p1ProofGate.locked === false`、`p1ProofMeans` 明说「不代表找到证明文件」。
+
+还有一处**不是 pin、是夹具假设**的连带红：`tests/vmu-run30-findings.test.mjs` ④ 原先打开收件箱的**第一行**去读那句「尚未在命题库登记」的免责声明，而 RUN 223 A 让召集给每个非主席成员投一封 `meeting-invitation` 邮件——于是第一行变成了会议邀请，免责声明还在、只是不在第一行。修法不是把断言放宽，而是**按内容找那一行**（`box.find(subject 含该子句)`）再打开：顺序不是契约，内容才是。
+
+同步更新的旧 pin：`tests/vmu-run222-feedback57.test.mjs`（§4h–§4j 改成新合同，52/0）、`tests/vmu-run220-feedback55.test.mjs`（两处源码 pin + §3h-2..4，65/0）。
+
+**325.4 定向回归与收口链**
+
+`run217 40/0`、`run218 26/0`、`run219 54/0`、`run220 65/0`、`run221 60/0`、`run222 52/0`、`run223 29/0`、`run200 5/0`、`run201 4/0`、`run202 6/0`、`run203 5/0`、`run204 5/0`、`run205 5/0`、`run206 1/0`、`run209 6/0`、`run210 5/0`、`vmu-paper 37/0`、`vmu-b4-b5-blueprint 69/0`、`vmu-v5r-tools 361/0`、`vmu-turn 272/0`、`vmu-meeting 50/0`。
+
+收口链：`node scripts/update-doc-counts.mjs --write`（`JOBS total=775 suites=667 probes=108`）→ `node scripts/regen-all.mjs --write` 17/17 → `--check` 17/17 in sync → `PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+
+**325.4b 全量 T1**
+
+干净树（RUN 224 全部改动落盘、文档定稿之后起跑）`node tests/run-tests.mjs`：
+
+```
+TOTAL 775  PASS 775  FAIL 0  (suites 667 · probes 108)
+```
+
+**325.5 未闭合**
+
+1. **会内等待与迟到审批仍缺**（同 §324.5 第 1、2 条）：本轮没做，属调度层与会议生命周期，需要单独一轮（拟 `lateAdmission: open|chair|refuse` + 新动作 `admit`）。
+2. **`inForceIds` 只覆盖「有 revision 行头」的轨道**：没有 `- revision：` 的轨道一律回 `[]` 并给 `inForceUnavailableWhy`；哪些轨道该有版本号、由谁写，尚未定成契约。
+3. **`$$…$$` 只支持单行**：跨行显示公式（`\begin{aligned}` 之类）不在本次范围，落单 `$$` 会进 `unpairedDisplayMarkers` 但不会报错。
+4. **p=1 的 gate 只是并列披露**：`p1ProofUnresolved:true` 不阻断写回。是否该在 `proof_state:'complete'` 却指针不解析时直接拒，取决于「主席代填 vs 成员提交」的边界，留待下一轮。
+5. **【每回合三问】仍无机制落点**：提示词要求每回合自答三问，但回执里没有对应字段；可考虑在 `drive`/`step` 回执里加 `mainline` 块。
+6. **提示词审计的 9 条建议只落地了 1 条**（adopt 缺 path 已由机制补齐），其余 8 条（heading 只认首行、part 的 evidence、final 需显式 member、两套会议面并集寻址、`vmu.turn.leaderId` 成员读不到等）待逐条评估。
+7. **尚未真机复验**：这五处只在机器化里验过，真机要等第 60 次 SLV。
+
+**325.6 三教训**
+
+1. **「声明」与「事实」可以同时为真，但读者要的是事实。** 行头写 `status: current` 是写下那一刻的声明，`revision` 才是此刻在册的依据；把前者报成后者，回执就成了历史学家而不是会计。RUN 222 的修法是「不再假装能算」，RUN 224 的修法是「其实能算，用行里已有的数」——第 3 条修法（去查派生所需的字段到底在不在）永远先于「声明无法计算」。
+2. **一句否认会把它的下一句变成假话。** `sourcesMeans` 前半句说「没有那个键」，后半句指 `sources.typed`——两个句子各自都真，连起来是错的。结论式措辞（「没有 X」）在同一个回执里必须与任何指向 X 的路由共存。
+3. **缺省值不是用户的选择。** `adopt` 把 `path` 的缺省值当成用户指定路径，于是拒绝了一个信息完备的请求。凡是「A 缺省 + B 已足够确定 A」的形状，应该在 B 上做派生，而不是在 A 上报错。

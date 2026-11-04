@@ -1110,21 +1110,59 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             // carrying a HIGHER revision, and that ruler belongs to the track's owning face, not to the records face. So the
             // receipt no longer presents a declaration as the answer to "which row is in force": it says which declaration it
             // read and where the real answer lives, and the in-force count is null rather than a guessed 0.
+            // ★★★ RUN 224 (run 59 / FEEDBACK58 1.1, MEASURED): RUN 222 printed `status: current` rows as DECLARATIONS and
+            // said "do NOT read these ids as the rows in force" — but on every revisioned track the rows DO carry the ruler
+            // that decides it: the row's own header also carries `revision`. Among the rows that declare `status: current`,
+            // the one with the HIGHEST revision is the in-force one; the lower ones are history (run 58: rec-2 rev 1 vs
+            // rec-8 rev 2 -> rec-8, which is what the pack's own `blueprint state.current.id` said; run 59: the single
+            // declared row rec-3 rev 1 was in fact the current one). That derivation is track-agnostic and needs only the
+            // header this face already reads — so `doomedInForce*` is computed instead of being null.
+            const headerFactsOf = (row) => {
+              const out = { id: String(row.id), declared: String(row.status || row.state || ''), revision: null }
+              if (out.declared !== 'current') {
+                try {
+                  const full = rc.get({ id: out.id, includeBody: true }) || {}
+                  const bodyText = String(full.body || '')
+                  if (bodyText.indexOf('- status：current') >= 0 || bodyText.indexOf('- status: current') >= 0) out.declared = 'current'
+                  const mRev = bodyText.match(/- revision[：:]\s*([0-9]+)/)
+                  if (mRev !== null) out.revision = Number(mRev[1])
+                } catch (e) { out.declared = '' }
+              } else {
+                try {
+                  const full = rc.get({ id: out.id, includeBody: true }) || {}
+                  const mRev = String(full.body || '').match(/- revision[：:]\s*([0-9]+)/)
+                  if (mRev !== null) out.revision = Number(mRev[1])
+                } catch (e) { out.revision = null }
+              }
+              return out
+            }
+            // The header line is written with a FULL-WIDTH colon on some tracks and an ASCII colon on others, so both
+            // spellings are read; anything that is not literally `current` is left as whatever the row projected.
             const declaredCurrent = []
             for (const r of doomed) {
               if (!r || typeof r.id !== 'string') continue
-              let declared = String(r.status || r.state || '')
-              if (declared !== 'current') {
-                try {
-                  const full = rc.get({ id: String(r.id), includeBody: true }) || {}
-                  const bodyText = String(full.body || '')
-                  // The header line is written with a FULL-WIDTH colon on some tracks and an ASCII colon on others, so both
-                  // spellings are read; anything that is not literally `current` is left as whatever the row projected.
-                  if (bodyText.indexOf('- status：current') >= 0 || bodyText.indexOf('- status: current') >= 0) declared = 'current'
-                } catch (e) { declared = '' }
-              }
-              if (declared === 'current') declaredCurrent.push(r)
+              if (headerFactsOf(r).declared === 'current') declaredCurrent.push(r)
             }
+            // RUN 224: the in-force row is the declared-current row with the highest `revision`, over the WHOLE track (not
+            // only the doomed rows) — a prune that moves a superseded revision still needs to know it was not the live one.
+            const declaredOfTrack = []
+            for (const r of allRows) {
+              if (!r || typeof r.id !== 'string') continue
+              const facts = headerFactsOf(r)
+              if (facts.declared === 'current') declaredOfTrack.push(facts)
+            }
+            const revisionedRows = declaredOfTrack.filter((f) => f.revision !== null)
+            const inForceIds = declaredOfTrack.length === 0
+              ? []
+              : (revisionedRows.length !== declaredOfTrack.length
+                ? []
+                : (() => {
+                  const top = Math.max(...revisionedRows.map((f) => f.revision))
+                  return revisionedRows.filter((f) => f.revision === top).map((f) => f.id)
+                })())
+            const inForceUnavailableWhy = declaredOfTrack.length === 0
+              ? 'no row of this track declares `status: current` in its own header, so this track has no in-force revision to protect'
+              : 'some rows declare `status: current` but do not carry a numeric `revision` in the header, so the revision ruler does not exist here: read the owning face for the in-force row'
             if (byIds && doomed.length === 0) {
               return refused('VMU_NO_SUCH_OBJECT', 'none of the ids named (' + idsArg.join(', ') + ') is a LIVE row of track "' + pruneTrack + '": nothing was moved',
                 'take the ids from action:"list" (or from the receipt that created the row) and pass those; a row already in the trash is brought back with action:"restore", not pruned again')
@@ -1180,9 +1218,15 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               doomedDeclaredCurrentIds: declaredCurrent.map((r) => String(r.id)),
               doomedDeclaredCurrentMeans: declaredCurrent.length === 0
                 ? null
-                : 'WARNING: ' + declaredCurrent.length + ' of the rows above carry `status: current` in their OWN header (' + declaredCurrent.map((r) => String(r.id)).join(', ') + '). That line is HISTORY: it records that the row was the in-force revision when it was WRITTEN, and a later adopted revision supersedes it by carrying a higher revision. A positional prune counts from the NEWEST row backwards, so `keep` can move the row a track is actually using — but do NOT read these ids as "the rows in force".',
-              doomedInForceCount: null,
-              doomedInForceMeans: 'null, not 0: which revision is IN FORCE is computed by the track\'s owning face (for blueprints, `vibe_v5_blueprint { action: "state" }` → `current.id`), and this records face does not own that ruler. Read that face, then pass `ids` for the exact rows you mean.',
+                : 'WARNING: ' + declaredCurrent.length + ' of the rows above carry `status: current` in their OWN header (' + declaredCurrent.map((r) => String(r.id)).join(', ') + '). That line says the row was current WHEN IT WAS WRITTEN; a later adopted revision supersedes it by carrying a HIGHER `revision`. Which of these ids is in force RIGHT NOW is answered by `inForceIds`/`doomedInForceIds` (the declared-`current` row with the highest revision), so read those before acting. A positional prune counts from the NEWEST row backwards, so `keep` can move the row a track is actually using.',
+              // ★★★ RUN 224: computed from the rows' own headers (declared `current` + highest `revision`), so this is the
+              // number the reader wanted; null only when the track offers no revision ruler at all.
+              doomedInForceCount: inForceIds.length === 0 ? 0 : doomed.filter((r) => r && inForceIds.includes(String(r.id))).length,
+              doomedInForceIds: inForceIds.length === 0 ? [] : doomed.filter((r) => r && inForceIds.includes(String(r.id))).map((r) => String(r.id)),
+              inForceIds,
+              doomedInForceMeans: inForceIds.length === 0
+                ? 'null route: ' + inForceUnavailableWhy
+                : ('the in-force revision of track "' + pruneTrack + '" is ' + inForceIds.join(', ') + ' (the declared-`current` row with the highest `revision`); a doomed row is listed in `doomedInForceIds` when it IS that row, so 0 there means this prune moves no in-force revision'),
               // ★★ RUN 181 (run 26 / FEEDBACK25 F25-10): `pinned` was a list with no count, and `pinnedMeans:null` on an
               // empty one — a reader had to count rows to learn whether the prune was complete. The count is stated, and the
               // means explains that a pinned row is a permanent row the prune is not allowed to move.

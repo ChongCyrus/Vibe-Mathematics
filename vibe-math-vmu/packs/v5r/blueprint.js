@@ -940,8 +940,27 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
  */
 export function adoptBlueprint({ records, path, draft, by, at = null, note = '', staleAfterMs = null, staleAfterMsSource = null }) {
   const track = refuseIfNoRecords(records)
-  const wantedPath = txt(path)
-  if (wantedPath === '') throw refuse('VMU_INVALID_ARGUMENT', 'adopting a blueprint needs the path', 'pass path:<the blueprint path>')
+  let wantedPath = txt(path)
+  // ★★★ RUN 224 (run 59 / FEEDBACK58 1.7, MEASURED): the prompts teach `{ action: "adopt", draft: "<id>" }` WITHOUT a
+  // path, and this function refused that shape before it even read the draft — while its own refusal message proved it had
+  // already resolved the draft's path. A draft names exactly one path, so an adopt that names a draft may leave the path
+  // out and the draft is the source of it (`pathFrom` says which of the two it was). `path` still wins when both are given,
+  // because that is the only case with real ambiguity (an id read under the wrong path).
+  let pathFrom = 'argument'
+  if (wantedPath === '') {
+    const namedDraft = txt(draft)
+    if (namedDraft === '') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'adopting a blueprint needs the draft it adopts (or, failing that, the path)',
+        'pass draft:<the draft row id> — a draft carries its own path — or path:<the blueprint path>; `state` lists the drafts with their revisions')
+    }
+    const peek = readBlueprint({ records, id: namedDraft })
+    wantedPath = txt(peek.fields.path)
+    pathFrom = 'draft'
+    if (wantedPath === '') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'draft ' + peek.id + ' does not carry a path in its header, so the path cannot be read off it',
+        'pass path:<the blueprint path> explicitly; `state` lists every draft under the path it belongs to')
+    }
+  }
   const adopter = txt(by)
   if (adopter === '') throw refuse('VMU_INVALID_ARGUMENT', 'adoption is a signed act', 'pass member:<the chair seat id adopting> — nobody adopts anonymously')
   const target = readBlueprint({ records, id: draft })
@@ -1013,6 +1032,10 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     action: 'adopt',
     id: put.id,
     path: wantedPath,
+    pathFrom,
+    pathFromMeans: pathFrom === 'draft'
+      ? 'the path was READ OFF the draft this call adopted: the draft names exactly one path, so repeating it in the request was never a second fact'
+      : 'the path came from the request; the draft\'s own path agreed with it (a disagreement is refused by name)',
     revision,
     status: 'current',
     adoptedBy: adopter,

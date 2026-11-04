@@ -212,12 +212,17 @@ console.log('\n=== 4. A POSITIONAL PRUNE COUNTS DECLARATIONS, AND SAYS WHO OWNS 
   ok(dry.ok === true, '§4f the positional dry run answers', dry)
   ok(Number(dry.doomedDeclaredCurrentCount) >= 1,
     '§4g ★ the receipt counts the doomed rows that DECLARE current', { c: dry.doomedDeclaredCurrentCount, wouldPrune: dry.wouldPruneCount })
-  has(String(dry.doomedDeclaredCurrentMeans), 'HISTORY',
-    '§4h ★★★ …and the sentence says that header line is HISTORY, not a verdict about what is in force', String(dry.doomedDeclaredCurrentMeans))
-  ok(dry.doomedInForceCount === null,
-    '§4i ★★ the in-force count is NULL (not 0): only the owning face computes it', dry.doomedInForceCount)
-  has(String(dry.doomedInForceMeans), 'null, not 0',
-    '§4j …and the means says so and points at the face that can answer', String(dry.doomedInForceMeans))
+  has(String(dry.doomedDeclaredCurrentMeans), 'WHEN IT WAS WRITTEN',
+    '§4h ★★★ …and the sentence says that header line was true WHEN WRITTEN (RUN 224: it now points at inForceIds instead of denying the derivation)', String(dry.doomedDeclaredCurrentMeans))
+  // ★★★ RUN 224 (FEEDBACK58 1.1): the in-force revision IS derivable from the rows' own headers — the declared-`current`
+  // row carrying the highest `revision` — so the count is a number now, and the run-58/59 contradiction (a fact called
+  // history) is answered by data instead of by a sentence about which face owns the ruler.
+  ok(Number.isInteger(dry.doomedInForceCount) && dry.doomedInForceCount >= 0,
+    '§4i ★★ the in-force count is COMPUTED (NULL only on a track with no revision ruler)', dry.doomedInForceCount)
+  ok(Array.isArray(dry.inForceIds) && dry.inForceIds.length === 1 && String(dry.inForceIds[0]) !== String(draftId),
+    '§4j the derivation names the CURRENT revision, not the newer draft above it', { inForceIds: dry.inForceIds, draftId })
+  has(String(dry.doomedInForceMeans), 'highest `revision`',
+    '§4j2 …and the means states the ruler it used', String(dry.doomedInForceMeans))
   const state = await call('vibe_v5_blueprint', { action: 'state' })
   ok(state.ok === true, '§4k premise: the owning face answers', state.ok === true ? true : { code: state.code, message: state.message })
   ok(state.current && String(state.current.id) !== String(draftId),

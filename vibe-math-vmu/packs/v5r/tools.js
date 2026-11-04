@@ -1500,7 +1500,7 @@ async function rulingNameResolution(kernel, debate, context = {}) {
     // looked chair-typed and m2 (chair typed both) looked like nobody had ruled. The count is right; only its NAME was
     // wrong. `submittedRulings` is the honest name, and RUN 214 DELETED the old alias (run 51 printed it beside a `typed`
     // number that meant the opposite); `sourcesMeans` says which is which instead of leaving the reader to guess.
-    sourcesMeans: 'sources.submittedRulings counts the DURABLE ruling cards the members filed with vibe_v5_verdict — the same rows the tally reports as `submitted`. There is NO key here named after chair-typed numbers: a number the chair typed is not a card, so it is only ever read off the tally (`sources.typed` / `attribution[].source`). sources.motions counts procedure votes (motions/seconded/voted), which is a different record.',
+    sourcesMeans: 'sources.submittedRulings counts the DURABLE ruling cards the members filed with vibe_v5_verdict — the same rows the tally reports as `submitted`. Chair-typed numbers are NOT cards: they are counted in `sources.typed` and attributed to the chair in `attribution[].source` (the count lives on the tally, the card count lives here, and neither is a substitute for the other). sources.motions counts procedure votes (motions/seconded/voted), which is a different record.',
     rulingCards: rulingCards === null ? null : { proposition: rulingCards.proposition, count: rulingCards.count, duplicates: rulingCards.duplicates },
     rulingCardsMeans: 'these are the durable ruling CARDS read for this (meeting, proposition) — what the tally calls `submitted`. An empty/null value here does NOT mean nobody ruled: a chair-typed tally has no cards at all, and the tally receipt already says so in `attribution`',
     typedRulingsDeprecated: 'the old key name `typedRulings` was REMOVED in RUN 214 (it held the submitted count, not the chair-typed one, and sat beside a `typed` number that meant the opposite); read `rulingCards` and `sources.submittedRulings`',
@@ -2251,6 +2251,23 @@ function gatedCardHandler(toolName) {
             why: 'the card is filed AS DECLARED, but its own `proof_ref` does not resolve inside the library (' + String(proofStateDowngraded.reason) + '): rule L14 will not lock a pointer that could never be corrected',
             nextMove: 'write the file into the library (or point at a record id) and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
             means: 'read proofGate.locked, not `ok`, to answer "is this card locked": `ok:true` only says the card was filed' })
+    // ★★★ RUN 224 (run 59 / FEEDBACK58 1.2, MEASURED): run 59 settled a card at p=1 whose `proof_ref` pointed at a file that
+    // does not exist (`nope-r222.md`). Every field was true and every one of them was about something else: the receipt said
+    // `p1Evidence:"debate-unanimous"` (a DEBATE happened) and `settled:true` (the p line was written), while the card itself
+    // still carried `proofLockDeferred:pointer:missing` - so "settled at p=1" and "the proof was never there" sat in one
+    // receipt with nothing naming their coexistence. A reader concluded the conclusion was verified. These two fields put the
+    // card's OWN gate next to the settlement, in one place, and name the unresolved pointer instead of leaving it in prose.
+    const p1ProofGateOut = p1Form === null ? null : proofGateOut
+    const p1ProofUnresolved = p1Form === null
+      ? null
+      : (p1ProofGateOut === null ? null : p1ProofGateOut.locked !== true)
+    const p1ProofMeans = p1Form === null
+      ? null
+      : (p1ProofUnresolved === null
+        ? 'this settlement wrote the p line, and the card carries no proof declaration to check (proofState is null): p=1 here means the debate agreed, nothing about a proof file'
+        : (p1ProofUnresolved === true
+          ? 'p=1 was WRITTEN, but the CARD\'s proof is NOT resolved (' + String(p1ProofGateOut && p1ProofGateOut.why ? p1ProofGateOut.why : 'see proofGate') + '): p=1 here means the members agreed and the record was patched - it does NOT mean a proof file was found, read, or verified. The card stays writable for exactly this reason'
+          : 'p=1 was written AND the card\'s own proof declaration is resolved inside the library, so rule L14 locks it (the pointer cannot be corrected afterwards)'))
     return Object.assign({}, res, {
       enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE,
       proofStateFrom: settlementReadback === null ? 'declared by this call' : 'READ BACK from the stored row after the settlement patch: this call is a settlement and may not write the proof fields, so `proofState`/`proofGate` describe the CARD, not this call',
@@ -2267,7 +2284,7 @@ function gatedCardHandler(toolName) {
       proofStateEvidenceMeans: settlementReadback === null ? undefined
         : 'null ON PURPOSE: a settlement verifies nothing, so there is no evidence block for THIS call to report - the card\'s own proof lines are unchanged (see settlement.preserved) and were read back into proofState/proofGate',
     }, settlement === null ? {} : { settlement },
-    p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, p1RulingRef: p1Ruling, p1RulingMeans, p1RulingReading, verifiedMark })
+    p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, p1RulingRef: p1Ruling, p1RulingMeans, p1RulingReading, verifiedMark, p1ProofGate: p1ProofGateOut, p1ProofUnresolved, p1ProofMeans })
   }
 }
 
@@ -3960,6 +3977,61 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     procedure: procedureFor(type) })
   // ★ 可读回的事实：预约不是"一个被收下的参数"，而是会议对象的状态。`state`/`scheduledFor` 由内核回执给出，
   // 这一面只转述；`scheduleNote` 只在真的进入 scheduled 时出现（不要给立即召开的会议编一句预约说明）。
+  // ★★★ RUN 223 (run 59 / FEEDBACK58 A, MEASURED BY ABSENCE): 「院士可以设置……邀请入会的成员」was a LIST, never
+  // an ACT. convene narrowed the roster and printed it, and then nothing told those members a meeting existed: a member
+  // learned about it only inside a turn that someone else drove (`vibe_vmu_turn { op:"drive" }`). Two rails for exactly
+  // this have existed for many rounds — the durable mailbox (`kernel/mailbox.js send`, used by assign/nudge above) and
+  // the meetings wake seam (`kernel/meetings.js wake`, RUN 198) — and no convene ever called either one.
+  // WHAT THIS DOES NOT CLAIM: a mailed invitation is not a live wake. The mail is DURABLE and is read at the member's
+  // next turn (or by `vibe_v5_inbox`); `woken` is non-empty only when the deployment actually injects a wake seam; and
+  // `unreachable` means the MAIL itself did not go out — the convene still stands (a delivery failure must never roll
+  // back an academic act; same rule as RUN 185's freeze).
+  const invitedMembers = (() => {
+    const rows = (opened && Array.isArray(opened.roster)) ? opened.roster : []
+    return rows.map(String).filter((id) => id !== '' && id !== String(member))
+  })()
+  const invitation = (() => {
+    const kind = 'meeting-invitation'
+    const meetingId = String(opened && opened.meeting ? (opened.meeting.id || opened.meeting) : '')
+    if (!invitedMembers.length) {
+      return { attempted: [], kind, delivered: [], woken: [], unreachable: [],
+        means: 'nobody was invited: the roster of this meeting holds no member besides the chair, so there was no one to tell' }
+    }
+    if (!kernel.mailbox || typeof kernel.mailbox.send !== 'function') {
+      return { attempted: invitedMembers, kind, delivered: [], woken: [],
+        unreachable: invitedMembers.map((id) => ({ member: id, code: 'VMU_ENGINE_UNAVAILABLE', why: 'this kernel exposes no mailbox service' })),
+        means: 'NO invitation was sent: this kernel has no mailbox service (the seam `kernel.mailbox.send` is absent). The meeting itself is open and readable — the convene stands; the members simply were not told by mail' }
+    }
+    const delivered = []; const woken = []; const unreachable = []
+    for (const id of invitedMembers) {
+      try {
+        // A5: the invitation names the meeting, so a reader does not have to guess which one it is about.
+        const sent = kernel.mailbox.send('office', { to: id, kind,
+          subject: '会议邀请：' + String(title === null ? (agendaText || type) : title),
+          text: '会议 ' + meetingId + ' 已由主席召集（type ' + String(type) + '）。先用 status/summary 读议程与流程，再 attend 到席；到席与发言的权限由会议类型和你的席位决定。' })
+        if (sent && sent.ok === false) {
+          unreachable.push({ member: id, code: String(sent.code || ''), why: String(sent.message || '') })
+        } else {
+          // ★ RUN 223: `mailbox.send` answers `{ ok, ids: [...], to, queued }` — one id per recipient box.
+          // Reading a key called `id`/`mailId`/`ticket` here always produced '', and an empty string reads as
+          // "the mail row was not named".
+          const mailRow = (sent && Array.isArray(sent.ids) && sent.ids.length) ? String(sent.ids[0]) : ''
+          delivered.push({ member: id, mailId: mailRow })
+        }
+      } catch (e) {
+        unreachable.push({ member: id, code: String((e && e.code) || ''), why: String((e && e.message) || e) })
+      }
+      // The wake rail is BEST EFFORT: a failed wake leaves the durable mail in place and never fails the convene.
+      if (kernel.meetings && typeof kernel.meetings.wake === 'function') {
+        try {
+          const w = kernel.meetings.wake({ member: id })
+          if (w && w.ok !== false) woken.push(id)
+        } catch (e) { /* the mail is the durable half of the invitation */ }
+      }
+    }
+    return { attempted: invitedMembers, kind, delivered, woken, unreachable,
+      means: 'the invitation is DURABLE MAIL (kind "' + kind + '"), not a live wake: every member in `delivered` will see it at their next turn or through `vibe_v5_inbox`. `woken` lists the members this deployment could actually wake NOW (empty when it injects no wake seam — that is a deployment fact, not a silence). `unreachable` means the mail itself did not go out (named code and why); the convene still succeeded and the meeting is readable, so the repair is `vibe_v5_message` to that member or a wake attempt, never a second convene' }
+  })()
   const state = opened && opened.state !== undefined ? opened.state : null
   const scheduledFor = opened && opened.scheduledFor !== undefined ? opened.scheduledFor : null
   const scheduleNote = state === 'scheduled'
@@ -3992,6 +4064,7 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     procedure: proc.procedure, procedureBinding: proc.binding, procedureNote: proc.note, pendingSteps: proc.pendingSteps,
     kind, agenda: agendaText, formalAgenda: args.formal_agenda === true, secretary,
     nonAttending, nonAttendingMeans,
+    invitation,
     // ★ LIVE RUN 122 (E6): WHERE the label came from. `kind` defaults to 'sync' so every meeting always has a word for
     // what it is — and that default is exactly why a reader must be able to tell a chosen label from a filled-in one.
     kindSource: kindGiven ? 'args' : (KIND_BY_TYPE[type] ? 'derived-from-type' : 'default'),
@@ -4195,11 +4268,14 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
   const pathFromArg = has(args.path) ? str(args.path).trim() : ''
   const pathFromSetting = str((settingsOf(kernel) || {})[BLUEPRINT_PATH_KEY] || '').trim()
   const path = pathFromArg || pathFromSetting
-  if (path === '') {
+  // ★★★ RUN 224: `adopt` names a draft, and a draft carries its own path — refusing that shape before reading the draft
+  // made the shape the prompts teach fail (run 59 / FEEDBACK58 1.7). Every OTHER action still needs the path here.
+  const adoptDraftArg = str(args.draft || args.id || '').trim()
+  if (path === '' && !(action === 'adopt' && adoptDraftArg !== '')) {
     throw refuse('VMU_INVALID_ARGUMENT', '没有蓝图路径：既没传 path，部署也没声明 ' + BLUEPRINT_PATH_KEY,
       'pass path:"Shared/Protocol.md"（或让部署声明 ' + BLUEPRINT_PATH_KEY + '）—— 蓝图按路径分账，路径不明就无从读、也无从提案')
   }
-  const pathSource = pathFromArg !== '' ? 'argument' : 'setting:' + BLUEPRINT_PATH_KEY
+  const pathSource = pathFromArg !== '' ? 'argument' : (path === '' && action === 'adopt' ? 'draft' : 'setting:' + BLUEPRINT_PATH_KEY)
   if (action === 'state') {
     const state = blueprintState({ records, path, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     return Object.assign({}, state, {
@@ -4265,12 +4341,15 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     // refusal names the seat it read from the call (`is in slot "member"`) instead of asking it for a member id.
     // Office/root calls resolve to `null` here, so they keep resolving the named member exactly as before.
     const member = requireChairSeat(kernel, callerMember || args.member || args.by, 'blueprint (adoption)')
-    const draft = str(args.draft || args.id || '').trim()
+    const draft = adoptDraftArg
     if (draft === '') {
       throw refuse('VMU_INVALID_ARGUMENT', '落成蓝图需要指名哪一份草案（draft）',
         'pass draft:<proposal id>；state 的 drafts[] 列出在等的草案（含 revision 与提案人）')
     }
-    const adopted = adoptBlueprint({ records, path, draft, by: String(member.id), note: str(args.note || ''), staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
+    // ★★★ RUN 224 (run 59 / FEEDBACK58 1.7): the ADOPT branch gets the path AS THE CALLER SPELLED IT, not the resolved
+    // setting default — a draft names its own path, and the setting is a fallback for readers, not a claim about which draft
+    // is being adopted. Passing the resolved value here made `pathFrom` say "argument" about a path nobody passed.
+    const adopted = adoptBlueprint({ records, path: pathFromArg, draft, by: String(member.id), note: str(args.note || ''), staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     return Object.assign({}, adopted, {
       tool: 'vibe_v5_blueprint', pathSource, member: String(member.id), staleAfterMsSource: staleWindow.source,
       readSurface: 'vibe_v5_read_library { track: "' + BLUEPRINT_TRACK + '" }',

@@ -139,7 +139,10 @@ for (const id of ['acad-01', 'res-01', 'res-02']) await kernel.members.hire({ id
   ok(box.length > 0 && box.some((e) => String((e && e.subject) || '').includes('尚未在命题库登记')),
     '④ the delivered copy really carries the clause (read back from the member mailbox INDEX, not from the ask receipt)',
     { count: box.length, status: inbox.status, asked: { delivered: asked.delivered, failed: asked.failed, deliveredCount: asked.deliveredCount } })
-  const opened = box.length > 0 ? R(await call(b, 'vibe_v5_inbox', { member: 'res-01', action: 'open', id: box[0].id })) : {}
+  // RUN 223 A: the convene path now delivers a meeting-invitation mail per non-chair member, so the box's FIRST row
+  // is no longer necessarily the nudge under test. Pick the row that carries the clause instead of trusting order.
+  const target = box.find((e) => String((e && e.subject) || '').includes('尚未在命题库登记'))
+  const opened = target ? R(await call(b, 'vibe_v5_inbox', { member: 'res-01', action: 'open', id: target.id })) : {}
   // The pack face answers { ok, message, … } — the BODY lives on `message` (list rows carry id/subject/kind only).
   const body = String((opened && opened.message && (opened.message.text || opened.message.body)) || '')
   ok(body.includes('尚未在命题库登记'),
