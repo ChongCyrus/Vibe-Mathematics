@@ -233,7 +233,7 @@
 | `vmu 子集`＝**作业计数**（**2026-10-14 新增机器面** ✓；**PHASE 6 起由 `--scope-report` 派生、`update-doc-counts --write` 自动重写** ✓） | `node tests/run-tests.mjs --scope-report`（只派生、不跑作业） | **`total 385 / suites 323 / probes 62`** ✓（`--counts` **按设计**仍报仓库计数 ✗✓，见下） |
 
 **322 的推导链（逐行可核 ✓，2026-10-14 复算）**：`deriveJobs()` 是唯一来源 ⇒ **只扫 `tests/` 顶层不递归**（纪律 11 ✓）⇒ 排除 3 类（runner 自身／`NEEDS_ARGS`／`replaceBare` 的裸作业 ✓）⇒ 裸作业 ＋ `VARIANTS`（kind 一律 probe ✓）＝ 322 ✓；`.test.mjs` 裸作业 250 = suites；`322−250=72` = probes ✓。
-**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **709 作业**（645 套件 + 64 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
+**vmu 子集**：`GATE_SCOPE=vmu` ⇒ **705 作业**（648 套件 + 57 探针/变体，**作业计数**；**由 `--scope-report` 派生** ✓）
 **更新方式（2026-10-14 更正 ✗✓；PHASE 6 再更正 ✓）**：旧文写"`scripts/update-doc-counts.mjs` 只**整行重写 4 处**……**不含** `vibe-math-vmu/docs/**`" —— **该说法已过期** ✗。实读该脚本：它覆盖 **6 处**（两个 README、`docs/test-timing.md`、`docs/AUDIT-CHECKLIST.md`、**本卷两行**），本卷的 `shipped.*` 行与"vmu 子集"行都按标记**整行重写**（**不要手改** ✓）。★ **PHASE 6 修复的残留缺陷**：此前"vmu 子集"行**永远不会被重写** —— 它想用 `GATE_SCOPE=vmu` 下的 `--counts` 派生，而 `--counts` **按设计**是作用域无关的，脚本只能拒绝并留一行人工数字（**永久说谎** ✗）。现在改为从 `node tests/run-tests.mjs --scope-report` 的 `scopes.vmu` 派生（只派生、不跑作业 ✓），该行**由 `--write` 自动跟随**；`--check` 与 `--write` 的差集即为待同步项 ✓。
 
 ### 5.2 可原样复用的**通用基础设施** ✓
@@ -325,6 +325,19 @@ node scripts/release-check.mjs             # 发布前清单
 > **本档位制度的第一批实证** ✓：T1 已在 34 作业 / **62.9 s** 内抓到过多起问题（installer 漏登记、计数漂移、scope 与机器模式冲突 ✓）；T3 已两次产出发布级绿（`P0: 111/111` ✓、`P1 里程碑在跑中` ✓）。
 >
 > ★ **2026-10-14（交接轮）T0 状态 = FAIL，两处具名原因** ✓：① **vmu 文档 linter 24 issues**（`scripts/check-docs.mjs`；分布 D2×5／D3×2／D4×5／D5×2／D8×5／D9×3／D15×2；**移交前就已红** —— 把仓库外那份 `_oneoff/vmu/tools/check-docs.mjs` 原样跑出**字节级相同**的输出（`docs=29 issues=24 notes=24`），⇒ **与本轮"搬进仓库"无关** ✓）；② **文档计数未收敛**（本轮新增 1 个作业 ⇒ `scripts/update-doc-counts.mjs --check` 报 WOULD CHANGE；按 D-07 由 Lead 在全员停写后统一 `--write` ✓）。★ 上面的"34 作业 / 62.9 s"是**当时的规模**（现为 **258** 作业）✗，保留为历史 ✓。
+
+### 7.1b 归档预设（legacy）**不再进默认门禁**（Round 230 的用户决定）
+
+**决定本身**：五个历史预设（v2／v3／v4／v5／归档 v5r）**只归档、不再维护**；维护面是 **`vibe-math-vmu` ＋ 它的 v5r pack**。因此**只跑归档预设行为的套件**（`tests/legacy-suites.txt`，**54 个**，含它们的 shard／self-probe 变体）**不进默认全量**。
+
+**为什么不是"删掉"**：删掉会让覆盖永久消失且无从复核；而"运行时按内容猜哪些是 legacy"不可审阅。所以落成三件事 ✓：
+1. **一份提交进仓的清单** `tests/legacy-suites.txt`（排序、可 diff）；
+2. **runner 的一个开关**：默认跳过并在**每次** header 里写明 `legacy=archived N behaviour suite(s) NOT run …`；`GATE_LEGACY=1` 把它们**原样**跑回来（quick 子集的钉住数因此有**两档**：默认 **24**、`GATE_LEGACY=1` **38**）；
+3. **一个双向守卫** `tests/audit-legacy-scope.test.mjs`：清单里每个文件必须存在、必须真能到达归档、**且不得提到 `vibe-math-vmu`**（维护面永不被这条规则波及）；跳过数必须**恰好**等于两档 `--counts` 之差；vmu 命名作业在两档下**逐个相同**。
+
+**边界（重要，防止扩权解释）**：会被清扫的只有**"启动某个归档预设并驱动它"的行为套件**。**共享层门禁照旧全跑** —— 路径纪律、文档 linter、产物文档、包成员、installer、注册表、声明判定、规范可追溯性等，它们**读**归档只作为数据，守的是**活下来的代码**。`tests/audit-legacy-scope.test.mjs` 的最后一节把这条边界也钉住了（清单里出现共享层审计即红）。
+
+**为什么值得**：默认全量从 **788 → 731** 作业，而**最重的三项全在 legacy 里**（`v5-institute-fixes.mutants.mjs` 三个 600 s shard、`v2-fix-probes.mutants.mjs` 460 s、`formal-verify-v4.mutants.mjs` 132 s 等，合计 ≈970 s 只是一次冷全量的可测部分）；临时目录根（**仓库外**）里约 1900 个 `*v4*` 临时根也由这些套件产生，默认不再跑即不再产生。
 
 ---
 

@@ -15,6 +15,9 @@
 //      There is no timer here, no decision service is imported, and a declaration that tries to attach an action
 //      (`action` / `then` / `run` / `drive` / `decide` / `execute`) is refused by name rather than quietly disarmed.
 //      A report PROMPTS a human or a member; it never substitutes for their decision.
+//      ★ RUN 230-A: `drives:false` alone was not enough. A receipt now also carries `wakeMeans` (what a delivery IS:
+//      a durable mail row in the office inbox) and, when no transport is injected, `transportEnables` (the exact
+//      setting key/value that would inject one). "Armed" and "wakes you" are different facts, and both are disclosed.
 //
 // FACE CONVENTIONS (same as the other vmu faces): literal key reads through `settings.get()` on every call (so a hot
 // change lands in the same turn, D-13), receipts carry `enforced[]`/`fired[]`, refusals are named, nothing declared
@@ -57,6 +60,19 @@ export const CODE = Object.freeze({
   paramReasonRequired: 'VMU_REPORT_PARAM_REASON_REQUIRED',
   auditUnavailable: 'VMU_REPORT_AUDIT_UNAVAILABLE',
 })
+
+// ★★ RUN 230-A (A2 honest disclosure; `docs/acceptance/sim-audit-decisions.md` §6 row 18): A RECEIPT HAS TO SAY WHAT
+// DELIVERY MEANS AND WHAT WOULD ENABLE IT. The framework default is "no transport": a fired report keeps its trace row
+// and carries `VMU_REPORT_NO_TRANSPORT`, with `drives:false` / `neverDrives:true` — nothing here starts a turn. The
+// SHIPPED durable transport (the v5r preset declares `vmu.report.transport:'mailbox'`) writes ONE durable mail row into
+// the office seat's inbox; that is STILL not a wake-up (the office reads it later; the loop is not driven). The strings
+// below are the single place this prose lives, so `status()` and the refusal cannot drift apart.
+export const WAKE_MEANS = 'durable-mail-in-office-inbox; no loop drive'
+export const TRANSPORT_SETTING = 'vmu.report.transport'
+export const TRANSPORT_ON_VALUE = 'mailbox'
+/** The exact sentence a refusal/status carries: the key, its enabling value, the alternative seam, and what it buys. */
+export const TRANSPORT_ENABLES = 'set ' + TRANSPORT_SETTING + '="' + TRANSPORT_ON_VALUE + '" (or pass config.deliver to this assembly): '
+  + 'a fired report then becomes a durable mail row in the office seat\'s inbox — "delivered" means queued, never "the office woke up"'
 
 /** The three trigger kinds a declaration may name. Anything else is refused by name, never guessed at. */
 export const TRIGGER_KINDS = Object.freeze(['event', 'period', 'threshold'])
@@ -366,7 +382,11 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
       // not see the two facts that matter (this channel never drives the loop, and no transport is injected) — they
       // were only on status()/declarations(). A refusal is a read face too.
       rec.refused = { code: CODE.noTransport, message: 'no delivery transport was injected: nothing was sent (and nothing is pretended)',
-        hint: 'pass { deliver: (report) => … } when creating the module',
+        // ★ RUN 230-A: the hint used to name only `deliver`, so a reader holding the refusal could not answer "what would
+        // turn this on?". It now names the setting, the exact value, the alternative seam, and what delivery buys.
+        hint: TRANSPORT_ENABLES,
+        wakeMeans: WAKE_MEANS,
+        transportEnables: TRANSPORT_ENABLES,
         // ★ LIVE RUN 20 (readability residual 2): the brief's own wording is「抄 delivered / drives / code / message」,
         // and this refusal was the ONE place that answered three of the four. `delivered:false` is not decoration — it
         // is the key a reader was told to look for, and "absent" reads as "not measured" where the truth is "no".
@@ -446,10 +466,13 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
       return { ok: true, enabled: true, at: now, clock: clockReceipt, declared: d.declared, fired, skipped, ignored,
         delivered: fired.filter((f) => f.delivered).length, failures: fired.filter((f) => f.error).length,
         truncated: fired.filter((f) => f.truncated > 0).length, audit, drives: false,
+        // ★ RUN 230-A: the same two disclosure keys as status(), so a tick receipt alone answers "does delivery exist,
+        // and does it wake anybody?" — it does not wake (wakeMeans says durable mail; drives stays false).
+        transportInjected: typeof deliver === 'function', wakeMeans: WAKE_MEANS,
         enforced: ARGS.slice(), fired_keys: ['vmu.report.enabled', 'vmu.report.reports'] }
     }
     return { ok: true, enabled: true, at: now, clock: clockReceipt, declared: d.declared, fired: [], skipped, ignored, delivered: 0, failures: 0,
-      drives: false, enforced: ARGS.slice(), fired_keys: [] }
+      drives: false, transportInjected: typeof deliver === 'function', wakeMeans: WAKE_MEANS, enforced: ARGS.slice(), fired_keys: [] }
   }
 
   /** Fire one declared report on purpose. An explicit request gets a loud failure when it cannot be delivered. */
@@ -493,7 +516,11 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
       throw err
     }
     return { ok: true, report: rec.name, id: rec.id, trigger: rec.trigger, at: rec.at, to: rec.to, channel: rec.channel, text: rec.text,
-      truncated: rec.truncated, delivered: rec.delivered, drives: false, enforced: ARGS.slice(), fired: ['vmu.report.reports'] }
+      truncated: rec.truncated, delivered: rec.delivered, drives: false,
+      // ★ RUN 230-A: the DELIVERED outcome gets a machine-visible `delivery` block, mirroring the three facts the REFUSED
+      // outcome carries — one of the two outcomes must always be readable, and "delivered" must never imply "woke anybody".
+      delivery: { attempted: true, queued: rec.delivered, delivered: rec.delivered, channel: rec.channel, to: rec.to.slice(), wakeMeans: WAKE_MEANS },
+      enforced: ARGS.slice(), fired: ['vmu.report.reports'] }
   }
 
   /** Render a declared report WITHOUT sending it - the "show me what would go out" surface. */
@@ -626,6 +653,11 @@ export function createReport({ clock = () => 0, log = null, settings = {}, deliv
       // the host lacks the ability.
       reportFeedback: feedbackReceipt(c),
       transportInjected: typeof deliver === 'function',
+      // ★ RUN 230-A: "armed" and "wakes you" are DIFFERENT claims (audit A2 measured the two being conflated).
+      // `wakeMeans` names what a delivery actually is; `transportEnables` is null once a transport is injected and
+      // otherwise carries the exact key/value that would inject one — so a reader never has to guess.
+      wakeMeans: WAKE_MEANS,
+      transportEnables: typeof deliver === 'function' ? null : TRANSPORT_ENABLES,
       auditInjected: !!(audit && typeof audit.append === 'function'),
       descriptorInjected: typeof describeSetting === 'function',
       trace: { kept: traceRows.length, cap: c.traceCap, dropped: counters.dropped },

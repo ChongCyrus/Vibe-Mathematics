@@ -82,7 +82,11 @@ async function boot(extraConfig = {}, { withDeploymentReportPolicy = true, trans
     ? { 'vmu.report.enabled': true, 'vmu.report.minIntervalMs': 0, 'vmu.report.reports': DEPLOYER_REPORTS,
       'vmu.turn.instituteName': 'institute' }
     : {}
-  const handle = entry.apply(ctx, Object.assign({ clock: () => Date.now(), root, packs: ['v5r'], vmu: policy, deliver }, extraConfig))
+  // ★ RUN 230-A: the v5r preset ships the durable mailbox transport now (`packs/v5r/settings/defaults.json`), so
+  // "no transport injected" is a DECLARED state (config.vmu wins over the pack's value layer). §F2 still proves the
+  // no-transport branch byte-for-byte; it just cannot be reached by omission any more.
+  const vmuSettings = deliver ? policy : Object.assign({}, policy, { 'vmu.report.transport': '' })
+  const handle = entry.apply(ctx, Object.assign({ clock: () => Date.now(), root, packs: ['v5r'], vmu: vmuSettings, deliver }, extraConfig))
   await sleep(220)
   const tool = (name) => {
     const spec = state.specs.find((s) => s.name === name)

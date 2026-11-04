@@ -267,8 +267,12 @@ try {
     const summaryRes = await meetTool.execute({ action: 'summary', id: mid }, {})
     const summaryParsed = typeof summaryRes === 'string' ? JSON.parse(summaryRes) : summaryRes
     ok(Boolean(summaryParsed) && summaryParsed.ok !== false, '§6c summary 是真的读法（材料/动议/表决）', summaryParsed && (summaryParsed.code || Object.keys(summaryParsed).length))
-    const noVerbatim = !Object.keys(summaryParsed || {}).some((k) => /speech|verbatim/i.test(k))
-    ok(noVerbatim, '§6d ★ summary 里没有逐字发言字段（所以教学不许承诺逐字发言）', Object.keys(summaryParsed || {}))
+    // ★ RUN 230 (task-20): summary 现在带 speechUsed / speechExtendMs / speechExtendMax / speechMaxMs /
+    // speechDefaultMs / speechExtendMeans —— 那是发言 BUDGET（预算与已用时长），不是发言内容。原来的
+    // /speech|verbatim/ 粗筛会把「预算」误判成「逐字发言」。这里收紧到只认「承载发言内容」的字段名，
+    // 断言不变的那件事：summary 里没有逐字发言。
+    const noVerbatim = !Object.keys(summaryParsed || {}).some((k) => /verbatim|speechText|speechBody|transcript/i.test(k))
+    ok(noVerbatim, '§6d ★ summary 里没有逐字发言字段（speech* 只允许是预算字段）', Object.keys(summaryParsed || {}))
     const sources = promptSources()
     ok(sources.length > 5, '§6e 扫描到的活提示词源文件数 > 5', sources.length)
     const minuteClaims = sources.filter((s) => {

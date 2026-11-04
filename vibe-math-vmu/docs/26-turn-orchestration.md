@@ -3896,3 +3896,114 @@ All five were fixed by restoring the distinction, never by relaxing the assertio
 
 **Lesson worth carrying:** compressing prose is not deleting characters, it is deleting the DIFFERENCES between sentences. None of the
 five deletions was long; each carried the memory of a past incident.
+
+## ROUND 232 (RUN 229·230) — three features that only existed in prose, and an instrument that found itself
+
+### The account
+The user's order (m27562) was explicit: build the features first, then build the scripts and the audits that measure them.
+So this round is not another receipt fix. It is three capabilities that had lived in the rules and in prose, made real:
+
+- **the blueprint's markdown file is the truth** — `kernel/records.js` gained `mdCompose/mdParse/mdRead/mdDigest/mdWrite`
+  (atomic temp+rename) and `mdReindex({dryRun,by,track})`; `packs/v5r/blueprint.js` writes the file first, hashes it, then
+  writes the record; `vibe_vmu_records` gained a `reindex` action, so a hand edit is followed by one command that re-derives
+  the rows from the file (tombstones go through `restore`, never a silent delete).
+- **the meeting's lifecycle** — `LATE_ADMISSION_MODES=['open','chair','refuse']`, `admit`, `waitStates[]` in
+  `kernel/meetings.js`; `admit` and `extend` cross the registry boundary from the tool face.
+- **the act is disclosed on every face that can speak for a seat** — `discloseActOnSeat` in `host-pack-tools.js` and
+  `toHostSpec(spec, kernel)` in `host.js`, so `vibe_vmu_meeting { attend | vote | speak | close }` also carries
+  `memberActed/actedForMember/callerMember/memberActedMeans`, not just the pack face.
+
+### The instrument
+`scripts/sim/` is a fidelity simulator: real `apply()`, real registered tools, real per-seat prompt assembly, and a
+`receipts.mjs` auditor over the produced corpus (A1 step refusals, A2 serialisation leaks, A3 write actions with no file
+change, A4 refusals without hints, A5 unregistered codes). Six scenarios run to `exit 0` with **zero findings**.
+
+The instrument's first act was to catch **itself** and the gate:
+
+- `vibe_vmu_meeting {action:"attend"}` never disclosed `memberActed` — pack face had it, kernel face did not.
+- the harness's `defaultsOf` was a fake fallback (`.catch(() => ({}))`): assemblies measured 30 302 in the simulator and
+  31 606 in the gate.
+- both rulers pinned the fixtures mode on the **undeclared bare key** `v5r.fixtureMode` while the settings layer only honours
+  `vmu.v5r.fixtureMode` (default `no-tools`) — so both measured no-tools and both comments said tools. Same input,
+  chair/verify: **+1 595 characters** (33 845 → 35 440). A key being *read* is not a key being *applied*: proving a probe is
+  live requires another path to produce a **different number**.
+
+### Six real defects the simulator read out (all fixed, all pinned)
+F1/F2 two clocks in one close receipt (`atMs()` used `Date.now()`); F3 no write path for the chair's floor order
+(`order({members})`, receipts carry `before/after/moved`); F4 a second `drive` silently displaced a parked turn and a late
+reply was refused as `VMU_INVALID_ARGUMENT` (`VMU_TURN_ALREADY_PARKED`, `VMU_TURN_STALE_REPLY`; single slot kept **on
+purpose** — an unanswered turn should be asked again, not remembered); F5 `progress` as a string was recorded as
+`undefined` (now a complete progress row plus `receipt.coercions`); F6 `blocked_by` did not block a claim
+(`VMU_TASK_BLOCKED`, cycles named); F9/F10 structured values written as type names (`[object Object]`) — refused by shape
+at the tool face **and** in the kernel (`kernel/panel.js`'s `shapeOf`/`textish`), because the tool face is not the only
+writer.
+
+### E12: a round that was not in any meeting
+The receipt said `skippedDetail:[{field:"say", op:"speak", reason:"no-meeting-bound"}]` — the member was blamed for a
+silence the face caused by never saying which meeting the round was in. The binding now travels: `open()` records the
+meeting, the parked prompt carries it, an answer inherits it (`meetingSource: explicit |
+inherited-from-parked-turn`), and a member naming a *different* meeting is refused by name
+(`VMU_TURN_REPLY_CONFLICT`). `toolMeetingRound` passes it through and says so (`roundMeeting`, `roundMeetingMeans`).
+The delivery seam is resolved once at construction with six ranked sources and reported in
+`status().seams.turnDeliverSource`; `vmu.turn.deliverTurn` is a **function seam, not a config value**, so the wired-schema
+generator names it (`class:'null-literal'`) instead of writing a confident `object` that nobody could ever set.
+
+### `extend`: a rule nobody could reach
+The service meeting's `extend` had **no caller in the whole tree** — the tool dispatcher held it on the primitive registry
+(`VMU_REGISTRY_BOUNDARY`), so "extend your speaking time" was written down and impossible. `SERVICE_CROSSING_ACTIONS` now
+carries `extend` and `admit`; the tool face tries the service first, a primitive meeting refuses by name and points at the pack
+face (primitive meetings have no speech budget). Two asymmetries are *documented, not flattened*: primitive meetings have no
+`extend` method at all (the old path turned a TypeError into `VMU_STATE`), and an anonymous `extend` keeps the historical
+behaviour because `tests/vmu-meeting-parity.test.mjs:412-423` pins two refusals with anonymous calls.
+
+### Three lessons
+1. **An instrument that does not audit itself will report headroom that does not exist.** The simulator's first value is not
+   "it runs" — it is that "the pack face has it, the kernel face does not" became a reproducible step. Its first risk is
+   being *shorter than the real thing*, which is why `tests/sim-assembly-parity.test.mjs` demands byte-identical assembly
+   with the gate (12 cells, diff 0).
+2. **A key being read is not a key being applied.** Prove a probe is live by making another path produce a different number.
+3. **A refusal that was declared must be declared.** Putting an unexpected refusal into `expectedRefusals` *is* the bypass;
+   environmental refusals are counted separately and never participate in "zero mechanism refusals".
+
+## ROUND 233
+
+### The five archived presets left the default sweep (a decision, not a refactor)
+
+The user said it twice, in one sentence: *we only maintain vmu and the v5r pack; legacy is never re-verified*. That is a
+statement about **coverage**, so it was implemented as one — with the three parts a coverage change needs if it is not to
+become a silent deletion of work:
+
+1. **A committed list** (`tests/legacy-suites.txt`, 54 entries, sorted) generated by anchored prefixes, with every entry
+   verified before it is written: it must reach an archived preset, and it must **not** mention `vibe-math-vmu`. A rule that
+   touches the maintained surface fails at generation time instead of quietly shrinking the sweep.
+2. **A switch in the runner** (`legacySuites()`, filtered in *both* `deriveJobs()` and `VARIANTS` — the three
+   `v5-institute-fixes` shards are variants, so filtering only the first path would have left the heaviest item in), with
+   the header saying `legacy=archived N behaviour suite(s) NOT run … GATE_LEGACY=1` on **every** run, and `--counts`
+   carrying `legacySkipped`/`legacyAllowed` so a documented number can always say whether it includes the archive.
+3. **A two-directional guard** (`tests/audit-legacy-scope.test.mjs`, 26 checks): the skip count must equal the difference
+   between the two `--counts` totals, the vmu-named jobs must be the *same* set in both modes, and the last section pins
+   the boundary — repo-wide audits that merely *read* the archive (path discipline, doc gates, declaration criteria,
+   registration parity) stay in the sweep, because they guard the surviving code.
+
+### What had to change with it (the part that is easy to miss)
+
+`tests/audit-scope-classification.test.mjs` proves that the anchored `prompt-v5` rule still excludes
+`prompt-v5-integrity.test.mjs`. Once the archive left the default sweep, that assertion could not fire there at all — it
+would have become a check that is true because its subject is absent. So that suite now runs its report and its two
+`--counts` calls with `GATE_LEGACY=1` and says why, and the quick-subset expectation is read from the runner's
+**mode-specific** number (`quickExpectedJobs`: 24 default, 38 with the archive) instead of a hardcoded constant. 38 passed.
+
+### Measured, not asserted
+
+The default sweep went **788 → 731** jobs. What came out are the heaviest measured lines of the previous cold sweep:
+`v5-institute-fixes.mutants.mjs` (three 600 s shards), `v2-fix-probes.mutants.mjs` 460.2 s,
+`formal-verify-v4.mutants.mjs` 132.2 s, `v2-list-agents-and-next-step.mutants.mjs` 117.5 s, `e2e-v4-fixes.test.mjs` 108.3 s,
+`v4-final-paper.mutants.mjs` 97.2 s. Those single-job numbers are **not** a wall-clock claim: they ran two-at-a-time, so the
+sweep's own new duration is still unmeasured and is recorded as an open item rather than a promise.
+
+### Two lessons
+
+1. **A rule must be able to see its target.** Moving coverage out of a sweep turns every "the rule still fires" assertion
+   about that coverage into a vacuous pass, unless the assertion is run in the mode where the target exists.
+2. **An expectation is a function of the mode, not a constant of the repository.** The moment a second mode exists, every
+   pinned count must be split by mode — otherwise the next red tells you that a constant is wrong, not that the code is.

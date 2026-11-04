@@ -1173,12 +1173,20 @@ async function onTick(flat) {
     const qs = turn.dispatchStatus()
     const queueLen = (Number(qs.queued) || 0) + (Number(qs.inFlight) || 0)
     const headAt = qs.oldestPending && typeof qs.oldestPending.at === 'string' ? Date.parse(qs.oldestPending.at) : NaN
-    const headAge = Number.isFinite(headAt) ? Date.now() - headAt : null
+    // ★ RUN 231: THE SAME CLOCK AS THE READING. Since the turn loop stamps `at` from the KERNEL clock (an ISO string as
+    // of RUN 231) while this brake used `Date.now()`, a deployment with an injected clock compared two different
+    // timelines: measured in the v3 planner suite (clock 1000 ms) the head read as ~56 years old, so every tick reported
+    // `queue-head-stuck` before the more specific pending check could speak. The tick's own `at` IS that clock's reading
+    // (onTick refuses to plan without one, see `no-injected-clock`), so the age is measured against it.
+    const headAge = Number.isFinite(headAt) ? at - headAt : null
     if (queueLen >= settings.plannerMaxQueuedTurns) {
       state.lastSkip = { reason: 'queue-at-cap', queueLen, cap: settings.plannerMaxQueuedTurns, tick: state.ticks }
       return { ok: true, skipped: 'queue-at-cap', at, queueLen, cap: settings.plannerMaxQueuedTurns, drained }
     }
-    if (headAge !== null && headAge > settings.deliveryTimeoutMs) {
+    // ★ RUN 231: OUR OWN pending dispatch is not a "stuck head" - the more specific check below answers for it (and the
+    // dispatch deadline names the failure). Without this guard the generic brake fired first and hid `pendingMs`.
+    const headIsOwnDispatch = !!(state.lastDispatched && qs.oldestPending && qs.oldestPending.turn === state.lastDispatched.turnId)
+    if (headAge !== null && headAge > settings.deliveryTimeoutMs && !headIsOwnDispatch) {
       state.lastSkip = { reason: 'queue-head-stuck', headAgeMs: headAge, deadlineMs: settings.deliveryTimeoutMs, head: qs.oldestPending, tick: state.ticks }
       return { ok: true, skipped: 'queue-head-stuck', at, headAgeMs: headAge, drained }
     }

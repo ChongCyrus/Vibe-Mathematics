@@ -26,7 +26,7 @@ import { createPromptPipeline } from './prompt/index.js'
 // ROUND 339: the TURN LOOP itself (docs/26) - assemble, deliver, parse, dispatch - so a host that installs only the
 // framework can run a member turn instead of borrowing the original preset loop. Its ownership table names REAL
 // faces and operations (read off this kernel at runtime in round 338), and delivery goes through the host seam.
-import { createTurnOrchestrator, facesFrom, closureVoteOf } from './turn/index.js'
+import { createTurnOrchestrator, facesFrom, closureVoteOf, deliverByReturning } from './turn/index.js'
 // PHASE 12 / D7 step 2: the CALL-TIME half of the per-seat face (pure predicate, consumes the ONE resolver below —
 // it never re-derives the deny set; the wire filter in host.js and this gate must read the same answer).
 import { faceGate as evaluateMemberFaceGate, hiddenNames as projectFaceHidden } from './memberface.js'
@@ -2612,8 +2612,28 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
   // seam it refuses by name rather than pretending a member answered.
   // ROUND 1 / K3: the seam is RESOLVED ONCE here, so `status().seams` reports the same fact the loop was built
   // from (the E2 lesson: a seam report rebuilt by inference can claim a seam the consumer never received).
+  // ★ E12 / task-19 (docs/acceptance/sim-audit-decisions.md §2.5 option b): THE DELIVERY SEAM IS DECLARED, NOT ASSUMED.
+  // The audit measured that a deployment with only `vmu.turn.deliverMode=caller` could drive a round through
+  // `host-deliver.js`, while the framework's own loop had no way to receive the same seam: `vibe_vmu_turn` refused
+  // `VMU_ENGINE_UNAVAILABLE` even though the caller route was available in every other entry. The resolution is
+  // therefore a NAMED PRECEDENCE, resolved once here (a later write to any of these sources cannot change the loop):
+  //   1. the kernel option `deliverTurn` (the test/sim seam: `{ turn, text } => reply`),
+  //   2. `host.effects.deliverTurn` (a host that injects its delivery as an EFFECT of its own host object),
+  //   3. `host.deliverTurn` (the legacy host seam, kept for compatibility),
+  //   4. `settings['vmu.turn.deliverTurn']` (a deployment that has no host object to hang an effect on),
+  //   5. `vmu.turn.deliverMode=caller` -> `deliverByReturning()` (the caller plays the member; the seam is the same
+  //      object the entry builds for that mode, so the loop and host-deliver.js cannot disagree about the route).
+  // With none of these the loop keeps its old text: a capability switched on without its seam is refused BY NAME.
+  const hostEffectsDeliverTurn = host && host.effects && typeof host.effects.deliverTurn === 'function' ? host.effects.deliverTurn : null
+  const hostDeliverTurn = host && typeof host.deliverTurn === 'function' ? host.deliverTurn : null
+  const settingsDeliverTurn = settings && typeof settings['vmu.turn.deliverTurn'] === 'function' ? settings['vmu.turn.deliverTurn'] : null
+  const callerRouteBySetting = !!(settings && settings['vmu.turn.deliverMode'] === 'caller')
+  const turnDeliverSource = typeof deliverTurn === 'function' ? 'kernel-deliverTurn'
+    : (hostEffectsDeliverTurn ? 'host.effects.deliverTurn'
+      : (hostDeliverTurn ? 'host.deliverTurn'
+        : (settingsDeliverTurn ? 'settings' : (callerRouteBySetting ? 'settings.deliverMode=caller' : null))))
   const turnDeliverSeam = typeof deliverTurn === 'function' ? deliverTurn
-    : (host && typeof host.deliverTurn === 'function' ? host.deliverTurn : null)
+    : (hostEffectsDeliverTurn || hostDeliverTurn || settingsDeliverTurn || (callerRouteBySetting ? deliverByReturning() : null))
   // ROUND 4: named, not inferred - the same lesson as `turnDeliverSeam` above.
   const sendMessageSeam = typeof sendMessage === 'function' ? sendMessage : null
   const interruptSeam = typeof interrupt === 'function' ? interrupt : null
@@ -2664,6 +2684,15 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // known later (host service mounts / first tool call carries the Agent) starts naming itself instead of staying
     // anonymous forever. `statusBoardReadings` still receives a plain string, resolved at that render.
     kernelSession: () => kernelSessionValue(kernelSession),
+    // ★★ RUN 229 (sim finding B): THE SAME CLOCK AS THE REST OF THIS KERNEL. This option was never handed over, so the
+    // loop fell back to its own default `() => new Date().toISOString()` (kernel/turn/index.js:1659) and every closure
+    // vote row carried the WALL clock, while `freezeClosureVote` stamps `frozenAt` from `clock()`. Measured in the
+    // simulator: ONE close receipt said `closureVoteAsOf: 1793795877906` (wall) and `closureVoteFrozen.frozenAt:
+    // 1800000000000` (injected) — two clocks in one object, so a reader could not tell whether the freeze came before
+    // or after the votes. Handed over UNCHANGED (no second wrapper): `recordClosureVote` already accepts a number or an
+    // ISO string (turn/index.js:2661-2669), so the deployment keeps whatever clock it injected, and a deployment with
+    // none keeps the loop's own fallback unchanged.
+    clock,
     // ★ RUN 169 / T1 r221: THE HOOK IS HANDED OVER ONLY WHEN IT CAN ACTUALLY PERSIST. The first cut always passed it and
     // let it throw `VMU_STORE_FAILED` on a storeless assembly, which made every reply vote leave TWO effects (the vote and
     // the refusal) - and the refusal was not a property of THAT vote, it was a property of the ASSEMBLY, known before the
@@ -4981,10 +5010,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // ROUND 1 / K3: the TURN seam is reported from the value the loop was ACTUALLY built with, so a host that
           // injects `deliverTurn` can see it took, and a host that does not can see the named refusal coming.
           turnDeliver: !!turnDeliverSeam,
-          turnDeliverSource: typeof deliverTurn === 'function' ? 'kernel-deliverTurn'
-            : (host && typeof host.deliverTurn === 'function' ? 'host.deliverTurn' : null),
+          // ★ E12 / task-19: the SOURCE is one of the named rungs of the resolution chain above, not a boolean guess.
+          // A deployment can now answer "which seam did the loop take?" without inferring it from the refusal text.
+          turnDeliverSource,
+          turnDeliverSourceMeans: 'kernel-deliverTurn = the { deliverTurn } kernel option; host.effects.deliverTurn = the host object injected the seam as an effect; host.deliverTurn = the legacy host seam; settings = settings["vmu.turn.deliverTurn"]; settings.deliverMode=caller = vmu.turn.deliverMode=caller, so the loop built deliverByReturning() itself (the caller plays the member)',
           turnDeliverNote: turnDeliverSeam ? null
-            : 'the turn loop has no delivery seam: `vibe_vmu_turn` step/drive refuse by name (VMU_ENGINE_UNAVAILABLE); pass { deliverTurn } (the entry assembles it from ctx.get(\'subagents\') via kernel/turn/index.js deliverViaSubagents)',
+            : 'the turn loop has no delivery seam: `vibe_vmu_turn` step/drive refuse by name (VMU_ENGINE_UNAVAILABLE); pass { deliverTurn }, host.effects.deliverTurn, settings["vmu.turn.deliverTurn"], or set vmu.turn.deliverMode=caller (the entry assembles the subagents seam from ctx.get(\'subagents\') via kernel/turn/index.js deliverViaSubagents)',
           // ROUND 4 / F9+F10 (docs/26 §3.22): the ONGOING-COMMAND seams, reported from the values the loop was
           // ACTUALLY built with. `consumedBy` is the real reader (`kernel/turn/index.js` turns them into
           // `sendToMember`/`interruptMember`), so status can never claim a verb nobody can call.

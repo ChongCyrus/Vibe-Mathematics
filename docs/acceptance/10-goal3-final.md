@@ -52,8 +52,8 @@
 | F28/F30 有界兜底／复议只升不降 | 具备 | `kernel/meetings.js:331/336/348/370`（lapse/revokeLapse）；`kernel/ballotbox.js:123`（`reopenFloor` 真读并决定） |
 | F32 定论去重窗口 | 具备 | 构造参数 `dedupWindowMs`（0＝零机制）＋`status().dedup`＋快照携带 |
 | F34 开启辩论资格 | 具备 | `open({by})` 的 `openers`/`minEligible`/`requiresTarget` ＋ `status().openCriterion` |
-| F35 DAG 环检测 | 具备 | `kernel/tasks.js:54-75` `findDependencyCycle`（自环＝长度 1 的环；返回环路径）＋`:214` `create`／`:240` `setDependencies` 抛出 |
-| F39 写域 advisory | 具备 | `kernel/tasks.js:82-83` `normalizeWriteScope`＋`:180-182` `writeScopeConflicts()`（注释逐字"Never refuses anything"） |
+| F35 DAG 环检测 | 具备 | `kernel/tasks.js:95-115` `findDependencyCycle`（`:110` 自环＝长度 1 的环；返回环路径）＋`:334` `create`／`:354` `setDependencies` 抛出 |
+| F39 写域 advisory | 具备 | `kernel/tasks.js:117-118` `normalizeWriteScope`＋`:294-295` `writeScopeConflicts()`（注释逐字"Never refuses anything"） |
 | F16 调度 trampoline | 具备（**真原语**，非等价推理） | `kernel/scheduler.js:136-139`（`reentrantDeferred`/`ticking`/`rerunRequested`）、`:248 tickPass`；实测重入 ⇒ `passes=2, deferred=1, firedCount=1` |
 | F33 门禁只在唯一收口点 | 具备（**等价判定**，保留旧注） | `kernel/ballotbox.js:13`（具名拒集合）、`kernel/ballot.js:151`（冻结期投片拒且不记票）＋`:235`（落定单点）。★ 旧注"若要求**同名原语**则应改判部分"**仍然有效**：这是性质等价，不是同名机制 |
 | F20–F24 提示词管线（5 条） | 具备 | `kernel/prompt/index.js:115-125/127-133/588-593`；F22 的可证伪族已迁到 `tests/_lib/falsify.mjs` |

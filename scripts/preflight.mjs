@@ -64,6 +64,19 @@ for (const g of GATES) {
   record('gate ' + g, r.status === 0, r.status === 0 ? 'ok' : (String(r.stdout || '') + String(r.stderr || '')).trim().split('\n').slice(-3).join(' | ').slice(0, 220))
 }
 
+// ---- 1b. the prompt budget (RUN 226: the ruler that measured the wrong seat lives here now) ------
+// It is not a test file, so it cannot be part of the sweep above: it measures the assembled seat
+// prompts and the tool descriptions against `BUDGET`. A prompt that grows past the cap is a real
+// defect (a truncated prompt silently drops a rule), so this is a gate, not a report.
+{
+  if (!exists('scripts/audit-prompt-budget.mjs')) record('prompt budget', false, 'missing')
+  else {
+    const r = run(['scripts/audit-prompt-budget.mjs', '--check'])
+    const tail = (String(r.stdout || '') + String(r.stderr || '')).trim().split('\n').slice(-6).join(' | ')
+    record('prompt budget (scripts/audit-prompt-budget.mjs)', r.status === 0, r.status === 0 ? 'ok' : tail.slice(0, 220))
+  }
+}
+
 // ---- 2. the generated patch must be up to date -------------------------------------------------
 {
   const r = run(['scripts/build-preset-rows.mjs', '--check'])

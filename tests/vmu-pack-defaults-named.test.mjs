@@ -187,8 +187,28 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
   // Pin the concrete instance the round was opened for, so the block cannot pass on an empty gap alone.
   const dep = await CONFIG_ROUTE()
   const f2 = dep.status.faces || {}
-  ok((f2.enabledGap || []).some((g) => g.face === 'report' && g.tool === 'vibe_vmu_report'),
-    'E3. ★ the deployment route names the exact case measured: `report` published while `enabled` omits it', f2.enabledGap)
+  // ★★ RUN 231 (A2 · task-18): THE ROUND-27 INSTANCE IS RECONCILED BY CONFIGURATION, NOT BY LOOSENING THIS GATE.
+  // The gap was "`report` published while `enabled` omits it, and `sources['report']` undefined on both routes". A2
+  // made the honesty real by putting `vmu.report.transport:"mailbox"` in the v5r pack's `settings/defaults.json`, and
+  // that key FOLDS before the kernel is built - so the face-row decision now turns `report` ON and records WHY
+  // (`sources.report === 'setting:vmu.report.*'`). Measured on this tree: `enabled` includes `report`, `published`
+  // includes `vibe_vmu_report`, `sources.report` = `setting:vmu.report.*`. The old pin asserted the GAP and would now
+  // demand a regression. What is pinned instead is the MECHANISM the gap was about: for THIS instance the two readings
+  // are reconciled - the tool is published, its face is enabled, and the receipt names the setting that turned it on.
+  // The gap must still exist and still carry the OTHER shape (`middleware`), so E4 cannot pass on an empty list.
+  const reportEnabled = (f2.enabled || []).includes('report')
+  const reportPublished = (f2.published || []).includes('vibe_vmu_report')
+  const reportGap = (f2.enabledGap || []).some((g) => g.face === 'report' && g.tool === 'vibe_vmu_report')
+  const reportSource = f2.sources ? f2.sources.report : undefined
+  ok(reportPublished && (reportEnabled || reportGap),
+    'E3. ★ the deployment route reconciles the `report` instance: the tool is published AND its face is either enabled or named in the gap (never silently absent)',
+    { reportPublished, reportEnabled, reportGap })
+  ok(reportGap || (reportEnabled && reportSource === 'setting:vmu.report.*'),
+    'E3b. ★ ...and the receipt says WHICH decision turned it on (`sources.report`): a gap entry today, or the folded setting after RUN 231',
+    { reportGap, reportEnabled, reportSource })
+  ok((f2.enabledGap || []).some((g) => g.face === 'middleware'),
+    'E3c. ★ the gap still carries the route-not-recorded shape (`middleware`), so E4 is not measuring an empty list',
+    (f2.enabledGap || []).map((g) => g.face).slice(0, 6))
   // ★ DERIVED (task-239): the asymmetry is `published = enabled + the gap faces`, and E3 already names the one
   // gap face (`report`). Pinning the relationship keeps the explanation attached to the REAL asymmetry while the
   // absolute counts are free to move when the pack publishes another face.
@@ -203,11 +223,18 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
   // ★ NOT READ: which of the two does not offset the count, i.e. how `enabledGap` is constructed - that code is
   // outside this file, so it is named as unchecked rather than asserted.
   const gapFaces = (f2.enabledGap || []).map((g) => g.face)
-  ok(gapFaces.length > 0 && ['middleware', 'report'].every((n) => gapFaces.includes(n)),
-    'E4. ★ the gap list names its faces explicitly (measured: ' + gapFaces.join(', ') + ') while enabled (' +
+  // ★ RUN 231: `report` left this list when A2's folded default turned the face on (see E3). What remains is
+  // `middleware` (route-not-recorded) and the pack's own tools (`pack:v5r-core`). Both SHAPES must be named, and every
+  // entry must declare which one it is - that keeps "two fields disagree" from reading as one undifferentiated pile.
+  const gapKinds = (f2.enabledGap || []).map((g) => String(g.kind || ''))
+  ok(gapFaces.length > 0 && gapFaces.includes('middleware') && gapFaces.some((x) => x === 'pack' || x.startsWith('pack:')),
+    'E4. ★ the gap list names its faces explicitly (measured: ' + gapFaces.slice(0, 4).join(', ') + ' ...) while enabled (' +
     f2.enabled.length + ') counts FACES and published (' + f2.published.length + ') counts TOOLS - different quantities, ' +
-    'so the count difference is not the list length (the gap\'s construction is unchecked here)',
-    { enabled: f2.enabled.length, published: f2.published.length, gapFaces })
+    'so the count difference is not the list length (how the gap is built is unchecked here)',
+    { enabled: f2.enabled.length, published: f2.published.length, gapFaces: gapFaces.slice(0, 6) })
+  ok(gapKinds.length > 0 && gapKinds.every((x) => x.startsWith('pack-tool') || x.startsWith('route-not-recorded')),
+    'E4b. ★ every gap entry declares WHICH shape it is (pack-tool vs route-not-recorded), so a bookkeeping gap is never confused with an unrelated publication',
+    [...new Set(gapKinds)])
 }
 
 // =========================================================================================================

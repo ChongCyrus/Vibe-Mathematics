@@ -52,7 +52,13 @@ const report = (env = {}, argv = []) => {
 
 // ── 1. the report is real, and it comes from the runner's own single job list ─────────────────────
 console.log('=== 1. THE DERIVED CLASSIFICATION IS READABLE ===')
-const base = report()
+// READ IT WITH THE ARCHIVE INCLUDED (`GATE_LEGACY=1`), deliberately. The `VMU_EXCLUDE` rules below are stated
+// over the REPOSITORY's job list, and one of them (`prompt-v5`) can only be seen to do its job while the
+// archived `prompt-v5-integrity.test.mjs` is in that list. Asserting them against the round-230 default sweep
+// would make the "the rule is not dead" check vacuous - a rule that is never shown to fire is one this
+// repository does not have. The DEFAULT sweep's own size and switch are asserted by
+// `tests/audit-legacy-scope.test.mjs`.
+const base = report({ GATE_LEGACY: '1' })
 ok(!!base.json, 'the runner prints a parseable --scope-report', base.out.slice(0, 90))
 if (!base.json) {
   console.log('')
@@ -77,8 +83,12 @@ ok(/quick-scope self-check ok \(\d+ jobs, no mutant family\)/.test(base.err),
 
 // ── 2. the quick subset is the declared constant, and it contains no mutant family ─────────────────
 console.log('=== 2. THE QUICK SUBSET ===')
+// `quickExpectedJobs` is the EFFECTIVE pinned count for this invocation (the runner reports one constant per
+// mode: 24 by default, 38 with GATE_LEGACY=1 — the archived behaviour suites are back). Comparing against a
+// hardcoded mode constant would make this check pass or fail for the wrong reason.
 ok(n(scopes.quick) === quickExpectedJobs,
-  'the quick subset resolves to exactly QUICK_EXPECTED_JOBS (' + quickExpectedJobs + ')', 'got ' + n(scopes.quick))
+  'the quick subset resolves to exactly the pinned count for this mode (' + quickExpectedJobs + ', legacy='
+  + String(base.json.legacyAllowed) + ')', 'got ' + n(scopes.quick))
 ok(quickExpectedJobs > 0, 'the quick expectation is a real number (the check above is not vacuous)', String(quickExpectedJobs))
 ok(n(scopes.quick) < n(scopes.full), 'the quick subset is a STRICT subset of the repository job list',
   n(scopes.quick) + ' vs ' + n(scopes.full))
@@ -183,7 +193,8 @@ ok(bothOut.status === 2, '--only and --exclude are both applied (intersection ca
 
 // ── 6. repository-wide modes pin `full` EXPLICITLY, with a named reason that is PRINTED ───────────
 console.log('=== 6. --counts / --self-check PIN THE SCOPE TO full, EXPLICITLY ===')
-const countsQuick = runRunner(['--counts'], { GATE_SCOPE: 'quick' })
+// Same MODE as the report above (the archive included), so the two totals describe the same job list.
+const countsQuick = runRunner(['--counts'], { GATE_SCOPE: 'quick', GATE_LEGACY: '1' })
 let countsJson = null
 try { countsJson = JSON.parse(countsQuick.out.trim()) } catch (e) { /* reported below */ }
 ok(countsQuick.status === 0 && !!countsJson && countsJson.total === n(scopes.full),
@@ -194,7 +205,7 @@ ok(/SCOPE OVERRIDE \(named reason\): --counts/.test(countsQuick.err),
   JSON.stringify(countsQuick.err.split('\n').filter((l) => /SCOPE OVERRIDE|requested-scope/.test(l))))
 ok(/requested-scope=quick\s+effective-scope=full/.test(countsQuick.err),
   '★ the header prints the requested scope AND the effective scope together', JSON.stringify(countsQuick.err.split('\n').find((l) => /requested-scope=/.test(l))))
-const countsVmu = runRunner(['--counts'], { GATE_SCOPE: 'vmu' })
+const countsVmu = runRunner(['--counts'], { GATE_SCOPE: 'vmu', GATE_LEGACY: '1' })
 let countsVmuJson = null
 try { countsVmuJson = JSON.parse(countsVmu.out.trim()) } catch (e) { /* reported below */ }
 ok(!!countsVmuJson && !!countsJson && countsVmuJson.total === countsJson.total,

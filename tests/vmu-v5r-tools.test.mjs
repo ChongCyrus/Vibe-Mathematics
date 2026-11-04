@@ -1255,7 +1255,7 @@ try {
     : { parsed: null }
   ok(secPoll.parsed && secPoll.parsed.ok === true && secPollVote.parsed && secPollVote.parsed.ok === false && secPollVote.parsed.code === 'VMU_NOT_PERMITTED',
     '★★ ③ 记录权≠表决权: the SECRETARY (a temp seat) still cannot vote — the recorder right grants no ballot', secPollVote.parsed && secPollVote.parsed.code)
-  // ★ the kernel STORES priority and SORTS by it, but its list projection omits the field (kernel/tasks.js:368-372) —
+  // ★ the kernel STORES priority and SORTS by it, but its list projection omits the field (kernel/tasks.js:519-527) —
   // so the honest observation is the receipt plus the BOARD ORDER, not a priority column that the view does not carry.
   // The lifecycle section above STOPPED the institute (stop is terminal; resume does not reopen it), so the priority
   // observation runs on a FRESH kernel: storage + board order are the KERNEL's facts.

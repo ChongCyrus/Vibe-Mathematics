@@ -18,6 +18,11 @@ const ok = (cond, name, detail) => {
   failures.push(name + (detail === undefined ? '' : ' [' + String(typeof detail === 'string' ? detail : JSON.stringify(detail)) + ']'))
 }
 
+// ★ RUN 230: `vmu.turn.deliverTurn` joined the un-inferable set (a FUNCTION seam, not a JSON value), so the measured
+// count is NINE. Pinned to the DECLARED table rather than to a literal, so a row can never enter un-named without G1
+// and B1 going red - and adding a row on purpose is a one-line change HERE, never a silently loosened assertion.
+const EXPECTED_UNINFERABLE = Object.keys(OBJECT_FALLBACKS).length
+
 console.log('=== 1. EVERY UN-INFERABLE def IS NAMED (the current tree) ===')
 {
   const defs = collect().defs
@@ -25,8 +30,8 @@ console.log('=== 1. EVERY UN-INFERABLE def IS NAMED (the current tree) ===')
   const named = namedFallbacks(defs)
   const unnamed = unnamedFallbacks(defs)
   ok(defs.length > 0, 'G0. the collector produced rows (the sweep below is non-vacuous)', defs.length)
-  ok(un.length === 8 && named.length === 8 && unnamed.length === 0,
-    'G1. ★ all 8 un-inferable rows are NAMED with a class and a reason, and NONE is unnamed (counts printed)',
+  ok(un.length === EXPECTED_UNINFERABLE && named.length === EXPECTED_UNINFERABLE && unnamed.length === 0,
+    'G1. ★ all ' + EXPECTED_UNINFERABLE + ' un-inferable rows are NAMED with a class and a reason, and NONE is unnamed (counts printed)',
     { unInferable: un.length, named: named.length, unnamed: unnamed.length })
   ok(named.length > 0 && named.every((n) => ['null-literal', 'no-literal'].includes(n.class) && typeof n.why === 'string' && n.why.length > 0),
     'G2. every name carries a CLASS and a non-empty reason (a name without a reason would be a silent fallback with extra words)',
@@ -62,8 +67,8 @@ console.log('=== 3. "EXPLAINED FALLBACK" vs "SILENT FALLBACK" ARE DISTINGUISHED 
   const other = [{ key: 'vmu.not.in.the.table', module: 'm.js', literal: null, type: null }]
   ok(namedFallbacks(other).length === 0 && unnamedFallbacks(other).length === 1,
     'E2. an undeclared key ⇒ UNNAMED (the gate reddens and prints it) — ★ the two states cannot collapse into one')
-  ok(Object.keys(OBJECT_FALLBACKS).length === 8,
-    'E3. the declared table has exactly the 8 measured entries (a new un-inferable row cannot enter un-named)', Object.keys(OBJECT_FALLBACKS).length)
+  ok(Object.keys(OBJECT_FALLBACKS).length === 9,
+    'E3. the declared table has exactly the 9 measured entries (a new un-inferable row cannot enter un-named)', Object.keys(OBJECT_FALLBACKS).length)
 }
 
 console.log('=== 4. THE GENERATED BLOCK CARRIES THE NAME (the artifact, not just the report) ===')
@@ -71,7 +76,10 @@ console.log('=== 4. THE GENERATED BLOCK CARRIES THE NAME (the artifact, not just
   const defs = collect().defs
   const block = render(defs)
   const rows = block.split('\n').filter((l) => l.includes('类型推断不出'))
-  ok(rows.length === 8, 'B1. ★ the eight un-inferable rows each say so in their own doc inside the generated block (count printed)', rows.length)
+  // ★ non-emptiness INSIDE the same expression: `rows` and `EXPECTED_UNINFERABLE` come from different sources (the
+  // generated artifact vs the declared table), and a zero-length subject would make a count comparison pass for the
+  // wrong reason (`audit-declaration-criterion` RULE E flagged exactly that as a new vacuous pass).
+  ok(rows.length > 0 && rows.length === EXPECTED_UNINFERABLE, 'B1. ★ the ' + EXPECTED_UNINFERABLE + ' un-inferable rows each say so in their own doc inside the generated block (count printed)', rows.length)
   ok(rows.every((l) => l.includes('具名回落 object：') && (l.includes('null-literal') || l.includes('no-literal'))),
     'B2. and each names its CLASS + reason, so a reader of the block can tell a declared `object` from an explained fallback')
   ok(block.split('\n').filter((l) => l.includes("type: 'object'")).length >= 8,

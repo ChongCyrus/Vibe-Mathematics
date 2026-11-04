@@ -354,9 +354,15 @@ console.log('=== 9. THE PACK\'S OWN POLICY IS VALID (it cannot ship a broken dec
     { reports: Array.isArray(declared) ? declared.length : null })
   const defaultsPath = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'settings', 'defaults.json')
   const defaults = (JSON.parse(readFileSync(defaultsPath, 'utf8')).defaults) || {}
-  ok(!Object.keys(defaults).some((k) => k.startsWith('vmu.report.')),
-    'and the pack\'s value layer declares NO vmu.report.* key, so the two records cannot fight over one knob',
-    Object.keys(defaults).filter((k) => k.startsWith('vmu.report.')))
+  // ★ RUN 230-A / decision memo §6 row 18: the value layer now carries EXACTLY ONE report key — the construction-time
+  // delivery seam `vmu.report.transport:'mailbox'` (read by vibe-math-vmu.js:434→:596, BEFORE the kernel exists).
+  // The DECLARATION keys (enabled / reports / channels / params / whoMayChange …) stay on the manifest, and that split is
+  // what keeps O4 satisfiable: a key claimed by both records would be VMU_PACK_CONFLICT, but a construction-time seam is
+  // not a declaration and the manifest deliberately does not carry it (v5r-core.js:169 says so).
+  const reportKeys = Object.keys(defaults).filter((k) => k.startsWith('vmu.report.'))
+  ok(reportKeys.length > 0 && reportKeys.every((k) => k === 'vmu.report.transport') && defaults['vmu.report.transport'] === 'mailbox',
+    'the pack\'s value layer carries ONLY the construction-time seam (transport:"mailbox"), never a declaration key',
+    reportKeys.map((k) => [k, defaults[k]]))
   const bookmark = createReport({ clock: () => 1, settings: {
     'vmu.report.enabled': PACK.settings['vmu.report.enabled'],
     'vmu.report.reports': declared,

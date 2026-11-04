@@ -80,12 +80,26 @@ console.log('=== VMU RUN39 ATTRIBUTION (field owners: ' + Object.keys(FIELD_OWNE
   ok(records[0] && records[0].by === 'r-9', '② an explicit author wins and is not overwritten', records[0] && records[0].by)
 }
 
-// ③ THE GUARD IS BY FACE/OP, NOT "EVERY PAYLOAD": a field that is not a record write keeps its exact shape.
+// ③ ★ RUN 230 (sim finding F5): A BARE STRING IS NOW ACCEPTED AS TEXT, AND SAYS SO.
+// Until RUN 230 this loop handed the string straight to the face, so `progress: "…"` reached the records face as a
+// string, the face had no `kind` to validate and the write was refused with a message about a missing kind - while the
+// member's sentence (the only thing it actually knew) was lost. The decision was to ACCEPT the text: one complete
+// progress row is written, and `receipt.coercions` declares the change of shape. This block pins the NEW fact: the
+// payload that arrives is a composed object (not the string), its body is the member's sentence VERBATIM, it is
+// attributed to the turn's member, and the receipt does not hide the coercion.
 {
-  const { records } = await runFence({ progress: 'just a string, no object at all' })
-  ok(records.length === 1 && records[0] === 'just a string, no object at all',
-    '③ a non-object payload is passed through untouched (the kernel does not invent an object to attribute)',
-    { seen: records[0], typeof: typeof records[0] })
+  const { step2, records } = await runFence({ progress: 'just a string, no object at all' })
+  const row = records[0]
+  ok(records.length === 1 && row && typeof row === 'object' && !Array.isArray(row) && row !== 'just a string, no object at all',
+    '③ ★ a bare string is COMPOSED into a row at the face boundary (it is neither passed through nor invented silently)',
+    { seen: row, typeof: typeof row })
+  ok(row && row.track === 'progress' && row.kind === 'progress', '③ the composed row is a progress row (track and kind agree)', row && { track: row.track, kind: row.kind })
+  ok(row && row.body === 'just a string, no object at all', "③ ★ the member's sentence survives VERBATIM in body (the coercion loses no text)", row && row.body)
+  ok(row && row.by === 'm1', '③ the composed row carries the turn member as author', row && row.by)
+  const coerced = step2.receipt && Array.isArray(step2.receipt.coercions) ? step2.receipt.coercions : null
+  ok(coerced && coerced.length > 0, '③ ★ the receipt DECLARES the coercion (a silent shape change is the defect)', coerced)
+  ok(coerced && coerced.some((c) => c && c.from === 'string' && typeof c.to === 'string' && c.to !== ''),
+    '③ ★ the coercion names what the string became', coerced)
 }
 
 // ④ F-11: AN APPLY REFUSAL CARRIES THE SIDE-EFFECT DISCLOSURE, because the child session is equally invisible.

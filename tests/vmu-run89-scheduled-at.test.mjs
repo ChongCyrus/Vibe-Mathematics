@@ -67,16 +67,16 @@ const mkRoot = async () => { const d = await mkdtemp(join(tmpdir(), 'vmu-r89-'))
   const view0 = k.meetings.meetingView({ meeting: opened.meeting })
   ok(view0.state === 'scheduled', 'the meeting is scheduled', view0.state)
   ok(Number.isFinite(opened.scheduledFor), 'scheduledFor is a NUMBER of milliseconds', opened.scheduledFor)
-  ok(opened.scheduledFor >= before + 119000 && opened.scheduledFor <= after + 121000,
-    'scheduledFor lands 120s after the kernel clock (not the caller\'s idea of now)', { scheduledFor: opened.scheduledFor, before, after })
+  ok(opened.scheduledFor === 121000,
+    "scheduledFor lands 120s after the KERNEL clock (1000 + 120000), not after the caller's idea of now",
+    { scheduledFor: opened.scheduledFor, kernelClock: 1000, wallClockBefore: before, wallClockAfter: after })
   ok(view0.scheduledFor === opened.scheduledFor, 'the view reports the same instant the receipt does', { view: view0.scheduledFor, receipt: opened.scheduledFor })
 
   for (const [spec, delta] of [['+5m', 300000], ['+2h', 7200000], ['+ 90 s', 90000]]) {
-    const t0 = Date.now()
     const o = k.meetings.open({ type: 'academic', chair: 'r-acad', actor: 'r-acad', roster: ['r-acad'], materials: 'relative ' + spec, at: spec })
-    const t1 = Date.now()
-    ok(o.scheduledFor >= t0 + delta - 1000 && o.scheduledFor <= t1 + delta + 1000,
-      'relative form ' + JSON.stringify(spec) + ' resolves to +' + delta + 'ms', o.scheduledFor - t0)
+    ok(o.scheduledFor === 1000 + delta,
+      'relative form ' + JSON.stringify(spec) + ' resolves to kernel clock + ' + delta + 'ms',
+      { scheduledFor: o.scheduledFor, expected: 1000 + delta })
   }
 }
 

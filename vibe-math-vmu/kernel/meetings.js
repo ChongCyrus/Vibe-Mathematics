@@ -352,7 +352,13 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
         const unit = { ms: 1, s: 1000, m: 60000, h: 3600000 }[rel[2]]
         const delta = Math.round(Number(rel[1]) * unit)
         if (!Number.isFinite(delta) || delta < 0) throw deny('VMU_INVALID_ARGUMENT', 'at is not a usable time: "' + trimmed + '"', 'pass a non-negative relative offset such as "+90s"', [])
-        return Date.now() + delta
+        // ★ RUN 229 (sim finding A): THIS USED `Date.now()`, i.e. the WALL clock, while the hint below promises "the
+        // kernel adds it to its own clock" and every other time in this kernel comes from the injected `clock`. Measured
+        // in the simulator (fixed clock 1_800_000_000_000, real wall clock 2026): `at: "+60s"` resolved into the PAST,
+        // so the meeting opened immediately (`state:"open"`, `scheduledFor:null`) instead of being scheduled — a model
+        // that cannot hold a clock is exactly the reader this form exists for, so the two clocks disagreeing made the
+        // form useless in the one deployment that tests it. One clock, the same seam `syncMeeting`/`sweepDue` use.
+        return clock() + delta
       }
       if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
         const asNumber = Number(trimmed)
@@ -809,6 +815,28 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     'extendlimit ADDS to the current bound and reports extendedMs, and a request that would pass `vmu.meetings.extendCeilingMs` ' +
     '(`' + String(K.extendCeilingMs) + '` ms here) is refused WHOLE by name (`VMU_RESOURCE_BUDGET`) — nothing is clamped ' +
     'to the boundary, and there is no unbounded choice'
+  /**
+   * ★★ RUN 230 (task-20): THE SPEECH bound is a DIFFERENT bound from the meeting's WALL bound (`wallLimitOf` above),
+   * and until now it had no read face at all: `speak()`/`extend()` write `m.speechUsed` (`{count, extensions}` per
+   * member), yet neither `summary()` nor `meetingView()` echoed it — so a successful speech extension raised a number
+   * no reader of the meeting could see, and its receipt was the only witness. This block puts the raised bound on the
+   * same two faces members read, and NAMES its sibling in the same breath so "extend raised the bound" cannot be
+   * misread as "extend raised the meeting's wall clock" (that is `extendlimit`).
+   */
+  const speechBlockOf = (m) => {
+    const rows = (m && m.speechUsed instanceof Map ? [...m.speechUsed.entries()] : [])
+      .map(([member, u]) => ({ member: String(member), speeches: Number(u && u.count) || 0, extensions: Number(u && u.extensions) || 0 }))
+      .sort((a, b) => (a.member < b.member ? -1 : (a.member > b.member ? 1 : 0)))
+    return {
+      speechUsed: rows,
+      speechExtendMs: K.speechExtendMs,
+      speechExtendMax: K.speechExtendMax,
+      speechMaxMs: K.speechMaxMs,
+      speechDefaultMs: K.speechDefaultMs,
+      speechExtendMeans: "the SPEECH bound (per member), NOT the meeting's wall bound: `speeches` counts speak() calls recorded on this face and `extensions` counts successful action=\"extend\" calls (each one raised that member's speech budget by speechExtendMs, at most speechExtendMax times). The meeting's OWN wall clock is wallLimitMs/extendedMs and is raised by action=\"extendlimit\" — two different bounds, two different commands",
+    }
+  }
+  const SPEECH_EXTEND_MEANS = "a SPEECH extension (action=\"extend\"): it raised THIS member's speech budget by `ms`, bounded by speechExtendMax/speechMaxMs, and is readable as `extensions` on summary()/status(); it did NOT move the meeting's wall clock — that bound is wallLimitMs/extendedMs and only action=\"extendlimit\" moves it"
   const cap = (code, label, value, limit, key, evaluated) => {
     const keys = Array.isArray(evaluated) ? evaluated.slice() : []
     mark(keys, key)
@@ -1379,7 +1407,45 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   const lapseDue = (a) => withScope(controls.lapseDue(a))
   const lapse = (a) => withScope(controls.lapse(a))
   const revokeLapse = (a) => withScope(controls.revokeLapse(a))
-  const extend = (a) => withScope(controls.extend(a))
+  /**
+   * ★★ RUN 230 (task-20): `extend` (a SPEECH extension) lived on the service registry with no caller — the dispatcher
+   * bound `action:"extend"` to the PRIMITIVE registry only, where no meeting object carries the method, so a service
+   * meeting died on `VMU_REGISTRY_BOUNDARY` and a primitive one on a TypeError. `tools/meeting.js` now routes service
+   * ids HERE; this wrapper adds what the live face needs, without touching the rules module:
+   *   1. the chair rail (`vmu.meetings.extendRequiresChair`, the key `extendWall` already honours) is evaluated ONLY
+   *      when the caller names itself (`by`/`actor`). A call that names nobody keeps the pre-existing behaviour the
+   *      parity suite pins ("the office may extend"), and `extendRequiresChair=false` disables the rail outright.
+   *   2. a receipt is recorded on the service face, so the receipt ring, `status()` and `summary()` agree, and the
+   *      receipt itself says which bound moved (`extendMeans`).
+   */
+  const extend = (a) => {
+    const args = a || {}
+    const named = (args.actor !== undefined && args.actor !== null && String(args.actor) !== '')
+      ? String(args.actor)
+      : ((args.by !== undefined && args.by !== null && String(args.by) !== '') ? String(args.by) : null)
+    const m = requireMeeting(args.meeting)
+    if (named !== null && K.extendRequiresChair !== false) {
+      const chair = m.chair === undefined || m.chair === null ? null : String(m.chair)
+      if (!chair) {
+        throw deny('VMU_ENGINE_UNAVAILABLE', 'this meeting declares no chair, so a speech extension requested by ' + named + ' cannot be checked against one',
+          'convene the meeting with chair=<member> (the chair owns the speech bound), or call action="extend" without by/actor', ['vmu.meetings.extendRequiresChair'])
+      }
+      if (chair !== named) {
+        throw deny('VMU_NOT_PERMITTED', 'a speech extension is a chair command: ' + named + ' is not the chair of ' + m.id + ' (' + chair + ')',
+          'ask ' + chair + ' to run action="extend" (the chair owns the speech bound); action="extendlimit" is the chair command for the MEETING wall bound', ['vmu.meetings.extendRequiresChair'])
+      }
+    }
+    const out = withScope(controls.extend(named === null ? args : Object.assign({}, args, { by: named })))
+    const now = args.at === undefined || args.at === null ? clock() : atMs(args.at)
+    const receipt = {
+      at: now, action: 'extend', meeting: m.id, member: String(args.member), ms: out.ms,
+      extensions: out.extensions, max: out.max, by: named,
+      enforced: out.enforced.slice(), enforcedScope: ENFORCED_SCOPE,
+    }
+    pushReceipt(receipt)
+    say({ type: 'meetings/speech-extended', at: now, meeting: m.id, member: receipt.member, ms: receipt.ms, extensions: receipt.extensions, max: receipt.max, by: named, enforced: out.enforced.slice(), enforcedScope: ENFORCED_SCOPE })
+    return Object.assign({}, out, { by: named, receipt, extendMeans: SPEECH_EXTEND_MEANS })
+  }
 
   // ── ROUND 12: THE `motion → box` BINDING (method, not manifest field) now lives in `kernel/meetingmarker.js` ──
   // `createBoxBinding` owns the state, the self-reported view and the named refusals; this face only CALLS it.
@@ -1811,7 +1877,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           'the floor queue is not at your turn: ' + String(member) + ' is #' + (queuedMe + 1) + ' of ' + waiters.length + ' present waiter(s)',
           'the effective order among PRESENT members is [' + waiters.join(', ') + '] (mode ' + String(orderEff.mode) + ', from ' + String(orderEff.source) + ')'
           + (skippedAbsent.length ? '; ahead of you and NOT present (so not holding a turn): [' + skippedAbsent.join(', ') + ']' : '')
-          + '; the queue is WRITTEN by invitations — the chair puts members on it in a given order with vibe_vmu_meeting { action: "invite", id: "' + String(m.id) + '", by:"<chair>", why:"…", members:["r-1","r-2"] } (action "order" only READS it back), and the order MODE is the chair\'s via flow/overrideorder when the deployment declares vmu.meetings.orderMode — otherwise wait until it is your turn',
+          + '; the queue is WRITTEN by invitations — the chair puts members on it in a given order with vibe_vmu_meeting { action: "invite", id: "' + String(m.id) + '", by:"<chair>", why:"…", members:["r-1","r-2"] } — and, once a queue exists, the chair REORDERS it with { action: "order", id: "' + String(m.id) + '", by:"<chair>", members:["<first>","<second>"] } (order alone READS it; ordering is chair-only and refuses an absent seat by name), and the order MODE is the chair\'s via flow/overrideorder when the deployment declares vmu.meetings.orderMode — otherwise wait until it is your turn',
           enforced)
       }
       // speech time
@@ -1977,6 +2043,99 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       const receipt = { at: at === null ? clock() : at, action: 'queue', meeting: m.id, member: String(member), by: actor, mode: eff.mode, modeSource: eff.source, queued: eff.queueOpen, seed: eff.seed, order, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       return { ok: true, mode: eff.mode, modeSource: eff.source, queued: eff.queueOpen, order, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+    },
+
+    /**
+     * ★★ RUN 229 / E16 (sim finding C, MEASURED): `order({ meeting, members, by })` — THE CHAIR'S BATCH ORDER.
+     *
+     * The institution rule says the chair may designate A BATCH OF SPEAKERS IN A GIVEN ORDER (规则 L50). This file had
+     * `queue()` (one self-raised hand at a time) and `invite` (in the pack face) — but no act that REORDERS a queue that
+     * already exists, and `vibe_vmu_meeting {action:"order"}` refused `members` as "a parameter for a neighbouring
+     * action". So the ONE rule with a written-down ordering claim could not be exercised: a chair who wanted "r-2 先、
+     * r-1 后" could only invite into an EMPTY queue, never reorder a live floor (measured: the refusal is
+     * `VMU_INVALID_ARGUMENT "action order only READS the floor queue"`, and the hint pointed at invite — which does not
+     * reorder anything either).
+     *
+     * SEMANTICS, in the vocabulary of the queue this face already stores (`m.queue`, the arrival order `orderFor`
+     * reads):
+     *   · WRITE only when `members` is given. The READ form is `orderView()` and keeps ITS shape byte-for-byte (the
+     *     tool face routes the no-members call there, so a caller who only reads sees nothing new).
+     *   · CHAIR ONLY, and the chair must be DECLARED (no invented authority: 08 §25.14 A). `by` is the actor; this face
+     *     has no turn context to guess one.
+     *   · EVERY named seat must be PRESENT. An absent seat would sit at the head of the queue and hold the floor
+     *     forever — `speak()` already refuses that member `VMU_NOT_MEMBER "attend() first"`, so the hint here says how to
+     *     make them present (attend, or the chair's admit under lateAdmission:"chair") instead of pretending a queue
+     *     write could seat them.
+     *   · THE STORED QUEUE IS REPLACED by exactly the named list, in the given order (that is what "按一定顺序发言"
+     *     means; appending would leave earlier arrivals ahead). Members dropped from the queue are named in `dropped`.
+     *   · AN ORDER RULE THAT RE-COMPUTES cannot hold a stored list (`round-robin` sorts by speech counts, `random`
+     *     shuffles). It is refused BY NAME with the exit, rather than stored and then silently overridden on the next
+     *     read — the receipt must not promise an order the next `order` call contradicts.
+     *   · The receipt says WHAT IT DID: `before`/`after` (the orders as read before and after the write), `moved`
+     *     (`[{member,from,to}]`, 1-based, only members present in both) and `dropped`. `ok:true` alone would be the
+     *     same class of lie the audits keep finding.
+     */
+    order({ meeting, members: wanted = null, by = null, actor = null, why = '', at = null } = {}) {
+      const m = requireMeeting(meeting, { what: 'ordering the floor' })
+      const enforced = []
+      const who = String((by === null || by === undefined || by === '') ? (actor === null || actor === undefined ? '' : actor) : by)
+      if (!who) throw deny('VMU_INVALID_ARGUMENT', 'ordering the floor needs { by } (who is deciding)',
+        'the chair acts in their own name: { action:"order", id:"' + String(m.id) + '", by:"<chair>", members:["r-1","r-2"] }', enforced)
+      if (m.chair === null || m.chair === undefined) {
+        throw deny('VMU_ENGINE_UNAVAILABLE', 'no chair is declared for this meeting: no one may designate the order of speakers',
+          'open the meeting with { chair: "<member id>" } — the kernel never invents an authority (08 §25.14 A)', enforced)
+      }
+      if (String(m.chair) !== who) {
+        throw deny('VMU_NOT_PERMITTED', 'only the CHAIR may designate who speaks, and in what order: ' + who,
+          'the declared chair of this meeting is ' + String(m.chair), enforced)
+      }
+      const eff = orderControls.effective(m)
+      if (eff.source === 'setting') mark(enforced, 'vmu.meetings.orderMode')
+      if (!eff.queueOpen) {
+        throw deny('VMU_STATE', 'the floor is OPEN (mode "' + String(eff.mode) + '"): there is no queue to order',
+          'in open-floor mode members hand() themselves and speak as they arrive; set a queue-bearing mode with flow() first (it needs vmu.meetings.orderMode declared)', enforced)
+      }
+      if (eff.order === 'round-robin' || eff.order === 'random') {
+        throw deny('VMU_STATE', 'the effective order rule "' + String(eff.order) + '" RE-COMPUTES the order on every read, so a stored list cannot bind: the next read would disagree with this write',
+          'change the rule first (flow()/overrideorder() — both need vmu.meetings.orderMode declared), or use mode "fifo"/"chair" whose order IS the stored queue', enforced)
+      }
+      const raw = Array.isArray(wanted) ? wanted : [wanted]
+      if (raw.length === 0) throw deny('VMU_INVALID_ARGUMENT', 'order needs a non-empty members list', 'pass members:["r-1","r-2"] in speaking order, or omit members to READ the queue', enforced)
+      const list = []
+      const seen = new Set()
+      for (const entry of raw) {
+        const id = (entry === null || entry === undefined) ? '' : String(entry)
+        if (!id) throw deny('VMU_INVALID_ARGUMENT', 'order received an EMPTY member id', 'member ids are strings: members:["r-1","r-2"]', enforced)
+        if (seen.has(id)) throw deny('VMU_INVALID_ARGUMENT', 'members names the same seat twice: ' + id, 'each seat appears once: the queue is a sequence, not a count', enforced)
+        seen.add(id)
+        if (!isMember(id)) throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + id, 'a non-member never takes the floor (08 D-series)', enforced)
+        list.push(id)
+      }
+      const absent = list.filter((id) => !m.present.has(String(id)))
+      if (absent.length) {
+        throw deny('VMU_NOT_MEMBER', 'cannot put a seat on the floor that is not PRESENT: ' + absent.join(', '),
+          'present: [' + [...m.present].sort().join(', ') + '] — make them present first: attend() for a member who has not sat down, and under lateAdmission:"chair" the CHAIR admits a held-at-the-door member with { action:"admit", id:"' + String(m.id) + '", member:"<id>", actor:"<chair>" }; an absent seat cannot speak, so ordering it into the queue would only hold the floor', enforced)
+      }
+      const before = orderControls.orderFor(m, m.queue)
+      const kept = Array.isArray(m.queue) ? m.queue.filter((id) => !list.includes(String(id))) : []
+      m.queue = list.slice()
+      const after = orderControls.orderFor(m, m.queue)
+      const moved = []
+      for (const id of after) {
+        const from = before.indexOf(id)
+        const to = after.indexOf(id)
+        if (from !== -1 && from !== to) moved.push({ member: id, from: from + 1, to: to + 1 })
+      }
+      const dropped = kept
+      const now = at === null ? clock() : atMs(at)
+      m.minutes.entries.push({ at: now, kind: 'floor-order', by: who, why: String(why === null || why === undefined ? '' : why), order: after.slice(), before: before.slice(), dropped: dropped.slice() })
+      const receipt = { at: now, action: 'order', meeting: m.id, by: who, members: list.slice(), before: before.slice(), after: after.slice(),
+        moved, dropped: dropped.slice(), mode: eff.mode, modeSource: eff.source, queued: true, why: String(why === null || why === undefined ? '' : why), enforced, enforcedScope: ENFORCED_SCOPE }
+      pushReceipt(receipt)
+      say({ type: 'meetings/floor-ordered', at: now, meeting: m.id, by: who, before: before.slice(), after: after.slice(), dropped: dropped.slice(), enforced, enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, action: 'order', meeting: m.id, by: who, members: list.slice(), before: before.slice(), after: after.slice(),
+        moved, dropped: dropped.slice(), queue: after.slice(), mode: eff.mode, modeSource: eff.source, queued: true,
+        receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Move a motion. `emergencyKinds`/`emergencyQuorumRatio` and `materialsRequired` apply. */
@@ -2756,6 +2915,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         wallLimitMsSource: m.wallLimitMsSource === undefined ? 'vmu.meetings.hardLimitMs' : m.wallLimitMsSource,
         extendedMs: Number.isFinite(m.extendedMs) ? m.extendedMs : 0,
         wallLimitMeans: wallLimitMeansText(),
+        // ★★ RUN 230: the SPEECH bound and its raise count, on the SAME faces (see `speechBlockOf`).
+        ...speechBlockOf(m),
         activatedAt: m.activatedAt === undefined ? null : m.activatedAt,
         startedLate: m.startedLate === true,
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
@@ -2839,6 +3000,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         wallLimitMsSource: m.wallLimitMsSource === undefined ? 'vmu.meetings.hardLimitMs' : m.wallLimitMsSource,
         extendedMs: Number.isFinite(m.extendedMs) ? m.extendedMs : 0,
         wallLimitMeans: wallLimitMeansText(),
+        // ★★ RUN 230: the SPEECH bound and its raise count, on the SAME faces (see `speechBlockOf`).
+        ...speechBlockOf(m),
         activatedAt: m.activatedAt === undefined ? null : m.activatedAt,
         startedLate: m.startedLate === true,
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,

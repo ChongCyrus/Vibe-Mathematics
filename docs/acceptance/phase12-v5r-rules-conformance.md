@@ -61,7 +61,7 @@
 | D7 | 成员可用命令/工具**按会议类型和身份**有差异 | **两个维度都成形**：① 身份维＝活的可见工具表（`host.js:1681-1691` / `:1722-1729`）＋内核运行期具名拒（`requireChairSeat` / `chairNeutral` / `closeRequiresChair`）；② **类型维＝`packs/v5r/meeting-tool-face.js`**（`MEETING_TYPE_TOOL_FACES` `:21`：debate 收窄 20 项 allow，其余五类 `narrowed:false` ＋具名 reason）＋新工具 `vibe_v5_meeting_round`（`tools.js:1166` / `:1868-1876`）：allow＝`kernel.toolsView({member})` ∩ 策略表，**只收窄**；身份面读不到 ⇒ `VMU_ENGINE_UNAVAILABLE`（不猜 allow）、交集空 ⇒ `VMU_STATE`；`applyMeetingTypeFace()` `:107` 两阶段应用避免 override 残影；override 只活一轮，`finally` 清 | `tests/vmu-meeting-type-tools.test.mjs` 51/0（辩论期 `vibe_v5_paper` 不在 allow ／正常会议零 override／主席永不被收窄）＋ §5a–§5d 的身份拒法 | ✅ 已实现 |
 | D8 | 会议类型含：正常、学术交流、辩论、结题、论文交流、未来规划/策划… | `MEETING_TYPES` 六值（normal/academic/debate/final/paper/planning）＋ v5r 声明 `vmu.meetings.typeCatalog` ⇒ 类型**不再是死字段**：存储、回读、白名单、按类型取骨架（`procedureFor`）、内核 `committee` 结题报告轨都按它走 | 同上（未知类型具名拒；回读 summary/meetingView 都有 type） | ✅ 已实现 |
 | D9 | 常见命令：举手发言、邀请发言、**批量指定成员按顺序发言**、单次发言版群聊（权限区分，部分仅主持） | vmu-pack D9 lane 交付（67 断言）：`hand`(举手)、`invite`(邀请，具名 why，主席/秘书轨)、`queue`+`order`(排序＝批量指定顺序)、`invitedspeak`(仅主持)、`vibe_v5_say`(群聊)＋`attend`(入场，原来没有入口)；pack 面新增 `vibe_v5_meeting{action:'hand'|'hands'|'invite'|'attend'}`。★ 回执字段 `meeting_hand`/`meeting_invite` 已被内核标为 `noReplyShape`（回执里没有会议引用，派发只会得到 "no such meeting: undefined"；`invite→attend` 还会让邀请人自出席） | `tests/vmu-meeting-invite.test.mjs` / `tests/vmu-turn.test.mjs` T16c–T16g | ✅ 已实现 |
-| D10 | 特殊活动：投票板（选项＋最多/最少选几项机制）、任务板设置与认领/交派、群聊式交流（院士为群管，可设权限/发言次数/禁言） | ✅ **已实现（本轮收口）**（`lane-d10-members.md` 四个子项逐条）：**投票板 ✅** —— 规则校验 `kernel/ballotbox.js:169,178-200`，越限**具名拒** `:271-277`（`VMU_BALLOT_CHOICE_COUNT`），pack 面把 `min/max/mode/min_votes/allow_revote` 翻译进 rules 并回报 applied/unapplied（`packs/v5r/tools.js:636-648`）；**群聊 ✅** —— 六键声明并接线 `kernel/chat.js:31-35,40-42`，非管理员具名拒 `:280-290`（`VMU_CHAT_NOT_ADMIN`）、禁言具名拒 `:341-343`（`VMU_CHAT_MUTED` 带解除时刻）、配额具名拒 `:349-357`（`VMU_CHAT_QUOTA_EXCEEDED` 带 used/limit/窗口）；**两套机制不重复** —— 群聊侧 `chat.js:31-35` 与会议侧 `meetings.js:179-182` 地址的是**不同对象**（会话发言 vs 会议发言），非同一件事双口径；**任务板认领/交派 ✅** —— 面覆盖全（`kit/extras.js:96-129` 七动作＋真交派 `packs/v5r/tools.js:258-290`）；审计归属已闭环：`kernel/tasks.js:302` 记 `who`，`assign(id, owner, { by, bySource })` 额外记**操作者**（`kernel/tasks.js:278` 的 `setPriority` 同一口径），`kit/extras.js:108-119` 把 `args.by` 传成 `bySource:'argument'`、缺省时落 `by:null / bySource:'unknown'`（不拿被派者冒充操作者）；本轮补的是**入口**：`vibe_v5_task_update` 的 schema 原先不声明 `by`（读点存在、声明缺失 ⇒ 通过被教的工具永远无法交派归属），现已声明并配三断言（`tests/vmu-v5r-tools.test.mjs`：claim⇒`by=认领者/bySource=caller`、assign⇒`by=被给的操作者/bySource=argument`、以及「面必须声明它读的那个参数」）；内核侧另有独立门 `tests/vmu-tasks-attribution.test.mjs` | 投票板/群聊/任务板三条都有门禁 | ✅ 已实现 |
+| D10 | 特殊活动：投票板（选项＋最多/最少选几项机制）、任务板设置与认领/交派、群聊式交流（院士为群管，可设权限/发言次数/禁言） | ✅ **已实现（本轮收口）**（`lane-d10-members.md` 四个子项逐条）：**投票板 ✅** —— 规则校验 `kernel/ballotbox.js:169,178-200`，越限**具名拒** `:271-277`（`VMU_BALLOT_CHOICE_COUNT`），pack 面把 `min/max/mode/min_votes/allow_revote` 翻译进 rules 并回报 applied/unapplied（`packs/v5r/tools.js:636-648`）；**群聊 ✅** —— 六键声明并接线 `kernel/chat.js:31-35,40-42`，非管理员具名拒 `:280-290`（`VMU_CHAT_NOT_ADMIN`）、禁言具名拒 `:341-343`（`VMU_CHAT_MUTED` 带解除时刻）、配额具名拒 `:349-357`（`VMU_CHAT_QUOTA_EXCEEDED` 带 used/limit/窗口）；**两套机制不重复** —— 群聊侧 `chat.js:31-35` 与会议侧 `meetings.js:179-182` 地址的是**不同对象**（会话发言 vs 会议发言），非同一件事双口径；**任务板认领/交派 ✅** —— 面覆盖全（`kit/extras.js:96-129` 七动作＋真交派 `packs/v5r/tools.js:258-290`）；审计归属已闭环：`kernel/tasks.js:428` 记 `who`，`assign(id, owner, { by, bySource })` 额外记**操作者**（`kernel/tasks.js:382` 的 `setPriority` 同一口径），`kit/extras.js:108-119` 把 `args.by` 传成 `bySource:'argument'`、缺省时落 `by:null / bySource:'unknown'`（不拿被派者冒充操作者）；本轮补的是**入口**：`vibe_v5_task_update` 的 schema 原先不声明 `by`（读点存在、声明缺失 ⇒ 通过被教的工具永远无法交派归属），现已声明并配三断言（`tests/vmu-v5r-tools.test.mjs`：claim⇒`by=认领者/bySource=caller`、assign⇒`by=被给的操作者/bySource=argument`、以及「面必须声明它读的那个参数」）；内核侧另有独立门 `tests/vmu-tasks-attribution.test.mjs` | 投票板/群聊/任务板三条都有门禁 | ✅ 已实现 |
 | D11 | **辩论类型会议有额外字段：辩论的对象或对象文件引用** | `open({subject})`＝字符串引用（卡 id / 文件路径 / 一行陈述）；非字符串⇒`VMU_INVALID_ARGUMENT`（带 typeof），空白⇒归一 `null`；辩论会议缺 `subject`⇒pack 具名拒；`vibe_v5_meeting` 的 `target` 是它的**活别名**（原来声明了没人读）；回执/`summary()`/`meetingView()`/`meetings/opened` 全能读回 | 同上 | ✅ 已实现 |
 | D12 | 辩论/结题**表决人数下限** ≥ min(用户设置数, 院士+常驻研究员数) | **两个面都满足，且第二个面有证明**：① 表决面＝`quorumOf()` 第三项由「在场人数」换成「**可投票成员数**（名册∩`eligibleSeats`，临时席位 `temp` 不计）」⇒ `need = min(quorumMin/Ratio, quorumCap, 可投票成员数)`，`vote()` 上可观测；② 结题面＝`closureVoteOf` 的全一致性**在数学上包含下限**：`floor = min(setting, universe) ≤ universe = 全一致性所需票数`，所以"沉默阻塞结题"这条既有纪律本身就强于规则要求的下限；用户设置数在结题路径不是"不生效"，而是**被更强的约束支配**（这一条是本次改台账时补的证明，不是推断） | `tests/vmu-meetings.test.mjs` 6 条 + 上面的包含关系 | ✅ 已实现 |
 | D13 | lean 已通过但概率非 1 的命题：辩论聚焦 **lean 代码中命题/定义的描述符合性** | ✅ **闸已落地并接线**：`packs/v5r/verification-gates.js:281-300` `fidelityAsked({cardId,leanPassed,p,withdrawnFor,answered})` —— lean 通过且 p≠1 时**必须先回答**「代码中的命题/定义是否符合所需」，未回答 ⇒ `VMU_PACK_V5R_FIDELITY_ASK_REQUIRED`（带问题原文与 `conform`/`defect` 两个选项，不是一句 forbidden）；`defect` 撤回情形 ⇒ `resolved`，不再追问；接线点 `packs/v5r/tools.js:726-737`（`vibe_v5_verdict_final` **落数之前**调闸，先问后算）；卡的 `p=1` 走另一条：`p1Intent` 要求 `debate`/`lean`/`verified` 三种定论来源之一 | `tests/vmu-v5r-verdict-final.test.mjs`（④ 正/反）＋ `tests/vmu-verified-gates.test.mjs` 93/0 | ✅ 已实现 |
@@ -1100,7 +1100,7 @@ A4 的残留缺口是「默认不参会」只有散文（原文写「由 `vmu.me
 
 ### §27.1 残留缺口复核（先读，不动手）
 
-- `vibe-math-vmu/kernel/tasks.js:302` 的 claim 只记 `who`（= 被派对象）；同一模块 `:278` 的 `setPriority(id, priority, { expectedRevision, by })` 却记了 `by` ⇒ 同一张板上两种归属口径。
+- `vibe-math-vmu/kernel/tasks.js:428` 的 claim 只记 `who`（= 被派对象）；同一模块 `:382` 的 `setPriority(id, priority, { expectedRevision, by })` 却记了 `by` ⇒ 同一张板上两种归属口径。
 - `vibe-math-vmu/kernel/tasks.js` 的 `assign(id, owner, { by, bySource })` **已经**支持操作者与来源（`bySource` 是闭集：`caller` / `argument` / `unknown`）。
 - `vibe-math-vmu/kit/extras.js:108-119` **已经**在读 `args.by` 并把它传成 `bySource: 'argument'`；缺省落 `by: null, bySource: 'unknown'`（不拿被派者冒充操作者——这条另有独立门 `tests/vmu-tasks-attribution.test.mjs` 20/0 覆盖）。
 
@@ -15999,3 +15999,185 @@ RUN 225 收尾时留下的审计台账只有三行，但其中两行是「工具
    的方向，所以它差点成了「我们已经达标」的证明。校准之后第一件事不是庆祝数字变小，而是**去核一条同类项**。
 2. **重复散文按次数付费。** 可读上界是总量约束：同一句 62 字的话印七遍就是 430 字节。先找「同一句话说几遍」，再找「哪句最长」。
 3. **pin 失败先问「它记得什么」。** 这一轮 7 条红全是「原文被压掉」，不是「断言过时」；把原文原样放回去，比改断言便宜，也更诚实。
+
+## §328 — 三块只写在散文里的功能，和一台「静默什么都不做」的仪器（RUN 229·230）
+
+### 328.1 账从哪来
+第 60 次真机之前先按用户 m27562 的顺序办：**先补功能，再建脚本与审计**。所以这一轮不是「又修了几条回执」，
+而是把三件一直只写在规则/散文里的功能做成机制，然后**用一台新的保真模拟器把它们跑一遍**——模拟器测出的第一件事
+就是「功能在包面有、在内核面没有」。
+
+三块功能（`docs/acceptance/sim-audit-decisions.md` 的决策 (b)）：
+- **A 蓝图 md 是唯一真相**：`kernel/records.js` 的 `mdCompose/mdParse/mdRead/mdDigest/mdWrite`（原子 temp+rename）
+  与 `mdReindex({dryRun,by,track})`；`packs/v5r/blueprint.js` 三个写点先写 md 拿 sha256 再落行；`vibe_vmu_records`
+  多一个 `reindex` 动作 ⇒ 手工编辑 md 之后可以用一条命令把行按 md 的 status/revision 重排，墓碑走 `restore`。
+- **B 会议生命周期**：`kernel/meetings.js` 的 `LATE_ADMISSION_MODES=['open','chair','refuse']`、`admit`、
+  `waitStates[]`；`tools/meeting.js` 的 `SERVICE_CROSSING_ACTIONS` 加 `admit` 与 `extend`。
+- **C 提示词重构 + 代写见证**：`host-pack-tools.js` 的 `discloseActOnSeat`，`host.js` 的 `toHostSpec` 让**内核面**
+  （`vibe_vmu_meeting` attend/vote/speak/close）也披露 `memberActed/actedForMember/callerMember/memberActedMeans`。
+
+### 328.2 模拟器（`scripts/sim/`）——仪器本身也要被审计
+`scripts/sim/harness.mjs` 真跑 `apply()`、抓 `ctx.tools.register`、按席位装配提示词；`scripts/sim/run.mjs` 自动发现场景；
+`scripts/sim/audit/receipts.mjs` 是**对语料的审计器**：A1 步骤拒绝、A2 序列化泄漏、A3 写动作无文件变化、A4 拒绝无 hint、
+A5 拒绝码未登记。六场景（mainline / records-blueprint / paper / comms / turns / meetings）全部 `exit 0`，
+六份 corpus 的 findings 全 0。
+
+模拟器立刻测出三件真机测不到的事：
+1. `vibe_vmu_meeting {action:"attend"}` 的回执**没有** `memberActed`——包面有、内核面没有；补在 `toHostSpec`。
+2. `scripts/sim/harness.mjs` 的 `defaultsOf` 是个假回退（`.catch(() => ({}))`），装配量与门禁差 30 302 vs 31 606。
+3. 尺子把 fixtures 模式 pin 在**未声明**的裸键 `v5r.fixtureMode` 上，而设置层只认 `vmu.v5r.fixtureMode`（默认 `no-tools`）
+   ⇒ **两把尺子一起量成 no-tools**，注释却都写 tools。同一输入 chair/verify 差 **+1 595 字符**（33 845 → 35 440）。
+
+### 328.3 模拟器读出的六个真缺陷（全部已修，全部有测试）
+| # | 缺陷 | 修法 | 测试 |
+|---|---|---|---|
+| F1/F2 | `atMs()` 用 `Date.now()`，同一次 close 的回执里 `closureVoteAsOf` 与 `closureVoteFrozen.frozenAt` 落在两个钟上 | `atMs()` 用注入 clock；`createTurnOrchestrator` 收 `clock` | `tests/vmu-run229-meeting-clock.test.mjs` 72/0 |
+| F3 | 会议主席**没有**重排队列的写路径（`order` 只能读） | service `order({members})` 写路径，回执给 `before/after/moved`；不传 members 仍只读 | 同上文件 §3 |
+| F4 | 第二次 `drive` 静默顶掉停着的回合；迟到 reply 被拒成 `VMU_INVALID_ARGUMENT` | 具名拒 `VMU_TURN_ALREADY_PARKED` / `VMU_TURN_STALE_REPLY`（**保留单槽**：未答回合应被重问） | `tests/vmu-run229-turn-parked.test.mjs` 57/0 |
+| F5 | `progress` 传字符串 ⇒ 内核记下 `undefined` | 采「接受文本」：字符串落成一条完整 progress 行 + `receipt.coercions`；缺轨名的对象按形状具名 skip | 同上 §4/§5 |
+| F6 | `blocked_by` 不阻挡 claim（hint 却承诺具名拒） | `kernel/tasks.js` 的 `assign()` 依赖闸 `VMU_TASK_BLOCKED`；成环 `VMU_TASK_DEPENDENCY_CYCLE` | `tests/vmu-run229-blocked-by.test.mjs` 31/0 |
+| F9/F10 | 结构化值被 `String()` 写成 `[object Object]`（工具面 + 内核面 + 论文证据两处） | 工具面按形状具名拒；内核 `kernel/panel.js` 新增 `shapeOf`/`textish`（**直连内核的写者也不许写类型名**） | `tests/vmu-run229-serialisation.test.mjs` 46/0 |
+
+### 328.4 E12 会议绑定 + 交付接缝（RUN 230）
+真机 run 51 的样子：`meeting_round` 跑完，成员在回复里 `say` 了话，回执只写
+`skippedDetail:[{field:"say", op:"speak", reason:"no-meeting-bound"}]`——**成员被责怪了一句他没说出口的话，而原因是那个面
+没有说他这一轮在哪个会里**。修法三处：`kernel/turn/index.js` 的 `open()` 记 `meeting`、`deliverByReturning()` 的停车
+prompt 带 `meeting`、答复时 `meetingSource`（`explicit` | `inherited-from-parked-turn`）；`packs/v5r/tools.js` 的
+`toolMeetingRound` 把 `meeting` 传给 `kernel.turn.step` 并在两条回执上写 `roundMeeting`/`roundMeetingMeans`；
+`kernel/index.js` 构造期解析交付接缝（kernel 选项 > `host.effects.deliverTurn` > `host.deliverTurn` >
+`settings["vmu.turn.deliverTurn"]` > `deliverMode=caller` > 无接缝具名拒），`status().seams.turnDeliverSource` 分报六档。
+`vmu.turn.deliverTurn` 是**函数接缝不是配置值**，所以在 `scripts/generate-wired-schema.mjs` 的 `OBJECT_FALLBACKS`
+里具名（`class:'null-literal'`）而不是让生成器写一个自信的 `object`：一个人按 `type: object` 去设置它永远设不上。
+
+### 328.5 `extend` 跨注册表（规则「延长发言」原来是不可达的）
+service 会议的 `extend`（`kernel/meetings.js:1388`）**全仓无调用者**——工具面 dispatcher 把关在 primitive 注册表上
+（`VMU_REGISTRY_BOUNDARY`），于是规则写在纸上、真实会议上永远做不到。修法：`SERVICE_CROSSING_ACTIONS` 加
+`extend`/`admit`，工具面 service-first，primitive 会具名拒并指向 pack 面（primitive 会议没有发言预算），
+`summary()`/`meetingView()` 给 `speechUsed[]`/`speechExtendMs`/`speechExtendMax`/`speechExtendMeans`。
+两个**已裁定**的非对称留在文档里而不是被抹平：① primitive 会议无 `extend` 方法（旧路径 TypeError 被包成 `VMU_STATE`）；
+② 匿名调用 `extend` 保留旧行为（`tests/vmu-meeting-parity.test.mjs:412-423` 用匿名调用钉住两条拒，收紧会破坏）。
+
+### 328.6 收口（真数字）
+- 定向回归：`turn/meeting/tasks/panel/paper/report/sim/a2/run229/run230/vmu-settings/wiring/v5r-tools/prompt-/accept-/audit-` 一族。
+- 六场景 sim + `audit/receipts.mjs` findings 0。
+- 生成物：`update-doc-counts --write` ⇒ `JOBS total=NNN suites=NNN probes=108`；`regen-all --write` 17/17；`--check` in sync。
+- 门禁：`preflight`（含 prompt budget 段）/ `check-docs` / `check-rules-coverage --check` / `check-rule-parity` 全 PASS。
+- 冷全量 T1：`TOTAL NNN PASS NNN FAIL 0`（见 PROGRESS 第 81 轮）。
+
+### 328.7 三条教训
+1. **仪器不审计自己，就会替你报告不存在的余量。** 模拟器的第一份价值不是「跑通」，而是它把「包面有、内核面没有」
+   这类缺口做成可复现步骤；它的第一份风险是**它比真机短**——所以 `tests/sim-assembly-parity.test.mjs` 要求模拟器与
+   门禁的装配逐字节一致（12 格 diff=0）。
+2. **一个键被读到，不等于它被应用。** fixtureMode 两个尺子都「读」到了，但读的是未声明的裸键，值根本没落进设置层；
+   要证明探针生效，必须让另一条路径给出**不同的数**（+1 595 就是这么量出来的）。
+3. **声明过的拒绝必须显式声明。** 把未预期的拒绝塞进 `expectedRefusals` 就是绕过审计；`env` 类的拒绝单独计数
+   （`ENVIRONMENTAL`），不参与「机制零拒绝」的判定。
+
+## §329 归档预设退出默认门禁（Round 230，用户决定）
+
+**329.1 账从哪来**。用户两轮话（同一句判断的两次表述）：「明明现在完全只维护 vmu、v5r pack，legacy 的完全不会再
+去维护了，理论上不应该还会关注这些之前的东西」。它不是一句抱怨，而是对**门禁覆盖面**的决定：归档的五个预设
+（v2／v3／v4／v5／归档 v5r）不再需要被**重新验证**，维护面只有 `vibe-math-vmu` ＋ 它的 v5r pack。
+
+**329.2 这条决定有可测的代价与收益**。代价：默认全量少跑 **57 个作业**（54 个套件 ＋ 3 个变体/shard），788 → **731**。
+收益不只是时间，而是三件被反复抱怨的事一起消失：① 冷全量里最重的三项**全部**在归档族里 ——
+`v5-institute-fixes.mutants.mjs` 的 **三个 600 s shard**（`--counts` 之前它是 header 上的 headstart 独占项）、
+`v2-fix-probes.mutants.mjs` **460.2 s**、`formal-verify-v4.mutants.mjs` **132.2 s**，再加 `v2-list-agents-and-next-step.mutants.mjs`
+**117.5 s**、`e2e-v4-fixes.test.mjs` **108.3 s**、`v4-final-paper.mutants.mjs` **97.2 s**、`v2-fix-probes.test.mjs` **44.6 s**、
+`formal-verify-v4.test.mjs` **13.7 s**（以上均为 788 作业那次全量的实测行）；② 临时目录根（**仓库外**）里约 **1 900 个 `*v4*` 临时根**
+（97 MB，来自 `tests/formal-verify-v4.test.mjs` 的 `vibe-v4-lean-*` 与 `tests/host-failure-paths.test.mjs` 的 `v4-fail-*`）
+默认不再产生；③ 每次全量都要重新读一遍的 43 个「提到 v4 路径」的套件里，真正**只跑归档行为**的那 54 个不再占注意力。
+
+**329.3 修法（三步，缺一不可）**。删掉覆盖是最坏的一种"修"：它让结论无法复核。所以落成：
+1. **提交进仓的清单** `tests/legacy-suites.txt`（54 行，已排序）。生成它的是**锚定规则**而不是内容猜测：
+   `v2-`／`v3-`／`v4-`／`v5-`／`v2v3-`／`roundC-fix`／`selfdrive-v3..5`／`e2e-v3..5`／`e2e-business`／`e2e-d9-d13`／
+   `e2e-identity-a6`／`e2e-multisession`／`e2e-regression`／`formal-verify-v2..5`／`math-computation-v*|a1|discovery|archive-rerun|shared`／
+   `prompt-v5-integrity`／`accept-ab-v5-minimal`／`verify-fixes`／`host-failure-paths`／`audit-v3-registration-parity`／`audit-v5-`。
+   生成时**每一条都被验过**：必须真的引用归档（`legacy-presets`／`legacyEntry`／…)，且**不得**出现 `vibe-math-vmu`
+   （一条规则若碰到维护面，就在生成这一步红，而不是悄悄少跑）。
+2. **runner 的一个开关**（`tests/run-tests.mjs`）：`legacySuites()` 读那份清单（读不到／为空 ⇒ **具名 exit 2**，
+   绝不当成空集）；`deriveJobs()` 与 `VARIANTS` 两条路径都过滤（变体属于归档族的一部分：`v5-institute-fixes` 的
+   shard 就是这样被漏掉过一次的候选）；**每次运行**都打印
+   `legacy=archived N behaviour suite(s) NOT run … Run them with GATE_LEGACY=1.`；`--counts` 多两个字段
+   `legacySkipped`／`legacyAllowed`，让「文档里的数」永远能说清它是否含归档。
+3. **双向守卫** `tests/audit-legacy-scope.test.mjs`（**26 条**）：清单非空／有序／无重复／每条都存在于磁盘、
+   每条都能到达归档且不碰 `vibe-math-vmu`、跳过数**恰好**等于两档 `--counts` 之差、header 必须说出跳过数与回路、
+   `GATE_LEGACY=1` 时**不许**再声称跳过、vmu 命名作业在两档下**逐个相同**、quick 子集在两档下分别钉在 **24／38**，
+   以及最后一节：**共享层审计不得被归类为归档行为套件**（`audit-path-discipline`、`audit-declaration-criterion`、
+   `audit-artifact-docs`、`audit-registration`、`audit-spec-traceability`、`accept-c-orphan` 全在清单外）。
+
+**329.4 一处必须同时改的既有断言**。`tests/audit-scope-classification.test.mjs` 原来用默认档读 `--scope-report`，
+而它要证明的是「`prompt-v5` 这条锚定规则**仍然**把 `prompt-v5-integrity.test.mjs` 排除掉」。归档退出默认扫描后，
+那条规则**再也看不到它的靶子** —— 断言会变成空真（一条永远不发射的规则，等于没有这条规则）。修法不是放宽断言，
+而是**在同一模式下读**：该套件的 `base`／`counts` 三次调起都显式 `GATE_LEGACY=1`，并在注释里写明理由；quick 期望值
+改为读 runner 报的**当档有效值**（`--scope-report` 新增 `quickExpectedJobs`／`quickExpectedJobsByMode`／`legacyAllowed`），
+不再硬编码某一档的常量。
+
+**329.5 机器化与收口**。`tests/audit-legacy-scope.test.mjs` **26/0**；`tests/audit-scope-classification.test.mjs` **38/0**；
+`update-doc-counts --write` ⇒ `JOBS total=731 suites=651 probes=80`；`regen-all --write` 17/17 → `--check` **17/17 in sync**；
+`preflight` PASS（含新增 `prompt budget` 段）／`check-docs` PASS／`check-rules-coverage` PASS(0)／`check-rule-parity` PASS(0)。
+
+**329.6 未闭合**。① 真机（第 60 次）尚未在「默认全量为 731 作业」的树上跑过，因此**冷全量的实际耗时降幅**还没有实测数
+（只有单项耗时行可加总，不能当成并行后的墙钟）；② `tests/` 目录仍是扁平的：归档套件与维护套件混在一层，只能靠
+`tests/legacy-suites.txt` 分辨 —— 把它们搬进 `tests/legacy/` 是**结构上更诚实**的表达（目录即清单，清单可删），
+代价是 54 个文件里 53 个要改 `_lib/` 的相对导入、25 个要改 `join(HERE, '..')` 的仓库根推导；作为**独立一步**做，
+不与本轮混在一起；③ `GATE_SCOPE=vmu` 的 705 作业里仍含共享层门禁读归档的成本（未裁决是否再细分）。
+
+**329.7 三教训**。① **「不再维护」不等于「可以不再被验证」，也不等于「可以悄悄不再被验证」** —— 退出一项覆盖必须
+同时给出：清单（哪些）、开关（怎么回来）、守卫（怎么防止清单本身漂移），三者缺一即是一次**静默的覆盖删除**；
+② **让一条规则看得见它的靶子**：把靶子移出扫描范围后，「规则仍然有效」这类断言必须回到能看见靶子的模式下执行，
+否则守的是一个空真；③ **期望值是档位的函数，不是仓库的常量**：一旦出现两个模式，任何硬编码的计数都必须跟着分档，
+否则下一次改动会以「守卫红了」的形式告诉你它错的是常量而不是代码。
+
+### §330 归档行为套件退出默认门禁（2026-11-05，RUN 231）
+
+#### 330.1 账从哪来
+
+用户两轮给同一个判断（m29437 / m29468）：「明明现在完全只维护 vmu、v5r pack，legacy 完全不会再维护，理论上只需要关注 vmu/v5r pack」。此前默认全量含五个已归档预设（v2 / v3 / v4 / v5 / 归档的 v5r）的**行为套件**，实测每次冷全量里最重的几行全是它们：
+
+| 作业 | 墙钟 |
+| --- | --- |
+| `v5-institute-fixes.mutants.mjs`（三个 600 s shard，headstart 独占 1800 s） | 1800 s |
+| `v2-fix-probes.mutants.mjs` | 460.2 s |
+| `formal-verify-v4.mutants.mjs` | 132.2 s |
+| `v2-list-agents-and-next-step.mutants.mjs` | 117.5 s |
+| `e2e-v4-fixes.test.mjs` | 108.3 s |
+| `v4-final-paper.mutants.mjs` | 97.2 s |
+| `v2-fix-probes.test.mjs` | 44.6 s |
+| `formal-verify-v4.test.mjs` | 13.7 s |
+
+同一批套件还在临时目录根（仓库外）留下过约 1900 个 `*v4*` 目录（97 MB）。它们守的是**已归档代码**，对活代码没有信号。
+
+#### 330.2 判决：三分，不搬家
+
+用户 m29643 追问「是否建议把 tests 中非 vmu、v5r pack 的门禁/测试都移入 legacy 文件夹里」，我答三分（m29744 用户同意，先落「默认不跑」）：
+
+1. **归档预设的行为套件 54 个**（`tests/legacy-suites.txt`）退出默认全量，`GATE_LEGACY=1` 才跑。
+2. **共享层门禁绝不搬、也不退**：`audit-path-discipline`、`check-docs`、`audit-artifact-docs`、`audit-registration`、`audit-spec-traceability`、`accept-c-orphan`、installer、包成员、文档计数、prompt budget、temp hygiene、runner 自测、`audit-declaration-criterion`、`audit-math-computation-parity`。它们**读**归档只为当数据，守的是活代码。例：`vibe-math-vmu/kernel/math.js:31` 的 `from '../math-computation.js'` 就是归档那份的逐字拷贝，parity 门禁钉住的正是这条拷贝关系。
+3. `tests/_lib/legacy-presets.mjs` 等 helper 留原地（搬家会破坏 53 个 import）。
+
+#### 330.3 三步修法
+
+1. **清单**：`tests/legacy-suites.txt` 54 行、排序、无重复，由 `D:/_tmp/build-legacy-list.mjs` 用**锚定前缀**生成（不猜内容）：`v2-`/`v3-`/`v4-`/`v5-`/`v2v3-`/`roundC-fix`/`selfdrive-v3..5`/`e2e-v3..5`/…，每条先验「必须引用归档、且不得出现 `vibe-math-vmu`」；`*.mutants.mjs` 允许经被它变异的基座间接到达归档。
+2. **runner**：`tests/run-tests.mjs` 增 `LEGACY_LIST_FILE`/`LEGACY_ALLOW`/`legacySuites()`（清单读不到或为空 ⇒ 具名 `exit 2`，不静默降级），`deriveJobs()` 主循环**与 `VARIANTS` 循环都过滤**（`v5-institute-fixes` 的三个 shard 是变体，只过滤主循环会漏掉最重的一项）；header 每次打印跳过数与回路；`--counts` 增 `legacySkipped`/`legacyAllowed`；`--scope-report` 增 `quickExpectedJobs`，quick 期望值分两档（`QUICK_EXPECTED_JOBS=24` / `QUICK_EXPECTED_JOBS_LEGACY=38`）。
+3. **守卫**：新 `tests/audit-legacy-scope.test.mjs`（26/0）钉住六件事——清单在盘且有序、每条真的到归档且不碰 vmu、跳过数恒等于 `on.total - off.total`、`GATE_LEGACY=1` 时不许再声称跳过、vmu 命名作业两档逐个相同、六个共享层审计不得出现在清单里；并带 `--self-test`（三个伪造源证明判定会红），因为 `tests/audit-scanner-selfproof.test.mjs` 要求新审计自证或登记债务。
+
+#### 330.4 一处必须同改的既有断言
+
+`tests/audit-scope-classification.test.mjs` 原先把「`prompt-v5` 规则仍排除 `prompt-v5-integrity.test.mjs`」与缺省全量对比；缺省全量一旦跳过 legacy，这句话就变成**空真**（靶子已不在扫描范围）。因此该测试三次调起 runner 时都显式 `GATE_LEGACY: '1'`，并在注释里写明理由；quick 期望值也改成读 runner 自己报的当档值。
+
+#### 330.5 机器化与收口
+
+`tests/audit-legacy-scope.test.mjs` 26/0、`tests/audit-scope-classification.test.mjs` 38/0、`tests/audit-no-silent-reads.test.mjs` 6/0（清单读取改为 `requireFile`，因为 `existsSync ? readFileSync : ''` 被 no-silent-reads 判为 `ternary-read-empty`）。默认全量 **788 → 731**（`JOBS total=731 suites=651 probes=80`），`regen-all` 17/17 in sync，四门禁 PASS。干净冷全量 `/d/_tmp/t1-r2360-run231d.log` = **`TOTAL 731 PASS 731 FAIL 0 (suites 651 · probes 80)`**。
+
+#### 330.6 未闭合
+
+- 冷全量墙钟降幅实测：默认全量 **731 作业 wall 545.8 s**（`/d/_tmp/t1-r2360-run231d.log`，concurrency 2，sum of suite times 1090.2 s，speed-up x2.00），对比上一次 788 作业的 1878 s 冷跑 / LPT 后约 1448 s —— 主因是那三个 600 s 的 headstart shard 不再进默认。
+- `tests/` 仍是扁平目录，「目录即清单」的收益要等下一轮迁移才拿到（用户 m29744 已同意先 commit 再迁）。
+- vmu 档（`GATE_SCOPE=vmu`）705 个作业里仍含读归档的成本（共享层门禁）。
+
+#### 330.7 教训
+
+1. **「不在维护」不等于「不受保护」**：归档套件退出默认，但守活代码的共享层门禁必须留在默认里——两者名字都不带 `vmu`，靠命名分不出来，只能逐条问「它红了会不会指向活代码」。
+2. **过滤要覆盖变体循环**：只过滤主循环，最重的那三个 shard 会以「变体」身份悄悄留下来。
+3. **降级读取不许静默**：清单读不到就是 `exit 2`；`existsSync ? read : ''` 这种写法会被仓库自己的 no-silent-reads 门禁抓住。

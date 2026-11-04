@@ -82,6 +82,46 @@ const str = (v) => (v === undefined || v === null ? '' : String(v))
 const has = (v) => str(v).trim() !== ''
 
 /**
+ * ★★ RUN 229 — A STRUCTURE IN AN EVIDENCE LIST IS NOT A POINTER, AND ITS TYPE NAME IS NOT AN ANSWER.
+ * `part.evidence` is a list of POINTERS (record ids / member-file paths). A caller that sends a structure there used to
+ * be answered through `String(value)` ⇒ the refusal message printed `[object Object]` — a JavaScript type name where the
+ * reader needs the shape. `shapeOf` describes what arrived: `typeof`, item/key count, and the JSON itself only when it is
+ * small enough to read. It never JSON.stringifies a structure INTO a receipt as if the text were the data.
+ */
+function shapeOf(value) {
+  if (value === undefined) return 'a missing value'
+  if (value === null) return 'null'
+  const t = typeof value
+  if (t === 'object') {
+    if (Array.isArray(value)) return 'an array (typeof value: "object") of ' + value.length + ' item' + (value.length === 1 ? '' : 's')
+    const keys = Object.keys(value)
+    let json = ''
+    try { json = JSON.stringify(value) } catch { json = '' }
+    return 'an object (typeof value: "object") with ' + keys.length + ' key' + (keys.length === 1 ? '' : 's')
+      + (keys.length ? ' [' + keys.slice(0, 6).join(', ') + (keys.length > 6 ? ', …' : '') + ']' : '')
+      + (json !== '' && json.length <= 120 ? ' = ' + json : (json !== '' ? ' (' + json.length + ' chars of JSON)' : ''))
+  }
+  if (t === 'number') return Number.isFinite(value) ? 'the number ' + String(value) : 'a number that is not finite'
+  if (t === 'boolean') return 'the boolean ' + String(value)
+  if (t === 'function') return 'a function'
+  if (t === 'symbol') return 'a symbol'
+  if (t === 'bigint') return 'a bigint'
+  return 'a value of type ' + t
+}
+/** What an evidence entry can say: the text itself when it IS text (or a value whose String() is what a reader reads). */
+function evidenceText(raw) {
+  if (raw === undefined || raw === null) return null
+  if (typeof raw === 'string') return raw.trim()
+  if (typeof raw === 'number') return Number.isFinite(raw) ? String(raw).trim() : shapeOf(raw)
+  if (typeof raw === 'boolean') return String(raw)
+  return shapeOf(raw)
+}
+/** An evidence entry is a REAL pointer only when the caller sent text — a described shape is reported as `not-a-string`. */
+function isEvidenceText(raw) {
+  return typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean'
+}
+
+/**
  * ★★ RUN 170 (real machine, run 16 / FEEDBACK16 F16-9 — A FILE NAME READ AS A RECORD ID): the gate took the tail of a
  * prose citation as a record id, so `Members/r-1/Propos/run16-odd-cubes.md#四步归纳` became the id
  * `run16-odd-cubes.md#四步归纳` and `records.get` THREW `VMU_NO_SUCH_OBJECT` out of the gate (the whole `final` call died
@@ -303,7 +343,9 @@ function citationsOf(state, records) {
       }
       continue
     }
-    const evidence = Array.isArray(part.evidence) ? part.evidence.map(str) : []
+    // ★★ RUN 229: an evidence entry that is a STRUCTURE is DESCRIBED, not coerced — `String(value)` would make the
+    // citation `[object Object]`, i.e. a type name that is then read as if it were the cited id.
+    const evidence = Array.isArray(part.evidence) ? part.evidence.map(evidenceText).filter((s) => s !== null && s !== '') : []
     for (const entry of evidence) found.push({ member, origin: 'evidence', text: entry })
     for (const field of ['title', 'solution', 'methods', 'rules', 'limits']) {
       const prose = str(part[field])
@@ -371,10 +413,25 @@ export function checkProsePointers({ text, records, codes = QUALITY_CODES } = {}
  */
 export function checkEvidencePointers({ evidence, records, codes = QUALITY_CODES } = {}) {
   if (!records) throw Object.assign(new Error('checkEvidencePointers needs the records-backed view'), { code: 'VMU_INVALID_ARGUMENT' })
-  const list = Array.isArray(evidence) ? evidence.map(str).filter((s) => s !== '') : []
+  // ★★ RUN 229: every entry is judged AS IT ARRIVED. A non-text entry keeps a SHAPE description (never `[object
+  // Object]`) and is refused by name (`not-a-string`); a real pointer is resolved as before.
+  const entries = []
+  for (const raw of (Array.isArray(evidence) ? evidence : [])) {
+    const text = evidenceText(raw)
+    if (text === null || text === '') continue
+    entries.push({ pointer: text, textish: isEvidenceText(raw) })
+  }
+  const list = entries.map((e) => e.pointer)
   const resolved = []
   const unknown = []
-  for (const pointer of list) {
+  for (const entry of entries) {
+    const pointer = entry.pointer
+    if (!entry.textish) {
+      unknown.push({ pointer, reason: 'not-a-string',
+        shapeMeans: 'this evidence entry is not text: the POINTER must be a string (a record id like "rec-12", or a Members/<member>/(Propos|Methods|Subproblems|Progress)/<name>.md path). What arrived is described above by its shape (typeof, key/item count), never by a JavaScript type name',
+        expected: 'a pointer STRING, e.g. "rec-12" or "Members/r-1/Propos/rec-12.md"' })
+      continue
+    }
     // ★★★ RUN 153 (G6): the appendix indexes evidence by RECORD ID, so a bare card id ("rec-12") is a legal pointer.
     // The member-file form was the only accepted shape, and the real run's members wrote the id they were shown on the
     // card — and were refused with "not-a-member-file-pointer" for citing the thing the institute had just told them.

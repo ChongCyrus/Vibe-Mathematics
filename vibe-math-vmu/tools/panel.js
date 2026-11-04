@@ -16,6 +16,32 @@ const LIBRARY_POINTER_MEANS = '`libraryPointer` 指向同题的另一扇读面�
   + '读记录轨里已落盘的面板卡行，那条回执里有 `panelPointer` 指回本面。两个面不是同一份账：本面是内核活视图，'
   + '记录轨是卡；读到一个不等于读到另一个。'
 
+/** ★★ RUN 229: a field the schema declares as TEXT may arrive as something else. `String(value)` then writes a JavaScript
+ *  type name (`[object Object]`) into the append-only history, where it is indistinguishable from a value the member
+ *  meant — the reader is told the TYPE of the object instead of what arrived. The face now REFUSES the write by name and
+ *  describes the shape it received: `typeof`, item/key count, and the JSON itself only when it is small enough to read.
+ *  It never stringifies a structure INTO the panel as if the text were the data. */
+const describeShape = (value) => {
+  if (Array.isArray(value)) return 'an array (typeof value: "object") of ' + value.length + ' item' + (value.length === 1 ? '' : 's')
+  if (value !== null && typeof value === 'object') {
+    const keys = Object.keys(value)
+    let json = ''
+    try { json = JSON.stringify(value) } catch { json = '' }
+    return 'an object (typeof value: "object") with ' + keys.length + ' key' + (keys.length === 1 ? '' : 's')
+      + (keys.length ? ' [' + keys.slice(0, 6).join(', ') + (keys.length > 6 ? ', …' : '') + ']' : '')
+      + (json !== '' && json.length <= 120 ? ' = ' + json : (json !== '' ? ' (' + json.length + ' chars of JSON)' : ''))
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? 'the number ' + String(value) : 'a number that is not finite'
+  if (typeof value === 'boolean') return 'the boolean ' + String(value)
+  if (typeof value === 'function') return 'a function'
+  if (typeof value === 'symbol') return 'a symbol'
+  return 'a value of type ' + typeof value
+}
+/** TEXT accepts the text itself plus values whose String() IS what a reader would read (a finite number, a boolean). */
+const isTextish = (value) => typeof value === 'string'
+  || (typeof value === 'number' && Number.isFinite(value))
+  || typeof value === 'boolean'
+
 export function makePanelSpec({ param, refused, TOOL_NAMES, kernel }) {
   return {
     name: TOOL_NAMES.panel,
@@ -56,13 +82,70 @@ export function makePanelSpec({ param, refused, TOOL_NAMES, kernel }) {
         const panel = kernel.panel
         if (!panel) return refused('VMU_ENGINE_UNAVAILABLE', 'the panel primitive is not mounted in this kernel',
           'declare vmu.panel.* (or config.panel) so the face is wired')
+        // ★★ RUN 229: the ids and labels this face passes on are TEXT. An object in one of them used to be coerced into
+        // the string "[object Object]" and then stored or compared as if a person had written that — refused by name.
+        const shapeRefusal = (field, value, expected, hint) => {
+          const e = new Error(field + ' received ' + describeShape(value) + '; ' + expected)
+          e.code = 'VMU_INVALID_ARGUMENT'
+          e.hint = hint
+          throw e
+        }
+        for (const [field, value, expected, hint] of [
+          ['member', member, 'member is a member id (text)', 'pass the roster id as a string, e.g. member:"r-1"'],
+          ['by', by, 'by names the writer (text)', 'pass the writer id as a string, or omit by so the kernel records this turn\'s caller'],
+          ['viewer', viewer, 'viewer names the reader (text)', 'pass the viewer id as a string, or omit it for an anonymous view'],
+          ['reason', reason, 'reason is the sentence kept in the history (text)', 'pass the reason as a string'],
+          ['source', source, 'source is one of self|negotiated|academician|framework (text)', 'pass source as a string, e.g. source:"negotiated"'],
+        ]) {
+          if (value !== undefined && value !== null && !isTextish(value)) shapeRefusal(field, value, expected, hint)
+        }
+        if (ids !== undefined && ids !== null) {
+          if (!Array.isArray(ids)) shapeRefusal('ids', ids, 'ids is an array of member ids', 'pass ids as an array of strings, e.g. ids:["r-1","r-2"]')
+          for (let i = 0; i < ids.length; i += 1) {
+            if (ids[i] !== undefined && ids[i] !== null && !isTextish(ids[i])) shapeRefusal('ids[' + i + ']', ids[i], 'every id is text', 'a member id is a string')
+          }
+        }
         if (action === 'set') {
+          // ★★ RUN 229: the panel stores TEXT. A structure sent as overall/subgoal/plan/status/subtasks used to be
+          // coerced by the kernel's String() and read back as "[object Object]" — the structure went in and a type name
+          // came out. Refused HERE, with the shape named; a valid string write still passes untouched.
+          const textField = (field, value, hint) => {
+            if (value === undefined || value === null || isTextish(value)) return value
+            shapeRefusal(field, value, field + ' is text', hint)
+          }
+          const planField = (value) => {
+            if (value === undefined || value === null || isTextish(value)) return value
+            if (!Array.isArray(value)) shapeRefusal('plan', value, 'plan is an array of text entries', 'pass the plan as an array of strings — one step per entry (an object is refused, never flattened)')
+            for (let i = 0; i < value.length; i += 1) {
+              if (value[i] === undefined || value[i] === null) continue
+              if (!isTextish(value[i])) shapeRefusal('plan[' + i + ']', value[i], 'every plan entry is text', 'one plan STEP is one string — the panel stores text, so an object is refused by name instead of being written as a type name')
+            }
+            return value
+          }
+          const subtasksField = (value) => {
+            if (value === undefined || value === null) return value
+            if (!Array.isArray(value)) {
+              if (isTextish(value)) return value
+              shapeRefusal('subtasks', value, 'a sub-task is text or {id,title,state,note}', 'pass a sub-task as a string, or as {id,title,state,note}')
+            }
+            for (let i = 0; i < value.length; i += 1) {
+              const raw = value[i]
+              if (raw === undefined || raw === null || isTextish(raw)) continue
+              if (Array.isArray(raw) || typeof raw !== 'object') shapeRefusal('subtasks[' + i + ']', raw, 'a sub-task is text or {id,title,state,note}', 'pass a sub-task as a string, or as {id,title,state,note}')
+              for (const key of ['id', 'title', 'state', 'note']) {
+                const v = raw[key]
+                if (v === undefined || v === null || isTextish(v)) continue
+                shapeRefusal('subtasks[' + i + '].' + key, v, 'every sub-task field is text', 'sub-task fields are strings (title is the required one)')
+              }
+            }
+            return value
+          }
           const patch = {}
-          if (overall !== undefined) patch.overall = overall
-          if (subgoal !== undefined) patch.subgoal = subgoal
-          if (plan !== undefined) patch.plan = plan
-          if (status !== undefined) patch.status = status
-          if (subtasks !== undefined) patch.subtasks = subtasks
+          if (overall !== undefined) patch.overall = textField('overall', overall, 'overall is the goal, as ONE string')
+          if (subgoal !== undefined) patch.subgoal = textField('subgoal', subgoal, 'subgoal is the current target, as ONE string')
+          if (plan !== undefined) patch.plan = planField(plan)
+          if (status !== undefined) patch.status = textField('status', status, 'status is a sentence, as ONE string')
+          if (subtasks !== undefined) patch.subtasks = subtasksField(subtasks)
           if (!Object.keys(patch).length) return refused('VMU_INVALID_ARGUMENT', 'set needs at least one panel field',
             'one of overall/subgoal/plan/status/subtasks')
           const target = need(member, 'member')

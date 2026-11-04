@@ -11,10 +11,11 @@
 ★ RUN 226 的量法更正（在此之前本台账里的数**全部作废**）：真机装配还差两个参数，脚本一直没传——
 `bindings: PACK.bindings`（生产入口 `vibe-math-vmu/vibe-math-vmu.js:658`、`:1159-1164` 逐个 bind；不传则
 chair 的 role 段整段不渲染，提示词**假短**约 4.3 K）与 `settings`（`kernel/turn/index.js:2001-2002` 用它喂
-section 策略）。此外模式必须写死为 `v5r.fixtureMode:'tools'`（部署配置如此；schema 默认是 `no-tools`，
-两者差约 2.2 K）。现在的量法是「七相位 × 三席 × tools 模式」，并对**最坏相位**判定。
+section 策略）。此外模式必须写死为 **`vmu.v5r.fixtureMode:'tools'`**（部署配置如此；schema 默认是 `no-tools`，
+两者差约 2.2 K）。★ RUN 229 再更正一次（见 F5）：写成裸键 `v5r.fixtureMode` 在 settings layer 里**不被应用**，
+两个尺子一起量成了 `no-tools`。现在的量法是「七相位 × 三席 × tools 模式」，并对**最坏相位**判定。
 
-## F1 — 院士席提示词超 T99 上限：真值 38 478（修后 33 964，FIXED-as-debt）
+## F1 — 院士席提示词超 T99 上限：真值 38 478（修后 35 440，FIXED-as-debt）
 
 - 证据（2026-11-04，RUN 225 首量 → RUN 226 重测）：旧量法 chair `normal=32 057`（假短）；真装配 chair
   `normal=38 478 / meeting=39 736 / checkpoint=38 625 / verify=41 060`（tools 模式，含 bindings+settings）。
@@ -23,11 +24,12 @@ section 策略）。此外模式必须写死为 `v5r.fixtureMode:'tools'`（部�
   `vibe-math-vmu/packs/v5r/seat-faces.js` 收窄；`v5r-reply-compact` / `charter-*` / `formal-*` / 会议调度段
   按相位拆分与去重；`v5r-fixture-tools` 只留本夹具独有的契约；形式化家族与会议「会上」段改成
   `kind:'phase'` 由 `packs/v5r/middleware/prompt-switches.js` 门控。
-- 现状：chair `normal=31 4xx`、最坏 `verify=33 964`；member 最坏 28 114；temp 最坏 25 387。
+- 现状（RUN 229 修正模式键后的真值）：chair `normal=31 606`、最坏 `verify=35 440`；member 最坏 `verify=29 529`；
+  temp 最坏 `verify=26 783`。早先记的 33 845/28 114/25 387 是**裸键模式**量出来的数（见 F5），作废。
 - 状态：**FIXED-as-debt** —— 仍在 T99 的 30 000 之上，但已有**真上限**（`chairPromptChars: 36 000`）与
   WARNING（`SEAT_PROMPT_OVER_T99`），并在 conformance 记债：要压到 30 000 只能把 `seat-faces` 的 bullet
   投影由工具声明单源生成（预计再省 3–4 K），属下一轮的结构改动，不靠继续抠散文。
-- 验收：member/temp 最坏相位 < 30 000（已达成：28 114 / 25 387）；chair 最坏相位 < 36 000（已达成 33 964），
+- 验收：member/temp 最坏相位 < 30 000（已达成：29 529 / 26 783）；chair 最坏相位 < 36 000（已达成 35 440），
   且 chair > 30 000 时门禁必须打 WARNING（已达成）。
 
 ## F2 — 预算门禁量的是真实回合里不会出现的角色（FIXED）
@@ -65,11 +67,29 @@ section 策略）。此外模式必须写死为 `v5r.fixtureMode:'tools'`（部�
 - 现状：summary 8 079→约 7 8xx B，`vmu-host` 213/0 全绿。
 - 教训：可读上界是**总量**约束，重复散文按次数付费；先找「同一句话说几遍」，再找「哪句最长」。
 
+## F5 — 两个尺子把模式 pin 在**未声明**的裸键上，于是两边一起量错的模式（FIXED）
+
+- 证据（RUN 229，由 task-15 在修 F7 时发现）：`scripts/audit-prompt-budget.mjs` 与 `scripts/sim/harness.mjs`
+  都把设置写成 `v5r.fixtureMode:'tools'`，而 schema 声明、`packs/v5r/middleware/prompt-switches.js:145` 读取的
+  都是 **`vmu.v5r.fixtureMode`**（默认 `no-tools`）。settings layer 只按声明键匹配，裸键被忽略 ⇒ **两个尺子量的
+  都是 `no-tools`**，注释却都写 tools。同一输入实测 chair/verify：裸键 33 845 → 声明键 tools **35 440（+1 595）**。
+- 影响：这比「两个尺子互相矛盾」更危险——两个尺子说**同一个谎**，任何交叉验证都证实不了它。F1 的
+  33 964 与 F7 的 30 302/31 606 都是这个谎的产物。
+- 修法：`vibe-math-vmu/settings/schema.js` 新增具名读者 `defaultsOf()`；新增 `scripts/sim/settings.mjs`
+  作为**唯一设置源**（`promptSettings()` = defaultsOf + 声明键 + overrides），gate 与 harness 都 import 它；
+  gate 里那段自写 regex 与 `readFileSync` 删除。
+- 验收：`tests/sim-assembly-parity.test.mjs` 20/0 钉住「12 个席位×相位 harness 与 gate 逐字节一致、harness 更小必红、
+  裸键不能顶掉声明键、`no-tools` 对照证明模式是真杠杆（差 > 500）」。
+- 教训：一个键**被读到**不等于它**被应用**；验证「我的探针设置生效了」的唯一方法，是让另一条路径在
+  同一输入上给出不同的数（否则探针与产品可能一起错）。
+
 ## 已量过的假问题（记录，避免重犯）
 
 1. **宿主工具被判成不可调用（首版，7 条）**：宿主的 `TOOL_NAMES` 以短名（`status`）作键、`vibe_vmu_status` 作值；脚本读了键集合。已修（改读值）。
 2. **按来源角色量字（首版）**：`academician`/`researcher` 是宪章的来源词，不是回合里传下来的槽位。已修（改量 `chair`/`member`/`temp`）。
 3. **恒红的提醒线**：ratchet 先设 26 000，member/temp 每次都红。已修（改成「T99 以上才 WARNING」，不再当 problem）。
 4. **「真机装配」其实少了两个参数（本台账最大的假数）**：bindings 与 settings 没传，量到的是「装配器在缺省设置下的输出」，比真机短 4.3–6.4 K。已修（见开头的量法更正）。
+
+5. **裸键 `v5r.fixtureMode`（F5）**：写成 `v5r.fixtureMode` 时 settings layer 不应用它，两个尺子一起量成 `no-tools`。已修（统一走 `scripts/sim/settings.mjs` 的 `promptSettings()`，键为 `vmu.v5r.fixtureMode`）。
 
 一条纪律：审计脚本的每个「问题」在写进本台账之前，必须**手工复核一条同类项**——首版审计的两个错都朝「看起来没问题」的方向。

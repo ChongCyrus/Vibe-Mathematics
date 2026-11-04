@@ -243,6 +243,45 @@ export function packToolFaceGate({ kernel = null, exec = null, toolName = '', de
 }
 
 /**
+ * WHO ACTED — ONE RULE, EVERY FACE.
+ *
+ * A tool can be called by the office (a root session, which is not a seat) while NAMING a member
+ * (`member:"r-1"`). RUN 225-C taught the PACK faces to say which of the two happened, but the KERNEL faces —
+ * `vibe_vmu_meeting` (attend / vote / speak / close) and the rest of the host's own tools — stayed silent, so a
+ * member's attendance or vote could be recorded in that seat's name with no receipt saying the seat had not acted.
+ * The measurement that found it: `tests/sim-mainline.test.mjs` asks every successful receipt that names a seat
+ * whether `memberActed` is there, and the meeting receipts were the ones that could not answer.
+ *
+ * The answer is computed from the CALL (who is running) and the QUESTION (which seat the args name) — never from
+ * what the tool intended — and it is stated only for a seat that really exists on the roster: a name that is not a
+ * seat did not act under any name, and `null` is a real answer for "the office", not "could not tell".
+ */
+export function discloseActOnSeat(kernel = null, exec = null, args = null, out = null) {
+  if (!out || typeof out !== 'object' || Array.isArray(out)) return out
+  if (out.memberActed !== undefined) return out
+  if (out.ok === false) return out // refused calls refuse BEFORE they record anything in anyone's name
+  const namedMember = args && typeof args === 'object' && typeof args.member === 'string' ? args.member.trim() : ''
+  if (namedMember === '') return out
+  let onRoster = false
+  try {
+    const roster = kernel && kernel.members && typeof kernel.members.roster === 'function' ? kernel.members.roster() : []
+    onRoster = (Array.isArray(roster) ? roster : []).some((r) => r && r.id === namedMember)
+  } catch { onRoster = false }
+  if (!onRoster) return out
+  let caller = null
+  try { caller = resolveTurnMember(kernel, exec) } catch { caller = null }
+  const actedBySeat = caller !== null && caller === namedMember
+  return Object.assign({}, out, {
+    memberActed: actedBySeat,
+    actedForMember: namedMember,
+    callerMember: caller === null ? null : caller,
+    memberActedMeans: actedBySeat
+      ? "member \"" + namedMember + "\" is the CALLER of this call, so the seat acted in its own turn: what this receipt records is that seat's own act"
+      : "this call ran from " + (caller === null ? "the OFFICE (a root session, which is not a seat)" : "member \"" + caller + "\"") + " and named member \"" + namedMember + "\": the record was written IN THAT SEAT'S NAME, but the seat did not act in its own turn. `memberActed:false` states that difference - orchestrating on a seat's behalf is not the same act as carrying it out, and a reader who needs the seat's own judgement should ask for it in a turn of that seat",
+  })
+}
+
+/**
  * Turn one pack declaration into an INTERNAL tool spec (the shape `host.js#toHostSpec` consumes).
  *
  * The spec carries `face: 'pack:<id>'` and a `reason`, so the status receipt's provenance block
@@ -319,31 +358,10 @@ export function makePackToolSpec({ entry, kernel = null, packId = null } = {}) {
       // the one serializer downstream (`boundedToolResult` stringifies a string as a JSON string).
       if (out === undefined) return { ok: true, tool: name }
       if (out === null || typeof out !== 'object' || Array.isArray(out)) return { ok: true, tool: name, value: out }
-      // ★★★ RUN 225-C: WHO ACTED? A pack tool can be called by the office (a root session, not a seat) while NAMING a
-      // member (`member:"r-1"`), and until now nothing in the receipt said which of the two happened: a reader could not
-      // tell "r-1 did this in its own turn" from "the office did this in r-1's name". The prompts describe that
-      // difference and no receipt recorded it. The answer is computed from the CALL (who is running) and the QUESTION
-      // (which seat the args name) — never from what the tool intended — and it is stated only for a seat that exists.
-      const namedMember = args && typeof args === 'object' && typeof args.member === 'string' ? args.member.trim() : ''
-      if (namedMember !== '' && out.memberActed === undefined) {
-        let onRoster = false
-        try {
-          const roster = kernel && kernel.members && typeof kernel.members.roster === 'function' ? kernel.members.roster() : []
-          onRoster = (Array.isArray(roster) ? roster : []).some((r) => r && r.id === namedMember)
-        } catch { onRoster = false }
-        if (onRoster) {
-          const actedBySeat = callerMemberNow !== null && callerMemberNow === namedMember
-          return Object.assign({}, out, {
-            memberActed: actedBySeat,
-            actedForMember: namedMember,
-            callerMember: callerMemberNow === null ? null : callerMemberNow,
-            memberActedMeans: actedBySeat
-              ? 'member "' + namedMember + '" is the CALLER of this call, so the seat acted in its own turn: what this receipt records is that seat\'s own act'
-              : 'this call ran from ' + (callerMemberNow === null ? 'the OFFICE (a root session, which is not a seat)' : 'member "' + callerMemberNow + '"') + ' and named member "' + namedMember + '": the record was written IN THAT SEAT\'S NAME, but the seat did not act in its own turn. `memberActed:false` states that difference — orchestrating on a seat\'s behalf is not the same act as carrying it out, and a reader who needs the seat\'s own judgement should ask for it in a turn of that seat',
-          })
-        }
-      }
-      return out
+      // ★★★ RUN 225-C / RUN 228: WHO ACTED? The disclosure itself lives in `discloseActOnSeat` above, because the
+      // kernel faces need the SAME answer (RUN 228 measured `vibe_vmu_meeting` receipts naming a seat with no
+      // `memberActed` at all). One rule, one implementation, every face — the alternative is two sentences that drift.
+      return discloseActOnSeat(kernel, exec, args, out)
     },
   }
 }

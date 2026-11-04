@@ -1046,7 +1046,7 @@ vmu.packs.active: [v5r]
 | `vmu.report.reports` | obj[] | `[]` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/report.js` | 汇报声明清单；每项 {name, trigger:{kind:event|period|threshold, …}, template, to:[], channel, enabled?}；空＝零机制（不声明就什么都不发生） |
 | `vmu.report.channels` | string[] | `[inbox,digest,log]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 允许的汇报通道；不在集合内具名拒 VMU_REPORT_CHANNEL_UNKNOWN |
 | `vmu.report.recipients` | string[] | `[]` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 允许的收件人白名单；空＝不限制（空收件人＋非 log 通道即具名拒） |
-| `vmu.report.transport` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 汇报投递通道：默认空＝未接线（每次 firing 以 VMU_REPORT_NO_TRANSPORT 具名拒，但仍在留痕里）；`mailbox`＝把汇报写成办公室席位的一封持久邮件（kernel/reporttransport.js，回报里的 delivered 意指"已入队到所办邮箱"，不是"所办已读"） |
+| `vmu.report.transport` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `vibe-math-vmu.js` | 汇报投递通道：框架默认空＝未接线（每次 firing 以 VMU_REPORT_NO_TRANSPORT 具名拒，但仍在留痕里；★ RUN 230-A：此时 status() 带 wakeMeans="durable-mail-in-office-inbox; no loop drive" 与 transportEnables=点名本键与 config.deliver 的确切开启句）；`mailbox`＝把汇报写成办公室席位的一封持久邮件（kernel/reporttransport.js，回报里的 delivered 意指"已入队到所办邮箱"，不是"所办已读"；★ v5r 预设已在 packs/v5r/settings/defaults.json 把它设成 "mailbox"——价值层在构造前折叠（vibe-math-vmu.js:434→:596），所以真的生效，而 pack MANIFEST 构造后才应用、写那里会"看起来配置了其实没做"；投递≠唤醒，drives/neverDrives 不变） |
 | `vmu.report.feedback` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 汇报反馈回路开关（A1 第一步）：默认 false＝零机制；开＝把汇报的受众与回执经宿主动态 context 回给模型（投递调用已由入口在 Part B 接线（已落地）—— 未接线期间回执以真话具名） |
 | `vmu.report.audience` | string | `` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 汇报的受众（谁应当收到）：默认空串；开关开而受众为空时具名失败，不静默 |
 | `vmu.report.minIntervalMs` | int ≥0 | `60000` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/report.js` | 周期汇报的最小周期；低于即钳到此值并在回执里报出（钳制不静默） |
@@ -1407,6 +1407,7 @@ vmu.packs.active: [v5r]
 | `vmu.tenure.tenureDecisionWindowDays` | int ≥0 | `60` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
 | `vmu.tenure.tenureQuorum` | int ≥0 | `3` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
 | `vmu.tenure.tenureTrackMonths` | int ≥0 | `36` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/tenure.js` | 已接线（tenure.js 读取）；默认值取自模块源码 |
+| `vmu.turn.deliverTurn` | object | `null` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/index.js` | 已接线（index.js 读取）；默认值取自模块源码；★这不是可填写的配置值而是**交付接缝**：它的值是一个函数，只能由部署代码注入（无法写进 JSON）。构造期解析一次，优先级：内核选项 deliverTurn > host.effects.deliverTurn > host.deliverTurn > 设置里的本键 > vmu.turn.deliverMode=caller（内核自建 caller 接缝）> 无接缝（具名拒 VMU_ENGINE_UNAVAILABLE）；实际生效的一条由 status().seams.turnDeliverSource 分报。；★ 类型推断不出（具名回落 object：null-literal — 源码字面量是 `null`（未设哨兵）⇒ 无类型证据；这个键的值是**函数接缝**（交付一个成员回合并返回它的回答），不是能写进 JSON 的配置值） |
 | `vmu.workflow.arbitrationMode` | string | `off` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 已接线（workflow.js 读取）；默认值取自模块源码 |
 | `vmu.workflow.checkpointEveryMs` | int ≥0 | `0` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 已接线（workflow.js 读取）；默认值取自模块源码 |
 | `vmu.workflow.claimRequired` | bool | `false` | — | 会话 | H1 | office | ✅ 已接线 | `kernel/workflow.js` | 已接线（workflow.js 读取）；默认值取自模块源码 |
@@ -1563,7 +1564,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1160** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1161** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1676,7 +1677,7 @@ vmu.packs.active: [v5r]
 | `vmu.tools.*` | 3 |
 | `vmu.topology.*` | 12 |
 | `vmu.trust.*` | 16 |
-| `vmu.turn.*` | 30 |
+| `vmu.turn.*` | 31 |
 | `vmu.tx.*` | 6 |
 | `vmu.v3.*` | 19 |
 | `vmu.v5r.*` | 1 |

@@ -18,9 +18,9 @@
 // re-bloat is red here instead of discovered by a member reading a 40k-character prompt. Lower them when the
 // prompt gets shorter — never raise one without writing down why in the conformance ledger.
 
-import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { promptSettings } from './sim/settings.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const VMU = join(ROOT, 'vibe-math-vmu')
@@ -55,19 +55,12 @@ const PARAM_TOKENS = Object.freeze([
   'revision', 'draft', 'path', 'note', 'conclusion', 'rules', 'limits', 'participants', 'editor', 'format',
 ])
 
-function readAll(rel) {
-  return readFileSync(join(ROOT, rel), 'utf8')
-}
-
-/** The defaults are parsed from the SCHEMA file rather than hard-coded, so this audit is not agreeing with itself. */
-function defaultsOf() {
-  const out = {}
-  const schema = readAll('vibe-math-vmu/settings/schema.js')
-  for (const m of schema.matchAll(/\{ key: '([^']+)',[^}]*?def: (?:'([^']*)'|([0-9.]+)|(true|false))[^}]*\}/g)) {
-    out[m[1]] = m[2] !== undefined ? m[2] : (m[3] !== undefined ? Number(m[3]) : m[4] === 'true')
-  }
-  return out
-}
+// THE DEFAULTS AND THE FIXTURE MODE COME FROM `scripts/sim/settings.mjs` — the same helper the simulator's harness
+// measures through, which itself reads `defaultsOf()` from the schema module. Until RUN 226 this gate re-implemented
+// the defaults by parsing `schema.js` as TEXT with a regular expression, while the simulator tried to import a
+// `defaultsOf` that did not exist and silently assembled from `{}` — two rulers, a 1 304-character disagreement on
+// the same seat, and a simulator that reported headroom which does not exist. A second reader is not a second
+// opinion: the declaration has one reader, and both measurements go through it.
 
 /** Split a prompt into sentences the way a reader would: on 。／！／？／; and on newlines, then normalise. */
 function sentencesOf(text) {
@@ -178,16 +171,22 @@ export async function measure() {
   const hostTools = Object.values((await import(pathToFileURL(join(VMU, 'host.js')).href)).TOOL_NAMES || {})
   const declaredNames = [...hostTools, ...V5R_PACK_TOOLS.map((t) => t.name)]
 
-  const defaults = defaultsOf()
   // ★ RUN 226 measurement fix — TWO parameters were missing, so every earlier number was of a prompt nobody receives:
   //   (1) `bindings: PACK.bindings`: the production entry binds them one by one (`vibe-math-vmu/vibe-math-vmu.js:658`,
   //       `:1159-1164`); without them the chair's role sections do not render at all, which made the prompt look
   //       SHORTER than it is (24.5K vs the 36.3K a chair really gets);
   //   (2) `settings`: `kernel/turn/index.js:2001-2002` feeds `{...settings, ...turn.facts}` to the section policy, so an
   //       empty object silently resolves every setting to the wrong branch.
-  //   (3) the MODE is pinned here on purpose: the deployed configuration runs `v5r.fixtureMode:'tools'` (recorded in
+  //   (3) the MODE is pinned on purpose: the deployed configuration runs the tools fixture mode (recorded in
   //       conformance), while the schema default is `no-tools` - measuring the default would keep two numbers in play.
-  const settings = Object.assign({}, defaults, { 'v5r.fixtureMode': 'tools' })
+  //       ★ AND THE PIN USED TO NAME AN UNDECLARED KEY: it wrote `'v5r.fixtureMode'` while the schema declares and
+  //       `prompt-switches.js:145` reads `vmu.v5r.fixtureMode`. An undeclared key is not applied, so the gate and the
+  //       simulator BOTH measured the schema default and agreed with each other - two rulers telling the same lie is
+  //       harder to see than two disagreeing. Measured on this tree: chair/verify is 33 845 chars under the
+  //       undeclared key and 35 440 under the declared one. The key now lives in `scripts/sim/settings.mjs`.
+  //   (4) ★ RUN 226 follow-up: the LAYER ITSELF now comes from `scripts/sim/settings.mjs`, the same helper the
+  //       simulator's harness reads, so this gate and the simulator cannot drift into two different prompts again.
+  const settings = promptSettings()
   const loopOf = () => createTurnOrchestrator({
     sectionPolicy: decideSections,
     settings,

@@ -203,6 +203,75 @@ export function createTasks({
   })
 
   /**
+   * run 229 — THE CLAIM GATE THE PORT DROPPED.
+   * The v5r preset refused a claim on a task with unfinished blockers BY NAME: `archive/legacy-presets/
+   * vibe-math-v5r/vibe-math-v5r.js:6200` (`claim`) and `:6266` (`reassign`) threw `V5_TASK_BLOCKED` with
+   * "task <id> still has incomplete blockers", and `vibe_v5_assign` refused the same way at `:6359`. In the kernel
+   * that fact only survived as `unmetDeps`, which `list()` reports as `ready:false` and `transition()` re-checks at
+   * `doing`/`done` — while `assign()` (the door `kit/extras.js` `task_update action:"claim"` goes through) never
+   * looked. So the board answered "not ready" and accepted the claim in the same breath, and the reply field's hint
+   * (`kernel/turn/index.js:139`, "blocked_by dependencies are refused there by name") promised a refusal that did
+   * not exist. Probe (HEAD vs this file): before this gate `assign('t-2','m')` on a task whose dependency `t-1` was
+   * still `open` returned `{ok:true, state:'assigned'}`.
+   *
+   * The CYCLE half is deliberately a different code. A claim whose unfinished blockers form a cycle can never be
+   * unblocked by finishing anything, so it must say that (`VMU_TASK_DEPENDENCY_CYCLE` + the path in `detail.cycle`)
+   * instead of listing blockers and implying "finish them" — an impossible path is exactly what a hint must not
+   * promise, and a caller that believed it would wait forever on a deadlock.
+   */
+  const blockerCycle = (t) => {
+    const unfinished = (d) => { const dep = tasks.get(String(d)); return !dep || dep.state !== 'done' }
+    const stack = []
+    const onStack = new Set()
+    const settled = new Set()
+    const walk = (id) => {
+      const s = String(id)
+      if (onStack.has(s)) return stack.slice(stack.indexOf(s)).concat(s)
+      if (settled.has(s)) return null
+      stack.push(s)
+      onStack.add(s)
+      const dep = tasks.get(s)
+      for (const d of (dep && Array.isArray(dep.deps) ? dep.deps : [])) {
+        if (!unfinished(d)) continue
+        const found = walk(d)
+        if (found) return found
+      }
+      stack.pop()
+      onStack.delete(s)
+      settled.add(s)
+      return null
+    }
+    for (const d of t.deps) {
+      if (!unfinished(d)) continue
+      const found = walk(d)
+      if (found) return found
+    }
+    return null
+  }
+
+  /** The claim refusal: null when the task may be taken, else the named reason (see `blockerCycle` above). */
+  const blockedClaim = (t) => {
+    const blockers = unmetDeps(t)
+    if (blockers.length === 0) return null
+    const dropHint = 'drop the edge with vibe_v5_task_update { task_id: ' + JSON.stringify(t.id) +
+      ', expected_revision, action: "set_dependencies", blocked_by: [...] }'
+    const detail = blockers.map((d) => { const dep = tasks.get(d); return { id: d, state: dep ? dep.state : null } })
+    const cycle = blockerCycle(t)
+    if (cycle) {
+      return refuse('VMU_TASK_DEPENDENCY_CYCLE',
+        'dependency cycle: ' + cycle.join(' -> '),
+        'no completion can ever unblock this task: its unfinished blockers form the cycle ' + JSON.stringify(cycle) +
+          ', so each one waits for another; break the cycle by ' + dropHint,
+        { id: String(t.id), cycle, blockers: detail })
+    }
+    const named = blockers.map((d, i) => d + ' (' + (detail[i].state === null ? 'does not exist yet' : detail[i].state) + ')')
+    return refuse('VMU_TASK_BLOCKED',
+      'task ' + t.id + ' still has unfinished blockers: ' + named.join(', '),
+      'a claim is refused until every named blocker is done (the only route to done is open -> assigned -> doing -> done, and a CANCELLED blocker never unblocks it), or ' + dropHint,
+      { id: String(t.id), blockers: detail })
+  }
+
+  /**
    * F35: refuse a dependency edge set that would close a cycle. `findDependencyCycle` (module scope, exported)
    * does the walk; this only turns its answer into the face's named refusal.
    */
@@ -335,6 +404,15 @@ export function createTasks({
       if (typeof who !== 'string' || who.length === 0) throw refuse('VMU_INVALID_ARGUMENT', 'assign needs a member id')
       // The attribution is validated BEFORE the mutation: a refused audit row must not leave the board moved.
       const actor = normaliseActor(by, bySource)
+      // run 229: a claim — or a chair's assignment — on a task whose blockers are unfinished is refused
+      // BY NAME before anything moves (see `blockedClaim`; the v5r preset's `V5_TASK_BLOCKED` gate, lost in the port).
+      // A terminal task keeps its OWN refusal ("a done task cannot be assigned"): that fact is about the task's state,
+      // not about its dependencies. Refused BEFORE the bus hook on purpose — a listener must never observe an
+      // assignment that was refused.
+      if (t.state !== 'done' && t.state !== 'cancelled') {
+        const blocked = blockedClaim(t)
+        if (blocked) throw blocked
+      }
       if (bus) {
         const dec = await bus.emit('task/assign', { id, who, state: t.state }, { member: who })
         if (dec && dec.ok === false) return { ok: false, refused: dec.refused || { code: dec.code, message: dec.message } }

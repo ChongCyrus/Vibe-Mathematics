@@ -55,7 +55,11 @@ console.log('=== VMU RUN 22 FINDINGS (a settled ballot must refuse, not kill) ==
 // ③ the host-side single conversion point exists (the fatal path is NOT here, which is why it is unexplained)
 {
   const src = readFileSync(REPO + '/vibe-math-vmu/host.js', 'utf8')
-  ok(/export function toHostSpec\(spec\)/.test(src), '③a toHostSpec exists')
+  // ★ RUN 230: the signature grew an OPTIONAL second argument (`kernel = null`, so the kernel face can disclose
+  // `memberActed` on `vibe_vmu_meeting`). Pinning the old one-argument literal would have failed for a
+  // COMPATIBLE extension - the assertion is "this function exists and still takes `spec` first", which is the
+  // property ③c depends on.
+  ok(/export function toHostSpec\(spec(, kernel = null)?\)/.test(src), '③a toHostSpec exists (spec first; RUN 230 added an optional kernel)')
   ok(/code: \(e && e\.code\) \|\| 'VMU_MIDDLEWARE_FAILED'/.test(src), '③b a thrown tool call becomes a receipt with its code')
   ok(/return boundedToolResult\(Object\.assign\(\{\s*ok: false/.test(src), '③c the refusal uses the SAME serializer as a success (the round-36 shape rule)')
 }

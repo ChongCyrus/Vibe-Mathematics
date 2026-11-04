@@ -4216,7 +4216,12 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
   let step = null
   let failure = null
   try {
-    step = await kernel.turn.step({ members: ids.map((id) => ({ id })), phase: phaseUsed, why: str(args.why || '') })
+    // ★★ RUN 230 / task-19 (E12): A MEETING ROUND IS BOUND TO ITS MEETING. The round used to call
+    // `kernel.turn.step` without `meeting`, so the parked turn carried no meeting, the member's `say` reached
+    // the dispatch with nothing to speak into, and the receipt explained it away as `reason:"no-meeting-bound"`
+    // - the member was blamed for a silence the FACE caused by not saying which meeting the round was in.
+    // The kernel now records the binding on the turn and on the pending entry, and a member reply inherits it.
+    step = await kernel.turn.step({ members: ids.map((id) => ({ id })), phase: phaseUsed, why: str(args.why || ''), meeting })
   } catch (err) {
     failure = err
   } finally {
@@ -4243,6 +4248,8 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
       narrowingInEffectMeans: narrowInEffectMeans(face, notNarrowed, narrowingInEffect),
       narrowing: { type, narrowed: face.narrowed === true, reason: face.reason, expected: face.allow, members: applied.rows },
       members: ids,
+      roundMeeting: meeting,
+      roundMeetingMeans: 'the round was dispatched WITH the meeting binding; the turn itself failed, so nothing was parked and no speech was recorded',
       note: 'the meeting-type face was applied and CLEARED (it lives for one round only), but the member turn itself failed: read `turn.error`/`code` before retrying',
     }
   }
@@ -4258,6 +4265,12 @@ async function toolMeetingRound(args = {}, { kernel } = {}) {
     narrowingInEffectMeans: narrowInEffectMeans(face, notNarrowed, narrowingInEffect),
     narrowing: { type, narrowed: face.narrowed === true, reason: face.reason, expected: face.allow, members: applied.rows },
     members: ids, turn: step,
+    // ★ RUN 230: the round is BOUND to this meeting; a member reply to a parked turn inherits the binding, so the
+    // member's `say` is recorded as that seat speaking in THIS meeting (no `no-meeting-bound` skip). Said out loud
+    // because "the round ran" and "the round ran IN a meeting" are two facts and only the first was visible.
+    roundMeeting: meeting,
+    roundMeetingMeans: 'this round was dispatched WITH the meeting binding, so each member turn is parked for meeting '
+      + meeting + ' and an answer inherits it; a member that names a DIFFERENT meeting is refused by name (VMU_TURN_REPLY_CONFLICT)',
     note: narrowNoteOf(face, notNarrowed),
   }
 }
@@ -4295,7 +4308,13 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', '没有蓝图路径：既没传 path，部署也没声明 ' + BLUEPRINT_PATH_KEY,
       'pass path:"Shared/Protocol.md"（或让部署声明 ' + BLUEPRINT_PATH_KEY + '）—— 蓝图按路径分账，路径不明就无从读、也无从提案')
   }
-  const pathSource = pathFromArg !== '' ? 'argument' : (path === '' && action === 'adopt' ? 'draft' : 'setting:' + BLUEPRINT_PATH_KEY)
+  // ★★★ RUN 228 (found by the simulator, `scripts/sim/scenarios/records-blueprint.mjs`): the old test was
+  // `path === '' && action === 'adopt'`, but `path` has ALREADY been filled from the deployment setting by then, so that
+  // branch was unreachable and `adopt` without a path answered `pathFrom:"draft"` and `pathSource:"setting:..."` in the
+  // SAME receipt - two answers to one question. What makes a path "the draft's" is that the caller did not pass one.
+  const pathSource = pathFromArg !== ''
+    ? 'argument'
+    : (action === 'adopt' && adoptDraftArg !== '' ? 'draft' : 'setting:' + BLUEPRINT_PATH_KEY)
   if (action === 'state') {
     const state = blueprintState({ records, path, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     return Object.assign({}, state, {

@@ -86,11 +86,18 @@ console.log('§0 源码口径：四条修法各在自己该在的位置上（不
      /const headMaxItemsAtStart = headMaxItemsNow\(\)/.test(RECORDS_SRC),
     '(0) rec-298：`vmu.records.head.maxItems` 是**写时热读**（`headMaxItemsNow()`），构造期快照另报 `headMaxItemsAtStart`', null)
   ok(/read at WRITE time/.test(RECORDS_SRC), '(0) rec-298：拒绝语 hint 明说这条上限在写时读、下一次 put 就生效', null)
-  ok(/action order only READS the floor queue/.test(MEETING_TOOL_SRC) &&
-     /action=invite \{ id, by:"<chair>", why:"…", members:\["r-1","r-2"\] \}/.test(MEETING_TOOL_SRC),
-    '(0) rec-299：`order` 见 member/members 具名拒，并给出可达路径（invite 写队列 / flow·overrideorder 改模式）', null)
-  ok(/the queue is WRITTEN by invitations/.test(MEETINGS_SRC) && /action "order" only READS it back/.test(MEETINGS_SRC),
-    '(0) rec-299：`VMU_FLOOR_OUT_OF_ORDER` 的 hint 不再指向做不到的重排', null)
+  // ★★ RUN 229 REOPENED rec-299 ON PURPOSE: `order` is no longer read-only. The defect was "the chair cannot
+  // reorder the floor at all, and the hint points at a face that cannot do it either"; RUN 229 gave the SERVICE meeting
+  // a real `order({members})` write path, so the pin now demands the WRITE path and the named refusal for a caller who
+  // does not say who is deciding. A test that kept demanding "only READS" would have made the repair illegal.
+  ok(/registry: 'service' \}, *$|registry: 'service' \}/.test(MEETING_TOOL_SRC) &&
+     /svc\.order\(\{ meeting: pid, members: orderList/.test(MEETING_TOOL_SRC) &&
+     /order with members reorders the floor QUEUE/.test(MEETING_TOOL_SRC),
+    '(0) rec-299（RUN 229 改判）：`order` 传 members 走 SERVICE 写路径；原语会议具名拒并给出可用的替代面', null)
+  // The real signature, verbatim from the service (kernel/meetings.js): a title, a my​-own-words default set, and
+  // a `why`/`at` — this is what "the chair can reorder" means in code, so the pin quotes the line, not a paraphrase.
+  ok(/order\(\{ meeting, members: wanted = null, by = null, actor = null, why = '', at = null \} = \{\}\) \{/.test(MEETINGS_SRC),
+    '(0) rec-299（RUN 229 改判）：service 会议有真正的 `order({meeting, members, by})` 写路径', null)
   ok(/const waitingNow = presentSet \? queueIds\.filter/.test(MEETINGS_SRC) && /queuedAbsentList/.test(MEETINGS_SRC),
     '(0) rec-300：`procedureProgress` 增 `waitingNow` / `queuedAbsent(List)`（在场与否分开数）', null)
   ok(/RAW length of the floor queue/.test(MEETINGS_SRC), '(0) rec-300：`means` 明说 `queued` 是队列**原始长度**（不是人数）', null)
@@ -128,20 +135,32 @@ console.log('§1 rec-298：把上限抬起来就真的能再写（写时热读�
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-console.log('§2 rec-299：`order` 只读 —— 传 member/members 会被具名拒，而不是静默丢弃')
+console.log('§2 rec-299（RUN 229 改判）：`order` 现在能写 —— 必须说谁在决定，且真的重排并回报 before/after/moved')
 {
   const { kernel, specs } = await boot({})
   for (const [id, slot] of [['r-chair', 'chair'], ['r-1', 'member'], ['r-2', 'member']]) await kernel.members.hire({ id, slot })
   const conv = await call(specs, 'vibe_v5_meeting', { action: 'convene', member: 'r-chair', agenda: 'floor order probe', members: ['r-1', 'r-2'] })
   const meetId = String(conv.meeting || '')
   ok(conv.ok === true && meetId !== '', '(2) 会议开起来了（前置）', conv.ok === false ? conv : undefined)
+  // ★★ RUN 229: a reorder must say WHO decided. Without `by` the face refuses by name (the write exists now, so
+  // the refusal can no longer be "this is read-only"); with the chair it really reorders and reports before/after/moved.
   const silent = await call(specs, 'vibe_vmu_meeting', { action: 'order', id: meetId, members: ['r-2', 'r-1'] })
-  ok(silent.ok === false && String(silent.code) === 'VMU_INVALID_ARGUMENT' && /only READS the floor queue/.test(String(silent.message || '')),
-    '(2) ★★ 传 `members` 给 `order` ⇒ 具名拒「只读」（旧行为是 ok:true + 静默丢弃）', { code: silent.code, message: silent.message })
-  ok(/action=invite/.test(String(silent.hint || '')) && /EXACTLY the given order/.test(String(silent.hint || '')),
-    '(2) 拒绝语给可达路径：主席用 `invite { members:[…] }` 按给定顺序写队列', silent.hint)
+  ok(silent.ok === false && String(silent.code) === 'VMU_INVALID_ARGUMENT' && /needs \{ by \}/.test(String(silent.message || '')),
+    '(2) ★★ 传 `members` 但不说谁在决定 ⇒ 具名拒「needs { by }」（写路径存在，所以不再拒「只读」）', { code: silent.code, message: silent.message })
+  ok(/order/.test(String(silent.hint || '')) && /by/.test(String(silent.hint || '')),
+    '(2) 拒绝语给可达路径：主席用 `order { id, by:"<chair>", members:[…] }`', silent.hint)
+  // An absent seat cannot be ordered onto the floor (the receipt says so by name and tells the caller to attend first),
+  // so the write path is exercised the way a real chair would: everyone sits down, then the order is changed.
+  const absentOrder = await call(specs, 'vibe_vmu_meeting', { action: 'order', id: meetId, by: 'r-chair', members: ['r-2', 'r-1'] })
+  ok(absentOrder.ok === false && String(absentOrder.code) === 'VMU_NOT_MEMBER' && /not PRESENT/.test(String(absentOrder.message || '')),
+    '(2) 席位不在场时重排被具名拒（回执点名请先 attend）', { code: absentOrder.code, message: absentOrder.message })
+  await call(specs, 'vibe_vmu_meeting', { action: 'attend', id: meetId, member: 'r-1' })
+  await call(specs, 'vibe_vmu_meeting', { action: 'attend', id: meetId, member: 'r-2' })
+  const ordered = await call(specs, 'vibe_vmu_meeting', { action: 'order', id: meetId, by: 'r-chair', members: ['r-2', 'r-1'] })
+  ok(ordered.ok === true && String(ordered.registry) === 'service' && Array.isArray(ordered.moved),
+    '(2) ★ 主席带 `by` 重排成功：回执报 registry:"service" 与 `moved`（RUN 229 新路径）', ordered.ok === false ? ordered : { registry: ordered.registry, moved: ordered.moved, after: ordered.after })
   const silentSingle = await call(specs, 'vibe_vmu_meeting', { action: 'order', id: meetId, member: 'r-2' })
-  ok(silentSingle.ok === false && String(silentSingle.code) === 'VMU_INVALID_ARGUMENT', '(2) 传单个 `member` 同样被拒（不是只拦数组）', silentSingle.code)
+  ok(silentSingle.ok === false && String(silentSingle.code) === 'VMU_INVALID_ARGUMENT', '(2) 传单个 `member` 不带 by 同样被拒（不是只拦数组）', silentSingle.code)
   const readOnly = await call(specs, 'vibe_vmu_meeting', { action: 'order', id: meetId })
   ok(readOnly.ok === true && Array.isArray(readOnly.order), '(2) 只读的 `order` 仍然可用（读回真实队列）', readOnly.ok === false ? readOnly : { order: readOnly.order })
 }

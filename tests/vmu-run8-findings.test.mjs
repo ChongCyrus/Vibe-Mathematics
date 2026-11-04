@@ -58,7 +58,10 @@ const receipt = async (b, name, args = {}) => {
 
 const root = await mkdtemp(join('D:/_tmp', 'vmu-run8-'))
 try {
-  const b = await boot({ root, packs: ['v5r'] })
+  // ★ RUN 230-A: the v5r preset now ships the durable mailbox transport (`packs/v5r/settings/defaults.json`), so the
+  // "no transport" branch has to be DECLARED to be reached — config.vmu wins over the pack's value layer. §F is about
+  // that branch (the refusal's own facts), not about what a preset happens to ship.
+  const b = await boot({ root, packs: ['v5r'], vmu: { report: { transport: '' } } })
   const kernel = b.handle.kernel
   ok(kernel !== null && kernel !== undefined, 'boot produced a kernel (a green without one would be vacuous)')
   await kernel.members.hire({ id: 'acad', slot: 'chair' })

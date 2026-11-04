@@ -145,6 +145,12 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         ? kernel.members.roster().filter((m) => m && m.state === 'live').map((m) => ({ id: m.id, role: m.slot || m.role }))
         : []
       const members = explicit ? explicitMembers : inferred
+      // ★ E12 / task-19: the meeting a step or drive belongs to travels WITH the dispatch, not only with the answer.
+      // Without it the loop assembled the turn unbound, the member's `say` reached the dispatch with no meeting to
+      // speak into, and the receipt explained the silence as `reason:"no-meeting-bound"` - the member was blamed for a
+      // binding the caller never made. Normalized once here so all three call sites send the same value (an empty
+      // string and an absent arg both mean "no binding", never a meeting named '').
+      const forMeetingArg = typeof args.meeting === 'string' && args.meeting.trim() !== '' ? args.meeting.trim() : null
       if (op === 'prompt') {
         const want = args.turn === undefined || args.turn === null || args.turn === '' ? null : String(args.turn)
         let id = want
@@ -331,7 +337,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           // does (it keeps only code/message/hint). A refusal that hides the work in flight is worse than no refusal.
           let stepped
           try {
-            stepped = await kernel.turn.step({ members, member: args.member || null, membersFrom, membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step })
+            stepped = await kernel.turn.step({ members, member: args.member || null, membersFrom, membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg })
           } catch (e) {
             if (!e || !e.partial) throw e
             return {
@@ -394,7 +400,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (op === 'step') {
         const activeId = members.length > 0 && members[0] && typeof members[0].id === 'string' ? members[0].id : null
         if (activeId && typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(activeId)
-        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, member: args.member || null, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step }))) }
+        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, member: args.member || null, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg }))) }
         finally { if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null) }
       }
       // ★★ RUN 172 (run 17 / FEEDBACK17 P2-6): the closure tally's window has a named opener, and it lives HERE because the
@@ -408,7 +414,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         }
         return kernel.reopenClosureVote({ why: args.why, by: args.by })
       }
-      if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step }))
+      if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg }))
       return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: status, prompt, reply, step, drive, reopen-closure')
     }
     // ★ PHASE 8 / round 36: SERIALIZE the tool calls. Root may issue several step calls in ONE assistant message (parallel
@@ -475,7 +481,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
         why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
         reply_for: param('string', '★ 这个回复属于哪个成员（它的提示词是上一次 step 交回的那个）；不传 = 沿用旧行为'),
-        meeting: param('string', '★ op:"reply" 用：这一轮属于哪场会议。给了，成员的 say 就被记成「该成员本人」的发言（回执 executed[].onBehalf），并且要求该成员已在会中（未到会者由内核具名拒）。不传 = 不绑定，say 只进 notes 并在回执说明原因'),
+        meeting: param('string', '★ op:"step"／op:"drive"／op:"reply" 用：这一轮属于哪场会议。step/drive 时它被记在回合上（回执 awaiting:true 且 memberPrompt.meeting 给出），成员交回的 say 因此被记成「该成员本人」在该会的发言（回执 executed[].onBehalf），不再以 no-meeting-bound 被跳过；reply 时它绑定这份汇报，与停着的回合所属会议不一致会被具名拒 VMU_TURN_REPLY_CONFLICT，省略则继承停着那回合的会议。不传 = 不绑定（say 只进 notes 并在回执说明原因）'),
         // ★★★★★★★ LANE turn-reply: THE REPORT ITSELF. The field names below are DERIVED from the kernel's field table
         // (see the import at the top of this file), never hand-copied; the JSON type of each field is the dispatcher's
         // business (the kernel's field gate refuses what it cannot dispatch), so this schema declares only the ONE legal

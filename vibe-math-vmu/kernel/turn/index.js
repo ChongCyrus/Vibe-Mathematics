@@ -1107,11 +1107,17 @@ export function deliverByReturning() {
       supplied = null
       // ★ the member whose prompt this answers: the reply belongs to THAT member, not to whoever the next step picks
       answeredFor = pendingPrompt && pendingPrompt.member ? String(pendingPrompt.member) : null
+      // ★ E12 / task-19: and the MEETING it was bound to rides back on the same envelope. The caller-supplied reply
+      // answers the PARKED prompt, so its binding is the parked turn's - not whatever meeting the next dispatch names.
+      // Without this the answer to a meeting round lost its binding at the seam and reached apply() as unbound speech.
+      const answeredMeeting = pendingPrompt && pendingPrompt.meeting ? String(pendingPrompt.meeting) : null
       pendingPrompt = null
-      return { reply, forMember: answeredFor, childId: null, stopReason: 'supplied-by-caller', attribution: 'the CALLING session played this member turn (deliverByReturning)', deliveryPath: 'caller' }
+      return { reply, forMember: answeredFor, meeting: answeredMeeting, childId: null, stopReason: 'supplied-by-caller', attribution: 'the CALLING session played this member turn (deliverByReturning)', deliveryPath: 'caller' }
     }
-    pendingPrompt = { member: turn && turn.member ? String(turn.member) : null, turnId: turn && turn.id ? turn.id : null, text: String(text) }
-    return { reply: null, awaiting: true, memberPrompt: pendingPrompt, childId: null, stopReason: null, deliveryPath: 'caller' }
+    // ★ E12 / task-19: the parked prompt carries the meeting its turn was driven for, so the caller answers INTO that
+    // meeting without repeating it, and a reply that names a different one is refused by name (see supplyStructuredReply).
+    pendingPrompt = { member: turn && turn.member ? String(turn.member) : null, turnId: turn && turn.id ? turn.id : null, meeting: turn && typeof turn.meeting === 'string' && turn.meeting !== '' ? turn.meeting : null, text: String(text) }
+    return { reply: null, awaiting: true, memberPrompt: pendingPrompt, meeting: pendingPrompt.meeting, childId: null, stopReason: null, deliveryPath: 'caller' }
   }
   seam.supply = (reply) => { supplied = typeof reply === 'string' ? reply : null; return seam }
   seam.pending = () => pendingPrompt
@@ -1639,6 +1645,21 @@ const composeStatusBlock = (turn, readings = null) => {
  * Create the orchestrator. `prompt` is the pipeline (docs/06), `deliver` is the adapter seam, `faces` maps a face
  * name to its operations, e.g. `{ 'vmu.tasks': { create: async (p) => ... } }`.
  */
+/**
+ * A durable `at` is TEXT. The loop's default clock answers an ISO string
+ * (`() => new Date().toISOString()`), but a KERNEL-injected clock answers epoch milliseconds - and since RUN 229 that
+ * kernel clock IS handed over (one clock per kernel). Writing `at: clock()` therefore put a NUMBER where the ledger
+ * requires a string, and `turnLedger.record` (kernel/index.js:2243) stores `at: null` for anything that is not a
+ * string - so every chair-act row silently lost the instant it happened (tests/vmu-run35-chair-act.test.mjs §1
+ * measured `at: null`). One place converts, both forms are accepted, and the value is always readable text.
+ */
+const isoStampOf = (v) => {
+  if (typeof v === 'string' && v !== '') return v
+  const n = Number(v)
+  if (Number.isFinite(n)) { try { return new Date(n).toISOString() } catch (e) { /* fall through to now */ } }
+  return new Date().toISOString()
+}
+
 export function createTurnOrchestrator({
   // The institution policy for prompt-section switches. Null means the framework switches NOTHING,
   // which is this preset's stated design: "default zero mechanism, mechanisms provided as packs".
@@ -1821,6 +1842,10 @@ export function createTurnOrchestrator({
   // ★ ROUND 79: which member the most recent caller-supplied reply answers, so the closure vote is recorded against
   // THAT member rather than against whoever the next step happened to wake.
   let lastReplyForMember = null
+  // ★ E12 / task-19: the meeting the ANSWERED prompt was bound to. The reply in hand answers the parked turn, not the
+  // turn of the dispatch that carries it: a caller may park a meeting round for r-1 and then step r-2, and the reply's
+  // speech must land in r-1's meeting. Consumed together with `lastReplyForMember` (runFrom, one turn later).
+  let lastReplyMeeting = null
   /**
    * ★★★★★★★ LANE turn-reply: THE STRUCTURED REPORT SLOT — ONE slot, because a member turn can report ONCE (a second
    * report for the same open turn is `VMU_TURN_REPLY_CONFLICT`, not a silent overwrite). It is filled by the `reply` op
@@ -1911,7 +1936,15 @@ export function createTurnOrchestrator({
   // [id, member, role, roleLabel, phase, task, why, nextStep, roster, quorum, statusBlock, facts, meetingState,
   // formalStatus, round, at] with NO rosterIds/chairId, while the unit tests (which call `decideSections` directly)
   // stayed green. A fact the caller supplies must travel all the way, or the unit test is testing a shape nobody sends.
-  const open = ({ member, role = null, roleLabel = null, phase, task = null, why = null, nextStep = null, roster = null, rosterIds = null, chairId = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1 } = {}) => {
+  // ★★★★★★★ E12 / task-19: `meeting` IS A PROPERTY OF THE TURN, NOT OF THE DELIVERY. A meeting round is a turn
+  // whose speech has nowhere to go unless the MEETING it belongs to travels with it: measured (sim, caller delivery) a
+  // `meeting` round drove a member, the caller answered with `{ say }`, and the reply landed as `skipped:[{reason:
+  // "no-meeting-bound"}]` even though the caller had named the meeting on the dispatch. The name existed at the call,
+  // was dropped at the turn, and the skip reason then blamed the member for a binding the dispatch already had.
+  // So the turn carries the binding from the moment it is opened: `open` puts it on the turn, `nextTurn` puts it on the
+  // spec, and the caller-played seam parks it with the prompt so the reply inherits it (see deliverByReturning).
+  const normalizeMeetingId = (meeting) => (meeting === null || meeting === undefined || String(meeting).trim() === '' ? null : String(meeting).trim())
+  const open = ({ member, role = null, roleLabel = null, phase, task = null, why = null, nextStep = null, roster = null, rosterIds = null, chairId = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1, meeting = null } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
     const knownPhases = extraPhases && extraPhases.length ? PHASES.concat(extraPhases) : PHASES
     if (typeof phase !== 'string' || !knownPhases.includes(phase)) {
@@ -1923,7 +1956,7 @@ export function createTurnOrchestrator({
     // name and the framework's vocabulary were entangled by a MISSING FIELD, not by a design choice. With the field
     // carried, the caller owns the name (the pack supplies it in real use) and the kernel holds none of an
     // institution's words. A caller that supplies nothing gets the KEY it passed.
-    const turn = { id: 't-' + seq, member, role, roleLabel, phase, task, why, nextStep, roster, rosterIds, chairId, quorum, statusBlock, facts, meetingState, formalStatus, round, at: clock() }
+    const turn = { id: 't-' + seq, member, role, roleLabel, phase, task, why, nextStep, roster, rosterIds, chairId, quorum, statusBlock, facts, meetingState, formalStatus, round, meeting: normalizeMeetingId(meeting), at: isoStampOf(clock()) }
     turns.set(turn.id, turn)
     woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1
@@ -2190,6 +2223,10 @@ export function createTurnOrchestrator({
     if (delivered && delivered.awaiting === true) {
       lastAttribution = { childId: null, stopReason: null, deliveryPath: 'caller', attribution: 'the CALLING session plays this member turn (deliverByReturning): the assembled prompt was handed back, and the reply arrives on the next call' }
       return { awaiting: true, memberPrompt: (delivered && delivered.memberPrompt) || null, reply: null, deliveryPath: 'caller',
+        // ★ E12 / task-19: the awaiting envelope names the meeting the prompt is bound to, on the envelope AND on the
+        // held prompt, so "which meeting does this round belong to" is readable without a second call and survives
+        // into the reply that answers it.
+        meeting: (delivered && typeof delivered.meeting === 'string' && delivered.meeting !== '' ? delivered.meeting : (turn && typeof turn.meeting === 'string' && turn.meeting !== '' ? turn.meeting : null)),
         // ★ TASK-13: the caller-played route can neither continue nor be read as having continued, and it must not be
         // silent about it: the caller holds the member's prompt and can choose to play it in the member's learned session.
         continuation: continuationReceipt(continuation, delivered) }
@@ -2200,6 +2237,10 @@ export function createTurnOrchestrator({
     // against `turn.member` put a truthful vote on the wrong person and left the real voter reported missing.
     const replyForMember = delivered && delivered.forMember ? String(delivered.forMember) : null
     lastReplyForMember = replyForMember
+    // ★ E12 / task-19: the meeting of the ANSWERED prompt (deliverByReturning reports it on the envelope). Null is the
+    // honest value for a seam that does not bind meetings (activation/one-shot); the turn's own binding is the
+    // fallback at the dispatch site, so this only OVERRIDES when the seam really named one.
+    lastReplyMeeting = delivered && typeof delivered.meeting === 'string' && delivered.meeting !== '' ? delivered.meeting : null
     lastAttribution = {
       // ★ ROUND 88: WHICH ROUTE DELIVERED, reported by the seam itself (host bridge or caller-played).
       deliveryPath: (delivered && delivered.deliveryPath) || null,
@@ -2257,11 +2298,11 @@ export function createTurnOrchestrator({
    */
   const openTurnForReport = () => {
     if (inFlightTurn && typeof inFlightTurn.member === 'string' && inFlightTurn.member !== '') {
-      return { member: inFlightTurn.member, turnId: inFlightTurn.id || null, via: 'in-flight' }
+      return { member: inFlightTurn.member, turnId: inFlightTurn.id || null, via: 'in-flight', meeting: normalizeMeetingId(inFlightTurn.meeting) }
     }
     const pending = deliver && typeof deliver.pending === 'function' ? deliver.pending() : null
     if (pending && typeof pending.member === 'string' && pending.member !== '') {
-      return { member: pending.member, turnId: pending.turnId || null, via: 'pending-prompt' }
+      return { member: pending.member, turnId: pending.turnId || null, via: 'pending-prompt', meeting: normalizeMeetingId(pending.meeting) }
     }
     return null
   }
@@ -2302,7 +2343,9 @@ export function createTurnOrchestrator({
   const supplyStructuredReply = (fields, { forMember = null, meeting = null } = {}) => {
     // ★ 用户裁决 B 第 2 步：所办可以为「成员的这一轮」指定它属于哪场会议。给了就让成员的那句 say 被记成
     // 成员本人的发言（onBehalf），没给就保持现状（进 notes，回执说明为什么没派发）。
-    const boundMeeting = meeting === null || meeting === undefined || String(meeting).trim() === '' ? null : String(meeting).trim()
+    // ★ E12 / task-19: `meeting` is now the EXPLICIT wish; the binding itself is resolved below against the parked
+    // turn, because the dispatch already bound it and an answer must not silently re-bind it (or drift to another one).
+    const requestedMeeting = normalizeMeetingId(meeting)
     const obj = fields && typeof fields === 'object' && !Array.isArray(fields) ? fields : null
     if (!obj) {
       fail('VMU_INVALID_ARGUMENT', 'a structured report must be an object of reply fields, not ' + (fields === null ? 'null' : typeof fields),
@@ -2322,9 +2365,25 @@ export function createTurnOrchestrator({
     }
     const wanted = forMember === null || forMember === undefined ? null : String(forMember)
     if (wanted !== null && wanted !== open.member) {
-      fail('VMU_INVALID_ARGUMENT', 'reply_for names ' + wanted + ' but the open member turn belongs to ' + open.member,
-        'omit reply_for (the open turn names the member), or pass reply_for:"' + open.member + '"')
+      // ★★★ RUN 229 / task-13: A REPORT FOR A MEMBER WHOSE TURN IS NO LONGER THE PARKED ONE IS A STALE REPLY, NOT A
+      // GENERIC ARGUMENT ERROR. Measured: a caller parked r-1, dispatched again (which used to silently replace the
+      // parked prompt), then answered the FIRST prompt and read `VMU_INVALID_ARGUMENT` - a family that says "bad
+      // argument" while the truth is "the turn you are answering was replaced". The code now names the class, and the
+      // message names BOTH sides so a reader can tell which turn is parked without another dispatch.
+      fail('VMU_TURN_STALE_REPLY', 'reply_for names ' + wanted + ' but the parked member turn belongs to ' + open.member + ': ' + wanted + ' has no turn waiting here',
+        'a parked turn is not replaced by a second dispatch, so the turn for "' + wanted + '" was never parked (or is already answered). Answer the parked turn - omit reply_for (it names ' + open.member + ') or pass reply_for:"' + open.member + '" - and then dispatch "' + wanted + '" again with op:"step" or op:"drive"; the parked prompt is the one the dispatch returned as memberPrompt')
     }
+    // ★ E12 / task-19: THE BINDING IS RESOLVED HERE, ONCE, AGAINST THE PARKED TURN. The dispatch that parked the
+    // prompt already named a meeting; a report that names a DIFFERENT one is not a correction, it is an attempt to put
+    // this member's words into a meeting the member was not given this turn — refused by name, with both ids in the
+    // sentence and the actionable move spelled out (omit to inherit, or dispatch that meeting and answer its prompt).
+    // Omitted means inherit: that is what makes "the reply lands where the dispatch pointed it" true by construction.
+    const parkedMeeting = open.meeting === undefined ? null : open.meeting
+    if (requestedMeeting !== null && parkedMeeting !== null && requestedMeeting !== parkedMeeting) {
+      fail('VMU_TURN_REPLY_CONFLICT', 'reply is bound to meeting ' + requestedMeeting + ' but the parked member turn belongs to ' + parkedMeeting + ': this report would record ' + open.member + '\'s words in a meeting that member is not answering in this turn',
+        'answer the parked turn in ITS meeting: omit `meeting` (it inherits "' + parkedMeeting + '") or pass meeting:"' + parkedMeeting + '"; to move the member to meeting "' + requestedMeeting + '", dispatch that meeting first (op:"step" or op:"drive" with meeting:"' + requestedMeeting + '") and answer the new prompt')
+    }
+    const boundMeeting = requestedMeeting !== null ? requestedMeeting : parkedMeeting
     const keys = Object.keys(obj).filter((k) => obj[k] !== undefined)
     if (keys.length === 0) {
       fail('VMU_INVALID_ARGUMENT', 'the report carries no reply fields',
@@ -2338,7 +2397,7 @@ export function createTurnOrchestrator({
       fail('VMU_TURN_UNKNOWN_FIELD', 'unknown reply field(s): ' + unknown.join(', ') + ' - refusing rather than guessing what was meant',
         'known fields: ' + known.concat(RECORDED_FIELDS).join(', '))
     }
-    const recorded = { reply: {}, member: open.member, turnId: open.turnId, via: open.via, ignoredFields: unknown.slice(), meeting: boundMeeting, at: clock() }
+    const recorded = { reply: {}, member: open.member, turnId: open.turnId, via: open.via, ignoredFields: unknown.slice(), meeting: boundMeeting, at: isoStampOf(clock()) }
     for (const k of keys) if (!unknown.includes(k)) recorded.reply[k] = obj[k]
     if (Object.keys(recorded.reply).length === 0) {
       // A report that carries ONLY unknown names would record an empty reply and then look like a turn with nothing to
@@ -2368,6 +2427,11 @@ export function createTurnOrchestrator({
         ? 'this report was NOT bound to a meeting, so a bare say field cannot become a speech (it is kept, never silently dropped)'
         : 'this report was bound to the named meeting: the member\'s bare say field will be recorded as THAT MEMBER\'S speech when the held turn is applied (receipt carries onBehalf)',
       ignoredFields: recorded.ignoredFields.slice(),
+      // ★ E12 / task-19: the receipt says WHERE the binding came from, not only what it is. "meeting: m1" alone leaves
+      // a reader unable to tell an explicit wish from an inherited one, and inheritance is the mechanism this round
+      // added (omit `meeting` and the parked turn's binding is used, so an answer cannot drift to another meeting).
+      meetingSource: recorded.meeting === null ? null : (requestedMeeting === null ? 'inherited-from-parked-turn' : 'explicit'),
+      meetingSourceMeans: 'explicit = this report named the meeting; inherited-from-parked-turn = the report named none, so the meeting the dispatch bound to the parked prompt was used (the binding is a property of the turn, not of the answer)',
       ignoredFieldMode: unknownFieldMode,
       // ★ READ BACK, NOT SET: this is the slot as it stands AFTER the write (member, turn, fields), so a caller can see
       // that the report really landed on the turn it thinks it did.
@@ -2481,6 +2545,14 @@ export function createTurnOrchestrator({
           : '本回合既没有工具汇报、也没有可解析的围栏 JSON（neither a tool report nor a usable fenced json object）：本回合没有可用的回执对象。成员在自己会话里做过什么在这里看不到——下结论说“什么都没发生”之前，去读记录轨（check the record tracks）',
         'report through the tool: vibe_vmu_turn { op:"reply", report:{ say:"…", input:{…}, … } } (the fields the reply catalogue declares); the fenced json object stays supported as the COMPATIBILITY path: vibe_vmu_turn { op:"step", reply:"```json { … }```" } — a bare fence, a bare object and a prose-wrapped object are all still accepted (docs/26 §3)')
     }
+    // ★ E12 / task-19: `meeting` IS A RESERVED ENVELOPE KEY, NOT A REPLY FIELD. A fenced reply that names the meeting
+    // it belongs to (`{"meeting":"m1","say":"…"}`) used to fall into the unknown-field gate: it either landed in
+    // `ignoredFields` (default mode) and the speech was skipped as unbound, or — with
+    // `vmu.turn.unknownReplyFieldMode=refuse` — refused the whole turn as `VMU_TURN_UNKNOWN_FIELD`. Neither is right:
+    // the meeting is a binding the dispatch needs, exactly like the one a caller passes on op:"reply". So it is read
+    // here, removed from the reply, and reported separately; the caller of parse() resolves it against the parked turn.
+    const meetingKey = (typeof obj.meeting === 'string' && obj.meeting.trim() !== '') ? obj.meeting.trim() : null
+    if (Object.prototype.hasOwnProperty.call(obj, 'meeting')) delete obj.meeting
     const unknown = Object.keys(obj).filter((k) => !Object.prototype.hasOwnProperty.call(owners, k) && !RECORDED_FIELDS.includes(k))
     // ★ PHASE 7 / round 15: a field gate must not destroy a turn the member already did the work in (founder's own
     // complaint). ignore-named is the DEFAULT: known fields still apply, and every unknown name is REPORTED, never
@@ -2493,7 +2565,7 @@ export function createTurnOrchestrator({
     const ignoredFields = unknown.length ? unknown.slice() : []
     if (ignoredFields.length) obj.ignoredFields = ignoredFields
     counts.parsed += 1
-    return { ok: true, reply: obj, fields: Object.keys(obj), ...(ignoredFields.length ? { ignoredFields } : {}) }
+    return { ok: true, reply: obj, fields: Object.keys(obj), ...(ignoredFields.length ? { ignoredFields } : {}), ...(meetingKey ? { meeting: meetingKey } : {}) }
   }
 
   /**
@@ -2931,7 +3003,12 @@ export function createTurnOrchestrator({
       const formalCheck = (d.face === FIELD_OWNERS.formal.face && d.op === FIELD_OWNERS.formal.op)
         ? formalCheckArgs(d.payload)
         : null
-      const adapted = recordLog !== null ? recordLog : (taskCreate !== null ? taskCreate : formalCheck)
+      // ★ RUN 229 / task-13: `progress` accepts the taught TEXT form (mapped to one complete row) and refuses an object
+      // with no track by naming the shape it received - the refusal that used to leak "unknown record track: undefined".
+      const progressField = (d.face === FIELD_OWNERS.progress.face && d.op === FIELD_OWNERS.progress.op)
+        ? progressArgs(d.payload, memberId)
+        : null
+      const adapted = progressField !== null ? progressField : (recordLog !== null ? recordLog : (taskCreate !== null ? taskCreate : formalCheck))
       if (adapted !== null && adapted.ok !== true) {
         counts.notExecuted += 1
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: adapted.reason, code: adapted.code,
@@ -2940,6 +3017,7 @@ export function createTurnOrchestrator({
           means: adapted === recordLog ? RECORD_LOG_MEANS : undefined })
         continue
       }
+      if (progressField !== null && progressField.ok === true && progressField.coerced) turnCoercions.push(progressField.coerced)
       const composed = composedFor(d, d.payload)
       const onBehalf = composed !== null
       const recordComposed = onBehalf ? null : composeRecordPut(d, d.payload)
@@ -2973,6 +3051,7 @@ export function createTurnOrchestrator({
       counts.dispatched += 1
       const entry = { field: d.field, face: d.face, op: d.op, result: res }
       if (recordLog !== null) { entry.recordLog = { member: recordLog.member, track: recordLog.track, means: RECORD_LOG_MEANS } }
+      if (progressField !== null && progressField.coerced) { entry.coerced = progressField.coerced }
       if (onBehalf) { entry.onBehalf = true; entry.onBehalfMeans = ON_BEHALF_MEANS; entry.composed = { meeting: composed.meeting, member: composed.member } }
       if (attributed) { entry.attributedTo = String(memberId); entry.attributionMeans = ATTRIBUTION_MEANS }
       executed.push(entry)
@@ -3242,6 +3321,9 @@ export function createTurnOrchestrator({
       // the caller can play the member turn and answer on the next call.
       if (raw && typeof raw === 'object' && raw.awaiting === true) {
         return { ok: true, awaiting: true, turn, membersFrom: spec && typeof spec.membersFrom === 'string' ? spec.membersFrom : null, memberPrompt: raw.memberPrompt || null,
+          // ★ E12 / task-19: the turn-level reading of the binding, beside the one on `memberPrompt` — a caller that
+          // reads only the top level must not have to open the prompt object to learn which meeting it is answering.
+          meeting: (raw && typeof raw.meeting === 'string' && raw.meeting !== '' ? raw.meeting : (turn && typeof turn.meeting === 'string' && turn.meeting !== '' ? turn.meeting : null)),
           assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true,
           delivery: deliveryOf(Object.assign({}, raw, { deliveryPath: (raw && raw.deliveryPath) || 'caller' })),
           fields: [], executed: [], skipped: [], refused: [],
@@ -3250,6 +3332,10 @@ export function createTurnOrchestrator({
       // consumed once: the next turn's reply belongs to whoever it answers
       const attributedTo = lastReplyForMember
       lastReplyForMember = null
+      // ★ E12 / task-19: and so does the meeting it was bound to. Read BEFORE the dispatch, because the reply in hand
+      // answers the parked turn while `turn` is the dispatch that carries it (they can name different meetings).
+      const replyMeeting = lastReplyMeeting
+      lastReplyMeeting = null
       // ★ ROUND 35 / F4: keep the member's own words reachable whether or not they parsed. Two readings, one source:
       //   · parse FAILED  -> counts.replyParseFailedLast (read through `vibe_vmu_turn {op:"status"}`), so "the member did
       //     answer, here is what it said" survives the refusal instead of dying with the thrown error;
@@ -3297,7 +3383,22 @@ export function createTurnOrchestrator({
       // equally invisible from here.
       let tail
       try {
-        tail = await dispatchReply({ turn, parsed, attributedTo: attributedTo || turn.member, rawText: raw })
+        // ★ E12 / task-19: THE BINDING TRAVELS WITH THE REPLY, NOT WITH THE DISPATCH. Precedence, in the order the
+        // facts are authoritative: (1) the meeting the ANSWERED prompt was parked for (`replyMeeting`, caller path);
+        // (2) a meeting the reply itself names (reserved `meeting` key of a fenced reply); (3) the turn being delivered
+        // — the honest default for a seam that settles a member's own turn (activation/one-shot). An unbound turn and
+        // an unbound reply therefore still dispatch as before (null), and the skip reason keeps saying so.
+        // ★ E12 / task-19: a fenced reply that names a meeting CONTRADICTING the parked turn is the same defect as a
+        // report doing it — two bindings for one answer — so it is refused by name here too, with both ids and the
+        // move that fixes it. (The reply's own key is only a fallback when nothing was parked.)
+        if (replyMeeting !== null && parsed && typeof parsed.meeting === 'string' && parsed.meeting !== '' && parsed.meeting !== replyMeeting) {
+          fail('VMU_TURN_REPLY_CONFLICT', 'the reply is bound to meeting ' + parsed.meeting + ' but the parked member turn belongs to ' + replyMeeting + ': one answer cannot be in two meetings',
+            'drop `meeting` from the reply (it inherits "' + replyMeeting + '") or set it to "' + replyMeeting + '"; to move the member, dispatch meeting "' + parsed.meeting + '" and answer that prompt')
+        }
+        const dispatchMeeting = replyMeeting !== null
+          ? replyMeeting
+          : ((parsed && typeof parsed.meeting === 'string' && parsed.meeting !== '') ? parsed.meeting : (turn && typeof turn.meeting === 'string' && turn.meeting !== '' ? turn.meeting : null))
+        tail = await dispatchReply({ turn, parsed, attributedTo: attributedTo || turn.member, rawText: raw, meeting: dispatchMeeting })
       } catch (e) {
         if (e && typeof e === 'object' && e.sideEffectsUnverified !== true) {
           e.sideEffectsUnverified = true
@@ -3349,8 +3450,14 @@ export function createTurnOrchestrator({
     // already answered (the refusal travels on the receipt instead).
     if (typeof deliver.consumePending === 'function') deliver.consumePending()
     const parsed = { reply: Object.assign({}, report.reply), fields: Object.keys(report.reply), ignoredFields: report.ignoredFields.slice(), source: 'tool' }
-    const tail = await dispatchReply({ turn, parsed, attributedTo: report.member, meeting: report.meeting === undefined ? null : report.meeting, rawText: JSON.stringify(report.reply) })
-    return Object.assign({ member: report.member, meeting: report.meeting === undefined ? null : report.meeting }, tail)
+    // ★ E12 / task-19: the report's own binding wins when it has one (already resolved against the parked turn at the
+    // write side); when it has none the PARKED PROMPT's binding is the honest answer — the prompt was parked for that
+    // meeting, so its speech belongs there, not in "no meeting" with a skip reason blaming the member.
+    const reportMeeting = report.meeting === undefined || report.meeting === null
+      ? (pending && typeof pending.meeting === 'string' && pending.meeting !== '' ? pending.meeting : null)
+      : report.meeting
+    const tail = await dispatchReply({ turn, parsed, attributedTo: report.member, meeting: reportMeeting, rawText: JSON.stringify(report.reply) })
+    return Object.assign({ member: report.member, meeting: reportMeeting }, tail)
   }
 
   /**
@@ -3534,7 +3641,7 @@ export function createTurnOrchestrator({
     const row = rows.find((r) => r && String(r.id) === String(memberId))
     return row && typeof row.slot === 'string' && row.slot !== '' ? row.slot : null
   }
-  const nextTurn = ({ members = [], phase = 'normal', why = null, nextStep = null, role = null, membersFrom = null } = {}) => {
+  const nextTurn = ({ members = [], phase = 'normal', why = null, nextStep = null, role = null, membersFrom = null, meeting = null } = {}) => {
     // (g): the ONE shape-owner for a selection. Plain id strings are accepted here too, because the roster default
     // must never be used as a silent substitute for a caller's explicit list.
     const list = normalizeMembersSelection(members)
@@ -3554,6 +3661,9 @@ export function createTurnOrchestrator({
     // never null-by-accident while the roster knows the answer (that accident is the defect this line closes).
     const chosenRole = role || pick.role || slotOf(pick.id) || null
     return { id: 't-' + (turnSeq += 1), member: pick.id, role: chosenRole, phase, why, nextStep,
+      // ★ E12 / task-19: the spec carries the meeting so `runOne`'s `merged = {..., ...spec}` hands it to `open`
+      // without a second plumbing path, and every route (drive, step, dispatch) binds the same way.
+      meeting: normalizeMeetingId(meeting),
       membersFrom: membersFrom === null ? null : membersFrom }
   }
 
@@ -3589,7 +3699,7 @@ export function createTurnOrchestrator({
     return out
   }
   const MEMBER_FAILURE_LIMIT = 3
-  const drive = async ({ members = [], rounds = 1, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+  const drive = async ({ members = [], rounds = 1, phase = 'normal', why = null, nextStep = null, role = null, meeting = null } = {}) => {
     // (g): the batch route owns the same shape rule as step(), so a batch also accepts plain id strings and refuses an
     // unreadable entry by name instead of falling back to the default roster.
     const selection = normalizeMembersSelection(members)
@@ -3640,8 +3750,26 @@ export function createTurnOrchestrator({
           roundsRun: 0, roundsAttempted: 0, hint: (e && e.hint) || null })
       }
     }
+    // ★★★★★★★ RUN 229 / task-13 — A PARKED TURN IS NOT A SLOT A SECOND DISPATCH MAY OVERWRITE.
+    // Measured (the sim turns scenario, caller delivery): `drive {member:"r-1"}` parks r-1's prompt and returns
+    // `awaiting:true`; a second `drive {member:"r-2"}` silently replaced `pendingPrompt`, so r-1's prompt was lost with
+    // no refusal and no warning, and the late reply for r-1 came back as `VMU_INVALID_ARGUMENT` (the wrong family: "bad
+    // argument" for a turn that was REPLACED). The seam keeps ONE prompt on purpose (`deliverByReturning`'s own note: a
+    // turn that is not answered must be re-asked, not silently remembered), so the truthful repair is a NAMED refusal at
+    // the dispatch that would overwrite it - a queue here would keep prompts alive that nobody answered and would make
+    // "which turn does this reply answer" ambiguous, which is the very ambiguity that produced the wrong-family code.
+    // The parked prompt is answered with op:"step" + the reply (or op:"reply" for a structured report), and a structured
+    // report already waiting for it was completed ABOVE, so this guard only fires when a real unanswered prompt is held.
+    const parkedForDrive = (() => { try { return typeof deliver.pending === 'function' ? deliver.pending() : null } catch (e) { return null } })()
+    if (parkedForDrive && typeof parkedForDrive === 'object'
+      && typeof parkedForDrive.member === 'string' && parkedForDrive.member !== '') {
+      fail('VMU_TURN_ALREADY_PARKED', 'a member turn is already parked for ' + parkedForDrive.member
+        + (parkedForDrive.turnId ? ' (turn ' + String(parkedForDrive.turnId) + ')' : '')
+        + ': dispatching now would silently replace the prompt this caller is still holding',
+      'answer the parked prompt first: op:"step" with member:"' + parkedForDrive.member + '" and the reply (or op:"reply" with report {...}), which completes that turn; then dispatch again. This kernel keeps ONE parked prompt (deliverByReturning parks the assembled prompt on the caller), so a second dispatch cannot be queued - the prompt to answer is the memberPrompt the dispatch returned with awaiting:true')
+    }
     for (let i = 1; i <= n; i += 1) {
-      const spec = nextTurn({ members: selection, phase, why, nextStep, role })
+      const spec = nextTurn({ members: selection, phase, why, nextStep, role, meeting })
       // ★★ ROUND 45: AN EMPTY ROUND MUST SAY WHERE MEMBERS COME FROM. `no-members` is true, but on its own it leaves a
       // reader unable to act - the real machine called this face sixty-one times and learned nothing from it. The
       // hint names the two things that actually help: read the roster, and pass it (the tool face now infers it from
@@ -3651,7 +3779,9 @@ export function createTurnOrchestrator({
       try {
         const r = await run({ ...spec, round: i })
         // ★ ROUND 73: a caller-played turn ENDS the batch - the prompt goes back and the round resumes on the next call.
-        if (r && r.awaiting) return withScope({ ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member })
+        // ★ E12 / task-19: the awaiting batch receipt names the meeting the parked prompt belongs to, so the caller
+        // answers INTO it (and a conflicting `meeting` on the reply is refused by name) without re-reading the prompt.
+        if (r && r.awaiting) return withScope({ ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, meeting: (r.meeting || (r.memberPrompt && r.memberPrompt.meeting) || null), deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member })
         receipts.push({ round: i, member: spec.member, fields: r.fields, fieldsIgnored: fieldsIgnoredOf(r), ...(fieldsIgnoredOf(r).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}), executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, turn: r.turn.id, source: r.source || null,
           // ★ PHASE 12 / run 37: the same detail the step receipt now carries - a batch receipt is read by the same person.
           skippedDetail: r.skipped.slice(0, 5), skippedDetailTruncated: r.skipped.length > 5,
@@ -3729,7 +3859,7 @@ export function createTurnOrchestrator({
    * the pipeline owns WHAT PROMPT. A round that fails is RETURNED rather than thrown, because a failed round is an
    * operational outcome; a malformed ARGUMENT still throws, because that is a programming error.
    */
-  const step = async ({ members = [], member = null, membersInferred = false, membersFrom = null, selectionShape = null, phase = 'normal', why = null, nextStep = null, role = null } = {}) => {
+  const step = async ({ members = [], member = null, membersInferred = false, membersFrom = null, selectionShape = null, phase = 'normal', why = null, nextStep = null, role = null, meeting = null } = {}) => {
     // ★★★ LIVE RUN 23 (the institute's own report, item 2): THE CHAIR RAIL'S HINT NAMED A PARAMETER THAT DID NOT EXIST.
     // `VMU_CHAIR_ACT_NOT_DELEGATED` tells the caller to "give the chair its own turn first:
     // `vibe_vmu_turn {op:"step", member:"academician-1"}`" — singular `member`. This signature had no `member`, so the
@@ -3896,7 +4026,7 @@ export function createTurnOrchestrator({
             ? 'the caller named `member` (SINGULAR: one seat), so requestedMembers and resolvedMembers are that one id — this is not an inferred selection and not a list, the shorthand for "wake this one member"'
             : 'the caller named a selection through some other shape; requestedMembers and resolvedMembers are the same list after normalisation')),
     }
-    const spec = nextTurn({ members, phase, why, nextStep, role, membersFrom })
+    const spec = nextTurn({ members, phase, why, nextStep, role, membersFrom, meeting })
     // ★★ LIVE RUN 47 (the institute's own report ㉿.2): the face DOES name where the selection came from
     // (`caller-selection` | `roster-default`), but the reading was looked up on the RUN result instead of on the SPEC
     // that carries it, so every live receipt read `membersFrom: null` - present but empty, the worst of both.
@@ -4092,7 +4222,7 @@ export function createTurnOrchestrator({
         }
         return 'UNREADABLE COMPARISON: the kernel offered ' + String(c.offered) + ' but the seam reported no child id for where the turn ran, so "continued" and "started fresh" cannot be told apart from this receipt (null means NOT READABLE, never either answer)'
       })()
-      if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
+      if (r && r.awaiting) return { ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, meeting: (r.meeting || (r.memberPrompt && r.memberPrompt.meeting) || null), deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null,
         instructionDelivered: r.instructionDelivered === true, receipt: null, attribution: r.attribution || null,
         ...toolCallsReading, ...memberCallsReading,
         membersFrom: membersFromReading, delegation: r.delivery || null,
@@ -4191,6 +4321,19 @@ export function createTurnOrchestrator({
           'REACHABLE INSTEAD: put the ask in `next_step` (a string) and let the member answer from its OWN turn — '
           + 'the reply you get back is that turn\'s answer, so there is nothing to supply here. Do NOT retry this with '
           + '`reply` on `op:"step"`: the deliverByReturning seam that accepts a caller reply is not the seam this run uses')
+      }
+      // ★★★ RUN 229 / task-13: A REPLY NAMING A MEMBER WHOSE TURN IS NOT THE PARKED ONE MUST NOT BE HANDED TO THE
+      // PARKED TURN. `deliver.supply` carries no member, so before this gate a late reply for r-1 was attached to
+      // r-2's parked prompt: one member's words would have been dispatched as another member's. The refusal names the
+      // class and both members; nothing is supplied when it fires.
+      const parkedForReply = (() => { try { return typeof deliver.pending === 'function' ? deliver.pending() : null } catch (e) { return null } })()
+      const wantedMember = forMember === null || forMember === undefined ? null : String(forMember).trim()
+      if (wantedMember !== null && wantedMember !== ''
+        && parkedForReply && typeof parkedForReply === 'object'
+        && typeof parkedForReply.member === 'string' && parkedForReply.member !== ''
+        && parkedForReply.member !== wantedMember) {
+        fail('VMU_TURN_STALE_REPLY', 'reply_for names ' + wantedMember + ' but the parked member turn belongs to ' + parkedForReply.member + ': ' + wantedMember + ' has no turn waiting here',
+          'answer the parked turn first (omit reply_for, or pass reply_for:"' + parkedForReply.member + '"), then dispatch "' + wantedMember + '" again; a parked turn is not replaced by a second dispatch, and its prompt is the memberPrompt the dispatch returned')
       }
       deliver.supply(reply)
       return { ok: true, supplied: true }
@@ -4506,6 +4649,77 @@ export const formalCheckArgs = (payload) => {
   return { ok: true, args: [args] }
 }
 
+/**
+ * ★★★ RUN 229 / task-13 — THE `progress` REPLY FIELD: ONE TRUTH, AND A REFUSAL THAT NAMES WHAT ARRIVED.
+ *
+ * MEASURED (the sim turns scenario, corpus-turns): the PACK's reply-line teaching (「progress：数学进展/阻塞及下一步」)
+ * says `progress` is TEXT while this kernel's dispatcher handed the payload straight to the records face,
+ * whose `put` reads `payload.track`. A member who followed the prompt was refused with
+ * `VMU_INVALID_ARGUMENT: unknown record track: undefined (...)` - the message named the ABSENT key as the literal word
+ * "undefined" (an audit A2 leak: it can never be grepped for and reads as a serializer bug), and the whole turn was lost.
+ *
+ * THE TRUTH CHOSEN: the taught form is accepted. A string becomes ONE progress row - track `progress`, title from the
+ * first non-empty line (bounded), body the whole text, `settled:true` (the same archival stance `vibe_v5_record_progress`
+ * takes), authored by the member whose turn it is. That cannot create a HALF record: every field of the row is derived
+ * here and the record is written by the same `records.put` the object form uses. The prompt is NOT rewritten: it lives
+ * in a pack file this lane does not own, and the one truth that can be made consistent from HERE is the kernel.
+ *
+ * The object form `{track,title,body}` keeps working exactly as before (returned as `null` here, so `composeRecordPut`
+ * still fills `kind`/`by`); only an object with NO usable track is refused here, and that refusal names the shape and a
+ * bounded excerpt of what actually arrived instead of letting the word "undefined" travel out of the records face.
+ * Pure, so the promise is assertable without a live host - `apply()` is its only caller.
+ */
+export const progressArgs = (payload, memberId = null) => {
+  const member = memberId === null || memberId === undefined || String(memberId).trim() === '' ? null : String(memberId)
+  const hint = 'send { progress: "<what advanced, and what blocks it>" } - this kernel maps it to ONE progress row (track "progress", title from the first line, body the whole text, settled, authored by the turn member) - or the documented object { progress: { track: "progress", title, body } }. Other progress tracks (routes / obstacles / rejected / state) are written with the tool vibe_v5_record_progress { member, track, content }'
+  if (typeof payload === 'string') {
+    const text = payload.trim()
+    if (text !== '') {
+      const firstLine = String(text.split(/\r?\n/).find((line) => line.trim() !== '') || '').trim()
+      const title = firstLine === '' ? 'progress progress' : firstLine.slice(0, 80)
+      return {
+        ok: true,
+        args: [{ track: 'progress', kind: 'progress', title, body: text, settled: true, by: member }],
+        coerced: {
+          field: 'progress',
+          from: 'string',
+          to: 'progress row {track:"progress", title:<first line, <=80 chars>, body:<the text>}',
+          why: 'the reply catalogue teaches `progress` as TEXT while the records face reads an object: the string is the taught form, so it is mapped to one settled progress row (title from the first non-empty line) instead of refusing the member who followed the prompt. The row is complete - nothing is written that the object form would not write.',
+        },
+      }
+    }
+  }
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    // A usable track name means the object form: leave it to composeRecordPut, which translates track->kind and adds
+    // the turn's author. Refusing here would duplicate the records face's own named refusal.
+    if (typeof payload.track === 'string' && payload.track.trim() !== '') return null
+  }
+  // ★ THE REFUSAL NAMES WHAT ARRIVED: shape + a bounded excerpt, never the literal word a serializer prints for a
+  // missing value (that word is what A2 flags).
+  let shape
+  if (payload === null) shape = 'null'
+  else if (payload === undefined) shape = 'nothing (the field is missing its value)'
+  else if (Array.isArray(payload)) shape = 'array(' + String(payload.length) + ')'
+  else if (typeof payload === 'object') shape = 'object{' + Object.keys(payload).slice(0, 8).join(', ') + (Object.keys(payload).length > 8 ? ', …' : '') + '}'
+  else if (typeof payload === 'string') shape = 'an empty string'
+  else shape = typeof payload
+  let excerpt = null
+  try {
+    const raw = typeof payload === 'string' ? payload : JSON.stringify(payload)
+    if (typeof raw === 'string') excerpt = raw.slice(0, 60)
+  } catch (e) { excerpt = null }
+  return {
+    ok: false,
+    reason: 'progress-shape',
+    code: 'VMU_INVALID_ARGUMENT',
+    missing: ['track'],
+    message: 'the progress reply field cannot be dispatched: it holds ' + shape
+      + (excerpt === null || excerpt === '' ? '' : ' (first 60 chars: ' + JSON.stringify(excerpt) + ')')
+      + ' and names no track, so no progress row was written - the field is neither the taught text nor an object with {track,title,body}',
+    hint,
+  }
+}
+
 // ★ PHASE 12 / live run 35 item ② (second half): WHAT A THROWING APPLY DOES TO THE HELD TURN. It consumes it and does NOT
 // re-open it (the reply was partially applied, so re-opening would silently re-run those effects) - and until this
 // existed, NOTHING said so: the member's next reply read `VMU_TURN_NO_PENDING_MEMBER`, i.e. "there is nothing to answer"
@@ -4555,8 +4769,14 @@ export const selectionReadingsOf = (heldPrompt, explicitIds) => {
   const heldMember = heldPrompt && typeof heldPrompt.member === 'string' && heldPrompt.member !== '' ? heldPrompt.member : null
   const heldTurn = heldPrompt && heldPrompt.turnId !== undefined && heldPrompt.turnId !== null ? heldPrompt.turnId : null
   const dropped = heldMember !== null && ids.length > 0 && !ids.includes(heldMember)
+  const heldMeeting = heldPrompt && typeof heldPrompt.meeting === 'string' && heldPrompt.meeting !== '' ? heldPrompt.meeting : null
   return {
-    pending: heldMember === null ? null : { turn: heldTurn, member: heldMember },
+    // ★ E12 / task-19: the parked prompt's MEETING is part of the reading. Without it this row said "you are holding
+    // turn t-3 for m1" and stopped there, so a caller could not tell which meeting the answer they are about to send
+    // will be recorded in - the binding was real (it is on the prompt) but invisible on the receipt that hands the
+    // prompt over. `pendingMeeting` is named separately from `pending.meeting` so a reader never has to guess which
+    // of the two objects owns the fact.
+    pending: heldMember === null ? null : { turn: heldTurn, member: heldMember, meeting: heldMeeting },
     // ★★ LIVE RUN 28 observation 2 (the institute's own report): `awaiting:true` sat beside `"pending":null` and the reader
     // had to work out that the two describe different turns. `pending` is the prompt the CALLER is still holding (the one a
     // later call would supersede); the round this call actually returns is named by `memberPrompt.turnId`. The field stays
@@ -4567,7 +4787,7 @@ export const selectionReadingsOf = (heldPrompt, explicitIds) => {
       ? { requested: ids, pending: heldTurn, pendingMember: heldMember,
           reason: 'an unanswered prompt for ' + heldMember + ' is still held by the caller: `members` selects who receives the NEXT prompt, so this call drops that pending turn' }
       : null,
-    superseded: dropped ? { turn: heldTurn, member: heldMember } : null,
+    superseded: dropped ? { turn: heldTurn, member: heldMember, meeting: heldMeeting } : null,
   }
 }
 

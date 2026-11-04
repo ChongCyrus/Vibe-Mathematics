@@ -27,7 +27,7 @@ import { resolveTurnMember } from '../host-pack-tools.js'
  * kept at module scope because the refusal has to say it out loud, and a test has to be able to read it without
  * assembling a kernel.
  */
-export const SERVICE_CROSSING_ACTIONS = Object.freeze(['speak', 'hand', 'hands', 'invite', 'invitedspeak', 'order', 'attend', 'admit', 'status', 'summary', 'close', 'extendlimit', 'proceed', 'second', 'withdraw', 'flow', 'overrideorder'])
+export const SERVICE_CROSSING_ACTIONS = Object.freeze(['speak', 'hand', 'hands', 'invite', 'invitedspeak', 'order', 'attend', 'admit', 'status', 'summary', 'close', 'extend', 'extendlimit', 'proceed', 'second', 'withdraw', 'flow', 'overrideorder'])
 
 /**
  * ★ RUN 84: a primitive action asked for a meeting that lives in the SERVICE registry used to read
@@ -157,7 +157,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
       description: 'vmu 会议/表决面：action=list|types|open|speak|silent|hand|refuse|invite|invitedspeak|attend|admit|end|aggregation|complete|phase|status|summary|snapshot|close|extend|lapse|revokelapse|ballot|vote|tally|reopen|freeze|unfreeze|boxopen|boxcast|boxclose|boxreopen|boxlapse|boxrevokelapse|flow|overrideorder。' +
         '会议与表决是**逐对象原语**（内核给工厂、pack 给政策）；本工具只用**内核已登记的实例 id** 寻址（未知 id 具名拒）。' +
         '★ **A2（轮 1）：一个会议对象，两个面都能寻址。** `list` 返回两套注册表：`meetings`（原语）、`serviceMeetings`（`vmu.meetings` 服务，即 `vibe_v5_meeting` 建的那些）、`unionMeetings`（并集）；`status`/`speak`/`close` **先找原语、找不到再找服务**（服务侧的 `status` 带 `registry:"service"` 与动议视图，`speak` 走服务的发言面，`close` 走服务的收束并**进归档**，回执带 `registry` 与 `closeSemantics`）。两处都没有 ⇒ 具名 `VMU_NO_SUCH_OBJECT`，hint **逐条列出两个 id 空间**。' +
-        '★ **D9（轮 12）：邀请/举手/发言序在 SERVICE 会议上真的可达。** `hand`（成员**自荐**入发言队列）、`invite`（**只有主席**：`member` 单个或 `members` 数组**按给定顺序批量**入队，回执 `order` 读回真实队列）、`invitedspeak`（走服务的发言面，回执带 `wasQueued` 说明他是否真在队列里）、`order`（**只读**发言序 `{mode,source,order,queueOpen}`）、`attend`（**发言的前提**：服务的 `speak` 要求在场，而 `open` 只让主席在席）。这五个 action **先找原语、找不到再找服务**，服务侧回执带 `registry:"service"`；**邀请≠签到**（邀请不改 quorum，被邀者须自己 `attend` 后才 `speak`）。`hands` 的**队列管理**（grant/revoke/clear）在服务面上**不存在**，因此**具名拒**并说明缺哪块，绝不假装成功。' +
+        '★ **D9（轮 12）：邀请/举手/发言序在 SERVICE 会议上真的可达。** `hand`（成员**自荐**入发言队列）、`invite`（**只有主席**：`member` 单个或 `members` 数组**按给定顺序批量**入队，回执 `order` 读回真实队列）、`invitedspeak`（走服务的发言面，回执带 `wasQueued` 说明他是否真在队列里）、`order`（**读**发言序 `{mode,source,order,queueOpen}`；★ RUN 229 起**给 `members` 就是写**：主席按给定顺序**重排**该会发言队列，回执带 `before/after/moved/dropped`，缺席席位具名拒并给出 attend/admit 的补救）、`attend`（**发言的前提**：服务的 `speak` 要求在场，而 `open` 只让主席在席）。这五个 action **先找原语、找不到再找服务**，服务侧回执带 `registry:"service"`；**邀请≠签到**（邀请不改 quorum，被邀者须自己 `attend` 后才 `speak`）。`hands` 的**队列管理**（grant/revoke/clear）在服务面上**不存在**，因此**具名拒**并说明缺哪块，绝不假装成功。' +
         // ★★★ RUN 225-B: `admit` — the CHAIR-ONLY door for 迟到入席. The policy is declared per meeting at convene
         // (`lateAdmission: "open"|"chair"|"refuse"`); under "chair" a late `attend` does NOT seat the member, it holds it
         // in the meeting own `pendingLate` list, and only the chair may call this action. The receipt names who admitted
@@ -176,7 +176,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         meeting: param('string', '会议 id 的【别名】：与 id 同义（两者都接受；同时给且不一致 ⇒ 具名拒）。ballot 用它把票绑定到服务会议，见 summary/close 与 ballot 的读数'),
         ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
         member: param('string', '成员 id（speak/silent/hand/refuse/attend/admit/invitedspeak/extend/vote/boxcast 必填；invite 用它邀一个人——批量用 members）'),
-        members: param('array', 'invite 的**批量形**：按数组顺序把一串成员放进发言队列（「批量指定成员按一定顺序发言」）。与 member 互斥（同时给 ⇒ 具名拒）；顺序就是队列顺序，回执 order 读回真实队列'),
+        members: param('array', 'invite 的**批量形**：按数组顺序把一串成员放进发言队列（「批量指定成员按一定顺序发言」）。与 member 互斥（同时给 ⇒ 具名拒）；顺序就是队列顺序，回执 order 读回真实队列。★ 在 action=order 上它是**重排**：按给定顺序整体替换队列（主席专属，缺席席位具名拒，回执给 before/after/moved/dropped）'),
         text: param('string', '发言内容（speak/refuse/invitedspeak 必填）'),
         reason: param('string', 'silent/close/reopen/refuse/end/freeze/unfreeze/boxreopen/**revokelapse/boxrevokelapse** 的原因（end 与两个撤销必填：无理由的结束/撤销正是这条规则要防的静默动作）'),
         // ★ RUN 125: `force` was not declared on this face at all, so the ONE thing the primitive close needs to end a
@@ -199,8 +199,8 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         // Round 8 (A): the hand-queue management face (chair-only, audited; clear/revoke need a reason).
         op: param('string', 'hands：grant｜revoke｜clear｜list', { enum: ['grant', 'revoke', 'clear', 'list'] }),
         scope: param('string', 'hands clear/revoke 的作用域（all｜round）', { enum: ['all', 'round'] }),
-        why: param('string', 'invite 的理由（必填：邀请必须可审计，v5r meeting_invite 的口径）；flow/overrideorder 也读 reason 作理由（必填）'),
-        by: param('string', 'invite/invitedspeak/end 的执行人（审计事实）；**服务会议的 invite 必填且必须等于该会议的主席**（权限只在看得见席位的那一层执行）；flow/overrideorder 必填且必须是该会议的主席'),
+        why: param('string', 'invite 的理由（必填：邀请必须可审计，v5r meeting_invite 的口径）；flow/overrideorder 也读 reason 作理由（必填）；action=order 重排时 reason 作为可选理由记进 minutes'),
+        by: param('string', 'invite/invitedspeak/end 的执行人（审计事实）；**服务会议的 invite 必填且必须等于该会议的主席**（权限只在看得见席位的那一层执行）；flow/overrideorder 必填且必须是该会议的主席；action=order 重排发言序时必填且必须是该会主席（省略 actor 时才退回 actor）'),
         actor: param('string', '谁在动作（审计事实）：true 的政策下 close/extendlimit/admit 必须给，且必须等于该会议的主席（vmu.meetings.closeRequiresChair/extendRequiresChair；admit 无条件只认主席）；省略时 close 退回到 by，再退回到 member（同一个人的三种写法，不是猜测）'),
         // ★ 会议级延长（规则「院士可延长会议时长上界」）。★ 与 `extend` 区分：`extend` 是【发言】延长，
         // 读 speechExtendMs/Max；`extendlimit` 是【会议墙钟上界】延长，读 extendCeilingMs。两个上界两个面。
@@ -904,20 +904,32 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           }
           // ★ D9: the READ side of the floor. `queue`/`invite` write the order; without this action the order could be
           // written and never read back, and the batched-invitation ordering claim would be unfalsifiable.
+          // ★★ RUN 229 / E16 (sim finding C): the WRITE side now exists too. This branch used to refuse
+          // `member`/`members` unconditionally ("this action has no write path"), which left 规则 L50's 「批量指定成员
+          // 按一定顺序发言」 reachable only at an EMPTY queue (invite) and never as a REORDER. The chair's batch order is
+          // the SERVICE face's `order({ members })`; the no-members call still returns EXACTLY the old read view
+          // (`svc.orderView`, same field names), so a caller who only reads sees nothing new.
           if (action === 'order') {
             const pid = sid(id)
             if (!pid) return meetingFieldRefusal('order')
-            // ★★ RUN 163 / live-run-11 card rec-299: `order` is a READ of the floor queue, and it used to SILENTLY IGNORE
-            // `member`/`members` — an agent passed members:["r-1","r-2"] expecting a reorder, got the unchanged queue
-            // back with ok:true, and reported the API as broken. A parameter that is declared for a neighbouring action
-            // and discarded here is exactly the "two readings of one call" this repository keeps removing.
             const orderWantsMember = member !== undefined && member !== null && String(member) !== ''
-            if (orderWantsMember || Array.isArray(members)) {
-              return refused('VMU_INVALID_ARGUMENT',
-                'action order only READS the floor queue: `member`/`members` do not reorder anything here (this action has no write path)',
-                'to put members on the floor in a given order the CHAIR uses action=invite { id, by:"<chair>", why:"…", members:["r-1","r-2"] } — that writes the queue in EXACTLY the given order; to change the order MODE the chair uses action=flow … / action=overrideorder …, which need `vmu.meetings.orderMode` declared (a v5r deployment does not declare it, so they are refused by name)')
-            }
+            const orderList = Array.isArray(members) ? members : (orderWantsMember ? [member] : null)
             const svc = svcOf()
+            if (orderList !== null) {
+              if (!Array.isArray(orderList) || orderList.length === 0) {
+                return refused('VMU_INVALID_ARGUMENT', 'action order needs a non-empty `members` list to reorder the floor',
+                  'pass members:["r-1","r-2"] in the order they should speak (chair only), or omit members to READ the queue')
+              }
+              if (svc && typeof svc.order === 'function' && serviceHas(pid)) {
+                return Object.assign({ ok: true, action, id: pid, registry: 'service' },
+                  svc.order({ meeting: pid, members: orderList, by: by || null, actor: actor || null, why: reason || '' }))
+              }
+              if (kernel.liveMeeting(pid)) {
+                return refused('VMU_INVALID_ARGUMENT', 'order with members reorders the floor QUEUE, which only a service meeting has; ' + pid + ' is a primitive meeting',
+                  'a primitive meeting has a per-round ask list instead of a floor order: manage it with action=hand / action=hands (grant/revoke/clear) — those DO write on the primitive face')
+              }
+              throw noSuchMeeting(pid)
+            }
             if (svc && typeof svc.orderView === 'function' && serviceHas(pid)) {
               return Object.assign({ ok: true, action, id: pid, registry: 'service' }, svc.orderView({ meeting: pid }))
             }
@@ -977,7 +989,32 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           }
           if (action === 'leaverequests') return Object.assign({ ok: true, action, id }, live().leaveRequests({ meeting: need(id, 'id') }))
           if (action === 'extend') {
-            return Object.assign({ ok: true, action, id }, live().extend({ meeting: need(id, 'id'), member: need(member, 'member'), ms: ms === undefined ? null : ms, by: by || null }))
+            // ★★ RUN 230 (task-20): `extend` is a SPEECH extension, and it now CROSSES the registry boundary the same
+            // way `speak`/`attend`/`order` do. Measured before this branch: a service meeting answered
+            // `VMU_REGISTRY_BOUNDARY` ("addresses the PRIMITIVE registry only and never crosses") while the service
+            // face held a working `extend` with NO caller, and a primitive meeting answered `VMU_STATE` with a raw
+            // TypeError ("live(...).extend is not a function") because no primitive meeting object has the method.
+            // The two bounds are named apart in the receipt: `extend` moves the SPEECH budget (speechExtendMs/Max),
+            // `extendlimit` moves the MEETING wall clock (wallLimitMs/extendedMs).
+            const pid = sid(id)
+            const svc = svcOf()
+            if (pid && svc && typeof svc.extend === 'function' && serviceHas(pid)) {
+              const out = svc.extend({
+                meeting: pid,
+                member: need(member, 'member'),
+                ms: ms === undefined ? null : ms,
+                actor: actor === undefined ? (by || null) : actor,
+              })
+              return Object.assign({ ok: true, action, id: pid, registry: 'service', extendMeans: out.extendMeans || null }, out)
+            }
+            const prim = pid ? kernel.liveMeeting(pid) : null
+            if (!prim) throw noSuchMeeting(id)
+            if (typeof prim.extend !== 'function') {
+              return refused('VMU_INVALID_ARGUMENT', 'meeting ' + pid + ' is a PRIMITIVE meeting, and a primitive meeting has no speech extension: the speech budget (speechExtendMs/speechExtendMax/speechMaxMs) lives on the meetings SERVICE',
+                'convene the meeting through the pack (vibe_v5_meeting { type, agenda }) so it exists in the service, then action="extend"; action="extendlimit" (the MEETING wall bound) also needs a service meeting')
+            }
+            const primOut = prim.extend({ meeting: pid, member: need(member, 'member'), ms: ms === undefined ? null : ms, by: by || null })
+            return Object.assign({ ok: true, action, id: pid, registry: 'primitive' }, primOut)
           }
           // ★ PHASE 12 · 会议级延长（规则「院士…延长会议时长上界」）。它只打在 SERVICE 上：
           // 原语注册表的 `extend` 是【发言】延长，两者不是同一个上界。名字分开写，避免"同一个词两种语义"。

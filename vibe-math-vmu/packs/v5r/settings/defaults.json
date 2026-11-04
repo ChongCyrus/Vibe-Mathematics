@@ -37,6 +37,9 @@
 
     "vmu.mailbox.wakeBudget": 1,
 
+    "_reportTransport": "RUN 230-A (decision memo `docs/acceptance/sim-audit-decisions.md` §6 row 18): THIS INSTITUTION SHIPS THE DURABLE TRANSPORT ON. The framework default for `vmu.report.transport` stays '' (no seam, VMU_REPORT_NO_TRANSPORT byte-for-byte), which is why 'no transport' stays a distinguishable state. What the preset adds is the deployment decision: a fired report becomes ONE durable mail row in the office seat's inbox. WHY THE VALUE LAYER CAN CARRY THIS AND THE MANIFEST CANNOT: `packs/*/settings/defaults.json` is folded BEFORE the kernel is constructed (vibe-math-vmu.js:434 folds, :596 constructs the transport), while manifest keys are applied AFTER construction — a transport key on the manifest would look configured and do nothing. Delivery is NOT waking: receipts keep drives:false / neverDrives:true and say wakeMeans='durable-mail-in-office-inbox; no loop drive'; the office reads the row on its next turn. A deployment that wants the old named refusal back declares transport:'' in config.vmu and wins over this default.",
+    "vmu.report.transport": "mailbox",
+
     "vmu.panel.deviationPolicy": "record",
 
     "vmu.resume.projections": ["members", "tasks", "meetings", "ballotbox", "budget", "phase", "work", "chat", "panel", "human"],

@@ -102,7 +102,7 @@
 | `vmu.collab` | **9** | **7** | `collab.js`(7) | ⚠️ **部分（余 2 条契约薄，见 §L234；原 10 含 1 个服务名，轮 270 剔除）** |
 | `vmu.dissemination` | **10** | **10** | `publication.js`(9) | ★ **已接线（10/10）**（★ 轮 14 更正：原先记的 **12** 里含**两个幽灵键** —— 服务 `vmu.dissemination` 的 `impact()`／`mediaRequest()` 两种调用，它们在源卷里**每一次提及都是调用形** ✗✓，却被生成器当成设置键登记为 `planned:true, def:null` ⇒ **设置表承诺了不存在的旋钮**；轮 14 给生成器（＋独立复算的测试）加了"**后随 `(` 即调用**"规则 ⇒ 幽灵键消失、声明与接线同为 **10** ✓ —— 9 条**已接线 ✓** ＋ `exaggerationWords` ✓） |
 | `vmu.admission` | 12 | **12** | `recruit.js`(12) | ★ **已接线 ✓（轮 267 接了余下 4 条，当时漏更此表 ✗，轮 271 修正）** |
-| `vmu.tasks` | **4** | **4** | `tasks.js`+`index.js`(4) | ★ **已接线 ✓（轮 270 剔除 1 个服务名后分母修正为 2 ✓；★ 轮 10 重新实测：core 落 `vmu.tasks.memberMayRejectAssign`（`kernel/tasks.js:111` ＋ `kernel/index.js:667` 的 `objectAssign()`）⇒ 分母与分子同为 **4** ✓）** |
+| `vmu.tasks` | **4** | **4** | `tasks.js`+`index.js`(4) | ★ **已接线 ✓（轮 270 剔除 1 个服务名后分母修正为 2 ✓；★ 轮 10 重新实测：core 落 `vmu.tasks.memberMayRejectAssign`（`kernel/tasks.js:433,456` ＋ `kernel/index.js:667` 的 `objectAssign()`）⇒ 分母与分子同为 **4** ✓）** |
 | `vmu.partnership` | 6 | **6** | `partnership.js`(6) | ★ **已接线 ✓（轮 276 建面：`registerEntity`／`bindAccount`／`validateInvoice`，五码齐 ✓）** |
 | `vmu.license` | 4 | **4** | `publication.js`(4) | ★ **已接线 ✓（轮 274 接线：`default`／`incompatiblePolicy` 执法，`codeDefault`／`attributionRequired` 报出）** |
 | `vmu.review` | 4 | **4** | `records.js`(1) ＋ `reviewers.js`(3) | ★ **已接线 ✓（轮 278 `rebuttalRequired` ＋ 轮 279 `mode`／`conflictPolicy`／`quorum`）** |

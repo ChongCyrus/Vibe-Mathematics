@@ -1043,7 +1043,7 @@ const CORE_DEFS = Object.freeze([
   // fired report carried `VMU_REPORT_NO_TRANSPORT`. The value `'mailbox'` installs the real transport
   // (`kernel/reporttransport.js`: a report becomes a durable mail row for the office seat). Default `''` keeps the named
   // refusal: "no transport" must stay a state a receipt can tell apart from "queued in the office inbox".
-  { key: 'vmu.report.transport', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '汇报投递通道：默认空＝未接线（每次 firing 以 VMU_REPORT_NO_TRANSPORT 具名拒，但仍在留痕里）；`mailbox`＝把汇报写成办公室席位的一封持久邮件（kernel/reporttransport.js，回报里的 delivered 意指"已入队到所办邮箱"，不是"所办已读"）' },
+  { key: 'vmu.report.transport', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '汇报投递通道：框架默认空＝未接线（每次 firing 以 VMU_REPORT_NO_TRANSPORT 具名拒，但仍在留痕里；★ RUN 230-A：此时 status() 带 wakeMeans="durable-mail-in-office-inbox; no loop drive" 与 transportEnables=点名本键与 config.deliver 的确切开启句）；`mailbox`＝把汇报写成办公室席位的一封持久邮件（kernel/reporttransport.js，回报里的 delivered 意指"已入队到所办邮箱"，不是"所办已读"；★ v5r 预设已在 packs/v5r/settings/defaults.json 把它设成 "mailbox"——价值层在构造前折叠（vibe-math-vmu.js:434→:596），所以真的生效，而 pack MANIFEST 构造后才应用、写那里会"看起来配置了其实没做"；投递≠唤醒，drives/neverDrives 不变）' },
   { key: 'vmu.report.feedback', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: '汇报反馈回路开关（A1 第一步）：默认 false＝零机制；开＝把汇报的受众与回执经宿主动态 context 回给模型（投递调用已由入口在 Part B 接线（已落地）—— 未接线期间回执以真话具名）' },
   { key: 'vmu.report.audience', type: 'string', def: '', hot: HOT.H1, who: 'office', doc: '汇报的受众（谁应当收到）：默认空串；开关开而受众为空时具名失败，不静默' },
   { key: 'vmu.report.minIntervalMs', type: 'natural', def: 60000, hot: HOT.H1, who: 'office', doc: '周期汇报的最小周期；低于即钳到此值并在回执里报出（钳制不静默）' },
@@ -1473,6 +1473,7 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.tenure.tenureDecisionWindowDays', type: 'natural', def: 60, hot: HOT.H1, who: 'office', doc: "已接线（tenure.js 读取）；默认值取自模块源码" },
   { key: 'vmu.tenure.tenureQuorum', type: 'natural', def: 3, hot: HOT.H1, who: 'office', doc: "已接线（tenure.js 读取）；默认值取自模块源码" },
   { key: 'vmu.tenure.tenureTrackMonths', type: 'natural', def: 36, hot: HOT.H1, who: 'office', doc: "已接线（tenure.js 读取）；默认值取自模块源码" },
+  { key: 'vmu.turn.deliverTurn', type: 'object', def: null, hot: HOT.H1, who: 'office', doc: "已接线（index.js 读取）；默认值取自模块源码；★这不是可填写的配置值而是**交付接缝**：它的值是一个函数，只能由部署代码注入（无法写进 JSON）。构造期解析一次，优先级：内核选项 deliverTurn > host.effects.deliverTurn > host.deliverTurn > 设置里的本键 > vmu.turn.deliverMode=caller（内核自建 caller 接缝）> 无接缝（具名拒 VMU_ENGINE_UNAVAILABLE）；实际生效的一条由 status().seams.turnDeliverSource 分报。；★ 类型推断不出（具名回落 object：null-literal — 源码字面量是 `null`（未设哨兵）⇒ 无类型证据；这个键的值是**函数接缝**（交付一个成员回合并返回它的回答），不是能写进 JSON 的配置值）" },
   { key: 'vmu.workflow.arbitrationMode', type: 'string', def: 'off', hot: HOT.H1, who: 'office', doc: "已接线（workflow.js 读取）；默认值取自模块源码" },
   { key: 'vmu.workflow.checkpointEveryMs', type: 'natural', def: 0, hot: HOT.H1, who: 'office', doc: "已接线（workflow.js 读取）；默认值取自模块源码" },
   { key: 'vmu.workflow.claimRequired', type: 'boolean', def: false, hot: HOT.H1, who: 'office', doc: "已接线（workflow.js 读取）；默认值取自模块源码" },
@@ -1877,6 +1878,28 @@ export function resolveSettings(layers = [], { onInvalid = 'refuse' } = {}) {
     }
   })
   return { values: out, accepted, provenance, rejected }
+}
+
+/**
+ * THE DECLARED DEFAULTS, AS THE SINGLE SOURCE EVERY MEASURING TOOL READS.
+ *
+ * WHY THIS EXISTS (RUN 226 family, "a ruler that measured the wrong thing"). Two readers needed "the settings a
+ * deployment starts from": `scripts/audit-prompt-budget.mjs` (the gate) and `scripts/sim/harness.mjs` (the
+ * simulator). The gate PARSED this file with a regular expression and the simulator tried to import a `defaultsOf`
+ * that did not exist, swallowed the failed import with `.catch`, and assembled the prompt from `{}` - so the gate
+ * measured 31 606 characters while the simulator measured 30 302 for the SAME seat, and the simulator reported
+ * headroom that does not exist. Neither number was a measurement of the deployed prompt; they were a measurement of
+ * two different approximations of it.
+ *
+ * The fix is not a better regex or a second copy of the table: it is that the DEFAULTS have a named reader on the
+ * declaration they come from. `resolveSettings([])` already returns exactly `{ [d.key]: d.def }` for every declared
+ * key (line above), so this is that expression with a name - not a second opinion about defaults.
+ *
+ * It is deliberately NOT frozen: callers layer over it (`Object.assign({}, defaultsOf(), overrides)`), and freezing
+ * would make the shared value surprise a caller that tries to annotate what it read.
+ */
+export function defaultsOf() {
+  return resolveSettings([]).values
 }
 
 

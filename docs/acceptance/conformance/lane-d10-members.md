@@ -9,7 +9,7 @@
 | # | 规则 | 判定 | 一句话证据 |
 |---|---|---|---|
 | D10-1 | 投票板：选项式＋每票「最多/最少选几项」 | ✅ 已实现 | 规则校验 `ballotbox.js:169,178-200`；**越限具名拒** `ballotbox.js:271-277`（`VMU_BALLOT_CHOICE_COUNT`）；pack 面把 `min/max/mode/min_votes/allow_revote` **翻译进** rules 并回报 applied/unapplied `packs/v5r/tools.js:636-648` |
-| D10-2 | 任务板设置与认领/交派 | ⚠️ 部分 | 面覆盖全：`kit/extras.js:96-129`（claim/reassign/assign/transition/complete/reopen/set_dependencies）＋真交派 `packs/v5r/tools.js:258-290`；**但 claim/assign 的审计事实没有 `by`**：`kernel/tasks.js:302` 只记 `who`，`kit/extras.js:100-111` 也不收 `by`（`setPriority` 反而记了 `by`：`kernel/tasks.js:278`） |
+| D10-2 | 任务板设置与认领/交派 | ✅ 已实现（RUN 229 闭合 `by` 缺口） | 面覆盖全：`kit/extras.js:96-129`（claim/reassign/assign/transition/complete/reopen/set_dependencies）＋真交派 `packs/v5r/tools.js:258-290`；**claim/assign 的审计事实曾没有 `by`**：`kernel/tasks.js:428` 原只记 `who`、`kit/extras.js:100-111` 也不收 `by`（`setPriority` 反而记了 `by`：`kernel/tasks.js:382`）★ RUN 229 起 `record('task-assigned', {id, who, by, bySource, state})` 已记操作者与来源 |
 | D10-3 | 群聊式交流（院士群管／权限／发言次数／禁言） | ✅ 已实现 | 六个键声明并接线 `kernel/chat.js:31-35,40-42`；管理动作具名拒 `:280-290`（`VMU_CHAT_NOT_ADMIN`）；**禁言具名拒** `:341-343`（`VMU_CHAT_MUTED`，带解除时刻）；**配额具名拒** `:349-357`（`VMU_CHAT_QUOTA_EXCEEDED`，带 used/limit/window） |
 | D10-4 | 群聊／会议之间是否有第二套并行机制 | ⚠️ 部分（有，但作用域不同） | 群聊侧 `chat.js:31-35`（admins/speakQuota/muteDefaultMs/窗口）；会议侧 `meetings.js:179-182`（`speechQuotaPerMember`／`speechMaxMs`／`disciplineMuteMs`）⇒ 两套地址**不同对象**（会话发言 vs 会议发言），非同一件事双口径；`chat.js:7-8` 自述 v5r 群聊**没有** quota/mute，历史上是空白而非重复 |
 | A1 | 所办＝主代理：用户助手、自动唤起汇报、媒介、可自然语言设参控进程 | ✅ 机制＋消费者 | office 声音投递 `packs/v5r/tools.js:49`（`vibe_v5_message` → mailbox `send` as office）、assign/nudge 通知 `:287,332`；通知族 `packs/v5r/notices.js:2-4`**（"自动唤起汇报"的具体唤起点未核，见 §未核项）** |
@@ -20,7 +20,7 @@
 ## 额外发现（单列一节）
 
 1. **`VMU_CHAT_CAP_REACHED` 是"登记但提案未实现"，不是漂移**：`docs/03-interface-contract.md:386` 的 R2 行与 `:1185` §8.1「提案 ⛔ … 仅登记在表里」一致；代码里确实没有该码。**不是缺陷**（文档已自述），但如果合账需要"聊天环形上限"这条，它是**未实现项**。
-2. **D10-2 的审计事实缺口（建议修）**：`claim`/`assign` 走 `kernel/tasks.js:286-302`，`record('task-assigned', { id, who, state })` **只有被指派人**；而 `setPriority` 有 `by`（`:278`）、`objectAssign` 有 `by`（`:329-337`）。⇒ 谁认领/谁交派**不可追溯**。修法：`assign(id, who, { by })` 把 `by` 记进 record（内核 1 处＋面 1 处传参），并加断言"record 含 by"。
+2. **D10-2 的审计事实缺口（★ RUN 229 已修）**：`claim`/`assign` 走 `kernel/tasks.js:401-428`，`record('task-assigned', { id, who, state })` **只有被指派人**；而 `setPriority` 有 `by`（`:382`）、`objectAssign` 有 `by`（`:452-463`）。⇒ 谁认领/谁交派**不可追溯**。修法：`assign(id, who, { by })` 把 `by` 记进 record（内核 1 处＋面 1 处传参），并加断言"record 含 by"。★ RUN 229 已按此落地（record 现含 `by`/`bySource`，`kernel/tasks.js:428`；门禁 `tests/vmu-tasks-attribution.test.mjs`）。
 3. **`eligibleSeats` 的默认值方向**：schema 默认 `[]`（`settings/schema.js:1101`），`meetings.js:356` 在空列表时**回落到全名册**。v5r 的声明我只在 `packs/v5r/tools.js:436,457`（注释/逻辑）见到，**没在 pack 的 settings 文件里找到声明** ⇒ 若真未声明，temp 会被计入"可表决宇宙"。这是 A4「默认不参会」与 A2 的边界问题，建议下一轮确认 pack 是否声明。
 
 ## 逐行展开
@@ -33,12 +33,13 @@
 - **反证**：`mode:'single'` 下未给 `maxChoices` ⇒ 默认 1（`ballotbox.js:200`），超选即拒；标量 `choice` 走同一路径（`:268-281`）；不在票面的选项 `VMU_CONFLICT`（`:279-281`）。
 - **没核到的部分**：没有在**活宿主**里用真实工具调用跑一遍 `vibe_v5_poll_open/vote`（本轮只做静态证据＋既有套件）；`multi` + `maxChoices` 缺省为 `Infinity`（`:273`）时"无上限"是否有回执自述，未核。
 
-### D10-2 任务板（⚠️ 部分）
+### D10-2 任务板（✅ 已实现；RUN 229 闭合了审计缺口）
 
-- **正证**：`vibe_v5_task_update` 的 action 全集在 handler 里逐条断言 `kit/extras.js:96-99`（未知 action 具名拒），`claim` `:100-103`、`reassign|assign` `:105-111`、`transition` `:116-120`、`complete|reopen` `:122-125`、其余按 `setDependencies` `:127-128`；真交派另有 `vibe_v5_assign`（`packs/v5r/tools.js:258-290`，含 mailbox 通知 `:287`）；`setPriority` 内核有独立方法且**记录 by**（`kernel/tasks.js:267,278`）。
+- **正证**：`vibe_v5_task_update` 的 action 全集在 handler 里逐条断言 `kit/extras.js:96-99`（未知 action 具名拒），`claim` `:100-103`、`reassign|assign` `:105-111`、`transition` `:116-120`、`complete|reopen` `:122-125`、其余按 `setDependencies` `:127-128`；真交派另有 `vibe_v5_assign`（`packs/v5r/tools.js:258-290`，含 mailbox 通知 `:287`）；`setPriority` 内核有独立方法且**记录 by**（`kernel/tasks.js:371,382`）。
 - **反证**：`claim` 必须给 `member`（`kit/extras.js:101`），`assign/reassign` 必须给 `owner`（`:107-109`），否则具名拒；`transition` 的合法性由内核转移表判（`:113-115`），面不另造表。
-- **缺口（部分）**：`kernel/tasks.js:302` `record('task-assigned', { id, who: t.owner, state })` —— **没有 `by`**；`kit/extras.js:100-111` 也不接收 `by`。⇒ 「谁认领/谁交派」的审计事实缺失（与 `setPriority` 的 `by` 不一致）。
-- **没核到的部分**：`TASK_UPDATE_FACE_OPS` 的字面量内容（只看到用它校验 `:96`，未逐项抄出）；`vibe_v5_task_update` 的 `parameters` 里 `action` 是否有 `enum`（只读了描述行 `:1084`）。
+- **曾经的缺口（★ RUN 229 已闭合）**：`kernel/tasks.js:428` 原为 `record('task-assigned', { id, who: t.owner, state })` —— **没有 `by`**；`kit/extras.js:100-111` 也不接收 `by`，而 `setPriority` 反而记（`:382`）、`objectAssign` 也记（`:452-463`）⇒ 「谁认领/谁交派」不可追溯。RUN 229 已把 record 改成 `{ id, who, by, bySource, state }`（`kernel/tasks.js:428`），`claim` 的 `by` 缺省取 `member`（来源 `caller`）、`assign`/`reassign` 缺省 `by:null, bySource:'unknown'`（内核不许凭空造一个主席、也不许拿被指派人当操作者）；门禁 `tests/vmu-tasks-attribution.test.mjs`（20/0）与 `tests/vmu-run229-blocked-by.test.mjs`（31/0）钉住。⇒ 本行缺口的**判定依据**已消失。
+- **原未核项，现已核**：`TASK_UPDATE_FACE_OPS` 的字面量是 `['claim', 'reassign', 'assign', 'transition', 'complete', 'reopen', 'set_dependencies']`（`kit/extras.js:83`，`Object.freeze`）；`vibe_v5_task_update` 的 `parameters.action` **没有 `enum`**（`packs/v5r/tools.js:6135`），合法性由 `TASK_UPDATE_FACE_OPS.includes` 判（`:96-99`）并逐条具名拒 —— 形状不是 enum，但「未知动作不可能被静默执行」这一条成立，故不判缺口。
+- **仍在期的观察（不属本次判定）**：`kernel/tasks.js` 的 `list()` 投影（`:519-527`）**不含 `priority`**，却按 `(b.priority - a.priority)` 排序（`:521`）⇒ 通过 `vibe_v5_task_list` 看不到优先级，只能从 `vibe_v5_task_get`/排序位置推断。若要把「任务板设置」判得更严，这是下一条该补的面。
 
 ### D10-3 群聊（✅）
 

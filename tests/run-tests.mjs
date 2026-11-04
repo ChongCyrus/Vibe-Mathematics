@@ -72,6 +72,32 @@
  *     stderr). Declaring a SUPERSET of targets is safe; declaring a SUBSET is not - hence the re-derivation.
  *   · ROLLBACK: delete the `planIncremental(suites)` call (and its two consumers) to restore a full sweep.
  *
+ * MUTANT-RESULT CACHE (`GATE_MUTANT_CACHE`, default ON; `0` disables it) — task-9/RUN 227:
+ *   · The mutant families dominate the full sweep's wall time (the three `v5-institute-fixes` shards alone are
+ *     ~510-570 s each), and a family's verdict is a function of
+ *     the SOURCES it mutates plus its own harness - not of the rest of the tree. A family that PASSED is
+ *     therefore cached under a key derived from `sha256` of (a) EVERY declared target file's CONTENT
+ *     (`FAMILY_TARGETS`, the same measured superset `GATE_INCREMENTAL` uses), (b) the `*.mutants.mjs`
+ *     harness's own content, (c) this runner's own content (a runner change invalidates everything) and
+ *     (d) the job's ARGS (the three `v5-institute-fixes` shards are separate keys), (e) node's version.
+ *   · A HIT prints `PASS <family>` with `MUTANTS SKIP (cached <key> <when>)` and counts as PASS; the TOTAL line
+ *     gains `mutant cache: N hit / M miss`, so a cached sweep can NEVER be mistaken for a real one.
+ *   · NEVER MASK A CHANGE: besides the content hashes, an entry records the `mtimeMs` of every target and of
+ *     the harness, and a HIT requires every one of them to be UNCHANGED - so `touch <target>` (same bytes, new
+ *     mtime) is a MISS and the family really runs. A target that cannot be RESOLVED (root or the archived
+ *     preset base) makes its family UNCACHEABLE, so it always runs. Only PASSES are stored: a failure, a
+ *     timeout or an `expectExit` job is never written.
+ *   · ONLY PROVABLY-COVERED FAMILIES ARE CACHED. A family participates only when `familySkippable()` holds
+ *     (declared targets cover everything re-derived from the harness's source). The B-tier families (no
+ *     declared targets / nothing derivable / a derivation that exceeds the declaration) are NEVER cached and
+ *     always run - a cache that guessed would be the very "skip a family that really changed" defect this
+ *     runner's incremental mode was built to avoid.
+ *   · `GATE_RELEASE=1` BYPASSES it (named on stderr): a release sweep must execute every family.
+ *   · DIR: `D:\\_tmp\\gate-mutant-cache\\` (falls back to `%TEMP%\\gate-mutant-cache` when D: is absent);
+ *     `GATE_MUTANT_CACHE_DIR` overrides it. Entries are plain JSON; deleting the directory is a safe ROLLBACK,
+ *     and so is `GATE_MUTANT_CACHE=0` (no code change). The runner itself NEVER deletes repo files and never
+ *     writes inside the repository for this.
+ *
  * HEADSTART (`GATE_HEADSTART_MIN_MS`, default 600000 ms = 10 min; `0` disables it):
  *   · When the longest EXECUTED job's estimate is >= `GATE_HEADSTART_MIN_MS`, that job is started FIRST and
  *     ALONE for up to `GATE_HEADSTART_MS` (default 180000 ms = 3 min) - or until it finishes, whichever
@@ -85,7 +111,8 @@
  *   · ROLLBACK: set `GATE_HEADSTART_MIN_MS=0` (no code change needed).
  */
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync, statSync, mkdirSync, unlinkSync } from 'node:fs'
 import { cpus, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -331,7 +358,14 @@ const QUICK_EXCLUDE = ['mutants', 'audit-math-computation-sensitivity']
 // 37 -> 38, deliberately: `tests/vmu-v5r-verdict-final.test.mjs` joined in phase 12 with the 辩论最终裁决 trigger (the
 // pack tool that reads the chair, calls `rulePropositionProbability` and mails the card owner). Its NAME contains `v5r`,
 // so the curated `v5` prefix picks it up - the same "on purpose" case as S30, not a drifted filter.
-const QUICK_EXPECTED_JOBS = 38
+// 38 -> 24, deliberately (round 230): the ARCHIVED PRESETS left the sweep, so the fourteen curated `v5`-and-friends
+// entries that only exercised an archived preset went with them (`v5-meeting-attribution`, `v5-tool-help`,
+// `math-computation-shared`, `audit-status-report-fields`, `audit-v5-*`, …). The maintained surface is vmu + its v5r
+// pack; the archived presets are covered on demand by `GATE_LEGACY=1`. Verified: every removed entry is in
+// `tests/legacy-suites.txt` and no vmu-named job was dropped (`tests/audit-legacy-scope.test.mjs`).
+const QUICK_EXPECTED_JOBS = 24
+// The same subset when `GATE_LEGACY=1` brings the archived behaviour suites back (38 = before round 230).
+const QUICK_EXPECTED_JOBS_LEGACY = 38
 // `vmu` is the ITERATION subset for developing the vmu framework: the vmu jobs themselves, plus every
 // gate that guards a SHARED surface a vmu change can reach (preset rows and the generated patch,
 // the installer, package membership, README/doc counts, path discipline, artifact docs, the shared
@@ -571,6 +605,166 @@ function planIncremental(list) {
   return { enabled: true, reason: '', baseline, changed, skipped, ranBecause }
 }
 
+// ── MUTANT-RESULT CACHE (task-9): fingerprint, entry, lookup, store ────────────────────────────────
+// One key answers one question: "have these exact bytes, under this exact runner, already passed?" The entry
+// additionally records the mtime of every input, so a TOUCH is a MISS even when the bytes are identical: the
+// cache may replace a RUN, never a CHANGE. Only `storeMutantCacheEntry` writes; a torn/partial entry can only
+// produce a MISS (JSON.parse failure), never a false hit.
+const MUTANT_CACHE_SCHEMA = 'mutant-cache/1'
+const MUTANT_CACHE_VERSION = '1'
+const mutantCacheEnabled = () => String(process.env.GATE_MUTANT_CACHE || '') !== '0'
+function mutantCacheDir() {
+  const explicit = String(process.env.GATE_MUTANT_CACHE_DIR || '').trim()
+  if (explicit) return explicit
+  const preferred = 'D:\\_tmp\\gate-mutant-cache'
+  try { mkdirSync(preferred, { recursive: true }); return preferred } catch (e) { /* D: absent/read-only => %TEMP% */ }
+  const fallback = join(tmpdir(), 'gate-mutant-cache')
+  mkdirSync(fallback, { recursive: true })
+  return fallback
+}
+let runnerDigestCache = null
+/** `sha256` of THIS file: any runner edit invalidates every entry (the harness's own behaviour changed). */
+function runnerDigest() {
+  if (runnerDigestCache === null) {
+    try { runnerDigestCache = createHash('sha256').update(readFileSync(fileURLToPath(import.meta.url))).digest('hex').slice(0, 16) }
+    catch (e) { runnerDigestCache = 'UNREADABLE' }
+  }
+  return runnerDigestCache
+}
+// The archived-preset base, MIRRORED here instead of imported: `tests/run-tests.mutants.mjs` copies this
+// runner into a temp directory and runs that copy's `--self-check`, where a relative import of
+// `./_lib/legacy-presets.mjs` cannot resolve (the copy would die before printing anything and the mutant
+// proof would pass/fail for the wrong reason). These two values MUST match
+// `tests/_lib/legacy-presets.mjs` (`LEGACY_BASE` / `LEGACY_PRESET_NAMES`); the seam stays the harnesses'
+// single source of truth, and this runner only needs to know WHERE a target can live.
+const LEGACY_BASE = (() => {
+  const fromEnv = process.env.VMU_LEGACY_BASE
+  return typeof fromEnv === 'string' && fromEnv.trim() !== '' ? fromEnv.trim() : 'archive/legacy-presets'
+})()
+const LEGACY_PRESET_NAMES = ['vibe-math-v2', 'vibe-math-v3', 'vibe-math-v4', 'vibe-math-v5', 'vibe-math-v5r']
+const legacyFile = (name, rel) => join(REPO, LEGACY_BASE, name, rel)
+/**
+ * WHERE a declared target really lives. The five historical presets are ARCHIVED (G4) and `FAMILY_TARGETS`
+ * still spells them repo-relative, so a target is looked up at the root FIRST and then under the archived
+ * base the harnesses read from - hashing `vibe-math-v4/vibe-math-v4.js` when the bytes live under
+ * `archive/legacy-presets/vibe-math-v4/` would produce a stable "MISSING" hash and a cache that never
+ * notices a real edit. The resolved SHAPE (`root`/`legacy`) is part of the cache key, so moving a preset
+ * between the two locations invalidates every entry as well. An unresolvable target returns null, which
+ * makes its family UNCACHEABLE (it always runs).
+ */
+function resolveTargetFile(rel) {
+  const atRoot = join(REPO, rel)
+  if (existsSync(atRoot)) return { rel, kind: 'root', abs: atRoot }
+  const slash = rel.indexOf('/')
+  if (slash > 0 && LEGACY_PRESET_NAMES.includes(rel.slice(0, slash))) {
+    const abs = legacyFile(rel.slice(0, slash), rel.slice(slash + 1))
+    if (existsSync(abs)) return { rel, kind: 'legacy', abs }
+  }
+  return null
+}
+/** Content + mtime of one RESOLVED file. Only called on a resolution that already proved the file exists. */
+function fingerprintOf(file) {
+  const st = statSync(file.abs)
+  return { hash: createHash('sha256').update(readFileSync(file.abs)).digest('hex'), mtimeMs: Math.round(st.mtimeMs) }
+}
+/**
+ * The cache KEY, as a pure function of what the verdict depends on: the schema/version, the runner's own bytes,
+ * the node version, the harness's path+bytes+args, and every target's resolved location+bytes. MTIMES ARE NOT
+ * PART OF IT on purpose: a touch with identical bytes must reuse the same key and be caught by the entry's
+ * stored mtimes (reason `target-changed:`), so the two proofs stay independent instead of colliding.
+ */
+function mutantPlanKey(parts) {
+  return createHash('sha256').update(parts.join('\n')).digest('hex').slice(0, 20)
+}
+/**
+ * The cache plan for ONE family job, or null when the family must not be cached at all. Coverage comes from
+ * `familySkippable()` - the SAME predicate the incremental planner uses - so the cache and the incremental
+ * skip can never disagree about which families may be replaced by a stored verdict. A target that resolves
+ * NOWHERE makes the family uncacheable (always runs): a cache may not hash a path it could not find, because
+ * a missing target means "I cannot prove what this harness mutates", not "nothing changed".
+ */
+function mutantCachePlan(job) {
+  if (job.eval || !familySkippable(job.file)) return null
+  const resolved = FAMILY_TARGETS[job.file].slice().sort().map(resolveTargetFile)
+  if (resolved.some((r) => r === null)) return null
+  const harnessRel = 'tests/' + job.file
+  const harness = fingerprintOf({ rel: harnessRel, kind: 'root', abs: join(REPO, harnessRel) })
+  const mtimes = {}
+  const kinds = {}
+  const rows = []
+  const parts = [MUTANT_CACHE_SCHEMA, 'v=' + MUTANT_CACHE_VERSION, 'runner=' + runnerDigest(),
+    'node=' + process.version, 'harness=' + harnessRel + ':' + harness.hash, 'args=' + job.args.join(' ')]
+  for (const t of resolved) {
+    const f = fingerprintOf(t)
+    mtimes[t.rel] = f.mtimeMs
+    kinds[t.rel] = t.kind
+    rows.push({ rel: t.rel, kind: t.kind, hash: f.hash })
+    parts.push('target=' + t.kind + ':' + t.rel + ':' + f.hash)
+  }
+  return {
+    key: mutantPlanKey(parts),
+    file: job.file, args: job.args.join(' '), targets: resolved.map((r) => r.rel), mtimes, kinds, rows,
+    harnessHash: harness.hash, harnessMtimeMs: harness.mtimeMs,
+  }
+}
+function mutantCacheEntryPath(dir, plan) { return join(dir, plan.key + '.json') }
+/**
+ * Look a plan up. A hit requires: the same schema/key/identity, a stored PASS, the same harness bytes+mtime,
+ * and EVERY target's stored location AND mtime equal to the current one. Any disagreement is a MISS with a
+ * named reason (`GATE_MUTANT_CACHE_VERBOSE=1` prints it), so a cache never converts a change into a pass.
+ */
+function readMutantCacheEntry(dir, plan) {
+  let entry
+  try { entry = JSON.parse(readFileSync(mutantCacheEntryPath(dir, plan), 'utf8')) }
+  catch (e) { return { hit: false, reason: 'no-entry' } }
+  if (!entry || entry.schema !== MUTANT_CACHE_SCHEMA) return { hit: false, reason: 'schema' }
+  if (entry.key !== plan.key) return { hit: false, reason: 'key' }
+  if (entry.file !== plan.file || entry.args !== plan.args) return { hit: false, reason: 'identity' }
+  if (entry.ok !== true) return { hit: false, reason: 'stored-result-is-not-a-pass' }
+  if (entry.harnessHash !== plan.harnessHash || entry.harnessMtimeMs !== plan.harnessMtimeMs) return { hit: false, reason: 'mutants-harness-changed' }
+  for (const t of plan.targets) {
+    if (!entry.mtimes || entry.mtimes[t] !== plan.mtimes[t]) return { hit: false, reason: 'target-changed:' + t }
+    if (!entry.kinds || entry.kinds[t] !== plan.kinds[t]) return { hit: false, reason: 'target-moved:' + t }
+  }
+  return { hit: true, entry }
+}
+/**
+ * Store a PASS. `ok=false` is a NO-OP by contract (a failure must never become a cache entry), and the caller
+ * passes the REAL verdict so this cannot be forgotten. Returns true when an entry was written.
+ */
+function storeMutantCacheEntry(dir, plan, ms, ok) {
+  if (!ok) return false
+  const entry = {
+    schema: MUTANT_CACHE_SCHEMA, version: MUTANT_CACHE_VERSION, key: plan.key,
+    file: plan.file, args: plan.args, ok: true, ms: Math.round(ms),
+    at: new Date().toISOString(), atMs: Date.now(),
+    runner: runnerDigest(), node: process.version,
+    targets: plan.targets, mtimes: plan.mtimes, kinds: plan.kinds,
+    harnessHash: plan.harnessHash, harnessMtimeMs: plan.harnessMtimeMs,
+  }
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(mutantCacheEntryPath(dir, plan), JSON.stringify(entry, null, 2))
+  return true
+}
+/** Bound the directory: entries are one-per-(content,args) key, so only content churn accumulates them. */
+function pruneMutantCache(dir, keep = 200) {
+  let names
+  try { names = readdirSync(dir).filter((f) => f.endsWith('.json')) } catch (e) { return 0 }
+  if (names.length <= keep) return 0
+  const rows = names.map((f) => { try { return { f, t: statSync(join(dir, f)).mtimeMs } } catch (e) { return { f, t: 0 } } })
+  rows.sort((a, b) => a.t - b.t)
+  let n = 0
+  for (const r of rows.slice(0, rows.length - keep)) { try { unlinkSync(join(dir, r.f)); n++ } catch (e) { /* best effort */ } }
+  return n
+}
+/**
+ * The sweep's cache state. Declared HERE (before the `--self-check` block, which drives `runOne` through the
+ * synthetic pool) and FILLED by the planning block further down, so the reporter can read it from any path.
+ * `hitsByIndex` maps a job index to its hit (printed as PASS + `MUTANTS SKIP`); `freeLabels` lets the head
+ * start know a cached job costs nothing; `plans` is what a finished family stores its PASS under.
+ */
+const mutantCache = { enabled: false, dir: '', hits: 0, misses: 0, plans: new Map(), hitsByIndex: new Map(), freeLabels: new Set() }
+
 // ── HEADSTART: give the longest job a head start alone, then open the second slot ──────────────────
 // Fixes a LOAD-SENSITIVE flake, not a product bug: the heaviest family measured 920 s alone and 969 s
 // beside a heavy peer under the default 2-way gate. Nothing about what runs changes - only WHEN the
@@ -589,14 +783,22 @@ function headstartHoldMs() {
   if (raw === undefined || raw === '') return HEADSTART_DEFAULT_HOLD_MS
   return Math.max(0, Number(raw) || 0)                                   // 0 => release immediately
 }
-/** Index of the longest EXECUTED job (skipped families cost nothing => they are not isolated). */
+/** Index of the longest EXECUTED job (skipped/cached jobs cost nothing => they are not isolated). */
 function headstartJobIndex(list, skippedSet) {
   let best = -1
   for (let i = 0; i < list.length; i++) {
-    if (skippedSet && skippedSet.has(list[i].file)) continue
+    if (costFree(skippedSet, list[i])) continue
     if (best < 0 || weightMsOf(list[i]) > weightMsOf(list[best])) best = i
   }
   return best
+}
+/**
+ * Does this job cost nothing? Two different reasons, ONE predicate: an incremental skip (named by FILE) and a
+ * mutant-cache hit (named by LABEL, because the three `v5-institute-fixes` shards share a file name). `label()`
+ * contains a space whenever args exist, so a label can never collide with a bare file name.
+ */
+function costFree(freeSet, job) {
+  return !!freeSet && (freeSet.has(job.file) || freeSet.has(label(job)))
 }
 /**
  * The named proof for the head start: when it is active, every deferred start must be at/after the
@@ -723,6 +925,75 @@ if (process.argv.includes('--self-check')) {
   if (savedBase === undefined) delete process.env.GATE_BASELINE_FILE; else process.env.GATE_BASELINE_FILE = savedBase
   if (savedRel === undefined) delete process.env.GATE_RELEASE; else process.env.GATE_RELEASE = savedRel
   console.log((noBaselineOk ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': an unreadable baseline skips NOTHING (' + noBaseline.reason + ')')
+  // MUTANT-RESULT CACHE (task-9): the directions that make the cache TRUSTWORTHY, exercised on a TEMP dir
+  // (never the real cache dir, never a repo file): a stored PASS round-trips; a changed target content is a
+  // different KEY; a touched target (identical bytes, new mtime) is a MISS; a FAILED result is never stored;
+  // and `GATE_MUTANT_CACHE=0` really disables it. Without these, "cached" could mean "silently stale".
+  const savedCacheEnv = process.env.GATE_MUTANT_CACHE
+  const cacheTmp = mkdtempSync(join(tmpdir(), 'gate-mutant-cache-selftest-'))
+  const cacheFamilies = readdirSync(HERE).filter((f) => f.endsWith('.mutants.mjs')).sort().filter((f) => familySkippable(f))
+  // Prefer a REAL cacheable family (it proves the resolution + fingerprint path against the checkout). In a
+  // published tarball, or in the temp-dir COPY that `run-tests.mutants.mjs` self-checks, none may be available
+  // - so the mechanics are exercised on a SYNTHETIC plan instead of turning a missing fixture into a red.
+  let cachePlan = null
+  for (const f of cacheFamilies) {
+    const p = mutantCachePlan({ file: f, args: [], expectExit: 0 })
+    if (p) { cachePlan = p; break }
+  }
+  const cachePlanReal = !!(cachePlan && cacheFamilies.includes(cachePlan.file) && cachePlan.key)
+  if (!cachePlan) {
+    cachePlan = {
+      key: mutantPlanKey(['synthetic-self-check']), file: 'synthetic.mutants.mjs', args: '',
+      targets: ['synthetic/target.js'], mtimes: { 'synthetic/target.js': 1 }, kinds: { 'synthetic/target.js': 'root' },
+      harnessHash: 'synthetic-harness', harnessMtimeMs: 1,
+    }
+  }
+  let cacheOk = false
+  let cacheDetail = 'no cacheable family in this checkout; mechanics exercised on a synthetic plan'
+  {
+    const missEmpty = readMutantCacheEntry(cacheTmp, cachePlan)
+    const wrote = storeMutantCacheEntry(cacheTmp, cachePlan, 1234, true)
+    const hitStored = readMutantCacheEntry(cacheTmp, cachePlan)
+    const failPlan = Object.assign({}, cachePlan, { key: 'f'.repeat(20) })
+    const refusedFail = storeMutantCacheEntry(cacheTmp, failPlan, 9, false)
+    const failedFileGone = !existsSync(mutantCacheEntryPath(cacheTmp, failPlan))
+    const touchedTarget = cachePlan.targets[0]
+    const touched = Object.assign({}, cachePlan, { mtimes: Object.assign({}, cachePlan.mtimes) })
+    touched.mtimes[touchedTarget] = Number(cachePlan.mtimes[touchedTarget]) + 1
+    const missTouch = readMutantCacheEntry(cacheTmp, touched)
+    const missKey = readMutantCacheEntry(cacheTmp, Object.assign({}, cachePlan, { key: 'deadbeefdeadbeefdead' }))
+    const storedText = readFileSync(mutantCacheEntryPath(cacheTmp, cachePlan), 'utf8')
+    writeFileSync(mutantCacheEntryPath(cacheTmp, cachePlan), JSON.stringify(Object.assign({}, JSON.parse(storedText), { ok: false })))
+    const missNotPass = readMutantCacheEntry(cacheTmp, cachePlan)
+    // The key must be CONTENT-sensitive (an edit to a target or the harness material) and mtime-INsensitive
+    // (a touch keeps the key and is caught by the stored mtimes) - the two proofs are independent by design.
+    const keyBase = ['schema', 'v=1', 'runner=r', 'node=n', 'harness=tests/x.mutants.mjs:h0', 'args=']
+    const keySameBytes = mutantPlanKey(keyBase.concat(['target=root:t.js:h1']))
+    const keyEditedTarget = mutantPlanKey(keyBase.concat(['target=root:t.js:h2']))
+    const keyEditedHarness = mutantPlanKey(['schema', 'v=1', 'runner=r', 'node=n', 'harness=tests/x.mutants.mjs:h9', 'args='].concat(['target=root:t.js:h1']))
+    const keyIgnoresMtime = mutantPlanKey(keyBase.concat(['target=root:t.js:h1'])) === keySameBytes
+    const legacyResolved = resolveTargetFile('vibe-math-v5/vibe-math-v5.js')
+    const bogusResolved = resolveTargetFile('no-such-preset/no-such.js')
+    process.env.GATE_MUTANT_CACHE = '0'
+    const killSwitch = mutantCacheEnabled() === false
+    if (savedCacheEnv === undefined) delete process.env.GATE_MUTANT_CACHE; else process.env.GATE_MUTANT_CACHE = savedCacheEnv
+    cacheOk = missEmpty.hit === false && wrote === true && hitStored.hit === true
+      && refusedFail === false && failedFileGone === true
+      && missTouch.hit === false && /target-changed/.test(String(missTouch.reason))
+      && missKey.hit === false && missNotPass.hit === false && killSwitch
+      && keyEditedTarget !== keySameBytes && keyEditedHarness !== keySameBytes && keyIgnoresMtime
+      && bogusResolved === null && (!legacyResolved || legacyResolved.kind === 'legacy')
+    cacheDetail = (cachePlanReal ? '' : 'synthetic plan (this checkout has no resolvable cacheable family); ') + cachePlan.file + ': empty=miss; store+read=hit; touch=' + missTouch.reason
+      + '; a failed run is not stored=' + failedFileGone + '; a non-pass entry is ignored=' + (missNotPass.hit === false)
+      + '; a target edit changes the key=' + (keyEditedTarget !== keySameBytes)
+      + '; a harness edit changes the key=' + (keyEditedHarness !== keySameBytes)
+      + '; the key hashes content rows only (a touch keeps it)=' + keyIgnoresMtime
+      + '; an unresolvable target makes the family uncacheable=' + (bogusResolved === null)
+      + '; archived presets resolve through the legacy base=' + (legacyResolved === null ? 'absent-in-this-checkout' : legacyResolved.kind)
+      + '; GATE_MUTANT_CACHE=0 disables=' + killSwitch
+  }
+  rmSync(cacheTmp, { recursive: true, force: true })
+  console.log((cacheOk ? 'SELF-CHECK PASS' : 'SELF-CHECK FAIL') + ': the mutant cache hits only on unchanged bytes AND unchanged mtimes (' + cacheDetail + ')')
   // HEADSTART proof (synthetic pool, the REAL machinery): with T=1 s and a 300 ms hold, the 1.5 s "longest"
   // job must start alone and the 50 ms job must not start until the release. Timestamps, not intentions.
   const savedHsMin = process.env.GATE_HEADSTART_MIN_MS
@@ -747,7 +1018,7 @@ if (process.argv.includes('--self-check')) {
         + 'ms; deferred=' + hsPool.headstart.deferredStarts.length
       : 'INACTIVE')
     + ')')
-  process.exit(okSelf && okPassing && okReal && okAbort && killedByRunner && namedTimeout && overrideOk && extended && namesOverride && noBaselineOk && hsOk ? 0 : 1)
+  process.exit(okSelf && okPassing && okReal && okAbort && killedByRunner && namedTimeout && overrideOk && extended && namesOverride && noBaselineOk && cacheOk && hsOk ? 0 : 1)
 }
 // The scripts that genuinely cannot run without arguments. They are named here (with the exact
 // command a human must run) instead of being omitted quietly: an entry that no longer exists
@@ -798,6 +1069,35 @@ let present = []
 let presentSet = new Set()
 let DEV_CHECKOUT = false
 function label(j) { return j.file + (j.args.length ? ' ' + j.args.join(' ') : '') }
+// ── LEGACY PRESETS ARE ARCHIVED (decision of the user, round 230: "we only maintain vmu and the v5r pack") ──
+// The five historical presets live under `archive/legacy-presets/` and are no longer maintained: no feature
+// work, no re-verification. Their BEHAVIOUR suites (the ones that boot an archived preset and drive it, plus
+// their mutant families) are therefore NOT part of the default sweep. They are not deleted, and they are not
+// silently dropped either: the list is a committed file that `tests/audit-legacy-scope.test.mjs` checks in
+// both directions, the runner prints how many it skipped and how to run them, and `GATE_LEGACY=1` runs them
+// exactly as before. Repo-wide audits that merely READ the archive (path discipline, doc gates, declaration
+// criteria, registration parity) stay IN the sweep: they guard the shared layer, not the archived presets.
+const LEGACY_LIST_FILE = join(HERE, 'legacy-suites.txt')
+const LEGACY_ALLOW = String(process.env.GATE_LEGACY || '') === '1'
+let legacySet = null
+let legacySkipped = 0
+/** The committed legacy classification, read ONCE. A missing file is a NAMED red, never an empty set. */
+function legacySuites() {
+  if (legacySet !== null) return legacySet
+  let raw = ''
+  try { raw = readFileSync(LEGACY_LIST_FILE, 'utf8') } catch (e) {
+    console.error('FAIL - * legacy scope: cannot read ' + LEGACY_LIST_FILE + ' (' + e.message + ')')
+    process.exit(2)
+  }
+  // NEWLINE via fromCharCode: a literal escape here was rewritten by the patch layer twice and broke the file once.
+  legacySet = new Set(raw.split(String.fromCharCode(10)).map((l) => l.trim()).filter((l) => l && !l.startsWith('#')))
+  if (!legacySet.size) {
+    console.error('FAIL - * legacy scope: ' + LEGACY_LIST_FILE + ' is empty - an empty list would silently restore the old sweep')
+    process.exit(2)
+  }
+  return legacySet
+}
+
 /**
  * The ONE place that derives the job list (the gate, `--counts` and `--self-check` all use it, so a
  * curated scope can never drift away from what actually runs). Deterministic base order = label ASC;
@@ -814,8 +1114,11 @@ function deriveJobs() {
   }
   const replacedBare = new Set(VARIANTS.filter((v) => v.replaceBare).map((v) => v.file))
   const jobs = []
+  const legacy = legacySuites()
+  legacySkipped = 0
   for (const file of present) {
     if (file === SELF || NEEDS_ARGS[file] || replacedBare.has(file)) continue
+    if (!LEGACY_ALLOW && legacy.has(file)) { legacySkipped++; continue }
     jobs.push({ file, args: [], expectExit: 0, kind: file.endsWith('.test.mjs') ? 'suite' : 'probe' })
   }
   for (const v of VARIANTS) {
@@ -823,6 +1126,10 @@ function deriveJobs() {
       if (DEV_CHECKOUT) { console.error('a VARIANTS entry names a missing script: ' + v.file); process.exit(2) }
       continue
     }
+    // A VARIANT of an archived preset is archived too: the shards and self-probes below belong to the legacy
+    // behaviour suites, so they follow the same switch as the suite list. (Measured: v5-institute-fixes alone is
+    // three 600 s shards, the single largest item in the sweep.)
+    if (!LEGACY_ALLOW && legacy.has(v.file)) { legacySkipped++; continue }
     // A VARIANT is an EXTRA instrumented run of the SAME script (argument variants), never an additional
     // suite: the counting unit for `suites` is "the suites proper", one per script. Classifying by file name
     // here would inflate `suites` whenever a suite gains a `--self-probe` job (R18: it did, 44 -> 45).
@@ -854,6 +1161,11 @@ if (!suites.length) {
 // never mistake the requested scope for the one that ran. (The old header printed only the requested scope
 // beside a job count derived from the effective one - which is what made `scope=vmu jobs=236` read as a scope
 // that did nothing, and `scope=quick jobs=177` read as a scoped run.)
+if (legacySkipped > 0) {
+  console.error('run-tests: legacy=archived ' + legacySkipped + ' behaviour suite(s) NOT run (the five historical presets are '
+    + 'archived; the maintained surface is vibe-math-vmu + its v5r pack). Full list: tests/legacy-suites.txt. '
+    + 'Run them with GATE_LEGACY=1.')
+}
 console.error('run-tests: scope=' + GATE_SCOPE + '  jobs=' + suites.length + '  concurrency=' + concurrency)
 console.error('run-tests: requested-scope=' + GATE_SCOPE + '  effective-scope=' + SCOPE + '  final-jobs=' + suites.length
   + (filters.length ? '  filters=[' + filters.join(' ') + ']' : ''))
@@ -867,9 +1179,15 @@ console.error('run-tests: requested-scope=' + GATE_SCOPE + '  effective-scope=' 
   const quickList = applyScope(deriveJobs(), 'quick')
   const quickN = quickList.length
   const quickMutants = quickList.filter((j) => j.file.endsWith('.mutants.mjs')).map((j) => j.file)
-  if (quickN !== QUICK_EXPECTED_JOBS) {
-    console.error('FAIL - * gate scope: the quick subset must resolve to exactly ' + QUICK_EXPECTED_JOBS
-      + ' jobs (got ' + quickN + ') - update QUICK_EXPECTED_JOBS only when the curated list changes on purpose')
+  // TWO pinned counts, one switch: with `GATE_LEGACY=1` the archived behaviour suites are back, so the curated
+  // quick subset is the old 38; without it the archived entries are gone and it is 24. Both are pinned so a
+  // drifted filter still reds by name in EITHER mode, and the header says which count applies.
+  const quickExpected = LEGACY_ALLOW ? QUICK_EXPECTED_JOBS_LEGACY : QUICK_EXPECTED_JOBS
+  if (quickN !== quickExpected) {
+    console.error('FAIL - * gate scope: the quick subset must resolve to exactly ' + quickExpected
+      + ' jobs (got ' + quickN + ', GATE_LEGACY=' + (LEGACY_ALLOW ? '1' : '0') + ') - update '
+      + (LEGACY_ALLOW ? 'QUICK_EXPECTED_JOBS_LEGACY' : 'QUICK_EXPECTED_JOBS')
+      + ' only when the curated list changes on purpose')
     process.exit(1)
   }
   if (quickMutants.length) {
@@ -929,7 +1247,11 @@ if (has('scope-report')) {
       quick: summarize(applyScope(jobs, 'quick')),
       vmu: summarize(applyScope(jobs, 'vmu')),
     },
-    quickExpectedJobs: QUICK_EXPECTED_JOBS,
+    // The EFFECTIVE pinned count for THIS mode (see the two-constant guard above): a report consumer must not
+    // compare a legacy-inclusive quick list against the round-230 default constant.
+    quickExpectedJobs: LEGACY_ALLOW ? QUICK_EXPECTED_JOBS_LEGACY : QUICK_EXPECTED_JOBS,
+    quickExpectedJobsByMode: { legacyOff: QUICK_EXPECTED_JOBS, legacyOn: QUICK_EXPECTED_JOBS_LEGACY },
+    legacyAllowed: LEGACY_ALLOW,
     excludeRules: VMU_EXCLUDE,
     // every vmu-NAMED job (`vmu*` and `audit-vmu-*`): in the vmu scope, or out WITH the anchored rule that
     // excluded it. The collision victim is a `vmu*` suite and the mutant families are `audit-vmu-*`, so the
@@ -957,8 +1279,54 @@ if (process.argv.includes('--counts')) {
   console.log(JSON.stringify({
     total: suites.length, suites: suiteN, probes: suites.length - suiteN,
     incremental: incremental.enabled, incrementalSkipped: incremental.skipped.length,
+    legacySkipped: LEGACY_ALLOW ? 0 : legacySkipped, legacyAllowed: LEGACY_ALLOW,
   }))
   process.exit(0)
+}
+
+// ── MUTANT-RESULT CACHE: plan BEFORE any job starts (the reporter prints each hit) ─────────────────
+// Families the incremental planner already skipped are NOT cache misses: they never ran, so this block must
+// not credit a stored verdict for them either. A cache hit still counts in TOTAL and is still listed by name -
+// only its EXECUTION is replaced by a stored PASS. `GATE_RELEASE=1` bypasses the cache entirely (named), and a
+// family whose targets cannot be proven to cover its harness's source (`mutantCachePlan` returns null) always
+// runs. Both facts are printed, because a silent cache is indistinguishable from a silent under-run.
+{
+  const familyJobs = suites.filter((j) => isFamilyJob(j.file) && !j.eval)
+  const releaseSweep = String(process.env.GATE_RELEASE || '') === '1'
+  if (familyJobs.length && releaseSweep) {
+    console.error('run-tests: mutant cache BYPASSED (GATE_RELEASE=1 => a release sweep executes every family)')
+  } else if (familyJobs.length && !mutantCacheEnabled()) {
+    console.error('run-tests: mutant cache DISABLED (GATE_MUTANT_CACHE=0) => every family runs')
+  } else if (familyJobs.length) {
+    mutantCache.dir = mutantCacheDir()
+    let uncached = 0
+    for (let i = 0; i < suites.length; i++) {
+      const job = suites[i]
+      if (!isFamilyJob(job.file) || job.eval) continue
+      if (skippedLabels.has(job.file)) continue              // incremental skip: not a cache decision at all
+      const plan = mutantCachePlan(job)
+      if (!plan) { uncached++; continue }                    // B-tier / underivable: never cached, always runs
+      mutantCache.plans.set(i, plan)
+      const verdict = readMutantCacheEntry(mutantCache.dir, plan)
+      if (verdict.hit) {
+        mutantCache.hits++
+        mutantCache.hitsByIndex.set(i, { key: plan.key, at: verdict.entry.at })
+        mutantCache.freeLabels.add(label(job))
+        console.error('MUTANTS SKIP (cached ' + plan.key + ' ' + verdict.entry.at + ')  ' + label(job))
+      } else {
+        mutantCache.misses++
+        if (String(process.env.GATE_MUTANT_CACHE_VERBOSE || '') === '1') {
+          console.error('run-tests: mutant cache MISS (' + verdict.reason + ')  ' + label(job) + '  key=' + plan.key)
+        }
+      }
+    }
+    mutantCache.enabled = true
+    console.error('run-tests: mutant cache ' + mutantCache.hits + ' hit / ' + mutantCache.misses + ' miss'
+      + (uncached ? '  /  ' + uncached + ' family job(s) not cacheable (always run)' : '')
+      + '  dir=' + mutantCache.dir + '  (GATE_MUTANT_CACHE=0 disables; GATE_MUTANT_CACHE_VERBOSE=1 names each miss)')
+    const pruned = pruneMutantCache(mutantCache.dir)
+    if (pruned) console.error('run-tests: mutant cache pruned ' + pruned + ' ancient entries (kept the newest 200)')
+  }
 }
 
 function runSuite(job) {
@@ -998,6 +1366,18 @@ let gateStarted = 0
  */
 async function runOne(i, list, out, skippedSet, baselineLabel) {
   const job = list[i]
+  const cached = mutantCache.hitsByIndex.get(i)
+  if (cached) {
+    // A cache HIT: reported exactly like a PASS, but the marker says the family did NOT execute. The stored
+    // verdict was keyed on bytes + mtimes of the harness and every declared target, and only a PASS is stored.
+    out[i] = { job, code: 0, ms: 0, out: '', err: '', timedOut: false, cached: { key: cached.key, at: cached.at }, ok: true }
+    if (!asJson) {
+      console.log('PASS  ' + job.file.padEnd(34) + ' exit=  0            0.0s'
+        + (job.args.length ? '  [' + job.args.join(' ').slice(0, 40) + ']' : '')
+        + '  MUTANTS SKIP (cached ' + cached.key + ' ' + cached.at + ')')
+    }
+    return
+  }
   if (skippedSet && skippedSet.has(job.file)) {
     // Incremental skip: the family is NOT executed, but it still counts in TOTAL and is reported by name
     // (stdout line + stderr list) so a reader can always see WHAT was skipped and WHY.
@@ -1012,6 +1392,14 @@ async function runOne(i, list, out, skippedSet, baselineLabel) {
   const tail = String(r.out).trim().split('\n').filter(Boolean).slice(-1)[0] || ''
   r.ok = r.code === r.job.expectExit
   out[i] = r
+  // STORE ONLY A PASS. A timeout, a non-zero exit or a job that expects a non-zero exit never becomes a cache
+  // entry, so no stored verdict can ever launder a failure into a later "PASS". A write failure is a named
+  // stderr note and NEVER changes the verdict: the family really ran.
+  const plan = mutantCache.plans.get(i)
+  if (plan && r.ok && !r.timedOut && r.job.expectExit === 0) {
+    try { storeMutantCacheEntry(mutantCache.dir, plan, r.ms, true) }
+    catch (e) { console.error('run-tests: mutant cache write FAILED (' + ((e && e.message) || e) + ') — the family ran and PASSED; only its entry is missing') }
+  }
   if (!asJson) {
     const mark = r.ok ? 'PASS' : 'FAIL'
     console.log(
@@ -1035,11 +1423,12 @@ async function runOne(i, list, out, skippedSet, baselineLabel) {
  * release (its completion, or `GATE_HEADSTART_MS`) before starting anything. Returns `{ headstart }`, which
  * is null when the behaviour was inactive and otherwise carries the timings the named proof checks.
  */
-async function runPool(list, out, skippedSet, baselineLabel) {
+async function runPool(list, out, skippedSet, baselineLabel, freeSet) {
+  const free = freeSet || skippedSet     // cost-free jobs = incremental skips AND mutant-cache hits
   const minMs = headstartMinMs()
   const holdMs = headstartHoldMs()
-  const hsIdx = minMs > 0 ? headstartJobIndex(list, skippedSet) : -1
-  const executed = list.filter((j) => !(skippedSet && skippedSet.has(j.file))).length
+  const hsIdx = minMs > 0 ? headstartJobIndex(list, free) : -1
+  const executed = list.filter((j) => !costFree(free, j)).length
   let hs = null
   if (hsIdx >= 0 && holdMs > 0 && executed >= 2 && weightMsOf(list[hsIdx]) >= minMs) {
     hs = {
@@ -1092,7 +1481,8 @@ async function runPool(list, out, skippedSet, baselineLabel) {
   return { headstart: hs }
 }
 gateStarted = Date.now()
-const poolInfo = await runPool(suites, results, skippedLabels, incremental.baseline)
+const poolInfo = await runPool(suites, results, skippedLabels, incremental.baseline,
+  new Set([...skippedLabels, ...mutantCache.freeLabels]))
 // HEADSTART proof (named): a deferred job that started before the release, a hold that ended early, or an
 // active head start that deferred nobody REDS BY NAME instead of passing quietly.
 {
@@ -1131,10 +1521,17 @@ if (asJson) {
     incremental: incremental.enabled,
     incrementalSkipped: skippedResults.length,
     incrementalBaseline: incremental.enabled ? incremental.baseline : null,
+    // A machine report must carry the same honesty the human TOTAL line does: hits/misses and the cache dir.
+    mutantCache: {
+      enabled: mutantCache.enabled,
+      dir: mutantCache.enabled ? mutantCache.dir : null,
+      hits: mutantCache.hits, misses: mutantCache.misses, version: MUTANT_CACHE_VERSION,
+    },
     runs: results.map((r) => ({
       file: r.job.file, args: r.job.args, expectExit: r.job.expectExit, exit: r.code,
       seconds: Number((r.ms / 1000).toFixed(1)),
       ...(r.skipped ? { skipped: 'incremental: targets unchanged vs ' + incremental.baseline } : {}),
+      ...(r.cached ? { cached: r.cached.key, cachedAt: r.cached.at } : {}),
       ...(r.tailDetail ? { detail: r.tailDetail } : {}),
     })),
   }, null, 2))
@@ -1145,7 +1542,10 @@ if (asJson) {
   console.log('slowest: ' + slowest.map((r) => r.job.file.replace('.test.mjs', '') + ' ' + (r.ms / 1000).toFixed(1) + 's').join('  ·  '))
   console.log('TOTAL ' + results.length + '  PASS ' + (results.length - bad.length) + '  FAIL ' + bad.length
     + (skippedResults.length ? '  SKIP ' + skippedResults.length + ' (incremental)' : '')
-    + '  (suites ' + suiteCount + ' · probes ' + (results.length - suiteCount) + ')')
+    + '  (suites ' + suiteCount + ' · probes ' + (results.length - suiteCount) + ')'
+    // HONESTY LINE: a cached sweep must never read like an executed one. Hits and misses are always both shown,
+    // and the hit count is the number of families whose execution was REPLACED by a stored verdict.
+    + (mutantCache.enabled ? '  ·  mutant cache: ' + mutantCache.hits + ' hit / ' + mutantCache.misses + ' miss' : ''))
   for (const b of bad) {
     console.log(failedLine(b))
     for (const l of failureDetail(b)) console.log('      ' + l)

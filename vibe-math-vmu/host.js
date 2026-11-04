@@ -55,7 +55,7 @@ import { makeMathadaptersSpec } from './tools/mathadapters.js'
 import { makeMathjobsSpec } from './tools/mathjobs.js'
 import { boundedToolResult, MAX_TOOL_RESULT_BYTES } from './kernel/receiptbounds.js'
 // PHASE 6 / P0-10: the host half of a PACK-DECLARED tool face, extracted (this file is at the 1200-line ceiling).
-import { appendPackToolSpecs, packToolFailureRows, resolveTurnMember } from './host-pack-tools.js'
+import { appendPackToolSpecs, discloseActOnSeat, packToolFailureRows, resolveTurnMember } from './host-pack-tools.js'
 //
 // TOOL SHAPE (learned from the REAL HOST, not from our own assumptions): the first scripted live run
 // (SLV) showed the preset active but NO vmu tools in the agent's tool list. The cause was this file: the
@@ -1768,7 +1768,7 @@ export function refusalFacts(e) {
 }
 
 /** Turn an internal spec into the HOST's shape (the one the real host accepted for v5r). */
-export function toHostSpec(spec) {
+export function toHostSpec(spec, kernel = null) {
   return {
     name: spec.name,
     description: spec.description,
@@ -1777,7 +1777,10 @@ export function toHostSpec(spec) {
     execute: async (args, exec) => {
       try {
         try { if (toolExecObserver) toolExecObserver(exec) } catch { /* binding must not break a tool call */ }
-        return boundedToolResult(await spec.run(args || {}, exec))
+        // ★ RUN 228: EVERY face says who acted, not only the pack faces. This is the one place that holds both the
+        // result and the execution context, so the disclosure cannot be forgotten by a face that returns early.
+        const outNow = await spec.run(args || {}, exec)
+        return boundedToolResult(discloseActOnSeat(kernel, exec, args, outNow))
       } catch (e) {
         // ★★ ROUND 36 (measured on a real machine): THIS BRANCH USED TO RETURN A DIFFERENT SHAPE FROM THE OTHER ONE.
         // The success path goes through `boundedToolResult`, documented in receiptbounds.js as "the ONE place a tool
@@ -2015,7 +2018,7 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       // IDEMPOTENT: a later call may find tools that only became available afterwards (a pack can add bus
       // entries after install), and already-registered names are skipped instead of colliding.
       if (registered.includes(spec.name)) continue
-      const hostSpec = typeof defineTool === 'function' ? defineTool(toHostSpec(spec)) : toHostSpec(spec)
+      const hostSpec = typeof defineTool === 'function' ? defineTool(toHostSpec(spec, kernel)) : toHostSpec(spec, kernel)
       // ★ per-TOOL half of the presentation declaration: only names the declaration asked for get deferLoading.
       if (presentation.deferLoading.includes(spec.name)) hostSpec.deferLoading = true
       try {

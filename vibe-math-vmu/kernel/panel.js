@@ -144,7 +144,31 @@ export function createPanel({
     return out
   }
 
-  const run = (raw) => (typeof raw === 'string' ? raw.trim() : String(raw === undefined || raw === null ? '' : raw))
+  // The panel stores TEXT. A structured value used to be coerced with `String(...)`, so an object went in and
+  // the JavaScript type name came out ("[object Object]") — a value that reads like content but is not.
+  // A direct kernel caller must be refused by name, exactly like the tool face does (RUN 229).
+  const shapeOf = (v) => {
+    if (Array.isArray(v)) return 'an array (typeof value: "object") of ' + v.length + ' items'
+    if (v !== null && typeof v === 'object') {
+      const keys = Object.keys(v)
+      let json = ''
+      try { json = JSON.stringify(v) } catch (e) { json = '' }
+      const shown = json.length > 120 ? json.slice(0, 117) + '...' : json
+      return 'an object (typeof value: "object") with ' + keys.length + ' key(s) [' + keys.slice(0, 6).join(', ') + ']' + (shown ? ' = ' + shown : '')
+    }
+    if (typeof v === 'number' && !Number.isFinite(v)) return 'a number that is not finite'
+    return 'a ' + typeof v
+  }
+
+  const textish = (field, raw) => {
+    if (typeof raw === 'string') return raw.trim()
+    if (raw === undefined || raw === null) return ''
+    if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw)
+    throw refuse('VMU_INVALID_ARGUMENT', field + ' received ' + shapeOf(raw) + '; ' + field + ' is text',
+      'the panel stores text, so a structured value is refused by name instead of being written as a type name')
+  }
+
+  const run = (raw) => textish('this field', raw)
 
   const emitReport = (id, fields, by) => {
     if (typeof bus !== 'object' || bus === null || typeof bus.emit !== 'function') return false
@@ -208,7 +232,8 @@ export function createPanel({
       for (const k of PANEL_FIELDS) {
         if (patch[k] === undefined) continue
         if (k === 'plan') {
-          const val = Array.isArray(patch[k]) ? patch[k].map((x) => String(x)) : [String(patch[k])]
+          const steps = Array.isArray(patch[k]) ? patch[k] : [patch[k]]
+          const val = steps.map((x, i) => textish('plan[' + i + ']', x))
           if (JSON.stringify(row.plan) === JSON.stringify(val)) continue
           changes.push({ field: k, from: clone(row.plan), to: clone(val) })
           next.plan = val

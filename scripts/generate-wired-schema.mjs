@@ -461,6 +461,10 @@ export const OBJECT_FALLBACKS = Object.freeze({
   'vmu.partnership.registryDir': { class: 'no-literal', why: '模块未声明默认值 ⇒ 无字面量、无类型证据' },
   'vmu.resource.capabilityTags': { class: 'no-literal', why: '模块未声明默认值 ⇒ 无字面量、无类型证据（有效值见 EFFECTIVE_DEFAULTS）' },
   'vmu.teaching.latePenaltyRatio': { class: 'no-literal', why: '模块未声明默认值 ⇒ 无字面量、无类型证据（有效值见 EFFECTIVE_DEFAULTS）' },
+  // ★★ RUN 230: the DELIVERY SEAM. The value is a FUNCTION the host/deployment injects (a turn's reply
+  // producer), never a JSON config value - so the source can only contain the unset sentinel `null` and there is
+  // no type evidence at all. A generated `object` row would be a confident lie about how to configure it.
+  'vmu.turn.deliverTurn': { class: 'null-literal', why: '源码字面量是 `null`（未设哨兵）⇒ 无类型证据；这个键的值是**函数接缝**（交付一个成员回合并返回它的回答），不是能写进 JSON 的配置值' },
 })
 
 /** The type rendered for an un-inferable row: NAMED ⇒ the explained fallback; UNNAMED ⇒ still `object`, but the
@@ -491,6 +495,11 @@ export function unnamedFallbacks(defs) {
  *  ★ A note may not restate a value that is derivable from code — it explains MEANING (which key is which number),
  *  because that is the part no extractor can recover. */
 export const DOC_NOTES = {
+  // ★ RUN 230: this row is a SEAM, not a knob. The sentence says what the value IS and what resolves it,
+  // because "type: object" would tell a reader to put an object in settings, and that is impossible.
+  'vmu.turn.deliverTurn': '★这不是可填写的配置值而是**交付接缝**：它的值是一个函数，只能由部署代码注入（无法写进 JSON）。'
+    + '构造期解析一次，优先级：内核选项 deliverTurn > host.effects.deliverTurn > host.deliverTurn > 设置里的本键 > vmu.turn.deliverMode=caller（内核自建 caller 接缝）> 无接缝（具名拒 VMU_ENGINE_UNAVAILABLE）；'
+    + '实际生效的一条由 status().seams.turnDeliverSource 分报。',
   'vmu.meetings.waitForAll': '★ 规则「未到齐则等待」的开关：true ⇒ 预约到点的会议要等**应到全员**到齐才 open，否则进 waiting（可用 vmu.meetings.waitOnDueMs 超时自决）。★ 它不是表决人数下限：法定人数是 vmu.meetings.quorumMin（票箱面为 vmu.ballot.minVotes），两者不是同一个数，quorum 已满足也可能仍在 waiting。'
 }
 
