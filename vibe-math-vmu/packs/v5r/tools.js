@@ -3531,7 +3531,7 @@ async function toolMeetingRulings(args = {}, { kernel } = {}) {
     count: Array.isArray(filed.rows) ? filed.rows.length : 0,
     rows: Array.isArray(filed.rows) ? filed.rows : [],
     duplicates: Array.isArray(filed.duplicates) ? filed.duplicates : [],
-    means: 'these are the ruling CARDS filed for this (meeting, proposition) by the members themselves (vibe_v5_verdict { meeting, proposition_id, verdict, reason, member }): `rows` is the latest filing per member, `cards` counts the cards filed for THIS (meeting, proposition), `cardsScanned` counts every ruling-status card the library holds (so `cards:0` beside `cardsScanned:2` is not a contradiction — it means the cards on disk are about other debates), and `duplicates` reports a member who filed two different values (the latest is the one the tally uses). Reading does NOT tally and does NOT decide — the chair still signs with vibe_v5_verdict_final. `readable:false` means no filing could be read (see `why`), which is NOT the same as "nobody filed"',
+    means: 'these are the ruling CARDS filed for this (meeting, proposition) by the members themselves (vibe_v5_verdict { meeting, proposition_id, verdict, reason, member }): `rows` is the latest filing per member, `cards` counts the cards filed for THIS (meeting, proposition), `cardsScanned` counts every ruling-status card the library holds (so `cards:0` beside `cardsScanned:2` is not a contradiction — it means the cards on disk are about other debates), and `duplicates` reports a member who filed two different values (the latest is the one the tally uses). Reading does NOT tally and does NOT decide — the chair still signs with vibe_v5_verdict_final. `readable:false` means no filing could be read (see `why`), which is NOT the same as "nobody filed". ★ THE TOP-LEVEL `count` OF THIS FACE IS the number `vibe_v5_verdict_final` reports as `submissions.count` for the same (meeting, proposition) — the same fact in two shapes, so the absence of a `submissions` block here is not a missing number',
   }
 }
 
@@ -4627,7 +4627,7 @@ async function submitRuling({ kernel, member, meeting, proposition, verdict, rea
     const sameVerdict = Number(mine[0].verdict) === Number(verdict)
     throw refuse('VMU_RULING_ALREADY_FILED',
       alreadyFiledMeans(sameVerdict, proposition, mine[0], verdict),
-      'your filed ruling is the one that counts — it is ' + (mine[0].path ? 'the card ' + mine[0].path : 'card id ' + mine[0].id) + '. This face has no path that rewrites a filed ruling: if the ' + (sameVerdict ? 'reason was incomplete, that is a note to the chair, not a second card' : 'number was wrong, say so to the chair, who rules on the set the receipts show (a chair does not rewrite a member\'s ruling either)'),
+      'your filed ruling is the one that counts — it is ' + (mine[0].path ? 'the card ' + mine[0].path : 'card id ' + mine[0].id) + '. This face has no path that rewrites a filed ruling: if the ' + (sameVerdict ? 'reason was incomplete, that is a note to the chair, not a second card — send it with vibe_v5_message { to: "<chair id>", content: "…" }, which is durable mail the chair can read' : 'number was wrong, say so to the chair with vibe_v5_message { to: "<chair id>", content: "…" }, who rules on the set the receipts show (a chair does not rewrite a member\'s ruling either)'),
       { existing: { verdict: mine[0].verdict === undefined ? null : mine[0].verdict, at: mine[0].at === undefined ? null : mine[0].at, path: mine[0].path || null }, incoming: { verdict }, sameVerdict })
   }
   const id = rulingIdOf({ meeting, proposition, member })
@@ -4921,6 +4921,12 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
   const kRestart = !!(receipt && receipt.requiresRestart === true)
   // ★ RUN 207: one predicate, so `partial`, `reachableInstead` and every derived sentence below cannot disagree.
   const processOnly = !!(receipt && receipt.crossKernelScope === 'this-process')
+  // ★★★ RUN 220 (run 56 / FEEDBACK55 1.1, MEASURED): `appliedScope` read `this-process-only` for
+  // `vmu.paper.officeConsult` — a key whose own `reachableInstead` names a durable route members DO read —
+  // with the SAME word as `vmu.turn.leaderId`, whose `reachableInstead` says no face can reach it. The word
+  // now follows the route: a key with a named per-key route reports reachable-somehow, everything else
+  // `this-process-only`.
+  const routeFor = processOnly ? (MEMBER_FACING_SETTING_ROUTES[key] || null) : null
   // ★★★ RUN 218 (run 54 / FEEDBACK53 1.5, MEASURED): the receipt printed `applied:"immediate"` FIRST and
   // `partial:true` three fields later. Both were true, and the word a reader skims is the misleading one (run 40 taught the
   // same lesson for `vibe_v5_set`; this is the `vibe_v5_start` / `vibe_v5_configure` path, which kept the bare word). The
@@ -4928,7 +4934,9 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
   const appliedValue = (processOnly && kApplied === 'immediate') ? 'immediate (THIS PROCESS ONLY)' : kApplied
   return { key, value: coerced, hot: def.hot, who: def.who || null, appliedBy: actor,
     applied: appliedValue,
-    appliedScope: processOnly ? 'this-process-only' : (kApplied === null ? null : 'this-process'),
+    appliedScope: processOnly
+      ? (routeFor ? 'this-process (members reach the intent another way — see reachableInstead)' : 'this-process-only')
+      : (kApplied === null ? null : 'this-process'),
     requiresRestart: kRestart,
     appliesAt: receipt && receipt.appliesAt !== undefined ? receipt.appliesAt : null,
     liveReadBy: receipt && Array.isArray(receipt.liveReadBy) ? receipt.liveReadBy : [],
@@ -4957,7 +4965,7 @@ function applyDeclaredSetting(kernel, key, value, opts = {}) {
     partial: processOnly ? true : null,
     partialFor: processOnly ? 'the member kernels spawned for turns (this process only)' : null,
     // ★ RUN 207: the durable route that DOES reach the members, per key - or the named statement that none exists.
-    reachableInstead: processOnly ? (MEMBER_FACING_SETTING_ROUTES[key] || MEMBER_FACING_SETTING_ROUTES['*']) : null,
+    reachableInstead: processOnly ? (routeFor || MEMBER_FACING_SETTING_ROUTES['*']) : null,
     reachableInsteadMeans: processOnly
       ? 'this write is live in THIS process only, so the reachable route is the one named in reachableInstead (a durable record the member kernels already read); repeating the write cannot reach them'
       : null,

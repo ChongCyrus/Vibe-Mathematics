@@ -812,8 +812,11 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
         ? ' — this call STARTED it, so the next author writes on top of your text'
         : ' (' + String(joinedId) + '), so a proposal filed to test the face is visible to every member and becomes part '
           + 'of the text they continue')
-      + '. Nothing is discarded automatically: if the text was diagnostic, say so in `note` and prune the draft '
-      + '(vibe_vmu_records { action: "prune", track: "blueprint" }), otherwise it is the base the next author writes on',
+      + '. Nothing is discarded automatically, and the two windows differ: BEFORE adoption the office can prune the draft '
+      + 'ROW by id (vibe_vmu_records { action: "prune", track: "blueprint", ids: "<the draft row id>" }), which removes the whole '
+      + 'draft including your text; AFTER adoption your text is inside the CURRENT protocol row, and prune moves WHOLE rows — '
+      + 'pruning that row would take the live protocol with it, so there is NO path that deletes just a paragraph. If the text '
+      + 'was diagnostic, say so in `note`; otherwise it is the base the next author writes on',
   })
   if (target === null) {
     const authors = [entry]

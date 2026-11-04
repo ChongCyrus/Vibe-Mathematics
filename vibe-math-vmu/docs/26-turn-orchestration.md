@@ -3615,3 +3615,17 @@ run 54 的所办按任务书发了一次「不采纳、只试试面」的诊断 
 `tests/vmu-run218-feedback53b.test.mjs` = 26/0；定向回归 69/0。
 
 教训：能被引用的那个词必须自己说清范围；共享轨上的写入必须有一句话说明「别人也读得到、也会接着写」；契约的例外要写在契约旁边。
+
+## ROUND 225
+
+RUN 220（run 56 / FEEDBACK55）：五处「回执为真、读者读错」，逐条修：
+
+1. **一个范围词说两件相反的事**（FEEDBACK55 1.1）：`appliedScope` 对 `vmu.paper.officeConsult`（有成员可达的 `consult` 路线）与 `vmu.turn.leaderId`（任何面都读不到）印同一个 `this-process-only`。现在 `packs/v5r/tools.js` 先算 `const routeFor = processOnly ? (MEMBER_FACING_SETTING_ROUTES[key] || null) : null`，`appliedScope` 三支：有具名路线 ⇒ `this-process (members reach the intent another way — see reachableInstead)`，无 ⇒ `this-process-only`；`reachableInstead` 读同一个判断。
+2. **建议的补救落在窗口之外**（1.2）：`draftSharing.means` 在采纳后仍建议「prune 掉草案」，而采纳后 `prune` 只能整行移走。`packs/v5r/blueprint.js` 把两个窗口都写进 means（采纳前按 id prune 整行；采纳后没有删段的路），`prompts/v5r-core.js` 的例外句同步。
+3. **位置选择不警告它选中了现行版**（1.3）：`prune keep:1` 会把蓝图轨的现行协议移进回收站。`host.js` 新增 `doomedActiveCount` + `doomedActiveMeans`（WARNING，点名 id），`selectionMeans` 补「`keep` 从最新的往回数」。判定读行头的 `- status：current`——列表投影把现行行也印成 `status:"live"`，只看投影会永远为 0（本轮实测）。
+4. **同一个数字两个形状**（1.4）：`vibe_v5_meeting {action:"rulings"}` 顶层 `count` 就是 `verdict_final.submissions.count`，means 里点名。
+5. **「告诉主席」没有通道**（1.5）：`VMU_RULING_ALREADY_FILED` 的 hint 给出 `vibe_v5_message { to:"<chair id>", content:"…" }`。
+
+提示面（2.1，最硬）：成员提示词曾断言「真子代理模式下记录本是私有的，研究所读不到」；run 56 用 `vibe_v5_read_library{id:"rec-21"}` 读到成员 `r-1` 的卡（同一个 `state.json`）。契约改成按 `libraryRoot` 分支，并删掉那句假机制。
+
+`tests/vmu-run220-feedback55.test.mjs` = 61 passed / 0 failed；`tests/vmu-run218-feedback53b.test.mjs` 的 `appliedScope` pin 从字面量改为分支形状（RUN 220 让这个词跟着路线走，字面量已不是契约）。

@@ -15547,3 +15547,57 @@ run 55 把 RUN 217 的五条修法全部真触发，同时量到五处「回执�
 1. **一个字段印出来，就得能被读回来**：面把 `draft` 写进 schema 却从不转发，回执于是说了一句与请求相反的话；字段的存在本身就是对调用者的承诺。
 2. **空串不是"查无此人"**：`""` 在名册查询里落在"没找到"，但它真实含义是"没签名"；工程上要按**原因**分支，而不是按查询结果的形状分支。
 3. **守门与产出是两道闸**：`writeAs` 说"两种写法都过闸"为真，读者却把它读成"两种写法都排得出来"；凡两个事实同时为真而结论不同，就必须分两句写。
+
+## §321 RUN 220 —— 「同一个词说两件相反的事」「建议的补救在窗口之外」
+
+run 56（基线 `ac147a9d`，第 56 次真机，`slvp185-ws`，PDF **62 704 B**）的主线走到了结题，但它量到五处「回执为真、读者读错」的账；本轮逐条修。
+
+**321.1 run 56 的五笔账**
+
+1. **一个范围词说了两件相反的事**（FEEDBACK55 1.1）：`vibe_v5_set { key:"vmu.paper.officeConsult", value:"off" }` 回执 `appliedScope:"this-process-only"`，可同一个对象里的 `reachableInstead` 明确给出成员可达的 `consult` 路线；而 `vmu.turn.leaderId` 用**同一个词**，配的却是「任何面都读不到」。两组相反事实共用一个词。
+2. **建议的补救落在窗口之外**（1.2）：`draftSharing.means` 说「诊断性文字就在 `note` 里说明，然后 prune 掉这份草案」——采纳（adopt）之后该段落已在**现行行**里，`prune` 只能整行移动，删不掉一段文字。
+3. **位置选择不警告它选中了现行版**（1.3）：任务书照着老提示写 `prune keep:1`，实测把 `rec-2`（现行协议）移进回收站——`keep` 从**最新**往回数。
+4. **同一个数字两个形状**（1.4）：`vibe_v5_meeting {action:"rulings"}` 顶层 `count` 就是 `verdict_final` 的 `submissions.count`，但回执没说，读者把「没有 `submissions` 块」读成「缺数」。
+5. **「告诉主席」没有通道**（1.5）：`VMU_RULING_ALREADY_FILED` 的 hint 说「这是给主席的便条，不是第二张卡」，却没给任何可达的面；报告者卡在这里。
+6. **提示面把一条假机制教给成员**（2.1，最硬）：成员提示词写「你自己的记录本是**草稿**——真子代理模式下它是你私有的内核实例，研究所的正式记录本读不到它」。run 56 实测相反：所办用 `vibe_v5_read_library{id:"rec-21"}` 直接读到 `r-1` 写的卡（`owner:"r-1"`、`rev:1`），两名成员各自报告卡落在共享台账 `VibeMath/vmu/state.json`。
+
+**321.2 五处修法**
+
+1. `vibe-math-vmu/packs/v5r/prompts/v5r-core.js`：记录本契约改成「**先确认你的记录本落在哪个库根**，再谈它是不是私有草稿」——用 `libraryRoot`/`recordId` 这一步可核的事实分支；「研究所读不到」这句假机制删掉，改成「同一个根 ⇒ 你写的就是研究所登记的；只有在你的回执显示**另一个**根时才是本地草稿」。
+2. 同文件：清理建议标出**窗口**——采纳之前可以按 id 把整份草案 prune；采纳之后它已是现行协议的一部分，prune 只整行移走，没有「只删一段」的路。
+3. `vibe-math-vmu/packs/v5r/tools.js`：新增 `const routeFor = processOnly ? (MEMBER_FACING_SETTING_ROUTES[key] || null) : null`，`appliedScope` 三支（有具名路线 ⇒ `this-process (members reach the intent another way — see reachableInstead)`；无 ⇒ `this-process-only`；非进程内 ⇒ `this-process`），`reachableInstead` 读**同一个**判断，两个字段不可能互相矛盾。
+4. `vibe-math-vmu/packs/v5r/blueprint.js`：`draftSharing` 的 means 说清两个窗口（采纳前按 id prune 整行；采纳后没有删段的路）。
+5. `vibe-math-vmu/host.js`：`prune` 回执加 `doomedActiveCount` + `doomedActiveMeans`（WARNING，点名将被动到的现行行 id），`selectionMeans` 补「`keep` 从最新的往回数」。
+6. `vibe-math-vmu/packs/v5r/tools.js`：`rulings` 面的 means 点名「顶层 `count` 就是 `verdict_final.submissions.count`，这里没有 `submissions` 块不算缺数」；`VMU_RULING_ALREADY_FILED` 的 hint 给出可达形状 `vibe_v5_message { to:"<chair id>", content:"…" }`。
+
+**321.3 机器化（`tests/vmu-run220-feedback55.test.mjs` = 61 passed / 0 failed）**
+
+- §0 十六条源码 pin（记录本契约的新句式与删掉的假句子、`libraryRoot`、采纳窗口、`const routeFor`、`this-process (members reach…)` 与 `reachableInstead` 同源、两个 ruling 形状的同数句、`vibe_v5_message` 通道、`const doomedActive = []`、`doomedActiveCount`、`counted from the NEWEST row backwards`、`- status：current` 的读头规则）。
+- §1 真装配：`vibe_v5_start` ⇒ `applied` 里 `vmu.turn.leaderId` 仍 `this-process-only`、值 `immediate (THIS PROCESS ONLY)`；`vibe_v5_set { key:"vmu.paper.officeConsult" }` ⇒ `partial:true`、`appliedScope` 含 `members reach the intent another way`、`reachableInstead` 含 `consult`、且**不等于** `this-process-only`。
+- §2 真装配：两次 `vibe_v5_blueprint propose` ⇒ `draftSharing.means` 含两个窗口句，且不再含旧建议。
+- §3 真装配（run 56 的形状）：`propose`(r-1) → `propose`(r-acad，共同设计留痕) → `adopt`(r-acad) → `propose`(r-2，更晚草案) ⇒ `prune{keep:1, dryRun:true}` 的 `doomedActiveCount >= 1` 且 means 含 `WARNING`/`CURRENT`；按 id 的 dry run ⇒ `doomedActiveCount === 0` 且 `doomedActiveMeans === null`。
+- §4 真装配：`r-1` 交裁决 → 同票不同理由的第二张卡被拒 `VMU_RULING_ALREADY_FILED`，hint 含 `vibe_v5_message`；`vibe_v5_meeting {action:"rulings", id, proposition_id}` 顶层 `count >= 1`、**没有** `submissions` 块、means 含同数句。
+- §5 `记录本契约` 四个词（`草稿`/`回执`/`所办`）都还在，`tests/vmu-member-registration-contract.test.mjs` 11/0 不受影响。
+
+**321.4 定向回归与收口链**
+
+- 定向回归（`vmu-run220-feedback55`、`vmu-run219-feedback54`、`vmu-run218-feedback53b`、`vmu-member-registration-contract`、`vmu-run206-feedback43`、`vmu-run217-feedback53`、`vmu-meeting`、`vmu-paper`、`vmu-turn`、`vmu-v5r-tools`、`vmu-run203/204/205`、`vmu-prompt`、`audit-vmu-docs`、`audit-face-actions`、`audit-declaration-criterion`）= **TOTAL 64 PASS 63 FAIL 1**，唯一红是 `audit-declaration-criterion` 的「`regen-all --check` 真的绿」——新套件让作业计数变化，先 `update-doc-counts --write` 再复跑即绿。
+- 收口链：`update-doc-counts --write` ⇒ `JOBS total=771 suites=663 probes=108`；`regen-all --write` 17/17 → `--check` 17/17 in sync；`PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+- 全量 T1：见 321.4b。
+
+**321.4b 全量 T1**
+
+- 第一次干净全量 T1（`/d/_tmp/t1-r1340-run220.log`）：**`TOTAL 771 PASS 771 FAIL 0 (suites 663 · probes 108)`**，wall 2230.4 s，0 红——本轮的改动只落在回执字段与提示文本，未触碰判据路径，全量一次过。
+- 注：`audit-declaration-criterion` 的「`regen-all --check` 真的绿」在本轮定向回归里先红后绿，原因只是新套件让作业计数变化（771 vs 770），与代码缺陷无关；这条经验重复出现三次，已说明「先跑计数再跑审计」是该链的正确顺序。
+
+**321.5 未闭合**
+
+1. 五处修法尚未真机复验（第 57 次真机简报覆盖 RUN 219，RUN 220 要再下一轮）。
+2. 「蓝图草案不私有」这条例外句已可核，但它指向的 `prune` 路线在采纳后仍不可达——现在 means 已说清窗口，但「诊断提案并入共享草案」这件事本身仍是机制风险（run 56 报告者按正确顺序才没量废）。
+3. `doomedActiveMeans` 依赖行头 `- status：current` 这个写法；若某条轨用别的词表，警告会静默不触发（当前只有 blueprint 轨写 `current`）。
+
+**321.6 三教训**
+
+1. **一个词不能同时说「没有任何路」和「有另一条路」**：同 `appliedScope` 同值，读者只能靠别处字段猜；范围词必须跟着「有没有具名路线」分叉。
+2. **建议的补救必须活在同一个窗口里**：说「prune 掉它」之前要问「此刻它还 prunable 吗」。
+3. **提示词里写的机制要能被现场实测**：run 56 用一次 `read_library` 就推翻了 26k 字符里的一句断言——凡教「另一个内核读不到」这类跨界事实，必须给出可核的回执字段（`libraryRoot`），否则就是不可证伪的教条。

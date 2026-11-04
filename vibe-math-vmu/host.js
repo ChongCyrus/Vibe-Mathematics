@@ -1096,6 +1096,28 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               ? allRows.filter((r) => r && idsArg.includes(String(r.id)))
               : allRows.slice(0, Math.max(0, liveBefore - wantKeep))
             const idsNotFound = byIds ? idsArg.filter((w) => !doomed.some((r) => String(r.id) === w)) : []
+            // ★★★ RUN 220 (run 56 / FEEDBACK55 1.3, MEASURED): a brief told the office to "prune keep:1" to drop a diagnostic
+            // draft. On a blueprint track holding [current protocol, newer draft] that keeps the NEWEST row and trashes the CURRENT
+            // protocol, and the receipt only said "the rows above are in the TRASH". The selection now counts the doomed rows that
+            // are CURRENT and says so before the act, in the dry run too.
+            // ★ RUN 220: the list projection does not carry a row's own declared status (a blueprint's CURRENT row reads
+            // `status: "live"` like its drafts do — the word "current" lives in the row's own header). So the check reads
+            // the row when it has to: a doomed row whose header declares `status: current` is the row a track is USING.
+            const doomedActive = []
+            for (const r of doomed) {
+              if (!r || typeof r.id !== 'string') continue
+              let declared = String(r.status || r.state || '')
+              if (declared !== 'current') {
+                try {
+                  const full = rc.get({ id: String(r.id), includeBody: true }) || {}
+                  const bodyText = String(full.body || '')
+                  // The header line is written with a FULL-WIDTH colon on some tracks and an ASCII colon on others, so both
+                  // spellings are read; anything that is not literally `current` is left as whatever the row projected.
+                  if (bodyText.indexOf('- status：current') >= 0 || bodyText.indexOf('- status: current') >= 0) declared = 'current'
+                } catch (e) { declared = '' }
+              }
+              if (declared === 'current') doomedActive.push(r)
+            }
             if (byIds && doomed.length === 0) {
               return refused('VMU_NO_SUCH_OBJECT', 'none of the ids named (' + idsArg.join(', ') + ') is a LIVE row of track "' + pruneTrack + '": nothing was moved',
                 'take the ids from action:"list" (or from the receipt that created the row) and pass those; a row already in the trash is brought back with action:"restore", not pruned again')
@@ -1144,6 +1166,10 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               ok: true, action, track: pruneTrack, keep: byIds ? null : wantKeep, selection: byIds ? 'ids' : 'keep',
               idsRequested: byIds ? idsArg : [], idsNotFound, dryRun: preview,
               liveBefore, liveAfter, wouldPruneCount: doomed.length, prunedCount: preview ? 0 : moved.length, pruned: moved, pinned,
+              doomedActiveCount: doomedActive.length,
+              doomedActiveMeans: doomedActive.length === 0
+                ? null
+                : 'WARNING: ' + doomedActive.length + ' of the rows above is a CURRENT row of this track (' + doomedActive.map((r) => String(r.id)).join(', ') + ') — a positional prune counts from the NEWEST row backwards, so `keep` can move the row the track is actually using. Pass ids instead, or dry-run first',
               // ★★ RUN 181 (run 26 / FEEDBACK25 F25-10): `pinned` was a list with no count, and `pinnedMeans:null` on an
               // empty one — a reader had to count rows to learn whether the prune was complete. The count is stated, and the
               // means explains that a pinned row is a permanent row the prune is not allowed to move.
@@ -1158,7 +1184,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                 : 'the rows above are in the TRASH, not deleted: action "status" counts them under records.trashed and they stay restorable until purgeAt (vmu.records.trash.retainDays); expiry is counted, never silent',
               selectionMeans: byIds
                 ? 'this prune moved EXACTLY the ids named (`ids`), whatever their age; `keep` answered a different question (how many newest rows to leave) and is null here on purpose'
-                : 'this prune moved rows by POSITION: `keep` says how many newest rows stay live. To move ONE row, pass its id through `ids` instead — the two selections are not interchangeable',
+                : 'this prune moved rows by POSITION: `keep` says how many newest rows stay live, counted from the NEWEST row backwards — so on a track that holds a CURRENT row plus newer rows, `keep:N` can move the CURRENT row. To move ONE named row pass its id through `ids`; to see what would move first pass `dryRun:true` — the two selections are not interchangeable',
               idsNotFoundMeans: idsNotFound.length === 0
                 ? null
                 : 'these ids were NOT moved because they are not live rows of this track (they may be trashed already, or live in another track): ' + idsNotFound.join(', '),

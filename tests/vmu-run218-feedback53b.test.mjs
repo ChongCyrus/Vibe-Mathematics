@@ -87,7 +87,9 @@ ok(SRC_TOOLS.includes('A draft is NOT private'),
 
 ok(SRC_TOOLS.includes("(processOnly && kApplied === 'immediate') ? 'immediate (THIS PROCESS ONLY)'"),
   '★ ③ the applied value carries its scope, so the quoted word cannot be repeated without the qualifier', SRC_TOOLS.includes('THIS PROCESS ONLY'))
-ok(SRC_TOOLS.includes("appliedScope: processOnly ? 'this-process-only'"),
+// RUN 220 kept the FIELD and made the WORD follow the route: a key with a named member-facing route no longer borrows
+// the no-route word. The pin asks for the branch shape, not for one literal.
+ok(SRC_TOOLS.includes('appliedScope: processOnly') && SRC_TOOLS.includes("'this-process-only'"),
   '★ ③ and the scope is also a field (a boolean `partial` three fields later was easy to skim past)', SRC_TOOLS.includes('appliedScope'))
 
 ok(SRC_CORE.includes('蓝图/协议（blueprint）草案不是私有的'),
