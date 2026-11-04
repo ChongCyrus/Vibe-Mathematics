@@ -189,14 +189,17 @@ test('RUN 209 §4 — "already" is the kernel\'s word, and what this call seeded
     ok(started.ok === true, 'premise: founded', started)
     ok(Array.isArray(started.hiredNow) && started.hiredNow.length === 3, '§4a ★ hiredNow names the seats THIS call made', started.hiredNow)
     ok(Array.isArray(started.rosterBefore) && started.rosterBefore.length === 0, '§4b ★★ rosterBefore is EMPTY — the institute really was fresh', started.rosterBefore)
-    // ★ RUN 221 (run 57 / FEEDBACK56 1.5): the kernel's word is now PROJECTED under a name that carries its subject —
-    // `already` on a first founding read as "the institute already existed", which this same receipt denied elsewhere.
-    ok(started.started && started.started.middlewareAlreadyRegistered === true,
-      '§4c premise: the kernel did answer that its middleware start had run (the projection names the subject)', started.started)
+    // ★★★ RUN 222 (run 58 / FEEDBACK57 ②A): RUN 221 gave the kernel's `already` a SECOND name in the projected block and left
+    // the raw one beside it — run 58 reported the two spellings as the problem. The subject belongs in the sentence now, so the
+    // field keeps the kernel's own name.
+    ok(started.started && started.started.already === true,
+      '§4c premise: the projection keeps the kernel\'s own key, and the subject lives in `alreadyMeans`', started.started)
     ok(started.startedRaw && started.startedRaw.already === true,
       "§4c-2 the kernel's OWN answer still travels, under a key that says it is raw", started.startedRaw)
-    ok(!('already' in started.started),
-      '§4c-3 the projected block does NOT expose the bare word a reader mis-took for "the institute already existed"', started.started)
+    ok(!('middlewareAlreadyRegistered' in started.started),
+      '§4c-3 ★★ RUN 222: the invented second name is GONE — one fact, one key (only the sentence disambiguates)', Object.keys(started.started))
+    has(String(started.started.alreadyMeans || ''), 'does NOT mean the institute existed before',
+      '§4c-4 the sentence carries the subject the key cannot')
     has(started.startedMeans, 'KERNEL', '§4d ★★★ the receipt says whose word `already` is')
     has(started.startedMeans, 'NOT a statement that the institute existed before', '§4e ★★ …and explicitly denies the reading run 46 reported')
   } finally { /* hygiene */ }

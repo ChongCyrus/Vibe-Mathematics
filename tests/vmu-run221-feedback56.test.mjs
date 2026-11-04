@@ -105,8 +105,8 @@ has(SRC_TOOLS, 'diskFiles: []',
 has(SRC_TOOLS, 'wroteDeprecated:',
   '★ ④ the old `wrote` is kept, and labelled as the old name')
 
-has(SRC_TOOLS, 'middlewareAlreadyRegistered:',
-  '★ ⑤ `started` reports the kernel\'s own fact under a name that cannot be misread')
+has(SRC_TOOLS, 'alreadyMeans:',
+  '★ ⑤ `started` keeps the kernel\'s own key and puts the subject in a sentence (RUN 222, FEEDBACK57 ②A)')
 has(SRC_TOOLS, 'startedRaw: started',
   '★ ⑤ and the raw kernel answer is still reachable, one key away')
 
@@ -252,10 +252,10 @@ console.log('\n=== 5. the first start does not say "already" (FEEDBACK56 1.5) ==
   const { call } = await boot()
   const founded = await call('vibe_v5_start', { researcherCount: 2, problem: 'run221 already' })
   ok(founded.ok === true, '§5a premise: the institute was founded', founded.code || founded.ok)
-  ok(founded.started && founded.started.middlewareAlreadyRegistered === true,
-    '§5b the `started` block says the MIDDLEWARE was already registered (the other true fact)', founded.started)
-  ok(!('already' in founded.started),
-    '§5c ★★★ the ambiguous `already` is gone from the projected block', Object.keys(founded.started))
+  ok(founded.started && founded.started.already === true,
+    '§5b the `started` block keeps the kernel\'s own word (RUN 222: the subject moved into the sentence)', founded.started)
+  ok(!('middlewareAlreadyRegistered' in founded.started),
+    '§5c ★★★ the invented second name is gone from the projected block', Object.keys(founded.started))
   ok(founded.startedRaw && founded.startedRaw.already === true,
     '§5d ★★ the kernel\'s own word is still reachable as `startedRaw`', founded.startedRaw)
   has(String(founded.startedMeans || ''), 'NOT a statement that the institute existed before',

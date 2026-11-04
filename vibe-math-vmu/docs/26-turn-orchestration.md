@@ -3656,3 +3656,39 @@ RUN 220（run 56 / FEEDBACK55）：五处「回执为真、读者读错」，逐
 - Machine-checked by `tests/vmu-run221-feedback56.test.mjs` (60/0). Three fixture facts learned the hard way: a card's new
   id is `recordId` while a settlement is selected by `args.id`; hire's seat readings live under `memberScope`; and the
   tool-call reading is on the SETTLED `step.receipt`, not on `drive`'s batch shape.
+
+## ROUND 227 (RUN 222) — a declaration is not a fact, and one word cannot describe two windows
+
+Run 58 (baseline `3ce68f93`, workspace `slvp187-ws`, brief `task-sim58.txt`) closed the main line with a 77 467 B PDF
+and measured four readings that answered about the wrong window, the wrong owner, or the wrong question:
+
+  1. **A positional probe counted declarations as facts.** `prune { keep: 1, dryRun: true }` warned that it would trash
+     "a CURRENT row" and named `rec-2` — a revision a LATER adoption had already superseded — while
+     `vibe_v5_blueprint { action: "state" }` said the row in force was `rec-8`. The warning had read the row HEADER
+     (`- status：current`), which records that the row was the in-force revision **when it was written**. The receipt now
+     separates the two: `doomedDeclaredCurrentCount` / `doomedDeclaredCurrentIds` / `doomedDeclaredCurrentMeans` (whose
+     sentence says the header is HISTORY), and `doomedInForceCount: null` + `doomedInForceMeans` (`null, not 0`: only the
+     owning face computes "in force"; read it there, then pass `ids`).
+  2. **One sentence described two windows; the reader was in the other one.** `draftSharing.means` printed the
+     before-adoption and after-adoption rules in one breath, so a call that STARTED a fresh draft on a path with an
+     adopted revision was told "your text is inside the CURRENT protocol row, there is no path that deletes just a
+     paragraph" — the opposite of its situation (a new draft is prunable by id). `draftSharingOf(joinedId, authorList,
+     continued)` now names THE WINDOW THIS CALL IS IN (`OPEN DRAFT row` when it continued one, `NEW DRAFT row` when it
+     started one), carries `continuesOpenDraft`, and keeps the after-adoption paragraph labelled as "stated only so the
+     future is not a surprise, and it does NOT describe this call".
+  3. **Renaming without removing the old name.** ROUND 226 renamed the kernel's `already` to
+     `middlewareAlreadyRegistered` inside the `started` projection while `startedRaw` still carried `already`; run 58
+     reported the shape difference itself as a defect. The projection is `already` again, with `alreadyMeans` giving the
+     word its subject ("the kernel's answer about ITS OWN start in THIS process; `true` does NOT mean the institute
+     existed before — that is `rosterBefore` (empty) and `hiredNow`").
+  4. **Three questions called `settled`.** The meeting-side reading now prints `meetingSettled` +
+     `meetingSettledMeans` (it answers ONLY "is the MEETING closed"), keeps `settled` as a named alias, and
+     `settledDeprecated` records why run 58 hit the collision.
+
+- Machine-checked by `tests/vmu-run222-feedback57.test.mjs` (51/0), plus four synchronised pins in the run 218/220/209/221
+  suites. Two fixture facts learned the hard way: the meeting roster needs `attend` before votes (quorum is ATTENDANCE),
+  and `meetings.motion(...)` answers with the motion ID itself (`{ok, motion: 'mo1'}`), not an object.
+- Positive side of the same run: nine of the RUN 220/221 repairs fired in the wild — settlement read-back, per-seat deny
+  counts, `toolCalls: null` + `countsAbout`, two distinct scope words, `wroteToLedger` / `diskFiles` / `wroteDeprecated`,
+  a reachable channel in `VMU_RULING_ALREADY_FILED`, `final needs a SIGNER`, and `compiledAfterFinal` naming both the
+  finalising and the re-typesetting compile.

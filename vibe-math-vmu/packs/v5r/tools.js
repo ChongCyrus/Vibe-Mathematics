@@ -1506,7 +1506,14 @@ async function rulingNameResolution(kernel, debate, context = {}) {
     typedRulingsDeprecated: 'the old key name `typedRulings` was REMOVED in RUN 214 (it held the submitted count, not the chair-typed one, and sat beside a `typed` number that meant the opposite); read `rulingCards` and `sources.submittedRulings`',
     unanimous: unanimousTallies.length > 0 || cardUnanimous,
     unanimousCarried: unanimousCarried.length > 0 || cardUnanimous,
-    settled: read.state === 'closed', voted: counted > 0 || cardVotes > 0,
+    // ★★★ RUN 222 (run 58 / FEEDBACK57 ②E, MEASURED): three different things were called `settled` in one run — whether the
+    // MEETING is closed (here), whether the TALLY is decided (`tally.decided`), and whether an evidence CARD is settled. Run 58
+    // reported the collision. The meeting side now says which question it answers; the old key stays as an alias and says so.
+    meetingSettled: read.state === 'closed',
+    meetingSettledMeans: 'this answers ONLY "is the MEETING closed": it is `read.state === "closed"`. It says nothing about whether a tally is decided (`tally.decided`), whether a proposition card is settled, or whether the ruling was filed.',
+    settled: read.state === 'closed',
+    settledDeprecated: 'the key name `settled` is kept as an alias of `meetingSettled` only for compatibility; three different questions were read off the word `settled` in run 58 (meeting closed / tally decided / card settled), so read `meetingSettled` here and the other two from their own faces',
+    voted: counted > 0 || cardVotes > 0,
     means: 'the meeting ' + ref + ' was READ on this kernel: state ' + String(read.state) + ', '
       + String(motions.length) + ' motion(s) (' + String(decidedMotions.length) + ' seconded, '
       + String(carried.length) + ' carried), ' + String(counted) + ' vote(s) recorded; '
@@ -4842,11 +4849,16 @@ async function toolStart(args = {}, { kernel } = {}) {
   // KERNEL's ("this process already ran kernel.start()"), and on the very call that creates an empty institute it reads
   // as "the institute already existed". The receipt now projects the kernel's answer under a name that carries its
   // subject, keeps the kernel's raw object under `startedRaw`, and says so once.
+  // ★★★ RUN 222 (run 58 / FEEDBACK57 ②A, MEASURED): RUN 221 renamed the kernel's `already` to `middlewareAlreadyRegistered` to
+  // give it a subject — and left `startedRaw.already` beside it, so ONE receipt spelled the same fact two ways and run 58
+  // reported the shape difference as the problem. The subject belongs in the SENTENCE, not in a second key: the field keeps
+  // the kernel's own name and the means carries the subject.
   const startedProjected = {
     ok: started && started.ok === true,
-    middlewareAlreadyRegistered: started && started.already === true,
+    already: started && started.already === true,
     registered: started && Array.isArray(started.registered) ? started.registered.slice() : [],
-    means: '`middlewareAlreadyRegistered` is the KERNEL\'s word about ITS OWN start in THIS process (it registers the declared middleware and does nothing else) — it is NOT a statement that the institute existed before this call; read `hiredNow` and `rosterBefore` for that',
+    alreadyMeans: '`already` is the KERNEL\'s answer about ITS OWN start in THIS process — it registers the declared middleware and does nothing else, so `true` does NOT mean the institute existed before this call. Whether an institute existed is answered by `rosterBefore` (empty = nothing was there) and `hiredNow` (who this call minted).',
+    means: 'this block is the PROJECTION of the kernel\'s start answer (same keys as `startedRaw`, minus nothing); the sentence that gives `already` its subject is `alreadyMeans`',
   }
   return { ok: true, tool: 'vibe_v5_start', hired, hiredNow: hired.slice(), rosterBefore: rosterBefore.map((r) => r.id),
     started: startedProjected, startedRaw: started, startedMeans, applied, leaderIdMeans, memberScope, memberScopeNote: MEMBER_SCOPE_NOTE, memberScopeNoteMeans, chairTurnNote,

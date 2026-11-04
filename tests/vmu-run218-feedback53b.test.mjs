@@ -75,8 +75,8 @@ ok(SRC_BLUEPRINT.includes("scope: 'institute-wide'"),
   '★ ① the scope is stated as a field, not implied by the word "draft"', SRC_BLUEPRINT.includes('institute-wide'))
 ok(SRC_BLUEPRINT.includes('appendedTo: joinedId'),
   '★ ① and the receipt names WHAT this call joined (null = it started the row)', SRC_BLUEPRINT.includes('appendedTo'))
-ok(SRC_BLUEPRINT.includes('draftSharing: draftSharingOf(null, authors)') && SRC_BLUEPRINT.includes('draftSharing: draftSharingOf(String(target.id), authors)'),
-  '★ ① the new-draft branch and the continuation branch BOTH carry it', [SRC_BLUEPRINT.includes('draftSharingOf(null, authors)'), SRC_BLUEPRINT.includes('draftSharingOf(String(target.id), authors)')])
+ok(SRC_BLUEPRINT.includes('draftSharing: draftSharingOf(null, authors, false)') && SRC_BLUEPRINT.includes('draftSharing: draftSharingOf(String(target.id), authors, true)'),
+  '★ ① the new-draft branch and the continuation branch BOTH carry it', [SRC_BLUEPRINT.includes('draftSharingOf(null, authors, false)'), SRC_BLUEPRINT.includes('draftSharingOf(String(target.id), authors, true)')])
 
 ok(SRC_TOOLS.includes('a leading copy of the draft THIS CALL CONTINUES is stripped'),
   '★ ② the description defines WHICH draft is compared (the one this call continues)', SRC_TOOLS.includes('THIS CALL CONTINUES'))

@@ -1103,7 +1103,14 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             // ★ RUN 220: the list projection does not carry a row's own declared status (a blueprint's CURRENT row reads
             // `status: "live"` like its drafts do — the word "current" lives in the row's own header). So the check reads
             // the row when it has to: a doomed row whose header declares `status: current` is the row a track is USING.
-            const doomedActive = []
+            // ★★★ RUN 222 (run 58 / FEEDBACK57 A, MEASURED): this check used to read each doomed row's own header and print
+            // "1 of the rows above is a CURRENT row of this track (rec-2)" — and run 58 measured that it named the WRONG row:
+            // the pack's own `blueprint state` said `current.id` was rec-8, while rec-2 was in `superseded`. The header line
+            // records that the row WAS the in-force revision WHEN IT WAS WRITTEN; a later adopted revision supersedes it by
+            // carrying a HIGHER revision, and that ruler belongs to the track's owning face, not to the records face. So the
+            // receipt no longer presents a declaration as the answer to "which row is in force": it says which declaration it
+            // read and where the real answer lives, and the in-force count is null rather than a guessed 0.
+            const declaredCurrent = []
             for (const r of doomed) {
               if (!r || typeof r.id !== 'string') continue
               let declared = String(r.status || r.state || '')
@@ -1116,7 +1123,7 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
                   if (bodyText.indexOf('- status：current') >= 0 || bodyText.indexOf('- status: current') >= 0) declared = 'current'
                 } catch (e) { declared = '' }
               }
-              if (declared === 'current') doomedActive.push(r)
+              if (declared === 'current') declaredCurrent.push(r)
             }
             if (byIds && doomed.length === 0) {
               return refused('VMU_NO_SUCH_OBJECT', 'none of the ids named (' + idsArg.join(', ') + ') is a LIVE row of track "' + pruneTrack + '": nothing was moved',
@@ -1166,10 +1173,16 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               ok: true, action, track: pruneTrack, keep: byIds ? null : wantKeep, selection: byIds ? 'ids' : 'keep',
               idsRequested: byIds ? idsArg : [], idsNotFound, dryRun: preview,
               liveBefore, liveAfter, wouldPruneCount: doomed.length, prunedCount: preview ? 0 : moved.length, pruned: moved, pinned,
-              doomedActiveCount: doomedActive.length,
-              doomedActiveMeans: doomedActive.length === 0
+              // ★★★ RUN 222 (FEEDBACK57 A): TWO names, because they are two questions. `doomedDeclaredCurrent*` is what this
+              // face can PROVE from the row's own header; `doomedInForce*` is what the reader actually wants and this face
+              // cannot compute — so it is null with a reachable path, never a plausible number.
+              doomedDeclaredCurrentCount: declaredCurrent.length,
+              doomedDeclaredCurrentIds: declaredCurrent.map((r) => String(r.id)),
+              doomedDeclaredCurrentMeans: declaredCurrent.length === 0
                 ? null
-                : 'WARNING: ' + doomedActive.length + ' of the rows above is a CURRENT row of this track (' + doomedActive.map((r) => String(r.id)).join(', ') + ') — a positional prune counts from the NEWEST row backwards, so `keep` can move the row the track is actually using. Pass ids instead, or dry-run first',
+                : 'WARNING: ' + declaredCurrent.length + ' of the rows above carry `status: current` in their OWN header (' + declaredCurrent.map((r) => String(r.id)).join(', ') + '). That line is HISTORY: it records that the row was the in-force revision when it was WRITTEN, and a later adopted revision supersedes it by carrying a higher revision. A positional prune counts from the NEWEST row backwards, so `keep` can move the row a track is actually using — but do NOT read these ids as "the rows in force".',
+              doomedInForceCount: null,
+              doomedInForceMeans: 'null, not 0: which revision is IN FORCE is computed by the track\'s owning face (for blueprints, `vibe_v5_blueprint { action: "state" }` → `current.id`), and this records face does not own that ruler. Read that face, then pass `ids` for the exact rows you mean.',
               // ★★ RUN 181 (run 26 / FEEDBACK25 F25-10): `pinned` was a list with no count, and `pinnedMeans:null` on an
               // empty one — a reader had to count rows to learn whether the prune was complete. The count is stated, and the
               // means explains that a pinned row is a permanent row the prune is not allowed to move.

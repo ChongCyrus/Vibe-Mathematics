@@ -802,21 +802,29 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   // no private draft in this institution: the row is in the shared records track, every member kernel over this workspace
   // reads it, and it stays until the draft is adopted (or pruned). The receipt now says so, and names what this call joined
   // (or that it started the row), so "file it and throw it away" is refused by the facts BEFORE it becomes someone's base.
-  const draftSharingOf = (joinedId, authorList) => ({
+  // ★★★ RUN 222 (run 58 / FEEDBACK57 B, MEASURED): this paragraph used to print BOTH windows in one breath, so a call that
+  // STARTED a fresh draft row on a path that already had an adopted revision was told "AFTER adoption your text is inside the
+  // CURRENT protocol row" — the opposite of the fact (a new row is a draft, and the BEFORE window is the one that applies to
+  // it). Run 58 came within one inference of believing its own text could not be removed. The sentence now names the window
+  // THIS call is in and keeps the other one as a warning about later, not as a claim about now.
+  const draftSharingOf = (joinedId, authorList, continued) => ({
     scope: 'institute-wide',
     revision,
     appendedTo: joinedId,
+    continuesOpenDraft: continued === true,
     authors: authorList.map((a) => txt(a.member)),
     means: 'a draft is NOT private: this revision lives in the shared records track and every member kernel over this '
       + 'workspace reads the SAME row' + (joinedId === null
         ? ' — this call STARTED it, so the next author writes on top of your text'
         : ' (' + String(joinedId) + '), so a proposal filed to test the face is visible to every member and becomes part '
           + 'of the text they continue')
-      + '. Nothing is discarded automatically, and the two windows differ: BEFORE adoption the office can prune the draft '
-      + 'ROW by id (vibe_vmu_records { action: "prune", track: "blueprint", ids: "<the draft row id>" }), which removes the whole '
-      + 'draft including your text; AFTER adoption your text is inside the CURRENT protocol row, and prune moves WHOLE rows — '
-      + 'pruning that row would take the live protocol with it, so there is NO path that deletes just a paragraph. If the text '
-      + 'was diagnostic, say so in `note`; otherwise it is the base the next author writes on',
+      + '. Nothing is discarded automatically. THE WINDOW THIS CALL IS IN: '
+      + (continued === true
+        ? 'your text went into the OPEN DRAFT row ' + String(joinedId) + ', which is NOT adopted'
+        : 'your text is in a NEW DRAFT row — this call adopted nothing')
+      + ', so the BEFORE-adoption window is the live one: prune that row by id (vibe_vmu_records { action: "prune", track: "blueprint", ids: "<the draft row id>" }) removes the whole draft, including your text. '
+      + 'The AFTER-adoption window is stated only so the future is not a surprise, and it does NOT describe this call: once the chair adopts a revision, that text sits inside the CURRENT protocol row, prune moves WHOLE rows, and there is NO path that deletes just a paragraph. '
+      + 'If the text was diagnostic, say so in `note`; otherwise it is the base the next author writes on',
   })
   if (target === null) {
     const authors = [entry]
@@ -842,7 +850,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       continued: false,
       continuedBase,
       authors,
-      draftSharing: draftSharingOf(null, authors),
+      draftSharing: draftSharingOf(null, authors, false),
       codesign: blueprintCodesignStatus(authors, ''),
       fingerprint: put.fingerprint || null,
       deduplicated: put.deduplicated === true,
@@ -910,7 +918,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     continuedBase,
     author,
     authors,
-    draftSharing: draftSharingOf(String(target.id), authors),
+    draftSharing: draftSharingOf(String(target.id), authors, true),
     codesign: blueprintCodesignStatus(authors, ''),
     fingerprint: (wrote && wrote.fingerprint) || null,
     deduplicated: false,

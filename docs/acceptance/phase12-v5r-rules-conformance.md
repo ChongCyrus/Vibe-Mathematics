@@ -15651,3 +15651,61 @@ run 56（基线 `ac147a9d`，第 56 次真机，`slvp185-ws`，PDF **62 704 B**�
 1. **写路径的回执要读回它写的东西**：结算改的是同一行，回执却按「这次调用写了什么」作答，于是「没写 proof 字段」被读成「proof 字段没了」。凡「编辑既有行」的面，回执必须回读。
 2. **一个数字必须带主语**：`denyCount` 不带席名，读者就把它当「那张拒绝列表」；`toolCalls:0` 不带范围，读者就把它当「成员没干活」。
 3. **零与未知是不同的值**：不可读的时候要交 `null` + 另一个字段承载能读到的部分，而不是交 `0` 再在散文里补救。
+
+## §323 RUN 222 — 声明不是事实，一个词不许说两个窗口（run 58 / FEEDBACK57）
+
+**323.1 现场（第 58 次真机：基线 `3ce68f93`，工作区 `slvp187-ws`，简报 `task-sim58.txt`）**
+
+`DRIVE exit=0`，`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`，`durationSec:982`，`toolCalls:50`，`tokenTotal:9 523 855`；主线结题 `Paper/paper-paper-oddsum-58/paper-paper-oddsum-58.pdf` **77 467 B**（`.aux`/`.tex`/`.log` 同在）。报告 `SIM-REPORT57.md` 27 041 B、`FEEDBACK57.md` 12 607 B。
+
+四笔账：
+
+| # | 读者看到什么 | 真事实 |
+|---|---|---|
+| A | `prune {keep:1, dryRun:true}` ⇒ `doomedActiveCount:1`，`doomedActiveMeans` 说「上面有一行是本轨的 **CURRENT** 行（rec-2）」 | rec-2 是 **已被取代**的 r1；`vibe_v5_blueprint {action:"state"}` 的 `current.id` 是 **rec-8**。警告读的是行头 `- status：current`——那是「写这一行时它是现行版」的历史声明，不是今天的判据 |
+| B | 采纳一版之后**新开**的草案（`continued:false`、`appendedTo:null`、`revision:2`）的 `draftSharing.means` 说「你的文字在 CURRENT 协议行里，prune 只能整行移动，没有删段的路」 | 这份文字在**新草案行**里（未采纳），BEFORE 窗口才是活的：按 id prune 就能整份清掉。静态文案把两个窗口一起说，读者差点以为无从删除 |
+| C | `started` 与 `startedRaw` 同一事实两个键名（`middlewareAlreadyRegistered` vs `already`） | 同一句话两处形状不同，run 58 把形状差异本身当成缺陷报上来——这是上一轮「改名而不减名」的代价 |
+| D | `settled` 一词三义（会议是否已关闭 / 计票是否已定 / 证据卡是否已定） | 会议侧的键本可叫 `meetingSettled`；同词三义让读者按错的那一义去核 |
+
+正面（上一轮修法全部真触发，9 条）：结算回读 `proofStateFrom:"READ BACK from the stored row after the settlement patch: …"` + `proofStateEvidence:null` + `proofStateEvidenceMeans:"null ON PURPOSE: a settlement verifies nothing"`，`records.expand` 回读一致；`denyCountBySeat.temp.deny:40` 等于 `applied[0].denyCount` 而顶层 `denyCount:21` 属 member 席；`toolCalls:null`/`toolCallsThisKernelTotal:0`/`toolCallsCountsAbout:"this-kernel-not-the-member"`；`appliedScope` 两种范围词可分；`wroteToLedger`/`diskFiles`/`wroteDeprecated` 分工；`VMU_RULING_ALREADY_FILED` 的 hint 给 `vibe_v5_message { to }`；空 `member` 的 `final` ⇒ `final needs a SIGNER: …`；`compiledAfterFinal:true` 同时报定稿那次与重排那次；成员自述与账本对得上。
+
+**323.2 修法（四处）**
+
+1. `vibe-math-vmu/host.js`（`prune`）：`const doomedActive = []` → `const declaredCurrent = []`，回执改 `doomedDeclaredCurrentCount` / `doomedDeclaredCurrentIds` / `doomedDeclaredCurrentMeans`；警告句明说行头那行是 **HISTORY**（「写这一行时它是现行版，后来的采纳以更高 revision 取代它」），并加 `doomedInForceCount: null` + `doomedInForceMeans`（`null, not 0`：哪一版现行由拥有该轨的面计算——蓝图读 `vibe_v5_blueprint { action: "state" }` 的 `current.id`，记录面不拥有那把尺子，要按 id 指名）。
+2. `vibe-math-vmu/packs/v5r/blueprint.js`（`draftSharingOf(joinedId, authorList, continued)`）：加第三参、回执加 `continuesOpenDraft`；`means` 改成「THE WINDOW THIS CALL IS IN: …」，`continued===true` 说「你的文字进了**未采纳的那份 OPEN DRAFT** 行」，否则说「你的文字在**新草案行**——这次调用没有采纳任何东西」，BEFORE 窗口随之成为活的；AFTER 窗口只作「后来才发生、**不描述这次调用**」的预警。调用点 `:845` 传 `false`、`:913` 传 `true`。
+3. `vibe-math-vmu/packs/v5r/tools.js`（`startedProjected`）：删 `middlewareAlreadyRegistered`，恢复 `already`，并给 `alreadyMeans` 一个主语（「内核**在本次进程里**关于自己启动的回答；`true` 不表示本所此前已存在——那要读 `rosterBefore`（空 = 此前什么都没有）与 `hiredNow`」）。
+4. 同文件会议读数：`meetingSettled` + `meetingSettledMeans`（只答「会议是否已关闭」，不答 `tally.decided`、卡是否 settled、裁决是否已交），`settled` 保留为 alias 并附 `settledDeprecated` 说明三义冲突。
+
+**323.3 机器化**
+
+`tests/vmu-run222-feedback57.test.mjs` = **51 passed / 0 failed**。§0 八条源码 pin（`const draftSharingOf = (joinedId, authorList, continued) => ({`、`continuesOpenDraft: continued === true`、两支窗口句、`alreadyMeans:`、无 `middlewareAlreadyRegistered: started` 键、`meetingSettled: read.state === 'closed',`、`settledDeprecated:`）；§1 真装配两条窗口（首提出 `NEW DRAFT row`、续写出 `OPEN DRAFT row` 且点名 id、采纳后新开草案 `continuesOpenDraft:false` 且 means 含 `does NOT describe this call`）；§2 `started.already === true` + `alreadyMeans` + 无第二键 + `startedRaw.already` 仍在；§3 会议路线真吃一遍（开会 → 三席 `attend`（quorum 是出勤）→ `motion`（返回 id 字符串）→ `second` → 三票 → p=0.99 建卡 → p=1 结算）⇒ `p1RulingReading.kind:"meeting"`、`meetingSettled` 为布尔、means 含 `ONLY "is the MEETING closed"`、`settled === meetingSettled`、`settledDeprecated` 含三义句；§4 位置式 prune 真吃一遍（草案 + 院士共同设计 → adopt → 新草案 → `prune {keep:1, dryRun:true}`）⇒ `doomedDeclaredCurrentCount>=1`、means 含 `HISTORY`、`doomedInForceCount === null`、means 含 `null, not 0`、且 `state.current.id` 与警告点名的 id 不是同一个（这正是 run 58 的分歧）。
+
+同步更新的旧 pin：`tests/vmu-run220-feedback55.test.mjs`（prune 改名 + 两句窗口句）、`tests/vmu-run209-feedback45.test.mjs`（`started.already`）、`tests/vmu-run221-feedback56.test.mjs`（`alreadyMeans`、删第二键）、`tests/vmu-run218-feedback53b.test.mjs`（`draftSharingOf` 第三参）。
+
+**323.4 定向回归与收口链**
+
+定向回归 16 组全绿：`vmu-run222-feedback57` 51/0、`vmu-run221-feedback56` 60/0、`vmu-run220-feedback55` 65/0、`vmu-run219-feedback54` 54/0、`vmu-run218-feedback53b` 26/0、`vmu-run209-feedback45`、`vmu-b4-b5-blueprint` 69/0、`vmu-turn` 272/0、`vmu-meeting` 50/0、`vmu-paper` 37/0、`vmu-v5r-tools` 361/0、`vmu-run217-feedback53` 40/0、`vmu-run154`/`vmu-run155` 全绿、`audit-vmu-docs` 103/0。
+
+收口链：`update-doc-counts --write` ⇒ `JOBS total=773 suites=665 probes=108`（files changed=5）→ `regen-all --write` 17/17 → `--check` 17/17 in sync → `PREFLIGHT: PASS` / `DOC LINT: PASS`（D16 `vmu.store` 提示）/ `RULES COVERAGE: PASS (0)` / `RULE PARITY: PASS (0)`。
+
+**323.4b 全量 T1**
+
+干净全量（`nohup node tests/run-tests.mjs > /d/_tmp/t1-r1360-run222.log`，并发 2、wall 2307.0 s）：
+
+```
+TOTAL 773  PASS 773  FAIL 0  (suites 665 · probes 108)
+```
+
+其中 headstart 的四个 mutant 作业全部 `ALL MUTANTS RED AS REQUIRED`（`v5-institute-fixes.mutants.mjs` 三片 549.6/582.9/523.6 s、`v2-fix-probes.mutants.mjs` 433.5 s）。这一轮**没有红**——上一轮 §322 的收口是在「先改上游 pin 再跑」之后，本轮的四个 pin 改动（220/218/209/221）在定向回归里已经各自跑绿，全量只是复核。
+
+**323.5 未闭合**
+
+1. `doomedDeclaredCurrentCount` 仍是「按行头数」，它诚实（句子里写了 HISTORY），但**没有一个字段直接回答「这次 prune 会不会动到现行版」**——那需要记录面去问每个轨的拥有面，属跨子系统；本轮只把「不知道」说成 `null` 并指路。
+2. `draftSharing` 现在讲的是**本次调用所在的窗口**，但采纳之后「没人能把某一段从现行协议里删掉」仍是结构事实；要真能删段需要一次「协议段落变更」的机制设计（按段 id + 采纳记录），不是文案能补的。
+3. 四处修法尚未真机复验（第 59 次真机才覆盖）。
+
+**323.6 三教训**
+
+1. **声明不是事实**：行头 `status: current` 记的是「写它时它是现行版」，把它当今天的判据就会像 run 58 那样点名一个早已被取代的 revision。凡「从行内声明推导现状」的读数，要么去问拥有那把尺子的面，要么把不确定交成 `null`。
+2. **一个词只能描述它所在的那个窗口**：把采纳前/后两段规则并排写成一句静态文案，读者必然按错的那一段行动；回执要说出「这次调用处在哪个窗口」，把另一窗口降级为「以后会怎样」的提醒。
+3. **改名要减名**：上一轮为了方便读，把 `already` 换成 `middlewareAlreadyRegistered`，却让同一事实两个键名并排出现，结果真机把形状差异本身报成缺陷。改名的正确做法是**一个名字 + 一句给它主语的话**，不是并排两个名字。

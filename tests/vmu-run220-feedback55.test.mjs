@@ -99,17 +99,19 @@ has(SRC_TOOLS, 'absence of a `submissions` block here is not a missing number',
 has(SRC_TOOLS, 'send it with vibe_v5_message',
   '★ ⑤ `VMU_RULING_ALREADY_FILED` names a REACHABLE channel for "a note to the chair"')
 
-has(SRC_BLUEPRINT, 'AFTER adoption your text is inside the CURRENT protocol row',
+has(SRC_BLUEPRINT, 'The AFTER-adoption window is stated only so the future is not a surprise',
   '★ ③ draftSharing.means states what happens after adoption')
 has(SRC_BLUEPRINT, 'NO path that deletes just a paragraph',
   '★ ③ …and says the paragraph-level edit has no face at all')
 
-has(SRC_HOST, 'const doomedActive = []',
-  '★ ④ prune counts the doomed rows that are CURRENT, not only the doomed rows')
+has(SRC_HOST, 'const declaredCurrent = []',
+  '★ ④ prune counts the doomed rows that DECLARE current (RUN 222 renamed it: a declaration is history, not the in-force row)')
 has(SRC_HOST, "bodyText.indexOf('- status：current') >= 0",
   '★ ④ …and reads the row header, because the list projection calls a CURRENT row `live` like its drafts')
-has(SRC_HOST, 'doomedActiveCount: doomedActive.length',
-  '★ ④ the count is on the receipt')
+has(SRC_HOST, 'doomedDeclaredCurrentCount: declaredCurrent.length',
+  '★ ④ the DECLARED count is on the receipt')
+has(SRC_HOST, 'doomedInForceCount: null',
+  '★ ④ ★★ and the IN-FORCE count is null with a reachable path, because this face does not own that ruler (RUN 222, FEEDBACK57 A)')
 has(SRC_HOST, 'counted from the NEWEST row backwards',
   '★ ④ the by-position means states which direction `keep` counts')
 
@@ -152,7 +154,7 @@ console.log('\n=== 2. draftSharing.means names the adoption boundary (FEEDBACK55
   const second = await call('vibe_v5_blueprint', { action: 'propose', member: 'r-2', text: '草案二：续写' })
   ok(second.ok === true, '§2b premise: the second proposal continues it', second)
   const sharing = second.draftSharing || {}
-  has(String(sharing.means), 'AFTER adoption your text is inside the CURRENT protocol row',
+  has(String(sharing.means), 'The AFTER-adoption window is stated only so the future is not a surprise',
     '§2c ★ the means states what is true after adoption', { means: sharing.means })
   has(String(sharing.means), 'NO path that deletes just a paragraph',
     '§2d ★ …and says the paragraph edit it used to suggest has no face', { means: sharing.means })
@@ -181,23 +183,29 @@ console.log('\n=== 3. a positional prune warns before it trashes the CURRENT row
 
   const dry = await call('vibe_vmu_records', { action: 'prune', track: 'blueprint', keep: 1, dryRun: true })
   ok(dry.ok === true, '§3e the positional dry run answers', dry)
-  ok(Number(dry.doomedActiveCount) >= 1,
-    '§3f ★ the receipt counts the doomed rows that are CURRENT (run 56: keep:1 would have trashed the live protocol)',
-    { doomedActiveCount: dry.doomedActiveCount, wouldPrune: dry.wouldPruneCount })
-  has(String(dry.doomedActiveMeans), 'WARNING',
-    '§3g ★ …and says so in words, not only in a number', { means: dry.doomedActiveMeans })
-  has(String(dry.doomedActiveMeans), 'CURRENT',
-    '§3h the warning names what is at stake', { means: dry.doomedActiveMeans })
+  ok(Number(dry.doomedDeclaredCurrentCount) >= 1,
+    '§3f ★ the receipt counts the doomed rows that DECLARE current (run 56: keep:1 would have trashed the row the track was using)',
+    { doomedDeclaredCurrentCount: dry.doomedDeclaredCurrentCount, wouldPrune: dry.wouldPruneCount })
+  has(String(dry.doomedDeclaredCurrentMeans), 'WARNING',
+    '§3g ★ …and says so in words, not only in a number', { means: dry.doomedDeclaredCurrentMeans })
+  has(String(dry.doomedDeclaredCurrentMeans), 'status: current',
+    '§3h the warning names the line it actually read (the row header), not a verdict about what is in force', { means: dry.doomedDeclaredCurrentMeans })
+  has(String(dry.doomedDeclaredCurrentMeans), 'HISTORY',
+    '§3h-2 ★★★ RUN 222 (FEEDBACK57 A): the sentence says that header line is HISTORY — run 58 measured it naming a SUPERSEDED revision as CURRENT', { means: dry.doomedDeclaredCurrentMeans })
+  ok(dry.doomedInForceCount === null,
+    '§3h-3 ★★ the in-force count is null (not 0) because only the owning face computes it', dry.doomedInForceCount)
+  has(String(dry.doomedInForceMeans), 'null, not 0',
+    '§3h-4 …and the means says so and points at the face that can answer', { means: dry.doomedInForceMeans })
   has(String(dry.selectionMeans), 'counted from the NEWEST row backwards',
     '§3i the by-position means states the direction, so `keep` cannot be read as "keep the current one"', { means: dry.selectionMeans })
 
   const byId = await call('vibe_vmu_records', { action: 'prune', track: 'blueprint', ids: String(draftId), dryRun: true })
   ok(byId.ok === true, '§3j premise: a by-id dry run answers for the same track', byId)
-  ok(Number(byId.doomedActiveCount) === 0,
-    '§3k ★ a by-id selection does not doom the CURRENT row, and the count proves it',
-    { doomedActiveCount: byId.doomedActiveCount, doomedActiveMeans: byId.doomedActiveMeans })
-  ok(byId.doomedActiveMeans === null,
-    '§3l …and prints no warning at all (a clean selection is not a warning with a zero in it)', { m: byId.doomedActiveMeans })
+  ok(Number(byId.doomedDeclaredCurrentCount) === 0,
+    '§3k ★ a by-id selection does not doom a row that DECLARES current, and the count proves it',
+    { doomedDeclaredCurrentCount: byId.doomedDeclaredCurrentCount, means: byId.doomedDeclaredCurrentMeans })
+  ok(byId.doomedDeclaredCurrentMeans === null,
+    '§3l …and prints no warning at all (a clean selection is not a warning with a zero in it)', { m: byId.doomedDeclaredCurrentMeans })
 }
 
 console.log('\n=== 4. the two ruling shapes are one number, and the note has a channel (FEEDBACK55 1.4 / 1.5) ===')
