@@ -900,6 +900,24 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           : (bodyModeUsed === 'append'
             ? 'the previous body was KEPT and this text was added after it (' + bytes + ' bytes now); pass bodyMode:"replace" to swap the whole body'
             : 'the body was REPLACED by this write (' + bytes + ' bytes); the write is listed in records.history as a version (vmu.records.history.storeMode:"full" keeps the whole previous text, "diff" names the changed fields and their sizes), so it is reported, not silent'))
+      // ★★★ RUN 238 (run 61 / FEEDBACK61 B, MEASURED): `bodyModeUsed:"replace"` said the body was replaced and left it at
+      // that, so a caller reading `updated:true` + `fieldsKept` concluded "this was an incremental update" while the CARD's
+      // own lines (proofRef / proofState / debateRuling) were gone. A replace is a rewrite of the content, and the receipt
+      // must name what the rewrite dropped — the difference between "the row kept its fields" and "the card kept its
+      // lines" is the whole defect.
+      const bodyLinesOf = (text) => {
+        const NL = String.fromCharCode(10)
+        const keys = []
+        for (const line of String(text === null || text === undefined ? '' : text).split(NL)) {
+          const m = /^-\s*([^\s：:]+)\s*[：:]/.exec(line)
+          if (m && keys.indexOf(m[1]) < 0) keys.push(m[1])
+        }
+        return keys
+      }
+      const bodyLinesBefore = updating ? bodyLinesOf(oldText) : []
+      const bodyLinesAfter = bodyLinesOf(bodyText)
+      const bodyLinesDropped = bodyLinesBefore.filter((k) => bodyLinesAfter.indexOf(k) < 0)
+      const bodyLinesAdded = bodyLinesAfter.filter((k) => bodyLinesBefore.indexOf(k) < 0)
       const receipt = { ok: true, deduplicated: false, id, slug, fingerprint: fp, bytes, tier: tierOf(rec, at), retrackedFrom,
         retrackedFromMeans: retrackedFrom === null ? 'this row did not change track' : 'this id was on the "' + retrackedFrom + '" track and MOVED here: the old index row was removed, so one id answers exactly one `list({track})`',
         enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at }
@@ -907,8 +925,21 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const out = Object.assign(receipt, {
         updated: true, rev: rec.rev, versionsCount: rec.versions.length,
         fieldsKept, fieldsReplaced, bodyModeUsed, bodyModeMeans,
+        // ★ RUN 238: what the rewrite did to the CARD's own lines (empty on create, on `kept`, and on an append).
+        bodyLinesDropped, bodyLinesAdded,
+        bodyLinesMeans: bodyModeUsed !== 'replace'
+          ? 'the body was not replaced by this write, so no card line could be dropped by it'
+          : (bodyLinesDropped.length === 0
+            ? 'the body was REPLACED and no line the card carried before is missing from the new body: the rewrite was a change of text, not a loss of fields'
+            : 'the body was REPLACED and these card lines did NOT survive it: ' + bodyLinesDropped.join(', ')
+              + ' — the previous body is in records.history, and a card that must keep a line has to be MERGED into (pass bodyMode:"append", or write through a tool that edits one line) rather than replaced'),
       })
       if (titleIsOwnId) out.fieldsKeptWhy = { title: 'the supplied title was this row\'s own id (' + updating.id + ') — an id is not a name, so the row kept its title' }
+      // ★ RUN 238 / FEEDBACK61 E: two kernels each hold their own projection, so `rev` is comparable only WITHIN one
+      // kernel. The receipt says where the number came from instead of letting a reader conclude that one of the two
+      // readings is stale.
+      out.revSource = 'this-kernel'
+      out.revMeans = 'rev counts the writes THIS kernel has folded into this row; another kernel over the same workspace keeps its own projection, so two live readings can differ by a version without either being wrong — compare `fingerprint`/`updatedAt` across kernels, not `rev`'
       return out
     },
 
@@ -1468,19 +1499,20 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const filter = onlyTrack === undefined || onlyTrack === null || mdStr(onlyTrack).trim() === '' ? null : mdStr(onlyTrack).trim()
       const root = api.mdRoot()
       const means = {
-        scanned: 'md 文件数：在 <root>/VibeMath 下递归扫描（跳过隐藏目录、node_modules 与 vmu 状态目录），只认带 ' + MD_MARKER_KEY + ' 标记的 md',
+        scanned: 'md 文件数：这次真正对账的 md（`track` 给定时只数该轨的 md）；扫描本身始终递归整棵 <root>/VibeMath（跳过隐藏目录、node_modules 与 vmu 状态目录）',
         adopted: '磁盘上有这一版、索引里没有活行：按 md 重建了一行索引（md 是唯一真相）；dryRun 时只报告不写',
         changed: '索引行记的 ' + MD_REBUILT_KEY + ' 与磁盘 md 的 sha256 不同（md 被外部改过）：把该行换成 md 的正文快照，旧正文进该行版本历史，不删任何历史行',
         missing: '索引里有行、磁盘上没有对应的 md：具名报告；不删行（文件缺失是事实，不是拿索引冒充正文的理由）',
         untracked: '磁盘上有 md、索引里还没有对应活行（dryRun 时就是「不写的话会保持 untracked」的那些）',
         unchanged: 'md 指纹与索引行一致：没有写任何东西',
-        skipped: '读不动、不是 vmu md、或 track 未声明：计数并具名，绝不静默丢',
+        skipped: '读不动、不是 vmu md、或 track 未声明：计数并具名，绝不静默丢；每条带 `whyClass`（unreadable / not-a-vmu-md / undeclared-track / write-refused），所以「有一堆坏文件」与「这堆文件根本不是我这类文档」不再混成一个数',
+        skippedByClass: '按 whyClass 分类的跳过计数：not-a-vmu-md 是别人写的 md（不带 `- ' + MD_MARKER_KEY + '：` 头），不是坏索引行',
       }
       if (root === null) {
         return {
           ok: true, action: 'reindex', available: false, dryRun: dry, root: null,
           scanned: 0, paths: [], adopted: [], changed: [], missing: [], untracked: [], unchanged: 0, skipped: [],
-          counts: { scanned: 0, unchanged: 0, adopted: 0, changed: 0, missing: 0, untracked: 0, skipped: 0 },
+          counts: { walked: 0, scanned: 0, unchanged: 0, adopted: 0, changed: 0, missing: 0, untracked: 0, skipped: 0, skippedByClass: { unreadable: 0, 'not-a-vmu-md': 0, 'undeclared-track': 0, 'write-refused': 0 } },
           means: Object.assign({ root: 'this instance is not attached to a durable store, so there is no workspace to scan and nothing was written' }, means),
           historyKept: true, at: now(),
         }
@@ -1502,13 +1534,39 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
 
       const seenPaths = []
       const skipped = []
+      // ★★ RUN 237 (MEASURED, FEEDBACK60 M6): one bucket called `skipped` mixed three different facts — a file
+      // that could not be read, a file whose bytes are not a vmu document at all (a member's own notes), and a
+      // card whose track this kernel does not declare. Reported as one list, the second kind reads like "there are
+      // a pile of broken files". Each skip now carries `whyClass` and the counts are split.
+      const skippedByClass = { unreadable: 0, 'not-a-vmu-md': 0, 'undeclared-track': 0, 'write-refused': 0 }
+      const noteSkip = (item) => {
+        const cls = item && item.whyClass ? item.whyClass : 'unreadable'
+        skippedByClass[cls] = (skippedByClass[cls] || 0) + 1
+        skipped.push(item)
+      }
       const mdByKey = new Map()
       for (const file of files) {
         const rel = api.mdRelOf(file)
         let content = ''
-        try { content = readFileSync(file, 'utf8') } catch (e) { skipped.push({ path: rel, why: 'unreadable: ' + String((e && e.code) || (e && e.message) || e) }); continue }
+        try { content = readFileSync(file, 'utf8') } catch (e) {
+          noteSkip({ path: rel, whyClass: 'unreadable', why: 'unreadable: ' + String((e && e.code) || (e && e.message) || e) })
+          continue
+        }
         const doc = mdParseText(content)
-        if (doc.ok !== true) { skipped.push({ path: rel, why: doc.why || 'not a vmu md' }); continue }
+        if (doc.ok !== true) {
+          // ★ is this file OURS at all? A md with no `- vmuMd：` header line is somebody else's document that happens
+          // to live under the library root (a member's notes, a proposal draft). Calling that "unreadable" or
+          // "broken" is a false accusation; it is simply not a row this index can own.
+          const declaresMarker = new RegExp('^-\\s*' + MD_MARKER_KEY + '\\s*[：:]', 'm').test(mdStr(content))
+          noteSkip({
+            path: rel,
+            whyClass: 'not-a-vmu-md',
+            why: declaresMarker
+              ? (doc.why || 'not a vmu md')
+              : 'not a vmu document (no `- ' + MD_MARKER_KEY + '：` header line): left exactly as it is — a md this index cannot own, and saying so is not an accusation that anything is wrong with it',
+          })
+          continue
+        }
         if (filter !== null && doc.track !== filter) continue
         const declared = mdStr(doc.fields && doc.fields.path).trim()
         seenPaths.push(rel)
@@ -1555,7 +1613,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
             continue
           }
           if (!tracks.includes(doc.track)) {
-            skipped.push({ path: key, why: 'track "' + doc.track + '" is not declared by vmu.records.tracks, so no row can be adopted from this md' })
+            noteSkip({ path: key, whyClass: 'undeclared-track', why: 'track "' + doc.track + '" is not declared by vmu.records.tracks, so no row can be adopted from this md' })
             continue
           }
           untracked.push(item)
@@ -1579,7 +1637,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
             }
             adopted.push(Object.assign({}, item, { id: wroteId, means: 'index 里本来没有这一版的活行：按 md 重建了一行（md 是唯一真相）' }))
           } catch (e) {
-            skipped.push({ path: key, why: 'adopt refused: ' + String((e && e.code) || 'VMU_UNKNOWN') + ' ' + String((e && e.message) || e) })
+            noteSkip({ path: key, whyClass: 'write-refused', why: 'adopt refused: ' + String((e && e.code) || 'VMU_UNKNOWN') + ' ' + String((e && e.message) || e) })
           }
           continue
         }
@@ -1616,7 +1674,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           })
           changed.push(Object.assign({}, item, { means: '索引行换成 md 的快照：新正文是这一行的最新版本，旧正文仍在 history 里，历史行一条没少' }))
         } catch (e) {
-          skipped.push({ path: key, why: 'reindex supersede refused: ' + String((e && e.code) || 'VMU_UNKNOWN') + ' ' + String((e && e.message) || e) })
+          noteSkip({ path: key, whyClass: 'write-refused', why: 'reindex supersede refused: ' + String((e && e.code) || 'VMU_UNKNOWN') + ' ' + String((e && e.message) || e) })
         }
       }
 
@@ -1630,9 +1688,19 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         }
       }
 
-      const counts = { scanned: seenPaths.length, unchanged: unchangedList.length, adopted: adopted.length, changed: changed.length, missing: missing.length, untracked: untracked.length, skipped: skipped.length }
+      const counts = { walked: files.length, scanned: seenPaths.length, unchanged: unchangedList.length, adopted: adopted.length, changed: changed.length, missing: missing.length, untracked: untracked.length, skipped: skipped.length, skippedByClass: Object.assign({}, skippedByClass) }
       return {
         ok: true, action: 'reindex', available: true, dryRun: dry, root, rootMeans: 'the scanned document root (<root>/VibeMath): the index rows are compared against the md files under it',
+        walked: counts.walked,
+        scanScope: {
+          root,
+          recursive: true,
+          trackFilter: filter,
+          trackNarrows: filter === null ? 'nothing: every declared track is accounted' : 'only WHICH md files are accounted (the walk still covers the whole root)',
+          walked: counts.walked,
+          accounted: counts.scanned,
+        },
+        skippedByClass: Object.assign({}, skippedByClass),
         scanned: counts.scanned, paths: seenPaths,
         adopted, changed, missing, untracked, unchanged: counts.unchanged, skipped, counts, means,
         historyKept: true,

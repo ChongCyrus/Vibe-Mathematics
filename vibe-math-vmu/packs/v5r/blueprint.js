@@ -136,10 +136,44 @@ export const BLUEPRINT_STATUSES = Object.freeze(['draft', 'current'])
  * `lastStaleSeenAt` were APPENDED by the B4/B5 mechanisms: old fields keep their name and position, so every row written
  * before this revision still parses, and a new row is a superset of the old shape.
  */
-export const BLUEPRINT_FIELDS = Object.freeze(['path', 'status', 'revision', 'proposedBy', 'proposedAt', 'adoptedBy', 'adoptedAt', 'proposalId', 'note', 'authors', 'lastStaleSeenAt', 'mdFingerprint', 'outline', 'revisionReason'])
+export const BLUEPRINT_FIELDS = Object.freeze(['path', 'status', 'revision', 'proposedBy', 'proposedAt', 'adoptedBy', 'adoptedAt', 'proposalId', 'note', 'authors', 'lastStaleSeenAt', 'mdFingerprint', 'mdPath', 'outline', 'revisionReason'])
 /** ★ RUN 225-A: the header field that holds the sha256 of the md this row was indexed from (last position: a row written
  *  before the md face has no such field and still parses — the superset rule this file already follows for authors). */
 export const BLUEPRINT_MD_KEY = 'mdFingerprint'
+/**
+ * ★★★ RUN 238 (run 61 / FEEDBACK61 A, MEASURED): ONE shared file could not hold two revisions. `propose` wrote the
+ * draft to the canonical path, so an unadopted draft ATOMICALLY REPLACED the in-force document, and pruning the draft
+ * did not bring the old text back (`prune` moves index rows, it does not rewrite files). Two rows then claimed the same
+ * file as "the truth", and the file held neither of them.
+ *
+ * The fix is the one the file layout was always missing: EVERY revision owns its own md. A draft writes
+ * `Shared/Drafts/<stem>-r<N>.md`; only `adopt` writes the canonical path. So "the truth is a file" stays true per
+ * revision, and no unadopted text can ever displace the document in force.
+ */
+export const BLUEPRINT_MD_PATH_KEY = 'mdPath'
+
+/**
+ * ★★★ RUN 238 (run 61 / FEEDBACK61 A, MEASURED): the receipt of a DRAFT says, in the place where a write receipt would
+ * sit, that a draft writes NO file. `propose` used to write the canonical md, so an unadopted draft ATOMICALLY REPLACED
+ * the document in force — and `prune` moves index rows, it does not rewrite files, so the old text never came back. Two
+ * rows then named one file as "the truth" and the file held neither of them.
+ *
+ * The fix is the narrow one: `adopt` is the ONLY writer of the canonical md. A draft's text lives in its row until the
+ * chair adopts it. `available: false` here is a NAMED absence (a draft is not a document in force), distinct from the
+ * "this deployment has no file face" absence `writeBlueprintMd` reports.
+ */
+export function draftMdDeferred({ path = '' } = {}) {
+  const wanted = txt(path)
+  return {
+    ok: true, available: false, written: false, path: null, absPath: null, fingerprint: null, bytes: 0,
+    format: BLUEPRINT_MD_FORMAT, atomic: null, replaced: false, deferredTo: 'adopt',
+    // the file a draft WOULD touch if it were adopted — named so the receipt answers "so where is my text?"
+    canonicalPath: wanted === '' ? null : wanted,
+    means: 'a DRAFT writes no md file: its text lives in this index row until the chair adopts it — adoption is the only writer of '
+      + (wanted === '' ? 'the canonical document' : wanted)
+      + ' (RUN 238: an unadopted draft used to overwrite the document in force, and pruning the draft did not restore it; now an unadopted draft cannot displace what is in force)',
+  }
+}
 /** ★ RUN 225-A: the md format NAME this pack reports in its md receipts (the file marker itself is the records face's
  *  `vmuMd：vmu-md/1`: one document shape, every row that carries a document). */
 export const BLUEPRINT_MD_FORMAT = 'vmu-blueprint-md/1'
@@ -364,10 +398,19 @@ function parseOutlineField(value) {
   if (!Array.isArray(parsed)) return { outline: [], problems: ['outline is not a JSON array: ' + txt(parsed).slice(0, 120)], provided: true }
   const outline = []
   const problems = []
+  // ★★★ RUN 238 (run 61 / FEEDBACK61 D, MEASURED): an outline entry's id is the node's NAME, and two entries could carry
+  // the same one (`[{id:"1",…},{id:"1",…}]` wrote ok:true with outlineCount:2). A layered outline whose nodes cannot be
+  // told apart is not an outline, and `outlineDepthMax`/node lookups answered about a set that has two of everything.
+  const seenIds = []
   for (const item of parsed) {
     if (!item || typeof item !== 'object') { problems.push('an outline entry is not an object'); continue }
     const id = txt(item.id)
     if (id === '') { problems.push('an outline entry has no id'); continue }
+    if (seenIds.indexOf(id) >= 0) {
+      problems.push('outline entry ' + id + ' repeats an id already used by an earlier entry: an outline node is named once')
+      continue
+    }
+    seenIds.push(id)
     const depth = Number(item.depth)
     if (!Number.isInteger(depth) || !BLUEPRINT_OUTLINE_DEPTHS.includes(depth)) {
       problems.push('outline entry ' + id + ' has depth "' + txt(item.depth) + '", not one of ' + BLUEPRINT_OUTLINE_DEPTHS.join('|'))
@@ -471,7 +514,7 @@ export function composeBlueprintBody(row = {}) {
 export function blueprintMdHeaderOf({
   path = '', status = '', revision = null, proposedBy = '', proposedAt = null,
   adoptedBy = '', adoptedAt = null, proposalId = '', note = '', authors = null,
-  outline = null, revisionReason = '',
+  outline = null, revisionReason = '', mdPath = '',
 } = {}) {
   const fields = {}
   const put = (key, value) => { const s = txt(value); if (s !== '') fields[key] = s }
@@ -487,6 +530,7 @@ export function blueprintMdHeaderOf({
   put('authors', typeof authors === 'string' ? txt(authors) : serializeAuthors(authors))
   // ★ RUN 236: the two optional revision facts travel to the md header too — the file is the truth, so an outline only the
   // row knew would be the same "two documents" defect RUN 225-A removed. Empty values are omitted (the put rule).
+  put(BLUEPRINT_MD_PATH_KEY, mdPath)
   put(BLUEPRINT_OUTLINE_KEY, typeof outline === 'string' ? txt(outline) : serializeOutline(outline))
   put(BLUEPRINT_REASON_KEY, oneLine(revisionReason))
   return fields
@@ -536,7 +580,11 @@ export function writeBlueprintMd({ records, path, title = '', status = '', revis
  * "reindex" }` makes the index admit the file.
  */
 export function blueprintMdReading({ records, path, row = null } = {}) {
-  const wanted = txt(path)
+  // ★ RUN 238: a row names the file it owns (`mdPath`); the path is only the fallback for rows written before that
+  // field existed. Comparing every revision against the canonical file is exactly what made a draft look like an
+  // external edit of the document in force.
+  const rowMdPath = row === null || row === undefined ? '' : txt(row.fields && row.fields[BLUEPRINT_MD_PATH_KEY])
+  const wanted = rowMdPath !== '' ? rowMdPath : txt(path)
   const indexFingerprint = row === null || row === undefined ? null : (txt(row.fields && row.fields[BLUEPRINT_MD_KEY]) || null)
   const indexRevision = row === null || row === undefined || !Number.isInteger(row.revision) ? null : row.revision
   const unavailable = (means) => ({
@@ -1173,11 +1221,10 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors,
       outline: outlineNext, revisionReason: reasonNext,
     })
-    const md = writeBlueprintMd({
-      records, path: wantedPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + revision + '｜草案',
-      status: 'draft', revision, fields: mdFields, text: bodyNext,
-    })
-    const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, outline: outlineNext, revisionReason: reasonNext, mdFingerprint: md.fingerprint || '', text: bodyNext })
+    // ★★★ RUN 238: a draft writes NO file — the canonical document belongs to the revision in force, and adopting is
+    // the only act that writes it.
+    const md = draftMdDeferred({ path: wantedPath })
+    const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, outline: outlineNext, revisionReason: reasonNext, mdFingerprint: '', text: bodyNext })
     const put = track.put({
       track: BLUEPRINT_TRACK,
       kind: BLUEPRINT_KIND,
@@ -1250,10 +1297,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     note: txt(note) || txt(target.fields.note), authors,
     outline: outlineNext, revisionReason: reasonNext,
   })
-  const md = writeBlueprintMd({
-    records, path: wantedPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + target.revision + '｜草案',
-    status: 'draft', revision: target.revision, fields: mdFields, text: textNext,
-  })
+  const md = draftMdDeferred({ path: wantedPath })
   const composed = composeBlueprintBody({
     path: wantedPath,
     status: 'draft',
@@ -1264,7 +1308,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     authors,
     outline: outlineNext,
     revisionReason: reasonNext,
-    mdFingerprint: md.fingerprint || '',
+    mdFingerprint: '',
     text: textNext,
   })
   const wrote = track.supersede({
@@ -1392,7 +1436,7 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     path: wantedPath, status: 'current', revision,
     proposedBy: target.fields.proposedBy, proposedAt: target.fields.proposedAt,
     adoptedBy: adopter, adoptedAt: stamp, proposalId: target.id, note, authors: target.authors,
-    outline: outlineNext, revisionReason: reasonNext,
+    outline: outlineNext, revisionReason: reasonNext, mdPath: wantedPath,
   })
   const md = writeBlueprintMd({
     records, path: wantedPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + revision + '｜生效',
@@ -1414,6 +1458,7 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     outline: outlineNext,
     revisionReason: reasonNext,
     mdFingerprint: md.fingerprint || '',
+    mdPath: wantedPath,
     // The ADOPTED row carries the draft's TEXT verbatim: adoption changes the status/signature, never the document.
     text: target.text,
   })
@@ -1473,6 +1518,9 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     // row indexes that byte sequence) — the receipt shows the comparison rather than asking the reader to trust it.
     md: after.md,
     mdWrite: md,
+    // ★★★ RUN 238: adoption is the ONLY writer of the document, so the receipt can state the whole file contract in one
+    // line instead of explaining which of two files is the truth.
+    mdIsTheDocumentInForce: { path: wantedPath, wroteNow: md.written === true, means: 'this is the ONLY file the blueprint writes: a draft lives in its index row (its receipt says deferredTo:"adopt"), and adopting is what puts text on disk — so what a reader finds in ' + wantedPath + ' is always a revision that was actually adopted' },
     mdFingerprint: md.fingerprint,
     mdChangedSinceIndex: after.mdChangedSinceIndex,
     fingerprint: put.fingerprint || null,

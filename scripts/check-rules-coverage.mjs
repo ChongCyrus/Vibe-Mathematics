@@ -76,6 +76,7 @@ const JSON_OUT = args.includes('--json')
 const STRICT = args.includes('--check')
 const DRAFT = args.includes('--draft')
 const STRICT_LIVE = args.includes('--strict-live')
+const STRICT_UNFINISHED = args.includes('--strict-unfinished')
 const WRITE_FP = args.includes('--write-fingerprint')
 let WRITING_FINGERPRINT = false
 const ledgerArg = (() => {
@@ -101,10 +102,26 @@ const MIN_PATTERN_LENGTH = 6
 const MAX_PATTERN_MATCHES = 3
 const MIN_ANCHOR_LENGTH = 8
 
+// ★★ RUN 237: the project keeps TWO ledgers. `docs/acceptance/rules-ledger.json` says whether each rule is
+// implemented, and `docs/acceptance/sim-audit-rules.md` records what an OBSERVATION audit could actually see
+// (receipts, prompts, tree snapshots — source patterns are not evidence there). They disagreed: 18 rows were DONE
+// while the audit judged them PROSE-ONLY / UNREACHABLE / CONTRADICTED. A DONE that nothing could observe is exactly
+// the failure this gate exists to prevent, so a DONE now has to answer the audit instead of ignoring it.
+const AUDIT_DOC = join(REPO, 'docs/acceptance/sim-audit-rules.md')
+const repoRel = (abs) => String(abs).split(String.fromCharCode(92)).join('/').replace(String(REPO).split(String.fromCharCode(92)).join('/') + '/', '')
+const AUDIT_BAD = { 'PROSE-ONLY': true, UNREACHABLE: true, CONTRADICTED: true }
+const MIN_DISPUTE_WHY = 24
+
 const problems = []
 const warnings = []
 const drift = []
 const refusalOnly = []
+const reconciledByAudit = []
+let AUDIT_CACHE = null
+const AUDIT = () => {
+  if (AUDIT_CACHE === null) AUDIT_CACHE = auditVerdicts()
+  return AUDIT_CACHE
+}
 const fail = (code, message, detail) => problems.push({ code, message, detail: detail || null })
 const warn = (code, message, detail) => warnings.push({ code, message, detail: detail || null })
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
@@ -296,6 +313,51 @@ function toolEntryProblem(entry) {
   return null
 }
 
+// ─── the observation audit's verdicts (read, not assumed) ─────────────────────────────────────────────
+
+/** `id -> 'PROSE-ONLY' | 'UNREACHABLE' | 'CONTRADICTED' | 'ENFORCED'`, parsed from the markdown table. */
+function auditVerdicts() {
+  const out = new Map()
+  if (!existsSync(AUDIT_DOC)) return { available: false, map: out, why: 'no ' + repoRel(AUDIT_DOC) + ' on disk' }
+  const text = String(readFileSync(AUDIT_DOC, 'utf8'))
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\|\s*([A-G][0-9]+[a-z]?)\s*\|([^|]*)\|([^|]*)\|([^|]*)\|/.exec(line)
+    if (!m) continue
+    const verdictCell = String(m[4])
+    for (const verdict of ['ENFORCED', 'PROSE-ONLY', 'UNREACHABLE', 'CONTRADICTED']) {
+      if (verdictCell.indexOf(verdict) !== -1) { out.set(m[1], verdict); break }
+    }
+  }
+  return { available: true, map: out, why: out.size + ' verdict row(s) read from ' + repoRel(AUDIT_DOC) }
+}
+
+/**
+ * A DONE that the observation audit calls unobservable needs an explicit reconciliation, not silence:
+ * `auditDispute: { acknowledged: true, why: '…', evidence: 'tests/<suite>.mjs::<pattern>' }`
+ * where the cited suite exists in the MAINTAINED tree (never `tests/legacy/`) and really contains the pattern —
+ * i.e. the claim is "the audit was right about that moment, and here is the executable proof that it changed".
+ */
+function auditDisputeProblem(item, verdict) {
+  const dispute = item && item.auditDispute
+  if (!dispute || typeof dispute !== 'object' || Array.isArray(dispute)) {
+    return { code: 'VMU_RULES_DONE_DISPUTED_BY_AUDIT', why: 'the observation audit judges it ' + verdict + ', so DONE needs an `auditDispute { acknowledged, why, evidence }` that says what changed since' }
+  }
+  if (dispute.acknowledged !== true) return { code: 'VMU_RULES_DONE_DISPUTED_BY_AUDIT', why: 'auditDispute.acknowledged must be true (a DONE that dismisses the audit silently is the bug)' }
+  if (typeof dispute.why !== 'string' || dispute.why.trim().length < MIN_DISPUTE_WHY) {
+    return { code: 'VMU_RULES_DONE_DISPUTED_BY_AUDIT', why: 'auditDispute.why must name what changed since the audit (at least ' + MIN_DISPUTE_WHY + ' characters)' }
+  }
+  const split = splitEvidence(dispute.evidence)
+  if (!split) return { code: 'VMU_RULES_DONE_DISPUTED_BY_AUDIT', why: 'auditDispute.evidence must be `tests/<suite>.test.mjs::<pattern>`' }
+  const rel = split.rel.replace(/\\/g, '/')
+  if (!/^tests\/[^/]+\.(test\.mjs|mjs)$/.test(rel)) return { code: 'VMU_RULES_DONE_DISPUTED_BY_AUDIT', why: 'auditDispute.evidence must cite a suite under tests/ (got ' + rel + ')' }
+  if (rel.indexOf('tests/legacy/') === 0) return { code: 'VMU_RULES_DONE_DISPUTED_BY_AUDIT', why: 'auditDispute.evidence cannot be an archived suite (' + rel + '): the archived presets are not the maintained surface' }
+  const abs = join(REPO, rel)
+  if (!existsSync(abs)) return { code: 'VMU_RULES_DONE_DISPUTED_BY_AUDIT', why: 'auditDispute.evidence cites ' + rel + ', which does not exist' }
+  const text = String(readFileSync(abs, 'utf8'))
+  if (countMatches(text, split.pattern) < 1) return { code: 'VMU_RULES_DONE_DISPUTED_BY_AUDIT', why: 'auditDispute.evidence pattern `' + split.pattern + '` does not occur in ' + rel }
+  return null
+}
+
 // ─── ledger ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 function loadLedger() {
@@ -408,7 +470,7 @@ if (!ledger) {
       if (typeof item.text !== 'string' || !item.text.trim()) fail('VMU_RULES_NO_TEXT', 'item ' + id + ' has no text')
       if (!STATUSES.has(item.status)) fail('VMU_RULES_BAD_STATUS', 'item ' + id + ' has status ' + JSON.stringify(item.status))
       for (const key of Object.keys(item)) {
-        if (!['id', 'rule', 'ruleText', 'text', 'status', 'next', 'note'].includes(key) && !CATEGORIES.includes(key)) {
+        if (!['id', 'rule', 'ruleText', 'text', 'status', 'next', 'note', 'auditDispute'].includes(key) && !CATEGORIES.includes(key)) {
           fail('VMU_RULES_UNKNOWN_FIELD', 'item ' + id + ' carries an unknown field: ' + key)
         }
       }
@@ -482,6 +544,13 @@ if (!ledger) {
         for (const c of CATEGORIES) {
           if (!counts[c]) fail('VMU_RULES_DONE_MISSING_EVIDENCE', 'item ' + id + ' is DONE but has no `' + c + '` evidence (' + CATEGORY_MEANS[c] + ')')
         }
+        const auditMap = AUDIT()
+        const audited = auditMap.available ? auditMap.map.get(id) : null
+        if (audited && AUDIT_BAD[audited]) {
+          const problem = auditDisputeProblem(item, audited)
+          if (problem) fail(problem.code, 'item ' + id + ' ' + problem.why, problem)
+          else reconciledByAudit.push(id)
+        }
       } else if (item.status === 'PARTIAL' || item.status === 'MISSING') {
         if (item.status === 'PARTIAL' && total === 0) fail('VMU_RULES_PARTIAL_NO_EVIDENCE', 'item ' + id + ' is PARTIAL but cites no evidence at all')
         if (typeof item.next !== 'string' || item.next.trim().length < 8) {
@@ -542,10 +611,16 @@ if (!ledger) {
     const total = ledger.items.length
     const unfinished = counts.PARTIAL + counts.MISSING
 
+    // ★★ RUN 237: a gap that is DECLARED (status + a concrete `next`) is the honest state, not a false DONE. Failing
+    // on every PARTIAL forced the previous choice — call it DONE and hope nobody looks. So gaps are WARNINGS here
+    // and failures only under `--strict-unfinished` (a release gate may want zero gaps; a working gate wants zero
+    // LIES). What still fails unconditionally is a DONE that the observation audit contradicts.
     if (STRICT && !DRAFT) {
       for (const item of ledger.items) {
         if (item.status === 'PARTIAL' || item.status === 'MISSING') {
-          fail('VMU_RULES_UNFINISHED', 'item ' + item.id + ' is ' + item.status + ' (' + item.text + ')', item.next || null)
+          const message = 'item ' + item.id + ' is ' + item.status + ' (' + item.text + ')'
+          if (STRICT_UNFINISHED) fail('VMU_RULES_UNFINISHED', message, item.next || null)
+          else warn('VMU_RULES_UNFINISHED', message, { next: item.next || null })
         }
       }
     }
@@ -574,6 +649,7 @@ if (!ledger) {
       console.log('  anchors: ' + anchorCount + '/' + total + ' rows quote the rule verbatim' +
         (drift.length ? ' · ' + drift.length + ' line drift(s)' : '') +
         (refusalOnly.length ? ' · ' + refusalOnly.length + ' refusal-only live row(s)' : '') +
+        (reconciledByAudit.length ? ' · ' + reconciledByAudit.length + ' DONE row(s) reconciled against the observation audit' : '') +
         ' · fingerprint ' + (source.fingerprint ? (docInfo.fingerprintMatches ? 'matches' : 'DRIFT') : 'absent'))
       if (warnings.length) {
         console.log('  warnings: ' + warnings.length + ' (' + Object.entries(warningCounts).map(([c, n]) => c + ' ' + n).join(', ') + ')')

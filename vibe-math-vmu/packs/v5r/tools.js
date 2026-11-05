@@ -1822,6 +1822,21 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
     out.push(line)
   }
   if (!wroteP) out.push('- p：' + String(value))
+  // ★★★ RUN 238 (run 61 / FEEDBACK61 C, MEASURED): the card carried `- value：0.95` (a free-text line) and the settlement
+  // wrote `- p：1`. Both lines then read as "the probability on this card", and nothing said which one counts. The
+  // settlement still edits only the p row (rule L53 is about p) but it NAMES the conflicting line, so the reader is not
+  // left to notice it.
+  const staleValueLines = []
+  for (const line of out) {
+    if (/^- *p *[：:]/.test(line)) continue
+    const m = /^- *value *[：:](.*)$/.exec(line)
+    if (!m) continue
+    const raw = String(m[1]).trim()
+    if (raw === '' || !/^-?\d+(\.\d+)?$/.test(raw)) continue
+    const num = Number(raw)
+    if (!Number.isFinite(num) || num < 0 || num > 1) continue
+    if (num !== Number(value)) staleValueLines.push(raw)
+  }
   const rulingRow = {}
   for (const key of ['subject', 'value', 'mode', 'n', 'decided', 'at', 'meeting', 'by', 'ballotId', 'warrant']) {
     if (ruling && ruling[key] !== undefined && ruling[key] !== null) rulingRow[key] = ruling[key]
@@ -1871,6 +1886,12 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
       // this CALL made is a separate fact and is printed as such.
       revMeans: 'rev is the RECORD version counter, not a count of the writes in this call: a card that already existed and is settled here reads rev 2 because the settlement is the second write of that same record',
       means: 'a ruling settlement edits the probability rule L53 settles and records the ruling — it is not a card rewrite',
+      // ★ RUN 238 / FEEDBACK61 C: `p` is the settled probability; a numeric `value` line is somebody's estimate and is NOT
+      // rewritten by a settlement. When the two disagree the receipt says so instead of leaving two numbers on one card.
+      staleValueLines,
+      staleValueLinesMeans: staleValueLines.length === 0
+        ? 'this card carries no numeric `value` line that disagrees with the settled p, so there is exactly one probability on it'
+        : 'this card also carries numeric `value` line(s) ' + staleValueLines.join(', ') + ' that a settlement does NOT rewrite: `p` is the settled probability (rule L53), `value` is the estimate somebody wrote — read the settlement for the number that counts, and correct the value line deliberately if it is meant to agree',
     },
   }
 }

@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 93 | all four citations resolve |
-| ◐ PARTIAL | 0 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 90 | all four citations resolve |
+| ◐ PARTIAL | 3 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -59,7 +59,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `C7` | 14 | 只有写完的正式证明才能用于辩论 | ✅ DONE | 2/1/1/3 | — |
 | `C8` | 14 | p=1 的命题要标记 verified | ✅ DONE | 1/2/1/2 | — |
 | `C9` | 15 | 方法库（理论/方法/工具，抽象化产物） | ✅ DONE | 2/1/1/1 | — |
-| `C10` | 16 | Lean 代码与编译结果归档 | ✅ DONE | 2/2/1/2 | — |
+| `C10` | 16 | Lean 代码与编译结果归档 | ◐ PARTIAL | 2/2/1/2 | Lean 代码与编译结果的归档读面需要 Lean face/spawn 接缝；本装配没有 Lean，`vibe_v5_lean_lib` 只能具名拒。需在带 Lean 的部署复验归档回执后转 DONE（或新增一个可测的 Lean 接缝）。 |
 | `C11` | 16 | lean 通过后辩论只查描述/定义是否符合原意 | ✅ DONE | 2/1/1/1 | — |
 | `C12` | 16 | 鼓励开关：鼓励把小结/定义 Lean 化 | ✅ DONE | 1/1/1/1 | — |
 | `C13` | 17 | 经分派后各自负责部分的论文 | ✅ DONE | 1/1/1/3 | — |
@@ -71,7 +71,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `D1` | 37 | 各自推进各自的总任务 | ✅ DONE | 2/1/1/5 | 已由 r131 取证（r-1 状态板 ①②③ 先印自己那份并标注全所），office 视图逐字不变由 vmu-run111-board-own-share 钉住；后续轮次只做回归。 |
-| `D2` | 38 | 三通道：邮箱/私信/群聊 | ✅ DONE | 2/1/1/2 | — |
+| `D2` | 38 | 三通道：邮箱/私信/群聊 | ◐ PARTIAL | 2/1/1/2 | 当前架构裁决是「所办是唯一传信人」：成员没有直发邮箱/私信面，声音由所办代发并记 `relayedBy`，这不是缺陷而是设计。若要求成员自有通道，需要用户裁定并新增成员面，届时本行转 DONE 或 DECIDED。 |
 | `D3` | 38 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ✅ DONE | 2/1/1/2 | 已由 r133 全证（urgent:true ⇒ kind:"notice" + note「kind does NOT decide urgency」；收件行 ml-15 urgent:true；r-2 的非紧急行 urgent:false、kind:assign/dm；群聊 round 无 urgent）。 |
 | `D4` | 39 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
 | `D5` | 39 | 四字段都含时间等基础信息 | ✅ DONE | 2/2/1/1 | — |
@@ -98,7 +98,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E13` | 48 | 会议类型：正常/学术交流/辩论/结题/论文交流/未来规划 | ✅ DONE | 2/1/1/1 | — |
 | `E14` | 50 | 常见命令：举手 | ✅ DONE | 2/1/1/1 | — |
 | `E15` | 50 | 常见命令：邀请发言 | ✅ DONE | 2/1/1/1 | — |
-| `E16` | 50 | 常见命令：批量指定成员按顺序发言 | ✅ DONE | 2/2/1/1 | — |
+| `E16` | 50 | 常见命令：批量指定成员按顺序发言 | ◐ PARTIAL | 2/2/1/1 | `order({members})` 的写路径已实现（回执带 before/after 或 moved），但还没有一条端到端测试钉住它；补 `tests/vmu-run237-order-write.test.mjs` 后转 DONE。 |
 | `E17` | 50 | 常见命令：单次发言版群聊（每人各说一次、不打断） | ✅ DONE | 1/1/1/2 | — |
 | `E18` | 53 | 投票板：院士设选项与机制（最少/最多选几项） | ✅ DONE | 2/1/1/1 | — |
 | `E19` | 53 | 投票板不用于辩论 | ✅ DONE | 1/1/1/1 | — |

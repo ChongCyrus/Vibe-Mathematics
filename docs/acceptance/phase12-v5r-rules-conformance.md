@@ -16518,3 +16518,149 @@ run-tests: scope=full  jobs=743  concurrency=2
    就变成一处错误的声明；回执与面声明都该遵守这条。
 3. **转述层会丢掉刚修好的事实。** M4 在 kernel 修好了，席位面仍只印 `recordId/rev`；一个修复要数到「读者看得见」
    那一步才算完，`mergeEcho` 就是这一步。
+
+## §334 RUN 237：一次收窄的扫描、一句「不是我们的文档」，和两本各说各话的账
+
+第 86 轮。这一轮没有等第 61 次真机（它在跑，基线 `18db5cc7`），先把 FEEDBACK60 里最后一条未修的机制账（M6）和一条
+更根本的账（规则台账与观测审计互相矛盾）清掉。
+
+### 334.1 run 60 的 M6：`reindex` 的 `track` 收窄的不是扫描范围，且把别人的文档记成坏文件
+
+run 60 现场：`vibe_vmu_records { action:"reindex", track:"blueprint" }` 的回执里 `skipped` 列着
+`Members/r-1|r-2/Propos/ruling-*.md`，理由 `"no \"## 正文\" section marker"`。三件不同的事实共用一个桶、一个词：
+
+| 事实 | 该怎么说 | 旧回执怎么说 |
+| --- | --- | --- |
+| 文件读不动 | unreadable，要人来看 | 与下面两种混在一起 |
+| 文件不是 vmu 文档（成员自己的笔记） | 不是本索引能拥有的文档，原样不动 | 「坏文件」 |
+| 卡的 track 未声明 | 配置事实，不是文件问题 | 同上 |
+
+危害是双重的：`track` 给人的暗示是「只扫这一轨」，实际是「扫全库、只对这一轨落账」；而一片 `skipped` 读起来像
+「有一堆坏文件」。修法（`vibe-math-vmu/kernel/records.js`）：
+
+1. 每条 skip 带 `whyClass`（`unreadable` / `not-a-vmu-md` / `undeclared-track` / `write-refused`），五处
+   `skipped.push(...)` 全部走同一个 `noteSkip()` 分类器，回执加 `skippedByClass`（顶层与 `counts` 各一份）。
+2. 非 vmu 文档的判定改为「有没有 `- vmuMd：` 头行」：没有就是**别人的 md**，措辞不再暗示「坏了」。
+3. 回执加 `walked` 与 `scanScope { root, recursive, trackFilter, trackNarrows, walked, accounted }`：
+   `track` 收窄的是**哪些 md 要落账**，不是**哪些目录要走**——轨道写在 md 头里、不在路径里，按 track 剪枝
+   会把别的轨的 md 当成没读过。
+
+### 334.2 两本账：93 条全 DONE，而观测审计判了 18 条看不见
+
+`docs/acceptance/rules-ledger.json`（实现台账，判据允许「源码里有这个 pattern」）说 93 条全 DONE；
+`docs/acceptance/sim-audit-rules.md`（**观测**审计：只看回执、提示词文本、树快照）判 75 ENFORCED、
+**11 PROSE-ONLY、6 UNREACHABLE、1 CONTRADICTED**。两个文件各自都「绿」——这正是项目说服自己已经做完的方式。
+
+修法不是改写审计结论，而是让**两个文件必须互相回答**（`scripts/check-rules-coverage.mjs`）：
+
+- 门禁读观测审计的 verdict 表；一条 DONE 若被审计判为 PROSE-ONLY / UNREACHABLE / CONTRADICTED，
+  必须带 `auditDispute { acknowledged:true, why, evidence }`，否则 `VMU_RULES_DONE_DISPUTED_BY_AUDIT` 红。
+- `evidence` 必须是 `tests/<维护中的套件>.mjs::<pattern>`：套件要真实存在、pattern 要真实出现，
+  **且不能是 `tests/legacy/` 的归档套件**（归档预设不是维护面）。也就是「承认审计当时是对的，这里是它改变之后
+  可执行的证据」。
+- 真修不了的（Lean 归档面缺接缝、成员直发通道是架构裁决、`order({members})` 缺端到端测试）**降级为 PARTIAL
+  并写清 `next`**，而不是继续挂 DONE。
+
+落地：15 条 DONE 补了 `auditDispute`（各引一条维护中套件的可执行 pattern，且说明「审计看到的是那一刻」）；
+3 条降级 PARTIAL（C10/D2/E16）。同时门禁语义改一条：**声明的缺口是警告，不是失败**——
+`VMU_RULES_UNFINISHED` 默认只打印并明说「哪里还空着」，`--strict-unfinished` 才在发布口径下拒绝缺口。
+理由写在代码注释里：让「有缺口」直接红，等于把上一轮的假 DONE 又逼回来；工作树要的是**零谎话**，发布口径才要零缺口。
+
+### 334.3 机器化
+
+- `tests/vmu-run237-reindex-scope.test.mjs` **29/0**：§0 六条源码 pin；§1 真装配下写一个 `Members/r-1/Propos/notes.md`
+  （无 `vmuMd` 头）⇒ `whyClass:"not-a-vmu-md"`、why 含 `not a vmu document` 且**不含** `broken`、
+  `skippedByClass['not-a-vmu-md'] >= 1` 而 `unreadable === 0`；§2 命名 `track` 后 `walked` 不缩水、
+  `scanScope.trackNarrows` 含 `whole root`、`counts.walked >= counts.scanned`；§3 同一事实经
+  `vibe_vmu_records { action:"reindex" }` 公共面转发（不只在 kernel 方法里）。
+- `tests/vmu-run237-ledger-audit.test.mjs` **24/0**：§0 门禁源码 pin；§1 真台账「15 条有承认的复验」+「3 条声明缺口」
+  且 `--check` 通过、缺口以 warning 打印；§2 抹掉某条的 `auditDispute` ⇒ `VMU_RULES_DONE_DISPUTED_BY_AUDIT`；
+  §3 五种伪造（pattern 不在套件里、套件不存在、归档套件、`acknowledged:false`、why 只有两个字）全部被拒；
+  §4 `--strict-unfinished` 在发布口径下拒绝缺口。
+- 定向回归：`vmu-records` / `vmu-run225-blueprint-md` / `vmu-run236-record-merge` 全绿。
+
+### 334.4 两条教训
+
+1. **「不是我们的文档」与「这个文档坏了」是两句不同的话，共用一个桶就会变成一句假话。** 分类不是格式洁癖：
+   `skipped` 里的每一条都在向读回执的人报告一件他可能要处理的事，把三种原因混成一个数，等于把两件不需要
+   处理的当成需要处理的。
+2. **两个文件各自为真、合起来为假，是没有任何单文件测试能抓住的缺陷。** 唯一能抓住它的位置是「让它们必须互相
+   回答」的那道门禁——把矛盾变成一次红，比把矛盾写进文档更可靠。
+
+## §335 RUN 238 — 一张蓝图文档装不下两个修订（草案与「生效文档」分离）＋六处读数
+
+### 335.1 run 61 的账（FEEDBACK61 A/B/C/D/E/F/H）
+
+| # | 现场事实（回执原文） | 为什么是缺陷 |
+| --- | --- | --- |
+| A | `propose` 落草案 `rec-18`(r2) 时把 `VibeMath/Shared/Protocol.md` **原子替换**（`md.replaced:true`、`md.bytes:517`），而现行行 `rec-4`（`inForce.bytes:6755`）仍在索引 | 一个文件被两行当作「唯一真相」；`state` 随后报 `mdChangedSinceIndex:true`、`mdAheadOfIndex:true`，而 `prune` 草案只动索引、不把文件还给现行行 ⇒ 读者读到的是**从未被采纳的探针正文** |
+| B | 同 id 再写 ⇒ `updated:true, rev:3, fieldsKept:[tags,permanent,id,createdAt,versions]`、`fieldsReplaced:[title,body,by]`，读回 181 字节，上一步的 `proofRef`/`proofState`/`debateRuling` 全消失、`settled` true→false | 回执诚实地说了 `bodyModeUsed:"replace"`，但没有说**具体丢了哪几行**；作者无法从回执判断「我的证明指针还在不在」 |
+| C | 结算只写 `p` 行 ⇒ 同一张卡 `value:0.95` 与 `p:1` 并存（`settlement.wrote:["p","debateRuling"]`） | 两个概率都在卡上，谁「算数」只写在规则里，不写在回执里 |
+| D | `outline:[{id:"1",depth:1},{id:"1",depth:2}]` ⇒ `ok:true, outlineCount:2` | 同名节点两次出现不是「更细」，是同一个节点被写了两次 |
+| E | 卡主回合报 `rec-5 rev=4`，所办 `expand` 读到 `rev:3`（同 fingerprint、同 updatedAt） | `rev` 没有说「是谁数的」，跨内核读同一工作区会被当成数据错乱 |
+| F | 会议读数 `"turns":2,"turnsCounts":"speeches"` | 键叫 turns 数的却是 speech —— 成员回合（turn）与会议发言（speech）是两件不同的事 |
+| H | `vibe_v5_task_create` 回执不含 `revision` | 刚建的卡要再读一次才知道版本，两步之间可能被别人改 |
+
+G（被拒回执的 message 不带归属）**本轮不改**：`VMU_NOT_MEMBER` 的 message 被多处精确 pin，
+且同一回执已带 `memberActed`/`actedForMember`/`callerMember` 三件套——放宽 message 是改契约，不是修缺陷。
+
+### 335.2 修法
+
+**A（本轮主修，单一写者）**：草案**完全不写 md**，正文只活在索引行里；`adopt` 是 canonical 文档的唯一写者。
+
+- `vibe-math-vmu/packs/v5r/blueprint.js`：`draftMdPathOf()` 换成 `draftMdDeferred({ path })`，回执
+  `{ ok:true, available:false, written:false, path:null, absPath:null, workflow:'index-row', deferredTo:'adopt',
+  canonicalPath:'Shared/Protocol.md', means:'a DRAFT writes no md file … adoption is the only writer …' }`；
+  新草案与续写分支都改用它，header 不再写 `mdPath`、`mdFingerprint` 留空；
+  `adopt` 分支保留 `mdPath` 与唯一一处 `writeBlueprintMd`，回执用
+  `mdIsTheDocumentInForce:{ path, wroteNow, means:'this is the ONLY file the blueprint writes …' }`。
+- 选择理由（写在 §335.1 的实测之上）：`Shared/Protocol.md` 的语义是「现行正文的唯一真相」，而**草案不是生效文档**；
+  另开 `Shared/Drafts/*.md` 会立刻产生「哪个文件算数」的第二个问题，且 `reindex` 会把草案文件也收成独立行，
+  破坏「一次采纳 = 恰好一行」的不变量。**不写文件是不需要解释的写法。**
+
+**B/E**（`vibe-math-vmu/kernel/records.js` 的 `put` 更新分支）：新增 `bodyLinesOf`（扫 `- key：value` 行、去重保序），
+回执带 `bodyLinesBefore/After`、`bodyLinesDropped/Added`、`bodyLinesMeans`（replace 有丢失 ⇒ 逐行点名
+`these card lines did NOT survive it: …`，并指路「要保住某行就必须 MERGED 而不是 replace；旧正文在 `records.history`」），
+以及 `revSource:'this-kernel'` 与 `revMeans`（跨内核比较 fingerprint/updatedAt，不要比 rev）。
+`vibe-math-vmu/kit/handlers.js` 的 `mergeEcho` 同步转发这五个新键——否则内核算出来、席位面看不到（转述层又吞一次）。
+
+**C**（`packs/v5r/tools.js` 的 `settleRulingOnCard`）：结算后扫卡上 `- value：` 数值行，回执
+`settlement.staleValueLines` + `staleValueLinesMeans`（空 ⇒「这张卡上只有一个概率」；非空 ⇒「`p` 是裁决定下的数，
+`value` 是某人写的估计，读数请以 settlement 为准」）。
+
+**D**（`blueprint.js` 的 `parseOutlineField`）：`seenIds` 去重，重复 id ⇒ `outline entry "1" repeats an id already used …`，
+经既有的 `problems.length > 0` 拒成 `VMU_INVALID_ARGUMENT`（一条校验、两个写者）。
+
+**F**（`kernel/meetings.js`）：新增 `speeches`/`speechesMeans`（`speeches` 是 `turns` 的同一个数、旧名保留），
+`speechesMeans` 明说「成员回合由 turn orchestrator 数，是另一件事」。
+
+**H**（`kernel/tasks.js` 的 create）：回执加 `revision: t.revision`。
+
+### 335.3 机器化
+
+- `tests/vmu-run238-feedback61.test.mjs` **58/0**：§0 源码 pin（`draftMdDeferred(` 存在、`draftMdPathOf`/`BLUEPRINT_DRAFT_DIR`
+  无残留、`= writeBlueprintMd({` **恰好一个调用点**）；§1 A 真装配（草案不写文件、文件不存在、adopt 才写、
+  `mdIsTheDocumentInForce.wroteNow`）；§2 B（同 id 写 ⇒ `bodyLinesDropped` 含 `proofRef`、means 含 `did NOT survive`）；
+  §3 C **真票**（三席 attend、动议、附议、三票，再以 `p:1` + `debate_ruling.value:1` 结算）⇒ `staleValueLines:["0.95"]`；
+  §4 D 重复 id 拒且 message 含 `repeats an id`；§5 E `revSource:'this-kernel'`；§6 F `speeches === turns`；
+  §7 H create 回执（`task.revision === 1`，不用二次读）。
+- `tests/vmu-run225-blueprint-md.test.mjs` 改到新合同并 **140/0**；`tests/vmu-run236-blueprint-outline.test.mjs` 改到
+  新合同并 **52/0**（这两套原本钉着「草案写 canonical」的旧话，正是本轮改掉的行为）。
+- 定向回归 `vmu-run225-blueprint-md` / `vmu-records` / `vmu-meeting` / `vmu-tasks` / `vmu-run236-*` / `vmu-handlers` /
+  `vmu-blueprint` / `vmu-panel` = `TOTAL 39 PASS 39 FAIL 0`。
+
+- **净全量 T1**（`GATE_RELEASE=1 node tests/run-tests.mjs`，`/d/_tmp/t1-r2720-run238b.log`）=
+  `TOTAL 746  PASS 746  FAIL 0  (suites 666 · probes 80)`。首轮 `t1-r2700-run238.log` 是
+  `TOTAL 746 PASS 743 FAIL 3`，三条红全部是「测试钉住了上一轮合同」：
+  `audit-rule-coverage.test.mjs`（钉着 `--check` 必拒未完成台账，RUN 237 已改为默认 warn）、
+  `vmu-run229-blocked-by.test.mjs`（因 create 回执新增 `revision` 而走上 stale 检查）、
+  `vmu-run225c-office-substitution.test.mjs`（钉着草案写文件的 sha）；三处均改到新合同（ 23/0、31/0、29/0）。
+### 335.4 三条教训
+
+1. **「唯一真相」这句话必须点名「哪一刻的真相」。** 同一份文档在草案期与生效期承担两个不同的角色，
+   却共用一个路径 ⇒ 一个诚实写入的草案可以把现行文档换成从未被采纳的文本。**把写权收敛到一个动作，
+   比在回执里解释两次更容易守。**
+2. **转述层会再把修好的事实吞掉一次。** 内核算出 `bodyLinesDropped`，席位面的 `mergeEcho` 只转五个旧键 ⇒
+   读者看不到。**每加一个读数，都要问「谁把它转述出去」。**
+3. **回执诚实不等于回执有用。** `bodyModeUsed:"replace"` 是真的，但读者要的是「丢了哪几行」；
+   `staleValueLines` 也是同理——**同一张卡上两个概率并存，必须在回执里排座次**。

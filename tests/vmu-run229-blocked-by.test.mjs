@@ -174,7 +174,10 @@ const kernelOf = (tasks) => ({ tasks, settings: {}, settingsView: () => ({}) })
   const t = await l.create({ title: 'done already' })
   await l.transition(t.id, 'doing')
   await l.transition(t.id, 'done')
-  await refused(() => l.assign(t.id, 'm-1', { expectedRevision: t.revision }), 'VMU_STATE',
+  // RUN 238: create() now reports the revision it minted, so `t.revision` is the OLD number after two
+  // transitions — read the current row (a stale expectation would be refused for the wrong reason).
+  const done = (await l.list()).filter((x) => x.id === t.id)[0]
+  await refused(() => l.assign(t.id, 'm-1', { expectedRevision: done.revision }), 'VMU_STATE',
     '8. assigning a done task is still refused as VMU_STATE (not re-labelled as a dependency problem)')
 }
 

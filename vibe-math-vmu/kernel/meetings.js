@@ -883,6 +883,11 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     return rows.reduce((s, u) => s + (Number(u && u.count) || 0), 0)
   }
   const turnsUnattributedOf = (m) => Math.max(0, (Number(m && m.turns) || 0) - turnsAccountedOf(m))
+  // ★ RUN 238 (run 61 / FEEDBACK61 F): the key is spelled `turns` but counts SPEECHES (`turnsCounts:"speeches"`, and the
+  // means admits "it is NOT a count of member turns"). `vibe_vmu_turn` means a member round, so one word named two
+  // things across two faces. The count keeps its old key for readers already parsing it and gains the name it means.
+  const speechesOf = (m) => Number(m && m.turns) || 0
+  const SPEECHES_MEANS = 'speeches counts accepted speech acts in this meeting; `turns` is the SAME number under its older name (kept so existing readers do not break) — a member TURN is a different thing, counted by the turn orchestrator'
   const TURNS_UNATTRIBUTED_MEANS = 'turns minus Σ speechUsed[].speeches on THIS face. 0 means every counted turn has a recorded speech (the normal case: an accepted speak() raises both). A number > 0 is a turn this instance counts but cannot attribute to a recorded speech — it can only come from a writer that raised `turns` without the matching speech row (another instance, or a turn counted BEFORE the speech was accepted, which the acceptance-point increment above no longer does). It is NOT subtracted from `turns` on a read: the reading says which half is unattributed instead of quietly editing the record'
   const cap = (code, label, value, limit, key, evaluated) => {
     const keys = Array.isArray(evaluated) ? evaluated.slice() : []
@@ -2111,10 +2116,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       const queueRead = orderEff.queueOpen
         ? { open: true, mode: orderEff.mode, source: orderEff.source, before: orderNow.length, presentWaiters: waiters.length, position: queuedMe === -1 ? null : queuedMe + 1, slipped: queuedMe === -1 && orderNow.length > 0, skippedAbsent, means: 'the effective order is [' + orderNow.join(', ') + '] and the turn is held among the PRESENT waiters [' + waiters.join(', ') + ']: an absent member ahead of you does not hold the floor (they would be refused `attend() first` anyway)' + (skippedAbsent.length ? '; not yet present and therefore passed over: [' + skippedAbsent.join(', ') + ']' : '') + '; a member who is NOT in the queue at all speaks as a slip (position:null, slipped:true), never as a turn' }
         : { open: false, mode: orderEff.mode, source: orderEff.source, before: 0, position: null, slipped: false, means: 'this floor keeps NO queue (orderMode ' + String(orderEff.mode) + '): nobody can be out of turn' }
-      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, enforced, enforcedScope: ENFORCED_SCOPE }
+      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, speeches: speechesOf(m), speechesMeans: SPEECHES_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       say({ type: 'meetings/spoke', at: now, meeting: m.id, member: String(member), floor, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, speeches: speechesOf(m), speechesMeans: SPEECHES_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Interrupt. `interruptAllow` + `interruptQuota` govern the floor. */
@@ -3041,6 +3046,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         turns: m.turns === undefined ? 0 : m.turns,
         turnsCounts: TURNS_COUNTS,
         turnsMeans: TURNS_MEANS,
+        speeches: speechesOf(m),
+        speechesMeans: SPEECHES_MEANS,
         turnsAccounted: turnsAccountedOf(m),
         turnsUnattributed: turnsUnattributedOf(m),
         turnsUnattributedMeans: TURNS_UNATTRIBUTED_MEANS,
@@ -3136,6 +3143,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         turns: m.turns === undefined ? 0 : m.turns,
         turnsCounts: TURNS_COUNTS,
         turnsMeans: TURNS_MEANS,
+        speeches: speechesOf(m),
+        speechesMeans: SPEECHES_MEANS,
         // ★★ RUN 236 / FEEDBACK60 M8: the same fact as `speechUsed`, reconciled on the face the run reads.
         turnsAccounted: turnsAccountedOf(m),
         turnsUnattributed: turnsUnattributedOf(m),

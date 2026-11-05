@@ -1,5 +1,7 @@
 # 93 条规则 × 观测证据台账（模拟器真机回执）
 
+> **RUN 237 起的对账**：本文件的 verdict 是**当时那一刻**的观测结果；实现台账 `docs/acceptance/rules-ledger.json` 里若仍判 DONE，就必须带 `auditDispute { acknowledged, why, evidence }`（`evidence` 必须是 `tests/<维护中的套件>::<pattern>`，归档套件不算），由 `scripts/check-rules-coverage.mjs` 强制。也就是说：**两账不许再各说各话**——要么这条规则在本文件里被观测到，要么它承认本工作的判定并给出可执行的复验证据，要么它就不再声称 DONE（改为 PARTIAL 并写清 `next`）。
+>
 > 判据来源：只在**观测**上判——`receipts.jsonl` 回执字段、提示词装配文本、树快照。源码里「存在一个函数」不算证据。
 > 观测载体：`D:/_tmp/g7a10/probe-part{1,2,3,4a,4b,4c,4d}.json`（每步一行 `{rules,label,tool,as,ok,code,msg}`，回执全文在 `receipts` 内）；提示词文本由 `scripts/sim/harness.mjs` 的 `prompts.assembleFor` 产出。
 > 规则原文与行号：`D:/_tmp/g7a10/rules93.txt`；93 条 items 来自 `docs/acceptance/rules-ledger.json`。

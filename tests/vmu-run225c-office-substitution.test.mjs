@@ -131,8 +131,17 @@ let office = null
   const read = await call('vibe_v5_blueprint', { action: 'read', id, path: 'Shared/Protocol.md' })
   ok(read && read.ok === true, 'read answers for that row', read)
   ok(read && typeof read.md === 'object' && read.md !== null, 'read carries the md block (it used to drop it)', read && Object.keys(read))
-  ok(read && typeof read.mdFingerprint === 'string' && read.mdFingerprint.indexOf('sha256:') === 0, 'read carries the file fingerprint', read && read.mdFingerprint)
-  ok(read && read.mdChangedSinceIndex === false, 'a freshly written md is not reported as changed on disk', read && read.mdChangedSinceIndex)
+  // RUN 238: a DRAFT writes no md file (adoption is the only writer), so a draft row must SAY the file
+  // is deferred instead of handing back a sha of something that is not on disk. The propose receipt owns
+  // that sentence; the read face reports the same fact as mdMissing (it never fakes a file).
+  ok(proposed && proposed.md && proposed.md.deferredTo === 'adopt' && proposed.md.written === false,
+    'a draft says the md is deferred to adopt (no file was written for it)', proposed && proposed.md && proposed.md.deferredTo)
+  ok(proposed && proposed.md && typeof proposed.md.means === 'string' && proposed.md.means.indexOf('DRAFT writes no md file') !== -1,
+    'and the sentence says why: the draft lives in its index row until adoption', proposed && proposed.md && proposed.md.means)
+  ok(read && read.mdMissing === true, 'the read face reports the file as missing rather than returning the index as if it were the file', read && read.mdMissing)
+  ok(read && (read.mdFingerprint === null || read.mdFingerprint === ''),
+    'and it carries no file fingerprint, because there is no file', read && read.mdFingerprint)
+  ok(read && read.mdChangedSinceIndex === false, 'a draft is not reported as changed on disk', read && read.mdChangedSinceIndex)
   ok(read && typeof read.mdMeans === 'string' && read.mdMeans.length > 0, 'read carries the md means', read && read.mdMeans)
 }
 

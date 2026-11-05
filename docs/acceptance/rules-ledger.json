@@ -308,7 +308,13 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"from\":\"report\""
       ],
       "ruleText": "所办（即主代理，作为用户的助手。当有进展时自动唤起汇报。是用户与研究所的媒介、传信者。且支持用户通过自然语言让主代理设置参数、控制所办的进行。），院士，常驻研究员，临时工（被院士或常驻研究员雇佣用于特殊任务临时任务，无表决权，默认不参与会议，可被雇佣或解雇）。",
-      "next": ""
+      "next": "",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "run 60 measured the wake path with no transport injected (neverDrives:true, VMU_REPORT_NO_TRANSPORT). RUN 236 made the transport a declared setting with an honest receipt: one progress write now fires without a tick, and `wakeMeans` says whether the wake is a durable inbox mail or nothing.",
+        "evidence": "tests/vmu-run236-a2-report-fires.test.mjs::transportInjected"
+      }
     },
     {
       "id": "A3",
@@ -457,7 +463,13 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"warrant_kind\":\"literature\"",
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"literature_ref\": \"Rudin《数学分析原理》第 3 版 定理 1.14\""
       ],
-      "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。"
+      "ruleText": "- Verified文件夹：只有布尔概率为1（只有辩论才能把命题卡的布尔概率修改为1，否则都只能介于0到1之间）的命题或参考文献中命题才可加入。",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit could not reach the success path through a member seat, which is the seat design. RUN 236 drove it through the academician seat that owns literature verification and observed the durable row plus the card reaching `verified`.",
+        "evidence": "tests/vmu-run236-b2-literature.test.mjs::literature_ref"
+      }
     },
     {
       "id": "B3",
@@ -678,7 +690,13 @@
       ],
       "ruleText": "- 命题库。记录内容包括不限于：命题完整定义，布尔概率估计（0-1），进度，...。关于“证明或证伪”的过程平时只记录证明或证伪到证明或证伪尝试字段，只有当自己真正知道怎么证明证伪时才开始写正式证明或证伪字段下内容。只有命题卡中含有正式证明或证伪内容（且已经写完了而非半成品）才能用于后续辩论。那些布尔概率为1的命题卡需标记为已verified。",
       "next": "已由 r132 全证（lean-3 passed ⇒ 带 lean_job 的 proof_state:\"complete\" 被接受，回执带 proofStateEvidence；无证据的 p-c6b 在 r130 被具名拒）；后续轮次只做回归。",
-      "note": "r130 的反向支 + r132 的正向支合起来才是「真正会证时才写正式证明字段」。"
+      "note": "r130 的反向支 + r132 的正向支合起来才是「真正会证时才写正式证明字段」。",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit saw only a declared `proof_state` field. RUN 236 gave the evidence gate a name and a next gate in the receipt (`gate:\"evidence\"`, `nextGate:\"required-line\"`), and a `complete` claim without evidence is refused by name.",
+        "evidence": "tests/vmu-run236-c6-proof-gate.test.mjs::nextGate"
+      }
     },
     {
       "id": "C7",
@@ -751,7 +769,7 @@
       "id": "C10",
       "rule": "16",
       "text": "Lean 代码与编译结果归档",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
         "vibe-math-vmu/kernel/lean.js::function compileResultFor",
         "vibe-math-vmu/kernel/lean.js::outcome: e.outcome === undefined"
@@ -768,7 +786,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"mappedKind\":\"theorem\""
       ],
       "ruleText": "- 平时的一些命题的证明、对象的定义之类的lean代码及其编译结果。以减轻后续工作量。且只要lean通过的命题那么剩下的（在辩论时）只是检查代码中的命题、各种定义是否描述符合所需，只要符合那么就是完全正确的、布尔概率直接赋值为1、可以把相应命题（及其依赖的对象定义）加入verified。（通过参数可以开启鼓励开关：鼓励它们把平时一些小结论、小命题、定义给进行lean形式化、编译，来减少后续工作量。）",
-      "next": ""
+      "next": "Lean 代码与编译结果的归档读面需要 Lean face/spawn 接缝；本装配没有 Lean，`vibe_v5_lean_lib` 只能具名拒。需在带 Lean 的部署复验归档回执后转 DONE（或新增一个可测的 Lean 接缝）。"
     },
     {
       "id": "C11",
@@ -851,7 +869,13 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"fingerprint\":\"cbd725528ce6f926011c7c2f8f8a3c23fccbad6715f26d8e21afba0c8de80d28\""
       ],
       "ruleText": "- 一些脚本文件等。",
-      "note": "L18 的「脚本文件」由两层兑现：①每位院士/常驻研究员有自己的文件面（教学 v5r-blocks-a.js:250「③ 推荐**直接用 fs 写你自己的文件**（路径必须带成员库根：Members/<你>/…）」）；②运行脚本的留档由 vibe_v5_script 的 scripts 轨归档（本部署 vmu.records.tracks 已声明 scripts；记录带 kernel 计算的指纹与 provenance，可「重跑归档文本、比对指纹」复核），该归档面按 round-31 裁决 2 只对 office/控制面开放，三席 ACL 关闭是已裁决的能力边界（seat-faces.js 的 decided 行），教学已于 v5r-blocks-b.js「脚本归档」段如实说明。audit10 G1 把它记为能力缺口（不是未完成、也不是矛盾）。"
+      "note": "L18 的「脚本文件」由两层兑现：①每位院士/常驻研究员有自己的文件面（教学 v5r-blocks-a.js:250「③ 推荐**直接用 fs 写你自己的文件**（路径必须带成员库根：Members/<你>/…）」）；②运行脚本的留档由 vibe_v5_script 的 scripts 轨归档（本部署 vmu.records.tracks 已声明 scripts；记录带 kernel 计算的指纹与 provenance，可「重跑归档文本、比对指纹」复核），该归档面按 round-31 裁决 2 只对 office/控制面开放，三席 ACL 关闭是已裁决的能力边界（seat-faces.js 的 decided 行），教学已于 v5r-blocks-b.js「脚本归档」段如实说明。audit10 G1 把它记为能力缺口（不是未完成、也不是矛盾）。",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit was right at that moment: the script face was member-facing and the chair had no archive path. RUN 236 made the face chair-only, gave members a named refusal that points at the chair, and the archive receipt now reports the stored file.",
+        "evidence": "tests/vmu-run236-c14-chair-archive.test.mjs::archiveMeans"
+      }
     },
     {
       "id": "C15",
@@ -901,7 +925,7 @@
       "id": "D2",
       "rule": "38",
       "text": "三通道：邮箱/私信/群聊",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
         "vibe-math-vmu/kernel/mailbox.js::to = null, text = '', kind = 'dm'",
         "vibe-math-vmu/kernel/chat.js::replyTo = null, quotes ="
@@ -917,7 +941,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::kind does NOT decide urgency"
       ],
       "ruleText": "- 各自交流通过：邮箱（非紧急。一般不需要立即查看邮箱消息），私信（希望对方尽早回复时），群聊（非紧急。一般不需要立即查看群聊消息），...。",
-      "next": "",
+      "next": "当前架构裁决是「所办是唯一传信人」：成员没有直发邮箱/私信面，声音由所办代发并记 `relayedBy`，这不是缺陷而是设计。若要求成员自有通道，需要用户裁定并新增成员面，届时本行转 DONE 或 DECIDED。",
       "note": "r124b：urgent:true ⇒ kind notice 且 note 明说 kind 不决定紧急度；未传时 urgent 默认 false"
     },
     {
@@ -1297,7 +1321,13 @@
       ],
       "ruleText": "会议中各成员可执行命令或工具按会议类型（如学术交流、任务安排策划（一起策划）与分配、辩论会议、结题会议、...）和成员身份会有差异。",
       "next": "",
-      "note": "r122a：meeting_round 回 narrowing type/narrowed/expected（§217.4）"
+      "note": "r122a：meeting_round 回 narrowing type/narrowed/expected（§217.4）",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit saw the reply channel unbound from any meeting. RUN 230 bound the queue entry to a meeting id, made a conflicting reply a named refusal, and the receipt says which source the binding came from.",
+        "evidence": "tests/vmu-run230-meeting-binding.test.mjs::meetingSource"
+      }
     },
     {
       "id": "E13",
@@ -1363,7 +1393,7 @@
       "id": "E16",
       "rule": "50",
       "text": "常见命令：批量指定成员按顺序发言",
-      "status": "DONE",
+      "status": "PARTIAL",
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::VMU_FLOOR_OUT_OF_ORDER",
         "vibe-math-vmu/kernel/meetings.js::const queueRead = orderEff.queueOpen"
@@ -1379,7 +1409,7 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"presentWaiters\":1,\"position\":1,\"slipped\":false"
       ],
       "ruleText": "会议的一些常见命令或工具包括但不限于（需注意各命令的使用权限，有些是只有主持人具有的命令或工具）：举手发言，邀请发言，批量指定成员按一定顺序发言，单次发言版群聊，...。",
-      "next": "",
+      "next": "`order({members})` 的写路径已实现（回执带 before/after 或 moved），但还没有一条端到端测试钉住它；补 `tests/vmu-run237-order-write.test.mjs` 后转 DONE。",
       "note": "r115 回执逐字：顺序由 invite 排定，队头发言回 position:1，缺席者被跳过并具名（§210.4）"
     },
     {
@@ -1545,7 +1575,13 @@
       ],
       "ruleText": "对于lean已经通过的但是布尔概率还非1的命题，辩论时主要是辩论lean代码中对命题的描述、定义是否符合原意。",
       "next": "已由 r132 全证（Lean 已过 + p=0.9 的裁决汇总被 FIDELITY_ASK_REQUIRED 具名拒，hint 指辩论裁定）；后续轮次只做回归。",
-      "note": "闸在裁决汇总面（verdict_final），不在 fidelity_conclude：Lean 通过 + 一致性裁定 ⇒ p=1 是 C10 的正路（r132 回执 p1Written:true）。"
+      "note": "闸在裁决汇总面（verdict_final），不在 fidelity_conclude：Lean 通过 + 一致性裁定 ⇒ p=1 是 C10 的正路（r132 回执 p1Written:true）。",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit saw the p!=1 freshness rule only in prose. The verification gate returns a named refusal `VMU_PACK_V5R_FIDELITY_ASK_REQUIRED` when Lean passes but the fidelity question was never asked.",
+        "evidence": "tests/vmu-v5r-verdict-final.test.mjs::VMU_PACK_V5R_FIDELITY_ASK_REQUIRED"
+      }
     },
     {
       "id": "E25",
@@ -1773,7 +1809,13 @@
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"stdout\":\"1025",
         "docs/acceptance/phase12-v5r-rules-conformance.md::\"value\":\"1025\",\"valueMissing\":null"
       ],
-      "ruleText": "- 支持成员使用一些数学计算工具（如Python等），但支持所办通过参数设置工具的并发数量等限制，避免cpu过载、oom。"
+      "ruleText": "- 支持成员使用一些数学计算工具（如Python等），但支持所办通过参数设置工具的并发数量等限制，避免cpu过载、oom。",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit saw the python math engine only as a declared setting. The adapter test drives the real spawn/resolve path for a declared engine list, which is what makes the face reachable rather than promised.",
+        "evidence": "tests/vmu-math-adapters.test.mjs::vmu.math.engines"
+      }
     },
     {
       "id": "G2",
@@ -1911,7 +1953,13 @@
       ],
       "ruleText": "- 确保所有代理接收到的提示词完全与上述规则相符、自洽 。",
       "next": "用户裁定：G7 记 DONE 的条件是「再派一次独立审计、结论零矛盾」。已完成二十四批独立只读审计：§229(5) → §230(5) → §232(4) → §233(2) → §234(4) → §235(2) → §236(4) → §237(3) → §238(2) → §239(1) → §240(1) → §241(2) → §242(2) → §243(1) → §244(2) → §245(1) → §246(2) → §247(2) → §248(2) → §249(1) → §250(1) → §251(1)，累计 53 条矛盾全部修净，并机器化进 tests/vmu-g7-concordance.test.mjs、tests/vmu-run150-verdict-channel.test.mjs、tests/vmu-run149-seat-note-authority.test.mjs、tests/vmu-run147-convene-field.test.mjs 与 check-rule-parity P1–P7；第二十四次审计基线 0e8961f3 判 CONSISTENT。维护义务：之后任何一次提示词/机制改动都必须重跑 check-rule-parity、check-rules-coverage、linecheck3 与全量 T1，并把新矛盾记进台账，不得让 G7 停留在旧读数上。",
-      "note": "2026-10-30：第二十四次决定性独立只读审计（基线 0e8961f3，报告 D:/_tmp/g7a24/audit24.md）判 G7 VERDICT: CONSISTENT，按用户裁定的 DONE 条件把本项从 PARTIAL 改为 DONE；本轮修法记录见 docs/acceptance/phase12-v5r-rules-conformance.md §251，落账记录见 §252。"
+      "note": "2026-10-30：第二十四次决定性独立只读审计（基线 0e8961f3，报告 D:/_tmp/g7a24/audit24.md）判 G7 VERDICT: CONSISTENT，按用户裁定的 DONE 条件把本项从 PARTIAL 改为 DONE；本轮修法记录见 docs/acceptance/phase12-v5r-rules-conformance.md §251，落账记录见 §252。",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit found prompt sentences contradicting the rules. RUN 236 replaced the contradictory teaching and added a suite that assembles the six real prompts and asserts the stale sentences are gone.",
+        "evidence": "tests/vmu-run236-g7-contradiction.test.mjs::STALE"
+      }
     },
     {
       "id": "A8",
@@ -2124,7 +2172,13 @@
       ],
       "next": "",
       "text": "the mainline is stated as the blueprint of the original problem, coarse to fine",
-      "note": "the lead sentence every seat reads: the point of the institute is the blueprint, not the phase list"
+      "note": "the lead sentence every seat reads: the point of the institute is the blueprint, not the phase list",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit saw the coarse-to-fine mainline only in prose. RUN 236 added an `outline` field to the blueprint with declared depths, a required-flag setting, and readings on both the state and read faces.",
+        "evidence": "tests/vmu-run236-blueprint-outline.test.mjs::outlineDepthMax"
+      }
     },
     {
       "id": "G9",
@@ -2145,7 +2199,13 @@
       ],
       "next": "",
       "text": "cognition and feedback that move the mainline are accumulated",
-      "note": "said to the chair every round, and the nodes it names are durable rows"
+      "note": "said to the chair every round, and the nodes it names are durable rows",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit saw accumulation only in the prompt. RUN 236 added a direction card whose findings/reuse fields are durable records, so the cognition that moves the mainline has a place to live.",
+        "evidence": "tests/vmu-run236-direction-card.test.mjs::findings"
+      }
     },
     {
       "id": "G10",
@@ -2166,7 +2226,13 @@
       ],
       "next": "",
       "text": "each direction/route/node records its nine fields",
-      "note": "the field list a seat is told to update, not a schema it can skip"
+      "note": "the field list a seat is told to update, not a schema it can skip",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit saw the nine fields only as prose. RUN 236 added the `vibe_vmu_direction` face with nine declared fields and five required, refusing an incomplete card by name instead of accepting a partial one.",
+        "evidence": "tests/vmu-run236-direction-card.test.mjs::DIRECTION_FIELDS"
+      }
     },
     {
       "id": "G11",
@@ -2187,7 +2253,13 @@
       ],
       "next": "",
       "text": "the blueprint is refined and its objects updated from practice",
-      "note": "the revise loop: practice feeds the blueprint, adopted through vibe_v5_blueprint"
+      "note": "the revise loop: practice feeds the blueprint, adopted through vibe_v5_blueprint",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit saw refinement only as prose. The blueprint now carries a `revisionReason` reading on propose/adopt/state/read, so a refined revision says why it moved.",
+        "evidence": "tests/vmu-run236-blueprint-outline.test.mjs::revisionReasonSource"
+      }
     },
     {
       "id": "G12",
@@ -2208,7 +2280,13 @@
       ],
       "next": "",
       "text": "experience keeps improving and optimising the way of working",
-      "note": "improvement is a duty in the prompt, and the rounds themselves are its evidence"
+      "note": "improvement is a duty in the prompt, and the rounds themselves are its evidence",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit saw the improving-way-of-working rule only in teaching. The direction card keeps a durable history per route (supersede, never overwrite), so the way of working accumulates instead of being rewritten.",
+        "evidence": "tests/vmu-run236-direction-card.test.mjs::history"
+      }
     },
     {
       "id": "G13",
@@ -2229,7 +2307,13 @@
       ],
       "next": "",
       "text": "valuable methods and obstacle solutions are reused, generalised, transferred",
-      "note": "reuse over re-exploration: the sentence that turns a past fix into a transferable method"
+      "note": "reuse over re-exploration: the sentence that turns a past fix into a transferable method",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit saw reuse only as advice. The direction card has an explicit `reuse` field, so \"what we already know that applies here\" is recorded where the next turn reads it.",
+        "evidence": "tests/vmu-run236-direction-card.test.mjs::reuse"
+      }
     },
     {
       "id": "G14",
@@ -2250,7 +2334,13 @@
       ],
       "next": "",
       "text": "a problem is checked against similar past problems before work starts",
-      "note": "the first-thing-to-do instruction: look for the same problem before spending a round on it"
+      "note": "the first-thing-to-do instruction: look for the same problem before spending a round on it",
+      "auditDispute": {
+        "acknowledged": true,
+        "at": "RUN 237",
+        "why": "the audit saw the \"check for similar past problems first\" rule only as advice. The card records `obstacles` and `reuse` durably, which is the artifact a later turn can consult before starting over.",
+        "evidence": "tests/vmu-run236-direction-card.test.mjs::obstacles"
+      }
     }
   ]
 }

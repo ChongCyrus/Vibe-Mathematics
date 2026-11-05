@@ -4106,3 +4106,45 @@ member 29 810、temp 26 904）。**先删再写**是预算下唯一可持续的�
 
 三条教训：① 一个计数器只能有一个累加点，其余必须是读数；② 声明的空集不是声明；③ 一个修复要数到「读者看得见」
 那一步才算完（M4 → `mergeEcho`）。
+
+## ROUND 237 - a narrower scan than the receipt claimed, and two ledgers that never met
+
+1. `reindex` reported three different facts in one `skipped` bucket and called other people's documents broken.
+   Every skip now carries `whyClass` (unreadable / not-a-vmu-md / undeclared-track / write-refused), a md without the
+   `- vmuMd：` header is described as a document this index cannot own, and the receipt carries `walked` plus
+   `scanScope` — `track` narrows WHICH files are accounted, never which directories are walked (the track lives in the
+   md header, not in the path).
+2. The implementation ledger certified 93 rules DONE while the observation audit judged 18 of them unobservable.
+   `scripts/check-rules-coverage.mjs` now reads both: a DONE the audit contradicts must answer with
+   `auditDispute { acknowledged, why, evidence }`, and the evidence must be a runnable pattern in a MAINTAINED suite
+   (an archived suite is refused). 15 rows recorded that reconciliation; 3 real gaps (C10 Lean archive seam, D2 member
+   channel ruling, E16 order write path without an end-to-end test) dropped to PARTIAL with a concrete `next`.
+3. A declared gap is a warning, not a failure: `--strict-unfinished` is the release scope. Failing on every PARTIAL
+   is what pushed the previous choice — say DONE and hope nobody looks.
+
+## ROUND 238
+
+### 一张蓝图文档装不下两个修订
+
+- 实测（run 61）：`propose` 落草案 r2 时把 `Shared/Protocol.md` 原子替换成草案正文（517 B），而现行行仍是 r1（6755 B）；
+  `state` 报 `mdChangedSinceIndex/mdAheadOfIndex`；`prune` 草案只动索引，文件不会回到现行行。
+- 修法：**草案不写 md**（`draftMdDeferred`），正文只活在索引行；`adopt` 是 canonical 文档的唯一写者，
+  回执用 `mdIsTheDocumentInForce.wroteNow` 说「这一次真的落盘了」。
+- 为什么不是另开 `Shared/Drafts/`：那会多出「哪个文件算数」的第二个问题，并让 `reindex` 把草案文件也收成独立行，
+  破坏「一次采纳 = 恰好一行」。**不写文件是不需要解释的写法。**
+
+### 六处读数（B/C/D/E/F/H）
+
+- `records.put` 更新回执：`bodyLinesBefore/After`、`bodyLinesDropped/Added`（replace 丢行逐行点名）、
+  `revSource:'this-kernel'`（跨内核比 fingerprint，不比 rev）；`kit/handlers.js` 的 `mergeEcho` 同步转发。
+- `settleRulingOnCard`：`settlement.staleValueLines` —— 卡上同时有 `value` 与 `p` 时，回执排座次。
+- `parseOutlineField`：重复 outline id 具名拒（`repeats an id already used`）。
+- 会议读数：`speeches`/`speechesMeans`（`turns` 是同一个数的旧名；成员回合是另一件事）。
+- `task_create`：回执带 `revision`。
+- 未做：G（被拒 message 的归属）——message 被多处精确 pin，且回执已有三件套，放宽是改契约不是修缺陷。
+
+### 机器化
+
+- `tests/vmu-run238-feedback61.test.mjs` **58/0**（含真票结算路径：三席 attend + 动议 + 附议 + 三票）。
+- 旧合同两套改到新合同：`vmu-run225-blueprint-md` **140/0**、`vmu-run236-blueprint-outline` **52/0**。
+- 定向回归 `TOTAL 39 PASS 39 FAIL 0`。

@@ -10,7 +10,7 @@
 // Run: node tests/vmu-run225-blueprint-md.test.mjs
 
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -96,7 +96,8 @@ const rowsOf = (records, track) => (records.list({ track: track || 'blueprint', 
   has(SRC_RECORDS, 'mdReindex(', 'records.js exposes the md reindex face')
   has(SRC_RECORDS, 'mdRowBodyOf(', 'records.js can rebuild an index row FROM the md doc')
   has(SRC_RECORDS, 'mdFingerprintOf(', 'records.js fingerprints md bytes with sha256')
-  has(SRC_BLUEPRINT, 'writeBlueprintMd(', 'blueprint.js writes the md file on propose/adopt')
+  has(SRC_BLUEPRINT, 'writeBlueprintMd(', 'blueprint.js writes the md file on adopt')
+  has(SRC_BLUEPRINT, 'draftMdDeferred(', 'blueprint.js names the absence of a draft file instead of writing one')
   has(SRC_BLUEPRINT, 'blueprintMdReading(', 'blueprint.js reads the md/index agreement')
   has(SRC_BLUEPRINT, "BLUEPRINT_MD_KEY = 'mdFingerprint'", 'blueprint.js names the fingerprint header field')
   has(SRC_BLUEPRINT, 'mdChangedSinceIndex', 'blueprint.js discloses mdChangedSinceIndex')
@@ -105,13 +106,13 @@ const rowsOf = (records, track) => (records.list({ track: track || 'blueprint', 
   has(SRC_HOST, ".concat(['reindex'])", 'host.js lists reindex in the records action enum')
 }
 
-// ── §1 propose writes the md file (atomically) and stamps its sha256 onto the row ──────────────────────────────────
+// ── §1 propose writes NO md file: a draft is an index row, adopt is the only writer of the document ───────────────
 let b
 let p1
 let p2
 let adopted
 {
-  console.log('\n=== §1 propose writes the full text to the md file ===')
+  console.log('\n=== §1 propose writes NO md file (a draft is an index row) ===')
   b = await boot('md')
   const started = await b.call('vibe_v5_start', { problem: '前 n 个奇数之和 = n²，用归纳法验证。', researcherCount: 2 })
   ok(started && started.ok === true, 'the round starts (so the blueprint seats exist)')
@@ -119,55 +120,50 @@ let adopted
   p1 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: R1_TEXT })
   ok(p1 && p1.ok === true, 'propose returns a receipt', p1)
   ok(p1 && p1.status === 'draft' && p1.revision === 1, 'propose is r1 draft', { revision: p1 && p1.revision, status: p1 && p1.status })
-  ok(p1 && p1.md && p1.md.available === true, 'the receipt says the md face is available')
-  ok(p1 && p1.md && p1.md.written === true, 'the md file is written')
-  ok(p1 && p1.md && p1.md.atomic === 'temp+rename', 'the write is atomic (temp file + rename)', p1 && p1.md)
-  ok(existsSyncAbs(b.mdAbs) === true, 'the md file exists under <root>/VibeMath/Shared/Protocol.md')
-  const md1 = existsSyncAbs(b.mdAbs) ? readFileSync(b.mdAbs, 'utf8') : ''
-  ok(md1.indexOf('# 蓝图｜Shared/Protocol.md｜r1｜草案') === 0, 'md opens with a one-glance title line', md1.slice(0, 60))
-  has(md1, '- vmuMd：vmu-md/1', 'md declares its own format marker')
-  has(md1, '- revision：1', 'md carries the revision as a readable line')
-  has(md1, '- status：draft', 'md carries the status as a readable line')
-  has(md1, '- path：Shared/Protocol.md', 'md carries the path it indexes')
-  has(md1, '## 正文', 'md has a text section')
-  has(md1, '- 命题：前 n 个奇数之和 = n²。', 'md carries the body text verbatim')
-  has(md1, '- 步骤：对 n 归纳，奇数是 n²-(n-1)²。', 'md carries every body line verbatim')
-  ok(bodyAfterHeading(md1) === R1_TEXT, 'the md text section is EXACTLY the proposed text', { got: bodyAfterHeading(md1) })
-  ok(shaOf(b.mdAbs) === (p1.md && p1.md.fingerprint), 'the receipt fingerprint is sha256 of the bytes on disk', { disk: shaOf(b.mdAbs), receipt: p1.md && p1.md.fingerprint })
-  ok(p1.mdFingerprint === (p1.md && p1.md.fingerprint), 'the same fingerprint is repeated flat on the receipt')
+  ok(p1 && p1.md && p1.md.available === false, 'the receipt says the md face wrote nothing (a draft is not a document)')
+  ok(p1 && p1.md && p1.md.written === false, 'the md file is NOT written by a draft')
+  ok(p1 && p1.md && p1.md.deferredTo === 'adopt', 'the receipt names what would write it: adopt')
+  ok(p1 && p1.md && p1.md.canonicalPath === 'Shared/Protocol.md', 'the receipt names the file adoption would write')
+  has(p1 && p1.md && p1.md.means, 'writes no md file', 'the means says a draft writes no file')
+  has(p1 && p1.md && p1.md.means, 'adopt', 'the means names adoption as the writer')
+  ok(existsSync(b.mdAbs) === false, 'no md exists under <root>/VibeMath/Shared/Protocol.md yet', { abs: b.mdAbs })
   const row1 = b.records.get({ id: p1.id, includeBody: true })
-  has(row1 && row1.body, '- mdFingerprint：' + shaOf(b.mdAbs), 'the INDEX ROW carries the md sha256 header line')
   has(row1 && row1.body, '- status：draft', 'the index row carries the readable status')
-  ok(bodyAfterHeading(row1 && row1.body) === R1_TEXT, 'the index row body agrees with the md text')
+  has(row1 && row1.body, '- revision：1', 'the index row carries the revision')
+  has(row1 && row1.body, '## 正文', 'the index row has a text section')
+  ok(bodyAfterHeading(row1 && row1.body) === R1_TEXT, 'the index row body IS the proposed text (the draft lives here)', { got: bodyAfterHeading(row1 && row1.body) })
+  ok(!(row1 && /- mdPath：\S/.test(row1.body)), 'an unadopted draft claims no md file', { body: row1 && row1.body })
 }
 
-// ── §2 co-design continuation rewrites the same md file (new fingerprint, both seats recorded) ────────────────────
+// ── §2 co-design continuation grows the ROW (both seats recorded) and still writes no file ────────────────────────
 {
-  console.log('\n=== §2 co-design continuation rewrites the md ===')
-  const before = shaOf(b.mdAbs)
+  console.log('\n=== §2 co-design continuation grows the row, never the file ===')
   p2 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: CODESIGN_TEXT })
   ok(p2 && p2.ok === true && p2.continued === true, 'the second member continues the r1 draft', p2)
   ok(p2 && p2.revision === 1, 'continuation keeps revision 1 (same draft)', p2 && p2.revision)
-  const md2 = readFileSync(b.mdAbs, 'utf8')
-  has(md2, '## 共同设计补充｜r-1', 'md includes the co-design section')
-  has(md2, '"member":"r-1"', 'md authors record the co-design seat')
-  has(md2, '"member":"r-acad"', 'md authors still record the first seat')
-  ok(shaOf(b.mdAbs) !== before, 'the md fingerprint changed after the continuation', { before, after: shaOf(b.mdAbs) })
-  ok(shaOf(b.mdAbs) === (p2.md && p2.md.fingerprint), 'the continuation receipt fingerprint matches the new disk bytes')
-  ok(p2.mdChangedSinceIndex === false, 'a writer never reports its own fresh md as changed')
+  ok(p2 && p2.md && p2.md.written === false, 'the continuation writes no file either')
+  ok(existsSync(b.mdAbs) === false, 'the document in force is still untouched on disk')
+  const row2 = b.records.get({ id: p2.id, includeBody: true })
+  has(row2 && row2.body, '## 共同设计补充｜r-1', 'the row includes the co-design section')
+  has(row2 && row2.body, '"member":"r-1"', 'the row authors record the co-design seat')
+  has(row2 && row2.body, '"member":"r-acad"', 'the row authors still record the first seat')
+  ok(p2.mdChangedSinceIndex === false, 'a draft never reports a change to a file it did not write')
 }
 
 // ── §3 adopt writes the adopted text (status current) to the same md file ─────────────────────────────────────────
 {
   console.log('\n=== §3 adopt writes status current to the md ===')
-  const draftBody = bodyAfterHeading(readFileSync(b.mdAbs, 'utf8'))
   const draftId = (p2 && p2.id) || (p1 && p1.id)
+  const draftRow = b.records.get({ id: draftId, includeBody: true })
+  const draftBody = bodyAfterHeading(draftRow && draftRow.body)
   adopted = await b.call('vibe_v5_blueprint', { action: 'adopt', draft: draftId, member: 'r-acad', path: 'Shared/Protocol.md' })
   ok(adopted && adopted.ok === true && adopted.action === 'adopt', 'adopt returns an adopt receipt', adopted && adopted.code)
   ok(adopted && adopted.revision === 1 && adopted.status === 'current', 'adopt produces r1 current')
   ok(adopted && adopted.md && adopted.md.available === true, 'the adopt receipt reads the md it just wrote')
   ok(adopted && adopted.md && adopted.md.mdChangedSinceIndex === false, 'the adopt receipt sees its own md as in sync')
   ok(adopted && adopted.mdWrite && adopted.mdWrite.written === true && adopted.mdWrite.atomic === 'temp+rename', 'the adopt receipt also carries the atomic write receipt', adopted && adopted.mdWrite)
+  ok(adopted && adopted.mdIsTheDocumentInForce && adopted.mdIsTheDocumentInForce.wroteNow === true, 'the adopt receipt states the file contract in one line: adopt wrote the document', adopted && adopted.mdIsTheDocumentInForce)
+  has(adopted && adopted.mdIsTheDocumentInForce && adopted.mdIsTheDocumentInForce.means, 'ONLY file the blueprint writes', 'and it says adoption is the ONLY writer')
   const md3 = readFileSync(b.mdAbs, 'utf8')
   ok(md3.indexOf('# 蓝图｜Shared/Protocol.md｜r1｜生效') === 0, 'md title now says the r1 version is in force', md3.slice(0, 60))
   has(md3, '- status：current', 'md status line now says current')
@@ -295,9 +291,10 @@ let staleState = null
   ok(p3a && p3a.ok === true && p3a.revision === 2 && p3a.status === 'draft', 'propose starts r2 draft', { revision: p3a && p3a.revision })
   const p3 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: '## 共同设计补充｜r-1\n- r2 复核：n=2 时 4=2²。' })
   ok(p3 && p3.ok === true && p3.continued === true, 'the co-design seat joins the r2 draft too')
+  ok(p3a && p3a.md && p3a.md.written === false, 'the r2 draft writes no file')
   const mdDraft = readFileSync(b.mdAbs, 'utf8')
-  has(mdDraft, '- revision：2', 'md now carries revision 2')
-  has(mdDraft, 'r2 补充：偶数情形归约到奇数情形。', 'md carries the r2 draft text')
+  ok(mdDraft.indexOf('# 蓝图｜Shared/Protocol.md｜r1｜生效') === 0, 'the document in force still says r1 (an unadopted draft did not touch it)', mdDraft.slice(0, 60))
+  hasNot(mdDraft, 'r2 补充：偶数情形归约到奇数情形。', 'the r2 draft text is NOT in the document in force')
   const ad2 = await b.call('vibe_v5_blueprint', { action: 'adopt', draft: p3.id, member: 'r-acad', path: 'Shared/Protocol.md' })
   if (ad2 && ad2.ok !== true) console.log('  adopt(r2) receipt :: ' + JSON.stringify(ad2).slice(0, 600))
   ok(ad2 && ad2.ok === true && ad2.revision === 2 && ad2.status === 'current', 'adopt makes r2 current', { revision: ad2 && ad2.revision })

@@ -152,6 +152,16 @@ function mergeEcho(written) {
     fieldsKept: g('fieldsKept'),
     fieldsReplaced: g('fieldsReplaced'),
     bodyModeUsed: g('bodyModeUsed'),
+    // ★★★ RUN 238 (run 61 / FEEDBACK61 B, MEASURED): a same-id write REPLACED a card body and the receipt never said
+    // which labelled lines did not survive — the card lost proofRef/proofState/debateRuling and still answered `ok:true`.
+    // The kernel can now name them; the seat face used to drop that reading when it re-stated the receipt.
+    bodyLinesDropped: g('bodyLinesDropped'),
+    bodyLinesAdded: g('bodyLinesAdded'),
+    bodyLinesMeans: g('bodyLinesMeans'),
+    // ★★★ RUN 238 (run 61 / FEEDBACK61 E): two kernels over one workspace each fold their own count, so `rev` alone
+    // cannot tell a lost write from another kernel's write. Say which kernel the number came from.
+    revSource: g('revSource'),
+    revMeans: g('revMeans'),
     mergeMeans: updated
       ? 'this call UPDATED an existing row: rev/' + String(g('rev')) + ', the fields it did not name kept their old values (' + String((g('fieldsKept') || []).join(', ') || 'none') + '), and the ones it DID name were replaced (' + String((g('fieldsReplaced') || []).join(', ') || 'none') + ')'
       : 'this call CREATED a row, so there was no previous value to keep or replace — `updated:false` is the create case, not an update that dropped everything',

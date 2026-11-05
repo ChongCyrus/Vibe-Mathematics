@@ -1,0 +1,142 @@
+// tests/vmu-run237-ledger-audit.test.mjs — RUN 237: two ledgers disagreed and nothing noticed.
+//
+// `docs/acceptance/rules-ledger.json` certified 93 rules DONE; `docs/acceptance/sim-audit-rules.md` — an OBSERVATION
+// audit (receipts, prompts, tree snapshots; "a function exists" is not evidence there) — judged 18 of them
+// PROSE-ONLY / UNREACHABLE / CONTRADICTED. Both files were green in their own terms, which is exactly how a project
+// convinces itself it is finished.
+//
+// The gate now reads BOTH: a DONE that the observation audit calls unobservable must answer it with
+// `auditDispute { acknowledged, why, evidence }`, where `evidence` is a pattern inside a MAINTAINED suite (never
+// `tests/legacy/`) — "the audit was right about that moment, here is the executable proof it changed". A declared gap
+// (`PARTIAL` + `next`) is a warning, not a lie; `--strict-unfinished` still refuses gaps for a release gate.
+//
+// Run: node tests/vmu-run237-ledger-audit.test.mjs
+
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
+const TMP = 'D:/_tmp/run237'
+const LEDGER = join(REPO, 'docs', 'acceptance', 'rules-ledger.json')
+const GATE = join(REPO, 'scripts', 'check-rules-coverage.mjs')
+const SRC_GATE = readFileSync(GATE, 'utf8')
+
+let passed = 0
+let failed = 0
+const failures = []
+function ok(cond, name, detail) {
+  if (cond) {
+    passed += 1
+    console.log('  ok   ' + name)
+  } else {
+    failed += 1
+    failures.push(name)
+    console.log('  FAIL ' + name + (detail === undefined ? '' : ' :: ' + JSON.stringify(detail)))
+  }
+}
+function has(text, needle, name) {
+  ok(typeof text === 'string' && text.indexOf(needle) !== -1, name, { needle })
+}
+
+mkdirSync(TMP, { recursive: true })
+
+/** Run the gate against a ledger COPY and return `{ ok, problems }` (never throws on a red gate). */
+function runGate(itemMutation, extraArgs = []) {
+  const ledger = JSON.parse(readFileSync(LEDGER, 'utf8'))
+  if (typeof itemMutation === 'function') itemMutation(ledger)
+  const root = mkdtempSync(join(TMP, 'ledger-'))
+  const file = join(root, 'rules-ledger.json')
+  writeFileSync(file, JSON.stringify(ledger, null, 2) + '\n', 'utf8')
+  let parsed = null
+  let exitCode = 0
+  try {
+    const out = execFileSync(process.execPath, [GATE, '--check', '--json', '--ledger', file].concat(extraArgs), { cwd: REPO, encoding: 'utf8' })
+    parsed = JSON.parse(out)
+  } catch (e) {
+    exitCode = typeof e.status === 'number' ? e.status : 1
+    try { parsed = JSON.parse(String(e.stdout || '')) } catch (err) { parsed = null }
+  }
+  return { exitCode, parsed, root, file }
+}
+const codesOf = (parsed) => ((parsed && parsed.problems) || []).map((p) => p.code)
+
+// ── §0 the gate reads the second ledger and knows the vocabulary ─────────────────────────────────────────────────
+{
+  console.log('\n=== §0 the gate reads the observation audit (source pins) ===')
+  has(SRC_GATE, 'sim-audit-rules.md', 'the gate names the observation audit it cross-reads')
+  has(SRC_GATE, 'VMU_RULES_DONE_DISPUTED_BY_AUDIT', 'a DONE the audit contradicts has its own code')
+  has(SRC_GATE, 'auditDisputeProblem', 'the reconciliation is checked by one function')
+  has(SRC_GATE, 'acknowledged must be true', 'an acknowledgement cannot be blank')
+  has(SRC_GATE, 'tests/legacy/', 'an archived suite can never be the evidence')
+  has(SRC_GATE, 'STRICT_UNFINISHED', 'a declared gap is a warning unless the release flag is on')
+  has(SRC_GATE, 'reconciledByAudit', 'the report says how many DONE rows answered the audit')
+}
+
+// ── §1 the real ledger passes, and its disputed rows are reconciled rather than dismissed ────────────────────────
+{
+  console.log('\n=== §1 the real ledger: DONE that answers the audit, gaps declared ===')
+  const real = JSON.parse(readFileSync(LEDGER, 'utf8'))
+  const disputed = real.items.filter((it) => it.auditDispute && it.auditDispute.acknowledged === true)
+  ok(disputed.length >= 15, 'the disputed rows carry an acknowledged reconciliation', { count: disputed.length })
+  ok(disputed.every((it) => /^tests\/[^/]+\.mjs::/.test(String(it.auditDispute.evidence))),
+    'every reconciliation cites a maintained suite and a pattern', disputed.map((it) => it.auditDispute.evidence).slice(0, 3))
+  ok(disputed.every((it) => String(it.auditDispute.evidence).indexOf('tests/legacy/') === -1),
+    'no reconciliation hides behind an archived suite')
+  const gaps = real.items.filter((it) => it.status === 'PARTIAL' || it.status === 'MISSING')
+  ok(gaps.length >= 3, 'the genuinely unobservable rules are declared as gaps, not as DONE', { gaps: gaps.map((g) => g.id) })
+  ok(gaps.every((g) => typeof g.next === 'string' && g.next.trim().length >= 8), 'each gap says what would close it')
+
+  const green = runGate(null)
+  ok(green.exitCode === 0, 'the real ledger passes --check', { exitCode: green.exitCode, problems: codesOf(green.parsed) })
+  ok(!codesOf(green.parsed).includes('VMU_RULES_UNFINISHED'), 'declared gaps are warnings, not failures (default scope)')
+  ok(((green.parsed && green.parsed.warnings) || []).some((w) => w.code === 'VMU_RULES_UNFINISHED'),
+    'and they are still PRINTED as unfinished warnings (invisible gaps would be the old bug)')
+}
+
+// ── §2 remove the reconciliation from a disputed row ⇒ the gate refuses the DONE ────────────────────────────────
+{
+  console.log('\n=== §2 a DONE that ignores the audit is red ===')
+  const bare = runGate((ledger) => {
+    const it = ledger.items.filter((x) => x.auditDispute)[0]
+    delete it.auditDispute
+    return it.id
+  })
+  ok(bare.exitCode !== 0, 'the gate fails', { exitCode: bare.exitCode })
+  ok(codesOf(bare.parsed).includes('VMU_RULES_DONE_DISPUTED_BY_AUDIT'), 'with VMU_RULES_DONE_DISPUTED_BY_AUDIT', codesOf(bare.parsed))
+}
+
+// ── §3 the reconciliation must be executable, not a sentence ───────────────────────────────────────────────────
+{
+  console.log('\n=== §3 a citation that cannot be run is refused ===')
+  const cases = [
+    ['a pattern that is not in the suite', (it) => { it.auditDispute.evidence = 'tests/vmu-run237-ledger-audit.test.mjs::' + 'NO_SUCH_PATTERN_' + Date.now() }],
+    ['a suite that does not exist', (it) => { it.auditDispute.evidence = 'tests/no-such-suite.test.mjs::anything' }],
+    ['an archived suite', (it) => { it.auditDispute.evidence = 'tests/legacy/v2-list-agents-and-next-step.mutants.mjs::runSuite' }],
+    ['no acknowledgement', (it) => { it.auditDispute.acknowledged = false }],
+    ['a why that says nothing', (it) => { it.auditDispute.why = 'fixed' }],
+  ]
+  for (const [label, mutate] of cases) {
+    const res = runGate((ledger) => {
+      const it = ledger.items.filter((x) => x.auditDispute)[0]
+      mutate(it)
+    })
+    ok(res.exitCode !== 0 && codesOf(res.parsed).includes('VMU_RULES_DONE_DISPUTED_BY_AUDIT'),
+      'refused: ' + label, { exitCode: res.exitCode, codes: codesOf(res.parsed) })
+  }
+}
+
+// ── §4 the release flag still refuses declared gaps (a release is not a working tree) ───────────────────────────
+{
+  console.log('\n=== §4 --strict-unfinished refuses the declared gaps ===')
+  const strict = runGate(null, ['--strict-unfinished'])
+  ok(strict.exitCode !== 0, 'the release scope fails while gaps exist', { exitCode: strict.exitCode })
+  ok(codesOf(strict.parsed).includes('VMU_RULES_UNFINISHED'), 'and names them', codesOf(strict.parsed))
+}
+
+console.log('\nTOTAL ' + (passed + failed) + ' PASS ' + passed + ' FAIL ' + failed)
+if (failures.length > 0) {
+  console.log('\nFAILURES:')
+  for (const f of failures) console.log('  - ' + f)
+  process.exitCode = 1
+}

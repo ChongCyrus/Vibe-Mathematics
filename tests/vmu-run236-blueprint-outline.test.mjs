@@ -132,15 +132,16 @@ ok(isOutline(p1.outline) && p1.outlineCount === 2 && p1.outlineDepthMax === 2 &&
 ok(p1.revisionReason === '首次给出由粗到细的骨架' && p1.revisionReasonSource === 'request', '★ G11: the receipt carries the reason this revision exists and where it came from', p1 && { reason: p1.revisionReason, source: p1.revisionReasonSource })
 ok(typeof p1.outlineMeans === 'string' && p1.outlineMeans.trim() !== '' && typeof p1.revisionReasonMeans === 'string' && p1.revisionReasonMeans.trim() !== '',
   'every reading is paired with a sentence (the receipt is readable, not a bare flag)', { outline: String(p1.outlineMeans).slice(0, 40), reason: String(p1.revisionReasonMeans).slice(0, 40) })
-const mdPath = p1.md && p1.md.absPath
-const mdText = typeof mdPath === 'string' && mdPath !== '' ? readFileSync(mdPath, 'utf8') : ''
-ok(typeof mdPath === 'string' && mdPath !== '', 'the md file was written and the receipt names its absolute path (the md is the truth)', p1.md)
-ok(countField(mdText, 'outline') === 1 && /"id":"o1"/.test(mdText) && /"depth":2/.test(mdText),
-  '★ the md itself carries the outline as ONE header line (the index row and the document agree, no second store)', countField(mdText, 'outline'))
-ok(countField(mdText, 'revisionReason') === 1 && mdText.indexOf('首次给出由粗到细的骨架') >= 0,
-  '★ the md itself carries the reason (G11 is readable from the document, not only from the chat that produced it)', countField(mdText, 'revisionReason'))
-ok(Buffer.byteLength(mdText, 'utf8') === p1.md.bytes && p1.mdChangedSinceIndex === false,
-  'the row fingerprints the md bytes it wrote (bytes match; nothing external changed since the index)', { bytes: p1.md && p1.md.bytes, actual: Buffer.byteLength(mdText, 'utf8') })
+// ★★★ RUN 238 (FEEDBACK61 A): a DRAFT writes no md at all — adoption is the only writer. Before RUN 238 this line
+// asserted the draft had already replaced the document in force, which is exactly the defect run 61 measured.
+ok(p1.md && p1.md.available === false && p1.md.written === false && p1.md.deferredTo === 'adopt',
+  '★ a draft writes no md file (its text is the index row; adoption is the only writer — RUN 238)',
+  p1 && p1.md && { available: p1.md.available, deferredTo: p1.md.deferredTo, path: p1.md.path })
+ok(p1.md && p1.md.canonicalPath === PATH_MAIN && p1.md.absPath === null,
+  'the receipt still names the document the draft WOULD become (so the reader knows what is not yet on disk)',
+  p1 && p1.md && { canonicalPath: p1.md.canonicalPath, absPath: p1.md.absPath })
+ok(p1.md.bytes === 0 && p1.mdChangedSinceIndex === false,
+  'a draft reports zero md bytes and no drift (there is no file to drift from until adoption)', { bytes: p1.md && p1.md.bytes })
 const row1 = kernel.records.get({ id: p1.id })
 ok(row1 && typeof row1.body === 'string' && countField(row1.body, 'outline') === 1 && countField(row1.body, 'revisionReason') === 1,
   'the ROW body carries both fields too (the md is the truth and the row is its index: both shapes agree)', row1 && countField(row1.body, 'outline'))
@@ -153,10 +154,12 @@ const p2 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_MAIN
 ok(p2 && p2.ok === true && p2.id === p1.id, 'fixture: the chair continued the SAME draft (one draft per unadopted revision)', p2 && { id: p2.id, before: p1.id })
 ok(isOutline(p2.outline) && p2.outlineSource === 'draft', '★ G8: a continuation that passes no outline keeps the draft outline and names the source ("draft")', p2 && { outline: p2.outline, source: p2.outlineSource })
 ok(p2.revisionReason === '首次给出由粗到细的骨架' && p2.revisionReasonSource === 'draft', '★ G11: a continuation inherits the reason and reports revisionReasonSource:"draft"', p2 && { reason: p2.revisionReason, source: p2.revisionReasonSource })
-const mdText2 = readFileSync(mdPath, 'utf8')
-ok(countField(mdText2, 'outline') === 1 && countField(mdText2, 'revisionReason') === 1,
-  '★ the continuation rewrites the SAME document without duplicating the header fields (still one line each)', { outline: countField(mdText2, 'outline'), reason: countField(mdText2, 'revisionReason') })
-ok(mdText2.indexOf('共同设计补充') >= 0, 'fixture: the continuation appended its own co-design section to the document body', mdText2.indexOf('共同设计补充'))
+ok(p2.md && p2.md.available === false && p2.md.deferredTo === 'adopt',
+  '★ a continuation writes no md either — the draft row grows, the document in force is untouched', p2 && p2.md && { deferredTo: p2.md.deferredTo })
+const row2 = kernel.records.get({ id: p1.id })
+ok(row2 && countField(row2.body, 'outline') === 1 && countField(row2.body, 'revisionReason') === 1 && row2.body.indexOf('共同设计补充') >= 0,
+  '★ the continuation grows the SAME index row (one line each for the header fields, plus its co-design section)',
+  row2 && { outline: countField(row2.body, 'outline'), reason: countField(row2.body, 'revisionReason') })
 
 console.log('=== 3. ADOPT INHERITS FROM THE DRAFT — THE REASON SURVIVES ADOPTION ===')
 const a1 = BLUEPRINT.adoptBlueprint({ records: kernel.records, path: PATH_MAIN, draft: p1.id, by: 'acad', at: T0 + 2000 })
@@ -165,7 +168,11 @@ ok(isOutline(a1.outline) && a1.outlineSource === 'draft', '★ G8: adoption carr
 ok(a1.revisionReason === '首次给出由粗到细的骨架' && a1.revisionReasonSource === 'draft',
   '★ G11: adoption inherits the reason and reports revisionReasonSource:"draft" (why the revision exists does not vanish at adoption)',
   a1 && { reason: a1.revisionReason, source: a1.revisionReasonSource })
-const mdText3 = readFileSync(mdPath, 'utf8')
+const mdPath = a1.md && a1.md.absPath
+const mdText3 = typeof mdPath === 'string' && mdPath !== '' ? readFileSync(mdPath, 'utf8') : ''
+ok(typeof mdPath === 'string' && mdPath !== '' && a1.mdIsTheDocumentInForce && a1.mdIsTheDocumentInForce.wroteNow === true,
+  '★★ adoption is what puts the document on disk (and the receipt says it wrote now)',
+  a1 && a1.md && { absPath: a1.md.absPath, inForce: a1.mdIsTheDocumentInForce })
 ok(countField(mdText3, 'outline') === 1 && countField(mdText3, 'revisionReason') === 1 && /status：current/.test(mdText3),
   '★ the adopted document still carries both fields and now says current (the md was rewritten, not abandoned)', countField(mdText3, 'outline'))
 const st1 = await call({ action: 'state', path: PATH_MAIN })
@@ -186,9 +193,8 @@ ok(Array.isArray(p3.outline) && p3.outline.length === 0 && p3.outlineCount === 0
   '★ G8: no outline is an EXPLICIT empty list + count 0 (omission would make "none" and "not asked" indistinguishable)', p3 && { outline: p3.outline, count: p3.outlineCount, source: p3.outlineSource })
 ok(p3.revisionReason === null && p3.revisionReasonSource === 'none' && /没有记录理由/.test(String(p3.revisionReasonMeans)),
   '★ G11: no reason is `null` + a sentence saying so (not an empty string that reads like a printing bug)', p3 && { reason: p3.revisionReason, means: String(p3.revisionReasonMeans).slice(0, 40) })
-const mdBare = readFileSync(p3.md.absPath, 'utf8')
-ok(countField(mdBare, 'outline') === 0 && countField(mdBare, 'revisionReason') === 0,
-  'the document of a bare revision carries neither header line (the md says "no outline" by omission, and the receipt said it in words)', { outline: countField(mdBare, 'outline'), reason: countField(mdBare, 'revisionReason') })
+ok(p3.md && p3.md.available === false && p3.md.written === false,
+  'a bare draft writes no document at all (RUN 238: only adoption writes), and the receipt said so in words', p3 && p3.md && { available: p3.md.available })
 const stBare = await call({ action: 'state', path: PATH_BARE })
 ok(stBare.ok === true && Array.isArray(stBare.parsed.outline) && stBare.parsed.outline.length === 0 && stBare.parsed.revisionReason === null,
   'the STATUS face reports the absence explicitly too (empty list + null, both present as keys)', stBare.parsed && { outline: stBare.parsed.outline, reason: stBare.parsed.revisionReason })

@@ -338,7 +338,10 @@ export function createTasks({
         priority, state: owner ? 'assigned' : 'open', createdAt: clock(), transitions: [], revision: 1 }
       tasks.set(id, t)
       record('task-created', { id, title: t.title, deps: t.deps.slice(), owner: t.owner, writeScopes: t.writeScopes.slice() })
-      return { ok: true, id, state: t.state, objective: t.objective, deps: t.deps.slice(), writeScopes: t.writeScopes.slice(), skippedScopes: scopeNorm.skipped }
+      // ★ RUN 238 (run 61 / FEEDBACK61 H): every later mutation of this task (claim / transition / dependencies) wants
+      // `revision`, and create did not return it — so a caller had to spend a read to learn a number the writer already
+      // knew, and every extra read is another chance to act on a stale view.
+      return { ok: true, id, state: t.state, objective: t.objective, deps: t.deps.slice(), writeScopes: t.writeScopes.slice(), skippedScopes: scopeNorm.skipped, revision: t.revision }
     },
 
     /**

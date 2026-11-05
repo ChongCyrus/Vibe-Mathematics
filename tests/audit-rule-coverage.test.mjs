@@ -250,9 +250,16 @@ ok('the real ledger is clean once the in-flight citation gaps are removed (contr
 const strict = run(['--check', '--json'])
 const sres = parse(strict.stdout)
 const unfinished = (base.items || []).filter((i) => i.status === 'PARTIAL' || i.status === 'MISSING').length
+// RUN 237: an unfinished row WARNS by default — a working tree must not be forced to lie "DONE" to go green.
+// A release gate can ask for zero gaps explicitly, and that is what the second call pins.
 if (unfinished > 0) {
-  ok('--check refuses an unfinished ledger, one problem per row', strict.status === 1 &&
-    (sres.problems || []).filter((p) => p.code === 'VMU_RULES_UNFINISHED').length === unfinished)
+  ok('--check warns about an unfinished ledger without failing it', strict.status === 0 &&
+    (sres.warnings || []).filter((p) => p.code === 'VMU_RULES_UNFINISHED').length === unfinished &&
+    (sres.problems || []).every((p) => p.code !== 'VMU_RULES_UNFINISHED'))
+  const strictCall = run(['--check', '--json', '--strict-unfinished'])
+  const tres = parse(strictCall.stdout)
+  ok('--strict-unfinished refuses the same ledger, one problem per row', strictCall.status === 1 &&
+    (tres.problems || []).filter((p) => p.code === 'VMU_RULES_UNFINISHED').length === unfinished)
 } else {
   ok('--check accepts a fully finished ledger', strict.status === 0)
 }
