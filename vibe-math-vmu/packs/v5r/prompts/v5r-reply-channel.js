@@ -60,7 +60,13 @@ export const REPLY_FIELD_ROWS = Object.freeze([
   Object.freeze({ field: 'say', face: 'vmu.meetings', op: 'speak', common: true,
     note: 'say 在会议轮才是会议楼层发言（有会议绑定才投递，需已到场）；无会议绑定的回合不投递，这句话原样进回执 notes；对全所说话（群聊）或私信 {"to":"r-2","text":"…"} / 只对表决者 {"to":"voters","text":"…"} 必须用工具 vibe_v5_say' }),
   Object.freeze({ field: 'progress', face: 'vmu.records', op: 'put', common: true,
-    note: '本轮进展、阻塞与下一步：**账本**行（`vmu.records`，progress 轨；不是 `Progress/` 文件，写文件用 `record` 字段）；形如 {track,title,body}。回执里写了 progress 就不要再调 vibe_v5_record_progress 写同一件事：一回合的进展只留一行，重复的会被具名跳过' }),
+    // ★★★ RUN 239 (live run 62 / FEEDBACK62 #1, MEASURED): the old note taught a WORDING rule ("写同一件事" - duplicate
+    // by text). A chair turn then wrote rec-4 through the tool and rec-7 through this field 2 ms later: two rows, one
+    // act, both titles different. The kernel's key is NOT the text - on the `progress` track it is (member, this turn) and
+    // the title is ignored; the second arrival is skipped BY NAME (reason `already-written-this-turn`, the coercion says
+    // `to:"skipped-duplicate"`) and the skip names the row that already carries it (`existingId`). Teaching a wording
+    // rule made a member believe a different phrasing would pass.
+    note: '本轮进展、阻塞与下一步：**账本**行（`vmu.records`，progress 轨；不是 `Progress/` 文件，写文件用 `record` 字段）；形如 {track,title,body}。一回合同一 track 只留一行：写过 progress 就别再调 `vibe_v5_record_progress`，第二个写具名跳过并点名已有行 id' }),
   Object.freeze({ field: 'record', face: 'vmu.library', op: 'record', common: true,
     note: '研究日志一行：{"track":"progress","text":"…"} 追加到 Members/<你>/Progress/<track>.md（vmu.library.record；track 必须是 vmu.records.tracks 之一）；成果卡请用工具 vibe_v5_record_proposition / _method / _subproblem' }),
   Object.freeze({ field: 'propose_verify', face: 'vmu.meetings', op: 'motion',
@@ -221,7 +227,10 @@ export function replyCatalogueLines({ mode = 'compact', seat = null } = {}) {
     // is unreachable (above), and a nested `report:` key no longer exists because the fenced object IS the report. Naming
     // them is not decoration — members arrive with these two forms memorised from earlier rounds and from the corrections.
     lines.push('· 这一段是**字段目录**：`←` 后是说明，`|`/`或` 是取值提示，因此这一段并非合法对象字面量；**你真正要交回的 `report` 必须严格合法**，最小形态见目录末尾的样例。')
-    lines.push('· **旧写法不要再照抄**：一律「调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」在 activation 投递下不可达；`report: {"say":"…","progress":"…","solved":false,"contextPct":40}` 多套了一层 report 键（字符串 progress 会被内核映射成一行，但一回合的进展只留一行，别和本回合的工具双写）。最小合法 report 样例（可直接照抄）：`{"say":"…","progress":{"track":"progress","title":"…","body":"…"},"solved":false,"contextPct":40}`，放在回复末尾的代码围栏里。')
+    // ★★★ RUN 239 / FEEDBACK62 #1: the same wording rule lived in the full catalogue. The rule is not "don't write the
+    // same thing twice" (a member cannot know what the kernel considers the same) — it is ONE ROW PER TRACK PER TURN,
+    // and the second writer is skipped by name citing the row that already holds it.
+    lines.push('· **旧写法不要再照抄**：一律「调用一次 `vibe_vmu_turn { op: "reply", report: { … } }`」在 activation 投递下不可达；`report: {"say":"…","progress":"…","solved":false,"contextPct":40}` 多套了一层 report 键（字符串 progress 会被内核映射成一行；一回合同一 track 只留一行，第二个写具名跳过并点名已有行 id）。最小合法 report 样例（可直接照抄）：`{"say":"…","progress":{"track":"progress","title":"…","body":"…"},"solved":false,"contextPct":40}`，放在回复末尾的代码围栏里。')
   }
   return lines
 }

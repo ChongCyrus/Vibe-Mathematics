@@ -35,10 +35,19 @@ const src = readFileSync(join(CODE_DIR, 'kernel', 'meetings.js'), 'utf8')
 const lines = src.split('\n')
 
 console.log('=== 1. THE JOURNAL CARRIES "NEVER WOKEN" PER MEMBER (part 1) ===')
-const iSkippedEvent = lines.findIndex((l) => l.includes("type: 'meetings/skipped'"))
-const iUnreachedEvent = lines.findIndex((l) => l.includes("type: 'meetings/unreached'"))
-const iSkipBranch = lines.findIndex((l) => l.includes("counters.skippedWakes += 1"))
-const iUnreachedBranch = lines.findIndex((l) => l.includes('counters.unreachedWakes'))
+// ★ RUN 239: the file now carries TWO unreached-shaped lines (the synchronous branch and the after-receipt settle of an
+// asynchronous wake), so a bare `findIndex` paired the FIRST counter line with the LAST event line and called a correct
+// file wrong. What the test means is "every counter has its event nearby" - so pair the NEAREST event, per branch.
+const allOf = (needle) => lines.reduce((acc, l, i) => (l.includes(needle) ? acc.concat(i) : acc), [])
+const nearest = (from, list) => (list.length ? list.reduce((best, at) => (Math.abs(at - from) < Math.abs(best - from) ? at : best), list[0]) : -1)
+const skipEvents = allOf("type: 'meetings/skipped'")
+const unreachedEvents = allOf("type: 'meetings/unreached'")
+const skipBranches = allOf('counters.skippedWakes += 1')
+const unreachedBranches = allOf('counters.unreachedWakes')
+const iSkipBranch = skipBranches.length ? skipBranches[0] : -1
+const iUnreachedBranch = unreachedBranches.length ? unreachedBranches[unreachedBranches.length - 1] : -1
+const iSkippedEvent = nearest(iSkipBranch, skipEvents)
+const iUnreachedEvent = nearest(iUnreachedBranch, unreachedEvents)
 ok(iSkippedEvent >= 0 && Math.abs(iSkippedEvent - iSkipBranch) <= 6,
   'a `skip` wake outcome writes a member-addressed journal event (`meetings/skipped`)',
   { eventLine: iSkippedEvent + 1, branchLine: iSkipBranch + 1 })

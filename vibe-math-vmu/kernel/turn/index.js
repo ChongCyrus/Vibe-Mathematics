@@ -486,6 +486,12 @@ export function extractFence(text) {
 export const STATUS_BOARD_READ_OPS = Object.freeze({
   'vmu.tasks': Object.freeze(['list']),
   'vmu.records': Object.freeze(['list', 'get']),
+  // RUN 239 (live run 62 / FEEDBACK62 #4, MEASURED): the meeting frame's type/chair/agenda were read from
+  // faces['vmu.meetings'].summary, and that operation was NEVER BOUND -- this map only carried the two read legs the
+  // status block derives, while summary is the meeting face's own documented read verb (docs/03). The frame then
+  // rendered the three facts as empty strings for a BOUND meeting. A read declared nowhere is a read that cannot
+  // happen, so the leg is declared here, next to the others.
+  'vmu.meetings': Object.freeze(['summary']),
 })
 
 /** The service instance for a face id, accepting both `{'vmu.tasks': …}` and `{ tasks: … }` (same rule as `facesFrom`). */
@@ -2038,12 +2044,34 @@ export function createTurnOrchestrator({
     // An unbound turn says so explicitly: `say` is not delivered then (the sentence is kept in the receipt's notes), and
     // the member is pointed at `vibe_v5_say` - the only reachable group/private channel.
     const boundMeetingId = turn.meeting === null || turn.meeting === undefined ? '' : String(turn.meeting).trim()
+    // The meeting a turn is bound to is a FACT of this turn, so the facts block is allowed to read it. A face that is
+    // absent, throws, or answers asynchronously yields null: the template then says "not bound" instead of printing a
+    // type nobody read (RUN 239 / FEEDBACK62 #4).
+    const meetingRead = boundMeetingId === '' ? null : (() => {
+      try {
+        const mf = faces && faces['vmu.meetings']
+        if (!mf || typeof mf.summary !== 'function') return null
+        const got = mf.summary({ meeting: boundMeetingId })
+        if (!got || typeof got.then === 'function' || got.ok === false) return null
+        return got
+      } catch (e) { return null }
+    })()
     const meetingFacts = boundMeetingId === ''
       ? {
         'vmu.turn.meetingDelivery': '本回合没有绑定会议：回执里的 say 不会投递（句子只留在回执 notes 里），要对全所说话或私信请用工具 vibe_v5_say。',
       }
       : {
+        // ★★★ RUN 239 (live run 62 / FEEDBACK62 #4, MEASURED): THE MEMBER COULD SEE THE MEETING'S AGENDA AND STILL NOT
+        // KNOW WHICH MEETING. The template rendered the corpus default (`议程：分工与下一步（类型：ordinary）`) because the
+        // only fact it cited was the id, and the pack's static sentence carried a placeholder type: the member read a
+        // type that was not its meeting's (m1 was a `debate`) and had no id to quote back. The type and the agenda are
+        // facts of THIS meeting, so they are read from the meeting face and travel with the same per-turn channel.
+        // A deployment with no meeting face reads empty strings and the template says "not bound" - it must never
+        // invent a type.
         'vmu.turn.meetingId': boundMeetingId,
+        'vmu.turn.meetingType': meetingRead === null || meetingRead.type === undefined || meetingRead.type === null ? '' : String(meetingRead.type),
+        'vmu.turn.meetingChair': meetingRead === null ? '' : String(meetingRead.chair === undefined || meetingRead.chair === null ? (meetingRead.convenedBy === undefined || meetingRead.convenedBy === null ? '' : meetingRead.convenedBy) : meetingRead.chair),
+        'vmu.turn.meetingAgenda': meetingRead === null || meetingRead.materials === undefined || meetingRead.materials === null ? '' : String(meetingRead.materials),
         'vmu.turn.meetingDelivery': '本回合绑定会议 ' + boundMeetingId + '：你的发言会投到这场会；若你想说的是另一场会，先离席，或用 vibe_v5_meeting_round { meeting: "<会 id>" } 把下一回合绑定到那场会。',
       }
     // Caller-supplied facts are merged LAST, so an explicit per-turn override still wins (T108/T109 pin exactly this).
@@ -2935,19 +2963,30 @@ export function createTurnOrchestrator({
       if (!listed || typeof listed.then === 'function') return null
       const items = Array.isArray(listed.items) ? listed.items : (Array.isArray(listed.cards) ? listed.cards : null)
       if (items === null) return null
-      const title = payload.title.trim()
+      // ★★★ RUN 239 (live run 62 / FEEDBACK62 #1, MEASURED): THE DEDUPE KEY WAS THE TITLE, SO ONE ACT BECAME TWO ROWS.
+      // The chair turn wrote its progress through `vibe_v5_record_progress` (rec-4) and the reply channel wrote ANOTHER
+      // progress line 2 ms later (rec-7) with a different title - the pair was one act done twice, and the rule the
+      // institution reads is "one turn of progress is one row", not "one turn of each wording is one row". So on the
+      // `progress` track the key is (member, this turn), the same key `progressWrittenThisTurn` uses: the second row is
+      // skipped BY NAME and the receipt names the row that already carries it. Every other track keeps the stricter
+      // title match, because two `state` rows from one turn can legitimately be different facts.
+      const title = typeof payload.title === 'string' && payload.title.trim() !== '' ? payload.title.trim() : null
+      const onePerTurn = String(payload.track) === 'progress'
+      if (title === null && !onePerTurn) return null
       const owner = String(payload.by).trim()
+      let fallback = null
       for (const row of items) {
         if (!row || typeof row !== 'object') continue
         const rowOwner = row.owner === undefined || row.owner === null ? '' : String(row.owner).trim()
         if (rowOwner !== owner) continue
         const rowTitle = row.title === undefined || row.title === null ? '' : String(row.title).trim()
-        if (rowTitle !== title) continue
         const stamp = stampMs(row.createdAt === undefined || row.createdAt === null ? row.updatedAt : row.createdAt)
         if (stamp === null || stamp < started) continue
-        return String(row.id === undefined || row.id === null ? '?' : row.id)
+        const id = String(row.id === undefined || row.id === null ? '?' : row.id)
+        if (title !== null && rowTitle === title) return id
+        if (onePerTurn && fallback === null) fallback = id
       }
-      return null
+      return fallback
     }
     // ★★★ RUN 60 / task-30 (M5): ONE TURN OF PROGRESS WAS ARCHIVED TWICE. Measured live: a member wrote its progress
     // through `vibe_v5_record_progress` (rec-23) AND the reply's text `progress` was coerced into a second row (rec-24),
@@ -3092,7 +3131,12 @@ export function createTurnOrchestrator({
       if (twin !== null) {
         counts.notExecuted += 1
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'already-written-this-turn', existingId: twin,
-          means: 'the same act already reached the ledger during this turn (same owner, same track, same title, written at-or-after the turn opened): the row is ' + twin + ', so this door did not write a twin. Do one act through ONE door - the tool face or the reply envelope.' })
+          // ★ RUN 239 (FEEDBACK62 #1): the key is track-aware, so the sentence is too — on the `progress` track the
+          // rule is "one turn of progress is one row" (no title needed), everywhere else it stays the stricter
+          // (owner, track, title) match. A single unqualified sentence would describe the wrong rule for one of them.
+          means: String(recordComposed.payload.track) === 'progress'
+            ? 'this member already recorded a progress row during this turn (' + twin + '), so this door did not write a second one: one turn of progress is one row, whatever the wording. The row that carries it is ' + twin + '.'
+            : 'the same act already reached the ledger during this turn (same owner, same track, same title, written at-or-after the turn opened): the row is ' + twin + ', so this door did not write a twin. Do one act through ONE door - the tool face or the reply envelope.' })
         continue
       }
       const attributed = recordComposed !== null && recordComposed.attributed ? recordComposed.payload : null

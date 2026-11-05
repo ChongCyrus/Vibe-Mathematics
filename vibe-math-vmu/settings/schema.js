@@ -242,6 +242,12 @@ const CORE_DEFS = Object.freeze([
   // ROUND 236 (FEEDBACK60 P8): the member meeting frame used to name no meeting at all — a member read the agenda
   // `type` and guessed WHICH meeting it was in the room for. The bound id and a sentence saying whether this turn's
   // `say` will be delivered now arrive as settings, so the pack's wording stays in the pack.
+  // RUN 239 (FEEDBACK62 #4): the meeting frame now prints the REAL type, chair and agenda of the meeting this turn is
+  // bound to. They are per-turn facts the turn loop reads from  and hands to the prompt pipeline as
+  // settings, so a seat never has to infer the meeting from a template sentence. Empty means 'not bound'.
+  { key: 'vmu.turn.meetingType', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '本回合绑定会议的类型（debate/ordinary/…）；未绑定为空' },
+  { key: 'vmu.turn.meetingChair', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '本回合绑定会议的主席席 id；未绑定为空' },
+  { key: 'vmu.turn.meetingAgenda', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '本回合绑定会议的议程原文（会议记录里的 materials）；未绑定为空' },
   { key: 'vmu.turn.meetingDelivery', type: 'string', def: '本回合没有绑定会议：回执里的 say 不会投递，要对全所说话请用 vibe_v5_say。', hot: HOT.H2, who: 'office', doc: '本回合绑定的会议的话，say 会投到哪场会；未绑定时说明不投递' },
   { key: 'vmu.turn.formalModeLine', type: 'string', def: '鼓励：按实现难度自行决定；做了就归档，没做就写明难度判断，', hot: HOT.H2, who: 'office', doc: '回复目录里 Lean 形式化那一行的模式措辞（原线 require/encourage 两套）' },
   // ROUND 369: the formalisation block is mode- and status-dependent in the original, so its live values arrive here and

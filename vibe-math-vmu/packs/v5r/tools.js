@@ -998,10 +998,52 @@ function toolScript(args = {}, { kernel, exec } = {}) {
       { declared: tracks, missingTrack: SCRIPTS_TRACK })
   }
   if (op === 'archive') {
-    const missing = ['name', 'text'].filter((k) => !has(args[k]))
-    if (missing.length > 0) {
-      throw refuse('VMU_INVALID_ARGUMENT', 'script archive is missing: ' + missing.join(', '),
-        'pass name:"<file name>" text:"<the whole script>" (optional purpose/parent/edition)')
+    // ★★ RUN 239-E (FEEDBACK62 #8): TWO REACHABLE SOURCES. This branch used to need `name`+`text` only, so a member
+    // holding a library record whose BODY IS the script (id:"rec-19") was told "script archive is missing: name, text",
+    // and the hint named only the literal form — the record was already in the library and this face could not see it.
+    // The archive now takes EITHER name+text (the caller carries the bytes) OR id:"rec-<n>" (the records face hands back
+    // the row; its body becomes the script verbatim, its title becomes the archive name unless `name` overrides it), and
+    // the receipt says which door was used (`archived.source`) and what was read (`fromRecord`).
+    const idGiven = has(args.id) && str(args.id).trim() !== ''
+    const nameGiven = has(args.name) && str(args.name).trim() !== ''
+    let body = ''
+    let source = 'argument'
+    let fromRecord = null
+    let archiveName = nameGiven ? str(args.name) : ''
+    if (idGiven) {
+      const wanted = str(args.id).trim()
+      // records.get() THROWS VMU_NO_SUCH_OBJECT for an unknown id; this face turns that into one hint that names BOTH
+      // doors, because a caller who mistyped an id needs the same two choices as a caller who passed none.
+      let row = null
+      try { row = scriptArchivedRow(kernel, wanted) } catch (e) { row = null }
+      if (!row) {
+        throw refuse('VMU_NO_SUCH_OBJECT', 'no library record with id "' + wanted + '" to archive as a script',
+          'pass id:"<a record id like rec-12>" — or pass name:"<file name>" text:"<the whole script>" if the bytes are not in a record yet')
+      }
+      const rowBody = row.body === undefined || row.body === null ? '' : String(row.body)
+      if (rowBody.trim() === '') {
+        throw refuse('VMU_INVALID_ARGUMENT', 'the record "' + str(row.id === undefined ? wanted : row.id) + '" has no body text to archive as a script',
+          'pass id:"<a record whose body IS the script>", or pass name:"<file name>" text:"<the whole script>" directly')
+      }
+      body = rowBody
+      if (!nameGiven) {
+        archiveName = row.title === undefined || row.title === null || String(row.title).trim() === ''
+          ? str(row.id === undefined ? wanted : row.id)
+          : String(row.title)
+      }
+      source = 'record'
+      fromRecord = {
+        id: str(row.id === undefined ? wanted : row.id),
+        title: row.title === undefined || row.title === null ? null : String(row.title),
+        bytes: Buffer.byteLength(rowBody, 'utf8'),
+      }
+    } else {
+      const missing = ['name', 'text'].filter((k) => !has(args[k]))
+      if (missing.length > 0) {
+        throw refuse('VMU_INVALID_ARGUMENT', 'script archive is missing: ' + missing.join(', '),
+          'pass name:"<file name>" text:"<the whole script>", or id:"<a library record whose body is the script>" (optional purpose/parent/edition)')
+      }
+      body = str(args.text)
     }
     const tags = ['script']
     if (has(args.purpose)) tags.push('purpose:' + str(args.purpose))
@@ -1010,8 +1052,8 @@ function toolScript(args = {}, { kernel, exec } = {}) {
     const written = records.put({
       track: SCRIPTS_TRACK,
       kind: 'dataset', // an archived artifact: kernel-computed fingerprint + provenance, no invented hash
-      title: str(args.name),
-      body: str(args.text), // verbatim: read-back must return the same bytes
+      title: archiveName,
+      body, // verbatim: read-back must return the same bytes
       tags,
       settled: true,
       by: has(args.member) ? str(args.member) : null,
@@ -1019,7 +1061,10 @@ function toolScript(args = {}, { kernel, exec } = {}) {
     })
     return {
       ok: true, tool: 'vibe_v5_script', op, track: SCRIPTS_TRACK,
-      recordId: written && written.id, name: str(args.name),
+      recordId: written && written.id, name: archiveName,
+      // ★ RUN 239-E: where the archived bytes came from — null when the caller carried them with name+text.
+      fromRecord,
+      source,
       fingerprint: written && written.fingerprint,
       purpose: has(args.purpose) ? str(args.purpose) : null,
       at: written && (written.updatedAt || written.createdAt),
@@ -1027,9 +1072,10 @@ function toolScript(args = {}, { kernel, exec } = {}) {
       // names the row that was actually written (readable back by id) and says out loud what it is and is not.
       archived: {
         recordId: written && written.id,
-        name: str(args.name),
+        name: archiveName,
         track: SCRIPTS_TRACK,
-        bytes: Buffer.byteLength(str(args.text), 'utf8'),
+        bytes: Buffer.byteLength(body, 'utf8'),
+        source,
       },
       archivedBy: callerRow ? str(callerRow.id) : (has(args.member) ? str(args.member) : null),
       archiveMeans: 'an archival COPY of the script text on the records face (track "scripts", kernel fingerprint), not execution '
@@ -3774,6 +3820,10 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   // the minutes line "[object Object]" — a meeting whose stated purpose is a JavaScript type name — and a bare array was
   // silently joined with commas. The stored agenda is ONE LINE OF TEXT, and the face now says so instead of stringifying.
   let agendaText = ''
+  // ★ RUN 239-E (FEEDBACK62 #9): the agenda as ITEMS too, in the order the caller gave them. An array agenda is joined
+  // with "; " into the one line the kernel stores as `materials`; keeping the list lets the receipt read the lines back
+  // instead of making a reader split a sentence.
+  let agendaItems = []
   if (agendaGiven && typeof args.agenda !== 'string') {
     if (!Array.isArray(args.agenda)) {
       throw refuse('VMU_INVALID_ARGUMENT',
@@ -3787,7 +3837,8 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
         'meeting needs an agenda as TEXT, and the array you passed holds no non-empty string (' + String(args.agenda.length) + ' item(s))',
         'pass agenda:"what this meeting is for", or an array holding at least one non-empty string.')
     }
-    agendaText = kept.map((x) => x.trim()).join('; ')
+    agendaItems = kept.map((x) => x.trim())
+    agendaText = agendaItems.join('; ')
   } else {
     agendaText = str(args.agenda)
     // ★★★ RUN 206 (run 44 / FEEDBACK43 1.3, MEASURED): the schema says `agenda` is a STRING, so a caller who wanted to
@@ -3813,7 +3864,8 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
               'meeting needs an agenda as TEXT, and the JSON array you passed holds no non-empty string (' + String(parsedBlob.length) + ' item(s))',
               'pass agenda:"what this meeting is for", or a JSON array / array holding at least one non-empty string — every item must be TEXT (a nested object is not an agenda line)')
           }
-          agendaText = keptBlob.map((x) => x.trim()).join('; ')
+          agendaItems = keptBlob.map((x) => x.trim())
+          agendaText = agendaItems.join('; ')
         } else {
           throw refuse('VMU_INVALID_ARGUMENT',
             'meeting needs an agenda as a PURPOSE, and you passed its JSON TEXT (' + trimmed.slice(0, 80) + '…) — storing that would make the minutes recite a blob instead of a reason',
@@ -3821,6 +3873,13 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
         }
       }
     }
+  }
+  // ★ RUN 239-E: a one-line agenda is ONE stored line; its boundaries are the "; " join the array form uses, so
+  // splitting on that separator is the inverse of the join, not a new segmentation rule. This does NOT claim the kernel
+  // keeps N items — the kernel face owns that reading (lane-g2 adds kernel `agendaItems`); `agendaItemsSource` says
+  // which door produced this list.
+  if (agendaItems.length === 0 && agendaText.trim() !== '') {
+    agendaItems = agendaText.split('; ').map((x) => x.trim()).filter((x) => x !== '')
   }
   if (!has(args.agenda)) {
     throw refuse('VMU_INVALID_ARGUMENT',
@@ -4125,7 +4184,19 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     type, subject: opened && opened.subject !== undefined ? opened.subject : null,
     title: opened && opened.title !== undefined ? opened.title : title,
     procedure: proc.procedure, procedureBinding: proc.binding, procedureNote: proc.note, pendingSteps: proc.pendingSteps,
-    kind, agenda: agendaText, formalAgenda: args.formal_agenda === true, secretary,
+    kind, agenda: agendaText,
+    // ★ RUN 239-E (FEEDBACK62 #9, MEASURED): the audit read `agenda` as a string, passed an ARRAY, and got
+    // materials:"确认命题; 分配复核" back — the joined text was the only trace of the items. The receipt now reads the
+    // agenda back in BOTH shapes and says where each came from: `agenda` is the normalized line stored as materials,
+    // `agendaItems` is the ordered list, `agendaSource` is "argument" (this face refuses to convene without one;
+    // "default" is reserved for a kernel-side default), and `agendaItemsSource` names which door split the list.
+    agendaItems,
+    agendaSource: 'argument',
+    agendaItemsSource: Array.isArray(args.agenda)
+      ? 'argument-array'
+      : (agendaGiven && String(args.agenda).trim().charAt(0) === '[' ? 'argument-json-array' : 'argument-line'),
+    agendaItemsSourceMeans: '`agendaItems` are the lines THIS face joined into the stored materials (an array agenda keeps its items; a one-line agenda is split on the "; " separator the join itself uses). The kernel meeting object keeps its own agenda items (ids ag-1..., closable one at a time) and the kernel face reads them back — this field never claims to be that ledger.',
+    formalAgenda: args.formal_agenda === true, secretary,
     nonAttending, nonAttendingMeans,
     invitation,
     // ★ LIVE RUN 122 (E6): WHERE the label came from. `kind` defaults to 'sync' so every meeting always has a word for
@@ -4412,6 +4483,9 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
       outlineCount: read.outlineCount === undefined ? null : read.outlineCount,
       outlineDepthMax: read.outlineDepthMax === undefined ? null : read.outlineDepthMax,
       outlineSource: read.outlineSource === undefined ? null : read.outlineSource,
+      // RUN 239-B: the same enumerated reading must be printable on BOTH surfaces — the state face spreads the
+      // readings, while this branch copies a fixed subset, so a new reading is silent here until it is named.
+      outlineSourceMeans: read.outlineSourceMeans === undefined ? null : read.outlineSourceMeans,
       outlineRequired: read.outlineRequired === undefined ? null : read.outlineRequired,
       outlineRequiredSource: read.outlineRequiredSource === undefined ? null : read.outlineRequiredSource,
       outlineMeans: read.outlineMeans === undefined ? null : read.outlineMeans,
@@ -6177,7 +6251,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_record_proposition',
     description: 'Record a proposition/lemma card in your library. REQUIRES statement, value, motive and p (your probability that it is true); the card is settled when p is 1 or 0. ★ p=1 IS A CONCLUSION, NOT A PREFERENCE: writing 1 is refused BY NAME unless the write carries one of the three conclusions the rule accepts — a promoted verified row on THIS card, a unanimous debate ruling (`debate_ruling:{mode:"unanimous", value:1, subject:"<this card id>", ballotId}`), or a passed Lean run PLUS the conformance ruling (`lean_job` + `lean_conformance:"conform"`). ★ WHAT THAT THIRD ROUTE ACTUALLY REQUIRES: the kernel must be able to read that Lean job as PASSED; the working path in this institute is the chair calling `vibe_v5_fidelity_conclude { card, fidelity:"conform", lean_job, member }`, which writes p=1 through this same gate and promotes the verified row itself. Estimating in (0,1) is always allowed. ★ LITERATURE (B2): `literature_ref:"<author, source, theorem/page>"` with `p:1` is the fourth evidence form; then `vibe_v5_verified_promote{card, warrant_kind:"literature", literature_ref:"<the same citation>"}` makes the citation the verified row warrant. An empty citation is not a citation. ★ PROOF REGISTRATION (B6): `proof_ref` (where the proof/refutation lives) + `proof_state:"complete"|"draft"` is a SELF-REPORT, not a verification; `proof_state:"complete"` IS ADMITTED ONLY WITH EVIDENCE: either `proof_ref` (pointing at the finished proof/refutation this card declares) or a `lean_job` pointing at a settled PASSED run (`lean_conformance` alone is a CLAIM, not evidence) — otherwise refused by name (VMU_INVALID_ARGUMENT) and nothing is written. ★ ONCE A CARD IS COMPLETE IT IS LOCKED: a later write to the SAME card id is refused (VMU_STATE) — correct it under a NEW card id. ★ THE ONE SANCTIONED EDIT ON A LOCKED CARD IS A RULING SETTLEMENT: a write carrying `debate_ruling:{value:0|1, …}` with `p` set to that same value is admitted (rule L53), because the lock protects the PROOF CONTENT while a ruling settles the PROBABILITY — exactly what `vibe_v5_verdict_final` prints in its `correction.call`. Neither `proof_ref` nor Lean evidence ⇒ state is recorded as draft. ★ 进度 IS A CARD FIELD: `progress` is kept as its own labelled line and echoed with `progressMeans`. p must be a NUMBER IN [0,1]: out of range is refused by name. ★ 代记（REGISTRAR DUTY）：正式记录本由**所办**登记——代成员登记时传 `member:"<该成员id>"`，它才是卡的作者（owner），**必须是该成员而不是你自己**。',
-    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true, description: 'value is stored as the card body\'s TEXT line (`- value：…`) — a number you pass is written as its decimal text and read back as a STRING (`cardFields.value`); it is NOT a numeric field and it is NOT the probability (that is `p`). The ruling receipt prints a fully numeric value as a bare number and a non-numeric one as a quoted JSON string, which is a PRINTING difference, not a storage one' }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, literature_ref: { type: 'string' }, progress: { type: 'string' }, track: { type: 'string' }, payload: { type: 'object' }, debate_ruling: { type: 'object' }, member: { type: 'string' } },
+    parameters: { id: { type: 'string' }, title: { type: 'string' }, statement: { type: 'string', required: true }, value: { type: 'number', required: true, description: 'value is stored as the card body\'s TEXT line (`- value：…`) — a number you pass is written as its decimal text and read back as a STRING (`cardFields.value`); it is NOT a numeric field and it is NOT the probability (that is `p`). The ruling receipt prints a fully numeric value as a bare number and a non-numeric one as a quoted JSON string, which is a PRINTING difference, not a storage one' }, motive: { type: 'string', required: true }, p: { type: 'number', required: true }, proof_ref: { type: 'string' }, proof_state: { type: 'string' }, lean_job: { type: 'string' }, lean_conformance: { type: 'string' }, literature_ref: { type: 'string' }, progress: { type: 'string' }, track: { type: 'string' }, payload: { type: 'object' }, debate_ruling: { type: 'object' }, member: { type: 'string' }, bodyMode: { type: 'string', description: 'the body write mode on an UPDATE of an existing row: \"replace\" (default) swaps the body, \"merge\" lets the lines this write names win while every other line survives; an unknown word is refused by name' }, confirmDestructive: { type: 'boolean', description: 'only set true when DELETING a settlement-bearing line really is the intent (the kernel refuses such a delete by name otherwise: VMU_RECORD_DESTRUCTIVE_WRITE)' } },
     handler: gatedCardHandler('vibe_v5_record_proposition'),
   },
   {
@@ -6248,7 +6322,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_script',
-    description: 'THE SCRIPT ARCHIVE (归档/复算): op=archive stores a script\'s WHOLE text as a `scripts`-track card with the kernel\'s own fingerprint (provenance in title/tags, body byte-identical); op=read returns the archived text verbatim by id or name (latest edition); op=list shows the archived scripts. '
+    description: 'THE SCRIPT ARCHIVE (归档/复算): op=archive stores a script\'s WHOLE text as a `scripts`-track card with the kernel\'s own fingerprint (provenance in title/tags, body byte-identical); the text comes from EITHER name+text, OR id:"rec-<n>" (an existing library record whose body IS the script: name then defaults to that record title and the receipt answers fromRecord + archived.source); op=read returns the archived text verbatim by id or name (latest edition); op=list shows the archived scripts. '
       + '★ CHAIR-ONLY (rule C14: a study script must be archived — the archive is the academician\'s institutional act). member/temp are refused by name and told the path: hand the script to the chair and say what it should be archived AS. ★ A script is a 所级产物, so it is archived and reviewable — but a TEMPORARY script still cannot be run ad hoc: the pack\'s no-adhoc-scripts rule refuses that by name. Recompute by running the archived text again and comparing the fingerprint, never by trusting a note about it.',
     parameters: { op: { type: 'string', enum: ['archive', 'read', 'list'] }, name: { type: 'string' }, text: { type: 'string' }, purpose: { type: 'string' }, parent: { type: 'string' }, edition: { type: 'string' }, id: { type: 'string' }, limit: { type: 'integer' }, member: { type: 'string' } },
     handler: toolScript,
@@ -6315,7 +6389,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_meeting',
     description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary); a debate REQUIRES subject — a card id whose written proof is finished (proofRef + proofState:"complete", or a verified row / a passed Lean run) or a file reference (`subject_evidence.file` with readable/bytes/name), because a one-line proposition has no addressable proof carrier and is REFUSED by name (`VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`). ★ `title` is an OPTIONAL separate name; `id` optionally NAMES the meeting (omit both and the service mints an id; an id held by another registry is refused by name). ★ `at` SCHEDULES it (epoch ms or ISO-8601): a future time puts the meeting in `scheduled` — reads work right away, every action before the start is refused by name, and a latecomer attending then starts it; the receipt reads `state` and `scheduledFor` back. ★ The institution\'s recommended procedure comes back in `procedure` — a RECOMMENDATION, never a gate; steps the framework has not implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES, plus ONE read (`action:"rulings"` lists the ruling cards the members filed for a debate — id + proposition_id); status/summary/close/flow live on vibe_vmu_meeting { action, id }. ★ `target` is an ALIAS of `subject` on THIS face — on vibe_vmu_meeting it is a VOTE\'s object, so do not carry the habit between faces. ★ `sequence` convenes the meetings that FOLLOW this one (an array of descriptors, each validated and refused by name); omitting `at` convenes them now, `at` schedules this one and the declared run follows it. ★ `durationMs` sets THIS meeting\'s own upper bound (integer ms, 30 minutes .. 2 hours; outside the range is refused by name); omit it and `vmu.meetings.hardLimitMs` applies — the receipt reads back `wallLimitMs` and `wallLimitMsSource`. ★ RUN 225-B: `lateAdmission` (open|chair|refuse, default open) decides a LATE ARRIVAL (late = vmu.meetings.lateAfterMs against openedAt; the default 0 means nobody is ever late): open seats it (late:true), chair holds it at the door (`pendingLate:true`, released only by the chair with vibe_vmu_meeting { action: "admit", id, member, actor }), refuse refuses it by name (`VMU_LATE_ADMISSION_REFUSED`, naming the two repairs).',
-    parameters: { agenda: { type: 'string' }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string' }, at: { type: 'string' }, durationMs: { type: 'integer' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, members: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' },
+    parameters: { agenda: { type: ['string', 'array'], items: { type: 'string' }, description: 'the meeting purpose as ONE line, or an ORDERED list of non-empty lines (string | string[]): array items are joined in order with "; " into the materials the kernel stores' }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string' }, at: { type: 'string' }, durationMs: { type: 'integer' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, members: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' },
     // ★ RUN 225-B: lateAdmission is THIS meeting's policy for a LATE arrival; the default (open) lives in the kernel,
     //   not here. Undeclared keys are refused generically by the host funnel BEFORE the handler runs, so being able to
     //   say it at all has to be a declaration.

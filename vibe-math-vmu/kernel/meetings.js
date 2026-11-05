@@ -515,7 +515,11 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     '(`owesWhat` names the motion ids). ★ WHAT WAITING IS NOT: members are NOT resident processes and this framework keeps ' +
     'NO timer for them — a member waiting means "the next turn belongs to somebody else", and after its turn the agent ' +
     'HANDS BACK to the chair. waitRecommended is advice about whether to drive a turn now, not a promise that anything ' +
-    'will happen on its own.'
+    'will happen on its own. ★ SINCE RUN 239-D the framework DOES hold a timer and DOES wake: a member with nothing to ' +
+    'do can register a `waiters` row (until: speak | vote | motion | poll | phase | attend-all | hand | deadline | ' +
+    'meeting-closed, with an optional timeoutMs) and is woken when that event happens — so the sentence above keeps its ' +
+    'meaning for `waitStates` (nobody is a resident process and a turn still ends by handing back), while `waiters` is ' +
+    'the durable registration that replaces polling and empty turns.'
   const waitBlockOf = (m) => {
     const roster = Array.isArray(m && m.roster) ? m.roster.map(String) : []
     const present = (m && m.present && typeof m.present.size === 'number') ? [...m.present].map(String) : []
@@ -889,6 +893,304 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   const speechesOf = (m) => Number(m && m.turns) || 0
   const SPEECHES_MEANS = 'speeches counts accepted speech acts in this meeting; `turns` is the SAME number under its older name (kept so existing readers do not break) — a member TURN is a different thing, counted by the turn orchestrator'
   const TURNS_UNATTRIBUTED_MEANS = 'turns minus Σ speechUsed[].speeches on THIS face. 0 means every counted turn has a recorded speech (the normal case: an accepted speak() raises both). A number > 0 is a turn this instance counts but cannot attribute to a recorded speech — it can only come from a writer that raised `turns` without the matching speech row (another instance, or a turn counted BEFORE the speech was accepted, which the acceptance-point increment above no longer does). It is NOT subtracted from `turns` on a read: the reading says which half is unattributed instead of quietly editing the record'
+  /**
+   * ★★★ RUN 239-D (FEEDBACK62 #5, MEASURED): THE TWO READ FACES DISAGREED ABOUT WHO SPOKE. `vibe_vmu_meeting
+   * {action:"status"}` carried `spokeBy`/`spokeByMeans`; `summary()` did not, although it carried every neighbouring
+   * speaking count (`speeches`, `turnsAccounted`, `turnsUnattributed`). So the fact "which members actually spoke" — the
+   * fact the ask face needs in order not to ask a member who never debated (live run 26 asked 1 of 2) — was readable
+   * through one door and absent behind the other, and absent reads like "nobody spoke" instead of "this face does not
+   * say". The projection below is the ONE place that family is built; BOTH faces spread it, so a key can no longer be
+   * added to one and forgotten on the other. A face that REALLY must drop a key names it in `omittedKeys` with a reason
+   * in `omittedMeans` — an empty list is the assertion that neither face prunes.
+   */
+  const SPOKE_BY_MEANS = 'members with at least one recorded speech in THIS meeting (the fact; minutes() is a shaped view of it)'
+  const spokeByOf = (m) => [...new Set(((m && m.minutes && Array.isArray(m.minutes.entries)) ? m.minutes.entries : [])
+    .filter((e) => e && e.kind === 'speech').map((e) => String(e.member)))]
+  const spokeBlockOf = (m) => {
+    const spokeBy = spokeByOf(m)
+    return {
+      speeches: speechesOf(m),
+      speechesMeans: SPEECHES_MEANS,
+      // ★★ RUN 236 / FEEDBACK60 M8: `turns` reconciled against `speechUsed` on BOTH faces (see the helpers above).
+      turnsAccounted: turnsAccountedOf(m),
+      turnsUnattributed: turnsUnattributedOf(m),
+      turnsUnattributedMeans: TURNS_UNATTRIBUTED_MEANS,
+      spokeBy,
+      spokeByCount: spokeBy.length,
+      spokeByMeans: SPOKE_BY_MEANS,
+      omittedKeys: [],
+      omittedMeans: 'empty on purpose: `summary()` and `vibe_vmu_meeting {action:"status"}` both spread THIS block, so neither face drops a member of the who-spoke family (speeches, turnsAccounted, turnsUnattributed and spokeBy appear on both, and speak/close receipts carry the same block). A face that has to drop one must list the key in omittedKeys and say why — a missing key is never its own explanation',
+    }
+  }
+  /**
+   * ★★★ RUN 239-D (FEEDBACK62 #9, MEASURED): THE AGENDA HAD TWO NAMES AND NO ITEMS. The pack parameter is `agenda`
+   * (`packs/v5r/tools.js`), an ARRAY there is joined with "; " before it lands, the kernel field is `materials`, and the
+   * read faces echoed it back as one anonymous string — a caller who passed three agenda items could read the string but
+   * not the items, and a reader seeing `materials` had no line saying it IS the agenda. Both names are now on the read
+   * face (one value, explained as one value) plus `agendaItems`: the SAME string split on the separators the write face
+   * itself joins with, whitespace trimmed, order preserved.
+   */
+  const AGENDA_ITEM_SEPARATORS = /[;；、,\n]/
+  const agendaItemsOf = (text) => String(text === null || text === undefined ? '' : text)
+    .split(AGENDA_ITEM_SEPARATORS).map((x) => x.trim()).filter((x) => x !== '')
+  const AGENDA_ITEMS_MEANS = 'the SAME agenda string split on `;` `；` `、` `,` and newlines, each item trimmed, order preserved. The convene face joins an agenda ARRAY with "; ", so this is how a caller reads its items back; the STRING is the truth and this is a reading of it — a prose agenda that itself uses one of those separators will read as several items'
+  const agendaBlockOf = (m) => {
+    const agenda = (m && m.materials !== undefined) ? m.materials : null
+    const formal = m && Array.isArray(m.formalAgenda) ? m.formalAgenda
+      : (m && Array.isArray(m.formal_agenda) ? m.formal_agenda : null)
+    return {
+      agenda,
+      agendaItems: agendaItemsOf(agenda),
+      agendaItemsMeans: AGENDA_ITEMS_MEANS,
+      materials: agenda,
+      materialsMeans: '`materials` is the name this face has always used for the agenda — the ONE text line the convene face stores (an `agenda` array is joined with "; " before it lands here). It is the SAME value as `agenda` in this block; the second name exists because readers already parse `materials`, not because there is a second fact',
+      formalAgendaItems: formal === null ? null : formal.map((it, i) => ({
+        index: i,
+        id: (it !== null && typeof it === 'object' && it.id !== undefined && it.id !== null) ? String(it.id) : null,
+        text: String(it === null || it === undefined ? '' : (typeof it === 'string' ? it : (it.text !== undefined ? it.text : (it.title !== undefined ? it.title : (it.label !== undefined ? it.label : ''))))).trim(),
+      })).filter((row) => row.text !== ''),
+      formalAgendaItemsMeans: formal === null
+        ? 'null: this meeting carries NO per-item formal agenda. The convene face stores the agenda as ONE text line in `materials` (an array is joined with "; ") and `formal_agenda` there is a BOOLEAN "the agenda came from a formal block" flag, not an item list — so null is the absence of an item list, NOT an empty agenda: read `agendaItems` for the items'
+        : 'the meeting carries a per-item formal agenda; each entry is `{ index, id, text }`, `index` being its position in the recorded list (entries whose text is blank are dropped, order kept), so a reader can point at an item by position or by id',
+    }
+  }
+  // ★★★ RUN 239-D (B series, the user requirement): WAITING IS A REGISTRATION, NOT A HOPE. Before this block the
+  // kernel could only SAY who appeared to be waiting (`waitStates`, derived from roster/present/minutes) and its own
+  // means told members that no timer exists and that nothing would happen on its own. A member with nothing to do in a
+  // meeting therefore had two options: sit silent (and never learn the floor opened) or poll. `waiters` is the durable
+  // answer: a row ON THE MEETING naming the event the member waits for; when that event happens `settleWaiters` marks
+  // the row `fired` and WAKES the member through the same seam `wake()` uses. The academic act is never rolled back by
+  // a failed wake: a refusal to wake is a DELIVERY fact (`waiter.wake`), never a reason to undo a vote.
+  //
+  // ★ ONE VOCABULARY, TWO DIRECTIONS: `until` names what the member waits FOR (its values include names of actions
+  // this face already performs); `WAIT_EVENT_UNTIL` is the mapping. `attend-all` is not an action, it is a condition
+  // (every roster member present) re-checked on every attend/admit.
+  const WAIT_UNTIL_MODES = Object.freeze(['speak', 'vote', 'motion', 'poll', 'phase', 'attend-all', 'hand', 'deadline', 'meeting-closed'])
+  const WAIT_EVENT_UNTIL = Object.freeze({
+    speak: Object.freeze(['speak']),
+    vote: Object.freeze(['vote']),
+    poll: Object.freeze(['vote', 'poll']),
+    motion: Object.freeze(['motion', 'second']),
+    phase: Object.freeze(['phase', 'proceed', 'recess', 'resume']),
+    hand: Object.freeze(['hand']),
+    'meeting-closed': Object.freeze(['close']),
+    'attend-all': Object.freeze(['attend', 'admit']),
+    deadline: Object.freeze(['deadline']),
+  })
+  const WAIT_UNTIL_MEANS = 'until names the EVENT that should end the wait: "speak" = somebody was recorded speaking; ' +
+    '"vote" = a vote was counted on a motion; "poll" = a vote/poll was counted (a ballot poll surfaces here as a vote); ' +
+    '"motion" = a motion was raised or seconded; "phase" = the meeting phase moved (proceed / recess / resume); ' +
+    '"attend-all" = every roster member is present (re-checked on each attend/admit); "hand" = a member asked for the ' +
+    'floor; "deadline" = the timeoutMs you gave elapsed; "meeting-closed" = the meeting was closed'
+  const WAITERS_MEANS = 'waiters are DURABLE rows on the meeting itself: each names the member and the EVENT it waits ' +
+    'for (`until`), the instant it was armed and, when a timeout was given, its deadline. state: "armed" = waiting, the ' +
+    'event has not happened yet; "fired" = the event happened and a WAKE WAS ATTEMPTED — `wake.delivered/via/woken` say ' +
+    'whether it reached the member, so fired is a DELIVERY fact and NOT a statement that the member has acted, nor that ' +
+    'the wake succeeded; "expired" = the deadline passed before the event (only for waits armed with timeoutMs); ' +
+    '"cancelled" = withdrawn by unwait(), replaced by a newer wait for the same member, or dropped because the meeting ' +
+    'closed. Read `minutes` / `motions` for what actually happened; read `waiters` for who asked to be woken and with ' +
+    'what outcome.'
+  const WAITER_STATE_MEANS = Object.freeze({
+    armed: 'waiting: the event has not happened yet — this member may end its turn; the wake will start it again',
+    fired: 'the event happened and a wake was ATTEMPTED for this member; check `wake.delivered` and `wake.via` (a "none" via means no seam and no mailbox existed) — fired does not mean the member acted',
+    expired: 'the deadline it named passed before the event; the member was woken under the event name "deadline" so it can re-decide instead of waiting forever',
+    cancelled: 'no longer waiting (withdrawn, replaced by a newer wait for the same member, or the meeting closed)',
+  })
+  const WAIT_MEANS = 'the wait is ARMED and recorded on the meeting. You may now END YOUR TURN: you will be WOKEN when ' +
+    'the event you named happens (a wake is delivered through the meeting wake seam). If you are not woken, the event ' +
+    'has NOT happened — do not spin, poll, or re-register in a loop: re-registering REPLACES this row (one member waits ' +
+    'for one thing at a time). If you gave timeoutMs you will be woken under the event name "deadline" when it elapses. ' +
+    'Withdraw with unwait().'
+  const FIRED_WAITERS_MEANS = 'every waiter THIS call fired, with the delivery of its wake: `{ member, until, id, wake }`. ' +
+    'Fired is a DELIVERY fact, not a promise that the member acted: vmu.meetings.wakeFailurePolicy decides what a failed ' +
+    'wake means and the event is NEVER rolled back because a wake failed. The array is empty when no waiter was waiting ' +
+    'for this event (the means line stays, so an empty array is not silent).'
+  const MEETING_WAKE_TYPE = 'meeting-wake'
+  const waitersListOf = (m) => (Array.isArray(m && m.waiters) ? m.waiters : [])
+  const ensureWaiters = (m) => {
+    if (!Array.isArray(m.waiters)) m.waiters = []
+    return m.waiters
+  }
+  const waiterRowOf = (w) => ({
+    id: String(w.id),
+    member: String(w.member),
+    until: String(w.until),
+    reason: w.reason === undefined ? null : w.reason,
+    armedAt: w.armedAt === undefined ? null : w.armedAt,
+    deadlineMs: w.deadlineMs === undefined ? null : w.deadlineMs,
+    deadlineAt: w.deadlineAt === undefined ? null : w.deadlineAt,
+    state: String(w.state),
+    stateMeans: WAITER_STATE_MEANS[String(w.state)] || null,
+    firedAt: w.firedAt === undefined ? null : w.firedAt,
+    firedBy: w.firedBy === undefined ? null : w.firedBy,
+    event: w.event === undefined ? null : w.event,
+    cancelledAt: w.cancelledAt === undefined ? null : w.cancelledAt,
+    cancelledBy: w.cancelledBy === undefined ? null : w.cancelledBy,
+    cancelledWhy: w.cancelledWhy === undefined ? null : w.cancelledWhy,
+    wake: w.wake === undefined || w.wake === null ? null : Object.assign({}, w.wake),
+  })
+  /**
+   * ★ One projection, both read faces (the same rule the who-spoke family follows): `summary()` and the status view
+   * spread THIS block, so `waiters` cannot exist behind one door and be missing behind the other. `waitStates` and
+   * `waiters` answer DIFFERENT questions and the note says so: waitStates is where a person stands right now; waiters is
+   * which event would wake it.
+   */
+  const waitersBlockOf = (m) => {
+    const rows = waitersListOf(m).map(waiterRowOf)
+      .sort((a, b) => (Number(a.armedAt) || 0) - (Number(b.armedAt) || 0) || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0))
+    const count = (state) => rows.filter((r) => r.state === state).length
+    return {
+      waiters: rows,
+      waitersCount: rows.length,
+      waitersArmed: count('armed'),
+      waitersFired: count('fired'),
+      waitersExpired: count('expired'),
+      waitersCancelled: count('cancelled'),
+      waitersMeans: WAITERS_MEANS,
+      waiterStatesMeans: WAITER_STATE_MEANS,
+      waitersBecause: '`waitStates` (roster / present / held at the door) and `waiters` (event registrations) are TWO facts: waitStates says where a person stands in this meeting NOW, waiters says which EVENT would wake it. Neither is derived from the other',
+    }
+  }
+  /**
+   * Deliver ONE wake for a fired waiter. Same seam, same policy as `wake()`, but NON-THROWING on purpose: the event has
+   * already happened when this runs, so a refusal to wake must be reported in `waiter.wake`, never raised as an error
+   * that would take the academic act down with it (`wakeFailurePolicy` is a delivery policy, not an outcome policy).
+   */
+  const deliverWaiterWake = (m, w, event, now) => {
+    const note = { member: w.member, at: now, meeting: m.id, until: w.until, waiter: w.id, event }
+    if (typeof wake === 'function') {
+      let out = { ok: true }
+      try { out = wake(note) || { ok: true } } catch (e) { out = { ok: false, error: String((e && e.message) || e) } }
+      if (out.ok !== false) {
+        // ★★★ RUN 239-D (the user's requirement, MEASURED shape): a REAL wake is a subagent activation, and the roster
+        // seam that performs it answers ASYNCHRONOUSLY. The defect this branch prevents: a promise is `ok !== false`,
+        // so a synchronous reader would claim `delivered:true` for a wake that had not even been attempted - a receipt
+        // that names its own intention as a fact. The seam may therefore hand back `{ pending:true, promise }`; the
+        // waiter stays FIRED (the event really happened and is never rolled back) and its `wake` row starts as
+        // `delivered:false, pending:true, woken:null`, then settles in place to the real answer, announced on the bus.
+        if (out.pending === true && out.promise && typeof out.promise.then === 'function') {
+          const settleAfterReceipt = (res) => {
+            const ok = !(res && res.ok === false)
+            const why = ok ? null : String((res && (res.error || (res.refused && (res.refused.message || res.refused.code)))) || 'the seam refused the wake after this receipt was written')
+            w.wake = { delivered: ok, via: 'seam', woken: ok, why, pending: false, settledAfterReceipt: true }
+            if (ok) counters.wokenWakes = (counters.wokenWakes || 0) + 1
+            else counters.unreachedWakes = (counters.unreachedWakes || 0) + 1
+            try { say({ type: ok ? 'meetings/woken-after-receipt' : 'meetings/unreached-after-receipt', at: now, meeting: m.id, member: w.member, until: w.until, waiter: w.id, event, via: 'seam', wake: w.wake }) } catch (e) { /* a log must never decide a delivery */ }
+          }
+          try { out.promise.then(settleAfterReceipt, (e) => settleAfterReceipt({ ok: false, error: String((e && e.message) || e) })) } catch (e) { settleAfterReceipt({ ok: false, error: String((e && e.message) || e) }) }
+          return { delivered: false, pending: true, via: 'seam', woken: null, why: 'the wake seam answers ASYNCHRONOUSLY (a real delivery is a subagent activation), so this receipt does not claim the member was woken: waiter.wake starts as pending and is settled in place to the real answer, with the bus saying meetings/woken-after-receipt or meetings/unreached-after-receipt' }
+        }
+        return { delivered: true, via: 'seam', woken: out.woken !== false, why: null }
+      }
+      if (K.wakeFailurePolicy === 'skip') {
+        counters.skippedWakes += 1
+        say({ type: 'meetings/skipped', at: now, member: w.member, reason: 'wake-failure-policy=skip (event ' + event + ', waiter ' + w.id + ')' })
+        return { delivered: false, via: 'seam', woken: false, why: 'wake-failure-policy="skip": the seam refused the wake (' + String(out.error || 'unknown') + ') and this deployment chose to skip rather than fail the call' }
+      }
+      if (K.wakeFailurePolicy === 'retry') {
+        let attempts = 1
+        let last = out
+        while (last && last.ok === false && attempts <= K.wakeRetries) {
+          attempts += 1
+          try { last = wake(note) || { ok: true } } catch (e) { last = { ok: false, error: String((e && e.message) || e) } }
+        }
+        if (last && last.ok !== false) return { delivered: true, via: 'seam', woken: true, why: null, retries: attempts - 1 }
+        counters.unreachedWakes = (counters.unreachedWakes || 0) + 1
+        say({ type: 'meetings/unreached', at: now, member: w.member, retries: attempts - 1, wakeRetries: K.wakeRetries, reason: 'wake-retries-exhausted (event ' + event + ', waiter ' + w.id + ')' })
+        return { delivered: false, via: 'seam', woken: false, why: 'wake-failure-policy="retry": the seam failed ' + (attempts - 1) + ' time(s) and vmu.meetings.wakeRetries=' + K.wakeRetries + ' was exhausted' }
+      }
+      return { delivered: false, via: 'seam', woken: false, why: 'wake-failure-policy="refuse": the seam refused the wake (' + String(out.error || 'unknown') + '); the event itself is NOT rolled back — refusing to wake a member never undoes an academic act' }
+    }
+    // No seam: the durable store is the second delivery channel. Its shape is duck-typed on purpose — the injected
+    // `durable` in this build is the meeting-marker seam { read, write }, which exposes NO mail port, so `via:"mail"`
+    // only appears when a caller injects one. `via:"none"` records the absence instead of pretending a wake happened.
+    const mailbox = durable && (typeof durable.mail === 'function' ? durable.mail : (typeof durable.send === 'function' ? durable.send : null))
+    if (mailbox) {
+      try {
+        mailbox.call(durable, { type: MEETING_WAKE_TYPE, at: now, meeting: m.id, member: w.member, until: w.until, waiter: w.id, event })
+        say({ type: 'meetings/woken', at: now, meeting: m.id, member: w.member, until: w.until, waiter: w.id, event, via: 'mail' })
+        return { delivered: true, via: 'mail', woken: true, why: null }
+      } catch (e) {
+        return { delivered: false, via: 'mail', woken: false, why: 'the durable mailbox refused the wake: ' + String((e && e.message) || e) }
+      }
+    }
+    return { delivered: false, via: 'none', woken: false, why: 'no wake seam was injected and the durable store exposes no mail port, so this wake could not be delivered; the waiter is still recorded as fired so the record says a wake was due (pass { wake } to createMeetings to deliver it)' }
+  }
+  const nextWaiterId = (m) => {
+    let max = 0
+    for (const w of waitersListOf(m)) {
+      const hit = /^w-(\d+)$/.exec(String(w && w.id))
+      if (hit) max = Math.max(max, Number(hit[1]))
+    }
+    return 'w-' + (max + 1)
+  }
+  const waiterFiresOn = (w, m, event) => {
+    if (w.until === 'attend-all') {
+      if (event !== 'attend' && event !== 'admit') return false
+      const roster = Array.isArray(m && m.roster) ? m.roster.map(String) : []
+      const present = (m && m.present && typeof m.present.size === 'number') ? [...m.present].map(String) : []
+      if (roster.length === 0) return false
+      return roster.every((id) => present.includes(id))
+    }
+    return (WAIT_EVENT_UNTIL[w.until] || []).includes(event)
+  }
+  /**
+   * ★ THE HINGE: settle every ARMED waiter that the event just satisfied — mark `fired`, try to wake it, record the
+   * delivery. Called AFTER the academic mutation and BEFORE the receipt is pushed, by every event point, so a receipt
+   * that says `ok:true` also says who was woken by it (`firedWaiters`).
+   */
+  const settleWaiters = (m, event, now) => {
+    const fired = []
+    for (const w of waitersListOf(m)) {
+      if (!w || w.state !== 'armed') continue
+      if (!waiterFiresOn(w, m, event)) continue
+      w.state = 'fired'
+      w.firedAt = now
+      w.firedBy = event
+      w.event = event
+      w.wake = deliverWaiterWake(m, w, event, now)
+      fired.push({ member: String(w.member), until: String(w.until), id: String(w.id), wake: Object.assign({}, w.wake) })
+      say({ type: 'meetings/woken', at: now, meeting: m.id, member: w.member, until: w.until, waiter: w.id, event, wake: w.wake, enforced: ['vmu.meetings.wakeFailurePolicy'], enforcedScope: ENFORCED_SCOPE })
+    }
+    return fired
+  }
+  const settleReceipt = (m, event, now, receipt) => {
+    receipt.firedWaiters = settleWaiters(m, event, now)
+    receipt.firedWaitersMeans = FIRED_WAITERS_MEANS
+    return receipt
+  }
+  const expireWaiters = (m, now) => {
+    const expired = []
+    for (const w of waitersListOf(m)) {
+      if (!w || w.state !== 'armed') continue
+      // ★★ A waiter that named NO timeoutMs has `deadlineAt: null` and must never be swept: `Number(null)` is 0, which
+      // would read as "the deadline was the epoch" and expire every event-only wait on the first sweep. Absence of a
+      // deadline is a fact, not a zero.
+      const deadline = (w.deadlineAt === null || w.deadlineAt === undefined) ? null : Number(w.deadlineAt)
+      if (deadline === null || !Number.isFinite(deadline) || deadline > now) continue
+      w.state = 'expired'
+      w.firedAt = now
+      w.firedBy = 'deadline'
+      w.event = 'deadline'
+      w.wake = deliverWaiterWake(m, w, 'deadline', now)
+      expired.push({ member: String(w.member), until: String(w.until), id: String(w.id), wake: Object.assign({}, w.wake) })
+      say({ type: 'meetings/waiter-expired', at: now, meeting: m.id, member: w.member, until: w.until, waiter: w.id, deadlineAt: w.deadlineAt, wake: w.wake, enforced: ['vmu.meetings.wakeFailurePolicy'], enforcedScope: ENFORCED_SCOPE })
+    }
+    return expired
+  }
+  const cancelArmedWaiters = (m, now, why) => {
+    const rows = waitersListOf(m)
+    let cancelled = 0
+    for (const w of rows) {
+      if (!w || w.state !== 'armed') continue
+      w.state = 'cancelled'
+      w.cancelledAt = now
+      w.cancelledBy = 'meeting'
+      w.cancelledWhy = String(why)
+      cancelled += 1
+    }
+    return cancelled
+  }
   const cap = (code, label, value, limit, key, evaluated) => {
     const keys = Array.isArray(evaluated) ? evaluated.slice() : []
     mark(keys, key)
@@ -1631,6 +1933,20 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         note: transitions.length === 0
           ? 'no scheduled or waiting meeting changed state at this instant (the pass still ran)'
           : 'settled by the same syncMeeting the touch path uses; a due WAIT still needs the chair to decide (proceed/lapse/recess)' }
+      // ★★★ RUN 239-D (B series): the SAME pass expires waiter rows whose OWN deadline elapsed. A waiter is a durable
+      // row with a deadline of its own, so the sweep that exists to make deadlines observable must see it even when the
+      // meeting is not scheduled/waiting (a RUNNING meeting owes its waiters this clock too). Expiring is not silent:
+      // each expired row is marked and a wake is attempted under the event name "deadline".
+      const expiredWaiters = []
+      for (const mm of [...live.values()]) {
+        for (const row of expireWaiters(mm, now)) expiredWaiters.push(Object.assign({ meeting: mm.id }, row))
+      }
+      pass.expiredWaiters = expiredWaiters
+      pass.expiredWaitersCount = expiredWaiters.length
+      pass.expiredWaitersMeans = 'every waiter whose OWN deadline elapsed in this pass and was woken under the event name "deadline": `{ meeting, member, until, id, wake }`. The row state becomes "expired" (not "fired"): the event the member waited for did NOT happen, its own timeout did — the wake exists so it can re-decide instead of waiting forever. An empty array means no waiter deadline elapsed (the means line stays so the empty array is not silent).'
+      pass.note = pass.note + "; " + (expiredWaiters.length === 0
+        ? "no waiter deadline elapsed in this pass"
+        : expiredWaiters.length + " waiter(s) expired at their own deadline and were woken under the event name \"deadline\"")
       // ★ LIVE RUN 10, finding F: the pass existed but its trace was nowhere a reader could see it, so "the deadline was
       // observed" remained an article of faith. lastSweep is the memory of the LAST pass and status() reports it.
       lastSweep = pass
@@ -1722,7 +2038,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
             ? { by: who, rule: 'meetings.proceed: the chair may start a meeting before the institution rule is met (unanimity of attendance/votes)', whichRule: 'institution-rule', unmetRule: 'unanimity', floor: qAfter.required, floorMet: qAfter.met === true, present: qAfter.present, roster: qAfter.roster, unanswered: (qAfter.unansweredList || []).slice(), waitedMs, beforeDeadline }
             : null)
       const receipt = { at: now, action: 'proceed', meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, scheduledFor: m.scheduledFor, quorum: qAfter, overrodeQuorum: overrodeRecord, overrodeQuorumFlag: overrodeRecord !== null, overrode: overrodeRecord, overrodeNote: overrodeRecord === null ? null : (overrodeRecord.whichRule === 'floor' ? 'the meeting started WITHOUT its quorum: the chair used proceed() to start it anyway (this is the chair\'s authority act, recorded in minutes as `proceeded`)' : 'the meeting started with the FLOOR met but the institution rule (unanimity) unmet: the chair used proceed() to start it early, which is the same authority act and is recorded here so it is not read as "nothing was overridden"'), enforced, enforcedScope: ENFORCED_SCOPE }
-      pushReceipt(receipt)
+      pushReceipt(settleReceipt(m, "proceed", now, receipt))
       say({ type: 'meetings/proceeded', at: now, meeting: m.id, by: who, why: whyText, waitedMs, beforeDeadline, quorum: quorumOf(m), enforced, enforcedScope: ENFORCED_SCOPE })
       return Object.assign({ ok: true, meeting: m.id, state: m.state, startedLate: true, receipt }, receipt)
     },
@@ -1819,7 +2135,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         : 'this call is what put the member in the present set'
       const receipt = { at: ms, action: 'attend', meeting: m.id, member, late, lateReads, lateMeans, lateAdmission: latePolicy, pendingLate: false,
         alreadyPresent: wasPresent, alreadyPresentMeans, quorum: q, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE }
-      pushReceipt(receipt)
+      pushReceipt(settleReceipt(m, "attend", ms, receipt))
       say({ type: 'meetings/attended', at: ms, meeting: m.id, member, late, lateAdmission: latePolicy, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE })
       return { ok: true, late, lateAdmission: latePolicy, pendingLate: false, ...lateReads, lateMeans, alreadyPresent: wasPresent, alreadyPresentMeans,
         quorum: q, state: m.state, settled, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
@@ -1882,7 +2198,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       const receipt = { at: admittedAt, action: 'admit', meeting: m.id, member: String(member), admitted: true, admittedBy: who,
         admittedAt, late: true, lateAdmission: lateAdmissionOf(m), why: whyText, pendingLate: remaining,
         pendingLateCount: remaining.length, quorum: q, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE }
-      pushReceipt(receipt)
+      pushReceipt(settleReceipt(m, "admit", admittedAt, receipt))
       say({ type: 'meetings/lateAdmitted', at: admittedAt, meeting: m.id, member: String(member), by: who, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE })
       return { ok: true, meeting: m.id, member: String(member), admitted: true, admittedBy: who, admittedAt, late: true,
         lateAdmission: lateAdmissionOf(m), why: whyText, pendingLate: remaining, pendingLateCount: remaining.length,
@@ -2116,10 +2432,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       const queueRead = orderEff.queueOpen
         ? { open: true, mode: orderEff.mode, source: orderEff.source, before: orderNow.length, presentWaiters: waiters.length, position: queuedMe === -1 ? null : queuedMe + 1, slipped: queuedMe === -1 && orderNow.length > 0, skippedAbsent, means: 'the effective order is [' + orderNow.join(', ') + '] and the turn is held among the PRESENT waiters [' + waiters.join(', ') + ']: an absent member ahead of you does not hold the floor (they would be refused `attend() first` anyway)' + (skippedAbsent.length ? '; not yet present and therefore passed over: [' + skippedAbsent.join(', ') + ']' : '') + '; a member who is NOT in the queue at all speaks as a slip (position:null, slipped:true), never as a turn' }
         : { open: false, mode: orderEff.mode, source: orderEff.source, before: 0, position: null, slipped: false, means: 'this floor keeps NO queue (orderMode ' + String(orderEff.mode) + '): nobody can be out of turn' }
-      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, speeches: speechesOf(m), speechesMeans: SPEECHES_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, enforced, enforcedScope: ENFORCED_SCOPE }
-      pushReceipt(receipt)
+      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, ...spokeBlockOf(m), tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, enforced, enforcedScope: ENFORCED_SCOPE }
+      pushReceipt(settleReceipt(m, "speak", now, receipt))
       say({ type: 'meetings/spoke', at: now, meeting: m.id, member: String(member), floor, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, speeches: speechesOf(m), speechesMeans: SPEECHES_MEANS, tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, ...spokeBlockOf(m), tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Interrupt. `interruptAllow` + `interruptQuota` govern the floor. */
@@ -2159,7 +2475,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       if (eff.queueOpen && !m.queue.includes(String(member))) m.queue.push(String(member))
       const order = orderControls.orderFor(m, m.queue)          // ALWAYS a copy: a read never reorders the queue
       const receipt = { at: at === null ? clock() : at, action: 'queue', meeting: m.id, member: String(member), by: actor, mode: eff.mode, modeSource: eff.source, queued: eff.queueOpen, seed: eff.seed, order, enforced, enforcedScope: ENFORCED_SCOPE }
-      pushReceipt(receipt)
+      pushReceipt(settleReceipt(m, "hand", at === null ? clock() : atMs(at), receipt))
       return { ok: true, mode: eff.mode, modeSource: eff.source, queued: eff.queueOpen, order, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
@@ -2312,7 +2628,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       counters.motions += 1
       m.minutes.entries.push({ at: now, kind: 'motion', id: motion.id, by: motion.by, motionKind: motion.kind })
       const receipt = { at: now, action: 'motion', meeting: m.id, motion: motion.id, kind: motion.kind, quorumRequired: need, quorum: q, enforced, enforcedScope: ENFORCED_SCOPE }
-      pushReceipt(receipt)
+      pushReceipt(settleReceipt(m, "motion", now, receipt))
       say({ type: 'meetings/motion', at: now, meeting: m.id, motion: motion.id, kind: motion.kind, enforced, enforcedScope: ENFORCED_SCOPE })
       // ROUND 12 / task-97 (vmu-pack's ⑤): A MID-MEETING MOTION IS OBSERVABLE. This site used to only write the local
       // log, so no middleware could react to "someone moved a motion in THIS meeting" - and the id the mirror asks
@@ -2339,7 +2655,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       target.secondedBy = String(member)
       m.minutes.entries.push({ at: now, kind: 'second', id: target.id, by: String(member) })
       const receipt = { at: now, action: 'second', meeting: m.id, motion: target.id, by: String(member), status: target.status, secondedBy: target.secondedBy }
-      pushReceipt(receipt)
+      pushReceipt(settleReceipt(m, "second", now, receipt))
       emit('meeting/second', { at: now, meeting: m.id, motion: target.id, by: String(member) })
       return { ok: true, motion: target.id, status: target.status, secondedBy: target.secondedBy, receipt }
     },
@@ -2449,7 +2765,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           + '. Two ledgers exist on purpose — the box enforces its own rules (a closed box, allowRevote:false, a vote outside the face) — so a refused mirror does NOT invalidate the meeting tally; it means the box did not record it')
       const receipt = { at: now, action: 'vote', meeting: m.id, motion: target ? target.id : null, member: String(member), tally, counted: target !== null, countedMeans: 'counted = the MEETING counted this vote in its own tally; it does not mean the ballot box mirrored it (see ballotNote)', tallyNote, quorum: quorumAfter, overrodeQuorum: overrodeAtVote, enforced, enforcedScope: ENFORCED_SCOPE, ballot: ballotMirror, ballotNote }
       const voteOut = { ok: true, tally, counted: target !== null, countedMeans: receipt.countedMeans, tallyNote, quorum: quorumAfter, receipt, ballotNote, enforced, enforcedScope: ENFORCED_SCOPE }
-      pushReceipt(receipt)
+      pushReceipt(settleReceipt(m, "vote", now, receipt))
       return voteOut
     },
 
@@ -2502,7 +2818,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       m.recess = { since: now, until: now + n(ms), motion: null, initial: true }
       m.minutes.entries.push({ at: now, kind: 'recess', ms: n(ms) })
       const receipt = { at: now, action: 'recess', meeting: m.id, until: m.recess.until, enforced, enforcedScope: ENFORCED_SCOPE }
-      pushReceipt(receipt)
+      pushReceipt(settleReceipt(m, "phase", now, receipt))
       return { ok: true, until: m.recess.until, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
@@ -2524,7 +2840,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       m.recess = null
       m.minutes.entries.push({ at: now, kind: 'resume', motion: motion === null ? null : String(motion) })
       const receipt = { at: now, action: 'resume', meeting: m.id, motion, enforced, enforcedScope: ENFORCED_SCOPE }
-      pushReceipt(receipt)
+      pushReceipt(settleReceipt(m, "phase", now, receipt))
       return { ok: true, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
@@ -2745,6 +3061,112 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       return { ok: true, woken: true, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
+    /**
+     * ★★★ RUN 239-D (B series): WAIT FOR AN EVENT INSTEAD OF POLLING FOR IT.
+     *
+     * The institution already had the READ side of waiting (`waitStates`: who is seated, who is at the door) and a
+     * `waitRecommended` ADVICE line, but no member could say "wake me when the floor opens / a vote is counted / the
+     * meeting closes" — the only honest answer the framework could give was "a turn ends and hands back", so a member
+     * with nothing to do either stayed silent forever or burned turns asking. This registers a DURABLE row on the
+     * meeting (`waiters`), and the event points settle it (see `settleWaiters`): the row is marked `fired`, the member
+     * is woken through the injected wake seam (or the durable mailbox), and the delivery is recorded on the row.
+     *
+     * ★ A REGISTRATION REPLACES AN EARLIER ONE for the same member (`replaced:true`, the old row is `cancelled` with
+     * `cancelledBy:"replaced"`): one member waits for ONE thing at a time, and a silent second registration would make
+     * two wakes for one intent. Registering again is how a member CHANGES what it waits for.
+     * ★ `timeoutMs` is the escape from "what if it never happens": at the deadline the row becomes `expired` and the
+     * same member is woken under the event name "deadline" — a member that is never woken knows the event has not
+     * happened (and its deadline, if any, has not elapsed either).
+     */
+    wait({ meeting = null, member = null, until = 'speak', timeoutMs = null, reason = null, at = null } = {}) {
+      const m = requireMeeting(meeting, { allowPending: true })
+      const now = at === null ? clock() : atMs(at)
+      const memberId = String(member === undefined || member === null ? '' : member)
+      if (!memberId) {
+        throw deny('VMU_INVALID_ARGUMENT', 'wait needs a member id', 'e.g. { meeting: "' + String(m.id) + '", member: "r-1", until: "speak" }', [])
+      }
+      if (!isMember(memberId)) {
+        throw deny('VMU_NOT_MEMBER', 'not a member of this instance: ' + memberId, 'the roster seam rejected it — a non-member never votes and is never woken for a meeting (08 D-series)', [])
+      }
+      const want = String(until === undefined || until === null ? 'speak' : until)
+      if (!WAIT_UNTIL_MODES.includes(want)) {
+        throw deny('VMU_INVALID_ARGUMENT', 'unknown until: ' + JSON.stringify(want) + ' (allowed: ' + WAIT_UNTIL_MODES.join(', ') + ')',
+          'until names the EVENT that should end the wait: ' + WAIT_UNTIL_MEANS, [])
+      }
+      let deadlineMs = null
+      if (timeoutMs !== null && timeoutMs !== undefined) {
+        deadlineMs = n(timeoutMs)
+        if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+          throw deny('VMU_INVALID_ARGUMENT', 'timeoutMs must be a positive finite number of milliseconds; got ' + JSON.stringify(timeoutMs),
+            'pass timeoutMs: 300000 (5 minutes), or omit it to arm the wait with no deadline (then only the event or a close ends it)', [])
+        }
+      }
+      const rows = ensureWaiters(m)
+      let replacedRow = null
+      for (const w of rows) {
+        if (!w || w.state !== 'armed' || String(w.member) !== memberId) continue
+        w.state = 'cancelled'
+        w.cancelledAt = now
+        w.cancelledBy = 'replaced'
+        w.cancelledWhy = 'a newer wait was registered for this member (one member waits for one thing at a time)'
+        replacedRow = waiterRowOf(w)
+      }
+      const row = {
+        id: nextWaiterId(m), member: memberId, until: want,
+        reason: reason === null || reason === undefined ? null : String(reason),
+        armedAt: now, deadlineMs, deadlineAt: deadlineMs === null ? null : now + deadlineMs,
+        state: 'armed', firedAt: null, firedBy: null, event: null, wake: null,
+      }
+      rows.push(row)
+      const receipt = { at: now, action: 'wait', meeting: m.id, member: memberId, until: want, waiter: waiterRowOf(row),
+        armed: true, replaced: replacedRow !== null, replacedWaiter: replacedRow,
+        waiters: waitersBlockOf(m).waiters, enforced: [], enforcedScope: ENFORCED_SCOPE }
+      pushReceipt(receipt)
+      say({ type: 'meetings/wait-armed', at: now, meeting: m.id, member: memberId, until: want, waiter: row.id, deadlineAt: row.deadlineAt, replaced: replacedRow !== null, enforced: [], enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, armed: true, meeting: m.id, member: memberId, until: want, waiter: waiterRowOf(row),
+        deadlineAt: row.deadlineAt, replaced: replacedRow !== null, replacedWaiter: replacedRow,
+        waiters: waitersBlockOf(m).waiters, waitMeans: WAIT_MEANS, receipt, enforced: [], enforcedScope: ENFORCED_SCOPE }
+    },
+
+    /** Withdraw a wait that is still armed. Nothing else changes: this is not an academic act, so `ok:true` with
+     *  `cancelled:false` means "you were not waiting" (and `unwaitMeans` says so instead of leaving the caller to
+     *  guess). A FIRED or EXPIRED row is already settled — cancelling it now would rewrite history, so it is left as is
+     *  and named in `alreadySettled`. */
+    unwait({ meeting = null, member = null, why = null, at = null } = {}) {
+      const m = requireMeeting(meeting, { allowPending: true })
+      const now = at === null ? clock() : atMs(at)
+      const memberId = String(member === undefined || member === null ? '' : member)
+      if (!memberId) {
+        throw deny('VMU_INVALID_ARGUMENT', 'unwait needs a member id', 'e.g. { meeting: "' + String(m.id) + '", member: "r-1" }', [])
+      }
+      let cancelledRow = null
+      const alreadySettled = []
+      for (const w of waitersListOf(m)) {
+        if (!w || String(w.member) !== memberId) continue
+        if (w.state !== 'armed') {
+          alreadySettled.push({ id: String(w.id), until: String(w.until), state: String(w.state) })
+          continue
+        }
+        w.state = 'cancelled'
+        w.cancelledAt = now
+        w.cancelledBy = memberId
+        w.cancelledWhy = why === null || why === undefined ? null : String(why)
+        cancelledRow = waiterRowOf(w)
+      }
+      const receipt = { at: now, action: 'unwait', meeting: m.id, member: memberId, cancelled: cancelledRow !== null,
+        waiter: cancelledRow, alreadySettled, waiters: waitersBlockOf(m).waiters, enforced: [], enforcedScope: ENFORCED_SCOPE }
+      pushReceipt(receipt)
+      say({ type: 'meetings/wait-cancelled', at: now, meeting: m.id, member: memberId, cancelled: cancelledRow !== null, waiter: cancelledRow === null ? null : cancelledRow.id, enforced: [], enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, cancelled: cancelledRow !== null, meeting: m.id, member: memberId, waiter: cancelledRow,
+        alreadySettled, waiters: waitersBlockOf(m).waiters,
+        unwaitMeans: cancelledRow === null
+          ? (alreadySettled.length > 0
+            ? 'nothing was cancelled: every wait this member registered is already settled (' + alreadySettled.map((r) => r.id + ':' + r.state).join(', ') + ') and settled rows are history — register a new wait instead'
+            : 'nothing was cancelled: this member has no wait registered on this meeting, so there was nothing to withdraw')
+          : 'the armed wait was cancelled; the member will NOT be woken for that event any more',
+        receipt, enforced: [], enforcedScope: ENFORCED_SCOPE }
+    },
+
     /** Close the meeting. `committeeReportRequired`, `minutesActionsRequired`, `confirmPreviousMinutes`. */
     close({ meeting, report = null, actions = null, at = null, actor = null } = {}) {
       const m = requireMeeting(meeting)
@@ -2830,7 +3252,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // second sight of a shared reference as "[circular]", so this receipt carried `enforced:"[circular]"`. Copies
       // (not a shared reference) keep both fields as readable key lists even for a serializer that marks repeats.
       const closedBy = (actor === null || actor === undefined) ? null : String(actor)
-      const receipt = { at: now, action: 'close', meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+      const receipt = { at: now, action: 'close', meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, ...spokeBlockOf(m), tokens: m.tokens, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
       // ★★ PHASE 12 D6 — 「允许一次性设置连续展开的多个会议」: closing this meeting OPENS the next one it was convened
       // with. Two failure directions are treated differently on purpose: (1) a next meeting that cannot open (quota, a
       // type that left the catalogue) does NOT un-close this one — the closure already happened and reverting it would
@@ -2844,6 +3266,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       } else if (advanced.error) {
         receipt.nextMeetingError = advanced.error
       }
+      settleReceipt(m, "close", now, receipt)
+      receipt.waitersCancelledByClose = cancelArmedWaiters(m, now, 'the meeting closed before this event happened; register the wait on the next meeting')
       pushReceipt(receipt)
       say({ type: 'meetings/closed', at: now, meeting: m.id, closedBy, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE })
       // NO `enforced` list on the advance event: advancing is decided by the call that declared the sequence, not by
@@ -2852,7 +3276,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // be policy the pack never asked for.
       if (advanced.meeting)
       say({ type: 'meetings/sequence-advanced', at: now, from: m.id, meeting: advanced.meeting, index: advanced.index, total: advanced.total, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, tokens: m.tokens, nextMeeting: advanced.meeting || null, nextMeetingError: advanced.error || null, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, meeting: m.id, closedBy, wallMs: m.wallMs, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, ...spokeBlockOf(m), tokens: m.tokens, nextMeeting: advanced.meeting || null, nextMeetingError: advanced.error || null, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
     },
 
     /**
@@ -2908,7 +3332,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       m.extendedMs = (Number(m.extendedMs) || 0) + Number(ms)
       m.extensions = (Number(m.extensions) || 0) + 1
       const receipt = { at: now, action: 'extend', meeting: m.id, ms: Number(ms), wallLimitMs: after, extendedMs: m.extendedMs, extensions: m.extensions, actor: (actor === null || actor === undefined) ? null : String(actor), why: why === null ? null : String(why), enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
-      pushReceipt(receipt)
+      pushReceipt(settleReceipt(m, "extendlimit", now, receipt))
       say({ type: 'meetings/extended', at: now, meeting: m.id, ms: Number(ms), wallLimitMs: after, extendedMs: m.extendedMs, actor: receipt.actor, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE })
       return { ok: true, meeting: m.id, wallLimitMs: after, extendedMs: m.extendedMs, extensions: m.extensions, receipt, enforced: enforced.slice(), enforcedScope: ENFORCED_SCOPE }
     },
@@ -3011,7 +3435,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         // ★★★ RUN 225-B — 会内等待 + 迟到入席，on BOTH read faces a member/chair actually reads (`summary` and the view
         // `vibe_vmu_meeting {action:"status"}` returns). One block, one wording (see waitBlockOf).
         ...waitBlockOf(m),
-        materials: m.materials === undefined ? null : m.materials,
+        // ★★★ RUN 239-D (B series): who registered an event wait on this meeting (same block both faces).
+        ...waitersBlockOf(m),
+        // ★★★ RUN 239-D: the agenda under BOTH of its names, plus the items it was made of (see `agendaBlockOf`).
+        ...agendaBlockOf(m),
         subject: m.subject === undefined ? null : m.subject,
         // ★★ ROUND 49 / F-25: the gate that ADMITTED this debate is part of the decision record, so it is readable
         // long after the open receipt was scrolled past. `null` means none was recorded (pre-fix rows, non-debates).
@@ -3046,11 +3473,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         turns: m.turns === undefined ? 0 : m.turns,
         turnsCounts: TURNS_COUNTS,
         turnsMeans: TURNS_MEANS,
-        speeches: speechesOf(m),
-        speechesMeans: SPEECHES_MEANS,
-        turnsAccounted: turnsAccountedOf(m),
-        turnsUnattributed: turnsUnattributedOf(m),
-        turnsUnattributedMeans: TURNS_UNATTRIBUTED_MEANS,
+        // ★★★ RUN 239-D: the who-spoke family (speeches / accounted / unattributed / spokeBy) comes from ONE
+        // projection shared with `vibe_vmu_meeting {action:"status"}` — the status view had `spokeBy` and this face
+        // did not, so "who debated" was readable through one door and missing behind the other.
+        ...spokeBlockOf(m),
         chair: m.chair || null, secretary: m.secretary || null,
         motions,
         // ★★ LIVE RUN 20 (the institute's own report): after close, summary answered votes:0 while the tally receipt
@@ -3100,7 +3526,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           ? 'only one object carries this id here (no archived record with the same name)'
           : 'TWO objects carry this id: this state is the LIVE one, and the ARCHIVE also holds a record closed at ' + String(viewTwin.closedAt === undefined ? 'an unrecorded instant' : viewTwin.closedAt) + ' — the closure happened; this line is not its outcome',
         title: m.title === undefined ? null : m.title,
-        materials: m.materials === undefined ? null : m.materials,
+        // ★★★ RUN 239-D: same block as summary() — the agenda under both names, plus its items.
+        ...agendaBlockOf(m),
         subject: m.subject === undefined ? null : m.subject,
         // ★★ ROUND 49 / F-25: same record on the face members and the office actually read (status).
         subjectGate: m.subjectGate === undefined ? null : m.subjectGate,
@@ -3143,15 +3570,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         turns: m.turns === undefined ? 0 : m.turns,
         turnsCounts: TURNS_COUNTS,
         turnsMeans: TURNS_MEANS,
-        speeches: speechesOf(m),
-        speechesMeans: SPEECHES_MEANS,
-        // ★★ RUN 236 / FEEDBACK60 M8: the same fact as `speechUsed`, reconciled on the face the run reads.
-        turnsAccounted: turnsAccountedOf(m),
-        turnsUnattributed: turnsUnattributedOf(m),
-        turnsUnattributedMeans: TURNS_UNATTRIBUTED_MEANS,
-        // ★ A READER MUST BE ABLE TO SEE WHO DEBATED WITHOUT CALLING minutes(): the fact, un-pruned.
-        spokeBy: [...new Set(m.minutes.entries.filter((e) => e.kind === 'speech').map((e) => String(e.member)))],
-        spokeByMeans: 'members with at least one recorded speech in THIS meeting (the fact; minutes() is a shaped view of it)',
+        // ★★★ RUN 239-D: the SAME projection summary() spreads (it used to inline `spokeBy` here and nowhere else, so
+        // the two doors answered different key sets for the same fact).
+        ...spokeBlockOf(m),
         // ★ ROUND 19: the roster as a READABLE FACT, next to the speakers. A count (quorum().roster) cannot answer
         // "who", and minutes() drops silent members — so a member who was rostered but did not speak was invisible to
         // "ask every debating member", and the ask face had to guess from speakers alone (live run 26 asked 1 of 2).
@@ -3162,6 +3583,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         // ★★★ RUN 225-B — 会内等待 + 迟到入席，on BOTH read faces a member/chair actually reads (`summary` and the view
         // `vibe_vmu_meeting {action:"status"}` returns). One block, one wording (see waitBlockOf).
         ...waitBlockOf(m),
+        // ★★★ RUN 239-D (B series): the same `waiters` block as `summary()` — one projection, both read faces.
+        ...waitersBlockOf(m),
         stateMeans: MEETING_STATE_MEANING[m.state] || null,
         loop: 'meeting-ask-answer',
         note: '★ motions/votes/state here describe the MEETING’s own ask()+answer()+motion cycle. A member answering a vibe_vmu_turn prompt is a DIFFERENT loop: read vibe_vmu_turn’s receipts (awaiting/memberPrompt/deliveryPath) for that one. hasDeliverSeam on the primitive face refers to open({deliver}), not to the turn loop’s deliveryPath.', reason: m.reason === undefined ? null : m.reason, chair: m.chair || null, secretary: m.secretary || null,

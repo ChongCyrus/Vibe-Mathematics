@@ -65,10 +65,13 @@ console.log('=== VMU RUN 22 FINDINGS (a settled ballot must refuse, not kill) ==
   // —— 那个世界是「拒绝回执直接进序列化」。现在拒绝回执**先过 `discloseActOnSeat`**（被拒回执也必须写清
   // 谁替谁做），再进同一个 `boundedToolResult`。③c 真正要钉的性质没变：**拒绝与成功用同一个序列化器**，
   // 所以断言改成「拒绝仍然以 boundedToolResult(…Object.assign({ ok: false … 结尾」，并额外钉住信封在位。
-  ok(/return boundedToolResult\(\s*discloseActOnSeat\(kernel, exec, args, Object\.assign\(\{\s*ok: false/.test(src),
-    '③c the refusal still uses the SAME serializer as a success, now through the RUN 236 disclosure envelope')
-  ok(/discloseActOnSeat\(kernel, exec, args, outNow\)/.test(src),
-    '③c\' a successful result goes through the same disclosure envelope (one shape, two outcomes)')
+  // ★ RUN 239: both branches now hand the receipt through the SAME two-step envelope in the SAME order -
+  // `liftFiredWaiters(discloseActOnSeat(...))` - so the property is pinned ONCE, for both outcomes, instead of
+  // pinning one branch's private nesting. The serializer is still `boundedToolResult` for both.
+  ok(/return boundedToolResult\(liftFiredWaiters\(discloseActOnSeat\(kernel, exec, args, Object\.assign\(\{\s*ok: false/.test(src),
+    '③c the refusal still uses the SAME serializer as a success, now through the RUN 239 envelope')
+  ok(/return boundedToolResult\(liftFiredWaiters\(discloseActOnSeat\(kernel, exec, args, outNow\)\)\)/.test(src),
+    '③c\' a successful result uses the SAME nest (one shape, two outcomes)')
 }
 
 // ④ a normal handler still passes through

@@ -141,12 +141,35 @@ try {
   const again = await b.call('vibe_v5_record_proposition', {
     id: cardId, statement: '前 n 个奇数之和 = n²。', value: '0.9', motive: 'RUN 238/B rewrite', p: 0.6, member: 'r-1',
   })
-  ok(again && again.ok === true && again.updated === true, 'B1 the same-id write UPDATES the row', again && again.code)
-  ok(Array.isArray(again && again.bodyLinesDropped) && again.bodyLinesDropped.length > 0,
-    '★★ B1 the receipt names the labelled lines that did not survive', again && again.bodyLinesDropped)
-  ok(Array.isArray(again && again.bodyLinesDropped) && again.bodyLinesDropped.indexOf('proofRef') !== -1,
-    'B1 … and `proofRef` is one of them (the line run 61 lost silently)', again && again.bodyLinesDropped)
-  has(again && again.bodyLinesMeans, 'did NOT survive', 'B1 the means says they are gone, not that nothing happened')
+  // ★★★ RUN 239 (FEEDBACK62 #2): a report AFTER the destruction is an epitaph. The write that would delete a
+  // settlement-bearing line is now REFUSED by name, and the two honest ways forward are named in the refusal:
+  // `bodyMode:"merge"` (what this write names wins, every other line survives) or `confirmDestructive:true`.
+  ok(again && again.ok === false && again.code === 'VMU_RECORD_DESTRUCTIVE_WRITE',
+    '★★ B1 a replace that would delete a settlement line is REFUSED by name', again && again.code)
+  has(again && again.message, 'proofRef', 'B1 the refusal names the line that would be deleted')
+  has(again && again.hint, 'merge', 'B1 … and names bodyMode:"merge" as the reachable repair')
+  has(again && again.hint, 'confirmDestructive', 'B1 … and names confirmDestructive:true as the deliberate path')
+  const untouched = b.records.get({ id: cardId, includeBody: true })
+  has(untouched && untouched.body, '- proofRef：', 'B1 the refused write changed NOTHING: the pointer line is still there')
+  ok(untouched && untouched.rev === before.rev, 'B1 … and the revision did not move', { before: before.rev, after: untouched && untouched.rev })
+  const merged = await b.call('vibe_v5_record_proposition', {
+    id: cardId, statement: '前 n 个奇数之和 = n²。', value: '0.9', motive: 'RUN 238/B merged', p: 0.6, member: 'r-1',
+    bodyMode: 'merge',
+  })
+  ok(merged && merged.ok === true && merged.updated === true, '★★ B1 bodyMode:"merge" is admitted and UPDATES the row', merged && merged.code)
+  ok(Array.isArray(merged && merged.bodyLinesDropped) && merged.bodyLinesDropped.length === 0,
+    'B1 … and reports NO dropped line (nothing was lost)', merged && merged.bodyLinesDropped)
+  const mergedRow = b.records.get({ id: cardId, includeBody: true })
+  has(mergedRow && mergedRow.body, '- proofRef：', 'B1 … the pointer line SURVIVED the correction')
+  has(mergedRow && mergedRow.body, 'RUN 238/B merged', 'B1 … and the named line was the one that changed')
+  const forced = await b.call('vibe_v5_record_proposition', {
+    id: cardId, statement: '前 n 个奇数之和 = n²。', value: '0.9', motive: 'RUN 238/B forced', p: 0.6, member: 'r-1',
+    confirmDestructive: true,
+  })
+  ok(forced && forced.ok === true, 'B1 confirmDestructive:true still allows the deletion when it IS the intent', forced && forced.code)
+  ok(Array.isArray(forced && forced.bodyLinesDropped) && forced.bodyLinesDropped.indexOf('proofRef') !== -1,
+    'B1 … and the receipt still names what it deleted (reported, not silent)', forced && forced.bodyLinesDropped)
+  has(forced && forced.bodyLinesMeans, 'did NOT survive', 'B1 the means says they are gone, not that nothing happened')
 
   // ── §3 C: the settlement names a conflicting `value` line ────────────────────────────────────────────────────────
   console.log('=== C. a settlement names a stale `value` line instead of leaving two probabilities ===')

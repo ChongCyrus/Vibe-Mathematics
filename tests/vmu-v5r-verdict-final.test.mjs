@@ -193,9 +193,16 @@ try {
   const promoteTrue = await receipt(v5rBoot, 'vibe_v5_verified_promote', { card: 'c-true', warrant: ballot7, warrant_kind: 'debate-unanimous', member: M1,
     debate_ruling: { mode: 'unanimous', value: 1, subject: 'c-true', ballotId: ballot7 } })
   ok(promoteTrue.parsed && promoteTrue.parsed.ok === true, '前置：把 c-true promote 到定论轨', promoteTrue.parsed && codeOf(promoteTrue.parsed))
-  const rewrite = await card('c-true', 1, { statement: 'c-true 的陈述（修订）' })
+  // ★ RUN 239: the card write path rebuilds the body from its arguments, so a plain rewrite of a SETTLED card would
+  // REPLACE the body and drop the settlement lines (debateRuling / p1Evidence / proofRef) — and the records face now
+  // refuses exactly that by name (VMU_RECORD_DESTRUCTIVE_WRITE). This assertion is about "the evidence already on the
+  // card counts", not about "a rewrite may destroy evidence", so the rewrite asks for a MERGE: the statement changes,
+  // the settlement lines stay, and the conclusion still stands.
+  const rewrite = await card('c-true', 1, { statement: 'c-true 的陈述（修订）', bodyMode: 'merge' })
   ok(rewrite.parsed && rewrite.parsed.ok === true,
     '★★★ 正：这张卡已有 verified 定论行 ⇒ 再写 p=1 不再需要调用方自报辩论（证据来自记录面）', rewrite.parsed && codeOf(rewrite.parsed))
+  ok(rewrite.parsed && rewrite.parsed.bodyModeUsed === 'merge',
+    '★ 正：这次重写是 MERGE（改陈述不丢结算行），不是 replace', rewrite.parsed && rewrite.parsed.bodyModeUsed)
   const rewriteRow = rowOf('c-true')
   ok(rewriteRow && cardPOf('c-true') === 1, '★ 正：读回 p 仍是 1', rewriteRow && cardPOf('c-true'))
 

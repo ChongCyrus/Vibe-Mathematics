@@ -150,7 +150,7 @@
 | `vibe_vmu_memory` | `docs/17` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_metrics` | `docs/08` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_minutes` ✓ **已实现（轮 517）** | `docs/08` | **✓** | **✓** |
-| `vibe_vmu_motion` | `docs/08` | — ⛔ 规划/未实现 | **✓** |
+| `vibe_vmu_motion`（其能力＝action `motion`） | `docs/08` | — ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_outreach` | `docs/22` | — ⛔ 规划/未实现 | — |
 | `vibe_vmu_resource` | `docs/22` | **✓** ⛔ 规划/未实现 | **✓** |
 | `vibe_vmu_resume` | `docs/14` | — | —  ⛔ 规划/未实现（★ 其能力＝**`control` 的 `resume` 动作** ✓ —— ★ 本行必须点明，否则会被读成"框架没有 resume" ✗） |

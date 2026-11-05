@@ -524,7 +524,7 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 
 | 工具（规划，⛔ 未实现） | 参数草案 | 覆盖的广度项 |
 |---|---|---|
-| `vibe_vmu_motion`（⛔ 未实现，roadmap） | `action:'propose'\|'second'\|'withdraw'\|'table'\|'untable'\|'amend'\|'list'`、`id`、`kind`、`text`、`why` | 动议/附议/撤回/搁置/修正案 |
+| `vibe_vmu_motion`（⛔ 未实现，roadmap；其能力＝action `motion`：`vibe_vmu_meeting { action:"motion" }`） | `action:'propose'\|'second'\|'withdraw'\|'table'\|'untable'\|'amend'\|'list'`、`id`、`kind`、`text`、`why` | 动议/附议/撤回/搁置/修正案 |
 | `vibe_vmu_agenda`（⛔ 未实现，roadmap） | `action:'add'\|'update'\|'remove'\|'reorder'\|'split'\|'merge'\|'list'`、`id`、`title`、`text`、`owner`、`timeboxMs`、`order` | 议程条目与拆分合并 |
 | `vibe_vmu_attendance`（⛔ 未实现，roadmap） | `action:'mark'\|'list'\|'quorum'`、`member`、`status` | 在场/法定人数/流失后处理 |
 | `vibe_vmu_minutes`（**✓ 已实现，轮 517**） | `action:'list'\|'draft'\|'confirm'\|'append'\|'actions'\|'status'`、`id`、`kind`、`text`、`member`、`session` | 纪要与确认（★ 工具只做寻址与调用 ✓） |

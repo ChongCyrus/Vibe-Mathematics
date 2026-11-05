@@ -436,6 +436,11 @@ function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extr
       // ★ same rule as record_progress: a tool name is not an author
       by: has(args.member) ? str(args.member) : null,
       bySource: has(args.member) ? 'argument' : 'unknown',
+      // RUN 239 (FEEDBACK62 #2): the kernel can now REFUSE a write that would delete a settlement-bearing line, and
+      // can merge instead of replace -- but this layer listed the put arguments field by field, so both choices were
+      // lost between the declared tool schema and the kernel: the caller asked for merge and still got a replace.
+      bodyMode: has(args.bodyMode) ? str(args.bodyMode) : undefined,
+      confirmDestructive: args.confirmDestructive === true,
     })
     return Object.assign({
       ok: true, tool, track, kind,

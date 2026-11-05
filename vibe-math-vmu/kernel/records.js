@@ -151,8 +151,50 @@ const FINGERPRINT_POLICIES = Object.freeze(['content-only', 'content+display'])
 // ROUND 236 / M4: how an UPDATE writes the body of the row it names. `replace` swaps it whole (the previous body
 // stays readable in the record's history); `append` keeps the old body and writes this text after it. Naming no
 // body at all KEEPS the body — the measured defect was an update that silently dropped fields the caller never named.
-const BODY_MODES = Object.freeze(['replace', 'append'])
+const BODY_MODES = Object.freeze(['replace', 'append', 'merge'])
 const DEFAULT_LIST_CAP = 200
+/**
+ * RUN 239 (live run 62 / FEEDBACK62 #2, MEASURED): A DEFAULT REPLACE DELETED A SETTLEMENT AND NOBODY WAS TOLD.
+ * The card had p=1, settled:true and a `- debateRuling：` line; the next `vibe_v5_record_proposition` named only a new
+ * value, the body was REPLACED, and `debateRuling` / `p1Evidence` / `proofRef` disappeared while `settled` fell back to
+ * false. The receipt did report `bodyLinesDropped` - but the write had already happened, and a card is not a scratch pad.
+ * So a body MODE that keeps what a write does not name is part of the mechanism, not a caller's discipline: `merge`
+ * overrides the lines this write NAMES (by their `- key：` label) and keeps every other line, in place.
+ */
+const cardLineKeyOf = (line) => {
+  const m = /^-\s*([^\s:：]+)\s*[:：]/.exec(String(line === undefined || line === null ? '' : line).trim())
+  return m === null ? null : m[1]
+}
+const cardLinesOf = (text) => {
+  const keys = []
+  for (const line of String(text === undefined || text === null ? '' : text).split('\n')) {
+    const key = cardLineKeyOf(line)
+    if (key !== null && keys.indexOf(key) === -1) keys.push(key)
+  }
+  return keys
+}
+const mergeCardText = (oldText, newText) => {
+  const oldLines = String(oldText === undefined || oldText === null ? '' : oldText).split('\n')
+  const newLines = String(newText === undefined || newText === null ? '' : newText).split('\n')
+  const named = new Map()
+  const loose = []
+  for (const line of newLines) {
+    const key = cardLineKeyOf(line)
+    if (key === null) { if (line.trim() !== '') loose.push(line); continue }
+    named.set(key, line)
+  }
+  const used = new Set()
+  const out = []
+  for (const line of oldLines) {
+    const key = cardLineKeyOf(line)
+    if (key !== null && named.has(key)) { out.push(named.get(key)); used.add(key); continue }
+    out.push(line)
+  }
+  for (const [key, line] of named) if (!used.has(key)) out.push(line)
+  for (const line of loose) out.push(line)
+  return out.join('\n')
+}
+const SETTLEMENT_LINES = Object.freeze(['debateRuling', 'p1Evidence', 'proofRef'])
 
 /** Deterministic slug: `ascii` strips to [a-z0-9-], `cjk-keep` keeps CJK (docs/07 §12 `naming.slugPolicy`). */
 export function slugify(title, policy = 'cjk-keep', maxLength = 80) {
@@ -503,7 +545,8 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
   const view = (rec, { withBody = false, at = now(), count = false } = {}) => {
     const base = {
       id: rec.id, track: rec.track, kind: rec.kind, title: rec.title, slug: rec.slug, status: rec.state,
-      owner: rec.by, updatedAt: rec.updatedAt, createdAt: rec.createdAt, rev: rec.rev, fingerprint: rec.fingerprint,
+      owner: rec.owner === undefined || rec.owner === null ? rec.by : rec.owner,
+      writer: rec.by, updatedAt: rec.updatedAt, createdAt: rec.createdAt, rev: rec.rev, fingerprint: rec.fingerprint,
       bytes: rec.bytes, tags: rec.tags.slice(), tier: tierOf(rec, at), permanent: isPermanent(rec),
       // ★★ RUN 168 (FEEDBACK15 F15-1): `restoredAt` is the durable proof that a live row got here by RESTORE. Without it
       // the snapshot could not tell a genuine restore from the stale live copy the fold still carries right after a prune
@@ -649,7 +692,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     },
 
     /** Create a record. Every cap is a NAMED refusal with 现值/上限; duplicates are COUNTED, never re-added. */
-    put({ id: requestedId = null, track, kind, title, body = undefined, tags = undefined, settled = false, permanent = undefined, by = null, bodyMode = null } = {}) {
+    put({ id: requestedId = null, track, kind, title, body = undefined, tags = undefined, settled = false, permanent = undefined, by = null, owner = undefined, bodyMode = null, confirmDestructive = false } = {}) {
       // ★ ROUND 36: fold the fold BEFORE writing, because the write-through snapshot (kernel/index.js) replaces the
       // WHOLE `records` array with THIS instance's view. Without this, instance A's put would overwrite instance B's
       // rows - a lost update that no read-path fix could repair (the rows would be gone from the durable file).
@@ -698,12 +741,21 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const mergedTags = updating ? (tagsGiven ? listOf(tags, []) : updating.tags) : listOf(tags, [])
       const mergedPermanent = updating ? (permanentGiven ? permanent === true : updating.permanent === true) : permanent === true
       const mergedBy = updating ? (byGiven ? String(by) : (updating.by === undefined ? null : updating.by)) : (by === null || by === undefined ? null : String(by))
+      // ★★★ RUN 239 (live run 62 / FEEDBACK62 #3, MEASURED): AN UPDATE RENAMED THE CARD'S OWNER TO ITS WRITER.
+      // `- owner` was not a field at all: the view derived it from `by`, so rec-3 (owner r-1) became owner r-acad the
+      // moment the chair corrected one line, and the receipt counted that under `fieldsReplaced`. Ownership is who the
+      // card BELONGS to; `by` is who WROTE this revision. Two facts, two fields. An update keeps the owner it found
+      // unless this write names one, and the view falls back to the writer only for rows written before this change.
+      const ownerGiven = owner !== undefined && owner !== null && String(owner).trim() !== ''
+      const mergedOwner = updating
+        ? (ownerGiven ? String(owner) : (updating.owner !== undefined && updating.owner !== null ? String(updating.owner) : (updating.by === undefined ? null : updating.by)))
+        : (ownerGiven ? String(owner) : mergedBy)
       const bodyNew = body === undefined || body === null ? '' : String(body)
       const bodyModeUsed = !updating ? 'replace' : (!bodyGiven ? 'kept' : bodyModeRaw)
       const oldText = updating ? String(updating.body === undefined || updating.body === null ? '' : updating.body) : ''
       const mergedBody = !updating ? bodyNew
         : (!bodyGiven ? oldText
-          : (bodyModeRaw === 'append' ? (bodyNew === '' ? oldText : (oldText === '' ? bodyNew : oldText + '\n' + bodyNew)) : bodyNew))
+          : (bodyModeRaw === 'append' ? (bodyNew === '' ? oldText : (oldText === '' ? bodyNew : oldText + '\n' + bodyNew)) : (bodyModeRaw === 'merge' ? mergeCardText(oldText, bodyNew) : bodyNew)))
       mark(enforced, K.requireSettled)
       if (requireSettled && settled !== true) {
         mark(fired, K.requireSettled)
@@ -731,6 +783,21 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       }
       const bodyText = mergedBody
       const bytes = bytesOf(bodyText)
+      // ★★★ RUN 239 (live run 62 / FEEDBACK62 #2, MEASURED): a replace that DELETES a settlement line is refused by
+      // name instead of being reported after the fact. The receipt already said `bodyLinesDropped`, but a receipt after
+      // the destruction is an epitaph: the settled probability was gone and the card read as undecided. The two honest
+      // ways forward are named in the refusal - `bodyMode:"merge"` (what this write names wins, every other line
+      // survives) or `confirmDestructive:true` when the deletion IS the intent.
+      if (updating && bodyGiven && bodyModeUsed === 'replace' && confirmDestructive !== true) {
+        const beforeKeys = cardLinesOf(oldText)
+        const afterKeys = cardLinesOf(bodyText)
+        const lost = SETTLEMENT_LINES.filter((k) => beforeKeys.indexOf(k) !== -1 && afterKeys.indexOf(k) === -1)
+        if (lost.length > 0) {
+          mark(fired, K.bodyCapBytes)
+          throw deny('VMU_RECORD_DESTRUCTIVE_WRITE', 'this replace would delete the settlement-bearing line(s) ' + lost.join(', ') + ' from record ' + String(updating.id) + ': the card would read as undecided after the write',
+            'pass bodyMode:"merge" so the lines this write does NOT name survive (a correction changes named fields, it does not re-create the card), or pass confirmDestructive:true when deleting them is what you mean', [K.bodyCapBytes], 'put')
+        }
+      }
       mark(enforced, K.bodyCapBytes)
       if (bytes > bodyCapBytes) { mark(fired, K.bodyCapBytes); counters.bodyTruncated += 1; fire('records/body-truncated', { at: now(), bytes, cap: bodyCapBytes, mode: truncateMode }) }
       mark(enforced, K.retentionMaxBytes)
@@ -820,6 +887,8 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         if (JSON.stringify(mergedTags) !== JSON.stringify(updating.tags)) changed.tags = [updating.tags.slice(), mergedTags]
         if (mergedPermanent !== (updating.permanent === true)) changed.permanent = [updating.permanent === true, mergedPermanent]
         if (mergedBy !== (updating.by === undefined ? null : updating.by)) changed.by = [updating.by === undefined ? null : updating.by, mergedBy]
+        const ownerBefore = updating.owner === undefined || updating.owner === null ? (updating.by === undefined ? null : updating.by) : updating.owner
+        if (mergedOwner !== ownerBefore) changed.owner = [ownerBefore, mergedOwner]
         markAll(enforced, [K.historyStoreMode, K.historyDepth])
         if (Object.keys(changed).length === 0) mark(fired, K.historyStoreMode)
         pushVersion(updating, { by: mergedBy, reason: 'put-update (' + bodyModeUsed + ')', changed })
@@ -834,6 +903,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         updating.rev = (Number.isInteger(updating.rev) ? updating.rev : 1) + 1
         updating.updatedAt = at
         updating.by = mergedBy
+        updating.owner = mergedOwner
         updating.state = 'live'
         rec = updating
         fieldsReplaced = Object.keys(changed)
@@ -841,7 +911,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         rec = {
           id, track, kind: String(mergedKind), title: mergedTitle, slug, body: bodyText, tags: mergedTags, bytes,
           fingerprint: fp, permanent: mergedPermanent, state: 'live', rev: 1, createdAt: at, updatedAt: at,
-          by: mergedBy, versions: [], trashedAt: null, purgeAt: null,
+          by: mergedBy, owner: mergedOwner, versions: [], trashedAt: null, purgeAt: null,
         }
       }
       // ★★ RUN 174 (run 19 F3/F10 — AN ID LIVES IN EXACTLY ONE TRACK): a put that names an EXISTING id while naming a
@@ -899,7 +969,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           ? 'this write named no body, so the row KEPT its body (' + bytesOf(oldText) + ' bytes): an update is a correction, not a re-creation'
           : (bodyModeUsed === 'append'
             ? 'the previous body was KEPT and this text was added after it (' + bytes + ' bytes now); pass bodyMode:"replace" to swap the whole body'
-            : 'the body was REPLACED by this write (' + bytes + ' bytes); the write is listed in records.history as a version (vmu.records.history.storeMode:"full" keeps the whole previous text, "diff" names the changed fields and their sizes), so it is reported, not silent'))
+            : (bodyModeUsed === 'merge'
+              ? 'the body was MERGED: the lines this write named replaced their counterparts and every other line survived (' + bytes + ' bytes now); the previous text is listed in records.history'
+              : 'the body was REPLACED by this write (' + bytes + ' bytes); the write is listed in records.history as a version (vmu.records.history.storeMode:"full" keeps the whole previous text, "diff" names the changed fields and their sizes), so it is reported, not silent')))
       // ★★★ RUN 238 (run 61 / FEEDBACK61 B, MEASURED): `bodyModeUsed:"replace"` said the body was replaced and left it at
       // that, so a caller reading `updated:true` + `fieldsKept` concluded "this was an incremental update" while the CARD's
       // own lines (proofRef / proofState / debateRuling) were gone. A replace is a rewrite of the content, and the receipt

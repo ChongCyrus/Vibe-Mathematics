@@ -47,7 +47,9 @@ ok(/member:\s*\{\s*type:\s*'string'/.test(cardBlock), '8 `member` is a DECLARED 
 ok(/const by = has\(args\.member\) \? str\(args\.member\) : null/.test(toolsSource),
   '9 gatedCardHandler derives the author from args.member')
 const recordsSource = read('vibe-math-vmu/kernel/records.js')
-ok(/owner: rec\.by/.test(recordsSource), '10 the record\'s owner IS `by` (attribution is a kernel fact, not prose)')
+// RUN 239: `owner` is now a STORED field, so a correction by another seat cannot silently transfer ownership;
+// `by` is reported separately as the WRITER. What this contract still means: with no explicit transfer the owner is the author.
+ok(/owner: rec.owner === undefined || rec.owner === null ? rec.by : rec.owner/.test(recordsSource), '10 the record owner defaults to `by` and only changes by an explicit transfer (attribution is a kernel fact, not prose)')
 
 // ── 4. teeth: the two texts are NOT the same paragraph (a single copy would satisfy neither side honestly)
 ok(!cardBlock.includes('记录本契约') && !fixtureText.includes('REGISTRAR DUTY'),

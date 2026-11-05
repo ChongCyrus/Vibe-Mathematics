@@ -2275,6 +2275,85 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     },
   } : null
   meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam, ballot: meetingBallot, members: memberRef, foreignIds: () => [...liveMeetings.keys()],
+    // ★★★ RUN 239-D: THE WAKE SEAM. `createMeetings` has accepted a `wake` option since the invitation path needed it,
+    // and `kernel/meetings.js` grew a real waiter table (wait/unwait, event settle, deadline sweep) - but a fired waiter
+    // could only ever report `via:"none"` in a real deployment, because NOBODY passed this option. A member that waits
+    // is not a resident process: the framework delivers it an ACTIVATION, and the roster seam is the one door that does
+    // that (`members.wake(id, ask)` -> the injected `deliver` envelope, which the host answers by running that seat's
+    // turn). So the seam is the roster's own wake, and it is deliberately NON-THROWING here: the meeting event has
+    // already happened when this runs, and `wakeFailurePolicy` (not an exception) decides what a failed delivery means.
+    // ★ The roster answers ASYNCHRONOUSLY, so the value handed back is `{ pending:true, promise }` - never a claim that
+    // the member was woken; `deliverWaiterWake` settles `waiter.wake` in place and says so on the bus.
+    wake: (note) => {
+      const target = note && note.member ? String(note.member) : ''
+      if (target === '') return { ok: false, error: 'a waiter wake names no member' }
+      // ★ `memberRef` IS the roster proxy (it resolves the current member service per property read); `.current` was
+      // invented by an earlier draft and is always undefined, which would silently route every wake to the loop
+      // fallback and make a deployment WITH a delivery transport look like one without.
+      const roster = memberRef || null
+      const ask = 'meeting ' + String((note && note.meeting) || '?') + ': ' + String((note && (note.event || note.until)) || 'the event you waited for')
+        + ' has happened — you were waiting for it (waiter ' + String((note && note.waiter) || '?') + '). Take your turn now.'
+      // ★ TWO TRANSPORTS, ONE QUESTION ("wake this seat"). A deployment that injects a member DELIVERY transport
+      // (inbox write, subagents.sendMessage - anything that starts that seat's session) is woken through the roster.
+      // A deployment with NO such transport still has the turn loop, and running one round for that seat IS the wake
+      // (the loop opens the turn, assembles the prompt and hands it to its own delivery seam). The old behaviour -
+      // report `via:"none"` and do nothing - was the thing the user called out: a wait that nobody can ever satisfy.
+      // The loop is therefore the fallback for BOTH "no roster at all" and "roster, but no delivery transport bound";
+      // any other error is the real answer and is reported as such.
+      const loop = typeof turn !== 'undefined' && turn && typeof turn.drive === 'function' ? turn : null
+      // ★ RUN 239-E (regression measured by tests/vmu-run236-refusal-attribution.test.mjs and the convene path): an
+      // INVITATION is durable mail, not a live wake. Convening calls this seam once per invited member
+      // (the `invitation` block of `vibe-math-vmu/packs/v5r/tools.js`), and driving a round from inside the convene
+      // call parked a member
+      // prompt that the caller never asked for - so a later `turn reply` found an open turn that no step had opened.
+      // A WAITER wake is different: it is the event the member asked to be woken by, so that one may run a round.
+      const isWaiterWake = !!(note && (note.waiter || note.until || note.event))
+      const driveOneRound = () => {
+        // ★ The caller-played delivery seam keeps ONE parked prompt. Driving a round while another prompt is still in
+        // the caller's hands is refused by the loop itself (`VMU_TURN_ALREADY_PARKED`) — but a REJECTED promise from
+        // here would be an unhandled rejection (measured: node 24 kills the process), and the loop has already said
+        // the honest thing. So the parked prompt is checked FIRST and the answer is a named refusal that still leaves
+        // the fired waiter on the ledger (a fired waiter is never lost, only not-yet-delivered).
+        let parked = null
+        try { parked = typeof loop.awaitingCaller === 'function' && loop.awaitingCaller() === true ? { member: null } : null } catch { parked = null }
+        if (parked === null) {
+          try { parked = loop.deliver && typeof loop.deliver.pending === 'function' && loop.deliver.pending() ? { member: null } : null } catch { parked = null }
+        }
+        if (parked !== null) {
+          return { ok: false, error: 'the turn loop is still holding a parked caller prompt: answer it (vibe_v5_turn op:"step" with that reply) and the fired waiter stays on the ledger for the next round — the wake was DUE, it simply had no free turn to arrive in' }
+        }
+        try {
+          const p = loop.drive({ members: [target], rounds: 1, why: ask })
+          // A rejected drive must reach the waiter's settle handler, never the process: the settle path is what turns
+          // `pending` into `delivered:false` with a real reason.
+          const safe = p && typeof p.then === 'function' ? p.catch((e2) => ({ ok: false, error: String((e2 && e2.message) || e2) })) : p
+          if (safe && typeof safe.then === 'function') return { ok: true, pending: true, promise: safe }
+          return { ok: false, error: 'the turn loop returned no promise, so this wake cannot be reported as attempted' }
+        } catch (e2) { return { ok: false, error: String((e2 && e2.message) || e2) } }
+      }
+      // ★★★ THE LOOP IS THE ACTIVATION CHANNEL, NOT THE FALLBACK. In this framework a seat has no resident process:
+      // `turn.drive` opens that seat's turn and hands the prompt to whichever delivery seam the loop was built with
+      // (subagents in a real deployment, a parked caller prompt in caller mode). `members.wake` is the OTHER door and
+      // it needs a wake-shaped transport; the kernel's `deliver` option is the REPORT transport (inbox rows shaped
+      // `{name,text,to}`), so handing a wake envelope to it is a shape error, not a wake (measured: mailbox refused
+      // "a message needs non-empty text"). The loop is therefore tried FIRST whenever it exists.
+      if (loop && !isWaiterWake) {
+        return { ok: false, error: 'this wake is an INVITATION, and an invitation is durable MAIL, not a live wake: the member will see it at its next turn or through vibe_v5_inbox. Only a waiter wake - the event a member asked to be woken by - runs a round from inside the meeting action' }
+      }
+      if (loop) return driveOneRound()
+      if (!roster || typeof roster.wake !== 'function') {
+        return { ok: false, error: 'this kernel has neither a turn loop nor a member roster, so a fired waiter cannot be woken' }
+      }
+      let out = null
+      try { out = roster.wake(target, ask, { phase: 'meeting' }) } catch (e) {
+        const code = (e && e.code) || null
+        if (code === 'VMU_ENGINE_UNAVAILABLE' && loop) return driveOneRound()
+        return { ok: false, error: String((e && e.message) || e) }
+      }
+      if (out && typeof out.then === 'function') return { ok: true, pending: true, promise: out }
+      if (out && out.ok === false) return { ok: false, error: String((out.refused && (out.refused.message || out.refused.code)) || 'the roster refused the wake') }
+      return { ok: true, woken: true }
+    },
     // ★ RULE (v5r: 会议只能由院士召开/关闭): the chair's seat may be used only after the chair took a turn. LATE-BOUND on
     // purpose - `turn` is constructed below this line, and the predicate must never run during construction.
     // ★ ROUND 35 / task-24: TWO READERS, ONE QUESTION. ① this instance really ran the chair's turn (the historical,

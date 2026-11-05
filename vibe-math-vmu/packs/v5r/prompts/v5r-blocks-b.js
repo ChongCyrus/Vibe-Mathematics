@@ -706,8 +706,14 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       // The name must NOT start with `v5r-meeting-`: that prefix is the namespace of the four mutually exclusive speaker
   // states, and a test asserts there are exactly four because the exclusivity IS the mechanism. The agenda is not a
   // state - it is the same in every meeting - so it lives in the turn namespace instead.
-  // The values are the ones the corpus captured; the frame supplies its own for a real round.
-      meeting: '议程：分工与下一步（类型：ordinary）',
+  // ★★★ RUN 239 (live run 62 / FEEDBACK62 #4, MEASURED): THE CORPUS VALUE WAS SERVED AS IF IT WERE THE ROUND'S OWN.
+  // The frame printed `议程：分工与下一步（类型：ordinary）` verbatim, so a member whose turn was bound to m1 (a `debate`
+  // whose agenda was「确认命题; 分配复核」) read a different type and a different agenda, with no id anywhere to check
+  // against - the receipt said `roundMeeting:"m1"` and the prompt said `ordinary`. The four values are now FACTS of the
+  // bound meeting, supplied per turn by the loop (`kernel/turn/index.js`, the `meetingFacts` block); the corpus string is
+  // only the shape, never the content. An unbound turn does not print a type it did not read: the delivery line says
+  // 「本回合没有绑定会议」and the grid says「未提供」- a hole a reader can SEE, which is the honest form of "no meeting".
+      meeting: '议程：{{ setting:vmu.turn.meetingAgenda }}（类型：{{ setting:vmu.turn.meetingType }}，主席：{{ setting:vmu.turn.meetingChair }}）。本轮绑定该会议：回复第一句请写明会 id（{{ setting:vmu.turn.meetingId }}）。',
     },
   },
   {
@@ -826,13 +832,22 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · **只有院士席（chair）**能 `{ action: "adopt", draft: "<草稿 id>" }` 采纳：采纳后成为唯一生效版本，并取代上一版。别的席位调用会被具名拒。',
         '  · **共同设计**：草稿须院士席与常驻研究员席各一人署名才可采纳（缺一席具名拒 `VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN`）。',
         '  · **按时更新**：`state` 的 `freshness` 给年龄与逾期（逾期采纳回执 `overdueUpdate`）；它同时给出生效版本、采纳时间与草稿队列，蓝图行也能用 `vibe_v5_read_library { track: "blueprint" }` 读。'
-        + '\n  · **正文的唯一真相是一份 md**（`Shared/Protocol.md`，回执 `md.path`/`md.absPath`）：propose/adopt 都先写 md 再登记索引；`vibe_vmu_records { action: "reindex" }` 按 md 的 status/revision 重建索引（`dryRun:true` 只看不写），`prune` 只动索引、**不删 md**。',
+        // ★★★ RUN 239 (live run 62 / FEEDBACK62 #2, MEASURED): THE SENTENCE SAID propose/adopt BOTH WRITE THE MD. The
+        // measurement says otherwise: a proposal registers an INDEX ROW only (its receipt carries `md.written:false`,
+        // `md.deferredTo:"adopt"`) and ONLY adopting writes `Shared/Protocol.md` — because an unadopted draft must not
+        // displace the document in force. A prompt that promises a file write the face does not perform teaches a
+        // reader to look in a path that is empty (or worse, holds the previous adopted revision) and call it theirs.
+        + '\n  · **生效正文只在 md**（`Shared/Protocol.md`）：**只有 adopt 写 md**——propose 只登记索引行（`md.written:false`、`deferredTo:"adopt"`；草案不许顶替生效文档）；`reindex` 按 md 重建索引，`prune` 只动索引、**不删 md**。',
       ].join('\n'),
       temp: [
-        '【蓝图】长期方案只能由院士席采纳；你可以用 `vibe_v5_blueprint { action: "propose" }` 提交草稿，`{ action: "state" }` 可读生效版本与逾期提示。正文在一份 md 里（回执 `md.path`），索引坏了用 `reindex` 按 md 重建。',
+        // ★★★ RUN 239 / FEEDBACK62 #2: same lie in the short variants — a draft is an INDEX ROW, only adopting writes
+        // the md. A temp that reads "正文在一份 md 里" goes looking for a file its own propose never wrote.
+        '【蓝图】长期方案只能由院士席采纳；你可以用 `vibe_v5_blueprint { action: "propose" }` 提交草稿，`{ action: "state" }` 可读生效版本与逾期提示。草案只登记索引行（`md.written:false`、`deferredTo:"adopt"`），正文只在 adopt 时写进 md，索引坏了用 `reindex` 按 md 重建。',
       ].join('\n'),
       researcher: [
-        '【蓝图】长期方案写在蓝图里：`vibe_v5_blueprint { action: "propose", path: "…", text: "…" }` 提交草稿（仅院士席可 adopt）；`{ action: "state" }` 读生效版本与 `freshness`。**共同设计**：草稿要院士席与你各署名；另一席续写同一份。正文落在一份 md（回执 `md.path`），`prune` 不删 md、`reindex` 按 md 重建索引。',
+        // ★★★ RUN 239 / FEEDBACK62 #2: the researcher is the codesigner who hands a draft to the chair, so the one fact
+        // it needs is exactly the one the old sentence got backwards: YOUR draft is a row, the CHAIR\'s adopt is the file.
+        '【蓝图】长期方案写在蓝图里：`vibe_v5_blueprint { action: "propose", path: "…", text: "…" }` 提交草稿（仅院士席可 adopt）；`{ action: "state" }` 读生效版本与 `freshness`。**共同设计**：草稿要院士席与你各署名；另一席续写同一份。草案只登记索引行（`deferredTo:"adopt"`），正文只在采纳时写 md，`prune` 不删 md、`reindex` 按 md 重建索引。',
       ].join('\n'),
     },
   },
@@ -872,12 +887,19 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · ④ 会上发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` 按数组顺序批量入队（`why` 必填）；`invitedspeak` 让被邀者走服务发言面（**没签到**会被具名拒，先 `attend`）；`order` 不带 `members` 时只读队列；带 `members` 是**重排**（必须给 `by`=你自己，非本会出席者具名拒）。`flow`（open/hands/round_robin/call_on）与 `overrideorder` 只由主席做、必须给 reason，寻址的是**服务会议记录**；基线顺序就是**入队顺序**。`vmu.meetings.orderMode` 与 `overrideorder` 在**本部署未声明**，调用会被具名拒 `VMU_ENGINE_UNAVAILABLE`（工具说明里写明这条边界）。',
         '  · ⑤ 时长与兜底：`extend` 是**发言延长**（ms，缺省读 `speechExtendMs`，仍 0 则具名拒）；`extendlimit` 是**会议墙钟上界延长**（★ `extend` 现在跨注册表：SERVICE 会议走服务面，回执 `registry:"service"` 并给 `speechUsed`/`speechExtendMs`；`silent`/`end`/`hands` 仍是 primitive 原语，服务会议上具名拒 `VMU_REGISTRY_BOUNDARY`，发言界读 `vibe_v5_say` 回执的 `speechBound`）；墙钟硬界 `vmu.meetings.hardLimitMs`（默认 1800000ms，钳制 300000–7200000，**没有"无界"**）。**你自己就能给这一场定上界**：`vibe_v5_meeting { durationMs: 900000 }`（整数 ms，30 分钟–2 小时），回执读回 `wallLimitMs`/`wallLimitMsSource`（`convene` 表示你定的，`vmu.meetings.hardLimitMs` 表示部署默认）。只有超过硬界才能用 `lapse` 具名收束，恢复用 `revokelapse`（必须给理由）；`at` 预约、还没开始的会没有墙钟在走，`extendlimit` 要等会议真正开始后才能用。',
         '  · ⑥ 推进成员回合：`vibe_v5_meeting_round { meeting, members?, phase? }` 按序各跑一回合（members 缺省＝除主席外全体在册）；`phase` 取值以工具声明为准（辩论轮可直接写 `debate`，回执会说明它按 `verify-debate` 跑），写错具名拒；回执 `ok:false`+`turnFailed:true`＝这轮没发生，别当成功；`close`/`extendlimit` 要带 `actor`（主席本人）；回执 `roundMeeting` 说明这轮绑定了哪场会（成员回复据此入纪要）；`action:"convene"` 与直接召集等价。',
+        // ★ RUN 239-D (follow-up): a member with nothing to do used to either stay silent forever or burn turns
+        // asking "has anybody spoken yet". The kernel now keeps a DURABLE waiter row and REALLY wakes the seat when
+        // the event fires, so the manual must teach the door that exists: `vibe_vmu_meeting { action:"wait" }` on the
+        // KERNEL face (the pack face `vibe_v5_meeting` only convenes). The words after `until:` are the kernel's own
+        // WAIT_UNTIL_MODES, and a wake is a DELIVERED TURN (a real activation in a live deployment), never a
+        // synchronous answer — a manual that promises "an answer" would be the next measured lie.
+        '  · 等待与唤醒：等会里的事用 `vibe_vmu_meeting { action:"wait", id:"<会 id>", member:"<你>", until:"speak|vote|motion|poll|phase|attend-all|hand|meeting-closed|deadline", timeoutMs:<可选毫秒>, reason:"<可选>" }`：登记是**耐久**的，不是挂起——本回合照样交回；事件发生（发言／动议或附议／投票／相位变更／点名／结会／到点）时内核**唤醒你＝投递一个回合**（真机走激活，回执可能先给 `pending:true`、之后原地结算 `woken`），不是随叫随到的解答。**一次只等一件事**（再登记会替换旧的），别轮询；改主意用 `vibe_vmu_meeting { action:"unwait", id, member }`。',
       ].join('\n'),
       researcher: [
-        '【会议进行中：你的会中动作（只在会议回合出现）】在服务会议上发言前先 `vibe_v5_meeting { action:"attend", id, member }`（签到是座位登记）；想发言用 `hand` 自荐入队，被主席 `invite` 后按队列序；`vibe_v5_say` 回执的 `speechBound` 是你的发言界（`extend` 是主席动作，你自报身份会被拒；`silent`/`end` 在服务会议上具名拒）；等别人回话用 `vibe_v5_wait`，不要轮询。',
+        '【会议进行中：你的会中动作（只在会议回合出现）】在服务会议上发言前先 `vibe_vmu_meeting { action:"attend", id, member }`（签到是座位登记；★ RUN 239-D：`vibe_v5_meeting` 只召集、不派发动作，派发动作都在内核面 `vibe_vmu_meeting`）；想发言用 `hand` 自荐入队，被主席 `invite` 后按队列序；`vibe_v5_say` 回执的 `speechBound` 是你的发言界（`extend` 是主席动作，你自报身份会被拒；`silent`/`end` 在服务会议上具名拒）；等会里的事（发言／动议／投票／结会／到点）用 `vibe_vmu_meeting { action:"wait", id, member, until:"speak|vote|motion|poll|phase|attend-all|hand|meeting-closed|deadline", timeoutMs:<可选> }`——耐久登记，事件发生才唤醒并投递一个回合，别轮询；改主意用 `action:"unwait"`。等**信**才用 `vibe_v5_wait`。',
       ].join('\n'),
       temp: [
-        '【会议进行中：临时席的会中动作（只在会议回合出现）】临时工不是表决者，投票会被具名拒；发言前先 `attend`（签到是座位登记）；被主席 `invite` 邀入队后按顺序发言；等别人回话用 `vibe_v5_wait`。',
+        '【会议进行中：临时席的会中动作（只在会议回合出现）】临时工不是表决者，投票会被具名拒；发言前先 `vibe_vmu_meeting { action:"attend", id, member }`（签到是座位登记，派发动作在内核面 `vibe_vmu_meeting`，`vibe_v5_meeting` 只召集）；被主席 `invite` 邀入队后按顺序发言；等会里的事用 `vibe_vmu_meeting { action:"wait", id, member, until:"speak|vote|motion|poll|phase|attend-all|hand|meeting-closed|deadline", timeoutMs:<可选> }`（耐久登记，事件发生才唤醒并投递一个回合，别轮询；改主意用 `action:"unwait"`）。',
       ].join('\n'),
     },
   },
@@ -983,7 +1005,12 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【脚本归档】脚本要留档，不要每轮现编现跑：留档由所办/控制面按 `scripts` 轨归档并按指纹读回（席位提示词不点名脚本面——本面三个席位的 ACL 都不开放它）；临时脚本**不能** ad-hoc 执行（具名拒 `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS`）；复算＝重跑归档文本比指纹，不是相信备注。',
+        // ★★★ RUN 239 (live run 62 / FEEDBACK62 #3, MEASURED): THE SENTENCE SAID NO SEAT HOLDS THE SCRIPT FACE. Rule C14
+        // was implemented in RUN 236 (the academician's institutional act, `vibe_v5_script { op: "archive" }`), and a
+        // member/temp that reads "三个席位的 ACL 都不开放它" stops asking the one seat that can file the script. The
+        // archive is a COPY, not execution evidence: what makes a recompute credible is re-running the archived text
+        // and comparing fingerprints, never the archived note itself.
+        '【脚本归档】脚本要留档：**归档是院士席（chair）的面** `vibe_v5_script { op: "archive", name, text }`；member/temp 具名拒 `VMU_NOT_PERMITTED`（把脚本交给主席）；归档是**副本**不是执行证据；临时脚本**不能** ad-hoc（具名拒 `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS`）。',
       ].join('\n'),
     },
   }),

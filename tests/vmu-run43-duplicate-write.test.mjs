@@ -75,17 +75,33 @@ console.log('=== VMU RUN43 DUPLICATE WRITE (one act, two doors) ===')
   ok(hit !== undefined, '① the receipt NAMES the skipped field', { skippedDetail: skipped, count: step2.receipt && step2.receipt.skipped })
   ok(hit && hit.reason === 'already-written-this-turn', '① ★ with the reason that says what it is', hit && hit.reason)
   ok(hit && hit.existingId === 'rec-1', '① ★ and cites the row that already exists', hit && hit.existingId)
-  ok(hit && typeof hit.means === 'string' && /ONE door/.test(hit.means), '① ★ and tells the reader how to avoid it (one act, one door)', hit && hit.means)
+  // ★ RUN 239: on the PROGRESS track the guard no longer matches by title, so the sentence is the track's own
+  // ("one turn of progress is one row, whatever the wording") rather than the generic "ONE door" line, which now
+  // belongs to the other tracks. Pin the sentence the reader actually receives.
+  ok(hit && typeof hit.means === 'string' && /one turn of progress is one row/.test(hit.means), '① ★ and tells the reader how to avoid it (one turn, one row)', hit && hit.means)
   ok(step2.receipt && step2.receipt.executed === 0, '① it is NOT counted as executed (no double accounting)', step2.receipt && step2.receipt.executed)
 }
 
-// ② A DIFFERENT TITLE IS A DIFFERENT ACT: the second door still writes.
+// ② ON THE PROGRESS TRACK A DIFFERENT TITLE IS THE SAME ACT (RUN 239): the run-43 guard matched by title, so a member
+// could satisfy "one row of progress per turn" with a second row by rewording it. Measured on run 62 (rec-4 tool door,
+// rec-7 envelope door, 2 ms apart, different wording). The track now decides: progress is one row per (member, turn).
 {
   const ledger = makeLedger({ seed: [{ id: 'rec-1', track: 'progress', kind: 'progress', title: '别的题目', owner: 'm1', createdAt: Date.now() + 60000 }] })
-  const step2 = await runFence(ledger, { progress: { track: 'progress', title: '偶数项和·起点', body: '新题目。' } })
-  ok(step2.ok === true, '② completes', step2.code)
-  ok(ledger.puts.length === 1, '② a different title is a different act, so it is written', ledger.puts.length)
-  ok(ledger.puts[0] && ledger.puts[0].by === 'm1', '② and still attributed', ledger.puts[0] && ledger.puts[0].by)
+  const step2 = await runFence(ledger, { progress: { track: 'progress', title: '偶数项和·起点', body: '换个标题再写一次。' } })
+  ok(step2.ok === true, '② completes (a second progress row is skipped, not refused)', step2.code)
+  ok(ledger.puts.length === 0, '② ★ a different title on the progress track is NOT written this turn', ledger.puts.length)
+  const skipped2 = (step2.receipt && Array.isArray(step2.receipt.skippedDetail)) ? step2.receipt.skippedDetail : []
+  const hit2 = skipped2.find((x) => x && x.field === 'progress')
+  ok(hit2 && hit2.existingId === 'rec-1', '② ★ and the skip names the row that already carries this turn', hit2)
+}
+
+// ②b THE GUARD IS NOT GLOBAL: a different TRACK with a different title is a different act and is written.
+{
+  const ledger = makeLedger({ seed: [{ id: 'rec-1', track: 'progress', kind: 'progress', title: '别的题目', owner: 'm1', createdAt: Date.now() + 60000 }] })
+  const step2 = await runFence(ledger, { progress: { track: 'state', title: '偶数项和·起点', body: '这是另一个轨。' } })
+  ok(step2.ok === true, '②b completes', step2.code)
+  ok(ledger.puts.length === 1, '②b another track with another title is written (the guard is per track, not global)', ledger.puts.length)
+  ok(ledger.puts[0] && ledger.puts[0].track === 'state', '②b and it went to the track it named', ledger.puts[0] && ledger.puts[0].track)
 }
 
 // ③ A DIFFERENT OWNER IS A DIFFERENT ACT (the guard is per-member, not per-title).

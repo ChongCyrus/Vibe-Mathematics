@@ -16697,3 +16697,65 @@ G（被拒回执的 message 不带归属）**本轮不改**：`VMU_NOT_MEMBER` �
    读者看不到。**每加一个读数，都要问「谁把它转述出去」。**
 3. **回执诚实不等于回执有用。** `bodyModeUsed:"replace"` 是真的，但读者要的是「丢了哪几行」；
    `staleValueLines` 也是同理——**同一张卡上两个概率并存，必须在回执里排座次**。
+
+## §336 RUN 239 — 一个回合只能有一行进展、一张卡不能被覆写掉结算、而「等」必须真的有人叫醒你
+
+### 336.1 run 62 的账（FEEDBACK62 十条机制面）
+
+| 编号 | 观测（run 62 回执原文） | 判 |
+| --- | --- | --- |
+| 1 | 主席回合 t-1 留 rec-4（工具写 progress）+ rec-7（回复通道再写一段），`createdAt` 差 2 ms；去重按**文字**判重 ⇒ 换一句话就不算重复 | 「一回合一行进展」可绕 |
+| 2 | rec-3 已 `settled:true` 且带 `debateRuling`，用 `vibe_v5_record_proposition` 改 `value` ⇒ `bodyModeUsed:"replace"`、`bodyLinesDropped:["proofRef","proofState","proofLockDeferred","debateRuling"]`、`settled` 由 true 掉回 false | 覆写静默注销结算 |
+| 3 | rec-3 原 owner `r-1`，以 `member:"r-acad"` 更新后 `owner:"r-acad"`，`by` 进了 `fieldsReplaced` | 写者把归属改成自己 |
+| 4 | 成员会议帧只有 `议程：分工与下一步（类型：ordinary）`，全段不含真会 id `m1`（真会是 `type:"debate"`、议程「确认命题; 分配复核」） | 帧没拿到绑定会 |
+| 5 | `status.spokeBy:[]` 而 `summary` 没有 `spokeBy` | 同一会议两个读面字段集不同 |
+| 6 | 蓝图续写后 base outline（1/1.1）从行上消失、正文两节都在；`state.outlineSource:"row"` vs `read.outlineSource:"request"` | outline 被替换不是合并 |
+| 7 | `state.md.available:true`（读面可用）与 `propose.md.available:false`（这次没写文件）同名不同义；无现行版时 `outlineMeans:"这次修订没有带 outline"` | 同名字段两义 |
+| 8 | `vibe_v5_script {op:"archive", id:"rec-19"}` ⇒ `VMU_INVALID_ARGUMENT`「script archive is missing: text」 | 归档不能按记录 id 导入 |
+| 9 | `vibe_v5_meeting` 的 `agenda` 收了数组（schema 写 string），落成 `materials:"确认命题; 分配复核"`，回执把 `materials` 当议程名 | schema 与回执两个名字 |
+| 10 | 辩论收窄 `narrowed:true` 但 `narrowingInEffect:false`、`reason:"empty-intersect"` | 披露正确，D7 在本部署未生效 |
+
+提示面四条：`【蓝图】`段仍写「propose/adopt 都先写 md」（与 RUN 238 相反）、`【脚本归档】`段仍写「三席都不开放」（与 C14 相反）、会议帧该印真会 id 与类型、progress 措辞该说「一回合同一 track 只留一行」。
+
+### 336.2 修法
+
+1. **一行进展按回合算，不按文字算。** `vibe-math-vmu/kernel/turn/index.js` 的 `alreadyWrittenThisTurn`：先按 (owner, track, title) 精确命中；`progress` 轨再回退到 (owner, track, 本回合窗口) 的首个已写行 ⇒ 第二段不同措辞也具名跳过，`skippedDetail:[{field:'progress',reason:'already-written-this-turn',existingId}]`。
+2. **破坏性写要点头。** `vibe-math-vmu/kernel/records.js`：`BODY_MODES` 增 `merge`（`cardLinesOf`/`mergeCardText` 按 `- key：` 标签合并，未被命名的行原位保留）；更新时若 `bodyModeUsed==='replace'` 且会丢 `debateRuling`/`p1Evidence`/`proofRef` 且没传 `confirmDestructive:true` ⇒ 具名拒 `VMU_RECORD_DESTRUCTIVE_WRITE`，message 点名丢哪几行、hint 同时给 `merge` 与 `confirmDestructive`。
+3. **owner 与 writer 分开。** 更新保留原 `owner`（除非显式传 `owner` 改派）；view 同时给 `owner` 与 `writer`，`fieldsReplaced` 不再把 `by` 冒充成归属变更。
+4. **会议帧拿到绑定会。** `kernel/turn/index.js` 的 `STATUS_BOARD_READ_OPS` 增 `'vmu.meetings': ['summary']`（`facesFrom()` 此前只绑 `FIELD_OWNERS`＋状态板读面 ⇒ `meetingRead` 恒 null、三个 per-turn fact 全空）；四个 fact 从 `summary` 取真 type/chair/agenda，提示词模板引用它们。
+5. **两个读面共用投影。** `kernel/meetings.js` 的 `spokeBlockOf`/`agendaBlockOf` 在 summary、status view、speak 回执、close 回执各 spread 一次；省略要写 `omittedKeys`/`omittedMeans`。
+6. **outline 合并 + 一个口径。** `packs/v5r/blueprint.js` 的 `mergeOutline(base, incoming)`：同 id 原位覆盖、新 id 追加、base 独有保留（`outlineMerged:{added,updated,kept,means}`）；`outlineSource` 四值 `request|draft|row|none` 两读面同一枚举。
+7. **md 块同名同义。** 草案与 state 的 `md` 块都带 `written:false`/`deferredTo`/`canonicalPath`/`writtenNever`/`mdMeans`；`available` 只说读面可用，`written` 只说这次落没落文件。
+8. **归档两种来源。** `packs/v5r/tools.js` 的 script archive 接受 `id:"rec-<n>"`（读行正文、name 默认取行标题、回执 `fromRecord{id,title,bytes}` + `source:'record'`），缺源时点名两条可达路。
+9. **agenda 一个名字。** schema 收 `string|string[]`，回执给 `agenda` + `agendaItems` + `agendaSource`，按 `;；、,\n` 切分。
+10. **等待与唤醒（本轮主线：用户 m32236 的硬要求）。** 内核 `kernel/meetings.js` 增 `waiters` 表＋`wait({meeting,member,until,timeoutMs,reason,at})`／`unwait(...)`：九值 `until`（`speak|vote|motion|poll|phase|attend-all|hand|meeting-closed|deadline`），12 个结算点（proceed/attend/admit/speak/hand/motion/second/vote/recess/resume/close/extendlimit），触发动作回执带 `firedWaiters[{member,until,id,wake}]`，到期由心跳 `sweepDue()` 结算，读面 `waiters` 四态；工具面 `vibe_vmu_meeting {action:"wait"|"unwait"}` 挂在内核面（pack 面只召集、不派发）。
+
+### 336.3 唤醒通道的三次根因（都是「回执诚实但物理上没人被叫醒」）
+
+1. **`memberRef.current` 恒 undefined**：`kernel/index.js` 里 `memberRef` 本身是按属性读解析的 Proxy，`.current` 永远取不到 ⇒ 每次唤醒都掉进「没有 roster」的回退分支，让有交付接缝的部署看起来像没有。改成直接用 `memberRef`。
+2. **内核的 `deliver` 是【报告】传输，不是唤醒传输**：entry 把 `config.deliver` 当报告传输（构造 `{name,text,to}` 走 mailbox），把唤醒信封 `{member,slot,ask,at,role,phase}` 交给它 ⇒ `VMU_INVALID_ARGUMENT`「a message needs non-empty text」。⇒ 唤醒 seam 改成 **回合循环优先**（`turn.drive({members:[target],rounds:1})` 才是真激活），口令注释写「THE LOOP IS THE ACTIVATION CHANNEL, NOT THE FALLBACK」；`roster.wake` 只留给没有回合循环的内核。
+3. **caller 模式的 parked prompt**：`turn.step` 会留一个调用方待答提示词，此时 `drive` 抛 `VMU_TURN_ALREADY_PARKED`。清法实测：`supplyMemberReply(...)` 之后**必须**再 `turn.step({members:['<同一席>'],…})`（传空 members 不清）。回执因此先给 `pending:true`，唤醒结果**原地**结算进 `waiter.wake` 并发 `meetings/woken-after-receipt`。
+   途中真 bug：`sweepDue` 用 `Number(null)===0` 把「没设期限的纯事件等待」当成 deadline 已到 ⇒ 改成 null 单独判定（缺席不是零）。
+
+### 336.4 机器化
+
+- 新套件五份：`tests/vmu-run239-kernel.test.mjs` **87/0**（§1 owner/writer、§2 破坏性闸三态、§3 工具面转发、§4 一回合一行进展、§5 会议帧真 id/type/agenda、§6a–§6q 等待与唤醒含「有回合循环的部署真的开一席回合且报告传输没被当唤醒通道」）、`tests/vmu-run239-meetings.test.mjs` **127/0**（A 读面对齐、B wait/unwait 全路径、快照/restore 耐久）、`tests/vmu-run239-tools.test.mjs` **45/0**、`tests/vmu-run239-blueprint.test.mjs` **37/0**、`tests/vmu-run239-prompts.test.mjs` **47/0**（九词逐字、旧词表消失、门名指内核面）。
+- 既有套件按新合同更新：`tests/vmu-run238-feedback61.test.mjs` 67/0、`tests/vmu-run236-frame-and-progress.test.mjs` 38/0（§0f 从「不要再调」改成「写过 progress 就别再调」——句子在，理由换成真的判重键）。
+- 契约：`vibe-math-vmu/docs/03-interface-contract.md` 给 `vmu.meetings` 增加 `wait`/`unwait`/`sweepDue` 三行，`vibe_vmu_meeting` 的 action 枚举加 `wait|unwait`；`generate-surface-index`/`generate-kernel-index` 重跑。
+- 提示词：`v5r-blocks-b.js:896` 新增「等待与唤醒」教学（九词与内核词表逐字一致、耐久不是挂起、`pending→woken`、一次一件事、别轮询）；同段修两处**门名错误**（researcher/temp 的 `vibe_v5_meeting {action:"attend"}` 改内核面 `vibe_vmu_meeting`）。`audit-prompt-budget --check` PASS（chair verify 35978 ≤ 36000，剩 22 字符；member 29868、temp 26986）。
+
+
+- 全量门禁三轮（每轮都是干净树、k=3、含归档跳过）：第一轮 `TOTAL 750 PASS 743 FAIL 7`、第二轮 `TOTAL 750 PASS 749 FAIL 1`、第三轮 `TOTAL 750 PASS 750 FAIL 0 (suites 670 · probes 80)`（日志 `/d/_tmp/t1-r3320-run239.log`、`/d/_tmp/t1-r3340-run239b.log`、`/d/_tmp/t1-r3360-run239c.log`）。七条红全是**别处的既有套件撞上本轮的新合同**，没有一条是本轮功能做错：①`vmu-member-registration-contract` pin 的 `owner: rec.by` 已不成立（owner 现在是存储字段，缺省才取 by）；②`vmu-run22-findings` pin 信封嵌套，而本轮把成功/拒绝两条分支统一成同一形状；③`vmu-run43-duplicate-write` 两条断言钉在旧 progress 规则上（「换标题就是另一件事」现在是错的，progress 轨按 (member, 本回合) 判重）；④`vmu-v5r-verdict-final` 在已结算卡上做无 bodyMode 的重写，被新闸具名拒——修法是让那次重写说 `bodyMode:"merge"`（它只想改陈述，不想毁证据）；⑤`audit-declaration-criterion` 判新套件一处 `.every()` 为空真；⑥`audit-planned-names` 要求计划行写出「能力＝action `motion`」；⑦`vmu-run210-feedback46` §1g 正是本轮新闸与「延迟锁要可更正」的交汇点——改成先断言具名拒且 hint 点名两条路（有门不是墙），再用 `merge` 完成更正。
+- 教训（本轮写进 336.6 之外单列）：**一条断言若只能靠「合法动作被拒」成立，它守的是墙不是门**；反过来，**新门上线时必须回头找「曾经允许那条路径」的既有套件**，否则它们是下一轮全量的红。
+### 336.5 未闭合
+
+1. `vibe-math-vmu/kernel/members.js:210` 的 `wake()` 仍把报告传输当唤醒接缝传给 `deliver`（形状不匹配）。本轮用「回合循环优先」绕开它，**没有修根**；正确做法是给 members 单独的 `wakeSeam`，或让 entry 区分报告传输与唤醒传输。
+2. `agendaclose` 仍没有 waiter 结算点（若加该动作，需在那处调同一个 `settleReceipt`）。
+3. `wait({member:'nobody'})` 在未注入 members 接缝的内核里不拒（`isMember` 默认放行）；真机部署由名册面兜住而未暴露，但内核侧仍缺一道具名拒。
+4. 本轮未在真机复验（第 63 次真机在 RUN 239 提交之后起跑）。
+
+### 336.6 三条教训
+
+1. **「一回合一行」如果是按文字判重，它就等于没判重。** 判重要按**身份与窗口**（谁、哪一回合、哪条轨），不按作者写的那句话。
+2. **覆写是默认动作时，任何「改一个字段」都可能顺手删掉结算。** 破坏性写必须让人点头，或者由内核按标签合并。
+3. **「等」不是状态，是一次未来的投递。** 登记一张耐久行容易，难的是让**事件**真的把那一席叫醒——而在这个部署里，叫醒的唯一通道是回合循环；报告传输只是信。

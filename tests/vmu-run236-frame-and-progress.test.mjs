@@ -96,8 +96,10 @@ try {
       '§0c the meeting frame asks the prompt pipeline for that reading')
     ok(turnSource.includes('progressWrittenThisTurn'), '§0d the duplicate-progress guard exists')
     ok(turnSource.includes('skipped-duplicate'), '§0e and its coercion names the skip (not a generic "converted")')
-    ok(replyChannelSource.includes('不要再调 vibe_v5_record_progress'),
-      '§0f the taught reply field tells the member one progress route per turn')
+    // RUN 239: the sentence stays, but the taught reason changed from 'do not call it again' to the real contract
+    // ('one turn of progress is one row, whatever the wording'), so the pin follows the sentence that now exists.
+    ok(replyChannelSource.includes('写过 progress 就别再调 `vibe_v5_record_progress`'),
+      '§0f the taught reply field tells the member one progress route per turn (and names the guard, not just the advice)')
   }
 
   // ── §1 THE FRAME CARRIES THE REAL BOUND MEETING ID ──────────────────────────────────────────────────────────

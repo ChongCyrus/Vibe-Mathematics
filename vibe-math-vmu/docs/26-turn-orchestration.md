@@ -4148,3 +4148,42 @@ member 29 810、temp 26 904）。**先删再写**是预算下唯一可持续的�
 - `tests/vmu-run238-feedback61.test.mjs` **58/0**（含真票结算路径：三席 attend + 动议 + 附议 + 三票）。
 - 旧合同两套改到新合同：`vmu-run225-blueprint-md` **140/0**、`vmu-run236-blueprint-outline` **52/0**。
 - 定向回归 `TOTAL 39 PASS 39 FAIL 0`。
+
+## ROUND 239
+
+### 「等」是一次未来的投递，不是一个状态
+
+用户问得直白：wait 不需要挂起进程，机制上就是「会议相关事件发生时自动唤醒，否则继续等」。
+对——所以这一轮把「等」落成**耐久登记 + 事件唤醒**，形状与 `wait_agent`／`job_output` 同构。
+
+- 登记：`vibe_vmu_meeting { action:"wait", id, member, until, timeoutMs, reason }` ⇒ 一行 waiters
+  （`armed|fired|expired|cancelled` 四态，按 armedAt 排序），本回合照常交回，**不挂起**。
+- 触发：12 个结算点（proceed／attend／admit／speak／hand／motion／second／vote／recess／resume／close／extendlimit）
+  在回执里带 `firedWaiters[{member,until,id,wake}]`；`deadline` 由心跳 `sweepDue()` 结算。
+- 唤醒：`wake` 走**回合循环**（`turn.drive({members:[target],rounds:1})`）——这个部署里叫醒一席的唯一通道
+  就是给它开一个回合；报告传输只是信，不是门铃。回执先给 `pending:true`，结果**原地**结算进 `waiter.wake`，
+  并发 `meetings/woken-after-receipt`。
+
+### 三个「回执诚实但没人被叫醒」的根因
+
+1. `memberRef` 是 Proxy，`.current` 恒 undefined ⇒ 唤醒永远走「没有名册」的回退分支。
+2. entry 的 `deliver` 是**报告**传输（`{name,text,to}` 走 mailbox），把唤醒信封塞进去 ⇒ 「a message needs non-empty text」。
+3. caller 模式下 `turn.step` 留一个待答提示词，`drive` 抛 `VMU_TURN_ALREADY_PARKED`；清法是交回该席的回复后
+   **再** `step({members:['<同一席>']})`（传空 members 不清）。
+
+### 同批的五处「同一件事两个名字」
+
+- 一回合一行进展：判重键从**文字**改成 (member, 本回合)：换句话写第二段也具名跳过，并点名已有行 id。
+- 卡覆写：`bodyMode` 增 `merge`；会丢 `debateRuling`/`p1Evidence`/`proofRef` 的 replace 在没点头时被
+  `VMU_RECORD_DESTRUCTIVE_WRITE` 拒，message 点名丢哪几行。
+- owner 与 writer：更新保留原 owner，`by` 只记写者；改派要显式传 `owner`。
+- 会议帧：三个 per-turn fact 从 `summary` 取真 type/chair/agenda（此前 `facesFrom()` 没绑 `summary` ⇒ 恒空）。
+- 蓝图 outline 与 md 块：续写按 id 合并（`outlineMerged`），`outlineSource` 四值共用一个枚举；`md.available`（读面可用）
+  与 `md.written`（这次落没落文件）分开。
+
+### 机器化
+
+- 新套件：`vmu-run239-kernel` **87/0**、`vmu-run239-meetings` **127/0**、`vmu-run239-tools` **45/0**、
+  `vmu-run239-blueprint` **37/0**、`vmu-run239-prompts` **47/0**。
+- 旧合同两套更新：`vmu-run238-feedback61` 67/0、`vmu-run236-frame-and-progress` 38/0。
+- 提示词预算：chair verify **35978** ≤ 36000（剩 22 字符，verify 相位历史水位），member 29868、temp 26986。

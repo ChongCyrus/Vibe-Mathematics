@@ -169,6 +169,10 @@ export function draftMdDeferred({ path = '' } = {}) {
     format: BLUEPRINT_MD_FORMAT, atomic: null, replaced: false, deferredTo: 'adopt',
     // the file a draft WOULD touch if it were adopted — named so the receipt answers "so where is my text?"
     canonicalPath: wanted === '' ? null : wanted,
+    // ★★★ RUN 239-B: the same shape a READ prints (`state.md`), so `available`/`written` mean one thing everywhere:
+    // here available:false names THIS CALL's outcome ("no file was written"), not "this deployment has no md face".
+    writtenNever: true,
+    mdMeans: 'available:false 说的是「这次写没有落文件」（草案不写文件，正文在行里，deferredTo:"adopt"）；它不表示这台部署没有 md 读面——读面可不可用看 state.md.available。written:false 说的是这次调用有没有写文件：草案写的是索引行，不是文件',
     means: 'a DRAFT writes no md file: its text lives in this index row until the chair adopts it — adoption is the only writer of '
       + (wanted === '' ? 'the canonical document' : wanted)
       + ' (RUN 238: an unadopted draft used to overwrite the document in force, and pruning the draft did not restore it; now an unadopted draft cannot displace what is in force)',
@@ -422,6 +426,75 @@ function parseOutlineField(value) {
 }
 
 /**
+ * ★★★ RUN 239-B (run 62 / FEEDBACK62 ②, MEASURED): two read faces reported the SAME row with different
+ * `outlineSource` values — `state` said "row" while `read` said "request" (its default), so a reader comparing the two
+ * receipts had to guess which one was lying. They were not lying about different facts: both read the outline stored in
+ * the row. A source name is only useful if every face means the same thing by it, so the enum is defined ONCE here and
+ * every receipt carries the sentence for its value:
+ *   request = the WRITE call itself carried an outline (it was stored into this revision)
+ *   draft   = the write call carried none, so the outline inherited from the draft being continued / adopted
+ *   row     = a READ: what is reported is the outline stored on this row (a read request has no outline argument)
+ *   none    = this revision has no outline (an explicit empty list, not an omission)
+ */
+const OUTLINE_SOURCE_MEANS = Object.freeze({
+  request: 'request = 这次写入调用自己带了 outline（写进这一版）；它说的是这次调用带了什么，不是读面从哪里读到的',
+  draft: 'draft = 这次写入调用没带 outline，用的是被续写/被采纳草案上的那一套（同 id 的项按续写规则合并，旧项不丢失）',
+  row: 'row = 读面报告的是这一行上存着的 outline：读请求没有 outline 参数，所以读到的就是行上的原文——state 与 read 都读同一行时给出同一个 row，不会一面说 row、另一面说 request',
+  none: 'none = 这一版没有 outline（空表是明确的空，不是回执忘了问）',
+})
+
+/** The sentence a receipt prints beside its `outlineSource` value (see the ★ block above). */
+export function outlineSourceMeansOf(source) {
+  const name = txt(source)
+  return OUTLINE_SOURCE_MEANS[name] === undefined
+    ? 'outlineSource 只取 ' + Object.keys(OUTLINE_SOURCE_MEANS).join('|') + '，读到 "' + name + '" 说明这个回执不是本模块产的'
+    : OUTLINE_SOURCE_MEANS[name]
+}
+
+/**
+ * ★★★ RUN 239-B (run 62 / FEEDBACK62 ①, MEASURED): a CONTINUATION REPLACED the base outline. The draft row carried
+ * `[{id:"1"},{id:"1.1"}]`; a second designer continued it with `[{id:"2"},{id:"2.1"}]` and the row afterwards held only
+ * 2/2.1 — the base outline vanished while BOTH text sections were still there. The text is composed (base + sections),
+ * so the outline must compose too: a continuation MERGES by id (same id = later writer overrides title/depth, new id is
+ * appended, ids only the base had are kept). A NEW revision still takes its outline as given — there is no base to merge
+ * with, and `added` then lists every id it carries.
+ */
+function mergeOutline(base = [], incoming = []) {
+  const baseList = Array.isArray(base) ? base : []
+  const incomingList = Array.isArray(incoming) ? incoming : []
+  const outline = baseList.map((e) => ({ id: txt(e.id), title: txt(e.title), depth: Number(e.depth) }))
+  const added = []
+  const updated = []
+  const kept = []
+  for (const item of incomingList) {
+    const id = txt(item && item.id)
+    const index = outline.findIndex((e) => e.id === id)
+    const next = { id, title: txt(item && item.title), depth: Number(item && item.depth) }
+    if (index >= 0) { outline[index] = next; updated.push(id) } else { outline.push(next); added.push(id) }
+  }
+  for (const entry of outline) {
+    if (updated.indexOf(entry.id) < 0 && added.indexOf(entry.id) < 0) kept.push(entry.id)
+  }
+  return { outline, added, updated, kept }
+}
+
+/** The receipt reading of a merge (or of a fresh revision's outline), with the sentence that says which happened. */
+function outlineMergedReading({ merged, continued, provided }) {
+  const base = '本次 outline 处理：' + (continued
+    ? (provided
+      ? '续写按 id 合并到行上已有的骨架——同 id 覆盖 title/depth（updated）、新 id 追加（added）、只有 base 才有的 id 原样保留（kept）'
+      : '续写没有带 outline：行上已有的骨架原样保留（kept），不合并也不清空')
+    : '起新 revision 直接采用本次提供的一套（覆盖语义：不与上一版合并，added 列出它带的每个 id）')
+  return {
+    added: merged.added.slice(),
+    updated: merged.updated.slice(),
+    kept: merged.kept.slice(),
+    means: base + '；结果共 ' + String(merged.outline.length) + ' 项（added ' + String(merged.added.length)
+      + ' / updated ' + String(merged.updated.length) + ' / kept ' + String(merged.kept.length) + '）',
+  }
+}
+
+/**
  * ★ RUN 236 — the G8 reading a receipt prints. Absent is EXPLICIT (`[]` + `outlineCount: 0` + a means that says the
  * structure was optional), never omitted: a reader must be able to tell "no outline" from "the receipt forgot to ask".
  * `outlineRequired` is the deployment's ASK (`vmu.blueprint.requireOutline`), and it is a HINT: the receipt says the
@@ -431,11 +504,15 @@ export function outlineReading({ outline = null, requireOutline = false, source 
   const list = (Array.isArray(outline) ? outline : []).map((e) => ({ id: txt(e && e.id), title: txt(e && e.title), depth: Number.isInteger(e && e.depth) ? e.depth : 1 }))
   const required = requireOutline === true
   const depthMax = list.reduce((max, e) => Math.max(max, e.depth), 0)
+  // ★★★ RUN 239-B: ONE enum for every face. An empty list is `none` regardless of who passed it; a non-empty list names
+  // where it came from, and the sentence for that value travels with it (see OUTLINE_SOURCE_MEANS).
+  const sourceName = list.length === 0 ? 'none' : txt(source)
   return {
     outline: list,
     outlineCount: list.length,
     outlineDepthMax: depthMax,
-    outlineSource: list.length === 0 ? 'none' : source,
+    outlineSource: sourceName,
+    outlineSourceMeans: outlineSourceMeansOf(sourceName),
     outlineRequired: required && list.length === 0,
     outlineRequiredSource: required ? BLUEPRINT_OUTLINE_REQUIRE_KEY : null,
     outlineMeans: list.length === 0
@@ -587,10 +664,26 @@ export function blueprintMdReading({ records, path, row = null } = {}) {
   const wanted = rowMdPath !== '' ? rowMdPath : txt(path)
   const indexFingerprint = row === null || row === undefined ? null : (txt(row.fields && row.fields[BLUEPRINT_MD_KEY]) || null)
   const indexRevision = row === null || row === undefined || !Number.isInteger(row.revision) ? null : row.revision
+  // ★★★ RUN 239-B: the facts every md block now prints beside its comparison (see the ★ block inside `unavailable`).
+  const isDraftRow = row !== null && row !== undefined && txt(row.status) === 'draft'
+  const canonicalPath = txt(path) === '' ? null : txt(path)
+  const mdFaceMeans = ({ isDraftRow: draftRow, canonicalPath: canonical }) => 'available 说的是「这个部署有没有 md 读面 / 索引能不能拿到文件」，written 说的是「这次调用有没有把文件落到磁盘」——两者不是一回事：读面 available:true 可以同时是 exists:false（草案还没落成），而 written 在读面上恒为 false（读永远不写）。'
+    + (draftRow
+      ? ' 这一行是草案：writtenNever:true（草案从不写文件，正文在行里），deferredTo:"adopt"（adopt 是唯一写文件的动作），文件位置 canonicalPath=' + String(canonical === null ? '(none)' : canonical) + '；所以 state 读到草案的 md 块 available:true + exists:false 不是缺陷，是草案的正常形状'
+      : ' 这一行不是草案：文件的读写由 adopt 负责，读面只比对不写（written:false / deferredTo:null）')
   const unavailable = (means) => ({
     ok: true, available: false, path: wanted, absPath: null, exists: null, mdMissing: null,
     mdFingerprint: null, indexFingerprint, indexRevision, mdRevision: null, mdStatus: null,
-    mdChangedSinceIndex: false, mdAheadOfIndex: false, mdBehindIndex: false, means,
+    mdChangedSinceIndex: false, mdAheadOfIndex: false, mdBehindIndex: false,
+    // ★★★ RUN 239-B (run 62 / FEEDBACK62 ③, MEASURED): the md block used the same two NAMES with different meanings in
+    // two receipts — `propose.md.available:false` meant "this call wrote no file", while `state.md.available:true` meant
+    // "the md reader is usable" and sat beside `exists:false` with nothing saying which question it answered. Every md
+    // block now says BOTH: `written` = did THIS call put a file on disk (a read never does), `deferredTo` = which act
+    // will write it, `canonicalPath` = the one file the blueprint owns, `writtenNever` = this row never writes at all.
+    written: false, deferredTo: isDraftRow ? 'adopt' : null, canonicalPath: canonicalPath,
+    writtenNever: isDraftRow,
+    mdMeans: mdFaceMeans({ isDraftRow, canonicalPath }),
+    means,
   })
   if (!records || typeof records.mdDigest !== 'function') {
     return unavailable('this records face carries no md reader (a hand-built test double), so there is no file to compare the index against — the row is the only side of the comparison, and that is not the same as agreement')
@@ -622,6 +715,10 @@ export function blueprintMdReading({ records, path, row = null } = {}) {
     mdAheadOfIndex: ahead,
     mdBehindIndex: behind,
     mdStatusMoved: statusMoved,
+    // ★★★ RUN 239-B: the same four facts the unavailable shape carries, so one md block never means two things.
+    written: false, deferredTo: isDraftRow ? 'adopt' : null, canonicalPath: canonicalPath,
+    writtenNever: isDraftRow,
+    mdMeans: mdFaceMeans({ isDraftRow, canonicalPath }),
     means: !exists
       ? '索引里有这一版的行，但 md 文件不在磁盘上：读面不静默回退（不拿索引冒充文件），reindex 会把它计入 missing 并具名报告'
       : (!changed
@@ -968,6 +1065,13 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
     staleAfterMsSource: window.source,
   })
   const md = blueprintMdReading({ records, path: txt(path), row: newestBlueprintRow(rows, inForce) })
+  // ★★★ RUN 239-B (run 62 / FEEDBACK62 ③): with no revision in force there IS no outline to compare, and the generic
+  // "this revision carried no outline" sentence told the reader the wrong reason (there is no revision at all). The
+  // means is rewritten against the fact the receipt already prints (`current:null`), not against a missing field.
+  const outlineRead = outlineReading({ outline: currentOutline, source: 'row' })
+  if (inForce === null) {
+    outlineRead.outlineMeans = '还没有生效的修订（current:null），所以没有 outline 可对比：这不是「这次修订没带 outline」——这条路径上还没有任何 revision 被 adopt，行上也就没有骨架可读；草案的 outline 在 drafts 里逐条给出'
+  }
   return {
     ok: true,
     path: txt(path),
@@ -983,7 +1087,7 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
     mdMeans: md.means,
     // ★ RUN 236: G8 (outline) + G11 (revision reason) on the READ face. Both appear even when absent (`[]` / `null`), each
     // beside a sentence that says what the absence MEANS; `current`/`drafts` repeat them so one row is one answer.
-    ...outlineReading({ outline: currentOutline, source: 'row' }),
+    ...outlineRead,
     ...revisionReasonReading({ revisionReason: currentReason, source: currentReason === '' ? 'none' : 'row' }),
     hasCurrent: inForce !== null,
     current: inForce === null ? null : {
@@ -1044,7 +1148,7 @@ export function readBlueprint({ records, id }) {
     ok: parsed.ok, row: got, problems: parsed.problems,
     md, mdChangedSinceIndex: md.mdChangedSinceIndex, mdMissing: md.mdMissing, mdFingerprint: md.mdFingerprint,
     indexFingerprint: md.indexFingerprint, mdMeans: md.means,
-  }, parsed, outlineReading({ outline: parsed.outline }),
+  }, parsed, outlineReading({ outline: parsed.outline, source: 'row' }),
   revisionReasonReading({ revisionReason: parsed.revisionReason || '', source: parsed.revisionReason === null ? 'none' : 'row' }))
 }
 
@@ -1118,9 +1222,17 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
   // ★ RUN 236 — the two optional revision facts, resolved ONCE for both write branches. A continuation that does not
   // restate them CARRIES them (the draft is the same revision: its outline and its reason do not vanish because a second
   // designer appended a section). `source` says which of the two happened.
+  // ★★★ RUN 239-B (run 62 / FEEDBACK62 ①, MEASURED): the continuation case MERGES instead of replacing — a second
+  // designer's `[{id:"2"},{id:"2.1"}]` used to erase the base `[{id:"1"},{id:"1.1"}]` from the row while both text
+  // sections survived. The outline now composes like the text does: same id = this writer overrides title/depth, new id
+  // is appended, ids only the base had are kept. A new revision (target === null) has no base, so it takes the given
+  // outline as-is; BOTH cases print `outlineMerged`, so a caller can see which of the two happened without inferring.
   const inheritedOutline = target !== null && Array.isArray(target.outline) ? target.outline : []
-  const outlineNext = outlineParsed.provided ? outlineParsed.outline : inheritedOutline
+  const incomingOutline = outlineParsed.provided ? outlineParsed.outline : []
+  const mergedOutline = mergeOutline(inheritedOutline, incomingOutline)
+  const outlineNext = mergedOutline.outline
   const outlineSource = outlineParsed.provided ? 'request' : (inheritedOutline.length > 0 ? 'draft' : 'none')
+  const outlineMerged = outlineMergedReading({ merged: mergedOutline, continued: target !== null, provided: outlineParsed.provided })
   const inheritedReason = target !== null ? txt(target.revisionReason) : ''
   const reasonNext = reasonGiven !== '' ? reasonGiven : inheritedReason
   const reasonSource = reasonGiven !== '' ? 'request' : (inheritedReason !== '' ? 'draft' : 'none')
@@ -1250,6 +1362,8 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       codesign: blueprintCodesignStatus(authors, ''),
       ...outlineReading({ outline: outlineNext, requireOutline: requireOutline === true, source: outlineSource }),
       ...revisionReasonReading({ revisionReason: reasonNext, source: reasonSource }),
+      // ★★★ RUN 239-B: WHICH outline handling this call did (merge for a continuation, take-as-given for a new revision).
+      outlineMerged,
       // ★ RUN 225-A: the document on disk, and the sha256 the row now indexes it by.
       md,
       mdFingerprint: md.fingerprint,
@@ -1336,6 +1450,9 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     codesign: blueprintCodesignStatus(authors, ''),
     ...outlineReading({ outline: outlineNext, requireOutline: requireOutline === true, source: outlineSource }),
     ...revisionReasonReading({ revisionReason: reasonNext, source: reasonSource }),
+    // ★★★ RUN 239-B: the continuation's outline merge (added/updated/kept), so "did my new outline replace the base?"
+    // is answered by the receipt instead of by re-reading the row.
+    outlineMerged,
     // ★ RUN 225-A: the rewritten draft document, and the sha256 the same row now carries.
     md,
     mdFingerprint: md.fingerprint,

@@ -364,6 +364,9 @@ vmu.packs.active: [v5r]
 | `vmu.turn.tempDirection` | string | `（未说明）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 给临时工的起点方向 |
 | `vmu.turn.tempTerm` | string | `雇主另行通知` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 临时工任务期（原线默认措辞） |
 | `vmu.turn.meetingId` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/turn/index.js` | 当前会议号；会议相位的标题用它 |
+| `vmu.turn.meetingType` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 本回合绑定会议的类型（debate/ordinary/…）；未绑定为空 |
+| `vmu.turn.meetingChair` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 本回合绑定会议的主席席 id；未绑定为空 |
+| `vmu.turn.meetingAgenda` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 本回合绑定会议的议程原文（会议记录里的 materials）；未绑定为空 |
 | `vmu.turn.meetingDelivery` | string | `本回合没有绑定会议：回执里的 say 不会投递，要对全所说话请用 vibe_v5_say。` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 本回合绑定的会议的话，say 会投到哪场会；未绑定时说明不投递 |
 | `vmu.turn.formalModeLine` | string | `鼓励：按实现难度自行决定；做了就归档，没做就写明难度判断，` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 回复目录里 Lean 形式化那一行的模式措辞（原线 require/encourage 两套） |
 | `vmu.turn.formalProof` | string | `Formal/p-x.lean` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 忠实性审查时点名的已通过证明文件（每轮按实际目标填） |
@@ -1566,7 +1569,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1163** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1166** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1679,7 +1682,7 @@ vmu.packs.active: [v5r]
 | `vmu.tools.*` | 3 |
 | `vmu.topology.*` | 12 |
 | `vmu.trust.*` | 16 |
-| `vmu.turn.*` | 32 |
+| `vmu.turn.*` | 35 |
 | `vmu.tx.*` | 6 |
 | `vmu.v3.*` | 19 |
 | `vmu.v5r.*` | 1 |

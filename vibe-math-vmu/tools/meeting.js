@@ -171,7 +171,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         '**发言序/地面（B③/B④，Round 14）**：`flow` 设**四种地面模式**（open 无队列｜hands 按举手序｜round_robin 按已发言次数｜call_on 主席指定），`overrideorder` **覆盖发言序**（fifo｜round-robin｜chair｜random，random 为**确定性**洗牌：种子与结果 order 都写进回执）。**两者都只由主席做、都必须给 reason**，且**未声明 `vmu.meetings.orderMode` 的部署一律具名拒**（默认不可覆盖）。★ 这两个 action 寻址的是 **`vmu.meetings` 服务记录**（`kernel/meetings.js`），**不是**上面 `open` 造的逐对象会议 id —— 未知 id 由服务**具名拒**（hint 列出在活记录）。',
       parameters: {
         action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜order｜refuse｜invite｜invitedspeak｜attend｜admit｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜minutes｜verbatim｜close｜extend｜extendlimit｜proceed｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
-          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order', 'refuse', 'invite', 'invitedspeak', 'attend', 'admit', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'minutes', 'verbatim', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit', 'proceed', 'types'] }),
+          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order', 'refuse', 'invite', 'invitedspeak', 'attend', 'admit', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'minutes', 'verbatim', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit', 'proceed', 'types', 'wait', 'unwait'] }),
         id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定）'),
         meeting: param('string', '会议 id 的【别名】：与 id 同义（两者都接受；同时给且不一致 ⇒ 具名拒）。ballot 用它把票绑定到服务会议，见 summary/close 与 ballot 的读数'),
         ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
@@ -192,6 +192,12 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         secretary: param('string', 'open：声明本会议的记录人（记录权；不带来表决权）'),
         motion: param('string', 'second/withdraw：动议 id'),
         rules: param('object', 'boxopen：逐票箱规则 { minVotes, allowRevote, maxChoices, minChoices, mode }'),
+        // ★★★ RUN 239-D (the user's requirement): the meeting face could not let a member WAIT on a meeting event.
+        // The kernel grew `wait`/`unwait` (a durable waiter table, an event settle on twelve meeting acts, and a
+        // deadline sweep), and this face is where a member can reach it - `until` is the kernel's own vocabulary,
+        // NOT a second one invented here (a wrong word is refused by the kernel and names the allowed set).
+        until: param('string', "wait：等哪个事件（speak｜vote｜motion｜poll｜phase｜attend-all｜hand｜meeting-closed｜deadline）。登记后本回合应当结束：事件发生时会唤醒你并投递一回合（不是轮询）；deadline 只在给了 timeoutMs 时才可能触发", { enum: ['speak', 'vote', 'motion', 'poll', 'phase', 'attend-all', 'hand', 'meeting-closed', 'deadline'] }),
+        timeoutMs: param('number', 'wait：最长等多久（毫秒，正有限数）。不给＝只等事件、不设期限；到点仍未发生 ⇒ 该行记为 expired，回执/读面明说'),
         options: param('array', 'boxopen 的选项清单（≥2；也可用 roster 传）'),
         target: param('string', 'ballot 的标的（必填）'),
         value: param('string', 'vote 的票值（必填）'),
@@ -207,7 +213,7 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         mode: param('string', 'flow/overrideorder 的模式（flow：open｜hands｜round_robin｜call_on；overrideorder：fifo｜round-robin｜chair｜random）', { enum: ['open', 'hands', 'round_robin', 'call_on', 'fifo', 'round-robin', 'chair', 'random'] }),
       },
       run: async (args = {}, exec = null) => {
-        const { action, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, subject, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor, force } = args
+        const { action, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, subject, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor, force, until, timeoutMs, timeout_ms } = args
         // ★ RUN 127 (regression caught by `vmu-v5r-verdict-final`): `id` is REASSIGNED below from the `meeting`
         // alias, and as a destructuring PARAMETER that was legal — as a `const` it threw 'Assignment to constant
         // variable', which the host reports as VMU_MIDDLEWARE_FAILED. The alias path needs a binding it may write.
@@ -432,6 +438,60 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
               ...(openGate ? { chairGate: openGate } : {}),
               ...(dropped.length ? { droppedNote: droppedWhere } : {}),
               ...(serviceError ? { serviceError } : {}) }
+          }
+          // ★★★ RUN 239-D (the user's requirement: "a wait must really work — wait until the meeting event happens,
+          // then wake up; otherwise keep waiting"): THE WAITING DOOR. `kernel/meetings.js` keeps a durable waiter table,
+          // settles it on twelve meeting acts and sweeps deadlines; this branch is where a SEAT can reach it. Two
+          // rules the branch keeps rather than invents: ① the address is the SERVICE registry (a wait on a primitive
+          // per-object meeting has no minutes/events to fire on, so it is refused by name instead of silently armed),
+          // and ② `until` is the kernel's own vocabulary — this face passes the word through and lets the kernel refuse
+          // an unknown one with its allowed set, because a second vocabulary here would be a second truth.
+          if (action === 'wait' || action === 'unwait') {
+            const svc = svcOf()
+            const pid = idText(id)
+            if (pid === '') {
+              return refused('VMU_INVALID_ARGUMENT', action + ' needs the meeting it waits on',
+                'pass id:"<meeting>" (or meeting:"<meeting>") — the id the meeting was convened with (the convene receipt carries it)')
+            }
+            if (!svc || typeof svc.wait !== 'function' || typeof svc.unwait !== 'function') {
+              return refused('VMU_ENGINE_UNAVAILABLE', action + ' is a vmu.meetings service capability and this kernel has no meetings service',
+                'this deployment mounted no `vmu.meetings` service, so there is no waiter table to arm; run the meeting through the pack face (`vibe_v5_meeting`) on a kernel that declares meetings')
+            }
+            const who = namedCaller(member) || namedCaller(callerFromTurn())
+            if (who === null) {
+              return refused('VMU_INVALID_ARGUMENT', action + ' needs the member it waits for',
+                'pass member:"<your id>" (or call it inside your own turn, where the turn context answers for you) — a wait has to belong to somebody')
+            }
+            const timeout = (timeoutMs === undefined ? timeout_ms : timeoutMs)
+            if (action === 'wait') {
+              const out = await svc.wait({
+                meeting: pid, member: who,
+                until: until === undefined || until === null || String(until) === '' ? undefined : String(until),
+                timeoutMs: timeout === undefined || timeout === null || String(timeout) === '' ? null : Number(timeout),
+                reason: reason === undefined || reason === null ? null : String(reason),
+                // ★ `at` stays null on purpose: the kernel stamps the wait with ITS clock, so a waiter armed by the
+                // office and one armed by a member are on one timeline (the run-54 defect was two clocks in one receipt).
+                at: null,
+              })
+              const waiter = out && out.waiter ? out.waiter : null
+              return Object.assign({}, out, {
+                ok: true, action: 'wait', id: pid, registry: 'service',
+                // the three names a caller naturally reaches for, answered instead of guessed at
+                waitId: waiter ? String(waiter.id) : null,
+                deadlineAt: waiter ? waiter.deadlineAt : null,
+                means: out && out.waitMeans ? out.waitMeans : 'the wait is armed as a durable row: end your turn now — the meeting event wakes you and delivers a turn; do not poll',
+              })
+            }
+            const out = await svc.unwait({
+              meeting: pid, member: who,
+              why: reason === undefined || reason === null ? null : String(reason),
+              at: null,
+            })
+            return Object.assign({}, out, {
+              ok: true, action: 'unwait', id: pid, registry: 'service',
+              cancelled: out && out.cancelled === true,
+              means: out && out.unwaitMeans ? out.unwaitMeans : 'nothing is armed for this member on this meeting any more',
+            })
           }
           if (action === 'speak') {
             const pid = sid(id)

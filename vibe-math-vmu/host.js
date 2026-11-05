@@ -1819,6 +1819,25 @@ export function refusalFacts(e) {
   return out
 }
 
+/**
+ * ★★★ RUN 239-D (the user's requirement, MEASURED on the way in): the meeting acts that fire a waiter put the news
+ * on the RECEIPT (`settleReceipt` sets `receipt.firedWaiters`), while the top level of the same answer — the part a
+ * model reads first — said nothing about it. A member armed a wait on `speak`, the chair spoke, and the speaking
+ * receipt read `ok:true` with the fire buried one level down; the only way to learn that the wait really fired was to
+ * already know where to look. This lifts the fact to the top level when (and only when) the receipt carries it, so
+ * `firedWaiters`/`firedWaitersMeans` mean the same thing on every act that can fire a waiter (attend, admit, speak,
+ * hand, motion, second, vote, phase, close, proceed, extendlimit). It never invents one: no receipt, no field.
+ */
+export function liftFiredWaiters(out) {
+  if (!out || typeof out !== 'object' || Array.isArray(out)) return out
+  if (out.firedWaiters !== undefined) return out
+  const receipt = out.receipt
+  if (!receipt || typeof receipt !== 'object' || !Array.isArray(receipt.firedWaiters)) return out
+  out.firedWaiters = receipt.firedWaiters
+  if (receipt.firedWaitersMeans !== undefined) out.firedWaitersMeans = receipt.firedWaitersMeans
+  return out
+}
+
 /** Turn an internal spec into the HOST's shape (the one the real host accepted for v5r). */
 export function toHostSpec(spec, kernel = null) {
   return {
@@ -1832,7 +1851,9 @@ export function toHostSpec(spec, kernel = null) {
         // ★ RUN 228: EVERY face says who acted, not only the pack faces. This is the one place that holds both the
         // result and the execution context, so the disclosure cannot be forgotten by a face that returns early.
         const outNow = await spec.run(args || {}, exec)
-        return boundedToolResult(discloseActOnSeat(kernel, exec, args, outNow))
+        // RUN 239: the two branches below must read as ONE shape (a refusal is a receipt of the same species as a
+        // success). The waiter lift happens INSIDE the envelope for both, so neither branch nests them differently.
+        return boundedToolResult(liftFiredWaiters(discloseActOnSeat(kernel, exec, args, outNow)))
       } catch (e) {
         // ★★ ROUND 36 (measured on a real machine): THIS BRANCH USED TO RETURN A DIFFERENT SHAPE FROM THE OTHER ONE.
         // The success path goes through `boundedToolResult`, documented in receiptbounds.js as "the ONE place a tool
@@ -1843,12 +1864,12 @@ export function toHostSpec(spec, kernel = null) {
         // the refusal was well-formed in CONTENT and malformed in SHAPE.
         // It now goes through the SAME serializer as every other result, so a refusal is a receipt of the same species
         // as a success. The content is unchanged: the same code, message and hint reach the caller.
-        return boundedToolResult(discloseActOnSeat(kernel, exec, args, Object.assign({
+        return boundedToolResult(liftFiredWaiters(discloseActOnSeat(kernel, exec, args, Object.assign({
           ok: false,
           code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED',
           message: String((e && e.message) || e),
           hint: (e && e.hint) || null,
-        }, refusalAttribution(e), refusalFacts(e))))
+        }, refusalAttribution(e), refusalFacts(e)))))
       }
     },
   }

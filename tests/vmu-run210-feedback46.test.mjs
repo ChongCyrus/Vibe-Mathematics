@@ -79,10 +79,22 @@ test('RUN 210 §1 — a "complete" whose pointer resolves to nothing is written 
     has(w.proofLockDeferredMeans, 'LOCK IS DEFERRED', '§1e ★ the consequence is stated in words')
     has(w.proofLockDeferredMeans, 'stays writable', '§1f ★ and says the pointer can still be corrected')
 
-    // because the lock was deferred, the pointer can still be corrected — this is the harm the lock used to create
-    const fix = await call('vibe_v5_record_proposition', {
+    // because the lock was deferred, the pointer can still be corrected — this is the harm the lock used to create.
+    // ★ RUN 239: a rewrite that OMITS `proof_ref` would rebuild the body without the pointer line, so the records face
+    // refuses it by name (VMU_RECORD_DESTRUCTIVE_WRITE) instead of silently dropping it. The refusal is not a lock: it
+    // names the two ways through. Assert that first (a wall with no door is what RUN 210 was about), then correct the
+    // pointer through the door a correction should use.
+    const fixPlain = await call('vibe_v5_record_proposition', {
       id: String(w.recordId), statement: '前 n 个奇数之和等于 n 的平方', value: '对 n≥1 成立',
       motive: '补上证明文件后重登记', p: 0.9, member: 'r-1',
+    })
+    ok(fixPlain.ok === false && fixPlain.code === 'VMU_RECORD_DESTRUCTIVE_WRITE',
+      '§1g ★★★ a rewrite that would DROP the pointer line is refused by name (not silently dropped)', fixPlain && fixPlain.code)
+    has(fixPlain.hint, 'bodyMode', '§1g ★ and the refusal names the door: bodyMode')
+    has(fixPlain.hint, 'confirmDestructive', '§1g ★ and the other one: confirmDestructive')
+    const fix = await call('vibe_v5_record_proposition', {
+      id: String(w.recordId), statement: '前 n 个奇数之和等于 n 的平方', value: '对 n≥1 成立',
+      motive: '补上证明文件后重登记', p: 0.9, member: 'r-1', bodyMode: 'merge',
     })
     ok(fix.ok === true, '§1g ★★★ a second write to the same card is ALLOWED (it used to be locked forever)', fix)
   } finally { /* hygiene */ }

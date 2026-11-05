@@ -54,7 +54,9 @@ const ledger = (start = 1000) => { let t = start; return createRecords({ clock: 
 const add = (r, extra = {}) => r.put(Object.assign({ track: 'progress', kind: 'progress', title: '前 n 个奇数之和等于 n 的平方', body: '陈述：前 n 个奇数之和等于 n 的平方', by: 'r-1' }, extra))
 
 test('RUN 236 §0 — the mechanism is in the module the receipt describes (source pins)', () => {
-  has(RECORDS, "const BODY_MODES = Object.freeze(['replace', 'append'])", '§0a the allowed body modes are a closed list')
+  // ★ RUN 239 added `merge` (a label-wise merge for cards that carry settlement lines), so the closed list grew by one
+  // named mode - the pin follows the list, and the rule it stands for (a closed list, not free text) is unchanged.
+  has(RECORDS, "const BODY_MODES = Object.freeze(['replace', 'append', 'merge'])", '§0a the allowed body modes are a closed list')
   has(RECORDS, 'bodyMode = null', '§0b put accepts bodyMode as a named parameter')
   has(RECORDS, 'MERGES BY FIELD', '§0c the update branch states the rule it follows')
   has(RECORDS, 'fieldsKept', '§0d ★ the receipt has a field for what was KEPT')
@@ -121,7 +123,10 @@ test('RUN 236 §3 — bodyMode:"append" keeps the old text and adds the new text
 test('RUN 236 §4 — the refusals are NAMED, with the reachable repair in the hint', () => {
   const r = ledger()
   const first = add(r)
-  const bad = named(() => r.put({ id: first.id, track: 'progress', kind: 'progress', body: 'x', bodyMode: 'merge' }),
+  // ★ RUN 239: `merge` is now a REAL mode (label merge for settled cards), so the unknown-mode refusal has to be
+  // provoked with something that is not a mode at all - otherwise this test would be asserting that a legal write is
+  // refused, which is how a guard silently turns into a wall.
+  const bad = named(() => r.put({ id: first.id, track: 'progress', kind: 'progress', body: 'x', bodyMode: 'bogus-mode' }),
     'VMU_INVALID_ARGUMENT', { fragment: 'unknown bodyMode', hint: 'bodyMode:"replace"' })
   ok(bad && Array.isArray(bad.enforced), '§4a the refusal carries its enforced list like every other refusal', bad && bad.enforced)
   const mint = named(() => r.put({ track: 'progress', kind: 'progress', title: '新卡', body: 'x', bodyMode: 'append' }),
