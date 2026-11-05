@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 90 | all four citations resolve |
-| ◐ PARTIAL | 3 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 91 | all four citations resolve |
+| ◐ PARTIAL | 2 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -98,7 +98,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | `E13` | 48 | 会议类型：正常/学术交流/辩论/结题/论文交流/未来规划 | ✅ DONE | 2/1/1/1 | — |
 | `E14` | 50 | 常见命令：举手 | ✅ DONE | 2/1/1/1 | — |
 | `E15` | 50 | 常见命令：邀请发言 | ✅ DONE | 2/1/1/1 | — |
-| `E16` | 50 | 常见命令：批量指定成员按顺序发言 | ◐ PARTIAL | 2/2/1/1 | `order({members})` 的写路径已实现（回执带 before/after 或 moved），但还没有一条端到端测试钉住它；补 `tests/vmu-run237-order-write.test.mjs` 后转 DONE。 |
+| `E16` | 50 | 常见命令：批量指定成员按顺序发言 | ✅ DONE | 2/2/1/1 | 端到端测试已就位（tests/vmu-run242-order-write.test.mjs）。余下可选：真机 §2 里让主席显式 order 一次并抄 before/after（run 65 未做，属真机覆盖面而不是实现缺口）。 |
 | `E17` | 50 | 常见命令：单次发言版群聊（每人各说一次、不打断） | ✅ DONE | 1/1/1/2 | — |
 | `E18` | 53 | 投票板：院士设选项与机制（最少/最多选几项） | ✅ DONE | 2/1/1/1 | — |
 | `E19` | 53 | 投票板不用于辩论 | ✅ DONE | 1/1/1/1 | — |

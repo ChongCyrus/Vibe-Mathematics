@@ -2034,9 +2034,18 @@ function gatedCardHandler(toolName) {
         const hadRulingLine = /^- *debateRuling *[：:]/m.test(String(prevRow.body === undefined || prevRow.body === null ? '' : prevRow.body))
         const wasSettled = hadRulingLine && prevProj !== null && (prevProj.p === 1 || prevProj.p === 0)
         if (wasSettled && Number(args.p) !== prevProj.p && args.confirmDestructive !== true) {
-          throw refuse('VMU_RECORD_SETTLEMENT_REWRITE',
+          const settledRefusal = refuse('VMU_RECORD_SETTLEMENT_REWRITE',
             'card "' + cardId + '" is SETTLED (p=' + String(prevProj.p) + ' with a debateRuling row); this write sets p=' + String(args.p) + ', which would leave the card undecided while the ruling row still sits in its body',
             'THREE reachable paths: (1) if a ruling really changed the probability, settle it with the ruling — pass p:' + String(args.p) + ' TOGETHER WITH debate_ruling:{value:' + String(args.p === 0 ? 0 : 1) + ', mode:"unanimous", meeting:"<a meeting id>", …} and the write is admitted as a settlement; (2) if you only meant to correct the text beside the probability, send the SAME p the card already carries (p=' + String(prevProj.p) + ') — that is admitted, because a write that leaves the reading where it was declares nothing new (`p1GateSkipped`); p is a REQUIRED parameter, so it cannot be omitted; (3) if withdrawing the settled reading IS the intent, pass confirmDestructive:true and the receipt will say the card is no longer settled — that is a different claim, not a correction, and it must be said out loud')
+          // ★ RUN 242 (FEEDBACK65 1.5): A REFUSAL THAT STOPS BEFORE TOUCHING THE BODY MUST SAY SO, or "no
+          // bodyLinesDropped key" reads as "the body was processed and nothing was lost" (one of them is a promise and
+          // the other is silence). MEASURED (run 65): this refusal carried none of the three body keys while a MERGED
+          // write on the same card carried all of them.
+          settledRefusal.bodyModeUsed = 'refused'
+          settledRefusal.bodyLinesDropped = null
+          settledRefusal.bodyLinesAdded = null
+          settledRefusal.bodyLinesMeans = 'NOT PROCESSED: this write was refused before the body stage, so no card line was examined, added or dropped. `null` here means "not reached", never "nothing was lost"'
+          throw settledRefusal
         }
       }
     }

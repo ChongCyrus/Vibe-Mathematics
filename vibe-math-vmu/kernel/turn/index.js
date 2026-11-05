@@ -1998,6 +1998,10 @@ export function createTurnOrchestrator({
     }
     return out
   }
+  // A turn row's status is one of: open (a delivery may still return), settled (the member answered),
+  // undelivered (the seam THREW: the result never came back - run 65 left these at "open"), failed (the member answered
+  // and the write-back threw), abandoned (closed by name through op:"abandon" or past abandonAfterMs). `closedWith` is
+  // the code that closed it.
   const noteTurnReceipt = (turn, patch) => {
     if (!turn || typeof turn.id !== 'string' || turn.id === '') return null
     const prev = turnReceipts.get(turn.id) || {
@@ -2008,6 +2012,8 @@ export function createTurnOrchestrator({
     const next = Object.assign({}, prev)
     if (patch && typeof patch === 'object') {
       if (typeof patch.status === 'string') next.status = patch.status
+      if (typeof patch.closedWith === 'string') next.closedWith = patch.closedWith
+      if (typeof patch.settledBy === 'string') next.settledBy = patch.settledBy
       if (Array.isArray(patch.fields)) next.fields = patch.fields.slice()
       if (typeof patch.source === 'string') next.source = patch.source
       if (typeof patch.code === 'string' && patch.code !== '' && !next.codes.includes(patch.code)) next.codes = next.codes.concat([patch.code])
@@ -2194,7 +2200,10 @@ export function createTurnOrchestrator({
       for (const e of (decided && decided.errors) || []) fail(e.code, e.message, e.hint)
       for (const d of (decided && decided.decisions) || []) setSectionEnabled(d.name, d.enabled !== false)
     }
-    const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: statusWithNotices, round: turn.round, settings: turnSettings })
+    const out = await prompt.assemble({ member: turn.member, role: turn.role, roleLabel, phase: turn.phase, task: turn.task, roster: turn.roster, quorum: turn.quorum, statusBlock: statusWithNotices, round: turn.round, settings: turnSettings,
+      // ★★ RUN 242 (A7): the BOUND meeting travels to the pipeline so a scope can ask for it. This is the turn's own
+      // binding (the id the receipts print as roundMeeting), not a rendered template value.
+      meeting: typeof turn.meeting === 'string' && turn.meeting.trim() !== '' ? turn.meeting.trim() : null })
     if (!out || out.ok !== true) {
       fail('VMU_TURN_ASSEMBLY_FAILED', 'the prompt pipeline refused this turn: ' + JSON.stringify((out && out.refused) || {}).slice(0, 160))
     }
@@ -2349,6 +2358,21 @@ export function createTurnOrchestrator({
       // nothing at all. Both are recorded here, and the error is rethrown UNCHANGED (this face never rewrites the
       // seam's refusal into something friendlier).
       counts.deliveryFailed += 1
+      // ★ RUN 242 (FEEDBACK65 1.1): A ROW THAT SAYS 'open' AFTER ITS DELIVERY THREW IS A LIE THE LEDGER TELLS.
+      // MEASURED (run 65): `turnReceipts` kept t-1/t-2 at status:"open" while `deliveryLastFail` said
+      // VMU_TURN_DELIVERY_TIMEOUT and `turnLoop.inFlight` said false - three readings of one fact, two of them wrong.
+      // The row now closes itself with the code that closed it, exactly like `abandoned` does. It is NOT "failed":
+      // `failed` in this ledger means "the member answered and the write-back threw". A delivery that never came back
+      // is a different fact and gets its own word.
+      const threwCode = e && e.code ? String(e.code) : 'VMU_TURN_DELIVERY_FAILED'
+      try {
+        noteTurnReceipt(turn, {
+          status: 'undelivered',
+          closedWith: threwCode,
+          settledBy: 'delivery-threw',
+          fields: [],
+        })
+      } catch (err) { /* the ledger must never replace the seam's own refusal */ }
       counts.deliveryLastFail = {
         at: Date.now(),
         turn: turn && turn.id ? turn.id : null,
@@ -2357,7 +2381,20 @@ export function createTurnOrchestrator({
         message: e && e.message ? String(e.message).slice(0, 400) : String(e),
         deliveryPath: (e && e.deliveryPath) || lastAttribution.deliveryPath || null,
         stillRunning: !!(e && e.stillRunning === true),
-        means: 'the delivery seam threw, so this turn is neither delivered nor answered: it is NOT counted in delivered, parsed or notExecuted. Counts alone will not show it again — read deliveryLastFail' }
+        // ★ RUN 242 (FEEDBACK65 1.8): "the result did not come back" is not the same claim as "the member did
+        // nothing". MEASURED (run 65): r-1's timed-out turn had ALREADY written a blueprint draft (rec-5) and a progress
+        // row (rec-4) at 19:37/19:39 - the office could only discover that by reading the records fold by hand. This
+        // block names the window a reader has to look in, and says plainly that this receipt cannot enumerate it (the
+        // member's writes belong to the member's own kernel). Naming the window is the reachable half; a cross-kernel
+        // enumeration would need a records-side scan seam that does not exist yet.
+        writesWindow: {
+          from: turn && typeof turn.at === 'string' ? turn.at : null,
+          to: isoStampOf(clock()),
+          by: turn && typeof turn.member === 'string' ? String(turn.member) : null,
+          enumerated: false,
+          means: 'a member turn runs in the member\'s OWN kernel, so anything it wrote is in the records fold under that member id; this receipt cannot list it. Read the records written by `by` between `from` and `to` before concluding the turn produced nothing - run 65 had a timed-out turn that had already written a draft and a progress row',
+        },
+        means: 'the delivery seam threw, so this turn is neither delivered nor answered: it is NOT counted in delivered, parsed or notExecuted. Counts alone will not show it again — read deliveryLastFail, and read `writesWindow` before judging that the member did nothing' }
       throw e
     }
     counts.delivered += 1
@@ -2517,11 +2554,10 @@ export function createTurnOrchestrator({
     // ★ E12 / task-19: `meeting` is now the EXPLICIT wish; the binding itself is resolved below against the parked
     // turn, because the dispatch already bound it and an answer must not silently re-bind it (or drift to another one).
     const requestedMeeting = normalizeMeetingId(meeting)
-    const obj = fields && typeof fields === 'object' && !Array.isArray(fields) ? fields : null
-    if (!obj) {
-      fail('VMU_INVALID_ARGUMENT', 'a structured report must be an object of reply fields, not ' + (fields === null ? 'null' : typeof fields),
-        'pass the report as an object: { say: "…" } — fields: ' + known.concat(RECORDED_FIELDS).join(', '))
-    }
+    // ★ RUN 242 (FEEDBACK65 1.7): THE QUESTION "IS THERE A TURN TO ANSWER?" IS MORE FUNDAMENTAL THAN "IS THE REPORT
+    // WELL-FORMED?", and it was answered second. MEASURED (run 65): a call with only `reply_for` came back
+    // VMU_INVALID_ARGUMENT "report is missing or empty", so the member had to build a well-formed report before it could
+    // learn that this channel is permanently unreachable on the delegated path. The channel refusal now comes first.
     const open = openTurnForReport()
     if (!open) {
       // ★★★★★★★ LIVE RUN 28 (the institute's own report, item 3): the tool description calls op:"reply" 「首选」 and
@@ -2538,6 +2574,11 @@ export function createTurnOrchestrator({
     // WRITE SIDE BY NAME. MEASURED (run 63): a reply op raced the in-flight turn's completion; the report was ACCEPTED and
     // then never applied, so the office saw `accepted:true` and no effect. Recording it into a settled turn can only end in
     // one of two silent lies, so the turn above says which fields already landed and the caller reports in the next turn.
+    const obj = fields && typeof fields === 'object' && !Array.isArray(fields) ? fields : null
+    if (!obj) {
+      fail('VMU_INVALID_ARGUMENT', 'a structured report must be an object of reply fields, not ' + (fields === null ? 'null' : typeof fields),
+        'pass the report as an object: { say: "…" } — fields: ' + known.concat(RECORDED_FIELDS).join(', '))
+    }
     const settledTurn = open.turnId === null || open.turnId === undefined ? null : settledTurnIds.get(open.turnId)
     if (settledTurn) {
       fail('VMU_TURN_REPLY_CONFLICT',
@@ -3912,6 +3953,17 @@ export function createTurnOrchestrator({
   // otherwise the delivery deadline it already declared plus the grace this loop has always given a slow member
   // (`vmu.turn.deliveryTimeoutMs`, default 180 s), floored at ten minutes so a fast deployment cannot close a turn that
   // is merely thinking. A setting that cannot be read is the default, never zero (zero would mean "abandon instantly").
+  // ★★ RUN 242 (FEEDBACK65 1.3): TWO TIMEOUTS IN ONE DEPLOYMENT, AND NOBODY SAID WHICH ONE WOULD FIRE.
+  // MEASURED (run 65): `abandonAfterMs` read 1500000 (25 min) while the delivery seam gives up after
+  // deliveryTimeoutMs + 25% (1125000 ms, 18.75 min) - so in this deployment the SEAM always throws first and the
+  // backstop is never reached, while a reader of `turnLoop` was told there was a 25-minute fallback. That ordering is
+  // deliberate (the backstop exists for a seam that neither returns NOR throws), so it is not changed - it is now
+  // REPORTED beside the number it outranks, with the relation spelled out.
+  const DELIVERY_TIMEOUT_MS = (() => {
+    const d = Number(settingOf(settings, 'vmu.turn.deliveryTimeoutMs'))
+    return Number.isFinite(d) && d > 0 ? d : 900000
+  })()
+  const DELIVERY_GRACE_MS = Math.floor(DELIVERY_TIMEOUT_MS / 4)
   const ABANDON_AFTER_MS = (() => {
     const explicit = Number(settingOf(settings, 'vmu.turn.abandonAfterMs'))
     if (Number.isFinite(explicit) && explicit > 0) return explicit
@@ -3919,6 +3971,7 @@ export function createTurnOrchestrator({
     if (Number.isFinite(delivery) && delivery > 0) return Math.max(600000, delivery + 600000)
     return 1800000
   })()
+  const SEAM_BUDGET_MS = DELIVERY_TIMEOUT_MS + DELIVERY_GRACE_MS
   const abandonments = []
   const isBusy = () => turnInFlight === true || dispatchActive === true || dispatchQueue.length > 0
   /**
@@ -4739,7 +4792,10 @@ export function createTurnOrchestrator({
     dispatch, whenIdle, dispatchStatus,
     // ★★★ RUN 241: the escape and the queue (see abandonTurn / queueWake above). `abandon` closes the in-flight turn by
     // name; `isBusy` lets a wake seam ask BEFORE it decides to drive; `queueWake` is the honest answer when it is busy.
-    abandon: abandonTurn, isBusy, queueWake, wakeQueueDepth: () => wakeQueue.length, turnLoop: () => ({ inFlight: turnInFlight === true, inFlightTurn: inFlightTurn && typeof inFlightTurn.id === 'string' ? inFlightTurn.id : null, inFlightMember: inFlightTurn && typeof inFlightTurn.member === 'string' ? inFlightTurn.member : null, inFlightOpenedBy: inFlightTurn && typeof inFlightTurn.openedBy === 'string' ? inFlightTurn.openedBy : null, inFlightMeeting: inFlightTurn && typeof inFlightTurn.meeting === 'string' ? inFlightTurn.meeting : null, inFlightForMs: turnInFlightSince > 0 ? Date.now() - turnInFlightSince : null, abandonAfterMs: ABANDON_AFTER_MS, turnInFlightMeans: 'inFlight is the LOOP\'s one-turn lock, not a promise about the durable ledgers: a second kernel over the same workspace answers inFlight:false while this one is busy, and `human.recover` reports inflight.pending from the DURABLE side (run 64 read pending:0 while a turn was stuck here - both readings were true). The in-flight turn names itself and its age; `vibe_vmu_turn { op:"abandon" }` closes it by name and releases the lock.', wakeQueue: wakeQueue.map((w) => ({ id: w.id, member: w.member, meeting: w.meeting, queuedForMs: Date.now() - w.at })), wakeQueueMeans: 'a wake that fires while the loop is BUSY waits here instead of opening a round inside another turn; the queue is pumped when that turn settles or is abandoned, and the turn it opens carries openedBy:"wait" plus the meeting the wake was born in', recentAbandonments: abandonments.slice() }),
+    // ★ RUN 242 (FEEDBACK65 1.7): read-only, so a face can ask "is there a turn to answer?" BEFORE it judges the
+    // shape of the report it was handed - the same order the kernel itself now uses.
+    reportChannel: () => { const o = openTurnForReport(); return o === null ? { open: false, member: null, turn: null, via: null } : { open: true, member: o.member, turn: o.turnId, via: o.via } },
+    abandon: abandonTurn, isBusy, queueWake, wakeQueueDepth: () => wakeQueue.length, turnLoop: () => ({ inFlight: turnInFlight === true, inFlightTurn: inFlightTurn && typeof inFlightTurn.id === 'string' ? inFlightTurn.id : null, inFlightMember: inFlightTurn && typeof inFlightTurn.member === 'string' ? inFlightTurn.member : null, inFlightOpenedBy: inFlightTurn && typeof inFlightTurn.openedBy === 'string' ? inFlightTurn.openedBy : null, inFlightMeeting: inFlightTurn && typeof inFlightTurn.meeting === 'string' ? inFlightTurn.meeting : null, inFlightForMs: turnInFlightSince > 0 ? Date.now() - turnInFlightSince : null, abandonAfterMs: ABANDON_AFTER_MS, deliveryTimeoutMs: DELIVERY_TIMEOUT_MS, deliveryGraceMs: DELIVERY_GRACE_MS, deliverySeamBudgetMs: SEAM_BUDGET_MS, timeoutOrder: ABANDON_AFTER_MS > SEAM_BUDGET_MS ? 'backstop-after-seam' : 'backstop-before-seam', timeoutOrderMeans: ABANDON_AFTER_MS > SEAM_BUDGET_MS ? 'the delivery seam gives up at deliverySeamBudgetMs (' + String(SEAM_BUDGET_MS) + ' ms = deliveryTimeoutMs + 25%) and THROWS, which releases the lock on its own; abandonAfterMs (' + String(ABANDON_AFTER_MS) + ' ms) is deliberately LARGER, so it only fires for a seam that neither returns nor throws. In a deployment where the seam times out normally, this backstop is never reached and the delivery timeout is what releases the loop - do not read abandonAfterMs as "how long a caller must wait"' : 'abandonAfterMs (' + String(ABANDON_AFTER_MS) + ' ms) is SMALLER than the delivery seam budget (' + String(SEAM_BUDGET_MS) + ' ms), so the loop closes a still-running delivery BEFORE the seam would: that is a deliberate choice by whoever set vmu.turn.abandonAfterMs', turnInFlightMeans: 'inFlight is the LOOP\'s one-turn lock, not a promise about the durable ledgers: a second kernel over the same workspace answers inFlight:false while this one is busy, and `human.recover` reports inflight.pending from the DURABLE side (run 64 read pending:0 while a turn was stuck here - both readings were true). The in-flight turn names itself and its age; `vibe_vmu_turn { op:"abandon" }` closes it by name and releases the lock.', wakeQueue: wakeQueue.map((w) => ({ id: w.id, member: w.member, meeting: w.meeting, queuedForMs: Date.now() - w.at })), wakeQueueMeans: 'a wake that fires while the loop is BUSY waits here instead of opening a round inside another turn; the queue is pumped when that turn settles or is abandoned, and the turn it opens carries openedBy:"wait" plus the meeting the wake was born in', recentAbandonments: abandonments.slice() }),
     // ★★★ ROUND 73: THE CALLER-PLAYED TURN. When the injected seam is `deliverByReturning`, the assembled prompt
     // travels back to the caller and the member's reply arrives through this verb. A seam without `supply` refuses by
     // name rather than dropping the reply, because silently discarding an answer is the one outcome this phase has
@@ -4848,7 +4904,11 @@ export function createTurnOrchestrator({
       // asking "who did the last turn go to?" got counts and a per-member wake tally and nothing about the SLOT.
       // Named `slot:'single'` and said in `attributionMeans`, because a reader who assumes per-member history will
       // misread the one record that exists as if it were the latest of many.
-      lastAttribution: Object.assign({}, lastAttribution, { slot: 'single', member: (lastAttribution && typeof lastAttribution.member === 'string' ? lastAttribution.member : lastAttributionMember), slotMeans: 'lastAttribution describes the LAST DELIVERY THAT RETURNED, and its member/turn/childId are stamped together when that delivery returns - so a turn whose seam is still in flight is NOT described here (read op:"status" turnLoop for the turn that is holding the lock, and turnReceipts for every turn this kernel opened)' }),
+      // ★ RUN 242 (FEEDBACK65 1.2): HALF A STAMP IS WORSE THAN NO STAMP. MEASURED (run 65): the slot said
+      // attribution:"no turn has been delivered yet" while still carrying member:"r-1" and no `turn` key at all - a
+      // reader could not tell whether r-1's turn had returned. member/turn/childId are now stamped together or not at
+      // all; the member a delivery was ATTEMPTED for is reported under `attemptedMember`, named as an attempt.
+      lastAttribution: Object.assign({}, lastAttribution, { slot: lastAttribution && typeof lastAttribution.member === 'string' ? 'single' : 'empty', member: (lastAttribution && typeof lastAttribution.member === 'string' ? lastAttribution.member : null), turn: (lastAttribution && typeof lastAttribution.turn === 'string' ? lastAttribution.turn : null), attemptedMember: lastAttribution && typeof lastAttribution.member === 'string' ? null : lastAttributionMember, attemptedMemberMeans: lastAttribution && typeof lastAttribution.member === 'string' ? null : 'a delivery was ATTEMPTED for this member and has not returned, so it is not a claim about the last delivery: `member`/`turn` stay null until one does', slotMeans: 'lastAttribution describes the LAST DELIVERY THAT RETURNED, and its member/turn/childId are stamped together when that delivery returns - so a turn whose seam is still in flight is NOT described here (read op:"status" turnLoop for the turn that is holding the lock, and turnReceipts for every turn this kernel opened)' }),
       attributionMeans: 'the turn engine keeps ONE attribution slot: lastAttribution describes the MOST RECENT delivery only, not every member\'s last turn. Per-member history is not retained here - `woken` and `counts` are tallies, and `memberSessions` maps a member to the child session that played its last turn',
       memberSessions: Object.fromEntries(memberSessions),
       // ★★★ ROUND 240 (FEEDBACK63 ①4/①9): THE PER-TURN LEDGER THE OFFICE COULD NOT READ. `turns` above is a COUNT; this is

@@ -665,6 +665,7 @@
 | `VMU_TURN_FIELD_NOT_APPLICABLE` | **回执带了某个字段，但本回合的 face/tool 根本调不到**（真机 `NO_OPEN_MEETING` 的真实原因：指令没进提示词）；`cause` 保留原会议错误 | 轮次编排 26（`kernel/turn/index.js` ✓） | ✅（hint 指向 `instructionDelivered` 与 per-turn tools allowlist） |
 | `VMU_TURN_UNKNOWN_MEMBER` | **显式指定的成员不在在册名单里**（`turnFacts().rosterIds` 有值时判定）—— 拒在**投递之前**，message 点名是哪些 id，hint 打印在册名单；拿不到名册时**不猜** | 轮次编排 26 | ✗（先 hire，或从 hint 列出的 id 里选；否则只会白白烧掉 `vmu.turn.deliveryTimeoutMs`） |
 | `VMU_TURN_REENTRANT` | ★ **PHASE 6 / K2**：★ **已有一个回合在途，★ 第二次 `run()` 会嵌套** —— ★ 本循环的**归因／成员回复槽／通告队列都是单回合状态**，★ 嵌套会覆盖 | 轮次编排 26 | ✗（★ **等在途回合结算后再调**；★ `drive()`／`step()` 已按顺序调用，★ 不受影响 ✓） |
+| `VMU_TURN_DELIVERY_FAILED` | ★ **R242**：★ **成员回合的交付 seam 抛了错而那个错自己没有码** —— 账上不写一个空码，写这个；★ 它出现在回合行（`turnReceipts[].closedWith`）与 `counts.deliveryLastFail` 里，`status` 是 `undelivered`、`settledBy` 是 `delivery-threw`；★ 有码的错**原样保留那个码**，本码只是兜底 | 回合循环（`kernel/turn/index.js`） | ✗（读 `writesWindow` 看这一轮在成员自己的内核里到底写过什么，再判它是否什么都没做） |
 | `VMU_TURN_DELIVERY_TIMEOUT` | ★ **PHASE 6 / SLV**：★ **one-shot 成员回合在 `vmu.turn.deliveryTimeoutMs` 内没有结算**（请求已进入调用、未返回）—— ★ 超时后该回合**具名失败并释放串行派发队列**，后面的回合继续；★ 记录带 turn／member／已等毫秒／最后交付阶段／是否已进入调用 | 轮次编排 26 | ✅（可调 deadline；★ 正常回合不受影响） |
 | `VMU_TURN_DISPATCH_FAILED` | ★ **PHASE 6 / SLV**：★ **一次 `turn.dispatch(spec)` 的成员回合在串行队列里失败**（交付/解析/写回任一环节）—— ★ 失败原因与原文在 `lastError`，`dispatch.completed` 不进；★ 队列继续 | 轮次编排 26 | ✅（读 `dispatchStatus().lastError` 与 `recentCompleted`） |
 | `VMU_BALLOT_TIE_UNRESOLVED` | 平票且规则未定 | 表决 | ✅ |
@@ -1232,7 +1233,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **497** 个码，**逐行**给出状态 ✓：其中 **458** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **498** 个码，**逐行**给出状态 ✓：其中 **459** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1702,6 +1703,7 @@
 | `VMU_TURN_ALREADY_PARKED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_ASSEMBLY_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_BAD_JSON` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js` | 代码里有该码字符串 ✓ |
+| `VMU_TURN_DELIVERY_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_DELIVERY_TIMEOUT` | **已实现 ✓** | `vibe-math-vmu/host-deliver.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/tools/turn.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_DISPATCH_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_DUPLICATE_SKIPPED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |

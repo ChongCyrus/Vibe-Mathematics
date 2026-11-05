@@ -4364,3 +4364,37 @@ means 键；`list` 的默认头部字段加入 `writer`（一行两事实，读�
 3. **交付是一对**：`lastAttribution` 的 `member`/`turn`/`childId` 现在同一时刻、同一块写（都在传输返回那一刻）；还在飞的回合不能占用那个槽，而它该被读到的地方是 `turnLoop`。`op:"reply"` 的 `countedLater` 旁边多了 `ifItNeverSettles`：报告总能被记下，它不能的是结算一个传输永不返回的回合。
 4. **命名的提示不够，要命名原因**：收窄交集为空时现在带两侧样本（`visibleSample`/`allowSample`）与一句 `why`，分清「这个部署的身份面几乎是空的（接线缺口）」与「两套名字说不上话」。
 5. **提示词的结构账**：空节 12 组全 0；normal 字数 chair −1582、member −383、temp −239；权限比 1.385→1.331（再压就要删 chair 独有的教学，判断不该做）；精确重复句 28→26，剩下的每一条都指名是谁钉住的。
+
+## ROUND 242
+
+### 一行的状态机里必须有「失败」这个词
+
+第 65 次真机最贵的读数不是 PDF，也不是回合锁（那已在 ROUND 241 修好并真机成立），而是**三个面同时说真话、却互相矛盾**：
+`turnReceipts` 说那一轮 `status:"open"`，`deliveryLastFail` 说同一轮 `VMU_TURN_DELIVERY_TIMEOUT`，`turnLoop.inFlight` 说没有回合在飞。
+根因不是谁撒谎，而是回合行只有 `open/settled/abandoned` 三个词，**没有「交付失败」这个状态**——投递抛错后没人给它写收官行。
+
+修法落成词汇表（`kernel/turn/index.js`，`noteTurnReceipt` 上方）：`open | settled | undelivered | failed | abandoned`，
+并在投递 catch 里写 `status:"undelivered"` + `closedWith` + `settledBy:"delivery-threw"`。
+同一个补丁位（`closedWith`/`settledBy`）给 `abandoned` 复用，于是「这一轮为什么结束」永远是一个可读的字段，而不是从 means 里猜。
+
+### 兜底必须与它兜的东西一起被读到
+
+`abandonAfterMs` 是「锁抱太久就自动断开」的兜底；投递 seam 自己有 900 s + 225 s 的预算。真机里前者 **1500000 ms** 大于后者 **1125000 ms**，
+于是兜底**永远不会先到**，而回执只报了前者——一个永远不会触发的安全网，比没有安全网更危险，因为它让人停止思考。
+默认值刻意不动（顺序是设计），改的是读数：`turnLoop` 现在把 `deliveryTimeoutMs`/`deliverySeamBudgetMs`/`timeoutOrder` 一起报出来，
+`timeoutOrderMeans` 明说这个顺序，并明说「兜底只对既不返回也不抛的 seam 有效，不能当『调用方要等多久』读」。
+
+### 「没写」与「没发生」必须长得不一样
+
+这一轮有三处同一个病：`recover` 的 plan 用 `members:0` 表示「没读 seam」；结算拒绝回执一个 body 键都不给；merge 成功回执没有 `bodyOwnIdLineDropped`。
+三处都被读者合理地读成「事实是零」。修法统一成同一句式：**给一个值，并给一句说明这个值意味着什么**——
+`members:null` + `membersWhy`、`bodyModeUsed:"refused"` + `bodyLinesDropped:null` + 「`null` 表示没走到，绝不是没丢」、`bodyOwnIdLineDropped:false` + means。
+顺带又抓到一次**面层白名单吃掉内核新键**（`kit/handlers.js` 的 `mergeEcho`）——「转发要带上名词」这条教训，这已经是第三次。
+
+### 相位不等于绑定：提示词的空框架是一个谎
+
+A7 是提示词审计里唯一一条**渲染层**缺陷：会议相位但没绑会的回合，仍会拿到「议程：未提供（类型：未提供）」的框架。
+读者看到的不是「没有会」，而是「有会，但全是洞」。修法是给 section scope 加第二维 `meetingId: 'required' | 'none'`，
+判据取**这一轮真正绑定的会**（`kernel/turn/index.js` 传给 `prompt.assemble` 的 `meeting`），而不是渲染出来的模板值。
+实测同一相位组装两次：未绑定 ⇒ 两个会中节都不被选中；绑定 ⇒ 都被选中。门是门，不是墙。
+（诚实留档：`charterSections()` 路径下 agenda 节会进 `sources` 但正文 0 字符，本轮断言因此落在节的选取上，渲染层为何吞字留待下轮。）

@@ -56,13 +56,32 @@ const start = await h.call('vibe_v5_start', { problem: 'G7 真装配：提示词
 ok(start && start.ok === true, 'premise: the institute is founded on a real kernel', start && { ok: start.ok, hired: start.hired })
 
 // ── ① the three seat prompts really assemble ─────────────────────────────────────────
+// ★ RUN 242 (FEEDBACK65 / sim-audit-prompts A7): the on-floor manual (`v5r-turn-meeting-chamber`) and the agenda
+// line are now gated on `scope.meetingId === 'required'` — a meeting-PHASE turn that is bound to NO meeting used to
+// be handed the manual for a floor that does not exist. So a measurement of what a chair READS IN A MEETING has to
+// bind one: `phase:'meeting'` alone no longer implies a floor (it is the reason this suite went from 0 to 7 red on
+// the RUN 242 build, with every stale-sentence assertion still passing).
+const convened = await h.call('vibe_v5_meeting', { member: 'r-acad', agenda: ['G7 提示词复验'], title: 'G7 会议相位', type: 'ordinary' })
+const mid = convened && (convened.meeting || convened.id)
+ok(typeof mid === 'string' && mid.length > 0, 'premise: the institute holds a meeting, so a meeting-phase turn has a floor to be on', convened)
+
 const prompts = {}
 for (const seat of ['chair', 'member', 'temp']) {
   for (const phase of ['normal', 'meeting']) {
-    const text = await h.prompts.assembleFor({ seat, phase })
+    const text = await h.prompts.assembleFor({ seat, phase, meeting: phase === 'meeting' ? mid : null })
     prompts[seat + '/' + phase] = typeof text === 'string' ? text : ''
   }
 }
+// The other half of the same rule: with NO meeting bound, the same phase must NOT describe a floor. Asserting only
+// the bound half would pass if the gate were removed entirely (both halves would then read the manual).
+const unbound = await h.prompts.assembleFor({ seat: 'chair', phase: 'meeting', meeting: null })
+const unboundText = typeof unbound === 'string' ? unbound : ''
+ok(unboundText.length > 0 && !unboundText.includes('`order` 不带 `members` 时只读队列'),
+  'a meeting-PHASE turn bound to NO meeting gets no on-floor manual (A7: no floor, no floor rules)',
+  { chars: unboundText.length, hasManual: unboundText.includes('`order` 不带 `members` 时只读队列') })
+ok(prompts['chair/meeting'].includes('`order` 不带 `members` 时只读队列'),
+  'and the bound chair DOES get it (so the check above is about the binding, not about the manual being gone)',
+  prompts['chair/meeting'].includes('`order` 不带 `members` 时只读队列'))
 const entries = Object.keys(prompts)
 ok(entries.length === 6, 'all six seat × phase prompts were assembled', entries)
 ok(entries.length > 0 && entries.every((k) => typeof prompts[k] === 'string' && prompts[k].length > 10000),

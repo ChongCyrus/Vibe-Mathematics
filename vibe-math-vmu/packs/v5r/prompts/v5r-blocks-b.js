@@ -606,7 +606,8 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '    vibe_v5_paper { action: "final", target: "<论文 target>", member: "{{ member }}",',
         '                    decision: "deliverable", note: "定稿说明：你如何审阅、统一术语与符号、是否发现并纠正了问题",',
         '                    conclusion: "（可选）定稿代表对原问题的最终结论（只写有证据的）" }',
-        '★ decision="revise" 会退回继续修订（有轮次上限）。**只有主席席（即院士）可以定稿**；其他席位与所办调用都会被具名拒绝。',
+        '★ decision="revise" 会退回继续修订（有轮次上限）。**只有主席席（即院士）可以定稿**；其他席位调用会被具名拒。',
+        '★ 所办问询门（`vmu.paper.officeConsult=required` 时）：被拦会具名拒 `VMU_OFFICE_CONSULT_REQUIRED`，拒里给 `requestId` 与 `target`——让所办先答复 `vibe_v5_paper { action:"consult", target:"<论文 target>", member:"<所办 id>", request_id:"<拒里的 requestId>", answer:"<核对结论>" }`，**答完重试 `action:"final"`**；普通成员答复会被具名拒 `VMU_NOT_PERMITTED`（能答复的角色由部署声明）。',
       ].join('\n'),
     },
   },
@@ -742,7 +743,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'phase',
     // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
     // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
-    scope: Object.freeze({ phase: Object.freeze(['meeting']) }),
+    scope: Object.freeze({ phase: Object.freeze(['meeting']), meetingId: 'required' }),
     texts: {
       // The name must NOT start with `v5r-meeting-`: that prefix is the namespace of the four mutually exclusive speaker
   // states, and a test asserts there are exactly four because the exclusivity IS the mechanism. The agenda is not a
@@ -754,7 +755,10 @@ export const CHARTER_BLOCKS_B = Object.freeze([
   // bound meeting, supplied per turn by the loop (`kernel/turn/index.js`, the `meetingFacts` block); the corpus string is
   // only the shape, never the content. An unbound turn does not print a type it did not read: the delivery line says
   // 「本回合没有绑定会议」and the grid says「未提供」- a hole a reader can SEE, which is the honest form of "no meeting".
-      meeting: '议程：{{ setting:vmu.turn.meetingAgenda }}（类型：{{ setting:vmu.turn.meetingType }}，主席：{{ setting:vmu.turn.meetingChair }}）。本轮绑定该会议：回复第一句请写明会 id（{{ setting:vmu.turn.meetingId }}）。',
+      meeting: [
+        '议程：{{ setting:vmu.turn.meetingAgenda }}（类型：{{ setting:vmu.turn.meetingType }}，主席：{{ setting:vmu.turn.meetingChair }}）。本轮绑定该会议：回复第一句请写明会 id（{{ setting:vmu.turn.meetingId }}）。',
+        '  · 上面议程/类型/主席若为「未提供」、id 为空，就是本回合没有绑定会议：先 `vibe_v5_meeting_round { meeting: "<会 id>" }` 绑下一回合，不要猜 id。',
+      ].join('\n'),
     },
   },
   {
@@ -937,6 +941,8 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · ② 召集即发邀请：`vibe_v5_meeting` 的召集只对 chair 席开放（`vmu.meetings.conveneRequiresChair`）；关闭也只有 chair 能调（`closeRequiresChair`，其他席位会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁做）。召集成功会对除主席外每位在册者发出 `meeting-invitation` **耐久邮件**：回执 `invitation.delivered`＝已投递（对方下个回合或 `vibe_v5_inbox` 才读到），`woken` 空＝无实时唤醒缝，`unreachable`＝邮件没发出、会议仍成立——用 `vibe_v5_message`/`wake` 补，**绝不重复召集**。邀请≠签到：被邀者仍须自己 `attend` 才计入法定人数。',
         '  · ③ 预约与会前：`vibe_v5_meeting { type, agenda, at: <epoch ms / ISO-8601 / 相对偏移如 "+120s"> }`（可写相对偏移——**你没有自己的钟**，偏移由内核换算成绝对时间）→ 会议进入 `scheduled`；`status`/`summary`/`meetingView` **立刻可读**，开始前的治理动作都被具名拒（`attend` 是座位登记，可提前签到，但不会提前开会）。到点人数不齐就 `waiting`，**迟到者 `attend` 即开**；没有定时器：由每轮 `beat()` 的 sweep 结算，`proceed` 可提前开始。迟到入席由每会参数 `lateAdmission`（open|chair|refuse，缺省 open）决定：`open` 直接入座记 `late:true`；`chair` 挡在门口（`pendingLate:true`），只有主席 `vibe_vmu_meeting { action:"admit", id, member, actor }` 放行；`refuse` 具名拒 `VMU_LATE_ADMISSION_REFUSED`；「迟到」由 `vmu.meetings.lateAfterMs` 对 `openedAt` 判定（缺省 0）。',
         '  · ⑦ 一次连排多场：给 `sequence` 数组即可一次召集（逐项校验，回执给 `sequence.index/total/next`）；也可以给每场各自的 `at` **逐场召集**。',
+        '  · ⑧ 面别记错：`vibe_v5_meeting` 只**召集/预约**；`close`/`attend`/`hand`/`admit`/`status`/`summary` 走 `vibe_vmu_meeting { action, id, member?, actor? }`，拿错面会被具名拒 `VMU_INVALID_ARGUMENT`。',
+        '  · ⑨ 以**主席名义**的动作（召集、裁决、放行迟到）不能代做：先 `vibe_vmu_turn { op:"drive", member: "<院士 id>" }` 给院士派一回合，否则具名拒 `VMU_CHAIR_ACT_NOT_DELEGATED`。辩论的 `subject` 必须是**证明已完成**的命题卡（`proofRef`+`proofState:"complete"`、已进 verified，或跑通的 Lean 结果）或 `subject_evidence.file`；一句话命题会被具名拒 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`。',
       ].join('\n'),
       temp: [
         '【会议类型与预约】六种类型（ordinary/academic/debate/closure/paper/planning）；动议 kind 为 topic/procedural/resolution；被邀请不等于签到——临时工席位不参会：`attend` 被具名拒（`vmu.meetings.attendDeniedSeats`），无表决权。',
@@ -955,6 +961,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     // used to ride in every round inside v5r-turn-meeting-schedule. It is only actionable once a meeting is
     // OPEN, so it lives in its own section and the prompt-switch middleware renders it on phase=meeting only.
     // Only the chair gets a text: for the other seats the section resolves to the empty string (zero injection).
+    // ★★ RUN 242 (A7 root cause): a meeting-phase turn that is bound to NO meeting gets no on-floor manual — the
+    // manual's every fact (speaking order, wall clock, member rounds) is about a meeting nobody named.
+    scope: Object.freeze({ meetingId: 'required' }),
     texts: {
       academician: [
         '【会议进行中：会中手册（编号沿用上一节的 ④⑤⑥，只在会议回合出现）】',
@@ -1058,6 +1067,27 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         '【工具做事，回执汇报】开会/举手/邀请/投票/改任务/写轨迹的主路都是**工具调用**。每轮末尾的 fenced JSON 是**便捷桥**：只写回执字段目录里的字段，带属主的会**真的派发**到目录写的那个面，`face:null` 的只记账；`executed` 是派发计数，不是你要写的字段；无会议 id，举手/邀请走工具面。工具是主路，围栏不能替代工具。',
+        '  · id 照读面抄，自造 id 拒 `VMU_NO_SUCH_OBJECT`。',
+      ].join('\n'),
+    },
+  },
+  {
+    name: 'v5r-turn-loop-stuck',
+    order: 838,
+    range: 'pack',
+    kind: 'phase',
+    // ★ RUN 242 / task-55 E6: the turn loop's own fact - "a turn is in flight and the lock has not come back" -
+    // had no prompt line anywhere. A reader saw inFlight:true, retried, and collected VMU_TURN_REENTRANT (live run
+    // 64 read pending:0 on the durable side while the lock was held, and both readings were true). The fix is the
+    // named abandon, not a retry; the wording below is transcribed from kernel/turn/index.js (:4011, :4742, :4864).
+    // Phase-gated to a REGULAR round: this is the one place the loop advances on its own, and the meeting/verify
+    // manuals already carry their own timing. The gate is data (see v5r-turn-convene), not a middleware flag.
+    scope: Object.freeze({ phase: Object.freeze(['normal']) }),
+    texts: {
+      normal: [
+        '【回合循环卡住了怎么办】读 `vibe_vmu_turn { op:"status" }.turnLoop`：`inFlight` 是本内核的**单轮锁**、不是账本承诺（`turnInFlightMeans`：`human.recover` 读耐久账，可与锁并存）；`inFlightTurn`/`inFlightMember`/`inFlightOpenedBy`/`inFlightForMs`＝哪轮/谁开/锁时，`abandonAfterMs`＝上限，`wakeQueue`/`recentAbandonments`＝排队/最近关的轮。',
+        '  · 连续两次 `VMU_TURN_REENTRANT` 就**不要第三次重试**：`vibe_vmu_turn { op:"abandon", turn:"<inFlightTurn>", why }` 按名关掉：该行变 `status:"abandoned"` + `VMU_TURN_ABANDONED`、释放锁、报告**不应用**；给错 id 读 `status:"open"` 的行或 `inFlightTurn`。',
+        '  · 只关抱锁那一轮；关完读 status 确认 `inFlight:false`。',
       ].join('\n'),
     },
   },

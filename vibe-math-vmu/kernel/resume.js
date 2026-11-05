@@ -885,7 +885,13 @@ export function createResume({ store = null, work = null, control = null, identi
     const inflight = typeof work?.list === 'function' ? work.list() : []
     plan.steps.push({ step: 'inflight', ok: true, pending: inflight.filter((e) => !e.interrupted).length, interrupted: inflight.filter((e) => e.interrupted).length })
     const roster = identity && typeof identity.list === 'function' ? identity.list() : null
-    plan.steps.push({ step: 'roster', ok: roster !== null, members: roster ? (roster.members || roster).length : null, note: roster === null ? 'no roster seam: the members projection is the remaining source' : null })
+    // ★ RUN 242 (FEEDBACK65 1.4): A PLAN IS NOT A READING. MEASURED (run 65): the plan step said
+    // `members:0` while four seats were live - the number meant "the plan has not read the seam yet", and `0` is exactly
+    // the shape of the most severe defect this institute knows ("the roster is empty"). A number that nobody read is now
+    // `null`, with the reason beside it (the same rule as `deadlineAt:null` and `decidedAt:null`).
+    plan.steps.push(roster === null
+      ? { step: 'roster', ok: false, members: null, membersWhy: 'the plan has no roster seam to read: `recover()` reads the members projection instead, so this step cannot count seats', note: 'no roster seam: the members projection is the remaining source' }
+      : { step: 'roster', ok: true, members: (roster.members || roster).length, note: null })
     const projected = []
     for (const [key, holder] of projections) {
       const env = store.read(key)

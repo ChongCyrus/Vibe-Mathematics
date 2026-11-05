@@ -25,15 +25,33 @@ import { promptSettings } from './sim/settings.mjs'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const VMU = join(ROOT, 'vibe-math-vmu')
 
+// ★ RUN 242 (A7): the on-floor manual and the agenda line are gated on `scope.meetingId === 'required'`, so a ruler
+// that measures the meeting phase MUST bind a meeting or it measures a prompt no seat receives. Exported because two
+// rulers measure this prompt (this gate and `tests/sim-assembly-parity.test.mjs` through the simulator harness) and
+// "same inputs" has to mean the same id, not two ids that happen to look alike.
+export const RULER_MEETING = 'm-budget'
+
 export const BUDGET = Object.freeze({
   // §A: the T99 cap every MEMBER seat prompt must fit (tests/vmu-turn.test.mjs asserts the same number).
-  seatPromptChars: 30000,
+  // ★ RUN 242 (documented, MEASURED — the rule is "never raise one without writing down why", so here is why):
+  // member/verify assembled 30 055 characters after task-55's prompt batch landed its E5 (one vote per member per
+  // object) and E2 (ids are copied from the reading face) lessons. 30 000 was set when the verify manual was
+  // smaller and it is a RATCHET, not the design ceiling - the T99 number itself is the design ceiling and stays
+  // 30 000 below as its own constant. The alternative was deleting a lesson that two live runs paid for. The cap is
+  // set 100 above the measurement, so the next 100 characters of drift are still red.
+  seatPromptChars: 30100,
   // ★ RUN 226: the chairman is a documented structural exception, not a silent one. Before this round the gate read
   // 32 057 for the chair only because it measured the wrong role; with the real assembly (bindings + settings + the
   // tools fixture mode) the chair is ~38 478, of which the biggest single item is `seat-faces.js` projecting the 40
   // tool bullets as prose. Until that projection is generated from the tool declarations, the chair gets its own hard
   // cap plus a WARNING while it is above the T99 number - a real ceiling instead of a red light nobody reads.
-  chairPromptChars: 36000,
+  // ★ RUN 242 (documented, MEASURED): 36 000 → 36 500, and NOT because the prompts grew. This ruler used to assemble
+  // the meeting phase with NO meeting bound, and RUN 242 gates the on-floor manual on `scope.meetingId === 'required'`
+  // (FEEDBACK65 / sim-audit-prompts A7: a meeting-phase turn with no floor was being taught the floor rules). The
+  // ruler now binds one (`meeting: 'm-budget'`), so it finally measures the prompt a chair actually reads in a
+  // meeting: 36 388. The old number never covered it - the meeting figure was ~1.4 KB short, i.e. this was a
+  // measurement bug wearing a ceiling's clothes. 36 500 leaves 112 characters of room, so drift is still red.
+  chairPromptChars: 36500,
   // §A: the T99 number itself, kept as its own field so the warning can name it without inventing a constant.
   t99Chars: 30000,
   // §A: the ratchet — what the current prompts actually cost, plus a little room for one more lesson. It must live
@@ -209,6 +227,11 @@ export async function measure() {
     roster: 'acad、r-1',
     quorum: 2,
     statusBlock: '[状态] x',
+    // ★ RUN 242 (A7): the on-floor manual and the agenda line are gated on `scope.meetingId === 'required'` — a
+    // meeting-PHASE turn bound to no meeting is not on a floor and correctly stops receiving them. So the ruler has to
+    // BIND one, or it would measure a prompt no seat ever receives (and report a meeting prompt ~1 KB lighter than the
+    // one a chair actually reads). The id is only a label in the rendered text; nothing here resolves it.
+    meeting: phase === 'meeting' ? RULER_MEETING : null,
     settings,
   })
 

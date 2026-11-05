@@ -212,10 +212,14 @@ export async function boot({ root, packs = ['v5r'], clock = () => 1_800_000_000_
      * `member` defaults to the seat's natural holder (`r-acad` for the chair, `r-1` otherwise), and can be pinned so a
      * measurement can use the EXACT inputs another ruler uses (the budget gate assembles every role as member `r-1`).
      */
-    prompts.assembleFor = async ({ seat = 'chair', roleLabel = null, phase = 'normal', round = 1, roster = null, statusBlock = null, member = null }) => {
+    // `meeting` is what the turn is BOUND to. RUN 242 gated the on-floor manual (`v5r-turn-meeting-chamber`) and the
+    // agenda line on `scope.meetingId === 'required'`, because a meeting-PHASE turn with no meeting bound was being fed
+    // the manual for a floor that does not exist (FEEDBACK65 / sim-audit-prompts A7). So a measurement of what a
+    // chair/member actually reads IN a meeting has to pass the id - `phase:'meeting'` alone no longer implies one.
+    prompts.assembleFor = async ({ seat = 'chair', roleLabel = null, phase = 'normal', round = 1, roster = null, statusBlock = null, member = null, meeting = null }) => {
       const label = roleLabel === null ? (seat === 'chair' ? '院士' : seat === 'temp' ? '临时工' : '常驻研究员') : roleLabel
       const holder = member === null ? (seat === 'chair' ? 'r-acad' : 'r-1') : member
-      const asm = await loop.assemble(loop.open({ member: holder, role: seat, roleLabel: label, phase, round, roster, statusBlock, settings: layer }).turn)
+      const asm = await loop.assemble(loop.open({ member: holder, role: seat, roleLabel: label, phase, round, roster, statusBlock, meeting, settings: layer }).turn)
       const text = String(asm.text || '')
       prompts.push({ seat, phase, round, chars: text.length, text })
       return text

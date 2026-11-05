@@ -16983,3 +16983,144 @@ leaderless 四段在院士已就座时仍写「本所当前没有在册院士」
 2. **「接受」与「应用」之间必须写出路径，并且路径上的每一步都得有一个真能走的出口。** `countedLater` 说了「下一步」，而下一步永远被拒，
    那句话就是一个诚实的谎言。
 3. **一个字段只回答一个问题；一个槽只放一次交付。** run 64 的 M4/M6 都是同一个错误的两个面。
+
+## §339 · RUN 242 — 投递失败的那一轮到底算什么、提示词在错误的相位说了会议、以及三行「没写」被当成「没发生」
+
+### 339.1 账从哪来（第 65 次真机，基线 `466ece0b`）
+主线到结题：`paper-oddsum-65` → PDF **56 947 字节**（`rec-19` 定稿、`rec-20` 复排，`compiledAfterFinalMeans` 明说两行是两个时刻）。
+24 个探针：**20 符合预期、1 部分不符（I3）、3 因环境不可达**（2.3 一回合一行 progress、2.4 会议回合帧三样逐字、2.13-I4 收窄）。
+反馈清单：**8 条机制缺陷 1.1–1.8** + **6 条提示词读数 (a)–(f)** + 5 条所办自省。
+本轮修 1.1–1.7 与 A7（提示词渲染层），1.8 修到能修的一半。
+
+最刺眼的一条**不是代码**，而是部署事实，已如实写进报告：
+成员回合的投递在本部署不可用 —— `drive` 回 `VMU_ENGINE_UNAVAILABLE: the host accepted the activation but the child returned no text`；
+`step` 在 **1 125 039 ms** 后回 `VMU_TURN_DELIVERY_TIMEOUT`（`deliveryPath:"one-shot"`、`lastPhase:"start-returned"`、`childId:null`）。
+而子会话其实干过活（r-1 那一轮在 19:37:47 写了 `rec-5` 蓝图草案、19:39:53 写了 `rec-4` 进展）。
+**「回合在做，结果交不回」** —— 这是一个引擎级缺口，不是措辞问题，所以本轮给它的账（1.1/1.8）都是「把两种状态分开写」，而不是假装修好了投递。
+
+### 339.2 1.1：投递失败的一轮，在台账上说自己是 `open`
+真机三处读数互相矛盾：`turnReceipts` 那一行 `status:"open"`、`counts.deliveryLastFail = {turn:"t-2", code:"VMU_TURN_DELIVERY_TIMEOUT", stillRunning:true}`、`turnLoop.inFlight:false`。
+而 `abandon` 的 means 又事后解释「一个 `open` 行属于一次已经返回的投递」——**三个面，三种说法**。
+修法（`vibe-math-vmu/kernel/turn/index.js`）：投递抛错时写一行 `status:"undelivered"` + `closedWith:<那个码>` + `settledBy:"delivery-threw"`，
+`noteTurnReceipt` 增加 `closedWith`/`settledBy` 两个补丁位，行状态词汇表写在它上方：
+`open | settled | undelivered | failed | abandoned`。台账不得替换 seam 自己的拒绝（写入包在 try/catch 里）。
+
+### 339.3 1.8：把「这一轮可能干过活」写成一个可查的窗口
+投递超时不是「什么都没发生」。修法只做到**能查**的程度：
+`counts.deliveryLastFail.writesWindow = { from: <turn.at>, to: <now>, by: <member>, enumerated: false, means: '一个成员回合跑在成员自己的内核里……先读 `by` 在 `from`..`to` 之间写的记录，再判断这一轮什么都没产出（run 65 那次超时的回合已经写过一份草案和一行进展）' }`。
+`enumerated:false` 是关键：**我们不假装枚举过**。真正的跨内核枚举需要一个 records 侧扫描缝，本仓库还没有，已在那句 means 里点名。
+
+### 339.4 1.2 / 1.3：一个槽只放一次交付；两个超时必须能一起读
+1.2 真机形状：`lastAttribution = {"childId":null,…,"attribution":"no turn has been delivered yet","slot":"single","member":"r-1"}` ——
+**一边否认有交付，一边填了成员，而 `turn` 键根本不存在**。
+修法：`member`/`turn` 同时有或同时为 null；`slot` 只在 member 存在时是 `"single"`，否则 `"empty"`；
+被尝试但未返回的成员单独放 `attemptedMember` + `attemptedMemberMeans`（「一次投递为这个成员**被尝试过**且没有返回」）。
+1.3 真机数字：`abandonAfterMs:1500000`（25 分钟）**大于** seam 自己的预算 `900000+225000=1125000`（18.75 分钟）——
+所以自动弃置在那套部署里**永远不会先发生**，而读数让人以为有 25 分钟兜底。
+修法：`turnLoop` 同时报 `deliveryTimeoutMs`/`deliveryGraceMs`/`deliverySeamBudgetMs`/`timeoutOrder`
+（`'backstop-after-seam' | 'backstop-before-seam'`）与 `timeoutOrderMeans`（兜底只对「既不返回也不抛」的 seam 有效，**不能当「调用方要等多久」读**）。
+默认值**刻意不改**：那个顺序是设计，不是错误；错的是只报一半。
+
+### 339.5 1.4–1.7：三行「没写」被当成「没发生」
+- **1.4** `recover` 的 plan 里 `steps[roster] = {step:"roster", ok:true, members:0}`，而同一份回执的 `vibe_v5_overview` 读到四席全 live ——
+  `members:0` 就是「名册是空的」的形状。改成无 seam 时 `ok:false` + `members:null` + `membersWhy:"the plan has no roster seam to read…"`，有 seam 才给数。
+- **1.5** `VMU_RECORD_SETTLEMENT_REWRITE` 的拒绝回执**一个 body 键都没有**（在正文阶段之前就被拒了）——
+  沉默被读成承诺。改成 `bodyModeUsed:"refused"` + `bodyLinesDropped:null` + `bodyLinesAdded:null` + `bodyLinesMeans:"NOT PROCESSED…`null` 表示「没走到」，绝不是「什么都没丢」"`。
+- **1.6** merge 成功回执 `bodyLinesAdded:[]` 却**没有** `bodyOwnIdLineDropped` 键 ——「规则没触发」与「规则没实现」长得一样。
+  改成恒给 `false`（与 `propose` 恒给 `headingDropped:0` 同构）+ `bodyOwnIdLineMeans`；并在 `kit/handlers.js` 的 `mergeEcho` 补转发
+  ——**「转发要带上名词」第三次犯**：面层白名单式重述把内核新键吃掉了。
+- **1.7** `reply` 先判 report 形状再判「有没有待回回合」，于是只给 `reply_for` 的人听到的是 `VMU_INVALID_ARGUMENT: report is missing or empty`，
+  真因 `VMU_TURN_NO_PENDING_MEMBER` 被埋了。改成先取 `openTurnForReport()`，并新增公开面 `reportChannel()`（`{open,member,turn,via}`），
+  面侧在 `report` 缺失时先问它，`open===false` 时用空对象借内核自己的长 CHANNEL hint 拒绝。
+
+### 339.6 A7：`phase === 'meeting'` 不等于「这一轮绑了会议」
+提示词审计（`docs/acceptance/sim-audit-prompts.md` A7）指出：处于会议相位但**没有绑定任何会议**的回合，仍会被注入会议专用节，
+渲染出来的是一段「议程：未提供（类型：未提供，主席：未提供）」的空框架 —— 读者看到的是「有会，但没人填」，而不是「没有会」。
+真机第 65 次里 `t-3` 正是这种回合。
+修法（三个文件）：
+1. `vibe-math-vmu/kernel/prompt/index.js` 的 `scopeMatches` 增加第二个维度 `scope.meetingId`：
+   `'required'` 要求 `ctx.meeting` 是非空字符串，`'none'` 要求它为空。判据看**这一轮真正绑定的会**，不看渲染出来的模板值。
+2. `vibe-math-vmu/kernel/turn/index.js` 的 `prompt.assemble({…})` 把 `turn.meeting` 传进去（空串归一成 `null`）。
+3. `vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js`：`v5r-turn-meeting-agenda` 的 scope 变 `{phase:['meeting'], meetingId:'required'}`；
+   `v5r-turn-meeting-chamber` 变 `{meetingId:'required'}`。
+实测（`tests/vmu-run242-feedback65.test.mjs` §8）：同一相位组装两次，`meeting:null` 时**两个会中节都不被选中**，`meeting:'m1'` 时**两个都被选中** ——
+门是门，不是墙。
+> 探针记录（诚实留档）：`charterSections()` 组装路径下，`v5r-turn-meeting-agenda` 会出现在 `sources` 里但正文 0 字符（模板变量已给全也不出字），
+> 本轮的断言因此落在**节的选取**（`sources`）而不是渲染出的那一行字上；渲染层为什么吞掉它属于下轮待查，不与本门混淆。
+
+### 339.7 提示词第二批（task-55，常驻队友交付）
+10 条：E1 主席名义动作先 `{op:"drive",member}`、E2 id 照读面抄、E3 所办 consult 门、E4 辩论 subject 须有完成证明、E5 一票一签、
+A6 会 id 才是绑定（`say` 不进楼层）、A7 空帧出口、A8 面别记错（`vibe_v5_meeting` 只召集）、B2 库落盘两条路统一、
+**E6 新节 `v5r-turn-loop-stuck`**（531 字，教 `turnLoop` 读法、连续两次 `VMU_TURN_REENTRANT` 不重试、`{op:"abandon",turn,why}`、关后确认）。
+字数：chair normal 31 065 → **31 865**、member +770、temp +693；12 组合空节 0；`prompt-budget.mjs` PASS（baseline 32 442，Δ −577）。
+两条机制提醒写进贡献规范：`kind:'phase'` 本身不门控，相位节必须显式 `scope:{phase:[…]}`；A7 这类空占位要根治在渲染层，文案只能给判据与出口。
+
+### 339.8 E16 转 DONE，与台账第一次「审计反判」
+E16（规则 50「批量指定成员按顺序发言」）一直停在 PARTIAL，理由是写路径实现了但没有端到端测试。
+本轮补 `tests/vmu-run242-order-write.test.mjs`（**48 passed / 0 failed**）：内核 `order({meeting,members,by,why})` 回 `before/after/moved/dropped`、
+minutes 落一行 `kind:"floor-order"` 带 `order`、`speak` 的 `queueRead.position` 证明序真的绑住发言、宿主面只转发 `floor{mode,source,order,queueOpen,waiting}`
+（**position 只在核层**，所以「序绑住发言」只能在核层测）。
+转 DONE 时被 `check-rules-coverage` 拦住两次：① 证据串必须在源文件里逐字存在；② 观察审计判它 `UNREACHABLE`，
+DONE 必须带 `auditDispute { acknowledged, why, evidence }` 说清「自那以后什么变了」。
+台账现在 **DONE 91 / PARTIAL 2 / MISSING 0**，两条 PARTIAL 是 C10（Lean 归档读面需带 Lean 的部署）与 D2（架构裁决需用户裁定）。
+
+### 339.9 三条教训
+1. **「失败」必须是一行状态，不是一句解释。** 投递抛错后行还写 `open`，于是三个面都说了真话却互相矛盾；状态机里没有的词，读者只能自己发明。
+2. **兜底与它兜的东西必须能一起读。** 只在回执里报 `abandonAfterMs` 而不报 seam 预算，等于让人相信一个永远不会先到的兜底。
+3. **「没写」和「没发生」必须长得不一样。** 拒绝回执缺 body 键、merge 回执缺 `bodyOwnIdLineDropped`、plan 用 `members:0` 表示「没读」——
+   三处都是同一个病：省略被读成事实。
+
+> **预算棘轮的第四次上调（有记录的上调）**：task-55 落盘后 `audit-prompt-budget --check` 报 member/verify **30 055** > 30 000。
+> 先做的是**减字**：把 `v5r-turn-tool-receipt` 里由 E2 新加的那句压到「id 照读面抄，自造 id 拒 `VMU_NO_SUCH_OBJECT`」，
+> 并把 researcher 版 `v5r-charter-voting` 里重复的一句话改成「同场同对象只投一次（`VMU_RULING_ALREADY_FILED`）；要改裁决只能给主席发信」（−约 120 字）。
+> 仍差 55 字时选择**记录在案的上调**：`scripts/audit-prompt-budget.mjs` 的 `seatPromptChars` 30 000 → **30 100**
+> （注释里写了测量值、为什么、以及 T99 仍是 30 000 的设计上限），于是下一次 100 字的漂移仍是红的。宁可留 100 字余量，
+> 也不删一条两次真机换来的教训。
+
+### 339.10 收口时全量 T1 报的五条红：三条是旧 pin 撞新合同，两条是尺子自己量错
+
+第一轮干净全量（`/d/_tmp/t1-r3700-run242.log`，`scope=full jobs=765 concurrency=3`）报 **763/765**，五条红：
+
+| 套件 | 断言 | 性质 |
+| --- | --- | --- |
+| `audit-vmu-docs` | 代码能抛的每个框架码都必须在 03-§8 登记 | 本轮 1.1 新写的兜底串 `VMU_TURN_DELIVERY_FAILED` 没登记 |
+| `audit-vmu-docs.mutants` | 未变异的副本必须是绿的 | 依赖上一条（同一棵树上连带红） |
+| `vmu-run236-g7-contradiction` | 主席被告知 `order` 带 `members` 是重排 | 7 条全红：它用 `phase:'meeting'` 但**不绑会** |
+| `vmu-run237-ledger-audit` | 不可观测的规则被声明为缺口 | `gaps.length >= 3` —— E16 正当地关闭后就变红 |
+| `vmu-run57-turn-attribution` | 交付前槽自称 `single` | 1.2 之后交付前就是 `empty` |
+| `sim-assembly-parity` | 两台尺子同一输入必须同数 | 预算门绑了会，模拟器没绑 ⇒ 构造性差异 |
+
+（第二条 `sim-assembly-parity` 是修完前五条后第二轮才暴露的，见下。）
+
+**判据怎么改，以及为什么不许放宽**：
+
+- `audit-vmu-docs`：把那个码**登记**进 03-§8（它不是测试口径问题，是产品新增了一个码而没有写进契约面）；
+- `vmu-run236`：`scripts/sim/harness.mjs` 的 `assembleFor` 新增 `meeting` 透传，套件真的召集一场 `ordinary` 会并把 id 传给 meeting 相位；
+  同时补一条**反侧**断言「没绑会的 meeting 相位里没有会中手册」。只测一侧的话，A7 的门被整段拆掉也能全绿 —— 这一条是
+  「只测一侧的门等于没有门」的实例；
+- `vmu-run237`：`gaps.length >= 3` 量的是**账本**，不是不变量：任何一条缺口被正当地关闭，它都会红（尺子量自己）。
+  改成断言 `C10`（需要带 Lean 的部署）与 `D2`（只有用户能做的架构裁定）仍在缺口里，并写明「把它们翻成 DONE 让门变绿才是这条测试要抓的作弊」；
+- `vmu-run57`：交付前的槽从 `single` 改成 `empty`（1.2 的修法），并补一条「`member` 与 `turn` 同时出现或同时缺席」；
+- `sim-assembly-parity` / `audit-prompt-budget`：**这是本轮最值得记的一条**。预算门原来组装 meeting 相位时**不绑会**，
+  所以它量的是一个**没有任何席位会收到的提示词**；A7 的门加上去以后，两台尺子立刻分叉 2 041 / 773 / 625 字。
+  `chair/meeting` 的真实尺寸是 **36 388**，而旧上限 **36 000 从来没有覆盖过它** —— 那不是「提示词变大」，是**尺子以前量错**。
+  修法顺序被刻意固定：① 先让尺子绑会（`export const RULER_MEETING = 'm-budget'`，两台尺子读同一个 id，而不是各写一个）；
+  ② 再抬上限 36 000 → **36 500**，注释里写明「真实测量值 36 388，余 112 字，漂移仍红」。
+  先修测量、再谈预算；反过来做，抬上限就是给 bug 让路；
+- 新增两条机器化判据钉住这次事故不会再回来（`tests/vmu-run242-feedback65.test.mjs` §8g/§8h）：预算尺子的上下文**必须**带
+  `meeting: phase === 'meeting' ? RULER_MEETING : null`，且主席上限**必须** ≥ 36 388。两条写在一起，因为「尺子不绑会」
+  与「上限低于真实值」是同一个 bug 的两面。
+
+第二轮干净冷全量（本轮收口的最终数字见 §339.11）。
+
+### 339.11 本轮收口的真数字（2026-11-06）
+
+- 干净全量 T1 三轮：`/d/_tmp/t1-r3700-run242.log` = **763 / 765**（5 红，逐条见 §339.10）；修完前五条后
+  `/d/_tmp/t1-r3710-run242b.log` = **763 / 765**（新暴露 `sim-assembly-parity` 的构造性分叉）；把两台尺子绑同一个会后
+  `/d/_tmp/t1-r3720-run242c.log` = **`TOTAL 765 PASS 765 FAIL 0 (suites 685 · probes 80)`**。
+- 生成物：`update-doc-counts --write` ⇒ `JOBS total=765 suites=685 probes=80 shipped FILES tests/*.mjs=393`；
+  `regen-all --write` 17/17 → `--check` 17/17 in sync；`PREFLIGHT: PASS`、`DOC LINT: PASS`（仅 D16 两条既有提示）、
+  `RULES COVERAGE: PASS (0 problem(s))`（仍 open 2 行＝C10/D2）、`RULE PARITY: PASS (0 problem(s))`；
+  `PROMPT BUDGET: PASS (2 warning(s))`（chair/meeting 36 388 ≤ 36 500；member/verify 30 055 ≤ 30 100，均在 T99 之上）。
+- 每条红的修法都记在 §339.10 的「判据怎么改，以及为什么不许放宽」里；产品码只有一处因红而改（`VMU_TURN_DELIVERY_FAILED`
+  的登记，那是把已实现的行为写进契约面），其余五处全是**判据/尺子**。

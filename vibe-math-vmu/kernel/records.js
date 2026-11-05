@@ -1052,7 +1052,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         bodyOwnIdLineDropped,
         bodyOwnIdLineMeans: bodyOwnIdLineDropped
           ? 'this write NAMED a body line `- id：<this row\'s own id>`; the id is the ROW itself, not a field of its body, so the line was dropped before the body was stored (it carried no information the row does not already have, and counting it as an added body line would have said the caller added something)'
-          : null,
+          : 'no body line named this row\'s own id, so that rule dropped nothing here - reported as false rather than omitted, so "the rule did not fire" and "the rule was not implemented" do not look the same (RUN 242 / FEEDBACK65 1.6)',
         ...identityEcho(mergedOwner, mergedBy) }
       if (!updating) return Object.assign(receipt, { updated: false })
       const out = Object.assign(receipt, {

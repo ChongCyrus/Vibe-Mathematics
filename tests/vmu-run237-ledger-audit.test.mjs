@@ -84,7 +84,14 @@ const codesOf = (parsed) => ((parsed && parsed.problems) || []).map((p) => p.cod
   ok(disputed.every((it) => String(it.auditDispute.evidence).indexOf('tests/legacy/') === -1),
     'no reconciliation hides behind an archived suite')
   const gaps = real.items.filter((it) => it.status === 'PARTIAL' || it.status === 'MISSING')
-  ok(gaps.length >= 3, 'the genuinely unobservable rules are declared as gaps, not as DONE', { gaps: gaps.map((g) => g.id) })
+  const gapIds = gaps.map((g) => g.id)
+  // ★ RUN 242: this used to be `gaps.length >= 3`, i.e. it counted the ledger instead of asserting the invariant -
+  // so closing a gap for a GOOD reason (E16, now proved end-to-end by tests/vmu-run242-order-write.test.mjs) turned
+  // this suite red, which is a ruler measuring itself. The invariant is WHICH rows are unreachable without a
+  // different deployment or a human ruling: C10 needs a deployment with Lean, D2 is an architecture ruling only the
+  // user can make. Flipping either to DONE to make the gate look green is the fraud this test exists to catch.
+  ok(gapIds.includes('C10') && gapIds.includes('D2'),
+    'the genuinely unobservable rules are declared as gaps (C10 Lean deployment, D2 user ruling), not as DONE', { gaps: gapIds })
   ok(gaps.every((g) => typeof g.next === 'string' && g.next.trim().length >= 8), 'each gap says what would close it')
 
   const green = runGate(null)

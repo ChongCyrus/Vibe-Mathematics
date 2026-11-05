@@ -145,6 +145,8 @@
 
 ## A6 · meeting 相位的 `v5r-turn-ask` 自相矛盾（同一段先说议程由会议帧给出，再说"没有绑定会议"）
 
+> **状态（task-55，2026-11-06）：已修。** `v5r-turn-ask` 的 meeting 变体保留原句，追加判据句：「判据：帧里**给了会 id** 才是绑定会议。绑定时回执的 `say` 不进会议楼层——发言填回执的 `input` 字段，对全所说话或私信一律用 `vibe_v5_say`；帧里没有会 id 就是未绑定，`say` 只留在回执 notes 里不投递。」
+
 - **位置**：`v5r-turn-ask`（meeting ×3，97 字）
 - **原文（逐字）**：
   > `议程与类型由本轮会议帧给出；请按议程发言，需要发言时举手。`
@@ -159,6 +161,8 @@
 
 ## A7 · 会议议程段在无会议帧时输出空占位句子
 
+> **状态（task-55，2026-11-06）：已修（保留占位词，补空帧出口）。** 四个 `{{ setting:vmu.turn.* }}` 被 `tests/vmu-run239-prompts.test.mjs` §0g/§2c/§2f/§2g/§2h 逐字 pin（要求打印真议程/类型/主席/会 id），不能删；改为在其后追加：「上面议程/类型/主席若为「未提供」、id 为空，就是本回合没有绑定会议：先 `vibe_v5_meeting_round { meeting: "<会 id>" }` 绑下一回合，不要猜 id。」「无会议帧时整节不注入」仍属渲染层（见 §5）。
+
 - **位置**：`v5r-turn-meeting-agenda`（meeting ×3，36 字）
 - **原文（逐字）**：
   > `议程：（类型：，主席：）。本轮绑定该会议：回复第一句请写明会 id（）。`
@@ -169,6 +173,8 @@
   - 无会议帧时：**整节不注入**（不要输出半句）。
 
 ## A8 · 会议动作的「面」归属不清：`v5r-turn-meeting-schedule` 讲 close/attend 却不点名工具
+
+> **状态（task-55，2026-11-06）：已修。** `v5r-turn-meeting-schedule` chair 版新增 ⑧：「面别记错：`vibe_v5_meeting` 只**召集/预约**；`close`/`attend`/`hand`/`admit`/`status`/`summary` 走 `vibe_vmu_meeting { action, id, member?, actor? }`，拿错面会被具名拒 `VMU_INVALID_ARGUMENT`。」② 原句按 pin 保留。
 
 - **位置**：`v5r-turn-meeting-schedule`（meeting ×3，chair 1 853 字）
 - **原文（逐字）**：
@@ -205,6 +211,8 @@
 ```
 
 ## B2 · 库的写法：一段说"直接用 fs 写"，另一段说"最稳是写进回执由所办登记"
+
+> **状态（task-55，2026-11-06）：已修。** `v5r-charter-libraries` ③ 改为：「落盘两条路：`vibe_v5_record_*` 直接登记（回执给 `recordId`，进记录本，别人与所办看得见）；或 fs 写 `Members/<你>/…`（只是**草稿区**，不进记录本）。要立项/被引用/进会议材料**必须**走 `vibe_v5_record_*`，并以回执的 `recordId` 为证。」
 
 - **位置**：`v5r-charter-libraries`（12/12，chair 1 301 / member 1 298 字） vs `v5r-fixture-tools`（12/12，2 447 字）
 - **原文（逐字）**：
@@ -419,6 +427,8 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## E1 · `VMU_CHAIR_ACT_NOT_DELEGATED`（真机 59 次）：没人告诉"以主席名义动作前要先给主席派回合"
 
+> **状态（task-55，2026-11-06）：已修。** `v5r-turn-meeting-schedule` chair 版 ⑨ 首句：「以**主席名义**的动作（召集、裁决、放行迟到）不能代做：先 `vibe_vmu_turn { op:"drive", member: "<院士 id>" }` 给院士派一回合，否则具名拒 `VMU_CHAIR_ACT_NOT_DELEGATED`。」（`assistant.json` 的所办身份段已有同义句，未改。）
+
 - **证据**：meeting 面第三高拒绝码；`v5r-turn-meeting-schedule`、`v5r-turn-meeting-chamber` 都没有这句话。
 - **建议插入**（`v5r-turn-meeting-schedule` ② 末句）：
 
@@ -428,6 +438,8 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## E2 · `VMU_NO_SUCH_OBJECT`（say 40 次 + vmu_meeting 72 次）：没有"先读状态块取真 id"的规矩
 
+> **状态（task-55，2026-11-06）：已修。** `v5r-turn-tool-receipt`（12/12，181→270 字）追加：「id 照读面抄（`vibe_vmu_meeting`/`vibe_vmu_turn` 的 `status`），自造 id 拒 `VMU_NO_SUCH_OBJECT`。」没有新开 `v5r-turn-channels` 节（装配顺序不在本批写域）。
+
 - **证据**：两个面合计 112 次；`v5r-turn-ask`/`v5r-meeting-ask` 只教"用 say/attend"，没教 id 从哪来。
 - **建议插入**（`v5r-turn-channels`，230 字，12/12）：
 
@@ -436,6 +448,8 @@ verify：     【验证轮 —— {{role}} {{member}}】
 ```
 
 ## E3 · `VMU_OFFICE_CONSULT_REQUIRED`（paper 58 次）：提示词里没有 consult 流程
+
+> **状态（task-55，2026-11-06）：已修。** `v5r-paper-final` 新增「★ 所办问询门」条：被 `VMU_OFFICE_CONSULT_REQUIRED` 拦时按拒里的 `requestId`/`target`，由所办用 `vibe_v5_paper { action:"consult", target, member:"<所办 id>", request_id, answer }` 答复后重试 `final`；普通成员答复被 `VMU_NOT_PERMITTED` 拒。原末句「其他席位与所办调用都会被具名拒绝」改为「其他席位调用会被具名拒」（所办现在可走 consult 答复）。
 
 - **证据**：`v5r-tools-academician` 只列 `vibe_v5_paper` 的名字；`v5r-paper-*` 在本夹具未注入（chars=1），无法逐字审。真机 paper 面 `VMU_PACK_V5R_CORE_PAPER_STATE`×99 与 consult×58 说明流程/问询两块都在教。
 - **建议**：paper 相位装配后补一节（或并入 `v5r-paper-final`）：
@@ -447,6 +461,8 @@ verify：     【验证轮 —— {{role}} {{member}}】
 > 需在下一轮**带上 paper 上下文**重装配一次再定稿这段（本夹具无法验证 paper 节内容）。
 
 ## E4 · `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`（43 次）：只说了"辩论必须给 subject"，没说 subject 必须证明完成
+
+> **状态（task-55，2026-11-06）：已修。** 并入 `v5r-turn-meeting-schedule` chair 版 ⑨ 后半：「辩论的 `subject` 必须是**证明已完成**的命题卡（`proofRef`+`proofState:"complete"`、已进 verified，或跑通的 Lean 结果）或 `subject_evidence.file`；否则具名拒 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`。」① 的分句式替换未做（① 有 pin），改在 ⑨ 集中讲条件。
 
 - **位置**：`v5r-turn-meeting-schedule` ①（chair，1 853 字）
 - **原文（逐字）**：
@@ -461,6 +477,8 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## E5 · `VMU_RULING_ALREADY_FILED`×14 / `VMU_RULING_CHAIR_SIGNS`×10：裁决的"一次一人一票、主席只签 final"没说
 
+> **状态（task-55，2026-11-06）：已修。** `v5r-charter-voting` chair 版与 researcher 版各加一条：「同一场会议、同一个对象每人只投一次（重复投具名拒 `VMU_RULING_ALREADY_FILED`）；要改裁决只能给主席……」并把「主席只签 `vibe_v5_verdict_final`、代写成员数字被 `VMU_RULING_CHAIR_SIGNS` 拒」写进同一段。
+
 - **证据**：verdict 面两个码合计 24 次；`v5r-charter-voting` 讲了门槛，没有讲重复投票与主席署名边界。
 - **建议插入**（`v5r-charter-voting`，chair 版，末条前）：
 
@@ -469,6 +487,19 @@ verify：     【验证轮 —— {{role}} {{member}}】
 ```
 
 ---
+
+## E6 · 回合循环卡住（`turnLoop.inFlight` 常驻、重试只换来 `VMU_TURN_REENTRANT`）：没有一节教怎么读循环状态、怎么按名关轮
+
+> **状态（task-55，2026-11-06）：已修（新增一节）。**
+- **证据**：真机 RUN 64 出现 `turnLoop.inFlight:true` 而持久账本 pending:0 的长期抱锁，模型反复重试只拿到 `VMU_TURN_REENTRANT`；`v5r-turn-tracks` 只讲回执，没有讲循环本身。
+- **落点**：新增 `v5r-turn-loop-stuck`（order 838，kind `phase`，`scope:{phase:['normal']}`，**531 字**，只进 normal 3 个组合；首版漏写 scope 曾 12/12 全注入，实测后修正）。
+- **正文（逐字，`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:1071-1092`）**：
+
+```text
+【回合循环卡住了怎么办】读 `vibe_vmu_turn { op:"status" }.turnLoop`：`inFlight` 是本内核的**单轮锁**、不是账本承诺（`turnInFlightMeans`：`human.recover` 读耐久账，可与锁并存）；`inFlightTurn`/`inFlightMember`/`inFlightOpenedBy`/`inFlightForMs`＝哪轮/谁开/锁时，`abandonAfterMs`＝上限，`wakeQueue`/`recentAbandonments`＝排队/最近关的轮。
+  · 连续两次 `VMU_TURN_REENTRANT` 就**不要第三次重试**：`vibe_vmu_turn { op:"abandon", turn:"<inFlightTurn>", why }` 按名关掉：该行变 `status:"abandoned"` + `VMU_TURN_ABANDONED`、释放锁、报告**不应用**；给错 id 读 `status:"open"` 的行或 `inFlightTurn`。
+  · 只关抱锁那一轮；关完读 status 确认 `inFlight:false`。
+```
 
 # 4. 换算成预算
 
@@ -554,3 +585,30 @@ verify：     【验证轮 —— {{role}} {{member}}】
 | temp | 23 194 / 25 105 / 23 345 / 27 088 | 23 436 / 25 347 / 23 587 / 27 541 | +242 / +242 / +242 / +453 |
 
 净增字都在信息密度上：A1 把「0」从禁用改成显式语义说明（+约 60 字/回合），A2 给出 verdict 的真实形参与「表决票」结论（+约 120 字/verify），A4 改教真实形参（+约 60 字/verify），B1 用可证明的措辞替换绝对断言（+约 37 字/回合）。没有为省字删除任何机制说明；「0 次」的误导成本远高于这些字。
+
+## §9 task-55 修复记录（2026-11-06，第二批 10 条）
+
+写域：`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-a.js`、`v5r-blocks-b.js`（只改/加文本，不动节清单与装配顺序；本批 0 处测试改动）。验收：
+
+| 判据 | 结果 |
+| --- | --- |
+| `node scripts/sim/audit/prompt-budget.mjs` | **PASS**（chair/normal 31 865，baseline 32 442，Δ −577） |
+| `node tests/vmu-run241-prompt-budget.test.mjs` | 24 passed / 0 failed |
+| `node tests/vmu-prompt-corrections.test.mjs` | 83 passed / 0 failed |
+| `node tests/vmu-turn.test.mjs` | 272 passed / 0 failed |
+| `tests/*prompt*.test.mjs` 全批 | 0 failed（含 `vmu-run239-prompts` 47/0、`type-coverage` 15/0、`no-holes` 28/0、`g7` 66/0、`retired-mechanisms` 68/0、`live-facts` 29/0、`policy-live` 25/0、`vmu-prompt` 70/0） |
+| 12 组合空节 | **0** |
+| `(unspecified)` / `不超过 0 次` | 0 / 0 |
+| `没有在册院士` | 仅 `v5r-fix-leader-id` 更正段 12 次（pin 要求保留旧句） |
+
+字数（normal/meeting/checkpoint/verify；before = task-54 收口值）：
+
+| 席位 | before | after | Δ |
+| --- | --- | --- | --- |
+| chair | 31 065 / 35 729 / 31 216 / 34 829 | 31 865 / 36 683 / 31 461 / 35 074 | +800 / +954 / +245 / +245 |
+| member | 26 137 / 28 340 / 26 288 / 30 193 | 26 907 / 28 788 / 26 503 / 30 408 | +770 / +448 / +215 / +215 |
+| temp | 23 436 / 25 347 / 23 587 / 27 541 | 24 129 / 25 718 / 23 725 / 27 679 | +693 / +371 / +138 / +138 |
+
+逐条增量（`[...str].length`）：E2 `v5r-turn-tool-receipt` 181→270（+89）；A7 `v5r-turn-meeting-agenda` 36→275（+239，仅 meeting）；A8+E1+E4 `v5r-turn-meeting-schedule` chair 1 853→2 329（+476，仅 meeting）；E3 `v5r-paper-final` 1 293→1 523（+230，仅 paper-final）；E6 新节 **531**（仅 normal）；A6 `v5r-turn-ask` meeting 97→199（+102，仅 meeting）；E5 `v5r-charter-voting` chair 1 661→1 768（+107）；B2 `v5r-charter-libraries` 1 301→1 356（+55）。normal 净增 = E6 531 + E2 89 + E5 107 + B2 55 + 上批遗留差异 18 = **800**，chair 恰好用满上限（为腾字曾把 E6 从 613 压到 531、E2/E5/B2 各收一档；`v5r-charter-voting` 的 researcher 版未动字数）。
+
+**本批仍属机制层、未由文案修掉**：A7 的「无会议帧时整节不注入」、A6 的「按是否绑定选变体」、E3 的 consult 流程可读性（`requestId` 形状）、E2 的「id 面表」都仍是渲染/工具声明的事；文案只是给了判据与出口。**E1 的根治**在工具层（`kernel/meetings.js:4010` 可以允许所办代派并自动 drive，或把 `chair` 角色动作路由到「先派回合」的回执），提示词只能教顺序。

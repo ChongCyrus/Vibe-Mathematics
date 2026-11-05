@@ -273,6 +273,22 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           }
         }
         if (!report || typeof report !== 'object' || Array.isArray(report) || Object.keys(report).length === 0) {
+          // ★ RUN 242 (FEEDBACK65 1.7): "IS THERE A TURN TO ANSWER?" COMES BEFORE "IS THE REPORT WELL-FORMED?".
+          // MEASURED (run 65): a call carrying only `reply_for` came back VMU_INVALID_ARGUMENT "report is missing or
+          // empty", so the member had to BUILD a well-formed report before it could learn that this channel is
+          // permanently unreachable on the delegated delivery path. If no turn is open, say that instead - through the
+          // kernel, so the long CHANNEL hint is not duplicated here.
+          const chan = kernel.turn && typeof kernel.turn.reportChannel === 'function' ? kernel.turn.reportChannel() : null
+          if (chan !== null && chan.open === false) {
+            try {
+              return await kernel.turn.supplyStructuredReply({}, {
+                forMember: typeof args.reply_for === 'string' && args.reply_for ? args.reply_for : null,
+                meeting: typeof args.meeting === 'string' && args.meeting.trim() !== '' ? args.meeting.trim() : null,
+              })
+            } catch (e) {
+              return refused((e && e.code) || 'VMU_ENGINE_UNAVAILABLE', (e && e.message) || String(e), (e && e.hint) || null)
+            }
+          }
           return refused('VMU_INVALID_ARGUMENT', 'report is missing or empty: this call records nothing',
             'pass report:{ <field>: <value> } with at least one field; known fields: ' + REPORT_FIELDS_DOC)
         }

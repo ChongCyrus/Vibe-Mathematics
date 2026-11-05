@@ -228,7 +228,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         "  · Methods/<id>.md —— **理论/方法/工具**：`- ID: m-<id>; - 状态: 经验; - 可信断言: []; - 价值程度: <0-1>; - 动机用途计划: …`，然后 `## 核心内容`、`## 定义与记号`、`## 应用记录`、`## 改进历史`。",
         "  · Subproblems/<id>.md —— **子问题**：`- ID: s-<id>; - 状态: 求解中; - 价值程度: <0-1>; - 动机用途计划: …`，然后 `## 陈述`、`## 进度`。（以上都在 Members/<你>/ 下。）",
         "",
-        "  三条硬要求：① 凡入库必须写明 **价值程度 / 动机用途计划 / 你对该对象为真的概率估计**（缺一不可）；② **只写自己的库**（读别人的库允许且鼓励）；③ 推荐**直接用 fs 写你自己的文件**（路径必须带成员库根：Members/<你>/…）；vibe_v5_record_* 只是便捷记录器，不是必需。",
+        "  三条硬要求：① 凡入库必须写明 **价值程度 / 动机用途计划 / 你对该对象为真的概率估计**（缺一不可）；② **只写自己的库**（读别人的库允许且鼓励）；③ 落盘两条路：`vibe_v5_record_*` 直接登记（回执给 `recordId`，进记录本）；或 fs 写 `Members/<你>/…`（草稿区，不进记录本）。要立项/被引用/进会议材料**必须**走 `vibe_v5_record_*`。",
       ].join('\n'),
     },
   },
@@ -354,6 +354,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         "  · 你的**一票与所有有表决权者等重**，不能单方面定论。",
         "  · 裁决落地靠**通知**：`vibe_v5_verdict_final` 回执的 `delivery`/`notified`/`notification.state` 说明通知到谁（`delivered`＝已推进对方这一轮，`queued`＝仍在收件箱未读）——**没人被告知，裁决就不算落地**；要先请成员给裁决用 `vibe_v5_verdict_ask`。",
         "  · **人数闸在裁决这一步**（规则 L47）：`vibe_v5_verdict_final` 的签署人数＝交来裁决的成员数＋签字的你，低于 m（`kernel.meetings.quorum()`＝「min(用户设置数, 院士+常驻研究员人数)」）会**具名拒** `VMU_MEETING_QUORUM_LOST`，回执 `floor.gate` 给 required/signed/unsigned；只有你**故意**在不足 m 的席位上裁决才用 `partial: true` + `why`，此时 `floor.gate.escapedBy: \"partial\"` 与 `satisfiedBy: false` 把说好的例外留在回执上（`close` 不替你补这道闸）。",
+        "  · 同场同对象只投一次（重复投拒 `VMU_RULING_ALREADY_FILED`）；主席只签 `vibe_v5_verdict_final`，代投被拒 `VMU_RULING_CHAIR_SIGNS`。",
       ].join('\n'),
       researcher: [
         "【五、表决与定论（求真门槛）】",
@@ -364,6 +365,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         "  · 表决分两段：先【独立初评】（看不到别人意见），未定论再进入【公开辩论】（意见公开，可引用、反驳、修改后重投）；辩论轮数由院士决定（`vmu.meetings.verdictMaxRounds`）：它定这场会议最多被提几次动议（**任何 kind 的动议都计入**，程序动议会吃掉一轮辩论），默认 3，到限后新增动议被具名拒 `VMU_RESOURCE_BUDGET`。",
         "  · 仍未定论的对象**留在原库中**，附裁决读数与完整辩论记录，不被强判真假；日后可再次提议验证。",
         "  · **永远不要为了让流程往前走而投出你不相信的 1 或 0。** 诚实的「不确定」远好过虚假的「一致」。",
+        "  · 同场同对象只投一次（`VMU_RULING_ALREADY_FILED`）；要改裁决只能给主席发信。",
       ].join('\n'),
       temp: [
         '【五、表决与定论（求真门槛）】',
@@ -615,6 +617,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         // per-turn FACTS by the turn loop), and this line says what the binding MEANS: where a sentence goes, and that a
         // DIFFERENT meeting must be reached by the tool or by re-binding - never by addressing `say` to it.
         '{{ setting:vmu.turn.meetingDelivery }}',
+        '  · 判据：帧里**给了会 id** 才是绑定会议。绑定时回执的 `say` 不进会议楼层——发言填回执的 `input` 字段，对全所说话或私信一律用 `vibe_v5_say`；帧里没有会 id 就是未绑定，`say` 只留在回执 notes 里不投递。',
       ].join('\n'),
     },
   },

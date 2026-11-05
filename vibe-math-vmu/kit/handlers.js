@@ -158,6 +158,13 @@ function mergeEcho(written) {
     bodyLinesDropped: g('bodyLinesDropped'),
     bodyLinesAdded: g('bodyLinesAdded'),
     bodyLinesMeans: g('bodyLinesMeans'),
+    // ★★ RUN 242 (FEEDBACK65 1.6): THE RULE THAT DROPS A BODY LINE REPEATING THE ROW'S OWN ID reported itself only
+    // when it FIRED, and the kernel's receipt was then re-stated here by a whitelist that did not include it - so the
+    // real machine saw `bodyLinesAdded:[]` and no `bodyOwnIdLineDropped` at all, and "the rule did not fire" was
+    // indistinguishable from "the rule was never implemented". The kernel now reports false too; this echo carries it
+    // (flat, plus its sentence) so the reader on the SEAT face can see the difference.
+    bodyOwnIdLineDropped: g('bodyOwnIdLineDropped'),
+    bodyOwnIdLineMeans: g('bodyOwnIdLineMeans'),
     // ★★★ RUN 238 (run 61 / FEEDBACK61 E): two kernels over one workspace each fold their own count, so `rev` alone
     // cannot tell a lost write from another kernel's write. Say which kernel the number came from.
     revSource: g('revSource'),

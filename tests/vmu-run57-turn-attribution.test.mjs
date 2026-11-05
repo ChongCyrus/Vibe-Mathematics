@@ -9,8 +9,11 @@
 // tally of nine wakes and still not say "the last delivery was r-2, and it was caller-played".
 //
 // WHAT THIS SUITE PROVES:
-//   1. `status.lastAttribution` exists and is NAMED as the single slot (`slot:"single"`) - a reader who assumes
-//      per-member history must be told that the one record is not that;
+//   1. `status.lastAttribution` exists and is NAMED (`slot:"empty"` before any delivery returns, `slot:"single"`
+//      once one has) - a reader who assumes per-member history must be told that the one record is not that.
+//      ★ RUN 242 / FEEDBACK65 1.2: the slot used to say `single` even when it held nothing, beside a `member` name,
+//      i.e. it both denied a delivery and named who it went to. `slot:"empty"` + `member:"turn":null` is the fix, and
+//      this suite used to pin the OLD contradicting shape (RUN 57 wrote it before the slot could be empty);
 //   2. the slot names the MEMBER it belongs to (a fact the old record did not carry, so "whose turn?" was unanswerable);
 //   3. the slot FOLLOWS the deliveries: step one member, then another, and the slot names the second (with the first
 //      member's turn still countable through `woken`/`counts`, which are tallies, not a history);
@@ -76,7 +79,8 @@ try {
   // ── 1: before any delivery, the slot exists and says it has nothing ──────────────────────────────────────────
   const s0 = await turnStatus(k)
   ok(s0 !== null, 'the status op returns the loop status under `status`', s0 && Object.keys(s0).slice(0, 8))
-  ok(s0 && s0.lastAttribution && s0.lastAttribution.slot === 'single', 'status carries the attribution slot and NAMES it as single (not a history)', s0 && s0.lastAttribution)
+  ok(s0 && s0.lastAttribution && s0.lastAttribution.slot === 'empty', 'before any delivery the slot says EMPTY (a single slot with nothing in it, not a history)', s0 && s0.lastAttribution)
+  ok(s0 && s0.lastAttribution && s0.lastAttribution.turn === null, 'and it names no turn either - member and turn are present together or absent together', s0 && s0.lastAttribution && s0.lastAttribution.turn)
   ok(s0 && s0.lastAttribution && s0.lastAttribution.member === null, 'before any delivery the slot names no member (null, not a guessed name)', s0 && s0.lastAttribution && s0.lastAttribution.member)
   ok(s0 && typeof s0.attributionMeans === 'string' && /ONE attribution slot/.test(s0.attributionMeans), 'attributionMeans says the engine keeps ONE slot', s0 && s0.attributionMeans)
   ok(s0 && typeof s0.attributionMeans === 'string' && /not retained here/.test(s0.attributionMeans), 'attributionMeans says per-member history is NOT retained here', s0 && s0.attributionMeans)

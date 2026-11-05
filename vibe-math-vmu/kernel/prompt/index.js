@@ -422,6 +422,14 @@ export function createPromptPipeline({
       const list = Array.isArray(want) ? want : [want]
       return list.includes(value)
     }
+    // ★★ RUN 242 (A7 root cause, task-55 hand-off): "PHASE = meeting" IS NOT THE SAME CLAIM AS "A MEETING IS
+    // BOUND". A meeting-phase turn with no meeting id used to receive the on-floor manual anyway, and the manual printed
+    // `未提供` in every slot - an EMPTY meeting frame that reads like a meeting. A section whose text is only
+    // actionable once a meeting exists now says `meetingId: 'required'`, and this gate enforces it on the BOUND meeting
+    // (ctx.meeting), never on a rendered template value. The inverse (`meetingId: 'none'`) exists so the rule has a
+    // testable second direction.
+    if (scope.meetingId === 'required' && !(typeof ctx.meeting === 'string' && ctx.meeting.trim() !== '')) return false
+    if (scope.meetingId === 'none' && typeof ctx.meeting === 'string' && ctx.meeting.trim() !== '') return false
     return hit('member', ctx.member) && hit('role', ctx.role) && hit('phase', ctx.phase) && hit('task', ctx.task) && hit('agent', agentIdOf(ctx))
   }
 

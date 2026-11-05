@@ -1393,10 +1393,10 @@
       "id": "E16",
       "rule": "50",
       "text": "常见命令：批量指定成员按顺序发言",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/meetings.js::VMU_FLOOR_OUT_OF_ORDER",
-        "vibe-math-vmu/kernel/meetings.js::const queueRead = orderEff.queueOpen"
+        "vibe-math-vmu/kernel/meetings.js::kind: 'floor-order'",
+        "vibe-math-vmu/kernel/meetings.js::const orderControls = createOrderControls("
       ],
       "tool": [
         "vibe_v5_say",
@@ -1406,11 +1406,16 @@
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::按数组顺序批量"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"presentWaiters\":1,\"position\":1,\"slipped\":false"
+        "tests/vmu-run242-order-write.test.mjs::a minutes row of kind `floor-order` carries the order in force"
       ],
       "ruleText": "会议的一些常见命令或工具包括但不限于（需注意各命令的使用权限，有些是只有主持人具有的命令或工具）：举手发言，邀请发言，批量指定成员按一定顺序发言，单次发言版群聊，...。",
-      "next": "`order({members})` 的写路径已实现（回执带 before/after 或 moved），但还没有一条端到端测试钉住它；补 `tests/vmu-run237-order-write.test.mjs` 后转 DONE。",
-      "note": "r115 回执逐字：顺序由 invite 排定，队头发言回 position:1，缺席者被跳过并具名（§210.4）"
+      "next": "端到端测试已就位（tests/vmu-run242-order-write.test.mjs）。余下可选：真机 §2 里让主席显式 order 一次并抄 before/after（run 65 未做，属真机覆盖面而不是实现缺口）。",
+      "note": "r115 回执逐字：顺序由 invite 排定，队头发言回 position:1，缺席者被跳过并具名（§210.4） ★ RUN 242：写路径现在有端到端测试钉住（tests/vmu-run242-order-write.test.mjs，48 passed / 0 failed）：内核 order({meeting,members,by,why}) 返回 before/after/moved/dropped，minutes 落一行 kind:\"floor-order\" 带 order 字段，speak 的 queueRead.position 证明序真的绑住发言；宿主面只转发 floor{mode,source,order,queueOpen,waiting}。",
+      "auditDispute": {
+        "acknowledged": true,
+        "why": "the observation audit judged the batch floor-order writing path UNREACHABLE because it had never seen it reached: no test and no live run had ever written an order. Since then the write path has an end-to-end suite (tests/vmu-run242-order-write.test.mjs, 48 assertions) that calls the kernel entry point order({meeting,members,by,why}) and reads the row back, and the live runs exercise speak/queue position. The audit row is about reachability, and the path is now reachable from a test that would go red if it broke.",
+        "evidence": "tests/vmu-run242-order-write.test.mjs::a minutes row of kind `floor-order` carries the order in force"
+      }
     },
     {
       "id": "E17",

@@ -63,8 +63,13 @@ for (const seat of SEATS) {
   for (const phase of PHASES) {
     // The gate assembles every role as member `r-1`; the harness can pin the holder for the same reason. Same inputs
     // are what makes the two numbers comparable at all — a different ROSTER SLOT HOLDER is a different prompt.
+    // ★ RUN 242 (A7): the gate binds a meeting for the meeting phase (the on-floor manual is gated on the binding), so
+    // the simulator has to bind the SAME id - otherwise the two rulers measure two different prompts by construction and
+    // this suite goes red for a difference that is not a defect. Same inputs is the whole premise; read the id from the
+    // gate rather than retyping it here.
     const text = await h.prompts.assembleFor({
       seat, roleLabel: LABEL[seat], phase, round: 3, roster: 'acad、r-1', statusBlock: '[状态] x', member: 'r-1',
+      meeting: phase === 'meeting' ? GATE.RULER_MEETING : null,
     })
     const gateChars = gate.seats[seat].phases[phase].chars
     rows.push({ seat, phase, harness: text.length, gate: gateChars, diff: text.length - gateChars })
