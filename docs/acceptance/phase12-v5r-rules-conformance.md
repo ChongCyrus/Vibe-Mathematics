@@ -16759,3 +16759,118 @@ G（被拒回执的 message 不带归属）**本轮不改**：`VMU_NOT_MEMBER` �
 1. **「一回合一行」如果是按文字判重，它就等于没判重。** 判重要按**身份与窗口**（谁、哪一回合、哪条轨），不按作者写的那句话。
 2. **覆写是默认动作时，任何「改一个字段」都可能顺手删掉结算。** 破坏性写必须让人点头，或者由内核按标签合并。
 3. **「等」不是状态，是一次未来的投递。** 登记一张耐久行容易，难的是让**事件**真的把那一席叫醒——而在这个部署里，叫醒的唯一通道是回合循环；报告传输只是信。
+
+## §337 RUN 240 — 用户定下的「模拟→审计→修」闭环第一次真正跑起来，它数出的洞比真机反馈更多
+
+### 337.1 这一轮改的规矩（用户 m33097 / m33098）
+用户把顺序钉死了：**先脚本模拟（覆盖全、保真）、再派多个 agent teams 队员全方位审计、然后修或重构、再审计，直到审计不再发现问题才允许真机**。所以本轮不再拿「第 64 次真机」当第一动作，而是先造一台**能自己数洞的机器**，再让它数。
+
+### 337.2 机器化审计入口 `scripts/sim/audit/all.mjs`（新）
+一条命令做五件事，全部机器判据，输出 `D:/_tmp/sim/AUDIT.md`，有 failure 就 exit 1：
+1. **跑全部场景**（mainline / meetings / paper / records-blueprint / comms / turns / feedback63）到 `D:/_tmp/sim/corpus-<name>`；
+2. **回执审计**（`scripts/sim/audit/receipts.mjs` 的 A1–A5：每个回执是否自洽、具名拒是否登记在契约里）；
+3. **规则覆盖**：93 条规则逐条要求「有真步骤”（`side: allow` 真跑到，或 `side: refuse` 真的具名拒），步骤必须真存在于语料里——不许写一条读源码的 pin 来冒充；
+4. **动作覆盖**：68 个工具的 225 个声明动作，逐个要么被调过、要么带着具名原因（`needs-deployment-config` / `needs-real-model` / `removed`）；
+5. **保真度**：拿 `D:/_tmp/sim/real-fieldset.json`（第 63 次真机 20441 条真回执里 69 个工具的字段并集）比仿真回执的字段并集，真机有而仿真没有 = 保真缺口。
+
+三处「读错形状就出假数字」当场被修掉，每一处都是同一种病：**判据读的不是它以为的那个字段**。
+- `rule-steps.json` 有顶层信封，直接索引 ⇒ 报「0 条覆盖」，实际 63；
+- 具名拒在语料里的形状是 **`code` 存在**（一个真拒可以 `ok:true` 带着 code 回来），不是 `ok:false` ⇒ 5 条正确映射被误判 dangling；
+- 动作原因在 `row.why[action]`，不在 action 上 ⇒ 「157 条无理由」实为「0 条无理由」，而真正缺的是**覆盖**。
+
+首跑诚实数字（这才是本轮的价值）：**规则 63/93、动作 68/225（30.2%）、保真缺口 68 条**。
+
+### 337.3 真机回执采集器 `scripts/sim/harvest/real.mjs`（lane-g1）
+- 会话不在 `~/.dsh/profiles/*`，在 `C:\Users\admin\.dsh\sessions\--D-_tmp-slv-phase5-<ws>--\<sessionId>\session.v4.jsonl.zstd`；逐帧 zstd 解压（整文件只出首帧），`tool/call`+`tool/result` 按 `callId` 配对。
+- 规模：174 个工作区（163 有会话）、812 个会话文件、137 943 个事件、27 400 条 tool/result、**20 441 条 `vibe_*` 回执**、`parseFailed` 6 793（大半是文件类工具本来就回纯文本）、`orphanResults:0`、`badFrames:0`。
+- 真机出现过的 vibe 工具名 77 个，仓库注册 106 个 ⇒ **盲区 37**（列全在报告里）。另有 8 个「真机见过、仓库没有」的名字（`vibe_v5_chat/records/status/turn/vote`、`vibe_vmu_lean_job/motion/overview`）——全部是模型**前缀错位幻觉**，harness 当场回 `Error: unknown tool`，不是漏注册；它们的正确名在真机里都有真实调用。
+- 两个真机怪象：① `vibe_v5_meeting` 已注册仍有 3 条 `unknown tool`（某会话运行时 pack 面没挂上）；② `vibe_vmu_status` 有 **102 条回执在约 50 KB 处被 harness 截断**（`{"ok":true,…` 不完整），所以那 102 条的字段集只能算下界。第二条是本轮最值得记的外部事实：**框架再诚实，宿主也会把回执剪短**。
+
+### 337.4 RUN 240 已落的产品修法
+1. **结算读数不能被一次「改文字」顺手抹掉**（FEEDBACK63 ①2）：`vibe-math-vmu/packs/v5r/tools.js` 的卡片面在 `rulingSettlement === null && 卡已结算(p∈{0,1}) && 新 p ≠ 旧 p` 时具名拒 `VMU_RECORD_SETTLEMENT_REWRITE`，hint 给三条可达路（带 `debate_ruling` 同值再结算 / 只改文字就**别改 p** / 真的要撤回读数就 `confirmDestructive:true`）。
+2. **「p 是必填参数」曾让只改文字也必须重发 p=1**，从而被 p=1 证据门拒——这是同一处疼的另一半：`p` 未变时跳过 p1 证据门，并在回执写明 `p1GateSkipped:"p-unchanged"`、`p1GateSkippedMeans`（「这道门守的是**读数的改变**，不是文字旁边的更正」）。
+3. **正式议程条目从来没被存过**（FEEDBACK63 ①6）：`kernel/meetings.js` 的读面早就 map `formalAgenda`，但没人写；`openSeq` 没有这个参数，pack 只在回执里回显布尔。修法：新投影族 `formalAgendaRowsOf/formalAgendaOf`，`openSeq` 收三拼写（`true`=声明、数组=逐条存、其它具名拒），`agendaBlockOf` 末尾 spread（summary/status 同源），**null 必带 `formalAgendaItemsWhy` + `formalAgendaItemsHint`**（不许恒 null）；pack 面透传参数、回执、schema 放宽成 `boolean|array`。
+4. **回合面三件**（lane-c2）：插话冲突的 message 必须同时打印两个值（`field (tool report: X vs fenced json: Y)`）+ `conflictRows`；同值合并不再是「静默丢一条」而是 `sameValueFields` + `replyChannelsMeans`；`counts.notExecuted` 的每一行都必须带 code（`VMU_TURN_FIELD_NOT_APPLICABLE` / `VMU_TURN_FACE_NOT_WIRED` / `VMU_TURN_DUPLICATE_SKIPPED`），且 `counts.notExecuted === skipped.length`；回合结算后才到的报告具名拒 `VMU_TURN_REPLY_CONFLICT`（一个回合不能有两个答案）。另加**每回合台账** `turnReceipts`（cap 50，`openedBy` + `executed[]` + `skipped[]` + `writes[]` + `unavailable[]`），`op:"status"` 读得到。
+5. **一个回合的「门」必须写在行上**（本轮补的最后一处）：唤醒回合走的是回合循环的兜底通道，它开的那一轮原先不带 `openedBy`，于是被记成 `drive`——**回合自己醒了，账上却说是所办叫的**。修法：`kernel/index.js` 的兜底唤醒 `loop.drive({ members: [target], rounds: 1, why: ask, openedBy: 'wait' })`；配套新套件 §3b 断言真唤醒回合的行 `openedBy:"wait"`、§4b 断言普通 drive 仍是 `drive`（否则「永远是 wait」也能过）。
+6. **记录面三种人称**（lane-g1）：`owner`（归属）/`writer`（本版写者）/`by`（写面的叫法）在 `kernel/records.js:75` 的 `THREE_NAMES_MEANS` 唯一定义；`put` 回执带身份块、`kit/handlers.js:177` 的 `mergeEcho` 放行三词、`expand`/`list` 同源；**根因**是 `kernel/index.js` 的 fold 行曾写 `by: r.owner ?? r.by`，把卡主当写者持久化，重启后写者必丢——现在同时存 `by`（写者）与 `owner`（归属），探针实证两个内核读回同一个写者。
+7. **契约登记**：`VMU_RECORD_SETTLEMENT_REWRITE`、`VMU_TURN_FIELD_NOT_APPLICABLE`、`VMU_TURN_FACE_NOT_WIRED`、`VMU_TURN_DUPLICATE_SKIPPED` 四码进 `docs/03-interface-contract.md` 并跑 `generate-planned-codes.mjs --write`。
+
+### 337.5 机器化
+`tests/vmu-run240-settlement-rewrite.test.mjs` 29/0、`tests/vmu-run240-formal-agenda.test.mjs` 45/0、`tests/vmu-run240-turn-receipts.test.mjs` 51/0、`tests/vmu-run240-wait-opener.test.mjs` 15/0、`tests/vmu-run240-writer-identity.test.mjs` 50/0；定向回归批 74 套全绿（含 `vmu-records`、`vmu-turn*`、`vmu-meeting*` 17 套、`vmu-run236/238/239-*`、`vmu-v5r-tools`）。`tests/vmu-meeting-state-meaning.test.mjs` 从 9/1 转 **14/0** —— 它原来把**等待者的**状态词 `armed` 当成会议状态，逼人往 `MEETING_STATE_MEANING` 里塞；修法是让扫描**派生第二个词汇表**（`WAITER_STATE_MEANS`），并对它施加同一道门（每个可能被赋值的等待状态都要有真句子、每行都要发布 `stateMeans`）——不是把坏词塞进对的表。
+
+### 337.5b 干净冷全量门禁（两轮）：一轮把四个旧契约撞出来，一轮全绿
+
+- 第一轮 `TOTAL 755 PASS 751 FAIL 4`（`/d/_tmp/t1-r3400-run240.log`），四红没一条是新功能本身错，全是旧契约/旧判据撞上新层：
+  1. `tests/vmu-run153-real-run-fixes.test.mjs` §1j 说「结算后普通写入被 `VMU_STATE ... is locked` 拒」，而我的新闸先开了口。**修法不是改测试，是改位置**：结算改读数的闸必须站在 **rule-L14 锁之后**——已锁的卡已经有自己更强的句子，新闸只该管锁**不覆盖**的那种：未锁但已结算的卡。门与门之间有顺序，顺序也是语义。
+  2. `tests/vmu-b3-c8-c10.test.mjs` ④⑥ 说「p=1 四条路都要报 `p1Route`，而我的「p 不变则跳过 p1 门」把回执提前返回了，连 `p1Route` 也一并弄丢。**跳过闸不等于丢失读数**：闸跳过了，路仍然要算出来告诉读者「这个读数凭什么站住」。
+  3. `tests/audit-declaration-criterion.test.mjs` 报 **两个新的 vacuous pass**（`vmu-meeting-state-meaning`的派生扫描、`vmu-run240-writer-identity` 的 `keys.every`）——新套件带着「空集合一律为真」的断言进了仓。修法是补非空守卫；而守卫必须写在 **被标记那行之前**（判据只向前看），写在后面等于没写。
+  4. `tests/vmu-run240-writer-identity.test.mjs` §4b 在并发门禁里红、单跑 5/5 绿：它断言的是一次**归并时机**，而归并是异步的。后来用固定步骤序列重写后两轮全量都绿。
+- 第二轮（四修后，干净树、k=3、含归档跳过 59 套）`TOTAL 755 PASS 755 FAIL 0 (suites 675 · probes 80)`（`/d/_tmp/t1-r3410-run240b.log`）。
+- 另外一条产品修正来自 lane 回报而不是门禁：`vibe-math-vmu/packs/v5r/tools.js` 的散文里写着字面 `NaN`（“it never becomes NaN and it never silently becomes 1”），而它被无条件挂在 `vibe_v5_verdict_final` 的 `correction` 块上 ⇒ 模拟审计的 A2（序列化泄漏）在任何调该工具的语料里都命中，与实际数值无关。改成 “it never becomes a non-number…” 后 `receipts.mjs` 对 `rules-extra` 语料 **findings 0**。
+
+### 337.7 完善补齐的两个机制：声明式缺口 + 场景自动发现
+
+门禁要能长期存活，必须回答两个问题：“填不了的洞怎么办”、“新增的覆盖怎么进门”。
+
+1. **声明式保真缺口**（`scripts/sim/audit/fidelity-declared.json`）：每条 `{ "<tool>": { kind, note(>=20 字) } }`。已声明的缺口降为 WARN，**未声明的缺口仍然 FAIL**，声明不再命中任何缺口则变成 WARN（过期的免罪符本身就是污染），缺理由（<20 字）直接 FAIL。它和动作矩阵的 `why` 是同一条纪律：**填不了就必须具名，不许默默忽略**。首批 6 条全是 Lean 执行器/校验接缝面（`lean_archive`/`lean_job`/`lean_lib`/`lean_read`/`lean_run`/`fidelity_conclude`）——这台工作区不装执行器，任何场景都只能拿到 `VMU_ENGINE_UNAVAILABLE`。实测：57 → **51**。
+   - 踩过一个坑：映射文件头部的 `_why`/`_kinds` 被当成工具名，于是门禁向自己的词表要理由。修法：`_` 开头的键是给人看的注释，不是声明。
+
+2. **场景自动发现**：`all.mjs` 的场景清单是 `readdirSync(scripts/sim/scenarios)`，**新场景不需要改门禁**。这是有意的：应该新增场景的人只需要写场景，而不需要去碰一个他不应该碰的判据文件。
+
+3. 当前真实状态（不美化）：规则 **93/93（13 条只有 prose 侧）**、dangling 0；动作 68/225（另有两个场景在补）；保真缺口 **51**（paper 面 57 字段占大头，其余多数是拒绝形状缺 `code/message/hint`）。**门禁在这些数字上仍然 FAIL，这是它该做的事**——AUDIT 绿不是目标，数字不说谎才是目标。
+
+### 337.6 五条教训
+1. **判据读错形状，比没有判据更坏**：它会给你一个精确的、错误的数字（0 覆盖 / 157 条无理由），而人看到数字就信了。所以每出台一个判据，先问"这个字段是我以为的那个字段吗"。
+2. **「说出时刻」不等于「冻结读数」，「记下一个门」也不等于「门真的在」**：`openedBy` 这个字段存在了一整轮，唤醒路径却没有写它——**字段的存在**与**事实的写入**是两件事。
+3. **断言必须能被"常量"证伪**：只断言「唤醒回合是 wait」的套件，在「永远写 wait」的实现上也会绿；所以同时断言普通 drive 仍是 `drive`。
+4. **让机器去数洞，比让真机去撞洞便宜一个数量级**：真机一次 30–90 分钟，这台门禁 6 个场景 1 分钟就把「93 条规则有 30 条没人走过」喊了出来。
+5. **保真度只能拿真机当基准**：68 处缺口没有一处是读代码能读出来的，全部来自 20 441 条真回执的字段并集。
+
+### 337.8 机器审计逼出的第三批真缺陷：一次恢复把成员删了、两条回执忘了自己知道的事、一条路径印出 [object Object]
+
+三条都不是读代码读出来的，是 `scripts/sim/audit/all.mjs` 的 never 列表 + 一次探针逼出来的，而且每一条都能用**合法的工具调用**复现。
+
+1. **`recover()` 把三席研习所恢复成只剩一席**。探针：`vibe_v5_start { researcherCount: 2 }` 后名册 `["r-acad","r-1","r-2"]`，调 `vibe_vmu_human { action:"recover" }` 后变成 `["r-acad"]`。两层原因：
+   - `kernel/index.js` 的 `members` 投影**只在 `vmu.resume.projections` 声明它时才 attach** ⇒ 没声明时每次 `hire` 都只在内存，durable `members` 键停在创始快照（只有主席）；
+   - 恢复的 hydrate 步用 `members.restore(snap, { replace: true })` 把名册**替换**成那个旧快照 —— 一次读摧毁了状态。
+   修法两道闸：`members` 投影**无条件 attach**（理由写进注释：席位表是重启最不能丢的东西），并且 `restore` 在 replace 路径上**保留快照里没有的活席位**，回执带 `keptLive` / `keptLiveMeans`（「一次恢复是关于被持久化了什么，不是关于谁离开了」）；真要删传 `{ dropLive: true }`。
+   实测：修后同一探针 recover 前后名册不变；`tests/vmu-run240-roster-recover.test.mjs` **28/0**（含「无条件 attach」两条源码 pin、durable 三席位、recover 后不减、`keptLive` 文案、`dropLive` 才真删四条）。
+
+2. **`vibe_vmu_human { action:"readBack" }` 的 drift 回执没有 message / hint，且 face 把 `ok` 改写成 `true`**。`kernel/resume.js` 的 `readBack()` 早就算出 `drift` / `driftMeans` / `writesBetween`（「零次本地写而 digest 不符 = 别人写的」），但这两个字段从来没有变成一句可执行的话；`tools/human.js` 又 `Object.assign({ ok: true }, readBack())`。修法：drift 时 `ok:false`、补 `message`（点名移动的键 + 本进程在持有时写了几次）、`hint`（**不要**改键让 digest 吻合——那会覆盖别人的事实；`writesBetween:0` 意味着是别人写的）、`driftKeys`；`recover` 部分成功时补 `code` / `message`（列出失败步与码）/ `hint` / `failedSteps`。
+   实测：`recovery.write("work", …)` 后用 `store.patch("work", …)` 制造 drift ⇒ 回执 `ok:false, code:"VMU_RESUME_READBACK_DRIFT", message, hint, driftKeys:["work"]`；同一套件 §4b–§4f 七条钉住。
+
+3. **`vibe_vmu_mathjobs { action:"mirrorRel" }` 的回执路径是 `Math/Jobs/[object Object].json`**。服务端声明 `mirrorRel(jobId)` 只吃**一个标量**，而 face 对所有动作都直接把整个 options 对象交给方法 —— 于是 `String()` 把一个对象写进了路径。修法：face 内一张表 `SCALAR_ARG = { mirrorRel: "jobId" }`，一次性分发；注释写明「一个一对一转发服务的 face，也必须知道每个方法吃哪个名词」。`tests/vmu-run240-mathjobs-scalar.test.mjs` **10/0**（记录型 stub 服务：`mirrorRel` 收到字符串、其它动作仍收到对象、任何回执不出现 `[object Object]`、无服务时仍是具名 `VMU_ENGINE_UNAVAILABLE`）。
+
+附带两处同源修法：`kernel/members.js` 的 path-safety 拒绝补 hint 且不再 `String(id)`（对象会印 `[object Object]`）；`tools/meeting.js` 的五个请假/失效动词从「无条件调原语会议上的不存在方法 ⇒ 裸 `TypeError`」改成**跨注册表**：服务面有就调服务并回 `registry:"service"`，只有原语会议就用**具名拒 + hint 指向可达替代**（pack 面召集才有请假与有界兜底；原语会议用 `action:"end"` 收会）。
+
+### 337.9 门禁在诚实数字上仍然 FAIL，以及这次怎么把数字往下压
+
+- `all.mjs` 收紧后（规则 93/93、动作 218/225、保真缺口 68 → 声明后 51 → 补场景后 18）**仍然 FAIL**：这是它该做的事。
+- 声明机制（`fidelity-declared.json`）本轮扩到 10 条：6 条 Lean 执行器面 + `vibe_v5_paper`（8 个字段要真 LaTeX 编译；`crossReviewPossible` 顶层还是旧构建 advance 拒绝的形状，本 checkout 只在成功载荷披露 ⇒ 版本漂移）、`vibe_vmu_env`（部署环境探针）、`vibe_vmu_mathjobs` / `vibe_vmu_mathtools`（本工作区没有 python 计算服务）。每条都写清「为什么这台机器上任何场景都到不了」，而不是「先放着」。
+- 剩下的 14 条缺口由一条新场景去补（`fidelity-extra.mjs`，lane 在写）：`hire.enforcedScope`、`task_get.briefNote`、`verdict_final`/`verified_promote` 的不适用形状、`mailbox.from`、`panel.target`、`report.detail`、`records` 的 prune/expand 读数、`vibe_vmu_human` 的 plan/recovery/message/hint、`vibe_vmu_meeting` 的 13 个会议形态、`vibe_vmu_turn` 的回合读数。**能做的是补场景，不能做的才声明**——否则声明就成了遮羞布。
+- 教训（补第 6 条）：**一条「从未被调用」的动作，往往不是一个动作的问题，而是一个 face 的转发缺陷**（`mirrorRel`）+ 一个注册表缺陷（请假五动词）。所以 never 列表要整族地看，不要一条一条地补调用。
+
+### 337.10 门禁从 FAIL 到 PASS 的三件事：声明要窄到「键」、转发要带上名词、文档链接不许走样
+
+**1. 保真声明下沉到键（`scripts/sim/audit/fidelity-declared.json` + `scripts/sim/audit/all.mjs`）。**
+旧版声明以工具为粒度：一条「这台机器到不了」的豁免会把该工具的每一个字段都放过，于是该工具下一个真正的保真回归不会再有人看见。本轮改成三态：
+
+- `keys: [...]`（首选）：只豁免列出的字段，其余仍算 FAIL；
+- `wholeTool: "<一句为什么要整只工具>"`：只有在**每一次调用**都停在同一个具名 `VMU_ENGINE_UNAVAILABLE`（工具本身在这台机器上跑不起来）时才成立；
+- 声明里写了、但已经不是缺口的键 ⇒ WARN（`fidelity declarations that name keys which are no longer gaps`），文件不能悄悄腐烂。
+
+过程里踩到的两个真坑，都写进 `_why` 了：①把「该工具的全部真机字段」当 keys 填进去 ⇒ 那些**已经能产出**的键立刻变成 stale，警告一次喷出两百多个键；keys 必须填**缺口列表**（清空声明跑一次门禁，它会打印缺口，照抄即可）。②声明粒度不只是风格问题：`vibe_v5_paper` 原本是整工具豁免，而它的 104 个字段里仿真已经产出 95 个——整工具豁免等于把 95 个已覆盖字段的回归也一起免责。
+
+现在 `node scripts/sim/audit/all.mjs` = **`AUDIT: PASS — 0 failure(s), 0 warning(s)`**：规则 93/93、动作 218/225（never 7，逐条有 why）、保真缺口 0（19 条工具级/键级声明，共 42 个键，每条都写了「为什么这台机器到不了」）。`tests/vmu-run240-fidelity-scope.test.mjs` **17/0** 把这套口径钉住（含「声明必须命中文档里的 kind」「声明的键必须真的出现在真机收据里」「不许豁免整只工具的全部键」「重复键」「空 keys」）。
+
+**2. 一个转发方法不许丢掉参数（`vibe-math-vmu/tools/task.js`）。**
+审计把 `vibe_vmu_task { action: "brief" }` 列进「声明了但从未成功调用」，原因是**参数被丢掉**：内核是 `brief(id, text, {by, expectedRevision})`，face 只转发了 `id`，schema 里连 `text` 都没有 ⇒ 每次调用都得到 `VMU_INVALID_ARGUMENT -- a brief needs non-empty text`，而 `vibe_v5_task_get` 的 `briefNote`（只在查看 brief **失败**时出现）因此永远不可达。修法：schema 加 `text`、run 签名解构 `text`、转发 `tasks.brief(need(id,"id"), text)`。`tests/vmu-run240-task-brief.test.mjs` **13/0**（schema pin / 解构 pin / 转发 pin / 往返能读回正文 / 空白 brief 具名拒且 message 说清缺什么 / 没有 brief 的任务读出「absent 而不是 lookup failed」）。
+
+**教训：一条「声明了但从未成功调用」的动作，最便宜的解释是参数在 face 上掉了，不是功能不存在。**
+
+**3. 文档链接也是断言（`tests/audit-doc-index.test.mjs`）。**
+我在 §337.8 里为了解释转发缺陷，写了一段「方括号紧跟圆括号」的代码片段，markdown 把它读成一条链接，指向一个不存在的文件，于是 `DOC INDEX` 报 dead link。这不是门禁太严，是它正确地把「一个指向不存在文件的链接」当成未兑现的断言。改法是换掉那段字面（"直接把整个 options 对象交给方法"），不是放宽门禁。
+
+**教训：写代码片段时，「方括号紧跟圆括号」在任何文档里都会被当成链接——要么改写成不构成链接的形状，要么写清楚它不是路径。**
+
+**收口。** 干净树冷全量 `/d/_tmp/t1-r3440-run240e.log` = **`TOTAL 760 PASS 760 FAIL 0 (suites 680 · probes 80)`**（前置一次 758/2：`tests/audit-doc-index.test.mjs` 与 `tests/audit-declaration-criterion.test.mjs`，两红都是本轮新写的文档/断言自己撞判据，按判据改，没有放宽任何一条检查）；`regen-all --check` 17/17 in sync；`PREFLIGHT` / `DOC LINT` / `RULES COVERAGE` / `RULE PARITY` 四门禁全 PASS；`scripts/sim/audit/all.mjs` = **PASS（0 failure / 0 warning）**。

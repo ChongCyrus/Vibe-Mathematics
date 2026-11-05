@@ -404,7 +404,9 @@ v5r 的 `s8-freeze-say` 真回归：**"本轮是否完成"的判据被写死在�
 | `id` | string | ✓ | 会议标识（`m-<n>` 或调用方给 ✓） | 内核 | ✓ |
 | `kind` | string | ✓ | 会议类型（默认 `'general'` ✓；类型目录见 §15） | 召集人 | ✓ |
 | `agenda` | string\|null | — | 议程（**当前是一段文本** ✗） | 召集人 | 部分 ✓ |
-| `agendaItems[]` | object[] | — | 一等议程条目（§10.2） | 召集人 | ✗ |
+| `formalAgenda` | boolean\|array | — | **RUN 240**：service 会议召集时 `formalAgenda:true`＝**声明**（记录 `formalAgendaDeclared/DeclaredBy/DeclaredAt`）；数组＝**逐条记录**（每项 string 或 `{id,title,text,kind,addedBy,at}`；缺省 `id=fa-<n>`、`kind=item`、`at=内核钟`，空白标题丢弃）。布尔声明不携带条目——这不是坏值，是「声明了但没有条目」这一事实 | 召集人 | ✓ |
+| `formalAgendaItems[]` | object[] | — | **RUN 240 读面**：`open` 回执／`summary`／`status` 同源，行形状 `{index,id,title,text,kind,addedBy,at}`（`index` 是记录内位置）；**null 必带 `formalAgendaItemsWhy` ＋ `formalAgendaItemsHint`**（未声明 / 声明为布尔两种具名原因），不再留裸 null 让读者猜；`formalAgendaItemsMeans` 说明这是正式条目表 | 内核 | ✓ |
+| `agendaItems[]` | object[] | — | 一等议程条目（§10.2）——**当前读面是 `materials` 单行按分隔符切开的视图**，不是可引用的正式条目；正式条目见上两行 | 召集人 | 部分 ✓ |
 | `roster[]` | string[] | ✓ | 在册被问者（`convene` 时固定 ✓） | 召集人 | ✓ |
 | `state` | enum | ✓ | `idle｜convened｜in_session｜closed`（＋规划：`recessed｜adjourned`） | 内核 | ✓ |
 | `rounds[]` | object[] | ✓ | 每轮：`{n, ask, asked[], answers{}, silent[], refused[], openedAt}` ✓ | 内核 | ✓ |

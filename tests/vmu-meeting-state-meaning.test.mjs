@@ -40,10 +40,30 @@ const PATTERNS = [
   /\bstate\.value = '([a-z_]+)'/g,
 ]
 const scanned = new Set()
+const sources = new Map()
 for (const rel of MODULES) {
   const src = readFileSync(new URL('../' + rel, import.meta.url), 'utf8')
+  sources.set(rel, src)
   for (const p of PATTERNS) for (const m of src.matchAll(p)) scanned.add(m[1])
 }
+
+// ── 1b. THE SECOND VOCABULARY (RUN 239-D: event waits) IS DERIVED TOO, NOT HAND-LISTED ──────────────────────────
+// A waiter row carries `state: 'armed' | 'fired' | 'expired' | 'cancelled'` — that is a DIFFERENT vocabulary from a
+// meeting's own state, and demanding that MEETING_STATE_MEANING explain it would be wrong (it would put "armed" into
+// the meeting-state table). So the suite derives the waiter vocabulary from the block that defines its sentences
+// (`WAITER_STATE_MEANS` in meetings.js) and then holds it to the same standard: every word a waiter row can be
+// assigned has a real sentence, and every row publishes it.
+const waiterSrc = sources.get('vibe-math-vmu/kernel/meetings.js') || ''
+const waiterBlock = /const WAITER_STATE_MEANS = Object[.]freeze[(][{]([\s\S]*?)[\n] {2}[}][)]/.exec(waiterSrc)
+const waiterStates = new Map()
+if (waiterBlock) {
+  for (const m of waiterBlock[1].matchAll(/([a-z_]+):\s*'((?:[^'\\]|\\.)*)'/g)) waiterStates.set(m[1], m[2])
+}
+// The states a waiter row is actually ASSIGNED (not merely compared) — derived from the same source.
+const waiterAssigned = new Set()
+ok((waiterSrc.match(/state: '(armed|fired|expired|cancelled)'/g) || []).length > 0, 'D3a0. the derived-waiter scan is not vacuous: the kernel really writes at least one waiter state', waiterSrc.length)
+for (const m of waiterSrc.matchAll(/state: '(armed|fired|expired|cancelled)'/g)) waiterAssigned.add(m[1])
+for (const m of waiterSrc.matchAll(/w\.state = '(armed|fired|expired|cancelled)'/g)) waiterAssigned.add(m[1])
 {
   ok(scanned.size >= 8,
     'D1. the scan is not vacuous: both modules expose at least eight distinct state literals',
@@ -52,10 +72,31 @@ for (const rel of MODULES) {
     'D2. ★★ the scan sees BOTH vocabularies (the service\'s `open` and the primitive\'s `in_session`) — that is what the defect was',
     { found: [...scanned].sort() })
 
-  const missing = [...scanned].filter((s) => !Object.prototype.hasOwnProperty.call(MEETING_STATE_MEANING, s)).sort()
+  ok(waiterStates.size >= 3 && waiterAssigned.size >= 2,
+    'D3a. the waiter vocabulary is derived from its own block (armed/fired/expired/cancelled), so it is judged as a vocabulary and not silently folded into the meeting states',
+    { declared: [...waiterStates.keys()].sort(), assigned: [...waiterAssigned].sort() })
+
+  const missing = [...scanned]
+    .filter((s) => !Object.prototype.hasOwnProperty.call(MEETING_STATE_MEANING, s))
+    .filter((s) => !waiterStates.has(s))
+    .sort()
   ok(missing.length === 0,
-    'D3. ★★★ every state either module can emit has a sentence in MEETING_STATE_MEANING (add the state, not just the word)',
+    'D3. ★★★ every state either module can emit has a sentence in MEETING_STATE_MEANING (add the state, not just the word); a WAITER state is exempt ONLY because it has its own sentence in WAITER_STATE_MEANS',
     { missing, have: Object.keys(MEETING_STATE_MEANING).sort() })
+
+  const waiterMissing = [...waiterAssigned].filter((s) => !waiterStates.has(s)).sort()
+  ok(waiterMissing.length === 0,
+    'D3b. ★★★ every waiter state a row can be ASSIGNED has a sentence in WAITER_STATE_MEANS (the same gate, applied to the second vocabulary)',
+    { missing: waiterMissing, declared: [...waiterStates.keys()].sort() })
+
+  const waiterShort = [...waiterStates.entries()].filter(([, v]) => typeof v !== 'string' || v.length < 20).map(([k]) => k).sort()
+  ok(waiterShort.length === 0,
+    'D3c. no waiter meaning is a placeholder: each is a real sentence (>=20 chars), not "" or a bare state name',
+    { short: waiterShort })
+
+  ok(/stateMeans: WAITER_STATE_MEANS\[String\(w\.state\)\] \|\| null/.test(waiterSrc),
+    'D3d. ★★ every waiter row PUBLISHES its sentence (`stateMeans` on the row) — a state name beside a null explanation was the run 31 defect, and the second vocabulary does not get to repeat it',
+    { found: /stateMeans: WAITER_STATE_MEANS/.test(waiterSrc) })
 
   const empty = Object.entries(MEETING_STATE_MEANING)
     .filter(([, v]) => typeof v !== 'string' || v.trim().length < 20)

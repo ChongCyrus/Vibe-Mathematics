@@ -4187,3 +4187,171 @@ member 29 810、temp 26 904）。**先删再写**是预算下唯一可持续的�
   `vmu-run239-blueprint` **37/0**、`vmu-run239-prompts` **47/0**。
 - 旧合同两套更新：`vmu-run238-feedback61` 67/0、`vmu-run236-frame-and-progress` 38/0。
 - 提示词预算：chair verify **35978** ≤ 36000（剩 22 字符，verify 相位历史水位），member 29868、temp 26986。
+
+## ROUND 240
+
+### 机器化门禁要能长期存活，就得能说“填不了”
+
+`scripts/sim/audit/all.mjs` 第一次跑起来就报了三个数字：规则 63/93、动作 68/225、保真缺口 68。数字难看是好事，但一个**永远红**的门禁不会有人看。两个机制让它能长期存活：
+- 动作矩阵的 `why`（每个未调用的动作必须具名理由）；
+- `scripts/sim/audit/fidelity-declared.json`（每个填不了的保真缺口必须带 kind 与 >=20 字理由）。已声明→WARN，未声明→**仍然 FAIL**，声明失效（不再命中任何缺口）→WARN。
+
+实测路径：68 → 63（lane 补了规则语料 `rules-extra`，52 步真调用，9 个场景 findings 全 0）；保真 68 → 57 → 51（声明 6 条 Lean 执行器面，其余交给两个新场景。
+
+**教训**：一个只能靠“永远不可达”维持的红色门禁会被人当成噪声；能声明但必须带理由、并且声明会过期失效，才能把“不做”变成一个需要人负责的动作。
+
+### 正式议程是一个记录，不是一个恒 null 的字段
+
+真机第 63 次反馈（FEEDBACK63 ①6）：召集时传 `formal_agenda:true`，然后 `vibe_vmu_meeting {action:"summary"}`
+里的 `formalAgendaItems` 永远是 `null`，读者只能从 means 里猜「是不是我传错了」。
+
+诊断结论是 **(a) 条目根本没存**，不是 (b) 读面没取：
+
+1. 读面早就有投影（`formalAgendaRowsOf` 读 `m.formalAgenda`/`m.formal_agenda`），但它读的两个键**从没被写过**。
+2. `openSeq` 的签名里没有 `formalAgenda`，会议行只落 `materials: <一行文本>`；布尔标志连一个内核字段都没占。
+3. pack 面 `vibe_v5_meeting` 的 `formal_agenda` 只在回执里回显成布尔，没有透传进 `kernel.meetings.open`
+   （该调用只传 `materials`），schema 也只接受 boolean。
+
+修法（kernel 侧，本轮的写域）：`openSeq` 现在接受 `formalAgenda`／`formal_agenda`／`agendaItems` 三个拼写——
+`true` 记为**声明**（`formalAgendaDeclared/DeclaredBy/DeclaredAt`），数组逐条规范化成
+`{index,id,title,text,kind,addedBy,at}`（缺省 `id=fa-<n>`、`kind=item`、`at=内核钟`，空白标题丢弃），其它形状具名拒
+`VMU_INVALID_ARGUMENT`；`open` 回执／`summary`／`status` 三处 spread 同一个 `formalAgendaOf(m)`。
+
+**「不许留恒 null」是这个字段的合同**：`formalAgendaItems === null` 时一定同时带
+`formalAgendaItemsWhy`（未声明 / 声明为布尔，两种具名原因）与 `formalAgendaItemsHint`（指 `open({formalAgenda:[...]})`
+或 pack 的 `formal_agenda:[...]`）；有行时 Why/Hint 为 null。`formalAgendaItemsMeans` 保留 run239 钉住的
+「BOOLEAN 不是条目表 / null 不是空议程」原句。
+
+### 机器化
+
+- 新套件：`vmu-run240-formal-agenda` **42/0**（§A 布尔声明带 Why/Hint 且两读面同声、§B 条目逐条读回／顺序／
+  空项丢弃／两种拼写、§C 源码 pin：写入在 `openSeq`、两读面 spread 同一块、pack 参数仍在）。
+- 回归：`vmu-run239-meetings` 127/0 保持绿（源码 pin 与旧读面文案未破）。
+- pack 面待接（Lead 的写域）：`vibe-math-vmu/packs/v5r/tools.js` 的 `kernel.meetings.open` 调用处透传
+  `formalAgenda`，并把 `formal_agenda` schema 从 `{type:'boolean'}` 放宽到 `boolean|array`。
+
+### 回合面：插话回执的冲突必须有两个值，wait 唤醒的回合必须有居所（task-43 / FEEDBACK63 ①4 · ①5 · ①9）
+
+**A（①5，最严重）：`op:"reply"` 插话与围栏回复字段不一致时，所办看到 `notExecuted:2` 和零个 code。** 规则文本一直
+自称「两通道不一致 ⇒ `VMU_TURN_REPLY_CONFLICT` 具名拒」，但实测拒不出来、也没有任何具名解释。两个缺口都在
+`mergeReplyChannels`／跳过行上：
+
+1. 冲突拒绝只打印**字段名**，不打印两个值 → 读者无法判断两通道是否真的不同，只能猜。现在 message 是
+   `progress (tool report: "甲" vs fenced json: "乙")`，错误对象带 `conflictRows:[{field,tool,fenced}]`，`fields` 保留裸名。
+2. `counts.notExecuted` 会增加，但 `skipped` 行可能**不带 code**（`dispatchSkipReason` 与 `face-not-wired` 两处、
+   以及两处 `already-written-this-turn`）。现在每一行都带 `code`：`VMU_TURN_FIELD_NOT_APPLICABLE` /
+   `VMU_TURN_FACE_NOT_WIRED` / `VMU_TURN_DUPLICATE_SKIPPED` / 形状适配器自己的码（如 `VMU_RECORD_SHAPE`），回执另附
+   `notExecutedMeans` 说明「计数必有同名带码行」。
+3. `op:"reply"` 的回执新增 `appliedWhen`（何时应用）与 `conflictPolicy`（在哪一步检查、不一致会怎样、迟到的报告会怎样），
+   使 `accepted:true` 不再被读成「已生效」。该回合**已结算**后再来的报告具名拒（`VMU_TURN_REPLY_CONFLICT`，列出已应用字段），
+   改在下一回合汇报。
+
+**B（①4/①9）：被 wait 唤醒的回合没有回执回到所办，`op:"status"` 只有 tally。** 回合循环现在为每个回合保留一行宿主台账
+（容量 `TURN_RECEIPT_CAP=50`）：`open` 时建行、结算时更新，`status` 读面输出 `turnReceipts`，`vibe_vmu_turn { op:"status" }`
+把它暴露为 `turns[]`：`{turn,member,openedBy,phase,meeting,openedAt,status,fields,source,executed:[{field,channel}],
+skipped:[{field,reason,existingId?,code?}],writes:[{tool,recordId?}],codes,unavailable}`。
+`openedBy` 由开门者写入：`drive`（调用方自己的 step/drive）、`activation`（后台泵 `dispatch`）、`wait`（会议唤醒方显式传
+`openedBy:"wait"`）、`null`（旧调用方）；工具面 `vibe_vmu_turn { op:"step"|"drive", opened_by:"wait" }` 已透传该值到台账
+（省略＝`drive`），所以「会议唤醒后由所办结算」这一目也能在回执里被读到。**拿不到的不是空白**：`unavailable` 具名两类
+缺口——回合还没在本内核结算时的 `reply`、成员在独立子会话里跑的工具调用；`codes` 为空时也具名说明「空 = 没拒过，不是全部应用」。
+
+### 机器化
+
+- 新套件：`tests/vmu-run240-turn-receipts.test.mjs` **51/0**（§0 源码 pin、§A 冲突带两值/同值合并——同值时回执点名字段
+  `sameValueFields` 并说明只算一次、§B `turns[]` 在 drive 与 wait 两种来历下可读且 `unavailable` 非空、§C 工具读面 `turns[]`
+  与 `opened_by:"wait"` 透传、文档与读面 pin）。
+- 回归：`tests/vmu-turn.test.mjs` **272/0**、`tests/vmu-run152-real-run-fixes.test.mjs` **33/0**、`tests/vmu-run239-*.test.mjs`
+  **37/0 + 87/0 + 127/0 + 47/0 + 45/0**、`tests/vmu-run22-findings.test.mjs` ALL PASS；提示词预算 `PASS`（chair verify 35978/36000、
+  member 29868/30000、temp 26986/30000，`opened_by` 参数未改变三项上限读数）。
+
+---
+
+## RUN 240 H · 记录面「三种人称」：一次更正里，谁写了这一版必须说得出
+
+**实测（第 63 次真机 / `FEEDBACK63` ①1＋①10）**：`r-acad` 用 `bodyMode:"merge"` 更正了 `r-1` 的命题卡。写回执回来的是
+`fieldsReplaced:["body","by"]` —— **通篇没有 `writer` 一个字**；随后 `vibe_vmu_records {action:"expand"}` 读回
+`owner:"r-1", writer:"r-1"`。也就是说：更正被报告了，更正的人没有。而在整个库里，`owner`／`writer`／`by` 三个词
+**没有任何一处**解释彼此的关系。
+
+**根因是两层，不是一个字段漏打印。**
+
+1. **回执是白名单，一层挡一层。** `kernel/records.js` 的 `put` 回执新增的身份字段，先在 `kit/handlers.js` 的
+   `mergeEcho` 被逐键列举的白名单挡掉，到不了卡片面（`packs/v5r/tools.js` 的 `gatedCardHandler` 用
+   `Object.assign({}, res, {…})` 只转发内层回执）。同一行写在两处、读在三处，中间任何一层重列键就会静默丢事实。
+2. **耐久快照把两个事实压成一个名字。** `kernel/index.js` 的 `snapshotRecords()` 曾经写
+   `by: r.owner !== undefined && r.owner !== null ? r.owner : r.by`：它把**视图里的 `owner`（卡主）**存进 fold 行的 `by`，
+   于是重启后每一行都在说「卡主写的」。同一内核读 `writer:"r-acad"`、新内核读 `writer:"r-1"` —— 写者没有从行上丢，
+   是从**落盘的那一行**上丢的。`supersede` 也只把 `by` 记进版本行，卡片上的写者原地不动。
+
+**现在的口径（一句话各一句，随回执一起返回）**：
+
+- `owner` —— 这一行归谁：首版作者；**一次更正保留它**（归属不是著作权）。
+- `writer` —— 写出这次读到这一版的写者。
+- `by` —— 写面的叫法：卡工具把本次 `member` 作为 `by` 传下来，所以它通常等于 `writer`，但**也不是第三个事实**。
+- `threeNames` —— 三词的关系句：**一次更正移动 `writer`／`by`，把 `owner` 留在原处**。
+
+实现：`kernel/records.js` 的 `THREE_NAMES_MEANS`（唯一定义表）＋ `identityEcho(owner, by)`；`put` 的 create/update 回执
+都带 `owner`／`writer`／`by`／`ownerMeans`／`writerMeans`／`byMeans`／`threeNames`；`get`（`expand`）与 `list` 返回同一组
+means 键；`list` 的默认头部字段加入 `writer`（一行两事实，读面不再只报一个）；`supersede` 现在会移动卡片写者并回身份块；
+`snapshotRecords()` 的 fold 行同时存 `by`（写者）与 `owner`（归属），采纳路径把两个都恢复（旧 fold 只有一个名字时
+按 `owner = writer` 诚实采纳，不猜）。卡片面 `mergeEcho` 另把定义放进嵌套 `identity`：`ownerEcho` 在作者已知时会把
+顶层 `ownerMeans` 重写成 `null`（`tests/vmu-run68-shared-author.test.mjs` 钉着这个行为），定义不能只放在会被改写的名字下。
+
+**逐条对应**：①1 ⇒ 卡片面写回执现在带 `writer`／`by`／`identity.threeNames`；①10 ⇒ `expand` 与 `list` 都读回写者，
+且**跨内核**仍读回写者（这是同一次实测里真正坏掉的那一段）。
+
+### 机器化
+
+- 新套件：`tests/vmu-run240-writer-identity.test.mjs` **50/0**（§0 三层源码 pin、§1 create/update 回执三词三定义、
+  §2 `expand`／`list` 读回两事实、§3 `vibe_v5_record_proposition` 卡片面（run 63 真正读的那一面）、§4 同一 root 上
+  **第二个内核**仍读回写者（①10 的复现路径）、§5 `supersede` 移动写者）。
+- 口径取舍：不改 `ownerEcho`（run 68 ⑥ 钉着「作者已知时 `ownerMeans` 为 null」）；不新增拒绝码（这不是闸，是漏报）；
+  `records.owner` 的语义**收窄为归属**并在 §7.1 登记迁移。
+
+
+### 唤醒回合的门，必须写在行上（本轮最后补的一处，也是 §337.4-5）
+
+`openedBy` 这个字段在 ROUND 240-A 就存在了（`drive` / `activation` / `wait` / `null`），工具面也早就接受
+`opened_by`。它缺的不是定义，**是一个写它的地方**：真部署里没有成员投递传输时，唤醒走的是回合循环的兜底通道
+（`kernel/index.js` 的 `loop.drive({ members: [target], rounds: 1, why: ask })`），而这一行没有 `openedBy`，
+于是循环按默认写成 `drive` —— **回合是被等待的事件叫醒的，账上却写着「所办叫的」**。这正是 `openedBy` 想消除的
+那种混淆，在字段落地的那一轮里又发生了一次。
+
+修法一行：那条兜底 `drive` 带上 `openedBy: 'wait'`。值不值得单列一节？值得，因为它示范了一条纪律：
+**一个字段存在 ≠ 那个事实被写入**；上线一个读数时，要顺着每条会产生该事实的路径走一遍，看有哪条没写。
+
+`tests/vmu-run240-wait-opener.test.mjs` **15/0** 不读源码就信标签，而是真起内核：立所 → 主席回合 → 开会 →
+`wait { until:"speak" }` → 主席 `speak`（真事件）→ 等 150ms → 读 `turn.status().turnReceipts`：
+- §2e 唤醒真的发生（`waiters[0].wake.woken === true`）、§2f 报告传输没有被当成唤醒通道（`envelopes.length === 0`）；
+- §3b ★★★ 那个唤醒回合的行 `openedBy:"wait"`、§3c 它是一整行（phase 也在），不是空行贴标签；
+- §4b ★★ 对照组：显式 `drive` 开的回合仍写 `drive` —— **只断言「wait」的套件，在「永远写 wait」的实现上也会绿**。
+
+### 机器化（本轮收口）
+
+| 套件 | 结果 |
+| --- | --- |
+| `tests/vmu-run240-settlement-rewrite.test.mjs` | 29 / 0 |
+| `tests/vmu-run240-formal-agenda.test.mjs` | 45 / 0 |
+| `tests/vmu-run240-turn-receipts.test.mjs` | 51 / 0 |
+| `tests/vmu-run240-wait-opener.test.mjs` | 15 / 0 |
+| `tests/vmu-run240-writer-identity.test.mjs` | 50 / 0 |
+| `tests/vmu-meeting-state-meaning.test.mjs` | 9/1 → **14 / 0**（等待者词汇表被当成会议状态；改成派生第二个词汇表并对它施加同一道门） |
+| 定向回归批（k=3） | **74 套全绿** |
+
+机器化审计门禁 `scripts/sim/audit/all.mjs` 的首跑数字（诚实版）：规则 **63/93**、动作 **68/225（30.2%）**、
+保真缺口 **68** 条。这些数字不是"文档欠账"，是**这台仿真还没走到的路**——ROUND 241 起按它们补场景。
+
+### ROUND 240（续）—— 恢复不许发明一次删除，回执不许忘记自己知道的事
+
+- `members.restore` 的 replace 路径现在保留「快照里没有、但活着的」席位，并在回执里点名 `keptLive`。理由不是保守，而是**一次恢复是关于被持久化了什么**：谁离开有它自己的动词 `end()`，一个快照从没见过的行，这次恢复对它没有意见。要删就 `{ dropLive: true }`。
+- `members` 投影改为**无条件 attach**：席位表不是可选投影。此前它只在部署显式声明时才 attach，于是 hire 全在内存、durable 键停在创始快照，恢复忠实恢复了一个过去的研习所。
+- `vibe_vmu_human` 的 `readBack` 在 drift 时给出 `message`/`hint`/`driftKeys`，并禁止「改键让 digest 吻合」这条毁灭性做法；`recover` 部分失败时给出失败步名与码。一条具名拒却不告诉读者下一步，等于把判断成本全推给读者。
+- `vibe_vmu_mathjobs` 的 `mirrorRel` 单列标量参数：**一对一转发服务的 face，也必须知道每个方法吃哪个名词**。
+- 机器审计的 never 列表要整族地读：同一批「从未调用」的动作里，五个是裸 `TypeError`（face 调了原语会议不存在的方法），一个是对象插值成路径。补调用之前先问「这个动词的转发链完不完整」。
+
+### ROUND 240（续二）—— 豁免要窄到「键」，转发要带上「名词」
+
+- 保真门禁的豁免从「整只工具」改成「列出的键」，并且只有「每次调用都停在同一个具名引擎不可用」才允许整工具豁免。理由：整工具豁免会把该工具其余字段的回归一起免责——`vibe_v5_paper` 的 104 个字段里仿真已产出 95 个，一句话就把 95 个放过了。
+- 声明里点名、但已经不是缺口的键 ⇒ WARN。豁免是有时效的事实，不是永久许可。
+- `vibe_vmu_task { action:"brief" }` 从来没能成功，因为 face 只把 `id` 转发给 `brief(id, text, …)`，schema 里也没有 `text`。一条「声明了但从未成功调用」的动作，先怀疑 face 掉了参数。
+- 文档里「方括号紧跟圆括号」的代码片段会被 markdown 当链接，链接检查器会当成未兑现的断言——写片段时避开这个形状。

@@ -395,10 +395,37 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (action === 'recover') {
           const plan = resume().recoverPlan({ reason: notEmpty(reason) || 'human-requested' })
           const report = await resume().recover({ reason: notEmpty(reason) || 'human-requested' })
-          return Object.assign({ ok: report.ok !== false, action }, { plan, recovery: report })
+          // ★★ RUN 240 (measured by the action matrix: this verb was listed as `never` partly because a failing
+          // recovery answered `ok:false` with NO code and NO hint). A recovery that did not fully succeed must say WHICH
+          // step failed and what a reader can do about it — the report's own steps already carry the codes, and this face
+          // is the only place a caller reads them.
+          const out = Object.assign({ ok: report.ok !== false, action }, { plan, recovery: report })
+          if (report.ok === false) {
+            const bad = (Array.isArray(report.steps) ? report.steps : []).filter((s) => s && s.ok === false)
+            out.code = report.code || (bad[0] && bad[0].code) || 'VMU_STATE'
+            out.message = 'the recovery did not fully succeed: ' + bad.map((s) => String(s.step) + (s.code ? ' (' + s.code + ')' : '')).join(', ')
+              + (bad.length ? '' : ' (the report says ok:false but no step names itself — that is a bug in the report, not a clean recovery)')
+            out.hint = 'read `recovery.steps`: every step carries its own code and note, and `unhydrated` names each ledger that could not be restored. A step that failed is reported, never retried silently — fix the named precondition (a seam, a version, a lock) and run recover again'
+            out.failedSteps = bad.map((s) => String(s.step))
+          }
+          return out
         }
         if (action === 'recoverStatus') return Object.assign({ ok: true, action }, resume().status())
-        if (action === 'readBack') return Object.assign({ ok: true, action }, resume().readBack())
+        if (action === 'readBack') {
+          const rb = resume().readBack()
+          const out = Object.assign({ ok: rb.ok !== false, action }, rb)
+          // ★★ RUN 240: this receipt answered `ok:false, code:"VMU_RESUME_READBACK_DRIFT"` with NO message and NO hint.
+          // A drift is the one reading where a reader most needs a next move (is this data loss, or another writer?), and
+          // the two facts that decide it — `writesBetween` and `driftMeans` — were already on the receipt.
+          if (rb.ok === false) {
+            const keys = (Array.isArray(rb.drift) ? rb.drift : []).map((d) => String(d && d.key)).filter(Boolean)
+            out.message = 'read-back drift on ' + (keys.length ? keys.join(', ') : 'a key this process wrote')
+              + ': the stored value no longer hashes to what THIS process wrote (' + String(rb.writesBetween === undefined ? 'writesBetween unknown' : 'this process performed ' + rb.writesBetween + ' durable write(s) while holding the expectation') + ')'
+            out.hint = 'do NOT rewrite the key to make the digest agree — that would overwrite whatever moved it. Read the durable value and decide which copy is the institute\'s: `writesBetween:0` means somebody ELSE wrote it (a second kernel, a restore, a hand edit) and the value on disk is that writer\'s fact; a nonzero count with no other writer points at the store seam itself. Then run the recovery (`action:"recover"`) and read back again'
+            out.driftKeys = keys
+          }
+          return out
+        }
         return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
       } catch (e) {
         return refused(e.code || 'VMU_STATE', String(e.message), e.hint)

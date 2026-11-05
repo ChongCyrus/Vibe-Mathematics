@@ -29,7 +29,13 @@ export function makeMathjobsSpec({ param, refused, TOOL_NAMES, kernel }) {
         if (!svc || typeof svc[action] !== 'function') {
           return refused('VMU_ENGINE_UNAVAILABLE', 'this assembly has no math-jobs face (kernel.mathjobs.' + String(action) + ' is missing)')
         }
-        const result = await svc[action](rest)
+        // ★★ RUN 240: `mirrorRel(jobId)` is the ONE method on this service whose parameter is a SCALAR. The face
+        // handed every action the whole `rest` object, so `mirrorRel` stringified an options object into the receipt
+        // path (`Math/Jobs/[object Object].json`) and the caller was told a file exists at a path nothing can name.
+        // A face that calls a service one-for-one must also know WHICH noun each method takes.
+        const SCALAR_ARG = { mirrorRel: 'jobId' }
+        const scalar = SCALAR_ARG[action]
+        const result = await svc[action](scalar === undefined ? rest : rest[scalar])
         // ★★★ NEVER SPREAD A PRIMITIVE. Measured on a full live run: `jobsDir` returns a PATH STRING, and
         // `Object.assign({ ok:true, action }, 'M:/a/b')` spread it character by character into `{0:'M',1:'/',2:'a',…}` -
         // the caller got a receipt that looked like data and was a bug. A primitive has no properties to merge, so the

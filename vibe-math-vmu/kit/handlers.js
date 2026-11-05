@@ -162,6 +162,22 @@ function mergeEcho(written) {
     // cannot tell a lost write from another kernel's write. Say which kernel the number came from.
     revSource: g('revSource'),
     revMeans: g('revMeans'),
+    // ★★★ RUN 240 (live run 63 / FEEDBACK63 ①1 + ①10, MEASURED): THE CARD RECEIPT RE-STATED A WHITELIST. The kernel's
+    // put receipt now names `owner`/`writer`/`by` and defines all three, but this echo listed its keys one by one and
+    // forwarded none of them: r-acad's merge receipt came back with `fieldsReplaced:["body","by"]` and no writer, so the
+    // reader had to open the row to learn WHO wrote the correction it had just made. The three names travel here too —
+    // flat (so a reader that only scans keys sees them) AND as `identity` (so the definitions survive a later layer that
+    // re-words `ownerMeans`, which is exactly what ownerEcho below does when the author is known).
+    owner: g('owner'),
+    writer: g('writer'),
+    by: g('by'),
+    writerMeans: g('writerMeans'),
+    byMeans: g('byMeans'),
+    threeNames: g('threeNames'),
+    identity: {
+      owner: g('owner'), writer: g('writer'), by: g('by'),
+      ownerMeans: g('ownerMeans'), writerMeans: g('writerMeans'), byMeans: g('byMeans'), threeNames: g('threeNames'),
+    },
     mergeMeans: updated
       ? 'this call UPDATED an existing row: rev/' + String(g('rev')) + ', the fields it did not name kept their old values (' + String((g('fieldsKept') || []).join(', ') || 'none') + '), and the ones it DID name were replaced (' + String((g('fieldsReplaced') || []).join(', ') || 'none') + ')'
       : 'this call CREATED a row, so there was no previous value to keep or replace — `updated:false` is the create case, not an update that dropped everything',
@@ -814,6 +830,15 @@ async function toolReadLibrary(args = {}, { kernel } = {}) {
       const asMember = (Array.isArray(roster) ? roster : []).find((r) => r && String(r.id) === id) || null
       const base = String(e.hint || '')
       const err = new Error(e.message)
+      // ★ RUN 240: this branch rebuilds the kernel's error so it can append a record-vs-member hint — and the
+      // rebuild used to keep only code/hint/detail, silently dropping the rest (`enforcedScope`, `enforced`,
+      // `missing`, `required`, …). A receipt that loses those fields reads as "the gate did not evaluate
+      // anything", which is exactly what the live field set showed for vibe_v5_read_library. Copy every own
+      // enumerable field first, then apply the local overrides below.
+      for (const k of Object.keys(e)) {
+        if (k === 'stack' || k === 'code' || k === 'hint' || k === 'message' || k === 'detail') continue
+        try { err[k] = e[k] } catch { /* a frozen or accessor field stays on the original error */ }
+      }
       err.code = e.code
       err.hint = asMember
         ? '"' + id + '" is a MEMBER (slot ' + asMember.slot + ', state ' + asMember.state + '), not a record. '

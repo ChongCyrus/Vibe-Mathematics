@@ -398,26 +398,40 @@ export function mergeReplyChannels(toolReply = {}, textReply = {}) {
   const head = toolReply && typeof toolReply === 'object' && !Array.isArray(toolReply) ? toolReply : {}
   const base = textReply && typeof textReply === 'object' && !Array.isArray(textReply) ? textReply : {}
   const conflicts = []
+  const conflictRows = []
   const textOnly = []
+  const sameValue = []
   const reply = {}
   for (const k of Object.keys(base)) {
     if (k === 'ignoredFields') continue
     reply[k] = base[k]
     if (!Object.prototype.hasOwnProperty.call(head, k)) textOnly.push(k)
-    else if (canonicalReplyValue(head[k]) !== canonicalReplyValue(base[k])) conflicts.push(k)
+    else if (canonicalReplyValue(head[k]) !== canonicalReplyValue(base[k])) {
+      conflicts.push(k)
+      conflictRows.push({ field: k, tool: canonicalReplyValue(head[k]), fenced: canonicalReplyValue(base[k]) })
+    } else sameValue.push(k)
   }
   for (const k of Object.keys(head)) { if (k !== 'ignoredFields') reply[k] = head[k] }
   if (conflicts.length) {
-    throw refuse('VMU_TURN_REPLY_CONFLICT',
-      'the tool report and the json reply disagree on: ' + conflicts.join(', ') + ' - one field cannot hold two truths in one turn',
+    // ★★★ ROUND 240 (FEEDBACK63 ①5, MEASURED): the refusal named the FIELD but never the two VALUES, so a reader could
+    // not tell what the tool report said versus what the fenced json said — the run-63 office could only guess whether
+    // the two channels even disagreed. The message now carries one `field (tool report: <value> vs fenced json: <value>)`
+    // clause per conflict, the error carries the same rows as structured data (`conflictRows`), and `fields` keeps the
+    // bare names for callers that only triage. Same code, same refusal-before-dispatch rule, no meta sentinel.
+    const detail = conflictRows.map((r) => r.field + ' (tool report: ' + r.tool + ' vs fenced json: ' + r.fenced + ')').join('; ')
+    const err = refuse('VMU_TURN_REPLY_CONFLICT',
+      'the tool report and the json reply disagree on: ' + detail + ' - one field cannot hold two truths in one turn',
       'send each field through exactly ONE channel: drop it from the tool report, or drop it from the json. The kernel refuses instead of choosing, because either choice would silently discard what the member actually said (docs/26 §3)')
+    err.conflicts = conflicts.slice()
+    err.conflictRows = conflictRows.slice()
+    throw err
   }
   const ignored = []
   for (const k of [].concat(Array.isArray(head.ignoredFields) ? head.ignoredFields : [], Array.isArray(base.ignoredFields) ? base.ignoredFields : [])) {
     if (!ignored.includes(k)) ignored.push(k)
   }
   if (ignored.length) reply.ignoredFields = ignored
-  return { ok: true, reply, conflicts, textOnly, fields: Object.keys(reply) }
+  return { ok: true, reply, conflicts, conflictRows: [], textOnly, sameValue, fields: Object.keys(reply) }
 }
 
 // THE FRAMEWORK OWNS THE IDEA OF A PHASE, NOT THE WORDS. Round 409 added `heartbeat` here because the original has it
@@ -1937,6 +1951,92 @@ export function createTurnOrchestrator({
     return statusBoardReadings({ tasks: taskFace, records: recordFace, member, settings, limit: STATUS_BOARD_DEFAULT_LIMIT, kernel: kernelNow })
   }
 
+  // ★★★★★★★ ROUND 240 (FEEDBACK63 ①4/①9, MEASURED): THE HOST'S OWN LEDGER OF WHAT EACH TURN DID. `op:"status"` could
+  // only offer counts, and a turn opened by a wait wake (not by the caller's own drive) left no receipt anywhere the
+  // office could read - it had to reverse-engineer the session files to learn what t-2 wrote. The loop now keeps one
+  // bounded row per turn: who, which origin opened it, which reply fields executed (and through which face.op), which
+  // were skipped and why, which writes it produced, and which refusal codes it carried. The row is written at OPEN (so
+  // an in-flight turn is `open` and visible instead of invisible) and updated when the turn settles. What the kernel
+  // cannot see - a member's tool calls in an independent child session - is declared in `unavailable`, never implied.
+  const TURN_RECEIPT_CAP = 50
+  const turnReceipts = new Map()
+  const settledTurnIds = new Map()
+  const rememberSettledTurn = (turn, applied) => {
+    if (!turn || typeof turn.id !== 'string' || turn.id === '') return
+    settledTurnIds.set(turn.id, {
+      at: isoStampOf(clock()),
+      fields: Array.isArray(applied && applied.fields) ? applied.fields.slice() : [],
+      source: (applied && applied.source) || null,
+    })
+    while (settledTurnIds.size > TURN_RECEIPT_CAP) settledTurnIds.delete(settledTurnIds.keys().next().value)
+  }
+  const channelOfEntry = (e) => {
+    if (!e) return null
+    if (typeof e.channel === 'string') return e.channel
+    if (typeof e.face === 'string' && typeof e.op === 'string') return e.face + '.' + e.op
+    return null
+  }
+  const writeOfEntry = (e) => {
+    const tool = channelOfEntry(e)
+    if (tool === null || !e || !e.result || typeof e.result !== 'object') return null
+    const id = typeof e.result.recordId === 'string' ? e.result.recordId : (typeof e.result.id === 'string' ? e.result.id : null)
+    return id === null ? { tool } : { tool, recordId: id }
+  }
+  // The unavailable list is DERIVED, never hand-written at a call site: a consumer must be able to tell "nothing here"
+  // from "the kernel cannot see this", and only the ledger knows which of the two it is.
+  const unavailableForTurn = (row, patch) => {
+    const out = []
+    if (row.status === 'open') {
+      out.push({ field: 'reply', why: 'this turn has not settled in THIS kernel yet: the member replies inside its own session, so no reply is readable here until the turn settles and this row flips to applied/failed' })
+    }
+    const deliveryPath = patch && typeof patch.deliveryPath === 'string' ? patch.deliveryPath : null
+    if (deliveryPath !== null && deliveryPath !== 'caller') {
+      out.push({ field: 'memberToolCalls', why: 'the member answered through delivery path "' + deliveryPath + '", so tool calls it made inside its own session are not visible from this kernel; read the record tracks (vibe_v5_read_library / vibe_v5_inbox), the meeting log or the files the tool wrote' })
+    }
+    if (row.codes.length === 0) {
+      out.push({ field: 'codes', why: 'no refusal code was recorded for this turn (an empty `codes` list means "nothing was refused here", not "every field applied")' })
+    }
+    return out
+  }
+  const noteTurnReceipt = (turn, patch) => {
+    if (!turn || typeof turn.id !== 'string' || turn.id === '') return null
+    const prev = turnReceipts.get(turn.id) || {
+      turn: turn.id, member: turn.member || null, openedBy: turn.openedBy || null, phase: turn.phase || null,
+      meeting: turn.meeting || null, openedAt: turn.at || null, status: 'open', fields: [], source: null,
+      executed: [], skipped: [], writes: [], codes: [], unavailable: [],
+    }
+    const next = Object.assign({}, prev)
+    if (patch && typeof patch === 'object') {
+      if (typeof patch.status === 'string') next.status = patch.status
+      if (Array.isArray(patch.fields)) next.fields = patch.fields.slice()
+      if (typeof patch.source === 'string') next.source = patch.source
+      if (typeof patch.code === 'string' && patch.code !== '' && !next.codes.includes(patch.code)) next.codes = next.codes.concat([patch.code])
+      if (Array.isArray(patch.executed)) {
+        next.executed = patch.executed.map((e) => {
+          const row = { field: e && e.field !== undefined ? e.field : null, channel: channelOfEntry(e) }
+          if (e && e.result && typeof e.result.code === 'string') row.code = e.result.code
+          return row
+        })
+        const writes = patch.executed.map(writeOfEntry).filter((w) => w !== null)
+        if (writes.length > 0) next.writes = writes
+      }
+      if (Array.isArray(patch.skipped)) {
+        next.skipped = patch.skipped.map((s) => {
+          const row = { field: s && s.field !== undefined ? s.field : null, reason: (s && s.reason) || null }
+          if (s && s.existingId !== undefined && s.existingId !== null) row.existingId = s.existingId
+          if (s && typeof s.code === 'string') row.code = s.code
+          return row
+        })
+      }
+    }
+    // ROUND 240: `unavailable` is derived on EVERY write (including the open-time row), so a row that has never settled
+    // still declares that its reply cannot be read here yet - an empty list must never be confused with "nothing missing".
+    next.unavailable = unavailableForTurn(next, patch && typeof patch === 'object' ? patch : null)
+    turnReceipts.set(next.turn, next)
+    while (turnReceipts.size > TURN_RECEIPT_CAP) turnReceipts.delete(turnReceipts.keys().next().value)
+    return next
+  }
+
   /** ① open a turn: who, which round, which phase, which task. */
   // ★★★ R13 (third pass, the part that made the earlier fix REAL): `rosterIds` and `chairId` were carried by the seam
   // and merged into the call, but THIS literal dropped them - so `turn.rosterIds` was always undefined inside the prompt
@@ -1952,7 +2052,7 @@ export function createTurnOrchestrator({
   // So the turn carries the binding from the moment it is opened: `open` puts it on the turn, `nextTurn` puts it on the
   // spec, and the caller-played seam parks it with the prompt so the reply inherits it (see deliverByReturning).
   const normalizeMeetingId = (meeting) => (meeting === null || meeting === undefined || String(meeting).trim() === '' ? null : String(meeting).trim())
-  const open = ({ member, role = null, roleLabel = null, phase, task = null, why = null, nextStep = null, roster = null, rosterIds = null, chairId = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1, meeting = null } = {}) => {
+  const open = ({ member, role = null, roleLabel = null, phase, task = null, why = null, nextStep = null, roster = null, rosterIds = null, chairId = null, quorum = null, statusBlock = null, facts = null, meetingState = null, formalStatus = null, round = 1, meeting = null, openedBy = null } = {}) => {
     if (typeof member !== 'string' || member.trim() === '') fail('VMU_INVALID_ARGUMENT', 'a turn needs a member', 'pass { member, phase }')
     const knownPhases = extraPhases && extraPhases.length ? PHASES.concat(extraPhases) : PHASES
     if (typeof phase !== 'string' || !knownPhases.includes(phase)) {
@@ -1964,7 +2064,12 @@ export function createTurnOrchestrator({
     // name and the framework's vocabulary were entangled by a MISSING FIELD, not by a design choice. With the field
     // carried, the caller owns the name (the pack supplies it in real use) and the kernel holds none of an
     // institution's words. A caller that supplies nothing gets the KEY it passed.
-    const turn = { id: 't-' + seq, member, role, roleLabel, phase, task, why, nextStep, roster, rosterIds, chairId, quorum, statusBlock, facts, meetingState, formalStatus, round, meeting: normalizeMeetingId(meeting), at: isoStampOf(clock()) }
+    const turn = { id: 't-' + seq, member, role, roleLabel, phase, task, why, nextStep, roster, rosterIds, chairId, quorum, statusBlock, facts, meetingState, formalStatus, round, meeting: normalizeMeetingId(meeting), at: isoStampOf(clock()),
+      // ★★★ ROUND 240 (FEEDBACK63 ①4): WHICH DOOR OPENED THIS TURN. A caller-driven drive, a background activation pump and
+      // a meeting wait wake settle turns differently, and `op:"status"` used to say nothing about the difference - the
+      // office could not tell a turn its own step opened from one a wait woke. Value domain: 'drive' | 'activation' |
+      // 'wait' | null (unknown/legacy caller).
+      openedBy: openedBy === null || openedBy === undefined || String(openedBy).trim() === '' ? null : String(openedBy).trim() }
     turns.set(turn.id, turn)
     woken.set(member, (woken.get(member) || 0) + 1)
     counts.opened += 1
@@ -1980,6 +2085,9 @@ export function createTurnOrchestrator({
     // counts OPENED turns, so the durable reader and the memory reader must agree by construction. Otherwise the same
     // member could be "has a turn" in one kernel and "has none" in its sibling, which is the run-35 failure itself.
     noteSharedTurn(turn)
+    // ROUND 240: the row exists from the moment the turn exists, so a turn that never settles (hung member, wait wake
+    // with no settlement) is still READABLE as `open` in `op:"status"` instead of being invisible.
+    noteTurnReceipt(turn, null)
     return { ok: true, turn }
   }
 
@@ -2413,6 +2521,16 @@ export function createTurnOrchestrator({
       fail('VMU_TURN_NO_PENDING_MEMBER', 'no member turn is open, so there is nothing for this report to answer',
         'CHANNEL: `op:"reply"` answers an AWAITING prompt. CALLER PATH (the only one where this channel works): an awaiting prompt only exists there — a step hands the prompt back with awaiting:true, and the reply answers it before the next step). DELEGATED PATH (activation/one-shot) — this refusal is EXPECTED there and the channel is permanently unreachable, do NOT retry it: the member\'s turn SETTLES INSIDE the step, nothing is ever left pending, and the member\'s own FINAL TEXT is what comes back to the host. REACHABLE INSTEAD: let the member vote inside its OWN turn (`op:"step"` whose next_step asks for the closure vote), which is what the receipts show as `effects:[{kind:"closure-vote"}]`. The fenced-json compatibility path is NOT reachable on this seam either (it needs deliverByReturning, and passing `reply` to `op:"step"` is refused by name there) — put the ask in `next_step` and read the answer from the member\'s turn. Delivery path on this kernel right now: ' + (onCallerPath === null ? 'not reported (no pending state)' : '"' + onCallerPath + '"'))
     }
+    // ★★★ ROUND 240 (FEEDBACK63 ①5): A REPORT FOR A TURN THAT ALREADY SETTLED IS A SECOND TRUTH, AND IT IS REFUSED AT THE
+    // WRITE SIDE BY NAME. MEASURED (run 63): a reply op raced the in-flight turn's completion; the report was ACCEPTED and
+    // then never applied, so the office saw `accepted:true` and no effect. Recording it into a settled turn can only end in
+    // one of two silent lies, so the turn above says which fields already landed and the caller reports in the next turn.
+    const settledTurn = open.turnId === null || open.turnId === undefined ? null : settledTurnIds.get(open.turnId)
+    if (settledTurn) {
+      fail('VMU_TURN_REPLY_CONFLICT',
+        'turn ' + String(open.turnId) + ' already SETTLED before this report arrived (fields applied: ' + (settledTurn.fields.length ? settledTurn.fields.join(', ') : 'none') + ') - recording it now would give one turn two answers',
+        'answer the NEXT prompt: that turn completed at ' + String(settledTurn.at) + '. Read `op:"status"` (turns[]) to see which turn is open; if this call raced the completion, nothing was recorded and nothing was applied - re-report in the next turn instead of retrying this one')
+    }
     const wanted = forMember === null || forMember === undefined ? null : String(forMember)
     if (wanted !== null && wanted !== open.member) {
       // ★★★ RUN 229 / task-13: A REPORT FOR A MEMBER WHOSE TURN IS NO LONGER THE PARKED ONE IS A STALE REPLY, NOT A
@@ -2495,6 +2613,24 @@ export function createTurnOrchestrator({
         why: 'this receipt RECORDS the report; the field actions it implies (including a closure vote) are carried out when the held turn is applied, so closureVote.votesCast moves on that step rather than here',
         fields: Object.keys(recorded.reply),
       },
+      // ★★★ ROUND 240 (FEEDBACK63 ①5): `accepted:true` IS ABOUT THE WRITE. The run-63 office read it as "this will be
+      // applied" and then never learned otherwise. The next three readings close that gap WITHOUT changing the write
+      // semantics: WHEN the report is applied, WHAT happens if the fenced json of the same turn disagrees, and what
+      // `counts.notExecuted` means for a reader who sees no matching skipped row.
+      appliedWhen: {
+        at: isoStampOf(clock()),
+        condition: 'when this held turn is applied: the next op:"step"/op:"drive" that completes it, or the moment the in-flight delivery returns - whichever settles the turn',
+        sameTurn: recorded.turnId,
+      },
+      conflictPolicy: {
+        code: 'VMU_TURN_REPLY_CONFLICT',
+        checkedWhen: 'at APPLICATION, field by field, against the fenced json of the SAME turn',
+        rule: 'a field sent through both channels must hold the SAME canonical value; a differing value refuses the whole turn BY NAME before anything is dispatched',
+        details: 'the refusal names the field, the tool-report value and the fenced-json value (mergeReplyChannels attaches `conflictRows`); nothing is silently not-executed',
+        ifTheFencedReplyDiffers: 'this report is NOT applied on top: the turn fails with VMU_TURN_REPLY_CONFLICT and the whole reply is refused before dispatch, so no field of this turn takes effect',
+        ifTheTurnSettlesFirst: 'a report that arrives after the turn settled is refused with VMU_TURN_REPLY_CONFLICT and names the fields that already landed - report in the next turn',
+      },
+      notExecutedMeans: 'a field the turn KEPT but did not execute is counted in counts.notExecuted AND named in `skipped` with a `code` (VMU_TURN_FIELD_NOT_APPLICABLE / VMU_TURN_FACE_NOT_WIRED / VMU_TURN_DUPLICATE_SKIPPED / a shape refusal such as VMU_RECORD_SHAPE): a count without a named row was the run-63 defect, and there is no such row now',
     }
   }
 
@@ -3062,6 +3198,7 @@ export function createTurnOrchestrator({
         if (raw !== null && String(raw).length > NOTE_CAP) note.truncated = true
         keptNotes.push(note)
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: skipReason.reason,
+          code: skipReason.code || 'VMU_TURN_FIELD_NOT_APPLICABLE',
           note: skipReason.note + '; the line IS kept: see `notes` for this round' })
         continue
       }
@@ -3069,7 +3206,9 @@ export function createTurnOrchestrator({
       const fn = face && typeof face[d.op] === 'function' ? face[d.op] : null
       if (!fn) {
         counts.notExecuted += 1
-        skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'face-not-wired' })
+        skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'face-not-wired',
+          code: 'VMU_TURN_FACE_NOT_WIRED',
+          means: 'this turn kept the field but the face/op it is bound to is not installed in this kernel, so nothing was attempted. The reply field table (FIELD_OWNERS) and the installed faces disagree - wire the face, or drop the field.' })
         continue
       }
       // ★★★ RUN 142 / audit10 C2: `record` is ONE RESEARCH-LOG LINE, NOT THE CARD ROUTE. The face's real operation is
@@ -3119,6 +3258,7 @@ export function createTurnOrchestrator({
             why: 'this member already recorded a progress row this turn (' + progressTwin + '): this text would have been a second row for the same turn, so it was not written - one turn of progress is one row, and the row above already carries it',
           })
           skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'already-written-this-turn', existingId: progressTwin,
+            code: 'VMU_TURN_DUPLICATE_SKIPPED',
             means: 'this member already wrote a progress row during this turn (' + progressTwin + '), so the text form did not archive a twin: one turn of progress is one row. The coercion above names the duplicate by its row id.' })
           continue
         }
@@ -3131,6 +3271,10 @@ export function createTurnOrchestrator({
       if (twin !== null) {
         counts.notExecuted += 1
         skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'already-written-this-turn', existingId: twin,
+          // ★★★ ROUND 240 (FEEDBACK63 ①5): every skipped row now carries a `code`. Before this round two branches
+          // (this one and face-not-wired) produced rows with a reason but no code, so `counts.notExecuted` could move
+          // without any named explanation - the exact "not-executed with no code" the run-63 office had to guess at.
+          code: 'VMU_TURN_DUPLICATE_SKIPPED',
           // ★ RUN 239 (FEEDBACK62 #1): the key is track-aware, so the sentence is too — on the `progress` track the
           // rule is "one turn of progress is one row" (no title needed), everywhere else it stays the stricter
           // (owner, track, title) match. A single unqualified sentence would describe the wrong rule for one of them.
@@ -3178,6 +3322,10 @@ export function createTurnOrchestrator({
         : 'this turn was bound to the named meeting, so a member\'s bare sentence was recorded as THAT MEMBER\'S speech and the receipt carries onBehalf for it', effects: turnEffects.slice(), coercions: turnCoercions.slice(), coercionsMeans: COERCIONS_MEANS,
       notes: keptNotes,
       notesMean: 'lines that were NOT dispatched but ARE kept: a reading of what the member said, bounded to ' + NOTE_CAP + ' chars each - an empty list means no such line existed, never that a line was dropped silently',
+      // ★★★ ROUND 240 (FEEDBACK63 ①5): THE COUNT AND THE NAMED ROWS CANNOT DRIFT. Every field counted in
+      // `counts.notExecuted` appears in `skipped` WITH a `code`; this sentence states the invariant so a reader who sees a
+      // count without a matching row knows the kernel is broken, not that the field was fine.
+      notExecutedMeans: 'counts.notExecuted counts fields this turn KEPT and did NOT execute; each one is named in `skipped` with a `code`: VMU_TURN_FIELD_NOT_APPLICABLE (the field needs an object/meeting this turn does not have - a bare sentence stays in `notes`), VMU_TURN_FACE_NOT_WIRED (no face/op installed for the binding), VMU_TURN_DUPLICATE_SKIPPED (the same act already landed this turn; `existingId` names the row), or the refusal code of a shape adapter (e.g. VMU_RECORD_SHAPE). A skipped row WITHOUT a code was the run-63 defect; there is no such row now, so an empty `skipped` always means nothing was held back.',
       // ★★★ RUN 213 (run 50 / FEEDBACK49 1.3, MEASURED): run 50 read `executed:0` as "this member did nothing" and only
       // later found the meeting, the Lean jobs and the ruling cards in the shared records. The receipt counts DISPATCH,
       // not the member's work (it says so in `executedMeans`), but it never said WHERE that work is readable.
@@ -3269,8 +3417,23 @@ export function createTurnOrchestrator({
           replyText: String(text).slice(0, 400),
           means: 'the reply ARRIVED and its write-back threw: the member answered, the action did not take effect. deliveryFailed is not incremented for this; read failedLast' }
       } catch { /* diagnostics must not replace the refusal */ }
+      // ★★★ ROUND 240 (FEEDBACK63 ①5): A FAILED WRITE-BACK IS A SETTLED TURN TOO. The ledger must say the turn is over
+      // and WHY (named code), otherwise `op:"status"` would show it as still `open` forever and a late report could be
+      // accepted for a turn that already refused - two answers to one turn, which is the defect this round closes.
+      try { noteTurnReceipt(turn, { status: 'failed', code: e && e.code ? String(e.code) : null, fields: parsed.fields }) } catch { /* the ledger must never replace the refusal */ }
+      try { rememberSettledTurn(turn, { fields: [], source: parsed.source }) } catch { /* the ledger must never replace the refusal */ }
       throw e
     }
+    // ★★★ ROUND 240 (FEEDBACK63 ①4/①9): THE TURN SETTLED. The row now names the channel that carried each field, what was
+    // skipped and why, and which writes landed - and the settled id refuses a late second report by name.
+    try {
+      noteTurnReceipt(turn, {
+        status: 'applied', fields: parsed.fields, source: parsed.source,
+        executed: out.executed, skipped: out.skipped,
+        deliveryPath: lastAttribution && typeof lastAttribution.deliveryPath === 'string' ? lastAttribution.deliveryPath : null,
+      })
+      rememberSettledTurn(turn, { fields: parsed.fields, source: parsed.source })
+    } catch { /* the ledger must never replace the applied receipt */ }
     // ROUND 396: a REFUSED dispatch becomes a notice for this member's NEXT prompt, which is the shape the original's
     // own corpus shows - "【研究所提示】task_update 未生效（V5_TASK_STALE_REVISION）：…". A refusal that lives only in the
     // receipt is invisible to the member that caused it, and the source is explicit that the announcement point is the
@@ -3292,6 +3455,13 @@ export function createTurnOrchestrator({
       ...(parsed.proseUnparsable ? { proseUnparsable: parsed.proseUnparsable } : {}),
       ...(parsed.textIgnored === true ? { textIgnored: true } : {}),
       ...(Array.isArray(parsed.textOnlyFields) && parsed.textOnlyFields.length ? { textOnlyFields: parsed.textOnlyFields } : {}),
+      // ★★★ ROUND 240 (FEEDBACK63 ①5, the other half of the rule): the same field sent through BOTH channels with the
+      // SAME value is dispatched exactly ONCE, and the receipt must say so - otherwise a reader counts two rows' worth of
+      // intent and cannot tell "merged" from "the second one was dropped". The field list is named, not just tallied.
+      ...(Array.isArray(parsed.sameValueFields) && parsed.sameValueFields.length
+        ? { sameValueFields: parsed.sameValueFields,
+            replyChannelsMeans: 'the same field arrived through BOTH channels with the SAME value: it was dispatched once (counted once) - listed in sameValueFields; nothing was dropped silently' }
+        : {}),
       ...out }
   }
 
@@ -3350,7 +3520,7 @@ export function createTurnOrchestrator({
     const ignored = []
     for (const k of [].concat(report.ignoredFields.slice(), text.ignoredFields || [])) if (!ignored.includes(k)) ignored.push(k)
     return { reply: merged.reply, fields: Object.keys(merged.reply), ...(ignored.length ? { ignoredFields: ignored } : {}),
-      source: 'tool+text', textOnlyFields: merged.textOnly }
+      source: 'tool+text', textOnlyFields: merged.textOnly, sameValueFields: merged.sameValue }
   }
 
   /** One full turn, in order. Returns the turn receipt rather than making the caller re-implement the sequence. */
@@ -3516,6 +3686,12 @@ export function createTurnOrchestrator({
           e.sideEffectsMeans = 'this refusal is about APPLYING the reply object, not about whether the member worked: the fields that could not be applied were not applied, but a member turn played by an independent child session MAY have run tools this kernel cannot see from the parent side — read the record tracks (vibe_v5_read_library / vibe_v5_inbox) before treating this as "nothing happened"'
         }
         try { if (e && typeof e === 'object' && !e.delivery) e.delivery = deliveryFromAttribution() } catch { /* same rule: diagnostics never replace the refusal */ }
+        // ★★★ ROUND 240 (FEEDBACK63 ①4/①5): A TURN THAT FAILED BEFORE DISPATCH MUST STILL BE VISIBLE AS SETTLED. A
+        // channel-merge conflict (VMU_TURN_REPLY_CONFLICT) or a parse refusal is thrown here, above `dispatchReply`, so
+        // without this line the ledger would keep the row `open` forever and the office would read a failed turn as a
+        // member still working. The row names the code; nothing is implied.
+        try { noteTurnReceipt(turn, { status: 'failed', code: e && e.code ? String(e.code) : null }) } catch { /* the ledger must never replace the refusal */ }
+        try { rememberSettledTurn(turn, { fields: [], source: null }) } catch { /* the ledger must never replace the refusal */ }
         throw e
       }
       return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
@@ -3630,7 +3806,9 @@ export function createTurnOrchestrator({
     settleIdle()
   }
   const dispatch = (spec) => {
-    const { turn } = open(spec)
+    // ROUND 240: a dispatch is the BACKGROUND PUMP's door (host activation), never the caller's own drive - the row must
+    // say so, or `turns[]` cannot distinguish "the office drove this" from "the host woke it".
+    const { turn } = open({ ...spec, openedBy: (spec && spec.openedBy) || 'activation' })
     dispatchStats.dispatched += 1
     const done = new Promise((resolve, reject) => {
       dispatchQueue.push({ turn, spec, settle: resolve, reject })
@@ -3752,7 +3930,7 @@ export function createTurnOrchestrator({
     const row = rows.find((r) => r && String(r.id) === String(memberId))
     return row && typeof row.slot === 'string' && row.slot !== '' ? row.slot : null
   }
-  const nextTurn = ({ members = [], phase = 'normal', why = null, nextStep = null, role = null, membersFrom = null, meeting = null } = {}) => {
+  const nextTurn = ({ members = [], phase = 'normal', why = null, nextStep = null, role = null, membersFrom = null, meeting = null, openedBy = null } = {}) => {
     // (g): the ONE shape-owner for a selection. Plain id strings are accepted here too, because the roster default
     // must never be used as a silent substitute for a caller's explicit list.
     const list = normalizeMembersSelection(members)
@@ -3775,6 +3953,10 @@ export function createTurnOrchestrator({
       // ★ E12 / task-19: the spec carries the meeting so `runOne`'s `merged = {..., ...spec}` hands it to `open`
       // without a second plumbing path, and every route (drive, step, dispatch) binds the same way.
       meeting: normalizeMeetingId(meeting),
+      // ★★★ ROUND 240 (FEEDBACK63 ①4): the spec carries WHICH DOOR opened the turn, so every route (drive/step one-shot,
+      // dispatch/activation pump) reports the same `openedBy` on the ledger row. A caller that settles a wait wake can pass
+      // 'wait' explicitly; the default for the direct route is 'drive' (see drive/step below).
+      openedBy: openedBy === null || openedBy === undefined || String(openedBy).trim() === '' ? null : String(openedBy).trim(),
       membersFrom: membersFrom === null ? null : membersFrom }
   }
 
@@ -3810,7 +3992,7 @@ export function createTurnOrchestrator({
     return out
   }
   const MEMBER_FAILURE_LIMIT = 3
-  const drive = async ({ members = [], rounds = 1, phase = 'normal', why = null, nextStep = null, role = null, meeting = null } = {}) => {
+  const drive = async ({ members = [], rounds = 1, phase = 'normal', why = null, nextStep = null, role = null, meeting = null, openedBy = null } = {}) => {
     // (g): the batch route owns the same shape rule as step(), so a batch also accepts plain id strings and refuses an
     // unreadable entry by name instead of falling back to the default roster.
     const selection = normalizeMembersSelection(members)
@@ -3880,7 +4062,7 @@ export function createTurnOrchestrator({
       'answer the parked prompt first: op:"step" with member:"' + parkedForDrive.member + '" and the reply (or op:"reply" with report {...}), which completes that turn; then dispatch again. This kernel keeps ONE parked prompt (deliverByReturning parks the assembled prompt on the caller), so a second dispatch cannot be queued - the prompt to answer is the memberPrompt the dispatch returned with awaiting:true')
     }
     for (let i = 1; i <= n; i += 1) {
-      const spec = nextTurn({ members: selection, phase, why, nextStep, role, meeting })
+      const spec = nextTurn({ members: selection, phase, why, nextStep, role, meeting, openedBy: openedBy === null || openedBy === undefined ? 'drive' : openedBy })
       // ★★ ROUND 45: AN EMPTY ROUND MUST SAY WHERE MEMBERS COME FROM. `no-members` is true, but on its own it leaves a
       // reader unable to act - the real machine called this face sixty-one times and learned nothing from it. The
       // hint names the two things that actually help: read the roster, and pass it (the tool face now infers it from
@@ -3894,6 +4076,9 @@ export function createTurnOrchestrator({
         // answers INTO it (and a conflicting `meeting` on the reply is refused by name) without re-reading the prompt.
         if (r && r.awaiting) return withScope({ ok: true, awaiting: true, memberPrompt: r.memberPrompt || null, meeting: (r.meeting || (r.memberPrompt && r.memberPrompt.meeting) || null), deliveryPath: r.deliveryPath || (r.attribution && r.attribution.deliveryPath) || null, receipts, failures, completed, roundsRun: receipts.filter((x) => !x.failed).length, roundsAttempted: receipts.length, round: i, member: spec.member })
         receipts.push({ round: i, member: spec.member, fields: r.fields, fieldsIgnored: fieldsIgnoredOf(r), ...(fieldsIgnoredOf(r).length ? { fieldsIgnoredMeans: FIELDS_IGNORED_MEANS } : {}), executed: r.executed.length, skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS, turn: r.turn.id, source: r.source || null,
+          // ★ ROUND 240: the same-value merge is a FACT about the two channels, and a batch receipt is read by the same
+          // office that reads a step receipt - so it travels here too (empty means the two channels did not overlap).
+          ...(Array.isArray(r.sameValueFields) && r.sameValueFields.length ? { sameValueFields: r.sameValueFields, replyChannelsMeans: r.replyChannelsMeans || null } : {}),
           // ★ PHASE 12 / run 37: the same detail the step receipt now carries - a batch receipt is read by the same person.
           skippedDetail: r.skipped.slice(0, 5), skippedDetailTruncated: r.skipped.length > 5,
           notes: (r.notes || []).slice(0, 5), notesMean: r.notesMean || null })
@@ -3970,7 +4155,7 @@ export function createTurnOrchestrator({
    * the pipeline owns WHAT PROMPT. A round that fails is RETURNED rather than thrown, because a failed round is an
    * operational outcome; a malformed ARGUMENT still throws, because that is a programming error.
    */
-  const step = async ({ members = [], member = null, membersInferred = false, membersFrom = null, selectionShape = null, phase = 'normal', why = null, nextStep = null, role = null, meeting = null } = {}) => {
+  const step = async ({ members = [], member = null, membersInferred = false, membersFrom = null, selectionShape = null, phase = 'normal', why = null, nextStep = null, role = null, meeting = null, openedBy = null } = {}) => {
     // ★★★ LIVE RUN 23 (the institute's own report, item 2): THE CHAIR RAIL'S HINT NAMED A PARAMETER THAT DID NOT EXIST.
     // `VMU_CHAIR_ACT_NOT_DELEGATED` tells the caller to "give the chair its own turn first:
     // `vibe_vmu_turn {op:"step", member:"academician-1"}`" — singular `member`. This signature had no `member`, so the
@@ -4137,7 +4322,7 @@ export function createTurnOrchestrator({
             ? 'the caller named `member` (SINGULAR: one seat), so requestedMembers and resolvedMembers are that one id — this is not an inferred selection and not a list, the shorthand for "wake this one member"'
             : 'the caller named a selection through some other shape; requestedMembers and resolvedMembers are the same list after normalisation')),
     }
-    const spec = nextTurn({ members, phase, why, nextStep, role, membersFrom, meeting })
+    const spec = nextTurn({ members, phase, why, nextStep, role, membersFrom, meeting, openedBy: openedBy === null || openedBy === undefined ? 'drive' : openedBy })
     // ★★ LIVE RUN 47 (the institute's own report ㉿.2): the face DOES name where the selection came from
     // (`caller-selection` | `roster-default`), but the reading was looked up on the RUN result instead of on the SPEC
     // that carries it, so every live receipt read `membersFrom: null` - present but empty, the worst of both.
@@ -4352,6 +4537,9 @@ export function createTurnOrchestrator({
         executedDetail: r.executed.slice(0, 5),
         executedDetailTruncated: r.executed.length > 5,
         executedMeans: EXECUTED_MEANS,
+        // ★ ROUND 240 (FEEDBACK63 ①5): both channels, same value ⇒ one dispatch; the field names travel so a reader can
+        // tell "merged, counted once" from "the second channel was dropped".
+        ...(Array.isArray(r.sameValueFields) && r.sameValueFields.length ? { sameValueFields: r.sameValueFields, replyChannelsMeans: r.replyChannelsMeans || null } : {}),
         skipped: r.skipped.length, effects: (r.effects || []).slice(), coercions: (r.coercions || []).slice(), coercionsMeans: COERCIONS_MEANS,
         // ★ PHASE 12 / live run 37 (the institute's own report): this receipt reduced `skipped` to a NUMBER, so the reason
         // and the kept line were unreadable - the member saw "skipped:1" and could not learn which field, why, or what it
@@ -4514,7 +4702,7 @@ export function createTurnOrchestrator({
     /** ★ PHASE 8: record a closure vote through the SAME writer the reply path uses. */
     recordClosureVote: (memberId, solved, source = 'reply') => recordClosureVote(memberId, solved, source),
     resetClosureVotes,
-    status: ({ roster = [], may = null, permission = 'vote' } = {}) => ({ apiVersion, dispatch: dispatchStatus(), turns: turns.size, fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal },
+    status: ({ roster = [], may = null, permission = 'vote' } = {}) => ({ apiVersion, dispatch: dispatchStatus(), turns: turns.size, turnReceipts: Array.from(turnReceipts.values()), fields: known.length, owners, policy: POLICY, woken: Object.fromEntries(woken), counts: { ...counts }, lastRefusal: { ...lastRefusal },
       // ★★ ROUND 57 (F-41b): THE TURN ENGINE KEEPS ONE ATTRIBUTION SLOT, AND NO READER COULD SEE EVEN THAT ONE. The
       // orchestrator has always computed `lastAttribution` (who the most recent delivery went to, why it was delivered
       // and how) - it is what the receipt's `delivery` block copies - but `status` never included it, so an operator
@@ -4524,6 +4712,13 @@ export function createTurnOrchestrator({
       lastAttribution: Object.assign({}, lastAttribution, { slot: 'single', member: lastAttributionMember }),
       attributionMeans: 'the turn engine keeps ONE attribution slot: lastAttribution describes the MOST RECENT delivery only, not every member\'s last turn. Per-member history is not retained here - `woken` and `counts` are tallies, and `memberSessions` maps a member to the child session that played its last turn',
       memberSessions: Object.fromEntries(memberSessions),
+      // ★★★ ROUND 240 (FEEDBACK63 ①4/①9): THE PER-TURN LEDGER THE OFFICE COULD NOT READ. `turns` above is a COUNT; this is
+      // the list. One row per turn (bounded to the last TURN_RECEIPT_CAP): who, which door opened it (`drive` = the
+      // caller's own step/drive, `activation` = the background pump, `wait` = a meeting wake settling a parked turn, null =
+      // a legacy/unknown caller), the reply fields that executed and through which face.op, the fields skipped with their
+      // named codes, the writes the turn produced, and the refusal codes it carried. `unavailable` names what this kernel
+      // CANNOT see (a member's tool calls inside an independent child session) instead of leaving a silent hole.
+      turnReceiptsMeans: 'HOST BOOKKEEPING, not the member\'s intent: this list records what the TURN LOOP observed while settling a turn (fields dispatched, fields skipped + code, writes with ids, refusal codes). It does not restate what the member meant, and a member that ran tools in its own child session can have done more than the row shows - `unavailable` names that gap. Rows are bounded to the last ' + TURN_RECEIPT_CAP + ' turns; `turn` is the t-<n> id, `openedBy` says which door opened it (drive/activation/wait/null).',
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING. Sixty-one meetings ran with no way to see that the one
       // field which closes the institute had never been emitted. `missing` names WHO, because silence is what blocks
       // closure and "somebody did not vote" is not actionable.

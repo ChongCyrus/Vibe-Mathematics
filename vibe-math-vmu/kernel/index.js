@@ -2058,6 +2058,29 @@ const reviewers = createReviewers({ settings: settingsView, clock: guardedClock,
       }
     }
   }
+  // ★★★ RUN 240 (measured, then fixed — the runner ran `vibe_v5_start` (three seats) and then `vibe_v5_human
+  //     {action:"recover"}` on the same process): the roster collapsed from three seats to the chair alone. The cause
+  //     was not the restore being wrong about the snapshot; it was that the SNAPSHOT WAS OLD. `members` is projected
+  //     only when a deployment declares it in `vmu.resume.projections`, so with nothing declared the durable key held
+  //     whatever had been written by hand (the chair, written during the founding), and every later `hire()` was
+  //     in-memory only. The recovery then faithfully restored a past institute. Who is IN the institute is not an
+  //     optional projection: the seat list is the thing a restart must not lose, so `members` is attached here the way
+  //     the human ledger below is — unconditionally, with the write-through that makes every mutator durable.
+  if (members && typeof members.snapshot === 'function' && typeof members.restore === 'function'
+    && !attachedProjections.some((a) => a && a.key === 'members' && a.attached)) {
+    try {
+      const out = resume.attachProjection({ target: members,
+        methods: ['hire', 'end', 'assignRole', 'wake', 'noteWake', 'selfReport'],
+        key: 'members', mode: 'state', snapshot: () => members.snapshot(),
+        restore: (v) => members.restore(v, { replace: true }),
+        list: () => (typeof members.roster === 'function' ? members.roster() : []) })
+      recordProjection({ face: 'members', attached: true, mode: 'state', key: 'members', methods: out.wrapped, missing: out.missing,
+        why: 'attached unconditionally (RUN 240): the seat list is what a restart must not lose, and a members projection that is only attached when declared leaves every hire in memory — the durable key then lags the roster and the recovery restores a past institute' }, ['members'])
+    } catch (e) {
+      recordProjection({ face: 'members', attached: false, reason: String((e && e.message) || e), code: (e && e.code) || null }, ['members'])
+    }
+  }
+
   // ROUND 3 / task-20 D (reader-a's task-18): THE APPROVAL QUEUE + VETO LEDGER ARE DURABLE. Attached
   // UNCONDITIONALLY (the human face always exists; `vmu.resume.projections` governs only the optional faces), with the
   // exact method list reader-a specified - `gate` is deliberately NOT listed because it calls `approvalDecision()`
@@ -2323,7 +2346,11 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           return { ok: false, error: 'the turn loop is still holding a parked caller prompt: answer it (vibe_v5_turn op:"step" with that reply) and the fired waiter stays on the ledger for the next round — the wake was DUE, it simply had no free turn to arrive in' }
         }
         try {
-          const p = loop.drive({ members: [target], rounds: 1, why: ask })
+          // ★★★ ROUND 240 (FEEDBACK63 ①4, second half): A WAKE IS ITS OWN DOOR. This drive is the FALLBACK wake transport:
+          // the turn it opens was opened because an event the member WAITED FOR happened, so the ledger row must say
+          // `openedBy:"wait"` — otherwise `op:"status"` reports it as `drive`, and the office cannot tell a turn it
+          // started from one that started itself. The tool face already accepts `opened_by`, so the word has a door too.
+          const p = loop.drive({ members: [target], rounds: 1, why: ask, openedBy: 'wait' })
           // A rejected drive must reach the waiter's settle handler, never the process: the settle path is what turns
           // `pending` into `delivered:false` with a real reason.
           const safe = p && typeof p.then === 'function' ? p.catch((e2) => ({ ok: false, error: String((e2 && e2.message) || e2) })) : p
@@ -2540,7 +2567,16 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // ★★ RUN 168: the view calls the state `status` (records.js view(): `status: rec.state`), so `r.state` was
           // undefined here and JSON dropped the key — every LIVE row in the fold carried no state at all (only the
           // tombstones appended below did). Read the name the view actually uses, and carry the restore stamp.
-          rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, state: r.status, restoredAt: r.restoredAt === undefined || r.restoredAt === null ? null : Number(r.restoredAt), by: r.owner !== undefined && r.owner !== null ? r.owner : r.by })
+          // ★★★ RUN 240 (live run 63 / FEEDBACK63 ①1 + ①10, MEASURED): THE FOLD CARRIED ONE NAME FOR TWO FACTS.
+          // This line used to persist the VIEW's `owner` under `by`, so on the next boot every row came back
+          // "the owner wrote it": r-acad merged a line into r-1's card, the same instance read `writer:"r-acad"`, and a
+          // fresh kernel read `owner:"r-1", writer:"r-1"` — the writer was never lost from the row, only from the fold.
+          // The snapshot now carries BOTH facts (`by` = the writer of this revision, `owner` = whose row it is); the
+          // adoption path in records.js restores both, and a fold written before this change (one name, under `by`)
+          // still adopts truthfully as owner = writer.
+          rows.push({ id: r.id, track: r.track, kind: r.kind, title: r.title, body: r.body, tags: r.tags, state: r.status, restoredAt: r.restoredAt === undefined || r.restoredAt === null ? null : Number(r.restoredAt),
+            by: r.writer !== undefined && r.writer !== null ? r.writer : (r.owner !== undefined && r.owner !== null ? r.owner : r.by),
+            owner: r.owner !== undefined && r.owner !== null ? r.owner : (r.writer !== undefined && r.writer !== null ? r.writer : null) })
         }
       }
       // ★★ RUN 166 (FEEDBACK14 F1/F3/F4 — THE PRUNE NOBODY ELSE COULD SEE): the snapshot used to be computed from the LIVE

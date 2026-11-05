@@ -101,6 +101,10 @@ async function main() {
   corpus.prompts(h.prompts)
   corpus.tree(result.tree)
   corpus.step('highlights', result.highlights)
+  // ★ RUN 240 — the STEPS have to be machine-readable, not only a markdown table. The coverage gate proves "every one of
+  // the 93 rules is exercised by a real scenario step"; it can only do that if the corpus says which steps ran and
+  // whether each one was allowed or refused. Reading names back out of REPORT.md would make the gate a parser of prose.
+  corpus.step('steps', { scenario, steps: result.steps })
 
   // A refusal is not automatically a defect: a scripted, in-process run has no LaTeX/Lean executor and no model, so
   // "this assembly cannot compile a PDF" is an ENVIRONMENT fact here. Those are counted separately and never fail the

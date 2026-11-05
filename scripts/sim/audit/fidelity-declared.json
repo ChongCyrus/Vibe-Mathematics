@@ -1,0 +1,160 @@
+{
+  "_why": "This file is the allowlist for fidelity gaps the SIMULATOR cannot close by writing a better scenario. Every entry needs a kind, a reason of at least 20 characters, and (preferably) a `keys` list naming exactly which live fields are exempt: a whole-tool entry silences every future regression of that tool, while a key list keeps the exemption the size of the fact. scripts/sim/audit/all.mjs treats an UNDECLARED gap as a failure, a declaration that no longer matches any gap as a warning, and a declared key that is no longer a gap as a warning. Filling a gap is always better than declaring it. An entry is either key-scoped (`keys: [...]`, the preferred form) or whole-tool with a `wholeTool` sentence — and whole-tool is only honest when EVERY call of that tool stops at the same named engine-unavailable refusal (the tool cannot run here at all), not when a few of its fields are out of reach. A key list must name the GAPS (not every live key): listing keys that already work turns them into stale declarations and hides the ones that do not. `scripts/sim/audit/all.mjs` prints a gap list when the file is empty — that output is where the keys come from.",
+  "_kinds": {
+    "needs-deployment-config": "the tool needs an executor/service/seam this workspace does not ship, so no scenario can reach it here",
+    "sim-cannot": "the receipt shape depends on something the in-process simulator cannot produce (wall clock races, another process, a live model)",
+    "needs-real-model": "the fields only exist when a live model writes them",
+    "superseded-shape": "the live machine emitted this shape in an older build; this checkout either renamed the field or moved the reading to another face, so no scenario can produce it here",
+    "defensive-only": "the field exists only on a defensive branch (a lookup that must not fail, a refusal that carries its own extra block), which an honest scenario cannot provoke without faking it"
+  },
+  "vibe_v5_lean_archive": {
+    "kind": "needs-deployment-config",
+    "note": "needs the Lean executor seam (spawn of a lean binary) that this workspace does not ship, so every call here stops at VMU_ENGINE_UNAVAILABLE and the archived/hash/exitCode/diagnosticsTail shape is never produced. The tool itself cannot be called here, which is why this entry is whole-tool rather than key-scoped.",
+    "wholeTool": "every call of this tool stops at VMU_ENGINE_UNAVAILABLE (no Lean executor seam in this workspace), so there is no receipt shape at all to be key-scoped about."
+  },
+  "vibe_v5_lean_job": {
+    "kind": "needs-deployment-config",
+    "note": "same Lean executor seam as lean_archive: the job/jobs/hydrated/droppedEvents shape comes from a running lean process, so an in-process scenario can only ever produce the named engine-unavailable refusal. The tool itself cannot be called here, which is why this entry is whole-tool rather than key-scoped.",
+    "wholeTool": "every call of this tool stops at VMU_ENGINE_UNAVAILABLE (no Lean executor seam in this workspace), so there is no receipt shape at all to be key-scoped about."
+  },
+  "vibe_v5_lean_lib": {
+    "kind": "needs-deployment-config",
+    "note": "the library listing is read from the lean toolchain on disk, which this workspace does not have, so entries/kinds/persistence never appear in a simulated receipt. The tool itself cannot be called here, which is why this entry is whole-tool rather than key-scoped.",
+    "wholeTool": "every call of this tool stops at VMU_ENGINE_UNAVAILABLE (no Lean executor seam in this workspace), so there is no receipt shape at all to be key-scoped about."
+  },
+  "vibe_v5_lean_read": {
+    "kind": "needs-deployment-config",
+    "note": "reads a compiled lean artifact produced by the executor seam; without that seam there is no artifact, hence no content/hash/compileAt/outcome shape to observe. The tool itself cannot be called here, which is why this entry is whole-tool rather than key-scoped.",
+    "wholeTool": "every call of this tool stops at VMU_ENGINE_UNAVAILABLE (no Lean executor seam in this workspace), so there is no receipt shape at all to be key-scoped about."
+  },
+  "vibe_v5_lean_run": {
+    "kind": "needs-deployment-config",
+    "note": "runs a lean file through the executor seam; the id/job/state/unapplied fields are that process's report, and the simulator can only answer with the engine-unavailable refusal. The tool itself cannot be called here, which is why this entry is whole-tool rather than key-scoped.",
+    "wholeTool": "every call of this tool stops at VMU_ENGINE_UNAVAILABLE (no Lean executor seam in this workspace), so there is no receipt shape at all to be key-scoped about."
+  },
+  "vibe_v5_fidelity_conclude": {
+    "kind": "needs-deployment-config",
+    "note": "concludes a fidelity check that needs both the lean executor and the verified seam; with neither installed the receipt can never carry the lean/verified/enforced fields a live run shows. The tool itself cannot be called here, which is why this entry is whole-tool rather than key-scoped.",
+    "wholeTool": "every call of this tool stops at VMU_ENGINE_UNAVAILABLE (no Lean executor seam in this workspace), so there is no receipt shape at all to be key-scoped about."
+  },
+  "vibe_v5_paper": {
+    "kind": "needs-deployment-config",
+    "keys": [
+      "compiled",
+      "crossReviewPossible",
+      "faceCode",
+      "signal",
+      "stderrTail",
+      "stdoutTail",
+      "tailSource",
+      "tried",
+      "triedEngines"
+    ],
+    "note": "the eight compile-side keys need a real LaTeX executor seam (compile answers VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING here); crossReviewPossible` was only ever emitted at the top level by an older build advance refusal, and this checkout discloses it on the success payload."
+  },
+  "vibe_vmu_env": {
+    "kind": "needs-deployment-config",
+    "keys": [
+      "exitCode",
+      "resolved",
+      "results",
+      "stderrTail",
+      "stdoutTail",
+      "version"
+    ],
+    "note": "the six keys are a deployment probe of the machine the harness runs on; the in-process simulator IS the environment, so a scenario cannot report a different one without inventing it."
+  },
+  "vibe_vmu_mathjobs": {
+    "kind": "needs-deployment-config",
+    "keys": [
+      "job"
+    ],
+    "note": "the job handle only exists after a real python math-job service ran the computation; this workspace has no such service (spawn seam), so every call stops at VMU_ENGINE_UNAVAILABLE."
+  },
+  "vibe_vmu_mathtools": {
+    "kind": "needs-deployment-config",
+    "keys": [
+      "cached",
+      "receipt",
+      "result"
+    ],
+    "note": "same missing python service as mathjobs: cached/receipt/result only exist once a real computation ran."
+  },
+  "vibe_v5_record_proposition": {
+    "kind": "superseded-shape",
+    "keys": [
+      "op",
+      "wouldEvaluate"
+    ],
+    "note": "op/wouldEvaluate were produced by the old destructive-write path inside kernel/capacity.js; this checkout moved that refusal forward to VMU_RECORD_SETTLEMENT_REWRITE, and the four tool faces only keep enforced/enforcedScope. Reproducing the old keys would mean writing a fake receipt."
+  },
+  "vibe_v5_task_get": {
+    "kind": "defensive-only",
+    "keys": [
+      "briefNote"
+    ],
+    "note": "briefNote is the sentence used when the brief lookup genuinely FAILS (the absent case returns brief + briefMeans and no briefNote), and the brief face now forwards text after the RUN 240 fix in vibe-math-vmu/tools/task.js, so the only way to emit it from a scenario would be to hand it a broken briefOf."
+  },
+  "vibe_v5_verdict_final": {
+    "kind": "superseded-shape",
+    "keys": [
+      "applicable",
+      "cardId",
+      "consumer",
+      "required"
+    ],
+    "note": "the ruling-final receipt in this checkout (vibe-math-vmu/packs/v5r/tools.js) is p1RulingReading / p1CannotBack / meetingState / floor / attribution / tally; applicable/cardId/consumer/required do not exist in the current faces, so only an older build could emit them."
+  },
+  "vibe_v5_verified_promote": {
+    "kind": "superseded-shape",
+    "keys": [
+      "applicable",
+      "p1Routes",
+      "rev"
+    ],
+    "note": "p1Routes is emitted by the p=1 gate refusals (packs/v5r/verification-gates.js), not by the promote face, which answers p1Route / p1Evidence / cardId / written / refreshed; applicable and rev are not produced by this checkout at all."
+  },
+  "vibe_vmu_mailbox": {
+    "kind": "superseded-shape",
+    "keys": [
+      "from"
+    ],
+    "note": "from is an INPUT of the mailbox face; the receipt identifies the writer as caller/callerSource (tools/mailbox.js), so a receipt carrying `from` belongs to an older build."
+  },
+  "vibe_vmu_panel": {
+    "kind": "defensive-only",
+    "keys": [
+      "enforcedScope"
+    ],
+    "note": "the cross-seat permission refusal carries caller/callerSource/target; enforcedScope is attached only on the capacity branch of tools/panel.js, which needs a configured quota this workspace does not ship."
+  },
+  "vibe_vmu_records": {
+    "kind": "superseded-shape",
+    "keys": [
+      "doomedActiveCount",
+      "doomedActiveMeans"
+    ],
+    "note": "the names were changed to doomedDeclaredCurrentCount / doomedDeclaredCurrentMeans / doomedInForceCount in vibe-math-vmu/kernel/records.js; the old pair does not exist in the repository any more, so only an older build could emit it."
+  },
+  "vibe_vmu_report": {
+    "kind": "defensive-only",
+    "keys": [
+      "detail"
+    ],
+    "note": "detail is attached by kernel/report.js to a refusal that wants to hand the caller an extra block, and none of the five report verbs reaches that path with a detail payload; a scenario could only fake it."
+  },
+  "vibe_vmu_turn": {
+    "kind": "needs-deployment-config",
+    "keys": [
+      "deliveryGraceMs",
+      "deliveryTimeoutMs",
+      "lastPhase",
+      "partial",
+      "requestSent",
+      "roundCompleted",
+      "roundConsumed",
+      "waitedMs"
+    ],
+    "note": "these come from stepFailure.failureDelivery in kernel/turn/index.js, which only exists when a HOST deliver call times out; the in-process simulator uses the caller delivery mode, where delegation refuses with VMU_ENGINE_UNAVAILABLE before any delivery is attempted."
+  }
+}

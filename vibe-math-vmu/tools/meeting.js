@@ -1041,13 +1041,42 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
           }
 
           // B② (Round 10): leave requests — asking and deciding are separate acts (the approver is DECLARED).
-          if (action === 'leaverequest') {
-            return Object.assign({ ok: true, action, id }, live().requestLeave({ meeting: need(id, 'id'), member: need(member, 'member'), why: need(reason, 'reason') }))
+          //
+          // ★★ RUN 240 (found by scripts/sim/scenarios/actions-extra.mjs): these three, plus `lapse`/`revokelapse`
+          // below, called `live().X(...)` UNCONDITIONALLY. `live()` hands back a PRIMITIVE meeting object, and no
+          // primitive meeting has any of the five methods — so every call answered a raw
+          // `TypeError: live(...).requestLeave is not a function`: no code, no hint, and a caller who cannot tell
+          // "wrong registry" from "engine broken". Leave controls and the wall-clock lapse are SERVICE rails
+          // (`kernel.meetings` / `meetinglapse.js`); this face must cross the boundary the way `admit`/`extend` do
+          // and NAME the registry it used, or refuse by name with a reachable alternative.
+          if (action === 'leaverequest' || action === 'leaveapprove' || action === 'leaverequests'
+            || action === 'lapse' || action === 'revokelapse') {
+            const pid = sid(id)
+            if (!pid) return meetingFieldRefusal(action)
+            const svc = svcOf()
+            const method = {
+              leaverequest: 'requestLeave', leaveapprove: 'approveLeave', leaverequests: 'leaveRequests',
+              lapse: 'lapse', revokelapse: 'revokeLapse',
+            }[action]
+            if (svc && typeof svc[method] === 'function' && serviceHas(pid)) {
+              const payload = action === 'leaverequests'
+                ? { meeting: pid }
+                : action === 'leaverequest'
+                  ? { meeting: pid, member: need(member, 'member'), why: need(reason, 'reason') }
+                  : action === 'leaveapprove'
+                    ? { meeting: pid, member: need(member, 'member'), by: need(by, 'by'), why: need(reason, 'reason') }
+                    : action === 'lapse'
+                      ? { meeting: pid, by: by === undefined || by === null ? null : by, reason: reason === undefined || reason === null ? null : reason }
+                      : { meeting: pid, by: by === undefined || by === null ? null : by, reason: need(reason, 'reason') }
+              return Object.assign({ ok: true, action, id: pid, registry: 'service' }, svc[method](payload))
+            }
+            if (kernel.liveMeeting(pid)) {
+              return refused('VMU_INVALID_ARGUMENT',
+                action + ' is a SERVICE rail: ' + pid + ' is a PRIMITIVE meeting, which keeps no leave roster and has no wall clock to lapse (its only bound is the per-round timeout)',
+                'convene the meeting through the pack (vibe_v5_meeting { type, agenda }) so it lives in the service, where leave requests and the bounded lapse are honoured; a primitive meeting is closed with action="end" (a reason is required there too)')
+            }
+            throw noSuchMeeting(pid)
           }
-          if (action === 'leaveapprove') {
-            return Object.assign({ ok: true, action, id }, live().approveLeave({ meeting: need(id, 'id'), member: need(member, 'member'), by: need(by, 'by'), why: need(reason, 'reason') }))
-          }
-          if (action === 'leaverequests') return Object.assign({ ok: true, action, id }, live().leaveRequests({ meeting: need(id, 'id') }))
           if (action === 'extend') {
             // ★★ RUN 230 (task-20): `extend` is a SPEECH extension, and it now CROSSES the registry boundary the same
             // way `speak`/`attend`/`order` do. Measured before this branch: a service meeting answered
@@ -1113,10 +1142,6 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
                 'primitive meetings start immediately (they have no scheduled state); use action=open to convene one')
             }
             throw noSuchMeeting(pid)
-          }
-          if (action === 'lapse') return Object.assign({ ok: true, action, id }, live().lapse({ meeting: need(id, 'id'), by: by || null }))
-          if (action === 'revokelapse') {
-            return Object.assign({ ok: true, action, id }, live().revokeLapse({ meeting: need(id, 'id'), by: by || null, reason: need(reason, 'reason') }))
           }
           if (action === 'ballot') {
             const bid = ballotId || ('b-' + (kernel.liveList().ballots.length + 1) + '-' + Date.now().toString(36))

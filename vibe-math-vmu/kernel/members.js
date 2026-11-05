@@ -130,7 +130,12 @@ export function createMembers({
     /** Place a member into a slot, enforcing that slot's capacity by name. */
     async assignRole(id, slotId, attribution = null) {
       if (typeof id !== 'string' || !MEMBER_ID.test(id)) {
-        throw refuse('VMU_INVALID_ARGUMENT', 'member id is required and must be path-safe: ' + String(id))
+        // ★ RUN 240: this refusal used to be the only one in the module with NO hint, and audit check A4 says a
+        // named refusal must tell the caller what to do next. `String(id)` also printed "[object Object]" for a
+        // malformed object, so the message quoted the type name instead of the value.
+        const shown = typeof id === 'string' ? JSON.stringify(id) : (id === null ? 'null' : typeof id + ' ' + (() => { try { return JSON.stringify(id) } catch { return '(unprintable)' } })())
+        throw refuse('VMU_INVALID_ARGUMENT', 'member id is required and must be path-safe: ' + shown,
+          'pass a string matching ' + String(MEMBER_ID) + ' — e.g. "r-3" or "r-acad": a member id is also a directory name under the workspace, so slashes, spaces and empty ids are refused before anything is written')
       }
       // THE CEILING IS ENFORCED HERE TOO. `assignRole` is a PUBLISHED service (docs/03 §2), so gating only
       // `hire()` made the ceiling bypassable from a pack or an M3 script (verifier's task-34 finding #3). The
@@ -328,8 +333,17 @@ export function createMembers({
     /**
      * Put the roster back. Three modes, named so a caller cannot pick the wrong one by accident:
      *   · { replace:false } (default) — idempotent for the SAME snapshot; a different one is refused by name.
-     *   · { replace:true }  — the recovery path: the snapshot becomes the roster, live rows included are DROPPED.
+     *   · { replace:true }  — the recovery path: the snapshot becomes the roster.
      *   · { merge:true }    — the RELOAD path: the snapshot may ADD or UPDATE a member, NEVER delete one.
+     *
+     * ★★★ RUN 240 (measured on a live-shaped boot, not by reading code): `{replace:true}` used to DROP every live row
+     * the snapshot did not carry, and the recovery path is exactly the one that calls it. A boot that hired two
+     * seats after the durable `members` key was written (founding snapshot, one seat) then called `recover()` — and
+     * the roster collapsed from three seats to one. The two missing seats were not "ended"; they had never been IN
+     * that snapshot.
+     * A restore is a statement about what was persisted, so it may not invent a deletion: who left the institute has
+     * its own named verb (`end()`), and a row the snapshot never knew is a row this restore has no opinion about.
+     * Such rows are KEPT and named in `keptLive`; `{ dropLive: true }` still drops them for a caller that means it.
      */
     /**
      * ★ WHY `merge` EXISTS (measured: `tests/vmu-meeting-invite.test.mjs` §10 flaked ~50%, losing three hired members).
@@ -340,7 +354,7 @@ export function createMembers({
      * the fold to be able to ADD a member this kernel has not seen; it never needs it to REMOVE one this kernel hired.
      * Deletion has its own name (`end()`), so a restore that deletes is not the reload path's business.
      */
-    restore(snap, { replace = false, merge = false } = {}) {
+    restore(snap, { replace = false, merge = false, dropLive = false } = {}) {
       checkSnapshot('members', snap, ['members', 'reportLog'])
       const incoming = Array.isArray(snap.data.members) ? snap.data.members : []
       if (merge) {
@@ -374,6 +388,13 @@ export function createMembers({
           'stop/clear the roster first, or pass { replace: true } deliberately - a silent half-overwrite is refused by name')
       }
       const skipped = []
+      // Live rows the snapshot does not mention, and that are not already ended: they are NOT deletions, they are
+      // rows this snapshot never knew (see the doc above — RUN 240). Kept unless the caller says { dropLive: true }.
+      const incomingIdsForKeep = new Set(incoming.filter((m) => m && typeof m.id === 'string').map((m) => m.id))
+      const keptRows = dropLive
+        ? []
+        : [...members.entries()].filter(([id, m]) => !incomingIdsForKeep.has(id) && !(m && m.state === 'ended')).map(([, m]) => JSON.parse(JSON.stringify(m)))
+      const keptLive = keptRows.map((m) => m.id)
       members.clear()
       for (const m of incoming) {
         if (!m || typeof m.id !== 'string' || !MEMBER_ID.test(m.id)) { skipped.push({ what: 'members[]', why: 'an entry with a missing or invalid id' }); continue }
@@ -384,8 +405,15 @@ export function createMembers({
         if (!Array.isArray(pair) || pair.length !== 2) { skipped.push({ what: 'reportLog[]', why: 'not an [id, rows] pair' }); continue }
         reportLog.set(String(pair[0]), (Array.isArray(pair[1]) ? pair[1] : []).map((r) => JSON.parse(JSON.stringify(r))))
       }
+      for (const m of keptRows) members.set(m.id, m)
       observeIds('member', [...members.keys()])
-      return { ok: true, restored: ['members', 'reportLog'], skipped, counters: { member: [...members.keys()].reduce((mx, id) => Math.max(mx, idNumber(id) || 0), 0) } }
+      return {
+        ok: true, restored: ['members', 'reportLog'], skipped, keptLive,
+        keptLiveMeans: keptLive.length
+          ? 'this snapshot did not carry ' + keptLive.length + ' live seat(s) of this kernel (' + keptLive.join(', ') + '); a restore is a statement about what was PERSISTED, so it does not delete them - who left the institute has its own verb (end()), and { dropLive: true } is how a caller says it means the deletion'
+          : 'every live seat of this kernel was already in the snapshot, so nothing had to be kept back',
+        counters: { member: [...members.keys()].reduce((mx, id) => Math.max(mx, idNumber(id) || 0), 0) },
+      }
     },
 
     /** Observability (R11): slots with occupancy, live count, and the caps actually in force. */

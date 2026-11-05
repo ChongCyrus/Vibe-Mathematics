@@ -62,6 +62,34 @@ export const EXTRA_WIRED_KEYS = Object.freeze([
 /** Head fields that can never be trimmed from a list projection (`vmu.records.headFields` trims the rest). */
 export const CORE_HEAD_FIELDS = Object.freeze(['id', 'track', 'kind', 'status', 'updatedAt', 'fingerprint'])
 
+/**
+ * ★★★ RUN 240 (live run 63 / FEEDBACK63 ①1 + ①10, MEASURED): THREE NAMES, ONE ROW, NO DEFINITIONS ANYWHERE.
+ * r-acad merged one line into a card r-1 owned; the receipt counted `fieldsReplaced:["body","by"]` and never said
+ * `writer`, and a later `records expand` read `owner:"r-1", writer:"r-1"` — the writer had moved in the row but not in
+ * any reading of it, and no page defined what the three words mean relative to each other. The three names are NOT
+ * aliases: `owner` is who the row BELONGS to, `writer` is who wrote the revision a reader is looking at, and `by` is
+ * the write face's name for that same writer. This table is the one place the words are defined, and every write/read
+ * receipt in this module carries them (`ownerMeans`/`writerMeans`/`byMeans`/`threeNames`), so a caller never has to
+ * guess which of the three moved.
+ */
+export const THREE_NAMES_MEANS = Object.freeze({
+  owner: 'owner = WHO THE ROW BELONGS TO: the author of its first version; a later correction keeps it (ownership is not authorship)',
+  writer: 'writer = WHO WROTE THE REVISION THIS READ RETURNS: it moves on every write that names a writer, so correcting someone else\'s card shows you as writer and leaves the owner alone; two kernels over one workspace keep their own projections, so compare `fingerprint`/`updatedAt` across kernels rather than `rev` (RUN 238 `revSource`: rev counts the writes THIS kernel folded)',
+  by: 'by = the WRITE FACE\'s name for the writer: a write passes `by` (the card tools pass the acting `member` as this) and the row records that person as the writer of this revision',
+  threeNames: 'owner, writer and `by` are two facts under three names: owner = whose row it is, writer = who wrote this revision, `by` = the write face\'s spelling of writer — so ONE correction moves writer/`by` and leaves owner where it was',
+})
+
+/** The three names + their definitions, in the shape every receipt and read face carries them. */
+const identityEcho = (owner, by) => ({
+  owner: owner === undefined ? null : owner,
+  writer: by === undefined ? null : by,
+  by: by === undefined ? null : by,
+  ownerMeans: THREE_NAMES_MEANS.owner,
+  writerMeans: THREE_NAMES_MEANS.writer,
+  byMeans: THREE_NAMES_MEANS.by,
+  threeNames: THREE_NAMES_MEANS.threeNames,
+})
+
 const K = Object.freeze({
   allowedKinds: 'vmu.records.allowedKinds',
   // ROUND 261 (volume 16 §L9/L10): the dataset declarations.
@@ -110,7 +138,9 @@ const DEFAULTS = Object.freeze({
   [K.dataVersionScheme]: 'semver',
   // ROUND 278: §L169. When on (the default), a rebuttal entry must PAIR a comment with a response.
   [K.rebuttalRequired]: true,
-  [K.headFields]: ['id', 'track', 'kind', 'title', 'slug', 'status', 'owner', 'updatedAt', 'fingerprint'],
+  // ★★ RUN 240: `writer` travels with `owner` in the head row. The list face used to carry the owner and not the
+  // writer, so a row rewritten by someone else listed as unchanged-by-anyone: `list` now names BOTH facts.
+  [K.headFields]: ['id', 'track', 'kind', 'title', 'slug', 'status', 'owner', 'writer', 'updatedAt', 'fingerprint'],
   [K.bodyCapBytes]: 32768,
   [K.expandThreshold]: 4096,
   [K.headMaxItems]: 200,
@@ -546,7 +576,11 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     const base = {
       id: rec.id, track: rec.track, kind: rec.kind, title: rec.title, slug: rec.slug, status: rec.state,
       owner: rec.owner === undefined || rec.owner === null ? rec.by : rec.owner,
-      writer: rec.by, updatedAt: rec.updatedAt, createdAt: rec.createdAt, rev: rec.rev, fingerprint: rec.fingerprint,
+      writer: rec.by,
+      // ★★ RUN 240: the WRITE face's name for the writer travels with the read row too, so a reader who has only ever
+      // seen `by` on a write receipt can match it to the same person without a glossary. `owner`/`writer`/`by` are
+      // defined in THREE_NAMES_MEANS above and spelled out in every write receipt and in `get()`/`list()`.
+      by: rec.by === undefined ? null : rec.by, updatedAt: rec.updatedAt, createdAt: rec.createdAt, rev: rec.rev, fingerprint: rec.fingerprint,
       bytes: rec.bytes, tags: rec.tags.slice(), tier: tierOf(rec, at), permanent: isPermanent(rec),
       // ★★ RUN 168 (FEEDBACK15 F15-1): `restoredAt` is the durable proof that a live row got here by RESTORE. Without it
       // the snapshot could not tell a genuine restore from the stale live copy the fold still carries right after a prune
@@ -990,9 +1024,13 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const bodyLinesAfter = bodyLinesOf(bodyText)
       const bodyLinesDropped = bodyLinesBefore.filter((k) => bodyLinesAfter.indexOf(k) < 0)
       const bodyLinesAdded = bodyLinesAfter.filter((k) => bodyLinesBefore.indexOf(k) < 0)
+      // ★★ RUN 240 (FEEDBACK63 ①1): the write receipt carried NO writer at all — `fieldsReplaced:["body","by"]` was the
+      // only mention that authorship had moved, and a reader had to reverse-engineer the row to learn who wrote it. The
+      // three names and their definitions travel on the receipt itself, create and update alike.
       const receipt = { ok: true, deduplicated: false, id, slug, fingerprint: fp, bytes, tier: tierOf(rec, at), retrackedFrom,
         retrackedFromMeans: retrackedFrom === null ? 'this row did not change track' : 'this id was on the "' + retrackedFrom + '" track and MOVED here: the old index row was removed, so one id answers exactly one `list({track})`',
-        enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at }
+        enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at,
+        ...identityEcho(mergedOwner, mergedBy) }
       if (!updating) return Object.assign(receipt, { updated: false })
       const out = Object.assign(receipt, {
         updated: true, rev: rec.rev, versionsCount: rec.versions.length,
@@ -1034,7 +1072,11 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       if (includeBody && rec.bytes > bodyCapBytes) mark(enforced, K.bodyCapBytes)
       if (includeBody && chunkedReturn && rec.bytes > chunkThreshold) markAll(enforced, [K.chunkedReturn, K.chunkThreshold, K.chunkBytes])
       if (headFields.some((f) => !(f in out))) mark(enforced, K.headFields)
-      return Object.assign({ ok: true, expanded: !head, mode: includeBody ? out.bodyMode : 'head', fingerprintOk, fingerprintRecomputed: recomputed, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at }, out)
+      // ★★ RUN 240: `expand`/`get` is the read face where run 63 saw `owner:"r-1", writer:"r-1"` after r-acad had
+      // rewritten the card — the row was right and the reading had no word for the writer. The three names, their
+      // definitions, and the writer itself now travel with every read.
+      return Object.assign({ ok: true, expanded: !head, mode: includeBody ? out.bodyMode : 'head', fingerprintOk, fingerprintRecomputed: recomputed, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at }, out,
+        { ownerMeans: THREE_NAMES_MEANS.owner, writerMeans: THREE_NAMES_MEANS.writer, byMeans: THREE_NAMES_MEANS.by, threeNames: THREE_NAMES_MEANS.threeNames })
     },
 
     /** READ a track's HEAD LIST — the default information channel (07 §4.4; `pointerPropagation` can mute it). */
@@ -1084,14 +1126,19 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const capWanted = Number.isInteger(limit) && limit >= 0 ? limit : headListAt
       if (!pointerPropagation) {
         mark(fired, K.pointerPropagation)
-        return { ok: true, items: [], heads: [], count: 0, available: live.length, dropped: live.length, truncated: live.length > 0, suppressed: true, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'vmu.records.pointerPropagation=false: the head list is muted (zero injection, the caller falls back verbatim)' }
+        return { ok: true, items: [], heads: [], count: 0, available: live.length, dropped: live.length, truncated: live.length > 0, suppressed: true, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'vmu.records.pointerPropagation=false: the head list is muted (zero injection, the caller falls back verbatim)',
+          ownerMeans: THREE_NAMES_MEANS.owner, writerMeans: THREE_NAMES_MEANS.writer, byMeans: THREE_NAMES_MEANS.by, threeNames: THREE_NAMES_MEANS.threeNames }
       }
       const cap = capWanted === 0 ? live.length : capWanted
       const kept = live.slice(0, cap)
       const dropped = live.length - kept.length
       if (dropped > 0) mark(fired, K.headListAt)
       const items = kept.map((r) => projectView(r, chosen, at))
-      return { ok: true, items, heads: items.map((x) => x.id), count: items.length, available: live.length, dropped, truncated: dropped > 0, suppressed: false, fields: chosen, sort: headSort, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'the head list is the default information channel (docs/07 §4.4); truncation is COUNTED, never silent' }
+      // ★★ RUN 240: the head row names BOTH facts now — `owner` (whose row) and `writer` (who wrote this revision) —
+      // and the list result carries the same three-name glossary the write receipt does, so `list` and `expand` teach
+      // the same vocabulary.
+      return { ok: true, items, heads: items.map((x) => x.id), count: items.length, available: live.length, dropped, truncated: dropped > 0, suppressed: false, fields: chosen, sort: headSort, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'the head list is the default information channel (docs/07 §4.4); truncation is COUNTED, never silent',
+        ownerMeans: THREE_NAMES_MEANS.owner, writerMeans: THREE_NAMES_MEANS.writer, byMeans: THREE_NAMES_MEANS.by, threeNames: THREE_NAMES_MEANS.threeNames }
     },
 
     /**
@@ -1112,7 +1159,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         if (!rec || rec.state !== 'trashed') continue
         if (track !== null && rec.track !== track) continue
         out.push({ id: rec.id, track: rec.track, kind: rec.kind, title: rec.title, body: rec.body, tags: rec.tags.slice(),
-          by: rec.by, state: 'trashed', trashedAt: rec.trashedAt, purgeAt: rec.purgeAt })
+          // ★★ RUN 240: a tombstone carries the SAME two facts as a live row (by = writer, owner = whose row), so a
+          // restore cannot silently promote the writer to owner.
+          by: rec.by, owner: rec.owner === undefined || rec.owner === null ? rec.by : rec.owner, state: 'trashed', trashedAt: rec.trashedAt, purgeAt: rec.purgeAt })
       }
       return out
     },
@@ -1134,6 +1183,10 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       if (title !== null) rec.title = String(title)
       if (body !== null) { rec.body = String(body); rec.bytes = bytesOf(body) }
       if (tags !== null) rec.tags = listOf(tags, rec.tags)
+      // ★★ RUN 240 (FEEDBACK63 ①1/①10): a supersede that NAMES a writer moves the writer, exactly like a put that names
+      // `by`. Before this the version row recorded the author and the row itself kept the old one, so the next `expand`
+      // named the previous writer as the author of THIS revision — the write said who and the read disagreed.
+      if (by !== null && by !== undefined && String(by).trim() !== '') rec.by = String(by)
       rec.rev += 1
       rec.updatedAt = now()
       const fpIndex = byFingerprint.get(rec.track) || new Map()
@@ -1143,7 +1196,8 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       fpIndex.set(rec.fingerprint, rec.id)
       record_({ type: 'records/superseded', id: rec.id, rev: rec.rev, why: reason, mode: historyStoreMode })
       fire('records/superseded', { id: rec.id, rev: rec.rev, mode: historyStoreMode })
-      return { ok: true, id: rec.id, rev: rec.rev, mode: historyStoreMode, changedKeys: Object.keys(changed), fingerprint: rec.fingerprint, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired) }
+      return { ok: true, id: rec.id, rev: rec.rev, mode: historyStoreMode, changedKeys: Object.keys(changed), fingerprint: rec.fingerprint, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired),
+        ...identityEcho(rec.owner === undefined || rec.owner === null ? (rec.by === undefined ? null : rec.by) : rec.owner, rec.by === undefined ? null : rec.by) }
     },
 
     /** READ the version history (bounded; drops are COUNTED). */
@@ -1808,7 +1862,10 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       id, track: String(row.track), kind: String(row.kind), title: row.title === undefined || row.title === null ? '' : String(row.title),
       slug: String(id), body, tags: Array.isArray(row.tags) ? listOf(row.tags, []) : [], bytes: bytesOf(body),
       fingerprint: 'tombstone:' + id, permanent: false, state: 'trashed', rev: 0, createdAt: at, updatedAt: at,
-      by: row.by === undefined || row.by === null ? null : String(row.by), versions: [], trashedAt: at,
+      by: row.by === undefined || row.by === null ? null : String(row.by),
+      // ★★ RUN 240: a tombstone keeps the row's OWNER apart from its writer, exactly like a live row.
+      owner: row.owner === undefined || row.owner === null ? (row.by === undefined || row.by === null ? null : String(row.by)) : String(row.owner),
+      versions: [], trashedAt: at,
       purgeAt: Number(row.purgeAt) || (at + trashRetainDays * DAY_MS), restoredAt: null,
     }
     records.set(id, rec)
@@ -1952,6 +2009,11 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           held.updatedAt = now()
           const writer = row.by !== undefined && row.by !== null ? row.by : (row.owner !== undefined && row.owner !== null ? row.owner : null)
           if (writer !== null) held.by = String(writer)
+          // ★★ RUN 240: ownership and authorship are TWO facts, so a rewritten fold row restores BOTH. The fold used to
+          // carry one name (the owner, under `by`), so every rewrite read back as "the owner wrote it" — run 63's
+          // `expand` said `writer:"r-1"` for a card r-acad had just corrected.
+          const ownerOfRow = row.owner !== undefined && row.owner !== null ? row.owner : writer
+          if (ownerOfRow !== null) held.owner = String(ownerOfRow)
           held.fingerprint = fingerprintOf(held)
           if (fpIndex) fpIndex.set(held.fingerprint, held.id)
           refreshed += 1
@@ -1981,10 +2043,15 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         // tell "the row did not say" from "nothing was ever adopted".
         const writer = row.by !== undefined && row.by !== null ? row.by : (row.owner !== undefined && row.owner !== null ? row.owner : null)
         if (writer === null) shared.adoptedNoAuthor += 1
+        // ★★ RUN 240: `by` is the WRITER, `owner` is whose row it is — the fold now carries BOTH, and an adopted row
+        // keeps the two apart. A fold written before this change carries only one name under `by`; it is adopted as
+        // both, which is the only shaper that row's history allows (and `owner` then equals `writer`, truthfully).
+        const ownerOfRow = row.owner !== undefined && row.owner !== null ? row.owner : writer
         putInternal.call(api, { id, track: row.track, kind: row.kind, title: row.title, body: row.body, tags: row.tags, settled: true,
           // the writer is carried by `by` on the row; `owner` is accepted as well because that is the name the VIEW
           // exposes it under (a snapshot that copies the view - kernel/index.js does - can only carry `owner`).
-          by: writer === null ? null : String(writer) })
+          by: writer === null ? null : String(writer),
+          owner: ownerOfRow === null ? undefined : String(ownerOfRow) })
         added += 1
       } catch (e) {
         shared.refused += 1

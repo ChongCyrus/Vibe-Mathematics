@@ -105,7 +105,11 @@ export async function recordsBlueprint(h, { log = () => {} } = {}) {
       + '- 路线：对 n 归纳；第 n 个奇数正是 n 的平方与 n-1 的平方之差。',
   }))
   const draftId = (draft && (draft.id || draft.recordId)) || null
-  const mdAbs = draft && draft.md && draft.md.absPath ? draft.md.absPath : null
+  // ★ RUN 240 — the file path is known only AFTER adoption. RUN 238 made a draft write NO md (its text lives in the
+  // index row, `md.available:false`, `deferredTo:'adopt'`) and made adopting the only writer. Reading `absPath` off the
+  // DRAFT receipt is what made this scenario stop with "the blueprint md was never written" about a run that had written
+  // it correctly — a stale scenario, not a product defect. Keep the draft receipt's `md` for the assertion below
+  // (it must say `available:false`), but take the path from the adoption.
 
   const codesign = await step('blueprint/codesign', () => h.call('vibe_v5_blueprint', {
     action: 'propose',
@@ -122,6 +126,7 @@ export async function recordsBlueprint(h, { log = () => {} } = {}) {
     member: 'r-acad',
   }, { as: { agent: { id: 'r-acad' } } }))
 
+  const mdAbs = adopted && adopted.md && adopted.md.absPath ? adopted.md.absPath : null
   const mdBefore = mdAbs ? readFileSync(mdAbs, 'utf8') : ''
   const readAdopted = await step('blueprint/read-current', () => h.call('vibe_v5_blueprint', { action: 'read', id: adopted && adopted.id }))
   const readDraft = await step('blueprint/read-draft', () => h.call('vibe_v5_blueprint', { action: 'read', id: draftId }))

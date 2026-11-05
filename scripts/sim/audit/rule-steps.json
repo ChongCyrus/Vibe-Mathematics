@@ -1,0 +1,1584 @@
+{
+  "schemaVersion": "vmu-rule-steps/1",
+  "source": {
+    "ledger": "docs/acceptance/rules-ledger.json",
+    "ledgerItems": 93,
+    "audit": "docs/acceptance/sim-audit-rules.md",
+    "howToRegenerate": "node scripts/sim/run.mjs --scenario <s> --out D:/_tmp/sim/corpus-r240-<s> 逐场景重跑后核对 steps/steps.json 的 step 名；本文件的 step 字段逐字取自该列表，改场景步骤名必须同步改本文件。",
+    "stepSemantics": "step 字段 = 场景文件里 step('名字', ...) 的第一个参数，逐字；side=allow 表示该步走通并留下回执，side=refuse 表示该步被具名拒绝（steps.json 里带 code），side=prose 表示该规则只被提示词教到、没有机制闸，promptProbe 给出可逐字核对的片段。机器判据用的是 steps.json 的 code 字段（不是 ok：有的探针步 ok=true 却带 code），`scripts/sim/audit/all.mjs` 的 §3 按此核对。"
+  },
+  "scenarios": {
+    "mainline": {
+      "steps": 21,
+      "corpus": "D:/_tmp/sim/corpus-r240-mainline"
+    },
+    "meetings": {
+      "steps": 59,
+      "corpus": "D:/_tmp/sim/corpus-r240-meetings"
+    },
+    "turns": {
+      "steps": 17,
+      "corpus": "D:/_tmp/sim/corpus-r240-turns"
+    },
+    "comms": {
+      "steps": 50,
+      "corpus": "D:/_tmp/sim/corpus-r240-comms"
+    },
+    "paper": {
+      "steps": 19,
+      "corpus": "D:/_tmp/sim/corpus-r240-paper"
+    },
+    "rules-extra": {
+      "steps": 52,
+      "corpus": "D:/_tmp/sim/corpus-rules-extra"
+    }
+  },
+  "vocabulary": {
+    "mainline": [
+      "institute/start",
+      "record/proposition",
+      "blueprint/propose",
+      "blueprint/codesign",
+      "blueprint/adopt",
+      "blueprint/read",
+      "record/reindex",
+      "paper/start",
+      "paper/part",
+      "paper/advance",
+      "paper/review",
+      "paper/render",
+      "paper/compile",
+      "meeting/open",
+      "meeting/attend/r-acad",
+      "meeting/attend/r-1",
+      "meeting/attend/r-2",
+      "meeting/motion",
+      "meeting/vote/r-1",
+      "meeting/vote/r-2",
+      "meeting/close"
+    ],
+    "meetings": [
+      "institute/start",
+      "types/catalogue",
+      "types/ordinary",
+      "types/academic",
+      "types/closure",
+      "types/paper",
+      "types/planning",
+      "types/debate",
+      "schedule/absolute-iso",
+      "schedule/status-before-start",
+      "schedule/relative-offset",
+      "schedule/attend-before-start/r-1",
+      "schedule/attend-before-start/r-2",
+      "schedule/beat",
+      "schedule/status-after-settle",
+      "waiting/schedule",
+      "waiting/status",
+      "waiting/status-expired",
+      "waiting/proceed",
+      "quorum/open",
+      "quorum/attend/r-1",
+      "quorum/attend/r-2",
+      "quorum/status",
+      "late/policy-open",
+      "late/attend-open",
+      "late/policy-chair",
+      "late/attend-chair",
+      "late/admit-by-member",
+      "late/admit-chair",
+      "late/summary",
+      "late/policy-refuse",
+      "late/attend-refuse",
+      "floor/open",
+      "floor/attend/r-1",
+      "floor/attend/r-2",
+      "floor/hand",
+      "floor/order-after-hand",
+      "floor/invite",
+      "floor/order-after-invite",
+      "floor/invitedspeak/r-1",
+      "floor/invitedspeak/r-2",
+      "floor/order-after-speech",
+      "floor/status-after-speech",
+      "extend/service",
+      "extendlimit",
+      "close/vote/r-acad",
+      "close/vote/r-1",
+      "close/vote/r-2",
+      "close/motion",
+      "close/second",
+      "close/motion-vote/r-1",
+      "close/motion-vote/r-2",
+      "close/close",
+      "after-close/minutes",
+      "after-close/verbatim",
+      "after-close/status",
+      "after-close/summary",
+      "after-close/minutes-floor",
+      "after-close/list"
+    ],
+    "turns": [
+      "prompt-matrix",
+      "probe-no-members",
+      "open-institute",
+      "round-parked",
+      "round-answered",
+      "probe-no-fence",
+      "round-parked-overwritten",
+      "probe-no-pending",
+      "probe-member-caller",
+      "probe-delegated-path",
+      "round-checkpoint",
+      "round-verify",
+      "round-blocked-archive",
+      "blocked-task-claim",
+      "round-progress-string",
+      "probe-progress-shape",
+      "tree"
+    ],
+    "comms": [
+      "institute/start",
+      "institute/hire-temp",
+      "mailbox/send",
+      "mailbox/list/unread-hint",
+      "mailbox/open",
+      "mailbox/list/read-marked",
+      "mailbox/setState/todo",
+      "mailbox/list/todo",
+      "mailbox/send/urgent",
+      "mailbox/send/for-ack",
+      "mailbox/pending",
+      "mailbox/anchor",
+      "mailbox/ack",
+      "mailbox/unread/after-ack",
+      "mailbox/status",
+      "mailbox/plan",
+      "inbox/list",
+      "inbox/open",
+      "inbox/mark/todo",
+      "chat/say",
+      "chat/send/by",
+      "chat/list",
+      "chat/status",
+      "chat/policy",
+      "chat/mute",
+      "chat/status/muted",
+      "chat/unmute",
+      "chat/quota",
+      "chat/admin/grant",
+      "chat/admin/revoke",
+      "chat/setpolicy",
+      "chat/say/private",
+      "chat/supplement",
+      "chat/supplementof",
+      "chat/supplements",
+      "message/relay-member-voice",
+      "message/office-voice",
+      "inbox/list/relayed",
+      "poll/open",
+      "poll/vote/r-1",
+      "poll/vote/r-2",
+      "poll/vote/r-acad",
+      "poll/close",
+      "panel/set/own",
+      "panel/set/office-for-member",
+      "panel/get",
+      "report/read",
+      "report/status",
+      "nudge",
+      "inbox/list/nudged"
+    ],
+    "paper": [
+      "institute/start",
+      "record/proposition/r-1",
+      "record/proposition/r-2",
+      "paper/start",
+      "paper/part/theorem/r-1",
+      "paper/part/proof/r-2",
+      "paper/status/draft",
+      "paper/advance/writing→reviewing",
+      "paper/review/decision-refused",
+      "paper/review/r-1",
+      "paper/review/r-2",
+      "paper/advance/reviewing→awaiting-editor",
+      "paper/final/blocked-by-office-consult",
+      "paper/consult_state",
+      "paper/consult/office-answer",
+      "paper/final/finalized",
+      "paper/render",
+      "paper/compile",
+      "paper/status/finalized"
+    ],
+    "rules-extra": [
+      "setup-institute",
+      "setup-proof-file",
+      "a3-set-declared-key",
+      "a3-set-undeclared-key",
+      "a9-hire-no-purpose",
+      "a9-hire-with-purpose",
+      "a8-temp-record-refused",
+      "g3-assign-queued",
+      "g3-approval-queue",
+      "g3-approval-state",
+      "g3-approval-decide",
+      "g3-assign-allowed",
+      "a7-fire-temp",
+      "a7-fire-chair-refused",
+      "c6-card-proof-complete",
+      "c6-card-locked-rewrite",
+      "c7-unproven-card",
+      "c7-debate-without-proof",
+      "c7-debate-with-proof",
+      "e27-verdict-ask",
+      "e27-verdict-r1",
+      "e27-verdict-r2",
+      "e27-verdict-chair-refused",
+      "e28-verdict-final-mean",
+      "e32-owner-notified",
+      "b3-p1-without-warrant",
+      "b2-literature-route",
+      "b2-promote-literature",
+      "b1-promote-unsettled",
+      "c8-read-verified",
+      "c2-route-progress",
+      "c3-obstacle-progress",
+      "c4-rejected-progress",
+      "c2-unknown-track-refused",
+      "c9-method-record",
+      "c15-feedback-add",
+      "c12-formal-verify-setting",
+      "c10-lean-archive-refused",
+      "c11-fidelity-needs-lean",
+      "c14-script-archive",
+      "c14-script-member-refused",
+      "d6-panel-set",
+      "d6-panel-get",
+      "e9-meeting-narrowed-roster",
+      "e9-meeting-status",
+      "g1-mathtools-plan",
+      "g1-mathtools-run-refused",
+      "g2-set-maxparallel",
+      "g4-pause",
+      "g4-resume",
+      "a2-progress-report",
+      "a2-office-notice"
+    ]
+  },
+  "rules": {
+    "A1": {
+      "rule": "所办＝主代理：用户的助手、媒介、传信者",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "message/relay-member-voice",
+          "side": "allow"
+        },
+        {
+          "scenario": "comms",
+          "step": "message/office-voice",
+          "side": "allow"
+        }
+      ],
+      "notes": "office 以 member 之名声明的两条通路（member-voice / office-voice）都被演示；「自动唤起汇报」见 A2（无步骤）。"
+    },
+    "A2": {
+      "rule": "有进展时自动唤起所办汇报",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "a2-progress-report",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "a2-office-notice",
+          "side": "allow"
+        }
+      ],
+      "notes": "新场景逐字演示「有进展 ⇒ 所办被告知」：r-1 写一条 progress 卡后，所办席的收件箱真的多出一条 subject=\"v5r-progress-notice\" 的通知，打开读到正文「所内写了一条进展记录，请判断是否需要对外汇报」。注意 `vibe_v5_report` 的回执里没有 wakes 字段（唤醒走邮箱，不走报告），所以证据链是 progress 卡 → 邮箱通知，不是报告计数。"
+    },
+    "A3": {
+      "rule": "支持用户以自然语言让所办设参数、控制研究所",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "a3-set-declared-key",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "a3-set-undeclared-key",
+          "side": "refuse"
+        }
+      ],
+      "notes": "正例：office 设一个**已声明**的键 `vmu.turn.maxParallel=4`，回执带 applied/H2/appliedScope；反例：设未声明的 `vmu.r240.not-a-real-key` 被 `VMU_INVALID_ARGUMENT` 按名拒（\"unknown setting\"）。即「用户自然语言设参数」的机制面是「只收已声明键」，自然语言解析本身在提示词层。"
+    },
+    "A4": {
+      "rule": "院士＝chair 席，统领研究所",
+      "steps": [
+        {
+          "scenario": "mainline",
+          "step": "meeting/open",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "A5": {
+      "rule": "常驻研究员＝member 席",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "institute/start",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "A6": {
+      "rule": "临时工：可被雇佣、无表决权、默认不参与会议、可解雇",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "institute/hire-temp",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "A7": {
+      "rule": "临时工可被解雇",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "a7-fire-temp",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "a7-fire-chair-refused",
+          "side": "refuse"
+        }
+      ],
+      "notes": "正例：院士 r-acad 解雇临时工 temp-1（回执 targetSeat=\"temp\"）；反例：解雇主席 r-acad 被 `VMU_NOT_PERMITTED` 按名拒（\"the academician seat is not dismissable through vibe_v5_fire\"）。注意 office 匿名调用会被 `VMU_FIRE_CALLER_UNKNOWN` 拒（调用者必须能证明人是自己雇的），所以正例必须由院士发起。"
+    },
+    "B1": {
+      "rule": "Verified 只收 p=1 的命题",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "b2-promote-literature",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "b1-promote-unsettled",
+          "side": "refuse"
+        }
+      ],
+      "notes": "反例：p=0.9 的卡 `verified_promote` 被 `VMU_STATE` 拒（\"is not settled (p=0.9)… cannot enter the verified track\"）；正例：p=1 的文献卡同一工具写入成功（written:true, conclusion:true）⇒ Verified 只收 p=1 是闸，不是散文。"
+    },
+    "B2": {
+      "rule": "参考文献中的命题也可直接入 Verified",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "b2-literature-route",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "b2-promote-literature",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：`record_proposition {p:1, literature_ref:\"TAOCP §4.5.1\"}` 直接拿到 `p1Route:\"literature\"`，再用 `verified_promote {warrant_kind:\"literature\"}` 直入 Verified；对比 B3：同一 p=1 若没有任何凭据就被拒。"
+    },
+    "B3": {
+      "rule": "只有辩论能把 p 改为 1",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "b3-p1-without-warrant",
+          "side": "refuse"
+        }
+      ],
+      "notes": "反例：`record_proposition {p:1}` 不带凭据被 `VMU_PACK_V5R_P1_NEEDS_DEBATE` 拒，回执列出四条合法路 `p1Routes: [\"debate\",\"literature\",\"lean-conformance\",\"verified-row\"]`。**如实说明**：这条规则的字面「只有辩论能改 p 为 1」比机制更窄——机制真正拦的是「无凭据自封 p=1」，文献/Lean/Verified 行同样能到 p=1；本条只有拒绝侧证据，没有「辩论把 p 改成 1」的阳性步骤（E28 的裁定会下发 correction 让持卡人改值，但那一步改的是 0.85 不是 1）。"
+    },
+    "B4": {
+      "rule": "蓝图：总目标/技术路线/规划，按时更新",
+      "steps": [
+        {
+          "scenario": "mainline",
+          "step": "blueprint/propose",
+          "side": "allow"
+        },
+        {
+          "scenario": "mainline",
+          "step": "blueprint/adopt",
+          "side": "allow"
+        },
+        {
+          "scenario": "mainline",
+          "step": "record/reindex",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "B5": {
+      "rule": "蓝图由院士+常驻研究员共同设计",
+      "steps": [
+        {
+          "scenario": "mainline",
+          "step": "blueprint/codesign",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "B6": {
+      "rule": "蓝图最终编辑权在院士",
+      "steps": [
+        {
+          "scenario": "mainline",
+          "step": "blueprint/adopt",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "C1": {
+      "rule": "研究过程 progress 日志",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "round-progress-string",
+          "side": "allow"
+        },
+        {
+          "scenario": "turns",
+          "step": "probe-progress-shape",
+          "side": "refuse"
+        }
+      ],
+      "notes": ""
+    },
+    "C2": {
+      "rule": "已尝试路线/方法及其进度",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c2-route-progress",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "c2-unknown-track-refused",
+          "side": "refuse"
+        }
+      ],
+      "notes": "正例：`record_progress {track:\"routes\"}` 写下已尝试路线与进度；反例：`track:\"no-such-track\"` 被 `VMU_INVALID_ARGUMENT` 拒，hint 列出全部 13 个已声明 track ⇒ 路线只有走声明的轨道才进得了库。"
+    },
+    "C3": {
+      "rule": "遇障路线/尝试/方法及障碍与原因归档",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c3-obstacle-progress",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：`record_progress {track:\"obstacles\"}` 把遇障路线与其原因写成 obstacles 卡；回执 recordId 与后续 `read_library {track:\"obstacles\"}` 可读回。"
+    },
+    "C4": {
+      "rule": "遇到的各种障碍及其原因（归档内容的一部分）",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c4-rejected-progress",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：`record_progress {track:\"rejected\"}` 写被否掉的尝试与原因（rejected 是 13 个已声明 track 之一），与 C3 的 obstacles 区分：障碍在 obstacles、被弃路线在 rejected。"
+    },
+    "C5": {
+      "rule": "命题库：完整定义、p(0-1)、进度",
+      "steps": [
+        {
+          "scenario": "paper",
+          "step": "record/proposition/r-1",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "C6": {
+      "rule": "平时只记证明/证伪尝试，真正会证时才写正式证明字段",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c6-card-proof-complete",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "c6-card-locked-rewrite",
+          "side": "refuse"
+        }
+      ],
+      "notes": "正例：平时写卡用 `p:0.95` + `proof_state:\"draft\"` 一类尝试口径没问题；真写完时 `proof_state:\"complete\"` + 可解析 `proof_ref` ⇒ `proofGate.locked:true`（回执明说 locked 的理由）；反例：锁后同 id 再写被 `VMU_STATE` 拒（\"card is locked: its proof was registered as complete\"）⇒ 正式证明字段一旦写完就不可改，是闸。"
+    },
+    "C7": {
+      "rule": "只有写完的正式证明才能用于辩论",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c7-debate-with-proof",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "c7-debate-without-proof",
+          "side": "refuse"
+        }
+      ],
+      "notes": "反例：没有证明的卡（`prop-bare`, p=0.9）开 debate 被 `VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF` 拒，hint 给两条合法路；正例：带 `proof_state:\"complete\"` + 可解析 proof_ref 的 `prop-proof` 开 debate 成功（回执 meeting=\"m1\"、subjectGate.allowed=true）⇒ 没写完的正式证明进不了辩论。"
+    },
+    "C8": {
+      "rule": "p=1 的命题要标记 verified",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c8-read-verified",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：辩论全一致裁决后持卡人按 correction 写 p=1，`read_library {kind:\"verified\", list:true}` 真的读到 verified 行（total:1，卡在 verified track 上带 title「已验证｜…」）⇒ p=1 的命题确实会出现在 Verified 里。这条只证「标记存在且可读」，没能证「每条 p=1 都必然被标记」——那需要更宽的语料。"
+    },
+    "C9": {
+      "rule": "方法库（理论/方法/工具，抽象化产物）",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c9-method-record",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：`record_method {type:\"method\"}` 写入方法卡（回执 track=\"methods\"），方法库是独立的 methods track，`read_library {track:\"methods\"}` 可读回。"
+    },
+    "C10": {
+      "rule": "Lean 代码与编译结果归档",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c10-lean-archive-refused",
+          "side": "refuse"
+        }
+      ],
+      "notes": "**只有拒绝侧（环境事实）**：`vibe_v5_lean_archive {kind:\"proof\", from:\"Lean/OddSum.lean\"}` 被 `VMU_ENGINE_UNAVAILABLE` 拒，message 明说「需要 Lean 面，而本装配没有（宿主没注入 spawn seam）」。Lean 代码与编译结果的归档本身要实现依赖 Lean 面，本装配里没有可跑的 Lean，故无法给出「归档成功」的阳性步骤。"
+    },
+    "C11": {
+      "rule": "lean 通过后辩论只查描述/定义是否符合原意",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c11-fidelity-needs-lean",
+          "side": "refuse"
+        }
+      ],
+      "notes": "**只有拒绝侧（环境事实）**：`vibe_v5_fidelity_conclude` 被 `VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED` 拒（\"Lean job … is not readable on this deployment … no Lean face at all\"）。「lean 通过后辩论只查描述/定义」需要先有 Lean 通过这一前置，本装配给不出，故只能证「没有 Lean 通过就不许下保真结论」。"
+    },
+    "C12": {
+      "rule": "鼓励开关：鼓励把小结/定义 Lean 化",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c12-formal-verify-setting",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：office 设 `vmu.math.formalVerify=\"encourage\"` 成功（H2，下次会话生效）⇒ 鼓励开关是可读写的已声明设置键。注意这是「设置面」的证据，不是「提示词会据此鼓励」的运行时证据。"
+    },
+    "C13": {
+      "rule": "经分派后各自负责部分的论文",
+      "steps": [
+        {
+          "scenario": "paper",
+          "step": "paper/part/theorem/r-1",
+          "side": "allow"
+        },
+        {
+          "scenario": "paper",
+          "step": "paper/part/proof/r-2",
+          "side": "allow"
+        }
+      ],
+      "notes": "证明两位成员各自领走定理/证明部分；「合并」动作本身由 F2 覆盖。"
+    },
+    "C14": {
+      "rule": "脚本文件等归档，不写 ad-hoc 脚本",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c14-script-archive",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "c14-script-member-refused",
+          "side": "refuse"
+        }
+      ],
+      "notes": "正例：院士把 `sum_odd.py` 归档成 scripts 轨道的记录（回执 recordId、track=\"scripts\"、fingerprint）；反例：常驻 r-1 调同一工具被 `VMU_NOT_PERMITTED` 拒（\"the script archive is an ACADEMICIAN (chair seat) act (rule C14)\"）⇒ 脚本归档是主席专属动作，不是谁都能 ad-hoc 写。"
+    },
+    "C15": {
+      "rule": "自反馈库（问题/冗余/障碍/可优化点/方案；院士含组织协作）",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c15-feedback-add",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：`vibe_v5_feedback {op:\"add\"}` 写一条自反馈（回执 recordId、status=\"open\"），`op:\"list\"` 读回计数 counts.total=1 ⇒ 自反馈库是真实可写可读的库。"
+    },
+    "D1": {
+      "rule": "各自推进各自的总任务",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "round-checkpoint",
+          "side": "allow"
+        },
+        {
+          "scenario": "turns",
+          "step": "round-verify",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "D2": {
+      "rule": "三通道：邮箱/私信/群聊",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "mailbox/send",
+          "side": "allow"
+        },
+        {
+          "scenario": "comms",
+          "step": "chat/say",
+          "side": "allow"
+        }
+      ],
+      "notes": "三通道各有一条 allow；「一次只能用一个通道」的互斥约束没有专门步骤。"
+    },
+    "D3": {
+      "rule": "三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "mailbox/send/urgent",
+          "side": "allow"
+        },
+        {
+          "scenario": "comms",
+          "step": "mailbox/list/unread-hint",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "D4": {
+      "rule": "状态版四字段：总任务/规划/任务完成状态/当前小任务",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "panel/set/own",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "D5": {
+      "rule": "四字段都含时间等基础信息",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "panel/get",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "D6": {
+      "rule": "可查看其他成员当前状态版",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "d6-panel-set",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "d6-panel-get",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：r-1 用 `vibe_vmu_panel {action:\"set\", source:\"self\"}` 写自己状态版的四字段（回执 changed=[overall,subgoal,plan,status,subtasks]）；再由 r-2 以 viewer 身份 `action:\"get\", member:\"r-1\"` 读到同一组字段与 libraryPointer ⇒ 「可查看他人状态版」有真实读面（读取留痕）。"
+    },
+    "D7": {
+      "rule": "可自己修改更新自己的状态版",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "panel/set/own",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "D8": {
+      "rule": "四字段按规则原文实现（字段名与语义）",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "panel/set/own",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E1": {
+      "rule": "只能院士预约会议（可设预约时间）",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "schedule/absolute-iso",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E2": {
+      "rule": "到点人未到齐进入等待阶段；超时由院士决定",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "waiting/status",
+          "side": "allow"
+        },
+        {
+          "scenario": "meetings",
+          "step": "waiting/proceed",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E3": {
+      "rule": "只能院士召开会议并主持",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "types/ordinary",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E4": {
+      "rule": "只能院士关闭会议",
+      "steps": [
+        {
+          "scenario": "mainline",
+          "step": "meeting/close",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E5": {
+      "rule": "院士可延长会议时长上界",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "extendlimit",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E6": {
+      "rule": "院士设会议标题",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "types/ordinary",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E7": {
+      "rule": "院士设会议类型",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "types/debate",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E8": {
+      "rule": "院士设会议议程/事项安排",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "types/ordinary",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E9": {
+      "rule": "院士邀请入会成员",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "e9-meeting-narrowed-roster",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "e9-meeting-status",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：院士召集会议时用 `members:[\"r-acad\",\"r-1\"]` 收窄在册范围，回执 `rosterNarrowed:true, rosterSource:\"members\"`；随后 `vibe_vmu_meeting {action:\"status\", id}` 读到该会议 ⇒ 「院士邀请/限定入会成员」体现为 roster 可被召集者显式收窄。注意收窄不是邀请：不在册的 id 也会被收进 roster（不拒），所以本规则证的是「召集者能决定谁在会里」，不是「邀请有闸」。"
+    },
+    "E10": {
+      "rule": "院士设会议时长上界",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "types/ordinary",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E11": {
+      "rule": "允许一次性连续召开多个会议",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "types/ordinary",
+          "side": "allow"
+        },
+        {
+          "scenario": "meetings",
+          "step": "types/paper",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E12": {
+      "rule": "成员命令随会议类型与身份不同",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "member",
+            "phase": "normal",
+            "text": "命令随类型与身份不同（辩论须先 `subject`、结题表决 `vote_solved`、论文交流走 `vibe_v5_paper`；临时工无表决权）"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "E13": {
+      "rule": "会议类型：正常/学术交流/辩论/结题/论文交流/未来规划",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "types/catalogue",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E14": {
+      "rule": "常见命令：举手",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "floor/hand",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E15": {
+      "rule": "常见命令：邀请发言",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "floor/invite",
+          "side": "allow"
+        },
+        {
+          "scenario": "meetings",
+          "step": "floor/invitedspeak/r-1",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E16": {
+      "rule": "常见命令：批量指定成员按顺序发言",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "floor/order-after-hand",
+          "side": "allow"
+        }
+      ],
+      "notes": "回执没有 before/after 对照，只能证明「举手后可按顺序发言」，不能证明重排生效。"
+    },
+    "E17": {
+      "rule": "常见命令：单次发言版群聊（每人各说一次、不打断）",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "chat/say",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E18": {
+      "rule": "投票板：院士设选项与机制（最少/最多选几项）",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "poll/open",
+          "side": "allow"
+        },
+        {
+          "scenario": "comms",
+          "step": "poll/close",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E19": {
+      "rule": "投票板不用于辩论",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "close/motion-vote/r-1",
+          "side": "allow"
+        }
+      ],
+      "notes": "证明投票板/动议表决与议题绑定，但不能证明「投票板不用于辩论」的反面用例（没有辩论中的投票板步骤）。"
+    },
+    "E20": {
+      "rule": "任务板：设置与认领交派",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "blocked-task-claim",
+          "side": "refuse"
+        }
+      ],
+      "notes": ""
+    },
+    "E21": {
+      "rule": "群聊式交流：院士为群管理员，设每人权限/发言次数/禁言",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "chat/mute",
+          "side": "allow"
+        },
+        {
+          "scenario": "comms",
+          "step": "chat/quota",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E22": {
+      "rule": "辩论额外字段：对象或文件引用",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "types/debate",
+          "side": "allow"
+        }
+      ],
+      "notes": "debate 回执里确有 subject 字段；但没有「缺 subject 被拒」的反面用例。"
+    },
+    "E23": {
+      "rule": "辩论/结题表决人数＝min(用户设置, 院士+常驻)",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "close/motion-vote/r-2",
+          "side": "allow"
+        }
+      ],
+      "notes": "回执带 quorum，但投票板的 floor（min_votes）不是会议法定人数 m，两者不要混。"
+    },
+    "E24": {
+      "rule": "lean 已通过但 p≠1：辩论焦点是描述/定义是否符合原意",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c11-fidelity-needs-lean",
+          "side": "refuse"
+        }
+      ],
+      "notes": "**只有拒绝侧（环境事实）**：与 C11 同一步（`c11-fidelity-needs-lean`）——本装配没有 Lean 面，无法先造出「lean 已通过但 p≠1」的状态，因此「此时辩论焦点才是描述/定义」这一条只能证到「没有 Lean 通过时不许下保真结论」的前置闸。"
+    },
+    "E25": {
+      "rule": "辩论骨架①各成员同时独立单次表态",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "表决分两段：先【独立初评】——看不到别人意见时独立给票与理由"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "E26": {
+      "rule": "辩论骨架②轮流/举手/邀请展开",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "floor/hand",
+          "side": "allow"
+        },
+        {
+          "scenario": "meetings",
+          "step": "floor/invite",
+          "side": "allow"
+        },
+        {
+          "scenario": "meetings",
+          "step": "floor/invitedspeak/r-2",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E27": {
+      "rule": "辩论骨架③结束前各成员最终裁决",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "e27-verdict-ask",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "e27-verdict-r1",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "e27-verdict-r2",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "e27-verdict-chair-refused",
+          "side": "refuse"
+        }
+      ],
+      "notes": "正例：`verdict_ask` 把问题发给在册成员（asked:[\"r-1\",\"r-2\"]），两名成员各自独立给票（r-1 投 1、r-2 投 0.7）；反例：主席亲自投票被 `VMU_RULING_CHAIR_SIGNS` 拒（\"the chair signs the tally instead of filing a member ruling\"）⇒ 最终裁决由成员给、主席只签署，是闸。"
+    },
+    "E28": {
+      "rule": "辩论骨架④全一致取该值、否则平均，并通知持有者改值",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "e28-verdict-final-mean",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：票不一致时 `verdict_final` 返回 `mode:\"mean\"`、value=0.85、`tally.note` 逐字「ARITHMETIC MEAN 0.85 — an ESTIMATE, not a decision」、`correction{needed:true, recipient:\"r-1\"}` 与 `notified:[\"r-1\"]` ⇒ 「否则平均并通知持有者改值」整条链都有回执证据（全一致分支走 `mode:\"unanimous\"`，本场景未单独造，属同工具另一分支）。"
+    },
+    "E29": {
+      "rule": "辩论轮数由院士决定",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "辩论轮数由院士决定（`vmu.meetings.verdictMaxRounds`）"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "F1": {
+      "rule": "把原问题与所有有价值产物系统梳理",
+      "steps": [
+        {
+          "scenario": "paper",
+          "step": "paper/start",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "F2": {
+      "rule": "合作撰写：分派各自内容并合并",
+      "steps": [
+        {
+          "scenario": "paper",
+          "step": "paper/part/theorem/r-1",
+          "side": "allow"
+        },
+        {
+          "scenario": "paper",
+          "step": "paper/part/proof/r-2",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "F3": {
+      "rule": "互审",
+      "steps": [
+        {
+          "scenario": "paper",
+          "step": "paper/review/r-1",
+          "side": "allow"
+        },
+        {
+          "scenario": "paper",
+          "step": "paper/review/decision-refused",
+          "side": "refuse"
+        }
+      ],
+      "notes": ""
+    },
+    "F4": {
+      "rule": "面向读者：系统/正确/完整/严谨清晰",
+      "steps": [
+        {
+          "scenario": "paper",
+          "step": "paper/render",
+          "side": "allow"
+        },
+        {
+          "scenario": "paper",
+          "step": "paper/compile",
+          "side": "refuse"
+        }
+      ],
+      "notes": ""
+    },
+    "F5": {
+      "rule": "讨论检查无误后定稿",
+      "steps": [
+        {
+          "scenario": "paper",
+          "step": "paper/final/finalized",
+          "side": "allow"
+        },
+        {
+          "scenario": "paper",
+          "step": "paper/final/blocked-by-office-consult",
+          "side": "refuse"
+        }
+      ],
+      "notes": ""
+    },
+    "G1": {
+      "rule": "支持成员使用 Python 等数学计算工具",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "g1-mathtools-plan",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "g1-mathtools-run-refused",
+          "side": "refuse"
+        }
+      ],
+      "notes": "正例：`vibe_vmu_mathtools {action:\"plan\", op:\"run\"}` 拿到 plan（含 cacheKey 与 `limits.maxParallel`）；反例：`action:\"run\"` 被 `VMU_ENGINE_UNAVAILABLE` 拒（\"宿主不提供 subprocess 服务，无法执行计算\"）⇒ 工具面存在、plan 可用，但本装配没有执行面（环境事实，run.mjs 记为 ENVIRONMENTAL）。"
+    },
+    "G2": {
+      "rule": "所办可设工具并发数量限制防 CPU/OOM",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "g2-set-maxparallel",
+          "side": "allow"
+        }
+      ],
+      "notes": "**只有 allow 侧**：office `vibe_v5_set {key:\"vmu.limits.maxParallel\", value:2}` 成功（H0 立即生效，回执 appliedScope=\"this-process-only\"）⇒ 并发上限是已声明、可设、被 mathtools/mathjobs 读取的设置键；但「超过上限被拒」在运行时不可造——该天花板在 boot 时读（一旦设成 2，`vibe_v5_start` 会以 `VMU_RESOURCE_BUDGET` 拒，这与本规则的「防 CPU/OOM」是同一机制的不同面），故本条只引 allow 侧。"
+    },
+    "G3": {
+      "rule": "支持人工干预研究所决策与运行",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "g3-assign-queued",
+          "side": "refuse"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "g3-approval-queue",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "g3-approval-state",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "g3-approval-decide",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "g3-assign-allowed",
+          "side": "allow"
+        }
+      ],
+      "notes": "反例 + 正例成对：boot 时声明 `vmu.human.gatedActions:[\"vmu.tasks.assign\"]` 后，`vibe_vmu_task {action:\"assign\"}` 不执行而返回 `VMU_HUMAN_APPROVAL_PENDING`（记入审批队列，approvalTimeoutMs:0 ⇒ 永久等待）；随后 `vibe_vmu_human` 的 queue/approvalState/decide 三步（root/office 身份）把它批准，同一次 assign 再调才成功 ⇒ 人工干预是真闸，不是提示。"
+    },
+    "G4": {
+      "rule": "支持断点续跑",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "g4-pause",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "g4-resume",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：`vibe_v5_pause {reason}` 把控制状态切到 paused（回执 state=\"paused\"），`vibe_v5_resume {reason}` 恢复并回 `resumedFrom` 该原因 ⇒ 断点续跑的控制面有回执证据（本场景证的是 pause→resume 状态机，不是「跨进程重启后从检查点恢复」的持久化面）。"
+    },
+    "G5": {
+      "rule": "特殊权限/请求经所办向用户询问",
+      "steps": [
+        {
+          "scenario": "paper",
+          "step": "paper/final/blocked-by-office-consult",
+          "side": "refuse"
+        }
+      ],
+      "notes": ""
+    },
+    "G6": {
+      "rule": "绝大多数功能走工具而非每轮末尾输出 JSON",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "★ 回执正文里【不要】粘贴 JSON 对象或工具回执原文"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "G7": {
+      "rule": "提示词与规则完全相符、自洽",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "**在册各席逐字一致**（三类同文，可抄回比对）"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "A8": {
+      "rule": "院士、常驻研究员各自的文件（范围）：这些库属院士与常驻研究员，临时工不在其列",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "c6-card-proof-complete",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "a8-temp-record-refused",
+          "side": "refuse"
+        }
+      ],
+      "notes": "正例：常驻 r-1 的卡引用自己库里的证明文件 `Members/r-1/Propos/proof-odd.md`，`proof_ref` 在库内可解析 ⇒ 库确是院士/常驻各自的文件库；反例：临时工 temp-1 亲自调 `vibe_v5_record_proposition` 被 `VMU_TOOL_NOT_IN_FACE` 拒（temp 席面只有 say/inbox/wait/task*/read_library，没有写卡面）⇒ 临时工不在其列。"
+    },
+    "A9": {
+      "rule": "临时工的用途约束：被院士或常驻研究员雇佣用于特殊任务/临时任务",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "a9-hire-with-purpose",
+          "side": "allow"
+        },
+        {
+          "scenario": "rules-extra",
+          "step": "a9-hire-no-purpose",
+          "side": "refuse"
+        }
+      ],
+      "notes": "反例：`vibe_v5_hire` 不带 purpose 被 `VMU_INVALID_ARGUMENT` 按名拒（\"hire needs purpose\"），即临时工必须声明用途；正例：带 purpose 的雇佣成功（回执 slot=\"temp\"、task.state=\"assigned\"）。"
+    },
+    "E30": {
+      "rule": "院士通过命令自组织会议进行中的一切内容、控制、活动（兜底授权，动词不穷举）",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "late/admit-chair",
+          "side": "allow"
+        },
+        {
+          "scenario": "meetings",
+          "step": "late/admit-by-member",
+          "side": "refuse"
+        }
+      ],
+      "notes": ""
+    },
+    "E31": {
+      "rule": "框架推荐的会议流程骨架只是建议：具体实施、决定、是否遵循完全由院士决定",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "types/academic",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E32": {
+      "rule": "辩论裁定的并发通知：告诉命题卡持有者最终概率并请其改值",
+      "steps": [
+        {
+          "scenario": "rules-extra",
+          "step": "e32-owner-notified",
+          "side": "allow"
+        }
+      ],
+      "notes": "正例：裁定后回执带 `correction{needed:true, recipient:\"r-1\", call:\"vibe_v5_record_proposition { … p:0.85, debate_ruling:{…} }\"}`、`notified:[\"r-1\"]`、`delivery{via:\"send-port\", result:{ids:[\"ml-6\"]}}`；随后 `vibe_v5_inbox {member:\"r-1\"}` 真的读到该通知 ⇒ 并发通知不是散文，有投递回执与收件箱行。"
+    },
+    "E33": {
+      "rule": "会议类型包括但不限于：正常会议，学术交流，辩论，结题，论文交流，未来规划策划，...。",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "types/catalogue",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E34": {
+      "rule": "会议进行中的一些特殊活动包括但不限于：投票（院士设置投票板选项与机制）、任务板设置与认领交派、群聊式交流，...。",
+      "steps": [
+        {
+          "scenario": "comms",
+          "step": "poll/open",
+          "side": "allow"
+        },
+        {
+          "scenario": "comms",
+          "step": "chat/say",
+          "side": "allow"
+        }
+      ],
+      "notes": ""
+    },
+    "E35": {
+      "rule": "关于辩论：院士如果设定会议类型为辩论，则会议会有个额外字段用于设置辩论的对象或辩论对象的文件引用。",
+      "steps": [
+        {
+          "scenario": "meetings",
+          "step": "types/debate",
+          "side": "allow"
+        }
+      ],
+      "notes": "同 E22：字段存在可证，缺字段被拒不可证。"
+    },
+    "E36": {
+      "rule": "辩论类型的会议下，v5r框架默认推荐给院士的流程是：先进行各成员同时进行「单次发言版群聊」，独立发表各自的「布尔概率([0,1])，理由，...」，再进行轮流发言或各自举手发言或邀请发言来展开辩论；辩论的轮数由院士自己决策。",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "表决分两段：先【独立初评】——看不到别人意见时独立给票与理由"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "G8": {
+      "rule": "the mainline is stated as the blueprint of the original problem, coarse to fine",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "一条主线＝**原问题的实现蓝图的策划、细化、调整，以及由粗到细的构建、扩张、推进与实现**"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "G9": {
+      "rule": "cognition and feedback that move the mainline are accumulated",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "持续积累与主线推进、改进、调整相关的认知与有价值反馈"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "G10": {
+      "rule": "each direction/route/node records its nine fields",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "①这回合推进或扩张蓝图的哪个节点？②该节点的信息更新了没有（当下评价 / 初始计划与启发 / 相关计划 / 可行性及原因 / 价值性及原因 / 结论与经验 / 障碍与方案 / 过去经验）"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "G11": {
+      "rule": "the blueprint is refined and its objects updated from practice",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "据实践反馈调整、细化蓝图并更新节点信息"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "G12": {
+      "rule": "experience keeps improving and optimising the way of working",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "吸取经验持续改进，把经验一般化、迁移到新问题"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "G13": {
+      "rule": "valuable methods and obstacle solutions are reused, generalised, transferred",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "能迁移复用就复用，别重复探索"
+          }
+        }
+      ],
+      "notes": ""
+    },
+    "G14": {
+      "rule": "a problem is checked against similar past problems before work starts",
+      "steps": [
+        {
+          "scenario": "turns",
+          "step": "prompt-matrix",
+          "side": "prose",
+          "promptProbe": {
+            "seat": "chair",
+            "phase": "normal",
+            "text": "③**以前是否处理过类似问题**——先查蓝图与归档"
+          }
+        }
+      ],
+      "notes": ""
+    }
+  },
+  "uncovered": [],
+  "needsNewStep": {},
+  "leanAllowSide": {
+    "rules": [
+      "C10",
+      "C11",
+      "E24"
+    ],
+    "why": "本装配（sim harness）没有 spawn 接缝，`vibe_v5_lean_archive` / `vibe_v5_lean_run` / `vibe_v5_fidelity_conclude` 一律以 VMU_ENGINE_UNAVAILABLE / VMU_PACK_V5R_FIDELITY_LEAN_NOT_PASSED 收尾。这三条规则因此只有拒绝侧证据。",
+    "what": "在注入真 Lean 面的机器上补 allow 侧步骤：lean_archive 归档一个真实 .lean 文件并回读编译结果；再造出「lean 通过且 p≠1」的卡，证明此时辩论焦点只查描述/定义（C11/E24）。"
+  }
+}

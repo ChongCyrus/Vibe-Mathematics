@@ -71,7 +71,16 @@ export const DIRECTION_TAG = 'direction'
 /** The one code this module can throw itself. */
 export const CODE = Object.freeze({ INCOMPLETE: 'VMU_DIRECTION_INCOMPLETE' })
 
-const textOf = (v) => (v === undefined || v === null ? '' : String(v).trim())
+const textOf = (v) => {
+  if (v === undefined || v === null) return ''
+  if (typeof v === 'string') return v.trim()
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  // ★ RUN 240 (found by scripts/sim/scenarios/refusals.mjs): String({}) is "[object Object]", so a refusal that
+  // meant to quote what the caller passed told the reader nothing — and the audit read it as a leaked object.
+  // Quote the VALUE (JSON) instead of its type name. A nine-field card wants strings; this is how that mistake
+  // reads back to the person who made it.
+  try { return JSON.stringify(v) } catch { return String(v) }
+}
 
 /**
  * The record id of a direction key. STABLE, because `set` must UPHOLD a card rather than mint a new one every

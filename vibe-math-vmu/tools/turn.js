@@ -151,6 +151,11 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       // binding the caller never made. Normalized once here so all three call sites send the same value (an empty
       // string and an absent arg both mean "no binding", never a meeting named '').
       const forMeetingArg = typeof args.meeting === 'string' && args.meeting.trim() !== '' ? args.meeting.trim() : null
+      // ★★ ROUND 240 / FEEDBACK63 ①4: the DOOR a turn came through is part of its receipt (`openedBy` in op:"status"
+      // turns[]). The loop defaults to 'drive' because the caller's own step/drive is the common case; a caller that is
+      // settling a turn a MEETING WAKE produced passes opened_by:"wait", so the row does not claim the office opened it by
+      // hand. The vocabulary belongs to the loop (drive/activation/wait) - this face forwards the word and re-decides none.
+      const openedByArg = typeof args.opened_by === 'string' && args.opened_by.trim() !== '' ? args.opened_by.trim() : null
       if (op === 'prompt') {
         const want = args.turn === undefined || args.turn === null || args.turn === '' ? null : String(args.turn)
         let id = want
@@ -227,7 +232,15 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         closureVote: status.closureVote || null,
         closureVoteWrites: Number.isInteger(status.closureVoteWrites) ? status.closureVoteWrites : 0 }
     }
-    return { ok: true, status }
+    // ★★★ ROUND 240 (FEEDBACK63 ①4/①9, MEASURED): THE OFFICE COULD NOT READ WHAT A WAIT-WOKEN TURN DID. `status` used to
+    // carry a tally (`turns: 3`) and nothing per turn, so the eye had to reverse-engineer the session files to learn what
+    // t-2 wrote. The list now travels under `turns` (the name the run-63 receipt asked for) and `turnsMeans` says it is
+    // HOST BOOKKEEPING, not the member's intent; rows the kernel cannot see are named in each row's `unavailable`.
+    // `status` itself keeps the whole kernel reading (including its numeric `turns` count) - no key is replaced.
+    const perTurn = Array.isArray(status.turnReceipts) ? status.turnReceipts : []
+    return { ok: true, status, turns: perTurn,
+      turnsMeans: 'HOST BOOKKEEPING of each turn the loop settled (or still has open), NOT the member\'s intent: executed = reply fields dispatched and the face.op channel, skipped = fields kept but not executed (each with a code), writes = tool writes with their record ids, codes = refusal codes, unavailable = what this kernel CANNOT see (e.g. tool calls a member made in its own child session). `openedBy` says which door opened the turn: drive (the caller\'s step/drive), activation (the background pump), wait (a meeting wake), null (unknown/legacy). Bounded to the last rows; an empty list means no turn settled in THIS kernel session, not that nothing happened.',
+      ...(status.turnReceiptsMeans === undefined ? {} : { turnsUnavailableMeans: status.turnReceiptsMeans }) }
   }
       // ★★★★★★★ LANE turn-reply — THE PRIMARY REPORTING CHANNEL (08号决策). A member turn reports through THIS op; the
       // fenced json object stays supported as the COMPATIBILITY path (and is byte-for-byte the old path). Why the op is
@@ -337,7 +350,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           // does (it keeps only code/message/hint). A refusal that hides the work in flight is worse than no refusal.
           let stepped
           try {
-            stepped = await kernel.turn.step({ members, member: args.member || null, membersFrom, membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg })
+            stepped = await kernel.turn.step({ members, member: args.member || null, membersFrom, membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg })
           } catch (e) {
             if (!e || !e.partial) throw e
             return {
@@ -400,7 +413,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
             if (op === 'step') {
         const activeId = members.length > 0 && members[0] && typeof members[0].id === 'string' ? members[0].id : null
         if (activeId && typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(activeId)
-        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, member: args.member || null, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg }))) }
+        try { return rememberPrompt(withClosure(await kernel.turn.step({ members, member: args.member || null, membersFrom: explicit ? 'caller-selection' : 'roster-default', membersInferred: !explicit, selectionShape, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg }))) }
         finally { if (typeof kernel.setActiveTurnMember === 'function') kernel.setActiveTurnMember(null) }
       }
       // ★★ RUN 172 (run 17 / FEEDBACK17 P2-6): the closure tally's window has a named opener, and it lives HERE because the
@@ -414,7 +427,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         }
         return kernel.reopenClosureVote({ why: args.why, by: args.by })
       }
-      if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg }))
+      if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg }))
       return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: status, prompt, reply, step, drive, reopen-closure')
     }
     // ★ PHASE 8 / round 36: SERIALIZE the tool calls. Root may issue several step calls in ONE assistant message (parallel
@@ -479,6 +492,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         member: param('string', '★ 单成员简写（等价于 members:[{id}]）；与 members 同传时 members 优先。chair 栏杆的 hint 用的就是它'),
         rounds: param('integer', 'drive 的轮数（必须为正整数；没有无限默认）。★ 一轮只推 ONE 个成员：drive{rounds:N} 最多推动 N 个成员，不是「N 个成员各跑一轮」——推不动时回执 notAdvanced 说明为什么停下'),
         phase: param('string', '相位：founding／normal／checkpoint／verify／verify-debate／meeting／resume'),
+        opened_by: param('string', '★ 仅 step／drive：这一轮是哪扇门开的——wait＝会议唤醒后由所办结算（省略＝drive＝调用方直接开的）；op:"status" 的 turns[].openedBy 用它记账'),
         why: param('string', '为什么唤醒（原预设的唤醒也带这一项）'),
         reply_for: param('string', '★ 这个回复属于哪个成员（它的提示词是上一次 step 交回的那个）；不传 = 沿用旧行为'),
         meeting: param('string', '★ op:"step"／op:"drive"／op:"reply" 用：这一轮属于哪场会议。step/drive 时它被记在回合上（回执 awaiting:true 且 memberPrompt.meeting 给出），成员交回的 say 因此被记成「该成员本人」在该会的发言（回执 executed[].onBehalf），不再以 no-meeting-bound 被跳过；reply 时它绑定这份汇报，与停着的回合所属会议不一致会被具名拒 VMU_TURN_REPLY_CONFLICT，省略则继承停着那回合的会议。不传 = 不绑定（say 只进 notes 并在回执说明原因）'),

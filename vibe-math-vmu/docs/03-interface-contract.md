@@ -381,6 +381,7 @@
 | **宿主拒绝回执保留归属字段**（`host.js` 的 `toHostSpec` 错误分支） | 2026-10-23（轮 52／task-C2-C3-B10-B11 追加） | 错误分支原先只回 `{ok:false, code, message, hint}`，**丢掉 `enforced`／`enforcedScope`／`settingValues`**：同一次判定的成功回执经 `receiptMeta` 序列化、拒绝回执却没有，且 docs/03 承诺的"拒绝可答：读了这个判定的哪些键"在**所有 pack 工具**上都不可观测。v5r 的闸拒绝因此被迫从"抛"改成"返回回执"（`packs/v5r/tools.js` 的 `gateRefuse`）——**代码形状被宿主诊断面的不完整逼出来**，这是本条变更的真正理由 | 破坏性：无。三个字段**只在抛出方真的设置了它们时才出现**（`enforced` 须为数组、`enforcedScope` 须为非空字符串、`settingValues` 须为普通对象），所以原有"拒因只带 code/message/hint"的调用方**行为不变**；不读设置的拒绝**不会**凭空长出 `enforced: []`（那是"我查过了"的假声明）。判据：`tests/vmu-host-refusal-attribution.test.mjs`（改前 6/4 红、改后 10/0） |
 | **邮件读面补 `urgent`**（`kernel/mailbox.js` 的 `listRow`／`openView`） | 2026-10-23（同上） | 写入侧（`sendBody`）在条目上记了 `urgent`、`send()` 的回执也回它，但两个**分诊读面**都把它删了 ⇒ 一条紧急私信在收件人的 list 行里与普通邮件**完全一致**；调用方唯一的补救是 `pending()` join，而 ack 之后 join 不到，`null` 让"分不清"退化成"没有"。读面删掉写入侧刚记下的事实，是**读面缺陷**而不是调用方的责任 | 破坏性：**字段数变了**（list 行 8→9、open 视图 6→7）。口径与写入侧同义：布尔原样透传，**布尔，缺省 `false`**（2026-10-23 二次裁决）：写侧永远记布尔，所以读到的是发送方的原意；从旧快照恢复的**老条目**没有该字段时给 `false`（"一条消息不说自己紧急就不紧急"），**不许** `undefined`／字段缺失，也不给 `null`。★ 读 `Object.keys(row)` 做严格字段数断言的消费方需要加一个键（本仓已改 `tests/vmu-mailbox.test.mjs`、`tests/vmu-v5r-tools.test.mjs`）；其余消费方只多一个可用字段 |
 | **`records.put` 的同 id 更新改为「按字段合并」**（`kernel/records.js` 的 `put` update 分支；新参数 `bodyMode:'replace'\|'append'`；新回执 `updated`／`rev`／`versionsCount`／`fieldsKept`／`fieldsReplaced`／`bodyModeUsed`／`bodyModeMeans`，`fieldsKeptWhy.title` 说明"id 不是名字"） | 2026-11-05（RUN 236 / M4） | 实测（`FEEDBACK60` §M4）：r-1 用同一个 id 做「补正」，回执 `ok:true`，读回却是 `title` 退回它自己的 id（`rec-6`）、`value` 退回、整行 `- debateRuling：…` 消失；同一次写还把 `rev` 归 1、`createdAt` 重置、`versions` 清空 —— 读者以为在补充，实际在重写，且没有任何字段告诉他丢了什么。根因：`put` 对每次写都**整行重建**（旧行对象不参与），而 kit 卡路径在调用方没给 title 时把「行自己的 id」当 title 传下来 | 破坏性：**rev 语义变了**（同 id 更新从「重置为 1」变为「+1」，与 `supersede` 一致）；`createdAt`／`slug`／未命名的 `title`／`kind`／`tags`／`permanent`／`by` **保持原值**（此前会被默认值覆盖或清空），旧行状态进 `versions`。迁移：依赖「re-put 后 `rev===1`」的读者改读 `updated`／`rev`；正文仍默认 `replace`（旧正文作为版本留痕，`vmu.records.history.storeMode:'full'` 时才存全文，`'diff'` 下给变更字段与字节数）；要「接着写」用 `bodyMode:'append'`，而 `bodyMode` 只能出现在更新上（对新增具名拒 `VMU_INVALID_ARGUMENT`）。判据：`tests/vmu-run236-record-merge.test.mjs` |
+| **记录面「三种人称」：`owner`／`writer`／`by` 各自定义，且写者随本次写更新**（`kernel/records.js` 的 `THREE_NAMES_MEANS`／`identityEcho`／`put` 回执／`get`／`list`／`supersede`；`kit/handlers.js` 的 `mergeEcho`；`kernel/index.js` 的 `snapshotRecords`） | 2026-11-05（RUN 240 / H · FEEDBACK63 ①1＋①10） | 实测（`run 63`，用户 `r-acad` 用 `bodyMode:"merge"` 改 `r-1` 的命题卡）：写回执只有 `fieldsReplaced:["body","by"]`，**没有 `writer` 一个字**；随后 `vibe_vmu_records {action:"expand"}` 读回 `owner:"r-1", writer:"r-1"` —— 更正被报告了，更正者没有。根因两层：① 回执与卡片面（`vibe_v5_record_proposition` 走的 `mergeEcho`）各自维护**白名单**，put 新增的写者字段被逐层挡掉；② 耐久快照 `snapshotRecords` 把 VIEW 的 `owner`（卡主）写进 fold 行的 `by`，一个名字承载两个事实，重启后写者必丢（同一内核读 `r-acad`，新内核读 `r-1`）；`supersede` 也只把 `by` 写进版本行、不移动卡片写者。现在：**`owner`＝这一行归谁（首版作者，更正不改变归属）**、**`writer`＝写出本次读到这一版的写者**、**`by`＝写面的叫法（卡工具把本次 `member` 作为它传下来）**，三者一句话定义表 `THREE_NAMES_MEANS` 随写回执／`expand`／`list` 一起返回（`ownerMeans`／`writerMeans`／`byMeans`／`threeNames`，卡片面另给嵌套 `identity` 以防上层把 `ownerMeans` 重写成 null）；`list` 的默认头部字段新增 `writer`；耐久 fold 行同时存 `by`（写者）与 `owner`（归属），旧 fold（只有一个名字）按 `owner = writer` 诚实采纳 | 破坏性：**`list` 头部多一个字段**（`writer`），严格按键数断言的消费方需加一；`records.put` 的 create 回执多了 `owner`／`writer`／`by`／四个 means 键；`supersede` 现在**会移动卡片上的写者**（此前写者停在上一版）；**`records.owner` 的语义收窄为「归属」**：此前 `owner` 在 fold 里等同写者、在 view 里等同首版作者，两种读法都出现过，现在只有一种。迁移：要问「谁写了这一版」读 `writer`（或 `by`），要问「这行归谁」读 `owner`；只读 `by` 的旧读者仍然拿到写者名（名字没变，变的是它不再等于卡主）。判据：`tests/vmu-run240-writer-identity.test.mjs` |
 
 ---
 
@@ -637,7 +638,7 @@
 | `VMU_BALLOT_CHOICE_COUNT` | ★ **PHASE 7**：选择数违反该票箱的 minChoices/maxChoices（逐箱规则，不是全局设置） | 票箱 | ✗（按该票箱规则调整或改规则） |
 | `VMU_BALLOT_MIN_VOTES_NOT_MET` | 本次投票**成立门槛未达** | 表决 | ✅（须给**当前与门槛**） |
 | `VMU_TURN_NO_FENCE` | 回复里**既没有工具汇报、也没有可解析的 json 围栏** ⇒ 无可分派（★ **LANE turn-reply**：首选是工具汇报 `vibe_vmu_turn { op:"reply", report:{…} }`；围栏 JSON 仍是**兼容通道**，字节不变） | 轮次编排 26 | ✗（须**同时**给出工具形式与围栏 JSON 形式，★ 不再只要求"只输出一个围栏 JSON 对象"） |
-| `VMU_TURN_REPLY_CONFLICT` | ★ **LANE turn-reply（08号决策）**：★ **同一回合里，工具汇报与围栏 JSON 对同一字段给出了不同的值** —— ★ 一个字段不能有两个真相；★ 冲突字段**逐一点名**，★ 且**在派发前**拒（半个回合都不会落地）。★ **RUN 230（task-19 / E12）扩用**：★ 同一名字也用于**会议绑定冲突** —— ★ `op:"reply"` 的 `meeting`（或围栏 JSON 顶层的 `meeting`）与停着的那个回合所属会议不一致时具名拒：★ 一个回答不能同时属于两场会，★ hint 点名停着那回合属于哪场会 | 轮次编排 26（`kernel/turn/index.js` 的 `supplyStructuredReply`、`runFrom`） | ✅（★ 字段冲突：同一字段只走**一个**通道，两边值**相同**时合并；★ 会议冲突：省略 `meeting`（继承停着那回合的会议）或改成该会的 id；★ 要把成员移到另一场会，先按那场会派发再答新 prompt） |
+| `VMU_TURN_REPLY_CONFLICT` | ★ **LANE turn-reply（08号决策）**：★ **同一回合里，工具汇报与围栏 JSON 对同一字段给出了不同的值** —— ★ 一个字段不能有两个真相；★ 冲突字段**逐一点名**，★ 且**在派发前**拒（半个回合都不会落地）。★ **RUN 230（task-19 / E12）扩用**：★ 同一名字也用于**会议绑定冲突** —— ★ `op:"reply"` 的 `meeting`（或围栏 JSON 顶层的 `meeting`）与停着的那个回合所属会议不一致时具名拒：★ 一个回答不能同时属于两场会，★ hint 点名停着那回合属于哪场会。★ **RUN 240（task-43 / FEEDBACK63 ①5）**：★ 冲突 message 现在**同时打印两个值**（`field (tool report: <值> vs fenced json: <值>)`），错误对象另带 `conflictRows:[{field,tool,fenced}]`，而 `fields` 仍是裸字段名；★ `op:"reply"` 的回执新增 `appliedWhen`／`conflictPolicy`／`notExecutedMeans`：**报告只是被记录**，冲突检查发生在应用（下一次 `step`/`drive` 结算该回合，或在途交付返回）时，不一致则整回合在派发前具名拒；★ 任何被记入 `counts.notExecuted` 的字段**必在 `skipped` 里带 `code`**（`VMU_TURN_FIELD_NOT_APPLICABLE`／`VMU_TURN_FACE_NOT_WIRED`／`VMU_TURN_DUPLICATE_SKIPPED`／形状适配器码如 `VMU_RECORD_SHAPE`）——「没有 code 的不执行」是 run 63 的实测缺陷；★ `vibe_vmu_turn { op:"status" }` 新增 `turns[]`（每回合 `{turn,member,openedBy,executed:[{field,channel}],skipped:[{field,reason,existingId?,code?}],writes:[{tool,recordId?}],codes,unavailable}` + `turnsMeans`），`openedBy ∈ drive|activation|wait|null`；★ 工具面 `vibe_vmu_turn { op:"step"|"drive", opened_by:"wait" }` 把「这一轮是会议唤醒后由所办结算」送进台账（省略＝drive；值域由内核记账，工具面不改判）；`unavailable` 具名列出本内核看不到的东西（独立子会话里的成员工具调用） | 轮次编排 26（`kernel/turn/index.js` 的 `supplyStructuredReply`、`runFrom`、`mergeReplyChannels`、`status`；读面 `vibe-math-vmu/tools/turn.js`） | ✅（★ 字段冲突：同一字段只走**一个**通道，两边值**相同**时合并（回执 `sameValueFields:[…]` 点名字段并附 `replyChannelsMeans`：两通道同值、只派发/只计一次，不是其中一条被静默丢弃）；★ 会议冲突：省略 `meeting`（继承停着那回合的会议）或改成该会的 id；★ 要把成员移到另一场会，先按那场会派发再答新 prompt；★ 迟到的报告：该回合已结算则具名拒并列出已应用字段，改在**下一回合**汇报；★ 想看 wait 唤醒的回合做了什么：`op:"status"` 读 `turns[]`，拿不到的写在该行的 `unavailable` 里） |
 | `VMU_TURN_NO_PENDING_MEMBER` | ★ **LANE turn-reply（08号决策）**：★ **没有打开着的成员回合，却有人用 `vibe_vmu_turn { op:"reply" }` 汇报** —— ★ 工具**不许凭空造出一个回合** | 轮次编排 26 | ✗（★ 先 `op:"step"` 拿到 `awaiting:true`＋`memberPrompt`，★ 再汇报那个回合；★ 兼容路径仍是 `op:"step"` 的围栏 JSON） |
 | `VMU_TURN_ALREADY_PARKED` | ★ **RUN 229（task-13）**：★ **已有一个成员回合停在调用方手里（`awaiting:true` 的 `memberPrompt`），却又被要求派发下一个回合** —— ★ `deliverByReturning` 只保留**一个** parked 槽（单槽是设计：没被回答的回合应被重新请求，而不是静默记住），★ 第二次派发**不许静默替换** | 轮次编排 26（`kernel/turn/index.js` 的 `drive`） | ✅（★ 先回答停着的那个：`op:"step"` 带 member 与回复，或 `op:"reply"` 带 report；★ 然后才能再派；★ 要答的 prompt 就是上一次派发 `awaiting:true` 返回的 `memberPrompt`） |
 | `VMU_TURN_STALE_REPLY` | ★ **RUN 229（task-13）**：★ **汇报指向的成员不是当前停着的那个成员**（`reply_for` 点了别的成员，或 `supplyMemberReply(reply, forMember)` 的成员对不上）—— ★ 属于 `VMU_TURN_*` 族，★ 不把别人的答复塞进停着的回合 | 轮次编排 26（`kernel/turn/index.js` 的 `supplyStructuredReply`／`supplyMemberReply`） | ✅（★ 省略 `reply_for`（答的就是停着的那位），或传停着的那位；★ 想给别的成员答复，先把当前回合答完再派它） |
@@ -876,6 +877,7 @@
 | `VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH` | 论文正文**指纹与记录里存的不一致**（正文被背后改动）⇒ **具名阻塞、绝不静默用旧正文**；实现于 `packs/v5r/paper.js` | 论文·整合包 | ✅（**已实现** ✓；`packs/v5r/paper.js` ✓） |
 | `VMU_PACK_V5R_CORE_PAPER_PDF_NEEDS_KERNEL` | 四件产物缺 `pdf` ⇒ 具名，并**点名需内核能力：LaTeX 编译执行器** | 论文·整合包 | ✅（**已实现** ✓；`packs/v5r/paper.js` ✓） |
 | `VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING` | 本装配**没有 LaTeX 面**（宿主未注入 spawn 接缝）⇒ 具名；`compilePdf` 抛此码 | 论文·整合包 | ✅（**已实现** ✓；`packs/v5r/paper.js` ✓） |
+| `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING` | 论文段落**没有任何证据条目**或 `evidence` 指针不成立（不存在的记录 id、轨不对、指向目录）⇒ 具名拒并**逐条点名坏指针**，绝不允许伪造引用活到渲染阶段；实现于 `packs/v5r/paper-quality.js`（`EVIDENCE_MISSING`）与 `packs/v5r/tools.js` | 论文·整合包 | ✅（**已实现** ✓；`packs/v5r/paper-quality.js` ✓） |
 | `VMU_PACK_V5R_CORE_PAPER_PDF_FAILED` | 内核 LaTeX 面**拒绝编译**（无引擎／超时／编译错）⇒ 具名，错误上带面的 code/tried/stderrTail | 论文·整合包 | ✅（**已实现** ✓；`packs/v5r/paper.js` ✓） |
 | `VMU_PACK_V5R_CORPUS_NOT_RUNTIME` | **捕获快照不得进运行时装配**（`v5rTurnSections` 等）⇒ 具名拒；实现于 `packs/v5r/prompts/v5r-core.js` 的 `assertRuntimeSafeSections` | 整合包·提示词 | ✅（**已实现** ✓；`packs/v5r/prompts/v5r-core.js` ✓） |
 | `VMU_PACK_V5R_P1_NEEDS_DEBATE` | v5r **p=1 缺定论来源**：把命题卡的布尔概率改成 1，却没有「辩论全体一致为 1」／`verified` 轨定论行／「Lean 通过＋描述符合性裁定」三者之一（实现于 `packs/v5r/verification-gates.js` 的 `p1Intent`）；★ **尚无生产调用方**（接线在 B1 第 3 步） | 记录·整合包 | ✅（返回 `{code,message,hint}`，hint 列出三种合法来源；★ 归属字段由接线层填） |
@@ -891,6 +893,10 @@
 | **R30 · `VMU_RESUME_ADAPTER_FAILED`** | 恢复面的 adapter 工厂 `make()` 抛错 ⇒ 该面记 `ok:false` + 本码，**不静默跳过该面**（`unhydrated` 里逐面点名） | 断点续跑装配（`kernel/index.js` 的 resume 装配） | ✅（须点名**哪个面**与原始错误） |
 | **R30 · `VMU_RESUME_RESTORE_FAILED`** | 恢复面的 `restore` 抛错 ⇒ 逐面记 `ok:false` + 本码 + 原始 message | 断点续跑装配（`kernel/index.js` 的 resume 装配） | ✅（须点名面与原始 message） |
 | **R30 · `VMU_RECORD_SHAPE`** | 记录**形状错**（`track` 槽不是字符串——历史上把载荷对象塞进 track 槽，回执只说 `[object Object]`，等于没说）⇒ 具名拒，并给出**实际形状** | `vmu.library` 的记录登记（`kernel/library.js` 的 `refuse`） | ✅（须给期望形状、实际形状与合法轨道名） |
+| **R240 · `VMU_RECORD_SETTLEMENT_REWRITE`** | 一张**已结算**的命题卡（body 里有 `- debateRuling：` 行且读数为 0/1）被一次普通写入**改掉了读数**：`bodyMode:"merge"` 只改 `- p：` 行的值、不删行，所以既有"破坏性写入"闸看不见它，卡会从"已结算"悄悄退回"未定"，而结算行还挂在 body 里（第 63 次真机实测：`ok:true,settled:false`，用户以为只是改了文字）。⇒ 具名拒（实现于 `packs/v5r/tools.js` 的 `gatedCardHandler`）；★ **不是墙**：hint 给三条可达路——带 `debate_ruling` 同值重结算、保持卡上原有的 `p`（读数没变就不算新断言，回执带 `p1GateSkipped:"p-unchanged"`）、或 `confirmDestructive:true` 明说要撤回读数 | v5r pack 写卡面（`packs/v5r/tools.js`） | ✅（须同时说出**当前读数**与**这次要写的读数**，并给三条出路；`p` 是必填参数，所以"别传 p"不是一条路——RUN 240 的第二个修法正是让"p 不变"合法） |
+| **R240 · `VMU_TURN_FIELD_NOT_APPLICABLE`** | 一个回合的回复里带了这个回合**执行不了**的字段（需要对象或会议，本回合没有）⇒ 该字段留在 `notes`，并在 `skipped[]` 里记一行带本码（第 63 次真机：这类字段被**静默** notExecuted，只有 `counts.notExecuted:2`、没有任何 code） | 回合面（`kernel/turn/index.js` 的 `skipped` 明细） | ✅（每一条未执行都必须有 code 与原因；`counts.notExecuted` 与 `skipped.length` 必须能对上） |
+| **R240 · `VMU_TURN_FACE_NOT_WIRED`** | 回复里绑定的面/动作**没有安装**（例如某个 op 在本部署不存在）⇒ `skipped[]` 记本码并点名缺的是哪个面 | 回合面（`kernel/turn/index.js`） | ✅（须点名缺的面与可达替代，不许只给一个计数） |
+| **R240 · `VMU_TURN_DUPLICATE_SKIPPED`** | 同一回合里**同一个动作已经落地过一次**，第二次不重复执行 ⇒ `skipped[]` 记本码，并给 `existingId` 指明已经写下的那一行 | 回合面（`kernel/turn/index.js`） | ✅（须给 existingId；`skipped` 为空时必须意味着真的什么都没被扣下） |
 | **R30 · `VMU_CHAIR_ACT_NOT_DELEGATED`** | `vmu.meetings.chairActRequiresTurn=true` 而该主席在**本内核没有已记录的回合** ⇒ 其席位不得召集，具名拒（**绝不降级为警告**：无归属决策的主席动作正是该闸要拦的） | `vmu.meetings` 召集（`kernel/meetings.js` 的 `deny`） | ✅（须给补救：先让主席自己走一个回合，再召集） |
 | **R30 · `VMU_MEETING_ID_ARCHIVED`** | 新会议想复用**已归档**会议的 id ⇒ 具名拒（归档 id 不复用，否则历史会指向两份事实） | `vmu.meetings` 服务面的 `open`（`kernel/meetings.js` 的 `deny`） | ✅（须给归档时刻与替代 id） |
 | **R30 · `VMU_ASK_UNKNOWN_PROPOSITION`** | `vibe_v5_verdict_ask` 的命题**既不是库里的卡、也不是文件引用、也不是本会辩论对象** ⇒ 具名拒（不向成员索要对一个没人辩论过的对象的裁决） | v5r pack（`packs/v5r/tools.js` 的 `refuse`） | ✅（须给两条出路：先 `vibe_v5_record_proposition` 登记，或传合法的文件引用形状） |
@@ -1211,7 +1217,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **492** 个码，**逐行**给出状态 ✓：其中 **453** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **496** 个码，**逐行**给出状态 ✓：其中 **457** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1538,6 +1544,7 @@
 | `VMU_PACK_V3_TOOL_UNRESOLVED` | **已实现 ✓** | `vibe-math-vmu/packs/v3/index.js`、`vibe-math-vmu/packs/v3/middleware/toolfilter.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_NOT_SETTLED` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
+| `VMU_PACK_V5R_CORE_PAPER_EVIDENCE_MISSING` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/paper-quality.js`、`vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING` | **已实现 ✓** | `vibe-math-vmu/kit/paper.js`、`vibe-math-vmu/packs/v5r/paper.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_PAPER_FINGERPRINT_MISMATCH` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/paper.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-core.js` | 代码里有该码字符串 ✓ |
 | `VMU_PACK_V5R_CORE_PAPER_PDF_FAILED` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/paper.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-core.js`、`vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
@@ -1574,6 +1581,7 @@
 | `VMU_QUOTA_EXCEEDED` | **已实现 ✓** | `vibe-math-vmu/kernel/capacity.js`、`vibe-math-vmu/kernel/funding.js`、`vibe-math-vmu/kernel/mathtools.js`、`vibe-math-vmu/kernel/meetings.js`、`vibe-math-vmu/kernel/records.js`、`vibe-math-vmu/kernel/retention.js` | 代码里有该码字符串 ✓ |
 | `VMU_QUOTA_SOFT_EXCEEDED` | **已实现 ✓** | `vibe-math-vmu/kernel/meetingmarker.js`、`vibe-math-vmu/kernel/retention.js` | 代码里有该码字符串 ✓ |
 | `VMU_RATE_LIMITED` | **已实现 ✓** | `vibe-math-vmu/kernel/ratelimit.js` | 代码里有该码字符串 ✓ |
+| `VMU_RECORD_SETTLEMENT_REWRITE` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_RECORD_SHAPE` | **已实现 ✓** | `vibe-math-vmu/kernel/library.js`、`vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_RECOUNT_MISMATCH` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_RECOUNT_SCOPE_DENIED` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
@@ -1622,7 +1630,7 @@
 | `VMU_RESUME_NO_TARGET` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_PROJECTION_GAP` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_QUEUE_FULL` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
-| `VMU_RESUME_READBACK_DRIFT` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
+| `VMU_RESUME_READBACK_DRIFT` | **已实现 ✓** | `vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/tools/human.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_RESTORE_CONFLICT` | **已实现 ✓** | `vibe-math-vmu/kernel/budget.js`、`vibe-math-vmu/kernel/human.js`、`vibe-math-vmu/kernel/members.js`、`vibe-math-vmu/kernel/resume.js`、`vibe-math-vmu/kernel/tasks.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_RESTORE_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_RESUME_SNAPSHOT_INCOMPLETE` | **已实现 ✓** | `vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/kernel/resume.js` | 代码里有该码字符串 ✓ |
@@ -1680,6 +1688,8 @@
 | `VMU_TURN_BAD_JSON` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_DELIVERY_TIMEOUT` | **已实现 ✓** | `vibe-math-vmu/host-deliver.js`、`vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/tools/turn.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_DISPATCH_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_TURN_DUPLICATE_SKIPPED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_TURN_FACE_NOT_WIRED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_FIELD_NOT_APPLICABLE` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_NO_FENCE` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_NO_PENDING_MEMBER` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js` | 代码里有该码字符串 ✓ |

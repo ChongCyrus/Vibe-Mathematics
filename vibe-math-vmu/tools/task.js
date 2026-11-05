@@ -23,8 +23,13 @@ export function makeTaskSpec({ param, refused, TOOL_NAMES, kernel }) {
         expected_revision: param('number', 'set_dependencies 的乐观锁（可选；与当前 revision 不符 ⇒ 具名拒）'),
         to: param('string', 'transition/advance 的目标状态或阶段'),
         reason: param('string', 'transition/advance 的原因'),
+        // ★★★ RUN 240 (found by the simulated-action audit, not by a live run): `brief` was declared as an
+        // action and the kernel method is `brief(id, text, {...})`, but this face forwarded ONLY the id and the
+        // schema had no `text` at all — so every brief call died on 'a brief needs non-empty text' and the
+        // briefNote read-back was unreachable. A face that forwards a method must forward every noun it takes.
+        text: param('string', 'brief 的正文（brief 必填；注入被唤醒所有者回合的提示片段）'),
       },
-      run: async ({ action, id, title, objective, owner, deps, write_scopes, blocked_by, expected_revision, to, reason } = {}) => {
+      run: async ({ action, id, title, objective, owner, deps, write_scopes, blocked_by, expected_revision, to, reason, text } = {}) => {
         const need = (v, what) => { if (v === undefined || v === null || v === '') throw Object.assign(new Error(what + ' is required'), { code: 'VMU_INVALID_ARGUMENT' }); return v }
         try {
           const tasks = kernel.tasks
@@ -42,7 +47,7 @@ export function makeTaskSpec({ param, refused, TOOL_NAMES, kernel }) {
           if (action === 'set_dependencies') return Object.assign({ ok: true, action }, await tasks.setDependencies(need(id, 'id'), Array.isArray(blocked_by) ? blocked_by : (Array.isArray(deps) ? deps : []), { expectedRevision: Number.isInteger(expected_revision) ? expected_revision : null }))
           if (action === 'stage') return Object.assign({ ok: true, action }, await tasks.stage())
           if (action === 'advance') return Object.assign({ ok: true, action }, await tasks.advance({ to: to || null, reason: reason || null }))
-          if (action === 'brief') return Object.assign({ ok: true, action }, await tasks.brief(need(id, 'id')))
+          if (action === 'brief') return Object.assign({ ok: true, action }, await tasks.brief(need(id, 'id'), text))
           if (action === 'history') return Object.assign({ ok: true, action }, { history: await tasks.history(id || null) }, sharing())
           return refused('VMU_INVALID_ARGUMENT', 'unknown action: ' + String(action))
         } catch (e) {

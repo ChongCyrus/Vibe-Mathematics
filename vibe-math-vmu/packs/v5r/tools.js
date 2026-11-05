@@ -2007,10 +2007,34 @@ function gatedCardHandler(toolName) {
         }
       }
     }
-    // ★ PHASE 12 / B6 声明层：卡上的 `proofRef`/`proofState` 是**作者自述**（"我的证明写在哪、写完了没有"）。
+    // ★★★ RUN 240b (实测于全量门禁 `tests/vmu-run153-real-run-fixes.test.mjs` §1j): this guard sits BEHIND the rule-L14 lock,
+    // because a card whose proof is registered complete is already refused by name (`VMU_STATE ... is locked`) and that
+    // broader fact must keep its own sentence. What this guard adds is the case the lock does NOT cover: an UNLOCKED card
+    // that is already settled, where a merge write used to change the probability in place and quietly un-settle it.
+    // ★★★ RUN 240 (live run 63 / FEEDBACK63 1.2, MEASURED): THE SETTLEMENT GUARD PROTECTED LINES, NOT THE READING.
+    // Run 63 settled a card (p=1 plus a `- debateRuling：` row), then re-wrote it with `bodyMode:"merge"` and `p:0.95`:
+    // the ruling row survived, the receipt honestly said `ok:true, settled:false`, and the card was quietly undecided
+    // again — the one dimension the destructive-write guard did not cover was the PROBABILITY, because a merge changes
+    // the *value* of the `p` line instead of deleting it. So un-settling a card now has to be NAMED by the caller:
+    // settle it again with the ruling that decides it (rule L53), or pass `confirmDestructive:true` to say the settled
+    // reading is being withdrawn on purpose. A correction that only changes `value`/`motive` does not trip this at all.
+    if (rulingSettlement === null && cardId !== null && typeof args.p === 'number') {
+      const prevRow = rowOrNull(records, cardId)
+      if (prevRow !== null) {
+        const prevProj = cardProjectionOf(records, cardId)
+        const hadRulingLine = /^- *debateRuling *[：:]/m.test(String(prevRow.body === undefined || prevRow.body === null ? '' : prevRow.body))
+        const wasSettled = hadRulingLine && prevProj !== null && (prevProj.p === 1 || prevProj.p === 0)
+        if (wasSettled && Number(args.p) !== prevProj.p && args.confirmDestructive !== true) {
+          throw refuse('VMU_RECORD_SETTLEMENT_REWRITE',
+            'card "' + cardId + '" is SETTLED (p=' + String(prevProj.p) + ' with a debateRuling row); this write sets p=' + String(args.p) + ', which would leave the card undecided while the ruling row still sits in its body',
+            'THREE reachable paths: (1) if a ruling really changed the probability, settle it with the ruling — pass p:' + String(args.p) + ' TOGETHER WITH debate_ruling:{value:' + String(args.p === 0 ? 0 : 1) + ', mode:"unanimous", meeting:"<a meeting id>", …} and the write is admitted as a settlement; (2) if you only meant to correct the text beside the probability, send the SAME p the card already carries (p=' + String(prevProj.p) + ') — that is admitted, because a write that leaves the reading where it was declares nothing new (`p1GateSkipped`); p is a REQUIRED parameter, so it cannot be omitted; (3) if withdrawing the settled reading IS the intent, pass confirmDestructive:true and the receipt will say the card is no longer settled — that is a different claim, not a correction, and it must be said out loud')
+        }
+      }
+    }
     // 它不构成证明 —— 证据层在 `verification-gates.js` 的 `debateSubjectGate`（Lean 通过 或 verified 定论行）。
     // 两个别名收在这里，调用方不必知道 kit 的 payload 机制；只给 proofRef 不给状态 ⇒ 一律记 'draft'
     // （"只写了个引用"不能被读成"已经写完"）。
+    // ★ PHASE 12 / B6 声明层：卡上的 `proofRef`/`proofState` 是**作者自述**（"我的证明写在哪、写完了没有"）。
     // ★★★ RUN 210 (run 47 / FEEDBACK46 1.3, MEASURED): what this write had to DOWNGRADE, if anything.
     let proofStateDowngraded = null
     if (has(args.proof_ref) || has(args.proof_state)) {
@@ -2129,6 +2153,8 @@ function gatedCardHandler(toolName) {
     let p1Ruling = null
     let p1RulingMeans = null
     let p1RulingReading = null
+    let p1GateSkipped = null
+    let p1GateSkippedMeans = null
     if (toolName === 'vibe_v5_record_proposition' || track === 'propositions') {
       // ★ AUDIT C8 (rule L14: 「那些布尔概率为1的命题卡需标记为已verified」 — the read face's `verifiedRef` was
       // decoration and NOTHING held a writer to it): p=1 could be written into the propositions track without any
@@ -2143,6 +2169,7 @@ function gatedCardHandler(toolName) {
       // `card` carries the id for evidence matching and the truncation FACT, but NOT the old p: the value under judgement
       // is the one being written (p1Intent:95 prefers card.p, so handing it the stored row would judge yesterday's value).
       const stored = cardProjectionOf(records, cardId)
+      const storedP = stored && stored.p !== undefined && stored.p !== null ? Number(stored.p) : null
       const card = cardId === null ? null : { id: cardId, bodyTruncated: !!(stored && stored.bodyTruncated) }
       // ★★ RUN 201 (run 40 / FEEDBACK39 1.1): resolve the ruling NAME against the institution before the shape gate
       // speaks. A p=1 write that names a ballot nobody voted in is not a badly-typed ruling, it is a card that claims a
@@ -2187,7 +2214,30 @@ function gatedCardHandler(toolName) {
           evidence.debate.ruling = resolution
         }
       }
-      const pGate = p1Intent({ tool: toolName, args, card, evidence })
+      // ★★★ RUN 240 (live run 63 / FEEDBACK63 1.2's other half, MEASURED): a SETTLED CARD COULD NOT BE CORRECTED AT ALL.
+      // `p` is one of the four required parameters, so every text correction had to send p=1 again — and a p=1 write
+      // without a fresh conclusion source is refused by the gate below (measured on run 63's card: the write that only
+      // wanted to fix `value`/`motive` came back as `VMU_PACK_V5R_P1_NEEDS_DEBATE`). The gate exists to stop a card from
+      // being DECLARED proven; a write that leaves the probability exactly where the card already had it declares nothing
+      // new, so it is admitted — and the receipt says so (`p1GateSkipped`) rather than leaving the reader to infer it.
+      const pUnchanged = storedP !== null && typeof args.p === 'number' && Number(args.p) === storedP
+      // ★★★ RUN 240b (看到的缺口：`tests/vmu-b3-c8-c10.test.mjs` ④⑥ 在全量门禁里转红): the first version of this skip RETURNED before the
+      // p1 reading block, so a text correction on a settled card lost `p1Route`/`p1RouteMeans` altogether — the four-route
+      // surface shrank for exactly the writes that had least to hide. A skip is a fact about the GATE, not about whether
+      // the reading has a warrant: the route is still computed for the RECEIPT (never refused), and the gate words are kept.
+      const pRouteOnly = pUnchanged ? p1Intent({ tool: toolName, args, card, evidence }) : null
+      const pGate = pUnchanged
+        ? { ok: true, applicable: false, p: storedP,
+            p1Route: pRouteOnly !== null && pRouteOnly.p1Route !== undefined ? pRouteOnly.p1Route : null,
+            p1RouteMeans: pRouteOnly !== null && pRouteOnly.p1RouteMeans !== undefined ? pRouteOnly.p1RouteMeans : null,
+            evidenceForm: pRouteOnly !== null && pRouteOnly.evidenceForm !== undefined ? pRouteOnly.evidenceForm : undefined,
+            rulingRef: pRouteOnly !== null && pRouteOnly.rulingRef !== undefined ? pRouteOnly.rulingRef : undefined,
+            rulingRefMeans: pRouteOnly !== null && pRouteOnly.rulingRefMeans !== undefined ? pRouteOnly.rulingRefMeans : undefined,
+            ruling: pRouteOnly !== null && pRouteOnly.ruling !== undefined ? pRouteOnly.ruling : undefined,
+            p1GateSkipped: 'p-unchanged',
+            p1GateSkippedMeans: 'this write sets p=' + String(storedP) + ', which is EXACTLY the probability the card already carried, so no new conclusion is being claimed and the p=1 evidence gate does not apply — it guards a change of the reading, not a correction of the text beside it. The card stays settled; if the intent was to move the probability, send a different p and the gate (or the settlement route) applies again' }
+        : p1Intent({ tool: toolName, args, card, evidence })
+      if (pUnchanged) { p1GateSkipped = pGate.p1GateSkipped; p1GateSkippedMeans = pGate.p1GateSkippedMeans }
       const pRefusal = gateRefuse(pGate)
       if (pRefusal) return pRefusal
       gates.push(pGate)
@@ -2379,7 +2429,9 @@ function gatedCardHandler(toolName) {
       proofStateEvidenceMeans: settlementReadback === null ? undefined
         : 'null ON PURPOSE: a settlement verifies nothing, so there is no evidence block for THIS call to report - the card\'s own proof lines are unchanged (see settlement.preserved) and were read back into proofState/proofGate',
     }, settlement === null ? {} : { settlement },
-    p1Form === null ? {} : { p1Evidence: p1Form, p1Route, p1RouteMeans, p1RulingRef: p1Ruling, p1RulingMeans, p1RulingReading, verifiedMark, p1ProofGate: p1ProofGateOut, p1ProofUnresolved, p1ProofMeans })
+    p1GateSkipped === null ? {} : { p1GateSkipped, p1GateSkippedMeans },
+    p1Form === null ? {} : { p1Evidence: p1Form, p1RulingRef: p1Ruling, p1RulingMeans, p1RulingReading, verifiedMark, p1ProofGate: p1ProofGateOut, p1ProofUnresolved, p1ProofMeans },
+    p1Route === null && p1RouteMeans === null ? {} : { p1Route, p1RouteMeans })
   }
 }
 
@@ -2946,7 +2998,7 @@ async function toolVerdictFinal(args = {}, { kernel } = {}) {
     shapeMeans: 'one ruling carries ONE reference; this framework accepts it under two names — `ballotId` (a ballot/tally id) and `meeting` (the convened meeting), and the write receipt reads back whichever was given as `p1RulingRef`. The call above is accepted AS PRINTED: both keys are present, and they name the same decision.',
     // ★★★ RUN 209 (run 46 / FEEDBACK45 1.1): the sentence that makes `call` auditable instead of trusted. Run 46 copied
     // a call whose `value` was `NaN` and its own `shapeMeans` still said "accepted AS PRINTED".
-    callMeans: 'every field in `call` is carried from the CARD, not re-derived: a numeric value prints as a number, a text value prints as a quoted JSON string (so it parses back to the same text), and a field the card does not hold is left at the documented default. If your card\'s `value` is prose, the printed call keeps that prose — it never becomes NaN and it never silently becomes 1. `at` is THIS receipt\'s own timestamp (the moment the ruling was read) and is optional: omit it and the write uses the current time — the call stays valid as printed, and the string is a real ISO time, not a placeholder',
+    callMeans: 'every field in `call` is carried from the CARD, not re-derived: a numeric value prints as a number, a text value prints as a quoted JSON string (so it parses back to the same text), and a field the card does not hold is left at the documented default. If your card\'s `value` is prose, the printed call keeps that prose — it never becomes a non-number and it never silently becomes 1. `at` is THIS receipt\'s own timestamp (the moment the ruling was read) and is optional: omit it and the write uses the current time — the call stays valid as printed, and the string is a real ISO time, not a placeholder',
     // ★ RUN 153 (G4): the ONE id that stands for the whole ruling, ready to be the `warrant` of the promotion.
     warrantFor: {
       id: tallyId,
@@ -4080,12 +4132,18 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'durationMs must be an integer inside [300000, 7200000] (30 minutes .. 2 hours); got ' + JSON.stringify(durationMsRaw),
       'pass this meeting\u2019s own upper bound in ms, or omit it to use vmu.meetings.hardLimitMs (extendlimit raises an OPEN meeting\u2019s bound; there is no unbounded choice)')
   }
+  // ★ RUN 240-I: the declaration used to STOP HERE. `formal_agenda:true` was echoed into this face's receipt while the
+  // kernel was never told, so the stored meeting carried no agenda row and every read face returned
+  // `formalAgendaItems:null` forever (live run 63). The kernel now stores what is said (a boolean declaration or an
+  // ordered list), so the face passes the argument through untouched instead of folding it into `=== true`.
+  const formalAgendaParam = args.formal_agenda === undefined ? null : args.formal_agenda
   const opened = kernel.meetings.open({ ...(wantedId !== null ? { id: wantedId } : {}), type, chair: member, actor: member,
     ...(declaredRoster === null ? { roster } : { members: declaredRoster }),
     // ★ WAVE 2 (audit E6): 「会议要有有意义的标签」 is enforced on the face the rule talks about. The kernel rail is
     // opt-in (`labelRequired`) so direct service callers and the ~70 unlabelled fixtures keep working; a PACK face that
     // is the rule's own tool passes true and gets the named refusal when neither `kind` nor `title` was given.
     labelRequired: true, kind, materials: agendaText, secretary, wallLimitMs: durationMs,
+    ...(formalAgendaParam === null ? {} : { formalAgenda: formalAgendaParam }),
     ...(lateAdmission === null ? {} : { lateAdmission }),
     subject: subject === null || subject === undefined ? null : subject, at, title, sequence,
     subjectGate: subjectGate ? { allowed: true, applicable: subjectGate.applicable === true, form: subjectGate.form || null,
@@ -4196,7 +4254,20 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
       ? 'argument-array'
       : (agendaGiven && String(args.agenda).trim().charAt(0) === '[' ? 'argument-json-array' : 'argument-line'),
     agendaItemsSourceMeans: '`agendaItems` are the lines THIS face joined into the stored materials (an array agenda keeps its items; a one-line agenda is split on the "; " separator the join itself uses). The kernel meeting object keeps its own agenda items (ids ag-1..., closable one at a time) and the kernel face reads them back — this field never claims to be that ledger.',
-    formalAgenda: args.formal_agenda === true, secretary,
+    formalAgenda: args.formal_agenda !== undefined && args.formal_agenda !== null && args.formal_agenda !== false,
+    // ★ RUN 240-I: the read faces' own fields, spread from the kernel's opening receipt, so a caller compares THIS
+    // receipt with the stored meeting instead of being told a boolean it can no longer check.
+    ...(opened && typeof opened === 'object'
+      ? {
+        formalAgendaItems: opened.formalAgendaItems === undefined ? null : opened.formalAgendaItems,
+        formalAgendaItemsWhy: opened.formalAgendaItemsWhy === undefined ? null : opened.formalAgendaItemsWhy,
+        formalAgendaItemsHint: opened.formalAgendaItemsHint === undefined ? null : opened.formalAgendaItemsHint,
+        formalAgendaItemsMeans: opened.formalAgendaItemsMeans,
+        formalAgendaDeclared: opened.formalAgendaDeclared === true,
+        formalAgendaDeclaredBy: opened.formalAgendaDeclaredBy === undefined ? null : opened.formalAgendaDeclaredBy,
+      }
+      : {}),
+    secretary,
     nonAttending, nonAttendingMeans,
     invitation,
     // ★ LIVE RUN 122 (E6): WHERE the label came from. `kind` defaults to 'sync' so every meeting always has a word for
@@ -6389,7 +6460,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_meeting',
     description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary); a debate REQUIRES subject — a card id whose written proof is finished (proofRef + proofState:"complete", or a verified row / a passed Lean run) or a file reference (`subject_evidence.file` with readable/bytes/name), because a one-line proposition has no addressable proof carrier and is REFUSED by name (`VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`). ★ `title` is an OPTIONAL separate name; `id` optionally NAMES the meeting (omit both and the service mints an id; an id held by another registry is refused by name). ★ `at` SCHEDULES it (epoch ms or ISO-8601): a future time puts the meeting in `scheduled` — reads work right away, every action before the start is refused by name, and a latecomer attending then starts it; the receipt reads `state` and `scheduledFor` back. ★ The institution\'s recommended procedure comes back in `procedure` — a RECOMMENDATION, never a gate; steps the framework has not implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES, plus ONE read (`action:"rulings"` lists the ruling cards the members filed for a debate — id + proposition_id); status/summary/close/flow live on vibe_vmu_meeting { action, id }. ★ `target` is an ALIAS of `subject` on THIS face — on vibe_vmu_meeting it is a VOTE\'s object, so do not carry the habit between faces. ★ `sequence` convenes the meetings that FOLLOW this one (an array of descriptors, each validated and refused by name); omitting `at` convenes them now, `at` schedules this one and the declared run follows it. ★ `durationMs` sets THIS meeting\'s own upper bound (integer ms, 30 minutes .. 2 hours; outside the range is refused by name); omit it and `vmu.meetings.hardLimitMs` applies — the receipt reads back `wallLimitMs` and `wallLimitMsSource`. ★ RUN 225-B: `lateAdmission` (open|chair|refuse, default open) decides a LATE ARRIVAL (late = vmu.meetings.lateAfterMs against openedAt; the default 0 means nobody is ever late): open seats it (late:true), chair holds it at the door (`pendingLate:true`, released only by the chair with vibe_vmu_meeting { action: "admit", id, member, actor }), refuse refuses it by name (`VMU_LATE_ADMISSION_REFUSED`, naming the two repairs).',
-    parameters: { agenda: { type: ['string', 'array'], items: { type: 'string' }, description: 'the meeting purpose as ONE line, or an ORDERED list of non-empty lines (string | string[]): array items are joined in order with "; " into the materials the kernel stores' }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: 'boolean' }, secretary: { type: 'string' }, member: { type: 'string' }, at: { type: 'string' }, durationMs: { type: 'integer' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, members: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' },
+    parameters: { agenda: { type: ['string', 'array'], items: { type: 'string' }, description: 'the meeting purpose as ONE line, or an ORDERED list of non-empty lines (string | string[]): array items are joined in order with "; " into the materials the kernel stores' }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: ['boolean', 'array'], items: { type: ['string', 'object'] }, description: 'true = declare that this meeting has a formal agenda; an ARRAY = the agenda items themselves (each a non-empty line, or {title|text, kind, id}); the kernel stores either and the read faces return `formalAgendaItems` rows with `formalAgendaItemsWhy` naming why they are empty' }, secretary: { type: 'string' }, member: { type: 'string' }, at: { type: 'string' }, durationMs: { type: 'integer' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, members: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' },
     // ★ RUN 225-B: lateAdmission is THIS meeting's policy for a LATE arrival; the default (open) lives in the kernel,
     //   not here. Undeclared keys are refused generically by the host funnel BEFORE the handler runs, so being able to
     //   say it at all has to be a declaration.

@@ -934,24 +934,70 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   const agendaItemsOf = (text) => String(text === null || text === undefined ? '' : text)
     .split(AGENDA_ITEM_SEPARATORS).map((x) => x.trim()).filter((x) => x !== '')
   const AGENDA_ITEMS_MEANS = 'the SAME agenda string split on `;` `；` `、` `,` and newlines, each item trimmed, order preserved. The convene face joins an agenda ARRAY with "; ", so this is how a caller reads its items back; the STRING is the truth and this is a reading of it — a prose agenda that itself uses one of those separators will read as several items'
+  // ★★★ ROUND 240 (FEEDBACK63 ①6, MEASURED): THE FORMAL AGENDA HAD A NAME AND NO WRITER. `formalAgendaItems` was
+  // computed from `m.formalAgenda` / `m.formal_agenda`, but nothing wrote either key: `openSeq()` took only a
+  // `materials` line and the pack passed `formal_agenda:true` as a boolean that reached no kernel field at all. So
+  // the read face mapped an array that never existed and answered `null` on every meeting, forever — a field that
+  // exists to be read and cannot be. The repair is on BOTH sides: `openSeq({ formalAgenda })` now RECORDS what the
+  // caller declared (a boolean flag, or a per-item list), and this projection reads it back. A `null` list is never
+  // left bare: `formalAgendaItemsWhy` names why there is no list and `formalAgendaItemsHint` names the call that
+  // would record one. The item shape keeps `{ index, id, text }` (readers already parse those) and adds
+  // `title`/`kind`/`addedBy`/`at`, with `index` still the position in the RECORDED list (a blank entry drops, the
+  // rest do not renumber). WHY NOT DERIVE ITEMS FROM `materials`: the agenda line and a per-item formal agenda are
+  // different facts — the first is what was discussed, the second is what was registered BEFORE the meeting; merging
+  // them would make the read face claim a registration nobody made (the same declared-vs-reachable defect).
+  const FORMAL_AGENDA_ITEM_KIND = 'item'
+  const formalAgendaTitleOf = (it) => String(it === null || it === undefined ? '' : (typeof it === 'string' ? it
+    : (it.title !== undefined ? it.title : (it.text !== undefined ? it.text : (it.label !== undefined ? it.label : ''))))).trim()
+  const formalAgendaRowsOf = (m) => {
+    const raw = m && Array.isArray(m.formalAgenda) ? m.formalAgenda
+      : (m && Array.isArray(m.formal_agenda) ? m.formal_agenda : null)
+    if (raw === null) return null
+    return raw.map((it, i) => {
+      const obj = (it !== null && typeof it === 'object') ? it : null
+      return {
+        index: i,
+        id: (obj !== null && obj.id !== undefined && obj.id !== null) ? String(obj.id) : null,
+        title: formalAgendaTitleOf(it),
+        text: formalAgendaTitleOf(it),
+        kind: (obj !== null && typeof obj.kind === 'string' && obj.kind.trim() !== '') ? obj.kind.trim() : FORMAL_AGENDA_ITEM_KIND,
+        addedBy: (obj !== null && obj.addedBy !== undefined && obj.addedBy !== null && String(obj.addedBy).trim() !== '') ? String(obj.addedBy) : null,
+        at: (obj !== null && Number.isFinite(obj.at)) ? obj.at : null,
+      }
+    }).filter((row) => row.title !== '')
+  }
+  const FORMAL_AGENDA_ABSENT_MEANS = 'null: this meeting carries NO per-item formal agenda. The convene face stores the agenda as ONE text line in `materials` (an array is joined with "; ") and `formal_agenda` there is a BOOLEAN "the agenda came from a formal block" flag, not an item list — so null is the absence of an item list, NOT an empty agenda: read `agendaItems` for the items'
+  const FORMAL_AGENDA_ABSENT_WHY = 'no per-item agenda was recorded: this meeting never declared a formal agenda, so there is no item list to read (the agenda, if one was given, is the `materials` line — read `agendaItems`)'
+  const FORMAL_AGENDA_DECLARED_WHY = 'no per-item agenda was recorded, although the meeting DECLARED one: `formal_agenda` was passed as a BOOLEAN flag and a boolean cannot carry items — the declaration IS recorded (`formalAgendaDeclared:true`, `formalAgendaDeclaredBy`), the agenda itself is the ONE `materials` line (read `agendaItems` for its lines)'
+  const FORMAL_AGENDA_HINT = 'to record a per-item formal agenda, convene with an ARRAY of items: kernel open({ formalAgenda: ["<item>", { title: "<item>", kind: "review", addedBy: "<member>" }] }) — the pack door vibe_v5_meeting { formal_agenda: [...] } forwards the same array once its schema is widened; a boolean (formal_agenda:true) only DECLARES the agenda formal and leaves the items as the materials line'
+  const formalAgendaOf = (m) => {
+    const rows = formalAgendaRowsOf(m)
+    const declared = rows !== null || (m && m.formalAgendaDeclared === true)
+    const why = rows !== null ? null : (declared ? FORMAL_AGENDA_DECLARED_WHY : FORMAL_AGENDA_ABSENT_WHY)
+    return {
+      formalAgendaDeclared: declared,
+      formalAgendaDeclaredBy: (m && m.formalAgendaDeclaredBy !== undefined) ? m.formalAgendaDeclaredBy : null,
+      formalAgendaDeclaredAt: (m && Number.isFinite(m.formalAgendaDeclaredAt)) ? m.formalAgendaDeclaredAt : null,
+      formalAgendaItems: rows,
+      formalAgendaItemsCount: rows === null ? 0 : rows.length,
+      formalAgendaItemsMeans: rows === null
+        ? (declared ? FORMAL_AGENDA_DECLARED_WHY : FORMAL_AGENDA_ABSENT_MEANS)
+        : 'the meeting carries a per-item formal agenda recorded at convene; each entry is `{index,id,title,text,kind,addedBy,at}` — `index` is the position in the RECORDED list (a blank entry is dropped and does not renumber the rest), `id` is the kernel-assigned item id (fa-N when the caller named none), so a reader can point at an item by position or by id',
+      formalAgendaItemsWhy: why,
+      formalAgendaItemsHint: rows === null ? FORMAL_AGENDA_HINT : null,
+    }
+  }
   const agendaBlockOf = (m) => {
     const agenda = (m && m.materials !== undefined) ? m.materials : null
-    const formal = m && Array.isArray(m.formalAgenda) ? m.formalAgenda
-      : (m && Array.isArray(m.formal_agenda) ? m.formal_agenda : null)
     return {
       agenda,
       agendaItems: agendaItemsOf(agenda),
       agendaItemsMeans: AGENDA_ITEMS_MEANS,
       materials: agenda,
       materialsMeans: '`materials` is the name this face has always used for the agenda — the ONE text line the convene face stores (an `agenda` array is joined with "; " before it lands here). It is the SAME value as `agenda` in this block; the second name exists because readers already parse `materials`, not because there is a second fact',
-      formalAgendaItems: formal === null ? null : formal.map((it, i) => ({
-        index: i,
-        id: (it !== null && typeof it === 'object' && it.id !== undefined && it.id !== null) ? String(it.id) : null,
-        text: String(it === null || it === undefined ? '' : (typeof it === 'string' ? it : (it.text !== undefined ? it.text : (it.title !== undefined ? it.title : (it.label !== undefined ? it.label : ''))))).trim(),
-      })).filter((row) => row.text !== ''),
-      formalAgendaItemsMeans: formal === null
-        ? 'null: this meeting carries NO per-item formal agenda. The convene face stores the agenda as ONE text line in `materials` (an array is joined with "; ") and `formal_agenda` there is a BOOLEAN "the agenda came from a formal block" flag, not an item list — so null is the absence of an item list, NOT an empty agenda: read `agendaItems` for the items'
-        : 'the meeting carries a per-item formal agenda; each entry is `{ index, id, text }`, `index` being its position in the recorded list (entries whose text is blank are dropped, order kept), so a reader can point at an item by position or by id',
+      // ★ RUN 240: the per-item formal agenda reading lives in ONE builder (`formalAgendaOf`, which also reads rows
+      // written before this round), so a `null` item list can never come back without its named Why and Hint.
+      ...formalAgendaOf(m),
     }
   }
   // ★★★ RUN 239-D (B series, the user requirement): WAITING IS A REGISTRATION, NOT A HOPE. Before this block the
@@ -3872,7 +3918,12 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       subjectGate = null,
     // ★ the recommended procedure the convenor was shown, for the same reason: it is not a gate, but it IS part of
     // what the convention promised at the moment it was made, and a read face should be able to say what that was.
-      procedure = null, lateAdmission = 'open', wallLimitMs = null } = {}) {
+      procedure = null, lateAdmission = 'open', wallLimitMs = null,
+    // ★★★ ROUND 240 (FEEDBACK63 ①6): the FORMAL AGENDA used to be a pack-only boolean that reached no kernel field.
+    // `formalAgenda` accepts the declaration the pack already forwards (`true`) and, now, a per-item LIST — the caller
+    // that wants "a formal agenda" to mean "these items were registered" must be able to say so. `formal_agenda` and
+    // `agendaItems` are accepted as spelling aliases only (one fact, three spellings; no second mechanism).
+      formalAgenda = undefined, formal_agenda = undefined, agendaItems = undefined } = {}) {
 
     const enforced = []
     const ms = at === null ? clock() : atMs(at)
@@ -3965,6 +4016,40 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         'pass materials:"<agenda pointer>" or omit it', enforced)
     }
     const materialsRef = (materials === null || materials === undefined || String(materials).trim() === '') ? null : String(materials).trim()
+    // ★★★ ROUND 240 (FEEDBACK63 ①6, MEASURED): THE DECLARATION NOW HAS A RECORD. `formalAgenda` is either a boolean
+    // (declare the agenda formal; items stay the materials line) or an ARRAY of items (record them, ids assigned here).
+    // Anything else is refused BY NAME with both accepted shapes — silently stringifying an object would store
+    // "[object Object]" and every later reader would trust it (same discipline as title/subject/materials). The
+    // declaration is stored on the meeting row, so `summary`/`status` can read WHO declared it and WHEN; the read
+    // projection is `formalAgendaOf` (defined once above and spread by both faces).
+    const formalAgendaRaw = formalAgenda !== undefined ? formalAgenda : (formal_agenda !== undefined ? formal_agenda : agendaItems)
+    const formalDeclaredBy = (actor !== null && actor !== undefined && String(actor).trim() !== '')
+      ? String(actor).trim()
+      : ((chair !== null && chair !== undefined && String(chair).trim() !== '')
+        ? String(chair).trim()
+        : ((convenedBy !== null && convenedBy !== undefined && String(convenedBy).trim() !== '') ? String(convenedBy).trim() : null))
+    let formalAgendaDecl = false
+    let formalAgendaRef = null
+    if (formalAgendaRaw !== null && formalAgendaRaw !== undefined && formalAgendaRaw !== false) {
+      if (formalAgendaRaw === true) {
+        formalAgendaDecl = true
+      } else if (Array.isArray(formalAgendaRaw)) {
+        formalAgendaDecl = true
+        formalAgendaRef = formalAgendaRaw.map((it, i) => {
+          const obj = (it !== null && typeof it === 'object') ? it : null
+          const itemTitle = formalAgendaTitleOf(it)
+          if (itemTitle === '') return null
+          const itemId = (obj !== null && obj.id !== undefined && obj.id !== null && String(obj.id).trim() !== '') ? String(obj.id).trim() : 'fa-' + (i + 1)
+          const itemKind = (obj !== null && typeof obj.kind === 'string' && obj.kind.trim() !== '') ? obj.kind.trim() : FORMAL_AGENDA_ITEM_KIND
+          const itemBy = (obj !== null && obj.addedBy !== undefined && obj.addedBy !== null && String(obj.addedBy).trim() !== '') ? String(obj.addedBy).trim() : formalDeclaredBy
+          const itemAt = (obj !== null && Number.isFinite(obj.at)) ? obj.at : ms
+          return { id: itemId, title: itemTitle, kind: itemKind, addedBy: itemBy, at: itemAt }
+        }).filter((row) => row !== null)
+      } else {
+        throw deny('VMU_INVALID_ARGUMENT', 'formalAgenda must be a boolean flag or an ARRAY of agenda items; got ' + (Array.isArray(formalAgendaRaw) ? 'array' : typeof formalAgendaRaw),
+          'pass formalAgenda:true (declare the agenda formal, items stay the materials line) or formalAgenda:["<item>", { title:"<item>", kind:"review", addedBy:"<member>" }] (record a per-item formal agenda), or omit it', enforced)
+      }
+    }
     // ★★ PHASE 12 D6 — 「允许一次性设置连续展开的多个会议」. `sequence` lists the meetings that FOLLOW this one
     // (this call opens the first). Every entry is validated NOW, not when its turn comes: a typo in entry 3 must be
     // refused while the chair is still looking at the call, not three meetings later when nobody remembers it.
@@ -4145,6 +4230,14 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       subject: subjectRef,
       title: titleRef,
       materials: materialsRef,
+      // ★★★ ROUND 240 (FEEDBACK63 ①6): the FORMAL AGENDA declaration as recorded data — the flag (so a boolean
+      // `formal_agenda:true` is no longer a fact that dies in the receipt), the per-item list when the caller recorded
+      // one (`formalAgendaRef`, null when only the flag was given), and who declared it when. `agendaBlockOf` /
+      // `formalAgendaOf` is the ONE projection that reads this back on summary and status.
+      formalAgendaDeclared: formalAgendaDecl,
+      formalAgenda: formalAgendaRef,
+      formalAgendaDeclaredBy: formalAgendaDecl ? formalDeclaredBy : null,
+      formalAgendaDeclaredAt: formalAgendaDecl ? ms : null,
       // ★★ PHASE 12 D6: the follow-ups this meeting was opened with, and how many are still pending.
       // `close()` advances this list; without it the rule sentence had no implementation at all.
       sequence: seqEntries, sequenceIndex: 0, sequenceTotal: seqEntries.length,
@@ -4156,7 +4249,12 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     live.set(mid, m)
     markState(m, m.state)
     counters.opened += 1
-    const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, convenedBy: m.convenedBy, state: m.state, scheduledFor: m.scheduledFor, confidentiality: m.confidentiality, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, lateAdmission: m.lateAdmission, lateAdmissionMeans: LATE_ADMISSION_MEANS, pendingLate: [], pendingLateCount: 0, sequence: { index: 0, total: 1 + seqEntries.length }, enforced, enforcedScope: ENFORCED_SCOPE }
+    const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, convenedBy: m.convenedBy, state: m.state, scheduledFor: m.scheduledFor, confidentiality: m.confidentiality, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, lateAdmission: m.lateAdmission, lateAdmissionMeans: LATE_ADMISSION_MEANS, pendingLate: [], pendingLateCount: 0,
+      // ★★★ ROUND 240: the SAME formal-agenda reading `summary`/`status` spread, so the open receipt and the later
+      // read faces cannot disagree about what was declared (the defect: the receipt carried a boolean, the read face
+      // carried a permanent null).
+      ...formalAgendaOf(m),
+      sequence: { index: 0, total: 1 + seqEntries.length }, enforced, enforcedScope: ENFORCED_SCOPE }
     pushReceipt(receipt)
     say({ type: m.state === 'scheduled' ? 'meetings/scheduled' : 'meetings/opened', at: ms, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, scheduledFor: m.scheduledFor, rosterNarrowed: m.rosterNarrowed === true, lateAdmission: m.lateAdmission, enforced, enforcedScope: ENFORCED_SCOPE })
     // ★ type/subject are ALSO at the top level, not only inside `receipt`: a caller that asked for them should not
@@ -4164,7 +4262,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     // ★★ ROUND 120 (E6/E9): `kind` and the roster's provenance are echoed next to `title`, because a caller that asked
     // for them should not have to know the receipt envelope's shape to read back what it just set (the same reason
     // `attend` returns `late`). `rosterMeans` says what the list IS, in the one wording all three faces share.
-    return { ok: true, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, wallLimitMs: m.wallLimitMs, wallLimitMsSource: m.wallLimitMsSource, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, lateAdmission: m.lateAdmission, lateAdmissionMeans: LATE_ADMISSION_MEANS, pendingLate: [], pendingLateCount: 0, sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+    return { ok: true, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, wallLimitMs: m.wallLimitMs, wallLimitMsSource: m.wallLimitMsSource, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, lateAdmission: m.lateAdmission, lateAdmissionMeans: LATE_ADMISSION_MEANS, pendingLate: [], pendingLateCount: 0,
+      // ★★★ ROUND 240: same formal-agenda reading as the receipt (one projection, no second wording).
+      ...formalAgendaOf(m),
+      sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     
   }
 
