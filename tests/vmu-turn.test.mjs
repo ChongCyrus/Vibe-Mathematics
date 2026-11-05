@@ -645,8 +645,10 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   // cannot be edited, so the SHIPPED charter deliberately says 「本所的**领头人**（坐在 `chair` 席位…）」 instead: a
   // sentence about the SEAT, which stays true whether or not the office is occupied. The two lines are therefore
   // declared here BY NAME (a new, different line still reddens T71) rather than silently exempted.
+  // ★ B1 (task-54, RUN 241-B audit): the temp×leaderless line left this list because the block is now DECLARED as a
+  // divergence below - the leaderless variants no longer assert 「本所当前没有在册院士」 at all. The closed gap is
+  // removed rather than kept, which is what the loop at the end of this block demands.
   const KNOWN_UNBASELINED = [
-    'v5r-charter-roster-temp/leaderless: · 本所当前没有在册院士：你只需向**雇主**负责（它给你派活）。',
     'v5r-charter-org/researcher: 本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
     'v5r-charter-org/temp: 本所的**领头人**（坐在 `chair` 席位、并被设为 `vmu.turn.leaderId` 的那位；见名册）以**全所视角**组织与协调：',
   ]
@@ -681,6 +683,13 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
     // contradicts the shared tracks section (temp gets no card face) and the slot ACL. The shipped block is
     // scoped to 院士与常驻研究员 and states the temp exception; the frozen capture necessarily lacks those words.
     'v5r-charter-libraries': 'AUDIT10 C1: 「三、你的资料库…」原来对所有席位讲自己的库与研究日志，临时工却无 `vibe_v5_record_*` 卡片面；改成本节只讲院士与常驻研究员 + 临时工例外（卡片面具名拒、产出归指派者、过程记录写回执 `progress` 字段）',
+    // ★ B1 (task-54, RUN 241-B prompt audit): the leaderless variants asserted 「本所当前没有在册院士」, but the
+    // policy selects them whenever it cannot PROVE a leader is on staff — including a staffed-but-unconfigured
+    // institute, where the same prompt's roster says 「院士 acad（你）—— 本所领头人」. R13 already ruled that the
+    // prompt must never deny an academician who is sitting in the chair; the fix is to state only what the policy
+    // knows (no IDENTIFIABLE leader: `vmu.turn.leaderId` unset or not on the roster), which stays true in both cases.
+    'v5r-charter-division': 'B1 (task-54): leaderless 变体原来断言「本所当前没有在册院士」，在「院士就座但 vmu.turn.leaderId 未配置」时与名册自相矛盾；改成只断言「没有可识别的领头人」（policy 能证明的唯一事实）',
+    'v5r-charter-roster-temp': 'B1 (task-54): 同上，temp 的 leaderless 名册行不再声称没有在册院士，改成「领头人未配置（vmu.turn.leaderId 未设置或不在名册）」',
   })
   const divergedByBlock = Object.create(null)
   // Scope: the CHARTER blocks are checked against the persona the original really hands out. The reply spec is
@@ -833,7 +842,7 @@ const mk = (extra = {}) => createTurnOrchestrator({ sectionPolicy: DECIDE_SECTIO
   const pipeRs = createPromptPipeline({ sections: CHARTER_SECTIONS, bindings: CHARTER_BINDINGS, clock: () => '2026-01-01T00:00:00.000Z' })
   const ctxRs = { member: 'r-1', role: 'researcher', roleLabel: '常驻研究员', phase: 'normal', round: 4, roster: 'acad、r-1', quorum: 2, statusBlock: '[状态] x', settings: { 'vmu.turn.maxParallel': 5, 'vmu.turn.toolCallsPerTurnCap': 12, 'vmu.turn.memoryCeilingMb': 4096 } }
   const asmRs = await pipeRs.assemble(ctxRs)
-  ok(asmRs.ok === true && asmRs.text.includes('最多同时唤醒 5 名成员') && asmRs.text.includes('工具调用不超过 12 次') && asmRs.text.includes('接近 4096 MB'),
+  ok(asmRs.ok === true && asmRs.text.includes('最多同时唤醒 5 名成员') && asmRs.text.includes('工具调用上限 = 12 次') && asmRs.text.includes('内存阈值 = 4096 MB'),
     'T81. **** the RESOURCE DISCIPLINE renders its numbers FROM SETTINGS: concurrency, tool budget and memory ceiling are configuration, not prose',
     { chars: asmRs.text.length })
   ok(asmRs.text.includes('正确性优先于产出量') && asmRs.text.includes('OOM 会丢掉全部未落盘工作'),

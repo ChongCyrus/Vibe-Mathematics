@@ -815,7 +815,25 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         throw deny('VMU_QUOTA_EXCEEDED', 'track "' + track + '" is full: ' + liveIds(track).length + '/' + headMaxItems + ' live records (vmu.records.head.maxItems)',
           'this track is full. TWO reachable repairs: (1) call vibe_vmu_records {action:"prune", track:"<this track>", keep:<how many newest rows to keep>, why:"why these rows may go"} — the OLDEST rows move to the TRASH (restorable until purgeAt, vmu.records.trash.retainDays), and the ledger never evicts silently; (2) this limit is read at WRITE time, so raising it with vibe_v5_set {key:"vmu.records.head.maxItems", value:<bigger>, why:"why this track needs room"} takes effect on the NEXT put (no restart; the office is the writer of every vmu.records setting)', [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems], 'put')
       }
-      const bodyText = mergedBody
+      // ★★ RUN 241 (FEEDBACK64 M10, MEASURED): a card body carried `- id：rec-4` — a line repeating the row's OWN id.
+      // The id is the ROW, not a field of its body; a reader who sees it must not think the id is content that can drift,
+      // and a MERGE receipt reported it as `bodyLinesAdded:["id"]` ("a body line was added") when nothing was added by
+      // the caller. Dropped here, at the ONE place a body is stored, so both the stored card and `bodyLinesAdded` agree.
+      const ownIdForBody = updating
+        ? String(updating.id)
+        : (requestedId === null || requestedId === undefined ? null : String(requestedId))
+      let bodyText = mergedBody
+      let bodyOwnIdLineDropped = false
+      if (ownIdForBody !== null) {
+        const NL = String.fromCharCode(10)
+        const kept = []
+        for (const line of String(bodyText === null || bodyText === undefined ? '' : bodyText).split(NL)) {
+          const m = /^-\s*id\s*[：:]\s*(.*?)\s*$/.exec(line)
+          if (m && String(m[1]) === ownIdForBody) { bodyOwnIdLineDropped = true; continue }
+          kept.push(line)
+        }
+        if (bodyOwnIdLineDropped) bodyText = kept.join(NL)
+      }
       const bytes = bytesOf(bodyText)
       // ★★★ RUN 239 (live run 62 / FEEDBACK62 #2, MEASURED): a replace that DELETES a settlement line is refused by
       // name instead of being reported after the fact. The receipt already said `bodyLinesDropped`, but a receipt after
@@ -1030,6 +1048,11 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       const receipt = { ok: true, deduplicated: false, id, slug, fingerprint: fp, bytes, tier: tierOf(rec, at), retrackedFrom,
         retrackedFromMeans: retrackedFrom === null ? 'this row did not change track' : 'this id was on the "' + retrackedFrom + '" track and MOVED here: the old index row was removed, so one id answers exactly one `list({track})`',
         enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at,
+        // ★ RUN 241 (FEEDBACK64 M10): whether this write dropped a body line that only repeated the row's own id.
+        bodyOwnIdLineDropped,
+        bodyOwnIdLineMeans: bodyOwnIdLineDropped
+          ? 'this write NAMED a body line `- id：<this row\'s own id>`; the id is the ROW itself, not a field of its body, so the line was dropped before the body was stored (it carried no information the row does not already have, and counting it as an added body line would have said the caller added something)'
+          : null,
         ...identityEcho(mergedOwner, mergedBy) }
       if (!updating) return Object.assign(receipt, { updated: false })
       const out = Object.assign(receipt, {

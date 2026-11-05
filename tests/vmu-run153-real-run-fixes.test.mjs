@@ -114,7 +114,11 @@ try {
     // ★ RUN 155 (audit problem 3): the old sentence here claimed the RECORD was left as it was - records.put
     // REBUILDS the row (rev/createdAt/slug), so the claim is now split into the two真话 branches it always needed:
     // supersede (lines byte-identical, record keeps id/slug/createdAt, one version entry) or put-fallback (says so).
-    ok(/wrote: \['p', 'debateRuling'\]/.test(TOOLS_SRC)
+    // ★ RUN 241: a p=1 settlement now also writes `- p1Evidence：` into the card (FEEDBACK64 M7), so the
+    // written-line list grew to three. The invariant is unchanged and still exactly what this pin guards:
+    // the settlement patches the p row plus the ruling row (plus the evidence row, if it names one) and
+    // leaves every other line alone - it never falls back to rebuilding the body.
+    ok(/wrote: p1Evidence !== null \? \['p', 'debateRuling', 'p1Evidence'\] : \['p', 'debateRuling'\]/.test(TOOLS_SRC)
       && /the record keeps its id\/slug\/createdAt while gaining one version entry/.test(TOOLS_SRC)
       && /no supersede\(\): the row was re-put/.test(TOOLS_SRC),
       '§0c ★★★ G1 补丁只改 `p` 与一行 `debateRuling`；延续两支真话（supersede / put-fallback）')

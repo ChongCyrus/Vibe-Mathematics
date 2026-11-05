@@ -226,6 +226,20 @@
 > - **v5r-pack 的 `vibe_v5_inbox{action:"open"}`**（`packs/v5r/tools.js:163-174`）：正文**只在 `message.text`**（`message` 另带 `id/from/at/subject/kind/urgent/read:true/todo`），`list` 的 `rows` **永不带正文** ✓ —— 与上表该行的「9 字段无正文」是同一条纪律的两个面：**先 triage，再 open 一封**。
 > - **R102 · 面板属于「在册的人」，状态板每行都说时间**（`kit/handlers.js#toolRecordProgress`、`kernel/turn/index.js#statusBoardReadings`）：state 面板写**不在名册**的 id ⇒ 具名 `VMU_NO_SUCH_OBJECT`（消息给出它核对的名册，hint 指 `vibe_v5_hire`），回执照实说 `memberCheck:"checked"|"skipped"`；内核没有 members 面时**不猜**（`skipped` + `memberCheckMeans` 说明为什么没核）。`vibe_vmu_turn{op:"prompt"}` 的 `[状态板]` 每行要么带内容时间（`（读于 …）`），要么具名说 `时间未提供：<为什么>` —— 设置键派生的行（`[总任务]`）没有内容时间戳，它现在**说清这件事**，并且同一次装配两次渲染**逐字相同**（读时钟不进提示词）。
 
+### 3.1b RUN 241（FEEDBACK64 M9/M10/M15/M13/M11/M12）的六条契约增量
+
+> 真机第 64 次运行（`FEEDBACK64.md`）的六条「回执说 X、盘上/正文是 Y」，每条一个可读事实。逐条都有**运行期**断言（`tests/vmu-run241-receipts2.test.mjs`），不是只钉源码字符串。
+
+| # | 面 | 改前（真机读数） | 改后（契约） |
+|---|---|---|---|
+| M9 ★ | `vibe_v5_record_*` 结算后的卡正文 | 结算回执有 `p1Evidence:"debate-unanimous"`，卡正文只有 `- debateRuling：…`，**没有** `- p1Evidence：` 行 | 结算（`settleRulingOnCard`）把**证据形态**写成一行 `- p1Evidence：<debate-unanimous\|literature-reference\|lean-conformance\|verified-row>`，紧跟 `- debateRuling：`；再次结算**替换**该行而不是叠加。回执 `settlement.wrote` 含 `p1Evidence`、`settlement.p1EvidenceLine:true`、`settlement.p1EvidenceReplaced`（旧行被替换时为 true）。`p1Evidence` 是「谁把 p=1 放行」的账，读卡的人不必再反推 `debateRuling`。 |
+| M10 ★ | `vibe_v5_records` merge 的卡正文与 `bodyLinesAdded` | merge 后 `bodyLinesAdded:["id"]`，正文多一行 `- id：rec-4`（重复了行自己的 id） | 行 id 是 **ROW 本身**，不是 body 字段。`records` 在**存储边界**丢弃「只重复本行 id」的 `- id：<自身 id>` 行（`bodyOwnIdLineDropped:true` + `bodyOwnIdLineMeans`），`bodyLinesAdded` 由清洗后的正文计算 ⇒ 不再把它算成「调用方新增的正文行」。其他行的 `id：`（指向**别的**行）保留。 |
+| M13 ★ | `vibe_vmu_meeting { action:"leaverequests" }`（读面） | 未决请假 `decidedAt:0`，而无期限 `wait` 是 `deadlineAt:null` —— 同一个「还没决定」两种写法，且 0 读起来像「在第 0 毫秒决定了」 | 读面归一为 `decidedAt:null` + `decidedAtMeans`（「'No decision' is not 'decided at the 0th millisecond'」）与 `undecidedRequests` 计数；**存储未改**（`meetingleave.js` 的哨兵仍是 0，读面负责把它印成 null），已决定的行走决定时刻。 |
+| M15 ★ | `vibe_v5_meeting { formal_agenda }` 的 hint | hint 教 `kernel open({ formalAgenda: [...] })`，并说「pack 门等 schema 放宽」 | hint 指向**正门**：`vibe_v5_meeting { formal_agenda: ["<item>", { title: "<item>", kind: "review" }] }`（pack schema 接受 boolean 或 array；也保留 kernel 面 `open({formalAgenda:[...]})` 的拼写），删除「等 schema 放宽」的假等待。 |
+| M11 ★ | `vibe_vmu_human { action:"recover" }` 回执 | 内核 `members.restore` 已返回 `keptLive`/`keptLiveMeans`，recover 回执里**读不到** | recover 回执顶层透出 `keptLive`（数组）与 `keptLiveMeans`：一次恢复**没有**把名册恢复成空（活的、快照里没有的席位被留下）。读 recover 一次就能回答「谁没被恢复掉」。 |
+| M12 ★ | 同上 recover 的 `ok`/`code` | 干净首跑也回 `ok:false` + message「the recovery did not fully succeed: ledgers, readback」，而每一步的 `hydrated:false` reason 是「nothing was projected (a first run)」——正常事实与真失败混在一个码里 | `nothingToRestore:[<key>...]` 与 `nothingToRestoreMeans` 单列：**没有任何东西可恢复 ≠ 恢复失败**，它不失败任何 step、不翻 `ok`。`ok:false` 只留给 `unhydrated`（真冲突）与 read-back 漂移；此时回执的 hint 明说 `nothingToRestore` 不属于失败清单。 |
+
+
 ### 3.2 规划中（`⛔ 未实现`，**当前不可调用**）
 
 > 这些名字宿主**没有注册**；保留在此仅为规划追溯 ✓。
@@ -461,6 +475,7 @@
 | **R2 · `VMU_REPORT_TRIGGER_UNKNOWN`** | 触发器种类不在 `event|period|threshold` | 汇报 | ✅（须给**允许种类**） |
 | **R2 · `VMU_REPORT_UNKNOWN_NAME`** | 引用了未声明的汇报名 | 汇报 | ✅（须给**已声明名**） |
 | **R2 · `VMU_REPORT_CHANNEL_UNKNOWN`** | 通道不在 `vmu.report.channels` | 汇报 | ✅（须给**允许通道**） |
+| **R241 · `VMU_TURN_ABANDONED`** | 一个回合被**主动弃置**（`vibe_vmu_turn { op:"abandon" }`），或它抱锁超过 `vmu.turn.abandonAfterMs` 被自动弃置 ⇒ 那一行记 `status:"abandoned"` 且 `codes` 内是本码，**锁随之释放**（下一轮能开），并且从该回合**不施加任何字段动作**（它的报告仍留在 `turnReceipts` 里可读）。弃置是账上的事实，不是失败：`closedWith` 说它怎么结束的 | 回合循环（`kernel/turn/index.js` 的 `abandonTurn`；面在 `tools/turn.js`；设置键 `vmu.turn.abandonAfterMs`） | ✅（须给**被弃的回合 id/成员/门**、`ageMs`、以及「报告没有被应用」这一句） |
 | **R236 · `VMU_DIRECTION_INCOMPLETE`** | 方向卡缺**必填**字段（五个：`current_assessment`／`initial_plan`／`feasibility`／`findings`／`reuse`）⇒ 具名拒，消息**点名缺哪几个字段名**并给出必填集合；其余四个字段可为空，读面回 `null` ＋ `fieldsMissing`（空＝没记，不是「没有」） | 方向卡（`kernel/directions.js`；码由模块的 `CODE.INCOMPLETE` 单一来源） | ✅（须点名**缺的字段名**与**必填集合**） |
 | **R2 · `VMU_REPORT_NO_RECIPIENTS`** | 非 log 通道却没有收件人 | 汇报 | ✅（须给**收件人白名单**） |
 | **R2 · `VMU_REPORT_DECLARATION_INVALID`** | 汇报声明结构非法（缺 name/trigger/template 等） | 汇报 | ✅（须点名**缺哪一项**） |
@@ -1217,7 +1232,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **496** 个码，**逐行**给出状态 ✓：其中 **457** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **497** 个码，**逐行**给出状态 ✓：其中 **458** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **39** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1683,6 +1698,7 @@
 | `VMU_TOPOLOGY_PATH_FORBIDDEN` | **已实现 ✓** | `vibe-math-vmu/kernel/topology.js` | 代码里有该码字符串 ✓ |
 | `VMU_TOPOLOGY_SIZE_EXCEEDED` | **已实现 ✓** | `vibe-math-vmu/kernel/topology.js` | 代码里有该码字符串 ✓ |
 | `VMU_TRUST_VOCAB_VIOLATION` | **已实现 ✓** | `vibe-math-vmu/kernel/trust.js` | 代码里有该码字符串 ✓ |
+| `VMU_TURN_ABANDONED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_ALREADY_PARKED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_ASSEMBLY_FAILED` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js` | 代码里有该码字符串 ✓ |
 | `VMU_TURN_BAD_JSON` | **已实现 ✓** | `vibe-math-vmu/kernel/turn/index.js`、`vibe-math-vmu/packs/v5r/prompts/v5r-reply-channel.js` | 代码里有该码字符串 ✓ |

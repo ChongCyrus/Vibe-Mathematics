@@ -969,7 +969,7 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   const FORMAL_AGENDA_ABSENT_MEANS = 'null: this meeting carries NO per-item formal agenda. The convene face stores the agenda as ONE text line in `materials` (an array is joined with "; ") and `formal_agenda` there is a BOOLEAN "the agenda came from a formal block" flag, not an item list — so null is the absence of an item list, NOT an empty agenda: read `agendaItems` for the items'
   const FORMAL_AGENDA_ABSENT_WHY = 'no per-item agenda was recorded: this meeting never declared a formal agenda, so there is no item list to read (the agenda, if one was given, is the `materials` line — read `agendaItems`)'
   const FORMAL_AGENDA_DECLARED_WHY = 'no per-item agenda was recorded, although the meeting DECLARED one: `formal_agenda` was passed as a BOOLEAN flag and a boolean cannot carry items — the declaration IS recorded (`formalAgendaDeclared:true`, `formalAgendaDeclaredBy`), the agenda itself is the ONE `materials` line (read `agendaItems` for its lines)'
-  const FORMAL_AGENDA_HINT = 'to record a per-item formal agenda, convene with an ARRAY of items: kernel open({ formalAgenda: ["<item>", { title: "<item>", kind: "review", addedBy: "<member>" }] }) — the pack door vibe_v5_meeting { formal_agenda: [...] } forwards the same array once its schema is widened; a boolean (formal_agenda:true) only DECLARES the agenda formal and leaves the items as the materials line'
+  const FORMAL_AGENDA_HINT = 'to record a per-item formal agenda, convene the meeting AGAIN and pass an ARRAY of items through the pack door: vibe_v5_meeting { formal_agenda: ["<item>", { title: "<item>", kind: "review" }] } — that is the front door (its schema accepts a boolean OR an array), so the items are validated and stored by the pack; from the kernel face the same array is open({ formalAgenda: [...] }). A boolean (formal_agenda:true, or formalAgenda:true) only DECLARES the agenda formal and leaves the items as the materials line'
   const formalAgendaOf = (m) => {
     const rows = formalAgendaRowsOf(m)
     const declared = rows !== null || (m && m.formalAgendaDeclared === true)
@@ -1803,6 +1803,27 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
   }
   // B② (Round 10 split): the leave RULES live in `kernel/meetingleave.js`; this face injects its state seams, and
   // `withScope` below attaches the receipt vocabulary to whatever that module reports as `keys`.
+  //
+  // ★★ RUN 241 (FEEDBACK64 M15): the rules module stores an UNDECIDED request as `decidedAt:0` (a numeric "never" that
+  // reads as a real timestamp). The read face normalises it to `null` — the one spelling "no decision yet" has
+  // everywhere else (`wait` uses `deadlineAt:null`) — and says so, because a reader comparing the two fields should not
+  // have to learn two encodings of absence. The stored row is untouched: this is a READING of it, not a rewrite.
+  const normalizeLeaveRows = (r) => {
+    if (!r || !Array.isArray(r.requests)) return r
+    let normalized = 0
+    const requests = r.requests.map((row) => {
+      if (!row || typeof row !== 'object') return row
+      const undecided = row.decidedAt === 0 || row.decidedAt === undefined
+      if (!undecided) return row
+      normalized += 1
+      return Object.assign({}, row, { decidedAt: null })
+    })
+    return Object.assign({}, r, {
+      requests,
+      decidedAtMeans: 'decidedAt:null = NO DECISION YET (an open request). "No decision" is not "decided at the 0th millisecond": the numeric spelling 0 the rules module stores is a sentinel, and this read face prints it as null so it agrees with `wait.deadlineAt:null`. A decided row carries the instant the approver decided.',
+      undecidedRequests: normalized,
+    })
+  }
   const leaveControls = createLeaveControls({ requireMeeting, isMember, clock, limits: () => K, deny, pushReceipt })
   const lapseDue = (a) => withScope(controls.lapseDue(a))
   const lapse = (a) => withScope(controls.lapse(a))
@@ -2842,7 +2863,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     // the state seams and the receipt vocabulary, so each call leaves here scope-carrying like every other receipt.
     requestLeave: (a) => withScope(leaveControls.requestLeave(a)),
     approveLeave: (a) => withScope(leaveControls.approveLeave(a)),
-    leaveRequests: (a) => withScope(leaveControls.leaveRequests(a)),
+    // ★★ RUN 241 (FEEDBACK64 M15, MEASURED): an undecided leave request read `decidedAt:0` while an open-ended `wait`
+    // read `deadlineAt:null` — the same "no decision yet" fact in two spellings, and 0 reads as "decided at the 0th
+    // millisecond". Normalised to null here (the read face), with the sentence a reader needs.
+    leaveRequests: (a) => withScope(normalizeLeaveRows(leaveControls.leaveRequests(a))),
 
     recess({ meeting, ms = 0, by = null, at = null } = {}) {
       const m = requireMeeting(meeting)

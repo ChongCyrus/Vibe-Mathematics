@@ -176,6 +176,15 @@ try {
   ok(er.every((r) => Array.isArray(r.allow) && r.allow.length === 0 && r.narrowing.expectedAllowed > 0 && r.narrowing.identityFaceVisible > 0),
     'the empty intersect keeps its counts (expectedAllowed>0, identityFaceVisible>0) so a reader can see it was not "nothing declared"',
     er.map((r) => r.narrowing))
+  // ★★★ RUN 241 / FEEDBACK64 M5: two counters cannot say WHY the intersection was empty. Run 64 read
+  // identityFaceVisible:1 beside expectedAllowed:20 and had no way to tell a mis-wired visibility provider from a policy
+  // that excludes everything - and they need different fixes. Both samples and the verdict now ride the row.
+  ok(er.every((r) => Array.isArray(r.narrowing.visibleSample) && Array.isArray(r.narrowing.allowSample) && r.narrowing.allowSample.length > 0),
+    '★★ an empty intersect now carries both vocabularies (what the deployment showed vs what the pack declared)',
+    er.map((r) => ({ v: r.narrowing.visibleSample, a: r.narrowing.allowSample })))
+  ok(er.every((r) => typeof r.narrowing.why === 'string' && r.narrowing.why.length > 20 && r.narrowing.whyMeans === r.narrowing.why),
+    '★★★ and a sentence that names WHICH kind of emptiness it is (a wiring gap or two disagreeing vocabularies)',
+    er.map((r) => r.narrowing.why))
   ok(c5.overrides.length === 0 && c5.cleared.length === 0, 'no override installed and none cleared for a disclosed empty intersect',
     { overrides: c5.overrides.length, cleared: c5.cleared })
   ok(empty.receipt && typeof empty.receipt.note === 'string' && empty.receipt.note.includes('empty-intersect'),

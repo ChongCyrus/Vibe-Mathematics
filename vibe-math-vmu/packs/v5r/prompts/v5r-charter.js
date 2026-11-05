@@ -152,6 +152,11 @@ export const charterSections = ({ hasLeader = true } = {}) => CHARTER_BLOCKS.map
   order: b.order,
   range: b.range,
   source: 'v5r-charter:source-derived',
+  // ★ RUN 241-A: `scope` was declared on some blocks but never reached the pipeline — so the ONLY way to gate a
+  // phase was the middleware switch (by name), and fourteen sections got assembled as EMPTY headings in phases
+  // their text does not belong to. `scopeMatches` (kernel/prompt/index.js:417) already reads `scope.phase`, scalar
+  // or array; a gate is data, so it travels with the section. Same dimension V5R_PAPER_PROMPT_SECTIONS uses.
+  ...(b.scope ? { scope: b.scope } : {}),
   text: b.kind === 'leader-conditional'
     ? (hasLeader === false
       ? ((CHARTER_LEADER_VARIANTS[b.name] || {}).leaderless || CHARTER_LEADERLESS_MISSING_TEXT)

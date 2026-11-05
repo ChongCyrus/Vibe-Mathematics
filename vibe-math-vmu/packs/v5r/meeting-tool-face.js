@@ -174,8 +174,18 @@ export function applyMeetingTypeFace({ kernel, type, members, refuse }) {
       // deployment cannot hold a meeting". The narrowing is one round's convenience, not the meeting: skip it for
       // this member, install NO override (so the member keeps exactly its identity face — nothing is widened), and
       // carry `narrowing.applied:false` plus both counts into the receipt so nobody believes a narrowing happened.
+      // ★★★ RUN 241 / FEEDBACK64 M5: run 64 read `identityFaceVisible:1` beside `expectedAllowed:20` and could not
+      // tell WHY the intersection was empty - a mis-wired visibility provider and a policy that genuinely excludes
+      // everything look identical from two counts. The row now carries both samples and a sentence that names which
+      // of the two it is, because the fix is different: one is a deployment gap, the other is a meeting decision.
+      const visibleSample = names.slice(0, 8)
+      const allowSample = face.allow.slice(0, 8)
+      const why = names.length <= 1
+        ? 'the identity face this deployment exposes for this member is (nearly) empty (' + names.length + ' visible: ' + JSON.stringify(visibleSample) + '), so no allow list of ' + face.allow.length + ' entries can meet it - a WIRING gap in the tool-visibility provider, not a meeting policy'
+        : 'the identity face and the pack allow list for this meeting type share no name (' + names.length + ' visible: ' + JSON.stringify(visibleSample) + ' vs ' + face.allow.length + ' allowed: ' + JSON.stringify(allowSample) + ') - the two vocabularies disagree'
       planned.push({ member: id, visible: names.length, allow: [], dropped, unavailable,
-        narrowing: { applied: false, reason: 'empty-intersect', expectedAllowed: face.allow.length, identityFaceVisible: names.length } })
+        narrowing: { applied: false, reason: 'empty-intersect', expectedAllowed: face.allow.length, identityFaceVisible: names.length,
+          visibleSample, allowSample, why, whyMeans: why } })
       continue
     }
     planned.push({ member: id, visible: names.length, allow, dropped, unavailable })

@@ -4218,8 +4218,9 @@ member 29 810、temp 26 904）。**先删再写**是预算下唯一可持续的�
 `VMU_INVALID_ARGUMENT`；`open` 回执／`summary`／`status` 三处 spread 同一个 `formalAgendaOf(m)`。
 
 **「不许留恒 null」是这个字段的合同**：`formalAgendaItems === null` 时一定同时带
-`formalAgendaItemsWhy`（未声明 / 声明为布尔，两种具名原因）与 `formalAgendaItemsHint`（指 `open({formalAgenda:[...]})`
-或 pack 的 `formal_agenda:[...]`）；有行时 Why/Hint 为 null。`formalAgendaItemsMeans` 保留 run239 钉住的
+`formalAgendaItemsWhy`（未声明 / 声明为布尔，两种具名原因）与 `formalAgendaItemsHint`（**指向正门**：
+`vibe_v5_meeting { formal_agenda: ["条目", {"title": "条目2"}] }`；kernel 的 `open({formalAgenda:[...]})` 只是同名字段的
+另一种拼写，不是“绕开 schema 的路”——RUN 241 把 hint 里那句“等 schema 放宽”删掉了）；有行时 Why/Hint 为 null。`formalAgendaItemsMeans` 保留 run239 钉住的
 「BOOLEAN 不是条目表 / null 不是空议程」原句。
 
 ### 机器化
@@ -4355,3 +4356,11 @@ means 键；`list` 的默认头部字段加入 `writer`（一行两事实，读�
 - 声明里点名、但已经不是缺口的键 ⇒ WARN。豁免是有时效的事实，不是永久许可。
 - `vibe_vmu_task { action:"brief" }` 从来没能成功，因为 face 只把 `id` 转发给 `brief(id, text, …)`，schema 里也没有 `text`。一条「声明了但从未成功调用」的动作，先怀疑 face 掉了参数。
 - 文档里「方括号紧跟圆括号」的代码片段会被 markdown 当链接，链接检查器会当成未兑现的断言——写片段时避开这个形状。
+### ROUND 241 — 一把锁必须能被读、能断、能放
+
+1. **run 64 把研究所锁死了**：一次被唤醒的传输（`t-2`）的 `deliver` 永不返回，而重入闸是一个裸布尔 `turnInFlight`：没有持有者、没有起点、没有任何面能释放它。此后所有 `op:"step"` 与 `vibe_v5_meeting_round` 一律 `VMU_TURN_REENTRANT`，而 `vibe_vmu_human {action:"recover"}` 报 `inflight.pending:0` —— 两个面互相否认。
+   现在锁自报（`status().turnLoop`：在途回合/成员/门/在途毫秒/`abandonAfterMs`/唤醒队列/最近弃置）、超时自弃（`vmu.turn.abandonAfterMs`，默认 `deliveryTimeoutMs + 10 min`、不低于 10 min）、任何时候可 `op:"abandon"`（具名 `VMU_TURN_ABANDONED`、行变 `status:"abandoned"`、释放锁并继续跑下一轮）。
+2. **唤醒不抢锁**：`isBusy()` 为真时唤醒进 `wakeQueue`（`wq-N`），回合结束自动派发；队列写在 `turnLoop.wakeQueue` 里，不是隐形的。唤醒那一轮的会议绑定也随之带上（`openedBy:"wait"` + `meeting:"m1"`）。
+3. **交付是一对**：`lastAttribution` 的 `member`/`turn`/`childId` 现在同一时刻、同一块写（都在传输返回那一刻）；还在飞的回合不能占用那个槽，而它该被读到的地方是 `turnLoop`。`op:"reply"` 的 `countedLater` 旁边多了 `ifItNeverSettles`：报告总能被记下，它不能的是结算一个传输永不返回的回合。
+4. **命名的提示不够，要命名原因**：收窄交集为空时现在带两侧样本（`visibleSample`/`allowSample`）与一句 `why`，分清「这个部署的身份面几乎是空的（接线缺口）」与「两套名字说不上话」。
+5. **提示词的结构账**：空节 12 组全 0；normal 字数 chair −1582、member −383、temp −239；权限比 1.385→1.331（再压就要删 chair 独有的教学，判断不该做）；精确重复句 28→26，剩下的每一条都指名是谁钉住的。

@@ -571,6 +571,8 @@ export const v5rFixtureTools = Object.freeze({
     "★★ 一次工具调用只做一件事；回执形状样例：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"…\"}}、{\"say\":\"已经说过的一句话\"}。结题表决用 {\"vote_solved\":false}（只走回执，它不是工具）；个人的本轮判断用 {\"solved\":false}（不计票）。",
     "★★ 写卡片请直接用工具（`vibe_v5_record_*`），**不要**把卡片塞进回执的 record 字段。",
     "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
+    "★★ 回执示例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；progress 必须是**一个对象**（不是字符串/数组），kind 只能是已声明的（如 progress）。",
+    "★ 清单之外的工具不要尝试调用：本提示词列出的就是你此刻能用的全部；没列出的名字属于别的席位，调用只会被具名拒。若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。",
     "★ 按席位记账的工具要带 `member: \"<你的 id>\"`：`vibe_v5_blueprint { action: \"propose\", path, text, member }`、`vibe_v5_task_update { task_id, expected_revision, action: \"claim\", member }`、`vibe_v5_say { …, member }`，漏了会被具名拒 `VMU_INVALID_ARGUMENT`（hint 会点名该补什么）。",
     "★ 但**不是每个工具**都要 member：`vibe_v5_set { key, value, why }`、`vibe_v5_configure` 只收声明的形参，多写未知参数同样会被具名拒，照工具 description 写。",
   ].join('\n'),
@@ -612,6 +614,7 @@ export const v5rFixtureTools = Object.freeze({
  */
 const V5R_PROSE_CHAIR = Object.freeze([
     "★★ 回执样例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；★ progress 必须是**一个对象**（不是字符串/数组），kind 只能是已声明的（如 progress）。",
+    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
     "★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可多次（互审全票后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳阶段。",
     "★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。",
     "★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。",
@@ -622,8 +625,6 @@ const V5R_PROSE_CHAIR = Object.freeze([
     "★★ 探不通就上报：vibe_vmu_env {action:'report', need:'…', why:'为什么这轮需要它'} 记一条 environment-missing 的 finding ⇒ 主代理会读到。",
     "★★★ 主代理（所办，不是院士席）职责：读到 environment-missing 的 finding 时，向用户报告缺什么、给出 installCommand（可取自 probe 回执），并请求授权（引导用户自己装，或经用户明确授权后再部署）。",
     "★★★★ 未获授权前不要尝试安装、不要改用户的系统——这条优先于「把任务做完」。",
-    "★ 清单之外的工具不要尝试调用：本段列出的就是你此刻能用的全部；没列出的名字属于别的席位。若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。",
-    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
 ])
 
 export const v5rToolSectionAcademician = Object.freeze({
@@ -651,6 +652,8 @@ export const v5rToolSectionAcademician = Object.freeze({
  * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
  */
 const V5R_PROSE_MEMBER = Object.freeze([
+    "★★ 回执样例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；★ progress 必须是**一个对象**（不是字符串/数组）。",
+    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
     "转达所办口吻的消息不是你的职责（那是院士的）；所内全局视图也不是（仅院士）。",
     "★ 论文流程：start → part → advance → review → render；advance 可多次（互审全票后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳阶段。",
     "★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。",
@@ -661,10 +664,6 @@ const V5R_PROSE_MEMBER = Object.freeze([
     "★★ 探不通不要硬试：探测失败是【正常结果】（ok:false），不要反复重试，更不要改系统或装任何东西——框架不会替你安装，也不会静默假装成功。",
     "★★ 探不通就上报：vibe_vmu_env {action:'report', need:'…', why:'…'} 记一条 environment-missing 的 finding，主代理会读到并请示用户授权。",
     "★ 未获授权前不要尝试安装、不要改用户的系统：等主代理告诉你用户已授权。",
-    "★ 清单之外的工具不要尝试调用：没列出的名字属于别的席位，调用只会被具名拒。",
-    "★★ 回执样例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；★ progress 必须是**一个对象**（不是字符串/数组）。",
-    "若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。",
-    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
 ])
 
 export const v5rToolSectionResearcher = Object.freeze({
@@ -692,6 +691,8 @@ export const v5rToolSectionResearcher = Object.freeze({
  * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
  */
 const V5R_PROSE_TEMP = Object.freeze([
+    "★★ 回执样例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；★ progress 必须是**一个对象**（不是字符串/数组）。",
+    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
     "招人、汇报与全局视图不是临时席位的职责（那是院士与常驻研究员的工具）。",
     "★ 论文流程：start→part→advance→review→render；advance 可多次（互审全票后才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳阶段。",
     "★ 你的结果落在分给你的那张任务与回执上，不另立研究卡。",
@@ -703,10 +704,6 @@ const V5R_PROSE_TEMP = Object.freeze([
     "★★ 探不通不要硬试：探测失败是【正常结果】（ok:false），不要反复重试，更不要改系统或装任何东西——框架不会替你安装，也不会静默假装成功。",
     "★★ 探不通就上报：用 vibe_vmu_env {action:'report', need:'…', why:'为什么这轮需要它'} 记一条 environment-missing 的 finding ⇒ 主代理会读到它，并由主代理向用户请求授权。",
     "★ 未获授权前不要尝试安装、不要改用户的系统：等主代理告诉你用户已授权再动。",
-    "★ 清单之外的工具不要尝试调用：没列出的名字属于别的席位，调用只会被具名拒。",
-    "★★ 回执样例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；★ progress 必须是**一个对象**（不是字符串/数组）。",
-    "若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。",
-    "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
 ])
 
 export const v5rToolSectionTemp = Object.freeze({

@@ -427,8 +427,25 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
         }
         return kernel.reopenClosureVote({ why: args.why, by: args.by })
       }
+      // \u2605\u2605 RUN 241 / FEEDBACK64 M1: A TURN THAT WILL NEVER SETTLE HAS TO BE CLOSEABLE FROM OUTSIDE. Run 64 left a
+      // waiter-woken turn `status:"open"` for hours: the loop held its re-entrancy lock, every later step answered
+      // `VMU_TURN_REENTRANT`, and nothing in the whole face list could release it (the durable resume面 said
+      // `inflight.pending:0`, which was true and useless). This op is that release: it closes the in-flight turn as
+      // `abandoned` (a NAMED ending, with its own code, visible in op:"status" turnReceipts), clears the lock, and lets the
+      // next step/drive open a fresh turn. `turn` names the row to close (omit = whatever is in flight); if it names a
+      // different turn nothing is closed and the receipt says which one IS in flight, so a stale caller cannot close the
+      // wrong turn by accident.
+      if (op === 'abandon') {
+        if (!kernel.turn || typeof kernel.turn.abandon !== 'function') {
+          return refused('VMU_ENGINE_UNAVAILABLE', 'this kernel exposes no turn abandonment',
+            'assemble a kernel whose turn loop has abandon (RUN 241); until then a held turn ends when its delivery deadline passes')
+        }
+        const wantTurn = args.turn === undefined || args.turn === null || args.turn === '' ? null : String(args.turn)
+        const out = kernel.turn.abandon({ turn: wantTurn, why: args.why })
+        return Object.assign({ action: 'abandon' }, out)
+      }
       if (op === 'drive') return withClosure(await kernel.turn.drive({ members, rounds: args.rounds, phase: args.phase, why: args.why, nextStep: args.next_step, meeting: forMeetingArg, openedBy: openedByArg }))
-      return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: status, prompt, reply, step, drive, reopen-closure')
+      return refused('VMU_INVALID_ARGUMENT', 'unknown op: ' + op, 'known ops: status, prompt, reply, step, drive, abandon, reopen-closure')
     }
     // ★ PHASE 8 / round 36: SERIALIZE the tool calls. Root may issue several step calls in ONE assistant message (parallel
     // tool calls); the active-member hint is a per-step scalar, so parallel steps would overwrite each other and a member
@@ -480,7 +497,7 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
       // and a real "properties" object - the model (correctly) put its arguments INSIDE that object, so top-level keys like
       // tools:'none' never reached coreTurn. It is a param map now, exactly like every other tool.
       parameters: {
-        op: param('string', 'step＝一轮／drive＝连跑若干轮／reply＝汇报本回合（工具通道，首选）／status＝读数／prompt＝分页读回本进程交出的成员提示词原文（step 回执里的 memberPrompt 会被回执上限截断，这里不会）／reopen-closure＝开一个新的结题票窗口（旧票留档不再计数；只有所办能开，因为只有它知道所在问的是新问题）', { required: true }),
+        op: param('string', 'step＝一轮／drive＝连跑若干轮／reply＝汇报本回合（工具通道，首选）／status＝读数／prompt＝分页读回本进程交出的成员提示词原文（step 回执里的 memberPrompt 会被回执上限截断，这里不会）／abandon＝关掉正在进行、永远不会自己结算的那一轮（回执把它记成 status:abandoned，并释放重入锁；不名字＝关在途那一轮）／reopen-closure＝开一个新的结题票窗口（旧票留档不再计数；只有所办能开，因为只有它知道所在问的是新问题）', { required: true }),
         turn: param('string', '仅 prompt：要读哪一轮的提示词（省略＝最近一轮）'),
         offset: param('integer', '仅 prompt：从第几个字符开始（省略＝0）'),
         limit: param('integer', '仅 prompt：本页最多多少字符（省略＝6000，上限 9000；被夹到上限时回执 limitClamped:true）'),

@@ -1851,7 +1851,7 @@ async function toolFidelityConclude(args = {}, { kernel } = {}) {
  * PROBABILITY, not the card. The settlement is therefore a PATCH: rewrite the `p` line, replace any earlier ruling row
  * with THIS ruling, and leave every other line — and therefore the lock — exactly as it was.
  */
-function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallbackTitle }) {
+function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallbackTitle, p1Evidence = null }) {
   const got = records.get({ id })
   const row = got && got.record ? got.record : got
   if (!row) return undefined
@@ -1860,11 +1860,16 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
   const out = []
   let wroteP = false
   let droppedEarlierRuling = false
+  let droppedEarlierEvidence = false
   for (const line of lines) {
     if (/^- *p *[：:]/.test(line)) { out.push('- p：' + String(value)); wroteP = true; continue }
     // A card carries at most ONE ruling row: a second settlement REPLACES the earlier ruling instead of stacking a
     // second, contradicting probability history into the body.
     if (/^- *debateRuling *[：:]/.test(line)) { droppedEarlierRuling = true; continue }
+    // ★★ RUN 241 (FEEDBACK64 M9, MEASURED): a settlement receipt carried `p1Evidence:"debate-unanimous"` while the CARD
+    // carried no such line — the reader could only infer the evidence form from `debateRuling`. The form is a fact about
+    // WHY p=1 was accepted, so it lands as one card line; a re-settlement REPLACES it (one line, never a stack).
+    if (p1Evidence !== null && /^- *p1Evidence *[：:]/.test(line)) { droppedEarlierEvidence = true; continue }
     out.push(line)
   }
   if (!wroteP) out.push('- p：' + String(value))
@@ -1890,6 +1895,7 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
   if (rulingRow.subject === undefined) rulingRow.subject = id
   rulingRow.value = value
   out.push('- debateRuling：' + JSON.stringify(rulingRow))
+  if (p1Evidence !== null) out.push('- p1Evidence：' + String(p1Evidence))
   // ★★ RUN 155 (audit of c5d356b9, problem 3) — the reason this path uses `supersede`, HISTORICAL as of RUN 236:
   // that audit measured `put` REBUILDING the record (rev back to 1, a fresh createdAt, a re-minted slug, versions/tags
   // reset), so "every other card field was left exactly as it was" was false about the row a reader would inspect.
@@ -1922,9 +1928,12 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
     settlement: {
       patch: true,
       mode,
-      wrote: ['p', 'debateRuling'],
+      wrote: p1Evidence !== null ? ['p', 'debateRuling', 'p1Evidence'] : ['p', 'debateRuling'],
+      p1Evidence: p1Evidence !== null ? String(p1Evidence) : null,
+      p1EvidenceLine: p1Evidence !== null,
+      p1EvidenceReplaced: droppedEarlierEvidence,
       preserved: mode === 'supersede'
-        ? 'the card LINES: only the p row is rewritten and one debateRuling row is replaced; every other line (title, statement/value/motive, proofRef, proofState, leanJob, leanConformance) is byte-identical, and the record keeps its id/slug/createdAt while gaining one version entry — so the rule-L14 lock still bites'
+        ? 'the card LINES: only the p row is rewritten and one debateRuling row is replaced' + (p1Evidence !== null ? ' (plus the p1Evidence row, which names the evidence form that admitted p=1)' : '') + '; every other line (title, statement/value/motive, proofRef, proofState, leanJob, leanConformance) is byte-identical, and the record keeps its id/slug/createdAt while gaining one version entry — so the rule-L14 lock still bites'
         : 'the card LINES are preserved (only the p row is rewritten and one debateRuling row added/replaced), but this records face has no supersede(): the row was re-put, so its rev/createdAt/slug are rebuilt by the records face — read the card by id, not by slug or createdAt',
       record: { id: (wrote && wrote.id) || id, rev: (wrote && wrote.rev) || null, mode },
       // ★★ RUN 201 (run 40 / FEEDBACK39 2.4): a FIRST write of a card read settlement.record:{rev:2, mode:"supersede"} and
@@ -2313,7 +2322,7 @@ function gatedCardHandler(toolName) {
     if (existing !== null) {
       res = settleRulingOnCard({
         records, id: cardId, value: Number(rulingSettlement.value), ruling: rulingSettlement,
-        track, kind: cardKind, by, fallbackTitle: has(args.title) ? str(args.title) : null,
+        track, kind: cardKind, by, fallbackTitle: has(args.title) ? str(args.title) : null, p1Evidence: p1Form,
       })
       settlement = res && res.settlement ? res.settlement : null
     }
@@ -2324,7 +2333,7 @@ function gatedCardHandler(toolName) {
       // says the ruling was added as a patch afterwards)
       const patched = settleRulingOnCard({
         records, id: cardId, value: Number(rulingSettlement.value), ruling: rulingSettlement,
-        track, kind: cardKind, by, fallbackTitle: has(args.title) ? str(args.title) : null,
+        track, kind: cardKind, by, fallbackTitle: has(args.title) ? str(args.title) : null, p1Evidence: p1Form,
       })
       settlement = patched && patched.settlement ? patched.settlement : null
       if (settlement !== null) {

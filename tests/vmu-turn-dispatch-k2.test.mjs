@@ -99,7 +99,10 @@ console.log('=== 4. WIRING: THE M2 CATALOGUE REALLY LISTS vmu.turn ===')
     'and it was already published to the M4 registry (the two doors must agree: declared AND reachable)', {})
   const turnSrc = readFileSync(join(REPO, 'vibe-math-vmu', 'kernel', 'turn', 'index.js'), 'utf8')
   ok(/VMU_TURN_REENTRANT/.test(turnSrc), 'and the re-entrancy refusal is declared in the turn loop itself', {})
-  ok(/try \{ return await runOne\(spec\) \} finally \{ turnInFlight = false \}/.test(turnSrc),
+  // ★ RUN 241: the finally block now also stamps `turnInFlightSince = 0` and pumps the wake queue (see op:"abandon" and
+  // the queued wake), so the pin holds the INVARIANT - "the guard is cleared in a finally, before anything else" - rather
+  // than one exact one-liner. A throwing turn still cannot leave the loop wedged, and that is what this line is for.
+  ok(/try \{ return await runOne\(spec\) \} finally \{\s*turnInFlight = false/.test(turnSrc),
     'the guard is released in a finally block, so a THROWING turn cannot leave the loop wedged', {})
 }
 

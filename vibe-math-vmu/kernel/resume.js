@@ -738,7 +738,12 @@ export function createResume({ store = null, work = null, control = null, identi
           continue
         }
         hydrated.push({ key: k, hydrated: true, mode: 'state', items: Array.isArray(env.value) ? env.value.length : null,
-          restored: r && r.restored !== undefined ? r.restored : null, skipped: (r && Array.isArray(r.skipped)) ? r.skipped : [] })
+          restored: r && r.restored !== undefined ? r.restored : null, skipped: (r && Array.isArray(r.skipped)) ? r.skipped : [],
+          // ★★ RUN 241 (FEEDBACK64 M11): the roster restore keeps live seats the snapshot never carried, and that fact
+          // ("a recovery did not restore the roster into emptiness") used to stop at `members.restore`'s own receipt.
+          // It travels with the hydration entry so the recovery receipt can print it.
+          keptLive: Array.isArray(r && r.keptLive) ? r.keptLive.slice() : null,
+          keptLiveMeans: r && typeof r.keptLiveMeans === 'string' ? r.keptLiveMeans : null })
         continue
       }
       // A key written by SOMEBODY ELSE (e.g. `work.js` writes a bare array under `work`) is not a projection
@@ -1134,7 +1139,23 @@ export function createResume({ store = null, work = null, control = null, identi
     const h = await hydrate({})
     state.hydrated = h.hydrated
     state.unhydrated = h.unhydrated
-    report.steps.push({ step: 'ledgers', ok: h.ok, hydrated: h.hydrated, unhydrated: h.unhydrated })
+    // ★★ RUN 241 (FEEDBACK64 M12, MEASURED): a CLEAN first run reported `ok:false, code:"VMU_STATE", message:"the
+    // recovery did not fully succeed: ledgers, readback (…)"` while every hydrated row said "nothing was projected (a
+    // first run)" — which is NORMAL. The two facts are now separate: `nothingToRestore` names the keys that simply had
+    // nothing yet (it fails NOTHING), and `ok:false` is left to the things a human must act on (a restore conflict, a
+    // read-back drift). A reader no longer has to diff hydrated[] against the code to know which is which.
+    const nothingToRestore = h.hydrated.filter((x) => x && x.hydrated === false).map((x) => String(x.key))
+    const keptLive = h.hydrated.reduce((acc, x) => (x && Array.isArray(x.keptLive) ? acc.concat(x.keptLive) : acc), [])
+    const keptLiveMeans = h.hydrated.filter((x) => x && typeof x.keptLiveMeans === 'string').map((x) => x.keptLiveMeans).join(' | ')
+    report.nothingToRestore = nothingToRestore
+    report.nothingToRestoreMeans = nothingToRestore.length === 0
+      ? 'every declared ledger carried a projection this recovery could hydrate or replay'
+      : 'nothingToRestore names the ledgers that had NOTHING projected yet (a first run: ' + nothingToRestore.join(', ') + '). That is normal, not a failure — they fail no step and do not make ok:false; only `unhydrated` (a projection this recovery could NOT restore) and `readBack` drift ask a human to act'
+    report.keptLive = keptLive
+    report.keptLiveMeans = keptLiveMeans !== ''
+      ? keptLiveMeans
+      : 'no hydrated ledger reported live rows kept back (the `members` projection either restored every live seat or has no live seats)'
+    report.steps.push({ step: 'ledgers', ok: h.ok, hydrated: h.hydrated, unhydrated: h.unhydrated, nothingToRestore, keptLive })
 
     // ⑤ mailbox — the port may be an object with `pending()` or a bare function returning the entries.
     let mb = { attached: false, code: CODE.mailboxMissing, pending: null, ids: [] }

@@ -71,7 +71,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // persona capture. Real mechanism: kernel/turn/index.js:60 FIELD_OWNERS.formal -> vmu.formal op 'check'
     // (kernel/formal.js:109-176, requires statement + proof); meetings open with kind 'verify-request'.
     text: [
-      '【更正·形式化】旧说法 end_verify 与 formal_proof 在框架里不存在（旧措辞作废）。正式结论写进回合字段 formal:{decision,file,note}（dispatch 到 vmu.formal 的 check，需要 statement 与 proof）；需要集体裁决就开一场会议（vibe_v5_meeting，kind 可取 verify-request）。旧说法里「登记即直接落进 Verified/」也不对：落盘唯一写入口是 vibe_v5_verified_promote（需 warrant），别的工具不行。见到旧名按 formal 处理，不要调用 end_verify。',
+      '【更正·形式化】旧说法 end_verify 与 formal_proof 在框架里不存在（旧措辞作废）。正式结论写进回合字段 formal:{decision,file,note}（dispatch 到 vmu.formal 的 check，需要 statement 与 proof）；需要集体裁决就开一场会议：`vibe_v5_meeting` 流程由 `type` 定（ordinary/academic/debate/closure/paper/planning；辩论要 `subject`），`kind` 只是台账标签（如 verify-request），不选流程。旧说法里「登记即直接落进 Verified/」也不对：落盘唯一写入口是 vibe_v5_verified_promote（需 warrant），别的工具不行。见到旧名按 formal 处理，不要调用 end_verify。',
     ].join('\n'),
   }),
   Object.freeze({

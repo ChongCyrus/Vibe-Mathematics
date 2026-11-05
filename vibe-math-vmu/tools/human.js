@@ -400,12 +400,25 @@ export function makeHumanSpec({ param, refused, TOOL_NAMES, kernel }) {
           // step failed and what a reader can do about it — the report's own steps already carry the codes, and this face
           // is the only place a caller reads them.
           const out = Object.assign({ ok: report.ok !== false, action }, { plan, recovery: report })
+          // ★★ RUN 241 (FEEDBACK64 M11): the roster restore keeps live seats the snapshot never carried. That fact was
+          // on the kernel's restore receipt and on no face the human reads — so "a recovery did not restore the roster
+          // into emptiness" could only be established by reading the roster twice, around the call.
+          if (report.keptLive !== undefined) {
+            out.keptLive = report.keptLive
+            out.keptLiveMeans = report.keptLiveMeans
+          }
+          // ★★ RUN 241 (FEEDBACK64 M12): "nothing was projected (a first run)" is NORMAL and must not be counted with
+          // the failures. It is reported on its own and never flips `ok`.
+          if (report.nothingToRestore !== undefined) {
+            out.nothingToRestore = report.nothingToRestore
+            out.nothingToRestoreMeans = report.nothingToRestoreMeans
+          }
           if (report.ok === false) {
             const bad = (Array.isArray(report.steps) ? report.steps : []).filter((s) => s && s.ok === false)
             out.code = report.code || (bad[0] && bad[0].code) || 'VMU_STATE'
             out.message = 'the recovery did not fully succeed: ' + bad.map((s) => String(s.step) + (s.code ? ' (' + s.code + ')' : '')).join(', ')
               + (bad.length ? '' : ' (the report says ok:false but no step names itself — that is a bug in the report, not a clean recovery)')
-            out.hint = 'read `recovery.steps`: every step carries its own code and note, and `unhydrated` names each ledger that could not be restored. A step that failed is reported, never retried silently — fix the named precondition (a seam, a version, a lock) and run recover again'
+            out.hint = 'read `recovery.steps`: every step carries its own code and note, and `unhydrated` names each ledger that could not be restored. `nothingToRestore` is NOT one of these: it lists ledgers that had nothing projected yet (a first run). A step that failed is reported, never retried silently — fix the named precondition (a seam, a version, a lock) and run recover again'
             out.failedSteps = bad.map((s) => String(s.step))
           }
           return out

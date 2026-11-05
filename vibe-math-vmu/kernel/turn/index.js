@@ -2365,7 +2365,9 @@ export function createTurnOrchestrator({
     // `{ reply, childId, stopReason, attribution }` that `deliverViaSubagents` now produces. A bare string is accepted
     // and NAMED as unattributed - the loop never invents a child id or a stop reason.
     if (typeof delivered === 'string') {
-      lastAttribution = { childId: null, stopReason: null, deliveryPath: null,
+      lastAttribution = { member: turn && typeof turn.member === 'string' ? String(turn.member) : null,
+        turn: turn && typeof turn.id === 'string' ? String(turn.id) : null,
+        childId: null, stopReason: null, deliveryPath: null,
         attribution: 'the delivery adapter returned a bare string: no childId/stopReason (docs/26 §3.22)',
         // ★ TASK-13: a bare string carries no reading of its own, so the continuation reading is built from the offer
         // (what this kernel knew) and states that the seam said nothing — never that it "started fresh".
@@ -2379,7 +2381,11 @@ export function createTurnOrchestrator({
     // reply" would make the one route that needs no host Agent indistinguishable from a broken host. The awaiting
     // envelope therefore travels through UNCHANGED, and `run` returns it rather than parsing an empty answer.
     if (delivered && delivered.awaiting === true) {
-      lastAttribution = { childId: null, stopReason: null, deliveryPath: 'caller', attribution: 'the CALLING session plays this member turn (deliverByReturning): the assembled prompt was handed back, and the reply arrives on the next call' }
+      // ★ RUN 241 / M4: the caller-played route also delivered this turn to somebody - the member is named here for the
+      // same reason as in the envelope branch: a delivery record is a (member, turn) pair, stamped when it returns.
+      lastAttribution = { member: turn && typeof turn.member === 'string' ? String(turn.member) : null,
+        turn: turn && typeof turn.id === 'string' ? String(turn.id) : null,
+        childId: null, stopReason: null, deliveryPath: 'caller', attribution: 'the CALLING session plays this member turn (deliverByReturning): the assembled prompt was handed back, and the reply arrives on the next call' }
       return { awaiting: true, memberPrompt: (delivered && delivered.memberPrompt) || null, reply: null, deliveryPath: 'caller',
         // ★ E12 / task-19: the awaiting envelope names the meeting the prompt is bound to, on the envelope AND on the
         // held prompt, so "which meeting does this round belong to" is readable without a second call and survives
@@ -2400,6 +2406,13 @@ export function createTurnOrchestrator({
     // fallback at the dispatch site, so this only OVERRIDES when the seam really named one.
     lastReplyMeeting = delivered && typeof delivered.meeting === 'string' && delivered.meeting !== '' ? delivered.meeting : null
     lastAttribution = {
+      // ★★★ RUN 241 / FEEDBACK64 M4: A DELIVERY IS A PAIR (member, child), AND THE SLOT IS SINGLE. Run 64 read
+      // `lastAttribution.childId` naming r-acad's child while the same receipt called it r-1's most recent delivery: the
+      // member label was stamped when the DELIVERY STARTED (below, `lastAttributionMember = turn.member`) and the rest of
+      // the record when it FINISHED - so a turn whose seam never returned left half of one delivery beside the whole of an
+      // older one. Both facts are now written together, at the one moment they are both known: the seam returned.
+      member: turn && typeof turn.member === 'string' ? String(turn.member) : null,
+      turn: turn && typeof turn.id === 'string' ? String(turn.id) : null,
       // ★ ROUND 88: WHICH ROUTE DELIVERED, reported by the seam itself (host bridge or caller-played).
       deliveryPath: (delivered && delivered.deliveryPath) || null,
       childId: (delivered && delivered.childId) || null,
@@ -2617,6 +2630,15 @@ export function createTurnOrchestrator({
       // applied" and then never learned otherwise. The next three readings close that gap WITHOUT changing the write
       // semantics: WHEN the report is applied, WHAT happens if the fenced json of the same turn disagrees, and what
       // `counts.notExecuted` means for a reader who sees no matching skipped row.
+      // ★★★ RUN 241 (FEEDBACK64 M2, MEASURED): `countedLater` was TRUE and UNKEEPABLE in run 64 - the report landed, the turn
+      // it was counted into never settled, and every `step` was refused REENTRANT, so the receipt promised an event that
+      // could not happen and the caller had no door. It keeps its meaning (the record landed) and gains the door that closes
+      // a turn nobody can deliver, so a reader is never left retrying the same shape.
+      ifItNeverSettles: {
+        how: 'vibe_vmu_turn { op:"abandon", turn:"' + String(recorded.turnId || '<the open turn from op:"status" turnReceipts>') + '", why: "<the sentence you want on the ledger>" }',
+        then: 'that turn becomes status:"abandoned" with closedWith:"VMU_TURN_ABANDONED"; the loop lock is released, so the next op:"step" opens a real turn. Nothing is applied from an abandoned turn, and this report stays readable in turnReceipts',
+        means: 'a report can always be RECORDED; what it cannot do is settle a turn whose delivery never returned - and no receipt should imply otherwise (run 64 read `accepted:true` + `countedLater` as "it will be applied" and waited for a step that was refused forever)',
+      },
       appliedWhen: {
         at: isoStampOf(clock()),
         condition: 'when this held turn is applied: the next op:"step"/op:"drive" that completes it, or the moment the in-flight delivery returns - whichever settles the turn',
@@ -3874,15 +3896,129 @@ export function createTurnOrchestrator({
    * let the in-flight turn settle, then start the next one. SEQUENTIAL turns are completely unaffected - `drive()` and
    * `step()` call `run()` in a loop and pass through this wrapper one at a time.
    */
+  // ★★★★★★★ RUN 241 (FEEDBACK64 M1, MEASURED ON A REAL RUN): THE LOCK HAD NO OWNER, NO CLOCK AND NO DOOR.
+  // Run 64's `speak` fired a waiter; the wake called `drive()` from inside the speaker's own turn, so the turn it opened
+  // (t-2) was opened but never delivered (`counts:{opened:2,assembled:2,delivered:1}`), and this single boolean stayed
+  // true for the rest of the run: every later `step`/`meeting_round` answered VMU_TURN_REENTRANT, and NO face could
+  // release it (the office read `inflight.pending:0` from the durable fold while the loop insisted a turn was in flight
+  // - two faces denying each other). Three things are added here, one per sentence of that failure:
+  //   1. the lock knows WHO holds it and FOR HOW LONG (`turnInFlightSince`, `inFlightTurn`, both read by op:"status");
+  //   2. a turn in flight past `abandonAfterMs` is CLOSED BY NAME instead of refusing forever (and `op:"abandon"` closes
+  //      one immediately, which is the escape a caller has when a delivery seam never returns);
+  //   3. a wake never drives a round from inside another turn: it is QUEUED and runs when the loop is free.
   let turnInFlight = false
+  let turnInFlightSince = 0
+  // The deadline is the DEPLOYMENT's number, never this file's: `vmu.turn.abandonAfterMs` when a deployment sets it,
+  // otherwise the delivery deadline it already declared plus the grace this loop has always given a slow member
+  // (`vmu.turn.deliveryTimeoutMs`, default 180 s), floored at ten minutes so a fast deployment cannot close a turn that
+  // is merely thinking. A setting that cannot be read is the default, never zero (zero would mean "abandon instantly").
+  const ABANDON_AFTER_MS = (() => {
+    const explicit = Number(settingOf(settings, 'vmu.turn.abandonAfterMs'))
+    if (Number.isFinite(explicit) && explicit > 0) return explicit
+    const delivery = Number(settingOf(settings, 'vmu.turn.deliveryTimeoutMs'))
+    if (Number.isFinite(delivery) && delivery > 0) return Math.max(600000, delivery + 600000)
+    return 1800000
+  })()
+  const abandonments = []
+  const isBusy = () => turnInFlight === true || dispatchActive === true || dispatchQueue.length > 0
+  /**
+   * Close the turn that is IN FLIGHT, by name. This is the escape the run-64 lock did not have: a delivery seam that never
+   * returns (or a wake that opened a turn nobody can deliver) is a STATE THE LOOP CAN SEE, so it must be a state the loop
+   * can leave - otherwise one stuck delivery stops every seat in the institute for the rest of the run.
+   * What it does NOT do: apply anything. An abandoned turn applied nothing, and its row says so (`status:"abandoned"`,
+   * `closedWith:"VMU_TURN_ABANDONED"`); the report a caller filed against it stays readable in `turnReceipts`.
+   */
+  const abandonTurn = ({ turn = null, why = null } = {}) => {
+    const t = inFlightTurn
+    if (!t || typeof t !== 'object' || typeof t.id !== 'string') {
+      return { ok: true, abandoned: false, at: isoStampOf(clock()),
+        means: 'no turn is IN FLIGHT on this kernel, so there was nothing to close: an `open` row in op:"status" turnReceipts whose turn this call did not close belongs to a delivery that already returned (the row is bookkeeping) or to a turn opened by a SIBLING kernel, which this loop cannot close' }
+    }
+    const turnId = String(t.id)
+    if (turn !== null && turn !== undefined && String(turn).trim() !== '' && String(turn).trim() !== turnId) {
+      return { ok: true, abandoned: false, inFlight: turnId, named: String(turn).trim(), at: isoStampOf(clock()),
+        means: 'the turn you named is not the turn in flight, so nothing was closed; read op:"status" turnReceipts for the row whose status is still "open" and pass THAT id (the in-flight one is also named by op:"status" turnLoop.inFlightTurn)' }
+    }
+    const ageMs = turnInFlightSince > 0 ? Date.now() - turnInFlightSince : null
+    const theWhy = why === null || why === undefined || String(why).trim() === '' ? null : String(why).trim()
+    let receiptRow = null
+    try { noteTurnReceipt(t, { status: 'abandoned', code: 'VMU_TURN_ABANDONED' }) } catch (e) { /* the ledger must never veto the escape */ }
+    try { rememberSettledTurn(t, { fields: [], source: 'abandoned' }) } catch (e) { /* same */ }
+    try {
+      receiptRow = Array.from(turnReceipts.values()).find((r) => r && r.turn === turnId) || null
+    } catch (e) { receiptRow = null }
+    // A parked prompt belongs to the turn that was closed: a prompt nobody can answer must not be left holding the slot.
+    let clearedParked = false
+    try { if (deliver && typeof deliver.clear === 'function') { deliver.clear(); clearedParked = true } } catch (e) { clearedParked = false }
+    inFlightTurn = null
+    turnInFlight = false
+    turnInFlightSince = 0
+    // A wake that arrived while the closed turn held the loop is still waiting: the lock just became free, so the
+    // queue gets its turn now. Without this the queued wake would wait for the stuck delivery to return - which is
+    // the very thing that never happened in run 64.
+    void pumpWakeQueue()
+    const row = { turn: turnId, member: t.member || null, openedBy: t.openedBy || null, meeting: t.meeting || null, ageMs, why: theWhy, clearedParked, at: isoStampOf(clock()) }
+    abandonments.push(row)
+    if (abandonments.length > 20) abandonments.shift()
+    return { ok: true, abandoned: true, turn: turnId, member: t.member || null, openedBy: t.openedBy || null, meeting: t.meeting || null, ageMs,
+      closedWith: 'VMU_TURN_ABANDONED', clearedParked, why: theWhy, turnRow: receiptRow,
+      means: 'this turn is CLOSED, not completed: the loop lock is released and the next op:"step"/op:"drive" opens a real turn. Nothing was applied - an abandoned turn has no outcome; anything a caller reported against it stays readable in op:"status" turnReceipts (status "abandoned", closedWith "VMU_TURN_ABANDONED")' }
+  }
+  // ★ A wake that fires while the loop is busy is QUEUED, never driven: opening a turn from inside another turn is what
+  // left run 64's t-2 open forever. The waiter stays on the ledger; the queue runs as soon as the loop is free.
+  const wakeQueue = []
+  let wakePumpActive = false
+  let wakeQueueSeq = 0
+  const pumpWakeQueue = async () => {
+    if (wakePumpActive) return
+    wakePumpActive = true
+    try {
+      while (wakeQueue.length > 0) {
+        if (isBusy()) break
+        const item = wakeQueue.shift()
+        let ran = false
+        let error = null
+        try {
+          await drive({ members: [item.member], rounds: 1, why: item.why, meeting: item.meeting, openedBy: 'wait' })
+          ran = true
+        } catch (e) { error = String((e && e.message) || e) }
+        try { item.settle({ ok: error === null, queued: true, ran, member: item.member, meeting: item.meeting, error }) } catch (e) { /* a settled promise must never break the pump */ }
+      }
+    } finally { wakePumpActive = false }
+  }
+  const queueWake = (spec = {}) => {
+    const member = spec && typeof spec.member === 'string' && spec.member.trim() !== '' ? spec.member.trim() : ''
+    if (member === '') return { ok: false, error: 'a queued wake names no member' }
+    wakeQueueSeq += 1
+    const id = 'wq-' + wakeQueueSeq
+    let settle = () => {}
+    const promise = new Promise((resolve) => { settle = (v) => resolve(v) })
+    wakeQueue.push({ id, member, meeting: (spec && spec.meeting) || null, why: (spec && spec.why) || null, at: Date.now(), settle })
+    const depth = wakeQueue.length
+    void pumpWakeQueue()
+    return { ok: true, queued: true, id, member, meeting: (spec && spec.meeting) || null, depth, promise,
+      means: 'the loop was BUSY (a turn is in flight or dispatch is running), so this wake was QUEUED instead of opening a round inside somebody else\'s turn - which is exactly what left run 64\'s t-2 open forever. It runs as soon as the loop is free; the turn it opens carries openedBy:"wait" and the meeting it was born in' }
+  }
   const run = async (spec) => {
     if (turnInFlight) {
-      throw refuse('VMU_TURN_REENTRANT',
-        'a turn is already in progress, so this run() would nest inside it',
-        'the loop keeps ONE turn at a time (attribution, the member reply slot and the notice queue are single-turn state); call run() again after the in-flight turn settles - drive()/step() already do this for you')
+      const ageMs = turnInFlightSince > 0 ? Date.now() - turnInFlightSince : null
+      // (2) A LOCK PAST ITS DEADLINE IS A STUCK TURN, NOT A BUSY ONE: close it BY NAME and let this call proceed.
+      if (ageMs !== null && ageMs >= ABANDON_AFTER_MS) {
+        abandonTurn({ why: 'the turn in flight (' + String(inFlightTurn && inFlightTurn.id) + ') had held the loop for ' + String(ageMs) + ' ms, past abandonAfterMs (' + String(ABANDON_AFTER_MS) + '), and no delivery returned: the loop closed it by name so the institute is not held hostage by one turn' })
+      } else {
+        throw refuse('VMU_TURN_REENTRANT',
+          'a turn is already in progress, so this run() would nest inside it' + (ageMs === null ? '' : ' (that turn has been in flight for ' + String(ageMs) + ' ms; it is closed by name once it passes ' + String(ABANDON_AFTER_MS) + ' ms)'),
+          'the loop keeps ONE turn at a time (attribution, the member reply slot and the notice queue are single-turn state); call run() again after the in-flight turn settles - drive()/step() already do this for you. REACHABLE INSTEAD: `vibe_vmu_turn { op:"abandon" }` closes a turn whose delivery seam never returned (op:"status" turnLoop names the in-flight turn and how long it has held the lock)')
+      }
     }
     turnInFlight = true
-    try { return await runOne(spec) } finally { turnInFlight = false }
+    turnInFlightSince = Date.now()
+    try { return await runOne(spec) } finally {
+      turnInFlight = false
+      turnInFlightSince = 0
+      // (3) the queue runs exactly here: the turn that was holding the loop has settled.
+      try { void pumpWakeQueue() } catch (e) { /* a queued wake must never break a settled turn */ }
+    }
   }
 
   /**
@@ -4601,6 +4737,9 @@ export function createTurnOrchestrator({
     memberTurnCount: (memberId) => { let n = 0; for (const t of turns.values()) if (String(t.member) === String(memberId)) n++; return n },
     open, assemble, deliver: deliverTurn, parse, plan, apply, run, nextTurn, drive, step,
     dispatch, whenIdle, dispatchStatus,
+    // ★★★ RUN 241: the escape and the queue (see abandonTurn / queueWake above). `abandon` closes the in-flight turn by
+    // name; `isBusy` lets a wake seam ask BEFORE it decides to drive; `queueWake` is the honest answer when it is busy.
+    abandon: abandonTurn, isBusy, queueWake, wakeQueueDepth: () => wakeQueue.length, turnLoop: () => ({ inFlight: turnInFlight === true, inFlightTurn: inFlightTurn && typeof inFlightTurn.id === 'string' ? inFlightTurn.id : null, inFlightMember: inFlightTurn && typeof inFlightTurn.member === 'string' ? inFlightTurn.member : null, inFlightOpenedBy: inFlightTurn && typeof inFlightTurn.openedBy === 'string' ? inFlightTurn.openedBy : null, inFlightMeeting: inFlightTurn && typeof inFlightTurn.meeting === 'string' ? inFlightTurn.meeting : null, inFlightForMs: turnInFlightSince > 0 ? Date.now() - turnInFlightSince : null, abandonAfterMs: ABANDON_AFTER_MS, turnInFlightMeans: 'inFlight is the LOOP\'s one-turn lock, not a promise about the durable ledgers: a second kernel over the same workspace answers inFlight:false while this one is busy, and `human.recover` reports inflight.pending from the DURABLE side (run 64 read pending:0 while a turn was stuck here - both readings were true). The in-flight turn names itself and its age; `vibe_vmu_turn { op:"abandon" }` closes it by name and releases the lock.', wakeQueue: wakeQueue.map((w) => ({ id: w.id, member: w.member, meeting: w.meeting, queuedForMs: Date.now() - w.at })), wakeQueueMeans: 'a wake that fires while the loop is BUSY waits here instead of opening a round inside another turn; the queue is pumped when that turn settles or is abandoned, and the turn it opens carries openedBy:"wait" plus the meeting the wake was born in', recentAbandonments: abandonments.slice() }),
     // ★★★ ROUND 73: THE CALLER-PLAYED TURN. When the injected seam is `deliverByReturning`, the assembled prompt
     // travels back to the caller and the member's reply arrives through this verb. A seam without `supply` refuses by
     // name rather than dropping the reply, because silently discarding an answer is the one outcome this phase has
@@ -4709,7 +4848,7 @@ export function createTurnOrchestrator({
       // asking "who did the last turn go to?" got counts and a per-member wake tally and nothing about the SLOT.
       // Named `slot:'single'` and said in `attributionMeans`, because a reader who assumes per-member history will
       // misread the one record that exists as if it were the latest of many.
-      lastAttribution: Object.assign({}, lastAttribution, { slot: 'single', member: lastAttributionMember }),
+      lastAttribution: Object.assign({}, lastAttribution, { slot: 'single', member: (lastAttribution && typeof lastAttribution.member === 'string' ? lastAttribution.member : lastAttributionMember), slotMeans: 'lastAttribution describes the LAST DELIVERY THAT RETURNED, and its member/turn/childId are stamped together when that delivery returns - so a turn whose seam is still in flight is NOT described here (read op:"status" turnLoop for the turn that is holding the lock, and turnReceipts for every turn this kernel opened)' }),
       attributionMeans: 'the turn engine keeps ONE attribution slot: lastAttribution describes the MOST RECENT delivery only, not every member\'s last turn. Per-member history is not retained here - `woken` and `counts` are tallies, and `memberSessions` maps a member to the child session that played its last turn',
       memberSessions: Object.fromEntries(memberSessions),
       // ★★★ ROUND 240 (FEEDBACK63 ①4/①9): THE PER-TURN LEDGER THE OFFICE COULD NOT READ. `turns` above is a COUNT; this is
@@ -4718,6 +4857,21 @@ export function createTurnOrchestrator({
       // a legacy/unknown caller), the reply fields that executed and through which face.op, the fields skipped with their
       // named codes, the writes the turn produced, and the refusal codes it carried. `unavailable` names what this kernel
       // CANNOT see (a member's tool calls inside an independent child session) instead of leaving a silent hole.
+      // ★★★ RUN 241 (FEEDBACK64 M1): TWO READINGS THAT WOULD HAVE SHOWN run 64's LOCK IN ONE CALL. `turnReceipts` showed a row
+      // stuck at status:"open" and NOTHING said the loop itself was holding it; `vibe_vmu_human recover` read the durable
+      // fold and reported `inflight.pending:0`, so the two faces denied each other. `turnLoop` states the loop's own fact:
+      // who holds the lock, for how long, when it will be closed by name, and whether a wake is waiting for a free turn.
+      turnLoop: { inFlight: turnInFlight === true,
+        inFlightTurn: inFlightTurn && typeof inFlightTurn.id === 'string' ? inFlightTurn.id : null,
+        inFlightMember: inFlightTurn && typeof inFlightTurn.member === 'string' ? inFlightTurn.member : null,
+        inFlightOpenedBy: inFlightTurn ? (inFlightTurn.openedBy || null) : null,
+        inFlightForMs: turnInFlightSince > 0 ? Date.now() - turnInFlightSince : null,
+        abandonAfterMs: ABANDON_AFTER_MS,
+        abandonsImmediately: 'vibe_vmu_turn { op:"abandon" }',
+        wakeQueue: wakeQueue.map((w) => ({ id: w.id, member: w.member, meeting: w.meeting, queuedForMs: Date.now() - w.at })),
+        wakeQueueMeans: 'a wake that fired while the loop was busy waits here (it is never driven from inside another turn): it runs the moment the in-flight turn settles',
+        recentAbandonments: abandonments.slice() },
+      turnLoopMeans: 'THIS IS THE LOOP\'S OWN FACT, not a copy of the durable fold: `inFlight` true means one turn is holding the single-turn slot right now, `inFlightForMs` says for how long, and past `abandonAfterMs` this loop closes that turn BY NAME (or immediately with op:"abandon"). A reader who sees inFlight:true while the durable fold says nothing is pending is looking at exactly the run-64 contradiction - the fix is op:"abandon", not a retry',
       turnReceiptsMeans: 'HOST BOOKKEEPING, not the member\'s intent: this list records what the TURN LOOP observed while settling a turn (fields dispatched, fields skipped + code, writes with ids, refusal codes). It does not restate what the member meant, and a member that ran tools in its own child session can have done more than the row shows - `unavailable` names that gap. Rows are bounded to the last ' + TURN_RECEIPT_CAP + ' turns; `turn` is the t-<n> id, `openedBy` says which door opened it (drive/activation/wait/null).',
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING. Sixty-one meetings ran with no way to see that the one
       // field which closes the institute had never been emitted. `missing` names WHO, because silence is what blocks

@@ -16874,3 +16874,112 @@ G（被拒回执的 message 不带归属）**本轮不改**：`VMU_NOT_MEMBER` �
 **教训：写代码片段时，「方括号紧跟圆括号」在任何文档里都会被当成链接——要么改写成不构成链接的形状，要么写清楚它不是路径。**
 
 **收口。** 干净树冷全量 `/d/_tmp/t1-r3440-run240e.log` = **`TOTAL 760 PASS 760 FAIL 0 (suites 680 · probes 80)`**（前置一次 758/2：`tests/audit-doc-index.test.mjs` 与 `tests/audit-declaration-criterion.test.mjs`，两红都是本轮新写的文档/断言自己撞判据，按判据改，没有放宽任何一条检查）；`regen-all --check` 17/17 in sync；`PREFLIGHT` / `DOC LINT` / `RULES COVERAGE` / `RULE PARITY` 四门禁全 PASS；`scripts/sim/audit/all.mjs` = **PASS（0 failure / 0 warning）**。
+
+## §338 · RUN 241 — 锁、唤醒、一个槽放两次交付，与提示词的结构账
+
+### 338.1 账从哪来（第 64 次真机，基线 `b1f7de9d`）
+主线结题：`paper-oddsum-64` → PDF **76 213 字节**（`finalPdfRecordId:"rec-19"`、复排 `rec-20`）。
+反馈清单分三类：① **12 条机制缺陷 M1–M12**；② **9 条任务书缺陷 P1–P9**；③ **18 条正面确认**（按设计工作）。
+本轮修的是其中最伤人的五条：M1、M3、M4、M5、M6。
+
+### 338.2 M1：一把没有名字、没有时间、没有出口的锁
+真机形状：`t-2`（`member:"r-1"`、`openedBy:"wait"`、`meeting:null`）自 16:11:02 起 `status:"open"`，
+`counts:{opened:2,assembled:2,delivered:1,dispatched:0}`、`dispatch.inFlight:0`；此后一切 `op:"step"` 与
+`vibe_v5_meeting_round` 均回 `VMU_TURN_REENTRANT`，而 `vibe_vmu_human {action:"recover"}` 报 `inflight.pending:0` ——
+**两个面互相否认，研究所从此开不出任何回合**。
+根因：`vibe-math-vmu/kernel/turn/index.js` 的重入闸是一个裸布尔 `let turnInFlight = false` ——
+没有持有者、没有起点、没有任何面能释放它；而那一轮的 `openedBy` 又是
+`"wait"`，即一次被事件叫醒的传输。
+修法（四件，都在 `kernel/turn/index.js` / `kernel/index.js` / `tools/turn.js` / `settings/schema.js`）：
+1. **锁自报**：`turnInFlightSince` + `status().turnLoop = { inFlight, inFlightTurn, inFlightMember, inFlightOpenedBy,
+   inFlightForMs, abandonAfterMs, wakeQueue, recentAbandonments }`，`turnInFlightMeans` 明写「这是循环的单回合锁，
+   不是耐久账；另一个内核同工作区会读 `inFlight:false`」——正是为了解释 run 64 那个「两个面都真」。
+2. **出口**：`op:"abandon"`（参数 `turn` 可选、`why` 建议必填）→ `abandonTurn()`。它把那一行改成
+   `status:"abandoned"` + `codes:["VMU_TURN_ABANDONED"]`，`rememberSettledTurn`，清 `deliver` 与三个锁，再 `pumpWakeQueue()`。
+   名字不对不关（`{ok:true,abandoned:false}`）——不会误关别人的回合。
+3. **自动兑现**：在途超过 `vmu.turn.abandonAfterMs`（新设置，默认按
+   `deliveryTimeoutMs + 10 min`、不低于 10 min）则**先弃后跑**；未超时的重入拒绝现在只字
+   带在途毫秒与截止时间，并把 `REACHABLE INSTEAD: vibe_vmu_turn { op:"abandon" }` 写进 hint。
+4. **唤醒不抢锁**：`isBusy()` + `queueWake()` + `pumpWakeQueue()`。循环忙时唤醒排队（`wq-N`），
+   回合结束时自动派发；因此一次唤醒不会抢占其他人的正在行的回合。
+回执上同时诚实：`op:"reply"` 的 `countedLater` 旁边多了 `ifItNeverSettles{how,then,means}`——
+「报告总能被记下；它不能的是结算一个传输永不返回的回合」，并给出那扇门。
+
+### 338.3 M3：被叫醒的那一轮，忘了自己是哪场会叫醒的
+`turnReceipts` 里 `openedBy:"wait"` 但 `meeting:null`，而那个等待者 `w-1` 正挂在 `m1` 上。
+修法：`kernel/index.js` 的兜底唤醒先算 `wakeMeeting = note.meeting`（非空字符串才取），
+再 `loop.drive({ …, openedBy: 'wait', meeting: wakeMeeting })`。同时 `queueWake({member, meeting, why})` 把它带进队列行。
+
+### 338.4 M4：一个槽放了两次交付的两半
+同一份 `op:"status"` 里 `lastAttribution.childId` 指向 r-acad 的子会话，却被读成 r-1 的最近交付。
+根因：`lastAttributionMember` 在**交付开始时**写入，`lastAttribution` 其余字段在**交付返回后**写入；
+于是一个永不返回的传输把「新交付的名字」留在了「旧交付的全体」旁边。
+修法：三处赋值（信封分支、裸字符串分支 `:2368`、caller 分支 `:2382`）都把 `member` 与 `turn`
+与 `childId` **同一时刻、同一块写**（都是传输返回那一刻）；`status()` 读**被铉的** `member`，
+并发 `slotMeans`：「`lastAttribution` 说的是最后一次**真的返回了**的交付；还在飞的那一轮不在这里（去看
+`turnLoop` 与 `turnReceipts`）」。测试 §6a–§6d 钉住：一个永不返回的回合**不能覆盖**那个槽。
+
+### 338.5 M5：两个计数说不出「为什么是空的」
+`narrowing.{identityFaceVisible:1, expectedAllowed:20}` 并列时，一个装错的可见性提供者与一个真正排除一切的策略
+长得一模一样，而修法完全不同。修法（`packs/v5r/meeting-tool-face.js`）：空交行多带
+`visibleSample`（前 8 个可见名）、`allowSample`（前 8 个允许名）与 `why`（两种句子二选一：
+「这个部署对该席位暂示的身份面几乎是空的…是可见性提供者的接线缺口」或
+「两套名字说不上话」）。
+
+### 338.6 M6：一个键同时回答两个问题
+`memberActed:false` 在 r-acad 的第一回合被读成「席位没干活」，而那一回合确实跑在它自己的子会话里
+（`deliveryPath:"activation"`、write `rec-2`）。修法（`vibe-math-vmu/host-pack-tools.js`）：拆成
+`callerIsSeat`（这次调用是否从该席自己的会话发出）与
+`ranInOwnTurn`（`out.turnDelivered === true || callerIsSeat`），各自带 means。`memberActed` 保留（兼容），
+但它现在只回答第一个问题。
+
+### 338.7 提示词：结构账与内容账（两个 lane）
+**结构（task-51）**：normal 字数 chair 32442→30860（−1582）、member 26315→25932、temp 23433→23194；
+chair/temp 比 1.385→**1.331**（目标 ≤1.25 未达，再压就要删 chair 独有教学，判断不该做）；
+空节 14/12/8→**12 组合全 0**；精确重复句 28→26（剩下的被既有套件逐字铉住，判据改成
+「unexplained=0、pinned 具名计数」）；新增 `scripts/sim/audit/prompt-budget.mjs`（六判据，两个 mutant 都 DETECTED）。
+**内容（task-52）**：`docs/acceptance/sim-audit-prompts.md` 共 28 条（A 会诱发错调用 8 / B 矛盾 2 / C 时机位置 5 /
+D 冗长重复 8 / E 缺失 5），**13 条与 93 条台账措辞直接冲突**。TOP5 全是会让模型调错工具的：
+`v5r-turn-resources` 渲染出「本回合工具调用不超过 0 次」；`v5r-verify-core` 三方止步且把 `(unspecified)` 原样写进提示词；
+leaderless 四段在院士已就座时仍写「本所当前没有在册院士」。已拆成 task-54 先修 6 条。
+
+**内容第一批（task-54，六条落盘后的实测）**：A1 工具预算不再渲染出「不超过 0 次」（改成「上限 = N 次 / 阈值 = N MB，
+0 表示不限制/不监测」）；A2/A3 `verdict` 与 `poll_vote` 的分工写清楚了（裁决＝表决票，`poll_vote` 只在院士另开选项板时用），
+`(unspecified)` 占位 9→0；B1 leaderless 段在院士已就座时不再说「没有在册院士」（24→0）；A4 `v5r-verify-formal-addendum`
+改成真形参 `kind/name/file/statement` + `formal:{decision,file,note}`（旧 `target` 之类的 legacy 写法 3→0）；A5 `v5r-fix-formal`
+说清流程由 `type` 决定、`kind` 只是台账标签（12→0）。
+**代价与净账**：内容修复要加字，所以 task-51 瘦下来的字数回涨了一些。落盘后实测（`node scripts/sim/audit/prompt-sections.mjs`
+的 `collect()`）：chair 31065/35729/31216/34829、member 26137/28340/26288/30193、temp 23436/25347/23587/27541
+（相位顺序 normal/meeting/checkpoint/verify），**12 组合空节全 0**，chair÷temp（normal）**1.326**（基线 1.385）。
+净效果：normal 主席比基线少 **1377 字**，而三处会让模型调错工具的句子没有了——这一步是拿字数换正确性，值得。
+
+### 338.8 机器化与门禁
+- `tests/vmu-run241-turn-lock.test.mjs` **49/0**（§0 十九条源码 pin；§1 锁自报；§2 卡死→拒→abandon→开新回合；
+  §3 超时自动弃旧；§4 唤醒排队并在结算后真跑、行带 `openedBy:"wait"`+`meeting:"m1"`；§5 face 面；§6 M4。）
+- `tests/vmu-wave2-meeting-face-narrowing.test.mjs` **38/0**（新增 M5 两条）；`tests/vmu-meeting-type-tools.test.mjs` 53/0。
+- 定向批 `/d/_tmp/r241-batch1.sh` = **60/0**（含 `vmu-run240-wait-opener` 的 §0a pin 改为「带 meeting 的那一句」）。
+- `tests/vmu-run241-prompt-budget.test.mjs` **24/0**、`tests/vmu-run241-receipts2.test.mjs` **54/0**、
+  `tests/vmu-run153-real-run-fixes.test.mjs` **53/0**（§0c 从「两元素 `wrote` 字面量」改成守不变式：结算只补丁 p 行、
+  裁决行、以及有证据时的 `p1Evidence` 行，绝不重建 body）、`tests/vmu-turn-dispatch-k2.test.mjs` 10/0、
+  `tests/vmu-turn.test.mjs` 272/0；`node tests/audit-declaration-criterion.test.mjs` = **91/0**。
+- 机器化审计 `node scripts/sim/audit/all.mjs` = **AUDIT: PASS — 0 failure(s), 0 warning(s)**（规则 93/93；动作 218/225；
+  保真 69 工具 0 缺口；19 条声明 42 键；报告 `D:/_tmp/sim/AUDIT.md`）。
+- 干净冷全量 T1（`GATE_RELEASE=1 node tests/run-tests.mjs`，763 作业、并发 3）：
+  **第一轮 `/d/_tmp/t1-r3600-run241.log` = `TOTAL 763 PASS 761 FAIL 2`**，两红都是**本轮自己新写的断言撞判据**，
+  按判据改（没有放宽任何检查）：
+  1. `tests/vmu-run153-real-run-fixes.test.mjs` §0c 钉着 `wrote: ['p', 'debateRuling']` 这个两元素字面量，而 M7 让结算
+     多写一行 `- p1Evidence：`（源码是 `wrote: p1Evidence !== null ? ['p','debateRuling','p1Evidence'] : [...]`）。**这不是放宽**：
+     pin 改成守那条一直存在的不变式（结算只补丁那几行、绝不重建 body），并在注释里点名这次为什么会多一行。
+  2. `tests/audit-declaration-criterion.test.mjs` 抓到本轮新写的两处**空对空**：`vmu-run241-receipts2.test.mjs:194/:202`
+     的 `JSON.stringify(gotKept) === JSON.stringify(expectedKept)`（两个空集合恒等，RULE E 形状 B）与
+     `vmu-run241-prompt-budget.test.mjs` 的 `combos.every(...)`/`analysis.timing.every(...)`（空集合恒真，RULE A 形状）。
+     前者加非空前置；**后者不能加非空前置**——第二次 recover 之后席位已全部持久化，`keptLive` 为空才是对的，
+     所以改成**数比较**（`gotKept2.length === expectedKept2.length && 交集长度 === expectedKept2.length`），
+     它仍然会红（多报一席或漏报一席都会不等），但不可能空对空。
+  **第二轮 `/d/_tmp/t1-r3610-run241b.log` = `TOTAL 763 PASS 763 FAIL 0 (suites 683 · probes 80)`**。
+
+### 338.9 三条教训
+1. **锁必须能被当事人读到、必须会自己断开、必须有一个面能放手。** 没有这三件的锁，在一个多智能体系统里等于一次永久熔断。
+2. **「接受」与「应用」之间必须写出路径，并且路径上的每一步都得有一个真能走的出口。** `countedLater` 说了「下一步」，而下一步永远被拒，
+   那句话就是一个诚实的谎言。
+3. **一个字段只回答一个问题；一个槽只放一次交付。** run 64 的 M4/M6 都是同一个错误的两个面。

@@ -2350,7 +2350,22 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
           // the turn it opens was opened because an event the member WAITED FOR happened, so the ledger row must say
           // `openedBy:"wait"` — otherwise `op:"status"` reports it as `drive`, and the office cannot tell a turn it
           // started from one that started itself. The tool face already accepts `opened_by`, so the word has a door too.
-          const p = loop.drive({ members: [target], rounds: 1, why: ask, openedBy: 'wait' })
+          // ★★★ RUN 241 (FEEDBACK64 M1/M3, MEASURED ON RUN 64): A WAKE MUST NOT DRIVE A ROUND FROM INSIDE SOMEBODY ELSE'S TURN.
+          // `speak` fired a waiter, the wake called drive() while the speaker's own turn was still in flight, and the turn it
+          // opened (t-2) never got a delivery: `counts:{opened:2,assembled:2,delivered:1,dispatched:0}` with the lock held for
+          // the rest of the run (every later step answered VMU_TURN_REENTRANT). The loop now QUEUES a wake while it is busy and
+          // runs it as soon as it is free. The meeting the waiter was born in also travels (run 64's row said `meeting:null`
+          // for a wake that came from m1, so the ledger could not tie the turn to the meeting that caused it).
+          const wakeMeeting = (note && typeof note.meeting === 'string' && note.meeting.trim() !== '') ? note.meeting.trim() : null
+          if (typeof loop.isBusy === 'function' && loop.isBusy() === true && typeof loop.queueWake === 'function') {
+            const q = loop.queueWake({ member: target, meeting: wakeMeeting, why: ask })
+            if (q && q.ok === true && q.promise && typeof q.promise.then === 'function') {
+              return { ok: true, pending: true, promise: q.promise, queued: true,
+                means: 'the turn loop was BUSY when this wake fired, so the wake is QUEUED rather than driving a round inside somebody else\'s turn; it runs the moment that turn settles, and the turn it opens carries openedBy:"wait" and meeting:' + String(wakeMeeting) }
+            }
+            if (q && q.ok === false) return { ok: false, error: String(q.error || 'the turn loop refused to queue this wake') }
+          }
+          const p = loop.drive({ members: [target], rounds: 1, why: ask, openedBy: 'wait', meeting: wakeMeeting })
           // A rejected drive must reach the waiter's settle handler, never the process: the settle path is what turns
           // `pending` into `delivered:false` with a real reason.
           const safe = p && typeof p.then === 'function' ? p.catch((e2) => ({ ok: false, error: String((e2 && e2.message) || e2) })) : p

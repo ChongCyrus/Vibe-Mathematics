@@ -18,9 +18,9 @@ import { KIT_LEAN, KIT_TASKS } from './extras.js'
  * `kitCardHandler(name)`; the pack will later read the same table instead of carrying a second copy.
  */
 export const KIT_CARD_CONFIG = Object.freeze({
-  vibe_v5_record_proposition: Object.freeze({ tool: 'vibe_v5_record_proposition', track: 'propositions', kind: 'proposition', required: ['statement', 'value', 'motive', 'p'], extra: ['title', 'id'], title: 'proposition' }),
+  vibe_v5_record_proposition: Object.freeze({ tool: 'vibe_v5_record_proposition', track: 'propositions', kind: 'proposition', required: ['statement', 'value', 'motive', 'p'], extra: ['title'], title: 'proposition' }),
   vibe_v5_record_method: Object.freeze({ tool: 'vibe_v5_record_method', track: 'methods', kind: 'method', required: ['content', 'value', 'motive', 'p'], extra: ['title', 'type', 'notation'], title: 'method' }),
-  vibe_v5_record_subproblem: Object.freeze({ tool: 'vibe_v5_record_subproblem', track: 'problems', kind: 'subproblem', required: ['statement', 'value', 'motive', 'p'], extra: ['title', 'id'], title: 'subproblem' }),
+  vibe_v5_record_subproblem: Object.freeze({ tool: 'vibe_v5_record_subproblem', track: 'problems', kind: 'subproblem', required: ['statement', 'value', 'motive', 'p'], extra: ['title'], title: 'subproblem' }),
 })
 
 /** The one handler factory for the card family (an unknown name is the caller's bug, not a silent no-op). */

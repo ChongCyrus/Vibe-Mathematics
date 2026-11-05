@@ -57,8 +57,8 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       shared: [
         '【资源】本机可能资源紧张，请自觉控本回合开销：',
         '  · 并发：框架每轮最多同时唤醒 {{ setting:vmu.turn.maxParallel }} 名成员（`vmu.turn.maxParallel`，是**唤醒人数**不是算力并发）；引擎/计算侧并发上限是 `vmu.math.maxParallel`（默认 1，**所办可设**），超限具名拒。**不要**为了提速一次性铺开大量子代理。',
-        '  · 工具预算：**本回合工具调用不超过 {{ setting:vmu.turn.toolCallsPerTurnCap }} 次**。',
-        '  · 自监测：内存接近 {{ setting:vmu.turn.memoryCeilingMb }} MB 时**先让出**：停新子代理、走轻量路径、把任务切小，并在回执里写明"因资源让出、剩余工作是什么"。',
+        '  · 工具预算：本回合工具调用上限 = {{ setting:vmu.turn.toolCallsPerTurnCap }} 次（`vmu.turn.toolCallsPerTurnCap`，由所办设置；0 表示不额外限制）——该用就用，别为省次数跳过必要的读取与核对。',
+        '  · 自监测：内存阈值 = {{ setting:vmu.turn.memoryCeilingMb }} MB（0 表示不监测），接近它时**先让出**：停新子代理、走轻量路径、把任务切小，并在回执里写明"因资源让出、剩余工作是什么"。',
         '  · 取舍：**正确性优先于产出量**；紧张时宁可少做一步并说明，也不要冒险拖垮本机（OOM 会丢掉全部未落盘工作）。',
       ].join('\n'),
     },
@@ -351,11 +351,14 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 808,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       verify: [
-        '若你本轮做了形式化或给出难度判断，请用 `vibe_v5_lean_archive` 归档：参数 target、kind、',
-        'file、note 表达同一件事（used = 归档通过的形式化；blocked = `kind:"assumption"` 并把难点',
-        '写进 note；defect = 在 note 里写明具体偏差）。不要用 JSON 回复块表达形式化结论。',
+        '若你本轮做了形式化，用 `vibe_v5_lean_archive` 归档那份 .lean 文件：`kind` 取 def | lemma | proof | blocked（定理用 proof），`name` 必填，`file` 给文件路径，',
+        '`statement` 写它形式化的命题原文（`target` 只是 statement 的旧别名，别再用）。难度与结论写进回合字段 `formal:{decision,file,note}`：decision 取 used | blocked | defect，',
+        'blocked 在 note 里写难点（这也是定论门禁认可的显式阻塞），defect 在 note 里写明具体偏差——不要另用 JSON 回复块表达形式化结论。',
       ].join('\n'),
     },
   },
@@ -365,6 +368,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 809,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       verify: [
         '【Lean 形式化验证（鼓励模式）】',
@@ -408,6 +414,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 819,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       verify: [
         '你可以维持、修改或反驳任何人的看法。',
@@ -448,6 +457,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 817,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['founding']) }),
     texts: {
       founding: [
         '你是本所的一名成员（席位见身份段）；请先独立研判这个问题：它的关键困难在哪？应当拆成哪几块工作？你打算如何组织全所（谁适合做什么、先做什么）？',
@@ -466,6 +478,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 815,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       verify: [
         'vibe_v5_lean_run hint (green): 通过。若是某个对象的证明，请用 vibe_v5_lean_archive kind=\'proof\' 归档（会写入 Verified/Lean/ 并把审查对象变成忠实性）；若是可复用定义/引理，用 kind=\'def\'/\'lemma\' 归档到全局库。',
@@ -483,6 +498,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 816,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       verify: [
         '· **本模式要求**：必须产出 Lean 形式化，或**必须**给出显式的阻塞原因——用',
@@ -498,6 +516,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 810,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['paper-write']) }),
     texts: {
       'paper-write': [
         ...LATEX_ENGINE_NOTE,
@@ -526,6 +547,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 811,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['paper-review']) }),
     texts: {
       'paper-review': [
         '【最终论文·互审 —— {{ role }} {{ member }}】',
@@ -564,6 +588,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 813,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['paper-final']) }),
     texts: {
       'paper-final': [
         ...LATEX_ENGINE_NOTE,
@@ -596,6 +623,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 814,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['resume']) }),
     texts: {
       resume: [
         '【会话重建 —— {{ roleLabel }} {{ member }}】',
@@ -624,6 +654,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 806,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['heartbeat']) }),
     texts: {
       heartbeat: [
         '【心跳检查 —— {{ roleLabel }} {{ member }}】',
@@ -663,12 +696,17 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 805,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
+    // RUN 241-B / task-54: the object id and its kind arrive through the turn frame; the section no longer embeds
+    // vmu.turn.verifyTarget / verifyKindLabel, because an unset setting used to print "(unspecified)" verbatim.
     texts: {
       verify: [
-        '【求真表决 —— {{ roleLabel }} {{ member }} 就对象 {{ setting:vmu.turn.verifyTarget }} 投票】',
+        '【求真表决 —— {{ roleLabel }} {{ member }}】',
         '',
         '本所正在对下列对象发起共识验证：',
-        '  对象：{{ setting:vmu.turn.verifyTarget }}（类型：{{ setting:vmu.turn.verifyKindLabel }}）',
+        '  对象 id 与类型以本轮帧或状态块为准（投票时把它填进 `target`）。',
         '',
         '请给出你**诚实独立的判断**：',
         '  verdict = 1  表示你认为该对象**绝对为真**；',
@@ -686,8 +724,8 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '**计票规则（不得误解）**：只有投票通道产生票；**表决期内的发言不改变任何票**；',
         '**沉默不是同意，也不是反对**——未表态会**阻塞结题**（未表态名单会被列出），绝不会被折算为赞成或反对。',
         '',
-        '结束时请用 `vibe_v5_verdict` 给出你的独立复核（一个概率值 + 理由），其中的对象是',
-        '`{{ setting:vmu.turn.verifyTarget }}`；表决票走 `vibe_v5_poll_vote`（票权按席位判，临时工没有表决权）；回执里的 `verdict` 没有可用形状、投递前就被具名跳过——所以投票只有一个入口：工具。',
+        '结束时请用 `vibe_v5_verdict` 给出你的独立复核：`target` = 本轮验证对象的 id、`verdict` = 一个概率值、`reason` = 理由、`member` = 你（投票权按席位判，临时工没有表决权）；',
+        '**这张 verdict 就是表决票**；`vibe_v5_poll_vote` 只用于院士另开的选项投票板（辩论本身不用投票板）。回执里的 `verdict` 没有可用形状、投递前就被具名跳过——所以投票只有一个入口：工具。',
       ].join('\n'),
     },
   },
@@ -702,6 +740,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     order: 764,
     range: 'pack',
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['meeting']) }),
     texts: {
       // The name must NOT start with `v5r-meeting-`: that prefix is the namespace of the four mutually exclusive speaker
   // states, and a test asserts there are exactly four because the exclusivity IS the mechanism. The agenda is not a
@@ -778,8 +819,15 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     // second copy. tests/vmu-prompt-type-coverage.test.mjs re-measures that the corpus lines still reach their
     // buckets after the change, and tests/vmu-turn.test.mjs T99 measures the ordinary-round budget.
     kind: 'phase',
+    // ★ RUN 241-A: declared phase gate — this text only exists for its own phase, so it must not be
+    // assembled (as an EMPTY heading) in the four audited phases. Text unchanged; the gate is data.
+    scope: Object.freeze({ phase: Object.freeze(['meeting']) }),
     texts: {
       meeting: [
+        // ★ RUN 241-A: this research line is a CROSS-PHASE carry, not a duplicate: `v5r-turn-ask` renders it in
+        // `normal` but renders a DIFFERENT text in `meeting`, so the meeting round needs it here (the type-coverage
+        // gate counts it as meeting prose; deleting it here leaves two corpus lines unreproduced). The audit's
+        // duplicate list therefore carries it as `cross-phase`: no single assembly sees it twice.
         '请推进你的研究：思考、读同事的成果库、做推导或验证尝试，并按价值把有价值的',
         '结论写进你自己的成果库。然后决定要不要发消息、提议开会、提议验证。',
         '',
@@ -852,10 +900,36 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     },
   },
   {
+    name: 'v5r-turn-convene',
+    order: 828,
+    range: 'pack',
+    kind: 'role',
+    // ★ RUN 241-A: the chair's meeting MANUAL (order 831, gated to `meeting` below) is only actionable once a meeting
+    // exists. A REGULAR round still needs the convening contract, and that is this section: `at` offsets, `sequence`,
+    // `lateAdmission`, `durationMs` — facts the chair's `vibe_v5_meeting` bullet line does not spell out — plus, for the
+    // other seats, what an invitation obliges them to do. Phase-gated AWAY from meeting/verify so it does not repeat
+    // the manual where the manual is present.
+    scope: Object.freeze({ phase: Object.freeze(['founding', 'normal', 'checkpoint', 'heartbeat', 'resume', 'paper-write', 'paper-review', 'paper-final']) }),
+    texts: {
+      academician: [
+        '【召集与预约（非会议回合）】`vibe_v5_meeting { type, agenda, at?, sequence?, lateAdmission?, durationMs? }`：只有 chair 能召集/关闭（其它席位具名拒 `VMU_NOT_PERMITTED`）。`at` 给 epoch ms／ISO-8601／相对偏移（如 "+120s"）即预约；一旦成立 `status`/`summary` 立刻可读、开始前的治理动作被具名拒；`sequence` 逐场召集（回执给 `sequence.index/total/next`）；`durationMs` 定墙钟上界（回执 `wallLimitMs`）；迟到入席看每会 `lateAdmission`（`refuse` ⇒ `VMU_LATE_ADMISSION_REFUSED`）。邀请≠签到：被邀者仍须自己 `attend`。会中手册见会议回合。',
+      ].join('\n'),
+      researcher: [
+        '【参会与预约（非会议回合）】你会收到 `meeting-invitation` 耐久邮件：邀请≠签到，须自己 `attend` 才计法定人数；预约会在 `at` 到点前只许座位登记，治理动作被具名拒。会议类型与迟到入席规则见会议回合。',
+      ].join('\n'),
+      temp: [
+        '【参会与预约（非会议回合）】临时工席位不参会（`attend` 被具名拒），无表决权；受邀发言走群聊。会议类型与会中动作见会议回合。',
+      ].join('\n'),
+    },
+  },
+  {
     name: 'v5r-turn-meeting-schedule',
     order: 831,
     range: 'pack',
     kind: 'role',
+    // ★ RUN 241-A: phase-gated — the manual is only actionable once a meeting exists. A regular round reads
+    // `v5r-turn-convene` (order 828) instead; the manual keeps the in-meeting protocol.
+    scope: Object.freeze({ phase: Object.freeze(['meeting']) }),
     texts: {
       academician: [
         '【开会与预约：按事件时机的顺序（你的手册）】会议类型六种：`ordinary`｜`academic`｜`debate`（**必须**给 `subject`）｜`closure`｜`paper`｜`planning`；`sync` 不是会议类型；动议 kind 为 topic/procedural/resolution；**可用的命令随类型与身份不同**。辩论须先给 `subject`，结题/辩论表决用 `vote_solved`，论文交流走 `vibe_v5_paper`，临时工无表决权；上面这些动词只是常用手段，不是穷举。**会议进行中的一切内容、控制、活动都由你的命令决定**——但每个成员的动作（发言、投票、签到）仍由成员自己在其回合做完，你编排的是顺序与时机。',

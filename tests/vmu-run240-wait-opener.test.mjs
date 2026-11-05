@@ -42,8 +42,11 @@ try {
   // ── 0. SOURCE PINS: the label has ONE producer on the wake path, and no producer that drops it ──────────────
   {
     const src = await readFile(join(HERE, '..', 'vibe-math-vmu', 'kernel', 'index.js'), 'utf8')
-    ok(/loop\.drive\(\{ members: \[target\], rounds: 1, why: ask, openedBy: 'wait' \}\)/.test(src),
-      '§0a the FALLBACK wake transport names its door: the drive it opens passes openedBy:"wait"')
+    // ★ RUN 241: the transport now also carries the MEETING the waiter was born in (run 64 opened a woken turn with
+    // meeting null while its waiter hung on m1), and the wake is queued when the loop is busy. The invariant this pin
+    // exists for is unchanged: the wake drive NAMES its door.
+    ok(/loop\.drive\(\{ members: \[target\], rounds: 1, why: ask, openedBy: 'wait', meeting: wakeMeeting \}\)/.test(src),
+      '§0a the FALLBACK wake transport names its door: the drive it opens passes openedBy:"wait" (and RUN 241 adds its meeting)')
     ok(!/loop\.drive\(\{ members: \[target\], rounds: 1, why: ask \}\)/.test(src),
       '§0b and it is not ALSO still called without the label (one call site, one wording)')
   }

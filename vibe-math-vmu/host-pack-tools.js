@@ -316,7 +316,15 @@ export function discloseActOnSeat(kernel = null, exec = null, args = null, out =
   }
   const actedBySeat = caller !== null && caller === namedMember
   return Object.assign({}, out, {
+    // ★★★ RUN 241 / FEEDBACK64 M6: `memberActed` answered TWO questions with one key - "did this call run from that
+    // seat?" and "did the seat do the thing in its own turn?" - and run 64 read `memberActed:false` on r-acad's first
+    // turn, which had in fact run in r-acad's own child session (deliveryPath:"activation", write rec-2). Both questions
+    // are now asked separately, so a reader never has to guess which one a false answers.
     memberActed: actedBySeat,
+    callerIsSeat: actedBySeat,
+    callerIsSeatMeans: 'this key answers ONE question: did this call run from the named seat and its own session? It does not say whether the seat carried the act out - that is what a delivered turn (turnReceipts, deliveryPath) answers',
+    ranInOwnTurn: out.turnDelivered === true || actedBySeat,
+    ranInOwnTurnMeans: 'true when this call ran from the seat own session, or when the kernel reported that a turn for this seat was actually DELIVERED and returned (out.turnDelivered) - the two facts that one key used to conflate',
     actedForMember: namedMember,
     callerMember: caller === null ? null : caller,
     memberActedMeans: actedBySeat
