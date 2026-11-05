@@ -18,7 +18,7 @@ import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 // Run: node tests/accept-c-orphan.test.mjs
 // 输出同时逐行写入 tests/_accept-out/c.txt（真实原始输出）。
 // ============================================================
-import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, copyFileSync, openSync, closeSync, statSync } from 'node:fs'
+import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, copyFileSync, openSync, closeSync, statSync, rmSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -53,9 +53,16 @@ const sleep = async (ms) => {
   await new Promise(resolve => setTimeout(resolve, virtualTime === null ? ms : 0))
 }
 
+// Every scratch root this gate mints is registered here and removed on exit: this suite runs in the
+// DEFAULT sweep, so a leftover directory would be paid by the next person (RUN 238 hygiene).
+const SCRATCH_ROOTS = []
+const scratch = (prefix) => { const d = mkdtempSync(join(tmpdir(), prefix)); SCRATCH_ROOTS.push(d); return d }
+process.on('exit', () => {
+  for (const d of SCRATCH_ROOTS) { try { rmSync(d, { recursive: true, force: true }) } catch (e) { /* best effort: a leftover scratch dir must never fail the gate */ } }
+})
 // round-7/9 isolation copied from tests/legacy/e2e-v5-round2.test.mjs: a real engine probe would be
 // recorded as a compiler call. Pin every discovery root at an empty dir BEFORE importing.
-const EMPTY_ENGINE_ROOT = mkdtempSync(join(tmpdir(), 'vibe-acc-c-nodsh-'))
+const EMPTY_ENGINE_ROOT = scratch('vibe-acc-c-nodsh-')
 process.env.DSH_HOME = EMPTY_ENGINE_ROOT
 process.env.ProgramFiles = EMPTY_ENGINE_ROOT
 process.env['ProgramFiles(x86)'] = EMPTY_ENGINE_ROOT
@@ -87,7 +94,7 @@ function makeSession(id, parentSession) {
 /** A fresh host+plugin instance over a workspace (a fresh temp dir by default). */
 function makeHost(opts) {
   const o = opts || {}
-  const WS = o.ws || mkdtempSync(join(tmpdir(), 'vibe-acc-c-'))
+  const WS = o.ws || scratch('vibe-acc-c-')
   const listeners = {}, toolRegs = [], commandRegs = [], spawns = [], wakes = [], interrupts = [], drains = [], sendAttempts = []
   let wakeSends = 0
   // verifier-c addition 1: every successful send, in ORDER, never drained.
@@ -335,7 +342,7 @@ const CONTROL_REF = process.env.ACCEPT_C_CONTROL || ''
 
 function extractHeadBaseline() {
   const srcDir = legacyDir('vibe-math-v5')
-  const dir = mkdtempSync(join(tmpdir(), 'v5head-acc-c-'))
+  const dir = scratch('v5head-acc-c-')
   for (const f of ['math-computation.js', 'math-engines.js']) copyFileSync(join(srcDir, f), join(dir, f))
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }) + '\n', 'utf8')
   const target = join(dir, 'vibe-math-v5.js')
@@ -678,7 +685,7 @@ log('repo: ' + REPO)
 
 const NEW_PATH = process.env.V5_PLUGIN ? String(process.env.V5_PLUGIN) : join(legacyDir('vibe-math-v5'), 'vibe-math-v5.js')
 
-const revTmp = join(mkdtempSync(join(tmpdir(), 'v5rev-')), 'rev.txt')
+const revTmp = join(scratch('v5rev-'), 'rev.txt')
 gitToFile(['rev-parse', 'HEAD'], revTmp)
 const headRev = existsSync(revTmp) ? readFileSync(revTmp, 'utf8').trim() : '(unknown)'
 const statusTmp = join(dirname(revTmp), 'status.txt')

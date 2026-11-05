@@ -16655,6 +16655,19 @@ G（被拒回执的 message 不带归属）**本轮不改**：`VMU_NOT_MEMBER` �
   `audit-rule-coverage.test.mjs`（钉着 `--check` 必拒未完成台账，RUN 237 已改为默认 warn）、
   `vmu-run229-blocked-by.test.mjs`（因 create 回执新增 `revision` 而走上 stale 检查）、
   `vmu-run225c-office-substitution.test.mjs`（钉着草案写文件的 sha）；三处均改到新合同（ 23/0、31/0、29/0）。
+### 335.5 临时目录卫生（用户当面发现的垃圾）
+
+- 现象：`D:\_tmp` 里出现大量非 vmu 的目录。查账：`vibe-v3/v4/v5-lean-*`（316 个，全部
+  mtime 11-04 22:15）来自**一次**为量存档代价而开的 `GATE_LEGACY=1` 扫描（那次 50 分钟）；
+  `vibe-acc-c-*`/`v5head-acc-c-*`/`v5rev-*` 来自 `tests/accept-c-orphan.test.mjs`（**在默认作用域**的共享层验收门禁，
+  把归档预设当数据读）；`vibe-gate-tex-sandbox-*` 来自 `tests/run-tests.mjs`（已有 exit 清理，
+  残留只在被 kill 的扫描上）。默认 743/746 作业里没有任何归档行为套件。
+- 修法：`tests/accept-c-orphan.test.mjs` 改用 `scratch(prefix)` 登记每个临时根，`process.on('exit')`
+  逐个 `rmSync`（best effort：残留临时目录不能让门禁失败）；实测该门禁 56/0 且留下 0 个目录。
+- 清理：删 382 个归档/验收预缀目录 + 1486 个 2 小时前的临时目录（87.6 MB），`D:\_tmp` 适配器目录
+  1851 → 365；`C:\...\Temp` 上一轮已删 19 531 项。`slv-phase5/`、`sim/`、`node-compile-cache/`、
+  `gate-mutant-cache/` 保留。
+
 ### 335.4 三条教训
 
 1. **「唯一真相」这句话必须点名「哪一刻的真相」。** 同一份文档在草案期与生效期承担两个不同的角色，
