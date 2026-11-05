@@ -104,12 +104,21 @@ let office = null
     'the means sentence says it is the seat\'s own act', own && own.memberActedMeans)
 }
 
-// ── §3 a name that is not a seat gets no substitution fields (the face refuses it on its own terms) ──────────────
+// ── §3 a name that is not a seat is NOT dressed up as a substitution ───────────────────────────────────────────
 {
-  console.log('\n=== §3 a name that is not on the roster is not dressed up as a substitution ===')
+  console.log('\n=== §3 a name that is not on the roster answers `memberActed:null` (refused, and honest about it) ===')
   const ghost = await call('vibe_v5_record_proposition', { statement: '某命题', value: 1, motive: '不该成立', member: 'r-999' })
   ok(ghost && ghost.ok === false, 'a name outside the roster is refused (or reported), not silently accepted', ghost)
-  ok(ghost && ghost.memberActed === undefined, 'no memberActed is invented for a seat that does not exist', ghost)
+  // ★ RUN 236 / M2 修 pin：旧断言是 `memberActed === undefined`（「不存在的人一律不发三件套」）。
+  // 那个世界下的沉默是**有歧义**的：读回执的人分不清「没人被点名」和「这个座位没动」。现在的约定：
+  // 只要这一次**点了名**，拒绝回执就必须回答「谁试过」——名字不在名册时答案 `memberActed:null`
+  // （「这个名字不指向一个座位」，不是「那个座位没做」），`actedForMember` 原样保留被点的名字。
+  ok(ghost && ghost.memberActed === null,
+    '★ a ghost name now answers `memberActed:null` — refused, and never readable as "the seat did/did not act"', ghost && ghost.memberActed)
+  ok(ghost && ghost.actedForMember === 'r-999',
+    '★ the name that was tried is kept verbatim (an audit needs the name, even when it is not a seat)', ghost && ghost.actedForMember)
+  ok(ghost && typeof ghost.memberActedMeans === 'string' && ghost.memberActedMeans.indexOf('not a seat on the roster') !== -1,
+    '★ and the sentence says why the answer is null instead of false', ghost && ghost.memberActedMeans)
 }
 
 // ── §4 the `read` receipt carries the md/index comparison (`state` did; `read` used to drop it) ───────────────────

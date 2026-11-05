@@ -136,13 +136,26 @@ export const BLUEPRINT_STATUSES = Object.freeze(['draft', 'current'])
  * `lastStaleSeenAt` were APPENDED by the B4/B5 mechanisms: old fields keep their name and position, so every row written
  * before this revision still parses, and a new row is a superset of the old shape.
  */
-export const BLUEPRINT_FIELDS = Object.freeze(['path', 'status', 'revision', 'proposedBy', 'proposedAt', 'adoptedBy', 'adoptedAt', 'proposalId', 'note', 'authors', 'lastStaleSeenAt', 'mdFingerprint'])
+export const BLUEPRINT_FIELDS = Object.freeze(['path', 'status', 'revision', 'proposedBy', 'proposedAt', 'adoptedBy', 'adoptedAt', 'proposalId', 'note', 'authors', 'lastStaleSeenAt', 'mdFingerprint', 'outline', 'revisionReason'])
 /** ★ RUN 225-A: the header field that holds the sha256 of the md this row was indexed from (last position: a row written
  *  before the md face has no such field and still parses — the superset rule this file already follows for authors). */
 export const BLUEPRINT_MD_KEY = 'mdFingerprint'
 /** ★ RUN 225-A: the md format NAME this pack reports in its md receipts (the file marker itself is the records face's
  *  `vmuMd：vmu-md/1`: one document shape, every row that carries a document). */
 export const BLUEPRINT_MD_FORMAT = 'vmu-blueprint-md/1'
+/** ★ RUN 236 — G8「由粗到细」: an OPTIONAL ordered outline (`[{id,title,depth}]`, depth 1 = coarse, 2 = finer). It lives
+ *  in the SAME header-field mechanism as `authors`, so it travels with the revision and through `reindex` — no second
+ *  store, and a reader never has to reconcile an outline with a text. Attached at the END of the field order (append-only
+ *  rule: an older row has no such field and still parses). */
+export const BLUEPRINT_OUTLINE_KEY = 'outline'
+/** ★ RUN 236 — G11「据实践细化并更新对象」: an OPTIONAL one-line reason for THIS revision, stored in the header (and the
+ *  md) instead of only in a conversation, so "why the revision exists" is readable from the document itself. */
+export const BLUEPRINT_REASON_KEY = 'revisionReason'
+/** The DECLARED setting that asks for an outline (`settings/schema.js`, default FALSE). It is a HINT, never a gate: the
+ *  write still lands, the receipt says `outlineRequired: true` and names the missing structure. */
+export const BLUEPRINT_OUTLINE_REQUIRE_KEY = 'vmu.blueprint.requireOutline'
+/** The outline depths this mechanism knows (1 = coarse, 2 = fine). A depth outside this set is REPORTED, not guessed. */
+export const BLUEPRINT_OUTLINE_DEPTHS = Object.freeze([1, 2])
 
 /** The section that holds the blueprint text itself. ONE such marker per row; it is a START marker, not a boundary. */
 export const BLUEPRINT_TEXT_SECTION = '正文'
@@ -318,6 +331,111 @@ function parseAuthorsField(value) {
   return { authors, problems }
 }
 
+/** ONE line, always: a header field is `- key：value`, so a value that carries a newline would invent header lines. The
+ *  reason keeps its words, only the line breaks collapse (`\\s+` → one space). */
+function oneLine(value) {
+  return txt(value).replace(/\s+/g, ' ')
+}
+
+/** Serialize an outline as ONE JSON line (the same shape `authors` uses: one field, one line, no second store). */
+function serializeOutline(outline) {
+  const list = (Array.isArray(outline) ? outline : [])
+    .filter((e) => e && txt(e.id) !== '')
+    .map((e) => {
+      const depth = Number(e.depth)
+      return { id: txt(e.id), title: txt(e.title), depth: Number.isInteger(depth) ? depth : 1 }
+    })
+  return list.length === 0 ? '' : JSON.stringify(list)
+}
+
+/**
+ * ★ RUN 236 — read an outline, TOLERANTLY and REPORTING. `null`/`''` is "this revision carried no outline" (an empty
+ * list, `provided: false`), NOT a problem; a malformed value is `problems` (the read-out reports it, `propose` refuses it
+ * by name before writing). An entry without `id` or with a depth outside `BLUEPRINT_OUTLINE_DEPTHS` is DROPPED from the
+ * parsed list and named in `problems` — a half-read outline must never look like the caller's whole outline.
+ */
+function parseOutlineField(value) {
+  let parsed = value
+  if (value === null || value === undefined || typeof value === 'string') {
+    const raw = txt(value)
+    if (raw === '') return { outline: [], problems: [], provided: false }
+    try { parsed = JSON.parse(raw) } catch (e) { return { outline: [], problems: ['outline is not valid JSON: ' + raw.slice(0, 120)], provided: true } }
+  }
+  if (!Array.isArray(parsed)) return { outline: [], problems: ['outline is not a JSON array: ' + txt(parsed).slice(0, 120)], provided: true }
+  const outline = []
+  const problems = []
+  for (const item of parsed) {
+    if (!item || typeof item !== 'object') { problems.push('an outline entry is not an object'); continue }
+    const id = txt(item.id)
+    if (id === '') { problems.push('an outline entry has no id'); continue }
+    const depth = Number(item.depth)
+    if (!Number.isInteger(depth) || !BLUEPRINT_OUTLINE_DEPTHS.includes(depth)) {
+      problems.push('outline entry ' + id + ' has depth "' + txt(item.depth) + '", not one of ' + BLUEPRINT_OUTLINE_DEPTHS.join('|'))
+      continue
+    }
+    outline.push({ id, title: txt(item.title), depth })
+  }
+  return { outline, problems, provided: true }
+}
+
+/**
+ * ★ RUN 236 — the G8 reading a receipt prints. Absent is EXPLICIT (`[]` + `outlineCount: 0` + a means that says the
+ * structure was optional), never omitted: a reader must be able to tell "no outline" from "the receipt forgot to ask".
+ * `outlineRequired` is the deployment's ASK (`vmu.blueprint.requireOutline`), and it is a HINT: the receipt says the
+ * structure is missing, the write still landed.
+ */
+export function outlineReading({ outline = null, requireOutline = false, source = 'request' } = {}) {
+  const list = (Array.isArray(outline) ? outline : []).map((e) => ({ id: txt(e && e.id), title: txt(e && e.title), depth: Number.isInteger(e && e.depth) ? e.depth : 1 }))
+  const required = requireOutline === true
+  const depthMax = list.reduce((max, e) => Math.max(max, e.depth), 0)
+  return {
+    outline: list,
+    outlineCount: list.length,
+    outlineDepthMax: depthMax,
+    outlineSource: list.length === 0 ? 'none' : source,
+    outlineRequired: required && list.length === 0,
+    outlineRequiredSource: required ? BLUEPRINT_OUTLINE_REQUIRE_KEY : null,
+    outlineMeans: list.length === 0
+      ? (required
+        ? '这台部署打开了 ' + BLUEPRINT_OUTLINE_REQUIRE_KEY + '（默认关闭），但这次修订没有带 outline：不拒绝——该设置是提示不是门——状态写成空表并在这里点名，让缺结构成为可读的事实'
+        : '这次修订没有带 outline：G8 的「由粗到细」是可选载体，缺失不是错误；于是 outline 写成空表而不是省略（省略会让读面分不清「没有」与「没说」）')
+      : 'outline 是有序的 [{id,title,depth}]（depth 1=粗 2=细，共 ' + String(depthMax) + ' 层）：它是这一版的骨架，随行与 md 的同名字段一起走，不是第二份正文',
+    outlineRequiredMeans: required
+      ? (list.length === 0
+        ? '部署设置 ' + BLUEPRINT_OUTLINE_REQUIRE_KEY + ' = true 且这一版没有 outline：提示已给出，写入没有被拒绝（设置默认关闭，规则 G8 的载体不靠硬门）'
+        : '部署设置 ' + BLUEPRINT_OUTLINE_REQUIRE_KEY + ' = true，这一版已带 outline，提示不再触发')
+      : '部署设置 ' + BLUEPRINT_OUTLINE_REQUIRE_KEY + ' 为默认值（关闭）：outline 只是可选载体，回执不因此拒绝也不伪装成要求',
+  }
+}
+
+/** ★ RUN 236 — the G11 reading: the reason THIS revision exists, and WHERE it came from (`request` | `draft` | `none`).
+ *  A revision with no reason is `null` + a sentence saying so — never a silent empty string. */
+export function revisionReasonReading({ revisionReason = '', source = 'none' } = {}) {
+  const reason = oneLine(revisionReason)
+  return {
+    revisionReason: reason === '' ? null : reason,
+    revisionReasonSource: reason === '' ? 'none' : source,
+    revisionReasonMeans: reason === ''
+      ? '这次修订没有记录理由（revisionReason 缺省，草案里也没有）：G11 的「据实践细化」因此没有可读原文——读面明确写 null，而不是留一个空字符串让人以为是没打印出来'
+      : (source === 'draft'
+        ? '这条理由是从被落成的草案继承来的（revisionReasonSource:"draft"）：落成不改写文档，只把草案表头里的理由带到生效行，所以「为什么改」不会随落成丢失'
+        : (source === 'row'
+          ? '这条理由是从这一版的行与 md 里读出来的（revisionReasonSource:"row"）：读面如实报告存量原文，不是这次调用刚写的——要改它就再提一版并给出新理由'
+          : '这条理由是本次调用给出的（revisionReasonSource:"request"）：它随这一版写进行与 md，读面与历史都能读到原文')),
+  }
+}
+
+/**
+ * ★ RUN 236 — the ONLY reader of the declared `requireOutline` knob inside the pack. The tool layer resolves the setting
+ * (a view with `.get(key)` or a plain value map) and hands the answer to `propose`/`adopt`; this function exists so the
+ * declared key has a NAMED reader instead of a literal only the schema knows. Default: false (the declared default).
+ */
+export function outlineRequireOf(settings = null) {
+  if (settings === null || settings === undefined) return false
+  const raw = typeof settings.get === 'function' ? settings.get(BLUEPRINT_OUTLINE_REQUIRE_KEY) : settings[BLUEPRINT_OUTLINE_REQUIRE_KEY]
+  return raw === true || raw === 'true'
+}
+
 /**
  * Compose a blueprint ROW body: header fields (in `BLUEPRINT_FIELDS` order) + ONE `## 正文` marker + the text VERBATIM.
  * The marker comes last and reads "to the end" (`blueprintTextOf`), so the user's own `## ` headings stay content; the
@@ -330,6 +448,10 @@ export function composeBlueprintBody(row = {}) {
     let value = ''
     if (key === 'proposedAt' || key === 'adoptedAt' || key === 'lastStaleSeenAt') value = timeText(row[key])
     else if (key === 'authors') value = typeof row.authors === 'string' ? txt(row.authors) : serializeAuthors(row.authors)
+    // ★ RUN 236: both new fields are ONE header line: an outline is JSON (the `authors` shape), a reason is prose whose
+    // line breaks are collapsed, so neither can invent header lines of its own.
+    else if (key === BLUEPRINT_OUTLINE_KEY) value = typeof row[BLUEPRINT_OUTLINE_KEY] === 'string' ? txt(row[BLUEPRINT_OUTLINE_KEY]) : serializeOutline(row[BLUEPRINT_OUTLINE_KEY])
+    else if (key === BLUEPRINT_REASON_KEY) value = oneLine(row[BLUEPRINT_REASON_KEY])
     else value = txt(row[key])
     if (value === '') continue
     lines.push('- ' + key + SEP + value)
@@ -349,6 +471,7 @@ export function composeBlueprintBody(row = {}) {
 export function blueprintMdHeaderOf({
   path = '', status = '', revision = null, proposedBy = '', proposedAt = null,
   adoptedBy = '', adoptedAt = null, proposalId = '', note = '', authors = null,
+  outline = null, revisionReason = '',
 } = {}) {
   const fields = {}
   const put = (key, value) => { const s = txt(value); if (s !== '') fields[key] = s }
@@ -362,6 +485,10 @@ export function blueprintMdHeaderOf({
   put('proposalId', proposalId)
   put('note', note)
   put('authors', typeof authors === 'string' ? txt(authors) : serializeAuthors(authors))
+  // ★ RUN 236: the two optional revision facts travel to the md header too — the file is the truth, so an outline only the
+  // row knew would be the same "two documents" defect RUN 225-A removed. Empty values are omitted (the put rule).
+  put(BLUEPRINT_OUTLINE_KEY, typeof outline === 'string' ? txt(outline) : serializeOutline(outline))
+  put(BLUEPRINT_REASON_KEY, oneLine(revisionReason))
   return fields
 }
 
@@ -483,6 +610,10 @@ export function parseBlueprint(row) {
   // parser cuts at every inner `## ` line, which silently amputated adopted blueprints in run 36 (4134 B → 939 B).
   const text = blueprintTextOf(row.body)
   const authorsParsed = parseAuthorsField(fields.authors)
+  // ★ RUN 236: the two optional revision facts are READ here (so `state`/`read`/`listBlueprints` all see them without a
+  // second path), and a malformed outline is a `problem` — the row still parses, the defect is named.
+  const outlineParsed = parseOutlineField(fields[BLUEPRINT_OUTLINE_KEY])
+  const revisionReason = oneLine(fields[BLUEPRINT_REASON_KEY])
   const problems = []
   if (String(row.track || '') !== BLUEPRINT_TRACK) problems.push('track is ' + String(row.track || '(none)') + ', not ' + BLUEPRINT_TRACK)
   if (String(row.kind || '') !== BLUEPRINT_KIND) problems.push('kind is ' + String(row.kind || '(none)') + ', not ' + BLUEPRINT_KIND)
@@ -493,7 +624,8 @@ export function parseBlueprint(row) {
   if (!Number.isInteger(revision) || revision <= 0) problems.push('revision "' + txt(fields.revision) + '" is not a positive integer')
   if (txt(fields.path) === '') problems.push('path is empty')
   problems.push(...authorsParsed.problems)
-  return { ok: problems.length === 0, id, fields, status, revision, text, authors: authorsParsed.authors, lastStaleSeenAt: msOf(fields.lastStaleSeenAt), problems, malformed: parsed.malformed || [] }
+  problems.push(...outlineParsed.problems)
+  return { ok: problems.length === 0, id, fields, status, revision, text, authors: authorsParsed.authors, lastStaleSeenAt: msOf(fields.lastStaleSeenAt), outline: outlineParsed.outline, revisionReason: revisionReason === '' ? null : revisionReason, problems, malformed: parsed.malformed || [] }
 }
 
 /** Every live blueprint row for ONE path, oldest revision first. Reads are by `records.list` + `records.get`. */
@@ -719,6 +851,13 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
   const stale = adoptedAt !== null && ageMs > window.ms
   const currentRevision = inForce ? inForce.revision : 0
   const drafts = rows.filter((r) => r.status === 'draft' && r.revision > currentRevision)
+  // ★ RUN 236 — the two optional revision facts of the version IN FORCE (and of every draft the receipt lists). They are
+  // read off the rows (the same fields the md header carries), so the read face has ONE answer for "what is the outline
+  // of this revision" and never needs a second call.
+  const outlineOf = (row) => parseOutlineField(row && row.fields ? row.fields[BLUEPRINT_OUTLINE_KEY] : '').outline
+  const reasonOf = (row) => oneLine(row && row.fields ? row.fields[BLUEPRINT_REASON_KEY] : '')
+  const currentOutline = inForce === null ? [] : outlineOf(inForce)
+  const currentReason = inForce === null ? '' : reasonOf(inForce)
   let lastStaleSeenAt = inForce === null ? null : msOf(inForce.fields.lastStaleSeenAt)
   const persist = { attempted: false, written: false, error: null }
   if (stale && inForce !== null) {
@@ -738,6 +877,10 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
         note: txt(inForce.fields.note),
         authors: inForce.authors,
         lastStaleSeenAt: stamp,
+        // ★ RUN 236: the overdue mark rewrites the row body, so the two optional revision facts travel with it — a mark
+        // that dropped them would erase "why this revision exists" and its outline while adding a timestamp.
+        outline: currentOutline,
+        revisionReason: currentReason,
         // ★ RUN 225-A: the overdue mark rewrites the row body, so the md stamp must travel with it or the write would
         // erase the one thing that lets a later reader compare the row against the file.
         mdFingerprint: txt(inForce.fields[BLUEPRINT_MD_KEY]),
@@ -790,6 +933,10 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
     mdFingerprint: md.mdFingerprint,
     indexFingerprint: md.indexFingerprint,
     mdMeans: md.means,
+    // ★ RUN 236: G8 (outline) + G11 (revision reason) on the READ face. Both appear even when absent (`[]` / `null`), each
+    // beside a sentence that says what the absence MEANS; `current`/`drafts` repeat them so one row is one answer.
+    ...outlineReading({ outline: currentOutline, source: 'row' }),
+    ...revisionReasonReading({ revisionReason: currentReason, source: currentReason === '' ? 'none' : 'row' }),
     hasCurrent: inForce !== null,
     current: inForce === null ? null : {
       id: inForce.id,
@@ -802,6 +949,8 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
       bytes: inForce.bytes === undefined ? null : inForce.bytes,
       authors: inForce.authors,
       lastStaleSeenAt: lastStaleSeenAt,
+      outline: currentOutline,
+      revisionReason: currentReason === '' ? null : currentReason,
     },
     currentRevision,
     updatedAt: adoptedAt,
@@ -813,7 +962,7 @@ export function blueprintState({ records, path, now = null, staleAfterMs = null,
     lastStaleSeenAt,
     // ★ B4: the SAME shape `blueprintFreshness` returns (plus `persist`, which says whether this read wrote the mark).
     freshness,
-    drafts: drafts.map((d) => ({ id: d.id, revision: d.revision, proposedBy: d.fields.proposedBy || null, proposedAt: d.fields.proposedAt || null, bytes: d.bytes === undefined ? null : d.bytes, authors: d.authors })),
+    drafts: drafts.map((d) => ({ id: d.id, revision: d.revision, proposedBy: d.fields.proposedBy || null, proposedAt: d.fields.proposedAt || null, bytes: d.bytes === undefined ? null : d.bytes, authors: d.authors, outline: outlineOf(d), revisionReason: reasonOf(d) === '' ? null : reasonOf(d) })),
     draftsWaiting: drafts.length,
     revisions: rows.length,
     // `proposalId` is what links an adopted row to the draft it came from: without it, reading ② ("the adopted draft still
@@ -847,7 +996,8 @@ export function readBlueprint({ records, id }) {
     ok: parsed.ok, row: got, problems: parsed.problems,
     md, mdChangedSinceIndex: md.mdChangedSinceIndex, mdMissing: md.mdMissing, mdFingerprint: md.mdFingerprint,
     indexFingerprint: md.indexFingerprint, mdMeans: md.means,
-  }, parsed)
+  }, parsed, outlineReading({ outline: parsed.outline }),
+  revisionReasonReading({ revisionReason: parsed.revisionReason || '', source: parsed.revisionReason === null ? 'none' : 'row' }))
 }
 
 /**
@@ -862,7 +1012,7 @@ export function readBlueprint({ records, id }) {
  * this module never guesses identities. `seat` is OPTIONAL: when the caller knows the slot it records it; when it does
  * not, `null` is stored and `blueprintCodesignStatus` resolves the side against the adopter.
  */
-export function proposeBlueprint({ records, path, text, by, draft = '', at = null, note = '', seat = '' }) {
+export function proposeBlueprint({ records, path, text, by, draft = '', at = null, note = '', seat = '', outline = null, revisionReason = '', requireOutline = false }) {
   const track = refuseIfNoRecords(records)
   const wantedPath = txt(path)
   if (wantedPath === '') throw refuse('VMU_INVALID_ARGUMENT', 'a blueprint proposal needs the path it is about',
@@ -875,6 +1025,15 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     'pass member:<the roster id proposing> — an unsigned revision cannot be reviewed or audited')
   const stamp = Number.isFinite(at) ? at : Date.now()
   const seatGiven = txt(seat)
+  // ★ RUN 236: both optional revision facts are validated BEFORE anything is written (a malformed outline must never leave
+  // the md rewritten and the row half-updated). `provided: false` (absent) is not a problem; a malformed one is refused by
+  // NAME, with the shape the caller has to pass — dropping bad entries silently is the "tolerant read lied" defect class.
+  const outlineParsed = parseOutlineField(outline)
+  if (outlineParsed.provided && outlineParsed.problems.length > 0) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'the outline is malformed: ' + outlineParsed.problems.join('; '),
+      'pass outline:[{id,title,depth}] — one entry per outline node, depth one of ' + BLUEPRINT_OUTLINE_DEPTHS.join('|') + ' (1=粗, 2=细)')
+  }
+  const reasonGiven = oneLine(revisionReason)
   const before = listBlueprints({ records, path: wantedPath })
   const currentRevision = before.rows.filter((r) => r.status === 'current').reduce((max, r) => Math.max(max, r.revision), 0)
   const revision = currentRevision + 1
@@ -908,6 +1067,15 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     target = open.length === 0 ? null : open[open.length - 1]
   }
   const entry = { seat: seatGiven === '' ? null : seatGiven, member: author, at: timeText(stamp) }
+  // ★ RUN 236 — the two optional revision facts, resolved ONCE for both write branches. A continuation that does not
+  // restate them CARRIES them (the draft is the same revision: its outline and its reason do not vanish because a second
+  // designer appended a section). `source` says which of the two happened.
+  const inheritedOutline = target !== null && Array.isArray(target.outline) ? target.outline : []
+  const outlineNext = outlineParsed.provided ? outlineParsed.outline : inheritedOutline
+  const outlineSource = outlineParsed.provided ? 'request' : (inheritedOutline.length > 0 ? 'draft' : 'none')
+  const inheritedReason = target !== null ? txt(target.revisionReason) : ''
+  const reasonNext = reasonGiven !== '' ? reasonGiven : inheritedReason
+  const reasonSource = reasonGiven !== '' ? 'request' : (inheritedReason !== '' ? 'draft' : 'none')
   // ★★★ RUN 213 (run 50 / FEEDBACK49 1.4): strip a heading the caller repeated, and SAY that it happened — a silent
   // drop would be the same class of defect as the duplicate itself.
   const cleanedBody = stripRepeatedCodesignHeading(body)
@@ -1003,12 +1171,13 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     // did not write.
     const mdFields = blueprintMdHeaderOf({
       path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors,
+      outline: outlineNext, revisionReason: reasonNext,
     })
     const md = writeBlueprintMd({
       records, path: wantedPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + revision + '｜草案',
       status: 'draft', revision, fields: mdFields, text: bodyNext,
     })
-    const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, mdFingerprint: md.fingerprint || '', text: bodyNext })
+    const composed = composeBlueprintBody({ path: wantedPath, status: 'draft', revision, proposedBy: author, proposedAt: stamp, note, authors, outline: outlineNext, revisionReason: reasonNext, mdFingerprint: md.fingerprint || '', text: bodyNext })
     const put = track.put({
       track: BLUEPRINT_TRACK,
       kind: BLUEPRINT_KIND,
@@ -1032,6 +1201,8 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
       authors,
       draftSharing: draftSharingOf(null, authors, false),
       codesign: blueprintCodesignStatus(authors, ''),
+      ...outlineReading({ outline: outlineNext, requireOutline: requireOutline === true, source: outlineSource }),
+      ...revisionReasonReading({ revisionReason: reasonNext, source: reasonSource }),
       // ★ RUN 225-A: the document on disk, and the sha256 the row now indexes it by.
       md,
       mdFingerprint: md.fingerprint,
@@ -1077,6 +1248,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     path: wantedPath, status: 'draft', revision: target.revision,
     proposedBy: txt(target.fields.proposedBy), proposedAt: msOf(target.fields.proposedAt),
     note: txt(note) || txt(target.fields.note), authors,
+    outline: outlineNext, revisionReason: reasonNext,
   })
   const md = writeBlueprintMd({
     records, path: wantedPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + target.revision + '｜草案',
@@ -1090,6 +1262,8 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     proposedAt: msOf(target.fields.proposedAt),
     note: txt(note) || txt(target.fields.note),
     authors,
+    outline: outlineNext,
+    revisionReason: reasonNext,
     mdFingerprint: md.fingerprint || '',
     text: textNext,
   })
@@ -1116,6 +1290,8 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
     authors,
     draftSharing: draftSharingOf(String(target.id), authors, true),
     codesign: blueprintCodesignStatus(authors, ''),
+    ...outlineReading({ outline: outlineNext, requireOutline: requireOutline === true, source: outlineSource }),
+    ...revisionReasonReading({ revisionReason: reasonNext, source: reasonSource }),
     // ★ RUN 225-A: the rewritten draft document, and the sha256 the same row now carries.
     md,
     mdFingerprint: md.fingerprint,
@@ -1138,7 +1314,7 @@ export function proposeBlueprint({ records, path, text, by, draft = '', at = nul
  * The chair-only edit right is UNCHANGED (the rule's 「最终编辑权交给院士」) — co-design is a precondition of the final
  * edit, not a transfer of it.
  */
-export function adoptBlueprint({ records, path, draft, by, at = null, note = '', staleAfterMs = null, staleAfterMsSource = null }) {
+export function adoptBlueprint({ records, path, draft, by, at = null, note = '', staleAfterMs = null, staleAfterMsSource = null, outline = null, revisionReason = '', requireOutline = false }) {
   const track = refuseIfNoRecords(records)
   let wantedPath = txt(path)
   // ★★★ RUN 224 (run 59 / FEEDBACK58 1.7, MEASURED): the prompts teach `{ action: "adopt", draft: "<id>" }` WITHOUT a
@@ -1174,6 +1350,21 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
   }
   const codesign = blueprintCodesignStatus(target.authors, adopter)
   if (codesign.ok !== true) throw codesignRefusal(target, codesign)
+  // ★ RUN 236 — G8/G11 cross the adoption boundary. The default is INHERIT: adoption changes status/signature, never the
+  // document, so the draft's outline and the draft's reason travel to the row in force (source `draft`). A caller may pass
+  // either one to REPLACE it (source `request`); a malformed outline is refused before the md is rewritten.
+  const outlineParsed = parseOutlineField(outline)
+  if (outlineParsed.provided && outlineParsed.problems.length > 0) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'the outline is malformed: ' + outlineParsed.problems.join('; '),
+      'pass outline:[{id,title,depth}] — one entry per outline node, depth one of ' + BLUEPRINT_OUTLINE_DEPTHS.join('|') + ' (1=粗, 2=细)')
+  }
+  const draftOutline = Array.isArray(target.outline) ? target.outline : []
+  const outlineNext = outlineParsed.provided ? outlineParsed.outline : draftOutline
+  const outlineSource = outlineParsed.provided ? 'request' : (draftOutline.length > 0 ? 'draft' : 'none')
+  const reasonGiven = oneLine(revisionReason)
+  const draftReason = txt(target.revisionReason)
+  const reasonNext = reasonGiven !== '' ? reasonGiven : draftReason
+  const reasonSource = reasonGiven !== '' ? 'request' : (draftReason !== '' ? 'draft' : 'none')
   const before = listBlueprints({ records, path: wantedPath })
   // ★ A DRAFT ROW NEVER CHANGES STATUS (append-only), so "adopted twice" cannot be caught by looking at the draft alone:
   // it is caught by asking whether a CURRENT row already names this draft as its proposal. Without this check a second
@@ -1201,6 +1392,7 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     path: wantedPath, status: 'current', revision,
     proposedBy: target.fields.proposedBy, proposedAt: target.fields.proposedAt,
     adoptedBy: adopter, adoptedAt: stamp, proposalId: target.id, note, authors: target.authors,
+    outline: outlineNext, revisionReason: reasonNext,
   })
   const md = writeBlueprintMd({
     records, path: wantedPath, title: BLUEPRINT_TITLE_PREFIX + wantedPath + '｜r' + revision + '｜生效',
@@ -1218,6 +1410,9 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     note,
     // B5: the co-design record travels WITH the adopted row (who designed this version is a fact of the version).
     authors: target.authors,
+    // ★ RUN 236: the outline and the reason travel too — the file in force must say the SAME thing the draft said.
+    outline: outlineNext,
+    revisionReason: reasonNext,
     mdFingerprint: md.fingerprint || '',
     // The ADOPTED row carries the draft's TEXT verbatim: adoption changes the status/signature, never the document.
     text: target.text,
@@ -1255,6 +1450,8 @@ export function adoptBlueprint({ records, path, draft, by, at = null, note = '',
     proposalId: target.id,
     authors: target.authors,
     codesign,
+    ...outlineReading({ outline: outlineNext, requireOutline: requireOutline === true, source: outlineSource }),
+    ...revisionReasonReading({ revisionReason: reasonNext, source: reasonSource }),
     superseded: superseded === null ? null : { id: previous.id, revision: previous.revision, rev: superseded.rev },
     previousRevision: previous === null ? 0 : previous.revision,
     // ★ B4: "adopt still works, but a late update is RECORDED" — this is the measured consequence, not a refusal.

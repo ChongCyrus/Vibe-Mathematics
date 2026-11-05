@@ -164,7 +164,10 @@ try {
     ok(row && row.settled === true, '§4c and it is settled (a complete writing, not a half record)', row)
     ok(row && row.by === 'r-1', '§4d and authored by the turn member', row)
     ok(row && typeof row.body === 'string' && row.body.includes('定义已固定'), '§4e the whole text travels as the body', row)
-    ok(row && typeof row.title === 'string' && row.title.length > 0 && row.title.length <= 80, '§4f the title comes from the first line, bounded', row && row.title)
+    // ★ RUN 60 / task-30 (M5): the title used to be `firstLine.slice(0, 80)`, which cut a live row into the half word
+    // `…n2-difference-telescop`. The title is now FIXED per member, so this pin checks the fixed shape - a complete,
+    // greppable act name - instead of the old "first line, bounded" promise.
+    ok(row && row.title === 'r-1 · 本轮 progress', '§4f the title is FIXED per member (never a truncated first line)', row && row.title)
     ok(mapped && mapped.coerced && mapped.coerced.from === 'string' && mapped.coerced.to.includes('progress row'),
       '§4g the mapping is declared as a coercion (a reader can tell text from the object form)', mapped && mapped.coerced)
 

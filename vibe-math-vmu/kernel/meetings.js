@@ -271,7 +271,31 @@ function mergeLiveMeeting(local, stored) {
     if (JSON.stringify(local.minutes) !== before) changed.push('minutes')
   }
   // speech bookkeeping: per-member maxima (a speech is a monotone fact)
-  mergeMap('speechUsed')
+  // ★★ RUN 236 / FEEDBACK60 M8 (MEASURED): `speechUsed` rows are `{count, extensions}` and carry NO timestamp, so the
+  // generic `later(v) = until||at||0` branch below compared 0 with 0 and kept the LOCAL row — a stored row with a larger
+  // count was silently dropped while `turns` (MAXed a few lines down) still took the larger number. Run 60 read exactly
+  // that contradiction: `turns:2` with `speechUsed:[{member:"r-1",speeches:1}]`. A count of speeches is monotone, so the
+  // two FIELDS are merged independently and the larger of each is kept (a member only one side knows is adopted).
+  if (local.speechUsed instanceof Map && stored.speechUsed instanceof Map) {
+    const num = (v) => Number(v) || 0
+    let speechAdded = 0
+    for (const [k, v] of stored.speechUsed) {
+      if (!v || typeof v !== 'object') continue
+      const mine = local.speechUsed.get(k)
+      if (!mine || typeof mine !== 'object') {
+        local.speechUsed.set(k, { count: num(v.count), extensions: num(v.extensions) })
+        speechAdded += 1
+        continue
+      }
+      const count = Math.max(num(mine.count), num(v.count))
+      const extensions = Math.max(num(mine.extensions), num(v.extensions))
+      if (count !== num(mine.count) || extensions !== num(mine.extensions)) {
+        local.speechUsed.set(k, Object.assign({}, mine, { count, extensions }))
+        speechAdded += 1
+      }
+    }
+    if (speechAdded > 0) changed.push('speechUsed.' + speechAdded)
+  }
   mergeMap('interrupts')
   mergeMap('warnings')
   mergeMap('mutes')
@@ -280,6 +304,15 @@ function mergeLiveMeeting(local, stored) {
     const mine = Number(local[k]) || 0
     const theirs = Number(stored[k]) || 0
     if (theirs > mine) { local[k] = theirs; changed.push(k) }
+  }
+  // ★★ RUN 236 / FEEDBACK60 M8: after the merge, `turns` may not be SMALLER than the speeches this same row accounts
+  // for — a turn with no speech behind it is exactly the unattributed reading run 60 flagged (`turns:2` with
+  // `speechUsed:[{speeches:1}]`). Never subtract: a larger stored `turns` is kept as-is (it may come from a writer that
+  // predates the acceptance-point increment), and `turnsUnattributed` on the view NAMES the remainder instead of hiding it.
+  if (local.speechUsed instanceof Map) {
+    const speechSum = [...local.speechUsed.values()].reduce((s, u) => s + (Number(u && u.count) || 0), 0)
+    const turnsNow = Number(local.turns) || 0
+    if (speechSum > turnsNow) { local.turns = speechSum; changed.push('turns') }
   }
   // fields this instance never filled in: adopt, do not overwrite local knowledge
   // ★★ ROUND 120: `kind` and the roster's provenance are carried facts too — a row written by another instance that
@@ -833,10 +866,24 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       speechExtendMax: K.speechExtendMax,
       speechMaxMs: K.speechMaxMs,
       speechDefaultMs: K.speechDefaultMs,
-      speechExtendMeans: "the SPEECH bound (per member), NOT the meeting's wall bound: `speeches` counts speak() calls recorded on this face and `extensions` counts successful action=\"extend\" calls (each one raised that member's speech budget by speechExtendMs, at most speechExtendMax times). The meeting's OWN wall clock is wallLimitMs/extendedMs and is raised by action=\"extendlimit\" — two different bounds, two different commands",
+      speechExtendMeans: "the SPEECH bound (per member), NOT the meeting's wall bound: `speeches` counts speak() calls recorded on this face and `extensions` counts action=\"extend\" calls that GRANTED time (each one raised that member's speech budget by speechExtendMs, at most speechExtendMax times). When speechExtendMs=0 the declared step is ZERO, so an extend call grants nothing and is answered `applied:false` instead of counting here: `extensions` is a count of grants, not a duration. The meeting's OWN wall clock is wallLimitMs/extendedMs and is raised by action=\"extendlimit\" — two different bounds, two different commands",
     }
   }
-  const SPEECH_EXTEND_MEANS = "a SPEECH extension (action=\"extend\"): it raised THIS member's speech budget by `ms`, bounded by speechExtendMax/speechMaxMs, and is readable as `extensions` on summary()/status(); it did NOT move the meeting's wall clock — that bound is wallLimitMs/extendedMs and only action=\"extendlimit\" moves it"
+  const SPEECH_EXTEND_MEANS = "a SPEECH extension (action=\"extend\"): a call that GRANTED time raised THIS member's speech budget by `ms`, bounded by speechExtendMax/speechMaxMs, and is readable as `extensions` on summary()/status(). `applied` says whether this call granted anything: with vmu.meetings.speechExtendMs=0 (the default) a call that names a duration grants 0 ms and answers applied:false with ms:0 — an ok:true there is NOT a raise. It never moved the meeting's wall clock — that bound is wallLimitMs/extendedMs and only action=\"extendlimit\" moves it"
+  /**
+   * ★★ RUN 236 / FEEDBACK60 M8 (MEASURED): `turns` and `speechUsed` are two readings of the same fact, but until now
+   * nothing made them agree on the face a run reads: `turns` was MAXed by the fold, `speechUsed` rows were silently
+   * dropped by the generic merge, and a REFUSED speak incremented only `turns`. Run 60 read `turns:2` beside
+   * `speechUsed:[{member:"r-1",speeches:1}]` and could not tell which number was the account. The increment site and the
+   * merge now move the two together; `turnsUnattributed` NAMES any remainder the merge still cannot attribute instead of
+   * hiding it (numbers are never silently adjusted on a read).
+   */
+  const turnsAccountedOf = (m) => {
+    const rows = m && m.speechUsed instanceof Map ? [...m.speechUsed.values()] : []
+    return rows.reduce((s, u) => s + (Number(u && u.count) || 0), 0)
+  }
+  const turnsUnattributedOf = (m) => Math.max(0, (Number(m && m.turns) || 0) - turnsAccountedOf(m))
+  const TURNS_UNATTRIBUTED_MEANS = 'turns minus Σ speechUsed[].speeches on THIS face. 0 means every counted turn has a recorded speech (the normal case: an accepted speak() raises both). A number > 0 is a turn this instance counts but cannot attribute to a recorded speech — it can only come from a writer that raised `turns` without the matching speech row (another instance, or a turn counted BEFORE the speech was accepted, which the acceptance-point increment above no longer does). It is NOT subtracted from `turns` on a read: the reading says which half is unattributed instead of quietly editing the record'
   const cap = (code, label, value, limit, key, evaluated) => {
     const keys = Array.isArray(evaluated) ? evaluated.slice() : []
     mark(keys, key)
@@ -1435,16 +1482,52 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           'ask ' + chair + ' to run action="extend" (the chair owns the speech bound); action="extendlimit" is the chair command for the MEETING wall bound', ['vmu.meetings.extendRequiresChair'])
       }
     }
+    // ★★ RUN 236 / FEEDBACK60 M1 (MEASURED): the receipt said `{ok:true, ms:60000, extensions:1, max:0}` while
+    // `status` said `speechExtendMs:0/speechExtendMax:0` — an `ok:true` receipt that reads as "the speech budget was
+    // raised by 60 s" when the declared step was ZERO (the default on this deployment: vmu.meetings.speechExtendMs=0).
+    // `extend()` is allowed to be a no-op, but it is NOT allowed to be a silent no-op: when a positive step would be
+    // granted only through the caller's explicit `ms` (or a positive default) while the DECLARED step is 0, the call
+    // is answered `applied:false` with `ms:0` and the reason, and the per-member counter/minutes entry are NOT written
+    // — a count of "extensions" must not grow for a grant of nothing. `speechExtendMs`(the declared step) is echoed.
+    const declaredStep = n(K.speechExtendMs)
+    const declaredMax = n(K.speechExtendMax)
+    const requested = args.ms === undefined || args.ms === null ? null : n(args.ms)
+    const stepInForce = requested !== null ? requested : (declaredStep > 0 ? declaredStep : n(K.speechDefaultMs))
+    const memberId = String(args.member === undefined || args.member === null ? '' : args.member)
+    const usedRow = m.speechUsed instanceof Map ? m.speechUsed.get(memberId) : null
+    const extensionsHeld = usedRow ? (n(usedRow.extensions) || 0) : 0
+    // A call that a declared CEILING would refuse keeps that named refusal: the no-op branch only replaces the
+    // "ok:true, counted an extension, granted 0 ms" lie, never a cap or `VMU_INVALID_ARGUMENT` verdict.
+    const declaredMaxMs = n(K.speechMaxMs)
+    const capWouldRefuse = (declaredMax > 0 && extensionsHeld >= declaredMax) || (declaredMaxMs > 0 && stepInForce > declaredMaxMs)
+    if (stepInForce > 0 && declaredStep <= 0 && !capWouldRefuse) {
+      const now0 = args.at === undefined || args.at === null ? clock() : atMs(args.at)
+      const enforced0 = ['vmu.meetings.speechExtendMs']
+      const appliedMeans = 'applied:false — this call granted NO speech time. vmu.meetings.speechExtendMs=0 here, so the ' +
+        'step this deployment declares is 0 ms: the request would have added 0 ms, and it is reported as a no-op instead ' +
+        'of a successful extension (extensions stays ' + extensionsHeld + '). The per-member speech budget cannot be raised ' +
+        'on this deployment; the MEETING wall clock is a different bound and is raised by action="extendlimit".'
+      const receipt0 = { at: now0, action: 'extend', meeting: m.id, member: memberId, ms: 0, requestedMs: requested,
+        extensions: extensionsHeld, max: declaredMax, applied: false, speechExtendMs: declaredStep, by: named,
+        enforced: enforced0.slice(), enforcedScope: ENFORCED_SCOPE }
+      pushReceipt(receipt0)
+      say({ type: 'meetings/speech-extended', at: now0, meeting: m.id, member: memberId, ms: 0, requestedMs: requested,
+        extensions: extensionsHeld, max: declaredMax, applied: false, by: named, enforced: enforced0.slice(), enforcedScope: ENFORCED_SCOPE })
+      return { ok: true, applied: false, meeting: m.id, member: memberId, ms: 0, requestedMs: requested,
+        extensions: extensionsHeld, max: declaredMax, speechExtendMs: declaredStep, appliedMeans, by: named,
+        receipt: receipt0, enforced: enforced0.slice(), enforcedScope: ENFORCED_SCOPE, extendMeans: SPEECH_EXTEND_MEANS }
+    }
     const out = withScope(controls.extend(named === null ? args : Object.assign({}, args, { by: named })))
     const now = args.at === undefined || args.at === null ? clock() : atMs(args.at)
+    const applied = true
     const receipt = {
-      at: now, action: 'extend', meeting: m.id, member: String(args.member), ms: out.ms,
+      at: now, action: 'extend', meeting: m.id, member: String(args.member), ms: out.ms, applied,
       extensions: out.extensions, max: out.max, by: named,
       enforced: out.enforced.slice(), enforcedScope: ENFORCED_SCOPE,
     }
     pushReceipt(receipt)
-    say({ type: 'meetings/speech-extended', at: now, meeting: m.id, member: receipt.member, ms: receipt.ms, extensions: receipt.extensions, max: receipt.max, by: named, enforced: out.enforced.slice(), enforcedScope: ENFORCED_SCOPE })
-    return Object.assign({}, out, { by: named, receipt, extendMeans: SPEECH_EXTEND_MEANS })
+    say({ type: 'meetings/speech-extended', at: now, meeting: m.id, member: receipt.member, ms: receipt.ms, applied, extensions: receipt.extensions, max: receipt.max, by: named, enforced: out.enforced.slice(), enforcedScope: ENFORCED_SCOPE })
+    return Object.assign({}, out, { applied, by: named, receipt, extendMeans: SPEECH_EXTEND_MEANS })
   }
 
   // ── ROUND 12: THE `motion → box` BINDING (method, not manifest field) now lives in `kernel/meetingmarker.js` ──
@@ -1672,6 +1755,22 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // A member already in the present set is a NO-OP, never a door case: the chair is seated by open(), so the chair
       // arriving late must not be filed as waiting for its own approval.
       const latePolicy = lateAdmissionOf(m)
+      // ★★ RUN 236 / FEEDBACK60 M7 (MEASURED): a non-late attend answered `{late:false, lateAdmission:"chair",
+      // pendingLate:false}` and said NOTHING about WHY it was not late — with the default `vmu.meetings.lateAfterMs=0`
+      // nobody can be late, and `late:false` then does not mean "you arrived on time" (it means the deployment does not
+      // measure lateness). The three readings and one sentence now travel with BOTH attend receipts; openedAt is the
+      // meeting's recorded start, so for a SCHEDULED meeting `elapsedMs` is negative until the start time arrives.
+      const openedAtMs = (m.openedAt === undefined || m.openedAt === null || !Number.isFinite(Number(m.openedAt))) ? null : Number(m.openedAt)
+      const elapsedMs = openedAtMs === null ? null : ms - openedAtMs
+      const lateAfterMs = n(K.lateAfterMs)
+      const lateReads = { openedAt: openedAtMs, elapsedMs, lateAfterMs }
+      const lateMeans = openedAtMs === null
+        ? 'this meeting row carries no openedAt, so no lateness can be measured from the clock (vmu.meetings.lateAfterMs=' + lateAfterMs + '): late:' + late + ' is not a judgement about your timing'
+        : (lateAfterMs > 0
+          ? (late
+            ? 'LATE: at ' + ms + ' this arrival is ' + elapsedMs + ' ms past openedAt ' + openedAtMs + ', over vmu.meetings.lateAfterMs=' + lateAfterMs + '; the meeting policy lateAdmission="' + latePolicy + '" decides what happens next'
+            : 'NOT LATE: at ' + ms + ' this arrival is ' + elapsedMs + ' ms past openedAt ' + openedAtMs + ', within vmu.meetings.lateAfterMs=' + lateAfterMs + ' (the threshold is measured from openedAt, not from the first arrival)')
+          : 'NOT JUDGED: vmu.meetings.lateAfterMs=0 here, so NOBODY is ever counted late on this deployment — late:false does not mean "on time", it means this meeting does not measure lateness')
       if (late && !m.present.has(String(member))) {
         if (latePolicy === 'refuse') {
           throw deny('VMU_LATE_ADMISSION_REFUSED',
@@ -1685,10 +1784,11 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           }
           const q0 = quorumOf(m)
           const held = pendingLateMembers(m)
-          const receipt = { at: ms, action: 'attend', meeting: m.id, member, late: true, lateAdmission: 'chair', pendingLate: true, alreadyPending: already, pendingLateMembers: held, pendingLateCount: held.length, quorum: q0, state: m.state, settled: null, enforced, enforcedScope: ENFORCED_SCOPE }
+          const receipt = { at: ms, action: 'attend', meeting: m.id, member, late: true, lateReads, lateMeans, lateAdmission: 'chair', pendingLate: true, alreadyPending: already, pendingLateMembers: held, pendingLateCount: held.length, quorum: q0, state: m.state, settled: null, enforced, enforcedScope: ENFORCED_SCOPE }
           pushReceipt(receipt)
           say({ type: 'meetings/latePending', at: ms, meeting: m.id, member, state: m.state, enforced, enforcedScope: ENFORCED_SCOPE })
           return { ok: true, late: true, lateAdmission: 'chair', pendingLate: true, alreadyPending: already,
+            ...lateReads, lateMeans,
             pendingLateMembers: held, pendingLateCount: held.length,
             alreadyPresent: false, alreadyPresentMeans: 'this member is NOT seated: lateAdmission is "chair", so the arrival waits at the door until the chair calls admit()',
             quorum: q0, state: m.state, settled: null, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
@@ -1712,11 +1812,11 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
           ? 'this member is the CHAIR and open() seats the chair, so it was present before any attend call: this call changed no count (presentBreakdown.attended counts only the members who actually arrived), and attending again is allowed as a no-op'
           : 'this member was ALREADY present when the call arrived: this call changed no count — present, quorum and unanswered are exactly as they were, and attending twice is allowed as a no-op')
         : 'this call is what put the member in the present set'
-      const receipt = { at: ms, action: 'attend', meeting: m.id, member, late, lateAdmission: latePolicy, pendingLate: false,
+      const receipt = { at: ms, action: 'attend', meeting: m.id, member, late, lateReads, lateMeans, lateAdmission: latePolicy, pendingLate: false,
         alreadyPresent: wasPresent, alreadyPresentMeans, quorum: q, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(receipt)
       say({ type: 'meetings/attended', at: ms, meeting: m.id, member, late, lateAdmission: latePolicy, state: m.state, settled, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, late, lateAdmission: latePolicy, pendingLate: false, alreadyPresent: wasPresent, alreadyPresentMeans,
+      return { ok: true, late, lateAdmission: latePolicy, pendingLate: false, ...lateReads, lateMeans, alreadyPresent: wasPresent, alreadyPresentMeans,
         quorum: q, state: m.state, settled, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
@@ -1906,16 +2006,22 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         }
       }
       // meeting budget (turns/tokens/wall)
-      m.turns += 1
-      m.tokens += n(tokens)
+      // ★★ RUN 236 / FEEDBACK60 M8 (MEASURED): the counters are COMPUTED here and WRITTEN at the acceptance point below.
+      // The increment used to sit above the budget, wall-clock and verbatim refusals, so a REFUSED speech still raised
+      // `turns` (and `tokens`) while `speechUsed.count` stayed put — that is the unattributed turn run 60 read (`turns:2`
+      // with `speechUsed:[{speeches:1}]`). `turnNo`/`tokenTotal` are exactly the numbers the old code compared, so every
+      // verdict, message and refusal is unchanged; only a refused call no longer leaves a turn behind.
+      const tokensThis = n(tokens)
+      const turnNo = (Number(m.turns) || 0) + 1
+      const tokenTotal = (Number(m.tokens) || 0) + tokensThis
       let soft = null
-      if (K.budgetTurns > 0 && m.turns > K.budgetTurns) {
+      if (K.budgetTurns > 0 && turnNo > K.budgetTurns) {
         mark(enforced, 'vmu.meetings.budgetTurns')
-        soft = budgetVerdict(m, 'turns', m.turns, K.budgetTurns, enforced)
+        soft = budgetVerdict(m, 'turns', turnNo, K.budgetTurns, enforced)
       }
-      if (K.budgetTokens > 0 && m.tokens > K.budgetTokens) {
+      if (K.budgetTokens > 0 && tokenTotal > K.budgetTokens) {
         mark(enforced, 'vmu.meetings.budgetTokens')
-        soft = budgetVerdict(m, 'tokens', m.tokens, K.budgetTokens, enforced)
+        soft = budgetVerdict(m, 'tokens', tokenTotal, K.budgetTokens, enforced)
       }
       // ROUND 200: the HARD wall-clock backstop is consulted FIRST - it has no off switch, while the soft budget
       // below may refuse, warn or extend. A pack can set this key and it now changes behaviour.
@@ -1948,6 +2054,13 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         throw denyIn(m, 'VMU_NOT_PERMITTED', 'vmu.meetings.verbatimEnabled=false: verbatim capture is disabled',
           'set vmu.meetings.verbatimEnabled=true, or speak without { verbatim: true }', enforced)
       }
+      // ★★ RUN 236 / FEEDBACK60 M8: THE ACCEPTANCE POINT — nothing below this line refuses, so the counters advance here
+      // and only here. `turns` and `speechUsed.count` therefore move together (one accepted speech = +1 on both), which
+      // is what makes `turns === Σ speechUsed.count` checkable instead of merely asserted. The single `m.turns += 1`
+      // increment site stays exactly one (tests/vmu-run48-close-turns.test.mjs (D) pins that shape); it just moved BELOW
+      // every refusal, and the numbers it compares against (`turnNo`/`tokenTotal`) are the ones computed above.
+      m.turns += 1
+      m.tokens += tokensThis
       const used = m.speechUsed.get(String(member)) || { count: 0, extensions: 0 }
       used.count += 1
       m.speechUsed.set(String(member), used)
@@ -2922,6 +3035,15 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         waitStartedAt: m.waitStartedAt === undefined ? null : m.waitStartedAt,
         waitDueAt: waitDueOf(m),
         waitDecisionDue: m.waitDecisionDue === true,
+        // ★★ RUN 236 / FEEDBACK60 M8: `turns` used to be unreachable on THIS face while `speechUsed` was on it — two
+        // readings of the same fact, one of them only on the other face. Both are here now, with the same reconciliation
+        // the status view uses (see `turnsAccountedOf` / `TURNS_UNATTRIBUTED_MEANS`).
+        turns: m.turns === undefined ? 0 : m.turns,
+        turnsCounts: TURNS_COUNTS,
+        turnsMeans: TURNS_MEANS,
+        turnsAccounted: turnsAccountedOf(m),
+        turnsUnattributed: turnsUnattributedOf(m),
+        turnsUnattributedMeans: TURNS_UNATTRIBUTED_MEANS,
         chair: m.chair || null, secretary: m.secretary || null,
         motions,
         // ★★ LIVE RUN 20 (the institute's own report): after close, summary answered votes:0 while the tally receipt
@@ -3014,6 +3136,10 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         turns: m.turns === undefined ? 0 : m.turns,
         turnsCounts: TURNS_COUNTS,
         turnsMeans: TURNS_MEANS,
+        // ★★ RUN 236 / FEEDBACK60 M8: the same fact as `speechUsed`, reconciled on the face the run reads.
+        turnsAccounted: turnsAccountedOf(m),
+        turnsUnattributed: turnsUnattributedOf(m),
+        turnsUnattributedMeans: TURNS_UNATTRIBUTED_MEANS,
         // ★ A READER MUST BE ABLE TO SEE WHO DEBATED WITHOUT CALLING minutes(): the fact, un-pruned.
         spokeBy: [...new Set(m.minutes.entries.filter((e) => e.kind === 'speech').map((e) => String(e.member)))],
         spokeByMeans: 'members with at least one recorded speech in THIS meeting (the fact; minutes() is a shaped view of it)',

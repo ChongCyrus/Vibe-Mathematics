@@ -45,7 +45,7 @@ import { leadershipReading, leadershipWarning, LEADER_SLOT } from './leadership.
 // ★ R18-B2: the public blueprint carrier. `vmu.turn.protocolPath` had two prompt interpolations and no writer, so the
 // blueprint was a path with no edit right attached. `./blueprint.js` is the data face (a records track + propose/adopt);
 // this import is its REACHABLE consumer (red line ④).
-import { BLUEPRINT_ADOPT_SLOT, BLUEPRINT_PATH_KEY, BLUEPRINT_STALE_KEY, BLUEPRINT_TRACK, adoptBlueprint, blueprintState, proposeBlueprint, readBlueprint, staleWindowOf } from './blueprint.js'
+import { BLUEPRINT_ADOPT_SLOT, BLUEPRINT_OUTLINE_REQUIRE_KEY, BLUEPRINT_PATH_KEY, BLUEPRINT_STALE_KEY, BLUEPRINT_TRACK, adoptBlueprint, blueprintState, outlineRequireOf, proposeBlueprint, readBlueprint, staleWindowOf } from './blueprint.js'
 // ★ A7 (round 31 follow-up): WHO IS CALLING, read from the one non-forgeable source there is. `vibe_v5_fire` has to
 // know whether the caller is a member seat (whose dismissal right is scoped to its own temp worker) or the office /
 // a chair (unscoped), and the ONLY trustworthy answer is the agent→member resolution the seat face gate itself uses:
@@ -970,11 +970,25 @@ function scriptArchivedRow(kernel, id) {
   return got && got.record ? got.record : got
 }
 
-function toolScript(args = {}, { kernel } = {}) {
+function toolScript(args = {}, { kernel, exec } = {}) {
   const records = recordsOf(kernel)
   const op = has(args.op) ? str(args.op) : 'archive'
   if (op !== 'archive' && op !== 'read' && op !== 'list') {
     throw refuse('VMU_INVALID_ARGUMENT', 'script needs op=archive|read|list', 'pass op:"archive" / "read" / "list"')
+  }
+  // ★ RUN 236 / C14 — THE SEAT RAIL. The seat face (seat-faces.js#SEAT_TOOL_FACES) makes this a chair-only face; this
+  // is its CALL-SIDE twin, because a face is a presentation and a call is what an institution must be able to refuse by
+  // name. Rule C14 says a study script must be archived; before this rail the whole face was denied to every seat, so
+  // the rule had no executor. The archive is the ACADEMICIAN's institutional act (it files a 所级产物 on the records
+  // track) — a member or temp hands the script to the chair and says what it should be archived AS. An explicit
+  // `member` wins (the office relays for a seat); otherwise the turn answers, the same identity rule the meeting face
+  // uses (LIVE RUN 128 / F-128d) — no live turn ⇒ no rail (the office is the institute's own hand, not a seat).
+  const caller = has(args.member) && str(args.member).trim() !== '' ? str(args.member) : callerFromTurn(kernel, exec)
+  const callerRow = caller === null || caller === undefined || str(caller).trim() === '' ? null : seatOf(kernel, caller)
+  if (callerRow && String(callerRow.slot) !== CHAIR_SLOT) {
+    throw refuse('VMU_NOT_PERMITTED',
+      'the script archive is an ACADEMICIAN (chair seat) act (rule C14): "' + str(callerRow.id) + '" is in slot "' + String(callerRow.slot) + '"',
+      'hand the script to the chair and say what it should be archived AS — say {to:"<chair id>", ...} with the text, a recorded meeting note, or your task receipt — then the chair files it with op:"archive"; member/temp do not hold the archive face (archive is an archival copy, not execution evidence)')
   }
   const tracks = declaredTracks(kernel)
   if (!tracks.includes(SCRIPTS_TRACK)) {
@@ -1009,6 +1023,18 @@ function toolScript(args = {}, { kernel } = {}) {
       fingerprint: written && written.fingerprint,
       purpose: has(args.purpose) ? str(args.purpose) : null,
       at: written && (written.updatedAt || written.createdAt),
+      // ★ RUN 236 / C14: an ok is not an archive — the caller asked the institution to FILE something, so the receipt
+      // names the row that was actually written (readable back by id) and says out loud what it is and is not.
+      archived: {
+        recordId: written && written.id,
+        name: str(args.name),
+        track: SCRIPTS_TRACK,
+        bytes: Buffer.byteLength(str(args.text), 'utf8'),
+      },
+      archivedBy: callerRow ? str(callerRow.id) : (has(args.member) ? str(args.member) : null),
+      archiveMeans: 'an archival COPY of the script text on the records face (track "scripts", kernel fingerprint), not execution '
+        + 'evidence: nothing was run here (the no-adhoc-scripts rule still refuses ad-hoc running), and a recompute means '
+        + 're-running the archived text and comparing the fingerprint before/after',
       recompute: 'recompute by running the archived text again (math_computation op=run mode=file), and compare the '
         + 'record fingerprint before/after — the archive is the artefact, not a note ABOUT the artefact',
     }
@@ -1803,12 +1829,14 @@ function settleRulingOnCard({ records, id, value, ruling, track, kind, by, fallb
   if (rulingRow.subject === undefined) rulingRow.subject = id
   rulingRow.value = value
   out.push('- debateRuling：' + JSON.stringify(rulingRow))
-  // ★★ RUN 155 (audit of c5d356b9, problem 3): the previous version called `records.put` and then told the receipt that
-  // "every other card field was left exactly as it was". The BODY lines were preserved, but `put` REBUILDS the record
-  // (rev back to 1, a fresh createdAt, the slug re-minted with a numeric suffix, versions/tags/permanent reset) — so the
-  // sentence was false about the row a reader would then inspect, and `settlement.rev` was `undefined` because put does
-  // not return one. The records face HAS the operation for editing a record: `supersede` keeps id/slug/createdAt, bumps
-  // rev and stores the version trail. The settlement uses it, and the receipt reports what actually happened.
+  // ★★ RUN 155 (audit of c5d356b9, problem 3) — the reason this path uses `supersede`, HISTORICAL as of RUN 236:
+  // that audit measured `put` REBUILDING the record (rev back to 1, a fresh createdAt, a re-minted slug, versions/tags
+  // reset), so "every other card field was left exactly as it was" was false about the row a reader would inspect.
+  // RUN 236 (lane-g2, FEEDBACK60 M4) fixed the root: `kernel/records.js#put` now MERGES on an update (identity and
+  // unnamed fields are kept, rev grows, a version is pushed) and its receipt names `fieldsKept`/`fieldsReplaced`.
+  // This settlement still goes through `supersede` on purpose — it edits a card whose body must be rewritten as a
+  // whole — and `kit/handlers.js#mergeEcho` now states the merge facts to seat-facing callers. Kept as history so a
+  // future reader does not re-derive why one path supersedes and the card tools put.
   const nextBody = out.join(NL)
   const reason = 'rule L53 ruling settlement: p set to ' + String(value)
     + (droppedEarlierRuling ? '; the earlier debateRuling row was replaced' : '')
@@ -4298,6 +4326,15 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
   const action = str(args.action || 'state').trim()
   const staleWindow = blueprintStaleWindowOf(kernel)
   const records = recordsOf(kernel)
+  // ★★★ RUN 236 (G8 outline / G11 revision reason, run 60 / FEEDBACK60 P-series): `blueprint.js` learned to store and
+  // publish both facts, but THIS face neither declared the parameters nor forwarded them - so the very call the prompt
+  // teaches (propose a revision with its 由粗到细 outline) could not record one. A field the row keeps and the face
+  // cannot write is a promise told by omission, which is the defect class RUN 219 fixed for `draft`.
+  const outlineArg = has(args.outline) ? args.outline : null
+  const reasonArg = str(args.revisionReason || args.revision_reason || '').trim()
+  // The SETTING decides whether a missing outline is worth a named line in the receipt; it is a hint, never a gate
+  // (schema.js `vmu.blueprint.requireOutline`, default false) - so this is read here, not enforced here.
+  const requireOutline = outlineRequireOf(settingsOf(kernel) || {})
   const pathFromArg = has(args.path) ? str(args.path).trim() : ''
   const pathFromSetting = str((settingsOf(kernel) || {})[BLUEPRINT_PATH_KEY] || '').trim()
   const path = pathFromArg || pathFromSetting
@@ -4346,6 +4383,21 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
       mdFingerprint: read.mdFingerprint === undefined ? null : read.mdFingerprint,
       indexFingerprint: read.indexFingerprint === undefined ? null : read.indexFingerprint,
       mdMeans: read.mdMeans === undefined ? null : read.mdMeans,
+      // ★★★ RUN 236 / task-26 (G8, G11): `read` forwarded the md facts but not the two fields RUN 236 added to the row
+      // itself — so `state` (which spreads the readings) could name an outline while `read` — the surface a member quotes
+      // when it reports back — stayed silent about it. Same source, both surfaces: the readings come from `readBlueprint`,
+      // never recomputed here.
+      outline: read.outline === undefined ? null : read.outline,
+      outlineCount: read.outlineCount === undefined ? null : read.outlineCount,
+      outlineDepthMax: read.outlineDepthMax === undefined ? null : read.outlineDepthMax,
+      outlineSource: read.outlineSource === undefined ? null : read.outlineSource,
+      outlineRequired: read.outlineRequired === undefined ? null : read.outlineRequired,
+      outlineRequiredSource: read.outlineRequiredSource === undefined ? null : read.outlineRequiredSource,
+      outlineMeans: read.outlineMeans === undefined ? null : read.outlineMeans,
+      outlineRequiredMeans: read.outlineRequiredMeans === undefined ? null : read.outlineRequiredMeans,
+      revisionReason: read.revisionReason === undefined ? null : read.revisionReason,
+      revisionReasonSource: read.revisionReasonSource === undefined ? null : read.revisionReasonSource,
+      revisionReasonMeans: read.revisionReasonMeans === undefined ? null : read.revisionReasonMeans,
     }
   }
   if (action === 'propose') {
@@ -4366,7 +4418,10 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     // printed null beside the caller's own request. A parameter the schema publishes and the body drops is a lie told by
     // omission; the name is forwarded here and the outcome is reported by `continuedBase` as before.
     const namedDraft = str(args.draft || '').trim()
-    const proposed = proposeBlueprint({ records, path, text, by: String(member.id), seat: authorSeat, note: str(args.note || ''), draft: namedDraft })
+    const proposed = proposeBlueprint({
+      records, path, text, by: String(member.id), seat: authorSeat, note: str(args.note || ''), draft: namedDraft,
+      outline: outlineArg, revisionReason: reasonArg, requireOutline,
+    })
     const state = blueprintState({ records, path, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     return Object.assign({}, proposed, {
       tool: 'vibe_v5_blueprint', pathSource, member: String(member.id),
@@ -4399,7 +4454,11 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     // ★★★ RUN 224 (run 59 / FEEDBACK58 1.7): the ADOPT branch gets the path AS THE CALLER SPELLED IT, not the resolved
     // setting default — a draft names its own path, and the setting is a fallback for readers, not a claim about which draft
     // is being adopted. Passing the resolved value here made `pathFrom` say "argument" about a path nobody passed.
-    const adopted = adoptBlueprint({ records, path: pathFromArg, draft, by: String(member.id), note: str(args.note || ''), staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
+    const adopted = adoptBlueprint({
+      records, path: pathFromArg, draft, by: String(member.id), note: str(args.note || ''),
+      staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source,
+      outline: outlineArg, revisionReason: reasonArg, requireOutline,
+    })
     return Object.assign({}, adopted, {
       tool: 'vibe_v5_blueprint', pathSource, member: String(member.id), staleAfterMsSource: staleWindow.source,
       readSurface: 'vibe_v5_read_library { track: "' + BLUEPRINT_TRACK + '" }',
@@ -4762,7 +4821,14 @@ async function libraryCardPathOf(kernel, id) {
 /** THE MEMBER'S OWN ACT: file YOUR final debate ruling. Refusals are named and speak to the member (not to the
  *  chair), because the member is the caller: a member that is not part of the debate, a ruling already filed with a
  *  different value, and a session with no durable library are three DIFFERENT answers. */
-async function submitRuling({ kernel, member, meeting, proposition, verdict, reason }) {
+async function submitRuling({ kernel, member, meeting, proposition, verdict, reason, exec = null }) {
+  // ★★★ RUN 236 / task-31 sibling (M3, measured on run 60): this receipt said "this is YOUR final ruling … the chair
+  // does not write this number for you" EVEN WHEN the call came from the office on a seat's behalf — the same
+  // receipt carried `memberActed:false`. The sentence and the field described two different events. The act is the
+  // same either way (a durable card in that member's folder, adopted by the chair from the tally), but WHO did it is
+  // now read from the caller and said out loud, because "YOUR" is a claim about the caller, not about the card.
+  const callerOfRuling = callerFromTurn(kernel, exec)
+  const rulingBySeat = callerOfRuling !== null && String(callerOfRuling) === String(member)
   if (!member) {
     throw refuse('VMU_INVALID_ARGUMENT', 'submitting YOUR final ruling needs the acting member id', 'pass member:"<your roster id>" — a pack handler has no agent→member map')
   }
@@ -4836,14 +4902,17 @@ async function submitRuling({ kernel, member, meeting, proposition, verdict, rea
       at: (row && row.at) || null,
       member, meeting, proposition, verdict, reason: reason || '',
     },
-    means: 'this is YOUR final ruling (' + String(verdict) + ' on ' + proposition + ') and it is now a card of your own on disk, so it SURVIVES your session and the chair adopts it from the tally — the chair does not write this number for you',
+    means: rulingBySeat
+      ? 'this is YOUR final ruling (' + String(verdict) + ' on ' + proposition + ') and it is now a card of your own on disk, so it SURVIVES your session and the chair adopts it from the tally — the chair does not write this number for you'
+      : 'this ruling (' + String(verdict) + ' on ' + proposition + ') was filed IN ' + member + '"s name by a call that did NOT come from that seat (' + (callerOfRuling === null ? 'the office/root session' : 'the seat "' + String(callerOfRuling) + '"') + ') — the card is durable and the tally will count it, but the seat did not act in its own turn: who typed it is not who decided it',
     rosterChecked, rosterSource: debated.source,
     readBack: rulingReadBackOf(member, proposition),
     rosterCheckedMeans: rosterChecked
       ? 'the debate on ' + meeting + ' was readable in this session, so your membership in it was checked before the ruling was filed'
       : 'this session could not read who debated ' + meeting + ' (' + String(debated.why || debated.source || 'unreadable') + '), so the membership check happens when the chair collects — submit, and the chair names any member who did not debate',
     next: 'the chair collects every filed ruling with vibe_v5_verdict_final { meeting: "' + meeting + '", proposition_id: "' + proposition + '" } (all agree ⇒ that value, otherwise the arithmetic mean)',
-    note: 'the ruling is a card under Members/' + member + '/Propos/ — writing it inside YOUR OWN folder is what makes concurrent submissions safe and lets the chair read them from another kernel',
+    note: 'the ruling is a card under Members/' + member + '/Propos/ — one folder per member is what makes concurrent submissions safe and lets the chair read them from another kernel'
+      + (rulingBySeat ? '' : "; the folder is the SEAT's, not the caller's"),
   }
 }
 
@@ -4855,7 +4924,7 @@ async function submitRuling({ kernel, member, meeting, proposition, verdict, rea
  *     ruling, which the chair's `vibe_v5_verdict_final` collects and adopts (see the block above).
  *  Neither context is a named refusal that shows both faces — the run-31 failure was a TRUE refusal that named only
  *  the ballot, so a member holding no ballot had nowhere to go. */
-async function toolVerdict(args = {}, { kernel } = {}) {
+async function toolVerdict(args = {}, { kernel, exec = null } = {}) {
   if (args.verdict === undefined || args.verdict === null) throw refuse('VMU_INVALID_ARGUMENT', 'verdict needs a number in [0,1]', 'pass verdict:1 / 0 / a probability')
   const v = Number(args.verdict)
   if (!Number.isFinite(v) || v < 0 || v > 1) {
@@ -4863,7 +4932,7 @@ async function toolVerdict(args = {}, { kernel } = {}) {
   }
   if (!has(args.target)) {
     if (has(args.meeting) && has(args.proposition_id)) {
-      return await submitRuling({ kernel, member: str(args.member).trim(), meeting: str(args.meeting), proposition: str(args.proposition_id), verdict: v, reason: has(args.reason) ? str(args.reason) : '' })
+      return await submitRuling({ kernel, member: str(args.member).trim(), meeting: str(args.meeting), proposition: str(args.proposition_id), verdict: v, reason: has(args.reason) ? str(args.reason) : '', exec })
     }
     throw refuse('VMU_RULING_NEEDS_CHANNEL', 'a verdict needs either the LIVE ballot it votes on, or the debate ruling it answers',
       'pass target:"<live ballot id>" to vote on a ballot; pass meeting:"<meeting id>" + proposition_id:"<proposition id>" to file YOUR final debate ruling (布尔概率 + 理由), which the chair collects with vibe_v5_verdict_final')
@@ -6159,8 +6228,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_script',
     description: 'THE SCRIPT ARCHIVE (归档/复算): op=archive stores a script\'s WHOLE text as a `scripts`-track card with the kernel\'s own fingerprint (provenance in title/tags, body byte-identical); op=read returns the archived text verbatim by id or name (latest edition); op=list shows the archived scripts. '
-      + '★ A script is a 所级产物, so it is archived and reviewable — but a TEMPORARY script still cannot be run ad hoc: the pack\'s no-adhoc-scripts rule refuses that by name. Recompute by running the archived text again and comparing the fingerprint, never by trusting a note about it.',
-    parameters: { op: { type: 'string' }, name: { type: 'string' }, text: { type: 'string' }, purpose: { type: 'string' }, parent: { type: 'string' }, edition: { type: 'string' }, id: { type: 'string' }, limit: { type: 'integer' }, member: { type: 'string' } },
+      + '★ CHAIR-ONLY (rule C14: a study script must be archived — the archive is the academician\'s institutional act). member/temp are refused by name and told the path: hand the script to the chair and say what it should be archived AS. ★ A script is a 所级产物, so it is archived and reviewable — but a TEMPORARY script still cannot be run ad hoc: the pack\'s no-adhoc-scripts rule refuses that by name. Recompute by running the archived text again and comparing the fingerprint, never by trusting a note about it.',
+    parameters: { op: { type: 'string', enum: ['archive', 'read', 'list'] }, name: { type: 'string' }, text: { type: 'string' }, purpose: { type: 'string' }, parent: { type: 'string' }, edition: { type: 'string' }, id: { type: 'string' }, limit: { type: 'integer' }, member: { type: 'string' } },
     handler: toolScript,
   },
   {
@@ -6306,7 +6375,9 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_blueprint',
     description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision (path + text REQUIRED; `draft` OPTIONAL names which OPEN draft of this path the text continues — omit it and the open draft is continued, or a new revision is started when none is open; a draft is never in force); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one; "read" returns one revision by id. ★ COMMON DESIGN (共同设计): if your text carries a `## 共同设计补充｜<your id>` heading it MUST be the FIRST line — only a heading on the very first line is recognised and dropped. Do NOT paste the draft you are continuing back into your text: a leading copy of the draft THIS CALL CONTINUES is stripped (reported in bodyPrefixDropped), and `continuedBase.actual` names the row your text was joined to - null when the call started a new draft, and then nothing was compared. A draft is NOT private: every propose writes into the SAME shared revision row, so a proposal filed to test the face is visible to every member and becomes the base the next author continues. Every change is one record row (who proposed, who adopted, when, fingerprint), and the rows are also readable through vibe_v5_read_library { track: "blueprint" }.',
-    parameters: { action: { type: 'string' }, path: { type: 'string' }, member: { type: 'string' }, text: { type: 'string' }, draft: { type: 'string' }, id: { type: 'string' }, note: { type: 'string' } },
+    parameters: { action: { type: 'string' }, path: { type: 'string' }, member: { type: 'string' }, text: { type: 'string' }, draft: { type: 'string' }, id: { type: 'string' }, note: { type: 'string' },
+      outline: { type: 'array', description: 'OPTIONAL ordered outline of this revision: [{id,title,depth}] with depth 1 (粗) or 2 (细). Read back as outline/outlineCount/outlineDepthMax on state, read and every propose/adopt receipt; a malformed entry is refused by name, never dropped.' },
+      revision_reason: { type: 'string', description: 'OPTIONAL one line: WHY this revision exists (G11). Read back as revisionReason/revisionReasonSource. An alias of revisionReason.' } },
     handler: toolBlueprint,
   },
   {

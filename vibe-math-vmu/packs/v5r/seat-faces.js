@@ -86,6 +86,7 @@ export const RULE_INDEX = Object.freeze({
   '10.3': 'Lean 五工具三席可用',
   '11': '反脆弱：失败回滚、越权不靠提示词、禁言、自反馈',
   '11.2': '越权与规则由机制执行，不靠提示词自觉',
+  mainline: '核心推进方向（主线）：实现蓝图的策划/细化/调整与推进实现，以及各方向/路线/节点的信息积累（规则文档同名一节，未编号 ⇒ 用名字而非数字）',
 })
 
 /**
@@ -179,12 +180,21 @@ export const SEAT_TOOL_FACES = Object.freeze({
     allow: Object.freeze({ chair: true, member: true, temp: false }),
   }),
   // ── 脚本轨 ────────────────────────────────────────────────────────────────────────────────────────────
+  // ★ RUN 236 / C14 — THE RULE THE ALL-DENY FACE MADE UNREACHABLE. C14 says a study script MUST be archived; the
+  // previous row denied the only face that can archive (archive/read/list) to every seat, the chair included, so the
+  // rule had no reachable executor at all. The ruling (Lead, RUN 236) is chair-only: the archive is an INSTITUTIONAL
+  // act (it files a 所级产物 on the records track), not a per-seat chore — the academician files it; a member or temp
+  // hands the script to the chair (say{to} / a recorded meeting note / its task) and says what it should be archived AS.
+  // The tool face carries the same ruling (`toolScript` refuses member/temp by name and points at that path), because a
+  // declaration without a consumer would be prose again. No-adhoc-scripts is unchanged: archiving is not running.
   vibe_v5_script: Object.freeze({
     rule: '10, 11.2',
-    why: '脚本面（archive/read/list）是机构的运行记录，不是任何席位在本回合的职责；v5r 的临时脚本执行本来就被'
-      + 'VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS 具名拒，且现行三席提示词一次也没教过它。规则 10 的「断点续跑」由控制面'
-      + '与耐久投影承担，不靠席位自己翻脚本 ⇒ 三席全 deny；若院士需要归档续跑脚本，这是 SEAT_PENDING_RULINGS 里的一条单独裁决',
-    allow: Object.freeze({ chair: false, member: false, temp: false }),
+    why: '规则 C14（研究脚本必须归档）要一个真正的执行者：脚本面（archive/read/list）落的是**所级产物**（records 的 scripts 轨），'
+      + '是机构的机构动作，由院士（chair 席）执行 —— 全席 deny 会让 C14 无人可做（RUN 236 实测的 UNREACHABLE）。'
+      + 'member/temp 不持有这条面：它们的路是把脚本原文交给院士并说清「按什么归档」（私信 say{to:"<院士 id>"}、'
+      + '写进会议记录、或在任务回执里附上），由院士归档；临时脚本仍不能即席运行（VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS），'
+      + '归档是 archival copy，不是执行证据。',
+    allow: Object.freeze({ chair: true, member: false, temp: false }),
   }),
   // ── 机构读数与运行控制（所办口吻/机构级）──────────────────────────────────────────────────────────────
   vibe_v5_report: Object.freeze({
@@ -422,7 +432,7 @@ export const SEAT_TEACHING = Object.freeze({
     { names: ['vibe_v5_meeting_round'], text: '推进一轮：按 TYPE 收窄发言席工具面后请在场席位发言（主席不在发言名单），只由主席发起。' },
     { names: ['vibe_vmu_meeting'], framework: true, text: '规则 6·会议的读与收束：status/summary 读会况（不返回逐字发言，本面没有 minutes）；close 收束需 actor 等于本场主席，否则具名拒 `VMU_NOT_PERMITTED`（`closeRequiresChair`；回执带 closureVote/closureVoteNote）；extend 按 `speechExtendMs` 延长发言，extendlimit 按 `extendCeilingMs` 延长墙钟上界（ms=0 具名拒）；超过 `vmu.meetings.hardLimitMs` 才允许 lapse，revokelapse 要理由；extend 在 SERVICE 会议走服务面（回执 registry:"service"），silent/end/hands 仍具名拒 `VMU_REGISTRY_BOUNDARY`（发言界读 vibe_v5_say 的 speechBound）；用它 action="open" 的是 PRIMITIVE 表（say/verdict_final 寻址不到，status 带 registry:"primitive"），规则会议只用 vibe_v5_meeting 召集。' },
     { names: ['vibe_vmu_human'], framework: true, text: '规则 11·人工在环的读：queue 看待批、approvalState 查审批（requestId）、dashboard 看观察者视图；`vmu.human.gatedActions` 里被闸动作获批前不执行（`VMU_HUMAN_APPROVAL_PENDING`），超时按 onTimeout（默认 hold，不放行）。这是人类的决定权（经所办转达）：**不要自批**，需要权限就让所办请示。' },
-    { names: ['vibe_vmu_chat'], framework: true, text: '规则 5·群聊治理（`vmu.chat.admins`，本所默认院士；其他席位具名拒 `VMU_CHAT_NOT_ADMIN`）：mute/unmute（`durationMs` 相对毫秒，0/省略取 `muteDefaultMs`，默认 0＝不过期）、quota（0=不限）、setpolicy（只改已声明键）、admin；管理动作必须带 by。被禁言/超配额发言具名拒 `VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`。' },
+    { names: ['vibe_vmu_chat'], framework: true, text: '规则 5·群聊治理（`vmu.chat.admins`；越权具名拒 `VMU_CHAT_NOT_ADMIN`）：mute/unmute（`durationMs` 毫秒，0/省略取 `muteDefaultMs`，默认 0＝不过期）、quota、setpolicy（只改已声明键）、admin；管理动作须带 by；禁言/超配额发言拒 `VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`。' },
     { names: ['vibe_v5_motion', 'vibe_v5_second'], text: '提动议（kind=topic/procedural/resolution；需 meeting）／附议（需 meeting+motion_id，提案人不能附议自己）；withdraw 撤回自己的动议。' },
     { names: ['vibe_v5_poll_open'], text: '开选项投票（院士席）：question＋≥2 options；逐票规则只在构造期可设（未生效列在 unapplied）。' },
     { names: ['vibe_v5_poll_vote'], text: '在已开选项投票上投票（常设席才有票权）。' },
@@ -433,9 +443,15 @@ export const SEAT_TEACHING = Object.freeze({
     { names: ['vibe_v5_verified_promote'], text: '把已验证命题升进 Verified/（需 warrant 与 warrant_kind，先过保真收口）；定论唯一写入口。' },
     { names: ['vibe_v5_fidelity_conclude'], text: '保真收口：Lean 通过≠命题为真，要给出代码里命题/定义是否符合所需的判定（院士席）。' },
     { names: ['vibe_v5_blueprint'], text: '技术路线蓝图：state 读现行版/在等草案/超期、propose 提、read 读一版、adopt 落成（落成只有院士席）。' },
+    // ★ RUN 236 / task-28: the direction card is a KERNEL face (`vibe_vmu_direction`), not a pack tool, so it is
+    // taught HERE as `framework: true` (the same axis `vibe_vmu_meeting` uses) instead of getting a pack-ACL row: a
+    // SEAT_TOOL_FACES row for a name the pack does not declare is the 'extra' drift the table refuses by name.
+    // G10/G13/G14: the nine fields are the paperwork the mainline's nodes need; the card is NOT a gate and NOT a score.
+    { names: ['vibe_vmu_direction'], framework: true, text: '方向卡九字段缺则点名，不当闸。' },
     { names: ['vibe_v5_start', 'vibe_v5_stop', 'vibe_v5_pause', 'vibe_v5_resume'], text: '建所并启动／停机／暂停／继续（内核控制状态）。' },
     { names: ['vibe_v5_configure', 'vibe_v5_set'], text: '改已声明设置键；回执带 H1 立即生效/H2 重启后生效；未声明与 H3 只读键具名拒。' },
     { names: ['vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive'], text: '用内核 Lean 面编译 .lean／查作业／看库／读归档／归档（本包不起子进程）。' },
+    { names: ['vibe_v5_script'], text: '规则 C14·脚本归档（院士席）：op=archive 把研究脚本原文落成 scripts 轨记录（回执 recordId，可按 id／name 用 op=read 读回，指纹由内核算）；op=list 列出。归档是 archival copy，不是执行证据——临时脚本仍不能即席运行（no-adhoc-scripts）；member/temp 把脚本交给你并说清按什么归档。' },
     { names: ['vibe_v5_inbox'], text: '信箱：列表不读正文，打开自动标已读，需跟进标待办。' },
     { names: ['vibe_v5_wait'], text: '等别人回你（等到或超时即返回），不要反复轮询。' },
     { names: ['vibe_vmu_env'], framework: true, text: '探测本机环境（probe 传 need；list 看全部；report 把缺失记成 finding 供主代理读）。只探测上报，【绝不安装/联网/改系统】。' },
@@ -460,6 +476,11 @@ export const SEAT_TEACHING = Object.freeze({
     { names: ['vibe_vmu_chat'], framework: true, text: '规则 5·群聊治理只有管理员能做（`vmu.chat.admins`，本所默认 acad）：非管理员调用 mute/quota/setpolicy/admin 即具名拒 `VMU_CHAT_NOT_ADMIN`；被禁言或超配额发言具名拒 `VMU_CHAT_MUTED`／`VMU_CHAT_QUOTA_EXCEEDED`。' },
     { names: ['vibe_v5_verdict'], text: '对验证对象投 [0,1] 的裁决。' },
     { names: ['vibe_v5_blueprint'], text: '技术路线蓝图：state 读现行版/在等草案、propose 提、read 读一版；adopt 落成只有院士席。' },
+    // ★ RUN 236 / task-28: the direction card is a KERNEL face (`vibe_vmu_direction`), not a pack tool, so it is
+    // taught HERE as `framework: true` (the same axis `vibe_vmu_meeting` uses) instead of getting a pack-ACL row: a
+    // SEAT_TOOL_FACES row for a name the pack does not declare is the 'extra' drift the table refuses by name.
+    // G10/G13/G14: the nine fields are the paperwork the mainline's nodes need; the card is NOT a gate and NOT a score.
+    { names: ['vibe_vmu_direction'], framework: true, text: '方向卡九字段缺则点名，不当闸。' },
     { names: ['vibe_v5_lean_run', 'vibe_v5_lean_job', 'vibe_v5_lean_lib', 'vibe_v5_lean_read', 'vibe_v5_lean_archive'], text: '用内核 Lean 面编译 .lean／查作业／看库／读归档／归档（本包不起子进程）。' },
     { names: ['vibe_v5_inbox'], text: '信箱：列表不读正文，打开自动标已读，需跟进标待办。' },
     { names: ['vibe_v5_wait'], text: '等别人回你（等到或超时即返回），不要反复轮询。' },
@@ -504,12 +525,17 @@ export const SEAT_PENDING_RULINGS = Object.freeze([
   Object.freeze({
     seat: 'chair',
     tool: 'vibe_v5_script',
-    current: 'deny',
+    current: 'allow',
     status: 'decided',
-    ruling: 'keep deny — Lead, round 31 (裁决 2): the script face archives/reads/ lists run scripts; no seat may call it, and if the academician ever needs archived scripts for 断点续跑 that is a separate one-cell decision, not a reason to open it now.',
-    suggestion: 'maybe allow',
-    evidence: '规则 10 提到断点续跑；script 面是 archive/read/list 的脚本轨（不新增 kind，临时执行被 VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS 具名拒）。'
-      + 'run31 的院士缺陷清单里没有它，现行提示词也从未教过它 ⇒ 保持 deny；若院士要能归档运行脚本以支持续跑，这是一次单独裁决。',
+    ruling: 'allow for the chair ONLY — Lead, RUN 236 (C14): the round-31 all-deny row was measured as a rule with no reachable executor '
+      + '(docs/acceptance/sim-audit-rules.md judges C14 UNREACHABLE because the only archive face is denied to every seat). '
+      + 'The archive is the academician\'s institutional act — it files a 所级产物 on the records track — so the chair may call it, '
+      + 'while member/temp stay denied and their refusal names the path (hand the script to the chair with what it should be archived AS). '
+      + 'No-adhoc-scripts is unchanged: archiving is not running.',
+    suggestion: 'done: chair-only (RUN 236)',
+    evidence: '规则 C14（L18）要求研究脚本必须归档；script 面是 archive/read/list 的脚本轨（不新增 kind，临时执行被 VMU_PACK_V5R_CORE_NO_ADHOC_SCRIPTS 具名拒）。'
+      + '严格需要这条面的是「归档」这一机构动作，不是每个席位；chair 归档后 read/read-by-id 都可读回（recordId），'
+      + 'member/temp 的具名拒给出可达替代（say{to} 转交院士 / 会议记录 / 任务回执附原文）。',
   }),
   Object.freeze({
     seat: 'member',
@@ -581,7 +607,15 @@ export function seatDenyNames(seat, declared = []) {
 /** The manifest shape this pack declares as `toolFaces`: `{chair:{deny:[…]}, member:{…}, temp:{…}}`. */
 export function seatFaces(declared = []) {
   const out = {}
-  for (const seat of SEAT_IDS) out[seat] = Object.freeze({ deny: Object.freeze(seatDenyNames(seat, declared)) })
+  for (const seat of SEAT_IDS) {
+    const deny = seatDenyNames(seat, declared)
+    // ★ RUN 236 / C14: an EMPTY deny list is a FACT, not a declaration — the explicit statement of what a seat may call
+    // lives in the per-tool `allow` rows above. Emitting `deny: []` would read as "this seat denies nothing" (true) but
+    // the kernel's manifest check (`kernel/pack.js:152`) correctly refuses an EMPTY face list, because an empty ALLOW
+    // list would mean "deny everything" — the two are not the same case, so we omit the key instead of widening a
+    // global invariant. `chair` is the seat this first happens to (RUN 236 opened vibe_v5_script to it).
+    out[seat] = Object.freeze(deny.length > 0 ? { deny: Object.freeze(deny) } : {})
+  }
   return Object.freeze(out)
 }
 

@@ -103,17 +103,20 @@ try {
   const live = PACK.toolFaces
   ok(J(live) === J(derived),
     '★★★ the manifest `toolFaces` EQUALS `seatFaces(declared)` — one decision, two readers (the prompt is no longer the ACL)',
-    { liveSizes: { chair: live.chair.deny.length, member: live.member.deny.length, temp: live.temp.deny.length } })
+    { liveSizes: { chair: (live.chair.deny || []).length, member: live.member.deny.length, temp: live.temp.deny.length } })
   // ★ non-vacuous precondition for the per-seat block below: an empty SEAT_IDS would run ZERO checks, so the three
   // assertions inside the loop would pass while checking nothing.
   ok(seatMod.SEAT_IDS.length === 3, '★ the seat loop below iterates the three declared seats (an empty SEAT_IDS would make every per-seat check vacuous)', seatMod.SEAT_IDS)
   for (const seat of seatMod.SEAT_IDS) {
     const allow = seatMod.seatAllowNames(seat, DECLARED)
-    const deny = live[seat].deny
-    ok(allow.length > 0 && deny.length > 0 && allow.length + deny.length === DECLARED.length && allow.filter((n) => deny.includes(n)).length === 0,
+    // ★ RUN 236 / C14: an empty deny list is OMITTED from the manifest face (kernel/pack.js:152 refuses `deny: []`), so the
+    // chair face is `{}` today — it denies nothing. `|| []` reads the omission AS the fact it is; the set identity below
+    // (allow ⊎ deny = catalogue) still holds because it is `declared − allow` either way.
+    const deny = live[seat].deny || []
+    ok(allow.length > 0 && allow.length + deny.length === DECLARED.length && allow.filter((n) => deny.includes(n)).length === 0,
       '★ 反: for the ' + seat + ' seat, allow ⊎ deny = the whole catalogue (no tool is both, none is neither)',
       { allow: allow.length, deny: deny.length, declared: DECLARED.length })
-    ok(deny.length > 0 && deny.every((n) => n.startsWith('vibe_v5_')) && deny.every((n) => !/^vibe_vmu_/.test(n)),
+    ok(allow.length > 0 && deny.every((n) => n.startsWith('vibe_v5_')) && deny.every((n) => !/^vibe_vmu_/.test(n)),
       'the ' + seat + ' deny list narrows only THIS pack\'s tools (framework faces are never hidden by a pack decision)')
     ok(allow.length > 0 && allow.every((n) => seatMod.seatDecision(seat, n).why.length > 20),
       '★ every ALLOWED tool for the ' + seat + ' seat carries its reason (an allow without a rule is exactly the "just open it" failure mode)')
@@ -136,7 +139,7 @@ try {
     ['chair', 'vibe_v5_meeting_round', true], ['chair', 'vibe_v5_verdict_final', true], ['chair', 'vibe_v5_verdict_ask', true],
     ['chair', 'vibe_v5_verified_promote', true], ['chair', 'vibe_v5_fidelity_conclude', true], ['chair', 'vibe_v5_blueprint', true],
     ['chair', 'vibe_v5_meeting', true], ['chair', 'vibe_v5_message', true], ['chair', 'vibe_v5_task_get', true],
-    ['chair', 'vibe_v5_script', false],
+    ['chair', 'vibe_v5_script', true],
     ['member', 'vibe_v5_say', true], ['member', 'vibe_v5_second', true], ['member', 'vibe_v5_task_get', true],
     ['member', 'vibe_v5_verdict', true], ['member', 'vibe_v5_poll_vote', true], ['member', 'vibe_v5_motion', true],
     ['member', 'vibe_v5_blueprint', true], ['member', 'vibe_v5_lean_run', true],
@@ -363,8 +366,13 @@ try {
     '★★ the kernel holds ONE pack face whose chair deny list IS the declared one (the wiring path, not a test-only export)',
     faces.map((f) => f.by || f.id))
   const declaredToolNames = new Set(DECLARED)
-  ok(faces[0].faces[seatMod.SEAT_IDS[0]].deny.every((n) => declaredToolNames.has(n)),
-    '★ every name in the live face is a tool this pack declares (a prompt-only phantom cannot be denied)')
+  // RUN 236: the chair face now OMITS `deny` (it denies nothing — see seatFaces), so read the omission as the empty list.
+  const liveChairDeny = faces[0].faces[seatMod.SEAT_IDS[0]].deny || []
+  // RUN 236 (C14): the chair's deny list is legitimately empty, so `.every()` there would be vacuous — the check is
+  // expressed as "the undeclared names among the live deny list are NONE, as exact text" plus exact-list equality.
+  const undeclaredLive = liveChairDeny.filter((n) => !declaredToolNames.has(n))
+  ok(J(undeclaredLive) === '[]' && J(liveChairDeny) === J(derived.chair.deny || []),
+    '★ every name in the live face is a tool this pack declares (a prompt-only phantom cannot be denied; empty chair deny == empty derived deny)')
   // ── ⑩ ROUND 31 (Lead's new order): THE START-TIME SCOPE NO LONGER REPLACES THE SEAT FACE ─────────────────────────
   // This is the defect that made run 31's probe contradict the declaration: `packs/v5r/tools.js` hands EVERY hired seat
   // (including the chair, `r-acad`) to `applyMemberScope`, and that function used to push `allow: MEMBER_SAFE_TOOLS` —
@@ -385,8 +393,8 @@ try {
     '★★★ NO override row is written for the chair at all — its capability is the declaration, full stop')
   const chairAfter = measure(seats.chair)
   ok(J(chairAfter) === J(beforeScope.chair)
-    && chairDuties.every((n) => chairAfter[n] === true) && chairAfter.vibe_v5_report === true && chairAfter.vibe_v5_script === false,
-    '★★★ AFTER the start sequence the chair can STILL call all six duties + report, and `script` is still refused (nothing was widened)',
+    && chairDuties.every((n) => chairAfter[n] === true) && chairAfter.vibe_v5_report === true && chairAfter.vibe_v5_script === true,
+    '★★★ AFTER the start sequence the chair can STILL call all six duties + report, and `script` is now its C14 archive face (RUN 236) — no OTHER seat gained it',
     { before: beforeScope.chair, after: chairAfter })
   const memOverride = kernel.memberToolOverride(seats.member)
   const tempOverride = kernel.memberToolOverride(seats.temp)

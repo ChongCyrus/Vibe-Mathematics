@@ -148,6 +148,10 @@ const HEAD_SORTS = Object.freeze(['updatedAt', 'createdAt', 'title'])
 const NOTICE_STYLES = Object.freeze(['short', 'detailed'])
 const TRUNCATE_MODES = Object.freeze(['keepChars', 'keepHeadTail', 'dropMiddle'])
 const FINGERPRINT_POLICIES = Object.freeze(['content-only', 'content+display'])
+// ROUND 236 / M4: how an UPDATE writes the body of the row it names. `replace` swaps it whole (the previous body
+// stays readable in the record's history); `append` keeps the old body and writes this text after it. Naming no
+// body at all KEEPS the body — the measured defect was an update that silently dropped fields the caller never named.
+const BODY_MODES = Object.freeze(['replace', 'append'])
 const DEFAULT_LIST_CAP = 200
 
 /** Deterministic slug: `ascii` strips to [a-z0-9-], `cjk-keep` keeps CJK (docs/07 §12 `naming.slugPolicy`). */
@@ -645,7 +649,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     },
 
     /** Create a record. Every cap is a NAMED refusal with 现值/上限; duplicates are COUNTED, never re-added. */
-    put({ id: requestedId = null, track, kind, title, body = '', tags = [], settled = false, permanent = false, by = null } = {}) {
+    put({ id: requestedId = null, track, kind, title, body = undefined, tags = undefined, settled = false, permanent = undefined, by = null, bodyMode = null } = {}) {
       // ★ ROUND 36: fold the fold BEFORE writing, because the write-through snapshot (kernel/index.js) replaces the
       // WHOLE `records` array with THIS instance's view. Without this, instance A's put would overwrite instance B's
       // rows - a lost update that no read-path fix could repair (the rows would be gone from the durable file).
@@ -658,6 +662,48 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         throw deny('VMU_INVALID_ARGUMENT', 'unknown record track: ' + String(track) + ' (' + liveTrackNames().join('/') + ')',
           'vmu.records.tracks declares the tracks; a new track must be declared before it can hold records (vmu.records.tracks)', [K.tracks], 'put')
       }
+      // ★★★ ROUND 236 / M4 (measured, FEEDBACK60 §M4): an UPDATE used to REBUILD the row from what THIS call named, so
+      // every field the caller did not name was reset and the previous body was destroyed while the receipt said
+      // `ok:true`. A member's CORRECTION therefore renamed its card to its own id ("rec-6"), reverted its value and
+      // dropped a whole `- debateRuling：` line — nobody was told. An update now MERGES BY FIELD: what this write names
+      // wins, what it does not name is KEPT, the row's identity (id/slug/createdAt) survives, the previous state goes
+      // into `versions` (readable, not destroyed), and the receipt says which fields were kept and how the body was
+      // written (`bodyModeUsed`). Read the merge inputs BEFORE the checks, because the checks must judge the values
+      // that will actually land (an omitted kind keeps the row's kind instead of refusing "kind undefined").
+      const existingRow = (requestedId === null || requestedId === undefined) ? null : (records.get(String(requestedId)) || null)
+      const isUpdate = !!(existingRow && existingRow.state === 'live' && existingRow.track === track)
+      const updating = isUpdate ? existingRow : null
+      const bodyModeRaw = bodyMode === null || bodyMode === undefined ? 'replace' : String(bodyMode)
+      if (BODY_MODES.indexOf(bodyModeRaw) === -1) {
+        throw deny('VMU_INVALID_ARGUMENT', 'unknown bodyMode: ' + JSON.stringify(bodyMode) + ' (allowed: ' + BODY_MODES.join(', ') + ')',
+          'bodyMode:"replace" swaps the body of the named row (the write is listed in records.history); bodyMode:"append" keeps the old body and adds this text after it', [], 'put')
+      }
+      if (!updating && bodyMode !== null && bodyMode !== undefined) {
+        throw deny('VMU_INVALID_ARGUMENT', 'bodyMode:' + JSON.stringify(bodyMode) + ' was named for a write that MINTS a new record',
+          'bodyMode only means something on an UPDATE of an existing row (an add has no previous body); drop bodyMode, or name an existing id', [], 'put')
+      }
+      const titleGiven = title !== undefined && title !== null && String(title).trim() !== ''
+      // ★ an ID is not a NAME. The card path hands `title = <the row's own id>` when the caller named no title
+      // (kit/handlers.js titleOfCard: explicit title -> id -> claim -> kindWord), and taking that literally renamed the
+      // card to "rec-6" — the measured M4 shape. A supplied title that IS the row's own id is not a title.
+      const titleIsOwnId = !!(updating && titleGiven && String(title) === String(updating.id))
+      const kindGiven = kind !== undefined && kind !== null && String(kind).trim() !== ''
+      const tagsGiven = tags !== undefined && tags !== null
+      const permanentGiven = permanent !== undefined
+      const bodyGiven = body !== undefined
+      const byGiven = by !== undefined && by !== null && String(by).trim() !== ''
+      const mergedKind = updating ? (kindGiven ? String(kind) : updating.kind) : kind
+      const mergedTitle = updating ? (titleGiven && !titleIsOwnId ? String(title) : updating.title)
+        : (title === undefined || title === null ? null : String(title))
+      const mergedTags = updating ? (tagsGiven ? listOf(tags, []) : updating.tags) : listOf(tags, [])
+      const mergedPermanent = updating ? (permanentGiven ? permanent === true : updating.permanent === true) : permanent === true
+      const mergedBy = updating ? (byGiven ? String(by) : (updating.by === undefined ? null : updating.by)) : (by === null || by === undefined ? null : String(by))
+      const bodyNew = body === undefined || body === null ? '' : String(body)
+      const bodyModeUsed = !updating ? 'replace' : (!bodyGiven ? 'kept' : bodyModeRaw)
+      const oldText = updating ? String(updating.body === undefined || updating.body === null ? '' : updating.body) : ''
+      const mergedBody = !updating ? bodyNew
+        : (!bodyGiven ? oldText
+          : (bodyModeRaw === 'append' ? (bodyNew === '' ? oldText : (oldText === '' ? bodyNew : oldText + '\n' + bodyNew)) : bodyNew))
       mark(enforced, K.requireSettled)
       if (requireSettled && settled !== true) {
         mark(fired, K.requireSettled)
@@ -665,9 +711,9 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
           'pass settled: true once the record is final, or set vmu.records.requireSettledRecords=false (vmu.records.requireSettledRecords)', [K.tracks, K.requireSettled], 'put')
       }
       mark(enforced, K.allowedKinds)
-      if (!allowedKinds.includes(kind)) {
+      if (!allowedKinds.includes(mergedKind)) {
         mark(fired, K.allowedKinds)
-        throw deny('VMU_INVALID_ARGUMENT', 'kind "' + String(kind) + '" is not allowed (vmu.records.allowedKinds)',
+        throw deny('VMU_INVALID_ARGUMENT', 'kind "' + String(mergedKind) + '" is not allowed (vmu.records.allowedKinds)',
           'allowed kinds: ' + allowedKinds.join(', ') + ' (vmu.records.allowedKinds)', [K.tracks, K.requireSettled, K.allowedKinds], 'put')
       }
       // ★ RUN 165 (measured): a put that UPDATEs an existing row of the same track does not add a row, so the head cap
@@ -675,8 +721,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       // refused on its SECOND write whenever the track was exactly one below its cap — and the refusal left the minted
       // state row behind as a ghost that then held the free slot: the very repair (prune) the refusal recommends became
       // unactionable on the next call. An update is now recognised by id+track+live and exempted from the ADD caps.
-      const existingRow = (requestedId === null || requestedId === undefined) ? null : (records.get(String(requestedId)) || null)
-      const isUpdate = !!(existingRow && existingRow.state === 'live' && existingRow.track === track)
+      // (`existingRow` / `isUpdate` are resolved above, with the merge inputs.)
       mark(enforced, K.headMaxItems)
       const headMaxItems = headMaxItemsNow()
       if (!isUpdate && headMaxItems > 0 && liveIds(track).length >= headMaxItems) {
@@ -684,7 +729,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         throw deny('VMU_QUOTA_EXCEEDED', 'track "' + track + '" is full: ' + liveIds(track).length + '/' + headMaxItems + ' live records (vmu.records.head.maxItems)',
           'this track is full. TWO reachable repairs: (1) call vibe_vmu_records {action:"prune", track:"<this track>", keep:<how many newest rows to keep>, why:"why these rows may go"} — the OLDEST rows move to the TRASH (restorable until purgeAt, vmu.records.trash.retainDays), and the ledger never evicts silently; (2) this limit is read at WRITE time, so raising it with vibe_v5_set {key:"vmu.records.head.maxItems", value:<bigger>, why:"why this track needs room"} takes effect on the NEXT put (no restart; the office is the writer of every vmu.records setting)', [K.tracks, K.requireSettled, K.allowedKinds, K.headMaxItems], 'put')
       }
-      const bodyText = String(body === undefined || body === null ? '' : body)
+      const bodyText = mergedBody
       const bytes = bytesOf(bodyText)
       mark(enforced, K.bodyCapBytes)
       if (bytes > bodyCapBytes) { mark(fired, K.bodyCapBytes); counters.bodyTruncated += 1; fire('records/body-truncated', { at: now(), bytes, cap: bodyCapBytes, mode: truncateMode }) }
@@ -699,7 +744,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       }
       // **去重**（同一键不得出现两次 ✗✓）：`slugMaxLength` 已在上一行整体 push ⇒ 截断时只标 `fired`（不重复进 enforced ✓）
       markAll(enforced, [K.slugPolicy, K.slugMaxLength, K.conflictSuffix])
-      const slugged = slugify(title === undefined || title === null ? kind : title, slugPolicy, slugMaxLength)
+      const slugged = slugify(mergedTitle === undefined || mergedTitle === null ? mergedKind : mergedTitle, slugPolicy, slugMaxLength)
       if (slugged.truncated) { counters.slugTruncated += 1; mark(fired, K.slugMaxLength) }
       if (slugged.truncated && enforced.indexOf(K.slugMaxLength) === -1) mark(enforced, K.slugMaxLength)
       const slugIndex = bySlug.get(track) || new Map()
@@ -717,7 +762,7 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         do { slug = base + suffixFor(n); n += 1 } while (slugIndex.has(slug) && n < 1000)
       }
       mark(enforced, K.fingerprintPolicy)
-      const candidate = { track, kind, title: title === undefined ? null : String(title), slug, body: bodyText, tags: listOf(tags, []), }
+      const candidate = { track, kind: mergedKind, title: mergedTitle, slug, body: bodyText, tags: mergedTags, }
       const fp = fingerprintOf(candidate)
       const fpIndex = byFingerprint.get(track) || new Map()
       byFingerprint.set(track, fpIndex)
@@ -759,10 +804,45 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         id = String(requestedId)
       }
       const at = now()
-      const rec = {
-        id, track, kind: String(kind), title: candidate.title, slug, body: bodyText, tags: candidate.tags, bytes,
-        fingerprint: fp, permanent: permanent === true, state: 'live', rev: 1, createdAt: at, updatedAt: at,
-        by: by === null || by === undefined ? null : String(by), versions: [], trashedAt: null, purgeAt: null,
+      let rec
+      let fieldsReplaced = []
+      if (updating) {
+        // ── ROUND 236 / M4: an UPDATE is a CORRECTION, not a re-creation ────────────────────────────────────────
+        // What this write NAMED wins; what it did not name is KEPT (title/kind/tags/permanent/by/body); the identity
+        // (id/slug/createdAt) survives; the previous state is PUSHED into `versions`, so a replaced body is readable
+        // in `records.history` instead of destroyed; and the receipt names exactly which fields moved (`fieldsReplaced`)
+        // and which were kept (`fieldsKept`). The receipt is where a caller learns what its write did — M4's write said
+        // `ok:true` and lost a whole `- debateRuling：` line without a word.
+        const changed = {}
+        if (mergedTitle !== updating.title) changed.title = [updating.title, mergedTitle]
+        if (bodyText !== oldText) changed.body = [updating.bytes, bytes]
+        if (mergedKind !== updating.kind) changed.kind = [updating.kind, mergedKind]
+        if (JSON.stringify(mergedTags) !== JSON.stringify(updating.tags)) changed.tags = [updating.tags.slice(), mergedTags]
+        if (mergedPermanent !== (updating.permanent === true)) changed.permanent = [updating.permanent === true, mergedPermanent]
+        if (mergedBy !== (updating.by === undefined ? null : updating.by)) changed.by = [updating.by === undefined ? null : updating.by, mergedBy]
+        markAll(enforced, [K.historyStoreMode, K.historyDepth])
+        if (Object.keys(changed).length === 0) mark(fired, K.historyStoreMode)
+        pushVersion(updating, { by: mergedBy, reason: 'put-update (' + bodyModeUsed + ')', changed })
+        updating.kind = mergedKind
+        updating.title = mergedTitle
+        updating.slug = slug
+        updating.body = bodyText
+        updating.tags = mergedTags
+        updating.bytes = bytes
+        updating.fingerprint = fp
+        updating.permanent = mergedPermanent
+        updating.rev = (Number.isInteger(updating.rev) ? updating.rev : 1) + 1
+        updating.updatedAt = at
+        updating.by = mergedBy
+        updating.state = 'live'
+        rec = updating
+        fieldsReplaced = Object.keys(changed)
+      } else {
+        rec = {
+          id, track, kind: String(mergedKind), title: mergedTitle, slug, body: bodyText, tags: mergedTags, bytes,
+          fingerprint: fp, permanent: mergedPermanent, state: 'live', rev: 1, createdAt: at, updatedAt: at,
+          by: mergedBy, versions: [], trashedAt: null, purgeAt: null,
+        }
       }
       // ★★ RUN 174 (run 19 F3/F10 — AN ID LIVES IN EXACTLY ONE TRACK): a put that names an EXISTING id while naming a
       // DIFFERENT track used to push the new index row and leave the old one behind. One id then answered TWO
@@ -799,11 +879,37 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       say({ type: 'records/put', at, id, track, fingerprint: fp })
       fire('records/put', { id, track, fingerprint: fp })
       if (typeof onProgress === 'function' && track === 'progress') {
-        try { onProgress({ id, track, kind, at, by: by === undefined ? null : by }) } catch { /* reported, never fatal */ }
+        // the event must carry the values that LANDED (an update may name neither kind nor by; the row keeps them)
+        try { onProgress({ id, track, kind: mergedKind, at, by: mergedBy }) } catch { /* reported, never fatal */ }
       }
-      return { ok: true, deduplicated: false, id, slug, fingerprint: fp, bytes, tier: tierOf(rec, at), retrackedFrom,
+      // ── the receipt: an UPDATE speaks about what it KEPT and what it REPLACED (M4: `ok:true` alone let a silent
+      // field loss read as a successful correction) ───────────────────────────────────────────────────────────────
+      const fieldsKept = []
+      if (updating) {
+        if (!titleGiven || titleIsOwnId) fieldsKept.push('title')
+        if (!kindGiven) fieldsKept.push('kind')
+        if (!tagsGiven) fieldsKept.push('tags')
+        if (!permanentGiven) fieldsKept.push('permanent')
+        if (!bodyGiven) fieldsKept.push('body')
+        if (!byGiven) fieldsKept.push('by')
+        fieldsKept.push('id', 'createdAt', 'versions')
+      }
+      const bodyModeMeans = !updating ? null
+        : (bodyModeUsed === 'kept'
+          ? 'this write named no body, so the row KEPT its body (' + bytesOf(oldText) + ' bytes): an update is a correction, not a re-creation'
+          : (bodyModeUsed === 'append'
+            ? 'the previous body was KEPT and this text was added after it (' + bytes + ' bytes now); pass bodyMode:"replace" to swap the whole body'
+            : 'the body was REPLACED by this write (' + bytes + ' bytes); the write is listed in records.history as a version (vmu.records.history.storeMode:"full" keeps the whole previous text, "diff" names the changed fields and their sizes), so it is reported, not silent'))
+      const receipt = { ok: true, deduplicated: false, id, slug, fingerprint: fp, bytes, tier: tierOf(rec, at), retrackedFrom,
         retrackedFromMeans: retrackedFrom === null ? 'this row did not change track' : 'this id was on the "' + retrackedFrom + '" track and MOVED here: the old index row was removed, so one id answers exactly one `list({track})`',
         enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at }
+      if (!updating) return Object.assign(receipt, { updated: false })
+      const out = Object.assign(receipt, {
+        updated: true, rev: rec.rev, versionsCount: rec.versions.length,
+        fieldsKept, fieldsReplaced, bodyModeUsed, bodyModeMeans,
+      })
+      if (titleIsOwnId) out.fieldsKeptWhy = { title: 'the supplied title was this row\'s own id (' + updating.id + ') — an id is not a name, so the row kept its title' }
+      return out
     },
 
     /** READ a record (head + shaped body). The fingerprint is RECOMPUTED and compared (07 §4.2 spirit). */

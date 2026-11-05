@@ -131,6 +131,33 @@ function stateStamp(records, id) {
  * found). The author is decided BY THIS CALL (`member`), so echoing it costs nothing — and when the caller named nobody,
  * the receipt must say that too: `owner:null` plus a sentence that denies the reading "nobody wrote it".
  */
+/**
+ * THE MERGE ECHO — what a records write did to an EXISTING row (RUN 236 / M4, lane-g2's `records.put` fix).
+ *
+ * `kernel/records.js#put` now merges field-by-field on an update (`rev` grows, identity is kept, unnamed fields keep
+ * their old value) and its own receipt names `fieldsKept` / `fieldsReplaced` / `bodyModeUsed`. That receipt, however,
+ * stops at this seam: the card tools re-state the write in their own words, and before this echo they re-stated only
+ * `recordId`/`rev` — so the seat-facing receipt could not say WHICH fields survived. A caller reading "ok" had to go
+ * back and diff the row itself to learn whether its title was kept or its body replaced.
+ *
+ * Absent facts stay ABSENT (`undefined` → `null`) with `mergeMeans` saying which case this write was: a create has no
+ * previous row to preserve anything from, and saying "fieldsKept: []" there would read like a loss.
+ */
+function mergeEcho(written) {
+  const g = (k) => (written && written[k] === undefined ? null : written[k])
+  const updated = g('updated') === true
+  return {
+    updated,
+    versionsCount: g('versionsCount'),
+    fieldsKept: g('fieldsKept'),
+    fieldsReplaced: g('fieldsReplaced'),
+    bodyModeUsed: g('bodyModeUsed'),
+    mergeMeans: updated
+      ? 'this call UPDATED an existing row: rev/' + String(g('rev')) + ', the fields it did not name kept their old values (' + String((g('fieldsKept') || []).join(', ') || 'none') + '), and the ones it DID name were replaced (' + String((g('fieldsReplaced') || []).join(', ') || 'none') + ')'
+      : 'this call CREATED a row, so there was no previous value to keep or replace — `updated:false` is the create case, not an update that dropped everything',
+  }
+}
+
 function ownerEcho(records, id) {
   let owner = null
   try {
@@ -300,6 +327,7 @@ function toolRecordProgress(args = {}, { kernel, agent, callerMember } = {}) {
   return Object.assign({
     ok: true, tool: 'vibe_v5_record_progress', track,
     recordId: written.id, rev: written.rev,
+    ...mergeEcho(written),
     note: 'appended to the ' + track + ' track; the original wrote one file per track for the same reason',
     // ★★ AUDIT HOLE C2: the receipt says whether a progress figure came in and what was done with it — a caller who
     // passed one must be able to read back that it was kept, and a caller who passed none must not be left guessing
@@ -402,6 +430,7 @@ function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extr
     return Object.assign({
       ok: true, tool, track, kind,
       recordId: written.id, rev: written.rev, settled: isSettled,
+      ...mergeEcho(written),
       // ★ AUDIT C5b: the receipt says whether a progress figure came in and WHERE it was kept — a card's 进度 is now a
       // card field, not a passing remark. Same shape as `vibe_v5_record_progress`'s own echo.
       // ★★ RUN 175 (run 20 FEEDBACK20 ⑨): the receipt names the title the row was written under, and says

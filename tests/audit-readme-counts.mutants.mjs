@@ -27,7 +27,12 @@ ok(base.status === 0 && /10 passed, 0 failed|passed, 0 failed/.test(baseOut), 'b
   (baseOut.trim().split('\n').filter(Boolean).slice(-1)[0] || '').slice(0, 80))
 
 // Tamper the EXACT quoted needle (not a random first match), so the red names the load-bearing check.
-const derived = JSON.parse(spawnSync(process.execPath, [join(HERE, 'run-tests.mjs'), '--counts'], { cwd: REPO, encoding: 'utf8' }).stdout.trim())
+// ★ Same scope rule as the guard: the counts a README claims are DEFAULT-scope numbers, so the cold sweep's
+// `GATE_LEGACY=1`/`GATE_RELEASE=1` must not leak into the child (it would derive 801 and miss the anchor at 743).
+const scopeEnv = Object.assign({}, process.env)
+delete scopeEnv.GATE_LEGACY
+delete scopeEnv.GATE_RELEASE
+const derived = JSON.parse(spawnSync(process.execPath, [join(HERE, 'run-tests.mjs'), '--counts'], { cwd: REPO, encoding: 'utf8', env: scopeEnv }).stdout.trim())
 const pkg = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'))
 const dir = mkdtempSync(join(tmpdir(), 'counts-mut-'))
 const zh = readFileSync(join(REPO, 'README.md'), 'utf8')
@@ -39,7 +44,7 @@ if (zh.indexOf(needle) === -1) {
   ok(false, 'the tamper anchor is present in README.md (the guard and the harness agree on the shape)', 'ANCHOR MISS: ' + needle)
 } else {
   writeFileSync(join(dir, 'README.md'), zh.replace(needle, '`TOTAL 57`（39 套件 + 18 探针/变体）'))
-  const mut = spawnSync(process.execPath, [GUARD], { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, { COUNTS_README: join(dir, 'README.md') }) })
+  const mut = spawnSync(process.execPath, [GUARD], { cwd: REPO, encoding: 'utf8', env: Object.assign({}, scopeEnv, { COUNTS_README: join(dir, 'README.md') }) })
   const out = String(mut.stdout || '') + String(mut.stderr || '')
   const failLines = out.split('\n').filter((l) => /^  - /.test(l))
   const named = failLines.some((l) => l.indexOf('README.md carries the canonical JOB-count bullet') !== -1)

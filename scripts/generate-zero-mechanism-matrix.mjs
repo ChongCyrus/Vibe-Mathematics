@@ -69,6 +69,14 @@ const EXPECT = {
   // ★ 为什么不按 `aggregateVerdicts([])` 登记：空集合**具名拒**（"空集不是 0"）是**输入错误**的形状，不是"零机制时的形状"；
   // 混写会让下一个读者以为"有记录时才会拒"。两个形状分开写，探针只走无参那一面。
   meetingverdict: G('ok 或 object', 'PHASE 12 实测：无参 `status()` ⇒ **ok**（零机制＝无裁决 ⇒ 放行 ✓）；`aggregateVerdicts([])` 的具名拒（空集不是 0）属输入错误形状、不登记为零机制 ✓'),
+  // ── RUN 236 / task-28：方向卡面（`kernel/directions.js`，非抽取新增）
+  // 零机制形状取自**实测**（不是推断）：`createDirections({clock:()=>0})` 不抛，返回的实例上 `list()`/`get()`/`set()`
+  // 都抛**具名拒** `VMU_ENGINE_UNAVAILABLE`（"this kernel has no records projection, so a direction card has nowhere
+  // to live"）—— 方向卡只能活在记录面上，没有记录面就没有地方放 => 拒绝是真实形状 ✓。
+  // ★ `shape()` 在同一零机制下**放行**（回 fields/required/labels）：那是纯声明读数，不碰记录面。
+  // 两态分开写清楚：本行裁定的是探针走的那一面（`list()`，见 `PROBE_ARGS` 推断的首个零参操作），
+  // 不让"有记录时才拒"被读成"永远拒"。
+  directions: G('具名拒（带 code）', 'RUN 236 实测：零机制下 `list()` ⇒ 具名拒 **VMU_ENGINE_UNAVAILABLE**（无 records 投影 ⇒ 方向卡无处安放 ✓）；同实例 `shape()` 放行（纯声明读数 ✓）；`VMU_DIRECTION_INCOMPLETE` 只在有记录面且缺必填时出现，不属零机制形状 ✓'),
   // ── 探针缺参（**显式登记**，不算 mismatch ✓）：需显式探针或补参数
   arbitration: G('具名拒或 ok', 'task-214 批 3 补参（形状取自测试 vmu-arbitration.test.mjs:261 `open({parties,subject})`）：补参前实测具名拒 **VMU_ARBITRATION_OFF**（带口径 `enforcedScope=evaluated-so-far`）⇒ 若补参后仍拒，则"具名拒即零机制真实形状"✓；若放行 ⇒ 亦合规 ✓'),
   budget: G('ok 或 object', 'task-204 实测（形状取自测试 vmu-budget.test.mjs:16）：不传 settings 下 `open({scope})` ⇒ **ok**（零机制＝不限额、放行 ✓）'), charter: G('具名拒或 ok', 'task-214 批 3 补参（形状取自测试 vmu-charter.test.mjs:236 `propose({kind:"charter",text,by,articles:[{id}]})`）：补参前实测具名拒 **VMU_CHARTER_NOT_AUTHORIZED** ⇒ 补参后若放行 ⇒ ok ✓；若仍具名拒 ⇒ 写明"缺参即其零机制形状" ✓'),

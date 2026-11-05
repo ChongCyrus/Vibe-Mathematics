@@ -611,6 +611,7 @@
     "vibe-math-vmu/kernel/crypto.js",
     "vibe-math-vmu/kernel/custody.js",
     "vibe-math-vmu/kernel/delegation.js",
+    "vibe-math-vmu/kernel/directions.js",
     "vibe-math-vmu/kernel/discipline.js",
     "vibe-math-vmu/kernel/env.js",
     "vibe-math-vmu/kernel/explain.js",

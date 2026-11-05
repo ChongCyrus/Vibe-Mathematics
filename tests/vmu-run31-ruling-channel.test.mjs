@@ -149,8 +149,15 @@ try {
   ok(rulingBody.includes('对命题 p-r31 的最终裁决') && rulingBody.includes(M1),
     '★ A9 卡上有一句人读的话（谁对哪个命题裁了什么），不是只有 JSON', { body: rulingBody.slice(0, 200) })
   const meansA = String((filed && filed.means) || '')
-  ok(meansA.includes('YOUR') && /chair does not write this number/i.test(meansA),
-    '★★★ A10 回执用调用者的词汇说「这是**你的**裁决」并且「主席不替你写这个数」', { means: meansA.slice(0, 240) })
+  // ★★★ RUN 236 (M3, measured on run 60): this call comes from the ROOT/office session, not from M1's own turn, so the
+  // honest sentence is the DELEGATED one. Before RUN 236 the receipt said "this is YOUR final ruling … the chair does
+  // not write this number for you" to a caller who was not the seat — the means contradicted the same receipt's
+  // `memberActed:false`. A10 now pins the attribution it really is; the seat-own branch ("YOUR") is pinned by
+  // `tests/vmu-run236-verdict-attribution.test.mjs` §2, which calls the same face WITH an exec of that seat.
+  ok(/did NOT come from that seat/i.test(meansA) && /who typed it is not who decided it/i.test(meansA)
+    && !/this is YOUR final ruling/i.test(meansA),
+    '★★★ A10 本会话代填席位裁决 ⇒ 回执说「这张卡写在该席位名下，但调用不是从该席位来的」并且不再说「YOUR」',
+    { means: meansA.slice(0, 240) })
   ok(filed && filed.rosterChecked === true && typeof filed.rosterCheckedMeans === 'string',
     '★ A11 本会话读得到辩论名册 ⇒ 归还前已核对（rosterChecked:true 并说明）', filed && { rosterChecked: filed.rosterChecked, src: filed.rosterSource })
 

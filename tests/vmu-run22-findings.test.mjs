@@ -61,7 +61,14 @@ console.log('=== VMU RUN 22 FINDINGS (a settled ballot must refuse, not kill) ==
   // property ③c depends on.
   ok(/export function toHostSpec\(spec(, kernel = null)?\)/.test(src), '③a toHostSpec exists (spec first; RUN 230 added an optional kernel)')
   ok(/code: \(e && e\.code\) \|\| 'VMU_MIDDLEWARE_FAILED'/.test(src), '③b a thrown tool call becomes a receipt with its code')
-  ok(/return boundedToolResult\(Object\.assign\(\{\s*ok: false/.test(src), '③c the refusal uses the SAME serializer as a success (the round-36 shape rule)')
+  // ★ RUN 236 / M2 修 pin：旧断言要求源码里字面出现 `return boundedToolResult(Object.assign({ ok: false…`
+  // —— 那个世界是「拒绝回执直接进序列化」。现在拒绝回执**先过 `discloseActOnSeat`**（被拒回执也必须写清
+  // 谁替谁做），再进同一个 `boundedToolResult`。③c 真正要钉的性质没变：**拒绝与成功用同一个序列化器**，
+  // 所以断言改成「拒绝仍然以 boundedToolResult(…Object.assign({ ok: false … 结尾」，并额外钉住信封在位。
+  ok(/return boundedToolResult\(\s*discloseActOnSeat\(kernel, exec, args, Object\.assign\(\{\s*ok: false/.test(src),
+    '③c the refusal still uses the SAME serializer as a success, now through the RUN 236 disclosure envelope')
+  ok(/discloseActOnSeat\(kernel, exec, args, outNow\)/.test(src),
+    '③c\' a successful result goes through the same disclosure envelope (one shape, two outcomes)')
 }
 
 // ④ a normal handler still passes through

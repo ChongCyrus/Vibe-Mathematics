@@ -71,13 +71,24 @@ console.log('=== 0. the declaration is still the ONE source (every target has a 
   ok(TEMP_MUST_KEEP.every((n) => row(n) !== undefined && DECLARED.includes(n)),
     'all the temp read/keep faces are declared pack tools', TEMP_MUST_KEEP.filter((n) => !row(n)))
   // the derived lists are COMPUTED from the table, not a second hand-maintained whitelist
+  // ★ RUN 236 / C14: the chair's deny list is now EMPTY (vibe_v5_script opened to it as the archive face). An empty
+  // deny is a legal fact — it means the chair denies nothing — so the identity `exported == declared − allow` is what is
+  // pinned, and the non-vacuity guard moves to the ALLOW list (which is never empty for a live seat).
   for (const seat of ['chair', 'member', 'temp']) {
     const derived = seatMod.seatDenyNames(seat, DECLARED)
-    ok(derived.length > 0 && derived.length === denyList(seat).length && derived.every((n, i) => n === denyList(seat)[i]),
-      'V5R_ROLE_TOOL_DENY.' + seat + ' is exactly `declared − allow` from this table (no second list)',
-      { derived: derived.length, exported: denyList(seat).length })
-    ok(nameList(seat).length > 0 && denyList(seat).length > 0 && nameList(seat).every((n) => allow(seat, n)) && denyList(seat).every((n) => !allow(seat, n)),
-      'V5R_ROLE_TOOL_NAMES.' + seat + ' and DENY.' + seat + ' agree with seatDecision row by row')
+    const exported = denyList(seat)
+    const allowed = nameList(seat)
+    // RUN 236 (C14): the chair's deny list is now legitimately EMPTY (vibe_v5_script opened to it as the archive face),
+    // so an `.every()` over derived/exported would be vacuous on the chair. The identity is pinned as EXACT array text
+    // instead, and the non-vacuity guard lives on the ALLOW list (never empty for a live seat).
+    const derivedText = JSON.stringify(derived)
+    const exportedText = JSON.stringify(exported)
+    ok(derivedText === exportedText && allowed.length > 0,
+      'V5R_ROLE_TOOL_DENY.' + seat + ' is exactly `declared − allow` from this table (no second list; empty is a fact for the chair)',
+      { derived: derived.length, exported: exported.length, allowed: allowed.length })
+    ok(allowed.length > 0 && allowed.every((n) => allow(seat, n)) && exported.every((n) => !allow(seat, n)),
+      'V5R_ROLE_TOOL_NAMES.' + seat + ' and DENY.' + seat + ' agree with seatDecision row by row',
+      { allowed: allowed.length, denied: exported.length })
   }
   ok(core.V5R_TOOL_FACES.temp.deny.length === denyList('temp').length
     && core.V5R_TOOL_FACES.temp.deny.length > 0

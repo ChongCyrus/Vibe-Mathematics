@@ -25,13 +25,16 @@
  *
  * Run: node tests/vmu-run222-feedback57.test.mjs
  */
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync,mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const REPO = 'D:/wd/vibemath开发/Vibe-Mathematics'
 const VMU = join(REPO, 'vibe-math-vmu')
+// The scratch parent is created here, not assumed: a per-round directory in D:\_tmp can be
+// reclaimed by any tmp cleanup between runs, and mkdtempSync needs its parent to exist.
 const TMP = 'D:/_tmp/r222'
+mkdirSync(TMP, { recursive: true })
 const SRC_TOOLS = readFileSync(join(VMU, 'packs', 'v5r', 'tools.js'), 'utf8')
 const SRC_BLUEPRINT = readFileSync(join(VMU, 'packs', 'v5r', 'blueprint.js'), 'utf8')
 

@@ -2027,7 +2027,27 @@ export function createTurnOrchestrator({
     // ★ ROUND 30 / task-19: and when the loop does compose, the board is READ ONLY THEN - a caller that supplied its
     // own statusBlock triggers no ledger read at all (byte-identical behaviour for every pack-supplied brief).
     const statusWithNotices = suppliedStatus !== "" ? suppliedStatus : composeStatusBlock(turn, await statusReadingsFor(turn))
-    const turnSettings = (settings || turn.facts) ? { ...(settings || {}), ...(turn.facts || {}) } : undefined
+    // ★★★ RUN 60 / task-30 (P8): THE MEMBER COULD NOT SEE WHICH MEETING ITS OWN TURN WAS BOUND TO. Measured live: a
+    // member in a meeting round read「研究所会议 进行中」and「议程：分工与下一步（类型：ordinary）」, guessed a DIFFERENT
+    // meeting from the agenda type, and had no way to discover the truth - while the receipt said `meeting:"m1"`. The
+    // heading template cited `{{ setting:vmu.turn.meetingId }}`, a SETTING with no runtime writer (declared default '').
+    // The binding is TURN DATA (true for THIS turn only), so it travels through the per-turn FACTS channel that
+    // `turnSettings` merges over the settings map: the templates keep citing `{{ setting:… }}` (the pipeline's standard
+    // reader - facts need no schema declaration) and now render the id AND a read-only route telling the member that a
+    // sentence written for another meeting must go through the tool or a re-binding, not through `say`.
+    // An unbound turn says so explicitly: `say` is not delivered then (the sentence is kept in the receipt's notes), and
+    // the member is pointed at `vibe_v5_say` - the only reachable group/private channel.
+    const boundMeetingId = turn.meeting === null || turn.meeting === undefined ? '' : String(turn.meeting).trim()
+    const meetingFacts = boundMeetingId === ''
+      ? {
+        'vmu.turn.meetingDelivery': '本回合没有绑定会议：回执里的 say 不会投递（句子只留在回执 notes 里），要对全所说话或私信请用工具 vibe_v5_say。',
+      }
+      : {
+        'vmu.turn.meetingId': boundMeetingId,
+        'vmu.turn.meetingDelivery': '本回合绑定会议 ' + boundMeetingId + '：你的发言会投到这场会；若你想说的是另一场会，先离席，或用 vibe_v5_meeting_round { meeting: "<会 id>" } 把下一回合绑定到那场会。',
+      }
+    // Caller-supplied facts are merged LAST, so an explicit per-turn override still wins (T108/T109 pin exactly this).
+    const turnSettings = { ...(settings || {}), ...meetingFacts, ...(turn.facts || {}) }
     // ROUND 407: THE FRAMEWORK OFFERS THE MECHANISM; THE PACK STATES THE POLICY (goal 2). Which optional blocks an
     // institution switches on, which reply catalogue it sends, which meeting speaker state applies and which
     // formalisation status line is shown are INSTITUTION preferences, so the loop no longer contains them: it asks
@@ -2929,6 +2949,36 @@ export function createTurnOrchestrator({
       }
       return null
     }
+    // ★★★ RUN 60 / task-30 (M5): ONE TURN OF PROGRESS WAS ARCHIVED TWICE. Measured live: a member wrote its progress
+    // through `vibe_v5_record_progress` (rec-23) AND the reply's text `progress` was coerced into a second row (rec-24),
+    // and the receipt's coercion only said "string -> row", never "this member already has a progress row this turn".
+    // The string form is a convenience for a member who did NOT reach for the tool, so when the ledger already holds a
+    // progress row authored by this member at-or-after the turn opened, no second row is written: the coercion names the
+    // existing row (`to:"skipped-duplicate"`, `why`) and the dispatch is skipped by name. Matching ignores the title
+    // (the tool picks its own) but pins owner + track + this turn's window, the same read `alreadyWrittenThisTurn` does.
+    const progressWrittenThisTurn = (member, turnStartedAt) => {
+      const owner = member === undefined || member === null ? '' : String(member).trim()
+      if (owner === '') return null
+      const started = stampMs(turnStartedAt)
+      if (started === null) return null
+      const recordFace = map['vmu.records'] || null
+      const list = recordFace && typeof recordFace.list === 'function' ? recordFace.list : null
+      if (!list) return null
+      let listed
+      try { listed = list({ track: 'progress', limit: 0 }) } catch { return null }
+      if (!listed || typeof listed.then === 'function') return null
+      const items = Array.isArray(listed.items) ? listed.items : (Array.isArray(listed.cards) ? listed.cards : null)
+      if (items === null) return null
+      for (const row of items) {
+        if (!row || typeof row !== 'object') continue
+        const rowOwner = row.owner === undefined || row.owner === null ? '' : String(row.owner).trim()
+        if (rowOwner !== owner) continue
+        const stamp = stampMs(row.createdAt === undefined || row.createdAt === null ? row.updatedAt : row.createdAt)
+        if (stamp === null || stamp < started) continue
+        return String(row.id === undefined || row.id === null ? '?' : row.id)
+      }
+      return null
+    }
     const ATTRIBUTION_MEANS = 'the author of this row is the member whose turn it is: the turn already knows whose turn it is, so the row is attributed here instead of demanding the model write its own id into the reply json'
     const executed = []
     const skipped = []
@@ -3019,7 +3069,22 @@ export function createTurnOrchestrator({
           means: adapted === recordLog ? RECORD_LOG_MEANS : undefined })
         continue
       }
-      if (progressField !== null && progressField.ok === true && progressField.coerced) turnCoercions.push(progressField.coerced)
+      if (progressField !== null && progressField.ok === true && progressField.coerced) {
+        const progressTwin = progressWrittenThisTurn(memberId, opts && opts.turnStart)
+        if (progressTwin !== null) {
+          counts.notExecuted += 1
+          turnCoercions.push({
+            field: 'progress',
+            from: 'string',
+            to: 'skipped-duplicate',
+            why: 'this member already recorded a progress row this turn (' + progressTwin + '): this text would have been a second row for the same turn, so it was not written - one turn of progress is one row, and the row above already carries it',
+          })
+          skipped.push({ field: d.field, face: d.face, op: d.op, reason: 'already-written-this-turn', existingId: progressTwin,
+            means: 'this member already wrote a progress row during this turn (' + progressTwin + '), so the text form did not archive a twin: one turn of progress is one row. The coercion above names the duplicate by its row id.' })
+          continue
+        }
+        turnCoercions.push(progressField.coerced)
+      }
       const composed = composedFor(d, d.payload)
       const onBehalf = composed !== null
       const recordComposed = onBehalf ? null : composeRecordPut(d, d.payload)
@@ -4660,11 +4725,14 @@ export const formalCheckArgs = (payload) => {
  * `VMU_INVALID_ARGUMENT: unknown record track: undefined (...)` - the message named the ABSENT key as the literal word
  * "undefined" (an audit A2 leak: it can never be grepped for and reads as a serializer bug), and the whole turn was lost.
  *
- * THE TRUTH CHOSEN: the taught form is accepted. A string becomes ONE progress row - track `progress`, title from the
- * first non-empty line (bounded), body the whole text, `settled:true` (the same archival stance `vibe_v5_record_progress`
- * takes), authored by the member whose turn it is. That cannot create a HALF record: every field of the row is derived
- * here and the record is written by the same `records.put` the object form uses. The prompt is NOT rewritten: it lives
- * in a pack file this lane does not own, and the one truth that can be made consistent from HERE is the kernel.
+ * THE TRUTH CHOSEN: the taught form is accepted. A string becomes ONE progress row - track `progress`, a FIXED title
+ * `<member> · 本轮 progress` (run 60 / task-30: it used to be the first 80 chars of the text, which cut a sentence into
+ * a half word), body the whole text, `settled:true` (the same archival stance `vibe_v5_record_progress` takes), authored
+ * by the member whose turn it is. That cannot create a HALF record: every field of the row is derived here and the
+ * record is written by the same `records.put` the object form uses. The prompt is NOT rewritten here: it lives in a pack
+ * file this lane does not own, and the one truth that can be made consistent from HERE is the kernel. And when this turn
+ * ALSO wrote a progress row through `vibe_v5_record_progress`, the dispatcher skips this second row by name (run 60 /
+ * task-30, M5): one turn of progress is one row, not two.
  *
  * The object form `{track,title,body}` keeps working exactly as before (returned as `null` here, so `composeRecordPut`
  * still fills `kind`/`by`); only an object with NO usable track is refused here, and that refusal names the shape and a
@@ -4673,20 +4741,24 @@ export const formalCheckArgs = (payload) => {
  */
 export const progressArgs = (payload, memberId = null) => {
   const member = memberId === null || memberId === undefined || String(memberId).trim() === '' ? null : String(memberId)
-  const hint = 'send { progress: "<what advanced, and what blocks it>" } - this kernel maps it to ONE progress row (track "progress", title from the first line, body the whole text, settled, authored by the turn member) - or the documented object { progress: { track: "progress", title, body } }. Other progress tracks (routes / obstacles / rejected / state) are written with the tool vibe_v5_record_progress { member, track, content }'
+  const hint = 'send { progress: "<what advanced, and what blocks it>" } - this kernel maps it to ONE progress row (track "progress", fixed title "<member> · 本轮 progress", body the whole text, settled, authored by the turn member) - or the documented object { progress: { track: "progress", title, body } }. Other progress tracks (routes / obstacles / rejected / state) are written with the tool vibe_v5_record_progress { member, track, content }'
   if (typeof payload === 'string') {
     const text = payload.trim()
     if (text !== '') {
-      const firstLine = String(text.split(/\r?\n/).find((line) => line.trim() !== '') || '').trim()
-      const title = firstLine === '' ? 'progress progress' : firstLine.slice(0, 80)
+      // ★★★ RUN 60 / task-30 (M5): THE TITLE WAS A TRUNCATED SENTENCE. The row's title used to be
+      // `firstLine.slice(0, 80)`, so a member who opened with a long sentence got a row titled `…n2-difference-telescop`
+      // - a half word, which reads as a serializer bug and cannot be grepped for as a whole thought. The title is now
+      // FIXED per member (`<member> · 本轮 progress`), which is stable, complete and names the act; the member's whole
+      // text is kept verbatim in `body`, where a research-log line belongs.
+      const title = member === null ? '本轮 progress' : member + ' · 本轮 progress'
       return {
         ok: true,
         args: [{ track: 'progress', kind: 'progress', title, body: text, settled: true, by: member }],
         coerced: {
           field: 'progress',
           from: 'string',
-          to: 'progress row {track:"progress", title:<first line, <=80 chars>, body:<the text>}',
-          why: 'the reply catalogue teaches `progress` as TEXT while the records face reads an object: the string is the taught form, so it is mapped to one settled progress row (title from the first non-empty line) instead of refusing the member who followed the prompt. The row is complete - nothing is written that the object form would not write.',
+          to: 'progress row {track:"progress", title:"' + title + '", body:<the text>}',
+          why: 'the reply catalogue teaches `progress` as TEXT while the records face reads an object: the string is the taught form, so it is mapped to one settled progress row instead of refusing the member who followed the prompt. The title is fixed (`<member> · 本轮 progress`) so it is never a truncated half sentence; the whole text stays verbatim in `body`. The row is complete - nothing is written that the object form would not write.',
         },
       }
     }

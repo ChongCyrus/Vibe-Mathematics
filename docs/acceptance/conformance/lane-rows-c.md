@@ -118,7 +118,7 @@
 ### ⑥ 一击检查
 
 `node D:\_tmp\probe12-lane-members.mjs`（exit 0）：
-- `STATE_BARE`：`records.put({track:'state',kind:'state',title:'s1',body:'只有一句话'})` **被接受**（回执键 `ok/deduplicated/id/slug/fingerprint/bytes/tier/enforced/enforcedScope/fired/at`，没有任何"缺字段"拒）。
+- `STATE_BARE`：`records.put({track:'state',kind:'state',title:'s1',body:'只有一句话'})` **被接受**（回执键 `ok/deduplicated/id/slug/fingerprint/bytes/tier/enforced/enforcedScope/fired/at`（**RUN 236 起另带 `updated:false`**：create 与 update 从此可分辨，见 `vibe-math-vmu/docs/03-interface-contract.md` §7.1），没有任何"缺字段"拒）。
 - `STATE_LIST {count:2, owners:['r-1','r-1'], hasBody:false}` ⇒ 跨成员可读、列表只有表头（与"看他人"一致）。
 
 ---

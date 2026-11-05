@@ -1409,10 +1409,12 @@ try {
     .flatMap((line) => line.match(/vibe_v5_[a-z0-9_]+/g) || []))]
   const allNamesIn = (section) => [...new Set(String(section.text).match(/vibe_v5_[a-z0-9_]+/g) || [])]
   const allDeclared = (PACK.tools || []).map((x) => x.name)
+  // ★ RUN 236 / C14: an EMPTY deny list is omitted from the manifest face (kernel/pack.js:152 refuses `deny: []`), so the
+  // chair face is `{}` today — "denies nothing". `|| []` keeps this derivation honest instead of crashing on the fact.
   const roleRows = [
-    { role: 'chair', section: sectionFor.chair, deny: faces.chair.deny },
-    { role: 'member', section: sectionFor.member, deny: faces.member.deny },
-    { role: 'temp', section: sectionFor.temp, deny: faces.temp.deny },
+    { role: 'chair', section: sectionFor.chair, deny: faces.chair.deny || [] },
+    { role: 'member', section: sectionFor.member, deny: faces.member.deny || [] },
+    { role: 'temp', section: sectionFor.temp, deny: faces.temp.deny || [] },
   ]
   // A) bullet ↔ visible (declared − deny)
   const pairA = roleRows.map((r) => {
@@ -1442,8 +1444,8 @@ try {
   })
   ok(proseRows.filter((r) => r.proseOnly.length === 0).length === 3,
     '★★ C: every `vibe_v5_*` mentioned ANYWHERE in the section is in its bullet list — "prose says you may use X, the list omits X" would be the next drift', proseRows)
-  // the deny boundary + sizes
-  const denyAll = [...faces.chair.deny, ...faces.member.deny, ...faces.temp.deny]
+  // the deny boundary + sizes (RUN 236: a seat that denies nothing has no `deny` key — see the roleRows note above)
+  const denyAll = [...(faces.chair.deny || []), ...(faces.member.deny || []), ...(faces.temp.deny || [])]
   ok(denyAll.length > 0 && denyAll.filter((n) => !n.startsWith('vibe_v5_')).length === 0 && denyAll.filter((n) => /^vibe_vmu_/.test(n)).length === 0,
     '★★ the deny lists contain ONLY v5r tools (vibe_v5_*) — no framework face (vibe_vmu_*) is ever denied by this pack', { deny: denyAll.length })
   // ★ RUN 31 / task-15 — THE SIZE PIN IS NOW DERIVED, NOT TYPED. This line used to hard-code the taught counts
@@ -1463,15 +1465,20 @@ try {
   ok(seatCatalogue.ok === true,
     '★★★ the SEAT DECLARATION is self-consistent: 48 declared tools ↔ 48 rows, every row cites a v5r rule with a reason, and each seat\'s bullet list EQUALS what it may call (both directions empty)',
     { declared: seatCatalogue.declaredCount, rows: seatCatalogue.rowCount, missing: seatCatalogue.missing, extra: seatCatalogue.extra, badRows: seatCatalogue.badRows, seats: seatCatalogue.seats })
-  ok(JSON.stringify({ chair: [...faces.chair.deny], member: [...faces.member.deny], temp: [...faces.temp.deny] }) === JSON.stringify(derivedDeny),
+  // RUN 236: an empty deny list is OMITTED from the manifest face, so read each seat's list with `|| []` — the identity
+  // being pinned is "manifest deny == declared − allow", and an omitted key IS the empty list (chair denies nothing today).
+  const faceDeny = { chair: faces.chair.deny || [], member: faces.member.deny || [], temp: faces.temp.deny || [] }
+  const faceDenyText = JSON.stringify(faceDeny)
+  const derivedDenyText = JSON.stringify(derivedDeny)
+  ok(faceDenyText === derivedDenyText && faceDeny.member.length > 0 && faceDeny.temp.length > 0,
     '★★★ the manifest\'s deny lists ARE `declared − allow(seat)` computed from the declaration — the prompt is no longer the ACL, and the sizes are the complement of the DECLARED allow sets',
     { sizes: { chair: derivedDeny.chair.length, member: derivedDeny.member.length, temp: derivedDeny.temp.length }, allow: { chair: seatCatalogue.seats.chair.allowCount, member: seatCatalogue.seats.member.allowCount, temp: seatCatalogue.seats.temp.allowCount } })
-  ok(faces.chair.deny.length > 0 && faces.member.deny.length > 0 && faces.temp.deny.length > 0
-    && faces.chair.deny.length === allDeclared.length - seatCatalogue.seats.chair.allowCount
-    && faces.member.deny.length === allDeclared.length - seatCatalogue.seats.member.allowCount
-    && faces.temp.deny.length === allDeclared.length - seatCatalogue.seats.temp.allowCount,
+  ok(faceDeny.member.length > 0 && faceDeny.temp.length > 0
+    && faceDeny.chair.length === allDeclared.length - seatCatalogue.seats.chair.allowCount
+    && faceDeny.member.length === allDeclared.length - seatCatalogue.seats.member.allowCount
+    && faceDeny.temp.length === allDeclared.length - seatCatalogue.seats.temp.allowCount,
     '★★ the deny sizes are the complement of the DECLARED allow sets (derived from seat-faces.js, never hand-typed)',
-    { chair: faces.chair.deny.length, member: faces.member.deny.length, temp: faces.temp.deny.length, allow: { chair: seatCatalogue.seats.chair.allowCount, member: seatCatalogue.seats.member.allowCount, temp: seatCatalogue.seats.temp.allowCount } })
+    { chair: faceDeny.chair.length, member: faceDeny.member.length, temp: faceDeny.temp.length, allow: { chair: seatCatalogue.seats.chair.allowCount, member: seatCatalogue.seats.member.allowCount, temp: seatCatalogue.seats.temp.allowCount } })
   // every DENIED name is a DECLARED tool (a prose mention cannot narrow a face)
   const declaredNameSet = new Set((PACK.tools || []).map((t) => t.name))
   ok(denyAll.filter((n) => declaredNameSet.has(n)).length === denyAll.length,

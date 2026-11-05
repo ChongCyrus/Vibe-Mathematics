@@ -610,6 +610,11 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         // line, which was the clue I failed to take: the lines were already present. Round 421 removes the duplicate,
         // because two copies of a protocol is exactly how the two copies begin to disagree. Only the frame pointer stays.
         '议程与类型由本轮会议帧给出；请按议程发言，需要发言时举手。',
+        // ★★★ RUN 60 / task-30 (P8): the frame printed a meeting with NO id anywhere, so a member guessed the meeting
+        // from the agenda type and guessed wrong. The heading above now renders the id (`vmu.turn.meetingId`, supplied as
+        // per-turn FACTS by the turn loop), and this line says what the binding MEANS: where a sentence goes, and that a
+        // DIFFERENT meeting must be reached by the tool or by re-binding - never by addressing `say` to it.
+        '{{ setting:vmu.turn.meetingDelivery }}',
       ].join('\n'),
     },
   },

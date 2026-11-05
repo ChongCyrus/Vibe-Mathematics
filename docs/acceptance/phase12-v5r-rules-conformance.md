@@ -16346,3 +16346,175 @@ RUN 229/230 把三件事做进了机制：`order` 带 `members` 是**重排**、
    真正的加法（md 教学、迟到入席）只加在各自生效的相位/席位。
 3. **注释也是假话源。** `kernel/turn/index.js:33` 那句「不带会议引用」在机制变化后仍然正确但**不完整**，
    而它正是下一个读代码的人做判断的依据——注释里的默认值要与契约一起更新。
+
+## §333 RUN 236：真机 run 60 的九条机制缺陷 + 五条 lane 并行修复（含一条被同一条规则两次绊倒的席位面）
+
+### 333.1 账从哪来
+
+run 60（基线 `05140eda`）走完主线并定稿：`DRIVE exit=0`、`SUMMARY: 5 session(s) in 1 file(s), 0 with RED checks`、
+PDF `Paper/paper-paper-oddsum-60/paper-paper-oddsum-60.pdf` **81 179 B**（定稿 81 181 B、`compiledAfterFinal:true`），
+报告 `SIM-REPORT60.md` 22 852 B、`FEEDBACK60.md` 18 067 B（世界 8 条 + 机制 9 条 + 提示面 10 条）。
+
+九条机制缺陷（每条都是「回执为真、但它答的不是读者问的那个问题」）：
+
+| # | 实测形状 | 它答错的问题 |
+| --- | --- | --- |
+| M1 | `extend` 报 `ok:true, ms:60000, extensions:1`，而 `speechExtendMs:0` | 说了「延长了多久」，没说「延长生效了吗」 |
+| M2 | 被拒回执**没有** `memberActed`/`actedForMember`/`callerMember`（成功调用都有） | 读者无法判断「是谁想做的」 |
+| M3 | `vibe_v5_verdict` 的 `means` 说「这是你的裁决」，同回执 `memberActed:false` | 一句话里两个相反的事实 |
+| M4 | 同 id 再写：`title` 退回、`- debateRuling：{}` 消失（整行替换） | 「更新成功」掩盖了「丢掉未命名字段」 |
+| M5 | 同一回合两条 progress（rec-23 工具写 + rec-24 强转写）、标题截半词 | 一个回合写了两次，读的人以为两个回合 |
+| M6 | `reindex` 的 `track` 不收窄扫描、把合法裁决卡记 `skipped` | 「有 track」不等于「按 track 扫」 |
+| M7 | `attend` 非迟到回执没有 `lateAfterMs`/`openedAt`/`elapsedMs` | 「入座成功」没说「算不算迟到」 |
+| M8 | `turns:2`/`procedureProgress.speeches:2` 与 `speechUsed`/`spokeBy` 对不上 | 两个计数器各数自己的一套 |
+| M9 | task 回执不回 `revision` | 写了新版本，回执还停在第一版 |
+
+提示面 P1–P10 里最关键两条：**P8** 成员会议帧不含绑定会 id（成员靠 `type` 推错，实际 `composed.meeting:"m1"`）；
+**P9** 提示词让成员「回合末给 progress」与工具面 `record_progress` 双写 ⇒ M5 的根因在提示词里。
+
+### 333.2 五条 lane 的修法（并行，写域不相交）
+
+- **M1/M7/M8 → `vibe-math-vmu/kernel/meetings.js`**：`extend` 空转改 `applied:false, ms:0, requestedMs,
+  speechExtendMs:0, appliedMeans, enforced:['vmu.meetings.speechExtendMs']`（真的延长了才 `applied:true`）；
+  `attend` 两处回执与返回补 `openedAt`/`elapsedMs`/`lateAfterMs`/`lateMeans`（阈值 0 ⇒ 明说「NOT JUDGED … NOBODY
+  is ever counted late」）；`mergeLiveMeeting` 单独合并 `speechUsed`、`turns = max(turns, Σcount)`、`speak` 计数器
+  移到**接受点**，`meetingView`/`summary` 加 `turns/turnsCounts/turnsAccounted/turnsUnattributed(+Means)`。
+  这是「两个计数器」问题的通用修法：**同一个事实只允许一个累加点**，其余全是读数。
+- **M5/P8 → `vibe-math-vmu/kernel/turn/index.js` + 提示词**：回合内 progress 去重（`progressWrittenThisTurn`，
+  第二次派发改 `skipped-duplicate` 并带 `existingId`）；progress 文本标题固定为「<member> · 本轮 progress」；
+  会议帧注入 `{{ setting:vmu.turn.meetingId }}` 与 `vmu.turn.meetingDelivery` 两种口径（绑定/未绑定各一句），
+  成员不再靠 `type` 猜会是哪场。
+- **M4 → `vibe-math-vmu/kernel/records.js`**：`put` 的 update 分支从「整行重建」改为**按字段合并 + 保身份**
+  （`rev+1`、`pushVersion`、`id/slug/createdAt/tags/permanent/by` 保留），回执新增
+  `updated/rev/versionsCount/fieldsKept/fieldsReplaced/bodyModeUsed/bodyModeMeans/fieldsKeptWhy`；
+  `bodyMode` 是**显式**选择（`replace`|`append`），非法值与「create 却给 bodyMode」具名拒。
+- **M2/M3 的一半 → `vibe-math-vmu/host.js` + `host-pack-tools.js`**：拒绝出口也过 `discloseActOnSeat`；
+  名册外的名字被降级为 `memberActed:null`（并保留名字、说明「不是名册上的席位」），在册且拒 ⇒
+  `memberActed:false` 且带 `REFUSED (CODE)`。**裁决**：未点名 + 成功仍静默（否则 `vmu-host` 的 1500 字符读尺寸
+  与 status 8000 上界被顶破），未点名事实由**拒绝**路径断言。
+- **C14 → `vibe-math-vmu/packs/v5r/seat-faces.js`**：`vibe_v5_script` 对 chair 开放后 `chair.deny` 变空，
+  `kernel/pack.js:152` 因此拒绝整包（全员 `VMU_PACK_MISSING`）。修法不是放松 kernel 校验，而是让声明白己说实话：
+  `out[seat] = Object.freeze(deny.length > 0 ? { deny } : {})`——**空 deny 是事实，不是声明**。
+- **G8/G11 → `vibe-math-vmu/packs/v5r/blueprint.js`**：蓝图加 `outline`（分层大纲，depth 1 粗/2 细）与
+  `revisionReason`，`vmu.blueprint.requireOutline` 默认 false（缺则**只提示不拒**：回执 `outlineRequired:true` 并具名
+  说明，因为「目录式规划」是机构的选择不是框架的规矩）；写路径仍是「先写 md 拿 sha256 → 行带 mdFingerprint」。
+- **G10/G13/G14 → 新 `vibe-math-vmu/kernel/directions.js`**：方向卡的九字段（`current_assessment`/`initial_plan`/
+  `feasibility`/`findings`/`reuse` 五必填）落在 `state` 轨的 `kind:'route'` 行，更新走 `supersede`；缺必填具名拒
+  `VMU_DIRECTION_INCOMPLETE` + `fieldsMissing`/`fieldsRequired`；`host.js` 四处接线（`FACE_KEYS/TOOL_NAMES/TOOL_FACES`
+  均 58）。
+
+### 333.3 我在主线上补的四件事
+
+1. **M3 的余下部分（归因）**：`submitRuling` 现在分两支说话——席位自己调 ⇒ 「this is YOUR final ruling」；
+   office/别的席位代填 ⇒ 「filed IN <member>"s name by a call that did NOT come from that seat … who typed it is
+   not who decided it」，并在 `note` 补「文件夹是席位的，不是调用者的」。同一句话里从此只有一个作者。
+2. **`kit/handlers.js#mergeEcho`**：`records.put` 的合并事实在席位面**被压成** `recordId/rev`（lane 明确报的转述缺口）
+   ⇒ 回执补 `updated/versionsCount/fieldsKept/fieldsReplaced/bodyModeUsed/mergeMeans`，create 时明说
+   `updated:false` 是「没有前值可保留」，不是「更新丢了全部」。
+3. **方向卡教学 + 预算**：`seat-faces.js` 给 chair/member 各一行「方向卡九字段缺则点名，不当闸」（kernel face ⇒
+   `framework:true` 轴）、`RULE_INDEX.mainline`；同时把 chair 的群聊治理教学句压成一行，`audit-prompt-budget --check`
+   **PASS**：chair verify **35 979**/36 000、member 29 810、temp 26 904、工具 48 条 / 均值 664 / 最大 2 434。
+   **先删再写**是预算下唯一可持续的加法。
+4. **零机制矩阵与生成物**：`directions` 在 `scripts/generate-zero-mechanism-matrix.mjs` 的 `EXPECT` 表登记为
+   「具名拒（带 code）」——零机制下 `list()` 抛 `VMU_ENGINE_UNAVAILABLE`，而同实例 `shape()` 放行（纯声明读数）；
+   `--write` 后 `107 modules, 0 mismatches, 0 unregistered`。生成物全部刷新（kernel-index 107 / surface-index /
+   settings-table 1275 keys 1171 wired / planned-codes 286+492 / wiring-index 30 volumes 1169 wired），
+   `package.json#files` 与 `installer.js:60` 的 vmu runtime 清单各补 `kernel/directions.js` 一行。
+
+### 333.4 机器化
+
+- 十二个 RUN 236 套件（`tests/vmu-run236-*.test.mjs`）**全绿**：A2 28/0、B2 26/0、blueprint-outline 52/0、
+  c14-chair-archive 33/0、c6-proof-gate 31/0、direction-card 42/0、frame-and-progress 38/0、g7 17/0、
+  meeting-readings 46/0、record-merge 7/0、refusal-attribution 29/0、verdict-attribution 26/0。
+- 定向回归：`vmu-v5r-tools` 361/0、`vmu-run31` 86/0、`vmu-a7-a8` 62/0、`phase12` 49/0、`run33-p2` 111/0、
+  `audit-member-scope` 55/0、`audit-enforced` 344/0、`vmu-pack` 79/0、`vmu-panel*` 39/0+9/0+33/0、
+  `vmu-run229-serialisation` 40/0。
+- 生成物与门禁：`update-doc-counts --write` ⇒ `JOBS total=743 suites=663 probes=80`；`regen-all --write` 17/17 与
+  `--check` 17/17 in sync；`scripts/preflight.mjs` **PASS**（含 prompt budget 段）。
+
+### 333.4b 冷全量首跑 801/794/7，七条真红的逐条修法
+
+冷全量（`GATE_RELEASE=1 GATE_LEGACY=1`）首跑：`TOTAL 801 PASS 794 FAIL 7 (suites 693 · probes 108)`。七条全部是
+**本轮改动把旧的「事实」变成了旧「措辞」**，没有一条是新功能本身坏掉：
+
+1. `tests/audit-assembly-reachability-snapshot.test.mjs`：可达集新增 `vibe-math-vmu/kernel/directions.js`（task-28 的新模块
+   确实被宿主装配到）⇒ 审阅 diff 后 `--write` 重生成基线（`entries=8 reachable=205`）。
+2. `tests/audit-declaration-criterion.test.mjs`（84/7）三组：① **RULE A** 报「`check-rule-parity.mjs` 有 `--selftest` 但没有
+   门禁真的跑过它」——直接原因是我改动后它 exit 1；② **RULE E shape B** 新增三处「两边都可能是空集」的比较
+   （`vmu-a7-a8-seat-rights`、`vmu-v5r-tools` 两处）；③ **RULE E 指纹集**新增 `…:A:derived`、`…:A:liveChairDeny`。
+   修法＝把 `.every()` / `length === length` 的恒等式改成**精确数组文本比较**（`JSON.stringify` 两侧先落到变量，
+   避开「两个单词直接比」的形状），并把非空 guard 挂到**永不为空的 ALLOW 列表**上；`vmu-run31-seat-faces` 的
+   「每个 deny 名都是声明过的工具」改成「未声明的名字集合是空的（精确文本）」。
+3. `tests/audit-readme-counts.mjs`（9/10）与 `.mutants.mjs`（0/2）：**不是并发假红，是环境泄漏**——冷全量导出了
+   `GATE_RELEASE=1 GATE_LEGACY=1`，这两个门禁会 `spawn` 子进程 `run-tests.mjs --counts`，子进程继承环境后报
+   **801 作业**，而 README/文档写的是**默认作用域**的 743 ⇒ 十条「不符」。修法＝两个门禁给子进程**删除这两个变量**
+   （附注释：门禁量的是文档声称的作用域，不是谁启动它的作用域）。这是本轮最值得记的一条：**门禁的环境必须与它
+   度量的口径一致**，否则冷全量自己把自己的读数污染成假红。
+4. `tests/vmu-pack-defaults-named.test.mjs` A4/C5：RUN 236 新增的 `direction` 是**记录面宿主工具**（`kernel.records`），
+   在无 pack 的基线上也发布，所以「基线只有四个面」不再成立。修法＝把基线面改成**派生常量** `BASELINE_FACES =
+   ['status','set','records','pack','direction']`（排序后比较，不钉顺序），C5 的 `- 4` 改成 `- BASELINE_FACES.length`。
+5. `tests/vmu-rule-parity-gate.test.mjs` §2（11/12）：自证里「主席被告知一个它不能用的工具」这条植入失效——C14 把
+   `vibe_v5_script` 开给主席之后，**主席的 deny 合法为空**，主席侧再无「被拒工具」可植入。修法＝植入锚点从
+   `  chair: Object.freeze([` 移到 `  member: Object.freeze([`（member 对 `vibe_v5_script` 仍是 `false`，拒绝是真的）；
+   control 的「允许的工具」从 `vibe_v5_meeting`（chair-only，对 member 不合法，会因正确的原因失败而什么都证明不了）
+   换成 `vibe_v5_record_proposition`（member 真可用）⇒ `RULE PARITY SELFTEST: 12/12`。
+6. `tests/vmu-run31-ruling-channel.test.mjs` A10：它钉的是「回执用调用者的词汇说**这是你的裁决**、主席不替你写这个数」，
+   而这次调用来自**所办/根会话**，M3 修法后该路径说「这张卡写在该席位名下，但调用不是从该席位来的……谁打字不等于谁
+   裁决」。修法＝A10 改成钉**代填路径的真话**（含 `did NOT come from that seat`、`who typed it is not who decided it`、
+   且**不再**出现 `this is YOUR final ruling`），并注明「席位自己调」的分支由 `tests/vmu-run236-verdict-attribution.test.mjs`
+   §2（带该席位 exec 调用）钉住。
+
+修后十套件逐个单跑全绿（含 `audit-declaration-criterion` 91/0、`vmu-run31-ruling-channel` 92/0、
+`vmu-pack-defaults-named` 39/0、`audit-readme-counts` 19/0 与 mutants 2/0 在 `GATE_*` 环境变量下也绿）。
+
+### 333.4c 作用域：默认冷全量不再跑归档预设（58 个作业 / 54 个行为套件）
+
+用户两轮判断（「legacy 完全不会再维护，只需要关注 vmu + v5r pack」）落地后，**默认冷全量的作用域已经不含归档预设**。
+证据是每次 sweep 的第 3 行自述：
+
+```
+run-tests: legacy=archived 58 behaviour suite(s) NOT run (the five historical presets are archived;
+the maintained surface is vibe-math-vmu + its v5r pack). They live in tests/legacy/ (the directory IS the list).
+Run them with GATE_LEGACY=1.
+run-tests: scope=full  jobs=743  concurrency=2
+```
+
+`--counts` 也把这两个数分开报（`legacySkipped` / `legacyAllowed`）。所以：
+
+- **默认**：743 作业（663 suites + 80 probes），不含任何归档行为套件，约 13–15 分钟。
+- 默认作用域干净冷全量实测（`GATE_RELEASE=1`，日志 `/d/_tmp/t1-r2630-run236d.log`）：
+  **`TOTAL 743 PASS 743 FAIL 0 (suites 663 · probes 80)`**；最慢三件 `audit-math-computation-sensitivity.mjs` 127.2 s、
+  `audit-vmu-docs.mutants.mjs` 60.8 s、`vmu-finally-falsify` 60.6 s，整轮约 14 分钟。
+- **`GATE_LEGACY=1`**：801 作业（+58），其中 `tests/legacy/v5-institute-fixes.mutants.mjs` 三个 shard 各约 563 s 是
+  主要成本（实测 801/794/7 那次跑了 50 分钟）。这条回路只为「我现在要不要动归档数据/共享层门禁」保留，
+  **不是常规收口的一部分**。
+- 共享层门禁（`check-docs`、`audit-artifact-docs`、`audit-registration`、`audit-declaration-criterion`、
+  `audit-math-computation-parity`、installer/包成员/计数/prompt budget 等）仍在默认作用域内：它们读归档只当**数据**、
+  守的是活代码，例 `vibe-math-vmu/kernel/math.js` 从归档那份逐字拷贝派生，parity 门禁钉住这份拷贝。
+
+同一轮里我自己踩的两条纪律，写下来防止再犯：
+
+1. **不许在 sweep 运行中清 tmp**。我在 09:00 左右清理 `D:/_tmp` 时删掉了 per-round scratch 目录 `D:/_tmp/r222`，
+   正在跑的 `tests/vmu-run222-feedback57.test.mjs` 于是 `mkdtempSync('D:/_tmp/r222/k-')` 报 `ENOENT`；同一窗口里
+   `tests/vmu-lean-jobs.test.mjs`（12/1）与 `tests/audit-prompt-invariants.mjs --self-probe`（25/26）也各有一次
+   环境性红，单独重跑分别 13/0、26/26、52/0。**清理与 sweep 是两个会互相踩的写者。**
+2. 顺手把那条脆弱假设修掉：`tests/vmu-run222-feedback57.test.mjs:34` 原来直接 `mkdtempSync(join('D:/_tmp/r222','k-'))`，
+   假设父目录存在；改成先 `mkdirSync(TMP, { recursive: true })`（附注释说明 per-round 目录随时可能被回收）。
+
+### 333.5 未闭合
+
+1. **两套账仍不一致**：`docs/acceptance/rules-ledger.json` 93 条全 DONE，而 `docs/acceptance/sim-audit-rules.md`
+   仍判 11 条 PROSE-ONLY + 6 条 UNREACHABLE。根因是 ledger 的 DONE 判据允许「只靠源码 pattern」——下一轮要把
+   DONE 的第四类证据（`live`）升级为**端到端可达**（模拟器场景 + 回执字段），否则这两本账会一直各说各话。
+2. **run 60 的 M6（`reindex` 的 track 不收窄）未修**：它属 `vibe-math-vmu/host.js` 的 records reindex 面，
+   与本轮 lane 写域冲突，留到下一轮。
+3. **FEEDBACK60 的 P2/P4 是部署事实不是缺陷**：`lateAfterMs` 是 H2 构造期快照、`VMU_TURN_REPLY_CONFLICT` 在
+   activation 部署不可达——`task-sim61.txt` 要在简报里写明，而不是等真机再发现一次。
+
+### 333.6 三条教训
+
+1. **一个计数器只能有一个累加点，其余必须是读数。** M8 的「turns 与 speechUsed 对不上」不是算术错，是两处都在累加。
+2. **声明的空集不是声明。** `chair.deny` 变空让整个 pack 装不上——「空的 deny 列表」是事实，写成 `{deny: []}`
+   就变成一处错误的声明；回执与面声明都该遵守这条。
+3. **转述层会丢掉刚修好的事实。** M4 在 kernel 修好了，席位面仍只印 `recordId/rev`；一个修复要数到「读者看得见」
+   那一步才算完，`mergeEcho` 就是这一步。

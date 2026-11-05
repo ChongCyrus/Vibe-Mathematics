@@ -216,6 +216,11 @@ const CORE_DEFS = Object.freeze([
   // lab reviewing yearly cannot share one number). The value is deployment policy, so it is declared here; the pack
   // constant stays as the DEFAULT and every reading says where its number came from (`staleAfterMsSource`).
   { key: 'vmu.blueprint.staleAfterMs', type: 'number', def: 30 * 24 * 60 * 60 * 1000, hot: HOT.H2, who: 'office', doc: '蓝图「按时更新」窗口（毫秒）：现行版超过这个年龄即逾期（提示，不是拒绝；默认 30 天；最小 0＝任何年龄都算逾期，便于演练）' },
+  // ★ RUN 236 (G8 由粗到细): whether a blueprint revision is ASKED to carry an ordered outline. The knob only HINTS — the
+  // write still lands and the receipt says `outlineRequired: true` + why — because a hard gate would make a coarse draft
+  // unfillable, and G8's product is a readable structure, not a refusal. Declared here so the pack reads a NAMED key rather
+  // than a bare literal (RUN 226: two rulers pinned an undeclared `v5r.fixtureMode`, so both measured the default).
+  { key: 'vmu.blueprint.requireOutline', type: 'boolean', def: false, hot: HOT.H2, who: 'office', doc: '蓝图修订是否要求带有序 outline（G8「由粗到细」：depth 1=粗、2=细）。默认 false；true 时缺 outline 只提示（回执 outlineRequired:true 并具名说明），不拒绝写入——规则靠可读结构落地，不靠门' },
   { key: 'vmu.turn.verifyTarget', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'the object under a truth ballot (verify phase)' },
   { key: 'vmu.turn.verifyKindLabel', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'the kind label shown next to the object under a truth ballot' },
   { key: 'vmu.turn.invitedBy', type: 'string', def: '(unspecified)', hot: HOT.H2, who: 'office', doc: 'who invited this temp to speak (meeting phase)' },
@@ -234,6 +239,10 @@ const CORE_DEFS = Object.freeze([
   { key: 'vmu.turn.tempDirection', type: 'string', def: '（未说明）', hot: HOT.H2, who: 'office', doc: '给临时工的起点方向' },
   { key: 'vmu.turn.tempTerm', type: 'string', def: '雇主另行通知', hot: HOT.H2, who: 'office', doc: '临时工任务期（原线默认措辞）' },
   { key: 'vmu.turn.meetingId', type: 'string', def: '', hot: HOT.H2, who: 'office', doc: '当前会议号；会议相位的标题用它' },
+  // ROUND 236 (FEEDBACK60 P8): the member meeting frame used to name no meeting at all — a member read the agenda
+  // `type` and guessed WHICH meeting it was in the room for. The bound id and a sentence saying whether this turn's
+  // `say` will be delivered now arrive as settings, so the pack's wording stays in the pack.
+  { key: 'vmu.turn.meetingDelivery', type: 'string', def: '本回合没有绑定会议：回执里的 say 不会投递，要对全所说话请用 vibe_v5_say。', hot: HOT.H2, who: 'office', doc: '本回合绑定的会议的话，say 会投到哪场会；未绑定时说明不投递' },
   { key: 'vmu.turn.formalModeLine', type: 'string', def: '鼓励：按实现难度自行决定；做了就归档，没做就写明难度判断，', hot: HOT.H2, who: 'office', doc: '回复目录里 Lean 形式化那一行的模式措辞（原线 require/encourage 两套）' },
   // ROUND 369: the formalisation block is mode- and status-dependent in the original, so its live values arrive here and
   // the wording stays in the pack. `modeLabel` carries the 强制/鼓励/主动 wording, and the review block names the proof.

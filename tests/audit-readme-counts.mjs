@@ -26,7 +26,14 @@ let passed = 0, failed = 0
 const failures = []
 const ok = (cond, label, detail) => { if (cond) passed++; else { failed++; failures.push(label + (detail ? ' — ' + detail : '')) } }
 
-const derivedRaw = spawnSync(process.execPath, [join(HERE, 'run-tests.mjs'), '--counts'], { cwd: REPO, encoding: 'utf8' })
+// ★ The counts this gate compares against README/docs are the DEFAULT-scope numbers. `GATE_LEGACY=1` /
+// `GATE_RELEASE=1` in the ambient environment (the cold full sweep exports both) would leak into this child and make it
+// report 801 jobs instead of 743 — ten "mismatches" that say nothing about the docs. The child is therefore spawned with
+// those two variables REMOVED: the gate measures the scope the docs claim, not the scope of whoever launched the sweep.
+const scopeEnv = Object.assign({}, process.env)
+delete scopeEnv.GATE_LEGACY
+delete scopeEnv.GATE_RELEASE
+const derivedRaw = spawnSync(process.execPath, [join(HERE, 'run-tests.mjs'), '--counts'], { cwd: REPO, encoding: 'utf8', env: scopeEnv })
 let derived = null
 try { derived = JSON.parse(String(derivedRaw.stdout || '').trim()) } catch (e) { /* reported below */ }
 ok(!!derived && derived.total > 0 && derived.suites > 0,
@@ -95,7 +102,7 @@ if (derived) {
   // `node scripts/update-doc-counts.mjs --write` is the fix.
   let scopedVmu = null
   try {
-    const sr = spawnSync(process.execPath, [join(HERE, 'run-tests.mjs'), '--scope-report'], { cwd: REPO, encoding: 'utf8' })
+    const sr = spawnSync(process.execPath, [join(HERE, 'run-tests.mjs'), '--scope-report'], { cwd: REPO, encoding: 'utf8', env: scopeEnv })
     const report = JSON.parse(String(sr.stdout || '').trim())
     scopedVmu = report && report.scopes && report.scopes.vmu
   } catch (e) { scopedVmu = null }

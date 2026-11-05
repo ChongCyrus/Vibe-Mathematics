@@ -259,17 +259,61 @@ export function packToolFaceGate({ kernel = null, exec = null, toolName = '', de
 export function discloseActOnSeat(kernel = null, exec = null, args = null, out = null) {
   if (!out || typeof out !== 'object' || Array.isArray(out)) return out
   if (out.memberActed !== undefined) return out
-  if (out.ok === false) return out // refused calls refuse BEFORE they record anything in anyone's name
   const namedMember = args && typeof args === 'object' && typeof args.member === 'string' ? args.member.trim() : ''
-  if (namedMember === '') return out
+  let caller = null
+  try { caller = resolveTurnMember(kernel, exec) } catch { caller = null }
+  const callerText = caller === null ? 'the OFFICE (a root session, which is not a seat)' : 'member "' + caller + '"'
+  // ★★ RUN 236 / M2 (measured in real run 60): A REFUSAL IS ALSO A RECEIPT ABOUT A NAMED SEAT. This used to
+  // `return out` the moment `ok === false`, on the theory that "refused calls refuse BEFORE they record anything in
+  // anyone's name" — and run 60 showed the cost: the four refusal receipts that most need an attribution
+  // (`attend` by a temp, `admit` out of state, `turn reply` with no pending member, `panel set` with a bad
+  // argument) were the only ones that said NOTHING about who had tried to speak for whom. An audit that asks
+  // "did this seat act?" cannot answer from a silent receipt; the attempt is exactly the fact worth keeping.
+  if (namedMember === '') {
+    // ★ A SUCCESSFUL CALL THAT NAMED NOBODY STAYS SILENT ON PURPOSE (RUN 236 / M2, second half). Every kernel-face
+    // read (`status`, `records list`, `meeting list`, …) names no seat; stamping four keys on each would only lengthen
+    // receipts that have READ-SIZE ceilings of their own (`vmu-host.test.mjs` measures the default status summary and
+    // the closure face). The disclosure answers "who tried / who acted"; with nobody named and nothing refused there is
+    // no such question, and silence is not a claim that nobody acted. A REFUSAL is the case that must never be silent.
+    if (out.ok !== false) return out
+    return Object.assign({}, out, {
+      memberActed: null,
+      actedForMember: null,
+      callerMember: caller,
+      memberActedMeans: 'this call named no member, so no seat was being spoken for (caller: ' + callerText + '). `memberActed:null` means "nobody was named", not "nobody did it" — and the refusal still records that somebody tried',
+    })
+  }
   let onRoster = false
   try {
     const roster = kernel && kernel.members && typeof kernel.members.roster === 'function' ? kernel.members.roster() : []
     onRoster = (Array.isArray(roster) ? roster : []).some((r) => r && r.id === namedMember)
   } catch { onRoster = false }
-  if (!onRoster) return out
-  let caller = null
-  try { caller = resolveTurnMember(kernel, exec) } catch { caller = null }
+  if (!onRoster) {
+    return Object.assign({}, out, {
+      memberActed: null,
+      actedForMember: namedMember,
+      callerMember: caller,
+      memberActedMeans: 'this call named "' + namedMember + '", which is not a seat on the roster: `memberActed:null` means "that name does not identify a seat", not "the seat did not act" (caller: ' + callerText + ')',
+    })
+  }
+  // ★ RUN 236 / M2: a refused call records an ATTEMPT, never an act — the sentence says so even when the caller
+  // IS the named seat, because "the seat ran the call" and "the seat did the thing" are different claims and the
+  // refusal must not be read as the second one.
+  // ★ AND A SUCCESSFUL CALL THAT NAMED NOBODY STAYS SILENT ON PURPOSE: every kernel-face read (`status`, `records
+  // list`, …) names no seat, so stamping four keys on each of them would only lengthen receipts that have a READ-SIZE
+  // ceiling of their own (vmu-host.test.mjs measures the default status summary and the closure face). The disclosure
+  // exists to answer "who tried / who acted"; when a call names nobody and nothing was refused there is no such
+  // question, and the silence is not a claim that nobody acted. A REFUSAL is different: it must never be silent.
+  if (out.ok === false) {
+    const codeText = typeof out.code === 'string' && out.code !== '' ? ' (`' + out.code + '`)' : ''
+    return Object.assign({}, out, {
+      memberActed: false,
+      actedForMember: namedMember,
+      callerMember: caller,
+      memberActedMeans: 'member "' + namedMember + '" was NAMED by a call that ran from ' + callerText + ', and this call was REFUSED' + codeText + ': nothing was recorded in that seat\'s name and the seat did not act in its own turn — a refusal receipt records who TRIED, which is precisely what a refund of the act must not erase'
+        + (caller === namedMember ? ' (the named seat is the caller here, yet the refusal means the seat did nothing: the attempt failed before any act)' : ''),
+    })
+  }
   const actedBySeat = caller !== null && caller === namedMember
   return Object.assign({}, out, {
     memberActed: actedBySeat,

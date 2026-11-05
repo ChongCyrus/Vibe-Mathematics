@@ -350,6 +350,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.unknownReplyFieldMode` | enum | `ignore-named` | `ignore-named`∣`refuse` | 会话 | H1 | office | ✅ 已接线 | `kernel/turn/index.js` | PHASE 7：回执顶层出现未登记字段时怎么办。ignore-named（默认）＝已知字段照常处理、未登记字段不丢弃而是具名报告（reply.ignoredFields＋一条 notice），不再作废整轮；refuse＝保留旧严格语义（VMU_TURN_UNKNOWN_FIELD，整轮拒绝）。 |
 | `vmu.turn.protocolPath` | string | `Shared/Protocol.md` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | protocol path named by the compact reply catalogue (relative to the session working directory) |
 | `vmu.blueprint.staleAfterMs` | number | `2592000000` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | 蓝图「按时更新」窗口（毫秒）：现行版超过这个年龄即逾期（提示，不是拒绝；默认 30 天；最小 0＝任何年龄都算逾期，便于演练） |
+| `vmu.blueprint.requireOutline` | bool | `false` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/blueprint.js` | 蓝图修订是否要求带有序 outline（G8「由粗到细」：depth 1=粗、2=细）。默认 false；true 时缺 outline 只提示（回执 outlineRequired:true 并具名说明），不拒绝写入——规则靠可读结构落地，不靠门 |
 | `vmu.turn.verifyTarget` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | the object under a truth ballot (verify phase) |
 | `vmu.turn.verifyKindLabel` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | the kind label shown next to the object under a truth ballot |
 | `vmu.turn.invitedBy` | string | `(unspecified)` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | who invited this temp to speak (meeting phase) |
@@ -362,7 +363,8 @@ vmu.packs.active: [v5r]
 | `vmu.turn.tempHiredBy` | string | `（未说明）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 临时工的雇主（临时工章程开头用） |
 | `vmu.turn.tempDirection` | string | `（未说明）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 给临时工的起点方向 |
 | `vmu.turn.tempTerm` | string | `雇主另行通知` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 临时工任务期（原线默认措辞） |
-| `vmu.turn.meetingId` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 当前会议号；会议相位的标题用它 |
+| `vmu.turn.meetingId` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/turn/index.js` | 当前会议号；会议相位的标题用它 |
+| `vmu.turn.meetingDelivery` | string | `本回合没有绑定会议：回执里的 say 不会投递，要对全所说话请用 vibe_v5_say。` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 本回合绑定的会议的话，say 会投到哪场会；未绑定时说明不投递 |
 | `vmu.turn.formalModeLine` | string | `鼓励：按实现难度自行决定；做了就归档，没做就写明难度判断，` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 回复目录里 Lean 形式化那一行的模式措辞（原线 require/encourage 两套） |
 | `vmu.turn.formalProof` | string | `Formal/p-x.lean` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 忠实性审查时点名的已通过证明文件（每轮按实际目标填） |
 | `vmu.turn.formalBlockedNote` | string | `未说明` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 已记录的阻塞原因（每轮按实际目标填） |
@@ -1564,7 +1566,7 @@ vmu.packs.active: [v5r]
 
 ### 设置家族索引（★ **生成**：来自 `settings/schema.js` ✓）
 
-> ★★ **键 **1161** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
+> ★★ **键 **1163** 个，前缀家族 **117** 个** ✓ ⇒ ★ **按家族读，比逐个键读更能看清"这一片有哪些旋钮"** ✓。★ **真源是 `schema.js` 的 `key:` 声明** ✓。
 
 | 家族 | 键数 |
 |---|---|
@@ -1580,7 +1582,7 @@ vmu.packs.active: [v5r]
 | `vmu.audit.*` | 17 |
 | `vmu.avail.*` | 3 |
 | `vmu.ballot.*` | 23 |
-| `vmu.blueprint.*` | 1 |
+| `vmu.blueprint.*` | 2 |
 | `vmu.board.*` | 6 |
 | `vmu.budget.*` | 9 |
 | `vmu.capacity.*` | 12 |
@@ -1677,7 +1679,7 @@ vmu.packs.active: [v5r]
 | `vmu.tools.*` | 3 |
 | `vmu.topology.*` | 12 |
 | `vmu.trust.*` | 16 |
-| `vmu.turn.*` | 31 |
+| `vmu.turn.*` | 32 |
 | `vmu.tx.*` | 6 |
 | `vmu.v3.*` | 19 |
 | `vmu.v5r.*` | 1 |

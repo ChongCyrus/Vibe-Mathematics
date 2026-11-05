@@ -182,7 +182,9 @@ try {
   // ── ④ B10: THE SCRIPT ARCHIVE (归档/复算) ─────────────────────────────────────────────────────────────────────
   console.log('=== 4. B10: 脚本归档/复算 —— 面即是承诺的落点 ===')
   const SCRIPT = 'import { readFileSync } from "node:fs"\nexport const V = JSON.parse(readFileSync(process.argv[2], "utf8"))\nconsole.log(V.length)\n'
-  const archived = await receipt(b, 'vibe_v5_script', { op: 'archive', name: 'count-vertices.mjs', text: SCRIPT, purpose: '数顶点，复算用', member: 'r-2' })
+  // ★ RUN 236 / C14: the archive face is CHAIR-ONLY (the academician's institutional act), so this pin calls it from the
+  // chair seat. The member/temp refusal is measured in tests/vmu-run236-c14-chair-archive.test.mjs.
+  const archived = await receipt(b, 'vibe_v5_script', { op: 'archive', name: 'count-vertices.mjs', text: SCRIPT, purpose: '数顶点，复算用', member: 'r-chair' })
   ok(archived.parsed && archived.parsed.ok === true && !!archived.parsed.recordId && !!archived.parsed.fingerprint && archived.parsed.track === 'scripts',
     '★★ script archive: 正 — the script lands on the scripts track with the KERNEL\'s fingerprint', archived.parsed && { id: archived.parsed.recordId, fp: archived.parsed.fingerprint })
   const readBack = await receipt(b, 'vibe_v5_script', { op: 'read', name: 'count-vertices.mjs' })

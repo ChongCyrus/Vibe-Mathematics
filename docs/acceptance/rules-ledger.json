@@ -556,7 +556,7 @@
       "text": "研究过程 progress 日志",
       "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/records.js::onProgress({ id, track, kind, at, by"
+        "vibe-math-vmu/kernel/records.js::kind: mergedKind, at, by: mergedBy"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_record_progress"

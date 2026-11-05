@@ -4066,3 +4066,43 @@ Two lessons: **a mechanism change and its teaching are two halves of one change*
 prompt is the only place where the old behaviour still exists, and it reads as authoritative. And **under a budget,
 addition starts with deletion**: three claims rewritten in place cost 210 chars, while the two genuinely new facts
 went into the phases/seats where they are actionable.
+
+## ROUND 236 - nine receipts that answered a different question, and a seat whose empty deny list stopped the pack
+
+run 60（`05140eda`）主线结题 81 179 B，`0 with RED checks`。FEEDBACK60 的九条机制缺陷各有各的形状，但都落在同一类：
+**回执说的事是真的，却不是读者问的那件事**。本轮五条 lane 并行修（写域不相交）：
+
+| 缺陷 | 修法落点 | 读者现在能看到什么 |
+| --- | --- | --- |
+| M1 `extend` 空转报成功 | `vibe-math-vmu/kernel/meetings.js` | `applied:false`/`ms:0`/`requestedMs`/`speechExtendMs:0` + `enforced:[…]` |
+| M2 被拒回执无归因 | `vibe-math-vmu/host.js:1846`、`host-pack-tools.js:259` | 拒绝也带 `memberActed`/`actedForMember`/`callerMember`（名册外 ⇒ `memberActed:null`） |
+| M3 `means` 与 `memberActed` 相反 | `packs/v5r/tools.js` 的 `submitRuling` | 两支措辞：席位自己调 / 别的调用者代填（`who typed it is not who decided it`） |
+| M4 同 id 整行替换丢字段 | `vibe-math-vmu/kernel/records.js` 的 `put` | 按字段合并 + 保身份，回执 `fieldsKept`/`fieldsReplaced`/`bodyModeUsed` |
+| M5 同回合双写 progress | `kernel/turn/index.js` + 提示词 | 第二次派发 `skipped-duplicate`（带 `existingId`），标题固定「<member> · 本轮 progress」 |
+| M6 `reindex` 的 track 不收窄 | 未修（下一轮，`host.js`） | —— |
+| M7 `attend` 无迟到读数 | `kernel/meetings.js` | `openedAt`/`elapsedMs`/`lateAfterMs` + `lateMeans` |
+| M8 两个计数器各数各的 | `kernel/meetings.js` | `turns` 单点累加，`turnsCounts`/`turnsAccounted`/`turnsUnattributed` 全是读数 |
+| M9 task 回执无 `revision` | 已由 M4 的 `rev` 事实覆盖 | 回执 `rev` 随合并递增 |
+
+另外四件（同一轮）：
+
+1. **P8 会议帧带绑定会 id**：`kernel/turn/index.js` 注入 `{{ setting:vmu.turn.meetingId }}` 与
+   `vmu.turn.meetingDelivery`（绑定/未绑定各一句），成员不再靠 `type` 猜「这是哪场会」。
+2. **两条新功能**：蓝图 `outline`（分层大纲 depth 1/2）+ `revisionReason`，`vmu.blueprint.requireOutline` 默认 false
+   ⇒ **只提示不拒**（回执 `outlineRequired:true` 并具名说明）；方向卡 `vibe_vmu_direction`（九字段、五必填、
+   `state` 轨 `kind:'route'`、更新走 `supersede`、缺必填 `VMU_DIRECTION_INCOMPLETE`）。
+3. **`kit/handlers.js#mergeEcho`**：kernel 修好 M4 之后，席位面仍只印 `recordId/rev`——转述层把刚修好的事实丢掉了，
+   所以回执补 `updated/fieldsKept/fieldsReplaced/mergeMeans`（create 明说「没有前值可保留」）。
+4. **C14 事故**：`vibe_v5_script` 对 chair 开放后 `chair.deny` 变空，`kernel/pack.js:152` 因此拒绝**整包**
+   （全员 `VMU_PACK_MISSING`）。修法是把声明改诚实：`seatFaces()` 在 deny 为空时**省略该键**——
+   空的 deny 是事实，写成 `{deny: []}` 就成了错误的声明。
+
+预算：方向卡教学加两行、chair 群聊治理压成一行，`audit-prompt-budget --check` PASS（chair verify 35 979/36 000、
+member 29 810、temp 26 904）。**先删再写**是预算下唯一可持续的加法。
+
+机器化：十二个 `tests/vmu-run236-*.test.mjs` 全绿（28/0、26/0、52/0、33/0、31/0、42/0、38/0、17/0、46/0、7/0、
+29/0、26/0）；零机制矩阵登记 `directions`（零机制 ⇒ `VMU_ENGINE_UNAVAILABLE`，`shape()` 放行）后
+`107 modules, 0 mismatches`；生成物全刷新（settings 1275 keys、planned-codes 286+492、wiring 1169）。
+
+三条教训：① 一个计数器只能有一个累加点，其余必须是读数；② 声明的空集不是声明；③ 一个修复要数到「读者看得见」
+那一步才算完（M4 → `mergeEcho`）。

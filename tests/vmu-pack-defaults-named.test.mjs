@@ -62,6 +62,11 @@ async function assemble({ settings = {}, packs = null } = {}) {
 const SETTINGS_ROUTE = () => assemble({ settings: { 'vmu.packs.active': ['v5r'] } })
 const CONFIG_ROUTE = () => assemble({ packs: ['v5r'] })
 
+// ★ RUN 236 / task-28: the baseline (no pack) published faces are DERIVED here, not counted with a literal. The
+// direction card is a RECORDS-BACKED host face (`kernel.records`), so like `records` itself it exists on every route —
+// it is NOT a pack face and its presence must not be read as "a pack face survived".
+const BASELINE_FACES = ['status', 'set', 'records', 'pack', 'direction']
+
 // The nine tools the settings route loses (measured; named so a change in EITHER direction is visible).
 const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe_vmu_mailbox', 'vibe_vmu_mathjobs',
   'vibe_vmu_mathtools', 'vibe_vmu_panel', 'vibe_vmu_task', 'vibe_vmu_turn']
@@ -81,8 +86,10 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
   // whose BOTH sides could be zero would hold vacuously. It also pins the premise the assertion rests on.
   ok(LOST_TOOLS.length > 0 && lost.length === LOST_TOOLS.length,
     'A3. ★ and the nine tools that depend on those keys are NOT registered (this is the cost, not a count)', { registered: registered.length, lost })
-  ok((status.faces.enabled || []).length === 4,
-    'A4. the enabled face list is the four baseline faces - no pack face survives', status.faces.enabled)
+  const sorted = (xs) => [...xs].sort()
+  ok(JSON.stringify(sorted(status.faces.enabled || [])) === JSON.stringify(sorted(BASELINE_FACES)) && BASELINE_FACES.length > 0,
+    'A4. the enabled face list is exactly the baseline host faces - no PACK face survives (run 236: `direction` is a '
+    + 'records-backed host face, so it is baseline, not a survivor)', { enabled: status.faces.enabled, baseline: BASELINE_FACES })
 }
 
 // =========================================================================================================
@@ -126,7 +133,7 @@ const LOST_TOOLS = ['vibe_vmu_chat', 'vibe_vmu_control', 'vibe_vmu_human', 'vibe
   // ★ DERIVED (task-239): on this route the enabled list is the FOUR baseline faces (A4), so every other face the
   // deployment route enables must appear in `notPublished` - the count is the live difference, not a literal.
   // ★ the CONFIG route's enabled count is the reference (this block's own route is the 4-face baseline).
-  ok(np.length > 0 && np.length === (await CONFIG_ROUTE()).status.faces.enabled.length - 4,
+  ok(np.length > 0 && np.length === (await CONFIG_ROUTE()).status.faces.enabled.length - BASELINE_FACES.length,
     'C5. ★ `faces.notPublished` names every face beyond the four baseline ones that this pack would have published',
     { notPublished: np.length, enabled: (status.faces.enabled || []).length, faces: np.map((x) => x.face) })
   // ★ non-emptiness inside the SAME expression: `[].every(…)` is vacuously true.

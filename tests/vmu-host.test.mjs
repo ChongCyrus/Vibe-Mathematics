@@ -859,10 +859,16 @@ if (SELF_PROBE) {
   const specs = hm.toolSpecs({ kernel, settings, faces, assertDeclared: () => true }).map((s) => s.name)
   const missing = Object.values(hm.TOOL_NAMES).filter((n) => !specs.includes(n))
   const explained = missing.map((n) => (faces.unavailable || []).find((u) => u.name === n) || null)
-  ok(missing.length === 3 &&
-    missing.includes(hm.TOOL_NAMES.records) && missing.includes(hm.TOOL_NAMES.script) && missing.includes(hm.TOOL_NAMES.pack) &&
+  // ★ RUN 236 / task-28 修 pin：旧断言钉「未注册的 3 个」= records/script/pack。现在 TOOL_NAMES 多了
+  // `vibe_vmu_direction`（方向卡，G10/G13/G14 共用载体），它与 records 同族——都以 `kernel.library` 为
+  // intent、都要有持久根才在面上。所以裸内核（无 root）下未注册的是 **4** 个，且每个都必须带具名原因。
+  // 这里钉的**性质**没变：任何 TOOL_NAMES 行要么被注册，要么在 `faces.unavailable` 里有 `VMU_ENGINE_UNAVAILABLE`
+  // + reason 的具名解释——不是「正好 3 个」这个数字本身。
+  ok(missing.length === 4 &&
+    missing.includes(hm.TOOL_NAMES.records) && missing.includes(hm.TOOL_NAMES.direction) &&
+    missing.includes(hm.TOOL_NAMES.script) && missing.includes(hm.TOOL_NAMES.pack) &&
     explained.every((u) => u && u.code === 'VMU_ENGINE_UNAVAILABLE' && typeof u.reason === 'string'),
-    '★ 门禁：每个 TOOL_NAMES 要么注册，要么有明确的家族/surface 条件为假；未注册的 3 个各自带原因', {
+    '★ 门禁：每个 TOOL_NAMES 要么注册，要么有明确的家族/surface 条件为假；未注册的 4 个各自带原因', {
       missing, reasons: explained.map((u) => u && { name: u.name, declaredBy: u.declaredBy, reason: u.reason }),
     })
 }

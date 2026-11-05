@@ -54,6 +54,9 @@ import { makeFidelitySpec } from './tools/fidelity.js'
 import { makeMathadaptersSpec } from './tools/mathadapters.js'
 import { makeMathjobsSpec } from './tools/mathjobs.js'
 import { boundedToolResult, MAX_TOOL_RESULT_BYTES } from './kernel/receiptbounds.js'
+// ROUND 236 / task-28: the direction card's face (rules G10/G13/G14 — the nine fields the rule prose names have
+// nowhere else to live). The kernel module owns the card SHAPE; this file only publishes the tool over it.
+import { createDirections } from './kernel/directions.js'
 // PHASE 6 / P0-10: the host half of a PACK-DECLARED tool face, extracted (this file is at the 1200-line ceiling).
 import { appendPackToolSpecs, discloseActOnSeat, packToolFailureRows, resolveTurnMember } from './host-pack-tools.js'
 //
@@ -90,6 +93,8 @@ export const TOOL_NAMES = Object.freeze({
   set: 'vibe_vmu_set',
   middleware: 'vibe_vmu_middleware',
   records: 'vibe_vmu_records',
+  // ROUND 236 / task-28: the direction card — one tool for the nine fields rules G10/G13/G14 name in prose.
+  direction: 'vibe_vmu_direction',
   script: 'vibe_vmu_script',
   pack: 'vibe_vmu_pack',
   control: 'vibe_vmu_control',
@@ -186,6 +191,12 @@ export const TOOL_FACES = Object.freeze([
   { face: 'records', name: TOOL_NAMES.records, families: ['vmu.records.'], config: ['records'],
     extraIntent: (c) => (c.kernel && c.kernel.library ? 'surface:library' : null),
     surface: (c) => (!c.kernel || !c.kernel.library ? 'this kernel has no durable root, so it has no library to list or expand (docs/03 §3.1)' : null) },
+  // ROUND 236 / task-28: the direction card is a RECORDS-BACKED face (a card is one `state`-track row, kind
+  // `route` — no second store, no new ledger). Its intent is the same durable-root surface the records face uses,
+  // so the zero-mechanism rule is untouched: a bare kernel still publishes exactly ONE tool (status).
+  { face: 'direction', name: TOOL_NAMES.direction, families: ['vmu.records.', 'vmu.directions.'], config: ['records', 'direction'],
+    extraIntent: (c) => (c.kernel && c.kernel.records && c.kernel.library ? 'surface:records' : null),
+    surface: (c) => (!c.kernel || !c.kernel.records ? 'this kernel has no records projection, so a direction card would have nowhere to live (docs/03 §3.1)' : null) },
   { face: 'script', name: TOOL_NAMES.script, families: [], config: ['scripts'],
     extraIntent: (c) => (c.scripts.length > 0 ? 'config:scripts' : null),
     surface: (c) => (c.scripts.length > 0 ? null : 'no scripts were declared in this profile row') },
@@ -416,6 +427,45 @@ export const OUTPUT = Object.freeze({
 })
 
 const param = (type, description, extra = {}) => Object.assign({ type, required: false, description }, extra)
+
+// ROUND 236 / task-28 — the direction card's tool spec. Kept HERE (not in ./tools/) because this round's write scope
+// is the host adapter + the kernel module: the maker is thin by design — it validates the action, calls the kernel
+// module, and turns a named refusal into the standard `refused(...)` shape (it never invents a code of its own).
+function makeDirectionSpec({ param, refused, TOOL_NAMES, kernel }) {
+  return {
+    name: TOOL_NAMES.direction,
+    description: 'vmu 方向卡（规则 G10/G13/G14 的共用载体）：set 写/更新一张方向卡（九个字段；五个必填——当前评价、初始计划、可行性、发现、可复用），get 读回（九个字段全部出现，空的是 null，并列出 fieldsMissing），list 列出已记的方向。★ 它不是门禁、不评分：只保证有地方写、写得进、读得回、缺了会说缺（缺必填具名拒 VMU_DIRECTION_INCOMPLETE）。开工前、遇到新方向、复盘时调用：先 list 看有没有同方向的旧卡，再用 set 更新（旧值留在记录的版本轨迹里），需要细节时 get 读回。',
+    parameters: {
+      action: param('string', 'set（写/更新一张方向卡）｜get（读回一张）｜list（列出已记方向）', { required: true, enum: ['set', 'get', 'list'] }),
+      direction: param('string', '方向键（如 mainline、route:algebra、goal:<目标>）：set/get 必填，也是这张卡以后固定不变的名字'),
+      current_assessment: param('string', '当下评价（必填）'),
+      initial_plan: param('string', '初始计划／源于什么启发／初始相关目标（必填）'),
+      related_plan: param('string', '相关计划（可空）'),
+      feasibility: param('string', '当下可行性评估及原因（必填）'),
+      value: param('string', '当下价值性评估及原因（可空）'),
+      findings: param('string', '已发现的相关结论／命题／认知／经验反馈／发现（必填）'),
+      obstacles: param('string', '遇到的障碍及原因／解决方案／实施情况与效果或经验（可空）'),
+      history: param('string', '过去经验经历（可空）'),
+      reuse: param('string', '可复用／可迁移的方法，或被复用过的类似问题（必填；G13/G14 的迁移一半）'),
+      by: param('string', '写者（缺省由内核按席位归因）'),
+    },
+    run: async ({ action = 'list', ...args } = {}) => {
+      try {
+        const api = createDirections({ kernel })
+        if (action === 'set') return api.set(args)
+        if (action === 'get') return api.get({ direction: args.direction })
+        if (action === 'list') return api.list()
+        return refused('VMU_INVALID_ARGUMENT', 'unknown direction action: ' + action, 'use action = set｜get｜list')
+      } catch (e) {
+        const extra = {}
+        if (Array.isArray(e && e.fieldsMissing)) extra.fieldsMissing = e.fieldsMissing
+        if (Array.isArray(e && e.fieldsRequired)) extra.fieldsRequired = e.fieldsRequired
+        if (e && e.direction !== undefined) extra.direction = e.direction
+        return refused((e && e.code) || 'VMU_STATE', e && e.message ? e.message : String(e), e && e.hint ? e.hint : null, extra)
+      }
+    },
+  }
+}
 
 /**
  * The tool catalogue. Each entry carries an internal `run(args, exec)` returning a plain object; the
@@ -1627,6 +1677,8 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
   if (on('mailbox')) specs.push(makeMailboxSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('panel')) specs.push(makePanelSpec({ param, refused, TOOL_NAMES, kernel }))
   if (on('report')) specs.push(makeReportSpec({ param, refused, TOOL_NAMES, kernel }))
+  // ROUND 236 / task-28: the direction card (records-backed: one `state`-track row, kind `route`).
+  if (on('direction')) specs.push(makeDirectionSpec({ param, refused, TOOL_NAMES, kernel }))
   // ROUND 3 / task-24: the activity waiter's face.
   if (on('activity')) specs.push(makeActivitySpec({ param, refused, TOOL_NAMES, kernel }))
   // ROUND 3 / task-20: the fidelity face (published only when the formalisation policy is on).
@@ -1791,12 +1843,12 @@ export function toHostSpec(spec, kernel = null) {
         // the refusal was well-formed in CONTENT and malformed in SHAPE.
         // It now goes through the SAME serializer as every other result, so a refusal is a receipt of the same species
         // as a success. The content is unchanged: the same code, message and hint reach the caller.
-        return boundedToolResult(Object.assign({
+        return boundedToolResult(discloseActOnSeat(kernel, exec, args, Object.assign({
           ok: false,
           code: (e && e.code) || 'VMU_MIDDLEWARE_FAILED',
           message: String((e && e.message) || e),
           hint: (e && e.hint) || null,
-        }, refusalAttribution(e), refusalFacts(e)))
+        }, refusalAttribution(e), refusalFacts(e))))
       }
     },
   }

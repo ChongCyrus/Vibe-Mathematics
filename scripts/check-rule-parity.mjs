@@ -816,16 +816,22 @@ if (!SELFTEST) {
   }), 'VMU_RULE_PARITY_STRUCTURAL_NO_REASON')
 
   // ── P6/P7 probes. The seat-face TEXT is mutated in memory (the real file is never touched): a planted row is inserted
-  // as the chair's first bullet. `vibe_v5_script` is the honest choice — every seat's row denies it — so the probe proves
-  // the check compares the BULLET'S seat against that seat's own decision, not "is this tool allowed to anybody".
+  // as a seat's first bullet, and the probe proves the check compares the BULLET'S seat against that seat's own decision,
+  // not "is this tool allowed to anybody".
+  // ★ ROUND 236 (C14): the plant used to sit on the CHAIR because `vibe_v5_script` was denied to every seat. RUN 236
+  // opened archiving to the chair (the pack's script face is chair-only now), so the chair's deny list is legitimately
+  // EMPTY and no tool is denied to it — a chair plant can no longer produce a denial. The probe moved to the MEMBER,
+  // where the denial is still real (`vibe_v5_script` stays member:false): same check, same evidence, honest seat.
   const seatFacesText = readFileSync(join(REPO, SEAT_FACES_REL), 'utf8')
-  const chairAnchor = '  chair: Object.freeze(['
-  const withChairBullet = (bullet) => {
-    if (!seatFacesText.includes(chairAnchor)) return null
-    return seatFacesText.replace(chairAnchor, chairAnchor + String.fromCharCode(10) + bullet)
+  const memberAnchor = '  member: Object.freeze(['
+  const withMemberBullet = (bullet) => {
+    if (!seatFacesText.includes(memberAnchor)) return null
+    return seatFacesText.replace(memberAnchor, memberAnchor + String.fromCharCode(10) + bullet)
   }
-  const deniedProbe = withChairBullet("    { names: ['vibe_v5_script'], text: 'planted: the chair is told to archive run scripts' },")
-  const allowedProbe = withChairBullet("    { names: ['vibe_v5_meeting'], text: 'planted: the chair is told it may convene' },")
+  const deniedProbe = withMemberBullet("    { names: ['vibe_v5_script'], text: 'planted: the member is told to archive run scripts' },")
+  // The control must name a tool the MEMBER really MAY use. `vibe_v5_meeting` is chair-only (rule 7.1), so it is not a
+  // control here — it would fail for the right reason and prove nothing about the seat comparison.
+  const allowedProbe = withMemberBullet("    { names: ['vibe_v5_record_proposition'], text: 'planted: the member is told it may file a proposition' },")
   if (deniedProbe === null || allowedProbe === null) {
     cases.push({ name: 'plant-seat-bullet-denied-tool', ok: false, codes: ['SEAT_TEACHING anchor not found'] })
     cases.push({ name: 'control-seat-bullet-allowed-tool', ok: false, codes: ['SEAT_TEACHING anchor not found'] })
