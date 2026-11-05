@@ -180,8 +180,11 @@ const MUST_STAY = [
   'audit-artifact-docs.mjs',
   'audit-registration.mjs',
   'audit-spec-traceability.mjs',
-  'accept-c-orphan.test.mjs',
 ]
+// RUN 238 follow-up: accept-c-orphan exercises the ARCHIVED presets' orphan-scheduler behaviour (it imports
+// legacyDir/legacyFile and copies makeHost from tests/legacy/e2e-v5-round2), so it belongs to the archive
+// too -- the user's "we only maintain vmu + v5r" rule. It must therefore NOT be in the default job list.
+ok(entries.includes('accept-c-orphan.test.mjs'), 'the archived C-acceptance suite is classified as a legacy behaviour suite')
 const gone = MUST_STAY.filter((f) => entries.includes(f))
 ok(gone.length === 0, 'no shared-layer audit is classified as a legacy behaviour suite', gone.join(', '))
 if (repOff.json) {

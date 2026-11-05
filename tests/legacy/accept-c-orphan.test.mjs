@@ -1,4 +1,4 @@
-import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
+import { legacyDir, legacyFile } from '../_lib/legacy-presets.mjs'
 // ============================================================
 // ACCEPT-C — 独立验收（verifier-c）：孤儿任务派发 / 上限 / 既有分支不变
 //
@@ -15,7 +15,7 @@ import { legacyDir, legacyFile } from './_lib/legacy-presets.mjs'
 //      并留下一条可见记录（notice 走 inst().messages，to==='office'）；
 //   C4 全所没有无主 pending 任务时，调度行为与改动前逐分支一致（含确定性对照）。
 //
-// Run: node tests/accept-c-orphan.test.mjs
+// Run: GATE_LEGACY=1 node tests/run-tests.mjs --only accept-c-orphan.test.mjs  (or: node tests/legacy/accept-c-orphan.test.mjs)
 // 输出同时逐行写入 tests/_accept-out/c.txt（真实原始输出）。
 // ============================================================
 import { mkdtempSync, existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync, copyFileSync, openSync, closeSync, statSync, rmSync } from 'node:fs'
@@ -26,7 +26,7 @@ import { join, dirname, isAbsolute } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // ---- output tee (逐字保存真实运行输出；任何一行都立即落盘) -------------------
-const REPO = fileURLToPath(new URL('..', import.meta.url))
+const REPO = fileURLToPath(new URL('../..', import.meta.url))
 const OUT_PATH = process.env.ACCEPT_C_OUT || join(REPO, 'tests', '_accept-out', 'c.txt')
 try { mkdirSync(dirname(OUT_PATH), { recursive: true }) } catch (e) { /* the dir may already exist */ }
 const outLines = []

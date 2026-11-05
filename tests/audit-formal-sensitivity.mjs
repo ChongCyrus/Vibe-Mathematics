@@ -293,6 +293,14 @@ async function runProbe(p) {
   const env = Object.assign({}, process.env)
   env[preset.env] = file
   if (preset.corpusEnv) env[preset.corpusEnv] = join(pdir, 'corpus')
+  // The archived preset mints its own scratch roots through os.tmpdir() (vibe-vN-lean-*), and those
+  // used to land in the machine-wide temp dir and stay there: a gate that boots five archived presets
+  // must not litter the shared temp. Give each probe its own TMP root inside pdir, which is removed below.
+  const tmpRoot = join(pdir, 'tmp')
+  mkdirSync(tmpRoot, { recursive: true })
+  env.TMP = tmpRoot
+  env.TEMP = tmpRoot
+  env.TMPDIR = tmpRoot
   const r = await runAsync(process.execPath, [join(REPO, preset.suite)], { env, encoding: 'utf8', cwd: REPO })
   if (r.status === null) return done('setup', 'the suite could not be started (' + String(r.error && r.error.message) + ')')
   if (r.status !== 0) return done('ok', '')
@@ -340,6 +348,10 @@ await Promise.all(Array.from({ length: Math.min(CONCURRENCY, selected.length) },
   ok = results.filter((r) => r && r.kind === 'ok').length
   bad = results.filter((r) => r && r.kind !== 'ok').length
 }
+
+// Best effort: this gate is the only default-scope job that boots archived presets, so every
+// mutation copy, corpus and child TMP root it created lives under `dir` and leaves with it.
+process.on('exit', () => { try { rmSync(dir, { recursive: true, force: true }) } catch (e) { /* a leftover scratch dir must never fail the gate */ } })
 
 console.log('formal sensitivity: ' + ok + ' probes detected the break, ' + bad + ' problems')
 if (bad) process.exit(1)

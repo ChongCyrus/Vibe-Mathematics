@@ -60,7 +60,7 @@ const OPTIONAL = Object.freeze({
   'scripts/generate-planned-settings.mjs:ternary-read-empty': OWN_OUTPUT,
   'scripts/generate-rule-matrix.mjs:ternary-read-empty': OWN_OUTPUT,
   'scripts/dsh-drive.mjs:ternary-read-empty': '可选产物：把宿主写出的 jsonl 复制进报告目录；没有就是没有，不是覆盖降级',
-  'tests/accept-c-orphan.test.mjs:ternary-read-empty': 'git 命令写出的临时输出（rev/status）；读不到显示 "(unknown)"，是显式可见降级',
+  'tests/legacy/accept-c-orphan.test.mjs:ternary-read-empty': 'git 命令写出的临时输出（rev/status）；读不到显示 "(unknown)"，是显式可见降级',
   'tests/audit-declaration-criterion.test.mjs:try-read-catch-empty': '扫描器自用的 readIf/listFiles：读的是被枚举的 gate 源码集，枚举为空会被 RULE A 的 coverage 断言拦下',
   'tests/audit-installer-policy.test.mjs:try-read-catch-empty': '安装器状态/备份的【首次不存在】是合法状态；缺失时相关断言检查 null/false 而显式失败',
   'tests/audit-market-metadata.test.mjs:ternary-read-empty': '市场元数据/README 由其它门禁（readme-counts 等）保证存在；本套件不是唯一守卫',

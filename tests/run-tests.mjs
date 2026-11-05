@@ -192,8 +192,11 @@ const asJson = has('json')
 // one TIMING OUT at its own 900 s override). That oversubscription is what made timing-sensitive suites
 // report failures that never reproduce standalone (e2e-v4-fixes T1/T19/T22/T23/T26/T31, e2e-v5-round2
 // paper phase, host-failure-paths stall watchdog). Two concurrent jobs keep the machine honest; pass
-// --concurrency=N explicitly when a faster (noisier) sweep is wanted.
-const concurrency = Math.max(1, Number(flag('concurrency')[0] || Math.min(2, cpus().length)))
+// --concurrency=N explicitly when a faster (noisier) sweep is wanted (GATE_CONCURRENCY works too).
+// MEASURED 2026-11-05 (745 jobs, same tree): k=2 wall ~16 min; k=3 wall 6 min 58 s, 745/745 green.
+// k=3 is now the default because it is measurably faster AND stayed clean; k>=4 keeps the old warning
+// (per-job inflation ~+15% at k=4, and k=6 produced a 180 s TIMEOUT plus a real-looking failure).
+const concurrency = Math.max(1, Number(flag('concurrency')[0] || process.env.GATE_CONCURRENCY || Math.min(3, cpus().length)))
 
 const SELF = 'run-tests.mjs'
 // Per-suite HARD timeout (GATE_SUITE_TIMEOUT_MS overrides, ms). It bounds an intermittent hang so the

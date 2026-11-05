@@ -16659,14 +16659,34 @@ G（被拒回执的 message 不带归属）**本轮不改**：`VMU_NOT_MEMBER` �
 
 - 现象：`D:\_tmp` 里出现大量非 vmu 的目录。查账：`vibe-v3/v4/v5-lean-*`（316 个，全部
   mtime 11-04 22:15）来自**一次**为量存档代价而开的 `GATE_LEGACY=1` 扫描（那次 50 分钟）；
-  `vibe-acc-c-*`/`v5head-acc-c-*`/`v5rev-*` 来自 `tests/accept-c-orphan.test.mjs`（**在默认作用域**的共享层验收门禁，
-  把归档预设当数据读）；`vibe-gate-tex-sandbox-*` 来自 `tests/run-tests.mjs`（已有 exit 清理，
+  `vibe-acc-c-*`/`v5head-acc-c-*`/`v5rev-*` 来自 `tests/accept-c-orphan.test.mjs`（该套件实测的是**归档预设的无主调度行为**，
+  即使当时列在共享层名单里也应归档；见下一条的迁移）；`vibe-gate-tex-sandbox-*` 来自 `tests/run-tests.mjs`（已有 exit 清理，
   残留只在被 kill 的扫描上）。默认 743/746 作业里没有任何归档行为套件。
 - 修法：`tests/accept-c-orphan.test.mjs` 改用 `scratch(prefix)` 登记每个临时根，`process.on('exit')`
   逐个 `rmSync`（best effort：残留临时目录不能让门禁失败）；实测该门禁 56/0 且留下 0 个目录。
 - 清理：删 382 个归档/验收预缀目录 + 1486 个 2 小时前的临时目录（87.6 MB），`D:\_tmp` 适配器目录
   1851 → 365；`C:\...\Temp` 上一轮已删 19 531 项。`slv-phase5/`、`sim/`、`node-compile-cache/`、
   `gate-mutant-cache/` 保留。
+- **归档**：`accept-c-orphan` 不是共享层门禁（它导入 `legacyDir`/`legacyFile`、并从
+  `tests/legacy/e2e-v5-round2.test.mjs` 拄 `makeHost`，测的是归档预设的行为），按「只维护 vmu + v5r」迁入
+  `tests/legacy/accept-c-orphan.test.mjs`（相对导入 `../_lib/legacy-presets.mjs`、`REPO` 改 `'../..'`）；
+  `tests/audit-legacy-scope.test.mjs` 的 `MUST_STAY` 删掉它并新增「它必须被分类为归档行为套件」断言；
+  `tests/audit-no-silent-reads.test.mjs` 的路径键跟着移。默认作用域 746 → **745**，单跑该套件 56/0 且留 0 个临时目录。
+
+### 335.6 两个问题的根因：一个门禁在跑归档预设，和一个跑得太慢的扫描
+
+- **用户又看到空的 `vibe-vN-lean-*` 目录**（m32043）。根因不在我手写脚本，而在默认作用域里
+  的 `tests/audit-formal-sensitivity.mjs`：它为了证明 49 个正式化探针不是空真，会**把每个归档预设的插件拷贝到临时目录并
+  真跑那些套件**；预设被启动时会通过 `os.tmpdir()` 自己铸一个 lean 根（空目录），而该审计
+  虽然 `import` 了 `rmSync` 却从没调用它——两个漏洞叠在一起。修法（都在该文件）：每个探针把
+  `TMP`/`TEMP`/`TMPDIR` 指到 `pdir/tmp`（临时目录落在探针自己的目录里），并在 `process.on('exit')` 删掉整个根。
+  实测：`node tests/audit-formal-sensitivity.mjs --concurrency=4` → 49 探针全红如期、wall 7.6 s、
+  `D:\_tmp` 里 `v5-formal-sens-*`/`vibe-v*-lean-*` 残留 **0**。（旧的 316 个仍是 11-04 22:15 那次 `GATE_LEGACY=1` 扫描留下的。）
+- **门禁太慢**（m32054）：`tests/run-tests.mjs` 的默认并发从 `min(2, cpus)` 改为 **`min(3, cpus)`**
+  （也接受 `GATE_CONCURRENCY`，`--concurrency=N` 照旧优先）。同一棵树、745 个作业实测：
+  k=2 wall 约 16 分钟；k=3 wall **6 分 58 秒**，`TOTAL 745 PASS 745 FAIL 0`。k≥4 保留旧警告
+  （k=4 每作业膨胀约 +15%；k=6 出现过 180 s TIMEOUT 与一条看上去真的失败）。
+- 两处都没改断言强度：前者只改临时目录归属，后者只改并发数，与作业内容无关。
 
 ### 335.4 三条教训
 
