@@ -324,7 +324,7 @@ function mergeLiveMeeting(local, stored) {
   return { merged: true, changed }
 }
 
-export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null, boxFor = null, foreignIds = null, chairActed = null } = {}) {
+export function createMeetings({ clock = () => 0, log = null, settings = {}, bus = null, members = null, ballot = null, wake = null, durable = null, boxFor = null, foreignIds = null, chairActed = null, mail = null } = {}) {
   if (typeof clock !== 'function') {
     // No key has been consulted at construction time: the list is explicitly EMPTY (never undefined).
     throw Object.assign(refuse('VMU_INVALID_ARGUMENT', 'createMeetings needs a clock function', 'pass { clock: () => ms } — the only time source is the injected clock'), { enforced: [], evaluated: [] })
@@ -349,6 +349,111 @@ export function createMeetings({ clock = () => 0, log = null, settings = {}, bus
     const event = nameFirst !== null ? Object.assign({ type: nameFirst }, payload || {}) : ev
     if (name === null) return say({ type: 'bus/emit-failed', at: clock(), name: null, code: 'VMU_BUS_NAME_REQUIRED', message: 'a bus event needs a string name (got an object without .type)' })
     try { bus.emit(name, event) } catch (e) { say({ type: 'bus/emit-failed', at: clock(), name, code: (e && e.code) || 'VMU_BUS_EMIT_FAILED', message: String((e && e.message) || e) }) }
+  }
+  // ★★★ RUN 248-N / task-65: THE NOTICE LANE. Until now a meeting appointment was a BUS EVENT only: a member who was
+  // not already inside a live round never learned they had been invited, and a chair speaking to the floor left nothing
+  // in anybody inbox (the minutes were pull-only). `mail` is the mailbox face: its `send` writes a DURABLE row (it
+  // survives a new kernel over the same root) and its `noticeLines` renders that row into the member turn prompt.
+  // Delivery is PER RECIPIENT and never silent: every failure comes back as `notifyFailed: [{member, reason}]` next to
+  // the members that really got a row. One row per member is also why a full mailbox names THAT member instead of
+  // failing (or silently skipping) the notification for everybody.
+  const mailSeamOf = () => (mail && typeof mail.send === 'function' ? mail : null)
+  const seatLabelOf = (id) => {
+    try {
+      const list = members && typeof members.roster === 'function' ? members.roster() || [] : []
+      for (const row of list) {
+        if (!row) continue
+        const rid = row.id === undefined || row.id === null ? row.member : row.id
+        if (String(rid) !== String(id)) continue
+        const slot = row.slot === undefined || row.slot === null ? null : String(row.slot)
+        return slot === null || slot === '' ? null : slot
+      }
+      return null
+    } catch (e) { return null }
+  }
+  const isoOf = (value) => {
+    const num = Number(value)
+    if (!Number.isFinite(num)) return String(value)
+    try { return new Date(num).toISOString() } catch (e) { return String(value) }
+  }
+  const excerptOf = (text, cap) => {
+    const flat = String(text === undefined || text === null ? '' : text).replace(/\s+/g, ' ').trim()
+    if (flat.length <= cap) return flat
+    return flat.slice(0, Math.max(0, cap - 1)) + '…'
+  }
+  const attendCallOf = (mid, who) => 'vibe_v5_meeting {op:"attend", id:"' + String(mid) + '", member:"' + String(who) + '"}'
+  const kernelAttendCallOf = (mid, who) => 'vibe_vmu_meeting {action:"attend", id:"' + String(mid) + '", member:"' + String(who) + '"}'
+  const deliverRows = (from, targets, draftOf) => {
+    const seam = mailSeamOf()
+    const notified = []
+    const rows = []
+    const notifyFailed = []
+    for (const to of targets) {
+      const draft = draftOf(to)
+      if (seam === null) {
+        notifyFailed.push({ member: to, reason: 'no mail seam is mounted on this meetings face (createMeetings was given no mailbox), so no durable row could be written: the notice exists as a bus event only' })
+        continue
+      }
+      try {
+        const sent = seam.send(from, draft)
+        if (sent && sent.ok === true) {
+          notified.push(to)
+          if (Array.isArray(sent.ids) && sent.ids.length) rows.push({ member: to, mailId: sent.ids[0], deduped: Array.isArray(sent.deduped) && sent.deduped.length > 0 })
+        } else notifyFailed.push({ member: to, reason: String((sent && (sent.code || sent.reason || sent.message)) || 'the mailbox returned a non-ok receipt') })
+      } catch (e) {
+        notifyFailed.push({ member: to, reason: String((e && e.code ? e.code + ': ' : '') + ((e && e.message) || e)) })
+      }
+    }
+    return { notified, rows, notifyFailed }
+  }
+  // ★ THE APPOINTMENT BODY. It must be usable WITHOUT reading the source: type/kind, what is discussed, WHEN (in the
+  // deployment clock format, ISO), WHO chairs, the seat this member will hold, and the REACHABLE attend call shape with
+  // this member id already substituted. The pack face (`vibe_v5_meeting {op:"appoint"|"schedule"}`) is the member-facing
+  // wording; the kernel face is printed next to it because that is the door that exists in this build.
+  const appointmentDraftFor = (m, to) => {
+    const when = m.scheduledFor === null || m.scheduledFor === undefined ? null : Number(m.scheduledFor)
+    const title = m.title !== null && m.title !== undefined ? String(m.title)
+      : (m.subject !== null && m.subject !== undefined ? String(m.subject) : String(m.type))
+    const agenda = m.materials !== null && m.materials !== undefined ? String(m.materials)
+      : (m.subject !== null && m.subject !== undefined ? String(m.subject) : '（主席未声明议程）')
+    const whenText = when === null ? '已开始（openedAt ' + isoOf(m.openedAt) + '）' : isoOf(when) + '（scheduledFor）'
+    const seat = seatLabelOf(to)
+    const subject = ('会议预约：' + title + (when === null ? '' : ' @ ' + isoOf(when))).slice(0, 120)
+    const text = [
+      '会议 ' + String(m.id) + ' 已由主席 ' + String(m.chair) + (when === null ? ' 召集并开始' : ' 预约') + '（type ' + String(m.type) + (m.kind === null || m.kind === undefined ? '' : '，kind ' + String(m.kind)) + '）。',
+      '议题：' + agenda,
+      '时间：' + whenText,
+      '主席：' + String(m.chair) + '；你的席位：' + (seat === null ? '（成员服务未登记席位）' : seat) + '。',
+      '入席（会议开始后）：' + attendCallOf(m.id, to),
+      '当前内核面等价的入席调用：' + kernelAttendCallOf(m.id, to),
+      '读完这封邮件后请结算：mailbox ack（报回本条邮件 id；未 ack 之前它会一直出现在你的回合提示里）。',
+    ].join('\n')
+    const notice = '【会议预约·' + String(m.chair) + '】' + title + (when === null ? '' : ' @ ' + isoOf(when)) + ' — ' + attendCallOf(m.id, to) + '；读后 mailbox ack {id}'
+    return { to, text, subject, kind: 'meeting-appointment', channel: 'mail', dedupeKey: 'meeting-appoint:' + String(m.id), notice }
+  }
+  const appointNoticeOf = (m) => {
+    const chair = String(m.chair)
+    const targets = (Array.isArray(m.roster) ? m.roster : []).map(String).filter((id) => id !== '' && id !== chair)
+    return deliverRows(chair, targets, (to) => appointmentDraftFor(m, to))
+  }
+  // ★ THE CHAIR PUSH. Subject names the speaker and the meeting; the body carries an excerpt (<=800 chars, one line,
+  // bounded) plus a POINTER to the full text (the minutes entry index, and the transcript when the speech was verbatim).
+  const broadcastDraftFor = (m, to, speech) => {
+    const pointer = String(m.id) + '/minutes#' + String(speech.entryIndex) + (speech.verbatim ? '（逐字转录：' + String(m.id) + '/transcript）' : '')
+    const excerpt = excerptOf(speech.said, 800)
+    const subject = ('主席发言：' + speech.speaker + ' @ ' + String(m.id)).slice(0, 120)
+    const text = [
+      '主席 ' + speech.speaker + ' 在会议 ' + String(m.id) + ' 对全体发言（纪要第 ' + String(speech.entryIndex) + ' 条）。',
+      '摘要（≤800 字符）：' + excerpt,
+      '全文：' + pointer + '；读出用 policy 面 vibe_v5_meeting {op:"minutes", id:"' + String(m.id) + '"}（内核实现在 vibe_vmu_meeting {action:"minutes", id:"' + String(m.id) + '"}）',
+      '读完这封邮件后请结算：mailbox ack（报回本条邮件 id；未 ack 之前它会一直出现在你的回合提示里）。',
+    ].join('\n')
+    const notice = '【主席发言·' + speech.speaker + ' @ ' + String(m.id) + '】' + excerptOf(speech.said, 120) + '；全文 ' + pointer + '；读后 mailbox ack {id}'
+    return { to, text, subject, kind: 'meeting-broadcast', channel: 'group', dedupeKey: 'meeting-speech:' + String(m.id) + ':' + String(speech.entryIndex), notice }
+  }
+  const broadcastOf = (m, speech) => {
+    const targets = [...m.present].map(String).filter((id) => id !== '' && id !== String(speech.speaker))
+    return deliverRows(String(speech.speaker), targets, (to) => broadcastDraftFor(m, to, speech))
   }
   const n = (v, def = 0) => (Number.isFinite(v) ? v : def)
   // ★ ROUND 87 (E29): THE CHAIR DECIDES THE ROUNDS. The whole `vmu.meetings.*` block is frozen into `K` at
@@ -2499,10 +2604,24 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       const queueRead = orderEff.queueOpen
         ? { open: true, mode: orderEff.mode, source: orderEff.source, before: orderNow.length, presentWaiters: waiters.length, position: queuedMe === -1 ? null : queuedMe + 1, slipped: queuedMe === -1 && orderNow.length > 0, skippedAbsent, means: 'the effective order is [' + orderNow.join(', ') + '] and the turn is held among the PRESENT waiters [' + waiters.join(', ') + ']: an absent member ahead of you does not hold the floor (they would be refused `attend() first` anyway)' + (skippedAbsent.length ? '; not yet present and therefore passed over: [' + skippedAbsent.join(', ') + ']' : '') + '; a member who is NOT in the queue at all speaks as a slip (position:null, slipped:true), never as a turn' }
         : { open: false, mode: orderEff.mode, source: orderEff.source, before: 0, position: null, slipped: false, means: 'this floor keeps NO queue (orderMode ' + String(orderEff.mode) + '): nobody can be out of turn' }
-      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, ...spokeBlockOf(m), tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, enforced, enforcedScope: ENFORCED_SCOPE }
+      // ★★★ RUN 248-N / task-65: THE CHAIR PUSH. A chair speech used to be readable only by PULLING the minutes; a
+      // member between turns never saw it. Every present member (speaker excluded) now gets ONE durable `group` row with
+      // an excerpt (<=800 chars) and a pointer to the full minutes entry. The gate is the CHAIR, not every speaker: an
+      // ordinary speech would turn each turn into N-1 mail rows and bury the announcement the lane exists to deliver;
+      // widening that gate is this one comparison, and the receipt names the policy either way.
+      const broadcast = String(member) === String(m.chair) && String(said).trim() !== ''
+        ? broadcastOf(m, { speaker: String(member), said, verbatim: !!verbatim, entryIndex: m.minutes.entries.length })
+        : { notified: [], rows: [], notifyFailed: [] }
+      const receipt = { at: now, action: 'speak', meeting: m.id, member: String(member), ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, ...spokeBlockOf(m), tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead,
+        // ★ RUN 248-N: the push result travels with the speech that caused it. `deliveredTo` names the members that
+        // really got a durable row; `broadcastFailed` names the ones that did not (never silently dropped); and
+        // `broadcastMeans` states the gate so a reader cannot mistake "no rows" for "nobody was there".
+        deliveredTo: broadcast.notified, deliveredRows: broadcast.rows, broadcastFailed: broadcast.notifyFailed,
+        broadcastMeans: 'the CHAIR speaking to the floor is pushed to every present member except the speaker as a durable mailbox row (channel "group", kind "meeting-broadcast", excerpt <=800 chars + a pointer to the minutes entry); an ordinary member speech is minutes-only until the chair speaks',
+        enforced, enforcedScope: ENFORCED_SCOPE }
       pushReceipt(settleReceipt(m, "speak", now, receipt))
       say({ type: 'meetings/spoke', at: now, meeting: m.id, member: String(member), floor, enforced, enforcedScope: ENFORCED_SCOPE })
-      return { ok: true, ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, ...spokeBlockOf(m), tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, receipt, enforced, enforcedScope: ENFORCED_SCOPE }
+      return { ok: true, ms: wanted, turns: m.turns, turnsCounts: TURNS_COUNTS, turnsMeans: TURNS_MEANS, ...spokeBlockOf(m), tokens: m.tokens, budget: soft, budgetDeclared, budgetWhy, speechBound, floor, queueRead, receipt, deliveredTo: broadcast.notified, deliveredRows: broadcast.rows, broadcastFailed: broadcast.notifyFailed, enforced, enforcedScope: ENFORCED_SCOPE }
     },
 
     /** Interrupt. `interruptAllow` + `interruptQuota` govern the floor. */
@@ -4273,7 +4392,18 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     live.set(mid, m)
     markState(m, m.state)
     counters.opened += 1
+    // ★★★ RUN 248-N / task-65: THE APPOINTMENT LANE. The bus event below told subscribers that a meeting now exists, but
+    // the INVITED members are not subscribers: they learn about a meeting at their next turn, which means the invitation
+    // had to be pushed into their durable mailbox HERE, once, at the moment the appointment becomes real. The row carries
+    // what the notice line cannot say in one line (agenda, time, chair, seat, the exact attend call); `notified` names
+    // the members that really got a row and `notifyFailed` names every member that did not, WITH the reason.
+    const appointment = appointNoticeOf(m)
     const receipt = { at: ms, action: 'open', meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, convenedBy: m.convenedBy, state: m.state, scheduledFor: m.scheduledFor, confidentiality: m.confidentiality, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, lateAdmission: m.lateAdmission, lateAdmissionMeans: LATE_ADMISSION_MEANS, pendingLate: [], pendingLateCount: 0,
+      // ★ RUN 248-N: the appointment notices (channel 'mail'), so a caller reads the delivery result from the same
+      // receipt that says the meeting exists. Empty `notifyFailed` is an ASSERTION (every invitee got a row), not
+      // "nobody looked".
+      notified: appointment.notified, notifyRows: appointment.rows, notifyFailed: appointment.notifyFailed,
+      notifyMeans: 'one durable mailbox row per invited member (channel "mail", kind "meeting-appointment", dedupeKey meeting-appoint:<meeting id>): an invitation is MAIL, not a wake, so the member sees it in the notice block of their next turn and settles it with mailbox ack',
       // ★★★ ROUND 240: the SAME formal-agenda reading `summary`/`status` spread, so the open receipt and the later
       // read faces cannot disagree about what was declared (the defect: the receipt carried a boolean, the read face
       // carried a permanent null).
@@ -4287,6 +4417,8 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     // for them should not have to know the receipt envelope's shape to read back what it just set (the same reason
     // `attend` returns `late`). `rosterMeans` says what the list IS, in the one wording all three faces share.
     return { ok: true, meeting: mid, type: m.type, kind: m.kind, title: m.title, materials: m.materials, subject: m.subject, openedBy: m.openedBy, state: m.state, scheduledFor: m.scheduledFor, wallLimitMs: m.wallLimitMs, wallLimitMsSource: m.wallLimitMsSource, roster: m.roster.slice(), present: [...m.present].map(String).sort(), rosterNarrowed: m.rosterNarrowed === true, rosterSource: m.rosterSource, benchSize: m.rosterBench, rosterMeans: ROSTER_MEANS, lateAdmission: m.lateAdmission, lateAdmissionMeans: LATE_ADMISSION_MEANS, pendingLate: [], pendingLateCount: 0,
+      // ★ RUN 248-N: the delivery result is readable WITHOUT the receipt envelope, next to the roster it concerns.
+      notified: appointment.notified, notifyRows: appointment.rows, notifyFailed: appointment.notifyFailed,
       // ★★★ ROUND 240: same formal-agenda reading as the receipt (one projection, no second wording).
       ...formalAgendaOf(m),
       sequence: { index: 0, total: 1 + seqEntries.length, next: seqEntries.length ? seqEntries[0] : null }, quorum: quorumOf(m), receipt, enforced, enforcedScope: ENFORCED_SCOPE }

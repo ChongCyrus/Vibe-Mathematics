@@ -41,6 +41,7 @@ const ok = (cond, label, detail) => {
   return false
 }
 const has = (text, needle, label) => ok(typeof text === 'string' && text.indexOf(needle) !== -1, label, { needle })
+const hasNot = (text, needle, label) => ok(!(typeof text === 'string' && text.indexOf(needle) !== -1), label, { needle })
 
 const entry = await import(pathToFileURL(ENTRY).href)
 
@@ -70,13 +71,19 @@ const boot = async (root) => {
 // ── §0 the source of each fix exists (a silent revert is red here, not only in behaviour) ───────────────────────────
 {
   console.log('=== §0 source: every fix is present, and the draft path is GONE ===')
-  has(BP_SRC, 'draftMdDeferred', 'A: the draft absence has a name (draftMdDeferred)')
-  has(BP_SRC, "deferredTo: 'adopt'", 'A: the receipt names what WOULD write the document')
-  ok(BP_SRC.indexOf('writeBlueprintMd(') >= 0, 'precondition: adoption still writes the file', { hits: BP_SRC.split('writeBlueprintMd(').length - 1 })
+  // ★★★ RUN 248-M2 修 pin：§0 原先把 RUN 238 的「草案延后给 adopt」钉在源码里（`draftMdDeferred` + `deferredTo:'adopt'`）。
+  // 用户 2026-11-06 的裁定把它反转了（草案必须落盘）。同一件事 —「草案与生效文件的写入责任在源码里显式、可 grep」—
+  // 现在由下面的名字证明：草案写者 `writeBlueprintMd` 出现在三条具名车道里，而「延后」的旧形状彻底不存在。
+  hasNot(BP_SRC, 'draftMdDeferred', 'A: the draft no longer defers its write to adopt (RUN 248 made the draft a file)')
+  hasNot(BP_SRC, 'deferredTo', 'A: no receipt field still claims the write is deferred')
+  has(BP_SRC, "'kernel-materialized'", 'A: the receipt names the kernel as the writer of a materialized draft')
+  ok(BP_SRC.indexOf('writeBlueprintMd(') >= 0, 'precondition: a draft writer exists at all', { hits: BP_SRC.split('writeBlueprintMd(').length - 1 })
+  // 三条车道 = 新草案 / 共同设计续写 / adopt 晋升。多出第四条就是又一个沉默的写者，少一条就是有一版写不进文件。
   const callSites = BP_SRC.split('= writeBlueprintMd({').length - 1
-  ok(callSites === 1, '★★ A: exactly ONE call site writes the md (adoption) — a draft cannot reach the file face', { callSites })
-  ok(!/draftMdPathOf|BLUEPRINT_DRAFT_DIR/.test(BP_SRC), 'A: the abandoned "drafts write their own file" shape left no residue')
-  ok(/propose[\s\S]{0,4000}?draftMdDeferred\(\{ path: wantedPath \}\)/.test(BP_SRC), 'A: the new-draft path calls the deferral, not the writer')
+  ok(callSites === 3, '★★ A: exactly THREE call sites write the md, one per named lane (new draft / continuation / adopt)', { callSites })
+  ok(BP_SRC.split(', path: draftPath,').length - 1 === 2, '★★ A: the two DRAFT lanes write through draftPath, not the canonical path', { draftLanes: BP_SRC.split(', path: draftPath,').length - 1 })
+  ok(/blueprintDraftMdPathOf|BLUEPRINT_DRAFT_DIR/.test(BP_SRC), 'A: the per-revision draft-file path shape is declared (drafts own their file)')
+  ok(/propose[\s\S]{0,9000}?writeBlueprintMd\(\{[\s\S]{0,80}?path: draftPath/.test(BP_SRC), 'A: the new-draft path writes the draft md before indexing the row')
   has(REC_SRC, 'bodyLinesDropped', 'B: the records receipt can name the labelled lines a replace dropped')
   has(REC_SRC, 'bodyLinesMeans', 'B: and says what that list means')
   has(REC_SRC, 'revSource', 'E: the receipt says which kernel counted the rev')
@@ -95,27 +102,31 @@ try {
   await kernel.members.hire({ id: 'r-1', slot: 'member' })
   ok(kernel.members.roster().length === 2, 'precondition: a chair and a member are on the roster', kernel.members.roster().map((m) => m.id))
 
-  // ── §1 A: a draft writes no file; adoption writes it ─────────────────────────────────────────────────────────────
-  console.log('=== A. a draft writes NO file; adoption is the only writer ===')
+  // ── §1 A: a draft writes its OWN file; adoption promotes those bytes to the canonical path ──────────────────────
+  console.log('=== A. a draft writes its OWN md; adoption promotes it to the canonical path ===')
   const mdAbs = join(root, 'VibeMath', 'Shared', 'Protocol.md')
+  const draftAbs = join(root, 'VibeMath', 'Shared', 'Drafts', 'Protocol-r1.md')
+  const DRAFT1 = 'Shared/Drafts/Protocol-r1.md'
   const started = await b.call('vibe_v5_start', { problem: '前 n 个奇数之和 = n²。', researcherCount: 1 })
   ok(started && started.ok === true, 'precondition: the round starts (the blueprint seats exist)', started && started.code)
   const T1 = '- 命题：前 n 个奇数之和 = n²。'
   const p1 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: T1 })
   ok(p1 && p1.ok === true && p1.status === 'draft', 'A1 a draft is created', p1 && p1.code)
-  ok(p1 && p1.md && p1.md.written === false, '★★ A1 the draft writes no file', p1 && p1.md)
-  ok(p1 && p1.md && p1.md.deferredTo === 'adopt', 'A1 the receipt says adoption is what writes it', p1 && p1.md && p1.md.deferredTo)
-  ok(p1 && p1.md && p1.md.available === false, 'A1 `available:false` is the NAMED absence of a draft write, not "no file face"')
-  has(p1 && p1.md && p1.md.means, 'writes no md file', 'A1 and the means says it in words')
-  ok(existsSync(mdAbs) === false, '★★ A1 the document in force does not exist yet — the draft could not have touched it')
+  ok(p1 && p1.md && p1.md.written === true, '★★ A1 the draft WRITES its own file (RUN 248 reversed RUN 238 here)', p1 && p1.md)
+  ok(p1 && p1.md && p1.md.writtenBy === 'kernel-materialized' && p1.md.mdPath === DRAFT1, 'A1 the receipt names who wrote it and where', p1 && p1.md)
+  ok(p1 && p1.draftMdPath === DRAFT1 && p1.mdWritten === true, 'A1 the published draft reading says the same (draftMdPath + mdWritten)', p1 && { draftMdPath: p1.draftMdPath, mdWritten: p1.mdWritten })
+  ok(p1 && p1.md && p1.md.available === true, 'A1 `available:true` is the NAMED presence of the draft write (not "no file face")')
+  has(p1 && p1.md && p1.md.means, 'sha256', 'A1 and the means says the row indexes the sha256 of the bytes on disk')
+  ok(existsSync(draftAbs) === true, '★★ A1 the draft md exists at the per-revision path', { abs: draftAbs })
+  ok(existsSync(mdAbs) === false, '★★ A1 the document in force does not exist yet — a draft could not have touched it')
   const p1row = b.records.get({ id: p1.id, includeBody: true })
   has(p1row && p1row.body, T1, 'A1 the draft text lives in its index row')
-  ok(!/- mdPath：\S/.test(String(p1row && p1row.body)), 'A1 an unadopted draft claims no md file')
+  has(p1row && p1row.body, '- mdPath：' + DRAFT1, 'A1 an unadopted draft CLAIMS its own draft file')
 
   const p2 = await b.call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-1', text: '## 补充｜r-1\n- 复核 n=1。' })
   ok(p2 && p2.ok === true && p2.continued === true, 'A2 a co-design seat joins the same draft', p2 && p2.code)
-  ok(p2 && p2.md && p2.md.written === false, 'A2 the continuation writes no file either')
-  ok(existsSync(mdAbs) === false, '★★ A2 the in-force document is STILL untouched (this is the defect run 61 measured)')
+  ok(p2 && p2.md && p2.md.written === true && p2.md.mdPath === DRAFT1, 'A2 the continuation REWRITES that same draft file (one draft = one md)')
+  ok(existsSync(mdAbs) === false, '★★ A2 the in-force document is STILL untouched (the defect run 61 measured stays fixed)')
 
   const adopted = await b.call('vibe_v5_blueprint', { action: 'adopt', draft: p2.id, member: 'r-acad', path: 'Shared/Protocol.md' })
   ok(adopted && adopted.ok === true && adopted.status === 'current', 'A3 adopt succeeds', adopted && adopted.code)
@@ -125,8 +136,10 @@ try {
   has(mdText, T1, 'A3 the file carries the adopted text')
   ok(adopted && adopted.mdIsTheDocumentInForce && adopted.mdIsTheDocumentInForce.wroteNow === true,
     'A3 the adopt receipt states the file contract (wroteNow:true)', adopted && adopted.mdIsTheDocumentInForce)
-  has(adopted && adopted.mdIsTheDocumentInForce && adopted.mdIsTheDocumentInForce.means, 'ONLY file the blueprint writes',
-    'A3 … and that adoption is the ONLY writer')
+  has(adopted && adopted.mdIsTheDocumentInForce && adopted.mdIsTheDocumentInForce.means, 'ONE file that counts',
+    'A3 … and that ONE canonical file counts (the draft files do not)')
+  ok(adopted && adopted.copiedFrom === DRAFT1 && adopted.alreadyWritten === false,
+    'A3 … and it names the DRAFT file whose bytes were promoted here', { copiedFrom: adopted && adopted.copiedFrom })
 
   // ── §2 B: a replacing write names the labelled lines it dropped ──────────────────────────────────────────────────
   console.log('=== B. a same-id write names the card lines it replaced ===')

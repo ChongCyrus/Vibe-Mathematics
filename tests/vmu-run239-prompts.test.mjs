@@ -4,8 +4,12 @@
 // shape that carries it, and once on the REAL assembled prompt (pipeline + PACK.bindings + settings + the four phases),
 // because a sentence that reads right in the file is not the same thing as a sentence a member receives.
 //
-//   1) 【蓝图】said propose AND adopt both write the md. Measured: a proposal registers an index row (`md.written:false`,
-//      `deferredTo:"adopt"`); only adopting writes Shared/Protocol.md.
+//   1) 【蓝图】said propose AND adopt both write the md. Measured at RUN 239: a proposal registered an index row only
+//      (`md.written:false`, `deferredTo:"adopt"`); only adopting wrote Shared/Protocol.md. **RUN 248 REVERSED the storage
+//      half** (user ruling m37456: drafts must be on disk, members manage md with fs): a draft now has its own file
+//      (`Shared/Drafts/<stem>-r<N>.md`, or a member-authored file passed as `mdPath`), and adopting verifies row-vs-file
+//      sha before promoting (`VMU_PACK_V5R_BLUEPRINT_MD_DRIFT` / `VMU_PACK_V5R_BLUEPRINT_MD_MISSING`). The pins below now hold BOTH halves:
+//      the new truth is present and the retired "a draft is a row with no file" claim is absent.
 //   2) 【脚本归档】said no seat's ACL opens the script face. Measured (C14, RUN 236): archiving is the ACADEMICIAN's act
 //      — `vibe_v5_script { op: "archive", name, text }`; member/temp get `VMU_NOT_PERMITTED` and hand the script to the
 //      chair. The archive is a copy, not execution evidence.
@@ -76,8 +80,10 @@ try {
     console.log('§0 source: the four measured lies are gone, the four truths are named')
     ok(typeof blocksBSource === 'string' && blocksBSource.length > 0, '§0a blocks-b source was read')
     ok(denies(blocksBSource, 'propose/adopt 都先写 md'), '§0b ·1 the blueprint no longer says propose writes the md')
-    ok(says(blocksBSource, '只有 adopt 写 md') && says(blocksBSource, 'md.written:false') && says(blocksBSource, 'deferredTo:"adopt"'),
-      '§0c ·1 and says a draft is an index row, deferred to adopt')
+    ok(says(blocksBSource, 'Shared/Drafts/') && says(blocksBSource, 'VMU_PACK_V5R_BLUEPRINT_MD_DRIFT') && says(blocksBSource, 'VMU_PACK_V5R_BLUEPRINT_MD_MISSING'),
+      '§0c ·1 and says a draft has its own file under Shared/Drafts, with the two named refusals of the promotion')
+    ok(denies(blocksBSource, 'deferredTo') && denies(blocksBSource, 'md.written:false') && denies(blocksBSource, '草案只登记索引行'),
+      '§0c2 ·1 the retired claim (a draft is a row with no file) is gone from the source')
     ok(denies(blocksBSource, '三个席位的 ACL 都不开放它'), '§0d ·2 the script block no longer says every seat is closed')
     ok(says(blocksBSource, 'vibe_v5_script') && says(blocksBSource, 'op: "archive"') && says(blocksBSource, 'VMU_NOT_PERMITTED'),
       '§0e ·2 and names the chair face and the refusal a member/temp meets')
@@ -100,18 +106,20 @@ try {
     await b.K.members.hire({ id: 'r-1', slot: 'member' })
     const chairText = await seatPrompt(b.K, 'r-acad', 'normal')
     ok(chairText.length > 1000, '§1a the chair prompt is a real assembly', chairText.length)
-    ok(says(chairText, '只有 adopt 写 md'), '§1b ·1 the chair reads that only adopting writes the md')
-    ok(says(chairText, 'deferredTo:"adopt"') && says(chairText, 'md.written:false'),
-      '§1c ·1 and the two receipt fields that say a draft never wrote a file')
-    ok(denies(chairText, 'propose/adopt 都先写 md'), '§1d ·1 the old sentence is not in the assembled prompt')
+    ok(says(chairText, '草案落盘、adopt 只晋升'), '§1b ·1 the chair reads that a draft lands on disk and adopting only promotes it')
+    ok(says(chairText, 'VMU_PACK_V5R_BLUEPRINT_MD_MISSING') && says(chairText, 'VMU_PACK_V5R_BLUEPRINT_MD_DRIFT') && says(chairText, 'alreadyWritten:true'),
+      '§1c ·1 and the three receipt facts of the promotion: the two named refusals and the already-written case')
+    ok(denies(chairText, '只有 adopt 写 md') && denies(chairText, 'deferredTo'),
+      '§1d ·1 the retired sentence and the retired receipt field are not in the assembled prompt')
     ok(says(chairText, '归档是院士席（chair）的面') && says(chairText, 'vibe_v5_script'),
       '§1e ·2 the chair is told the archive face is its own')
     ok(says(chairText, '归档是**副本**不是执行证据'), '§1f ·2 and that the archive is a copy, not proof of execution')
     // The researcher variant is the codesigner: same truth, its own wording.
     const memberText = await seatPrompt(b.K, 'r-1', 'normal')
-    ok(says(memberText, '正文只在采纳时写 md') && says(memberText, 'deferredTo:"adopt"'),
-      '§1g ·1 the researcher reads: the draft is a row, adopting is the file')
-    ok(denies(memberText, '正文落在一份 md'), '§1h ·1 and no longer "正文落在一份 md"')
+    ok(says(memberText, '草案是自己的文件') && says(memberText, 'VMU_PACK_V5R_BLUEPRINT_MD_DRIFT'),
+      '§1g ·1 the researcher reads: the draft is its own file, and the promotion verifies it')
+    ok(denies(memberText, '正文落在一份 md') && denies(memberText, 'deferredTo'),
+      '§1h ·1 and neither the old wrong sentence nor the retired receipt field')
   }
 
   // ── §2 THE MEETING FRAME NAMES THE MEETING THIS TURN IS BOUND TO ────────────────────────────────────────────────
@@ -172,8 +180,8 @@ try {
     // The budget itself is `scripts/audit-prompt-budget.mjs --check`; this only guards the pack-source side: the four
     // sections did not grow into a wall of prose (the measured gate is the authority, this is the early warning).
     ok(typeof blocksBSource === 'string' && blocksBSource.length < 400000, '§4a blocks-b is still a single readable module', blocksBSource.length)
-    ok(says(blocksBSource, '只有 adopt 写 md') && says(blocksBSource, '正文只在 adopt 时写进 md') && says(blocksBSource, '正文只在采纳时写 md'),
-      '§4b ·1 all three seat variants carry the truth')
+    ok(says(blocksBSource, '草案落盘、adopt 只晋升') && says(blocksBSource, '草案有自己的文件') && says(blocksBSource, '草案是自己的文件'),
+      '§4b ·1 all three seat variants carry the truth, each in its own wording')
   }
 
   // ── §5 ·5 THE MEETING CHAMBER TEACHES THE DOOR THAT EXISTS (wait/unwait on the KERNEL face) ───────────────────
@@ -206,6 +214,46 @@ try {
     const memberText = await seatPrompt(b.K, 'r-1', 'meeting', { meeting: meetingId })
     ok(says(memberText, 'vibe_vmu_meeting { action:"attend"') && denies(memberText, 'vibe_v5_meeting { action:"attend"'),
       '§5j ·5 the member is sent to the face that can actually register an attendance')
+  }
+
+  // ── §6 ·6 THE DELIVERY TIMING IS TAUGHT: WHAT ARRIVES, WHEN IT IS SEEN, AND WHAT TO DO ─────────────────────────
+  //
+  // User question m37280 ①/④: 「预约会议给每个被邀成员投耐久 mailbox 行 + 回合通知块渲染」「主席 `speak` 不带 `to`
+  // 与 `say` 致全体会推送成群聊行」. The kernel now does both (meetings.js `appointNoticeOf`/`broadcastOf`, kit
+  // group fan-out), so the prompt must say WHEN it happens, WHERE it is seen, and WHAT the member does about it.
+  // The facts pinned here are the ones the kernel really renders, not a paraphrase: the notice line carries the exact
+  // attend call and ends in an ack instruction; the block is the TOP of the turn prompt (kernel/turn/index.js
+  // prepends `noticeText`); and the ack door is the KERNEL face, because the pack inbox only has list/open/mark.
+  {
+    console.log('§6 ·6 the prompts teach the delivery timing: notice block, appointment line, chair push')
+    ok(says(blocksBSource, '[新到的消息]'), '§6a ·6 the notice block is named where the member really sees it')
+    ok(says(blocksBSource, '【会议预约·') && says(blocksBSource, '【主席发言·'),
+      '§6b ·6 both pushed lines are quoted by the prefixes the kernel renders')
+    ok(says(blocksBSource, 'vibe_vmu_mailbox {action:"ack"'), '§6c ·6 the ack door is the kernel face, not the pack inbox')
+    ok(says(blocksBSource, 'meeting-appointment') && denies(blocksBSource, 'meeting-invitation'),
+      '§6d ·6 the invitation kind is the one the kernel writes now (the retired kind is gone)')
+    ok(says(blocksBSource, 'deliveredTo') && says(blocksBSource, 'broadcastFailed'),
+      '§6e ·6 the chair-push receipt fields are named, failure with them')
+    ok(says(blocksBSource, '不用轮询'), '§6f ·6 the member is told not to poll for a pushed line')
+
+    // …and the assembled prompts carry it (source truth is not prompt truth).
+    const b = await boot(await mkRoot())
+    await b.K.members.hire({ id: 'r-acad', slot: 'chair' })
+    await b.K.members.hire({ id: 'r-1', slot: 'member' })
+    const normal = await seatPrompt(b.K, 'r-1', 'normal')
+    ok(says(normal, '[新到的消息]') && says(normal, '【会议预约·'),
+      '§6g ·6 a regular-round member prompt teaches the appointment notice block')
+    ok(says(normal, 'vibe_v5_inbox {action:"open"') && says(normal, 'vibe_vmu_mailbox {action:"ack"'),
+      '§6h ·6 and both steps it takes: read the body on the pack face, ack on the kernel face')
+    const opened = await b.K.meetings.open({ type: 'debate', chair: 'r-acad', materials: '确认命题; 分配复核', members: ['r-1'], roster: ['r-1'], actor: 'r-acad' })
+    const meetingId = String(opened && (opened.meeting === undefined || opened.meeting === null ? '' : opened.meeting))
+    ok(meetingId !== '', '§6i ·6 a meeting was opened for the meeting-phase prompts', opened && opened.code)
+    const chairMeeting = await seatPrompt(b.K, 'r-acad', 'meeting', { meeting: meetingId })
+    ok(says(chairMeeting, '对全体发言即推送') && says(chairMeeting, 'broadcastFailed') && says(chairMeeting, 'deliveredTo'),
+      '§6j ·6 the chair is told WHICH speech is pushed and WHICH receipt fields say who got it')
+    const memberMeeting = await seatPrompt(b.K, 'r-1', 'meeting', { meeting: meetingId })
+    ok(says(memberMeeting, '【主席发言·') && says(memberMeeting, '不用轮询'),
+      '§6k ·6 a member in session knows a chair push will arrive by itself, as a notice line')
   }
 } finally {
   for (const root of roots) { try { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }) } catch {} }

@@ -925,24 +925,42 @@
       "id": "D2",
       "rule": "38",
       "text": "三通道：邮箱/私信/群聊",
-      "status": "PARTIAL",
+      "status": "DONE",
       "mechanism": [
-        "vibe-math-vmu/kernel/mailbox.js::to = null, text = '', kind = 'dm'",
-        "vibe-math-vmu/kernel/chat.js::replyTo = null, quotes ="
+        "vibe-math-vmu/kit/handlers.js::kind: 'dm', urgent: urgentFlag",
+        "vibe-math-vmu/kit/handlers.js::fanOutGroupSay",
+        "vibe-math-vmu/kit/handlers.js::kind: 'chat-broadcast'",
+        "vibe-math-vmu/kernel/meetings.js::kind: 'meeting-appointment'",
+        "vibe-math-vmu/kernel/meetings.js::appointNoticeOf",
+        "vibe-math-vmu/kernel/meetings.js::broadcastFailed",
+        "vibe-math-vmu/kernel/mailbox.js::MAILBOX_NOTICE_LINES_MAX",
+        "vibe-math-vmu/packs/v5r/seat-faces.js::vibe_v5_say: Object.freeze"
       ],
       "tool": [
-        "vibe_v5_message"
+        "vibe_v5_say",
+        "vibe_v5_inbox",
+        "vibe_v5_meeting",
+        "vibe_vmu_mailbox"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::三通道的紧急语义"
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::三通道的紧急语义",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::【参会与预约（非会议回合）】",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::对全体发言即推送"
       ],
       "live": [
-        "docs/acceptance/phase12-v5r-rules-conformance.md::\"urgent\":true,\"kind\":\"notice\"",
-        "docs/acceptance/phase12-v5r-rules-conformance.md::kind does NOT decide urgency"
+        "tests/vmu-run248-notice-delivery.test.mjs::dm 通道在 list 面可见（D2 的私信证据）",
+        "tests/vmu-run248-notice-delivery.test.mjs::恰 1 行 chat-broadcast（group 通道的群聊证据）",
+        "tests/vmu-run248-notice-delivery.test.mjs::主席对全体发言 ⇒ deliveredTo 逐人列出每个在席成员（不含发言人）",
+        "docs/acceptance/phase12-v5r-rules-conformance.md::【会议预约·<主席>】"
       ],
       "ruleText": "- 各自交流通过：邮箱（非紧急。一般不需要立即查看邮箱消息），私信（希望对方尽早回复时），群聊（非紧急。一般不需要立即查看群聊消息），...。",
-      "next": "当前架构裁决是「所办是唯一传信人」：成员没有直发邮箱/私信面，声音由所办代发并记 `relayedBy`，这不是缺陷而是设计。若要求成员自有通道，需要用户裁定并新增成员面，届时本行转 DONE 或 DECIDED。",
-      "note": "r124b：urgent:true ⇒ kind notice 且 note 明说 kind 不决定紧急度；未传时 urgent 默认 false"
+      "next": "三通道已全部落地并有端到端观测：私信＝成员 `say{to}` 的 dm 行（三席可用，`seat-faces.js` 的 `vibe_v5_say` allow 全开）、群聊＝不带 `to` 的 `say` 逐人投 `channel:\"group\"` 行（`kit/handlers.js` 的 `fanOutGroupSay`）、邮箱/转达＝院士席 `vibe_v5_message` 与会议预约/主席发言的耐久邮件；收件侧统一由 `kernel/mailbox.js` 的 `noticeLines` 在前置通知块里给出，行留到 ack 才消失。可选余项：notice 行文案里的 ack 还可渲染成可直接照抄的内核调用（见 phase12 §345.6 第 1 条，属机制侧优化，不影响本行判据）。",
+      "note": "r124b：urgent:true ⇒ kind notice 且 note 明说 kind 不决定紧急度；未传时 urgent 默认 false ★ RUN 248：D2 从 PARTIAL 转 DONE。三通道的收件侧本轮做成耐久投递（预约 `meeting-appointment`、主席全体发言 `meeting-broadcast`、群聊 `chat-broadcast`），`tests/vmu-run248-notice-delivery.test.mjs` 第 7 节逐条按 mail/dm/group 取证（114/0）；提示词同时写清「什么时候、在哪里看到什么、该做什么」（`v5r-blocks-b.js` 的【参会与预约】与【三通道的紧急语义】）。原 `next` 里「所办是唯一传信人、成员没有直发面」的表述已不成立：成员私信走 `say{to}`、群聊走 `say`，所办面只保留「以他人名义发邮箱」这一项越权敏感的动作。",
+      "auditDispute": {
+        "acknowledged": true,
+        "why": "the observation audit judged D2 CONTRADICTED because its probe called `vibe_v5_message` as a member and read VMU_TOOL_NOT_IN_FACE, then generalised to “成员没有任何通道”. That generalisation is what changed: the rule’s 私信/群聊 channels are `vibe_v5_say` (allow for chair/member/temp, `seat-faces.js`), and the only chair-only face is `vibe_v5_message` — the “send mail as anyone” relay, whose denial is the 规则 11.2 guard, not a missing channel. RUN 248 then made the RECEIVING half observable for all three channels: appointment/broadcast/chat-broadcast rows are durable mailbox rows (channel mail/dm/group) that appear in the recipient’s notice block until acked, and `tests/vmu-run248-notice-delivery.test.mjs` (114 assertions) reads them back per recipient. The audit’s complaint was that the happy path was never observed; it is now observed by a suite that goes red if delivery breaks.",
+        "evidence": "tests/vmu-run248-notice-delivery.test.mjs::恰 1 行 chat-broadcast（group 通道的群聊证据）"
+      }
     },
     {
       "id": "D3",

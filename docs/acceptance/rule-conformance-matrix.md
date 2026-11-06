@@ -14,8 +14,8 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 
 | status | rows | meaning |
 | --- | --- | --- |
-| ✅ DONE | 91 | all four citations resolve |
-| ◐ PARTIAL | 2 | the row states exactly which of M/T/P/R is missing |
+| ✅ DONE | 92 | all four citations resolve |
+| ◐ PARTIAL | 1 | the row states exactly which of M/T/P/R is missing |
 | ❌ MISSING | 0 | no mechanism at all yet |
 | 📌 DECIDED | 0 | the user ruled it out of scope (`next` records the ruling) |
 
@@ -71,7 +71,7 @@ Every atomic requirement of `D:/wd/vibemath开发/宏观层面v5r运行规则.md
 | id | 规则行 | 原子要求 | 状态 | 已有证据 (M/T/P/R) | 缺口 |
 | --- | --- | --- | --- | --- | --- |
 | `D1` | 37 | 各自推进各自的总任务 | ✅ DONE | 2/1/1/5 | 已由 r131 取证（r-1 状态板 ①②③ 先印自己那份并标注全所），office 视图逐字不变由 vmu-run111-board-own-share 钉住；后续轮次只做回归。 |
-| `D2` | 38 | 三通道：邮箱/私信/群聊 | ◐ PARTIAL | 2/1/1/2 | 当前架构裁决是「所办是唯一传信人」：成员没有直发邮箱/私信面，声音由所办代发并记 `relayedBy`，这不是缺陷而是设计。若要求成员自有通道，需要用户裁定并新增成员面，届时本行转 DONE 或 DECIDED。 |
+| `D2` | 38 | 三通道：邮箱/私信/群聊 | ✅ DONE | 8/4/3/4 | 三通道已全部落地并有端到端观测：私信＝成员 `say{to}` 的 dm 行（三席可用，`seat-faces.js` 的 `vibe_v5_say` allow 全开）、群聊＝不带 `to` 的 `say` 逐人投 `channel:"group"` 行（`kit/handlers.js` 的 `fanOutGroupSay`）、邮箱/转达＝院士席 `vibe_v5_message` 与会议预约/主席发言的耐久邮件；收件侧统一由 `kernel/mailbox.js` 的 `noticeLines` 在前置通知块里给出，行留到 ack 才消失。可选余项：notice 行文案里的 ack 还可渲染成可直接照抄的内核调用（见 phase12 §345.6 第 1 条，属机制侧优化，不影响本行判据）。 |
 | `D3` | 38 | 三通道紧急语义：邮箱非紧急不必立即看／私信望早回／群聊非紧急 | ✅ DONE | 2/1/1/2 | 已由 r133 全证（urgent:true ⇒ kind:"notice" + note「kind does NOT decide urgency」；收件行 ml-15 urgent:true；r-2 的非紧急行 urgent:false、kind:assign/dm；群聊 round 无 urgent）。 |
 | `D4` | 39 | 状态版四字段：总任务/规划/任务完成状态/当前小任务 | ✅ DONE | 2/1/1/1 | — |
 | `D5` | 39 | 四字段都含时间等基础信息 | ✅ DONE | 2/2/1/1 | — |

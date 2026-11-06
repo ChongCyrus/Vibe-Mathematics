@@ -114,6 +114,9 @@ try {
 
   // §7 NOT-CLOBBER: a local copy that is not older stays. The member's kernel is the one that WROTE the newer body, so
   // its own copy must still be the one it wrote (equal stamps ⇒ local wins), and a second read must be stable.
+  // RUN 248-M: adopt now RELEASES the draft row's md claim (one more supersede write), so the office kernel is that
+  // row's LAST writer; by this suite's own contract (lines 50-53) settle before asking the second kernel to read.
+  await settle()
   const officeBody = String(recA.get({ id: draftId }).body || '')
   const memberBody = String(recB.get({ id: draftId }).body || '')
   ok(officeBody.includes('研究员：补一节误差分析') && officeBody === memberBody,

@@ -10,9 +10,13 @@
  *   ② ONE enum for `outlineSource` on every face: `row` = the outline stored on this row (both `state` and `read` say
  *      `row` for the same revision), `request`/`draft` describe WRITE bank calls, `none` = explicit empty. Both faces
  *      print `outlineSourceMeans`, and the sentence is the same constant.
- *   ③ The md block means ONE thing in every receipt: `written` = did THIS call put a file on disk, `deferredTo` = which
- *      act will, `canonicalPath` = the file the blueprint owns, `writtenNever` = this row never writes at all; plus
- *      `mdMeans` saying that `available` (read face usable) and `written` (this call wrote) are not the same question.
+ *   ③ The md block means ONE thing in every receipt and in `state`: `written` = did THIS call put the canonical file
+ *      on disk, `mdPath`/`draftMdPath` = which file this revision actually owns (a DRAFT owns its own file under
+ *      `Drafts/` since RUN 248; only `adopt` promotes it to `canonicalPath`), `mdWritten` = is that file on disk now;
+ *      plus `mdMeans` saying that `available` (read face usable), `mdWritten` (the file exists) and `written` (this call
+ *      wrote) are not the same question. (RUN 239-B pinned `deferredTo`/`writtenNever` here; RUN 248-M2 removed those
+ *      names because a draft now writes a file, so the same "each name means exactly one thing" rule is pinned on the
+ *      three names that replaced them.)
  *      With no revision in force, `outlineMeans` says THAT (current:null), not "this revision carried no outline".
  *
  * RULE E: every fixture is asserted to exist before it is judged; refusals are normalised from both shapes (thrown
@@ -177,17 +181,21 @@ ok(p5 && p5.ok === true && p5.outlineCount === 0 && ids(p5.outlineMerged.added).
   '★ a new revision with no outline is an explicit empty list + added/kept none (not a missing block)', p5 && p5.outlineMerged)
 
 console.log('=== 4. THE md BLOCK MEANS ONE THING IN propose AND IN state ===')
-ok(p1.md && p1.md.written === false && p1.md.deferredTo === 'adopt' && p1.md.writtenNever === true && p1.md.canonicalPath === PATH_MAIN,
-  '★ propose md block: written false, deferredTo adopt, writtenNever true, canonicalPath named (a draft never writes)', p1 && p1.md && { written: p1.md.written, deferredTo: p1.md.deferredTo, canonicalPath: p1.md.canonicalPath })
-ok(typeof p1.md.mdMeans === 'string' && /available/.test(p1.md.mdMeans) && /written/.test(p1.md.mdMeans),
-  '★ propose md block explains available vs written in words (the two names are not left to be guessed)', p1 && p1.md && String(p1.md.mdMeans).slice(0, 60))
+// ★★★ RUN 248-M2 修 pin：这一节原先钉住「草案不写文件」（written:false/deferredTo/writtenNever）。用户裁定反转后，
+// 要证明的**同一件事**没变 ——「md 块里的每个名字只说一件事，回执不许让读者猜它到底写了没写、写到哪儿」——
+// 只是名字换成了 draftMdPath/mdWritten/mdPath。所以下面仍然逐个名字断言，不用 contains 松散匹配。
+ok(p1.md && p1.md.written === true && p1.md.writtenBy === 'kernel-materialized' && p1.md.mdPath === 'Shared/Drafts/Protocol-r1.md' && p1.draftMdPath === 'Shared/Drafts/Protocol-r1.md',
+  '★ propose md block: written true + the writer and the DRAFT file are named (only adopt promotes to canonicalPath)',
+  p1 && { written: p1.md && p1.md.written, writtenBy: p1.md && p1.md.writtenBy, mdPath: p1.md && p1.md.mdPath, draftMdPath: p1.draftMdPath })
+ok(typeof p1.md.means === 'string' && /sha256/.test(p1.md.means) && p1.md.atomic === 'temp+rename',
+  '★ the write receipt says HOW the file landed (atomic temp+rename) and WHAT the row indexes (sha256) — the reader is not left to guess', p1 && p1.md && String(p1.md.means).slice(0, 60))
 const stDraft = await call({ action: 'state', path: PATH_DRAFT })
 const stMain = await call({ action: 'state', path: PATH_MAIN })
 ok(stDraft.ok === true && stDraft.parsed.hasCurrent === false && stDraft.parsed.current === null,
   'fixture: a path with a draft and no revision in force (the case the old outlineMeans mis-described)', stDraft.parsed && { hasCurrent: stDraft.parsed.hasCurrent })
-ok(stMain.ok === true && stMain.parsed.md && stMain.parsed.md.written === false && stMain.parsed.md.deferredTo === null && stMain.parsed.md.writtenNever === false && stMain.parsed.md.canonicalPath === PATH_MAIN,
-  '★★ state md block on an ADOPTED path: written false (a read never writes), deferredTo null, writtenNever false, canonicalPath named',
-  stMain.parsed && stMain.parsed.md && { written: stMain.parsed.md.written, deferredTo: stMain.parsed.md.deferredTo, writtenNever: stMain.parsed.md.writtenNever })
+ok(stMain.ok === true && stMain.parsed.md && stMain.parsed.md.written === false && stMain.parsed.md.mdWritten === true && stMain.parsed.md.canonicalPath === PATH_MAIN && stMain.parsed.md.draftMdPath === null,
+  '★★ state md block on an ADOPTED path: written false (a read never writes), mdWritten true (the canonical file exists), canonicalPath named, draftMdPath null (this row is not a draft)',
+  stMain.parsed && stMain.parsed.md && { written: stMain.parsed.md.written, mdWritten: stMain.parsed.md.mdWritten, draftMdPath: stMain.parsed.md.draftMdPath, canonicalPath: stMain.parsed.md.canonicalPath })
 ok(typeof stMain.parsed.md.mdMeans === 'string' && /available/.test(stMain.parsed.md.mdMeans) && /written/.test(stMain.parsed.md.mdMeans) && /不是一回事/.test(stMain.parsed.md.mdMeans),
   '★★ state md block: mdMeans says available and written are NOT the same question (RUN 239-B fix ③)',
   stMain.parsed && stMain.parsed.md && String(stMain.parsed.md.mdMeans).slice(0, 80))
@@ -198,13 +206,19 @@ const proposedDraft = BLUEPRINT.proposeBlueprint({
 ok(proposedDraft && proposedDraft.ok === true, 'fixture: the draft on the draft-only path exists', proposedDraft && proposedDraft.id)
 const stDraft2 = await call({ action: 'state', path: PATH_DRAFT })
 const draftMd = (stDraft2.parsed && stDraft2.parsed.md) || {}
-ok(stDraft2.ok === true && draftMd.available === true && draftMd.exists === false,
-  'fixture: state on a draft-only path is available:true + exists:false (the exact shape the old receipt left unexplained)', { available: draftMd.available, exists: draftMd.exists })
-ok(draftMd.written === false && draftMd.deferredTo === 'adopt' && draftMd.writtenNever === true && draftMd.canonicalPath === PATH_DRAFT,
-  '★★ THE DEFECT: the state md block now carries written/deferredTo/canonicalPath/writtenNever (before: only available + exists)',
-  { written: draftMd.written, deferredTo: draftMd.deferredTo, writtenNever: draftMd.writtenNever, canonicalPath: draftMd.canonicalPath })
-ok(typeof draftMd.mdMeans === 'string' && /available/.test(draftMd.mdMeans) && /written/.test(draftMd.mdMeans) && /草案从不写文件|不写文件/.test(draftMd.mdMeans),
-  '★ and the sentence says a draft never writes a file (the absence is named, not inferred)', String(draftMd.mdMeans).slice(0, 80))
+// ★★★ RUN 248-M2 修 pin：fixture 从「草案没有文件（exists:false）」变成「草案有自己的文件（exists:true，且路径在 Drafts/）」。
+// 这条 fixture 存在的理由——让下一行断言「状态面把草案文件说清楚了」时不是空转——没有变。
+ok(stDraft2.ok === true && draftMd.available === true && draftMd.exists === true && draftMd.path === 'Shared/Drafts/DraftOnly-r1.md',
+  'fixture: state on a draft-only path names the DRAFT file it owns (available:true + exists:true at the per-revision path)', { available: draftMd.available, exists: draftMd.exists, path: draftMd.path })
+ok(draftMd.written === false && draftMd.draftMdPath === 'Shared/Drafts/DraftOnly-r1.md' && draftMd.mdWritten === true && draftMd.canonicalPath === PATH_DRAFT,
+  '★★ THE DEFECT (RUN 248 shape): the state md block carries draftMdPath + mdWritten + written + canonicalPath, so "which file does this draft own" is answered, not inferred',
+  { written: draftMd.written, draftMdPath: draftMd.draftMdPath, mdWritten: draftMd.mdWritten, canonicalPath: draftMd.canonicalPath })
+ok(stDraft2.parsed.draftMdPath === 'Shared/Drafts/DraftOnly-r1.md' && stDraft2.parsed.mdWritten === true,
+  '★ … and the SAME two names are on the state root, not only inside the md block (one reading, two depths)',
+  stDraft2.parsed && { draftMdPath: stDraft2.parsed.draftMdPath, mdWritten: stDraft2.parsed.mdWritten })
+ok(typeof draftMd.mdMeans === 'string' && /draftMdPath/.test(draftMd.mdMeans) && /mdWritten/.test(draftMd.mdMeans) && !/不写文件/.test(draftMd.mdMeans),
+  '★ and the sentence names the draft file and whether it is on disk — the old "a draft writes no file" wording is gone',
+  String(draftMd.mdMeans).slice(0, 80))
 ok(stDraft2.parsed.outlineSource === 'none' && /还没有生效的修订/.test(String(stDraft2.parsed.outlineMeans)) && !/这次修订没有带 outline/.test(String(stDraft2.parsed.outlineMeans)),
   '★★ THE DEFECT: with no revision in force the outlineMeans says THERE IS NO REVISION (current:null), not "this revision carried no outline"',
   stDraft2.parsed && String(stDraft2.parsed.outlineMeans).slice(0, 80))

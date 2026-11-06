@@ -41,6 +41,21 @@ export const MAILBOX_URGENT_KINDS = Object.freeze([])
 export const MAILBOX_SUBJECT_MAX = 120
 export const MAILBOX_NOTICE_MAX = 300
 
+/**
+ * ★ RUN 248-N / task-65 — THE CHANNEL a row travelled on. One CLOSED vocabulary, because the ledger (D2) has to cite
+ * one row per channel (邮箱 / 私信 / 群聊) and the write face did not name one at all: the channel was implicit in
+ * `kind`, which is an OPEN string ("dm", "meeting-invitation", "verdict", …) and therefore unusable as evidence of
+ * which of the three transport lanes a row used. `mail` is the DEFAULT — durable office mail / notices; `dm` is a
+ * direct member-to-member message; `group` is a broadcast to the whole floor (a chair speech pushed to the room).
+ */
+export const MAILBOX_CHANNELS = Object.freeze(['mail', 'dm', 'group'])
+
+/** The one-line form a turn notice block shows: ≤ 800 chars, so eight of them cannot swallow a prompt. */
+export const MAILBOX_NOTICE_LINE_MAX = 800
+
+/** At most this many lines are put into ONE turn's notice block (newest first). */
+export const MAILBOX_NOTICE_LINES_MAX = 8
+
 /** Advisory per-box cap. Over it a send is REFUSED by name with the count — a limit the machine enforces. */
 export const MAILBOX_BOX_CAP = 500
 
@@ -382,7 +397,7 @@ export function createMailbox({
     const st = oldestStamp(rows)
     return st === null ? null : new Date(st).toISOString()
   }
-  /** Public list row: exactly these 8 fields; NO body. */
+  /** Public list row: exactly these 10 fields (id/from/at/subject/kind/channel/read/todo/bytes/urgent); NO body. */
   // ★ ROUND 52 (measured defect): these two READ faces used to drop `urgent`. The entry carries it (the sender's own
   // intent, and the value the caller's receipt already shows), but a triage row that omits it makes an urgent message
   // indistinguishable from ordinary mail — the read face deleted a fact the write face had just recorded. A consumer
@@ -394,9 +409,38 @@ export function createMailbox({
   // is not urgent unless it says so. What must never happen is an absent key: a consumer reading `row.urgent` gets a
   // verdict, and "the field is missing" is not one of the two possible values.
   const urgentOfEntry = (e) => e.urgent === true
-  const listRow = (e) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind,
+  /**
+   * ★ RUN 248-N / task-65 — THE CHANNEL, read the same way `urgent` is (round 53's ruling generalised): the write side
+   * always records one of the three lanes, so for anything this face produced the value is what the sender said; a
+   * LEGACY entry restored from an older snapshot may predate the field, and for it `mail` is the honest reading (it was
+   * durable office mail — the only lane that existed). What must never happen is an absent key: a consumer reading
+   * `row.channel` gets a lane, and "the field is missing" is not one of the three.
+   */
+  const channelOf = (e) => {
+    const c = e && e.channel
+    return c === 'dm' || c === 'group' ? c : 'mail'
+  }
+  /**
+   * ★ RUN 248-N / task-65 — ONE NOTICE LINE. The meeting faces store a TEMPLATE (`{id}` et al.), never a rendered
+   * string: the shared-key merge may RE-KEY an entry whose id collided with another kernel's, and a frozen id inside
+   * the text would send the member's `ack` at an entry that does not exist. Rendering at read time keeps "ack <id>"
+   * true after any merge, and keeps the line identical across a restart (same entry, same template, same render).
+   */
+  const renderNotice = (template, entry) => {
+    const t = String(template === undefined || template === null ? '' : template)
+    if (!t) return ''
+    const line = t.replace(/\{id\}/g, String(entry.id))
+      .replace(/\{subject\}/g, String(entry.subject === undefined || entry.subject === null ? '' : entry.subject))
+      .replace(/\{from\}/g, String(entry.from === undefined || entry.from === null ? '' : entry.from))
+      .replace(/\{channel\}/g, channelOf(entry))
+    return line.length <= MAILBOX_NOTICE_LINE_MAX ? line : line.slice(0, MAILBOX_NOTICE_LINE_MAX - 1) + '…'
+  }
+  /** A row sent without a template still gets a readable line — the fallback names sender, subject and the ack. */
+  const fallbackNoticeOf = (e) => '【邮件·' + String(e.from === undefined ? '' : e.from) + '】' +
+    String(e.subject === undefined || e.subject === null ? '' : e.subject) + '；读后 mailbox ack ' + String(e.id)
+  const listRow = (e) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind, channel: channelOf(e),
     read: e.read === true, todo: e.todo === true, bytes: bytesOf(e.text), urgent: urgentOfEntry(e) })
-  const openView = (e) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind,
+  const openView = (e) => ({ id: e.id, from: e.from, at: e.at, subject: e.subject, kind: e.kind, channel: channelOf(e),
     text: e.text, replyTo: e.replyTo === undefined ? null : e.replyTo, urgent: urgentOfEntry(e) })
   const findEntry = (member, id) => {
     const box = boxes.get(String(member)) || []
@@ -697,7 +741,8 @@ export function createMailbox({
         throw e
       }
     },
-    sendBody(from, { to = null, text = '', kind = 'dm', replyTo = null, subject = null, urgent = false } = {}) {
+    sendBody(from, { to = null, text = '', kind = 'dm', replyTo = null, subject = null, urgent = false,
+      channel = null, dedupeKey = null, notice = null } = {}) {
       const who = String(from === undefined || from === null ? '' : from)
       // ★ ROUND 89: same wording fix as `kernel/chat.js` - the sender id reaches this service positionally from a tool
       // face whose parameter is `by`, so naming this function's own `from` sends an agent looking for a parameter it
@@ -706,6 +751,22 @@ export function createMailbox({
         'the tool face passes this as `by`: {"action":"send","by":"<member id>","text":"…"} - a message with no sender is not auditable')
       const body = String(text === undefined || text === null ? '' : text)
       if (!body.trim()) throw refuse('VMU_INVALID_ARGUMENT', 'a message needs non-empty text', 'pass { text }')
+      /**
+       * ★ RUN 248-N / task-65 — the three additive write-face options, validated HERE so a bad value never becomes a
+       * durable row: `channel` (a closed vocabulary, default 'mail'), `dedupeKey` (idempotence: a replay of the same
+       * notice does not pile up a second copy) and `notice` (the ONE line a turn's notice block renders; a TEMPLATE,
+       * `{id}` is substituted at read time by `noticeLines`).
+       */
+      const channelGiven = channel === undefined || channel === null || String(channel) === '' ? null : String(channel)
+      if (channelGiven !== null && !MAILBOX_CHANNELS.includes(channelGiven)) {
+        note('VMU_INVALID_ARGUMENT')
+        record('send-refused', { from: who, reason: 'unknown-channel', channel: channelGiven })
+        throw refuse('VMU_INVALID_ARGUMENT', 'unknown channel: ' + channelGiven,
+          'legal channels: ' + MAILBOX_CHANNELS.join(', ') + ' (mail = durable office mail, dm = direct message, group = broadcast to the floor)')
+      }
+      const channelRef = channelGiven === null ? 'mail' : channelGiven
+      const dedupeRef = dedupeKey === undefined || dedupeKey === null || String(dedupeKey) === '' ? null : String(dedupeKey)
+      const noticeRef = typeof notice === 'string' && notice.trim() !== '' ? notice : null
       // ★ task-11: pull BEFORE an id is minted, so `seq` accounts for mail another kernel already queued (a collision
       // is repairable, but not creating one is cheaper), and before the per-box cap is judged against stale counts.
       pullShared('send')
@@ -752,10 +813,22 @@ export function createMailbox({
       if (replyTo !== null && replyTo !== undefined && String(replyTo) !== '') anchorRef = mailbox.anchor(replyTo).id
 
       const made = []
+      const deduped = []
       const sub = subjectOf(body, subject)
       const isUrgent = urgent === true || urgentOf(kind)
       for (const t of targets) {
         const box = boxOf(t)
+        // ★ task-65 IDEMPOTENCE: a replay of the same notice (same recipient + subject + dedupeKey) is the SAME mail,
+        // not a second one. The already-queued row IS the delivery, so its id is reported as deduped rather than
+        // silently dropped — "notified" must never be a lie about what the member can read.
+        if (dedupeRef !== null) {
+          const prior = box.filter((e) => String(e.to) === t && e.dedupeKey === dedupeRef && String(e.subject) === sub.subject)[0]
+          if (prior) {
+            deduped.push(prior.id)
+            record('send-deduped', { from: who, to: t, id: prior.id, dedupeKey: dedupeRef, subject: sub.subject })
+            continue
+          }
+        }
         if (box.length >= MAILBOX_BOX_CAP) {
           note('VMU_MAILBOX_CAP_REACHED')
           record('send-refused', { from: who, to: t, reason: 'box-cap', held: box.length, cap: MAILBOX_BOX_CAP })
@@ -765,17 +838,20 @@ export function createMailbox({
         }
         seq += 1
         const entry = { id: 'ml-' + String(seq), seq, from: who, to: t, at: clock(), kind: String(kind || 'dm'),
+          channel: channelRef, dedupeKey: dedupeRef, notice: noticeRef,
           subject: sub.subject, subjectTruncated: sub.subjectTruncated, text: body, replyTo: anchorRef,
           urgent: isUrgent, read: false, todo: false, ackedAt: null }
         box.push(entry)
-        made.push({ id: entry.id, to: t, urgent: entry.urgent })
+        made.push({ id: entry.id, to: t, urgent: entry.urgent, channel: channelRef })
       }
-      record('sent', { from: who, ids: made.map((m) => m.id), to: targets, kind: String(kind || 'dm'), urgent: isUrgent })
+      record('sent', { from: who, ids: made.map((m) => m.id), to: targets, kind: String(kind || 'dm'), channel: channelRef,
+        urgent: isUrgent, deduped })
       // ★ task-11: write through — the office's send is what the member's own kernel must be able to read. Fire and
       // forget BY DESIGN (the receipt is synchronous and the mail is already queued in memory); a failed write is
       // named in `status().shared` and in the audit trail instead of being pretended away.
-      pushShared('send')
+      if (made.length) pushShared('send')
       return { ok: true, ids: made.map((m) => m.id), to: targets, delivered: 0, queued: made.length,
+        channel: channelRef, dedupeKey: dedupeRef, deduped,
         urgent: isUrgent, subject: sub.subject, subjectTruncated: sub.subjectTruncated, enforced: ['vmu.mailbox.urgentKinds'] }
     },
 
@@ -954,7 +1030,7 @@ export function createMailbox({
         e.ackedAt = clock()
         box.splice(i, 1)
         const ledger = acked.get(id) || []
-        ledger.push({ id: e.id, from: e.from, at: e.at, kind: e.kind, subject: e.subject, read: e.read === true, todo: e.todo === true,
+        ledger.push({ id: e.id, from: e.from, at: e.at, kind: e.kind, channel: channelOf(e), subject: e.subject, read: e.read === true, todo: e.todo === true,
           ackedAt: e.ackedAt, bytes: bytesOf(e.text) })
         const cap = ackedCapOf()
         if (cap > 0 && ledger.length > cap) {
@@ -970,9 +1046,9 @@ export function createMailbox({
     },
 
     /**
-     * ★ PHASE 9 / round 2: the LIST view. A row is EXACTLY {id, from, at, subject, kind, read, todo, bytes} — no body,
-     * and listing never changes read state. `status` filters unread / todo / all. `ack` is the DELIVERY-layer settlement;
-     * `read` is the MEMBER's reading state — they are deliberately different, and `ack` no longer implies read.
+     * ★ PHASE 9 / round 2: the LIST view. A row is EXACTLY {id, from, at, subject, kind, channel, read, todo, bytes, urgent}
+     * — no body, and listing never changes read state. `status` filters unread / todo / all. `ack` is the DELIVERY-layer
+     * settlement; `read` is the MEMBER's reading state — they are deliberately different, and `ack` no longer implies read.
      */
     list(member, { status = 'all' } = {}) {
       pullShared('list')
@@ -982,6 +1058,46 @@ export function createMailbox({
       const rows = box.filter((e) => want === 'all' || (want === 'unread' ? e.read !== true : e.todo === true))
       const entries = rows.map(listRow)
       return { ok: true, member: id, status: want, count: entries.length, entries }
+    },
+
+    /**
+     * ★ RUN 248-N / task-65 — THE TURN-NOTICE FACE (non-destructive).
+     *
+     * ANSWERED DEFECT (gap ①): a durable row could only be found by a member that already knew to ask `list()`; the
+     * turn prompt said nothing, so an appointment "delivered" into a mailbox nobody opened was, from the member's side,
+     * not delivered at all. This is the read the turn assembly calls: at most `limit` (default 8) ONE-LINE strings,
+     * NEWEST FIRST — and it changes NOTHING here (no `read`, no `injected`, no ack). Settlement stays `ack()`, the only
+     * operation that removes a line from this view; because the per-row template is STORED and the id is substituted at
+     * read time (`renderNotice`), a restart over the same root re-renders the same lines.
+     *
+     * WHICH ROWS: a row that carries a notice template is a DELIVERY (an appointment, a chair push) — its own line
+     * instructs `mailbox ack <id>` and it stays visible until that ack, even after the body was opened (opening sets
+     * `read`, and a delivery that vanished on being read would make its own ack instruction meaningless). Every other
+     * mail follows the ordinary rule: unread, or marked todo.
+     */
+    noticeLines(member, { limit = MAILBOX_NOTICE_LINES_MAX } = {}) {
+      pullShared('noticeLines')
+      const id = String(member === undefined || member === null ? '' : member)
+      const box = boxes.get(id) || []
+      const want = box.filter((e) => (e.notice === undefined || e.notice === null ? (e.read !== true || e.todo === true) : true))
+      const sorted = want.slice().sort((a, b) => {
+        const na = Number(a.seq)
+        const nb = Number(b.seq)
+        const sa = Number.isFinite(na) ? na : Number.NEGATIVE_INFINITY
+        const sb = Number.isFinite(nb) ? nb : Number.NEGATIVE_INFINITY
+        if (sb !== sa) return sb - sa
+        return String(b.id).localeCompare(String(a.id))
+      })
+      const max = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : MAILBOX_NOTICE_LINES_MAX
+      const shown = sorted.slice(0, max)
+      const lines = shown.map((e) => {
+        const rendered = e.notice === undefined || e.notice === null ? '' : renderNotice(e.notice, e)
+        return rendered || fallbackNoticeOf(e)
+      })
+      return { ok: true, member: id, count: lines.length, total: want.length, truncated: want.length > shown.length,
+        limit: max, lines,
+        entries: shown.map((e) => ({ id: e.id, from: e.from, at: e.at, kind: e.kind, channel: channelOf(e),
+          subject: e.subject, read: e.read === true, todo: e.todo === true })) }
     },
 
     /** Open ONE entry by id: returns the body and marks read=true (the body is NOT removed; ack does that). */

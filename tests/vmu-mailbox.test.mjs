@@ -97,14 +97,18 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   // ★ ROUND 52: the row is NINE fields now — `urgent` was missing from this read face (and from `openView`), which made
   // an urgent message indistinguishable from ordinary mail unless the caller joined `pending()` (and got null for
   // anything already acked). The write side always recorded it; the read side deleted it.
-  ok(row && Object.keys(row).sort().join(',') === ['at', 'bytes', 'from', 'id', 'kind', 'read', 'subject', 'todo', 'urgent'].join(',') &&
-    row.read === false && row.todo === false && row.urgent === false && !('text' in row),
-    '★ 正：list 行字段恰为 9 个（含 urgent）、不含正文、初始 read:false / urgent:false', row)
+  // ★★★ RUN 248-N / task-67: the row is TEN fields now — `channel` ('mail'|'dm'|'group') joined the read face, because
+  // the ledger has to PROVE all three delivery channels (a mailbox mail, a private dm, a group broadcast) from the read
+  // side, not from prose. A row written before the field existed reads as channel 'mail' (the legacy default below).
+  ok(row && Object.keys(row).sort().join(',') === ['at', 'bytes', 'channel', 'from', 'id', 'kind', 'read', 'subject', 'todo', 'urgent'].join(',') &&
+    row.read === false && row.todo === false && row.urgent === false && row.channel === 'mail' && !('text' in row),
+    '★ 正：list 行字段恰为 10 个（含 urgent、channel）、不含正文、初始 read:false / urgent:false / channel:mail', row)
   const opened = mb.open('r-2', row.id)
   ok(opened.ok === true && opened.entry.text.includes(SECRET) && opened.read === true, '★ 正：open 返回正文并把 read 置 true', opened)
-  // ★ ROUND 52 正：urgent 逐字走到两个读面（写入侧记录的事实，读面不再删）。open 视图是 6 字段 + urgent。
-  ok(opened.entry.urgent === false && 'urgent' in opened.entry,
-    '★ 正：open 视图也带 urgent（与写入侧同义，不在这里造默认值）', opened.entry && opened.entry.urgent)
+  // ★ ROUND 52 正：urgent 逐字走到两个读面（写入侧记录的事实，读面不再删）。open 视图是 6 字段 + urgent（RUN 248-N
+  // 之后是 6 字段 + urgent + channel：channel 与 urgent 同一条规则——写侧记录的事实，读面不删）。
+  ok(opened.entry.urgent === false && 'urgent' in opened.entry && opened.entry.channel === 'mail' && 'channel' in opened.entry,
+    '★ 正：open 视图也带 urgent 与 channel（与写入侧同义，不在这里造默认值）', opened.entry && JSON.stringify({ urgent: opened.entry.urgent, channel: opened.entry.channel }))
   // ★ ROUND 53 正（Lead 口径）：字段必须是布尔，缺省 false，**不许** undefined / 缺失。写侧永远记布尔，所以这里
   // 用一条 LEGACY 快照造出"没有这个字段的老条目"——读面读到的必须是 false，而不是 null 或 undefined。
   const legacy = mk()
@@ -116,6 +120,8 @@ const mk = (settings = {}, extra = {}) => m.createMailbox(Object.assign({ clock,
   const legacyOpen = legacy.open('r-9', 'ml-1')
   ok(legacyRow && 'urgent' in legacyRow && legacyRow.urgent === false,
     '★★ 正：老条目没有 urgent 字段 ⇒ list 行给 false（布尔缺省，不是 undefined/缺失）', legacyRow && JSON.stringify(legacyRow.urgent))
+  ok(legacyRow && 'channel' in legacyRow && legacyRow.channel === 'mail',
+    '★★ 正：老条目没有 channel 字段 ⇒ list 行给 "mail"（RUN 248-N 的新字段对旧快照向后兼容）', legacyRow && JSON.stringify(legacyRow.channel))
   ok(legacyOpen.ok === true && legacyOpen.entry.urgent === false,
     '★★ 正：open 视图对老条目同样给 false', legacyOpen.entry && legacyOpen.entry.urgent)
   mb.send('r-1', { to: 'r-2', text: 'urgent one', kind: 'dm', urgent: true })

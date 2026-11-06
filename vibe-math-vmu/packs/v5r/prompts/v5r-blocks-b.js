@@ -875,22 +875,29 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · **只有院士席（chair）**能采纳（adopt）：采纳后成为唯一生效版本，并取代上一版。别的席位调用会被具名拒。',
         '  · **共同设计**：草稿须院士席与常驻研究员席各一人署名才可采纳（缺一席具名拒 `VMU_PACK_V5R_BLUEPRINT_NEEDS_CODESIGN`）。',
         '  · **按时更新**：`state` 的 `freshness` 给年龄与逾期（逾期采纳回执 `overdueUpdate`），同时给出生效版本、采纳时间与草稿队列；蓝图行也能用 `vibe_v5_read_library` 读。',
-        // ★★★ RUN 239 (live run 62 / FEEDBACK62 #2, MEASURED): THE SENTENCE SAID propose/adopt BOTH WRITE THE MD. The
-        // measurement says otherwise: a proposal registers an INDEX ROW only (its receipt carries `md.written:false`,
-        // `md.deferredTo:"adopt"`) and ONLY adopting writes `Shared/Protocol.md` — because an unadopted draft must not
-        // displace the document in force. A prompt that promises a file write the face does not perform teaches a
-        // reader to look in a path that is empty (or worse, holds the previous adopted revision) and call it theirs.
-        '  · **只有 adopt 写 md**（`Shared/Protocol.md`）：propose 只登记索引行（`md.written:false`、`deferredTo:"adopt"`，草案不许顶替生效文档）；`reindex` 按 md 重建索引，`prune` 只动索引、**不删 md**。',
+        // ★★★ RUN 239 (live run 62 / FEEDBACK62 #2, MEASURED) said: a proposal registers an INDEX ROW only and ONLY
+        // adopting writes `Shared/Protocol.md` (an unadopted draft must not displace the document in force).
+        // ★★★ RUN 248 (user ruling m37456: drafts MUST be on disk, members manage md with fs) REVERSED the storage
+        // half of that: a draft now has its own file — the kernel materializes `Shared/Drafts/<stem>-r<N>.md` when no
+        // `mdPath` is given, and a member that writes the file itself and passes `mdPath` keeps authorship. What did
+        // NOT change: the draft still cannot displace the document in force; adopting is the only promotion, and it
+        // verifies row-vs-file sha first (`VMU_PACK_V5R_BLUEPRINT_MD_DRIFT` / `VMU_PACK_V5R_BLUEPRINT_MD_MISSING`). A prompt must say
+        // which file each action touches, because the two failure modes are "I looked in a path that was empty" and
+        // "I edited the file the kernel then refused to promote".
+        '  · **草案落盘、adopt 只晋升**：不带 `mdPath` 时内核把草案物化到 `Shared/Drafts/<stem>-r<N>.md`（回执 `writtenBy:"kernel-materialized"`）；你先用 fs 写好草案再带同一 `mdPath` propose，文件归你（`writtenBy:"member-file"`，内核不改写）。adopt 只校验行与文件 sha 一致、再把草案字节晋升成 `Shared/Protocol.md`：文件没了 `VMU_PACK_V5R_BLUEPRINT_MD_MISSING`、被改过 `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT`（先 `reindex` 收编再采纳）；你已把 canonical 写成同一字节时回 `alreadyWritten:true`。`reindex` 按 md 重建索引，`prune` 只动索引、**不删 md**。',
       ].join('\n'),
       temp: [
-        // ★★★ RUN 239 / FEEDBACK62 #2: same lie in the short variants — a draft is an INDEX ROW, only adopting writes
-        // the md. A temp that reads "正文在一份 md 里" goes looking for a file its own propose never wrote.
-        '【蓝图】长期方案只能由院士席采纳；你可以提交草稿（propose），`state` 可读生效版本与逾期提示。草案只登记索引行（`deferredTo:"adopt"`），正文只在 adopt 时写进 md，索引坏了用 `reindex` 按 md 重建。',
+        // ★★★ RUN 239 / FEEDBACK62 #2 said a draft is an INDEX ROW with no file; ★★★ RUN 248 reversed that (drafts
+        // are files). The temp needs the same two facts as before, now true: your propose writes a draft file, and
+        // only the chair adopt promotes it.
+        '【蓝图】长期方案只能由院士席采纳；你可以提交草稿（propose），`state` 可读生效版本与逾期提示。草案有自己的文件：不传 `mdPath` 时内核写到 `Shared/Drafts/<stem>-r<N>.md`，你用 fs 自己写的则带同一 `mdPath` 提交、文件归你；采纳只由 chair 做（校验 sha 后晋升，漂移会 `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT`）。索引坏了用 `reindex` 按 md 重建。',
       ].join('\n'),
       researcher: [
-        // ★★★ RUN 239 / FEEDBACK62 #2: the researcher is the codesigner who hands a draft to the chair, so the one fact
-        // it needs is exactly the one the old sentence got backwards: YOUR draft is a row, the CHAIR\'s adopt is the file.
-        '【蓝图】长期方案写在蓝图里：提交草稿（propose，仅院士席可 adopt）；`state` 读生效版本与 `freshness`。**共同设计**：草稿要院士席与你各署名；另一席续写同一份。草案只登记索引行（`deferredTo:"adopt"`），正文只在采纳时写 md，`prune` 不删 md、`reindex` 按 md 重建索引。',
+        // ★★★ RUN 239 / FEEDBACK62 #2: the researcher is the codesigner who hands a draft to the chair. ★★★ RUN 248
+        // reversed the storage half: the draft is a FILE you may own (write it with fs, propose with `mdPath`), and the
+        // adopt that promotes it into `Shared/Protocol.md` belongs to the chair — who cannot promote a file you edited
+        // after proposing (`VMU_PACK_V5R_BLUEPRINT_MD_DRIFT`).
+        '【蓝图】长期方案写在蓝图里：提交草稿（propose，仅院士席可 adopt）；`state` 读生效版本与 `freshness`。**共同设计**：草稿要院士席与你各署名；另一席续写同一份。草案是自己的文件——你先用 fs 写好再带同一 `mdPath` 提交则文件归你，不传则由内核写 `Shared/Drafts/<stem>-r<N>.md`；采纳时 chair 校验 sha 后晋升进 `Shared/Protocol.md`（草稿提交后再改文件会被 `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT` 拦，先 `reindex`）。`prune` 不删 md、`reindex` 按 md 重建索引。',
       ].join('\n'),
     },
   },
@@ -910,7 +917,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '【召集与预约（非会议回合）】只有 chair 能召集/关闭（其它席位具名拒 `VMU_NOT_PERMITTED`）。`at` 给 epoch ms／ISO-8601／相对偏移（如 "+120s"）即预约；一旦成立 status/summary 立刻可读、开始前的治理动作被具名拒；`sequence` 逐场召集、逐场也可各自 `at`；`durationMs` 定墙钟上界；迟到入席看每会 `lateAdmission`（`refuse` ⇒ `VMU_LATE_ADMISSION_REFUSED`）。邀请≠签到：被邀者仍须自己 `attend`。会中手册见会议回合。',
       ].join('\n'),
       researcher: [
-        '【参会与预约（非会议回合）】你会收到 `meeting-invitation` 耐久邮件：邀请≠签到，须自己 `attend` 才计法定人数；预约会在 `at` 到点前只许座位登记，治理动作被具名拒。会议类型与迟到入席规则见会议回合。',
+        '【参会与预约（非会议回合）】被召集/预约时内核给每位被邀者投一条**耐久预约邮件**（`kind:"meeting-appointment"`）：你的**下一回合提示最上方**会出现 `[新到的消息]` 块，其中一行 `【会议预约·<主席>】<标题> @ <开始时间> — <可直接照抄的入席调用>；读后 mailbox ack {id}`。那行不是提醒而是**未结算的邮件**：ack 之前每个回合都会再来一次（块内最新在前、最多 8 行；更多用 `vibe_v5_inbox {action:"list", member}`）。三步结算：① `vibe_v5_inbox {action:"open", id:"<邮件 id>", member:"<你>"}` 读正文（会议类型/议题/时间/你的席位/确切入席调用）；② 会议开始后 `vibe_v5_meeting {op:"attend", id:"<会 id>", member:"<你>"}`（邀请≠签到，不 attend 不计法定人数；预约状态下 attend 只登记座位、不会提前开会）；③ `vibe_vmu_mailbox {action:"ack", member:"<你>", ids:["<邮件 id>"]}` 结算（pack 面 `vibe_v5_inbox` 只有 list/open/mark，ack 在内核邮箱面 `vibe_vmu_mailbox`，框架面不由 pack 收窄）。没有实时唤醒缝时你不会被叫醒，只在自己的回合看到它；预约会在 `at` 到点前只许座位登记，治理动作被具名拒。会议类型与迟到入席规则见会议回合。',
       ].join('\n'),
       temp: [
         '【参会与预约（非会议回合）】临时工席位不参会（`attend` 被具名拒），无表决权；受邀发言走群聊。会议类型与会中动作见会议回合。',
@@ -929,7 +936,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       academician: [
         '【开会与预约：按事件时机的顺序（你的手册）】会议类型六种：`ordinary`｜`academic`｜`debate`（**必须**给 `subject`）｜`closure`｜`paper`｜`planning`；`sync` 不是会议类型；动议 kind 为 topic/procedural/resolution；**可用的命令随类型与身份不同**。辩论须先给 `subject`，结题/辩论表决用 `vote_solved`，论文交流走 `vibe_v5_paper`，临时工无表决权；上面这些动词只是常用手段，不是穷举。**会议进行中的一切内容、控制、活动都由你的命令决定**——但每个成员的动作（发言、投票、签到）仍由成员自己在其回合做完，你编排的是顺序与时机。',
         '  · ① 先定议程：`agenda` 是会议议程文本（`open` 时给）；`agendaitems` 读议程条目、`agendaclose` 按 `target` 关闭一个条目（必须给 `reason`）——`agendaitems`/`agendaclose` 这两个动词只认**内核原语会**（`vibe_vmu_meeting { action:"open" }` 开的）；用 `vibe_v5_meeting` 开的**服务会**要用 `status`/`summary` 读议程。`title` 是**可选**的独立名称（非字符串会被具名拒）。`open` 回执里的 `procedureNote` 是**建议**（`procedure` 同源，`meeting-procedures.js` 的 `binding:"recommendation"`），不是闸：`ordinary` 类型**故意不给推荐骨架**，其余五种的步骤只是**建议**，可跳过、可重排，是否遵循由你决定。',
-        '  · ② 召集即发邀请：`vibe_v5_meeting` 的召集只对 chair 席开放（`vmu.meetings.conveneRequiresChair`）；关闭也只有 chair 能调（`closeRequiresChair`，其他席位会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁做）。召集成功会对除主席外每位在册者发出 `meeting-invitation` **耐久邮件**：回执 `invitation.delivered`＝已投递（对方下个回合或 `vibe_v5_inbox` 才读到），`woken` 空＝无实时唤醒缝，`unreachable`＝邮件没发出、会议仍成立——用 `vibe_v5_message`/`wake` 补，**绝不重复召集**。邀请≠签到：被邀者仍须自己 `attend` 才计入法定人数。',
+        '  · ② 召集即发邀请：`vibe_v5_meeting` 的召集只对 chair 席开放（`vmu.meetings.conveneRequiresChair`）；关闭也只有 chair 能调（`closeRequiresChair`，其他席位会被具名拒 `VMU_NOT_PERMITTED` 并指出该由谁做）。召集成功会对除主席外每位在册者发出 `meeting-appointment` **耐久邮件**（`channel:"mail"`，每个被邀者一条，含议题/时间/你的席位/可照抄的入席调用）：回执 `invitation.delivered`＝已投递——对方**下个回合提示最上方的 `[新到的消息]` 块**里会出现一行 `【会议预约·<你>】…`，在其 `mailbox ack` 之前每回合都在（也可用 `vibe_v5_inbox` 读），`woken` 空＝无实时唤醒缝，`unreachable`＝邮件没发出、会议仍成立——用 `vibe_v5_message`/`wake` 补，**绝不重复召集**。不必逐个私信催：没投出去的人会具名出现在 `unreachable`／open 回执的 `notifyFailed` 里，只有他们需要补消息；被邀者迟迟不 attend 是他自己回合的事，不是你没通知到。邀请≠签到：被邀者仍须自己 `attend` 才计入法定人数。',
         '  · ③ 预约与会前：`vibe_v5_meeting { type, agenda, at: <epoch ms / ISO-8601 / 相对偏移如 "+120s"> }`（可写相对偏移——**你没有自己的钟**，偏移由内核换算成绝对时间）→ 会议进入 `scheduled`；`status`/`summary`/`meetingView` **立刻可读**，开始前的治理动作都被具名拒（`attend` 是座位登记，可提前签到，但不会提前开会）。到点人数不齐就 `waiting`，**迟到者 `attend` 即开**；没有定时器：由每轮 `beat()` 的 sweep 结算，`proceed` 可提前开始。迟到入席由每会参数 `lateAdmission`（open|chair|refuse，缺省 open）决定：`open` 直接入座记 `late:true`；`chair` 挡在门口（`pendingLate:true`），只有主席 `vibe_vmu_meeting { action:"admit", id, member, actor }` 放行；`refuse` 具名拒 `VMU_LATE_ADMISSION_REFUSED`；「迟到」由 `vmu.meetings.lateAfterMs` 对 `openedAt` 判定（缺省 0）。',
         '  · ⑦ 一次连排多场：给 `sequence` 数组即可一次召集（逐项校验，回执给 `sequence.index/total/next`）；也可以给每场各自的 `at` **逐场召集**。',
         '  · ⑧ 面别记错：`vibe_v5_meeting` 只**召集/预约**；`close`/`attend`/`hand`/`admit`/`status`/`summary` 走 `vibe_vmu_meeting { action, id, member?, actor? }`，拿错面会被具名拒 `VMU_INVALID_ARGUMENT`。',
@@ -961,6 +968,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · ④ 会上发言序：`hand` 是成员自荐入队；`invite` 由你调用，`member` 邀一人或 `members` 按数组顺序批量入队（`why` 必填）；`invitedspeak` 让被邀者走服务发言面（**没签到**会被具名拒，先 `attend`）；`order` 不带 `members` 时只读队列；带 `members` 是**重排**（必须给 `by`=你自己，非本会出席者具名拒）。`flow`（open/hands/round_robin/call_on）与 `overrideorder` 只由主席做、必须给 reason，寻址的是**服务会议记录**；基线顺序就是**入队顺序**。`vmu.meetings.orderMode` 与 `overrideorder` 在**本部署未声明**，调用会被具名拒 `VMU_ENGINE_UNAVAILABLE`（工具说明里写明这条边界）。',
         '  · ⑤ 时长与兜底：`extend` 是**发言延长**（ms，缺省读 `speechExtendMs`，仍 0 则具名拒）；`extendlimit` 是**会议墙钟上界延长**（★ `extend` 现在跨注册表：SERVICE 会议走服务面，回执 `registry:"service"` 并给 `speechUsed`/`speechExtendMs`；`silent`/`end`/`hands` 仍是 primitive 原语，服务会议上具名拒 `VMU_REGISTRY_BOUNDARY`，发言界读 `vibe_v5_say` 回执的 `speechBound`）；墙钟硬界 `vmu.meetings.hardLimitMs`（默认 1800000ms，钳制 300000–7200000，**没有"无界"**）。**你自己就能给这一场定上界**：`vibe_v5_meeting { durationMs: 900000 }`（整数 ms，30 分钟–2 小时），回执读回 `wallLimitMs`/`wallLimitMsSource`（`convene` 表示你定的，`vmu.meetings.hardLimitMs` 表示部署默认）。只有超过硬界才能用 `lapse` 具名收束，恢复用 `revokelapse`（必须给理由）；`at` 预约、还没开始的会没有墙钟在走，`extendlimit` 要等会议真正开始后才能用。',
         '  · ⑥ 推进成员回合：`vibe_v5_meeting_round { meeting, members?, phase? }` 按序各跑一回合（members 缺省＝除主席外全体在册）；`phase` 取值以工具声明为准（辩论轮可直接写 `debate`，回执会说明它按 `verify-debate` 跑），写错具名拒；回执 `ok:false`+`turnFailed:true`＝这轮没发生，别当成功；`close`/`extendlimit` 要带 `actor`（主席本人）；回执 `roundMeeting` 说明这轮绑定了哪场会（成员回复据此入纪要）；`action:"convene"` 与直接召集等价。',
+        '  · 对全体发言即推送（只有主席的发言会推送）：你在会中 `speak`/`say` **不带 `to`**（对全体）且发言人正是主席时，内核给**每个在席成员（除你）**投一条 `channel:"group"` 耐久行：摘要 ≤800 字符 + 全文指针 `<会 id>/minutes#<第几条>`；回执给 `deliveredTo`（真投到的人）、`deliveredRows`、`broadcastFailed`（没投到的具名原因，绝不静默丢）、`broadcastMeans`。普通成员的发言**只进纪要、不推送**（否则每句话变成 N-1 封邮件）；只想让某人看见就用 `to:"<成员>"`。他们无需轮询：下一回合通知块里会看到【主席发言·<你> @ <会 id>】那行，读完 ack 才消失。',
         // ★ RUN 239-D (follow-up): a member with nothing to do used to either stay silent forever or burn turns
         // asking "has anybody spoken yet". The kernel now keeps a DURABLE waiter row and REALLY wakes the seat when
         // the event fires, so the manual must teach the door that exists: `vibe_vmu_meeting { action:"wait" }` on the
@@ -970,7 +978,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         '  · 等待与唤醒：等会里的事用 `vibe_vmu_meeting { action:"wait", id:"<会 id>", member:"<你>", until:"speak|vote|motion|poll|phase|attend-all|hand|meeting-closed|deadline", timeoutMs:<可选毫秒>, reason:"<可选>" }`：登记是**耐久**的，不是挂起——本回合照样交回；事件发生（发言／动议或附议／投票／相位变更／点名／结会／到点）时内核**唤醒你＝投递一个回合**（真机走激活，回执可能先给 `pending:true`、之后原地结算 `woken`），不是随叫随到的解答。**一次只等一件事**（再登记会替换旧的），别轮询；改主意用 `vibe_vmu_meeting { action:"unwait", id, member }`。',
       ].join('\n'),
       researcher: [
-        '【会议进行中：你的会中动作（只在会议回合出现）】在服务会议上发言前先 `vibe_vmu_meeting { action:"attend", id, member }`（签到是座位登记；★ RUN 239-D：`vibe_v5_meeting` 只召集、不派发动作，派发动作都在内核面 `vibe_vmu_meeting`）；想发言用 `hand` 自荐入队，被主席 `invite` 后按队列序；`vibe_v5_say` 回执的 `speechBound` 是你的发言界（`extend` 是主席动作，你自报身份会被拒；`silent`/`end` 在服务会议上具名拒）；等会里的事（发言／动议／投票／结会／到点）用 `vibe_vmu_meeting { action:"wait", id, member, until:"speak|vote|motion|poll|phase|attend-all|hand|meeting-closed|deadline", timeoutMs:<可选> }`——耐久登记，事件发生才唤醒并投递一个回合，别轮询；改主意用 `action:"unwait"`。等**信**才用 `vibe_v5_wait`。',
+        '【会议进行中：你的会中动作（只在会议回合出现）】在服务会议上发言前先 `vibe_vmu_meeting { action:"attend", id, member }`（签到是座位登记；★ RUN 239-D：`vibe_v5_meeting` 只召集、不派发动作，派发动作都在内核面 `vibe_vmu_meeting`）；想发言用 `hand` 自荐入队，被主席 `invite` 后按队列序；`vibe_v5_say` 回执的 `speechBound` 是你的发言界（`extend` 是主席动作，你自报身份会被拒；`silent`/`end` 在服务会议上具名拒）；等会里的事（发言／动议／投票／结会／到点）用 `vibe_vmu_meeting { action:"wait", id, member, until:"speak|vote|motion|poll|phase|attend-all|hand|meeting-closed|deadline", timeoutMs:<可选> }`——耐久登记，事件发生才唤醒并投递一个回合，别轮询；改主意用 `action:"unwait"`。等**信**才用 `vibe_v5_wait`。主席对全体发言会推送到你：不用轮询，下一回合提示最上方的 `[新到的消息]` 块里有一行【主席发言·<speaker> @ <会 id>】+ 摘要；全文用 `vibe_v5_meeting {op:"minutes", id:"<会 id>"}` 读纪要第 N 条，读完用 `vibe_vmu_mailbox {action:"ack", member:"<你>", ids:["<邮件 id>"]}` 结算才消失；普通成员的发言只进纪要、不推送。',
       ].join('\n'),
       temp: [
         '【会议进行中：临时席的会中动作（只在会议回合出现）】临时工不是表决者，投票会被具名拒；发言前先 `vibe_vmu_meeting { action:"attend", id, member }`（签到是座位登记，派发动作在内核面 `vibe_vmu_meeting`，`vibe_v5_meeting` 只召集）；被主席 `invite` 邀入队后按顺序发言；等会里的事用 `vibe_vmu_meeting { action:"wait", id, member, until:"speak|vote|motion|poll|phase|attend-all|hand|meeting-closed|deadline", timeoutMs:<可选> }`（耐久登记，事件发生才唤醒并投递一个回合，别轮询；改主意用 `action:"unwait"`）。',
@@ -1020,7 +1028,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【三通道的紧急语义】`vibe_v5_say` 三种去处：不给 `to`＝**群聊**（非紧急）；给 `to`＝**私信**（希望尽早回复，只有它能带 `urgent: true`）；给 `meeting`＝会议发言。邮箱**非紧急**：留在收件箱等对方查；只有私信 + `urgent` 才把正文推进对方这一轮；群聊/会议发言带 `urgent` 具名拒。判据：要对方**这一轮就看到**→私信（急就 `urgent`）；只留记录→邮箱；全所都该知道→群聊。',
+        '【三通道的紧急语义】`vibe_v5_say` 三种去处：不给 `to`＝**群聊**（非紧急）；给 `to`＝**私信**（希望尽早回复，只有它能带 `urgent: true`）；给 `meeting`＝会议发言。邮箱**非紧急**：留在收件箱等对方查；只有私信 + `urgent` 才把正文推进对方这一轮；群聊/会议发言带 `urgent` 具名拒。判据：要对方**这一轮就看到**→私信（急就 `urgent`）；只留记录→邮箱；全所都该知道→群聊。**投递形态**：私信与群聊全体发言都会给每个收件人投一条**耐久邮件行**，出现在对方**下一回合提示最上方的 `[新到的消息]` 块**（最新在前、最多 8 行；没 ack 前每回合都在；私信是 `【邮件·<from>】<主题>`、群聊是 `【群聊·<from>】<摘要>` 一行 + 全文指针）。所以不必反复催、也不必轮询；回执 `deliveredTo` 是**真投到**的名单，`deliveryFailed` 才是没投到。读完正文用 `vibe_vmu_mailbox {action:"ack", member, ids}` 结算，那行才消失。',
       ].join('\n'),
     },
   },

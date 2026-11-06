@@ -17451,3 +17451,75 @@ out-of-scope 测试钉住；bullet 从 14 升到 20 是因为 `SEAT_TEACHING` �
    开板形参（出现即回到"同一事实两个来源"）。
 4. 教训补一条：**删掉一处重复，会同时让守它的判据失去支点**——判据要随之改判"来源唯一"，而不是删掉判据，
    也不是把被删的重复加回来。
+## §345 `345` RUN 248 —— 草案是文件、行是索引；预约与广播是「投递」而不是「提醒」
+
+**345.1 用户裁定与量化。** 用户口径（m37456）：蓝图草案要落盘，让成员自己通过 fs 管理 md —— 这是对 RUN 238
+「草案不落盘、adopt 才写 md」的反转，实现侧按最优方案决策。同一轮第二问（m37280 第①④问）：被预约的成员、被主席
+全体发言通知的成员，**什么时候、在什么事件下、在哪里看到什么、该做什么**。量化：`vibe-math-vmu/packs/v5r/prompts/
+v5r-blocks-b.js` 72 846 → **74 487** 字符（+1 641，六处改写）；四份真装配（`scripts/sim/audit/prompt-sections.mjs`
+的 `collect()`，与 §344 同一把尺子）合计 100 580 → **103 249**（+2 669，+2.65%）；分份：chair-normal 26 944 →
+**27 492**、chair-meeting 29 891 → **30 658**、member-normal 23 200 → **24 171**、temp-normal 20 545 → **20 928**。
+预算检查器（绑定会议的 real assembly）三席最大份 chair/meeting **32 775**（cap 36 500，未上调）、member/verify 26 985、
+temp/verify 24 344；仅 1 条既有 `SEAT_PROMPT_OVER_T99` warning（chair/meeting > t99 30 000）。
+
+**345.2 机制形状（三个面，机制侧由 md-lane / notice-lane 实现）。**
+(a) **草案文件**：`propose` 不带 `mdPath` 时内核物化 `Shared/Drafts/<stem>-r<N>.md`（回执 `writtenBy:
+"kernel-materialized"`）；成员先用 fs 写好再带同一 `mdPath` propose，文件归成员（`writtenBy:"member-file"`、
+`written:false`，内核不改写）。`adopt` **晋升文件的字节**而不是行里的副本：先比行记的 sha256 与磁盘文件——缺文件
+`VMU_PACK_V5R_BLUEPRINT_MD_MISSING`、被外部改过 `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT`（先
+`vibe_v5_records {action:"reindex"}` 收编再采纳）——再写 `Shared/Protocol.md` 并读回校验；成员已把 canonical 写成同一
+字节时回 `alreadyWritten:true, copiedFrom:null`（只签字，不重写）。行记录 `mdFingerprint`/`mdPath`/`writtenBy`/
+`verified`/`mdChangedSinceIndex`，所以「行索引着文件」是每次写后复核过的事实，不是约定。
+(b) **预约投递**：`open()`（含预约）时 `kernel/meetings.js:4400` `appointNoticeOf` 给每个被邀成员（roster 减主席）
+投一条耐久邮箱行：`kind:"meeting-appointment"`、`channel:"mail"`、`dedupeKey:"meeting-appoint:<会 id>"`，通知行形如
+`【会议预约·<主席>】<标题> @ <ISO> — <可照抄的入席调用>；读后 mailbox ack {id}`。
+(c) **主席广播**：会中 `speak` 不带 `to`（闸在 `kernel/meetings.js:2612`：`String(member) === String(m.chair) &&
+String(said).trim() !== ''`）给每个在席成员（除主席）投一条 `channel:"group"` 的 `meeting-broadcast` 行，摘要 ≤800 +
+指针 `<会 id>/minutes#<条目序>`；`vibe_v5_say` 不带 `to` 的全体发言同理（`kit/handlers.js:514-554` `fanOutGroupSay`，
+`dedupeKey:"chat:<msgId>"`，发言人不是收件人）。普通成员发言只进纪要、不推送（否则每句话变成 N−1 封邮件）。
+(d) **渲染**：这些行不是「提醒」——`kernel/mailbox.js:1078` `noticeLines` 非破坏性读取（最新在前、默认 8 行），带
+通知模板的投递行留到 ack 才消失（`{id}` 在读取时由 `:429` `renderNotice` 替换），回合提示把它前置在最上方
+（`kernel/turn/index.js:2227` `noticeText + "\n" + out.text`；块头 `packs/v5r/notices.js:102` `[新到的消息]`）。
+
+**345.3 为什么不再「内核单写」。** RUN 238 反对草案落盘的两条理由在本轮被逐条消掉，而不是被绕过。
+①「草案文件会被当成现行文档收进索引」：草案 md 声明的是它那一版**关于**的路径、把自己的位置记在 `mdPath`，因此
+`kernel/records.js:1779-1783` 判 `isDraftFile` 后只把 rel 加进 `draftRels` 就 `continue`，`mdByKey`（声明路径索引）里
+没有它——草案不会变成额外的现行行，也藏不住真正文档的外部改动。
+②「草案文件无法对账」：`reindex` 对草案 md 走三态对账（`kernel/records.js:1922-1962`）——文件缺失→具名 `missing`
+（`kind:"draft-md"`，不删行）；成员写的纯 markdown（无 vmu 头）→`member-plain-md`，行是它唯一索引、不改写；被外部
+改过→用磁盘正文 supersede 一行（旧正文留版本历史、旧行不删）。无人认领的草案 md 只报 `orphan-draft-md`
+（`:1966-1973`），不新增索引行也不静默丢。于是「成员的工作面」与「同一事实两个来源」不再冲突：**文件是正文，行是
+索引，adopt 是把文件的字节晋升成 canonical 并签字**；`prune` 只动行、不删 md。「一次采纳 = 恰好一行」的判据保留
+（`blueprint.js:1766` 以 `proposalId` 查现行行挡重复采纳）。
+
+**345.4 回执字段（成员读得懂才算通知）。** 草案面：`writtenBy`（谁写的文件）、`md.written`（这次调用写没写）、
+`alreadyWritten`/`copiedFrom`（校验 vs 复制）、`verified`（写后行/文件复核）、`mdChangedSinceIndex`（读时漂移披露）。
+投递面：预约 `notified / notifyRows / notifyFailed / notifyMeans`（空 `notifyFailed` 是断言，不是沉默）；广播
+`deliveredTo / deliveredRows / broadcastFailed / broadcastMeans`；群聊 `deliveredTo / deliveryFailed / deliveryMeans`
+（`kit/handlers.js:554` 说明发言人不是收件人、去重键是 chat row id）；`noticeLines` 给
+`count/total/truncated/limit`（块内 8 行之外的靠 `vibe_v5_inbox {action:"list"}`）。提示词据此写「三步结算」：打开
+正文 → 到点 `vibe_v5_meeting {op:"attend", id, member}` 入席（邀请 ≠ 签到，不 attend 不计法定人数；预约状态下只登记
+座位）→ `vibe_vmu_mailbox {action:"ack", member, ids}` 结算。ack 门的桥接是必须写在提示词里的：pack 面
+`vibe_v5_inbox` 只有 list/open/mark（`packs/v5r/tools.js:195-229`），真正的 `ack` 在内核邮箱面
+`vibe_vmu_mailbox`（`tools/mailbox.js:71`），而行文案只说「读后 mailbox ack {id}」。
+
+**345.5 验收实测（本机）。** 机制车道套件 `tests/vmu-run248-blueprint-md.test.mjs` **113/0**、
+`tests/vmu-run248-notice-delivery.test.mjs` **114/0**；提示词 pin `tests/vmu-run239-prompts.test.mjs` 48 → **59/0**
+（新增 §6 十一条：`[新到的消息]`/`【会议预约·`/`【主席发言·` 字形、`vibe_vmu_mailbox {action:"ack"`、`meeting-appointment`
+取代 `meeting-invitation`、`不用轮询`、`deliveredTo`+`broadcastFailed`，以及三处真装配的正面断言）。
+`node scripts/audit-prompt-budget.mjs --check` **PASS**（1 条既有 warning，cap 36 500/30 100 未动）；DOC LINT PASS
+（新码已在 03-§8 登记，D14 不再红）；`check-rules-coverage --check` PASS；`check-rule-parity` PASS 且 `--selftest`
+**12/12**（曾因提示词里出现 `vibe_vmu_*` 通配 token 被 P5 判 `VMU_RULE_PARITY_UNKNOWN_NAME`，改成具名
+`vibe_vmu_mailbox` 后恢复）；`regen-all --check` 17/17 in sync；preflight 全绿（生成件：doc counts 770 → 772 由
+`update-doc-counts --write` 收口，planned-code 登记、`generate-kernel-index`、`generate-coverage-debt` 各 `--write` 收口）。
+
+**345.6 遗留（机制侧缺口，本车道只写进台账/汇报，不改机制）。**
+1. **行文案与 ack 门不一致**：投递行统一写「读后 mailbox ack {id}」，但成员面 `vibe_v5_inbox` 没有 ack，真正的门在
+   `vibe_vmu_mailbox`。现在靠提示词桥接；正解是 notice-lane 让模板渲染出可直接照抄的调用（或在 pack inbox 补 `ack`）。
+2. **无实时唤醒缝**：预约/广播只是「下一回合通知块里可见」（`notifyMeans` 已明说 invitation is MAIL, not a wake）。
+   若要求「立刻读到」需要 wake 接缝，属新增机制。
+3. **块内 8 行上限**：超过时只显示最新在前 8 行，其余靠 `vibe_v5_inbox {action:"list"}`（提示词已写），但「8」是
+   `MAILBOX_NOTICE_LINES_MAX` 的部署参数，变体时应同步提示词。
+4. **`alreadyWritten:true` 只在字节完全相等时成立**：成员手写的 canonical 若头/格式不同仍走内核重写（`copiedFrom`
+   非 null）。这正确但是「成员写了文件仍被重写」的观感来源，值得在回执 `means` 里说得更直白（现已在 `md.means`）。
+5. **C10（Lean 归档）仍 PARTIAL**：本轮未改变它——归档读面仍需带 Lean 的部署；D2 已随三通道落地转 DONE（见台账）。

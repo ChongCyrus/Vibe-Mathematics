@@ -20,6 +20,15 @@
  *
  * RULE E: every assertion is preceded by an explicit non-empty premise check.
  *
+ * ★★★ RUN 248-N / task-67 HISTORICAL NOTE (read before changing an assertion): the block above described the state of
+ * RUN 223, when THIS face owned the invitation mail (kind `meeting-invitation`). RUN 248 moved delivery into the
+ * kernel's `open()` (kind `meeting-appointment`, channel `mail`, chair/seat/scheduledFor/attend-call in the body) and
+ * DELETED the pack's own `kernel.mailbox.send('office', …)`: sending both would write TWO rows per invitee and render
+ * TWO notice lines. The `invitation` field of this receipt is now an ECHO of `opened.notified / notifyRows /
+ * notifyFailed` (the RUN 223 field shape is kept so an old reader still reads something true). The assertions below
+ * that used to pin `meeting-invitation` were翻新 in task-67, not deleted: they still fail if the double send comes
+ * back (0 old call sites + exactly one row per invitee).
+ *
  * Run: node tests/vmu-run223-feedback58.test.mjs
  */
 import { mkdtempSync, mkdirSync, readFileSync } from 'node:fs'
@@ -72,7 +81,17 @@ const boot = async () => {
 console.log('\n=== 0. THE INVITATION BLOCK IS ON THE CONVENE FACE, WITH ITS HONESTY SENTENCES ===')
 
 has(SRC_TOOLS, 'const invitedMembers = (() => {', '§0a the convene face computes its invitees from the roster it just opened')
-has(SRC_TOOLS, "const kind = 'meeting-invitation'", '§0b the mail kind is named once')
+// ★★★ RUN 248-N / task-67 — 这条断言原来钉的是 `const kind = 'meeting-invitation'`，也就是「本面自己发邀请」这件事。
+// 旧断言钉的是被 RUN 248 删掉的双发：内核 open() 已经写权威的 meeting-appointment 行，本面再发一行就是每人两行、两条
+// notice。翻新成两个方向都能抓回归的钉子：`meeting-invitation` 这个种类在**代码里**必须为 0（注释里解释历史不算；
+// assign/nudge 的 office 邮件不受影响，因为钉子钉的是种类不是发件人），且回执块必须真的 ECHO 内核的
+// opened.notified/notifyRows/notifyFailed（删了双发却没回显、回执说空话，同样会红）。
+const SRC_CODE = SRC_TOOLS.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:\\])\/\/[^\n]*/g, '$1')
+const oldKindCount = SRC_CODE.split("'meeting-invitation'").length - 1
+ok(oldKindCount === 0, '§0b the convene face no longer sends a meeting-invitation of its own (the RUN 248 double send is gone: 0 code sites)', oldKindCount)
+has(SRC_TOOLS, 'Array.isArray(opened && opened.notified)', '§0b2 the invitation block echoes the kernel `opened.notified`')
+has(SRC_TOOLS, 'Array.isArray(opened && opened.notifyRows)', '§0b3 the invitation block echoes the kernel `opened.notifyRows`')
+has(SRC_TOOLS, 'Array.isArray(opened && opened.notifyFailed)', '§0b4 the invitation block echoes the kernel `opened.notifyFailed`')
 has(SRC_TOOLS, 'nonAttending, nonAttendingMeans,\n    invitation,', '§0c the block reaches the receipt')
 has(SRC_TOOLS, 'DURABLE MAIL', '§0d the means says the invitation is durable mail, not a live wake')
 has(SRC_TOOLS, 'never a second convene', '§0e the repair sentence forbids a second convene')
@@ -89,7 +108,9 @@ console.log('\n=== 1. convene mails every invited member (and only them), and th
   ok(convened.ok === true, '§1b the chair convened a debate', convened)
   const inv = convened.invitation || {}
   ok(inv !== null && typeof inv === 'object', '§1c the convene receipt carries `invitation`', convened)
-  ok(inv.kind === 'meeting-invitation', '§1d the block names the mail kind it sent', inv)
+  // §1d: the kind is NOW the KERNEL's authoritative appointment kind — the block must TELL THE TRUTH about the row that
+  // really went out (the old `meeting-invitation` kind was the deleted double send).
+  ok(inv.kind === 'meeting-appointment', '§1d the block names the mail kind the kernel actually sent', inv)
   ok(Array.isArray(inv.attempted) && inv.attempted.length > 0, '§1e there was somebody to invite', inv)
   ok(!inv.attempted.includes('r-acad'), '§1f the chair is seated by open(), so it is not an invitee', inv.attempted)
   ok(inv.attempted.slice().sort().join(',') === 'r-1,r-2', '§1g every non-chair roster member is an invitee', inv.attempted)
@@ -101,13 +122,15 @@ console.log('\n=== 1. convene mails every invited member (and only them), and th
 
   const inbox1 = await b.call('vibe_v5_inbox', { action: 'list', member: 'r-1' })
   ok(inbox1.ok === true && Array.isArray(inbox1.rows), '§1m r-1 can read its mailbox', inbox1)
-  const rows1 = (inbox1.rows || []).filter((r) => r.kind === 'meeting-invitation')
-  ok(rows1.length === 1, '§1n r-1 has exactly one meeting invitation', inbox1.rows)
-  ok(/会议邀请/.test(String(rows1[0].subject || '')), '§1o the subject names the invitation', rows1[0])
+  // ★ RUN 248-N — 旧的 filter 钉的是 kind `meeting-invitation`（被删掉的双发）；现在行是内核的 `meeting-appointment`。
+  // 仍然钉「恰 1 行」（双发被加回来会变 2 行而红），并钉主题说人话（会议预约）。
+  const rows1 = (inbox1.rows || []).filter((r) => r.kind === 'meeting-appointment')
+  ok(rows1.length === 1, '§1n r-1 has exactly one meeting appointment row (never two)', inbox1.rows)
+  ok(/会议预约/.test(String((rows1[0] || {}).subject || '')), '§1o the subject names the appointment', rows1[0])
 
   const inbox2 = await b.call('vibe_v5_inbox', { action: 'list', member: 'r-2' })
-  const rows2 = (inbox2.rows || []).filter((r) => r.kind === 'meeting-invitation')
-  ok(rows2.length === 1, '§1p r-2 has exactly one meeting invitation', inbox2.rows)
+  const rows2 = (inbox2.rows || []).filter((r) => r.kind === 'meeting-appointment')
+  ok(rows2.length === 1, '§1p r-2 has exactly one meeting appointment row (never two)', inbox2.rows)
   ok(String(convened.meeting) !== '', '§1q the convention named the meeting the mail is about', convened.meeting)
 }
 

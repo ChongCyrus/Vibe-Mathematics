@@ -3717,23 +3717,43 @@ function toolVerdictAsk(args = {}, { kernel } = {}) {
  * to the right face instead of to a parameter list). Returns `null` when the call is not an action call.
  */
 function validateMeetingArgs(args = {}) {
-  if (args.action === undefined || args.action === null) return null
+  // ★★★ RUN 248-N / task-67 — THE NOTICE'S OWN CALL SHAPE MUST WORK. The appointment row the kernel writes ends with an
+  // `attend` call spelled `vibe_v5_meeting {op:"attend", id, member}`; a shape a receipt PRINTS but the face refuses is
+  // the same defect as a silent drop (提示即承诺). `op` is therefore a declared alias of `action` on this face, and the
+  // three words the notice teaches — appoint / schedule / attend — dispatch below. When BOTH words are given and they
+  // disagree, the call is refused by name rather than letting one of them win silently.
+  const actionWord = args.action === undefined || args.action === null ? '' : String(args.action).trim()
+  const opWord = args.op === undefined || args.op === null ? '' : String(args.op).trim()
+  if (actionWord !== '' && opWord !== '' && actionWord !== opWord) {
+    return {
+      ok: false,
+      code: 'VMU_INVALID_ARGUMENT',
+      message: 'vibe_v5_meeting was given BOTH action:"' + actionWord + '" and op:"' + opWord + '", and they name different actions — this face will not pick one silently',
+      hint: 'pass ONE of them: `op` is the alias used in the appointment notices (`{op:"attend"|"appoint"|"schedule"}`); `action` is the older spelling. Send the same word in both only if you mean it',
+    }
+  }
+  const word = actionWord !== '' ? actionWord : opWord
+  if (word === '') return null
   // ★ ROUND 47: `action:"rulings"` IS dispatched here (see toolMeetingRulings) — the read face of the filed ruling
   // cards. Everything else still gets the "this face only convenes" refusal with the kernel face named.
-  if (String(args.action) === 'rulings') return null
+  if (String(word) === 'rulings') return null
   // ★ WAVE 2 (audit E33): `types` is the SECOND read on this face (the type catalogue). The host funnel runs THIS
   // validator BEFORE the handler, so a read that only `toolMeeting` knows about is refused here and never dispatches —
   // the alignment must be declared in both places, and this one runs first.
-  if (String(args.action) === 'types') return null
+  if (String(word) === 'types') return null
   // ★ RUN 84: the face's OWN verb was refused. An agent read "convene a meeting" and passed action:"convene" (the word
   // the refusal hint itself uses); the face said it "has no convene action" and lectured it about convening. Naming the
   // verb the tool performs is ALIGNED with the tool, not a wrong action: it dispatches, and the receipt still carries no
   // `meeting_round`-style side effects. (A different verb — close/extend/status — is still refused below.)
-  if (String(args.action) === 'convene') return null
+  if (String(word) === 'convene') return null
+  // ★★★ RUN 248-N / task-67: the appointment vocabulary the notice prints. `appoint` = convene/预约 in one word;
+  // `schedule` = the same call with a REQUIRED `at`; `attend` = take the seat the notice promised (`attend({meeting,member})`
+  // on the kernel service). All three dispatch in `toolMeeting`; the kernel remains the single judge of timing/seat rules.
+  if (String(word) === 'appoint' || String(word) === 'schedule' || String(word) === 'attend') return null
   return {
     ok: false,
     code: 'VMU_INVALID_ARGUMENT',
-    message: 'vibe_v5_meeting only CONVENES a meeting; it has no "' + String(args.action) + '" action (this call was never dispatched, so nothing about it was validated)',
+    message: 'vibe_v5_meeting only CONVENES a meeting; it has no "' + word + '" action (this call was never dispatched, so nothing about it was validated)',
     hint: 'convene with { member, agenda } (optional: type/subject/title/at/formal_agenda/secretary); to READ or drive an existing meeting call vibe_vmu_meeting { action: "status"|"summary"|"snapshot"|"flow", id: "<meeting>" }',
   }
 }
@@ -3857,12 +3877,19 @@ function callerFromTurn(kernel, exec) {
 }
 
 function toolMeeting(args = {}, { kernel, exec } = {}) {
+  // ★★★ RUN 248-N / task-67: ONE action word, resolved once. `op` is the alias the appointment notice prints
+  // (`{op:"attend", …}`); `action` is the older spelling. Resolving it here keeps the two dispatch tables (this face and
+  // `validateMeetingArgs`, which the host funnel runs FIRST) in step — a word known to only one of them is a word that
+  // is refused before it dispatches.
+  const actionWord = args.action === undefined || args.action === null ? '' : String(args.action).trim()
+  const opWord = args.op === undefined || args.op === null ? '' : String(args.op).trim()
+  const actionName = actionWord !== '' ? actionWord : opWord
   // ★★ ROUND 47: the rulings READ lives on this face (the pack owns the ruling cards it teaches members to file).
-  if (String(args.action) === 'rulings') return toolMeetingRulings(args, { kernel })
+  if (String(actionName) === 'rulings') return toolMeetingRulings(args, { kernel })
   // ★ WAVE 2 (audit E33): `action:"types"` is a READ of that same catalogue — six rows, their declared
   // `procedure.steps` count and the narrowing each applies to the tool face. It dispatches BEFORE `validateMeetingArgs`
   // because that validator owns the *convene* vocabulary and would refuse a word that means "read".
-  if (String(args.action) === 'types') return meetingTypeCatalog()
+  if (String(actionName) === 'types') return meetingTypeCatalog()
   // ★★ FINDING (j) OF THE INSTITUTE'S OWN ACCEPTANCE REPORT (phase 12, live run 12): the agent opened a SCHEDULED
   // meeting and then read it back with `{action:'status', id}` on THIS face; it got
   // 「VMU_INVALID_ARGUMENT: meeting needs an agenda」 and reasonably suspected that status had fallen through to the
@@ -3870,12 +3897,34 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   // silently ignored and the call became "convene a meeting with no agenda". A refusal that names a missing field the
   // caller never meant to supply is worse than a bare refusal: it sends the reader to fix the wrong thing. An `action`
   // (or the read-only keys a status call carries) is now refused BY NAME and pointed at the face that answers it.
-  if (args.action !== undefined && args.action !== null) {
+  if (args.action !== undefined && args.action !== null || args.op !== undefined && args.op !== null) {
     const refusal = validateMeetingArgs(args)
     // ★ RUN 84: `validateMeetingArgs` returns NULL when the word is ALIGNED with this face (convene = its own verb:
     // it dispatches, the receipt still carries no round). Reading `.code` off null turned an aligned call into a
     // TypeError — declaring alignment and then crashing on it is the same defect in a new costume.
     if (refusal) throw refuse(refusal.code, refusal.message, refusal.hint)
+  }
+  // ★★★ RUN 248-N / task-67 — `attend`, the third word the appointment notice prints. It marks a member PRESENT in a
+  // SERVICE meeting (the kernel face owns the seat/timing/late-admission rules and refuses by name); this branch only
+  // resolves WHO and WHICH meeting and passes them through, so the printed call and the reachable call are one call.
+  if (String(actionName) === 'attend') {
+    const meetings = kernel && kernel.meetings
+    if (!meetings || typeof meetings.attend !== 'function') {
+      throw refuse('VMU_ENGINE_UNAVAILABLE', 'no meetings face is published, so attendance cannot be recorded',
+        'assemble a kernel with the meetings service (the appointment notice is only a promise until the kernel that wrote it can seat you)')
+    }
+    const meetingId = has(args.id) ? str(args.id).trim() : (has(args.meeting) ? str(args.meeting).trim() : '')
+    if (meetingId === '') {
+      throw refuse('VMU_INVALID_ARGUMENT', 'attend needs the meeting id the appointment named',
+        'pass id:"<meeting>" (the appointment row and its notice line print it) or meeting:"<meeting>"')
+    }
+    const seatMember = has(args.member) && str(args.member).trim() !== '' ? str(args.member).trim() : callerFromTurn(kernel, exec)
+    if (!seatMember) {
+      throw refuse('VMU_INVALID_ARGUMENT', 'attend needs the member taking the seat',
+        'pass member:"<member id>", or call it from that member\'s own turn (the turn knows who is speaking)')
+    }
+    const seated = meetings.attend({ meeting: meetingId, member: seatMember })
+    return Object.assign({ ok: true, tool: 'vibe_v5_meeting', op: 'attend', action: 'attend', registry: 'service', meeting: meetingId, member: seatMember }, seated && typeof seated === 'object' ? seated : {})
   }
   // ★★ RUN 198 (run 38 FEEDBACK37 2.3): the old refusal was one line and only covered the ABSENT case — an agenda of
   // spaces convened a room nobody could state the purpose of, and a reader who mistook this face for the read face was
@@ -4109,7 +4158,18 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     const trimmed = args.title.trim()
     title = trimmed === '' ? null : trimmed
   }
-  const at = has(args.at) ? args.at : null
+  // ★★★ RUN 248-N / task-67: `op:"appoint"|"schedule"` are the words the appointment notice teaches. They convene the
+  // same way `convene` does — the kernel owns scheduling — with ONE extra promise: `schedule` must name WHEN. `at` is the
+  // kernel spelling, `scheduledFor` the notice spelling; both reach the kernel untouched, and `schedule` without a time
+  // is refused here BY NAME instead of silently convening an immediate meeting (which is the exact confusion the two
+  // words exist to remove: "预约" is a time, "召开" is now).
+  const appointWord = String(actionName) === 'appoint' || String(actionName) === 'schedule' ? String(actionName) : null
+  const atRaw = has(args.at) ? args.at : (has(args.scheduledFor) ? args.scheduledFor : null)
+  if (appointWord === 'schedule' && (atRaw === null || String(atRaw).trim() === '')) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'action "schedule" needs `at` (or its alias `scheduledFor`): a scheduled meeting is one whose START the chair named',
+      'pass at:"<ISO-8601 time>" or scheduledFor:"<the same time>" — use `op:"appoint"` (or plain convene) for a meeting that starts now')
+  }
+  const at = atRaw === null ? null : atRaw
   // ★★★ RUN 225-B: per-meeting late-admission policy - forwarded when given, left to the kernel default (open) when not.
   // The default lives in ONE place (kernel/meetings.js) or the same default drifts in two layers. A non-string is refused
   // here by name: a type error should not travel into the kernel and come back as a vague complaint.
@@ -4150,6 +4210,16 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     throw refuse('VMU_INVALID_ARGUMENT', 'durationMs must be an integer inside [300000, 7200000] (30 minutes .. 2 hours); got ' + JSON.stringify(durationMsRaw),
       'pass this meeting\u2019s own upper bound in ms, or omit it to use vmu.meetings.hardLimitMs (extendlimit raises an OPEN meeting\u2019s bound; there is no unbounded choice)')
   }
+  // ★ RUN 248-N / task-67: `wallLimitMs` is the kernel's own spelling of the same bound (`durationMs` is this face's), and
+  // `materials` the kernel's spelling of the stored agenda line. Both are DECLARED now because the host funnel refuses
+  // undeclared keys before the handler — a caller reading the kernel-side signature gets a named answer, not a mystery.
+  const wallLimitMsRaw = has(args.wallLimitMs) && args.wallLimitMs !== null && args.wallLimitMs !== '' ? args.wallLimitMs : null
+  const wallLimitMs = wallLimitMsRaw === null ? durationMs : Number(wallLimitMsRaw)
+  if (wallLimitMsRaw !== null && (!Number.isInteger(wallLimitMs) || wallLimitMs < 300000 || wallLimitMs > 7200000)) {
+    throw refuse('VMU_INVALID_ARGUMENT', 'wallLimitMs must be an integer inside [300000, 7200000] (30 minutes .. 2 hours); got ' + JSON.stringify(wallLimitMsRaw),
+      'pass this meeting\u2019s own upper bound in ms (or its alias durationMs), or omit it to use vmu.meetings.hardLimitMs')
+  }
+  const materialsText = has(args.materials) ? str(args.materials) : agendaText
   // ★ RUN 240-I: the declaration used to STOP HERE. `formal_agenda:true` was echoed into this face's receipt while the
   // kernel was never told, so the stored meeting carried no agenda row and every read face returned
   // `formalAgendaItems:null` forever (live run 63). The kernel now stores what is said (a boolean declaration or an
@@ -4160,7 +4230,7 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     // ★ WAVE 2 (audit E6): 「会议要有有意义的标签」 is enforced on the face the rule talks about. The kernel rail is
     // opt-in (`labelRequired`) so direct service callers and the ~70 unlabelled fixtures keep working; a PACK face that
     // is the rule's own tool passes true and gets the named refusal when neither `kind` nor `title` was given.
-    labelRequired: true, kind, materials: agendaText, secretary, wallLimitMs: durationMs,
+    labelRequired: true, kind, materials: materialsText, secretary, wallLimitMs,
     ...(formalAgendaParam === null ? {} : { formalAgenda: formalAgendaParam }),
     ...(lateAdmission === null ? {} : { lateAdmission }),
     subject: subject === null || subject === undefined ? null : subject, at, title, sequence,
@@ -4188,47 +4258,30 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     const rows = (opened && Array.isArray(opened.roster)) ? opened.roster : []
     return rows.map(String).filter((id) => id !== '' && id !== String(member))
   })()
+  // ★★★ RUN 248-N / task-67 — THE DOUBLE SEND IS GONE. RUN 223 gave THIS face its own invitation mail
+  // (`kernel.mailbox.send('office', { kind: 'meeting-invitation' })`), while the kernel's `open()` had meanwhile started
+  // writing the AUTHORITATIVE appointment row (kind "meeting-appointment", channel "mail", carrying chair / seat /
+  // scheduledFor / the exact attend call). One convene therefore produced TWO rows per invitee and TWO notice lines —
+  // and the second one was strictly less true than the first. The kernel is now the SINGLE delivery point; this face
+  // only REPORTS what it did, and the `invitation` block keeps the RUN 223 field shape (attempted / kind / delivered /
+  // woken / unreachable / means) so an old reader still reads something true.
+  const kernelNotified = Array.isArray(opened && opened.notified) ? opened.notified.map(String) : []
+  const kernelRows = Array.isArray(opened && opened.notifyRows) ? opened.notifyRows : []
+  const kernelFailed = Array.isArray(opened && opened.notifyFailed) ? opened.notifyFailed : []
   const invitation = (() => {
-    const kind = 'meeting-invitation'
-    const meetingId = String(opened && opened.meeting ? (opened.meeting.id || opened.meeting) : '')
+    const kind = 'meeting-appointment'
     if (!invitedMembers.length) {
       return { attempted: [], kind, delivered: [], woken: [], unreachable: [],
         means: 'nobody was invited: the roster of this meeting holds no member besides the chair, so there was no one to tell' }
     }
-    if (!kernel.mailbox || typeof kernel.mailbox.send !== 'function') {
-      return { attempted: invitedMembers, kind, delivered: [], woken: [],
-        unreachable: invitedMembers.map((id) => ({ member: id, code: 'VMU_ENGINE_UNAVAILABLE', why: 'this kernel exposes no mailbox service' })),
-        means: 'NO invitation was sent: this kernel has no mailbox service (the seam `kernel.mailbox.send` is absent). The meeting itself is open and readable — the convene stands; the members simply were not told by mail' }
-    }
-    const delivered = []; const woken = []; const unreachable = []
-    for (const id of invitedMembers) {
-      try {
-        // A5: the invitation names the meeting, so a reader does not have to guess which one it is about.
-        const sent = kernel.mailbox.send('office', { to: id, kind,
-          subject: '会议邀请：' + String(title === null ? (agendaText || type) : title),
-          text: '会议 ' + meetingId + ' 已由主席召集（type ' + String(type) + '）。先用 status/summary 读议程与流程，再 attend 到席；到席与发言的权限由会议类型和你的席位决定。' })
-        if (sent && sent.ok === false) {
-          unreachable.push({ member: id, code: String(sent.code || ''), why: String(sent.message || '') })
-        } else {
-          // ★ RUN 223: `mailbox.send` answers `{ ok, ids: [...], to, queued }` — one id per recipient box.
-          // Reading a key called `id`/`mailId`/`ticket` here always produced '', and an empty string reads as
-          // "the mail row was not named".
-          const mailRow = (sent && Array.isArray(sent.ids) && sent.ids.length) ? String(sent.ids[0]) : ''
-          delivered.push({ member: id, mailId: mailRow })
-        }
-      } catch (e) {
-        unreachable.push({ member: id, code: String((e && e.code) || ''), why: String((e && e.message) || e) })
-      }
-      // The wake rail is BEST EFFORT: a failed wake leaves the durable mail in place and never fails the convene.
-      if (kernel.meetings && typeof kernel.meetings.wake === 'function') {
-        try {
-          const w = kernel.meetings.wake({ member: id })
-          if (w && w.ok !== false) woken.push(id)
-        } catch (e) { /* the mail is the durable half of the invitation */ }
-      }
-    }
-    return { attempted: invitedMembers, kind, delivered, woken, unreachable,
-      means: 'the invitation is DURABLE MAIL (kind "' + kind + '"), not a live wake: every member in `delivered` will see it at their next turn or through `vibe_v5_inbox`. `woken` lists the members this deployment could actually wake NOW (empty when it injects no wake seam — that is a deployment fact, not a silence). `unreachable` means the mail itself did not go out (named code and why); the convene still succeeded and the meeting is readable, so the repair is `vibe_v5_message` to that member or a wake attempt, never a second convene' }
+    const delivered = kernelRows
+      .map((r) => ({ member: String((r && r.member) || ''), mailId: r && r.mailId ? String(r.mailId) : '' }))
+      .filter((r) => r.member !== '')
+    const unreachable = kernelFailed
+      .map((f) => ({ member: String((f && f.member) || ''), code: String((f && f.code) || 'VMU_ENGINE_UNAVAILABLE'), why: String((f && f.reason) || '') }))
+      .filter((f) => f.member !== '')
+    return { attempted: invitedMembers, kind, delivered, woken: [], unreachable,
+      means: 'the appointment notice is DURABLE MAIL (channel "mail", kind "' + kind + '") written ONCE, by the kernel open(), never by this face: every member in `delivered` will see it at their next turn or through vibe_v5_inbox, and the notice line it renders carries the exact attend call. `woken` is always [] here — a wake is a live nudge and the durable row is the promise; whether this deployment injects a wake seam is a deployment fact, not a silence (RUN 198). `unreachable` lists the members whose row did NOT go out, with the kernel own reason; the convene still succeeded and the meeting is readable, so the repair is a message to that member — never a second convene, and a delivery failure must never roll back an academic act' }
   })()
   const state = opened && opened.state !== undefined ? opened.state : null
   const scheduledFor = opened && opened.scheduledFor !== undefined ? opened.scheduledFor : null
@@ -4288,6 +4341,17 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
     secretary,
     nonAttending, nonAttendingMeans,
     invitation,
+    // ★★★ RUN 248-N / task-67: THE KERNEL'S OWN DELIVERY VERDICT, ECHOED — not restated. `notified` / `notifyRows` /
+    // `notifyFailed` are the arrays the kernel `open()` receipt already carries (it wrote the rows), so a caller reads
+    // the same list from both faces instead of trusting a second opinion. `appointment` names the word the caller used
+    // (`appoint` vs `schedule`, null for a plain convene) and `appointmentState` says what actually happened to the start
+    // time, read back off the kernel — so "预约" can never be asserted on a meeting that started immediately.
+    notified: kernelNotified,
+    notifyRows: kernelRows,
+    notifyFailed: kernelFailed,
+    noticesMeans: 'notified / notifyRows / notifyFailed are the kernel open() receipt fields, passed through unchanged (the kernel wrote the durable rows, so there is exactly ONE row per invited member and ONE notice line): `notified` names the members that really got a row, `notifyRows` names the mail ids, `notifyFailed` names every member that did not with the kernel reason. This face sends no invitation of its own — a second sender would be a second row',
+    appointment: appointWord,
+    appointmentState: appointWord === null ? null : (state === 'scheduled' ? 'scheduled' : 'appointed'),
     // ★ LIVE RUN 122 (E6): WHERE the label came from. `kind` defaults to 'sync' so every meeting always has a word for
     // what it is — and that default is exactly why a reader must be able to tell a chosen label from a filled-in one.
     kindSource: kindGiven ? 'args' : (KIND_BY_TYPE[type] ? 'derived-from-type' : 'default'),
@@ -4564,6 +4628,11 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
       mdFingerprint: read.mdFingerprint === undefined ? null : read.mdFingerprint,
       indexFingerprint: read.indexFingerprint === undefined ? null : read.indexFingerprint,
       mdMeans: read.mdMeans === undefined ? null : read.mdMeans,
+      // ★★★ RUN 248-M2: a draft revision owns its OWN md file (Shared/Drafts/<stem>-r<N>.md, or the file the member
+      // wrote and named). `state` spreads the reading, while this branch copies a fixed subset, so a member quoting a
+      // `read` receipt could not say where the draft file is nor whether it is on disk until these two names existed here.
+      draftMdPath: read.draftMdPath === undefined ? null : read.draftMdPath,
+      mdWritten: read.mdWritten === undefined ? null : read.mdWritten,
       // ★★★ RUN 236 / task-26 (G8, G11): `read` forwarded the md facts but not the two fields RUN 236 added to the row
       // itself — so `state` (which spreads the readings) could name an outline while `read` — the surface a member quotes
       // when it reports back — stayed silent about it. Same source, both surfaces: the readings come from `readBlueprint`,
@@ -4586,10 +4655,15 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
   }
   if (action === 'propose') {
     const member = requireSeat(kernel, args.member || args.by, 'blueprint (proposal)')
+    // ★★★ RUN 248-M2: `mdPath` names a draft md the MEMBER wrote with the fs tool (task-64 made the draft a real file).
+    // It is declared in the schema below and forwarded here; without it the kernel materializes
+    // Shared/Drafts/<stem>-r<N>.md itself. The old gate read `text` alone, which would refuse exactly the shape the new
+    // contract teaches (the file carries the prose), so the gate reads BOTH sources: text, or an mdPath that resolves.
+    const mdPathArg = str(args.mdPath || args.md_path || '').trim()
     const text = str(args.text || args.body || '').trim()
-    if (text === '') {
-      throw refuse('VMU_INVALID_ARGUMENT', '蓝图提案需要正文 text',
-        'pass text:<完整的一版蓝图> —— 空提案等于悄悄落成"什么都没有"')
+    if (text === '' && mdPathArg === '') {
+      throw refuse('VMU_INVALID_ARGUMENT', '蓝图提案需要正文 text（或一个用 fs 写好的草案 mdPath）',
+        'pass text:<完整的一版蓝图>，或先用 fs 工具把草案 md 写成 Members/<seat>/Drafts/<slug>-r<N>.md 再传 mdPath —— 空提案等于悄悄落成"什么都没有"')
     }
     // ★★ RUN 205 (run 43 / FEEDBACK42 1.5, MEASURED): every `authors[].seat` was null because this face forwarded only the
     // member id while `codesignMeans` claims adopt needs a chair author AND a member author — the check read a field nobody
@@ -4602,9 +4676,12 @@ function toolBlueprint(args = {}, { kernel, exec = null } = {}) {
     // printed null beside the caller's own request. A parameter the schema publishes and the body drops is a lie told by
     // omission; the name is forwarded here and the outcome is reported by `continuedBase` as before.
     const namedDraft = str(args.draft || '').trim()
+    // ★★★ RUN 248-M2: `mdPath` reaches the module here. The kernel receipt already answers the whole file contract
+    // (`md.written`/`md.writtenBy`/`md.mdPath`/`draftMdPath`/`mdWritten`/`verified`), so this face forwards the name and
+    // does not restate it; a path that is not on disk is refused by NAME by the module (VMU_PACK_V5R_BLUEPRINT_MD_MISSING).
     const proposed = proposeBlueprint({
       records, path, text, by: String(member.id), seat: authorSeat, note: str(args.note || ''), draft: namedDraft,
-      outline: outlineArg, revisionReason: reasonArg, requireOutline,
+      outline: outlineArg, revisionReason: reasonArg, requireOutline, mdPath: mdPathArg,
     })
     const state = blueprintState({ records, path, staleAfterMs: staleWindow.ms, staleAfterMsSource: staleWindow.source })
     return Object.assign({}, proposed, {
@@ -6477,8 +6554,8 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_meeting',
-    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary); a debate REQUIRES subject — a card id whose written proof is finished (proofRef + proofState:"complete", or a verified row / a passed Lean run) or a file reference (`subject_evidence.file` with readable/bytes/name), because a one-line proposition has no addressable proof carrier and is REFUSED by name (`VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`). ★ `title` is an OPTIONAL separate name; `id` optionally NAMES the meeting (omit both and the service mints an id; an id held by another registry is refused by name). ★ `at` SCHEDULES it (epoch ms or ISO-8601): a future time puts the meeting in `scheduled` — reads work right away, every action before the start is refused by name, and a latecomer attending then starts it; the receipt reads `state` and `scheduledFor` back. ★ The institution\'s recommended procedure comes back in `procedure` — a RECOMMENDATION, never a gate; steps the framework has not implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES, plus ONE read (`action:"rulings"` lists the ruling cards the members filed for a debate — id + proposition_id); status/summary/close/flow live on vibe_vmu_meeting { action, id }. ★ `target` is an ALIAS of `subject` on THIS face — on vibe_vmu_meeting it is a VOTE\'s object, so do not carry the habit between faces. ★ `sequence` convenes the meetings that FOLLOW this one (an array of descriptors, each validated and refused by name); omitting `at` convenes them now, `at` schedules this one and the declared run follows it. ★ `durationMs` sets THIS meeting\'s own upper bound (integer ms, 30 minutes .. 2 hours; outside the range is refused by name); omit it and `vmu.meetings.hardLimitMs` applies — the receipt reads back `wallLimitMs` and `wallLimitMsSource`. ★ RUN 225-B: `lateAdmission` (open|chair|refuse, default open) decides a LATE ARRIVAL (late = vmu.meetings.lateAfterMs against openedAt; the default 0 means nobody is ever late): open seats it (late:true), chair holds it at the door (`pendingLate:true`, released only by the chair with vibe_vmu_meeting { action: "admit", id, member, actor }), refuse refuses it by name (`VMU_LATE_ADMISSION_REFUSED`, naming the two repairs).',
-    parameters: { agenda: { type: ['string', 'array'], items: { type: 'string' }, description: 'the meeting purpose as ONE line, or an ORDERED list of non-empty lines (string | string[]): array items are joined in order with "; " into the materials the kernel stores' }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: ['boolean', 'array'], items: { type: ['string', 'object'] }, description: 'true = declare that this meeting has a formal agenda; an ARRAY = the agenda items themselves (each a non-empty line, or {title|text, kind, id}); the kernel stores either and the read faces return `formalAgendaItems` rows with `formalAgendaItemsWhy` naming why they are empty' }, secretary: { type: 'string' }, member: { type: 'string' }, at: { type: 'string' }, durationMs: { type: 'integer' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, members: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' },
+    description: 'Convene a meeting. agenda REQUIRED; type is one of ordinary/academic/debate/closure/paper/planning (default ordinary); a debate REQUIRES subject — a card id whose written proof is finished (proofRef + proofState:"complete", or a verified row / a passed Lean run) or a file reference (`subject_evidence.file` with readable/bytes/name), because a one-line proposition has no addressable proof carrier and is REFUSED by name (`VMU_PACK_V5R_DEBATE_SUBJECT_NO_PROOF`). ★ `title` is an OPTIONAL separate name; `id` optionally NAMES the meeting (omit both and the service mints an id; an id held by another registry is refused by name). ★ `at` SCHEDULES it (epoch ms or ISO-8601): a future time puts the meeting in `scheduled` — reads work right away, every action before the start is refused by name, and a latecomer attending then starts it; the receipt reads `state` and `scheduledFor` back. ★ The institution\'s recommended procedure comes back in `procedure` — a RECOMMENDATION, never a gate; steps the framework has not implemented are reported in `pendingSteps`. ★ THIS FACE ONLY CONVENES, plus ONE read (`action:"rulings"` lists the ruling cards the members filed for a debate — id + proposition_id); status/summary/close/flow live on vibe_vmu_meeting { action, id }. ★ `target` is an ALIAS of `subject` on THIS face — on vibe_vmu_meeting it is a VOTE\'s object, so do not carry the habit between faces. ★ `sequence` convenes the meetings that FOLLOW this one (an array of descriptors, each validated and refused by name); omitting `at` convenes them now, `at` schedules this one and the declared run follows it. ★ `durationMs` sets THIS meeting\'s own upper bound (integer ms, 30 minutes .. 2 hours; outside the range is refused by name); omit it and `vmu.meetings.hardLimitMs` applies — the receipt reads back `wallLimitMs` and `wallLimitMsSource`. ★ RUN 225-B: `lateAdmission` (open|chair|refuse, default open) decides a LATE ARRIVAL (late = vmu.meetings.lateAfterMs against openedAt; the default 0 means nobody is ever late): open seats it (late:true), chair holds it at the door (`pendingLate:true`, released only by the chair with vibe_vmu_meeting { action: "admit", id, member, actor }), refuse refuses it by name (`VMU_LATE_ADMISSION_REFUSED`, naming the two repairs). ★ RUN 248-N: `op` IS AN ALIAS of `action` (one word, two spellings; giving BOTH with different words is refused by name), and the appointment notice teaches three words of it: `{op:"appoint"}` convenes/预约 in one word, `{op:"schedule", scheduledFor:"<ISO-8601 time>"}` requires the start time (alias `at`; missing is refused by name), and `{op:"attend", id:"<meeting>", member:"<id>"}` takes the seat the notice promised. The receipt echoes the KERNEL delivery verdict — `notified` / `notifyRows` / `notifyFailed` are the kernel `open()` fields passed through unchanged — because ONE convene writes exactly ONE durable row per invited member (and renders ONE notice line); this face sends no invitation of its own.',
+    parameters: { agenda: { type: ['string', 'array'], items: { type: 'string' }, description: 'the meeting purpose as ONE line, or an ORDERED list of non-empty lines (string | string[]): array items are joined in order with "; " into the materials the kernel stores' }, id: { type: 'string' }, title: { type: 'string' }, type: { type: 'string' }, subject: { type: 'string' }, kind: { type: 'string' }, target: { type: 'string' }, formal_agenda: { type: ['boolean', 'array'], items: { type: ['string', 'object'] }, description: 'true = declare that this meeting has a formal agenda; an ARRAY = the agenda items themselves (each a non-empty line, or {title|text, kind, id}); the kernel stores either and the read faces return `formalAgendaItems` rows with `formalAgendaItemsWhy` naming why they are empty' }, secretary: { type: 'string' }, member: { type: 'string' }, at: { type: 'string' }, durationMs: { type: 'integer' }, subject_evidence: { type: 'object' }, lean_job: { type: 'string' }, sequence: { type: 'array' }, members: { type: 'array' }, action: { type: 'string' }, proposition_id: { type: 'string' }, op: { type: 'string' }, scheduledFor: { type: 'string' }, materials: { type: 'string' }, wallLimitMs: { type: 'integer' },
     // ★ RUN 225-B: lateAdmission is THIS meeting's policy for a LATE arrival; the default (open) lives in the kernel,
     //   not here. Undeclared keys are refused generically by the host funnel BEFORE the handler runs, so being able to
     //   say it at all has to be a declaration.
@@ -6558,8 +6635,10 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_blueprint',
-    description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision (path + text REQUIRED; `draft` OPTIONAL names which OPEN draft of this path the text continues — omit it and the open draft is continued, or a new revision is started when none is open; a draft is never in force); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one; "read" returns one revision by id. ★ COMMON DESIGN (共同设计): if your text carries a `## 共同设计补充｜<your id>` heading it MUST be the FIRST line — only a heading on the very first line is recognised and dropped. Do NOT paste the draft you are continuing back into your text: a leading copy of the draft THIS CALL CONTINUES is stripped (reported in bodyPrefixDropped), and `continuedBase.actual` names the row your text was joined to - null when the call started a new draft, and then nothing was compared. A draft is NOT private: every propose writes into the SAME shared revision row, so a proposal filed to test the face is visible to every member and becomes the base the next author continues. Every change is one record row (who proposed, who adopted, when, fingerprint), and the rows are also readable through vibe_v5_read_library { track: "blueprint" }.',
+    description: '★ THE INSTITUTE\'S PUBLIC BLUEPRINT (公共蓝图) — the document named by vmu.turn.protocolPath, as a versioned records track. actions: "state" (default) reads which revision is IN FORCE, when it was adopted, whether it is OVERDUE (updatedAt/ageMs/stale — a hint, never a refusal) and which drafts are waiting; "propose" (ANY live member) files a draft revision — and a DRAFT OWNS ITS OWN md FILE: pass `text` and the kernel materializes Shared/Drafts/<stem>-r<N>.md atomically (receipt writtenBy:"kernel-materialized"), or pass `mdPath` naming a draft md you wrote with the fs tool (its bytes become the row prose and its sha256 is indexed; a file that is not on disk is refused by name VMU_PACK_V5R_BLUEPRINT_MD_MISSING, and a plain markdown file is accepted as itself); `draft` OPTIONAL names which OPEN draft of this path the text continues — omit it and the open draft is continued, or a new revision is started when none is open; a draft is never in force, and `adopt` promotes the DRAFT FILE bytes to the canonical path after checking they are still the bytes the row indexed (a changed draft is refused by name VMU_PACK_V5R_BLUEPRINT_MD_DRIFT; a canonical file a member already wrote with exactly those bytes is verified, not rewritten); "adopt" (CHAIR seat ONLY) makes a named draft the revision in force and supersedes the previous one; "read" returns one revision by id. ★ COMMON DESIGN (共同设计): if your text carries a `## 共同设计补充｜<your id>` heading it MUST be the FIRST line — only a heading on the very first line is recognised and dropped. Do NOT paste the draft you are continuing back into your text: a leading copy of the draft THIS CALL CONTINUES is stripped (reported in bodyPrefixDropped), and `continuedBase.actual` names the row your text was joined to - null when the call started a new draft, and then nothing was compared. A draft is NOT private: every propose writes into the SAME shared revision row, so a proposal filed to test the face is visible to every member and becomes the base the next author continues. Every change is one record row (who proposed, who adopted, when, fingerprint), and the rows are also readable through vibe_v5_read_library { track: "blueprint" }.',
     parameters: { action: { type: 'string' }, path: { type: 'string' }, member: { type: 'string' }, text: { type: 'string' }, draft: { type: 'string' }, id: { type: 'string' }, note: { type: 'string' },
+      // ★★★ RUN 248-M2: a DRAFT revision owns a real md file (task-64). `mdPath` lets the MEMBER be its writer.
+      mdPath: { type: 'string', description: 'OPTIONAL: the draft md YOU wrote with the fs tool, as a workspace relative path (e.g. Members/<seat>/Drafts/<slug>-r<N>.md). The kernel reads it back, records its sha256 on the draft row, and the row text becomes the file prose — the file and the index cannot diverge. OMIT it and the kernel materializes the draft itself at Shared/Drafts/<stem>-r<N>.md (receipt: writtenBy:"kernel-materialized"). A path that is NOT on disk is refused by name (VMU_PACK_V5R_BLUEPRINT_MD_MISSING) with the reachable fix: write the file first with the fs tool, then propose again with the same mdPath. Refused by name too: an empty file.' },
       outline: { type: 'array', description: 'OPTIONAL ordered outline of this revision: [{id,title,depth}] with depth 1 (粗) or 2 (细). Read back as outline/outlineCount/outlineDepthMax on state, read and every propose/adopt receipt; a malformed entry is refused by name, never dropped.' },
       revision_reason: { type: 'string', description: 'OPTIONAL one line: WHY this revision exists (G11). Read back as revisionReason/revisionReasonSource. An alias of revisionReason.' } },
     handler: toolBlueprint,

@@ -28,7 +28,7 @@
  *
  * Run: node tests/vmu-run236-blueprint-outline.test.mjs
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -132,16 +132,16 @@ ok(isOutline(p1.outline) && p1.outlineCount === 2 && p1.outlineDepthMax === 2 &&
 ok(p1.revisionReason === '首次给出由粗到细的骨架' && p1.revisionReasonSource === 'request', '★ G11: the receipt carries the reason this revision exists and where it came from', p1 && { reason: p1.revisionReason, source: p1.revisionReasonSource })
 ok(typeof p1.outlineMeans === 'string' && p1.outlineMeans.trim() !== '' && typeof p1.revisionReasonMeans === 'string' && p1.revisionReasonMeans.trim() !== '',
   'every reading is paired with a sentence (the receipt is readable, not a bare flag)', { outline: String(p1.outlineMeans).slice(0, 40), reason: String(p1.revisionReasonMeans).slice(0, 40) })
-// ★★★ RUN 238 (FEEDBACK61 A): a DRAFT writes no md at all — adoption is the only writer. Before RUN 238 this line
-// asserted the draft had already replaced the document in force, which is exactly the defect run 61 measured.
-ok(p1.md && p1.md.available === false && p1.md.written === false && p1.md.deferredTo === 'adopt',
-  '★ a draft writes no md file (its text is the index row; adoption is the only writer — RUN 238)',
-  p1 && p1.md && { available: p1.md.available, deferredTo: p1.md.deferredTo, path: p1.md.path })
-ok(p1.md && p1.md.canonicalPath === PATH_MAIN && p1.md.absPath === null,
-  'the receipt still names the document the draft WOULD become (so the reader knows what is not yet on disk)',
-  p1 && p1.md && { canonicalPath: p1.md.canonicalPath, absPath: p1.md.absPath })
-ok(p1.md.bytes === 0 && p1.mdChangedSinceIndex === false,
-  'a draft reports zero md bytes and no drift (there is no file to drift from until adoption)', { bytes: p1.md && p1.md.bytes })
+// ★★★ RUN 248-M2 修 pin：旧断言是「草案不写 md，只有 adopt 写」（RUN 238 的结论）。用户裁定反转后，这条要证明的
+// **同一件事**仍在：回执必须说清这次写入落到了哪个文件、谁写的，而且绝不能把「草案文件」冒充成「生效文件」。
+ok(p1.md && p1.md.available === true && p1.md.written === true && p1.md.writtenBy === 'kernel-materialized' && p1.md.mdPath === 'Shared/Drafts/Protocol-r1.md',
+  '★ a draft writes ITS OWN md file, and the receipt names the writer and the file', p1 && p1.md && { available: p1.md.available, written: p1.md.written, writtenBy: p1.md.writtenBy, mdPath: p1.md.mdPath })
+ok(p1.draftMdPath === 'Shared/Drafts/Protocol-r1.md' && p1.mdWritten === true,
+  'the receipt exposes the published draft-file reading (draftMdPath + mdWritten)', p1 && { draftMdPath: p1.draftMdPath, mdWritten: p1.mdWritten })
+ok(p1.path === PATH_MAIN && existsSync(join(main.root, 'VibeMath', PATH_MAIN)) === false,
+  'the receipt names the canonical document this draft is ABOUT, and that document is not on disk yet', { path: p1.path })
+ok(p1.md.bytes > 0 && p1.mdChangedSinceIndex === false,
+  'the draft reports the REAL size of the file it just wrote and no drift (row and file were written together)', p1 && p1.md && { bytes: p1.md.bytes, changed: p1.mdChangedSinceIndex })
 const row1 = kernel.records.get({ id: p1.id })
 ok(row1 && typeof row1.body === 'string' && countField(row1.body, 'outline') === 1 && countField(row1.body, 'revisionReason') === 1,
   'the ROW body carries both fields too (the md is the truth and the row is its index: both shapes agree)', row1 && countField(row1.body, 'outline'))
@@ -154,8 +154,12 @@ const p2 = BLUEPRINT.proposeBlueprint({ records: kernel.records, path: PATH_MAIN
 ok(p2 && p2.ok === true && p2.id === p1.id, 'fixture: the chair continued the SAME draft (one draft per unadopted revision)', p2 && { id: p2.id, before: p1.id })
 ok(isOutline(p2.outline) && p2.outlineSource === 'draft', '★ G8: a continuation that passes no outline keeps the draft outline and names the source ("draft")', p2 && { outline: p2.outline, source: p2.outlineSource })
 ok(p2.revisionReason === '首次给出由粗到细的骨架' && p2.revisionReasonSource === 'draft', '★ G11: a continuation inherits the reason and reports revisionReasonSource:"draft"', p2 && { reason: p2.revisionReason, source: p2.revisionReasonSource })
-ok(p2.md && p2.md.available === false && p2.md.deferredTo === 'adopt',
-  '★ a continuation writes no md either — the draft row grows, the document in force is untouched', p2 && p2.md && { deferredTo: p2.md.deferredTo })
+// ★ RUN 248-M2 修 pin：旧断言是「续写也不写 md」。新语义下这件事变成了更强的版本：续写重写的是**同一份草案文件**，
+// 而生效文件仍然不动 —— 「一次共同设计 = 一份草案 = 一个文件」这个性质还在，只是从「不写」变成「写同一个」。
+ok(p2.md && p2.md.written === true && p2.md.mdPath === 'Shared/Drafts/Protocol-r1.md',
+  '★ a continuation REWRITES the same draft file (one draft = one md), never a second one', p2 && p2.md && { written: p2.md.written, mdPath: p2.md.mdPath })
+ok(p2.draftMdPath === 'Shared/Drafts/Protocol-r1.md' && existsSync(join(main.root, 'VibeMath', 'Shared', 'Protocol.md')) === false,
+  'and the document in force is still untouched on disk (only adopt promotes)', p2 && p2.draftMdPath)
 const row2 = kernel.records.get({ id: p1.id })
 ok(row2 && countField(row2.body, 'outline') === 1 && countField(row2.body, 'revisionReason') === 1 && row2.body.indexOf('共同设计补充') >= 0,
   '★ the continuation grows the SAME index row (one line each for the header fields, plus its co-design section)',
@@ -193,8 +197,10 @@ ok(Array.isArray(p3.outline) && p3.outline.length === 0 && p3.outlineCount === 0
   '★ G8: no outline is an EXPLICIT empty list + count 0 (omission would make "none" and "not asked" indistinguishable)', p3 && { outline: p3.outline, count: p3.outlineCount, source: p3.outlineSource })
 ok(p3.revisionReason === null && p3.revisionReasonSource === 'none' && /没有记录理由/.test(String(p3.revisionReasonMeans)),
   '★ G11: no reason is `null` + a sentence saying so (not an empty string that reads like a printing bug)', p3 && { reason: p3.revisionReason, means: String(p3.revisionReasonMeans).slice(0, 40) })
-ok(p3.md && p3.md.available === false && p3.md.written === false,
-  'a bare draft writes no document at all (RUN 238: only adoption writes), and the receipt said so in words', p3 && p3.md && { available: p3.md.available })
+// ★ RUN 248-M2 修 pin：旧断言是「裸草案完全不写文档」。同一件事现在由「写的是它自己的文件、且路径按 stem-r<N> 生成」
+// 来证明：没有 outline/reason 的那一版，也照样有自己的一份 md，可被 adopt 晋升。
+ok(p3.md && p3.md.available === true && p3.md.written === true && p3.md.mdPath === 'Shared/Drafts/Bare-r1.md',
+  'a bare draft ALSO writes its own document (the path is derived per revision, not deferred to adoption)', p3 && p3.md && { available: p3.md.available, mdPath: p3.md.mdPath })
 const stBare = await call({ action: 'state', path: PATH_BARE })
 ok(stBare.ok === true && Array.isArray(stBare.parsed.outline) && stBare.parsed.outline.length === 0 && stBare.parsed.revisionReason === null,
   'the STATUS face reports the absence explicitly too (empty list + null, both present as keys)', stBare.parsed && { outline: stBare.parsed.outline, reason: stBare.parsed.revisionReason })

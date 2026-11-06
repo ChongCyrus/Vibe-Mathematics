@@ -2298,6 +2298,12 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     },
   } : null
   meetingsRef.current = createMeetings({ settings: settingsView, bus, clock: guardedClock, log, durable: meetingsDomainSeam, ballot: meetingBallot, members: memberRef, foreignIds: () => [...liveMeetings.keys()],
+    // ★★★ RUN 248-N / task-65: THE NOTICE LANE'S DELIVERY SEAM. `kernel/meetings.js` already emitted a bus event at an
+    // appointment, but the INVITED members are not subscribers - they are turns. The mailbox is the durable address
+    // that reaches them (its rows survive a restart over the same root and its `noticeLines` renders into the turn
+    // prompt through `noticeSource` below). Assembly wiring only: the policy (who is notified, what the row says) lives
+    // in `kernel/meetings.js`, which owns the meeting facts.
+    mail: mailbox,
     // ★★★ RUN 239-D: THE WAKE SEAM. `createMeetings` has accepted a `wake` option since the invitation path needed it,
     // and `kernel/meetings.js` grew a real waiter table (wait/unwait, event settle, deadline sweep) - but a fired waiter
     // could only ever report `via:"none"` in a real deployment, because NOBODY passed this option. A member that waits
@@ -2887,7 +2893,29 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     // channel that reaches a member's next prompt. This is the missing consumption point between them, so a
     // formalisation announcement really arrives in that member's next assembly instead of only being readable through
     // the face. Absent (no Lean face) ⇒ `[]`, so an assembly without Lean is byte-identical to before.
-    noticeSource: (member) => (lean && typeof lean.takeNoticesFor === 'function' ? lean.takeNoticesFor(member) : []),
+    // ★★★ RUN 248-N / task-65: THE SECOND NOTICE SOURCE. A meeting appointment and a chair push are DURABLE MAILBOX
+    // rows now, and this is the only consumption point that reaches a member's next turn prompt: the Lean notices
+    // first (one-shot, unchanged), then the member's unread/todo mailbox notice lines (bounded to 8, newest first,
+    // NON-destructive - only `mailbox.ack` settles them). The lines are plain strings, which is the contract
+    // `kernel/turn/index.js` already has with `noticeBlock`; the pack's renderer formats them, so no turn change is
+    // needed. A failure here is LOGGED and the assembly continues with the Lean notices: a broken mailbox must not
+    // turn every turn into VMU_ENGINE_UNAVAILABLE.
+    noticeSource: (member) => {
+      const leanNotices = lean && typeof lean.takeNoticesFor === 'function' ? lean.takeNoticesFor(member) : []
+      let mailNotices = []
+      try {
+        const notice = mailbox && typeof mailbox.noticeLines === 'function' ? mailbox.noticeLines(String(member), { limit: 8 }) : null
+        if (notice && Array.isArray(notice.lines)) mailNotices = notice.lines
+      } catch (e) {
+        try {
+          // ★ No new refusal code is invented here: this source is best-effort, and a fresh VMU_* name would have to
+          // be registered in docs/03 §8 (the registration gate reads string literals in code) before it meant anything.
+          // The event type names the failure; a thrown error keeps its own code when it has one.
+          log.append({ type: 'mailbox/notice-lines-failed', at: guardedClock(), member: String(member), code: (e && e.code) || null, message: String((e && e.message) || e) })
+        } catch (ignored) { /* the turn still runs; the failure is recorded above */ }
+      }
+      return [...(Array.isArray(leanNotices) ? leanNotices : []), ...mailNotices]
+    },
     // ★ G7 ④: the turn step receipt carries a bounded summary of the member's own tool calls (the host hook is the
     // only place that sees them; it writes to memberToolCallLog above). Lazy arrows: the map is declared later in
     // this function's scope, and by the time a step runs it exists.

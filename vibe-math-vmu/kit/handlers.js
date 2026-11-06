@@ -493,7 +493,68 @@ function cardTool({ tool, track: defaultTrack, kind: defaultKind, required, extr
 
 // ── ⑤ say ──────────────────────────────────────────────────────────────────────────────────────────────────
 /**
- * THE CORE GROUP-CHAT TOOL, and the mapping needs a word of justification because two faces could carry it:
+ * ★★★ RUN 248-N / task-67 — THE THIRD CHANNEL. Until now `say` without `to` (the group form) wrote a chat row that
+ * NOBODY was told about: the row existed, the members' next turn never mentioned it, and "说给全体" was a pull-only
+ * artefact while "私信" was push. The two other channels were already durable mail (`dm`) and the chair's meeting push
+ * (`group`); the plain group chat was the one spoken act with no recipient. This helper closes it the same way and with
+ * the same fields: ONE durable row per recipient, `channel:"group"`, an excerpt bounded at 800 chars, and a POINTER to
+ * the full text (the chat row id) — never a copy of the whole message, and never a second row for the same chat row
+ * (`dedupeKey` = the msg id the chat face minted).
+ *
+ * WHAT THIS DOES NOT DO: it never invents a recipient (the roster is the roster), it never delivers to the SPEAKER
+ * (a person is not told what they just said), and a kernel without a mailbox still writes the chat row — the receipt
+ * then says `deliveredTo: []` and WHY instead of pretending the message reached anyone.
+ */
+function oneLineExcerpt(text, cap) {
+  const flat = str(text).replace(/\s+/g, ' ').trim()
+  if (flat.length <= cap) return flat
+  return flat.slice(0, Math.max(0, cap - 1)) + '…'
+}
+
+function fanOutGroupSay(kernel, from, text, sent) {
+  const msgId = str(sent && sent.id)
+  if (!kernel || !kernel.mailbox || typeof kernel.mailbox.send !== 'function') {
+    return { deliveredTo: [], deliveredRows: [], deliveryFailed: [],
+      deliveryMeans: 'NO durable row was written: this kernel publishes no mailbox face (kernel.mailbox.send is absent), so the group message exists only as the chat row. The message itself is written and readable — the members simply were not told by mail' }
+  }
+  const excerpt = oneLineExcerpt(text, 800)
+  const pointer = 'chat#' + msgId
+  const noteLine = '【群聊·' + str(from) + '】' + oneLineExcerpt(text, 120) + '；全文 ' + pointer + '；读后 mailbox ack {id}'
+  const bodyHead = '成员 ' + str(from) + ' 在群聊里对全体发言（chat 行 ' + pointer + '）。'
+  const bodyTail = '全文：' + pointer + '（vibe_v5_inbox 读得到这一行；群聊的完整记录在 chat 面）。读完这封邮件后请结算：mailbox ack。'
+  const roster = membersOf(kernel).roster() || []
+  const targets = roster
+    .filter((m) => m && m.id !== from)
+    .filter((m) => m.state === undefined || m.state === 'live')
+    .map((m) => String(m.id))
+    .filter((id) => id !== '')
+  const deliveredTo = []
+  const deliveredRows = []
+  const deliveryFailed = []
+  for (const to of targets) {
+    try {
+      const row = kernel.mailbox.send(from, {
+        to, kind: 'chat-broadcast', channel: 'group', dedupeKey: 'chat:' + msgId,
+        subject: ('群聊：' + str(from) + (msgId === '' ? '' : ' @ ' + msgId)).slice(0, 120),
+        text: bodyHead + '\n摘要（≤800 字符）：' + excerpt + '\n' + bodyTail,
+        notice: noteLine,
+      })
+      if (row && row.ok === true) {
+        deliveredTo.push(to)
+        const id = Array.isArray(row.ids) && row.ids.length ? String(row.ids[0]) : ''
+        deliveredRows.push({ member: to, mailId: id })
+      } else {
+        deliveryFailed.push({ member: to, code: str(row && row.code), why: str(row && (row.reason || row.message)) })
+      }
+    } catch (e) {
+      deliveryFailed.push({ member: to, code: str(e && e.code), why: str((e && e.message) || e) })
+    }
+  }
+  return { deliveredTo, deliveredRows, deliveryFailed,
+    deliveryMeans: 'the group chat row is ALSO durable mail (channel "group"): every member in `deliveredTo` will see one notice line at their next turn or through vibe_v5_inbox, carrying an excerpt (≤800 chars) and the chat row id as the pointer to the full text. The speaker is not a recipient (nobody is told what they just said), and the row is not duplicated for the same chat row (dedupeKey = the msg id). `deliveryFailed` names anyone whose row did not go out, with the mailbox reason; the chat row itself is written either way' }
+}
+
+/** The core GROUP-CHAT TOOL, and the mapping needs a word of justification because two faces could carry it:
  *   · the ORIGINAL `vibe_v5_say` means "speak in the group chat (omit `to`) / send a private message (`to`: id) /
  *     address only the voters (`to`: "voters")" — that is `vmu.chat`, not a meeting: `meetings.speak` needs an
  *     OPEN meeting and writes into the MINUTES, which is a different artefact;
@@ -541,8 +602,16 @@ function toolSay(args = {}, { kernel } = {}) {
       'assemble a kernel with the chat service (or use `to` for a private message)')
   }
   const sent = kernel.chat.send(member, text, { kind: 'chat' })
+  // ★★★ RUN 248-N / task-67: the group form now DELIVERS as well as records (one channel:"group" row per other member,
+  // excerpt bounded, chat-row id as the pointer). The chat row stays the single record — this is delivery, not a copy of
+  // the message into a second store.
+  const groupDelivery = fanOutGroupSay(kernel, member, text, sent)
   return { ok: true, tool: 'vibe_v5_say', via: 'chat', member, receipt: sent,
-    note: 'the group chat is the original tool\'s default surface; a meeting speech needs `meeting`' }
+    deliveredTo: groupDelivery.deliveredTo,
+    deliveredRows: groupDelivery.deliveredRows,
+    deliveryFailed: groupDelivery.deliveryFailed,
+    deliveryMeans: groupDelivery.deliveryMeans,
+    note: 'the group chat is the original tool\'s default surface; every OTHER member now also gets ONE durable row (channel "group", excerpt ≤800 + the chat row id as the pointer) — the speaker is not a recipient and the row is not duplicated; a meeting speech needs `meeting`' }
 }
 
 // ── ⑥ message ──────────────────────────────────────────────────────────────────────────────────────────────

@@ -4132,6 +4132,15 @@ member 29 810、temp 26 904）。**先删再写**是预算下唯一可持续的�
   回执用 `mdIsTheDocumentInForce.wroteNow` 说「这一次真的落盘了」。
 - 为什么不是另开 `Shared/Drafts/`：那会多出「哪个文件算数」的第二个问题，并让 `reindex` 把草案文件也收成独立行，
   破坏「一次采纳 = 恰好一行」。**不写文件是不需要解释的写法。**
+- **RUN 248 反转（用户 m37456 裁定：草案要落盘、成员自己用 fs 管 md）**：上面两条反对意见都被真正消掉了，所以
+  反转不是退回 237 的 bug —— ①「哪个文件算数」由 `mdPath ≠ path` 判定：草案 md 记 `draftOf`，`records.mdReindex`
+  让它**永不进 `mdByKey`**（`vibe-math-vmu/kernel/records.js:1778-1783`），因此不可能遮蔽现行文档；
+  ②「reindex 把它收成独立行」由 `:1921-1962` 的草案行对账处理（草案行只有一条、由文件重建，孤儿草案文件单列
+  `orphan-draft-md`）。新形态：`propose` 不带 `mdPath` ⇒ 内核物化 `Shared/Drafts/<stem>-r<N>.md`
+  （`writtenBy:'kernel-materialized'`）；成员用 fs 自己写、带同一 `mdPath` ⇒ `writtenBy:'member-file'` 且内核不改写；
+  `adopt` 变成「校验行↔文件 sha → 晋升草案字节」（缺文件 `VMU_PACK_V5R_BLUEPRINT_MD_MISSING`、漂移
+  `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT`，成员已自行写同字节则 `alreadyWritten:true`）。**保留不动的那一半**：草案依旧不得顶替
+  生效文档，晋升仍只有一条路。
 
 ### 六处读数（B/C/D/E/F/H）
 
@@ -4490,7 +4499,8 @@ fixture-tools 只留一份回执样例（删重复的 `op:"reply"` 签名）；c
 turn-tracks/compute/blueprint/polls/convene/scripts/chat-admin 的调用签名一并删。
 
 顺带修掉一个 HEAD 就有的真 bug：`packs/v5r/prompts/v5r-blocks-b.js:883` 的数组元素写成了一元加号（`+` 后跟
-一个以换行开头的字符串），`join` 之后渲染成字面 `NaN` —— **chair 席从来没读到「只有 adopt 写 md」这条规则**。
+一个以换行开头的字符串），`join` 之后渲染成字面 `NaN` —— **chair 席从来没读到「只有 adopt 写 md」这条规则**
+（该规则本身已在 RUN 248 被用户裁定反转为「草案落盘、adopt 只晋升」，但 bug 的教训不变）。
 规则进了源码却没进渲染文本，等于没写；而任何人 grep 源码都会以为它在。这是「提示即承诺」的镜像面。
 
 守门：新建 `tests/vmu-run247-prompt-dedup.test.mjs`（67/0）把「角色段只剩名字+规则、无参数对象、被删签名与
@@ -4502,3 +4512,69 @@ DETECTED，always-empty 0，RULES COVERAGE / RULE PARITY / DOC LINT / regen 17/1
 教训：**同一个事实的第二来源不是冗余，是负债**——它不会报错，只会在契约改动后继续教旧形状。
 下一块最大的是 `v5r-reply-compact`（29 字段回执目录 + 可照抄样例）：应由 kernel 的
 `FIELDS`/`RECORDED_FIELDS` 在 reply 渲染层生成，提示词只留哨兵。
+### ROUND 248 —— 草案是文件、行是索引；「投递」不是「提醒」
+
+用户口径（m37456）：蓝图草案要落盘，让成员自己通过 fs 管理 md —— RUN 238 的「草案不落盘、adopt 才写 md」被反转。
+同一轮的第二问（m37280 第①④问）：被预约的成员、被主席全体发言通知的成员，**什么时候、在什么事件下、在哪里看到
+什么、该做什么**。前一半把「内核单写 md」改成「文件是正文、行是索引」；后一半把已经落地的耐久投递从机制事实
+写成提示词里的时机规则（机制侧由 md-lane / notice-lane 实现，本段只记契约与提示词）。
+
+草案落盘：`propose` 不带 `mdPath` 时内核把草案物化到 `Shared/Drafts/<stem>-r<N>.md`（回执 `writtenBy:"kernel-materialized"`）；
+成员先用 fs 把草案写成自己的文件、再带同一 `mdPath` propose，文件归成员（`writtenBy:"member-file"`、`written:false`，
+内核不改写）。`adopt` 从「写 canonical」变成「晋升文件」：先比行里记的 sha256 与磁盘文件——文件没了
+`VMU_PACK_V5R_BLUEPRINT_MD_MISSING`、被改过 `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT`（先
+`vibe_v5_records {action:"reindex"}` 收编再采纳）——再把**文件的字节**晋升进 `Shared/Protocol.md`，写完读回校验；
+成员若已把 canonical 写成同一字节，回执 `alreadyWritten:true, copiedFrom:null`（这一调用只签字、不重写）。行记的是
+文件的 sha256 + 路径（`md`、`mdFingerprint`、`mdPath`、`draftMdPath`、`writtenBy`、`verified`、`mdChangedSinceIndex`），
+所以「行索引着文件」是可检查的事实。
+
+为什么不再「内核单写」：RUN 238 反对草案落盘的两条理由——「草案文件会被当成现行文档收进索引」「草案文件无法
+对账」——在 RUN 248 的 `reindex` 里被逐条消掉。草案 md 声明的是它那一版**关于**的路径（`path：Shared/Protocol.md`）
+而把它**自己**记在 `mdPath`，因此永不进声明路径索引：`kernel/records.js:1779-1783` 判 `isDraftFile` 后只把它加进
+`draftRels` 便 `continue`（`mdByKey` 里没有它），草案文件只按认领它的行对账。对账分三态（`kernel/records.js:1922-1962`）：
+文件缺失→具名 `missing`（`kind:"draft-md"`，不删行）；成员写的纯 markdown（没有 vmu 头）→`member-plain-md`，行是它唯一的
+索引、不改写；被外部改过→用磁盘正文 supersede 一行，旧正文留在版本历史。没有人认领的草案 md 只报 `orphan-draft-md`
+（`:1966-1973`）。于是「成员的工作面」与「同一事实的第二来源」不再冲突：文件是正文，行是索引，采纳是把文件的字节
+晋升成 canonical 并签字。`prune` 只动行、不删 md。
+
+投递与广播（机制在 notice-lane，提示词只写时机）：`open()`（含预约）时给每个被邀成员投一条耐久邮箱行
+（`kernel/meetings.js:4400` `appointNoticeOf`；收件人 = roster 减主席；`kind:"meeting-appointment"`、`channel:"mail"`、
+`dedupeKey:"meeting-appoint:<会 id>"`），通知行形如
+`【会议预约·<主席>】<标题> @ <ISO> — <可照抄的入席调用>；读后 mailbox ack {id}`；open 回执给
+`notified / notifyRows / notifyFailed / notifyMeans`——空的 `notifyFailed` 是断言（每个被邀者都拿到了行），不是沉默。
+主席在会中 `speak` **不带 `to`** 时（闸在 `kernel/meetings.js:2612`：`String(member) === String(m.chair) && said.trim() !== ''`），
+内核给每个在席成员（除主席）投一条 `channel:"group"` 的 `meeting-broadcast` 行：摘要 ≤800 + 指针
+`<会 id>/minutes#<条目序>`；回执给 `deliveredTo / deliveredRows / broadcastFailed / broadcastMeans`。普通成员的发言只进
+纪要、不推送（否则每句话变成 N−1 封邮件）；只想让某人看见就用 `to:"<成员>"`。`vibe_v5_say` 不带 `to` 的全体发言同理
+（`kit/handlers.js:514-554` `fanOutGroupSay`，`dedupeKey:"chat:<msgId>"`，发言人不是收件人）。这些行不是「提醒」：
+`kernel/mailbox.js:1078` `noticeLines` 是非破坏性读取（最新在前、默认 8 行），带通知模板的投递行**留到 ack 才消失**
+（`{id}` 在读取时由 `renderNotice` 替换，`:429`），回合提示把它们前置在最上方（`kernel/turn/index.js:2227`
+`noticeText + "\n" + out.text`，块头 `[新到的消息]`，`packs/v5r/notices.js:102`）。
+
+提示词侧（本车道，六处文本、零新增 section）：researcher 的「参会与预约」写清三步结算——`vibe_v5_inbox {action:"open"}`
+读正文 → 会议开始后 `vibe_v5_meeting {op:"attend", id, member}` 入席（邀请 ≠ 签到，不 attend 不计法定人数；预约状态下
+只登记座位）→ `vibe_vmu_mailbox {action:"ack", member, ids}` 结算，并说明 ack 门在内核邮箱面（pack 的 `vibe_v5_inbox`
+只有 list/open/mark）；chair 召集段把 `meeting-invitation` 改成 `meeting-appointment`，并写「绝不重复召集：没投到的人
+会具名出现在 `unreachable`／open 回执的 `notifyFailed` 里，只有他们需要补消息」；chair 会中手册加「对全体发言即推送」
+（闸门、回执三字段、普通成员不推送、只想给某人看见就用 `to:`）；researcher/temp 会中段写「不用轮询，下一回合通知块
+会看到【主席发言·…】」；共享段 `v5r-turn-channels` 补「投递形态」（两种行的字形、8 行上限、ack 前每回合都在、
+`deliveredTo` 才是真投到的名单、`deliveryFailed` 才是没投到）。
+
+实测（本机）。提示词：`packs/v5r/prompts/v5r-blocks-b.js` 72 846 → **74 487** 字符。同一把尺子（`scripts/sim/audit/
+prompt-sections.mjs` 的 `collect()`，与 ROUND 247 同源）：chair-normal 26 944 → **27 492**、chair-meeting 29 891 →
+**30 658**、member-normal 23 200 → **24 171**、temp-normal 20 545 → **20 928**；四份合计 100 580 → **103 249**（+2 669，
++2.65%）。预算检查器（绑定会议的 real assembly）三席最大份：chair/meeting **32 775**（cap 36 500）、member/verify
+**26 985**（seat cap 30 100）、temp/verify **24 344**；`audit-prompt-budget --check` PASS，仅 1 条既有
+`SEAT_PROMPT_OVER_T99`（chair/meeting 32 775 > t99 30 000），**cap 未上调**。
+
+守门：`tests/vmu-run248-blueprint-md.test.mjs` **113/0**、`tests/vmu-run248-notice-delivery.test.mjs` **114/0**（机制车道）；
+`tests/vmu-run239-prompts.test.mjs` 48 → **59/0**（新增 §6 十一条：字形 `[新到的消息]`/`【会议预约·`/`【主席发言·`、
+`vibe_vmu_mailbox {action:"ack"`、`meeting-appointment` 取代 `meeting-invitation`、`不用轮询`、`deliveredTo`+`broadcastFailed`
+在 chair 会中文本里，以及三处装配文本的正面断言）。门禁：DOC LINT PASS、RULES COVERAGE PASS、RULE PARITY PASS 与
+`--selftest` **12/12**、regen 17/17 in sync、preflight 全绿（生成件计数 770 → 772、planned-code 登记、kernel index、
+coverage debt 由各自 `--write` 收口）。
+
+教训：**「投递」不是「提醒」**——一条耐久行的形状（在提示最上方、最新在前、留到 ack、回执里谁真投到了）是可验收的
+契约；写成「你会收到通知」既不告诉成员在哪看，也不告诉他不 ack 会怎样。另一条：反转旧裁决时必须同时消掉它当初的
+理由（这里是 reindex 的草案对账），否则提示词里的新规则会被下一个人当成没根据的措辞改回去。下一块候选：把投递行的
+`{id}` 渲染成可直接照抄的 ack 调用（现在行里写「mailbox ack {id}」，而 ack 门在 `vibe_vmu_mailbox` 面，提示词只能桥接）。

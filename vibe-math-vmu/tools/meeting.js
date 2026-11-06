@@ -168,11 +168,15 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         '**F28 有界兜底**：超过声明的墙钟上限（`vmu.meetings.hardLimitMs`）后可用 **lapse** 具名收束（回执带 `{name,why,at,revocable}`），**未到上限会具名拒**，收束后可用 **revokelapse（必须给理由）**恢复；`extend` 是**声明步长**的延长命令（读 `speechExtendMs/Max`）。' +
         '**选项式投票板**是另一层（`kernel/ballotbox.js`：选项/门槛/记名/弃权，**已裁定的板不再收票**）：boxopen/boxcast/boxclose/boxreopen，' +
         '其中 **boxreopen 需理由**且受 `vmu.ballot.reopenFloor` 约束（门槛只升不降）；若构造时声明了 `openMaxMs`，则 **boxlapse/boxrevokelapse** 对它提供同一套有界兜底。' +
-        '**发言序/地面（B③/B④，Round 14）**：`flow` 设**四种地面模式**（open 无队列｜hands 按举手序｜round_robin 按已发言次数｜call_on 主席指定），`overrideorder` **覆盖发言序**（fifo｜round-robin｜chair｜random，random 为**确定性**洗牌：种子与结果 order 都写进回执）。**两者都只由主席做、都必须给 reason**，且**未声明 `vmu.meetings.orderMode` 的部署一律具名拒**（默认不可覆盖）。★ 这两个 action 寻址的是 **`vmu.meetings` 服务记录**（`kernel/meetings.js`），**不是**上面 `open` 造的逐对象会议 id —— 未知 id 由服务**具名拒**（hint 列出在活记录）。',
+        '**发言序/地面（B③/B④，Round 14）**：`flow` 设**四种地面模式**（open 无队列｜hands 按举手序｜round_robin 按已发言次数｜call_on 主席指定），`overrideorder` **覆盖发言序**（fifo｜round-robin｜chair｜random，random 为**确定性**洗牌：种子与结果 order 都写进回执）。**两者都只由主席做、都必须给 reason**，且**未声明 `vmu.meetings.orderMode` 的部署一律具名拒**（默认不可覆盖）。★ 这两个 action 寻址的是 **`vmu.meetings` 服务记录**（`kernel/meetings.js`），**不是**上面 `open` 造的逐对象会议 id —— 未知 id 由服务**具名拒**（hint 列出在活记录）。' +
+        // ★★★ RUN 248-N / task-65: appointment + push. The user found that a scheduled meeting only emitted a bus
+        // event, so an invited member learned about it only if they listed meetings themselves; and that the chair had
+        // no way to push an announcement to the whole room.
+        '★ **RUN 248-N：预约会议与主席推送。** `appoint`（立即开始）/`schedule`（`at` 必填）寻址 **`vmu.meetings` 服务记录**：成功后内核给**每个被邀成员**（roster 减主席）投一条**耐久 mailbox 行**（`channel:"mail"`，含会议类型/议题/开始时间/主席/该成员席位/**可直接照抄的 attend 调用**）。回执 `notified:[成员]`、`notifyRows:[{member,mailId}]`、`notifyFailed:[{member,reason}]` —— **失败逐人具名，绝不静默丢**。被邀成员的下一回合提示（notice 块）会出现一行【会议预约·主席】…；该行**非破坏性**（未 ack 前每次都在），结算用 `mailbox ack <id>`，ack 后消失。★ 主席**对全体发言**（`speak` 且发言人＝会议主席）会给每个在席成员（不含发言人）投一条 `channel:"group"` 的耐久行，subject 带发言人+会议 id，正文摘要 ≤800 字符 + 指向纪要/转录的全文指针；回执 `deliveredTo:[成员]`、`broadcastFailed:[{member,reason}]`。普通成员的发言仍只进纪要（避免每句话都变成 N-1 封邮件）。',
       parameters: {
-        action: param('string', 'list｜open｜speak｜silent｜hand｜hands｜order｜refuse｜invite｜invitedspeak｜attend｜admit｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜minutes｜verbatim｜close｜extend｜extendlimit｜proceed｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
-          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order', 'refuse', 'invite', 'invitedspeak', 'attend', 'admit', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'minutes', 'verbatim', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit', 'proceed', 'types', 'wait', 'unwait'] }),
-        id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定）'),
+        action: param('string', 'list｜open｜appoint｜schedule｜speak｜silent｜hand｜hands｜order｜refuse｜invite｜invitedspeak｜attend｜admit｜end｜aggregation｜complete｜phase｜status｜summary｜snapshot｜minutes｜verbatim｜close｜extend｜extendlimit｜proceed｜lapse｜revokelapse｜ballot｜vote｜tally｜reopen｜freeze｜unfreeze｜boxopen｜boxcast｜boxclose｜boxreopen｜boxlapse｜boxrevokelapse｜second｜withdraw｜flow｜overrideorder', { required: true,
+          enum: ['list', 'open', 'speak', 'silent', 'hand', 'hands', 'order', 'refuse', 'invite', 'invitedspeak', 'attend', 'admit', 'end', 'agendaclose', 'agendaitems', 'leaverequest', 'leaveapprove', 'leaverequests', 'aggregation', 'complete', 'phase', 'status', 'summary', 'snapshot', 'minutes', 'verbatim', 'close', 'extend', 'lapse', 'revokelapse', 'ballot', 'vote', 'tally', 'reopen', 'freeze', 'unfreeze', 'boxopen', 'boxcast', 'boxclose', 'boxreopen', 'boxlapse', 'boxrevokelapse', 'second', 'withdraw', 'flow', 'overrideorder', 'extendlimit', 'proceed', 'types', 'wait', 'unwait', 'appoint', 'schedule'] }),
+        id: param('string', '会议 id（speak/silent/hand/refuse/invite/invitedspeak/end/aggregation/complete/phase/status/summary/snapshot/close/extend/lapse/revokelapse 必填；open 可指定；appoint/schedule 可指定，缺省由内核分配）'),
         meeting: param('string', '会议 id 的【别名】：与 id 同义（两者都接受；同时给且不一致 ⇒ 具名拒）。ballot 用它把票绑定到服务会议，见 summary/close 与 ballot 的读数'),
         ballotId: param('string', '表决/票箱 id（vote/tally/reopen/freeze/unfreeze/boxcast/boxclose/boxreopen/boxlapse/boxrevokelapse 必填）'),
         member: param('string', '成员 id（speak/silent/hand/refuse/attend/admit/invitedspeak/extend/vote/boxcast 必填；invite 用它邀一个人——批量用 members）'),
@@ -183,7 +187,18 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         // round early (`force:true`, offered by its own hint) could not be passed here — the hint named a door with no key.
         force: param('boolean', 'close 的**强制提前收会**：回合没跑完时内核默认拒（仲裁者/主席可能要等全员），`force:true` 才允许提前收（这是有意的两段式，不是绕过门）'),
         ms: param('number', 'extend 的延长毫秒数（缺省读 vmu.meetings.speechExtendMs，仍为 0 ⇒ 具名拒）'),
-        agenda: param('string', 'open 的议程文本'),
+        agenda: param('string', 'open 的议程文本；appoint/schedule 未给 materials 时作为 materials'),
+        // ★★★ RUN 248-N / task-65: the APPOINTMENT parameters. These address the `vmu.meetings` SERVICE record (the pack
+        // face `vibe_v5_meeting` calls the same door), so `kind` here is the MEETING kind - the primitive `open` above
+        // still refuses `kind` because on THAT record it is the ballot kind.
+        at: param('string', 'appoint/schedule：会议开始时间（部署时钟格式 ISO 字符串，或 epoch 毫秒）。schedule 必填；appoint 不给＝立即开始'),
+        scheduledFor: param('string', 'at 的【别名】（两者同义；同时给且不一致 ⇒ 以 at 为准，回执照实记录）'),
+        type: param('string', 'appoint/schedule：会议类型（服务 open 的 type：ordinary｜debate｜academic 等，按部署的 typeCatalog）'),
+        title: param('string', 'appoint/schedule：会议标题（通知与纪要里显示的名字）'),
+        materials: param('string', 'appoint/schedule：议题/材料文本（通知正文与纪要引用）'),
+        lateAdmission: param('string', 'appoint/schedule：迟到入席策略 open｜chair｜refuse（缺省由内核取 open）', { enum: ['open', 'chair', 'refuse'] }),
+        wallLimitMs: param('number', 'appoint/schedule：本场会议的墙钟上界（毫秒；内核按声明的区间校验）'),
+        formalAgenda: param('boolean', 'appoint/schedule：是否声明正式议程（声明后纪要按议程条目推进）'),
         roster: param('array', 'open 的成员清单（默认取该会议的既定语料）'),
         // ★★★ RUN 45: `subject` was not even declared — the live run passed `subject:"…"` to `open`, the argument never
         // reached any record, and the receipt still said `ok:true`. It is a parameter of the OPEN act on the SERVICE
@@ -212,8 +227,12 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
         // 读 speechExtendMs/Max；`extendlimit` 是【会议墙钟上界】延长，读 extendCeilingMs。两个上界两个面。
         mode: param('string', 'flow/overrideorder 的模式（flow：open｜hands｜round_robin｜call_on；overrideorder：fifo｜round-robin｜chair｜random）', { enum: ['open', 'hands', 'round_robin', 'call_on', 'fifo', 'round-robin', 'chair', 'random'] }),
       },
+      // ★★★ RUN 248-N / task-65: the appointment vocabulary. `at`/`scheduledFor` are WHEN a scheduled meeting starts;
+      // `type`/`title`/`materials`/`lateAdmission`/`wallLimitMs`/`formalAgenda` are the meetings SERVICE fields `open()`
+      // declares (this face used to refuse `kind` because it meant the BALLOT kind on the primitive open — on
+      // `appoint`/`schedule` `kind` is the MEETING kind, because these actions address the service record).
       run: async (args = {}, exec = null) => {
-        const { action, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, subject, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor, force, until, timeoutMs, timeout_ms } = args
+        const { action, meeting: meetingArg, ballotId, member, members, text, reason, agenda, roster, subject, target, value, kind, why, by, options, ms, op, scope, mode, secretary, motion, rules, actor, force, until, timeoutMs, timeout_ms, at, scheduledFor, type, title, materials, lateAdmission, wallLimitMs, formalAgenda } = args
         // ★ RUN 127 (regression caught by `vmu-v5r-verdict-final`): `id` is REASSIGNED below from the `meeting`
         // alias, and as a destructuring PARAMETER that was legal — as a `const` it threw 'Assignment to constant
         // variable', which the host reports as VMU_MIDDLEWARE_FAILED. The alias path needs a binding it may write.
@@ -438,6 +457,61 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
               ...(openGate ? { chairGate: openGate } : {}),
               ...(dropped.length ? { droppedNote: droppedWhere } : {}),
               ...(serviceError ? { serviceError } : {}) }
+          }
+          // ★★★ RUN 248-N / task-65: APPOINT / SCHEDULE — putting a meeting on the calendar (not convening a primitive
+          // object). The member-facing wording is the pack face (`vibe_v5_meeting {op:"appoint"|"schedule"}`); this is
+          // the kernel-side door onto the SAME service `open()`, so the DELIVERY POLICY lives in one place: the service
+          // sends the durable appointment mail to every invitee and returns `notified`/`notifyFailed`. This branch does
+          // NOT invent a second delivery path — it passes the declared facts through and hands back that receipt.
+          if (action === 'appoint' || action === 'schedule') {
+            const svc = svcOf()
+            if (!svc || typeof svc.open !== 'function') {
+              return refused('VMU_ENGINE_UNAVAILABLE', 'the meetings SERVICE is not mounted on this kernel, so there is no calendar to appoint onto',
+                'mount the vmu kernel meetings service (kernel.meetings); action "open" on this face only builds a per-object PRIMITIVE meeting, which has no roster, no minutes and no notices')
+            }
+            // ★ The calendar question is answered BEFORE the seat question: an `appoint`/`schedule` that names no time
+            // is incomplete in a way its caller can act on (supply the time, or switch to the immediate action), and
+            // the hint below therefore names a step that really advances. Checking the chair first made that advice a
+            // dead end: the named action hit the same chair refusal with the same wording.
+            const atArg = (at !== undefined && at !== null && String(at) !== '') ? at
+              : ((scheduledFor !== undefined && scheduledFor !== null && String(scheduledFor) !== '') ? scheduledFor : undefined)
+            if (action === 'schedule' && atArg === undefined) {
+              return refused('VMU_INVALID_ARGUMENT', 'action schedule needs `at` (WHEN the meeting starts), and none was given',
+                'pass at:"<ISO time>" (the deployment clock format) or at:<epoch ms>; or use action "appoint" when the meeting should start as soon as it is created — that action needs no time, so following it moves on to the chair requirement instead of repeating this one')
+            }
+            const chairText = namedCaller(member) || namedCaller(by) || callerFromTurn()
+            if (!chairText) {
+              return refused('VMU_INVALID_ARGUMENT', 'action ' + action + ' needs the chair (the member convening this appointment)',
+                'pass member:"<chair id>" (by:"<chair id>" names the same field); the office (root) has no seat, so it cannot chair a calendar entry — use the pack convene face when the framework convenes on the chair behalf')
+            }
+            const gate = chairGateOf({ kernel, setting: 'vmu.meetings.conveneRequiresChair', caller: String(chairText), callerSource: namedCaller(member) || namedCaller(by) ? 'argument' : 'turn-context' })
+            if (gate && gate.refuse) {
+              return refused('VMU_NOT_PERMITTED',
+                gate.setting + '=true: appointing is an academician (chair seat) action; "' + gate.caller + '" is ' + (gate.seat === null ? 'not on the roster' : 'in slot "' + gate.seat + '"'),
+                'call it from a member seated in the chair slot (the chair gate is declared by the pack and enforced on BOTH doors: the pack convene face and this one); the office (root) may list and read, and convenes without a member seat through the pack face')
+            }
+            const rosterArg = Array.isArray(members) ? members.map(String) : (Array.isArray(roster) ? roster.map(String) : undefined)
+            const kindArg = (kind === undefined || kind === null || String(kind) === '') ? undefined : String(kind)
+            const typeArg = (type === undefined || type === null || String(type).trim() === '') ? undefined : String(type).trim()
+            const materialsArg = (materials === undefined || materials === null) ? agenda : materials
+            const declared = {}
+            for (const [key, value] of [['secretary', secretary], ['lateAdmission', lateAdmission], ['wallLimitMs', wallLimitMs], ['formalAgenda', formalAgenda]]) {
+              if (value !== undefined && value !== null && String(value) !== '') declared[key] = value
+            }
+            const opened = svc.open(Object.assign({
+              id: idText(id) || undefined, type: typeArg, kind: kindArg, title: title === undefined ? undefined : title,
+              subject, materials: materialsArg, members: rosterArg, roster: rosterArg, chair: String(chairText), at: atArg,
+              // ★ the SAME gate the service applies at `conveneRequiresChair`: a convene that installs a chair must
+              // name that chair as its actor. This face already resolved the chair (argument or turn context), so it
+              // passes the resolved id on rather than letting the service refuse a call that named nobody.
+              actor: String(chairText),
+            }, declared))
+            return Object.assign({ action, registry: 'service', appointment: action === 'schedule' ? 'scheduled' : 'appointed', chair: String(chairText) }, opened || {}, {
+              notified: opened && Array.isArray(opened.notified) ? opened.notified : [],
+              notifyRows: opened && Array.isArray(opened.notifyRows) ? opened.notifyRows : [],
+              notifyFailed: opened && Array.isArray(opened.notifyFailed) ? opened.notifyFailed : [],
+              noticesMeans: 'the appointment notices are durable mailbox rows (channel "mail") delivered to every invited member (roster minus chair); read notified/notifyFailed in this receipt, and a member settles its row with mailbox ack (the notice block keeps showing it until then)',
+            })
           }
           // ★★★ RUN 239-D (the user's requirement: "a wait must really work — wait until the meeting event happens,
           // then wake up; otherwise keep waiting"): THE WAITING DOOR. `kernel/meetings.js` keeps a durable waiter table,

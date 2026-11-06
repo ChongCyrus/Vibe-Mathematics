@@ -9,7 +9,8 @@
 //
 // Run: node tests/vmu-run225c-office-substitution.test.mjs
 
-import { mkdirSync, mkdtempSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -121,26 +122,34 @@ let office = null
     '★ and the sentence says why the answer is null instead of false', ghost && ghost.memberActedMeans)
 }
 
-// ── §4 the `read` receipt carries the md/index comparison (`state` did; `read` used to drop it) ───────────────────
+// ── §4 the `read` receipt carries the md/index comparison AND the draft-file facts (`state` did; `read` used to drop) ──
 {
-  console.log('\n=== §4 blueprint read forwards the md fields state prints ===')
+  console.log('\n=== §4 blueprint read forwards the md fields state prints (the draft file included) ===')
   const proposed = await call('vibe_v5_blueprint', { action: 'propose', path: 'Shared/Protocol.md', member: 'r-acad', text: '# 公共蓝图\n- 命题：前 n 个奇数之和 = n²。\n- 步骤：归纳。' })
   ok(proposed && proposed.ok === true, 'the blueprint accepts a proposal', proposed)
   const id = proposed && typeof proposed.id === 'string' ? proposed.id : ''
   ok(id !== '', 'the proposal names the row it created', proposed && Object.keys(proposed))
+  const DRAFT = 'Shared/Drafts/Protocol-r1.md'
+  const draftAbs = join(root, 'VibeMath', 'Shared', 'Drafts', 'Protocol-r1.md')
+  const canonicalAbs = join(root, 'VibeMath', 'Shared', 'Protocol.md')
   const read = await call('vibe_v5_blueprint', { action: 'read', id, path: 'Shared/Protocol.md' })
   ok(read && read.ok === true, 'read answers for that row', read)
   ok(read && typeof read.md === 'object' && read.md !== null, 'read carries the md block (it used to drop it)', read && Object.keys(read))
-  // RUN 238: a DRAFT writes no md file (adoption is the only writer), so a draft row must SAY the file
-  // is deferred instead of handing back a sha of something that is not on disk. The propose receipt owns
-  // that sentence; the read face reports the same fact as mdMissing (it never fakes a file).
-  ok(proposed && proposed.md && proposed.md.deferredTo === 'adopt' && proposed.md.written === false,
-    'a draft says the md is deferred to adopt (no file was written for it)', proposed && proposed.md && proposed.md.deferredTo)
-  ok(proposed && proposed.md && typeof proposed.md.means === 'string' && proposed.md.means.indexOf('DRAFT writes no md file') !== -1,
-    'and the sentence says why: the draft lives in its index row until adoption', proposed && proposed.md && proposed.md.means)
-  ok(read && read.mdMissing === true, 'the read face reports the file as missing rather than returning the index as if it were the file', read && read.mdMissing)
-  ok(read && (read.mdFingerprint === null || read.mdFingerprint === ''),
-    'and it carries no file fingerprint, because there is no file', read && read.mdFingerprint)
+  // ★ RUN 248-M2 修 pin：旧断言是 `md.deferredTo === 'adopt' && md.written === false`（「草案不写文件，adopt 才写」）。
+  // 用户裁定反转后，这次改写要证明的**同一件事**是：回执把「草案文件」与「生效文件」分开披露，并且说清是谁写的、写在哪。
+  // 现在草案自己就是一个文件，所以答案从「延后给 adopt」变成「writtenBy + mdPath」，而 canonical 仍未被动过。
+  ok(proposed && proposed.md && proposed.md.written === true && proposed.md.writtenBy === 'kernel-materialized' && proposed.md.mdPath === DRAFT,
+    'a draft says its own md file was written, by whom and where', proposed && proposed.md)
+  ok(existsSync(canonicalAbs) === false, 'and the canonical document in force is still NOT on disk (adopt alone promotes)', { abs: canonicalAbs })
+  ok(proposed && proposed.md && typeof proposed.md.means === 'string' && proposed.md.means.indexOf('sha256') !== -1,
+    'and the sentence says the row indexes the sha256 of the bytes now on disk', proposed && proposed.md && proposed.md.means)
+  // ★ 旧断言「read 说文件 missing、且没有指纹」要证明的是「读面不假装索引就是文件」。新语义下要证明同一件事：
+  // 读面必须指向**这一版自己的文件**（不是 canonical），说它存在，而且给出的 sha 是那个真实文件的 sha。
+  ok(read && read.mdMissing === false && read.md && read.md.exists === true, 'the read face reports the draft md as PRESENT, not missing', read && read.md)
+  ok(read && read.draftMdPath === DRAFT && read.mdWritten === true, 'read names the draft file and says it is on disk', { draftMdPath: read && read.draftMdPath, mdWritten: read && read.mdWritten })
+  ok(read && read.md && read.md.path === DRAFT, 'the md reading points at the DRAFT file, not the canonical one', read && read.md && read.md.path)
+  const draftSha = 'sha256:' + createHash('sha256').update(readFileSync(draftAbs)).digest('hex')
+  ok(read && read.mdFingerprint === draftSha, 'and the fingerprint it carries is the sha256 of THAT file', { got: read && read.mdFingerprint, want: draftSha })
   ok(read && read.mdChangedSinceIndex === false, 'a draft is not reported as changed on disk', read && read.mdChangedSinceIndex)
   ok(read && typeof read.mdMeans === 'string' && read.mdMeans.length > 0, 'read carries the md means', read && read.mdMeans)
 }

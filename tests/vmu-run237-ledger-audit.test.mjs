@@ -88,10 +88,18 @@ const codesOf = (parsed) => ((parsed && parsed.problems) || []).map((p) => p.cod
   // ★ RUN 242: this used to be `gaps.length >= 3`, i.e. it counted the ledger instead of asserting the invariant -
   // so closing a gap for a GOOD reason (E16, now proved end-to-end by tests/vmu-run242-order-write.test.mjs) turned
   // this suite red, which is a ruler measuring itself. The invariant is WHICH rows are unreachable without a
-  // different deployment or a human ruling: C10 needs a deployment with Lean, D2 is an architecture ruling only the
-  // user can make. Flipping either to DONE to make the gate look green is the fraud this test exists to catch.
-  ok(gapIds.includes('C10') && gapIds.includes('D2'),
-    'the genuinely unobservable rules are declared as gaps (C10 Lean deployment, D2 user ruling), not as DONE', { gaps: gapIds })
+  // different deployment or a human ruling: C10 still needs a deployment with Lean. D2 was exactly such a row until
+  // the user ruled the other way in RUN 248 (m37456: members manage their own channels), after which the three
+  // channels are observable end-to-end (tests/vmu-run248-notice-delivery.test.mjs). Flipping a gap to DONE to make
+  // the gate look green is still the fraud this test exists to catch — so a row that leaves the gap list must now
+  // answer the observation audit in the open, with a maintained suite, not with silence.
+  const d2 = real.items.find((it) => it.id === 'D2')
+  ok(gapIds.includes('C10'),
+    'the genuinely unobservable rule is still declared a gap (C10 needs a deployment with Lean), not quietly DONE', { gaps: gapIds })
+  ok(d2.status === 'DONE' && d2.auditDispute && d2.auditDispute.acknowledged === true &&
+    /^tests\/vmu-run248-/.test(String(d2.auditDispute.evidence)),
+    'D2 left the gap list only through the user ruling, and the DONE answers the observation audit with a maintained suite',
+    { status: d2.status, evidence: d2.auditDispute && d2.auditDispute.evidence })
   ok(gaps.every((g) => typeof g.next === 'string' && g.next.trim().length >= 8), 'each gap says what would close it')
 
   const green = runGate(null)

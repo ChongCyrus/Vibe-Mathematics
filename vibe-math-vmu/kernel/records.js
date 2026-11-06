@@ -260,6 +260,10 @@ export const MD_MARKER_KEY = 'vmuMd'
 export const MD_TEXT_SECTION = '正文'
 export const MD_SEP = '：'
 export const MD_REBUILT_KEY = 'mdFingerprint'
+// ★★★ RUN 248: the header key that makes ONE row own its OWN file. A draft revision is ABOUT `Shared/Protocol.md` but is
+// WRITTEN to `Shared/Drafts/Protocol-r<N>.md`, so the body `path` cannot be the file a draft row indexes: `mdPath` is.
+// Rows whose `mdPath` equals their `path` (adopted documents) keep exactly the old behaviour.
+export const MD_PATH_KEY = 'mdPath'
 const MD_MAX_DEPTH = 8
 
 /** md text of any value (never the string "undefined"). */
@@ -1595,15 +1599,17 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     mdRead({ path = null } = {}) {
       const wanted = mdStr(path).trim()
       const absPath = api.mdPathOf(wanted)
-      const unavailable = () => ({ ok: true, enforced: [], available: false, exists: false, path: wanted, absPath: null, fingerprint: null, doc: null, means: 'this records instance is not attached to a durable store, so it cannot name the workspace root and will not guess where a document lives' })
+      const unavailable = () => ({ ok: true, enforced: [], available: false, exists: false, path: wanted, absPath: null, fingerprint: null, doc: null, content: null, bytes: 0, means: 'this records instance is not attached to a durable store, so it cannot name the workspace root and will not guess where a document lives' })
       if (absPath === null) return unavailable()
-      if (!existsSync(absPath)) return { ok: true, enforced: [], available: true, exists: false, path: api.mdRelOf(absPath), absPath, fingerprint: null, doc: null, means: 'no md at this path yet: a revision has not been written to disk (or the file was removed) — the index is the only holder until reindex reports it' }
+      if (!existsSync(absPath)) return { ok: true, enforced: [], available: true, exists: false, path: api.mdRelOf(absPath), absPath, fingerprint: null, doc: null, content: null, bytes: 0, means: 'no md at this path yet: a revision has not been written to disk (or the file was removed) — the index is the only holder until reindex reports it' }
       let content = ''
       try { content = readFileSync(absPath, 'utf8') } catch (e) {
-        return { ok: false, enforced: [], available: true, exists: true, path: api.mdRelOf(absPath), absPath, fingerprint: null, doc: null, error: { code: (e && e.code) || 'VMU_MD_READ_FAILED', message: String((e && e.message) || e) }, means: 'the md exists but could not be read: this read makes NO claim about its content' }
+        return { ok: false, enforced: [], available: true, exists: true, path: api.mdRelOf(absPath), absPath, fingerprint: null, doc: null, content: null, bytes: 0, error: { code: (e && e.code) || 'VMU_MD_READ_FAILED', message: String((e && e.message) || e) }, means: 'the md exists but could not be read: this read makes NO claim about its content' }
       }
       const doc = mdParseText(content)
-      return { ok: true, enforced: [], available: true, exists: true, path: api.mdRelOf(absPath), absPath, fingerprint: mdFingerprintOf(content), doc, means: 'the file on disk as bytes; `doc` is its parsed shape (a file without the ' + MD_MARKER_KEY + ' marker is disclosed, never taken for a blueprint)' }
+      // ★★★ RUN 248: `content`/`bytes` are the RAW bytes — a caller that must treat a member-written plain md (no
+      // `- vmuMd：` marker) as the document itself cannot rebuild it from `doc` (which only describes a vmu md).
+      return { ok: true, enforced: [], available: true, exists: true, path: api.mdRelOf(absPath), absPath, fingerprint: mdFingerprintOf(content), doc, content, bytes: Buffer.byteLength(content, 'utf8'), means: 'the file on disk as bytes; `doc` is its parsed shape (a file without the ' + MD_MARKER_KEY + ' marker is disclosed, never taken for a blueprint), and `content` is those bytes verbatim so a plain md can be adopted as itself' }
     },
 
     /**
@@ -1723,15 +1729,22 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       // that could not be read, a file whose bytes are not a vmu document at all (a member's own notes), and a
       // card whose track this kernel does not declare. Reported as one list, the second kind reads like "there are
       // a pile of broken files". Each skip now carries `whyClass` and the counts are split.
-      const skippedByClass = { unreadable: 0, 'not-a-vmu-md': 0, 'undeclared-track': 0, 'write-refused': 0 }
+      const skippedByClass = { unreadable: 0, 'not-a-vmu-md': 0, 'undeclared-track': 0, 'write-refused': 0, 'orphan-draft-md': 0 }
       const noteSkip = (item) => {
         const cls = item && item.whyClass ? item.whyClass : 'unreadable'
         skippedByClass[cls] = (skippedByClass[cls] || 0) + 1
         skipped.push(item)
       }
       const mdByKey = new Map()
+      // ★★★ RUN 248: md files keyed by their OWN rel path (every walked file, vmu or not) plus the set of rel paths that
+      // exist at all — a draft row is accounted against the file its `mdPath` names, which need not be a vmu md.
+      const mdByRel = new Map()
+      const walkedRels = new Set()
+      // a vmu md that declares `mdPath` different from its `path` is a DRAFT revision file, never the document in force
+      const draftRels = new Set()
       for (const file of files) {
         const rel = api.mdRelOf(file)
+        walkedRels.add(rel)
         let content = ''
         try { content = readFileSync(file, 'utf8') } catch (e) {
           noteSkip({ path: rel, whyClass: 'unreadable', why: 'unreadable: ' + String((e && e.code) || (e && e.message) || e) })
@@ -1754,8 +1767,23 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         }
         if (filter !== null && doc.track !== filter) continue
         const declared = mdStr(doc.fields && doc.fields.path).trim()
+        const declaredMdPath = mdStr(doc.fields && doc.fields[MD_PATH_KEY]).trim()
+        const key = declared === '' ? rel : declared
+        const entry = { rel, doc, fingerprint: mdFingerprintOf(content) }
         seenPaths.push(rel)
-        mdByKey.set(declared === '' ? rel : declared, { rel, doc, fingerprint: mdFingerprintOf(content) })
+        mdByRel.set(rel, entry)
+        // ★★★ RUN 248 (MEASURED): a DRAFT md names the path its revision is ABOUT (`path：Shared/Protocol.md`) and ITSELF
+        // as `mdPath`. It is not the document in force, so it must never win the declared-path index: indexed here it
+        // would be adopted as an extra row (breaking "one adoption = exactly one row") and could hide external edits to
+        // the real document. Draft files are only ever accounted against the ROW that claims them via `mdPath`.
+        const isDraftFile = declaredMdPath !== '' && declaredMdPath !== declared
+        if (isDraftFile) {
+          entry.draftOf = declaredMdPath
+          draftRels.add(rel)
+          continue
+        }
+        const previousEntry = mdByKey.get(key)
+        if (previousEntry === undefined || rel === key) mdByKey.set(key, entry)
       }
 
       // the index: every live row of every declared track, grouped track → path → rows
@@ -1774,11 +1802,37 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
             revision: Number(mdFieldOf(rec.body, 'revision')),
             status: mdFieldOf(rec.body, 'status'),
             mdFingerprint: mdFieldOf(rec.body, MD_REBUILT_KEY),
+            // ★★★ RUN 248: the file THIS row owns, when it is not the path its body names (a draft revision).
+            mdPath: mdFieldOf(rec.body, MD_PATH_KEY),
             updatedAt: Number(rec.updatedAt) || 0,
           }
           const list = byPath.get(bodyPath) || []
           list.push(row)
           byPath.set(bodyPath, list)
+        }
+      }
+
+      // ★★★ RUN 248 (MEASURED, task-64): A DRAFT ROW OWNS ITS OWN FILE, NOT THE PATH ITS BODY NAMES. A draft md declares
+      // `path：Shared/Protocol.md` (the revision it is about) while its row carries
+      // `mdPath：Shared/Drafts/Protocol-r<N>.md`. Keyed by the declared path alone, the draft file is invisible below and
+      // its row is reported `missing` while its md sits on disk. So: every row whose `mdPath` differs from its body
+      // `path` is taken out of the path group BEFORE the mdByKey loop (the loop deletes whole groups; a claimed row left
+      // in a group would be dropped with it and never accounted), and is then accounted against ITS file below (never
+      // double-counted, never "missing").
+      const claimed = []
+      for (const [trackName, byPath] of indexByTrack) {
+        for (const [pathKey, rows] of byPath) {
+          const remaining = []
+          for (const row of rows) {
+            const owned = mdStr(row.mdPath).trim()
+            if (owned !== '' && owned !== pathKey) {
+              claimed.push({ trackName, pathKey, row, owned })
+              continue
+            }
+            remaining.push(row)
+          }
+          if (remaining.length === 0) byPath.delete(pathKey)
+          else byPath.set(pathKey, remaining)
         }
       }
 
@@ -1864,6 +1918,60 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       }
 
       const missing = []
+      const claimedRels = new Set()
+      for (const item of claimed) {
+        const row = item.row
+        claimedRels.add(item.owned)
+        if (!walkedRels.has(item.owned)) {
+          missing.push({
+            track: item.trackName, path: item.owned, ids: [row.id], revisions: [row.revision], kind: 'draft-md',
+            means: '索引行记的草案 md ' + item.owned + ' 不在磁盘上：具名报告，不删行（文件缺失是事实，索引不是正文的替代品）',
+          })
+          continue
+        }
+        const entry = mdByRel.get(item.owned)
+        if (entry === undefined) {
+          // the file exists but is NOT a vmu md (a member's plain markdown draft): the row IS its index — nothing to
+          // rebuild, and saying so is not an accusation that the file is broken
+          unchangedList.push({
+            path: item.owned, id: row.id, kind: 'member-plain-md', mdFingerprint: row.mdFingerprint === undefined ? null : row.mdFingerprint,
+            means: '这份草案 md 不是 vmu 文档（没有 `- ' + MD_MARKER_KEY + '：` 头）：索引行是它的唯一索引，reindex 不改写它',
+          })
+          continue
+        }
+        const fp = entry.fingerprint
+        if (row.mdFingerprint !== null && row.mdFingerprint === fp) {
+          unchangedList.push({ path: item.owned, id: row.id, kind: 'draft-md', mdFingerprint: fp })
+          continue
+        }
+        const draftChanged = {
+          path: item.owned, rel: entry.rel, id: row.id, rowChoice: 'mdPath', kind: 'draft-md',
+          revisionMd: entry.doc.fields.revision, revisionIndex: Number.isFinite(row.revision) ? row.revision : null,
+          mdFingerprint: fp, indexFingerprint: row.mdFingerprint,
+        }
+        if (dry) { changed.push(draftChanged); continue }
+        try {
+          api.supersede({
+            id: row.id, title: mdStr(entry.doc.title) === '' ? row.title : entry.doc.title, body: mdRowBodyOf(entry.doc, fp), by: caller,
+            reason: '草案 md 被外部改过：reindex 用磁盘上的正文重写这一行（旧正文留在该行版本历史里，旧行不删）',
+          })
+          changed.push(Object.assign({}, draftChanged, { means: '草案行换成它自己 md 的快照：`' + MD_PATH_KEY + '` 让它认回自己的文件，而不是被当成缺文件' }))
+        } catch (e) {
+          noteSkip({ path: item.owned, whyClass: 'write-refused', why: 'draft reindex supersede refused: ' + String((e && e.code) || 'VMU_UNKNOWN') + ' ' + String((e && e.message) || e) })
+        }
+      }
+      // ★★★ RUN 248: a draft md file that NO live row claims is a revision file whose row moved on (e.g. the draft was
+      // adopted and its `mdPath` now names the canonical document). It is history on disk, not a document to adopt: named
+      // here, never turned into an extra index row and never silently dropped.
+      for (const rel of draftRels) {
+        if (claimedRels.has(rel)) continue
+        const entry = mdByRel.get(rel)
+        noteSkip({
+          path: rel,
+          whyClass: 'orphan-draft-md',
+          why: '这份草案 md 声明的是 ' + mdStr(entry && entry.draftOf) + '，但它没有活行认领（草案已被采纳，行的 mdPath 已指向 ' + mdStr(entry && entry.draftOf) + '）：它是磁盘上的历史，不是要收进来的文档',
+        })
+      }
       for (const [trackName, byPath] of indexByTrack) {
         for (const [pathKey, rows] of byPath) {
           missing.push({

@@ -37,7 +37,7 @@
 | `vibe_vmu_script`（`script`） | 本次运行**声明了脚本** | 执行 M3 脚本 | `list` ✓；`run` ✗ | `list`(默认)`/run` |
 | `vibe_vmu_pack`（`pack`） | 传入 `packLoader` | 包装载 | `list/plan` ✓；`apply/unload` ✗ | `list`(默认)`/plan/apply/unload` |
 | `vibe_vmu_control`（`control`） | `controlTool` 为真 | 控制面 | `status` ✓；`pause/resume/stop/beat` ✗ | `status`(默认)`/pause/resume/stop/beat/roster/hire/fire` |
-| `vibe_vmu_meeting`（`meeting`） | `meetingTool` 为真 | 会议/表决原语 | `list` ✓；写动作 ✗ | `list/open/speak/silent/close/ballot/vote/tally/reopen` |
+| `vibe_vmu_meeting`（`meeting`） | `meetingTool` 为真 | 会议/表决原语 | `list` ✓；写动作 ✗ | `list/open/appoint/schedule/speak/silent/close/ballot/vote/tally/reopen` |
 | `vibe_vmu_task`（`task`） | `taskTool` 为真 | 任务台账 | `list/stage/brief/history` ✓；写动作 ✗ | `list/create/assign/transition/stage/advance/brief/history` |
 | `vibe_vmu_turn`（`turn`） | `turnTool` 为真 | 回合执行 | `status` ✓；`step/drive` ✗ | `status`(默认)`/step/drive` |
 | `vibe_vmu_tools`（`memberTools`） | `vmu.members.*` 或 `vmu.tools.faces` 声明该面 | 成员可见工具自省 | 全只读 ✓ | `member`（必填） |
@@ -162,16 +162,17 @@
 - **反模式**：✗ 把 `beat` 当"续期预算"（它只是观测）｜✗ 用 `stop` 当"重启"（stop 后**不能** resume，需重新启动）。
 
 ### 2.8 `vibe_vmu_meeting` ✓
-- **参数**：`action`（enum：`list|open|speak|silent|close|ballot|vote|tally|reopen`）｜`id`（会议 id；speak/silent/close 必填，open 可指定）｜`ballotId`（vote/tally/reopen 必填）｜`member`（speak/silent/vote 必填）｜`text`（speak 必填）｜`reason`（silent/close/reopen）｜`agenda`（open）｜`roster`（array；open）｜`target`（ballot 必填）｜`value`（vote 必填）｜`kind`（vote：`decisive`(默认)`|advisory`）。
-- **返回**：`list` ⇒ `kernel.liveList()`（live 会议/表决）｜`open` ⇒ `{ok,action,id,state}`｜`speak/silent/close` ⇒ 原语回执｜`ballot` ⇒ `{ok,action,ballotId,opened,target}`｜`vote` ⇒ 原语 `cast()` 回执｜`tally` ⇒ `close('tally')` 结果｜`reopen` ⇒ `{reopened:…}`（原语不支持时返回 `reopened:false`）。
+- **参数**：`action`（enum：`list|open|appoint|schedule|speak|silent|close|ballot|vote|tally|reopen`）｜`id`（会议 id；speak/silent/close 必填，open 可指定，appoint/schedule 可指定、缺省内核分配）｜`ballotId`（vote/tally/reopen 必填）｜`member`（speak/silent/vote 必填）｜`text`（speak 必填）｜`reason`（silent/close/reopen）｜`agenda`（open；appoint/schedule 未给 `materials` 时作 materials）｜`roster`（array；open）｜`target`（ballot 必填）｜`value`（vote 必填）｜`kind`（vote：`decisive`(默认)`|advisory`）｜**预约词表（RUN 248-N）**：`at`（会议开始时间：部署时钟的 ISO 字符串或 epoch 毫秒；**`schedule` 必填**，`appoint` 不给＝立即开始）｜`scheduledFor`（**`at` 的别名**；同时给且不一致 ⇒ 以 `at` 为准，回执照实记录）｜`type`（会议类型，按部署的 `typeCatalog`）｜`title`（通知与纪要里的名字）｜`materials`（议题/材料正文）｜`lateAdmission`（`open`(默认)`|chair|refuse`）｜`wallLimitMs`（本场墙钟上界，毫秒；内核按声明区间校验）｜`formalAgenda`（是否声明正式议程）。
+- **返回**：`list` ⇒ `kernel.liveList()`（live 会议/表决）｜**`appoint`/`schedule` ⇒ 服务会议的预约回执**（`{ok,action,id,state:"scheduled"|"open",scheduledFor、type、title、notified:[成员]、notifyRows:[{member,mailId}]、notifyFailed:[{member,reason}]}`；投不出去的**逐人具名**，不是静默丢）｜`speak` **由本会主席对全体（不带 `to`）时**额外回 `deliveredTo`、`deliveredRows`、`broadcastFailed`、`broadcastMeans`（普通成员发言只进纪要、不推送）｜`open` ⇒ `{ok,action,id,state}`｜`speak/silent/close` ⇒ 原语回执｜`ballot` ⇒ `{ok,action,ballotId,opened,target}`｜`vote` ⇒ 原语 `cast()` 回执｜`tally` ⇒ `close('tally')` 结果｜`reopen` ⇒ `{reopened:…}`（原语不支持时返回 `reopened:false`）。
 - **票值归一化（体贴模型的实现细节）**：`1/0` 直传；`"1"|"true"|"for"|"yes"|"赞成"|"同意"` ⇒ `1`；`"0"|"false"|"against"|"no"|"反对"` ⇒ `0`；**其它原样透传**（让原语给出权威拒绝）。
 - **错误码**：`VMU_NO_SUCH_OBJECT`（live 会议/表决 id 不存在，附 `use action=list`）｜`VMU_INVALID_ARGUMENT`（缺必填参数／未知 action）｜`VMU_STATE`（原语状态不允许，如重复开/关）｜`VMU_MEETING_TOO_SMALL`（参与人数不足门槛）。
-- **幂等**：`list` ✓；`open/ballot` ✗（每次生成新 id）；`vote` ✗；`tally` ✗（会闭合并计票）；`reopen` ✗。
+- **幂等**：`list` ✓；`open/ballot` ✗（每次生成新 id）；`vote` ✗；`tally` ✗（会闭合并计票）；`reopen` ✗；**`appoint`/`schedule` ✗**（每次约一个新会 id；同一 `at` 重复约＝两场会，不是覆盖）。
+- **预约与推送（RUN 248-N）**：`appoint`（立即开始）/`schedule`（`at` 必填）寻址 **`vmu.meetings` 服务记录**；成功后给 roster 里除主席外**每人**投一条**耐久 mailbox 行**（`channel:"mail"`，含类型/议题/时间/主席/席位/**可直接照抄的 `attend` 调用**）。被邀成员的**下一回合提示最上方**会出现 `[新到的消息]` 块里的 `【会议预约·<主席>】…` 一行；该行**非破坏性**（未 ack 前每回合都在），读正文/入席/ack 三步结算。主席**对全体发言**（`speak` 且发言人＝主席）会给每个在席成员投一条 `channel:"group"` 耐久行（摘要 ≤800 字符 ＋ 指向纪要/转录的全文指针）；普通成员发言只进纪要。**邀请 ≠ 签到**：预约只建会与投递，`attend` 才把人标记到场、才计法定人数。
 - **可照抄**：
   `{"action":"open","agenda":"议题：n=3 的归约","roster":["acad","r-1"]}`
   `{"action":"vote","ballotId":"b-1","member":"r-1","value":"赞成"}`
   **通用纪律：先 `list` 拿 live id，再寻址。**
-- **反模式**：✗ 猜会议/表决 id（一律先 `list`）｜✗ 把 `advisory` 票当决定票（`kind` 语义由原语与政策定）｜✗ 用 `speak` 表达票（**票只由 `vote` 产生**）。
+- **反模式**：✗ 猜会议/表决 id（一律先 `list`）；✗ 把「预约已投递」当成「对方会来」（`notified` 只说明邮件投出去了，到场要 `attend`）；✗ 用 `speak` 反复催被邀者（投递是一次性的耐久行，催只会变成他自己的未读积压）｜✗ 把 `advisory` 票当决定票（`kind` 语义由原语与政策定）｜✗ 用 `speak` 表达票（**票只由 `vote` 产生**）。
 
 ### 2.9 `vibe_vmu_task` ✓
 - **参数**：`action`（enum：`list|create|assign|transition|stage|advance|brief|history`）｜`id`（assign/transition/brief 必填）｜`title`（create 必填）｜`objective`｜`owner`（create/assign）｜`deps`（array）｜`to`（transition/advance）｜`reason`。
@@ -364,6 +365,7 @@ session/event · system-prompt/assemble · prompt/assemble · settings/changed �
 | `VMU_VERSION_MISMATCH` | 协议/包版本不匹配 | 对齐 `apiVersion`/manifest 版本（回执给双方版本） |
 | `VMU_RESOURCE_BUDGET` / `VMU_QUOTA_EXCEEDED` | 触达预算/配额 | 看回执的当前值与上限；调整 `vmu.limits.*` 或减载 |
 | `VMU_PACK_CONFLICT` / `VMU_PACK_MISSING` / `VMU_PACK_KERNEL_OVERRIDE_REFUSED` | 包冲突/缺失/试图覆盖内核强制面 | 先 `pack plan`；改名；**内核面不可覆盖** |
+| `VMU_PACK_V5R_BLUEPRINT_MD_MISSING` / `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT` | 蓝图**草案 md 缺失**（`propose` 的 `mdPath` 处没有文件，或 `adopt` 时草案文件被删）／**草案行与文件分叉**（提交后又改过文件，sha 不等） | 缺失：用 fs 写好同一 `mdPath` 再重提（或省掉 `mdPath` 让内核物化到 `Shared/Drafts/`）；分叉：先 `vibe_v5_records {action:"reindex"}` 收编外部编辑、再 `adopt`（回执给路径与两个 sha，**绝不静默晋升**） |
 | `VMU_MIDDLEWARE_REJECTED` | 中间件**显式**拒绝 | 看 `middleware id`（回执必须给）；改行为或让该条目放行 |
 | `VMU_MIDDLEWARE_FAILED` | 中间件异常/越权/超时/注册失败 | 看 `middleware/failure-policy` 审计与 `consecutiveFailures`（可能已熔断） |
 | `VMU_DEGRADED` | 条目在降级窗口（熔断/退避） | 看恢复条件；必要时 `enable` 复位 |
