@@ -17591,3 +17591,40 @@ String(said).trim() !== ''`）给每个在席成员（除主席）投一条 `cha
 2. G-1…G-4 全部要夹具预置（真证明卡、完稿卡+Lean 作业、1/0.4 双裁决、build 自证）。
 3. A（未知命题仍投递）与 D（`proofGate` 谎报）是机制侧，未在本轮修。
 4. F-04/F-05/F-06/F-07/F-08/F-09 是回执/读数合同问题，需单独一轮「回执自述必须可核对」。
+
+## §347 `347` RUN 250 —— 证据要能从回执核到磁盘
+
+**347.1 现象与量化。**
+第 70 次真机（build **0a9e9783**）同时是两件真事：①`[新到的消息]` 块**真的**进了成员提示——工作区里 **70 处**命中，`Members/r-acad/Turns/t-1.md` 与 `Members/r-1/Turns/t-6.md` 也**真的**在磁盘上（RUN 249 的 task-69 交付）；②`vibe_vmu_turn {op:"status"}` 的 `turnReceipts` 行里，`notices` / `replyFullPath` / `replyFullSha256` / `replyFullBytes` **全会话 0 命中**。也就是说：东西送到了、也落了盘，但**所办从回执里读不到这两件事**——验收只能回退成「扫工作区、翻成员子会话」。
+
+**347.2 为什么这是缺陷，而不是「文档没写全」。**
+回执是验收的**唯一**结算面。一个读数字段只在交付 seam 的返回值上存在、不搬到 `turnReceipts`，等价于这个读数在架构上**只对写它的那次调用可见**：下一次 `op:"status"` 就查不到，换一个会话更查不到。于是「块渲染了没有」「全文落在哪」这两个本该一条回执就答完的问题，变成了「请人去找」——而找人找到的答案不可复算、不可写进台账。RUN 249 把事实造出来了（块、归档、字节数），RUN 250 只补**传输**：`assemble()` 早就算过块的边界，`runFrom` 早就量过切点、写过归档，缺的只是把**同一批读数**抄到回合行上。
+
+**347.3 修法：只搬运、不重算；`null` 是名词；拒绝语义不变。**
+- **槽位在开行时就存在**：`vibe-math-vmu/kernel/turn/index.js:2076-2082` 的 `noteTurnReceipt` 行模板新增 8 个证据槽，**预置 `null`**——`notices` / `truncated` / `excerptLen` / `emptyReply` / `replyFullPath` / `replyFullSha256` / `replyFullBytes` / `replyArchiveWhy`。注释把语义写死：`null`＝「这个回合环对这一项还没有读数」，**永远不是**「值丢了」。
+- **只搬运、不重算**：`vibe-math-vmu/kernel/turn/index.js:2095-2113` 只接受已经成立的读数——`emptyReply` 必须是 boolean、`replyBytes` 必须 `Number.isFinite`、`notices` 归一成 `{lines, rendered, blockChars}`、`truncated` boolean、`excerptLen`/`replyFullBytes` 非负整数、`replyFullPath`/`replyFullSha256`/`replyArchiveWhy` 非空字符串。回执面与台账面因此**不可能**给出两个不同的切点。
+- **caller-played 的早返回也要留块读数**：`vibe-math-vmu/kernel/turn/index.js:3802-3805` 在 awaiting 分支记下 `notices`（`try/catch` 包住，注释：台账永远不能替代提示）。
+- **一份证据对象、两处消费**：`vibe-math-vmu/kernel/turn/index.js:3865-3881` 的 `evidence` 与成功回执读**同一批变量**（`asm.notices`、`replyTruncated`、`Math.min(rawText.length, REPLY_EXCERPT_MAX)`、归档三字段、`replyArchiveWhy`）；`replyArchiveWhy` 只在「被切了、且没有归档成功」时是字符串，其余为 `null`（没有要警告的事）。
+- **解析失败只填证据、不标 settled**：`vibe-math-vmu/kernel/turn/index.js:3909-3913` 先 `noteTurnReceipt(turn, evidence)` 再抛出——拒绝的语义**一个字没改**（那一轮仍然「没有应用」），只是它现在带了可核对的证据。
+- **失败/成功两条补丁都带上证据**：`vibe-math-vmu/kernel/turn/index.js:3950`（`status:"failed"` + code + evidence）、`:3959`（`emptyReply` + `replyBytes` + evidence）。
+- **回执自己解释字段**：`vibe-math-vmu/kernel/turn/index.js:5170` 的 `turnReceiptsMeans` 逐字段说明 `notices` 是 `{lines, rendered, blockChars}`（「这一回合的投递渲染了吗」可逐回合核对，不用扫工作区）、`truncated`/`excerptLen` 是回执自己的切法、`emptyReply`/`replyBytes` 是成员写了什么、被切时全文在 `replyFullPath` + `replyFullSha256`/`replyFullBytes`（**去核真文件**）、`null` 是具名缺席、`replyArchiveWhy` 说明为什么没有全文文件（没有归档 seam，或 seam 拒了）。
+
+**347.4 判据怎么量到外部源（不读被测代码的自述）。**
+新套件 `tests/vmu-run250-turn-receipt-evidence.test.mjs`（256 行，§0–§5）刻意把每一格都量到**外部源**，而不是抄回执的话：
+- `blockChars` 与「交付 seam 真收到的 prompt 里切出的块」逐字节相等（§2）；
+- `replyFullBytes` / `replyFullSha256` 对**真磁盘**：读文件字节数、自己算 `sha256`，再与回执比（§3）；
+- office 面那一格走**真** `makeTurnSpec` 的 `vibe_vmu_turn {op:"status"}`，然后拿行里的路径去核文件（§4）；
+- 没有未读行时断言 `notices {lines:0, rendered:false, blockChars:0}` 且归档字段是**显式 `null`**、**没有任何键是 `undefined`**（§1）；
+- 没有归档 seam 时，行里必须**具名**说明原因（`…no writeTurnArchive seam…`），字段仍是显式 `null`（§5）。
+
+**347.5 实测（本机）。**
+- 新套件：`node tests/vmu-run250-turn-receipt-evidence.test.mjs` ⇒ **48 passed, 0 failed**。
+- 权威冷全量 T1：**TOTAL 776 PASS 776 FAIL 0**（树静默、446 s、suites **696**、probes **80**）。
+- 四门禁全绿；`regen-all --check` **17/17 in sync**；`update-doc-counts --write` 由 lead 跑过（JOBS **776** / suites **696** / probes **80**）。
+- 回归计数（同一批里抽几条）：`vmu-run239-prompts` **74/0**、`vmu-run247-prompt-dedup` **74/0**、`vmu-run248-notice-delivery` **117/0**。
+
+**347.6 教训与遗留。**
+- **「渲染了」与「回执里能核对」是两件事。** 前者证明投递链通了，后者才让验收有落点；只做到前者，验收就被迫变成「去工作区找」——那是不可复算的证据。
+- **`null` 必须是名词。** 一个「还没有读数」的回合与一个「值丢了」的回合在读者眼里必须不同，否则台账又在自述一个它不知道的事实。
+- **只搬运不重算**是这类修复的通用形态：造事实的地方（`assemble()`、`runFrom`）和搬事实的地方（`noteTurnReceipt`）必须分开，搬运层不许有自己的算法。
+- 遗留：`notices.blockChars` 量的是块边界，不含其后的状态块；若将来提示拼装顺序改变，`blockChars` 的口径要在 `turnReceiptsMeans` 里同步改写，否则「能核对」会变成「核对了另一个东西」。

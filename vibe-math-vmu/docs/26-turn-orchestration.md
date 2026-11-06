@@ -4613,3 +4613,29 @@ coverage debt 由各自 `--write` 收口）。
 
 **十、文档账补记（state-lane / task-72 之后）。** `vibe-math-vmu/docs/18-command-and-protocol-reference.md`：§2.2 `vibe_vmu_set` 回执补 `actedBy`／`actedBySource`（`caller`｜`declared-by`｜`office-path`）／`actedByMeans`（`who` 是声明所有者、`actedBy` 是实际动手的人；`who:"office"` ＋ `ownerCheck:"exempted (no by)"` 旧读数不变）；新增 §2.11 `vibe_vmu_human`（`recover` 回执的 `rosterIntact` 组／`ledgerIntact` 组／`needsHuman` 组，语义「`ok:false` 不再等于人丢了」、记录 id `recovery-rec-<n>` ＋ `idSpace:"recovery"`）与 §2.12 `vibe_vmu_tools`（`source:"seat"`、`deniedCount`、`seatFilter{slot,rule,before,after,deniedNames}`，三席实测 48/27/8）。`docs/03` 本轮无新增码，未动。
 
+
+### ROUND 250 —— 证据要能从回执核到磁盘
+
+**一、用户口径与触发面。** 第 70 次真机（build **0a9e9783**）跑出一个「两个真事对不上」的缺口：`[新到的消息]` 块在工作区里出现 **70 次**、`Members/r-acad/Turns/t-1.md` 与 `Members/r-1/Turns/t-6.md` 也真在磁盘上（RUN 249 交付），可 `vibe_vmu_turn {op:"status"}` 的 `turnReceipts` 行**全会话 0 命中** `notices` / `replyFullPath` / `replyFullSha256` / `replyFullBytes`。所办因此读不出「投递渲染了吗」「被切的全文在哪」，验收只能回退成扫工作区。
+
+**二、这一轮只做传输（task-76）。** RUN 249 已经把事实造出来（块、归档、字节数）；`assemble()` 早算过块边界，`runFrom` 早量过切点、写过归档。缺的是把**同一批读数**抄到回合行上：
+- `vibe-math-vmu/kernel/turn/index.js:2076-2082`：行模板 8 个证据槽在**开行时**就存在，预置 `null`（`null`＝具名缺席，不是值丢了）。
+- `vibe-math-vmu/kernel/turn/index.js:2095-2113`：`noteTurnReceipt` **只搬运不重算**，`notices` 归一成 `{lines, rendered, blockChars}`。
+- `vibe-math-vmu/kernel/turn/index.js:3802-3805`：caller-played 早返回也记块读数（台账不许替代提示）。
+- `vibe-math-vmu/kernel/turn/index.js:3865-3881`：一份 `evidence` 对象，与回执读同一批变量。
+- `vibe-math-vmu/kernel/turn/index.js:3909-3913`：解析失败**只填证据、不标 settled**——拒绝语义不变。
+- `vibe-math-vmu/kernel/turn/index.js:3950` / `:3959`：失败与成功两条补丁都带证据。
+- `vibe-math-vmu/kernel/turn/index.js:5170`：`turnReceiptsMeans` 逐字段说明，并写清 `null` 与 `replyArchiveWhy` 的具名含义。
+
+**三、判据量到外部源。** 新套件 `tests/vmu-run250-turn-receipt-evidence.test.mjs`（256 行，§0–§5）不读被测代码的自述：`blockChars` 与「交付 seam 真收到的 prompt 里切出的块」逐字节相等；`replyFullBytes`/`replyFullSha256` 对**真磁盘**（读文件、自己算 sha）；§4 走**真** `makeTurnSpec` 的 office 面 `vibe_vmu_turn {op:"status"}` 再核文件；§1 断言无未读时三个零值且归档字段是**显式 `null`**、没有任何键是 `undefined`；§5 断言无归档 seam 时行里**具名**说明原因、字段仍是显式 `null`。
+
+**四、守门与回归。** `node tests/vmu-run250-turn-receipt-evidence.test.mjs` ⇒ **48/0**；同一批回归：`vmu-run239-prompts` **74/0**、`vmu-run247-prompt-dedup` **74/0**、`vmu-run248-notice-delivery` **117/0**。
+
+**五、门禁。** 权威冷全量 T1 **TOTAL 776 PASS 776 FAIL 0**（树静默、446 s、suites **696**、probes **80**）；四门禁全绿；`regen-all --check` **17/17 in sync**；`update-doc-counts --write` 已由 lead 跑过（JOBS **776** / suites **696** / probes **80**）。
+
+**六、文档账。** 本卷记 ROUND 250；`docs/acceptance/phase12-v5r-rules-conformance.md` 记 **§347**（347.1 现象与量化、347.2 为什么是缺陷、347.3 修法、347.4 判据怎么量外部源、347.5 实测、347.6 教训与遗留）。本轮**未动**代码/测试/生成件之外的任何东西。
+
+**七、教训与下一块。**
+- 「渲染了」与「回执里能核对」是两件事：前者证明投递链通了，后者才让验收有落点；只做到前者，验收就只能去工作区找——那不是证据。
+- `null` 必须是名词：一个「还没有读数」的回合与一个「值丢了」的回合，在读者眼里必须不同。
+- 下一块候选：`notices.blockChars` 的口径（是否含其后的状态块）要在 `turnReceiptsMeans` 里随拼装顺序一起改；将来任何「造事实」的读数搬进台账时，都按本轮形态办——搬运层不许有自己的算法。

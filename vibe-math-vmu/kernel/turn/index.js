@@ -2073,6 +2073,13 @@ export function createTurnOrchestrator({
       turn: turn.id, member: turn.member || null, openedBy: turn.openedBy || null, phase: turn.phase || null,
       meeting: turn.meeting || null, openedAt: turn.at || null, status: 'open', fields: [], source: null,
       executed: [], skipped: [], writes: [], codes: [], unavailable: [],
+      // ★★★ RUN 250 (task-76): THE EVIDENCE SLOTS EXIST ON EVERY ROW, WITH null AS A NAMED MEANING. The 70th live run
+      // proved the disconnect: the `[新到的消息]` block rendered in 70 places and `Members/<member>/Turns/<turn>.md` really
+      // existed, yet no turnReceipts row carried either reading, so acceptance had to scan the workspace. These keys are
+      // present from the open-time row on; null says "this loop has no reading for it (yet)", never "the value got lost",
+      // and `turnReceiptsMeans` spells out which is which.
+      notices: null, truncated: null, excerptLen: null, emptyReply: null,
+      replyFullPath: null, replyFullSha256: null, replyFullBytes: null, replyArchiveWhy: null,
     }
     const next = Object.assign({}, prev)
     if (patch && typeof patch === 'object') {
@@ -2085,6 +2092,25 @@ export function createTurnOrchestrator({
       // something" — how many bytes the member wrote, and whether the answer held any applicable value at all.
       if (typeof patch.emptyReply === 'boolean') next.emptyReply = patch.emptyReply
       if (Number.isFinite(patch.replyBytes)) next.replyBytes = Math.floor(patch.replyBytes)
+      // ★★★ RUN 250 (task-76): TRANSMISSION, NOT MECHANISM. `assemble()` already counted the notice block and runFrom
+      // already measured the reply/archive; this is the layer that lets the OFFICE read the same facts through
+      // `vibe_vmu_turn {op:"status"}` turnReceipts instead of grepping the workspace. Nothing is recomputed here.
+      // `notices` is an object once a prompt has been assembled for this turn; `truncated`/`excerptLen` describe the
+      // receipt's own cut; `replyFull*` are the archive's real file facts; `replyArchiveWhy` names the case when the full
+      // text is NOT on disk (no seam wired, seam refused) and is null when there is nothing to warn about.
+      if (patch.notices && typeof patch.notices === 'object') {
+        next.notices = {
+          lines: Number.isFinite(patch.notices.lines) ? Math.max(0, Math.floor(patch.notices.lines)) : 0,
+          rendered: patch.notices.rendered === true,
+          blockChars: Number.isFinite(patch.notices.blockChars) ? Math.max(0, Math.floor(patch.notices.blockChars)) : 0,
+        }
+      }
+      if (typeof patch.truncated === 'boolean') next.truncated = patch.truncated
+      if (Number.isFinite(patch.excerptLen)) next.excerptLen = Math.max(0, Math.floor(patch.excerptLen))
+      if (typeof patch.replyFullPath === 'string' && patch.replyFullPath !== '') next.replyFullPath = patch.replyFullPath
+      if (typeof patch.replyFullSha256 === 'string' && patch.replyFullSha256 !== '') next.replyFullSha256 = patch.replyFullSha256
+      if (Number.isFinite(patch.replyFullBytes)) next.replyFullBytes = Math.max(0, Math.floor(patch.replyFullBytes))
+      if (typeof patch.replyArchiveWhy === 'string' && patch.replyArchiveWhy !== '') next.replyArchiveWhy = patch.replyArchiveWhy
       if (typeof patch.code === 'string' && patch.code !== '' && !next.codes.includes(patch.code)) next.codes = next.codes.concat([patch.code])
       if (Array.isArray(patch.executed)) {
         next.executed = patch.executed.map((e) => {
@@ -3773,6 +3799,10 @@ export function createTurnOrchestrator({
       // needs no host Agent into "the model said nothing". The awaiting envelope travels out with the prompt attached, so
       // the caller can play the member turn and answer on the next call.
       if (raw && typeof raw === 'object' && raw.awaiting === true) {
+        // ★★★ RUN 250 (task-76): a caller-played turn has no reply yet, but its PROMPT has a notice block — that reading is
+        // real now and must not wait for settlement, or the office checks "did the delivery block render" from the
+        // workspace instead of from the ledger.
+        try { if (asm.notices) noteTurnReceipt(turn, { notices: asm.notices }) } catch { /* the ledger must never replace the prompt */ }
         return { ok: true, awaiting: true, turn, membersFrom: spec && typeof spec.membersFrom === 'string' ? spec.membersFrom : null, memberPrompt: raw.memberPrompt || null,
           // ★ E12 / task-19: the turn-level reading of the binding, beside the one on `memberPrompt` — a caller that
           // reads only the top level must not have to open the prompt object to learn which meeting it is answering.
@@ -3832,6 +3862,23 @@ export function createTurnOrchestrator({
       const replyArchiveFields = replyArchive && replyArchive.ok === true
         ? { replyFullPath: String(replyArchive.path), replyFullSha256: String(replyArchive.sha256), replyFullBytes: Number(replyArchive.bytes) }
         : {}
+      // ★★★ RUN 250 (task-76): ONE EVIDENCE OBJECT, READ FROM THE SAME VARIABLES THE RECEIPT USES, AND CARRIED TO THE
+      // TURN LEDGER. The block/archive readings existed on this return value in RUN 249; the office could not see them
+      // because `turnReceipts` never copied them. `notices` is exactly what `assemble()` returned, `excerptLen` is the
+      // cut this receipt shows, and `replyFull*` is the archive's on-disk truth — a consumer can check those against the
+      // real file instead of taking this row's word for it. `replyArchiveWhy` is null when there is nothing to warn
+      // about (nothing was cut, or the cut was archived); a string names why no full-text file exists for a cut reply.
+      const evidence = {
+        notices: asm.notices || null,
+        truncated: replyTruncated === true,
+        excerptLen: Math.min(rawText.length, REPLY_EXCERPT_MAX),
+        replyFullPath: replyArchiveFields.replyFullPath || null,
+        replyFullSha256: replyArchiveFields.replyFullSha256 || null,
+        replyFullBytes: Number.isFinite(replyArchiveFields.replyFullBytes) ? replyArchiveFields.replyFullBytes : null,
+        replyArchiveWhy: replyTruncated === true && !(replyArchive && replyArchive.ok === true)
+          ? String((replyArchive && replyArchive.why) || 'the archive seam gave no reason')
+          : null,
+      }
       let parsed
       try {
         parsed = replyFromChannels(raw, attributedTo || turn.member)
@@ -3859,6 +3906,11 @@ export function createTurnOrchestrator({
         // the office must not have to lose the member's words because the shape was wrong. The path travels on the
         // refusal, not only on the success receipt.
         try { if (e && typeof e === 'object' && replyArchive && replyArchive.ok === true) { e.replyFullPath = replyArchiveFields.replyFullPath; e.replyFullSha256 = replyArchiveFields.replyFullSha256; e.replyFullBytes = replyArchiveFields.replyFullBytes } } catch { /* same rule */ }
+        // ★★★ RUN 250 (task-76): even a reply this loop could NOT parse leaves readable evidence — which notice block its
+        // prompt carried, how the text was cut, and where the full copy went. The row is NOT marked settled here (the
+        // refusal already says this turn did not apply); only the evidence slots are filled, so the office can check the
+        // prompt and the archive through `op:"status"` instead of re-running the turn.
+        try { noteTurnReceipt(turn, evidence) } catch { /* the ledger must never replace the refusal */ }
         throw e
       }
       // ★★★★★★★ ROUND 39 (live run 39 / F-11) — THE SIDE-EFFECT DISCLOSURE BELONGED TO EVERY APPLY-REFUSAL, NOT TO ONE CODE.
@@ -3895,7 +3947,7 @@ export function createTurnOrchestrator({
         // channel-merge conflict (VMU_TURN_REPLY_CONFLICT) or a parse refusal is thrown here, above `dispatchReply`, so
         // without this line the ledger would keep the row `open` forever and the office would read a failed turn as a
         // member still working. The row names the code; nothing is implied.
-        try { noteTurnReceipt(turn, { status: 'failed', code: e && e.code ? String(e.code) : null }) } catch { /* the ledger must never replace the refusal */ }
+        try { noteTurnReceipt(turn, Object.assign({ status: 'failed', code: e && e.code ? String(e.code) : null }, evidence)) } catch { /* the ledger must never replace the refusal */ }
         try { rememberSettledTurn(turn, { fields: [], source: null }) } catch { /* the ledger must never replace the refusal */ }
         throw e
       }
@@ -3904,7 +3956,7 @@ export function createTurnOrchestrator({
       // `{"solved":false}` is applied, 17 bytes, and empty. Both readings now travel, and the ledger row carries them
       // too, so `op:"status"` can be read without the run's own session.
       const emptyReply = replyIsEmpty(parsed && parsed.reply)
-      try { noteTurnReceipt(turn, { emptyReply, replyBytes }) } catch { /* the ledger must never replace the receipt */ }
+      try { noteTurnReceipt(turn, Object.assign({ emptyReply, replyBytes }, evidence)) } catch { /* the ledger must never replace the receipt */ }
       return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length, notices: asm.notices || null }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
         replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX), replyLength: rawText.length,
         replyTruncated, replyLimitChars: REPLY_EXCERPT_MAX, replyExcerptMeans,
@@ -5115,7 +5167,7 @@ export function createTurnOrchestrator({
       // who holds the lock, for how long, when it will be closed by name, and whether a wake is waiting for a free turn.
       turnLoop: turnLoopReading(),
       turnLoopMeans: 'THIS IS THE LOOP\'S OWN FACT, not a copy of the durable fold: `inFlight` true means one turn is holding the single-turn slot right now, `inFlightForMs` says for how long, and past `abandonAfterMs` this loop closes that turn BY NAME (or immediately with op:"abandon"). A reader who sees inFlight:true while the durable fold says nothing is pending is looking at exactly the run-64 contradiction - the fix is op:"abandon", not a retry',
-      turnReceiptsMeans: 'HOST BOOKKEEPING, not the member\'s intent: this list records what the TURN LOOP observed while settling a turn (fields dispatched, fields skipped + code, writes with ids, refusal codes). It does not restate what the member meant, and a member that ran tools in its own child session can have done more than the row shows - `unavailable` names that gap. Rows are bounded to the last ' + TURN_RECEIPT_CAP + ' turns; `turn` is the t-<n> id, `openedBy` says which door opened it (drive/activation/wait/null).',
+      turnReceiptsMeans: 'HOST BOOKKEEPING, not the member\'s intent: this list records what the TURN LOOP observed while settling a turn (fields dispatched, fields skipped + code, writes with ids, refusal codes). It does not restate what the member meant, and a member that ran tools in its own child session can have done more than the row shows - `unavailable` names that gap. Rows are bounded to the last ' + TURN_RECEIPT_CAP + ' turns; `turn` is the t-<n> id, `openedBy` says which door opened it (drive/activation/wait/null). RUN 250: each row ALSO carries the prompt/delivery evidence the run receipt shows - `notices` is {lines, rendered, blockChars} for the block that was in that turn\'s prompt (so "did the delivery render" is checkable per turn, not by scanning the workspace), `truncated`/`excerptLen` describe the receipt\'s own cut, `emptyReply`/`replyBytes` describe what the member wrote, and when a reply was cut past `vmu.turn.replyLimitChars` the full text lives at `replyFullPath` with `replyFullSha256`/`replyFullBytes` (verify them against the real file). null is a NAMED absence - "this loop has no reading for it (yet)"; `replyArchiveWhy` names why a cut reply has no full-text file (no archive seam wired, or the seam refused), and null there means there was nothing to warn about.',
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING. Sixty-one meetings ran with no way to see that the one
       // field which closes the institute had never been emitted. `missing` names WHO, because silence is what blocks
       // closure and "somebody did not vote" is not actionable.
