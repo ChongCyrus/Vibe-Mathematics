@@ -1019,10 +1019,12 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
         keep: param('integer', 'prune：保留该轨最新的多少行（其余移入回收站；缺省 0 = 清空该轨的活行）；要精确按 id 清就用 ids 而不是 keep'),
         ids: param('string', 'prune：按 id 只清指定行（逗号分隔；与 keep 二选一——keep 是「留最新的 N 行」，ids 是「只清这几行」，两者不是同一个问题）'),
         why: param('string', 'prune：为什么这些行可以走（写进回收站审计）'),
-        by: param('string', 'prune/reindex：谁做的（缺省取当前席位，无席位时 office）'),
+        by: param('string', 'prune/reindex：谁做的（缺省取当前席位，无席位时 office）；list：只列这一位「写者」（行的 owner 不等于 writer —— 见回执的 threeNames）'),
+        since: param('string', 'list：时间窗下界（ISO 时间戳，按行最后一次写入 updatedAt 比较；直接抄回执里的 writesWindow.from）'),
+        until: param('string', 'list：时间窗上界（ISO 时间戳；直接抄回执里的 writesWindow.to）'),
         dryRun: param('boolean', 'prune：true = 只预告会移哪些行，不动数据；reindex：true = 只对账并列出会补/会换哪些索引行，不写任何行'),
       },
-      run: async ({ action = 'list', id, ids, limit, track, kind, statement, proof, keep, why, by, dryRun } = {}, exec = null) => {
+      run: async ({ action = 'list', id, ids, limit, track, kind, statement, proof, keep, why, by, since, until, dryRun } = {}, exec = null) => {
         try {
           // ★ SLV (measured): this face read `kernel.library` while the v3 data plane writes `kernel.records` - two
           // different stores, so every card was invisible here (`records: []` beside a non-zero journal). The RECORDS
@@ -1046,7 +1048,16 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             // `limit:0` is the caller's escape hatch: it must fetch the WHOLE set from the store (the head list caps at
             // headListAt otherwise), while the default read stays capped and still reports the real `total`.
             const wantAll = Number.isInteger(limit) && limit === 0
-            const query = trackArg === null ? {} : { track: trackArg }
+            // RUN 243 (FEEDBACK65 1.8): the three filters the writesWindow hint needs. A filter the caller passed is
+            // APPLIED; a time that does not parse is refused by the kernel by name, never silently ignored.
+            const byFilterArg = (typeof by === 'string' && by.trim() !== '') ? by.trim() : null
+            const sinceFilterArg = (typeof since === 'string' && since.trim() !== '') ? since.trim() : null
+            const untilFilterArg = (typeof until === 'string' && until.trim() !== '') ? until.trim() : null
+            const query = Object.assign({},
+              trackArg === null ? {} : { track: trackArg },
+              byFilterArg === null ? {} : { by: byFilterArg },
+              sinceFilterArg === null ? {} : { since: sinceFilterArg },
+              untilFilterArg === null ? {} : { until: untilFilterArg })
             const listed = rc && typeof rc.list === 'function'
               ? rc.list(wantAll ? Object.assign({}, query, { limit: 0 }) : query)
               : null
@@ -1057,7 +1068,11 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
             const seen = new Set(recRows.map((r) => r && r.id))
             // A library head carries no `track` field (its tracks live in the store path), so when the caller asked for a
             // track the library cannot answer it — it is EXCLUDED BY NAME rather than returned as if it matched.
-            const libKept = trackArg === null ? libRows.filter((r) => !seen.has(r && r.id)) : []
+            // RUN 243: the same rule now covers the WRITER and the TIME WINDOW. A library head carries neither `by` nor
+            // `updatedAt`, so it cannot answer "what did THIS seat write in THAT window" — returning it would inflate the
+            // filtered set with rows whose writer/age this face cannot check.
+            const filterNeedsRowFacts = byFilterArg !== null || sinceFilterArg !== null || untilFilterArg !== null
+            const libKept = trackArg === null && !filterNeedsRowFacts ? libRows.filter((r) => !seen.has(r && r.id)) : []
             let rows = recRows.concat(libKept)
             if (kindArg !== null) rows = rows.filter((r) => r && typeof r.kind === 'string' && r.kind === kindArg)
             const cap = Number.isInteger(limit) && limit > 0 ? limit : null
@@ -1093,6 +1108,19 @@ export function toolSpecs({ kernel, settings = {}, assertDeclared = null, log = 
               ok: true, action, total, returned: returnedRows.length, truncated,
               rowsFrom: { records: recRows.length, library: libKept.length },
               rowsFromMeans: 'this face reads TWO stores: the records projection (rows addressed by track) and the pack library head list (cards addressed by kind, carrying no track) — each row is counted where it was found and ids are de-duplicated',
+              libraryExcludedBy: filterNeedsRowFacts ? 'writer/time filter' : null,
+              libraryExcludedMeans: filterNeedsRowFacts
+                ? 'the pack library head list was EXCLUDED by name because a library head carries neither the writer nor the last-write time, so it cannot answer a writer/time question — those rows are not hidden results of the filter, they are rows the filter cannot judge'
+                : null,
+              byFilter: byFilterArg,
+              byFilterMeans: byFilterArg === null
+                ? 'no writer filter was given'
+                : 'only rows whose OWN writer (the by field of the revision in force) is ' + JSON.stringify(byFilterArg) + '; owner may differ - a row can belong to one seat and have been written by another (see threeNames)',
+              sinceFilter: sinceFilterArg,
+              untilFilter: untilFilterArg,
+              timeFilterMeans: (sinceFilterArg === null && untilFilterArg === null)
+                ? 'no time window was given: rows of every age are counted'
+                : 'the window is applied to each row last write (updatedAt) against [' + (sinceFilterArg === null ? 'the beginning' : sinceFilterArg) + ', ' + (untilFilterArg === null ? 'now' : untilFilterArg) + ']; a row last touched outside it is not in this answer',
               trackFilter: trackArg,
               trackFilterMeans: trackArg === null
                 ? 'no track filter was given'

@@ -276,8 +276,12 @@ has(RECORDS_SRC, 'reported as false rather than omitted', '§0p ★ the body-own
   // phase with no meeting, it would measure a prompt no seat receives (it did exactly that until RUN 242, which is why
   // the chair cap had to move only after the ruler was fixed).
   const budgetSrc = readFileSync(new URL('../scripts/audit-prompt-budget.mjs', import.meta.url), 'utf8')
-  ok(budgetSrc.includes("meeting: phase === 'meeting' ? 'm-budget' : null"),
-    '§8g the prompt-budget ruler BINDS a meeting for the meeting phase (else it measures a floor nobody is on)')
+  // the meeting id is a NAMED CONSTANT now (two rulers must read the same one), so this pin holds the INVARIANT —
+  // the meeting phase is handed a meeting — instead of re-filing the literal in a second place.
+  ok(budgetSrc.includes("export const RULER_MEETING = 'm-budget'"),
+    '§8g the prompt-budget ruler NAMES the meeting it binds (one id, so both rulers read the same world)')
+  ok(/meeting: phase === 'meeting' \? RULER_MEETING : null/.test(budgetSrc),
+    '§8g\' the prompt-budget ruler BINDS a meeting for the meeting phase (else it measures a floor nobody is on)')
   // §8h and the chair cap has to be at least the measurement the fixed ruler produces, or the gate is red for a
   // number that was never measured. Both halves in one place: a cap below the real prompt and a ruler without a
   // meeting are the same bug seen from two sides.

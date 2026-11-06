@@ -2391,8 +2391,14 @@ export function createTurnOrchestrator({
           from: turn && typeof turn.at === 'string' ? turn.at : null,
           to: isoStampOf(clock()),
           by: turn && typeof turn.member === 'string' ? String(turn.member) : null,
+          // RUN 243: the receipt still cannot ENUMERATE the window (it holds one turn's facts, not the ledger), but the
+          // question it asks now has a callable answer: `readWith` names the exact invocation, and `readWithMeans` says
+          // what an EMPTY answer does and does not prove in a deployment whose member kernel may or may not share the
+          // store (run 65: the row WAS in the store, and no face could filter for it).
           enumerated: false,
-          means: 'a member turn runs in the member\'s OWN kernel, so anything it wrote is in the records fold under that member id; this receipt cannot list it. Read the records written by `by` between `from` and `to` before concluding the turn produced nothing - run 65 had a timed-out turn that had already written a draft and a progress row',
+          readWith: 'vibe_vmu_records { action:"list", by:"<the by above>", since:"<the from above>", until:"<the to above>", limit:0 }',
+          readWithMeans: 'this call is the one that answers this window: it filters by WRITER and by LAST-WRITE TIME, and the head list folds the shared durable store on every read, so a write that reached the store appears here. An EMPTY answer therefore proves one of two things and this receipt cannot tell you which: the member wrote nothing in that window, or this deployment does not share its records store with the member kernel — copy the answer and say which one you can prove. Before RUN 243 this sentence named no makeable query: the list had no writer or time filter at all',
+          means: 'a member turn runs in the member\'s OWN kernel, so anything it wrote is in the records fold under that member id; this receipt cannot list it. Follow `readWith` before concluding the turn produced nothing - run 65 had a timed-out turn that had already written a draft and a progress row',
         },
         means: 'the delivery seam threw, so this turn is neither delivered nor answered: it is NOT counted in delivered, parsed or notExecuted. Counts alone will not show it again — read deliveryLastFail, and read `writesWindow` before judging that the member did nothing' }
       throw e

@@ -1103,7 +1103,13 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
     },
 
     /** READ a track's HEAD LIST — the default information channel (07 §4.4; `pointerPropagation` can mute it). */
-    list({ track = null, limit = null, fields = null } = {}) {
+    list({ track = null, limit = null, fields = null, by = null, since = null, until = null } = {}) {
+      // RUN 243 (FEEDBACK65 1.8, MEASURED): a receipt told the reader to "read the records written by `by` between
+      // `from` and `to`" - and this list had no such filter, so the hint pointed at a wall that did not exist (the
+      // same defect class as RUN 165's quota refusal (which named two repair verbs no face had) and RUN 176's prune
+      // track). A WRITER filter and a time window are the two facts that question needs; both are applied BEFORE the
+      // page cap so `available` counts the set the question covers (RUN 164b: a filter the caller passed must be
+      // APPLIED, and `total` is the size of the filtered set, never the page size).
       synchronize('list')   // ★ ROUND 36: the head list is the DEFAULT channel, so it must carry the whole root, not one instance
       const enforced = [K.tracks, K.headSort, K.headListAt, K.pointerPropagation, K.headFields]
       const fired = []
@@ -1145,6 +1151,31 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
         void before
       }
       let live = ids.map((i) => records.get(i)).filter((r) => r && r.state === 'live')
+      // by/since/until: the reader's question ("what did THIS seat write in THAT window") is answered here, not by
+      // paging a whole track and eyeballing the by column.
+      const msOfArg = (v) => {
+        if (v === null || v === undefined || v === '') return null
+        if (typeof v === 'number') return Number.isFinite(v) ? v : NaN
+        const parsed = Date.parse(String(v))
+        return Number.isFinite(parsed) ? parsed : NaN
+      }
+      const byArg = (typeof by === 'string' && by.trim() !== '') ? by.trim() : null
+      const sinceMs = msOfArg(since)
+      const untilMs = msOfArg(until)
+      if (Number.isNaN(sinceMs)) {
+        throw deny('VMU_INVALID_ARGUMENT', 'since is not a time: ' + String(since),
+          'pass the ISO stamp exactly as a receipt prints it (for example writesWindow.from) or epoch milliseconds', [K.headSort], 'list')
+      }
+      if (Number.isNaN(untilMs)) {
+        throw deny('VMU_INVALID_ARGUMENT', 'until is not a time: ' + String(until),
+          'pass the ISO stamp exactly as a receipt prints it (for example writesWindow.to) or epoch milliseconds', [K.headSort], 'list')
+      }
+      if (byArg !== null) live = live.filter((r) => String(r.by === undefined || r.by === null ? '' : r.by) === byArg)
+      if (sinceMs !== null) live = live.filter((r) => Number(r.updatedAt) >= sinceMs)
+      if (untilMs !== null) live = live.filter((r) => Number(r.updatedAt) <= untilMs)
+      const sinceIso = sinceMs === null ? null : new Date(sinceMs).toISOString()
+      const untilIso = untilMs === null ? null : new Date(untilMs).toISOString()
+      const noFilter = byArg === null && sinceMs === null && untilMs === null
       live.sort((a, b) => headSort === 'title' ? String(a.title || '').localeCompare(String(b.title || '')) : (headSort === 'createdAt' ? a.createdAt - b.createdAt : a.updatedAt - b.updatedAt) || (a.id < b.id ? -1 : 1))
       const capWanted = Number.isInteger(limit) && limit >= 0 ? limit : headListAt
       if (!pointerPropagation) {
@@ -1160,7 +1191,12 @@ export function createRecords({ clock = () => 0, log = null, settings = {}, bus 
       // ★★ RUN 240: the head row names BOTH facts now — `owner` (whose row) and `writer` (who wrote this revision) —
       // and the list result carries the same three-name glossary the write receipt does, so `list` and `expand` teach
       // the same vocabulary.
-      return { ok: true, items, heads: items.map((x) => x.id), count: items.length, available: live.length, dropped, truncated: dropped > 0, suppressed: false, fields: chosen, sort: headSort, enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'the head list is the default information channel (docs/07 §4.4); truncation is COUNTED, never silent',
+      return { ok: true, items, heads: items.map((x) => x.id), count: items.length, available: live.length, dropped, truncated: dropped > 0, suppressed: false, fields: chosen, sort: headSort,
+        filter: { by: byArg, since: sinceIso, until: untilIso },
+        filterMeans: noFilter
+          ? 'no writer/time filter was given: these are the live rows of the whole ' + (track === null ? 'ledger' : 'track ' + JSON.stringify(track))
+          : 'these rows are the ones whose OWN writer is ' + (byArg === null ? 'any seat' : JSON.stringify(byArg))
+            + ' and whose last write landed in [' + (sinceIso === null ? 'the beginning' : sinceIso) + ', ' + (untilIso === null ? 'now' : untilIso) + '] - filtered BEFORE the page cap, so available counts the set this question covers', enforced: uniq(enforced), enforcedScope: ENFORCED_SCOPE, fired: uniq(fired), at, note: 'the head list is the default information channel (docs/07 §4.4); truncation is COUNTED, never silent',
         ownerMeans: THREE_NAMES_MEANS.owner, writerMeans: THREE_NAMES_MEANS.writer, byMeans: THREE_NAMES_MEANS.by, threeNames: THREE_NAMES_MEANS.threeNames }
     },
 

@@ -4398,3 +4398,34 @@ A7 是提示词审计里唯一一条**渲染层**缺陷：会议相位但没绑�
 判据取**这一轮真正绑定的会**（`kernel/turn/index.js` 传给 `prompt.assemble` 的 `meeting`），而不是渲染出来的模板值。
 实测同一相位组装两次：未绑定 ⇒ 两个会中节都不被选中；绑定 ⇒ 都被选中。门是门，不是墙。
 （诚实留档：`charterSections()` 路径下 agenda 节会进 `sources` 但正文 0 字符，本轮断言因此落在节的选取上，渲染层为何吞字留待下轮。）
+
+## ROUND 243 — 一个窗口说了「去读」，而没有人能读
+
+第 65 次真机的 1.8 是这轮唯一要修的事：一个成员回合投递超时，账上在
+`counts.deliveryLastFail.writesWindow` 里留下 `from` / `to` / `by` 三个数，还留了一句话告诉读者去读这段时间里
+这位成员写过什么——而 `vibe_vmu_records { action:"list" }` 根本不接受 `by`，也不接受时间窗。run 65 里那一轮
+在超时前**真的**写过（一张蓝图草案、一行 progress），读者照那句话去查却查不到，会得出「他没干活」的相反结论。
+
+修法分三层，顺序不能颠倒：
+
+1. **内核先让问题可问**：`records.list` 接受 `by` / `since` / `until`，`by` 比的是这一行的**写者**，时间窗比的是
+   **last write** 且两端含等号（因为窗口两端本来就该被包含），非法时间具名拒绝而不是静默忽略；过滤发生在
+   `limit` 截断**之前**，所以 `available` 报的是「这个问题覆盖多少行」，不是页大小。
+2. **面把名词送进去**：宿主面声明并转发三个参数，回执回显 `byFilter` / `sinceFilter` / `untilFilter` 与各自的
+   `*Means`，其中 `byFilterMeans` 必须点明**行的 owner 不等于 writer**。
+3. **第二个 store 按名排除**：无 track 的 `list` 会并进 pack library 的头行，而它们既没有 writer 也没有
+   last-write time。按写者/按时间问的时候整段不取，并在回执里**说出为什么**——
+   「those rows are not hidden results of the filter, they are rows the filter cannot judge」。
+
+提示词面的那一句也改了，但保留了它的诚实：`enumerated: false` 继续留着（回执手里只有一轮的事实，不能枚举整本账），
+新增的 `readWith` 给出**可以照抄的调用形状**，`readWithMeans` 则说清空答案在两种部署里意味着两件相反的事——
+「他没写」或者「这个部署的成员内核与我不共享记录库」，而**回执没有资格替读者选**。
+
+机器化：`tests/vmu-run243-writes-window.test.mjs` 38 passed / 0 failed。§2 是这一轮真正要证的事——
+先让成员在内核里写一行，再让投递抛 `VMU_TURN_DELIVERY_TIMEOUT`，然后**照回执的话原样打一次那个调用**，
+断言结果里真有那一行。回执指着一面不存在的墙，只有「照着它说的话打一次」的测试能钉住。
+
+三条教训：（1）**提示即承诺**——回执里出现「去查 X」，X 就必须有可执行的形状，否则比不说话更坏；
+（2）**扫源码找违禁短语的判据会抓到你自己的注释**（我在 records.js 注释里引用了 RUN 165 的被禁原话，
+`vmu-run165-quota-reachable` 当场变红；正解是改写措辞，不是放宽判据）；
+（3）**加过滤时必须点名第二个 store**，让没有写者/没有时间的行「被排除且说明」，而不是混进结果或悄悄消失。

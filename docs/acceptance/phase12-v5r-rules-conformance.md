@@ -17124,3 +17124,96 @@ DONE 必须带 `auditDispute { acknowledged, why, evidence }` 说清「自那以
   `PROMPT BUDGET: PASS (2 warning(s))`（chair/meeting 36 388 ≤ 36 500；member/verify 30 055 ≤ 30 100，均在 T99 之上）。
 - 每条红的修法都记在 §339.10 的「判据怎么改，以及为什么不许放宽」里；产品码只有一处因红而改（`VMU_TURN_DELIVERY_FAILED`
   的登记，那是把已实现的行为写进契约面），其余五处全是**判据/尺子**。
+## §340 · RUN 243 — 一句「去把那段时间里他写的东西读出来」，第三次指向一面不存在的墙
+
+**340.1 账从哪来。** 第 65 次真机（FEEDBACK65）的 1.8 是这样说的：一个成员回合投递超时了，账上却在
+`counts.deliveryLastFail.writesWindow.means` 里写着「Read the records written by `by` between `from` and `to`
+before concluding the turn produced nothing」，而 run 65 里那一轮**真的**在超时前写过一张蓝图草案（`rec-5`）与
+一行 progress（`rec-4`）。读者照那句话去查，会发现自己根本**没有可打的电话**：
+
+- `vibe-math-vmu/kernel/records.js:1106` 的 `list({ track = null, limit = null, fields = null } = {})` 只认
+  track / limit / fields，**没有 by，也没有时间窗**；
+- 宿主面 `vibe-math-vmu/host.js:1032` 的 `action:'list'` 分支同样只应用 `track` / `kind` / `limit`
+  （`const query = trackArg === null ? {} : { track: trackArg }`），并且它**声明**的参数表里也没有 by/since/until。
+
+这是同一缺陷类的第三次出现：RUN 165 的配额拒绝语点名了两个「没人实现过的修复动词」，RUN 176 的 prune 行
+点名了一面没有 track 参数的门。三次的共同形状是——**回执把「你需要知道什么」写成了「你可以去查什么」，
+而那个「可以」没有实现**。
+
+**340.2 内核：让问题变得可问。** `records.list` 的签名扩成
+`list({ track = null, limit = null, fields = null, by = null, since = null, until = null } = {})`，在
+`let live = ids.map((i) => records.get(i)).filter((r) => r && r.state === 'live')` 之后插入过滤块：
+
+- `by` 比的是**这一行的写者**（`rec.by`），空的 `by` 字符串当作「没问」；
+- `since` / `until` 比的是 `rec.updatedAt` 的**last write**，两端**都含等号**——因为它们的典型来源就是
+  `writesWindow.from` / `.to`，而窗口两端本来就该被包含；
+- 非法时间不是静默忽略，而是具名拒绝：`VMU_INVALID_ARGUMENT`，message `since is not a time: …`，
+  hint「pass the ISO stamp exactly as a receipt prints it (for example writesWindow.from) or epoch milliseconds」；
+- **过滤发生在 `limit` 截断之前**，所以 `available` 报的是**过滤集的尺寸**，不是页大小（RUN 164b 立的规矩：
+  总数回答「这个问题覆盖多少」，页大小只回答「这次给你几行」）；
+- 回执恒回显 `filter: { by, since, until }` 与 `filterMeans`：没有过滤时明说「这是整本账/整条轨的活行」，
+  有过滤时明说「filtered BEFORE the page cap, so available counts the set this question covers」。
+
+**340.3 面：名词必须继续往前走。** 宿主面声明并转发 `by` / `since` / `until`，回执加
+`byFilter` / `byFilterMeans`（点明**行的 owner 不等于 writer**，两套名字都要能被问）、
+`sinceFilter` / `untilFilter` / `timeFilterMeans`（「applied to each row's last write (updatedAt) … a row last
+touched outside it is not in this answer」）。RUN 240/242 已经教过两遍「转发要带上名词」，这次是同一课的第三次。
+
+**340.4 第二个 store 必须按名排除。** `list` 在无 track 时会把 pack library 的头行也并进来；这些头行
+**既没有 writer 也没有 last-write time**，放进一个「按写者/按时间」的问题里只会虚增过滤集。所以
+`filterNeedsRowFacts = by !== null || since !== null || until !== null`，此时库行整段不取，并在回执里
+**具名**说明为什么：`libraryExcludedBy: 'writer/time filter'` + `libraryExcludedMeans`——
+「a library head carries neither the writer nor the last-write time, so it cannot answer a writer/time question -
+those rows are not hidden results of the filter, they are rows the filter cannot judge」。
+不说这一句，读者会把「没出现」读成「被过滤掉了」。
+
+**340.5 提示词面：把「去读」变成一个可以照抄的调用。** `writesWindow` 保留 `enumerated: false`（回执手里只有
+**一轮**的事实，不能枚举整本账，这一条必须继续诚实），但新增两件事：
+
+- `readWith: 'vibe_vmu_records { action:"list", by:"<the by above>", since:"<the from above>", until:"<the to above>", limit:0 }'`
+  ——一个**存在**的形状，读者可以照着抄；
+- `readWithMeans`：说清这个调用按**写者**与**last write**过滤、头行列表每次读都会折叠共享的耐久 store，因此
+  「a write that reached the store appears here」；然后说清**空答案能证明什么、不能证明什么**：
+  「An EMPTY answer therefore proves one of two things and this receipt cannot tell you which: the member wrote
+  nothing in that window, or this deployment does not share its records store with the member kernel - copy the
+  answer and say which one you can prove」。
+  这一句是本轮最想留下的东西：**同一个空答案，在两种部署里意味着两件相反的事**，而回执自己没有资格替读者选。
+
+**340.6 机器化。** 新套件 `tests/vmu-run243-writes-window.test.mjs`，**38 passed / 0 failed**：
+
+- §0 源码 pin（内核签名、`byArg` 比的是 OWN writer、两端含等号、`since is not a time` 具名拒、
+  `filter: { by: byArg, since: sinceIso, until: untilIso },`、`filtered BEFORE the page cap`、面声明与转发、
+  `timeFilterMeans`、`writesWindow.readWith` 与 `An EMPTY answer therefore proves one of two things`）；
+- §1 行为：四个写者写的四行，`by:'r-1'` 精确返回两行且 `total === 2`（不是四行全量）、头行的字段是
+  **`writer`** 不是 `by`、不存在的写者回**空集而不是报错**、`since`/`until` 两端各含一次等号、
+  `since:'yesterday-ish'` 具名拒；
+- §2 端到端（这一轮真正要证的那件事）：先让成员在内核里写一行（`rec-w1`），再让投递抛
+  `VMU_TURN_DELIVERY_TIMEOUT`，然后**照回执的话原样调用** `vibe_vmu_records { action:'list', by: win.by,
+  since: win.from, until: win.to, limit:0 }` ⇒ `ok:true` 且结果里**真有** `rec-w1`。
+  「回执指着一面不存在的墙」这类缺陷，只有这种「照着回执的话打一次」的测试能钉住。
+
+写这个套件时踩到的四个坑也记在这里：① 记录的**指纹**会丢掉行自己的 `- id：` 行，所以只差 id 的四次 `put`
+会 `deduplicated:true` 塌成两行——每行 body 必须带互不相同的记号；② 头行把写者报成 `writer`（RUN 240 的三称谓），
+断言不能用 `r.by`；③ 不传 `clock` 的 orchestrator 用自己的真实时钟，`from`/`to` 与夹具的 1000 ms 对不上，
+两边必须钉同一个假时刻；④ 中文全角冒号混 `\n` 的文本用 `python - <<'PY'` 内联替换会匹配失败（已第四次），
+改测试用 `edit` 工具最快。
+
+**340.7 三条教训。**
+
+1. **提示即承诺。** 回执里只要出现「去查 X」，X 就必须有**可执行的形状**；否则这句话比不说话更坏——
+   它会让一位读者相信自己查过。（同类：RUN 165、RUN 176、RUN 243。）
+2. **扫源码找违禁短语的判据会抓到你自己的注释。** 我在 `records.js` 的注释里引用了 RUN 165 被禁的原话
+   「or compact/remove records」，`tests/vmu-run165-quota-reachable.test.mjs` 当场变红。正解是**改写措辞**，
+   不是放宽判据——判据守的是「这句话不该再出现」，注释里的引用一样会被下一个人抄走。
+3. **加过滤时必须点名第二个 store。** 一个按写者/按时间的问题，遇到没有写者/没有时间的行，唯一的诚实的做法是
+   **排除它们并说明为什么**，而不是让它们混进结果或者悄悄消失。
+
+**340.8 收口数字。** 干净全量 T1（`/d/_tmp/t1-r3730-run243.log`）：**TOTAL 766 PASS 766 FAIL 0**
+（suites 686 · probes 80，wall 508.8 s，concurrency 3）；`update-doc-counts --write` ⇒
+`JOBS total=766 suites=686 probes=80 shipped FILES tests/*.mjs=393`；`regen-all --write` 17/17 →
+`--check` 17/17 in sync；四门禁 `PREFLIGHT: PASS` / `DOC LINT: PASS` / `RULES COVERAGE: PASS (0 problem(s))`
+（仍 open 2 行＝C10/D2）/ `RULE PARITY: PASS (0 problem(s))`。定向批 `/d/_tmp/r243-batch.sh` 全绿：
+`vmu-run243-writes-window 38/0`、`vmu-records 271/0`、`vmu-run164-records-two-stores 28/0`、
+`vmu-run165-quota-reachable 36/0`、`vmu-run36-records-shared 37/0`、`vmu-run106-brief-enum-records 20/0`、
+`vmu-run113-records-seat-gate 17/0`、`vmu-run22-findings ALL PASS`、`vmu-run242-feedback65 62/0`、
+`vmu-turn 272/0`、`vmu-host 250/0`、`audit-vmu-docs 103/0`、`audit-declaration-criterion 91/0`。
