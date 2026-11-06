@@ -31,6 +31,7 @@
 //
 // RULE E: every collection assertion states its non-emptiness (or exact shape) in the same expression.
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
@@ -72,7 +73,7 @@ const roots = []
 const newRoot = async (tag) => { const r = await mkdtemp(join(BASE, tag + '-')); roots.push(r); return r }
 
 // The durable snapshot is written asynchronously (tmp + rename), so wait for the FACT to land instead of guessing a
-// sleep: poll the fold this instance can read.
+// sleep. ROUND 246 (RUN 246): "the fact" is state.json ON DISK -- not this process's fold, see the gate note below.
 const until = async (fn, ms = 3000) => {
   const t0 = Date.now()
   for (;;) {
@@ -83,10 +84,25 @@ const until = async (fn, ms = 3000) => {
     await new Promise((r) => setTimeout(r, 20))
   }
 }
-const foldHas = (k, id) => () => {
-  const rows = k.store.read('records')
-  return Array.isArray(rows) && rows.some((r) => r && String(r.id) === id)
+// ROUND 246 (RUN 246) -- WHY THIS READS THE FILE AND NOT k.store.read():
+// store.js mutate() writes `fold.keys[key] = next` (store.js:350) and only THEN `await persist()`, whose rename lands
+// the row in state.json (:291-313, adopting the stamp after the rename). So `k.store.read('records')` is this
+// instance's MEMORY: it shows a row the file may not carry yet. Measured: with 6 concurrent copies of this suite the
+// old gate failed exactly 6/6 when the gate moment had fileHas=false -- i.e. the assertion's own text ("the DURABLE
+// fold (state.json)") was false while the assertion passed. `store.file` is the durable path; read it with fs.
+// The kernel's own join point for exactly this question (kernel/index.js:2550, docs/26 ROUND 69/70/171): await every
+// in-flight durable write, then the file IS the answer -- no sleep, no poll, no luck. A suite that needs two kernels to
+// agree must use this, not a timeout (RUN 171: "给得起 join point 就别给 sleep").
+const flush = async (k) => (typeof k.flushRecordsFold === 'function' ? await k.flushRecordsFold() : null)
+const durableDoc = (k) => {
+  try { return JSON.parse(readFileSync(k.store.file, 'utf8')) } catch (e) { return null }
 }
+const durableRows = (k) => {
+  const doc = durableDoc(k)
+  return doc && doc.keys && Array.isArray(doc.keys.records) ? doc.keys.records : []
+}
+const fileIds = (k) => durableRows(k).map((r) => (r && r.id) || '?')
+const foldHas = (k, id) => () => durableRows(k).some((r) => r && String(r.id) === id)
 
 console.log('=== 1. THE FIXTURE: A writes into the fold, B booted FIRST and already read an EMPTY list ===')
 // B = "the office": it boots first (run 36's order), serves a turn, and closes its one-shot hydration on an empty store.
@@ -100,8 +116,10 @@ const A = await boot(railOn(rootShared))
 ok(A.kernel !== B.kernel, '① A and B are SEPARATE kernel instances over the same root (ONE state.json, SEVERAL kernels)', { same: A.kernel === B.kernel })
 const cardA = A.kernel.records.put({ track: 'progress', kind: 'verified', title: 'p-odd-sum', body: 'the odd sum card', tags: ['run36'], by: 'r-6' })
 ok(cardA.ok === true && typeof cardA.id === 'string' && cardA.deduplicated === false, '① A’s put returned a real id (the fixture wrote something)', cardA)
-const landed = await until(foldHas(A.kernel, cardA.id))
-ok(!!landed, '①★ the row really is in the DURABLE fold (state.json), not only in A’s memory — that is what makes ② a read, not a coincidence)', A.kernel.store.read('records'))
+const flushedA = await flush(A.kernel)
+ok(flushedA !== null && flushedA.pending === 0, '①★ the writer’s own fold write was ACKNOWLEDGED (flushRecordsFold joined it, pending 0) before any durable read below', flushedA)
+const landed = fileIds(A.kernel).includes(cardA.id)
+ok(!!landed, '①★ the row really is in state.json ON DISK (read back with readFileSync, not through any kernel’s memory) — that is what makes ② a read, not a coincidence', { idsOnDisk: fileIds(A.kernel) })
 
 console.log('=== 2. ★★ RUN 36 ITSELF: the kernel that booted FIRST reads the row written LATER ===')
 const bList = B.kernel.records.list({ track: 'progress', limit: 0 })
@@ -158,12 +176,16 @@ ok(afterBad.items.every((i) => i.id !== 'r-seam-bad') && badShared.refused >= 1 
 console.log('=== 3. ★★ THE REVERSE DIRECTION: a pull never overwrites what this instance already knows ===')
 const own = B.kernel.records.put({ track: 'progress', kind: 'progress', title: 'p-b-own', body: 'B wrote this one itself', by: 'r-7' })
 ok(own.ok === true && own.deduplicated === false, '③ B put a row of its own (the row that must survive ③)', own)
-const ownLanded = await until(foldHas(B.kernel, own.id))
-ok(!!ownLanded, '③★ B’s own write reached the DURABLE fold before the next instance writes (the ordering that makes ③ meaningful)', B.kernel.store.read('records'))
+const flushedB = await flush(B.kernel)
+ok(flushedB !== null && flushedB.pending === 0, '③★ B’s own fold write was ACKNOWLEDGED (flushRecordsFold, pending 0)', flushedB)
+const ownLanded = fileIds(B.kernel).includes(own.id)
+ok(!!ownLanded, '③★ B’s own write reached state.json ON DISK before the next instance writes (the ordering that makes ③ meaningful)', { idsOnDisk: fileIds(B.kernel) })
 const cardLater = A.kernel.records.put({ track: 'progress', kind: 'finding', title: 'p-a-later', body: 'A wrote a second row', by: 'r-6' })
 ok(cardLater.ok === true && cardLater.id !== cardA.id && cardLater.id !== own.id, '③ A wrote a SECOND row (a new id, so nothing can be satisfied by cache)', { cardLater: cardLater.id, cardA: cardA.id, own: own.id })
-const laterLanded = await until(foldHas(A.kernel, cardLater.id))
-ok(!!laterLanded, '③★ A’s second write reached the fold too (the two snapshots did not overwrite each other in flight)', A.kernel.store.read('records'))
+const flushedA2 = await flush(A.kernel)
+ok(flushedA2 !== null && flushedA2.pending === 0, '③★ A’s second fold write was ACKNOWLEDGED (flushRecordsFold, pending 0)', flushedA2)
+const laterLanded = fileIds(A.kernel).includes(cardLater.id)
+ok(!!laterLanded, '③★ A’s second write reached state.json ON DISK too (the two snapshots did not overwrite each other in flight)', { idsOnDisk: fileIds(A.kernel) })
 // ★ ROUND 106: the durable write is asynchronous (the kernel's projection flushes after the call returns), so a
 // reader in ANOTHER kernel sees a just-written row only once the flush lands. That is a real property of the seam,
 // not a defect — asserting on the FIRST read made this suite fail under parallel load (measured: 2 of 5 runs red in
@@ -178,8 +200,8 @@ ok(ownAfter.body === 'B wrote this one itself' && ownAfter.owner === 'r-7',
   '③★★★ B’s OWN row is byte-unchanged after the pull (a refresh that rebuilt the map from the fold would have dropped or overwritten it)', { body: ownAfter.body, owner: ownAfter.owner })
 // …and the durable fold still carries B's row too: the pull is a READ, it must not have rewritten the snapshot into a
 // onesided view.
-const foldNow = A.kernel.store.read('records')
-ok(Array.isArray(foldNow) && foldNow.length > 0, '③ the durable fold really returns a NON-EMPTY row array (the read is not degraded to an empty list)', foldNow)
+const foldNow = durableRows(A.kernel)
+ok(Array.isArray(foldNow) && foldNow.length > 0, '③ state.json ON DISK really carries a NON-EMPTY row array (read with readFileSync; the read is not degraded to an empty list)', { idsOnDisk: fileIds(A.kernel) })
 const foldIds = foldNow.map((r) => r && r.id)
 ok(foldIds.includes(own.id) && foldIds.includes(cardA.id) && foldIds.includes(cardLater.id),
   '③ the fold is not a one-sided view either: B’s row and A’s rows all survive (no instance owns the file)', foldIds)

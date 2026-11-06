@@ -17330,3 +17330,124 @@ member meeting 27220、member verify 29008、temp verify 25761）。
    自己排队的时间；任何「逃生阀」上线时，必须同时问一句：它会不会和它要逃的东西共用同一条通道。
 2. **「说了什么」必须由「做了什么」兜底。** `abandon` 的回执承诺「没应用」是最容易写对、最难做实的一句话；回执
    里的每个否定句（没有写、没有丢、没有动）都要有一条代码路径在它成真之前拦下来。
+
+## §343 RUN 246 —— 一条叫「durable」的判据，读的是自己的内存
+
+**343.1 现象。** `tests/vmu-run36-records-shared.test.mjs` 在并行负载下偶发红（4 并发 2/4；6 并发 instrumented
+副本 6/6 与「gate 时刻文件里没有那一行」相关）。断言原文写的是 "the row really is in the DURABLE fold
+(state.json), not only in A's memory"，实现却是 `k.store.read('records')`（原 `:86-89`）——**同一个实例的内存
+折**。于是这一条既可能在该红时绿，也可能在真坏时绿。
+
+**343.2 根因（写路径：回执先返回，文件后改名）。** `vibe-math-vmu/kernel/index.js:2645-2655` 的
+`wrap('put',{snapshot:true})` 在 `records.put` 之后**同步**调 `snapshotRecords()`，并把返回的 promise 丢进
+`foldWrites.inflight`（`:2632-2641`）——**不 await**。`snapshotRecords()` → `recordsStore.patch('records', …)`
+（`:2614`）→ `vibe-math-vmu/kernel/store.js` 的 `mutate`（`:337`）里，`fold.keys[key] = next`（`:350`）先落地，
+`await persist()`（`:352` → tmp+rename `:291-313`，rename 成功后才 `adoptStamp()`）后落地。结论：
+**`records.put` 的回执在文件改名之前就返回了**；「已写盘」的唯一可读证据是 `foldWrites{pending,ackedAt,failed}`
+与 join point `flushRecordsFold()`（`kernel/index.js:2550`，docs/26 ROUND 69/70/171）。
+
+**343.3 根因（读路径：读到旧 fold 是正确的）。** `records.js:1953` 走 `store.read('records')` → `store.js:485`
+→ `reloadIfStale`（`:231-247`）把 stat 的 mtime:size 与 stamp 比，相同就报 `{why:'fresh'}` 并返回**旧 fold**；
+`records.js:1974` 的签名未变，于是 `skipped += 1`、`pulled: 0`。文件还没改名时读到旧 fold 是**对的**；错的是
+判据把「读到我自己的内存」当成「文件里有」。
+
+**343.4 裁决：在 records.js 里「修」是错的。** 唯一能让该 gate 在内存里通过的内部解法，是把兄弟实例**尚未落盘**
+的行当成共享事实——那是幽灵行，违反「一个 id 一个真相、落盘才算共享」。所以修判据，不修机制。
+
+**343.5 修法。**
+- §1/§3 的 gate 改成：`await flushRecordsFold()` 并断言 `pending === 0`（写者的折写**已被确认**），再用
+  `readFileSync(k.store.file, 'utf8')` 从 `state.json` 读该 id（`store.file` 是耐久路径，`store.js:428`）。
+  不 sleep、不轮询——内核已经给了 join point，用它。
+- 失败信息带 `{idsOnDisk: fileIds(...)}`：红要红得能查。
+
+**343.6 机器化。** 新套件 `tests/vmu-run246-records-pull-race.test.mjs` **18/0**，四族断言：
+① 已落盘的行对「先启动、已读到空表」的内核可见，且 `fingerprintOk === true`（**恢复**，不是重铸一个像的）；
+② 列出 id ⊆ 文件 id，且新启动的内核只见文件 id（兄弟实例的内存行不许变成幽灵行）；
+③ 谁也没写过的 id 仍按名拒 `VMU_NO_SUCH_OBJECT`，hint 的 known ids 不许是 `(none)`；
+④ 读不写：`state.json` 字节完全不变、`store.stats().writes` 不动。
+`tests/vmu-run36-records-shared.test.mjs` 37 → **40/0**（多出的 3 条是 flush 的 ack 断言）。压力：6 并发 × 6 轮
+**36/36 全绿**、4 并发 × 4 轮 **16/16 全绿**（旧 gate 在同一负载下曾 6/6 红）。定向回归 15 套全绿：records
+271/0、run106 20/0、run113 17/0、run164 28/0、run168 38/0、run170 50/0、run174 45/0、run180 21/0、run238 67/0、
+run239 三套 37/87、run243 38/0、run246 18/0、run36 40/0、run36-blueprint 47/0。
+
+**343.7 回执时序的结论。** `records.put` 的回执**不**在 `persist()` + `adoptStamp()` 之后，它是 fire-and-forget
+的（`kernel/index.js:2651`）；因此「已写盘」只能由 `flushRecordsFold()`（内核接缝）或
+`records.status().foldWrites.pending` 证明——文档口径本来就是对的（docs/26 ROUND 69/70/171），错的是测试用内存
+冒充文件。
+
+**343.8 两条教训。**
+1. **判据的名字必须由判据的实现兜住。** 一条断言写着 DURABLE 却读内存，它守的不是文件，而是自己对文件的想象；
+   负载一高，先红的是运气，不是代码。
+2. **给得起 join point 就别用 sleep/轮询。** 本轮先写的版本是「轮询等文件出现（5 s 上限）」，也全绿；但那是把
+   一个已知的时序问题又交回给时间。内核已有 `flushRecordsFold()`，`await flush()` + `pending === 0` 之后读文件
+   才是确定性——同一条断言，两种实现，只有一种在负载下可解释。
+
+---
+
+## §344 `344` RUN 247 —— 提示词复述 tools 数组（同一个事实的第二来源）
+
+**344.1 现象与量化。** 用户口径（m36761）：提示词里对 tools 的介绍/定义/用法/参数，与每轮 `tools` 数组
+（name + description + parameters schema）重复，属不必要。实测四份真装配（`harness.prompts.assembleFor`，
+chair/member/temp × normal/meeting/checkpoint/verify）合计 **112 181 → 100 580（−10.3%）**；单份：
+chair-normal 30 654 → **26 944**（−12.1%）、chair-meeting 33 483 → 29 891、member-normal 25 671 → 23 200
+（−9.6%）、temp-normal 22 373 → 20 545（−8.2%）；三份 normal 合计 78 698 → **70 689（−8 009，−10.18%）**。
+结构上：`v5r-tools-academician` 5 466 → 3 498、`v5r-tools-researcher` 2 844 → 1 836、`v5r-tools-temp`
+1 542 → 1 109（只留「名字 / 名字 —— 仍生效的规则」，零参数对象）；`v5r-fixture-tools` 2 286 → 1 724
+（回执样例只留一份、删重复的 `op:"reply"` 签名）；`v5r-charter-libraries` 1 280 → 871（删 3 行
+Propos/Methods/Subproblems md 字段表）；turn-tracks/compute/blueprint/polls/convene/scripts/chat-admin 的调用
+签名一并删；12 个相位合计 −31 835 字符。
+
+**344.2 为什么这是缺陷而不是风格。** 同一事实两处来源必然漂移：`tools` 数组是每轮挂载的真实契约，改了参数
+之后提示词里的旧参数表会继续教错形状（本轮就删掉了一处 `op:"reply"` 与真实签名不符的样例）。保留原则写进
+`vibe-math-vmu/packs/v5r/seat-faces.js` 的 `SEAT_TEACHING` 注释：目录行只承载**仍生效的规则/时机/顺序/拒绝
+处置**；参数与用法属 tools schema；本回合挂载清单属 host 渲染的【本轮你实际能调用的工具】线块
+（`host.js:2401` 已渲染真实名单）。
+
+**344.3 顺带修掉一个 HEAD 就存在的真 bug：`v5r-blocks-b.js:883` 的一元加号。** 蓝图规则数组里那个元素写成
+`+ '（以换行开头的字符串）'`——一元加号，不是拼接；`join` 之后渲染成字面 `NaN`，**chair 席从来没读到「只有
+adopt 写 md」这条规则**。改成真正的数组元素后，`只有 adopt 写 md` 可在 `v5r-blocks-b.js:883` grep 到。这是
+「提示即承诺」的镜像面：**规则写进了源码但没进渲染文本，等于没写；而任何人 grep 源码都会以为它在。**
+
+**344.4 pin 同步（只换文本、未放宽成 `.*`、未删断言）。**
+`tests/vmu-run239-prompts.test.mjs` §0e 原断言整串 `vibe_v5_script { op: "archive", name, text }`，改为分别
+断言 `vibe_v5_script`、`op: "archive"`、`VMU_NOT_PERMITTED` 三条（原语义不变）；
+`tests/vmu-run244-prompt-facts.test.mjs` 阈值 34 000 → 31 000（RUN 247 使 chair 提示词短 3.7K，实测 31 651，
+仍足以证明 default ruler 唯一绑定了会议 facts）；`vmu-v5r-tools`、`run31-seat-faces`、
+`prompt-sections.mjs` 的 `PINNED_MARKERS` 未动。
+
+**344.5 新守门 `tests/vmu-run247-prompt-dedup.test.mjs`（67/0）。** §1 三席×四相 0 空 section、chair-normal
+≤27 500、三 normal 合计 ≤70 828；§2 目录行形状 `· name[/name…][ —— 规则]`、无参数对象、规则行下限
+15/5/2、段长上限 3 600/2 100/1 300；§3 被删的参数表/调用签名/照抄样例在**装配文本**里一次都不出现；§4
+fixture-tools 只留职责与指针；§5 0 个未解释的整句重复、0 个 always-empty；§6 无 always-empty 来源。
+同时修一条门禁塌陷：该套件最初用静态 `import … from '../scripts/sim/audit/prompt-sections.mjs'`，
+`tests/audit-package-membership.mjs` 判为「vmu 包内相对 import 必须随包发布」而 **PREFLIGHT FAIL**；改为
+`tests/vmu-run241-prompt-budget.test.mjs` 已有的 `await import(pathToFileURL(join(REPO, '…')).href)` 形
+（该分析器是 dev-only、故意不随包发布），PREFLIGHT 恢复 PASS。
+
+**344.6 验收实测（本机）。** `node scripts/audit-prompt-budget.mjs --check` **PASS**（1 条既有 warning：
+chair/meeting 31 651 > t99 30 000，**cap 36 500 未动**；seat cap 30 100 未动）；`prompt-budget.mjs --mutants`
+两注入 **DETECTED**（duplicate-sentence、manual-in-normal）；always-empty 0；`check-rules-coverage --check`
+PASS（0 problem，2 warning C10/D2 与基线一致）；RULE PARITY PASS（P1–P7，0 problem）；DOC LINT PASS；
+`regen-all --check` 17/17 in sync；定向回归 **34 套 EXIT=0**，含 `vmu-v5r-tools` 361/0、`run244` 24/0、
+`run239` 47/0、`run247` 67/0。
+
+**344.7 剩余（下一轮候选）。** 整句重复仍 31 条（bullet 20 · cross-phase 3 · per-seat 8），全部被
+out-of-scope 测试钉住；bullet 从 14 升到 20 是因为 `SEAT_TEACHING` 每席规则措辞同源，正解是让规则句只在
+「规则 section」出现一次、席位段只留指针。最大的一块是 `v5r-reply-compact`（29 字段回执目录 + 可照抄样例）：
+应由 kernel 的 `FIELDS`/`RECORDED_FIELDS` 在 reply 渲染层生成，提示词只留哨兵。
+
+**344.8 冷全量 T1 撞出的四条旧判据（都改判据、不改回被测事实）。**
+1. `tests/audit-declaration-criterion.test.mjs` 的 RULE E 判两个新套件里有「可能空对空」的断言
+   （`vmu-run246-records-pull-race.test.mjs` 的 `cIds.length === diskIds.length`；`vmu-run247-prompt-dedup.test.mjs`
+   的 `bullets/expected` 比对、以及对 `RETIRED`/`DEDUPED` 的 `for…of`），并判 A 类指纹新增两条。修法：给每处
+   加**非空守卫**（`ok(diskIds.length > 0, …)`、`ok(expected.length > 0, …)`、`ok(RETIRED.length > 0, …)`、
+   `ok(DEDUPED.length > 0, …)`），让"空集合也能过"的通道关上；指纹集只减不增，`91 passed, 0 failed`。
+2. `tests/sim-mainline.test.mjs` 原断「chair 提示词必须 > 30 000，否则报的数字是撒谎」。RUN 247 之后 chair
+   真的低于 T99 了（26 944 normal / 29 891 meeting），这条判据的前提被诚实地推翻 ⇒ 改成两侧边界
+   （> 25 000 且 ≤ 36 000，仍能抓出"桩提示词"），并在注释里写明旧口径为何消失。
+3. `tests/vmu-run150-verdict-channel.test.mjs` §2l2 原断「每个教出来的开板形状都带齐 required」，RUN 247
+   删掉形参复述后 `taughtOpen` 为空 ⇒ 拆成三条：①工具声明必须带 `question/options/member`（现在形状只在
+   这里）；②若提示词**再**教开板形状，必须带齐 required（半截形状＝被具名拒的调用）；③提示词一次也不教
+   开板形参（出现即回到"同一事实两个来源"）。
+4. 教训补一条：**删掉一处重复，会同时让守它的判据失去支点**——判据要随之改判"来源唯一"，而不是删掉判据，
+   也不是把被删的重复加回来。

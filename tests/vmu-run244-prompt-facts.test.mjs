@@ -113,7 +113,7 @@ ok(Boolean(gateMeeting) && Math.abs(drift) <= 200,
 ok(Boolean(gateMeeting) && drift <= 200, 'and the gate is never measuring a SMALLER prompt than the simulator (that would be headroom that does not exist)', { drift })
 const gateDefault = await GATE.measure()
 const gateDefaultMeeting = gateDefault.seats.chair.phases.meeting
-ok(gateDefaultMeeting.chars > 34000,
+ok(gateDefaultMeeting.chars > 31000,
   'and its DEFAULT ruler number includes the facts (before RUN 244 it measured the earlier, emptier prompt)', gateDefaultMeeting.chars)
 
 rmSync(root, { recursive: true, force: true })

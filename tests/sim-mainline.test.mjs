@@ -75,9 +75,13 @@ const bySeat = {}
 for (const p of prompts) bySeat[p.seat] = Math.max(bySeat[p.seat] || 0, p.chars || (p.text || '').length)
 ok(typeof bySeat.chair === 'number' && bySeat.chair > 20000, 'the chair prompt is measured in the tens of thousands (slot-keyed, not role-keyed)', bySeat)
 ok(typeof bySeat.member === 'number' && bySeat.member > 15000, 'the member prompt is measured too', bySeat)
-// T99's hard cap and the RUN 226 chair allowance: the simulator must not report a chair prompt
-// that is short enough to pass a 30 000 gate, because the real one is not.
-ok(typeof bySeat.chair === 'number' && bySeat.chair > 30000, 'the chair prompt is honestly above the T99 cap (a shorter number would be a lie)', bySeat.chair)
+// T99's hard cap and the RUN 226 chair allowance were used here as an honesty probe ("a shorter
+// number would be a lie"). RUN 247 changed the premise honestly: the chair prompt now really IS
+// below T99 (26 944 normal / 29 891 meeting) because the tool catalogue and parameter restatement
+// were deleted. The probe keeps its point - the measured number must be the real assembly, not a
+// stub - by bounding it on both sides: it must be a real multi-thousand-character assembly and
+// still inside the allowance, which is what the budget gate enforces on its own ruler.
+ok(typeof bySeat.chair === 'number' && bySeat.chair > 25000, 'the chair prompt is measured at its real size, not a stub (RUN 247 brought it under T99, so the old "above 30 000" framing is gone)', bySeat.chair)
 ok(typeof bySeat.chair === 'number' && bySeat.chair <= 36000, 'and still inside the chair allowance the budget gate enforces', bySeat.chair)
 
 // ---- ④ the blueprint md is the truth, the row is its index --------------------------------

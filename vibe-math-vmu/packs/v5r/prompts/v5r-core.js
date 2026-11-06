@@ -561,20 +561,18 @@ export const v5rFixtureTools = Object.freeze({
     "★ 记录本契约（机制边界，不是建议）：先确认你的记录本落在哪个库根：看记录回执里的 `libraryRoot`——与所办读到的是同一个根，「我在库里写了卡」就等于「研究所登记了这张卡」（成员回合的内核跑在同一工作区根上）；只有回执显示**另一个**根时才是本地草稿。要以回执的 `libraryRoot` / `recordId` 为证，不要凭「我写过了」下判断。",
     "★ 例外：**蓝图/协议（blueprint）草案不是私有的**——propose 的段落写进全所共享的同一份草案，别人续写就在你的文字上写。不想要：**采纳之前**可让所办按 id 把整份草案 prune 掉；**采纳之后**它已是现行协议，prune 只能整行移走，所以诊断文字写进 `note`，别把共享草案当草稿纸。",
     "本提示词的「本角色可用的工具」段是**角色职责清单**，不承诺「本回合已挂载」；本回合真正挂载了哪些，以宿主装配的「本轮你实际能调用的工具」段为准。",
-    "调用工具后结果立即可见；**回执可以很薄**——动作已由工具完成，回执只说这轮做了什么、下一步是什么。",
-    "★ 回执**就是你本次回复的正文**：在末尾用一段代码围栏（三个反引号开头，标记写 json 或省略）包一个 JSON 对象。★ **不要**调用 `vibe_vmu_turn { op: \"reply\", report: { … } }`：成员回合由宿主派发，没有待回的回合，调用只会得到 `VMU_TURN_NO_PENDING_MEMBER`；既没有围栏也没有对象 ⇒ `VMU_TURN_NO_FENCE`，围栏里的 JSON 不合法 ⇒ `VMU_TURN_BAD_JSON`。",
+    "调用工具后结果立即可见；**回执可以很薄**：动作已由工具完成，只说做了什么、下一步是什么。",
+    "★ 回执**就是你本次回复的正文**：末尾用一段代码围栏（三个反引号，标记 json 或省略）包一个 JSON 对象；**不要**调用 `vibe_vmu_turn` 的 `op:\"reply\"`（成员回合由宿主派发，只会得到 `VMU_TURN_NO_PENDING_MEMBER`）。没有围栏或对象 ⇒ `VMU_TURN_NO_FENCE`，围栏里的 JSON 不合法 ⇒ `VMU_TURN_BAD_JSON`。",
     "★ 回执正文里【不要】粘贴 JSON 对象或工具回执原文；需要引用时用一句话概括（大括号会被当成回执边界）。",
     "★ 若某个工具被具名拒绝：把它的 code 与 hint 写进 **progress 的 body 里**（或下一次工具调用的参数里），**不要**新增 `note` 之类的顶层字段。",
-    "★★ 回执契约（本夹具的收敛口径）：这四个字段就够了——progress / say / solved / vote_solved；但内核**另接受 29 个已登记字段**（`formal`、`record`、`meeting_hand` 等，完整清单见上面的「回执字段」段），写了不算错、只是本夹具不要求。★ `note`、`plan` 之类**不在内核字段清单**里，写了会被判 `VMU_TURN_UNKNOWN_FIELD`；`record`/`meeting_hand` 虽在内核清单里，但本夹具要求用工具做、不要写进回执。",
+    "★★ 回执契约（本夹具的收敛口径）：progress / say / solved / vote_solved 四个字段就够；内核**另接受 29 个已登记字段**（`formal`、`record`、`meeting_hand` 等，见上面「回执字段」段），写了不算错；`note`、`plan` 之类不在清单，写了会被判 `VMU_TURN_UNKNOWN_FIELD`；`record`/`meeting_hand` 本夹具要求用工具做、不要写进回执。",
     "★★ 已经用工具做完的动作不要再写进回执；回执只放没有工具对应的纯决定（例如是否结题）。",
     "★★ 最小合法回执：**结题表决用 `{\"vote_solved\": true|false}`（只有它计结题票）**；个人本轮判断用 `{\"solved\": false}`（**不计票**）；要写进展就 `{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"…\"}}`，**不要**把 progress 写成字符串。",
-    "★★ 一次工具调用只做一件事。结题表决用 {\"vote_solved\": true|false}（只有它计结题票）；个人本轮判断用 {\"solved\": false}（不计票，不参与结题）；progress 必须是对象（不是字符串）。",
+    "★★ 一次工具调用只做一件事。",
     "★★ 写卡片请直接用工具（`vibe_v5_record_*`），**不要**把卡片塞进回执的 record 字段。",
     "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
-    "★★ 回执示例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；progress 必须是**一个对象**（不是字符串/数组），kind 只能是已声明的（如 progress）。",
-    "★ 清单之外的工具不要尝试调用：本提示词列出的就是你此刻能用的全部；没列出的名字属于别的席位，调用只会被具名拒。若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。",
-    "★ 按席位记账的工具要带 `member: \"<你的 id>\"`：`vibe_v5_blueprint { action: \"propose\", path, text, member }`、`vibe_v5_task_update { task_id, expected_revision, action: \"claim\", member }`、`vibe_v5_say { …, member }`，漏了会被具名拒 `VMU_INVALID_ARGUMENT`（hint 会点名该补什么）。",
-    "★ 但**不是每个工具**都要 member：`vibe_v5_set { key, value, why }`、`vibe_v5_configure` 只收声明的形参，多写未知参数同样会被具名拒，照工具 description 写。",
+    "★ 清单之外的工具不要尝试调用：没列出的名字属于别的席位，调用只会被具名拒。若本轮提示词含有「本轮不调用工具」的夹具约束，则以那条为准。",
+    '★ 按席位记账的工具要带 `member`（`<你的 id>`）：blueprint / task_update / say 漏了会被具名拒 `VMU_INVALID_ARGUMENT`；但**不是每个工具**都要 member：`set`/`configure` 只收声明的形参，多写未知参数同样具名拒，照工具 description 写。',
   ].join('\n'),
 })
 
@@ -613,8 +611,8 @@ export const v5rFixtureTools = Object.freeze({
  * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
  */
 const V5R_PROSE_CHAIR = Object.freeze([
-    "★★ 回执样例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；★ progress 必须是**一个对象**（不是字符串/数组），kind 只能是已声明的（如 progress）。",
     "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
+    "★★ 回执里的 `progress` 必须是对象：`\"progress\":{\"track\":\"progress\",…}`（不是字符串，写成字符串会被拒）。",
     "★ 论文流程：start → part（逐章／逐人）→ advance → review → render；advance 可多次（互审全票后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳阶段。",
     "★ 留言（信箱）不需要立即阅读 —— 你可以在有空时再看。",
     "★ 查看顺序：先看列表（发件人 / 时间 / 标题 / 已读 / 待办），再挑一封打开读；读过的会自动标已读，需要跟进的标待办（todo）。",
@@ -652,7 +650,6 @@ export const v5rToolSectionAcademician = Object.freeze({
  * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
  */
 const V5R_PROSE_MEMBER = Object.freeze([
-    "★★ 回执样例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；★ progress 必须是**一个对象**（不是字符串/数组）。",
     "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
     "转达所办口吻的消息不是你的职责（那是院士的）；所内全局视图也不是（仅院士）。",
     "★ 论文流程：start → part → advance → review → render；advance 可多次（互审全票后还要再 advance 才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳阶段。",
@@ -691,7 +688,6 @@ export const v5rToolSectionResearcher = Object.freeze({
  * ★ Adding a capability is ONE ROW in `seat-faces.js` (plus its wording there) — never an edit to this array.
  */
 const V5R_PROSE_TEMP = Object.freeze([
-    "★★ 回执样例（可直接照抄）：{\"progress\":{\"track\":\"progress\",\"kind\":\"progress\",\"title\":\"本轮进展\",\"body\":\"做了什么与下一步\"},\"solved\":false}；★ progress 必须是**一个对象**（不是字符串/数组）。",
     "★ 上表是职责说明；**本回合你实际能调用哪些，以【本轮你实际能调用的工具】为准**。",
     "招人、汇报与全局视图不是临时席位的职责（那是院士与常驻研究员的工具）。",
     "★ 论文流程：start→part→advance→review→render；advance 可多次（互审全票后才到 awaiting-editor，之后由 chair 席 final），被具名拒时照拒因处理、不要跳阶段。",

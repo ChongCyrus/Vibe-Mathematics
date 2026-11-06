@@ -214,8 +214,19 @@ try {
     const openRequired = requiredOf(openTool)
     const taughtOpen = []
     for (const m of teachingSources.matchAll(/vibe_v5_poll_open\s*\{([^}]*)\}/g)) taughtOpen.push(m[1])
-    ok(taughtOpen.length > 0 && openRequired.length > 0 && taughtOpen.every((src) => openRequired.every((k) => keysOf(src).includes(k))),
-      '§2l2 ★★★ 每个教出来的开板形状也带齐了 required（question/options/member）', { openRequired, taughtOpen })
+    // RUN 247 (prompt dedup) deliberately deleted the parameter restatement for poll_open: the tools array is the
+    // canonical shape, so the prompt no longer teaches one. The pin keeps its point by splitting into two claims:
+    // the SCHEMA must carry the required trio (that is now the only place the shape lives), and IF the prompt ever
+    // teaches an open shape again it must be complete - a half shape would be a call refused by name.
+    ok(openRequired.length > 0 && ['question', 'options', 'member'].every((k) => openRequired.includes(k)),
+      '§2l2 ★★★ 工具声明里带着开板 required 三件套（question/options/member）——RUN 247 之后形参形状只此一处是权威',
+      openRequired)
+    const incompleteOpen = taughtOpen.filter((src) => ['question', 'options', 'member'].some((k) => !keysOf(src).includes(k)))
+    ok(incompleteOpen.length === 0,
+      '§2l2 ★★★ 提示词里若重新出现开板形状，必须带齐 required（当前 0 处形状教学：形参复述归 tools 数组）',
+      { taughtOpenCount: taughtOpen.length, incompleteOpen })
+    ok(taughtOpen.length === 0,
+      '§2l2★ RUN 247 之后提示词不再教开板形参形状（一次也不出现；出现即回到「同一事实两个来源」）', taughtOpen.length)
     const taughtBoard = parse(await openTool.execute({ question: 'run150 §2 taught', options: ['A', 'B'], member: 'r-chair' }, {}))
     const taughtBoardId = taughtBoard && taughtBoard.boxId
     const taughtVote = await refusalOf(() => voteTool.execute({ ballot_id: taughtBoardId, choice: 'A', member: 'r-1' }, {}))

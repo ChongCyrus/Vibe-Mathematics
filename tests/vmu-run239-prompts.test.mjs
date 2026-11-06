@@ -79,7 +79,7 @@ try {
     ok(says(blocksBSource, '只有 adopt 写 md') && says(blocksBSource, 'md.written:false') && says(blocksBSource, 'deferredTo:"adopt"'),
       '§0c ·1 and says a draft is an index row, deferred to adopt')
     ok(denies(blocksBSource, '三个席位的 ACL 都不开放它'), '§0d ·2 the script block no longer says every seat is closed')
-    ok(says(blocksBSource, 'vibe_v5_script { op: "archive", name, text }') && says(blocksBSource, 'VMU_NOT_PERMITTED'),
+    ok(says(blocksBSource, 'vibe_v5_script') && says(blocksBSource, 'op: "archive"') && says(blocksBSource, 'VMU_NOT_PERMITTED'),
       '§0e ·2 and names the chair face and the refusal a member/temp meets')
     ok(says(blocksBSource, '归档是**副本**不是执行证据'), '§0f ·2 and says the archive is a copy, not execution evidence')
     ok(says(blocksBSource, '{{ setting:vmu.turn.meetingAgenda }}') && says(blocksBSource, '{{ setting:vmu.turn.meetingType }}') &&

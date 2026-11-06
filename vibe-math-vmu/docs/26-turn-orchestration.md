@@ -4455,3 +4455,50 @@ A7 是提示词审计里唯一一条**渲染层**缺陷：会议相位但没绑�
 
 读数：新套件 `tests/vmu-run245-audit12.test.mjs` 40/0；定向回归 turn 272/0、run241-lock 49/0、run242 62/0、
 run22 全绿、run244 24/0、audit-vmu-docs 103/0。
+
+### ROUND 246 —— 一条叫 durable 的判据读的是自己的内存（records 共享面的假绿）
+
+`tests/vmu-run36-records-shared.test.mjs` 的「行真的在耐久折里（state.json）」这一条，实现是
+`k.store.read('records')`——**本实例的内存折**。它不是偶发 flake，是判据本身在说假话：
+
+- **写路径**：`kernel/index.js:2651` 的 `wrap('put',{snapshot:true})` 调 `snapshotRecords()` 后**把 promise 丢进
+  `foldWrites.inflight`，不 await**；`store.js` 的 `mutate` 先写 `fold.keys[key]`（`:350`）再 `await persist()`
+  （`:352` → tmp+rename `:291-313`）。所以 **`records.put` 的回执在文件改名之前就返回**，「已写盘」只能靠
+  `foldWrites.pending` / join point `flushRecordsFold()`（`:2550`）证明。
+- **读路径**：`records.js:1953` → `store.js:485` → `reloadIfStale`（`:231-247`）同 mtime:size 就报 `fresh` 返回旧
+  fold，`records.js:1974` 签名未变 ⇒ `skipped+1`、`pulled:0`。文件没改名时这是**对的**。
+- **裁决**：在 records.js 里「修」只能靠把兄弟实例未落盘的行当共享事实（幽灵行），违规。修判据。
+- **修法**：gate 先 `await flushRecordsFold()` 断言 `pending === 0`，再 `readFileSync(k.store.file)` 读
+  `state.json`；失败时打印 `{idsOnDisk}`。新套件 `tests/vmu-run246-records-pull-race.test.mjs` 18/0（①落盘行对
+  先启动的内核可见且 fingerprint 校验通过 ②id ⊆ 文件 id、新内核只见文件 id ③未知 id 仍按名拒 ④读不写）；
+  run36 37 → **40/0**；6 并发×6 轮 36/36、4 并发×4 轮 16/16 全绿（旧 gate 在同负载下 6/6 红）；定向回归 15 套全绿。
+
+教训：**判据的名字必须由实现兜住**（写着 DURABLE 却读内存，守的是想象）；**给得起 join point 就别 sleep/轮询**
+（第一版轮询也绿，但把已知的时序问题又交回给时间）。
+
+### ROUND 247 —— 提示词里的第二来源必须死（tools 数组才是权威）
+
+用户口径（m36761）：提示词里对工具的清单/参数/用法复述，与每轮 `tools` 数组重复，属不必要。做法不是「删字
+数」，而是让每个事实只有一个来源：`tools` schema 管参数与用法，host 的【本轮你实际能调用的工具】线块管挂载
+清单，提示词只管**规则、时机、顺序、拒绝处置**。
+
+四份真装配（`harness.prompts.assembleFor`）合计 112 181 → **100 580（−10.3%）**；chair-normal 30 654 →
+**26 944**（−12.1%）、chair-meeting 33 483 → 29 891、member-normal 25 671 → 23 200、temp-normal 22 373 →
+20 545；三份 normal 合计 78 698 → **70 689（−8 009，−10.18%）**。角色工具段只留「名字 / 名字 —— 仍生效
+的规则」，零参数对象：academician 5 466 → 3 498、researcher 2 844 → 1 836、temp 1 542 → 1 109；
+fixture-tools 只留一份回执样例（删重复的 `op:"reply"` 签名）；charter-libraries 删掉 3 行卡片 md 字段表；
+turn-tracks/compute/blueprint/polls/convene/scripts/chat-admin 的调用签名一并删。
+
+顺带修掉一个 HEAD 就有的真 bug：`packs/v5r/prompts/v5r-blocks-b.js:883` 的数组元素写成了一元加号（`+` 后跟
+一个以换行开头的字符串），`join` 之后渲染成字面 `NaN` —— **chair 席从来没读到「只有 adopt 写 md」这条规则**。
+规则进了源码却没进渲染文本，等于没写；而任何人 grep 源码都会以为它在。这是「提示即承诺」的镜像面。
+
+守门：新建 `tests/vmu-run247-prompt-dedup.test.mjs`（67/0）把「角色段只剩名字+规则、无参数对象、被删签名与
+照抄样例一次都不出现、chair-normal ≤27 500、三 normal 合计 ≤70 828」钉成回归；pin 只换文本不放宽
+（`vmu-run239-prompts` §0e 拆成三条子串断言、`vmu-run244-prompt-facts` 阈值 34 000 → 31 000）。
+门禁：`audit-prompt-budget --check` PASS（cap 36 500/30 100 未动，仅 1 条既有 t99 warning），`--mutants` 两注入
+DETECTED，always-empty 0，RULES COVERAGE / RULE PARITY / DOC LINT / regen 17/17 全绿，定向回归 34 套 EXIT=0。
+
+教训：**同一个事实的第二来源不是冗余，是负债**——它不会报错，只会在契约改动后继续教旧形状。
+下一块最大的是 `v5r-reply-compact`（29 字段回执目录 + 可照抄样例）：应由 kernel 的
+`FIELDS`/`RECORDED_FIELDS` 在 reply 渲染层生成，提示词只留哨兵。
