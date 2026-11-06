@@ -365,7 +365,7 @@ vmu.packs.active: [v5r]
 | `vmu.turn.tempDirection` | string | `（未说明）` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 给临时工的起点方向 |
 | `vmu.turn.tempTerm` | string | `雇主另行通知` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 临时工任务期（原线默认措辞） |
 | `vmu.turn.meetingId` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/turn/index.js` | 当前会议号；会议相位的标题用它 |
-| `vmu.turn.meetingType` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 本回合绑定会议的类型（debate/ordinary/…）；未绑定为空 |
+| `vmu.turn.meetingType` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `kernel/index.js` | 本回合绑定会议的类型（debate/ordinary/…）；未绑定为空 |
 | `vmu.turn.meetingChair` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 本回合绑定会议的主席席 id；未绑定为空 |
 | `vmu.turn.meetingAgenda` | string | `` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-b.js` | 本回合绑定会议的议程原文（会议记录里的 materials）；未绑定为空 |
 | `vmu.turn.meetingDelivery` | string | `本回合没有绑定会议：回执里的 say 不会投递，要对全所说话请用 vibe_v5_say。` | — | 会话 | H2 | office | ✅ 已接线 | `packs/v5r/prompts/v5r-blocks-a.js` | 本回合绑定的会议的话，say 会投到哪场会；未绑定时说明不投递 |

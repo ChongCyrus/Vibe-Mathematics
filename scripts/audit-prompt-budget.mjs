@@ -176,7 +176,11 @@ export function uncallableNames(text, declaredNames) {
   return [...seen.entries()].map(([name, n]) => ({ name, n }))
 }
 
-export async function measure() {
+export async function measure(options = {}) {
+  // ★ RUN 244: the meeting the ruler binds is an INPUT, not a constant. `tests/sim-assembly-parity.test.mjs` convenes a
+  // real meeting and needs both rulers to read the SAME id and the SAME facts; hard-coding them here would have made the
+  // two measure two different prompts and the suite red for a difference that is not a defect (see the RUN 242 note below).
+  const rulerMeetingId = (typeof options.meetingId === 'string' && options.meetingId.trim() !== '') ? options.meetingId.trim() : RULER_MEETING
   const { createTurnOrchestrator } = await import(pathToFileURL(join(VMU, 'kernel', 'turn', 'index.js')).href)
   const { createPromptPipeline } = await import(pathToFileURL(join(VMU, 'kernel', 'prompt', 'index.js')).href)
   const { collectPackSections } = await import(pathToFileURL(join(VMU, 'kernel', 'pack.js')).href)
@@ -205,9 +209,37 @@ export async function measure() {
   //   (4) ★ RUN 226 follow-up: the LAYER ITSELF now comes from `scripts/sim/settings.mjs`, the same helper the
   //       simulator's harness reads, so this gate and the simulator cannot drift into two different prompts again.
   const settings = promptSettings()
+  // ★★★ RUN 244 — THE GATE WAS MEASURING A PROMPT NOBODY RECEIVES, AGAIN, AND IN THE SAME PLACE.
+  // A turn BOUND to a meeting gets `{{ setting:vmu.turn.meetingType }}` / `…meetingChair` / `…meetingAgenda` filled from
+  // `faces['vmu.meetings'].summary({meeting})` (`kernel/turn/index.js`, the `meetingFacts` block). RUN 242 bound the ruler
+  // to a meeting id (`RULER_MEETING`) so the gated sections render at all — but this gate passed NO faces map, so `summary`
+  // did not exist, `meetingRead` was null, and the agenda line rendered `议程：（类型：，主席：）。` with all three values
+  // EMPTY. That number is a bound on a prompt shorter than the one a seat reads, i.e. headroom that is not there — the
+  // exact defect RUN 226 fixed on three other parameters. The gate stays a TEMPLATE ruler (it does not boot a kernel), so
+  // the facts here are a documented representative payload of the SHAPE `summary()` returns, and the REAL number is the
+  // one the simulator measures off a live kernel (`scripts/sim/harness.mjs` now passes `kernel.faces`). The two must not
+  // drift by more than the documented slack below.
+  const RULER_MEETING_FACTS = Object.freeze({
+    type: 'ordinary',
+    chair: 'r-acad',
+    agenda: '确认命题; 分配复核',
+  })
+  const facts = Object.freeze({
+    type: (options.meetingFacts && typeof options.meetingFacts.type === 'string' && options.meetingFacts.type !== '') ? options.meetingFacts.type : RULER_MEETING_FACTS.type,
+    chair: (options.meetingFacts && typeof options.meetingFacts.chair === 'string' && options.meetingFacts.chair !== '') ? options.meetingFacts.chair : RULER_MEETING_FACTS.chair,
+    agenda: (options.meetingFacts && typeof options.meetingFacts.agenda === 'string' && options.meetingFacts.agenda !== '') ? options.meetingFacts.agenda : RULER_MEETING_FACTS.agenda,
+  })
+  const rulerFaces = Object.freeze({
+    'vmu.meetings': Object.freeze({
+      summary: ({ meeting = null } = {}) => (meeting === rulerMeetingId
+        ? { ok: true, id: rulerMeetingId, type: facts.type, chair: facts.chair, materials: facts.agenda, agenda: facts.agenda }
+        : null),
+    }),
+  })
   const loopOf = () => createTurnOrchestrator({
     sectionPolicy: decideSections,
     settings,
+    faces: rulerFaces,
     prompt: createPromptPipeline({
       sections: collectPackSections([PACK]),
       bindings: PACK.bindings,
@@ -231,7 +263,7 @@ export async function measure() {
     // meeting-PHASE turn bound to no meeting is not on a floor and correctly stops receiving them. So the ruler has to
     // BIND one, or it would measure a prompt no seat ever receives (and report a meeting prompt ~1 KB lighter than the
     // one a chair actually reads). The id is only a label in the rendered text; nothing here resolves it.
-    meeting: phase === 'meeting' ? RULER_MEETING : null,
+    meeting: phase === 'meeting' ? rulerMeetingId : null,
     settings,
   })
 

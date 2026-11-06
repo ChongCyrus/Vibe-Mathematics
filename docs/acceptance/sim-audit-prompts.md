@@ -232,6 +232,7 @@
 
 ## C1 · 验证轮的标题仍写「第 1 轮」，会议标题多一个空格
 
+> **状态（task-56，2026-11-06）：已修。** 给 `v5r-turn-heading` 补了 `verify` 变体（`【验证轮 —— {{ roleLabel }} {{ member }}】`，此前 verify 轮渲染的是 normal 的「第 N 轮」）；会议标题改为 `【研究所会议{{ setting:vmu.turn.meetingId }} · 进行中 —— …】`，用 ` · ` 消掉 id 为空时的双空格。**未按建议删 `{{ setting:vmu.turn.meetingId }}`**：`tests/vmu-turn.test.mjs` T108–T110 要求该 per-turn 事实可注入覆盖，删了会三红。verify 轮净增约 14 字（三个席位各一次），normal/meeting 不变。
 - **位置**：`v5r-turn-heading`（12/12；verify 复用 normal 文本）
 - **原文（逐字）**：
   > `【第 1 轮 —— 院士 r-acad】`（verify 相位同此）
@@ -250,6 +251,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## C2 · `v5r-verify-reconsider` 是拼接残句，且"弃权以保证不出结论"是危险指令
 
+> **状态（task-56，2026-11-06）：已修。** 整节重写为「新规则 + 旧句逐字保留并前置『勿照做』」：旧的两句被 `tests/vmu-prompt-type-coverage.test.mjs` 的 `isCorrectedTeachingLedger`（测试内硬编码 13 条正则）逐字认领，删了会报 `unexplained`；现在它们作为「作废措辞」留在更正语义里，新规则给出「弃权必须给出独立理由，不得以弃权代替判断」的出口。137→364 字（仅 verify 轮）。
 - **位置**：`v5r-verify-reconsider`（verify ×3，137 字）
 - **原文（逐字）**：
   > `你可以维持、修改或反驳任何人的看法。`
@@ -265,6 +267,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## C3 · 形式化的操作细节在 12/12 全相位都讲，验证轮反而讲两遍
 
+> **状态（task-56，2026-11-06）：部分已修（降级）。** `v5r-formal-work` 659→427（删掉与 `v5r-formal-plan`/`verify-formal-addendum` 重复的 import 路径、后台队列、审核次序细节，保留判断标准与两条诚实规则）。**`v5r-formal-work-rendered`（469 字，仅 verify）未删**：它的正文含字面 `<VIBEMATH>` 且被 `tests/vmu-prompt-type-coverage.test.mjs` 的语料行正则认领，删行即红；要根治须把它并进 `v5r-verify-formal-addendum` 的渲染层（机制，非本写域）。
 - **位置**：`v5r-formal-work`（12/12，659 字） vs `v5r-formal-plan`（verify ×3，830） vs `v5r-formal-work-rendered`（verify ×3，469）
 - **原文（逐字）**：
   > （formal-work）`新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind='def'），已成立的引理归到 Proved/`
@@ -283,6 +286,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## C4 · temp 读 887 字"院士的七条组织职责"
 
+> **状态（task-56，2026-11-06）：已修。** `v5r-charter-org` 的 temp 变体 887→345：删掉七条院士组织职责与四条主席边界，改成「你没有组织职责；被邀请就赴会、被指派就做事、有异议走回执留痕」，保留 `tests/vmu-turn.test.mjs` `KNOWN_UNBASELINED` 认领的首行措辞。chair 变体 808、member 变体 820 未动（它们本来就该读这些职责）。
 - **位置**：`v5r-charter-org`（temp 887 / member 820 / chair 808，12/12）
 - **原文（逐字，temp 版与 member 版几乎相同）**：
   > `    ② **规划与分派**：把原问题拆成值得做的工作，作为**任务**分派给合适的成员（含临时工）。分派是它的职责，不是越权；`
@@ -300,6 +304,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## C5 · 「更正·领头人」历史说明常驻 12/12
 
+> **状态（task-56，2026-11-06）：部分已修（降级）。** `v5r-fix-leader-id` 节内压缩，但**不能删**：`tests/vmu-prompt-corrections.test.mjs:63-69` 要求五节都在、`oldNeedles` 逐字含「没有在册院士」「vmu.turn.leaderId」「vibe_v5_configure」「leadership.code」，且每节 ≤400 字。本批五段更正合计 1 485→1 232（各节都保住 marker + needles）。要真正按相位裁剪得改更正段的装配策略（`v5r-corrections.js` 的 phase 门控 + 测试契约），属机制层。
 - **位置**：`v5r-fix-leader-id`（12/12，389 字）
 - **原文（逐字）**：
   > `【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空）。`vibe_v5_start` 坐好院士席时会**自动**写入；手动 `hire` 到 chair 席位**不会**——那就自己 `vibe_v5_set { key:"vmu.turn.leaderId", value:"<同一代号>", why:"安置院士" }`…`
@@ -320,6 +325,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## D1 · `v5r-reply-compact` 含"上面这句是捕获原文"的元话语，且与另外四节重复讲回执
 
+> **状态（task-56，2026-11-06）：部分已修（降级）。** 删掉「上面这句是捕获原文」「下面是 v5r-reply-channel.js 渲染的清单」两条元话语与重复的回执复述，3 208→3 096。**被 `tests/vmu-run144-reply-routes.test.mjs:168` 逐字 pin 的两段捕获原文未动**；`replyChannelLines()`/`replyCatalogueLines()` 的渲染体也在渲染层，未改。
 - **位置**：`v5r-reply-compact`（12/12，3 208 字——全提示词最长单节）
 - **原文（逐字）**：
   > `（上面这句是捕获原文；字段形状以上面 v5r-reply-channel.js 渲染的清单为准：record 是研究日志**一行** {track,text} → Members/<你>/Progress/<track>.md；成果卡不是回执字段…）`
@@ -336,6 +342,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## D2 · `v5r-fixture-tools` 与 D1 重复，且"记录本契约"段落带测试语境
 
+> **状态（task-56，2026-11-06）：已修。** 2 447→2 267：「SLV 夹具约束」的验收语境词与「记录本契约」重复解释压掉，保留 `libraryRoot`/`recordId` 判据、三句 pin（`上表是职责说明`、`回执样例（可直接照抄）`、`以【本轮你实际能调用的工具】为准`）与回执样例。
 - **位置**：`v5r-fixture-tools`（12/12，2 447 字）
 - **原文（逐字）**：
   > `【SLV 夹具约束｜本轮调用工具】`
@@ -351,6 +358,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## D3 · 五段「更正·」共 1 485 字，讲的是"旧措辞作废"
 
+> **状态（task-56，2026-11-06）：部分已修（降级）。** 合计 1 485→1 232（`v5r-fix-formal` 399、`v5r-fix-leader-id`、`v5r-fix-m-vote`、`v5r-fix-json-reply`、`v5r-fix-tool-help` 各自缩一到两档）。**不能按建议「合一/删节」**：`tests/vmu-prompt-corrections.test.mjs:63-69` 要求五节五 marker 全在、needles 逐字、每节 ≤400 字、order 890-894，`SUPERSEDES` 还要求四段所属 marker 在真实装配里。
 - **位置（12/12 全部）**：`v5r-fix-leader-id`(389)、`v5r-fix-m-vote`(309)、`v5r-fix-formal`(308)、`v5r-fix-json-reply`(293)、`v5r-fix-tool-help`(186)
 - **原文（示例，逐字）**：
   > `【更正·m 票】旧说法「按 m 票布尔一致决定 / 凑够 m …`
@@ -365,12 +373,14 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## D4 · Lean 归档讲三遍（同 C3），此处只记篇幅账
 
+> **状态（task-56，2026-11-06）：随 C3 一并处理（部分）。** `v5r-formal-work` 已瘦身；`v5r-formal-work-rendered` 按 C3 的理由保留。
 - **位置**：`v5r-formal-work` 659（12/12）+ `v5r-formal-plan` 830（verify）+ `v5r-formal-work-rendered` 469（verify）
 - **原文**：见 C3。
 - **建议**：按 C3 的替换文本执行——非 verify 只留两句，verify 只留 `formal-plan` 一份。预计每回合省 450（12/12 部分）+ verify 轮再省 469。
 
 ## D5 · `v5r-math-rules` 与 `v5r-turn-compute` 都介绍 mathtools
 
+> **状态（task-56，2026-11-06）：已修。** `v5r-math-rules` 467→123，只留「mathtools 是沙箱里的计算工具、重跑要一致、结果归档进记录本」三句，讲解细节归 `v5r-turn-compute`（后者未加字）。
 - **位置**：`v5r-math-rules`（12/12，467 字） vs `v5r-turn-compute`（12/12，483 字）
 - **原文（逐字）**：
   > （math-rules）`- 需要精确数值、符号化简、反例搜索、统计或线性代数时用 `vibe_vmu_mathtools`：先 action: plan 看计划与沙箱上限，再 action: run 执行，并把回执路径写进报告；…`
@@ -385,6 +395,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## D6 · `v5r-turn-tracks` 与 `v5r-turn-board` 重复讲状态板
 
+> **状态（task-56，2026-11-06）：已修。** `v5r-turn-board` 679→538：删掉设置解析、「什么时候刷新」与席位差异三条（这些在 `v5r-turn-tracks` 讲），保留 `tests/vmu-run33-p2-teaching.test.mjs` pin 的四行名、「该来源未提供」「唯一来源」「不要自己另立一套」。
 - **位置**：`v5r-turn-tracks`（12/12，881 字） vs `v5r-turn-board`（12/12，679 字）
 - **原文（逐字）**：
   > （tracks）`  · `[状态板]` 四行是**派生读数**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。state 面板自己写：**成员席位只能改自己的**，**所办/人类代笔**可代写这几行**读数**并回执 `panelOwner`（仅读数，不含学术动作）；…`
@@ -399,6 +410,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## D7 · 三份工具长清单（审计时 5 248 / 2 651 / 1 349 字，复查时 5 466 / 2 844 / 1 542），模型读的是"目录"不是"用法"
 
+> **状态（task-56，2026-11-06）：未做（降级，出写域）。** 三份工具清单的 `·` 行由 `vibe-math-vmu/packs/v5r/middleware/seat-faces.js` 的 `seatBulletLines()` 渲染，`tests/vmu-v5r-tools.test.mjs:1929-1932` 要求它们逐字等于渲染结果（`tests/vmu-run31-seat-faces.test.mjs` 双向比对），`prompt-sections.mjs:80-91` 的 13 条 PINNED_MARKERS 也钉住其中若干句。要瘦身必须同时改 `seat-faces.js` 与两侧测试，属 kernel/tools 写域，本批按规则未碰。
 - **位置**：`v5r-tools-academician`（chair 4/4 相位，审计时 5 248 / 复查时 5 466 字）、`v5r-tools-researcher`（member，2 651 / 2 844）、`v5r-tools-temp`（temp，1 349 / 1 542）
 - **原文（示例，逐字）**：
   > （tools-academician）`vibe_v5_meeting —— 召会（agenda 必填…）`
@@ -415,6 +427,7 @@ verify：     【验证轮 —— {{role}} {{member}}】
 
 ## D8 · 记录本/库根的解释在三节里各写一遍
 
+> **状态（task-56，2026-11-06）：已修。** 按「库根/记录本只在 `fixture-tools` 讲一次」执行：`v5r-fixture-tools` 保有完整判据（2 267），`v5r-charter-libraries` 只留三条硬要求 + 指针（1 356→1 280/1 277），`v5r-reply-compact` 的回执字段表不再复述库根。
 - **位置**：`v5r-charter-libraries`(1 301)、`v5r-fixture-tools`(2 447)、`v5r-reply-compact`(3 208)
 - **原文**：见 B2、D1、D2。
 - **建议**：与 B2 一起改——库根/记录本只在 `fixture-tools` 讲一次（D2 的替换文本），`charter-libraries` 只讲"三条硬要求"，`reply-compact` 只讲回执字段表。合计可省 ≈ 600 字。
@@ -612,3 +625,69 @@ verify：     【验证轮 —— {{role}} {{member}}】
 逐条增量（`[...str].length`）：E2 `v5r-turn-tool-receipt` 181→270（+89）；A7 `v5r-turn-meeting-agenda` 36→275（+239，仅 meeting）；A8+E1+E4 `v5r-turn-meeting-schedule` chair 1 853→2 329（+476，仅 meeting）；E3 `v5r-paper-final` 1 293→1 523（+230，仅 paper-final）；E6 新节 **531**（仅 normal）；A6 `v5r-turn-ask` meeting 97→199（+102，仅 meeting）；E5 `v5r-charter-voting` chair 1 661→1 768（+107）；B2 `v5r-charter-libraries` 1 301→1 356（+55）。normal 净增 = E6 531 + E2 89 + E5 107 + B2 55 + 上批遗留差异 18 = **800**，chair 恰好用满上限（为腾字曾把 E6 从 613 压到 531、E2/E5/B2 各收一档；`v5r-charter-voting` 的 researcher 版未动字数）。
 
 **本批仍属机制层、未由文案修掉**：A7 的「无会议帧时整节不注入」、A6 的「按是否绑定选变体」、E3 的 consult 流程可读性（`requestId` 形状）、E2 的「id 面表」都仍是渲染/工具声明的事；文案只是给了判据与出口。**E1 的根治**在工具层（`kernel/meetings.js:4010` 可以允许所办代派并自动 drive，或把 `chair` 角色动作路由到「先派回合」的回执），提示词只能教顺序。
+
+## §10 task-56 修复记录（RUN 244，第三批）
+
+本批目标是**净字数下降**，不是补缺失。三席 normal 与 meeting 都不得变大。
+
+### 10.1 装配字数（`scripts/sim/audit/prompt-budget.mjs --check` 口径）
+
+| 席位 / 相位 | 改前 | 改后 | 变化 |
+| --- | --- | --- | --- |
+| chair normal | 31 818 | 30 546 | −1 272 |
+| member normal | 26 838 | 25 566 | −1 272 |
+| temp normal | 24 082 | 22 268 | −1 814 |
+| chair meeting | 36 683 | 33 375 | −3 308 |
+| member meeting | 28 788 | 26 726 | −2 062 |
+| temp meeting | 25 718 | 23 284 | −2 434 |
+
+12 组合终值：chair 30 546 / 33 375 / 30 142 / 33 980，member 25 566 / 26 726 / 25 162 / 29 292，temp 22 268 / 23 284 / 21 864 / 26 043（normal / meeting / checkpoint / verify）。空节：0。
+
+### 10.2 逐节字数（改前→改后）
+
+| 节 | 改前 | 改后 | 说明 |
+| --- | --- | --- | --- |
+| `v5r-fixture-tools` | 2 447 | 2 267 | D2/D8：删验收语境词与重复的记录本解释，留判据与三句 pin |
+| `v5r-turn-board` | 679 | 538 | D6：删设置解析/刷新时机/席位差异，留四行名与三条 pin |
+| `v5r-math-rules` | 467 | 123 | D5：只留沙箱/重跑/归档三句，细节归 `v5r-turn-compute` |
+| `v5r-charter-libraries` | 1 356 | 1 280（member/temp 1 277） | D8：只留三条硬要求 + 指针 |
+| `v5r-formal-work` | 659 | 427 | C3/D4：删重复的操作细节，留判断标准与两条诚实规则 |
+| `v5r-reply-compact` | 3 208 | 3 096 | D1：删两条元话语与重复复述，捕获原文两段 verbatim 保留 |
+| 五段「更正·」合计 | 1 485 | 1 232 | D3/C5：各节缩一到两档，marker + needles 全保留 |
+| `v5r-charter-org` temp 变体 | 887 | 345 | C4：删七条院士职责与主席边界 |
+| `v5r-verify-reconsider` | 137 | 364 | C2：旧句保留 + 前置『勿照做』+ 新规则（仅 verify 轮） |
+| `v5r-turn-heading` verify 变体 | 无（渲染 normal 文本） | 约 14 | C1：新增验证轮标题 |
+
+### 10.3 验收尾行（本批结束实跑）
+
+- `node scripts/generate-pack-prompts.mjs` → `pack prompts: up to date (67 prompts, 79138 chars, sha d889776b36ff)`
+- `node scripts/sim/audit/prompt-budget.mjs --check` → `prompt-budget: PASS`（metrics chair/normal 30 546、member/normal 25 566、temp/normal 22 268、assemblyUnexplained 0、assemblyPinned 12、exactDups 26、nearDups 21、timing 5）
+- `node scripts/sim/audit/prompt-budget.mjs --mutants` → `prompt-budget mutants: PASS (both injected failures were caught)`
+- `node tests/vmu-run241-prompt-budget.test.mjs` → 24 passed, 0 failed
+- `node tests/vmu-run239-prompts.test.mjs` → 47 passed, 0 failed
+- `node tests/vmu-prompt-corrections.test.mjs` → 83 passed, 0 failed
+- `node tests/vmu-run242-feedback65.test.mjs` → 62 passed, 0 failed
+- `node tests/vmu-turn.test.mjs` → 272 passed, 0 failed
+- `node tests/sim-assembly-parity.test.mjs` → 20 passed, 0 failed
+- `node tests/vmu-prompt-closure-channel.test.mjs` → 24 passed, 0 failed
+- `node scripts/check-docs.mjs` → `DOC LINT: PASS`（note D16 为既有提示，非本批引入）
+
+### 10.4 为什么没丢信息（出口与判据的位置）
+
+- **D1** 删的是元话语（「上面这句是捕获原文」），不是捕获原文本身；两段原文逐字保留（`tests/vmu-run144-reply-routes.test.mjs:168` 仍绿）。
+- **D3/C5** 删的是「同一作废措辞的多种解释」，五节的 marker、oldNeedles、newNeedles 全在；被作废句仍出现在更正段内（`SUPERSEDES` 的 oldLine-after-marker 判据仍绿）。
+- **D5/D6/D8** 删的是跨节重复的同一解释；每一处都留了指针（tracks / turn-compute / fixture-tools），读者仍能找到完整版本。
+- **C2** 的危险句没有被删掉、而是被标注为「作废措辞 + 勿照做」，并给出新出口（弃权须带独立理由），既满足语料认领也修掉误导。
+- **C1** 的会议标题仍保留 `{{ setting:vmu.turn.meetingId }}`（T108–T110 要求 per-turn 事实可注入），只改分隔符消双空格。
+
+### 10.5 未做或降级的条目
+
+- **D7（工具长清单瘦身）**：工具行由 `vibe-math-vmu/packs/v5r/middleware/seat-faces.js` 的 `seatBulletLines()` 渲染，`tests/vmu-v5r-tools.test.mjs:1929-1932`、`tests/vmu-run31-seat-faces.test.mjs` 双向比对，且 `prompt-sections.mjs:80-91` 的 13 条 PINNED_MARKERS 钉住若干句。要动必须同时改 `seat-faces.js` 与两侧测试，越出本批写域，故未做。
+- **C3 的 `v5r-formal-work-rendered`（469 字，仅 verify）**：正文含字面 `<VIBEMATH>` 且被 `tests/vmu-prompt-type-coverage.test.mjs` 的语料行正则认领，删行即红；根治方式是把该段并进 `v5r-verify-formal-addendum` 的渲染层，属机制层。
+- **D3 的「合一」**：五节更正受 `tests/vmu-prompt-corrections.test.mjs` 的节数/marker/needles/≤400 字契约约束，只能逐节瘦身，不能合并成一段。
+
+### 10.6 教训
+
+- 相位节若只写 `texts.normal` 而不加 `scope:{phase:['normal']}`，会在 12/12 全组合渲染；`kind:'phase'` 本身不门控。
+- 语料行（`derivedFrom: corpus` 的段）不能随手删：`isCorrectedTeachingLedger` / `type-coverage` 在测试里硬编码认领它们，删了报 `unexplained`；改成「旧句保留 + 勿照做前缀」才是本仓库的更正语法。
+- 会议标题里的 `{{ setting:vmu.turn.meetingId }}` 是 T108–T110 的注入事实载体，动它前先看那三条测试。

@@ -17217,3 +17217,66 @@ those rows are not hidden results of the filter, they are rows the filter cannot
 `vmu-run165-quota-reachable 36/0`、`vmu-run36-records-shared 37/0`、`vmu-run106-brief-enum-records 20/0`、
 `vmu-run113-records-seat-gate 17/0`、`vmu-run22-findings ALL PASS`、`vmu-run242-feedback65 62/0`、
 `vmu-turn 272/0`、`vmu-host 250/0`、`audit-vmu-docs 103/0`、`audit-declaration-criterion 91/0`。
+
+## §341 · RUN 244 — 量尺缺了 facts 通道，于是一整轮「提示词预算」量的都是没人收到的那份提示词
+
+**341.1 账从哪来。** 第 12 轮审计（`docs/acceptance/sim-audit-round12.md` §4 留档第 4 条）留下一句诚实的话：
+「提示词未做 sources 级『选了但 0 字符』比对」。我去补这件事，第一步就撞上一个比它更坏的形状——不是「选了但 0 字符」，
+而是**两台尺子同时量的那份提示词，本身就不是任何席位会读到的那份**。
+
+**341.2 缺陷。** 一个**绑定了会议**的回合，`{{ setting:vmu.turn.meetingType }}` / `…meetingChair` /
+`…meetingAgenda` 三个模板变量由 `faces['vmu.meetings'].summary({ meeting })` 的 `type` / `chair` / `materials` 填
+（`vibe-math-vmu/kernel/turn/index.js` 的 `meetingFacts` 块；模板在
+`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js:750`）。RUN 242 的 A7 门把会中手册挡在「绑了会」之后，于是预算门
+（`scripts/audit-prompt-budget.mjs`）学会了给 meeting 相位**绑一个 id**（`RULER_MEETING`）——但它没有传 `faces`，
+模拟器 `scripts/sim/harness.mjs` 也没把自己的 `faces` 交给 `createTurnOrchestrator`。两边的 `summary()` 都不存在，
+`meetingRead` 为 null，渲染出来的是：
+
+```
+议程：（类型：，主席：）。
+```
+
+三个值全是空串，整份提示词比真席位读到的短约 340–370 字符。而**两台尺子在这件事上完全一致**（parity 22/0、
+diff 全 +0），因为它们错得一模一样——这正是 RUN 226 已经写过一遍的教训：两台尺子说同一句谎，比两台尺子
+互相矛盾更难发现。预算门据此给出的「余量」是不存在的余量。
+
+**341.3 修法（一把尺子只许有一张 facts 表）。**
+- `vibe-math-vmu/kernel/index.js`：把原本内联在 orchestrator options 里的
+  `facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs })` 提成 `const turnFaces`，
+  orchestrator 用 `faces: turnFaces`，公开 API 增 `get faces() { return turnFaces }`。**内核把「它建回合循环用的那张表」
+  公开出来**，测量器就不需要自己再装配第二张——第二张表就是第二把尺子。
+- `scripts/sim/harness.mjs`：`createTurnOrchestrator({ …, faces: handle.kernel.faces })`。
+- `scripts/audit-prompt-budget.mjs`：`measure(options = {})` 接受 `meetingId` / `meetingFacts`，默认仍是文档化的
+  representative facts（`{type:'ordinary', chair:'r-acad', agenda:'确认命题; 分配复核'}`），并给 loop 传
+  `faces: rulerFaces`（一个按被绑 id 作答的 `vmu.meetings.summary`）。
+- `tests/sim-assembly-parity.test.mjs`：**先真开会**（`vibe_v5_meeting` + `vibe_vmu_meeting {action:'summary'}`），
+  把同一 `RULER_ID` 与三条真 facts 交给 `GATE.measure({ meetingId, meetingFacts })`，再让 harness 用同一个 id 装配。
+  两台尺子从此读同一份输入。
+
+**341.4 机器化。** 新套件 `tests/vmu-run244-prompt-facts.test.mjs` **24 passed / 0 failed**：
+§0 八条源码 pin（`turnFaces` 一处装配、`get faces()` 公开、harness 传表、gate 传表、gate 按被绑 id 作答、parity 共用一个 id）；
+§1 真内核：`kernel.faces['vmu.meetings'].summary()` 读出 `type`/`materials`；绑会 chair 与 member 提示词都含
+`议程：确认命题; 分配复核（类型：ordinary，主席：r-acad）`，且**任何**提示词都不再含 `议程：（类型：` 这个空形状；
+§2 未绑会：member 拿不到会中手册与议程行（A7），chair 仍拿到**会议排程教学**（主席对会议的命令权，属「准备开会」而非
+「正在开会」），但拿不到会中手册的独有教学；§3 同一会议同一 facts 下 gate 与 harness 落在文档化的 ±200 带内，
+且 gate 从不量出**更小**的数。parity 套件本身 12 个 seat×phase 全部 diff **+0**（chair meeting 35123、
+member meeting 27220、member verify 29008、temp verify 25761）。
+
+**341.5 数字。** `audit-prompt-budget --check` ⇒ `PROMPT BUDGET: PASS (1 warning)`：chair/meeting **35141**
+≤ cap `chairPromptChars 36500`；member/verify **29008** ≤ cap `seatPromptChars 30100`；唯一 warning 是 T99
+（30000）的老账。**注意这正是修法前后的差**：修前 meeting 相位量的是一份没有 facts 的提示词，数字更小、余量更大，
+而那个余量是假的。
+
+**341.6 留档：未绑会的 chair 里那句「会议进行中」。** 探针（`D:/_tmp/r244/probe-unbound-chair.mjs`）把上下文打出来，
+承载它的是一段散文：「会议进行中的一切内容、控制、活动都由你的命令决定——但每个成员的动作仍由成员自己在其回合做完，
+你编排的是顺序与时机」，出处是 chair-only 的会议**排程**教学（`v5r-turn-meeting-schedule`，讲主席怎样召集与编排），
+**不是**会中手册（手册已按 A7 门掉，其中的 `order` 等动词在未绑会提示词里确实不出现，套件已断言）。它说的是
+「一场会由你编排」这件事本身，对尚未开会的院士不算假事实，判定**不改**——留档，以免下一个人把它当缺陷重开。
+
+**341.7 两条教训。**
+1. **两台尺子取同一个数，不等于它们量的是真的东西。** 只有「读同一份输入」（同一个 id、同一份 facts、同一层设置）
+   才能把「一致」变成证据；否则一致只是一种同谋。
+2. **加了一扇门（A7 的 meetingId）之后，必须回头检查所有「喂这扇门」的读数方**——门本身没错，错的可能是门外那台
+   从来没拿到钥匙的尺子。
+
+**341.8 收口数字。** 见本轮 commit 与 `D:/_tmp/t1-r3780-run244.log`；并发与耗时会随机器档位变化，故只记结论行。

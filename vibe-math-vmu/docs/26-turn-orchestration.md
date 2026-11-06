@@ -4429,3 +4429,12 @@ A7 是提示词审计里唯一一条**渲染层**缺陷：会议相位但没绑�
 （2）**扫源码找违禁短语的判据会抓到你自己的注释**（我在 records.js 注释里引用了 RUN 165 的被禁原话，
 `vmu-run165-quota-reachable` 当场变红；正解是改写措辞，不是放宽判据）；
 （3）**加过滤时必须点名第二个 store**，让没有写者/没有时间的行「被排除且说明」，而不是混进结果或悄悄消失。
+
+### ROUND 244 —— 量尺缺了 facts 通道（一台尺子、一张表）
+
+- 绑会回合的三个模板变量来自 `faces['vmu.meetings'].summary()`；内核把那张表内联在 orchestrator options 里、没公开，
+  于是模拟器与预算门都拿不到 facts，渲染出的议程行三个值全空，比真席位短 ~340–370 字。
+- 修法：内核提成 `const turnFaces` 并公开 `get faces()`；harness 传 `kernel.faces`；预算门 `measure({meetingId, meetingFacts})`
+  并自带 `faces: rulerFaces`；parity 套件先真开会、把同一 id 与真 facts 交给两台尺子 ⇒ 12 行 diff 全 +0。
+- 读数：chair/meeting 35123→（gate 35141，cap 36500）、member/verify 29008（cap 30100）；新套件 24/0。
+- 未绑会 chair 仍含 `会议进行中`（排程教学，非会中手册）⇒ 判定不改，写进 §341.6 留档。

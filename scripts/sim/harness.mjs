@@ -202,9 +202,18 @@ export async function boot({ root, packs = ['v5r'], clock = () => 1_800_000_000_
     const layer = promptSettings(settings === null ? {} : settings)
     promptLayer = layer
     const { sections, bindings } = await packSections()
+    // ★★★ RUN 244 — THE MEASUREMENT WAS MISSING THE FACTS CHANNEL, SO IT MEASURED A PROMPT NOBODY RECEIVES.
+    // `createTurnOrchestrator` takes `faces` (a map of kernel service faces) and, when a turn is BOUND to a meeting,
+    // reads `faces['vmu.meetings'].summary({meeting})` to fill `{{ setting:vmu.turn.meetingType }}` /
+    // `…meetingChair` / `…meetingAgenda` (the `meetingFacts` block in `kernel/turn/index.js`). The entry always passes
+    // that map; this harness did NOT, so every simulated meeting-phase prompt rendered the agenda line with EMPTY
+    // values (`议程：（类型：，主席：）。`) and came out shorter than the text a real seat reads — the same class of
+    // defect RUN 226 fixed for `bindings`/`settings`: a ruler that under-measures reports headroom that is not there.
+    // The kernel exposes the SAME map it hands the entry, as `kernel.faces`.
     loop = createTurnOrchestrator({
       sectionPolicy: decideSections,
       settings: layer,
+      faces: (handle.kernel && handle.kernel.faces && typeof handle.kernel.faces === 'object') ? handle.kernel.faces : {},
       prompt: createPromptPipeline({ sections, bindings, clock: () => new Date(Number(clock())).toISOString() }),
     })
     /**

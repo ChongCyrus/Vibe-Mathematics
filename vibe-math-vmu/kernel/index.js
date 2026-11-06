@@ -2805,6 +2805,13 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     trackFoldWrite(pending, 'vmu closure_votes write')
     return true
   }
+  // ★★★ RUN 244 — THE FACES MAP IS ONE OBJECT WITH ONE NAME. It was built inline inside the orchestrator options, so a
+  // measurement harness (scripts/sim/harness.mjs, scripts/audit-prompt-budget.mjs, tests/sim-assembly-parity.mjs) could
+  // not read it: `createTurnOrchestrator` takes `faces` and, for a BOUND meeting turn, fills `{{ setting:vmu.turn.meetingType
+  // }}` / `…Chair` / `…Agenda` from `faces['vmu.meetings'].summary()`. A ruler without the map measured the agenda line as
+  // `议程：（类型：，主席：）。` — a prompt shorter than the one a real seat reads, i.e. headroom that does not exist (the
+  // same class of defect RUN 226 fixed for `bindings`/`settings`). Hoisting it is what lets a ruler use the SAME map.
+  const turnFaces = facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs })
   const turn = createTurnOrchestrator({
     sectionPolicy: sectionPolicy || null,
     noticeBlock: noticeBlock || null,
@@ -2859,7 +2866,7 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
       } catch { /* same: attribution is a reading, never a gate */ }
     },
     prompt,
-    faces: facesFrom({ tasks, records, library, meetings, ballotbox, formal, mathjobs }),
+    faces: turnFaces,
     // ROUND 1 / K3: the TURN delivery seam is its own kernel option (`deliverTurn`), because the wake envelope a
     // MEMBER gets from `deliver` (kernel/members.js:193 `deliver(envelope)`) is a different shape from a turn's
     // `{ turn, text }`. Before this, the only accepted source was `host.deliverTurn`, and the real host object is
@@ -3596,6 +3603,13 @@ const mathtools = createMathTools({ settings: settingsView, bus, clock: guardedC
     get statusService() { return statusService },
     /** ★ PHASE 7: the ONE closure-vote reading; the turn tool calls this instead of re-deriving it without a roster. */
     closureVoteView,
+    /**
+     * ★★★ RUN 244: the SAME face map the turn loop was built with, so a measurement (or a test) that needs the facts a
+     * real prompt is assembled from reads THIS object instead of assembling a second one. A second assembly is a second
+     * ruler, and two rulers disagree in exactly the place nobody is looking — the meeting facts (RUN 244 measured the
+     * agenda line rendering empty in every simulated prompt because the harness never had this map).
+     */
+    get faces() { return turnFaces },
     tasks,
     rules,
     loader,

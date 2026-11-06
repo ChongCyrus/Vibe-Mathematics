@@ -48,7 +48,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     //   VMU_TURN_NO_PENDING_MEMBER and kernel/turn/index.js:445-450 appends the same delivery note.
     //   ★ ROUND 35 inverted this correction's direction: it had told members the fence was only for subagents.
     text: [
-      '【更正·回复形状】旧措辞「每轮手写一段 json 代码围栏只适用于子代理交付」说反了：成员回合由宿主派发（activation 投递），没有待回回合，`op:"reply"` 只会得到 VMU_TURN_NO_PENDING_MEMBER——可用通道就是回复正文末尾那段 json 围栏（缺 ⇒ VMU_TURN_NO_FENCE，坏 ⇒ VMU_TURN_BAD_JSON）；两通道同字段不同值 ⇒ VMU_TURN_REPLY_CONFLICT。会议里的举手/邀请用 vibe_vmu_meeting（回执字段 meeting_hand/meeting_invite 无可用形状）。',
+      '【更正·回复形状】旧措辞「每轮手写一段 json 代码围栏只适用于子代理交付」说反了：成员回合由宿主派发，没有待回回合，`op:"reply"` 只会得到 VMU_TURN_NO_PENDING_MEMBER——可用通道就是回复正文末尾那段 json 围栏（坏 ⇒ VMU_TURN_BAD_JSON）；两通道同字段不同值 ⇒ VMU_TURN_REPLY_CONFLICT。会议举手/邀请用 vibe_vmu_meeting。',
     ].join('\n'),
   }),
   Object.freeze({
@@ -59,7 +59,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // Old wording: `vibe_v5_tool_help({"tool":"工具名称"})` (v5r-blocks-b.js:235 and 46 generated fixtures).
     // Real mechanism: packs/v5r/tools.js:243-265 — only `member`; the answer is kernel.toolsView for that seat.
     text: [
-      '【更正·工具查询】vibe_v5_tool_help 的真实签名只有 {member}（必填；回答该席位「现在真能调用」的工具表），没有 tool 参数。只传 {"tool":"…"} ⇒ VMU_INVALID_ARGUMENT: tool_help needs the member id。要了解某工具的用法，读它在工具表里的 description；不要臆造参数名。',
+      '【更正·工具查询】vibe_v5_tool_help 的真实签名只有 {member}（必填，回答该席位现在真能调用的工具表），没有 tool 参数；只传 {"tool":"…"} ⇒ VMU_INVALID_ARGUMENT: tool_help needs the member id。查用法读工具的 description。',
     ].join('\n'),
   }),
   Object.freeze({
@@ -71,7 +71,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // persona capture. Real mechanism: kernel/turn/index.js:60 FIELD_OWNERS.formal -> vmu.formal op 'check'
     // (kernel/formal.js:109-176, requires statement + proof); meetings open with kind 'verify-request'.
     text: [
-      '【更正·形式化】旧说法 end_verify 与 formal_proof 在框架里不存在（旧措辞作废）。正式结论写进回合字段 formal:{decision,file,note}（dispatch 到 vmu.formal 的 check，需要 statement 与 proof）；需要集体裁决就开一场会议：`vibe_v5_meeting` 流程由 `type` 定（ordinary/academic/debate/closure/paper/planning；辩论要 `subject`），`kind` 只是台账标签（如 verify-request），不选流程。旧说法里「登记即直接落进 Verified/」也不对：落盘唯一写入口是 vibe_v5_verified_promote（需 warrant），别的工具不行。见到旧名按 formal 处理，不要调用 end_verify。',
+      '【更正·形式化】旧说法 end_verify 与 formal_proof 在框架里不存在。正式结论写进回合字段 formal:{decision,file,note}（vmu.formal 的 check，需 statement 与 proof）；要集体裁决就开 `vibe_v5_meeting`：`type` 定流程（如 debate 要 `subject`），`kind` 只是台账标签；落盘唯一入口是 vibe_v5_verified_promote（需 warrant）。见到旧名按 formal 处理，不要调用 end_verify。',
     ].join('\n'),
   }),
   Object.freeze({
@@ -83,7 +83,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // settings/schema.js:145 quorumRule (m-unanimous|all-unanimous) + :146 quorumCap doc (m = min(cap, voters));
     // kernel/ballot.js defaultTally — not-every-voter => undecided, all-for => true, all-against => false, split => undecided.
     text: [
-      '【更正·m 票】旧说法「按 m 票布尔一致决定 / 凑够 m 票就通过」读错了 m。m 是法定票数（由 quorumCap 派生：m = min(所办设的上限, 有表决权人数)，0 表示不设上限），由框架自己的 quorumOf / 票箱计算并具名拒，不是另一种计票法。定论条件由 vmu.meetings.quorumRule 控制，默认 m-unanimous：kernel/ballot.js 的 defaultTally 要求全体有表决权者都投出布尔值且一致——未投满 ⇒ undecided，全 for ⇒ 通过，全 against ⇒ 否决，票分裂 ⇒ undecided。代理只需诚实投票，不必自己数票。',
+      '【更正·m 票】旧说法「按 m 票布尔一致决定」读错了 m：m 是法定票数（quorumCap 派生：m = min(所办设的上限, 有表决权人数)），由框架 quorumOf 计算并具名拒。定论条件由 vmu.meetings.quorumRule 控制，默认 m-unanimous：kernel/ballot.js 的 defaultTally 要求全体都投出布尔值且一致——未投满或票分裂 ⇒ undecided。代理只需诚实投票，不必自己数票。',
     ].join('\n'),
   }),
   Object.freeze({
@@ -98,7 +98,7 @@ export const V5R_CORRECTION_SECTIONS = Object.freeze([
     // (capture layer frozen by T71 parity), so the missing half is the OFFICE'S DUTY — stated here, read back by
     // vibe_v5_overview.leadership (packs/v5r/leadership.js) so it cannot fail silently.
     text: [
-      '【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空）。`vibe_v5_start` 坐好院士席时会**自动**写入；手动 `hire` 到 chair 席位**不会**——那就自己 `vibe_v5_set { key:"vmu.turn.leaderId", value:"<同一代号>", why:"安置院士" }`（等价：`vibe_v5_configure{params:{"vmu.turn.leaderId":…}}`），院士离开时清空；`vibe_v5_overview.leadership.code` 会具名说出情形（`chair-seated-but-leaderId-empty` 即「席位有人但没写」）。先修数据，别改章程措辞。（旧说法「本所当前没有在册院士」现由 `leadership.code` 点名，读到就去补数据。）',
+      '【更正·领头人】「领头人」＝`vmu.turn.leaderId`（默认空）。`vibe_v5_start` 坐好院士席会**自动**写入；手动 `hire` 到 chair 席位**不会**——那就自己 `vibe_v5_set { key:"vmu.turn.leaderId", value:"<同一代号>", why:"安置院士" }`（等价：`vibe_v5_configure{params:{"vmu.turn.leaderId":…}}`），院士离开时清空；`vibe_v5_overview.leadership.code` 会具名说出情形（`chair-seated-but-leaderId-empty` 即席位有人但没写）。读到旧句「本所当前没有在册院士」就去补数据，别改章程措辞。',
     ].join('\n'),
   }),
 ])

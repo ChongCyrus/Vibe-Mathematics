@@ -82,11 +82,9 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         "  · `[总任务]` 来自设置键 `vmu.turn.objective`（未设定时由任务板汇总）；`[规划]` 来自任务板的依赖与顺序；",
         "  · `[各任务完成状态]` 来自任务板（`vibe_v5_task_list`，或按 id 用 `vibe_v5_task_get` 读状态、接受标准、指派人、修订号）；",
         "  · `[当前小任务]` 来自你 progress 轨上最近的一条记录（这轮没写 progress，它就会说来源未提供）。",
-        "设置值按**内核**解析：写「本内核的解析值」指组装你这一轮的内核；你本机的内核可能解析出另一个值——都对。",
-        "某一行写成「该来源未提供：<原因>」时，意思是**那个来源这一轮读不到**——不等于「没有任务」，更不要用想象补上：先把来源补齐（写 progress、建或更新任务、请所办说明），下一轮再引用新读数。",
-        "  · **`[总任务]` 是「你」的总任务**：每人各自推进各自的，不是全所共用；`[规划]`/任务状态同理——但 ①②③ 是**所级总量**，你的份额看 ②③ 行首「属于你（<member>，未完成 N 条）」；① 只有 `scopeNote`（全所总任务，内核只有一份）；④ 才是你自己的面板。",
-        "  · 四行都带**时间等基础信息**；读数没时间就照实说缺，别补日期。",
-        "  · 席位：**院士＝`chair`，常驻研究员＝`member`，临时工＝`temp`**（工具与报错里的写法）。",
+        "某一行写成「该来源未提供：<原因>」时，意思是**那个来源这一轮读不到**——不等于「没有任务」：先把来源补齐（写 progress、建或更新任务、请所办说明），下一轮再引用新读数。",
+        "  · **`[总任务]` 是「你」的总任务**（每人各自推进各自的）；①②③ 是**所级总量**，你的份额看 ②③ 行首「属于你（<member>，未完成 N 条）」，④ 才是你自己的面板。",
+        "  · 席位写法：**院士＝`chair`，常驻研究员＝`member`，临时工＝`temp`**；四行怎么派生、时间怎么读，见【轨迹与状态板】。",
       ].join('\n'),
     },
   },
@@ -218,17 +216,11 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        '【顺手形式化（{{ setting:vmu.turn.formalModeLabel }}）】把你工作中常用或可能复用的对象、假设、',
-        '新定义用 Lean 形式化定义并归档到全局可复用库（vibe_v5_lean_archive kind=\'def\'），已成立的引理归到 Proved/',
-        '（kind=\'lemma\'）；写之前先 vibe_v5_lean_lib 查重，避免重复定义。',
-        '归档前先跑通（vibe_v5_lean_run 或 run=true）；跑不通的定义不要进可复用库。',
-        '  · 判断标准：① 有价值或可能复用；② 较为关键或必要；③ 你对该陈述有把握（置信度高）。**没把握的先别入库**——',
-        '进了 Formal/Proved 的东西会被当成已核对引理；没把握就记 blocked 并写清难点，别用形式化掩盖不确定。',
-        '  · 复用优先：写新定义/证明前**先 vibe_v5_lean_lib 查已有库**；复用已归档内容用 ',
-        '`import Formal.Lib.<name>` / `import Formal.Proved.<name>`（模块根 = <VibeMath 根>，框架已把它加进编译搜索路径），',
-        '或 `vibe_v5_lean_read {name}` 取原文逐字复制。**查不到再新写**；同内容重复归档会自动去重。',
-        '  · 编译默认走后台队列（leanAsync=true）：入队后你可以继续工作；用 vibe_v5_lean_lib 的 jobs 字段或下一轮提示里的 ',
-        '【形式化结果】行看结果。**在作业落地为“通过”之前，不得把该对象当成已通过。**',
+        '【顺手形式化（{{ setting:vmu.turn.formalModeLabel }}）】只对**长期复用**的对象/定义/引理开 Lean：先 `vibe_v5_lean_lib` 查重，',
+        '定义用 `kind:\'def\'`、已成立的引理用 `kind:\'lemma\'`，跑通（`vibe_v5_lean_run` 或 `run=true`）再 `vibe_v5_lean_archive` 归档；',
+        '复用已归档内容用 `import Formal.Lib.<name>` / `import Formal.Proved.<name>`（框架已把库根加进编译搜索路径）或 `vibe_v5_lean_read` 取原文。',
+        '判断标准：有价值或可能复用 / 较为关键 / 你有把握。**没把握的先别入库**（进 Proved/ 的会被当成已核对引理）——记 blocked 写清难点；',
+        '编译默认后台跑（leanAsync），**在作业落地为“通过”之前，不得把该对象当成已通过**。非验证轮不必每次都开 Lean：先把数学做对。',
       ].join('\n'),
     },
   },
@@ -285,12 +277,12 @@ export const CHARTER_BLOCKS_B = Object.freeze([
         // AUDIT10 C2/C3: the captured line above promises a reply-field shape the dispatcher cannot deliver
         // (record is a progress-log line and say only reaches the floor of a bound meeting). The capture stays
         // VERBATIM (it is the fidelity baseline) and the truth is stated on its own line, as with run 61 below.
-        '（上面这句是捕获原文；字段形状以上面 v5r-reply-channel.js 渲染的清单为准：record 是研究日志**一行** {track,text} → Members/<你>/Progress/<track>.md；成果卡不是回执字段（用 vibe_v5_record_proposition／_method／_subproblem）；say 只在有会议绑定的轮次进会议楼层，否则不投递——群聊/私信要用工具 vibe_v5_say。）',
+        '（上面这句是捕获原文；字段形状以清单为准：record 是研究日志**一行** {track,text}，成果卡用 vibe_v5_record_*，say 只在有会议绑定的轮次进楼层，群聊/私信要用 vibe_v5_say。）',
         'task_done：完成的任务id；task_update：{task_id,expected_revision,action}（release等）；reject_assign：{task_id,why}。阻塞原因写入progress，不代表已证伪。',
         // AUDIT12: the captured line above teaches three reply FIELDS whose taught shapes the dispatcher cannot deliver
         // (a reply field carries one value; these name positional face operations). The capture stays VERBATIM - it is the
         // fidelity baseline - and the truth is stated on its own line, exactly as run 61 below does for the state table.
-        '（上面这句也是捕获原文；这三件事都**不是回执字段**：完成/改任务用 `vibe_v5_task_update`，异议用 `vibe_v5_record_progress`（track "obstacles"）记账并在会议轮用 `vibe_v5_say` 提出。回执里写它们会被具名拒 `VMU_TURN_FIELD_NOT_APPLICABLE`。）',
+        '（上面这句也是捕获原文；这三件事都**不是回执字段**：完成/改任务用 `vibe_v5_task_update`，异议用 `vibe_v5_record_progress`（track "obstacles"）记账并在会议轮用 `vibe_v5_say` 提出；写进回执会被具名拒 `VMU_TURN_FIELD_NOT_APPLICABLE`。）',
         // ★ LIVE RUN 61 (a member lost a round to the line above): the field list reads as "action=complete is the way to
         // finish", but the board's own table is open→assigned→doing→done, so a completion from `assigned` is refused BY
         // NAME (`illegal transition assigned -> done`) and the member has to read the hint and call again with
@@ -331,9 +323,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     kind: 'shared',
     texts: {
       shared: [
-        "- 需要精确数值、符号化简、反例搜索、统计或线性代数时用 `vibe_vmu_mathtools`：先 action: plan 看计划与沙箱上限，再 action: run 执行，并把回执路径写进报告；复核他人数值结论时用 action: run 指向同一脚本（cacheKey 相同）重跑，或用 action: receiptsView 读历史回执。",
-        "- 替代必须声明（诚实性）：当替代方案改变了**精确性或结论强度**时（精确符号解 → 数值近似、闭式解 → 采样/求积、改精度/容差/假设、换算法类），结论里**必须写明**，不得读起来像得到了原本（精确/所要求的）结果；拿不到精确结果就直说。",
-        "- `vibe_vmu_mathtools`（action: plan|run|receiptsView|cacheView|status）与 `vibe_vmu_mathjobs`（后台数学作业）——沙箱上限、缓存与回执由内核强制；脚本与输出必须归档成可复核回执；缺引擎/缺包只报告与给安装指引/计划；shell 兜底不算归档。",
+        "- 精确数值、符号化简、反例搜索、统计或线性代数用 `vibe_vmu_mathtools`；**替代必须声明**：改动了精确性或结论强度（符号解→数值近似、闭式→采样/求积、改精度/容差/假设、换算法）就必须在结论里写明，拿不到精确结果就直说。",
       ].join('\n'),
     },
   },
@@ -419,9 +409,10 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     scope: Object.freeze({ phase: Object.freeze(['verify', 'verify-debate']) }),
     texts: {
       verify: [
-        '你可以维持、修改或反驳任何人的看法。',
-        '审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。',
-        '「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）。本档没有门禁：请务必给一个严格介于 0 与 1 之间的弃权值，以保证本轮无法得出一致结论；',
+        '本轮是**验证轮**：审查对象从"推导是否正确"变成"Lean 代码是否忠实于命题"。',
+        '若你认为某条"已通过"的结论其实不成立（或代码与命题不符），**不要用弃权来卡住流程**——给 `vibe_v5_verdict` 一个你相信的概率并写清理由，框架会记为 pending、撤回该条证明并写入形式化待办。只有你确实无法判断时，才给一个严格介于 0 与 1 之间的值。',
+        '（旧版原句，**请勿照做**，保留只为对照出处：）你可以维持、修改或反驳任何人的看法。审查对象就会从"推导是否正确"变成"Lean 代码是否忠实于命题"。',
+        '（旧版原句，**危险，勿执行**：）「已通过」状态（降级为 attempted、删除归档证明、写入形式化待办）。本档没有门禁：请务必给一个严格介于 0 与 1 之间的弃权值，以保证本轮无法得出一致结论；',
       ].join('\n'),
     },
   },
@@ -1053,7 +1044,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
       shared: [
         "【轨迹与状态板】轨迹五种（`vmu.records.tracks`）：`progress`（默认）｜`routes`（尝试过的路线）｜`obstacles`（阻塞与原因）｜`rejected`（已证伪的路）｜`state`（状态板）。写用 `vibe_v5_record_progress {member,track,content,progress?,obstacles?,next?,help?}`；`track:\"state\"` 时 progress/obstacles/next/help **四项必填**，缺一具名拒。",
         "· 五类各有一等机制：`routes`/`obstacles` 即上两条轨；Lean = `vibe_v5_lean_run`→`lean_job`→`lean_archive`，库 `lean_lib`（编译过≠命题真）；论文 = `vibe_v5_paper { action:\"part\" }`；脚本 = `scripts` 轨（所办归档）；自反馈 = `vibe_v5_feedback`（feedback 轨）。方法库卡：`vibe_v5_record_method`（content/value/motive/p 必填）。",
-        "  · `[状态板]` 四行是**派生读数**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。state 面板自己写：**成员席位只能改自己的**，**所办/人类代笔**可代写这几行**读数**并回执 `panelOwner`（仅读数，不含学术动作）；**不在名册**的 id 具名拒（先 `vibe_v5_hire`）。",
+        "  · `[状态板]` 四行是**派生读数**，且四行都带**时间等基础信息**：要么带内容时间（`（读于 …）`），要么具名说「时间未提供：为什么」。state 面板自己写：**成员席位只能改自己的**，**所办/人类代笔**可代写这几行**读数**并回执 `panelOwner`（仅读数，不含学术动作）；**不在名册**的 id 具名拒（先 `vibe_v5_hire`）。",
         "  · 读别人的板：`vibe_v5_read_library {member,track}`；走不通的路写 `rejected`（别把证伪当进展）。",
         "  · **临时工不进成果库**：命题/方法/子问题/成果卡面对临时工**具名拒**，产出由指派者归档；过程记录写在回执的 `progress` 字段（或自己的 `Members/<你>/…`）。",
       ].join('\n'),
@@ -1126,6 +1117,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
     texts: {
       shared: [
         "【计算与引擎】`vibe_vmu_mathtools`（plan/run/…）与 `vibe_vmu_mathjobs`；**引擎由宿主注入**（无代码默认值），状态报 `engines`/`available`，接缝缺失时具名拒 `VMU_ENGINE_UNAVAILABLE`，不假装算过；shell 兜底不算归档。`math_computation` 与 mathtools **回执同形**：都有 `value`/`valueMissing`（`printedValueOf`）。`mode:\"expr\"` 是**求值并打印**：`value` 是引擎打印文本，没打印时回执 `value:null` + `valueMissing:\"stdout-empty\"`（**不会**读成 0），要值就在 `code` 里写 print。引擎两条通道：有宿主 `subprocess` 服务走宿主，否则声明过 `vmu.math.*` 的部署走适配层（`status.math.spawnSeamKind` 说明哪条）；都没有才具名拒。要新包/引擎写进进展与请示。",
+        "  · 先 action:\"plan\" 看计划与沙箱上限，再 action:\"run\" 执行，回执路径写进报告；复核他人数值结论时用同一脚本（cacheKey 相同）重跑，或 action:\"receiptsView\" 读历史回执；脚本与输出必须归档成可复核回执，shell 兜底不算归档。",
       ].join('\n'),
     },
   }),

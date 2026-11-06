@@ -47,13 +47,35 @@ const HARNESS = await import(pathToFileURL(join(REPO, 'scripts', 'sim', 'harness
 const GATE = await import(pathToFileURL(join(REPO, 'scripts', 'audit-prompt-budget.mjs')).href)
 
 // ── ① two rulers, one ruler's worth of number ──────────────────────────────────────────────
-const gate = await GATE.measure()
-ok(Boolean(gate && gate.seats && gate.seats.chair), 'the budget gate published its own measurement', gate && Object.keys(gate))
-
 mkdirSync(TMP, { recursive: true })
 const root = mkdtempSync(join(TMP, 'ws-parity-'))
 // The SAME clock the gate uses, so any difference cannot come from a timestamp inside the prompt.
 const h = await HARNESS.boot({ root, clock: () => Date.parse('2026-01-01T00:00:00.000Z') })
+
+// ★★★ RUN 244 — THE TWO RULERS MUST READ THE SAME MEETING FACTS, NOT JUST THE SAME ID.
+// A meeting-phase turn bound to a meeting fills `{{ setting:vmu.turn.meetingType }}` / `…Chair` / `…Agenda` from
+// `faces['vmu.meetings'].summary()`. Until this round the budget gate passed NO faces map and the simulator passed no
+// `faces` to its orchestrator either, so BOTH rendered `议程：（类型：，主席：）。` with every value empty and agreed with
+// each other on a prompt no seat ever receives — two rulers telling the same lie (the RUN 226 lesson). The harness now
+// hands its kernel's real face map in; the gate takes the facts as an input. So this suite convenes one real meeting
+// and gives BOTH rulers its id and its facts. Same inputs, one number.
+await h.call('vibe_v5_start', { researcherCount: 2 })
+const COUNCIL = await h.call('vibe_v5_meeting', {
+  member: 'r-acad', agenda: ['确认命题', '分配复核'], title: 'RULER meeting', type: 'ordinary',
+})
+const RULER_ID = String(COUNCIL.meeting || COUNCIL.id || '')
+ok(RULER_ID !== '', 'the parity suite convened the one meeting both rulers will read', COUNCIL)
+const RULER_READING = await h.call('vibe_vmu_meeting', { action: 'summary', id: RULER_ID })
+const RULER_FACTS = {
+  type: String((RULER_READING && RULER_READING.type) || ''),
+  chair: String((RULER_READING && (RULER_READING.chair || RULER_READING.convenedBy)) || ''),
+  agenda: String((RULER_READING && (RULER_READING.materials || RULER_READING.agenda)) || ''),
+}
+ok(RULER_FACTS.type !== '' && RULER_FACTS.chair !== '' && RULER_FACTS.agenda !== '',
+  'and read back the three facts a bound prompt is assembled from (type / chair / agenda)', RULER_FACTS)
+
+const gate = await GATE.measure({ meetingId: RULER_ID, meetingFacts: RULER_FACTS })
+ok(Boolean(gate && gate.seats && gate.seats.chair), 'the budget gate published its own measurement', gate && Object.keys(gate))
 
 const SEATS = ['chair', 'member', 'temp']
 const PHASES = ['normal', 'meeting', 'checkpoint', 'verify']
@@ -69,7 +91,7 @@ for (const seat of SEATS) {
     // gate rather than retyping it here.
     const text = await h.prompts.assembleFor({
       seat, roleLabel: LABEL[seat], phase, round: 3, roster: 'acad、r-1', statusBlock: '[状态] x', member: 'r-1',
-      meeting: phase === 'meeting' ? GATE.RULER_MEETING : null,
+      meeting: phase === 'meeting' ? RULER_ID : null,
     })
     const gateChars = gate.seats[seat].phases[phase].chars
     rows.push({ seat, phase, harness: text.length, gate: gateChars, diff: text.length - gateChars })
