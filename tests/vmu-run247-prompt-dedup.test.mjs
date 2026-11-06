@@ -103,13 +103,18 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
   //   §1c 同口径 = 三份 normal 里「参数表/调用签名」的字符与行数必须停在 RUN 247 的水位（HEAD 实测 8 行／
   //        1738 字符／席）——RUN 248 一个字符都没新增复述，将来谁把参数表抄回提示词都会立刻红。
   //   ★ RUN 249（task-71 第 2 项 / task-69 落地后）再涨了一次，同样**逐条记账、不算余量**：`[新到的消息]` 块真的
-  //        会渲染（`notices:{lines,rendered,blockChars}` 是回执读数、无未读时块头不出现）、回复正文超
-  //        `vmu.turn.replyLimitChars` 只留摘录而全文落 `Members/<你>/Turns/<turn>.md`、`emptyReply:true` 表示这
-  //        回合没交代做没做。实测增量每席 +445（三席同值，因为这段在 shared 段），合计 +1335 ⇒ 上限
+  //        会渲染（`notices` 的 `lines`/`rendered`/`blockChars` 是回执读数、无未读时块头不出现）、回复正文超
+  //        `vmu.turn.replyLimitChars` 只留摘录而全文落 `Members/<你>/Turns/<turn>.md`、`emptyReply` 与工具通道分开
+  //        （RUN 251-A 反转了它的含义，见下）。实测增量每席 +445（三席同值，因为这段在 shared 段），合计 +1335 ⇒ 上限
   //        70689 + 2000 + 1335 = 74024，比实测 73963 多 61（与 RUN 248 保持同一份余量，没有新开口子）。
+  //   ★ RUN 251 再涨一次，仍逐条记账：`emptyReply` 的语义被 RUN 251-A 反转（只说回复**文本**通道，true＝0 字符，
+  //        写了字就是 false；工具通道看 `source`/`fields`/`executed`/`writes`），截断键的唯一权威改名成
+  //        `truncated`/`excerptLen`（旧名只留在回合回执）；这一句在 shared 段，三席同值 +198，合计 +594 ⇒
+  //        上限 70689 + 2000 + 1356 + 594 = 74639，比实测 74578 多 61（仍与 RUN 248 同一份余量）。
   const RUN247 = { chair: 26944, member: 23200, temp: 20545, sum: 70689 }
   const RUN248_TEACHING = { chair: 548, member: 1008, temp: 383, sum: 1939, budget: 2000 }
   const RUN249_TEACHING = { chair: 452, member: 452, temp: 452, sum: 1356 }
+  const RUN251_TEACHING = { chair: 198, member: 198, temp: 198, sum: 594 }
   const SIGNATURE = /\{ *[a-z_][a-z_0-9.?]* *, *[a-z_]/
   const signatureRows = (slot) => {
     let lines = 0
@@ -120,13 +125,13 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
     return { lines, chars }
   }
   const chairNormal = charsOf('chair', 'normal')
-  const chairCeiling = RUN247.chair + RUN248_TEACHING.chair + RUN249_TEACHING.chair
+  const chairCeiling = RUN247.chair + RUN248_TEACHING.chair + RUN249_TEACHING.chair + RUN251_TEACHING.chair
   ok(chairNormal <= chairCeiling,
-    `§1a ★ chair/normal ≤ ${chairCeiling} 字符（= RUN 247 实测 ${RUN247.chair} ＋ RUN 248 教学 ${RUN248_TEACHING.chair} ＋ RUN 249 教学 ${RUN249_TEACHING.chair}，逐条记账、无余量）`, chairNormal)
+    `§1a ★ chair/normal ≤ ${chairCeiling} 字符（= RUN 247 实测 ${RUN247.chair} ＋ RUN 248 教学 ${RUN248_TEACHING.chair} ＋ RUN 249 教学 ${RUN249_TEACHING.chair} ＋ RUN 251 教学 ${RUN251_TEACHING.chair}，逐条记账、无余量）`, chairNormal)
   const sum = charsOf('chair', 'normal') + charsOf('member', 'normal') + charsOf('temp', 'normal')
-  const sumCeiling = RUN247.sum + RUN248_TEACHING.budget + RUN249_TEACHING.sum
+  const sumCeiling = RUN247.sum + RUN248_TEACHING.budget + RUN249_TEACHING.sum + RUN251_TEACHING.sum
   ok(sum <= sumCeiling,
-    `§1b ★ 三份 normal 合计 ≤ ${sumCeiling}（RUN 247 实测 ${RUN247.sum} ＋ RUN 248 机制教学预算 ${RUN248_TEACHING.budget} ＋ RUN 249 机制教学 ${RUN249_TEACHING.sum}）`, sum)
+    `§1b ★ 三份 normal 合计 ≤ ${sumCeiling}（RUN 247 实测 ${RUN247.sum} ＋ RUN 248 机制教学预算 ${RUN248_TEACHING.budget} ＋ RUN 249 机制教学 ${RUN249_TEACHING.sum} ＋ RUN 251 机制教学 ${RUN251_TEACHING.sum}）`, sum)
   for (const seat of ['chair', 'member', 'temp']) {
     const s = signatureRows(seat)
     ok(s.lines <= 8 && s.chars <= 1738,

@@ -286,19 +286,29 @@ try {
   // was cut to a 2 000-char excerpt — and the excerpt was all the office ever read) and F-01 (`status:"applied"` on a
   // reply whose whole body was `{"solved":false}`). task-69 wired the block into the turn prompt and added the readings,
   // so the prompt must name the SWITCHES a seat can check: `notices.rendered` (was the block really rendered for me this
-  // turn), the archive path+hash of the full reply, and `emptyReply` (this turn did not say what was done). Every string
-  // pinned below is one the code really emits; none of it is a paraphrase of an intention.
+  // turn), the archive path+hash of the full reply, and `emptyReply`. ★ RUN 251-A reversed what `emptyReply` MEANS: it
+  // only describes the reply TEXT (true = 0 chars, blank included; one character — even `{"solved":false}` — is false),
+  // and the tool channel (`source`/`fields`/`executed`/`writes`) is a separate channel, so `emptyReply:true` with tool
+  // fields is not a contradiction. The cut keys are `truncated`/`excerptLen`; `replyTruncated`/`replyExcerpt` survive
+  // only as receipt-level history and are never copied onto a ledger row (kernel/turn/index.js `turnReceiptsMeans`).
+  // Every string pinned below is one the code really emits; none of it is a paraphrase of an intention.
   {
     console.log('§8 ·8 the delivery readings a seat can check are taught (block rendered, full reply, empty reply)')
     ok(says(blocksBSource, 'rendered') && says(blocksBSource, 'blockChars') && says(blocksBSource, '装配回执的 `notices`'),
       '§8a ·8 the assembly reading is named exactly as the turn receipt emits it')
     ok(says(blocksBSource, '不出现块头') && says(blocksBSource, '通知丢了'),
       '§8b ·8 "no header" is taught as "no message", not as "the notice was lost"')
-    ok(says(blocksBSource, 'vmu.turn.replyLimitChars') && says(blocksBSource, 'replyTruncated:true'),
-      '§8c ·8 the reply limit is named with its setting key and the truncation flag')
+    ok(says(blocksBSource, 'vmu.turn.replyLimitChars') && says(blocksBSource, '`truncated`') && says(blocksBSource, '`excerptLen`'),
+      '§8c ·8 the reply limit is named with its setting key and the AUTHORITATIVE cut keys (truncated / excerptLen)')
+    ok(says(blocksBSource, '只是它的旧称'), '§8c2 ·8 replyTruncated / replyExcerpt are taught as old names, not as row keys')
     ok(says(blocksBSource, 'replyFullPath') && says(blocksBSource, 'replyFullSha256'),
       '§8d ·8 the full reply is a file with a path and a hash, not a promise')
-    ok(says(blocksBSource, 'emptyReply:true'), '§8e ·8 an empty reply is taught as a failure to report, not a success')
+    ok(says(blocksBSource, '`emptyReply` 只说') && says(blocksBSource, '文本通道') && says(blocksBSource, '写了一个字就是 false'),
+      '§8e ·8 emptyReply means "the reply TEXT was 0 chars", not "this turn did nothing" (RUN 251-A)')
+    ok(denies(blocksBSource, '这一回合没交代做没做'),
+      '§8e2 ·8 the reversed (RUN 249) meaning of emptyReply is gone from the source')
+    ok(says(blocksBSource, '工具通道是另一条通道'),
+      '§8e3 ·8 "emptyReply:true with tool fields" is explained as two channels, not as a contradiction')
     ok(says(blocksBSource, 'notifyRows') && says(blocksBSource, 'notifyFailed'),
       '§8f ·8 the chair sees the kernel delivery arrays on the appointment receipt')
 
@@ -307,7 +317,7 @@ try {
     await b.K.members.hire({ id: 'r-acad', slot: 'chair' })
     await b.K.members.hire({ id: 'r-1', slot: 'member' })
     const normal = await seatPrompt(b.K, 'r-1', 'normal')
-    ok(says(normal, '装配回执的 `notices`') && says(normal, 'emptyReply:true'),
+    ok(says(normal, '装配回执的 `notices`') && says(normal, '文本通道'),
       '§8g ·8 every round teaches the two readings that decide "did I hear" and "did I say anything"')
     const opened = await b.K.meetings.open({ type: 'debate', chair: 'r-acad', materials: '确认命题; 分配复核', members: ['r-1'], roster: ['r-1'], actor: 'r-acad' })
     const meetingId = String(opened && (opened.meeting === undefined || opened.meeting === null ? '' : opened.meeting))
@@ -315,6 +325,39 @@ try {
     const chairMeeting = await seatPrompt(b.K, 'r-acad', 'meeting', { meeting: meetingId })
     ok(says(chairMeeting, 'notifyRows') && says(chairMeeting, 'notifyFailed'),
       '§8i ·8 the chair\'s assembled prompt names the delivery arrays to repair from')
+  }
+
+  // ── §9 ·9 RUN 251-C (F71-12): THE FRAMEWORK NEVER OPENS THE MEETING ON THE CHAIR'S BEHALF ────────────────────────
+  // The 71st live run measured that the prompt read as "everyone here at due time ⇒ it starts": a seat could wait for a
+  // meeting that never opens. The kernel's truth (kernel/meetings.js `pendingStartOf` / `startBlockOf`): the due time is
+  // SEEN once (the next touch), it opens only if the roll was complete at that instant, otherwise it settles into
+  // `waiting` with `waitingFor:"quorum"` (people missing) or `"chair-proceed"` (roll complete, chair's call);
+  // `requiresChairProceed:true` says the framework will not decide for the chair; the wait's own expiry only sets
+  // `waitDecisionDue` (a nudge, not an opening); `nextActions` names the moves (`beat`/`attend`/`proceed`/`lapse`/`recess`).
+  {
+    console.log('§9 ·9 "the clock starts it" is gone: due time settles once, the chair proceeds')
+    ok(says(blocksBSource, '到点不会自己开会'), '§9a ·9 the prompt says the due time does not open the meeting by itself')
+    ok(denies(blocksBSource, '到点人齐才开'), '§9b ·9 the old "it opens once everyone is here at due time" is gone')
+    ok(denies(blocksBSource, '迟到者 `attend` 即开'), '§9b2 ·9 the old "a latecomer attending opens it" wording is gone')
+    ok(says(blocksBSource, '`waitingFor`') && says(blocksBSource, '"chair-proceed"') && says(blocksBSource, '"quorum"'),
+      '§9c ·9 the two waiting reasons are named (quorum / chair-proceed)')
+    ok(says(blocksBSource, 'requiresChairProceed:true') && says(blocksBSource, '开会不是框架按钟自己决定的'),
+      '§9d ·9 "requiresChairProceed" is taught as "not decided by the clock", not as "only the chair may ever open"')
+    ok(says(blocksBSource, '`nextActions`') && says(blocksBSource, '`lapse` 弃会') && says(blocksBSource, '`recess` 体会'),
+      '§9e ·9 the moves are named, not paraphrased (proceed / lapse / recess via nextActions)')
+
+    const b = await boot(await mkRoot())
+    await b.K.members.hire({ id: 'r-acad', slot: 'chair' })
+    await b.K.members.hire({ id: 'r-1', slot: 'member' })
+    const opened = await b.K.meetings.open({ type: 'academic', chair: 'r-acad', materials: '确认命题', members: ['r-1'], roster: ['r-1'], actor: 'r-acad' })
+    const meetingId = String(opened && (opened.meeting === undefined || opened.meeting === null ? '' : opened.meeting))
+    ok(meetingId !== '', '§9f ·9 a meeting was opened for the RUN 251-C prompt checks', opened && opened.code)
+    const chairMeeting = await seatPrompt(b.K, 'r-acad', 'meeting', { meeting: meetingId })
+    ok(says(chairMeeting, '到点不会自己开会') && says(chairMeeting, '"chair-proceed"') && says(chairMeeting, '`nextActions`'),
+      '§9g ·9 the chair\'s assembled manual carries the settling rule and the moves')
+    const memberMeeting = await seatPrompt(b.K, 'r-1', 'meeting', { meeting: meetingId })
+    ok(says(memberMeeting, '到点不会自己开') && says(memberMeeting, '"chair-proceed"') && says(memberMeeting, '别催'),
+      '§9h ·9 the researcher\'s assembled prompt says "wait for the chair, do not push"')
   }
 } finally {
   for (const root of roots) { try { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }) } catch {} }

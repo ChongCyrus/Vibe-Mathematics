@@ -165,8 +165,20 @@ ok(card.proofGate && typeof card.proofGate.nextMove === 'string' && card.proofGa
 ok(card.proofGate && typeof card.proofGate.means === 'string' && card.proofGate.means.includes('read proofGate.locked'),
   '★ ③ and the block says which field answers "is this card locked"', card.proofGate && card.proofGate.means)
 const plain = await C.call('vibe_v5_record_proposition', { id: 'p-r217b', statement: 'RUN 217：无证明声明的卡', value: '未定论', motive: '对照：没有 proof_state 就没有锁的问题', p: 0.5, member: 'r-1' })
-ok(plain.ok === true && (plain.proofGate === null || plain.proofGate === undefined),
-  '★ ③ a card that declares no proof state carries no proofGate (null, not a false claim)', { ok: plain.ok, proofGate: plain.proofGate })
+// ★ RUN 251 (F71-3, MEASURED on the 71st real-machine run): the OLD pin read "no proof state ⇒ `proofGate:null`" and
+// its intent was "do not make a false lock claim". `null` does answer "not locked", but it cannot be TOLD APART from
+// "this face forgot to report the gate" — the run-71 reader saw `proofGate:null` on a default card and could not say
+// whether the card was a draft or the receipt was silent. The SAME intent is now proved by an explicit block: not
+// locked AND a named reason, which is strictly more than null said.
+ok(plain.ok === true && plain.proofGate && typeof plain.proofGate === 'object',
+  '★★ ③ RUN 251: a card that declares no proof state STILL reports its gate (null would leave "is this locked" unanswered)', { ok: plain.ok, proofGate: plain.proofGate })
+ok(plain.proofGate.locked === false, '★★ ③ ...and the default card is NOT locked (no false claim)', plain.proofGate)
+ok(plain.proofGate.reason === 'default-draft',
+  '★★★ ③ ...and the reason NAMES why: the card declared no proof_state, so it is the default DRAFT', { reason: plain.proofGate.reason })
+ok(plain.proofGate.proofRefState === 'absent',
+  '★ ③ ...and proofRefState says there was no pointer to resolve', { proofRefState: plain.proofGate.proofRefState })
+ok(plain.proofState === null,
+  '★ ③ ...while proofState itself stays null: the gate names the default, it does not invent a declared state', { proofState: plain.proofState })
 
 console.log('')
 if (failed === 0) console.log('=== RUN 217 FEEDBACK53: ' + passed + ' passed, 0 failed ===')

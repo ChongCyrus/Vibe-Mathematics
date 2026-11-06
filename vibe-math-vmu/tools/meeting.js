@@ -511,6 +511,20 @@ export function makeMeetingSpec({ param, refused, TOOL_NAMES, kernel }) {
               notifyRows: opened && Array.isArray(opened.notifyRows) ? opened.notifyRows : [],
               notifyFailed: opened && Array.isArray(opened.notifyFailed) ? opened.notifyFailed : [],
               noticesMeans: 'the appointment notices are durable mailbox rows (channel "mail") delivered to every invited member (roster minus chair); read notified/notifyFailed in this receipt, and a member settles its row with mailbox ack (the notice block keeps showing it until then)',
+              // ★★★ RUN 251 / F71-12 + F71-13 (live run 71 C4, MEASURED): the SCHEDULE receipt must not imply "it starts
+              // by itself". Run 71 scheduled at +180s, waited 13,967 ms past the due time, and the meeting was still
+              // `waiting` — because the framework never opens on the chair's behalf. These fields are ECHOED BY NAME
+              // from the kernel's open() receipt (never recomputed here, so the two faces cannot disagree): the raw
+              // `at:"+180s"` now comes with the resolved instant (`scheduledForIso`) and its spelling (`atSource`),
+              // `requiresChairProceed` says who has to act, `startsInMs` says how far away it is, and `nextActions`
+              // names the calls that actually move it (a beat() touch, then the chair's proceed()).
+              atSource: opened && opened.atSource !== undefined ? opened.atSource : null,
+              atSourceMeans: opened && opened.atSourceMeans !== undefined ? opened.atSourceMeans : null,
+              scheduledForIso: opened && opened.scheduledForIso !== undefined ? opened.scheduledForIso : null,
+              requiresChairProceed: opened && opened.requiresChairProceed !== undefined ? opened.requiresChairProceed : null,
+              requiresChairProceedMeans: opened && opened.requiresChairProceedMeans !== undefined ? opened.requiresChairProceedMeans : null,
+              startsInMs: opened && opened.startsInMs !== undefined ? opened.startsInMs : null,
+              nextActions: opened && opened.nextActions !== undefined ? opened.nextActions : null,
             })
           }
           // ★★★ RUN 239-D (the user's requirement: "a wait must really work — wait until the meeting event happens,

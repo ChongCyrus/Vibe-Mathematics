@@ -1098,7 +1098,7 @@
       "status": "DONE",
       "mechanism": [
         "vibe-math-vmu/kernel/meetings.js::const scheduledFor = ms > clock",
-        "vibe-math-vmu/kernel/meetings.js::'it starts by itself when the clock reaches that time"
+        "vibe-math-vmu/kernel/meetings.js::it does NOT start by itself"
       ],
       "tool": [
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
@@ -1125,7 +1125,7 @@
         "vibe-math-vmu/packs/v5r/tools.js::vibe_v5_meeting"
       ],
       "prompt": [
-        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::到点人数不齐就",
+        "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::到点不会自己开会",
         "vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js::相对偏移"
       ],
       "live": [

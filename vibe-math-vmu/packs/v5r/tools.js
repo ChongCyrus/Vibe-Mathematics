@@ -33,6 +33,9 @@ import { applyMemberScope, MEMBER_SCOPE_NOTE } from './member-scope.js'
 // the same table the member face gate is derived from — not the caller's identity (the office is not
 // subject to a seat, so before this a card could be attributed to a temp worker by the office).
 import { seatDecision as seatDecisionOf } from './seat-faces.js'
+// ★ RUN 251 (F71-7): the DECLARED seat faces are the ONE authority for "what may this seat call", and `tool_help` now
+// prints their counts with no live session — so it reads that table itself instead of re-typing a second list.
+import { seatAllowNames, seatDenyNames } from './seat-faces.js'
 // ★ PHASE 12 / D7 (second sentence)：「成员可用的命令按会议类型不同」。`kernel/turn.step` 早就能收窄一轮的工具面
 // （`{tools:{allow}}` → `setMemberToolOverride`），但 pack 侧没有生产者 —— 提示词不是门禁。`./meeting-tool-face.js`
 // 是这张**机构政策表**（哪类会议收窄、收窄到哪些工具）＋"只能收窄不能扩大"的求交；本文件只负责把它装到一轮上。
@@ -540,6 +543,42 @@ async function toolOverview(args = {}, { kernel } = {}) {
  * ★ NO LIVE AGENT / NO PROVIDER ⇒ the kernel's reading refuses BY NAME; this forwarder propagates that refusal (it never
  * returns an empty list and calls it success).
  */
+/**
+ * ★★★ RUN 251 (F71-8, MEASURED on the 71st real-machine run): ONE FACT — "no live session" — was told TWO ways
+ * (`VMU_MEMBER_SESSION_NOT_LIVE` when a child had existed and finished, `VMU_NO_SUCH_OBJECT` when none had ever been
+ * opened), and neither hint named a reachable repair, so a member reading the receipt could not tell "reopen me" from
+ * "I was never opened". The KERNEL owns the CAUSE (`view.cause` / `view.childId` / `view.refusal`) and is not edited
+ * here; this function TRANSLATES that cause into the two named answers, each carrying the ONE action that fixes it.
+ * Exported so the translation is pinned as a pure function (the pack face and the test read the same code).
+ */
+export function sessionRefusalOf({ view = null, member = '' } = {}) {
+  const live = view !== null && view !== undefined && view.liveAgent === true && Array.isArray(view.tools)
+  if (live) return null
+  const providerRefusal = view && view.refusal ? view.refusal : null
+  const cause = view && view.cause ? String(view.cause) : ''
+  const childId = view && view.childId !== undefined && view.childId !== null ? String(view.childId) : null
+  const ended = cause === 'child-session-not-live'
+    || (providerRefusal !== null && String(providerRefusal.code || '') === 'VMU_MEMBER_SESSION_NOT_LIVE')
+  const who = String(member === null || member === undefined ? '' : member)
+  return ended
+    ? {
+      code: 'VMU_MEMBER_SESSION_NOT_LIVE',
+      cause: cause === '' ? null : cause,
+      childId,
+      message: 'member "' + who + '" HAD a child session' + (childId !== null ? ' (' + childId + ')' : '') + ', and it is no longer live — the visible tool set cannot be read from a finished session',
+      hint: 'the session EXISTED and ENDED, so it can be reopened: drive the member again with vibe_vmu_turn {op:"drive", member:"' + who + '"} (or seat it again through vibe_vmu_control), then call tool_help again; the DECLARED set in `declarationSet` is readable right now and needs no session',
+      means: 'this code means "there WAS a wire and it has since closed" — distinct from VMU_MEMBER_SESSION_NEVER_OPENED ("there was never a wire"), because only the first has a session to reopen (RUN 251 / F71-8)',
+    }
+    : {
+      code: 'VMU_MEMBER_SESSION_NEVER_OPENED',
+      cause: cause === '' ? null : cause,
+      childId: null,
+      message: 'member "' + who + '" has NEVER opened a session, so there is no wire to read a visible tool set from — nothing has failed that a session could have shown',
+      hint: 'a session has to exist first: seat the member (vibe_vmu_control {action:"hire", slot:"chair"|"member", ...}), give it work (vibe_v5_assign or vibe_vmu_turn {op:"drive", member:"' + who + '"} so a child session is opened), then call tool_help again; until then `declarationSet` is the honest reading of what it may call',
+      means: 'this code means "there has NEVER been a wire" — distinct from VMU_MEMBER_SESSION_NOT_LIVE ("the wire existed and closed"): there is no session to reopen, only one to open (RUN 251 / F71-8)',
+    }
+}
+
 function toolHelp(args = {}, exec = {}) {
   if (!has(args.member)) {
     throw refuse('VMU_INVALID_ARGUMENT', 'tool_help needs the member id',
@@ -560,6 +599,74 @@ function toolHelp(args = {}, exec = {}) {
   const caller = exec && exec.agent ? exec.agent : null
   const agent = caller && typeof caller.id === 'string' && !caller.id.startsWith('session-') ? caller : null
   const view = kernel.toolsView({ member: str(args.member), agent })
+  // ★★★ RUN 251 (F71-7, MEASURED on the 71st real-machine run): outside a live session this face answered
+  // `count:null / tools:null / source:"no-live-agent"`, so the three seats' DECLARED readings (48 / 27 / 8 on the run-71
+  // build) could not be measured on a real machine at all — a reading that is only available when a session happens to be
+  // live is not a reading of an institution. The DECLARATION SET is static: it comes from `SEAT_TOOL_FACES` in
+  // `seat-faces.js` and needs no Agent, so it is now ALWAYS printed, next to a MEASURED SET that is honestly `null` until
+  // a live Agent exists. The two are separate fields with their own `means`: one is a declaration, the other a measurement.
+  const declaredToolNames = V5R_PACK_TOOLS.map((t) => (t && t.name) || null).filter((n) => typeof n === 'string')
+  // ★ RUN 251: the roster may be absent in a harness that only forwards `toolsView` (several suites drive this face with a
+  // minimal kernel). An absent roster means the SEAT is unknown — not that the declaration set does not exist — so the
+  // lookup is guarded and the receipt says which of the two it is, instead of turning a reading into an exception.
+  let seatRow = null
+  try {
+    seatRow = seatOf(kernel, str(args.member))
+  } catch (e) {
+    seatRow = null
+  }
+  const seatOfMember = seatRow === null ? '' : String(seatRow.slot || '')
+  const declarationSet = (() => {
+    if (seatOfMember === '') {
+      return {
+        seat: null,
+        declaredCount: declaredToolNames.length,
+        allowCount: null,
+        denyCount: null,
+        seatFilter: null,
+        tools: null,
+        means: 'the roster publishes no seat for "' + str(args.member) + '", so which DECLARED face belongs to this member cannot be computed: the pack-declared tool COUNT is printed (' + declaredToolNames.length + '), the per-seat split is null rather than a guess — seat the member first (vibe_vmu_control {action:"hire"}), then ask again',
+      }
+    }
+    const allow = seatAllowNames(seatOfMember, declaredToolNames)
+    const deny = seatDenyNames(seatOfMember, declaredToolNames)
+    return {
+      seat: seatOfMember,
+      declaredCount: declaredToolNames.length,
+      allowCount: allow.length,
+      denyCount: deny.length,
+      seatFilter: {
+        seat: seatOfMember,
+        present: allow,
+        presentCount: allow.length,
+        absent: deny,
+        absentCount: deny.length,
+        means: 'seatFilter.present is this seat\'s DECLARED face (the names `SEAT_TOOL_FACES[<tool>].allow[<seat>] === true` in packs/v5r/seat-faces.js); seatFilter.absent is `declared − allow`, COMPUTED from that same table — not a second hand-written list. Both lists are static and readable with no live session',
+      },
+      tools: allow,
+      means: 'the DECLARATION set, not the live visible set: these are the pack-declared names this seat is ALLOWED to call by the seat-face table, and they do not depend on any session. `measuredSet` is what a live Agent actually exposes — read THAT for "what can I call right now", and this for "what does the institute say I may call"',
+    }
+  })()
+  // ★★★ RUN 251 (F71-8): the translation from the kernel's cause to the two named refusals lives in ONE exported
+  // pure function (`sessionRefusalOf`, above) so the face and the suite read the same code instead of two copies.
+  const measuredCount = view && view.liveAgent === true && Array.isArray(view.tools) ? view.tools.length : null
+  const providerRefusal = view && view.refusal ? view.refusal : null
+  const sessionRefusal = sessionRefusalOf({ view, member: str(args.member) })
+
+  const measuredSet = {
+    available: measuredCount !== null,
+    count: measuredCount,
+    tools: measuredCount === null ? null : view.tools,
+    hidden: view && Array.isArray(view.hidden) ? view.hidden : null,
+    source: view && view.source !== undefined ? view.source : null,
+    liveAgent: view && view.liveAgent === true,
+    schemaScope: view && view.schemaScope !== undefined ? view.schemaScope : null,
+    refusal: sessionRefusal,
+    providerRefusal,
+    means: measuredCount !== null
+      ? 'the MEASURED set: the names a live Agent for this member actually exposes right now (the host\'s visible-tools wire), which is a different question from `declarationSet` — a governed seat may be denied by the meeting type, and a non-live seat has no wire at all'
+      : '`count:null` here is NOT "sees nothing": the MEASURED set needs a live Agent and there is none, so it is null on purpose and `refusal` says which of the two session facts it is. The DECLARED set in `declarationSet` is readable with no session and is what the institution says this seat may call',
+  }
   // ★★★ TASK-12 SUPPLEMENT (Lead, run 31 follow-up): THE SAME RUN COULD GIVE TWO ANSWERS TO "CAN I SEE MY OWN TOOLS".
   // `vibe_vmu_tools` (tools/member-tools.js) now names the VOICE and the READING SCOPE on every answer — `voice`,
   // `readingScope`, `callerIsThisMember`, `memberSession` + their means — while this forwarder returned the raw
@@ -589,7 +696,26 @@ function toolHelp(args = {}, exec = {}) {
       catalogMeans: "this is the pack's DECLARED tool surface (every name the v5r pack publishes), not your seat's live visible set: the per-seat set depends on your role and on any meeting-type narrowing, and that reading needs a live Agent. Use this list to look a name up; use `vibe_vmu_tools` inside a turn for the authoritative visible set",
     }
   })()
-  return Object.assign({}, view, forwarded, catalogFallback || {}, { tool: 'vibe_v5_tool_help',
+  // ★ RUN 251: a LIVE provider answer already carries the kernel's own `seatFilter` (slot/rule/before/after/deniedNames,
+  // added by RUN 249-A) — that is the MEASURED narrowing and must be forwarded, never overwritten by the declaration
+  // filter. The declaration filter is therefore nested under `declarationSet.seatFilter` and only takes the top-level
+  // name when the kernel has nothing to say (no live session), so both readings stay readable side by side.
+  const kernelSeatFilter = view && view.seatFilter !== undefined && view.seatFilter !== null ? view.seatFilter : null
+  return Object.assign({}, view, forwarded, catalogFallback || {}, {
+    // ★★★ RUN 251 (F71-7 / F71-8): the DECLARED reading is always here (session or not); the MEASURED one says
+    // `available:false` with one of the two named session refusals, never `VMU_NO_SUCH_OBJECT`.
+    declaredCount: declarationSet.declaredCount,
+    allowCount: declarationSet.allowCount,
+    denyCount: declarationSet.denyCount,
+    seatFilter: kernelSeatFilter !== null ? kernelSeatFilter : declarationSet.seatFilter,
+    declarationSeatFilter: declarationSet.seatFilter,
+    declarationSet,
+    declarationSetMeans: declarationSet.means,
+    measuredSet,
+    measuredSetMeans: measuredSet.means,
+    refusal: sessionRefusal === null ? (view && view.refusal ? view.refusal : null) : sessionRefusal,
+    providerRefusal,
+    tool: 'vibe_v5_tool_help',
     note: 'thin forwarder: the kernel\'s toolsView reading (the member\'s VISIBLE set from the live provider), not the pack declaration; purpose:null means the host registered no description for that name'
       + (absentFields.length === 0 ? ''
         : '；' + absentFields.join('/') + ' 在本侧读数为 null：该读数在这一侧不存在（toolsView 没有带它），本面不自行推算——要读声音/视角就读 vibe_vmu_tools 的同名字段') })
@@ -2362,9 +2488,16 @@ function gatedCardHandler(toolName) {
         // one receipt said both "the lock is deferred, correct the pointer freely" and "the pointer can never be
         // corrected". Both sentences were generated from the same write; only one of them was true. The note now follows
         // the same fact the lock itself follows — does this card's OWN pointer resolve?
-        lockNote: pointerCheck !== null && pointerCheck.resolved !== true
-          ? 'this card is NOT locked: its `proof_state` says complete, but its OWN `proof_ref` does not resolve inside the library (reason: ' + String(pointerCheck.reason || 'unknown') + '), so the rule-L14 lock is DEFERRED — write the file into the library (or point at a record id) and re-register, or correct the pointer freely; the card stays writable until a pointer that really resolves is registered'
-          : 'a card whose proof_state is complete is LOCKED (rule L14: later writes to the same card id are refused), so the pointer cannot be corrected afterwards — check that <libraryRoot>/<pointer-without-anchor> exists BEFORE judging the card, and copy the file into the library tree first if it does not' }
+        // ★★★ RUN 251 (F71-4, MEASURED on the 71st real-machine run): the DRAFT card came back with a lockNote that said
+        // 「its proof_state says complete」 / 「a card whose proof_state is complete is LOCKED」 while the SAME receipt's
+        // `proofState` was "draft". The note was state-blind: it only asked whether the pointer resolved. A note is read as
+        // a fact about THIS card, so it now follows the declared state — a draft states draft facts and never borrows the
+        // finished-registration branch's words.
+        lockNote: declaredProofStateFolded !== PROOF_STATE_COMPLETE
+          ? 'this card declares `proof_state:"' + declaredProofState + '"`, a NOT-yet-finished registration, so rule L14 (「登记即定稿」) does not lock it: the card stays writable, this pointer is only a POINTER to a file (this write does not read it, and a later write may correct or replace it)'
+          : (pointerCheck !== null && pointerCheck.resolved !== true
+            ? 'this card is NOT locked: its `proof_state` says complete, but its OWN `proof_ref` does not resolve inside the library (reason: ' + String(pointerCheck.reason || 'unknown') + '), so the rule-L14 lock is DEFERRED — write the file into the library (or point at a record id) and re-register, or correct the pointer freely; the card stays writable until a pointer that really resolves is registered'
+            : 'a card whose proof_state is complete is LOCKED (rule L14: later writes to the same card id are refused), so the pointer cannot be corrected afterwards — check that <libraryRoot>/<pointer-without-anchor> exists BEFORE judging the card, and copy the file into the library tree first if it does not') }
       return null
     })()
     // ★★ RUN 153 (G1): a settlement on an EXISTING card is a PATCH (see settleRulingOnCard). It never reaches the
@@ -2466,9 +2599,17 @@ function gatedCardHandler(toolName) {
       : (declaredProofStateFolded !== PROOF_STATE_COMPLETE
         ? 'absent'
         : (proofStateDowngraded !== null ? 'missing' : (declaredProofRefWord !== '' ? 'resolved' : 'absent')))
+    // ★★★ RUN 251 (F71-3, MEASURED on the 71st real-machine run): the DEFAULT card (no `proof_state`, no proof fields at
+    // all) came back `proofGate:null`, so the one receipt a reader has for "may I still change this card?" answered
+    // nothing — measured on run 71's C3: a default draft was filed and the gate was a null. The invariant is now stated
+    // unconditionally: a card that is not a finished registration is NEVER locked and ALWAYS names why, and the default
+    // path names itself `default-draft` rather than borrowing the declared-draft words (nothing was declared).
     const proofGateOut = settlementReadback !== null
       ? (settlementReadback.proofState === null
-        ? null
+        ? { locked: false, reason: 'read-back-default-draft', proofRefState: 'absent',
+            why: 'READ BACK from the stored row: it declares NO `proof_state` at all — a card without one is a DRAFT (the default) — so rule L14 does not lock it; this settlement changed only `p` and the ruling row',
+            nextMove: null,
+            means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; the DEFAULT card is a draft, and this value was READ BACK (a settlement writes no proof fields)' }
         : (settlementReadback.proofLockDeferred === true
           ? { locked: false, reason: 'read-back-deferred', proofRefState: 'missing',
               why: 'READ BACK from the stored row: it is declared complete but its lock is DEFERRED (' + String(settlementReadback.proofLockDeferredReason || 'reason unreadable') + '); this settlement changed neither',
@@ -2483,7 +2624,10 @@ function gatedCardHandler(toolName) {
                 why: 'READ BACK from the stored row: declared complete and the lock is on; this settlement changed only `p` and the ruling row',
                 nextMove: null, means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK, this call is a settlement' })))
       : (declaredProofState === ''
-        ? null
+        ? { locked: false, reason: 'default-draft', proofRefState: 'absent',
+            why: 'this write declares NO `proof_state` — a card filed without one is a DRAFT (the default), and rule L14 (「登记即定稿」) locks only a finished registration, so this card is NOT locked and stays writable',
+            nextMove: null,
+            means: 'read proofGate.locked, not `ok`, to answer "is this card locked": the default is a DRAFT, and a receipt that prints proofGate:null leaves that question unanswered (RUN 251 / F71-3)' }
         : (declaredProofStateFolded !== PROOF_STATE_COMPLETE
           ? { locked: false,
               reason: declaredProofStateFolded === 'draft' ? 'declared-draft' : 'declared-not-complete',
@@ -4385,8 +4529,12 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
   })()
   const state = opened && opened.state !== undefined ? opened.state : null
   const scheduledFor = opened && opened.scheduledFor !== undefined ? opened.scheduledFor : null
+  // ★★★ RUN 251-C 对齐（task-78 追加 A）: 内核已裁定「框架不替主席开会」（state-lane 的 start window：到点只结算一次考勤，
+  // 转入 waiting 后只有主席 proceed 能开会）。这段文案以前把到点写成「按法定人数就会开会 / 那一次触碰才会开始」，读起来像
+  // 时钟会自动开会。这里改成内核的真话，并把内核回执字段透出（requiresChairProceed / waitingFor / startsInMs / nextActions /
+  // atSource / scheduledForIso）；pack 回执里不再允许出现「到点自动开会」的表述。
   const scheduleNote = state === 'scheduled'
-    ? '★ 这场会议是【预约】的（scheduledFor=' + String(scheduledFor) + '）：status/summary/meetingView 现在就能读；开始时间之前的**治理动作**（发言、动议、表决、结会、会长动作）都会被内核具名拒绝。有一个例外要说清：`attend` 是座位登记，内核按设计**允许提前签到**（等待/预约状态里唯一被豁免的动作），它不会让会议提前开始——到点后按法定人数转 open，或先进入等待阶段，等待期间迟到者 attend 凑满法定人数，那一次触碰才会让会议开始；到点的判定由内核对每次 `beat()` 跑的一趟 sweep 结算（框架没有定时器：没人 beat 的进程不会自己醒）。'
+    ? '★ 这场会议是【预约】的（scheduledFor=' + String(scheduledFor) + '，解析后的开始时刻见 scheduledForIso）：status/summary/meetingView 现在就能读；开始时间之前的**治理动作**（发言、动议、表决、结会、会长动作）都会被内核具名拒绝。有两件事要说清：① `attend` 是座位登记，内核按设计**允许提前签到**（预约/等待状态里唯一被豁免的动作），它不会让会议提前开始；② **到点不会自己开会——框架不替主席开会**（没有定时器，没人触碰的进程不会自己醒）。到点后的下一次触碰（beat/status/summary/meetingView 等）把考勤规则结算一次：规则当时已满足就开会，否则转入 waiting，此后只有主席的 proceed() 能开会（主席也可以提前 proceed()，回执会写 startedLate）。所以预约回执带着 `requiresChairProceed`/`requiresChairProceedMeans`、`waitingFor`、`startsInMs`、`nextActions`：要开会就按 nextActions 里的 proceed 行动，不要假设时钟会替主席做决定。'
     : null
   // ★ GOAL ROUND 3 — THE RECOMMENDED PROCEDURE. A type that the rule gave a skeleton gets it in the receipt, labelled
   // `binding:'recommendation'` so no reader can mistake it for a gate; a type with no skeleton reports null and WHY
@@ -4474,6 +4622,24 @@ function toolMeeting(args = {}, { kernel, exec } = {}) {
       ? 'this meeting was convened over exactly this roster (`rosterNarrowed` says whether it is narrower than the live roster, `rosterSource` says who supplied it). The roster bounds who may be counted present and who is on the order queue'
       : null),
     state, scheduledFor, at, scheduleNote,
+    // ★★★ RUN 251-C 对齐 (task-78 追加 A): 内核 start window 的字段原样透出 —— pack 不重新解释时间，也不重新解释
+    // 「谁来开会」。`requiresChairProceed` 是内核给的布尔（未开始即为 true），`nextActions` 是内核给的可达动作表；
+    // `waitingFor` 区分 waiting 的两种原因（quorum 未凑满 / 只差主席 proceed）。回执不写「到点自动开始」。
+    atSource: opened && opened.atSource !== undefined ? opened.atSource : null,
+    atSourceMeans: opened && opened.atSourceMeans !== undefined ? opened.atSourceMeans : null,
+    scheduledForIso: opened && opened.scheduledForIso !== undefined ? opened.scheduledForIso : null,
+    started: opened && opened.started !== undefined ? opened.started : null,
+    startedAt: opened && opened.startedAt !== undefined ? opened.startedAt : null,
+    startsInMs: opened && opened.startsInMs !== undefined ? opened.startsInMs : null,
+    elapsedSinceMs: opened && opened.elapsedSinceMs !== undefined ? opened.elapsedSinceMs : null,
+    elapsedMs: opened && opened.elapsedMs !== undefined ? opened.elapsedMs : null,
+    waitingFor: opened && opened.waitingFor !== undefined ? opened.waitingFor : null,
+    waitingForMeans: opened && opened.waitingForMeans !== undefined ? opened.waitingForMeans : null,
+    quorumMetWhileWaiting: opened && opened.quorumMetWhileWaiting !== undefined ? opened.quorumMetWhileWaiting : null,
+    requiresChairProceed: opened && opened.requiresChairProceed !== undefined ? opened.requiresChairProceed : null,
+    requiresChairProceedMeans: opened && opened.requiresChairProceedMeans !== undefined ? opened.requiresChairProceedMeans : null,
+    nextActions: opened && Array.isArray(opened.nextActions) ? opened.nextActions : null,
+    startReadsMeans: opened && opened.startReadsMeans !== undefined ? opened.startReadsMeans : null,
     // ★ RUN 225-B: a meeting that declared a policy must read it back - otherwise 'what rule does this meeting hold late
     // arrivals to' exists only in the call that made it.
     lateAdmission: opened && opened.lateAdmission !== undefined ? opened.lateAdmission : null,
@@ -6623,7 +6789,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   },
   {
     name: 'vibe_v5_tool_help',
-    description: 'What can I call right now? A thin forwarder to the kernel\'s toolsView: the member\'s VISIBLE tool set from the live provider (not the pack declaration), each with a one-line purpose (null = the host registered none). No live Agent / no provider ⇒ the provider\'s NAMED refusal — never an empty list pretending success.',
+    description: 'What can I call? TWO readings: `declarationSet` (STATIC, no session needed: declaredCount/allowCount/denyCount/seatFilter from the seat-face table) and `measuredSet` (the live visible set; count:null + a named `refusal` when no session: `VMU_MEMBER_SESSION_NEVER_OPENED` or `VMU_MEMBER_SESSION_NOT_LIVE`). Never an empty list.',
     parameters: { member: { type: 'string', required: true } },
     handler: toolHelp,
   },

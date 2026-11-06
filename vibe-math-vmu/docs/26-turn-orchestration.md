@@ -3638,7 +3638,10 @@ RUN 220（run 56 / FEEDBACK55）：五处「回执为真、读者读错」，逐
      (`settleRulingOnCard` → `records.supersede`); the receipt built its proof fields from the incoming arguments, so a
      locked card read `proofState:null` / `proofLockDeferred:false` / `proofGate:null` while the same receipt promised
      every other line was byte-identical. The settlement path now READS THE CARD BACK (`settlementReadback`) and says so
-     (`proofStateFrom`), and `proofStateEvidence` is `null ON PURPOSE` with a sentence saying why.
+     (`proofStateFrom`), and `proofStateEvidence` is `null ON PURPOSE` with a sentence saying why. (**RUN 251 反转**：
+    `proofGate` 已无 `null` 形态——连什么都没声明的默认卡也具名 `default-draft`，并逐态给
+    `locked`/`reason`/`why`/`nextMove`，见 `vibe-math-vmu/packs/v5r/tools.js:2606`；`? null` 这个形状由
+    `tests/vmu-run251-tool-readings.test.mjs` 钉住。) `proofStateEvidence` 的具名 `null` 是另一件事，仍然成立。
   2. **one deny count, two seats.** `applied[].denyCount` was the SEAT's count (temp: 40 of 48) while the top-level
      `denyCount` was the MEMBER seat's (21) and `means` spoke about "the member seat". Both were true of different seats.
      The receipt now carries `denyCountBySeat` + `denyCountIs` + `denyCountMeans`, and `means` counts per seat.
@@ -4128,9 +4131,14 @@ member 29 810、temp 26 904）。**先删再写**是预算下唯一可持续的�
 
 - 实测（run 61）：`propose` 落草案 r2 时把 `Shared/Protocol.md` 原子替换成草案正文（517 B），而现行行仍是 r1（6755 B）；
   `state` 报 `mdChangedSinceIndex/mdAheadOfIndex`；`prune` 草案只动索引，文件不会回到现行行。
-- 修法：**草案不写 md**（`draftMdDeferred`），正文只活在索引行；`adopt` 是 canonical 文档的唯一写者，
+- 修法（**当时**；RUN 248 已反转，见下条）：**草案不写 md**（`draftMdDeferred`），正文只活在索引行；`adopt` 是 canonical 文档的唯一写者，
   回执用 `mdIsTheDocumentInForce.wroteNow` 说「这一次真的落盘了」。
-- 为什么不是另开 `Shared/Drafts/`：那会多出「哪个文件算数」的第二个问题，并让 `reindex` 把草案文件也收成独立行，
+- **现行口径（RUN 248 起，用户 m37456）**：草案**就是文件**——`propose` 不带 `mdPath` 时内核物化
+  `Shared/Drafts/<stem>-r<N>.md`（`writtenBy:"kernel-materialized"`），成员自己用 fs 写好再带同一 `mdPath` propose
+  则文件归成员（`writtenBy:"member-file"`，内核不改写）；行只做索引。`adopt` 只做一件事：校验行与文件 sha 一致后
+  把草案字节晋升进 `Shared/Protocol.md`（缺文件 `VMU_PACK_V5R_BLUEPRINT_MD_MISSING`、被改过
+  `VMU_PACK_V5R_BLUEPRINT_MD_DRIFT`）。
+- （**RUN 248 前的理由，已随之反转**）为什么不是另开 `Shared/Drafts/`：那会多出「哪个文件算数」的第二个问题，并让 `reindex` 把草案文件也收成独立行，
   破坏「一次采纳 = 恰好一行」。**不写文件是不需要解释的写法。**
 - **RUN 248 反转（用户 m37456 裁定：草案要落盘、成员自己用 fs 管 md）**：上面两条反对意见都被真正消掉了，所以
   反转不是退回 237 的 bug —— ①「哪个文件算数」由 `mdPath ≠ path` 判定：草案 md 记 `draftOf`，`records.mdReindex`
@@ -4639,3 +4647,93 @@ coverage debt 由各自 `--write` 收口）。
 - 「渲染了」与「回执里能核对」是两件事：前者证明投递链通了，后者才让验收有落点；只做到前者，验收就只能去工作区找——那不是证据。
 - `null` 必须是名词：一个「还没有读数」的回合与一个「值丢了」的回合，在读者眼里必须不同。
 - 下一块候选：`notices.blockChars` 的口径（是否含其后的状态块）要在 `turnReceiptsMeans` 里随拼装顺序一起改；将来任何「造事实」的读数搬进台账时，都按本轮形态办——搬运层不许有自己的算法。
+
+## ROUND 251 —— 「预约 → 到点 → 起会」：一个字段不能同时说两件事，一句文案不能替框架许愿
+
+**一、触发面（第 71 次真机 C4，build `0a9e9783`）。** 主席把会议预约到 `+180s`，到点后 `beat()` 跑了 sweep，`quorum.met:true`，会议仍是 `waiting`：`stateMeans` 说「quorum rule is not met yet」（与 `met:true` 直接打架）、回执里 `elapsedMs` 为负（同一个字段在预约态表示「还有多久开始」、开会后表示「已开多久」）、`at:"+180s"` 只回显原串（读者不知道它被解析成了哪个时刻）。等到主席 `proceed()` 才真正开会，`startedLate:true`、`waitedMs:13967`。
+
+**二、四条修法（选②：框架不替主席开会）。** `kernel/meetings.js:1725-1734` 的状态机注释本来就写着「THE LAST ONE DELIBERATELY CHANGES NOTHING ELSE … Deciding for the chair would be a mechanism with no authorization」，所以不改成自动 open，而是把所有**读数**改成真话：
+- **F71-11 同源。** `kernel/meeting.js` 新增 `WAITING_FOR_MEANS = { quorum, 'chair-proceed' }`；`MEETING_STATE_MEANING.waiting` 改为**由该表拼装**的句子（两值都在里面），回执新增 `waitingFor`/`waitingForMeans`（`waitingForOf(m) = quorumOf(m).met ? 'chair-proceed' : 'quorum'`）。两处各写一套是不可能的：句子就是表的拼装结果。
+- **F71-12 不再许愿。** `requireMeeting` 的 scheduled/waiting 拒因改成「到点由下一次触碰（`beat()`/读/`attend`）结算一次：规则当场满足才 open，否则进 waiting；从 waiting 起**只有主席 `proceed()`** 能开，`lapse()`/`recess()` 是另外两个具名出口；框架没有定时器，`beat()` 就是钟」。回执新增 `requiresChairProceed`（+ `requiresChairProceedMeans` 三分支）与 `nextActions`（scheduled ⇒ beat/attend/proceed；waiting+met ⇒ proceed/lapse/recess；waiting 短 ⇒ beat/attend/proceed）。
+- **F71-13 一个窗口一个名字。** `startBlockOf(m, now)` 产出 `startsInMs`（**只在未开始**时非 null；正=还没到点）、`elapsedSinceMs`（**只在已开始**时非 null，`Math.max(0, at - activatedAt)`，从**实际开会计**而非 `scheduledFor`）、`elapsedMs` 保留为 `elapsedSinceMs` 的别名（老读者拿到运行时长，未开始为 `null`，永不为负）。`attend()` 的 `lateReads` 走同一块，未开始时 `lateMeans` 说「NOT JUDGED YET」。
+- **附带的 `at` 可核。** `openSeq` 回执给 `atSource`（`"relative"`/`"absolute"`）+ `atSourceMeans` + `scheduledForIso`（解析后的 ISO 时刻，读者不必用自己没有的钟去重算 `+180s`）。`tools/meeting.js` 的 schedule/appoint 回执显式透传这 7 个字段（`atSource`/`atSourceMeans`/`scheduledForIso`/`requiresChairProceed`/`requiresChairProceedMeans`/`startsInMs`/`nextActions`）。
+- 读面只加一处：`startBlockOf` 被 `waitBlockOf` 与 `status()` 的两张列表各 spread 一次 ⇒ `summary`/`meetingView`/`status` 同时得到同一批读数（one block, one wording）。
+
+**三、判据。** 新套件 `tests/vmu-run251-meeting-window.test.mjs`（纯服务层 + 可变 clock，§1–§7，**54/0**）：预约后 `startsInMs>0` 且 `elapsedSinceMs===null`；未开始 `attend` 的 `lateReads.elapsedMs===null`（无负值）；到点 sweep 后 `state==='waiting'` 且 `quorum.met===true` 时 `waitingFor==='chair-proceed'`；`waitingForMeans` 与 `MEETING_STATE_MEANING.waiting` 的**同源不变式**逐条断言（表里每条都出现在那句通用文案里）；`proceed()` 后 `elapsedSinceMs===0`、+5000ms 后 `===5000`、`startsInMs===null`；`"+180s"` ⇒ `atSource==='relative'`、`scheduledForIso` 与 `startsInMs` 指向同一时刻。
+
+**四、回归。** `vmu-meetings` 214/0、`vmu-ab-v5r-meetings` 121/0、`vmu-meeting-invite` 69/0、`vmu-run248-notice-delivery` 117/0、`vmu-meeting-ask` 21/0、`vmu-meeting-state-meaning` 15/0、`vmu-run236-meeting-readings` 46/0、`vmu-run225-late-admission` 134/0、`vmu-run90-paper-target-schedule` 14/0、`vmu-meeting-quorum-floor` 18/0、`vmu-meeting-types` 155/0。
+
+**五、遗留（不在本车道写域）。** `packs/v5r/tools.js:4388-4390` 的 `scheduleNote` 仍写「到点后按法定人数转 open，或先进入等待阶段……」，是 pack 回执里「到点自会起会」最主要的误导文案；本轮只能把内核侧读数改真，pack 文案须由 packs/v5r 属主按同一口径重写。`nextActions` 在本轮之前全仓不存在（`grep` 无输出），是内核回执新造的字段。
+
+**六、A 车道（emptyReply 的语义反转与唯一权威名）。** 第 71 次真机（build `0a9e9783`）里 `r-1` 写了 **16 685 字符 /
+30 195 字节**的散文，回执却说 `emptyReply:true`——旧判据看的是**解析后的对象**（散文解析不出结构化字段就当成空），
+于是「沉默的成员」与「说了一大段但没落成字段的成员」在回执上无法区分。同一轮 run-lane 在 `turnReceipts` 行上找
+`replyTruncated` / `replyExcerpt`，而 RUN 250 已把事实放在 `truncated` / `excerptLen`：**一个事实、两个名字**，读者
+各取一半。
+- 新规则（`vibe-math-vmu/kernel/turn/index.js:1718` `replyTextIsEmpty`（`trim() === ''`）、`:1719`
+  `EMPTY_REPLY_MEANS`）：`emptyReply` 只说**回复文本通道**——true 只当文本 0 字符（纯空白也算），写了一个字
+  （含 `{"solved":false}`、含解析不出字段的散文）就是 false；**做没做**看 `fields`/`executed`/`writes`，
+  **切没切**看 `truncated`/`excerptLen`（全文 `replyFullPath`、sha `replyFullSha256`）。「emptyReply:true + 工具通道
+  有值」因此不矛盾，是两个通道。
+- 命名收敛：`truncated`/`excerptLen` 是唯一权威；`replyTruncated`/`replyExcerpt` 只留在**回合回执**作历史名，**不进
+  台账行**（`vibe-math-vmu/kernel/turn/index.js:5161` `turnReceiptsMeans` 原文说明）。
+- 判据 `tests/vmu-run251-empty-reply.test.mjs`（§0–§5，**49/0**），其中 §3 复刻 16 685 字散文的形状。
+
+**七、B 车道（draft gate 的 null 形态、tool_help 两读、两条具名拒、scheduleNote）。**
+- F71-3：什么证明字段都没填的卡回 `proofGate:null`——「没锁」与「这一面忘报 gate」同形。现在
+  `vibe-math-vmu/packs/v5r/tools.js:2607` 的 `proofGateOut` 每分支具名（`default-draft`/`declared-draft`/
+  `declared-not-complete`/`complete-and-resolved`/`complete-but-pointer-unresolved`；读回 `read-back-*` 四种），
+  `tests/vmu-run251-tool-readings.test.mjs:70` 钉住「没有任何形态是 null」。
+- F71-4：草稿卡 `lockNote` 曾借用「已完整」措辞（`vibe-math-vmu/packs/v5r/tools.js:2491-2500`）；现在跟随声明状态，
+  草稿不借「complete」这个词。
+- F71-7：无 live 会话时 `tool_help` 回 `count:null/tools:null/source:"no-live-agent"`，三席 48/27/8 在真机测不到。
+  拆成**声明集**（`declarationSet`，`vibe-math-vmu/packs/v5r/tools.js:619`，静态、无需会话）与**实测集**
+  （`measuredSet`，`:656`，需要 live Agent；没有会话时 `available:false`+`count:null`，并明说 null 不是「什么都看不见」）。
+- F71-8：「没有会话」曾两码两说（`VMU_MEMBER_SESSION_NOT_LIVE` 对「线存在过又关了」，兜底 `VMU_NO_SUCH_OBJECT` 对
+  「从未有过」），两边 hint 都没给可执行的修复。现在 `vibe-math-vmu/packs/v5r/tools.js:554` 的 `sessionRefusalOf` 一处判定、
+  两条具名拒：`VMU_MEMBER_SESSION_NOT_LIVE`（`:565`；再 `drive`）与 `VMU_MEMBER_SESSION_NEVER_OPENED`（`:573`；
+  先 seat/assign 再 drive），每条 hint 指名唯一修复。
+- F71-12 的文案面：`scheduleNote` 曾写「到点按法定人数就会开会」，读起来像钟会自己开会；现在
+  `vibe-math-vmu/packs/v5r/tools.js:4536` 说内核真话，并透出 `requiresChairProceed`/`waitingFor`/`startsInMs`/
+  `nextActions`/`atSource`/`scheduledForIso`。
+- 判据 `tests/vmu-run251-tool-readings.test.mjs`（node:test，**7/0**）：allow/deny **不读被测回执自证**，用
+  `seat-faces.js` 的 `seatAllowNames/seatDenyNames` 独立复算后逐席比对（§3c–§3m）。
+
+**八、提示词侧（本轮唯一的措辞反转，写域：`vibe-math-vmu/packs/v5r/prompts/v5r-blocks-b.js`）。** 两条旧教学必须死：
+- shared 段 `v5r-turn-channels`（`:1031` 那一行）：①「只留摘录（`replyTruncated:true`）」→ 权威键 `truncated`/`excerptLen`，
+  旧名写明「只是旧称、只在回合回执、台账行不复制」；②「`emptyReply:true`＝这一回合没交代做没做」→ **文本通道**
+  语义（0 字符才是 true；写一个字就是 false；≠「没做」；工具通道看 `source`/`fields`/`executed`/`writes`）。
+- chair 会前段（`:940` ③）与研究员段（`:949`）里的「到点自觉开会」期待：改成
+  「**到点不会自己开会**：到点后的下一次 touch 只结算一次考勤——那一刻人齐才直接开（`startedLate:true`），否则落
+  `waiting` 并给 `waitingFor`（`"quorum"`/`"chair-proceed"`）；`waiting` 期间迟到者 `attend` 让考勤满足时那次 touch
+  仍会开；等待到期只把 `waitDecisionDue` 置真（提醒，不开会）；其余只有主席 `proceed`（`lapse` 弃会 / `recess` 体会）；
+  `requiresChairProceed:true` 的准确含义是「开会不是框架按钟自己决定的」：需要一个动作把它推过去（主席 `proceed`，
+  或考勤在等待期间被补齐）；`nextActions` 直接列此刻能接的动作」。研究员侧保留「`nextActions` 只剩
+  proceed/lapse/recess 时＝在等主席，别催」。
+- 守门：`tests/vmu-run239-prompts.test.mjs` **86/0**——§8c/§8c2/§8e/§8e2/§8e3/§8g 钉新语义并 `denies` 旧句；新增
+  **§9 ·9**（a–h）：源码有「到点不会自己开会」/`waitingFor`/两值/`requiresChairProceed:true`/`nextActions`/
+  「lapse 弃会·recess 体会」，**否认**旧两句（`到点人齐才开`、`迟到者 attend 即开`），真装配：chair/meeting 有规则与
+  `nextActions`、member/meeting 有「别催」。`tests/vmu-run247-prompt-dedup.test.mjs` **74/0**：新增记账
+  `RUN251_TEACHING = 每席 198 / 合计 594`（shared 段三席同值），§1a 上限 28 142＝实测，§1b 上限 74 639＝实测 74 578
+  （余 61，与 RUN 248 同一口径），§1c 仍 8 行/1 738 字符。
+
+**九、数字与门禁（本机）。**
+- 新套件：`vmu-run251-empty-reply` **49/0**、`vmu-run251-meeting-window` **60/0**、`vmu-run251-tool-readings` **7/0**；
+  提示词侧：`vmu-run239-prompts` **86/0**、`vmu-run247-prompt-dedup` **74/0**、`vmu-run150-verdict-channel` **73/0**。
+- 真装配（12 份）：chair 28 142 / 32 081 / 27 733 / 31 694；member 24 858 / 25 613 / 24 449 / 27 991；temp
+  21 578 / 22 589 / 21 169 / 25 348；合计 313 245。`audit-prompt-budget --check` **PASS**（chair/meeting **34 589**
+  vs cap 36 500；member/verify 27 635；temp/verify 24 994；tools mean 698，cap 未上调）。
+- 文档侧：`check-docs` PASS；`audit-doc-line-refs` 9/0；`vmu-doc-claims-vs-code` 12/0；`audit-doc-actions` 63/0；
+  `audit-vmu-docs` 103/0。`regen-all --check` 本轮 landing 期间为 14/17（planned-code registry、documented counts、
+  kernel index 三项由 lead 的生成件收口覆盖，我不动生成件）。
+- 本轮文档：phase12 **§348**（348.1 A / 348.2 B / 348.3 C 三段式 / 348.4 判据工程 / 348.5 遗留 / 348.6 教训）。
+
+**十、教训与下一块候选。**
+- **文案里的「时机」也是一处判据。** 两句旧教学不违反任何字段，只违反状态机——它让模型等一个永不发生的自动开会。
+  提示词的时间语义必须与状态机逐条对应，pin 要同时钉「新句子在」与「旧句子不在」（`denies` 两条）。
+- **同一形状在本轮第二次出现**：RUN 250 是「渲染了 ≠ 回执能核对」，RUN 251 是「字段语义反转了、提示词还是旧话」。
+  判据抓的从来不是「字段存在」，而是「字段含义与提示词教的含义是同一件事」。
+- **RULE E 的「空对空」本轮抓掉一次**（md-lane）：`A:read.seatFilter.present` 用 `every()` 比两个可能为空的列表，
+  两侧皆空即恒真；改成排序集合相等 + 与独立复算列表长度相等后，空表当场不等。
+- 下一块候选：①「预约 → 到点 → 真实成员回合」这条整链在真机上跑一次（本轮只测了服务层 + 一次 13 967 ms 的等待）；
+  ②`nextActions` 的三动作在模型侧是否真被读（本轮只证明了读数真、没证明模型读）；③G-2 的 Lean fixture。

@@ -538,6 +538,7 @@
 | `VMU_NOT_PERMITTED` | 权限不足（含中间件拦截） | 写/管操作 | ✅（须说明**谁能做**） |
 | `VMU_NO_SUCH_OBJECT` | 对象不存在（悬空 id） | 读/引用 | ✅（须给**下一步**） |
 | `VMU_MEMBER_SESSION_NOT_LIVE` | **对象在、只是不 LIVE**（成员的子会话已结束、没有活着的 Agent）——与 `VMU_NO_SUCH_OBJECT` 分开，正因为「一个面刚刚点名了那个 child session，却说它不存在」是自相矛盾的码（RUN 169 / run 15 F15-6；`host.js` 的 `memberWireRefusal`、`kernel/index.js` 的 `toolsView` 降级闸同时接受両码，`vibe_v5_tool_help` 逐字转发） | 成员工具面/子会话 | ✅（须给 **childId** 与下一步） |
+| `VMU_MEMBER_SESSION_NEVER_OPENED` | **根本没有子会话**（该成员**从未**开过成员会话）—— 与 `VMU_MEMBER_SESSION_NOT_LIVE`（会话开过、已结束）是两个事实：前者没有可重开的会话，只有可开的会话。由 v5r 工具面导出的纯函数 `sessionRefusalOf()` 翻译内核 `toolsView` 的 `no-live-agent` 降级事实：`cause:"child-session-not-live"` ⇒ NOT_LIVE，其余（没有 childId、从未开过）⇒ 本码；修复前这一事实回落到 `VMU_NO_SUCH_OBJECT`（RUN 251 / F71-8，run 71 C3/C5 实测：同一个「没有活会话」被说了两遍） | `vibe_v5_tool_help` 的读面（`vibe-math-vmu/packs/v5r/tools.js` 的 `sessionRefusalOf`；内核 `kernel/index.js#toolsView` 只提供事实，不改内核） | ✅（须给**可开会话的修法**：先 `vibe_vmu_control {action:"hire"}` 立所，再 `vibe_v5_assign`／`vibe_vmu_turn {op:"drive"}` 开一次会话；`declarationSet` 无需会话即可读。套件：`tests/vmu-run251-tool-readings.test.mjs`） |
 | `VMU_STATE` | 状态不允许该操作 | 阶段/流程约束 | ✅ |
 | `VMU_RESOURCE_BUDGET` | 触达预算/上限（机器强制） | 工具调用/新建成员/内存 | ✅（须给**当前值与上限**） |
 | `VMU_PACK_CONFLICT` / `VMU_PACK_MISSING` | 整合包冲突/缺失 | 装载 | ✅ |
@@ -1236,7 +1237,7 @@
 
 ### 8.1 实现状态一览（**生成 ✓**；登记 ≠ 已实现 ✗）
 
-> 手写表登记 **501** 个码，**逐行**给出状态 ✓：其中 **461** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
+> 手写表登记 **502** 个码，**逐行**给出状态 ✓：其中 **462** 个**已实现 ✓**（能在运行时代码里找到该码字符串 ✓），
 > **40** 个**提案 ⛔**（暂时只存在于表里）✓ —— 这不是错误 ✓，但**不得**把"已登记"当作"会被抛出" ✗；
 > 本节由 `scripts/generate-planned-codes.mjs` 重算 ✓：删改任一码、或让某个"提案"码出现在运行时代码里，都会让 `--check` 变红 ✓，
 > 并由 `tests/audit-code-status.test.mjs` 逐行核对报告与代码 ✓（含故意造错自证 ✓）。
@@ -1500,7 +1501,8 @@
 | `VMU_MEETING_TOO_SMALL` | **已实现 ✓** | `vibe-math-vmu/kernel/meeting.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEETING_UNANSWERED_POLICY` | 提案 ⛔ | — | 仅登记在表里：实现时补语义与触发时机 ✓ |
 | `VMU_MEMBER_LIMIT` | **已实现 ✓** | `vibe-math-vmu/kernel/recruit.js` | 代码里有该码字符串 ✓ |
-| `VMU_MEMBER_SESSION_NOT_LIVE` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js` | 代码里有该码字符串 ✓ |
+| `VMU_MEMBER_SESSION_NEVER_OPENED` | **已实现 ✓** | `vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
+| `VMU_MEMBER_SESSION_NOT_LIVE` | **已实现 ✓** | `vibe-math-vmu/host.js`、`vibe-math-vmu/kernel/index.js`、`vibe-math-vmu/packs/v5r/tools.js` | 代码里有该码字符串 ✓ |
 | `VMU_MEMORY_NOT_AUTHORITY` | **已实现 ✓** | `vibe-math-vmu/kernel/memory.js` | 代码里有该码字符串 ✓ |
 | `VMU_META_VALIDATION_FAILED` | **已实现 ✓** | `vibe-math-vmu/extensions/domain-compliance/index.js`、`vibe-math-vmu/kernel/course.js`、`vibe-math-vmu/kernel/funding.js`、`vibe-math-vmu/kernel/ip.js`、`vibe-math-vmu/kernel/lifecycle.js`、`vibe-math-vmu/kernel/resource.js`、`vibe-math-vmu/kernel/stateversion.js`、`vibe-math-vmu/kernel/storepolicy.js` | 代码里有该码字符串 ✓ |
 | `VMU_METRICS_TRIGGER_FORBIDDEN` | **已实现 ✓** | `vibe-math-vmu/kernel/metrics.js` | 代码里有该码字符串 ✓ |

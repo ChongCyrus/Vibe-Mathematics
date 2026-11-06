@@ -20,6 +20,24 @@
 export const apiVersion = 1
 
 /**
+ * ★★★ RUN 251 / F71-11 (live run 71 C4, MEASURED): `waiting` used to say "the quorum rule is not met yet" — and the
+ * run read `quorum.met:true` beside that sentence. Both readings were true of DIFFERENT meetings: a meeting reaches
+ * `waiting` either because the legal quorum is short, or because `vmu.meetings.waitForAll` (default true) wants the
+ * WHOLE roster present and the quorum is already met. One sentence cannot describe both, so the sentence was wrong in
+ * the second case, which is the everyday one.
+ *
+ * WHAT THIS IS: the ONE table of "why a waiting meeting is still waiting". `MEETING_STATE_MEANING.waiting` below is
+ * ASSEMBLED FROM IT (not written a second time), and every receipt that publishes `waitingFor` also publishes
+ * `waitingForMeans: WAITING_FOR_MEANS[waitingFor]` — so a reader can never get the general sentence and the specific
+ * reason from two tables that drifted apart. `waitingFor` is derived from the meeting's own facts in
+ * `kernel/meetings.js#waitingForOf` (quorum met ⇒ "chair-proceed", quorum short ⇒ "quorum"), never from the clock.
+ */
+export const WAITING_FOR_MEANS = Object.freeze({
+  quorum: 'the legal quorum is NOT met yet: more members must register their presence (attend) before this meeting can open',
+  'chair-proceed': 'the legal quorum IS met, but the meeting still has not opened: the framework never opens a meeting on the chair\'s behalf, so the chair must proceed() (lapse() and recess() are the other two named exits)',
+})
+
+/**
  * ★★★ b-1 (live run 44): everyone can be PRESENT while the meeting is still 'scheduled'. Presence is a SEAT reading;
  * the START is governed by `at` (and by the chair's proceed()). Nothing said so, so a caller read "present 2/2 + state
  * scheduled" as a contradiction. Exported so BOTH read faces (the primitive's status() and the service's status()) use
@@ -27,7 +45,9 @@ export const apiVersion = 1
  */
 export const MEETING_STATE_MEANING = Object.freeze({
   scheduled: 'a start time is set and has not arrived: members may ALREADY be present (presence is a seat reading, not a start)',
-  waiting: 'the start time has arrived (or none was set) and the quorum rule is not met yet; the chair may proceed() to start anyway',
+  waiting: 'the start time has arrived (or none was set) and the meeting has not opened yet. It is waiting because '
+    + WAITING_FOR_MEANS.quorum + '; or, when the quorum is met, because ' + WAITING_FOR_MEANS['chair-proceed']
+    + '. `waitingFor` on the receipt names WHICH of the two applies — this sentence is assembled from that same table, so the two cannot disagree',
   in_session: 'the meeting has started: speak/vote/hand are open',
   closed: 'the meeting is closed: its tally is frozen and its vote detail is hidden',
   lapsed: 'the meeting lapsed for want of participation; call revokelapse() to bring it back',

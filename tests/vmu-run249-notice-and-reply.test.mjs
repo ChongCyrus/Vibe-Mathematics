@@ -188,28 +188,45 @@ try {
       '§2m and the receipt says BY NAME that this kernel could not copy the rest')
   }
 
-  // ── §3 F-01: EMPTY VS CONTENT ──────────────────────────────────────────────────────────────────────────────
-  section('§3 F-01: the receipt tells an empty answer from a worked answer')
+  // ── §3 F-01 → RUN 251 (task-77): EMPTY VS SPOKEN ──────────────────────────────────────────────────────────
+  section('§3 a silent turn reads empty; a spoken turn reads non-empty even when it parses to nothing')
   {
-    const empty = await bootKernel({ deliverTurn: async () => ({ reply: fence({ solved: false }), deliveryPath: 'fake-delegated' }) })
-    const r = await empty.k.turn.run({ member: 'm-1', phase: 'normal', round: 1, role: 'researcher', roleLabel: '常驻研究员', why: 'run249 empty' })
+    // RUN 251 changed the meaning: `emptyReply` describes the reply TEXT (empty/whitespace-only), not whether the parsed
+    // object carried a usable value. The 71st live run's 16,685-char prose reply read empty under the old rule.
+    // A silent TEXT still settles only when the tool channel carried the report, so the silence case is built that way.
+    const silentHolder = {}
+    const silent = await bootKernel({
+      deliverTurn: async ({ turn }) => {
+        await silentHolder.k.turn.supplyStructuredReply({ progress: '工具通道：这一轮只有工具汇报' }, { forMember: turn.member })
+        return { reply: '', deliveryPath: 'fake-delegated' }
+      },
+    })
+    silentHolder.k = silent.k
+    const r0 = await silent.k.turn.run({ member: 'm-1', phase: 'normal', round: 1, role: 'researcher', roleLabel: '常驻研究员', why: 'run249 silent' })
+    ok(r0.ok === true && r0.emptyReply === true, '§3a a reply with NO text reads as an EMPTY answer', { emptyReply: r0.emptyReply })
+    ok(r0.replyBytes === 0 && r0.replyTruncated === false, '§3b replyBytes is 0 and nothing was cut',
+      { replyBytes: r0.replyBytes, truncated: r0.replyTruncated })
+    ok(r0.source === 'tool', '§3b2 the tool channel carried the words (emptyReply is about the text only)', r0.source)
+    ok(String(r0.emptyReplyMeans || '').includes('emptyReply'), '§3c the definition travels with the field')
+
+    const wordless = await bootKernel({ deliverTurn: async () => ({ reply: fence({ solved: false }), deliveryPath: 'fake-delegated' }) })
+    const r = await wordless.k.turn.run({ member: 'm-1', phase: 'normal', round: 1, role: 'researcher', roleLabel: '常驻研究员', why: 'run249 wordless' })
     const replyText = fence({ solved: false })
-    ok(r.ok === true && r.emptyReply === true, '§3a {"solved":false} reads as an EMPTY answer', { emptyReply: r.emptyReply })
-    ok(r.replyBytes === byteLen(replyText), '§3b replyBytes is present (the text did exist, it just carried nothing)', { replyBytes: r.replyBytes })
-    ok(String(r.emptyReplyMeans || '').includes('emptyReply'), '§3c the definition travels with the field')
-    const ledger = empty.k.turn.status({ roster: ['m-1'] })
+    ok(r.emptyReply === false, '§3d {"solved":false} is SPEECH — RUN 251: empty means the TEXT was empty', { emptyReply: r.emptyReply })
+    ok(r.replyBytes === byteLen(replyText), '§3e replyBytes is the text that was really written', { replyBytes: r.replyBytes, len: byteLen(replyText) })
+    const ledger = wordless.k.turn.status({ roster: ['m-1'] })
     const turnId = r.turn && typeof r.turn === 'object' ? String(r.turn.id) : String(r.turn)
     const row = (ledger.turnReceipts || []).find((x) => String(x.turn) === turnId)
-    ok(row && row.emptyReply === true && Number.isFinite(row.replyBytes),
-      '§3d the settled ledger row carries the same two readings', row && { emptyReply: row.emptyReply, replyBytes: row.replyBytes })
-    ok(row && row.status === 'applied', '§3e the turn still reads applied (emptyReply names WHAT was applied)', row && row.status)
+    ok(row && row.emptyReply === false && row.replyBytes === byteLen(replyText),
+      '§3f the settled ledger row carries the same two readings', row && { emptyReply: row.emptyReply, replyBytes: row.replyBytes })
+    ok(row && row.status === 'applied', '§3g the turn still reads applied (emptyReply names whether it spoke)', row && row.status)
 
     const content = await bootKernel({
       deliverTurn: async () => ({ reply: fence({ progress: '完成了第 3 节的复核：结论成立。' }), deliveryPath: 'fake-delegated' }),
     })
     const r2 = await content.k.turn.run({ member: 'm-1', phase: 'normal', round: 1, role: 'researcher', roleLabel: '常驻研究员', why: 'run249 content' })
-    ok(r2.emptyReply === false, '§3f a reply with content reads as NOT empty', { emptyReply: r2.emptyReply })
-    ok(r2.replyBytes > 0, '§3g replyBytes is set for a content reply too', r2.replyBytes)
+    ok(r2.emptyReply === false, '§3h a reply with content reads as NOT empty', { emptyReply: r2.emptyReply })
+    ok(r2.replyBytes > 0, '§3i replyBytes is set for a content reply too', r2.replyBytes)
   }
 
   // ── §4 F-11 4b PREFLIGHT: HEADER EXACTLY WHEN UNREAD ROWS EXIST ───────────────────────────────────────────

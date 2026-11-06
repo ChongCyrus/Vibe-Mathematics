@@ -278,11 +278,20 @@ try {
   // case with a READABLE receipt: `tools:null` (never `[]`, which would claim the member can use nothing), the
   // provider's named refusal as a FIELD, and the override record the loop would apply. The pack face forwards it
   // verbatim — the assertion pins that the forwarder neither invents a list nor re-wraps the refusal into a throw.
+  // ★ RUN 251 (F71-7, MEASURED on the 71st real-machine run): the OLD pin here asserted "tools:null + a named refusal +
+  // NO declaration list" and its intent was "the forwarder never invents a list and never re-wraps a refusal into a
+  // throw". Both halves are still proved — `tools` (the MEASURED set) stays null and `ok:true` carries the refusal as a
+  // FIELD — but the run-71 reader showed why the second half was too strong: a DECLARED reading that is only available
+  // when a session happens to be live cannot be measured on a real machine at all. The declaration set is now printed on
+  // purpose (`declarationSet`, computed from the seat-face table), so "no declaration list" is the defect, not the pin.
   ok(help.parsed && help.parsed.ok === true && help.parsed.tools === null && help.parsed.source === 'no-live-agent' &&
-    help.parsed.refusal && help.parsed.refusal.code === 'VMU_NO_SUCH_OBJECT' && help.parsed.tool === 'vibe_v5_tool_help' &&
-    !Array.isArray(help.parsed.tools),
-    '★★ tool_help: 反（fixture has no live Agent）— 回执仍是可读的：tools:null + 具名拒字段 + 无声明清单（旧实现会在这里返回 38 个名字）',
-    help.parsed && { ok: help.parsed.ok, tools: help.parsed.tools, source: help.parsed.source, code: help.parsed.refusal && help.parsed.refusal.code })
+    help.parsed.refusal && help.parsed.refusal.code === 'VMU_MEMBER_SESSION_NEVER_OPENED' && help.parsed.tool === 'vibe_v5_tool_help' &&
+    !Array.isArray(help.parsed.tools) &&
+    help.parsed.measuredSet && help.parsed.measuredSet.count === null &&
+    help.parsed.declaredCount === PACK.tools.filter((t) => t && t.name).length &&
+    Array.isArray(help.parsed.seatFilter && help.parsed.seatFilter.present) && help.parsed.seatFilter.present.length > 0,
+    '★★ tool_help: 反（fixture has no live Agent）— 实测集仍是 tools:null + 具名拒字段（未抛异常），声明集另列（RUN 251：不再返回空的“无清单”）',
+    help.parsed && { ok: help.parsed.ok, tools: help.parsed.tools, source: help.parsed.source, code: help.parsed.refusal && help.parsed.refusal.code, declaredCount: help.parsed.declaredCount })
   // ★★★ POSITIVE by a DIRECT handler call with a stub kernel: the forwarder must return EXACTLY the toolsView result, and
   // purpose:null must survive — null means "the host registered no description", NOT a missing field.
   const helpSpec = PACK.tools.filter((t) => t.name === 'vibe_v5_tool_help')[0]

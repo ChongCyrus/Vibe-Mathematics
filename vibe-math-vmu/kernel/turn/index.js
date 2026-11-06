@@ -1704,28 +1704,19 @@ const replyLimitOf = (settings) => {
 }
 
 /**
- * ★★★ RUN 249 (task-69 / F-01): "APPLIED" IS NOT THE SAME AS "DID SOMETHING".
+ * ★★★ RUN 251 (task-77 / F71-2): "EMPTY" MEANS THE REPLY TEXT CARRIED NOTHING — NOT "the parsed object had no usable value".
  *
- * The 69th live run's first turn came back `status:"applied"` while the member had replied `{"solved":false}` — i.e.
- * it answered "not solved" and wrote nothing, and the office could not tell that from "the member did not work". The
- * receipt now says both facts by name: `replyBytes` (how much the member actually wrote, in UTF-8 bytes) and
- * `emptyReply` (the reply carried no applicable CONTENT: no value except the reserved binding key, and every value it
- * did carry is a no-op — false/null/empty string/empty list/empty object). A boolean-only answer is exactly that case,
- * so `{"solved":false}` is now visible as an empty reply instead of hiding behind `applied`.
+ * The 71st live run's r-1 wrote 16,685 characters (30,195 B) and the receipt still said `emptyReply:true`: the answer
+ * was prose, so `parsed.reply` was null, and the old predicate (an object whose every value beside the binding key was a
+ * no-op) called that "empty". The office then could not tell a silent member from one that spoke at length without a
+ * structured outcome — the very confusion F-01 was introduced to remove. The reading is now over the REPLY TEXT itself:
+ * true only when that text is empty or whitespace-only. Whether an answer carried a usable value is already visible in
+ * `fields`/`executed`/`writes`; a long answer the receipt had to cut is `emptyReply:false` with `truncated:true` and the
+ * full text at `replyFullPath`. The tool channel is a DIFFERENT channel: a turn whose text is silent can still carry a
+ * parked report, and then this flag is about the text only — `source`/`fields` say what the tool channel carried.
  */
-const REPLY_RESERVED_KEYS = Object.freeze(['meeting'])
-const replyValueEmpty = (v) => {
-  if (v === undefined || v === null || v === false || v === '') return true
-  if (Array.isArray(v)) return v.length === 0
-  if (typeof v === 'object') return Object.keys(v).length === 0
-  return false
-}
-const replyIsEmpty = (reply) => {
-  if (!reply || typeof reply !== 'object' || Array.isArray(reply)) return true
-  const keys = Object.keys(reply).filter((k) => !REPLY_RESERVED_KEYS.includes(k))
-  return keys.length === 0 || keys.every((k) => replyValueEmpty(reply[k]))
-}
-const EMPTY_REPLY_MEANS = 'emptyReply is about the CONTENT of the answer, not about whether the turn ran: true means the member replied without a single applicable value (every value beside the reserved binding key is false/null/empty) — an answer like {"solved":false} reads as "nothing was done", and replyBytes says how much text carried it. false means the reply carried content; it says nothing about whether the outcome was good'
+const replyTextIsEmpty = (text) => (typeof text === 'string' ? text.trim() === '' : true)
+const EMPTY_REPLY_MEANS = 'emptyReply describes the reply TEXT of this turn, not the parsed fields and not whether the turn ran: true means that text was empty or whitespace-only (0 characters of speech reached this receipt through the text channel — the tool channel is reported separately by source/fields, so a silent text can still carry fields, and the turn can still read applied); false means the member wrote text, even if it parsed to no usable value (an answer like {"solved":false} is speech; whether it did anything is in fields/executed/writes) and even if the receipt had to cut it (then truncated:true, excerptLen is the cut, and the full text is at replyFullPath). replyBytes says how much text carried it'
 
 export function createTurnOrchestrator({
   // The institution policy for prompt-section switches. Null means the framework switches NOTHING,
@@ -3951,11 +3942,11 @@ export function createTurnOrchestrator({
         try { rememberSettledTurn(turn, { fields: [], source: null }) } catch { /* the ledger must never replace the refusal */ }
         throw e
       }
-      // ★★★ RUN 249 (task-69 / F-01): the receipt says how much the member wrote and whether it answered with ANY
-      // applicable value. `status:"applied"` alone could not distinguish "worked but wrote nothing" from "did not work":
-      // `{"solved":false}` is applied, 17 bytes, and empty. Both readings now travel, and the ledger row carries them
-      // too, so `op:"status"` can be read without the run's own session.
-      const emptyReply = replyIsEmpty(parsed && parsed.reply)
+      // ★★★ RUN 251 (task-77 / F71-2): "empty" is now read off the REPLY TEXT, not off the parsed object. The 71st live
+      // run's r-1 wrote 16,685 chars (30,195 B) of prose; `parsed.reply` was null, so the old predicate called it empty and
+      // hid the speech. `rawText` is exactly what the member wrote, so this reading cannot disagree with `replyBytes`.
+      // `replyBytes` (how much the member wrote) still travels with it, and the ledger row carries both.
+      const emptyReply = replyTextIsEmpty(rawText)
       try { noteTurnReceipt(turn, Object.assign({ emptyReply, replyBytes }, evidence)) } catch { /* the ledger must never replace the receipt */ }
       return { ok: true, turn, assembled: { chars: asm.text.length, sources: asm.sources.length, notices: asm.notices || null }, instructionDelivered: asm.instructionDelivered === true, delivery: deliveryFromAttribution(),
         replyExcerpt: rawText.slice(0, REPLY_EXCERPT_MAX), replyLength: rawText.length,
@@ -5167,7 +5158,7 @@ export function createTurnOrchestrator({
       // who holds the lock, for how long, when it will be closed by name, and whether a wake is waiting for a free turn.
       turnLoop: turnLoopReading(),
       turnLoopMeans: 'THIS IS THE LOOP\'S OWN FACT, not a copy of the durable fold: `inFlight` true means one turn is holding the single-turn slot right now, `inFlightForMs` says for how long, and past `abandonAfterMs` this loop closes that turn BY NAME (or immediately with op:"abandon"). A reader who sees inFlight:true while the durable fold says nothing is pending is looking at exactly the run-64 contradiction - the fix is op:"abandon", not a retry',
-      turnReceiptsMeans: 'HOST BOOKKEEPING, not the member\'s intent: this list records what the TURN LOOP observed while settling a turn (fields dispatched, fields skipped + code, writes with ids, refusal codes). It does not restate what the member meant, and a member that ran tools in its own child session can have done more than the row shows - `unavailable` names that gap. Rows are bounded to the last ' + TURN_RECEIPT_CAP + ' turns; `turn` is the t-<n> id, `openedBy` says which door opened it (drive/activation/wait/null). RUN 250: each row ALSO carries the prompt/delivery evidence the run receipt shows - `notices` is {lines, rendered, blockChars} for the block that was in that turn\'s prompt (so "did the delivery render" is checkable per turn, not by scanning the workspace), `truncated`/`excerptLen` describe the receipt\'s own cut, `emptyReply`/`replyBytes` describe what the member wrote, and when a reply was cut past `vmu.turn.replyLimitChars` the full text lives at `replyFullPath` with `replyFullSha256`/`replyFullBytes` (verify them against the real file). null is a NAMED absence - "this loop has no reading for it (yet)"; `replyArchiveWhy` names why a cut reply has no full-text file (no archive seam wired, or the seam refused), and null there means there was nothing to warn about.',
+      turnReceiptsMeans: 'HOST BOOKKEEPING, not the member\'s intent: this list records what the TURN LOOP observed while settling a turn (fields dispatched, fields skipped + code, writes with ids, refusal codes). It does not restate what the member meant, and a member that ran tools in its own child session can have done more than the row shows - `unavailable` names that gap. Rows are bounded to the last ' + TURN_RECEIPT_CAP + ' turns; `turn` is the t-<n> id, `openedBy` says which door opened it (drive/activation/wait/null). RUN 250: each row ALSO carries the prompt/delivery evidence the run receipt shows - `notices` is {lines, rendered, blockChars} for the block that was in that turn\'s prompt (so "did the delivery render" is checkable per turn, not by scanning the workspace), `truncated`/`excerptLen` describe the receipt\'s own cut, `emptyReply`/`replyBytes` describe what the member wrote, and when a reply was cut past `vmu.turn.replyLimitChars` the full text lives at `replyFullPath` with `replyFullSha256`/`replyFullBytes` (verify them against the real file). null is a NAMED absence - "this loop has no reading for it (yet)"; `replyArchiveWhy` names why a cut reply has no full-text file (no archive seam wired, or the seam refused), and null there means there was nothing to warn about. RUN 251 (task-77): two more sentences a reader needs. (a) NAMES: the ONE authoritative names for the receipt cut are `truncated` and `excerptLen` — `replyTruncated` and `replyExcerpt` are the turn RECEIPT\'s older names for the same facts, kept here by name so old readers can find them and deliberately NOT duplicated as row keys; `excerptLen` is the CHARACTER COUNT of the cut (the excerpt TEXT itself is the receipt\'s `replyExcerpt`). (b) WHERE: row-level keys are `truncated`, `excerptLen`, `emptyReply`, `replyBytes`, `replyFullPath`, `replyFullSha256`, `replyFullBytes`, `replyArchiveWhy`; the block reading is the NESTED object `notices` = {lines, rendered, blockChars}, so `lines` is a key of `row.notices`, not of the row. `emptyReply` is about the reply TEXT (empty or whitespace-only = true; the tool channel is a separate channel, so `source`/`fields` still say what a parked report carried) — it never means "the parsed object had no usable value": a prose answer that parsed to nothing is emptyReply:false with replyBytes > 0.',
       // ★★★ ROUND 50: THE READING AN OPERATOR WAS MISSING. Sixty-one meetings ran with no way to see that the one
       // field which closes the institute had never been emitted. `missing` names WHO, because silence is what blocks
       // closure and "somebody did not vote" is not actionable.
