@@ -2266,6 +2266,12 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
     // a member that never ran keeps `VMU_NO_SUCH_OBJECT` (nothing was learned to look at).
     return {
       code: cause === 'child-session-not-live' ? 'VMU_MEMBER_SESSION_NOT_LIVE' : 'VMU_NO_SUCH_OBJECT',
+      // ★★★ RUN 252 (F72-1, MEASURED on the 72nd real-machine run): the "never opened" fact now has its own NAME as a
+      // FIELD. The thrown `code` above stays as it is because the kernel's degraded-receipt gate accepts exactly
+      // VMU_NO_SUCH_OBJECT / VMU_MEMBER_SESSION_NOT_LIVE (kernel/index.js toolsView), and that file is not edited here —
+      // so the pack face (vibe_v5_tool_help) translates `cause`/`namedCode` into the session code, and no tool_help
+      // receipt carries VMU_NO_SUCH_OBJECT about a member that simply never ran.
+      namedCode: cause === 'child-session-not-live' ? 'VMU_MEMBER_SESSION_NOT_LIVE' : 'VMU_MEMBER_SESSION_NEVER_OPENED',
       member: String(member),
       cause,
       // ★ RUN 15 ⑦h keeps this assertion alive: the id the kernel learned must TRAVEL on the refusal (a reader
@@ -2276,10 +2282,10 @@ export function createHostAdapter({ ctx, kernel, settings = {}, assertDeclared =
       liveAgent: false,
       message: cause === 'child-session-not-live'
         ? 'member "' + String(member) + '" has a learned child session (' + String(learned) + ') but no LIVE Agent: activation delivery starts a child per turn and a finished child is not queryable'
-        : 'no child session has been learned for member "' + String(member) + '" yet, so there is no live Agent to read',
+        : 'member "' + String(member) + '" has NEVER opened a child session, so there is no wire to read a visible tool set from',
       hint: cause === 'child-session-not-live'
         ? 'the calls that child made are in the CHILD SESSION LOG (' + String(learned) + '); this face reports the live table only, so it cannot answer "what did that turn call"'
-        : 'deliver one turn first so the child session id is learned',
+        : 'a session has to exist first: seat the member (vibe_vmu_control {action:"hire", slot:"chair"|"member", ...}), give it work (vibe_v5_assign or vibe_vmu_turn {op:"drive", member:"' + String(member) + '"} so a child session is opened), then ask again — the DECLARED tool set needs no session and is readable right now',
     }
   }
   const applyMemberToolFace = async ({ member, allow = null, deny = null }) => {

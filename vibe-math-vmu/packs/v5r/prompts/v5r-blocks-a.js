@@ -203,7 +203,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         '  8. **辩论/验证的开启与辩论对象的选择由院士决定**：其他成员可以提出建议（群聊里说，有表决权的席位也可用 `vibe_v5_motion` 提动议），',
         '     但开会与选对象必须由院士本人发起——用 `vibe_v5_meeting` 开 debate 动议（`type:"debate"`、`subject`=<命题卡 id>；非院士席位会被具名拒）。',
         '  9. **辩论对象**：命题卡（须含**已写完**的证明或 Lean/verified）、或**文件引用**；一句话命题不能作对象。',
-        '  10. **证明/证伪只在确信时登记**：`proofState:"complete"` 须给 `proof_ref` 或 Lean 通过，否则具名拒绝；登记即定稿、卡 id 锁定，改则换卡。p=1 另需定论来源（vibe_v5_verified_promote）。',
+        '  10. **证明/证伪只在确信时登记**：调用时形参名是 `proof_state:"complete"`（回执/卡体读回才叫 `proofState`），须给 `proof_ref` 或 Lean 通过，否则具名拒绝；登记即定稿、卡 id 锁定，改则换卡。p=1 另需定论来源（vibe_v5_verified_promote）。',
       ].join('\n'),
     },
   },
@@ -338,6 +338,7 @@ export const CHARTER_BLOCKS_A = Object.freeze([
         "  · 裁决落地靠**通知**：`vibe_v5_verdict_final` 回执的 `delivery`/`notified`/`notification.state` 说明通知到谁（`delivered`＝已推进对方这一轮，`queued`＝仍在收件箱未读）——**没人被告知，裁决就不算落地**；要先请成员给裁决用 `vibe_v5_verdict_ask`。",
         "  · **人数闸在裁决这一步**（规则 L47）：`vibe_v5_verdict_final` 的签署人数＝交来裁决的成员数＋签字的你，低于 m（`kernel.meetings.quorum()`＝「min(用户设置数, 院士+常驻研究员人数)」）会**具名拒** `VMU_MEETING_QUORUM_LOST`，回执 `floor.gate` 给 required/signed/unsigned；只有你**故意**在不足 m 的席位上裁决才用 `partial: true` + `why`，此时 `floor.gate.escapedBy: \"partial\"` 与 `satisfiedBy: false` 把说好的例外留在回执上（`close` 不替你补这道闸）。",
         "  · 同场同对象只投一次（重复投拒 `VMU_RULING_ALREADY_FILED`）；主席只签 `vibe_v5_verdict_final`，代投被拒 `VMU_RULING_CHAIR_SIGNS`。",
+        "  · `vibe_v5_verdict_final` 的 `verdicts` 是**对象数组**，每个元素逐字长这样：`{ member:\"<席位 id>\", p:0 或 1, reason:\"<一句话理由>\" }`——数值键是 **`p`**，**不是** `verdict`（`verdict` 是 `vibe_v5_verdict` 那个**另一个**工具的参数，别类推）；写成 `verdicts:[{“member”:…,“verdict”:1}]` 会因缺 `p` 被具名拒 `VMU_INVALID_ARGUMENT`。先 `vibe_v5_verdict_ask` 请各席交裁决，再把交来的读数搬进 `verdicts`。",
       ].join('\n'),
       researcher: [
         "【五、表决与定论（求真门槛）】",

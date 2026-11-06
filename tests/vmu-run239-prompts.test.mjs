@@ -30,6 +30,7 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '..')
 const ENTRY = join(REPO, 'vibe-math-vmu', 'vibe-math-vmu.js')
 const BLOCKS_B = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-blocks-b.js')
+const BLOCKS_A = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-blocks-a.js')
 const REPLY_CHANNEL = join(REPO, 'vibe-math-vmu', 'packs', 'v5r', 'prompts', 'v5r-reply-channel.js')
 
 let passed = 0
@@ -56,6 +57,7 @@ const stripComments = (src) => src
 
 const entry = await import(pathToFileURL(ENTRY).href)
 const blocksBSource = stripComments(await readFile(BLOCKS_B, 'utf8'))
+const blocksASource = stripComments(await readFile(BLOCKS_A, 'utf8'))
 const replySource = stripComments(await readFile(REPLY_CHANNEL, 'utf8'))
 const { REPLY_FIELD_ROWS } = await import(pathToFileURL(REPLY_CHANNEL).href)
 
@@ -358,6 +360,37 @@ try {
     const memberMeeting = await seatPrompt(b.K, 'r-1', 'meeting', { meeting: meetingId })
     ok(says(memberMeeting, '到点不会自己开') && says(memberMeeting, '"chair-proceed"') && says(memberMeeting, '别催'),
       '§9h ·9 the researcher\'s assembled prompt says "wait for the chair, do not push"')
+  }
+  // ── §10 ·10 RUN 252-C (F72-10 / F72-2 / F72-6): the key names the faces really use ──────────────────────────────
+  // Measured on the 72nd run: the chair wrote `verdicts:[{member, verdict:1}]` and got `VMU_INVALID_ARGUMENT` because the
+  // numeric key is `p` (`p=undefined`). The prompts taught `vibe_v5_verdict` (a DIFFERENT tool, key `verdict`) and never
+  // printed the element shape, so "verdict" was the only word a model had seen. Same class: the proof declaration is an
+  // ARGUMENT named `proof_state` (snake) while the RECEIPT/body read back `proofState` (camel); and the archive receipt's
+  // `replyFullSha256`/`replyFullBytes` cover the reply TEXT only, not the file header.
+  {
+    console.log('§10 ·10 the argument/field names the faces really use are taught, and the retired spellings are gone')
+    ok(says(blocksASource, 'proof_state:"complete"') && says(blocksASource, '回执/卡体读回才叫 `proofState`'),
+      '§10a ·10 the proof declaration is taught with the ARGUMENT name `proof_state`, not the read-back name')
+    ok(denies(blocksASource, '`proofState:"complete"`'),
+      '§10b ·10 "pass proofState:complete" is gone from the charter (it is the read-back spelling, not an argument)')
+    ok(says(blocksASource, '`verdicts` 是**对象数组**') && says(blocksASource, 'p:0 或 1') && says(blocksASource, '**不是** `verdict`'),
+      '§10c ·10 the verdict element shape is printed verbatim, and `verdict` is named as ANOTHER tool\'s key')
+    ok(says(blocksASource, '被具名拒 `VMU_INVALID_ARGUMENT`'),
+      '§10d ·10 the consequence of the wrong key is named (a named refusal, not a silent drop)')
+    ok(says(blocksBSource, '只覆盖正文，不含归档头') && says(blocksBSource, '两个 sha 不同'),
+      '§10e ·10 the archive receipt is taught as covering the reply TEXT only (file header excluded)')
+
+    const b = await boot(await mkRoot())
+    await b.K.members.hire({ id: 'r-acad', slot: 'chair' })
+    await b.K.members.hire({ id: 'r-1', slot: 'member' })
+    const chairNormal = await seatPrompt(b.K, 'r-acad', 'normal', {})
+    ok(says(chairNormal, 'p:0 或 1') && says(chairNormal, '`verdicts` 是**对象数组**'),
+      '§10f ·10 the chair\'s assembled prompt prints the element shape (a chair acting on it cannot guess)')
+    ok(says(chairNormal, 'proof_state:"complete"'),
+      '§10g ·10 the assembled charter teaches the argument spelling `proof_state`')
+    const memberNormal = await seatPrompt(b.K, 'r-1', 'normal', {})
+    ok(says(memberNormal, '只覆盖正文，不含归档头'),
+      '§10h ·10 every seat\'s assembled prompt says the archive sha covers the body, not the file')
   }
 } finally {
   for (const root of roots) { try { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }) } catch {} }

@@ -179,6 +179,15 @@ ok(plain.proofGate.proofRefState === 'absent',
   '★ ③ ...and proofRefState says there was no pointer to resolve', { proofRefState: plain.proofGate.proofRefState })
 ok(plain.proofState === null,
   '★ ③ ...while proofState itself stays null: the gate names the default, it does not invent a declared state', { proofState: plain.proofState })
+// ★★★ RUN 252 (F72-2, MEASURED on the 72nd real-machine run): the receipt above answers the machine (gate.reason) but
+// not the READER — it carried no sentence for `proofState:null` and no `lockNote` at all, so "draft?", "locked?", "why?"
+// needed another face. These three fields are now the whole answer, and this pin ADDS to the ones above.
+ok(typeof plain.proofStateMeans === 'string' && /draft/i.test(plain.proofStateMeans),
+  '★★★ ③ RUN 252/F72-2: proofStateMeans says what the null MEANS (the default draft)', { proofStateMeans: plain.proofStateMeans })
+ok(typeof plain.lockNote === 'string' && plain.lockNote.length > 0,
+  '★★★ ③ RUN 252/F72-2: the receipt carries a lockNote at all (the measured receipt had none)', { lockNote: plain.lockNote })
+ok(/NOT locked/.test(String(plain.lockNote)) && /draft/i.test(String(plain.lockNote)),
+  '★★★ ③ RUN 252/F72-2: ...and it answers the lock question and names the draft as the reason', { lockNote: plain.lockNote })
 
 console.log('')
 if (failed === 0) console.log('=== RUN 217 FEEDBACK53: ' + passed + ' passed, 0 failed ===')

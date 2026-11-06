@@ -579,6 +579,84 @@ export function sessionRefusalOf({ view = null, member = '' } = {}) {
     }
 }
 
+/**
+ * ★★★ RUN 252 (F72-8, MEASURED on the 72nd real-machine run): `read-back-default-draft` had ZERO receipts in the whole
+ * run, and the reason is not that no card was a default draft — it is that this reason lived ONLY in the settlement
+ * read-back branch, while the settlements that reach it are refused before the read-back (p=1 needs a ballot; p=0 would
+ * be a manufactured refutation, which the institute refuses to file). So the one question a reader actually asks —
+ * "is this STORED card locked, and why" — could only be answered by performing a settlement the reader could not
+ * perform. The gate for a stored row therefore has ONE implementation here: the settlement read-back below and the read
+ * face (`vibe_v5_read_library`) both call it, so a plain READ answers the question and no write is needed.
+ */
+export function proofGateOfStoredCard(fields = {}) {
+  const rawState = fields.proofState
+  const state = rawState === undefined || rawState === null ? '' : str(rawState).trim().toLowerCase()
+  const rawDeferred = fields.proofLockDeferred
+  const deferredWord = rawDeferred === undefined || rawDeferred === null ? '' : str(rawDeferred).trim()
+  if (state === '') {
+    return {
+      locked: false, reason: 'read-back-default-draft', proofRefState: 'absent',
+      why: 'READ BACK from the stored row: it declares NO `proof_state` at all — a card without one is a DRAFT (the default) — so rule L14 (「登记即定稿」) does not lock it',
+      nextMove: null,
+      means: 'read proofGate.locked, not `ok`, to answer "is this card locked": the default is a DRAFT (nothing was declared), and this value was READ BACK from a stored row — reading it required no write and no settlement',
+    }
+  }
+  if (deferredWord !== '') {
+    return {
+      locked: false, reason: 'read-back-deferred', proofRefState: 'missing',
+      why: 'READ BACK from the stored row: it is declared complete but its lock is DEFERRED (' + deferredWord + ')',
+      nextMove: 'the card is still writable: write the file the pointer names and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
+      means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK from a stored row',
+    }
+  }
+  if (state !== PROOF_STATE_COMPLETE) {
+    return {
+      locked: false, reason: 'read-back-not-complete', proofRefState: 'absent',
+      why: 'READ BACK from the stored row: it is declared "' + state + '", NOT a finished registration, so rule L14 does not lock it',
+      nextMove: null,
+      means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; only a registration declared finished is locked',
+    }
+  }
+  return {
+    locked: true, reason: 'read-back-complete', proofRefState: 'unknown',
+    why: 'READ BACK from the stored row: it is declared finished and the lock is on',
+    nextMove: null,
+    means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK from a stored row',
+  }
+}
+
+/**
+ * ★★★ RUN 252 (F72-2, MEASURED on the 72nd real-machine run): the DEFAULT card receipt carried `proofState:null` and
+ * nothing else — no `proofStateMeans`, no `lockNote` — so a reader could not answer "is this card a draft / is it locked
+ * / why" from the receipt alone without opening another face. This note follows the gate (the same fact, one sentence)
+ * and is emitted on the card-write receipt AND on the read-back card, so both receipts answer in words.
+ */
+export function proofLockNoteOf({ gate = null, declaredState = '' } = {}) {
+  if (gate === null || gate === undefined || typeof gate !== 'object') return null
+  const reason = str(gate.reason)
+  const state = declaredState === null || declaredState === undefined ? '' : str(declaredState)
+  if (gate.locked === true) {
+    return 'this card is LOCKED (rule L14 「登记即定稿」): its proof is registered as finished, so a later write to this card id is refused — file a NEW card id to change the proof'
+  }
+  if (reason === 'default-draft' || reason === 'read-back-default-draft') {
+    return 'this card is NOT locked: it declares NO `proof_state` at all, so it is a DRAFT (the default), and rule L14 (「登记即定稿」) locks only a finished registration — the card stays writable'
+      + (reason === 'read-back-default-draft' ? ' (READ BACK from the stored row: answering this needed no write and no settlement)' : '')
+  }
+  if (reason === 'declared-draft') {
+    return 'this card is NOT locked: it declares `proof_state:"draft"` — a draft is not a finished registration, so rule L14 does not lock it and the card stays writable'
+  }
+  if (reason === 'declared-not-complete') {
+    return 'this card is NOT locked: it declares `proof_state:"' + state + '"`, which is not a finished registration, so rule L14 does not lock it — the card stays writable'
+  }
+  if (reason === 'complete-but-pointer-unresolved' || reason === 'read-back-deferred') {
+    return 'this card is NOT locked: its proof is declared finished but the lock is DEFERRED because its own `proof_ref` does not resolve inside the library — write that file (or point at a record id) and register a NEW card'
+  }
+  if (reason === 'read-back-not-complete') {
+    return 'this card is NOT locked: it is stored as `proof_state:"' + state + '"`, not a finished registration, so rule L14 does not lock it'
+  }
+  return 'this card is NOT locked (gate reason: ' + reason + ')'
+}
+
 function toolHelp(args = {}, exec = {}) {
   if (!has(args.member)) {
     throw refuse('VMU_INVALID_ARGUMENT', 'tool_help needs the member id',
@@ -650,8 +728,22 @@ function toolHelp(args = {}, exec = {}) {
   // ★★★ RUN 251 (F71-8): the translation from the kernel's cause to the two named refusals lives in ONE exported
   // pure function (`sessionRefusalOf`, above) so the face and the suite read the same code instead of two copies.
   const measuredCount = view && view.liveAgent === true && Array.isArray(view.tools) ? view.tools.length : null
-  const providerRefusal = view && view.refusal ? view.refusal : null
+  const providerRefusalRaw = view && view.refusal ? view.refusal : null
   const sessionRefusal = sessionRefusalOf({ view, member: str(args.member) })
+  // ★★★ RUN 252 (F72-1, MEASURED on the 72nd real-machine run): the DECLARED layer was already right, but the provider
+  // refusal nested in this same receipt still said `VMU_NO_SUCH_OBJECT` for a member that had simply never opened a
+  // session — the same fact under a second name, in the same object a reader compares field by field. The host provides
+  // the cause (`no-child-session-yet`) and now also a `namedCode`; the provider-level payload is TRANSLATED here to the
+  // named session answer, and the raw provider code is deliberately NOT copied into the receipt (one fact, one name).
+  const providerRefusal = (providerRefusalRaw !== null
+    && String(providerRefusalRaw.code || '') === 'VMU_NO_SUCH_OBJECT'
+    && !(view && view.liveAgent === true)
+    && sessionRefusal !== null)
+    ? Object.assign({}, sessionRefusal, {
+      providerCodeTranslated: true,
+      translatedMeans: 'the host provider reports "no live Agent" in its own code; this receipt translates that fact to the named session code so ONE fact has ONE name — the raw provider code is deliberately not repeated here (RUN 252 / F72-1)',
+    })
+    : providerRefusalRaw
 
   const measuredSet = {
     available: measuredCount !== null,
@@ -2566,6 +2658,9 @@ function gatedCardHandler(toolName) {
         proofLockDeferred: deferredWord !== '',
         proofLockDeferredReason: deferredWord === '' ? null : deferredWord,
         rev: row.rev === undefined || row.rev === null ? null : row.rev,
+        // ★★★ RUN 252 (F72-8): the settlement read-back no longer re-implements the gate — it calls the ONE reader of a
+        // stored row (`proofGateOfStoredCard`), which the ordinary read face also calls. One fact, one implementation.
+        gate: proofGateOfStoredCard(fields),
       }
     })() : null
     const proofStateOut = settlementReadback !== null ? settlementReadback.proofState
@@ -2593,9 +2688,9 @@ function gatedCardHandler(toolName) {
       return p && p.proofRef !== undefined && p.proofRef !== null ? str(p.proofRef).trim() : ''
     })()
     const proofRefStateOut = settlementReadback !== null
-      ? (settlementReadback.proofState === null || settlementReadback.proofState !== PROOF_STATE_COMPLETE
-        ? 'absent'
-        : (settlementReadback.proofLockDeferred === true ? 'missing' : 'unknown'))
+      // ★★★ RUN 252 (F72-8): also from the one stored-row reader, so "was there a pointer to lock it against" cannot
+      // drift between a read-back receipt and a plain read of the same row.
+      ? settlementReadback.gate.proofRefState
       : (declaredProofStateFolded !== PROOF_STATE_COMPLETE
         ? 'absent'
         : (proofStateDowngraded !== null ? 'missing' : (declaredProofRefWord !== '' ? 'resolved' : 'absent')))
@@ -2605,24 +2700,10 @@ function gatedCardHandler(toolName) {
     // unconditionally: a card that is not a finished registration is NEVER locked and ALWAYS names why, and the default
     // path names itself `default-draft` rather than borrowing the declared-draft words (nothing was declared).
     const proofGateOut = settlementReadback !== null
-      ? (settlementReadback.proofState === null
-        ? { locked: false, reason: 'read-back-default-draft', proofRefState: 'absent',
-            why: 'READ BACK from the stored row: it declares NO `proof_state` at all — a card without one is a DRAFT (the default) — so rule L14 does not lock it; this settlement changed only `p` and the ruling row',
-            nextMove: null,
-            means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; the DEFAULT card is a draft, and this value was READ BACK (a settlement writes no proof fields)' }
-        : (settlementReadback.proofLockDeferred === true
-          ? { locked: false, reason: 'read-back-deferred', proofRefState: 'missing',
-              why: 'READ BACK from the stored row: it is declared complete but its lock is DEFERRED (' + String(settlementReadback.proofLockDeferredReason || 'reason unreadable') + '); this settlement changed neither',
-              nextMove: 'the card is still writable: write the file the pointer names and REGISTER A NEW CARD - the records face mints a NEW row per write, so this row' + String.fromCharCode(39) + 's pointer cannot be edited',
-              means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK, this call is a settlement' }
-          : (settlementReadback.proofState !== PROOF_STATE_COMPLETE
-            ? { locked: false, reason: 'read-back-not-complete', proofRefState: 'absent',
-                why: 'READ BACK from the stored row: it is declared "' + String(settlementReadback.proofState) + '", NOT complete, so rule L14 does not lock it; this settlement changed only `p` and the ruling row',
-                nextMove: null,
-                means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; only a COMPLETE registration is locked' }
-            : { locked: true, reason: 'read-back-complete', proofRefState: 'unknown',
-                why: 'READ BACK from the stored row: declared complete and the lock is on; this settlement changed only `p` and the ruling row',
-                nextMove: null, means: 'read proofGate.locked, not `ok`, to answer "is this card locked"; this value was READ BACK, this call is a settlement' })))
+      // ★★★ RUN 252 (F72-8): the settlement read-back branch is the SAME reader the ordinary read face uses
+      // (`proofGateOfStoredCard`), not a second copy of the four read-back reasons — a read of a stored row and a
+      // read-back after a settlement must never be able to disagree about the same row.
+      ? settlementReadback.gate
       : (declaredProofState === ''
         ? { locked: false, reason: 'default-draft', proofRefState: 'absent',
             why: 'this write declares NO `proof_state` — a card filed without one is a DRAFT (the default), and rule L14 (「登记即定稿」) locks only a finished registration, so this card is NOT locked and stays writable',
@@ -2668,6 +2749,13 @@ function gatedCardHandler(toolName) {
       enforced: enforcedOf(gates), enforcedScope: ENFORCED_SCOPE,
       proofStateFrom: settlementReadback === null ? 'declared by this call' : 'READ BACK from the stored row after the settlement patch: this call is a settlement and may not write the proof fields, so `proofState`/`proofGate` describe the CARD, not this call',
       proofState: proofStateOut,
+      // ★★★ RUN 252 (F72-2, MEASURED on the 72nd real-machine run): the DEFAULT receipt carried `proofState:null` with
+      // no sentence saying what that null MEANS, so "is this card a draft" could not be answered from the receipt at all.
+      proofStateMeans: settlementReadback !== null
+        ? 'READ BACK from the stored row: `null` means the row states NO `proof_state` line, i.e. the card is a DRAFT (the default). This settlement wrote no proof fields — the value describes the CARD, not this call'
+        : (declaredProofState === ''
+          ? 'this call declared NO `proof_state`, so `proofState` is null and the card is a DRAFT (the default): null is the honest value for "nothing was declared", and `proofGate.reason:"default-draft"` is the machine-readable form of the same fact'
+          : 'this call DECLARED `proof_state:"' + declaredProofState + '"`; `proofState` is that declared value (proof_ref is a POINTER, and declaring "complete" is not the same as the institute verifying the proof)'),
       proofLockDeferred: proofDeferredOut,
       proofLockDeferredReason: proofDeferredReasonOut,
       proofLockDeferredMeans: proofDeferredMeansOut,
@@ -2676,6 +2764,9 @@ function gatedCardHandler(toolName) {
       // true, and the receipt still read like "rule L14's lock is on". `ok` answers "was the card filed"; nothing answered
       // "is it locked". This block answers exactly that, in one value, and names the one move that can lock it.
       proofGate: proofGateOut,
+      // ★★★ RUN 252 (F72-2): the gate answers "locked?", this note answers "why, in a sentence that travels with the
+      // receipt" — including the DEFAULT draft, where the receipt used to carry no note at all.
+      lockNote: proofLockNoteOf({ gate: proofGateOut, declaredState: proofStateOut }),
       // ★★★ RUN 249 (F-06/D): the state of the pointer the gate actually read, next to the gate — so "is it locked"
       // and "was there a pointer to lock it against" are both readable from one receipt (resolved|missing|absent|unknown).
       proofRefState: proofRefStateOut,
@@ -5856,6 +5947,51 @@ function toolSet(args = {}, { kernel } = {}) {
  *     enum (`deliverable|revise` belongs to `action:"final"`), so the office answers with `answer`/`note` text.
  */
 /**
+ * ★★★ RUN 252 (run 72 / F72-7, MEASURED): `missing` WAS ANSWERING TWO QUESTIONS AT ONCE. The paper track has four
+ * ARCHIVE row names (md/tex/pdf/meta), and `PaperArtifacts().missing` lists the rows merely NOT NAMED yet — but the pdf
+ * block copied that list into `missing` beside `produced:true`, so ONE receipt said "tex is missing" and "the compile
+ * produced the file" together. The artifact-row reading now has its OWN name and block (`archiveArtifacts`), and
+ * `missing` means only what THIS action needed and did not get: a compile that produced the file needed nothing
+ * (`missing: []`), a compile that did not produce it lacked `pdf`. `toolchainAbsent` is the third, separate question:
+ * the ENVIRONMENT lacking an engine is not an input this compile failed to get, so it never enters `missing` and it is
+ * never merged with it.
+ */
+const PAPER_ROW_NAMES = Object.freeze(['md', 'tex', 'pdf', 'meta'])
+
+function archiveArtifactsReading(artifacts) {
+  const a = artifacts && typeof artifacts === 'object' ? artifacts : null
+  const present = a && a.present && typeof a.present === 'object' ? a.present : {}
+  const rowPresent = {}
+  for (const name of PAPER_ROW_NAMES) rowPresent[name] = present[name] === true
+  const rowsMissing = PAPER_ROW_NAMES.filter((name) => rowPresent[name] !== true)
+  return {
+    scope: 'archive',
+    present: rowPresent,
+    missing: rowsMissing,
+    complete: rowsMissing.length === 0,
+    means: 'this is the ARCHIVE reading: which of the four rows (' + PAPER_ROW_NAMES.join(', ') + ') are NAMED on the paper track. It is NOT what an action needed: `tex` is absent here whenever the paper was started with format "md" and render therefore never wrote a tex row, even after a successful PDF compile (RUN 252 / F72-7). Read `present`/`complete` here, and read the pdf block for "is there a compiled file"',
+  }
+}
+
+function toolchainAbsentOf(pdf) {
+  const p = pdf && typeof pdf === 'object' ? pdf : {}
+  const code = String(p.code || '')
+  const faceCode = String(p.faceCode || '')
+  const absent = []
+  // The two names the paper faces use for "this assembly cannot typeset at all": both mean the ENVIRONMENT lacks the
+  // engine, not that an input of this compile was missing.
+  if (code === 'VMU_PACK_V5R_CORE_PAPER_EXECUTOR_MISSING' || faceCode === 'VMU_PAPER_LATEX_NO_ENGINE') absent.push('latex')
+  return absent
+}
+
+function toolchainAbsentMeans(list) {
+  const names = Array.isArray(list) ? list : []
+  return names.length === 0
+    ? 'no piece of the compiler toolchain was reported absent: an empty `missing` therefore means the action lacked nothing, and any refusal on this receipt is about the document or the process, not about an uninstalled engine'
+    : 'the COMPILER toolchain itself lacks ' + names.join(', ') + ': that is an environment fact, not an input this action failed to get, so it never appears in `missing` and it never decides `produced`'
+}
+
+/**
  * ★★ RUN 155 (audit of c5d356b9, problem 2): ONE pdf block, TWO doors. `final` and `compile` describe the
  * same compile, and they used to describe it in two different shapes: `final` returned a body, `compile` THREW, and the
  * keys differed even when both answered. The doc claimed they "share one structure", which was false on both halves.
@@ -5870,10 +6006,15 @@ function projectPdfBlock(pdf, target) {
   const ok = p.ok === true
   const enginesRaw = Array.isArray(p.triedEngines) ? p.triedEngines : (Array.isArray(p.tried) ? p.tried : [])
   const engines = enginesRaw.slice(0, 12)
+  // ★★★ RUN 252 (F72-7): `produced` is decided ONCE here, so `missing` and `archiveArtifacts` below are derived from
+  // the SAME reading instead of from two copies of the pdf block (the old shape could disagree with itself).
+  const produced = ok && (p.produced === true || Boolean(p.pdfPath))
+  const toolchainAbsent = toolchainAbsentOf(p)
+  const archiveArtifacts = archiveArtifactsReading(p.artifacts || null)
   return {
     ok,
     kind: ok ? 'compiled' : 'refused',
-    produced: ok && (p.produced === true || Boolean(p.pdfPath)),
+    produced,
     target: target === undefined || target === null ? (p.target || null) : String(target),
     code: ok ? null : (p.code || null),
     message: ok ? null : (p.message || null),
@@ -5903,13 +6044,25 @@ function projectPdfBlock(pdf, target) {
     tailsIdenticalMeans: p.tailsIdenticalMeans || (p.tailsIdentical === true
       ? 'the two tails are the SAME text: one stream carried the whole diagnosis, and `tailSource` names it'
       : null),
-    outDir: p.outDir === undefined ? null : p.outDir,
-    sourceName: p.sourceName === undefined ? null : p.sourceName,
+    // ★★ RUN 252 (F72-7 cleanup): two lines used to repeat `outDir`/`sourceName` here — a duplicate key in an object
+    // literal silently keeps the LAST value, so the literal was writing the same two fields twice; one pair is enough.
     signal: p.signal || null,
     triedEngines: engines,
     triedEnginesTotal: enginesRaw.length,
     triedEnginesTruncated: enginesRaw.length > engines.length,
-    missing: Array.isArray(p.missing) ? p.missing.slice() : (ok ? [] : ['pdf']),
+    // ★★★ RUN 252 (run 72 / F72-7, MEASURED): `missing` is the ACTION reading, not the archive reading any more. Before
+    // this line the list was copied straight from `PaperArtifacts().missing` (absent archive ROWS), so a successful
+    // compile of an `md`-format paper printed `missing: ["tex"]` beside `produced: true` — one receipt asserting both
+    // "we lack the tex artefact" and "the compile worked". Now: produced => the action lacked NOTHING; refused => it
+    // lacked the pdf. The archive rows still travel, under their own name (`archiveArtifacts`) and WITH the explanation
+    // of why `tex` can be absent after a real compile. Mutually exclusive by construction, so the suite can assert it.
+    missing: produced ? [] : ['pdf'],
+    missingMeans: produced
+      ? 'empty BY CONSTRUCTION: this compile PRODUCED the pdf, so it needed nothing and lacked nothing. The archive rows are `archiveArtifacts.missing` — a different question (e.g. `tex` is absent there when the paper format is md and render never wrote that row)'
+      : 'the one thing this compile needed and did not get is the pdf. The compiler toolchain is `toolchainAbsent` (an environment fact, never merged into this list), and the artifact ROWS are `archiveArtifacts.missing`',
+    toolchainAbsent,
+    toolchainAbsentMeans: toolchainAbsentMeans(toolchainAbsent),
+    archiveArtifacts,
     // ★★ RUN 217 (run 54 / FEEDBACK53 1.4): `produced:true` answers "is there a file", NOT "were the formulas
     // typeset". The kit measures that in the SAME pass that builds the .tex (inline-math spans, prose carets and
     // underscores, glyphs it had to repair) - and a door that does not project the measurement hides it. One block,
@@ -6034,6 +6187,13 @@ async function toolPaper(args = {}, { kernel } = {}) {
         }
         return Object.assign({}, st, { parts })
       })()
+      // ★★★ RUN 252 (run 72 / F72-7, MEASURED): status printed `missing: ["tex"]` beside `pdfCompiled.produced: true` —
+      // the same self-contradiction as the compile receipt, one question asked twice. ONE ledger read now answers both
+      // halves: `compiledProduced` decides `missing` (a compiled paper needed no artifact ROW to exist), and the rows
+      // themselves are read once more below under `archiveArtifacts`. `pdfCompiled` (inside the return) reuses this same
+      // read, so the receipt cannot disagree with itself about which row wrote the file.
+      const compiledRow = (() => { try { return got && got.state && typeof paper.compiledPdfRow === 'function' ? paper.compiledPdfRow(got.state) : null } catch (e) { return null } })()
+      const compiledProduced = compiledRow !== null
       return { ok: true, tool, action, target, exists,
         ...(exists ? {} : { hint, inTrash: inTrash !== null, ...(inTrash ? { trash: inTrash } : {}) }),
         paper: paperView,
@@ -6104,12 +6264,25 @@ async function toolPaper(args = {}, { kernel } = {}) {
         roundMeans: 'every `round` in this view (parts, reviews) is the paper ROUND the row was written in — an ordinal, not an instant; `consult.requests[].at` is wall-clock milliseconds (the only true time in the view), and the paper itself carries `createdRound`/`updatedRound`',
         partsMeans: 'each part slot says which ROUND it was written in (`round`); this subsystem counts rounds, it does not stamp wall-clock time on a part',
         reviewsMeans: 'each review row says which ROUND of the cross-review it belongs to (`round`); a row of another round is durable history, not a vote on this round',
-        missing: artifacts ? artifacts.missing : [], complete: artifacts ? artifacts.complete === true : false,
+        // ★★★ RUN 252 (run 72 / F72-7, MEASURED): the mutual exclusion is STRUCTURAL on this face too: a paper with a
+        // compiled pdf answers `missing: []` (the compile needed no archive row), and the artifact ROWS travel as
+        // `archiveArtifacts`. A paper with no compile on file still names the rows it lacks (RUN 183: a write-stage paper
+        // must name them), and `missingMeans` says which of the two readings the caller is holding.
+        missing: compiledProduced ? [] : (artifacts ? artifacts.missing.slice() : []),
+        complete: artifacts ? artifacts.complete === true : false,
+        missingMeans: compiledProduced
+          ? 'empty because a compile IS on file for this paper: nothing this read needed is missing. The artifact ROWS are `archiveArtifacts` (e.g. `tex` is absent there for an md-format paper even after a successful compile) — two different questions (RUN 252 / F72-7)'
+          : 'no compile is on file for this paper, so this list names the artifact ROWS that are absent (a write-stage paper reports md, tex, pdf, meta until render writes them). `archiveArtifacts` carries the same rows under their own name; `pdfCompiled.produced` is the file question, not this one',
+        archiveArtifacts: archiveArtifactsReading(artifacts),
+        // ★★ RUN 252: status reads the LEDGER, not a compile refusal, so the toolchain question is answered where the
+        // refusal exists (`compile` / `final` receipts). An empty list here means "not reported", never "engine installed".
+        toolchainAbsent: [],
+        toolchainAbsentMeans: 'status reads the LEDGER and never sees a compile refusal, so it reports no absent toolchain piece here: the engine question is answered on the refusal that asks it (`compile`/`final` receipts, `pdfEnvironmentMissing`). An empty list means not-reported, not installed',
         // ★★ RUN 183 (run 29 / FEEDBACK29 D9, MEASURED): a finalized paper read `complete:true` beside `pdf:null` and
         //   a reader took it as "no PDF but the paper is complete". `complete` speaks only about the ARCHIVE artifacts
         //   row (md/tex/pdf/meta as NAMED rows); the file a compile produced is `pdfCompiled` below, and the two are
         //   different questions.
-        completeMeans: 'complete means the four artifacts (md, tex, pdf, meta) are NAMED on the paper track\'s archive row — it does NOT mean a PDF file was compiled: that is `pdfCompiled.produced`/`pdfPath`. `missing` names the artifact rows that are absent (a write-stage paper reports md, tex, pdf, meta as missing until `render` writes them)',
+        completeMeans: 'complete means the four artifacts (md, tex, pdf, meta) are NAMED on the paper track\'s archive row — it does NOT mean a PDF file was compiled: that is `pdfCompiled.produced`/`pdfPath`. `missing` names only what THIS READ needed and did not get — empty once a compile is on file, otherwise the absent artifact ROWS (a write-stage paper reports md, tex, pdf, meta) — and the rows themselves ALWAYS travel as `archiveArtifacts` (RUN 252 / F72-7)',
         // ★★ RUN 156 (run-5 finding 7): `status.pdf` describes the paper track's ARCHIVE row (written by `render`), not the
         // file `compile` produced - so a reader who had just seen `compiled.produced:true` read `pdf.produced:false` as "no PDF".
         // Both readings are now named on the receipt instead of being left to the reader.
@@ -6133,8 +6306,7 @@ async function toolPaper(args = {}, { kernel } = {}) {
           // carry METADATA ONLY (the kit says so at its own `listPaper`), so `produced` was false for every paper that had
           // really compiled — `rec-601/605` existed and the disk held 112 268 bytes. The ledger read now asks the kit's
           // `compiledPdfRow`, which OPENS each candidate row, so the error cannot be repeated one call deeper.
-          let ledger = null
-          try { ledger = got && got.state && typeof paper.compiledPdfRow === 'function' ? paper.compiledPdfRow(got.state) : null } catch (e) { ledger = null }
+          let ledger = compiledRow
           if (!ledger) {
             return { pdfCompiled: { produced: false, matchedBy: null, target: stateTarget, recordId: null, pdfPath: null, pdfBytes: null, engine: null,
               // ★★★ RUN 249 (F-08): no ledger row ⇒ NO record can name the file on disk. Stated as a field (not silence)
@@ -6385,15 +6557,36 @@ async function toolPaper(args = {}, { kernel } = {}) {
       // Projected, not re-exported: the flow returns `artifacts`/`missing`/`pdf` sharing references, and the host's
       // serializer labels a second occurrence of the same value "[circular]". A face that hands out a receipt full of
       // "[circular]" would make a reader think the receipt is broken.
+      const finProduced = !!(finalized.pdf && finalized.pdf.ok === true && (finalized.pdf.produced === true || Boolean(finalized.pdf.pdfPath)))
       return { ok: true, tool, action, final: {
         ok: finalized.ok === true, finalized: finalized.finalized === true, target: finalized.target,
         final: finalized.final || null,
-        missing: Array.isArray(finalized.missing) ? finalized.missing.slice() : [],
-        // ★★ RUN 161 (FEEDBACK8 item 5.2): the "which archive rows are absent, and what that means" sentence travels with
-        // the list it explains, and `requestedTarget` records the spelling the caller used (the rows are titled by the
-        // paper's own target — run 9 read four present rows as missing because the projection spoke for the argument).
-        missingMeans: finalized.missingMeans || null,
+        // ★★★ RUN 252 (run 72 / F72-7, MEASURED): the finalisation receipt carried `missing: ["tex"]` beside
+        // `pdf.produced: true` — the archive-row list was being read as "what finalisation lacked". It is not: a
+        // finalisation needs the PDF, so when the pdf block says produced this list is EMPTY; the artifact ROWS (which
+        // can lack `tex` for an md-format paper even after a successful compile) are `archiveArtifacts` below.
+        missing: finProduced ? [] : ['pdf'],
+        // ★ RUN 252 review: an EMPTY list gets NO explanation here. RUN 161's pin (run161 §6) already ruled that a
+        // receipt must not invent "the missing thing is an archive row" prose when nothing is missing, and the archive
+        // question has its own named field (`archiveArtifacts.means`) — so `null` is the honest word for "nothing to
+        // explain", not a sentence that re-opens the very confusion F72-7 removes.
+        missingMeans: finProduced
+          ? null
+          : 'the one thing this finalisation needed and did not get is the pdf. `pdfEnvironmentMissing`/`toolchainAbsent` say whether an engine was even installed, and `archiveArtifacts` carries the artifact ROWS',
+        // ★★ RUN 161 (FEEDBACK8 item 5.2): `requestedTarget` records the spelling the caller used (the rows are titled
+        // by the paper's own target — run 9 read four present rows as missing because the projection spoke for the argument).
         requestedTarget: finalized.requestedTarget || null,
+        toolchainAbsent: toolchainAbsentOf(finalized.pdf),
+        toolchainAbsentMeans: toolchainAbsentMeans(toolchainAbsentOf(finalized.pdf)),
+        // ★★★ RUN 252 (F72-7): the kit hands `finalized.artifacts` as a SNAPSHOT TAKEN BEFORE the compile — it cannot
+        // even see the pdf row the finalisation just wrote. The rows are a property of the LEDGER, so this projection
+        // re-reads them AFTER the finalisation and only falls back to the snapshot if that read throws.
+        archiveArtifacts: (() => {
+          try {
+            if (typeof paper.PaperArtifacts === 'function') return archiveArtifactsReading(paper.PaperArtifacts({ target }))
+          } catch (e) { /* fall back to the kit snapshot */ }
+          return archiveArtifactsReading(finalized.artifacts)
+        })(),
         // ★★★ RUN 212 (run 49 / FEEDBACK48 1.3/2.4, MEASURED): the advance receipt named this fact `officeConsultPending`
         // while this projection answered only with `consult.armed` — one fact, two names, on the door that runs LAST. The
         // projection is where the field was lost (the kit already prints it), so the alias is carried here as well.
@@ -6467,6 +6660,11 @@ async function toolPaper(args = {}, { kernel } = {}) {
           means: '`wrote` lists the RECORD kinds written into the paper track (md/tex/meta). render() writes NO file: a .tex/.pdf reaches Paper/<id>/ only when compile runs, which is when the disk list would carry it',
         },
         missing: Array.isArray(rendered.missing) ? rendered.missing.slice() : [],
+        // ★★★ RUN 252 (F72-7): on THIS face the two readings coincide (render writes archive rows and has no `produced`),
+        // so `missing` keeps meaning "the rows this render was to name and did not", and the rows are ALSO printed under
+        // the name that is unambiguous everywhere else. The sentence says which question each list answers.
+        missingMeans: 'the artifact ROWS this render was to NAME and did not (render writes md/tex/meta rows into the paper track; a pdf row only appears when `compile` runs, which is why `pdf` is usually here). The same rows travel as `archiveArtifacts` — and this list is NOT "the compile lacked something": render never compiles (RUN 252 / F72-7)',
+        archiveArtifacts: archiveArtifactsReading(arts),
         // RUN 217 (run 54 / FEEDBACK53 1-4, MEASURED): renderOk said the .tex was built, and the PDF printed `n  1` where
         // the paper wrote `n >= 1` because the font has no such glyph and the receipt never mentioned it. The counts come
         // from the SAME pass that wrote the .tex (PaperTexBody), so they cannot disagree with it.
@@ -6659,7 +6857,22 @@ async function toolReadLibraryWithCardFields(args = {}, { kernel } = {}) {
     const parsed = parseCardBody(body)
     const fields = parsed && parsed.fields ? parsed.fields : {}
     const text = (v) => (v === undefined || v === null ? null : String(v))
+    // ★★★ RUN 252 (F72-8, MEASURED on the 72nd real-machine run): the READ face is where a reader asks "may I still
+    // change this card?". It used to answer only the card fields, so the gate could be obtained ONLY as the read-back of
+    // a settlement — and the settlements that produce `read-back-default-draft` are refused before they reach it. The
+    // gate and its note are therefore answered HERE, by the same `proofGateOfStoredCard` the settlement read-back uses.
+    const storedProofState = text(fields.proofState)
+    const storedGate = proofGateOfStoredCard(fields)
     const next = Object.assign({}, row, {
+      // ★★★ RUN 252 (F72-2): the stored row's proof line, NAMED, with the sentence that says what `null` means — a
+      // reader no longer has to know that "no line" and "draft" are the same fact.
+      proofState: storedProofState,
+      proofStateMeans: storedProofState === null
+        ? 'the card body states NO `proof_state` line, so the card is a DRAFT (the default): `null` is the honest reading of "nothing was declared", and `proofGate.reason:"read-back-default-draft"` is the machine-readable form of it'
+        : 'the card body states `proof_state:"' + storedProofState + '"` — this is the author\'s declared line, READ BACK; declaring a state is not the same as the institute verifying the proof',
+      proofGate: storedGate,
+      proofRefState: storedGate.proofRefState,
+      lockNote: proofLockNoteOf({ gate: storedGate, declaredState: storedProofState }),
       cardFields: {
         p: parsed && parsed.card ? parsed.card.p : null,
         statement: text(fields.statement), value: text(fields.value), motive: text(fields.motive),
@@ -6891,7 +7104,7 @@ export const V5R_PACK_TOOLS = Object.freeze([
   {
     name: 'vibe_v5_verdict_final',
     description: '★ TALLY THE DEBATE\'S FINAL RULING (the CHAIR signs it): collect the members\' boolean verdicts on ONE proposition, aggregate them (all agree ⇒ that value, otherwise the arithmetic mean) and tell the card\'s owner to correct its probability. meeting + proposition_id REQUIRED. ★ THE MEMBERS\' OWN RULINGS ARE COLLECTED FOR YOU: omit `verdicts` and this face adopts every ruling the debating members filed with vibe_v5_verdict { meeting, proposition_id, verdict, reason } — each row of `attribution` says whose number came from a filed submission (with the card id/path) and whose was TYPED by the chair, and `coverage` separates debated / submitted / typed / missing. A typed number that CONTRADICTS that member\'s filed ruling is refused by name, not silently preferred. member is who signs (default: the meeting chair; anyone else is refused by name); owner defaults to the card\'s author and must be resolvable. ★ If a Lean run passed and the card\'s p is still not 1, ANSWER THE FIDELITY QUESTION first (fidelity:"conform" or "defect", with lean_job naming the run). Delivery is reported honestly: `delivery` + `notified` + `notification.state` ("delivered" = pushed into a live turn, "queued" = waiting in the inbox and NOT read) — do not read an empty `notified` as a failure nor a queued one as "the owner has seen it". ★★ THE VOTE FLOOR GATES THE RULING (rule L47, 「辩论、结题的表决人数至少 min(用户设置数, 院士+常驻研究员)」): signed = the members whose number is in this tally PLUS the chair who signs; below the floor kernel.meetings.quorum() reads, the call is REFUSED by name (`VMU_MEETING_QUORUM_LOST`, with the setting keys and who is missing) and the hint names vibe_v5_verdict_ask. Pass partial:true with why ONLY when the chair deliberately rules on fewer seats than the floor: the receipt then records `floor.gate.escapedBy:"partial"` beside `satisfiedBy:false`.',
-    parameters: { meeting: { type: 'string', required: true }, proposition_id: { type: 'string', required: true }, verdicts: { type: 'array' }, member: { type: 'string' }, owner: { type: 'string' }, lean_job: { type: 'string' }, lean_passed: { type: 'boolean' }, fidelity: { type: 'string' }, template: { type: 'string' }, partial: { type: 'boolean' }, why: { type: 'string' } },
+    parameters: { meeting: { type: 'string', required: true }, proposition_id: { type: 'string', required: true }, verdicts: { type: 'array', items: { type: 'object', required: ['member', 'p'], properties: { member: { type: 'string' }, p: { type: 'number' }, reason: { type: 'string' } } }, description: 'one element per member: { member:"r-1", p:1, reason:"…" } — `member` and `p` are REQUIRED fields of each element (RUN 252 / F72-10). Omit the whole array to adopt the filed rulings' }, member: { type: 'string' }, owner: { type: 'string' }, lean_job: { type: 'string' }, lean_passed: { type: 'boolean' }, fidelity: { type: 'string' }, template: { type: 'string' }, partial: { type: 'boolean' }, why: { type: 'string' } },
     handler: toolVerdictFinal,
   },
   {

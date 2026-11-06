@@ -267,11 +267,16 @@ console.log('§2 问题 2：`compile` 门与 `final` 的 pdf 块是同一个形�
   // 这个 pin 守的是「一个投影、两个门」，共享投影改了字段集它就必须跟着改——否则它守的是一个不再存在的形状。
   // RUN 217 added `math` to the SHARED projection itself, so both branches keep it and this pin keeps its point:
   // the list is one field set, and success/failure are compared against the SAME list further down.
-  const expected = ['argv', 'code', 'engine', 'engineSource', 'faceCode', 'hint', 'kind', 'math', 'message', 'missing', 'ok', 'outDir', 'pdfBytes', 'pdfPath',
-    'produced', 'recordId', 'recordIdMeans', 'signal', 'sourceName', 'stderrTail', 'stdoutTail', 'tailSource', 'tailsIdentical', 'tailsIdenticalMeans', 'target',
+  // ★ RUN 252 (F72-7): the shared projection gained FOUR named readings — `missingMeans` (why the action list is
+  // empty/non-empty), `toolchainAbsent`/`toolchainAbsentMeans` (the environment question, never an input) and
+  // `archiveArtifacts` (the archive ROW question, which used to be copied into `missing`). The pin below stays an
+  // EXACT key-set equality (nothing relaxed): it is updated to name the new keys, and the same-not-different assertion
+  // is also extended to the FAILED door, so both doors must still agree.
+  const expected = ['argv', 'archiveArtifacts', 'code', 'engine', 'engineSource', 'faceCode', 'hint', 'kind', 'math', 'message', 'missing', 'missingMeans', 'ok', 'outDir', 'pdfBytes', 'pdfPath',
+    'produced', 'recordId', 'recordIdMeans', 'signal', 'sourceName', 'stderrTail', 'stdoutTail', 'tailSource', 'tailsIdentical', 'tailsIdenticalMeans', 'target', 'toolchainAbsent', 'toolchainAbsentMeans',
     'triedEngines', 'triedEnginesTotal',
     'triedEnginesTruncated'].sort()
-  ok(keys.length > 0 && keys.length === expected.length && JSON.stringify(keys) === JSON.stringify(expected), '问题 2：compiled 块就是共享投影的字段集（28 键）', keys)
+  ok(keys.length > 0 && keys.length === expected.length && JSON.stringify(keys) === JSON.stringify(expected), '问题 2：compiled 块就是共享投影的字段集（32 键，RUN 252 加 4 个具名读数）', keys)
 
   // ── the SAME fields must come out of `final`: drive a paper to awaiting-editor, then final it with a failing compile ──
   const fail2 = makeSubprocess(FAILING_COMPILE)
@@ -328,6 +333,20 @@ console.log('§2 问题 2：`compile` 门与 `final` 的 pdf 块是同一个形�
   ok(!!okPdf && okPdf.ok === true && okPdf.produced === true, '问题 2：final 成功编译的 pdf 块也带 produced:true', okPdf && { ok: okPdf.ok, produced: okPdf.produced })
   ok(!!finalOk && Array.isArray(finalOk.final.missing) && !finalOk.final.missing.includes('pdf'),
     'G10 复核：编译成功时 missing 里不再有 pdf（回执不自相矛盾）', finalOk && finalOk.final && finalOk.final.missing)
+  // ★ RUN 252 (F72-7) — MUTUAL EXCLUSION, added here because this pin is the门禁 that reads BOTH doors of the one
+  // projection: `missing` is the ACTION reading ("what did this action need and lack"), `toolchainAbsent` is the
+  // ENVIRONMENT reading, and `archiveArtifacts` is the ROW reading. Three questions, one receipt, and never two answers.
+  const ocMissing = Array.isArray(okCompile.compiled.missing) ? okCompile.compiled.missing : null
+  ok(okCompile.compiled.produced === true && ocMissing !== null && ocMissing.length === 0,
+    '★★ RUN 252：produced:true 时 missing 为空（缺的既不是 pdf 也不是 tex）', { produced: okCompile.compiled.produced, missing: ocMissing })
+  const ocRows = okCompile.compiled.archiveArtifacts
+  ok(!!ocRows && ocRows.scope === 'archive' && Array.isArray(ocRows.missing) && Array.isArray(okCompile.compiled.toolchainAbsent)
+    && ocRows.complete === (ocRows.missing.length === 0),
+    '★★ RUN 252：归档行读数自洽（scope/complete 与 missing 一致），这是 tex 缺的归处', ocRows && { scope: ocRows.scope, missing: ocRows.missing, complete: ocRows.complete })
+  ok(okCompile.compiled.missing.filter((m) => okCompile.compiled.toolchainAbsent.includes(m)).length === 0,
+    '★★ RUN 252：missing 与 toolchainAbsent 不重叠（一个说缺输入，一个说没装件）', { missing: okCompile.compiled.missing, toolchainAbsent: okCompile.compiled.toolchainAbsent })
+  ok(Array.isArray(finalOk.final.missing) && finalOk.final.missing.length === 0 && finalOk.final.missingMeans === null,
+    '★★ RUN 252：final 的 missing 为空且不编散文（RUN 161 的旧口径保留：没有缺行就没有说明）', { missing: finalOk.final.missing, missingMeans: finalOk.final.missingMeans })
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════

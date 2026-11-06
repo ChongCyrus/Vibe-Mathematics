@@ -1475,12 +1475,15 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
         // the caller's, and it was false. The truth is stated here in full: nothing is evaluated without a touch, the
         // due-time touch either opens it (only when the attendance rule is already satisfied at that moment) or parks
         // it in `waiting`, and from there ONLY the chair's proceed() opens it.
-        throw deny('VMU_STATE', 'meeting ' + m.id + ' is SCHEDULED for ' + new Date(m.scheduledFor).toISOString() + ' and has not started: ' + String(opts.what || 'this act') + ' is refused',
+        throw deny('VMU_STATE', 'meeting ' + m.id + ' is SCHEDULED for ' + new Date(m.scheduledFor).toISOString() + ' and has not started: ' + String(opts.what || 'this act') + ' is refused'
+          + ' — the START TIME is what blocks this, not the attendance rule: nothing about attendance has been judged yet (the rule is evaluated ONCE, at the due-time touch)',
           '★ it does NOT start by itself. At the due time the NEXT TOUCH (a beat(), a read, or an attend) evaluates the '
           + 'attendance rule ONCE: if that rule is satisfied at that moment the meeting opens, otherwise it moves to '
           + '`waiting` — and from `waiting` ONLY the chair can open it (proceed({ meeting, actor | by | member }); lapse() '
           + 'and recess() are the other two named exits). The framework keeps no timer, so a process nobody touches never '
-          + 'wakes: beat() is the clock. reads (status/summary/meetingView/quorum) work now and show startsInMs.', [])
+          + 'wakes: beat() is the clock. reads (status/summary/meetingView/quorum) work now and show startsInMs.'
+          + ' the institution rule is not what blocks this act either — the framework opens nothing on its own, and even a '
+          + 'satisfied attendance rule is only acted on when the clock reaches the start time', [])
       }
       // ★ LIVE RUN 13 (the institute's own report, item 3 under "与规则不符"): the message quoted the FLOOR as the reason
       // ('quorum requires 0') while refusing — the floor was MET, and the real blocker was the INSTITUTION rule (unanimity).
@@ -1873,9 +1876,16 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     if (m.state === 'scheduled') {
       if (!Number.isFinite(m.scheduledFor) || now < m.scheduledFor) return null
       const q = quorumOf(m)
-      m.activatedAt = now
+      // ★★★ RUN 252 / run-72 C4 (MEASURED): `activatedAt` means "when it actually became runnable", i.e. the moment
+      // it OPENED — it is the base of `elapsedSinceMs`, and the model face's own field note says so. Writing it here,
+      // before `arrived()` is known, stored the DUE-TIME SETTLEMENT instant on a meeting that merely parked in
+      // `waiting` (not runnable at all), and the waiting→open branch below then never corrected it: the meeting
+      // reported `elapsedSinceMs:8918` counted from the beat, not from the attend that opened it. `waitStartedAt`
+      // keeps that settlement instant (it is the base of the wait deadline), so the two instants stay distinguishable
+      // without a new field.
       m.waitStartedAt = now
       if (arrived()) {
+        m.activatedAt = now
         m.state = 'open'
         m.startedLate = true
         markState(m, 'open')
@@ -1894,6 +1904,9 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
     // arriving. Measured: without this branch `attend()` added the member, the quorum became met, and the meeting
     // still reported `waiting` forever (the assertion below went red with `settled:null`).
     if (arrived()) {
+      // ★★★ RUN 252 / run-72 C4 (MEASURED): the same single meaning as above — this branch IS the opening, so this
+      // is the instant `elapsedSinceMs`/`startedAt` must be measured from (the scheduled branch no longer writes it).
+      m.activatedAt = now
       m.state = 'open'
       m.startedLate = true
       markState(m, 'open')
@@ -2392,17 +2405,31 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // started and `elapsedSinceMs` (>= 0, measured from the moment it ACTUALLY opened) once it has; `elapsedMs`
       // rides along as an alias of elapsedSinceMs, so an old reader gets `null` ("not started") instead of a negative
       // number. The three late-verdict sentences below are unchanged for an open meeting (their pins are explicit).
-      const startReads = startBlockOf(m, ms)
-      const lateReads = Object.assign({ openedAt: openedAtMs, lateAfterMs }, startReads)
-      const lateMeans = startReads.started !== true
-        ? 'NOT JUDGED YET: this meeting has NOT started (startsInMs=' + String(startReads.startsInMs) + ' ms), so lateness cannot be measured — lateness is measured from the moment the meeting OPENS, not from scheduledFor; late:' + late + ' is not a judgement about your timing'
-        : (openedAtMs === null
-          ? 'this meeting row carries no openedAt, so no lateness can be measured from the clock (vmu.meetings.lateAfterMs=' + lateAfterMs + '): late:' + late + ' is not a judgement about your timing'
-          : (lateAfterMs > 0
-            ? (late
-              ? 'LATE: at ' + ms + ' this arrival is ' + startReads.elapsedSinceMs + ' ms past openedAt ' + openedAtMs + ', over vmu.meetings.lateAfterMs=' + lateAfterMs + '; the meeting policy lateAdmission="' + latePolicy + '" decides what happens next'
-              : 'NOT LATE: at ' + ms + ' this arrival is ' + startReads.elapsedSinceMs + ' ms past openedAt ' + openedAtMs + ', within vmu.meetings.lateAfterMs=' + lateAfterMs + ' (the threshold is measured from openedAt, not from the first arrival)')
-            : 'NOT JUDGED: vmu.meetings.lateAfterMs=0 here, so NOBODY is ever counted late on this deployment — late:false does not mean "on time", it means this meeting does not measure lateness'))
+      // ★★★ RUN 252 / run-72 C4 (MEASURED): these readings are a CLOSURE, not a one-shot snapshot. The settle below
+      // (`syncMeeting`) can turn this very call into the opening of the meeting, so a snapshot taken here describes the
+      // PRE-call meeting while `state`/`settled` describe the post-call one — the live run got `state:"open"` together
+      // with `started:false`/`startedAt:null`/`waitingFor:"quorum"`/`elapsedSinceMs:null` in one receipt. The door
+      // branch (lateAdmission "chair") returns before the settle, so its copy is correct as-is; every path that
+      // settles recomputes with `windowReadsOf()` before building its receipt.
+      const windowReadsOf = () => {
+        const startReads = startBlockOf(m, ms)
+        const lateReads = Object.assign({ openedAt: openedAtMs, lateAfterMs }, startReads)
+        // ★ RUN 252 / run-72 C4: the "N ms past openedAt" number must be measured from openedAt (which is what the
+        // lateness verdict uses), not from activatedAt: on a meeting that was scheduled and then opened by a
+        // latecomer the two differ by the whole wait, so reusing elapsedSinceMs under-reported the lateness.
+        const pastOpenedAt = openedAtMs === null ? null : (ms - openedAtMs)
+        const lateMeans = startReads.started !== true
+          ? 'NOT JUDGED YET: this meeting has NOT started (startsInMs=' + String(startReads.startsInMs) + ' ms), so lateness cannot be measured — lateness is measured from the moment the meeting OPENS, not from scheduledFor; late:' + late + ' is not a judgement about your timing'
+          : (openedAtMs === null
+            ? 'this meeting row carries no openedAt, so no lateness can be measured from the clock (vmu.meetings.lateAfterMs=' + lateAfterMs + '): late:' + late + ' is not a judgement about your timing'
+            : (lateAfterMs > 0
+              ? (late
+                ? 'LATE: at ' + ms + ' this arrival is ' + pastOpenedAt + ' ms past openedAt ' + openedAtMs + ', over vmu.meetings.lateAfterMs=' + lateAfterMs + '; the meeting policy lateAdmission="' + latePolicy + '" decides what happens next'
+                : 'NOT LATE: at ' + ms + ' this arrival is ' + pastOpenedAt + ' ms past openedAt ' + openedAtMs + ', within vmu.meetings.lateAfterMs=' + lateAfterMs + ' (the threshold is measured from openedAt, not from the first arrival)')
+              : 'NOT JUDGED: vmu.meetings.lateAfterMs=0 here, so NOBODY is ever counted late on this deployment — late:false does not mean "on time", it means this meeting does not measure lateness'))
+        return { startReads, lateReads, lateMeans }
+      }
+      let { startReads, lateReads, lateMeans } = windowReadsOf()
       if (late && !m.present.has(String(member))) {
         if (latePolicy === 'refuse') {
           throw deny('VMU_LATE_ADMISSION_REFUSED',
@@ -2439,6 +2466,11 @@ const TURNS_MEANS = 'SPEECHES recorded on THIS kernel instance\'s copy of the me
       // and the receipt repeats it, so "this attendance is what opened the meeting" is not silent.
       const settled = (m.state === 'scheduled' || m.state === 'waiting') ? syncMeeting(m, ms) : null
       const q = quorumOf(m)
+      // ★★★ RUN 252 / run-72 C4 (MEASURED): recompute the window readings from the POST-settle meeting. Without this
+      // line a receipt that OPENED the meeting mixed two instants: `state:"open"`/`settled:"started"` (post) with
+      // `started:false`/`startedAt:null`/`startsInMs:-134918`/`waitingFor:"quorum"` (pre) — and `lateMeans` said
+      // "NOT JUDGED YET" about a meeting that had just opened. One receipt, one instant.
+      ;({ startReads, lateReads, lateMeans } = windowReadsOf())
       const alreadyPresentMeans = wasPresent
         ? (wasChair
           ? 'this member is the CHAIR and open() seats the chair, so it was present before any attend call: this call changed no count (presentBreakdown.attended counts only the members who actually arrived), and attending again is allowed as a no-op'

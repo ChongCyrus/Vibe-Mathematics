@@ -120,9 +120,18 @@ console.log('§0 源码口径：六处修法各在自己的所有者上（行为
     && GATES_SRC.includes('但 proofRef 是空的'),
     '(4) subjectGate.note 从本调用读到的字段拼（说清缺的是哪一半）')
   ok(GATES_SRC.includes('`fidelity` 是形参名'), '(5) 保真拒绝语点名形参 `fidelity`')
+  // ★ RUN 252 (F72-7): the old pin grepped the LITERAL `missingMeans: finalized.missingMeans || null` — the exact
+  // line that used to forward the archive-row list's prose into a field whose name said "what is missing". That line is
+  // gone by design: the final projection now derives the list from `finProduced` and the archive rows travel separately
+  // in `archiveArtifacts`. The two FACTS this pin protects are kept and strengthened (canonical target + "the missing
+  // semantics travel WITH the list, never apart from it"), and the new shape is asserted on top — nothing relaxed.
   ok(PAPER_KIT_SRC.includes('const canon = found && found.state') && PAPER_KIT_SRC.includes('missingMeans:')
-    && TOOLS_SRC.includes('missingMeans: finalized.missingMeans || null'),
-    '(6) 工物行标题用 state 的规范 target；缺失语义随列表一起传')
+    && TOOLS_SRC.includes('const finProduced = !!(finalized.pdf')
+    && TOOLS_SRC.includes('missing: finProduced ? [] : ')
+    && TOOLS_SRC.includes('missingMeans: finProduced')
+    && TOOLS_SRC.includes('archiveArtifacts: (() => {')
+    && !TOOLS_SRC.includes('missingMeans: finalized.missingMeans || null'),
+    '(6) 工物行标题用 state 的规范 target；缺失语义随列表一起传（RUN 252：列表由 finProduced 派生，归档行另立 archiveArtifacts）')
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════

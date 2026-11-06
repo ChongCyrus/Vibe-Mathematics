@@ -13,6 +13,17 @@
 //   F71-8 (中) "no session" was told two ways — `VMU_MEMBER_SESSION_NOT_LIVE` when a child had existed, the catch-all
 //             `VMU_NO_SUCH_OBJECT` when none ever had — and neither hint named a reachable repair. It is now two named
 //             answers with the ONE action that fixes each: NEVER_OPENED ⇒ seat/assign/drive; NOT_LIVE ⇒ drive again.
+//
+// RUN 252-A — the 72nd real-machine run filed the residuals of the same three questions (the DECLARED layer was right,
+// the ANSWERS still were not):
+//   F72-1 (中) the top-level `refusal` said NEVER_OPENED, but `providerRefusal` (and its copy inside `measuredSet`)
+//             still said `VMU_NO_SUCH_OBJECT` — one fact, two names, in one receipt. The provider payload is now
+//             TRANSLATED, and §4 compares the SERIALIZED receipt so no nested field can hide the catch-all.
+//   F72-2 (中) the default-draft receipt carried `proofState:null` with no `proofStateMeans` and no `lockNote`, so
+//             "is this a draft / is it locked / why" could not be answered from the fields (§6).
+//   F72-8 (中) `read-back-default-draft` had ZERO receipts on the real machine: it lived only in a settlement read-back
+//             and every reachable settlement is refused first. The READ face now answers the gate with the SAME
+//             stored-row reader (§7), so the reason is reachable by simply reading the card.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
@@ -69,12 +80,34 @@ test('§0 every repair is on the source that owns it (source pins, so §1-§4 ca
   ok(gateBlock.length > 500, '§0c precondition: the gate block was located in the source', gateBlock.length)
   hasNot(gateBlock, '? null', '§0d ★★★ F71-3: no shape of the gate can answer proofGate:null (write path or read-back)')
   has(gateBlock, "reason: 'default-draft'", '§0e ★★★ F71-3: the no-declaration write path names the default draft')
-  has(gateBlock, "reason: 'read-back-default-draft'", '§0f ★★ F71-3: the settlement read-back path names it too')
+  // ★★★ RUN 252 (F72-8, MEASURED on the 72nd real-machine run): the four READ-BACK reasons moved out of the write gate
+  // into ONE reader of a stored row, so that the settlement read-back AND the read face answer with the same words.
+  // Pinning the literal inside `gateBlock` would now pin a copy that no longer exists; the literal is pinned where it
+  // lives, and the SHARING is pinned by the call count (one declaration + the two call sites).
+  has(PACK, "reason: 'read-back-default-draft'", '§0f ★★★ RUN 252/F72-8: the shared stored-row reader names the read-back default draft')
+  ok(PACK.split('proofGateOfStoredCard').length - 1 >= 3,
+    '§0g ★★★ RUN 252/F72-8: that reader is SHARED — one declaration plus the settlement read-back and the read face',
+    PACK.split('proofGateOfStoredCard').length - 1)
   has(PACK, 'a NOT-yet-finished registration', '§0e ★★ F71-4: a draft lock note speaks about the draft')
-  has(PACK, 'export function sessionRefusalOf(', '§0f ★★★ F71-8: the cause→refusal translation is ONE exported function')
-  has(PACK, 'VMU_MEMBER_SESSION_NEVER_OPENED', '§0g ★★★ F71-8: the never-opened fact has its own name')
-  has(PACK, 'seatDenyNames', '§0h ★★★ F71-7: the deny list is COMPUTED from the seat-face table, not retyped')
-  ok(PACK.length > 100000, '§0i sanity: the source read is the real file', PACK.length)
+  has(PACK, 'export function sessionRefusalOf(', '§0h ★★★ F71-8: the cause→refusal translation is ONE exported function')
+  has(PACK, 'export function proofGateOfStoredCard(', '§0h ★★ RUN 252/F72-8: the gate reader is exported, so a suite can call it instead of retyping')
+  has(PACK, 'VMU_MEMBER_SESSION_NEVER_OPENED', '§0i ★★★ F71-8: the never-opened fact has its own name')
+  has(PACK, 'providerCodeTranslated', '§0i ★★ RUN 252/F72-1: the provider refusal is translated, not passed through')
+  has(PACK, 'seatDenyNames', '§0j ★★★ F71-7: the deny list is COMPUTED from the seat-face table, not retyped')
+  ok(PACK.length > 100000, '§0k sanity: the source read is the real file', PACK.length)
+  // ★★★ RUN 252 (F72-10, MEASURED on the 72nd real-machine run): `verdicts` was declared as a bare `{type:"array"}`,
+  // so a chair composing elements by hand had no shape to satisfy — the only feedback was a runtime failure. The
+  // ELEMENT schema is now declared beside the array; this pin reads the DECLARED spec object (not a source string).
+  const verdictSpec = packMod.V5R_PACK_TOOLS.filter((t) => t && t.name === 'vibe_v5_verdict_final')[0] || null
+  ok(verdictSpec && verdictSpec.parameters && verdictSpec.parameters.verdicts,
+    '§0l precondition: the tally face declares a verdicts parameter', verdictSpec && verdictSpec.name)
+  const vItems = verdictSpec && verdictSpec.parameters && verdictSpec.parameters.verdicts.items
+  ok(vItems && vItems.type === 'object',
+    '§0l ★★★ RUN 252/F72-10: `verdicts` declares its ELEMENT shape (a bare array says nothing about elements)', vItems)
+  ok(vItems && Array.isArray(vItems.required) && vItems.required.includes('member') && vItems.required.includes('p'),
+    '§0m ★★★ ...naming `member` and `p` as REQUIRED fields of each element', vItems && vItems.required)
+  ok(vItems && vItems.properties && vItems.properties.p && vItems.properties.p.type === 'number',
+    '§0n ★★ ...and declaring the element types (p is a number, so the chair is told what to write)', vItems && vItems.properties)
 })
 
 test('§1 F71-3 — every shape of "a card that is not locked" says so, with a reason', async () => {
@@ -209,6 +242,26 @@ test('§4 F71-8 — the two "no session" facts are two named refusals with reach
     '§4k ★ a LIVE session is not refused at all (the translation only speaks when there is no wire)')
   ok(packMod.sessionRefusalOf({ view: null, member: 'r-9' }) !== null,
     '§4l ★ a missing view is treated as "no session", never as "all good"')
+
+  // ★★★ RUN 252 (F72-1, MEASURED on the 72nd real-machine run): the DECLARED layer was already right, but the receipt
+  // still carried the same fact under a second code — top-level `refusal` said NEVER_OPENED while `providerRefusal`
+  // (and its copy inside `measuredSet`) still said `VMU_NO_SUCH_OBJECT`. The criterion is the SERIALIZED receipt, so
+  // every nested field is compared as text; a future re-introduction of the catch-all cannot hide one level down.
+  const helpJson = JSON.stringify(read)
+  hasNot(helpJson, 'VMU_NO_SUCH_OBJECT',
+    '§4m ★★★ RUN 252/F72-1: NO field of the tool_help receipt — nested ones included — repeats the catch-all code')
+  ok(read.providerRefusal && read.providerRefusal.code === 'VMU_MEMBER_SESSION_NEVER_OPENED',
+    '§4n ★★★ RUN 252/F72-1: the PROVIDER refusal now says the same NAMED fact as the top-level one',
+    read.providerRefusal && read.providerRefusal.code)
+  ok(read.providerRefusal && read.providerRefusal.providerCodeTranslated === true,
+    '§4o ★★ ...and marks that it was translated, so the reader knows the provider speaks a different vocabulary',
+    read.providerRefusal && read.providerRefusal.providerCodeTranslated)
+  ok(read.measuredSet && read.measuredSet.providerRefusal && read.measuredSet.providerRefusal.code === 'VMU_MEMBER_SESSION_NEVER_OPENED',
+    '§4p ★★★ ...and the nested measured reading agrees too (no THIRD name inside one receipt)',
+    read.measuredSet && read.measuredSet.providerRefusal && read.measuredSet.providerRefusal.code)
+  ok(/vibe_vmu_control|vibe_v5_assign|vibe_vmu_turn/.test(String((read.providerRefusal && read.providerRefusal.hint) || '')),
+    '§4q ★★ ...carrying the SAME reachable repair as the named refusal, not the old "deliver one turn first"',
+    read.providerRefusal && read.providerRefusal.hint)
 })
 
 test('§5 F71-12/13 alignment — a scheduled meeting never claims that the clock opens it', async () => {
@@ -245,8 +298,66 @@ test('§5 F71-12/13 alignment — a scheduled meeting never claims that the cloc
   has(PACK, 'requiresChairProceedMeans', '§5t ★★ the receipt forwards the kernel field that carries the stance')
 })
 
-test('§6 cleanup', () => {
+test('§6 F72-2 — a default draft answers draft / locked / why from its OWN fields', async () => {
+  // ★★★ RUN 252 (F72-2, MEASURED on the 72nd real-machine run): the card filed with no proof fields came back with
+  // `proofState:null` but WITHOUT `proofStateMeans` and WITHOUT `lockNote`, so the reader had to know that "no field"
+  // means "draft" and had to consult another face to learn whether the card was locked. The criterion is a FIELD
+  // criterion: the three answers below must be readable from this one receipt and nothing else.
+  const plain = R(await b.call('vibe_v5_record_proposition', {
+    statement: 'r252 default receipt', value: '未定论', motive: 'run252 default shape', p: 0.5, member: 'r-1',
+  }))
+  eq(plain.ok, true, '§6a precondition: the default card is admitted', plain && { code: plain.code, message: plain.message })
+  ok(Object.prototype.hasOwnProperty.call(plain, 'proofState'),
+    '§6b ★★★ F72-2: the receipt NAMES proof_state (the measured defect omitted the field itself)',
+    Object.keys(plain).filter((k) => /proof/i.test(k)))
+  eq(plain.proofState, null, '§6c ★ ...and null is the honest value: nothing was declared', plain.proofState)
+  has(String(plain.proofStateMeans || '').toLowerCase(), 'draft',
+    '§6d ★★★ ...while proofStateMeans says that null IS the default draft')
+  ok(typeof plain.lockNote === 'string' && plain.lockNote !== '',
+    '§6e ★★★ F72-2: lockNote is present (the measured receipt had no lockNote at all)', plain.lockNote)
+  has(String(plain.lockNote || ''), 'NOT locked', '§6f ★★★ ...and answers the lock question in words a reader can quote')
+  has(String(plain.lockNote || '').toLowerCase(), 'draft', '§6g ★★ ...naming WHY: the card is the default draft')
+  eq(plain.proofGate && plain.proofGate.reason, 'default-draft',
+    '§6h ★★ ...and the machine-readable reason agrees with the sentence (one fact, one reading)',
+    plain.proofGate && plain.proofGate.reason)
+  ok(plain.proofGate && plain.proofGate.locked === false, '§6i ★ ...the gate itself is not locked', plain.proofGate && plain.proofGate.locked)
+})
+
+test('§7 F72-8 — the READ face answers the proof gate, with no settlement needed', async () => {
+  // ★★★ RUN 252 (F72-8, MEASURED on the 72nd real-machine run): `read-back-default-draft` never appeared on a real
+  // machine, because it lived only in a settlement read-back and every reachable settlement was refused first (p=1
+  // needs a ballot, p=0 would invent evidence). Reading a card is always reachable, and the read face now answers the
+  // same question with the SAME reader the settlement read-back uses.
+  const made = R(await b.call('vibe_v5_record_proposition', {
+    statement: 'r252 read face', value: '未定论', motive: 'run252 read face', p: 0.5, member: 'r-1',
+  }))
+  eq(made.ok, true, '§7a precondition: the card to read exists', made && { code: made.code, message: made.message })
+  const read = R(await b.call('vibe_v5_read_library', { id: made.recordId }))
+  eq(read.ok, true, '§7b precondition: the card reads back by id', read && { code: read.code, message: read.message })
+  const card = read.card
+  ok(card && card.proofGate && typeof card.proofGate === 'object',
+    '§7c ★★★ F72-8: reading the card answers `proofGate` (no fake settlement required)', card && typeof card.proofGate)
+  eq(card && card.proofGate && card.proofGate.locked, false,
+    '§7d ★★★ ...and a default card is plainly NOT locked', card && card.proofGate && card.proofGate.locked)
+  eq(card && card.proofGate && card.proofGate.reason, 'read-back-default-draft',
+    '§7e ★★★ ...with the READ-BACK reason, which no write path could be tricked into manufacturing',
+    card && card.proofGate && card.proofGate.reason)
+  ok(card && Object.prototype.hasOwnProperty.call(card, 'proofState'),
+    '§7f ★★ ...and the stored proof line is named on the read face too (no second vocabulary)',
+    card && Object.keys(card).filter((k) => /proof/i.test(k)))
+  eq(card && card.proofState, null, '§7g ★ ...null, because the body states no line', card && card.proofState)
+  has(String((card && card.proofStateMeans) || '').toLowerCase(), 'draft',
+    '§7h ★★ ...and the meaning of that null is spelled out (draft, not unknown)')
+  has(String((card && card.lockNote) || ''), 'NOT locked', '§7i ★★★ the read face carries the same lock sentence')
+  has(String((card && card.lockNote) || ''), 'READ BACK',
+    '§7j ★★ ...and says the answer was READ, so a reader knows it cost no write')
+  eq(card && card.proofRefState, 'absent', '§7k ★ ...the pointer state travels with the gate', card && card.proofRefState)
+  eq(card && card.cardFields && card.cardFields.proofState, null,
+    '§7l ★★ the cardFields reading is unchanged: the author declared nothing (this pin predates RUN 252)', card && card.cardFields && card.cardFields.proofState)
+})
+
+test('§8 cleanup', () => {
   try { rmSync(root, { recursive: true, force: true }) } catch (e) { /* best effort */ }
-  ok(n > 0, '§6 assertions ran', n)
+  ok(n > 0, '§8 assertions ran', n)
   console.log('RUN 251 assertions: ' + n)
 })

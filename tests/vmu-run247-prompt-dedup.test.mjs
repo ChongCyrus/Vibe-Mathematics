@@ -111,10 +111,15 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
   //        写了字就是 false；工具通道看 `source`/`fields`/`executed`/`writes`），截断键的唯一权威改名成
   //        `truncated`/`excerptLen`（旧名只留在回合回执）；这一句在 shared 段，三席同值 +198，合计 +594 ⇒
   //        上限 70689 + 2000 + 1356 + 594 = 74639，比实测 74578 多 61（仍与 RUN 248 同一份余量）。
+  //   ★ RUN 252-C 再涨一次（F72-10 / F72-2 / F72-6），仍逐条记账：`verdicts` 的元素形状逐字给出（数值键是 `p`，
+  //        不是 `vibe_v5_verdict` 的 `verdict`）＝chair 专属 +322；`proof_state`（形参）与 `proofState`（回执/卡体读回）
+  //        分名 + 归档 sha 只覆盖正文这两句在 charter/shared 段，三席同值 +151，合计 +775 ⇒ 上限
+  //        70689 + 2000 + 1356 + 594 + 775 = 75414，比实测 75353 多 61（仍与 RUN 248 同一份余量）。
   const RUN247 = { chair: 26944, member: 23200, temp: 20545, sum: 70689 }
   const RUN248_TEACHING = { chair: 548, member: 1008, temp: 383, sum: 1939, budget: 2000 }
   const RUN249_TEACHING = { chair: 452, member: 452, temp: 452, sum: 1356 }
   const RUN251_TEACHING = { chair: 198, member: 198, temp: 198, sum: 594 }
+  const RUN252_TEACHING = { chair: 473, member: 151, temp: 151, sum: 775 }
   const SIGNATURE = /\{ *[a-z_][a-z_0-9.?]* *, *[a-z_]/
   const signatureRows = (slot) => {
     let lines = 0
@@ -125,13 +130,13 @@ console.log('=== 1. 验收线（RUN 247 的硬指标，锁成回归） ===')
     return { lines, chars }
   }
   const chairNormal = charsOf('chair', 'normal')
-  const chairCeiling = RUN247.chair + RUN248_TEACHING.chair + RUN249_TEACHING.chair + RUN251_TEACHING.chair
+  const chairCeiling = RUN247.chair + RUN248_TEACHING.chair + RUN249_TEACHING.chair + RUN251_TEACHING.chair + RUN252_TEACHING.chair
   ok(chairNormal <= chairCeiling,
-    `§1a ★ chair/normal ≤ ${chairCeiling} 字符（= RUN 247 实测 ${RUN247.chair} ＋ RUN 248 教学 ${RUN248_TEACHING.chair} ＋ RUN 249 教学 ${RUN249_TEACHING.chair} ＋ RUN 251 教学 ${RUN251_TEACHING.chair}，逐条记账、无余量）`, chairNormal)
+    `§1a ★ chair/normal ≤ ${chairCeiling} 字符（= RUN 247 实测 ${RUN247.chair} ＋ RUN 248 教学 ${RUN248_TEACHING.chair} ＋ RUN 249 教学 ${RUN249_TEACHING.chair} ＋ RUN 251 教学 ${RUN251_TEACHING.chair} ＋ RUN 252 教学 ${RUN252_TEACHING.chair}，逐条记账、无余量）`, chairNormal)
   const sum = charsOf('chair', 'normal') + charsOf('member', 'normal') + charsOf('temp', 'normal')
-  const sumCeiling = RUN247.sum + RUN248_TEACHING.budget + RUN249_TEACHING.sum + RUN251_TEACHING.sum
+  const sumCeiling = RUN247.sum + RUN248_TEACHING.budget + RUN249_TEACHING.sum + RUN251_TEACHING.sum + RUN252_TEACHING.sum
   ok(sum <= sumCeiling,
-    `§1b ★ 三份 normal 合计 ≤ ${sumCeiling}（RUN 247 实测 ${RUN247.sum} ＋ RUN 248 机制教学预算 ${RUN248_TEACHING.budget} ＋ RUN 249 机制教学 ${RUN249_TEACHING.sum} ＋ RUN 251 机制教学 ${RUN251_TEACHING.sum}）`, sum)
+    `§1b ★ 三份 normal 合计 ≤ ${sumCeiling}（RUN 247 实测 ${RUN247.sum} ＋ RUN 248 机制教学预算 ${RUN248_TEACHING.budget} ＋ RUN 249 机制教学 ${RUN249_TEACHING.sum} ＋ RUN 251 机制教学 ${RUN251_TEACHING.sum} ＋ RUN 252 机制教学 ${RUN252_TEACHING.sum}）`, sum)
   for (const seat of ['chair', 'member', 'temp']) {
     const s = signatureRows(seat)
     ok(s.lines <= 8 && s.chars <= 1738,
