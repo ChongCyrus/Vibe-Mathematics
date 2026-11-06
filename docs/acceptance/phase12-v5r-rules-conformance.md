@@ -17280,3 +17280,53 @@ member meeting 27220、member verify 29008、temp verify 25761）。
    从来没拿到钥匙的尺子。
 
 **341.8 收口数字。** 见本轮 commit 与 `D:/_tmp/t1-r3780-run244.log`；并发与耗时会随机器档位变化，故只记结论行。
+
+## §342 RUN 245：第十二轮审计的四条高危（锁能被看见、能被放开、放开后不再说谎）
+
+**342.1 账从哪来。** `docs/acceptance/sim-audit-round12.md`（只读审计，291 行）对 RUN 239–243 的新机制做了
+逐条验证，四条高危全部指向同一件事：**回合锁的三件套在需要它们的那一刻不可达或自相矛盾。** 这一轮只修这四条，
+中危六条留下轮。
+
+**342.2 H1：观察与释放排在它们要观察的东西后面。** 根会话的每个 op 都进 `tools/turn.js` 的同一个 `turnQueue`，
+于是一轮投递卡住时，`op:"status"`（唯一能看见锁的读数）与 `op:"abandon"`（唯一的释放阀）也一起排队——审计实测
+1500 ms 全挂起，而同刻内核直调 `turn.status()` 立刻返回。修法：`status` 与 `abandon` 被**具名**为「观察/释放」，
+和成员侧早就享有的读权限一样直接执行；开启回合的写（`step`/`drive`/`prompt`/`reopen-closure`）仍排队，因为
+队列保的就是它们的顺序。
+
+**342.3 H2：放开了，但迟到的答案还是被写了进去。** `abandon` 回执写「什么都没应用」，而那轮的投递随后返回，
+照样走 `dispatchReply` 写记录，并把已经结算成 `abandoned` 的行改回 `applied`（`codes` 里还留着
+`VMU_TURN_ABANDONED`）——两个读面因此读到相反的事实。修法：回合内核记一份 `abandonedTurns`（有界 50 条）；
+投递返回后在**任何应用之前**查这份名单，命中就回一份具名回执 `code:"VMU_TURN_ABANDONED"` +
+`lateAnswerNotApplied:true` + 成员原文摘录，行保持 `abandoned`，不写任何记录；计数 `counts.lateAfterAbandon`
+与 `turnLoop.lateAnswersNotApplied` 让这件事可数、可读。
+
+**342.4 H3：一个 `finally` 清了不属于自己的锁。** `run` 与 `runFrom` 的 `finally` 直接清空 `turnInFlight`/
+`inFlightTurn`，于是迟到的旧回合会把**新回合**的锁清掉：审计实测两行同时 `status:"open"`，而
+`turnLoop.inFlightTurn` 只报最后一个。修法：拿锁时记 `myToken`，释放时只在 `turnInFlightToken === myToken`
+时清；`inFlightTurn` 同理只清 `=== turn` 的那一格；`abandonTurn` 清锁时把 token 一并置空（它的清是合法的）。
+
+**342.5 H4：同一份回执里两个钟。** `counts.deliveryLastFail.at` 用墙钟，而紧挨着的 `writesWindow.from/to` 用注入
+时钟——审计实测两者相差两个月，读者据此推断的「先后」根本没发生过。修法：两处 `at:` 都改成
+`isoStampOf(clock())` 并加 `atSource:"kernel-clock"`，让「这份回执只有一个钟」成为可读事实。
+
+**342.6 顺手统一：一份读数只许一只手写。** 审计中危里还有一条：`status()` 里手抄的 `turnLoop` 比
+`kernel.turn.turnLoop()` 少七个键（`inFlightMeeting`、投递预算三键、`timeoutOrder`、`wakeQueue` 说明、
+`recentAbandonments`），RUN 242 只守住了后者。本轮把它们合成一个 `turnLoopReading()`，
+`status()` 与公开方法都调它——两份手写副本正是它们走散的方式。
+
+**342.7 机器化。** 新套件 `tests/vmu-run245-audit12.test.mjs`：40 passed / 0 failed。
+- §0 源码 pin 十四条（旁路在队列 join 之前、token 条件释放、`abandonedTurns` 判定、时钟来源、单一读数函数）；
+- §1 真行为：用一个永不返回的 `step` 占住队列，断言 `status` 与 `abandon` 都在 1 s 内返回、而 `drive` 仍被排队；
+- §2 迟到答案：`abandon` 后 resolve 投递 ⇒ 回执 `VMU_TURN_ABANDONED`/`lateAnswerNotApplied`，行仍 `abandoned`，
+  `counts.lateAfterAbandon === 1`；
+- §3 锁归属：A 被放开后 B 拿到锁，A 迟到返回 ⇒ B 的锁与 `inFlightTurn` 都不动；B 正常结算才释放；
+- §4 单钟：`deliver` 抛错后 `deliveryLastFail.at === '1970-01-01T00:00:01.000Z'`（注入时钟）且与 `writesWindow.from` 相等。
+定向回归：`vmu-turn` 272/0、`vmu-run241-turn-lock` 49/0（旧 pin §0l 改成「经唯一写者上报」）、
+`vmu-run242-feedback65` 62/0（§8g' 改成「绑 rulerMeetingId」）、`vmu-run22-findings` 全绿、
+`vmu-run244-prompt-facts` 24/0、`audit-vmu-docs` 103/0、`vmu-run240-fidelity-scope` 19/0、`vmu-run243-writes-window` 38/0。
+
+**342.8 两条教训。**
+1. **加了观察与释放，不等于它们可达。** 一个「读锁」的 op 若和「持锁」的 op 排在同一条队列里，它读到的永远是
+   自己排队的时间；任何「逃生阀」上线时，必须同时问一句：它会不会和它要逃的东西共用同一条通道。
+2. **「说了什么」必须由「做了什么」兜底。** `abandon` 的回执承诺「没应用」是最容易写对、最难做实的一句话；回执
+   里的每个否定句（没有写、没有丢、没有动）都要有一条代码路径在它成真之前拦下来。

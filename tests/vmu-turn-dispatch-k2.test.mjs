@@ -102,8 +102,18 @@ console.log('=== 4. WIRING: THE M2 CATALOGUE REALLY LISTS vmu.turn ===')
   // ★ RUN 241: the finally block now also stamps `turnInFlightSince = 0` and pumps the wake queue (see op:"abandon" and
   // the queued wake), so the pin holds the INVARIANT - "the guard is cleared in a finally, before anything else" - rather
   // than one exact one-liner. A throwing turn still cannot leave the loop wedged, and that is what this line is for.
-  ok(/try \{ return await runOne\(spec\) \} finally \{\s*turnInFlight = false/.test(turnSrc),
+  // ★ RUN 245 (audit round 12 H3): the release became CONDITIONAL on the lock still being this call's
+  // (`if (turnInFlightToken === myToken) { … }`), because clearing whatever was there let a LATE-returning turn free the
+  // NEXT turn's lock. So this pin now needs BOTH halves, in order: (a) the clear still sits inside `finally` - a throwing
+  // turn cannot wedge the loop - and (b) the clear is guarded by the token comparison - an old turn frees only its own
+  // lock. Dropping either half must fail: a `finally` that never releases and a `finally` that releases unconditionally
+  // are each the bug this line exists to catch.
+  ok(/try \{ return await runOne\(spec\) \} finally \{[\s\S]{0,900}?if \(turnInFlightToken === myToken\) \{[\s\S]{0,600}?turnInFlight = false/.test(turnSrc),
     'the guard is released in a finally block, so a THROWING turn cannot leave the loop wedged', {})
+  // …and the token it compares against is the one THIS call minted and installed before runOne, otherwise the comparison
+  // would be against nothing (or a constant) and would not distinguish a late turn from the current one.
+  ok(/const myToken = \{ seq: \+\+lockSeq, at: Date\.now\(\) \}[\s\S]{0,600}?try \{ return await runOne\(spec\) \}/.test(turnSrc),
+    'and that release is CONDITIONAL on the token this call minted, so a late-returning turn cannot free the next turn\'s lock', {})
 }
 
 console.log('')

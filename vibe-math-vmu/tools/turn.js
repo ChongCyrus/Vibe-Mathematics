@@ -492,7 +492,14 @@ export function makeTurnSpec({ param, refused, TOOL_NAMES, kernel }) {
           'a member turn cannot run the institute turn engine (op: ' + op + ')',
           'remove vibe_vmu_turn from tools.allow: the turn engine belongs to the root/office; a member reports with op:"status" (read) or op:"reply" (report), and acts through the faces its role grants'))
       }
-      if (memberCaller) return Promise.resolve(coreTurnInner(args, exec))
+      // ★★★★★★★ RUN 245 (audit round 12 H1): THE OBSERVATION AND THE RELEASE NEVER WAIT BEHIND THE THING THEY OBSERVE.
+      // run 241 added `turnLoop` (a reading) and `op:"abandon"` (a release) for a turn whose delivery never returns —
+      // and then queued both behind that very delivery: measured 1500 ms with every op hanging, while the kernel's own
+      // `turn.status()` answered at once. A queued reader cannot see a stuck queue and a queued release cannot free it,
+      // so `status` and `abandon` run DIRECTLY here (the member's `status`/`reply` already do, for the same reason).
+      // Opening ops (`step`, `drive`, `prompt`, `reopen-closure`) still queue: preserving their order is what the queue is for.
+      const observesOrReleases = op === 'status' || op === 'abandon'
+      if (memberCaller || observesOrReleases) return Promise.resolve(coreTurnInner(args, exec))
       const job = turnQueue.then(() => coreTurnInner(args, exec), () => coreTurnInner(args, exec))
       turnQueue = job.catch(() => {})
       return job

@@ -4438,3 +4438,20 @@ A7 是提示词审计里唯一一条**渲染层**缺陷：会议相位但没绑�
   并自带 `faces: rulerFaces`；parity 套件先真开会、把同一 id 与真 facts 交给两台尺子 ⇒ 12 行 diff 全 +0。
 - 读数：chair/meeting 35123→（gate 35141，cap 36500）、member/verify 29008（cap 30100）；新套件 24/0。
 - 未绑会 chair 仍含 `会议进行中`（排程教学，非会中手册）⇒ 判定不改，写进 §341.6 留档。
+
+### ROUND 245 —— 四条高危都在说同一件事：锁的观察与释放不可达
+
+第十二轮审计（`docs/acceptance/sim-audit-round12.md`）的高危条目全部落在回合锁上，这一轮把它们一次修完：
+
+- **H1 队列把读数与释放阀一起堵死**：根会话所有 op 共用一条 `turnQueue`，`status`/`abandon` 便排在它们要观察的
+  投递后面（实测 1500 ms 全挂起）。修法：`status` 与 `abandon` 具名旁路，`step`/`drive` 等开启型写仍排队。
+- **H2 放开之后迟到答案照样写入**：`abandonedTurns` 名单在任何应用之前拦下，回执 `VMU_TURN_ABANDONED` +
+  `lateAnswerNotApplied:true`，行保持 `abandoned`，记录一条不写。
+- **H3 迟到的旧回合清掉新回合的锁**：拿锁记 `myToken`，释放只在 `turnInFlightToken === myToken` 时发生；
+  `inFlightTurn` 只清自己那一格。
+- **H4 一份回执两个钟**：`deliveryLastFail.at` 改用 `isoStampOf(clock())` 并写 `atSource:"kernel-clock"`，
+  与 `writesWindow.from/to` 同源。
+- **顺手**：`status()` 手抄的 `turnLoop` 少七个键，合成唯一 `turnLoopReading()`。
+
+读数：新套件 `tests/vmu-run245-audit12.test.mjs` 40/0；定向回归 turn 272/0、run241-lock 49/0、run242 62/0、
+run22 全绿、run244 24/0、audit-vmu-docs 103/0。

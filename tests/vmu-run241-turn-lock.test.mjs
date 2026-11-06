@@ -55,7 +55,9 @@ has(TURN_SRC, 'const queueWake = (spec = {}) => {', '§0h ★★★ a wake that 
 has(TURN_SRC, "if (isBusy()) break", '§0i ★★ and the queue only runs when the loop is actually free')
 has(TURN_SRC, "throw refuse('VMU_TURN_REENTRANT',", '§0j the re-entrancy refusal still exists (the lock is kept, only made escapable)')
 has(TURN_SRC, "REACHABLE INSTEAD: `vibe_vmu_turn { op:\"abandon\" }`", '§0k ★★ and its hint names the way out')
-has(TURN_SRC, 'turnLoop: () => ({ inFlight:', '§0l ★★ op:"status" can report the lock (turnLoop)')
+// RUN 245 moved this reading into ONE function: two hand-written copies is how the twelfth audit found `status()`
+// reporting seven keys fewer than `kernel.turn.turnLoop()`. The invariant held here is the report, not its spelling.
+has(TURN_SRC, 'turnLoop: turnLoopReading(),', '§0l ★★★ op:"status" can report the lock (turnLoop), through the ONE writer of that reading')
 has(TURN_SRC, 'ifItNeverSettles', '§0m ★ a forwarded report says what to do if its turn never settles')
 has(KERNEL_SRC, "openedBy: 'wait', meeting: wakeMeeting", '§0n ★★★ a waiter-woken turn CARRIES its meeting (run 64: meeting null while w-1 hung on m1)')
 has(KERNEL_SRC, 'loop.isBusy() === true && typeof loop.queueWake', '§0o ★★ and the wake path queues instead of nesting when the loop is busy')

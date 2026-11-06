@@ -748,7 +748,7 @@ export const CHARTER_BLOCKS_B = Object.freeze([
   // 「本回合没有绑定会议」and the grid says「未提供」- a hole a reader can SEE, which is the honest form of "no meeting".
       meeting: [
         '议程：{{ setting:vmu.turn.meetingAgenda }}（类型：{{ setting:vmu.turn.meetingType }}，主席：{{ setting:vmu.turn.meetingChair }}）。本轮绑定该会议：回复第一句请写明会 id（{{ setting:vmu.turn.meetingId }}）。',
-        '  · 上面议程/类型/主席若为「未提供」、id 为空，就是本回合没有绑定会议：先 `vibe_v5_meeting_round { meeting: "<会 id>" }` 绑下一回合，不要猜 id。',
+        '  · 上面议程/类型/主席为空或「未提供」、或 `vibe_vmu_meeting { action:"status", id: "<会 id>" }` 读不到这场会，就是本回合没有绑定会议：先 `vibe_v5_meeting_round { meeting: "<会 id>" }` 绑下一回合，不要猜 id，也别把发言/投票押上去。',
       ].join('\n'),
     },
   },
